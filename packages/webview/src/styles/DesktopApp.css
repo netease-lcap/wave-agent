@@ -1263,8 +1263,15 @@ body.is-panel-resizing webview {
   overflow-y: hidden;
 }
 
-/* Resize handle between the two pane rows; overlays the row border. */
+/* Resize handle between the two pane rows; overlays the row border.
+   可见线 = ::after 上的 2px 横向渐变（设计师 0916 评论③「类似的地方都一起
+   改掉」→ 与 .panel-slot-drag-handle 同一档：中间深两端浅 8% 淡出、核心走
+   --cc-text-secondary）；5px 命中区整条保留，拖拽手感与逻辑零改动。 */
 .desktop-row-separator {
+  --pane-drag-line: var(
+    --cc-text-secondary,
+    var(--vscode-focusBorder, #007fd4)
+  );
   position: relative;
   z-index: 6;
   flex: 0 0 5px;
@@ -1272,9 +1279,29 @@ body.is-panel-resizing webview {
   cursor: row-resize;
 }
 
-.desktop-row-separator:hover,
-.desktop-row-separator--active {
-  background: var(--vscode-focusBorder, #007fd4);
+.desktop-row-separator::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--pane-drag-line) 8%, transparent) 0%,
+    var(--pane-drag-line) 20%,
+    var(--pane-drag-line) 80%,
+    color-mix(in srgb, var(--pane-drag-line) 8%, transparent) 100%
+  );
+}
+
+.desktop-row-separator:hover::after,
+.desktop-row-separator--active::after {
+  opacity: 1;
 }
 
 /* VS Code-style translucent overlay over the half of a single-row layout
@@ -1298,8 +1325,14 @@ body.is-panel-resizing webview {
   bottom: 0;
 }
 
-/* Resize handle between adjacent panes; overlays the pane border. */
+/* Resize handle between adjacent panes; overlays the pane border.
+   与上一条同档（0916 评论③）：可见线画在 ::after（2px 竖向渐变），5px 命中区
+   原样保留 —— 拖动几何、MIN_PANE_WIDTH 守卫、col-resize 逻辑均未改动。 */
 .desktop-pane-separator {
+  --pane-drag-line: var(
+    --cc-text-secondary,
+    var(--vscode-focusBorder, #007fd4)
+  );
   position: relative;
   z-index: 6;
   flex: 0 0 5px;
@@ -1307,9 +1340,29 @@ body.is-panel-resizing webview {
   cursor: col-resize;
 }
 
-.desktop-pane-separator:hover,
-.desktop-pane-separator--active {
-  background: var(--vscode-focusBorder, #007fd4);
+.desktop-pane-separator::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--pane-drag-line) 8%, transparent) 0%,
+    var(--pane-drag-line) 20%,
+    var(--pane-drag-line) 80%,
+    color-mix(in srgb, var(--pane-drag-line) 8%, transparent) 100%
+  );
+}
+
+.desktop-pane-separator:hover::after,
+.desktop-pane-separator--active::after {
+  opacity: 1;
 }
 
 /* Insertion marker shown while dragging a pane header to reorder. */

@@ -3859,3 +3859,43 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 ### 并行窗口说明
 
 本轮代码只有 `host-desktop.css` 的 1 条 hunk（`gap` 一行 + 注释 3 行），与同文件内另一窗口在途的账户热区 hover 改动（`:746-797`）不重叠——但该 hunk 在本窗口提交前，被另一窗口的账户热区 hover 提交 **`0b11e794`** 一并带走（他们的提交同时含我的 `gap: 8px`）；截至本节写入时该提交仍在本地未推送（远端 tip `dea19a19`）。本节（docs 记录）由本窗口单独提交，docs 里另一窗口的账户热区小节已随 `0b11e794` 入库、本窗口未改动其内容。
+
+## 0916 拖拽分隔线统一：面板分隔条 / 行分隔条 → 2px 中间深两端浅的渐变线（评论「类似的地方都一起改掉」）（已随本批推送）
+
+用户 2026-09-16 预览评论（承接第 1 轮的拖拽分隔线）：先问「`div.desktop-pane-separator` … 包含在之前的拖拽线优化里吗」→ 审计答复「没有包含」（审计页 Artifact https://codechat.codewave.163.com/code/artifact/xo2nsgzavy ）→ 用户随即指示 **「类似的地方都一起改掉」**。口径 = 与第 1 轮完全同档，只改可见线，**命中区与交互零改动**。
+
+### 改了哪三条（同一族的拖拽缩放分隔线）
+
+| 位置                       | 元素                      | 本轮                                   |
+| -------------------------- | ------------------------- | -------------------------------------- |
+| 对话区 ↔ 右侧面板（竖）   | `.panel-slot-drag-handle` | 第 1 轮已改，本次未再动                |
+| 面板 ↔ 面板（竖）         | `.desktop-pane-separator` | **本次改**（`DesktopApp.css:1328` 起） |
+| 上排面板 ↔ 下排面板（横） | `.desktop-row-separator`  | **本次改**（`DesktopApp.css:1266` 起） |
+
+### 改前 → 改后
+
+| 项                | 改前                                                                                          | 改后                                                                                                                                                                                             |
+| ----------------- | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 可见线            | **5px 命中区整条实色** `background: var(--vscode-focusBorder)`（浅 `#1F2329` / 深 `#A0A5A8`） | `::after` 画 **2px 细线**：竖向线 `linear-gradient(180deg, …)`、横向线 `90deg`，核心实色占 **20%–80%**、两端 **8%** 淡出；静止 `opacity:0`、hover 与 `--active` 为 `1`（120ms 淡入）             |
+| 取色              | host 焦点色（浅色偏黑 `#1F2329`）                                                             | 局部变量 `--pane-drag-line: var(--cc-text-secondary, var(--vscode-focusBorder, #007fd4))` —— 桌面端浅 `#6C7076` / 深 `#A0A5A8`（＝第 1 轮 B 档同一颗核心色）；插件端无 `--cc-*` 层时回落原焦点色 |
+| 命中区 / 拖拽逻辑 | 5px，`col-resize` / `row-resize`                                                              | **逐值不变**；`DesktopShell.tsx` 的 `handleSeparatorMouseDown` / `handleRowSeparatorMouseDown`、`MIN_PANE_WIDTH`（320）/ `MIN_ROW_HEIGHT` 守卫、`--active` 类**一行未改**（本轮纯 CSS）          |
+
+### 实测（`desktop-full`，1440×900，DPR2，浅/深）
+
+- 线宽（穿过线的像素剖面）：**10 设备像素（5px）整条实色 → 4 设备像素（2px）**；面板之间竖线 `5×900`、两行之间横线 `1180×5`，命中区尺寸与改前一致。
+- 渐变（全高/全宽取样，DPR2）：竖线（900px 高）浅 `rgb(240,241,241)` → `rgb(108,112,118)` → `rgb(241,241,242)`；深 `rgb(30,33,34)` → `rgb(160,165,168)` → `rgb(30,32,33)`。横线（1180px 宽）浅 `rgb(241,241,242)` → `rgb(108,112,118)` → `rgb(241,242,242)`；深 `rgb(31,33,34)` → `rgb(160,165,168)` → `rgb(31,33,34)`。
+- 三态：静止 `opacity:0`、命中区透明；hover 与拖拽中 `opacity:1` 且 `--active` 类正常出现；`0 pageerror`。
+- **交互等价（同页 A/B：注入改前样式后重测拖拽轨迹）**：面板之间（每次右移 12px）面板宽 `603→615→627→639`（每步 +12）；两行之间（每次下移 10px）行高 `460→470→480→490`（每步 +10）—— **改前/改后逐值相同**，浅深一致。
+
+### 残留（未授权，供后续点名）
+
+- `.desktop-pane-dropzone` / `.desktop-pane-drop-indicator`：拖 pane 标题重排时的**放置提示**（半透明虚框 + 2px 插入标记），属「放置」语义非「拖拽缩放」，本轮未动 → 触发语 **「放置提示也改」**。
+- 线若嫌细/嫌浅，可整体换档（如核心再深一档或 1px）→ 触发语 **「分隔线用 A / C」**（A = 炭黑核心 `#1F2329`，C = 常规灰 `#565A60`/`#C4C7C9`）。
+- skill 回写候选（交 codex 审）：把第 1 轮那条实现陷阱扩成一条**通用条款** ——「拖拽缩放分隔线的命中区宽度决定手感、可视线必须画在伪元素上并独立取色；同一产品内所有同类分隔线（竖 / 横）共用同一档线宽与渐变量，不得出现『命中区即可见线』的整条实色实现」。触发语 **「分隔线通用条款写进 skill」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/verify-separators-0916.mjs`（三态计算值 + 同页 A/B 拖拽轨迹 + 全页截图）、`CC02/measure-line-metrics-0916.py`、`CC02/build-separator-evidence-0916.py`、`CC02/build-separator-zoom-0916.py`、`CC02/build-separator-fix-report-0916.py`；审计脚本 `CC02/probe-paneseparator-0916.mjs`、`CC02/shots-both-separators-0916.mjs`。
+- 证据目录 `CC02/走查/0916-面板分隔条/`：`crop-{pane,row}-{light,dark}-{old,new}-{hover,drag}.png`、`px-{pane,row}-{light,dark}-{hover,drag}.png`（全页）、`线宽对照-*.png`、`对比-两种拖拽条-{1x,4x}.png`、`verify-0916-separators.json`、`gradient-samples-0916.json`、实施页 `0916-面板分隔条-实施.html`（Artifact https://codechat.codewave.163.com/code/artifact/wfzd1krul8 ）、审计页 `0916-面板分隔条-审计.html`（Artifact https://codechat.codewave.163.com/code/artifact/xo2nsgzavy ）。
+- **取证诚实说明**：预览 mock 不跟踪「两行」布局，且它的 `desktopResizePanes` 回包会把布局打回单行 → 行分隔条用 harness 的 `simulateExtensionMessage` 注入一条真实的 `desktopPanes` 宿主消息（`row` 0/1 + `rowHeights [0.5,0.5]`）后测量，组件为真实渲染；另注意 `handleRowSeparatorMouseDown` 在宿主未提供 `rowHeights` 时会**直接 return**（既有逻辑，非本轮引入），故测量必须带 `rowHeights`。
+- 本轮纯 CSS（`DesktopApp.css` 两条规则），无 TS 改动。
