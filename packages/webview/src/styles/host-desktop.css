@@ -429,7 +429,8 @@
   border-radius: 6px;
   color: #565a60;
   font-size: 14px;
-  font-weight: 500;
+  /* 0916 第 2 轮：下拉选项默认字重 400（原 500 加粗取消） */
+  font-weight: 400;
   box-sizing: border-box;
 }
 [data-host="desktop"] .permission-mode-item:hover {
@@ -646,7 +647,8 @@
   padding: 0 8px;
   border-radius: 6px;
   font-size: 14px;
-  font-weight: 500;
+  /* 0916 第 2 轮：下拉选项默认字重 400（原 500 加粗取消） */
+  font-weight: 400;
   box-sizing: border-box;
 }
 [data-host="desktop"] .plus-menu-item:hover {
@@ -712,10 +714,10 @@
 [data-host="desktop"][data-theme="dark"] .desktop-session-item--current:hover {
   background: rgba(255, 255, 255, 0.12);
 }
-/* 选中项标题字重：codechat 桌面壳 .task-row.is-active .task-title 500
-   （--cc-font-weight-medium），skill 契约菜单/导航选中同值。 */
+/* 选中项标题字重（0916 第 2 轮修正）：选中不再靠字重强调 → 与未选中同值
+   regular 400（原 500 = --cc-font-weight-medium；用户走查：选中态字重不要变）。 */
 [data-host="desktop"] .desktop-session-item--current .desktop-session-title {
-  font-weight: var(--cc-font-weight-medium, 500);
+  font-weight: var(--cc-font-weight-regular, 400);
 }
 /* 非当前会话标题不强调（用户 0904 走查：未选中不要加粗 → regular） */
 [data-host="desktop"]
@@ -1783,9 +1785,10 @@
   padding: 8px;
 }
 
-/* 简单菜单项：28px 高 / 14px / 500 / r6 / 默认 #565A60（0908 第 4 轮：
-   单行下拉菜单选项高度统一 28px，原 32；workdir 最近打开的两行带注释项
-   内容自然高 >28 不受 min-height 影响，保持原样） */
+/* 简单菜单项：28px 高 / 14px / 400 / r6 / 默认 #565A60（0908 第 4 轮：
+   单行下拉菜单选项高度统一 28px，原 32；0916 第 2 轮：选项字重去强调 →
+   400，原 500。workdir 最近打开的两行带注释项内容自然高 >28 不受
+   min-height 影响，保持原样） */
 [data-host="desktop"] .more-menu-item,
 [data-host="desktop"] .panel-toggle-menu-item,
 [data-host="desktop"] .desktop-session-menu-item,
@@ -1795,7 +1798,7 @@
   padding: 0 8px;
   border-radius: 6px;
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 400;
   color: #565a60;
   gap: 8px;
   box-sizing: border-box;
@@ -2736,13 +2739,13 @@
   font-weight: var(--cc-font-weight-medium, 500);
 }
 
-/* ④ markdown / 内容语义粗体（strong / h5-6 / 表头 / kb 建议名）：600 */
+/* ④ markdown / 内容语义粗体（strong / h5-6 / 表头）：600（kb 建议名原在此组，
+   0916 第 2 轮移出 → 下拉选项一律 400，见 ⑧） */
 [data-host="desktop"] .markdown-content strong,
 [data-host="desktop"] .markdown-content b,
 [data-host="desktop"] .markdown-content h5,
 [data-host="desktop"] .markdown-content h6,
-[data-host="desktop"] .markdown-content th,
-[data-host="desktop"] .suggestion-item.kb-option .suggestion-name {
+[data-host="desktop"] .markdown-content th {
   font-weight: var(--cc-font-weight-semibold, 600);
 }
 
@@ -2768,21 +2771,34 @@
 
 /* ② 界面标题类（用户 2026-09-04 逐项点名 → medium 500）：顶栏会话标题
    （就地改于上方 header-title 块）、账户卡套餐用量行/百分比/API 余额标签
-   与金额、账户名、会话状态页卡标题、面板页签（active）、会话分组名、
-   权限下拉全部选项、用户消息正文。侧栏会话名例外：仅选中（current）500、
-   未选中不强调 regular（见上方 desktop-session-title 两态规则）。部分 base/
-   继承本即 500（等值 token 化），部分由 600/400 提到 500（视觉相应变化）。 */
+   与金额、账户名、会话状态页卡标题、会话分组名、用户消息正文。侧栏会话名
+   （仅选中）与面板页签 active、权限下拉选项原在此组，**0916 第 2 轮移出** →
+   选中态/选项一律不靠字重强调，见 ⑧。部分 base/继承本即 500（等值 token 化），
+   部分由 600/400 提到 500（视觉相应变化）。 */
 [data-host="desktop"] .account-usage-title,
 [data-host="desktop"] .account-usage-percent,
 [data-host="desktop"] .account-usage-row .account-usage-label,
 [data-host="desktop"] .account-usage-row .account-usage-value-text,
 [data-host="desktop"] .account-card-name,
 [data-host="desktop"] .session-card-title,
-[data-host="desktop"] .desktop-panel-tab.active .desktop-panel-tab-label,
 [data-host="desktop"] .desktop-session-group-name,
-[data-host="desktop"] .permission-mode-item,
 [data-host="desktop"] .user-content {
   font-weight: var(--cc-font-weight-medium, 500);
+}
+
+/* ⑧ 0916 第 2 轮（用户走查：左侧导航 / 下拉菜单 / 右侧面板 tab 的选中态字重
+   都不要变，与未选中一致 400；下拉选项默认也 400）：凡「选中/命中」靠底色或
+   描边表达，不靠字重。覆盖对象 = 面板页签 active、设置页左侧导航 active、
+   文件建议与快捷指令弹层选项名（含键盘选中）、会话列表弹层项、工作目录下拉
+   的当前分支项。 */
+[data-host="desktop"] .desktop-panel-tab.active .desktop-panel-tab-label,
+[data-host="desktop"] .settings-nav-item.is-active,
+[data-host="desktop"] .suggestion-name,
+[data-host="desktop"] .suggestion-item.kb-option .suggestion-name,
+[data-host="desktop"] .slash-command-name,
+[data-host="desktop"] .session-list-item-title,
+[data-host="desktop"] .desktop-branch-active .desktop-workdir-menu-name {
+  font-weight: var(--cc-font-weight-regular, 400);
 }
 
 /* 正文 regular（normal 重置并入，值不变）：显式 reset 为 400 的字面语义

@@ -314,7 +314,7 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
 }
 
 .desktop-session-item--current .desktop-session-title {
-  /* 选中会话标题不加粗（0916 第 1 轮：选中态字重与未选中一致 400；
+  /* 选中会话标题不加粗（0916 第 2 轮：选中态字重与未选中一致 400；
      原为 Figma 14/500，用户走查改） */
   font-weight: 400;
 }

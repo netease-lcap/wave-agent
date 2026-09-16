@@ -3582,3 +3582,55 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 - 脚本：`CC02/shots-draghandle-0916.mjs`（注入改前样式做同页对照 + 三态裁剪）、`CC02/variants-draghandle-0916.mjs`（强度档对照）、`CC02/verify-draghandle-fn-0916.mjs`、`CC02/verify-draghandle-drag-0916.mjs`、`CC02/build-draghandle-report-0916.py`。
 - 证据目录 `CC02/走查/0916-分隔线/`：`{light,dark}-{before,after}-{hover,drag}.png`、`zoom-*.png`（5× 线宽放大）、`cmp-*-ctx.png`（强度对照上下文）、`measure-0916.json`、走查页 `0916-分隔线-review.html`（Artifact https://codechat.codewave.163.com/code/artifact/b27xy4jugh）。
 - `pnpm -F wave-webview type-check` 全绿（退出码 0）；`oxlint` 对改动文件 0 error（仓库现有 2 error 在未跟踪的 `prototype/mockShared.ts`）。
+
+## 0916 第 2 轮：左侧导航 / 下拉菜单 / 右侧面板 tab 的选中态与选项字重统一 400（已随本批推送）
+
+用户 2026-09-16 预览评论（原话）：「我希望左侧导航包括设置页的左侧导航、所有下拉菜单、右侧展开区域的 tab 页，选中状态字重都不变，保持 400（现在未选中应该是 400），下拉菜单中的选项默认也是 400，**全局调整**」。口径 = 选中与否、默认与命中，都不再用字重区分，选择只由底色/描边表达。
+
+### 改前 → 改后（桌面端 `[data-host="desktop"]` 计算值）
+
+| 位置                                                                                | 改前                                                        | 改后            |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------- | --------------- |
+| 左侧导航 · 会话列表**选中**标题                                                     | `500`（`--cc-font-weight-medium`）                          | 400             |
+| 左侧导航 · 未选中标题                                                               | 400                                                         | 400（原本即是） |
+| 设置页左侧导航 · 选中项（`.settings-nav-item.is-active`）                           | `500`                                                       | 400             |
+| 右侧面板 tab · 选中页签文案（`.desktop-panel-tab.active`）                          | `500`（契约 `design-system.md:138` 本写 regular，实现偏离） | 400             |
+| 下拉选项：会话行菜单 / 加号 / 权限模式 / 工作目录 / 快捷指令列表 / 账户个人信息菜单 | `500`                                                       | 400             |
+| 文件建议弹层选项名（`.suggestion-name`，含键盘命中 `.kb-option`）                   | `500` / `600`                                               | 400             |
+| 会话列表弹层项 / 工作目录下拉「当前分支」项                                         | `500` / `600`                                               | 400             |
+
+实现落点：
+
+- `host-desktop.css` 新增 **⑧ 组**（七条 `[data-host="desktop"] …` 选择器统一 `var(--cc-font-weight-regular, 400)`）：面板页签 active、设置页导航 active、`.suggestion-name`、`.suggestion-item.kb-option .suggestion-name`、`.slash-command-name`、`.session-list-item-title`、`.desktop-branch-active .desktop-workdir-menu-name`。
+- 就地改值：`.permission-mode-item`（427）、`.plus-menu-item`（648）、`.more-menu-item` / `.panel-toggle-menu-item` / `.desktop-session-menu-item` / `.desktop-workdir-menu-item` 同组（1799）、会话选中标题（723）、`DesktopApp.css:316`、`DesktopPanelTabs.css:86`。
+- 移出旧组：`.suggestion-item.kb-option .suggestion-name` 从 ④ `600` 组移出（否则覆盖 ⑧）；`.desktop-panel-tab.active .desktop-panel-tab-label` 与 `.permission-mode-item` 从 ② `500` 组移出。
+- **base 文件不改**（IDE 端不受影响，沿用 0904 约定）：`MoreMenu.css` / `PanelToggleMenu.css` / `SessionListPopup.css` / `SlashCommandsPopup.css` / `FileSuggestionDropdown.css` / `SettingsPage.css` / `MessageInput.css` 里的 500/600 保持原样，桌面端由 host 覆盖层接住。
+
+### 实测（同页回退对照 = 注入旧值当「修复前」，用例 `desktop-full`，1440×900，深色）
+
+- 计算值：上表全部命中（`500/600 → 400`）；未选中项与未改项逐值不变。
+- 几何：**行盒与菜单容器逐值不变**（`211x22` 会话标题、`146x28` 权限项、`160x28` 加号项、`217x28` 账户项、`215x30` 设置页导航项…）；唯**工作目录下拉因菜单宽度由内容决定窄 5px**（`280x150 → 275x150`，高不变）—— 字重变细带来的字宽差（400 比 500 窄约 1–2%），非布局缺陷。
+- 0 pageerror；截图 4 组（左侧导航 / 权限下拉 / 账户菜单 / 设置页导航）差异像素 2.29% / 10.45% / 4.00% / 0.42%，差异仅落在文字笔画上。
+- 右侧面板 tab：原型 mock 用例**都开不出面板 tab**（tab 由真实交互/宿主驱动），故该项用「同页级联计算值」验证（注入同 class 链节点读 computed font-weight：`500 → 400`）；真机走查路径 = 头部「展开面板 → 预览」。
+
+### 残留（未授权，供后续点名）
+
+- 下拉/导航内的**分组标签**仍 500（最近打开 / SSH 主机 12px、快捷指令分组标题、设置页导航分组标题）—— 0908 曾按用户点名「加粗」，故本轮不动 → 触发语 **「分组标签也改 400」**。
+- 设置页**内容区** tab（`.settings-tab.is-active` 500）、弹窗分段 tab（`.settings-modal-seg-item.is-active` 600）、插件市场筛选胶囊（`.settings-plugin-chip.is-active` 600）：不属本轮三个范围 → 触发语 **「设置页 tab 也改 400」**。
+- 插件行按钮 `.settings-plugin-act` 500 = 0915 用户明确定的档（与「新建市场」同档），**不动**。
+- 列表/标题类 600（`.desktop-panel-toolbar-title`、`.settings-plugin-name`、`.session-card-title`、`.desktop-panel-empty-title` 等）未动 → 触发语 **「面板标题也改 500/400」**。
+- IDE（VS Code / JetBrains）宿主仍按 base 渲染 500（本轮只改桌面端语义层）→ 触发语 **「IDE 也一起改」**（需改 base 文件）。
+- 唯一可见副作用：工作目录下拉窄 5px；若要宽度恒定 → 触发语 **「工作目录菜单宽度钉死」**。
+- skill 回写候选：见交接单 **W-25 ~ W-29**（`~/Desktop/skill-backfill-0916-fontweight-for-codex.md`）。
+
+### 并行窗口说明
+
+`packages/webview/src/styles/DesktopApp.css` 的会话选中标题一行（`.desktop-session-item--current .desktop-session-title`，500 → 400）写入工作区后，被另一个窗口的第 1 轮提交 `0a250209`（拖拽分隔线）一并带走并推送——该行**已在远端分支**，但记录归在第 1 轮小节；本轮其余改动已随本批推送。
+
+同一份 `host-desktop.css` 当时还含另一窗口在途的两处改动（0916 评论② 工具行内控件圆角 8px、账户热区深色 hover 回接 `--cc-fill-hover`），与本轮 hunk 不重叠；本批提交**只取本轮 7 条 hunk**（用临时索引 `GIT_INDEX_FILE` 组装，未动共享索引里他窗口已暂存的内容），推送版里那两处仍是改前值。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/verify-fontweight-0916.mjs`（同页回退对照 + 计算值/盒尺寸表）、`CC02/shots-fontweight-0916.mjs`（前后裁剪图 + 面板 tab 级联校验）。
+- 证据目录 `CC02/走查/0916-字重/`：`dark-{before,after}-{nav-session,menu-permission,menu-account,nav-settings}.png`、`verify.json`。
+- 本轮无 TS 改动（纯 CSS 字重），未跑 type-check。
