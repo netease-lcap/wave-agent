@@ -917,10 +917,10 @@ export class MarketplaceService {
    *
    * Callers are the plugin-marketplace surfaces (GUI settings view / CLI plugin
    * manager), refreshed when the user opens them — the agent-startup path no
-   * longer refreshes anything (spec 插件市场 A-012 场景 5).
+   * longer refreshes anything (spec 插件市场 A-013 场景 5).
    *
    * This is a fixed behavior with no opt-in/opt-out: `autoUpdate` no longer
-   * exists, so all marketplaces are refreshed alike (A-013). Refreshing only
+   * exists, so all marketplaces are refreshed alike (A-014). Refreshing only
    * updates the checkout — installed plugins are never reinstalled here, so a
    * newer plugin version surfaces as an explicit "更新" (per plugin) /
    * "批量更新插件" (batch) action instead of being applied behind the user's

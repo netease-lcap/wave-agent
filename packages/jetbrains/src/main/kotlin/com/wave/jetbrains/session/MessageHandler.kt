@@ -459,7 +459,7 @@ class MessageHandler(
                 postMessage("listMarketplacesResponse", buildJsonObject { put("marketplaces", marketplaces) })
             }
             // VSCE :116/:333 → 打开插件市场界面时的后台清单刷新：只拉各市场检出、
-            // 不升级任何插件（spec 插件市场 A-012 场景 5）。失败静默记日志、不打扰
+            // 不升级任何插件（spec 插件市场 A-013 场景 5）。失败静默记日志、不打扰
             // 用户（场景 9），完成后补发两份最新列表并带 refreshed 标记（场景 2/12）。
             "refreshMarketplaces" -> {
                 try {

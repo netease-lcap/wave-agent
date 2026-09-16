@@ -93,7 +93,7 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
   const [filter, setFilter] = useState<PluginFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
-  // 打开视图时后台刷新各市场检出（只拉清单、不升级插件，spec 插件市场 A-012
+  // 打开视图时后台刷新各市场检出（只拉清单、不升级插件，spec 插件市场 A-013
   // 场景 5/12）：刷新期间列表先显示进入前的清单，完成后再由宿主补发最新
   // （`refreshed: true`）并收起本提示。提示属界面内状态，不是场景 8 禁止的
   // 界面外主动提示。

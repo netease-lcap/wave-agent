@@ -848,7 +848,7 @@ export class MessageHandler {
 
   /**
    * 打开设置页插件市场视图时的后台清单刷新：只拉各市场检出、不升级任何插件
-   * （spec 插件市场 A-012 场景 5）。刷新在后台进行、不阻塞界面，完成后把两份
+   * （spec 插件市场 A-013 场景 5）。刷新在后台进行、不阻塞界面，完成后把两份
    * 最新列表推给已打开的视图（场景 2）；失败按场景 9 静默记日志、不打扰用户。
    */
   private async handleSettingsRefreshMarketplaces(): Promise<void> {

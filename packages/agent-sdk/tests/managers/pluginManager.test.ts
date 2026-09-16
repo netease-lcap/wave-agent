@@ -388,7 +388,7 @@ describe("PluginManager", () => {
     });
 
     it("should not refresh marketplace checkouts while loading plugins", async () => {
-      // 清单刷新只由「打开插件市场界面」触发（spec 插件市场 A-012 场景 5）：
+      // 清单刷新只由「打开插件市场界面」触发（spec 插件市场 A-013 场景 5）：
       // 插件加载路径（宿主启动 / 新建会话 / 配置重建）不得发起任何市场拉取。
       await pluginManager.loadPlugins([]);
 

@@ -110,7 +110,7 @@ export class PluginService {
 
   /**
    * 刷新各市场检出（只拉清单、不升级插件）。打开设置页插件市场视图时在后台
-   * 调用（spec 插件市场 A-012 场景 5）。
+   * 调用（spec 插件市场 A-013 场景 5）。
    */
   public async refreshMarketplaces() {
     await this.utilityClient.request("refreshMarketplaces", {

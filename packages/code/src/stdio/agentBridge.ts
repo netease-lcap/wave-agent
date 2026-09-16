@@ -1926,7 +1926,7 @@ export class AgentBridge {
 
   /**
    * 刷新各已注册市场的检出（不装插件），供「打开插件市场界面」时后台调用
-   * （spec 插件市场 A-012 场景 5）。市场级错误在 SDK 内静默记录，宿主侧失败
+   * （spec 插件市场 A-013 场景 5）。市场级错误在 SDK 内静默记录，宿主侧失败
    * 也不打断界面（场景 9）。
    */
   private async refreshMarketplaces(workdir?: string, sessionId?: string) {
