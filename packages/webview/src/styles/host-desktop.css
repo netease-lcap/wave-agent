@@ -1768,11 +1768,12 @@
   background-color: rgba(255, 255, 255, 0.12);
 }
 
-/* 收起态按钮：对齐 codechat .figma-icon-button（24×24，r6，hover --cc-fill-hover） */
+/* 收起态按钮：对齐 codechat .figma-icon-button（24×24，hover --cc-fill-hover；
+   圆角随「操作按钮统一 8px」见下方 0916 第 5 轮） */
 [data-host="desktop"] .header-collapsed-leading .header-button {
   width: 24px;
   height: 24px;
-  border-radius: 6px;
+  border-radius: var(--cc-radius-md, 8px);
 }
 [data-host="desktop"] .header-collapsed-leading .header-button:hover {
   background-color: #eef0f3;
@@ -1781,6 +1782,58 @@
   .header-collapsed-leading
   .header-button:hover {
   background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* 操作按钮圆角统一 8px（用户 0916 评论 `button.desktop-sidebar-more-btn`
+   「这里」/ `svg.header-icon`×2 + `button.header-button`「这里」「类似下面我
+   标注的这些地方也要统一」，与上一轮 `button.preview-pane-button`「类似这种
+   操作按钮圆角统一8px」同族）。本族 = ①侧边栏品牌行图标按钮（收起侧边栏 /
+   活动，24×24 @DesktopApp.css:139，改前 6px）②会话头 / 面板头图标按钮
+   .header-button（含面板开关 .header-panel-toggle 24×24 @ChatHeader.css:112，
+   改前 base 4px；收起态 24×24 改前 6px）。改前 4px / 6px 两档并存，与同面
+   tab 页签 8px（DesktopPanelTabs）、对话头部工具行控件 8px（0916 第 3 轮）、
+   面板操作按钮 8px（0916 第 4 轮）不同族 → 统一走 --cc-radius-md。
+   只改圆角：24×24（部分 22×22）、图标尺寸、配色、hover / active 态均不动。
+   作用域限 [data-host="desktop"]，IDE / VS Code 宿主共用这些 class 不受影响。 */
+[data-host="desktop"] .desktop-sidebar-more-btn,
+[data-host="desktop"] .header-button {
+  border-radius: var(--cc-radius-md, 8px);
+}
+
+/* 关闭按钮族（用户 0916 两条指示）：
+   ①「pane 头部关闭也一起」→ `.desktop-pane-close`（24×24，改前 4px）纳上一族。
+   ②「toast 关闭 / 确认弹层关闭应该是和 pane 头部关闭用同一个图标，同样的圆角」
+      → 圆角同档（两者 20×20，改前 4px）；**图标同一官方矢量** = 与
+      `.desktop-pane-close` 相同的 `ConversationCloseIcon`（Figma 关闭 13440:12465，
+      24 artboard，path 墨迹 8.5×8.5），改由组件层按宿主选择（见 ToastStack /
+      ConfirmationDialog），IDE / VS Code 保持原 `CloseIcon` 不变。
+      按钮盒仍是 20×20（`.toast-close` 的 2px 内衬归零以维持原 20×20 外廓，
+      避免 toast 宽度变化），24 的图标盒在 20 的按钮内居中、透明溢出不影响布局。
+   ③「页签关闭仅图标变色，不要背景色也不用圆角了」→ `.preview-tab-close`
+      （16×16）圆角 0，并去掉 hover 底（浅 #EEF0F3 / 深 8% 白），只保留
+      hover 图标变色（下方既有 color 规则）。 */
+[data-host="desktop"] .desktop-pane-close,
+[data-host="desktop"] .toast-close,
+[data-host="desktop"] .confirmation-close-btn {
+  border-radius: var(--cc-radius-md, 8px);
+}
+[data-host="desktop"] .toast-close {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+}
+/* 24 的图标盒在 20 的按钮里会被 flex 缩到 20（实测 computed 20×24、字形被压到
+   0.83 倍），加 flex-shrink: 0 让它保持 24×24 居中溢出 → 字形与 pane 头部关闭
+   逐像素同尺寸（实测墨迹都是 9.0px）。 */
+[data-host="desktop"] .toast-close .toast-close-icon,
+[data-host="desktop"] .confirmation-close-btn .confirmation-close-btn-icon {
+  flex-shrink: 0;
+}
+[data-host="desktop"] .preview-tab-close {
+  border-radius: 0;
+}
+[data-host="desktop"] .desktop-panel-tab .preview-tab-close:hover {
+  background: transparent;
 }
 
 /* ═══ 第十三轮：下拉菜单/弹层统一（对齐 codechat 菜单规格）═══════
@@ -2186,7 +2239,7 @@
 [data-host="desktop"] .confirmation-close-btn {
   top: 22px;
   right: 16px;
-  border-radius: 4px;
+  border-radius: var(--cc-radius-md, 8px);
 }
 [data-host="desktop"][data-theme="light"] .confirmation-close-btn:hover {
   background-color: #eef0f3;
@@ -2633,24 +2686,20 @@
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* add / 全屏 / close 按钮 hover 统一 fill-hover（spec-first base 用 vscode
-   list-hover 蓝灰；第 5/6 轮同类按钮先例 #EEF0F3 / dark 8% 白） */
+/* add / 全屏 按钮 hover 统一 fill-hover（spec-first base 用 vscode list-hover
+   蓝灰；第 5/6 轮同类按钮先例 #EEF0F3 / dark 8% 白）。
+   ⚠️ 页签关闭「×」已按用户 0916 指示移出本组（「仅图标变色，不要背景色也不用
+   圆角」）→ 见上方「关闭按钮族」块里的 `background: transparent`。 */
 [data-host="desktop"][data-theme="light"] .desktop-panel-tabs-add:hover,
 [data-host="desktop"][data-theme="light"]
   .desktop-panel-tabs-actions
-  .preview-pane-button:hover,
-[data-host="desktop"][data-theme="light"]
-  .desktop-panel-tab
-  .preview-tab-close:hover {
+  .preview-pane-button:hover {
   background: #eef0f3;
 }
 [data-host="desktop"][data-theme="dark"] .desktop-panel-tabs-add:hover,
 [data-host="desktop"][data-theme="dark"]
   .desktop-panel-tabs-actions
-  .preview-pane-button:hover,
-[data-host="desktop"][data-theme="dark"]
-  .desktop-panel-tab
-  .preview-tab-close:hover {
+  .preview-pane-button:hover {
   background: rgba(255, 255, 255, 0.08);
 }
 

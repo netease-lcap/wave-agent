@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useState } from "react";
 import type { ToastKind, UpdateToast } from "../types";
-import { CloseIcon } from "./HeaderIcons";
+import { CloseIcon, ConversationCloseIcon } from "./HeaderIcons";
+import { isDesktopHost } from "../utils/platform";
 import "../styles/ToastStack.css";
 
 /**
@@ -111,7 +112,14 @@ const Toast: React.FC<{
         onClick={() => onDismiss(toast.id)}
         aria-label="关闭"
       >
-        <CloseIcon className="toast-close-icon" />
+        {/* 桌面端用与 pane 头部关闭同一官方矢量（用户 0916：「toast 关闭 /
+            确认弹层关闭应该是和 pane 头部关闭用同一个图标」）；IDE 宿主保持
+            原 CloseIcon 不变 */}
+        {isDesktopHost() ? (
+          <ConversationCloseIcon className="toast-close-icon" />
+        ) : (
+          <CloseIcon className="toast-close-icon" />
+        )}
       </button>
     </div>
   );

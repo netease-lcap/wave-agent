@@ -4050,7 +4050,7 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 - 脚本：`CC02/probe-settings-tab-underline-0916.mjs`（同页回退对照 + 伪元素 `::after` 计算值 + 活跃 tab 裁剪）、`CC02/build-tab-underline-evidence-0916.py`（四角像素采样 + 逐行/逐列剖面 + 6× 放大 + 并排对比图）。运行 JS 需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
 - 本轮纯 CSS（`SettingsPage.css` 一条规则 + 注释），无 TS 改动。
 
-## 0916 评论（操作按钮圆角统一 8px · 第 2 族：侧边栏图标按钮 + 头部 `.header-button`）（工作区未提交）
+## 0916 评论（操作按钮圆角统一 8px · 第 2 族：侧边栏图标按钮 + 头部 `.header-button`）（已随本批推送）
 
 **她的评论**（连标 4 处）：`button.desktop-sidebar-more-btn`「这里」/ `svg.header-icon`「这里」×2 / `button.header-button`「这里」——
 **「再看看类似下面我标注的这些地方也要统一」**（承接上一轮 `button.preview-pane-button` 的「类似这种操作按钮圆角统一8px」）。
@@ -4174,3 +4174,47 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 
 - 脚本：`CC02/probe-sidebar-newchat-color-0916.mjs`（盘点该按钮/文案/图标/同级会话标题的计算色与对比度）与 `CC02/probe-sidebar-newchat-level1-0916.mjs`（同页回退对照 + 几何/hover/文案宽前后比对 + 裁剪图）。运行需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
 - 本轮纯 CSS（`host-desktop.css` 两条新增规则 + 注释），无 TS 改动。
+
+## 0916 评论（关闭按钮族：pane 头部 / toast / 确认弹层 / 面板页签）（已随本批推送）
+
+**她的三条指示**（承接上一轮残留清单）：
+①「pane 头部关闭也一起」②「页签关闭仅图标变色，不要背景色也不用圆角了」③「toast 关闭 / 确认弹层关闭应该是和 pane 头部关闭用同一个图标，同样的圆角」。
+
+### 改动
+
+- `packages/webview/src/styles/host-desktop.css`（一侧新增「关闭按钮族」块，另改两处既有规则）：
+  - 新增：`[data-host="desktop"] .desktop-pane-close, .toast-close, .confirmation-close-btn { border-radius: var(--cc-radius-md, 8px) }`（**4px → 8px**，三个按钮）。
+  - 新增：`[data-host="desktop"] .toast-close { width: 20px; height: 20px; padding: 0 }` + `… .toast-close-icon, … .confirmation-close-btn-icon { flex-shrink: 0 }` —— 图标换成 24 artboard 后，20 的按钮盒会把 svg 压成 20×24（实测 computed），字形被缩到 0.83 倍；加 `flex-shrink: 0` 后保持 24×24 居中溢出，字形与 pane 头部关闭**逐像素同尺寸**。
+  - 新增：`[data-host="desktop"] .preview-tab-close { border-radius: 0 }`（**3px → 0**）+ `… .desktop-panel-tab .preview-tab-close:hover { background: transparent }`。
+  - 改既有：`[data-host="desktop"] .confirmation-close-btn` 里的 `border-radius: 4px` → `var(--cc-radius-md, 8px)`（同选择器同特异性，不改这处会被先前定义覆盖）。
+  - 改既有：把「add / 全屏 / close hover 统一 fill-hover」规则里的 `.preview-tab-close:hover` 选择器摘掉（只留 `＋` 与全屏），否则页签关闭的 hover 底去不掉。
+- `packages/webview/src/components/ToastStack.tsx`、`ConfirmationDialog.tsx`：关闭图标按宿主选择 —— 桌面端用 `ConversationCloseIcon`（= pane 头部关闭那颗，Figma 关闭 13440:12465），其余宿主保持 `CloseIcon`（`isDesktopHost()`，见 `utils/platform.ts`）。
+
+### 实测（`desktop-full` + 临时用例 `tmp-panels-0916`，1440×900 @DPR2，浅/深，0 pageerror）
+
+- 圆角：pane 头部关闭 24×24 `4px → 8px`；toast 关闭 20×20 `4px → 8px`；确认弹层关闭 20×20 `4px → 8px`；面板页签关闭 16×16 `3px → 0`。
+- 图标（`path d` 长度可判定）：toast / 确认弹层 `143（16×16 · viewBox 17 17）→ 524（24×24 · viewBox 24 24）`，与 pane 头部关闭同值；**墨迹实测 8.0px → 9.0px**，与 pane 头部关闭的 9.0px 一致（同一官方矢量、同一实际字号）。
+- 页签关闭：hover 底 浅 `#EEF0F3` / 深 8% 白 → **透明**；hover 仍只做图标变色（浅 `#565A60 → #1F2329`、深 `#9A9EA5 → #FFFFFF`）。像素差异：深色 hover 裁切 **914 px（17.63%）**（底色整块消失）、浅色仅 **7 px（0.14%）**（浅色下 `#EEF0F3` 与 tab 底几乎同色，去掉后几乎看不出——如实记录）；静止态 0 px。
+- hover 态像素差异（40×40 CSS 裁切）：pane 头部 257 / 258（3.32% / 3.33%，只四角弧）、toast 359 / 363（5.61% / 5.67%）、确认弹层 309 / 328（4.83% / 5.12%）；静止态 toast / 确认弹层 74~101 px（就是 × 形变化）。
+- **几何零变化（逐值复核）**：toast 整条 `452×46`、确认弹窗 `589×226`、pane 头部行 `589×44`、头部按钮组 `52×24`、四个按钮盒 `24 / 20 / 20 / 16` —— 前后一致。
+- **宿主分叉实测**：在 desktop 用例里把 `window.waveHostType` 改成 `"ide"` 再发一条 toast，重渲染后所有 toast 关闭的 `path d` 从 524 变回 **143** → 分叉是活的，真实 IDE / VS Code 宿主保持原 `CloseIcon`（mock 的 `ide-chat` 用例本身不渲染 toast / 弹层，故用同页切标记取证，非 IDE 截图）。
+
+### 取证方式
+
+- **改前是真实构建**：把本轮三个改动文件备份到 `/tmp/0916close-backup/`、`git checkout --` 回 HEAD 采 before，再原样还原（md5 逐值校验 `de940bfd…` / `5b270f99…` / `269a0463…`）采 after —— 图标形变化与 hover 底消失都是真截图对比（上一轮只动圆角时用的是同面注入法，本轮不适用）。
+- 坑 ①：页签关闭「×」默认 `visibility:hidden`，必须先 hover 所在 tab 才显形；它的「静止态」要把指针停在 tab 左缘（仍算 tab hover、但不在 × 上），否则截到空白。
+- 坑 ②：mock 的 toast 浮层会压住 pane 头部关闭（`elementFromPoint` 命中 `.toast`），取该目标前先移除 toast。
+- 坑 ③：20 的按钮盒 + 24 的 svg 会被 flex 压成 20×24（字形等比缩到 0.83），必须 `flex-shrink: 0` 才能与 pane 头部逐像素同尺寸。
+
+### 残留（未授权，供你点名）
+
+- toast / 确认弹层关闭按钮盒仍 20×20（pane 头部是 24×24）→ 触发语 **「关闭按钮盒也统一 24」**。
+- 页签关闭 hover 仍带 `opacity 0.6 → 1`（明度变化，非颜色）→ 触发语 **「页签关闭的 hover 只留变色」**。
+- 本轮按 desktop 作用域处理，IDE / VS Code 宿主的 toast・弹层关闭仍用旧 `CloseIcon` → 触发语 **「关闭图标全宿主统一」**。
+- toast 右侧关闭在顶部栈的 hover 底是 `color-mix(currentColor 14%)`，与圆角 8px 不属同一套 token → 触发语 **「toast 关闭 hover 底接 fill-hover」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-close-buttons-0916.mjs`（`PHASE=before|after`，computed 读数含图标 viewBox / `path d` 长度 / 墨迹依赖的 rect + 裁切图）、`CC02/build-close-buttons-0916.py`（差异像素 + 墨迹 bbox + 6× 放大 + 差异图 + 本页）、`/tmp/gate-check-0916.mjs`（宿主分叉验证）。
+- 证据目录 `CC02/走查/0916-关闭按钮族/`：`measure-{before,after}.json`、`{key}-{theme}-{rest,hover}-{before,after}.png`、`zoom-*`、`diffmap-*`、`gate-check-desktop-vs-ide.png`，自测页 `0916-关闭按钮族-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/wjwh6vzelp ）。
+- `pnpm -F wave-webview type-check` 通过（本轮含 2 个 TSX 改动）。
