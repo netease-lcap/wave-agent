@@ -3816,7 +3816,7 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 
 ---
 
-## 0916 评论⑤：权限下拉项「图标 → 文案」间距 10px → 8px（与其余桌面下拉统一）（工作区未提交）
+## 0916 评论⑤：权限下拉项「图标 → 文案」间距 10px → 8px（与其余桌面下拉统一）（已随本批推送）
 
 用户 2026-09-16 预览评论（元素 `li.permission-mode-item.mode-default.selected`「修改前询问」）：「**检查图标到文案之间的间距是 8px 吗**」→ 先审计（只测不改），结论 **不是 8px，实测 10px，且是桌面端唯一的 10px**；她随即指示「**要统一成 8px**」→ 本轮改正。
 
@@ -3900,7 +3900,7 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 - **取证诚实说明**：预览 mock 不跟踪「两行」布局，且它的 `desktopResizePanes` 回包会把布局打回单行 → 行分隔条用 harness 的 `simulateExtensionMessage` 注入一条真实的 `desktopPanes` 宿主消息（`row` 0/1 + `rowHeights [0.5,0.5]`）后测量，组件为真实渲染；另注意 `handleRowSeparatorMouseDown` 在宿主未提供 `rowHeights` 时会**直接 return**（既有逻辑，非本轮引入），故测量必须带 `rowHeights`。
 - 本轮纯 CSS（`DesktopApp.css` 两条规则），无 TS 改动。
 
-## 0916 评论（设置页卡片圆角 8px → 12px）（工作区未提交）
+## 0916 评论（设置页卡片圆角 8px → 12px）（已随本批推送）
 
 **她的评论**（点 `div.settings-card`「AI 回复语言设置 AI 回复时使用的语言（技术术语与代码保…）」）：
 「设置里面类似布局这里的圆角是 12px，全局统一修改后补充在交接 skill 中」。
@@ -3981,7 +3981,7 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 - 证据目录 `CC02/走查/0916-面板操作按钮圆角/`：`measure.json`、`{tag}-{theme}-{before,after}-hover.png`、`zoom-{tag}-{theme}-{before,after}.png`、`diffmap-*`、`toolbar-{theme}-{before,after}-hover.png`、`tabbar-*`，自测页 `0916-面板操作按钮圆角-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/z8pzpxevzk ）。
 - 本轮纯 CSS（`host-desktop.css` 一条规则），无 TS 改动。
 
-## 0916 评论（行内说明色与其余说明统一：去掉 hint 上的 opacity 0.75）（工作区未提交）
+## 0916 评论（行内说明色与其余说明统一：去掉 hint 上的 opacity 0.75）（已随本批推送）
 
 **她的评论**（点 `p.settings-row-hint`「全局默认；当前模型自带上下文上限时以模型配置为准」）：
 「这里用了不一致的字体颜色，和其他说明保持一致」。
@@ -4015,7 +4015,7 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 - 脚本：`CC02/probe-settingshint-color-0916.mjs`（同页回退对照 + 全页 12px 说明文字盘点：声明色 / opacity / 叠加卡面后的实际渲染色 / 对比度 + 评论行裁剪图）。运行需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
 - 本轮纯 CSS（`SettingsPage.css` 一条规则 + 注释），无 TS 改动。
 
-## 0916 评论（tab 选中高亮条：下两角直角、上两角不变、高度不变）（工作区未提交）
+## 0916 评论（tab 选中高亮条：下两角直角、上两角不变、高度不变）（已随本批推送）
 
 **她的评论**（点 MCP 视图的 `button.settings-tab.is-active`「用户级 MCP」）：
 「调整 tab 选中高亮条的样式，左下右下圆角是 0，上面不变，高度不变」。
@@ -4100,7 +4100,7 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 - 证据目录 `CC02/走查/0916-操作按钮圆角/`：`measure.json` + 42 张图（`{tag}-{theme}-{hover,rest}-{before,after}.png`、`sidebar-activity-{theme}-active-*.png`、`collapsed-leading-*`、`strip-sidebar-*`、`strip-paneheader-*`、`zoom-*`、`diffmap-*`），自测页 `0916-操作按钮圆角-第2族-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/yt2cbsxx33 ）。
 - 本轮纯 CSS（`host-desktop.css` 一条新增规则 + 一条既有规则的圆角值），无 TS 改动。
 
-## 0916 评论（设置页分节标题与卡片内行标题不再加粗）（工作区未提交）
+## 0916 评论（设置页分节标题与卡片内行标题不再加粗）（已随本批推送）
 
 **她的评论**（两条，同批）：
 
@@ -4246,7 +4246,7 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 - 踩坑：① CSSOM 枚举「分组规则」必须用 `r.selectorText === undefined` 判断 —— 新版 Chrome 的 `CSSStyleRule` 也带（空的）`cssRules`，用 `if (r.cssRules)` 会把所有普通规则整批漏掉；② 采 ⓘ 这类「hover 会变色」的控件时，静止色必须单独在 hover 之前采，注入改前声明时也要带 `:not(:hover)`，否则 A/B 会拿「改前静止色」比「改后 hover 色」；③ **回退换色时并行窗口刚在同一文件提交了新 commit**（`12130ba8`「设置页返回 1 级字色」）→ 不能用 `git checkout` 整文件回退，必须逐段 `Edit` 还原成 HEAD 原文，再用 `git diff` 核对「该区域只剩字号那一条」。
 - 本轮落地内容：**纯一条字号规则 + 注释**（`host-desktop.css`），无 TS 改动、无 token 增删、无换色。
 
-## 0916 评论（侧栏「新对话」文案提到 1 级文字色）（工作区未提交）
+## 0916 评论（侧栏「新对话」文案提到 1 级文字色）（已随本批推送）
 
 **她的评论**（点侧栏 `span`「新对话」）：「这里的字体颜色深浅模式都用 1 级的」。
 
@@ -4811,9 +4811,16 @@ ghost 图标与「图标 + 文字」控件。
 - 顺带修掉一个 a11y 小瑕疵：旧实现这一态输出 **`aria-label=""`**（空字符串，语义为空）；
   现在该分支已不存在，`aria-label` 恒为「上下文已使用 N%」。
 
-### ⚠️ 合并前需开发确认（MERGE-TIME REVIEW）：上下文用量环偏离 spec 场景 4
+### ✅ 已确认（原「合并前需开发确认（MERGE-TIME REVIEW）」）：上下文用量环采用新行为，规格已回写
 
-> 本节是**给开发看得见的确认点**（PR 描述里也附了同文案）。**未擅自改规格文件**，等确认后由她决定改规格还是改回实现。
+> **2026-09-16 已闭环**：仓库 owner 裁定**采用 ①**——「无用量（`undefined` / `0`）整块不渲染」是既定产品口径，
+> 由开发改规格与实现对齐（**不回退实现**）；同时确认 `MessageInput.tsx` 的用量环与 `SettingsPage.css` 的共享视觉
+> 改动**刻意三端统一**（VSCE/JetBrains 一并变，不收回桌面专属）。规格已回写
+> `docs/specs/desktop/desktop-account-and-settings.md`（场景 1 补 0% 例外 / 场景 4 改为「不得渲染指示器」/ 独立测试补一句），
+> 两条既有断言（单测 `contextUsageIsolation.test.tsx`、e2e `desktop-session-switch-state.e2e.ts`）已同步为「元素不存在」。
+> 下列原始确认点与实测数据保留为过程留档。
+
+> 本节原文（写于确认之前）：本节是**给开发看得见的确认点**（PR 描述里也附了同文案）。**未擅自改规格文件**，等确认后由她决定改规格还是改回实现。
 
 - **不一致点（唯一一条）**：`docs/specs/desktop/desktop-account-and-settings.md:77`（场景 4）要求
   「宿主尚未推送用量信息，**当**指示器渲染，**则**显示**空圆环**（不显示百分比数字），且悬停**不弹出**气泡」。
@@ -4821,7 +4828,7 @@ ghost 图标与「图标 + 文字」控件。
   （与 0% 同）——环 / 数字 / 气泡 / `aria-label` 全都不存在，工具栏不留占位。
 - **依据**：设计师 2026-09-16 裁决（先定「为 0 时整个都不显示」，随后追加「未知时也整块隐藏」）。
 - **场景 4 的另一半仍满足**：用量未知时**不会**出现空气泡（Tooltip 整个不渲染，比原先「Tooltip disabled」更彻底）。
-- **请开发二选一后确认**：① 认可新行为 → 改该场景文案（删「空圆环」半句或整条删除）；
+- **请开发二选一后确认**（**2026-09-16 已按 ① 确认**）：① 认可新行为 → 改该场景文案（删「空圆环」半句或整条删除）；
   ② 不认可 → 告诉我，我把该态改回「空圆环 + 无数字、无气泡」（改动量 = 一处渲染闸门）。
 - 代码里的对应标注：`packages/webview/src/components/MessageInput.tsx:1851`（`⚠️ MERGE-TIME REVIEW` 注释块）。
 - 附：本节所在分支的实现**不触碰** `docs/specs/` 下任何文件（`git status` 可核）。
@@ -4860,11 +4867,10 @@ ghost 图标与「图标 + 文字」控件。
   候选：① 现状（9 点起逆时针）② 回到注释原意（3 点起逆时针）③ 常规做法（12 点起顺时针）。
   已出 25% / 64% 三态对照图 `CC02/走查/0916-上下文环/anchor-{current,anchor3,anchor12}-*.png`。
   触发语 **「进度弧从 12 点开始」** / **「进度弧按 3 点起」**。
-- 该环只在**非欢迎态**渲染（`!workdirSelector && showContextUsage`），故 mock 用例里要在「队列」（38%）
-  或「对话流全样式」（52%）才能看到；`desktop-full` 里那颗 0×0 的是隐藏欢迎态 composer 的实例。
-- **规格场景 4 与实现已不一致**（规格要求「未推送用量 → 空圆环」，实现已改为整块不渲染）
-  → **已按她 0916「规格相关的内容可以标注下，让开发合并代码的时候确认下」升级为合并前确认项**，
-  见本节 **「⚠️ 合并前需开发确认（MERGE-TIME REVIEW）」**（含开发二选一）；她若想直接定夺改规格，
-  触发语仍为 **「规格场景 4 改一下」**（落点 `docs/specs/desktop/desktop-account-and-settings.md:77`）。
+- 该环只在**非欢迎态且有已知非 0 用量**时渲染（`!workdirSelector && showContextUsage && !!contextUsagePct`），
+  故 mock 用例里要在「队列」（38%）或「对话流全样式」（52%）才能看到；`desktop-full` 里那颗 0×0 的是隐藏欢迎态 composer 的实例。
+- **规格场景 4 原先与实现不一致**（规格要求「未推送用量 → 空圆环」，实现为整块不渲染）
+  → **2026-09-16 已闭环**：规格按新行为回写（场景 1 / 场景 4 / 独立测试），见本节顶部「✅ 已确认」块；
+  两条断言（单测 `contextUsageIsolation.test.tsx`、e2e `desktop-session-switch-state.e2e.ts`）已同步为「元素不存在」。
 - 标题栏那段注释里的 `transform` 注释仍写「counter-clockwise from 3 o'clock」，实测起点在 9 点
   （见上「进度弧起点」残留）→ 触发语 **「注释也一起改」**。
