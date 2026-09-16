@@ -45,7 +45,6 @@
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
     "type-check": "tsc --noEmit --incremental",
-    "watch": "tsc -p tsconfig.build.json --watch",
     "test": "vitest run --reporter=dot",
     "test:coverage": "vitest run --coverage --reporter=dot",
     "test:unit": "vitest run --reporter=dot --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
