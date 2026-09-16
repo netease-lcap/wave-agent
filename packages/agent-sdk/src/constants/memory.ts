@@ -1,5 +1,5 @@
 /**
- * Auto-memory entrypoint limits.
+ * Auto-memory taxonomy and entrypoint limits.
  *
  * The entrypoint (`MEMORY.md`) is an index that is always loaded into the
  * conversation context, so it needs a hard size bound. A line cap alone does
@@ -17,3 +17,22 @@ export const MAX_MEMORY_ENTRYPOINT_CHARS = 25_000;
 
 /** Recommended per-line length for `MEMORY.md` index entries. */
 export const MEMORY_INDEX_LINE_GUIDANCE_CHARS = 150;
+
+export const MEMORY_TYPES = [
+  "user",
+  "feedback",
+  "project",
+  "reference",
+] as const;
+
+export type MemoryType = (typeof MEMORY_TYPES)[number];
+
+/**
+ * Parse a raw frontmatter value into a MemoryType. Invalid or missing values
+ * return undefined — files written before the taxonomy existed keep working
+ * and unknown types degrade gracefully.
+ */
+export function parseMemoryType(raw: unknown): MemoryType | undefined {
+  if (typeof raw !== "string") return undefined;
+  return MEMORY_TYPES.find((t) => t === raw);
+}

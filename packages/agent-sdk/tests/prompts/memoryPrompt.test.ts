@@ -2,12 +2,12 @@ import { describe, it, expect } from "vitest";
 import { buildAutoMemoryPrompt } from "../../src/prompts/autoMemory.js";
 import { buildAutoMemoryExtractionPrompt } from "../../src/prompts/autoMemoryExtraction.js";
 import {
-  MEMORY_TYPES,
   TYPES_SECTION,
   WHAT_NOT_TO_SAVE_SECTION,
   buildHowToSaveSection,
 } from "../../src/prompts/memoryTypes.js";
 import {
+  MEMORY_TYPES,
   MAX_MEMORY_ENTRYPOINT_CHARS,
   MAX_MEMORY_ENTRYPOINT_LINES,
 } from "../../src/constants/memory.js";

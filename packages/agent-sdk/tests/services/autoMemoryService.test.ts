@@ -5,11 +5,13 @@ import type { MessageManager } from "@/managers/messageManager.js";
 import type { AIManager } from "@/managers/aiManager.js";
 import type { MemoryService } from "@/services/memory.js";
 import type { ConfigurationService } from "@/services/configurationService.js";
+import { formatMemoryManifest, scanMemoryFiles } from "@/utils/memoryIndex.js";
 
 vi.mock("@/managers/messageManager.js");
 vi.mock("@/managers/aiManager.js");
 vi.mock("@/services/memory.js");
 vi.mock("@/services/configurationService.js");
+vi.mock("@/utils/memoryIndex.js");
 
 describe("AutoMemoryService", () => {
   let container: Container;
@@ -75,6 +77,11 @@ describe("AutoMemoryService", () => {
     );
 
     autoMemoryService = new AutoMemoryService(container);
+
+    // Default to an empty memory directory; the manifest cases below override
+    // these. A mocked scan also keeps the extraction path off the real fs.
+    vi.mocked(scanMemoryFiles).mockResolvedValue([]);
+    vi.mocked(formatMemoryManifest).mockReturnValue("");
   });
 
   it("should not run if auto-memory is disabled", async () => {
@@ -226,6 +233,37 @@ describe("AutoMemoryService", () => {
       expect.stringContaining("/mock/memory"),
       expect.objectContaining({ maxTurns: 5 }),
     );
+  });
+
+  it("pre-injects the existing-memory manifest into the fork prompt", async () => {
+    mockMessageManager.getMessages.mockReturnValue([
+      { id: "msg1", role: "user", blocks: [] },
+    ]);
+    vi.mocked(formatMemoryManifest).mockReturnValue(
+      "- [user] user_role.md (2026-01-02T03:04:05.000Z): Senior engineer",
+    );
+
+    await autoMemoryService.onTurnEnd("/workdir");
+    await autoMemoryService.drain();
+
+    expect(scanMemoryFiles).toHaveBeenCalledWith("/mock/memory");
+    const prompt = mockAiManager.runAutoMemoryFork.mock.calls[0][1] as string;
+    expect(prompt).toContain("## Existing memory files");
+    expect(prompt).toContain(
+      "- [user] user_role.md (2026-01-02T03:04:05.000Z): Senior engineer",
+    );
+  });
+
+  it("omits the manifest section when the memory directory is empty", async () => {
+    mockMessageManager.getMessages.mockReturnValue([
+      { id: "msg1", role: "user", blocks: [] },
+    ]);
+
+    await autoMemoryService.onTurnEnd("/workdir");
+    await autoMemoryService.drain();
+
+    const prompt = mockAiManager.runAutoMemoryFork.mock.calls[0][1] as string;
+    expect(prompt).not.toContain("## Existing memory files");
   });
 
   it("should allow Read/Grep/Glob and deny other tools in the extraction fork gate", async () => {
