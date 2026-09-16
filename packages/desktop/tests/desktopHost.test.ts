@@ -479,6 +479,7 @@ let lastSend: ReturnType<typeof vi.fn> | undefined;
 /** The message/action of every update toast the host pushed to the webview. */
 function shownToasts(): Array<{
   message: string;
+  type?: string;
   position?: string;
   actionLabel?: string;
   action?: { type: string };
@@ -497,6 +498,7 @@ function shownToasts(): Array<{
           msg as {
             toast: {
               message: string;
+              type?: string;
               position?: string;
               actionLabel?: string;
               action?: { type: string };
@@ -4419,6 +4421,140 @@ describe("misc commands", () => {
       true,
     );
     expect(sent("appendMessage")).toHaveLength(0);
+  });
+
+  // 插件市场操作成功提示（spec plugin「插件市场操作提示」2026-09-16 原型 + 需求
+  // 文档口径）：桌面端走 showToast，文案逐字、中性色（不传 type ⇒ 无成功语义色）。
+  describe("plugin marketplace success toasts", () => {
+    /** 覆盖某个 RPC 的返回值（提示文案要从回包/刷新后的列表里取名字与版本）。 */
+    function rpcResult(method: string, result: unknown): () => void {
+      const orig = h.handleClientRequest;
+      h.handleClientRequest = (m: string, params?: unknown) =>
+        m === method ? result : orig(m, params);
+      return () => {
+        h.handleClientRequest = orig;
+      };
+    }
+
+    it("addMarketplace reports the marketplace name returned by the SDK", async () => {
+      const { host } = await readyHost();
+      const restore = rpcResult("addMarketplace", { name: "团队市场" });
+      try {
+        await host.handleWebviewMessage({
+          command: "addMarketplace",
+          input: "owner/repo",
+        });
+      } finally {
+        restore();
+      }
+      const toast = shownToasts().at(-1);
+      expect(toast?.message).toBe("已添加市场「团队市场」");
+      // 中性色：原型里的轻提示是单一中性浮层，不带成功语义色。
+      expect(toast?.type).toBeUndefined();
+    });
+
+    it("removeMarketplace reports the removed marketplace name", async () => {
+      const { host } = await readyHost();
+      await host.handleWebviewMessage({
+        command: "removeMarketplace",
+        name: "团队市场",
+      });
+      expect(shownToasts().at(-1)?.message).toBe("已移除市场「团队市场」");
+    });
+
+    it("updateMarketplace reports the market name and the upgraded count", async () => {
+      const { host } = await readyHost();
+      const restore = rpcResult("updateMarketplace", { updated: 3 });
+      try {
+        await host.handleWebviewMessage({
+          command: "updateMarketplace",
+          name: "团队市场",
+        });
+      } finally {
+        restore();
+      }
+      expect(shownToasts().at(-1)?.message).toBe("「团队市场」已更新 3 个插件");
+    });
+
+    it("updateMarketplace with nothing to upgrade reports 已是最新", async () => {
+      const { host } = await readyHost();
+      await host.handleWebviewMessage({
+        command: "updateMarketplace",
+        name: "团队市场",
+      });
+      expect(shownToasts().at(-1)?.message).toBe("「团队市场」已是最新");
+    });
+
+    it("installPlugin reports the plugin name and the chosen scope", async () => {
+      const { host } = await readyHost();
+      const restore = rpcResult("listPlugins", {
+        plugins: [{ id: "demo@团队市场", name: "demo", version: "1.0.0" }],
+      });
+      try {
+        await host.handleWebviewMessage({
+          command: "installPlugin",
+          pluginId: "demo@团队市场",
+          scope: "project",
+        });
+      } finally {
+        restore();
+      }
+      expect(shownToasts().at(-1)?.message).toBe(
+        "已安装「demo」（作用域：project）",
+      );
+    });
+
+    it("uninstallPlugin reports the plugin name taken from the plugin id", async () => {
+      const { host } = await readyHost();
+      await host.handleWebviewMessage({
+        command: "uninstallPlugin",
+        pluginId: "demo@团队市场",
+      });
+      expect(shownToasts().at(-1)?.message).toBe("已卸载「demo」");
+    });
+
+    it("updatePlugin reports the version from the refreshed plugin list", async () => {
+      const { host } = await readyHost();
+      const restore = rpcResult("listPlugins", {
+        plugins: [{ id: "demo@团队市场", name: "demo", version: "1.2.0" }],
+      });
+      try {
+        await host.handleWebviewMessage({
+          command: "updatePlugin",
+          pluginId: "demo@团队市场",
+        });
+      } finally {
+        restore();
+      }
+      expect(shownToasts().at(-1)?.message).toBe("已更新「demo」至 v1.2.0");
+    });
+
+    it("setPluginScope reports the target scope", async () => {
+      const { host } = await readyHost();
+      await host.handleWebviewMessage({
+        command: "setPluginScope",
+        pluginId: "demo@团队市场",
+        scope: "local",
+      });
+      expect(shownToasts().at(-1)?.message).toBe(
+        "已更新「demo」的作用域：local",
+      );
+    });
+
+    it("enable/disable stay silent (not in the prototype's prompt set)", async () => {
+      const { host } = await readyHost();
+      await host.handleWebviewMessage({
+        command: "enablePlugin",
+        pluginId: "demo@团队市场",
+        scope: "user",
+      });
+      await host.handleWebviewMessage({
+        command: "disablePlugin",
+        pluginId: "demo@团队市场",
+        scope: "user",
+      });
+      expect(shownToasts()).toHaveLength(0);
+    });
   });
 
   it("listRewindCheckpoints replies with the agent checkpoints", async () => {
