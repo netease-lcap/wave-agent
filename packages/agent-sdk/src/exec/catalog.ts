@@ -410,7 +410,26 @@ function execNamespace(name: string): string {
   return name.split("__")[1] ?? name;
 }
 
-/** Pool order within a group; groups in order of first appearance. */
+/**
+ * Cheapest rendered block first, ties broken by tool name.
+ *
+ * The rotation takes each server's next unshown entry every round, so this order
+ * *is* the seat order: cheapest-first means one budget buys the most entries, and
+ * the tie-break keeps the result a pure function of the entries themselves — the
+ * order `tools/list` happened to return is not a reason to seat one tool first.
+ * opencode ranks its listings the same way (`rankListings`: cost, then path).
+ */
+function orderByCost(group: ExecPoolEntry[]): ExecPoolEntry[] {
+  return [...group].sort((left, right) => {
+    const delta =
+      estimateCatalogTokens(renderCatalogEntry(left)) -
+      estimateCatalogTokens(renderCatalogEntry(right));
+    if (delta !== 0) return delta;
+    return left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
+  });
+}
+
+/** Groups in order of first appearance; within a group, cheapest block first. */
 function groupByNamespace(entries: ExecPoolEntry[]): ExecPoolEntry[][] {
   const groups = new Map<string, ExecPoolEntry[]>();
   for (const entry of entries) {
@@ -422,7 +441,7 @@ function groupByNamespace(entries: ExecPoolEntry[]): ExecPoolEntry[][] {
       groups.set(namespace, [entry]);
     }
   }
-  return [...groups.values()];
+  return [...groups.values()].map(orderByCost);
 }
 
 /**

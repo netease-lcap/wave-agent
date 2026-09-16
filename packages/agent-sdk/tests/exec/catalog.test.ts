@@ -570,4 +570,45 @@ describe("renderCatalog", () => {
       renderCatalog(entries, 4096).text,
     );
   });
+
+  it("seats the cheapest block of a server first, whatever order the pool came in", () => {
+    // Pool order is whatever `tools/list` returned, which is no reason to spend the
+    // budget there first: the rotation takes each server's next unshown entry, so
+    // ordering by cost is what makes a budget buy the most entries.
+    const rendered = renderCatalog(
+      [blockEntry("mcp__alpha__wide"), { name: "mcp__alpha__narrow" }],
+      4096,
+    );
+    const lines = entryLines(rendered.text);
+
+    expect(lines[0]).toContain("tools.mcp__alpha__narrow");
+    expect(lines[1]).toContain("tools.mcp__alpha__wide");
+  });
+
+  it("spends a budget that only fits one entry on the cheap one, not the first one", () => {
+    // 8 tokens is exactly the one-line entry (`tools.mcp__alpha__narrow()`, 26
+    // chars) and far short of the six-line block. In pool order the block came
+    // first, and the first entry is always shown even when it alone is over
+    // budget — so this ordering is also what keeps a tiny budget from being
+    // swallowed by whichever tool the server happened to list first.
+    const rendered = renderCatalog(
+      [blockEntry("mcp__alpha__wide"), { name: "mcp__alpha__narrow" }],
+      8,
+    );
+
+    expect(rendered.shown).toBe(1);
+    expect(rendered.text).toContain("tools.mcp__alpha__narrow");
+    expect(rendered.text).not.toContain("tools.mcp__alpha__wide");
+  });
+
+  it("breaks a cost tie by tool name, so the order never depends on the pool", () => {
+    const rendered = renderCatalog(
+      [{ name: "mcp__alpha__t2" }, { name: "mcp__alpha__t1" }],
+      4096,
+    );
+    const lines = entryLines(rendered.text);
+
+    expect(lines[0]).toContain("tools.mcp__alpha__t1");
+    expect(lines[1]).toContain("tools.mcp__alpha__t2");
+  });
 });
