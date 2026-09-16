@@ -3,6 +3,7 @@ import { readTool } from "@/tools/readTool.js";
 import { TaskManager } from "@/services/taskManager.js";
 import { readFile, stat } from "fs/promises";
 import type { ToolContext } from "@/tools/types.js";
+import type { MessageManager } from "@/managers/messageManager.js";
 import { Container } from "@/utils/container.js";
 
 // Mock fs/promises
@@ -886,6 +887,101 @@ describe("readTool", () => {
       );
 
       expect(result.content).not.toContain("<system-reminder>");
+    });
+  });
+
+  describe("Nested memory trigger", () => {
+    function buildMessageManager(
+      triggerNestedMemory: ReturnType<typeof vi.fn>,
+    ) {
+      return {
+        triggerFileRead: vi.fn(),
+        triggerNestedMemory,
+      } as unknown as MessageManager;
+    }
+
+    it("asks for the directories above the file it just read", async () => {
+      const triggerNestedMemory = vi.fn();
+
+      await readTool.execute(
+        { file_path: "/test/workdir/subdir/nested.txt" },
+        {
+          ...testContext,
+          messageManager: buildMessageManager(triggerNestedMemory),
+        },
+      );
+
+      expect(triggerNestedMemory).toHaveBeenCalledWith(
+        "/test/workdir/subdir/nested.txt",
+      );
+    });
+
+    it("resolves a relative path before triggering", async () => {
+      const triggerNestedMemory = vi.fn();
+
+      await readTool.execute(
+        { file_path: "subdir/nested.txt" },
+        {
+          ...testContext,
+          messageManager: buildMessageManager(triggerNestedMemory),
+        },
+      );
+
+      expect(triggerNestedMemory).toHaveBeenCalledWith(
+        "/test/workdir/subdir/nested.txt",
+      );
+    });
+
+    it("does not trigger when the read itself fails", async () => {
+      const triggerNestedMemory = vi.fn();
+
+      const result = await readTool.execute(
+        { file_path: "/test/workdir/missing.txt" },
+        {
+          ...testContext,
+          messageManager: buildMessageManager(triggerNestedMemory),
+        },
+      );
+
+      expect(result.success).toBe(false);
+      expect(triggerNestedMemory).not.toHaveBeenCalled();
+    });
+
+    it("does not trigger for a deduplicated (unchanged) read", async () => {
+      const triggerNestedMemory = vi.fn();
+      const readFileState = new Map<
+        string,
+        {
+          mtime: number;
+          hash: string;
+          source: "read";
+          offset?: number;
+          limit?: number;
+        }
+      >();
+      const filePath = "/test/workdir/small.txt";
+
+      await readTool.execute(
+        { file_path: filePath },
+        {
+          ...testContext,
+          readFileState,
+          messageManager: buildMessageManager(triggerNestedMemory),
+        },
+      );
+      triggerNestedMemory.mockClear();
+
+      const second = await readTool.execute(
+        { file_path: filePath },
+        {
+          ...testContext,
+          readFileState,
+          messageManager: buildMessageManager(triggerNestedMemory),
+        },
+      );
+
+      expect(second.metadata?.type).toBe("file_unchanged");
+      expect(triggerNestedMemory).not.toHaveBeenCalled();
     });
   });
 });

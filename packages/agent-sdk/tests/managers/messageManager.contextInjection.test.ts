@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as path from "path";
+import fsPromises from "node:fs/promises";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { Container } from "../../src/utils/container.js";
 import { Message } from "../../src/types/index.js";
@@ -8,6 +9,10 @@ vi.mock("fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
   readFile: vi.fn(),
 }));
+
+// The nested-memory walk reads through node:fs/promises (a distinct module id
+// from fs/promises), so it needs its own mock.
+vi.mock("node:fs/promises");
 
 vi.mock("../../src/services/session.js", async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
@@ -383,6 +388,47 @@ describe("MessageManager context injection and file reads", () => {
       messageManager.triggerFileRead("src/index.ts");
       const rules = messageManager.processTriggeredRules();
       expect(rules).toHaveLength(0);
+    });
+  });
+
+  describe("nested memory collection", () => {
+    const memoryFile = path.join(workdir, "packages/foo/AGENTS.md");
+
+    beforeEach(() => {
+      vi.mocked(fsPromises.readFile).mockImplementation(async (filePath) => {
+        if (String(filePath) === memoryFile) {
+          return "foo conventions" as unknown as Awaited<
+            ReturnType<typeof fsPromises.readFile>
+          >;
+        }
+        throw Object.assign(new Error(`ENOENT: ${String(filePath)}`), {
+          code: "ENOENT",
+        });
+      });
+    });
+
+    it("collects nested memory for files read since the last call", async () => {
+      messageManager.triggerNestedMemory("packages/foo/src/a.ts");
+
+      const memories = await messageManager.collectNestedMemoryFiles();
+
+      expect(memories).toEqual([
+        { path: memoryFile, content: "foo conventions" },
+      ]);
+    });
+
+    it("does not re-inject a directory already visited in this session", async () => {
+      messageManager.triggerNestedMemory("packages/foo/src/a.ts");
+      await messageManager.collectNestedMemoryFiles();
+
+      messageManager.triggerNestedMemory("packages/foo/src/b.ts");
+
+      expect(await messageManager.collectNestedMemoryFiles()).toEqual([]);
+    });
+
+    it("returns nothing when no read happened since the last call", async () => {
+      expect(await messageManager.collectNestedMemoryFiles()).toEqual([]);
+      expect(fsPromises.readFile).not.toHaveBeenCalled();
     });
   });
 });
