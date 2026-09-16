@@ -15,6 +15,7 @@ const mockPluginCore = {
   addMarketplace: vi.fn(),
   removeMarketplace: vi.fn(),
   updateMarketplace: vi.fn(),
+  refreshMarketplaces: vi.fn(),
   installPlugin: vi.fn(),
   uninstallPlugin: vi.fn(),
   updatePlugin: vi.fn(),
@@ -39,6 +40,7 @@ describe("usePluginManager", () => {
       plugins: [],
     });
     mockPluginCore.getMergedEnabledPlugins.mockReturnValue({});
+    mockPluginCore.refreshMarketplaces.mockResolvedValue(undefined);
   });
 
   // Helper component to test the hook
@@ -77,6 +79,64 @@ describe("usePluginManager", () => {
 
     expect(mockPluginCore.listMarketplaces).toHaveBeenCalled();
     expect(mockPluginCore.getInstalledPlugins).toHaveBeenCalled();
+  });
+
+  it("should refresh marketplace checkouts in the background on mount", async () => {
+    let lastValue: PluginManagerContextType | undefined;
+    const onHookValue = (val: PluginManagerContextType) => {
+      lastValue = val;
+    };
+
+    let finishRefresh: (() => void) | undefined;
+    mockPluginCore.refreshMarketplaces.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finishRefresh = resolve;
+      }),
+    );
+
+    render(<TestComponent onHookValue={onHookValue} />);
+
+    await vi.waitFor(() => {
+      expect(mockPluginCore.refreshMarketplaces).toHaveBeenCalled();
+      expect(lastValue?.checkingForUpdates).toBe(true);
+    });
+
+    // 刷新期间不阻塞界面，列表已可读
+    await vi.waitFor(() => {
+      expect(lastValue?.state.isLoading).toBe(false);
+    });
+    const readsBeforeRefresh =
+      mockPluginCore.listMarketplaces.mock.calls.length;
+
+    finishRefresh?.();
+
+    // 刷新完成后收起提示并重读列表
+    await vi.waitFor(() => {
+      expect(lastValue?.checkingForUpdates).toBe(false);
+      expect(mockPluginCore.listMarketplaces.mock.calls.length).toBeGreaterThan(
+        readsBeforeRefresh,
+      );
+    });
+  });
+
+  it("should keep the current lists when the background refresh fails", async () => {
+    let lastValue: PluginManagerContextType | undefined;
+    const onHookValue = (val: PluginManagerContextType) => {
+      lastValue = val;
+    };
+
+    mockPluginCore.refreshMarketplaces.mockRejectedValue(new Error("nope"));
+    mockPluginCore.listMarketplaces.mockResolvedValue([
+      { name: "mp1", source: { source: "directory", path: "/p1" } },
+    ]);
+
+    render(<TestComponent onHookValue={onHookValue} />);
+
+    await vi.waitFor(() => {
+      expect(lastValue?.checkingForUpdates).toBe(false);
+      expect(lastValue?.marketplaces).toHaveLength(1);
+      expect(lastValue?.state.error).toBeNull();
+    });
   });
 
   it("should handle errors during initial data load", async () => {

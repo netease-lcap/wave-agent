@@ -980,6 +980,100 @@ describe("MessageHandler settings tab", () => {
     expect(context.postMessage).not.toHaveBeenCalled();
   });
 
+  // 设置页插件市场视图（spec 插件市场场景 5/2/9/12）：打开视图触发一次只拉检出的
+  // 后台刷新，完成后把两份最新列表带回 refreshed 标记推给设置面板（webview 据此
+  // 收起「检查更新中」）；刷新失败静默记日志、不弹错误提示。
+  test("refreshMarketplaces refreshes checkouts then re-posts both lists with the refreshed flag", async () => {
+    const pluginService = {
+      refreshMarketplaces: vi.fn().mockResolvedValue(undefined),
+      listPlugins: vi.fn().mockResolvedValue([{ id: "demo@mkt" }]),
+      listMarketplaces: vi.fn().mockResolvedValue([{ name: "mkt" }]),
+    };
+    const context: MessageHandlerContext = {
+      getChatSession: vi.fn().mockReturnValue(createMockSession()),
+      postMessage: vi.fn(),
+      initializeAgent: vi.fn(),
+      listSessions: vi.fn(),
+      updateAllSessionsConfig: vi.fn(),
+      getVersion: vi.fn().mockReturnValue("1.2.3"),
+      openPlanPreview: vi.fn(),
+      openSettings: vi.fn(),
+      postSettingsMessage: vi.fn(),
+      closeSettings: vi.fn(),
+    };
+    const handler = new MessageHandler(
+      {} as unknown as ConfigurationService,
+      {} as unknown as FileService,
+      {} as unknown as SessionService,
+      pluginService as unknown as PluginService,
+      {} as unknown as StdioClient,
+      context,
+    );
+
+    await handler.handleSettingsMessage({ command: "refreshMarketplaces" });
+
+    expect(pluginService.refreshMarketplaces).toHaveBeenCalled();
+    expect(context.postSettingsMessage).toHaveBeenCalledWith({
+      command: "listPluginsResponse",
+      plugins: [{ id: "demo@mkt" }],
+      refreshed: true,
+    });
+    expect(context.postSettingsMessage).toHaveBeenCalledWith({
+      command: "listMarketplacesResponse",
+      marketplaces: [{ name: "mkt" }],
+      refreshed: true,
+    });
+  });
+
+  test("refreshMarketplaces failure stays silent but still re-posts the current lists", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const pluginService = {
+      refreshMarketplaces: vi.fn().mockRejectedValue(new Error("network down")),
+      listPlugins: vi.fn().mockResolvedValue([]),
+      listMarketplaces: vi.fn().mockResolvedValue([]),
+    };
+    const context: MessageHandlerContext = {
+      getChatSession: vi.fn().mockReturnValue(createMockSession()),
+      postMessage: vi.fn(),
+      initializeAgent: vi.fn(),
+      listSessions: vi.fn(),
+      updateAllSessionsConfig: vi.fn(),
+      getVersion: vi.fn().mockReturnValue("1.2.3"),
+      openPlanPreview: vi.fn(),
+      openSettings: vi.fn(),
+      postSettingsMessage: vi.fn(),
+      closeSettings: vi.fn(),
+    };
+    const handler = new MessageHandler(
+      {} as unknown as ConfigurationService,
+      {} as unknown as FileService,
+      {} as unknown as SessionService,
+      pluginService as unknown as PluginService,
+      {} as unknown as StdioClient,
+      context,
+    );
+
+    try {
+      await handler.handleSettingsMessage({ command: "refreshMarketplaces" });
+    } finally {
+      consoleError.mockRestore();
+    }
+
+    expect(vscode.window.showErrorMessage).not.toHaveBeenCalled();
+    expect(context.postSettingsMessage).toHaveBeenCalledWith({
+      command: "listPluginsResponse",
+      plugins: [],
+      refreshed: true,
+    });
+    expect(context.postSettingsMessage).toHaveBeenCalledWith({
+      command: "listMarketplacesResponse",
+      marketplaces: [],
+      refreshed: true,
+    });
+  });
+
   // 设置页「服务端配置」区块（spec server-managed-config「在设置页查看服务端下发的
   // 配置」）：展示服务端到底管控了什么，读的是 CLI 进程内最近一次成功下发的缓存。
   test("getManagedSettings replies with the delivered config to the settings panel", async () => {

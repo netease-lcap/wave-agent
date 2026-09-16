@@ -924,18 +924,7 @@ Wave clones the marketplace repo, reads the manifest, and copies the plugin to i
 
 ### Updating Plugins
 
-Marketplaces with \`autoUpdate: true\` are checked for updates on startup:
-
-\`\`\`json
-{
-  "marketplaces": {
-    "my-plugins": {
-      "source": { "source": "github", "repo": "user/my-plugins" },
-      "autoUpdate": true
-    }
-  }
-}
-\`\`\`
+Every registered marketplace is refreshed when you open a plugin marketplace surface — the settings page's plugin marketplace view, or the CLI plugin manager (\`/plugin\`). Each checkout is pulled (or cloned if missing). Refreshing a marketplace does **not** upgrade installed plugins, and there is no per-marketplace switch for it. Plugin upgrades only happen through an explicit action: updating a single plugin, or updating a whole marketplace (\`wave plugin marketplace update [name]\`, or the batch entry in either UI) to upgrade all of its plugins in batch.
 
 ### Marketplace Scopes
 

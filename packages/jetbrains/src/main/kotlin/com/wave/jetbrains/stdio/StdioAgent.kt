@@ -451,6 +451,10 @@ class StdioAgent(
     suspend fun listMarketplaces(workdir: String): JsonElement =
         client.request("listMarketplaces", buildJsonObject { put("workdir", workdir) }) ?: JsonObject(emptyMap())
 
+    /** 刷新各市场检出（只拉清单、不升级插件）：打开插件市场界面时后台调用。 */
+    suspend fun refreshMarketplaces(workdir: String): JsonElement =
+        client.request("refreshMarketplaces", buildJsonObject { put("workdir", workdir) }) ?: JsonObject(emptyMap())
+
     suspend fun addMarketplace(input: String, workdir: String): JsonElement =
         client.request("addMarketplace", buildJsonObject {
             put("input", input)

@@ -30,6 +30,8 @@ import { logger, logError, logWarn } from "../utils/globalLogger.js";
  */
 export class MarketplaceService {
   private static isLockedInProcess = false;
+  /** In-flight [refreshMarketplaces] call (single-flight, spec 插件市场 场景 13). */
+  private refreshInFlight: Promise<void> | null = null;
   private pluginsDir: string;
   private knownMarketplacesPath: string;
   private installedPluginsPath: string;
@@ -46,7 +48,6 @@ export class MarketplaceService {
       source: "github",
       repo: "netease-lcap/wave-plugins-official",
     },
-    autoUpdate: true,
   };
 
   constructor(
@@ -113,7 +114,6 @@ export class MarketplaceService {
           if (m.name === MarketplaceService.BUILTIN_MARKETPLACE.name) continue;
           const config: MarketplaceConfig = {
             source: m.source,
-            autoUpdate: m.autoUpdate,
           };
           await this.configurationService.addMarketplaceToScope(
             this.workdir,
@@ -148,14 +148,13 @@ export class MarketplaceService {
           this.workdir,
           "user",
           builtin.name,
-          { source: builtin.source, autoUpdate: builtin.autoUpdate },
+          { source: builtin.source },
         );
       }
 
       // Update cache: add entry + set builtinSeeded flag
       await this.updateCacheMarketplace(builtin.name, {
         source: builtin.source,
-        autoUpdate: builtin.autoUpdate,
         isBuiltin: true,
         declaredScope: "builtin",
       });
@@ -450,7 +449,6 @@ export class MarketplaceService {
     return {
       name,
       source: config.source,
-      autoUpdate: config.autoUpdate ?? cache?.autoUpdate,
       lastUpdated: cache?.lastUpdated,
       isBuiltin: name === MarketplaceService.BUILTIN_MARKETPLACE.name,
       declaredScope,
@@ -595,7 +593,6 @@ export class MarketplaceService {
           source: isFullUrl
             ? { source: "git", url: urlOrRepo, ref }
             : { source: "github", repo: urlOrRepo, ref },
-          autoUpdate: false,
           lastUpdated: new Date().toISOString(),
         };
       } else {
@@ -616,7 +613,6 @@ export class MarketplaceService {
         marketplace = {
           name: manifest.name,
           source: { source: "directory", path: absolutePath },
-          autoUpdate: false,
           lastUpdated: new Date().toISOString(),
         };
       }
@@ -626,7 +622,6 @@ export class MarketplaceService {
 
       const config: MarketplaceConfig = {
         source: marketplace.source,
-        autoUpdate: marketplace.autoUpdate,
       };
 
       await this.configurationService.addMarketplaceToScope(
@@ -639,7 +634,6 @@ export class MarketplaceService {
       // Update cache with metadata
       await this.updateCacheMarketplace(marketplace.name, {
         source: marketplace.source,
-        autoUpdate: marketplace.autoUpdate,
         lastUpdated: marketplace.lastUpdated,
       });
 
@@ -919,61 +913,43 @@ export class MarketplaceService {
   }
 
   /**
-   * Automatically updates all marketplaces that have auto-update enabled
+   * Refreshes the local checkout of every registered marketplace.
+   *
+   * Callers are the plugin-marketplace surfaces (GUI settings view / CLI plugin
+   * manager), refreshed when the user opens them — the agent-startup path no
+   * longer refreshes anything (spec 插件市场 A-013 场景 5).
+   *
+   * This is a fixed behavior with no opt-in/opt-out: `autoUpdate` no longer
+   * exists, so all marketplaces are refreshed alike (A-014). Refreshing only
+   * updates the checkout — installed plugins are never reinstalled here, so a
+   * newer plugin version surfaces as an explicit "更新" (per plugin) /
+   * "批量更新插件" (batch) action instead of being applied behind the user's
+   * back.
+   *
+   * Single-flight: a call landing while a refresh is running reuses it instead
+   * of pulling every checkout twice (spec 场景 13).
    */
-  async autoUpdateAll(): Promise<void> {
-    return this.withLock(async () => {
-      const scopedMarketplaces =
-        this.configurationService.getMergedMarketplaces(this.workdir);
-      const toAutoUpdate = Object.entries(scopedMarketplaces)
-        .filter(([, config]) => config.autoUpdate)
-        .map(([name]) => name);
+  async refreshMarketplaces(): Promise<void> {
+    if (this.refreshInFlight) return this.refreshInFlight;
+    this.refreshInFlight = this.withLock(async () => {
+      const marketplaces = this.configurationService.getMergedMarketplaces(
+        this.workdir,
+      );
 
-      for (const marketplaceName of toAutoUpdate) {
+      for (const marketplaceName of Object.keys(marketplaces)) {
         try {
-          await this.updateMarketplace(marketplaceName, {
-            updatePlugins: true,
-          });
+          await this.updateMarketplace(marketplaceName);
         } catch (error) {
           logError(
-            `Auto-update failed for marketplace "${marketplaceName}":`,
+            `Marketplace refresh failed for "${marketplaceName}":`,
             error,
           );
         }
       }
+    }).finally(() => {
+      this.refreshInFlight = null;
     });
-  }
-
-  /**
-   * Toggles auto-update for a marketplace
-   */
-  async toggleAutoUpdate(name: string, enabled: boolean): Promise<void> {
-    return this.withLock(async () => {
-      const declaringSource = this.getMarketplaceDeclaringSource(name);
-      if (!declaringSource || declaringSource === "builtin") {
-        throw new Error(`Marketplace ${name} not found`);
-      }
-
-      const scoped = this.configurationService.getScopedMarketplaces(
-        this.workdir,
-        declaringSource,
-      );
-      const config = scoped[name];
-      if (!config) {
-        throw new Error(`Marketplace ${name} not found`);
-      }
-
-      config.autoUpdate = enabled;
-      await this.configurationService.addMarketplaceToScope(
-        this.workdir,
-        declaringSource,
-        name,
-        config,
-      );
-
-      // Also update cache
-      await this.updateCacheMarketplace(name, { autoUpdate: enabled });
-    });
+    return this.refreshInFlight;
   }
 
   /**

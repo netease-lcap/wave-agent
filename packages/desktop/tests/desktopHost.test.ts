@@ -4217,6 +4217,55 @@ describe("misc commands", () => {
     expect(sent("appendMessage")).toHaveLength(0);
   });
 
+  it("refreshMarketplaces pulls the checkouts, then re-pushes both lists with the refreshed flag", async () => {
+    // spec 插件市场场景 5/2：打开插件市场视图 → 后台只刷各市场检出（不升级插件），
+    // 完成后把两份最新列表推给已打开的视图（带 refreshed 标记收起「检查更新中…」）。
+    const { host, sent } = await readyHost();
+    const orig = h.handleClientRequest;
+    const seen: Array<{ method: string; params: unknown }> = [];
+    h.handleClientRequest = (method, params) => {
+      if (method === "refreshMarketplaces") {
+        seen.push({ method, params });
+        return null;
+      }
+      return orig(method, params);
+    };
+    try {
+      await host.handleWebviewMessage({ command: "refreshMarketplaces" });
+    } finally {
+      h.handleClientRequest = orig;
+    }
+
+    expect(seen).toEqual([
+      { method: "refreshMarketplaces", params: { workdir: "/work/a" } },
+    ]);
+    expect(sent("listMarketplacesResponse")[0]).toMatchObject({
+      refreshed: true,
+    });
+    expect(sent("listPluginsResponse")[0]).toMatchObject({ refreshed: true });
+    // 刷新不升级插件：不出现任何市场更新调用
+    expect(
+      h.clientRequests.filter((r) => r.method === "updateMarketplace"),
+    ).toHaveLength(0);
+  });
+
+  it("refreshMarketplaces failure stays silent but still re-pushes the current lists", async () => {
+    // spec 插件市场场景 9：刷新失败静默记日志（不弹 toast），列表仍按刷新前的清单呈现。
+    const { host, sent } = await readyHost();
+    const restore = failRpc("refreshMarketplaces", "network down");
+    try {
+      await host.handleWebviewMessage({ command: "refreshMarketplaces" });
+    } finally {
+      restore();
+    }
+
+    expect(shownToasts()).toHaveLength(0);
+    expect(sent("listMarketplacesResponse")[0]).toMatchObject({
+      refreshed: true,
+    });
+    expect(sent("listPluginsResponse")[0]).toMatchObject({ refreshed: true });
+  });
+
   it("getProjectSettings failure surfaces as a toast, not a chat message", async () => {
     const { host, sent } = await readyHost();
     const restore = failRpc("getProjectSettings", "settings down");

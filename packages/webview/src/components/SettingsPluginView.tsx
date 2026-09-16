@@ -6,9 +6,14 @@
  * 该市场内的插件数量、默认选中第一个市场；市场内提供 全部/已安装/未安装 筛选
  * （各带计数）与关键词搜索（限定在当前市场内）。行内提供 安装（弹作用域选择，
  * 默认 user）/ 更新（安装作用域不变）/ 已安装状态，已安装行另带作用域按钮
- * （弹「更换安装作用域」，可保存或卸载）。工具栏提供 更新市场 / 移除市场 /
+ * （弹「更换安装作用域」，可保存或卸载）。工具栏提供 批量更新插件 / 移除市场 /
  * 新建市场（本地路径 或 远程仓库 owner/repo、完整 Git 地址；市场名称由市场
  * 自身清单决定，用户无需填写）。
+ *
+ * 打开本视图即触发一次后台市场清单刷新（只拉各市场检出、不升级任何插件，
+ * spec ecosystem/plugin「市场清单自动刷新与插件升级解耦」场景 5）：刷新期间
+ * 列表先显示进入前的清单并给出「检查更新中…」轻量状态，宿主在刷新结束后补发
+ * 两份列表（带 refreshed 标记）→ 版本对比与「更新」按钮随之变为最新。
  *
  * 数据与变更全部经 host：host 收到变更命令后刷新两份列表并回发
  * listPluginsResponse / listMarketplacesResponse（配置的构造期副作用与重建时机
@@ -88,6 +93,11 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
   const [filter, setFilter] = useState<PluginFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  // 打开视图时后台刷新各市场检出（只拉清单、不升级插件，spec 插件市场 A-013
+  // 场景 5/12）：刷新期间列表先显示进入前的清单，完成后再由宿主补发最新
+  // （`refreshed: true`）并收起本提示。提示属界面内状态，不是场景 8 禁止的
+  // 界面外主动提示。
+  const [checkingUpdates, setCheckingUpdates] = useState(true);
   // 新建市场弹窗（本地路径 / 远程仓库）
   const [newMarketOpen, setNewMarketOpen] = useState(false);
   const [newMarketType, setNewMarketType] = useState<"local" | "remote">(
@@ -111,6 +121,9 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
   useEffect(() => {
     latest.current.vscode?.postMessage({ command: "listMarketplaces" });
     latest.current.vscode?.postMessage({ command: "listPlugins" });
+    // 打开市场视图即后台刷新清单（只拉检出、不升级插件）：宿主在刷新结束后
+    // 补发两份列表（带 refreshed 标记）。
+    latest.current.vscode?.postMessage({ command: "refreshMarketplaces" });
   }, []);
 
   // 市场默认选中第一个；当前选中市场被移除（或首次加载）时切到剩余第一个
@@ -202,6 +215,8 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
       case "listPluginsResponse":
         setPlugins(message.plugins || []);
         setLoading(false);
+        // 打开视图触发的后台刷新已结束（宿主补发的列表），收起「检查更新中」
+        if (message.refreshed) setCheckingUpdates(false);
         break;
       case "listMarketplacesResponse":
         setMarketplaces(message.marketplaces || []);
@@ -360,7 +375,9 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
           onChange={setActiveMarket}
           actions={
             <div className="settings-plugin-ops">
-              {/* 更新/移除紧跟市场切换，是当前市场的上下文操作 */}
+              {/* 批量更新/移除紧跟市场切换，是当前市场的上下文操作；「批量更新插件」
+                  先刷新该市场检出、再把该市场内所有可更新插件一次升掉（范围恒为
+                  当前市场），清单刷新本身已由打开视图时的后台刷新承担 */}
               {activeMarket && (
                 <div className="settings-plugin-market-ops">
                   <button
@@ -373,7 +390,7 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
                       })
                     }
                   >
-                    更新市场
+                    批量更新插件
                   </button>
                   <button
                     type="button"
@@ -418,6 +435,10 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
                 </button>
               ))}
             </div>
+            {/* 刷新期间不阻塞任何操作：列表先显示进入前的清单，刷完自动变新 */}
+            {checkingUpdates && (
+              <span className="settings-plugin-checking">检查更新中…</span>
+            )}
             <input
               type="search"
               className="settings-text-input settings-plugin-search"

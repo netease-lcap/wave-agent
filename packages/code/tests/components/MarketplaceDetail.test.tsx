@@ -15,7 +15,6 @@ describe("MarketplaceDetail", () => {
     installPlugin: vi.fn(),
     uninstallPlugin: vi.fn(),
     updatePlugin: vi.fn(),
-    toggleAutoUpdate: vi.fn(),
     refresh: vi.fn(),
   };
 
@@ -37,6 +36,7 @@ describe("MarketplaceDetail", () => {
     ],
     installedPlugins: [],
     discoverablePlugins: [],
+    checkingForUpdates: false,
     actions: {
       ...mockActions,
       clearPluginFeedback: vi.fn(),
@@ -55,7 +55,7 @@ describe("MarketplaceDetail", () => {
     );
     expect(lastFrame()).toContain("test-mp");
     expect(lastFrame()).toContain("owner/repo");
-    expect(lastFrame()).toContain("Update marketplace");
+    expect(lastFrame()).toContain("Update plugins (batch)");
     expect(lastFrame()).toContain("Remove marketplace");
   });
 
@@ -84,6 +84,16 @@ describe("MarketplaceDetail", () => {
     });
   });
 
+  it("should not offer an auto-update toggle", () => {
+    const { lastFrame } = render(
+      <PluginManagerContext.Provider value={mockContext}>
+        <MarketplaceDetail />
+      </PluginManagerContext.Provider>,
+    );
+    expect(lastFrame()).not.toContain("auto-update");
+    expect(lastFrame()).not.toContain("Auto-update");
+  });
+
   it("should navigate actions with up/down arrows", async () => {
     const { lastFrame, stdin } = render(
       <PluginManagerContext.Provider value={mockContext}>
@@ -91,13 +101,8 @@ describe("MarketplaceDetail", () => {
       </PluginManagerContext.Provider>,
     );
 
-    // Initially "Enable auto-update" is selected (index 0)
-    expect(lastFrame()).toContain("> Enable auto-update");
-
-    stdin.write("\u001B[B"); // Down arrow
-    await vi.waitFor(() => {
-      expect(lastFrame()).toContain("> Update marketplace");
-    });
+    // Initially "Update plugins (batch)" is selected (index 0)
+    expect(lastFrame()).toContain("> Update plugins (batch)");
 
     stdin.write("\u001B[B"); // Down arrow
     await vi.waitFor(() => {
@@ -106,23 +111,7 @@ describe("MarketplaceDetail", () => {
 
     stdin.write("\u001B[A"); // Up arrow
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain("> Update marketplace");
-    });
-  });
-
-  it("should call toggleAutoUpdate when 'Enable auto-update' is selected and Enter is pressed", async () => {
-    const { stdin } = render(
-      <PluginManagerContext.Provider value={mockContext}>
-        <MarketplaceDetail />
-      </PluginManagerContext.Provider>,
-    );
-
-    stdin.write("\r"); // Enter
-    await vi.waitFor(() => {
-      expect(mockActions.toggleAutoUpdate).toHaveBeenCalledWith(
-        "test-mp",
-        true,
-      );
+      expect(lastFrame()).toContain("> Update plugins (batch)");
     });
   });
 
@@ -133,9 +122,8 @@ describe("MarketplaceDetail", () => {
       </PluginManagerContext.Provider>,
     );
 
-    stdin.write("\u001B[B"); // Down arrow to select "Update"
     await vi.waitFor(() => {
-      expect(lastFrame()).toContain("> Update marketplace");
+      expect(lastFrame()).toContain("> Update plugins (batch)");
     });
     stdin.write("\r"); // Enter
     await vi.waitFor(() => {
@@ -150,7 +138,6 @@ describe("MarketplaceDetail", () => {
       </PluginManagerContext.Provider>,
     );
 
-    stdin.write("\u001B[B"); // Down arrow to select "Update"
     stdin.write("\u001B[B"); // Down arrow to select "Remove"
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("> Remove marketplace");

@@ -1027,6 +1027,16 @@
   flex: 0 0 auto;
 }
 
+/* 打开视图触发的后台清单刷新进行中（spec 插件市场场景 12）：界面内轻量状态，
+   不阻塞列表浏览与操作，刷新完成后由宿主补发的列表（refreshed 标记）收起它。
+   归辅助档 12/20，与 .settings-plugin-desc 同口径。 */
+.settings-plugin-checking {
+  flex: 1 1 auto;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  line-height: 20px;
+}
+
 .settings-plugin-list {
   display: flex;
   flex-direction: column;

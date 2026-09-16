@@ -24,6 +24,7 @@ export function usePluginManager(options?: {
   });
 
   const [marketplaces, setMarketplaces] = useState<KnownMarketplace[]>([]);
+  const [checkingForUpdates, setCheckingForUpdates] = useState(false);
   const [installedPlugins, setInstalledPlugins] = useState<
     (InstalledPlugin & { enabled: boolean })[]
   >([]);
@@ -63,6 +64,60 @@ export function usePluginManager(options?: {
     [setState],
   );
 
+  /** 读取市场清单 + 已安装插件 + 可发现插件（不碰 isLoading，供后台刷新后重读）。 */
+  const loadLists = useCallback(async () => {
+    const [mks, installed, enabledMap] = await Promise.all([
+      pluginCore.listMarketplaces(),
+      pluginCore.getInstalledPlugins(),
+      Promise.resolve(pluginCore.getMergedEnabledPlugins()),
+    ]);
+
+    setMarketplaces(mks);
+    const allInstalledWithEnabled = installed.plugins.map((p) => {
+      const pluginId = `${p.name}@${p.marketplace}`;
+      return {
+        ...p,
+        enabled: !!enabledMap[pluginId],
+        scope: pluginCore.findPluginScope(pluginId) || undefined,
+      };
+    });
+
+    // Only show enabled plugins in the "Installed" view
+    setInstalledPlugins(allInstalledWithEnabled.filter((p) => p.enabled));
+
+    const allDiscoverable: (MarketplacePluginEntry & {
+      marketplace: string;
+      installed: boolean;
+      version?: string;
+    })[] = [];
+    for (const mk of mks) {
+      try {
+        const manifest = await pluginCore.loadMarketplaceManifest(
+          pluginCore.getMarketplacePath(mk),
+        );
+        manifest.plugins.forEach((p) => {
+          const pluginId = `${p.name}@${mk.name}`;
+          const isInstalled = installed.plugins.find(
+            (ip) => ip.name === p.name && ip.marketplace === mk.name,
+          );
+          const isEnabled = !!enabledMap[pluginId];
+
+          // Show in Discover if not installed OR if installed but not enabled in current scope
+          if (!isInstalled || !isEnabled) {
+            allDiscoverable.push({
+              ...p,
+              marketplace: mk.name,
+              installed: !!isInstalled,
+            });
+          }
+        });
+      } catch {
+        // Skip marketplaces that fail to load
+      }
+    }
+    setDiscoverablePlugins(allDiscoverable);
+  }, [pluginCore]);
+
   const refresh = useCallback(async () => {
     clearPluginFeedback();
     setState((prev: PluginManagerState) => ({
@@ -70,56 +125,7 @@ export function usePluginManager(options?: {
       isLoading: true,
     }));
     try {
-      const [mks, installed, enabledMap] = await Promise.all([
-        pluginCore.listMarketplaces(),
-        pluginCore.getInstalledPlugins(),
-        Promise.resolve(pluginCore.getMergedEnabledPlugins()),
-      ]);
-
-      setMarketplaces(mks);
-      const allInstalledWithEnabled = installed.plugins.map((p) => {
-        const pluginId = `${p.name}@${p.marketplace}`;
-        return {
-          ...p,
-          enabled: !!enabledMap[pluginId],
-          scope: pluginCore.findPluginScope(pluginId) || undefined,
-        };
-      });
-
-      // Only show enabled plugins in the "Installed" view
-      setInstalledPlugins(allInstalledWithEnabled.filter((p) => p.enabled));
-
-      const allDiscoverable: (MarketplacePluginEntry & {
-        marketplace: string;
-        installed: boolean;
-        version?: string;
-      })[] = [];
-      for (const mk of mks) {
-        try {
-          const manifest = await pluginCore.loadMarketplaceManifest(
-            pluginCore.getMarketplacePath(mk),
-          );
-          manifest.plugins.forEach((p) => {
-            const pluginId = `${p.name}@${mk.name}`;
-            const isInstalled = installed.plugins.find(
-              (ip) => ip.name === p.name && ip.marketplace === mk.name,
-            );
-            const isEnabled = !!enabledMap[pluginId];
-
-            // Show in Discover if not installed OR if installed but not enabled in current scope
-            if (!isInstalled || !isEnabled) {
-              allDiscoverable.push({
-                ...p,
-                marketplace: mk.name,
-                installed: !!isInstalled,
-              });
-            }
-          });
-        } catch {
-          // Skip marketplaces that fail to load
-        }
-      }
-      setDiscoverablePlugins(allDiscoverable);
+      await loadLists();
       setState((prev: PluginManagerState) => ({ ...prev, isLoading: false }));
     } catch (error) {
       setState((prev: PluginManagerState) => ({
@@ -128,11 +134,30 @@ export function usePluginManager(options?: {
         error: error instanceof Error ? error.message : String(error),
       }));
     }
-  }, [pluginCore, clearPluginFeedback]);
+  }, [loadLists, clearPluginFeedback]);
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
+
+  // 打开插件管理器即后台刷新各市场检出（只拉清单、不升级任何插件；spec
+  // ecosystem/plugin 场景 5/11）：刷新与列表加载并行、不阻塞界面，完成后重读
+  // 列表呈现最新清单（场景 12）。失败静默——界面仍以刷新前的清单展示（场景 9）。
+  useEffect(() => {
+    let cancelled = false;
+    setCheckingForUpdates(true);
+    pluginCore
+      .refreshMarketplaces()
+      .catch(() => {})
+      .then(async () => {
+        if (cancelled) return;
+        setCheckingForUpdates(false);
+        await loadLists().catch(() => {});
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pluginCore, loadLists]);
 
   const setView = useCallback((view: ViewType) => {
     setState((prev: PluginManagerState) => ({ ...prev, currentView: view }));
@@ -290,33 +315,10 @@ export function usePluginManager(options?: {
     [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
   );
 
-  const toggleAutoUpdate = useCallback(
-    async (name: string, enabled: boolean) => {
-      clearPluginFeedback();
-      setState((prev: PluginManagerState) => ({
-        ...prev,
-        isLoading: true,
-      }));
-      try {
-        await pluginCore.toggleAutoUpdate(name, enabled);
-        await refresh();
-        setSuccessMessage(
-          `Auto-update for '${name}' ${enabled ? "enabled" : "disabled"}`,
-        );
-      } catch (error) {
-        setState((prev: PluginManagerState) => ({
-          ...prev,
-          isLoading: false,
-          error: error instanceof Error ? error.message : String(error),
-        }));
-      }
-    },
-    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
-  );
-
   return {
     state,
     marketplaces,
+    checkingForUpdates,
     installedPlugins,
     discoverablePlugins,
     actions: {
@@ -328,7 +330,6 @@ export function usePluginManager(options?: {
       installPlugin,
       uninstallPlugin,
       updatePlugin,
-      toggleAutoUpdate,
       refresh,
       clearPluginFeedback,
     },

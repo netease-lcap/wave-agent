@@ -38,7 +38,6 @@ vi.mock("../../src/services/configurationService.js", () => {
             source: "github",
             repo: "netease-lcap/wave-plugins-official",
           },
-          autoUpdate: true,
         },
       }));
       getScopedMarketplaces = vi.fn(() => ({}));

@@ -3944,6 +3944,11 @@ export class DesktopHost {
         await this.handleListMarketplaces();
         break;
 
+      // 打开设置页插件市场视图：后台刷新各市场检出（不升级插件）。
+      case "refreshMarketplaces":
+        await this.handleRefreshMarketplaces();
+        break;
+
       case "addMarketplace":
         await this.handleMarketplaceMutation("addMarketplace", {
           input: msg.input,
@@ -5611,7 +5616,11 @@ export class DesktopHost {
     }
   }
 
-  private async handleListPlugins(): Promise<void> {
+  /**
+   * `refreshed` 标记：本次回包是「打开界面触发的后台清单刷新」结束后的补发，
+   * webview 据此收起界面内的「检查更新中」提示（spec 插件市场场景 12/13）。
+   */
+  private async handleListPlugins(refreshed = false): Promise<void> {
     try {
       const result = (await this.utilityClientFor(this.currentHost).request(
         "listPlugins",
@@ -5620,6 +5629,7 @@ export class DesktopHost {
       this.postMessage({
         command: "listPluginsResponse",
         plugins: result.plugins,
+        ...(refreshed ? { refreshed: true } : {}),
       });
     } catch (error) {
       this.showToast({ message: `获取插件列表失败: ${error}` });
@@ -5771,14 +5781,37 @@ export class DesktopHost {
     });
   }
 
-  private async handleListMarketplaces(): Promise<void> {
+  private async handleListMarketplaces(refreshed = false): Promise<void> {
     try {
       const marketplaces = await this.utilityClientFor(
         this.currentHost,
       ).request("listMarketplaces", { workdir: this.workdir });
-      this.postMessage({ command: "listMarketplacesResponse", marketplaces });
+      this.postMessage({
+        command: "listMarketplacesResponse",
+        marketplaces,
+        ...(refreshed ? { refreshed: true } : {}),
+      });
     } catch (error) {
       this.showToast({ message: `获取市场列表失败: ${error}` });
+    }
+  }
+
+  /**
+   * 打开设置页插件市场视图时的后台清单刷新：只拉各市场检出、不升级任何插件
+   * （spec 插件市场 A-013 场景 5）。刷新在后台进行、不阻塞界面，完成后把两份
+   * 最新列表推给已打开的视图（场景 2）；失败按场景 9 静默记日志、不打扰用户。
+   */
+  private async handleRefreshMarketplaces(): Promise<void> {
+    try {
+      await this.utilityClientFor(this.currentHost).request(
+        "refreshMarketplaces",
+        { workdir: this.workdir },
+      );
+    } catch (error) {
+      console.error("[DesktopHost] 刷新市场清单失败:", error);
+    } finally {
+      await this.handleListMarketplaces(true);
+      await this.handleListPlugins(true);
     }
   }
 
