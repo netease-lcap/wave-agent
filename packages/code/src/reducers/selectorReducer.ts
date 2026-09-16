@@ -15,6 +15,7 @@ export type SelectorAction<T = unknown> =
   | { type: "MOVE_DOWN" }
   | { type: "RESET_INDEX" }
   | { type: "SET_ITEMS"; items: T[] }
+  | { type: "SET_INDEX"; index: number }
   | { type: "HANDLE_KEY"; key: Key; hasInsert: boolean }
   | { type: "TOGGLE_ALL_PROJECTS" }
   | { type: "TOGGLE_ALL_WORKTREES" }
@@ -39,6 +40,8 @@ export function selectorReducer<T = unknown>(
       return { ...state, selectedIndex: 0 };
     case "SET_ITEMS":
       return { ...state, items: action.items, selectedIndex: 0 };
+    case "SET_INDEX":
+      return { ...state, selectedIndex: action.index };
     case "TOGGLE_ALL_PROJECTS":
       return { ...state, showAllProjects: !state.showAllProjects };
     case "TOGGLE_ALL_WORKTREES":

@@ -3,7 +3,8 @@
  *
  * 由 /plugin 斜杠命令（或手动点击设置页「插件市场」导航）打开（spec
  * ecosystem/plugin「设置页插件市场」）。按市场 Tab 组织插件：每个市场 Tab 带
- * 该市场内的插件数量、默认选中第一个市场；市场内提供 全部/已安装/未安装 筛选
+ * 该市场内的插件数量、默认选中第一个市场、新建市场成功后自动选中新市场
+ * （场景 19）；市场内提供 全部/已安装/未安装 筛选
  * （各带计数）与关键词搜索（限定在当前市场内）。行内提供 安装（弹作用域选择，
  * 默认 user）/ 更新（安装作用域不变）/ 已安装状态，已安装行另带作用域按钮
  * （弹「更换安装作用域」，可保存或卸载）。工具栏提供 批量更新插件 / 移除市场 /
@@ -113,6 +114,11 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
   // 目录选择器的请求关联（host 回发 pluginMarketFolderSelected 带 requestId）
   const folderRequestRef = useRef("");
   const folderSeqRef = useRef(0);
+  // 新建市场后待选中的市场名快照（spec 场景 19）：webview 只消费列表快照、拿不到
+  // host 侧 addMarketplace 的返回值，而市场名由市场自身清单决定（场景 14）⇒ 只能以
+  // 「发请求时的市场名快照」为准，回包中出现快照外的新名字即刚添加的那个市场。
+  // null = 当前没有待确认的新增请求；添加失败时不会有新名字，故保持原选中不变。
+  const pendingAddRef = useRef<string[] | null>(null);
 
   // 挂载拉取一次；vscode 经 latest ref 读取（对齐 useSettingsList 的写法，避免
   // 每次渲染重挂 effect 反复拉取）。
@@ -191,10 +197,16 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
     });
   };
 
+  /** 下发添加市场：先记下当前市场名快照，回包据此认出新加的市场（spec 场景 19）。 */
+  const addMarketplace = (input: string) => {
+    pendingAddRef.current = marketplaces.map((m) => m.name);
+    vscode?.postMessage({ command: "addMarketplace", input });
+  };
+
   const handleAddRemoteMarket = () => {
     const input = newMarketInput.trim();
     if (!input) return;
-    vscode?.postMessage({ command: "addMarketplace", input });
+    addMarketplace(input);
     closeNewMarket();
   };
 
@@ -218,15 +230,29 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
         // 打开视图触发的后台刷新已结束（宿主补发的列表），收起「检查更新中」
         if (message.refreshed) setCheckingUpdates(false);
         break;
-      case "listMarketplacesResponse":
-        setMarketplaces(message.marketplaces || []);
+      case "listMarketplacesResponse": {
+        const next: MarketplaceInfo[] = message.marketplaces || [];
+        const before = pendingAddRef.current;
+        // 新市场自动选中（spec 场景 19）：回包出现快照外的新名字即添加成功；
+        // 没有新名字（添加失败/重名）则什么都不做，保持原选中不变。
+        const added = before
+          ? next.find((m) => !before.includes(m.name))
+          : undefined;
+        if (added) {
+          pendingAddRef.current = null;
+          setActiveMarket(added.name);
+          // 与移除市场同款：回到「全部」避免落在新市场的空分类上
+          setFilter("all");
+        }
+        setMarketplaces(next);
         break;
+      }
       case "pluginMarketFolderSelected": {
         if (String(message.requestId) !== folderRequestRef.current) return;
         folderRequestRef.current = "";
         // 选定文件夹即添加为市场（spec 场景 14）；取消选择回落空不动作
         if (!message.path) return;
-        vscode?.postMessage({ command: "addMarketplace", input: message.path });
+        addMarketplace(message.path);
         closeNewMarket();
         break;
       }

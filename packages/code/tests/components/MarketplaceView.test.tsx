@@ -84,6 +84,24 @@ describe("MarketplaceView", () => {
     });
   });
 
+  it("should focus the selected marketplace (set by addMarketplace)", async () => {
+    const { lastFrame } = render(
+      <PluginManagerContext.Provider
+        value={{
+          ...mockContext,
+          state: { ...mockContext.state, selectedId: "mp2" },
+        }}
+      >
+        <MarketplaceView />
+      </PluginManagerContext.Provider>,
+    );
+
+    // 新加的市场（selectedId = 市场名）成为列表选中项，而不是回落首项
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("> mp2");
+    });
+  });
+
   it("should go to detail on Enter", async () => {
     const { stdin } = render(
       <PluginManagerContext.Provider value={mockContext}>
