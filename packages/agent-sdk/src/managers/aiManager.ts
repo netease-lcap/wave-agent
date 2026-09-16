@@ -16,6 +16,10 @@ import {
   buildMcpInstructionsAnnouncement,
   collectAnnouncedServers,
 } from "../utils/mcpInstructions.js";
+import {
+  buildExecCatalogAnnouncement,
+  collectExecCatalogState,
+} from "../exec/catalogAnnouncement.js";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import * as path from "node:path";
@@ -903,6 +907,33 @@ export class AIManager {
     });
   }
 
+  /**
+   * Announce the MCP catalog in the conversation, whenever the pool renders
+   * differently from the last announcement. Keeping it out of `Exec`'s description
+   * is what makes that declaration a constant: a server connecting would otherwise
+   * rewrite `tools[]`, which sits in the cached prefix (see
+   * `exec/catalogAnnouncement.ts`).
+   */
+  private maybeAnnounceExecCatalog(): void {
+    const toolManager = this.toolManager;
+    // Optional for the same reason as `maybeAnnounceMcpInstructions` above, and it
+    // matters just as much here: reading an absent channel as "the catalog is gone"
+    // would tell the model to stop using every tool an earlier catalog listed.
+    if (!toolManager || typeof toolManager.getExecCatalog !== "function")
+      return;
+
+    const text = buildExecCatalogAnnouncement(
+      collectExecCatalogState(this.messageManager.getMessages()),
+      toolManager.getExecCatalog(),
+    );
+    if (!text) return;
+
+    this.messageManager.addUserMessage({
+      content: wrapInSystemReminder(text),
+      isMeta: true,
+    });
+  }
+
   private resolveFilteredTools() {
     const toolsConfig = this.getFilteredToolsConfig();
     const toolNames = new Set(toolsConfig.map((t) => t.function.name));
@@ -1660,6 +1691,7 @@ ${question}`;
           // itself in the request that can already call it. After compaction, so
           // the announcement is not the content that just got summarized away.
           this.maybeAnnounceMcpInstructions();
+          this.maybeAnnounceExecCatalog();
 
           // Get recent message history
           const rawMessages = this.messageManager.getMessages();

@@ -1,7 +1,11 @@
 /**
- * The Exec catalog: which MCP tools exist, how they are rendered into the tool
- * description, how that rendering is budgeted, and the shape of the sandbox's
- * `search` entry point.
+ * The Exec catalog: which MCP tools exist, how they are rendered, how that
+ * rendering is budgeted, and the shape of the sandbox's `search` entry point.
+ *
+ * "Rendered" means into the catalog announcement (`exec/catalogAnnouncement.ts`),
+ * not into `Exec`'s tool description: the description has to stay a
+ * pool-independent constant, or every server that connects rewrites the cached
+ * prefix. This module produces the entries; the announcement wraps them.
  *
  * This module is the single source of truth for "what the sandbox may reach".
  * The hard constraint is that the pool must equal the tools the agent could
@@ -360,6 +364,12 @@ export interface RenderedCatalog {
   total: number;
   /** True when the budget forced entries out. Never silent. */
   truncated: boolean;
+  /**
+   * Per-server tool counts, in pool order. The rendered entries cannot tell a later
+   * turn what moved — the announcement diff is count-level — so the snapshot is
+   * handed back here rather than recovered by parsing `text`.
+   */
+  namespaces: Array<{ name: string; count: number; shown: number }>;
 }
 
 /**
@@ -371,12 +381,15 @@ export interface RenderedCatalog {
  * substring of every tool name it covers (and of what search matches on). For a
  * server whose name itself contains `__` the key is only the first segment — the
  * same pre-existing ambiguity the grouping key has (see `execNamespace`).
+ *
+ * Exported for the announcement's per-namespace delta lines: the same renderer for
+ * the same counts, so a summary line and a delta line cannot drift apart.
  */
-function summarizeNamespace(
-  group: ExecPoolEntry[],
+export function summarizeNamespace(
+  name: string,
+  count: number,
   shownCount: number,
 ): string {
-  const count = group.length;
   const label = `${count} tool${count === 1 ? "" : "s"}`;
   const detail =
     shownCount === count
@@ -384,7 +397,7 @@ function summarizeNamespace(
       : shownCount === 0
         ? ", none shown"
         : `, ${shownCount} shown`;
-  return `- mcp__${execNamespace(group[0].name)} (${label}${detail})`;
+  return `- mcp__${name} (${label}${detail})`;
 }
 
 /**
@@ -472,17 +485,23 @@ export function renderCatalog(
   const lines: string[] = [];
   for (let index = 0; index < groups.length; index += 1) {
     if (truncated) {
-      lines.push(summarizeNamespace(groups[index], picked[index].length));
+      const group = groups[index];
+      lines.push(
+        summarizeNamespace(
+          execNamespace(group[0].name),
+          group.length,
+          picked[index].length,
+        ),
+      );
     }
     lines.push(...picked[index]);
   }
 
   if (truncated) {
-    lines.push(
-      `PARTIAL — ${shown} of ${entries.length} tools shown. ` +
-        `Use ${renderSearchCallForm()} to find the rest; ` +
-        `search covers the full pool.`,
-    );
+    // Counts only: the call form that reaches the rest is taught once, in the
+    // announcement's search section, which exists in exactly this state. Writing it
+    // here as well would give the same call two spellings to drift between.
+    lines.push(`PARTIAL — ${shown} of ${entries.length} tools shown.`);
   }
 
   return {
@@ -490,5 +509,10 @@ export function renderCatalog(
     shown,
     total: entries.length,
     truncated,
+    namespaces: groups.map((group, index) => ({
+      name: execNamespace(group[0].name),
+      count: group.length,
+      shown: picked[index].length,
+    })),
   };
 }
