@@ -4049,3 +4049,86 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 
 - 脚本：`CC02/probe-settings-tab-underline-0916.mjs`（同页回退对照 + 伪元素 `::after` 计算值 + 活跃 tab 裁剪）、`CC02/build-tab-underline-evidence-0916.py`（四角像素采样 + 逐行/逐列剖面 + 6× 放大 + 并排对比图）。运行 JS 需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
 - 本轮纯 CSS（`SettingsPage.css` 一条规则 + 注释），无 TS 改动。
+
+## 0916 评论（操作按钮圆角统一 8px · 第 2 族：侧边栏图标按钮 + 头部 `.header-button`）（工作区未提交）
+
+**她的评论**（连标 4 处）：`button.desktop-sidebar-more-btn`「这里」/ `svg.header-icon`「这里」×2 / `button.header-button`「这里」——
+**「再看看类似下面我标注的这些地方也要统一」**（承接上一轮 `button.preview-pane-button` 的「类似这种操作按钮圆角统一8px」）。
+
+### 改动
+
+- `packages/webview/src/styles/host-desktop.css`：
+  1. 新增一条规则（写在既有「收起态按钮」块之后，含逐字依据注释）：
+
+     ```css
+     [data-host="desktop"] .desktop-sidebar-more-btn,
+     [data-host="desktop"] .header-button {
+       border-radius: var(--cc-radius-md, 8px);
+     }
+     ```
+
+  2. 同步把既有 `[data-host="desktop"] .header-collapsed-leading .header-button` 的 `border-radius: 6px` 改为 `var(--cc-radius-md, 8px)`（同一族、否则会 6 与 8 并存；注释同步改写）。
+
+- 覆盖面（本族 = 24×24 方形图标操作按钮）：①侧边栏品牌行 2 颗（收起侧边栏 / 活动，`DesktopApp.css:139` 原 **6px**）②会话头 / pane 头 `.header-button`（base 22×22 r4 `ChatHeader.css:52-58`；面板开关 `.header-panel-toggle` 24×24 `ChatHeader.css:112` 原 **4px**）③收起侧边栏后的头部按钮（原 **6px**）。
+- 只改圆角：盒 `24×24`（部分 22×22）、图标尺寸（开关按 24 artboard）、常态透明、hover / active 底、字色、交互全部未动。
+- **作用域限 `[data-host="desktop"]`**：IDE / VS Code 宿主共用 `.header-button`、`.desktop-sidebar-more-btn` 这两个 class → 已实测 IDE 用例 `ide-chat` 仍是 `4px`、desktop 为 `8px`，两者互不影响。
+
+### 实测（用例 `desktop-full`，1440×900，DPR2，浅/深，0 pageerror）
+
+- `6px → 8px`：侧栏「收起侧边栏」「活动」（hover 底浅 `rgba(0,0,0,0.12)` / 深 `rgba(90,93,94,0.31)`，逐值不变）；`4px → 8px`：左右两颗 pane 头部「面板开关」（同 hover 底）。
+- 激活态可见（有底色，静止即可见圆角）：`活动` `.is-active` 浅 `#FFEBE8` / 深 `color(srgb 0.756863 0.160784 0.180392 / 0.18)`，圆角 `8px`。
+- 收起态：`.header-collapsed-leading .header-button`（「展开侧边栏」）`24×24`，hover 底浅 `#EEF0F3` / 深 8% 白，圆角 `8px`。
+- 像素差异（hover 态，40×40 CSS 裁切）：单颗侧栏按钮 **200（浅）/ 192（深）像素**（3.12% / 3.00%）、面板开关 **257 / 258**（4.02% / 4.03%）、激活态 200 / 192、收起态 181 / 194；整条侧栏品牌行 `0.06%`、整条 pane 头部行 `0.05%`（只有 hover 中那颗的四角变）。**静止态（透明）前后差异 0 像素**。
+- 同族残留现状（本轮未动，已实测）：`.desktop-session-more-btn` 24×24 **6px**、`.desktop-pane-close` 24×24 **4px**、`.toast-close` 20×20 **4px**、`.confirmation-close-btn` 20×20 **4px**、`.preview-tab-close` 16×16 **3px**；已一致未动者：`.desktop-sidebar-new-chat` 8px、`.desktop-workdir-trigger` 8px、面板工具条按钮与「＋」8px（0916 上一轮）。
+
+### 取证方式（两条坑）
+
+- 这族按钮静止态透明无边框 → 圆角只在 hover / active 出底色时可见，故全部对照图取 **hover 态**；**「改前」用探针在同一元素注入旧值（6px / 4px）还原**而非 `git stash`（本轮只动 `border-radius` 一条属性，像素等价，且不带走并行窗口在途改动）。
+- 坑 ①：mock 的 toast 浮层正好压在两颗「面板开关」上（`elementFromPoint` 命中 `.toast`）→ 真实 hover 失效；坑 ②：原型右上角的用例浮层（`<select>`）同样压住右侧那颗 → 探针内先移除这两个浮层再 hover（只动探针，不动产品代码）。
+- **可复用结论**：`--cc-radius-md` 在 wave 仓库内**只被引用、未定义**（全仓 0 处定义），本族既有规则都靠 `var(--cc-radius-md, 8px)` 的 fallback → 新增规则沿用同一写法，避免「有的读 token、有的写字面量」（是否请 codex 在 skill 侧补 token 定义，待她点名）。
+
+### 残留（未授权，供后续点名）
+
+- `.desktop-session-more-btn` 会话行「更多」`24×24` **6px** → 触发语 **「会话行更多按钮也统一 8」**（上一轮已列出，仍未授权）。
+- `.desktop-pane-close` pane 头部「关闭」`24×24` **4px** → 触发语 **「pane 头部关闭也一起」**。
+- `.toast-close` / `.confirmation-close-btn` `20×20` **4px** → 触发语 **「toast 关闭也统一」**/「确认弹层关闭也统一」。
+- `.preview-tab-close` 页签关闭「×」`16×16` **3px**（8px ≈ 短边 60%、近圆）→ 触发语 **「页签关闭也统一 8」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-btn-family-radius-0916.mjs`（computed 读数 + 前后 hover/rest 裁切 + 激活态 + 收起态 + 上下文整条 + 掩掉遮挡浮层）、`CC02/build-btn-family-radius-0916.py`（像素差异统计 + 6× 放大 + 差异图 + 自测页）；另有一次性定位脚本 `CC02/probe-find-0916-btns.mjs`（先确认这些 class 在哪些用例渲染）。
+- 证据目录 `CC02/走查/0916-操作按钮圆角/`：`measure.json` + 42 张图（`{tag}-{theme}-{hover,rest}-{before,after}.png`、`sidebar-activity-{theme}-active-*.png`、`collapsed-leading-*`、`strip-sidebar-*`、`strip-paneheader-*`、`zoom-*`、`diffmap-*`），自测页 `0916-操作按钮圆角-第2族-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/yt2cbsxx33 ）。
+- 本轮纯 CSS（`host-desktop.css` 一条新增规则 + 一条既有规则的圆角值），无 TS 改动。
+
+## 0916 评论（设置页分节标题与卡片内行标题不再加粗）（工作区未提交）
+
+**她的评论**（两条，同批）：
+
+- 点设置页 `h3`「AI 回复语言」→「下面类似的地方都不要加粗」；
+- 点设置页 `h2`「基础设置」→「这里」。
+
+### 改动
+
+- `styles/SettingsPage.css` `.settings-section-heading h2`：`font-weight: 600` → **`var(--cc-font-weight-regular, 400)`**。
+- `styles/SettingsPage.css` `.settings-row-copy h3`：`font-weight: 600` → **`var(--cc-font-weight-regular, 400)`**。
+- 覆盖面（两类都是设置页公共类，全视图生效）：分节标题 = 全局设置「基础设置 / 桌面端设置 / 服务端配置 / 内置插件 / AGENTS.md / 自动记忆规则」；行标题 = 每个卡片行的 `h3`（AI 回复语言、上下文长度、主题、接收 Beta 版更新、SDD、开启自动记忆、触发记忆提取会话轮次…），以及 MCP / 技能 / 子代理 / 钩子 / 插件市场等视图里同样使用 `.settings-row-copy` 的行。
+- 未动项（**不同层级，同批未授权**）：左侧导航分组标题 `.settings-nav-group h2`（500）、页头主标题 `.settings-page-header h1`（600）、插件行名 `.settings-plugin-name`（600）、弹窗标题 `.settings-modal-header h3`（600）、作用域弹窗选项标题 `.settings-scope-option-title`（600）、分段选中态 `.settings-plugin-chip.is-active` / `.settings-modal-seg-item.is-active`（600）。
+- 依据：设置页内部层级只靠**字号（14px）+ 位置（分节在卡外、行标题在卡内）**表达即可；加粗在 14px 中文小字号上会让标题与同行说明（12px）抢视觉权重，且与「按钮 500 / 正文 400」的既有口径不同族。
+
+### 实测（`desktop-full` → 敲 `/config`，1440×900，DPR2，浅/深；同页回退对照）
+
+- 字重：全部 `.settings-section-heading h2` 与 `.settings-row-copy h3` 计算值 `600 → 400`（浅/深一致）。
+- **几何零位移**：分节标题盒 `712x25`、行标题盒 `300x26 / 294x26 / 261x26 / 135x26`、同行说明 `712x20`；**所有 `.settings-row` 的盒、y、`h3` 文本、右侧控件盒（`宽x高@x`）前后逐值完全相同**（脚本断言 `行盒 / 行高 / 右侧控件列 前后完全一致 = true`，浅/深均通过）。
+- 文字宽只随字重微变（浅色：「基础设置」`56 → 57.1`、「AI 回复语言」`73.5 → 73.8`、「上下文长度」`70 → 71.4`、「接收 Beta 版更新」`108 → 108.4`），远小于其容器余量，**无一处换行变化**。
+- `0 pageerror`。
+- 证据：`CC02/走查/0916-设置标题字重/titles-{light,dark}-{before,after}.png`（分节标题 + 首张卡片前两行的裁剪图）+ `title-weight-verify.json`（逐元素字重 / 字号 / 行高 / 盒 / 裸文本宽 + 全部行盒与控件列对照）。
+
+### 残留（未授权，供后续点名）
+
+- 上述「未动项」里的 600 尚未随本轮收整 → 触发语 **「页头标题也不要加粗」** / **「插件名也不要加粗」** / **「弹窗标题也不要加粗」** / **「作用域弹窗选项标题也不要加粗」**（导航分组 500 → 触发语 **「导航分组标题也统一 400」**）。
+- skill 契约口径待 codex 确认：`common-components.md:11` 有「group headings retain their own typography」的保留句，而 `design-system.md:183` 规定页头标题 semibold —— **设置页「分节标题 400」是否属于该保留句的例外情形、要不要显式写入**，本轮只在代码注释里留了提示，未擅自回写 → 触发语 **「分节标题字重写进 skill」**（新增交接单条目）。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-settings-title-weight-0916.mjs`（同页回退对照 + 逐元素字重/盒/裸文本宽 + 全部 `.settings-row` 与右侧控件列对照 + 裁剪图）。运行需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
+- 本轮纯 CSS（`SettingsPage.css` 两条规则 + 注释），无 TS 改动。

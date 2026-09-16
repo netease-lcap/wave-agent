@@ -282,10 +282,17 @@
   margin: 0;
 }
 
+/* 设计师 0916 评论（点 `h2`「基础设置」）「这里」+（点 `h3`「AI 回复语言」）
+   「下面类似的地方都不要加粗」：设置页的**分节标题**与**卡片内行标题**都不再加粗，
+   600 → 400（`--cc-font-weight-regular`）。两者只靠字号（14px）与位置表达层级，
+   与同页正文/说明同级；导航分组标题（`.settings-nav-group h2` 500）与页头主标题
+   （`.settings-page-header h1` 600）不在本条范围，未动。
+   注：skill `common-components.md:11` 有「group headings retain their own typography」
+   的保留句，若契约把设置页分节标题也算 group heading，需 codex 一并回写。 */
 .settings-section-heading h2 {
   color: var(--vscode-foreground);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: var(--cc-font-weight-regular, 400);
   line-height: 25px;
 }
 
@@ -333,10 +340,14 @@
   margin: 0;
 }
 
+/* 同一条评论（点 `h3`「AI 回复语言」）「下面类似的地方都不要加粗」：卡片内行标题
+   600 → 400（与分节标题同档，见 `.settings-section-heading h2` 上方注释）。
+   行盒 26px / 字号 14px / 颜色未动；行右控件由 `space-between` 定位，字重变轻只收窄
+   标题自身文字宽，不动控件列与行高。 */
 .settings-row-copy h3 {
   color: var(--vscode-foreground);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: var(--cc-font-weight-regular, 400);
   line-height: 26px;
 }
 
