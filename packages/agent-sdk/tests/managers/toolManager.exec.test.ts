@@ -38,6 +38,7 @@ function mcpPool(count: number): ChatCompletionFunctionTool[] {
 interface HarnessOptions {
   pool?: ChatCompletionFunctionTool[];
   denied?: string[];
+  outputSchemas?: Map<string, Record<string, unknown>>;
 }
 
 function build(options: HarnessOptions = {}) {
@@ -46,6 +47,7 @@ function build(options: HarnessOptions = {}) {
 
   const mcpManager = {
     getMcpToolsConfig: () => pool,
+    getMcpToolOutputSchemas: () => options.outputSchemas ?? new Map(),
     isMcpTool: (name: string) => name.startsWith("mcp__"),
   } as unknown as McpManager;
 
@@ -159,6 +161,34 @@ describe("Exec catalog content", () => {
     }
     // Nothing was truncated, so the catalog is the whole pool.
     expect(catalog).not.toContain("PARTIAL");
+  });
+
+  it("renders each tool's declared output schema as its return type", () => {
+    const { toolManager } = build({
+      pool: [mcpConfig("mcp__srv__lookup")],
+      outputSchemas: new Map([
+        [
+          "mcp__srv__lookup",
+          {
+            type: "object",
+            properties: { id: { type: "string" } },
+            required: ["id"],
+          },
+        ],
+      ]),
+    });
+
+    // A tool declaration has no field for an output schema, so it rides beside
+    // the pool (see `getMcpToolOutputSchemas`) and lands in the signature.
+    expect(catalogText(toolManager)).toContain(
+      [
+        "tools.mcp__srv__lookup({",
+        "  input: string,",
+        "}): Promise<{",
+        "  id: string,",
+        "}>",
+      ].join("\n"),
+    );
   });
 
   it("keeps denied MCP tools out of the catalog", () => {

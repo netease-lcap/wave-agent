@@ -38,12 +38,17 @@ function contextWith(
 ): ToolContext {
   const executeMcpTool =
     options.execute ??
-    vi.fn(async (name: string) => ({ success: true, content: `ok:${name}` }));
+    vi.fn(async (name: string) => ({
+      success: true,
+      content: `ok:${name}`,
+      output: `ok:${name}`,
+    }));
 
   return {
     workdir: "/tmp",
     mcpManager: {
       getMcpToolsConfig: () => configs,
+      getMcpToolOutputSchemas: () => new Map(),
       executeMcpTool,
     } as unknown as McpManager,
     ...(options.denied
@@ -151,6 +156,7 @@ describe("execTool execution", () => {
     const execute = vi.fn(async (name: string) => ({
       success: true,
       content: `ok:${name}`,
+      output: `ok:${name}`,
     }));
     const context = contextWith([mcpConfig("mcp__srv__a")], { execute });
 
@@ -159,7 +165,7 @@ describe("execTool execution", () => {
         code: `
           console.log("step 1");
           const r = await tools.mcp__srv__a({ input: "hi" });
-          return { got: r.content };
+          return { got: r };
         `,
       },
       context,
@@ -215,7 +221,7 @@ describe("execTool execution", () => {
     });
     const execute = vi.fn(async (name: string) => {
       await pending;
-      return { success: true, content: `ok:${name}` };
+      return { success: true, content: `ok:${name}`, output: `ok:${name}` };
     });
     const updates: string[] = [];
     const context = contextWith(
@@ -297,6 +303,7 @@ describe("execTool execution", () => {
       execute: vi.fn(async () => ({
         success: true,
         content: "screenshot",
+        output: "screenshot",
         images: [{ data: "AAAA", mediaType: "image/png" }],
       })),
     });

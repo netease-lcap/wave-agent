@@ -5,6 +5,9 @@ import { runExecScript } from "../../src/exec/execRuntime.js";
 
 interface FakeMcpOptions {
   content?: string;
+  /** What the nested `await` resolves to; defaults to `content` (a text-only
+   * result resolves to its text). Pass `null` for a tool that returned nothing. */
+  output?: unknown;
   images?: Array<{ data: string; mediaType?: string }>;
   /** Resolve/reject per call, keyed by tool name. */
   behavior?: (name: string, args: Record<string, unknown>) => unknown;
@@ -21,7 +24,13 @@ function contextWith(options: FakeMcpOptions = {}): {
         if (outcome instanceof Error) throw outcome;
         if (outcome !== undefined) return outcome;
       }
-      return { success: true, content: options.content ?? `ok:${name}` };
+      const content = options.content ?? `ok:${name}`;
+      return {
+        success: true,
+        content,
+        // `??` would fold the explicit `null` case back into the text.
+        output: "output" in options ? options.output : content,
+      };
     },
   );
 
@@ -72,8 +81,8 @@ describe("runExecScript — the bridge", () => {
     const result = await run(`
       const first = await tools.mcp__srv__echo({ q: "hi" });
       const second = await tools["mcp__srv__sum"]({ a: 1, b: 2 });
-      console.log("first", first.content);
-      return { first: first.content, second: second.content };
+      console.log("first", first);
+      return { first, second };
     `);
 
     expect(result.ok).toBe(true);
@@ -85,17 +94,48 @@ describe("runExecScript — the bridge", () => {
     expect(result.toolCalls).toBe(2);
   });
 
-  it("resolves the tool-call result without extra wrapping", async () => {
+  it("resolves to the tool's output rather than an envelope", async () => {
+    // What the signature promises (`Promise<T>`) is what the script gets: the
+    // value itself, so `note.foo` works instead of `note.output.foo`.
     const result = await run(`
       const r = await tools.mcp__srv__echo({});
-      return { content: r.content, images: r.images };
+      return { type: typeof r, value: r };
     `);
 
     expect(result.ok).toBe(true);
     expect(JSON.parse(result.value!)).toEqual({
-      content: "ok:mcp__srv__echo",
-      images: 0,
+      type: "string",
+      value: "ok:mcp__srv__echo",
     });
+  });
+
+  it("resolves a structured result to the object, not to its text", async () => {
+    const result = await run(
+      `
+        const r = await tools.mcp__srv__echo({});
+        return { id: r.id, keys: Object.keys(r) };
+      `,
+      { content: '{"id":"7"}', output: { id: "7" } },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(result.value!)).toEqual({ id: "7", keys: ["id"] });
+  });
+
+  it("resolves a tool that returned nothing to null", async () => {
+    // `content` is the display text (a placeholder for a silent tool); the value
+    // must be `null`, not the placeholder — a script has to be able to tell
+    // "said nothing" from "said 'No content'".
+    const result = await run(
+      `
+        const r = await tools.mcp__srv__echo({});
+        return { value: r, silent: r === null };
+      `,
+      { content: "No content", output: null },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(result.value!)).toEqual({ value: null, silent: true });
   });
 
   it("passes the arguments through to the MCP tool untouched", async () => {
@@ -160,7 +200,7 @@ describe("runExecScript — the bridge", () => {
     const result = await run(`
       const all = await tools["$codemode"].search({ query: "" });
       const sums = await tools["$codemode"].search({ query: "sum" });
-      return { all: JSON.parse(all.content).length, sums: JSON.parse(sums.content).map((t) => t.name) };
+      return { all: all.length, sums: sums.map((t) => t.name) };
     `);
 
     expect(result.ok).toBe(true);
@@ -176,7 +216,7 @@ describe("runExecScript — the bridge", () => {
     const result = await run(`
       try {
         const res = await tools["$codemode"].search({ q: "sum" });
-        return { outcome: "returned " + JSON.parse(res.content).length };
+        return { outcome: "returned " + res.length };
       } catch (error) {
         return { outcome: error.message };
       }
@@ -209,7 +249,7 @@ describe("runExecScript — the bridge", () => {
     const result = await run(
       `
         const found = await tools["$codemode"].search({ query: "sum" });
-        return JSON.parse(found.content);
+        return found;
       `,
       { pool },
     );
@@ -224,7 +264,7 @@ describe("runExecScript — the bridge", () => {
           "  /** first addend */",
           "  a: number,",
           "  b: number,",
-          "})",
+          "}): Promise<unknown>",
         ].join("\n"),
       },
     ]);
@@ -267,15 +307,20 @@ describe("runExecScript — isolation", () => {
     // The value crosses two boundaries: structured clone into the worker, then
     // the context-realm deep clone. Without that second clone the object would
     // still carry a worker-realm Object constructor, and the worker's Function
-    // has code generation enabled — a way straight back out.
-    const result = await run(`
-      const r = await tools.mcp__srv__echo({});
-      try {
-        return { outcome: "escaped:" + r.constructor.constructor("return typeof process")() };
-      } catch (error) {
-        return { outcome: "blocked:" + error.constructor.name };
-      }
-    `);
+    // has code generation enabled — a way straight back out. A structured result
+    // is therefore the value to test with: a bare string has no prototype chain
+    // to walk in the first place.
+    const result = await run(
+      `
+        const r = await tools.mcp__srv__echo({});
+        try {
+          return { outcome: "escaped:" + r.constructor.constructor("return typeof process")() };
+        } catch (error) {
+          return { outcome: "blocked:" + error.constructor.name };
+        }
+      `,
+      { output: { nested: { deep: true } } },
+    );
 
     expect(result.ok).toBe(true);
     expect(JSON.parse(result.value!)).toEqual({ outcome: "blocked:TypeError" });
@@ -326,7 +371,7 @@ describe("runExecScript — budgets and lifecycle", () => {
       `
         const outcomes = [];
         for (let i = 0; i < 3; i++) {
-          try { outcomes.push((await tools.mcp__srv__echo({ i })).content); }
+          try { outcomes.push(await tools.mcp__srv__echo({ i })); }
           catch (error) { outcomes.push("rejected"); }
         }
         return outcomes;
@@ -363,7 +408,7 @@ describe("runExecScript — budgets and lifecycle", () => {
       `
         const outcomes = [];
         for (let i = 0; i < 3; i++) {
-          try { outcomes.push((await tools.mcp__srv__echo({ i })).content); }
+          try { outcomes.push(await tools.mcp__srv__echo({ i })); }
           catch (error) { outcomes.push("rejected"); }
         }
         return outcomes;
@@ -423,6 +468,7 @@ describe("runExecScript — budgets and lifecycle", () => {
       behavior: () => ({
         success: true,
         content: "with image",
+        output: "with image",
         images: [{ data: "AAA", mediaType: "image/png" }],
       }),
     });

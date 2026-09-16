@@ -29,7 +29,7 @@ const SEARCH_ENTRY =
 const EXEC_DESCRIPTION = `Run a JavaScript script in a sandbox where every MCP tool of this session is exposed as a function, so a whole sequence of MCP calls can be composed in a single turn instead of one model round-trip per call.
 
 Sandbox API:
-- \`await tools.<name>(args)\` — call an MCP tool, passing that tool's own arguments object directly. Resolves to \`{ content, images }\`.
+- \`await tools.<name>(args)\` — call an MCP tool, passing that tool's own arguments object directly. Resolves to the tool's output: its \`structuredContent\` object when it returned one, otherwise its text, otherwise \`null\`. The catalog gives each tool's return type.
 ${SEARCH_ENTRY}
 - \`console.log(...)\` — collected and returned alongside the result. Use it to inspect intermediate values.
 - \`return <value>\` — the returned value is JSON-serialized and given back to you.

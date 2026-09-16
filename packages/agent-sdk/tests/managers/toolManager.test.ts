@@ -19,6 +19,7 @@ describe("ToolManager tool filtering", () => {
     executeMcpToolByRegistry: vi.fn(),
     getAllConnectedTools: vi.fn().mockReturnValue([]),
     getMcpToolsConfig: vi.fn().mockReturnValue([]),
+    getMcpToolOutputSchemas: vi.fn().mockReturnValue(new Map()),
     getMcpToolPlugins: vi.fn().mockReturnValue([]),
   } as unknown as McpManager;
 
@@ -147,6 +148,7 @@ describe("ToolManager feature-gated tools (Artifact)", () => {
       executeMcpToolByRegistry: vi.fn(),
       getAllConnectedTools: vi.fn().mockReturnValue([]),
       getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      getMcpToolOutputSchemas: vi.fn().mockReturnValue(new Map()),
       getMcpToolPlugins: vi.fn().mockReturnValue([]),
     } as unknown as McpManager);
     return container;

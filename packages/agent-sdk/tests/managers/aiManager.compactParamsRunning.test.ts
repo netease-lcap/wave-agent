@@ -102,6 +102,7 @@ describe("aiManager: running-stage tool block updates carry compactParams", () =
     container.register("LspManager", {});
     container.register("McpManager", {
       getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      getMcpToolOutputSchemas: vi.fn().mockReturnValue(new Map()),
       isMcpTool: vi.fn().mockReturnValue(false),
       getMcpToolPlugins: vi.fn().mockReturnValue([]),
     });
