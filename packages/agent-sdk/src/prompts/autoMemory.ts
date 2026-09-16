@@ -1,33 +1,41 @@
+import {
+  DIR_EXISTS_GUIDANCE,
+  MEMORY_AND_OTHER_PERSISTENCE_SECTION,
+  TYPES_SECTION,
+  TRUSTING_RECALL_SECTION,
+  WHAT_NOT_TO_SAVE_SECTION,
+  WHEN_TO_ACCESS_SECTION,
+  buildHowToSaveSection,
+} from "./memoryTypes.js";
+
+/**
+ * Build the main agent's auto-memory prompt. The section order mirrors Claude
+ * Code's `buildMemoryLines()` (individual-only variant). The index content of
+ * `MEMORY.md` is appended separately by the system prompt builder, so this
+ * function only produces the behavioral instructions.
+ *
+ * Every section except the directory line is shared with the extraction fork
+ * prompt (`autoMemoryExtraction.ts`) — see `memoryTypes.ts` for why.
+ */
 export function buildAutoMemoryPrompt(memoryDir: string): string {
-  return `
-# auto memory
-
-You have a persistent auto memory directory at \`${memoryDir}\`. Its contents persist across conversations.
-
-As you work, consult your memory files to build on previous experience.
-
-## How to save memories:
-- Organize memory semantically by topic, not chronologically
-- Use the Write and Edit tools to update your memory files
-- \`MEMORY.md\` is always loaded into your conversation context — lines after 200 will be truncated, so keep it concise
-- Create separate topic files (e.g., \`debugging.md\`, \`patterns.md\`) for detailed notes and link to them from MEMORY.md
-- Update or remove memories that turn out to be wrong or outdated
-- Do not write duplicate memories. First check if there is an existing memory you can update before writing a new one.
-
-## What to save:
-- Stable patterns and conventions confirmed across multiple interactions
-- Key architectural decisions, important file paths, and project structure
-- User preferences for workflow, tools, and communication style
-- Solutions to recurring problems and debugging insights
-
-## What NOT to save:
-- Session-specific context (current task details, in-progress work, temporary state)
-- Information that might be incomplete — verify against project docs before writing
-- Anything that duplicates or contradicts existing AGENTS.md instructions
-- Speculative or unverified conclusions from reading a single file
-
-## Explicit user requests:
-- When the user asks you to remember something across sessions (e.g., "always use bun", "never auto-commit"), save it — no need to wait for multiple interactions
-- When the user asks to forget or stop remembering something, find and remove the relevant entries from your memory files
-`;
+  return [
+    "# auto memory",
+    "",
+    `You have a persistent, file-based memory system at \`${memoryDir}\`. ${DIR_EXISTS_GUIDANCE}`,
+    "",
+    "You should build up this memory system over time so that future conversations can have a complete picture of who the user is, how they'd like to collaborate with you, what behaviors to avoid or repeat, and the context behind the work the user gives you.",
+    "",
+    "If the user explicitly asks you to remember something, save it immediately as whichever type fits best. If they ask you to forget something, find and remove the relevant entry.",
+    "",
+    ...TYPES_SECTION,
+    ...WHAT_NOT_TO_SAVE_SECTION,
+    "",
+    ...buildHowToSaveSection(),
+    "",
+    ...WHEN_TO_ACCESS_SECTION,
+    "",
+    ...TRUSTING_RECALL_SECTION,
+    "",
+    ...MEMORY_AND_OTHER_PERSISTENCE_SECTION,
+  ].join("\n");
 }
