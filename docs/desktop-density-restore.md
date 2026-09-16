@@ -4133,6 +4133,119 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 - 脚本：`CC02/probe-settings-title-weight-0916.mjs`（同页回退对照 + 逐元素字重/盒/裸文本宽 + 全部 `.settings-row` 与右侧控件列对照 + 裁剪图）。运行需拷到 `/tmp/pw-0916/`（`playwright-core` 装在那里）。
 - 本轮纯 CSS（`SettingsPage.css` 两条规则 + 注释），无 TS 改动。
 
+## 0916 评论④：账户卡用量区（`.account-card-usage-inline`）字号**统一 12px** + 余额状态文字色绑定审计（**颜色一律不动：两批换色尝试已按她指示全部撤回**）（已提交，待推送）
+
+> **⚠️ 颜色结论（最终态）**：她看过换色对比后指示「这里颜色先不动了」→ 我列出三种理解请她选，她选 **「两批换色全退」**。故本轮**只落地字号一项**，账户卡所有文字色 / 图标色 / 气泡色 / 状态色**与改动前逐字节一致**（`host-desktop.css` 中该区域除下方那一条字号规则外与 HEAD 无差异，`git diff` 已验证）。下方「追加」「追加 2」两节的换色内容**已全部回退，仅作审计留档**，其中状态色绑定审计与对比度实测仍是有效结论（浅色预警琥珀 12px 小字对比度 2.93:1 不达标属历史遗留，仍未处理）。
+
+**她的评论（两步）**：
+
+1. 先点 `div.account-card-usage-inline`「套餐用量 76% / API 余额 ¥6,800.00」→「这里面信息，字号都大一号，除了套餐余量用完的报错提示用 12px 之外」；
+2. 撤销 →「还是改回来，都用 12px，然后检查不同余额状态字体颜色是否绑定了全局变量」。
+
+### 改动（`styles/host-desktop.css`，`[data-host="desktop"]` 作用域）
+
+- **字号全部回到 12px**：四段文字（`span` 无类名「套餐用量」/ `.account-usage-percent` / `.account-usage-row .account-usage-label` / `.account-usage-row .account-usage-value-text`）不再有任何字号覆盖 → 走 base 的 12px / `line-height: normal`（中途试过的 14px / 20px 已删除）。
+- **仅保留一条**：`.account-usage-exhausted`（「套餐余量已用完，请联系销售人员充值」）`11px`（越档，契约无此档）→ **`12px`**；其 `line-height: 15px` 与盒 231×15 未动，故该行**几何零变化**。
+- 未动：ⓘ `.account-api-info-btn` 内嵌 16px SVG（非文字）；进度条 231×6px；**全部文字色与状态配色（见下「颜色」说明）**。
+
+### 实测（`desktop-full` / `desktop-account-plan-exhausted` / `desktop-account-api-low` / `desktop-account-api-empty`，浅+深，1440×900 @DPR2）
+
+- 最终计算值：四段文字全部 `12px / normal`（「套餐用量」49×17、「76%」25×15、「API 余额」47×17、「¥6,800.00」58×15、耗尽态「已用完」37×17）；提示行 `12px / 15px`（盒 231×15）。
+- **几何与改动前逐值一致**：用量区 `235×63` 不变，账户卡 `235×108` 不变，耗尽场景 `235×84` / `235×129` 不变，进度条 231×6 不变（改大一号那版的 +6px 已一并撤回）。
+- `0 pageerror`（4 用例 × 2 主题全为 `[]`）。
+
+### 余额状态文字色 × 全局变量绑定审计（她第二条指示）
+
+**结论：正常 / 预警 / 耗尽三个状态的文字色全部来自宿主主题变量，无硬编码色值。** 实测（CSSOM 枚举命中声明 + 浅深对照）：
+
+| 角色                  | 浅色                             | 深色                                  | 绑定声明                                                                                                                                            |
+| --------------------- | -------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 套餐用量标签          | `rgb(32,32,32)`                  | `rgb(229,231,232)`                    | `var(--vscode-foreground)`（继承自 `.account-usage-title`）                                                                                         |
+| API 余额标签          | 同上                             | 同上                                  | `var(--vscode-foreground)`                                                                                                                          |
+| 余额金额 · 正常       | `rgb(32,32,32)`                  | `rgb(229,231,232)`                    | 继承 `body` 的 `var(--vscode-editor-foreground)`                                                                                                    |
+| 余额金额 · 预警       | `rgb(191,136,3)`                 | `rgb(204,167,0)`                      | `var(--vscode-editorWarning-foreground, #d18616)`（`.account-usage-value.is-warning`）                                                              |
+| 余额金额 · 耗尽       | `rgb(173,7,7)`                   | `rgb(248,81,73)`                      | `var(--vscode-errorForeground, #f14c4c)`（`.account-usage-value.is-empty`）                                                                         |
+| 用量百分比 · 耗尽     | `rgb(173,7,7)`                   | `rgb(248,81,73)`                      | `var(--vscode-errorForeground, #f14c4c)`                                                                                                            |
+| 用完提示行            | `rgb(173,7,7)`                   | `rgb(248,81,73)`                      | `var(--vscode-errorForeground, #f14c4c)`                                                                                                            |
+| 进度条填充（正 / 耗） | `rgb(31,35,41)` / `rgb(173,7,7)` | `rgb(154,158,165)` / `rgb(248,81,73)` | `var(--vscode-button-background)` / `var(--vscode-errorForeground)`                                                                                 |
+| **用量百分比 · 正常** | `rgb(31,35,41)`                  | `rgb(160,165,168)`                    | ⚠️ 浅色是**字面量 `#1f2329`**（`[data-theme=light] .account-usage-percent:not(.is-empty)`，覆盖 `var(--vscode-descriptionForeground)`）；深色走变量 |
+
+- 宿主变量在预览主题下的解析值：`--vscode-errorForeground` `#ad0707 / #f85149`、`--vscode-editorWarning-foreground` `#bf8803 / #cca700`、`--vscode-descriptionForeground` `#606060 / #a0a5a8`、`--vscode-foreground` `#202020 / #e5e7e8`。
+- **另发现 3 处字面量**：① 上述浅色正常态百分比 `#1f2329`；② ⓘ 图标 `.account-api-info-btn` 浅 `#8b8f95` / 深 `#9a9ea5`（hover 走 `var(--vscode-foreground)`）；③ 明细气泡 `.api-quota-popover` 浅色档标题/金额 `#1f2329`、行标签 `#565a60`；另有进度条轨道浅色 `#e6e8eb`（背景色，非文字）。**她先选「浅深都绑 token」→ 前三处曾改绑，随后改判「颜色先不动了」已全部撤回，详见下节「追加」。**
+- 三者与仓库已定义的 `--cc-text-*` token 同值（故浅色档改绑零视觉变化）：`--cc-text-primary` = `#1f2329 / #e5e7e8`、`--cc-text-placeholder` = `#8b8f95 / #858b8f`、`--cc-text-regular` = `#565a60 / #c4c7c9`。
+
+### 追加（**已撤回，未采用**）：3 处字面量改绑 cc token（她曾选「浅深都绑 token」，后改判「颜色先不动了」）
+
+> 本节所述改动**已全部回退**（百分比、ⓘ、气泡三处恢复为改动前的字面量 / vscode 变量写法）。保留本节是因为「审计查出的 3 处字面量」与其 A/B 数值仍是有效信息，供后续点名时复用。
+
+审计查出的 3 处字面量已按她选择改绑，**并从「仅浅色档」提升为主题无关声明**（深浅共用一条规则）：
+
+- 用量百分比 `:not(.is-empty)`：`[data-theme=light] #1F2329` → **`var(--cc-text-primary, #1f2329)`**。
+- ⓘ 明细图标 `.account-api-info-btn`：浅 `#8B8F95` / 深 `#9A9EA5` 两条 → 一条 **`var(--cc-text-placeholder, #8b8f95)`**。
+- 明细气泡：标题 / 金额 → **`var(--cc-text-primary, #1f2329)`**、行标签 → **`var(--cc-text-regular, #565a60)`**（原只有浅色档有字面量，深色走 base 的 vscode token）。
+- **字重未动**（气泡金额 500 仍只在浅色档、深色保持 base 400）；状态色（预警琥珀 / 耗尽红）仍走 `--vscode-*` 状态变量。
+
+同页 A/B（同一页面注入「改前声明」逐字回放旧值，布局完全一致）：
+
+| 角色                   | 浅色 改前 → 改后           | 深色 改前 → 改后                            |
+| ---------------------- | -------------------------- | ------------------------------------------- |
+| 用量百分比 · 正常      | `rgb(31,35,41)` **零变化** | `#A0A5A8` → **`#E5E7E8`**                   |
+| ⓘ 明细图标             | `#8B8F95` **零变化**       | `#9A9EA5` → **`#858B8F`**                   |
+| 气泡标题 / 金额        | `#1F2329` **零变化**       | `#E5E7E8` **零变化**（原本就等于 token 值） |
+| 气泡行标签             | `#565A60` **零变化**       | `#A0A5A8` → **`#C4C7C9`**                   |
+| 气泡警示文案（状态色） | 零变化                     | 零变化（未动）                              |
+
+- 深色三处变化的对比度（深色侧栏底 `#181A1B`、气泡底 `#111314`）：百分比 `7.02:1 → 14.08:1`（更醒目）、ⓘ `6.49:1 → 5.06:1`（略退，仍远超图形 3:1 门槛）、气泡行标签 `7.49:1 → 10.97:1`（更清晰）。浅色参考：百分比 14.86:1、行标签（白底）6.94:1、ⓘ 3.06:1（刚好过 3:1，未动）。
+- `0 pageerror`；深浅各 2 用例实测。
+- **未随本轮改绑**：进度条轨道浅色 `#E6E8EB` —— 仓库无同名 token（`--cc-fill` = `#F0F2F5` 偏浅，绑了会变浅）→ 触发语 **「进度条轨道也绑 token」**（需先定轨道档）。
+
+### 追加 2（**已撤回，未采用**）：余额状态文字色改绑 skill 角色 token（她曾指「我的意思是走桌面端 skill 的变量」，后改判「颜色先不动了」）
+
+> 本节所述改动**已全部回退**：7 处状态色绑定删除，新增的 `--cc-color-warning` / `--cc-color-warning-soft`（浅深两档）也从 token 块移除；状态色回到 `--vscode-errorForeground` / `--vscode-editorWarning-foreground`，与改动前逐字节一致。
+> **仍有效的结论**：① 状态色的确全部来自宿主变量、无硬编码（审计表见上）；② 浅色档预警琥珀对 12px 小字对比度不足（`#BF8803` = 2.93:1）属**历史遗留未解决**，若日后处理，skill 处方为「可读文字 + 图标承担状态含义」或另立 state-text 角色，**不得静默调暗全局信号色**；③ skill 角色 token 的映射表与两档取值（下文引文）可直接复用。
+
+依据 = skill 契约（`codechat-desktop-skill` 仓库，非 wave 写法）：
+`references/desktop-theme-bridge.md` 映射表 —— `--vscode-editorWarning-foreground → --cc-color-warning`（Warning signal）、`--vscode-errorForeground → --cc-color-danger`（Error/destructive meaning）；取值 = `theme/desktop-colors.css` 两档（warning 浅 `#D97706` / 深 `#E8BF78`，danger 浅 `#DC2626` / 深 `#F19B95`）。
+
+- **wave 侧 `--cc-color-warning` 此前缺失**（只有 success / danger / info）→ 曾按 skill 补齐浅深两档 + `-soft`（`host-desktop.css` token 块；`--cc-color-danger` 等值本就与 skill 逐值一致，未动）。**已随本轮撤回，token 块现与改动前一致。**
+- 曾新增 host 层绑定（base `AccountCard.css` 不动，IDE / VS Code 宿主不受影响；回退链 = `cc token → vscode → 原字面量`），覆盖 7 处：`.account-usage-percent.is-empty`、`.account-usage-exhausted`、`.account-usage-value.is-empty`、`.api-popover-amt.is-empty`、`.api-popover-warn.is-empty` → `var(--cc-color-danger, …)`；`.account-usage-value.is-warning`、`.api-popover-warn.is-warning` → `var(--cc-color-warning, …)`。**已删除。**
+- 字号 / 字重 / 几何全未动（纯换色）。
+
+同页 A/B（注入改前的 `--vscode-*` 声明回放旧值）：
+
+| 角色                           | 浅色                  | 深色                  |
+| ------------------------------ | --------------------- | --------------------- |
+| 余额金额 · 预警                | `#BF8803` → `#D97706` | `#CCA700` → `#E8BF78` |
+| 气泡警示行 · 预警              | `#BF8803` → `#D97706` | `#CCA700` → `#E8BF78` |
+| 余额金额 · 耗尽                | `#AD0707` → `#DC2626` | `#F85149` → `#F19B95` |
+| 气泡警示行 / 气泡金额 · 耗尽   | `#AD0707` → `#DC2626` | `#F85149` → `#F19B95` |
+| 用量百分比 · 耗尽 / 用完提示行 | `#AD0707` → `#DC2626` | `#F85149` → `#F19B95` |
+
+按实际合成底色实测对比度（12px 属正常文字，门槛 4.5:1）：
+
+- **深色档全部达标且更清晰**：预警 侧栏 `7.56 → 10.11:1`、气泡 `8.07 → 10.78:1`；耗尽 侧栏 `5.21 → 8.20:1`、气泡 `5.56 → 8.75:1`。
+- 浅色 danger：`7.04 → 4.55:1`（侧栏）、`7.47 → 4.83:1`（白底）→ 仍达标。
+- ⚠️ **浅色 warning 不达标**：改前 `#BF8803` = **2.93:1**（白底 3.12），改绑 skill 值 `#D97706` 后 = **3.00:1**（白底 3.19）→ 仍 < 4.5:1。属**历史遗留**（改前就不达标），本次略升但未解决。skill 明确写了处置原则：_「Existing signal colors are not automatically readable text colors… When a state color fails, use existing primary/regular text for the readable label and retain state meaning through a labelled icon/indicator, or propose a dedicated state-text role with measured Light/Dark pairs. Do not silently darken a global signal color.」_ → **未擅自调暗**，处置方式待她裁决（A 保持 skill 信号色 / B 文案改可读色 + 图标承担状态含义 / C 另立 `--cc-state-text-warning` 角色交 codex 回写）。
+- `0 pageerror`（3 用例 × 2 主题 × 静止/悬停）。
+
+### 残留（未授权，供后续点名）
+
+- 气泡内文字仍是 12px（0916 第 6 轮按设计稿 13651:4864 定值）→ 触发语 **「气泡也大一号」**。
+- 账户名 `.account-card-name` 已是 14px；字重由「不加粗」那轮处理为 400 → 触发语 **「账户名也一起看」**。
+- **颜色相关一律暂停**（她「这里颜色先不动了」）：以下候选均已冻结，需她另行点名才会动 ——
+  - 进度条轨道：skill `design-system.md:106` 明确「`--cc-fill-track` **就是**账户用量进度条的轨道色（不是滚动条轨道）」，值 浅 `#EBEDF0` / 深 `#303436`；wave 现为浅色字面量 `#E6E8EB` + 深色 color-mix → 触发语 **「进度条轨道走 fill-track」**。
+  - 进度条填充：skill `design-system.md:162` 描述该设计稿「filled `--cc-text-primary`」，wave 现为 `--vscode-button-background`（浅色实测同 `#1F2329`、深色 `#E0E3E5` vs token `#E5E7E8`）→ 触发语 **「进度条填充走 text-primary」**。
+  - 用量百分比浅色字面量 `#1f2329`、ⓘ 图标浅深两条字面量、气泡浅色档 `#1F2329` / `#565A60` 三处（审计见上）→ 触发语 **「账户卡那三处字面量还是绑 token」**。
+  - 浅色预警琥珀 12px 小字对比度 2.93:1（历史遗留）→ 触发语 **「浅色预警小字对比度」**。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-account-usage-type-0916.mjs <tag>`（4 用例 × 2 主题枚举用量区内所有直接承载文本的节点：computed 字号/行高/字重/颜色/盒 + 裁剪图 + `pageerror` 监听）、`CC02/probe-account-usage-colors-0916.mjs`（枚举命中该节点的全部 `color` 声明，区分 `var()` / 字面量；自身无声明时沿继承链定位上游声明；并读变量实际解析值）、`CC02/probe-usagelink-tokens-0916.mjs`（同页 A/B：先测改后，再 `addStyleTag` 注入改前声明测改前；气泡裁剪框按气泡 rect 计算；ⓘ 的图像色单列静止态采集，避免混入 hover 色）、`CC02/probe-usage-statecolors-0916.mjs`（状态色同页 A/B：静止 + 悬停两相，含气泡警示行/金额）、`CC02/build-account-usage-type-0916.py`（内联图片生成证据页，含按实际底色算的对比度表）。
+- 数据与图：`CC02/走查/0916-账户用量字号/{before,final}-0916-usage-type.json`、`colors-0916-usage.json`、`tokens-0916-usagelink-colors.json`、`statecolors-0916-usage.json`、`final-{case}-{theme}.png`、`tokens-{before,after}-{popover,usage}-*-{light,dark}.png`、`对比-用量区字号-{light,dark}.png`（已撤回的 14px 版留档）。
+- 证据页（字号表 / 几何表 / 状态色绑定表 / 变量解析值 / 4 状态最终态截图 / §7 cc token 改绑 / §8 skill 状态色改绑 + 对比度；**§7 / §8 已标注「已撤回」**）：`CC02/走查/0916-账户用量字号/0916-账户用量字号-实施.html`（Artifact https://codechat.codewave.163.com/code/artifact/ybcochklxt ）。
+- 踩坑：① CSSOM 枚举「分组规则」必须用 `r.selectorText === undefined` 判断 —— 新版 Chrome 的 `CSSStyleRule` 也带（空的）`cssRules`，用 `if (r.cssRules)` 会把所有普通规则整批漏掉；② 采 ⓘ 这类「hover 会变色」的控件时，静止色必须单独在 hover 之前采，注入改前声明时也要带 `:not(:hover)`，否则 A/B 会拿「改前静止色」比「改后 hover 色」；③ **回退换色时并行窗口刚在同一文件提交了新 commit**（`12130ba8`「设置页返回 1 级字色」）→ 不能用 `git checkout` 整文件回退，必须逐段 `Edit` 还原成 HEAD 原文，再用 `git diff` 核对「该区域只剩字号那一条」。
+- 本轮落地内容：**纯一条字号规则 + 注释**（`host-desktop.css`），无 TS 改动、无 token 增删、无换色。
+
 ## 0916 评论（侧栏「新对话」文案提到 1 级文字色）（工作区未提交）
 
 **她的评论**（点侧栏 `span`「新对话」）：「这里的字体颜色深浅模式都用 1 级的」。

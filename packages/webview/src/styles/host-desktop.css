@@ -1520,6 +1520,17 @@
 [data-host="desktop"] .account-usage-row .account-usage-value-text {
   font-weight: 500;
 }
+/* 账户卡用量区（`.account-card-usage-inline` = 套餐用量 / 百分比 / API 余额 /
+   金额）字号**统一 12px**（契约 design-system.md:66 的 compact metadata 档）：
+   0916 曾按评论④「字号都大一号」把四段文字抬到 14px/20px，随后设计师改判
+   「还是改回来，都用 12px」→ 四段文字回到 base 的 12px（不再覆盖字号，行高
+   随之回到 normal，故用量区 / 卡片高度回到 63 / 108px）。
+   仅保留「套餐余量已用完」提示的同档修正：原 11px 越档（契约无此档位），
+   按评论固定为 12px；其 line-height 15px 与盒宽 231px 未动，故该行几何零变化。
+   ⓘ 明细图标是 16px svg，不属文字，未动。 */
+[data-host="desktop"] .account-usage-exhausted {
+  font-size: 12px;
+}
 /* ⓘ 明细钮：官方 info 图标（16px，灰 #8B8F95）已内嵌 svg 替换 codicon；
    浅色取稿 #8B8F95（base descriptionForeground 偏深）。hover 仅颜色加深
    （base hover 已切 foreground），不出背景（设计稿 ⓘ 无 hover 底色）。 */
