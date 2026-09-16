@@ -146,9 +146,17 @@ export class PluginCore {
           );
         for (const p of manifest.plugins) {
           const pluginId = `${p.name}@${m.name}`;
-          const installed = installedPlugins.plugins.find(
+          const scope =
+            this.pluginScopeManager.findPluginScope(pluginId) ?? undefined;
+          const installedEntry = installedPlugins.plugins.find(
             (ip) => ip.name === p.name && ip.marketplace === m.name,
           );
+          // 安装状态以当前工作目录为准（spec plugin A-012）：配置链里有启用记录、
+          // 且本机已有安装产物，才视为「已安装」。安装产物单独存在只说明该插件曾被
+          // 下载过（例如以项目/本地作用域装在别的项目里），若据此判为已安装，会在
+          // 当前目录渲染出「已安装 + 作用域未知」。作用域标签与安装态同源，未安装时
+          // 不回传作用域。
+          const installed = scope ? installedEntry : undefined;
           allMarketplacePlugins.push({
             ...p,
             marketplace: m.name,
@@ -160,8 +168,7 @@ export class PluginCore {
             ),
             cachePath: installed?.cachePath,
             projectPath: installed?.projectPath,
-            scope:
-              this.pluginScopeManager.findPluginScope(pluginId) || undefined,
+            scope: installed ? scope : undefined,
           });
         }
       } catch {
