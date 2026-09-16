@@ -309,6 +309,10 @@ Usage:
         });
       }
 
+      // A successful read may pull in the memory files of its ancestor
+      // directories (see `collectNestedMemoryFiles`); only Read triggers this.
+      context.messageManager?.triggerNestedMemory(actualFilePath);
+
       // Check if file is empty
       if (fileContent.length === 0) {
         logger.warn(`File ${filePath} exists but has empty contents`);

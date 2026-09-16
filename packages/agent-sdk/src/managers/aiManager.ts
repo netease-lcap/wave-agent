@@ -1650,6 +1650,23 @@ ${question}`;
             });
           }
 
+          // Nested memory: a read inside a subtree pulls in that subtree's
+          // AGENTS.md (persisted as a meta message, aligned with Claude Code's
+          // nested_memory attachment). Runs with the rules above — before the
+          // message snapshot below, so the file lands in this request rather
+          // than the next one. Optional call: hosts and tests register partial
+          // MessageManager doubles, and absence reads as "nothing triggered".
+          const nestedMemories =
+            (await this.messageManager.collectNestedMemoryFiles?.()) ?? [];
+          for (const memory of nestedMemories) {
+            this.messageManager.addUserMessage({
+              content: wrapInSystemReminder(
+                `Contents of ${memory.path}:\n\n${memory.content}`,
+              ),
+              isMeta: true,
+            });
+          }
+
           // Pre-request auto-compaction: estimate the context about to be sent
           // and compact BEFORE issuing the request, so an over-limit request
           // never goes out. Skipped on fork paths (they use runForkLoop).
