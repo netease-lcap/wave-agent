@@ -7,6 +7,8 @@ import { atomicWriteFile } from "../utils/atomicWrite.js";
 import { Container } from "../utils/container.js";
 import { getGitCommonDir } from "../utils/gitUtils.js";
 import { pathEncoder } from "../utils/pathEncoder.js";
+import { MEMORY_ENTRYPOINT_NAME } from "../constants/memory.js";
+import { truncateEntrypointContent } from "../utils/memoryEntrypoint.js";
 
 export class MemoryService {
   private _cachedProjectMemory: string | null = null;
@@ -76,19 +78,20 @@ export class MemoryService {
   }
 
   /**
-   * Get the first 200 lines of MEMORY.md.
+   * Get the auto-memory entrypoint (`MEMORY.md`), bounded by both the line and
+   * the character cap. Truncation appends a warning naming the cap that fired,
+   * so the model can tell the index it is reading is incomplete.
    */
   async getAutoMemoryContent(workdir: string): Promise<string> {
     if (this._cachedAutoMemoryContent !== null) {
       return this._cachedAutoMemoryContent;
     }
     const memoryDir = this.getAutoMemoryDirectory(workdir);
-    const memoryFile = path.join(memoryDir, "MEMORY.md");
+    const memoryFile = path.join(memoryDir, MEMORY_ENTRYPOINT_NAME);
 
     try {
-      const content = await fs.readFile(memoryFile, "utf-8");
-      const lines = content.split("\n").slice(0, 200);
-      this._cachedAutoMemoryContent = lines.join("\n");
+      const raw = await fs.readFile(memoryFile, "utf-8");
+      this._cachedAutoMemoryContent = truncateEntrypointContent(raw).content;
       return this._cachedAutoMemoryContent;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {

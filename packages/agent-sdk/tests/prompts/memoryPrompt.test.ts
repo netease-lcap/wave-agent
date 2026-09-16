@@ -8,7 +8,7 @@ import {
   buildHowToSaveSection,
 } from "../../src/prompts/memoryTypes.js";
 import {
-  MAX_MEMORY_ENTRYPOINT_BYTES,
+  MAX_MEMORY_ENTRYPOINT_CHARS,
   MAX_MEMORY_ENTRYPOINT_LINES,
 } from "../../src/constants/memory.js";
 
@@ -55,7 +55,7 @@ describe("auto-memory prompt", () => {
       expect(prompt).toContain("**Step 2**");
       expect(prompt).toContain("It has no frontmatter.");
       expect(prompt).toContain(
-        `lines after ${MAX_MEMORY_ENTRYPOINT_LINES} or bytes past ${MAX_MEMORY_ENTRYPOINT_BYTES}`,
+        `lines after ${MAX_MEMORY_ENTRYPOINT_LINES} or characters past ${MAX_MEMORY_ENTRYPOINT_CHARS}`,
       );
     });
 

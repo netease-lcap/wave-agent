@@ -122,7 +122,7 @@ describe("MemoryService Auto-Memory", () => {
   });
 
   describe("getAutoMemoryContent", () => {
-    it("should return the first 200 lines of MEMORY.md", async () => {
+    it("should bound MEMORY.md by the line cap and warn about it", async () => {
       vi.mocked(getGitCommonDir).mockReturnValue("/repo/root/.git");
       vi.mocked(pathEncoder.encodeSync).mockReturnValue("repo-root-hash");
 
@@ -136,10 +136,25 @@ describe("MemoryService Auto-Memory", () => {
         "/repo/root/worktree",
       );
 
-      const lines = result.split("\n");
-      expect(lines.length).toBe(200);
-      expect(lines[0]).toBe("Line 1");
-      expect(lines[199]).toBe("Line 200");
+      expect(result).toContain("Line 1\n");
+      expect(result).toContain("Line 200");
+      expect(result).not.toContain("Line 201");
+      expect(result).toContain("WARNING: MEMORY.md is 300 lines (limit: 200)");
+    });
+
+    it("should leave a MEMORY.md under both caps untouched", async () => {
+      vi.mocked(getGitCommonDir).mockReturnValue("/repo/root/.git");
+      vi.mocked(pathEncoder.encodeSync).mockReturnValue("repo-root-hash");
+      vi.mocked(fsPromises.readFile).mockResolvedValue(
+        "# Project Memory\n\n- [a](a.md) — one line\n",
+      );
+
+      const result = await memoryService.getAutoMemoryContent(
+        "/repo/root/worktree",
+      );
+
+      expect(result).toBe("# Project Memory\n\n- [a](a.md) — one line");
+      expect(result).not.toContain("WARNING");
     });
 
     it("should return empty string if MEMORY.md doesn't exist", async () => {
