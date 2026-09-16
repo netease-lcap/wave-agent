@@ -4482,6 +4482,101 @@ base `MessageInput.css:169` 有一条 `.ai-send-btn:disabled:hover { background:
 - 取证注意：本轮「改前」用同面注入复现 base 规则（单属性变化适用）；深色档的注入会被 `--cc-fill` 深色值污染，
   深色基线取**未注入那次真实运行**的读数（静止与 hover 同为 8% 白）。
 
+## 0916 评论（所有图标 hover 时提亮：浅 1 级 #1F2329 / 深白 #FFFFFF）（工作区未提交）
+
+**她的评论**（点面板页签右侧 `button.preview-pane-button`）：
+「所有的 icon 能不能像这里这样 hover 的时候颜色会提亮」。
+范围她同日拍板：**「排除主按钮 / 危险 / 语义色」**——即只补「hover 只变底、图标色不动」的
+ghost 图标与「图标 + 文字」控件。
+
+**参考语言**（同文件 `.preview-pane-button` 第 1691 / 1698 行）：常态灰 → hover **1 级文字色**，
+浅 `#565A60 → #1F2329`、深 `#9A9EA5 → #FFFFFF`。hover 底色仍由原有 `--cc-fill-hover` 规则提供，
+本条只补文字 / 图标色。
+
+**规则**（`host-desktop.css` 末尾新增，浅 / 深各两条共 4 组选择器）：每组都写两份 `:is(...)`——
+`X:hover`（改按钮自身文字色）与 `X:hover :is(svg, .codicon)`（图标自带颜色的场景，如
+`.desktop-session-group-header .codicon`）。15 个选择器：
+`.desktop-sidebar-more-btn:not(.is-active)`、`.desktop-sidebar-new-chat`、`.desktop-session-more-btn`、
+`.desktop-session-group-header`、`.account-card-more-btn`、`.account-card-collapse-btn`、
+`.header-button:not(.active)`、`.desktop-pane-close`、`.write-preview-open`、`.toolbar-icon-button`、
+`.desktop-panel-tabs-add`、`.message-action-btn`、`.task-list-chevron`、`.queued-chevron`、
+`.settings-nav-item:not(.is-active)`。
+
+> 注：第三十八轮图标规范原写「normal 与 hover 图标色均 #565A60…图标色保持不变」，
+> 本条即对该句的修订——规范后续按「hover 提亮到 1 级」理解（待 codex 一并回写 skill）。
+
+### 实测（CDP `CSS.forcePseudoState({forcedPseudoClasses:['hover']})`，1440×900 DPR2，6 状态 × 浅/深）
+
+24 个 icon 签名盘点，改前 → 改后（「变了但未命中目标值」清单为**空**）：
+
+| 控件                                 | 区域   | 浅色                  | 深色                  |
+| ------------------------------------ | ------ | --------------------- | --------------------- |
+| `.desktop-sidebar-more-btn`          | 侧栏   | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.desktop-sidebar-new-chat`          | 侧栏   | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.desktop-session-more-btn`          | 侧栏   | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.desktop-session-group-header`      | 侧栏   | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.account-card-collapse-btn`         | 侧栏   | #606060 → **#1F2329** | #A0A5A8 → **#FFFFFF** |
+| `.header-button.header-panel-toggle` | 对话头 | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.desktop-pane-close`                | 对话头 | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.write-preview-open`                | 对话头 | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.toolbar-icon-button`               | 工具行 | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+| `.message-action-btn`                | 消息行 | #606060 → **#1F2329** | #CCCCCC → **#FFFFFF** |
+| `.settings-nav-item`（未选中）       | 设置页 | #565A60 → **#1F2329** | #9A9EA5 → **#FFFFFF** |
+
+### 排除（改前改后同值）
+
+| 类别                             | 控件                                                                                                                                                                          | 浅                | 深      |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------- | ------- |
+| 实底主按钮                       | `.settings-save-btn.settings-plugin-new…`                                                                                                                                     | #FFFFFF           | #191C1E |
+| 危险 / 删除                      | `.desktop-session-menu-item.is-danger`                                                                                                                                        | #D92D20           | #F4655C |
+| 发送按钮禁用态（同批已治）       | `.send-button.ai-send-btn:disabled`                                                                                                                                           | #BEC1C6           | #FFFFFF |
+| 选中态                           | `.settings-nav-item.is-active`                                                                                                                                                | #202020           | #9A9EA5 |
+| 关闭族（另一窗口本轮已改）       | `.toast-close`                                                                                                                                                                | #202020           | #E5E7E8 |
+| 设置「返回」（另一窗口本轮已改） | `.settings-back`                                                                                                                                                              | #202020           | #E5E7E8 |
+| 常态已是 1 级（无需改）          | `.desktop-host-trigger`、`.desktop-workdir-trigger`、`.confirmation-close-btn`、`.desktop-session-menu-item`、`.permission-mode-select.mode-default`、`.account-api-info-btn` | #202020 / #202020 | #E5E7E8 |
+
+只改颜色不动几何：涉及控件的盒 / 字号 / 圆角 / hover 底色盘点半前盘后逐值相同。
+
+### 未覆盖 / 待点名
+
+- `.desktop-panel-tabs-add`、`.task-list-chevron`、`.queued-chevron`、`.preview-tab-close` 已在规则清单内，
+  但 `desktop-full` 用例里**未渲染**（点检 存在=0），无活体证据；触发语「面板页签＋ / 任务卡 chevron 也要提亮」。
+- 输入区拖动柄是无 class 的 `span[role=button]`、色值写在**行内**（`--vscode-descriptionForeground`），
+  CSS 覆盖需 `!important` 或改 TSX，本轮未动；触发语「工具行拖动柄也提亮」。
+- `.message-action-btn` 在用例里**未布局**（盒 0×0，`visible: false`，按需挂载但容器不占位），
+  只有计算值证据（浅 #606060 → #1F2329 / 深 #CCCCCC → #FFFFFF），没有裁剪图。
+
+### 可裁剪对照（6 个可见控件，浅 / 深 × 改前 / 改后）
+
+同页回退：注入旧值 `!important` 重建「改前」，鼠标与强制 `:hover` 都保持在位，只改颜色。
+像素差异落在图标笔画内（悬停底色前后同值）：
+
+| 控件              | 浅色差值 | 深色差值 |
+| ----------------- | -------- | -------- |
+| 侧栏「新对话」    | 0.48%    | 0.48%    |
+| 侧栏 more（活动） | 3.18%    | 3.18%    |
+| 会话分组标题      | 1.35%    | 1.35%    |
+| 会话行 more       | 0.38%    | 0.38%    |
+| 对话头 面板切换   | 3.54%    | 3.54%    |
+| pane 关闭         | 1.24%    | 1.24%    |
+
+对照图 `CC02/走查/0916-icon-hover/0916-icon-hover-对照.png`（行 = 控件，列 = 浅前 / 浅后 / 深前 / 深后）。
+
+### 验证脚本与证据
+
+- 盘点脚本：`CC02/probe-icon-hover-inventory-0916-v3.mjs`（v1/v2 用鼠标坐标 hover 会漏 0×0 盒、
+  被 toast 遮挡与离屏元素，≤56px 宽度过滤会漏宽导航项，v3 改用 CDP 强制伪类）。
+- 裁剪脚本：`CC02/probe-icon-hover-crops-0916.mjs` + 拼图 `CC02/build-icon-hover-sheet-0916.py`
+  （运行需拷到 `/tmp/pw-0916/`，`playwright-core` 装在那里）。运行 / 取证三坑（已写进脚本注释）：
+  ① CDP `DOM.getDocument` 必须 `depth: -1`，`depth: 1` 时深层节点
+  未推给客户端、`forcePseudoState` **静默不生效**；② Playwright `addStyleTag` **没有 `id` 选项**，
+  自建 `<style id>` 才能摘掉回退样式（否则旧值一直 `!important` 挂着）；③ 首屏 toast 是整层遮罩，
+  会盖住对话头按钮与 pane 关闭按钮（`elementFromPoint` 命中 `.toast--top`），取证前先移除。
+- 证据：`CC02/走查/0916-icon-hover/inventory-0916-{before,after}.json`（24 签名 × 6 状态 × 浅/深，
+  `errs: []`）、`inventory-0916-{,v2,v3}.json` 中间版本、`inventory-{light,dark}.png`、
+  `hover-<控件>-{light,dark}-{before,after}.png`、`hover-crops-0916.json`、`hover-diff-0916.json`。
+- 本轮纯 CSS（`host-desktop.css` 末尾 4 条规则 + 注释），无 TS 改动；`errs: []`（0 pageerror）。
+
 ---
 
 ## 0916 评论（设置页页头 h1：字体绑定审计 + 字重 600 → 500）（已随本批推送）

@@ -3102,3 +3102,111 @@
 [data-host="desktop"] .tool-error {
   font-style: normal;
 }
+
+/* ═══ 0916 评论：所有图标 hover 时提亮 ═══
+   她的评论（点面板页签右侧 `button.preview-pane-button`）：「所有的 icon 能不能像
+   这里这样 hover 的时候颜色会提亮」。
+
+   参考语言（同文件 `.preview-pane-button` 的 hover，上方 1691 / 1698 行）：
+   常态控件灰 → hover **1 级文字色** —— 浅 `#565A60 → #1F2329`、深 `#9A9EA5 → #FFFFFF`
+   （底色的 fill-hover 由原有规则提供，本条只补文字/图标色）。
+
+   范围（她 0916 拍板「排除主按钮/危险/语义色」）：把桌面壳里「hover 只变底、图标色不动」
+   的 ghost 图标 / 图标+文字控件补上同款提亮。第三十八轮图标规范原写「hover 图标色保持
+   不变」——本条即对该句的修订，规范后续按「hover 提亮」理解。
+
+   **不纳入**（各有更合适的语义，故不动）：
+   - 实底主按钮（`.settings-save-btn` / 弹窗主按钮 / `.send-button` 可用态）：白字反白，
+     提亮会变成深字，属另一套语言；
+   - 危险红（`.desktop-session-menu-item--danger` 等）、品牌红（`.desktop-sidebar-more-btn.is-active`
+     —— 已用 `:not(.is-active)` 摘出）、状态/语义图标（`.toast-close` 与其语义图标常态已是
+     1 级或语义色，没有更亮档）；
+   - 已到位的 10 族（`.preview-pane-button` / `.account-api-info-btn` / `.confirmation-close-btn` /
+     `.desktop-session-menu-item` / `.desktop-host-trigger` / `.desktop-workdir-trigger` /
+     `.permission-mode-select` / `.queued-action-button` / 页签关闭 `.preview-tab-close` /
+     设置页「返回」`.settings-back`）。
+
+   只改颜色：盒尺寸、圆角、字号、间距、hover 底色、`opacity`、图标几何一律不动。
+   选择器同时命中「控件自身」与「控件内的 svg/.codicon」——后者用于修掉那些给图标写了
+   独立 color 的元素（如 `.desktop-session-group-header .codicon`）。 */
+
+[data-host="desktop"][data-theme="light"]
+  :is(
+    .desktop-sidebar-more-btn:not(.is-active),
+    .desktop-sidebar-new-chat,
+    .desktop-session-more-btn,
+    .desktop-session-group-header,
+    .account-card-more-btn,
+    .account-card-collapse-btn,
+    .header-button:not(.active),
+    .desktop-pane-close,
+    .write-preview-open,
+    .toolbar-icon-button,
+    .desktop-panel-tabs-add,
+    .message-action-btn,
+    .task-list-chevron,
+    .queued-chevron,
+    .settings-nav-item:not(.is-active)
+  ):hover,
+[data-host="desktop"][data-theme="light"]
+  :is(
+    .desktop-sidebar-more-btn:not(.is-active),
+    .desktop-sidebar-new-chat,
+    .desktop-session-more-btn,
+    .desktop-session-group-header,
+    .account-card-more-btn,
+    .account-card-collapse-btn,
+    .header-button:not(.active),
+    .desktop-pane-close,
+    .write-preview-open,
+    .toolbar-icon-button,
+    .desktop-panel-tabs-add,
+    .message-action-btn,
+    .task-list-chevron,
+    .queued-chevron,
+    .settings-nav-item:not(.is-active)
+  ):hover
+  :is(svg, .codicon) {
+  color: #1f2329;
+}
+
+[data-host="desktop"][data-theme="dark"]
+  :is(
+    .desktop-sidebar-more-btn:not(.is-active),
+    .desktop-sidebar-new-chat,
+    .desktop-session-more-btn,
+    .desktop-session-group-header,
+    .account-card-more-btn,
+    .account-card-collapse-btn,
+    .header-button:not(.active),
+    .desktop-pane-close,
+    .write-preview-open,
+    .toolbar-icon-button,
+    .desktop-panel-tabs-add,
+    .message-action-btn,
+    .task-list-chevron,
+    .queued-chevron,
+    .settings-nav-item:not(.is-active)
+  ):hover,
+[data-host="desktop"][data-theme="dark"]
+  :is(
+    .desktop-sidebar-more-btn:not(.is-active),
+    .desktop-sidebar-new-chat,
+    .desktop-session-more-btn,
+    .desktop-session-group-header,
+    .account-card-more-btn,
+    .account-card-collapse-btn,
+    .header-button:not(.active),
+    .desktop-pane-close,
+    .write-preview-open,
+    .toolbar-icon-button,
+    .desktop-panel-tabs-add,
+    .message-action-btn,
+    .task-list-chevron,
+    .queued-chevron,
+    .settings-nav-item:not(.is-active)
+  ):hover
+  :is(svg, .codicon) {
+  color: #ffffff;
+}
+
