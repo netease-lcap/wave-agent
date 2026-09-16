@@ -58,11 +58,6 @@ export interface ToolPlugin {
     availableSkills?: SkillMetadata[];
     workdir?: string;
     isSubagent?: boolean;
-    /**
-     * MCP tools the sandbox may reach, supplied by ToolManager so that `Exec`
-     * can render its catalog. Only `Exec` reads it.
-     */
-    execPool?: import("../exec/catalog.js").ExecPoolEntry[];
   }) => string;
   /**
    * Whether this tool is safe to run in parallel with other tools.

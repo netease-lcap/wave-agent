@@ -3,8 +3,9 @@
  *
  * Almost everything here is a tunable default, not a contract. In particular no
  * *knob* may be rendered into model-visible text: the catalog has to stay
- * byte-identical for an unchanged MCP pool, so changing a budget must not
- * change the prompt (see `Exec`'s `prompt()`).
+ * byte-identical for an unchanged MCP pool, so changing a budget must not change
+ * what the model reads (see `Exec`'s description and
+ * `exec/catalogAnnouncement.ts`).
  *
  * The exception is `EXEC_RESERVED_NAMESPACE`: it is part of the sandbox API
  * surface, so the tool description has to name it (and it is derived from the
@@ -36,8 +37,8 @@ export const EXEC_DEFAULT_MAX_RESULT_CHARS = 100_000;
 export const EXEC_DEFAULT_MAX_IMAGES = 4;
 
 /**
- * Maximum size of the MCP catalog rendered into the Exec tool description, in
- * estimated tokens (a plain `chars / 4`; see `estimateCatalogTokens`).
+ * Maximum size of the MCP catalog, in estimated tokens (a plain `chars / 4`; see
+ * `estimateCatalogTokens`).
  *
  * Provenance: opencode's `catalogBudget` — `defaultCatalogBudget = 2_000` in
  * `packages/codemode/src/tool-runtime.ts`. Deliberately not CJK-aware: MCP tool

@@ -396,16 +396,40 @@ describe("renderCatalog", () => {
     expect(entryLines(rendered.text)).toHaveLength(3);
   });
 
-  it("announces truncation with counts and the search path", () => {
+  it("announces truncation with counts, and leaves the search form to the announcement", () => {
     const rendered = renderCatalog(entries, 2);
     expect(rendered.truncated).toBe(true);
     expect(rendered.shown).toBeLessThan(3);
     expect(rendered.text).toContain(
       `PARTIAL — ${rendered.shown} of 3 tools shown`,
     );
-    // The notice has one line, not a signature block, so it teaches the same
-    // call in its one-line form — still derived from the same schema.
-    expect(rendered.text).toContain(renderSearchCallForm());
+    // One spelling of the way back, and it lives in the announcement's search
+    // section (which exists exactly when this line does): repeating the call form
+    // here is how prose and implementation would drift apart.
+    expect(rendered.text).not.toContain(renderSearchCallForm());
+    expect(rendered.text).not.toContain("search");
+  });
+
+  it("reports per-server counts alongside the rendered entries", () => {
+    const pooled = [
+      { name: "mcp__alpha__t1" },
+      { name: "mcp__alpha__t2" },
+      { name: "mcp__beta__t1" },
+    ];
+    // Room for a single entry: alpha gets one, beta's turn never comes.
+    const rendered = renderCatalog(pooled, 6);
+
+    // The announcement can only diff counts, so the snapshot has to come back from
+    // the renderer — recomputing it would mean parsing the rendered prose.
+    expect(rendered.namespaces).toEqual([
+      { name: "alpha", count: 2, shown: 1 },
+      { name: "beta", count: 1, shown: 0 },
+    ]);
+  });
+
+  it("reports every server's full count even when nothing is truncated", () => {
+    const rendered = renderCatalog(entries, 10_000);
+    expect(rendered.namespaces).toEqual([{ name: "srv", count: 3, shown: 3 }]);
   });
 
   it("names every server, with counts, when the catalog is truncated", () => {
