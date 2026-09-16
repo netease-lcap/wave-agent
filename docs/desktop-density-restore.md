@@ -4482,7 +4482,7 @@ base `MessageInput.css:169` 有一条 `.ai-send-btn:disabled:hover { background:
 - 取证注意：本轮「改前」用同面注入复现 base 规则（单属性变化适用）；深色档的注入会被 `--cc-fill` 深色值污染，
   深色基线取**未注入那次真实运行**的读数（静止与 hover 同为 8% 白）。
 
-## 0916 评论（所有图标 hover 时提亮：浅 1 级 #1F2329 / 深白 #FFFFFF）（工作区未提交）
+## 0916 评论（所有图标 hover 时提亮：浅 1 级 #1F2329 / 深白 #FFFFFF）（已随本批推送）
 
 **她的评论**（点面板页签右侧 `button.preview-pane-button`）：
 「所有的 icon 能不能像这里这样 hover 的时候颜色会提亮」。
@@ -4637,7 +4637,7 @@ ghost 图标与「图标 + 文字」控件。
 - 证据目录 `CC02/走查/0916-设置页标题字重/`：`measure.json`、`pixel.json`、`h1-{light,dark}-{global,plugins}-{before,after}.png`、
   `h1-*-full-*.png`、`sbs-*`，自测页 `0916-设置页标题字重-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/0hhprwwhoz ）。
 
-## 0916 评论（对话头图标按钮：默认色补齐 + hover 底与刷新按钮一致）（工作区未提交）
+## 0916 评论（对话头图标按钮：默认色补齐 + hover 底与刷新按钮一致）（已随本批推送）
 
 **她的两条评论**（都在侧栏收起态的对话头左侧）：
 ① 点 `button.header-button`（「展开侧边栏」）「深色模式这个图标的默认色不对，现在很亮」；
@@ -4701,7 +4701,7 @@ ghost 图标与「图标 + 文字」控件。
   （元素定位）、`header-open-dom-{light,dark}.html`。
 - 本轮纯 CSS（`host-desktop.css` 末尾新增 3 组规则 + 注释），无 TS 改动。
 
-## 0916 评论③（侧栏品牌行图标按钮 hover 底色：漏改补齐）（工作区未提交）
+## 0916 评论③（侧栏品牌行图标按钮 hover 底色：漏改补齐）（已随本批推送）
 
 **她的评论**：点 `svg.header-icon` @
 `#root > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div > span:nth-of-type(2) > button > svg`
