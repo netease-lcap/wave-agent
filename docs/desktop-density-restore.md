@@ -3635,6 +3635,83 @@ lucide 原稿按 24 网格出图，直接塞进 16px 盒后 1.4 被等比缩成 
 - 证据目录 `CC02/走查/0916-字重/`：`dark-{before,after}-{nav-session,menu-permission,menu-account,nav-settings}.png`、`verify.json`。
 - 本轮无 TS 改动（纯 CSS 字重），未跑 type-check。
 
+---
+
+## 0916 账户热区 hover 审计 →（用户改判）侧栏 hover 统一到「普通会话行」档：深色 8% 白 / 浅色 `--cc-fill-hover`（已随本批推送）
+
+### 起因与审计结论
+
+8899 预览走查评论 `div.account-card-hotzone`（侧栏底部账户卡片个人信息行，「Aadmin@corp.netease.com」）「检查深色模式这里的hover色是否符合规范」。审计结论 = **不符合规范**（审计页 Artifact https://codechat.codewave.163.com/code/artifact/n7n3rgt6xk ，审计 only 未改码）：
+
+- 深色生效规则是裸 alpha `rgba(255,255,255,.14)`（`host-desktop.css:764-766`），未消费语义 hover 面 token；叠侧栏底 `--cc-bg-navigation #181A1B` 后实测渲染 `#383A3B` —— 比契约 hover 面 `--cc-fill-hover #303436` 亮 **+8/+6/+5**，而与契约按下面 `--cc-fill-pressed #393E41` 只差 **−1/−4/−6**（即普通 hover 用掉了按下档亮度）。
+- 同侧栏层级倒挂：普通会话行 hover 8% 白（合成 `#2A2B2C`）比契约还暗一档；「当前会话」持久选中 12% 白（合成 `#343536`）**比热区 hover 更暗**。
+- 浅色同族同样偏出且方向不一致：热区 `#E2E4E8` 比契约 `#EEF0F3` 重一档、比按下面 `#E7E9ED` 还重；而同侧栏会话行 /「新建对话」浅色 hover 都已是 `#EEF0F3`。
+- 值出处（非本轮回归）：第十二轮「hover `#E2E4E8`（深色 14% 白）保留」，当轮验收表只测了浅色 `rgb(226,228,232)`，深色值未做像素验收。
+
+### 权威依据（逐字）
+
+- skill `theme/desktop-colors.css:147` `--cc-fill-hover: #303436;`（深色档；`:49` 浅色 `#eef0f3`），且 `scripts/build_desktop_dark.py:37` 将其列入 user-approved 集。
+- skill `references/desktop-theme-bridge.md:15`：| `--vscode-list-hoverBackground` | `--cc-fill-hover` | **Ordinary row hover** |。
+- skill `references/dark-theme.md`：State backgrounds are opaque for predictable layering. Alpha is reserved for scrollbar thumbs, scrims, focus rings and shadows where compositing is intentional.
+- skill `references/design-system.md:171` 只规定了热区几何（`30px` tall），未单列 hover 色值 → 适用通用 hover 面契约。
+- 用户 0916 指示（两步）：先 **「按 A 改，新对话的hover态一起改」**（A = 深色档回接 `--cc-fill-hover #303436`），实施并自测后用户追问 **「账户热区 hover、新建对话 hover，可以统一成普通会话行 hover（8% 白）吗？会有什么问题吗，hover为什么会有这么多颜色」** → 我给出四档实测对比（决策页 Artifact https://codechat.codewave.163.com/code/artifact/h13p0js8q6 ，含真元素 4 档并排与对比度步长）后，用户裁决：**统一范围 = 账户热区 + 新建对话 + 账户卡「更多」按钮；浅色同步**（即 A 档被本次覆盖）。
+
+### 为什么会有多套 hover 颜色（供契约侧参考）
+
+三套来源并存、且互不拉通：① 契约语义 hover 面（不透明 `#303436`/`#EEF0F3`）为**浮层/面板面**设计，落在更暗的导航底上会变成「重一步」；② 侧栏手写 **α 阶梯**（6% / 8% / 12% / 14% 白）——早期深色无 Figma 权威帧，逐轮按单组件评论定「中性百分之几白」，从无一次拉通；③ VS Code 宿主 token（`list-hoverBackground` 已桥接、`toolbar-hoverBackground` 未桥接）。根因：**不透明定值在不同面上步长不同，α 白则到处近似**，「一个值走全站」与「每面步长一致」不可兼得。
+
+实测对比度步长（vs 深色导航底 `#181A1B`）：8% 白 `#2A2B2C` = **1.231**｜`--cc-fill-hover #303436` = 1.389｜选中 12% 白 `#343536` = 1.421｜原 14% 白 `#383A3B` = 1.527｜`--cc-fill-pressed #393E41` = 1.613。浅色参照（vs `#F7F8FB`）：`#EEF0F3` = 1.075、`#E2E4E8` = 1.199、选中 `#EBEDF0` = 1.104。→ 关键结论：用契约值会让侧栏 hover（1.389）与持久选中（1.421）几乎同亮（差 0.03），**8% 与选中差 0.19，阶梯干净**；且深色 8% 已是浅色 hover 的 1.6 倍步长，不存在「太轻看不见」。
+
+### 变更点（`packages/webview/src/styles/host-desktop.css`，共 5 条规则）
+
+| 选择器                                                               | 修复前                  | 修复后                          |
+| -------------------------------------------------------------------- | ----------------------- | ------------------------------- |
+| `[data-theme="dark"] .account-card-hotzone:hover`                    | `rgba(255,255,255,.14)` | `rgba(255, 255, 255, 0.08)`     |
+| `[data-theme="dark"] .desktop-sidebar-new-chat:hover:not(:disabled)` | `rgba(255,255,255,.14)` | `rgba(255, 255, 255, 0.08)`     |
+| `[data-theme="dark"] .account-card-more-btn:hover`                   | `rgba(255,255,255,.14)` | `rgba(255, 255, 255, 0.08)`     |
+| `[data-theme="light"] .account-card-hotzone:hover`                   | `#e2e4e8`               | `var(--cc-fill-hover, #eef0f3)` |
+| `[data-theme="light"] .account-card-more-btn:hover`                  | `#e2e4e8`               | `var(--cc-fill-hover, #eef0f3)` |
+
+浅色「新建对话」原本即 `#eef0f3`（= fill-hover），未动。三处规则上方均补了逐字裁决依据注释。**未动**：常态透明、焦点态、几何（热区 `201×30` / 新对话 `235×30` / 更多 `32×32`）、圆角、字色、「当前会话」选中 12% 白。
+
+### 实测（Playwright 探针，用例 `desktop-full` + `tmp-account-logged-out`，深/浅，渲染像素 = 裁切图众数）
+
+| 元素（深色）                    | 修复前                            | 修复后                                    | 说明                                            |
+| ------------------------------- | --------------------------------- | ----------------------------------------- | ----------------------------------------------- |
+| 账户热区 hover                  | `#383A3B`                         | **`#2A2B2C`**                             | 8% 白 = 普通会话行档 ✓                          |
+| 新建对话 hover                  | `#383A3B`                         | **`#2A2B2C`**                             | 同上 ✓                                          |
+| 账户卡「更多」按钮 hover        | `#383A3B`                         | **`#2A2B2C`**                             | 同排两控件不再分档 ✓（修复前值 = 同面注入渲染） |
+| 普通会话行 hover / 当前会话选中 | `#2A2B2C` / `#343536`             | `#2A2B2C` / `#343536`                     | 未动；hover 与选中差 0.19 ✓                     |
+| 浅色：热区 / 「更多」 / 新对话  | `#E2E4E8` / `#E2E4E8` / `#EEF0F3` | **`#EEF0F3`** / **`#EEF0F3`** / `#EEF0F3` | 浅色侧栏 hover 现在只有一个值 ✓                 |
+
+- `0 pageerror / 0 console error`（两个用例均 0）；before/after 裁切图尺寸逐张一致（热区 `402×60`、行 `470×60`、更多按钮 `64×64` @DPR2）。
+- 「更多」按钮仅在未登录态渲染（`DesktopSidebar` 需 `account !== null` 才挂载账户卡），故新增临时用例 `prototype/mock/tmp-account-logged-out.ts`（`mock/` 目录 gitignore、不进推送集）。
+
+### 统一后的侧栏阶梯（深色，已实测）
+
+| 交互级别                       | 值                  | 步长  | 用于                                                              |
+| ------------------------------ | ------------------- | ----- | ----------------------------------------------------------------- |
+| 弱化（非聚焦 pane 的当前会话） | 6% 白 `#222425`     | 1.170 | 已有，未动                                                        |
+| 普通 hover                     | **8% 白 `#2A2B2C`** | 1.231 | 会话行 / 分组头 / 全部菜单项 / 新对话 / 账户热区 / 账户卡「更多」 |
+| 持久选中                       | 12% 白 `#343536`    | 1.421 | 当前会话，未动                                                    |
+
+### 残留（未授权，供后续点名）
+
+- `.account-card-collapse-btn`（账户卡用量区显隐按钮）base 吃 `--vscode-list-hoverBackground` → 深色 hover = `#303436`（1.389），与同卡另两个控件不同族 → 触发语 **「账户卡用量显隐按钮也一起」**。
+- 更大范围「一个 hover 值走全站」：需把侧栏 hover 抬到 `#303436`、选中抬到 `--cc-fill-pressed #393E41`，牵动菜单/下拉/设置页/表格行所有面，浅色选中也要从 Figma `#EBEDF0` 换成 `#E7E9ED` → 触发语 **「全站深色 hover 面回接 fill-hover」**（未开单）。
+- **契约回写（我的动作，待办）**：向 codex 交交接单 —— 在 `references/desktop-theme-bridge.md` 补「导航面按 α 阶梯：hover 8% / selected 12% / weak 6%」，并说明语义 hover token `#303436` 的适用面为浮层/面板面；否则 skill 的「ordinary row hover = `--cc-fill-hover`」与本实现继续冲突。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-account-hotzone-hover-0916.mjs`（深/浅 × 热区/会话行/当前会话/新对话，computed + 裁切图 + `measure.json`；第二遍走 `tmp-account-logged-out` 用例采 `.account-card-more-btn` 真 after 图 → `measure-morebtn.json`）、`CC02/probe-hover-ladder-0916.mjs`（真元素注入 4 档候选 hover 值并裁切 → `走查/0916-账户热区hover/candidates/` + `candidates.json`）、`CC02/build-account-hotzone-review-0916.py`（审计页）、`CC02/build-hover-ladder-0916.py`（档位决策页）、`CC02/build-hotzone-fix-verify-0916.py`（修复自测页，before 图自审计页内联图按序提取）。
+- 证据目录 `CC02/走查/0916-账户热区hover/`：`0916-账户热区hover-走查.html`（审计页，Artifact https://codechat.codewave.163.com/code/artifact/n7n3rgt6xk ）、`0916-账户热区hover-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/s9cn0ij7b4 **v2**）、`0916-hover档位候选对比.html`（决策页，Artifact https://codechat.codewave.163.com/code/artifact/h13p0js8q6 ）、`before-after/`（27 张 before/after 裁切图）、`measure.json`、`measure-morebtn.json`。
+- 临时用例 `packages/webview/prototype/mock/tmp-account-logged-out.ts`（`mock/` gitignore、不进推送集）。
+- 本轮纯 CSS（无 TS/JS 改动），未跑 type-check。
+
+### 并行窗口说明
+
+`host-desktop.css` 与 `docs/desktop-density-restore.md` 为多窗口共用文件，同期另一窗口在做「0916 字重统一 400」三条评论——其批次已分别提交（`e75a4e74` 第 2 轮 / `dea19a19` 评论③），**故本批推送时已无在途混推风险**。本轮 5 条规则 hunk 为 `host-desktop.css` 的 `:746-758`（新对话）/ `:765-780`（热区）/ `:782-795`（更多按钮）。
+
 ## 0916 第 3 轮：输入工具行（`.input-buttons-row`）控件圆角统一 8px（评论②）（已随本批推送）
 
 用户 2026-09-16 预览评论（元素 `div.input-buttons-row`「修改前询问发送」）：「这里的元素圆角统一成 8px，现在有些 6px 的」。口径 = 工具行内控件圆角收成同一档 **8px**（原 6px 一档的来源不同：图标按钮是桌面端覆盖值、权限选择器是继承基座值），**只改圆角，不动尺寸 / 配色 / 间距 / 交互**。

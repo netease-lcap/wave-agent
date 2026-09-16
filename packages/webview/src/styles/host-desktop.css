@@ -427,7 +427,9 @@
 [data-host="desktop"] .permission-mode-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  /* 0916 评论⑤：图标→文案间距 10px → 8px，与其余桌面下拉项（账户更多 /
+     会话行菜单 / 工作目录…）统一；项盒 146x28 与图标 16px 不变，文案左移 2px。 */
+  gap: 8px;
   min-height: 28px;
   padding: 0 8px;
   border-radius: 6px;
@@ -743,12 +745,18 @@
 [data-host="desktop"] .desktop-sidebar-new-chat {
   font-weight: 400;
 }
-/* hover 与 codechat sidebar-tool-button 一致（--cc-fill-hover #eef0f3）。 */
+/* hover 与 codechat sidebar-tool-button 一致（--cc-fill-hover #eef0f3）。
+   0916 用户裁决（账户热区 hover 审计追问后）：侧栏「导航面」hover 统一到
+   普通会话行现档 = 深色 8% 白（合成 #2A2B2C）/ 浅色 --cc-fill-hover
+   #EEF0F3。理由（实测对比度步长 vs 导航底 #181A1B）：8% = 1.231，契约
+   #303436 = 1.389，而「当前会话」持久选中 12% 白 = 1.421 —— 用契约值会让
+   hover 与选中几乎同亮（差 0.03），8% 与选中差 0.19，阶梯干净；浅色档
+   本就是 #EEF0F3，不动。契约侧「按面分档」待 codex 回写。 */
 [data-host="desktop"][data-theme="light"] .desktop-sidebar-new-chat:hover:not(:disabled) {
   background: #eef0f3;
 }
 [data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* 侧栏右边框：Figma Sidebar stroke #EBEEF5（比 panel-border #e4e7ed 更浅） */
@@ -757,25 +765,35 @@
 }
 
 /* 账户热区：常态透明底（用户反馈常驻实底 #EBEDF0 形似「始终选中」——
-   第十二轮取消第三轮 Figma 实底化）；hover/focus 保留浅灰反馈 */
+   第十二轮取消第三轮 Figma 实底化）；hover/focus 保留浅灰反馈。
+   0916 用户裁决（先按修法 A 接 --cc-fill-hover #303436，随后追问并改判）：
+   深色统一到普通会话行现档 8% 白（#2A2B2C）、浅色统一到 --cc-fill-hover
+   #EEF0F3 —— 即「导航面阶梯：hover 8% / 选中 12% / 弱化 6%」。
+   原 14% 白（#383A3B，步长 1.527）比选中 12%（1.421）还亮 = hover 重于
+   选中；契约 hover token 深色 #303436（1.389）又几乎贴住选中 → 两者都不用。
+   依据 skill references/desktop-theme-bridge.md:15（普通行 hover 语义）与
+   dark-theme.md「State backgrounds are opaque…」（侧栏 α 阶梯为已裁决的
+   面级例外，待 codex 回写契约）。 */
 [data-host="desktop"][data-theme="light"] .account-card-hotzone:hover {
-  background: #e2e4e8;
+  background: var(--cc-fill-hover, #eef0f3);
 }
 [data-host="desktop"][data-theme="dark"] .account-card-hotzone:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* 账户卡片「更多」按钮（问号圆图标）：与热区同行同规格——r6、hover 底同
    热区（ccui figma-icon-button / sidebar-account-more 32×32 r6 fill-hover；
-   base r4 + vscode list-hoverBackground 蓝灰与热区两档灰不一致） */
+   base r4 + vscode list-hoverBackground 蓝灰与热区两档灰不一致）。
+   0916：hover 随热区统一（深色 8% 白 / 浅色 --cc-fill-hover），
+   同排两控件不再分档（原 14% / #e2e4e8）。 */
 [data-host="desktop"] .account-card-more-btn {
   border-radius: 6px;
 }
 [data-host="desktop"][data-theme="light"] .account-card-more-btn:hover {
-  background: #e2e4e8;
+  background: var(--cc-fill-hover, #eef0f3);
 }
 [data-host="desktop"][data-theme="dark"] .account-card-more-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 /* 消息流时间线节点：Figma design-node 12px / #16A34A / 白描边（覆盖此前
