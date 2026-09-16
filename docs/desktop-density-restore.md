@@ -4636,3 +4636,72 @@ ghost 图标与「图标 + 文字」控件。
   `CC02/build-settingsh1weight-0916.py`（差异像素 + 竖排对照图 + 本页）。
 - 证据目录 `CC02/走查/0916-设置页标题字重/`：`measure.json`、`pixel.json`、`h1-{light,dark}-{global,plugins}-{before,after}.png`、
   `h1-*-full-*.png`、`sbs-*`，自测页 `0916-设置页标题字重-修复自测.html`（Artifact https://codechat.codewave.163.com/code/artifact/0hhprwwhoz ）。
+
+## 0916 评论（对话头图标按钮：默认色补齐 + hover 底与刷新按钮一致）（工作区未提交）
+
+**她的两条评论**（都在侧栏收起态的对话头左侧）：
+① 点 `button.header-button`（「展开侧边栏」）「深色模式这个图标的默认色不对，现在很亮」；
+② 点 `svg.header-icon`「浅色模式类似图标的背景色不对，检查是否绑定了变量，和刷新按钮一致」。
+
+### ① 默认色：漏在「图标统一灰」清单之外 → 深色 #E5E7E8 过亮
+
+- 第三十八轮「控件图标统一灰」（`host-desktop.css:2427` / `:2440`）只列了 `.header-panel-toggle`，
+  **没有** `.header-collapsed-leading .header-button`（侧栏收起态的「展开侧边栏」按钮，24×24 @1793），
+  它因此回落 base `--vscode-foreground`：浅 **#202020**（比同排图标灰深一档）、
+  深 **#E5E7E8**（实测相对亮度 0.796；同排面板开关 #9A9EA5 仅 0.34 —— 就是她说的「很亮」）。
+- 修法：整个 `.header-button` 族统一到第三十八轮图标灰 —— 浅 **#565A60** / 深 **#9A9EA5**
+  （= 同排 `.desktop-pane-close`、刷新按钮的静止色）。`.header-button.active`
+  （base 取 `--vscode-foreground`，:228）特异性更高，不受影响。
+
+### ② hover 底：取的是 VS Code 工具栏 token，不是桌面 fill 角色
+
+- `.header-button:hover`（`ChatHeader.css:78`）与 `.desktop-pane-close:hover`（`DesktopApp.css:1436`）
+  取 `--vscode-toolbar-hoverBackground` → 浅 `rgba(0,0,0,.12)`（发灰）、
+  深 `rgba(90,93,94,.31)`（一颗很亮的药丸，相对亮度远高于本族其余控件）。
+- 刷新按钮（`.preview-pane-button:hover` @1697-1710）用 浅 **#EEF0F3**（`--cc-fill-hover`）/ 深 **8% 白**。
+- 修法：按刷新按钮逐值对齐 —— 浅色档改成**绑定 `--cc-fill-hover`**（回答她「检查是否绑定了变量」）；
+  深色档沿用本族既有口径 8% 白。
+
+### 实测（1440×900 DPR2；同页注入回退值重建「改前」，真实鼠标 + CDP 强制 `:hover`）
+
+| 控件                       | 状态          | 改前                                 | 改后                             |
+| -------------------------- | ------------- | ------------------------------------ | -------------------------------- |
+| 收起态「展开侧边栏」       | 浅 · 静止图标 | #202020                              | **#565A60**                      |
+|                            | 深 · 静止图标 | **#E5E7E8**（亮度 0.796）            | **#9A9EA5**（0.34）              |
+|                            | 浅 · hover 底 | rgba(0,0,0,.12)                      | **#EEF0F3**（`--cc-fill-hover`） |
+|                            | 深 · hover 底 | rgba(90,93,94,.31)                   | **rgba(255,255,255,.08)**        |
+| 面板开关（同族）           | 静止图标      | #565A60 / #9A9EA5                    | 同左（未受牵连）                 |
+|                            | hover 底      | rgba(0,0,0,.12) / rgba(90,93,94,.31) | #EEF0F3 / 8% 白（同族对齐）      |
+| hover 图标色（上一轮已定） | 浅 / 深       | #1F2329 / #FFFFFF                    | 同左（未动）                     |
+| 几何                       | —             | 24×24 @12,10 / @1403,10              | 同左（零位移、无换行）           |
+| 控制台                     | —             | 0 pageerror                          | 0 pageerror                      |
+
+像素差异（同页回退对照，裁剪 56×56 设备像素）：浅静止 **3.54%** / 浅 hover **14.88%** /
+深静止 **3.54%** / 深 hover **14.76%**，差异全部落在这颗图标的笔画与按钮底上。
+
+### 未覆盖 / 待点名
+
+- `.desktop-pane-close` 与刷新按钮在默认用例里**未渲染**（单 pane 无「关闭分屏」；右侧
+  `.header-panel-toggle` 被原型预览工具条遮住、`elementFromPoint` 命中工具条），
+  两者本轮的值取自 CSS 源（`DesktopApp.css:1436` / `host-desktop.css:1697-1710`）并以 computed 复核；
+  触发语「多分屏再验一次 pane 关闭」。
+- `.header-button.active` 仍是 base 的 `--vscode-toolbar-activeBackground`（VS Code 蓝底），
+  用例中未见 `.active`，本轮未动；触发语「面板开关选中的底也换中性色」。
+- 深色 hover 底没接 token（`--cc-fill-hover` 深色值 = #303436 不透明灰，与本族既有「8% 白」口径不同）；
+  触发语「深色 hover 底也统一走 token」。
+
+### 验证脚本与证据
+
+- 脚本：`CC02/probe-header-icon-fix-0916.mjs`（同页回退对照 + **可命中实例选择**：多个同名按钮时用
+  `elementFromPoint` 挑出真正可见的那个，否则截图会落到盖在它上面的原型预览工具条上）、
+  `CC02/build-header-icon-fix-0916.py`（对照表）。
+- 证据目录 `CC02/走查/0916-头部图标/`：`header-fix-0916.json`、
+  `fix-收起态-展开侧边栏-{light,dark}-{before,after}-{rest,hover}.png`、`header-fix-diff-0916.json`、
+  对照图 `0916-头部图标-修正对照.png`；另 `header-icons-0916.json`、`header-dom-{light,dark}.html`
+  （元素定位）、`header-open-dom-{light,dark}.html`。
+- 本轮纯 CSS（`host-desktop.css` 末尾新增 3 组规则 + 注释），无 TS 改动。
+
+> ⚠️ 平行窗口提示：`docs/desktop-density-restore.md` 的工作区副本在另一窗口每次提交时会被
+> lint-staged 的「未暂存补丁还原」写回旧快照（已两次把已推送小节改回「（工作区未提交）」、
+> 表格退回未格式化版本）。提交本文件时必须**按 HEAD 内容 + 本人新增段构造 blob**（隔离索引 /
+> `git hash-object`），不要整文件 `git add`，否则会连带把别窗口已推送的记录回退。

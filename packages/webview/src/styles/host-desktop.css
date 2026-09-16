@@ -3210,3 +3210,41 @@
   color: #ffffff;
 }
 
+/* ═══ 0916 评论：对话头图标按钮 —— 默认色补齐 + hover 底与刷新按钮一致 ═══
+   她的两条评论（点 `button.header-button` / `svg.header-icon`，均在侧栏收起的
+   对话头左侧）：
+   ①「深色模式这个图标的默认色不对，现在很亮」②「浅色模式类似图标的背景色不对，
+   检查是否绑定了变量，和刷新按钮一致」。
+
+   ① 默认色：侧栏收起态的 `.header-collapsed-leading .header-button`
+   （展开侧边栏，24×24 @1793）**不在**第三十八轮「控件图标统一灰」清单里
+   （2427/2440 只列了 `.header-panel-toggle`），回落 base `--vscode-foreground`
+   = 浅 #202020 / 深 #E5E7E8 —— 深色档确实过亮（实测相对亮度 0.796，同排面板
+   开关 #9A9EA5 仅 0.34）。此处把整个 `.header-button` 族（含面板开关、收起态
+   展开按钮，以及桌面端隐藏的 新建对话 / 历史 / 更多）统一到第三十八轮图标灰：
+   浅 #565A60 / 深 #9A9EA5（= 同排 `.desktop-pane-close`、刷新按钮的静止色）。
+   `.header-button.active`（base 取 --vscode-foreground，见 228 行）特异性更高，
+   不受影响。
+
+   ② hover 底：`.header-button:hover`（ChatHeader.css:78）与 `.desktop-pane-close:hover`
+   （DesktopApp.css:1436）取的都是 `--vscode-toolbar-hoverBackground`
+   （VS Code 工具栏 token：浅 rgba(0,0,0,.12)、深 rgba(90,93,94,.31)），
+   不是桌面 fill 角色；刷新按钮（`.preview-pane-button:hover` @1697-1710）用
+   浅 #EEF0F3（--cc-fill-hover）/ 深 8% 白。此处按刷新按钮逐值对齐，
+   浅色档改成绑定 `--cc-fill-hover`。
+ */
+[data-host="desktop"] .header-button {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="dark"] .header-button {
+  color: #9a9ea5;
+}
+
+[data-host="desktop"] .header-button:hover,
+[data-host="desktop"] .desktop-pane-close:hover {
+  background-color: var(--cc-fill-hover, #eef0f3);
+}
+[data-host="desktop"][data-theme="dark"] .header-button:hover,
+[data-host="desktop"][data-theme="dark"] .desktop-pane-close:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
