@@ -205,6 +205,23 @@ class ToolManager {
   }
 
   /**
+   * The auto-memory directory for this session, or undefined when the feature
+   * is off. Consumers (Read) treat "unset" as "not a memory file".
+   */
+  private resolveAutoMemoryDir(workdir: string): string | undefined {
+    if (!this.container.has("MemoryService")) return undefined;
+    const configuration = this.container.has("ConfigurationService")
+      ? this.container.get<
+          import("../services/configurationService.js").ConfigurationService
+        >("ConfigurationService")
+      : undefined;
+    if (!configuration?.resolveAutoMemoryEnabled?.()) return undefined;
+    return this.container
+      .get<import("../services/memory.js").MemoryService>("MemoryService")
+      ?.getAutoMemoryDirectory?.(workdir);
+  }
+
+  /**
    * Execute a tool by name with the provided arguments and context
    *
    * Enhances the context with permission-related fields before execution:
@@ -294,6 +311,7 @@ class ToolManager {
             >("ConfigurationService")
             ?.getMergedEnv?.()
         : undefined,
+      autoMemoryDir: this.resolveAutoMemoryDir(context.workdir),
       sessionId: context.sessionId,
       toolCallId: context.toolCallId,
     };
