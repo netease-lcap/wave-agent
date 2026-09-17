@@ -4874,3 +4874,144 @@ ghost 图标与「图标 + 文字」控件。
   两条断言（单测 `contextUsageIsolation.test.tsx`、e2e `desktop-session-switch-state.e2e.ts`）已同步为「元素不存在」。
 - 标题栏那段注释里的 `transform` 注释仍写「counter-clockwise from 3 o'clock」，实测起点在 9 点
   （见上「进度弧起点」残留）→ 触发语 **「注释也一起改」**。
+
+## 0917 评论（消息队列条目：三图标换设计师稿 + 「编辑」chip 14px + hover 时整行抖动 + hover·选中色与圆角 + 只在被截断时才弹全文气泡）
+
+设计师 0917 四条评论全落在同一条消息队列条目上（`div.queued-message-list-container`、`div.queued-item`）。
+① ② ③ 已随本批推送（commit `7a00c0dc`，files：`HeaderIcons.tsx` / `QueuedMessageList.tsx` / `host-desktop.css`）；
+④ 为本次改动（`QueuedMessageList.tsx` + `host-desktop.css`）。
+
+### ① 三颗操作图标换设计师手改稿（仅桌面端）
+
+- 落点：`components/HeaderIcons.tsx`。`QueueEditIcon` / `QueueSendIcon` / `QueueTrashIcon` 各自
+  `isDesktopHost() ? (设计师 16 格 stroke-width 1.4 手改矢量) : (原 HEAD fill 路径矢量)`。
+- 侧栏会话行的「删除」图标复用 `QueueTrashIcon` → 同样只在桌面端换新稿，IDE 端逐字节不变。
+- 按钮盒同步放大以承载新稿：`[data-host="desktop"] .queued-action-button`
+  `width/height 24px`（原 ~18px）+ `border-radius: var(--cc-radius-md, 8px)`，
+  `svg 16px`（原 14px），`.queued-item-actions { gap: 8px }`（原 2px）。
+- 宿主分叉实测：同一次运行里 `waveHostType=desktop` 走新稿、`ide-chat` 仍走旧稿
+  （`fork-hostcheck.json` + `report/fk2-*`）。
+
+### ② 「编辑」chip 字号对齐输入框档 14px
+
+- `.queued-edit-chip { font-size: 14px }`（桌面档；写在 `.message-input` 的
+  `font-size:14px/line-height:22px` 规则之后）。改前 13px，chip 盒高不变。
+
+### ③ hover 「编辑」时整条下拉抖动 → 根因是 Tooltip 的 `disabled`（已修）
+
+- 设计师原话：「我hover编辑的时候，整个下拉会抖动，检查原因」。
+- 根因：行级 Tooltip 传了 `disabled`，而 `Tooltip` 的 disabled 分支是 **`return children`**（卸载包裹层）。
+  指针停在行内时按钮显隐/结构重建 → 指针下的子树被换掉 → 浏览器重发 mouseout/mouseover → 状态翻转 →
+  结构再变，如此往复 = 抖动。**不是**样式问题，故不能靠加大 padding / `pointer-events` 规避。
+- 修法：不再卸载包裹层，改为「结构常驻 + 视觉压掉」。行级气泡容器加
+  `className={…${actionsHovered ? " tooltip-suppressed" : ""}}`，CSS 用
+  `[data-host="desktop"] .queued-item-tooltip.tooltip-suppressed > .tooltip-box { opacity: 0; visibility: hidden }`。
+  ⚠️ 必须是**直接子选择器** `>`：三颗按钮自己的 Tooltip 是后代，用后代选择器会把按钮气泡一起压掉（已踩过）。
+- 实测（真实鼠标横扫整行，MutationObserver 计 childList added/removed）：
+  改前 4/4 行发生节点重建 → 改后 **0/0**（`jit1…jit4-queued-jitter.json`、`sweep-*.json`）。
+
+### ④-1 hover / 选中（编辑中）底色与圆角接规范 token
+
+| 状态                        | 改前（实测）                                   | 改后（实测）                                              |
+| --------------------------- | ---------------------------------------------- | --------------------------------------------------------- |
+| hover · 浅色                | `#EEF0F3`（已是 `--cc-fill-hover`）            | `#EEF0F3`（`var(--cc-fill-hover, #eef0f3)`，零变化）      |
+| hover · 深色                | `#2A2B2C`（手写 `rgba(255,255,255,.08)` 合成） | **`#303436`**（`--cc-fill-hover`，与浅色同族语义）        |
+| 选中 / 编辑中 · 浅色        | `#EEF0F3`（= hover 色，被桌面 hover 规则盖掉） | **`#E7E9ED`**（`--cc-fill-pressed`）                      |
+| 选中 / 编辑中 · 深色        | `#393E41`                                      | `#393E41`（零变化）                                       |
+| 编辑中 + 指针仍停在行内     | 浅色 → `#EEF0F3`；深色 → `#303436`             | 两档都保持选中色（浅 `#E7E9ED` / 深 `#393E41`）           |
+| 圆角（静止 / hover / 选中） | 6px（硬编码）                                  | 6px（`var(--cc-radius-sm, 6px)`，值不变、来源改为 token） |
+
+- 依据：skill `tokens/tokens.css`（radius sm 6）+ `codechat-ui/src/styles/global.css`
+  （`.task-list-item` 圆角 `--cc-radius-sm`、`.task-row.is-active` 选中 `--cc-fill-pressed`）。
+- 两处「不符规范」的成因：①深色 hover 是手写 8% 白，比 token 暗一档；
+  ②桌面档原**没有选中态规则**，`.queued-item.editing` 只有 base 的 (0,2,0)，
+  被 `[data-host="desktop"] .queued-item:hover`（0,3,0）压过 → 指针在行内时编辑行显示成 hover 色。
+  修法：把选中态写在 hover 规则之后、并显式带 `:hover` 变体。
+- ⚠️ `--cc-radius-sm` / `--cc-fill-hover` / `--cc-fill-pressed` 在本仓库**均未定义**
+  （`tokens.css` 只在 skill 侧），故一律带字面量 fallback。
+- 实测证据：`spec3-row-spec.json`（浅/深 × 静止/hover/编辑中/编辑中+hover 四态逐行读 `background-color` 与
+  `border-radius`）+ 截图 `spec3-{light,dark}-A-{hover,editing,editing-hover}-full.png`、
+  汇总图 `report/queue-row-states.png`。
+
+### ④-2 只有真被省略号截断的条目才弹全文气泡
+
+- 设计师原话：「如果这里字数非常多应该是省略号hover 气泡展示全部，但是现在字数少就不应该有气泡」。
+- 做法（`QueuedMessageList.tsx`）：逐条量 `.queued-item-text` 的 `scrollWidth > clientWidth + 1`
+  （该 span 本身 `overflow:hidden; text-overflow:ellipsis; white-space:nowrap`），命中才包 `Tooltip`；
+  未命中直接渲染裸行。重算时机 = `ResizeObserver`（观察文本节点 + 列表容器）+ 条目增删/折叠切换；
+  只在结果变化时 `setState`，避免与 ResizeObserver 自激。
+- **布局中性**：`.queued-item-tooltip { display: block; width: 100% }`，包与不包布局不变 ——
+  实测三档行盒均为 **742×32**（`spec3-row-spec.json` → `B.light/dark`）。
+- 实测（临时用例 `prototype/mock/tmp-queue-trunc-0917.ts`：短 4 字 / 中 26 字 / 长 102 字）：
+
+| 条目      | `truncated` | 溢出宽度 | 包 Tooltip | hover 可见气泡        |
+| --------- | ----------- | -------- | ---------- | --------------------- |
+| 短 4 字   | false       | 0        | 否         | 无（只有行 hover 底） |
+| 中 26 字  | false       | 0        | 否         | 无                    |
+| 长 102 字 | true        | 609px    | 是         | 全文气泡 ✓            |
+
+- 长行上的组合复核（`long1-longrow.json`）：指针在**文字**上 → 显示全文气泡；移到**「编辑」按钮**上 →
+  只显示「编辑」，行级气泡被 `tooltip-suppressed` 压掉（`rowTipSuppressed: true`）；
+  横扫该行 added/removed = **0/0**（③ 的抖动修复未被这次结构改动破坏）。
+- ⚠️ 该闸门写在**共享组件**里（未按宿主分叉）→ VS Code / JetBrains 宿主上的短文本条目也一并不再弹气泡。
+  如需只改桌面，说一声即可加 `isDesktopHost()` 条件（一行）。
+- 实测证据：`report/queue-trunc-light.png`（① 短文本 hover 无气泡 / ② 中文本无气泡 / ③ 长文本省略号 + 全文气泡）、
+  `spec3-{light,dark}-B-row{1,2,3}-full.png`。
+
+### ④-3 行高：单行 28px，**展开与收起都是 28px**（她 0917 追加指示）
+
+- 设计师原话：「单行的话行高应该是28px，展开收起都是28px，类似内容skill中没有描述吗」。
+- **Skill 里有这条**（答复给设计师的出处）：`references/design-system.md`「Menus」段 ——
+  「Items: `32px` min height baseline; on the desktop host (`[data-host="desktop"]`, approved 2026-09-08
+  wave round 4) **single-line items use `28px`**, superseding `32px` for these menus… hover
+  `--cc-fill-hover`、selected `--cc-fill-pressed`」；同段下一条「two-line rows are exempt…keeps its
+  natural height (`32px`)」，而队列文本 `white-space: nowrap` 永远是单行 → 不适用豁免。
+  旁证：`references/common-components.md`「Compact `28px` actions are for dense inline lists」。
+  ⚠️ 该契约把这条挂在 **Menus** 下，未点名「消息队列列表」，也没有「展开/收起行高一致」与
+  列表上限的条款 → **候选回写项**（见下「契约回写候选」）。
+- 改动：`[data-host="desktop"] .queued-item { height: 28px; flex-shrink: 0 }`。
+  32px 是本仓库此前按 0916 评论「消息列队选项高度32px」定的值，现按 skill 单行契约收敛为 28px。
+- `flex-shrink: 0` 是「展开收起都 28px」的关键：`.queued-items.expanded{max-height:180px}` 是列向 flex，
+  行默认 `flex-shrink:1` → 展开时被压扁（本轮按钮从 18px 换 24px 后，实测下限从 22px 抬到 24px）。
+  实测（`desktop-queues`，7 条，浅/深一致）：**收起 1 行 = 28px、展开 7 行 = 每行 28px**（`h28-row-height.json`）。
+- 副作用（未授权，见残留）：行高不再被压扁后，7 条内容高 = 7×28 + 6×4(gap) = **220px**，
+  而容器上限仍是 180px → 第 6 条会被裁 4px、第 7 条要滚动才能看到。
+
+### 残留（未授权，供点名）
+
+- **展开态列表上限 `max-height:180px` 与 28px 行高不是一个整数倍**：7 条内容 220px、
+  可见区 180px（含 6×4=24px gap）→ 第 6 条裁 4px、第 7 条靠滚动。候选（均已量）：
+  ① 保持 180（现状）② 上限改 **188px**（正好 6 条整行：6×28 + 5×4）③ 上限改 **156px**（5 条整行）
+  ④ 展开时不限高、整列表全展示（7 条 = 220px）。触发语 **「展开时列表别裁一半」** /
+  **「展开时列表全展示」**。证据：`h28-{light,dark}-{collapsed,expanded}.png`。
+- 三颗按钮的 hover 提示气泡仍是 base 档（12px / r2 / `vscode-widget` 面），未接桌面 token。
+  触发语 **「提示气泡也统一到桌面档」**。
+- 深色 hover 若设计师更偏 0916 侧栏那套手写 α 台阶（8% 白 = `#2A2B2C`）而非
+  `--cc-fill-hover`（`#303436`），回退 = 一条规则。触发语 **「深色 hover 用侧栏 8% 台阶」**。
+
+### 契约回写候选（交 codex，skill 仓库我不改）
+
+- **W-31｜消息队列列表（composer 上方 queue list）纳入单行 28px 契约**：现契约把 28px 写在
+  `design-system.md`「Menus」下（dropdown / el-select 项），未点名队列列表；且缺三条：
+  ① 队列行与菜单行同值（28px / r6 / hover `--cc-fill-hover` / 选中 `--cc-fill-pressed`）；
+  ② **展开与收起行高一致**（不得被 `max-height` + `flex-shrink` 压扁，需 `flex-shrink: 0`）；
+  ③ 展开态列表上限与行高的整数倍数关系（现 `180px` 与 28px 行高不整除，会裁半行）——
+  数值待设计师定（候选 156 / 188 / 不限高）。
+- 另：三颗操作按钮的 hover 提示气泡仍是 base 档（12px / r2 / vscode-widget 面），
+  是否纳入桌面 token 待定。
+
+### 验证脚本与证据
+
+- `CC02/走查/_tools/0917/verify-queued-row-spec-0917.mjs`（A 四态色/圆角 + B 三档截断闸门）、
+  `verify-queued-longrow-0917.mjs`（长行气泡压制 + 横扫重建计数）、
+  `verify-queued-tooltip-suppress-0917.mjs`（三颗按钮逐颗验气泡压制）、
+  `verify-queued-row-height-0917.mjs`（④-3：收起/展开行高都 28px + 列表溢出量）、
+  `repro-queued-states-shots-0917.mjs`（六态取证图）、
+  `probe-queued-expanded-rowheight-0917.mjs`（展开态被压扁的成因三步对比）、
+  `diag-queued-jitter-0917.mjs`（③ 的抖动诊断）。
+- 数据：`CC02/走查/0917-队列图标/{spec3-row-spec,long1-longrow,jit1…jit4-queued-jitter,h28-row-height,expanded-rowheight}.json`、
+  `ev/ev-shots.json`；图：`report/queue-trunc-light.png`、`report/queue-row-states-v2.png`、
+  `report/tooltip-suppress-{light,dark}.png`、`h28-{light,dark}-{collapsed,expanded}.png`。
+- 自测页：`CC02/走查/0917-队列图标/0917-队列条目-自测.html`（由
+  `CC02/走查/_tools/0917/build-queued-report-0917.py` 生成，图内联 base64）。
+- 全轮 0 `pageerror`；`tsc --noEmit` 通过。

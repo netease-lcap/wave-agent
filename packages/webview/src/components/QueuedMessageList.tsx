@@ -26,6 +26,10 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
   // 这个按钮是做什么的）。仅桌面端参与（IDE 宿主不加按钮提示）。
   const [actionsHovered, setActionsHovered] = useState(false);
   const desktopHost = isDesktopHost();
+  // 「hover 看全文」的气泡只在文字真被省略号截断时才需要（设计师 0917：字数少就不应该
+  // 有气泡）。逐条量 text 的 scrollWidth > clientWidth，容器变宽/条目增删时重算。
+  const textRefs = useRef(new Map<string, HTMLSpanElement>());
+  const [truncatedIds, setTruncatedIds] = useState<string[]>([]);
 
   /** 桌面端给图标按钮包一层 hover 提示；IDE 宿主原样返回（只有 aria-label）。 */
   const withActionTooltip = (label: string, node: React.ReactElement) =>
@@ -38,6 +42,28 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
     );
 
   const items = isCollapsed ? queuedMessages.slice(0, 1) : queuedMessages;
+
+  // 量「哪些条目的文字被截断」。观察文本节点自身 + 列表容器：容器宽度变化、条目增删、
+  // 折叠切换都会重新量。只在结果变化时才 setState，避免与 ResizeObserver 互相触发。
+  useEffect(() => {
+    const measure = () => {
+      const next: string[] = [];
+      textRefs.current.forEach((el, id) => {
+        if (el.scrollWidth > el.clientWidth + 1) next.push(id);
+      });
+      setTruncatedIds((prev) =>
+        prev.length === next.length && prev.every((v, i) => v === next[i])
+          ? prev
+          : next,
+      );
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    if (listRef.current) ro.observe(listRef.current);
+    textRefs.current.forEach((el) => ro.observe(el));
+    return () => ro.disconnect();
+  }, [queuedMessages, isCollapsed]);
 
   // Show bottom scrim only when expanded and the list overflows / can scroll.
   useEffect(() => {
@@ -90,7 +116,78 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
             (qm.type === "bang" ? "!" : "") + (qm.content || qm.text || "");
           const isEditing =
             editingQueuedId != null && editingQueuedId === qm.id;
-          return (
+          const row = (
+            <div
+              className={`queued-item${isEditing ? " editing" : ""}`}
+              data-testid={`queued-item-${id}`}
+            >
+              <span
+                className="queued-item-text"
+                ref={(el) => {
+                  if (el) textRefs.current.set(id, el);
+                  else textRefs.current.delete(id);
+                }}
+              >
+                {fullText}
+              </span>
+              <div
+                className="queued-item-actions"
+                onMouseEnter={
+                  desktopHost ? () => setActionsHovered(true) : undefined
+                }
+                onMouseLeave={
+                  desktopHost ? () => setActionsHovered(false) : undefined
+                }
+              >
+                {withActionTooltip(
+                  "编辑",
+                  <button
+                    className="queued-action-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (qm.id != null) onEdit(qm.id);
+                    }}
+                    aria-label="编辑"
+                    data-testid={`queued-edit-${id}`}
+                  >
+                    <QueueEditIcon />
+                  </button>,
+                )}
+                {withActionTooltip(
+                  "立即发送",
+                  <button
+                    className="queued-action-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (qm.id != null) onSend(qm.id);
+                    }}
+                    aria-label="立即发送"
+                    data-testid={`queued-send-${id}`}
+                  >
+                    <QueueSendIcon />
+                  </button>,
+                )}
+                {withActionTooltip(
+                  "删除",
+                  <button
+                    className="queued-action-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (qm.id != null) onDelete(qm.id);
+                    }}
+                    aria-label="删除"
+                    data-testid={`queued-delete-${id}`}
+                  >
+                    <QueueTrashIcon />
+                  </button>,
+                )}
+              </div>
+            </div>
+          );
+          // 只有被省略号截断的条目才包气泡；文字放得下的条目直接渲染行（unwrapped 不会
+          // 改布局：.queued-item-tooltip 本身 display:block / width:100%）。结构切换只在
+          // 截断状态变化时发生，不在 hover 时，故不会引起上面说的 hover 自激。
+          return truncatedIds.includes(id) ? (
             <Tooltip
               key={id}
               text={fullText}
@@ -101,65 +198,10 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
               // 自激循环，整条下拉抖动（设计师 0917 报的）。
               className={`queued-item-tooltip${actionsHovered ? " tooltip-suppressed" : ""}`}
             >
-              <div
-                className={`queued-item${isEditing ? " editing" : ""}`}
-                data-testid={`queued-item-${id}`}
-              >
-                <span className="queued-item-text">{fullText}</span>
-                <div
-                  className="queued-item-actions"
-                  onMouseEnter={
-                    desktopHost ? () => setActionsHovered(true) : undefined
-                  }
-                  onMouseLeave={
-                    desktopHost ? () => setActionsHovered(false) : undefined
-                  }
-                >
-                  {withActionTooltip(
-                    "编辑",
-                    <button
-                      className="queued-action-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (qm.id != null) onEdit(qm.id);
-                      }}
-                      aria-label="编辑"
-                      data-testid={`queued-edit-${id}`}
-                    >
-                      <QueueEditIcon />
-                    </button>,
-                  )}
-                  {withActionTooltip(
-                    "立即发送",
-                    <button
-                      className="queued-action-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (qm.id != null) onSend(qm.id);
-                      }}
-                      aria-label="立即发送"
-                      data-testid={`queued-send-${id}`}
-                    >
-                      <QueueSendIcon />
-                    </button>,
-                  )}
-                  {withActionTooltip(
-                    "删除",
-                    <button
-                      className="queued-action-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (qm.id != null) onDelete(qm.id);
-                      }}
-                      aria-label="删除"
-                      data-testid={`queued-delete-${id}`}
-                    >
-                      <QueueTrashIcon />
-                    </button>,
-                  )}
-                </div>
-              </div>
+              {row}
             </Tooltip>
+          ) : (
+            <React.Fragment key={id}>{row}</React.Fragment>
           );
         })}
       </div>
