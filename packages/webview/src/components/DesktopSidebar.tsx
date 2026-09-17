@@ -9,6 +9,7 @@ import {
   MoreIcon,
   QueueTrashIcon,
   SplitIcon,
+  LoadingRingIcon,
 } from "./HeaderIcons";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
@@ -77,29 +78,8 @@ const StatusDot: React.FC<{ color: string; label: string }> = ({
   </svg>
 );
 
-/** 运行中转圈 loading 环（13576:40802）：浅色环身 + 深色弧头，整图 css 旋转。
- *  环/头双色走 --loading-ring-* 变量，dark 主题下换对比色。 */
-const LoadingRingIcon: React.FC = () => (
-  <svg
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    role="img"
-    aria-label="正在运行"
-    className="desktop-session-loading-ring"
-    style={{ display: "block" }}
-  >
-    <path
-      d="M17.0996 12C17.0996 9.18335 14.8167 6.90039 12 6.90039C9.18335 6.90039 6.90039 9.18335 6.90039 12C6.90039 14.8167 9.18335 17.0996 12 17.0996C14.8167 17.0996 17.0996 14.8167 17.0996 12ZM18.9004 12C18.9004 15.8108 15.8108 18.9004 12 18.9004C8.18924 18.9004 5.09961 15.8108 5.09961 12C5.09961 8.18924 8.18924 5.09961 12 5.09961C15.8108 5.09961 18.9004 8.18924 18.9004 12Z"
-      fill="var(--session-loading-track, #D4D7DE)"
-    />
-    <path
-      d="M17.0996 12C17.0996 11.3303 16.9682 10.6666 16.7119 10.0479C16.4556 9.42923 16.0799 8.86704 15.6064 8.39355C15.133 7.92006 14.5708 7.54438 13.9521 7.28809C13.3334 7.03179 12.6697 6.90039 12 6.90039C11.5029 6.90039 11.0996 6.49706 11.0996 6C11.0996 5.50294 11.5029 5.09961 12 5.09961C12.9061 5.09961 13.8035 5.27824 14.6406 5.625C15.4778 5.97176 16.2382 6.48037 16.8789 7.12109C17.5196 7.76182 18.0282 8.52223 18.375 9.35938C18.7218 10.1965 18.9004 11.0939 18.9004 12C18.9004 12.4971 18.4971 12.9004 18 12.9004C17.5029 12.9004 17.0996 12.4971 17.0996 12Z"
-      fill="var(--session-loading-head, #565A60)"
-    />
-  </svg>
-);
+/** 运行中转圈 loading 环（13576:40802）：共享组件见 HeaderIcons.LoadingRingIcon，
+ *  双色走 --loading-ring-*（dark 主题下的对比色见 DesktopApp.css）。 */
 
 /** 项目分组展开/收起 chevron（13498:16662 up / 13561:39968 right），
  *  展开组显示「^」、收起组显示「>」，替代 codicon 字形。 */
