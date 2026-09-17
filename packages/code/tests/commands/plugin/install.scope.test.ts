@@ -88,13 +88,12 @@ describe("Plugin Install Scope Integration Tests", () => {
       ),
     );
 
+    // 安装与启用一次完成：安装记录与启用作用域同源（spec plugin A-015）
     expect(mockPluginCore.installPlugin).toHaveBeenCalledWith(
-      "test-plugin@market",
-    );
-    expect(mockPluginCore.enablePlugin).toHaveBeenCalledWith(
       "test-plugin@market",
       "user",
     );
+    expect(mockPluginCore.enablePlugin).not.toHaveBeenCalled();
   });
 
   it("should install and enable a plugin in project scope", async () => {
@@ -117,11 +116,9 @@ describe("Plugin Install Scope Integration Tests", () => {
 
     expect(mockPluginCore.installPlugin).toHaveBeenCalledWith(
       "test-plugin@market",
-    );
-    expect(mockPluginCore.enablePlugin).toHaveBeenCalledWith(
-      "test-plugin@market",
       "project",
     );
+    expect(mockPluginCore.enablePlugin).not.toHaveBeenCalled();
   });
 
   it("should default to user scope and enable when no scope is provided", async () => {
@@ -139,12 +136,11 @@ describe("Plugin Install Scope Integration Tests", () => {
       ),
     );
 
+    // 安装与启用一次完成：安装记录与启用作用域同源（spec plugin A-015）
     expect(mockPluginCore.installPlugin).toHaveBeenCalledWith(
-      "test-plugin@market",
-    );
-    expect(mockPluginCore.enablePlugin).toHaveBeenCalledWith(
       "test-plugin@market",
       "user",
     );
+    expect(mockPluginCore.enablePlugin).not.toHaveBeenCalled();
   });
 });

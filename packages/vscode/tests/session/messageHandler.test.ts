@@ -1133,6 +1133,21 @@ describe("MessageHandler settings tab", () => {
       );
     });
 
+    test("uninstallPlugin forwards the scope picked in the dialog", async () => {
+      // spec plugin A-015：卸载作用于弹窗里选中的作用域
+      const uninstall = vi.fn().mockResolvedValue(undefined);
+      const handler = settingsHandler({
+        uninstallPlugin: uninstall,
+        listPlugins: vi.fn().mockResolvedValue([]),
+      });
+      await handler.handleSettingsMessage({
+        command: "uninstallPlugin",
+        pluginId: "demo@mkt",
+        scope: "local",
+      });
+      expect(uninstall).toHaveBeenCalledWith("demo@mkt", "local");
+    });
+
     test("updatePlugin reports the version returned by the SDK", async () => {
       const handler = settingsHandler({
         updatePlugin: vi
