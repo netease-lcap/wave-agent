@@ -1,6 +1,7 @@
 import { promises as fs, existsSync, mkdirSync } from "fs";
 import * as path from "path";
 import * as crypto from "crypto";
+import { AsyncLocalStorage } from "async_hooks";
 import { getPluginsDir } from "../utils/configPaths.js";
 import {
   KnownMarketplace,
@@ -29,7 +30,16 @@ import { logger, logError, logWarn } from "../utils/globalLogger.js";
  * known_marketplaces.json is kept as a cache for installLocation/lastUpdated metadata.
  */
 export class MarketplaceService {
-  private static isLockedInProcess = false;
+  /**
+   * 已持有市场操作锁的调用链标记（重入判据）。
+   *
+   * 用 AsyncLocalStorage 而不是进程内布尔值：锁内发起的嵌套调用（如
+   * refreshMarketplaces → updateMarketplace → installPlugin）必须跳过再次加锁，
+   * 否则会自锁；但**另一条并发调用链**必须老老实实排队。布尔值无法区分这两者
+   * ——第二个并发调用会以为「已在锁内」而跳过锁直接执行，于是两个操作并行改同一
+   * 个市场检出（并发两次 `git pull` 同一检出必然失败，spec 插件市场 场景 14）。
+   */
+  private static readonly lockChain = new AsyncLocalStorage<true>();
   /** In-flight [refreshMarketplaces] call (single-flight, spec 插件市场 场景 13). */
   private refreshInFlight: Promise<void> | null = null;
   private pluginsDir: string;
@@ -206,10 +216,10 @@ export class MarketplaceService {
 
   /**
    * Acquires a file-based lock (with PID tracking for stale lock detection) and executes the provided function.
-   * Supports re-entrancy within the same process.
+   * Supports re-entrancy within the same call chain (see [lockChain]).
    */
   private async withLock<T>(fn: () => Promise<T>): Promise<T> {
-    if (MarketplaceService.isLockedInProcess) {
+    if (MarketplaceService.lockChain.getStore()) {
       return await fn();
     }
 
@@ -250,11 +260,9 @@ export class MarketplaceService {
 
     await fs.writeFile(this.lockPath, String(process.pid), "utf-8");
 
-    MarketplaceService.isLockedInProcess = true;
     try {
-      return await fn();
+      return await MarketplaceService.lockChain.run(true, fn);
     } finally {
-      MarketplaceService.isLockedInProcess = false;
       await lockFd.close();
       await fs.unlink(this.lockPath).catch(() => {});
     }
@@ -756,14 +764,20 @@ export class MarketplaceService {
   /**
    * Updates a specific marketplace or all marketplaces
    *
+   * `refreshCheckout` (default true) pulls the checkout from its upstream; pass
+   * false to upgrade plugins against the current checkout only — the interactive
+   * "批量更新插件" path does that, because opening the plugin-marketplace surface
+   * already refreshed the checkout (spec 插件市场 A-013).
+   *
    * Returns the number of installed plugins whose version actually changed
    * during this run (0 = everything was already up to date) — the GUI hosts
    * use it to tell "已更新 N 个插件" apart from "已是最新" (spec 插件市场 场景 13).
    */
   async updateMarketplace(
     name?: string,
-    options?: { updatePlugins?: boolean },
+    options?: { updatePlugins?: boolean; refreshCheckout?: boolean },
   ): Promise<number> {
+    const refreshCheckout = options?.refreshCheckout ?? true;
     return this.withLock(async () => {
       const marketplaces = await this.listMarketplaces();
       const toUpdate = name
@@ -779,70 +793,75 @@ export class MarketplaceService {
       let upgradedPlugins = 0;
       for (const marketplace of toUpdate) {
         try {
-          // Builtin official marketplace: prefer the zip-snapshot mirror
-          // (content-addressed zip over a plain HTTP base, no git/GitHub
-          // needed). Only the builtin is special-cased by name — its
-          // `source` stays "github" in settings/cache, so there is zero
-          // data migration. On mirror failure (e.g. prod URL not yet live)
-          // fall back to the git path unless the kill switch forbids it.
-          const isOfficialBuiltin =
-            marketplace.name === MarketplaceService.BUILTIN_MARKETPLACE.name;
-          let mirrorUpdated = false;
-          if (isOfficialBuiltin) {
-            const targetPath = this.getMarketplacePath(marketplace.source);
-            const mirrorSha = await fetchOfficialMarketplaceFromMirror(
-              targetPath,
-              this.marketplacesDir,
-            );
-            if (mirrorSha !== null) {
-              mirrorUpdated = true;
-            } else if (!ALLOW_OFFICIAL_MARKET_GIT_FALLBACK) {
-              logWarn(
-                `Skipping update for official marketplace "${marketplace.name}": mirror fetch failed and git fallback is disabled.`,
-              );
-              continue;
-            }
-          }
+          const targetPath = this.getMarketplacePath(marketplace.source);
 
-          if (
-            marketplace.source.source === "github" ||
-            marketplace.source.source === "git"
-          ) {
-            if (!mirrorUpdated) {
-              if (!isGitAvailable) {
+          if (refreshCheckout) {
+            // Builtin official marketplace: prefer the zip-snapshot mirror
+            // (content-addressed zip over a plain HTTP base, no git/GitHub
+            // needed). Only the builtin is special-cased by name — its
+            // `source` stays "github" in settings/cache, so there is zero
+            // data migration. On mirror failure (e.g. prod URL not yet live)
+            // fall back to the git path unless the kill switch forbids it.
+            const isOfficialBuiltin =
+              marketplace.name === MarketplaceService.BUILTIN_MARKETPLACE.name;
+            let mirrorUpdated = false;
+            if (isOfficialBuiltin) {
+              const mirrorSha = await fetchOfficialMarketplaceFromMirror(
+                targetPath,
+                this.marketplacesDir,
+              );
+              if (mirrorSha !== null) {
+                mirrorUpdated = true;
+              } else if (!ALLOW_OFFICIAL_MARKET_GIT_FALLBACK) {
                 logWarn(
-                  `Skipping update for Git/GitHub marketplace "${marketplace.name}" because Git is not installed.`,
+                  `Skipping update for official marketplace "${marketplace.name}": mirror fetch failed and git fallback is disabled.`,
                 );
                 continue;
               }
-              const targetPath = this.getMarketplacePath(marketplace.source);
-              if (existsSync(targetPath)) {
-                await this.gitService.pull(targetPath);
-              } else {
-                let url: string;
-                if (marketplace.source.source === "github") {
-                  url = marketplace.source.repo;
-                } else {
-                  url = marketplace.source.url;
+            }
+
+            if (
+              marketplace.source.source === "github" ||
+              marketplace.source.source === "git"
+            ) {
+              if (!mirrorUpdated) {
+                if (!isGitAvailable) {
+                  logWarn(
+                    `Skipping update for Git/GitHub marketplace "${marketplace.name}" because Git is not installed.`,
+                  );
+                  continue;
                 }
-                await this.gitService.clone(
-                  url,
-                  targetPath,
-                  marketplace.source.ref,
-                );
+                if (existsSync(targetPath)) {
+                  await this.gitService.pull(targetPath);
+                } else {
+                  let url: string;
+                  if (marketplace.source.source === "github") {
+                    url = marketplace.source.repo;
+                  } else {
+                    url = marketplace.source.url;
+                  }
+                  await this.gitService.clone(
+                    url,
+                    targetPath,
+                    marketplace.source.ref,
+                  );
+                }
               }
             }
           }
-          const manifest = await this.loadMarketplaceManifest(
-            this.getMarketplacePath(marketplace.source),
-          );
 
-          marketplace.lastUpdated = new Date().toISOString();
+          const manifest = await this.loadMarketplaceManifest(targetPath);
 
-          // Update cache metadata
-          await this.updateCacheMarketplace(marketplace.name, {
-            lastUpdated: marketplace.lastUpdated,
-          });
+          // 只在真的刷了检出时记账：跳过刷新时把 lastUpdated 顶到当前时间会
+          // 让 CLI 的市场列表谎报「上次更新」时间。
+          if (refreshCheckout) {
+            marketplace.lastUpdated = new Date().toISOString();
+
+            // Update cache metadata
+            await this.updateCacheMarketplace(marketplace.name, {
+              lastUpdated: marketplace.lastUpdated,
+            });
+          }
 
           if (options?.updatePlugins) {
             const installedRegistry = await this.getInstalledPlugins();
@@ -909,6 +928,19 @@ export class MarketplaceService {
         );
       }
       return upgradedPlugins;
+    });
+  }
+
+  /**
+   * 交互界面的「批量更新插件」：按当前清单把该市场内所有已安装且有新版本的插件
+   * 升级到最新，**不拉取检出**——清单的新鲜度由打开插件市场界面时的那次刷新保证
+   * （spec 插件市场 A-013/场景 14）。检出尚未据此刷新的场景（无界面可依赖的非交互
+   * 命令）走 [updateMarketplace] 的默认行为。
+   */
+  async updateMarketplacePlugins(name?: string): Promise<number> {
+    return await this.updateMarketplace(name, {
+      updatePlugins: true,
+      refreshCheckout: false,
     });
   }
 
