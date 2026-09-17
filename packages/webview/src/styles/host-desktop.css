@@ -1744,6 +1744,8 @@
 [data-host="desktop"] .file-pane-search-popover .file-suggestion-dropdown {
   min-width: 0;
   max-width: none;
+  /* 面板自己已有 8px 内衬（第十三轮浮层配方），列表不再重复内衬 */
+  padding: 0;
   background: transparent;
   border: none;
   border-radius: 0;
@@ -1758,9 +1760,60 @@
   box-shadow: none;
 }
 /* 空态不是「斜体说明」——角色表（conversation-typography.md）无斜体档，同 F-12 的
-   处理；列表项内文字档位（名称 14 / 路径 11）本轮不动，属 @ 补全共用的组件。 */
+   处理。 */
 [data-host="desktop"] .suggestion-empty {
   font-style: normal;
+}
+
+/* ═══ 0917 评论：「这里面有很明显的分割线，根据 skill 结合其他下拉菜单优化这个
+   下拉中的样式」，随后追加「@ 补全弹层也一起」═══
+   **两个 surface 共用一份规则**（选择器落在 `.file-suggestion-dropdown` 上）：
+   ① 文件面板搜索弹层里的建议列表（`.file-pane-search-popover` 内，面板自己有内衬）；
+   ② 消息输入的 @ 补全浮层（独立面板）。
+   行分隔线去掉：skill design-system.md:140「分组之间的 1px 分隔线用浅描边 token，
+   靠间距留白，而不是给每个 item 加边框」；codechat 参考实现 element-plus.css:399
+   也只有分组项 `--divided` 才带 border-top（普通项一律无边框，靠圆角面 + hover/
+   选中底色区分）。同族弹层里 `.slash-command-item`（快捷指令）本就不画行线。
+   顺带按 Menus 契约（design-system.md:133/148 + vue-element-plus.md:59）把行做成
+   桌面菜单形：6px 圆角 + 8px 横向内衬（原为通栏无圆角、12px 内衬、每行 57px），
+   hover/选中面不再顶到面板左右边。 */
+[data-host="desktop"] .file-suggestion-dropdown {
+  /* 独立浮层（@ 补全）列表态：容器内衬 8px，与第十三轮弹层配方一致 */
+  padding: 8px;
+}
+[data-host="desktop"] .file-suggestion-dropdown .suggestion-item {
+  /* 40px：文字行盒收紧后内容自然高只有 34px，若按 `min-height:32px` 走，行与行之间
+     会是 0 间隙（参考实现 `40.59` = 32.6 的两行文字 + 上下各约 4px 留白）—— 取 40px
+     让「组内紧、组间松」，与「系统指令选项」逐值对齐。 */
+  min-height: 40px;
+  padding: 0 8px;
+  border-bottom: none;
+  border-radius: 6px;
+  gap: 8px;
+}
+/* 路径行字色：原为 11px + `opacity: .8`（合成浅色 3.94:1、深色 4.48:1，都不到 AA）。
+   skill design-system.md:87 明确「同角色描述用同一语义色，不叠加 text/ancestor
+   opacity 来弱化」，且要求按真实承载面验对比度 —— 故取 `--cc-text-regular`：
+   浅色 6.94（白底）/ 6.08（hover 面 #EEF0F3）/ 5.71（选中面 #E7E9ED），
+   深色 8.64 / 7.40 / 6.44 三态全过；`--cc-text-secondary` 在 hover 面只有 4.36，
+   按这条规则不能用。名称行不动（宿主 foreground ≈ 一级），与路径行保持
+   「一级 + 次级」两层，也与快捷指令弹层的 name/description 分工一致。
+   ═══════════════════════════════════════════════════════════════════════════
+   两行文字**间距**按「系统指令选项」对齐（她 2026-09-17 评论：「标题和描述之间间距
+   很大，可以参考下系统指令选项的文字间距」）。
+   行高就是原因，实测墨迹间距（Range 文字外接盒）：本处 名称行盒 22 + 组内间距 2 +
+   路径行盒 20 → **7px**；系统指令那边同名两行是 名称行盒 17（line-height normal，
+   14px × 1.2）+ margin-top 2 + 15.6（12px × 1.3）→ **2px**。
+   故把这两条 `line-height` 声明撤掉，回归文字自身 normal 行盒（本字体 14px → 17px、
+   12px → 15px），与参考实现同形。行盒收紧后两行内容只有 34px，故行的 `min-height`
+   一并 32 → **40px**（参考实现的行是 40.59 = 32.6 文字 + 上下各约 4px 留白），
+   保证「组内紧、组间松」—— 若仍按 32px，行与行之间会是 0 间隙、相邻两条糊在一起。
+   注：这是「成对两行行」的紧排，**偏离 skill 的正文 14/22 · 辅助 12/20 行盒档**
+   （conversation-typography.md:9）—— 已列为本轮契约回写候选，等她裁决。 */
+[data-host="desktop"] .file-suggestion-dropdown .suggestion-path {
+  font-size: 12px;
+  opacity: 1;
+  color: var(--cc-text-regular);
 }
 
 /* ═══ 第二十九轮：会话行更多按钮 + 菜单图标（用户评论「检查更多操作按钮尺寸，
