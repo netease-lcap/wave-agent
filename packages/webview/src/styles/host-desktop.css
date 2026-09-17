@@ -2826,18 +2826,29 @@
   color: #9a9ea5;
 }
 
-/* 消息队列选项高 24 → 32（用户评论「消息列队选项高度32px」）；hover 底对齐
-   规范：r6（--cc-radius-sm，base 4px 过小）+ fill-hover 底色（light #EEF0F3 /
-   dark 8% 白），替换 base 的 vscode list-hoverBackground 蓝灰调。 */
+/* 消息队列选项：高 24 → 32 → **28**（用户 0917 评论「单行的话行高应该是28px，展开收起都是28px」，
+   对齐 skill design-system.md「Menus」单行桌面项 28px 契约；两行豁免那条不适用——队列文本
+   `white-space: nowrap`，永远是单行）。`flex-shrink: 0` 让展开态（`.queued-items.expanded`
+   受 max-height:180px 约束、列向 flex）也守 28px：改前行被压到 22~24px，展开 7 条还会溢出让列表滚动。
+   hover / 选中（编辑中）底色与圆角一律接规范 token（skill tokens.css + codechat-ui：
+   `.task-list-item` 圆角 `--cc-radius-sm` 6px、`.task-row.is-active` 选中 `--cc-fill-pressed`）：
+   圆角 r-sm 6px；hover `--cc-fill-hover`（浅 #EEF0F3 / 深 #303436）；编辑态
+   `--cc-fill-pressed`（浅 #E7E9ED / 深 #393E41）。
+   设计师 0917 评论「检查修复这里 hover、选中色圆角，使其符合规范」——修前两处不符：
+   ①深色 hover 写成手写 8% 白（合成 #2A2B2C，比 token #303436 暗一档）；
+   ②桌面档没有选中态规则，编辑行在指针仍停在行内时被上面那条 hover 规则盖掉
+   （浅色实测 #EEF0F3 而非 #E7E9ED）——故把选中态写在 hover 之后（同特异性靠顺序取胜）。 */
 [data-host="desktop"] .queued-item {
-  height: 32px;
-  border-radius: 6px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: var(--cc-radius-sm, 6px);
 }
 [data-host="desktop"] .queued-item:hover {
-  background: #eef0f3;
+  background: var(--cc-fill-hover, #eef0f3);
 }
-[data-host="desktop"][data-theme="dark"] .queued-item:hover {
-  background: rgba(255, 255, 255, 0.08);
+[data-host="desktop"] .queued-item.editing,
+[data-host="desktop"] .queued-item.editing:hover {
+  background: var(--cc-fill-pressed, #e7e9ed);
 }
 
 /* 卡片组合与下方输入框间距 8px（用户评论「整体卡片和下方对话框要有间距8px」；
