@@ -86,6 +86,35 @@ describe("MessageManager additional coverage", () => {
     );
   });
 
+  it("should record the rendered skill content of a Skill invocation", () => {
+    // 压缩后回灌要复用「模型当时看到的那份已替换正文」，所以调用记录里必须带上
+    // Skill 工具的 result（spec core/message-compact 场景 4）。
+    const rendered =
+      "Base directory for this skill: /skills/demo\n\nrun node /skills/demo/tool.mjs";
+    const skillBlock = {
+      type: "tool",
+      id: "call-1",
+      name: "Skill",
+      stage: "end",
+      parameters: JSON.stringify({ skill_name: "demo" }),
+      result: rendered,
+      success: true,
+    };
+
+    messageManager.setMessages([
+      {
+        id: "msg-skill",
+        role: "assistant",
+        timestamp: new Date().toISOString(),
+        blocks: [skillBlock],
+      },
+    ] as unknown as Parameters<typeof messageManager.setMessages>[0]);
+
+    expect(messageManager.getInvokedSkills()).toEqual([
+      expect.objectContaining({ skillName: "demo", content: rendered }),
+    ]);
+  });
+
   it("should only update the specified user message", () => {
     const id1 = messageManager.addUserMessage({ content: "Message 1" });
     const id2 = messageManager.addUserMessage({ content: "Message 2" });

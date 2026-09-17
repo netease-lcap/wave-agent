@@ -114,6 +114,101 @@ allowed-tools:
       expect(result.skillMetadata.allowedTools).toEqual(["tool1", "tool2"]);
     });
 
+    it("should fold a `>-` description and keep later keys separate", () => {
+      // 折叠标量（块标量）是常见写法：以前会被解析成字面量 ">-"，整段「何时该用
+      // 我」丢光，续行里的 URL 还会被当成一个新的 frontmatter 键
+      // （spec ecosystem/agent-skills 场景 2）。
+      const mockContent = `---
+name: test-skill
+description: >-
+  第一行描述
+  第二行描述
+
+  第三行描述
+allowed-tools:
+  - tool1
+---
+
+# Test Skill`;
+
+      mockReadFileSync.mockReturnValue(mockContent);
+
+      const result = parseSkillFile("/path/to/test-skill/SKILL.md");
+
+      expect(result.skillMetadata.description).toBe(
+        "第一行描述 第二行描述\n\n第三行描述",
+      );
+      expect(result.skillMetadata.allowedTools).toEqual(["tool1"]);
+      // 续行不得变成独立的 frontmatter 键
+      expect(Object.keys(result.frontmatter).sort()).toEqual([
+        "allowed-tools",
+        "description",
+        "name",
+      ]);
+      expect(result.isValid).toBe(true);
+    });
+
+    it("should keep line breaks for a literal `|` block and other chomping forms", () => {
+      mockReadFileSync.mockReturnValue(`---
+name: test-skill
+description: |
+  第一行
+  第二行
+---
+
+# Test Skill`);
+
+      const literal = parseSkillFile("/path/to/test-skill/SKILL.md");
+      expect(literal.skillMetadata.description).toBe("第一行\n第二行");
+
+      mockReadFileSync.mockReturnValue(`---
+name: test-skill
+description: |-
+  第一行
+  第二行
+---
+
+# Test Skill`);
+
+      const stripped = parseSkillFile("/path/to/test-skill/SKILL.md");
+      expect(stripped.skillMetadata.description).toBe("第一行\n第二行");
+    });
+
+    it("should fold indented continuation lines of a plain scalar", () => {
+      mockReadFileSync.mockReturnValue(`---
+name: test-skill
+description:
+  第一行
+  第二行
+---
+
+# Test Skill`);
+
+      const result = parseSkillFile("/path/to/test-skill/SKILL.md");
+
+      expect(result.skillMetadata.description).toBe("第一行 第二行");
+    });
+
+    it("should keep a colon inside a folded description from becoming a key", () => {
+      mockReadFileSync.mockReturnValue(`---
+name: test-skill
+description: >-
+  详情见 https://example.com/x?id=1
+  以及 https://example.com/y
+count: 3
+---
+
+# Test Skill`);
+
+      const result = parseSkillFile("/path/to/test-skill/SKILL.md");
+
+      expect(result.skillMetadata.description).toBe(
+        "详情见 https://example.com/x?id=1 以及 https://example.com/y",
+      );
+      expect(result.frontmatter["https"]).toBeUndefined();
+      expect(result.frontmatter.count).toBe("3");
+    });
+
     it("should handle missing YAML frontmatter", () => {
       const mockContent = `# Test Skill
 

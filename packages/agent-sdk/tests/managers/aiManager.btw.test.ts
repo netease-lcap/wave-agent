@@ -120,7 +120,7 @@ describe("AIManager - runBtwFork", () => {
       addErrorBlock: vi.fn(),
       addUserMessage: vi.fn(),
       getRecentFileReads: vi.fn().mockReturnValue([]),
-      getInvokedSkillNames: vi.fn().mockReturnValue([]),
+      getInvokedSkills: vi.fn().mockReturnValue([]),
       getMemoryForInjection: vi.fn().mockResolvedValue({ prependContent: "" }),
       setlatestTotalTokens: vi.fn(),
     } as unknown as MessageManager;
