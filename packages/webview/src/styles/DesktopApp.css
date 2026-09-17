@@ -1392,13 +1392,15 @@ body.is-panel-resizing webview {
   min-width: 0;
 }
 
-/* The pane header is the reorder drag handle; advertise it. Interactive
-   children (buttons, popup menu items) keep their own cursor. */
-.desktop-pane .chat-header {
+/* The pane header is the reorder drag handle once a second pane exists
+   (data-draggable) — a sole pane has nothing to reorder and shows no grab
+   cursor. Interactive children (buttons, popup menu items) keep their own
+   cursor. */
+.desktop-pane[data-draggable="true"] .chat-header {
   cursor: grab;
 }
 
-.desktop-pane .chat-header:active {
+.desktop-pane[data-draggable="true"] .chat-header:active {
   cursor: grabbing;
 }
 
