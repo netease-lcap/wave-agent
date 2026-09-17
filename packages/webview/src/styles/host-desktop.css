@@ -2625,22 +2625,22 @@
    先加载，SettingsPage.css 后加载）→ 浅色选中图标 = 宿主
    `--vscode-list-activeSelectionForeground`（实测 #202020，比未选中亮）。
    设计师 0917 评论 `svg.header-icon`「这里选中以后图标应该也变亮的吧，要和
-   浅色模式保持一致」→ 补齐选中态，两档与选中文字逐值一致
-   （浅 #1F2329 / 深 #FFFFFF，见下方 is-active 规则），语义同 base
-   （选中文字与图标同一档色）。 */
+   浅色模式保持一致」→ 补齐选中态，两档图标与选中文字逐值一致，且两者**统一接
+   `--cc-text-primary`**（浅 #1F2329 / 深 #E5E7E8，见下方 is-active 规则），
+   语义同 base（选中文字与图标同一档色）。 */
 [data-host="desktop"] .settings-nav-item svg {
   color: #565a60;
 }
 [data-host="desktop"][data-theme="dark"] .settings-nav-item svg {
   color: #9a9ea5;
 }
-/* 选中态：图标跟随选中文字（浅 #1F2329 / 深 #FFFFFF）。特异性 (0,3,1)/(0,4,1)
-   高于上方静止态两条，不依赖加载顺序。 */
-[data-host="desktop"] .settings-nav-item.is-active svg {
-  color: #1f2329;
-}
+/* 选中态：图标跟随选中文字。两档文字与图标**统一接 `--cc-text-primary`**
+   （浅 #1F2329 / 深 #E5E7E8），由变量保证浅深一致（设计师 0917 裁定：
+   「浅色也根据全局变量来和深色保持一致」）。取两条（0,3,1）+（0,4,1）而非单条，
+   是为了让深色档不受上方静止态那条 (0,3,1) 的同分顺序影响。 */
+[data-host="desktop"] .settings-nav-item.is-active svg,
 [data-host="desktop"][data-theme="dark"] .settings-nav-item.is-active svg {
-  color: #ffffff;
+  color: var(--cc-text-primary);
 }
 
 /* 交互底/文字对齐 codechat settings.css（--cc-fill-hover #EEF0F3 悬停、
@@ -2651,15 +2651,17 @@
   background: #eef0f3;
 }
 [data-host="desktop"] .settings-nav-item.is-active {
-  color: #1f2329;
+  color: var(--cc-text-primary);
   background: #e7e9ed;
 }
 [data-host="desktop"][data-theme="dark"] .settings-nav-item:hover,
 [data-host="desktop"][data-theme="dark"] .settings-back:hover {
   background: rgba(255, 255, 255, 0.08);
 }
+/* 深色档只留底：字色同浅色档那条的 `var(--cc-text-primary)`，由 token 在深色
+   解析成 #E5E7E8（原字面量 #FFFFFF；设计师 0917 裁定两档统一走变量后随之下调
+   一档，与同栏 `.settings-back` 的 `--vscode-foreground` 深色值同源）。 */
 [data-host="desktop"][data-theme="dark"] .settings-nav-item.is-active {
-  color: #ffffff;
   background: rgba(255, 255, 255, 0.12);
 }
 

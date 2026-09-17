@@ -5073,3 +5073,100 @@ ghost 图标与「图标 + 文字」控件。
 - 数据：`CC02/走查/0917-滚动条位置/{sb3-desktop-queues-align,sb3-align-report}.json`；
   图：`对比-滚动条位置-任务队列.png`；自测页：`CC02/走查/0917-滚动条位置/0917-滚动条位置对齐-自测.html`。
 - 4 组截图全轮 **0 `pageerror`**。
+
+---
+
+## 0917 评论（设置页左导航**选中态**图标提亮：深色档漏改 + 两档统一接 `--cc-text-primary`）
+
+设计师评论（点设置页左导航「AI 与扩展」组第 2 项「技能」的 `svg.header-icon`）：
+「这里选中以后图标应该也变亮的吧，要和浅色模式保持一致」；随后裁定
+「**浅色也根据全局变量来和深色保持一致**」→ 选中态文字与图标**统一接 `var(--cc-text-primary)`**。
+
+### ① 现象（改前）
+
+| 主题 | 选中项文字           | 选中项图标                                  | 未选中项图标        |
+| ---- | -------------------- | ------------------------------------------- | ------------------- |
+| 浅色 | `#202020`（13.40:1） | `#202020`（13.40:1）＝已提亮                | `#565A60`（6.53:1） |
+| 深色 | `#FFFFFF`（12.29:1） | **`#9A9EA5`（4.57:1）＝与未选中项逐值相同** | `#9A9EA5`           |
+
+→ **深色单侧漏改**：浅色本来就是对的，深色选中项图标被钉在静止灰档。
+
+### ② 根因（特异性 + 加载顺序）
+
+- base `SettingsPage.css:215` `.settings-nav-item.is-active svg`（0,2,1）本就让图标跟随选中文字；
+- 桌面层静止态两条（`host-desktop.css`，0,2,1 与 base **打平** → 靠加载顺序决定；
+  `index.tsx:6` 先加载 `host-desktop.css`、`SettingsPage.css` 在后 → **浅色档 base 胜出**）；
+- 桌面层深色静止态那条 `[data-theme="dark"] .settings-nav-item svg`（**0,3,1**）反超 base
+  → **深色档选中项图标被按回静止灰**。原注释「选中项保持同色（codechat 选中只变文字与底）」
+  只对 codechat 成立：codechat 导航图标是 `<img :src>` 位图（改不了色），wave 是内联 SVG
+  （`HeaderIcons.tsx`，`stroke="currentColor"`）→ 结论不能照搬，该注释已随本轮改掉。
+
+### ③ 改法（`host-desktop.css`，设置左导航图标块）
+
+```css
+/* v1（已推 cc2f96f4）：两档取该档选中文字的字面量 */
+[data-host="desktop"] .settings-nav-item.is-active svg {
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .settings-nav-item.is-active svg {
+  color: #ffffff;
+}
+
+/* v2（本提交）：两档文字与图标统一接变量，深色随 token 落到 #E5E7E8 */
+[data-host="desktop"] .settings-nav-item.is-active svg,
+[data-host="desktop"][data-theme="dark"] .settings-nav-item.is-active svg {
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"] .settings-nav-item.is-active {
+  color: var(--cc-text-primary);
+  background: #e7e9ed;
+}
+/* 深色档只留底（字色走上面那条变量 → 深色解析为 #E5E7E8） */
+[data-host="desktop"][data-theme="dark"] .settings-nav-item.is-active {
+  background: rgba(255, 255, 255, 0.12);
+}
+```
+
+取 (0,3,1)+(0,4,1) 两条而非单条，是为了让深色档不受上方静止态那条 (0,3,1) 的同分顺序影响。
+新规则全部带 `[data-host="desktop"]` 前缀，未改 base → VS Code / JetBrains 宿主不受影响。
+
+### ④ 实测
+
+| 版本 | 浅色（文字＝图标）   | 深色（文字＝图标）            |
+| ---- | -------------------- | ----------------------------- |
+| 改前 | `#202020`（13.40:1） | `#FFFFFF` 文字 / #9A9EA5 图标 |
+| v1   | `#1F2329`（12.98:1） | `#FFFFFF`（12.29:1）          |
+| v2   | `#1F2329`（12.98:1） | **`#E5E7E8`（9.91:1）**       |
+
+- **变量驱动已实测**：运行时把 `--cc-text-primary` 注入 `#ff0000`，浅深两档的选中文字与图标
+  **同时**变红 → 「浅色也根据全局变量」可验证，不是巧合取值。
+- 像素级影响（2 设备像素截图对撞）：浅色档 v2 对 v1 **0 像素差异**（`#1F2329` 就是该变量浅色值）；
+  深色档 v2 差异 1313/463680 = **0.283%**，只落在选中行图标笔画 +「技能」二字，
+  最大通道差 26（`#FFFFFF` → `#E5E7E8`）。
+- 未选中 7 项、hover 底、几何 `215×30`、字重 w400 全部零变化；`tsc --noEmit` 0；
+  `pageerror` 0；axe 4.13 浅深各 1 条 violations，均指向原型工具条 `<select>` 的 `region`
+  （预览外壳、非产品 UI），左导航内 0 条、`color-contrast` 全过。
+
+### ⑤ 残留 / 备用触发语（未授权，等她点名）
+
+- 「选中态 hover 时图标也再提亮一档」= 本次未做 hover 档。
+- **顺带发现的契约分歧（本次不动代码）**：深色设置导航 hover `rgba(255,255,255,.08)`（≈#2A2B2C）
+  与选中 `rgba(255,255,255,.12)`（≈#343536）都是 alpha 底；skill 最新（未提交）
+  `references/dark-theme.md:45` 写「Generic state backgrounds are opaque，唯一 alpha 例外是
+  `fill-chrome-hover` 8%（侧栏/页头），**不含 settings navigation**」→ 按契约应为
+  `--cc-fill-hover` `#303436` / `--cc-fill-pressed` `#393E41`。另：侧栏/页头那批 8% 白已有角色名
+  `--cc-fill-chrome-hover`，可回接角色名（迁移项）。两者均待设计师裁决。
+
+### 验证脚本与证据
+
+- `CC02/走查/_tools/0917/probe-settings-nav-active-icon-0917.mjs`（argv `[outDir] [tag]`：逐项
+  文字/图标色 + 半透明底**按 alpha 合成**后再算对比度 + hover 参照 + 选中项/整列截图）、
+  `audit-settings-nav-0917-axe.mjs`、`build-settings-nav-icon-report-0917.py`（自包含 HTML）。
+- 数据：`CC02/走查/0917-设置导航选中图标/{probe-before,probe-after,probe-after2,axe-settings-nav-0917}.json`；
+  图：`active-{light,dark}-{before,after,after2}.png`、`nav-{light,dark}-*.png`；
+  自测页：`CC02/走查/0917-设置导航选中图标/0917-设置导航选中图标-验收.html`。
+
+### 契约回写候选（交 codex，skill 仓库不在此改动）
+
+**W-32**：设置页左导航「选中态 = 文字与图标同升一档色，统一接 `--cc-text-primary`」，
+并注明 codechat 参考实现因用 `<img>` 位图化图标而不具备该行为（wave 内联 SVG 以本仓实现为准）。
