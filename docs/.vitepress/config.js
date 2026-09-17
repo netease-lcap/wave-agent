@@ -337,6 +337,7 @@ export default {
               link: "/cli#additional-working-directories",
             },
             { text: "7.14 Token 用量统计", link: "/cli#token-stats" },
+            { text: "7.15 会话内热切换", link: "/cli#resume" },
           ],
         },
         {

@@ -188,6 +188,8 @@ CodeWave IDE 是一款集成在 VS Code 与 JetBrains IDE（WebStorm、IntelliJ 
 
 ### 8. 会话与持久化
 
+在输入框中输入 `/resume` 可打开与顶部「历史对话」按钮完全相同的会话列表（范围一致：当前工作区目录，含命令行在同一目录创建的会话），不用离开聊天面板即可切换会话。
+
 <div class="screenshot-gallery">
 
 <figure><img src="/screenshots/spec-rewind-button.webp" alt="用户消息上的回滚按钮" /><figcaption>用户消息上的回滚按钮</figcaption></figure>
