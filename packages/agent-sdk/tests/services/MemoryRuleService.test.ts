@@ -34,6 +34,30 @@ This is the rule.`;
       expect(rule.filePath).toBe("/path/to/rule.md");
     });
 
+    it("should parse a rule whose paths use a block scalar", async () => {
+      // 块标量写法以前会让 paths 变成字面量 ">-"，规则永远匹配不到文件
+      // （spec core/memory-management 场景 4）。
+      const content = `---
+paths: >-
+  src/api/**/*.ts
+  src/server/**/*.ts
+priority: 5
+---
+# Rule Content`;
+      vi.mocked(fs.readFileSync).mockReturnValue(content);
+
+      const rule = await service.parseRule(
+        content,
+        "/path/to/rule.md",
+        "project",
+      );
+
+      expect(rule.metadata.paths).toEqual([
+        "src/api/**/*.ts src/server/**/*.ts",
+      ]);
+      expect(rule.metadata.priority).toBe(5);
+    });
+
     it("should parse a rule without frontmatter", async () => {
       const content = "# Rule Content\nNo frontmatter here.";
       vi.mocked(fs.readFileSync).mockReturnValue(content);
