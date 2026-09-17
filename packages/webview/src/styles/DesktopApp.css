@@ -1511,7 +1511,11 @@ body.is-panel-resizing webview {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 24px;
+  /* 左右 16px / 上下 24px（设计师 0917 评论「这里左右的边距也相同的改成 16px」，
+     与输入区 Welcome 态同一档）。⚠️ 本元素的 container query 断点是量内容盒的：
+     左右 24 → 16 使内容盒宽 +16，单列断点对应的槽宽从 356px 上移到 340px ——
+     槽宽落在 340~355px 时空态入口会从单列变双列（见下方 @container）。 */
+  padding: 24px 16px;
   overflow-y: auto;
   border-left: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
   /* Narrow-slot empty state: entry buttons collapse to a single column

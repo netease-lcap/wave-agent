@@ -1459,12 +1459,17 @@
   padding: 0;
 }
 
-/* Welcome 态输入卡片居中限宽：Figma 13498:18357 composer 768px（Container 800 -
-   pad 16×2）。specificity (0,3,0) 高于上方 padding: 16px 的 (0,2,0)，且同文件后置，
-   双保险不被覆盖；760 → 768 对齐 Figma 卡片宽。 */
+/* Welcome 态输入卡左右同样收 16px（设计师 0917 评论：新会话页输入卡左右边距用改法 A
+   = 16px）。注意：卡片的「左右大留白」并非来自这里——welcome 与普通对话共用
+   .input-wrapper 的 max-width 768 + margin auto 居中（host-desktop.css:1587，
+   Figma Form 768）。原先是 max(10px, (100% - 768px)/2) 的居中公式，实测在
+   列宽 ≥ 788px 时与 16px 完全等价（卡片 768 居中、逐字节相同的截图），
+   只在窄列（< 788px）才不同：公式取下限 10px，改 16px 后卡片窄 12px。
+   改 16px 后此规则与上方 .input-area-container 的 padding: 16px 同值，
+   保留是为了显式记录 welcome 也走同一档。 */
 [data-host="desktop"] .chat-container--welcome .input-area-container {
-  padding-left: max(10px, calc((100% - 768px) / 2));
-  padding-right: max(10px, calc((100% - 768px) / 2));
+  padding-left: 16px;
+  padding-right: 16px;
 }
 
 /* 账户区底部贴合：Figma 17131 账户区高 41 = pad-top 8 + 内容 32 + 分隔线 1
