@@ -580,7 +580,10 @@ export interface FileSuggestionDropdownProps {
   selectedIndex: number;
   onSelect: (file: FileItem) => void;
   onClose: () => void;
-  position: { top: number; left: number };
+  /** Anchor for the absolutely-positioned popup. Omit it to render the list
+      in normal flow instead (the parent panel lays it out, e.g. the file-panel
+      search popover, whose panel owns the surface). */
+  position?: { top: number; left: number };
   filterText: string;
   isLoading?: boolean;
   /** Which way the dropdown expands from its anchor: "up" (message input,

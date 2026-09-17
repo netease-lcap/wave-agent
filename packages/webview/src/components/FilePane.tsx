@@ -13,6 +13,7 @@ import { toRelativePath } from "../utils/messageUtils";
 import { useClickOutside } from "../utils/useClickOutside";
 import { useHostMessage } from "../utils/useHostMessage";
 import { FileSuggestionDropdown } from "./FileSuggestionDropdown";
+import { OpenBrowserIcon, SearchIcon } from "./HeaderIcons";
 import { PanelKindIcon } from "./PanelKindIcon";
 import { PanePlaceholder, PaneShell } from "./PaneShell";
 import "../styles/FilePane.css";
@@ -230,7 +231,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchPopoverRef = useRef<HTMLDivElement>(null);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
-  const searchInputRowRef = useRef<HTMLDivElement>(null);
 
   // Search popover: the toolbar's search icon toggles a floating panel (input +
   // suggestions). Host broadcasts fileSuggestionsResponse to every pane;
@@ -461,7 +461,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               data-testid="file-open-external"
               onClick={() => onOpenExternal(fileView.path)}
             >
-              <i className="codicon codicon-link-external" />
+              <OpenBrowserIcon className="preview-pane-icon" />
             </button>
           )}
           {vscode && (
@@ -475,7 +475,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               aria-expanded={searchOpen}
               onClick={searchOpen ? closeSearch : openSearch}
             >
-              <i className="codicon codicon-search" />
+              <SearchIcon className="preview-pane-icon" />
             </button>
           )}
         </>
@@ -491,8 +491,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
               top: (toolbarRef.current?.offsetHeight ?? 28) + 6,
             }}
           >
-            <div className="file-pane-search-input-row" ref={searchInputRowRef}>
-              <i className="codicon codicon-search file-pane-search-icon" />
+            <div className="file-pane-search-input-row">
+              <SearchIcon className="file-pane-search-icon" />
               <input
                 ref={searchInputRef}
                 className="file-pane-search-input"
@@ -516,10 +516,6 @@ export const FilePane: React.FC<FilePaneProps> = ({
               onSelect={handleSearchSelect}
               onClose={resetSearch}
               disableClickOutside
-              position={{
-                top: (searchInputRowRef.current?.offsetHeight ?? 28) + 6,
-                left: 0,
-              }}
               filterText={searchFilter}
               isLoading={searchLoading}
               direction="down"
