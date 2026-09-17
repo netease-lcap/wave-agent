@@ -30,6 +30,7 @@ describe("inputReducer", () => {
       showAgentsManager: false,
       showPluginManager: false,
       showRewindManager: false,
+      showResumeSelector: false,
       showWorkflowManager: false,
       showSkillsManager: false,
       showHooksManager: false,
@@ -360,6 +361,22 @@ describe("inputReducer", () => {
       payload: false,
     });
     expect(state.showRewindManager).toBe(false);
+    expect(state.selectorJustUsed).toBe(true);
+  });
+
+  it("should handle SET_SHOW_RESUME_SELECTOR", () => {
+    let state = inputReducer(initialState, {
+      type: "SET_SHOW_RESUME_SELECTOR",
+      payload: true,
+    });
+    expect(state.showResumeSelector).toBe(true);
+    expect(state.selectorJustUsed).toBe(false);
+
+    state = inputReducer(state, {
+      type: "SET_SHOW_RESUME_SELECTOR",
+      payload: false,
+    });
+    expect(state.showResumeSelector).toBe(false);
     expect(state.selectorJustUsed).toBe(true);
   });
 

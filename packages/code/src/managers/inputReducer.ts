@@ -154,6 +154,7 @@ export interface InputState {
   showMcpManager: boolean;
   showAgentsManager: boolean;
   showRewindManager: boolean;
+  showResumeSelector: boolean;
   showHelp: boolean;
   showStatusCommand: boolean;
   showLoginCommand: boolean;
@@ -194,6 +195,7 @@ export const initialState: InputState = {
   showMcpManager: false,
   showAgentsManager: false,
   showRewindManager: false,
+  showResumeSelector: false,
   showHelp: false,
   showStatusCommand: false,
   showLoginCommand: false,
@@ -477,6 +479,7 @@ export type InputAction =
   | { type: "SET_SHOW_MCP_MANAGER"; payload: boolean }
   | { type: "SET_SHOW_AGENTS_MANAGER"; payload: boolean }
   | { type: "SET_SHOW_REWIND_MANAGER"; payload: boolean }
+  | { type: "SET_SHOW_RESUME_SELECTOR"; payload: boolean }
   | { type: "SET_SHOW_HELP"; payload: boolean }
   | { type: "SET_SHOW_STATUS_COMMAND"; payload: boolean }
   | { type: "SET_SHOW_LOGIN_COMMAND"; payload: boolean }
@@ -677,6 +680,12 @@ export function inputReducer(
       return {
         ...state,
         showRewindManager: action.payload,
+        selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
+      };
+    case "SET_SHOW_RESUME_SELECTOR":
+      return {
+        ...state,
+        showResumeSelector: action.payload,
         selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
       };
     case "SET_SHOW_HELP":
@@ -1088,6 +1097,7 @@ export function inputReducer(
             state.showMcpManager ||
             state.showAgentsManager ||
             state.showRewindManager ||
+            state.showResumeSelector ||
             state.showHelp ||
             state.showStatusCommand ||
             state.showLoginCommand ||

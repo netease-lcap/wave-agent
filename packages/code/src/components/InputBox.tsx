@@ -10,6 +10,7 @@ import { AgentsManager } from "./AgentsManager.js";
 import { SkillsManager } from "./SkillsManager.js";
 import { HooksManager } from "./HooksManager.js";
 import { RewindCommand } from "./RewindCommand.js";
+import { ResumeCommand } from "./ResumeCommand.js";
 import { HelpView } from "./HelpView.js";
 import { StatusCommand } from "./StatusCommand.js";
 import { LoginCommand } from "./LoginCommand.js";
@@ -86,6 +87,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     permissionMode: chatPermissionMode,
     setPermissionMode: setChatPermissionMode,
     handleRewindSelect,
+    resumeSession,
     backgroundCurrentTask,
     messages,
     getFullMessageThread,
@@ -153,6 +155,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showMcpManager,
     showAgentsManager,
     showRewindManager,
+    showResumeSelector,
     showHelp,
     showStatusCommand,
     showLoginCommand,
@@ -165,6 +168,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setShowMcpManager,
     setShowAgentsManager,
     setShowRewindManager,
+    setShowResumeSelector,
     setShowHelp,
     setShowStatusCommand,
     setShowLoginCommand,
@@ -230,6 +234,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     if (
       planView ||
       showRewindManager ||
+      showResumeSelector ||
       showHelp ||
       showStatusCommand ||
       showLoginCommand ||
@@ -281,6 +286,21 @@ export const InputBox: React.FC<InputBoxProps> = ({
       setShowRewindManager(false);
     }
     await handleRewindSelect(index);
+  };
+
+  const handleResumeSelectWithClose = async (
+    sessionId: string,
+    resumeWorkdir?: string,
+  ) => {
+    setShowResumeSelector(false);
+    // The switch replaces the whole conversation; a draft typed for the old
+    // session would otherwise silently become the first message of the new one.
+    setInputText("");
+    await resumeSession(sessionId, resumeWorkdir);
+  };
+
+  const handleResumeCancel = () => {
+    setShowResumeSelector(false);
   };
 
   return (
@@ -363,6 +383,15 @@ export const InputBox: React.FC<InputBoxProps> = ({
         />
       )}
 
+      {showResumeSelector && (
+        <ResumeCommand
+          workdir={workingDirectory}
+          isBusy={!isIdle}
+          onSelect={handleResumeSelectWithClose}
+          onCancel={handleResumeCancel}
+        />
+      )}
+
       {showHelp && (
         <HelpView
           onCancel={() => setShowHelp(false)}
@@ -412,6 +441,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
             showAgentsManager ||
             showSkillsManager ||
             showRewindManager ||
+            showResumeSelector ||
             showHelp ||
             showStatusCommand ||
             showLoginCommand ||

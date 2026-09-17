@@ -42,7 +42,10 @@ import type { WorktreeSession } from "./utils/worktreeSession.js";
 import path from "node:path";
 import { parseTaskNotificationXml } from "./utils/notificationXml.js";
 import { InitializationService } from "./services/initializationService.js";
-import { InteractionService } from "./services/interactionService.js";
+import {
+  InteractionService,
+  type InteractionContext,
+} from "./services/interactionService.js";
 import { ConfigurationService } from "./services/configurationService.js";
 import { Container } from "./utils/container.js";
 import { setupAgentContainer } from "./utils/containerSetup.js";
@@ -745,24 +748,53 @@ export class Agent {
   /**
    * Restore a session by ID, switching to the target session without destroying the Agent instance
    * @param sessionId - The ID of the session to restore
+   * @param options.workdir - The directory the target session lives in. Pass it
+   *   when the target was recorded under a different project directory (e.g.
+   *   another worktree of the same repo); the session transcript, project rules
+   *   and memory are then re-pointed at it.
    */
-  public async restoreSession(sessionId: string): Promise<void> {
+  public async restoreSession(
+    sessionId: string,
+    options?: { workdir?: string },
+  ): Promise<void> {
     await InteractionService.restoreSession(
-      {
-        messageManager: this.messageManager,
-        slashCommandManager: this.slashCommandManager,
-        hookManager: this.hookManager,
-        workdir: this.workdir,
-        configurationService: this.configurationService,
-        logger: this.logger,
-        aiManager: this.aiManager,
-        subagentManager: this.subagentManager,
-        taskManager: this.taskManager,
-        options: this.options,
-        abortMessage: () => this.abortMessage(),
-      },
+      this.interactionContext(),
       sessionId,
+      options,
     );
+  }
+
+  /** Shared wiring for the InteractionService entry points. */
+  private interactionContext(): InteractionContext {
+    return {
+      messageManager: this.messageManager,
+      slashCommandManager: this.slashCommandManager,
+      hookManager: this.hookManager,
+      workdir: this.workdir,
+      configurationService: this.configurationService,
+      logger: this.logger,
+      aiManager: this.aiManager,
+      subagentManager: this.subagentManager,
+      taskManager: this.taskManager,
+      options: this.options,
+      abortMessage: () => this.abortMessage(),
+      switchWorkdir: (workdir) => this.switchSessionWorkdir(workdir),
+    };
+  }
+
+  /**
+   * Re-point every directory-derived piece of session state at `workdir`
+   * (used when restoring a session recorded in another directory).
+   *
+   * The memory cache needs no explicit clearing: moving to a session always
+   * changes the session id, and the resulting `onSessionIdChange` already
+   * clears it. Project rules do — they are discovered once at startup and
+   * resolved relative to the workdir.
+   */
+  private async switchSessionWorkdir(workdir: string): Promise<void> {
+    this.setWorkdir(workdir);
+    this.messageManager.setWorkdir(workdir);
+    await this.memoryRuleManager.setWorkdir(workdir);
   }
 
   public abortAIMessage(): void {
@@ -1122,19 +1154,7 @@ export class Agent {
     }
 
     await InteractionService.sendMessage(
-      {
-        messageManager: this.messageManager,
-        slashCommandManager: this.slashCommandManager,
-        hookManager: this.hookManager,
-        workdir: this.workdir,
-        configurationService: this.configurationService,
-        logger: this.logger,
-        aiManager: this.aiManager,
-        subagentManager: this.subagentManager,
-        taskManager: this.taskManager,
-        options: this.options,
-        abortMessage: () => this.abortMessage(),
-      },
+      this.interactionContext(),
       content,
       images,
     );

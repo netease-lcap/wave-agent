@@ -247,6 +247,8 @@ export const useInputManager = (
                 dispatch({ type: "SET_SHOW_AGENTS_MANAGER", payload: true });
               } else if (command === "rewind") {
                 dispatch({ type: "SET_SHOW_REWIND_MANAGER", payload: true });
+              } else if (command === "resume") {
+                dispatch({ type: "SET_SHOW_RESUME_SELECTOR", payload: true });
               } else if (command === "help") {
                 dispatch({ type: "SET_SHOW_HELP", payload: true });
               } else if (command === "status") {
@@ -511,6 +513,10 @@ export const useInputManager = (
     dispatch({ type: "SET_SHOW_REWIND_MANAGER", payload: show });
   }, []);
 
+  const setShowResumeSelector = useCallback((show: boolean) => {
+    dispatch({ type: "SET_SHOW_RESUME_SELECTOR", payload: show });
+  }, []);
+
   const setShowHelp = useCallback((show: boolean) => {
     dispatch({ type: "SET_SHOW_HELP", payload: show });
   }, []);
@@ -681,6 +687,7 @@ export const useInputManager = (
     showMcpManager: state.showMcpManager,
     showAgentsManager: state.showAgentsManager,
     showRewindManager: state.showRewindManager,
+    showResumeSelector: state.showResumeSelector,
     showHelp: state.showHelp,
     showStatusCommand: state.showStatusCommand,
     showLoginCommand: state.showLoginCommand,
@@ -735,6 +742,7 @@ export const useInputManager = (
     setShowPluginManager,
     setShowModelSelector,
     setShowWorkflowManager,
+    setShowResumeSelector,
     setShowSkillsManager,
     setShowHooksManager,
     setPermissionMode,

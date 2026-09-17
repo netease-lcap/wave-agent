@@ -77,6 +77,12 @@ export interface ChatContextType {
   clearMessages: () => Promise<void>;
   compact: (instructions?: string) => Promise<void>;
   addDir: (args?: string) => Promise<void>;
+  /**
+   * Switch to another conversation in-process (`/resume`). Pass `resumeWorkdir`
+   * when the target session lives in a sibling worktree of the same repo — the
+   * session then moves into that directory too.
+   */
+  resumeSession: (sessionId: string, resumeWorkdir?: string) => Promise<void>;
   abortMessage: () => void;
   recallQueuedMessage: () => QueuedMessage | null;
   removeQueuedMessageById: (id: string) => boolean;
@@ -1069,6 +1075,51 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     );
   }, []);
 
+  // /resume: switch to another conversation without leaving the process. The
+  // session id and its on-disk project directory move together, so the next
+  // message is appended to the target's own transcript. A failed restore leaves
+  // the current session untouched and only surfaces a notice.
+  const resumeSession = useCallback(
+    async (sessionId: string, resumeWorkdir?: string) => {
+      const agent = agentRef.current;
+      if (!agent) return;
+
+      try {
+        await agent.restoreSession(
+          sessionId,
+          resumeWorkdir ? { workdir: resumeWorkdir } : undefined,
+        );
+      } catch (error) {
+        // UI-only notice (same display path as /add-dir): nothing was switched,
+        // so nothing about the failed target is persisted.
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+            role: "assistant",
+            timestamp: new Date().toISOString(),
+            blocks: [
+              {
+                type: "error",
+                content: `Failed to resume conversation: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              },
+            ],
+          },
+        ]);
+        return;
+      }
+
+      setSessionId(agent.sessionId);
+      setWorkingDirectory(agent.workingDirectory);
+      setIsLoading(agent.isLoading);
+      refreshMessages();
+      forceRemount();
+    },
+    [forceRemount, refreshMessages],
+  );
+
   // Unified interrupt method, interrupt both AI messages and command execution
   const abortMessage = useCallback(() => {
     agentRef.current?.abortMessage();
@@ -1316,6 +1367,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     clearMessages,
     compact,
     addDir,
+    resumeSession,
     abortMessage,
     recallQueuedMessage,
     removeQueuedMessageById,
