@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   renderChatApp,
   screen,
@@ -7,6 +7,57 @@ import {
   fireInput,
   within,
 } from "./test-utils";
+
+/**
+ * jsdom does no layout, so `scrollWidth`/`clientWidth` are always 0 and the
+ * component's "only tooltip the entries whose text is actually clipped" gate
+ * can never fire. Simulate a row of fixed width whose content grows with the
+ * character count, so only long entries read as truncated.
+ */
+const ROW_WIDTH = 240;
+const CHAR_WIDTH = 8;
+
+const elementWidthDescriptors = {
+  scrollWidth: Object.getOwnPropertyDescriptor(
+    Element.prototype,
+    "scrollWidth",
+  ),
+  clientWidth: Object.getOwnPropertyDescriptor(
+    Element.prototype,
+    "clientWidth",
+  ),
+};
+
+function stubTextTruncationMeasurement() {
+  const isItemText = (el: Element) => el.classList.contains("queued-item-text");
+  Object.defineProperty(Element.prototype, "clientWidth", {
+    configurable: true,
+    get(this: Element) {
+      return isItemText(this) ? ROW_WIDTH : 0;
+    },
+  });
+  Object.defineProperty(Element.prototype, "scrollWidth", {
+    configurable: true,
+    get(this: Element) {
+      return isItemText(this)
+        ? (this.textContent?.length ?? 0) * CHAR_WIDTH
+        : 0;
+    },
+  });
+}
+
+function restoreTextTruncationMeasurement() {
+  Object.defineProperty(
+    Element.prototype,
+    "scrollWidth",
+    elementWidthDescriptors.scrollWidth!,
+  );
+  Object.defineProperty(
+    Element.prototype,
+    "clientWidth",
+    elementWidthDescriptors.clientWidth!,
+  );
+}
 
 /**
  * Helper: set contenteditable text and fire input event
@@ -30,6 +81,12 @@ function itemText(id: string): string {
 describe("Message Queuing", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    // Only stubbed by the truncation test; re-installing the jsdom getters is
+    // a no-op for every other test.
+    restoreTextTruncationMeasurement();
   });
 
   it("should queue messages when streaming and process them after streaming ends", async () => {
@@ -246,7 +303,8 @@ describe("Message Queuing", () => {
     expect(itemText("q2")).toBe("normal message");
   });
 
-  it("should wrap each item in a Tooltip showing the full text", () => {
+  it("should wrap only truncated items in a Tooltip showing the full text", () => {
+    stubTextTruncationMeasurement();
     renderChatApp();
 
     sendCommand("startStreaming");
@@ -256,16 +314,29 @@ describe("Message Queuing", () => {
           id: "q1",
           content: "A very long queued message that needs a tooltip",
         },
+        { id: "q2", content: "short" },
       ],
     });
 
-    // The Tooltip wrapper (.tooltip-container) contains the item and a
-    // role="tooltip" box carrying the full text.
+    // Expand to render (and measure) both items
+    fireEvent.click(
+      screen
+        .getByTestId("queued-message-list")
+        .querySelector(".queued-message-list-header") as HTMLElement,
+    );
+
+    // The truncated item is wrapped: the Tooltip container (.tooltip-container)
+    // contains the item and a role="tooltip" box carrying the full text.
     const item = screen.getByTestId("queued-item-q1");
     const container = item.closest(".tooltip-container") as HTMLElement;
-    const tooltip = within(container).getByRole("tooltip");
-    expect(tooltip).toHaveTextContent(
+    expect(container).not.toBeNull();
+    expect(within(container).getByRole("tooltip")).toHaveTextContent(
       "A very long queued message that needs a tooltip",
     );
+
+    // The short item fits, so it is rendered unwrapped (no bubble on hover)
+    expect(
+      screen.getByTestId("queued-item-q2").closest(".tooltip-container"),
+    ).toBeNull();
   });
 });
