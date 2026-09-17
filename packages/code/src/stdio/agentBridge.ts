@@ -1963,10 +1963,13 @@ export class AgentBridge {
     workdir?: string,
     sessionId?: string,
   ) {
+    // 这个通道只服务 GUI 的「批量更新插件」按钮：按当前清单升级、不拉检出
+    // （清单刷新由打开视图时的 refreshMarketplaces 承担，spec 插件市场 A-013/
+    // 场景 14）。
     const updated = await this.getPluginCore(
       workdir,
       sessionId,
-    ).updateMarketplace(name);
+    ).updateMarketplacePlugins(name);
     // 实际升级的插件数回给宿主：0 = 该市场已是最新（宿主据此提示，
     // spec 插件市场场景 13）。
     return { updated };

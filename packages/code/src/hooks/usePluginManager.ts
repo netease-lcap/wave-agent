@@ -233,6 +233,8 @@ export function usePluginManager(options?: {
     [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
   );
 
+  // 市场详情的「批量更新插件」项：按当前清单批量升级该市场内已装插件，不拉检出
+  // ——检出已由打开插件管理器时的后台刷新处理（spec ecosystem/plugin A-013 场景 14）。
   const updateMarketplace = useCallback(
     async (name: string) => {
       clearPluginFeedback();
@@ -241,7 +243,7 @@ export function usePluginManager(options?: {
         isLoading: true,
       }));
       try {
-        await pluginCore.updateMarketplace(name);
+        await pluginCore.updateMarketplacePlugins(name);
         await refresh();
         setSuccessMessage(`Marketplace '${name}' updated successfully`);
       } catch (error) {

@@ -499,8 +499,9 @@ class MessageHandler(
                     IdeService.showError(project, "移除市场失败: ${e.message}")
                 }
             }
-            // 更新市场：拉取最新市场源并升级该市场内已安装且有新版本的插件（升级在
-            // SDK 侧完成），返回实际升级数量（spec 插件市场场景 13）。
+            // 批量更新插件：按当前清单升级该市场内已安装且有新版本的插件、不拉取
+            // 检出（升级在 SDK 侧完成），返回实际升级数量（spec 插件市场 A-013
+            // 场景 14；清单刷新由打开视图时的 refreshMarketplaces 承担）。
             "updateMarketplace" -> {
                 val name = msg["name"]?.jsonPrimitive?.content
                 try {

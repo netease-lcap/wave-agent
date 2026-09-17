@@ -215,10 +215,6 @@ describe("officialMarketplaceMirror (zip snapshot)", () => {
     service = new MarketplaceService();
     await (service as unknown as { _seedComplete: Promise<void> })
       ._seedComplete;
-    (
-      MarketplaceService as unknown as { isLockedInProcess: boolean }
-    ).isLockedInProcess = false;
-
     delete process.env[OFFICIAL_MARKET_MIRROR_BASE_URL_ENV];
     clearMirrorState();
   });

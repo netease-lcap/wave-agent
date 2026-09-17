@@ -252,11 +252,12 @@ export class PluginCore {
   }
 
   /**
-   * Updates a specific marketplace or all marketplaces
+   * Updates a specific marketplace or all marketplaces: refreshes the checkout
+   * from its upstream and reinstalls any plugins that are already installed from
+   * it (mirrors Claude Code's refresh-and-bump).
    *
-   * Pulls the latest marketplace source and reinstalls any plugins that are
-   * already installed from it, so a manual "批量更新插件" also brings installed
-   * plugins up to date (mirrors Claude Code's refresh-and-bump).
+   * 无界面可依赖的入口（非交互命令 `wave plugin marketplace update`）走这里；
+   * 交互界面的「批量更新插件」走 [updateMarketplacePlugins]（不拉检出）。
    *
    * @returns 实际发生版本变化的插件数量（0 = 全部已是最新），供 GUI 宿主区分提示。
    */
@@ -264,6 +265,17 @@ export class PluginCore {
     return await this.marketplaceService.updateMarketplace(name, {
       updatePlugins: true,
     });
+  }
+
+  /**
+   * 批量升级某市场内已安装的插件，且不拉取检出——交互界面的「批量更新插件」
+   * （GUI 三端按钮与 CLI 插件管理器的同名项）。清单的新鲜度由打开这些界面时的
+   * 后台刷新保证（spec 插件市场 A-013、场景 14）。
+   *
+   * @returns 实际发生版本变化的插件数量（0 = 该市场已是最新），供宿主区分提示。
+   */
+  async updateMarketplacePlugins(name?: string): Promise<number> {
+    return await this.marketplaceService.updateMarketplacePlugins(name);
   }
 
   /**

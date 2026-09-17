@@ -5907,9 +5907,10 @@ export class DesktopHost {
   }
 
   /**
-   * 更新市场：拉取最新市场源并升级该市场内已安装且有新版本的插件（升级发生在 SDK
-   * 侧），按实际升级数量提示——0 个时提示「已是最新」（spec 插件市场场景 13）。
-   * 插件版本可能变化 → 两个列表都刷新。
+   * 批量更新插件：按当前清单升级该市场内所有已安装且有新版本的插件（升级发生在
+   * SDK 侧），不拉取检出——清单刷新由打开插件市场视图时的 refreshMarketplaces
+   * 承担（spec 插件市场 A-013/场景 14）。按实际升级数量提示——0 个时提示
+   * 「已是最新」（场景 13）。插件版本可能变化 → 两个列表都刷新。
    */
   private async handleUpdateMarketplace(name?: string): Promise<void> {
     try {

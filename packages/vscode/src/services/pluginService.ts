@@ -124,7 +124,8 @@ export class PluginService {
   }
 
   /**
-   * 更新市场（拉取最新市场源），同时把该市场内已安装插件升级到最新。
+   * 批量更新插件：按当前清单把该市场内已安装插件升级到最新，不拉取检出
+   * （清单刷新由打开插件市场视图时的 refreshMarketplaces 承担，spec A-013）。
    * 返回实际升级的插件数（0 = 已是最新），宿主据此提示。
    */
   public async updateMarketplace(name?: string) {

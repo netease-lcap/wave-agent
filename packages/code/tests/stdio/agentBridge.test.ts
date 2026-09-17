@@ -2142,12 +2142,13 @@ test("removeMarketplace delegates to PluginCore", async () => {
 
 test("updateMarketplace delegates to PluginCore", async () => {
   const { bridge } = createBridge();
-  const updateMarketplace = vi.fn().mockResolvedValue(undefined);
-  mockPluginCore({ updateMarketplace });
+  const updateMarketplacePlugins = vi.fn().mockResolvedValue(undefined);
+  mockPluginCore({ updateMarketplacePlugins });
 
   await bridge.handleRequest("updateMarketplace", { name: "official" });
 
-  expect(updateMarketplace).toHaveBeenCalledWith("official");
+  // GUI 的批量更新按钮只按当前清单升级、不拉检出（spec 插件市场 A-013/场景 14）
+  expect(updateMarketplacePlugins).toHaveBeenCalledWith("official");
 });
 
 // ── notificationMessageAdded with full message ──────────────────
