@@ -3015,6 +3015,37 @@ describe("DesktopApp", () => {
       );
     });
 
+    it("keeps a sole pane out of the reorder drag (no drag source, no indicator)", () => {
+      const { vscode } = renderWithPanes(
+        [{ paneId: "pane-0", sessionId: "s1" }],
+        "pane-0",
+      );
+      mockPaneRect("pane-0", 0, 400);
+
+      const pane = screen.getByTestId("desktop-pane-pane-0");
+      const header = within(pane).getByTestId("chat-header");
+      // Nothing to reorder or split with one pane — the header is not a drag
+      // handle at all (no grab affordance).
+      expect(header).not.toHaveAttribute("draggable");
+
+      const dataTransfer = makeDataTransfer();
+      fireEvent.dragStart(header, { dataTransfer });
+      expect(dataTransfer.getData("application/x-wave-pane")).toBe("");
+
+      const dragOver = createEvent.dragOver(pane, { dataTransfer });
+      Object.defineProperty(dragOver, "clientX", { value: 100 });
+      fireEvent(pane, dragOver);
+      expect(
+        screen.queryByTestId("desktop-pane-drop-indicator"),
+      ).not.toBeInTheDocument();
+
+      vscode.postMessage.mockClear();
+      fireEvent.drop(pane, { dataTransfer, clientX: 100 });
+      expect(vscode.postMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({ command: "desktopMovePane" }),
+      );
+    });
+
     it("vetoes the pane drag when the press starts on a header button, so buttons stay clickable", () => {
       renderWithPanes(
         [

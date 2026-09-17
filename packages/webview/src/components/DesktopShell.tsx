@@ -83,8 +83,9 @@ interface DesktopShellProps {
  * The layout itself is host-authoritative: Cmd/Ctrl+Click on a sidebar session
  * appends a pane to the focused pane's row (`desktopOpenPane`), dragging a
  * sidebar session onto a pane gap inserts there, dragging a pane header
- * reorders within a row or moves across rows (`desktopMovePane`), dragging a
- * pane/session onto the top or bottom edge band of a single-row layout splits
+ * reorders within a row or moves across rows (`desktopMovePane`; the header is
+ * only a drag source once a second pane exists), dragging a pane/session onto
+ * the top or bottom edge band of a single-row layout splits
  * it into two rows (VS Code-style translucent drop zone), and dragging a
  * separator resizes the adjacent pair (`desktopResizePanes`) or the two rows
  * (`desktopResizePaneRows`), with a live local preview. The webview never
@@ -261,6 +262,10 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   // component), so the reorder drag source is wired imperatively here rather
   // than threading drag props through the shared chat tree.
   useLayoutEffect(() => {
+    // A sole pane has no sibling to reorder against and cannot be split into
+    // its own new row, so the header stays out of the drag entirely rather
+    // than advertising a drop that is always a no-op.
+    if (panes.length < 2) return;
     const disposers: Array<() => void> = [];
     panes.forEach((pane) => {
       const header = paneNodes.current
@@ -779,6 +784,9 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                             else paneNodes.current.delete(pane.paneId);
                           }}
                           className={`desktop-pane${pane.paneId === focusedPaneId ? " desktop-pane--focused" : ""}`}
+                          // Marks the pane header as a reorder handle (grab
+                          // cursor, CSS side) — only once a second pane exists.
+                          data-draggable={panes.length > 1 ? "true" : undefined}
                           style={paneStyle}
                           onMouseDown={() => handleFocusPane(pane.paneId)}
                           onDragOver={(e) =>
