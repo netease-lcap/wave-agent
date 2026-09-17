@@ -1163,6 +1163,7 @@ export const MessageInput = forwardRef<
         "rewind",
         "model",
         "plan",
+        "resume",
       ];
       if (localCommands.includes(command.name)) {
         // 本地指令不能把 '/' 前的草稿整条清掉（历史 bug：无条件 innerHTML=""

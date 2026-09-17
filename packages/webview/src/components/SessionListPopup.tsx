@@ -11,6 +11,16 @@ interface SessionListPopupProps {
   onSessionSelect: (sessionId: string) => void;
   onClose: () => void;
   loading: boolean;
+  /** "dropdown" = anchored under the chat header (IDE hosts, triggered by the
+   *  「历史对话」 button). "modal" = centered dialog with a scrim (desktop
+   *  `/resume`, which has no header session buttons). Both share the search
+   *  box, keyboard handling and list rendering below. */
+  variant?: "dropdown" | "modal";
+  /** Show each session's project path — the modal list spans every project on
+   *  the host, so the path is what tells two same-titled sessions apart. */
+  showProject?: boolean;
+  /** Dialog label for the modal variant. */
+  title?: string;
 }
 
 export const SessionListPopup: React.FC<SessionListPopupProps> = ({
@@ -19,6 +29,9 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
   onSessionSelect,
   onClose,
   loading,
+  variant = "dropdown",
+  showProject = false,
+  title = "历史对话",
 }) => {
   const [query, setQuery] = useState("");
   // Keyboard selection index into the filtered list; 0 = first item.
@@ -81,34 +94,47 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
     }
   };
 
+  const isModal = variant === "modal";
+
   return (
-    <div
-      ref={popupRef}
-      className="session-list-popup"
-      data-testid="session-list-popup"
-    >
-      <input
-        ref={inputRef}
-        type="text"
-        className="session-list-search"
-        placeholder="搜索关键词"
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setSelectedIndex(0);
-        }}
-        onKeyDown={handleSearchKeyDown}
-      />
-      <div className="session-list-label">历史对话</div>
-      <SessionList
-        sessions={filteredSessions}
-        currentSession={currentSession}
-        onSessionSelect={handleSelect}
-        loading={loading}
-        highlightQuery={query}
-        selectedIndex={selectedIndex}
-      />
-    </div>
+    <>
+      {isModal && (
+        <div className="session-list-popup-scrim" data-testid="resume-scrim" />
+      )}
+      <div
+        ref={popupRef}
+        className={`session-list-popup${
+          isModal ? " session-list-popup--modal" : ""
+        }`}
+        role={isModal ? "dialog" : undefined}
+        aria-modal={isModal || undefined}
+        aria-label={isModal ? title : undefined}
+        data-testid={isModal ? "resume-session-popup" : "session-list-popup"}
+      >
+        <input
+          ref={inputRef}
+          type="text"
+          className="session-list-search"
+          placeholder="搜索关键词"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setSelectedIndex(0);
+          }}
+          onKeyDown={handleSearchKeyDown}
+        />
+        <div className="session-list-label">{title}</div>
+        <SessionList
+          sessions={filteredSessions}
+          currentSession={currentSession}
+          onSessionSelect={handleSelect}
+          loading={loading}
+          highlightQuery={query}
+          selectedIndex={selectedIndex}
+          showProject={showProject}
+        />
+      </div>
+    </>
   );
 };
 

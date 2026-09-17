@@ -12,6 +12,10 @@ export interface SessionListProps {
   /** Keyboard selection index (roving tabindex); the item at this index gets
    *  aria-selected + tabIndex 0. Managed by the popup's search input. */
   selectedIndex?: number;
+  /** Render each session's project path under its label. Used where the list
+   *  spans projects (desktop `/resume`), so two same-titled sessions from
+   *  different directories are distinguishable. */
+  showProject?: boolean;
 }
 
 /**
@@ -61,6 +65,7 @@ export const SessionList: React.FC<SessionListProps> = ({
   loading = false,
   highlightQuery = "",
   selectedIndex = 0,
+  showProject = false,
 }) => {
   const selectedItemRef = useRef<HTMLLIElement>(null);
 
@@ -103,6 +108,14 @@ export const SessionList: React.FC<SessionListProps> = ({
               <div className="session-list-item-title">
                 {highlightMatch(formatSessionLabel(session), highlightQuery)}
               </div>
+              {showProject && session.workdir && (
+                <div
+                  className="session-list-item-project"
+                  title={session.workdir}
+                >
+                  {session.workdir}
+                </div>
+              )}
               <div className="session-list-item-time">
                 {new Date(session.lastActiveAt).toLocaleString()}
               </div>

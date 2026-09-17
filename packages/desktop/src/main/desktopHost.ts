@@ -3372,6 +3372,20 @@ export class DesktopHost {
         await this.handleDeleteSession(msg.sessionId as string);
         break;
 
+      // `/resume`: list this conversation's host's on-disk sessions (all
+      // projects, including ones this app never created) and switch to one.
+      case "desktopListResumeSessions":
+        await this.handleListResumeSessions(msg.requestId as string, pid);
+        break;
+
+      case "desktopResumeSession":
+        await this.handleResumeDiskSession(
+          msg.sessionId as string,
+          msg.workdir as string,
+          pid,
+        );
+        break;
+
       case "desktopGetWorktreeChanges":
         await this.handleGetWorktreeChanges(
           msg.sessionId as string,
@@ -4477,10 +4491,96 @@ export class DesktopHost {
    * pane just refocuses there (one session, one pane). Worktree sessions live
    * at the worktree path (entry.cwd).
    */
+  /**
+   * `/resume` picker data: every main session on this conversation's host's
+   * disk, across all project directories. The point of the picker is reaching
+   * sessions the app never created (CLI / another client), so it must not read
+   * the desktop session index (FR-024) — only the index is deliberately
+   * desktop-owned. Scope follows the current conversation's host, matching the
+   * app's other per-host state (login, recents, index).
+   */
+  private async handleListResumeSessions(
+    requestId: string,
+    paneId?: string,
+  ): Promise<void> {
+    const pid = paneId ?? this.focusedPaneId;
+    const host = this.hostForPane(pid);
+    try {
+      await this.ensureClientFor(host);
+      const result = (await this.utilityClientFor(host).request(
+        "listAllSessions",
+      )) as { sessions?: SessionMetadata[] };
+      const sessions = result.sessions ?? [];
+      this.postMessage({
+        command: "desktopResumeSessions",
+        paneId: pid,
+        requestId,
+        sessions,
+      });
+    } catch (error) {
+      console.error("[DesktopHost] 列出可恢复会话失败:", error);
+      // An unreachable host must not render as "no history at all": the
+      // webview closes the picker and this toast explains why (spec
+      // desktop-sessions.md「跨客户端会话来源」场景 4).
+      this.showToast({
+        message: `无法读取会话列表：${error instanceof Error ? error.message : String(error)}`,
+      });
+      this.postMessage({
+        command: "desktopResumeSessions",
+        paneId: pid,
+        requestId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Resume a session chosen from the `/resume` disk list. Unlike a click in the
+   * session tree, the session may have no index entry at all, so the host comes
+   * from the conversation's pane and the workdir from the session's own header.
+   *
+   * The directory is probed up front: a missing folder means the session cannot
+   * run, and this path must say so instead of bouncing the user through an
+   * optimistic pane switch (spec「跨客户端会话来源」场景 6). Registration into
+   * the session index happens in runPaneRestore (ensureSessionRegistered) once
+   * the transcript is actually restored.
+   */
+  private async handleResumeDiskSession(
+    sessionId: string,
+    workdir: string,
+    paneId?: string,
+  ): Promise<void> {
+    if (!sessionId || !workdir) return;
+    const pid = paneId ?? this.focusedPaneId;
+    if (!this.panes.some((p) => p.paneId === pid)) return;
+    const host = this.hostForPane(pid);
+
+    let exists: boolean;
+    try {
+      exists = await this.pathExistsOn(host, workdir);
+    } catch (error) {
+      if (!(error instanceof RemoteHostUnreachableError)) throw error;
+      // Unreachable says nothing about the directory — never treat it as
+      // missing, and never touch the index (desktop-sessions.md「远端主机不可
+      // 达时不得删除会话」).
+      this.showToast({
+        message: `无法连接主机 ${host}，会话未切换，可稍后重试`,
+      });
+      return;
+    }
+    if (!exists) {
+      this.showToast({ message: `该会话的目录已不存在：${workdir}` });
+      return;
+    }
+
+    await this.handleSelectSession(workdir, sessionId, pid, host);
+  }
+
   private async handleSelectSession(
     workdir: string,
     sessionId: string,
     paneId?: string,
+    hostOverride?: string,
   ): Promise<void> {
     if (!workdir || !sessionId) return;
     const pid = paneId ?? this.focusedPaneId;
@@ -4502,7 +4602,9 @@ export class DesktopHost {
     const entry = this.configStore
       .getSessionIndex()
       .find((e) => e.sessionId === sessionId);
-    const host = entry?.host ?? LOCAL_HOST;
+    // An indexed session's own host is authoritative; a session picked off disk
+    // (`/resume`) has no entry and brings its host from the requesting pane.
+    const host = entry?.host ?? hostOverride ?? LOCAL_HOST;
     const targetDir = entry?.worktree ? entry.cwd : workdir;
 
     // A live agent activates with zero network round trips — checked before
@@ -4566,9 +4668,14 @@ export class DesktopHost {
         }
         this.refreshSessionTree();
         this.showToast({
-          message: entry?.worktree
-            ? `worktree 目录不存在：${targetDir}，已从会话列表移除`
-            : `目录不存在：${workdir}，已从最近列表与会话列表移除`,
+          message: !entry
+            ? // A session picked off disk (`/resume`) was never in the index or
+              // the recents, so the toast must not claim it was removed from
+              // them (a dir deleted between the pick and the restore).
+              `该会话的目录已不存在：${workdir}`
+            : entry.worktree
+              ? `worktree 目录不存在：${targetDir}，已从会话列表移除`
+              : `目录不存在：${workdir}，已从最近列表与会话列表移除`,
         });
         return;
       }
@@ -6320,6 +6427,7 @@ export class DesktopHost {
         { id: "hooks", name: "hooks", description: "查看已配置钩子" },
         { id: "rewind", name: "rewind", description: "回滚到之前的用户消息" },
         { id: "model", name: "model", description: "切换 AI 模型" },
+        { id: "resume", name: "resume", description: "恢复历史对话" },
         { id: "btw", name: "btw", description: "旁路提问（不进入聊天记录）" },
         {
           id: "plan",

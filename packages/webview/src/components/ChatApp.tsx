@@ -35,6 +35,8 @@ import type { AccountCardAccount } from "./AccountCard";
 import SettingsPage from "./SettingsPage";
 import type { NavKey } from "./SettingsPage";
 import { SessionBoard } from "./SessionBoard";
+import { SessionListPopup } from "./SessionListPopup";
+import type { SessionMetadata } from "wave-agent-sdk";
 import { DesktopWorkdirSelector } from "./DesktopWorkdirSelector";
 import { DesktopWorktreeControls } from "./DesktopWorktreeControls";
 import { PreviewPane } from "./PreviewPane";
@@ -235,6 +237,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     undefined,
   );
   const [modelLoading, setModelLoading] = useState(false);
+  // /resume picker. IDE hosts reuse the header popup and its list
+  // (state.sessions); the desktop opens a centered modal fed by the host's
+  // on-disk session scan of the current conversation's host, which is what
+  // makes CLI-created sessions reachable (they are not in the desktop index).
+  const [resumePickerOpen, setResumePickerOpen] = useState(false);
+  const [resumeSessions, setResumeSessions] = useState<SessionMetadata[]>([]);
+  const [resumeLoading, setResumeLoading] = useState(false);
+  // One-shot scan correlation: a stale reply (host switched, /resume pressed
+  // again) must not populate the picker.
+  const resumeRequestIdRef = useRef("");
   // /btw side-question panel (webview spec story 3). Non-null while the panel is
   // open; `loading` while the askBtw RPC is in flight, `answer` afterwards
   // (including the bare-/btw usage hint and API-error strings).
@@ -908,6 +920,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // "worktree 创建中" indicator.
         if (!forThisPane(message)) break;
         setWorktreeCreating(false);
+        break;
+      case "desktopResumeSessions":
+        // Reply to /resume's disk scan (one-shot: a newer request supersedes
+        // this one). An error reply means the host could not be read — the
+        // host already explained why via toast, so close instead of showing an
+        // empty list that would read as "no history".
+        if (String(message.requestId) !== resumeRequestIdRef.current) break;
+        setResumeLoading(false);
+        if (message.error) {
+          setResumePickerOpen(false);
+          break;
+        }
+        setResumeSessions(message.sessions ?? []);
         break;
       case "desktopForwardPortResult":
         // Remote preview port-forward reply (scenario 15/16). The forward is
@@ -1865,6 +1890,23 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         postToHost({ command: "getConfiguredModels" });
         return;
       }
+      if (trimmedText === "/resume") {
+        // Desktop: scan the current conversation's host's disk (all projects),
+        // so sessions this app never created are reachable. IDE hosts: reopen
+        // the header popup over the already-loaded list — same scope as the
+        // 「历史对话」 button, which the plugin cannot widen (no workspace switch).
+        if (isDesktop) {
+          const requestId = String(Date.now());
+          resumeRequestIdRef.current = requestId;
+          setResumeSessions([]);
+          setResumeLoading(true);
+          setResumePickerOpen(true);
+          postToHost({ command: "desktopListResumeSessions", requestId });
+        } else {
+          setResumePickerOpen(true);
+        }
+        return;
+      }
       // /btw side question — answered out-of-band via askBtw, never enters the chat.
       if (trimmedText === "/btw" || trimmedText.startsWith("/btw ")) {
         const question = trimmedText.slice("/btw".length).trim();
@@ -2168,6 +2210,38 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   const handleInputCleared = useCallback(() => {
     dispatch({ type: "INPUT_CLEARED" });
+  }, []);
+
+  /**
+   * `/resume` picker selection. IDE hosts go through handleSessionSelect so the
+   * restore path and its streaming/background-task guard are exactly the ones
+   * the 「历史对话」 list uses. Desktop picks arrive from the disk scan, which
+   * carries the session's own workdir — the host switches the pane to that
+   * session (spawning/activating it) after verifying the directory exists.
+   */
+  const handleResumeSelect = useCallback(
+    (sessionId: string) => {
+      setResumePickerOpen(false);
+      if (!isDesktop) {
+        handleSessionSelect(sessionId);
+        return;
+      }
+      const session = resumeSessions.find((s) => s.id === sessionId);
+      if (!session?.workdir) return;
+      postToHost({
+        command: "desktopResumeSession",
+        sessionId,
+        workdir: session.workdir,
+      });
+    },
+    [isDesktop, resumeSessions, handleSessionSelect, postToHost],
+  );
+
+  const handleResumeClose = useCallback(() => {
+    setResumePickerOpen(false);
+    // Drop the correlation so a scan still in flight cannot repopulate a
+    // closed picker.
+    resumeRequestIdRef.current = "";
   }, []);
 
   // Desktop panel comments (preview element picks, diff-line comments) land in
@@ -3212,6 +3286,21 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // stay visible in every layout, including the desktop split-view shell.
   const dialogs = (
     <>
+      {/* Desktop `/resume`: centered modal at the pane's root (the desktop chat
+          header has no session buttons, and the pane root keeps it usable in
+          split view). Its list spans every project on the current host. */}
+      {isDesktop && resumePickerOpen && (
+        <SessionListPopup
+          variant="modal"
+          title="恢复会话"
+          sessions={resumeSessions}
+          currentSession={state.currentSession}
+          onSessionSelect={handleResumeSelect}
+          loading={resumeLoading}
+          showProject
+          onClose={handleResumeClose}
+        />
+      )}
       {state.activeDialog === "mcp" && (
         <McpDialog vscode={vscode} onClose={handleDialogClose} />
       )}
@@ -3328,6 +3417,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         currentSession={state.currentSession}
         onSessionSelect={handleSessionSelect}
         sessionsLoading={state.sessionsLoading}
+        // `/resume` (IDE hosts) opens this very popup — one list, one scope, no
+        // second implementation to drift.
+        sessionListOpen={!isDesktop && resumePickerOpen}
+        onSessionListClose={handleResumeClose}
         onOpenSettings={handleOpenSettings}
         onOpenEnterpriseConsole={handleOpenEnterpriseConsole}
         onOpenHelpDocs={handleOpenHelpDocs}

@@ -36,6 +36,7 @@ import {
   type PartialHookConfiguration,
   isValidHookEvent,
   listSessions,
+  listAllSessions,
   searchFiles,
   generateRandomName,
   getDefaultRemoteBranch,
@@ -206,6 +207,11 @@ export class AgentBridge {
         return this.restoreSession(p.sessionId as string, sessionId);
       case "listSessions":
         return this.listSessions(p.workdir as string | undefined, sessionId);
+      case "listAllSessions":
+        // Every project on this host (no session required) — the desktop's
+        // /resume picker lists sessions the app never created, so it cannot use
+        // the per-workdir listSessions.
+        return this.listAllSessions();
       case "getSessionInfo":
         return this.getSessionInfo(sessionId);
       case "listPendingPermissions":
@@ -741,6 +747,16 @@ export class AgentBridge {
     const sessions = await listSessions(
       workdir || this.getSessionWorkdir(sessionId) || process.cwd(),
     );
+    return { sessions };
+  }
+
+  /**
+   * All main sessions across every project directory of this host, newest
+   * first (deduplicated by session id). Each entry carries the session's real
+   * `workdir`, which is what a caller needs to resume it.
+   */
+  private async listAllSessions(): Promise<{ sessions: SessionMetadata[] }> {
+    const sessions = await listAllSessions();
     return { sessions };
   }
 

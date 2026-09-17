@@ -16,6 +16,38 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.36);
 }
 
+/* Desktop `/resume` variant: a centered dialog rather than a dropdown, because
+   the desktop chat header has no session buttons to anchor to. The pane renders
+   it at its own root, so it stays usable in split view. */
+.session-list-popup--modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  transform: translate(-50%, -50%);
+  z-index: 2000;
+  width: 520px;
+  max-width: calc(100vw - 64px);
+  max-height: 70vh;
+  padding: 12px;
+  background-color: var(--vscode-panel-background, #131415);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.42);
+}
+
+.session-list-popup--modal .session-list-results {
+  max-height: 48vh;
+}
+
+.session-list-popup-scrim {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1999;
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
 .session-list-search {
   height: 28px;
   box-sizing: border-box;
@@ -87,6 +119,16 @@
 .session-list-item-time {
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
+}
+
+/* Project path under the label (desktop `/resume`: the list spans projects).
+   Truncated at the tail; the full path is on the title attribute. */
+.session-list-item-project {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .session-list-loading,

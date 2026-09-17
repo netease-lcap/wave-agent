@@ -836,6 +836,22 @@ export interface DesktopRemoteDirListMessage extends HostToWebviewMessageBase {
   error?: unknown;
 }
 
+/**
+ * Reply to `desktopListResumeSessions`：桌面端 `/resume` 的会话列表。
+ *
+ * 来源是**当前对话所属主机**磁盘上的会话文件（该主机全部项目目录），包含桌面端
+ * 从未创建、因而不在会话索引里的会话（CLI / 其它客户端写的）——每条带真实
+ * `workdir`，选中后据此恢复。`error` 非空表示该主机不可达或读取失败：此时
+ * webview 关闭选择器（host 另行 toast 提示），不得把它当作"没有历史会话"的空
+ * 列表渲染。
+ */
+export interface DesktopResumeSessionsMessage extends HostToWebviewMessageBase {
+  command: "desktopResumeSessions";
+  requestId: string;
+  sessions?: SessionMetadata[];
+  error?: unknown;
+}
+
 /** Reply to selectPluginMarketFolder：设置页插件市场「新建市场 → 本地路径」的
  *  系统目录选择器结果。用户取消时 path 缺省（webview 视为未选择、不添加市场）。 */
 export interface PluginMarketFolderSelectedMessage
@@ -990,7 +1006,8 @@ export type HostToWebviewMessage =
   | UploadErrorMessage
   | DesktopRemoteDirListMessage
   | DesktopWorktreeChangesMessage
-  | PluginMarketFolderSelectedMessage;
+  | PluginMarketFolderSelectedMessage
+  | DesktopResumeSessionsMessage;
 
 /**
  * Reply-to 消息归属键注册表（契约锁，见文件头部「归属契约」）。
@@ -1025,6 +1042,9 @@ type ReplyAttribution = {
   desktopWorktreeChanges: "requestId";
   // 目录选择器：请求生成 id，回复原样带回（同会话可反复打开弹窗）。
   pluginMarketFolderSelected: "requestId";
+  // `/resume` 会话列表：请求生成 id，回复原样带回（连续敲 /resume、或主机慢时
+  // 晚到的旧列表即弃）。
+  desktopResumeSessions: "requestId";
   fileSuggestionsResponse: "requestId";
   // 设置页「服务端配置」：请求生成 id，回复原样带回（快速切换视图 / 桌面切
   // 远端主机时，晚到的旧下发内容即弃）。
@@ -1068,6 +1088,7 @@ export const replyAttributionLocked = {
   desktopRemoteDirList: true,
   desktopWorktreeChanges: true,
   pluginMarketFolderSelected: true,
+  desktopResumeSessions: true,
   fileSuggestionsResponse: true,
   managedSettingsResponse: true,
 } satisfies {
