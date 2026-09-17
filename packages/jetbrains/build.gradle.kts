@@ -58,6 +58,19 @@ intellijPlatform {
         // local builds without the property still configure fine.
         token = providers.gradleProperty("intellijPublishToken").orNull
     }
+    pluginVerification {
+        // Same engine the Marketplace runs on upload, with its default failure levels — so it
+        // fails the build on internal / override-only platform API usage.
+        //
+        // Verify against `current()` (the IDE we compile against, IC 2024.2) only: it is already
+        // resolved above, so this adds no IDE download, whereas the default `recommended()` pulls
+        // four builds (IC 242 + 243 + 251 + 252). What that misses: API that only *becomes*
+        // internal/deprecated in newer builds — `FileEditorManagerImpl.FORBID_PREVIEW_TAB` was
+        // internal in 2024.2 but only deprecated once 2024.3 moved it to FileEditorManagerKeys.
+        ides {
+            current()
+        }
+    }
 }
 
 // Copy webview assets (chat.js/chat.css + settings.js/settings.css) from packages/webview/dist
