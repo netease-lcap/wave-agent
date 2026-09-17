@@ -2233,6 +2233,48 @@
 [data-host="desktop"][data-theme="dark"] .confirmation-btn-reject:hover {
   background-color: rgb(255 255 255 / 8%);
 }
+
+/* 焦点环：鼠标点击不出环（契约 theme/layout.css:211 用 :focus-visible），键盘聚焦按
+   「两种语言」分派（同 SettingsPage.css:38-74 的桌面既有口径）——自带 1px 描边的按钮
+   把焦点色落自身边框（单圈、无空隙），边框透明的按钮才用外移环。
+   基础样式 ConfirmationDialog.css:521 的 `.confirmation-btn:focus { outline: 1px;
+   offset: 2px }` 会在自身描边外再画一圈（浅色下描边 #EBEEF5 看不见 → 像「点击凭空
+   多一圈」，深色下是真双线；设计师 0917 走查），故在此复写。作用域限桌面，IDE 宿主
+   沿用基础样式不变。 */
+[data-host="desktop"] .confirmation-btn:focus {
+  outline: none;
+}
+[data-host="desktop"] .confirmation-btn-auto:focus-visible,
+[data-host="desktop"] .confirmation-btn-reject:focus-visible,
+[data-host="desktop"] .confirmation-btn-secondary:focus-visible {
+  outline: none;
+  border-color: var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
+}
+[data-host="desktop"] .confirmation-btn-apply:focus-visible,
+[data-host="desktop"] .confirmation-btn-feedback:focus-visible {
+  outline: 2px solid var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
+  outline-offset: 2px;
+}
+
+/* 同族（设计师 0917「同类的也一并修改」）：问题卡片的选项卡 / 「其他」输入框 /
+   反馈输入框三处基础样式同为 `:focus` + 紧贴自身 1px 描边的环
+   （option-item:215 与 other-text-input:328 用 offset -1，feedback-textarea:406 是
+   outline + border-color 双保险 ≈ 2px 粗）。按桌面既有的「两种语言」分派：
+   输入类（光标在里面，鼠标点也算）→ 聚焦即焦点色落自身描边；按钮/卡片类 → 只给键盘，
+   鼠标点击不亮。 */
+[data-host="desktop"] .option-item:focus {
+  outline: none;
+}
+[data-host="desktop"] .option-item:focus-visible {
+  outline: none;
+  border-color: var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
+}
+[data-host="desktop"] .other-text-input:focus,
+[data-host="desktop"] .feedback-textarea:focus {
+  outline: none;
+  border-color: var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
+}
+
 /* ghost（提供反馈）：透明底 + --cc-text-regular #565A60（codechat approval-ghost） */
 [data-host="desktop"][data-theme="light"] .confirmation-btn-feedback {
   background-color: transparent;
