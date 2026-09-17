@@ -1288,6 +1288,7 @@ class MessageHandler(
             triple("compact", "compact", "手动压缩对话历史"),
             triple("rewind", "rewind", "回滚到之前的用户消息"),
             triple("model", "model", "切换 AI 模型"),
+            triple("resume", "resume", "恢复历史对话"),
             triple("btw", "btw", "旁路提问（不进入聊天记录）"),
             triple("plan", "plan", "启用规划模式或查看当前方案"),
         )

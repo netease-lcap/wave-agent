@@ -29,6 +29,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   isAuthenticated,
   hideSessionButtons = false,
   hideMoreButton = false,
+  sessionListOpen = false,
+  onSessionListClose,
   panelToggle,
   leading,
   macTrafficSpacer = false,
@@ -38,6 +40,16 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   // Menu triggers; the popups return focus here on Escape / item activation.
   const moreBtnRef = useRef<HTMLButtonElement>(null);
+
+  // The header button owns this state for its own toggling, but `/resume`
+  // (intercepted in ChatApp) opens the very same popup — one list, one scope,
+  // no second implementation to drift (spec session-management.md「IDE 插件聊
+  // 天头部」场景 8/10).
+  const sessionListVisible = showSessionList || sessionListOpen;
+  const closeSessionList = () => {
+    setShowSessionList(false);
+    onSessionListClose?.();
+  };
 
   const title = getSessionTitle(currentSession, messages);
 
@@ -117,13 +129,13 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         )}
         {headerActions}
       </div>
-      {showSessionList && (
+      {sessionListVisible && (
         <SessionListPopup
           sessions={sessions}
           currentSession={currentSession}
           onSessionSelect={onSessionSelect}
           loading={sessionsLoading}
-          onClose={() => setShowSessionList(false)}
+          onClose={closeSessionList}
         />
       )}
       {showMoreMenu && !hideMoreButton && (

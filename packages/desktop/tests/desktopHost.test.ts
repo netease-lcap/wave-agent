@@ -27,6 +27,10 @@ const h = vi.hoisted(() => ({
           (params as { workdir?: string } | undefined)?.workdir ?? "";
         return { sessions: h.dirSessions.get(workdir) ?? [] };
       }
+      // /resume picker: every project on this host's disk (CLI-created sessions
+      // included), unlike the per-workdir listSessions above.
+      case "listAllSessions":
+        return { sessions: h.allSessions };
       case "getAuthStatus":
         return {
           isAuthenticated: h.authStatusResults.shift() ?? false,
@@ -76,6 +80,8 @@ const h = vi.hoisted(() => ({
   authServerUrl: "",
   // Per-workdir listSessions results, keyed by directory (FR-020 session tree).
   dirSessions: new Map<string, unknown[]>(),
+  // listAllSessions result (the /resume picker's cross-project disk list).
+  allSessions: [] as unknown[],
   // FR-052..054: stdio git method stubs. `worktreeError` makes createWorktree
   // reject; `branchesResult: null` simulates a non-git workdir.
   worktreeResult: null as null | {
@@ -586,6 +592,7 @@ beforeEach(() => {
   h.authServerUrl = "";
   h.authUrlHandler = null;
   h.dirSessions.clear();
+  h.allSessions = [];
   h.worktreeResult = null;
   h.worktreeError = null;
   h.branchesResult = null;
@@ -5296,6 +5303,145 @@ describe("session tree", () => {
     ).toBe(true);
     expect(
       shownToasts().some((t) => t.message.includes("已从最近列表移除")),
+    ).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /resume disk session picker (desktop-sessions.md「跨客户端会话来源」)
+// ---------------------------------------------------------------------------
+
+describe("/resume disk sessions", () => {
+  const diskSession = (id: string, workdir: string) => ({
+    id,
+    workdir,
+    firstMessage: "历史会话的第一条消息",
+    createdAt: 1000,
+    lastActiveAt: 2000,
+    branch: "main",
+  });
+
+  it("lists every project on disk (sessions the app never created) and replies with them", async () => {
+    const { host, sent } = await readyHost();
+    h.allSessions = [
+      diskSession("cli-1", "/other/project"),
+      diskSession("cli-2", "/another/project"),
+    ];
+
+    await host.handleWebviewMessage({
+      command: "desktopListResumeSessions",
+      requestId: "req-1",
+    });
+
+    const reply = sent("desktopResumeSessions").at(-1);
+    expect(reply).toMatchObject({ requestId: "req-1" });
+    expect(reply?.sessions).toEqual(h.allSessions);
+    // The disk list, not the desktop-owned index (FR-024).
+    expect(h.clientRequests.some((r) => r.method === "listAllSessions")).toBe(
+      true,
+    );
+  });
+
+  it("surfaces an RPC failure as a toast plus an error reply (never a silent empty list)", async () => {
+    const { host, sent } = await readyHost();
+    const restore = failRpc("listAllSessions", "listAllSessions failed");
+
+    await host.handleWebviewMessage({
+      command: "desktopListResumeSessions",
+      requestId: "req-2",
+    });
+    restore();
+
+    expect(sent("desktopResumeSessions").at(-1)).toMatchObject({
+      requestId: "req-2",
+      error: "listAllSessions failed",
+    });
+    expect(
+      shownToasts().some((t) =>
+        t.message.includes("无法读取会话列表：listAllSessions failed"),
+      ),
+    ).toBe(true);
+  });
+
+  it("switches to an index-outside session at its own workdir and registers it", async () => {
+    const { host, store } = await readyHost();
+    h.existingPaths.add("/other/project");
+    expect(store.getSessionIndex().some((e) => e.sessionId === "cli-1")).toBe(
+      false,
+    );
+
+    await host.handleWebviewMessage({
+      command: "desktopResumeSession",
+      sessionId: "cli-1",
+      workdir: "/other/project",
+    });
+
+    // Spawn + restore run behind the sweep overlay.
+    await vi.waitFor(() => {
+      expect(lastAgent().initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ workdir: "/other/project" }),
+      );
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith("cli-1");
+      // Registering the foreign session makes it durable in the sidebar/board.
+      const entry = store
+        .getSessionIndex()
+        .find((e) => e.sessionId === "cli-1");
+      expect(entry?.workdir).toBe("/other/project");
+    });
+  });
+
+  it("refuses a session whose directory is gone (no switch, no index change)", async () => {
+    const { host, store } = await readyHost();
+    const before = h.agentInstances.length;
+
+    await host.handleWebviewMessage({
+      command: "desktopResumeSession",
+      sessionId: "cli-1",
+      workdir: "/gone",
+    });
+
+    expect(
+      shownToasts().some((t) =>
+        t.message.includes("该会话的目录已不存在：/gone"),
+      ),
+    ).toBe(true);
+    expect(h.agentInstances).toHaveLength(before);
+    expect(store.getSessionIndex().some((e) => e.sessionId === "cli-1")).toBe(
+      false,
+    );
+  });
+
+  it("refuses the switch when the conversation's host is unreachable", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, sent } = await readyHost();
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+    const before = h.agentInstances.length;
+    // An unreachable host says nothing about the directory — the probe must not
+    // be read as "missing" (desktop-sessions.md「远端主机不可达时不得删除会话」).
+    vi.mocked(remotePathExists).mockRejectedValueOnce(
+      new RemoteHostUnreachableError("prod", new Error("host down")),
+    );
+
+    await host.handleWebviewMessage({
+      command: "desktopResumeSession",
+      sessionId: "cli-1",
+      workdir: "/work/remote",
+    });
+
+    expect(
+      shownToasts().some((t) =>
+        t.message.includes("无法连接主机 prod，会话未切换，可稍后重试"),
+      ),
+    ).toBe(true);
+    expect(shownToasts().some((t) => t.message.includes("目录已不存在"))).toBe(
+      false,
+    );
+    expect(h.agentInstances).toHaveLength(before);
+    expect(
+      sent("setInitialState").some((s) => s?.session?.id === "cli-1"),
     ).toBe(false);
   });
 });

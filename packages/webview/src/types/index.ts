@@ -691,6 +691,10 @@ export interface ChatHeaderProps {
   hideSessionButtons?: boolean;
   // Desktop host: the more button + menu live in DesktopSidebar instead.
   hideMoreButton?: boolean;
+  /** Open the history popup without the header button — `/resume` routes
+   *  through the same list in the same scope (IDE hosts). */
+  sessionListOpen?: boolean;
+  onSessionListClose?: () => void;
   // Desktop host: conversation-level panel expand/collapse control.
   panelToggle?: PanelExpandProps;
   /** Optional slot at the header's left edge (desktop sidebar expand button). */

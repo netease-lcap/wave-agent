@@ -1981,6 +1981,7 @@ export class MessageHandler {
         { id: "hooks", name: "hooks", description: "查看已配置钩子" },
         { id: "rewind", name: "rewind", description: "回退到之前的用户消息" },
         { id: "model", name: "model", description: "切换 AI 模型" },
+        { id: "resume", name: "resume", description: "恢复历史对话" },
         { id: "btw", name: "btw", description: "旁路提问（不进入聊天记录）" },
         {
           id: "plan",

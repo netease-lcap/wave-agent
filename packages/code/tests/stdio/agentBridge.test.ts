@@ -5,6 +5,7 @@ import {
   PluginCore,
   PromptHistoryManager,
   listSessions,
+  listAllSessions,
   searchFiles,
   generateRandomName,
   getDefaultRemoteBranch,
@@ -2450,6 +2451,29 @@ test("listSessions without agent or workdir falls back to process.cwd()", async 
   await bridge.handleRequest("listSessions", {});
 
   expect(listSessions).toHaveBeenCalledWith(process.cwd());
+});
+
+test("listAllSessions returns every project's sessions with no workdir or agent", async () => {
+  const { bridge } = createBridge();
+  const sessions = [
+    {
+      id: "cli-1",
+      workdir: "/other/project",
+      firstMessage: "hi",
+      createdAt: 1,
+      lastActiveAt: 2,
+    },
+  ];
+  vi.mocked(listAllSessions).mockResolvedValue(
+    sessions as unknown as Awaited<ReturnType<typeof listAllSessions>>,
+  );
+
+  // The desktop's /resume picker lists sessions across projects, including ones
+  // this client never created — so the call deliberately takes no scope args.
+  const result = await bridge.handleRequest("listAllSessions", {});
+
+  expect(listAllSessions).toHaveBeenCalledWith();
+  expect(result).toEqual({ sessions });
 });
 
 test("updateConfig destroys and recreates agent with merged config", async () => {
