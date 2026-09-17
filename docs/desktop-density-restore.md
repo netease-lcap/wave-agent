@@ -4927,8 +4927,10 @@ ghost 图标与「图标 + 文字」控件。
   ②桌面档原**没有选中态规则**，`.queued-item.editing` 只有 base 的 (0,2,0)，
   被 `[data-host="desktop"] .queued-item:hover`（0,3,0）压过 → 指针在行内时编辑行显示成 hover 色。
   修法：把选中态写在 hover 规则之后、并显式带 `:hover` 变体。
-- ⚠️ `--cc-radius-sm` / `--cc-fill-hover` / `--cc-fill-pressed` 在本仓库**均未定义**
-  （`tokens.css` 只在 skill 侧），故一律带字面量 fallback。
+- ⚠️ token 定义核对：`--cc-fill-hover` / `--cc-fill-pressed` 本仓库**有定义**
+  （`host-desktop.css:55-56` 浅色 `#eef0f3` / `#e7e9ed`、`:150-151` 深色 `#303436` / `#393e41`）；
+  只有 `--cc-radius-sm` / `--cc-radius-md` 全仓 0 处定义（`tokens.css` 只在 skill 侧），
+  故圆角一处带字面量 fallback（hover / 选中面 token 取值直接命中，fallback 只是防御性写法）。
 - 实测证据：`spec3-row-spec.json`（浅/深 × 静止/hover/编辑中/编辑中+hover 四态逐行读 `background-color` 与
   `border-radius`）+ 截图 `spec3-{light,dark}-A-{hover,editing,editing-hover}-full.png`、
   汇总图 `report/queue-row-states.png`。
@@ -4984,6 +4986,9 @@ ghost 图标与「图标 + 文字」控件。
   ① 保持 180（现状）② 上限改 **188px**（正好 6 条整行：6×28 + 5×4）③ 上限改 **156px**（5 条整行）
   ④ 展开时不限高、整列表全展示（7 条 = 220px）。触发语 **「展开时列表别裁一半」** /
   **「展开时列表全展示」**。证据：`h28-{light,dark}-{collapsed,expanded}.png`。
+  **本轮处理 = 保持 180px 不变**（不改 `QueuedMessageList.css:49`）：28px 行高下 7 条 = 220px
+  → 第 6 条裁 4px、第 7 条需滚动，属**已知并接受**项，待设计师在 180 / 188 / 156 / 不限高
+  之间点选后再改（上列候选值均已量）。
 - 三颗按钮的 hover 提示气泡仍是 base 档（12px / r2 / `vscode-widget` 面），未接桌面 token。
   触发语 **「提示气泡也统一到桌面档」**。
 - 深色 hover 若设计师更偏 0916 侧栏那套手写 α 台阶（8% 白 = `#2A2B2C`）而非
