@@ -45,7 +45,7 @@ cd packages/vscode && pnpm exec vsce publish --azure-credential --packagePath "$
 **CI 产物发不了 pre-release**：vsce 要求 manifest 带 `Microsoft.VisualStudio.Code.PreRelease`，只有 `vsce package --pre-release` 会写它；拿 Release 的 .vsix 发布必然报 `Cannot use '--pre-release' flag with a package that was not packaged as pre-release.`
 
 ```bash
-git pull && pnpm install
+git pull && pnpm install --frozen-lockfile   # 前置：依赖必须装全，否则打包脚本构建上游时会缺产物
 pnpm run vsce:package:pre          # 正式版用 pnpm run vsce:package
 
 VSIX="$PWD/packages/vscode/releases/wave-vscode-<新版本号>.vsix"
@@ -129,7 +129,9 @@ form.append("channel", "beta"); // 与 file 一起 multipart 提交；不带 cha
        ```bash
        sha256sum /tmp/wave-vscode-<version>/extension/dist/wave-cli/dist/bundle/wave.mjs packages/code/dist/bundle/wave.mjs
        ```
-- JetBrains：201 响应返回版本记录 id；插件 https://plugins.jetbrains.com/plugin/33466（Wave Code Chat）。新版本先 `approve: false`，marketplace 自动审核后变 `approve: true` 才上架（与历史版本一致，无需人工干预）。
+- JetBrains：上传返回 **201 + 版本记录 JSON**，形如 `{id: 1173146, version: "1.2.4", approve: true, listed: true, channel: "beta"}`；插件 https://plugins.jetbrains.com/plugin/33466（Wave Code Chat）。
+  - **auto-approval 已连续三轮（1.2.2 / 1.2.3 / 1.2.4）命中** ⇒ beta 上传基本零人工等待；只有回 `approve: false` 时才需等人工审核（官方口径约 2 个工作日）。
+  - 回读核对：`GET https://plugins.jetbrains.com/api/plugins/33466/updates?channel=beta`（Bearer token），首条应就是刚发的版本。
 
 ## 坑
 
