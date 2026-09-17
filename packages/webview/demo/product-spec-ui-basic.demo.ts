@@ -127,10 +127,11 @@ test.describe("Product Specification Screenshots - UI Basic", () => {
       "../../docs/public/screenshots/spec-input-multiline.webp",
     );
 
-    // Clear input again for next steps
-    await webviewPage.focus('[data-testid="message-input"]');
-    await webviewPage.keyboard.press("Control+A");
-    await webviewPage.keyboard.press("Backspace");
+    // Clear input again for next steps. `Control+A` is select-all only on
+    // Linux/Windows — on macOS Chromium it just moves the caret to the line
+    // start, so the mock text leaked into every later screenshot locally while
+    // CI (ubuntu) rendered it clean. `fill` gives both platforms the same result.
+    await webviewPage.fill('[data-testid="message-input"]', "");
 
     // 2. Basic Chat (Markdown & Code)
     const basicChat = [
@@ -193,13 +194,27 @@ test.describe("Product Specification Screenshots - UI Basic", () => {
           name: "simplify",
           description: "审查代码变更的复用性、简洁性和效率，并自动应用修复",
         },
-        // UI 内置指令
+        // UI 内置指令（与宿主 messageHandler 的 localCommands 保持一致）
         { id: "config", name: "config", description: "打开配置设置" },
-        { id: "model", name: "model", description: "切换 AI 模型" },
         { id: "plugin", name: "plugin", description: "打开插件市场" },
         { id: "mcp", name: "mcp", description: "打开 MCP 服务器管理" },
         { id: "status", name: "status", description: "查看当前状态" },
         { id: "clear", name: "clear", description: "清除对话历史并重置会话" },
+        { id: "compact", name: "compact", description: "手动压缩对话历史" },
+        { id: "tasks", name: "tasks", description: "查看后台任务" },
+        { id: "workflows", name: "workflows", description: "查看工作流运行" },
+        { id: "agents", name: "agents", description: "查看可用 agents" },
+        { id: "skills", name: "skills", description: "查看可用技能" },
+        { id: "hooks", name: "hooks", description: "查看已配置钩子" },
+        { id: "rewind", name: "rewind", description: "回退到之前的用户消息" },
+        { id: "model", name: "model", description: "切换 AI 模型" },
+        { id: "resume", name: "resume", description: "恢复历史对话" },
+        { id: "btw", name: "btw", description: "旁路提问（不进入聊天记录）" },
+        {
+          id: "plan",
+          name: "plan",
+          description: "启用规划模式或查看当前方案",
+        },
       ],
     });
 
@@ -214,9 +229,7 @@ test.describe("Product Specification Screenshots - UI Basic", () => {
     await webviewPage.keyboard.press("Escape");
 
     // 4. File Suggestions (@)
-    await webviewPage.focus('[data-testid="message-input"]');
-    await webviewPage.keyboard.press("Control+A");
-    await webviewPage.keyboard.press("Backspace");
+    await webviewPage.fill('[data-testid="message-input"]', "");
     await webviewPage.keyboard.type("@");
 
     // Wait for the request to be sent and get the requestId
