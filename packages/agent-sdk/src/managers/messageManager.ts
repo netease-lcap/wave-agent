@@ -14,7 +14,12 @@ import {
   generateMessageId,
   sliceFromLastCompact,
 } from "../utils/messageOperations.js";
-import type { Message, Usage, ToolBlock } from "../types/index.js";
+import type {
+  Message,
+  Usage,
+  ToolBlock,
+  InvokedSkillRecord,
+} from "../types/index.js";
 import { getLastApiRounds } from "../utils/groupMessagesByApiRound.js";
 import { join, isAbsolute, relative, resolve } from "path";
 import {
@@ -117,8 +122,7 @@ export class MessageManager {
   private loadedNestedMemoryPaths: Set<string> = new Set(); // Nested memory files already injected (session-scoped, never evicted)
   private recentFileReads: Map<string, { content: string; timestamp: number }> =
     new Map(); // Track file read contents
-  private invokedSkills: Map<string, { skillName: string; timestamp: number }> =
-    new Map(); // Track invoked skill names
+  private invokedSkills: Map<string, InvokedSkillRecord> = new Map(); // Track invoked skills
   private sessionType: "main" | "subagent";
   private subagentType?: string;
   private _usages: Usage[] = [];
@@ -1213,6 +1217,10 @@ export class MessageManager {
             this.invokedSkills.set(skillName, {
               skillName,
               timestamp: Date.now(),
+              // 模型当时实际看到的那份正文（已替换 ${WAVE_SKILL_DIR} 等占位符、
+              // 首行带 `Base directory for this skill:`）——压缩后回灌直接复用它，
+              // 不能重新读文件原文（spec core/message-compact 场景 4）。
+              content: block.result,
             });
           }
         } catch {
@@ -1223,16 +1231,14 @@ export class MessageManager {
   }
 
   /**
-   * Get recently invoked skill names, sorted by timestamp (newest first).
+   * Get recently invoked skills, sorted by timestamp (newest first).
    * @param maxSkills - Maximum number of skills to return
-   * @returns Array of skill names sorted by recency
+   * @returns Invoked skill records sorted by recency
    */
-  public getInvokedSkillNames(maxSkills = 10): string[] {
-    const sorted = Array.from(this.invokedSkills.entries())
-      .sort(([, a], [, b]) => b.timestamp - a.timestamp)
+  public getInvokedSkills(maxSkills = 10): InvokedSkillRecord[] {
+    return Array.from(this.invokedSkills.values())
+      .sort((a, b) => b.timestamp - a.timestamp)
       .slice(0, maxSkills);
-
-    return sorted.map(([, { skillName }]) => skillName);
   }
 
   /**

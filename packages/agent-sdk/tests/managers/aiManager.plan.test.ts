@@ -89,7 +89,7 @@ describe("AIManager Plan Mode Prompt", () => {
       triggerFileRead: vi.fn(),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.jsonl"),
       getRecentFileReads: vi.fn().mockReturnValue([]),
-      getInvokedSkillNames: vi.fn().mockReturnValue([]),
+      getInvokedSkills: vi.fn().mockReturnValue([]),
       setMessages: vi.fn((msgs: Message[]) => {
         mockMessages = [...msgs];
       }),
