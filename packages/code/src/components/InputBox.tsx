@@ -440,6 +440,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
             showMcpManager ||
             showAgentsManager ||
             showSkillsManager ||
+            showHooksManager ||
             showRewindManager ||
             showResumeSelector ||
             showHelp ||

@@ -21,6 +21,7 @@ afterEach(() => {
   unmounts.forEach((u) => u());
   unmounts = [];
 });
+import { pressKey } from "../helpers/pressKey.js";
 import { InputBox } from "../../src/components/InputBox.js";
 import { stripAnsiColors } from "wave-agent-sdk";
 import type { BackgroundTask, Message, SlashCommand } from "wave-agent-sdk";
@@ -390,15 +391,31 @@ describe("InputBox Smoke Tests", () => {
         { timeout: 2000 },
       );
 
-      // Escape returns to the conversation. The picker is mounted from an async
-      // session load, so re-send the key until it lands.
-      await vi.waitFor(
-        () => {
-          stdin.write("\u001b");
-          expect(lastFrame()).toContain("Type your message");
-        },
-        { timeout: 3000 },
+      // Escape returns to the conversation.
+      await pressKey(stdin, "\u001b", () =>
+        expect(lastFrame()).toContain("Type your message"),
       );
+    });
+
+    it("should hide the input box while the HooksManager is open", async () => {
+      const { stdin, lastFrame } = render(<InputBox />);
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("Type your message"),
+      );
+
+      stdin.write("/");
+      await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
+
+      stdin.write("hooks");
+      await vi.waitFor(() => expect(lastFrame()).toContain("▶ /hooks"));
+
+      stdin.write("\r");
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("No hooks configured"),
+      );
+
+      // The overlay replaces the input box instead of stacking on top of it.
+      expect(lastFrame()).not.toContain("Type your message");
     });
 
     it("should cycle permission mode on Shift+Tab", async () => {
