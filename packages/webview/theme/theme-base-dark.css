@@ -1,7 +1,12 @@
 :root {
   -webkit-locale: "zh-CN";
-  scrollbar-color: var(--vscode-scrollbarSlider-background)
-    var(--vscode-editor-background);
+  /* 这里原本有一条 scrollbar-color（thumb 灰 + 不透明轨道 --vscode-editor-background）。
+     已整条删除：Chromium 只要看到 scrollbar-color 有具体值，就会整体改用经典滚动条渲染，
+     并忽略 globals.css / host-desktop.css 里那套设计好的 ::-webkit-scrollbar*（16px 透明
+     轨道 + 8px 胶囊 + 三态白/黑百分比）。深色因此比浅色多出一条 15px 的 #181A1B 实心轨道
+     （比对话列底 #111314、下拉底 #232526 都不同色），且 thumb 变成 VS Code 的 40% 灰块。
+     删掉后深色与浅色同款、回落到设计层（设计师 0917「自带很深的背景色 → 拿掉」+
+     「thumb 也回设计档」）。 */
   --vscode-font-family: -apple-system, BlinkMacSystemFont, sans-serif;
   --vscode-font-weight: normal;
   --vscode-font-size: 13px;
