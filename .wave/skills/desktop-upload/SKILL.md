@@ -27,6 +27,7 @@ allowed-tools:
 - 账号与密码存于 `~/.wave/neteasecc.json` 的 `email`/`password` 字段（明文敏感，勿外传、勿复制进聊天/技能文件）；test / prod 同账号。
 - 取 token：`POST {BASE}/api/auth/login` body `{"email":...,"password":...}` → 响应 `token`；后续请求带 `Authorization: Bearer <token>`。
 - UI 登录态持久化：独立 profile `~/.wave/platform-profile`（`--persistent`），登录一次后后续会话复用。
+- ⚠️ **任何命令都不要回显账号密码**（`fill`/`eval` 都会把自己的入参/源码回显进工具输出）：不要在命令行写密码字面量、不要 `echo`/`cat` 凭证。**一旦发现回显，立即停止该路径**，改走下面的「页面内取凭证」做法。
 
 ## 上传方式 A：UI（playwright-cli，headless）—— 推荐
 
@@ -39,10 +40,32 @@ BASE=https://neteasecc.codewave.163.com   # 默认生产；仅当用户当次明
 playwright-cli open --browser chrome --persistent --profile ~/.wave/platform-profile "$BASE"
 playwright-cli snapshot   # 看当前页面与 ref
 
-# 2. 首次登录（snapshot 见 textbox 邮箱/密码 + 登录按钮）
-playwright-cli fill <邮箱ref> "$(jq -r .email ~/.wave/neteasecc.json)"
-playwright-cli fill <密码ref> "$(jq -r .password ~/.wave/neteasecc.json)"
+# 2. 登录（**正常不需要**：profile 已登录就直接到 downloads）
+#    ⚠️ 不要用 `playwright-cli fill <密码ref> "$(jq -r .password ~/.wave/neteasecc.json)"`：
+#    playwright-cli 会把值回显进输出的「Ran Playwright code」块 ⇒ 明文落进会话 transcript。
+#    替代做法 = 让页面自己去取凭证：临时起一个只回这一份凭证的 loopback 服务
+#    （Chrome 允许 https 页面 fetch 127.0.0.1），再用 eval 直接赋值给表单，整条链路上没有含密码字面量的命令。
+python3 -c "
+import http.server, os
+data = open(os.path.expanduser('~/.wave/neteasecc.json'), 'rb').read()
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200); self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Content-Type', 'application/json'); self.end_headers(); self.wfile.write(data)
+http.server.ThreadingHTTPServer(('127.0.0.1', 8098), H).serve_forever()" &
+SRV=$!
+playwright-cli eval "async () => {
+  window.__cred = await (await fetch('http://127.0.0.1:8098/')).json();
+  window.__fill = (el, v) => { const s = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(el), 'value').set; s.call(el, v); el.dispatchEvent(new Event('input', { bubbles: true })); return 'ok'; };
+  return 'ready';
+}"
+playwright-cli eval "(el) => window.__fill(el, window.__cred.email)"    <邮箱ref>
+playwright-cli eval "(el) => window.__fill(el, window.__cred.password)" <密码ref>
+kill $SRV   # 登录后立刻收掉；返回值只应是 'ready'/'ok'（别把凭证本身 return 出来）
 playwright-cli click <登录ref>
+
+# 兜底（不推荐，仅在 loopback 方式不可用时）：可以用 fill，但**只能用 `$(jq -r .password …)` 读文件**，
+# 绝不能写字面量；并且要清楚它的值会被回显 —— 见到回显就回头用上面的方式重做。
 
 # 3. 进下载管理 → 点上传
 playwright-cli click <下载管理ref>   # 左侧导航 /downloads
@@ -52,7 +75,8 @@ playwright-cli click <上传ref>       # 页面右上角
 上传弹窗字段（ref 每次 snapshot 会变，以实际为准）：
 
 - **版本号**：textbox，填 `X.Y.Z`
-- **接收通道**：`stable` / `beta`（桌面端专属；tester 用 beta）
+- **发布通道**：**按钮组「稳定版 / 测试版」**（桌面端专属；tester 用「测试版」= beta）
+  - 二次确认看按钮组**下方的说明文字**，它会随选择变化：选「测试版」时变为「仅开启『接收 Beta 版更新』的桌面端使用」
 - **文档站**：`.tar.gz/.zip`（一般不动，保持为空）
 - **macOS 安装包**：`.dmg` ← GitHub 资产 `CodeWave.IDE-<v>-arm64.dmg`
 - **macOS 更新包**：`.zip` ← GitHub 资产 `CodeWave.IDE-<v>-arm64-mac.zip`
@@ -72,6 +96,19 @@ playwright-cli upload "/tmp/wave-desktop-<v>/CodeWave.IDE.Setup.<v>.exe"
 playwright-cli click <上传ref>
 playwright-cli snapshot   # 各分区表格出现 <version> 行即成功
 ```
+
+### 上传失败：先诊断，然后原地重试
+
+症状：进度条走到一半（本轮实测 6%）弹窗复位、顶部弹「上传失败」toast。
+
+- **唯一能看出「哪一步挂了」的办法 = `playwright-cli requests`**（snapshot 只能看到弹窗复位）：
+  ```bash
+  playwright-cli requests --filter "/api/ops/downloads"
+  playwright-cli request <index>   # 看单个请求的状态/失败原因
+  ```
+  本轮实测 6 个分片全是 200，挂在最后一步 `/complete`：`[FAILED] net::ERR_NETWORK_CHANGED`（浏览器侧断网，非服务端拒绝）。
+- **原地重试即可**：失败后弹窗会**保留版本号 / 发布通道 / 已挂文件**，直接再点一次「上传」就行（第二轮三个包全部 201）。
+  - 不要重新挂文件、不要因为一次失败就改走「上传方式 B」的 API 直传。
 
 ## 上传方式 B：API 直传（不推荐，仅单副本环境 / 应急）
 
@@ -101,7 +138,7 @@ gh release download -R netease-lcap/wave-agent wave-desktop@<version> --dir /tmp
 
 - 上传前可用 `playwright-cli eval` 检查文件挂载：
   `() => [...document.querySelectorAll('input[type=file]')].map((inp,i) => i + ': ' + (inp.files?.[0]?.name ?? 'EMPTY'))`
-  （索引 0=文档站，1=macOS 安装包，2=macOS 更新包，3=Windows 安装包）
+  （**当前默认索引 2/3/4 = macOS 安装包 / macOS 更新包 / Windows 安装包，0/1 为空**；字段顺序可能变，一律以 snapshot/eval 实测为准）
 - API 直传成功判据（仅在走方式 B 时）：`complete` 返回 201 且 `desktopDownloads[0].version/channel/fileName` 正确；再 `GET /api/ops/downloads` 核对 `desktopDownloads` 里出现该版本行。
 - 成功后文件名被平台规范化为 `codewave-ide.dmg` / `codewave-ide-mac.zip` / `codewave-ide-setup.exe`，下载地址形如 `https://minio-api.<env>.163yun.com/lowcode-static/codechat/desktop/<version>/<platform>/<file>`。
 
@@ -114,3 +151,4 @@ gh release download -R netease-lcap/wave-agent wave-desktop@<version> --dir /tmp
 - **`playwright-cli` 子命令自动 attach 会话**，多次调用间浏览器保持；结束可 `playwright-cli close`。
 - **平台不管理 IDE 插件**：说明文案"IDE 插件已迁移至官方插件市场，不再在此分发"，VS Code/JetBrains 发布走 `ide-plugin-publish` 技能。
 - 文档站压缩包由 CI/docs 流程产出（`docs-*.tar.gz`），本技能不覆盖。
+- **收尾核对远端有无残留分支要用 `git ls-remote --heads origin`**（或先 `git fetch --prune`）：`git branch -a` 里的 `remotes/origin/*` 可能是 stale 的远端跟踪引用，本轮据此差点误判有残留（实测 `ls-remote` = 0 条）。
