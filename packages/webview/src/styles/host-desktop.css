@@ -2367,6 +2367,40 @@
 [data-host="desktop"] ::-webkit-scrollbar-thumb:active {
   background-color: var(--cc-fill-scrollbar-hover);
 }
+/* DiffViewer.css 有一整套 ::-webkit-scrollbar 特化（10px 宽 / 轨道 var(--vscode-scrollbar-shadow)
+   / thumb var(--vscode-scrollbarSlider-background) 的静态灰 / 5px 圆角 / 还有一条 :hover）。它的
+   特异性 (0,1,1) 与本文件设计层 (0,1,1) 相同、但加载在之后，所以一直压着设计层：
+     · 浅色：diff 视图一直是「10px 深灰方块」（--vscode-scrollbarSlider-background 浅色 75% 灰 =
+       rgb(139,139,139)），而且它不读三态变量 → 鼠标移进去也不变色（设计师 0917 报
+       「浅色 diff 中的滚动条颜色很奇怪而且也不会变色」）；
+     · 深色：以前被 theme 里那条 scrollbar-color 压着看不出来，0917 删掉后立刻复活成 10px 纯黑轨道。
+   这里按设计层的三个值显式压回去（(0,2,1) 稳定胜过它），深浅两色共用 —— 颜色随
+   --cc-fill-scrollbar-active（8% / 24% / 50% 三态）走，该变量由 index.tsx 的 mousemove 委托写到
+   滚动容器上。
+   :hover / :active 两态也必须一起压（设计师 0917 报「拖拽滚动条时会变很粗」）：Chromium **确实**会
+   命中滚动条伪元素的 :hover（实测悬停即命中，不需要按下），DiffViewer 那条
+   `-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground) }` (0,2,1) 与下面 base 规则
+   同分但加载在后 → 命中时它生效；而 `background` 简写会把 background-clip 重置回 border-box，
+   于是本规则那 4px 透明边被涂满 → 8px 胶囊瞬间鼓成 16px 实心条（浅色实测 8px rgb(235,235,235)
+   → 16px rgb(128,128,128)）。下面把两态按设计层重新声明一遍（(0,3,1) 稳定胜出），颜色仍只认三态变量。 */
+[data-host="desktop"] .diff-viewer-content::-webkit-scrollbar {
+  width: 16px;
+  height: 16px;
+}
+[data-host="desktop"] .diff-viewer-content::-webkit-scrollbar-track {
+  background: transparent;
+}
+[data-host="desktop"] .diff-viewer-content::-webkit-scrollbar-thumb {
+  background-color: var(--cc-fill-scrollbar-active);
+  background-clip: padding-box;
+  border: 4px solid transparent;
+  border-radius: 8px;
+}
+[data-host="desktop"] .diff-viewer-content::-webkit-scrollbar-thumb:hover,
+[data-host="desktop"] .diff-viewer-content::-webkit-scrollbar-thumb:active {
+  background-color: var(--cc-fill-scrollbar-active);
+  background-clip: padding-box;
+}
 
 
 /* ── 第二十三轮：sticky 用户消息对齐普通用户气泡（用户反馈：悬浮后缺左边距 / 字重变细） ── */
