@@ -1,6 +1,5 @@
 package com.wave.jetbrains.editor
 
-import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.testFramework.LightVirtualFile
 
@@ -12,8 +11,11 @@ import com.intellij.testFramework.LightVirtualFile
  * [equals]/[hashCode] key on [planId] so `FileEditorManager.openFile` reuses the same editor tab
  * for repeated opens of the same session instead of stacking duplicates.
  *
- * [FORBID_PREVIEW_TAB] opts the tab out of the platform's "preview tab" mechanism, so the plan
- * tab behaves like a regular editor tab.
+ * The tab is never a platform "preview tab": [com.wave.jetbrains.WavePanelHolder] opens it with
+ * `focusEditor = true`, and the platform only reserves a preview tab for open requests that do not
+ * ask for focus (see `EditorWindow.shouldReservePreview`). The internal
+ * `FileEditorManagerImpl.FORBID_PREVIEW_TAB` opt-out is therefore unnecessary — and unusable, as the
+ * JetBrains plugin verifier flags it as internal + deprecated API.
  *
  * [getFileType] is overridden because the platform's `VirtualFile.getFileType` delegates to
  * `FileTypeRegistry`, which requires a running application (unavailable in plain unit tests) —
@@ -24,7 +26,6 @@ class WavePlanVirtualFile(val planId: String) :
 
     init {
         isWritable = false
-        putUserData(FileEditorManagerImpl.FORBID_PREVIEW_TAB, true)
     }
 
     override fun getFileType(): FileType = WavePlanFileType

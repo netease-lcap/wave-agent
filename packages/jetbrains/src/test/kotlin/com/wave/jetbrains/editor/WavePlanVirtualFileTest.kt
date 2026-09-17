@@ -1,6 +1,5 @@
 package com.wave.jetbrains.editor
 
-import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -10,8 +9,7 @@ import org.junit.jupiter.api.Test
 
 /**
  * Tests for [WavePlanVirtualFile], the in-memory file backing the ExitPlanMode plan-preview tab.
- * Key behaviors: identity is [WavePlanVirtualFile.planId] (so FileEditorManager reuses the tab),
- * and the file opts out of the platform's preview-tab mechanism.
+ * Key behavior: identity is [WavePlanVirtualFile.planId] (so FileEditorManager reuses the tab).
  */
 class WavePlanVirtualFileTest {
 
@@ -24,12 +22,6 @@ class WavePlanVirtualFileTest {
         assertEquals(a, same)
         assertEquals(a.hashCode(), same.hashCode())
         assertNotEquals(a, other)
-    }
-
-    @Test
-    fun `file opts out of the preview tab mechanism`() {
-        val file = WavePlanVirtualFile("tab_1")
-        assertEquals(true, file.getUserData(FileEditorManagerImpl.FORBID_PREVIEW_TAB))
     }
 
     @Test

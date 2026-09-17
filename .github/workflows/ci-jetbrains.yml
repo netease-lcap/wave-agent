@@ -76,3 +76,11 @@ jobs:
       - name: Run tests
         if: steps.filter.outputs.jetbrains == 'true'
         run: ./packages/jetbrains/gradlew -p packages/jetbrains test --no-daemon
+
+      # Marketplace runs the same verifier on upload; this catches internal/override-only
+      # platform API usage (the default failure levels) before uploading. Verifies against
+      # the IDE the plugin is built with only — no extra IDE download, see the
+      # `pluginVerification` block in packages/jetbrains/build.gradle.kts.
+      - name: Verify plugin against the platform IDE
+        if: steps.filter.outputs.jetbrains == 'true'
+        run: ./packages/jetbrains/gradlew -p packages/jetbrains verifyPlugin --no-daemon

@@ -1,6 +1,5 @@
 package com.wave.jetbrains.editor
 
-import com.intellij.openapi.fileEditor.impl.FileEditorManagerImpl
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.testFramework.LightVirtualFile
 
@@ -14,8 +13,11 @@ import com.intellij.testFramework.LightVirtualFile
  * ([equals]/[hashCode] match any other settings file) — `FileEditorManager.openFile` reuses the
  * one open tab instead of stacking duplicates.
  *
- * [FORBID_PREVIEW_TAB] opts the tab out of the platform's "preview tab" mechanism, so the
- * settings tab behaves like a regular editor tab.
+ * Like [WavePlanVirtualFile] the tab is never a platform "preview tab": it is opened with
+ * `focusEditor = true` (see `WavePanelHolder.openSettings`), which the platform's preview-tab
+ * decision (`EditorWindow.shouldReservePreview`) already treats as a regular tab — so no
+ * `FORBID_PREVIEW_TAB` user data is needed (that key lives on the internal `FileEditorManagerImpl`
+ * and is flagged by the plugin verifier as internal + deprecated API).
  *
  * [getFileType] is overridden because the platform's `VirtualFile.getFileType` delegates to
  * `FileTypeRegistry`, which requires a running application (unavailable in plain unit tests) —
@@ -26,7 +28,6 @@ class WaveSettingsVirtualFile :
 
     init {
         isWritable = false
-        putUserData(FileEditorManagerImpl.FORBID_PREVIEW_TAB, true)
     }
 
     override fun getFileType(): FileType = WaveSettingsFileType
