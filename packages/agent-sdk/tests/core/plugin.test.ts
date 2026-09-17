@@ -46,28 +46,84 @@ describe("PluginCore", () => {
     // Without scope
     const result1 = await pluginCore.installPlugin(pluginId);
     expect(result1).toEqual(installedPlugin);
-    expect(mockMarketplaceService.installPlugin).toHaveBeenCalledWith(pluginId);
+    expect(mockMarketplaceService.installPlugin).toHaveBeenCalledWith(
+      pluginId,
+      undefined,
+    );
     expect(mockPluginScopeManager.enablePlugin).not.toHaveBeenCalled();
 
-    // With scope
+    // With scope：安装记录与启用作用域同源（spec plugin A-015）
     mockPluginScopeManager.findPluginScope.mockReturnValue(null);
+    mockPluginScopeManager.getInstallLocation.mockReturnValue({
+      scope: "user",
+    });
     const result2 = await pluginCore.installPlugin(pluginId, "user");
     expect(result2).toEqual(installedPlugin);
+    expect(mockMarketplaceService.installPlugin).toHaveBeenLastCalledWith(
+      pluginId,
+      { scope: "user" },
+    );
     expect(mockPluginScopeManager.enablePlugin).toHaveBeenCalledWith(
       "user",
       pluginId,
     );
   });
 
-  it("should uninstall a plugin and clean up scopes", async () => {
+  it("should uninstall a plugin from the scope it is enabled in", async () => {
     const pluginId = "test-plugin@market";
+    mockPluginScopeManager.findPluginScope.mockReturnValue("project");
+    mockPluginScopeManager.getInstallLocation.mockReturnValue({
+      scope: "project",
+      projectPath: "/tmp/workdir",
+    });
+
     await pluginCore.uninstallPlugin(pluginId);
+
     expect(mockMarketplaceService.uninstallPlugin).toHaveBeenCalledWith(
+      pluginId,
+      { scope: "project", projectPath: "/tmp/workdir" },
+    );
+    expect(mockPluginScopeManager.removePluginFromScope).toHaveBeenCalledWith(
+      "project",
       pluginId,
     );
     expect(
       mockPluginScopeManager.removePluginFromAllScopes,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("should throw when the plugin is not enabled in any scope", async () => {
+    mockPluginScopeManager.findPluginScope.mockReturnValue(null);
+
+    await expect(
+      pluginCore.uninstallPlugin("test-plugin@market"),
+    ).rejects.toThrow("Use --scope");
+  });
+
+  it("should relocate the install record when the scope changes", async () => {
+    const pluginId = "test-plugin@market";
+    mockPluginScopeManager.findPluginScope.mockReturnValue("project");
+    mockPluginScopeManager.getInstallLocation.mockImplementation((scope) =>
+      scope === "user"
+        ? { scope: "user" }
+        : { scope: "project", projectPath: "/tmp/workdir" },
+    );
+
+    await pluginCore.setPluginScope(pluginId, "user");
+
+    // 启用记录换作用域，安装记录跟着搬到新位置（spec plugin A-015）
+    expect(
+      mockPluginScopeManager.removePluginFromAllScopes,
     ).toHaveBeenCalledWith(pluginId);
+    expect(mockPluginScopeManager.enablePlugin).toHaveBeenCalledWith(
+      "user",
+      pluginId,
+    );
+    expect(mockMarketplaceService.relocatePlugin).toHaveBeenCalledWith(
+      pluginId,
+      { scope: "project", projectPath: "/tmp/workdir" },
+      { scope: "user" },
+    );
   });
 
   it("should enable a plugin with fallback scope logic", async () => {

@@ -1576,10 +1576,10 @@ describe("MarketplaceService - Coverage Targets", () => {
       undefined as unknown as Awaited<ReturnType<typeof fs.rename>>,
     );
 
-    const result = await service.installPlugin(
-      "update-plugin@update-mkt",
-      "/project",
-    );
+    const result = await service.installPlugin("update-plugin@update-mkt", {
+      scope: "project",
+      projectPath: "/project",
+    });
 
     // Should have saved installed plugins - the entry should be updated not pushed
     const saveCalls = vi.mocked(fs.writeFile).mock.calls;

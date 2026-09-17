@@ -4508,6 +4508,23 @@ describe("misc commands", () => {
       expect(shownToasts().at(-1)?.message).toBe("已卸载「demo」");
     });
 
+    it("uninstallPlugin forwards the scope picked in the dialog", async () => {
+      // spec plugin A-015：卸载作用于弹窗里选中的作用域
+      const { host } = await readyHost();
+      await host.handleWebviewMessage({
+        command: "uninstallPlugin",
+        pluginId: "demo@团队市场",
+        scope: "project",
+      });
+      expect(h.clientRequests).toContainEqual({
+        method: "uninstallPlugin",
+        params: expect.objectContaining({
+          pluginId: "demo@团队市场",
+          scope: "project",
+        }),
+      });
+    });
+
     it("updatePlugin reports the version from the refreshed plugin list", async () => {
       const { host } = await readyHost();
       const restore = rpcResult("listPlugins", {

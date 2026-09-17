@@ -311,7 +311,7 @@ describe("SettingsPage 插件市场视图", () => {
       scope: "user",
     });
 
-    // 卸载 → 清除安装版本与作用域记录
+    // 卸载 → 只清除该弹窗所选作用域的启用记录与安装记录（spec plugin A-015）
     await act(async () => {
       fireEvent.click(screen.getAllByTitle("更换安装作用域")[0]);
     });
@@ -325,6 +325,7 @@ describe("SettingsPage 插件市场视图", () => {
     expect(vscode.postMessage).toHaveBeenCalledWith({
       command: "uninstallPlugin",
       pluginId: "code-reviewer@wave-plugins-official",
+      scope: "user",
     });
   });
 

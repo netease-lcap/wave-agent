@@ -1982,7 +1982,21 @@ test("uninstallPlugin delegates to PluginCore", async () => {
 
   await bridge.handleRequest("uninstallPlugin", { pluginId: "test@official" });
 
-  expect(uninstallPlugin).toHaveBeenCalledWith("test@official");
+  expect(uninstallPlugin).toHaveBeenCalledWith("test@official", undefined);
+});
+
+test("uninstallPlugin forwards the requested scope", async () => {
+  const { bridge } = createBridge();
+  const uninstallPlugin = vi.fn().mockResolvedValue(undefined);
+  mockPluginCore({ uninstallPlugin });
+
+  // 作用域必须透传到 SDK，卸载只作用于该作用域（spec plugin A-015）
+  await bridge.handleRequest("uninstallPlugin", {
+    pluginId: "test@official",
+    scope: "project",
+  });
+
+  expect(uninstallPlugin).toHaveBeenCalledWith("test@official", "project");
 });
 
 test("enablePlugin delegates to PluginCore", async () => {
