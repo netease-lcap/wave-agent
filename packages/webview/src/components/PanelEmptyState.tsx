@@ -48,7 +48,7 @@ export const PanelEmptyState: React.FC<PanelEmptyStateProps> = ({
           >
             <PanelKindIcon
               kind={kind}
-              size={14}
+              size={16}
               className="desktop-panel-empty-item-icon"
             />
             <span className="desktop-panel-empty-item-label">{label}</span>

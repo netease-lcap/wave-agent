@@ -652,7 +652,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
         <div className="preview-tab-new" data-testid="preview-tab-new">
           <PanelKindIcon
             kind="preview"
-            size={28}
+            size={24}
             className="preview-tab-new-icon"
           />
           <span>在上方地址栏输入网址开始预览</span>
