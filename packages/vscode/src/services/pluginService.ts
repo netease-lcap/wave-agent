@@ -27,9 +27,14 @@ export class PluginService {
     });
   }
 
-  public async uninstallPlugin(pluginId: string) {
+  /**
+   * 卸载插件：作用域随请求下发，只卸载该作用域（spec plugin A-015）；
+   * 缺省时由 SDK 按当前目录探测生效作用域。
+   */
+  public async uninstallPlugin(pluginId: string, scope?: Scope) {
     await this.utilityClient.request("uninstallPlugin", {
       pluginId,
+      scope,
       workdir: this.getWorkdir(),
     });
   }

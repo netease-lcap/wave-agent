@@ -8,17 +8,16 @@ export async function installPluginCommand(argv: {
   const pluginCore = new PluginCore(workdir);
 
   try {
-    const installed = await pluginCore.installPlugin(argv.plugin);
+    // When no scope is given, default to user scope (matches Claude Code).
+    const scope = argv.scope ?? "user";
+    const installed = await pluginCore.installPlugin(argv.plugin, scope);
     console.log(
       `Successfully installed plugin: ${installed.name} v${installed.version} from ${installed.marketplace}`,
     );
     console.log(`Cache path: ${installed.cachePath}`);
-
-    // When no scope is given, default to user scope (matches Claude Code).
-    const scope = argv.scope ?? "user";
-    const pluginId = `${installed.name}@${installed.marketplace}`;
-    await pluginCore.enablePlugin(pluginId, scope);
-    console.log(`Plugin ${pluginId} enabled in ${scope} scope`);
+    console.log(
+      `Plugin ${installed.name}@${installed.marketplace} enabled in ${scope} scope`,
+    );
 
     process.exit(0);
   } catch (error) {

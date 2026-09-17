@@ -1,6 +1,6 @@
 import { ConfigurationService } from "../services/configurationService.js";
 import { PluginManager } from "./pluginManager.js";
-import { Logger } from "../types/index.js";
+import { Logger, PluginInstallLocation } from "../types/index.js";
 import { Scope } from "../types/configuration.js";
 
 export interface PluginScopeManagerOptions {
@@ -92,8 +92,33 @@ export class PluginScopeManager {
   }
 
   /**
+   * The install location a record for `scope` is keyed by (spec plugin A-015):
+   * 用户作用域是本机全局的（不带 projectPath），项目/本地作用域归属当前仓库。
+   */
+  getInstallLocation(scope: Scope): PluginInstallLocation {
+    return scope === "user" ? { scope } : { scope, projectPath: this.workdir };
+  }
+
+  /**
+   * Remove a plugin's enabled record from a single scope, leaving every other
+   * scope (including other projects' project/local records) untouched — the
+   * uninstall semantics of spec plugin A-015. Use [removePluginFromAllScopes]
+   * only for 「更换安装作用域」.
+   */
+  async removePluginFromScope(scope: Scope, pluginId: string): Promise<void> {
+    await this.configurationService.removeEnabledPlugin(
+      this.workdir,
+      scope,
+      pluginId,
+    );
+    this.logger?.info(`Removed plugin ${pluginId} from ${scope} scope`);
+    this.refreshPluginManager();
+  }
+
+  /**
    * Remove a plugin from all scopes (user, project, local)
-   * This is useful when uninstalling a plugin to clean up all configuration
+   * This is useful when moving a plugin to another scope: the old scope must
+   * not keep the plugin (spec plugin「设置页插件市场」场景 11).
    */
   async removePluginFromAllScopes(pluginId: string): Promise<void> {
     const scopes: Scope[] = ["user", "project", "local"];
