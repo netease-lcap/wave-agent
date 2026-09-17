@@ -254,10 +254,11 @@ describe("MarketplaceService - General Git Support", () => {
 
       const result = await service.installPlugin(
         `${pluginName}@${marketplaceName}`,
-        "/mock/project",
+        { scope: "project", projectPath: "/mock/project" },
       );
 
       expect(result.name).toBe(pluginName);
+      expect(result.scope).toBe("project");
       expect(result.projectPath).toBe("/mock/project");
       expect(mockGitService.clone).toHaveBeenCalledWith(
         url,

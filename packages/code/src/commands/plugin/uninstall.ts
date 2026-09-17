@@ -1,13 +1,19 @@
-import { PluginCore } from "wave-agent-sdk";
+import { PluginCore, Scope } from "wave-agent-sdk";
 
-export async function uninstallPluginCommand(argv: { plugin: string }) {
+export async function uninstallPluginCommand(argv: {
+  plugin: string;
+  scope?: Scope;
+}) {
   const workdir = process.cwd();
   const pluginCore = new PluginCore(workdir);
 
   try {
-    await pluginCore.uninstallPlugin(argv.plugin);
-    console.log(`Successfully uninstalled plugin: ${argv.plugin}`);
-    console.log(`Cleaned up plugin configuration from all scopes`);
+    // Only the given scope is uninstalled (spec plugin A-015). Without --scope
+    // the core picks the scope the plugin is enabled in for this directory.
+    const scope = await pluginCore.uninstallPlugin(argv.plugin, argv.scope);
+    console.log(
+      `Successfully uninstalled plugin: ${argv.plugin} (scope: ${scope})`,
+    );
     process.exit(0);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

@@ -110,7 +110,7 @@ describe("MarketplaceService - Uninstall", () => {
       );
     });
 
-    await service.uninstallPlugin(pluginId, projectPath);
+    await service.uninstallPlugin(pluginId, { scope: "project", projectPath });
 
     expect(mockRm).toHaveBeenCalledWith(cachePath, {
       recursive: true,
@@ -152,7 +152,10 @@ describe("MarketplaceService - Uninstall", () => {
     mockReadFile.mockResolvedValue(JSON.stringify(installedPlugins));
     mockExistsSync.mockReturnValue(true);
 
-    await service.uninstallPlugin(pluginId, projectPath1);
+    await service.uninstallPlugin(pluginId, {
+      scope: "project",
+      projectPath: projectPath1,
+    });
 
     // Should NOT call rm because projectPath2 still references it
     expect(mockRm).not.toHaveBeenCalled();

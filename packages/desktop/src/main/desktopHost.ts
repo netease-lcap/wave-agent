@@ -3924,9 +3924,12 @@ export class DesktopHost {
         );
         break;
 
+      // 卸载只作用于指定作用域（spec plugin A-015）；scope 缺省时由 SDK 按
+      // 当前 workdir 探测生效作用域。
       case "uninstallPlugin":
         await this.handlePluginMutation("uninstallPlugin", {
           pluginId: msg.pluginId,
+          scope: msg.scope,
         });
         break;
 

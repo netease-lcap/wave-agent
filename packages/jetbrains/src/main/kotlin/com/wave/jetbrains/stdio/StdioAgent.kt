@@ -391,9 +391,10 @@ class StdioAgent(
             put("workdir", workdir)
         }) ?: JsonObject(emptyMap())
 
-    suspend fun uninstallPlugin(pluginId: String, workdir: String): JsonElement =
+    suspend fun uninstallPlugin(pluginId: String, workdir: String, scope: String? = null): JsonElement =
         client.request("uninstallPlugin", buildJsonObject {
             put("pluginId", pluginId)
+            if (scope != null) put("scope", scope)
             put("workdir", workdir)
         }) ?: JsonObject(emptyMap())
 

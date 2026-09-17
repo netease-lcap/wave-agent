@@ -397,6 +397,66 @@ describe("PluginManager", () => {
         expect(service.refreshMarketplaces).not.toHaveBeenCalled();
       }
     });
+
+    it("should load a plugin once when several install records share the cache", async () => {
+      // spec plugin A-015：同一插件在 user 作用域与某项目各有一条安装记录，
+      // 记录指向同一份缓存 → 只按插件加载一次（否则会重复读 manifest 并误报
+      // 「already loaded」）。
+      const pluginId = "test-plugin@marketplace";
+      (
+        pluginManager as unknown as {
+          mockConfigurationService: {
+            getMergedEnabledPlugins: ReturnType<typeof vi.fn>;
+          };
+        }
+      ).mockConfigurationService.getMergedEnabledPlugins.mockReturnValue({
+        [pluginId]: true,
+      });
+
+      vi.mocked(PluginLoader.loadManifest).mockResolvedValue({
+        name: "test-plugin",
+        version: "1.0.0",
+        description: "A test plugin",
+      } as PluginManifest);
+      vi.mocked(PluginLoader.loadCommands).mockReturnValue([]);
+      vi.mocked(PluginLoader.loadSkills).mockResolvedValue([]);
+
+      vi.mocked(MarketplaceService).mockImplementation(function () {
+        const instance = {
+          getInstalledPlugins: vi.fn().mockResolvedValue({
+            plugins: [
+              {
+                name: "test-plugin",
+                marketplace: "marketplace",
+                version: "1.0.0",
+                cachePath: "/cache/test-plugin/1.0.0",
+                scope: "user",
+              },
+              {
+                name: "test-plugin",
+                marketplace: "marketplace",
+                version: "1.0.0",
+                cachePath: "/cache/test-plugin/1.0.0",
+                scope: "project",
+                projectPath: "/repo/a",
+              },
+            ],
+          }),
+          listMarketplaces: vi.fn().mockResolvedValue([]),
+          refreshMarketplaces: vi.fn().mockResolvedValue(undefined),
+        };
+        createdMarketplaceServices.push(instance);
+        return instance as unknown as MarketplaceService;
+      });
+
+      await pluginManager.loadPlugins([]);
+
+      expect(pluginManager.getPlugins()).toHaveLength(1);
+      expect(PluginLoader.loadManifest).toHaveBeenCalledTimes(1);
+      expect(logger.warn).not.toHaveBeenCalledWith(
+        expect.stringContaining("already loaded"),
+      );
+    });
   });
 
   describe("getPlugins and getPlugin", () => {

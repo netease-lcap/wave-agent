@@ -424,9 +424,10 @@ class MessageHandler(
                     reloadAgentConfig()
                 }
             }
-            // VSCE :110/:302
-            "uninstallPlugin" -> handlePluginMutation(command, msg) { id, _ ->
-                session.agent?.uninstallPlugin(id, currentWorkdir())
+            // VSCE :110/:302；只卸载指定作用域（spec plugin A-015），scope 为空时
+            // 由 SDK 按当前目录探测生效作用域。
+            "uninstallPlugin" -> handlePluginMutation(command, msg) { id, scope ->
+                session.agent?.uninstallPlugin(id, currentWorkdir(), scope)
             }
             // VSCE :113/:316
             "updatePlugin" -> handlePluginMutation(command, msg) { id, _ ->

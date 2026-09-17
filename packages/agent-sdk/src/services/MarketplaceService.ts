@@ -10,6 +10,7 @@ import {
   InstalledPluginsRegistry,
   MarketplaceManifest,
   MarketplaceSource,
+  PluginInstallLocation,
 } from "../types/marketplace.js";
 import { GitService } from "./GitService.js";
 import {
@@ -393,6 +394,48 @@ export class MarketplaceService {
     const tmpPath = `${this.installedPluginsPath}.tmp`;
     await fs.writeFile(tmpPath, JSON.stringify(registry, null, 2));
     await fs.rename(tmpPath, this.installedPluginsPath);
+  }
+
+  /**
+   * Whether an install record belongs to the given install location.
+   *
+   * Records written before scopes were tracked carry no `scope`; they stand for
+   * "installed once on this machine" and match any scope, so uninstalling them
+   * keeps working (they are that plugin's only record). They still match by
+   * project path, so records of two different projects stay distinguishable.
+   */
+  private matchesInstallLocation(
+    entry: InstalledPlugin,
+    location: PluginInstallLocation,
+  ): boolean {
+    if (!entry.scope) {
+      return (
+        entry.projectPath === undefined ||
+        entry.projectPath === location.projectPath
+      );
+    }
+    return (
+      entry.scope === location.scope &&
+      entry.projectPath === location.projectPath
+    );
+  }
+
+  /**
+   * The install location a record is keyed by. Scope-less legacy records are
+   * treated as user-scope when they have to be re-created (e.g. by an update).
+   */
+  private locationOf(entry: InstalledPlugin): PluginInstallLocation {
+    return { scope: entry.scope ?? "user", projectPath: entry.projectPath };
+  }
+
+  private describeInstallLocations(entries: InstalledPlugin[]): string {
+    return entries
+      .map((entry) =>
+        entry.scope
+          ? `${entry.scope}${entry.projectPath ? ` (${entry.projectPath})` : ""}`
+          : "unscoped",
+      )
+      .join(", ");
   }
 
   /**
@@ -884,7 +927,7 @@ export class MarketplaceService {
                 try {
                   await this.uninstallPlugin(
                     `${plugin.name}@${plugin.marketplace}`,
-                    plugin.projectPath,
+                    this.locationOf(plugin),
                   );
                 } catch (error) {
                   logError(
@@ -897,7 +940,7 @@ export class MarketplaceService {
               try {
                 await this.installPlugin(
                   `${plugin.name}@${plugin.marketplace}`,
-                  plugin.projectPath,
+                  this.locationOf(plugin),
                 );
               } catch (error) {
                 logError(
@@ -986,10 +1029,13 @@ export class MarketplaceService {
 
   /**
    * Installs a plugin from a marketplace
+   *
+   * @param location 该次安装记账的位置（spec plugin A-015）。缺省只在内部调用
+   *   （宿主加载时补装）出现，此时写入一条不带作用域的历史形态记录。
    */
   async installPlugin(
     pluginAtMarketplace: string,
-    projectPath?: string,
+    location?: PluginInstallLocation,
   ): Promise<InstalledPlugin> {
     return this.withLock(async () => {
       const [pluginName, marketplaceName] = pluginAtMarketplace.split("@");
@@ -1090,7 +1136,7 @@ export class MarketplaceService {
             (p) =>
               p.name === pluginName &&
               p.marketplace === marketplaceName &&
-              p.projectPath === projectPath,
+              (location ? this.matchesInstallLocation(p, location) : !p.scope),
           );
 
           const installedPlugin: InstalledPlugin = {
@@ -1098,7 +1144,8 @@ export class MarketplaceService {
             marketplace: marketplaceName,
             version,
             cachePath,
-            projectPath,
+            scope: location?.scope,
+            projectPath: location?.projectPath,
           };
 
           if (existingIndex >= 0) {
@@ -1128,10 +1175,16 @@ export class MarketplaceService {
 
   /**
    * Uninstalls a plugin
+   *
+   * With a [location], only that scope's install record is removed — other
+   * scopes (including other projects' project/local records) keep theirs, and
+   * the shared cache directory is deleted only once no record references it
+   * (spec plugin A-015). Without one, every record of the plugin is removed
+   * (used by [updatePlugin] and the marketplace-level cleanup).
    */
   async uninstallPlugin(
     pluginAtMarketplace: string,
-    projectPath?: string,
+    location?: PluginInstallLocation,
   ): Promise<void> {
     return this.withLock(async () => {
       const [pluginName, marketplaceName] = pluginAtMarketplace.split("@");
@@ -1140,41 +1193,119 @@ export class MarketplaceService {
       }
 
       const installedRegistry = await this.getInstalledPlugins();
-      const pluginIndex = installedRegistry.plugins.findIndex(
-        (p) =>
-          p.name === pluginName &&
-          p.marketplace === marketplaceName &&
-          p.projectPath === projectPath,
+      const allRecords = installedRegistry.plugins.filter(
+        (p) => p.name === pluginName && p.marketplace === marketplaceName,
+      );
+      const pluginToRemove = allRecords.filter(
+        (p) => !location || this.matchesInstallLocation(p, location),
       );
 
-      if (pluginIndex === -1) {
+      if (pluginToRemove.length === 0) {
+        const installedAt = this.describeInstallLocations(allRecords);
         throw new Error(
-          `Plugin ${pluginName}@${marketplaceName} is not installed${projectPath ? ` for project ${projectPath}` : ""}`,
+          location
+            ? `Plugin ${pluginName}@${marketplaceName} is not installed in ${location.scope} scope${location.projectPath ? ` for project ${location.projectPath}` : ""}${installedAt ? `. Installed at: ${installedAt}` : ""}`
+            : `Plugin ${pluginName}@${marketplaceName} is not installed`,
         );
       }
 
-      const pluginToRemove = installedRegistry.plugins[pluginIndex];
-
-      installedRegistry.plugins.splice(pluginIndex, 1);
+      const removed = new Set(pluginToRemove);
+      installedRegistry.plugins = installedRegistry.plugins.filter(
+        (p) => !removed.has(p),
+      );
       await this.saveInstalledPlugins(installedRegistry);
 
-      const isStillReferenced = installedRegistry.plugins.some(
-        (p) => p.cachePath === pluginToRemove.cachePath,
-      );
+      for (const plugin of pluginToRemove) {
+        const isStillReferenced = installedRegistry.plugins.some(
+          (p) => p.cachePath === plugin.cachePath,
+        );
 
-      if (!isStillReferenced && existsSync(pluginToRemove.cachePath)) {
-        await fs.rm(pluginToRemove.cachePath, { recursive: true, force: true });
+        if (!isStillReferenced && existsSync(plugin.cachePath)) {
+          await fs.rm(plugin.cachePath, { recursive: true, force: true });
+        }
       }
     });
   }
 
   /**
-   * Updates a plugin (uninstall followed by install)
+   * Moves a plugin's install record to another location（「更换安装作用域」）:
+   * the record currently at [from] (or the plugin's only record when [from] is
+   * omitted or unknown) is rewritten to [to], so that uninstalling the plugin
+   * at its new scope still finds it (spec plugin A-015). A duplicate record
+   * already at [to] wins and the moved one is dropped.
+   */
+  async relocatePlugin(
+    pluginAtMarketplace: string,
+    from: PluginInstallLocation | undefined,
+    to: PluginInstallLocation,
+  ): Promise<void> {
+    return this.withLock(async () => {
+      const [pluginName, marketplaceName] = pluginAtMarketplace.split("@");
+      if (!pluginName || !marketplaceName) {
+        throw new Error("Invalid plugin format. Use name@marketplace");
+      }
+
+      const installedRegistry = await this.getInstalledPlugins();
+      const records = installedRegistry.plugins.filter(
+        (p) => p.name === pluginName && p.marketplace === marketplaceName,
+      );
+      const source = from
+        ? records.find((p) => this.matchesInstallLocation(p, from))
+        : records[0];
+      if (!source) return;
+
+      const duplicate = records.find(
+        (p) => p !== source && this.matchesInstallLocation(p, to),
+      );
+      if (duplicate) {
+        installedRegistry.plugins = installedRegistry.plugins.filter(
+          (p) => p !== source,
+        );
+      } else {
+        source.scope = to.scope;
+        source.projectPath = to.projectPath;
+      }
+      await this.saveInstalledPlugins(installedRegistry);
+    });
+  }
+
+  /**
+   * Updates a plugin (uninstall followed by install). Every install record of
+   * the plugin is re-created at its original location, so the install scopes
+   * stay unchanged (spec plugin「设置页插件市场」场景 12 / A-015).
    */
   async updatePlugin(pluginAtMarketplace: string): Promise<InstalledPlugin> {
     return this.withLock(async () => {
+      const [pluginName, marketplaceName] = pluginAtMarketplace.split("@");
+      const before = await this.getInstalledPlugins();
+      const locations = before.plugins
+        .filter(
+          (p) => p.name === pluginName && p.marketplace === marketplaceName,
+        )
+        .map((p) => this.locationOf(p));
+
       await this.uninstallPlugin(pluginAtMarketplace);
-      return this.installPlugin(pluginAtMarketplace);
+      const installed = await this.installPlugin(
+        pluginAtMarketplace,
+        locations[0] ?? { scope: "user" },
+      );
+
+      if (locations.length > 1) {
+        const restored = await this.getInstalledPlugins();
+        for (const location of locations.slice(1)) {
+          restored.plugins.push({
+            name: installed.name,
+            marketplace: installed.marketplace,
+            version: installed.version,
+            cachePath: installed.cachePath,
+            scope: location.scope,
+            projectPath: location.projectPath,
+          });
+        }
+        await this.saveInstalledPlugins(restored);
+      }
+
+      return installed;
     });
   }
 }

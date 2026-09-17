@@ -52,14 +52,17 @@ export class PluginCore {
   }
 
   /**
-   * Installs a plugin from a marketplace
+   * Installs a plugin from a marketplace and, when a scope is given, enables it
+   * there — the install record is filed under that same scope (spec plugin A-015).
    */
   async installPlugin(
     pluginId: string,
     scope?: Scope,
   ): Promise<InstalledPlugin> {
-    const installedPlugin =
-      await this.marketplaceService.installPlugin(pluginId);
+    const installedPlugin = await this.marketplaceService.installPlugin(
+      pluginId,
+      scope ? this.pluginScopeManager.getInstallLocation(scope) : undefined,
+    );
     if (scope) {
       await this.enablePlugin(pluginId, scope);
     }
@@ -67,11 +70,24 @@ export class PluginCore {
   }
 
   /**
-   * Uninstalls a plugin and removes it from all configuration scopes
+   * Uninstalls a plugin from a single scope (spec plugin A-015)：只清除该作用域的
+   * 启用记录与该作用域的安装记录，其它作用域（含其它项目的项目/本地作用域）不受
+   * 影响；本机产物仅在该插件再无安装记录时删除。未指定作用域时按
+   * `local` > `project` > `user` 探测当前生效作用域（与 enable/disable 一致）。
    */
-  async uninstallPlugin(pluginId: string): Promise<void> {
-    await this.marketplaceService.uninstallPlugin(pluginId);
-    await this.pluginScopeManager.removePluginFromAllScopes(pluginId);
+  async uninstallPlugin(pluginId: string, scope?: Scope): Promise<Scope> {
+    const targetScope = scope ?? this.findPluginScope(pluginId);
+    if (!targetScope) {
+      throw new Error(
+        `Plugin ${pluginId} is not enabled in any scope for ${this.workdir}. Use --scope to pick the scope to uninstall from.`,
+      );
+    }
+    await this.marketplaceService.uninstallPlugin(
+      pluginId,
+      this.pluginScopeManager.getInstallLocation(targetScope),
+    );
+    await this.pluginScopeManager.removePluginFromScope(targetScope, pluginId);
+    return targetScope;
   }
 
   /**
@@ -98,10 +114,20 @@ export class PluginCore {
    * Moves an installed plugin to another installation scope: clears its
    * enabledPlugins record from every scope, then enables it in the target one
    * (spec plugin「设置页插件市场」场景 11：更换作用域后旧作用域不再保留该插件)。
+   * The install record follows the plugin, otherwise uninstalling it at the new
+   * scope would find no record there (spec plugin A-015)。
    */
   async setPluginScope(pluginId: string, scope: Scope): Promise<Scope> {
+    const previousScope = this.findPluginScope(pluginId);
     await this.pluginScopeManager.removePluginFromAllScopes(pluginId);
     await this.pluginScopeManager.enablePlugin(scope, pluginId);
+    await this.marketplaceService.relocatePlugin(
+      pluginId,
+      previousScope
+        ? this.pluginScopeManager.getInstallLocation(previousScope)
+        : undefined,
+      this.pluginScopeManager.getInstallLocation(scope),
+    );
     return scope;
   }
 

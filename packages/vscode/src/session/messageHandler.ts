@@ -497,7 +497,11 @@ export class MessageHandler {
         break;
       case "uninstallPlugin":
         await this.applyPluginChange(
-          () => this.pluginService.uninstallPlugin(msg.pluginId as string),
+          () =>
+            this.pluginService.uninstallPlugin(
+              msg.pluginId as string,
+              msg.scope as Scope | undefined,
+            ),
           "卸载插件失败",
           () => `已卸载「${pluginName(msg.pluginId as string)}」`,
         );

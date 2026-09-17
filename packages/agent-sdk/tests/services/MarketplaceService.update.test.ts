@@ -21,6 +21,10 @@ describe("MarketplaceService - Update", () => {
 
   beforeEach(() => {
     service = new MarketplaceService();
+    // 已安装清单是机器级文件：测试里固定为空，行为不依赖本机真实状态
+    vi.spyOn(service, "getInstalledPlugins").mockResolvedValue({
+      plugins: [],
+    });
   });
 
   afterEach(() => {
@@ -41,8 +45,9 @@ describe("MarketplaceService - Update", () => {
 
     const result = await service.updatePlugin(pluginId);
 
+    // 无安装记录可依时按 user 记账（缺省语义）
     expect(uninstallSpy).toHaveBeenCalledWith(pluginId);
-    expect(installSpy).toHaveBeenCalledWith(pluginId);
+    expect(installSpy).toHaveBeenCalledWith(pluginId, { scope: "user" });
     expect(result.version).toBe("1.0.1");
 
     // Ensure uninstall is called before install
