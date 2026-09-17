@@ -145,6 +145,37 @@ describe("resolveFilePathMatch — 打开路径解析", () => {
       "C:\\proj\\a.ts",
     );
   });
+
+  // specs/ui/file-path-links.md 场景 6/8 —— 归并结果必须是规范绝对路径
+  it("`./` 与 `../` 前缀在归并后折叠为规范绝对路径", () => {
+    expect(resolveFilePathMatch(code("./src/a.ts")!, "/home/u/proj")).toBe(
+      "/home/u/proj/src/a.ts",
+    );
+    expect(
+      resolveFilePathMatch(code("../sibling-repo/src/a.ts")!, "/home/u/proj"),
+    ).toBe("/home/u/sibling-repo/src/a.ts");
+    expect(resolveFilePathMatch(code("../../x/y.ts")!, "/home/u/proj")).toBe(
+      "/home/x/y.ts",
+    );
+    // workdir 末尾斜杠不影响归并结果
+    expect(resolveFilePathMatch(code("./src/a.ts")!, "/home/u/proj/")).toBe(
+      "/home/u/proj/src/a.ts",
+    );
+  });
+
+  it("折叠是纯词法的：`..` 逐段抵消，逃出根的 `..` 被丢弃", () => {
+    expect(resolveFilePathMatch(text("/home/u/proj/../x/a.ts")!)).toBe(
+      "/home/u/x/a.ts",
+    );
+    expect(resolveFilePathMatch(text("/home/../../a/b.ts")!)).toBe("/a/b.ts");
+  });
+
+  it("Windows 盘符路径折叠后保留反斜杠风格", () => {
+    expect(resolveFilePathMatch(code("../other/a.ts")!, "C:\\proj")).toBe(
+      "C:\\other\\a.ts",
+    );
+    expect(resolveFilePathMatch(text("C:\\proj\\..\\a.ts")!)).toBe("C:\\a.ts");
+  });
 });
 
 describe("linkifyFilePathText — 正文纯文本链接化", () => {

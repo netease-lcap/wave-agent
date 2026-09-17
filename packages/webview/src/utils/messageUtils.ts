@@ -248,5 +248,35 @@ const splitPath = (p: string): { root: string; segments: string[] } => {
   return { root, segments };
 };
 
+/**
+ * Collapse `.` / `..` and empty segments into a canonical path — the lexical
+ * equivalent of `path.resolve`'s normalization for the browser bundle. The
+ * input's own separator style and root prefix (`/` or `C:\`) are preserved, so
+ * a win32 path keeps its backslashes. Pure string work: `..` is folded
+ * lexically (a symlinked directory is not re-resolved), matching what the SDK
+ * tools get from `path.resolve` — which keeps "the path a click opens" and "the
+ * path a tool wrote" comparable.
+ *
+ * Expects an already-absolute path (callers join with the workdir first); on a
+ * relative input the leading `..` is dropped, since the browser has no cwd.
+ */
+export const normalizeFilePath = (filePath: string): string => {
+  const rootMatch = filePath.match(/^([A-Za-z]:[\\/]|\/)/);
+  const root = rootMatch ? rootMatch[1] : "";
+  const sep = root.endsWith("\\") ? "\\" : "/";
+  const segments: string[] = [];
+  for (const part of filePath.slice(root.length).split(/[\\/]+/)) {
+    if (part === "" || part === ".") {
+      continue;
+    }
+    if (part === "..") {
+      segments.pop();
+      continue;
+    }
+    segments.push(part);
+  }
+  return `${root}${segments.join(sep)}`;
+};
+
 /** Collapse backslashes to forward slashes for consistent display. */
 const toPosixPath = (p: string): string => p.replace(/\\/g, "/");

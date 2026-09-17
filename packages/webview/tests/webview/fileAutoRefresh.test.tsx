@@ -155,6 +155,21 @@ describe("fileAutoRefresh utils", () => {
     // Case-sensitive by design (remote hosts may differ in case).
     expect(pathsMatch("/Work/A/Src/A.TS", "/work/a/src/a.ts")).toBe(false);
   });
+
+  // specs/desktop/desktop-file-panel.md 场景 7 —— `..` 残留不得导致比对失败
+  it("pathsMatch reconciles `..` in either side against the workdir", () => {
+    expect(
+      pathsMatch("/work/b/src/a.ts", "/work/a/../b/src/a.ts", "/work/a"),
+    ).toBe(true);
+    expect(pathsMatch("../b/src/a.ts", "/work/b/src/a.ts", "/work/a")).toBe(
+      true,
+    );
+    expect(pathsMatch("./src/a.ts", "/work/a/src/a.ts", "/work/a")).toBe(true);
+    // Different file: collapsing must not manufacture a match.
+    expect(
+      pathsMatch("/work/b/src/b.ts", "/work/a/../b/src/a.ts", "/work/a"),
+    ).toBe(false);
+  });
 });
 
 describe("ChatApp desktop file-panel auto refresh", () => {
