@@ -58,6 +58,38 @@ describe("scanMemoryFiles", () => {
     });
   });
 
+  it("reads a folded description instead of its `>-` indicator", async () => {
+    // 记忆文件用折叠写法写 description 时，清单里以前会退化成 ">-"，提取子代理
+    // 就看不到这条记忆讲什么（spec core/memory-management 场景 13）。
+    vi.mocked(fsPromises.readdir).mockResolvedValue([
+      "topic.md",
+    ] as unknown as Awaited<ReturnType<typeof fsPromises.readdir>>);
+    vi.mocked(fsPromises.readFile).mockResolvedValue(
+      [
+        "---",
+        "type: project",
+        "description: >-",
+        "  第一行描述",
+        "  第二行描述",
+        "---",
+        "",
+        "Body",
+      ].join("\n") as unknown as Awaited<
+        ReturnType<typeof fsPromises.readFile>
+      >,
+    );
+    vi.mocked(fsPromises.stat).mockResolvedValue({
+      mtimeMs: Date.UTC(2026, 0, 2, 3, 4, 5),
+    } as unknown as Awaited<ReturnType<typeof fsPromises.stat>>);
+
+    const memories = await scanMemoryFiles(MEMORY_DIR);
+
+    expect(memories[0].description).toBe("第一行描述 第二行描述");
+    expect(formatMemoryManifest(memories)).toBe(
+      "- [project] topic.md (2026-01-02T03:04:05.000Z): 第一行描述 第二行描述",
+    );
+  });
+
   it("sorts newest first and caps the listing at 200 files", async () => {
     vi.mocked(fsPromises.readdir).mockResolvedValue(
       Array.from(

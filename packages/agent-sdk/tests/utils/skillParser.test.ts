@@ -136,7 +136,7 @@ allowed-tools:
       const result = parseSkillFile("/path/to/test-skill/SKILL.md");
 
       expect(result.skillMetadata.description).toBe(
-        "第一行描述 第二行描述\n\n第三行描述",
+        "第一行描述 第二行描述\n第三行描述",
       );
       expect(result.skillMetadata.allowedTools).toEqual(["tool1"]);
       // 续行不得变成独立的 frontmatter 键

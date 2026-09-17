@@ -76,6 +76,32 @@ describe("markdownParser", () => {
       expect(result.frontmatter).toEqual({ title: "Test" });
       expect(result.content).toBe("Body content");
     });
+
+    it("should parse a block scalar instead of returning its indicator", () => {
+      // 自定义命令的 description 常见 `>-` 折叠写法；以前会解析成字面量 ">-"，
+      // 命令选择器里显示的就是 ">-"（spec ui/slash-commands 场景 3）。
+      const content = [
+        "---",
+        "description: >-",
+        "  第一行描述",
+        "  第二行描述",
+        "",
+        "  第三行描述",
+        "allowed-tools:",
+        "  - tool1",
+        "  - tool2",
+        "---",
+        "Body",
+      ].join("\n");
+
+      const result = parseFrontmatter(content);
+
+      expect(result.frontmatter).toEqual({
+        description: "第一行描述 第二行描述\n第三行描述",
+        "allowed-tools": ["tool1", "tool2"],
+      });
+      expect(result.content).toBe("Body");
+    });
   });
 
   describe("parseMarkdownFile", () => {
@@ -106,6 +132,28 @@ describe("markdownParser", () => {
       try {
         const result = parseMarkdownFile(filePath);
         expect(result.config?.allowedTools).toEqual(["t1", "t2"]);
+      } finally {
+        unlinkSync(filePath);
+      }
+    });
+
+    it("should read a folded description into the command config", () => {
+      const filePath = join(tmpdir(), `test-folded-${Date.now()}.md`);
+      const content = [
+        "---",
+        "description: >-",
+        "  审查一段 diff。",
+        "  只报真正的问题。",
+        "---",
+        "Content",
+      ].join("\n");
+      writeFileSync(filePath, content);
+
+      try {
+        const result = parseMarkdownFile(filePath);
+        expect(result.config?.description).toBe(
+          "审查一段 diff。 只报真正的问题。",
+        );
       } finally {
         unlinkSync(filePath);
       }

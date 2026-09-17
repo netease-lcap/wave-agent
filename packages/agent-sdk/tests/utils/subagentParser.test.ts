@@ -83,6 +83,51 @@ You are a file search specialist...`;
       expect(explore?.model).toBe("fastModel");
     });
 
+    it("should parse a folded description and a block tools list", async () => {
+      // 子代理 frontmatter 的块标量写法以前会解析成字面量 ">-"，描述整段丢光
+      // （spec multi-agent/subagent 场景 6）。
+      const mockFs = await import("fs");
+
+      vi.mocked(mockFs.readdirSync).mockImplementation((dirPath) => {
+        if (dirPath === path.join("/test/workdir", ".wave", "agents")) {
+          return ["reviewer.md"] as unknown as ReturnType<
+            typeof import("fs").readdirSync
+          >;
+        }
+        return [] as unknown as ReturnType<typeof import("fs").readdirSync>;
+      });
+
+      vi.mocked(mockFs.statSync).mockReturnValue({
+        isFile: () => true,
+      } as import("fs").Stats);
+
+      vi.mocked(mockFs.readFileSync).mockImplementation((filePath) => {
+        if (
+          filePath ===
+          path.join("/test/workdir", ".wave", "agents", "reviewer.md")
+        ) {
+          return `---
+name: reviewer
+description: >-
+  审查一段 diff。
+  只报真正的问题。
+tools:
+  - Read
+  - Grep
+---
+
+You are a reviewer.`;
+        }
+        return "";
+      });
+
+      const configs = await loadSubagentConfigurations("/test/workdir");
+
+      expect(configs).toHaveLength(1);
+      expect(configs[0].description).toBe("审查一段 diff。 只报真正的问题。");
+      expect(configs[0].tools).toEqual(["Read", "Grep"]);
+    });
+
     it("should have built-in subagents with lowest priority", async () => {
       const mockFs = await import("fs");
 
