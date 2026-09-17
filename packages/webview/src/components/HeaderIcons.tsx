@@ -1,5 +1,7 @@
 import React from "react";
 
+import { isDesktopHost } from "../utils/platform";
+
 interface IconProps {
   className?: string;
 }
@@ -293,43 +295,94 @@ export const QueueChevronIcon: React.FC<IconProps> = ({
   </svg>
 );
 
-// Queue item action: edit (pencil) — Figma 11.934 x 11.9471 glyph centered in a 16x16 box.
+// Queue item action: edit (pencil) — 桌面端用设计师 0917 亲手改过的版本（16 网格 /
+// stroke 1.4 圆头 / 无 transform，笔画与本体是同一条轮廓路径）；IDE 宿主保留 0917 之前
+// 的 Figma 填充稿（本组件是共用资产，不分叉会连带改到两个插件端）。
 export const QueueEditIcon: React.FC<IconProps> = ({
   className = "header-icon",
-}) => (
-  <svg
-    width={16}
-    height={16}
-    viewBox="0 0 16 16"
-    fill="none"
-    className={className}
-  >
-    <path
-      transform="translate(2.03 2.03)"
-      d="M7.9664 0.439283C8.55216 -0.146457 9.50171 -0.146398 10.0875 0.439283L11.4947 1.84553C12.0803 2.43133 12.0804 3.38189 11.4947 3.9676L4.38633 11.076C4.32169 11.1405 4.23969 11.1861 4.15098 11.2078L1.23789 11.9178C0.511875 12.0948 -0.14489 11.4416 0.0279284 10.7147L0.725194 7.78499C0.746603 7.69518 0.792789 7.61302 0.858007 7.54768L7.9664 0.439283ZM1.66562 8.15413L1.00058 10.9461L3.7789 10.2684L8.45469 5.59163L6.3414 3.47835L1.66562 8.15413ZM9.38047 1.14631C9.1852 0.951157 8.86867 0.951098 8.67344 1.14631L7.04844 2.77131L9.16172 4.8846L10.7877 3.26057C10.9829 3.06538 10.9827 2.74784 10.7877 2.55256L9.38047 1.14631Z"
-      fill="currentColor"
-    />
-  </svg>
-);
+}) =>
+  isDesktopHost() ? (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      className={className}
+    >
+      <path
+        d="M13.4016 5.48407C13.7843 5.10146 13.9993 4.58249 13.9994 4.04133C13.9995 3.50017 13.7846 2.98115 13.402 2.59844C13.0194 2.21573 12.5004 2.00068 11.9592 2.00061C11.4181 2.00054 10.899 2.21545 10.5163 2.59806L3.33332 9.78284C3.16527 9.9504 3.041 10.1567 2.97143 10.3836L2.01518 13.5338C1.99645 13.5964 1.99503 13.6629 2.01105 13.7262C2.02707 13.7896 2.05994 13.8474 2.10618 13.8936C2.15242 13.9398 2.21029 13.9725 2.27366 13.9885C2.33703 14.0044 2.40353 14.0029 2.46611 13.9841L5.61705 13.0286C5.84373 12.9596 6.05002 12.8361 6.21782 12.6689L13.4016 5.48407Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8.75537 4.34937L11.6508 7.24483"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ) : (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      className={className}
+    >
+      <path
+        transform="translate(2.03 2.03)"
+        d="M7.9664 0.439283C8.55216 -0.146457 9.50171 -0.146398 10.0875 0.439283L11.4947 1.84553C12.0803 2.43133 12.0804 3.38189 11.4947 3.9676L4.38633 11.076C4.32169 11.1405 4.23969 11.1861 4.15098 11.2078L1.23789 11.9178C0.511875 12.0948 -0.14489 11.4416 0.0279284 10.7147L0.725194 7.78499C0.746603 7.69518 0.792789 7.61302 0.858007 7.54768L7.9664 0.439283ZM1.66562 8.15413L1.00058 10.9461L3.7789 10.2684L8.45469 5.59163L6.3414 3.47835L1.66562 8.15413ZM9.38047 1.14631C9.1852 0.951157 8.86867 0.951098 8.67344 1.14631L7.04844 2.77131L9.16172 4.8846L10.7877 3.26057C10.9829 3.06538 10.9827 2.74784 10.7877 2.55256L9.38047 1.14631Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
 
-// Queue item action: send now (up arrow) — Figma 10.7071 x 12 glyph centered in a 16x16 box.
+// Queue item action: send now (up arrow) — 桌面端用设计师 0917 亲手改过的版本
+// （箭身高：2.328 → 13.672，比我的 A 档更高）；IDE 宿主保留 0917 之前的 Figma 填充稿。
 export const QueueSendIcon: React.FC<IconProps> = ({
   className = "header-icon",
-}) => (
-  <svg
-    width={16}
-    height={16}
-    viewBox="0 0 16 16"
-    fill="none"
-    className={className}
-  >
-    <path
-      transform="translate(2.65 2)"
-      d="M10.7071 4.99999L5.70711 0H5L0 4.99999L0.707108 5.7071L4.85355 1.56066V12H5.85355V1.56066L9.99998 5.7071L10.7071 4.99999Z"
-      fill="currentColor"
-    />
-  </svg>
-);
+}) =>
+  isDesktopHost() ? (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      className={className}
+    >
+      <path
+        d="M3.3335 6.99495L8.0002 2.32825L12.6669 6.99495"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M8 13.6719V2.32825"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ) : (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      className={className}
+    >
+      <path
+        transform="translate(2.65 2)"
+        d="M10.7071 4.99999L5.70711 0H5L0 4.99999L0.707108 5.7071L4.85355 1.56066V12H5.85355V1.56066L9.99998 5.7071L10.7071 4.99999Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
 
 // Permission mode: default ("修改前询问") — Figma permission-ask（stroke 盾 + 对勾 1.4）。
 export const PermModeAskIcon: React.FC<IconProps> = ({
@@ -471,35 +524,82 @@ export const PermModePlanIcon: React.FC<IconProps> = ({
   </svg>
 );
 
-// Queue item action: delete (trash) — Figma 12.4329 x 13 glyph centered in a 16x16 box.
+// Queue item action: delete (trash) — 桌面端用设计师 0917 亲手改过的版本（盖 y=4.5、
+// 桶身 4.5→14.1667、两条内竖线 7.333→11.333，16 网格 / stroke 1.4 圆头）；
+// IDE 宿主保留 0917 之前的 Figma 填充稿（同上，宿主分叉）。
 export const QueueTrashIcon: React.FC<IconProps> = ({
   className = "header-icon",
-}) => (
-  <svg
-    width={16}
-    height={16}
-    viewBox="0 0 16 16"
-    fill="none"
-    className={className}
-  >
-    <g transform="translate(1.78 1.5)">
+}) =>
+  isDesktopHost() ? (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      className={className}
+    >
       <path
-        d="M5.14941 4.12191V10.2623H4.13673V4.12191H5.14941Z"
-        fill="currentColor"
+        d="M2 4.5H14"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
       <path
-        d="M8.29618 4.12191V10.2623H7.28348V4.12191H8.29618Z"
-        fill="currentColor"
+        d="M12.6668 4.5V12.8333C12.6668 13.1869 12.5263 13.526 12.2763 13.7761C12.0262 14.0261 11.6871 14.1666 11.3335 14.1666H4.6668C4.31318 14.1666 3.97405 14.0261 3.72401 13.7761C3.47397 13.526 3.3335 13.1869 3.3335 12.8333V4.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
       <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M7.01771 0C7.88318 1.28547e-06 8.59523 0.657804 8.68051 1.50076L8.68742 1.56893H11.6317V1.57289H12.4329V2.58557H11.6317V10.7464C11.6317 11.9909 10.6226 12.9999 9.37803 13H3.05487C1.81034 12.9999 0.801262 11.9909 0.801262 10.7464V2.58557H0V1.57289H0.801262V1.56893H3.74548L3.75239 1.50076C3.83767 0.657798 4.54971 0 5.41519 0H7.01771ZM1.81396 2.58557V10.7464C1.81396 11.4316 2.3698 11.9872 3.05487 11.9873H9.37803C10.0631 11.9872 10.6179 11.4316 10.6179 10.7464V2.58557H1.81396ZM5.41519 1.0127C5.1216 1.0127 4.87272 1.20493 4.78781 1.47013L4.7562 1.56893H7.6767L7.64509 1.47013C7.56018 1.20494 7.31129 1.0127 7.01771 1.0127H5.41519Z"
-        fill="currentColor"
+        d="M5.3335 4.49997V3.16667C5.3335 2.81306 5.47397 2.47393 5.72401 2.22389C5.97405 1.97385 6.31318 1.83337 6.6668 1.83337H9.3335C9.68711 1.83337 10.0262 1.97385 10.2763 2.22389C10.5263 2.47393 10.6668 2.81306 10.6668 3.16667V4.49997"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
-    </g>
-  </svg>
-);
+      <path
+        d="M6.46973 7.33325V11.3333"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9.53027 7.33325V11.3333"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ) : (
+    <svg
+      width={16}
+      height={16}
+      viewBox="0 0 16 16"
+      fill="none"
+      className={className}
+    >
+      <g transform="translate(1.78 1.5)">
+        <path
+          d="M5.14941 4.12191V10.2623H4.13673V4.12191H5.14941Z"
+          fill="currentColor"
+        />
+        <path
+          d="M8.29618 4.12191V10.2623H7.28348V4.12191H8.29618Z"
+          fill="currentColor"
+        />
+        <path
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d="M7.01771 0C7.88318 1.28547e-06 8.59523 0.657804 8.68051 1.50076L8.68742 1.56893H11.6317V1.57289H12.4329V2.58557H11.6317V10.7464C11.6317 11.9909 10.6226 12.9999 9.37803 13H3.05487C1.81034 12.9999 0.801262 11.9909 0.801262 10.7464V2.58557H0V1.57289H0.801262V1.56893H3.74548L3.75239 1.50076C3.83767 0.657798 4.54971 0 5.41519 0H7.01771ZM1.81396 2.58557V10.7464C1.81396 11.4316 2.3698 11.9872 3.05487 11.9873H9.37803C10.0631 11.9872 10.6179 11.4316 10.6179 10.7464V2.58557H1.81396ZM5.41519 1.0127C5.1216 1.0127 4.87272 1.20493 4.78781 1.47013L4.7562 1.56893H7.6767L7.64509 1.47013C7.56018 1.20494 7.31129 1.0127 7.01771 1.0127H5.41519Z"
+          fill="currentColor"
+        />
+      </g>
+    </svg>
+  );
 
 // 会话行更多菜单「并排打开」— codechat TaskSidebar 同款 lucide columns-2
 // （18×18 rx2 外框 + 中竖线，stroke 2 / currentColor）。

@@ -834,6 +834,14 @@
   line-height: 22px;
 }
 
+/* 「编辑队列消息」chip：base 12px 是与 IDE 的 12px 正文同档的；桌面正文已是 14px/22px，
+   chip 仍 12px 会掉一档（设计师 0917 评论 `span.queued-edit-chip`「这里字号应该是14px」）
+   → 14px。不再写 line-height：继承 .message-input 的 22px，行盒高度不变；颜色
+   （textLink）与字重 500 不动。仅桌面端。 */
+[data-host="desktop"] .queued-edit-chip {
+  font-size: 14px;
+}
+
 /* Composer 卡片布局：Figma 13439-9245 卡片 768×110 = pad 12 + 输入区 44 +
    gap 8 + 工具行 32 + pad 12（base 实现 86px：无 pad-top、工具行 40 贴底）。
    输入区自带 padding 0 12px（左右留白），pad-top 由卡片承担。
@@ -2914,6 +2922,39 @@
 [data-host="desktop"][data-theme="dark"] .queued-action-button:hover {
   background-color: rgba(255, 255, 255, 0.12);
   color: #ffffff;
+}
+
+/* 队列条目 hover 三图标：图标 16px / 按钮盒 24px / 间距 8px / 圆角 8px
+   （设计师 0917 评论「这里 hover 出现的 3 个图标都要替换」+ 追加「图标16px，盒子
+   24px，间距8px，圆角8px」）。图标本身按同面口径 16 网格 / stroke 1.4 圆头（原稿是
+   「填充路径画的轮廓」，视觉笔画只 ~1px），16px 渲染时有效笔画 = 1.4，与面板空态、
+   设置页左导航同档。
+   仅桌面端生效：base 的 14px / 3px 圆角 / 2px 间距留给 IDE 宿主（VS Code、JetBrains
+   语言不变；三颗图标组件本身也按宿主分叉）。行高 32 不变 → 24 盒上下各留 4px。
+   注意 base 没有全局 border-box，24 盒必须显式声明，否则 padding 2 会撑成 28。 */
+[data-host="desktop"] .queued-action-button {
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  border-radius: var(--cc-radius-md, 8px);
+}
+[data-host="desktop"] .queued-action-button svg {
+  width: 16px;
+  height: 16px;
+}
+[data-host="desktop"] .queued-item-actions {
+  gap: 8px;
+}
+/* 指针停在操作按钮组上时压掉「整条 hover 显示完整文案」的气泡（只隐藏，不动结构）。
+   曾用 Tooltip 的 disabled 实现 → 会把外层 tooltip-container 卸载/重建，行子树连按钮
+   一起被 React 重建 → 光标下的元素被替换 → mouseleave/mouseenter 自激循环，整条下拉
+   抖动（设计师 0917 报的抖动）。删掉 disabled，改由这个 class 只做视觉隐藏。
+   本 class 只在桌面端会挂上（actionsHovered 仅桌面绑事件），选择器仍限桌面端。
+   必须用直接子选择器：按钮自己的气泡是行级气泡的**后代**，后代选择器会把三层按钮
+   提示一起压掉（探针实测「按钮上两条都 hidden」= 按钮提示消失）。 */
+[data-host="desktop"] .queued-item-tooltip.tooltip-suppressed > .tooltip-box {
+  opacity: 0;
+  visibility: hidden;
 }
 
 /* ═══ 0903 新基线第 1 轮：右侧面板 tab 条区域（desktop-panel-tabs）═══════
