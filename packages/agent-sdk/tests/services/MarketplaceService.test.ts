@@ -77,9 +77,6 @@ describe("MarketplaceService - Builtin Marketplace", () => {
     await (service as unknown as { _seedComplete: Promise<void> })
       ._seedComplete;
     // Reset static variable
-    (
-      MarketplaceService as unknown as { isLockedInProcess: boolean }
-    ).isLockedInProcess = false;
     // Mock all git operations by default
     vi.spyOn(
       service["gitService"] as unknown as {
@@ -369,10 +366,6 @@ describe("MarketplaceService - Scoped Marketplace", () => {
     service = new MarketplaceService();
     await (service as unknown as { _seedComplete: Promise<void> })
       ._seedComplete;
-    (
-      MarketplaceService as unknown as { isLockedInProcess: boolean }
-    ).isLockedInProcess = false;
-
     vi.spyOn(
       service["gitService"] as unknown as {
         isGitAvailable: () => Promise<boolean>;
@@ -748,6 +741,70 @@ describe("MarketplaceService - Scoped Marketplace", () => {
     expect(updateSpy).toHaveBeenCalledTimes(2);
   });
 
+  it("should serialize concurrent marketplace operations instead of running them in parallel", async () => {
+    // 连点「批量更新插件」会并发到达同一个进程：锁内的重入短路必须只对同一条
+    // 调用链生效，另一条调用链要在文件锁上排队（spec 插件市场场景 14）——否则
+    // 两个 git pull 会撞同一个检出（必然失败）。
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "git-mkt": { source: { source: "github", repo: "user/repo" } },
+    });
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "git-mkt",
+      owner: { name: "test" },
+      plugins: [],
+    });
+    // 检出目录已存在 → 走 pull 分支（不存在会走 clone，两者都要下载，取前者）
+    await fs.mkdir(path.join(mockPluginsDir, "marketplaces", "user", "repo"), {
+      recursive: true,
+    });
+
+    // 本套件默认把 fs.open 修成「永远拿到锁」，那样测不出互斥；这里用排他创建
+    // 语义（O_CREAT|O_EXCL 的等价物）忠实模拟锁文件。
+    let lockHeld = false;
+    vi.mocked(fs.open).mockImplementation(async () => {
+      if (lockHeld) {
+        throw Object.assign(new Error("EEXIST"), { code: "EEXIST" });
+      }
+      lockHeld = true;
+      return {
+        close: async () => {
+          lockHeld = false;
+        },
+      } as unknown as Awaited<ReturnType<typeof fs.open>>;
+    });
+
+    let releasePull: (() => void) | undefined;
+    const pullGate = new Promise<void>((resolve) => {
+      releasePull = resolve;
+    });
+    let activePulls = 0;
+    let maxActivePulls = 0;
+    const pullSpy = vi.spyOn(
+      service["gitService"] as unknown as { pull: () => Promise<void> },
+      "pull",
+    );
+    pullSpy.mockImplementation(async () => {
+      activePulls += 1;
+      maxActivePulls = Math.max(maxActivePulls, activePulls);
+      await pullGate;
+      activePulls -= 1;
+    });
+
+    const first = service.updateMarketplace("git-mkt");
+    // 给第二条调用链留出「加锁失败 → 排队重试」的机会（重试间隔 100ms）
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const second = service.updateMarketplace("git-mkt");
+    releasePull?.();
+    await Promise.all([first, second]);
+
+    // 两次调用都执行了，但没有任何时刻在并发拉同一个检出
+    expect(pullSpy).toHaveBeenCalledTimes(2);
+    expect(maxActivePulls).toBe(1);
+  });
+
   it("should throw when updating nonexistent marketplace", async () => {
     vi.spyOn(
       service["configurationService"],
@@ -818,10 +875,6 @@ describe("MarketplaceService - Coverage Targets", () => {
     service = new MarketplaceService();
     await (service as unknown as { _seedComplete: Promise<void> })
       ._seedComplete;
-    (
-      MarketplaceService as unknown as { isLockedInProcess: boolean }
-    ).isLockedInProcess = false;
-
     vi.spyOn(
       service["gitService"] as unknown as {
         isGitAvailable: () => Promise<boolean>;
@@ -1293,6 +1346,69 @@ describe("MarketplaceService - Coverage Targets", () => {
     expect(vi.mocked(service.installPlugin)).toHaveBeenCalled();
   });
 
+  // 交互界面的「批量更新插件」：只按当前清单升级，不拉检出（spec plugin A-013）
+  it("should upgrade plugins without refreshing the checkout", async () => {
+    vi.spyOn(
+      service["configurationService"],
+      "getMergedMarketplaces",
+    ).mockReturnValue({
+      "plugin-mkt": {
+        source: { source: "github", repo: "user/repo" },
+      },
+    });
+
+    vi.spyOn(service, "loadMarketplaceManifest").mockResolvedValue({
+      name: "plugin-mkt",
+      owner: { name: "test" },
+      plugins: [
+        { name: "my-plugin", source: "./plugins/my-plugin", description: "" },
+      ],
+    });
+
+    const installed = {
+      name: "my-plugin",
+      marketplace: "plugin-mkt",
+      version: "1.0.0",
+      cachePath: "/cache/my-plugin",
+      projectPath: "/project",
+    };
+    vi.spyOn(service, "getInstalledPlugins")
+      .mockResolvedValueOnce({ plugins: [installed] })
+      .mockResolvedValue({ plugins: [{ ...installed, version: "2.0.0" }] });
+    vi.spyOn(service, "installPlugin").mockResolvedValue({
+      ...installed,
+      version: "2.0.0",
+    });
+    const cacheSpy = vi.spyOn(
+      service as unknown as {
+        updateCacheMarketplace: () => Promise<void>;
+      },
+      "updateCacheMarketplace",
+    );
+
+    const updated = await service.updateMarketplacePlugins("plugin-mkt");
+
+    expect(updated).toBe(1);
+    expect(vi.mocked(service.installPlugin)).toHaveBeenCalled();
+    expect(
+      vi.mocked(
+        service["gitService"] as unknown as {
+          pull: () => Promise<void>;
+          clone: () => Promise<void>;
+        },
+      ).pull,
+    ).not.toHaveBeenCalled();
+    expect(
+      vi.mocked(
+        service["gitService"] as unknown as {
+          clone: () => Promise<void>;
+        },
+      ).clone,
+    ).not.toHaveBeenCalled();
+    // 没刷检出就不该把 lastUpdated 顶到当前时间（CLI 市场列表会显示它）
+    expect(cacheSpy).not.toHaveBeenCalled();
+  });
+
   // Line 643: plugin no longer found in marketplace
   it("should uninstall orphaned plugin when no longer in marketplace", async () => {
     vi.spyOn(
@@ -1641,9 +1757,6 @@ describe("MarketplaceService - Builtin Seeding", () => {
 
   function createService(): MarketplaceService {
     const svc = new MarketplaceService();
-    (
-      MarketplaceService as unknown as { isLockedInProcess: boolean }
-    ).isLockedInProcess = false;
     vi.spyOn(
       svc["gitService"] as unknown as {
         isGitAvailable: () => Promise<boolean>;
