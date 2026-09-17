@@ -12,6 +12,7 @@ import {
   WRITE_TOOL_NAME,
 } from "wave-agent-sdk/dist/constants/tools.js";
 import type { Message, ToolBlock } from "../types";
+import { normalizeFilePath } from "./messageUtils";
 
 /** A Write/Edit tool block in a message, with the path it targets (raw). */
 export interface WriteEditBlockRef {
@@ -60,11 +61,14 @@ export const collectWriteEditBlocks = (
 const normalize = (p: string) => p.replace(/\\/g, "/");
 
 /** Resolve a possibly-relative path against the session workdir (string-only;
-    browser has no node path, and remote paths are not local disk paths). */
+    browser has no node path, and remote paths are not local disk paths).
+    The result is normalized (`.` / `..` folded) so the panel's opened path —
+    which carries a workdir-merged, normalized path — and a tool path written
+    as `../x.ts` still compare equal (desktop-file-panel spec 场景 7). */
 const toAbsolute = (p: string, workdir: string): string => {
   const n = normalize(p);
-  if (n.startsWith("/") || /^[a-zA-Z]:\//.test(n)) return n;
-  return `${normalize(workdir).replace(/\/+$/, "")}/${n}`;
+  if (n.startsWith("/") || /^[a-zA-Z]:\//.test(n)) return normalizeFilePath(n);
+  return normalizeFilePath(`${normalize(workdir).replace(/\/+$/, "")}/${n}`);
 };
 
 /**

@@ -12,6 +12,7 @@
 // 通道的拼装在 Message.tsx 的 marked renderer 中完成，点击解析复用这里。
 
 import type { TokenizerExtension } from "marked";
+import { normalizeFilePath } from "./messageUtils";
 
 // marked（escape encode=true）只对 & < > " ' 做实体转义，这里做精确逆操作。
 const ENTITY_MAP: Record<string, string> = {
@@ -177,6 +178,10 @@ const stripFileScheme = (path: string): string =>
 /**
  * 把匹配结果解析为可发给宿主 openFile 的 OS 绝对路径。
  * 相对路径需要 workdir 归并；无 workdir（宿主未提供）→ null（调用方应回退纯文本）。
+ * 归并结果统一做词法规范化（折叠 `.` / `..`，见 specs/ui/file-path-links.md 场景 6）：
+ * 宿主 fs 虽能靠内核解析 `..` 读到文件，但文件面板标题与自动刷新比对本就依赖这
+ * 串字符串（见 specs/desktop/desktop-file-panel.md 场景 21/7），残留 `..` 会让
+ * 标题显示怪路径、并让「工具写的路径」与「面板打开的路径」比对失配。
  */
 export function resolveFilePathMatch(
   match: FilePathMatch,
@@ -185,10 +190,12 @@ export function resolveFilePathMatch(
   if (match.kind === "rel") {
     if (!workdir) return null;
     const base = workdir.replace(/[\\/]+$/, "");
-    return `${base}/${match.path.replace(/\\/g, "/")}`;
+    return normalizeFilePath(`${base}/${match.path.replace(/\\/g, "/")}`);
   }
-  if (match.kind === "file") return stripFileScheme(match.path);
-  return match.path;
+  if (match.kind === "file") {
+    return normalizeFilePath(stripFileScheme(match.path));
+  }
+  return normalizeFilePath(match.path);
 }
 
 /** 文件路径链接的元素结构（renderer 生成 HTML 用；class 供容器点击路由识别）。 */

@@ -90,6 +90,19 @@ describe("inline-code channel file paths (specs/ui/file-path-links.md)", () => {
     );
   });
 
+  it("click on a `../` path passes the collapsed canonical path (spec 场景 8)", () => {
+    const { onOpenFile, fileLinks } = renderMessage(
+      "见 `../sibling-repo/src/a.ts:12-24`",
+      { workdir: "/home/u/proj" },
+    );
+    fireEvent.click(fileLinks()[0]!);
+    expect(onOpenFile).toHaveBeenCalledWith(
+      "/home/u/sibling-repo/src/a.ts",
+      12,
+      24,
+    );
+  });
+
   it("click on a :N single-line suffix passes startLine === endLine", () => {
     const { onOpenFile, fileLinks } = renderMessage("看 `src/format.ts:9`", {
       workdir: "/home/u/repo",
