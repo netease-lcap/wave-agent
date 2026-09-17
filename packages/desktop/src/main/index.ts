@@ -199,6 +199,13 @@ if (!gotLock) {
   });
 
   void app.whenReady().then(() => {
+    // Chromium keeps its accessibility tree off until asked, which leaves
+    // macOS dictation tools unable to see the focused input. Enable only the
+    // native API hooks plus the web-contents tree — the character-level
+    // bounding boxes and extended properties that the blanket switch turns on
+    // are the expensive part.
+    app.setAccessibilitySupportFeatures(["nativeAPIs", "webContents"]);
+
     // Dev launches the bare Electron binary, whose default atom icon shows in
     // the Dock — swap in the brand icon (packaged apps get it from the icns).
     if (!app.isPackaged) {
