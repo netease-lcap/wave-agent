@@ -784,6 +784,104 @@ export const RefreshIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+/** 加载转圈环（桌面 loading svg 形制，Figma 13576:40802）：环身 + 弧头双色，
+ *  整图 css 旋转（`.loading-ring`，见 DesktopApp.css）。双色走
+ *  `--loading-ring-track` / `--loading-ring-head`，消费方按所在面覆盖
+ *  （侧栏会话状态位在深色档换对比色；账户卡「更新」按钮在品牌红面上覆盖成白色）。
+ *  `size` 默认 24 = 侧栏状态位；按钮内联用 14（与 14px 文字等大）。 */
+export const LoadingRingIcon: React.FC<{
+  size?: number;
+  /** 传 null = 纯装饰（容器已带文字语义），不进无障碍树。 */
+  ariaLabel?: string | null;
+  className?: string;
+}> = ({ size = 24, ariaLabel = "正在运行", className = "loading-ring" }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    role={ariaLabel ? "img" : undefined}
+    aria-label={ariaLabel ?? undefined}
+    aria-hidden={ariaLabel ? undefined : true}
+    className={className}
+    style={{ display: "block" }}
+  >
+    <path
+      d="M17.0996 12C17.0996 9.18335 14.8167 6.90039 12 6.90039C9.18335 6.90039 6.90039 9.18335 6.90039 12C6.90039 14.8167 9.18335 17.0996 12 17.0996C14.8167 17.0996 17.0996 14.8167 17.0996 12ZM18.9004 12C18.9004 15.8108 15.8108 18.9004 12 18.9004C8.18924 18.9004 5.09961 15.8108 5.09961 12C5.09961 8.18924 8.18924 5.09961 12 5.09961C15.8108 5.09961 18.9004 8.18924 18.9004 12Z"
+      fill="var(--loading-ring-track, #D4D7DE)"
+    />
+    <path
+      d="M17.0996 12C17.0996 11.3303 16.9682 10.6666 16.7119 10.0479C16.4556 9.42923 16.0799 8.86704 15.6064 8.39355C15.133 7.92006 14.5708 7.54438 13.9521 7.28809C13.3334 7.03179 12.6697 6.90039 12 6.90039C11.5029 6.90039 11.0996 6.49706 11.0996 6C11.0996 5.50294 11.5029 5.09961 12 5.09961C12.9061 5.09961 13.8035 5.27824 14.6406 5.625C15.4778 5.97176 16.2382 6.48037 16.8789 7.12109C17.5196 7.76182 18.0282 8.52223 18.375 9.35938C18.7218 10.1965 18.9004 11.0939 18.9004 12C18.9004 12.4971 18.4971 12.9004 18 12.9004C17.5029 12.9004 17.0996 12.4971 17.0996 12Z"
+      fill="var(--loading-ring-head, #565A60)"
+    />
+  </svg>
+);
+
+/**
+ * 16px 加载弧（设计师 2026-09-17 给的 `loading.svg`）：**渐变尾巴**的环——
+ * 整圈用 conic-gradient 从 `currentColor` 渐隐到透明，尾巴扫一圈。
+ *
+ * 三点必须知道（改前务必先读）：
+ * ① 角度渐变不是 SVG 原生能力，Figma 的导出方式是在 `<foreignObject>` 里塞一张
+ *    `conic-gradient` 的 div，再用 `<clipPath>`（= 环的 path）裁成环形。这属于
+ *    「内联进 DOM 才稳」的写法：已实测本仓库三端宿主（Electron / VS Code /
+ *    JetBrains JCEF）都是 Chromium，内联与 `<img src>` 两种上下文渲染一致；
+ *    但换成非 Chromium 渲染器（导出成图片、老版本 SVG 渲染库）时 foreignObject
+ *    可能整块不画——那时改用 LoadingRingIcon（纯 path 双色环）画法。
+ * ② 原文件那条 `<path>` 没有自己的 `fill`，靠根 `<svg fill="none">` 继承成「不画」；
+ *    这里显式写 `fill="none"`，避免有人只复制 path 出去时按默认填充色画成黑环。
+ * ③ 颜色取 `currentColor`（消费方设 color 即可，红面自动白环）；渐变透明端用
+ *    `transparent`（现代浏览器按预乘 alpha 插值，不会出现灰边）。
+ */
+export const LoadingArcIcon: React.FC<{
+  size?: number;
+  /** 传 null = 纯装饰（容器已带文字语义），不进无障碍树。 */
+  ariaLabel?: string | null;
+  className?: string;
+}> = ({ size = 16, ariaLabel = "正在运行", className = "loading-arc" }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 16 16"
+    fill="none"
+    role={ariaLabel ? "img" : undefined}
+    aria-label={ariaLabel ?? undefined}
+    aria-hidden={ariaLabel ? undefined : true}
+    className={className}
+    style={{ display: "block" }}
+  >
+    <g clipPath="url(#cc-loading-arc-clip)">
+      <g transform="matrix(0.00131636 0.00624811 -0.00635774 0.00133945 7.99935 8.00024)">
+        <foreignObject
+          x="-1464.73"
+          y="-1464.73"
+          width="2929.46"
+          height="2929.46"
+        >
+          <div
+            style={{
+              height: "100%",
+              width: "100%",
+              background:
+                "conic-gradient(from 90deg, currentColor 0deg, transparent 294.381deg, transparent 360deg)",
+            }}
+          />
+        </foreignObject>
+      </g>
+    </g>
+    {/* 形状只用于 clipPath；显式 fill="none"，见上方 ② */}
+    <path
+      d="M7.99935 3.89498C5.73208 3.89498 3.89409 5.73297 3.89409 8.00024C3.89409 10.2675 5.73208 12.1055 7.99935 12.1055C8.52257 12.1055 8.94672 12.5297 8.94672 13.0529C8.94672 13.5761 8.52257 14.0002 7.99935 14.0002C4.68564 14.0002 1.99935 11.314 1.99935 8.00024C1.99935 4.68654 4.68564 2.00024 7.99935 2.00024C11.3131 2.00024 13.9994 4.68654 13.9994 8.00024C13.9994 8.52346 13.5752 8.94761 13.052 8.94761C12.5288 8.94761 12.1046 8.52346 12.1046 8.00024C12.1046 5.73297 10.2666 3.89498 7.99935 3.89498Z"
+      fill="none"
+    />
+    <defs>
+      <clipPath id="cc-loading-arc-clip">
+        <path d="M7.99935 3.89498C5.73208 3.89498 3.89409 5.73297 3.89409 8.00024C3.89409 10.2675 5.73208 12.1055 7.99935 12.1055C8.52257 12.1055 8.94672 12.5297 8.94672 13.0529C8.94672 13.5761 8.52257 14.0002 7.99935 14.0002C4.68564 14.0002 1.99935 11.314 1.99935 8.00024C1.99935 4.68654 4.68564 2.00024 7.99935 2.00024C11.3131 2.00024 13.9994 4.68654 13.9994 8.00024C13.9994 8.52346 13.5752 8.94761 13.052 8.94761C12.5288 8.94761 12.1046 8.52346 12.1046 8.00024C12.1046 5.73297 10.2666 3.89498 7.99935 3.89498Z" />
+      </clipPath>
+    </defs>
+  </svg>
+);
+
 /** 在浏览器中打开（open-browser.svg）：浏览器框 + 右上箭头。 */
 export const OpenBrowserIcon: React.FC<IconProps> = ({
   className = "header-icon",

@@ -1263,7 +1263,7 @@ describe("DesktopApp", () => {
           ".desktop-session-status-slot--waiting svg[aria-label='等待确认']",
         ),
       ).not.toBeNull();
-      expect(waiting.querySelector(".desktop-session-loading-ring")).toBeNull();
+      expect(waiting.querySelector("svg.loading-ring")).toBeNull();
 
       const current = screen.getByTestId("desktop-session-item-s2");
       // The focused session streaming in the active chat carries the loader too

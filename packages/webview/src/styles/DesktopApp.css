@@ -396,11 +396,19 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   opacity: 0;
 }
 
-.desktop-session-loading-ring {
-  animation: desktop-session-spin 1s linear infinite;
+/* 共享 loading 环（HeaderIcons.LoadingRingIcon）：侧栏会话状态位专用，颜色由消费方
+   覆盖 --loading-ring-track/head。 */
+.loading-ring {
+  animation: cc-loading-spin 1s linear infinite;
 }
 
-@keyframes desktop-session-spin {
+/* 16px 渐变弧（HeaderIcons.LoadingArcIcon，设计师给的 loading.svg）：账户卡「更新」
+   按钮 S3 用；同一条旋转动画（作用在 svg 元素上，默认 transform-origin = 盒中心）。 */
+.loading-arc {
+  animation: cc-loading-spin 1s linear infinite;
+}
+
+@keyframes cc-loading-spin {
   from {
     transform: rotate(0deg);
   }
@@ -446,8 +454,8 @@ html[data-theme="dark"] .desktop-session-more-btn:hover {
 
 html[data-theme="dark"] .desktop-session-status-slot {
   /* loading 环深色换对比：环身暗、转弧亮 */
-  --session-loading-track: rgba(255, 255, 255, 0.16);
-  --session-loading-head: #d4d7de;
+  --loading-ring-track: rgba(255, 255, 255, 0.16);
+  --loading-ring-head: #d4d7de;
 }
 
 /* Session row menu (并排打开 / 删除会话): fixed-position dropdown anchored

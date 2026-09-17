@@ -13,6 +13,7 @@ import {
   ApiInfoIcon,
   ChevronUpIcon,
   HelpCircleIcon,
+  LoadingArcIcon,
   QuotaIcon,
 } from "./HeaderIcons";
 import "../styles/AccountCard.css";
@@ -256,10 +257,11 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const apiWarning = apiQuota ? apiQuotaWarningLevel(apiQuota) : null;
   const hasUsage = plan !== null || apiQuota !== null;
 
-  // 更新按钮文案/状态（S1/S3/S5；无更新 = S0 不渲染）。
+  // 更新按钮文案/状态（S1/S3/S5；无更新 = S0 不渲染）。S3 已去掉省略号、「正在下载更新」
+  // 缩为「正在下载」（设计师 2026-09-17）——进行中由转圈弧表达，文案只留最短状态词。
   const updateLabel =
     updateStatus === "downloading"
-      ? "正在下载更新…"
+      ? "正在下载"
       : updateStatus === "ready"
         ? "重启"
         : "更新";
@@ -441,12 +443,21 @@ export const AccountCard: React.FC<AccountCardProps> = ({
         {updateAvailable && (
           <button
             type="button"
-            className="account-card-update-btn"
+            // S5「重启」退回描边样式（不抢主视觉），几何仍按按钮规范；S1/S3 为品牌红实底。
+            className={
+              "account-card-update-btn" +
+              (updateStatus === "ready" ? " is-restart" : "")
+            }
             aria-label="应用更新"
+            // 下载中 disabled 防重复下载（S3），同时把进行中语义暴露给读屏。
+            aria-busy={updateStatus === "downloading" || undefined}
             data-testid="account-update-btn"
             disabled={updateStatus === "downloading"}
             onClick={handleUpdateClick}
           >
+            {updateStatus === "downloading" && (
+              <LoadingArcIcon size={16} ariaLabel={null} />
+            )}
             {updateLabel}
           </button>
         )}

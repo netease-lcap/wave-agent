@@ -47,30 +47,78 @@
 }
 
 /* 个人信息行右侧「更新」按钮（S0–S6 状态机；不在热区内——点更新不弹菜单）。
-   下载中 disabled：防重复下载，点击无反应（S3）。 */
+   2026-09-17 按设计师指示改版（第一版，待她走查）：
+   ① S1「更新」= 品牌红实底 + 反白，作为该行的主行动；S5「重启」退回原描边样式
+      （`.is-restart`），不抢主视觉。
+   ② 几何：12px/20px 字（设计师指定 12 号字，= skill 辅助档 12/20）、500 字重、
+      8px 圆角、10px 左右内衬、高 24px（= 这颗按钮原本的高度，也是 12px 标签在
+      本行的既有节奏；第一版曾取 30px 与同排「用量显隐」按钮对齐，设计师看到实物
+      后要求「按钮小一些」故收回到 24px。skill `common-components.md:13` 的标准档
+      是 32px / 紧凑档 28px（且要求保留 14px 标签），此处按设计师指示降档，属于
+      「跟同行小控件对齐 + 更紧凑」的局部例外）。
+   ③ 变量绑定：底色 `--cc-color-primary`（skill tokens.css:19 = #c1292e，深浅同值）
+      → 宿主 `--vscode-brand-primary` → 现值字面量，三级兜底（W-45：桌面语义层
+      目前**没有**定义 `--cc-color-primary`，故必须带兜底，否则取不到值）。
+      文字白字是契约明文例外：design-system.md:76「品牌红实底按钮各模式恒白字，
+      且不得走主按钮前景角色（--cc-action-primary-text / 桥接的 button-foreground）
+      —— 那一档描述的是炭黑/浅灰主按钮，深色档会解析成深字、在红底上失反白」。
+      hover 取 `--cc-color-primary-active`（#a31f24，变深）：design-system.md:76
+      要求品牌红 hover「只加深背景」；契约另有 `--cc-color-primary-hover` 但那是
+      **变亮**（#d94e53），与同卡登录钮的「88% 品牌红 + 黑」变深语言冲突，故未取。
+   ④ S3 下载中：保持红面不降透明度（进行中靠转圈表达），disabled 只承担
+      「不响应点击、不参与 hover」；`LoadingArcIcon` 走 `currentColor`，红面上自动
+      是白弧（契约 common-components.md:22「Loading retains button size and
+      accessible name, exposes busy state」——尺寸/名字不变，只加 busy）。 */
 .account-card-update-btn {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  box-sizing: border-box;
   height: 24px;
   padding: 0 10px;
-  border: 1px solid var(--vscode-button-secondaryBorder, rgba(255, 255, 255, 0.25));
-  border-radius: 6px;
-  background: transparent;
-  color: var(--vscode-button-secondaryForeground, #e9e9e9);
+  /* 透明 1px 边框：与 `.is-restart` 的可见边框占同一盒宽，两态换形不跳尺寸 */
+  border: 1px solid transparent;
+  border-radius: var(--cc-radius-md, 8px);
+  background: var(--cc-color-primary, var(--vscode-brand-primary, #c1292e));
+  color: #ffffff; /* 品牌红实底恒白字，见上方 ③；同时喂给转圈弧的 currentColor */
   font-size: 12px;
-  line-height: 22px;
+  line-height: 20px;
+  font-weight: var(--cc-font-weight-medium, 500);
   cursor: pointer;
 }
 
 .account-card-update-btn:hover {
+  background: var(--cc-color-primary-active, #a31f24);
+}
+
+/* S3 下载中：红面保持（进行中，不是不可用），只屏蔽 hover/点击反馈。 */
+.account-card-update-btn:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.account-card-update-btn:disabled:hover {
+  background: var(--cc-color-primary, var(--vscode-brand-primary, #c1292e));
+}
+
+/* S5「重启」：保留原有描边外观（透明底 + 1px 边 + 次级文字色 + 宿主 hover 底），
+   只把几何换成与 S1 同档，保证同排两态尺寸一致。 */
+.account-card-update-btn.is-restart {
+  background: transparent;
+  color: var(--vscode-button-secondaryForeground, #e9e9e9);
+  border-color: var(
+    --vscode-button-secondaryBorder,
+    rgba(255, 255, 255, 0.25)
+  );
+}
+
+.account-card-update-btn.is-restart:hover {
   background: var(
     --vscode-button-secondaryHoverBackground,
     rgba(255, 255, 255, 0.1)
   );
-}
-
-.account-card-update-btn:disabled {
-  opacity: 0.6;
-  cursor: default;
 }
 
 /* 用量常驻区 显隐按钮：展开态 chevron-up / 收起态「额度」图标（随状态切换）。

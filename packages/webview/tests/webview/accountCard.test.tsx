@@ -549,13 +549,16 @@ describe("AccountCard (desktop sidebar)", () => {
       );
       expect(screen.queryByText("更新到新版本")).not.toBeInTheDocument();
 
-      // 宿主推送 downloading：按钮「正在下载更新…」disabled.
+      // 宿主推送 downloading：按钮「正在下载」+ 转圈弧 disabled（无省略号）.
       pushAccount({
         ...loggedIn,
         update: { available: true, version: "1.2.0", status: "downloading" },
       });
       const btn = screen.getByTestId("account-update-btn");
-      expect(btn).toHaveTextContent("正在下载更新…");
+      expect(btn).toHaveTextContent("正在下载");
+      expect(btn).not.toHaveTextContent("…");
+      expect(btn.querySelector("svg")).not.toBeNull();
+      expect(btn).toHaveAttribute("aria-busy", "true");
       expect(btn).toBeDisabled();
 
       // 下载中点击无反应：不弹框、不发命令.
@@ -627,7 +630,7 @@ describe("AccountCard (desktop sidebar)", () => {
         update: { available: true, version: "1.2.0", status: "downloading" },
       });
       expect(screen.getByTestId("account-update-btn")).toHaveTextContent(
-        "正在下载更新…",
+        "正在下载",
       );
 
       pushAccount({
