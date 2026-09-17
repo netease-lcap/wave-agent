@@ -180,11 +180,13 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
     closeScopeDialog();
   };
 
+  /** 卸载只作用于弹窗中所选的作用域，其它作用域不受影响（spec plugin A-015）。 */
   const handleUninstall = () => {
     if (!scopeTarget) return;
     vscode?.postMessage({
       command: "uninstallPlugin",
       pluginId: scopeTarget.id,
+      scope: pendingScope,
     });
     closeScopeDialog();
   };

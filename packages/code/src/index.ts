@@ -218,18 +218,30 @@ export async function main() {
           )
           .command(
             "uninstall <plugin>",
-            "Uninstall a plugin",
+            "Uninstall a plugin from one scope (default: the scope it is enabled in for the current directory)",
             (yargs) => {
-              return yargs.positional("plugin", {
-                describe: "Plugin to uninstall (format: name@marketplace)",
-                type: "string",
-              });
+              return yargs
+                .positional("plugin", {
+                  describe: "Plugin to uninstall (format: name@marketplace)",
+                  type: "string",
+                })
+                .option("scope", {
+                  alias: "s",
+                  describe: "Scope to uninstall from",
+                  choices: ["user", "project", "local"],
+                  type: "string",
+                });
             },
             async (argv) => {
               const { uninstallPluginCommand } = await import(
                 "./commands/plugin/uninstall.js"
               );
-              await uninstallPluginCommand(argv as { plugin: string });
+              await uninstallPluginCommand(
+                argv as {
+                  plugin: string;
+                  scope?: Scope;
+                },
+              );
             },
           )
           .command(

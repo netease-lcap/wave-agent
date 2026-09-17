@@ -73,14 +73,24 @@ export function usePluginManager(options?: {
     ]);
 
     setMarketplaces(mks);
-    const allInstalledWithEnabled = installed.plugins.map((p) => {
-      const pluginId = `${p.name}@${p.marketplace}`;
-      return {
-        ...p,
-        enabled: !!enabledMap[pluginId],
-        scope: pluginCore.findPluginScope(pluginId) || undefined,
-      };
-    });
+    // 同一插件在本机可能有多条安装记录（各作用域/各项目一条，spec plugin A-015）；
+    // 「已安装」列表按插件去重，否则同一个插件会重复成行。
+    const listedPlugins = new Set<string>();
+    const allInstalledWithEnabled = installed.plugins
+      .filter((p) => {
+        const pluginId = `${p.name}@${p.marketplace}`;
+        if (listedPlugins.has(pluginId)) return false;
+        listedPlugins.add(pluginId);
+        return true;
+      })
+      .map((p) => {
+        const pluginId = `${p.name}@${p.marketplace}`;
+        return {
+          ...p,
+          enabled: !!enabledMap[pluginId],
+          scope: pluginCore.findPluginScope(pluginId) || undefined,
+        };
+      });
 
     // Only show enabled plugins in the "Installed" view
     setInstalledPlugins(allInstalledWithEnabled.filter((p) => p.enabled));

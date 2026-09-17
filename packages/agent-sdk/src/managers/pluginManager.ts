@@ -196,12 +196,17 @@ export class PluginManager {
       // Refresh registry after potential auto-installs
       installedRegistry = await marketplaceService.getInstalledPlugins();
 
+      // 同一插件在本机可能有多条安装记录（各作用域/各项目各一条，spec plugin
+      // A-015）；按插件去重，否则同一个 cachePath 会被加载多次。
+      const loaded = new Set<string>();
       for (const p of installedRegistry.plugins) {
         const pluginId = `${p.name}@${p.marketplace}`;
         if (this.enabledPlugins[pluginId] !== true) {
           logger?.debug(`Plugin ${pluginId} is not enabled via configuration`);
           continue;
         }
+        if (loaded.has(pluginId)) continue;
+        loaded.add(pluginId);
         await this.loadSinglePlugin(p.cachePath);
       }
     } catch (error) {

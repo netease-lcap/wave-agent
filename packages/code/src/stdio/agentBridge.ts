@@ -393,6 +393,7 @@ export class AgentBridge {
       case "uninstallPlugin":
         return this.uninstallPlugin(
           p.pluginId as string,
+          p.scope as Scope | undefined,
           p.workdir as string | undefined,
           sessionId,
         );
@@ -1764,10 +1765,14 @@ export class AgentBridge {
 
   private async uninstallPlugin(
     pluginId: string,
+    scope?: Scope,
     workdir?: string,
     sessionId?: string,
   ) {
-    await this.getPluginCore(workdir, sessionId).uninstallPlugin(pluginId);
+    await this.getPluginCore(workdir, sessionId).uninstallPlugin(
+      pluginId,
+      scope,
+    );
     return null;
   }
 

@@ -64,12 +64,23 @@ export interface KnownMarketplacesRegistry {
   marketplaces: KnownMarketplace[];
 }
 
+/**
+ * 安装产物的记账位置（spec plugin A-015）：用户作用域是本机全局的，不带
+ * projectPath；项目作用域与本地作用域归属某个仓库，以该仓库路径为 projectPath。
+ */
+export interface PluginInstallLocation {
+  scope: Scope;
+  projectPath?: string;
+}
+
 export interface InstalledPlugin {
   name: string;
   marketplace: string;
   version: string;
   cachePath: string;
+  /** 该条安装记录所属的作用域；引入作用域维度之前写入的历史记录不带此字段（spec plugin A-015）。 */
   scope?: Scope;
+  /** 项目作用域与本地作用域所属仓库的路径；用户作用域不带。 */
   projectPath?: string;
 }
 
