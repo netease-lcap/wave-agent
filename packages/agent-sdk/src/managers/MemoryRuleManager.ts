@@ -36,6 +36,19 @@ export class MemoryRuleManager {
   }
 
   /**
+   * Re-point rule discovery at another working directory (in-session session
+   * switch). Project rules are resolved relative to the workdir, so the
+   * registry is rebuilt from scratch rather than merged.
+   */
+  public async setWorkdir(workdir: string): Promise<void> {
+    if (this.workdir === workdir) {
+      return;
+    }
+    this.workdir = workdir;
+    await this.discoverRules();
+  }
+
+  /**
    * Scans .wave/rules and ~/.wave/rules for memory rule files.
    */
   async discoverRules(): Promise<void> {

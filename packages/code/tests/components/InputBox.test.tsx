@@ -33,8 +33,15 @@ vi.mock("wave-agent-sdk", async (importOriginal) => {
       addEntry: vi.fn().mockResolvedValue(undefined),
       searchHistory: vi.fn().mockResolvedValue([]),
     },
+    // The /resume picker loads sessions on mount; keep it off the filesystem.
+    listSessions: vi.fn().mockResolvedValue([]),
+    listAllSessions: vi.fn().mockResolvedValue([]),
   };
 });
+
+vi.mock("../../src/utils/worktree.js", () => ({
+  listWorktrees: vi.fn().mockResolvedValue([]),
+}));
 
 const mockSetPermissionMode = vi.fn();
 const mockHandleRewindSelect = vi.fn();
@@ -355,6 +362,39 @@ describe("InputBox Smoke Tests", () => {
       stdin.write("\u001b"); // Escape
       await vi.waitFor(
         () => {
+          expect(lastFrame()).toContain("Type your message");
+        },
+        { timeout: 3000 },
+      );
+    });
+
+    it("should handle ResumeCommand", async () => {
+      const { stdin, lastFrame } = render(<InputBox />);
+      await vi.waitFor(() =>
+        expect(lastFrame()).toContain("Type your message"),
+      );
+
+      stdin.write("/");
+      await vi.waitFor(() => expect(lastFrame()).toContain("Command Selector"));
+
+      stdin.write("resume");
+      await vi.waitFor(() => expect(lastFrame()).toContain("▶ /resume"));
+
+      stdin.write("\r");
+      await vi.waitFor(
+        () => {
+          expect(stripAnsiColors(lastFrame() || "")).toMatch(
+            /Select a session to resume|No sessions found|Loading conversations/,
+          );
+        },
+        { timeout: 2000 },
+      );
+
+      // Escape returns to the conversation. The picker is mounted from an async
+      // session load, so re-send the key until it lands.
+      await vi.waitFor(
+        () => {
+          stdin.write("\u001b");
           expect(lastFrame()).toContain("Type your message");
         },
         { timeout: 3000 },

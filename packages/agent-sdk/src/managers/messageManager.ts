@@ -185,6 +185,21 @@ export class MessageManager {
     return this.latestTotalTokens;
   }
 
+  /**
+   * Re-point this manager at another working directory (in-session session
+   * switch). The encoded workdir and the transcript path are both derived from
+   * it, so they must move together with it: otherwise the next append would
+   * create a second copy of the same session file under the old project dir.
+   */
+  public setWorkdir(workdir: string): void {
+    if (this.workdir === workdir) {
+      return;
+    }
+    this.workdir = workdir;
+    this.encodedWorkdir = pathEncoder.encodeSync(workdir);
+    this.transcriptPath = this.computeTranscriptPath();
+  }
+
   public getWorkdir(): string {
     return this.workdir;
   }

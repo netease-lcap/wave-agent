@@ -11,7 +11,7 @@ vi.mock("wave-agent-sdk", () => ({
   truncateContent: vi.fn().mockImplementation((s: string) => s),
 }));
 
-import { resolveSessionOwnership } from "../src/session-selector-cli.js";
+import { resolveSessionOwnership } from "../../src/utils/sessionOwnership.js";
 import * as fs from "node:fs";
 
 describe("resolveSessionOwnership", () => {

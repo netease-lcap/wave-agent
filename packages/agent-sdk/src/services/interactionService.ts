@@ -20,6 +20,12 @@ export interface InteractionContext {
   taskManager: TaskManager;
   options: AgentOptions;
   abortMessage: () => void;
+  /**
+   * Move every directory-derived piece of session state (session transcript
+   * location, project rules, memory caches) to another working directory.
+   * Used when restoring a session that lives in a different directory.
+   */
+  switchWorkdir: (workdir: string) => Promise<void>;
 }
 
 export class InteractionService {
@@ -136,6 +142,7 @@ export class InteractionService {
   public static async restoreSession(
     context: InteractionContext,
     sessionId: string,
+    restoreOptions?: { workdir?: string },
   ): Promise<void> {
     const {
       messageManager,
@@ -145,7 +152,16 @@ export class InteractionService {
       taskManager,
       options,
       abortMessage,
+      switchWorkdir,
     } = context;
+
+    // The target session may live in another project directory. Everything
+    // below that reads a path (loading the transcript, the SessionStart hook's
+    // transcript path, the next append) must use the target directory, never
+    // the current one — otherwise the switch writes a second copy of the same
+    // session into the current project directory.
+    const targetWorkdir =
+      restoreOptions?.workdir ?? messageManager.getWorkdir();
 
     // 1. Validation
     if (!sessionId || sessionId === messageManager.getSessionId()) {
@@ -178,25 +194,29 @@ export class InteractionService {
     }
 
     // 4. Load target session
-    const sessionData = await loadSessionFromJsonl(
-      sessionId,
-      messageManager.getWorkdir(),
-    );
+    const sessionData = await loadSessionFromJsonl(sessionId, targetWorkdir);
     if (!sessionData) {
       throw new Error(`Session not found: ${sessionId}`);
     }
 
-    // 5. Clean current state
+    // 5. Move this session to the target directory. Only after the target
+    //    transcript has loaded successfully, so a failed restore leaves the
+    //    current session (and its directory) untouched.
+    if (targetWorkdir !== messageManager.getWorkdir()) {
+      await switchWorkdir(targetWorkdir);
+    }
+
+    // 6. Clean current state
     abortMessage(); // Abort any running operations
     subagentManager.cleanup(); // Clean up active subagents
 
-    // 6. Rebuild usage (in correct order)
+    // 7. Rebuild usage (in correct order)
     messageManager.rebuildUsageFromMessages(sessionData.messages);
 
-    // 7. Initialize session state last
+    // 8. Initialize session state last
     messageManager.initializeFromSession(sessionData);
 
-    // 8. Run SessionStart hooks for the restored session and inject additional
+    // 9. Run SessionStart hooks for the restored session and inject additional
     //    context as a meta user message (matches Claude Code's resume behavior:
     //    SessionEnd then SessionStart, hook messages appended to the conversation)
     if (hookManager) {
@@ -222,7 +242,7 @@ export class InteractionService {
     // Update task manager with the root session ID to ensure continuity across compactions
     taskManager.setTaskListId(sessionData.id);
 
-    // 9. Load tasks for the restored session
+    // 10. Load tasks for the restored session
     const tasks = await taskManager.listTasks();
     options.callbacks?.onTasksChange?.(tasks);
   }

@@ -92,6 +92,7 @@ describe("ChatProvider", () => {
     stopBackgroundTask: vi.fn(),
     hasSlashCommand: vi.fn(),
     truncateHistory: vi.fn(),
+    restoreSession: vi.fn(),
     backgroundCurrentTask: vi.fn(),
     destroy: vi.fn(),
     setPermissionMode: vi.fn(),
@@ -113,9 +114,11 @@ describe("ChatProvider", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    // Reset the shared mock agent's message list — tests mutate it via
-    // Object.assign and initializeAgent's initial pull reads it at mount.
+    // Reset the shared mock agent's message list and session id — tests mutate
+    // them (Object.assign, session switches) and the initial pull at mount
+    // reads the current values.
     mockAgent.messages = [];
+    mockAgent.sessionId = "test-session";
     vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
   });
 
@@ -382,6 +385,85 @@ describe("ChatProvider", () => {
 
     await lastValue?.handleRewindSelect(5);
     expect(mockAgent.truncateHistory).toHaveBeenCalledWith(5);
+  });
+
+  it("resumes another session in place and adopts its id", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+      expect(lastValue?.sessionId).toBe("test-session");
+    });
+
+    vi.mocked(mockAgent.restoreSession).mockImplementation(async () => {
+      mockAgent.sessionId = "target-session";
+    });
+
+    await lastValue?.resumeSession("target-session");
+
+    expect(mockAgent.restoreSession).toHaveBeenCalledWith(
+      "target-session",
+      undefined,
+    );
+    await vi.waitFor(() => expect(lastValue?.sessionId).toBe("target-session"));
+  });
+
+  it("moves the session into a worktree target's directory", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    await lastValue?.resumeSession("target-session", "/other/worktree");
+
+    expect(mockAgent.restoreSession).toHaveBeenCalledWith("target-session", {
+      workdir: "/other/worktree",
+    });
+  });
+
+  it("keeps the current session when resuming fails", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+      expect(lastValue?.sessionId).toBe("test-session");
+    });
+
+    vi.mocked(mockAgent.restoreSession).mockRejectedValue(
+      new Error("Session not found: target-session"),
+    );
+
+    await lastValue?.resumeSession("target-session");
+
+    expect(lastValue?.sessionId).toBe("test-session");
+    await vi.waitFor(() =>
+      expect(lastValue?.messages[lastValue.messages.length - 1]).toMatchObject({
+        role: "assistant",
+        blocks: [
+          {
+            type: "error",
+            content:
+              "Failed to resume conversation: Session not found: target-session",
+          },
+        ],
+      }),
+    );
   });
 
   it("handles abortMessage", async () => {

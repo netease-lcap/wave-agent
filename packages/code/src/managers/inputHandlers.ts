@@ -372,6 +372,8 @@ export const handleCommandSelect = (
           dispatch({ type: "SET_SHOW_HOOKS_MANAGER", payload: true });
         } else if (command === "rewind") {
           dispatch({ type: "SET_SHOW_REWIND_MANAGER", payload: true });
+        } else if (command === "resume") {
+          dispatch({ type: "SET_SHOW_RESUME_SELECTOR", payload: true });
         } else if (command === "help") {
           dispatch({ type: "SET_SHOW_HELP", payload: true });
         } else if (command === "status") {
@@ -752,6 +754,7 @@ export const handleInput = async (
         state.showBackgroundTaskManager ||
         state.showMcpManager ||
         state.showRewindManager ||
+        state.showResumeSelector ||
         state.showHelp ||
         state.showStatusCommand ||
         state.showPluginManager ||
@@ -776,6 +779,7 @@ export const handleInput = async (
     state.showBackgroundTaskManager ||
     state.showMcpManager ||
     state.showRewindManager ||
+    state.showResumeSelector ||
     state.showHelp ||
     state.showStatusCommand ||
     state.showPluginManager ||
@@ -786,6 +790,7 @@ export const handleInput = async (
       state.showBackgroundTaskManager ||
       state.showMcpManager ||
       state.showRewindManager ||
+      state.showResumeSelector ||
       state.showHelp ||
       state.showStatusCommand ||
       state.showPluginManager ||
