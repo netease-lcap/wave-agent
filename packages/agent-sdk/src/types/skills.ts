@@ -104,6 +104,22 @@ export interface SkillParseOptions {
   basePath?: string;
 }
 
+/**
+ * A skill invocation recorded for context restoration (post-compaction
+ * re-injection, spec core/message-compact 场景 4).
+ */
+export interface InvokedSkillRecord {
+  skillName: string;
+  timestamp: number;
+  /**
+   * The content the model actually saw when the skill was invoked — directory
+   * placeholders already substituted, prefixed with
+   * `Base directory for this skill: <path>`. Re-injecting the raw SKILL.md
+   * instead would hand the model a literal `${WAVE_SKILL_DIR}`.
+   */
+  content?: string;
+}
+
 export const SKILL_DEFAULTS = {
   PERSONAL_SKILLS_DIR: ".wave/skills",
   PROJECT_SKILLS_DIR: ".wave/skills",

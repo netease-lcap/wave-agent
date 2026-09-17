@@ -116,7 +116,14 @@ export function parseSkillFile(
 }
 
 /**
- * Simple YAML frontmatter parser for skill files
+ * Simple YAML frontmatter parser for skill files.
+ *
+ * Handles the subset skills actually use: `key: value`, block lists (`key:` +
+ * indented `- item`), block scalars (`key: >-` / `key: |` and their chomping
+ * variants) and indented multi-line plain scalars. Block scalars matter in
+ * practice — a folded `description: >-` used to be parsed as the literal string
+ * ">-", which silently threw away the whole "when to use this skill" text
+ * (spec ecosystem/agent-skills 场景 2).
  */
 function parseYamlFrontmatter(yamlContent: string): SkillFrontmatter {
   const frontmatter: SkillFrontmatter = { name: "", description: "" };
@@ -125,16 +132,16 @@ function parseYamlFrontmatter(yamlContent: string): SkillFrontmatter {
     const lines = yamlContent.split("\n");
     let currentKey: string | null = null;
 
-    for (const line of lines) {
-      const trimmed = line.trim();
+    for (let index = 0; index < lines.length; index++) {
+      const raw = lines[index].replace(/\r$/, "");
+      const trimmed = raw.trim();
       if (!trimmed || trimmed.startsWith("#")) continue;
+
+      const indent = raw.length - raw.trimStart().length;
 
       // Check for list item
       if (trimmed.startsWith("-") && currentKey) {
-        const value = trimmed
-          .substring(1)
-          .trim()
-          .replace(/^["']|["']$/g, "");
+        const value = stripQuotes(trimmed.substring(1).trim());
         if (value) {
           const existing = frontmatter[currentKey];
           if (Array.isArray(existing)) {
@@ -150,17 +157,41 @@ function parseYamlFrontmatter(yamlContent: string): SkillFrontmatter {
       if (colonIndex === -1) continue;
 
       const key = trimmed.substring(0, colonIndex).trim();
-      const value = trimmed
-        .substring(colonIndex + 1)
-        .trim()
-        .replace(/^["']|["']$/g, "");
+      const inlineValue = trimmed.substring(colonIndex + 1).trim();
 
       currentKey = key;
-      if (key && value) {
-        frontmatter[key] = value;
-      } else if (key) {
-        // Key with no value on the same line, might be a list
-        frontmatter[key] = [];
+      if (!key) continue;
+
+      // Block scalar: `>-`, `|`, `>+`, `|-`, ...
+      const blockIndicator = /^([>|])([-+]?)$/.exec(inlineValue);
+      if (blockIndicator) {
+        const block = readBlockScalar(
+          lines,
+          index + 1,
+          indent,
+          blockIndicator[1] as ">" | "|",
+        );
+        // Same treatment as inline scalars: chomping indicators only decide how
+        // the block's line breaks are trimmed, and a metadata scalar never
+        // keeps leading/trailing whitespace.
+        frontmatter[key] = block.text.trim();
+        index = block.nextIndex - 1;
+        continue;
+      }
+
+      if (inlineValue) {
+        frontmatter[key] = stripQuotes(inlineValue);
+        continue;
+      }
+
+      // Key with no inline value: either an indented list or an indented
+      // (multi-line) scalar.
+      const continuation = readIndentedValue(lines, index + 1, indent);
+      index = continuation.nextIndex - 1;
+      if (continuation.items) {
+        frontmatter[key] = continuation.items;
+      } else {
+        frontmatter[key] = continuation.text ?? [];
       }
     }
   } catch {
@@ -168,6 +199,113 @@ function parseYamlFrontmatter(yamlContent: string): SkillFrontmatter {
   }
 
   return frontmatter;
+}
+
+function stripQuotes(value: string): string {
+  return value.replace(/^["']|["']$/g, "");
+}
+
+/**
+ * Fold a block scalar's lines: `|` keeps line breaks, `>` folds single breaks
+ * into spaces and keeps blank-line paragraph breaks.
+ */
+function foldBlockLines(lines: string[], indicator: ">" | "|"): string {
+  if (indicator === "|") return lines.join("\n");
+
+  let text = "";
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index];
+    if (index > 0) {
+      const previous = lines[index - 1];
+      text += previous === "" || line === "" ? "\n" : " ";
+    }
+    text += line;
+  }
+  return text;
+}
+
+/**
+ * Read the block scalar that starts at `startIndex` (the line after its key).
+ * Lines belong to the block while they are blank or indented deeper than the
+ * key; the block's own indentation is taken from its first non-blank line.
+ */
+function readBlockScalar(
+  lines: string[],
+  startIndex: number,
+  keyIndent: number,
+  indicator: ">" | "|",
+): { text: string; nextIndex: number } {
+  let index = startIndex;
+  let baseIndent: number | null = null;
+  const collected: string[] = [];
+
+  while (index < lines.length) {
+    const raw = lines[index].replace(/\r$/, "");
+    if (!raw.trim()) {
+      collected.push("");
+      index++;
+      continue;
+    }
+    const indent = raw.length - raw.trimStart().length;
+    if (indent <= keyIndent) break;
+    if (baseIndent === null) baseIndent = indent;
+    if (indent < baseIndent) break;
+    collected.push(raw.slice(baseIndent));
+    index++;
+  }
+
+  // Trailing blank lines belong to the following key, not to the scalar's
+  // content (chomping decides how many line breaks survive).
+  while (collected.length > 0 && collected[collected.length - 1] === "") {
+    collected.pop();
+  }
+
+  if (collected.length === 0) {
+    return { text: "", nextIndex: index };
+  }
+
+  return {
+    text: foldBlockLines(collected, indicator),
+    nextIndex: index,
+  };
+}
+
+/**
+ * Read the value of a key whose value starts on the following lines: an
+ * indented block list (`- item`) or an indented multi-line plain scalar (folded
+ * with spaces).
+ */
+function readIndentedValue(
+  lines: string[],
+  startIndex: number,
+  keyIndent: number,
+): { items?: string[]; text?: string; nextIndex: number } {
+  let index = startIndex;
+  const items: string[] = [];
+  const textLines: string[] = [];
+  let sawListItem = false;
+
+  while (index < lines.length) {
+    const raw = lines[index].replace(/\r$/, "");
+    if (!raw.trim()) break;
+    const indent = raw.length - raw.trimStart().length;
+    if (indent <= keyIndent) break;
+
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("- ")) {
+      sawListItem = true;
+      items.push(stripQuotes(trimmed.substring(1).trim()));
+    } else if (sawListItem) {
+      break;
+    } else {
+      textLines.push(trimmed);
+    }
+    index++;
+  }
+
+  if (sawListItem) return { items, nextIndex: index };
+  if (textLines.length === 0) return { nextIndex: index };
+  return { text: textLines.join(" "), nextIndex: index };
 }
 
 /**

@@ -543,6 +543,20 @@ export class SkillManager extends EventEmitter {
   }
 
   /**
+   * Render a skill's body the way the model must see it: frontmatter stripped,
+   * parameters substituted, `${WAVE_SKILL_DIR}` / `${CLAUDE_SKILL_DIR}` /
+   * `${WAVE_PLUGIN_ROOT}` replaced with real paths, and the
+   * `Base directory for this skill: <path>` header prepended.
+   *
+   * Public because the post-compaction re-injection has to render the same
+   * text when it cannot reuse the content recorded at invocation time
+   * (spec core/message-compact 场景 4).
+   */
+  renderSkillContent(skill: Skill, argsString = ""): string {
+    return this.prepareSkillContent(skill, argsString);
+  }
+
+  /**
    * Prepare skill content with arguments but without bash execution
    */
   private prepareSkillContent(skill: Skill, argsString: string): string {

@@ -1414,26 +1414,27 @@ ${question}`;
     // 4. Invoked skills context (with token budget, matching Claude Code)
     const POST_COMPACT_SKILLS_TOKEN_BUDGET = 25_000;
     const POST_COMPACT_MAX_TOKENS_PER_SKILL = 5_000;
-    const invokedSkillNames = this.messageManager.getInvokedSkillNames(10);
-    if (invokedSkillNames.length > 0 && this.skillManager) {
+    const invokedSkills = this.messageManager.getInvokedSkills?.(10) ?? [];
+    if (invokedSkills.length > 0 && this.skillManager) {
       const invokedSkillParts: string[] = [];
       let skillsUsedTokens = 0;
-      for (const skillName of invokedSkillNames) {
+      for (const invoked of invokedSkills) {
         try {
-          const skill = await this.skillManager.loadSkill(skillName);
-          if (!skill) continue;
+          const skill = await this.skillManager.loadSkill(invoked.skillName);
 
-          const contentMatch = skill.content.match(
-            /^---\n[\s\S]*?\n---\n([\s\S]*)$/,
-          );
-          let skillContent = contentMatch
-            ? contentMatch[1].trim()
-            : skill.content;
+          // Re-inject what the model actually saw (already substituted, with the
+          // base-directory header). Re-render from the file only when that
+          // record is missing — never hand the model a raw SKILL.md, whose
+          // `${WAVE_SKILL_DIR}` would be a literal placeholder
+          // (spec core/message-compact 场景 4).
+          let skillContent =
+            invoked.content?.trim() ??
+            (skill ? this.skillManager.renderSkillContent(skill) : undefined);
+          if (!skillContent) continue;
 
           const maxSkillChars = POST_COMPACT_MAX_TOKENS_PER_SKILL * 4;
           if (skillContent.length > maxSkillChars) {
-            skillContent =
-              skillContent.slice(0, maxSkillChars) + "\n\n...[truncated]...";
+            skillContent = `${skillContent.slice(0, maxSkillChars)}\n\n...[truncated]...`;
           }
 
           const skillTokens = estimateTokens(skillContent);
@@ -1441,8 +1442,9 @@ ${question}`;
             break;
           skillsUsedTokens += skillTokens;
 
+          const description = skill?.description;
           invokedSkillParts.push(
-            `\n\n## ${skill.name}\n${skill.description ? `*${skill.description}*\n\n` : ""}\`\`\`\n${skillContent}\n\`\`\``,
+            `\n\n## ${skill?.name ?? invoked.skillName}\n${description ? `*${description}*\n\n` : ""}\`\`\`\n${skillContent}\n\`\`\``,
           );
         } catch {
           // Skip skills that can't be loaded
