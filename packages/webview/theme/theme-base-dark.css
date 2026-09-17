@@ -6,7 +6,10 @@
      轨道 + 8px 胶囊 + 三态白/黑百分比）。深色因此比浅色多出一条 15px 的 #181A1B 实心轨道
      （比对话列底 #111314、下拉底 #232526 都不同色），且 thumb 变成 VS Code 的 40% 灰块。
      删掉后深色与浅色同款、回落到设计层（设计师 0917「自带很深的背景色 → 拿掉」+
-     「thumb 也回设计档」）。 */
+     「thumb 也回设计档」）。
+     ⚠️ 跨端披露：本文件被 JetBrains 插件深色档复用（packages/jetbrains/build.gradle.kts:74-78
+     把它拷成 JB 的 theme-base.css、WebviewContentBuilder.kt:43 深色时加载）⇒ 本改动同时改到
+     JB 深色滚动条（本批唯一打到 IDE 端的视觉变更）；VS Code 由自身注入 --vscode-*、不受影响。 */
   --vscode-font-family: -apple-system, BlinkMacSystemFont, sans-serif;
   --vscode-font-weight: normal;
   --vscode-font-size: 13px;
