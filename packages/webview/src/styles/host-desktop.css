@@ -2570,6 +2570,23 @@
   background-clip: padding-box;
 }
 
+/* 任务列表 / 消息队列（展开态）的滚动条**位置**对齐其他面（设计师 0917 评论
+   「任务＋消息队列的滚动条位置，可以和其他的下拉或者Bash的展示等等保持一致吗」）。
+   实测（light，devicePixelRatio 2）：四处滚动条的视觉规格本来就完全一致 —— 16px 轨道 /
+   8px 胶囊 / thumb 距自己那圈滚动容器右缘 4~12px（下拉面板有 1px 边框故 5~13px）。
+   差异只在容器外那层**内衬**：`.task-list-items`、`.queued-items.expanded` 都长在卡片里
+   （卡 padding 12px + border 1px），于是胶囊落在卡片可见右缘内 17~25px；而下拉面板
+   （padding 0，条目通铺到面板边）与对话列（Bash 展示所在，`.messages-container` 贴自身边缘）
+   都只离那圈可见边界 5~13px —— 肉眼就是「任务/队列的滚动条离卡片右缘远了一截」。
+   修法 = 负外边距 + 等量右内衬，把滚动容器（连同 16px 轨道）整体右移 12px 到卡片内衬边缘：
+   胶囊 → 距卡片可见右缘 5~13px（与下拉面板同值），而内容盒宽度不变（+12 外边距 −12 内衬），
+   故行高/行宽/hover 底色/文字全零位移，只有滚动条与它的透明轨道右移。 */
+[data-host="desktop"] .task-list-items,
+[data-host="desktop"] .queued-items.expanded {
+  margin-right: -12px;
+  padding-right: 12px;
+}
+
 
 /* ── 第二十三轮：sticky 用户消息对齐普通用户气泡（用户反馈：悬浮后缺左边距 / 字重变细） ── */
 
