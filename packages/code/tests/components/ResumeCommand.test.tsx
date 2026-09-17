@@ -27,6 +27,7 @@ vi.mock("../../src/utils/clipboard.js", () => ({
   setClipboardText: vi.fn().mockResolvedValue(true),
 }));
 
+import { KEYPRESS_TIMEOUT, pressKey } from "../helpers/pressKey.js";
 import { ResumeCommand } from "../../src/components/ResumeCommand.js";
 import * as sdk from "wave-agent-sdk";
 import { listWorktrees } from "../../src/utils/worktree.js";
@@ -35,33 +36,7 @@ import { setClipboardText } from "../../src/utils/clipboard.js";
 const NEWER_ID = "87654321-4321-1234-5678-210987654321";
 const OLDER_ID = "12345678-1234-4321-8765-123456789012";
 
-// Keypress-driven assertions have to wait for an Ink re-render after the key
-// is written. The default 1s waitFor is tight when the whole monorepo suite
-// runs in parallel, and the waitFor budget must stay below the test timeout.
-const KEYPRESS_TIMEOUT = { timeout: 10_000, interval: 25 } as const;
 const TEST_TIMEOUT = 20_000;
-
-/**
- * Press a key until the component reacts to it.
- *
- * Ink hands input to `useInput` through a subscription that the component
- * registers in a passive effect. This picker is mounted from an async session
- * load, so the list is already on screen while that subscription is still
- * pending — a key written in that window is dropped without a trace. Writing it
- * again inside `waitFor` closes the window; the assertion that follows is what
- * actually pins the behavior. The key keeps being re-sent after it took effect
- * (the picker then unmounts or ignores it), which the assertions below tolerate.
- */
-const pressKey = async (
-  stdin: { write: (data: string) => void },
-  key: string,
-  reaction: () => void,
-) => {
-  await vi.waitFor(() => {
-    stdin.write(key);
-    reaction();
-  }, KEYPRESS_TIMEOUT);
-};
 
 const session = (id: string, workdir: string) => ({
   id,
