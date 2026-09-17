@@ -2,6 +2,12 @@ import { readFileSync, readdirSync, statSync } from "fs";
 import { homedir } from "os";
 import { join, extname, basename } from "path";
 import { logger } from "./globalLogger.js";
+import {
+  parseFrontmatterYaml,
+  splitFrontmatter,
+  type FrontmatterValue,
+  type ParsedFrontmatter,
+} from "./frontmatterYaml.js";
 import { getBuiltinSubagentsDir } from "./configPaths.js";
 
 export interface SubagentConfiguration {
@@ -25,70 +31,69 @@ interface SubagentFrontmatter {
 }
 
 /**
- * Parse YAML frontmatter from markdown file content
+ * Parse YAML frontmatter from markdown file content.
+ *
+ * Value parsing is shared with skills, custom slash commands and memory files —
+ * see `frontmatterYaml.ts` (spec `multi-agent/subagent` 场景 6).
  */
 function parseFrontmatter(content: string): {
   frontmatter: SubagentFrontmatter;
   body: string;
 } {
-  const frontmatterRegex =
-    /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n([\s\S]*)$/;
-  const match = content.match(frontmatterRegex);
+  const { yaml, body } = splitFrontmatter(content);
 
-  if (!match) {
+  if (yaml === null) {
     return { frontmatter: {}, body: content.trim() };
   }
 
-  const [, yamlContent, body] = match;
-  const frontmatter = parseYamlFrontmatter(yamlContent);
-
-  return { frontmatter, body: body.trim() };
+  return {
+    frontmatter: toSubagentFrontmatter(parseFrontmatterYaml(yaml)),
+    body: body.trim(),
+  };
 }
 
 /**
- * Simple YAML frontmatter parser for subagent files
+ * Narrow a parsed frontmatter block to the fields a subagent declares. Values
+ * of an unexpected shape (e.g. a bare `description:` key, which parses to a
+ * list) are dropped so `validateConfiguration` reports the field as missing.
  */
-function parseYamlFrontmatter(yamlContent: string): SubagentFrontmatter {
+function toSubagentFrontmatter(parsed: ParsedFrontmatter): SubagentFrontmatter {
   const frontmatter: SubagentFrontmatter = {};
 
-  try {
-    const lines = yamlContent.split("\n");
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-
-      const colonIndex = trimmed.indexOf(":");
-      if (colonIndex === -1) continue;
-
-      const key = trimmed.substring(0, colonIndex).trim();
-      const value = trimmed
-        .substring(colonIndex + 1)
-        .trim()
-        .replace(/^["']|["']$/g, "");
-
-      if (key && value) {
-        // Handle array values for tools
-        if (key === "tools" && value) {
-          let arrayValue = value;
-          if (arrayValue.startsWith("[") && arrayValue.endsWith("]")) {
-            arrayValue = arrayValue.slice(1, -1);
-          }
-          frontmatter[key] = arrayValue
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean);
-        } else {
-          if (key === "name" || key === "description" || key === "model") {
-            frontmatter[key] = value;
-          }
-        }
-      }
+  for (const key of ["name", "description", "model"] as const) {
+    const value = parsed[key];
+    if (typeof value === "string" && value) {
+      frontmatter[key] = value;
     }
-  } catch {
-    // Return empty frontmatter on parse error - validation will catch missing fields
+  }
+
+  const tools = normalizeTools(parsed.tools);
+  if (tools) {
+    frontmatter.tools = tools;
   }
 
   return frontmatter;
+}
+
+/**
+ * Normalize the frontmatter `tools` field: a comma-separated string
+ * (`Read, Bash`), a bracketed list (`[Read, Bash]`) or a block list.
+ */
+function normalizeTools(
+  value: FrontmatterValue | undefined,
+): string[] | undefined {
+  if (Array.isArray(value)) {
+    return value.map((item) => item.trim()).filter(Boolean);
+  }
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const list =
+    value.startsWith("[") && value.endsWith("]") ? value.slice(1, -1) : value;
+  return list
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 /**

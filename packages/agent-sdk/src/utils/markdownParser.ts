@@ -9,6 +9,7 @@ import {
   PREVIEW_SIZE_BYTES,
 } from "../constants/toolLimits.js";
 import { logger } from "./globalLogger.js";
+import { parseFrontmatterYaml, splitFrontmatter } from "./frontmatterYaml.js";
 import { resolveShellPath } from "./shellResolver.js";
 
 const execAsync = promisify(exec);
@@ -19,73 +20,23 @@ interface ParsedMarkdownFile {
 }
 
 /**
- * Parse YAML frontmatter from markdown content
+ * Parse YAML frontmatter from markdown content.
+ *
+ * Value parsing is shared with skills, subagents and memory files — see
+ * `frontmatterYaml.ts` (spec `ui/slash-commands` 场景 3,
+ * `core/memory-management` 场景 4/13).
  */
 export function parseFrontmatter(content: string): {
   frontmatter?: Record<string, unknown>;
   content: string;
 } {
-  const frontmatterRegex = /^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/;
-  const match = content.match(frontmatterRegex);
+  const { yaml, body } = splitFrontmatter(content);
 
-  if (!match) {
+  if (yaml === null) {
     return { content };
   }
 
-  const [, frontmatterStr, bodyContent] = match;
-
-  try {
-    // Simple YAML parser for our use case (supports key: value and list items)
-    const frontmatter: Record<string, unknown> = {};
-    const lines = frontmatterStr.split("\n");
-    let currentKey: string | null = null;
-
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      if (!trimmedLine || trimmedLine.startsWith("#")) continue;
-
-      // Check if it's a list item
-      if (trimmedLine.startsWith("-") && currentKey) {
-        let value = trimmedLine.slice(1).trim();
-        if (value) {
-          // Remove surrounding quotes if present
-          if (
-            (value.startsWith('"') && value.endsWith('"')) ||
-            (value.startsWith("'") && value.endsWith("'"))
-          ) {
-            value = value.slice(1, -1);
-          }
-          if (!Array.isArray(frontmatter[currentKey])) {
-            frontmatter[currentKey] = [];
-          }
-          (frontmatter[currentKey] as unknown[]).push(value);
-        }
-        continue;
-      }
-
-      const colonIndex = trimmedLine.indexOf(":");
-      if (colonIndex === -1) continue;
-
-      const key = trimmedLine.slice(0, colonIndex).trim();
-      const value = trimmedLine.slice(colonIndex + 1).trim();
-
-      currentKey = key;
-      if (value) {
-        // Remove surrounding quotes if present
-        const unquotedValue =
-          (value.startsWith('"') && value.endsWith('"')) ||
-          (value.startsWith("'") && value.endsWith("'"))
-            ? value.slice(1, -1)
-            : value;
-        frontmatter[key] = unquotedValue;
-      }
-    }
-
-    return { frontmatter, content: bodyContent };
-  } catch {
-    // If parsing fails, just return the content without frontmatter
-    return { content };
-  }
+  return { frontmatter: parseFrontmatterYaml(yaml), content: body };
 }
 
 /**
