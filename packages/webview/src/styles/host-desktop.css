@@ -2592,16 +2592,38 @@
    16px glyph 同值；仅「活动器 hover」#C1292E）；hover 变化的是按钮底
    #EEF0F3，图标色保持不变。设置页 7 导航 + 返回按钮已由 codicon 字体
    替换为 Figma 导出 SVG（HeaderIcons Settings*Icon），此处统一图标色：
-   light #565A60 / dark #9A9EA5（wave 深色惯例），选中项保持同色（codechat
-   settings-nav-item 选中只变文字与底，图标不动）。
+   light #565A60 / dark #9A9EA5（wave 深色惯例）。
    ⚠️ `.settings-back svg` 已于 0916 按设计师指示（「返回图标也提亮」）从本组
-   摘出，改由下方「返回」块提到 1 级色；本组只剩导航项图标。 */
+   摘出，改由下方「返回」块提到 1 级色；本组只剩导航项图标（**静止态**）。
 
+   ⚠️ 0917 修正本组原结论「选中项保持同色」—— 该结论只对 codechat 成立：
+   codechat 的导航图标是 `<img :src="item.icon">`（SettingsNavigation.vue:18），
+   图片化的 SVG 改不了色，所以它选中时确实只有文字与底变；wave 用的是内联
+   SVG 组件（`stroke="currentColor"`，HeaderIcons.tsx Settings*Icon），
+   base `.settings-nav-item.is-active svg`（SettingsPage.css:215）本就跟着
+   选中文字一起提亮。此前本组只写了静止态两条，深色档那条
+   `[data-host][data-theme="dark"]`（0,3,1）特异性高于 base 的 is-active
+   （0,2,1）→ 深色选中项图标被钉回 #9A9EA5（与未选中项同值），浅色档则是
+   两条 (0,2,1) 同分、按加载顺序由 base 胜出（host-desktop.css 在 index.tsx:6
+   先加载，SettingsPage.css 后加载）→ 浅色选中图标 = 宿主
+   `--vscode-list-activeSelectionForeground`（实测 #202020，比未选中亮）。
+   设计师 0917 评论 `svg.header-icon`「这里选中以后图标应该也变亮的吧，要和
+   浅色模式保持一致」→ 补齐选中态，两档与选中文字逐值一致
+   （浅 #1F2329 / 深 #FFFFFF，见下方 is-active 规则），语义同 base
+   （选中文字与图标同一档色）。 */
 [data-host="desktop"] .settings-nav-item svg {
   color: #565a60;
 }
 [data-host="desktop"][data-theme="dark"] .settings-nav-item svg {
   color: #9a9ea5;
+}
+/* 选中态：图标跟随选中文字（浅 #1F2329 / 深 #FFFFFF）。特异性 (0,3,1)/(0,4,1)
+   高于上方静止态两条，不依赖加载顺序。 */
+[data-host="desktop"] .settings-nav-item.is-active svg {
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .settings-nav-item.is-active svg {
+  color: #ffffff;
 }
 
 /* 交互底/文字对齐 codechat settings.css（--cc-fill-hover #EEF0F3 悬停、
