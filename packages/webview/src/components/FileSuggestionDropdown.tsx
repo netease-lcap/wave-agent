@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from "react";
 import { useClickOutside } from "../utils/useClickOutside";
+import { isDesktopHost } from "../utils/platform";
 import { FileSuggestionDropdownProps, FileItem } from "../types";
+import { SearchIcon } from "./HeaderIcons";
 import "../styles/FileSuggestionDropdown.css";
 
 /**
@@ -88,11 +90,15 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
     <div
       ref={dropdownRef}
       className={`file-suggestion-dropdown${direction === "down" ? " file-suggestion-dropdown--down" : ""}`}
-      style={{
-        position: "absolute",
-        top: `${position.top}px`,
-        left: `${position.left}px`,
-      }}
+      style={
+        position
+          ? {
+              position: "absolute",
+              top: `${position.top}px`,
+              left: `${position.left}px`,
+            }
+          : undefined
+      }
     >
       {suggestions.map((file: FileItem, index: number) => (
         <div
@@ -126,7 +132,13 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
       )}
       {!isLoading && suggestions.length === 0 && filterText && (
         <div className="suggestion-item suggestion-empty">
-          <span className="codicon codicon-search"></span>
+          {/* 放大镜改用与面板工具条同款的 SearchIcon（0917 评论「文件建议空态
+              也一起换」）；IDE 宿主保持 codicon 字体图标，同一 surface 不混图标库 */}
+          {isDesktopHost() ? (
+            <SearchIcon className="suggestion-icon" />
+          ) : (
+            <span className="codicon codicon-search"></span>
+          )}
           <div className="suggestion-content">
             <div className="suggestion-name">未找到匹配的文件</div>
             <div className="suggestion-path">尝试修改搜索关键词</div>

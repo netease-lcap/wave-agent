@@ -1656,6 +1656,113 @@
   font-weight: var(--cc-font-weight-medium, 500);
 }
 
+/* ═══ 0917 评论（文件面板 toolbar）：路径字号 12 → 14px ═══
+   `.file-pane-path`（FilePane.css）base 是 12px/normal，走查定为正文档
+   14/22（conversation-typography.md 正文 14px、行高 22；同一 toolbar 里
+   预览地址胶囊 `.preview-pane-url` 也是 14/22）。toolbar 固定 44px 高、
+   搜索弹层 top 取 toolbar.offsetHeight，故只换文字档位、行高与节奏零位移。
+   同条的 host 角标 `.file-pane-host` 见下一条（0917 第二批「本地角标也统一」）。 */
+[data-host="desktop"] .file-pane-path {
+  font-size: 14px;
+  line-height: 22px;
+}
+
+/* 同一条评论的 host 角标（「本地」）：11px / vscode 徽章底 #0069CC / r3 →
+   桌面辅助档 12/20 + r4 + --cc-fill 面 + --cc-text-regular 字。
+   （不用 --cc-text-secondary：浅色 #6C7076 压在 #F0F2F5 上是 4.44:1，12px 文字
+   差一点不到 AA 4.5；--cc-text-regular #565A60 → 6.08:1、深色 8.63:1。） */
+[data-host="desktop"] .file-pane-host {
+  font-size: 12px;
+  line-height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  background: var(--cc-fill);
+  color: var(--cc-text-regular);
+}
+
+/* ═══ 0917 评论（文件面板 toolbar）②：搜索弹层整体对齐桌面 ═══
+   base（FilePane.css）是 VS Code 形制：外壳 r4 + 1px dropdown 描边 + 无影，里头再
+   套一个自带 1px 描边的 12px 输入框（两层描边），建议列表又是另一个独立浮层
+   （r12 菜单）用绝对定位压在外壳下缘上（列表顶边与外壳底边重叠 = 视觉两圈边、
+   列表 302px 比输入框 683px 窄出一截）。
+
+   对齐桌面 = 按第十三轮浮层规格做成「一个面板，面板内一个字段行，列表排在同一面板
+   里」：面板 #FFFFFF / #EBEEF5 / r12 / 0 0 12px 12%（深色 --cc-bg-overlay + 12% 白边
+   + 40% 黑影）/ padding 8 / 纵向 gap 8；字段行 32px（桌面控件档）/ r8 / --cc-fill 面 /
+   无描边（聚焦走「两种语言」的 A 式：焦点色落自身边框，与 .desktop-host-add-input 同）；
+   文字 14px 正文档。列表自身的面板属性全部复位，交给父面板（子选择器 specificity
+   (0,3,0)/(0,4,0) 高于上方第十三轮的 (0,2,0)/(0,3,0)，书写顺序不影响）。
+   组件侧同步去掉了内联绝对定位（position 传参省略即随文档流）。 */
+[data-host="desktop"] .file-pane-search-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: #ffffff;
+  border-color: #ebeef5;
+  border-radius: 12px;
+  box-shadow: 0 0 12px rgb(0 0 0 / 12%);
+  overflow: hidden;
+}
+[data-host="desktop"][data-theme="dark"] .file-pane-search-popover {
+  background: var(--cc-bg-overlay);
+  border-color: rgb(255 255 255 / 12%);
+  box-shadow: 0 0 12px rgb(0 0 0 / 40%);
+}
+
+[data-host="desktop"] .file-pane-search-input-row {
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 8px;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: var(--cc-fill);
+}
+[data-host="desktop"] .file-pane-search-input-row:focus-within {
+  border-color: var(--cc-border-focus, #a0a5a8);
+}
+[data-host="desktop"] .file-pane-search-icon {
+  color: var(--cc-text-secondary);
+}
+[data-host="desktop"] .file-pane-search-input {
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"] .file-pane-search-input::placeholder {
+  color: var(--cc-text-placeholder);
+}
+[data-host="desktop"] .file-pane-search-input:focus {
+  border-color: transparent;
+}
+
+/* 建议列表：在本弹层里是面板的内容（不再是独立浮层） */
+[data-host="desktop"] .file-pane-search-popover .file-suggestion-dropdown {
+  min-width: 0;
+  max-width: none;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+/* 深色档同款复位：第十三轮的深色面板规则选择器是 (0,3,0)，与上一条平手时按书写
+   顺序取胜（该块在下方），故深色必须再抬一级 —— 否则面板里会多出一圈 12% 白边
+   + 40% 黑影的内嵌矩形。 */
+[data-host="desktop"][data-theme="dark"] .file-pane-search-popover .file-suggestion-dropdown {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+/* 空态不是「斜体说明」——角色表（conversation-typography.md）无斜体档，同 F-12 的
+   处理；列表项内文字档位（名称 14 / 路径 11）本轮不动，属 @ 补全共用的组件。 */
+[data-host="desktop"] .suggestion-empty {
+  font-style: normal;
+}
+
 /* ═══ 第二十九轮：会话行更多按钮 + 菜单图标（用户评论「检查更多操作按钮尺寸，
    及更多按钮点开下拉菜单内部样式是否正确，包括图标，和下拉菜单规范」）═══
    对齐 codechat TaskSidebar.vue + global.css：
