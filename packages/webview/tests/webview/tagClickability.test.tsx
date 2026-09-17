@@ -1,4 +1,4 @@
-import { renderChatApp, sendCommand } from "./test-utils";
+import { renderChatApp, sendCommand, fireEvent } from "./test-utils";
 import { describe, it, expect, beforeEach } from "vitest";
 
 describe("Tag Clickability", () => {
@@ -135,5 +135,45 @@ describe("Tag Clickability", () => {
     const inlineImageTag = userMessage!.querySelector(".context-tag.is-image");
     expect(inlineImageTag).toBeInTheDocument();
     expect(inlineImageTag!.className).toMatch(/clickable/);
+  });
+
+  it("resolves a relative file mention chip against the session workdir", () => {
+    // The picker writes the chip as [@file:<relativePath>] (file-selector spec
+    // 场景 6), so the click must be joined to the workdir and normalized —
+    // passing the relative string on makes the host resolve it against its own
+    // cwd (desktop file panel / IDE editor) and open nothing.
+    const { vscode } = renderChatApp();
+    sendCommand("updateWorkdir", { workdir: "/home/u/repo" });
+
+    const messages = [
+      {
+        id: "msg5",
+        role: "user" as const,
+        timestamp: "2024-01-01T00:00:00.000Z",
+        blocks: [
+          {
+            type: "text" as const,
+            content: "Check this image [@file:../images/logo.png].",
+          },
+        ],
+      },
+    ];
+
+    sendCommand("updateMessages", { messages });
+
+    const userMessage = document.querySelector(".message.user");
+    const imageTag = userMessage!.querySelector(".context-tag.is-image");
+    expect(imageTag).toBeInTheDocument();
+
+    fireEvent.click(imageTag!);
+
+    const sent = (
+      vscode.postMessage as ReturnType<typeof vi.fn>
+    ).mock.calls.map((c) => c[0]);
+    const openFileMsg = sent.find(
+      (m: { command: string }) => m.command === "openFile",
+    ) as Record<string, unknown>;
+    expect(openFileMsg).toBeDefined();
+    expect(openFileMsg.path).toBe("/home/u/images/logo.png");
   });
 });

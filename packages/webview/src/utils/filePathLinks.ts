@@ -12,7 +12,7 @@
 // 通道的拼装在 Message.tsx 的 marked renderer 中完成，点击解析复用这里。
 
 import type { TokenizerExtension } from "marked";
-import { normalizeFilePath } from "./messageUtils";
+import { normalizeFilePath, toAbsoluteFilePath } from "./messageUtils";
 
 // marked（escape encode=true）只对 & < > " ' 做实体转义，这里做精确逆操作。
 const ENTITY_MAP: Record<string, string> = {
@@ -188,9 +188,7 @@ export function resolveFilePathMatch(
   workdir?: string,
 ): string | null {
   if (match.kind === "rel") {
-    if (!workdir) return null;
-    const base = workdir.replace(/[\\/]+$/, "");
-    return normalizeFilePath(`${base}/${match.path.replace(/\\/g, "/")}`);
+    return toAbsoluteFilePath(match.path, workdir);
   }
   if (match.kind === "file") {
     return normalizeFilePath(stripFileScheme(match.path));

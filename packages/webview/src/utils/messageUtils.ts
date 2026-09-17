@@ -278,5 +278,27 @@ export const normalizeFilePath = (filePath: string): string => {
   return `${root}${segments.join(sep)}`;
 };
 
+/** Does the path name its own root (`/…`, `C:\…`)? Mirrors normalizeFilePath. */
+const HAS_ROOT = /^([A-Za-z]:[\\/]|\/)/;
+
+/**
+ * Resolve a path that may be relative to the session workdir into the absolute,
+ * normalized path a host can act on. Used at the click boundary: a mention chip
+ * is written as `[@file:<relativePath>]` by the file picker, and the host
+ * resolves `openFile` against its own cwd, not the session workdir.
+ *
+ * Returns null when the path is relative and no workdir is known — the caller
+ * keeps the raw string (same contract as resolveFilePathMatch).
+ */
+export const toAbsoluteFilePath = (
+  filePath: string,
+  workdir?: string,
+): string | null => {
+  if (!filePath) return null;
+  if (HAS_ROOT.test(filePath)) return normalizeFilePath(filePath);
+  if (!workdir) return null;
+  return normalizeFilePath(`${workdir.replace(/[\\/]+$/, "")}/${filePath}`);
+};
+
 /** Collapse backslashes to forward slashes for consistent display. */
 const toPosixPath = (p: string): string => p.replace(/\\/g, "/");

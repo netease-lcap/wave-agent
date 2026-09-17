@@ -1,6 +1,10 @@
 import React from "react";
 import { ContextTag } from "./ContextTag";
-import { parseMentions, toRelativePath } from "../utils/messageUtils";
+import {
+  parseMentions,
+  toAbsoluteFilePath,
+  toRelativePath,
+} from "../utils/messageUtils";
 import { isLocalhostUrl } from "../utils/isLocalhostUrl";
 import {
   linkifyPlainText,
@@ -614,12 +618,20 @@ export const Message: React.FC<MessageProps> = React.memo(
     // originating paneId (postToHost in ChatApp) — a direct vscode.postMessage
     // from a split-view pane would broadcast without it and misroute.
     const openFile = (path: string, startLine?: number, endLine?: number) => {
+      // Chips and tool headers carry the path as the host wrote it: a picked
+      // file becomes [@file:<relativePath>] (specs/ui/file-selector.md 场景 6),
+      // and a Read/Edit header shows the tool's own file_path. The host resolves
+      // openFile against its own cwd, so a relative path would open nothing —
+      // join it to the session workdir and normalize it here, the same
+      // resolution the text links get (specs/ui/file-path-links.md 场景 6).
+      // No workdir → keep the raw string (host keeps its previous behavior).
+      const resolved = toAbsoluteFilePath(path, props.workdir) ?? path;
       if (props.onOpenFile) {
-        props.onOpenFile(path, startLine, endLine);
+        props.onOpenFile(resolved, startLine, endLine);
       } else {
         props.vscode.postMessage({
           command: "openFile",
-          path,
+          path: resolved,
           startLine,
           endLine,
         });
