@@ -101,8 +101,12 @@ const zip = process.argv[2];
 form.append("channel", "beta"); // 与 file 一起 multipart 提交；不带 channel = 默认 Stable
 ```
 
-- **auto-approval**：插件在 Stable 通道 **120 天内有已批准更新**时，自定义 channel 上传自动过审（实测 `201 {approve:true}`，分钟级）；不满足则走人工审核（官方口径约 2 个工作日）。
-- **channel 优先于默认**：订阅了 beta 的用户看不到之后只发在 Stable 的新版本 → 想长期喂 beta 用户须**每版双发**，否则让他们试用完切回默认仓库。
+- **auto-approval**：插件在 Stable 通道近期有已批准更新时，自定义 channel 上传自动过审（实测 `201 {approve:true}`，分钟级）；不满足则转人工审核。「近期」这个窗口是 **JetBrains 侧规则**（2026-09-18 观察为 120 天），**可能变、别当契约** —— 一律以本次上传响应里的 `approve` 字段为准。
+- **审核时长不写死、也不对外承诺**：时长不定，**以 JetBrains 发来的批准邮件为准**（回 `approve:false` 时就等邮件，别因为「已经过了 N 天」而重传或改口径）。旧文档里「官方口径约 2 个工作日」是与实测不符的固定天数，已废弃。
+  - 当次实测：2026-09-18 往 **stable** 传 1.2.5（update id `1174611`，`cdate` `2026-09-18T14:05:39Z` = 16:05:39 GMT+2）→ **16:15 GMT+2 收到批准邮件**，约 10 分钟。**当次实测，不是承诺。**
+- **stable 与自定义 channel 是两条独立的线，发一条覆盖不了另一条**（「发了 beta 但用户端没变化」的成因就在这）：
+  - **不带 `channel` 字段 = stable 通道**。存量用户（默认仓库）只吃这条线 —— **只往 `beta` 传，他们的插件列表里会一直显示旧版**。要覆盖存量用户，**必须每轮往 stable 也发一次**。
+  - **反向同理**：`channel` 优先于默认，订阅了 beta 的用户看不到之后只发在 Stable 的新版本 → 想长期喂 beta 用户也须**每版双发**，否则让他们试用完切回默认仓库。
 - 用户侧：`Settings → Plugins → ⚙ → Manage Plugin Repositories` 加自定义仓库 URL；**更省事的是直接装 GitHub Release 里的 zip**（内容与 beta 包一样）。
 
 ## 发布后校验
@@ -129,9 +133,24 @@ form.append("channel", "beta"); // 与 file 一起 multipart 提交；不带 cha
        ```bash
        sha256sum /tmp/wave-vscode-<version>/extension/dist/wave-cli/dist/bundle/wave.mjs packages/code/dist/bundle/wave.mjs
        ```
-- JetBrains：上传返回 **201 + 版本记录 JSON**，形如 `{id: 1173146, version: "1.2.4", approve: true, listed: true, channel: "beta"}`；插件 https://plugins.jetbrains.com/plugin/33466（Wave Code Chat）。
-  - **auto-approval 已连续三轮（1.2.2 / 1.2.3 / 1.2.4）命中** ⇒ beta 上传基本零人工等待；只有回 `approve: false` 时才需等人工审核（官方口径约 2 个工作日）。
-  - 回读核对：`GET https://plugins.jetbrains.com/api/plugins/33466/updates?channel=beta`（Bearer token），首条应就是刚发的版本。
+- JetBrains：上传返回 **201 + 版本记录 JSON**，形如 `{id: 1173146, version: "1.2.4", approve: true, listed: true, channel: "beta"}`；插件 https://plugins.jetbrains.com/plugin/33466。
+  - **显示名别写成永久断言**：以市场接口 `GET https://plugins.jetbrains.com/api/plugins/33466` 的 `name` 字段为准（2026-09-18 实测为 `CodeWave IDE`；该名改过多次，别照旧文档抄）。仓库侧对应 `packages/jetbrains/src/main/resources/META-INF/plugin.xml` 的 `<name>`。
+  - **auto-approval 已连续多轮命中**（beta 的 1.2.2 / 1.2.3 / 1.2.4，以及 2026-09-18 的 stable 1.2.5）⇒ 基本零人工等待；只有回 `approve: false` 时才需等人工审核，**时长以批准邮件为准、不做固定天数承诺**（见上文「自定义 channel」里的实测）。
+  - 回读核对（`updates` feed，首条应就是刚发的版本）：
+
+    ```bash
+    # 默认通道（stable）——要带 token 才看得到待审条目
+    curl -s "https://plugins.jetbrains.com/api/plugins/33466/updates" \
+      -H "Authorization: Bearer $(cat ~/.wave/jetbrains-token)" \
+      | python3 -c "import sys,json;a=json.load(sys.stdin);print(len(a));print([(e['id'],e['version'],e['approve'],e['listed'],e['channel']) for e in a[:3]])"
+
+    # 自定义通道 beta
+    curl -s "https://plugins.jetbrains.com/api/plugins/33466/updates?channel=beta" \
+      -H "Authorization: Bearer $(cat ~/.wave/jetbrains-token)" \
+      | python3 -c "import sys,json;a=json.load(sys.stdin);print(len(a));print([(e['id'],e['version'],e['approve'],e['listed'],e['channel']) for e in a[:3]])"
+    ```
+
+    - ⚠️ **无鉴权请求这个 feed 只回 `approve:true` 且 `listed:true` 的条目**：待审版本在那里根本看不到，**别据此判「没传上去」**。2026-09-18 实测：默认通道带 token 回 7 条、无鉴权回 6 条，差的正是那条 `approve:false` / `listed:false` 的 1.2.0 stable；`?channel=beta` 那次两个读法都是 6 条（该通道当时没有待审条目，看不出差别）。
 
 ## 坑
 

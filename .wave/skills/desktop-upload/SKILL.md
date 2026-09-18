@@ -139,8 +139,23 @@ gh release download -R netease-lcap/wave-agent wave-desktop@<version> --dir /tmp
 - 上传前可用 `playwright-cli eval` 检查文件挂载：
   `() => [...document.querySelectorAll('input[type=file]')].map((inp,i) => i + ': ' + (inp.files?.[0]?.name ?? 'EMPTY'))`
   （**当前默认索引 2/3/4 = macOS 安装包 / macOS 更新包 / Windows 安装包，0/1 为空**；字段顺序可能变，一律以 snapshot/eval 实测为准）
-- API 直传成功判据（仅在走方式 B 时）：`complete` 返回 201 且 `desktopDownloads[0].version/channel/fileName` 正确；再 `GET /api/ops/downloads` 核对 `desktopDownloads` 里出现该版本行。
-- 成功后文件名被平台规范化为 `codewave-ide.dmg` / `codewave-ide-mac.zip` / `codewave-ide-setup.exe`，下载地址形如 `https://minio-api.<env>.163yun.com/lowcode-static/codechat/desktop/<version>/<platform>/<file>`。
+- API 直传成功判据（仅在走方式 B 时）：`complete` 返回 201 且 `desktopDownloads[0].version/channel/fileName` 正确；再 `GET /api/ops/downloads` 核对 `desktopDownloads` 里出现该版本行（该接口需鉴权，不带 token 回 401 `未登录`）。
+
+**下载地址一律读接口字段，不要自己拼域名。** `GET /api/ops/downloads` 的每条 `desktopDownloads[]` 都带 `downloadUrl`（同一条目还有 `fileName` / `fileKey` / `platform` / `channel`），企业端就是用这个地址下载的。域名与 URL 前缀属宿主/CDN 的部署细节——外部拥有、变了我们不会同步收到通知，写死必踩：
+
+```bash
+BASE=https://neteasecc.codewave.163.com
+TOKEN=$(curl -s -X POST "$BASE/api/auth/login" -H 'Content-Type: application/json' \
+  -d "{\"email\":\"$(jq -r .email ~/.wave/neteasecc.json)\",\"password\":\"$(jq -r .password ~/.wave/neteasecc.json)\"}" \
+  | python3 -c "import sys,json;print(json.load(sys.stdin)['token'])")
+curl -s "$BASE/api/ops/downloads" -H "Authorization: Bearer $TOKEN" \
+  | python3 -c "import sys,json
+for e in json.load(sys.stdin)['desktopDownloads']:
+    print(e['version'], e['channel'], e['platform'], e['fileName'], e['downloadUrl'])"
+```
+
+- **域名示例（易变，别当断言）**：2026-09-18 实测生产环境 42 条**全部**是 `https://lcap-static-saas.nos-eastchina1.126.net/codechat/desktop/1.2.5/mac-dmg/codewave-ide.dmg`（网易 NOS）；**同日读到测试环境 21 条全部是** `https://minio-api.codewave-test.163yun.com/lowcode-static/codechat/desktop/1.2.4/win-exe/codewave-ide-setup.exe`（自建 MinIO）—— 同一时刻两个环境的域名、甚至路径前缀（有无 `/lowcode-static`）就已经不同。旧文档写死的 `https://minio-api.<env>.163yun.com/lowcode-static/codechat/desktop/<version>/<platform>/<file>` 只对那个环境成立，照着拼会踩。
+- **文件名与 `platform` 段同样以接口返回为准**（截至 2026-09-18 的形态，可能变）：现行 `fileName` 为 `codewave-ide.dmg` / `codewave-ide-mac.zip` / `codewave-ide-setup.exe`，`platform` 段为 `mac-dmg` / `mac-zip` / `win-exe`；两环境都还留着上一代命名 `codechat-desktop.dmg` / `codechat-desktop-mac.zip` / `codechat-desktop-setup.exe`（命名规则本身也变过）。核对时直接比 `fileName` / `platform` 字段，别靠拼字符串匹配。
 
 ## 坑
 
