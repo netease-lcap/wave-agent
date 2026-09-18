@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterAll } from "vitest";
 import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import { TaskManager } from "../../src/services/taskManager.js";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
@@ -39,6 +41,22 @@ vi.mock("../../src/services/memory.js", () => ({
 // window instead of sleeping a fixed amount. Kept below vitest's 5000ms per-test
 // timeout so a genuine failure reports the assertion instead of a test timeout.
 const LOG_FLUSH_TIMEOUT_MS = 3000;
+
+// SubagentManager writes its background log to
+// `path.join(os.tmpdir(), `wave-subagent-${taskId}.log`)` opened with
+// `flags: "a"`. BackgroundTaskManager is mocked here, so its ids are constants
+// (`task_1`, `task_123`, …) and that path is byte-identical on every run: any
+// content left behind by an earlier run is still there when this run asserts on
+// the file, and would satisfy the assertions below even if the code under test
+// stopped writing entirely. Point os.tmpdir() at a directory unique to this run
+// so leftovers cannot exist — with it, dropping a real write turns these tests
+// red instead of green.
+const ISOLATED_TMP_DIR = path.join(
+  os.tmpdir(),
+  `wave-subagent-log-test-${process.pid}-${Date.now()}`,
+);
+fs.mkdirSync(ISOLATED_TMP_DIR, { recursive: true });
+vi.spyOn(os, "tmpdir").mockReturnValue(ISOLATED_TMP_DIR);
 
 describe("SubagentManager - Backgrounding Coverage", () => {
   let subagentManager: SubagentManager;
@@ -99,6 +117,19 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       workdir: "/test",
       stream: false,
     });
+  });
+
+  afterAll(async () => {
+    // SubagentManager opens the log stream lazily, and two of the tests below
+    // abandon one mid-open (releaseInstance destroys the stream before Node's
+    // open callback runs), so its file only materialises on the next event-loop
+    // turn. Yield a few turns first: removing the directory while an open is
+    // still queued makes that open fail with an unhandled ENOENT, which fails
+    // the whole run.
+    for (let i = 0; i < 3; i += 1) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    fs.rmSync(ISOLATED_TMP_DIR, { recursive: true, force: true });
   });
 
   it("should handle backgroundInstance error when backgroundTaskManager is missing", async () => {
