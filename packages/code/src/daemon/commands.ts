@@ -145,6 +145,42 @@ interface PendingPermission {
 }
 
 /**
+ * Session-scoped notification filter for the `wave daemon` subcommands.
+ *
+ * The daemon broadcasts every session-scoped notification to EVERY attached
+ * client (`DaemonServer`'s emit loops over all connections) and only annotates
+ * the envelope with the owning `sessionId` — demultiplexing is the client's job,
+ * which is how the hosts do it (the SDK/JB `NotificationRouter` drops
+ * notifications for sessions it has not registered). These subcommands instead
+ * applied every push to their own local state, so another session's turn ending
+ * (`loadingChange:false`) settled a `wait` that was watching a still-generating
+ * session: exit code 0 with a `Status: idle` snapshot, and a foreign
+ * `loadingChange:true` satisfied `--from-busy` for a session that never went busy.
+ *
+ * A notification without a `sessionId` is a global one (e.g. `authUrl`), never
+ * another session's state, so it passes.
+ *
+ * The filter is bound to a session only once `initialize` returns, but the
+ * subscription must be installed BEFORE it — the attach replay that carries the
+ * settle-time snapshot is emitted from inside `restoreSession`
+ * (spec: 订阅早于 initialize/restoreSession 以接收重放). Until `bind` runs
+ * nothing matches, which is correct: no session of ours can push yet. See
+ * `attachSession`'s `onInitialized` for that hand-off point.
+ */
+function sessionNotificationFilter(): {
+  bind: (sessionId: string) => void;
+  accepts: (sessionId: string | undefined) => boolean;
+} {
+  let attached: string | undefined;
+  return {
+    bind: (sessionId) => {
+      attached = sessionId;
+    },
+    accepts: (sessionId) => sessionId === undefined || sessionId === attached,
+  };
+}
+
+/**
  * Attach to a session; returns the initialized sessionId + working directory.
  * Exits (nonzero) with the spec'd error when the session exists neither in the
  * daemon registry nor on disk, destroying the fresh session that `initialize`
@@ -153,12 +189,23 @@ interface PendingPermission {
 async function attachSession(
   client: SocketClient,
   sessionId: string,
+  options: {
+    /**
+     * Called with the sessionId `initialize` resolved — after `initialize`,
+     * before `restoreSession`. That is the only moment a caller's notification
+     * filter can learn which session this connection is attached to: the
+     * subscription itself is installed earlier, the attach replay arrives later
+     * (see `sessionNotificationFilter`).
+     */
+    onInitialized?: (sessionId: string) => void;
+  } = {},
 ): Promise<{ sessionId: string; workingDirectory: string }> {
   const init = (await client.request("initialize", {
     workdir: process.cwd(),
     restoreSessionId: sessionId,
   })) as { sessionId: string; workingDirectory: string };
   const initId = init.sessionId;
+  options.onInitialized?.(initId);
   try {
     await client.request("restoreSession", { sessionId }, initId);
   } catch (err) {
@@ -183,24 +230,33 @@ async function listPendingPermissions(
 }
 
 /**
- * Whether `sessionId` is still in the daemon's in-memory session registry.
+ * The daemon's in-memory registry entry for `sessionId`, or undefined when the
+ * session is no longer hosted.
  *
- * The registry (not notifications) is the authority on this: `destroy` drops
+ * The registry (not notifications) is the authority on both facts the waiter
+ * needs: existence and whether the session is still generating. `destroy` drops
  * the entry, and the only notifications that come with it are side effects of
  * the agent teardown — `loadingChange:false` (destroy aborts, which clears the
  * loading flag) plus a few no-op state re-emits. A `loading:false` push is
  * indistinguishable from "the turn finished", so it can never be read as "the
  * session is gone"; and it happens once, during the destroy, so a waiter that
  * does not act on it is left with no further event and blocks forever.
+ *
+ * The same reasoning applies to the loading flag itself: a pushed
+ * `loadingChange` can be a transient (an aborted turn re-dispatches a queued one
+ * a millisecond later) and — since the daemon broadcasts to every client, see
+ * `sessionNotificationFilter` — it can even describe a different session. So
+ * `wait` reads `isLoading` from here on every wake and treats the push as a
+ * pure wake-up signal.
  */
-async function isSessionHosted(
+async function findHostedSession(
   client: SocketClient,
   sessionId: string,
-): Promise<boolean> {
+): Promise<DaemonSessionEntry | undefined> {
   const result = (await client.request("listDaemonSessions")) as {
     sessions: DaemonSessionEntry[];
   };
-  return (result.sessions ?? []).some((s) => s.sessionId === sessionId);
+  return (result.sessions ?? []).find((s) => s.sessionId === sessionId);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -508,13 +564,19 @@ export async function daemonStatusCommand(
     client = await connectDaemonOrExit(socketPath);
 
     // Subscribe BEFORE initialize/restoreSession so the replayed loadingChange
-    // snapshot is captured (spec: 依据重放的 loadingChange 快照显示状态).
+    // snapshot is captured (spec: 依据重放的 loadingChange 快照显示状态); drop
+    // other sessions' pushes so the snapshot reports THIS session (a foreign
+    // turn's loadingChange used to flip this flag).
     let loading = false;
-    client.onNotification("loadingChange", (params) => {
+    const filter = sessionNotificationFilter();
+    client.onNotification("loadingChange", (params, sessionId) => {
+      if (!filter.accepts(sessionId)) return;
       loading = (params as { loading: boolean }).loading;
     });
 
-    const init = await attachSession(client, sessionId);
+    const init = await attachSession(client, sessionId, {
+      onInitialized: filter.bind,
+    });
     const initId = init.sessionId;
 
     // listPendingPermissions is the authoritative "waiting for approval" signal
@@ -564,16 +626,17 @@ export interface WaitOptions {
 }
 
 /**
- * How often the wait falls back to the registry queries that have no usable
- * push channel: `listPendingPermissions` (approvals) and `listDaemonSessions`
- * (whether the session still exists). Approvals push nothing at all (spec:
- * 单凭消息无法区分等审批与执行中); a destroyed session pushes only
- * `loadingChange:false`, which is what a finished turn looks like — so neither
- * fact can be read off notifications. This is "go ask about the facts that have
- * no push channel", not the "poll the status every N seconds" pattern the
- * push-driven wait exists to replace (spec: `wait` 的退出码是契约). A local
- * socket round-trip is cheap but busy-polling it is still wrong — never faster
- * than 1s. Mutable so tests can shorten it.
+ * How often the wait re-asks the daemon registry (`listDaemonSessions`) and the
+ * pending-approval list (`listPendingPermissions`) — the facts that cannot be
+ * trusted to a push. Approvals push nothing at all (spec: 单凭消息无法区分等审批与执行中);
+ * a destroyed session pushes only `loadingChange:false`, which is what a
+ * finished turn looks like; and the loading flag itself is re-read from the
+ * registry rather than taken from the push. This is "go ask the daemon about
+ * the facts", not the "poll the status every N seconds" pattern the push-driven
+ * wait exists to replace (spec: `wait` 的退出码是契约): a wake-up still comes
+ * from our own session's `loadingChange`, and this tick is only the backstop for
+ * pushes that never arrive. A local socket round-trip is cheap but busy-polling
+ * it is still wrong — never faster than 1s. Mutable so tests can shorten it.
  */
 export const waitPollInterval = { ms: 2_000 };
 
@@ -588,13 +651,16 @@ export const waitPollInterval = { ms: 2_000 };
  * `--timeout` elapsed). stdout carries the snapshot only; progress goes to
  * stderr.
  *
- * Idle is push-driven: the `loadingChange` subscription is installed BEFORE
- * initialize/restoreSession so the replay carries the current loading snapshot
- * (the shape `daemonStatusCommand` uses), and the generating→idle transition
- * ends the wait from the notification itself — the daemon is never polled for
- * status. The only polling is the low-frequency fallback for the two facts that
- * cannot be read off notifications (pending approvals, session existence), and
- * the settle decision is re-taken after every wake.
+ * Idle is decided from the daemon registry, woken by pushes. The
+ * `loadingChange` subscription (installed BEFORE initialize/restoreSession, so
+ * the attach replay is not missed) is filtered to THIS session and used purely
+ * as a wake-up: the loop then re-reads the authoritative `isLoading` from the
+ * registry it already queries for the existence check — the daemon is never
+ * polled for status on a timer. Reading the flag from the registry rather than
+ * from the notification matters because a pushed `loadingChange` can be a
+ * transient (an aborted turn re-dispatches a queued one a millisecond later) and,
+ * since the daemon broadcasts to every client, it can even describe another
+ * session (`sessionNotificationFilter`).
  *
  * Decision order is existence → pending (3) → idle (0) → timeout (1).
  * Existence comes first because a destroyed session's only announcement is
@@ -602,6 +668,13 @@ export const waitPollInterval = { ms: 2_000 };
  * from a finish: read as idle it reports a false "done" for a session that is
  * gone, and a waiter that does not act on it gets no further event at all and
  * hangs (which is what happened before this check existed).
+ *
+ * A session that gets RE-KEYED while we block on it is followed, not mourned:
+ * `clearMessages` / `initializeFromSession` / a recovery-recreating
+ * `updateConfig` move the daemon registry entry to a new sessionId and announce
+ * it with `sessionIdChange` (envelope = the id we know, payload = the new one),
+ * so the waiter rebinds its filter and its id and keeps watching the same
+ * session — a re-key is not a destroy (spec: 换键不等于销毁).
  */
 export async function daemonWaitCommand(
   socketPath: string,
@@ -619,10 +692,11 @@ export async function daemonWaitCommand(
     const socket = await connectDaemonOrExit(socketPath);
     client = socket;
 
-    let loading = false;
     let sawBusy = false;
     // Push-driven wake: the deferred is re-armed on every bump and the loop
-    // re-reads the state after every await, so no loadingChange can be missed.
+    // re-reads the registry after every await, so no loadingChange can be
+    // missed. Foreign sessions are filtered out so a crowded daemon cannot turn
+    // their pushes into wake-ups (spec: 只认本会话的推送).
     let resolveWake: (() => void) | undefined;
     let wakePromise = new Promise<void>((resolve) => {
       resolveWake = resolve;
@@ -634,35 +708,97 @@ export async function daemonWaitCommand(
       });
       resolve?.();
     };
-    socket.onNotification("loadingChange", (params) => {
-      const next = (params as { loading: boolean }).loading;
-      loading = next;
-      if (next) sawBusy = true;
+    const filter = sessionNotificationFilter();
+    socket.onNotification("loadingChange", (params, sid) => {
+      if (!filter.accepts(sid)) return;
+      // The payload is only a hint that OUR session changed: `--from-busy`
+      // accepts it as one way to observe the busy phase, while the idle
+      // decision below comes from the registry.
+      if ((params as { loading: boolean }).loading) sawBusy = true;
       bump();
     });
 
-    const init = await attachSession(socket, sessionId);
-    const initId = init.sessionId;
+    // A session can be RE-KEYED while we block on it — `clearMessages` (which
+    // mints a fresh id) or `initializeFromSession` with another id moves the
+    // daemon registry entry to a new sessionId; `updateConfig` does the same when
+    // its recreate cannot restore the transcript. The re-key is announced (this
+    // notification, envelope = the id we know, payload = the new one) and the
+    // registry key moves in the same tick, so a waiter that keeps using the old id
+    // both misses it in `listDaemonSessions` (⇒ false "no longer exists", exit 1,
+    // for a session that is alive) and stops receiving its pushes. Follow the
+    // rename instead: same session, new id — nothing about it was destroyed.
+    // `watch.id` is the id this waiter tracks: empty until the attach below binds
+    // it, then the live id, re-pointed by every rename we see.
+    const watch = { id: "" };
+    socket.onNotification("sessionIdChange", (params, sid) => {
+      const next = (params as { sessionId?: string }).sessionId;
+      // Envelope-less renames are fired while an agent is being CREATED (its
+      // context has no id yet): they belong to the attach handshake below, whose
+      // reply carries the final id, so there is nothing to follow here. A rename
+      // seen before we know our id would mean the daemon re-keyed the session mid
+      // handshake — the attach itself gives up on that (its `restoreSession` still
+      // carries the pre-rename id), which is a separate, pre-existing gap.
+      if (sid === undefined || !next || !watch.id) return;
+      if (!filter.accepts(sid)) return; // another session's rename
+      watch.id = next;
+      filter.bind(next);
+      bump();
+    });
+
+    const init = await attachSession(socket, sessionId, {
+      onInitialized: (id) => {
+        watch.id = id;
+        filter.bind(id);
+      },
+    });
+
+    // Read against the tracked session, retrying when a re-key lands while the
+    // read is in flight. The daemon announces the rename and moves the registry
+    // entry in one tick, but a request sent moments earlier under the OLD id is
+    // answered only afterwards — and its answer then describes an id that no
+    // longer exists: a miss for a session that is very much alive ("no longer
+    // exists" / exit 1) or a "Session not found" from the settle read. An answer
+    // that a re-key invalidated is not evidence, so ask again on the new id. The
+    // loop only repeats when a rename notification actually arrived, so it cannot
+    // spin without the daemon re-keying the session over and over.
+    const read = async <T>(fn: (id: string) => Promise<T>): Promise<T> => {
+      for (;;) {
+        const id = watch.id;
+        try {
+          const result = await fn(id);
+          if (watch.id !== id) continue;
+          return result;
+        } catch (err) {
+          if (watch.id !== id) continue;
+          throw err;
+        }
+      }
+    };
 
     // listPendingPermissions is the authoritative "waiting for approval" signal
     // (spec: 单凭消息无法区分等审批与执行中，须结合 listPendingPermissions).
-    const pendingForSession = async (): Promise<PendingPermission[]> => {
-      const all = await listPendingPermissions(socket);
-      return all.filter(
-        (r) => r.sessionId === initId || r.sessionId === sessionId,
-      );
-    };
+    const pendingForSession = (): Promise<PendingPermission[]> =>
+      read(async (id) => {
+        const all = await listPendingPermissions(socket);
+        return all.filter(
+          (r) =>
+            r.sessionId === id ||
+            r.sessionId === init.sessionId ||
+            r.sessionId === sessionId,
+        );
+      });
 
     const settle = async (status: string, pending: PendingPermission[]) => {
-      const result = (await socket.request(
-        "getMessages",
-        undefined,
-        initId,
+      const result = (await read(
+        (id) =>
+          socket.request("getMessages", undefined, id) as Promise<{
+            messages: Message[];
+          }>,
       )) as {
         messages: Message[];
       };
       renderSessionSnapshot({
-        sessionId: initId,
+        sessionId: watch.id,
         workingDirectory: init.workingDirectory,
         status,
         pending,
@@ -683,19 +819,29 @@ export async function daemonWaitCommand(
       // exactly what "the turn finished" looks like, so a waiter that does not
       // act on the wake is left with no further event and blocks forever —
       // which is what happened before this check existed. Ask the registry
-      // instead. It rides the same low-frequency fallback tick as the approval
-      // check — both are facts with no push channel to key off (approvals never
-      // push; destroy's only push is indistinguishable from a normal idle) —
-      // which is why asking about them is not the "poll status every N seconds"
-      // pattern this command replaces. The order matters: that very
-      // `loadingChange:false` may already have flipped `loading`, so deciding
-      // idle first would report a settled session that no longer exists — a
-      // false success is worse than hanging.
-      if (!(await isSessionHosted(socket, initId))) {
+      // instead: this query also carries the authoritative `isLoading`, which is
+      // what the idle decision below uses. It rides the same low-frequency
+      // fallback tick as the approval check — that tick is the backstop, while
+      // the ordinary wake-up is our own session's `loadingChange`. The order
+      // matters: the destroy's `loadingChange:false` describes a session whose
+      // registry entry is about to disappear, so deciding idle first could
+      // report a settled session that no longer exists — a false success is
+      // worse than hanging.
+      // A miss is never an unfollowed rename: the daemon writes
+      // `sessionIdChange` and moves the registry entry in the same tick, and a
+      // read answered under an id a rename superseded is retried rather than
+      // trusted (`read` above). What is left is a session that really is gone.
+      const hosted = await read((id) => findHostedSession(socket, id));
+      if (!hosted) {
         fail(
           `wave daemon wait failed: Session ${sessionId} no longer exists (destroyed while waiting)`,
         );
       }
+      // A busy reading from the registry is an observed busy phase too:
+      // `--from-busy` must not depend on having caught a `loadingChange:true`
+      // push (a turn that started before this waiter attached pushes none, and
+      // the replay is only as fresh as the moment of the attach).
+      if (hosted.isLoading) sawBusy = true;
       // Approvals beat idle, and the check runs BEFORE the idle decision — a
       // session frozen on an approval keeps `loading: true` (so it would never
       // settle) and one that just turned `loading: false` must not be mistaken
@@ -706,11 +852,12 @@ export async function daemonWaitCommand(
         exitCode = 3;
         break;
       }
-      // Already idle at call time settles immediately — never hanging beats
-      // winning the race. --from-busy holds out for an observed busy phase
-      // first: right after an async `send` the replayed snapshot can still be a
-      // stale loading:false (the turn has not started yet).
-      if (!loading && (!fromBusy || sawBusy)) {
+      // Idle comes from the registry, never from a single push: already idle at
+      // call time settles immediately — never hanging beats winning the race.
+      // --from-busy holds out for an observed busy phase first: right after an
+      // async `send` the replayed snapshot can still be a stale loading:false
+      // (the turn has not started yet).
+      if (!hosted.isLoading && (!fromBusy || sawBusy)) {
         await settle("idle", []);
         break;
       }
@@ -721,7 +868,7 @@ export async function daemonWaitCommand(
       }
       if (!announced) {
         announced = true;
-        console.error(`Waiting for session ${initId} to become idle…`);
+        console.error(`Waiting for session ${watch.id} to become idle…`);
       }
       const tick = sleepCancellable(waitPollInterval.ms);
       const timer =
@@ -770,6 +917,11 @@ export interface SendOptions {
  * (userMessageAdded), and the reply is the last assistantMessageAdded observed
  * after it. A stale loading:false can then never satisfy the wait condition
  * early (the reply has not been added yet).
+ *
+ * The tracked session id follows a re-key (`sessionIdChange`) for the same reason
+ * `wait` does: the reply arrives on the NEW id, so a waiter still bound to the old
+ * one would drop the pushes that complete it and report a false timeout, and its
+ * `getMessages` would come back "Session not found".
  */
 export async function daemonSendCommand(
   socketPath: string,
@@ -784,21 +936,48 @@ export async function daemonSendCommand(
   let sent = false;
   let ourUserMessageId: string | undefined;
   let replyMessageId: string | undefined;
-  client.onNotification("userMessageAdded", (params) => {
+  // Only THIS session's pushes may move the state below: the daemon broadcasts
+  // every session's notifications to every client, so an unfiltered
+  // `userMessageAdded` / `assistantMessageAdded` / `loadingChange` from a
+  // concurrent session could report "sent" before our message landed and pair
+  // the reply tracking with another conversation's messages
+  // (see sessionNotificationFilter).
+  const filter = sessionNotificationFilter();
+  // `watch.id` is the session this send is attached to — empty until the attach
+  // binds it, then the live id, re-pointed when the daemon re-keys the session
+  // (see the matching handler in daemonWaitCommand): completion is detected from
+  // THIS session's pushes, so a waiter left on the pre-rename id would drop them
+  // and report a false `--wait` timeout for a turn that is still running.
+  const watch = { id: "" };
+  client.onNotification("sessionIdChange", (params, sessionId) => {
+    const next = (params as { sessionId?: string }).sessionId;
+    if (sessionId === undefined || !next || !watch.id) return;
+    if (!filter.accepts(sessionId)) return;
+    watch.id = next;
+    filter.bind(next);
+  });
+  client.onNotification("userMessageAdded", (params, sessionId) => {
+    if (!filter.accepts(sessionId)) return;
     if (!sent) return; // ignore messages added during attach
     ourUserMessageId = (params as { message: Message }).message.id;
   });
-  client.onNotification("assistantMessageAdded", (params) => {
+  client.onNotification("assistantMessageAdded", (params, sessionId) => {
+    if (!filter.accepts(sessionId)) return;
     if (!sent || ourUserMessageId === undefined) return; // not our turn yet
     replyMessageId = (params as { message: Message }).message.id;
   });
-  client.onNotification("loadingChange", (params) => {
+  client.onNotification("loadingChange", (params, sessionId) => {
+    if (!filter.accepts(sessionId)) return;
     loading = (params as { loading: boolean }).loading;
   });
 
-  let initId: string;
   try {
-    initId = (await attachSession(client, sessionId)).sessionId;
+    await attachSession(client, sessionId, {
+      onInitialized: (id) => {
+        watch.id = id;
+        filter.bind(id);
+      },
+    });
     sent = true;
   } catch (err) {
     client.dispose();
@@ -818,10 +997,11 @@ export async function daemonSendCommand(
     const sendPromise = client.request(
       "sendMessage",
       { text: message },
-      initId,
+      watch.id,
     );
     const userMessage = new Promise<"userMessageAdded">((resolve) => {
-      client.onNotification("userMessageAdded", () => {
+      client.onNotification("userMessageAdded", (params, sessionId) => {
+        if (!filter.accepts(sessionId)) return;
         if (ourUserMessageId !== undefined) resolve("userMessageAdded");
       });
     });
@@ -837,7 +1017,7 @@ export async function daemonSendCommand(
   }
 
   try {
-    await client.request("sendMessage", { text: message }, initId);
+    await client.request("sendMessage", { text: message }, watch.id);
   } catch (err) {
     client.dispose();
     fail(`wave daemon send failed: ${(err as Error).message}`);
@@ -853,7 +1033,7 @@ export async function daemonSendCommand(
       // Timeout backstop: the most likely cause is a session waiting on a
       // permission approval — point the user at respond (spec: 不无限期挂起).
       const pending = (await listPendingPermissions(client)).filter(
-        (r) => r.sessionId === sessionId || r.sessionId === initId,
+        (r) => r.sessionId === sessionId || r.sessionId === watch.id,
       );
       client.dispose();
       if (pending.length > 0) {
@@ -869,7 +1049,11 @@ export async function daemonSendCommand(
   }
 
   try {
-    const result = (await client.request("getMessages", undefined, initId)) as {
+    const result = (await client.request(
+      "getMessages",
+      undefined,
+      watch.id,
+    )) as {
       messages: Message[];
     };
     const reply = result.messages.find((m) => m.id === replyMessageId);

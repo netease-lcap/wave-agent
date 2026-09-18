@@ -90,7 +90,7 @@ wave daemon status <id> --lines 5  # widen the context window when the last mess
 
 So the final report is what the default \`status <id>\` already gives you; raise \`--lines\` only when the last message is not the report you want.
 
-**To wait for the report, use \`wave daemon wait <sessionId>\`** — do not build a polling loop. It attaches, blocks until the daemon pushes the generating→idle transition (nothing is polled), then prints exactly what \`status <id> --lines N\` prints, so \`msg=$(wave daemon wait <id>)\` captures the report itself. Its exit code is the contract:
+**To wait for the report, use \`wave daemon wait <sessionId>\`** — do not build a polling loop. It attaches, blocks until your session settles, then prints exactly what \`status <id> --lines N\` prints, so \`msg=$(wave daemon wait <id>)\` captures the report itself. Your session's own \`loadingChange\` push is only the **wake-up**: the idle verdict is read from the daemon registry when it wakes, and the daemon broadcasts every session's notifications to every connection, so a concurrent session's push is ignored (it can neither end the wait nor count as the busy phase). Its exit code is the contract:
 
 | exit | meaning |
 | ---- | ------- |
@@ -99,10 +99,11 @@ So the final report is what the default \`status <id>\` already gives you; raise
 | \`1\` | error — daemon unreachable, unknown sessionId, the session was destroyed while you waited, or \`--timeout\` elapsed |
 
 - A session that is already idle when you call it returns \`0\` immediately (it never hangs).
-- **\`--from-busy\` for the send-then-wait race.** An async \`send\` returns as soon as the message is *delivered*, so for a moment the session still reports idle and a plain \`wait\` would return before the turn even started. \`--from-busy\` makes the wait first observe a busy phase, then idle.
+- **\`--from-busy\` for the send-then-wait race.** An async \`send\` returns as soon as the message is *delivered*, so for a moment the session still reports idle and a plain \`wait\` would return before the turn even started. \`--from-busy\` makes the wait first observe a busy phase **of that session** (its own push, or the registry reporting it as generating), then idle — a concurrent session being busy does not count.
 - \`--timeout <seconds>\` bounds the wait (default: wait forever); on expiry it exits \`1\`.
 - \`--lines N\` (default 1) and \`--lines 0\` behave exactly as in \`status\`; progress lines go to stderr, stdout carries only the snapshot.
-- **Waiting on a session someone else destroys.** If another client runs \`wave daemon destroy <id>\` while you are blocked in \`wait\` (the daemon itself staying up), the wait does not hang: it notices the session left the registry and exits \`1\` with \`Session <id> no longer exists (destroyed while waiting)\` — a gone session is never reported as finished.
+- **Waiting on a session someone else destroys.** If another client runs \`wave daemon destroy <id>\` while you are blocked in \`wait\` (the daemon itself staying up), the wait does not hang: it notices the session left the registry and exits \`1\` with \`Session <id> no longer exists (destroyed while waiting)\` — a gone session is never reported as finished. The daemon drops the session from its registry *before* running the teardown, so this holds for the whole destroy window (the abort that clears the loading flag cannot be mistaken for a finished turn).
+- **A re-keyed or in-place-reconfigured session is not a destroyed one.** A live session can change its id (a cleared chat mints a new one): the daemon announces it and the wait follows the *same* session on the new id instead of exiting \`1\` (\`send --wait\` follows it too, so the reply is not missed). A config reload rebuilds the session's agent in place: while that runs the session stays listed, is reported busy (never "listed + idle"), reads keep answering, and writes are refused with a retryable error — so the wait keeps waiting; only a **failed** rebuild drops the session, and then \`1\` with the same "no longer exists" error is correct.
 
 **Unattended monitoring needs no wrapper script.** Those three exits cover every way a session can end: \`0\` = finished (stdout is the report), \`3\` = blocked on an approval (go \`respond\`, then \`wait\` again), \`1\` = error, including the session being destroyed out from under you. So \`msg=$(wave daemon wait <id>)\` plus a branch on the exit code replaces the hand-rolled poller completely — there is no fourth case left to poll for.
 
