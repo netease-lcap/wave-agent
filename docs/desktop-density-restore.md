@@ -5175,3 +5175,70 @@ ghost 图标与「图标 + 文字」控件。
 
 **W-32**：设置页左导航「选中态 = 文字与图标同升一档色，统一接 `--cc-text-primary`」，
 并注明 codechat 参考实现因用 `<img>` 位图化图标而不具备该行为（wave 内联 SVG 以本仓实现为准）。
+
+## 0918 评论（sticky 用户消息「贴顶悬浮」内边距与未悬浮气泡不一致）
+
+设计师评论（`div.sticky-user-message`）：「这里悬浮起来以后内边距也发生了变化，希望不要变，
+不要动到功能」 · 分支 `feat/0918-ui-polish-r1`（基点 `origin/main` `90529a37`）
+
+### ① 先判「悬浮」是指 hover 还是贴顶 sticky —— 实测排除了 hover
+
+- 鼠标悬停 sticky 卡：`padding` / 盒尺寸 / 文字内衬 / 圆角全部逐值不变，**只有背景色变**
+  （`rgb(240,242,245)` → `rgb(231,233,237)`，即 `requestBubbleHoverBackground`）。
+- 因此「悬浮」= 消息滚出视口上缘后贴顶的那条 sticky 卡（与第二十三轮同一家族：`悬浮后缺左边距 / 字重变细`）。
+
+### ② 差异量化（DPR2 全页截图 + Range 文字墨迹盒）
+
+墨迹口径：**文字墨迹相对卡片/气泡外框**（三态同口径）。
+
+|                           | padding              | 文字墨迹内衬 L / T | 圆角    | 行高              | 卡片高 |
+| ------------------------- | -------------------- | ------------------ | ------- | ----------------- | ------ |
+| 改前 · 悬浮态             | 6px 10px             | L10 / T7.5         | 6px     | normal（≈19.6px） | 72px   |
+| 改后 · 悬浮态             | **8px 12px**         | **L12 / T10.5**    | **8px** | **22px**          | 82px   |
+| 参照 · 未悬浮气泡（未动） | 块 0 + 内层 8px 12px | L12 / T10.5        | 8px     | 22px              | —      |
+
+一行话「浮起来」横向往左跳 2px、往上跳 3px。根因：base `.sticky-user-message` 自带
+`padding: 6px 10px`，而桌面档普通气泡是 `.user-text-block{padding:0}` + 内层
+`.message-content.user-content{padding:8px 12px}`。
+
+### ③ 改法（`host-desktop.css` 第二十三轮 sticky 家族，新增 ③④⑤）
+
+```css
+[data-host="desktop"] .sticky-user-content {
+  font-weight: 500; /* ② 第二十三轮 */
+  line-height: 22px; /* ④ 0918 追加授权「悬浮态行高也统一成 22px」 */
+}
+[data-host="desktop"] .sticky-user-message {
+  padding: 8px 12px; /* ③ 0918 评论「悬浮起来以后内边距也发生了变化」 */
+  border-radius: var(
+    --cc-radius-md,
+    8px
+  ); /* ⑤ 0918 追加授权「悬浮态圆角也用 8px」 */
+}
+```
+
+- 设计师追加授权：「「悬浮态行高也统一成 22px」「悬浮态圆角也用 8px」只改桌面端哦」→ ④⑤ 已实施，
+  两条值全部挂在 `[data-host="desktop"]` 下（IDE 宿主实测仍 base 档，见下）。
+- 行高须写在内容元素上（卡片同高由内容行高撑出）：卡片 72 → **82px**（三行 3×22 + 16 = 82 ✓）。
+- 只改 CSS，`onClick={() => scrollToMessage(stickyMessage.id)}` 未触碰
+  （功能验收：改前 scrollTop 3215 → 点击后 418，改后 2898 → 335，均可滚回该条消息）。
+- 悬浮（hover）仍**只变背景色**，padding / 圆角 / 行高 / 盒尺寸逐值不变。
+
+### ④ 本家族残留：无
+
+①（左边距）/ ②（字重）/ ③（内边距）/ ④（行高）/ ⑤（圆角）五条均已实现并逐值对齐参照气泡。
+
+### 验证脚本与证据
+
+- `CC02/走查/_tools/0918/probe-sticky-user-padding-0918.mjs`（hover 是否真的变 padding + 点击功能验收）、
+  `probe-sticky-user-inset-shots-0918.mjs`（改前/改后/参照三态截图与几何，浅深两会话，
+  「改前」用 page 内注入 override 还原 `padding: 6px 10px` + `border-radius: 6px` + `line-height: normal`，
+  不动共用文件）、
+  `diag-sticky-user-target-0918.mjs`（定位 sticky 对应消息行）、
+  `check-sticky-ide-regression-0918.mjs`（宿主作用域回归：注入同名 class 合成节点读 computed，
+  断言 desktop = 8px 12px / 8px / 22px / 500、ide = 6px 10px / 6px / normal / 400，全通过）。
+- 数据：`CC02/走查/0918-sticky-user/{before,final}-desktop-full.json`（墨迹口径）、
+  `final-desktop-full-shots.json`（三态几何）；
+  图：`对比-sticky悬浮内边距.png`、`对比-sticky悬浮三项对齐.png`。
+- IDE 宿主（`ide-chat` / `ide-logged-out`）实测 sticky 仍 6px 10px / 圆角 6px / 行高 normal / 字重 400
+  （`[data-host="desktop"]` 作用域未越界）；全轮 **0 `pageerror`**。

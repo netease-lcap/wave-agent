@@ -2609,9 +2609,28 @@
 }
 
 /* ② 字重：sticky 内容 400（继承默认）→ 500，与普通用户气泡 14px/500 一致
-   （悬浮前后文字粗细保持不变）。字号 14px 已一致。 */
+   （悬浮前后文字粗细保持不变）。字号 14px 已一致。
+   ④ 行高（0918 追加授权「悬浮态行高也统一成 22px」）：base 继承 line-height
+   normal（≈19.6px），普通气泡是 22px → 首行墨迹上内衬差 2.5px、三行时卡片高差 7px。
+   对齐 22px 后墨迹内衬与未悬浮气泡逐值相同（L12 / T10.5），卡片 76 → 82px。 */
 [data-host="desktop"] .sticky-user-content {
   font-weight: 500;
+  line-height: 22px;
+}
+
+/* ③ 内边距：base `.sticky-user-message` padding 6px 10px，普通用户气泡是桌面档
+   `.user-text-block{padding:0}` + 内层 `.message-content.user-content{padding:8px 12px}`
+   → 同一句话「贴顶悬浮」时文字左内衬从 12px 掉到 10px（上内衬 10.5 → 7.5px），
+   一浮起来文字就往里跳（左 2px / 上 3px）。设计师 0918 评论「这里悬浮起来以后
+   内边距也发生了变化，希望不要变」→ 悬浮态 padding 对齐普通气泡的 8px 12px。
+   实测：文字墨迹内衬 左 10→12、上 7.5→10.5（= padding 8 + 半行距 2.5），
+   与未悬浮气泡逐值相同；卡片 552.5×72 → 552.5×82（含 ④ 行高 +6px）。
+   ⑤ 圆角（0918 追加授权「悬浮态圆角也用 8px」）：base 6px → 与未悬浮气泡
+   `.user-text-block` 同取 `--cc-radius-md`（8px）。
+   只改 CSS，`.sticky-user-message` 上的 onClick（点击滚回该条消息）不动。 */
+[data-host="desktop"] .sticky-user-message {
+  padding: 8px 12px;
+  border-radius: var(--cc-radius-md, 8px);
 }
 
 /* ═══ 第三十八轮：设置界面图标对齐 Figma 13383:4078 图标规范 ═══
