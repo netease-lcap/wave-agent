@@ -11,6 +11,7 @@ import {
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { WORKTREE_CHANGES_TIMEOUT_MS } from "../../src/components/DesktopSidebar";
+import { BRANCH_LIST_LOADING_DELAY_MS } from "../../src/components/ChatApp";
 import { createMockVscode, sendCommand, fireInput } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 
@@ -1836,8 +1837,8 @@ describe("DesktopApp", () => {
         workdir: "/work/a",
       });
       // Git-ness is not known until the branch query answers — the controls
-      // must not appear (not even as a loading placeholder) before the reply
-      // confirms the directory is a git repo.
+      // must not appear before the reply confirms the directory is a git repo
+      // (the delay-gated loading placeholder has not fired yet).
       expect(
         screen.queryByTestId("desktop-worktree-controls"),
       ).not.toBeInTheDocument();
@@ -1863,7 +1864,8 @@ describe("DesktopApp", () => {
         recentWorkdirs: ["/work/a"],
       });
       sendCommand("setInitialState", { messages: [] });
-      // Still undetermined while the query is in flight — nothing to show.
+      // Still undetermined while the query is in flight (and under the loading
+      // delay) — nothing to show yet.
       expect(
         screen.queryByTestId("desktop-worktree-controls"),
       ).not.toBeInTheDocument();
@@ -1942,11 +1944,144 @@ describe("DesktopApp", () => {
       ).not.toBeInTheDocument();
 
       // The new directory's own reply confirms it is NOT a git repo — the
-      // controls never appeared at any point during the switch.
+      // controls never appeared during the switch, and no loading placeholder
+      // showed either (real timers: the delay never elapses here).
       sendCommand("desktopGitBranches", { workdir: "/work/b", result: null });
       expect(
         screen.queryByTestId("desktop-worktree-controls"),
       ).not.toBeInTheDocument();
+    });
+
+    // desktop-sessions.md「基于分支的 worktree 隔离会话」场景 7/8 +「SSH 远程主机」
+    // 场景 25: the controls stay hidden while the branch query is in flight, but a
+    // slow query (a remote host standing up its SSH tunnel + daemon) must not
+    // leave the user with zero feedback — a loading placeholder appears once the
+    // delay elapses. A fast local reply lands under the delay, so it never
+    // flashes.
+    describe("branch query loading placeholder", () => {
+      beforeEach(() => {
+        vi.useFakeTimers();
+      });
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      const openNewSession = (workdir: string, recentWorkdirs: string[]) => {
+        sendCommand("desktopWorkdirState", { workdir, recentWorkdirs });
+        sendCommand("setInitialState", { messages: [] });
+      };
+
+      it("shows the placeholder once the delay elapses without a reply, then swaps to the controls", () => {
+        renderDesktopApp();
+        openNewSession("/work/a", ["/work/a"]);
+
+        // In flight but under the delay: nothing yet.
+        expect(
+          screen.queryByTestId("desktop-branches-loading"),
+        ).not.toBeInTheDocument();
+
+        act(() => {
+          vi.advanceTimersByTime(BRANCH_LIST_LOADING_DELAY_MS);
+        });
+        expect(
+          screen.getByTestId("desktop-branches-loading"),
+        ).toHaveTextContent("分支加载中");
+
+        sendCommand("desktopGitBranches", {
+          workdir: "/work/a",
+          result: branches,
+        });
+        expect(
+          screen.queryByTestId("desktop-branches-loading"),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.getByTestId("desktop-worktree-controls"),
+        ).toBeInTheDocument();
+      });
+
+      it("never flashes the placeholder when the reply beats the delay", () => {
+        renderDesktopApp();
+        openNewSession("/work/a", ["/work/a"]);
+
+        act(() => {
+          vi.advanceTimersByTime(BRANCH_LIST_LOADING_DELAY_MS - 1);
+        });
+        expect(
+          screen.queryByTestId("desktop-branches-loading"),
+        ).not.toBeInTheDocument();
+
+        sendCommand("desktopGitBranches", {
+          workdir: "/work/a",
+          result: branches,
+        });
+        // Even past the delay, the already-answered query must not resurface a
+        // placeholder (the timer was cleared by the workdir change).
+        act(() => {
+          vi.advanceTimersByTime(BRANCH_LIST_LOADING_DELAY_MS);
+        });
+        expect(
+          screen.queryByTestId("desktop-branches-loading"),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.getByTestId("desktop-worktree-controls"),
+        ).toBeInTheDocument();
+      });
+
+      it("clears the placeholder without showing controls when a slow directory turns out to be non-git", () => {
+        renderDesktopApp();
+        openNewSession("/work/a", ["/work/a"]);
+
+        act(() => {
+          vi.advanceTimersByTime(BRANCH_LIST_LOADING_DELAY_MS);
+        });
+        expect(
+          screen.getByTestId("desktop-branches-loading"),
+        ).toBeInTheDocument();
+
+        sendCommand("desktopGitBranches", { workdir: "/work/a", result: null });
+        expect(
+          screen.queryByTestId("desktop-branches-loading"),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.queryByTestId("desktop-worktree-controls"),
+        ).not.toBeInTheDocument();
+      });
+
+      it("keeps the current workdir's placeholder when a late reply for the previous directory arrives", () => {
+        renderDesktopApp();
+        openNewSession("/work/a", ["/work/a"]);
+        // Switch to another directory while /work/a's query is still in flight.
+        openNewSession("/work/b", ["/work/b", "/work/a"]);
+
+        act(() => {
+          vi.advanceTimersByTime(BRANCH_LIST_LOADING_DELAY_MS);
+        });
+        expect(
+          screen.getByTestId("desktop-branches-loading"),
+        ).toBeInTheDocument();
+
+        // A stale reply for the previous directory must not clear the current
+        // workdir's placeholder…
+        sendCommand("desktopGitBranches", {
+          workdir: "/work/a",
+          result: branches,
+        });
+        expect(
+          screen.getByTestId("desktop-branches-loading"),
+        ).toBeInTheDocument();
+
+        // …only the reply for the workdir actually on screen does.
+        sendCommand("desktopGitBranches", {
+          workdir: "/work/b",
+          result: branches,
+        });
+        expect(
+          screen.queryByTestId("desktop-branches-loading"),
+        ).not.toBeInTheDocument();
+        expect(
+          screen.getByTestId("desktop-worktree-controls"),
+        ).toBeInTheDocument();
+      });
     });
 
     it("selects a branch from the dropdown", () => {
