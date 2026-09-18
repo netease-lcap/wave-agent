@@ -659,6 +659,38 @@ export class SkillManager extends EventEmitter {
   }
 
   /**
+   * Drop every skill contributed by a plugin, addressed by its plugin name.
+   * Clears the plugin-specific maps too: refreshSkills() re-seeds the visible
+   * maps from them, so clearing only those would resurrect the skills on the
+   * next disk refresh. Called by the in-place plugin reload path before
+   * re-registering.
+   */
+  unregisterPluginSkills(pluginName: string): void {
+    const prefix = `${pluginName}:`;
+    for (const name of Array.from(this.pluginSkillMetadata.keys())) {
+      if (name.startsWith(prefix)) {
+        this.pluginSkillMetadata.delete(name);
+      }
+    }
+    for (const name of Array.from(this.pluginSkillContent.keys())) {
+      if (name.startsWith(prefix)) {
+        this.pluginSkillContent.delete(name);
+      }
+    }
+    for (const name of Array.from(this.skillMetadata.keys())) {
+      if (name.startsWith(prefix)) {
+        this.skillMetadata.delete(name);
+      }
+    }
+    for (const name of Array.from(this.skillContent.keys())) {
+      if (name.startsWith(prefix)) {
+        this.skillContent.delete(name);
+      }
+    }
+    logger?.debug(`Unregistered plugin skills from ${pluginName}`);
+  }
+
+  /**
    * Directory roots that may hold deletable copies of a skill in the given
    * discovery scope. Personal skills are scanned from three user-level dirs
    * (~/.wave|~/.claude|~/.agents/skills) and project skills from the current

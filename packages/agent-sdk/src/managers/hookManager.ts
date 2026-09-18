@@ -34,7 +34,13 @@ import { logger } from "../utils/globalLogger.js";
 export class HookManager {
   private configuration: PartialHookConfiguration | undefined;
   private programmaticHooks: PartialHookConfiguration = {};
-  private pluginHooks: PartialHookConfiguration = {};
+  /**
+   * Plugin hooks grouped by plugin root path. A map rather than one merged
+   * object because mergeHooksConfiguration only appends — a flat object can
+   * never be reversed, so the in-place plugin reload path could not drop
+   * exactly one plugin's hooks (and re-registering would double them).
+   */
+  private pluginHooks = new Map<string, PartialHookConfiguration>();
   private waveConfigHooks: PartialHookConfiguration = {};
   private readonly matcher: HookMatcher;
   private readonly workdir: string;
@@ -126,7 +132,9 @@ export class HookManager {
   private rebuildConfiguration(): void {
     const rebuilt: PartialHookConfiguration = {};
     this.mergeHooksConfiguration(rebuilt, this.programmaticHooks);
-    this.mergeHooksConfiguration(rebuilt, this.pluginHooks);
+    for (const hooks of this.pluginHooks.values()) {
+      this.mergeHooksConfiguration(rebuilt, hooks);
+    }
     this.mergeHooksConfiguration(rebuilt, this.waveConfigHooks);
     this.configuration = Object.keys(rebuilt).length > 0 ? rebuilt : undefined;
   }
@@ -922,8 +930,24 @@ export class HookManager {
       }));
     }
 
-    this.mergeHooksConfiguration(this.pluginHooks, stampedHooks);
+    // Replace (not append) the previous registration for this root, so
+    // re-registering the same plugin never doubles its hooks.
+    this.pluginHooks.set(pluginRoot, stampedHooks);
     this.rebuildConfiguration();
+  }
+
+  /**
+   * Drop every hook contributed by a plugin, addressed by its root path.
+   * Used by the in-place plugin reload path (before re-registering) and when a
+   * plugin is disabled or uninstalled.
+   * @returns true if this root had hooks registered
+   */
+  unregisterPluginHooks(pluginRoot: string): boolean {
+    const removed = this.pluginHooks.delete(pluginRoot);
+    if (removed) {
+      this.rebuildConfiguration();
+    }
+    return removed;
   }
 
   /**
@@ -931,7 +955,11 @@ export class HookManager {
    * Plugin hooks carry pluginRoot on each command and are read-only in the UI.
    */
   getPluginHooks(): PartialHookConfiguration {
-    return this.pluginHooks;
+    const merged: PartialHookConfiguration = {};
+    for (const hooks of this.pluginHooks.values()) {
+      this.mergeHooksConfiguration(merged, hooks);
+    }
+    return merged;
   }
 
   /**

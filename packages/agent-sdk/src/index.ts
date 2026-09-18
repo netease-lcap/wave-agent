@@ -60,6 +60,15 @@ export * from "./types/index.js";
 // Export subagent types (used by CLI /agents overlay)
 export type { SubagentConfiguration } from "./utils/subagentParser.js";
 export type { SubagentInstance } from "./managers/subagentManager.js";
+// Plugin reload result (returned by Agent.reloadPlugins)
+export type {
+  PluginLoadFailure,
+  PluginReloadResult,
+} from "./managers/pluginManager.js";
+export {
+  PLUGIN_CHANGE_PENDING_MESSAGE,
+  PLUGIN_RELOADED_MESSAGE,
+} from "./managers/pluginManager.js";
 
 // Export tool building utilities
 export * from "./tools/buildTool.js";

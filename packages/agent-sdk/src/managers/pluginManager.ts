@@ -20,6 +20,27 @@ export interface PluginManagerOptions {
   enabledPlugins?: Record<string, boolean>;
 }
 
+/** A plugin root that failed to load during the most recent load/reload. */
+export interface PluginLoadFailure {
+  path: string;
+  error: string;
+}
+
+export interface PluginReloadResult {
+  /** Plugin names loaded after the reload. */
+  plugins: string[];
+  /** Plugins that could not be loaded; the reload does not roll back. */
+  failures: PluginLoadFailure[];
+}
+
+/**
+ * 插件变更提示的逐字文案（docs/specs/ecosystem/plugin.md「插件变更提示」）。
+ * 四端共用以免文案漂移；两条都是中性提示，不占成功 / 失败语义色。
+ */
+export const PLUGIN_CHANGE_PENDING_MESSAGE =
+  "插件已变更。运行 /reload-plugins 使其生效。";
+export const PLUGIN_RELOADED_MESSAGE = "插件已重载。";
+
 export class PluginManager {
   /**
    * Read-only helper scripts shipped by builtin plugins that the agent runs via
@@ -36,6 +57,10 @@ export class PluginManager {
   private plugins = new Map<string, Plugin>();
   private workdir: string;
   private enabledPlugins: Record<string, boolean>;
+  /** Explicit configs from the last load, replayed by reloadAllPlugins(). */
+  private lastLoadConfigs: PluginConfig[] = [];
+  /** Failures collected by the current loadPlugins() run. */
+  private loadFailures: PluginLoadFailure[] = [];
 
   constructor(
     private container: Container,
@@ -277,6 +302,10 @@ export class PluginManager {
       this.plugins.set(manifest.name, plugin);
       logger?.debug(`Loaded plugin: ${manifest.name} v${manifest.version}`);
     } catch (error) {
+      this.loadFailures.push({
+        path: absolutePath,
+        error: error instanceof Error ? error.message : String(error),
+      });
       logger?.error(`Failed to load plugin from ${absolutePath}`, error);
     }
   }
@@ -284,8 +313,12 @@ export class PluginManager {
   /**
    * Load plugins from configuration
    * @param configs Array of plugin configurations
+   * @returns the plugins that failed to load
    */
-  async loadPlugins(configs: PluginConfig[]): Promise<void> {
+  async loadPlugins(configs: PluginConfig[]): Promise<PluginLoadFailure[]> {
+    this.lastLoadConfigs = configs;
+    this.loadFailures = [];
+
     // Load plugins from configuration (e.g. --plugin-dir) first to give them higher priority
     for (const config of configs) {
       if (config.type !== "local") {
@@ -305,6 +338,80 @@ export class PluginManager {
 
     // Load built-in plugins bundled with the SDK (lowest priority)
     await this.loadBuiltinPlugins();
+
+    return [...this.loadFailures];
+  }
+
+  /**
+   * Unload a single plugin: drop everything it contributed from the six
+   * capability registries, then forget it. Other plugins and the running
+   * session are untouched.
+   * @returns true if the plugin was loaded
+   */
+  async unloadPlugin(name: string): Promise<boolean> {
+    const plugin = this.plugins.get(name);
+    if (!plugin) {
+      return false;
+    }
+
+    // Managers key their entries off the plugin name (commands/skills/agents)
+    // or the plugin root path (hooks/LSP/MCP), so each needs its own removal.
+    this.slashCommandManager?.unregisterPluginCommands(plugin.name);
+    this.skillManager?.unregisterPluginSkills(plugin.name);
+    this.subagentManager?.unregisterPluginAgents(plugin.name);
+    this.hookManager?.unregisterPluginHooks(plugin.path);
+    await this.lspManager?.unregisterServersForPlugin(plugin.path);
+    this.mcpManager?.removeServersForPlugin(plugin.path);
+
+    // Revoke the builtin helper-script grants this plugin added, so disabling
+    // it does not leave a standing permission behind.
+    for (const rule of PluginManager.BUILTIN_PLUGIN_ALLOW_RULES[plugin.name] ||
+      []) {
+      this.permissionManager?.removeInstanceAllowedRule(rule);
+    }
+
+    this.plugins.delete(name);
+    logger?.debug(`Unloaded plugin: ${name}`);
+    return true;
+  }
+
+  /**
+   * Re-read every plugin in place — the `/reload-plugins` command.
+   *
+   * Unloads everything currently loaded, re-reads `enabledPlugins` from the
+   * configuration chain (so a settings edit is honored), then replays the
+   * original load order (explicit configs → installed → builtin). The session,
+   * transcript and sessionId are untouched; only the capability registries are
+   * swapped, which is what makes this an in-place reload instead of a rebuild.
+   *
+   * Unload must happen before any caller-side mutation of the plugin cache dir:
+   * hooks, MCP, LSP, skills and agents all bake absolute plugin paths at
+   * registration time, so an entry left pointing at a deleted directory is
+   * worse than a merely stale one.
+   */
+  async reloadAllPlugins(): Promise<PluginReloadResult> {
+    for (const name of Array.from(this.plugins.keys())) {
+      await this.unloadPlugin(name);
+    }
+
+    this.enabledPlugins = this.refreshEnabledPlugins();
+    const failures = await this.loadPlugins(this.lastLoadConfigs);
+
+    return {
+      plugins: Array.from(this.plugins.keys()),
+      failures,
+    };
+  }
+
+  /**
+   * Re-read enabled plugins from the merged configuration chain, falling back
+   * to the last known value when the service is unavailable.
+   */
+  private refreshEnabledPlugins(): Record<string, boolean> {
+    const merged = this.configurationService?.getMergedEnabledPlugins(
+      this.workdir,
+    );
+    return merged ?? this.enabledPlugins;
   }
 
   /**

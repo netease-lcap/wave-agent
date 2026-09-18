@@ -303,6 +303,21 @@ export class PermissionManager {
   }
 
   /**
+   * Remove an instance-level allowed rule added via addInstanceAllowedRule.
+   * Used when a builtin plugin that contributed a helper-script grant is
+   * unloaded, so the grant does not outlive the plugin.
+   * @returns true if the rule was present
+   */
+  public removeInstanceAllowedRule(rule: string): boolean {
+    const index = this.instanceAllowedRules.indexOf(rule);
+    if (index === -1) {
+      return false;
+    }
+    this.instanceAllowedRules.splice(index, 1);
+    return true;
+  }
+
+  /**
    * Get all additional directories
    */
   public getAdditionalDirectories(): string[] {

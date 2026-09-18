@@ -10,7 +10,10 @@ import { CronManager } from "./managers/cronManager.js";
 import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
 import { MessageQueue, type QueuedMessage } from "./managers/messageQueue.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
-import { PluginManager } from "./managers/pluginManager.js";
+import {
+  PluginManager,
+  type PluginReloadResult,
+} from "./managers/pluginManager.js";
 import { HookManager } from "./managers/hookManager.js";
 import { ReversionManager } from "./managers/reversionManager.js";
 import { PermissionManager } from "./managers/permissionManager.js";
@@ -136,6 +139,28 @@ export class Agent {
    */
   public async reloadConfiguration(): Promise<void> {
     await this.liveConfigManager.reload();
+  }
+
+  /**
+   * Re-read every plugin from disk and swap its contribution into this running
+   * session in place — the `/reload-plugins` command. Commands, skills,
+   * agents, hooks, MCP servers and LSP servers all follow; the session itself
+   * (sessionId, transcript, in-flight work) is untouched, so this is not a
+   * rebuild. Every live session in the process must call this to see the new
+   * state; sessions created afterwards pick it up from disk on their own.
+   *
+   * Busts the prompt cache for the tool-schema prefix (the skill and agent
+   * lists are inlined) — deliberately accepted, see
+   * docs/specs/ecosystem/plugin.md「插件变更的就地重载」.
+   */
+  public async reloadPlugins(): Promise<PluginReloadResult> {
+    const result = await this.pluginManager.reloadAllPlugins();
+    // Plugin skills arrive after SkillManager.initialize(), so their slash
+    // commands have to be re-derived explicitly (same as at startup).
+    this.slashCommandManager.registerSkillCommands(
+      this.skillManager.getAvailableSkills(),
+    );
+    return result;
   }
 
   /**
