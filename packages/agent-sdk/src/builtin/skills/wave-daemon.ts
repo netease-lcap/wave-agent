@@ -96,12 +96,15 @@ So the final report is what the default \`status <id>\` already gives you; raise
 | ---- | ------- |
 | \`0\` | the session went idle — the snapshot on stdout is the final report |
 | \`3\` | the session is hanging on a permission approval — the snapshot lists the pending request ids; answer them with \`respond\` (§6) and \`wait\` again |
-| \`1\` | error — daemon unreachable, unknown sessionId, or \`--timeout\` elapsed |
+| \`1\` | error — daemon unreachable, unknown sessionId, the session was destroyed while you waited, or \`--timeout\` elapsed |
 
 - A session that is already idle when you call it returns \`0\` immediately (it never hangs).
 - **\`--from-busy\` for the send-then-wait race.** An async \`send\` returns as soon as the message is *delivered*, so for a moment the session still reports idle and a plain \`wait\` would return before the turn even started. \`--from-busy\` makes the wait first observe a busy phase, then idle.
 - \`--timeout <seconds>\` bounds the wait (default: wait forever); on expiry it exits \`1\`.
 - \`--lines N\` (default 1) and \`--lines 0\` behave exactly as in \`status\`; progress lines go to stderr, stdout carries only the snapshot.
+- **Waiting on a session someone else destroys.** If another client runs \`wave daemon destroy <id>\` while you are blocked in \`wait\` (the daemon itself staying up), the wait does not hang: it notices the session left the registry and exits \`1\` with \`Session <id> no longer exists (destroyed while waiting)\` — a gone session is never reported as finished.
+
+**Unattended monitoring needs no wrapper script.** Those three exits cover every way a session can end: \`0\` = finished (stdout is the report), \`3\` = blocked on an approval (go \`respond\`, then \`wait\` again), \`1\` = error, including the session being destroyed out from under you. So \`msg=$(wave daemon wait <id>)\` plus a branch on the exit code replaces the hand-rolled poller completely — there is no fourth case left to poll for.
 
 If the CLI on that host predates \`wave daemon wait\`, fall back to a **background poll** — run it in the background rather than blocking on \`send --wait\`:
 
@@ -116,7 +119,7 @@ while true; do
 done
 \`\`\`
 
-That loop is a pattern to re-create per session with whatever background-execution mechanism your host offers (on Windows, PowerShell's \`Start-Sleep\` in place of \`sleep\`), and one poller per session so they do not interfere. Prefer \`wait\`: one process, no poll latency, and an exit code that tells idle (0) apart from waiting-for-approval (3). \`waiting for approval\` is an action signal (go answer it, §6); \`idle\` means the turn settled and is worth a look.
+That loop is a pattern to re-create per session with whatever background-execution mechanism your host offers (on Windows, PowerShell's \`Start-Sleep\` in place of \`sleep\`), and one poller per session so they do not interfere. Prefer \`wait\`: one process, no poll latency, and an exit code that tells idle (0) apart from waiting-for-approval (3) and from error (1, a destroyed session included). \`waiting for approval\` is an action signal (go answer it, §6); \`idle\` means the turn settled and is worth a look.
 
 Do not hand-parse the transcript jsonl (\`~/.wave/projects/<project>/<sessionId>.jsonl\`) to recover a report — \`status <id>\` / \`wait <id>\` are the supported paths. If you ever do read the raw file: each line is one message (\`{"timestamp":…,"role":…,"blocks":[…]}\`) and text lives in \`blocks[].content\` on the \`{"type":"text"}\` block. There is no \`blocks[].text\` field, so a lookup by \`text\` silently returns nothing and looks like "the session never reported".
 
@@ -181,7 +184,8 @@ Whose session is it? Only tear down sessions you created with \`wave daemon crea
 - Create with \`--worktree\` and \`--permission-mode bypassPermissions\` (the mode default is already bypass, so no approvals appear).
 - \`send\` is async by default; after any interruption, check \`status\` before resending.
 - \`abort\` before re-scoping a running session.
-- Read the final report by blocking: \`wave daemon wait <id>\` (exit 0 = idle, 3 = stuck on an approval, 1 = error; defaults to the last message, raise \`--lines\` if that one is not it). Use \`status <id>\` when you want a snapshot without blocking.
+- Read the final report by blocking: \`wave daemon wait <id>\` (exit 0 = idle, 3 = stuck on an approval, 1 = error — session unknown or destroyed mid-wait; defaults to the last message, raise \`--lines\` if that one is not it). Use \`status <id>\` when you want a snapshot without blocking.
+- To watch a session unattended, loop on \`wait\` and branch on its exit code — no shell polling script to maintain (§5).
 - An approval flood means the daemon process restarted and the mode fell back — recover with \`--mode bypassPermissions\`.
 - After a CLI upgrade, \`wave daemon restart\` (kill the old process first if \`restart\` times out).
 - \`destroy --remove-worktree\` last, after user confirmation, only for sessions you created.

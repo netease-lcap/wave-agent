@@ -182,6 +182,27 @@ async function listPendingPermissions(
   return result.requests ?? [];
 }
 
+/**
+ * Whether `sessionId` is still in the daemon's in-memory session registry.
+ *
+ * The registry (not notifications) is the authority on this: `destroy` drops
+ * the entry, and the only notifications that come with it are side effects of
+ * the agent teardown — `loadingChange:false` (destroy aborts, which clears the
+ * loading flag) plus a few no-op state re-emits. A `loading:false` push is
+ * indistinguishable from "the turn finished", so it can never be read as "the
+ * session is gone"; and it happens once, during the destroy, so a waiter that
+ * does not act on it is left with no further event and blocks forever.
+ */
+async function isSessionHosted(
+  client: SocketClient,
+  sessionId: string,
+): Promise<boolean> {
+  const result = (await client.request("listDaemonSessions")) as {
+    sessions: DaemonSessionEntry[];
+  };
+  return (result.sessions ?? []).some((s) => s.sessionId === sessionId);
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -543,13 +564,18 @@ export interface WaitOptions {
 }
 
 /**
- * How often the wait falls back to `listPendingPermissions`. Approvals have no
- * push channel (spec: 单凭消息无法区分等审批与执行中), so this is the only way to
- * notice a session that froze on an approval while still reporting loading.
- * A local socket round-trip is cheap but busy-polling it is still wrong — never
- * faster than 1s.
+ * How often the wait falls back to the registry queries that have no usable
+ * push channel: `listPendingPermissions` (approvals) and `listDaemonSessions`
+ * (whether the session still exists). Approvals push nothing at all (spec:
+ * 单凭消息无法区分等审批与执行中); a destroyed session pushes only
+ * `loadingChange:false`, which is what a finished turn looks like — so neither
+ * fact can be read off notifications. This is "go ask about the facts that have
+ * no push channel", not the "poll the status every N seconds" pattern the
+ * push-driven wait exists to replace (spec: `wait` 的退出码是契约). A local
+ * socket round-trip is cheap but busy-polling it is still wrong — never faster
+ * than 1s. Mutable so tests can shorten it.
  */
-const WAIT_PENDING_POLL_INTERVAL_MS = 2_000;
+export const waitPollInterval = { ms: 2_000 };
 
 /**
  * `wave daemon wait <sessionId> [--lines N] [--from-busy] [--timeout <秒>]`.
@@ -566,9 +592,16 @@ const WAIT_PENDING_POLL_INTERVAL_MS = 2_000;
  * initialize/restoreSession so the replay carries the current loading snapshot
  * (the shape `daemonStatusCommand` uses), and the generating→idle transition
  * ends the wait from the notification itself — the daemon is never polled for
- * status. The only polling is the low-frequency approval fallback above, and
- * the settle decision is re-taken after every wake (pending first: a session
- * that turns out to still be generating keeps waiting).
+ * status. The only polling is the low-frequency fallback for the two facts that
+ * cannot be read off notifications (pending approvals, session existence), and
+ * the settle decision is re-taken after every wake.
+ *
+ * Decision order is existence → pending (3) → idle (0) → timeout (1).
+ * Existence comes first because a destroyed session's only announcement is
+ * `loadingChange:false` (destroy aborts the turn), which is indistinguishable
+ * from a finish: read as idle it reports a false "done" for a session that is
+ * gone, and a waiter that does not act on it gets no further event at all and
+ * hangs (which is what happened before this check existed).
  */
 export async function daemonWaitCommand(
   socketPath: string,
@@ -642,6 +675,27 @@ export async function daemonWaitCommand(
       timeoutMs !== undefined ? Date.now() + timeoutMs : undefined;
     let announced = false;
     while (true) {
+      // Session existence FIRST (spec: 阻塞等待会话空闲 场景 10). A session
+      // destroyed by another client — `wave daemon destroy <id>` while this
+      // daemon keeps running — announces itself only as `loadingChange:false`
+      // (destroy aborts the turn, which clears the loading flag) plus a few
+      // no-op state re-emits. That is not a usable signal: `loading:false` is
+      // exactly what "the turn finished" looks like, so a waiter that does not
+      // act on the wake is left with no further event and blocks forever —
+      // which is what happened before this check existed. Ask the registry
+      // instead. It rides the same low-frequency fallback tick as the approval
+      // check — both are facts with no push channel to key off (approvals never
+      // push; destroy's only push is indistinguishable from a normal idle) —
+      // which is why asking about them is not the "poll status every N seconds"
+      // pattern this command replaces. The order matters: that very
+      // `loadingChange:false` may already have flipped `loading`, so deciding
+      // idle first would report a settled session that no longer exists — a
+      // false success is worse than hanging.
+      if (!(await isSessionHosted(socket, initId))) {
+        fail(
+          `wave daemon wait failed: Session ${sessionId} no longer exists (destroyed while waiting)`,
+        );
+      }
       // Approvals beat idle, and the check runs BEFORE the idle decision — a
       // session frozen on an approval keeps `loading: true` (so it would never
       // settle) and one that just turned `loading: false` must not be mistaken
@@ -669,7 +723,7 @@ export async function daemonWaitCommand(
         announced = true;
         console.error(`Waiting for session ${initId} to become idle…`);
       }
-      const tick = sleepCancellable(WAIT_PENDING_POLL_INTERVAL_MS);
+      const tick = sleepCancellable(waitPollInterval.ms);
       const timer =
         deadline !== undefined
           ? sleepCancellable(Math.max(0, deadline - Date.now()))
