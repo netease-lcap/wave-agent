@@ -9,6 +9,7 @@ import { ToolManager } from "../../src/managers/toolManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import { Container } from "../../src/utils/container.js";
+import { logWarn } from "../../src/utils/globalLogger.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 
 // Mock dependencies
@@ -42,6 +43,15 @@ vi.mock("../../src/services/memory.js", () => ({
 // timeout so a genuine failure reports the assertion instead of a test timeout.
 const LOG_FLUSH_TIMEOUT_MS = 3000;
 
+// SubagentManager opens its background log stream with `fs.createWriteStream`
+// and two tests below abandon one mid-open: releaseInstance() destroys the
+// stream before Node's open callback has run. That open is already in flight on
+// the libuv threadpool, so the file is created anyway, and the stream's 'close'
+// event only fires once that open has landed. afterAll waits for those 'close'
+// events before removing the directory; this is the cap on that wait so a
+// stream that never settles cannot hang the suite.
+const LOG_STREAM_CLOSE_TIMEOUT_MS = 2000;
+
 // SubagentManager writes its background log to
 // `path.join(os.tmpdir(), `wave-subagent-${taskId}.log`)` opened with
 // `flags: "a"`. BackgroundTaskManager is mocked here, so its ids are constants
@@ -57,6 +67,32 @@ const ISOLATED_TMP_DIR = path.join(
 );
 fs.mkdirSync(ISOLATED_TMP_DIR, { recursive: true });
 vi.spyOn(os, "tmpdir").mockReturnValue(ISOLATED_TMP_DIR);
+
+// Record every stream the code under test opens so afterAll can wait for their
+// pending opens to land before it removes the directory (see afterAll below).
+// `vi.spyOn(fs, "createWriteStream")` cannot do it: vitest's ESM interop exposes
+// the `fs` bindings as non-configurable ("Cannot spy on export ... Module
+// namespace is not configurable in ESM"), so the module is mocked instead and
+// everything is forwarded to the real `fs` except for a `createWriteStream`
+// wrapper. The list lives in `vi.hoisted` because the factory runs while the
+// imports above are still being resolved.
+const { logStreams } = vi.hoisted(() => ({
+  logStreams: [] as fs.WriteStream[],
+}));
+vi.mock("fs", async (importOriginal) => {
+  const real = await importOriginal<typeof fs>();
+  return {
+    ...real,
+    default: real,
+    createWriteStream: ((
+      ...args: Parameters<typeof real.createWriteStream>
+    ) => {
+      const stream = real.createWriteStream(...args);
+      logStreams.push(stream);
+      return stream;
+    }) as typeof real.createWriteStream,
+  };
+});
 
 describe("SubagentManager - Backgrounding Coverage", () => {
   let subagentManager: SubagentManager;
@@ -120,16 +156,77 @@ describe("SubagentManager - Backgrounding Coverage", () => {
   });
 
   afterAll(async () => {
-    // SubagentManager opens the log stream lazily, and two of the tests below
-    // abandon one mid-open (releaseInstance destroys the stream before Node's
-    // open callback runs), so its file only materialises on the next event-loop
-    // turn. Yield a few turns first: removing the directory while an open is
-    // still queued makes that open fail with an unhandled ENOENT, which fails
-    // the whole run.
-    for (let i = 0; i < 3; i += 1) {
-      await new Promise((resolve) => setImmediate(resolve));
+    try {
+      // Wait for every log stream opened above to close before removing the
+      // directory, because both removal failures are races with an open that is
+      // still in flight:
+      //  - removing the directory while an open is queued makes that open fail
+      //    with ENOENT. Nothing in the code under test listens for 'error' on
+      //    the log stream, so that surfaces as an unhandled error and fails the
+      //    whole run;
+      //  - removing it while a file is being created fails the removal itself
+      //    with ENOTEMPTY, and Node's built-in retries cannot recover from that
+      //    one: rimraf reads the directory listing once and then only retries
+      //    the rmdir, so an entry created after that listing is never removed
+      //    (`maxRetries` only covers the Windows case where an already-deleted
+      //    file keeps its name until its handle is released).
+      // Waiting for 'close' is a real barrier rather than a timing heuristic:
+      // a stream destroyed mid-open closes as soon as that open lands, and
+      // 'close' is emitted only after the fd is closed — i.e. strictly after the
+      // file itself exists. Once every tracked stream has closed, nothing can
+      // add another entry to ISOLATED_TMP_DIR and the removal has no writer to
+      // race. Awaiting 'error' too is deliberate: a stream whose open failed is
+      // settled as well, and afterAll must not turn that into an unhandled
+      // error. The per-stream deadline is the safety net for a stream that
+      // never settles.
+      await Promise.all(
+        logStreams.map((stream) => {
+          if (!stream.closed) {
+            // Two tests background an instance and never let it finish, so their
+            // stream is still open here and would otherwise sit out the whole
+            // deadline; destroying it starts a normal close (and is a no-op for
+            // an open that is still in flight).
+            stream.destroy();
+          }
+          return new Promise<void>((resolve) => {
+            if (stream.closed) {
+              resolve();
+              return;
+            }
+            const deadline = setTimeout(resolve, LOG_STREAM_CLOSE_TIMEOUT_MS);
+            const settle = () => {
+              clearTimeout(deadline);
+              resolve();
+            };
+            stream.once("close", settle);
+            stream.once("error", settle);
+            // 'close' may have been emitted while the listeners were attached.
+            if (stream.closed) {
+              settle();
+            }
+          });
+        }),
+      );
+
+      // Retrying is a belt for the Windows case the barrier cannot see — a
+      // deleted file whose handle is not released promptly keeps its name in the
+      // directory — but never fail the suite if the cleanup does not work out:
+      // isolation comes from the unique directory name (`process.pid` +
+      // `Date.now()`), not from deleting every byte, so a directory left behind
+      // cannot pollute a later run's assertions and there is nothing to gain
+      // from reporting its cleanup failure as a test failure.
+      fs.rmSync(ISOLATED_TMP_DIR, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 50,
+      });
+    } catch (error) {
+      logWarn(
+        `[subagentManager.background.test] could not remove ${ISOLATED_TMP_DIR} (harmless, directory name is unique per run):`,
+        error,
+      );
     }
-    fs.rmSync(ISOLATED_TMP_DIR, { recursive: true, force: true });
   });
 
   it("should handle backgroundInstance error when backgroundTaskManager is missing", async () => {
