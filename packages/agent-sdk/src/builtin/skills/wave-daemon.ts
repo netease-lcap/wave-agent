@@ -57,6 +57,8 @@ wave daemon send <sessionId> <message> --wait 600     # wait up to 600s and prin
 
 **An interrupted send is not a lost message.** If the shell or tool running \`wave daemon send\` is interrupted or times out, the message may already have been delivered and be executing in the daemon. Verify with \`wave daemon status <sessionId>\` before resending — a duplicate send duplicates the work.
 
+To block on the work instead of checking it, follow the send with \`wave daemon wait <sessionId> --from-busy\` — the flag covers the moment right after an async send where the session still reports idle (§5).
+
 ## 4. Changing your mind: abort first
 
 A \`send\` to a *generating* session is queued, not applied immediately — the current turn runs to completion first. To correct a task or change its scope mid-flight:
@@ -73,7 +75,8 @@ wave daemon send <sessionId> <corrected task>
 \`\`\`bash
 wave daemon list                   # sessions currently live in the daemon's in-memory registry
 wave daemon status <sessionId>     # one session: status, pending approvals, and the last message
-wave daemon status <id> --lines 0  # status line only — no message text (status-only polling)
+wave daemon wait <sessionId>       # block until it settles, then print that same snapshot
+wave daemon status <id> --lines 0  # status line only — no message text (single-shot snapshot)
 wave daemon status <id> --lines 5  # widen the context window when the last message is not enough
 \`\`\`
 
@@ -81,15 +84,26 @@ wave daemon status <id> --lines 5  # widen the context window when the last mess
 
 \`--lines N\` prints the last N messages. **The default is 1** — the last message alone — because message text is never truncated, so a single long report is already tens of thousands of characters; the default has to stay bounded. N counts messages, not output lines.
 
-- \`--lines 0\` prints no message text at all — just the header and the \`Status:\` line. Use it when a poll only needs the status (cheaper than pulling a report you will not read).
+- \`--lines 0\` prints no message text at all — just the header and the \`Status:\` line. Use it when a snapshot only needs the status (cheaper than pulling a report you will not read).
 - text is whitespace-collapsed, and tool-only messages print nothing (they still count toward N);
 - it is the last N **messages**, so behind a long tail of intermediate narration ("still investigating…") the final report can fall outside the window.
 
 So the final report is what the default \`status <id>\` already gives you; raise \`--lines\` only when the last message is not the report you want.
 
-Do not hand-parse the transcript jsonl (\`~/.wave/projects/<project>/<sessionId>.jsonl\`) to recover a report — \`status <id>\` is the supported path. If you ever do read the raw file: each line is one message (\`{"timestamp":…,"role":…,"blocks":[…]}\`) and text lives in \`blocks[].content\` on the \`{"type":"text"}\` block. There is no \`blocks[].text\` field, so a lookup by \`text\` silently returns nothing and looks like "the session never reported".
+**To wait for the report, use \`wave daemon wait <sessionId>\`** — do not build a polling loop. It attaches, blocks until the daemon pushes the generating→idle transition (nothing is polled), then prints exactly what \`status <id> --lines N\` prints, so \`msg=$(wave daemon wait <id>)\` captures the report itself. Its exit code is the contract:
 
-For long tasks, poll from a **background** command rather than blocking on \`--wait\`. Any periodic poll works — the shape is:
+| exit | meaning |
+| ---- | ------- |
+| \`0\` | the session went idle — the snapshot on stdout is the final report |
+| \`3\` | the session is hanging on a permission approval — the snapshot lists the pending request ids; answer them with \`respond\` (§6) and \`wait\` again |
+| \`1\` | error — daemon unreachable, unknown sessionId, or \`--timeout\` elapsed |
+
+- A session that is already idle when you call it returns \`0\` immediately (it never hangs).
+- **\`--from-busy\` for the send-then-wait race.** An async \`send\` returns as soon as the message is *delivered*, so for a moment the session still reports idle and a plain \`wait\` would return before the turn even started. \`--from-busy\` makes the wait first observe a busy phase, then idle.
+- \`--timeout <seconds>\` bounds the wait (default: wait forever); on expiry it exits \`1\`.
+- \`--lines N\` (default 1) and \`--lines 0\` behave exactly as in \`status\`; progress lines go to stderr, stdout carries only the snapshot.
+
+If the CLI on that host predates \`wave daemon wait\`, fall back to a **background poll** — run it in the background rather than blocking on \`send --wait\`:
 
 \`\`\`bash
 while true; do
@@ -102,9 +116,11 @@ while true; do
 done
 \`\`\`
 
-There is no bundled watcher script — this loop is a pattern to re-create per session with whatever background-execution mechanism your host offers (on Windows, PowerShell's \`Start-Sleep\` in place of \`sleep\`), and one poller per session so they do not interfere. \`waiting for approval\` is an action signal (go answer it, §6); \`idle\` means the turn settled and is worth a look.
+That loop is a pattern to re-create per session with whatever background-execution mechanism your host offers (on Windows, PowerShell's \`Start-Sleep\` in place of \`sleep\`), and one poller per session so they do not interfere. Prefer \`wait\`: one process, no poll latency, and an exit code that tells idle (0) apart from waiting-for-approval (3). \`waiting for approval\` is an action signal (go answer it, §6); \`idle\` means the turn settled and is worth a look.
 
-An \`idle\` reading can also be a transient pause between turns (waiting on a verification run, a CI job, or a pending approval). Re-check \`status\` before concluding the task is finished, and re-arm the poll if the session goes back to \`generating\`.
+Do not hand-parse the transcript jsonl (\`~/.wave/projects/<project>/<sessionId>.jsonl\`) to recover a report — \`status <id>\` / \`wait <id>\` are the supported paths. If you ever do read the raw file: each line is one message (\`{"timestamp":…,"role":…,"blocks":[…]}\`) and text lives in \`blocks[].content\` on the \`{"type":"text"}\` block. There is no \`blocks[].text\` field, so a lookup by \`text\` silently returns nothing and looks like "the session never reported".
+
+An \`idle\` reading can also be a transient pause between turns (waiting on a verification run, a CI job, or a pending approval). Re-check \`status\` before concluding the task is finished, and if the session goes back to \`generating\`, block on it again (or \`wait --from-busy\` if the busy phase has not started yet).
 
 ## 6. Permission approvals
 
@@ -165,7 +181,7 @@ Whose session is it? Only tear down sessions you created with \`wave daemon crea
 - Create with \`--worktree\` and \`--permission-mode bypassPermissions\` (the mode default is already bypass, so no approvals appear).
 - \`send\` is async by default; after any interruption, check \`status\` before resending.
 - \`abort\` before re-scoping a running session.
-- Read the final report with \`status <id>\` (defaults to the last message; raise \`--lines\` if that one is not it).
+- Read the final report by blocking: \`wave daemon wait <id>\` (exit 0 = idle, 3 = stuck on an approval, 1 = error; defaults to the last message, raise \`--lines\` if that one is not it). Use \`status <id>\` when you want a snapshot without blocking.
 - An approval flood means the daemon process restarted and the mode fell back — recover with \`--mode bypassPermissions\`.
 - After a CLI upgrade, \`wave daemon restart\` (kill the old process first if \`restart\` times out).
 - \`destroy --remove-worktree\` last, after user confirmation, only for sessions you created.

@@ -116,6 +116,7 @@ import {
   daemonDestroyCommand,
   daemonListCommand,
   daemonStatusCommand,
+  daemonWaitCommand,
   daemonSendCommand,
   daemonRespondCommand,
   daemonAbortCommand,
@@ -605,6 +606,204 @@ test("status: nonexistent session fails, destroys the junk fresh session, regist
   const result = msgs[0] as { result: { sessions: unknown[] } };
   expect(result.result.sessions).toEqual([]);
   client.close();
+});
+
+// ── wait ───────────────────────────────────────────────────────
+
+test("wait: an already-idle session settles immediately with exit 0 and the status snapshot", async () => {
+  const agent = createMockAgent();
+  agent.messages.push(userMsg("u1", "任务"), assistantMsg("a1", "最终汇报"));
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonWaitCommand(socketPath, "test-session-id"),
+  ).rejects.toThrow("exit(0)");
+  const out = stdoutLines();
+  expect(out).toContain("Session: test-session-id");
+  expect(out).toContain("Working directory: /test/workdir");
+  expect(out).toContain("Status: idle");
+  expect(out).toContain("Recent messages (1):");
+  expect(out.join("\n")).toContain("[assistant] 最终汇报");
+  // Never entered the wait loop — the progress line only appears when blocking.
+  expect(stderrText()).not.toContain("Waiting for session");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("wait: a generating session blocks until the idle push arrives, then prints the last reply and exits 0", async () => {
+  let agent!: ReturnType<typeof createMockAgent>;
+  let callbacks!: AgentCallbacks;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks!;
+    agent = createMockAgent({ isLoading: true });
+    return agent;
+  });
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  const waitPromise = daemonWaitCommand(socketPath, "test-session-id");
+  // The command attached and is blocked in the wait loop: progress on stderr,
+  // nothing on stdout until the final snapshot.
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session test-session-id");
+  });
+  expect(stdoutLines()).toEqual([]);
+
+  // The daemon pushes the generating→idle transition — that alone ends the wait
+  // (no status polling involved).
+  agent.messages.push(userMsg("u1", "继续"), assistantMsg("a1", "最终汇报"));
+  callbacks.onLoadingChange?.(false);
+
+  await expect(waitPromise).rejects.toThrow("exit(0)");
+  const out = stdoutLines();
+  expect(out).toContain("Status: idle");
+  expect(out.join("\n")).toContain("[assistant] 最终汇报");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("wait: a session waiting for approval exits 3 immediately with the pending list", async () => {
+  await createPendingRequest("Bash", { command: "ls -la" });
+
+  await expect(
+    daemonWaitCommand(socketPath, "test-session-id"),
+  ).rejects.toThrow("exit(3)");
+  const out = stdoutLines();
+  expect(out).toContain("Status: waiting for approval");
+  expect(out).toContain("Pending approval requests:");
+  expect(
+    out.some(
+      (l) => l.includes("perm_1") && l.includes("Bash") && l.includes("ls -la"),
+    ),
+  ).toBe(true);
+  expect(exitSpy).toHaveBeenCalledWith(3);
+});
+
+test("wait: an AskUserQuestion approval is rendered in full before exiting 3 (same rendering as status)", async () => {
+  await createPendingRequest("AskUserQuestion", {
+    questions: [
+      {
+        question: "删除会话后转录内容如何处理？",
+        header: "删除会话",
+        options: [
+          { label: "保留现状（推荐）", description: "jsonl 与目录共存" },
+          { label: "一并清理", description: "删除 jsonl 并清理痕迹" },
+        ],
+      },
+    ],
+  });
+
+  await expect(
+    daemonWaitCommand(socketPath, "test-session-id"),
+  ).rejects.toThrow("exit(3)");
+  const block = stdoutLines().join("\n");
+  expect(block).toContain("Status: waiting for approval");
+  expect(block).toContain("perm_1  AskUserQuestion");
+  expect(block).toContain("Q1 [删除会话] 删除会话后转录内容如何处理？");
+  expect(block).toContain("0. 保留现状（推荐） — jsonl 与目录共存");
+  expect(block).toContain("1. 一并清理 — 删除 jsonl 并清理痕迹");
+  expect(block).not.toContain('"questions":');
+  expect(exitSpy).toHaveBeenCalledWith(3);
+});
+
+test("wait: a nonexistent session exits 1 and cleans up the junk fresh session", async () => {
+  const junk = createMockAgent({
+    sessionId: "fresh",
+    restoreSession: vi
+      .fn()
+      .mockRejectedValue(new Error("Session not found: ghost")),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(junk);
+
+  await expect(daemonWaitCommand(socketPath, "ghost")).rejects.toThrow(
+    "exit(1)",
+  );
+  expect(stderrText()).toContain(
+    "Session not found or not hosted by this daemon: ghost",
+  );
+  expect(exitSpy).toHaveBeenCalledWith(1);
+});
+
+test("wait: --from-busy does not return on the stale idle snapshot — it waits for busy, then idle", async () => {
+  let callbacks!: AgentCallbacks;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks!;
+    // Idle at attach: right after an async `send` the replayed snapshot is
+    // still a stale loading:false even though the turn is about to start.
+    return createMockAgent();
+  });
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  let settled = false;
+  const waitPromise = daemonWaitCommand(socketPath, "test-session-id", {
+    fromBusy: true,
+  }).then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session test-session-id");
+  });
+  // Real time must pass for the call-time idle snapshot to have had its chance
+  // to (wrongly) end the wait.
+  await new Promise((r) => setTimeout(r, 50));
+  expect(settled).toBe(false);
+
+  callbacks.onLoadingChange?.(true);
+  callbacks.onLoadingChange?.(false);
+  await waitPromise;
+  expect(settled).toBe(true);
+  expect(stdoutLines()).toContain("Status: idle");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("wait: --timeout gives up with exit 1 and a clear message (stdout stays empty)", async () => {
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ isLoading: true }),
+  );
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonWaitCommand(socketPath, "test-session-id", { timeout: 0.2 }),
+  ).rejects.toThrow("exit(1)");
+  expect(stderrText()).toContain(
+    "Timed out waiting for session test-session-id to become idle (waited 0.2s)",
+  );
+  expect(stdoutLines()).toEqual([]);
+  expect(exitSpy).toHaveBeenCalledWith(1);
+});
+
+test("wait: --lines 0 prints no message text (status-line-only snapshot)", async () => {
+  const agent = createMockAgent();
+  agent.messages.push(userMsg("u1", "任务"), assistantMsg("a1", "最终汇报"));
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonWaitCommand(socketPath, "test-session-id", { lines: 0 }),
+  ).rejects.toThrow("exit(0)");
+  const out = stdoutLines();
+  expect(out).toContain("Status: idle");
+  expect(out.some((l) => l.includes("Recent messages"))).toBe(false);
+  expect(out.join("\n")).not.toContain("最终汇报");
+  expect(exitSpy).toHaveBeenCalledWith(0);
 });
 
 // ── send ───────────────────────────────────────────────────────

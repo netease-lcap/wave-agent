@@ -154,6 +154,10 @@ wave daemon list
 # 查看指定会话的实时状态（生成中/空闲/等待审批）与最近消息（默认只展示最后 1 条）
 wave daemon status <sessionId> [--lines 1]
 
+# 阻塞盯住指定会话，等它空闲（或挂起等待审批）就退出，退出时打印最终快照
+# 退出码：0=等到空闲 / 3=挂起等待审批（立刻返回）/ 1=错误（连不上、会话不存在、--timeout 到点）
+wave daemon wait <sessionId> [--lines 1] [--from-busy] [--timeout 600]
+
 # 向会话注入一条消息（默认异步派单：发完即退，不等待回复；进度用 status 查看）
 wave daemon send <sessionId> "继续"
 # 需要同步等待回复时传 --wait <秒>：等待该消息对应的回复完成后输出助手最终回复
@@ -179,7 +183,8 @@ wave daemon restart
 - **语义区分**：`wave --daemon <socket>` 是启动 daemon（服务端），`wave daemon <子命令>` 是访问 daemon（客户端），两者互不干扰
 - daemon 一经拉起即常驻运行（空闲不退出），仅在被 kill / 升级重启 / 机器重启后消失；daemon 未运行时，任一子命令自动以 nohup 方式拉起 daemon 并重试连接，仅当拉起的 daemon 在启动超时内未就绪时才以非零退出码报错退出，不进入 TUI、不挂起
 - `wave daemon list` 仅展示当前 daemon 进程内存中 live 的会话（不扫磁盘索引）；知道 sessionId 时即使不在列表中，也可经 `status` / `send` 重新载入
-- `wave daemon status` 默认只展示最后 1 条消息（消息正文完整不截断，默认值保持输出有界）；`--lines N` 展示最近 N 条，`--lines 0` 只输出 session 头与 `Status:` 行（适合只轮询状态的监控脚本）
+- `wave daemon status` 默认只展示最后 1 条消息（消息正文完整不截断，默认值保持输出有界）；`--lines N` 展示最近 N 条，`--lines 0` 只输出 session 头与 `Status:` 行。`status` 始终是「取一次快照、立刻返回」的契约；需要阻塞等到状态变化（生成中 → 空闲，或挂起审批）时用 `wave daemon wait`
+- `wave daemon wait` 是「盯会话」的正式入口：订阅 daemon 推送的 `loadingChange` 判空闲（不轮询），退出时按 `wave daemon status <id> --lines N` 的同格式把最终快照打到 stdout（`msg=$(wave daemon wait <id>)` 拿到的就是汇报本身），进度提示走 stderr；退出码为契约——`0`=等到空闲、`3`=会话挂起等待权限审批（立刻返回并打印待审批清单，`respond` 后可重新 `wait`）、`1`=错误（daemon 连不上 / sessionId 不存在 / `--timeout` 到点）。调用时已空闲则立即退出 0；`--from-busy` 要求先观察到一次「非空闲」再判空闲（消除紧跟异步 `send` 之后立刻 `wait` 的 stale 快照竞态）；`--timeout <秒>` 默认无限等待
 - `wave daemon send` 默认异步派单：注入消息后立即退出码 0（stdout 输出 `Sent message to session: <sessionId>` 确认，不等待回复、不输出回复文本），消息照常在 daemon 中处理，进度用 `wave daemon status` 查看；需要同步等待回复时传 `--wait <秒>`（如 `--wait 600`，等待超过 N 秒无回复即以非零退出码退出；会话挂起等待审批时超时退出，提示先经 `wave daemon respond` 处理）
 - `wave daemon respond` 按工具智能补全决策：`EnterPlanMode` 的 `--allow` 自动附带 plan 模式切换；`AskUserQuestion` 需用 `--answer '{"问题":"答案"}'` 提供答案；`--rule "Bash(ls)"` 持久化允许规则（后续同类调用不再询问）；`--mode acceptEdits` 切换会话权限模式
 - `wave daemon abort` 中断指定会话正在生成的回复（含子代理、bash 命令与排队消息），不清除已完成的对话历史；对空闲会话是幂等 no-op（仍成功退出）；sessionId 不存在时以非零退出码报错；attach 是短暂访问、随用随断，中断后会话在 daemon 中继续存活

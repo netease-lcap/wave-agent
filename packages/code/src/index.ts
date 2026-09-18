@@ -341,6 +341,47 @@ export async function main() {
               },
             )
             .command(
+              "wait <sessionId>",
+              "Block until a session goes idle (or waits for approval), then print its final snapshot (exit 0 = idle, 3 = waiting for approval, 1 = error/timeout)",
+              (yargs) => {
+                return yargs
+                  .positional("sessionId", {
+                    describe: "Session ID hosted by the daemon",
+                    type: "string",
+                  })
+                  .option("lines", {
+                    describe:
+                      "Number of recent messages to print on exit (0 = status line only)",
+                    default: 1,
+                    type: "number",
+                  })
+                  .option("from-busy", {
+                    describe:
+                      "Wait until the session has been observed busy at least once before accepting idle (removes the stale-snapshot race right after an async `send`)",
+                    default: false,
+                    type: "boolean",
+                  })
+                  .option("timeout", {
+                    describe:
+                      "Seconds to wait before giving up (default: wait forever)",
+                    type: "number",
+                  });
+              },
+              async (argv) => {
+                const { daemonWaitCommand, DEFAULT_DAEMON_SOCKET } =
+                  await import("./daemon/commands.js");
+                await daemonWaitCommand(
+                  DEFAULT_DAEMON_SOCKET,
+                  argv.sessionId as string,
+                  {
+                    lines: argv.lines as number,
+                    fromBusy: argv.fromBusy as boolean,
+                    timeout: argv.timeout as number | undefined,
+                  },
+                );
+              },
+            )
+            .command(
               "send <sessionId> <message>",
               "Inject a message into a session (async by default; --wait N to get the reply)",
               (yargs) => {

@@ -1205,8 +1205,8 @@ await agent.triggerWorktreeRemoveHook("/path/to/worktree");
 
 - **名称**: `wave-daemon`
 - **使用方式**: 由模型在需要委托长任务时自动调用，无需用户手动触发
-- **要点**: 会话经 `wave daemon create --worktree` 建立在隔离 worktree 中，默认 `bypassPermissions`（不产生审批）；`wave daemon send` 默认异步派单，进度与最终汇报用 `wave daemon status [--lines N]` 查看（默认只展示最后 1 条消息，`--lines 0` 只看状态行）；子命令语法细节见 [Daemon 客户端命令](cli.md#daemon-commands)
-- **主要经验**: 被中断的 `send` 不等于消息没送达（先 `status` 复核再决定是否重发）；改范围先 `abort`；审批刷屏的根因是 daemon 进程重启后权限模式回落，用 `respond <id> --allow --mode bypassPermissions` 一步恢复；`destroy --remove-worktree` 是两步操作，中断会部分执行
+- **要点**: 会话经 `wave daemon create --worktree` 建立在隔离 worktree 中，默认 `bypassPermissions`（不产生审批）；`wave daemon send` 默认异步派单，进度与最终汇报用 `wave daemon status [--lines N]` 查看（默认只展示最后 1 条消息，`--lines 0` 只看状态行）；盯会话改用 `wave daemon wait <sessionId>` 阻塞等到空闲并直接把最终快照打到 stdout（退出码 0=空闲 / 3=挂起等审批 / 1=错误，替代自建 shell 轮询脚本，`status` 仍是「取一次快照、立刻返回」）；子命令语法细节见 [Daemon 客户端命令](cli.md#daemon-commands)
+- **主要经验**: 被中断的 `send` 不等于消息没送达（先 `status` 复核再决定是否重发）；紧跟异步 `send` 之后 `wait` 要加 `--from-busy`（否则 turn 尚未开始的 stale `loading:false` 会让 wait 提前结束）；改范围先 `abort`；审批刷屏的根因是 daemon 进程重启后权限模式回落，用 `respond <id> --allow --mode bypassPermissions` 一步恢复；`destroy --remove-worktree` 是两步操作，中断会部分执行
 
 ## 13. 内置 Subagents {#builtin-subagents}
 
