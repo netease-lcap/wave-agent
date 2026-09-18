@@ -106,6 +106,15 @@ async function processImageFile(
 
     // Convert image to base64
     const imageDataUrl = convertImageToBase64(actualFilePath);
+    if (!imageDataUrl) {
+      // Unreadable, empty or unknown-format file: fail instead of handing the
+      // model an empty image payload.
+      return {
+        success: false,
+        content: "",
+        error: `Failed to process image: ${getDisplayPath(filePath, context.workdir)} is empty or not a readable image file`,
+      };
+    }
     const mimeType = getImageMimeType(actualFilePath);
 
     // Extract base64 data from data URL (remove data:image/type;base64, prefix)

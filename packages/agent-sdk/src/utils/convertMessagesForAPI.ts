@@ -317,9 +317,12 @@ export function convertMessagesForAPI(
               const isDataUrl = imageUrl.startsWith("data:image/");
               let finalImageUrl = imageUrl;
               if (!isDataUrl) {
-                // If it's a file path, it needs to be converted to base64
+                // If it's a file path, it needs to be converted to base64.
+                // Unreadable/empty/unknown-format files come back as
+                // undefined: skip the image rather than send an empty payload.
+                let converted: string | undefined;
                 try {
-                  finalImageUrl = convertImageToBase64(imageUrl);
+                  converted = convertImageToBase64(imageUrl);
                 } catch (error) {
                   logger.error(
                     "Failed to convert image path to base64:",
@@ -329,6 +332,11 @@ export function convertMessagesForAPI(
                   // Skip this image, do not add to content
                   return;
                 }
+                if (!converted) {
+                  logger.warn("Skipping unusable image file:", imageUrl);
+                  return;
+                }
+                finalImageUrl = converted;
               }
 
               contentParts.push({
