@@ -72,26 +72,28 @@ wave daemon send <sessionId> <corrected task>
 
 \`\`\`bash
 wave daemon list                   # sessions currently live in the daemon's in-memory registry
-wave daemon status <sessionId>     # one session: status, pending approvals, recent messages
-wave daemon status <id> --lines 1  # read the last message in full
+wave daemon status <sessionId>     # one session: status, pending approvals, and the last message
+wave daemon status <id> --lines 0  # status line only — no message text (status-only polling)
+wave daemon status <id> --lines 5  # widen the context window when the last message is not enough
 \`\`\`
 
 \`status\` reports one of three states — \`idle\`, \`generating\`, or \`waiting for approval\` (listed with the pending request ids). It is plain text; there is no \`--json\`.
 
-\`--lines N\` (default 20) prints the last N messages. Message text is never truncated, but two things bite:
+\`--lines N\` prints the last N messages. **The default is 1** — the last message alone — because message text is never truncated, so a single long report is already tens of thousands of characters; the default has to stay bounded. N counts messages, not output lines.
 
+- \`--lines 0\` prints no message text at all — just the header and the \`Status:\` line. Use it when a poll only needs the status (cheaper than pulling a report you will not read).
 - text is whitespace-collapsed, and tool-only messages print nothing (they still count toward N);
 - it is the last N **messages**, so behind a long tail of intermediate narration ("still investigating…") the final report can fall outside the window.
 
-So read the final report with \`--lines 1\`, and raise it to 2–3 only if that last message printed nothing.
+So the final report is what the default \`status <id>\` already gives you; raise \`--lines\` only when the last message is not the report you want.
 
-Do not hand-parse the transcript jsonl (\`~/.wave/projects/<project>/<sessionId>.jsonl\`) to recover a report — \`status --lines 1\` is the supported path. If you ever do read the raw file: each line is one message (\`{"timestamp":…,"role":…,"blocks":[…]}\`) and text lives in \`blocks[].content\` on the \`{"type":"text"}\` block. There is no \`blocks[].text\` field, so a lookup by \`text\` silently returns nothing and looks like "the session never reported".
+Do not hand-parse the transcript jsonl (\`~/.wave/projects/<project>/<sessionId>.jsonl\`) to recover a report — \`status <id>\` is the supported path. If you ever do read the raw file: each line is one message (\`{"timestamp":…,"role":…,"blocks":[…]}\`) and text lives in \`blocks[].content\` on the \`{"type":"text"}\` block. There is no \`blocks[].text\` field, so a lookup by \`text\` silently returns nothing and looks like "the session never reported".
 
 For long tasks, poll from a **background** command rather than blocking on \`--wait\`. Any periodic poll works — the shape is:
 
 \`\`\`bash
 while true; do
-  out=$(wave daemon status "$SESSION_ID" --lines 1)
+  out=$(wave daemon status "$SESSION_ID" --lines 0)
   echo "$out"
   case "$out" in
     *"Status: idle"*|*"waiting for approval"*) break ;;
@@ -163,7 +165,7 @@ Whose session is it? Only tear down sessions you created with \`wave daemon crea
 - Create with \`--worktree\` and \`--permission-mode bypassPermissions\` (the mode default is already bypass, so no approvals appear).
 - \`send\` is async by default; after any interruption, check \`status\` before resending.
 - \`abort\` before re-scoping a running session.
-- Read the final report with \`status <id> --lines 1\`.
+- Read the final report with \`status <id>\` (defaults to the last message; raise \`--lines\` if that one is not it).
 - An approval flood means the daemon process restarted and the mode fell back — recover with \`--mode bypassPermissions\`.
 - After a CLI upgrade, \`wave daemon restart\` (kill the old process first if \`restart\` times out).
 - \`destroy --remove-worktree\` last, after user confirmation, only for sessions you created.

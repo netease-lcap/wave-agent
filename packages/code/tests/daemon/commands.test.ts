@@ -426,7 +426,7 @@ test("status: busy session prints session/workdir/status + recent messages, stay
   client.close();
 
   await expect(
-    daemonStatusCommand(socketPath, "test-session-id"),
+    daemonStatusCommand(socketPath, "test-session-id", 2),
   ).rejects.toThrow("exit(0)");
   const out = stdoutLines();
   expect(out).toContain("Session: test-session-id");
@@ -447,6 +447,54 @@ test("status: busy session prints session/workdir/status + recent messages, stay
   const result = msgs[0] as { result: { sessions: unknown[] } };
   expect(result.result.sessions).toHaveLength(1);
   b.close();
+});
+
+test("status: defaults to the last message only (output stays bounded by history size)", async () => {
+  const agent = createMockAgent();
+  agent.messages.push(
+    userMsg("u1", "任务一"),
+    assistantMsg("a1", "中间narration"),
+    userMsg("u2", "任务二"),
+    assistantMsg("a2", "最终汇报"),
+  );
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonStatusCommand(socketPath, "test-session-id"),
+  ).rejects.toThrow("exit(0)");
+  const out = stdoutLines();
+  expect(out).toContain("Recent messages (1):");
+  expect(out.join("\n")).toContain("[assistant] 最终汇报");
+  // Older history never leaks into the default window — the whole point of the
+  // bounded default.
+  expect(out.join("\n")).not.toContain("中间narration");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("status: --lines 0 prints no message text but keeps the Status line", async () => {
+  const agent = createMockAgent();
+  agent.messages.push(userMsg("u1", "你好"), assistantMsg("a1", "在忙"));
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonStatusCommand(socketPath, "test-session-id", 0),
+  ).rejects.toThrow("exit(0)");
+  const out = stdoutLines();
+  expect(out).toContain("Session: test-session-id");
+  expect(out).toContain("Status: idle");
+  // No messages section at all — and crucially not `slice(-0)` = the whole
+  // history.
+  expect(out.some((l) => l.includes("Recent messages"))).toBe(false);
+  expect(out.join("\n")).not.toContain("在忙");
+  expect(exitSpy).toHaveBeenCalledWith(0);
 });
 
 test("status: idle session shows idle", async () => {

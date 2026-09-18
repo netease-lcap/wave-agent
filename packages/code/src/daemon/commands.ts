@@ -398,10 +398,20 @@ function parseAskUserQuestionAnswer(
   return answers;
 }
 
+/**
+ * `wave daemon status <sessionId> [--lines N]`.
+ *
+ * `lines` is the number of trailing messages to render (default 1 — the last
+ * message alone, so the default output stays bounded even when one message is a
+ * multi-thousand-character report). `lines <= 0` renders no message text at all
+ * (just the session header + `Status:` line) — the polling shape for monitors
+ * that only watch the status. Guards against 0 because `Array.prototype.slice(-0)`
+ * means `slice(0)`, i.e. the WHOLE history.
+ */
 export async function daemonStatusCommand(
   socketPath: string,
   sessionId: string,
-  lines = 20,
+  lines = 1,
 ): Promise<void> {
   let client: SocketClient | undefined;
   try {
@@ -459,7 +469,7 @@ export async function daemonStatusCommand(
       }
     }
 
-    const recent = messages.messages.slice(-lines);
+    const recent = lines > 0 ? messages.messages.slice(-lines) : [];
     if (recent.length > 0) {
       console.log("");
       console.log(`Recent messages (${recent.length}):`);

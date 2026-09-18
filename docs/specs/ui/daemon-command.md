@@ -81,9 +81,11 @@ order: 270
 2. **假设** 目标会话空闲（未在生成、无排队消息、无后台任务），**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 显示 idle 状态。
 3. **假设** 目标会话挂起等待权限审批，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 状态显示为 waiting for approval（`loadingChange` 保持 loading 即视为未空闲），与桌面端「待确认」语义一致。
 4. **假设** 目标会话挂起等待权限审批，**当** 查看最近消息时，**则** 最后一条 assistant 消息含一个冻结在 `stage: "running"` 的 tool 块：有工具名与参数（`name`/`parameters`/`compactParams`），但无 `result`/`success`/`error`/`shortResult`/`timestamp`——这些字段只在工具完成后（`stage: "end"`）写入，无独立的 pending stage；消息形态上「等审批」与「执行中」无法区分，status 须同时列出 `listPendingPermissions` 返回的待审批请求（工具名 + 参数摘要），作为审批态的确凿信号；其中 AskUserQuestion 请求不做单行截断，改为与桌面确认弹窗同构的多行完整渲染——每题一行标题（含题号与 header 标签，如 `Q1 [删除文案] 删除会话后转录…`）、每选项一行（含从 0 起的序号与说明，如 `  0. 更新文案明示可恢复（推荐） — 说明…`），完整展示问题与选项；其余工具的请求仍按单行参数摘要展示。
-5. **假设** 会话已有历史消息，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 经 `getMessages` 拉取并显示最近若干条消息的文本（含用户消息与助手回复，默认数量可经参数调整，如 `--lines 20`），足以判断任务进展。
+5. **假设** 会话已有历史消息，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 经 `getMessages` 拉取并显示最近若干条消息的文本（含用户消息与助手回复，默认只显示最后 1 条，可经 `--lines N` 调整），足以判断任务进展；消息正文完整不截断，因此默认输出必须与历史长度无关地有界。
 6. **假设** 指定的 sessionId 不存在于该 daemon，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 以非零退出码退出并给出明确错误（Session not found or not hosted by this daemon）。
 7. **假设** status 命令完成展示后，**当** 命令退出时，**则** 断开与 daemon 的连接（attach 是短暂查看，不常驻），daemon 与目标会话不受影响、继续运行。
+8. **假设** 会话历史很长（含一条数千字符的最终汇报）且其后再无新消息，**当** 用户运行 `wave daemon status <sessionId>` 而不传 `--lines` 时，**则** 只渲染最后 1 条消息（输出 `Recent messages (1)`），不因历史消息多而输出随之膨胀；需要更多上下文时显式传 `--lines N`。
+9. **假设** 监控脚本每次轮询只关心状态行，**当** 用户运行 `wave daemon status <sessionId> --lines 0` 时，**则** 输出仅含 session 头与 `Status:` 行（不含 `Recent messages` 段与任何消息正文），退出码 0。`--lines 0` 按「不展示消息」处理，不得因 0 为 falsy 而被当作「未传」或退化为展示全部历史（`slice(-0)` 等价于 `slice(0)`，即全量）。
 
 ---
 
