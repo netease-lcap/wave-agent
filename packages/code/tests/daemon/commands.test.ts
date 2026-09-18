@@ -302,6 +302,45 @@ async function createPendingRequest(
 const stdoutLines = () => logSpy.mock.calls.map((c) => c.join(" "));
 const stderrText = () => errorSpy.mock.calls.map((c) => c.join(" ")).join("");
 
+/** The reply to `id` among the lines a raw client received — notifications
+ * (loadingChange and friends) interleave with replies, so never take line 0. */
+function replyFor(
+  lines: unknown[],
+  id: number,
+): {
+  result?: {
+    sessionId?: string;
+    sessions?: unknown[];
+    messages?: Message[];
+  };
+  error?: { message: string };
+} {
+  const found = lines.find((line) => (line as { id?: number }).id === id);
+  return (found ?? {}) as ReturnType<typeof replyFor>;
+}
+
+/** Send a request and wait for ITS reply specifically: an RPC that emits
+ * notifications (updateConfig pushes loadingChange as it tears the old agent
+ * down) answers later than the first line it causes. */
+async function requestReply(
+  client: ReturnType<typeof connectClient>,
+  request: { id: number; method: string; params?: unknown; sessionId?: string },
+): Promise<ReturnType<typeof replyFor>> {
+  const received = client.send(request);
+  await vi.waitFor(() => {
+    expect(
+      client.lines.some(
+        (line) => (JSON.parse(line) as { id?: number }).id === request.id,
+      ),
+    ).toBe(true);
+  });
+  await received.catch(() => {});
+  return replyFor(
+    client.lines.map((line) => JSON.parse(line)),
+    request.id,
+  );
+}
+
 /** stdout of ONE command run (the log spy is cumulative across a test). Every
  * command terminates via process.exit, so the ExitSignal rejection is the
  * expected ending. */
@@ -1052,6 +1091,336 @@ test("wait: a destroy that stalls after its abort push still exits 1, never a fa
   expect(exitSpy).toHaveBeenCalledWith(1);
 });
 
+// ── wait: the session is reconfigured / re-keyed while we block ──
+
+test("wait: a session being reconfigured (updateConfig) keeps waiting instead of exiting 1", async () => {
+  waitPollInterval.ms = 10;
+  let releaseTeardown!: () => void;
+  const teardownStalled = new Promise<void>((resolve) => {
+    releaseTeardown = resolve;
+  });
+  const created: Array<ReturnType<typeof createMockAgent>> = [];
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    const outgoing = created.length === 0;
+    const agent = createMockAgent(
+      { sessionId: "session-x", isLoading: outgoing },
+      options.callbacks,
+    );
+    if (outgoing) {
+      // `updateConfig` destroys the outgoing agent before building its
+      // replacement; hold that teardown open so the registry is read exactly
+      // while the session has an entry but no usable agent. This is the window
+      // that used to look like a settled (or a vanished) session.
+      agent.destroy = vi.fn(async () => {
+        setLoading(agent, false);
+        options.callbacks?.onLoadingChange?.(false);
+        await teardownStalled;
+      });
+    }
+    created.push(agent);
+    return agent;
+  });
+
+  const host = connectClient(socketPath);
+  await host.send({ id: 1, method: "initialize", params: {} });
+  created[0].messages.push(userMsg("u1", "在做的任务"));
+
+  let settled: number | undefined;
+  const waitPromise = daemonWaitCommand(socketPath, "session-x").then(
+    () => {
+      settled = -1; // unreachable: the command exits via process.exit
+    },
+    (err: unknown) => {
+      settled = (err as ExitSignal).code;
+    },
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session session-x");
+  });
+
+  // Reconfigure in place (the settings page saving a config): the entry must stay
+  // in the registry — the session was not destroyed — but it must never read as
+  // "listed + idle" while its agent is being replaced.
+  const reconfigured = requestReply(host, {
+    id: 2,
+    method: "updateConfig",
+    params: { model: "m2" },
+    sessionId: "session-x",
+  });
+  await new Promise((r) => setTimeout(r, 60));
+
+  // Both facts in one assertion: a regression shows the false success (exit 0)
+  // right next to the idle snapshot it printed for a session whose agent is
+  // mid-replacement.
+  expect([settled, stdoutLines()]).toEqual([undefined, []]);
+
+  const listed = connectClient(socketPath);
+  const sessionsReply = await requestReply(listed, {
+    id: 1,
+    method: "listDaemonSessions",
+    params: {},
+  });
+  expect(sessionsReply).toEqual({
+    id: 1,
+    result: {
+      sessions: [
+        {
+          sessionId: "session-x",
+          workingDirectory: "/test/workdir",
+          isLoading: true,
+          messageCount: 1,
+        },
+      ],
+    },
+  });
+  // State-changing RPCs refuse the reconfiguring session (a message would go to
+  // the agent that is being thrown away); read-only ones still answer from the
+  // outgoing agent's transcript.
+  const refused = await requestReply(listed, {
+    id: 3,
+    method: "abortMessage",
+    params: {},
+    sessionId: "session-x",
+  });
+  expect(refused.error?.message).toContain(
+    "is being reconfigured (config reload in progress), retry shortly",
+  );
+  const read = await requestReply(listed, {
+    id: 4,
+    method: "getMessages",
+    params: {},
+    sessionId: "session-x",
+  });
+  expect(read.result?.messages?.map((m) => m.id)).toEqual(["u1"]);
+  // `getSessionInfo` is a read too — it is what `destroy --remove-worktree` uses to
+  // resolve the worktree, and it must keep answering off the outgoing agent rather
+  // than failing just because the session is mid-rebuild.
+  const info = await requestReply(listed, {
+    id: 6,
+    method: "getSessionInfo",
+    params: {},
+    sessionId: "session-x",
+  });
+  expect(info.result?.sessionId).toBe("session-x");
+  // Destroying the session mid-rebuild is refused: the rebuild would go on to
+  // re-register a replacement for a session the caller just destroyed.
+  const destroyed = await requestReply(listed, {
+    id: 7,
+    method: "destroy",
+    params: {},
+    sessionId: "session-x",
+  });
+  expect(destroyed.error?.message).toContain("is being reconfigured");
+  // A restore into the outgoing agent (another conversation loaded into an agent
+  // that is about to be destroyed — the load would be silently thrown away with
+  // it) is refused too.
+  const restore = await requestReply(listed, {
+    id: 5,
+    method: "restoreSession",
+    params: { sessionId: "session-y" },
+    sessionId: "session-x",
+  });
+  expect(restore.error?.message).toContain("is being reconfigured");
+  listed.close();
+
+  releaseTeardown();
+  const updated = await reconfigured;
+  expect(updated.result?.sessionId).toBe("session-x");
+
+  // The replacement is idle, so the wait settles normally — the reconfiguration
+  // was never mistaken for "the session no longer exists".
+  setLoading(created[1], false);
+  await waitPromise;
+  expect(settled).toBe(0);
+  expect(stdoutLines()).toContain("Status: idle");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+  host.close();
+});
+
+test("wait: a failed reconfiguration drops the session (exit 1, no half-dead entry)", async () => {
+  waitPollInterval.ms = 10;
+  let created = 0;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    const outgoing = created++ === 0;
+    const agent = createMockAgent(
+      { sessionId: "session-x", isLoading: outgoing },
+      options.callbacks,
+    );
+    if (outgoing) {
+      // The teardown itself fails: no replacement agent is ever built.
+      agent.destroy = vi.fn(async () => {
+        setLoading(agent, false);
+        options.callbacks?.onLoadingChange?.(false);
+        throw new Error("teardown exploded");
+      });
+    }
+    return agent;
+  });
+
+  const host = connectClient(socketPath);
+  await host.send({ id: 1, method: "initialize", params: {} });
+
+  let settled: number | undefined;
+  const waitPromise = daemonWaitCommand(socketPath, "session-x").then(
+    () => {
+      settled = -1;
+    },
+    (err: unknown) => {
+      settled = (err as ExitSignal).code;
+    },
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session session-x");
+  });
+
+  const rejected = requestReply(host, {
+    id: 2,
+    method: "updateConfig",
+    params: { model: "m2" },
+    sessionId: "session-x",
+  });
+  const failed = await rejected;
+  expect(failed.error?.message).toContain("teardown exploded");
+
+  // Nothing usable is left, so the session is gone from the registry like any
+  // destroyed one: a half-dead entry (listed, unusable) is worse than an honest
+  // "no longer exists".
+  const listed = connectClient(socketPath);
+  const sessionsReply = await requestReply(listed, {
+    id: 1,
+    method: "listDaemonSessions",
+    params: {},
+  });
+  listed.close();
+  expect(sessionsReply).toEqual({ id: 1, result: { sessions: [] } });
+
+  await waitPromise;
+  expect(settled).toBe(1);
+  expect(stderrText()).toContain(
+    "wave daemon wait failed: Session session-x no longer exists (destroyed while waiting)",
+  );
+  expect(stdoutLines()).toEqual([]);
+  expect(exitSpy).toHaveBeenCalledWith(1);
+  host.close();
+});
+
+test("wait: a session re-keyed while waiting is followed, not reported gone", async () => {
+  waitPollInterval.ms = 10;
+  const [target] = await hostMockSessions([
+    { sessionId: "session-target", busy: true },
+  ]);
+
+  let settled: number | undefined;
+  const waitPromise = daemonWaitCommand(socketPath, "session-target").then(
+    () => {
+      settled = -1; // unreachable: the command exits via process.exit
+    },
+    (err: unknown) => {
+      settled = (err as ExitSignal).code;
+    },
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session session-target");
+  });
+
+  // `clearMessages` (and a from-another-id restore) re-keys the live session: the
+  // SDK announces the new id, the daemon moves the registry entry with it. The
+  // waiter must follow the same session — a re-key is not a destroy.
+  target.callbacks.onSessionIdChange?.("session-renamed");
+  await new Promise((r) => setTimeout(r, 60));
+  // Both facts in one assertion: a regression ends the wait with exit 1 and the
+  // "no longer exists" error for a session that is merely re-keyed.
+  expect([settled, stderrText().includes("no longer exists")]).toEqual([
+    undefined,
+    false,
+  ]);
+
+  // Still generating under the new id: the wake-up push arrives with the new
+  // envelope (the old one is dead) and the snapshot is read from the new id.
+  target.agent.messages.push(
+    userMsg("u1", "任务"),
+    assistantMsg("a1", "最终汇报"),
+  );
+  setLoading(target.agent, false);
+  target.callbacks.onLoadingChange?.(false);
+  await waitPromise;
+  expect(settled).toBe(0);
+  const out = stdoutLines();
+  expect(out).toContain("Session: session-renamed");
+  expect(out).toContain("Status: idle");
+  expect(out.join("\n")).toContain("[assistant] 最终汇报");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("wait: an updateConfig that cannot restore the transcript re-keys the session", async () => {
+  waitPollInterval.ms = 10;
+  let calls = 0;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    const call = calls++;
+    if (call === 1) {
+      // The rebuild cannot load the old transcript (cleared chat / never
+      // persisted): the bridge fails soft and recreates WITHOUT
+      // `restoreSessionId`, which mints a NEW id for the same session slot.
+      throw new Error("Session not found: session-x");
+    }
+    return createMockAgent(
+      {
+        sessionId: call === 0 ? "session-x" : "session-x-recovered",
+        isLoading: call === 0, // the outgoing agent is mid-turn
+      },
+      options.callbacks,
+    );
+  });
+
+  const host = connectClient(socketPath);
+  await host.send({ id: 1, method: "initialize", params: {} });
+
+  let settled: number | undefined;
+  const waitPromise = daemonWaitCommand(socketPath, "session-x").then(
+    () => {
+      settled = -1; // unreachable: the command exits via process.exit
+    },
+    (err: unknown) => {
+      settled = (err as ExitSignal).code;
+    },
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session session-x");
+  });
+
+  const reconfigured = await requestReply(host, {
+    id: 2,
+    method: "updateConfig",
+    params: { model: "m2" },
+    sessionId: "session-x",
+  });
+  expect(reconfigured).toEqual({
+    id: 2,
+    result: { sessionId: "session-x-recovered" },
+  });
+  // The re-key is announced with the OLD id as the envelope — the client bound to
+  // it is the one that has to hear about it — and the registry entry moves with it.
+  const rename = host.lines
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .find((msg) => msg.method === "sessionIdChange");
+  expect(rename).toEqual({
+    method: "sessionIdChange",
+    params: { sessionId: "session-x-recovered" },
+    sessionId: "session-x",
+  });
+
+  // The waiter follows the rename instead of mourning the old id, and settles on
+  // the NEW one: exit 1 with "no longer exists" here would report a live session
+  // as destroyed.
+  await waitPromise;
+  expect(settled).toBe(0);
+  expect(stderrText()).not.toContain("no longer exists");
+  expect(stdoutLines()).toContain("Session: session-x-recovered");
+  expect(stdoutLines()).toContain("Status: idle");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+  host.close();
+});
+
 test("wait: destroying another session does not disturb the wait", async () => {
   waitPollInterval.ms = 10;
   const [target, other] = await hostMockSessions([
@@ -1341,6 +1710,38 @@ test("send: a stale loading:false from the previous turn must not end the wait",
     daemonSendCommand(socketPath, "test-session-id", "继续", { wait: 5 }),
   ).rejects.toThrow("exit(0)");
   expect(stdoutLines()).toEqual(["好，等前一个任务结束我就开始。"]);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("send: a session re-keyed mid-turn still delivers its reply (no false timeout)", async () => {
+  let agent!: ReturnType<typeof createMockAgent>;
+  let callbacks!: AgentCallbacks;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks!;
+    agent = createMockAgent();
+    agent.sendMessage = vi.fn(async () => {
+      agent.messages.push(userMsg("u1", "继续"));
+      callbacks.onUserMessageAdded?.({ content: "继续" });
+      // The session is re-keyed mid-turn (clearMessages / a from-another-id
+      // restore). The reply and the settle push arrive on the NEW id, so a
+      // waiter still bound to the old one drops them and times out — for a turn
+      // that finished.
+      callbacks.onSessionIdChange?.("test-session-renamed");
+      agent.messages.push(assistantMsg("a1", "好的，我继续。"));
+      callbacks.onAssistantMessageAdded?.("a1");
+      callbacks.onLoadingChange?.(false);
+    });
+    return agent;
+  });
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonSendCommand(socketPath, "test-session-id", "继续", { wait: 1 }),
+  ).rejects.toThrow("exit(0)");
+  expect(stdoutLines()).toEqual(["好的，我继续。"]);
   expect(exitSpy).toHaveBeenCalledWith(0);
 });
 

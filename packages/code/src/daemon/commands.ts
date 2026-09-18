@@ -668,6 +668,13 @@ export const waitPollInterval = { ms: 2_000 };
  * from a finish: read as idle it reports a false "done" for a session that is
  * gone, and a waiter that does not act on it gets no further event at all and
  * hangs (which is what happened before this check existed).
+ *
+ * A session that gets RE-KEYED while we block on it is followed, not mourned:
+ * `clearMessages` / `initializeFromSession` / a recovery-recreating
+ * `updateConfig` move the daemon registry entry to a new sessionId and announce
+ * it with `sessionIdChange` (envelope = the id we know, payload = the new one),
+ * so the waiter rebinds its filter and its id and keeps watching the same
+ * session — a re-key is not a destroy (spec: 换键不等于销毁).
  */
 export async function daemonWaitCommand(
   socketPath: string,
@@ -711,30 +718,87 @@ export async function daemonWaitCommand(
       bump();
     });
 
-    const init = await attachSession(socket, sessionId, {
-      onInitialized: filter.bind,
+    // A session can be RE-KEYED while we block on it — `clearMessages` (which
+    // mints a fresh id) or `initializeFromSession` with another id moves the
+    // daemon registry entry to a new sessionId; `updateConfig` does the same when
+    // its recreate cannot restore the transcript. The re-key is announced (this
+    // notification, envelope = the id we know, payload = the new one) and the
+    // registry key moves in the same tick, so a waiter that keeps using the old id
+    // both misses it in `listDaemonSessions` (⇒ false "no longer exists", exit 1,
+    // for a session that is alive) and stops receiving its pushes. Follow the
+    // rename instead: same session, new id — nothing about it was destroyed.
+    // `watch.id` is the id this waiter tracks: empty until the attach below binds
+    // it, then the live id, re-pointed by every rename we see.
+    const watch = { id: "" };
+    socket.onNotification("sessionIdChange", (params, sid) => {
+      const next = (params as { sessionId?: string }).sessionId;
+      // Envelope-less renames are fired while an agent is being CREATED (its
+      // context has no id yet): they belong to the attach handshake below, whose
+      // reply carries the final id, so there is nothing to follow here. A rename
+      // seen before we know our id would mean the daemon re-keyed the session mid
+      // handshake — the attach itself gives up on that (its `restoreSession` still
+      // carries the pre-rename id), which is a separate, pre-existing gap.
+      if (sid === undefined || !next || !watch.id) return;
+      if (!filter.accepts(sid)) return; // another session's rename
+      watch.id = next;
+      filter.bind(next);
+      bump();
     });
-    const initId = init.sessionId;
+
+    const init = await attachSession(socket, sessionId, {
+      onInitialized: (id) => {
+        watch.id = id;
+        filter.bind(id);
+      },
+    });
+
+    // Read against the tracked session, retrying when a re-key lands while the
+    // read is in flight. The daemon announces the rename and moves the registry
+    // entry in one tick, but a request sent moments earlier under the OLD id is
+    // answered only afterwards — and its answer then describes an id that no
+    // longer exists: a miss for a session that is very much alive ("no longer
+    // exists" / exit 1) or a "Session not found" from the settle read. An answer
+    // that a re-key invalidated is not evidence, so ask again on the new id. The
+    // loop only repeats when a rename notification actually arrived, so it cannot
+    // spin without the daemon re-keying the session over and over.
+    const read = async <T>(fn: (id: string) => Promise<T>): Promise<T> => {
+      for (;;) {
+        const id = watch.id;
+        try {
+          const result = await fn(id);
+          if (watch.id !== id) continue;
+          return result;
+        } catch (err) {
+          if (watch.id !== id) continue;
+          throw err;
+        }
+      }
+    };
 
     // listPendingPermissions is the authoritative "waiting for approval" signal
     // (spec: 单凭消息无法区分等审批与执行中，须结合 listPendingPermissions).
-    const pendingForSession = async (): Promise<PendingPermission[]> => {
-      const all = await listPendingPermissions(socket);
-      return all.filter(
-        (r) => r.sessionId === initId || r.sessionId === sessionId,
-      );
-    };
+    const pendingForSession = (): Promise<PendingPermission[]> =>
+      read(async (id) => {
+        const all = await listPendingPermissions(socket);
+        return all.filter(
+          (r) =>
+            r.sessionId === id ||
+            r.sessionId === init.sessionId ||
+            r.sessionId === sessionId,
+        );
+      });
 
     const settle = async (status: string, pending: PendingPermission[]) => {
-      const result = (await socket.request(
-        "getMessages",
-        undefined,
-        initId,
+      const result = (await read(
+        (id) =>
+          socket.request("getMessages", undefined, id) as Promise<{
+            messages: Message[];
+          }>,
       )) as {
         messages: Message[];
       };
       renderSessionSnapshot({
-        sessionId: initId,
+        sessionId: watch.id,
         workingDirectory: init.workingDirectory,
         status,
         pending,
@@ -763,7 +827,11 @@ export async function daemonWaitCommand(
       // registry entry is about to disappear, so deciding idle first could
       // report a settled session that no longer exists — a false success is
       // worse than hanging.
-      const hosted = await findHostedSession(socket, initId);
+      // A miss is never an unfollowed rename: the daemon writes
+      // `sessionIdChange` and moves the registry entry in the same tick, and a
+      // read answered under an id a rename superseded is retried rather than
+      // trusted (`read` above). What is left is a session that really is gone.
+      const hosted = await read((id) => findHostedSession(socket, id));
       if (!hosted) {
         fail(
           `wave daemon wait failed: Session ${sessionId} no longer exists (destroyed while waiting)`,
@@ -800,7 +868,7 @@ export async function daemonWaitCommand(
       }
       if (!announced) {
         announced = true;
-        console.error(`Waiting for session ${initId} to become idle…`);
+        console.error(`Waiting for session ${watch.id} to become idle…`);
       }
       const tick = sleepCancellable(waitPollInterval.ms);
       const timer =
@@ -849,6 +917,11 @@ export interface SendOptions {
  * (userMessageAdded), and the reply is the last assistantMessageAdded observed
  * after it. A stale loading:false can then never satisfy the wait condition
  * early (the reply has not been added yet).
+ *
+ * The tracked session id follows a re-key (`sessionIdChange`) for the same reason
+ * `wait` does: the reply arrives on the NEW id, so a waiter still bound to the old
+ * one would drop the pushes that complete it and report a false timeout, and its
+ * `getMessages` would come back "Session not found".
  */
 export async function daemonSendCommand(
   socketPath: string,
@@ -870,6 +943,19 @@ export async function daemonSendCommand(
   // the reply tracking with another conversation's messages
   // (see sessionNotificationFilter).
   const filter = sessionNotificationFilter();
+  // `watch.id` is the session this send is attached to — empty until the attach
+  // binds it, then the live id, re-pointed when the daemon re-keys the session
+  // (see the matching handler in daemonWaitCommand): completion is detected from
+  // THIS session's pushes, so a waiter left on the pre-rename id would drop them
+  // and report a false `--wait` timeout for a turn that is still running.
+  const watch = { id: "" };
+  client.onNotification("sessionIdChange", (params, sessionId) => {
+    const next = (params as { sessionId?: string }).sessionId;
+    if (sessionId === undefined || !next || !watch.id) return;
+    if (!filter.accepts(sessionId)) return;
+    watch.id = next;
+    filter.bind(next);
+  });
   client.onNotification("userMessageAdded", (params, sessionId) => {
     if (!filter.accepts(sessionId)) return;
     if (!sent) return; // ignore messages added during attach
@@ -885,11 +971,13 @@ export async function daemonSendCommand(
     loading = (params as { loading: boolean }).loading;
   });
 
-  let initId: string;
   try {
-    initId = (
-      await attachSession(client, sessionId, { onInitialized: filter.bind })
-    ).sessionId;
+    await attachSession(client, sessionId, {
+      onInitialized: (id) => {
+        watch.id = id;
+        filter.bind(id);
+      },
+    });
     sent = true;
   } catch (err) {
     client.dispose();
@@ -909,7 +997,7 @@ export async function daemonSendCommand(
     const sendPromise = client.request(
       "sendMessage",
       { text: message },
-      initId,
+      watch.id,
     );
     const userMessage = new Promise<"userMessageAdded">((resolve) => {
       client.onNotification("userMessageAdded", (params, sessionId) => {
@@ -929,7 +1017,7 @@ export async function daemonSendCommand(
   }
 
   try {
-    await client.request("sendMessage", { text: message }, initId);
+    await client.request("sendMessage", { text: message }, watch.id);
   } catch (err) {
     client.dispose();
     fail(`wave daemon send failed: ${(err as Error).message}`);
@@ -945,7 +1033,7 @@ export async function daemonSendCommand(
       // Timeout backstop: the most likely cause is a session waiting on a
       // permission approval — point the user at respond (spec: 不无限期挂起).
       const pending = (await listPendingPermissions(client)).filter(
-        (r) => r.sessionId === sessionId || r.sessionId === initId,
+        (r) => r.sessionId === sessionId || r.sessionId === watch.id,
       );
       client.dispose();
       if (pending.length > 0) {
@@ -961,7 +1049,11 @@ export async function daemonSendCommand(
   }
 
   try {
-    const result = (await client.request("getMessages", undefined, initId)) as {
+    const result = (await client.request(
+      "getMessages",
+      undefined,
+      watch.id,
+    )) as {
       messages: Message[];
     };
     const reply = result.messages.find((m) => m.id === replyMessageId);
