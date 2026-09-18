@@ -123,6 +123,7 @@ import {
   daemonStopCommand,
   daemonRestartCommand,
   daemonStartTimeout,
+  waitPollInterval,
 } from "../../src/daemon/commands.js";
 import { createWorktree, removeWorktree } from "../../src/utils/worktree.js";
 
@@ -279,6 +280,7 @@ beforeEach(async () => {
 afterEach(async () => {
   stderrWriteSpy.mockRestore();
   daemonStartTimeout.ms = 10_000;
+  waitPollInterval.ms = 2_000;
   await autoStartServer?.stop();
   autoStartServer = undefined;
   autoStartSocket = undefined;
@@ -611,6 +613,9 @@ test("status: nonexistent session fails, destroys the junk fresh session, regist
 // ── wait ───────────────────────────────────────────────────────
 
 test("wait: an already-idle session settles immediately with exit 0 and the status snapshot", async () => {
+  // Also the regression guard for spec scenario 12: the existence check only
+  // asks whether the sessionId is in the live registry, so a normal idle
+  // session must never be mistaken for a vanished one.
   const agent = createMockAgent();
   agent.messages.push(userMsg("u1", "任务"), assistantMsg("a1", "最终汇报"));
   vi.mocked(Agent.create).mockResolvedValue(agent);
@@ -803,6 +808,144 @@ test("wait: --lines 0 prints no message text (status-line-only snapshot)", async
   expect(out).toContain("Status: idle");
   expect(out.some((l) => l.includes("Recent messages"))).toBe(false);
   expect(out.join("\n")).not.toContain("最终汇报");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+// ── wait: session destroyed by another client ──────────────────
+
+/** A command's exit code, with a bounded wait so a hung command fails loudly
+ * (a wait that never settles is the bug these tests are about). */
+async function settledExitCode(
+  promise: Promise<unknown>,
+  timeoutMs = 3_000,
+): Promise<number | "hung"> {
+  return Promise.race([
+    promise.then(
+      () => -1, // unreachable: every subcommand exits via process.exit
+      (err: unknown) => (err as ExitSignal).code,
+    ),
+    new Promise<"hung">((resolve) =>
+      setTimeout(() => resolve("hung"), timeoutMs),
+    ),
+  ]);
+}
+
+/** Attach a client that destroys `sessionId` while the daemon keeps running. */
+async function destroyFromAnotherClient(sessionId: string): Promise<void> {
+  const killer = connectClient(socketPath);
+  await killer.send({ id: 99, method: "destroy", sessionId });
+  killer.close();
+}
+
+test("wait: a session destroyed while waiting exits 1 instead of hanging forever", async () => {
+  waitPollInterval.ms = 10;
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ isLoading: true }),
+  );
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  const code = settledExitCode(
+    daemonWaitCommand(socketPath, "test-session-id"),
+  );
+  // The wait is attached and blocked. The real daemon's destroy pushes a
+  // `loadingChange:false` (its abort path) — indistinguishable from a finished
+  // turn, so useless as a "gone" signal — and this mocked agent pushes nothing
+  // at all: either way the truth comes from the fallback registry check.
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session test-session-id");
+  });
+
+  await destroyFromAnotherClient("test-session-id");
+
+  expect(await code).toBe(1);
+  expect(stderrText()).toContain(
+    "wave daemon wait failed: Session test-session-id no longer exists (destroyed while waiting)",
+  );
+  // No snapshot: the session is gone, there is nothing to report as finished.
+  expect(stdoutLines()).toEqual([]);
+  expect(exitSpy).toHaveBeenCalledWith(1);
+});
+
+test("wait: a stale idle push after the session was destroyed is never reported as success", async () => {
+  waitPollInterval.ms = 10;
+  let callbacks!: AgentCallbacks;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks!;
+    return createMockAgent({ isLoading: true });
+  });
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  const code = settledExitCode(
+    daemonWaitCommand(socketPath, "test-session-id"),
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session test-session-id");
+  });
+
+  // Destroy pushes loading:false (it aborts the turn), so the idle decision is
+  // reached while the session no longer exists — existence must win, otherwise
+  // the wait reports a finished session that is gone.
+  await destroyFromAnotherClient("test-session-id");
+  callbacks.onLoadingChange?.(false);
+
+  expect(await code).toBe(1);
+  expect(stderrText()).toContain("no longer exists");
+  expect(stdoutLines()).toEqual([]);
+  expect(exitSpy).toHaveBeenCalledWith(1);
+});
+
+test("wait: destroying another session does not disturb the wait", async () => {
+  waitPollInterval.ms = 10;
+  let targetCallbacks!: AgentCallbacks;
+  const agents: ReturnType<typeof createMockAgent>[] = [];
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    const isTarget = agents.length === 0;
+    if (isTarget) targetCallbacks = options.callbacks!;
+    const agent = createMockAgent({
+      sessionId: isTarget ? "session-target" : "session-other",
+      isLoading: isTarget,
+    });
+    agents.push(agent);
+    return agent;
+  });
+
+  const target = connectClient(socketPath);
+  await target.send({ id: 1, method: "initialize", params: {} });
+  target.close();
+  const other = connectClient(socketPath);
+  await other.send({ id: 1, method: "initialize", params: {} });
+  other.close();
+
+  let settled: number | undefined;
+  const waitPromise = daemonWaitCommand(socketPath, "session-target").then(
+    () => {
+      settled = -1; // unreachable: the command exits via process.exit
+    },
+    (err: unknown) => {
+      settled = (err as ExitSignal).code;
+    },
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session session-target");
+  });
+
+  await destroyFromAnotherClient("session-other");
+  // Let several fallback ticks run with the other session gone: the check must
+  // look at the target sessionId only, so the wait stays blocked.
+  await new Promise((r) => setTimeout(r, 100));
+  expect(settled).toBeUndefined();
+
+  // The target session still settles the normal way.
+  targetCallbacks.onLoadingChange?.(false);
+  await waitPromise;
+  expect(settled).toBe(0);
+  expect(stdoutLines()).toContain("Status: idle");
   expect(exitSpy).toHaveBeenCalledWith(0);
 });
 
