@@ -132,6 +132,20 @@ function skillNames(message: { skills?: unknown }, type?: string): string[] {
 }
 
 /**
+ * 某个 pane 的 **live 会话**当前可见的技能名（经真 CLI 的 `getSkillMetadata`
+ * RPC，读的是该会话 Agent 自己的技能表）。用读取前的 mark 定位本次回包，避免
+ * 匹配到上一轮的旧答复。
+ */
+async function paneSkillNames(paneId: string): Promise<string[]> {
+  const start = ctx.messages.length;
+  await ctx.host.handleWebviewMessage({ command: "getSkillMetadata", paneId });
+  const reply = ctx.messages
+    .slice(start)
+    .find((m) => m.command === "skillMetadataResponse");
+  return reply ? skillNames(reply).sort() : [];
+}
+
+/**
  * 连续读取技能列表，返回每轮采样到的个人技能名（已排序）。
  *
  * 设置页删除技能后会立刻再拉一次列表（`useSettingsList.refresh`），这次读取与
@@ -229,13 +243,31 @@ describe("real host · project settings follow the pane's project", () => {
     expect(ctx.paneSessionId("pane-1")).toBe(sessionsBefore[0]);
     expect(ctx.paneSessionId(pane2)).toBe(sessionsBefore[1]);
 
+    // 换装前：pane-2 的 live 会话还没有插件技能（落盘只置了「待应用」信号，
+    // 不换装——见上一个用例）。
+    expect(await paneSkillNames(pane2)).not.toContain("sdd:specify");
+
     // 敲 /reload-plugins 就地换装：不重建 agent，只在同一 CLI 进程内把磁盘上的
     // 插件状态换进两个 live 会话。
-    ctx.clear();
+    //
+    // 注意这里不能 `ctx.clear()`：harness 的 `turn()` 把缓冲里那条 pane 的
+    // `setInitialState` 当作「该 pane 已绑定会话、可以发消息」的就绪闸门（同款
+    // 约束见 realHostCredentialWire.integration.test.ts 的 readBack 注释），而就地
+    // 重载不重建会话 ⇒ 不会再补发一条 `setInitialState`。清空缓冲等于拆掉闸门，
+    // 下面的 `turn()` 只能等到超时（此时缓冲里唯一匹配得到的消息就是那条 toast）。
+    // 两处 toast 断言靠 predicate 的文案区分，本来就不需要清空缓冲。
     await ctx.host.handleWebviewMessage({ command: "reloadPlugins" });
     await ctx.waitFor("showToast", {
       predicate: (m) => JSON.stringify(m.toast).includes("插件已重载。"),
     });
+
+    // 换装的真实信号（不只是 toast）：重载把磁盘上的启用记录换进了 **pane-2 那个
+    // live 会话** —— 同一个 sessionId 下它的技能表多出 sdd@builtin 提供的
+    // `sdd:specify`；而未启用该插件的 pane-1 会话不受影响（换装按各会话自己
+    // workdir 的配置链读，不是给所有会话塞同一份）。只断言 toast 的话，把
+    // handleReloadPlugins 改成「不调 CLI、只弹提示」也照样绿。
+    expect(await paneSkillNames(pane2)).toContain("sdd:specify");
+    expect(await paneSkillNames("pane-1")).not.toContain("sdd:specify");
 
     // 真 CLI 上项目文件已改（插件变更本身已生效），且两个 pane 的 sessionId 不变。
     expect(
