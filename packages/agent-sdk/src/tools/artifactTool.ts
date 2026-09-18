@@ -29,6 +29,8 @@ const PROBE_TIMEOUT_MS = 15_000;
 /** Server-side content limit — POSTs above this get a 413. */
 const ARTIFACT_MAX_CONTENT_BYTES = 16 * 1024 * 1024; // 16MB
 const LABEL_MAX_LENGTH = 60;
+/** Server-side title limit — POSTs above this get a 400. */
+const TITLE_MAX_LENGTH = 1000;
 const DEFAULT_FAVICON = "📄";
 
 /** The tool's two actions; publishing is the default when `action` is omitted. */
@@ -68,15 +70,20 @@ function escapeHtml(s: string): string {
 }
 
 /**
- * Last-resort label: the file basename without extension (CC uses the file name
- * as the title when the page has no <title> and no title parameter is given).
+ * The file's basename without extension — CC's last-resort title. HTML publishes
+ * always send a non-empty `title` this way, which is what closes the title chain;
+ * Markdown publishes use it as their filename identity (see the publish path).
  */
-function basenameLabel(filePath: string): string | undefined {
+function basenameTitle(filePath: string): string | undefined {
   const base = path.basename(filePath, path.extname(filePath)).trim();
-  return base ? base.slice(0, LABEL_MAX_LENGTH) : undefined;
+  return base || undefined;
 }
 
-/** Render Markdown to a complete HTML document (client-side md→HTML). */
+/**
+ * Render Markdown to a complete HTML document (client-side md→HTML). The injected
+ * `<title>` carries the file's **filename identity** — CC keeps Markdown pages on
+ * their file name, so `title` never enters the tag.
+ */
 function renderMarkdown(md: string, title?: string): string {
   const body = marked.parse(md, { async: false }) as string;
   const titleTag = title ? `<title>${escapeHtml(title)}</title>` : "";
@@ -218,15 +225,30 @@ async function publishArtifact(
     };
   }
 
+  // `label` is the short name for THIS publish (CC), not a title fallback — it
+  // only feeds the version list, so it is never auto-filled.
   const labelRaw = typeof args.label === "string" ? args.label.trim() : "";
-  const explicitLabel = labelRaw || undefined;
-  if (explicitLabel !== undefined && explicitLabel.length > LABEL_MAX_LENGTH) {
+  const label = labelRaw || undefined;
+  if (label !== undefined && label.length > LABEL_MAX_LENGTH) {
     return {
       success: false,
       content: "",
-      error: `${ARTIFACT_TOOL_NAME}: label must be at most ${LABEL_MAX_LENGTH} characters (got ${explicitLabel.length})`,
+      error: `${ARTIFACT_TOOL_NAME}: label must be at most ${LABEL_MAX_LENGTH} characters (got ${label.length})`,
     };
   }
+
+  // `title` is the artifact title, HTML publishes only (CC). It is rejected at
+  // the same length the server enforces, so an over-long title fails here instead
+  // of costing a round trip (the request would come back a 400 either way).
+  const titleRaw = typeof args.title === "string" ? args.title.trim() : "";
+  if (titleRaw.length > TITLE_MAX_LENGTH) {
+    return {
+      success: false,
+      content: "",
+      error: `${ARTIFACT_TOOL_NAME}: title must be at most ${TITLE_MAX_LENGTH} characters (got ${titleRaw.length})`,
+    };
+  }
+  const explicitTitle = titleRaw || undefined;
 
   const force = args.force === true;
   const urlRaw = typeof args.url === "string" ? args.url.trim() : "";
@@ -264,13 +286,16 @@ async function publishArtifact(
     };
   }
 
-  // CC title order: the page's own <title> wins (server-side), then an explicit
-  // label, then the file basename as the last resort. Falling back here keeps a
-  // published .md / <title>-less .html from being titled "Untitled artifact".
-  const label = explicitLabel ?? basenameLabel(filePath);
+  // CC's title chain is <title> tag (wins, server-side) → `title` parameter →
+  // file basename, and the client is the one that supplies that last resort — so
+  // an .html publish always sends a non-empty `title`. Markdown keeps its file
+  // name identity instead: the tag injected below carries it, and the `title`
+  // parameter does not apply.
+  const fileTitle = basenameTitle(filePath);
+  const title = ext === ".html" ? (explicitTitle ?? fileTitle) : undefined;
 
   const content =
-    ext === ".md" ? renderMarkdown(fileContent, label) : fileContent;
+    ext === ".md" ? renderMarkdown(fileContent, fileTitle) : fileContent;
   const contentBytes = Buffer.byteLength(content, "utf-8");
   if (contentBytes > ARTIFACT_MAX_CONTENT_BYTES) {
     return {
@@ -364,6 +389,7 @@ async function publishArtifact(
   const body: Record<string, unknown> = {
     content,
     favicon,
+    ...(title !== undefined ? { title } : {}),
     ...(label !== undefined ? { label } : {}),
     ...(url !== undefined ? { url } : {}),
     ...(serverVersion !== undefined ? { baseVersion: serverVersion } : {}),
@@ -501,9 +527,14 @@ export const artifactTool: ToolPlugin = {
             description:
               "1-2 emoji characters shown as the page favicon (no text, URLs, or HTML). Defaults to 📄. Only used when publishing.",
           },
+          title: {
+            type: "string",
+            description:
+              "Title for the artifact — the name shown in the browser tab and gallery. Only used when publishing an .html file. Prefer a <title> tag at the top of the HTML itself: this parameter fills in only when the file lacks one in the first 8KB, and never overrides the tag. When neither is present the file name is used. Markdown pages keep their filename identity instead.",
+          },
           label: {
             type: "string",
-            description: `Optional title fallback (max ${LABEL_MAX_LENGTH} characters), used only when publishing. The page's own <title> always wins; when there is none the file name is used — so you rarely need this.`,
+            description: `A short name for this publish, max ${LABEL_MAX_LENGTH} characters (e.g. "Draft to legal"). Optional — a few words, not a description. Only used when publishing.`,
           },
           url: {
             type: "string",

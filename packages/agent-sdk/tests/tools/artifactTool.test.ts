@@ -151,6 +151,8 @@ describe("artifactTool", () => {
       >;
       expect(properties.action.enum).toEqual(["publish", "read"]);
       expect(properties.prompt).toBeDefined();
+      expect(properties.title).toBeDefined();
+      expect(properties.label).toBeDefined();
     });
 
     it("should format compact params as file → url", () => {
@@ -234,6 +236,16 @@ describe("artifactTool", () => {
       );
       expect(result.success).toBe(false);
       expect(result.error).toContain("label must be at most 60 characters");
+    });
+
+    it("should reject a title longer than the 1000-character server limit", async () => {
+      (readFileSync as Mock).mockReturnValue(MD_CONTENT);
+      const result = await artifactTool.execute(
+        { file_path: "doc.md", title: "x".repeat(1001) },
+        makeContext(),
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("title must be at most 1000 characters");
     });
 
     it("should reject a url that is not an artifact URL", async () => {
@@ -339,9 +351,12 @@ describe("artifactTool", () => {
       const body = JSON.parse(init!.body as string);
       expect(body.content).toContain("<h1>Hello World</h1>");
       expect(body.content).toContain("<!DOCTYPE html>");
-      expect(body.content).toContain("<title>My Doc</title>");
+      // Markdown keeps its file name identity — the label is not the title.
+      expect(body.content).toContain("<title>doc</title>");
       expect(body.favicon).toBe("📄");
       expect(body.label).toBe("My Doc");
+      // `title` is an HTML-only parameter (CC), so a .md publish never sends one.
+      expect(body.title).toBeUndefined();
       expect(body.url).toBeUndefined();
       expect(body.baseVersion).toBeUndefined();
       expect(body.force).toBeUndefined();
@@ -379,7 +394,7 @@ describe("artifactTool", () => {
       expect(body.content).toBe(HTML_CONTENT);
     });
 
-    it("should use the file basename as the label when none is given (markdown)", async () => {
+    it("should keep the file name identity for markdown when no title is given", async () => {
       (readFileSync as Mock).mockReturnValue(MD_CONTENT);
       const fetchMock = stubFetchRoutes([
         {
@@ -402,13 +417,14 @@ describe("artifactTool", () => {
 
       expect(result.success).toBe(true);
       const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
-      // Server title order is <title> > label > "Untitled artifact"; supplying the
-      // basename keeps the published page from ending up untitled.
-      expect(body.label).toBe("guide");
+      // The rendered <title> is the file name (not an auto-filled `label`), and
+      // no `label` is invented for the version list.
       expect(body.content).toContain("<title>guide</title>");
+      expect(body.label).toBeUndefined();
+      expect(body.title).toBeUndefined();
     });
 
-    it("should use the file basename as the label when none is given (html)", async () => {
+    it("should send the file basename as the title when none is given (html)", async () => {
       (readFileSync as Mock).mockReturnValue(HTML_CONTENT);
       const fetchMock = stubFetchRoutes([
         {
@@ -431,9 +447,100 @@ describe("artifactTool", () => {
 
       expect(result.success).toBe(true);
       const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
-      expect(body.label).toBe("landing");
+      // CC's last-resort title is the file basename, so the chain never falls
+      // through to the server's default name; the label stays unused.
+      expect(body.title).toBe("landing");
+      expect(body.label).toBeUndefined();
       // The page's own <title> still wins server-side, so content stays untouched.
       expect(body.content).toBe(HTML_CONTENT);
+    });
+
+    it("should treat a blank title as absent for html", async () => {
+      (readFileSync as Mock).mockReturnValue(HTML_CONTENT);
+      const fetchMock = stubFetchRoutes([
+        {
+          match: (url) => url.endsWith("/api/frame/deploy/direct"),
+          respond: () =>
+            jsonResponse(201, {
+              url: "https://server.test/code/artifact/html1",
+              slug: "html1",
+              version: "v1",
+            }),
+        },
+      ]);
+
+      const result = await artifactTool.execute(
+        { file_path: "pages/landing.html", title: "   " },
+        makeContext(),
+      );
+
+      expect(result.success).toBe(true);
+      const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+      expect(body.title).toBe("landing");
+    });
+
+    it("should send an explicit title alongside the label and leave the page <title> alone", async () => {
+      const HTML_WITH_TITLE =
+        "<!DOCTYPE html><html><head><title>Page Own</title></head><body><h1>Hi</h1></body></html>";
+      (readFileSync as Mock).mockReturnValue(HTML_WITH_TITLE);
+      const fetchMock = stubFetchRoutes([
+        {
+          match: (url) => url.endsWith("/api/frame/deploy/direct"),
+          respond: () =>
+            jsonResponse(201, {
+              url: "https://server.test/code/artifact/html1",
+              slug: "html1",
+              path: "pages/landing.html",
+              title: "Page Own",
+              version: "v1",
+            }),
+        },
+      ]);
+
+      const result = await artifactTool.execute(
+        {
+          file_path: "pages/landing.html",
+          title: "Launch",
+          label: "Draft to legal",
+        },
+        makeContext(),
+      );
+
+      expect(result.success).toBe(true);
+      const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+      // Both fields are published side by side (CC sends them in parallel).
+      expect(body.title).toBe("Launch");
+      expect(body.label).toBe("Draft to legal");
+      // The client does not arbitrate title vs. tag: the server decides, and the
+      // tag always wins.
+      expect(body.content).toContain("<title>Page Own</title>");
+    });
+
+    it("should keep the file name identity for markdown even when a title is given", async () => {
+      (readFileSync as Mock).mockReturnValue(MD_CONTENT);
+      const fetchMock = stubFetchRoutes([
+        {
+          match: (url) => url.endsWith("/api/frame/deploy/direct"),
+          respond: () =>
+            jsonResponse(201, {
+              url: "https://server.test/code/artifact/doc",
+              slug: "doc",
+              version: "v1",
+            }),
+        },
+      ]);
+
+      const result = await artifactTool.execute(
+        { file_path: "doc.md", title: "My Doc" },
+        makeContext(),
+      );
+
+      expect(result.success).toBe(true);
+      const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+      // `title` is HTML-only (CC): markdown stays on its file name.
+      expect(body.title).toBeUndefined();
+      expect(body.content).toContain("<title>doc</title>");
+      expect(body.content).not.toContain("My Doc");
     });
 
     it("should ask for permission on the first publish and deny correctly", async () => {
