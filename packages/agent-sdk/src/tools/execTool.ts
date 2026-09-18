@@ -34,6 +34,8 @@ ${SEARCH_ENTRY}
 - \`console.log(...)\` — collected and returned alongside the result. Use it to inspect intermediate values.
 - \`return <value>\` — the returned value is JSON-serialized and given back to you.
 
+It is very helpful if you write a clear, concise description of what this script does in 5-10 words.
+
 Which MCP tools are reachable is announced in the conversation as the catalog changes. The script has no filesystem, no network, no \`import\`, and no \`eval\`/\`new Function\`. It stops when it exceeds its time or tool-call budget. Every nested MCP call goes through the normal permission check, so it can still be denied — a denied call rejects with the reason.`;
 
 /**
@@ -111,6 +113,11 @@ export const execTool: ToolPlugin = {
             description:
               "JavaScript to run in the sandbox. It may `await` tool calls and `return` a value.",
           },
+          description: {
+            type: "string",
+            description:
+              "Clear, concise description of what this script does in 5-10 words.",
+          },
         },
         required: ["code"],
       },
@@ -118,6 +125,24 @@ export const execTool: ToolPlugin = {
   },
 
   prompt: () => EXEC_DESCRIPTION,
+
+  /**
+   * The parameter slot of the collapsed row, shared by the TUI and the desktop
+   * UI: the model's own one-line summary of the script, taken verbatim — no
+   * prefix (the row already prints `Exec`), no rewrite, no truncation.
+   *
+   * `Bash` can fall back to the command string; a script has no equivalent, and
+   * the first line of a multi-line blob usually says nothing, so an absent or
+   * empty description leaves the slot blank rather than inventing text. What the
+   * script actually did is the result slot's job (`formatSummary`).
+   *
+   * Deliberately reads nothing but the argument: no code scan, no pool, no
+   * catalog, so the preview cannot claim a call the script never makes.
+   */
+  formatCompactParams: (params: Record<string, unknown>) => {
+    const description = params.description;
+    return typeof description === "string" ? description : "";
+  },
 
   execute: async (
     args: Record<string, unknown>,
