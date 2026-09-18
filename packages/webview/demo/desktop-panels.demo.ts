@@ -92,6 +92,24 @@ test.describe("Desktop conversation-level panels", () => {
     await injector.simulateExtensionMessage("desktopWorkspaceDiff", {
       result: {
         kind: "ok",
+        base: {
+          label: "main",
+          sha: "4d2f9a1b7c3e5f80a1b2c3d4e5f60718293a4b5c",
+          kind: "default-branch",
+          ref: "refs/remotes/origin/main",
+        },
+        commits: [
+          {
+            sha: "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432",
+            shortSha: "9f8e7d6",
+            subject: "抽取登录接口调用到 utils/auth",
+          },
+          {
+            sha: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+            shortSha: "1a2b3c4",
+            subject: "登录表单补充错误态",
+          },
+        ],
         files: [
           {
             path: "src/components/Login.tsx",
@@ -143,6 +161,26 @@ test.describe("Desktop conversation-level panels", () => {
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-diff-pane.webp",
+    );
+
+    // Pick a file that actually has hunks (the first one in path order is a
+    // deletion with an empty body), then switch to the side-by-side view.
+    await webviewPage
+      .getByTestId("diff-tree")
+      .locator('[data-path="src/components/Login.tsx"]')
+      .click();
+    await webviewPage.getByTestId("diff-view-split").click();
+    await expect(webviewPage.locator(".diff-split-row").first()).toBeVisible();
+    // Two line-number gutters per row: the old side and the new side.
+    await expect(
+      webviewPage
+        .locator(".diff-split-row")
+        .first()
+        .locator(".diff-line-number"),
+    ).toHaveCount(2);
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-diff-split.webp",
     );
   });
 

@@ -201,6 +201,12 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
     await injector.simulateExtensionMessage("desktopWorkspaceDiff", {
       result: {
         kind: "ok",
+        base: {
+          label: "HEAD",
+          sha: "4d2f9a1b7c3e5f80a1b2c3d4e5f60718293a4b5c",
+          kind: "head",
+          ref: null,
+        },
         files: [
           {
             path: "app.js",

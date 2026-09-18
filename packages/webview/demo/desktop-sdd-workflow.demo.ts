@@ -496,9 +496,23 @@ test.describe("Desktop SDD workflow screenshots", () => {
     await injector.simulateExtensionMessage("desktopWorkspaceDiff", {
       result: {
         kind: "ok",
+        base: {
+          label: "main",
+          sha: "4d2f9a1b7c3e5f80a1b2c3d4e5f60718293a4b5c",
+          kind: "default-branch",
+          ref: "refs/remotes/origin/main",
+        },
+        commits: [
+          {
+            sha: "1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d",
+            shortSha: "1a2b3c4",
+            subject: "规格：客户档案管理补齐自动分级",
+          },
+        ],
         files: [
           {
-            path: SPEC_FULL_PATH,
+            // The host returns repo-relative paths (git's own output).
+            path: SPEC_FILE,
             status: "modified",
             additions: 2,
             deletions: 1,
@@ -514,8 +528,9 @@ test.describe("Desktop SDD workflow screenshots", () => {
         ],
       },
     });
+    // 文件树按目录层级列出该 spec 文件（手风琴同步展示完整路径）。
     await expect(
-      webviewPage.getByTestId("diff-pane").getByText("customer-management.md"),
+      webviewPage.getByTestId("diff-tree").getByText("customer-management.md"),
     ).toBeVisible();
 
     // 更新完成后通过「问题待回答」弹窗请你决策
