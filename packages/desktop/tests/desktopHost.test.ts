@@ -442,6 +442,30 @@ vi.mock("../src/main/remoteCli", async () => {
   };
 });
 
+// gitDiff shells out to real git (and, for remote sessions, real ssh) — stub it
+// so this suite stays hermetic. The service itself is covered by
+// tests/gitDiff.test.ts and by the real-git integration suite.
+vi.mock("../src/main/gitDiff", async () => {
+  const actual = await vi.importActual<typeof import("../src/main/gitDiff")>(
+    "../src/main/gitDiff",
+  );
+  return {
+    ...actual,
+    getWorkspaceDiff: vi.fn(async () => ({
+      kind: "ok",
+      base: {
+        label: "origin/main",
+        sha: "base123",
+        kind: "default-branch",
+        ref: "refs/remotes/origin/main",
+      },
+      scope: { kind: "all" },
+      commits: [],
+      files: [],
+    })),
+  };
+});
+
 // withRemoteLoginShell probes the remote login shell via a real `echo $SHELL`
 // ssh round trip — stub it to keep host tests offline. Everything else in
 // sshHosts (config parsing, spawn args, quoting) stays real.
@@ -458,6 +482,7 @@ vi.mock("../src/main/sshHosts", async () => {
 });
 
 import { DesktopHost } from "../src/main/desktopHost";
+import { getWorkspaceDiff } from "../src/main/gitDiff";
 import { ConfigStore } from "../src/main/configStore";
 import { HOST_CHANNEL } from "../src/main/channels";
 import { shell, dialog, nativeTheme, powerMonitor } from "electron";
@@ -10430,6 +10455,61 @@ describe("file panel", () => {
         JSON.stringify(m).includes("打开文件失败: no app registered"),
       ),
     ).toBe(true);
+  });
+});
+
+describe("desktopGetWorkspaceDiff (diff panel)", () => {
+  it("passes the selected commit through and echoes paneId + requestId", async () => {
+    const { host, send } = await readyHost();
+    vi.mocked(getWorkspaceDiff).mockResolvedValueOnce({
+      kind: "ok",
+      base: {
+        label: "origin/main",
+        sha: "base123",
+        kind: "default-branch",
+        ref: "refs/remotes/origin/main",
+      },
+      scope: {
+        kind: "commit",
+        sha: "abc",
+        shortSha: "abc",
+        subject: "one commit",
+      },
+      commits: [],
+      files: [],
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopGetWorkspaceDiff",
+      commit: "abc",
+      requestId: 7,
+    });
+
+    expect(getWorkspaceDiff).toHaveBeenCalledWith(
+      "/work/a",
+      expect.anything(),
+      { commit: "abc" },
+    );
+    // A reply that lost its requestId can never be dropped as stale, and one
+    // without a paneId cannot be routed — both silently freeze the panel.
+    const reply = send.mock.calls
+      .map(([, msg]) => msg as Record<string, unknown>)
+      .find((msg) => msg.command === "desktopWorkspaceDiff");
+    expect(reply).toMatchObject({ requestId: 7 });
+    expect(typeof reply?.paneId).toBe("string");
+    expect(reply?.result).toMatchObject({ scope: { kind: "commit" } });
+  });
+
+  it("reports a non-repo workdir without touching git", async () => {
+    const { host, send } = await readyHost();
+    vi.mocked(getWorkspaceDiff).mockResolvedValueOnce({ kind: "not-a-repo" });
+
+    await host.handleWebviewMessage({ command: "desktopGetWorkspaceDiff" });
+
+    const reply = send.mock.calls
+      .map(([, msg]) => msg as Record<string, unknown>)
+      .find((msg) => msg.command === "desktopWorkspaceDiff");
+    expect(reply?.result).toEqual({ kind: "not-a-repo" });
   });
 });
 

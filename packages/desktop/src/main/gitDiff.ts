@@ -35,9 +35,39 @@ export interface WorkspaceDiffFile {
   binary: boolean;
 }
 
+/** One commit of the session's own range, newest first. */
+export interface WorkspaceDiffCommit {
+  sha: string;
+  /** 7-char prefix, for the picker label. */
+  shortSha: string;
+  subject: string;
+}
+
+/** What the whole file list is measured against. */
+export interface WorkspaceDiffBase {
+  /** Display name: the default branch, "HEAD", or "索引". */
+  label: string;
+  /** Full sha of the base commit; null when the base is the index. */
+  sha: string | null;
+  kind: "default-branch" | "head" | "index";
+  /** Resolved ref of the default branch, null for the other kinds. */
+  ref: string | null;
+}
+
+/** Which range the file list covers. */
+export type WorkspaceDiffScope =
+  | { kind: "all" }
+  | { kind: "commit"; sha: string; shortSha: string; subject: string };
+
 export type WorkspaceDiffResult =
   | { kind: "not-a-repo" }
-  | { kind: "ok"; files: WorkspaceDiffFile[] };
+  | {
+      kind: "ok";
+      base: WorkspaceDiffBase;
+      scope: WorkspaceDiffScope;
+      commits: WorkspaceDiffCommit[];
+      files: WorkspaceDiffFile[];
+    };
 
 /** Per-file hunk line cap — beyond this the panel shows a truncation note. */
 export const MAX_DIFF_LINES = 2000;
@@ -47,8 +77,8 @@ const GIT_BUFFER = 16 * 1024 * 1024;
 
 /**
  * Run git in `cwd`. Remote hosts run `git -C <cwd> …` through ssh — every
- * token is shell-quoted because paths come from `status --porcelain -z`
- * records and may contain spaces or shell metacharacters.
+ * token is shell-quoted because paths come from `diff --name-status -z` /
+ * `ls-files -z` records and may contain spaces or shell metacharacters.
  */
 async function git(host: string, cwd: string, args: string[]): Promise<string> {
   const options = { encoding: "utf-8" as const, maxBuffer: GIT_BUFFER };
@@ -94,38 +124,104 @@ async function remoteCat(host: string, absPath: string): Promise<Buffer> {
   return stdout as Buffer;
 }
 
-interface StatusEntry {
+/** Options shared by every diff invocation: renames on, no user color/ext hooks. */
+const DIFF_OPTIONS = ["-M", "--no-color", "--no-ext-diff"];
+
+function diffArgs(
+  rev: string,
+  format: string[],
+  paths: string[] = [],
+): string[] {
+  return [
+    "diff",
+    rev,
+    ...DIFF_OPTIONS,
+    ...format,
+    ...(paths.length > 0 ? ["--", ...paths] : []),
+  ];
+}
+
+/** Non-empty NUL-separated records (all the -z outputs below use NUL). */
+function parseZRecords(out: string): string[] {
+  return out.split("\0").filter((record) => record !== "");
+}
+
+interface DiffEntry {
   path: string;
   oldPath?: string;
   status: WorkspaceFileStatus;
 }
 
-function parsePorcelain(z: string): StatusEntry[] {
-  const entries: StatusEntry[] = [];
+/** `--name-status` codes are a letter plus a similarity percentage (R100/C075). */
+const NAME_STATUS_CODE = /^[A-Z]\d*$/;
+
+/**
+ * Parse `git diff --name-status -z`. Records are `<code>\0<path>\0`, except
+ * renames/copies which are `<code>\0<old path>\0<new path>\0` — NOTE the order
+ * is the opposite of `status --porcelain -z` (which puts the new path first).
+ */
+export function parseNameStatusZ(z: string): DiffEntry[] {
   const parts = z.split("\0");
-  for (let i = 0; i < parts.length; i++) {
-    const rec = parts[i];
-    if (!rec) continue;
-    const x = rec[0];
-    const y = rec[1];
-    const p = rec.slice(3);
-    // Rename/copy records carry a second NUL-separated path (the source).
-    if (x === "R" || y === "R" || x === "C" || y === "C") {
-      const oldPath = parts[++i] ?? "";
-      entries.push({ path: p, oldPath, status: "renamed" });
+  const entries: DiffEntry[] = [];
+  let i = 0;
+  while (i < parts.length) {
+    const code = parts[i++];
+    if (!NAME_STATUS_CODE.test(code)) continue;
+    if (code[0] === "R" || code[0] === "C") {
+      const oldPath = parts[i++] ?? "";
+      const newPath = parts[i++] ?? "";
+      if (newPath) entries.push({ path: newPath, oldPath, status: "renamed" });
       continue;
     }
+    const filePath = parts[i++] ?? "";
+    if (!filePath) continue;
     const status: WorkspaceFileStatus =
-      x === "?"
-        ? "untracked"
-        : x === "A" || y === "A"
-          ? "added"
-          : x === "D" || y === "D"
-            ? "deleted"
-            : "modified";
-    entries.push({ path: p, status });
+      code[0] === "A" ? "added" : code[0] === "D" ? "deleted" : "modified";
+    entries.push({ path: filePath, status });
   }
   return entries;
+}
+
+interface FileStats {
+  additions: number;
+  deletions: number;
+  binary: boolean;
+}
+
+const NUMSTAT_ROW = /^(\d+|-)\t(\d+|-)\t/;
+
+/**
+ * Parse `git diff --numstat -z` into a map keyed by the NEW path. Rows are
+ * `add\tdel\t<path>\0` with `-` on both sides for binary files; a rename row
+ * has an EMPTY path field and the two paths follow as separate records
+ * (`add\tdel\t\0<old>\0<new>\0`), mirroring the name-status order.
+ */
+export function parseNumstatZ(z: string): Map<string, FileStats> {
+  const parts = z.split("\0");
+  const stats = new Map<string, FileStats>();
+  let i = 0;
+  while (i < parts.length) {
+    const row = parts[i++];
+    const m = NUMSTAT_ROW.exec(row);
+    // A path record that is not a row belongs to a rename we already consumed.
+    if (!m) continue;
+    const value: FileStats = {
+      additions: m[1] === "-" ? 0 : Number.parseInt(m[1], 10),
+      deletions: m[2] === "-" ? 0 : Number.parseInt(m[2], 10),
+      binary: m[1] === "-",
+    };
+    // Everything after the two tab-delimited numbers is the path — taken from
+    // the row itself, so paths containing tabs survive.
+    const inlinePath = row.slice(m[0].length);
+    if (inlinePath) {
+      stats.set(inlinePath, value);
+      continue;
+    }
+    const newPath = parts[i + 1] ?? "";
+    i += 2;
+    if (newPath) stats.set(newPath, value);
+  }
+  return stats;
 }
 
 function truncateHunks(hunks: string): { hunks: string; truncated: boolean } {
@@ -134,36 +230,142 @@ function truncateHunks(hunks: string): { hunks: string; truncated: boolean } {
   return { hunks: lines.slice(0, MAX_DIFF_LINES).join("\n"), truncated: true };
 }
 
+interface ResolvedBase {
+  base: WorkspaceDiffBase;
+  /** Revision to diff against (`--cached` before the first commit). */
+  rev: string;
+  /** Range start for the commit list; null when there is nothing to list. */
+  commitsFrom: string | null;
+}
+
+/**
+ * The base is the point this session branched off the repository's default
+ * branch, so the panel shows the agent's commits AND the uncommitted worktree
+ * in one diff (which `HEAD` cannot — it hides everything already committed).
+ *
+ * `refs/remotes/origin/HEAD` names that branch; without it (a repo that never
+ * had a default branch set) fall back to a local `main`/`master`, and without
+ * either — or without a common ancestor — fall back to `HEAD`.
+ */
+async function resolveDiffBase(
+  host: string,
+  cwd: string,
+  headSha: string | null,
+): Promise<ResolvedBase> {
+  if (!headSha) {
+    return {
+      base: { label: "索引", sha: null, kind: "index", ref: null },
+      rev: "--cached",
+      commitsFrom: null,
+    };
+  }
+
+  const remoteHead = (
+    await git(host, cwd, [
+      "symbolic-ref",
+      "-q",
+      "--short",
+      "refs/remotes/origin/HEAD",
+    ]).catch(() => "")
+  ).trim();
+  const candidates: { ref: string; label: string }[] = [];
+  if (remoteHead)
+    candidates.push({ ref: `refs/remotes/${remoteHead}`, label: remoteHead });
+  candidates.push({ ref: "refs/heads/main", label: "main" });
+  candidates.push({ ref: "refs/heads/master", label: "master" });
+
+  for (const candidate of candidates) {
+    const exists = await git(host, cwd, [
+      "rev-parse",
+      "--verify",
+      "--quiet",
+      `${candidate.ref}^{commit}`,
+    ]).then(
+      () => true,
+      () => false,
+    );
+    if (!exists) continue;
+    const mergeBase = (
+      await git(host, cwd, ["merge-base", "HEAD", candidate.ref]).catch(
+        () => "",
+      )
+    ).trim();
+    // A default branch exists but has no fork point with HEAD (unrelated
+    // histories): the spec asks for the HEAD fallback, not for probing on.
+    if (!mergeBase) break;
+    return {
+      base: {
+        label: candidate.label,
+        sha: mergeBase,
+        kind: "default-branch",
+        ref: candidate.ref,
+      },
+      rev: mergeBase,
+      commitsFrom: mergeBase,
+    };
+  }
+  return {
+    base: { label: "HEAD", sha: headSha, kind: "head", ref: null },
+    rev: "HEAD",
+    // HEAD..HEAD is empty by construction, so no log call is needed.
+    commitsFrom: null,
+  };
+}
+
+/** The session's own commits (merges excluded — they replay others' work). */
+async function listCommits(
+  host: string,
+  cwd: string,
+  from: string,
+): Promise<WorkspaceDiffCommit[]> {
+  const out = await git(host, cwd, [
+    "log",
+    "-z",
+    "--no-merges",
+    "--topo-order",
+    "--pretty=oneline",
+    `${from}..HEAD`,
+  ]).catch(() => "");
+  const commits: WorkspaceDiffCommit[] = [];
+  for (const record of parseZRecords(out)) {
+    // `--pretty=oneline` = "<full sha> <subject>".
+    const space = record.indexOf(" ");
+    if (space <= 0) continue;
+    const sha = record.slice(0, space);
+    commits.push({
+      sha,
+      shortSha: sha.slice(0, 7),
+      subject: record.slice(space + 1),
+    });
+  }
+  return commits;
+}
+
 async function diffForTracked(
   host: string,
   repoRoot: string,
-  base: string[],
-  entry: StatusEntry,
+  rev: string,
+  entry: DiffEntry,
+  stats: FileStats | undefined,
 ): Promise<WorkspaceDiffFile> {
-  // numstat row: additions<TAB>deletions<TAB>path ('-' on both for binary)
-  const num = await git(host, repoRoot, [
-    "diff",
-    ...base,
-    "--numstat",
-    "--",
-    entry.path,
-  ]).catch(() => "");
-  const m = num.split("\n")[0]?.match(/^(\d+|-)\t(\d+|-)\t/);
-  const binary = m ? m[1] === "-" : false;
-  const additions = m && m[1] !== "-" ? parseInt(m[1], 10) : 0;
-  const deletions = m && m[2] !== "-" ? parseInt(m[2], 10) : 0;
+  const binary = stats?.binary ?? false;
+  const additions = stats?.additions ?? 0;
+  const deletions = stats?.deletions ?? 0;
 
   let hunks = "";
   let truncated = false;
-  if (!binary) {
-    const patch = await git(host, repoRoot, [
-      "diff",
-      ...base,
-      "--",
-      entry.path,
-    ]).catch(() => "");
-    const at = patch.indexOf("@@");
-    const body = at === -1 ? "" : patch.slice(at).trimEnd();
+  // A binary file has no textual patch, and a file whose net change is empty
+  // (pure rename, mode-only change) has no hunks — skip the extra call.
+  if (!binary && additions + deletions > 0) {
+    // Both paths must be passed: limiting the pathspec to the new path turns
+    // rename detection off, and the patch then reads as a full file rewrite.
+    const paths = entry.oldPath ? [entry.oldPath, entry.path] : [entry.path];
+    const patch = await git(host, repoRoot, diffArgs(rev, [], paths)).catch(
+      () => "",
+    );
+    const lines = patch.split("\n");
+    const at = lines.findIndex((line) => line.startsWith("@@"));
+    const body = at === -1 ? "" : lines.slice(at).join("\n").trimEnd();
     ({ hunks, truncated } = truncateHunks(body));
   }
   return {
@@ -208,24 +410,24 @@ async function readUntrackedFile(
 async function diffForUntracked(
   host: string,
   repoRoot: string,
-  entry: StatusEntry,
+  relPath: string,
 ): Promise<WorkspaceDiffFile> {
-  const full = path.join(repoRoot, entry.path);
+  const full = path.join(repoRoot, relPath);
   try {
     const file = await readUntrackedFile(host, full);
     if (!file) {
-      return { path: entry.path, status: "untracked", ...UNREADABLE };
+      return { path: relPath, status: "untracked", ...UNREADABLE };
     }
     const buf = file.content;
     if (buf.subarray(0, 8192).includes(0)) {
-      return { path: entry.path, status: "untracked", ...UNREADABLE };
+      return { path: relPath, status: "untracked", ...UNREADABLE };
     }
     const lines = buf.toString("utf-8").split("\n");
     if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
     const truncated = lines.length > MAX_DIFF_LINES;
     const shown = truncated ? lines.slice(0, MAX_DIFF_LINES) : lines;
     return {
-      path: entry.path,
+      path: relPath,
       status: "untracked",
       additions: lines.length,
       deletions: 0,
@@ -234,14 +436,21 @@ async function diffForUntracked(
       binary: false,
     };
   } catch {
-    // Race: the file vanished between `git status` and the read — skip it.
-    return { path: entry.path, status: "untracked", ...UNREADABLE };
+    // Race: the file vanished between `ls-files` and the read — skip it.
+    return { path: relPath, status: "untracked", ...UNREADABLE };
   }
 }
 
+/**
+ * @param options.commit Restrict the file list to one commit of the session's
+ *   own range. Ignored when that commit is not in the range any more (a rebase
+ *   leaves the old object dangling, so existence is not the test — membership
+ *   is); the reply's `scope` then says which range was actually used.
+ */
 export async function getWorkspaceDiff(
   cwd: string,
   host: string = LOCAL_HOST,
+  options: { commit?: string } = {},
 ): Promise<WorkspaceDiffResult> {
   try {
     await git(host, cwd, ["rev-parse", "--is-inside-work-tree"]);
@@ -249,38 +458,64 @@ export async function getWorkspaceDiff(
     return { kind: "not-a-repo" };
   }
 
-  // `git status --porcelain` always emits paths relative to the repo root,
-  // but `cwd` may be a subdirectory. Resolving untracked files (path.join)
-  // and matching pathspecs both need root-relative paths, so normalize to
-  // the toplevel; fall back to cwd if rev-parse is unavailable.
+  // `cwd` may be a subdirectory, and git is cwd-sensitive in two ways that both
+  // corrupt the result: it resolves pathspecs relative to the cwd (so a
+  // root-relative diff path matches nothing) and `ls-files` both scopes and
+  // prints its output relative to it (so untracked files outside the cwd go
+  // missing and the rest come back without their prefix). Resolve the toplevel
+  // once and run everything from there; fall back to cwd if rev-parse is
+  // unavailable.
   const root =
     (
       await git(host, cwd, ["rev-parse", "--show-toplevel"]).catch(() => "")
     ).trim() || cwd;
 
-  // Without commits there is no HEAD to diff against — the staged tree is
-  // the whole change set.
-  const hasHead = await git(host, cwd, ["rev-parse", "--verify", "HEAD"]).then(
-    () => true,
-    () => false,
-  );
-  const base = hasHead ? ["HEAD"] : ["--cached"];
+  const headSha =
+    (
+      await git(host, root, ["rev-parse", "--verify", "HEAD"]).catch(() => "")
+    ).trim() || null;
+  const resolved = await resolveDiffBase(host, root, headSha);
 
-  const status = await git(host, cwd, [
-    "status",
-    "--porcelain=v1",
-    "-z",
-    "--untracked-files=all",
-  ]).catch(() => "");
-  const entries = parsePorcelain(status);
+  const commits = resolved.commitsFrom
+    ? await listCommits(host, root, resolved.commitsFrom)
+    : [];
+  const picked = options.commit
+    ? commits.find((commit) => commit.sha === options.commit)
+    : undefined;
+  const scope: WorkspaceDiffScope = picked
+    ? { kind: "commit", ...picked }
+    : { kind: "all" };
+  // `<sha>^!` is the commit's own diff (and prints the whole tree for a root
+  // commit, which `<sha>^ <sha>` cannot).
+  const rev = picked ? `${picked.sha}^!` : resolved.rev;
+
+  const entries = parseNameStatusZ(
+    await git(host, root, diffArgs(rev, ["--name-status", "-z"])).catch(
+      () => "",
+    ),
+  );
+  const stats = parseNumstatZ(
+    await git(host, root, diffArgs(rev, ["--numstat", "-z"])).catch(() => ""),
+  );
 
   const files: WorkspaceDiffFile[] = [];
   for (const entry of entries) {
     files.push(
-      entry.status === "untracked"
-        ? await diffForUntracked(host, root, entry)
-        : await diffForTracked(host, root, base, entry),
+      await diffForTracked(host, root, rev, entry, stats.get(entry.path)),
     );
   }
-  return { kind: "ok", files };
+  // Untracked files live in the worktree, so they only belong to the
+  // all-changes range — a single commit cannot contain them.
+  if (scope.kind === "all") {
+    const untracked = await git(host, root, [
+      "ls-files",
+      "--others",
+      "--exclude-standard",
+      "-z",
+    ]).catch(() => "");
+    for (const relPath of parseZRecords(untracked)) {
+      files.push(await diffForUntracked(host, root, relPath));
+    }
+  }
+  return { kind: "ok", base: resolved.base, scope, commits, files };
 }
