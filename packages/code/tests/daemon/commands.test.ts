@@ -996,6 +996,62 @@ test("wait: a stale idle push after the session was destroyed is never reported 
   expect(exitSpy).toHaveBeenCalledWith(1);
 });
 
+test("wait: a destroy that stalls after its abort push still exits 1, never a false idle", async () => {
+  waitPollInterval.ms = 10;
+  let releaseTeardown!: () => void;
+  const teardownStalled = new Promise<void>((resolve) => {
+    releaseTeardown = resolve;
+  });
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    const agent = createMockAgent({ isLoading: true }, options.callbacks);
+    // The real Agent.destroy() aborts the in-flight turn first — that abort is
+    // what pushes `loadingChange:false`, the notification a finished turn pushes
+    // too — and only then runs the (much slower) teardown: transcript save,
+    // subagent/mcp cleanup, auto-memory drain. Hold the teardown open so the
+    // push lands while the destroy request is still in flight and the session is
+    // already marked not-loading: this is the window in which the registry must
+    // NOT still list the session, or a waiter reads "listed + idle" as finished.
+    agent.destroy = vi.fn(async () => {
+      setLoading(agent, false);
+      options.callbacks?.onLoadingChange?.(false);
+      await teardownStalled;
+    });
+    return agent;
+  });
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  const code = settledExitCode(
+    daemonWaitCommand(socketPath, "test-session-id"),
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session test-session-id");
+  });
+
+  // Deliberately not awaited: the destroy RPC only answers once the teardown
+  // finishes, and the point of the test is the registry read mid-teardown.
+  const killer = connectClient(socketPath);
+  killer
+    .send({ id: 99, method: "destroy", sessionId: "test-session-id" })
+    .catch(() => {});
+  const settled = await code;
+
+  // Let the teardown finish before asserting, so a failure cannot leave the
+  // destroy request dangling.
+  releaseTeardown();
+  killer.close();
+
+  // Both in one assertion: a regression shows the false success (exit 0) next to
+  // the final-looking snapshot it printed for a session being removed.
+  expect([settled, stdoutLines()]).toEqual([1, []]);
+  expect(stderrText()).toContain(
+    "wave daemon wait failed: Session test-session-id no longer exists (destroyed while waiting)",
+  );
+  expect(exitSpy).toHaveBeenCalledWith(1);
+});
+
 test("wait: destroying another session does not disturb the wait", async () => {
   waitPollInterval.ms = 10;
   const [target, other] = await hostMockSessions([
@@ -1797,6 +1853,36 @@ test("destroy: removes a hosted session from the registry", async () => {
   expect(exitSpy).toHaveBeenCalledWith(0);
 
   // The registry is now empty — the session is gone.
+  const b = connectClient(socketPath);
+  const msgs = await b.send({
+    id: 9,
+    method: "listDaemonSessions",
+    params: {},
+  });
+  const result = msgs[0] as { result: { sessions: unknown[] } };
+  expect(result.result.sessions).toEqual([]);
+  b.close();
+});
+
+test("destroy: a failing agent teardown still leaves the session out of the registry", async () => {
+  const agent = createMockAgent();
+  agent.destroy = vi.fn(async () => {
+    throw new Error("teardown blew up");
+  });
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonDestroyCommand(socketPath, "test-session-id"),
+  ).rejects.toThrow("exit(1)");
+  expect(exitSpy).toHaveBeenCalledWith(1);
+
+  // The entry is dropped before the teardown runs, so a throwing destroy must
+  // not leave a half-destroyed agent listed — the client got an error, and a
+  // session left in the registry would be reachable but dead.
   const b = connectClient(socketPath);
   const msgs = await b.send({
     id: 9,

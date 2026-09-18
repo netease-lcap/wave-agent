@@ -644,8 +644,20 @@ export class AgentBridge {
     if (sessionId) {
       const entry = this.sessions.get(sessionId);
       if (entry) {
-        await entry.agent.destroy();
+        // Drop the registry entry BEFORE awaiting the teardown. Agent.destroy()
+        // aborts the in-flight turn, which pushes `loadingChange:false` — the
+        // exact notification a finished turn pushes — and the teardown itself is
+        // not instant (transcript save, subagent/mcp cleanup, auto-memory drain).
+        // A client blocked in `wait` that is woken by that push re-reads the
+        // registry for the verdict: with the entry still listed (isLoading now
+        // false) it settles as exit 0 on an intermediate snapshot — a false
+        // "finished" for a session that is being removed. With the entry gone the
+        // existence check wins and it reports "no longer exists" (exit 1).
+        // Removed first also means a throwing teardown cannot leave a
+        // half-destroyed agent listed (destroyAll() below clears the map first
+        // for the same reason).
         this.sessions.delete(sessionId);
+        await entry.agent.destroy();
       }
     }
     return null;
