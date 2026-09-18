@@ -143,6 +143,24 @@ interface SessionEntry {
    * header when the session is re-attached from disk after a daemon restart.
    */
   createdWorkdir: string;
+  /**
+   * True while `updateConfig` is tearing the session's agent down and rebuilding
+   * it from the updated config — the entry stays in the registry (so the session
+   * does not look deleted to a `wait` that is blocked on it) but has no usable
+   * agent. Two consequences, both deliberate:
+   *
+   * - `listDaemonSessions` reports it as `isLoading: true`. The teardown aborts
+   *   the in-flight turn, so the outgoing agent reads `isLoading: false` while the
+   *   rebuild is still running; reporting that would let a `wait` print an idle
+   *   snapshot for a session whose agent is mid-replacement. A waiter that keeps
+   *   waiting is never wrong here — the rebuild is bounded, and if it fails the
+   *   entry is dropped, so the waiter then gets a clear "no longer exists".
+   * - State-changing RPCs refuse it (`requireSession`); a message sent to the
+   *   outgoing agent would be silently lost. Read-only RPCs still work
+   *   (`requireSessionForRead`) and see the outgoing agent's data, which is this
+   *   same session's transcript.
+   */
+  transitioning?: boolean;
 }
 
 /**
@@ -644,6 +662,16 @@ export class AgentBridge {
     if (sessionId) {
       const entry = this.sessions.get(sessionId);
       if (entry) {
+        if (entry.transitioning) {
+          // A rebuild owns this entry (updateConfig): destroying it here would
+          // race the rebuild, which would then re-register a replacement for a
+          // session the caller just destroyed. Refuse loudly instead — the
+          // caller can retry once the reload settles.
+          throw new RpcError(
+            PROTOCOL_INTERNAL_ERROR,
+            `Session ${sessionId} is being reconfigured (config reload in progress), retry shortly`,
+          );
+        }
         // Drop the registry entry BEFORE awaiting the teardown. Agent.destroy()
         // aborts the in-flight turn, which pushes `loadingChange:false` — the
         // exact notification a finished turn pushes — and the teardown itself is
@@ -681,7 +709,7 @@ export class AgentBridge {
     restoreId: string,
     sessionId?: string,
   ): Promise<null> {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     // Re-attach to a live session: the SDK restore would no-op (target is
     // already current). Emit the current messages so the freshly attached
     // client — whose router registered only after initialize returned and so
@@ -712,6 +740,18 @@ export class AgentBridge {
       // 场景 6: 恢复即显示该会话上次用量).
       this.emitContextUsage(entry.agent);
       return null;
+    }
+    // The replay branch above is safe during an `updateConfig` transition (it
+    // only re-pushes the outgoing agent's own state, which is this session's
+    // transcript). A REAL restore is not: it would load another conversation
+    // into the agent that is about to be destroyed and replaced, so the call
+    // would be silently thrown away together with the outgoing agent. Refuse it
+    // with the same retryable error the mutating RPCs use.
+    if (entry.transitioning) {
+      throw new RpcError(
+        PROTOCOL_INTERNAL_ERROR,
+        `Session ${sessionId} is being reconfigured (config reload in progress), retry shortly`,
+      );
     }
     await entry.agent.restoreSession(restoreId);
     // A real restore must also re-emit the usage unconditionally: the SDK
@@ -915,7 +955,7 @@ export class AgentBridge {
     permissionMode: PermissionMode;
     availableTools: string[];
   } {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     return {
       sessionId: entry.agent.sessionId,
       // The recorded creation workdir, not the live agent.workingDirectory:
@@ -936,73 +976,105 @@ export class AgentBridge {
     const currentSessionId = entry.agent.sessionId;
     // Merge new config into stored config
     entry.storedConfig = { ...entry.storedConfig, ...params };
-    // Destroy and recreate within the same session slot
-    await entry.agent.destroy();
-    this.sessions.delete(currentSessionId);
-
+    // The entry is NOT removed while the agent is replaced: dropping it would
+    // make a `wait` blocked on this session report "no longer exists" (exit 1)
+    // for a session that is alive and merely reloading — a false error, the same
+    // family as the false idle this whole change is about. Instead the entry is
+    // flagged `transitioning` for the whole destroy + recreate, which
+    // `listDaemonSessions` reports as `isLoading: true` (so no reader can see the
+    // "listed + not busy" combination a waiter would settle on) while
+    // state-changing RPCs refuse it (`requireSession`) instead of talking to the
+    // outgoing, dying agent. Read-only RPCs keep working off that agent.
+    entry.transitioning = true;
     const ctx: SessionContext = {};
-    const callbacks = this.createCallbacks(ctx);
-    const options: AgentOptions = {
-      callbacks,
-      workdir: entry.storedConfig.workdir,
-      restoreSessionId: currentSessionId,
-      apiKey: entry.storedConfig.apiKey,
-      baseURL: entry.storedConfig.baseURL,
-      defaultHeaders: entry.storedConfig.defaultHeaders,
-      model: entry.storedConfig.model,
-      fastModel: entry.storedConfig.fastModel,
-      permissionMode: entry.storedConfig.permissionMode,
-      tools: entry.storedConfig.tools,
-      allowedTools: entry.storedConfig.allowedTools,
-      disallowedTools: entry.storedConfig.disallowedTools,
-      plugins: entry.storedConfig.pluginDirs?.map((p) => ({
-        type: "local",
-        path: p,
-      })),
-      mcpServers: entry.storedConfig.mcpServers,
-      // Keep worktree context (permission safety) across recreation, but never
-      // re-fire WorktreeCreate — the hook ran at initial creation.
-      worktreeName: entry.storedConfig.worktreeName,
-      canUseTool: (context: ToolPermissionContext) =>
-        this.canUseTool(context, ctx),
-    };
-
-    let agent: Agent;
     try {
-      agent = await Agent.create(options);
-    } catch (createError) {
-      // The old entry was already destroyed and removed above. If the session
-      // file is missing or unrecoverable (fresh session, cleared chat, or a
-      // never-persisted empty session), fail soft: recreate WITHOUT
-      // restoreSessionId so this session slot keeps working. Without this the
-      // client's sessionId still points at the destroyed entry and every later
-      // request fails with "Session not found" until the window is reloaded.
-      // Non-session errors (bad baseURL/apiKey/config) must surface unchanged.
-      if (!options.restoreSessionId || !isSessionRecoveryError(createError)) {
-        throw createError;
-      }
-      logger?.warn(
-        `updateConfig: failed to restore session ${currentSessionId}, recreating as a fresh session:`,
-        createError,
-      );
-      agent = await Agent.create({ ...options, restoreSessionId: undefined });
-    }
-    ctx.agent = agent;
-    ctx.registeredSessionId = agent.sessionId;
-    this.sessions.set(agent.sessionId, {
-      agent,
-      storedConfig: { ...entry.storedConfig },
-      createdWorkdir: entry.createdWorkdir,
-    });
+      // Destroy and recreate within the same session slot. The destroy comes
+      // first so the outgoing agent stops writing the transcript before the
+      // replacement loads it.
+      await entry.agent.destroy();
 
-    return { sessionId: agent.sessionId };
+      const callbacks = this.createCallbacks(ctx);
+      const options: AgentOptions = {
+        callbacks,
+        workdir: entry.storedConfig.workdir,
+        restoreSessionId: currentSessionId,
+        apiKey: entry.storedConfig.apiKey,
+        baseURL: entry.storedConfig.baseURL,
+        defaultHeaders: entry.storedConfig.defaultHeaders,
+        model: entry.storedConfig.model,
+        fastModel: entry.storedConfig.fastModel,
+        permissionMode: entry.storedConfig.permissionMode,
+        tools: entry.storedConfig.tools,
+        allowedTools: entry.storedConfig.allowedTools,
+        disallowedTools: entry.storedConfig.disallowedTools,
+        plugins: entry.storedConfig.pluginDirs?.map((p) => ({
+          type: "local",
+          path: p,
+        })),
+        mcpServers: entry.storedConfig.mcpServers,
+        // Keep worktree context (permission safety) across recreation, but never
+        // re-fire WorktreeCreate — the hook ran at initial creation.
+        worktreeName: entry.storedConfig.worktreeName,
+        canUseTool: (context: ToolPermissionContext) =>
+          this.canUseTool(context, ctx),
+      };
+
+      let agent: Agent;
+      try {
+        agent = await Agent.create(options);
+      } catch (createError) {
+        // The old agent is already destroyed. If the session file is missing or
+        // unrecoverable (fresh session, cleared chat, or a never-persisted empty
+        // session), fail soft: recreate WITHOUT restoreSessionId so this session
+        // slot keeps working. Without this the client's sessionId still points at
+        // the destroyed entry and every later request fails with "Session not
+        // found" until the window is reloaded. Non-session errors (bad
+        // baseURL/apiKey/config) must surface unchanged.
+        if (!options.restoreSessionId || !isSessionRecoveryError(createError)) {
+          throw createError;
+        }
+        logger?.warn(
+          `updateConfig: failed to restore session ${currentSessionId}, recreating as a fresh session:`,
+          createError,
+        );
+        agent = await Agent.create({ ...options, restoreSessionId: undefined });
+      }
+      ctx.agent = agent;
+      ctx.registeredSessionId = agent.sessionId;
+      entry.agent = agent;
+      // A recovery-recreated session gets a NEW id: move the registry key with it.
+      // (The entry object is reused, so the flag and the recorded creation workdir
+      // survive either way.) Announced with the OLD id as the envelope — same
+      // contract as `onSessionIdChange` — so a client blocked on this session can
+      // rebind to the new id instead of concluding it disappeared.
+      if (agent.sessionId !== currentSessionId) {
+        this.emit(
+          "sessionIdChange",
+          { sessionId: agent.sessionId },
+          currentSessionId,
+        );
+        this.sessions.delete(currentSessionId);
+        this.sessions.set(agent.sessionId, entry);
+      }
+      entry.transitioning = false;
+      return { sessionId: agent.sessionId };
+    } catch (teardownError) {
+      // Nothing usable is left: the outgoing agent is torn down (fully or
+      // partially) and no replacement was built. Leaving the entry listed would
+      // be a "half-dead" session — reachable through the registry but with no
+      // working agent — so it is dropped, exactly like a failing `destroy`: a
+      // waiter then reports "no longer exists" (exit 1) instead of hanging or
+      // settling. The error surfaces to the caller unchanged.
+      this.sessions.delete(currentSessionId);
+      throw teardownError;
+    }
   }
 
   private getConfiguredModels(sessionId?: string): {
     models: string[];
     currentModel: string | undefined;
   } {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     return {
       models: entry.agent.getConfiguredModels(),
       currentModel: entry.agent.getModelConfig().model,
@@ -1200,7 +1272,7 @@ export class AgentBridge {
   private async listRewindCheckpoints(sessionId?: string): Promise<{
     checkpoints: Array<{ id: string; content: string }>;
   }> {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     const { messages } = await entry.agent.getFullMessageThread();
     // 压缩 append-only 后同 id 消息在磁盘完整线程中重复出现（压缩前历史 +
     // 压缩后 append 的重复）。按 id 去重并保留最后一次出现（与折叠后的
@@ -1247,7 +1319,7 @@ export class AgentBridge {
     messages: Message[];
     contextUsagePercent?: number;
   } {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     return {
       messages: entry.agent.displayMessages,
       contextUsagePercent: this.contextUsagePercentOf(entry.agent),
@@ -1258,7 +1330,7 @@ export class AgentBridge {
     messages: Message[];
     sessionIds: string[];
   }> {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     return entry.agent.getFullMessageThread();
   }
 
@@ -1277,7 +1349,7 @@ export class AgentBridge {
     taskId: string,
     sessionId?: string,
   ): { output: ReturnType<Agent["getBackgroundTaskOutput"]> } {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     return { output: entry.agent.getBackgroundTaskOutput(taskId) };
   }
 
@@ -1299,7 +1371,7 @@ export class AgentBridge {
   private async getWorkflowRuns(
     sessionId?: string,
   ): Promise<{ runs: SerializableWorkflowRun[] }> {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     const runs = await entry.agent.getWorkflowRuns();
     return {
       runs: runs.map((r) => {
@@ -1331,7 +1403,7 @@ export class AgentBridge {
   }
 
   private getPermissionMode(sessionId?: string): { mode: PermissionMode } {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     return { mode: entry.agent.getPermissionMode() };
   }
 
@@ -1345,7 +1417,7 @@ export class AgentBridge {
     path: string | null;
     content: string | null;
   }> {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     const agent = entry.agent;
     const planPath =
       agent.getPlanFilePath() ?? (await agent.awaitPlanFilePath());
@@ -1364,7 +1436,7 @@ export class AgentBridge {
   // ── MCP ───────────────────────────────────────────────────────
 
   private getMcpServers(sessionId?: string): { servers: McpServerStatus[] } {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     return { servers: entry.agent.getMcpServers() };
   }
 
@@ -1400,7 +1472,7 @@ export class AgentBridge {
     userPath: string | null;
     projectPath: string | null;
   } {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     return {
       userPath: entry.agent.getUserMcpConfigPath(),
       projectPath: entry.agent.getProjectMcpConfigPath(),
@@ -1410,19 +1482,19 @@ export class AgentBridge {
   // ── Commands ──────────────────────────────────────────────────
 
   private getSlashCommands(sessionId?: string): { commands: SlashCommand[] } {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     return { commands: entry.agent.getSlashCommands() };
   }
 
   private getSubagentConfigurations(sessionId?: string): {
     configurations: SubagentConfiguration[];
   } {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     return { configurations: entry.agent.getSubagentConfigurations() };
   }
 
   private getSkillMetadata(sessionId?: string): { skills: SkillMetadata[] } {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     return { skills: entry.agent.getSkillMetadata() };
   }
 
@@ -1451,7 +1523,7 @@ export class AgentBridge {
     hooks: Partial<Record<string, unknown[]>>;
     configPath: string | null;
   }> {
-    const entry = this.requireSession(sessionId);
+    const entry = this.requireSessionForRead(sessionId);
     const hooks = await entry.agent.getHooksByScope(scope);
     // 回带该 scope 钩子所在 settings.json 的绝对路径（宿主 GUI 打开文件用；
     // plugin 钩子来自代码而非配置文件 → null）。
@@ -1588,7 +1660,14 @@ export class AgentBridge {
   /** Daemon list: expose the in-memory session registry (live sessions only,
    * not disk-scanning). Registration order is preserved. The working directory
    * shown is the session's recorded creation workdir (stable identity), not the
-   * live value that drifts with in-session `cd`. */
+   * live value that drifts with in-session `cd`.
+   *
+   * A session mid-rebuild (`transitioning`, see `SessionEntry`) reports
+   * `isLoading: true`: its outgoing agent has already been aborted by the
+   * teardown, so its own flag reads false while the replacement is still being
+   * built — reporting that would hand a `wait` the "listed + not busy"
+   * combination it settles on. "Not idle" is the honest reading of "this session
+   * has no agent right now", and it can only make a waiter wait. */
   private listDaemonSessions(): {
     sessions: Array<{
       sessionId: string;
@@ -1601,7 +1680,7 @@ export class AgentBridge {
       sessions: [...this.sessions.entries()].map(([sessionId, entry]) => ({
         sessionId,
         workingDirectory: entry.createdWorkdir,
-        isLoading: entry.agent.isLoading,
+        isLoading: entry.transitioning === true || entry.agent.isLoading,
         messageCount: entry.agent.displayMessages.length,
       })),
     };
@@ -2205,7 +2284,34 @@ export class AgentBridge {
 
   // ── Utils ─────────────────────────────────────────────────────
 
+  /**
+   * The session entry for a request that CHANGES session state. A session whose
+   * agent is mid-rebuild (`updateConfig` → `SessionEntry.transitioning`) has no
+   * usable agent: its outgoing one is being torn down, so a message injected into
+   * it would be lost and a config write would be overwritten by the rebuild's own
+   * stored config. Those requests are refused with a retryable error instead.
+   * Read-only requests use `requireSessionForRead` and stay available.
+   */
   private requireSession(sessionId?: string): SessionEntry {
+    const entry = this.requireSessionForRead(sessionId);
+    if (entry.transitioning) {
+      throw new RpcError(
+        PROTOCOL_INTERNAL_ERROR,
+        `Session ${sessionId} is being reconfigured (config reload in progress), retry shortly`,
+      );
+    }
+    return entry;
+  }
+
+  /**
+   * The session entry for a request that only READS. During a rebuild the entry
+   * holds the outgoing agent: its messages are this same session's transcript and
+   * its config is the pre-reload one, both of which are the best answer available
+   * for the few hundred milliseconds the rebuild takes. Refusing reads instead
+   * would turn a config reload into a burst of errors in whatever host happens to
+   * be polling (`getMcpServers`, `getSlashCommands`, …).
+   */
+  private requireSessionForRead(sessionId?: string): SessionEntry {
     if (!sessionId) {
       throw new RpcError(
         PROTOCOL_INTERNAL_ERROR,
