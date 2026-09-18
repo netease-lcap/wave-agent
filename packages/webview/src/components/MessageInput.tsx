@@ -8,6 +8,7 @@ import React, {
   KeyboardEvent,
 } from "react";
 import { convertToMarkdown } from "../utils/messageUtils";
+import { validateImageFile } from "../utils/imageValidation";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useHostMessage } from "../utils/useHostMessage";
 import { ContextTag } from "./ContextTag";
@@ -1617,8 +1618,20 @@ export const MessageInput = forwardRef<
         file.type.startsWith("image/"),
       );
 
+      // Images the model gateway would reject (empty payload, garbage bytes or
+      // a format outside png/jpeg/gif/webp) are dropped here instead of being
+      // sent and bounced back as `HTTP 400 ... unsupported image` (spec:
+      // docs/specs/ui/image-pasting.md「发送前校验图片有效性」).
+      const rejectedMessages = new Set<string>();
+
       for (const file of imageFiles) {
         try {
+          const validation = await validateImageFile(file);
+          if (!validation.ok) {
+            rejectedMessages.add(validation.message);
+            continue;
+          }
+
           const dataUrl = await createDataUrlFromBlob(file);
 
           // Insert inline tag for the image
@@ -1675,8 +1688,17 @@ export const MessageInput = forwardRef<
           console.error("Failed to process image:", error);
         }
       }
+
+      if (rejectedMessages.size > 0) {
+        // Reuses the existing host-side error channel (VS Code/JetBrains
+        // notification, desktop system message) — no new UI surface.
+        vscode.postMessage({
+          command: "showError",
+          message: `已跳过无效图片：${[...rejectedMessages].join("；")}`,
+        });
+      }
     },
-    [createDataUrlFromBlob, textareaRef, handleImagePreview],
+    [createDataUrlFromBlob, textareaRef, handleImagePreview, vscode],
   );
 
   // Paste event handler

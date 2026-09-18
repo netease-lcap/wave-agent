@@ -1,6 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { convertMessagesForAPI } from "../../src/utils/convertMessagesForAPI.js";
-import { generateMessageId } from "../../src/utils/messageOperations.js";
+import {
+  convertImageToBase64,
+  generateMessageId,
+} from "../../src/utils/messageOperations.js";
 import type { Message } from "../../src/types/index.js";
 import type {
   ChatCompletionMessageParam,
@@ -1153,6 +1156,35 @@ describe("convertMessagesForAPI", () => {
           type: "text",
           text: "[Image source: /tmp/clipboard-image-123.png]",
         },
+      ]);
+    });
+
+    it("skips a path-based image whose bytes cannot be read", () => {
+      // convertImageToBase64 returns undefined for unreadable/empty/unknown
+      // files; the image must be dropped instead of sent as an empty payload.
+      vi.mocked(convertImageToBase64).mockReturnValueOnce(undefined);
+
+      const messages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            { type: "text", content: "What is in this screenshot?" },
+            { type: "image", imageUrls: ["/tmp/empty.png"] },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      const apiMessages = convertMessagesForAPI(messages);
+
+      const content = apiMessages[0].content as Array<{
+        type: string;
+        text?: string;
+        image_url?: { url: string };
+      }>;
+      expect(content).toEqual([
+        { type: "text", text: "What is in this screenshot?" },
       ]);
     });
 

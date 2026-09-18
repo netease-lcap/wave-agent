@@ -231,7 +231,7 @@ describe("convertImageToBase64", () => {
 
     vi.mocked(readFileSync).mockReturnValue(pngBuffer);
 
-    const result = convertImageToBase64("/test/image.png");
+    const result = convertImageToBase64("/test/image.png") as string;
 
     expect(result).toMatch(/^data:image\/png;base64,/);
     expect(readFileSync).toHaveBeenCalledWith("/test/image.png");
@@ -263,7 +263,7 @@ describe("convertImageToBase64", () => {
     expect(readFileSync).toHaveBeenCalledWith("/test/image.jpg");
   });
 
-  it("should handle non-existent files gracefully", () => {
+  it("should skip unreadable files instead of sending an empty image", () => {
     // Mock readFileSync to throw an error (simulating file not found)
     vi.mocked(readFileSync).mockImplementation(() => {
       throw new Error("File not found");
@@ -271,12 +271,19 @@ describe("convertImageToBase64", () => {
 
     const result = convertImageToBase64("/tmp/non-existent-image.png");
 
-    // Should return empty base64 placeholder instead of throwing error
-    expect(result).toBe("data:image/png;base64,");
+    // Must NOT return an empty data URL — an empty payload is exactly what the
+    // model gateway rejects with "unsupported image".
+    expect(result).toBeUndefined();
     expect(readFileSync).toHaveBeenCalledWith("/tmp/non-existent-image.png");
   });
 
-  it("should handle files with unknown extensions", () => {
+  it("should skip a zero-byte image file instead of sending an empty image", () => {
+    vi.mocked(readFileSync).mockReturnValue(Buffer.alloc(0));
+
+    expect(convertImageToBase64("/tmp/empty.png")).toBeUndefined();
+  });
+
+  it("should not relabel unknown extensions as image/png", () => {
     // Mock file data with unknown extension
     const unknownBuffer = Buffer.from([
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
@@ -289,10 +296,9 @@ describe("convertImageToBase64", () => {
 
     vi.mocked(readFileSync).mockReturnValue(unknownBuffer);
 
-    const result = convertImageToBase64("/test/image.unknown");
-
-    // Should default to PNG MIME type
-    expect(result).toMatch(/^data:image\/png;base64,/);
+    // An unknown extension must not be silently advertised as PNG (that is how
+    // svg/heic/avif bytes reached the model dressed up as image/png).
+    expect(convertImageToBase64("/test/image.unknown")).toBeUndefined();
     expect(readFileSync).toHaveBeenCalledWith("/test/image.unknown");
   });
 });

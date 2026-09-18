@@ -76,43 +76,56 @@ export interface AddErrorBlockParams {
 /**
  * Convert image file path to base64 format
  * @param imagePath Image file path
- * @returns base64 format image data URL
+ * @returns base64 format image data URL, or `undefined` when the file cannot be
+ *   used as an image (unreadable, empty, or an extension we cannot map to a
+ *   MIME type). Callers must skip the image instead of sending an empty or
+ *   mislabelled payload — the model gateway rejects both with
+ *   `HTTP 400 ... You have uploaded an unsupported image`.
  */
-export const convertImageToBase64 = (imagePath: string): string => {
+export const convertImageToBase64 = (imagePath: string): string | undefined => {
+  let imageBuffer: Buffer;
   try {
-    const imageBuffer = readFileSync(imagePath);
-    const ext = extname(imagePath).toLowerCase().substring(1);
-
-    // Determine MIME type based on file extension
-    let mimeType = "image/png"; // Default
-    switch (ext) {
-      case "jpg":
-      case "jpeg":
-        mimeType = "image/jpeg";
-        break;
-      case "png":
-        mimeType = "image/png";
-        break;
-      case "gif":
-        mimeType = "image/gif";
-        break;
-      case "webp":
-        mimeType = "image/webp";
-        break;
-      case "bmp":
-        mimeType = "image/bmp";
-        break;
-      default:
-        mimeType = "image/png";
-    }
-
-    const base64String = imageBuffer.toString("base64");
-    return `data:${mimeType};base64,${base64String}`;
+    imageBuffer = readFileSync(imagePath);
   } catch (error) {
     logger.error(`Failed to convert image to base64: ${imagePath}`, error);
-    // Return an error placeholder or throw error
-    return `data:image/png;base64,`; // Empty base64, avoid program crash
+    return undefined;
   }
+
+  if (imageBuffer.length === 0) {
+    logger.warn(`Skipping empty image file: ${imagePath}`);
+    return undefined;
+  }
+
+  const ext = extname(imagePath).toLowerCase().substring(1);
+
+  // Determine MIME type based on file extension. Unknown extensions are NOT
+  // relabelled as image/png (that is how svg/heic/avif bytes used to reach the
+  // model dressed up as PNG).
+  let mimeType: string;
+  switch (ext) {
+    case "jpg":
+    case "jpeg":
+      mimeType = "image/jpeg";
+      break;
+    case "png":
+      mimeType = "image/png";
+      break;
+    case "gif":
+      mimeType = "image/gif";
+      break;
+    case "webp":
+      mimeType = "image/webp";
+      break;
+    case "bmp":
+      mimeType = "image/bmp";
+      break;
+    default:
+      logger.warn(`Skipping image with unsupported extension: ${imagePath}`);
+      return undefined;
+  }
+
+  const base64String = imageBuffer.toString("base64");
+  return `data:${mimeType};base64,${base64String}`;
 };
 
 export const generateMessageId = (): string => `msg-${randomUUID()}`;
