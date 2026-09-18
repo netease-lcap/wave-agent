@@ -24,6 +24,12 @@ interface TooltipProps {
   disabled?: boolean;
   className?: string;
   /**
+   * 长内容折行：`text` 里的 `\n` 原样换行，超宽内容按宽度折行（默认 `false` = 单行
+   * `nowrap` + 超宽省略号）。含长路径 / 多个换行段落的文案要开，否则会被截成省略号
+   * （如插件作用域气泡里的工程根目录——路径正是工程重名时唯一的区分依据）。
+   */
+  multiline?: boolean;
+  /**
    * Optional external anchor: the tooltip positions against this element
    * instead of the wrapper span (e.g. a row's hover-highlight container, so
    * the hint starts at the row's visual edge rather than the content's).
@@ -38,6 +44,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
   offset = 8,
   disabled = false,
   className = "",
+  multiline = false,
   anchorRef,
 }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -140,7 +147,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
         id={id}
         role="tooltip"
         ref={tooltipRef}
-        className={`tooltip-box tooltip-${position} ${isVisible ? "visible" : ""}`}
+        className={`tooltip-box tooltip-${position} ${isVisible ? "visible" : ""} ${multiline ? "tooltip-multiline" : ""}`}
         style={tooltipStyle}
       >
         {text}

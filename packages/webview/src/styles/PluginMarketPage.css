@@ -1,0 +1,33 @@
+/* 插件市场整页（desktop 独有，spec ecosystem/plugin.md「插件市场」场景 1/2）。
+ *
+ * 这是「替换会话区的整页视图」——与「会话状态看板」同族，故：
+ * - 根与内容区的形制抄 .session-board（整宽、顶栏通栏贴顶、内容区自滚动）；
+ * - 顶栏的返回钮 / 图标钮 / 分割线 / 红绿灯让位直接用看板那套壳类（含深色覆盖），
+ *   不复制第二份，避免侧边栏收起时出现两套让位偏移。
+ *
+ * 颜色一律走 --vscode-* / 既有 --cc-* token（不写死浅色值、不新增视觉约束）。 */
+
+.plugin-market-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  min-height: 0;
+  /* 与 .session-board 同 padding：顶栏的 margin: 0 -16px 靠它抵消成通栏 */
+  padding: 0 16px 16px;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: var(--vscode-editor-background, #ffffff);
+  color: var(--vscode-foreground, #1f2329);
+}
+
+/* 内容区：设置页那一列（.settings-view 自带 760px 居中与内边距）的滚动容器 */
+.plugin-market-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: var(--vscode-panel-background);
+  /* 市场切换条两端渐隐的底色（spec ecosystem/plugin 场景 5）：本区是整页形态下
+     切换条身后的背景，故由它给出渐隐色；设置页形态由 .settings-page 给出。 */
+  --cc-tabs-fade-bg: var(--vscode-panel-background);
+}

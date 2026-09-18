@@ -15,6 +15,10 @@
 
 /* ---- Sidebar ---- */
 
+/* 侧边栏自身永不滚动（spec desktop-layout.md「会话列表滚动、入口固定」）：唯一的滚动
+   容器是下面的 .desktop-session-tree，窗口行/品牌行/「新对话」/「插件市场」/账户
+   卡片都是固定行（各自 flex-shrink: 0）。overflow: hidden 同时兜住滚动链——列表滚到
+   边界后不会把侧边栏或整页继续带走。 */
 .desktop-sidebar {
   width: 260px;
   min-width: 260px;
@@ -115,6 +119,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* 固定行：高度不参与压缩（压缩只落在会话列表上，见 .desktop-session-tree） */
+  flex-shrink: 0;
   /* 左右缩进：sidebar 12px + 本行 8px = logo 左缘 20px（Figma sidebar-brand-row
      padding-left 8px，与分组头文字左缘对齐） */
   padding: 4px 0 8px 8px;
@@ -169,6 +175,8 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* 固定行：新对话与插件市场入口共用本行制，任一形态下都不被压缩/随列表滚走 */
+  flex-shrink: 0;
   /* Vertical spacing only — the 6px side insets moved to the tooltip anchor
      span (.desktop-sidebar-new-chat-tooltip) so the button can stretch to
      the full row (width:100%) and its hover background covers it. <button>
@@ -198,7 +206,10 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   flex-shrink: 0;
 }
 
-.desktop-sidebar-new-chat:hover:not(:disabled) {
+/* 高亮态打开期间不套悬停底色：否则鼠标停在入口上时淡红底被悬停底色盖掉
+   （活动按钮的 .is-active 与 :hover 同权重、靠先后顺序取胜，此处 :hover 权重
+   更高，故显式排除）。 */
+.desktop-sidebar-new-chat:hover:not(.is-active):not(:disabled) {
   background: var(--vscode-toolbar-hoverBackground);
 }
 
@@ -207,10 +218,31 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   cursor: not-allowed;
 }
 
+/* 插件市场入口（spec ecosystem/plugin.md「插件市场」场景 1/2）：几何与新对话同
+   行制（共用 .desktop-sidebar-new-chat），打开整页时用与「活动」按钮同源的品牌红
+   + 淡红底高亮。 */
+.desktop-sidebar-new-chat.is-active {
+  color: var(--vscode-brand-primary, #c1292e);
+  background-color: #ffebe8;
+}
+
+html[data-theme="dark"] .desktop-sidebar-new-chat.is-active {
+  background-color: color-mix(
+    in srgb,
+    var(--vscode-brand-primary, #c1292e) 18%,
+    transparent
+  );
+}
+
 /* ---- Sidebar session tree (FR-020) ---- */
 
+/* 侧边栏唯一的滚动区（spec desktop-layout.md「会话列表滚动、入口固定」场景 1-4）：
+   占用固定行之外的全部剩余高度并自行滚动，min-height: 0 是契约的一半——没有它，
+   列的自动最小高度会取内容高度，列表就会把账户卡片顶出可视区、整条侧边栏一起
+   溢出（而不是自己滚）。窗口变矮时压缩全部落在本区域（可滚动高度随之变小）。 */
 .desktop-session-tree {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   /* 左右缩进由 .desktop-sidebar 的 12px 提供（task-groups 无左右 padding） */
   padding: 4px 0 8px;
@@ -349,7 +381,9 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   cursor: pointer;
   font-size: 14px;
   line-height: 1;
-  transition: opacity 0.12s ease, background-color 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    background-color 0.12s ease;
   z-index: 1;
 }
 

@@ -370,7 +370,12 @@ class MessageHandler(
                     LOG.warn("listPlugins failed: ${e.message}")
                     JsonArray(emptyList())
                 }
-                postMessage("listPluginsResponse", buildJsonObject { put("plugins", plugins) })
+                postMessage("listPluginsResponse", buildJsonObject {
+                    put("plugins", plugins)
+                    // anchorWorkdir = 锚点工程（spec ecosystem/plugin A-018）：IDE 宿主
+                    // 即当前工程目录，弹窗的 project / local 两档据此标明写进哪个工程。
+                    put("anchorWorkdir", currentWorkdir())
+                })
             }
             // VSCE :101/:262 → install, show info, reload list, updateAllSessionsConfig
             "installPlugin" -> handlePluginMutation(command, msg) { id, scope ->
@@ -520,13 +525,14 @@ class MessageHandler(
                     IdeService.showError(project, "添加市场失败: ${e.message}")
                 }
             }
-            // VSCE :122/:349 → remove, reload list
+            // VSCE :122/:349 → remove, show info, reload list
             "removeMarketplace" -> {
                 val name = msg["name"]?.jsonPrimitive?.content ?: return
                 try {
                     session.agent?.removeMarketplace(name, currentWorkdir())
                     postListMarketplaces()
                     postListPlugins()
+                    // 成功反馈（spec 插件市场场景 20）：市场名取市场清单里的名字
                     IdeService.showInfo(project, "已移除市场「$name」")
                 } catch (e: StdioClientException) {
                     LOG.warn("removeMarketplace failed: ${e.message}")
@@ -1082,6 +1088,8 @@ class MessageHandler(
         postMessage("listPluginsResponse", buildJsonObject {
             put("plugins", plugins)
             if (refreshed) put("refreshed", true)
+            // anchorWorkdir = 锚点工程（spec ecosystem/plugin A-018），见上方 listPlugins 分支
+            put("anchorWorkdir", currentWorkdir())
         })
     }
 

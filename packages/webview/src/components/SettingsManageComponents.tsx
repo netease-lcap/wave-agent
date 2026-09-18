@@ -20,6 +20,9 @@ export interface SettingsTabsProps {
   onChange: (tab: string) => void;
   /** 右侧操作区（如「新建」按钮），可空 */
   actions?: React.ReactNode;
+  /** 切换条滚动容器（`.settings-tabs`）的 ref。调用方需要观察横向溢出时传入
+   *  （插件市场用它决定两端渐隐提示的显隐，spec ecosystem/plugin 场景 5）。 */
+  stripRef?: React.Ref<HTMLDivElement>;
 }
 
 /** 来源 Tab 栏（复用个性化视图的 settings-tabs 样式） */
@@ -28,9 +31,15 @@ export const SettingsTabs: React.FC<SettingsTabsProps> = ({
   activeTab,
   onChange,
   actions,
+  stripRef,
 }) => (
   <div className="settings-card-toolbar">
-    <div className="settings-tabs" role="tablist" aria-label="来源范围">
+    <div
+      className="settings-tabs"
+      role="tablist"
+      aria-label="来源范围"
+      ref={stripRef}
+    >
       {tabs.map((tab) => (
         <button
           key={tab.key}

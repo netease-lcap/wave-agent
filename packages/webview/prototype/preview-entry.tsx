@@ -27,6 +27,7 @@ import { createRoot } from "react-dom/client";
 import { ChatApp } from "../src/components/ChatApp";
 import { DesktopApp } from "../src/components/DesktopApp";
 import "../src/styles/globals.css";
+import "../src/styles/host-desktop.css";
 import "@vscode/codicons/dist/codicon.css";
 import "../theme/theme-base-light.css";
 import "../theme/theme-base-dark.css";
@@ -152,8 +153,12 @@ function AppShell() {
       : "ide";
   // 同步宿主类型：真实 Electron preload 会设置 window.waveHostType，原型里
   // 桌面用例需手动注入，否则 Message 链接点击/拖拽等 desktop-gated 行为不生效。
+  // data-host 同步置上（真机在 src/index.tsx）：host-desktop.css 的桌面语义层
+  // （--cc-* → --vscode-* 桥接）挂在 :root[data-host="desktop"] 上，缺了它预览
+  // 会退回 theme-base 的 VS Code 配色（蓝按钮等），与真机观感不一致。
   useEffect(() => {
     window.waveHostType = host;
+    document.documentElement.dataset.host = host;
   }, [host]);
   return (
     <>

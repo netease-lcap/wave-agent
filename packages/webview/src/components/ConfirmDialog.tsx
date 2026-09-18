@@ -10,6 +10,11 @@ export interface ConfirmDialogProps {
    *  (e.g. counting what deleting a worktree would destroy). Cancel stays
    *  available so the dialog is never a dead end. */
   confirmDisabled?: boolean;
+  /** Optional structured body under the description, for confirmations whose
+   *  consequences are a list rather than a sentence (e.g. the plugins a global
+   *  update would touch — spec ecosystem/plugin 场景 21). Callers own its
+   *  styling and any scroll cap. */
+  children?: React.ReactNode;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -24,6 +29,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   confirmText = "确定",
   cancelText = "取消",
   confirmDisabled = false,
+  children,
   onConfirm,
   onCancel,
 }) => {
@@ -90,6 +96,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             {description && (
               <div className="confirm-dialog-description">{description}</div>
             )}
+            {children}
           </div>
         </div>
         <div className="confirm-dialog-actions">

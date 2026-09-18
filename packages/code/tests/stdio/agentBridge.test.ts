@@ -1924,27 +1924,27 @@ function mockPluginCore(instance: Record<string, unknown>) {
 
 test("listPlugins returns mapped plugin list", async () => {
   const { bridge } = createBridge();
-  mockPluginCore({
-    listPlugins: vi.fn().mockResolvedValue({
-      plugins: [
-        {
-          name: "my-plugin",
-          marketplace: "official",
-          description: "A test plugin",
-          installed: true,
-          version: "1.0.0",
-          scope: "user",
-          source: "github",
-        },
-      ],
-      mergedEnabled: { "my-plugin@official": true },
-    }),
+  const listPlugins = vi.fn().mockResolvedValue({
+    plugins: [
+      {
+        name: "my-plugin",
+        marketplace: "official",
+        description: "A test plugin",
+        installed: true,
+        version: "1.0.0",
+        scope: "user",
+        source: "github",
+      },
+    ],
+    mergedEnabled: { "my-plugin@official": true },
   });
+  mockPluginCore({ listPlugins });
 
   const result = (await bridge.handleRequest("listPlugins", {})) as {
     plugins: Array<Record<string, unknown>>;
   };
 
+  expect(listPlugins).toHaveBeenCalledWith();
   expect(result.plugins).toHaveLength(1);
   expect(result.plugins[0]).toEqual({
     id: "my-plugin@official",
@@ -1955,6 +1955,39 @@ test("listPlugins returns mapped plugin list", async () => {
     version: "1.0.0",
     enabled: true,
     scope: "user",
+  });
+});
+
+test("listPlugins fills in the fields a sparse plugin entry omits", async () => {
+  const { bridge } = createBridge();
+  const listPlugins = vi.fn().mockResolvedValue({
+    plugins: [
+      {
+        name: "my-plugin",
+        marketplace: "official",
+        installed: false,
+        source: "github",
+      },
+    ],
+    mergedEnabled: {},
+  });
+  mockPluginCore({ listPlugins });
+
+  const result = (await bridge.handleRequest("listPlugins", {})) as {
+    plugins: Array<Record<string, unknown>>;
+  };
+
+  // mergedEnabled 里没有该插件的 false 记录 → 视为启用（与配置合并语义一致）
+  expect(result.plugins[0]).toEqual({
+    id: "my-plugin@official",
+    name: "my-plugin",
+    description: undefined,
+    marketplace: "official",
+    installed: false,
+    version: undefined,
+    latestVersion: undefined,
+    enabled: true,
+    scope: undefined,
   });
 });
 

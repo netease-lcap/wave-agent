@@ -34,6 +34,14 @@
   visibility: visible;
 }
 
+/* 多行气泡（Tooltip 的 multiline）：逐行列表要能原样换行、长路径按宽度折行——
+   默认的 nowrap + ellipsis 会把工程路径截成 `.../worktrees/loud-weak-…`。 */
+.tooltip-box.tooltip-multiline {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  max-width: 360px;
+}
+
 /* 箭头 - 由 JS 计算定位，CSS 只负责箭头方向 */
 .tooltip-box::after {
   content: "";

@@ -235,6 +235,14 @@ export interface ChatAppProps {
    */
   onOpenSettingsFromPane?: (nav?: NavKey) => void;
   /**
+   * Desktop pane layout: the root instance's plugin-market opener, threaded
+   * through DesktopShell (same reason as onOpenSettingsFromPane) — the market
+   * full page is rendered by DesktopShell over the pane rows, so `/plugin`
+   * typed inside a pane must delegate to the root instance
+   * (spec ecosystem/plugin.md 场景 4).
+   */
+  onOpenPluginMarketFromPane?: () => void;
+  /**
    * Desktop pane layout: a settings-page「新建/编辑」prefill draft handed down
    * from the root instance (which renders the full-page settings but, in pane
    * mode, no MessageInput of its own). DesktopShell threads the request only to
@@ -861,13 +869,19 @@ export interface PluginInfo {
   enabled?: boolean;
   installed?: boolean;
   marketplace?: string;
+  /** 当前工程里的安装作用域（宿主按当前 workdir 推导；未在当前工程启用时缺失，
+   *  UI 显示「未知」）。 */
   scope?: PluginScope;
 }
 
 /** 已注册插件市场（宿主 listMarketplaces 下发的 KnownMarketplace 子集：设置页
- *  只需名称——市场名由市场自身清单决定，设置页不展示/编辑来源地址）。 */
+ *  只需名称与内置标记——`name` 既是内部标识也是 UI 展示文案，设置页不展示/编辑
+ *  来源地址）。 */
 export interface MarketplaceInfo {
   name: string;
+  /** 宿主 KnownMarketplace.isBuiltin：内置官方市场（「管理插件市场」弹窗里该行只标
+   *  「官方」、不提供移除，spec ecosystem/plugin 场景 16）。旧宿主可不带。 */
+  isBuiltin?: boolean;
 }
 
 export type PluginScope = "user" | "project" | "local";

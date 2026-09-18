@@ -50,6 +50,9 @@ const h = vi.hoisted(() => ({
         return { plugins: [] };
       case "listMarketplaces":
         return { marketplaces: [] };
+      // addMarketplace 回带市场清单里的名字（非用户输入）→ 成功 toast 取它。
+      case "addMarketplace":
+        return { name: "team-plugins" };
       case "listGitBranches": {
         if (!h.branchesResult) throw new Error("not a git repository");
         return h.branchesResult;
@@ -510,6 +513,7 @@ let lastSend: ReturnType<typeof vi.fn> | undefined;
 /** The message/action of every update toast the host pushed to the webview. */
 function shownToasts(): Array<{
   message: string;
+  type?: string;
   position?: string;
   actionLabel?: string;
   action?: { type: string };
@@ -528,6 +532,7 @@ function shownToasts(): Array<{
           msg as {
             toast: {
               message: string;
+              type?: string;
               position?: string;
               actionLabel?: string;
               action?: { type: string };
@@ -4165,6 +4170,38 @@ describe("misc commands", () => {
       shownToasts().some((t) => t.message.includes("获取插件列表失败")),
     ).toBe(true);
     expect(sent("appendMessage")).toHaveLength(0);
+  });
+
+  it("plugin mutations reuse the anchor pinned when the list was fetched", async () => {
+    const { host, store } = await readyHost();
+    h.clientRequests.length = 0;
+    await host.handleWebviewMessage({ command: "listPlugins" });
+    expect(h.clientRequests).toContainEqual({
+      method: "listPlugins",
+      params: { workdir: "/work/a" },
+    });
+
+    // 看完列表后又切到另一个工程（真机上这一步会先关闭整页，这里直接验证宿主侧
+    // 的不变量）：写操作必须沿用列表那一次的锚点…
+    store.addRecentWorkdir({ host: "local", path: "/work/b" });
+    h.existingPaths.add("/work/b");
+    await host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      path: "/work/b",
+    });
+    h.clientRequests.length = 0;
+
+    await host.handleWebviewMessage({
+      command: "setPluginScope",
+      pluginId: "demo",
+      scope: "user",
+    });
+
+    // …而不是「此刻的当前工程」（/work/b），否则记录会写进另一条对话的工程。
+    expect(h.clientRequests).toContainEqual({
+      method: "setPluginScope",
+      params: { pluginId: "demo", scope: "user", workdir: "/work/a" },
+    });
   });
 
   it("plugin mutation failure surfaces as a toast, not a chat message", async () => {
