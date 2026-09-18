@@ -342,7 +342,7 @@ export async function main() {
             )
             .command(
               "wait <sessionId>",
-              "Block until a session goes idle (or waits for approval), then print its final snapshot (exit 0 = idle, 3 = waiting for approval, 1 = error/timeout)",
+              "Block until a session goes idle (or waits for approval), then print its final snapshot (exit 0 = idle, 3 = waiting for approval, 1 = error/timeout). Idle = no turn running, no background task/subagent running, nothing queued (same as `wave -p`); a session holding a long-running background task never goes idle, so give it --timeout",
               (yargs) => {
                 return yargs
                   .positional("sessionId", {
@@ -357,13 +357,13 @@ export async function main() {
                   })
                   .option("from-busy", {
                     describe:
-                      "Wait until the session has been observed busy at least once before accepting idle (removes the stale-snapshot race right after an async `send`)",
+                      "Wait until the session has been observed busy at least once before accepting idle (removes the stale-snapshot race right after an async `send`; a running background task also counts as busy)",
                     default: false,
                     type: "boolean",
                   })
                   .option("timeout", {
                     describe:
-                      "Seconds to wait before giving up (default: wait forever)",
+                      "Seconds to wait before giving up (default: wait forever) — required for sessions with a long-running background task, which never go idle",
                     type: "number",
                   });
               },

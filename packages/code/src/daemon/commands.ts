@@ -135,7 +135,38 @@ interface DaemonSessionEntry {
   sessionId: string;
   workingDirectory: string;
   isLoading: boolean;
+  /**
+   * The other two halves of the idle predicate `wait` / `status` share with
+   * `wave -p` (print mode). A session can have ended its foreground turn while a
+   * background bash task or subagent is still running, and the last such task
+   * flips to `completed` before its completion notification is enqueued for the
+   * main agent's follow-up turn — `isLoading` alone reports "done" in both cases.
+   *
+   * Optional because the daemon is long-lived: upgrading the CLI does not
+   * restart it, so this client can talk to an older daemon that does not report
+   * them. An absent field reads as `false`, which degrades to the old
+   * `isLoading`-only predicate instead of misreading.
+   */
+  hasRunningBackgroundWork?: boolean;
+  hasPendingMessages?: boolean;
   messageCount: number;
+}
+
+/**
+ * "This session is idle", with the same three conditions `wave -p` (print mode)
+ * waits on: no turn running, no background task / subagent running, and nothing
+ * queued. The third one closes the TOCTOU window where the last background task
+ * has already flipped to `completed` (so the first two read false) but its
+ * completion notification has not been consumed yet and is about to start a
+ * follow-up turn. Shared by `wait` and `status` so the two commands cannot
+ * disagree about whether a session is idle.
+ */
+function isIdleSession(entry: DaemonSessionEntry): boolean {
+  return (
+    !entry.isLoading &&
+    entry.hasRunningBackgroundWork !== true &&
+    entry.hasPendingMessages !== true
+  );
 }
 
 interface PendingPermission {
@@ -234,7 +265,7 @@ async function listPendingPermissions(
  * session is no longer hosted.
  *
  * The registry (not notifications) is the authority on both facts the waiter
- * needs: existence and whether the session is still generating. `destroy` drops
+ * needs: existence and whether the session is still busy. `destroy` drops
  * the entry, and the only notifications that come with it are side effects of
  * the agent teardown — `loadingChange:false` (destroy aborts, which clears the
  * loading flag) plus a few no-op state re-emits. A `loading:false` push is
@@ -242,12 +273,12 @@ async function listPendingPermissions(
  * session is gone"; and it happens once, during the destroy, so a waiter that
  * does not act on it is left with no further event and blocks forever.
  *
- * The same reasoning applies to the loading flag itself: a pushed
+ * The same reasoning applies to the busy flags themselves: a pushed
  * `loadingChange` can be a transient (an aborted turn re-dispatches a queued one
  * a millisecond later) and — since the daemon broadcasts to every client, see
  * `sessionNotificationFilter` — it can even describe a different session. So
- * `wait` reads `isLoading` from here on every wake and treats the push as a
- * pure wake-up signal.
+ * `wait` / `status` read the idle predicate (`isIdleSession`, three flags) from
+ * here on every wake and treat the pushes as pure wake-up signals.
  */
 async function findHostedSession(
   client: SocketClient,
@@ -353,7 +384,10 @@ export async function daemonListCommand(socketPath: string): Promise<void> {
     if (sessions.length > 0) {
       const rows = sessions.map((s) => ({
         sessionId: s.sessionId,
-        status: s.isLoading ? "generating" : "idle",
+        // Same idle predicate as `status` / `wait` (`isIdleSession`), so the
+        // three cannot disagree about a session that ended its turn but still
+        // owns running background work.
+        status: isIdleSession(s) ? "idle" : "generating",
         messageCount: String(s.messageCount),
         workingDirectory: s.workingDirectory,
       }));
@@ -553,6 +587,11 @@ function renderSessionSnapshot(snapshot: SessionSnapshot): void {
  * (just the session header + `Status:` line) — the polling shape for monitors
  * that only watch the status. A one-shot snapshot that always returns
  * immediately; blocking on a state change is `daemonWaitCommand`.
+ *
+ * `Status:` uses the same idle predicate `wait` blocks on (`isIdleSession`):
+ * `generating` covers "the turn is running" AND "the turn ended but background
+ * work is still running", so `status` never says `idle` for a session a `wait`
+ * would keep blocking on.
  */
 export async function daemonStatusCommand(
   socketPath: string,
@@ -584,6 +623,14 @@ export async function daemonStatusCommand(
     const pending = (await listPendingPermissions(client)).filter(
       (r) => r.sessionId === initId || r.sessionId === sessionId,
     );
+    // The idle decision uses the SAME predicate `wait` blocks on (`isIdleSession`,
+    // three flags) so the two commands cannot disagree: a session whose turn ended
+    // while background work keeps running (or with a completion notification still
+    // queued) is not idle, and reporting idle here would contradict a `wait` still
+    // blocked on it. The registry answers authoritatively; the replayed
+    // `loadingChange` snapshot above is the fallback for a session that vanished
+    // between the attach and this read.
+    const hosted = await findHostedSession(client, initId);
     const messages = (await client.request(
       "getMessages",
       undefined,
@@ -592,10 +639,11 @@ export async function daemonStatusCommand(
       messages: Message[];
     };
 
+    const busy = hosted ? !isIdleSession(hosted) : loading;
     const status =
       pending.length > 0
         ? "waiting for approval"
-        : loading
+        : busy
           ? "generating"
           : "idle";
     renderSessionSnapshot({
@@ -652,15 +700,25 @@ export const waitPollInterval = { ms: 2_000 };
  * stderr.
  *
  * Idle is decided from the daemon registry, woken by pushes. The
- * `loadingChange` subscription (installed BEFORE initialize/restoreSession, so
- * the attach replay is not missed) is filtered to THIS session and used purely
- * as a wake-up: the loop then re-reads the authoritative `isLoading` from the
- * registry it already queries for the existence check — the daemon is never
- * polled for status on a timer. Reading the flag from the registry rather than
- * from the notification matters because a pushed `loadingChange` can be a
- * transient (an aborted turn re-dispatches a queued one a millisecond later) and,
- * since the daemon broadcasts to every client, it can even describe another
- * session (`sessionNotificationFilter`).
+ * `loadingChange` / `backgroundTasksChange` subscriptions (installed BEFORE
+ * initialize/restoreSession, so the attach replay is not missed) are filtered to
+ * THIS session and used purely as wake-ups: the loop then re-reads the
+ * authoritative idle predicate (`isIdleSession`) from the registry it already
+ * queries for the existence check — the daemon is never polled for status on a
+ * timer. Reading the flags from the registry rather than from a notification
+ * matters because a pushed `loadingChange` can be a transient (an aborted turn
+ * re-dispatches a queued one a millisecond later) and, since the daemon
+ * broadcasts to every client, it can even describe another session
+ * (`sessionNotificationFilter`).
+ *
+ * "Idle" is the same three conditions `wave -p` (print mode) waits on — no turn
+ * running, no background task / subagent running, nothing queued — because
+ * `isLoading` alone reports "done" for a session whose foreground turn ended
+ * while the background work it launched is still going (the turn-end clears the
+ * flag; the background task's completion notification only arrives later and
+ * starts a follow-up turn). `backgroundTasksChange` is therefore a wake source
+ * of its own: without it, "the background task started/finished" would only be
+ * noticed on the 2s backstop tick.
  *
  * Decision order is existence → pending (3) → idle (0) → timeout (1).
  * Existence comes first because a destroyed session's only announcement is
@@ -694,7 +752,7 @@ export async function daemonWaitCommand(
 
     let sawBusy = false;
     // Push-driven wake: the deferred is re-armed on every bump and the loop
-    // re-reads the registry after every await, so no loadingChange can be
+    // re-reads the registry after every await, so no state change can be
     // missed. Foreign sessions are filtered out so a crowded daemon cannot turn
     // their pushes into wake-ups (spec: 只认本会话的推送).
     let resolveWake: (() => void) | undefined;
@@ -715,6 +773,15 @@ export async function daemonWaitCommand(
       // accepts it as one way to observe the busy phase, while the idle
       // decision below comes from the registry.
       if ((params as { loading: boolean }).loading) sawBusy = true;
+      bump();
+    });
+    // Background tasks starting or finishing change the idle predicate without
+    // touching `isLoading` (a foreground turn can end while its background bash
+    // task / subagent keeps running), so this push is a wake source too —
+    // otherwise "it finished" would only be seen on the low-frequency backstop
+    // tick. Payload is ignored: the registry is re-read, exactly as above.
+    socket.onNotification("backgroundTasksChange", (_params, sid) => {
+      if (!filter.accepts(sid)) return;
       bump();
     });
 
@@ -819,14 +886,14 @@ export async function daemonWaitCommand(
       // exactly what "the turn finished" looks like, so a waiter that does not
       // act on the wake is left with no further event and blocks forever —
       // which is what happened before this check existed. Ask the registry
-      // instead: this query also carries the authoritative `isLoading`, which is
-      // what the idle decision below uses. It rides the same low-frequency
-      // fallback tick as the approval check — that tick is the backstop, while
-      // the ordinary wake-up is our own session's `loadingChange`. The order
-      // matters: the destroy's `loadingChange:false` describes a session whose
-      // registry entry is about to disappear, so deciding idle first could
-      // report a settled session that no longer exists — a false success is
-      // worse than hanging.
+      // instead: this query also carries the authoritative idle predicate
+      // (`isIdleSession`) the decision below uses. It rides the same
+      // low-frequency fallback tick as the approval check — that tick is the
+      // backstop, while the ordinary wake-ups are our own session's
+      // `loadingChange` / `backgroundTasksChange`. The order matters: the
+      // destroy's `loadingChange:false` describes a session whose registry entry
+      // is about to disappear, so deciding idle first could report a settled
+      // session that no longer exists — a false success is worse than hanging.
       // A miss is never an unfollowed rename: the daemon writes
       // `sessionIdChange` and moves the registry entry in the same tick, and a
       // read answered under an id a rename superseded is retried rather than
@@ -837,11 +904,16 @@ export async function daemonWaitCommand(
           `wave daemon wait failed: Session ${sessionId} no longer exists (destroyed while waiting)`,
         );
       }
+      const idle = isIdleSession(hosted);
       // A busy reading from the registry is an observed busy phase too:
       // `--from-busy` must not depend on having caught a `loadingChange:true`
       // push (a turn that started before this waiter attached pushes none, and
-      // the replay is only as fresh as the moment of the attach).
-      if (hosted.isLoading) sawBusy = true;
+      // the replay is only as fresh as the moment of the attach). "Busy" is the
+      // complement of the idle predicate, so a session that is only running
+      // background work (or has a completion notification still queued) counts as
+      // observed busy — otherwise `--from-busy` would wait for a busy phase that
+      // has already happened and never accept the idle that follows.
+      if (!idle) sawBusy = true;
       // Approvals beat idle, and the check runs BEFORE the idle decision — a
       // session frozen on an approval keeps `loading: true` (so it would never
       // settle) and one that just turned `loading: false` must not be mistaken
@@ -857,13 +929,13 @@ export async function daemonWaitCommand(
       // --from-busy holds out for an observed busy phase first: right after an
       // async `send` the replayed snapshot can still be a stale loading:false
       // (the turn has not started yet).
-      if (!hosted.isLoading && (!fromBusy || sawBusy)) {
+      if (idle && (!fromBusy || sawBusy)) {
         await settle("idle", []);
         break;
       }
       if (deadline !== undefined && Date.now() >= deadline) {
         fail(
-          `Timed out waiting for session ${sessionId} to become idle (waited ${options.timeout}s); it is still generating`,
+          `Timed out waiting for session ${sessionId} to become idle (waited ${options.timeout}s); it is still busy (generating, or running background work)`,
         );
       }
       if (!announced) {

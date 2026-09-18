@@ -1667,12 +1667,24 @@ export class AgentBridge {
    * teardown, so its own flag reads false while the replacement is still being
    * built — reporting that would hand a `wait` the "listed + not busy"
    * combination it settles on. "Not idle" is the honest reading of "this session
-   * has no agent right now", and it can only make a waiter wait. */
+   * has no agent right now", and it can only make a waiter wait.
+   *
+   * `hasRunningBackgroundWork` / `hasPendingMessages` are the other two halves of
+   * the idle predicate `wait` / `status` share with `wave -p` (print mode): a
+   * session whose foreground turn has ended can still own a running background
+   * bash task or subagent, and the last such task flips to `completed` before its
+   * completion notification is enqueued for the main agent's follow-up turn —
+   * reading only `isLoading` reports "done" in both cases. They are read from the
+   * live agent here rather than tracked separately, and mirror it as-is: the
+   * rebuild window above is already covered by `isLoading`, so there is no need
+   * to also claim a `transitioning` session owns background work it doesn't. */
   private listDaemonSessions(): {
     sessions: Array<{
       sessionId: string;
       workingDirectory: string;
       isLoading: boolean;
+      hasRunningBackgroundWork: boolean;
+      hasPendingMessages: boolean;
       messageCount: number;
     }>;
   } {
@@ -1681,6 +1693,8 @@ export class AgentBridge {
         sessionId,
         workingDirectory: entry.createdWorkdir,
         isLoading: entry.transitioning === true || entry.agent.isLoading,
+        hasRunningBackgroundWork: entry.agent.hasRunningBackgroundWork,
+        hasPendingMessages: entry.agent.hasPendingMessages,
         messageCount: entry.agent.displayMessages.length,
       })),
     };
