@@ -88,6 +88,17 @@ const CHAT_MAIN_MIN_WIDTH = 360;
 // and the conversation widens past it; narrower rows keep the 360 floor.
 const AUTO_CHAT_ROW_RATIO = 0.4;
 
+/**
+ * Delay before the branch-selector/worktree-checkbox loading placeholder shows
+ * while a branch query is in flight (desktop-sessions.md「基于分支的 worktree
+ * 隔离会话」场景 7/8 +「SSH 远程主机」场景 25). A remote host's first query has
+ * to stand up an SSH tunnel and the remote daemon (seconds), so the wait needs
+ * visible feedback instead of the controls silently vanishing; a local reply
+ * lands far below this threshold, so the placeholder never flashes on quick
+ * switches.
+ */
+export const BRANCH_LIST_LOADING_DELAY_MS = 300;
+
 /** Panel width for a never-dragged slot in a `containerW`-wide row. */
 const autoPanelWidth = (containerW: number): number => {
   const conversation = Math.max(
@@ -294,6 +305,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     branches: string[];
     current: string;
   } | null>(null);
+  // Per-pane branch-query status: which workdir is being queried and whether
+  // the loading placeholder is due to show. `loading` only flips true after
+  // BRANCH_LIST_LOADING_DELAY_MS (the query still has no reply), so a fast
+  // local reply never renders a placeholder while a slow remote one does
+  // (desktop-sessions.md 场景 7/8/25). Cleared by the reply for this workdir.
+  const [paneBranchesQuery, setPaneBranchesQuery] = useState<{
+    workdir: string;
+    loading: boolean;
+  } | null>(null);
   // The pane's effective cwd: its own session workdir wins; a new-session pane
   // (state.workdir empty during spawn) falls back to the most recently selected
   // repo root from recents — never to the host-level workdir, which follows the
@@ -431,6 +451,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     isDesktop && paneGitBranches?.workdir === pickerWorkdir
       ? paneGitBranches
       : null;
+  // Loading placeholder for the branch/worktree controls: only once the delay
+  // has elapsed for the CURRENT picker workdir (never a stale one — the query
+  // status is scoped by workdir exactly like gitBranches above).
+  const branchesLoading =
+    isDesktop &&
+    !gitBranches &&
+    paneBranchesQuery?.loading === true &&
+    paneBranchesQuery.workdir === pickerWorkdir;
   const effectiveWorkdirRef = useRef(effectiveWorkdir);
   // Settings full-page 归属守卫用的「当前项目」镜像（root 实例与 host.workdir
   // 一致，见 settingsWorkdir 注释；pane 实例 == effectiveWorkdirRef）。
@@ -913,6 +941,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                 current: message.result.current ?? "",
               }
             : null,
+        );
+        // Clear the loading state only for the workdir this reply is for — a
+        // late reply for a directory the user already switched away from must
+        // not hide the placeholder of the in-flight query for the new one.
+        setPaneBranchesQuery((cur) =>
+          cur && cur.workdir === message.workdir ? null : cur,
         );
         break;
       case "desktopWorktreeCreated":
@@ -1584,12 +1618,26 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // directory (not in recents), so pickerWorkdir stays on the user's repo — and
   // the query signal never fires before the first message hides the pickers.
   useEffect(() => {
-    if (!isDesktop || !pickerWorkdir) return;
+    if (!isDesktop || !pickerWorkdir) {
+      setPaneBranchesQuery(null);
+      return;
+    }
+    // Mark this workdir's query as in flight; the placeholder only becomes
+    // visible if the delay elapses without a reply (see paneBranchesQuery).
+    setPaneBranchesQuery({ workdir: pickerWorkdir, loading: false });
+    const timer = setTimeout(() => {
+      setPaneBranchesQuery((cur) =>
+        cur && cur.workdir === pickerWorkdir
+          ? { workdir: pickerWorkdir, loading: true }
+          : cur,
+      );
+    }, BRANCH_LIST_LOADING_DELAY_MS);
     postToHost({
       command: "desktopListGitBranches",
       workdir: pickerWorkdir,
       paneId,
     });
+    return () => clearTimeout(timer);
   }, [pickerWorkdir, isDesktop, postToHost, paneId]);
 
   const handleClearChat = useCallback(() => {
@@ -3140,7 +3188,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                       onSelectRecentWorkdir={host.onSelectRecentWorkdir}
                       onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
                     />
-                    {gitBranches && (
+                    {gitBranches ? (
                       <DesktopWorktreeControls
                         branches={gitBranches.branches}
                         branch={worktreeBranch || gitBranches.current || ""}
@@ -3149,7 +3197,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                         onBranchChange={setWorktreeBranch}
                         onWorktreeChange={setWorktreeChecked}
                       />
-                    )}
+                    ) : branchesLoading ? (
+                      <div
+                        className="desktop-branches-loading"
+                        data-testid="desktop-branches-loading"
+                      >
+                        分支加载中…
+                      </div>
+                    ) : null}
                   </>
                 ) : undefined
               }
