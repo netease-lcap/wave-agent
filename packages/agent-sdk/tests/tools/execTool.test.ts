@@ -124,10 +124,62 @@ describe("execTool declaration", () => {
     expect(description).not.toMatch(/empty string\) to list the entire pool/);
   });
 
-  it("previews nothing in the collapsed row", () => {
-    // The row prints the tool name itself; the script is a multi-line blob whose
-    // first line usually says nothing, so there is no compact text at all.
-    expect(execTool.formatCompactParams).toBeUndefined();
+  it("guides the model to describe the script, like Bash does", () => {
+    // The parameter slot shows the description, so the description has to be
+    // asked for. Same sentence as the Bash tool's, with the subject swapped.
+    expect(execTool.prompt!()!).toContain(
+      "It is very helpful if you write a clear, concise description of what this script does in 5-10 words.",
+    );
+  });
+
+  it("takes an optional description alongside the required code", () => {
+    const parameters = execTool.config.function.parameters as {
+      properties: Record<string, { type: string; description?: string }>;
+      required: string[];
+    };
+
+    expect(parameters.properties.code.type).toBe("string");
+    expect(parameters.properties.description).toMatchObject({
+      type: "string",
+      description:
+        "Clear, concise description of what this script does in 5-10 words.",
+    });
+    // Optional: the script runs with or without it.
+    expect(parameters.required).toEqual(["code"]);
+  });
+
+  it("previews the description in the collapsed row", () => {
+    expect(execTool.formatCompactParams).toBeTypeOf("function");
+  });
+});
+
+describe("execTool compact params", () => {
+  /** The hook takes a context; the description must not be read from it. */
+  function preview(params: Record<string, unknown>): string {
+    return execTool.formatCompactParams!(params, {} as unknown as ToolContext);
+  }
+
+  it("returns the model's description verbatim", () => {
+    // No prefix, no rewrite, no truncation — the row already prints `Exec`.
+    expect(
+      preview({
+        code: "return await tools.mcp__srv__a({});",
+        description: "Search the web for today's news",
+      }),
+    ).toBe("Search the web for today's news");
+  });
+
+  it("returns nothing without a description", () => {
+    // Unlike Bash there is no fallback (`command` has no script equivalent), and
+    // the first line of a multi-line blob usually says nothing — so the slot
+    // stays blank instead of inventing text.
+    expect(preview({ code: `await tools.mcp__srv__a({});` })).toBe("");
+  });
+
+  it("returns nothing for an empty or non-string description", () => {
+    expect(preview({ code: "return 1;", description: "" })).toBe("");
+    expect(preview({ code: "return 1;", description: 42 })).toBe("");
+    expect(preview({ code: "return 1;", description: null })).toBe("");
   });
 });
 
