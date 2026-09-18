@@ -324,8 +324,9 @@ export async function main() {
                     type: "string",
                   })
                   .option("lines", {
-                    describe: "Number of recent messages to show",
-                    default: 20,
+                    describe:
+                      "Number of recent messages to show (0 = status line only)",
+                    default: 1,
                     type: "number",
                   });
               },
