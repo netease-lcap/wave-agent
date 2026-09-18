@@ -29,6 +29,8 @@ const PROBE_TIMEOUT_MS = 15_000;
 /** Server-side content limit — POSTs above this get a 413. */
 const ARTIFACT_MAX_CONTENT_BYTES = 16 * 1024 * 1024; // 16MB
 const LABEL_MAX_LENGTH = 60;
+/** Server-side title limit — POSTs above this get a 400. */
+const TITLE_MAX_LENGTH = 1000;
 const DEFAULT_FAVICON = "📄";
 
 /** The tool's two actions; publishing is the default when `action` is omitted. */
@@ -235,8 +237,17 @@ async function publishArtifact(
     };
   }
 
-  // `title` is the artifact title, HTML publishes only (CC).
+  // `title` is the artifact title, HTML publishes only (CC). It is rejected at
+  // the same length the server enforces, so an over-long title fails here instead
+  // of costing a round trip (the request would come back a 400 either way).
   const titleRaw = typeof args.title === "string" ? args.title.trim() : "";
+  if (titleRaw.length > TITLE_MAX_LENGTH) {
+    return {
+      success: false,
+      content: "",
+      error: `${ARTIFACT_TOOL_NAME}: title must be at most ${TITLE_MAX_LENGTH} characters (got ${titleRaw.length})`,
+    };
+  }
   const explicitTitle = titleRaw || undefined;
 
   const force = args.force === true;

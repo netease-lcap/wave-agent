@@ -238,6 +238,16 @@ describe("artifactTool", () => {
       expect(result.error).toContain("label must be at most 60 characters");
     });
 
+    it("should reject a title longer than the 1000-character server limit", async () => {
+      (readFileSync as Mock).mockReturnValue(MD_CONTENT);
+      const result = await artifactTool.execute(
+        { file_path: "doc.md", title: "x".repeat(1001) },
+        makeContext(),
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("title must be at most 1000 characters");
+    });
+
     it("should reject a url that is not an artifact URL", async () => {
       (readFileSync as Mock).mockReturnValue(MD_CONTENT);
       const result = await artifactTool.execute(
