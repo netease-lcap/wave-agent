@@ -9,6 +9,7 @@ import { ToolManager } from "../../src/managers/toolManager.js";
 import { BackgroundTaskManager } from "../../src/managers/backgroundTaskManager.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import { Container } from "../../src/utils/container.js";
+import { logWarn } from "../../src/utils/globalLogger.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 
 // Mock dependencies
@@ -41,6 +42,13 @@ vi.mock("../../src/services/memory.js", () => ({
 // window instead of sleeping a fixed amount. Kept below vitest's 5000ms per-test
 // timeout so a genuine failure reports the assertion instead of a test timeout.
 const LOG_FLUSH_TIMEOUT_MS = 3000;
+
+// The two tests that abandon a log stream mid-open leave a file that the libuv
+// threadpool creates a few milliseconds later (see afterAll below). Poll the
+// directory 50ms apart and stop once its entry count stops changing; the cap
+// keeps a pending open that never lands from hanging the suite.
+const TMP_DIR_SETTLE_POLL_INTERVAL_MS = 50;
+const TMP_DIR_SETTLE_TIMEOUT_MS = 1000;
 
 // SubagentManager writes its background log to
 // `path.join(os.tmpdir(), `wave-subagent-${taskId}.log`)` opened with
@@ -120,16 +128,54 @@ describe("SubagentManager - Backgrounding Coverage", () => {
   });
 
   afterAll(async () => {
-    // SubagentManager opens the log stream lazily, and two of the tests below
-    // abandon one mid-open (releaseInstance destroys the stream before Node's
-    // open callback runs), so its file only materialises on the next event-loop
-    // turn. Yield a few turns first: removing the directory while an open is
-    // still queued makes that open fail with an unhandled ENOENT, which fails
-    // the whole run.
-    for (let i = 0; i < 3; i += 1) {
-      await new Promise((resolve) => setImmediate(resolve));
+    try {
+      // SubagentManager opens the log stream lazily, and two of the tests above
+      // abandon one mid-open (releaseInstance destroys the stream before Node's
+      // open callback runs), so its file is only created by the threadpool a few
+      // milliseconds later. Wait for the directory to settle before removing it,
+      // because both removal failures are races with that pending open:
+      //  - removing it too early makes the queued open fail with an unhandled
+      //    ENOENT, which fails the whole run;
+      //  - removing it while the file is being created makes the removal fail
+      //    with ENOTEMPTY, and Node's own retries cannot recover from that one:
+      //    rimraf takes its directory listing once and then only retries the
+      //    rmdir, so a file created after that listing is never removed.
+      // Yielding a turn per poll lets the pending opens complete, and the
+      // deadline keeps an open that never lands from hanging the suite.
+      const settleDeadline = Date.now() + TMP_DIR_SETTLE_TIMEOUT_MS;
+      let previousEntryCount = -1;
+      for (;;) {
+        await new Promise((resolve) => setImmediate(resolve));
+        const entryCount = fs.readdirSync(ISOLATED_TMP_DIR).length;
+        if (entryCount === previousEntryCount || Date.now() > settleDeadline) {
+          break;
+        }
+        previousEntryCount = entryCount;
+        await new Promise((resolve) =>
+          setTimeout(resolve, TMP_DIR_SETTLE_POLL_INTERVAL_MS),
+        );
+      }
+
+      // Retrying is still worth it for the Windows case where a deleted file
+      // keeps its name in the directory until its handle is released (Node backs
+      // off linearly by `retryDelay` on ENOTEMPTY/EBUSY/EPERM/EMFILE/ENFILE), but
+      // never fail the suite if the cleanup does not work out: isolation comes
+      // from the unique directory name (`process.pid` + `Date.now()`), not from
+      // deleting every byte, so a directory left behind cannot pollute a later
+      // run's assertions and there is nothing to gain from reporting its cleanup
+      // failure as a test failure.
+      fs.rmSync(ISOLATED_TMP_DIR, {
+        recursive: true,
+        force: true,
+        maxRetries: 10,
+        retryDelay: 50,
+      });
+    } catch (error) {
+      logWarn(
+        `[subagentManager.background.test] could not remove ${ISOLATED_TMP_DIR} (harmless, directory name is unique per run):`,
+        error,
+      );
     }
-    fs.rmSync(ISOLATED_TMP_DIR, { recursive: true, force: true });
   });
 
   it("should handle backgroundInstance error when backgroundTaskManager is missing", async () => {
