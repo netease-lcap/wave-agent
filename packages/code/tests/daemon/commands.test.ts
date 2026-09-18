@@ -243,6 +243,28 @@ function setLoading(
   (agent as unknown as { isLoading: boolean }).isLoading = loading;
 }
 
+/**
+ * Flip a mock Agent's background-work flags — the other two halves of the idle
+ * predicate the registry reports (`listDaemonSessions` reads them off the same
+ * live agent). This is how a test models the shape from the field: the model
+ * launches a background bash task / subagent and ends its turn (`running`), the
+ * task then finishes and its completion notification sits in the queue until the
+ * follow-up turn consumes it (`pending`), and finally the session goes quiet.
+ */
+function setBackgroundFlags(
+  agent: ReturnType<typeof createMockAgent>,
+  flags: { running?: boolean; pending?: boolean },
+): void {
+  const target = agent as unknown as {
+    hasRunningBackgroundWork: boolean;
+    hasPendingMessages: boolean;
+  };
+  if (flags.running !== undefined) {
+    target.hasRunningBackgroundWork = flags.running;
+  }
+  if (flags.pending !== undefined) target.hasPendingMessages = flags.pending;
+}
+
 /** Connect a JSON-RPC client socket to the daemon; resolves once a response arrives. */
 function connectClient(socketPath: string) {
   const socket = net.connect(socketPath);
@@ -904,6 +926,251 @@ test("wait: --lines 0 prints no message text (status-line-only snapshot)", async
   expect(exitSpy).toHaveBeenCalledWith(0);
 });
 
+// ── wait/status: background work is not idle (same predicate as `wave -p`) ──
+
+/**
+ * The shape from the field: the model launches a background bash task / subagent
+ * (`run_in_background`), the foreground turn then ends immediately — so
+ * `isLoading` flips false while the background work keeps running, and its
+ * completion notification only arrives LATER and starts a follow-up turn. The
+ * old predicate (registry `isLoading` alone) settled right here with a false
+ * "done"; `wait` must instead follow the same three conditions `wave -p` uses:
+ * no turn, no background work, nothing queued.
+ */
+test("wait: a session whose turn ended but still runs a background task is not idle", async () => {
+  // Pushes only: park the backstop tick far away so a passing test proves the
+  // wake came from `backgroundTasksChange` / `loadingChange`, not from polling.
+  waitPollInterval.ms = 60_000;
+  let agent!: ReturnType<typeof createMockAgent>;
+  let callbacks!: AgentCallbacks;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks!;
+    agent = createMockAgent({ hasRunningBackgroundWork: true });
+    agent.messages.push(
+      userMsg("u1", "跑个后台任务"),
+      assistantMsg("a1", "已在后台启动，等它跑完我再汇报"),
+    );
+    return agent;
+  });
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  let settled = false;
+  const waitPromise = daemonWaitCommand(socketPath, "test-session-id").then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session test-session-id");
+  });
+  await new Promise((r) => setTimeout(r, 60));
+  // The foreground turn is over — this is exactly where the false "done" was
+  // reported — but the background task is still running.
+  expect((agent as unknown as { isLoading: boolean }).isLoading).toBe(false);
+  expect(settled).toBe(false);
+  expect(stdoutLines()).toEqual([]);
+
+  // The task finishes. Its completion notification is enqueued right after the
+  // status flips, so at the wake caused by `backgroundTasksChange` the first two
+  // conditions already read false — `hasPendingMessages` is the only thing
+  // keeping the wait from settling (the TOCTOU window `wave -p` guards too).
+  setBackgroundFlags(agent, { running: false, pending: true });
+  callbacks.onBackgroundTasksChange?.([]);
+  await new Promise((r) => setTimeout(r, 60));
+  expect(settled).toBe(false);
+  expect(stdoutLines()).toEqual([]);
+
+  // The queued notification starts the follow-up turn (the SDK re-asserts
+  // loading for it)…
+  setBackgroundFlags(agent, { pending: false });
+  setLoading(agent, true);
+  callbacks.onLoadingChange?.(true);
+  await new Promise((r) => setTimeout(r, 60));
+  expect(settled).toBe(false);
+
+  // …which ends with the final reply. Only now is the session idle, and the
+  // snapshot is the FOLLOW-UP turn's report.
+  agent.messages.push(assistantMsg("a2", "后台任务已完成：全部通过"));
+  setLoading(agent, false);
+  callbacks.onLoadingChange?.(false);
+  await vi.waitFor(() => {
+    expect(settled).toBe(true);
+  });
+  await waitPromise;
+  const out = stdoutLines();
+  expect(out).toContain("Status: idle");
+  expect(out.join("\n")).toContain("[assistant] 后台任务已完成：全部通过");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+/**
+ * TOCTOU, isolated: the last background task has already flipped to `completed`
+ * (so `hasRunningBackgroundWork` and `isLoading` both read false) and its
+ * completion notification is still queued — the follow-up turn has not started
+ * yet. `wave -p` waits on `hasPendingMessages` for exactly this reason; a wait
+ * that ignores it reports "done" one instant before the agent starts working
+ * again.
+ */
+test("wait: a background task's notification still sitting in the queue is not idle (TOCTOU)", async () => {
+  waitPollInterval.ms = 60_000;
+  let agent!: ReturnType<typeof createMockAgent>;
+  let callbacks!: AgentCallbacks;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks!;
+    agent = createMockAgent({ hasPendingMessages: true });
+    return agent;
+  });
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  let settled = false;
+  const waitPromise = daemonWaitCommand(socketPath, "test-session-id").then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session test-session-id");
+  });
+  await new Promise((r) => setTimeout(r, 60));
+  expect(settled).toBe(false);
+  expect(stdoutLines()).toEqual([]);
+
+  // The notification is consumed into a follow-up turn, which ends.
+  setBackgroundFlags(agent, { running: false, pending: false });
+  setLoading(agent, true);
+  callbacks.onLoadingChange?.(true);
+  agent.messages.push(assistantMsg("a1", "后台任务结果已处理"));
+  setLoading(agent, false);
+  callbacks.onLoadingChange?.(false);
+  await vi.waitFor(() => {
+    expect(settled).toBe(true);
+  });
+  await waitPromise;
+  expect(stdoutLines()).toContain("Status: idle");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+/**
+ * `--from-busy` holds out for an observed busy phase. A session that is busy
+ * ONLY because of background work is still busy — and if that work then goes
+ * away without a follow-up turn (an abort kills a background task and the SDK
+ * deliberately enqueues no notification for a killed task), there is no
+ * `isLoading` busy phase left to observe. Counting the registry's background
+ * flag as the busy phase is what keeps such a wait from holding out forever.
+ */
+test("wait: --from-busy counts a running background task as the busy phase", async () => {
+  waitPollInterval.ms = 60_000;
+  let agent!: ReturnType<typeof createMockAgent>;
+  let callbacks!: AgentCallbacks;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks!;
+    agent = createMockAgent({ hasRunningBackgroundWork: true });
+    return agent;
+  });
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  let settled = false;
+  const waitPromise = daemonWaitCommand(socketPath, "test-session-id", {
+    fromBusy: true,
+  }).then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session test-session-id");
+  });
+  await new Promise((r) => setTimeout(r, 60));
+  expect(settled).toBe(false);
+
+  // The background task is killed: no follow-up turn, no notification.
+  setBackgroundFlags(agent, { running: false, pending: false });
+  callbacks.onBackgroundTasksChange?.([]);
+  await vi.waitFor(() => {
+    expect(settled).toBe(true);
+  });
+  await waitPromise;
+  expect(stdoutLines()).toContain("Status: idle");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+/**
+ * Regression guard for the outward compatibility of the new fields: the daemon
+ * is long-lived (upgrading the CLI does not restart it), so this client can talk
+ * to an older daemon whose `listDaemonSessions` reports neither flag. An absent
+ * field must read as "no background work" — never as "not idle", which would
+ * wedge a wait forever.
+ */
+test("wait: a daemon that does not report the background flags still settles an idle session", async () => {
+  const agent = createMockAgent();
+  const older = agent as unknown as Record<string, unknown>;
+  delete older.hasRunningBackgroundWork;
+  delete older.hasPendingMessages;
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonWaitCommand(socketPath, "test-session-id"),
+  ).rejects.toThrow("exit(0)");
+  expect(stdoutLines()).toContain("Status: idle");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("status: a session that ended its turn but still runs a background task shows generating", async () => {
+  const agent = createMockAgent({ hasRunningBackgroundWork: true });
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonStatusCommand(socketPath, "test-session-id"),
+  ).rejects.toThrow("exit(0)");
+  // `status` and `wait` share the idle predicate: saying idle here would
+  // contradict a `wait` blocked on this very session.
+  expect(stdoutLines()).toContain("Status: generating");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("list: a session with only background work running is reported as generating", async () => {
+  const agent = createMockAgent({
+    sessionId: "session-bg",
+    hasRunningBackgroundWork: true,
+  });
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(daemonListCommand(socketPath)).rejects.toThrow("exit(0)");
+  const row = stdoutLines().find((l) => l.includes("session-bg"));
+  expect(row).toContain("generating");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
 // ── wait: session destroyed by another client ──────────────────
 
 /** A command's exit code, with a bounded wait so a hung command fails loudly
@@ -1168,6 +1435,11 @@ test("wait: a session being reconfigured (updateConfig) keeps waiting instead of
           sessionId: "session-x",
           workingDirectory: "/test/workdir",
           isLoading: true,
+          // The two background flags mirror the (already aborted) outgoing agent
+          // as-is; `isLoading: true` is what keeps this session out of the idle
+          // predicate during the rebuild.
+          hasRunningBackgroundWork: false,
+          hasPendingMessages: false,
           messageCount: 1,
         },
       ],
