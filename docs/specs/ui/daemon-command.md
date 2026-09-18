@@ -1,6 +1,6 @@
 ---
 name: "Daemon 客户端命令"
-description: "`wave daemon create/list/status/send/respond/abort/destroy/stop/restart` — 按需创建、查看、续聊、审批、中断、销毁与优雅停止/重启 daemon 托管的远端后台会话"
+description: "`wave daemon create/list/status/wait/send/respond/abort/destroy/stop/restart` — 按需创建、查看、阻塞等待空闲、续聊、审批、中断、销毁与优雅停止/重启 daemon 托管的远端后台会话"
 order: 270
 ---
 
@@ -10,15 +10,15 @@ order: 270
 
 ## 概述
 
-`wave --daemon <socket>` 在远端主机上启动一个 JSON-RPC over unix socket 的 daemon，托管后台 agent 会话（桌面端经 SSH 隧道访问）。目前除了 `--daemon` 启动标志外，没有任何面向用户的 CLI 命令可以查看 daemon 里托管了哪些会话、会话进度如何、或向会话注入消息继续对话——这些能力只存在于 JSON-RPC 协议层，普通用户与脚本无法直接使用。本规格定义 `wave daemon` 子命令组，将已验证的协议流程（创建会话 → attach → 读消息 → 注入消息 → 审批挂起的权限请求 → 中断生成 → 销毁会话 → 优雅停止/重启 daemon 进程）封装为九条命令（`create` / `list` / `status` / `send` / `respond` / `abort` / `destroy` / `stop` / `restart`），供用户在远端主机直接执行（或经 `ssh <host> wave daemon ...` 在远端主机上执行）。daemon 一经拉起即常驻（空闲不退出，仅在被 stop/restart 优雅关闭、kill / 升级重启 / 机器重启后消失）——除 `stop` 外，任一子命令连接 socket 失败（daemon 未运行）时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`）并重试连接，按需即用；`stop` 永不自动拉起，daemon 未运行时幂等成功（restart 未运行时等价于直接拉起）。
+`wave --daemon <socket>` 在远端主机上启动一个 JSON-RPC over unix socket 的 daemon，托管后台 agent 会话（桌面端经 SSH 隧道访问）。目前除了 `--daemon` 启动标志外，没有任何面向用户的 CLI 命令可以查看 daemon 里托管了哪些会话、会话进度如何、或向会话注入消息继续对话——这些能力只存在于 JSON-RPC 协议层，普通用户与脚本无法直接使用。本规格定义 `wave daemon` 子命令组，将已验证的协议流程（创建会话 → attach → 读消息 → 阻塞等待空闲 → 注入消息 → 审批挂起的权限请求 → 中断生成 → 销毁会话 → 优雅停止/重启 daemon 进程）封装为十条命令（`create` / `list` / `status` / `wait` / `send` / `respond` / `abort` / `destroy` / `stop` / `restart`），供用户在远端主机直接执行（或经 `ssh <host> wave daemon ...` 在远端主机上执行）。daemon 一经拉起即常驻（空闲不退出，仅在被 stop/restart 优雅关闭、kill / 升级重启 / 机器重启后消失）——除 `stop` 外，任一子命令连接 socket 失败（daemon 未运行）时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`）并重试连接，按需即用；`stop` 永不自动拉起，daemon 未运行时幂等成功（restart 未运行时等价于直接拉起）。
 
 ## 用户场景与测试 _（必填）_
 
 ### 用户故事：Daemon 命令组与默认 socket（优先级：P0）
 
-作为在远端主机上使用 daemon 的用户，我希望通过 `wave daemon` 子命令组（`create` / `list` / `status` / `send` / `respond` / `abort` / `destroy` / `stop` / `restart`）访问 daemon，固定连接默认 socket，以便无需了解 JSON-RPC 协议即可创建、查看、续聊、审批、中断、销毁与优雅停止/重启后台会话。
+作为在远端主机上使用 daemon 的用户，我希望通过 `wave daemon` 子命令组（`create` / `list` / `status` / `wait` / `send` / `respond` / `abort` / `destroy` / `stop` / `restart`）访问 daemon，固定连接默认 socket，以便无需了解 JSON-RPC 协议即可创建、查看、阻塞等待空闲、续聊、审批、中断、销毁与优雅停止/重启后台会话。
 
-**为什么是这个优先级**：这是整个命令组的地基——没有统一的命令入口与 socket 寻址规则，create/list/status/send/respond/abort/destroy/stop/restart 无从谈起；daemon 只监听本地 unix socket、不暴露网络端口，且只允许在远端主机上运行，因此客户端命令一律连接默认 socket（`~/.wave/daemon.sock`），不提供 `--socket` 覆盖参数，避免支持本地转发 socket 等非目标用法。daemon 一经拉起即常驻运行（空闲不退出）：除 `stop` 外任一子命令连接失败时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`，nohup+重定向使启动器立即返回）并重试连接，按需即用——`stop` 不会拉起 daemon（未运行时幂等成功），`restart` 未运行时等价于直接拉起。
+**为什么是这个优先级**：这是整个命令组的地基——没有统一的命令入口与 socket 寻址规则，create/list/status/wait/send/respond/abort/destroy/stop/restart 无从谈起；daemon 只监听本地 unix socket、不暴露网络端口，且只允许在远端主机上运行，因此客户端命令一律连接默认 socket（`~/.wave/daemon.sock`），不提供 `--socket` 覆盖参数，避免支持本地转发 socket 等非目标用法。daemon 一经拉起即常驻运行（空闲不退出）：除 `stop` 外任一子命令连接失败时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`，nohup+重定向使启动器立即返回）并重试连接，按需即用——`stop` 不会拉起 daemon（未运行时幂等成功），`restart` 未运行时等价于直接拉起。
 
 **独立测试**：在远端启动 daemon 后运行 `wave daemon list` 能列出会话；daemon 未运行时运行任一子命令会自动拉起 daemon 并重试连接（成功则命令照常执行，失败则给出明确错误提示）。
 
@@ -85,7 +85,29 @@ order: 270
 6. **假设** 指定的 sessionId 不存在于该 daemon，**当** 用户运行 `wave daemon status <sessionId>` 时，**则** 以非零退出码退出并给出明确错误（Session not found or not hosted by this daemon）。
 7. **假设** status 命令完成展示后，**当** 命令退出时，**则** 断开与 daemon 的连接（attach 是短暂查看，不常驻），daemon 与目标会话不受影响、继续运行。
 8. **假设** 会话历史很长（含一条数千字符的最终汇报）且其后再无新消息，**当** 用户运行 `wave daemon status <sessionId>` 而不传 `--lines` 时，**则** 只渲染最后 1 条消息（输出 `Recent messages (1)`），不因历史消息多而输出随之膨胀；需要更多上下文时显式传 `--lines N`。
-9. **假设** 监控脚本每次轮询只关心状态行，**当** 用户运行 `wave daemon status <sessionId> --lines 0` 时，**则** 输出仅含 session 头与 `Status:` 行（不含 `Recent messages` 段与任何消息正文），退出码 0。`--lines 0` 按「不展示消息」处理，不得因 0 为 falsy 而被当作「未传」或退化为展示全部历史（`slice(-0)` 等价于 `slice(0)`，即全量）。
+9. **假设** 监控脚本每次轮询只关心状态行，**当** 用户运行 `wave daemon status <sessionId> --lines 0` 时，**则** 输出仅含 session 头与 `Status:` 行（不含 `Recent messages` 段与任何消息正文），退出码 0。`--lines 0` 按「不展示消息」处理，不得因 0 为 falsy 而被当作「未传」或退化为展示全部历史（`slice(-0)` 等价于 `slice(0)`，即全量）。`status` 始终是「取一次快照、立刻返回」的契约；需要阻塞等到状态变化（生成中 → 空闲，或挂起审批）时应改用 `wave daemon wait <sessionId>`（见「阻塞等待会话空闲」故事）——`wait` 是该 shell 轮询用法的正式替代，二者的 `--lines` 语义与 `slice(-0)` 守卫完全一致。
+
+---
+
+### 用户故事：阻塞等待会话空闲（优先级：P0）
+
+作为在远端主机等后台会话收尾的用户，我希望 `wave daemon wait <sessionId> [--lines N] [--from-busy] [--timeout <秒>]` 阻塞盯住指定会话，等它空闲（或挂起等待审批）就退出，并在退出时把最终快照（与 `status` 同格式，含最后一条汇报）打到 stdout，以便用一条命令（`msg=$(wave daemon wait <id>)`）替代仓库外自建的 shell 轮询脚本取汇报——单进程、退出码即契约、跨传输（`ssh <host> wave daemon wait ...` 亦可用）。
+
+**为什么是这个优先级**：这是「盯会话」的正式入口。`status` 是「一次性快照、立刻返回」的契约（很多脚本依赖它），不能改成 `status --watch`；而「等到空闲」此前只能由调用方自建 shell 轮询（`while ...; wave daemon status <id> --lines 0; sleep 30; done`），既有轮询延迟、又把等待逻辑散落在每个调用方。`loadingChange` 本就由 daemon 推送（`status` 即靠订阅它判生成中），因此「生成中 → 空闲」可由推送驱动做到零轮询；唯一没有推送通道的是权限审批，只能查 `listPendingPermissions`（spec：单凭消息无法区分等审批与执行中），故以低频兜底查询覆盖。会话挂起等待审批时 `loading` 保持 true（等同未空闲），若不单独识别就会永远等下去——因此挂起审批是「立刻返回」的独立终态（退出码 3），而不是继续等待。
+
+**独立测试**：对一条空闲会话运行 `wave daemon wait <sessionId>`，验证立即以退出码 0 退出且 stdout 为快照；对一条「生成中 → 随后空闲」的会话运行，验证命令在空闲推送到达后才退出、stdout 含最后一条消息；对一条挂起 Bash 审批（及一条挂起 AskUserQuestion）的会话运行，验证立即以退出码 3 退出并打印待审批清单；对不存在的 sessionId 运行，验证退出码 1；对空闲会话加 `--from-busy` 再触发「忙 → 闲」，验证命令不因调用瞬间的 stale 快照提前退出。
+
+**验收场景**：
+
+1. **假设** 目标会话在命令调用时已空闲（无挂起审批），**当** 用户运行 `wave daemon wait <sessionId>` 时，**则** 命令立即（不等待、不挂起）以退出码 0 退出，并在 stdout 打印与 `wave daemon status <sessionId> --lines N` 完全一致的最终快照（`Session:` / `Working directory:` / `Status: idle` + `Recent messages`）——「调用时已空闲就立刻返回」优先于消除竞态。
+2. **假设** 目标会话正在生成回复，**当** 用户运行 `wave daemon wait <sessionId>` 时，**则** 命令订阅 daemon 推送的 `loadingChange`（订阅早于 `initialize`/`restoreSession`，以接收 attach 时重放的 loading 快照，与 `status` 同一姿势）并阻塞，直到「生成中 → 空闲」的推送到达才以退出码 0 退出；等待期间不得轮询 `status`（生成→空闲这一路必须推送驱动）。
+3. **假设** 目标会话挂起等待权限审批（`loading` 保持 true，消息中该工具块冻结在 `stage: "running"`，单凭消息无法与执行中区分），**当** 用户运行 `wave daemon wait <sessionId>` 时，**则** 命令在低频兜底查询（默认 2 秒一次，不得快于 1 秒，不在本地 socket 上忙轮询）发现待审批请求后立刻返回、不继续等待：打印最终快照（`Status: waiting for approval` + 与 `status` 同构的待审批清单，AskUserQuestion 多行完整渲染、其余工具单行参数摘要）并以退出码 3 退出（用户 `respond` 后可重新 `wait`）。
+4. **假设** 目标会话已生成完毕（`loading` 转为 false）且此刻恰有挂起审批，**当** 命令判定「已空闲」时，**则** 命令须先查一次 `listPendingPermissions` 再决定：有待审批则以退出码 3 退出并打印待审批清单，无待审批才以退出码 0 退出——避免 loading 刚转 false 时的竞态把挂起会话误判为已完成（待审批优先于空闲）。
+5. **假设** 用户传入 `--from-busy`，**当** 命令调用时会话空闲、随后才出现「忙 → 闲」时，**则** 命令必须先观察到至少一次非空闲（attach 时重放的 loading 快照为 true，或等待期间收到 `loadingChange:true`）才接受空闲，不得因调用瞬间的 stale `loading:false` 快照提前以退出码 0 退出——用于消除紧跟 `wave daemon send`（异步派单，turn 可能尚未开始）之后立刻 `wait` 的竞态。
+6. **假设** 用户传入 `--timeout <秒>`，**当** 到点仍未达「空闲」或「挂起审批」时，**则** 命令以退出码 1 退出并在 stderr 给出明确文案（含等待秒数与 sessionId），不无限期挂起；不传 `--timeout` 时默认无限等待。
+7. **假设** 指定的 sessionId 不存在于该 daemon，**当** 用户运行 `wave daemon wait <sessionId>` 时，**则** 以退出码 1 退出并给出明确错误（Session not found or not hosted by this daemon），与其它子命令一致（并销毁 `initialize` 静默创建的空会话）；daemon 连不上时同样以退出码 1 退出。
+8. **假设** 用户传入 `--lines N`（默认 1，与 `status` 对齐），**当** 命令退出打印最终快照时，**则** 只渲染最近 N 条消息；`--lines 0` 只打印 session 头与 `Status:` 行、不含 `Recent messages` 段与任何消息正文（复用 `status --lines 0` 的语义与 `slice(-0)` 守卫，不重写）。
+9. **假设** wait 命令完成（退出码 0 / 1 / 3）后，**当** 命令退出时，**则** 断开与 daemon 的连接（attach 是短暂访问，不常驻），daemon 与目标会话不受影响、继续运行；stdout 只承载最终快照（便于 `msg=$(wave daemon wait <id>)` 直接捕获汇报），过程中的进度提示（如等待中）走 stderr。
 
 ---
 
@@ -193,16 +215,17 @@ order: 270
 
 - **daemon 未运行 / socket 不存在（按需即用）**：除 `stop` 外，任一子命令连接失败时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`，nohup+重定向分离会话）并重试连接——daemon 一经拉起即常驻（空闲不退出），仅在被 stop/restart 优雅关闭、kill / 升级重启 / 机器重启后消失，届时下一次子命令连接失败会再次自动拉起；拉起的 daemon 在启动超时（默认 10 秒）内仍未就绪时，命令才以非零退出码 + stderr 明确提示退出，不得挂起或进入 TUI。`stop` 不自动拉起（未运行即幂等成功退出 0）；`restart` 未运行时等价于直接拉起。
 - **默认 socket 固定**：所有 `wave daemon` 子命令一律连接 `~/.wave/daemon.sock`，不提供 `--socket` 覆盖参数；命令只在远端主机上运行，不面向本地转发的 socket。
-- **`wave daemon` 与 `wave --daemon` 语义冲突**：前者是客户端子命令组（create/list/status/send/respond/abort/destroy/stop/restart），后者是服务端启动标志（也是客户端连接失败时自动拉起的后台进程）；帮助文本须写明差异，避免误用。
+- **`wave daemon` 与 `wave --daemon` 语义冲突**：前者是客户端子命令组（create/list/status/wait/send/respond/abort/destroy/stop/restart），后者是服务端启动标志（也是客户端连接失败时自动拉起的后台进程）；帮助文本须写明差异，避免误用。
 - **stop/restart 是优雅关闭，非强杀**：`stop`/`restart` 经协议 `shutdown` 让 daemon 先销毁全部会话（各自存盘收尾）再退出，取代仓库旧的 `daemon:kill` pkill 脚本；停止完成的判定是「socket 消失」而非 shutdown RPC 响应（daemon 销毁会话后即退出，可能来不及应答）。桌面端 SSH 远端 daemon 的升级重启走另一既有机制（ensureRemoteDaemon / killRemoteDaemon，见 desktop-shell.md「内置 CLI 一致保障」），不受本命令影响。
 - **list 仅反映当前进程内存态**：`list` 展示的是当前 daemon 进程内 live 的会话（`initialize`/`restoreSession` 载入且仍存活），不扫磁盘索引；daemon 重启（被 kill / 升级重启 / 机器重启）后内存清空、列表为空是正常现象。磁盘上的历史会话（含普通 `wave` TUI 创建的）不在列表中，但知道 sessionId 仍可经 `status`/`send` attach（`restoreSession` 重新载入），无需依赖 `list` 找回。
 - **create 新建 vs attach 恢复**：`initialize` 不带 `restoreSessionId` 时总是新建会话（无 attach 分支，无需存在性检查）；`create` 打印的 sessionId 是后续 `status` / `send` / `respond` / `abort` / `destroy` 的寻址依据。`--permission-mode` 非法值校验先于连接——不会因参数错误拉起 daemon。
 - **destroy 是幂等注册表操作**：协议 `destroy` 按信封 sessionId 直接删除注册表项（未知会话静默 no-op），无 attach、不创建会话；与 `abort` 不同，destroy 不检查会话是否存活、也不关心是否生成中，只负责销毁。
 - **create --worktree 的 workdir 语义**：worktree 路径是链接 worktree 的顶层（`git rev-parse --show-toplevel` 从该目录的返回），而非主仓根；`--worktree` 与 `--workdir` 同时给出时以 `--worktree` 为准（workdir 仅作为 createWorktree 的源仓库起点）。name 缺省（裸 `--worktree`）时由服务端自动生成随机名。
 - **destroy --remove-worktree 的守卫**：repoRoot 语义与 `createWorktree` 返回值一致（主仓根，`git worktree list --porcelain` 第一项），worktree 路径用 `rev-parse --show-toplevel`（从链接 worktree 返回其自身路径）；两者相等即普通工作目录而非链接 worktree——拒绝移除主工作树，防止 removeWorktree 的 fs.rmSync 回退删掉整个仓库。解析的锚点是会话**创建时**的工作目录（`getSessionInfo` 返回记录值而非会话内 `cd` 漂移后的 live 值；daemon 重启（被 kill / 升级重启 / 机器重启）后经 transcript 元数据头恢复会话时同样锚定创建目录），所以会话中途 `cd` 到主仓根等位置不会导致 worktree 被误判为主工作树而拒绝、也不会把解析导向错误目录。hookBased 按该仓库是否配置 WorktreeCreate hook 判定（与 createWorktree 的返回一致），hook 管理的工作树交给 WorktreeRemove hook 清理、wave 不跑 `git worktree remove`。git 反查失败（非 git 仓库）时报错退出，不销毁会话。
-- **会话挂起等待审批**：daemon 语义下「等待审批」的会话保持 loading 状态（等同未空闲）；消息中该工具块冻结在 `stage: "running"`（有工具名与参数、无结果字段，结果字段只在 `stage: "end"` 写入），单凭消息无法区分「等审批」与「执行中」，须结合 `listPendingPermissions` 判断；`send` 默认异步派单不进入等待（不存在挂起风险），`--wait <N>` 模式的等待阶段以 N 秒为兜底避免无限挂起，`status` 应如实显示该状态（AskUserQuestion 请求多行完整渲染、其余工具单行摘要，见「查看会话进度与最近消息」场景 4），`respond` 是处理挂起请求的入口。
+- **会话挂起等待审批**：daemon 语义下「等待审批」的会话保持 loading 状态（等同未空闲）；消息中该工具块冻结在 `stage: "running"`（有工具名与参数、无结果字段，结果字段只在 `stage: "end"` 写入），单凭消息无法区分「等审批」与「执行中」，须结合 `listPendingPermissions` 判断；`send` 默认异步派单不进入等待（不存在挂起风险），`--wait <N>` 模式的等待阶段以 N 秒为兜底避免无限挂起，`status` 应如实显示该状态（AskUserQuestion 请求多行完整渲染、其余工具单行摘要，见「查看会话进度与最近消息」场景 4），`wait` 遇到该状态立刻以退出码 3 返回、不继续等（见「阻塞等待会话空闲」故事），`respond` 是处理挂起请求的入口。
 - **respond 的决策并非单一 allow/deny**：`PermissionDecision` 含 behavior/message/newPermissionMode/newPermissionRule 四个字段；EnterPlanMode 的 allow 必须附带 `newPermissionMode:"plan"`（按工具智能补全），AskUserQuestion 必须用 `--answer` 提供答案（allow 且 message 为答案 JSON），Bash/Edit 可选 `--rule`/`--mode`；命令须与桌面端行为一致，不得把多选项压成裸 allow/deny。`--answer` 支持两种格式：合法 JSON 对象（key=问题原文、value=选项 label，与桌面端提交的答案对象同构，向后兼容）或逗号分隔的选项序号（第 i 个数字 = 第 i 题的选项序号、从 0 起，与 `status` 渲染序号一致；仅 JSON 解析失败或非对象内容才走序号解析）。
 - **requestId 幂等与过期**：服务端对未知 requestId 的 `permissionResponse` 静默忽略；respond 应先行校验（如经 `listPendingPermissions`）并在 requestId 已处理时明确提示，避免用户误以为审批已生效。
 - **`send` 默认异步派单、`--wait` 模式输出纯净**：不带 `--wait` 时命令注入消息后立即退出码 0，stdout 仅输出派单确认（`Sent message to session: <sessionId>`），不输出助手回复文本；`--wait <N>` 模式输出助手最终回复文本，流式通知与子代理内部信息不得泄漏到 stdout（与打印模式一致），诊断信息走 stderr。
 - **`abort` 中断是幂等操作**：在空闲会话上是无害 no-op，命令仍成功返回；对正在生成（含子代理、bash 命令、slash 命令）或挂起审批的会话，中断后回到空闲（与桌面端中断按钮语义一致）。`abort` 不清除已完成的对话历史，只打断进行中的生成并清空消息队列；无需先经 `status` 确认是否正在生成。
-- **attach 是短暂访问**：`status` / `send` / `respond` / `abort` 完成即断开连接，不常驻客户端（`create` 为纯注册表操作、`destroy` 按信封 sessionId 无需 attach，仅 `destroy --remove-worktree` 额外调用 `getSessionInfo` 取工作目录）；daemon 与会话的生命周期不受客户端连接影响（attach/detach 语义；daemon 常驻、空闲不退出，会话持续运行至用户销毁、`stop`/`restart` 优雅关闭，或 daemon 被 kill / 升级重启 / 机器重启）。
+- **`wait` 的退出码是契约**：`0` = 等到空闲、`3` = 会话挂起等待权限审批（立刻返回、不继续等）、`1` = 错误（daemon 连不上 / sessionId 不存在 / `--timeout` 到点）。stdout 只承载最终快照（与 `status --lines N` 同格式），便于 `msg=$(wave daemon wait <id>)` 直接捕获汇报；进度提示走 stderr。空闲判定必须推送驱动（订阅 `loadingChange`），只有权限审批走低频兜底查询（默认 2 秒、不得快于 1 秒）——挂起审批的会话 `loading` 保持 true，无法从 loading 变化中识别。`status` 保持「取一次快照、立刻返回」的契约不变，`wait` 是脚本轮询用法的正式替代而非 `status --watch`。
+- **attach 是短暂访问**：`status` / `wait` / `send` / `respond` / `abort` 完成即断开连接，不常驻客户端（`create` 为纯注册表操作、`destroy` 按信封 sessionId 无需 attach，仅 `destroy --remove-worktree` 额外调用 `getSessionInfo` 取工作目录）；daemon 与会话的生命周期不受客户端连接影响（attach/detach 语义；daemon 常驻、空闲不退出，会话持续运行至用户销毁、`stop`/`restart` 优雅关闭，或 daemon 被 kill / 升级重启 / 机器重启）。`wait` 的阻塞发生在客户端，命令退出（含被 `Ctrl-C` 中断）后会话照常在 daemon 中继续生成。

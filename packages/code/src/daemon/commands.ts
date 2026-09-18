@@ -186,6 +186,18 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** sleep() that can be cancelled, so a lost race never leaves a live timer behind. */
+function sleepCancellable(ms: number): {
+  promise: Promise<void>;
+  cancel: () => void;
+} {
+  let timer: ReturnType<typeof setTimeout>;
+  const promise = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, ms);
+  });
+  return { promise, cancel: () => clearTimeout(timer) };
+}
+
 // ── create ─────────────────────────────────────────────────────
 
 export interface CreateOptions {
@@ -398,6 +410,63 @@ function parseAskUserQuestionAnswer(
   return answers;
 }
 
+interface SessionSnapshot {
+  sessionId: string;
+  workingDirectory: string;
+  /** `idle` / `generating` / `waiting for approval`. */
+  status: string;
+  pending: PendingPermission[];
+  messages: Message[];
+  /** Trailing messages to render; 0 renders no message text at all. */
+  lines: number;
+}
+
+/**
+ * Render the session snapshot shared by `status` and `wait` (they must be
+ * byte-compatible so `msg=$(wave daemon wait <id>)` yields exactly what
+ * `wave daemon status <id>` prints): the header, the `Status:` line, the pending
+ * approval list (AskUserQuestion rendered in full, see renderAskUserQuestions)
+ * and the last `lines` messages. `lines <= 0` renders no message text at all —
+ * the status-line-only shape for monitors. Guards against 0 because
+ * `Array.prototype.slice(-0)` means `slice(0)`, i.e. the WHOLE history.
+ */
+function renderSessionSnapshot(snapshot: SessionSnapshot): void {
+  console.log(`Session: ${snapshot.sessionId}`);
+  console.log(`Working directory: ${snapshot.workingDirectory}`);
+  console.log(`Status: ${snapshot.status}`);
+
+  if (snapshot.pending.length > 0) {
+    console.log("");
+    console.log("Pending approval requests:");
+    for (const r of snapshot.pending) {
+      if (r.context.toolName === ASK_USER_QUESTION_TOOL_NAME) {
+        const questions = renderAskUserQuestions(r.context);
+        if (questions) {
+          console.log(`  ${r.requestId}  ${r.context.toolName}`);
+          console.log(questions);
+          continue;
+        }
+      }
+      const params = summarizeToolInput(r.context);
+      console.log(
+        `  ${r.requestId}  ${r.context.toolName}${params ? `  ${params}` : ""}`,
+      );
+    }
+  }
+
+  const recent =
+    snapshot.lines > 0 ? snapshot.messages.slice(-snapshot.lines) : [];
+  if (recent.length > 0) {
+    console.log("");
+    console.log(`Recent messages (${recent.length}):`);
+    for (const m of recent) {
+      const text = getMessageContent(m).replace(/\s+/g, " ").trim();
+      if (!text) continue; // tool-only messages carry no readable text
+      console.log(`  [${m.role}] ${text}`);
+    }
+  }
+}
+
 /**
  * `wave daemon status <sessionId> [--lines N]`.
  *
@@ -405,8 +474,8 @@ function parseAskUserQuestionAnswer(
  * message alone, so the default output stays bounded even when one message is a
  * multi-thousand-character report). `lines <= 0` renders no message text at all
  * (just the session header + `Status:` line) — the polling shape for monitors
- * that only watch the status. Guards against 0 because `Array.prototype.slice(-0)`
- * means `slice(0)`, i.e. the WHOLE history.
+ * that only watch the status. A one-shot snapshot that always returns
+ * immediately; blocking on a state change is `daemonWaitCommand`.
  */
 export async function daemonStatusCommand(
   socketPath: string,
@@ -446,45 +515,179 @@ export async function daemonStatusCommand(
         : loading
           ? "generating"
           : "idle";
-    console.log(`Session: ${initId}`);
-    console.log(`Working directory: ${init.workingDirectory}`);
-    console.log(`Status: ${status}`);
-
-    if (pending.length > 0) {
-      console.log("");
-      console.log("Pending approval requests:");
-      for (const r of pending) {
-        if (r.context.toolName === ASK_USER_QUESTION_TOOL_NAME) {
-          const questions = renderAskUserQuestions(r.context);
-          if (questions) {
-            console.log(`  ${r.requestId}  ${r.context.toolName}`);
-            console.log(questions);
-            continue;
-          }
-        }
-        const params = summarizeToolInput(r.context);
-        console.log(
-          `  ${r.requestId}  ${r.context.toolName}${params ? `  ${params}` : ""}`,
-        );
-      }
-    }
-
-    const recent = lines > 0 ? messages.messages.slice(-lines) : [];
-    if (recent.length > 0) {
-      console.log("");
-      console.log(`Recent messages (${recent.length}):`);
-      for (const m of recent) {
-        const text = getMessageContent(m).replace(/\s+/g, " ").trim();
-        if (!text) continue; // tool-only messages carry no readable text
-        console.log(`  [${m.role}] ${text}`);
-      }
-    }
+    renderSessionSnapshot({
+      sessionId: initId,
+      workingDirectory: init.workingDirectory,
+      status,
+      pending,
+      messages: messages.messages,
+      lines,
+    });
   } catch (err) {
     fail(`wave daemon status failed: ${(err as Error).message}`);
   } finally {
     await client?.dispose();
   }
   process.exit(0);
+}
+
+// ── wait ───────────────────────────────────────────────────────
+
+export interface WaitOptions {
+  /** Recent messages to render on exit (default 1; 0 = status line only). */
+  lines?: number;
+  /** Require at least one observed busy phase before accepting idle. */
+  fromBusy?: boolean;
+  /** Seconds to wait before giving up; undefined waits forever. */
+  timeout?: number;
+}
+
+/**
+ * How often the wait falls back to `listPendingPermissions`. Approvals have no
+ * push channel (spec: 单凭消息无法区分等审批与执行中), so this is the only way to
+ * notice a session that froze on an approval while still reporting loading.
+ * A local socket round-trip is cheap but busy-polling it is still wrong — never
+ * faster than 1s.
+ */
+const WAIT_PENDING_POLL_INTERVAL_MS = 2_000;
+
+/**
+ * `wave daemon wait <sessionId> [--lines N] [--from-busy] [--timeout <秒>]`.
+ *
+ * Block until the session settles, print the final snapshot — byte-compatible
+ * with `wave daemon status <sessionId> --lines N`, so
+ * `msg=$(wave daemon wait <id>)` captures the report itself — and exit:
+ * `0` = idle, `3` = waiting for permission approval (returned immediately,
+ * never waited out), `1` = error (unreachable daemon / unknown session /
+ * `--timeout` elapsed). stdout carries the snapshot only; progress goes to
+ * stderr.
+ *
+ * Idle is push-driven: the `loadingChange` subscription is installed BEFORE
+ * initialize/restoreSession so the replay carries the current loading snapshot
+ * (the shape `daemonStatusCommand` uses), and the generating→idle transition
+ * ends the wait from the notification itself — the daemon is never polled for
+ * status. The only polling is the low-frequency approval fallback above, and
+ * the settle decision is re-taken after every wake (pending first: a session
+ * that turns out to still be generating keeps waiting).
+ */
+export async function daemonWaitCommand(
+  socketPath: string,
+  sessionId: string,
+  options: WaitOptions = {},
+): Promise<void> {
+  const lines = options.lines ?? 1;
+  const fromBusy = options.fromBusy ?? false;
+  const timeoutMs =
+    options.timeout !== undefined ? options.timeout * 1000 : undefined;
+
+  let client: SocketClient | undefined;
+  let exitCode = 0;
+  try {
+    const socket = await connectDaemonOrExit(socketPath);
+    client = socket;
+
+    let loading = false;
+    let sawBusy = false;
+    // Push-driven wake: the deferred is re-armed on every bump and the loop
+    // re-reads the state after every await, so no loadingChange can be missed.
+    let resolveWake: (() => void) | undefined;
+    let wakePromise = new Promise<void>((resolve) => {
+      resolveWake = resolve;
+    });
+    const bump = () => {
+      const resolve = resolveWake;
+      wakePromise = new Promise<void>((r) => {
+        resolveWake = r;
+      });
+      resolve?.();
+    };
+    socket.onNotification("loadingChange", (params) => {
+      const next = (params as { loading: boolean }).loading;
+      loading = next;
+      if (next) sawBusy = true;
+      bump();
+    });
+
+    const init = await attachSession(socket, sessionId);
+    const initId = init.sessionId;
+
+    // listPendingPermissions is the authoritative "waiting for approval" signal
+    // (spec: 单凭消息无法区分等审批与执行中，须结合 listPendingPermissions).
+    const pendingForSession = async (): Promise<PendingPermission[]> => {
+      const all = await listPendingPermissions(socket);
+      return all.filter(
+        (r) => r.sessionId === initId || r.sessionId === sessionId,
+      );
+    };
+
+    const settle = async (status: string, pending: PendingPermission[]) => {
+      const result = (await socket.request(
+        "getMessages",
+        undefined,
+        initId,
+      )) as {
+        messages: Message[];
+      };
+      renderSessionSnapshot({
+        sessionId: initId,
+        workingDirectory: init.workingDirectory,
+        status,
+        pending,
+        messages: result.messages ?? [],
+        lines,
+      });
+    };
+
+    const deadline =
+      timeoutMs !== undefined ? Date.now() + timeoutMs : undefined;
+    let announced = false;
+    while (true) {
+      // Approvals beat idle, and the check runs BEFORE the idle decision — a
+      // session frozen on an approval keeps `loading: true` (so it would never
+      // settle) and one that just turned `loading: false` must not be mistaken
+      // for finished before the pending list is consulted.
+      const pending = await pendingForSession();
+      if (pending.length > 0) {
+        await settle("waiting for approval", pending);
+        exitCode = 3;
+        break;
+      }
+      // Already idle at call time settles immediately — never hanging beats
+      // winning the race. --from-busy holds out for an observed busy phase
+      // first: right after an async `send` the replayed snapshot can still be a
+      // stale loading:false (the turn has not started yet).
+      if (!loading && (!fromBusy || sawBusy)) {
+        await settle("idle", []);
+        break;
+      }
+      if (deadline !== undefined && Date.now() >= deadline) {
+        fail(
+          `Timed out waiting for session ${sessionId} to become idle (waited ${options.timeout}s); it is still generating`,
+        );
+      }
+      if (!announced) {
+        announced = true;
+        console.error(`Waiting for session ${initId} to become idle…`);
+      }
+      const tick = sleepCancellable(WAIT_PENDING_POLL_INTERVAL_MS);
+      const timer =
+        deadline !== undefined
+          ? sleepCancellable(Math.max(0, deadline - Date.now()))
+          : undefined;
+      await Promise.race([
+        wakePromise,
+        tick.promise,
+        ...(timer ? [timer.promise] : []),
+      ]);
+      tick.cancel();
+      timer?.cancel();
+    }
+  } catch (err) {
+    fail(`wave daemon wait failed: ${(err as Error).message}`);
+  } finally {
+    await client?.dispose();
+  }
+  process.exit(exitCode);
 }
 
 // ── send ───────────────────────────────────────────────────────
