@@ -161,8 +161,28 @@ function assistantMsg(id: string, content: string): Message {
   };
 }
 
-function createMockAgent(overrides: Record<string, unknown> = {}) {
+/**
+ * A mock Agent. Two properties matter for the daemon commands:
+ *
+ * - `isLoading` is a live getter/setter (not a frozen data property) because the
+ *   registry — `listDaemonSessions` → `entry.agent.isLoading` — is what `wait`
+ *   reads to decide "still generating"; a test models a turn ending by flipping it.
+ * - `destroy()` / `abortMessage()` push `loadingChange:false` through the
+ *   callbacks `Agent.create` was handed, like the real Agent (destroy aborts the
+ *   in-flight turn, which clears the loading flag). The daemon broadcasts that
+ *   push to EVERY attached client, so it is exactly what a waiter on a *different*
+ *   session sees; an inert mock made the cross-session isolation tests pass for
+ *   the wrong reason.
+ */
+function createMockAgent(
+  overrides: Record<string, unknown> = {},
+  callbacks?: AgentCallbacks,
+) {
   const messages: Message[] = [];
+  // Kept out of the spread below: a data property would shadow the accessor and
+  // freeze the flag.
+  const { isLoading: initialLoading, ...rest } = overrides;
+  let isLoading = Boolean(initialLoading);
   const agent = {
     sessionId: "test-session-id",
     workingDirectory: "/test/workdir",
@@ -170,11 +190,23 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     getMaxInputTokens: vi.fn().mockReturnValue(200000),
     messages,
     displayMessages: messages,
-    destroy: vi.fn().mockResolvedValue(undefined),
+    get isLoading(): boolean {
+      return isLoading;
+    },
+    set isLoading(value: boolean) {
+      isLoading = value;
+    },
+    destroy: vi.fn(async () => {
+      isLoading = false;
+      callbacks?.onLoadingChange?.(false);
+    }),
     restoreSession: vi.fn(),
     sendMessage: vi.fn(),
     bang: vi.fn(),
-    abortMessage: vi.fn(),
+    abortMessage: vi.fn(() => {
+      isLoading = false;
+      callbacks?.onLoadingChange?.(false);
+    }),
     clearMessages: vi.fn(),
     truncateHistory: vi.fn(),
     removeQueuedMessage: vi.fn(),
@@ -188,16 +220,27 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     disconnectMcpServer: vi.fn().mockResolvedValue(true),
     getSlashCommands: vi.fn().mockReturnValue([]),
     getAvailableToolNames: vi.fn().mockReturnValue(["Bash"]),
-    isLoading: false,
     hasPendingMessages: false,
     hasRunningBackgroundWork: false,
-    ...overrides,
+    ...rest,
   };
   // displayMessages (full UI stream) tracks messages unless overridden.
   if (!("displayMessages" in overrides)) {
     agent.displayMessages = agent.messages;
   }
   return agent as unknown as import("wave-agent-sdk").Agent;
+}
+
+/**
+ * Flip a mock Agent's loading flag. The real `Agent` exposes it readonly, and the
+ * registry reads that same field (`listDaemonSessions`), so this is how a test
+ * models "the turn finished" / "the turn started".
+ */
+function setLoading(
+  agent: ReturnType<typeof createMockAgent>,
+  loading: boolean,
+): void {
+  (agent as unknown as { isLoading: boolean }).isLoading = loading;
 }
 
 /** Connect a JSON-RPC client socket to the daemon; resolves once a response arrives. */
@@ -258,6 +301,15 @@ async function createPendingRequest(
 
 const stdoutLines = () => logSpy.mock.calls.map((c) => c.join(" "));
 const stderrText = () => errorSpy.mock.calls.map((c) => c.join(" ")).join("");
+
+/** stdout of ONE command run (the log spy is cumulative across a test). Every
+ * command terminates via process.exit, so the ExitSignal rejection is the
+ * expected ending. */
+async function stdoutOf(run: () => Promise<unknown>): Promise<string[]> {
+  const before = logSpy.mock.calls.length;
+  await run().catch(() => {});
+  return logSpy.mock.calls.slice(before).map((c) => c.join(" "));
+}
 
 let server: DaemonServer;
 let socketPath: string;
@@ -659,9 +711,11 @@ test("wait: a generating session blocks until the idle push arrives, then prints
   });
   expect(stdoutLines()).toEqual([]);
 
-  // The daemon pushes the generating→idle transition — that alone ends the wait
-  // (no status polling involved).
+  // The turn finishes: the registry flag flips and the daemon pushes the
+  // generating→idle transition. The push is only the wake-up — the loop re-reads
+  // the flag — so a push with the session still busy must not end the wait.
   agent.messages.push(userMsg("u1", "继续"), assistantMsg("a1", "最终汇报"));
+  setLoading(agent, false);
   callbacks.onLoadingChange?.(false);
 
   await expect(waitPromise).rejects.toThrow("exit(0)");
@@ -837,10 +891,52 @@ async function destroyFromAnotherClient(sessionId: string): Promise<void> {
   killer.close();
 }
 
+interface MockSession {
+  sessionId: string;
+  agent: ReturnType<typeof createMockAgent>;
+  callbacks: AgentCallbacks;
+}
+
+/**
+ * Host one session per spec through a raw client, each backed by its own mock
+ * Agent (`busy` ones start generating). The mock is built with the callbacks the
+ * daemon handed `Agent.create`, so its `destroy()` pushes the
+ * `loadingChange:false` every attached client receives — the cross-session push
+ * these tests are about. Returns the agents + callbacks so a test can flip
+ * loading and push as each session.
+ */
+async function hostMockSessions(
+  specs: Array<{ sessionId: string; busy?: boolean }>,
+): Promise<MockSession[]> {
+  const sessions = specs.map((spec) => ({
+    ...spec,
+    agent: undefined as unknown as ReturnType<typeof createMockAgent>,
+    callbacks: undefined as unknown as AgentCallbacks,
+  }));
+  let created = 0;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    const session = sessions[created++];
+    const agent = createMockAgent(
+      { sessionId: session.sessionId, isLoading: session.busy },
+      options.callbacks,
+    );
+    session.agent = agent;
+    session.callbacks = options.callbacks!;
+    return agent;
+  });
+  // One initialize per spec: each hosts a session (and calls Agent.create once).
+  for (let i = 0; i < specs.length; i++) {
+    const client = connectClient(socketPath);
+    await client.send({ id: 1, method: "initialize", params: {} });
+    client.close();
+  }
+  return sessions;
+}
+
 test("wait: a session destroyed while waiting exits 1 instead of hanging forever", async () => {
   waitPollInterval.ms = 10;
-  vi.mocked(Agent.create).mockResolvedValue(
-    createMockAgent({ isLoading: true }),
+  vi.mocked(Agent.create).mockImplementation(async (options) =>
+    createMockAgent({ isLoading: true }, options.callbacks),
   );
 
   const client = connectClient(socketPath);
@@ -850,10 +946,10 @@ test("wait: a session destroyed while waiting exits 1 instead of hanging forever
   const code = settledExitCode(
     daemonWaitCommand(socketPath, "test-session-id"),
   );
-  // The wait is attached and blocked. The real daemon's destroy pushes a
-  // `loadingChange:false` (its abort path) — indistinguishable from a finished
-  // turn, so useless as a "gone" signal — and this mocked agent pushes nothing
-  // at all: either way the truth comes from the fallback registry check.
+  // The wait is attached and blocked. Destroying the session makes its agent
+  // abort, which pushes `loadingChange:false` — indistinguishable from a
+  // finished turn, so useless as a "gone" signal; the truth comes from the
+  // registry check.
   await vi.waitFor(() => {
     expect(stderrText()).toContain("Waiting for session test-session-id");
   });
@@ -874,7 +970,7 @@ test("wait: a stale idle push after the session was destroyed is never reported 
   let callbacks!: AgentCallbacks;
   vi.mocked(Agent.create).mockImplementation(async (options) => {
     callbacks = options.callbacks!;
-    return createMockAgent({ isLoading: true });
+    return createMockAgent({ isLoading: true }, options.callbacks);
   });
 
   const client = connectClient(socketPath);
@@ -902,25 +998,10 @@ test("wait: a stale idle push after the session was destroyed is never reported 
 
 test("wait: destroying another session does not disturb the wait", async () => {
   waitPollInterval.ms = 10;
-  let targetCallbacks!: AgentCallbacks;
-  const agents: ReturnType<typeof createMockAgent>[] = [];
-  vi.mocked(Agent.create).mockImplementation(async (options) => {
-    const isTarget = agents.length === 0;
-    if (isTarget) targetCallbacks = options.callbacks!;
-    const agent = createMockAgent({
-      sessionId: isTarget ? "session-target" : "session-other",
-      isLoading: isTarget,
-    });
-    agents.push(agent);
-    return agent;
-  });
-
-  const target = connectClient(socketPath);
-  await target.send({ id: 1, method: "initialize", params: {} });
-  target.close();
-  const other = connectClient(socketPath);
-  await other.send({ id: 1, method: "initialize", params: {} });
-  other.close();
+  const [target, other] = await hostMockSessions([
+    { sessionId: "session-target", busy: true },
+    { sessionId: "session-other" },
+  ]);
 
   let settled: number | undefined;
   const waitPromise = daemonWaitCommand(socketPath, "session-target").then(
@@ -935,18 +1016,153 @@ test("wait: destroying another session does not disturb the wait", async () => {
     expect(stderrText()).toContain("Waiting for session session-target");
   });
 
+  // Destroying the other session makes its agent abort, which pushes
+  // `loadingChange:false` to every attached client — this waiter included. The
+  // push describes a session that is not ours, so it must not be read as "the
+  // target finished"; the target is still generating.
   await destroyFromAnotherClient("session-other");
   // Let several fallback ticks run with the other session gone: the check must
   // look at the target sessionId only, so the wait stays blocked.
   await new Promise((r) => setTimeout(r, 100));
+  expect(stdoutLines()).toEqual([]);
   expect(settled).toBeUndefined();
 
   // The target session still settles the normal way.
-  targetCallbacks.onLoadingChange?.(false);
+  setLoading(target.agent, false);
+  target.callbacks.onLoadingChange?.(false);
   await waitPromise;
   expect(settled).toBe(0);
   expect(stdoutLines()).toContain("Status: idle");
   expect(exitSpy).toHaveBeenCalledWith(0);
+  // Both sessions existed; the destroy only removed the other one.
+  expect(other.agent.destroy).toHaveBeenCalled();
+});
+
+test("wait: another session's idle push does not end a wait on a still-generating session", async () => {
+  waitPollInterval.ms = 50;
+  const [target, other] = await hostMockSessions([
+    { sessionId: "session-target", busy: true },
+    { sessionId: "session-other" },
+  ]);
+  target.agent.messages.push(
+    userMsg("u1", "任务"),
+    assistantMsg("a1", "最终汇报"),
+  );
+
+  let settled: number | undefined;
+  const waitPromise = daemonWaitCommand(socketPath, "session-target", {
+    lines: 2,
+  }).then(
+    () => {
+      settled = -1; // unreachable: the command exits via process.exit
+    },
+    (err: unknown) => {
+      settled = (err as ExitSignal).code;
+    },
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session session-target");
+  });
+
+  // The daemon broadcasts every session's notifications to EVERY attached
+  // client, so this waiter sees the other session's turn end. It says nothing
+  // about the target, which is still generating: the wait must stay blocked.
+  other.callbacks.onLoadingChange?.(false);
+  await new Promise((r) => setTimeout(r, 150));
+  expect(stdoutLines()).toEqual([]);
+  expect(settled).toBeUndefined();
+
+  // The target really finishes: flag + push. The wait's snapshot must be exactly
+  // what `status --lines 2` prints for the same session, so
+  // `msg=$(wave daemon wait <id>)` is interchangeable with a status read.
+  setLoading(target.agent, false);
+  target.callbacks.onLoadingChange?.(false);
+  await waitPromise;
+  expect(settled).toBe(0);
+  const waitOut = stdoutLines();
+  const statusOut = await stdoutOf(() =>
+    daemonStatusCommand(socketPath, "session-target", 2),
+  );
+  expect(waitOut).toEqual(statusOut);
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("wait: --from-busy is satisfied only by the target session's own busy phase", async () => {
+  waitPollInterval.ms = 50;
+  const [target, other] = await hostMockSessions([
+    { sessionId: "session-target" },
+    { sessionId: "session-other" },
+  ]);
+
+  let settled: number | undefined;
+  const waitPromise = daemonWaitCommand(socketPath, "session-target", {
+    fromBusy: true,
+  }).then(
+    () => {
+      settled = -1; // unreachable: the command exits via process.exit
+    },
+    (err: unknown) => {
+      settled = (err as ExitSignal).code;
+    },
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session session-target");
+  });
+
+  // A foreign `loading:true` used to count as "the target went busy", so
+  // --from-busy then settled on the foreign `loading:false` that follows —
+  // returning the idle snapshot of a session that never ran a turn.
+  other.callbacks.onLoadingChange?.(true);
+  other.callbacks.onLoadingChange?.(false);
+  await new Promise((r) => setTimeout(r, 150));
+  expect(stdoutLines()).toEqual([]);
+  expect(settled).toBeUndefined();
+
+  // The target's own busy phase (push + registry flag) is what arms it.
+  setLoading(target.agent, true);
+  target.callbacks.onLoadingChange?.(true);
+  setLoading(target.agent, false);
+  target.callbacks.onLoadingChange?.(false);
+  await waitPromise;
+  expect(settled).toBe(0);
+  expect(stdoutLines()).toContain("Status: idle");
+});
+
+test("wait: a same-session idle flicker does not settle the wait while the session keeps generating", async () => {
+  waitPollInterval.ms = 50;
+  const [target] = await hostMockSessions([
+    { sessionId: "session-target", busy: true },
+  ]);
+
+  let settled: number | undefined;
+  const waitPromise = daemonWaitCommand(socketPath, "session-target").then(
+    () => {
+      settled = -1; // unreachable: the command exits via process.exit
+    },
+    (err: unknown) => {
+      settled = (err as ExitSignal).code;
+    },
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session session-target");
+  });
+
+  // Aborting a turn clears the loading flag for a moment before the queued one
+  // re-dispatches, so the waiter sees a `false` and — a real moment later — a
+  // `true` while the session is genuinely busy. The push is only a wake-up: the
+  // registry still reports generating, so the wait must not settle on the gap.
+  target.callbacks.onLoadingChange?.(false);
+  await new Promise((r) => setTimeout(r, 100));
+  target.callbacks.onLoadingChange?.(true);
+  await new Promise((r) => setTimeout(r, 100));
+  expect(stdoutLines()).toEqual([]);
+  expect(settled).toBeUndefined();
+
+  setLoading(target.agent, false);
+  target.callbacks.onLoadingChange?.(false);
+  await waitPromise;
+  expect(settled).toBe(0);
+  expect(stdoutLines()).toContain("Status: idle");
 });
 
 // ── send ───────────────────────────────────────────────────────
