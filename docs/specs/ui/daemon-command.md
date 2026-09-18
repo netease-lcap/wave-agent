@@ -93,9 +93,9 @@ order: 270
 
 作为在远端主机等后台会话收尾的用户，我希望 `wave daemon wait <sessionId> [--lines N] [--from-busy] [--timeout <秒>]` 阻塞盯住指定会话，等它空闲（或挂起等待审批）就退出，并在退出时把最终快照（与 `status` 同格式，含最后一条汇报）打到 stdout，以便用一条命令（`msg=$(wave daemon wait <id>)`）替代仓库外自建的 shell 轮询脚本取汇报——单进程、退出码即契约、跨传输（`ssh <host> wave daemon wait ...` 亦可用）。
 
-**为什么是这个优先级**：这是「盯会话」的正式入口。`status` 是「一次性快照、立刻返回」的契约（很多脚本依赖它），不能改成 `status --watch`；而「等到空闲」此前只能由调用方自建 shell 轮询（`while ...; wave daemon status <id> --lines 0; sleep 30; done`），既有轮询延迟、又把等待逻辑散落在每个调用方。`loadingChange` 本就由 daemon 推送（`status` 即靠订阅它判生成中），因此「生成中 → 空闲」可由推送驱动做到零轮询；唯一没有推送通道的是权限审批，只能查 `listPendingPermissions`（spec：单凭消息无法区分等审批与执行中），故以低频兜底查询覆盖。会话挂起等待审批时 `loading` 保持 true（等同未空闲），若不单独识别就会永远等下去——因此挂起审批是「立刻返回」的独立终态（退出码 3），而不是继续等待。
+**为什么是这个优先级**：这是「盯会话」的正式入口。`status` 是「一次性快照、立刻返回」的契约（很多脚本依赖它），不能改成 `status --watch`；而「等到空闲」此前只能由调用方自建 shell 轮询（`while ...; wave daemon status <id> --lines 0; sleep 30; done`），既有轮询延迟、又把等待逻辑散落在每个调用方。`loadingChange` 本就由 daemon 推送（`status` 即靠订阅它判生成中），因此「生成中 → 空闲」可由推送驱动做到零轮询；**只有两类事实施信不了推送**：权限审批（不推送，只能查 `listPendingPermissions`，spec：单凭消息无法区分等审批与执行中）与会话是否仍存活（销毁会话虽会伴随一次 `loadingChange:false` 推送——那是 destroy 内部 abort 的副产物——但 `loading:false` 与「本轮生成结束」完全同形，正是不能采信的那类信号，且只在销毁那一刻发生一次，之后不会再有任何事件），二者共用同一个低频兜底查询 tick（默认 2 秒）——这是「去问没有推送通道的事实」，不是「每 N 秒轮询一次 status」那种状态轮询。会话挂起等待审批时 `loading` 保持 true（等同未空闲），若不单独识别就会永远等下去——因此挂起审批是「立刻返回」的独立终态（退出码 3），而不是继续等待；同理，被另一个客户端 `destroy` 掉的会话既不会空闲也不会等审批：采信那次 `loadingChange:false` 会**误报「已完成」**，不采信则再无事件可等、**永久挂住**——两条都要靠查注册表才能避免。
 
-**独立测试**：对一条空闲会话运行 `wave daemon wait <sessionId>`，验证立即以退出码 0 退出且 stdout 为快照；对一条「生成中 → 随后空闲」的会话运行，验证命令在空闲推送到达后才退出、stdout 含最后一条消息；对一条挂起 Bash 审批（及一条挂起 AskUserQuestion）的会话运行，验证立即以退出码 3 退出并打印待审批清单；对不存在的 sessionId 运行，验证退出码 1；对空闲会话加 `--from-busy` 再触发「忙 → 闲」，验证命令不因调用瞬间的 stale 快照提前退出。
+**独立测试**：对一条空闲会话运行 `wave daemon wait <sessionId>`，验证立即以退出码 0 退出且 stdout 为快照；对一条「生成中 → 随后空闲」的会话运行，验证命令在空闲推送到达后才退出、stdout 含最后一条消息；对一条挂起 Bash 审批（及一条挂起 AskUserQuestion）的会话运行，验证立即以退出码 3 退出并打印待审批清单；对不存在的 sessionId 运行，验证退出码 1；对空闲会话加 `--from-busy` 再触发「忙 → 闲」，验证命令不因调用瞬间的 stale 快照提前退出；对一条等待中的会话在另一客户端 `destroy` 后运行，验证命令以退出码 1 退出（既不挂住、也不因随后的 idle 推送误报退出码 0），而对「另一个会话」被销毁的情况验证等待不受影响、照常等到空闲退出 0。
 
 **验收场景**：
 
@@ -108,6 +108,9 @@ order: 270
 7. **假设** 指定的 sessionId 不存在于该 daemon，**当** 用户运行 `wave daemon wait <sessionId>` 时，**则** 以退出码 1 退出并给出明确错误（Session not found or not hosted by this daemon），与其它子命令一致（并销毁 `initialize` 静默创建的空会话）；daemon 连不上时同样以退出码 1 退出。
 8. **假设** 用户传入 `--lines N`（默认 1，与 `status` 对齐），**当** 命令退出打印最终快照时，**则** 只渲染最近 N 条消息；`--lines 0` 只打印 session 头与 `Status:` 行、不含 `Recent messages` 段与任何消息正文（复用 `status --lines 0` 的语义与 `slice(-0)` 守卫，不重写）。
 9. **假设** wait 命令完成（退出码 0 / 1 / 3）后，**当** 命令退出时，**则** 断开与 daemon 的连接（attach 是短暂访问，不常驻），daemon 与目标会话不受影响、继续运行；stdout 只承载最终快照（便于 `msg=$(wave daemon wait <id>)` 直接捕获汇报），过程中的进度提示（如等待中）走 stderr。
+10. **假设** 等待期间目标会话被另一个客户端 `wave daemon destroy` 销毁（daemon 进程仍存活、socket 未断；销毁会伴随一次 `loadingChange:false` 推送，但它与「本轮生成结束」同形，不构成「会话已消失」的可信信号），**当** 命令在下一次低频兜底查询中发现该 sessionId 已不在 daemon 的 live 注册表中时，**则** 命令不得继续等待（此前会永久挂住）——以退出码 1 退出并在 stderr 给出明确文案（`Session <sessionId> no longer exists (destroyed while waiting)`）；stdout 不得打印任何快照。**不新增退出码**：「会话已被销毁」本来就属于「sessionId 不存在」这一类，退出码契约仍是 `0` = 空闲 / `1` = 错误（含会话已不存在）/ `3` = 等待审批。判定顺序必须是**存在性 → 挂起审批(3) → 空闲(0) → 超时(1)**，存在性放最前：销毁伴随的 `loadingChange:false` 会把 `loading` 置为 false（先 `abort` 再 `destroy` 时同样如此），若先判空闲就会**假报成功 0**——谎报完成比挂住更糟。存在性检查与会话审批共用同一个早已存在的 2 秒低频兜底 tick（见「为什么是这个优先级」），`status` 仍是「取一次快照、立刻返回」，`wait` 的生成→空闲这一路仍必须推送驱动。
+11. **假设** 等待期间被销毁的是**另一个**会话（目标会话仍在 live 注册表中），**当** 命令复查注册表时，**则** 只按「目标 sessionId 是否仍在注册表」判定，其它会话的销毁不影响本次等待：命令继续阻塞，直至目标会话自身空闲（退出码 0）或挂起审批（退出码 3）。
+12. **假设** 命令调用时目标会话已空闲且确实存在于 live 注册表，**当** 命令做第一次存在性检查时，**则** 必须照常以退出码 0 立刻退出（存在性检查不得把「正常空闲」误判为「会话不存在」——检查的是 live 注册表里有没有这个 sessionId，与会话忙闲无关）。
 
 ---
 
@@ -227,5 +230,5 @@ order: 270
 - **requestId 幂等与过期**：服务端对未知 requestId 的 `permissionResponse` 静默忽略；respond 应先行校验（如经 `listPendingPermissions`）并在 requestId 已处理时明确提示，避免用户误以为审批已生效。
 - **`send` 默认异步派单、`--wait` 模式输出纯净**：不带 `--wait` 时命令注入消息后立即退出码 0，stdout 仅输出派单确认（`Sent message to session: <sessionId>`），不输出助手回复文本；`--wait <N>` 模式输出助手最终回复文本，流式通知与子代理内部信息不得泄漏到 stdout（与打印模式一致），诊断信息走 stderr。
 - **`abort` 中断是幂等操作**：在空闲会话上是无害 no-op，命令仍成功返回；对正在生成（含子代理、bash 命令、slash 命令）或挂起审批的会话，中断后回到空闲（与桌面端中断按钮语义一致）。`abort` 不清除已完成的对话历史，只打断进行中的生成并清空消息队列；无需先经 `status` 确认是否正在生成。
-- **`wait` 的退出码是契约**：`0` = 等到空闲、`3` = 会话挂起等待权限审批（立刻返回、不继续等）、`1` = 错误（daemon 连不上 / sessionId 不存在 / `--timeout` 到点）。stdout 只承载最终快照（与 `status --lines N` 同格式），便于 `msg=$(wave daemon wait <id>)` 直接捕获汇报；进度提示走 stderr。空闲判定必须推送驱动（订阅 `loadingChange`），只有权限审批走低频兜底查询（默认 2 秒、不得快于 1 秒）——挂起审批的会话 `loading` 保持 true，无法从 loading 变化中识别。`status` 保持「取一次快照、立刻返回」的契约不变，`wait` 是脚本轮询用法的正式替代而非 `status --watch`。
+- **`wait` 的退出码是契约**：`0` = 等到空闲、`3` = 会话挂起等待权限审批（立刻返回、不继续等）、`1` = 错误（daemon 连不上 / sessionId 不存在或等待期间被销毁 / `--timeout` 到点）。stdout 只承载最终快照（与 `status --lines N` 同格式），便于 `msg=$(wave daemon wait <id>)` 直接捕获汇报；进度提示走 stderr。空闲判定必须推送驱动（订阅 `loadingChange`），只有**两类事实施信不了推送**、走低频兜底查询（默认 2 秒、不得快于 1 秒）：权限审批（挂起时 `loading` 保持 true，无法从 loading 变化中识别）与会话是否仍在 live 注册表中（销毁只伴随一次 `loadingChange:false`，与「本轮生成结束」同形，既不能当「已完成」也不能当「已消失」）——这是去问没有推送通道的事实，不是「每 N 秒查一次 status」的状态轮询。三者的判定顺序固定为**存在性 → 挂起审批(3) → 空闲(0) → 超时(1)**：销毁伴随的 `loadingChange:false` 会让 `loading` 变成 false，空闲判定必须让位于存在性，否则会假报退出码 0（详见「阻塞等待会话空闲」场景 10）。`status` 保持「取一次快照、立刻返回」的契约不变，`wait` 是脚本轮询用法的正式替代而非 `status --watch`。
 - **attach 是短暂访问**：`status` / `wait` / `send` / `respond` / `abort` 完成即断开连接，不常驻客户端（`create` 为纯注册表操作、`destroy` 按信封 sessionId 无需 attach，仅 `destroy --remove-worktree` 额外调用 `getSessionInfo` 取工作目录）；daemon 与会话的生命周期不受客户端连接影响（attach/detach 语义；daemon 常驻、空闲不退出，会话持续运行至用户销毁、`stop`/`restart` 优雅关闭，或 daemon 被 kill / 升级重启 / 机器重启）。`wait` 的阻塞发生在客户端，命令退出（含被 `Ctrl-C` 中断）后会话照常在 daemon 中继续生成。
