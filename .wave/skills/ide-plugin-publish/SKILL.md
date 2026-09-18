@@ -133,7 +133,8 @@ form.append("channel", "beta"); // 与 file 一起 multipart 提交；不带 cha
        ```bash
        sha256sum /tmp/wave-vscode-<version>/extension/dist/wave-cli/dist/bundle/wave.mjs packages/code/dist/bundle/wave.mjs
        ```
-- JetBrains：上传返回 **201 + 版本记录 JSON**，形如 `{id: 1173146, version: "1.2.4", approve: true, listed: true, channel: "beta"}`；插件 https://plugins.jetbrains.com/plugin/33466（Wave Code Chat）。
+- JetBrains：上传返回 **201 + 版本记录 JSON**，形如 `{id: 1173146, version: "1.2.4", approve: true, listed: true, channel: "beta"}`；插件 https://plugins.jetbrains.com/plugin/33466。
+  - **显示名别写成永久断言**：以市场接口 `GET https://plugins.jetbrains.com/api/plugins/33466` 的 `name` 字段为准（2026-09-18 实测为 `CodeWave IDE`；该名改过多次，别照旧文档抄）。仓库侧对应 `packages/jetbrains/src/main/resources/META-INF/plugin.xml` 的 `<name>`。
   - **auto-approval 已连续多轮命中**（beta 的 1.2.2 / 1.2.3 / 1.2.4，以及 2026-09-18 的 stable 1.2.5）⇒ 基本零人工等待；只有回 `approve: false` 时才需等人工审核，**时长以批准邮件为准、不做固定天数承诺**（见上文「自定义 channel」里的实测）。
   - 回读核对（`updates` feed，首条应就是刚发的版本）：
 
