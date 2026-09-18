@@ -1,5 +1,7 @@
 /* 桌面侧边栏账户卡片 (spec desktop-account-and-settings.md「账户卡片」). */
 .account-card {
+  /* 侧边栏固定行：不参与压缩，也不随会话列表滚动移动（spec desktop-layout.md
+     「会话列表滚动、入口固定」场景 2/4） */
   flex-shrink: 0;
   display: flex;
   flex-direction: column;

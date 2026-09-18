@@ -5,7 +5,7 @@ import {
   screenshotWebp,
   elementScreenshotWebp,
 } from "../e2e/utils/screenshot.js";
-import { openPluginMarket } from "./desktopPluginMarket.js";
+import { openPluginMarketFromSidebar } from "./desktopPluginMarket.js";
 
 // Desktop 4.1 SDD / 5.2 插件 screenshots — captured inside the desktop layout.
 const DIR_A = "/Users/dev/projects/wave-agent";
@@ -111,14 +111,15 @@ order: 1
     );
   });
 
-  test("5.2 1) 安装插件（设置页插件市场）", async ({ webviewPage }) => {
+  test("5.2 1) 安装插件（插件市场整页）", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 960, height: 720 });
     await setup(webviewPage, injector);
 
-    await openPluginMarket(webviewPage, injector, {
+    await openPluginMarketFromSidebar(webviewPage, injector, {
+      anchorWorkdir: DIR_A,
       marketplaces: [
-        { name: "wave-plugins-official" },
+        { name: "wave-plugins-official", isBuiltin: true },
         { name: "wave-community" },
       ],
       plugins: [
@@ -156,10 +157,10 @@ order: 1
       "../../docs/public/screenshots/desktop-plugin-market.webp",
     );
 
-    // 行内「安装」→ 作用域选择弹窗
+    // 行内「安装」→ 作用域选择弹窗（提示走同款气泡，按钮无原生 title）
     await webviewPage
       .locator(".settings-plugin-row", { hasText: "Git Workflow" })
-      .getByTitle("安装插件")
+      .getByRole("button", { name: "安装", exact: true })
       .click();
     await expect(
       webviewPage.getByRole("dialog", { name: "选择安装作用域" }),
@@ -175,8 +176,9 @@ order: 1
     await webviewPage.setViewportSize({ width: 960, height: 720 });
     await setup(webviewPage, injector);
 
-    await openPluginMarket(webviewPage, injector, {
-      marketplaces: [{ name: "wave-plugins-official" }],
+    await openPluginMarketFromSidebar(webviewPage, injector, {
+      anchorWorkdir: DIR_A,
+      marketplaces: [{ name: "wave-plugins-official", isBuiltin: true }],
       plugins: [
         {
           id: "code-reviewer@wave-plugins-official",
@@ -213,7 +215,7 @@ order: 1
       ],
     });
 
-    // 筛选出已安装插件的状态与作用域（「✓ 已安装」按钮即更换作用域入口）
+    // 筛选出已安装插件的状态与作用域（作用域下拉即更换入口；「已安装」态不再有按钮）
     await webviewPage.getByRole("button", { name: /^已安装/ }).click();
     await expect(webviewPage.getByText("Code Reviewer")).toBeVisible();
     await expect(webviewPage.getByText("API Docs Generator")).toHaveCount(0);
@@ -221,5 +223,65 @@ order: 1
       webviewPage,
       "../../docs/public/screenshots/desktop-plugin-installed.webp",
     );
+  });
+
+  test("5.2 3) 侧边栏入口打开插件市场整页", async ({ webviewPage }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 800 });
+    await setup(webviewPage, injector);
+
+    await openPluginMarketFromSidebar(webviewPage, injector, {
+      anchorWorkdir: DIR_A,
+      marketplaces: [
+        { name: "wave-plugins-official", isBuiltin: true },
+        { name: "wave-community" },
+      ],
+      plugins: [
+        {
+          id: "git-workflow@wave-plugins-official",
+          name: "Git Workflow",
+          description:
+            "集成 Git 工作流，支持智能提交信息生成、PR 审查和冲突解决",
+          marketplace: "wave-plugins-official",
+          installed: false,
+          latestVersion: "2.3.1",
+        },
+        {
+          id: "code-reviewer@wave-plugins-official",
+          name: "Code Reviewer",
+          description:
+            "AI 驱动的代码审查工具，自动检测安全漏洞、性能问题和最佳实践违规",
+          marketplace: "wave-plugins-official",
+          installed: true,
+          enabled: true,
+          version: "3.1.2",
+          latestVersion: "3.2.0",
+          scope: "user",
+        },
+        {
+          id: "database-explorer@wave-community",
+          name: "Database Explorer",
+          description: "连接多种数据库（PostgreSQL、MySQL、MongoDB）",
+          marketplace: "wave-community",
+          installed: false,
+          latestVersion: "0.9.5",
+        },
+      ],
+    });
+
+    // 鼠标移开入口 + 收起入口 Tooltip，截图只留页面本身
+    await webviewPage.mouse.move(900, 400);
+    await webviewPage.evaluate(() =>
+      (document.activeElement as HTMLElement | null)?.blur(),
+    );
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-plugin-market-sidebar.webp",
+    );
+
+    // 返回当前会话：整页退出、会话视图回归（spec 场景 2）
+    await webviewPage.getByTestId("plugin-market-back").click();
+    await expect(webviewPage.getByTestId("plugin-market-page")).toHaveCount(0);
+    await expect(webviewPage.getByTestId("chat-container")).toBeVisible();
   });
 });

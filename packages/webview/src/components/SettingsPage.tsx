@@ -51,7 +51,7 @@ import {
 } from "./HeaderIcons";
 import "../styles/SettingsPage.css";
 import { useDesktopChrome } from "./DesktopChromeContext";
-import { isMacHiddenTitlebar } from "../utils/platform";
+import { isDesktopHost, isMacHiddenTitlebar } from "../utils/platform";
 import { useHostMessage } from "../utils/useHostMessage";
 
 export interface SettingsPageProps {
@@ -232,6 +232,18 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
 ];
+
+/** 当前宿主能看到的导航分组。桌面端把「插件市场」整项摘掉——它已有独立的整页视图
+ *  （侧边栏「新对话」下方的入口，spec ecosystem/plugin.md 场景 1），设置页不再重复
+ *  一个入口；IDE 宿主（VS Code / JetBrains）没有侧边栏整页，设置页这项是它们唯一的
+ *  入口，必须保留。 */
+const navGroupsForCurrentHost = (): NavGroup[] =>
+  NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter(
+      (item) => !(item.key === "plugins" && isDesktopHost()),
+    ),
+  })).filter((group) => group.items.length > 0);
 
 const SettingsPage: React.FC<SettingsPageProps> = ({
   configurationData,
@@ -541,7 +553,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           )}
           {backButton}
           <nav className="settings-navigation" aria-label="设置">
-            {NAV_GROUPS.map((group) => (
+            {navGroupsForCurrentHost().map((group) => (
               <div className="settings-nav-group" key={group.label}>
                 <h2>{group.label}</h2>
                 <div className="settings-nav-items">

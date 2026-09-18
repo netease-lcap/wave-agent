@@ -60,11 +60,11 @@ interface ToastStackProps {
 }
 
 /**
- * How long a button-less toast stays up before auto-dismissing (ms). ~1s:
+ * How long a button-less toast stays up before auto-dismissing (ms). 2s:
  * informational toasts are fleeting (spec「账户卡片」场景 7); actionable toasts
  * never auto-dismiss.
  */
-const AUTO_DISMISS_MS = 1000;
+const AUTO_DISMISS_MS = 2000;
 
 /**
  * One toast row. `position` selects the visual family (from the toast's explicit

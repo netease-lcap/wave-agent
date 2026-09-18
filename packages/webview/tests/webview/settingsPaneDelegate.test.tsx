@@ -169,6 +169,59 @@ describe("desktop pane 布局斜杠命令打开设置页", () => {
   });
 });
 
+// spec ecosystem/plugin.md 场景 3/4 + A-016：桌面端设置页里不再有「插件市场」入口，
+// 视图只由侧边栏整页承载，故 /plugin 在桌面端也必须落到整页——且整页由 root 实例的
+// DesktopShell 渲染（覆盖 pane 行），pane 内输入的命令同样要委托 root，否则变成孤儿
+// state「没反应」（与 /config 同一个坑，见上）。
+describe("desktop pane 布局：/plugin 落到插件市场整页", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("pane 内 /plugin 委托根实例，不走 IDE 的 openSettings", async () => {
+    const onOpenPluginMarketFromPane = vi.fn();
+    const mockVscode = createMockVscode();
+    render(
+      <ChatApp
+        vscode={mockVscode as unknown as VsCodeApi}
+        host={desktopHost()}
+        paneId="pane-1"
+        onOpenPluginMarketFromPane={onOpenPluginMarketFromPane}
+      />,
+    );
+    sendHostMessage(fixtures.authStatusResponse());
+
+    await act(async () => {
+      await typeAndSend("/plugin");
+    });
+
+    await waitFor(() => {
+      expect(onOpenPluginMarketFromPane).toHaveBeenCalledTimes(1);
+    });
+    expect(mockVscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "openSettings" }),
+    );
+  });
+
+  it("完整链路：pane 内 /plugin 后整页由根实例渲染", async () => {
+    render(
+      <ChatApp
+        vscode={createMockVscode() as unknown as VsCodeApi}
+        host={desktopHost()}
+      />,
+    );
+    sendHostMessage(fixtures.authStatusResponse());
+
+    expect(screen.queryByTestId("plugin-market-page")).not.toBeInTheDocument();
+    await typeInPane("pane-1", "/plugin");
+
+    expect(await screen.findByTestId("plugin-market-page")).toBeInTheDocument();
+    // 整页取代 pane 行；侧边栏保留（spec 场景 1）
+    expect(screen.queryByTestId("desktop-pane-pane-1")).not.toBeInTheDocument();
+    expect(screen.getByTestId("desktop-sidebar")).toBeInTheDocument();
+  });
+});
+
 // spec docs/specs/ecosystem/mcp.md「新增/编辑 MCP」：设置页点「+ 新增 MCP 服务」后
 // 关闭设置页、把 /settings 提示词预填进 focused 对话输入框。Bug 3466212216530432
 // 根因：FR-032 pane 布局下设置页挂在 root 实例（paneId undefined）而输入框在各

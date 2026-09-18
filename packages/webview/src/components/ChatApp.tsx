@@ -37,6 +37,7 @@ import type { NavKey } from "./SettingsPage";
 import { SessionBoard } from "./SessionBoard";
 import { SessionListPopup } from "./SessionListPopup";
 import type { SessionMetadata } from "wave-agent-sdk";
+import { PluginMarketPage } from "./PluginMarketPage";
 import { DesktopWorkdirSelector } from "./DesktopWorkdirSelector";
 import { DesktopWorktreeControls } from "./DesktopWorktreeControls";
 import { PreviewPane } from "./PreviewPane";
@@ -204,6 +205,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   firstPane,
   headerActions,
   onOpenSettingsFromPane,
+  onOpenPluginMarketFromPane,
   prefillRequest,
   onPrefillApplied,
 }) => {
@@ -370,6 +372,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // TDZ），经 ref 调用最新实现绕开声明顺序（同下方 togglePanelRef 模式）。
   const openFileRef = useRef<(path: string) => void>(() => {});
   const [sessionBoardOpen, setSessionBoardOpen] = useState(false);
+  // 插件市场整页（spec ecosystem/plugin.md「插件市场」场景 1/2）：侧边栏入口打开的
+  // 整页视图，同为「后开者优先」——与设置页、会话状态看板互斥。
+  const [pluginMarketOpen, setPluginMarketOpen] = useState(false);
   // 桌面端主题偏好（host 为真源）：**只**由未打标签的窗口级广播
   // desktopThemeSource 驱动（启动时 host 会随其它窗口级状态推一次）。曾经的
   // setInitialState.theme 副本已删除——那是 pane 作用域消息，而渲染设置页的是
@@ -678,9 +683,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const paneIdRef = useRef<string | undefined>(paneId);
   // Latest mirrors for the once-registered message listener: whether this root
   // instance currently renders the pane rows (vs. the settings page / session
-  // board, which replace the rows and unmount the pane ChatApps).
-  const rowsVisibleRef = useRef(!settingsOpen && !sessionBoardOpen);
-  rowsVisibleRef.current = !settingsOpen && !sessionBoardOpen;
+  // board / plugin market full page, which replace the rows and unmount the pane
+  // ChatApps).
+  const rowsVisibleRef = useRef(
+    !settingsOpen && !sessionBoardOpen && !pluginMarketOpen,
+  );
+  rowsVisibleRef.current =
+    !settingsOpen && !sessionBoardOpen && !pluginMarketOpen;
 
   // Keep stateRef in sync with state
   useEffect(() => {
@@ -1852,9 +1861,32 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const handleToggleSessionBoard = useCallback(() => {
     setSessionBoardOpen((prev) => !prev);
     setSettingsOpen(false);
+    setPluginMarketOpen(false);
   }, []);
 
   const handleCloseSessionBoard = useCallback(() => {
+    setSessionBoardOpen(false);
+  }, []);
+
+  // 插件市场整页（desktop，spec ecosystem/plugin.md「插件市场」场景 1/2）：侧边栏
+  // 入口是开关——未打开则打开，已打开则关闭；与设置页、会话状态看板互斥（后开者
+  // 优先）。返回当前会话与再次点击入口同效（场景 2）。
+  const handleTogglePluginMarket = useCallback(() => {
+    setPluginMarketOpen((prev) => !prev);
+    setSettingsOpen(false);
+    setSessionBoardOpen(false);
+  }, []);
+
+  const handleClosePluginMarket = useCallback(() => {
+    setPluginMarketOpen(false);
+  }, []);
+
+  /** 打开（不切换）插件市场整页——供 pane 委派路径调用：pane 实例本身不渲染整页，
+   *  且整页覆盖 pane 行后输入框已不可达，故「打开」与「切换」在用户层面是同一个
+   *  动作。 */
+  const handleOpenPluginMarket = useCallback(() => {
+    setPluginMarketOpen(true);
+    setSettingsOpen(false);
     setSessionBoardOpen(false);
   }, []);
 
@@ -1891,8 +1923,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         return;
       }
       if (trimmedText === "/plugin") {
-        // 不再弹窗：唤起设置页并选中「插件市场」选项卡（对齐 /mcp、/skills
-        // 既有语义，弹窗内容已迁移到设置页，见 SettingsPluginView）。
+        // 桌面端在设置页里不再有「插件市场」入口（spec ecosystem/plugin.md 场景 3、
+        // A-016），视图只由侧边栏整页承载，故 /plugin 也落到整页；IDE 宿主没有
+        // 侧边栏整页，仍唤起设置页并选中「插件市场」选项卡（对齐 /mcp、/skills）。
+        if (isDesktop) {
+          if (paneId !== undefined && onOpenPluginMarketFromPane) {
+            // pane 实例只渲染自己的会话区，整页在 root 的 DesktopShell 上
+            onOpenPluginMarketFromPane();
+            return;
+          }
+          setPluginMarketOpen(true);
+          setSettingsOpen(false);
+          setSessionBoardOpen(false);
+          return;
+        }
         handleOpenSettings("plugins");
         return;
       }
@@ -2043,6 +2087,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       postToHost,
       paneId,
       gitBranches,
+      onOpenPluginMarketFromPane,
     ],
   );
 
@@ -3344,6 +3389,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     />
   ) : null;
 
+  // 插件市场整页（desktop，spec ecosystem/plugin.md「插件市场」场景 1/2）：侧边栏
+  // 保留，只替换 pane rows（同看板）。复用设置页的插件市场视图，两个入口渲染同一
+  // 视图、能力不分叉（同 A-016）。
+  const pluginMarket = isDesktop ? (
+    <PluginMarketPage
+      onBack={handleClosePluginMarket}
+      collapsed={sidebarCollapsed}
+      onExpandSidebar={() => setSidebarCollapsed(false)}
+      macTrafficSpacer={macTrafficSpacer}
+      vscode={vscode}
+    />
+  ) : null;
+
   // Dialogs render at the component root — not inside chatContainer — so they
   // stay visible in every layout, including the desktop split-view shell.
   const dialogs = (
@@ -3597,6 +3655,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             sessionBoard={sessionBoard}
             sessionBoardActive={sessionBoardOpen}
             onToggleSessionBoard={handleToggleSessionBoard}
+            pluginMarketOpen={pluginMarketOpen}
+            onClosePluginMarket={handleClosePluginMarket}
+            pluginMarket={pluginMarket}
+            pluginMarketActive={pluginMarketOpen}
+            onTogglePluginMarket={handleTogglePluginMarket}
+            onOpenPluginMarket={handleOpenPluginMarket}
             prefillRequest={pendingPrefill}
             onPrefillApplied={handlePrefillApplied}
           />

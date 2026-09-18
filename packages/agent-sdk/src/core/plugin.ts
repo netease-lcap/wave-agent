@@ -139,7 +139,7 @@ export class PluginCore {
   }
 
   /**
-   * Lists all plugins from all registered marketplaces with their installation and enabled status
+   * Lists all plugins from all registered marketplaces with their installation and enabled status.
    */
   async listPlugins(): Promise<{
     plugins: MarketplacePluginStatus[];

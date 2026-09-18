@@ -257,6 +257,12 @@ export class DesktopHost {
   private inputDrafts = new Map<string, string>(); // keyed by `session:<sessionId>` or `new:<paneId>`
   private agentWorktreeInfo = new Map<StdioAgent, WorktreeInfo>();
   private workdir: string | undefined;
+  /**
+   * 插件视图的锚点工程（spec ecosystem/plugin A-018）：最近一次 listPlugins 时
+   * 的当前工程。`scope` 呈现与写操作（安装 / 更换作用域 / 卸载）都必须用同一个
+   * 锚点——写操作读「此刻的当前工程」会在用户切走对话后写进别的工程。
+   */
+  private pluginAnchorWorkdir: string | undefined;
 
   // Per-pane view state. messages/tasks/backgroundTasks/queuedMessages/isStreaming/
   // isCommandRunning/sessionId are derived from the pane's bound agent (its
@@ -5730,19 +5736,31 @@ export class DesktopHost {
    * `refreshed` 标记：本次回包是「打开界面触发的后台清单刷新」结束后的补发，
    * webview 据此收起界面内的「检查更新中」提示（spec 插件市场场景 12/13）。
    * 返回插件行供变更后的提示文案反查显示名/版本；拉取失败时已提示，返回 null。
+   *
+   * 取列表这一刻的当前工程即锚点（spec 插件市场 A-018）：桌面端当前工程跟着
+   * 聚焦分屏 / 选中对话走，而插件视图只在挂载时拉一次列表，所以「打开视图时的
+   * 当前工程」= 用户看到的那份作用域呈现。锚点钉在这里，随后的写操作沿用同一
+   * 个值，不读会被切走的 this.workdir（切换对话会先关闭整页，见场景 2）。
    */
   private async handleListPlugins(
     refreshed = false,
   ): Promise<PluginListRow[] | null> {
+    this.pluginAnchorWorkdir = this.workdir;
     try {
       const result = (await this.utilityClientFor(this.currentHost).request(
         "listPlugins",
-        { workdir: this.workdir },
+        {
+          workdir: this.pluginAnchorWorkdir,
+        },
       )) as { plugins: PluginListRow[] };
       this.postMessage({
         command: "listPluginsResponse",
         plugins: result.plugins,
         ...(refreshed ? { refreshed: true } : {}),
+        // 锚点原样回带（场景 12/13/22）：弹窗的 project / local 两档据此标明
+        // 写进哪个工程，缺省时 webview 把这两档置灰（锚点为空时 project /
+        // local 记录无从判断，写下去也只会落到 CLI 子进程的随机 cwd）
+        anchorWorkdir: this.pluginAnchorWorkdir,
       });
       return result.plugins;
     } catch (error) {
@@ -5797,7 +5815,9 @@ export class DesktopHost {
     try {
       await this.utilityClientFor(this.currentHost).request(method, {
         ...params,
-        workdir: this.workdir,
+        // 用列表那一次的锚点，不用「此刻的当前工程」（spec A-018）——用户可能刚
+        // 点了保存就切走对话，那时 this.workdir 已经是另一条对话的工程了。
+        workdir: this.pluginAnchorWorkdir ?? this.workdir,
       });
       const plugins = await this.handleListPlugins();
       this.showPluginMutationToast(method, params, plugins);

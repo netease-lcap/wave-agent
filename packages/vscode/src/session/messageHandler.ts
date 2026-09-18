@@ -863,6 +863,11 @@ export class MessageHandler {
         command: "listPluginsResponse",
         plugins,
         ...(refreshed ? { refreshed: true } : {}),
+        // 锚点工程（spec ecosystem/plugin A-018）：IDE 宿主即当前工作区文件夹。
+        // 弹窗的 project / local 两档据此标明写进哪个工程；多根工作区取首根
+        // （与 pluginService.getWorkdir 的 RPC 口径一致，否则「显示的工程」与
+        // 「写进去的工程」会不是同一个）。
+        anchorWorkdir: this.pluginService.getWorkdir(),
       });
     } catch (error) {
       console.error("获取插件列表失败:", error);
@@ -906,7 +911,7 @@ export class MessageHandler {
   /**
    * 执行一次插件变更（安装/卸载/更新/更换作用域）并收尾：刷新插件列表，并按
    * 原型/需求文档逐字给宿主结果提示（spec 插件「插件市场操作提示」），失败经宿主
-   * 提示告知原因（spec 插件市场场景 17）。
+   * 提示告知原因（spec 插件市场场景 20）。
    *
    * 不再重建会话：插件变更只置一个「待应用」信号 + 一句提示，由用户敲
    * `/reload-plugins` 就地换装（docs/specs/ecosystem/plugin.md「插件变更的
@@ -953,8 +958,9 @@ export class MessageHandler {
 
   /**
    * 执行一次市场变更（新增/移除）并收尾：市场列表与插件列表都要刷新——插件按
-   * 所属市场组织，市场增减会改变插件集合（spec 插件市场场景 15）。成功后按原型/
-   * 需求文档逐字给宿主提示。
+   * 所属市场组织，市场增减会改变插件集合（spec 插件市场场景 15），随后按市场
+   * 清单里的名字给出成功通知（场景 20；新增取 RPC 回带的 KnownMarketplace.name，
+   * 移除用请求名，均非用户输入）。
    */
   private async applyMarketplaceChange(
     change: () => Promise<unknown>,

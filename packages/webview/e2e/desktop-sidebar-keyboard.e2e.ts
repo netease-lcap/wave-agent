@@ -83,9 +83,13 @@ test.describe("Desktop sidebar keyboard navigation", () => {
       .locator(".desktop-session-group-header");
 
     // ── Scenario 13: Tab walks the tree row by row ──────────────────
-    // Tab from before the tree: group headers and session mains are ALL in
-    // the Tab order (claude.ai model); delete buttons never are.
+    // Tab from before the tree: 插件市场入口 → group headers and session mains
+    // are ALL in the Tab order (claude.ai model); delete buttons never are.
     await webviewPage.getByTestId("desktop-new-session").focus();
+    // 新对话 与 插件市场 是侧边栏里前后相邻的两个入口按钮，Tab 先经过后者
+    // （入口本身见 spec ecosystem/plugin.md「插件市场」场景 1）。
+    await webviewPage.keyboard.press("Tab");
+    expect(await activeTestId(webviewPage)).toBe("desktop-plugin-market");
     const tabStops: (string | null)[] = [];
     for (let i = 0; i < 5; i++) {
       await webviewPage.keyboard.press("Tab");

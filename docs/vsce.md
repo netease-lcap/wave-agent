@@ -232,7 +232,9 @@ CodeWave IDE 是一款集成在 VS Code 与 JetBrains IDE（WebStorm、IntelliJ 
 
 <figure><img src="/screenshots/spec-plugin-scope.webp" alt="选择安装作用域" /><figcaption>选择安装作用域</figcaption></figure>
 
-<figure><img src="/screenshots/spec-plugin-new-market.webp" alt="新建插件市场（本地路径 / 远程仓库）" /><figcaption>新建插件市场（本地路径 / 远程仓库）</figcaption></figure>
+<figure><img src="/screenshots/spec-plugin-manage-markets.webp" alt="管理插件市场（官方市场只展示、自定义市场可移除、可添加新市场）" /><figcaption>管理插件市场（官方市场只展示、自定义市场可移除、可添加新市场）</figcaption></figure>
+
+<figure><img src="/screenshots/spec-plugin-new-market.webp" alt="添加插件市场（本地路径 / 远程仓库）" /><figcaption>添加插件市场（本地路径 / 远程仓库）</figcaption></figure>
 
 <figure><img src="/screenshots/spec-sdd-plugin.webp" alt="内置 SDD 插件开关（项目设置）" /><figcaption>内置 SDD 插件开关（项目设置）</figcaption></figure>
 

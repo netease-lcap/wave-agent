@@ -4,7 +4,11 @@
    radius 6px nav / radius 12px cards, 3px tab underline. All colors map to VS
    Code theme tokens (--vscode-*) - no hardcoded color values. */
 
-.settings-page {
+/* 布局 token 由两个宿主共享：设置页，以及整页形态的插件市场（`.plugin-market-page`
+   直接复用同一份插件市场视图，spec ecosystem/plugin.md「插件市场」场景 1/2——视图内
+   的页签/卡片都吃这组变量，缺了会在整页形态下退化成无边框）。 */
+.settings-page,
+.plugin-market-page {
   --cc-settings-navigation-width: 240px;
   --cc-settings-bg: var(--vscode-editor-background);
   --cc-settings-surface: var(--vscode-panel-background);
@@ -13,7 +17,9 @@
   --cc-settings-selected-text: var(--vscode-list-activeSelectionForeground);
   --cc-settings-border: var(--vscode-panel-border);
   --cc-settings-border-light: var(--vscode-widget-border);
+}
 
+.settings-page {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -21,6 +27,10 @@
   min-height: 0;
   background: var(--cc-settings-bg);
   color: var(--vscode-foreground);
+  /* 市场切换条两端渐隐的底色（spec ecosystem/plugin 场景 5）：谁是切换条身后的
+     背景谁就给出这个色——设置页自己画的背景是 --cc-settings-bg。插件市场整页里
+     背景由 .plugin-market-content 画（见 PluginMarketPage.css），故那边另有一份。 */
+  --cc-tabs-fade-bg: var(--cc-settings-bg);
 }
 
 .settings-layout {
@@ -41,11 +51,17 @@
       自身边框叠成「1px 边框 + 2px 空隙 + 2px 外环」的双圈（设计师 0915 走查）。
       参考实现同语言：codechat-ui settings.css:566 `border-color: var(--cc-border-focus)`；
       skill element-plus.css:114 亦把焦点落在控件自身边界上。
-   范围仅限设置页；对话流有自己的焦点处理，不在本规则内。 */
+   范围仅限设置页；对话流有自己的焦点处理，不在本规则内。
+   `.plugin-market-page` 是同一份插件市场视图在整页形态下的宿主（spec ecosystem/
+   plugin.md「插件市场」场景 1/2），两处入口的键盘焦点必须同源，故并列在每组选择器内。 */
 .settings-page button:focus-visible,
 .settings-page input:focus-visible,
 .settings-page select:focus-visible,
-.settings-page textarea:focus-visible {
+.settings-page textarea:focus-visible,
+.plugin-market-page button:focus-visible,
+.plugin-market-page input:focus-visible,
+.plugin-market-page select:focus-visible,
+.plugin-market-page textarea:focus-visible {
   outline: 2px solid var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
   outline-offset: 2px;
 }
@@ -53,7 +69,10 @@
 /* 输入类不套外移环：焦点由 .settings-select/:focus 一族的边框变色表达 */
 .settings-page input:focus-visible,
 .settings-page select:focus-visible,
-.settings-page textarea:focus-visible {
+.settings-page textarea:focus-visible,
+.plugin-market-page input:focus-visible,
+.plugin-market-page select:focus-visible,
+.plugin-market-page textarea:focus-visible {
   outline: none;
 }
 
@@ -61,15 +80,21 @@
 .settings-page .settings-row-btn:focus-visible,
 .settings-page .settings-scope-pill:focus-visible,
 .settings-page .settings-scope-option:focus-visible,
-.settings-page .settings-plugin-act:focus-visible {
+.settings-page .settings-plugin-act:focus-visible,
+.plugin-market-page .settings-row-btn:focus-visible,
+.plugin-market-page .settings-scope-pill:focus-visible,
+.plugin-market-page .settings-scope-option:focus-visible,
+.plugin-market-page .settings-plugin-act:focus-visible {
   outline: none;
   border-color: var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
 }
 
 /* 危险操作（移除市场）保住红色语义：红边不动，焦点环贴边同色加粗（单圈、无空隙） */
-.settings-page .settings-row-btn-danger:focus-visible {
+.settings-page .settings-row-btn-danger:focus-visible,
+.plugin-market-page .settings-row-btn-danger:focus-visible {
   border-color: var(--cc-color-danger, var(--vscode-errorForeground, #f48771));
-  outline: 2px solid var(--cc-color-danger, var(--vscode-errorForeground, #f48771));
+  outline: 2px solid
+    var(--cc-color-danger, var(--vscode-errorForeground, #f48771));
   outline-offset: 0;
 }
 
@@ -94,8 +119,8 @@
    （conversation-typography.md:37「时间、数量、依赖等辅助信息 12 / 20」、
    design-system.md:67「Compact metadata may use 12px」）。
    ④ 追加（设计师 0915 对本列表的评论「这里属于描述，应该都是 12px」）：
-   `.settings-plugin-desc` 由 14/22 收到辅助档 12/20——插件行描述归辅助而非正文；
-   `.settings-modal-hint`（必要操作说明）按 :37「必要操作说明不降为辅助文字」保持 14/22。 */
+   `.settings-plugin-desc` 由 14/22 收到辅助档 12/20——插件行描述归辅助而非正文。
+   （原同组的 `.settings-modal-hint` 已随「添加插件市场」弹窗顶部说明文案一并移除。） */
 .settings-back {
   display: flex;
   flex: 0 0 auto;
@@ -233,17 +258,6 @@
   margin: 0 auto;
   padding: 40px 24px 72px;
   box-sizing: border-box;
-}
-
-/* 插件市场页头 = 标题块 + 右上角「新建市场」（设计师 0915 走查）。
-   只挂在本视图上：其余设置视图的页头是 h1 + p 两个直接子元素，若把
-   display:flex 加在公共的 .settings-page-header 上，它俩会变成同一行的
-   两个 flex item。 */
-.settings-plugin-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
 }
 
 .settings-page-header-text {
@@ -826,7 +840,10 @@
 .settings-row-btn:hover {
   /* 0915-T-01：普通 hover 面 → --cc-fill-hover（桌面宿主语义层；插件宿主回落
      宿主 token，行为不变） */
-  background: var(--cc-fill-hover, var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15)));
+  background: var(
+    --cc-fill-hover,
+    var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15))
+  );
 }
 
 .settings-row-btn-danger {
@@ -976,6 +993,51 @@
   outline-offset: -2px;
 }
 
+/* 市场切换条两端的渐隐提示（spec ecosystem/plugin 场景 5）：切换条横向滚动但滚动条
+   被隐藏，用户无从知道一侧还有市场 → 还有未展示切换项的那一端盖一层渐隐，滚到该端
+   即消失。纯提示层：`position: absolute` 不占布局宽度（切换项与右侧入口位置完全
+   不变），`pointer-events: none` 让点在渐隐覆盖处等于点其下的切换项。
+   渐隐盖的是整条盒（59px），但底部分隔线要照旧连到条的尽端，故在本层重画一遍同款
+   1px 内阴影——否则线会在渐隐区里淡掉，看着像断了。
+   两端锚点不同，各自贴住切换条盒的那条边：
+   - 左端挂 section：section 左缘与切换条左缘同列（切换条是工具栏首个子元素、
+     无外边距），但 section 高度包含下方插件列表，故显式写切换条盒高；
+   - 右端挂操作区：`right: calc(100% + 12px)` 退掉工具条 12px 间距，让渐隐层的右缘
+     正好落在切换条右缘上（与左端一样是完整的 48px 渐变，且不铺到按钮区），纵向贴满
+     操作区盒（它镜像切换条的 12px/1px 内衬）。 */
+.settings-plugin-view .settings-section,
+.settings-plugin-view .settings-toolbar-actions {
+  position: relative;
+}
+
+.settings-plugin-tabs-fade {
+  position: absolute;
+  width: 48px;
+  pointer-events: none;
+  /* 切换段落自身是 `position: relative` 的定位元素，只靠 DOM 顺序定层级会让左端那层
+     （挂在 section 上、DOM 里排在工具栏之前）被切换项盖住、渐隐失效 → 显式抬到
+     定位层之上（弹窗仍是 2000，不受影响）。 */
+  z-index: 1;
+  /* 与 `.settings-plugin-view .settings-tabs` 的底部分隔线同款、同色、同高度位置 */
+  box-shadow: inset 0 -1px 0 var(--cc-settings-border-light);
+}
+
+.settings-plugin-tabs-fade.is-start {
+  top: 0;
+  left: 0;
+  /* 切换条盒高 59px（12px 上内衬 + 46px 段盒 + 1px 下内衬），同
+     `.settings-plugin-view .settings-tabs` */
+  height: 59px;
+  background: linear-gradient(to right, var(--cc-tabs-fade-bg), transparent);
+}
+
+.settings-plugin-tabs-fade.is-end {
+  top: 0;
+  bottom: 0;
+  right: calc(100% + 12px);
+  background: linear-gradient(to left, var(--cc-tabs-fade-bg), transparent);
+}
+
 .settings-plugin-ops {
   display: flex;
   align-items: center;
@@ -990,28 +1052,44 @@
   gap: 6px;
 }
 
-/* 新建市场（页头右上角，设计师 0915 走查）：8px 圆角；图标与文字间距沿用
-   工具栏操作区的 4px 口径（该口径原挂在 .settings-toolbar-actions 下，
-   按钮移入页头后需自带） */
-.settings-plugin-new-market {
-  flex: 0 0 auto;
+/* tab 行右侧的入口：两个纯图标按钮（加号 = 添加插件市场 / 齿轮 = 管理插件市场，
+   spec 场景 16/18；见参考图：白底、浅色描边、圆角方形，与列表行按钮同档
+   8px/28px 刻度）。图标按钮内不出现可见文字，文案由 aria-label 与悬浮提示
+   （Tooltip 组件，不用原生 title）承载，不占布局宽度。
+   （「更新」不在这行，在筛选行的分段器右侧，见 .settings-plugin-update-btn。） */
+.settings-plugin-icon-btn {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: var(--vscode-editor-background);
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
   border-radius: 8px;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.settings-plugin-icon-btn:hover {
+  background: var(
+    --cc-fill-hover,
+    var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15))
+  );
 }
 
 /* 筛选（全部/已安装/未安装，各带计数）+ 当前市场内搜索 */
 .settings-plugin-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  /* 左起排列：筛选分段器 → 搜索框（搜索框靠 margin-left: auto 贴最右端） */
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: 8px;
   padding: 12px 0;
 }
 
-/* 插件筛选（全部/已安装/未安装）：与新建市场弹窗的分段 tab 同一形制
+/* 插件筛选（全部/已安装/未安装）：与添加插件市场弹窗的分段 tab 同一形制
    （.settings-modal-seg 一族：静态轨道 = --cc-fill + 3px 内衬；激活段 =
    --cc-bg-segment-active 面 + --cc-text-segment-active 字 + 600 字重），
    设计师 0915 走查指定「也用这个 tab，高度 32px，宽度和现在差不多」。
@@ -1065,7 +1143,39 @@
   background: transparent;
 }
 
+/* 当前市场批量「更新」（spec 场景 15）：纯文字动作按钮（链接蓝文字 + 计数，无边框/
+   底色），排在筛选行里、筛选分段器右侧、搜索框之前（搜索框仍由 margin-left: auto
+   贴最右端）；高度对齐同排的 32px 分段器与搜索框（文字按钮自身 28px 盒子居中即可）。
+   计数与文字同色。焦点环走 `.settings-page button:focus-visible`
+   的默认外移环（无边界可染色，故不挂 .settings-row-btn 那条「焦点色落边框」的分支）。 */
+.settings-plugin-update-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--vscode-textLink-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.settings-plugin-update-btn:hover {
+  text-decoration: underline;
+}
+
+.settings-plugin-update-btn .settings-tab-count {
+  margin-left: 4px;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+}
+
+/* 搜索框贴工具栏最右端（左起排列后由本行把剩余空间吃掉） */
 .settings-plugin-search {
+  margin-left: auto;
   width: 180px;
   flex: 0 0 auto;
 }
@@ -1078,6 +1188,42 @@
   color: var(--vscode-descriptionForeground);
   font-size: 12px;
   line-height: 20px;
+}
+
+/* 当前市场更新确认弹窗里的待更新清单（spec ecosystem/plugin 场景 21）：每行
+   名称独占一行，第二行是「v旧 → v新 → 作用域」（作用域贴右）。作用范围由弹窗
+   标题 / 正文给出，不再逐行重复市场名。列表自身滚动、不把弹窗撑出屏幕。
+   弹窗正文列宽在 360px 弹窗里约 300px，故不做三列并排。 */
+.settings-plugin-update-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.settings-plugin-update-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+}
+
+.settings-plugin-update-name {
+  flex: 1 1 100%;
+  color: var(--vscode-foreground, #bfbfbf);
+}
+
+.settings-plugin-update-versions,
+.settings-plugin-update-scope {
+  color: var(--vscode-descriptionForeground, #8c8c8c);
+}
+
+.settings-plugin-update-scope {
+  margin-left: auto;
 }
 
 .settings-plugin-list {
@@ -1119,24 +1265,71 @@
   font-weight: 600;
 }
 
+/* 版本胶囊（spec 场景 9–11）：插件名右侧的「当前版本」——中性 fill + regular 文字的
+   小圆角胶囊（与计数角标同 token；圆角按 0917 参考图取 6px，不是角标的 999px）。
+   只在两态出现：未安装 = 可安装版本 / 已安装且最新 = 已安装版本；**已安装且有新版**
+   走升级胶囊（见下），不再单独出现灰胶囊。
+
+   历史：0915-F-03 曾把「已安装 vX · 最新 vY」的**文字**从
+   --vscode-editorWarning-foreground 改回正文色（浅色 3.11:1 不达 4.5，依
+   desktop-theme-bridge.md「信号色不自动等于可读文字色：字面信息用既有
+   primary/regular，状态语义交给带标签的图标/指示」）。0917 参考图把可更新语义
+   改成「带底色的徽标 + 描边徽标」，橙色只用在徽标上（见下），文字本身回到中性档。 */
 .settings-plugin-version {
-  color: var(--vscode-descriptionForeground);
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--cc-fill, var(--vscode-badge-background));
+  color: var(--cc-text-regular, var(--vscode-descriptionForeground));
   font-size: 12px;
-  font-weight: 400;
+  line-height: 18px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-/* 已安装且有新版本：两版并列 + 可读正文色（原型 .plugin-ver.update）
-   0915-F-03：原用 --vscode-editorWarning-foreground，浅色 3.11:1 不达 4.5。
-   依 desktop-theme-bridge.md「信号色不自动等于可读文字色：字面信息用既有
-   primary/regular，状态语义交给带标签的图标/指示」——此处「已安装 vX · 最新 vY」
-   自身即指示，颜色回到正文色（浅深均 ≥15:1）。若后续需要专门的 warning
-   文字角色，按该文档另立经过测量的 Light/Dark 配对，不改全局信号色。 */
-.settings-plugin-version.is-update {
-  color: var(
-    --cc-text-primary,
-    var(--vscode-editorWarning-foreground, #b98a2f)
-  );
+/* 升级胶囊（spec 场景 10，0917 用户两次改口径）：已安装且有新版时**只给一个**胶囊
+   ——「v旧 → v新」。① 旧/新各自成胶囊时，两个版本号并排看不出哪个是已安装、哪个是
+   最新 → 合并成一个、用向右箭头表达方向；② 用户随后要求它与下面普通版本胶囊
+   （`.settings-plugin-version`）**同形制**：同一套灰底 / 圆角 6px / 行高 18px /
+   内边距 0 6px、无描边，胶囊内的两个版本号与箭头也一律**中性色**——橙色只由右侧
+   实心的「可更新」徽标承载（浅色下橙字落在浅灰底上对比不足，这也是 0915-F-03 的
+   既有结论）。所以这里的值刻意与 `.settings-plugin-version` 逐条对齐，改一处要
+   两处一起改。 */
+.settings-plugin-upgrade {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--cc-fill, var(--vscode-badge-background));
+  color: var(--cc-text-regular, var(--vscode-descriptionForeground));
+  font-size: 12px;
+  line-height: 18px;
   font-weight: 500;
+  white-space: nowrap;
+}
+
+/* 两段版本号继承胶囊的中性色（`.settings-plugin-upgrade-from` / `-to` 只作为语义与
+   测试锚点，不单独着色）。箭头要单独写：`.codicon` 基线把它染成
+   --vscode-icon-foreground，与胶囊文字色不是同一档。字号提到 (0,3,0) 是因为
+   codicons.css 的 `.codicon[class*="codicon-"]` (0,2,0) 会把图标钉在 16px
+   （同档先例见 DiffPane.css:166）。 */
+.settings-plugin-upgrade .settings-plugin-upgrade-arrow.codicon {
+  color: var(--cc-text-regular, var(--vscode-descriptionForeground));
+  font-size: 12px;
+}
+
+/* 「可更新」徽标（spec 场景 10）：橙底 + 配对前景。用 VS Code 自带配对的
+   --vscode-activityWarningBadge-*（浅色 #f2c94c/#202020、深色 #b27c00/#ffffff），
+   不自己拼「橙底白字」——浅色下白字落在亮橙上不足 4.5:1。 */
+.settings-plugin-update-badge {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--vscode-activityWarningBadge-background, #b27c00);
+  color: var(--vscode-activityWarningBadge-foreground, #ffffff);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .settings-plugin-desc {
@@ -1157,19 +1350,20 @@
   gap: 8px;
 }
 
-/* 行操作胶囊：安装 / 更新（主色）、已安装（语义 soft 底 + 可读正文）
-   0915-D-02：999px / 32px → 8px / 28px；0915-F-02：已安装态不再用编辑器测试绿
-   当文字色（浅色 1.51:1），改 soft success 底 + regular 文字，✓ 与文案保留状态语义。 */
-/* 插件行主操作按钮（安装 / 更新 / ✓ 已安装）
+/* 行操作胶囊的形制沿革：0915-D-02 把 999px / 32px 收到 8px / 28px；0915-F-02 又把
+   「已安装」态从「编辑器测试绿当文字色」（浅色 1.51:1）改成 soft success 底 + regular
+   文字。0917 起「已安装」按钮整体取消（spec 场景 8：该状态由作用域下拉本身表达），
+   soft success 那套样式（.settings-plugin-act.is-installed）随之删除，本族只剩
+   is-primary 一个变体（安装 / 更新）。 */
+/* 插件行主操作按钮（安装 / 更新——「已安装」态自 0917 起不再有按钮，见 spec 场景 8）
    字重 600 → 500（设计师 0915 评论「检查按钮字重，和新建市场保持一致」，点名
    `button.settings-plugin-act.is-primary`「安装」）：同页「新建市场」是
    `.settings-save-btn` 的 **500**，而本族此前是 600 —— 同页两个 14px 级按钮两种字重。
    口径改以「新建市场」为准（500 = `tokens/tokens.css:105` `--cc-font-weight-medium`，
-   也是 `.settings-save-btn` / `.settings-scope-pill` 的既有值），使插件行三个变体
-   （is-primary 安装·更新 / is-installed 已安装）与页头主按钮同字重。
+   也是 `.settings-save-btn` / `.settings-scope-pill` 的既有值）。
    注：skill `theme/element-plus.css:61` 的 `.el-button` 基线是 `--cc-font-weight-regular`
    （400）；本页按钮历来走 medium（500），此处不据契约改档、只与「新建市场」对齐。
-   字重变轻会收窄文字，但本族有 min-width: 88px（四变体文案均 2–3 字），故宽度不变。 */
+   字重变轻会收窄文字，但本族有 min-width: 88px（文案均 2 字），故宽度不变。 */
 .settings-plugin-act {
   display: inline-flex;
   align-items: center;
@@ -1193,18 +1387,6 @@
 
 .settings-plugin-act.is-primary:hover {
   background: var(--vscode-button-hoverBackground);
-}
-
-.settings-plugin-act.is-installed {
-  color: var(--cc-text-regular, var(--vscode-foreground));
-  background: var(
-    --cc-color-success-soft,
-    var(--vscode-toolbar-hoverBackground)
-  );
-}
-
-.settings-plugin-act.is-installed:hover {
-  color: var(--cc-text-primary, var(--vscode-foreground));
 }
 
 /* 已安装插件的作用域按钮（显示当前作用域，点击更换）
@@ -1241,7 +1423,7 @@
   border-color: var(--vscode-focusBorder);
 }
 
-/* ---- 设置页弹窗（新建市场 / 安装作用域；原型 .mask + .dialog）---- */
+/* ---- 设置页弹窗（添加插件市场 / 安装作用域；原型 .mask + .dialog）---- */
 
 .settings-modal-overlay {
   position: fixed;
@@ -1271,7 +1453,10 @@
      的 floating surface，深色档 #232526 是 dark-theme.md:11 的已接受决策。 */
   background: var(
     --cc-bg-modal,
-    var(--cc-bg-overlay, var(--vscode-editorWidget-background, var(--vscode-dropdown-background)))
+    var(
+      --cc-bg-overlay,
+      var(--vscode-editorWidget-background, var(--vscode-dropdown-background))
+    )
   );
   border: 1px solid var(--cc-settings-border-light);
   border-radius: 12px;
@@ -1283,6 +1468,21 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+/* 「管理插件市场」弹窗（spec ecosystem/plugin 场景 16）：市场一多，整弹窗滚动会把
+   标题和底部「添加插件市场」一起滚出视野——滚动区收到市场列表这一块上。
+   弹窗本体仍是 flex 列、`max-height: 80vh` 不变（改动只发生在「谁滚」），
+   头的标题行与尾的操作行不参与滚动，列表区拿到剩余高度后自身纵向滚动。 */
+.settings-modal.is-manage {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-modal.is-manage .settings-modal-header,
+.settings-modal.is-manage .settings-modal-row {
+  flex: 0 0 auto;
 }
 
 .settings-modal-header h3 {
@@ -1308,13 +1508,6 @@
   color: var(--vscode-foreground);
   /* 0915-T-01：普通 hover 面 → --cc-fill-hover（插件宿主回落宿主 token） */
   background: var(--cc-fill-hover, var(--vscode-toolbar-hoverBackground));
-}
-
-.settings-modal-hint {
-  margin: 4px 0 0;
-  color: var(--vscode-descriptionForeground);
-  font-size: 14px;
-  line-height: 22px;
 }
 
 .settings-modal-seg {
@@ -1374,12 +1567,12 @@
   border-radius: var(--cc-radius-md, 8px);
 }
 
-/* 「选择文件夹」（新建市场弹窗 · 本地路径档）：设计师 0915 评论「加号图标 +
+/* 「选择文件夹」（添加插件市场弹窗 · 本地路径档）：设计师 0915 评论「加号图标 +
    字号 14px + 居中 + 虚线描边 + 高度 32px，和表单保持一致」。
    基准 .settings-row-btn = 12px/28px/实线；本档抬到表单档：
    32px 高 = 同档 .settings-text-input 的 min-height（因此「本地路径」与
    「远程仓库」两档的行高一致）、14px = 表单说明档字号、图标与文字间距 4px
-   沿用页头「新建市场」。圆角仍取按钮口径 8px（评论未点名圆角，未动）。 */
+   沿用市场来源入口。圆角仍取按钮口径 8px（评论未点名圆角，未动）。 */
 .settings-modal-block-btn {
   flex: 1;
   justify-content: center;
@@ -1394,6 +1587,51 @@
   color: var(--vscode-descriptionForeground);
   font-size: 12px;
   line-height: 1.6;
+}
+
+/* 「管理插件市场」弹窗的市场列表（spec ecosystem/plugin 场景 16/17）：每行 =
+   市场名 + 操作；官方市场行只标「官方」（内置市场不可移除）、自定义市场行
+   给「移除」。行高与列表档一致（40px），文案档沿用插件行的 14px。
+   市场多时本块自身纵向滚动（`is-manage` 下 `overflow` 由 hidden 放开）：
+   `flex: 1 1 auto` + `min-height: 0` 让它吃掉弹窗剩余高度而不是把弹窗撑高，
+   圆角与边框在滚动时仍收住行（列表盒内滚动，不裁剪到圆角外）。 */
+.settings-market-manage-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 14px;
+  overflow: hidden;
+  border: 1px solid var(--cc-settings-border-light);
+  border-radius: 8px;
+}
+
+.settings-modal.is-manage .settings-market-manage-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.settings-market-manage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--cc-settings-border-light);
+}
+
+.settings-market-manage-row:last-child {
+  border-bottom: none;
+}
+
+.settings-market-manage-name {
+  color: var(--vscode-foreground);
+  font-size: 14px;
+}
+
+.settings-market-manage-note {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
 }
 
 .settings-scope-list {
@@ -1465,6 +1703,42 @@
 .settings-scope-option.is-selected .settings-scope-option-title em,
 .settings-scope-option.is-selected .settings-scope-option-desc {
   color: var(--cc-text-regular, var(--vscode-descriptionForeground));
+}
+
+/* 锚点工程（spec 场景 12/13）：**一行**「工程名（工程根目录）」——只写「项目配置」
+   「本地仓库」用户无法确认是哪个仓库，所以工程名为主、根目录为辅，重名时靠路径区分
+   （名字加粗先被读到，路径只在重名时用于确认，故与名字同一行、不另起一行）；锚点为
+   空时这里换成「需先选择项目目录」的原因说明，与 project / local 两档的置灰配套。 */
+.settings-scope-option-project {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.settings-scope-option-project-name {
+  color: var(--vscode-foreground);
+  font-weight: 600;
+}
+
+.settings-scope-option-project-path {
+  /* 路径只作辅助：允许在任意字符处折行，不让长工程路径撑破选项盒 */
+  word-break: break-all;
+}
+
+/* 同 0915-F-04：选中面上 descriptionForeground 对比不足，次级文字换 --cc-text-regular */
+.settings-scope-option.is-selected .settings-scope-option-project,
+.settings-scope-option.is-selected .settings-scope-option-project-name {
+  color: var(--cc-text-regular, var(--vscode-descriptionForeground));
+}
+
+/* 锚点为空：project / local 两档置灰不可选（spec 场景 12），连悬浮高亮一起停掉，
+   不留「看起来还能点」的观感 */
+.settings-scope-option:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.settings-scope-option:disabled:hover {
+  border-color: transparent;
 }
 
 /* 单选指示（原型 .scope-radio：外圈 + 选中实心点）

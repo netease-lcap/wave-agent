@@ -1067,6 +1067,8 @@ describe("MessageHandler settings tab", () => {
       refreshMarketplaces: vi.fn().mockResolvedValue(undefined),
       listPlugins: vi.fn().mockResolvedValue([{ id: "demo@mkt" }]),
       listMarketplaces: vi.fn().mockResolvedValue([{ name: "mkt" }]),
+      // 列表回包带锚点工程（spec ecosystem/plugin A-018）
+      getWorkdir: vi.fn().mockReturnValue("/ws/root"),
     };
     const context: MessageHandlerContext = {
       getChatSession: vi.fn().mockReturnValue(createMockSession()),
@@ -1096,6 +1098,7 @@ describe("MessageHandler settings tab", () => {
       command: "listPluginsResponse",
       plugins: [{ id: "demo@mkt" }],
       refreshed: true,
+      anchorWorkdir: "/ws/root",
     });
     expect(context.postSettingsMessage).toHaveBeenCalledWith({
       command: "listMarketplacesResponse",
@@ -1112,6 +1115,7 @@ describe("MessageHandler settings tab", () => {
       refreshMarketplaces: vi.fn().mockRejectedValue(new Error("network down")),
       listPlugins: vi.fn().mockResolvedValue([]),
       listMarketplaces: vi.fn().mockResolvedValue([]),
+      getWorkdir: vi.fn().mockReturnValue("/ws/root"),
     };
     const context: MessageHandlerContext = {
       getChatSession: vi.fn().mockReturnValue(createMockSession()),
@@ -1145,6 +1149,7 @@ describe("MessageHandler settings tab", () => {
       command: "listPluginsResponse",
       plugins: [],
       refreshed: true,
+      anchorWorkdir: "/ws/root",
     });
     expect(context.postSettingsMessage).toHaveBeenCalledWith({
       command: "listMarketplacesResponse",
