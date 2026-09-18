@@ -944,6 +944,88 @@ describe("session-level panel groups", () => {
     expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
   });
 
+  it("remembers the diff sidebar visibility and the selected commit per session", () => {
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop({ workdir: "/work/a" });
+    pushTree(["s1", "s2"]);
+    pushPanes("s1");
+    openPanel("diff");
+    const diffRequest = () =>
+      vscode.postMessage.mock.calls.filter(
+        ([msg]) => msg.command === "desktopGetWorkspaceDiff",
+      );
+    const lastDiffPayload = () => {
+      const requests = diffRequest();
+      return requests[requests.length - 1][0];
+    };
+    const diffResult = {
+      kind: "ok",
+      base: {
+        label: "main",
+        sha: "b".repeat(40),
+        kind: "default-branch",
+        ref: "refs/remotes/origin/main",
+      },
+      commits: [
+        { sha: "c".repeat(40), shortSha: "c111111", subject: "add feature" },
+        { sha: "d".repeat(40), shortSha: "d222222", subject: "fix bug" },
+      ],
+      files: [
+        {
+          path: "src/a.ts",
+          status: "modified",
+          additions: 1,
+          deletions: 0,
+          hunks: "@@ -1 +1 @@\n-a\n+b",
+          truncated: false,
+          binary: false,
+        },
+      ],
+    };
+    sendCommand("desktopWorkspaceDiff", {
+      paneId: "pane-1",
+      result: diffResult,
+    });
+    expect(screen.getByTestId("diff-sidebar")).toBeInTheDocument();
+
+    // s1: pick the second commit, then hide the sidebar.
+    fireEvent.click(screen.getAllByTestId("diff-commit")[1]);
+    expect(lastDiffPayload()).toMatchObject({ commit: "d".repeat(40) });
+    fireEvent.click(screen.getByTestId("diff-tree-toggle"));
+    expect(screen.queryByTestId("diff-sidebar")).not.toBeInTheDocument();
+
+    // s2 has no remembered diff state: sidebar visible, "all changes" selected.
+    pushPanes("s2");
+    openPanel("diff");
+    sendCommand("desktopWorkspaceDiff", {
+      paneId: "pane-1",
+      result: diffResult,
+    });
+    expect(screen.getByTestId("diff-sidebar")).toBeInTheDocument();
+    expect(screen.getByTestId("diff-commit-all")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    // Back to s1: both the hidden sidebar and the commit selection return, and
+    // the panel re-requests the remembered range — the session swap lands one
+    // commit after the pane's own session-change refresh, which fires with the
+    // OUTGOING session's range, so a corrective request is required.
+    pushPanes("s1");
+    sendCommand("desktopWorkspaceDiff", {
+      paneId: "pane-1",
+      result: diffResult,
+    });
+    expect(screen.queryByTestId("diff-sidebar")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("diff-tree-toggle"));
+    expect(screen.getByTestId("diff-sidebar")).toBeInTheDocument();
+    expect(screen.getAllByTestId("diff-commit")[1]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(lastDiffPayload()).toMatchObject({ commit: "d".repeat(40) });
+  });
+
   it("the new-session bucket migrates to the session id bound by the first message", async () => {
     window.waveHostType = "desktop";
     renderDesktop({ workdir: "/work/a" });

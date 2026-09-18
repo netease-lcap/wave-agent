@@ -77,6 +77,18 @@ export interface SessionUiState {
   /** Plan panel markdown (ExitPlanMode content); null = no plan yet. */
   planContent: string | null;
   /**
+   * Diff panel: whether the sidebar (file tree, with the commit list under it)
+   * is shown (spec desktop-panels.md「文件树与导航」场景 4: 显隐状态随会话面板
+   * 记忆保留). The narrow-width auto-hide is layout-only and never writes here.
+   */
+  diffTreeVisible: boolean;
+  /**
+   * Diff panel: the commit sha currently selected as the viewing range, or null
+   * for "all changes" (spec「提交选择」场景 5: 切换会话保持当前选择，该提交已
+   * 不存在时回落「全部改动」).
+   */
+  diffSelectedCommit: string | null;
+  /**
    * This session's remote port forward (scenario 18). The tunnel is owned by
    * the session, not the pane: it survives panel close, host switches, pane
    * rebinding and unmount/remount — only session deletion, ssh process death
@@ -97,6 +109,8 @@ export function emptySessionUiState(): SessionUiState {
     activePanel: null,
     panelExpanded: false,
     planContent: null,
+    diffTreeVisible: true,
+    diffSelectedCommit: null,
     forward: null,
     forwardError: null,
   };
