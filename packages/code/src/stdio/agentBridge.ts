@@ -57,6 +57,7 @@ import {
   type UserPreferenceSettingsView,
   type SubagentConfiguration,
   type SkillMetadata,
+  type PluginReloadResult,
 } from "wave-agent-sdk";
 import {
   type JsonRpcError,
@@ -455,6 +456,8 @@ export class AgentBridge {
           p.workdir as string | undefined,
           sessionId,
         );
+      case "reloadPlugins":
+        return this.reloadPlugins();
       case "listMarketplaces":
         return this.listMarketplaces(
           p.workdir as string | undefined,
@@ -1811,6 +1814,21 @@ export class AgentBridge {
       pluginId,
       scope,
     );
+  }
+
+  /**
+   * `/reload-plugins`：把磁盘上的插件状态就地换装进**本进程内全部活跃会话**
+   * （spec ecosystem/plugin.md「插件变更的就地重载」）。不重建会话、sessionId
+   * 不变；没有活跃会话时也返回成功——新会话创建时会按磁盘状态自然装载。
+   *
+   * 每个会话读的是同一份磁盘状态，因此取任一份结果汇报即可（各会话的差异只体现
+   * 在各自注册表的可见性上）。失败不回滚，原样回传给宿主提示。
+   */
+  private async reloadPlugins(): Promise<PluginReloadResult> {
+    const results = await Promise.all(
+      [...this.sessions.values()].map((entry) => entry.agent.reloadPlugins()),
+    );
+    return results[0] ?? { plugins: [], failures: [] };
   }
 
   private async getProjectSettings(

@@ -31,6 +31,13 @@ import java.util.Base64
 import javax.swing.SwingUtilities
 
 /**
+ * 插件变更的就地重载（spec plugin「插件变更的就地重载」）：文案与 SDK 导出的
+ * `PLUGIN_CHANGE_PENDING_MESSAGE` / `PLUGIN_RELOADED_MESSAGE` 逐字一致。
+ */
+private const val PLUGIN_CHANGE_PENDING_MESSAGE = "插件已变更。运行 /reload-plugins 使其生效。"
+private const val PLUGIN_RELOADED_MESSAGE = "插件已重载。"
+
+/**
  * Dispatches webview commands → stdio RPC / local actions.
  * Mirrors packages/vscode/src/session/messageHandler.ts.
  *
@@ -103,6 +110,32 @@ class MessageHandler(
                 val customInstructions = msg["customInstructions"]?.jsonPrimitive?.content
                 session.agent?.compact(customInstructions)
             }
+            // 插件就地重载：不重建 agent，只让宿主把磁盘上的插件状态换装进当前 CLI
+            // 进程内的 live 会话（spec plugin「插件变更的就地重载」）。RPC 一次覆盖
+            // 该进程的全部会话。
+            "reloadPlugins" -> {
+                try {
+                    val result = session.agent?.reloadPlugins()?.jsonObject
+                    val failures = result?.get("failures")?.jsonArray ?: JsonArray(emptyList())
+                    if (failures.isEmpty()) {
+                        IdeService.showInfo(project, PLUGIN_RELOADED_MESSAGE)
+                    } else {
+                        val detail = failures.joinToString("；") { failure ->
+                            val obj = failure.jsonObject
+                            val path = obj["path"]?.jsonPrimitive?.contentOrNull ?: ""
+                            val error = obj["error"]?.jsonPrimitive?.contentOrNull ?: ""
+                            "$path: $error"
+                        }
+                        IdeService.showInfo(
+                            project,
+                            "${PLUGIN_RELOADED_MESSAGE}部分插件加载失败：$detail",
+                        )
+                    }
+                } catch (e: StdioClientException) {
+                    LOG.warn("reloadPlugins failed: ${e.message}")
+                    IdeService.showError(project, "插件重载失败: ${e.message}")
+                }
+            }
             "abortMessage" -> session.agent?.abortMessage()
             "setPermissionMode" -> {
                 val mode = msg["mode"]?.jsonPrimitive?.content ?: "default"
@@ -147,7 +180,7 @@ class MessageHandler(
                     // 用户偏好（语言 / 上下文长度 / 自动记忆开关与频率）写用户级
                     // `~/.wave/settings.json`（经 CLI 进程），由 SDK 实时重载在**下一轮
                     // 对话**生效——保存不重建会话（spec agent-config「设置实时重载」/
-                    // 「配置变更的构造期副作用与重建」场景 1–2）。模型经 `/model` 命令
+                    // 「配置变更不再需要重建会话」场景 1–2）。模型经 `/model` 命令
                     // 走宿主 RPC、服务地址随 authStatusResponse 下发，都不落宿主存储。
                     writeUserSettings(data)
                     // 设置页保存结果经宿主通知提示（spec「设置页反馈语义」）
@@ -421,7 +454,8 @@ class MessageHandler(
                         put("enabledPlugins", enabledPlugins)
                         put("workdir", workdir ?: "")
                     })
-                    reloadAgentConfig()
+                    // 内置插件开关同样不再重建会话：只提示一次，由 /reload-plugins 就地生效。
+                    IdeService.showInfo(project, PLUGIN_CHANGE_PENDING_MESSAGE)
                 }
             }
             // VSCE :110/:302；只卸载指定作用域（spec plugin A-015），scope 为空时
@@ -514,6 +548,11 @@ class MessageHandler(
                         project,
                         if (updated > 0) "${marketLabel}已更新 $updated 个插件" else "${marketLabel}已是最新",
                     )
+                    // 批量更新同属插件变更：只有真的升级了插件才产生「待应用」信号
+                    // （spec plugin「插件变更的就地重载」场景 1）。
+                    if (updated > 0) {
+                        IdeService.showInfo(project, PLUGIN_CHANGE_PENDING_MESSAGE)
+                    }
                 } catch (e: StdioClientException) {
                     LOG.warn("updateMarketplace failed: ${e.message}")
                     IdeService.showError(project, "更新市场失败: ${e.message}")
@@ -956,10 +995,11 @@ class MessageHandler(
 
     /**
      * Plugin install/enable/disable/uninstall/update share the same shape (VSCE :101-328):
-     * run the mutation, then reload the list and push the updated config to the agent
-     * (mirrors VSCE's updateAllSessionsConfig → ChatSession.updateConfig). Install/
-     * uninstall/update/scope-change additionally report the result per the spec's
-     * verbatim wording (spec plugin「插件市场操作提示」).
+     * run the mutation, reload the list, then report the result. Install/uninstall/
+     * update/scope-change additionally report the outcome per the spec's verbatim
+     * wording (spec plugin「插件市场操作提示」). Plugin changes are NOT applied to the
+     * live agents here — they take effect on the next /reload-plugins (spec
+     *「插件变更的就地重载」).
      */
     private suspend fun handlePluginMutation(
         command: String,
@@ -971,10 +1011,10 @@ class MessageHandler(
         try {
             val result = action(pluginId, scope)
             postListPlugins()
-            reloadAgentConfig()
             pluginMutationSuccessMessage(command, pluginId, scope, result)?.let {
                 IdeService.showInfo(project, it)
             }
+            IdeService.showInfo(project, PLUGIN_CHANGE_PENDING_MESSAGE)
         } catch (e: StdioClientException) {
             LOG.warn("plugin mutation failed: ${e.message}")
             IdeService.showError(project, "插件操作失败: ${e.message}")
@@ -1059,9 +1099,11 @@ class MessageHandler(
     }
 
     /**
-     * Mirrors VSCE updateAllSessionsConfig(): rebuild every live agent so plugin/auth
-     * changes take effect. No session-level overrides are sent — 模型经 `/model` RPC、
-     * 用户偏好经用户级 settings.json 实时重载（spec「分层职责」）。
+     * Mirrors VSCE updateAllSessionsConfig(): rebuild every live agent so auth changes
+     * (login/logout) take effect. Plugin changes no longer go through this path — they
+     * wait for /reload-plugins (spec「插件变更的就地重载」). No session-level overrides
+     * are sent — 模型经 `/model` RPC、用户偏好经用户级 settings.json 实时重载（spec
+     *「分层职责」）。
      */
     private suspend fun reloadAgentConfig() {
         WaveBackendService.getInstance(project).updateAllSessionsConfig()
@@ -1286,6 +1328,7 @@ class MessageHandler(
             triple("hooks", "hooks", "查看已配置钩子"),
             triple("clear", "clear", "清除对话历史并重置会话"),
             triple("compact", "compact", "手动压缩对话历史"),
+            triple("reload-plugins", "reload-plugins", "就地重载插件（不重启对话）"),
             triple("rewind", "rewind", "回滚到之前的用户消息"),
             triple("model", "model", "切换 AI 模型"),
             triple("resume", "resume", "恢复历史对话"),

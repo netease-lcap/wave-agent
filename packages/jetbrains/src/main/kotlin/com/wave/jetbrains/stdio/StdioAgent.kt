@@ -449,6 +449,13 @@ class StdioAgent(
             put("workdir", workdir)
         }) ?: JsonObject(emptyMap())
 
+    /**
+     * 插件就地重载（spec plugin「插件变更的就地重载」）：宿主把磁盘上的插件状态换装进
+     * 当前 CLI 进程内的全部 live 会话，不重建 agent。返回 { plugins, failures }。
+     */
+    suspend fun reloadPlugins(): JsonElement =
+        client.request("reloadPlugins", JsonObject(emptyMap())) ?: JsonObject(emptyMap())
+
     suspend fun listMarketplaces(workdir: String): JsonElement =
         client.request("listMarketplaces", buildJsonObject { put("workdir", workdir) }) ?: JsonObject(emptyMap())
 

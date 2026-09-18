@@ -13,6 +13,10 @@ import type {
   PermissionMode,
   PermissionDecision,
 } from "wave-agent-sdk/types";
+import {
+  PLUGIN_CHANGE_PENDING_MESSAGE,
+  PLUGIN_RELOADED_MESSAGE,
+} from "wave-agent-sdk";
 
 /**
  * 插件变更提示里的显示名：优先用 RPC 回包里的 name（install/update 返回
@@ -44,7 +48,7 @@ export interface MessageHandlerContext {
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
   ) => Promise<void>;
-  /** 重建所有会话的 agent（插件启停 / 登录登出后让新配置生效）。 */
+  /** 重建所有会话的 agent（登录登出后让 SSO 配置生效；插件变更不再走重建）。 */
   updateAllSessionsConfig: () => void;
   getVersion: () => string;
   /** Opens (or refreshes) the plan-preview panel for a session (claudePlanPreview
@@ -109,6 +113,9 @@ export class MessageHandler {
           viewType,
           windowId,
         );
+        break;
+      case "reloadPlugins":
+        await this.reloadPlugins();
         break;
       case "abortMessage":
         await this.abortMessage(viewType, windowId);
@@ -818,7 +825,7 @@ export class MessageHandler {
   }
 
   /** 切换项目级内置插件（sdd@builtin 等）：写回 .wave/settings.json 后回发
-   *  projectSettings 刷新开关，并重载配置重建 agent 使插件立即生效
+   *  projectSettings 刷新开关，并提示一次「运行 /reload-plugins 使其生效」
    *  （与 chat 路由 handleSetBuiltinPluginEnabled 同语义）。 */
   private async handleSettingsSetBuiltinPluginEnabled(
     pluginId: string,
@@ -837,8 +844,7 @@ export class MessageHandler {
         workdir: this.pluginService.getWorkdir() ?? "",
       });
 
-      // Recreate agents so plugin changes take effect
-      this.context.updateAllSessionsConfig();
+      vscode.window.showInformationMessage(PLUGIN_CHANGE_PENDING_MESSAGE);
     } catch (error) {
       console.error("修改项目设置失败:", error);
       vscode.window.showErrorMessage("修改项目设置失败: " + error);
@@ -898,11 +904,13 @@ export class MessageHandler {
   }
 
   /**
-   * 执行一次插件变更（安装/卸载/更新/更换作用域）并收尾：刷新插件列表 +
-   * 重建全部会话 agent。插件在 Agent 构造期注册技能/命令/子代理/MCP，属构造期
-   * 副作用（spec agent-config「配置变更的构造期副作用与重建」），不重建则运行中
-   * 的会话看不到变更。成功后按原型/需求文档逐字给宿主提示（spec 插件「插件市场
-   * 操作提示」），失败经宿主提示告知原因（spec 插件市场场景 17）。
+   * 执行一次插件变更（安装/卸载/更新/更换作用域）并收尾：刷新插件列表，并按
+   * 原型/需求文档逐字给宿主结果提示（spec 插件「插件市场操作提示」），失败经宿主
+   * 提示告知原因（spec 插件市场场景 17）。
+   *
+   * 不再重建会话：插件变更只置一个「待应用」信号 + 一句提示，由用户敲
+   * `/reload-plugins` 就地换装（docs/specs/ecosystem/plugin.md「插件变更的
+   * 就地重载」；重建路径已于 2026-09-18 整体废弃）。
    */
   private async applyPluginChange(
     change: () => Promise<unknown>,
@@ -912,11 +920,34 @@ export class MessageHandler {
     try {
       const result = await change();
       await this.handleSettingsListPlugins();
-      this.context.updateAllSessionsConfig();
       vscode.window.showInformationMessage(successMessage(result));
+      vscode.window.showInformationMessage(PLUGIN_CHANGE_PENDING_MESSAGE);
     } catch (error) {
       console.error(`${failureMessage}:`, error);
       vscode.window.showErrorMessage(`${failureMessage}: ${error}`);
+    }
+  }
+
+  /**
+   * `/reload-plugins`：让 CLI 侧把磁盘上的插件状态就地换装进该进程内的全部 live
+   * 会话（不重建会话、不打断正在生成的回合），完成后给一次性提示；有插件加载失败
+   * 时如实回显失败清单——不回滚已成功的那部分（spec 场景 11）。
+   */
+  private async reloadPlugins(): Promise<void> {
+    try {
+      const result = await this.pluginService.reloadPlugins();
+      if (result.failures.length > 0) {
+        vscode.window.showInformationMessage(
+          `${PLUGIN_RELOADED_MESSAGE}部分插件加载失败：${result.failures
+            .map((failure) => `${failure.path}: ${failure.error}`)
+            .join("；")}`,
+        );
+        return;
+      }
+      vscode.window.showInformationMessage(PLUGIN_RELOADED_MESSAGE);
+    } catch (error) {
+      console.error("插件重载失败:", error);
+      vscode.window.showErrorMessage(`插件重载失败: ${error}`);
     }
   }
 
@@ -957,6 +988,11 @@ export class MessageHandler {
           ? `${marketLabel}已更新 ${updated} 个插件`
           : `${marketLabel}已是最新`,
       );
+      // 批量更新同属插件变更：只有真的升级了插件才产生「待应用」信号
+      // （spec plugin「插件变更的就地重载」场景 1）。
+      if (updated > 0) {
+        vscode.window.showInformationMessage(PLUGIN_CHANGE_PENDING_MESSAGE);
+      }
     } catch (error) {
       console.error("更新市场失败:", error);
       vscode.window.showErrorMessage("更新市场失败: " + error);
@@ -1523,8 +1559,9 @@ export class MessageHandler {
         windowId,
       );
 
-      // Recreate agents so plugin changes take effect
-      this.context.updateAllSessionsConfig();
+      // 插件变更不重建任何会话：只提示一次，由 /reload-plugins 就地生效
+      // （spec plugin「插件变更的就地重载」场景 1–2）。
+      vscode.window.showInformationMessage(PLUGIN_CHANGE_PENDING_MESSAGE);
     } catch (error) {
       vscode.window.showErrorMessage("修改项目设置失败: " + error);
     }
@@ -1827,7 +1864,7 @@ export class MessageHandler {
       );
 
       // 同 settings 路由：用户偏好经用户级 settings.json 实时重载生效，保存不
-      // 重建会话（spec agent-config「配置变更的构造期副作用与重建」场景 1–2）。
+      // 重建会话（spec agent-config「配置变更不再需要重建会话」场景 1–2）。
 
       // 设置页保存结果经宿主原生通知提示（spec「设置页反馈语义」；chat 路由与
       // settings 路由同语义，避免双 switch 漂移）
@@ -1970,6 +2007,11 @@ export class MessageHandler {
       const localCommands = [
         { id: "config", name: "config", description: "打开配置设置" },
         { id: "plugin", name: "plugin", description: "打开插件市场" },
+        {
+          id: "reload-plugins",
+          name: "reload-plugins",
+          description: "就地重载插件（不重启对话）",
+        },
         { id: "mcp", name: "mcp", description: "打开 MCP 服务器管理" },
         { id: "status", name: "status", description: "查看当前状态" },
         { id: "clear", name: "clear", description: "清除对话历史并重置会话" },

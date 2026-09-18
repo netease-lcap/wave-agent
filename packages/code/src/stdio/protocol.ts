@@ -114,6 +114,7 @@ export type RequestMethod =
   | "disablePlugin"
   | "updatePlugin"
   | "setPluginScope"
+  | "reloadPlugins"
   | "listMarketplaces"
   | "addMarketplace"
   | "removeMarketplace"

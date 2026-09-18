@@ -12,7 +12,11 @@ import {
 } from "../components/PluginManagerTypes.js";
 
 export function usePluginManager(options?: {
-  onPluginInstalled?: () => void;
+  /**
+   * 插件变更落盘后的回调：宿主据此置「待应用」信号并提示一次，**不重建会话**
+   * （docs/specs/ecosystem/plugin.md「插件变更的就地重载」）。
+   */
+  onPluginChanged?: () => void;
 }): PluginManagerContextType {
   const [state, setState] = useState<PluginManagerState>({
     currentView: "DISCOVER",
@@ -243,9 +247,12 @@ export function usePluginManager(options?: {
         isLoading: true,
       }));
       try {
-        await pluginCore.updateMarketplacePlugins(name);
+        const updated = await pluginCore.updateMarketplacePlugins(name);
         await refresh();
         setSuccessMessage(`Marketplace '${name}' updated successfully`);
+        // 批量更新同属插件变更：真的升级了插件时才产生「待应用」提示
+        // （spec plugin「插件变更的就地重载」场景 1）。
+        if (updated > 0) options?.onPluginChanged?.();
       } catch (error) {
         setState((prev: PluginManagerState) => ({
           ...prev,
@@ -254,7 +261,7 @@ export function usePluginManager(options?: {
         }));
       }
     },
-    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
+    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage, options],
   );
 
   const installPlugin = useCallback(
@@ -273,7 +280,7 @@ export function usePluginManager(options?: {
         await pluginCore.installPlugin(pluginId, scope);
         await refresh();
         setSuccessMessage(`Plugin '${name}' installed successfully`);
-        options?.onPluginInstalled?.();
+        options?.onPluginChanged?.();
       } catch (error) {
         setState((prev: PluginManagerState) => ({
           ...prev,
@@ -297,6 +304,7 @@ export function usePluginManager(options?: {
         await pluginCore.uninstallPlugin(pluginId);
         await refresh();
         setSuccessMessage(`Plugin '${name}' uninstalled successfully`);
+        options?.onPluginChanged?.();
       } catch (error) {
         setState((prev: PluginManagerState) => ({
           ...prev,
@@ -305,7 +313,7 @@ export function usePluginManager(options?: {
         }));
       }
     },
-    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
+    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage, options],
   );
 
   const updatePlugin = useCallback(
@@ -320,6 +328,7 @@ export function usePluginManager(options?: {
         await pluginCore.updatePlugin(pluginId);
         await refresh();
         setSuccessMessage(`Plugin '${name}' updated successfully`);
+        options?.onPluginChanged?.();
       } catch (error) {
         setState((prev: PluginManagerState) => ({
           ...prev,
@@ -328,7 +337,7 @@ export function usePluginManager(options?: {
         }));
       }
     },
-    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage],
+    [pluginCore, refresh, clearPluginFeedback, setSuccessMessage, options],
   );
 
   return {

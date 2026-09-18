@@ -61,6 +61,7 @@ export const useInputManager = (
     onRecallQueuedMessage,
     onClearMessages,
     onCompact,
+    onReloadPlugins,
     onAddDir,
     onPlanCommand,
     isIdle: isIdleProp,
@@ -282,6 +283,8 @@ export const useInputManager = (
                 await onClearMessages?.();
               } else if (command === "compact") {
                 await onCompact?.(effect.args);
+              } else if (command === "reload-plugins") {
+                await onReloadPlugins?.();
               } else if (command === "add-dir") {
                 await onAddDir?.(effect.args);
               } else if (command === "plan") {
@@ -314,6 +317,7 @@ export const useInputManager = (
     onRecallQueuedMessage,
     onClearMessages,
     onCompact,
+    onReloadPlugins,
     onAddDir,
     onPlanCommand,
   ]);

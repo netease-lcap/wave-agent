@@ -120,6 +120,7 @@ export interface InputManagerCallbacks {
   ) => Promise<string>;
   onClearMessages?: () => Promise<void>;
   onCompact?: (instructions?: string) => Promise<void>;
+  onReloadPlugins?: () => Promise<void>;
   onAddDir?: (args?: string) => Promise<void>;
   onPlanCommand?: (args?: string) => Promise<void> | void;
   sessionId?: string;

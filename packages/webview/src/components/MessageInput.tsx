@@ -1151,6 +1151,7 @@ export const MessageInput = forwardRef<
       const localCommands = [
         "config",
         "plugin",
+        "reload-plugins",
         "mcp",
         "status",
         "tasks",
