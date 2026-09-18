@@ -1,7 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { VsCodeApi } from "../types";
 import { useHostMessage } from "../utils/useHostMessage";
-import { renderWordLevelDiff } from "../utils/diffHighlight";
+import {
+  DIFF_COLLAPSE_THRESHOLD,
+  DIFF_MIN_DIFF_WIDTH,
+  DIFF_TREE_WIDTH,
+  DIFF_WORD_HIGHLIGHT_LIMIT,
+  nextExpandedPath,
+  totalChangedLines,
+} from "../utils/diffHunks";
+import { DiffFileRows, type DiffViewMode } from "./DiffFileRows";
+import { DiffFileTree } from "./DiffFileTree";
 import { RefreshIcon } from "./HeaderIcons";
 import { PanePlaceholder, PaneShell } from "./PaneShell";
 import "../styles/DiffViewer.css";
@@ -14,6 +23,9 @@ export type WorkspaceFileStatus =
   | "renamed"
   | "untracked";
 
+// Contract shapes mirror the host's `packages/desktop/src/main/gitDiff.ts`
+// (the webview is shared by four hosts, so it cannot import from the desktop
+// package — keep the two definitions in sync when the payload changes).
 export interface WorkspaceDiffFile {
   path: string;
   status: WorkspaceFileStatus;
@@ -25,10 +37,35 @@ export interface WorkspaceDiffFile {
   binary: boolean;
 }
 
+export interface WorkspaceDiffCommit {
+  sha: string;
+  shortSha: string;
+  subject: string;
+}
+
+export interface WorkspaceDiffBase {
+  label: string;
+  sha: string | null;
+  kind: "default-branch" | "head" | "index";
+  ref: string | null;
+}
+
+export type WorkspaceDiffScope =
+  | { kind: "all" }
+  | { kind: "commit"; sha: string; shortSha: string; subject: string };
+
 type DiffState =
   | { kind: "loading" }
   | { kind: "not-a-repo" }
-  | { kind: "ok"; files: WorkspaceDiffFile[] };
+  | {
+      kind: "ok";
+      base?: WorkspaceDiffBase;
+      scope?: WorkspaceDiffScope;
+      commits: WorkspaceDiffCommit[];
+      files: WorkspaceDiffFile[];
+      /** Range is too large to expand a file by default (degradation layer 1). */
+      collapseAll: boolean;
+    };
 
 const STATUS_LABEL: Record<WorkspaceFileStatus, string> = {
   added: "新增",
@@ -75,9 +112,19 @@ export interface DiffPaneProps {
   workdir?: string;
   /** Receives a formatted diff-line comment; appended to this pane's chat input. */
   onAddComment?: (text: string) => void;
+  /** Sidebar (file tree + commit list) visibility — per-session state. */
+  treeVisible: boolean;
+  onTreeVisibleChange: (visible: boolean) => void;
+  /** Selected commit sha, or null for "all changes". Per-session state. */
+  selectedCommit: string | null;
+  onSelectedCommitChange: (sha: string | null) => void;
 }
 
-/** Workspace git-diff panel: accordion of per-file collapsible diff blocks. */
+/**
+ * Workspace git-diff panel: a sidebar (file tree with the commit list under it)
+ * plus an accordion of per-file collapsible diff blocks that can render unified
+ * or side by side.
+ */
 export const DiffPane: React.FC<DiffPaneProps> = ({
   vscode,
   width,
@@ -87,22 +134,36 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   sessionId,
   workdir,
   onAddComment,
+  treeVisible,
+  onTreeVisibleChange,
+  selectedCommit,
+  onSelectedCommitChange,
 }) => {
   const [state, setState] = useState<DiffState>({ kind: "loading" });
   // Mutual-exclusion accordion: at most one file is expanded at a time, so the
   // DOM holds every file header but only one file's hunks (bounded rendering
   // for large workspace diffs — data is still loaded once for all files).
-  // The expanded path survives refreshes; defaults to the first file.
-  const [expandedPath, setExpandedPath] = useState<string | null>(null);
+  // `undefined` = the user has not chosen a file yet, `null` = they collapsed
+  // every file; see nextExpandedPath for how a fresh result maps onto these.
+  const [expandedPath, setExpandedPath] = useState<string | null | undefined>(
+    undefined,
+  );
+  const [viewMode, setViewMode] = useState<DiffViewMode>("unified");
   // True while a refresh request is in flight; drives the toolbar spinner.
   const [refreshing, setRefreshing] = useState(false);
+  const [narrow, setNarrow] = useState(false);
+  // Monotonic request id: a commit switch and a refresh can be in flight at the
+  // same time, and the late reply of the previous range must never be painted.
+  const requestIdRef = useRef(0);
+  /** Range the last request asked for — see the selection-change effect below. */
+  const requestedCommitRef = useRef(selectedCommit);
 
   // Inline diff-line comment box (GitHub/GitLab style): hovering a line shows a
   // "+" button; clicking opens a comment box under that line whose contents
   // are appended to the chat input (not sent) so several can be batched.
   interface CommentTarget {
-    lineKey: string;
-    file: WorkspaceDiffFile;
+    /** Raw hunk line index — also the id of the button that opened the box. */
+    index: number;
     prefix: string;
     text: string;
   }
@@ -113,6 +174,16 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   const onAddCommentRef = useRef(onAddComment);
   onAddCommentRef.current = onAddComment;
   const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const asideRef = useRef<HTMLElement>(null);
+  // File the accordion should scroll to once it re-renders expanded (set by a
+  // tree click — the accordion does not exist until after that render).
+  const pendingScrollRef = useRef<string | null>(null);
+  const fileRefs = useRef(new Map<string, HTMLDivElement>());
+
+  const closeComment = useCallback(() => {
+    setCommentTarget(null);
+    setCommentDraft("");
+  }, []);
 
   const submitComment = useCallback(() => {
     const target = commentTarget;
@@ -120,20 +191,15 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     if (!target || !comment) return;
     onAddCommentRef.current?.(
       formatDiffComment({
-        path: target.file.path,
+        // Only the expanded file can hold an open comment box.
+        path: expandedPath ?? "",
         prefix: target.prefix,
         text: target.text,
         comment,
       }),
     );
-    setCommentTarget(null);
-    setCommentDraft("");
-  }, [commentTarget, commentDraft]);
-
-  const cancelComment = useCallback(() => {
-    setCommentTarget(null);
-    setCommentDraft("");
-  }, []);
+    closeComment();
+  }, [commentTarget, commentDraft, expandedPath, closeComment]);
 
   // Auto-focus the textarea when a comment box opens.
   useEffect(() => {
@@ -144,35 +210,78 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   // the session/workdir context changes); soft refresh keeps showing the old
   // content until the new diff arrives, so auto-refreshes don't flicker.
   const refresh = useCallback(
-    (hard = false) => {
+    (hard = false, commit: string | null = selectedCommit) => {
       if (hard) setState({ kind: "loading" });
       setRefreshing(true);
-      // Refresh rewrites the hunks, so any open comment box + draft is stale.
-      setCommentTarget(null);
-      setCommentDraft("");
+      // A new result rewrites the hunks, so any open comment box + draft is
+      // stale (spec「行评论」场景 4).
+      closeComment();
+      requestIdRef.current += 1;
+      requestedCommitRef.current = commit;
       vscode.postMessage({
         command: "desktopGetWorkspaceDiff",
         ...(paneId ? { paneId } : {}),
+        requestId: requestIdRef.current,
+        ...(commit ? { commit } : {}),
       });
     },
-    [vscode, paneId],
+    [vscode, paneId, selectedCommit, closeComment],
   );
+
+  // Switching the range re-points the accordion at a different file list.
+  const pickCommit = (sha: string | null) => {
+    // Compared against the requested range, not the prop: the prop is echoed
+    // back by the parent, so a double click would otherwise fire twice.
+    if (sha === requestedCommitRef.current) return;
+    onSelectedCommitChange(sha);
+    refresh(false, sha);
+  };
+
+  // Layout-only switch: no request, no re-pairing of the hunks (both views read
+  // the same parsed rows) — only the open comment box has to go (场景 4).
+  const switchView = (mode: DiffViewMode) => {
+    if (mode === viewMode) return;
+    setViewMode(mode);
+    closeComment();
+  };
 
   // Pane routing lives in the hook (paneId option): a pane instance only
   // consumes replies tagged with its own id.
   useHostMessage(
     (message) => {
       if (message?.command !== "desktopWorkspaceDiff") return;
+      // Correlation guard: drop the reply of a superseded request (its requestId
+      // is echoed back), which otherwise paints a stale range over the fresh
+      // one. Replies without an id are pre-request-id hosts — accept them.
+      const requestId = message.requestId as number | undefined;
+      if (requestId !== undefined && requestId !== requestIdRef.current) return;
       const result = message.result;
       setRefreshing(false);
-      setState(
-        result?.kind === "ok"
-          ? { kind: "ok", files: result.files }
-          : { kind: "not-a-repo" },
+      if (result?.kind !== "ok") {
+        setState({ kind: "not-a-repo" });
+        return;
+      }
+      // Sort by path here so the file tree, the accordion and the "first file"
+      // default all agree on one order (the host returns git's own order).
+      const files: WorkspaceDiffFile[] = [...(result.files ?? [])].sort(
+        (a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0),
       );
-      // Default the first file to expanded on the first diff; keep the
-      // currently expanded file across refreshes once the user has chosen one.
-      setExpandedPath((prev) => prev ?? result?.files?.[0]?.path ?? null);
+      const collapseAll = totalChangedLines(files) > DIFF_COLLAPSE_THRESHOLD;
+      setState({
+        kind: "ok",
+        base: result.base,
+        scope: result.scope,
+        commits: result.commits ?? [],
+        files,
+        collapseAll,
+      });
+      setExpandedPath((prev) => nextExpandedPath(prev, files, collapseAll));
+      // The host is authoritative about the range it answered with: a commit
+      // that no longer exists fell back to "all changes", so mirror that in the
+      // per-session selection instead of leaving a dead sha selected.
+      const scope = result.scope;
+      if (scope && scope.kind !== "commit" && selectedCommit !== null)
+        onSelectedCommitChange(null);
     },
     { paneId },
   );
@@ -191,207 +300,127 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     else if (becameVisible || generationEnded) refresh();
   }, [visible, sessionId, workdir, isStreaming, refresh]);
 
+  // The selected range is per-session state owned by the parent, which restores
+  // it one commit AFTER this pane first sees the new session (child effects run
+  // before the parent's swap effect) — so the context-change trigger above fires
+  // with the OUTGOING session's commit. Re-issue whenever the range the panel is
+  // told to show differs from the one it last asked for; the requestId guard then
+  // drops the stale reply.
+  useEffect(() => {
+    if (requestedCommitRef.current === selectedCommit) return;
+    requestedCommitRef.current = selectedCommit;
+    if (!visible) return;
+    refresh(false, selectedCommit);
+  }, [selectedCommit, visible, refresh]);
+
+  // Auto-hide the sidebar when the panel leaves too little room for the diff
+  // itself (spec「文件树与导航」场景 5). Only the layout degrades — the
+  // user's show/hide memory is untouched, so widening brings the tree back.
+  useEffect(() => {
+    const el = asideRef.current;
+    if (!el) return;
+    const measure = (available: number) => {
+      if (available <= 0) return; // jsdom / pre-layout: keep the default
+      setNarrow(available < DIFF_TREE_WIDTH + DIFF_MIN_DIFF_WIDTH);
+    };
+    measure(el.getBoundingClientRect().width || width);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry) measure(entry.contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [width, visible]);
+
   const toggleFile = (path: string) => {
     // Mutual exclusion: expanding one file collapses every other.
     setExpandedPath((prev) => (prev === path ? null : path));
   };
 
-  const renderHunks = (file: WorkspaceDiffFile) => {
-    const elements: React.ReactNode[] = [];
-    // Removed/added lines awaiting word-level pairing; `idx` is the original
-    // hunk line index (stable key + comment target).
-    let pendingRemoved: { text: string; idx: number }[] = [];
-    let pendingAdded: { text: string; idx: number }[] = [];
-
-    const renderDiffLine = (
-      prefix: string,
-      cls: string,
-      content: React.ReactNode,
-      idx: number,
-      text: string,
-    ) => {
-      const lineKey = `${file.path}:${idx}`;
-      const isOpen = commentTarget?.lineKey === lineKey;
-      return (
-        <React.Fragment key={idx}>
-          <div className={cls}>
-            <span className="diff-prefix">{prefix}</span>
-            <span className="diff-content">{content}</span>
-            <button
-              className="diff-line-comment-btn"
-              title="评论这行"
-              aria-label={`评论 ${file.path} 第 ${idx + 1} 行`}
-              data-testid={`diff-comment-add-${idx}`}
-              onClick={() =>
-                setCommentTarget({
-                  lineKey,
-                  file,
-                  prefix,
-                  text: text.slice(0, 30),
-                })
-              }
-            >
-              <i className="codicon codicon-add" />
-            </button>
-          </div>
-          {isOpen && (
-            <div className="diff-comment-box" data-testid="diff-comment-box">
-              <textarea
-                ref={commentInputRef}
-                className="diff-comment-input"
-                data-testid="diff-comment-input"
-                placeholder="评论这行改动…"
-                value={commentDraft}
-                onChange={(e) => setCommentDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  // IME composing (e.g. Chinese pinyin): Enter confirms the
-                  // candidate, not a submit. keyCode 229 covers older engines
-                  // where isComposing is unset.
-                  if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    submitComment();
-                  } else if (e.key === "Escape") {
-                    e.preventDefault();
-                    cancelComment();
-                  }
-                }}
-              />
-              <div className="diff-comment-box-footer">
-                <span className="diff-comment-box-tag" title={file.path}>
-                  {file.path}
-                </span>
-                <button
-                  className="diff-comment-box-cancel"
-                  data-testid="diff-comment-cancel"
-                  onClick={cancelComment}
-                >
-                  取消
-                </button>
-                <button
-                  className="diff-comment-box-send"
-                  title="添加到输入框"
-                  data-testid="diff-comment-submit"
-                  disabled={commentDraft.trim() === ""}
-                  onClick={submitComment}
-                >
-                  添加
-                </button>
-              </div>
-            </div>
-          )}
-        </React.Fragment>
-      );
-    };
-
-    // Pair pending removed/added lines by position; unpaired lines (added-only
-    // or removed-only blocks) are highlighted as whole lines, same as the
-    // message-list diff block.
-    const flushPending = () => {
-      const maxLines = Math.max(pendingRemoved.length, pendingAdded.length);
-      for (let i = 0; i < maxLines; i++) {
-        const oldLine = pendingRemoved[i];
-        const newLine = pendingAdded[i];
-        if (oldLine && newLine) {
-          const { removedParts, addedParts } = renderWordLevelDiff(
-            oldLine.text,
-            newLine.text,
-            `pair-${oldLine.idx}`,
-          );
-          elements.push(
-            renderDiffLine(
-              "-",
-              "diff-line diff-line-removed",
-              removedParts,
-              oldLine.idx,
-              oldLine.text,
-            ),
-          );
-          elements.push(
-            renderDiffLine(
-              "+",
-              "diff-line diff-line-added",
-              addedParts,
-              newLine.idx,
-              newLine.text,
-            ),
-          );
-        } else if (oldLine) {
-          const { removedParts } = renderWordLevelDiff(
-            oldLine.text,
-            "",
-            `removed-${oldLine.idx}`,
-          );
-          elements.push(
-            renderDiffLine(
-              "-",
-              "diff-line diff-line-removed",
-              removedParts,
-              oldLine.idx,
-              oldLine.text,
-            ),
-          );
-        } else if (newLine) {
-          const { addedParts } = renderWordLevelDiff(
-            "",
-            newLine.text,
-            `added-${newLine.idx}`,
-          );
-          elements.push(
-            renderDiffLine(
-              "+",
-              "diff-line diff-line-added",
-              addedParts,
-              newLine.idx,
-              newLine.text,
-            ),
-          );
-        }
-      }
-      pendingRemoved = [];
-      pendingAdded = [];
-    };
-
-    file.hunks.split("\n").forEach((line, i) => {
-      if (line.startsWith("+")) {
-        pendingAdded.push({ text: line.slice(1), idx: i });
-        return;
-      }
-      if (line.startsWith("-")) {
-        pendingRemoved.push({ text: line.slice(1), idx: i });
-        return;
-      }
-      // Context lines, hunk headers and trailing markers end the current
-      // pairing block.
-      flushPending();
-      if (line.startsWith("@@")) {
-        elements.push(
-          <div key={i} className="diff-line-hunk">
-            {line}
-          </div>,
-        );
-      } else if (line.startsWith("\\")) {
-        elements.push(
-          <div key={i} className="diff-line-ellipsis">
-            {line}
-          </div>,
-        );
-      } else {
-        const content = line.startsWith(" ") ? line.slice(1) : line;
-        elements.push(
-          renderDiffLine(
-            " ",
-            "diff-line diff-line-context",
-            content,
-            i,
-            content,
-          ),
-        );
-      }
-    });
-    flushPending();
-    return elements;
+  const selectFromTree = (path: string) => {
+    if (path === expandedPath) return;
+    pendingScrollRef.current = path;
+    setExpandedPath(path);
   };
+
+  useEffect(() => {
+    const path = pendingScrollRef.current;
+    if (!path) return;
+    pendingScrollRef.current = null;
+    const el = fileRefs.current.get(path);
+    // jsdom has no layout and no scrollIntoView.
+    if (el && typeof el.scrollIntoView === "function")
+      el.scrollIntoView({ block: "start" });
+  }, [expandedPath]);
+
+  const files = state.kind === "ok" ? state.files : [];
+  const scope = state.kind === "ok" ? state.scope : undefined;
+  const base = state.kind === "ok" ? state.base : undefined;
+  // Split so a narrow slot only ellipsizes the base name and never the
+  // `→ 工作树` side (spec「变更基准名过长」); the full value goes in the title.
+  const range =
+    scope?.kind === "commit"
+      ? { lead: null, target: scope.shortSha }
+      : base
+        ? { lead: base.label, target: "→ 工作树" }
+        : null;
+  const rangeTitle =
+    scope?.kind === "commit"
+      ? `${scope.subject} (${scope.sha})`
+      : base
+        ? [base.label, base.ref, base.sha].filter(Boolean).join(" ")
+        : undefined;
+  const additions = files.reduce((sum, file) => sum + file.additions, 0);
+  const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
+
+  const renderCommentBox = (index: number) =>
+    commentTarget?.index === index ? (
+      <div className="diff-comment-box" data-testid="diff-comment-box">
+        <textarea
+          ref={commentInputRef}
+          className="diff-comment-input"
+          data-testid="diff-comment-input"
+          placeholder="评论这行改动…"
+          value={commentDraft}
+          onChange={(e) => setCommentDraft(e.target.value)}
+          onKeyDown={(e) => {
+            // IME composing (e.g. Chinese pinyin): Enter confirms the
+            // candidate, not a submit. keyCode 229 covers older engines
+            // where isComposing is unset.
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              submitComment();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              closeComment();
+            }
+          }}
+        />
+        <div className="diff-comment-box-footer">
+          <span className="diff-comment-box-tag" title={expandedPath ?? ""}>
+            {expandedPath}
+          </span>
+          <button
+            className="diff-comment-box-cancel"
+            data-testid="diff-comment-cancel"
+            onClick={closeComment}
+          >
+            取消
+          </button>
+          <button
+            className="diff-comment-box-send"
+            title="添加到输入框"
+            data-testid="diff-comment-submit"
+            disabled={commentDraft.trim() === ""}
+            onClick={submitComment}
+          >
+            添加
+          </button>
+        </div>
+      </div>
+    ) : null;
 
   const renderFile = (file: WorkspaceDiffFile) => {
     const isExpanded = expandedPath === file.path;
@@ -400,6 +429,10 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
         className="diff-file"
         key={file.path}
         data-testid={`diff-file-${file.status}`}
+        ref={(el) => {
+          if (el) fileRefs.current.set(file.path, el);
+          else fileRefs.current.delete(file.path);
+        }}
       >
         <button
           className="diff-file-header"
@@ -428,7 +461,18 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
             {file.binary ? (
               <div className="diff-line-ellipsis">二进制文件，不显示差异</div>
             ) : file.hunks ? (
-              renderHunks(file)
+              <DiffFileRows
+                file={file}
+                viewMode={viewMode}
+                // Degradation layer 2: an oversized file keeps its line-level
+                // colors and comments, but skips the word-level pairing.
+                wordHighlight={
+                  file.additions + file.deletions <= DIFF_WORD_HIGHLIGHT_LIMIT
+                }
+                commentIndex={commentTarget?.index ?? null}
+                onComment={setCommentTarget}
+                renderCommentBox={renderCommentBox}
+              />
             ) : (
               <div className="diff-line-ellipsis">
                 {file.status === "renamed" && file.oldPath
@@ -445,14 +489,64 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     );
   };
 
+  const commits = state.kind === "ok" ? state.commits : [];
+  const showSidebar =
+    treeVisible && !narrow && state.kind === "ok" && files.length > 0;
+
   return (
     <PaneShell
       kind="diff-pane"
       dataTestId="diff-pane"
       width={width}
+      asideRef={asideRef}
       toolbar={
         <>
           <span className="desktop-panel-toolbar-title">差异</span>
+          {range && (
+            <span className="diff-range" title={rangeTitle}>
+              {range.lead && (
+                <span className="diff-range-lead">{range.lead}</span>
+              )}
+              {/* A whitespace-only flex item is not rendered, so the gap comes
+                  from CSS while the text still reads "main → 工作树". */}
+              {range.lead && " "}
+              <span className="diff-range-target">{range.target}</span>
+            </span>
+          )}
+          {state.kind === "ok" && files.length > 0 && (
+            <span className="diff-totals">
+              <span className="diff-file-stats-add">+{additions}</span>
+              <span className="diff-file-stats-del">-{deletions}</span>
+              <span className="diff-file-count">{files.length} 个文件</span>
+            </span>
+          )}
+          <button
+            className="preview-pane-button"
+            title={treeVisible ? "隐藏文件树" : "显示文件树"}
+            aria-pressed={treeVisible}
+            data-testid="diff-tree-toggle"
+            onClick={() => onTreeVisibleChange(!treeVisible)}
+          >
+            <i className="codicon codicon-list-tree" />
+          </button>
+          <div className="diff-view-switch" role="group" aria-label="差异视图">
+            <button
+              className={`diff-view-option${viewMode === "unified" ? " is-active" : ""}`}
+              aria-pressed={viewMode === "unified"}
+              data-testid="diff-view-unified"
+              onClick={() => switchView("unified")}
+            >
+              统一
+            </button>
+            <button
+              className={`diff-view-option${viewMode === "split" ? " is-active" : ""}`}
+              aria-pressed={viewMode === "split"}
+              data-testid="diff-view-split"
+              onClick={() => switchView("split")}
+            >
+              并排
+            </button>
+          </div>
           <button
             className="preview-pane-button"
             title="刷新"
@@ -467,14 +561,68 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
       }
       bodyClassName="diff-pane-body"
     >
-      {state.kind === "loading" && <PanePlaceholder>加载中…</PanePlaceholder>}
-      {state.kind === "not-a-repo" && (
-        <PanePlaceholder>非 git 仓库</PanePlaceholder>
-      )}
-      {state.kind === "ok" && state.files.length === 0 && (
-        <PanePlaceholder>无改动</PanePlaceholder>
-      )}
-      {state.kind === "ok" && state.files.map(renderFile)}
+      <div className="diff-pane-layout">
+        {showSidebar && (
+          <div className="diff-sidebar" data-testid="diff-sidebar">
+            <DiffFileTree
+              files={files}
+              selectedPath={expandedPath ?? null}
+              onSelect={selectFromTree}
+            />
+            {/* Commit selection sits under the tree (spec「提交选择」场景 1);
+                a range with no commits renders no list at all (场景 4). */}
+            {commits.length > 0 && (
+              <div className="diff-commits" data-testid="diff-commits">
+                <button
+                  className={`diff-commit${
+                    selectedCommit === null ? " is-selected" : ""
+                  }`}
+                  aria-pressed={selectedCommit === null}
+                  data-testid="diff-commit-all"
+                  onClick={() => pickCommit(null)}
+                >
+                  <span className="diff-commit-subject">全部改动</span>
+                </button>
+                {commits.map((commit) => (
+                  <button
+                    key={commit.sha}
+                    className={`diff-commit${
+                      selectedCommit === commit.sha ? " is-selected" : ""
+                    }`}
+                    aria-pressed={selectedCommit === commit.sha}
+                    data-testid="diff-commit"
+                    data-sha={commit.sha}
+                    title={`${commit.subject} (${commit.sha})`}
+                    onClick={() => pickCommit(commit.sha)}
+                  >
+                    <span className="diff-commit-sha">{commit.shortSha}</span>
+                    <span className="diff-commit-subject">
+                      {commit.subject}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="diff-pane-main">
+          {state.kind === "loading" && (
+            <PanePlaceholder>加载中…</PanePlaceholder>
+          )}
+          {state.kind === "not-a-repo" && (
+            <PanePlaceholder>非 git 仓库</PanePlaceholder>
+          )}
+          {state.kind === "ok" && state.files.length === 0 && (
+            <PanePlaceholder>无改动</PanePlaceholder>
+          )}
+          {state.kind === "ok" && state.collapseAll && (
+            <div className="diff-notice" data-testid="diff-collapse-notice">
+              差异过大，已折叠全部文件
+            </div>
+          )}
+          {state.kind === "ok" && state.files.map(renderFile)}
+        </div>
+      </div>
     </PaneShell>
   );
 };

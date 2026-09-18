@@ -487,6 +487,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [planContent, setPlanContent] = useState<string | null>(
     () => (groupKey ? sessionUi.get(groupKey)?.planContent : undefined) ?? null,
   );
+  // Desktop diff panel: sidebar (file tree + commit list) visibility and the
+  // selected commit range. Both are per-session (spec desktop-panels.md「文件树
+  // 与导航」场景 4 /「提交选择」场景 5), so they ride the sessionUi snapshot
+  // alongside the panel tabs and are restored on a session switch.
+  const [diffTreeVisible, setDiffTreeVisible] = useState<boolean>(
+    () =>
+      (groupKey ? sessionUi.get(groupKey)?.diffTreeVisible : undefined) ?? true,
+  );
+  const [diffSelectedCommit, setDiffSelectedCommit] = useState<string | null>(
+    () =>
+      (groupKey ? sessionUi.get(groupKey)?.diffSelectedCommit : undefined) ??
+      null,
+  );
   // Desktop plan panel: the ExitPlanMode plan content a setInitialState replay
   // carried for a re-activated session, staged until the swap-effect ordering
   // settles (see the routing effect below). Null = nothing staged.
@@ -711,6 +724,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       activePanel: activeTabId,
       panelExpanded,
       planContent,
+      diffTreeVisible,
+      diffSelectedCommit,
       forward: currentForward,
       forwardError: previewForwardError,
     };
@@ -723,6 +738,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     activeTabId,
     panelExpanded,
     planContent,
+    diffTreeVisible,
+    diffSelectedCommit,
     currentForward,
     previewForwardError,
   ]);
@@ -776,6 +793,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         : (group?.checked?.[0]?.id ?? null);
     setActiveTabId(active);
     setPlanContent(group?.planContent ?? null);
+    setDiffTreeVisible(group?.diffTreeVisible ?? true);
+    setDiffSelectedCommit(group?.diffSelectedCommit ?? null);
   }, [paneId, groupKey]);
 
   // Desktop plan panel: ExitPlanMode plans that arrive via the setInitialState
@@ -3014,6 +3033,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           sessionId={state.currentSession?.id}
           workdir={effectiveWorkdir}
           onAddComment={handleAddComment}
+          treeVisible={diffTreeVisible}
+          onTreeVisibleChange={setDiffTreeVisible}
+          selectedCommit={diffSelectedCommit}
+          onSelectedCommitChange={setDiffSelectedCommit}
           {...common}
         />
       );

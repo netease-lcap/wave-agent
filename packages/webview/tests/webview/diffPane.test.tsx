@@ -2,7 +2,12 @@ import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent, screen } from "@testing-library/react";
 import React from "react";
 import { DiffPane, formatDiffComment } from "../../src/components/DiffPane";
-import type { WorkspaceDiffFile } from "../../src/components/DiffPane";
+import type {
+  WorkspaceDiffBase,
+  WorkspaceDiffCommit,
+  WorkspaceDiffFile,
+  WorkspaceDiffScope,
+} from "../../src/components/DiffPane";
 import { createMockVscode, sendCommand } from "./test-utils";
 
 function makeFile(
@@ -20,25 +25,39 @@ function makeFile(
   };
 }
 
-function renderPane(options?: {
+interface PaneOptions {
   paneId?: string;
   visible?: boolean;
   isStreaming?: boolean;
   sessionId?: string;
   workdir?: string;
   onAddComment?: (text: string) => void;
-}) {
+  treeVisible?: boolean;
+  selectedCommit?: string | null;
+  width?: number;
+  onTreeVisibleChange?: (visible: boolean) => void;
+  onSelectedCommitChange?: (sha: string | null) => void;
+}
+
+function renderPane(options?: PaneOptions) {
   const vscode = createMockVscode();
+  const shared = {
+    vscode,
+    width: options?.width ?? 420,
+    paneId: options?.paneId,
+    onAddComment: options?.onAddComment,
+    treeVisible: options?.treeVisible ?? true,
+    onTreeVisibleChange: options?.onTreeVisibleChange ?? (() => {}),
+    selectedCommit: options?.selectedCommit ?? null,
+    onSelectedCommitChange: options?.onSelectedCommitChange ?? (() => {}),
+  };
   const result = render(
     <DiffPane
-      vscode={vscode}
-      width={420}
-      paneId={options?.paneId}
+      {...shared}
       visible={options?.visible ?? true}
       isStreaming={options?.isStreaming ?? false}
       sessionId={options?.sessionId}
       workdir={options?.workdir}
-      onAddComment={options?.onAddComment}
     />,
   );
   const rerenderWith = (props: {
@@ -46,26 +65,53 @@ function renderPane(options?: {
     isStreaming?: boolean;
     sessionId?: string;
     workdir?: string;
+    treeVisible?: boolean;
+    selectedCommit?: string | null;
+    width?: number;
   }) =>
     result.rerender(
       <DiffPane
-        vscode={vscode}
-        width={420}
-        paneId={options?.paneId}
+        {...shared}
+        width={props.width ?? shared.width}
         visible={props.visible ?? true}
         isStreaming={props.isStreaming ?? false}
         sessionId={props.sessionId}
         workdir={props.workdir}
-        onAddComment={options?.onAddComment}
+        treeVisible={props.treeVisible ?? shared.treeVisible}
+        // `null` is a real selection ("all changes") — only an absent key
+        // falls back to the initially rendered value.
+        selectedCommit={
+          props.selectedCommit === undefined
+            ? shared.selectedCommit
+            : props.selectedCommit
+        }
       />,
     );
   return { ...result, rerenderWith, vscode };
 }
 
-function sendDiffResult(files: WorkspaceDiffFile[], paneId?: string) {
+function sendDiffResult(
+  files: WorkspaceDiffFile[],
+  options?: {
+    paneId?: string;
+    base?: WorkspaceDiffBase;
+    scope?: WorkspaceDiffScope;
+    commits?: WorkspaceDiffCommit[];
+    requestId?: number;
+  },
+) {
   sendCommand("desktopWorkspaceDiff", {
-    result: { kind: "ok", files },
-    ...(paneId !== undefined ? { paneId } : {}),
+    result: {
+      kind: "ok",
+      files,
+      base: options?.base,
+      scope: options?.scope,
+      commits: options?.commits,
+    },
+    ...(options?.paneId !== undefined ? { paneId: options.paneId } : {}),
+    ...(options?.requestId !== undefined
+      ? { requestId: options.requestId }
+      : {}),
   });
 }
 
@@ -74,11 +120,18 @@ const lastDiffRequest = (vscode: ReturnType<typeof createMockVscode>) =>
     ([msg]) => msg.command === "desktopGetWorkspaceDiff",
   );
 
+/** Payload of the most recent diff request (`.at(-1)` needs a newer lib target). */
+const latestDiffPayload = (vscode: ReturnType<typeof createMockVscode>) => {
+  const requests = lastDiffRequest(vscode);
+  return requests[requests.length - 1]?.[0];
+};
+
 describe("DiffPane", () => {
   it("requests the workspace diff on mount and shows a loading state", () => {
     const { vscode } = renderPane();
     expect(vscode.postMessage).toHaveBeenCalledWith({
       command: "desktopGetWorkspaceDiff",
+      requestId: 1,
     });
     expect(screen.getByText("加载中…")).toBeInTheDocument();
   });
@@ -100,8 +153,16 @@ describe("DiffPane", () => {
     expect(screen.getByTestId("diff-file-added")).toBeInTheDocument();
     expect(screen.getByText("修改")).toBeInTheDocument();
     expect(screen.getByText("新增")).toBeInTheDocument();
-    expect(screen.getByText("+2")).toBeInTheDocument();
-    expect(screen.getByText("-1")).toBeInTheDocument();
+    // Scoped to the accordion header: the file tree shows the same stats.
+    const header = screen
+      .getByTestId("diff-file-modified")
+      .querySelector(".diff-file-header") as HTMLElement;
+    expect(header.querySelector(".diff-file-stats-add")).toHaveTextContent(
+      "+2",
+    );
+    expect(header.querySelector(".diff-file-stats-del")).toHaveTextContent(
+      "-1",
+    );
   });
 
   it("renders hunks with added/removed/context line classes", () => {
@@ -325,6 +386,433 @@ describe("DiffPane", () => {
     });
   });
 
+  describe("toolbar range", () => {
+    const base: WorkspaceDiffBase = {
+      label: "main",
+      sha: "b".repeat(40),
+      kind: "default-branch",
+      ref: "refs/remotes/origin/main",
+    };
+
+    it("shows the read-only range and the range totals", () => {
+      const { container } = renderPane();
+      sendDiffResult(
+        [
+          makeFile(),
+          makeFile({ path: "src/b.ts", additions: 5, deletions: 0 }),
+        ],
+        { base },
+      );
+      const toolbar = container.querySelector(
+        ".preview-pane-toolbar",
+      ) as HTMLElement;
+      expect(toolbar).toHaveTextContent("main → 工作树");
+      expect(toolbar.querySelector(".diff-range")).toHaveAttribute(
+        "title",
+        expect.stringContaining("main"),
+      );
+      const totals = container.querySelector(".diff-totals") as HTMLElement;
+      expect(totals).toHaveTextContent("+7");
+      expect(totals).toHaveTextContent("-1");
+      expect(totals).toHaveTextContent("2 个文件");
+      // Read-only: neither end of the range is a control.
+      expect(
+        toolbar.querySelectorAll(".diff-range button, .diff-range select"),
+      ).toHaveLength(0);
+    });
+
+    it("shows the commit short sha instead of the working-tree range for a commit scope", () => {
+      const { container } = renderPane();
+      sendDiffResult([makeFile()], {
+        base,
+        scope: {
+          kind: "commit",
+          sha: "c".repeat(40),
+          shortSha: "c123456",
+          subject: "fix bug",
+        },
+      });
+      const toolbar = container.querySelector(
+        ".preview-pane-toolbar",
+      ) as HTMLElement;
+      expect(toolbar).toHaveTextContent("c123456");
+      expect(toolbar).not.toHaveTextContent("工作树");
+      expect(toolbar.querySelector(".diff-range")).toHaveAttribute(
+        "title",
+        expect.stringContaining("fix bug"),
+      );
+      // Nothing to truncate: the short sha is the whole range.
+      const range = container.querySelector(".diff-range") as HTMLElement;
+      expect(range.querySelector(".diff-range-lead")).toBeNull();
+      expect(range.querySelector(".diff-range-target")).toHaveTextContent(
+        "c123456",
+      );
+    });
+
+    it("splits the range so a narrow slot ellipsizes the base, not the target", () => {
+      const { container } = renderPane();
+      sendDiffResult([makeFile()], {
+        base: { ...base, label: "feature/very-long-session-branch" },
+      });
+      const range = container.querySelector(".diff-range") as HTMLElement;
+      expect(range.querySelector(".diff-range-lead")).toHaveTextContent(
+        "feature/very-long-session-branch",
+      );
+      expect(range.querySelector(".diff-range-target")).toHaveTextContent(
+        "→ 工作树",
+      );
+      // The rendered text is unchanged by the split.
+      expect(range).toHaveTextContent(
+        "feature/very-long-session-branch → 工作树",
+      );
+    });
+  });
+
+  describe("file tree", () => {
+    const nested = [
+      makeFile({ path: "docs/guide/a.md", additions: 1, deletions: 0 }),
+      makeFile({ path: "docs/conf.md", additions: 2, deletions: 0 }),
+      makeFile({
+        path: "src/nested/deep/x.ts",
+        additions: 3,
+        deletions: 1,
+      }),
+    ];
+
+    it("groups files by directory in accordion order, with no node for the repo root", () => {
+      renderPane();
+      sendDiffResult(nested);
+      const tree = screen.getByTestId("diff-tree");
+      const names = Array.from(
+        tree.querySelectorAll(".diff-tree-dir, .diff-tree-file"),
+      ).map((el) => el.querySelector(".diff-tree-name")?.textContent);
+      expect(names).toEqual([
+        "docs",
+        "conf.md",
+        "guide",
+        "a.md",
+        "src",
+        "nested",
+        "deep",
+        "x.ts",
+      ]);
+      const fileRow = tree.querySelector(
+        "[data-path='src/nested/deep/x.ts']",
+      ) as HTMLElement;
+      expect(fileRow).toHaveTextContent("+3");
+      expect(fileRow).toHaveTextContent("-1");
+      expect(fileRow).toHaveAttribute("title", "src/nested/deep/x.ts");
+    });
+
+    it("collapses and re-expands a directory without moving its siblings", () => {
+      renderPane();
+      sendDiffResult(nested);
+      const tree = screen.getByTestId("diff-tree");
+      const docsDir = tree.querySelector(
+        "[data-testid='diff-tree-dir']",
+      ) as HTMLElement;
+      expect(docsDir).toHaveAttribute("aria-expanded", "true");
+      fireEvent.click(docsDir);
+      expect(docsDir).toHaveAttribute("aria-expanded", "false");
+      expect(tree.querySelector("[data-path='docs/conf.md']")).toBeNull();
+      expect(
+        tree.querySelector("[data-path='src/nested/deep/x.ts']"),
+      ).not.toBeNull();
+      fireEvent.click(docsDir);
+      expect(tree.querySelector("[data-path='docs/conf.md']")).not.toBeNull();
+    });
+
+    it("expands the clicked file and scrolls it into view", () => {
+      const scrollIntoView = vi.fn();
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = scrollIntoView;
+      try {
+        const { container } = renderPane();
+        sendDiffResult(nested);
+        const headers = () => container.querySelectorAll(".diff-file-header");
+        expect(headers()[0]).toHaveAttribute("aria-expanded", "true");
+        fireEvent.click(
+          screen
+            .getByTestId("diff-tree")
+            .querySelector("[data-path='src/nested/deep/x.ts']") as HTMLElement,
+        );
+        // Mutual exclusion still holds, and the tree click is a navigation
+        // (not a toggle): the clicked file ends up expanded.
+        expect(headers()[2]).toHaveAttribute("aria-expanded", "true");
+        expect(headers()[0]).toHaveAttribute("aria-expanded", "false");
+        expect(scrollIntoView).toHaveBeenCalled();
+      } finally {
+        Element.prototype.scrollIntoView = original;
+      }
+    });
+
+    it("toggles the sidebar through the toolbar button", () => {
+      const onTreeVisibleChange = vi.fn();
+      const { rerenderWith } = renderPane({ onTreeVisibleChange });
+      sendDiffResult([makeFile()]);
+      expect(screen.getByTestId("diff-sidebar")).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("diff-tree-toggle"));
+      expect(onTreeVisibleChange).toHaveBeenCalledWith(false);
+      rerenderWith({ treeVisible: false });
+      expect(screen.queryByTestId("diff-sidebar")).not.toBeInTheDocument();
+      // Hiding the sidebar must not disturb the diff itself.
+      expect(screen.getByText("new1")).toBeInTheDocument();
+    });
+
+    it("auto-hides the sidebar when the panel is too narrow and restores it when widened", () => {
+      const { rerenderWith } = renderPane({ width: 320 });
+      sendDiffResult([makeFile()]);
+      expect(screen.queryByTestId("diff-sidebar")).not.toBeInTheDocument();
+      rerenderWith({ width: 600 });
+      expect(screen.getByTestId("diff-sidebar")).toBeInTheDocument();
+    });
+  });
+
+  describe("commit selection", () => {
+    const base: WorkspaceDiffBase = {
+      label: "main",
+      sha: "b".repeat(40),
+      kind: "default-branch",
+      ref: "refs/remotes/origin/main",
+    };
+    const commits: WorkspaceDiffCommit[] = [
+      { sha: "c".repeat(40), shortSha: "c111111", subject: "add feature" },
+      { sha: "b".repeat(40), shortSha: "b222222", subject: "fix bug" },
+    ];
+
+    it("lists all changes first, then the commits newest first", () => {
+      renderPane();
+      sendDiffResult([makeFile()], { base, commits });
+      const labels = Array.from(
+        screen
+          .getByTestId("diff-commits")
+          .querySelectorAll(".diff-commit-subject"),
+      ).map((el) => el.textContent);
+      expect(labels).toEqual(["全部改动", "add feature", "fix bug"]);
+      expect(screen.getByTestId("diff-commit-all")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+    });
+
+    it("renders no commit list when the range has no commits", () => {
+      renderPane();
+      sendDiffResult([makeFile()], { base, commits: [] });
+      expect(screen.queryByTestId("diff-commits")).not.toBeInTheDocument();
+    });
+
+    it("requests the selected commit's diff and reports the selection", () => {
+      const onSelectedCommitChange = vi.fn();
+      const { vscode, rerenderWith } = renderPane({ onSelectedCommitChange });
+      sendDiffResult([makeFile()], { base, commits });
+      fireEvent.click(screen.getAllByTestId("diff-commit")[0]);
+      expect(onSelectedCommitChange).toHaveBeenCalledWith("c".repeat(40));
+      expect(latestDiffPayload(vscode)).toEqual({
+        command: "desktopGetWorkspaceDiff",
+        requestId: 2,
+        commit: "c".repeat(40),
+      });
+      // The selection is owned by the session store, so the pressed state
+      // follows the prop the parent feeds back.
+      rerenderWith({ selectedCommit: "c".repeat(40) });
+      expect(screen.getAllByTestId("diff-commit")[0]).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(screen.getByTestId("diff-commit-all")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
+
+    it("switches back to all changes and ignores re-selecting the current range", () => {
+      const onSelectedCommitChange = vi.fn();
+      const { vscode, rerenderWith } = renderPane({
+        onSelectedCommitChange,
+        selectedCommit: "c".repeat(40),
+      });
+      sendDiffResult([makeFile()], {
+        base,
+        commits,
+        scope: {
+          kind: "commit",
+          sha: "c".repeat(40),
+          shortSha: "c111111",
+          subject: "add feature",
+        },
+      });
+      const before = lastDiffRequest(vscode).length;
+      fireEvent.click(screen.getByTestId("diff-commit-all"));
+      expect(onSelectedCommitChange).toHaveBeenCalledWith(null);
+      expect(lastDiffRequest(vscode).length).toBe(before + 1);
+      expect(latestDiffPayload(vscode)).not.toHaveProperty("commit");
+      // "全部改动" is now the active range: clicking it again is a no-op.
+      rerenderWith({ selectedCommit: null });
+      fireEvent.click(screen.getByTestId("diff-commit-all"));
+      expect(lastDiffRequest(vscode).length).toBe(before + 1);
+    });
+
+    it("clears a selection the host has already fallen back from", () => {
+      const onSelectedCommitChange = vi.fn();
+      renderPane({
+        onSelectedCommitChange,
+        selectedCommit: "c".repeat(40),
+      });
+      sendDiffResult([makeFile()], { base, scope: { kind: "all" } });
+      expect(onSelectedCommitChange).toHaveBeenCalledWith(null);
+    });
+
+    it("keeps a selection the host still honours", () => {
+      const onSelectedCommitChange = vi.fn();
+      renderPane({
+        onSelectedCommitChange,
+        selectedCommit: "c".repeat(40),
+      });
+      sendDiffResult([makeFile()], {
+        base,
+        scope: {
+          kind: "commit",
+          sha: "c".repeat(40),
+          shortSha: "c111111",
+          subject: "add feature",
+        },
+      });
+      expect(onSelectedCommitChange).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("drops superseded replies", () => {
+    it("ignores a reply whose requestId is not the latest request", () => {
+      const { vscode } = renderPane();
+      expect(lastDiffRequest(vscode)).toHaveLength(1);
+      fireEvent.click(screen.getByTestId("diff-refresh"));
+      expect(lastDiffRequest(vscode)).toHaveLength(2);
+      sendDiffResult([makeFile({ path: "src/stale.ts" })], { requestId: 1 });
+      expect(screen.queryByText("src/stale.ts")).not.toBeInTheDocument();
+      expect(screen.getByText("加载中…")).toBeInTheDocument();
+      sendDiffResult([makeFile({ path: "src/fresh.ts" })], { requestId: 2 });
+      expect(screen.getByText("src/fresh.ts")).toBeInTheDocument();
+    });
+  });
+
+  describe("large-range degradation", () => {
+    it("collapses every file, shows a notice, and still allows manual expansion", () => {
+      const { container } = renderPane();
+      sendDiffResult([
+        makeFile({ additions: 6000, deletions: 0 }),
+        makeFile({ path: "src/b.ts" }),
+      ]);
+      expect(screen.getByTestId("diff-collapse-notice")).toHaveTextContent(
+        "差异过大，已折叠全部文件",
+      );
+      const headers = container.querySelectorAll(".diff-file-header");
+      expect(headers[0]).toHaveAttribute("aria-expanded", "false");
+      expect(headers[1]).toHaveAttribute("aria-expanded", "false");
+      fireEvent.click(headers[0]);
+      expect(headers[0]).toHaveAttribute("aria-expanded", "true");
+    });
+
+    it("does not leave a later small range collapsed", () => {
+      const { container } = renderPane();
+      sendDiffResult([makeFile({ additions: 6000, deletions: 0 })]);
+      sendDiffResult([makeFile()]);
+      expect(
+        container.querySelectorAll(".diff-file-header")[0],
+      ).toHaveAttribute("aria-expanded", "true");
+      expect(
+        screen.queryByTestId("diff-collapse-notice"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("drops word-level pairing for an oversized file but keeps line colors and comments", () => {
+      const { container } = renderPane();
+      sendDiffResult([
+        makeFile({
+          additions: 600,
+          deletions: 500,
+          hunks: "@@ -1 +1 @@\n-const x = 1;\n+const x = 2;",
+        }),
+      ]);
+      const removed = container.querySelector(
+        ".diff-line-removed",
+      ) as HTMLElement;
+      expect(removed.querySelector(".diff-word-removed")).toBeNull();
+      expect(removed.querySelector(".diff-content")).toHaveTextContent(
+        "const x = 1;",
+      );
+      expect(container.querySelector(".diff-line-added")).not.toBeNull();
+      expect(screen.getByTestId("diff-comment-add-1")).toBeInTheDocument();
+    });
+  });
+
+  describe("view switch", () => {
+    it("renders a pair in two columns without a new request", () => {
+      const { vscode, container } = renderPane();
+      sendDiffResult([
+        makeFile({ hunks: "@@ -1 +1 @@\n-const x = 1;\n+const x = 2;" }),
+      ]);
+      const before = lastDiffRequest(vscode).length;
+      fireEvent.click(screen.getByTestId("diff-view-split"));
+      expect(lastDiffRequest(vscode).length).toBe(before);
+      const row = container.querySelector(".diff-split-row") as HTMLElement;
+      const cells = row.children;
+      expect(cells[0]).toHaveClass("diff-line", "diff-line-removed");
+      expect(cells[1]).toHaveClass("diff-line", "diff-line-added");
+      // One line-number column per side.
+      expect(cells[0].querySelector(".diff-line-number")).toHaveTextContent(
+        "1",
+      );
+      expect(cells[1].querySelector(".diff-line-number")).toHaveTextContent(
+        "1",
+      );
+      // Word-level pairing is unchanged by the layout.
+      expect(row.querySelector(".diff-word-removed")).toHaveTextContent("1");
+      expect(row.querySelector(".diff-word-added")).toHaveTextContent("2");
+      // The hunk header spans the row.
+      expect(screen.getByText("@@ -1 +1 @@")).toBeInTheDocument();
+    });
+
+    it("pads the missing half of an unpaired line", () => {
+      const { container } = renderPane();
+      sendDiffResult([makeFile({ hunks: "@@ -1 +1 @@\n-only-removed" })]);
+      fireEvent.click(screen.getByTestId("diff-view-split"));
+      const row = container.querySelector(".diff-split-row") as HTMLElement;
+      expect(row.querySelector(".diff-line-removed")).not.toBeNull();
+      expect(row.querySelector(".diff-split-empty")).not.toBeNull();
+    });
+
+    it("keeps the expanded file, closes the comment box and drops the draft", () => {
+      const { container, vscode } = renderPane();
+      sendDiffResult([
+        makeFile({ hunks: "@@ -1 +1 @@\n-const x = 1;\n+const x = 2;" }),
+      ]);
+      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
+      fireEvent.change(screen.getByTestId("diff-comment-input"), {
+        target: { value: "半截草稿" },
+      });
+      const before = lastDiffRequest(vscode).length;
+      fireEvent.click(screen.getByTestId("diff-view-split"));
+      expect(screen.queryByTestId("diff-comment-box")).not.toBeInTheDocument();
+      expect(lastDiffRequest(vscode).length).toBe(before);
+      // Back to unified: the draft is gone, the file is still expanded.
+      fireEvent.click(screen.getByTestId("diff-view-unified"));
+      expect(container.querySelectorAll(".diff-file-body")).toHaveLength(1);
+      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
+      expect(screen.getByTestId("diff-comment-input")).toHaveValue("");
+    });
+
+    it("spans the comment box across both columns", () => {
+      renderPane();
+      sendDiffResult([
+        makeFile({ hunks: "@@ -1 +1 @@\n-const x = 1;\n+const x = 2;" }),
+      ]);
+      fireEvent.click(screen.getByTestId("diff-view-split"));
+      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
+      const box = screen.getByTestId("diff-comment-box");
+      expect(box.closest(".diff-split-row")).not.toBeNull();
+    });
+  });
+
   it("refresh button requests the diff again", () => {
     const { vscode } = renderPane();
     expect(lastDiffRequest(vscode)).toHaveLength(1);
@@ -342,10 +830,11 @@ describe("DiffPane", () => {
     expect(vscode.postMessage).toHaveBeenCalledWith({
       command: "desktopGetWorkspaceDiff",
       paneId: "pane-1",
+      requestId: 1,
     });
-    sendDiffResult([makeFile()], "pane-2");
+    sendDiffResult([makeFile()], { paneId: "pane-2" });
     expect(screen.getByText("加载中…")).toBeInTheDocument();
-    sendDiffResult([], "pane-1");
+    sendDiffResult([], { paneId: "pane-1" });
     expect(screen.getByText("无改动")).toBeInTheDocument();
   });
 
@@ -447,6 +936,28 @@ describe("DiffPane", () => {
       expect(
         screen.queryByTestId("diff-comment-add-0"),
       ).not.toBeInTheDocument();
+    });
+
+    it("labels each button with its own side, so equal line numbers stay distinct", () => {
+      renderPane();
+      // A pair whose removed and added lines are both line 12: without
+      // the 旧/新 suffix both buttons would carry the same accessible name.
+      sendDiffResult([
+        makeFile({
+          hunks:
+            "@@ -12,2 +12,2 @@\n-  const handleSubmit = () => {\n+  const handleSubmit = (e) => {",
+        }),
+      ]);
+      expect(
+        screen.getByRole("button", {
+          name: "评论 src/a.ts 第 12 行（旧）",
+        }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", {
+          name: "评论 src/a.ts 第 12 行（新）",
+        }),
+      ).toBeInTheDocument();
     });
 
     it("opens a comment box under the clicked line with the file path", () => {

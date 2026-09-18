@@ -114,24 +114,48 @@ test.describe("Desktop Diff Pane Screenshots", () => {
 
     // DiffPane just requested desktopGetWorkspaceDiff; inject the response.
     await injector.simulateExtensionMessage("desktopWorkspaceDiff", {
-      result: { kind: "ok", files: DIFF_FILES },
+      result: {
+        kind: "ok",
+        base: {
+          label: "main",
+          sha: "4d2f9a1b7c3e5f80a1b2c3d4e5f60718293a4b5c",
+          kind: "default-branch",
+          ref: "refs/remotes/origin/main",
+        },
+        commits: [
+          {
+            sha: "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432",
+            shortSha: "9f8e7d6",
+            subject: "登录端点改为 /auth/login",
+          },
+        ],
+        files: DIFF_FILES,
+      },
     });
-    await expect(webviewPage.getByText("LoginForm.tsx")).toBeVisible();
-    await expect(webviewPage.getByText("useAuth.ts")).toBeVisible();
+    // The sidebar tree lists both changed files by name; the accordion below
+    // shows their full repo-relative path, so scope the lookup to the tree.
+    await expect(
+      webviewPage.getByTestId("diff-tree").getByText("LoginForm.tsx"),
+    ).toBeVisible();
+    await expect(
+      webviewPage.getByTestId("diff-tree").getByText("useAuth.ts"),
+    ).toBeVisible();
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-diff-pane.webp",
     );
 
     // ── 2. Click the "+" comment button on an added line ──────────
-    // Line index 5 = `+  const handleSubmit = (e: React.FormEvent) => {`.
+    // The line `+  const handleSubmit = (e: React.FormEvent) => {` is new line
+    // 14 (the hunk starts at new line 12). The 旧/新 suffix is part of the
+    // label because a removed and an added line can carry the same number.
     // The button is hidden until hover (GitHub/GitLab style); Playwright
     // auto-hovers before click. Use the aria-label (file path + line) as
     // the unique key — the testid uses a per-file line index, so it isn't
     // unique across files.
     await webviewPage
       .getByRole("button", {
-        name: "评论 src/components/LoginForm.tsx 第 6 行",
+        name: "评论 src/components/LoginForm.tsx 第 14 行（新）",
       })
       .click();
     await expect(webviewPage.getByTestId("diff-comment-box")).toBeVisible();

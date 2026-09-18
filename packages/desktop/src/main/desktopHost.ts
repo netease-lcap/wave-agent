@@ -3425,11 +3425,16 @@ export class DesktopHost {
         const paneAgent = this.agentForPane(pid);
         const cwd = paneAgent?.workingDirectory ?? this.workdir;
         const result = cwd
-          ? await getWorkspaceDiff(cwd, this.hostForAgent(paneAgent))
+          ? await getWorkspaceDiff(cwd, this.hostForAgent(paneAgent), {
+              commit: msg.commit as string | undefined,
+            })
           : ({ kind: "not-a-repo" } as const);
         this.postMessage({
           command: "desktopWorkspaceDiff",
           paneId: pid,
+          // Echoed back so the panel can drop a reply that was superseded by a
+          // newer request (commit switches and refreshes race).
+          requestId: msg.requestId,
           result,
         });
         break;
