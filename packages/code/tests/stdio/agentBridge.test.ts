@@ -2152,6 +2152,66 @@ test("updateMarketplace delegates to PluginCore", async () => {
   expect(updateMarketplacePlugins).toHaveBeenCalledWith("official");
 });
 
+// ── reloadPlugins（插件变更的就地重载）────────────────────────────
+
+test("reloadPlugins swaps every live session in place and returns the result", async () => {
+  // spec ecosystem/plugin.md「插件变更的就地重载」场景 2 / 8：一次重载覆盖本进程
+  // 内全部 live 会话，且不重建（sessionId 不变）。
+  const { bridge } = createBridge();
+  const firstReload = vi.fn().mockResolvedValue({
+    plugins: ["p1"],
+    failures: [],
+  });
+  const secondReload = vi.fn().mockResolvedValue({
+    plugins: ["p1"],
+    failures: [],
+  });
+  vi.mocked(Agent.create)
+    .mockResolvedValueOnce(
+      createMockAgent({ sessionId: "s1", reloadPlugins: firstReload }),
+    )
+    .mockResolvedValueOnce(
+      createMockAgent({ sessionId: "s2", reloadPlugins: secondReload }),
+    );
+  await bridge.handleRequest("initialize", {});
+  await bridge.handleRequest("initialize", {});
+
+  const result = await bridge.handleRequest("reloadPlugins", {});
+
+  expect(firstReload).toHaveBeenCalledTimes(1);
+  expect(secondReload).toHaveBeenCalledTimes(1);
+  expect(result).toEqual({ plugins: ["p1"], failures: [] });
+});
+
+test("reloadPlugins with no live session still succeeds", async () => {
+  // 新会话创建时本来就会按磁盘状态装载，因此无 live 会话不是错误。
+  const { bridge } = createBridge();
+
+  const result = await bridge.handleRequest("reloadPlugins", {});
+
+  expect(result).toEqual({ plugins: [], failures: [] });
+});
+
+test("reloadPlugins surfaces load failures without throwing", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValueOnce(
+    createMockAgent({
+      reloadPlugins: vi.fn().mockResolvedValue({
+        plugins: [],
+        failures: [{ path: "/p/bad", error: "boom" }],
+      }),
+    }),
+  );
+  await bridge.handleRequest("initialize", {});
+
+  const result = await bridge.handleRequest("reloadPlugins", {});
+
+  expect(result).toEqual({
+    plugins: [],
+    failures: [{ path: "/p/bad", error: "boom" }],
+  });
+});
+
 // ── notificationMessageAdded with full message ──────────────────
 
 test("onNotificationMessageAdded emits with full message", async () => {

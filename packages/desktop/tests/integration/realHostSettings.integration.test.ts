@@ -7,7 +7,7 @@
  * be verified against the real files of each project on disk.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import * as path from "path";
 import {
@@ -17,7 +17,6 @@ import {
   REALHOST_HOME,
   resetRealHostState,
   startFakeModelServer,
-  takeUnexpectedRejections,
   useFakeModelEndpoint,
   type FakeModelServer,
   type RealHost,
@@ -201,87 +200,7 @@ describe("real host · project settings follow the pane's project", () => {
     expect(a.enabledPlugins).toEqual({});
   });
 
-  it("keeps both panes usable after the plugin change with 立即重启", async () => {
-    const pane2 = await twoPanes();
-
-    await ctx.host.handleWebviewMessage({
-      command: "setBuiltinPluginEnabled",
-      paneId: pane2,
-      pluginId: "sdd@builtin",
-      enabled: true,
-      scope: "project",
-    });
-    await ctx.waitFor("projectSettings", {
-      predicate: (m) => m.paneId === pane2,
-    });
-    // 插件落盘不静默重建：先弹确认框（N = 受影响会话数，M = 忙碌会话数）。
-    const prompt = await ctx.waitFor("desktopRebuildPrompt");
-    expect(prompt.total).toBe(2);
-    expect(prompt.busy).toBe(0);
-
-    // 「立即重启」才重建（只重建空闲会话，destroy + Agent.create with
-    // restoreSessionId）。两个 pane 必须都活下来。
-    model.reply("重建后仍可用");
-    await ctx.host.handleWebviewMessage({
-      command: "desktopRebuildDecision",
-      restart: true,
-    });
-    const first = await ctx.turn("重建后 pane-1 消息");
-    const second = await ctx.turn("重建后 pane-2 消息", pane2);
-
-    expect(JSON.stringify(first)).toContain("重建后仍可用");
-    expect(JSON.stringify(second)).toContain("重建后仍可用");
-    expect(ctx.paneSessionId("pane-1")).toBeTruthy();
-    expect(ctx.paneSessionId(pane2)).toBeTruthy();
-  });
-
-  /**
-   * 插件变更（构造期副作用）的重建是 host 侧最宽的状态变更：`updateConfig` →
-   * destroy + `Agent.create`，期间在途 RPC 以 "Session not found" 拒绝，而
-   * `backgroundTasksChange` 通知继续到达。任何漏 catch 的 host promise 都会泄漏
-   * 一个 unhandled rejection —— Node 默认策略下致命，而单测层（RPC 全 mock）
-   * 永远看不到。
-   *
-   * 这里的不变式是「host 从不泄漏」：`afterEach` 对任何 rejection 判红（无白名单），
-   * 且 vitest 对 unhandled error 直接失败。回退 `refreshWorkflowRuns` 的 catch
-   * 会让本用例变红（"Session not found: <id>" 打到
-   * `process.on("unhandledRejection")`）。
-   */
-  it("does not leak an unhandled rejection when 立即重启 recreates the agents", async () => {
-    const pane2 = await twoPanes();
-    // The recreation does reject an in-flight refresh, and the host now reports
-    // it instead of dropping it — silence the expected warning.
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    // Only rejections from here on count.
-    takeUnexpectedRejections();
-
-    await ctx.host.handleWebviewMessage({
-      command: "setBuiltinPluginEnabled",
-      paneId: pane2,
-      pluginId: "sdd@builtin",
-      enabled: true,
-      scope: "project",
-    });
-    await ctx.waitFor("projectSettings", {
-      predicate: (m) => m.paneId === pane2,
-    });
-    await ctx.waitFor("desktopRebuildPrompt");
-    await ctx.host.handleWebviewMessage({
-      command: "desktopRebuildDecision",
-      restart: true,
-    });
-
-    // Both panes go through another full turn, so every rejection the
-    // recreation kicked off has resolved by the time we look.
-    model.reply("重建后仍可用");
-    await ctx.turn("重建后 pane-1 消息");
-    await ctx.turn("重建后 pane-2 消息", pane2);
-
-    assertNoUnexpectedRejections();
-    warn.mockRestore();
-  });
-
-  it("「稍后重启」落盘生效但本次不重建：两 pane 仍用原会话继续", async () => {
+  it("keeps both panes usable after the plugin change + /reload-plugins (no rebuild)", async () => {
     const pane2 = await twoPanes();
     const sessionsBefore = [
       ctx.paneSessionId("pane-1"),
@@ -298,31 +217,74 @@ describe("real host · project settings follow the pane's project", () => {
     await ctx.waitFor("projectSettings", {
       predicate: (m) => m.paneId === pane2,
     });
-    await ctx.waitFor("desktopRebuildPrompt");
-
-    const mark = ctx.messages.length;
-    await ctx.host.handleWebviewMessage({
-      command: "desktopRebuildDecision",
-      restart: false,
+    // 插件落盘不重建任何会话：只出现一次「待应用」提示（spec plugin
+    //「插件变更的就地重载」场景 1）。
+    const pending = await ctx.waitFor("showToast", {
+      predicate: (m) =>
+        JSON.stringify(m.toast).includes(
+          "插件已变更。运行 /reload-plugins 使其生效。",
+        ),
     });
-    const afterDecision = ctx.messages.slice(mark);
-    // 不做惰性重建、不做登记：只一次性 toast 告知新开对话才生效。
-    expect(
-      afterDecision.some(
-        (m) =>
-          m.command === "showToast" &&
-          JSON.stringify(m.toast).includes("新开对话自动生效"),
-      ),
-    ).toBe(true);
+    expect(pending).toBeTruthy();
     expect(ctx.paneSessionId("pane-1")).toBe(sessionsBefore[0]);
     expect(ctx.paneSessionId(pane2)).toBe(sessionsBefore[1]);
-    // 真 CLI 上项目文件已改（插件变更本身已生效），只是本会话不重启。
+
+    // 敲 /reload-plugins 就地换装：不重建 agent，只在同一 CLI 进程内把磁盘上的
+    // 插件状态换进两个 live 会话。
+    ctx.clear();
+    await ctx.host.handleWebviewMessage({ command: "reloadPlugins" });
+    await ctx.waitFor("showToast", {
+      predicate: (m) => JSON.stringify(m.toast).includes("插件已重载。"),
+    });
+
+    // 真 CLI 上项目文件已改（插件变更本身已生效），且两个 pane 的 sessionId 不变。
+    expect(
+      JSON.parse(readFileSync(projectSettingsFile(dirB), "utf-8")),
+    ).toEqual({ enabledPlugins: { "sdd@builtin": true } });
+    model.reply("重载后仍可用");
+    const first = await ctx.turn("重载后 pane-1 消息");
+    const second = await ctx.turn("重载后 pane-2 消息", pane2);
+
+    expect(JSON.stringify(first)).toContain("重载后仍可用");
+    expect(JSON.stringify(second)).toContain("重载后仍可用");
+    expect(ctx.paneSessionId("pane-1")).toBe(sessionsBefore[0]);
+    expect(ctx.paneSessionId(pane2)).toBe(sessionsBefore[1]);
+  });
+
+  it("插件变更只落盘 + 提示，本次不换装：两 pane 仍用原会话继续", async () => {
+    const pane2 = await twoPanes();
+    const sessionsBefore = [
+      ctx.paneSessionId("pane-1"),
+      ctx.paneSessionId(pane2),
+    ];
+
+    await ctx.host.handleWebviewMessage({
+      command: "setBuiltinPluginEnabled",
+      paneId: pane2,
+      pluginId: "sdd@builtin",
+      enabled: true,
+      scope: "project",
+    });
+    await ctx.waitFor("projectSettings", {
+      predicate: (m) => m.paneId === pane2,
+    });
+    await ctx.waitFor("showToast", {
+      predicate: (m) =>
+        JSON.stringify(m.toast).includes(
+          "插件已变更。运行 /reload-plugins 使其生效。",
+        ),
+    });
+
+    // 待应用信号没有任何「延迟重建」：两个 pane 的会话 id 原样保留。
+    expect(ctx.paneSessionId("pane-1")).toBe(sessionsBefore[0]);
+    expect(ctx.paneSessionId(pane2)).toBe(sessionsBefore[1]);
+    // 真 CLI 上项目文件已改（变更落盘本身已生效），只是本会话还没换装。
     expect(
       JSON.parse(readFileSync(projectSettingsFile(dirB), "utf-8")),
     ).toEqual({ enabledPlugins: { "sdd@builtin": true } });
 
     model.reply("旧会话仍可用");
-    expect(JSON.stringify(await ctx.turn("稍后重启后 pane-1 消息"))).toContain(
+    expect(JSON.stringify(await ctx.turn("稍后重载前 pane-1 消息"))).toContain(
       "旧会话仍可用",
     );
   });

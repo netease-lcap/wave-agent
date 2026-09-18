@@ -615,10 +615,10 @@ describe("MessageHandler MCP handlers", () => {
     expect(config?.skillSource).toBeUndefined();
   });
 
-  // Toggling a project-level builtin plugin (e.g. sdd@builtin) must recreate
-  // agents — same as handleEnablePlugin — so the change takes effect, not just
-  // refresh the projectSettings panel.
-  test("setBuiltinPluginEnabled reloads config and recreates agents on success", async () => {
+  // Toggling a project-level builtin plugin (e.g. sdd@builtin) persists the
+  // toggle and only notifies: the change takes effect on the next
+  // /reload-plugins, never by recreating agents (spec plugin「插件变更的就地重载」).
+  test("setBuiltinPluginEnabled persists the toggle and only notifies (no recreate)", async () => {
     const configService = {
       loadConfiguration: vi.fn(),
       saveConfiguration: vi.fn(),
@@ -665,9 +665,13 @@ describe("MessageHandler MCP handlers", () => {
       true,
       "project",
     );
-    // 重建 agent 不再需要配置（模型/服务地址都不走设置页配置）。
+    // 插件变更不重建任何会话：只提示一次，由 /reload-plugins 就地生效
+    // （spec plugin「插件变更的就地重载」场景 1–2）。
     expect(configService.loadConfiguration).not.toHaveBeenCalled();
-    expect(context.updateAllSessionsConfig).toHaveBeenCalledWith();
+    expect(context.updateAllSessionsConfig).not.toHaveBeenCalled();
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "插件已变更。运行 /reload-plugins 使其生效。",
+    );
 
     const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock
       .calls[0][0] as {
@@ -679,6 +683,81 @@ describe("MessageHandler MCP handlers", () => {
     expect(posted.enabledPlugins).toEqual({ "sdd@builtin": true });
     // 归属键：请求所用 workdir 恒回带（webview 过期即弃依据）
     expect(posted.workdir).toBe("/ws/root");
+  });
+
+  test("reloadPlugins asks the CLI to swap plugins in and reports success", async () => {
+    const pluginService = {
+      reloadPlugins: vi.fn().mockResolvedValue({
+        plugins: ["sdd@builtin"],
+        failures: [],
+      }),
+    };
+    const context: MessageHandlerContext = {
+      getChatSession: vi.fn().mockReturnValue(createMockSession()),
+      postMessage: vi.fn(),
+      initializeAgent: vi.fn(),
+      listSessions: vi.fn(),
+      updateAllSessionsConfig: vi.fn(),
+      getVersion: vi.fn().mockReturnValue("1.2.3"),
+      openPlanPreview: vi.fn(),
+      openSettings: vi.fn(),
+      postSettingsMessage: vi.fn(),
+      closeSettings: vi.fn(),
+    };
+    const handler = new MessageHandler(
+      {} as unknown as ConfigurationService,
+      {} as unknown as FileService,
+      {} as unknown as SessionService,
+      pluginService as unknown as PluginService,
+      {} as unknown as StdioClient,
+      context,
+    );
+
+    await handler.handleMessage({ command: "reloadPlugins" }, "tab");
+
+    // 命令不进对话、不重建会话：只调一次 RPC 并给一次性提示。
+    expect(pluginService.reloadPlugins).toHaveBeenCalledTimes(1);
+    expect(context.updateAllSessionsConfig).not.toHaveBeenCalled();
+    expect(context.postMessage).not.toHaveBeenCalled();
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "插件已重载。",
+    );
+  });
+
+  test("reloadPlugins reports the plugins that could not be loaded", async () => {
+    const pluginService = {
+      reloadPlugins: vi.fn().mockResolvedValue({
+        plugins: [],
+        failures: [{ path: "/p/bad", error: "boom" }],
+      }),
+    };
+    const context: MessageHandlerContext = {
+      getChatSession: vi.fn().mockReturnValue(createMockSession()),
+      postMessage: vi.fn(),
+      initializeAgent: vi.fn(),
+      listSessions: vi.fn(),
+      updateAllSessionsConfig: vi.fn(),
+      getVersion: vi.fn().mockReturnValue("1.2.3"),
+      openPlanPreview: vi.fn(),
+      openSettings: vi.fn(),
+      postSettingsMessage: vi.fn(),
+      closeSettings: vi.fn(),
+    };
+    const handler = new MessageHandler(
+      {} as unknown as ConfigurationService,
+      {} as unknown as FileService,
+      {} as unknown as SessionService,
+      pluginService as unknown as PluginService,
+      {} as unknown as StdioClient,
+      context,
+    );
+
+    await handler.handleMessage({ command: "reloadPlugins" }, "tab");
+
+    // 失败清单如实回显，不回滚已成功的那部分（spec 场景 11）。
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "插件已重载。部分插件加载失败：/p/bad: boom",
+    );
   });
 });
 
@@ -842,7 +921,7 @@ describe("MessageHandler settings tab", () => {
       language: "en-US",
     });
     // 用户偏好落用户级 ~/.wave/settings.json，由 SDK 实时重载在下一轮对话生效：
-    // 保存不重建会话（spec agent-config「配置变更的构造期副作用与重建」场景 1）。
+    // 保存不重建会话（spec agent-config「配置变更不再需要重建会话」场景 1）。
     expect(context.updateAllSessionsConfig).not.toHaveBeenCalled();
     // 保存结果经宿主原生通知提示（spec「设置页反馈语义」）
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
@@ -1179,7 +1258,7 @@ describe("MessageHandler settings tab", () => {
       );
     });
 
-    test("plugin enable/disable stays silent (not in the prototype's prompt set)", async () => {
+    test("plugin enable/disable reports no result toast but still emits the pending hint", async () => {
       const handler = settingsHandler({
         setBuiltinPluginEnabled: vi
           .fn()
@@ -1192,7 +1271,12 @@ describe("MessageHandler settings tab", () => {
         enabled: true,
         scope: "project",
       });
-      expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+      // 原型没给启用/禁用定义结果文案，但它是插件变更 ⇒ 必须给「待应用」提示
+      // （spec plugin「插件变更的就地重载」场景 1）。
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledTimes(1);
+      expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+        "插件已变更。运行 /reload-plugins 使其生效。",
+      );
     });
 
     test("addMarketplace reports the marketplace name returned by the SDK", async () => {
@@ -1386,9 +1470,13 @@ describe("MessageHandler settings tab", () => {
       true,
       "project",
     );
-    // 重建 agent 不再需要配置（模型/服务地址都不走设置页配置）。
+    // 插件变更不重建任何会话：只提示一次，由 /reload-plugins 就地生效
+    // （spec plugin「插件变更的就地重载」场景 1–2）。
     expect(configService.loadConfiguration).not.toHaveBeenCalled();
-    expect(context.updateAllSessionsConfig).toHaveBeenCalledWith();
+    expect(context.updateAllSessionsConfig).not.toHaveBeenCalled();
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      "插件已变更。运行 /reload-plugins 使其生效。",
+    );
     const posted = (context.postSettingsMessage as ReturnType<typeof vi.fn>)
       .mock.calls[0][0] as {
       command: string;
@@ -1854,8 +1942,8 @@ describe("MessageHandler chat-route configuration toasts", () => {
       language: "en-US",
     });
     // PR-2：用户偏好写用户级 settings.json 由 SDK 实时重载生效，保存**不重建会话**
-    // （spec core/agent-config.md「配置变更的构造期副作用与重建」场景 1–2）——
-    // 重建只留给插件挂载/卸载（同文件上方 setBuiltinPluginEnabled 用例）。
+    // （spec core/agent-config.md「配置变更不再需要重建会话」场景 1–2）——插件变更
+    // 同样不再重建（等用户敲 /reload-plugins，见 plugin.md「插件变更的就地重载」）。
     expect(context.updateAllSessionsConfig).not.toHaveBeenCalled();
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       "保存成功",

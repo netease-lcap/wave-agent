@@ -542,6 +542,30 @@ describe("McpManager", () => {
       expect(server).toBeUndefined();
     });
 
+    // 插件变更的就地重载（docs/specs/ecosystem/plugin.md「插件变更的就地重载」
+    // 场景 3 / 12）：插件来源的服务器按 pluginRoot 整批摘掉，其它来源不受影响。
+    it("should remove only the servers of the given plugin root", () => {
+      mcpManager.addServer("plugin-a-server", {
+        command: "a",
+        pluginRoot: "/plugin/a",
+      } as McpServerConfig);
+      mcpManager.addServer("plugin-b-server", {
+        command: "b",
+        pluginRoot: "/plugin/b",
+      } as McpServerConfig);
+
+      const removed = mcpManager.removeServersForPlugin("/plugin/a");
+
+      expect(removed).toBe(1);
+      expect(mcpManager.getServer("plugin-a-server")).toBeUndefined();
+      expect(mcpManager.getServer("plugin-b-server")).toBeDefined();
+      expect(mcpManager.getServer("test-server")).toBeDefined();
+    });
+
+    it("should report 0 when no server belongs to that plugin root", () => {
+      expect(mcpManager.removeServersForPlugin("/plugin/unknown")).toBe(0);
+    });
+
     it("should update server status", () => {
       mcpManager.updateServerStatus("test-server", {
         status: "connected",

@@ -1196,6 +1196,58 @@ describe("SkillManager", () => {
 
       await manager.destroy();
     });
+
+    // 插件变更的就地重载（docs/specs/ecosystem/plugin.md「插件变更的就地重载」
+    // 场景 3 / 12）：反注册必须连插件专属映射一起清，否则下一次磁盘刷新会把
+    // 已卸载插件的技能复活。
+    it("should not resurrect unregistered plugin skills on the next refresh", async () => {
+      const manager = new SkillManager(container, {
+        workdir: "/test/workdir",
+        watch: true,
+      });
+      container.register("SkillManager", manager);
+
+      vi.mocked(readdir).mockResolvedValue([]);
+      await manager.initialize();
+
+      manager.registerPluginSkills("commit-skills", [
+        {
+          name: "commit-push-mr",
+          description: "Commit and push MR",
+          skillPath: "/path/to/plugin/skills/commit-push-mr",
+          pluginRoot: "/path/to/plugin",
+        } as unknown as Skill,
+      ]);
+      expect(
+        manager
+          .getAvailableSkills()
+          .find((s) => s.name === "commit-skills:commit-push-mr"),
+      ).toBeDefined();
+
+      manager.unregisterPluginSkills("commit-skills");
+
+      expect(
+        manager
+          .getAvailableSkills()
+          .find((s) => s.name === "commit-skills:commit-push-mr"),
+      ).toBeUndefined();
+
+      // 磁盘刷新（文件监视器触发）后仍不应出现。
+      const onEventCallback = mockFileWatcher.watchFile.mock.calls[0][1];
+      await onEventCallback({
+        type: "change",
+        path: "/test/workdir/.wave/skills/some-skill/SKILL.md",
+        timestamp: Date.now(),
+      });
+
+      expect(
+        manager
+          .getAvailableSkills()
+          .find((s) => s.name === "commit-skills:commit-push-mr"),
+      ).toBeUndefined();
+
+      await manager.destroy();
+    });
   });
 
   describe("Cross-tool skill directory compatibility", () => {

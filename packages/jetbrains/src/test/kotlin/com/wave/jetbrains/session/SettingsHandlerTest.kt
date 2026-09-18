@@ -166,6 +166,19 @@ class SettingsHandlerTest {
         assertEquals(workdir, rpc.params()["workdir"]?.jsonPrimitive?.content)
     }
 
+    @Test
+    fun `reloadPlugins forwards the in-place reload to the CLI`() {
+        val fx = Fixture(connectAgent = true)
+
+        fx.send("reloadPlugins")
+
+        // 插件变更的就地重载（spec ecosystem/plugin.md）：宿主只把命令转发给 CLI，
+        // 由 CLI 对全部 live 会话就地换装，不做任何重建。IdeService 的成功/失败
+        // 提示无测试缝（见类 KDoc），因此断言落在真正走到的 RPC 上。
+        val rpc = fx.awaitRpc("reloadPlugins")
+        assertTrue(rpc.params().isEmpty(), "params must be empty, was ${rpc.params()}")
+    }
+
     // ── 无 live session 回退（settings tab 独立打开、聊天会话未初始化）──────
 
     @Test

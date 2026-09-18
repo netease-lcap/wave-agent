@@ -543,6 +543,27 @@ describe("inputHandlers", () => {
       });
     });
 
+    // 插件变更的就地重载（docs/specs/ecosystem/plugin.md「插件变更的就地重载」
+    // 场景 13）：CLI 从命令选择器选中 /reload-plugins 时走重载，不进对话。
+    it("should reload plugins instead of sending a message for reload-plugins", async () => {
+      const onReloadPlugins = vi.fn().mockResolvedValue(undefined);
+      callbacks.onReloadPlugins = onReloadPlugins;
+      const state: InputState = {
+        ...initialState,
+        slashPosition: 0,
+        inputText: "/reload-plugins",
+        cursorPosition: 15,
+      };
+      vi.mocked(callbacks.onHasSlashCommand!).mockReturnValue(false);
+
+      handleCommandSelect(state, dispatch, callbacks, "reload-plugins");
+
+      await vi.waitFor(() => {
+        expect(onReloadPlugins).toHaveBeenCalledTimes(1);
+      });
+      expect(callbacks.onSendMessage).not.toHaveBeenCalled();
+    });
+
     it("should open agents manager when no slash command handler exists", async () => {
       const state: InputState = {
         ...initialState,

@@ -473,4 +473,68 @@ describe("LspManager (Mocked)", () => {
       expect.any(Object),
     );
   });
+
+  // 插件变更的就地重载（docs/specs/ecosystem/plugin.md「插件变更的就地重载」
+  // 场景 3 / 12）：插件来源的 LSP 服务器按 pluginRoot 整批摘掉，其它来源不受
+  // 影响；已为该插件语言启动的进程一并停掉，免得住留指向旧目录的进程。
+  it("should drop only the given plugin root's LSP servers", async () => {
+    lspManager.registerServer("typescript", {
+      command: "ts-server",
+      extensionToLanguage: { ".ts": "typescript" },
+      pluginRoot: "/plugin/a",
+      shutdownTimeout: 1,
+    });
+    lspManager.registerServer("python", {
+      command: "py-server",
+      extensionToLanguage: { ".py": "python" },
+      pluginRoot: "/plugin/b",
+      shutdownTimeout: 1,
+    });
+
+    const removed = await lspManager.unregisterServersForPlugin("/plugin/a");
+
+    expect(removed).toBe(1);
+    // 该语言已无配置：不会再为它启动服务器。
+    expect(
+      await lspManager.getProcessForFile("/mock/workdir/test.ts"),
+    ).toBeNull();
+  });
+
+  it("should stop the running process of the unregistered plugin's server", async () => {
+    const { mockProcess } = setupMockProcess();
+    lspManager.registerServer("typescript", {
+      command: "ts-server",
+      extensionToLanguage: { ".ts": "typescript" },
+      pluginRoot: "/plugin/a",
+      shutdownTimeout: 1,
+    });
+    (
+      lspManager as unknown as {
+        processes: Map<string, unknown>;
+      }
+    ).processes.set("typescript", {
+      process: mockProcess,
+      config: {
+        command: "ts-server",
+        extensionToLanguage: { ".ts": "typescript" },
+        pluginRoot: "/plugin/a",
+        shutdownTimeout: 1,
+      },
+      language: "typescript",
+      initialized: true,
+      requestId: 0,
+      pendingRequests: new Map(),
+      openedFiles: new Set(),
+    });
+
+    await lspManager.unregisterServersForPlugin("/plugin/a");
+
+    expect(mockProcess.kill).toHaveBeenCalled();
+  });
+
+  it("should report 0 when no LSP server belongs to that plugin root", async () => {
+    expect(await lspManager.unregisterServersForPlugin("/plugin/unknown")).toBe(
+      0,
+    );
+  });
 });

@@ -234,6 +234,41 @@ describe("SlashCommandManager", () => {
         "Base content extra arguments",
       );
     });
+
+    // 插件变更的就地重载（docs/specs/ecosystem/plugin.md「插件变更的就地重载」
+    // 场景 3 / 12）：命令按插件名逐条反注册。
+    it("should drop every command of one plugin on unregisterPluginCommands", () => {
+      slashCommandManager.registerPluginCommands("test-plugin", [
+        { id: "a", name: "a", content: "A" },
+        { id: "b", name: "b", content: "B" },
+      ] as unknown as CustomSlashCommand[]);
+      slashCommandManager.registerPluginCommands("other-plugin", [
+        { id: "a", name: "a", content: "A" },
+      ] as unknown as CustomSlashCommand[]);
+
+      const removed =
+        slashCommandManager.unregisterPluginCommands("test-plugin");
+
+      expect(removed).toBe(2);
+      expect(slashCommandManager.hasCommand("test-plugin:a")).toBe(false);
+      expect(slashCommandManager.hasCommand("test-plugin:b")).toBe(false);
+      expect(slashCommandManager.hasCommand("other-plugin:a")).toBe(true);
+    });
+
+    it("should report 0 when unregistering a plugin with no commands", () => {
+      expect(slashCommandManager.unregisterPluginCommands("nope")).toBe(0);
+    });
+
+    it("should keep plugin commands when reloading custom commands from disk", () => {
+      // 磁盘上的自定义命令与插件命令同在 customCommands 里，但只有前者归磁盘所有。
+      slashCommandManager.registerPluginCommands("test-plugin", [
+        { id: "a", name: "a", content: "A" },
+      ] as unknown as CustomSlashCommand[]);
+
+      slashCommandManager.reloadCustomCommands();
+
+      expect(slashCommandManager.hasCommand("test-plugin:a")).toBe(true);
+    });
   });
 
   describe("registerSkillCommands", () => {

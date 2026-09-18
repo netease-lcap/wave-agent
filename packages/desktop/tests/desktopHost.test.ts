@@ -2505,7 +2505,7 @@ describe("user preference save path and rebuild timing", () => {
     });
   });
 
-  it("prompts with total/busy counts before any rebuild (receipts stay immediate)", async () => {
+  it("plugin change never rebuilds: busy sessions keep running, one pending toast (no prompt)", async () => {
     const { host, sent } = await readyHost();
     const pane1 = agentAt(0);
     pane1.isStreaming = true;
@@ -2518,79 +2518,15 @@ describe("user preference save path and rebuild timing", () => {
       scope: "user",
     });
 
-    expect(sent("desktopRebuildPrompt")).toEqual([
-      { command: "desktopRebuildPrompt", total: 2, busy: 1 },
-    ]);
-    // 弹框本身不重建；两个会话都原样（含正在流式输出的那个）。
+    // 变更落盘只产生一次「待应用」提示（spec plugin「插件变更提示」）。
+    expect(shownToasts().map((t) => t.message)).toContain(
+      "插件已变更。运行 /reload-plugins 使其生效。",
+    );
+    // 不重建任何会话：正在生成的回合不被打断、排队消息不清空。
     expect(pane1.updateConfig).not.toHaveBeenCalled();
     expect(pane2.updateConfig).not.toHaveBeenCalled();
     expect(pane1.isStreaming).toBe(true);
-  });
-
-  it("「立即重启」rebuilds only idle sessions and leaves queues alone", async () => {
-    const { host } = await readyHost();
-    const idle = agentAt(0);
-    const busy = await openSecondPane(host);
-    busy.isStreaming = true;
-    busy.queuedMessages = [{ id: "q1", text: "排队消息" }];
-
-    await host.handleWebviewMessage({
-      command: "desktopRebuildDecision",
-      restart: true,
-    });
-
-    // 空闲会话被重建；正在执行任务的会话不打断、保持旧配置（spec 场景 5）。
-    expect(idle.updateConfig).toHaveBeenCalledTimes(1);
-    expect(idle.updateConfig).toHaveBeenCalledWith({});
-    expect(busy.updateConfig).not.toHaveBeenCalled();
-    expect(busy.isStreaming).toBe(true);
-    // 只重建空闲会话时不得清空队列（否则忙碌会话的排队消息会丢）。
-    expect(busy.abortMessage).not.toHaveBeenCalled();
-  });
-
-  it("「稍后重启」does not rebuild and registers no lazy rebuild", async () => {
-    const { host, sent } = await readyHost();
-    const agent = agentAt(0);
-
-    await host.handleWebviewMessage({
-      command: "desktopRebuildDecision",
-      restart: false,
-    });
-
-    expect(
-      shownToasts().filter((t) => t.message.includes("新开对话自动生效")),
-    ).toHaveLength(1);
-    // 不做惰性重建：切走（关掉 pane-1）再把该会话重新打开也不重建（下次插件
-    // 变更才会再询问）。
-    await openSecondPane(host);
-    await host.handleWebviewMessage({
-      command: "desktopClosePane",
-      paneId: "pane-1",
-    });
-    await host.handleWebviewMessage({
-      command: "desktopOpenPane",
-      workdir: "/work/a",
-      sessionId: "sess-1",
-    });
-    await vi.waitFor(() =>
-      expect(sent("desktopPanes").at(-1)!.focusedPaneId).toBe("pane-3"),
-    );
-    await host.handleWebviewMessage({ command: "desktopNewSessionInPane" });
-    expect(agent.updateConfig).not.toHaveBeenCalled();
-    expect(sent("desktopRebuildPrompt")).toHaveLength(0);
-  });
-
-  it("plugin change with no live session must not prompt", async () => {
-    const { host, sent } = createHost();
-    await host.handleWebviewMessage({ command: "desktopReady" });
-
-    await host.handleWebviewMessage({
-      command: "setBuiltinPluginEnabled",
-      pluginId: "sdd@builtin",
-      enabled: true,
-      scope: "user",
-    });
-
+    // 重建确认框已整体废弃（spec「重建确认框已废止」）。
     expect(sent("desktopRebuildPrompt")).toHaveLength(0);
   });
 });
@@ -4306,7 +4242,7 @@ describe("misc commands", () => {
     expect(sent("appendMessage")).toHaveLength(0);
   });
 
-  it("setBuiltinPluginEnabled prompts for the rebuild instead of rebuilding inline", async () => {
+  it("setBuiltinPluginEnabled only notifies — it never rebuilds a session inline", async () => {
     const { host, sent } = await readyHost();
     const agent = lastAgent();
     const orig = h.handleClientRequest;
@@ -4321,80 +4257,66 @@ describe("misc commands", () => {
         enabled: true,
         scope: "project",
       });
-      // 插件落盘 + projectSettings 推送（开关翻转）先完成，重建时机交给确认框
-      // （spec「配置变更的构造期副作用与重建」场景 4）：本次不重建任何会话。
+      // 落盘 + 开关翻转回执完成后只给一次「待应用」提示，本次不重建任何会话
+      // （spec plugin「插件变更的就地重载」场景 1）。
       expect(sent("projectSettings")).toHaveLength(1);
-      expect(sent("desktopRebuildPrompt")).toEqual([
-        { command: "desktopRebuildPrompt", total: 1, busy: 0 },
-      ]);
+      expect(shownToasts().map((t) => t.message)).toContain(
+        "插件已变更。运行 /reload-plugins 使其生效。",
+      );
       expect(agent.updateConfig).not.toHaveBeenCalled();
+      expect(sent("desktopRebuildPrompt")).toHaveLength(0);
     } finally {
       h.handleClientRequest = orig;
     }
   });
 
-  it("setBuiltinPluginEnabled does not toast when a session is already gone on the CLI (recreate skip after 立即重启)", async () => {
-    const { host, sent } = await readyHost();
-    const agent = lastAgent();
+  it("/reload-plugins asks the CLI to swap plugins into its live sessions and reports success", async () => {
+    const { host } = await readyHost();
     const orig = h.handleClientRequest;
     h.handleClientRequest = (m: string, params?: unknown) =>
-      m === "setBuiltinPluginEnabled"
-        ? { enabledPlugins: { "sdd@builtin": true } }
+      m === "reloadPlugins"
+        ? { plugins: ["sdd@builtin"], failures: [] }
         : orig(m, params);
     try {
-      await host.handleWebviewMessage({
-        command: "setBuiltinPluginEnabled",
-        pluginId: "sdd@builtin",
-        enabled: true,
-        scope: "project",
-      });
+      await host.handleWebviewMessage({ command: "reloadPlugins" });
     } finally {
       h.handleClientRequest = orig;
     }
-    expect(sent("projectSettings")).toHaveLength(1);
-
-    // 「立即重启」→ 重建；CLI 上已不存在的会话必须被跳过，而不是把一次成功的
-    // 设置写入报成失败（spec「配置变更的构造期副作用与重建」场景 5 边界）。
-    agent.updateConfig.mockRejectedValueOnce(
-      new Error("Session not found: sess-1"),
-    );
-    await host.handleWebviewMessage({
-      command: "desktopRebuildDecision",
-      restart: true,
-    });
-
+    // 一次 RPC 覆盖该 CLI 进程内的全部 live 会话——宿主只发这一条。
     expect(
-      shownToasts().some((t) => t.message.includes("修改项目设置失败")),
-    ).toBe(false);
-    // The dead session is logged (global console.error spy from beforeEach),
-    // not surfaced as a settings failure.
-    expect(consoleSpies[0]).toHaveBeenCalled();
+      h.clientRequests.filter((r) => r.method === "reloadPlugins"),
+    ).toHaveLength(1);
+    expect(shownToasts().at(-1)?.message).toBe("插件已重载。");
   });
 
-  it("serializes agent recreation across overlapping 立即重启 decisions", async () => {
+  it("/reload-plugins reports the plugins that failed to load", async () => {
     const { host } = await readyHost();
-    const agent = lastAgent();
-    let release: (() => void) | undefined;
-    const gate = new Promise<void>((r) => {
-      release = r;
-    });
-    agent.updateConfig.mockImplementation(() => gate);
-    const first = host.handleWebviewMessage({
-      command: "desktopRebuildDecision",
-      restart: true,
-    });
-    await vi.waitFor(() => expect(agent.updateConfig).toHaveBeenCalledTimes(1));
-    const second = host.handleWebviewMessage({
-      command: "desktopRebuildDecision",
-      restart: true,
-    });
-    // 第二次回执的重建必须排队等第一次完成，不能在同一会话上并发重建
-    // （并发会在重建中途删掉 CLI 会话条目并抛 "Session not found"）。
-    await new Promise((r) => setImmediate(r));
-    expect(agent.updateConfig).toHaveBeenCalledTimes(1);
-    release?.();
-    await Promise.all([first, second]);
-    expect(agent.updateConfig).toHaveBeenCalledTimes(2);
+    const orig = h.handleClientRequest;
+    h.handleClientRequest = (m: string, params?: unknown) =>
+      m === "reloadPlugins"
+        ? { plugins: [], failures: [{ path: "/p/bad", error: "boom" }] }
+        : orig(m, params);
+    try {
+      await host.handleWebviewMessage({ command: "reloadPlugins" });
+    } finally {
+      h.handleClientRequest = orig;
+    }
+    // 失败清单如实回显，不回滚已成功的那部分（spec 场景 11）。
+    expect(shownToasts().at(-1)?.message).toBe(
+      "插件已重载。部分插件加载失败：/p/bad: boom",
+    );
+  });
+
+  it("/reload-plugins failure surfaces as a toast, not a chat message", async () => {
+    const { host, sent } = await readyHost();
+    const restore = failRpc("reloadPlugins", "cli down");
+    try {
+      await host.handleWebviewMessage({ command: "reloadPlugins" });
+    } finally {
+      restore();
+    }
+    expect(shownToasts().at(-1)?.message).toContain("插件重载失败");
+    expect(sent("appendMessage")).toHaveLength(0);
   });
 
   it("listMarketplaces failure surfaces as a toast, not a chat message", async () => {
@@ -4430,7 +4352,14 @@ describe("misc commands", () => {
 
   // 插件市场操作成功提示（spec plugin「插件市场操作提示」2026-09-16 原型文案口径）：
   // 桌面端走 showToast，只断言文案逐字，不约束颜色/图标/位置等视觉形态。
+  // 插件变更类操作还会追加一次「待应用」提示（spec plugin「插件变更的就地重载」
+  // 场景 1），故断言用「包含」而非「最后一条」。
   describe("plugin marketplace success toasts", () => {
+    /** 已弹出的所有 toast 文案，按顺序。 */
+    function toastMessages(): string[] {
+      return shownToasts().map((t) => t.message);
+    }
+
     /** 覆盖某个 RPC 的返回值（提示文案要从回包/刷新后的列表里取名字与版本）。 */
     function rpcResult(method: string, result: unknown): () => void {
       const orig = h.handleClientRequest;
@@ -4475,7 +4404,11 @@ describe("misc commands", () => {
       } finally {
         restore();
       }
-      expect(shownToasts().at(-1)?.message).toBe("「团队市场」已更新 3 个插件");
+      expect(toastMessages()).toContain("「团队市场」已更新 3 个插件");
+      // 批量更新也是插件变更 ⇒ 追加一次「待应用」提示。
+      expect(toastMessages()).toContain(
+        "插件已变更。运行 /reload-plugins 使其生效。",
+      );
     });
 
     it("updateMarketplace with nothing to upgrade reports 已是最新", async () => {
@@ -4501,8 +4434,9 @@ describe("misc commands", () => {
       } finally {
         restore();
       }
-      expect(shownToasts().at(-1)?.message).toBe(
-        "已安装「demo」（作用域：project）",
+      expect(toastMessages()).toContain("已安装「demo」（作用域：project）");
+      expect(toastMessages()).toContain(
+        "插件已变更。运行 /reload-plugins 使其生效。",
       );
     });
 
@@ -4512,7 +4446,7 @@ describe("misc commands", () => {
         command: "uninstallPlugin",
         pluginId: "demo@团队市场",
       });
-      expect(shownToasts().at(-1)?.message).toBe("已卸载「demo」");
+      expect(toastMessages()).toContain("已卸载「demo」");
     });
 
     it("uninstallPlugin forwards the scope picked in the dialog", async () => {
@@ -4545,7 +4479,7 @@ describe("misc commands", () => {
       } finally {
         restore();
       }
-      expect(shownToasts().at(-1)?.message).toBe("已更新「demo」至 v1.2.0");
+      expect(toastMessages()).toContain("已更新「demo」至 v1.2.0");
     });
 
     it("setPluginScope reports the target scope", async () => {
@@ -4555,12 +4489,10 @@ describe("misc commands", () => {
         pluginId: "demo@团队市场",
         scope: "local",
       });
-      expect(shownToasts().at(-1)?.message).toBe(
-        "已更新「demo」的作用域：local",
-      );
+      expect(toastMessages()).toContain("已更新「demo」的作用域：local");
     });
 
-    it("enable/disable stay silent (not in the prototype's prompt set)", async () => {
+    it("enable/disable report no result toast, but still emit the pending hint", async () => {
       const { host } = await readyHost();
       await host.handleWebviewMessage({
         command: "enablePlugin",
@@ -4572,7 +4504,11 @@ describe("misc commands", () => {
         pluginId: "demo@团队市场",
         scope: "user",
       });
-      expect(shownToasts()).toHaveLength(0);
+      // 原型没给启用/禁用定义结果文案，但它是插件变更 ⇒ 每次变更各一次提示。
+      expect(toastMessages()).toEqual([
+        "插件已变更。运行 /reload-plugins 使其生效。",
+        "插件已变更。运行 /reload-plugins 使其生效。",
+      ]);
     });
   });
 

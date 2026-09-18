@@ -1293,6 +1293,37 @@ describe("PermissionManager", () => {
           (await permissionManager.checkPermission(context)).behavior,
         ).toBe("deny");
       });
+
+      // 插件变更的就地重载：内置插件被卸载时，它带来的授权不得留下。
+      it("should drop the rule and stop allowing it after removeInstanceAllowedRule", async () => {
+        permissionManager.addInstanceAllowedRule("Bash(node *spec-count.js*)");
+
+        const removed = permissionManager.removeInstanceAllowedRule(
+          "Bash(node *spec-count.js*)",
+        );
+
+        expect(removed).toBe(true);
+        expect(permissionManager.getInstanceAllowedRules()).not.toContain(
+          "Bash(node *spec-count.js*)",
+        );
+        const context: ToolPermissionContext = {
+          toolName: "Bash",
+          permissionMode: "default",
+          toolInput: {
+            command:
+              "node /usr/lib/node_modules/wave-agent-sdk/builtin/plugins/sdd/scripts/spec-count.js",
+          },
+        };
+        expect(
+          (await permissionManager.checkPermission(context)).behavior,
+        ).toBe("deny");
+      });
+
+      it("should report false when removing a rule that is not present", () => {
+        expect(
+          permissionManager.removeInstanceAllowedRule("Bash(node *nope.js*)"),
+        ).toBe(false);
+      });
     });
 
     describe("default mode with unrestricted tools", () => {

@@ -127,13 +127,12 @@ test.describe("桌面设置页「个性化 → 自动记忆规则」保存路径
         },
       });
 
-    // 保存路径只落盘 + 回执（PR-2）：不得因保存触发任何会话重建——真 host 若要走
-    // 重建会先弹确认框（`desktopRebuildPrompt`）并等用户回执，故「没有确认框、
-    // 没有重建回执」在 UI 上就等于「没有重建」；设置页自身仍是保存后的状态。
+    // 保存路径只落盘 + 回执（PR-2）：不得因保存触发任何会话重建或插件重载——
+    // 真 host 若要重建会先弹确认框并等用户回执，故「没有确认框、没有
+    // reloadPlugins 回执」在 UI 上就等于「没有重建」（spec plugin「插件变更的
+    // 就地重载」）；设置页自身仍是保存后的状态。
     await expect(webviewPage.locator(".confirm-dialog")).toHaveCount(0);
-    expect(
-      await postedMessage(webviewPage, "desktopRebuildDecision"),
-    ).toBeUndefined();
+    expect(await postedMessage(webviewPage, "reloadPlugins")).toBeUndefined();
     await expect(webviewPage.locator(".settings-page")).toBeVisible();
   });
 
