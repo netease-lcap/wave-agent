@@ -33,6 +33,13 @@ vi.mock("../../src/services/memory.js", () => ({
   getCombinedMemoryContent: vi.fn().mockResolvedValue(""),
 }));
 
+// `logStream.write` flushes asynchronously, so a log file can exist while its
+// content is still buffered. vi.waitFor defaults to a 1000ms timeout, which is
+// tight on slow IO (Windows CI + Defender scanning), so give the flush a wider
+// window instead of sleeping a fixed amount. Kept below vitest's 5000ms per-test
+// timeout so a genuine failure reports the assertion instead of a test timeout.
+const LOG_FLUSH_TIMEOUT_MS = 3000;
+
 describe("SubagentManager - Backgrounding Coverage", () => {
   let subagentManager: SubagentManager;
   let mockToolManager: ToolManager;
@@ -252,8 +259,6 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     expect(outputPath).toContain("wave-subagent-task_");
     expect(outputPath).toContain(".log");
 
-    await vi.waitFor(() => expect(fs.existsSync(outputPath)).toBe(true));
-
     // refreshSubagentState pulls from messageManager.getMessages on every
     // incremental callback; stub it to an empty list for this unit test.
     vi.mocked(instance.messageManager.getMessages).mockReturnValue([]);
@@ -273,12 +278,16 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       parameters: JSON.stringify({ file_path: "test.txt" }),
     });
 
-    // Wait for file write
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    const content = fs.readFileSync(outputPath, "utf8");
-    expect(content).toContain("Read");
-    expect(content).toContain("test.txt");
+    // logStream.write is async — wait for content, not just file existence
+    await vi.waitFor(
+      () => {
+        expect(fs.existsSync(outputPath)).toBe(true);
+        const content = fs.readFileSync(outputPath, "utf8");
+        expect(content).toContain("Read");
+        expect(content).toContain("test.txt");
+      },
+      { timeout: LOG_FLUSH_TIMEOUT_MS },
+    );
 
     // Cleanup
     if (fs.existsSync(outputPath)) {
@@ -322,12 +331,17 @@ describe("SubagentManager - Backgrounding Coverage", () => {
 
     await subagentManager.executeAgent(instance, "test prompt");
 
-    await vi.waitFor(() => expect(fs.existsSync(outputPath)).toBe(true));
-
-    const content = fs.readFileSync(outputPath, "utf8");
-    expect(content).toContain("Final response:");
-    expect(content).toContain("Build completed successfully");
-    expect(content).toContain("Agent completed");
+    // logStream.write is async — wait for content, not just file existence
+    await vi.waitFor(
+      () => {
+        expect(fs.existsSync(outputPath)).toBe(true);
+        const content = fs.readFileSync(outputPath, "utf8");
+        expect(content).toContain("Final response:");
+        expect(content).toContain("Build completed successfully");
+        expect(content).toContain("Agent completed");
+      },
+      { timeout: LOG_FLUSH_TIMEOUT_MS },
+    );
 
     // Cleanup
     if (fs.existsSync(outputPath)) {
@@ -374,13 +388,16 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     ).rejects.toThrow("Build failed with exit code 1");
 
     // logStream.write is async — wait for content, not just file existence
-    await vi.waitFor(() => {
-      const content = fs.existsSync(outputPath)
-        ? fs.readFileSync(outputPath, "utf8")
-        : "";
-      expect(content).toContain("Agent failed:");
-      expect(content).toContain("Build failed with exit code 1");
-    });
+    await vi.waitFor(
+      () => {
+        const content = fs.existsSync(outputPath)
+          ? fs.readFileSync(outputPath, "utf8")
+          : "";
+        expect(content).toContain("Agent failed:");
+        expect(content).toContain("Build failed with exit code 1");
+      },
+      { timeout: LOG_FLUSH_TIMEOUT_MS },
+    );
 
     // Cleanup
     if (fs.existsSync(outputPath)) {
@@ -415,12 +432,18 @@ describe("SubagentManager - Backgrounding Coverage", () => {
       "Rate limit exceeded (429): Too many requests",
     );
 
-    // Wait for file write
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    const content = fs.readFileSync(outputPath, "utf8");
-    expect(content).toContain("Error:");
-    expect(content).toContain("Rate limit exceeded (429): Too many requests");
+    // logStream.write is async — wait for content, not just file existence
+    await vi.waitFor(
+      () => {
+        expect(fs.existsSync(outputPath)).toBe(true);
+        const content = fs.readFileSync(outputPath, "utf8");
+        expect(content).toContain("Error:");
+        expect(content).toContain(
+          "Rate limit exceeded (429): Too many requests",
+        );
+      },
+      { timeout: LOG_FLUSH_TIMEOUT_MS },
+    );
 
     // Cleanup
     if (fs.existsSync(outputPath)) {
