@@ -347,9 +347,17 @@ export const MessageList = forwardRef<
     followOnAppend: true,
     getItemKey: (i) => visibleMessages[i].id,
     // Skip React re-renders for scroll-only updates: the virtualizer writes
-    // row transforms and the spacer height straight to the DOM, re-rendering
+    // row positions and the spacer height straight to the DOM, re-rendering
     // only when the visible range or isScrolling changes.
     directDomUpdates: true,
+    // Position rows with `top` instead of the default `transform:
+    // translate3d(…)`. A transform makes the row a containing block for its
+    // `position: fixed` descendants, so hover layers inside a message (the
+    // ContextTag / rewind-button Tooltips) were laid out against the row while
+    // using viewport coordinates: the tooltip landed a row's offset below the
+    // tag and its overflow grew the list — hovering an image tag pushed the
+    // list into scrolling and scrolled the tag away from the pointer.
+    directDomUpdatesMode: "position",
     // The virtualizer's default useFlushSync calls flushSync(rerender) whenever
     // notify(sync=true) fires — i.e. after a synchronous scroll compensation
     // (resizeItem on streaming row growth) or while isScrolling. measureElement
