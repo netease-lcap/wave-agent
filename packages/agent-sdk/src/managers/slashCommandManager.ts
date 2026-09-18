@@ -35,6 +35,9 @@ export class SlashCommandManager {
   private commands = new Map<string, SlashCommand>();
   private customCommands = new Map<string, CustomSlashCommand>();
   private skillCommandIds = new Set<string>();
+  /** Ids registered by plugins, so they can be dropped per-plugin and are not
+   * mistaken for disk-sourced custom commands. */
+  private pluginCommandIds = new Set<string>();
   private workdir: string;
   private currentCommandAbortController: AbortController | null = null;
 
@@ -337,6 +340,7 @@ export class SlashCommandManager {
       const namespacedName = `${pluginName}:${command.name}`;
 
       this.customCommands.set(namespacedId, command);
+      this.pluginCommandIds.add(namespacedId);
 
       // Generate description: prioritize custom description, otherwise use default description
       const description =
@@ -374,14 +378,45 @@ export class SlashCommandManager {
   }
 
   /**
+   * Drop every slash command contributed by a plugin, addressed by its plugin
+   * name. Removes the registry entry and the customCommands source entry.
+   * Called by the in-place plugin reload path before re-registering.
+   * @returns the number of commands removed
+   */
+  public unregisterPluginCommands(pluginName: string): number {
+    const prefix = `${pluginName}:`;
+    let removed = 0;
+    for (const commandId of Array.from(this.pluginCommandIds)) {
+      if (!commandId.startsWith(prefix)) {
+        continue;
+      }
+      this.pluginCommandIds.delete(commandId);
+      this.customCommands.delete(commandId);
+      this.unregisterCommand(commandId);
+      removed += 1;
+    }
+    if (removed > 0) {
+      logger?.debug(
+        `Unregistered ${removed} commands from plugin '${pluginName}'`,
+      );
+    }
+    return removed;
+  }
+
+  /**
    * Reload custom commands (useful for development)
    */
   public reloadCustomCommands(): void {
-    // Clear existing custom commands
-    for (const commandId of this.customCommands.keys()) {
+    // Reload only disk-sourced custom commands. Plugin commands live in the
+    // same map but are owned by the plugin lifecycle, so re-reading the disk
+    // must not drop them.
+    for (const [commandId] of this.customCommands) {
+      if (this.pluginCommandIds.has(commandId)) {
+        continue;
+      }
       this.unregisterCommand(commandId);
+      this.customCommands.delete(commandId);
     }
-    this.customCommands.clear();
 
     // Reload
     this.loadCustomCommands();

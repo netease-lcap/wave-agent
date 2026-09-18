@@ -313,11 +313,11 @@ test.describe("Desktop batch 2 feature screenshots", () => {
   });
 
   /**
-   * spec core/agent-config.md「配置变更的构造期副作用与重建」场景 4–6：插件变更
-   * （安装/卸载/启用/禁用/更新、内置 SDD 开关）落盘后桌面端弹确认框，只决定生效
-   * 时机——两按钮、无「取消」（Esc 等同「稍后重启」）。
+   * spec ecosystem/plugin.md「插件变更的就地重载」场景 12：插件变更（安装/卸载/
+   * 启用/禁用/更新、内置 SDD 开关）落盘后**不重建会话、不弹确认框**，只出现一次
+   * 中性提示，告诉用户敲 `/reload-plugins` 就地应用。
    */
-  test("settings: 插件变更重建确认框", async ({ webviewPage }) => {
+  test("settings: 插件变更待应用提示", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 1000, height: 720 });
     await setupSinglePane(injector);
@@ -326,26 +326,27 @@ test.describe("Desktop batch 2 feature screenshots", () => {
       language: "zh-CN",
       contextLength: 200,
     });
-    // 插件变更发生在「项目设置」（内置 SDD 开关）等视图，确认框盖在设置页上。
+    // 插件变更发生在「项目设置」（内置 SDD 开关）等视图，提示浮在设置页之上。
     await openSettingsPage(webviewPage);
     await webviewPage.getByRole("button", { name: "项目设置" }).click();
     await expect(
       webviewPage.getByRole("heading", { name: "项目设置" }),
     ).toBeVisible();
 
-    await injector.simulateExtensionMessage("desktopRebuildPrompt", {
-      total: 3,
-      busy: 1,
+    await injector.simulateExtensionMessage("showToast", {
+      toast: {
+        id: "toast-plugin-change",
+        message: "插件已变更。运行 /reload-plugins 使其生效。",
+      },
     });
-    const dialog = webviewPage.locator(".confirm-dialog");
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText("插件变更需要重启对话才能生效。");
-    await expect(dialog).toContainText(
-      "将重启 3 个对话，其中 1 个正在执行任务暂不重启。",
-    );
+    await expect(
+      webviewPage.getByText("插件已变更。运行 /reload-plugins 使其生效。"),
+    ).toBeVisible();
+    // 重建确认框已整体废止（spec「重建确认框已废止」）。
+    await expect(webviewPage.locator(".confirm-dialog")).toHaveCount(0);
     await screenshotWebp(
       webviewPage,
-      "../../docs/public/screenshots/desktop-settings-rebuild-prompt.webp",
+      "../../docs/public/screenshots/desktop-settings-plugin-change.webp",
     );
   });
 });

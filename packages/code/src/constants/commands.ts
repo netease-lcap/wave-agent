@@ -57,6 +57,12 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {
+    id: "reload-plugins",
+    name: "reload-plugins",
+    description: "Reload plugins in place, without restarting the session",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
+  {
     id: "btw",
     name: "btw",
     description: "Ask a side question without tool use",

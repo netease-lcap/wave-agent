@@ -52,6 +52,11 @@ import {
   type StdioAgentCallbacks,
 } from "wave-agent-sdk/stdio";
 import {
+  PLUGIN_CHANGE_PENDING_MESSAGE,
+  PLUGIN_RELOADED_MESSAGE,
+  type PluginReloadResult,
+} from "wave-agent-sdk";
+import {
   ensureCliUpToDate,
   loadBundledCliSource,
 } from "./stdio/binaryResolver";
@@ -3573,10 +3578,10 @@ export class DesktopHost {
         );
         break;
 
-      // 重建确认框（插件装卸等构造期副作用的生效时机）的回执：立即重启 →
-      // 只重建空闲会话；稍后重启（含 Esc）→ 不重建、不做惰性重建、一次性 toast。
-      case "desktopRebuildDecision":
-        await this.handleRebuildDecision(msg.restart as boolean);
+      // `/reload-plugins`：把磁盘上的插件状态就地换装进 CLI 进程内的全部 live
+      // 会话，不重建会话、不打断正在生成的回合（spec「插件变更的就地重载」）。
+      case "reloadPlugins":
+        await this.handleReloadPlugins();
         break;
 
       case "setThemeSource":
@@ -3954,7 +3959,7 @@ export class DesktopHost {
         break;
 
       // 更换安装作用域（设置页插件市场）：清各作用域启用记录并在目标作用域
-      // 启用，同属构造期副作用 → 复用 handlePluginMutation 的重建确认。
+      // 启用，同属插件变更 → 复用 handlePluginMutation 的落盘 + 待应用提示。
       case "setPluginScope":
         await this.handlePluginMutation("setPluginScope", {
           pluginId: msg.pluginId,
@@ -5203,37 +5208,31 @@ export class DesktopHost {
 
   /**
    * Server-side destroy + recreate with restored session, applied to every live
-   * agent (FR-031). Runs are serialized on `configRecreateTail`: the CLI bridge
-   * deletes a session entry while its updateConfig recreates it, so two
-   * overlapping applies (plugin toggle + config save / rapid re-toggle) on the
-   * same session would make the second fail with "Session not found" and leave
-   * the session permanently gone. A session that is already absent on the CLI
-   * (stale pool entry) is skipped and logged instead of aborting the whole
-   * apply — the write that triggered the apply has already succeeded.
+   * agent (FR-031). Only login / logout still use it (plugin changes wait for
+   * `/reload-plugins` now). Runs are serialized on `configRecreateTail`: the CLI
+   * bridge deletes a session entry while its updateConfig recreates it, so two
+   * overlapping applies on the same session would make the second fail with
+   * "Session not found" and leave the session permanently gone. A session that
+   * is already absent on the CLI (stale pool entry) is skipped and logged
+   * instead of aborting the whole apply — the operation that triggered the
+   * apply has already succeeded.
    */
-  private updateAgentConfig(
-    options: { idleOnly?: boolean } = {},
-  ): Promise<void> {
+  private updateAgentConfig(): Promise<void> {
     // Defer starting the run inside the chain: an async body executes
     // synchronously up to its first await, so invoking recreateAgentsForConfig
     // eagerly here would let overlapping calls interleave despite the chain.
     const chained = this.configRecreateTail.then(() =>
-      this.recreateAgentsForConfig(options),
+      this.recreateAgentsForConfig(),
     );
     this.configRecreateTail = chained.catch(() => {});
     return chained;
   }
 
-  private async recreateAgentsForConfig(
-    options: { idleOnly?: boolean } = {},
-  ): Promise<void> {
+  private async recreateAgentsForConfig(): Promise<void> {
     // 桌面不再下发任何会话级配置：应用级设置（模型经 `/model` 命令 / 用户偏好经
     // 用户级 settings.json + 实时重载）各有独立通路（spec「分层职责」）。这里只做
-    // 重建，让 agent 重新走一遍初始化（如登录后换 SSO 配置、插件开关生效）。
+    // 重建，让 agent 重新走一遍初始化（如登录后换 SSO 配置）。
     for (const [oldSid, agent] of [...this.agents]) {
-      // 「立即重启」只重建空闲会话：正在生成回复 / 有待确认权限 / 有运行中后台
-      // 任务的会话不打断、保持旧配置（spec 场景 5）。
-      if (options.idleOnly && this.isAgentBusy(agent)) continue;
       const wasStreaming = agent.isStreaming;
       try {
         await agent.updateConfig({});
@@ -5247,7 +5246,7 @@ export class DesktopHost {
           // session destroyed by an earlier failed recreate). Keep applying to
           // the remaining healthy sessions — the pane restores a dead session
           // from disk when it is re-selected. Do NOT surface this as a failed
-          // settings write: the plugin/config change itself already succeeded.
+          // login/logout: that operation itself already succeeded.
           console.error(
             `[DesktopHost] 会话 ${oldSid} 不在 CLI 上，跳过重建:`,
             error,
@@ -5269,55 +5268,40 @@ export class DesktopHost {
         }
       }
     }
-    // 只重建空闲会话时不得清空队列——未被重建的忙碌会话会因此丢掉排队消息
-    // （spec 边界「重建与流式/权限并存」）。
-    if (!options.idleOnly) await this.clearQueue();
-  }
-
-  /** 会话是否正在执行任务：生成回复 / 待确认权限 / 运行中后台任务（不打断清单）。 */
-  private isAgentBusy(agent: StdioAgent): boolean {
-    if (agent.isStreaming) return true;
-    if (agent.backgroundTasks.some((task) => task.status === "running")) {
-      return true;
-    }
-    for (const confirmation of this.pendingConfirmations.values()) {
-      if (confirmation.agent === agent) return true;
-    }
-    return false;
+    await this.clearQueue();
   }
 
   /**
-   * 插件装卸等**构造期副作用**落盘后：不做静默重建，先弹重建确认框让用户选择
-   * 时机（N = 受影响的 live 会话数、M = 其中正在执行任务暂不重启的数）；
-   * 无受影响的 live 会话时不弹框（spec「配置变更的构造期副作用与重建」场景 4）。
-   * 真正的重建由 `desktopRebuildDecision` 回执触发，本次不做任何登记，因此
-   * 「稍后重启」不会有惰性重建（场景 6）。
+   * 插件变更（装卸 / 启用禁用 / 更新 / 换作用域 / 内置开关）落盘后：**不重建任何
+   * 会话、不弹重建确认框**，只给一句一次性中性提示告知需要重载
+   * （docs/specs/ecosystem/plugin.md「插件变更的就地重载」；重建路径已整体废弃）。
    */
-  private promptRebuildForPluginChange(): void {
-    const agents = [...this.agents.values()];
-    const busy = agents.filter((agent) => this.isAgentBusy(agent)).length;
-    if (agents.length === 0) return;
-    this.postMessage({
-      command: "desktopRebuildPrompt",
-      total: agents.length,
-      busy,
-    });
+  private notifyPluginChange(): void {
+    this.showToast({ message: PLUGIN_CHANGE_PENDING_MESSAGE });
   }
 
   /**
-   * 重建确认框回执：`restart` = true（「立即重启」）只重建空闲会话；false
-   * （「稍后重启」或 `Esc`）本次不重建、不做惰性重建，仅一次性 toast 告知变更
-   * 只对新建对话生效（spec 场景 5/6）。
+   * `/reload-plugins`：让 CLI 侧把磁盘上的插件状态就地换装进其进程内的全部 live
+   * 会话（不重建会话、不打断正在生成的回合），完成后给一次性提示；有插件加载失败
+   * 时如实回显失败清单——不回滚已成功的那部分（spec 场景 11）。
    */
-  private async handleRebuildDecision(restart: boolean): Promise<void> {
-    if (!restart) {
-      this.showToast({
-        message: "已保存；运行中的对话仍使用旧设置，新开对话自动生效",
-        type: "success",
-      });
-      return;
+  private async handleReloadPlugins(): Promise<void> {
+    try {
+      const result = (await this.utilityClientFor(this.currentHost).request(
+        "reloadPlugins",
+      )) as PluginReloadResult;
+      if (result.failures.length > 0) {
+        this.showToast({
+          message: `${PLUGIN_RELOADED_MESSAGE}部分插件加载失败：${result.failures
+            .map((failure) => `${failure.path}: ${failure.error}`)
+            .join("；")}`,
+        });
+        return;
+      }
+      this.showToast({ message: PLUGIN_RELOADED_MESSAGE });
+    } catch (error) {
+      this.showToast({ message: `插件重载失败: ${error}` });
     }
-    await this.updateAgentConfig({ idleOnly: true });
   }
 
   /** Lazily create the electron-updater service bound to the S0–S6 state
@@ -5812,10 +5796,9 @@ export class DesktopHost {
       });
       const plugins = await this.handleListPlugins();
       this.showPluginMutationToast(method, params, plugins);
-      // 插件装卸是构造期副作用（插件在构造期注册技能/命令/MCP），必须重建才能
-      // 生效——但不得静默重建：先弹重建确认框由用户选时机（spec「配置变更的
-      // 构造期副作用与重建」）。
-      this.promptRebuildForPluginChange();
+      // 插件装卸不再重建会话：只提示一次，由用户敲 /reload-plugins 就地生效
+      // （docs/specs/ecosystem/plugin.md「插件变更的就地重载」）。
+      this.notifyPluginChange();
     } catch (error) {
       this.showToast({ message: `插件操作失败: ${error}` });
     }
@@ -5916,9 +5899,9 @@ export class DesktopHost {
         // 归属键：请求所用 workdir 恒回带（同 handleGetProjectSettings）
         workdir,
       });
-      // 内置插件开关（项目设置 SDD）同属构造期副作用：重建前先确认（mirrors
-      // handlePluginMutation / spec builtin-sdd-plugin 场景 2）。
-      this.promptRebuildForPluginChange();
+      // 内置插件开关（项目设置 SDD）同样不再重建：只提示一次，由 /reload-plugins
+      // 就地生效（spec builtin-sdd-plugin /「插件变更的就地重载」）。
+      this.notifyPluginChange();
     } catch (error) {
       this.showToast({ message: `修改项目设置失败: ${error}` });
     }
@@ -6035,6 +6018,9 @@ export class DesktopHost {
             ? `${marketLabel}已更新 ${updated} 个插件`
             : `${marketLabel}已是最新`,
       });
+      // 批量更新同属插件变更：只有真的升级了插件才产生「待应用」信号
+      // （spec plugin「插件变更的就地重载」场景 1）。
+      if (updated > 0) this.notifyPluginChange();
     } catch (error) {
       this.showToast({ message: `更新市场失败: ${error}` });
     }
@@ -6417,6 +6403,11 @@ export class DesktopHost {
       const localCommands = [
         { id: "config", name: "config", description: "打开配置设置" },
         { id: "plugin", name: "plugin", description: "打开插件市场" },
+        {
+          id: "reload-plugins",
+          name: "reload-plugins",
+          description: "就地重载插件（不重启对话）",
+        },
         { id: "mcp", name: "mcp", description: "打开 MCP 服务器管理" },
         { id: "status", name: "status", description: "查看当前状态" },
         { id: "compact", name: "compact", description: "手动压缩对话历史" },

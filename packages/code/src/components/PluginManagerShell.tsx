@@ -13,9 +13,9 @@ import { PluginManagerContext } from "../contexts/PluginManagerContext.js";
 export const PluginManagerShell: React.FC<{
   children?: React.ReactNode;
   onCancel?: () => void;
-  onPluginInstalled?: () => void;
-}> = ({ children, onCancel, onPluginInstalled }) => {
-  const pluginManager = usePluginManager({ onPluginInstalled });
+  onPluginChanged?: () => void;
+}> = ({ children, onCancel, onPluginChanged }) => {
+  const pluginManager = usePluginManager({ onPluginChanged });
   const { state, actions, discoverablePlugins } = pluginManager;
 
   const setView = (view: ViewType) => {

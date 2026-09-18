@@ -41,6 +41,35 @@ export class LspManager implements ILspManager {
     logger?.debug(`Registered LSP server for ${language}`);
   }
 
+  /**
+   * Drop every LSP server contributed by a plugin (matched on pluginRoot),
+   * stopping any process already started for those languages so the next
+   * request starts the reloaded command instead of reusing the stale one.
+   * Called by the in-place plugin reload path before re-registering.
+   * @returns the number of servers removed
+   */
+  async unregisterServersForPlugin(pluginRoot: string): Promise<number> {
+    let removed = 0;
+    for (const [language, config] of Object.entries(this.config)) {
+      if (config.pluginRoot !== pluginRoot) {
+        continue;
+      }
+      delete this.config[language];
+      const lspProc = this.processes.get(language);
+      if (lspProc) {
+        this.processes.delete(language);
+        await this.stopProcess(language, lspProc);
+      }
+      removed += 1;
+    }
+    if (removed > 0) {
+      logger?.debug(
+        `Unregistered ${removed} LSP servers for plugin root ${pluginRoot}`,
+      );
+    }
+    return removed;
+  }
+
   private async loadConfig(): Promise<void> {
     const lspJsonPath = join(this.workdir, ".lsp.json");
     try {
@@ -444,26 +473,33 @@ export class LspManager implements ILspManager {
     }
   }
 
+  private async stopProcess(
+    language: string,
+    lspProc: LspProcess,
+  ): Promise<void> {
+    try {
+      // Try graceful shutdown
+      const timeout = lspProc.config.shutdownTimeout || 2000;
+      await this.sendRequest(lspProc, "shutdown", {}, timeout);
+      await this.sendNotification(lspProc, "exit", {});
+      // Give it a moment to exit
+      if (timeout > 100) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    } catch (error) {
+      logger?.debug(
+        `Failed to gracefully shutdown LSP for ${language}: ${error}`,
+      );
+    } finally {
+      if (!lspProc.process.killed) {
+        lspProc.process.kill();
+      }
+    }
+  }
+
   async cleanup(): Promise<void> {
     for (const [language, lspProc] of this.processes.entries()) {
-      try {
-        // Try graceful shutdown
-        const timeout = lspProc.config.shutdownTimeout || 2000;
-        await this.sendRequest(lspProc, "shutdown", {}, timeout);
-        await this.sendNotification(lspProc, "exit", {});
-        // Give it a moment to exit
-        if (timeout > 100) {
-          await new Promise((resolve) => setTimeout(resolve, 100));
-        }
-      } catch (error) {
-        logger?.debug(
-          `Failed to gracefully shutdown LSP for ${language}: ${error}`,
-        );
-      } finally {
-        if (!lspProc.process.killed) {
-          lspProc.process.kill();
-        }
-      }
+      await this.stopProcess(language, lspProc);
     }
     this.processes.clear();
   }

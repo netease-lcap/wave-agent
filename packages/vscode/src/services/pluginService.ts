@@ -124,6 +124,18 @@ export class PluginService {
   }
 
   /**
+   * 插件就地重载：让该 CLI 进程把它托管的全部 live 会话按磁盘上的插件状态就地
+   * 换装（不重建会话、不打断正在生成的回合，docs/specs/ecosystem/plugin.md
+   * 「插件变更的就地重载」）。返回失败清单供宿主如实提示，失败不回滚。
+   */
+  public async reloadPlugins() {
+    return (await this.utilityClient.request("reloadPlugins")) as {
+      plugins: string[];
+      failures: Array<{ path: string; error: string }>;
+    };
+  }
+
+  /**
    * 批量更新插件：按当前清单把该市场内已安装插件升级到最新，不拉取检出
    * （清单刷新由打开插件市场视图时的 refreshMarketplaces 承担，spec A-013）。
    * 返回实际升级的插件数（0 = 已是最新），宿主据此提示。

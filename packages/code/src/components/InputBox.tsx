@@ -100,7 +100,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
     currentModel,
     configuredModels,
     setModel,
-    recreateAgent,
+    reloadPlugins,
+    notifyPluginChange,
+    pluginHint,
     recallQueuedMessage,
     queuedMessages,
     setIsBtwActive,
@@ -195,6 +197,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     onAskBtw: askBtw,
     onClearMessages: clearMessages,
     onCompact: compact,
+    onReloadPlugins: reloadPlugins,
     onAddDir: addDir,
     onHasSlashCommand: hasSlashCommand,
     onAbortMessage: abortMessage,
@@ -410,7 +413,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
       {showPluginManager && (
         <PluginManagerShell
           onCancel={() => setShowPluginManager(false)}
-          onPluginInstalled={recreateAgent}
+          onPluginChanged={notifyPluginChange}
         />
       )}
 
@@ -482,6 +485,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
                     latestTotalTokens={latestTotalTokens}
                     maxInputTokens={maxInputTokens}
                     showLoginHint={showLoginHint}
+                    pluginHint={pluginHint}
                   />
                 </Box>
               </Box>

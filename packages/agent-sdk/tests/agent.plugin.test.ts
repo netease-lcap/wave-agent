@@ -199,4 +199,61 @@ describe("Agent Plugin Integration", () => {
     const textBlock = lastMessage.blocks[0] as TextBlock;
     expect(textBlock.customCommandContent).toBe("Hello World!");
   });
+
+  // 插件变更的就地重载（docs/specs/ecosystem/plugin.md「插件变更的就地重载」
+  // 场景 2 / 3）：同一个会话里换装，会话 id 不变，卸载掉的能力随之消失。
+  it("should swap plugin capabilities in place without touching the session", async () => {
+    const mockManifest = {
+      name: "test-plugin",
+      description: "A test plugin",
+      version: "1.0.0",
+    };
+    vi.spyOn(PluginLoader, "loadManifest").mockResolvedValue(mockManifest);
+    vi.spyOn(PluginLoader, "loadCommands").mockReturnValue([
+      {
+        id: "hello",
+        name: "hello",
+        description: "Say hello",
+        filePath: "/test/workdir/plugins/test-plugin/commands/hello.md",
+        content: "Hello world",
+      },
+    ] as unknown as CustomSlashCommand[]);
+
+    const agent = await Agent.create({
+      workdir,
+      plugins: [{ type: "local", path: "plugins/test-plugin" }],
+    });
+    activeAgent = agent;
+    const sessionId = agent.sessionId;
+    const messagesBefore = agent.messages.length;
+    expect(
+      agent.getSlashCommands().some((c) => c.id === "test-plugin:hello"),
+    ).toBe(true);
+
+    // 磁盘上该插件已卸载（命令消失），同时多出一个技能命令。
+    vi.spyOn(PluginLoader, "loadCommands").mockReturnValue([]);
+    vi.mocked(SkillManager.prototype.getAvailableSkills).mockReturnValue([
+      {
+        name: "test-plugin:new-skill",
+        description: "A plugin skill",
+        type: "plugin",
+        skillPath: "/test/workdir/plugins/test-plugin/skills/new-skill",
+        pluginName: "test-plugin",
+      },
+    ] as unknown as ReturnType<
+      typeof SkillManager.prototype.getAvailableSkills
+    >);
+
+    const result = await agent.reloadPlugins();
+
+    expect(result.failures).toEqual([]);
+    expect(result.plugins).toContain("test-plugin");
+    // 就地：会话未重建、消息未清空。
+    expect(agent.sessionId).toBe(sessionId);
+    expect(agent.messages.length).toBe(messagesBefore);
+    const commands = agent.getSlashCommands();
+    expect(commands.some((c) => c.id === "test-plugin:hello")).toBe(false);
+    // 插件技能带来的斜杠命令在重载时重新派生。
+    expect(commands.some((c) => c.id === "test-plugin:new-skill")).toBe(true);
+  });
 });

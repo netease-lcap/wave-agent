@@ -502,6 +502,30 @@ export class McpManager {
   }
 
   /**
+   * Drop every MCP server contributed by a plugin (matched on pluginRoot),
+   * disconnecting each one. Needed instead of re-adding under the same name
+   * because addServer refuses a name that is already registered.
+   * Called by the in-place plugin reload path before re-registering.
+   * @returns the number of servers removed
+   */
+  removeServersForPlugin(pluginRoot: string): number {
+    let removed = 0;
+    for (const [name, server] of Array.from(this.servers.entries())) {
+      if (server.config.pluginRoot !== pluginRoot) {
+        continue;
+      }
+      this.removeServer(name);
+      removed += 1;
+    }
+    if (removed > 0) {
+      logger?.debug(
+        `Removed ${removed} MCP servers for plugin root ${pluginRoot}`,
+      );
+    }
+    return removed;
+  }
+
+  /**
    * Remove a server from a persisted config file (user or project scope),
    * then disconnect and drop it from the in-memory registry.
    * @param scope - "user" removes from ~/.wave/mcp.json; "project" removes from <workdir>/.mcp.json

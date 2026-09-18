@@ -374,6 +374,45 @@ describe("SubagentManager registerPluginAgents", () => {
     expect(pluginAgents[0].name).toBe("plugin-a:agent-z");
     expect(pluginAgents[1].name).toBe("plugin-b:agent-a");
   });
+
+  // 插件变更的就地重载（docs/specs/ecosystem/plugin.md「插件变更的就地重载」场景 3）。
+  it("should drop only the named plugin's agents on unregisterPluginAgents", async () => {
+    await subagentManager.loadConfigurations();
+    subagentManager.registerPluginAgents("plugin-a", [
+      {
+        name: "agent-z",
+        description: "Agent Z",
+        systemPrompt: "Prompt",
+        filePath: "/plugin-a/agents/agent-z.md",
+        scope: "plugin",
+        priority: 2,
+        pluginRoot: "/plugin-a",
+      },
+    ]);
+    subagentManager.registerPluginAgents("plugin-b", [
+      {
+        name: "agent-a",
+        description: "Agent A",
+        systemPrompt: "Prompt",
+        filePath: "/plugin-b/agents/agent-a.md",
+        scope: "plugin",
+        priority: 2,
+        pluginRoot: "/plugin-b",
+      },
+    ]);
+
+    const removed = subagentManager.unregisterPluginAgents("plugin-a");
+
+    expect(removed).toBe(1);
+    const pluginAgents = subagentManager
+      .getConfigurations()
+      .filter((c) => c.scope === "plugin");
+    expect(pluginAgents.map((c) => c.name)).toEqual(["plugin-b:agent-a"]);
+  });
+
+  it("should report 0 when unregistering plugin agents before any configuration is loaded", () => {
+    expect(subagentManager.unregisterPluginAgents("my-plugin")).toBe(0);
+  });
 });
 
 describe("SubagentManager.cleanup()", () => {

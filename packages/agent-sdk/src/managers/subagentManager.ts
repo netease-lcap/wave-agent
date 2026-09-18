@@ -329,6 +329,25 @@ export class SubagentManager {
   }
 
   /**
+   * Drop every subagent contributed by a plugin, addressed by its plugin name.
+   * Running instances are deliberately left alone — an in-place reload must not
+   * interrupt work already in flight. Called by the plugin reload path before
+   * re-registering.
+   * @returns the number of configurations removed
+   */
+  unregisterPluginAgents(pluginName: string): number {
+    if (this.cachedConfigurations === null) {
+      return 0;
+    }
+    const prefix = `${pluginName}:`;
+    const before = this.cachedConfigurations.length;
+    this.cachedConfigurations = this.cachedConfigurations.filter(
+      (config) => !config.name.startsWith(prefix),
+    );
+    return before - this.cachedConfigurations.length;
+  }
+
+  /**
    * Create a new subagent instance with isolated managers
    */
   async createInstance(

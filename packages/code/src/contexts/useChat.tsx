@@ -31,6 +31,8 @@ import {
   type WorktreeSession,
   OPERATION_CANCELLED_BY_USER,
   extractLatestTotalTokens,
+  PLUGIN_CHANGE_PENDING_MESSAGE,
+  PLUGIN_RELOADED_MESSAGE,
 } from "wave-agent-sdk";
 import { logger } from "../utils/logger.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
@@ -172,8 +174,10 @@ export interface ChatContextType {
   workingDirectory: string;
   version?: string;
   workdir?: string;
-  // Agent recreation (e.g. after plugin install)
-  recreateAgent: () => void;
+  // Plugin in-place reload (docs/specs/ecosystem/plugin.md「插件变更的就地重载」)
+  reloadPlugins: () => Promise<void>;
+  notifyPluginChange: () => void;
+  pluginHint: string | null;
 }
 
 const ChatContext = createContext<ChatContextType | null>(null);
@@ -906,32 +910,50 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     ],
   );
 
-  // Recreate agent (e.g. after plugin install) — destroys current agent and reinitializes
-  const recreateAgent = useCallback(() => {
-    const currentSessionId = agentRef.current?.sessionId;
-    if (agentRef.current) {
-      try {
-        agentRef.current.destroy();
-      } catch {
-        // Ignore destroy errors
+  // 插件变更落盘后只置一个「待应用」信号并提示一次，不再重建 Agent；真正换装由
+  // 用户敲 /reload-plugins 触发，在当前会话内完成（docs/specs/ecosystem/plugin.md
+  // 「插件变更的就地重载」：会…不重建、不打断回合、不新建会话）。
+  const [pluginHint, setPluginHint] = useState<string | null>(null);
+  const pluginHintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showPluginHint = useCallback((message: string) => {
+    setPluginHint(message);
+    if (pluginHintTimer.current) {
+      clearTimeout(pluginHintTimer.current);
+    }
+    // 一次性提示：数秒后自行消失，不留常驻标识（spec「插件变更提示」）。
+    pluginHintTimer.current = setTimeout(() => setPluginHint(null), 8000);
+  }, []);
+
+  const notifyPluginChange = useCallback(() => {
+    showPluginHint(PLUGIN_CHANGE_PENDING_MESSAGE);
+  }, [showPluginHint]);
+
+  const reloadPlugins = useCallback(async () => {
+    const agent = agentRef.current;
+    if (!agent) return;
+    try {
+      const result = await agent.reloadPlugins();
+      // 换装后本进程各会话的能力已变，UI 侧的命令 / 子代理 / 技能列表同步重读。
+      setSlashCommands(agent.getSlashCommands?.() || []);
+      setAgentDefinitions(agent.getSubagentConfigurations?.() || []);
+      setSkills(agent.getSkillMetadata?.() || []);
+      if (result.failures.length > 0) {
+        // 失败不回滚：如实提示，会话继续可用（spec 场景 11）。
+        showPluginHint(
+          `${PLUGIN_RELOADED_MESSAGE}部分插件加载失败：${result.failures
+            .map((failure) => `${failure.path}: ${failure.error}`)
+            .join("；")}`,
+        );
+      } else {
+        showPluginHint(PLUGIN_RELOADED_MESSAGE);
       }
+    } catch (error) {
+      showPluginHint(
+        `插件重载失败：${error instanceof Error ? error.message : String(error)}`,
+      );
     }
-    agentRef.current = null;
-    setMessages([]);
-    setMcpServerStatuses([]);
-    setSlashCommands([]);
-    setAgentDefinitions([]);
-    setSkills([]);
-    setSessionId("");
-    setIsLoading(false);
-    setLatestTotalTokens(0);
-    setMaxInputTokens(200000);
-    setIsCommandRunning(false);
-    setIsCompacting(false);
-    if (currentSessionId) {
-      initializeAgent(currentSessionId);
-    }
-  }, [initializeAgent]);
+  }, [showPluginHint]);
 
   // Run initial agent creation
   useEffect(() => {
@@ -1416,7 +1438,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     workingDirectory,
     version,
     workdir,
-    recreateAgent,
+    reloadPlugins,
+    notifyPluginChange,
+    pluginHint,
   };
 
   return (

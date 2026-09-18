@@ -141,11 +141,15 @@ export interface RealHost {
 /**
  * The real CLI rejects in-flight RPCs with "Session not found" while it is
  * recreating a session (`updateConfig` → destroy + `Agent.create`), which the
- * host triggers for every live agent on a settings write / login / plugin
- * change — and `backgroundTasksChange` notifications reach the host during that
- * same window. Any host-side promise that forgets a catch therefore surfaces
- * here as an unhandled rejection (fatal under Node's default policy), and the
- * unit layer can never see it because every RPC is mocked there.
+ * host still triggers for login / logout — and `backgroundTasksChange`
+ * notifications reach the host during that same window. Any host-side promise
+ * that forgets a catch therefore surfaces here as an unhandled rejection (fatal
+ * under Node's default policy), and the unit layer can never see it because
+ * every RPC is mocked there.
+ *
+ * Plugin changes no longer recreate anything (they wait for `/reload-plugins`,
+ * spec ecosystem/plugin.md「插件变更的就地重载」), so they are not a source of
+ * this window anymore.
  *
  * The suite registers its own listener (so the leak survives long enough to be
  * reported) and fails the test for *any* rejection — there is no allow-list:

@@ -549,5 +549,51 @@ describe("HookManager", () => {
       );
       expect(config?.PostToolUse?.[1].hooks[0].command).toBe("wave-edit-hook");
     });
+
+    // 插件变更的就地重载（docs/specs/ecosystem/plugin.md「插件变更的就地重载」
+    // 场景 3 / 6）：反注册按插件根路径隔离，且同根重复注册不叠加。
+    it("unregisterPluginHooks drops only that plugin root's hooks", () => {
+      manager.registerPluginHooks("/plugin/a", {
+        SessionStart: [
+          { hooks: [{ type: "command" as const, command: "a-hook" }] },
+        ],
+      });
+      manager.registerPluginHooks("/plugin/b", {
+        PostToolUse: [
+          {
+            matcher: "Read",
+            hooks: [{ type: "command" as const, command: "b-hook" }],
+          },
+        ],
+      });
+
+      expect(manager.unregisterPluginHooks("/plugin/a")).toBe(true);
+
+      expect(manager.hasHooks("SessionStart")).toBe(false);
+      expect(manager.hasHooks("PostToolUse", "Read")).toBe(true);
+      expect(manager.getPluginHooks().SessionStart).toBeUndefined();
+      expect(manager.getPluginHooks().PostToolUse).toHaveLength(1);
+    });
+
+    it("unregisterPluginHooks reports false for an unknown plugin root", () => {
+      expect(manager.unregisterPluginHooks("/plugin/unknown")).toBe(false);
+    });
+
+    it("re-registering the same plugin root does not double its hooks", () => {
+      const pluginHooks = {
+        SessionStart: [
+          {
+            hooks: [
+              { type: "command" as const, command: "plugin-session-start" },
+            ],
+          },
+        ],
+      };
+
+      manager.registerPluginHooks("/plugin/root", pluginHooks);
+      manager.registerPluginHooks("/plugin/root", pluginHooks);
+
+      expect(manager.getConfiguration()?.SessionStart).toHaveLength(1);
+    });
   });
 });
