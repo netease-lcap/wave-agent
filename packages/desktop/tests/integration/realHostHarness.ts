@@ -129,7 +129,15 @@ export interface RealHost {
   tree(): TreeSession[];
   /** Everything the host streamed into a pane (concatenated updateStreamingContent chunks). */
   streamedText(paneId?: string): string;
-  /** Run one real turn in a pane; resolves with the messages it produced. */
+  /**
+   * Run one real turn in a pane; resolves with the messages it produced.
+   *
+   * Gated on the pane's `setInitialState` still being in `messages` (it means
+   * the pane is bound and its state has been pushed) — so calling `clear()`
+   * right before a turn leaves nothing for the gate to match, and only a
+   * message that re-pushes pane state (a session switch / restore, NOT a
+   * rebuild: recreating an agent never re-sends it) can restore it.
+   */
   turn(text: string, paneId?: string): Promise<HostMessage[]>;
   close(): Promise<void>;
 }
