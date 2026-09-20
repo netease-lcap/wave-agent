@@ -23,8 +23,8 @@
       "default": "./dist/types/index.js"
     },
     "./constants": {
-      "types": "./dist/constants/tools.d.ts",
-      "default": "./dist/constants/tools.js"
+      "types": "./dist/constants/index.d.ts",
+      "default": "./dist/constants/index.js"
     },
     "./stdio": {
       "types": "./dist/stdio/index.d.ts",
