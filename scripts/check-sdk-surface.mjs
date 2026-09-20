@@ -68,12 +68,14 @@ const HOST_CLOSURE_ALLOWED = [];
 /** `/host` 闭包源码体积上限（当前实测约 20 KB，留一个数量级的余量）。 */
 const HOST_CLOSURE_BUDGET = 200 * 1024;
 
-/** 逐个入口检查"可选平台包缺席时能否加载"。 */
+/**
+ * 逐个入口检查"可选平台包缺席时能否加载"。表=package.json exports 里**有 subpath** 的
+ * 那几条（`./stdio` 已收口，只经 `/host` 可达，故不单列——`/host` 会把它一起加载）。
+ */
 const ENTRIES = {
   "": "index.js",
   types: "types/index.js",
   constants: "constants/index.js",
-  stdio: "stdio/index.js",
   host: "host/index.js",
 };
 
@@ -311,6 +313,29 @@ if (sdkPkg.sideEffects !== false) {
   console.log(`[OK  ] ${"sideEffects".padEnd(14)} 声明在位`);
 }
 
+// ── 5. exports 的 subpath 表与上面的 ENTRIES 一致 ──────────────────────────
+// ENTRIES 是手写的，漏登记一个 subpath，第 3 项检查就会**静默**跳过它（@vscode 地雷
+// 正是从某个未被检查的入口漏进宿主产物的）。所以强制两者相等：新增 subpath 必须
+// 同步登记，否则这里红。
+const exportedSubpaths = Object.keys(sdkPkg.exports ?? {})
+  .filter((key) => key !== "." && key !== "./package.json" && key !== "./*")
+  .map((key) => key.replace(/^\.\//, ""))
+  .sort();
+const checkedEntries = Object.keys(ENTRIES)
+  .filter((name) => name !== "")
+  .sort();
+if (exportedSubpaths.join(",") !== checkedEntries.join(",")) {
+  failures.push(
+    `package.json exports 的 subpath 与自检入口表不一致：` +
+      `exports=[${exportedSubpaths.join(", ")}]，ENTRIES=[${checkedEntries.join(", ")}] —— ` +
+      "新增 subpath 必须同步登记到本脚本的 ENTRIES。",
+  );
+} else {
+  console.log(
+    `[OK  ] ${"exports".padEnd(14)} subpath 已全部登记（${exportedSubpaths.length} 个）`,
+  );
+}
+
 if (failures.length > 0) {
   console.error("\nSDK 公共面自检失败：\n");
   for (const failure of failures) console.error(`  - ${failure}`);
@@ -319,5 +344,5 @@ if (failures.length > 0) {
 }
 
 console.log(
-  "\nSDK 公共面自检通过（导入面 + /host 闭包 + 可选依赖 + sideEffects）。",
+  "\nSDK 公共面自检通过（导入面 + /host 闭包 + 可选依赖 + exports 一致 + sideEffects）。",
 );

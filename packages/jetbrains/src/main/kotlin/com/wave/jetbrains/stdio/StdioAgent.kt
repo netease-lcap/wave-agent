@@ -45,7 +45,7 @@ interface AgentCallbacks {
 
 /**
  * Typed business wrapper over StdioClient. Caches state and routes notifications.
- * Mirrors agent-sdk/src/stdio/stdioAgent.ts (wave-agent-sdk/stdio).
+ * Mirrors agent-sdk/src/stdio/stdioAgent.ts (wave-agent-sdk/host).
  */
 class StdioAgent(
     private val client: StdioClient,
