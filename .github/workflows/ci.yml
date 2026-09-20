@@ -333,6 +333,91 @@ jobs:
         if: steps.filter.outputs.contract == 'true'
         run: node scripts/audit-webview-commands.mjs
 
+  sdk-surface:
+    runs-on: ubuntu-latest
+    # PR gate：SDK 公共面 / 宿主边界自检（scripts/check-sdk-surface.mjs）。四项：
+    #   ① 宿主包只能从允许的 SDK 子路径导入（desktop/vscode → `/host`，webview →
+    #      `/types` + `/constants`；桶入口与 `dist/...` 深路径都算违规）；
+    #   ② `/host` 入口的依赖闭包必须零第三方依赖且在体积预算内；
+    #   ③ 把 `@vscode/*` 从解析环境里去掉后每个 SDK 入口仍能加载（可选平台包只许
+    #      惰性解析——v1.2.5 崩的就是顶层 re-export）；
+    #   ④ `sideEffects: false` 在位。
+    # 与 host-bundle-load 看**产物**不同，这里只看依赖与入口的形状，秒级，所以放 PR 档。
+    if: github.event_name != 'push'
+
+    strategy:
+      matrix:
+        node-version: [22]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Detect code changes
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            sdk:
+              - 'packages/agent-sdk/src/**'
+              - 'packages/agent-sdk/package.json'
+              - 'packages/desktop/src/**'
+              - 'packages/vscode/src/**'
+              - 'packages/webview/src/**'
+              - 'scripts/check-sdk-surface.mjs'
+              - '.github/workflows/ci.yml'
+
+      # 与 host-bundle-load 同一套 pnpm 缓存策略（见那边的注释）。
+      - name: Cache pnpm install
+        if: steps.filter.outputs.sdk == 'true'
+        id: pnpm-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/setup-pnpm
+          key: pnpm-setup-v5-${{ runner.os }}-${{ runner.arch }}-11.9.0
+
+      - name: Add cached pnpm to PATH
+        if: steps.filter.outputs.sdk == 'true' && steps.pnpm-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          PNPM_HOME="${USERPROFILE:-$HOME}/.cache/setup-pnpm/node_modules/.bin"
+          PNPM_BIN="$PNPM_HOME/bin"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PNPM_HOME="${PNPM_HOME//\//\\}"
+            PNPM_BIN="${PNPM_BIN//\//\\}"
+          fi
+          echo "$PNPM_HOME" >> "$GITHUB_PATH"
+          echo "$PNPM_BIN" >> "$GITHUB_PATH"
+          echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
+
+      - name: Setup pnpm (cache miss)
+        if: steps.filter.outputs.sdk == 'true' && steps.pnpm-cache.outputs.cache-hit != 'true'
+        uses: pnpm/action-setup@v5
+        with:
+          version: 11.9.0
+          dest: ~/.cache/setup-pnpm
+          run_install: false
+
+      - name: Setup Node.js
+        if: steps.filter.outputs.sdk == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        if: steps.filter.outputs.sdk == 'true'
+        run: pnpm install --frozen-lockfile
+
+      # 只看 SDK 自己的 dist（闭包与入口加载检查都基于它），不构建宿主产物。
+      - name: Build SDK
+        if: steps.filter.outputs.sdk == 'true'
+        run: pnpm -F wave-agent-sdk build
+
+      - name: Check SDK surface
+        if: steps.filter.outputs.sdk == 'true'
+        run: node scripts/check-sdk-surface.mjs
+
   host-bundle-load:
     runs-on: ubuntu-latest
     # Post-merge 宿主产物加载自检（scripts/check-host-bundles.mjs）。
