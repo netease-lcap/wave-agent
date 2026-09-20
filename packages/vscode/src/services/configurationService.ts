@@ -4,7 +4,7 @@ import type {
   UserPreferenceSettings,
   UserPreferenceSettingsView,
   UserPreferenceSource,
-} from "wave-agent-sdk/types";
+} from "wave-agent-sdk/host";
 
 export interface ConfigurationData {
   language?: string;

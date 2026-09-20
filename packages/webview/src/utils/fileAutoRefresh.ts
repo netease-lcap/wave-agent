@@ -7,10 +7,7 @@
  * a tool's target path refers to the file currently shown in the panel.
  */
 
-import {
-  EDIT_TOOL_NAME,
-  WRITE_TOOL_NAME,
-} from "wave-agent-sdk/dist/constants/tools.js";
+import { EDIT_TOOL_NAME, WRITE_TOOL_NAME } from "wave-agent-sdk/constants";
 import type { Message, ToolBlock } from "../types";
 import { normalizeFilePath } from "./messageUtils";
 

@@ -36,7 +36,8 @@ import type {
   UserPreferenceSettings,
   UserPreferenceSettingsView,
   PluginReloadResult,
-} from "wave-agent-sdk/types";
+  StdioAgentCallbacks,
+} from "wave-agent-sdk/host";
 import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
@@ -46,14 +47,11 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
   PLUGIN_CHANGE_PENDING_MESSAGE,
   PLUGIN_RELOADED_MESSAGE,
-} from "wave-agent-sdk/constants";
-import { StdioClient } from "./stdio/stdioClient";
-import type { JsonRpcClient } from "./stdio/jsonRpcClient";
-import {
   StdioAgent,
   NotificationRouter,
-  type StdioAgentCallbacks,
-} from "wave-agent-sdk/stdio";
+} from "wave-agent-sdk/host";
+import { StdioClient } from "./stdio/stdioClient";
+import type { JsonRpcClient } from "./stdio/jsonRpcClient";
 import {
   ensureCliUpToDate,
   loadBundledCliSource,

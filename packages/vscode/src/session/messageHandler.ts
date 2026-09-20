@@ -12,11 +12,11 @@ import type {
   Scope,
   PermissionMode,
   PermissionDecision,
-} from "wave-agent-sdk/types";
+} from "wave-agent-sdk/host";
 import {
   PLUGIN_CHANGE_PENDING_MESSAGE,
   PLUGIN_RELOADED_MESSAGE,
-} from "wave-agent-sdk/constants";
+} from "wave-agent-sdk/host";
 
 /**
  * 插件变更提示里的显示名：优先用 RPC 回包里的 name（install/update 返回

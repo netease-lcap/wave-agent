@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { Scope } from "wave-agent-sdk/types";
+import type { Scope } from "wave-agent-sdk/host";
 import type { StdioClient } from "../stdio/stdioClient";
 
 export class PluginService {

@@ -4,7 +4,7 @@ import { app } from "electron";
 import type {
   UserPreferenceKey,
   UserPreferenceSource,
-} from "wave-agent-sdk/types";
+} from "wave-agent-sdk/host";
 import { LOCAL_HOST } from "./sshHosts";
 
 /**
