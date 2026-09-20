@@ -13,14 +13,15 @@
  * the local runtime copy, so the shim resolves ../package.json and wave.mjs
  * finds the shared @vscode/ripgrep under `~/.wave/cli/node_modules`). The sync
  * judge is content bytes, not a version string — GUI-only releases can ship new
- * bytes without bumping the bundled version. ripgrep is fetched by the REMOTE
- * side (npm install --prefix) — the platform binary must match the remote host.
+ * bytes without bumping the bundled version. Runtime dependencies (ripgrep,
+ * sharp) are installed by the remote CLI itself on startup — no npm on the
+ * remote host is needed, and a failed download only degrades the affected tool.
  * Every failure surfaces an actionable message — nothing retries indefinitely.
  *
- * All probes/npm run through the user's login shell (`withRemoteLoginShell`):
- * nvm-style version managers expose node/npm only in interactive rc files,
- * which a plain `ssh host 'cmd'` never loads. Pure file-transfer commands (tar
- * push) need no login shell and skip it.
+ * All probes run through the user's login shell (`withRemoteLoginShell`):
+ * nvm-style version managers expose node only in interactive rc files, which a
+ * plain `ssh host 'cmd'` never loads. Pure file-transfer commands (tar push)
+ * need no login shell and skip it.
  */
 
 import { execFile, spawn, type ChildProcess } from "child_process";
@@ -43,20 +44,18 @@ import type { BundledCliSource } from "./stdio/binaryResolver";
 const execFileAsync = promisify(execFile);
 
 export const REMOTE_NODE_MIN_MAJOR = 22;
-export const REMOTE_INSTALL_REGISTRY = "https://registry.npmmirror.com";
 const PROBE_TIMEOUT_MS = 15_000;
-const INSTALL_TIMEOUT_MS = 5 * 60_000;
 
 /** Files of the bundled CLI pushed to remote hosts (mirror of the local copy). */
 const CLI_BUNDLE_FILES = ["bin", "dist", "package.json"] as const;
 
 /**
  * Remote runtime layout mirrors the local one (~/.wave/cli/<end>): the CLI
- * files live under `~/.wave/cli/desktop` and the ripgrep packages under the
- * shared `~/.wave/cli/node_modules/@vscode` (sibling of the per-end dir, so a
- * CLI swap never wipes an already-fetched rg — same reasoning as the local
- * resolver). The shim reads ../package.json for `-v` and wave.mjs finds
- * @vscode/ripgrep by walking up to `~/.wave/cli/node_modules`.
+ * files live under `~/.wave/cli/desktop` and the runtime dependencies the CLI
+ * installs itself (ripgrep, sharp) under the shared `~/.wave/cli/node_modules`
+ * (sibling of the per-end dir, so a CLI swap never wipes them — same reasoning
+ * as the local resolver). The shim reads ../package.json for `-v` and wave.mjs
+ * resolves its dependencies by walking up to `~/.wave/cli/node_modules`.
  */
 export function remoteCliRootDir(homeDir: string): string {
   return path.posix.join(homeDir, ".wave", "cli");
@@ -154,78 +153,9 @@ async function probeRemoteNode(host: string): Promise<string> {
 }
 
 /**
- * True when `@vscode/ripgrep` resolves from `~/.wave/cli` on the remote host.
- * The wrapper throws at module load unless the platform optional dependency is
- * installed, so a bare dynamic import is the presence probe (executed from the
- * cli root so Node resolves the bare specifier there, like wave.mjs does by
- * walking up from `~/.wave/cli/desktop/dist/bundle`).
- */
-async function remoteRipgrepReady(
-  host: string,
-  cliRoot: string,
-): Promise<boolean> {
-  const probe =
-    `cd ${shellQuote(cliRoot)} && node -e ` +
-    shellQuote(
-      `import('@vscode/ripgrep').then((m) => { if (!m || !m.rgPath) process.exit(1); }).catch(() => process.exit(1));`,
-    );
-  try {
-    await execFileAsync("ssh", await remoteCommand(host, probe), {
-      timeout: PROBE_TIMEOUT_MS,
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Ensure the remote host can load @vscode/ripgrep — a top-level import of
- * wave.mjs, so the CLI cannot start without it (spec: desktop-shell.md 「内置 CLI 一致
- * 保障」 scenario 8). rg is fetched by the REMOTE side (`npm install --prefix
- * ~/.wave/cli` under the remote login shell): npm picks the wrapper version and
- * the platform binary via the wrapper's optionalDependencies, landing both
- * under `~/.wave/cli/node_modules/@vscode`. Runs BEFORE a CLI swap so a failed
- * fetch leaves the current CLI/daemon intact. Skipped entirely when the bundled
- * CLI declares no @vscode/ripgrep dependency. Throws an actionable error (with
- * a manual command) when the registry is unreachable or npm is absent — a later
- * reconnect retries automatically.
- */
-export async function ensureRemoteRipgrep(
-  host: string,
-  source: BundledCliSource,
-  homeDir: string,
-): Promise<void> {
-  if (!source.rgRange) return; // the CLI bundles no grep dependency
-  const cliRoot = remoteCliRootDir(homeDir);
-  if (await remoteRipgrepReady(host, cliRoot)) return; // already in place
-
-  const installCommand =
-    `npm install --prefix ${shellQuote(cliRoot)} --no-save --no-package-lock ` +
-    `--registry=${REMOTE_INSTALL_REGISTRY} @vscode/ripgrep@${shellQuote(source.rgRange)}`;
-  try {
-    await execFileAsync("ssh", await remoteCommand(host, installCommand), {
-      timeout: INSTALL_TIMEOUT_MS,
-      // npm writes progress to stderr — swallow it so failures surface only
-      // the summarized error below.
-      maxBuffer: 1024 * 1024,
-    });
-  } catch (error) {
-    throw new Error(
-      `远端 ripgrep（grep 搜索依赖）安装失败：${describeError(error)}。请手动执行 ssh ${host} "${installCommand}"（server 无出网时需先恢复网络/npm）`,
-    );
-  }
-  if (!(await remoteRipgrepReady(host, cliRoot))) {
-    throw new Error(
-      `远端 ripgrep 安装后仍不可用。请手动执行 ssh ${host} "${installCommand}"`,
-    );
-  }
-}
-
-/**
  * Stream a local stream into a remote command's stdin over the existing ssh
  * channel and await the remote exit code. Used to ship the tarred CLI bundle.
- * The push runs without a login shell (pure file transfer — no node/npm PATH
+ * The push runs without a login shell (pure file transfer — no node PATH
  * needed); stderr is captured for the error summary.
  */
 function sshStreamCommand(
@@ -330,9 +260,9 @@ async function pushRemoteCliBundle(
  * fixed runtime shim `~/.wave/cli/desktop/bin/wave-code.js` (never a PATH
  * global install). Ensures Node ≥ 22, then returns the existing CLI when
  * present. With `installIfMissing` (the default), a missing CLI triggers the
- * full install (rg self-fetch + bundle push); with it false the missing case
- * throws an actionable error — the daemon fallback passes false so a failed
- * sync never double-installs within one connection.
+ * full install (bundle push); with it false the missing case throws an
+ * actionable error — the daemon fallback passes false so a failed sync never
+ * double-installs within one connection.
  */
 export async function resolveRemoteWaveBinary(
   host: string,
@@ -349,7 +279,6 @@ export async function resolveRemoteWaveBinary(
       `远端未安装 wave CLI（${binaryPath}）。重新连接主机会自动重试推送`,
     );
   }
-  await ensureRemoteRipgrep(host, source, homeDir);
   await pushRemoteCliBundle(host, source, homeDir);
   return { binaryPath, nodeVersion };
 }
@@ -405,9 +334,8 @@ export interface RemoteCliUpToDateResult {
  * Ensure the remote CLI at ~/.wave/cli/desktop matches the bundled CLI's bytes
  * (spec: desktop-shell.md 「内置 CLI 一致保障」 scenarios 3/6/7). The probe hashes
  * the remote `dist/bundle/wave.mjs`; a null result (missing/corrupt) or a hash
- * differing from `source.bundleSha256` triggers a sync — rg first (a failed
- * fetch must leave the current install intact), then the atomic bundle push.
- * GUI upgrades that ship an unchanged bundle compare equal and push nothing
+ * differing from `source.bundleSha256` triggers the atomic bundle push. GUI
+ * upgrades that ship an unchanged bundle compare equal and push nothing
  * (scenario 7); GUI-only releases with changed bytes but an unchanged version
  * still push. The caller decides what to do about the still-running old daemon.
  */
@@ -423,7 +351,6 @@ export async function ensureRemoteCliUpToDate(
     return { binaryPath, upgraded: false };
   }
   // current is null (corrupt/missing) or differs from the bundled bytes → sync.
-  await ensureRemoteRipgrep(host, source, homeDir);
   await pushRemoteCliBundle(host, source, homeDir);
   return { binaryPath, upgraded: true };
 }
@@ -761,9 +688,8 @@ export async function waitForRemoteDaemonExit(
  * 2. After a successful sync, the still-running old daemon executes pre-sync
  *    code — it MUST be restarted or the sync never takes effect. Kill it and
  *    wait for its socket to release before relaunching.
- * 3. Reuse a live daemon; otherwise make sure ripgrep is fetchable (remote
- *    self-fetch; needed to boot any wave CLI), launch one detached and wait
- *    for its socket. Returns the remote daemon socket path to forward.
+ * 3. Reuse a live daemon, else launch one detached and wait for its socket.
+ *    Returns the remote daemon socket path to forward.
  */
 export async function ensureRemoteDaemon(
   host: string,
@@ -799,9 +725,6 @@ export async function ensureRemoteDaemon(
   if (await remoteDaemonAlive(host, socketPath)) return socketPath;
   binaryPath ??= (await resolveRemoteWaveBinary(host, source, homeDir, false))
     .binaryPath;
-  // A current-bytes CLI that was never restarted still needs rg to boot
-  // (the up-to-date path above skips the rg ensure).
-  if (!upgraded) await ensureRemoteRipgrep(host, source, homeDir);
   await startRemoteDaemon(host, binaryPath, socketPath);
   await waitForRemoteDaemon(host, socketPath);
   return socketPath;

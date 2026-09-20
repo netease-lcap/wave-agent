@@ -3,21 +3,24 @@
  *
  * ## Why this exists
  *
- * `sharp` (the image codec behind outbound image resizing) is a native module
- * of ~19MB unpacked — too big to ship in every host bundle, and unnecessary for
- * users who never send an image. Two of the three ways of getting the CLI can
- * simply use npm:
+ * Two dependencies live here: `sharp` (the image codec behind outbound image
+ * resizing, ~19MB unpacked) and `@vscode/ripgrep` (the search binary behind the
+ * Grep tool, ~5MB with its platform package). Both are too big to ship in every
+ * host bundle and useless to users who never send an image or run a search. Two
+ * of the three ways of getting the CLI can simply use npm:
  *
- * | how the CLI was installed | where sharp comes from | what this does |
+ * | how the CLI was installed | where the dependencies come from | what this does |
  * | --- | --- | --- |
- * | `npm i -g wave-code`, project install | a plain npm dependency (npm picks the one platform package via its `os`/`cpu`/`libc` fields; libvips arrives through the platform package's own optionalDependencies) | step 1 short-circuits, nothing is downloaded |
- * | desktop / VS Code / JetBrains (the host copies the CLI into `~/.wave/cli/<end>/`) | nothing ships it | downloads into the shared `~/.wave/cli/node_modules` |
+ * | `npm i -g wave-code`, project install | plain npm dependencies (npm picks the matching platform package; sharp's libvips arrives through the platform package's own optionalDependencies) | step 1 short-circuits, nothing is downloaded |
+ * | desktop / VS Code / JetBrains (the host copies the CLI into `~/.wave/cli/<end>/`) | nothing ships them — the copy is three files (entry, package.json, bundle) | downloads into the shared `~/.wave/cli/node_modules` |
  * | in-repo dev (`pnpm run wave`) | the repo's node_modules | step 1 short-circuits |
  *
  * It is deliberately CLI-side rather than per-host: the platform key is computed
  * by the *same* runtime that later loads the module (a JVM-side arch guess
  * cannot be), and one implementation covers the TUI, stdio (all three hosts),
- * remote and daemon paths.
+ * remote and daemon paths. ripgrep used to be the counter-example — each of the
+ * three hosts downloaded it before spawning the CLI, and the remote path shelled
+ * out to `npm install --prefix` — so the table replaced four implementations.
  *
  * ## Layout
  *
@@ -27,13 +30,14 @@
  *   @img/sharp-<key>/                key = linux-x64 | linuxmusl-x64 | darwin-arm64 | win32-x64
  *   @img/sharp-libvips-<key>/        must stay a sibling of the above: its .node has
  *                                    rpath `$ORIGIN/../../sharp-libvips-<key>/lib`
+ *   @vscode/ripgrep/                 the wrapper (ESM, no dependencies of its own)
+ *   @vscode/ripgrep-<platform>-<arch>/  holds bin/rg, published with the exec bit
  *   .wave-runtime-deps.json          <- marker, written last: present means this
  *                                       batch completed
  * ```
  *
  * Node resolves the modules from `~/.wave/cli/<end>/dist/bundle/wave.mjs` by
- * walking up, which lands on this `node_modules` — the same mechanism the
- * ripgrep download relies on.
+ * walking up, which lands on this `node_modules`.
  *
  * ## Why detect-libc decides the platform key
  *
@@ -44,6 +48,10 @@
  * rather than by a copy of that logic. A future sharp that renames or drops a
  * dependency is followed automatically; only a *renamed* dependency needs a
  * code change here.
+ *
+ * A row can opt out of the libc family (`libcAwarePlatformKey: false`):
+ * `@vscode/ripgrep` publishes only `@vscode/ripgrep-linux-x64`, so a musl key
+ * would match nothing.
  */
 import { createHash } from "node:crypto";
 import * as fs from "node:fs";
@@ -59,6 +67,7 @@ import {
   resolveSharp,
 } from "./imageProcessor.js";
 import { extractNpmTarball } from "./npmTarball.js";
+import { getRgPath, resetRipgrep, resolveRipgrep } from "./ripgrep.js";
 
 /** npm registry mirror for China users (same choice as the ripgrep download). */
 export const RUNTIME_DEPS_REGISTRY = "https://registry.npmmirror.com";
@@ -87,7 +96,7 @@ interface VersionMeta {
 
 /**
  * A runtime dependency the CLI knows how to install. The table shape is what
- * keeps this generic: ripgrep is a future row, not a second implementation.
+ * keeps this generic: a second row is a row, not a second implementation.
  */
 interface RuntimeDependency {
   /** npm package declared in the CLI's package.json. */
@@ -96,8 +105,18 @@ interface RuntimeDependency {
   sharedPackages(entry: VersionMeta): PackageRequest[];
   /** Packages for the native build of [platformKey]. */
   platformPackages(entry: VersionMeta, platformKey: string): PackageRequest[];
+  /**
+   * Whether [platformKey] carries the libc family (`linuxmusl-x64`). Defaults to
+   * true; false for packages that publish a single Linux build.
+   */
+  libcAwarePlatformKey?: boolean;
   /** True when this process can already use the dependency. */
   isAvailable(): boolean;
+  /**
+   * True when [requireBase]'s `node_modules` can load the dependency — the only
+   * require base that proves the layout works for the bundle that will use it.
+   */
+  loadsFrom(requireBase: string): boolean;
   /** Called after a successful install. */
   onInstalled(): void;
 }
@@ -129,10 +148,40 @@ const sharpDependency: RuntimeDependency = {
     });
   },
   isAvailable: () => getImageProcessor() !== undefined,
+  loadsFrom: (requireBase) =>
+    resolveSharp(requireFnFor(requireBase)) !== undefined,
   onInstalled: () => resetImageProcessor(),
 };
 
-const RUNTIME_DEPENDENCIES: RuntimeDependency[] = [sharpDependency];
+/**
+ * ripgrep row. The wrapper declares no dependencies of its own — only the
+ * platform packages in `optionalDependencies` — and keys them by
+ * `<platform>-<arch>` with no libc family.
+ */
+const ripgrepDependency: RuntimeDependency = {
+  name: "@vscode/ripgrep",
+  sharedPackages(entry) {
+    return [{ name: "@vscode/ripgrep", range: entry.version }];
+  },
+  platformPackages(entry, platformKey) {
+    const name = `@vscode/ripgrep-${platformKey}`;
+    const range = entry.optionalDependencies?.[name];
+    if (!range) {
+      throw new Error(`ripgrep 不支持当前平台（${platformKey}）：缺 ${name}`);
+    }
+    return [{ name, range }];
+  },
+  libcAwarePlatformKey: false,
+  isAvailable: () => getRgPath() !== undefined,
+  loadsFrom: (requireBase) =>
+    resolveRipgrep(requireFnFor(requireBase)) !== undefined,
+  onInstalled: () => resetRipgrep(),
+};
+
+const RUNTIME_DEPENDENCIES: RuntimeDependency[] = [
+  sharpDependency,
+  ripgrepDependency,
+];
 
 /** `<home>/.wave/cli` — where hosts copy the CLI into and share downloads. */
 function defaultCliHome(): string {
@@ -145,8 +194,8 @@ function defaultCliHome(): string {
  * An npm-installed CLI (bundle under `<prefix>/lib/node_modules/wave-code/...`)
  * must not self-install: Node would never look in `~/.wave/cli/node_modules`
  * from there, and writing into a global npm prefix may lack permissions and
- * gets pruned by the next `npm install`. Such a setup either already has sharp
- * (the normal case) or degrades with an actionable warning.
+ * gets pruned by the next `npm install`. Such a setup either already has the
+ * dependencies (the normal case) or degrades with an actionable warning.
  */
 export function isManagedCliInstall(
   moduleUrl: string,
@@ -237,16 +286,29 @@ async function resolveVersion(
 }
 
 /**
- * Platform key for the native build. `detect-libc` is resolved from
- * `[requireBase]/node_modules` — the cli home when the packages are already on
- * disk, the temp dir mid-install — and falls back to Node's own report when it
- * cannot be loaded.
+ * A `require` rooted at [requireBase] — the cli home when the packages are
+ * already on disk, the temp dir mid-install. Used both to ask `detect-libc`
+ * which build to fetch and to verify an install afterwards.
  */
-function runtimePlatformKey(requireBase: string | undefined): string {
+function requireFnFor(requireBase: string): NodeRequire {
+  return createRequire(path.join(requireBase, "index.js"));
+}
+
+/**
+ * Platform key of the native build. With [libcFamily] (the default) the key
+ * carries the libc family — `linuxmusl-x64` vs `linux-x64` — decided by
+ * `detect-libc`, resolved from `[requireBase]/node_modules` and falling back to
+ * Node's own report when it cannot be loaded. Dependencies that publish a single
+ * Linux build pass `false`.
+ */
+function runtimePlatformKey(
+  requireBase: string | undefined,
+  libcFamily = true,
+): string {
+  if (!libcFamily) return `${process.platform}-${process.arch}`;
   if (requireBase) {
     try {
-      const requireFn = createRequire(path.join(requireBase, "index.js"));
-      const detect = requireFn("detect-libc") as {
+      const detect = requireFnFor(requireBase)("detect-libc") as {
         familySync?: () => string | null;
         isNonGlibcLinuxSync?: () => boolean;
       };
@@ -278,7 +340,12 @@ function writeEntries(
     fs.mkdirSync(entry.kind === "directory" ? target : path.dirname(target), {
       recursive: true,
     });
-    if (entry.kind === "file") fs.writeFileSync(target, entry.data);
+    if (entry.kind !== "file") continue;
+    fs.writeFileSync(target, entry.data);
+    // npm publishes executables (the ripgrep binary) as 0755; without the exec
+    // bit every spawn fails with EACCES. Only the exec bit is worth restoring —
+    // the rest is umask's business. A no-op on Windows, where there is no mode.
+    if (entry.mode & 0o111) fs.chmodSync(target, entry.mode & 0o777);
   }
 }
 
@@ -334,7 +401,10 @@ async function installDependency(
         request.name === dependency.name ? entry : undefined,
       );
     }
-    const platformKey = runtimePlatformKey(tempDir);
+    const platformKey = runtimePlatformKey(
+      tempDir,
+      dependency.libcAwarePlatformKey ?? true,
+    );
     const platform = dependency.platformPackages(entry, platformKey);
     for (const request of platform) {
       await fetchPackage(request, tempModules, fetchImpl);
@@ -374,9 +444,10 @@ let settled: RuntimeDepsResult | undefined;
 
 /**
  * Make sure the runtime dependencies are installed. Never throws: the long-lived
- * CLI entry points await it before serving, so a first pasted image cannot race
- * a download — the same reason the hosts block on ripgrep before spawning the
- * CLI. A failed install is reported once and only degrades images.
+ * CLI entry points await it before serving, so a first pasted image (or a first
+ * search) cannot race a download — the same reason the hosts used to block on
+ * ripgrep before spawning the CLI. A failed install is reported once and only
+ * degrades images and grep.
  *
  * The outcome is memoised for the process lifetime, failures included — one
  * attempt per launch, so a broken network does not retry on every image.
@@ -420,13 +491,16 @@ async function runInstall(options?: {
 
   if (!isManagedCliInstall(moduleUrl, cliHome)) {
     const reason =
-      "当前 wave CLI 不是 ~/.wave/cli 下的副本，无法自动安装图像依赖；" +
-      "请重装 wave-code（不要使用 --omit=optional）";
+      "当前 wave CLI 不是 ~/.wave/cli 下的副本，无法自动安装运行时依赖" +
+      "（sharp / ripgrep）；请重装 wave-code（不要使用 --omit=optional）";
     logWarn(`[Wave] ${reason}`);
     return { available: false, reason };
   }
 
   const installDir = path.join(cliHome, "node_modules");
+  // One dependency failing must not skip the others: they degrade independently
+  // (a broken image codec has nothing to do with grep).
+  const failures: string[] = [];
   for (const dependency of RUNTIME_DEPENDENCIES) {
     if (dependency.isAvailable()) continue;
     try {
@@ -435,17 +509,21 @@ async function runInstall(options?: {
         dependency.name,
       );
       if (!entry) {
-        return fail(`找不到声明 ${dependency.name} 依赖范围的 package.json`);
+        fail(failures, `找不到声明 ${dependency.name} 依赖范围的 package.json`);
+        continue;
       }
       // A batch that completed but still will not load is a platform problem
       // (wrong libc, unsupported CPU). Downloading ~19MB again on every launch
       // would not fix it, so report instead.
       if (readMarker(installDir)[dependency.name] === entry.range) {
-        return fail(
+        fail(
+          failures,
           `${dependency.name} 已安装但无法加载（平台 ${runtimePlatformKey(
             cliHome,
+            dependency.libcAwarePlatformKey ?? true,
           )}）`,
         );
+        continue;
       }
 
       const meta = await resolveVersion(
@@ -462,12 +540,13 @@ async function runInstall(options?: {
 
       // Verify through the cli home itself: the only require base that proves
       // the layout works for the bundle that will load it.
-      const requireFn = createRequire(path.join(cliHome, "index.js"));
-      if (resolveSharp(requireFn) === undefined) {
+      if (!dependency.loadsFrom(cliHome)) {
         fs.rmSync(path.join(installDir, MARKER_FILE), { force: true });
-        return fail(
+        fail(
+          failures,
           `${dependency.name} 安装后仍无法加载（平台 ${platformKey}）`,
         );
+        continue;
       }
       dependency.onInstalled();
       fs.writeFileSync(
@@ -482,19 +561,23 @@ async function runInstall(options?: {
         `[Wave] 已安装 ${dependency.name} ${meta.version}（平台 ${platformKey}）到 ${installDir}`,
       );
     } catch (error) {
-      return fail(
+      fail(
+        failures,
         `安装 ${dependency.name} 失败：${
           error instanceof Error ? error.message : String(error)
         }`,
       );
     }
   }
+  if (failures.length > 0)
+    return { available: false, reason: failures.join("；") };
   return { available: true };
 }
 
-function fail(reason: string): RuntimeDepsResult {
+/** Log and record one dependency's failure, without aborting the batch. */
+function fail(failures: string[], reason: string): void {
   logWarn(`[Wave] ${reason}`);
-  return { available: false, reason };
+  failures.push(reason);
 }
 
 /** Forget the memoised outcome, and the settled result (tests). */

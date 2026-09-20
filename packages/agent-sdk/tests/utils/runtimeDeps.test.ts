@@ -36,6 +36,19 @@ vi.mock("../../src/utils/imageProcessor.js", async (importOriginal) => {
   };
 });
 
+const rgProbe = vi.hoisted(() => ({ path: "/mock/rg" as string | undefined }));
+
+/**
+ * Same rule as sharp above: only availability is faked, `resolveRipgrep` stays
+ * real, so the verify step really does require the wrapper it just unpacked.
+ * Defaults to available, like a checkout that has the platform package.
+ */
+vi.mock("../../src/utils/ripgrep.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../src/utils/ripgrep.js")>();
+  return { ...actual, getRgPath: () => rgProbe.path };
+});
+
 import {
   __resetRuntimeDepsForTesting,
   ensureRuntimeDeps,
@@ -72,9 +85,10 @@ function keyFromDetectLibc(musl: boolean): string {
 
 // --- in-memory npm tarballs -------------------------------------------------
 
-function tarHeader(name: string, size: number): Buffer {
+function tarHeader(name: string, size: number, mode = 0o644): Buffer {
   const block = Buffer.alloc(512);
   block.write(name, 0, 100, "utf8");
+  block.write(`${mode.toString(8).padStart(7, "0")}\0`, 100, 8, "ascii");
   block.write(`${size.toString(8).padStart(11, "0")}\0`, 124, 12, "ascii");
   block.write("0", 156, 1, "ascii");
   block.write("ustar\0", 257, 6, "ascii");
@@ -82,13 +96,21 @@ function tarHeader(name: string, size: number): Buffer {
   return block;
 }
 
+/** A file's bytes plus the tar permission bits npm would publish. */
+interface FileFixture {
+  content: string;
+  mode: number;
+}
+
 /** An npm-style tarball: every entry wrapped in the top-level `package/`. */
-function tarballOf(files: Record<string, string>): Buffer {
+function tarballOf(files: Record<string, string | FileFixture>): Buffer {
   const chunks: Buffer[] = [];
-  for (const [relative, content] of Object.entries(files)) {
+  for (const [relative, file] of Object.entries(files)) {
+    const content = typeof file === "string" ? file : file.content;
+    const mode = typeof file === "string" ? 0o644 : file.mode;
     const data = Buffer.from(content, "utf8");
     chunks.push(
-      tarHeader(`package/${relative}`, data.length),
+      tarHeader(`package/${relative}`, data.length, mode),
       data,
       Buffer.alloc((512 - (data.length % 512)) % 512),
     );
@@ -101,7 +123,7 @@ function tarballOf(files: Record<string, string>): Buffer {
 
 interface FakePackage {
   version: string;
-  files: Record<string, string>;
+  files: Record<string, string | FileFixture>;
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   /** Override the advertised digest, to model a corrupted download. */
@@ -311,6 +333,63 @@ function registryWithSharp(options?: {
   return registry;
 }
 
+const RG_RANGE = "^1.18.0";
+
+/**
+ * The ripgrep closure: the wrapper plus this platform's binary package. The
+ * wrapper behaves like the real one — it resolves the platform package by name
+ * and throws when it is absent — except that it is CommonJS (the real one is
+ * ESM; what is under test is the exported path, not the module format).
+ */
+function addRipgrep(registry: ReturnType<typeof fakeRegistry>): void {
+  const platformName = `@vscode/ripgrep-${process.platform}-${process.arch}`;
+  registry.add("@vscode/ripgrep", {
+    version: "1.18.0",
+    files: {
+      "package.json": JSON.stringify({
+        name: "@vscode/ripgrep",
+        version: "1.18.0",
+        main: "index.js",
+      }),
+      "index.js": [
+        `const platform = ${JSON.stringify(platformName)};`,
+        "module.exports = { rgPath: require.resolve(`${platform}/bin/rg`) };",
+      ].join("\n"),
+    },
+    optionalDependencies: { [platformName]: "1.18.0" },
+  });
+  registry.add(platformName, {
+    version: "1.18.0",
+    files: {
+      "package.json": JSON.stringify({ name: platformName, version: "1.18.0" }),
+      // The real package publishes bin/rg at 0755.
+      "bin/rg": { content: "rg-binary", mode: 0o755 },
+    },
+  });
+}
+
+/**
+ * `detect-libc` reaches the cli home as a sharp dependency and answers for the
+ * machine it was installed on. This copy claims a musl host, which is what makes
+ * a libc-aware platform key diverge from the plain `<platform>-<arch>` one.
+ */
+function seedMuslDetectLibc(): void {
+  const dir = path.join(installDir, "detect-libc");
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, "package.json"),
+    JSON.stringify({ name: "detect-libc", version: "2.1.2", main: "index.js" }),
+  );
+  fs.writeFileSync(
+    path.join(dir, "index.js"),
+    [
+      "exports.isNonGlibcLinuxSync = () => true;",
+      "exports.familySync = () => 'musl';",
+      "",
+    ].join("\n"),
+  );
+}
+
 function writeCliPackageJson(dependencies: Record<string, string>): void {
   const endDir = path.join(cliHome, "desktop");
   fs.mkdirSync(path.join(endDir, "dist", "bundle"), { recursive: true });
@@ -333,6 +412,7 @@ beforeEach(() => {
   __resetRuntimeDepsForTesting();
   probe.processor = undefined;
   probe.reset.mockClear();
+  rgProbe.path = "/mock/rg";
 });
 
 afterEach(() => {
@@ -409,6 +489,63 @@ describe("ensureRuntimeDeps", () => {
     ).toBe(true);
     expect(registry.urls).toContain(
       `${RUNTIME_DEPS_REGISTRY}/@img/sharp-${PLATFORM_KEY_GLIBC}`,
+    );
+  });
+
+  it("installs ripgrep under a platform key without a libc family", async () => {
+    // A sharp install leaves `detect-libc` in the cli home, and on an Alpine
+    // machine it answers "musl" — the resolver climbs from the staging dir up to
+    // the cli home, so it reads this copy. @vscode/ripgrep publishes no musl
+    // build, so a libc-aware key would 404 there instead of the glibc one.
+    seedMuslDetectLibc();
+    const registry = fakeRegistry();
+    addRipgrep(registry);
+    writeCliPackageJson({ "@vscode/ripgrep": RG_RANGE });
+    probe.processor = (() => ({})) as unknown as SharpFactory; // sharp already there
+    rgProbe.path = undefined;
+
+    const result = await ensureRuntimeDeps({
+      moduleUrl: moduleUrl,
+      cliHome: cliHome,
+      fetchImpl: registry.fetchImpl,
+    });
+
+    expect(result).toEqual({ available: true });
+    const platformName = `@vscode/ripgrep-${process.platform}-${process.arch}`;
+    expect(registry.urls).toContain(`${RUNTIME_DEPS_REGISTRY}/${platformName}`);
+    expect(registry.urls.some((url) => url.includes("musl"))).toBe(false);
+
+    // The binary is executable: npm publishes it that way and a 0644 rg fails
+    // every spawn with EACCES.
+    const rg = path.join(installDir, platformName, "bin", "rg");
+    expect(fs.statSync(rg).mode & 0o111).toBe(0o111);
+    expect(
+      JSON.parse(
+        fs.readFileSync(
+          path.join(installDir, ".wave-runtime-deps.json"),
+          "utf8",
+        ),
+      ),
+    ).toEqual({ "@vscode/ripgrep": RG_RANGE });
+  });
+
+  it("still installs the other dependency when one of them fails", async () => {
+    // A broken image codec download must not cost the user grep as well.
+    const registry = registryWithSharp({ omit: "sharp" });
+    addRipgrep(registry);
+    writeCliPackageJson({ sharp: SHARP_RANGE, "@vscode/ripgrep": RG_RANGE });
+    rgProbe.path = undefined;
+
+    const result = await ensureRuntimeDeps({
+      moduleUrl: moduleUrl,
+      cliHome: cliHome,
+      fetchImpl: registry.fetchImpl,
+    });
+
+    expect(result.available).toBe(false);
+    expect(result.reason).toContain("安装 sharp 失败");
+    expect(fs.existsSync(path.join(installDir, "@vscode", "ripgrep"))).toBe(
+      true,
     );
   });
 

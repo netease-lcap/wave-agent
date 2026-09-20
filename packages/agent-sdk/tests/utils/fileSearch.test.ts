@@ -10,7 +10,9 @@ vi.mock("child_process", () => ({
 
 // Mock ripgrep utility
 vi.mock("../../src/utils/ripgrep.js", () => ({
-  rgPath: "/mock/path/to/rg",
+  getRgPath: () => "/mock/path/to/rg",
+  resolveRipgrep: () => "/mock/path/to/rg",
+  resetRipgrep: () => {},
 }));
 
 // Mock fs to avoid reading real .gitignore files

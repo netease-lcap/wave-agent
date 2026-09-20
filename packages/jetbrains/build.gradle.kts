@@ -29,8 +29,6 @@ dependencies {
     implementation("com.vladsch.flexmark:flexmark-ext-tables:0.64.8")
     implementation("com.vladsch.flexmark:flexmark-ext-gfm-strikethrough:0.64.8")
     implementation("com.vladsch.flexmark:flexmark-ext-gfm-tasklist:0.64.8")
-    // tar.gz extraction for the on-demand ripgrep download (see BinaryResolver)
-    implementation("org.apache.commons:commons-compress:1.27.1")
     testImplementation(kotlin("test"))
     testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")

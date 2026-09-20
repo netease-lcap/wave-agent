@@ -28,7 +28,6 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.1",
-    "@types/semver": "^7.7.1",
     "electron": "^43.2.0",
     "electron-builder": "^26.15.3",
     "jsdom": "^29.1.1",
@@ -98,7 +97,6 @@
     "electron-updater": "^6.8.9",
     "js-yaml": "^5.2.3",
     "node-pty": "^1.2.0-beta.14",
-    "semver": "^7.7.4",
     "tar": "^7.5.22"
   }
 }

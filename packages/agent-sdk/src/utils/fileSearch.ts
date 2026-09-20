@@ -1,5 +1,5 @@
 import { spawn } from "child_process";
-import { rgPath } from "./ripgrep.js";
+import { getRgPath } from "./ripgrep.js";
 import fuzzysort from "fuzzysort";
 import type { FileItem } from "../types/fileSearch.js";
 import { logger } from "./globalLogger.js";
@@ -10,7 +10,7 @@ const EXCLUDED_FILES = [".git", ".DS_Store"];
  * Execute ripgrep to get all file paths
  */
 async function getAllFiles(workingDirectory: string): Promise<string[]> {
-  const rgBinary = rgPath;
+  const rgBinary = getRgPath();
   if (!rgBinary) {
     throw new Error("ripgrep is not available");
   }

@@ -12,9 +12,9 @@
  * - It is optional. Host processes (the desktop main process, the IDE extension
  *   hosts) load the SDK barrel without a platform build present; evaluating
  *   `require("sharp")` there would throw during module evaluation and take the
- *   host down. Same rule as `utils/ripgrep.ts`, but stricter: `rgPath` resolves
- *   eagerly (a broken install then only affects grep), while an image codec must
- *   degrade per-request.
+ *   host down. Same rule as `utils/ripgrep.ts` — both optional runtime
+ *   dependencies are resolved lazily and memoised, so a missing one only costs
+ *   the tool that needs it (an image without a codec, grep without rg).
  *
  * So resolution happens on first use, through `createRequire(import.meta.url)`
  * — a *runtime* require the host-bundle scanner does not match (it looks for

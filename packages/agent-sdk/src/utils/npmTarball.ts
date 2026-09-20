@@ -17,6 +17,9 @@
  *   half-installed package that only fails later.
  * - The 512-byte ustar `prefix` field is honoured, so paths beyond 100 bytes
  *   resolve correctly.
+ * - Permission bits are reported (`mode`), not applied — some packages ship an
+ *   executable payload (`@vscode/ripgrep-*` holds `bin/rg` at `0o755`), and
+ *   whoever writes the files has to set the exec bit itself.
  *
  * Tarball integrity (sha512 from the registry) is verified by the caller before
  * extraction, so this module does not re-checksum headers.
@@ -31,6 +34,12 @@ export interface TarballEntry {
   kind: "file" | "directory";
   /** File contents; empty for directories. */
   data: Uint8Array;
+  /**
+   * Unix permission bits from the header (e.g. `0o755`). Callers that only write
+   * files may ignore it, but an executable payload (the ripgrep binary) is
+   * unusable without the exec bit.
+   */
+  mode: number;
 }
 
 /** Read a NUL-terminated (or full-length) utf8 field out of a tar header. */
@@ -67,6 +76,7 @@ export function extractNpmTarball(tarball: Uint8Array): TarballEntry[] {
 
     const name = readField(header, 0, 100);
     const size = Number.parseInt(readField(header, 124, 12).trim(), 8);
+    const mode = Number.parseInt(readField(header, 100, 8).trim(), 8);
     const typeFlag = String.fromCharCode(header[156]);
     const prefix = readField(header, 345, 155);
     const fullPath = prefix ? `${prefix}/${name}` : name;
@@ -90,11 +100,11 @@ export function extractNpmTarball(tarball: Uint8Array): TarballEntry[] {
     assertSafeRelativePath(path);
 
     if (typeFlag === "5") {
-      entries.push({ path, kind: "directory", data: new Uint8Array(0) });
+      entries.push({ path, kind: "directory", data: new Uint8Array(0), mode });
       continue;
     }
     if (typeFlag === "0" || typeFlag === "\0") {
-      entries.push({ path, kind: "file", data: Buffer.from(data) });
+      entries.push({ path, kind: "file", data: Buffer.from(data), mode });
       continue;
     }
     throw new Error(

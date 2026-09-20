@@ -87,49 +87,7 @@ class BinaryResolverTest {
         assertTrue(BinaryResolver.compareVersions("v20.19.0", "v23.10.0") < 0)
     }
 
-    // ---- satisfiesCaret ------------------------------------------------
-
-    @Test
-    fun `satisfiesCaret accepts versions within a caret range`() {
-        assertTrue(BinaryResolver.satisfiesCaret("1.18.0", "^1.18.0"))
-        assertTrue(BinaryResolver.satisfiesCaret("1.18.5", "^1.18.0"))
-        assertTrue(BinaryResolver.satisfiesCaret("1.19.0", "^1.18.0"))
-    }
-
-    @Test
-    fun `satisfiesCaret rejects versions outside a caret range`() {
-        assertTrue(!BinaryResolver.satisfiesCaret("1.17.9", "^1.18.0"))
-        assertTrue(!BinaryResolver.satisfiesCaret("2.0.0", "^1.18.0"))
-        assertTrue(!BinaryResolver.satisfiesCaret("0.18.0", "^1.18.0"))
-    }
-
-    @Test
-    fun `satisfiesCaret rejects prerelease and malformed versions`() {
-        assertTrue(!BinaryResolver.satisfiesCaret("1.18.1-beta.1", "^1.18.0"))
-        assertTrue(!BinaryResolver.satisfiesCaret("v1.18.0", "^1.18.0"))
-        assertTrue(!BinaryResolver.satisfiesCaret("1.18", "^1.18.0"))
-    }
-
-    @Test
-    fun `satisfiesCaret rejects non-caret ranges`() {
-        assertTrue(!BinaryResolver.satisfiesCaret("1.18.0", "~1.18.0"))
-        assertTrue(!BinaryResolver.satisfiesCaret("1.18.0", ">=1.18.0"))
-    }
-
-    // ---- extractTarball ------------------------------------------------
-
-    @Test
-    fun `rgPlatformDir carries the ripgrep prefix so cache check and npm package name match`() {
-        // Regression: the dir must be `ripgrep-<platform>-<arch>` (mirroring the
-        // npm package `@vscode/ripgrep-<platform>-<arch>` and desktop/vscode's
-        // layout) — without the prefix the cache check at rgBinaryPath() never
-        // hits and the tarball URL resolves to a non-existent npm package.
-        val dir = BinaryResolver.rgPlatformDir
-        assertTrue(
-            dir.matches(Regex("ripgrep-(win32|darwin|linux)-(x64|arm64|ia32)")),
-            "rgPlatformDir was: $dir",
-        )
-    }
+    // ---- cliInstallDir --------------------------------------------------
 
     @Test
     fun `cliInstallDir is per-end under the shared cli root`() {
@@ -138,69 +96,6 @@ class BinaryResolverTest {
         val home = System.getProperty("user.home")
         val expected = File(home, ".wave/cli/jetbrains")
         assertEquals(expected.absolutePath, BinaryResolver.cliInstallDir().absolutePath)
-    }
-
-    @Test
-    fun `rgInstallDir stays at the shared root not inside the per-end dir`() {
-        // rg is shared by all three frontends — a sibling of the per-end dir
-        // (under ~/.wave/cli), so a CLI re-copy never wipes the cached download.
-        val cliRoot = BinaryResolver.cliInstallDir().parentFile
-        assertEquals(
-            File(cliRoot, "node_modules/@vscode").absolutePath,
-            BinaryResolver.rgInstallDir().absolutePath,
-        )
-    }
-
-
-    @Test
-    fun `extractTarball strips the top package dir`() {
-        val tarGz = buildTarGz(
-            mapOf(
-                "package/package.json" to "{\"name\":\"x\"}".toByteArray(),
-                "package/bin/rg" to "binary-bytes".toByteArray(),
-            )
-        )
-        val dest = File(tempDir.toFile(), "extract-${shimCounter++}")
-        BinaryResolver.extractTarball(tarGz, dest)
-
-        assertTrue(File(dest, "package.json").isFile)
-        assertEquals("{\"name\":\"x\"}", File(dest, "package.json").readText())
-        assertTrue(File(dest, "bin/rg").isFile)
-        assertEquals("binary-bytes", File(dest, "bin/rg").readText())
-        // The top-level `package/` dir itself must not leak into the output.
-        assertTrue(!File(dest, "package").exists())
-    }
-
-    @Test
-    fun `extractTarball creates nested dirs and preserves binary bytes`() {
-        val payload = ByteArray(256) { (it % 251).toByte() }
-        val tarGz = buildTarGz(mapOf("package/dist/bundle/wave.mjs" to payload))
-        val dest = File(tempDir.toFile(), "extract-${shimCounter++}")
-        BinaryResolver.extractTarball(tarGz, dest)
-
-        val out = File(dest, "dist/bundle/wave.mjs")
-        assertTrue(out.isFile)
-        assertTrue(out.readBytes().contentEquals(payload))
-    }
-
-    @Test
-    fun `extractTarball keeps the exec bit of executable entries`() {
-        // Regression: the @vscode/ripgrep-<platform> tarball ships bin/rg 0755.
-        // The extractor wrote it as a plain 0644 file, so spawning rg failed
-        // with EACCES and the Grep tool was broken (Linux hosts where the JB
-        // plugin cached rg shared the poisoned ~/.wave/cli/node_modules with
-        // the desktop/vscode CLIs).
-        val tarGz = buildTarGz(
-            entries = mapOf("package/bin/rg" to "binary-bytes".toByteArray()),
-            modes = mapOf("package/bin/rg" to 0x1ed), // 0755
-        )
-        val dest = File(tempDir.toFile(), "extract-${shimCounter++}")
-        BinaryResolver.extractTarball(tarGz, dest)
-
-        val rg = File(dest, "bin/rg")
-        assertTrue(rg.isFile)
-        assertTrue(rg.canExecute(), "rg must stay executable after extraction")
-        assertEquals("binary-bytes", rg.readText())
     }
 
     // ---- decodeCommandOutput / readProcessOutput -----------------------
@@ -418,27 +313,5 @@ class BinaryResolverTest {
     /** Creates `<nvm>/versions/node/<version>/bin` and returns the bin dir. */
     private fun newVersion(nvm: File, version: String): File {
         return File(nvm, "versions/node/$version/bin").apply { mkdirs() }
-    }
-
-    /** Builds a `.tar.gz` byte array from `package/...` entries (npm tarball shape). */
-    private fun buildTarGz(
-        entries: Map<String, ByteArray>,
-        modes: Map<String, Int> = emptyMap(),
-    ): ByteArray {
-        java.io.ByteArrayOutputStream().use { bos ->
-            org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream(bos).use { gz ->
-                org.apache.commons.compress.archivers.tar.TarArchiveOutputStream(gz).use { tar ->
-                    entries.forEach { (name, data) ->
-                        val entry = org.apache.commons.compress.archivers.tar.TarArchiveEntry(name)
-                        modes[name]?.let { entry.setMode(it) }
-                        entry.size = data.size.toLong()
-                        tar.putArchiveEntry(entry)
-                        tar.write(data)
-                        tar.closeArchiveEntry()
-                    }
-                }
-            }
-            return bos.toByteArray()
-        }
     }
 }

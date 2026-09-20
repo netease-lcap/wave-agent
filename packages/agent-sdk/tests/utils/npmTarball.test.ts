@@ -10,9 +10,11 @@ function headerBlock(
   size: number,
   typeFlag: string,
   prefix = "",
+  mode = 0o644,
 ): Buffer {
   const block = Buffer.alloc(BLOCK_SIZE);
   block.write(name, 0, 100, "utf8");
+  block.write(`${mode.toString(8).padStart(7, "0")}\0`, 100, 8, "utf8");
   block.write(`${size.toString(8).padStart(11, "0")}\0`, 124, 12, "utf8");
   block.write(`${typeFlag}\0`, 156, 2, "utf8");
   block.write("ustar\0", 257, 6, "utf8");
@@ -30,6 +32,7 @@ function entry(
   fullPath: string,
   content: string | Buffer = "",
   typeFlag = "0",
+  mode = 0o644,
 ): Buffer {
   const data = Buffer.from(content);
   const padded = Buffer.alloc(Math.ceil(data.length / BLOCK_SIZE) * BLOCK_SIZE);
@@ -42,6 +45,7 @@ function entry(
       data.length,
       typeFlag,
       split ? fullPath.slice(0, slash) : "",
+      mode,
     ),
     padded,
   ]);
@@ -87,9 +91,28 @@ describe("extractNpmTarball", () => {
       entry("package/lib/index.js", "x"),
     );
     expect(entries).toEqual([
-      { path: "lib", kind: "directory", data: new Uint8Array(0) },
-      { path: "lib/index.js", kind: "file", data: Buffer.from("x") },
+      { path: "lib", kind: "directory", data: new Uint8Array(0), mode: 0o644 },
+      {
+        path: "lib/index.js",
+        kind: "file",
+        data: Buffer.from("x"),
+        mode: 0o644,
+      },
     ]);
+  });
+
+  it("reports the permission bits npm publishes for a binary payload", () => {
+    // `@vscode/ripgrep-<platform>-<arch>` ships bin/rg as a regular file with
+    // the exec bit set — the installer has to restore it or every spawn fails
+    // with EACCES.
+    const entries = readEntries(
+      entry("package/bin/rg", "ELF", "0", 0o755),
+      entry("package/lib/index.js", "export const rgPath = 1;"),
+    );
+
+    expect(entries[0].mode).toBe(0o755);
+    expect(entries[0].mode & 0o111).toBe(0o111);
+    expect(entries[1].mode & 0o111).toBe(0);
   });
 
   it("reads the ustar prefix field used for long paths", () => {

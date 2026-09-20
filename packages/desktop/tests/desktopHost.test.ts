@@ -369,7 +369,6 @@ vi.mock("../src/main/stdio/binaryResolver", () => ({
     dir: "/app/root/resources/wave-cli",
     bundleSha256:
       "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-    rgRange: "^1.18.0",
   })),
 }));
 

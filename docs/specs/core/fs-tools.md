@@ -98,5 +98,5 @@ order: 10
 ## 假设
 
 - 代理具有访问工作区目录所需的系统级权限。
-- `ripgrep`（`rg`）二进制由 `@vscode/ripgrep` 依赖提供（通过 `optionalDependencies` 按平台分发，运行时无需系统预装或网络下载），供 `Grep` 工具使用。二进制路径按需解析：平台二进制包缺失时 `Grep` 返回"ripgrep is not available"（文件搜索同理报错），不使宿主进程在加载时崩溃——桌面端与 IDE 插件宿主的 grep 运行在 CLI 子进程中，宿主自身不消费该路径。
+- `ripgrep`（`rg`）二进制由 `@vscode/ripgrep` 依赖提供（通过 `optionalDependencies` 按平台分发），供 `Grep` 工具使用。npm 安装的 `wave-code` 自带该依赖；宿主自带的那份 CLI 不带 `node_modules`，由 CLI 在**启动期**按需从 npmmirror 下载到共享 `~/.wave/cli/node_modules/@vscode/`（机制见 [stdio-transport.md](../ui/stdio-transport.md)「边界情况 · 运行时依赖自装与缓存」）。二进制路径**每次使用时再解析**（不在模块求值期定死——依赖是 CLI 自己在启动期装进来的，晚于模块求值）：平台二进制包缺失时 `Grep` 返回"ripgrep is not available"（文件搜索同理报错），既不使宿主进程在加载时崩溃，也不因下载失败阻断 CLI 启动——桌面端与 IDE 插件宿主的 grep 运行在 CLI 子进程中，宿主自身不消费该路径。
 - `PermissionManager` 已正确配置以处理文件系统访问级别。

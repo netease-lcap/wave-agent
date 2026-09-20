@@ -889,9 +889,7 @@ export class DesktopHost {
       // is decoupled from the GUI version, so no version target is needed.
       let binaryPath: string;
       try {
-        binaryPath = await ensureCliUpToDate(undefined, (msg) =>
-          this.showToast({ message: msg }),
-        );
+        binaryPath = await ensureCliUpToDate();
       } catch (error) {
         this.showToast({
           message: `wave CLI 获取失败：${error instanceof Error ? error.message : String(error)}`,
