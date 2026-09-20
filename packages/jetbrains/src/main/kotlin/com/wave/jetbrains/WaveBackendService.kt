@@ -25,8 +25,8 @@ import kotlinx.serialization.json.jsonPrimitive
  * in this project, mirroring the VSCE ChatProvider's shared-client architecture.
  *
  * Session-scoped notifications are demuxed by sessionId via the router; the shared client
- * is never per-session. The bundled CLI is prepared (copied to ~/.wave/cli + ripgrep
- * download) pre-spawn in [ensureClient] via BinaryResolver, so no post-init reinit is needed.
+ * is never per-session. The bundled CLI is prepared (copied to ~/.wave/cli) pre-spawn in
+ * [ensureClient] via BinaryResolver, so no post-init reinit is needed.
  */
 @Service(Service.Level.PROJECT)
 class WaveBackendService(private val project: Project) : Disposable {
@@ -36,7 +36,7 @@ class WaveBackendService(private val project: Project) : Disposable {
     @Volatile
     private var router: NotificationRouter? = null
 
-    /** The IDE notification shown while the bundled CLI / ripgrep is being prepared. */
+    /** The IDE notification shown while the bundled CLI is being prepared. */
     @Volatile
     private var installNotification: Notification? = null
 
@@ -65,7 +65,7 @@ class WaveBackendService(private val project: Project) : Disposable {
                 BinaryResolver.onInstall = { message ->
                     Edt.invokeLater {
                         // Each progress step replaces the previous notification so the
-                        // user sees the latest stage ("正在准备…" → "正在下载…").
+                        // user sees the latest stage.
                         installNotification?.expire()
                         val notification = NotificationGroupManager.getInstance()
                             .getNotificationGroup("Wave")
@@ -75,8 +75,8 @@ class WaveBackendService(private val project: Project) : Disposable {
                     }
                 }
                 try {
-                    // Resolve the bundled CLI (copied to ~/.wave/cli + rg download) and
-                    // execute it with the system Node.js — no npm-global wave-code needed.
+                    // Resolve the bundled CLI (copied to ~/.wave/cli) and execute it
+                    // with the system Node.js — no npm-global wave-code needed.
                     val entry = BinaryResolver.resolveWaveBinary()
                     val node = BinaryResolver.findNode()
                     val c = StdioClient(listOf(node, entry), listOf("--stdio"), BinaryResolver.resolveEnv())
@@ -92,8 +92,8 @@ class WaveBackendService(private val project: Project) : Disposable {
                     router = r
                 } catch (e: Exception) {
                     // Single chokepoint for every CLI preparation failure (node
-                    // resolution, CLI copy, ripgrep download): record in
-                    // jetbrains.log, then let the caller surface the error.
+                    // resolution, CLI copy): record in jetbrains.log, then let the
+                    // caller surface the error.
                     WaveAppLog.error("ensureClient failed", e)
                     throw e
                 } finally {

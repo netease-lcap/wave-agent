@@ -16,16 +16,16 @@ order: 10
 
 **为什么是这个优先级**：这是 desktop 存在的根本理由——覆盖没有编辑器的用户群体。
 
-**独立测试**：在一台没有 VS Code、未安装 Node.js/npm 的机器上安装打包后的应用，启动后（「最近打开」列表非空时）自动进入最近目录的新对话并可直接开始对话，或经工作目录选择器选择目录后开始对话；首次启动时应用自动下载 grep 依赖 rg（或已缓存跳过），断网时启动失败并提示检查网络。
+**独立测试**：在一台没有 VS Code、未安装 Node.js/npm 的机器上安装打包后的应用，启动后（「最近打开」列表非空时）自动进入最近目录的新对话并可直接开始对话，或经工作目录选择器选择目录后开始对话；首次启动时由内置 CLI 在启动期按需下载 grep 依赖 rg（或已缓存跳过），断网时应用仍正常启动（grep 暂不可用，下次启动重试）。
 
 **验收场景**：
 
 1. **假设**应用已安装且内置 CLI 随安装包发布，**当**启动 desktop 应用，**则**应用必须立即可用，本地会话直接使用内置 CLI，无需用户预先安装 Node.js/npm 或 `wave-code`：**当**用户曾选择过工作目录（「最近打开」列表非空），**则**应用必须自动执行一次与点击侧边栏「新对话」完全一致的初始化——以「最近打开」列表首项（最近主动选择的仓库根）为工作目录启动一个新的空会话（输入框可用、上下文栏显示该目录），用户打开即见可用的新对话，无需再经过目录选择步骤（等价 2026-09-08 拍板「刚打开桌面端就跟点击新对话的效果一样」，语义见 [desktop-sessions.md](./desktop-sessions.md)「会话管理」场景 2；**未登录时输入框为禁用态并显示登录原因**，见 [sso-auth.md](../enterprise/sso-auth.md)「IDE 插件更多菜单与欢迎页」场景 8）；**当**「最近打开」列表为空（从未选择过目录，含首次启动），**则**显示工作目录选择界面，用户选择/确认后即可开始会话。
 2. **假设**用户机器上未安装 Node.js/npm，**当**启动 desktop 应用，**则**本地会话必须照常工作（内置 CLI 由 Electron 内置 Node 运行），不得提示安装 Node.js。
 3. **假设**应用已启动，**当**用户发送消息，**则**主进程必须通过 `wave --stdio` 子进程运行 agent 并在 UI 中流式显示回复。
-4. **假设**内置 CLI 的 grep 依赖 rg 尚未下载，**当**首次启动本地会话，**则**主进程从 npmmirror 下载 `@vscode/ripgrep` 到 `~/.wave/cli/node_modules/` 并以 toast 提示进度。
-5. **假设**rg 已下载过（`~/.wave/cli/node_modules/` 下存在当前平台的 rg 二进制），**当**再次启动应用，**则**直接复用缓存，不重复下载。
-6. **假设**rg 下载失败（网络不可达等），**当**首次启动本地会话，**则**初始化失败并 toast 提示"grep 搜索依赖（ripgrep）下载失败，请检查网络连接后重启应用重试"——应用在启动 CLI 前必须确保 grep 依赖可解析。
+4. **假设**内置 CLI 的 grep 依赖 rg 尚未下载，**当**首次启动本地会话，**则**由 CLI 自己在**启动期**从 npmmirror 下载 `@vscode/ripgrep` JS 包装与当前平台的 rg 二进制到共享 `~/.wave/cli/node_modules/@vscode/`，并在依赖就位前不对外提供会话服务；主进程不参与下载、不弹 toast（等待期间由 webview 的加载态呈现）。
+5. **假设**rg 已下载过（`~/.wave/cli/node_modules/@vscode/` 下存在当前平台的 rg 二进制），**当**再次启动应用，**则**直接复用缓存，不重复下载。
+6. **假设**rg 下载失败（网络不可达等），**当**首次启动本地会话，**则**应用照常启动、不弹初始化错误 toast：本次运行 Grep 工具报"ripgrep is not available"（其余功能不受影响），下次启动自动重试下载——可选依赖不得把本地会话判死，应用也不再在启动 CLI 前代装。
 
 ---
 
@@ -77,13 +77,13 @@ order: 10
 **验收场景**：
 
 1. **假设**应用已安装，**当**应用启动，**则**本地会话直接使用随应用发布的内置 CLI（`resources/wave-cli/`，其 `package.json` 中的 wave-code 版本与 GUI 版本相互独立，可不同号），不执行任何 npm 安装/升级。
-2. **假设**应用升级到新版本，**当**新版本应用启动，**则**本地会话使用新版内置 CLI——运行时 `~/.wave/cli/desktop/` 中 `dist/bundle/wave.mjs` 与内置 `resources/wave-cli/` 的同名文件字节（sha256）不一致时重新复制（仅替换 CLI 文件：`dist/`、入口、`package.json`），字节一致（同版本重装、或 GUI 单独发版未改 CLI）则不复制；旧 CLI 无残留运行，已缓存的 rg（`node_modules/`）保留、不重复下载。
+2. **假设**应用升级到新版本，**当**新版本应用启动，**则**本地会话使用新版内置 CLI——运行时 `~/.wave/cli/desktop/` 中 `dist/bundle/wave.mjs` 与内置 `resources/wave-cli/` 的同名文件字节（sha256）不一致时重新复制（仅替换 CLI 文件：`dist/`、入口、`package.json`），字节一致（同版本重装、或 GUI 单独发版未改 CLI）则不复制；旧 CLI 无残留运行，已缓存的运行时依赖（rg/sharp，`node_modules/`）保留、不重复下载。
 3. **假设**用户连接远程主机，且远端固定目录 `~/.wave/cli/desktop/` 中 `dist/bundle/wave.mjs` 与本机内置同名文件的字节（sha256）一致，**当**连接建立，**则**直接复用该 CLI 与（可能）正在运行的 daemon，不推送、不重启；**当**远端 CLI 缺失、损坏（内容探针无法读取或算出一致的哈希）或字节与内置不一致（即使 `package.json` 的版本号相同），**则**应用必须把本机内置 CLI（`bin/wave-code.js` + `dist/bundle/wave.mjs` + `package.json`）经 ssh 写入远端临时目录后原子替换到 `~/.wave/cli/desktop/`，再连接/创建该主机的 daemon。
 4. **假设**远端 CLI 升级（推送）成功且该主机旧 daemon 仍在运行（旧 daemon 运行的是升级前的代码），**当**升级完成，**则**应用必须重启该主机的 daemon（终止旧 daemon 并启动新 daemon）；重启后历史会话仍可从远端转录恢复，断线前正在进行的任务终止（与 daemon 退出的既有语义一致，不得出现幽灵「运行中」状态）。
 5. **假设**远端 CLI 推送失败（ssh 中断、磁盘错误等），**当**应用检测到失败，**则**必须向用户显示可操作的错误信息与重试提示（下次连接自动重试，不得无限重试）；替换采用「临时目录写入 + 原子 `mv`」且失败不动旧目录，故运行中的旧 daemon 不受影响、可继续使用。
 6. **假设**远端主机完全未安装 wave CLI（首次连接），**当**应用连接该主机，**则**必须推送与 GUI 内置 CLI 字节一致的 bundle（推送源与内容=内置 `resources/wave-cli/`，而非远端 npm registry 的 `wave-code` 包）到 `~/.wave/cli/desktop/`；**当**远端无 Node.js（或主版本低于 22），**则**必须显示安装/升级远端 Node.js 的引导信息，不得进入不可用状态。
 7. **假设**应用升级到新版本但内置 CLI 的 wave-code 版本未变（GUI 单独发版，不 bump CLI），**当**用户连接远程主机，**则**以字节为准：内置 `wave.mjs` 与远端副本字节一致时不推送、不重启 daemon（无增量传输）；字节已变（构建了新的 CLI 代码但未 bump 版本号）时必须推送并重启 daemon——版本号相同不再视为「已满足」。
-8. **假设**远端 CLI 已就位但其 grep 依赖 rg（`@vscode/ripgrep` JS 包装 + 平台二进制）缺失（如首次推送后），**当**应用准备以该 CLI 启动 daemon，**则**必须引导远端自行获取 rg（在远端登录 shell 执行 `npm install --prefix ~/.wave/cli` 安装 `@vscode/ripgrep`，npm 按远端平台自动解析 wrapper + 平台二进制到 `~/.wave/cli/node_modules/@vscode/`）；rg 是 wave.mjs 的启动期顶层依赖，缺失时 CLI 无法启动；**当**远端无 npm 或无法访问 registry（server 无出网），**则**CLI 文件推送本身不受影响（经 ssh，不经 registry），但必须给出含手动命令的错误提示，远端恢复网络/npm 后重连自动补装（已有 rg 时跳过，不重复下载）。
+8. **假设**远端 CLI 已就位但其 grep 依赖 rg（`@vscode/ripgrep` JS 包装 + 平台二进制）缺失（如首次推送后），**当**远端以该 CLI 启动 daemon，**则**由远端 CLI 自己在**启动期**从 npmmirror 下载 rg 到共享 `~/.wave/cli/node_modules/@vscode/`（只需远端 Node ≥ 22 与出网，**不再要求远端安装 npm**）；下载失败不阻断 daemon 启动（grep 暂不可用、下次启动重试），CLI 推送本身不受影响（走 ssh、不经 registry）。
 
 ---
 
@@ -217,13 +217,13 @@ order: 10
 ### 边界情况
 
 - **内置 CLI 缺失或损坏**：本地会话的内置 CLI 文件随安装包发布，若缺失或不可执行（安装损坏），应用必须显示重新安装应用的引导信息，不得尝试从网络安装。
-- **内置 CLI 复制到用户目录**：安装目录只读，内置 CLI 在首次启动或内置与运行时副本的 `dist/bundle/wave.mjs` 字节（sha256）不一致时复制到 `~/.wave/cli/<end>/`（入口 `bin/wave-code.js`）；复制只替换 CLI 文件（`dist/`、入口、`package.json`），保留 `node_modules/`。
-- **rg 按需下载与缓存**：grep 依赖 rg（`@vscode/ripgrep` JS 包装 + 平台二进制）首次使用时从 npmmirror 下载到 `~/.wave/cli/node_modules/@vscode/`（版本取 CLI 声明的 range 内最高版本），rg 二进制存在即缓存命中、不重复下载。
-- **rg 下载失败即本地会话失败**：rg 缺失时 CLI 不会因此无法启动（`rgPath` 解析失败降级为 grep 工具报"ripgrep is not available"），但应用仍在启动 CLI 前先行拦截：rg 下载失败必须作为初始化错误 toast 提示（检查网络后重启应用重试），不能静默降级；下次启动自动重试下载。
+- **内置 CLI 复制到用户目录**：安装目录只读，内置 CLI 在首次启动或内置与运行时副本的 `dist/bundle/wave.mjs` 字节（sha256）不一致时复制到 `~/.wave/cli/<end>/`（入口 `bin/wave-code.js`）；复制只替换 CLI 文件（`dist/`、入口、`package.json`），保留 `node_modules/`（运行时依赖缓存，rg 与 sharp）。
+- **运行时依赖自装与缓存**（rg 与 sharp 同一套机制）：宿主自带的那份 CLI 不带 `node_modules`，依赖由 **CLI 在启动期**按「运行时依赖表」自装到共享 `~/.wave/cli/node_modules/`（rg 在 `@vscode/` 下），落点与旧实现相同 ⇒ 已有缓存直接命中、不重复下载；npm 安装的 `wave-code` 自带这些依赖、第一步即短路。版本选择、sha512 校验、原子落地、保留可执行位等细节见 [stdio-transport.md](../ui/stdio-transport.md)「边界情况 · 运行时依赖自装与缓存」。
+- **运行时依赖下载失败只降级、不阻断启动**：CLI 在启动期等依赖就位（避免「刚启动就贴图/搜索」撞上还没装好），但安装失败不抛错、不弹 toast——记一行警告后照常提供会话服务（Grep 报"ripgrep is not available"、超限图片按降级路径处理）；同一进程内不重试，下次启动再试。应用不再在启动 CLI 前代装或拦截（旧行为：rg 下载失败即 toast 提示初始化失败）。
 - **本地不依赖系统 Node.js**：本地会话由 Electron 内置 Node 运行内置 CLI，客户系统未安装 Node.js/npm 或版本低于 22 均不影响本地会话；SSH 远程主机会话仍依赖远端 Node.js >= 22（远端以系统 Node 运行推送的 CLI）。
-- **远端 CLI 布局镜像本地**：远端 CLI 固定位于 `~/.wave/cli/desktop/`（`bin/wave-code.js` + `dist/bundle/wave.mjs` + `package.json`），与本地 per-end 目录同名；远端 rg 位于共享 `~/.wave/cli/node_modules/@vscode/`（升级替换 `desktop/` 目录时保留，不重复下载）。
+- **远端 CLI 布局镜像本地**：远端 CLI 固定位于 `~/.wave/cli/desktop/`（`bin/wave-code.js` + `dist/bundle/wave.mjs` + `package.json`），与本地 per-end 目录同名；远端运行时依赖（rg/sharp）位于共享 `~/.wave/cli/node_modules/`（升级替换 `desktop/` 目录时保留，不重复下载）。
 - **远端同步判据取内置 CLI 内容而非版本号**：GUI 与内置 CLI 版本相互独立（publish.yml 明示 GUI 可单独发版不发布 CLI npm 包），同步判据是内置 `resources/wave-cli/dist/bundle/wave.mjs` 与远端副本的字节（sha256）比较，绝不是 `app.getVersion()`，也不以 `package.json` 的 wave-code 版本号为准（版本号未 bump 但字节已变也必须同步）——旧机制曾对 npm 上不存在的 GUI 版本号发起安装而 404。
-- **远端 rg 由远端自取且为启动期依赖**：rg（`@vscode/ripgrep` wrapper + `@vscode/ripgrep-<platform>-<arch>`）是 wave.mjs 顶层依赖，缺失时 CLI 无法启动；推送 CLI 后若共享目录无对应平台 rg，引导远端登录 shell 执行 `npm install --prefix ~/.wave/cli` 安装 `@vscode/ripgrep`（npm 自动按远端平台解析），已有即跳过。server 无出网时 CLI 推送不受影响（走 ssh），rg 自取失败给出含手动命令的错误提示，网络/npm 恢复后重连自动补装。
+- **远端运行时依赖由远端 CLI 自取**：远端 CLI 不带 `node_modules`，rg/sharp 由远端 CLI 在启动期自己从 npmmirror 下载到共享 `~/.wave/cli/node_modules/`——只需远端有 Node ≥ 22 与出网，**不再要求远端安装 npm**（旧机制在远端执行 `npm install --prefix ~/.wave/cli`）；server 无出网时 CLI 推送不受影响（走 ssh），daemon 照常启动、仅 grep 与超限图片降级，恢复网络后下次启动自动补齐。
 - **退出应用时会话仍在运行**：退出应用必须终止 CLI 子进程，避免孤儿进程。
 - **auth/token 过期**：401 等鉴权失败的表现与当前 webview/stdio 行为保持一致（由 CLI 侧现有错误处理透出），本特性不做额外处理。
 - **系统外观在流式输出期间变化**：系统外观在 agent 流式输出期间切换，应用必须立即跟随、不中断流式、不重建会话状态（渲染进程仅重赋 CSS 变量）。

@@ -1,6 +1,7 @@
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { spawn } from "child_process";
-import { rgPath } from "../utils/ripgrep.js";
+import { getRgPath } from "../utils/ripgrep.js";
+import { ensureRuntimeDeps } from "../utils/runtimeDeps.js";
 import { getDisplayPath } from "../utils/path.js";
 import { logger } from "../utils/globalLogger.js";
 import {
@@ -146,7 +147,12 @@ export const grepTool: ToolPlugin = {
       };
     }
 
+    // Resolved per call, not at import time: the CLI installs this dependency
+    // itself, possibly after the module graph has been evaluated.
+    const rgPath = getRgPath();
     if (!rgPath) {
+      // Cover the entry points that do not await the installer at startup.
+      void ensureRuntimeDeps();
       return {
         success: false,
         content: "",

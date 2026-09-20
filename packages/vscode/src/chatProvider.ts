@@ -174,17 +174,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     try {
       // Locate the CLI bundled inside the extension (dist/wave-cli).
       setExtensionPath(this.context.extensionPath);
-      const binaryPath = await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: "CodeWave IDE",
-          cancellable: false,
-        },
-        (progress) => {
-          const onInstall = (message: string) => progress.report({ message });
-          return ensureCliUpToDate(onInstall);
-        },
-      );
+      const binaryPath = await ensureCliUpToDate();
 
       this.sharedClient = new StdioClient(
         binaryPath,

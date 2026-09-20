@@ -37,7 +37,6 @@ import {
   REMOTE_NODE_MIN_MAJOR,
   ensureRemoteCliUpToDate,
   ensureRemoteDaemon,
-  ensureRemoteRipgrep,
   killRemoteDaemon,
   remoteCliShimPath,
 } from "../src/main/remoteCli";
@@ -49,12 +48,6 @@ const STALE_HASH = "b".repeat(64); // a remote copy whose bytes differ
 const SOURCE = {
   dir: "/app/root/resources/wave-cli",
   bundleSha256: BUNDLE_HASH,
-  rgRange: "^1.18.0",
-};
-/** No-grep CLI (e.g. a future bundle without @vscode/ripgrep). */
-const SOURCE_NO_RG = {
-  dir: SOURCE.dir,
-  bundleSha256: SOURCE.bundleSha256,
 };
 const HOME = "/home/user";
 
@@ -262,144 +255,10 @@ describe("ensureRemoteCliUpToDate", () => {
       LOGIN_SHELL,
       { stdout: "v22.0.0" },
       { error: new Error("segfault") },
-      { stdout: "" }, // rg ready probe
     ]);
     const result = await ensureRemoteCliUpToDate("prod", SOURCE, HOME);
     expect(result.upgraded).toBe(true);
     expect(h.spawn).toHaveBeenCalledTimes(1);
-  });
-
-  it("has the remote fetch rg itself before the CLI swap when it is missing", async () => {
-    const commands: string[] = [];
-    const queue: StubResult[] = [
-      LOGIN_SHELL,
-      { stdout: "v22.0.0" },
-      { stdout: `${STALE_HASH}\n` },
-      { error: new Error("Cannot find module '@vscode/ripgrep'") }, // rg probe
-      { stdout: "" }, // npm install @vscode/ripgrep (progress to stderr)
-      { stdout: "" }, // rg re-probe → ok
-    ];
-    h.execFile.mockImplementation(
-      (
-        _cmd: string,
-        args: string[],
-        _opts: unknown,
-        cb: (err: Error | null, result: { stdout: string }) => void,
-      ) => {
-        commands.push(args[args.length - 1] as string);
-        const next = queue.shift() ?? { stdout: "" };
-        if (next.error) cb(next.error, { stdout: "" });
-        else cb(null, { stdout: next.stdout ?? "" });
-      },
-    );
-    const result = await ensureRemoteCliUpToDate("prod", SOURCE, HOME);
-    expect(result.upgraded).toBe(true);
-    const install = commands.find((c) => c.includes("npm install --prefix"));
-    expect(install).toContain("--prefix");
-    expect(install).toContain("@vscode/ripgrep@");
-    expect(install).toContain("--registry=https://registry.npmmirror.com");
-    expect(h.spawn).toHaveBeenCalledTimes(1); // the push still happens
-  });
-
-  it("aborts without pushing when the remote rg fetch fails (old CLI intact)", async () => {
-    const queue: StubResult[] = [
-      LOGIN_SHELL,
-      { stdout: "v22.0.0" },
-      { stdout: `${STALE_HASH}\n` },
-      { error: new Error("Cannot find module '@vscode/ripgrep'") }, // rg probe
-      { error: new Error("npm ERR! network") }, // npm install fails
-    ];
-    h.execFile.mockImplementation(
-      (
-        _cmd: string,
-        _args: string[],
-        _opts: unknown,
-        cb: (err: Error | null, result: { stdout: string }) => void,
-      ) => {
-        const next = queue.shift() ?? { stdout: "" };
-        if (next.error) cb(next.error, { stdout: "" });
-        else cb(null, { stdout: next.stdout ?? "" });
-      },
-    );
-    await expect(ensureRemoteCliUpToDate("prod", SOURCE, HOME)).rejects.toThrow(
-      "ripgrep（grep 搜索依赖）安装失败",
-    );
-    // The swap never happened → the current CLI/daemon is untouched.
-    expect(h.spawn).not.toHaveBeenCalled();
-  });
-});
-
-describe("ensureRemoteRipgrep", () => {
-  it("skips npm entirely when rg is already resolvable", async () => {
-    stubExec([LOGIN_SHELL, { stdout: "" }]); // rg probe
-    await expect(
-      ensureRemoteRipgrep("prod", SOURCE, HOME),
-    ).resolves.toBeUndefined();
-    const commands = h.execFile.mock.calls.map(
-      (c) => (c[1] as string[]).at(-1) as string,
-    );
-    expect(commands.some((c) => c.includes("npm install"))).toBe(false);
-  });
-
-  it("runs the remote self-fetch install when rg is missing, then re-probes", async () => {
-    const commands: string[] = [];
-    const queue: StubResult[] = [
-      LOGIN_SHELL,
-      { error: new Error("module not found") }, // probe → missing
-      { stdout: "" }, // npm install
-      { stdout: "" }, // re-probe → ok
-    ];
-    h.execFile.mockImplementation(
-      (
-        _cmd: string,
-        args: string[],
-        _opts: unknown,
-        cb: (err: Error | null, result: { stdout: string }) => void,
-      ) => {
-        commands.push(args[args.length - 1] as string);
-        const next = queue.shift() ?? { stdout: "" };
-        if (next.error) cb(next.error, { stdout: "" });
-        else cb(null, { stdout: next.stdout ?? "" });
-      },
-    );
-    await expect(
-      ensureRemoteRipgrep("prod", SOURCE, HOME),
-    ).resolves.toBeUndefined();
-    const install = commands.find((c) => c.includes("npm install --prefix"));
-    expect(install).toContain("@vscode/ripgrep@");
-    expect(install).toContain("--registry=https://registry.npmmirror.com");
-  });
-
-  it("surfaces a manual command when the install fails (offline server)", async () => {
-    stubExec([
-      LOGIN_SHELL,
-      { error: new Error("module not found") }, // probe → missing
-      { error: new Error("npm ERR! network") }, // npm install fails
-    ]);
-    const error = await ensureRemoteRipgrep("prod", SOURCE, HOME).catch(
-      (e: Error) => e,
-    );
-    expect(error.message).toContain("ripgrep（grep 搜索依赖）安装失败");
-    expect(error.message).toContain("npm install --prefix");
-  });
-
-  it("reports when the install ran but rg still cannot be loaded", async () => {
-    stubExec([
-      LOGIN_SHELL,
-      { error: new Error("module not found") }, // probe → missing
-      { stdout: "" }, // npm install (claimed success)
-      { error: new Error("module not found") }, // re-probe → still missing
-    ]);
-    await expect(ensureRemoteRipgrep("prod", SOURCE, HOME)).rejects.toThrow(
-      "仍不可用",
-    );
-  });
-
-  it("does nothing when the bundled CLI declares no rg dependency", async () => {
-    await expect(
-      ensureRemoteRipgrep("prod", SOURCE_NO_RG, HOME),
-    ).resolves.toBeUndefined();
-    expect(h.execFile).not.toHaveBeenCalled();
   });
 });
 
@@ -487,7 +346,6 @@ describe("ensureRemoteDaemon", () => {
       { stdout: "/home/user" },
       { stdout: "v22.0.0" },
       { stdout: `${STALE_HASH}\n` }, // stale → push attempt fails
-      { stdout: "" }, // rg ready probe (passes; the push itself fails)
       { stdout: "" }, // old daemon still alive → reuse
     ]);
     await expect(ensureRemoteDaemon("prod", SOURCE, notice)).resolves.toBe(
@@ -504,16 +362,14 @@ describe("ensureRemoteDaemon", () => {
     expect(pkill).toBeUndefined(); // failed push must not kill the old daemon
   });
 
-  it("surfaces an actionable error when there is no CLI and no rg on a dead host", async () => {
-    h.spawn.mockImplementation(() => makePushChild(0));
+  it("surfaces an actionable error when the CLI cannot be pushed to a dead host", async () => {
+    h.spawn.mockImplementation(() => makePushChild(1)); // the bundle push fails
     const notice = vi.fn();
     stubExec([
       LOGIN_SHELL,
       { stdout: "/home/user" },
       { stdout: "v22.0.0" },
       { error: new Error("no such file") }, // hash probe → missing
-      { error: new Error("Cannot find module '@vscode/ripgrep'") }, // rg probe
-      { error: new Error("npm ERR! network") }, // remote self-fetch fails
       { error: new Error("ECONNREFUSED") }, // alive check → dead
       { stdout: "v22.0.0" }, // fallback resolve: node -v
       { error: new Error("no such file") }, // fallback resolve: still no CLI
@@ -521,10 +377,8 @@ describe("ensureRemoteDaemon", () => {
     await expect(ensureRemoteDaemon("prod", SOURCE, notice)).rejects.toThrow(
       "远端未安装 wave CLI",
     );
-    expect(notice).toHaveBeenCalledWith(
-      expect.stringContaining("npm install --prefix"),
-    );
-    expect(h.spawn).not.toHaveBeenCalled(); // never pushed — rg blocked first
+    expect(notice).toHaveBeenCalledWith(expect.stringContaining("同步失败"));
+    expect(h.spawn).toHaveBeenCalledTimes(1); // the push was attempted
   });
 });
 

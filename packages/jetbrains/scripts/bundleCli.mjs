@@ -6,8 +6,9 @@
  * (>= 22) — no npm-global `wave-code` package needed. Ships the version-probe
  * shim (bin/wave-code.js), the self-contained CLI bundle
  * (dist/bundle/wave.mjs) and the package.json the shim reads for `wave -v`.
- * The grep tool's rg binary is NOT bundled — it is downloaded to ~/.wave/cli
- * on first use. Invoked from build.gradle.kts (bundleCli task).
+ * The grep tool's rg binary is NOT bundled — the CLI installs it itself on
+ * startup into the shared ~/.wave/cli/node_modules (no npm needed).
+ * Invoked from build.gradle.kts (bundleCli task).
  */
 import fs from "node:fs";
 import path from "node:path";

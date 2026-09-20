@@ -240,7 +240,6 @@ describe("ensureRemoteDaemon", () => {
   const SOURCE = {
     dir: "/app/root/resources/wave-cli",
     bundleSha256: BUNDLE_HASH,
-    rgRange: "^1.18.0",
   };
   const SHIM = "/home/alice/.wave/cli/desktop/bin/wave-code.js";
 

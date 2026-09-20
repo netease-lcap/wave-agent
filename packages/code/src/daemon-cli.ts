@@ -12,10 +12,10 @@ import { ensureRuntimeDeps } from "wave-agent-sdk";
 import { DaemonServer } from "./stdio/daemonServer.js";
 
 export async function startDaemonCli(socketPath: string): Promise<void> {
-  // Install the on-demand image codec before serving (see cli.tsx). The daemon
-  // serves turns on a remote host, so the install belongs here — and it must
-  // land before the first client attaches, since the host reports "daemon ready"
-  // on this socket.
+  // Install the on-demand runtime dependencies (image codec + ripgrep) before
+  // serving (see cli.tsx). The daemon serves turns on a remote host, so the
+  // install belongs here — and it must land before the first client attaches,
+  // since the host reports "daemon ready" on this socket.
   await ensureRuntimeDeps();
   const server = new DaemonServer({ socketPath });
   await server.start();

@@ -4,9 +4,10 @@
  * can run local sessions with its bundled Node runtime — no system Node.js/npm
  * required. Ships the version-probe shim (bin/wave-code.js), the self-
  * contained CLI bundle (dist/bundle/wave.mjs) and the package.json the shim
- * reads for `wave -v`. The grep tool's rg binary is NOT bundled — it is
- * downloaded to ~/.wave/cli on first use. electron-builder ships the
- * directory as an extraResource (package.json build.extraResources).
+ * reads for `wave -v`. The grep tool's rg binary is NOT bundled — the CLI
+ * installs it itself on startup into the shared ~/.wave/cli/node_modules
+ * (no npm needed). electron-builder ships the directory as an extraResource
+ * (package.json build.extraResources).
  */
 import fs from "node:fs";
 import path from "node:path";

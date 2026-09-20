@@ -1,22 +1,9 @@
 package com.wave.jetbrains.stdio
 
-import com.intellij.openapi.diagnostic.logger
-import com.wave.jetbrains.util.WaveAppLog
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
-import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
-import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
-import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.net.URI
-import java.net.http.HttpClient
-import java.net.http.HttpRequest
-import java.net.http.HttpResponse
 import java.nio.charset.Charset
 import java.security.MessageDigest
-import java.time.Duration
 import java.util.HexFormat
 
 /** Minimum Node.js major version required by `wave --stdio`. */
@@ -33,14 +20,12 @@ private const val MIN_NODE_MAJOR = 22
  * be trusted as "same CLI" (plugin reinstalls and GUI-only releases can ship
  * new bytes without bumping the version). Each frontend
  * (vscode/desktop/jetbrains) keeps its own subdir so different versions
- * never overwrite each other. The grep dependency `@vscode/ripgrep` is NOT
- * bundled; it is downloaded from npmmirror on first use into the shared
- * `~/.wave/cli/node_modules/` and cached.
+ * never overwrite each other. Runtime dependencies (`sharp` for images,
+ * `@vscode/ripgrep` for grep) are NOT bundled: the CLI installs them itself on
+ * startup into the shared `~/.wave/cli/node_modules/`, and a failed download
+ * only degrades the tool that needs it — it never blocks startup.
  */
 object BinaryResolver {
-    private val LOG = logger<BinaryResolver>()
-    const val NPM_REGISTRY = "https://registry.npmmirror.com"
-
     @Volatile
     private var cachedEntry: String? = null
     @Volatile
@@ -53,38 +38,15 @@ object BinaryResolver {
     private val isWindows = System.getProperty("os.name").lowercase().startsWith("win")
     private val lookupCmd = if (isWindows) "where" else "which"
 
-    /** Optional callback invoked when a download/copy starts. */
+    /** Optional callback invoked when the bundled CLI is copied. */
     var onInstall: ((String) -> Unit)? = null
 
     /**
-     * Platform dir of the rg binary package, e.g. `ripgrep-win32-x64`. Must
-     * include the `ripgrep-` prefix: the npm package name is
-     * `@vscode/ripgrep-<platform>-<arch>` and the extracted dir has to match it
-     * so the cache check hits and wave.mjs's createRequire resolution works.
-     */
-    internal val rgPlatformDir: String by lazy {
-        val os = System.getProperty("os.name").lowercase()
-        val arch = System.getProperty("os.arch").lowercase()
-        val platform = when {
-            os.contains("win") -> "win32"
-            os.contains("mac") -> "darwin"
-            else -> "linux"
-        }
-        val nodeArch = when {
-            arch == "x86_64" || arch == "amd64" -> "x64"
-            arch == "aarch64" || arch == "arm64" -> "arm64"
-            arch == "x86" || arch == "i386" || arch == "i686" -> "ia32"
-            else -> arch
-        }
-        "ripgrep-$platform-$nodeArch"
-    }
-
-    /**
      * Resolve the runtime CLI entry (`~/.wave/cli/jetbrains/bin/wave-code.js`),
-     * copying the bundled CLI on first use / version change and downloading
-     * ripgrep on demand. `WAVE_CLI_PATH` env override wins (development).
+     * copying the bundled CLI on first use / version change. `WAVE_CLI_PATH` env
+     * override wins (development).
      * @throws StdioClientException when the bundled CLI is missing (corrupt
-     * install) or ripgrep cannot be downloaded.
+     * install).
      */
     fun resolveWaveBinary(): String {
         cachedEntry?.let { return it }
@@ -98,23 +60,10 @@ object BinaryResolver {
         checkNodeVersion()
 
         // 1. Copy the bundled CLI into ~/.wave/cli/jetbrains (plugin install
-        //    dir is read-only; a changed bundle re-copies but keeps the shared
-        //    rg download in ~/.wave/cli/node_modules so it is never
-        //    re-downloaded).
-        val entry = prepareCli()
-
-        // 2. `@vscode/ripgrep` is a top-level import of the bundled CLI —
-        //    without it wave.mjs cannot even start. A failed download must
-        //    therefore surface as a clear init error, not as an opaque
-        //    MODULE_NOT_FOUND crash from the CLI child process.
-        val rgOk = ensureRipgrep()
-        if (!rgOk) {
-            throw StdioClientException(
-                "grep 搜索依赖（ripgrep）下载失败。请检查网络连接后重试。"
-            )
-        }
-        cachedEntry = entry
-        return entry
+        //    dir is read-only; a changed bundle re-copies but keeps the runtime
+        //    dependencies the CLI installed in ~/.wave/cli/node_modules).
+        cachedEntry = prepareCli()
+        return cachedEntry!!
     }
 
     /**
@@ -196,9 +145,9 @@ object BinaryResolver {
      * bundle bytes differ from the runtime copy. Content comparison instead of a
      * version-string check: plugin reinstalls refresh the plugin without bumping
      * its version, so an unchanged version number cannot be trusted as "same
-     * CLI". The cached rg download lives in the shared
-     * `~/.wave/cli/node_modules/@vscode` dir — outside this per-end dir — so an
-     * already-downloaded rg is never re-downloaded after an upgrade.
+     * CLI". The runtime dependencies the CLI installs itself live in the shared
+     * `~/.wave/cli/node_modules` dir — outside this per-end dir — so an upgrade
+     * never forces re-downloading them.
      * Returns the runtime entry path.
      * @throws StdioClientException when the bundled CLI itself is missing (corrupt install).
      */
@@ -212,8 +161,9 @@ object BinaryResolver {
 
         if (needCopy) {
             onInstall?.invoke("正在准备内置 wave CLI…")
-            // Replace the CLI files only — the cached rg download lives in the
-            // shared ~/.wave/cli dir, so an upgrade never forces re-downloading it.
+            // Replace the CLI files only — the runtime dependencies the CLI
+            // installed live in the shared ~/.wave/cli dir, so an upgrade never
+            // forces re-downloading them.
             File(cliInstallDir(), "dist").deleteRecursively()
             File(entry).delete()
             File(cliInstallDir(), "package.json").delete()
@@ -254,146 +204,6 @@ object BinaryResolver {
             ?: throw StdioClientException("内置 CLI 缺失（$resource）。请重新安装插件。")
         target.parentFile?.mkdirs()
         stream.use { input -> FileOutputStream(target).use { output -> input.copyTo(output) } }
-    }
-
-    // ------------------------------------------------------------------
-    // ripgrep download + cache
-    // ------------------------------------------------------------------
-
-    /**
-     * Where the downloaded ripgrep packages live. Shared by all three
-     * frontends (vscode/desktop/jetbrains) — deliberately outside the per-end
-     * CLI dir so each end's CLI copy never wipes the cached rg download.
-     */
-    internal fun rgInstallDir(): File = File(cliRootDir(), "node_modules/@vscode")
-
-    internal fun rgBinaryPath(): String =
-        File(rgInstallDir(), "$rgPlatformDir/bin/rg${if (isWindows) ".exe" else ""}").path
-
-    /**
-     * Download the ripgrep JS wrapper and the current platform's rg binary into
-     * the shared `~/.wave/cli/node_modules/@vscode` dir. Returns true when the
-     * rg binary is in place. Never throws — a failed download only disables
-     * the grep tool until a later launch retries (caller [resolveWaveBinary]
-     * turns failure into a hard init error).
-     */
-    internal fun ensureRipgrep(): Boolean {
-        if (File(rgBinaryPath()).exists()) return true
-        return try {
-            val pkgFile = File(cliInstallDir(), "package.json")
-            if (!pkgFile.isFile) return false
-            val pkg = Json.parseToJsonElement(pkgFile.readText()).jsonObject
-            val rgRange = pkg["dependencies"]?.jsonObject?.get("@vscode/ripgrep")?.jsonPrimitive?.content
-            if (rgRange == null) return true // CLI has no grep dependency — nothing to do.
-
-            onInstall?.invoke("正在下载 grep 搜索依赖（ripgrep），请稍候…")
-            val rgVersion = resolveRipgrepVersion(rgRange)
-            val dir = rgInstallDir()
-            // Each tarball strips its top `package/` dir, so extract into its own
-            // package dir — the JS wrapper and the platform binary must NOT share
-            // a directory (wave.mjs resolves `@vscode/ripgrep` via createRequire).
-            val jsDir = File(dir, "ripgrep")
-            val binDir = File(dir, rgPlatformDir)
-            jsDir.mkdirs()
-            binDir.mkdirs()
-            extractTarball(downloadBuffer(tarballUrl("@vscode/ripgrep", rgVersion)), jsDir)
-            extractTarball(downloadBuffer(tarballUrl("@vscode/$rgPlatformDir", rgVersion)), binDir)
-            File(rgBinaryPath()).exists()
-        } catch (e: Exception) {
-            LOG.warn("[Wave] ripgrep 下载失败，grep 工具暂不可用：", e)
-            WaveAppLog.warn("[Wave] ripgrep 下载失败，grep 工具暂不可用：${e.message}")
-            false
-        }
-    }
-
-    /** Highest version of `@vscode/ripgrep` satisfying the CLI's declared range. */
-    private fun resolveRipgrepVersion(range: String): String {
-        val meta = Json.parseToJsonElement(fetchText("$NPM_REGISTRY/@vscode/ripgrep")).jsonObject
-        val versions = meta["versions"]?.jsonObject?.keys
-            ?: throw StdioClientException("获取 @vscode/ripgrep 元数据失败")
-        val best = versions
-            .filter { satisfiesCaret(it, range) }
-            .maxWithOrNull(Comparator { a, b -> compareVersions(a, b) })
-            ?: throw StdioClientException("没有满足 $range 的 @vscode/ripgrep 版本")
-        return best
-    }
-
-    /** Resolve the registry tarball URL for `pkg@version` (from package metadata). */
-    private fun tarballUrl(pkg: String, version: String): String {
-        val meta = Json.parseToJsonElement(fetchText("$NPM_REGISTRY/$pkg")).jsonObject
-        val dist = meta["versions"]?.jsonObject?.get(version)?.jsonObject?.get("dist")?.jsonObject
-        val url = dist?.get("tarball")?.jsonPrimitive?.content
-            ?: throw StdioClientException("未找到 $pkg@$version 的下载地址")
-        return url
-    }
-
-    private val http: HttpClient by lazy {
-        HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(30))
-            // npmmirror tarball URLs 302-redirect to the CDN — JDK HttpClient
-            // does NOT follow redirects by default (desktop/vscode rely on
-            // fetch's automatic redirect handling, so this must be explicit).
-            .followRedirects(HttpClient.Redirect.NORMAL)
-            .build()
-    }
-
-    private fun fetchText(url: String): String {
-        val req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(60)).GET().build()
-        val res = http.send(req, HttpResponse.BodyHandlers.ofString())
-        if (res.statusCode() !in 200..299) {
-            throw StdioClientException("获取 $url 失败（HTTP ${res.statusCode()}）")
-        }
-        return res.body()
-    }
-
-    private fun downloadBuffer(url: String): ByteArray {
-        val req = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(120)).GET().build()
-        val res = http.send(req, HttpResponse.BodyHandlers.ofByteArray())
-        if (res.statusCode() !in 200..299) {
-            throw StdioClientException("下载 $url 失败（HTTP ${res.statusCode()}）")
-        }
-        return res.body()
-    }
-
-    /** Extract a `.tar.gz` tarball, stripping the top `package/` dir. */
-    internal fun extractTarball(bytes: ByteArray, destDir: File) {
-        GzipCompressorInputStream(ByteArrayInputStream(bytes)).use { gz ->
-            TarArchiveInputStream(gz).use { tar ->
-                var entry = tar.nextEntry
-                while (entry != null) {
-                    // Each npm tarball has a single top-level `package/` dir — strip it.
-                    val name = entry.name.substringAfter('/')
-                    if (name.isNotEmpty()) {
-                        val out = File(destDir, name)
-                        if (entry.isDirectory) {
-                            out.mkdirs()
-                        } else {
-                            out.parentFile?.mkdirs()
-                            FileOutputStream(out).use { tar.transferTo(it) }
-                            // npm tarballs ship the rg binary with the exec bit set
-                            // (0755); FileOutputStream creates plain 0644 files, so
-                            // without mirroring the entry's x bits the binary lands
-                            // non-executable and spawning it fails with EACCES (the
-                            // Grep tool silently breaks). Apply the exec bits for all
-                            // three classes — the shape npm install leaves behind.
-                            if ((entry.mode and 0x49) != 0) out.setExecutable(true, false) // 0x49 = 0o111 exec bits
-                        }
-                    }
-                    entry = tar.nextEntry
-                }
-            }
-        }
-    }
-
-    /** True when [version] (pure x.y.z, no prerelease) satisfies a `^a.b.c` range. */
-    internal fun satisfiesCaret(version: String, range: String): Boolean {
-        val rm = Regex("""^\^(\d+)\.(\d+)\.(\d+)$""").find(range) ?: return false
-        val vm = Regex("""^(\d+)\.(\d+)\.(\d+)$""").find(version) ?: return false
-        val (rMajor, rMinor, rPatch) = rm.destructured
-        val (vMajor, vMinor, vPatch) = vm.destructured
-        if (vMajor != rMajor) return false
-        val minor = vMinor.toInt(); val patch = vPatch.toInt()
-        return minor > rMinor.toInt() || (minor == rMinor.toInt() && patch >= rPatch.toInt())
     }
 
     // ------------------------------------------------------------------

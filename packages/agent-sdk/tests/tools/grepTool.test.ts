@@ -13,9 +13,19 @@ const testContext: ToolContext = {
 // Mock child_process
 vi.mock("child_process");
 
-// Mock ripgrep path
+// Mock ripgrep path — a mutable probe so one case can model "the search
+// dependency has not been installed (yet)".
+const rgProbe = vi.hoisted(() => ({ path: "/mock/rg" as string | undefined }));
 vi.mock("@/utils/ripgrep.js", () => ({
-  rgPath: "/mock/rg",
+  getRgPath: () => rgProbe.path,
+  resolveRipgrep: () => rgProbe.path,
+  resetRipgrep: () => {},
+}));
+
+// The installer the Grep tool kicks when ripgrep is missing (for entry points
+// that do not await it at startup) — mocked so no case touches the network.
+vi.mock("@/utils/runtimeDeps.js", () => ({
+  ensureRuntimeDeps: vi.fn(async () => ({ available: true })),
 }));
 
 vi.mock("../utils/path.js", () => ({
@@ -91,6 +101,7 @@ describe("grepTool", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    rgProbe.path = "/mock/rg";
   });
 
   afterEach(() => {
@@ -107,6 +118,20 @@ describe("grepTool", () => {
       expect(grepTool.config.function.name).toBe("Grep");
       expect(grepTool.config.function.parameters.required).toEqual(["pattern"]);
     }
+  });
+
+  it("kicks the runtime installer and reports an actionable error when ripgrep is missing", async () => {
+    // The CLI installs ripgrep itself at startup, so a missing binary is a
+    // first-run race for entry points that did not await the installer.
+    rgProbe.path = undefined;
+    const { ensureRuntimeDeps } = await import("@/utils/runtimeDeps.js");
+
+    const result = await grepTool.execute({ pattern: "anything" }, testContext);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("ripgrep is not available");
+    expect(vi.mocked(ensureRuntimeDeps)).toHaveBeenCalled();
+    expect(mockSpawn).not.toHaveBeenCalled();
   });
 
   it("should search hidden directories and exclude VCS dirs by default", async () => {
