@@ -137,21 +137,34 @@ class AnsiRenderer extends Renderer<string> {
 
 const createRenderer = (columns: number) => new AnsiRenderer(columns);
 
+/** Renders Markdown to ANSI-styled text using the same renderer as <Markdown>.
+ *  Callers that must linearize content into rows (e.g. the confirmation
+ *  details area, which slices rows for PgUp/PgDn scrolling) render first and
+ *  then split the result into lines. */
+export const renderMarkdownToAnsi = (
+  content: string,
+  columns: number,
+): string => {
+  const ansi = marked.parse(content, {
+    renderer: createRenderer(columns),
+    gfm: true,
+    breaks: true,
+  }) as string;
+  return ansi.trim();
+};
+
 // Markdown component using custom ANSI renderer
 export const Markdown = React.memo(({ children }: MarkdownProps) => {
   const { stdout } = useStdout();
   const columns = stdout?.columns ?? 80;
-  const ansiContent = useMemo(() => {
-    return marked.parse(children, {
-      renderer: createRenderer(columns),
-      gfm: true,
-      breaks: true,
-    }) as string;
-  }, [children, columns]);
+  const ansiContent = useMemo(
+    () => renderMarkdownToAnsi(children, columns),
+    [children, columns],
+  );
 
   return (
     <Box flexDirection="column">
-      <Text>{ansiContent.trim()}</Text>
+      <Text>{ansiContent}</Text>
     </Box>
   );
 });

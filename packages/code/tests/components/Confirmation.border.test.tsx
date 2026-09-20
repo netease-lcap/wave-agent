@@ -73,9 +73,7 @@ describe("Confirmation Border", () => {
     );
 
     await vi.waitFor(() => {
-      expect(stripAnsiColors(lastFrame() || "")).toContain(
-        "**Test** Plan Content",
-      );
+      expect(stripAnsiColors(lastFrame() || "")).toContain("Test Plan Content");
     });
 
     const frame = lastFrame();
@@ -90,13 +88,12 @@ describe("Confirmation Border", () => {
 
     // Check for absence of horizontal padding
     const lines = cleanFrame.split("\n");
-    const planContentLine = lines.find((l) =>
-      l.includes("**Test** Plan Content"),
-    );
-    expect(planContentLine?.trimStart()).toBe("**Test** Plan Content");
+    const planContentLine = lines.find((l) => l.includes("Test Plan Content"));
+    expect(planContentLine?.trimStart()).toBe("Test Plan Content");
 
-    // Plan rows are rendered as plain text lines (no Markdown styling) so the
-    // details area can be scrolled line-by-line with PgUp/PgDn.
-    expect(cleanFrame).toContain("**Test** Plan Content");
+    // The plan is Markdown (the agent writes it to a .md file), so emphasis is
+    // styled by the shared renderer instead of printed literally; the details
+    // area still linearizes the rendered rows for PgUp/PgDn scrolling.
+    expect(cleanFrame).not.toContain("**");
   });
 });
