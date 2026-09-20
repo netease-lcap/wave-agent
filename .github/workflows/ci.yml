@@ -335,14 +335,17 @@ jobs:
 
   host-bundle-load:
     runs-on: ubuntu-latest
-    # PR gate：宿主产物加载自检（scripts/check-host-bundles.mjs）。
+    # Post-merge 宿主产物加载自检（scripts/check-host-bundles.mjs）。
     # 单测 / webview demo+e2e / real-host 全在**仓库内**跑：那里 node_modules 齐全、
     # `@vscode/ripgrep-<platform>` 之类平台包解析得到，而宿主是**打包后才分发**的
     # （asar 只带 desktop 自己的生产依赖，其余必须已被 bundle 内联）。v1.2.5 桌面端与
     # 插件"装出来打不开"（#2267 的 barrel 导入把 @vscode/ripgrep 连坐进主进程）就是
-    # 这一层能拦、其它层根本看不见的事故。只构建两个宿主 bundle，不跑 electron-builder、
-    # 不跑 Playwright，分钟级。
-    if: github.event_name != 'push'
+    # 这一层能拦、其它层根本看不见的事故。
+    # 与 `integration`/`webview-e2e`/`real-host-e2e` 同档：不是 PR gate——它要先构建
+    # 宿主产物，且不上 ruleset 的 required 清单（main 的 CI 报红 + 邮件即信号），
+    # 拦点落在"合入 main 之后、发版之前"。只构建两个宿主 bundle，不跑
+    # electron-builder、不跑 Playwright，分钟级。
+    if: github.event_name != 'pull_request'
 
     strategy:
       matrix:
