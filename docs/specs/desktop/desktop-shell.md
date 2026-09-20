@@ -25,7 +25,7 @@ order: 10
 3. **假设**应用已启动，**当**用户发送消息，**则**主进程必须通过 `wave --stdio` 子进程运行 agent 并在 UI 中流式显示回复。
 4. **假设**内置 CLI 的 grep 依赖 rg 尚未下载，**当**首次启动本地会话，**则**主进程从 npmmirror 下载 `@vscode/ripgrep` 到 `~/.wave/cli/node_modules/` 并以 toast 提示进度。
 5. **假设**rg 已下载过（`~/.wave/cli/node_modules/` 下存在当前平台的 rg 二进制），**当**再次启动应用，**则**直接复用缓存，不重复下载。
-6. **假设**rg 下载失败（网络不可达等），**当**首次启动本地会话，**则**初始化失败并 toast 提示"grep 搜索依赖（ripgrep）下载失败，请检查网络连接后重启应用重试"——rg 是 wave.mjs 的顶层依赖，缺失时 CLI 无法启动。
+6. **假设**rg 下载失败（网络不可达等），**当**首次启动本地会话，**则**初始化失败并 toast 提示"grep 搜索依赖（ripgrep）下载失败，请检查网络连接后重启应用重试"——应用在启动 CLI 前必须确保 grep 依赖可解析。
 
 ---
 
@@ -219,7 +219,7 @@ order: 10
 - **内置 CLI 缺失或损坏**：本地会话的内置 CLI 文件随安装包发布，若缺失或不可执行（安装损坏），应用必须显示重新安装应用的引导信息，不得尝试从网络安装。
 - **内置 CLI 复制到用户目录**：安装目录只读，内置 CLI 在首次启动或内置与运行时副本的 `dist/bundle/wave.mjs` 字节（sha256）不一致时复制到 `~/.wave/cli/<end>/`（入口 `bin/wave-code.js`）；复制只替换 CLI 文件（`dist/`、入口、`package.json`），保留 `node_modules/`。
 - **rg 按需下载与缓存**：grep 依赖 rg（`@vscode/ripgrep` JS 包装 + 平台二进制）首次使用时从 npmmirror 下载到 `~/.wave/cli/node_modules/@vscode/`（版本取 CLI 声明的 range 内最高版本），rg 二进制存在即缓存命中、不重复下载。
-- **rg 下载失败即本地会话失败**：rg 是 wave.mjs 的顶层依赖（`@vscode/ripgrep` JS 包装加载时就解析平台二进制），JS 包装或平台包任一缺失都会导致 CLI 无法启动。rg 下载失败必须作为初始化错误 toast 提示（检查网络后重启应用重试），不能静默降级；下次启动自动重试下载。
+- **rg 下载失败即本地会话失败**：rg 缺失时 CLI 不会因此无法启动（`rgPath` 解析失败降级为 grep 工具报"ripgrep is not available"），但应用仍在启动 CLI 前先行拦截：rg 下载失败必须作为初始化错误 toast 提示（检查网络后重启应用重试），不能静默降级；下次启动自动重试下载。
 - **本地不依赖系统 Node.js**：本地会话由 Electron 内置 Node 运行内置 CLI，客户系统未安装 Node.js/npm 或版本低于 22 均不影响本地会话；SSH 远程主机会话仍依赖远端 Node.js >= 22（远端以系统 Node 运行推送的 CLI）。
 - **远端 CLI 布局镜像本地**：远端 CLI 固定位于 `~/.wave/cli/desktop/`（`bin/wave-code.js` + `dist/bundle/wave.mjs` + `package.json`），与本地 per-end 目录同名；远端 rg 位于共享 `~/.wave/cli/node_modules/@vscode/`（升级替换 `desktop/` 目录时保留，不重复下载）。
 - **远端同步判据取内置 CLI 内容而非版本号**：GUI 与内置 CLI 版本相互独立（publish.yml 明示 GUI 可单独发版不发布 CLI npm 包），同步判据是内置 `resources/wave-cli/dist/bundle/wave.mjs` 与远端副本的字节（sha256）比较，绝不是 `app.getVersion()`，也不以 `package.json` 的 wave-code 版本号为准（版本号未 bump 但字节已变也必须同步）——旧机制曾对 npm 上不存在的 GUI 版本号发起安装而 404。
