@@ -515,10 +515,27 @@ describe("ensureRuntimeDeps", () => {
     expect(registry.urls).toContain(`${RUNTIME_DEPS_REGISTRY}/${platformName}`);
     expect(registry.urls.some((url) => url.includes("musl"))).toBe(false);
 
-    // The binary is executable: npm publishes it that way and a 0644 rg fails
-    // every spawn with EACCES.
+    // The unpacked binary has to be usable, and "usable" is a different
+    // observation per platform. npm publishes `bin/rg` as 0755 and a 0644 rg
+    // fails every spawn with EACCES, so the installer restores the exec bit
+    // from the tarball header — on POSIX that bit is directly readable, and it
+    // is the thing a regression would drop.
+    //
+    // Windows cannot express it: NTFS has no unix permission bits, `chmod` there
+    // is effectively a read-only toggle, and `statSync().mode & 0o111` is 0 for
+    // *every* file no matter what the installer did. Asserting the mode there
+    // fails a perfectly good install (this is exactly what turned the main-only
+    // Windows job red). The platform-agnostic half of the same guarantee is that
+    // the payload really landed, at the path the wrapper resolves, with the
+    // bytes npm published — an empty or truncated rg breaks grep just as badly
+    // as a non-executable one — so assert that instead. Both branches are
+    // exercised: the case is never skipped or short-circuited per platform.
     const rg = path.join(installDir, platformName, "bin", "rg");
-    expect(fs.statSync(rg).mode & 0o111).toBe(0o111);
+    if (process.platform === "win32") {
+      expect(fs.readFileSync(rg, "utf8")).toBe("rg-binary");
+    } else {
+      expect(fs.statSync(rg).mode & 0o111).toBe(0o111);
+    }
     expect(
       JSON.parse(
         fs.readFileSync(
