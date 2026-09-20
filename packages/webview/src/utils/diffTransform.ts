@@ -3,15 +3,12 @@
  * Uses tool parameter types from wave-agent-sdk with type assertions based on tool name
  */
 
-import type { ToolBlock } from "wave-agent-sdk/dist/types/messaging.js";
+import type { ToolBlock } from "wave-agent-sdk/types";
 import type {
   WriteToolParameters,
   EditToolParameters,
-} from "wave-agent-sdk/dist/types/tools.js";
-import {
-  WRITE_TOOL_NAME,
-  EDIT_TOOL_NAME,
-} from "wave-agent-sdk/dist/constants/tools.js";
+} from "wave-agent-sdk/types";
+import { WRITE_TOOL_NAME, EDIT_TOOL_NAME } from "wave-agent-sdk/constants";
 
 export interface Change {
   oldContent: string;

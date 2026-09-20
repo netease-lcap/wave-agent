@@ -30,12 +30,9 @@ import type {
   SkillMetadata,
   UserPreferenceKey,
   UserPreferenceSource,
-} from "wave-agent-sdk/dist/types/index.js";
-import type {
-  SessionMetadata,
-  SessionData,
-} from "wave-agent-sdk/dist/services/session.js";
-import type { ToolBlockUpdateCallbackParams } from "wave-agent-sdk/dist/utils/messageOperations.js";
+} from "wave-agent-sdk/types";
+import type { SessionMetadata, SessionData } from "wave-agent-sdk/types";
+import type { ToolBlockUpdateCallbackParams } from "wave-agent-sdk/types";
 // Type-only: NavKey is defined in the SettingsPage component module; erased at
 // compile time so the type-level cycle (SettingsPage imports ConfigurationData
 // from here) never becomes a runtime import.

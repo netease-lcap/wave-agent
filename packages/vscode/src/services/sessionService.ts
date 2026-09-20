@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import type { SessionMetadata } from "wave-agent-sdk/types";
+import type { SessionMetadata } from "wave-agent-sdk/host";
 import type { StdioClient } from "../stdio/stdioClient";
 
 export class SessionService {

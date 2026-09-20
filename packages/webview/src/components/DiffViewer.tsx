@@ -5,11 +5,8 @@ import {
   transformParametersToChanges,
 } from "../utils/diffTransform";
 import { renderWordLevelDiff } from "../utils/diffHighlight";
-import {
-  WRITE_TOOL_NAME,
-  EDIT_TOOL_NAME,
-} from "wave-agent-sdk/dist/constants/tools.js";
-import type { ToolBlock } from "wave-agent-sdk/dist/types/messaging.js";
+import { WRITE_TOOL_NAME, EDIT_TOOL_NAME } from "wave-agent-sdk/constants";
+import type { ToolBlock } from "wave-agent-sdk/types";
 import "../styles/DiffViewer.css";
 
 interface DiffViewerProps {

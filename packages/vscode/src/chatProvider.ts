@@ -3,7 +3,7 @@ import type {
   SessionMetadata,
   ToolPermissionContext,
   PermissionDecision,
-} from "wave-agent-sdk/types";
+} from "wave-agent-sdk/host";
 import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
@@ -11,7 +11,7 @@ import {
   ENTER_PLAN_MODE_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
-} from "wave-agent-sdk/constants";
+} from "wave-agent-sdk/host";
 import { ChatSession } from "./session/chatSession";
 import { ConfigurationService } from "./services/configurationService";
 import { FileService } from "./services/fileService";
@@ -24,7 +24,7 @@ import {
   type MessageHandlerContext,
 } from "./session/messageHandler";
 import { StdioClient } from "./stdio/stdioClient";
-import { NotificationRouter } from "wave-agent-sdk/stdio";
+import { NotificationRouter } from "wave-agent-sdk/host";
 import { ensureCliUpToDate, setExtensionPath } from "./stdio/binaryResolver";
 import { hostLog } from "./hostLog";
 

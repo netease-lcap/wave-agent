@@ -31,6 +31,10 @@
       "types": "./dist/stdio/index.d.ts",
       "default": "./dist/stdio/index.js"
     },
+    "./host": {
+      "types": "./dist/host/index.d.ts",
+      "default": "./dist/host/index.js"
+    },
     "./package.json": "./package.json",
     "./*": "./*"
   },

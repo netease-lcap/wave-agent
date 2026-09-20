@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import type { SessionMetadata } from "wave-agent-sdk";
+import type { SessionMetadata } from "wave-agent-sdk/types";
 import { formatSessionLabel } from "../utils/session";
 
 export interface SessionListProps {

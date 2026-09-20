@@ -36,7 +36,7 @@ import SettingsPage from "./SettingsPage";
 import type { NavKey } from "./SettingsPage";
 import { SessionBoard } from "./SessionBoard";
 import { SessionListPopup } from "./SessionListPopup";
-import type { SessionMetadata } from "wave-agent-sdk";
+import type { SessionMetadata } from "wave-agent-sdk/types";
 import { PluginMarketPage } from "./PluginMarketPage";
 import { DesktopWorkdirSelector } from "./DesktopWorkdirSelector";
 import { DesktopWorktreeControls } from "./DesktopWorktreeControls";
@@ -62,7 +62,7 @@ import type {
   UpdateChannel,
   UpdateToast,
 } from "../types";
-import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/dist/constants/tools.js";
+import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/constants";
 import { collectWriteEditBlocks, pathsMatch } from "../utils/fileAutoRefresh";
 import { isMacHiddenTitlebar } from "../utils/platform";
 import { chatReducer, initialState } from "../reducers/chatReducer";

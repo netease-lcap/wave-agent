@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import type { SessionMetadata } from "wave-agent-sdk";
+import type { SessionMetadata } from "wave-agent-sdk/types";
 import { useClickOutside } from "../utils/useClickOutside";
 import { formatSessionLabel } from "../utils/session";
 import { SessionList } from "./SessionList";

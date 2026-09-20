@@ -10,13 +10,13 @@ import type {
   QueuedMessage,
   McpServerStatus,
   ToolBlockUpdateCallbackParams,
-} from "wave-agent-sdk/types";
+} from "wave-agent-sdk/host";
 import { StdioClient } from "../stdio/stdioClient";
 import {
   StdioAgent,
   type StdioAgentCallbacks,
   type NotificationRouter,
-} from "wave-agent-sdk/stdio";
+} from "wave-agent-sdk/host";
 
 export interface ChatSessionCallbacks {
   onTasksChange: (tasks: Task[]) => void;

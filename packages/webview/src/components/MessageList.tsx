@@ -11,7 +11,7 @@ import { useVirtualizer, elementScroll } from "@tanstack/react-virtual";
 import { Message } from "./Message";
 import { streamingTail } from "../utils/streamingText";
 import type { MessageListProps } from "../types";
-import type { Message as MessageType } from "wave-agent-sdk";
+import type { Message as MessageType } from "wave-agent-sdk/types";
 import "../styles/MessageList.css";
 
 // Measured row heights by message id, shared across MessageList instances and
