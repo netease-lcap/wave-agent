@@ -66,27 +66,23 @@ Always use `pnpm` as the package manager.
 
 Test layers, ordered fast→slow (the PR gate only runs unit + demo; the rest are post-merge):
 
-| Layer            | Where                                                      | Command                                                                                                  |
-| ---------------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Unit             | `*.test.ts` / `*.test.tsx`                                 | `pnpm -F <pkg> test:unit` — what PR CI gates                                                             |
-| Integration      | `tests/integration/**`, `*.integration.test.ts`            | `pnpm run test:integration` (real git/spawn/fs, no LLM)                                                  |
-| Webview e2e      | `packages/webview/e2e/*.e2e.ts` (real Chromium)            | `pnpm -F wave-webview run test:e2e`                                                                      |
-| Demo/screenshots | `packages/webview/demo/*.demo.ts`                          | `pnpm -F wave-webview run test:demo` (also regenerates docs screenshots)                                 |
-| Real-host        | `packages/desktop/tests/integration/*.integration.test.ts` | `pnpm -F wave-desktop run test:realhost` (real `DesktopHost` ↔ real `wave --stdio` child)               |
-| Host artifact    | `scripts/check-host-bundles.mjs`                           | `pnpm run check:host-bundles` after building the host bundles (the post-merge `host-bundle-load` CI job) |
-| SDK surface      | `scripts/check-sdk-surface.mjs`                            | `pnpm run check:sdk-surface` after `pnpm -F wave-agent-sdk build` (the PR-tier `sdk-surface` CI job)     |
+| Layer            | Where                                                      | Command                                                                                              |
+| ---------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Unit             | `*.test.ts` / `*.test.tsx`                                 | `pnpm -F <pkg> test:unit` — what PR CI gates                                                         |
+| Integration      | `tests/integration/**`, `*.integration.test.ts`            | `pnpm run test:integration` (real git/spawn/fs, no LLM)                                              |
+| Webview e2e      | `packages/webview/e2e/*.e2e.ts` (real Chromium)            | `pnpm -F wave-webview run test:e2e`                                                                  |
+| Demo/screenshots | `packages/webview/demo/*.demo.ts`                          | `pnpm -F wave-webview run test:demo` (also regenerates docs screenshots)                             |
+| Real-host        | `packages/desktop/tests/integration/*.integration.test.ts` | `pnpm -F wave-desktop run test:realhost` (real `DesktopHost` ↔ real `wave --stdio` child)           |
+| SDK surface      | `scripts/check-sdk-surface.mjs`                            | `pnpm run check:sdk-surface` after `pnpm -F wave-agent-sdk build` (the PR-tier `sdk-surface` CI job) |
 
 Everything above runs **inside the repo**, where `node_modules` is complete and
 `@vscode/ripgrep-<platform>` resolves. The host apps are what actually gets
 **packaged and shipped** (an `app.asar` carries only the desktop app's own
 production deps; everything else must already be inlined in the bundle), so a
 green suite can still ship a host that dies on launch — v1.2.5 did exactly that.
-The `host-bundle-load` job is the only layer that looks at the artifact: it fails
-if a host bundle requires a package the packaged app will not have, or if that
-bundle cannot be loaded from a directory with no `node_modules`. Like
-`integration`/`webview-e2e`/`real-host-e2e` it is **not** a PR gate (it needs a
-host build and is not on the ruleset's required list) — it reports on main, so the
-stop line is "after merge, before release".
+Nothing currently asserts the packaged artifact (the `host-bundle-load` job that
+inspected the dev-built bundles was rolled back); that side rests on the
+source-level checks in `scripts/check-sdk-surface.mjs`.
 
 ### Linting
 
@@ -94,7 +90,6 @@ stop line is "after merge, before release".
 - **Format**: `pnpm exec prettier --write .`
 - **Pre-commit** (`.husky/pre-commit`): runs `pnpm run type-check`, then `lint-staged` (prettier `--write` on staged code/json/md), then — only if a staged path is under `docs/` — `scripts/check-docs-links.mjs` + `scripts/check-sidebar-anchors.mjs`. Hooks install via `pnpm install` (`prepare` → husky).
 - **Webview command contract**: `pnpm run audit:commands` statically verifies every webview→host `command` literal is registered in all four host routers (this is the `webview-command-audit` CI job).
-- **Host artifact loadability**: `pnpm run check:host-bundles` (build the host bundles first) requires each host bundle to load from a directory with no `node_modules`, and rejects any `require()` of a package the packaged app does not ship — the `host-bundle-load` CI job. See the test-layer table above.
 - **SDK surface / host import boundary**: `pnpm run check:sdk-surface` (build the SDK first) pins the _shape_ of the public surface rather than the artifacts: each host package may only import its allowed SDK subpath, the `/host` entry's closure must have zero third-party deps and stay under a size budget, every SDK entry must still load with `@vscode/*` removed from the resolution environment, and `sideEffects: false` must stay in place. Seconds long, no host build, so it is a PR gate (`sdk-surface` job).
 
 ### CI Parity & Release
