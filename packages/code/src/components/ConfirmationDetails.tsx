@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, useStdout } from "ink";
 import {
   BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
@@ -10,6 +10,7 @@ import {
   ARTIFACT_TOOL_NAME,
 } from "wave-agent-sdk";
 import { buildDiffLinesFromParams } from "./DiffDisplay.js";
+import { renderMarkdownToAnsi } from "./Markdown.js";
 import { highlightToAnsi } from "../utils/highlightUtils.js";
 
 // Helper function to generate descriptive action text
@@ -71,6 +72,11 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
     (toolInput?.startLineNumber as number | undefined) ??
     (toolName === WRITE_TOOL_NAME ? 1 : undefined);
 
+  // Terminal width is needed to render the plan's Markdown (table column widths
+  // are computed from it), matching <Markdown>'s own default.
+  const { stdout } = useStdout();
+  const columns = stdout?.columns ?? 80;
+
   const headerRows = 2 + (warning ? 1 : 0);
 
   // Number of content rows rendered at once. The header stays fixed above the
@@ -120,12 +126,17 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
     toolName === EXIT_PLAN_MODE_TOOL_NAME &&
     !!planContent;
 
+  // The plan is Markdown (the agent writes it to a .md file), so it is rendered
+  // with the same renderer as assistant messages and then linearized into rows
+  // for the row-slicing scroll above — same treatment as the JSON/diff rows.
   const planLines = showPlan
-    ? planContent!.split("\n").map((line, index) => (
-        <Box key={`plan-${index}`}>
-          <Text>{line || " "}</Text>
-        </Box>
-      ))
+    ? renderMarkdownToAnsi(planContent!, columns)
+        .split("\n")
+        .map((line, index) => (
+          <Box key={`plan-${index}`}>
+            <Text>{line || " "}</Text>
+          </Box>
+        ))
     : [];
 
   const contentLines: React.ReactNode[] = [
