@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { Box, Text, useInput, useWindowSize } from "ink";
 import { useLineScroll } from "../hooks/useLineScroll.js";
+import { ScrolledContent } from "./ScrolledContent.js";
 
 // Row budget for the scroll indicators (↑ more / ↓ more, up to one each).
 const SCROLL_INDICATOR_BUDGET = 2;
@@ -60,8 +61,11 @@ export const PlanView: React.FC<PlanViewProps> = ({
     !isMessageOnly && content !== undefined && content !== ""
       ? content.split("\n")
       : [];
+  // Rows really occupied by the plan (wrapped rows included), measured after
+  // layout by <ScrolledContent>.
+  const [contentRows, setContentRows] = useState(0);
   const { scrollOffset, hasMoreAbove, hasMoreBelow } = useLineScroll({
-    totalLines: planLines.length,
+    totalLines: contentRows,
     visibleCount,
   });
 
@@ -80,11 +84,6 @@ export const PlanView: React.FC<PlanViewProps> = ({
       </Box>
     );
   }
-
-  const visibleLines = planLines.slice(
-    scrollOffset,
-    scrollOffset + visibleCount,
-  );
 
   return (
     <Box
@@ -110,19 +109,25 @@ export const PlanView: React.FC<PlanViewProps> = ({
           </Text>
         </Box>
       )}
-      {visibleLines.length > 0 ? (
-        visibleLines.map((line, index) => (
-          <Box key={scrollOffset + index}>
-            <Text>{line || " "}</Text>
-          </Box>
-        ))
-      ) : (
-        <Text>No plan written yet.</Text>
-      )}
+      <ScrolledContent
+        visibleRows={visibleCount}
+        scrollOffset={scrollOffset}
+        onMeasuredRows={setContentRows}
+      >
+        {planLines.length > 0 ? (
+          planLines.map((line, index) => (
+            <Box key={index}>
+              <Text>{line || " "}</Text>
+            </Box>
+          ))
+        ) : (
+          <Text>No plan written yet.</Text>
+        )}
+      </ScrolledContent>
       {hasMoreBelow && (
         <Box>
           <Text color="gray" dimColor>
-            ↓ {planLines.length - scrollOffset - visibleCount} more
+            ↓ {contentRows - scrollOffset - visibleCount} more
           </Text>
         </Box>
       )}
