@@ -1,4 +1,9 @@
 import type { Message } from "../types/index.js";
+import {
+  exceedsMaxDimension,
+  getImageDimensionsFromDataUrl,
+  omittedImageNote,
+} from "./imageDimensions.js";
 import { convertImageToBase64 } from "./messageOperations.js";
 import { taskNotificationToXml } from "./notificationXml.js";
 import { ChatCompletionMessageToolCall } from "openai/resources";
@@ -337,6 +342,27 @@ export function convertMessagesForAPI(
                   return;
                 }
                 finalImageUrl = converted;
+              }
+
+              // The gateway rejects any image whose width or height exceeds
+              // MAX_IMAGE_DIMENSION_PX with a 400 that fails the WHOLE request
+              // (see utils/imageDimensions.ts for the probe data). This layer
+              // has no image codec, so oversized images are skipped and
+              // replaced by an actionable note instead of taking the turn down.
+              const dimensions = getImageDimensionsFromDataUrl(finalImageUrl);
+              if (dimensions && exceedsMaxDimension(dimensions)) {
+                logger.warn(
+                  `Skipping oversized image (${dimensions.width}x${dimensions.height}):`,
+                  isDataUrl ? "(inline data url)" : imageUrl,
+                );
+                contentParts.push({
+                  type: "text",
+                  text: omittedImageNote(
+                    dimensions,
+                    isDataUrl ? undefined : imageUrl,
+                  ),
+                });
+                return;
               }
 
               contentParts.push({

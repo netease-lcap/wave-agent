@@ -1620,8 +1620,10 @@ export const MessageInput = forwardRef<
 
       // Images the model gateway would reject (empty payload, garbage bytes or
       // a format outside png/jpeg/gif/webp) are dropped here instead of being
-      // sent and bounced back as `HTTP 400 ... unsupported image` (spec:
-      // docs/specs/ui/image-pasting.md「发送前校验图片有效性」).
+      // sent and bounced back as `HTTP 400 ... unsupported image`; images whose
+      // width or height exceeds the gateway's per-side cap come back
+      // downsampled (spec: docs/specs/ui/image-pasting.md「发送前校验图片有效性」
+      // 「超长截图自动降采样」).
       const rejectedMessages = new Set<string>();
 
       for (const file of imageFiles) {
@@ -1632,7 +1634,9 @@ export const MessageInput = forwardRef<
             continue;
           }
 
-          const dataUrl = await createDataUrlFromBlob(file);
+          // `validation.file` is the original pasted file unless it was
+          // oversized, in which case it is the re-encoded copy.
+          const dataUrl = await createDataUrlFromBlob(validation.file);
 
           // Insert inline tag for the image
           if (!textareaRef.current) continue;
