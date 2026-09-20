@@ -646,8 +646,15 @@ html[data-theme="dark"] .desktop-session-status-slot {
    has not answered within BRANCH_LIST_LOADING_DELAY_MS — keeps feedback visible
    while a remote host stands up its SSH tunnel + daemon, and never appears for
    a fast local reply. Sits in the same input-workdir-row slot as the controls
-   it replaces. */
+   it replaces: the row is bottom-aligned (align-items: flex-end) and every
+   control in it is a 32px-tall flex box, so the placeholder must carry the same
+   32px extent and center its text — otherwise its single 17px text line hangs
+   at the row's bottom edge and reads ~7px below the host/workdir branch text
+   next to it. */
 .desktop-branches-loading {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
   font-size: 12px;
   font-style: italic;
   color: var(--vscode-descriptionForeground);
