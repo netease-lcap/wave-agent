@@ -14,11 +14,16 @@
  *   2. magic-byte whitelist (png / jpeg / gif / webp),
  *   3. tail marker for the formats that carry one (catches truncation),
  *   4. a real decode by the host's own decoder (`createImageBitmap`), which is
- *      the only check that catches structurally-valid-looking garbage.
+ *      the only check that catches structurally-valid-looking garbage,
+ *   5. a per-side dimension cap: anything longer than `MAX_IMAGE_DIMENSION_PX`
+ *      on either side is downsampled here (canvas re-encode) and sent at that
+ *      smaller size — see the constant for the upstream evidence.
  *
- * Step 4 needs a Chromium-family host (desktop Electron / VS Code webview /
+ * Steps 4-5 need a Chromium-family host (desktop Electron / VS Code webview /
  * JetBrains JCEF all qualify). Hosts without the API (e.g. jsdom in unit
- * tests) fall back to the byte-level checks instead of rejecting everything.
+ * tests) fall back to the byte-level checks instead of rejecting everything —
+ * oversized images then reach the SDK, whose dimension gate
+ * (packages/agent-sdk/src/utils/imageDimensions.ts) skips them with a note.
  */
 export type SupportedImageFormat = "png" | "jpeg" | "gif" | "webp";
 
@@ -28,8 +33,43 @@ export type ImageRejectionReason =
   | "invalid-data";
 
 export type ImageValidationResult =
-  | { ok: true }
+  | {
+      ok: true;
+      /**
+       * The image to send. Byte-identical to the pasted file when it is within
+       * the dimension cap; a re-encoded copy when it was downsampled.
+       */
+      file: File;
+      /** True only when the paste was re-encoded to fit the dimension cap. */
+      downsampled: boolean;
+    }
   | { ok: false; reason: ImageRejectionReason; message: string };
+
+/**
+ * Per-side pixel cap enforced by the vision model gateway: any image with
+ * width **or** height above this is rejected with
+ * `HTTP 400 ... You have uploaded an unsupported image` (a misleading generic
+ * message — it is not a format problem), and the whole turn fails.
+ *
+ * Measured against https://codechat.codewave.163.com/api/v1/chat/completions
+ * (model `deepseek-flash`, `stream: true`, 2026-09-20): 8192x1500 → 200 while
+ * 8193x1500 → 400, and 2250x8192 → 200 while 2250x9500 → 400. The bound is a
+ * hard integer comparison, independent of pixel count, byte size and format —
+ * the full probe table lives in
+ * packages/agent-sdk/src/utils/imageDimensions.ts, which holds the same
+ * constant (a browser bundle cannot import that module; keep both in sync).
+ */
+export const MAX_IMAGE_DIMENSION_PX = 8192;
+
+/** JPEG quality used when a downsampled image is re-encoded as JPEG. */
+const DOWNSAMPLE_JPEG_QUALITY = 0.92;
+
+/**
+ * A downsampled PNG larger than this is re-encoded as JPEG instead: PNG can be
+ * lossless but bulky (a 2250x8192 screenshot is ~4.3 MB), and the gateway's
+ * request path is not free. Aligned with Claude Code's 5 MB base64 budget.
+ */
+const DOWNSAMPLE_PNG_MAX_BYTES = 5 * 1024 * 1024;
 
 /** Only these four reach the model (the gateway rejects everything else). */
 export const SUPPORTED_IMAGE_MIME_TYPES: readonly string[] = [
@@ -146,9 +186,105 @@ async function readBytes(blob: Blob): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer());
 }
 
+interface DecodedImage {
+  width: number;
+  height: number;
+  close?: () => void;
+}
+
+/**
+ * Target size for an image longer than the cap, or `null` when it already fits.
+ * Pure math so the boundary (8192 fits, 8193 does not) is testable without a
+ * real decoder. `Math.floor` plus the clamp keep the result on the safe side of
+ * the cap — rounding up would recreate the exact `8193` input the gateway
+ * rejects — and no extra margin is subtracted: the cap is a hard integer
+ * comparison and 8192 itself is accepted on both axes.
+ */
+export function computeDownscaleTarget(
+  width: number,
+  height: number,
+  max: number = MAX_IMAGE_DIMENSION_PX,
+): { width: number; height: number } | null {
+  const longest = Math.max(width, height);
+  if (!Number.isFinite(longest) || longest <= max) return null;
+  const scale = max / longest;
+  return {
+    width: Math.max(1, Math.min(max, Math.floor(width * scale))),
+    height: Math.max(1, Math.min(max, Math.floor(height * scale))),
+  };
+}
+
+function encodeCanvas(
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality?: number,
+): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), type, quality);
+  });
+}
+
+/**
+ * Canvas re-encode of an oversized image at `target` size. Returns `null` on
+ * any failure (no 2d context, `toBlob` refused) — the caller then treats the
+ * paste as invalid instead of sending something the gateway will reject.
+ *
+ * Transparency decides the container: only JPEG cannot carry an alpha channel,
+ * so JPEG stays JPEG and everything else (png / gif / webp) is written as PNG.
+ * Pixel-by-pixel transparency detection is deliberately not attempted — it
+ * would mean touching every pixel of a 15k-tall screenshot for a format choice.
+ */
+async function downscaleImage(
+  bitmap: DecodedImage,
+  target: { width: number; height: number },
+  sourceFormat: SupportedImageFormat,
+): Promise<File | null> {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = target.width;
+    canvas.height = target.height;
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+    context.drawImage(
+      bitmap as unknown as CanvasImageSource,
+      0,
+      0,
+      target.width,
+      target.height,
+    );
+
+    const preferred = sourceFormat === "jpeg" ? "image/jpeg" : "image/png";
+    let blob = await encodeCanvas(
+      canvas,
+      preferred,
+      preferred === "image/jpeg" ? DOWNSAMPLE_JPEG_QUALITY : undefined,
+    );
+    if (
+      preferred === "image/png" &&
+      blob &&
+      blob.size > DOWNSAMPLE_PNG_MAX_BYTES
+    ) {
+      const jpeg = await encodeCanvas(
+        canvas,
+        "image/jpeg",
+        DOWNSAMPLE_JPEG_QUALITY,
+      );
+      if (jpeg) blob = jpeg;
+    }
+    if (!blob) return null;
+
+    const extension = blob.type === "image/jpeg" ? "jpg" : "png";
+    return new File([blob], `pasted-image.${extension}`, { type: blob.type });
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Validate one pasted image. Never throws: any failure is a rejection with a
- * user-facing Chinese message.
+ * user-facing Chinese message. An image inside the dimension cap is returned
+ * byte-identical (`ok: true, downsampled: false`); a longer one is re-encoded
+ * through canvas to fit the cap.
  */
 export async function validateImageFile(
   file: File,
@@ -179,15 +315,26 @@ export async function validateImageFile(
   const decode = (globalThis as { createImageBitmap?: unknown })
     .createImageBitmap;
   if (typeof decode === "function") {
+    let bitmap: DecodedImage;
     try {
-      const bitmap = await (
-        decode as (source: Blob) => Promise<{ close?: () => void }>
-      ).call(globalThis, file);
-      bitmap.close?.();
+      bitmap = await (decode as (source: Blob) => Promise<DecodedImage>).call(
+        globalThis,
+        file,
+      );
     } catch {
       return reject("invalid-data");
     }
+    try {
+      const target = computeDownscaleTarget(bitmap.width, bitmap.height);
+      if (target) {
+        const downsampled = await downscaleImage(bitmap, target, format);
+        if (!downsampled) return reject("invalid-data");
+        return { ok: true, file: downsampled, downsampled: true };
+      }
+    } finally {
+      bitmap.close?.();
+    }
   }
 
-  return { ok: true };
+  return { ok: true, file, downsampled: false };
 }

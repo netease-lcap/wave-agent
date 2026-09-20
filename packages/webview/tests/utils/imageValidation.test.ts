@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   IMAGE_REJECT_MESSAGES,
+  MAX_IMAGE_DIMENSION_PX,
+  computeDownscaleTarget,
   detectImageFormat,
   validateImageFile,
 } from "../../src/utils/imageValidation";
@@ -74,19 +76,20 @@ describe("validateImageFile", () => {
     vi.unstubAllGlobals();
   });
 
-  it("accepts valid PNG / JPEG / GIF / WebP files", async () => {
-    await expect(
-      validateImageFile(makeFile(TINY_PNG_BYTES, "a.png", "image/png")),
-    ).resolves.toEqual({ ok: true });
-    await expect(
-      validateImageFile(makeFile(TINY_JPEG_BYTES, "a.jpg", "image/jpeg")),
-    ).resolves.toEqual({ ok: true });
-    await expect(
-      validateImageFile(makeFile(TINY_GIF_BYTES, "a.gif", "image/gif")),
-    ).resolves.toEqual({ ok: true });
-    await expect(
-      validateImageFile(makeFile(TINY_WEBP_BYTES, "a.webp", "image/webp")),
-    ).resolves.toEqual({ ok: true });
+  it("accepts valid PNG / JPEG / GIF / WebP files, byte-for-byte", async () => {
+    const png = makeFile(TINY_PNG_BYTES, "a.png", "image/png");
+    const jpeg = makeFile(TINY_JPEG_BYTES, "a.jpg", "image/jpeg");
+    const gif = makeFile(TINY_GIF_BYTES, "a.gif", "image/gif");
+    const webp = makeFile(TINY_WEBP_BYTES, "a.webp", "image/webp");
+
+    for (const file of [png, jpeg, gif, webp]) {
+      const result = await validateImageFile(file);
+      expect(result).toEqual({ ok: true, file, downsampled: false });
+      if (!result.ok) throw new Error("expected the image to be accepted");
+      // Under the dimension cap the original File is handed back untouched —
+      // never "re-encode everything just in case".
+      expect(result.file).toBe(file);
+    }
   });
 
   it("rejects a zero-byte image (the empty-payload path)", async () => {
@@ -173,9 +176,12 @@ describe("validateImageFile", () => {
       vi.fn().mockResolvedValue({ close, width: 1, height: 1 }),
     );
 
-    await expect(
-      validateImageFile(makeFile(TINY_PNG_BYTES, "a.png", "image/png")),
-    ).resolves.toEqual({ ok: true });
+    const file = makeFile(TINY_PNG_BYTES, "a.png", "image/png");
+    await expect(validateImageFile(file)).resolves.toEqual({
+      ok: true,
+      file,
+      downsampled: false,
+    });
     expect(close).toHaveBeenCalled();
   });
 
@@ -184,8 +190,165 @@ describe("validateImageFile", () => {
       (globalThis as Record<string, unknown>).createImageBitmap,
     ).toBeUndefined();
 
+    const file = makeFile(TINY_PNG_BYTES, "a.png", "image/png");
+    await expect(validateImageFile(file)).resolves.toEqual({
+      ok: true,
+      file,
+      downsampled: false,
+    });
+  });
+});
+
+describe("computeDownscaleTarget", () => {
+  it("leaves images at or inside the cap untouched", () => {
+    expect(computeDownscaleTarget(1500, 8192)).toBeNull();
+    expect(computeDownscaleTarget(8192, 1500)).toBeNull();
+    expect(computeDownscaleTarget(2250, 8192)).toBeNull();
+    expect(computeDownscaleTarget(800, 600)).toBeNull();
+  });
+
+  it("downscales one pixel over the cap (8192 accepted upstream, 8193 rejected)", () => {
+    expect(computeDownscaleTarget(8193, 1500)).toEqual({
+      width: 8192,
+      height: 1499,
+    });
+    expect(computeDownscaleTarget(1500, 8193)).toEqual({
+      width: 1499,
+      height: 8192,
+    });
+  });
+
+  it("keeps the aspect ratio and never exceeds the cap", () => {
+    // The reported case: a 2250x15474 screenshot.
+    const target = computeDownscaleTarget(2250, 15474);
+    expect(target).toEqual({ width: 1191, height: 8192 });
+    // The rounding trap: a width scaled by exactly max/longest could round up
+    // to 8193; the clamp keeps every branch inside the cap.
+    for (const [w, h] of [
+      [2250, 15474],
+      [9999, 9999],
+      [1, 8193],
+      [8193, 1],
+      [20000, 1],
+    ]) {
+      const result = computeDownscaleTarget(w, h);
+      expect(result).not.toBeNull();
+      expect(Math.max(result!.width, result!.height)).toBeLessThanOrEqual(
+        MAX_IMAGE_DIMENSION_PX,
+      );
+    }
+  });
+});
+
+describe("validateImageFile downsampling", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  /** Canvas stand-in: records geometry, answers `toBlob` with a fake blob. */
+  function stubCanvas(
+    options: {
+      blobSize?: number;
+      blobType?: string;
+      withoutContext?: boolean;
+    } = {},
+  ): {
+    drawImage: ReturnType<typeof vi.fn>;
+    canvas: { width: number; height: number };
+  } {
+    const drawImage = vi.fn();
+    const canvas = {
+      width: 0,
+      height: 0,
+      // Hosts without a 2d context (jsdom without the canvas package) return
+      // null here — the shape of "cannot re-encode".
+      getContext: () => (options.withoutContext ? null : { drawImage }),
+      toBlob: (callback: (blob: Blob | null) => void, type: string) =>
+        callback(
+          new Blob([new Uint8Array(options.blobSize ?? 32)], {
+            type: options.blobType ?? type,
+          }),
+        ),
+    };
+    vi.spyOn(document, "createElement").mockReturnValue(
+      canvas as unknown as HTMLElement,
+    );
+    return { drawImage, canvas };
+  }
+
+  it("re-encodes an oversized PNG to fit the cap and reports it", async () => {
+    const { drawImage, canvas } = stubCanvas();
+    const close = vi.fn();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn().mockResolvedValue({ close, width: 2250, height: 15474 }),
+    );
+
+    const result = await validateImageFile(
+      makeFile(TINY_PNG_BYTES, "long.png", "image/png"),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected the image to be accepted");
+    expect(result.downsampled).toBe(true);
+    expect(result.file.type).toBe("image/png");
+    expect(canvas.width).toBe(1191);
+    expect(canvas.height).toBe(8192);
+    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 1191, 8192);
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("keeps an oversized JPEG a JPEG", async () => {
+    stubCanvas();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn().mockResolvedValue({ width: 3000, height: 9000 }),
+    );
+
+    const result = await validateImageFile(
+      makeFile(TINY_JPEG_BYTES, "long.jpg", "image/jpeg"),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected the image to be accepted");
+    expect(result.file.type).toBe("image/jpeg");
+  });
+
+  it("falls back to JPEG when the downsampled PNG is still oversized by bytes", async () => {
+    const { drawImage } = stubCanvas({ blobSize: 6 * 1024 * 1024 });
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn().mockResolvedValue({ width: 2250, height: 15474 }),
+    );
+
+    const result = await validateImageFile(
+      makeFile(TINY_PNG_BYTES, "long.png", "image/png"),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected the image to be accepted");
+    expect(result.file.type).toBe("image/jpeg");
+    expect(drawImage).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects with the existing invalid-image message when the re-encode is impossible", async () => {
+    // A host whose canvas has no 2d context cannot produce a smaller copy. No
+    // new "too large" wording is invented — the existing rejection is reused.
+    stubCanvas({ withoutContext: true });
+    const close = vi.fn();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn().mockResolvedValue({ close, width: 8193, height: 1500 }),
+    );
+
     await expect(
-      validateImageFile(makeFile(TINY_PNG_BYTES, "a.png", "image/png")),
-    ).resolves.toEqual({ ok: true });
+      validateImageFile(makeFile(TINY_PNG_BYTES, "long.png", "image/png")),
+    ).resolves.toEqual({
+      ok: false,
+      reason: "invalid-data",
+      message: IMAGE_REJECT_MESSAGES.invalidData,
+    });
+    expect(close).toHaveBeenCalled();
   });
 });

@@ -1301,3 +1301,89 @@ describe("convertMessagesForAPI", () => {
     });
   });
 });
+
+/**
+ * PNG header (signature + IHDR) as a data URL — enough for the dimension probe
+ * and cheap enough to inline in a test.
+ */
+function pngDataUrl(width: number, height: number): string {
+  const bytes = new Uint8Array(33);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+  bytes.set([0x00, 0x00, 0x00, 0x0d], 8); // IHDR length
+  bytes.set([0x49, 0x48, 0x44, 0x52], 12); // "IHDR"
+  bytes.set(
+    [
+      (width >>> 24) & 0xff,
+      (width >>> 16) & 0xff,
+      (width >>> 8) & 0xff,
+      width & 0xff,
+    ],
+    16,
+  );
+  bytes.set(
+    [
+      (height >>> 24) & 0xff,
+      (height >>> 16) & 0xff,
+      (height >>> 8) & 0xff,
+      height & 0xff,
+    ],
+    20,
+  );
+  return `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`;
+}
+
+describe("convertMessagesForAPI oversized images", () => {
+  type ContentPart = {
+    type: string;
+    text?: string;
+    image_url?: { url: string };
+  };
+
+  function convertUserImage(dataUrl: string): ContentPart[] {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [
+          { type: "text", content: "look at this screenshot" },
+          { type: "image", imageUrls: [dataUrl] },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+    const apiMessages = convertMessagesForAPI(messages, {
+      supportsVision: true,
+    });
+    return apiMessages[0].content as ContentPart[];
+  }
+
+  it("skips an image taller than the cap instead of failing the whole turn", () => {
+    // The reported case: 2250x15474 — the gateway answers 400 and the entire
+    // request dies, so the image must not reach it.
+    const content = convertUserImage(pngDataUrl(2250, 15474));
+
+    expect(content.some((part) => part.type === "image_url")).toBe(false);
+    const note = content.find(
+      (part) => part.type === "text" && part.text?.includes("Image omitted"),
+    );
+    expect(note).toBeDefined();
+    expect(note?.text).toContain("2250x15474");
+    expect(note?.text).toContain("8192");
+    expect(note?.text).toContain("Crop");
+    // The turn survives: the user's text is still there.
+    expect(content[0]).toEqual({
+      type: "text",
+      text: "look at this screenshot",
+    });
+  });
+
+  it("sends an image at exactly the cap unchanged", () => {
+    const dataUrl = pngDataUrl(1500, 8192);
+    const content = convertUserImage(dataUrl);
+
+    const imagePart = content.find((part) => part.type === "image_url");
+    expect(imagePart).toBeDefined();
+    expect(imagePart?.image_url?.url).toBe(dataUrl);
+    expect(JSON.stringify(content)).not.toContain("Image omitted");
+  });
+});

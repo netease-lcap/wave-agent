@@ -11,7 +11,9 @@ import { MessageInjector } from "./utils/messageInjector.js";
  * Chromium 解码器**验证：
  *  - 头尾字节都合法、只有像素数据坏掉的 PNG 会被宿主的真解码拒绝（这条路径
  *    jsdom 测不到，正是线上 400 的那一类图）；
- *  - 合法的 PNG 在真解码下仍然通过（防过度拦截）。
+ *  - 合法的 PNG 在真解码下仍然通过（防过度拦截）；
+ *  - 单边超过 8192 的长截图经真 canvas 降采样后以 ≤8192 的副本进入消息
+ *    （spec 同名用户故事「超长截图自动降采样」）。
  */
 
 /** 1x1 透明 PNG（70 字节，头 + IEND 齐全）。 */
@@ -212,6 +214,64 @@ test.describe("粘贴图片的发送前校验（真 Chromium 解码器）", () =
     await pasteFile(webviewPage, payload);
 
     await expect(imageTags(webviewPage)).toHaveCount(1);
+    expect(await postedErrors(webviewPage)).toEqual([]);
+  });
+
+  test("单边超过 8192 的长截图被真 canvas 降采样到边界内后再插入", async ({
+    webviewPage,
+  }) => {
+    // 真 Chromium 造一张 8193x1500 的 PNG 并直接粘贴：这是唯一能跑通真实
+    // createImageBitmap + canvas 重编码的层（jsdom 侧只能覆盖数值与失败分支）。
+    await webviewPage.evaluate(async () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 8193;
+      canvas.height = 1500;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("no 2d context");
+      context.fillStyle = "#123456";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/png"),
+      );
+      if (!blob) throw new Error("toBlob failed");
+
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(
+        new File([blob], "long.png", { type: "image/png" }),
+      );
+      const target = document.querySelector('[data-testid="message-input"]');
+      if (!target) throw new Error("message-input not found");
+      target.dispatchEvent(
+        new ClipboardEvent("paste", {
+          bubbles: true,
+          cancelable: true,
+          clipboardData: dataTransfer,
+        }),
+      );
+    });
+
+    await expect(imageTags(webviewPage)).toHaveCount(1);
+
+    // 送进消息的是缩到边界内的副本，而不是原图（原图会被上游 400 拒掉）。
+    const pasted = await webviewPage.evaluate(async () => {
+      const tag = document.querySelector(
+        '.context-tag-container[data-is-image="true"]',
+      );
+      const url = tag?.getAttribute("data-image-url") ?? "";
+      const bitmap = await createImageBitmap(await (await fetch(url)).blob());
+      const dimensions = {
+        width: bitmap.width,
+        height: bitmap.height,
+        mimeType: url.slice(5, url.indexOf(";")),
+      };
+      bitmap.close();
+      return dimensions;
+    });
+
+    expect(pasted.mimeType).toBe("image/png");
+    expect(pasted.width).toBeLessThanOrEqual(8192);
+    expect(pasted.height).toBeLessThanOrEqual(8192);
+    expect(Math.max(pasted.width, pasted.height)).toBe(8192);
     expect(await postedErrors(webviewPage)).toEqual([]);
   });
 });
