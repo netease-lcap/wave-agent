@@ -73,9 +73,12 @@
     "marked": "^17.0.2",
     "minimatch": "^10.0.3",
     "openai": "^5.12.2",
+    "semver": "^7.7.4",
+    "sharp": "^0.35.4",
     "turndown": "^7.2.2"
   },
   "devDependencies": {
+    "@types/semver": "^7.7.1",
     "@types/turndown": "^5.0.6",
     "@vitest/coverage-v8": "^4.1.7",
     "rimraf": "^6.1.2",

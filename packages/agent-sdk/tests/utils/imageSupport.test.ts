@@ -62,7 +62,7 @@ describe("Image Support in Tool Results", () => {
     }
   });
 
-  it("should convert tool block with images to tool message plus user message in convertMessagesForAPI", () => {
+  it("should convert tool block with images to tool message plus user message in convertMessagesForAPI", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -87,7 +87,7 @@ describe("Image Support in Tool Results", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     // Should generate three messages: assistant (tool_calls) + tool (result) + user (images)
     expect(apiMessages).toHaveLength(3);
@@ -122,7 +122,7 @@ describe("Image Support in Tool Results", () => {
     }
   });
 
-  it("should handle tool block without images normally", () => {
+  it("should handle tool block without images normally", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -141,7 +141,7 @@ describe("Image Support in Tool Results", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     // Should generate two messages: assistant message + tool message
     expect(apiMessages).toHaveLength(2);
@@ -156,7 +156,7 @@ describe("Image Support in Tool Results", () => {
     expect(apiMessages[1].content).toBe("File content here");
   });
 
-  it("should handle multiple images in tool result", () => {
+  it("should handle multiple images in tool result", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -185,7 +185,7 @@ describe("Image Support in Tool Results", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     // Should generate three messages: assistant + tool + user (images)
     expect(apiMessages).toHaveLength(3);

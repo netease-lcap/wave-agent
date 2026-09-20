@@ -689,9 +689,12 @@ export class AIManager {
     this.setIsCompacting(true);
     try {
       const modelConfig = this.getModelConfig();
-      const recentChatMessages = convertMessagesForAPI(messagesToCompact, {
-        supportsVision: supportsVision(modelConfig.capabilities),
-      });
+      const recentChatMessages = await convertMessagesForAPI(
+        messagesToCompact,
+        {
+          supportsVision: supportsVision(modelConfig.capabilities),
+        },
+      );
       const compactPrompt = getCompactPrompt(mergedInstructions);
 
       // 4. Fork path: fork the conversation with the same system prompt,
@@ -1147,7 +1150,7 @@ export class AIManager {
     abortSignal?: AbortSignal,
   ): Promise<ForkLoopResult> {
     const modelConfig = this.getModelConfig();
-    const historyMessages = convertMessagesForAPI(messages, {
+    const historyMessages = await convertMessagesForAPI(messages, {
       supportsVision: supportsVision(modelConfig.capabilities),
     });
     // Give the fork a real signal even when the caller has none, so tools
@@ -1271,10 +1274,11 @@ export class AIManager {
         (b) => "stage" in b && (b as { stage?: string }).stage === "streaming",
       );
 
-    const forkMessages: ChatCompletionMessageParam[] = convertMessagesForAPI(
-      hasInProgressMessage ? rawMessages.slice(0, -1) : rawMessages,
-      { supportsVision: supportsVision(modelConfig.capabilities) },
-    );
+    const forkMessages: ChatCompletionMessageParam[] =
+      await convertMessagesForAPI(
+        hasInProgressMessage ? rawMessages.slice(0, -1) : rawMessages,
+        { supportsVision: supportsVision(modelConfig.capabilities) },
+      );
 
     // Mirror the main loop's memory injection so the request prefix matches.
     const { prependContent } =
@@ -1715,7 +1719,7 @@ ${question}`;
           // Get recent message history
           const rawMessages = this.messageManager.getMessages();
           const currentModelConfig = this.getModelConfig();
-          const recentMessages = convertMessagesForAPI(rawMessages, {
+          const recentMessages = await convertMessagesForAPI(rawMessages, {
             supportsVision: supportsVision(currentModelConfig.capabilities),
           });
 
