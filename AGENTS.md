@@ -66,13 +66,23 @@ Always use `pnpm` as the package manager.
 
 Test layers, ordered fast→slow (the PR gate only runs unit + demo; the rest are post-merge):
 
-| Layer            | Where                                                      | Command                                                                                    |
-| ---------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Unit             | `*.test.ts` / `*.test.tsx`                                 | `pnpm -F <pkg> test:unit` — what PR CI gates                                               |
-| Integration      | `tests/integration/**`, `*.integration.test.ts`            | `pnpm run test:integration` (real git/spawn/fs, no LLM)                                    |
-| Webview e2e      | `packages/webview/e2e/*.e2e.ts` (real Chromium)            | `pnpm -F wave-webview run test:e2e`                                                        |
-| Demo/screenshots | `packages/webview/demo/*.demo.ts`                          | `pnpm -F wave-webview run test:demo` (also regenerates docs screenshots)                   |
-| Real-host        | `packages/desktop/tests/integration/*.integration.test.ts` | `pnpm -F wave-desktop run test:realhost` (real `DesktopHost` ↔ real `wave --stdio` child) |
+| Layer            | Where                                                      | Command                                                                                       |
+| ---------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Unit             | `*.test.ts` / `*.test.tsx`                                 | `pnpm -F <pkg> test:unit` — what PR CI gates                                                  |
+| Integration      | `tests/integration/**`, `*.integration.test.ts`            | `pnpm run test:integration` (real git/spawn/fs, no LLM)                                       |
+| Webview e2e      | `packages/webview/e2e/*.e2e.ts` (real Chromium)            | `pnpm -F wave-webview run test:e2e`                                                           |
+| Demo/screenshots | `packages/webview/demo/*.demo.ts`                          | `pnpm -F wave-webview run test:demo` (also regenerates docs screenshots)                      |
+| Real-host        | `packages/desktop/tests/integration/*.integration.test.ts` | `pnpm -F wave-desktop run test:realhost` (real `DesktopHost` ↔ real `wave --stdio` child)    |
+| Host artifact    | `scripts/check-host-bundles.mjs`                           | `pnpm run check:host-bundles` after building the host bundles (the `host-bundle-load` CI job) |
+
+Everything above runs **inside the repo**, where `node_modules` is complete and
+`@vscode/ripgrep-<platform>` resolves. The host apps are what actually gets
+**packaged and shipped** (an `app.asar` carries only the desktop app's own
+production deps; everything else must already be inlined in the bundle), so a
+green suite can still ship a host that dies on launch — v1.2.5 did exactly that.
+The `host-bundle-load` job is the only layer that looks at the artifact: it fails
+if a host bundle requires a package the packaged app will not have, or if that
+bundle cannot be loaded from a directory with no `node_modules`.
 
 ### Linting
 
@@ -80,6 +90,7 @@ Test layers, ordered fast→slow (the PR gate only runs unit + demo; the rest ar
 - **Format**: `pnpm exec prettier --write .`
 - **Pre-commit** (`.husky/pre-commit`): runs `pnpm run type-check`, then `lint-staged` (prettier `--write` on staged code/json/md), then — only if a staged path is under `docs/` — `scripts/check-docs-links.mjs` + `scripts/check-sidebar-anchors.mjs`. Hooks install via `pnpm install` (`prepare` → husky).
 - **Webview command contract**: `pnpm run audit:commands` statically verifies every webview→host `command` literal is registered in all four host routers (this is the `webview-command-audit` CI job).
+- **Host artifact loadability**: `pnpm run check:host-bundles` (build the host bundles first) requires each host bundle to load from a directory with no `node_modules`, and rejects any `require()` of a package the packaged app does not ship — the `host-bundle-load` CI job. See the test-layer table above.
 
 ### CI Parity & Release
 

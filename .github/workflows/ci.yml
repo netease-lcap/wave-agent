@@ -333,6 +333,105 @@ jobs:
         if: steps.filter.outputs.contract == 'true'
         run: node scripts/audit-webview-commands.mjs
 
+  host-bundle-load:
+    runs-on: ubuntu-latest
+    # PR gate：宿主产物加载自检（scripts/check-host-bundles.mjs）。
+    # 单测 / webview demo+e2e / real-host 全在**仓库内**跑：那里 node_modules 齐全、
+    # `@vscode/ripgrep-<platform>` 之类平台包解析得到，而宿主是**打包后才分发**的
+    # （asar 只带 desktop 自己的生产依赖，其余必须已被 bundle 内联）。v1.2.5 桌面端与
+    # 插件"装出来打不开"（#2267 的 barrel 导入把 @vscode/ripgrep 连坐进主进程）就是
+    # 这一层能拦、其它层根本看不见的事故。只构建两个宿主 bundle，不跑 electron-builder、
+    # 不跑 Playwright，分钟级。
+    if: github.event_name != 'push'
+
+    strategy:
+      matrix:
+        node-version: [22]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Detect code changes
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            bundles:
+              - 'packages/agent-sdk/src/**'
+              - 'packages/agent-sdk/package.json'
+              - 'packages/desktop/src/main/**'
+              - 'packages/desktop/tsup.config.ts'
+              - 'packages/desktop/package.json'
+              - 'packages/vscode/src/**'
+              - 'packages/vscode/esbuild.config.mjs'
+              - 'packages/vscode/package.json'
+              - 'scripts/check-host-bundles.mjs'
+              - '.github/workflows/ci.yml'
+
+      # Cache pnpm/action-setup's install dir so concurrent jobs skip
+      # re-downloading the action tarball from codeload (429 rate limits,
+      # pnpm/action-setup#177). On hit we skip the action and prepend its bin
+      # dirs to PATH ourselves. The key pins the pnpm version — keep it in
+      # sync with the `version` input below (package.json "packageManager").
+      - name: Cache pnpm install
+        if: steps.filter.outputs.bundles == 'true'
+        id: pnpm-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/setup-pnpm
+          key: pnpm-setup-v5-${{ runner.os }}-${{ runner.arch }}-11.9.0
+
+      - name: Add cached pnpm to PATH
+        if: steps.filter.outputs.bundles == 'true' && steps.pnpm-cache.outputs.cache-hit == 'true'
+        shell: bash
+        run: |
+          # Mirror pnpm/action-setup's env: node_modules/.bin/bin holds the
+          # self-updated target version (higher precedence), node_modules/.bin
+          # the bootstrap symlink. GITHUB_PATH is used verbatim, so write
+          # native Windows paths on Windows runners.
+          PNPM_HOME="${USERPROFILE:-$HOME}/.cache/setup-pnpm/node_modules/.bin"
+          PNPM_BIN="$PNPM_HOME/bin"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PNPM_HOME="${PNPM_HOME//\//\\}"
+            PNPM_BIN="${PNPM_BIN//\//\\}"
+          fi
+          echo "$PNPM_HOME" >> "$GITHUB_PATH"
+          echo "$PNPM_BIN" >> "$GITHUB_PATH"
+          echo "PNPM_HOME=$PNPM_HOME" >> "$GITHUB_ENV"
+
+      - name: Setup pnpm (cache miss)
+        if: steps.filter.outputs.bundles == 'true' && steps.pnpm-cache.outputs.cache-hit != 'true'
+        uses: pnpm/action-setup@v5
+        with:
+          version: 11.9.0
+          dest: ~/.cache/setup-pnpm
+          run_install: false
+
+      - name: Setup Node.js
+        if: steps.filter.outputs.bundles == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "pnpm"
+
+      - name: Install dependencies
+        if: steps.filter.outputs.bundles == 'true'
+        run: pnpm install --frozen-lockfile
+
+      # 只构建自检需要的产物：SDK 先出 dist（宿主把 wave-agent-sdk 内联进产物），
+      # 再出桌面主进程（tsup）与扩展后端（esbuild）——不跑 sync:webview / bundleCli。
+      - name: Build host bundles
+        if: steps.filter.outputs.bundles == 'true'
+        run: |
+          pnpm -F wave-agent-sdk build
+          pnpm -F wave-desktop exec tsup
+          pnpm -F wave-vscode run compile:backend
+
+      - name: Check host bundle loadability
+        if: steps.filter.outputs.bundles == 'true'
+        run: node scripts/check-host-bundles.mjs
+
   integration:
     runs-on: ubuntu-latest
     # Post-merge integration tests (tests/integration/** + *.integration.test.ts).
