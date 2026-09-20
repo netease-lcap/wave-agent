@@ -11,6 +11,7 @@ import {
 } from "wave-agent-sdk";
 import { buildDiffLinesFromParams } from "./DiffDisplay.js";
 import { renderMarkdownToAnsi } from "./Markdown.js";
+import { ScrolledContent } from "./ScrolledContent.js";
 import { highlightToAnsi } from "../utils/highlightUtils.js";
 
 // Helper function to generate descriptive action text
@@ -144,15 +145,19 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
     ...jsonLines,
     ...planLines,
   ];
-  const totalLines = contentLines.length;
-  const maxScroll = Math.max(0, totalLines - visibleCount);
 
+  // Rows really occupied by the content (wrapped rows included), measured after
+  // layout by <ScrolledContent> — see that component for why it is measured
+  // instead of counted from the row array.
+  const [contentRows, setContentRows] = useState(0);
   const [scrollOffset, setScrollOffset] = useState(0);
 
   // Reset scrolling when a new confirmation appears.
   useEffect(() => {
     setScrollOffset(0);
   }, [toolName, toolInput, planContent]);
+
+  const maxScroll = Math.max(0, contentRows - visibleCount);
 
   const halfPage = Math.max(1, Math.ceil(visibleCount / 2));
   useInput((input, key) => {
@@ -173,12 +178,8 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
   });
 
   const clampedOffset = Math.min(scrollOffset, maxScroll);
-  const visibleLines = contentLines.slice(
-    clampedOffset,
-    clampedOffset + visibleCount,
-  );
   const hasMoreAbove = clampedOffset > 0;
-  const hasMoreBelow = clampedOffset + visibleCount < totalLines;
+  const hasMoreBelow = clampedOffset + visibleCount < contentRows;
 
   return (
     <Box
@@ -209,11 +210,17 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
           </Text>
         </Box>
       )}
-      {visibleLines}
+      <ScrolledContent
+        visibleRows={visibleCount}
+        scrollOffset={clampedOffset}
+        onMeasuredRows={setContentRows}
+      >
+        {contentLines}
+      </ScrolledContent>
       {hasMoreBelow && (
         <Box>
           <Text color="gray" dimColor>
-            ↓ {totalLines - clampedOffset - visibleCount} more
+            ↓ {contentRows - clampedOffset - visibleCount} more
           </Text>
         </Box>
       )}

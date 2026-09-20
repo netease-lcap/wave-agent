@@ -143,6 +143,35 @@ describe("PlanView", () => {
     });
   });
 
+  it("counts wrapped rows for the scroll indicators", async () => {
+    // 3 logical lines × 246 columns → 3 rows each at 100 columns = 9 rows, so
+    // the plan overflows the 5-row viewport even though it has only 3 lines.
+    const widePlan = [0, 1, 2]
+      .map((i) => `line${i}-${"x".repeat(240)}`)
+      .join("\n");
+    const { stdin, lastFrame } = render(
+      <PlanView content={widePlan} maxHeight={10} onCancel={onCancel} />,
+    );
+
+    await vi.waitFor(() => {
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("↓ 4 more");
+      expect(frame).toContain("line0-");
+      expect(frame).not.toContain("line2-"); // wrapped rows past the viewport
+    });
+
+    stdin.write("\u001B[6~"); // PgDn → clamped to the last 5-row page
+    await sleep(30);
+
+    await vi.waitFor(() => {
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("↑ 4 more");
+      expect(frame).not.toContain("↓ ");
+      expect(frame).not.toContain("line0-");
+      expect(frame).toContain("line2-");
+    });
+  });
+
   it("calls onCancel when Escape is pressed", async () => {
     const { stdin } = render(
       <PlanView content={bigPlan} maxHeight={10} onCancel={onCancel} />,
