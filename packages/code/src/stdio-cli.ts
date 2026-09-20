@@ -6,6 +6,7 @@
  * the client sends an "initialize" request.
  */
 
+import { ensureRuntimeDeps } from "wave-agent-sdk";
 import { StdioServer } from "./stdio/stdioServer.js";
 import { logger } from "./utils/logger.js";
 
@@ -54,6 +55,11 @@ export function guardStdoutForJsonRpc(): void {
 
 export async function startStdioCli(): Promise<void> {
   guardStdoutForJsonRpc();
+  // Install the on-demand image codec before answering any RPC (see cli.tsx).
+  // Blocking here is what closes the race: the host's `initialize` — and with it
+  // the webview's initial state — only lands once a pasted image can be handled.
+  // The hosts block on ripgrep this way already; failures are non-fatal.
+  await ensureRuntimeDeps();
   // Registered here (stdio mode only): the interactive CLI keeps Node's
   // default behavior so the terminal shows the crash stack directly.
   process.on("uncaughtException", (error) =>

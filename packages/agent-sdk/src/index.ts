@@ -30,6 +30,8 @@ export * from "./utils/tokenCalculation.js";
 export * from "./utils/gitUtils.js";
 export * from "./utils/nameGenerator.js";
 export * from "./utils/pathEncoder.js";
+export { ensureRuntimeDeps } from "./utils/runtimeDeps.js";
+export type { RuntimeDepsResult } from "./utils/runtimeDeps.js";
 export * from "./utils/worktreeSession.js";
 export * from "./utils/worktreeUtils.js";
 export {

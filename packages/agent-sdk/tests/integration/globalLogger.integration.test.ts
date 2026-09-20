@@ -506,23 +506,24 @@ describe("Agent - Global Logger Integration", () => {
         expect(() => {
           const result1 = loadCustomSlashCommands("/tmp");
           expect(Array.isArray(result1)).toBe(true);
-
-          const validMessages = [
-            {
-              id: "test-msg-1",
-              role: "user" as const,
-              blocks: [
-                {
-                  type: "text" as const,
-                  content: "Hello world",
-                },
-              ],
-              timestamp: new Date().toISOString(),
-            },
-          ];
-          const result2 = convertMessagesForAPI(validMessages);
-          expect(Array.isArray(result2)).toBe(true);
         }).not.toThrow();
+
+        const validMessages = [
+          {
+            id: "test-msg-1",
+            role: "user" as const,
+            blocks: [
+              {
+                type: "text" as const,
+                content: "Hello world",
+              },
+            ],
+            timestamp: new Date().toISOString(),
+          },
+        ];
+        // A rejection here fails the test just like a throw would.
+        const result2 = await convertMessagesForAPI(validMessages);
+        expect(Array.isArray(result2)).toBe(true);
 
         // Verify no mock logger was called
         expect(mockLogger1.debug).not.toHaveBeenCalled();

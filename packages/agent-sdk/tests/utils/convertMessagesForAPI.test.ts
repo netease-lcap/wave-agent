@@ -1,5 +1,6 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { convertMessagesForAPI } from "../../src/utils/convertMessagesForAPI.js";
+import { __resetImageRewriteCacheForTesting } from "../../src/utils/imageRewrite.js";
 import {
   convertImageToBase64,
   generateMessageId,
@@ -26,8 +27,17 @@ vi.mock("../../src/utils/messageOperations.js", async (importOriginal) => {
   };
 });
 
+// The image codec itself is covered by utils/imageRewrite.test.ts (fake codec)
+// and the real-sharp suite; here it is pinned to "unavailable" so these
+// conversion-level tests stay deterministic and fast. The tests below opt in by
+// installing a stub processor.
+const codec = vi.hoisted(() => ({ processor: undefined as unknown }));
+vi.mock("../../src/utils/imageProcessor.js", () => ({
+  getImageProcessor: () => codec.processor,
+}));
+
 describe("convertMessagesForAPI", () => {
-  it("should correctly convert user and assistant messages", () => {
+  it("should correctly convert user and assistant messages", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -51,7 +61,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(3);
 
@@ -70,7 +80,7 @@ describe("convertMessagesForAPI", () => {
     ]);
   });
 
-  it("should convert user message with text content for API", () => {
+  it("should convert user message with text content for API", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -94,7 +104,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(2);
 
@@ -113,7 +123,7 @@ describe("convertMessagesForAPI", () => {
     );
   });
 
-  it("should include tool block result in API conversion", () => {
+  it("should include tool block result in API conversion", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -136,7 +146,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(1);
     expect(apiMessages[0].role).toBe("user");
@@ -149,15 +159,15 @@ describe("convertMessagesForAPI", () => {
     ]);
   });
 
-  it("should handle empty message arrays", () => {
+  it("should handle empty message arrays", async () => {
     const messages: Message[] = [];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(0);
   });
 
-  it("should handle messages with multiple blocks", () => {
+  it("should handle messages with multiple blocks", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -173,7 +183,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(2);
     expect(apiMessages[0].role).toBe("user");
@@ -181,7 +191,7 @@ describe("convertMessagesForAPI", () => {
     expect(apiMessages[1].content).toBe("Final response");
   });
 
-  it("should filter out messages with no meaningful content or tool calls", () => {
+  it("should filter out messages with no meaningful content or tool calls", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -227,7 +237,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     // Should only have the initial user message and the final assistant message
     expect(apiMessages).toHaveLength(2);
@@ -241,7 +251,7 @@ describe("convertMessagesForAPI", () => {
     expect(apiMessages[1].content).toBe("This is a valid response");
   });
 
-  it("should handle assistant messages with valid tool calls but no text content", () => {
+  it("should handle assistant messages with valid tool calls but no text content", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -267,7 +277,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     // Should include user message, assistant message with tool calls, and tool result
     expect(apiMessages).toHaveLength(3);
@@ -287,7 +297,7 @@ describe("convertMessagesForAPI", () => {
     expect(apiMessages[2].content).toBe("hello");
   });
 
-  it("should not inject truncation note when assistant message has tool calls but no text content", () => {
+  it("should not inject truncation note when assistant message has tool calls but no text content", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -317,7 +327,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(3);
 
@@ -334,7 +344,7 @@ describe("convertMessagesForAPI", () => {
     );
   });
 
-  it("should filter out ErrorBlock content to ensure user-visible only (FR-020)", () => {
+  it("should filter out ErrorBlock content to ensure user-visible only (FR-020)", async () => {
     // FR-020: System MUST ensure ErrorBlock content is not processed by
     // convertMessagesForAPI so it remains user-visible only and is not sent to the agent
     const messages: Message[] = [
@@ -355,7 +365,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(2);
 
@@ -374,7 +384,7 @@ describe("convertMessagesForAPI", () => {
     expect(allApiContent).not.toContain("This error should NOT be sent to API");
   });
 
-  it("should include messages with isMeta flag in API conversion", () => {
+  it("should include messages with isMeta flag in API conversion", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -385,7 +395,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(1);
     expect(apiMessages[0].role).toBe("user");
@@ -394,7 +404,7 @@ describe("convertMessagesForAPI", () => {
     ]);
   });
 
-  it("should wrap task_notification blocks with completion context for the model", () => {
+  it("should wrap task_notification blocks with completion context for the model", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -413,7 +423,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(1);
     expect(apiMessages[0].role).toBe("user");
@@ -425,7 +435,7 @@ describe("convertMessagesForAPI", () => {
     ]);
   });
 
-  it("should include reasoning content in assistant messages for API", () => {
+  it("should include reasoning content in assistant messages for API", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -447,7 +457,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(2);
 
@@ -466,7 +476,7 @@ describe("convertMessagesForAPI", () => {
     );
   });
 
-  it("should join multiple reasoning blocks in assistant messages", () => {
+  it("should join multiple reasoning blocks in assistant messages", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -492,7 +502,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(2);
 
@@ -504,7 +514,7 @@ describe("convertMessagesForAPI", () => {
     );
   });
 
-  it("should include reasoning-only assistant messages (truncated thinking preserved)", () => {
+  it("should include reasoning-only assistant messages (truncated thinking preserved)", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -526,7 +536,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(2);
 
@@ -547,7 +557,7 @@ describe("convertMessagesForAPI", () => {
     );
   });
 
-  it("should filter out assistant messages with no content, tool calls, or reasoning", () => {
+  it("should filter out assistant messages with no content, tool calls, or reasoning", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -566,13 +576,13 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(1);
     expect(apiMessages[0].role).toBe("user");
   });
 
-  it("should not include reasoning_content when there are no reasoning blocks", () => {
+  it("should not include reasoning_content when there are no reasoning blocks", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -588,7 +598,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(2);
     const assistantMessage = apiMessages[1] as ChatCompletionMessageParam & {
@@ -597,7 +607,7 @@ describe("convertMessagesForAPI", () => {
     expect(assistantMessage.reasoning_content).toBeUndefined();
   });
 
-  it("should produce valid tool_call_id pairing for tool results with images", () => {
+  it("should produce valid tool_call_id pairing for tool results with images", async () => {
     // When a tool result contains images, it must still produce a role:"tool"
     // message, otherwise Claude API reports:
     // "tool_use ids were found without tool_result blocks"
@@ -643,7 +653,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     // Find all assistant messages with tool_calls
     type AssistantWithTools = ChatCompletionMessageParam & {
@@ -676,7 +686,7 @@ describe("convertMessagesForAPI", () => {
     }
   });
 
-  it("should handle single assistant message with image tool result correctly", () => {
+  it("should handle single assistant message with image tool result correctly", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -703,7 +713,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     // The tool message must use role:"tool" with proper tool_call_id
     const toolMsg = apiMessages.find(
@@ -732,7 +742,7 @@ describe("convertMessagesForAPI", () => {
     ).toBeDefined();
   });
 
-  it("should not interleave user messages between tool messages for multi-tool calls", () => {
+  it("should not interleave user messages between tool messages for multi-tool calls", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -768,7 +778,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     // Find the assistant message index
     const assistantIdx = apiMessages.findIndex(
@@ -794,7 +804,7 @@ describe("convertMessagesForAPI", () => {
     expect(toolCount).toBe(2);
   });
 
-  it("should convert compact block to user role for API (matching Claude Code auto-compact)", () => {
+  it("should convert compact block to user role for API (matching Claude Code auto-compact)", async () => {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -822,7 +832,7 @@ describe("convertMessagesForAPI", () => {
       },
     ];
 
-    const apiMessages = convertMessagesForAPI(messages);
+    const apiMessages = await convertMessagesForAPI(messages);
 
     expect(apiMessages).toHaveLength(3);
     // The compact block should be converted to a user message
@@ -836,7 +846,7 @@ describe("convertMessagesForAPI", () => {
   });
 
   describe("supportsVision option", () => {
-    it("should replace user ImageBlock with text placeholder when supportsVision is false", () => {
+    it("should replace user ImageBlock with text placeholder when supportsVision is false", async () => {
       const messages: Message[] = [
         {
           id: generateMessageId(),
@@ -852,7 +862,7 @@ describe("convertMessagesForAPI", () => {
         },
       ];
 
-      const apiMessages = convertMessagesForAPI(messages, {
+      const apiMessages = await convertMessagesForAPI(messages, {
         supportsVision: false,
       });
 
@@ -875,7 +885,7 @@ describe("convertMessagesForAPI", () => {
       expect(allContent).not.toContain("image_url");
     });
 
-    it("should replace tool result images with text placeholder when supportsVision is false", () => {
+    it("should replace tool result images with text placeholder when supportsVision is false", async () => {
       const messages: Message[] = [
         {
           id: generateMessageId(),
@@ -902,7 +912,7 @@ describe("convertMessagesForAPI", () => {
         },
       ];
 
-      const apiMessages = convertMessagesForAPI(messages, {
+      const apiMessages = await convertMessagesForAPI(messages, {
         supportsVision: false,
       });
 
@@ -933,7 +943,7 @@ describe("convertMessagesForAPI", () => {
       expect(allContent).not.toContain("image_url");
     });
 
-    it("should append [Image source: <path>] for persisted tool images when supportsVision is false", () => {
+    it("should append [Image source: <path>] for persisted tool images when supportsVision is false", async () => {
       const messages: Message[] = [
         {
           id: generateMessageId(),
@@ -966,7 +976,7 @@ describe("convertMessagesForAPI", () => {
         },
       ];
 
-      const apiMessages = convertMessagesForAPI(messages, {
+      const apiMessages = await convertMessagesForAPI(messages, {
         supportsVision: false,
       });
 
@@ -1000,7 +1010,7 @@ describe("convertMessagesForAPI", () => {
       expect(allContent).not.toContain("image_url");
     });
 
-    it("should append one [Image source: <path>] line per persisted image when supportsVision is false", () => {
+    it("should append one [Image source: <path>] line per persisted image when supportsVision is false", async () => {
       const messages: Message[] = [
         {
           id: generateMessageId(),
@@ -1032,7 +1042,7 @@ describe("convertMessagesForAPI", () => {
         },
       ];
 
-      const apiMessages = convertMessagesForAPI(messages, {
+      const apiMessages = await convertMessagesForAPI(messages, {
         supportsVision: false,
       });
 
@@ -1050,7 +1060,7 @@ describe("convertMessagesForAPI", () => {
       );
     });
 
-    it("should keep sending persisted tool images as image_url when supportsVision is true", () => {
+    it("should keep sending persisted tool images as image_url when supportsVision is true", async () => {
       const messages: Message[] = [
         {
           id: generateMessageId(),
@@ -1077,7 +1087,7 @@ describe("convertMessagesForAPI", () => {
         },
       ];
 
-      const apiMessages = convertMessagesForAPI(messages, {
+      const apiMessages = await convertMessagesForAPI(messages, {
         supportsVision: true,
       });
 
@@ -1088,7 +1098,7 @@ describe("convertMessagesForAPI", () => {
       expect(allContent).not.toContain("[Image source:");
     });
 
-    it("should send images as image_url when supportsVision is true (default)", () => {
+    it("should send images as image_url when supportsVision is true (default)", async () => {
       const messages: Message[] = [
         {
           id: generateMessageId(),
@@ -1105,12 +1115,12 @@ describe("convertMessagesForAPI", () => {
       ];
 
       // Default (no options) = supportsVision undefined = true
-      const apiMessagesDefault = convertMessagesForAPI(messages);
+      const apiMessagesDefault = await convertMessagesForAPI(messages);
       const allContentDefault = JSON.stringify(apiMessagesDefault);
       expect(allContentDefault).toContain("image_url");
 
       // Explicitly true
-      const apiMessagesTrue = convertMessagesForAPI(messages, {
+      const apiMessagesTrue = await convertMessagesForAPI(messages, {
         supportsVision: true,
       });
       const allContentTrue = JSON.stringify(apiMessagesTrue);
@@ -1119,7 +1129,7 @@ describe("convertMessagesForAPI", () => {
   });
 
   describe("image source path metadata (aligned with Claude Code)", () => {
-    it("appends [Image source: <path>] text after the image part for local file paths", () => {
+    it("appends [Image source: <path>] text after the image part for local file paths", async () => {
       const messages: Message[] = [
         {
           id: generateMessageId(),
@@ -1135,7 +1145,7 @@ describe("convertMessagesForAPI", () => {
         },
       ];
 
-      const apiMessages = convertMessagesForAPI(messages);
+      const apiMessages = await convertMessagesForAPI(messages);
 
       expect(apiMessages).toHaveLength(1);
       const content = apiMessages[0].content as Array<{
@@ -1159,7 +1169,7 @@ describe("convertMessagesForAPI", () => {
       ]);
     });
 
-    it("skips a path-based image whose bytes cannot be read", () => {
+    it("skips a path-based image whose bytes cannot be read", async () => {
       // convertImageToBase64 returns undefined for unreadable/empty/unknown
       // files; the image must be dropped instead of sent as an empty payload.
       vi.mocked(convertImageToBase64).mockReturnValueOnce(undefined);
@@ -1176,7 +1186,7 @@ describe("convertMessagesForAPI", () => {
         },
       ];
 
-      const apiMessages = convertMessagesForAPI(messages);
+      const apiMessages = await convertMessagesForAPI(messages);
 
       const content = apiMessages[0].content as Array<{
         type: string;
@@ -1188,7 +1198,7 @@ describe("convertMessagesForAPI", () => {
       ]);
     });
 
-    it("does not append source metadata for inline dataURL images", () => {
+    it("does not append source metadata for inline dataURL images", async () => {
       const messages: Message[] = [
         {
           id: generateMessageId(),
@@ -1204,7 +1214,7 @@ describe("convertMessagesForAPI", () => {
         },
       ];
 
-      const apiMessages = convertMessagesForAPI(messages);
+      const apiMessages = await convertMessagesForAPI(messages);
 
       const content = apiMessages[0].content as Array<{
         type: string;
@@ -1217,7 +1227,7 @@ describe("convertMessagesForAPI", () => {
       ).toBe(false);
     });
 
-    it("appends [Image source: <path>] alongside placeholder when supportsVision is false", () => {
+    it("appends [Image source: <path>] alongside placeholder when supportsVision is false", async () => {
       const messages: Message[] = [
         {
           id: generateMessageId(),
@@ -1233,7 +1243,7 @@ describe("convertMessagesForAPI", () => {
         },
       ];
 
-      const apiMessages = convertMessagesForAPI(messages, {
+      const apiMessages = await convertMessagesForAPI(messages, {
         supportsVision: false,
       });
 
@@ -1261,7 +1271,7 @@ describe("convertMessagesForAPI", () => {
       expect(allContent).not.toContain("image_url");
     });
 
-    it("appends [Image source: <path>] for each non-dataURL image when supportsVision is false", () => {
+    it("appends [Image source: <path>] for each non-dataURL image when supportsVision is false", async () => {
       const messages: Message[] = [
         {
           id: generateMessageId(),
@@ -1281,7 +1291,7 @@ describe("convertMessagesForAPI", () => {
         },
       ];
 
-      const apiMessages = convertMessagesForAPI(messages, {
+      const apiMessages = await convertMessagesForAPI(messages, {
         supportsVision: false,
       });
 
@@ -1332,14 +1342,27 @@ function pngDataUrl(width: number, height: number): string {
   return `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`;
 }
 
-describe("convertMessagesForAPI oversized images", () => {
-  type ContentPart = {
-    type: string;
-    text?: string;
-    image_url?: { url: string };
-  };
+type ContentPart = {
+  type: string;
+  text?: string;
+  image_url?: { url: string };
+};
 
-  function convertUserImage(dataUrl: string): ContentPart[] {
+/** First part of the given type, if any. */
+function partOf(parts: ContentPart[], type: string) {
+  return parts.find((part) => part.type === type);
+}
+
+/** Concatenated text of every text part. */
+function noteText(parts: ContentPart[]): string {
+  return parts
+    .filter((part) => part.type === "text")
+    .map((part) => part.text ?? "")
+    .join("\n");
+}
+
+describe("convertMessagesForAPI oversized images", () => {
+  async function convertUserImage(dataUrl: string): Promise<ContentPart[]> {
     const messages: Message[] = [
       {
         id: generateMessageId(),
@@ -1351,16 +1374,70 @@ describe("convertMessagesForAPI oversized images", () => {
         timestamp: new Date().toISOString(),
       },
     ];
-    const apiMessages = convertMessagesForAPI(messages, {
+    const apiMessages = await convertMessagesForAPI(messages, {
       supportsVision: true,
     });
     return apiMessages[0].content as ContentPart[];
   }
 
-  it("skips an image taller than the cap instead of failing the whole turn", () => {
+  async function convertToolImage(
+    base64: string,
+    mediaType = "image/png",
+  ): Promise<ChatCompletionMessageParam[]> {
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "assistant",
+        blocks: [
+          {
+            type: "tool",
+            parameters: '{"action": "screenshot"}',
+            result: "Screenshot captured successfully",
+            images: [{ data: base64, mediaType }],
+            id: "tool-oversized",
+            name: "screenshot_tool",
+            stage: "end",
+          },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+    return convertMessagesForAPI(messages, { supportsVision: true });
+  }
+
+  /** Base64 payload of a data URL, without the `data:<mime>;base64,` prefix. */
+  function payloadOf(dataUrl: string): string {
+    return dataUrl.slice(dataUrl.indexOf(",") + 1);
+  }
+
+  /**
+   * A stand-in codec that "encodes" every rung to the given bytes, so tests can
+   * assert what the conversion layer does with a successful rewrite without
+   * depending on a native module.
+   */
+  function stubProcessor(encodedPayload: string) {
+    const image = {
+      metadata: async () => ({ width: 3000, height: 2000, format: "png" }),
+      resize: () => image,
+      png: () => image,
+      webp: () => image,
+      jpeg: () => image,
+      flatten: () => image,
+      toBuffer: async () => Buffer.from(encodedPayload, "base64"),
+    };
+    return Object.assign(() => image, { versions: { vips: "stub" } });
+  }
+
+  beforeEach(() => {
+    codec.processor = undefined;
+    __resetImageRewriteCacheForTesting();
+  });
+
+  it("omits an image taller than the hard bound when no codec is available", async () => {
     // The reported case: 2250x15474 — the gateway answers 400 and the entire
-    // request dies, so the image must not reach it.
-    const content = convertUserImage(pngDataUrl(2250, 15474));
+    // request dies, so with nothing to shrink it with, the image must not reach
+    // it.
+    const content = await convertUserImage(pngDataUrl(2250, 15474));
 
     expect(content.some((part) => part.type === "image_url")).toBe(false);
     const note = content.find(
@@ -1377,13 +1454,42 @@ describe("convertMessagesForAPI oversized images", () => {
     });
   });
 
-  it("sends an image at exactly the cap unchanged", () => {
+  it("omits an oversized tool-produced image too, not just user attachments", async () => {
+    const apiMessages = await convertToolImage(
+      payloadOf(pngDataUrl(9000, 300)),
+    );
+
+    const userMessage = apiMessages.find((message) => message.role === "user");
+    const parts = userMessage?.content as ContentPart[];
+    expect(partOf(parts, "image_url")).toBeUndefined();
+    expect(noteText(parts)).toContain("9000x300");
+    // The tool result itself is untouched.
+    expect(
+      apiMessages.find((message) => message.role === "tool")?.content,
+    ).toBe("Screenshot captured successfully");
+  });
+
+  it("sends an image within the hard bound unchanged when there is no codec", async () => {
+    // 8192 is the gateway's bound and not ours: with nothing to shrink it with,
+    // an image under it still goes out as-is rather than costing the image.
     const dataUrl = pngDataUrl(1500, 8192);
-    const content = convertUserImage(dataUrl);
+    const content = await convertUserImage(dataUrl);
 
     const imagePart = content.find((part) => part.type === "image_url");
     expect(imagePart).toBeDefined();
     expect(imagePart?.image_url?.url).toBe(dataUrl);
     expect(JSON.stringify(content)).not.toContain("Image omitted");
+  });
+
+  it("sends the rewritten bytes plus a size note when a codec is available", async () => {
+    const resized = pngDataUrl(2000, 1333);
+    codec.processor = stubProcessor(payloadOf(resized));
+
+    const content = await convertUserImage(pngDataUrl(3000, 2000));
+
+    const imagePart = content.find((part) => part.type === "image_url");
+    expect(imagePart?.image_url?.url).toBe(resized);
+    expect(noteText(content)).toContain("original 3000x2000");
+    expect(noteText(content)).toContain("displayed at 2000x1333");
   });
 });

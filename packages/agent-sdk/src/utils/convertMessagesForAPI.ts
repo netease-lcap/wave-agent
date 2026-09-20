@@ -1,9 +1,5 @@
 import type { Message } from "../types/index.js";
-import {
-  exceedsMaxDimension,
-  getImageDimensionsFromDataUrl,
-  omittedImageNote,
-} from "./imageDimensions.js";
+import { imageFileCacheKey, planOutboundImage } from "./imageRewrite.js";
 import { convertImageToBase64 } from "./messageOperations.js";
 import { taskNotificationToXml } from "./notificationXml.js";
 import { ChatCompletionMessageToolCall } from "openai/resources";
@@ -55,14 +51,20 @@ export interface ConvertMessagesOptions {
 /**
  * Convert message format to API call format, stopping when a compacted message is encountered.
  * Messages with no meaningful content or tool calls are filtered out.
+ *
+ * Async because every outbound image is routed through `planOutboundImage`,
+ * which may have to re-encode an oversized image with the optional `sharp`
+ * codec (`utils/imageRewrite.ts`). Images that are already inside the budget —
+ * the common case — take a synchronous fast path and come out byte-identical.
+ *
  * @param messages Message list
  * @param options Optional conversion options (e.g. supportsVision)
  * @returns Converted API message format list
  */
-export function convertMessagesForAPI(
+export async function convertMessagesForAPI(
   messages: Message[],
   options?: ConvertMessagesOptions,
-): ChatCompletionMessageParam[] {
+): Promise<ChatCompletionMessageParam[]> {
   const supportsVision = options?.supportsVision !== false;
   const recentMessages: ChatCompletionMessageParam[] = [];
 
@@ -105,7 +107,7 @@ export function convertMessagesForAPI(
         // Collect image user messages to place after all tool messages
         const imageUserMessages: ChatCompletionMessageParam[] = [];
 
-        toolBlocks.forEach((toolBlock) => {
+        for (const toolBlock of toolBlocks) {
           // Only add completed tool blocks (i.e., stage is 'end')
           if (toolBlock.id && toolBlock.stage === "end") {
             completedToolIds.add(toolBlock.id);
@@ -122,19 +124,36 @@ export function convertMessagesForAPI(
               if (supportsVision) {
                 const contentParts: ChatCompletionContentPart[] = [];
 
-                toolBlock.images.forEach((image) => {
+                for (const image of toolBlock.images) {
                   const imageUrl = image.data.startsWith("data:")
                     ? image.data
                     : `data:${image.mediaType || "image/png"};base64,${image.data}`;
 
+                  // Tool-produced images (Read screenshots, MCP results, Exec
+                  // output) go through the same outbound budget as attachments:
+                  // an image the gateway would reject is shrunk, or omitted with
+                  // an actionable note, instead of failing the whole request.
+                  const plan = await planOutboundImage({
+                    dataUrl: imageUrl,
+                    cacheKey: imageUrl,
+                    sourcePath: image.path,
+                  });
+
+                  if (plan.kind === "omit") {
+                    contentParts.push({ type: "text", text: plan.note });
+                    continue;
+                  }
                   contentParts.push({
                     type: "image_url",
                     image_url: {
-                      url: imageUrl,
+                      url: plan.dataUrl,
                       detail: "auto",
                     },
                   });
-                });
+                  if (plan.note) {
+                    contentParts.push({ type: "text", text: plan.note });
+                  }
+                }
 
                 imageUserMessages.push({
                   role: "user",
@@ -168,7 +187,7 @@ export function convertMessagesForAPI(
               }
             }
           }
-        });
+        }
 
         // Insert image user messages after all tool messages but before the
         // assistant message (which will be unshifted next). Since tool messages
@@ -278,7 +297,7 @@ export function convertMessagesForAPI(
       // User messages converted to standard format
       const contentParts: ChatCompletionContentPart[] = [];
 
-      message.blocks.forEach((block) => {
+      for (const block of message.blocks) {
         // Add text content - only if it has meaningful content
         if (
           block.type === "text" &&
@@ -317,7 +336,7 @@ export function convertMessagesForAPI(
               }
             });
           } else {
-            block.imageUrls.forEach((imageUrl: string) => {
+            for (const imageUrl of block.imageUrls) {
               // Check if it's already base64, convert if not
               const isDataUrl = imageUrl.startsWith("data:image/");
               let finalImageUrl = imageUrl;
@@ -335,43 +354,44 @@ export function convertMessagesForAPI(
                     error,
                   );
                   // Skip this image, do not add to content
-                  return;
+                  continue;
                 }
                 if (!converted) {
                   logger.warn("Skipping unusable image file:", imageUrl);
-                  return;
+                  continue;
                 }
                 finalImageUrl = converted;
               }
 
-              // The gateway rejects any image whose width or height exceeds
-              // MAX_IMAGE_DIMENSION_PX with a 400 that fails the WHOLE request
-              // (see utils/imageDimensions.ts for the probe data). This layer
-              // has no image codec, so oversized images are skipped and
-              // replaced by an actionable note instead of taking the turn down.
-              const dimensions = getImageDimensionsFromDataUrl(finalImageUrl);
-              if (dimensions && exceedsMaxDimension(dimensions)) {
-                logger.warn(
-                  `Skipping oversized image (${dimensions.width}x${dimensions.height}):`,
-                  isDataUrl ? "(inline data url)" : imageUrl,
-                );
-                contentParts.push({
-                  type: "text",
-                  text: omittedImageNote(
-                    dimensions,
-                    isDataUrl ? undefined : imageUrl,
-                  ),
-                });
-                return;
+              // Outbound budget: an image the vision gateway would reject, or
+              // one over our own size budget, is shrunk here (or replaced by an
+              // actionable note when it cannot be). See utils/imageRewrite.ts.
+              const plan = await planOutboundImage({
+                dataUrl: finalImageUrl,
+                cacheKey: isDataUrl
+                  ? finalImageUrl
+                  : imageFileCacheKey(imageUrl),
+                sourcePath: isDataUrl ? undefined : imageUrl,
+              });
+
+              if (plan.kind === "omit") {
+                contentParts.push({ type: "text", text: plan.note });
+                continue;
               }
 
               contentParts.push({
                 type: "image_url",
                 image_url: {
-                  url: finalImageUrl,
+                  url: plan.dataUrl,
                   detail: "auto",
                 },
               });
+
+              // Tell the model when the image it sees is not the full-size
+              // original, so it can map coordinates back.
+              if (plan.note) {
+                contentParts.push({ type: "text", text: plan.note });
+              }
 
               // Aligned with Claude Code: when the image comes from a local
               // file (not an inline dataURL), append its source path as text
@@ -383,7 +403,7 @@ export function convertMessagesForAPI(
                   text: `[Image source: ${imageUrl}]`,
                 });
               }
-            });
+            }
           }
         }
 
@@ -402,7 +422,7 @@ export function convertMessagesForAPI(
             text: `A background agent completed a task:\n${taskNotificationToXml(block)}`,
           });
         }
-      });
+      }
 
       // Only add user message if there is meaningful content
       if (contentParts.length > 0) {

@@ -40,7 +40,10 @@ await build({
   banner: {
     js: 'import { createRequire } from "module";\nconst require = createRequire(import.meta.url);',
   },
-  external: ["@vscode/ripgrep", "fsevents"],
+  // `sharp` is a native module and is loaded through `createRequire` at
+  // runtime (utils/imageProcessor.ts); marking it external keeps a future
+  // static import from dragging a `.node` file into the bundle.
+  external: ["@vscode/ripgrep", "fsevents", "sharp"],
   alias: { "@": path.join(root, "src") },
   plugins: [inkDevtoolsStub],
   // Shrinks the bundle ~2.2x (8.4MB -> 3.7MB raw) and drops React's

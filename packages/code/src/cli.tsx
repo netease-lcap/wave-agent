@@ -1,5 +1,6 @@
 import React from "react";
 import { render } from "ink";
+import { ensureRuntimeDeps } from "wave-agent-sdk";
 import { App } from "./components/App.js";
 import { cleanupLogs } from "./utils/logger.js";
 import { removeWorktree } from "./utils/worktree.js";
@@ -11,6 +12,13 @@ export interface CliOptions extends BaseAppProps {
 }
 
 export async function startCli(options: CliOptions): Promise<void> {
+  // Install the on-demand image codec before the UI comes up, the way the
+  // hosts block on ripgrep before spawning us. Waiting is the point: pasting an
+  // image a second later must not race a download. Costs ~16ms once it is
+  // installed (marker hit), ~6MB/20MB worth of time on the first run of a
+  // host-bundled CLI. A failed download only degrades images — never throws.
+  await ensureRuntimeDeps();
+
   const {
     restoreSessionId,
     continueLastSession,

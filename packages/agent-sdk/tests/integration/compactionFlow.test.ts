@@ -53,7 +53,7 @@ describe("Integration: Compaction Flow (API-round grouping + API conversion)", (
     return { type: "tool", name, result, stage: "end", timestamp: ts };
   }
 
-  it("should group by API round, then convert for API", () => {
+  it("should group by API round, then convert for API", async () => {
     const messages: Message[] = [
       createUserMsg("Analyze this codebase"),
       createAssistantMsg("a1", "Let me read the files", [
@@ -80,7 +80,7 @@ describe("Integration: Compaction Flow (API-round grouping + API conversion)", (
     const preservedMessages = getLastApiRounds(messages, 2);
 
     // Step 3: Convert for API
-    const apiMessages = convertMessagesForAPI(preservedMessages);
+    const apiMessages = await convertMessagesForAPI(preservedMessages);
 
     // Verify API-round grouping preserves structure
     // Rounds: [[user, a1], [a2], [a3], [user, a4], [a5]]
@@ -156,7 +156,7 @@ describe("Integration: Compaction Flow (API-round grouping + API conversion)", (
     });
   });
 
-  it("should handle compaction scenario with multiple API rounds", () => {
+  it("should handle compaction scenario with multiple API rounds", async () => {
     // Simulate: user prompt → multiple assistant turns (tool loop) → user follow-up → assistant
     const messages: Message[] = [
       createUserMsg("Build a REST API"),
@@ -186,7 +186,7 @@ describe("Integration: Compaction Flow (API-round grouping + API conversion)", (
     expect(lastTwo.length).toBe(3);
 
     // API conversion of preserved messages
-    const apiMsgs = convertMessagesForAPI(lastTwo);
+    const apiMsgs = await convertMessagesForAPI(lastTwo);
     expect(apiMsgs.length).toBeGreaterThan(0);
 
     // Verify the structure: should include the user follow-up and assistant response
@@ -196,7 +196,7 @@ describe("Integration: Compaction Flow (API-round grouping + API conversion)", (
     expect(assistantApiMsgs.length).toBeGreaterThan(0);
   });
 
-  it("should preserve compact block as its own round when chaining getLastApiRounds after previous compaction", () => {
+  it("should preserve compact block as its own round when chaining getLastApiRounds after previous compaction", async () => {
     // Scenario: session has been compacted before, new compaction needed
     const compactMsg: Message = {
       id: generateMessageId(),
@@ -233,7 +233,7 @@ describe("Integration: Compaction Flow (API-round grouping + API conversion)", (
     expect(lastTwo.length).toBe(4);
 
     // API conversion should work
-    const apiMsgs = convertMessagesForAPI(lastTwo);
+    const apiMsgs = await convertMessagesForAPI(lastTwo);
     expect(apiMsgs.length).toBeGreaterThan(0);
   });
 
@@ -277,7 +277,7 @@ describe("Integration: Compaction Flow (API-round grouping + API conversion)", (
     ]);
   });
 
-  it("should verify full pipeline: api-round grouping → getLastApiRounds → convertForAPI", () => {
+  it("should verify full pipeline: api-round grouping → getLastApiRounds → convertForAPI", async () => {
     // End-to-end pipeline test simulating what aiManager does before calling compactMessages
     const messages: Message[] = [
       createUserMsg("Create a React component"),
@@ -305,7 +305,7 @@ describe("Integration: Compaction Flow (API-round grouping + API conversion)", (
     expect(step2).toHaveLength(3);
 
     // Pipeline step 3: convert for API
-    const step3 = convertMessagesForAPI(step2);
+    const step3 = await convertMessagesForAPI(step2);
     expect(step3.length).toBeGreaterThan(0);
 
     // Verify API message structure is valid
