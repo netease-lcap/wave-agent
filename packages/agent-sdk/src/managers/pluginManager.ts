@@ -1,5 +1,10 @@
 import { logger } from "../utils/globalLogger.js";
-import { Plugin, PluginConfig } from "../types/index.js";
+import {
+  Plugin,
+  PluginConfig,
+  PluginLoadFailure,
+  PluginReloadResult,
+} from "../types/index.js";
 import { PluginLoader } from "../services/pluginLoader.js";
 import * as path from "path";
 import { existsSync, readdirSync } from "fs";
@@ -19,27 +24,6 @@ export interface PluginManagerOptions {
   workdir: string;
   enabledPlugins?: Record<string, boolean>;
 }
-
-/** A plugin root that failed to load during the most recent load/reload. */
-export interface PluginLoadFailure {
-  path: string;
-  error: string;
-}
-
-export interface PluginReloadResult {
-  /** Plugin names loaded after the reload. */
-  plugins: string[];
-  /** Plugins that could not be loaded; the reload does not roll back. */
-  failures: PluginLoadFailure[];
-}
-
-/**
- * 插件变更提示的逐字文案（docs/specs/ecosystem/plugin.md「插件变更提示」）。
- * 四端共用以免文案漂移；两条都是中性提示，不占成功 / 失败语义色。
- */
-export const PLUGIN_CHANGE_PENDING_MESSAGE =
-  "插件已变更。运行 /reload-plugins 使其生效。";
-export const PLUGIN_RELOADED_MESSAGE = "插件已重载。";
 
 export class PluginManager {
   /**

@@ -25,6 +25,20 @@ export interface PluginConfig {
   path: string;
 }
 
+/** A plugin root that failed to load during the most recent load/reload. */
+export interface PluginLoadFailure {
+  path: string;
+  error: string;
+}
+
+/** Result of `Agent.reloadPlugins()` / `PluginManager.reloadAllPlugins()`. */
+export interface PluginReloadResult {
+  /** Plugin names loaded after the reload. */
+  plugins: string[];
+  /** Plugins that could not be loaded; the reload does not roll back. */
+  failures: PluginLoadFailure[];
+}
+
 /**
  * Represents a loaded plugin in the system
  */

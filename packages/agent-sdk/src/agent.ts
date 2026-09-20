@@ -10,10 +10,7 @@ import { CronManager } from "./managers/cronManager.js";
 import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
 import { MessageQueue, type QueuedMessage } from "./managers/messageQueue.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
-import {
-  PluginManager,
-  type PluginReloadResult,
-} from "./managers/pluginManager.js";
+import { PluginManager } from "./managers/pluginManager.js";
 import { HookManager } from "./managers/hookManager.js";
 import { ReversionManager } from "./managers/reversionManager.js";
 import { PermissionManager } from "./managers/permissionManager.js";
@@ -34,6 +31,7 @@ import type {
   PermissionMode,
   ForegroundTask,
   SkillMetadata,
+  PluginReloadResult,
 } from "./types/index.js";
 import type { HookEvent, HookEventConfig } from "./types/hooks.js";
 import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
