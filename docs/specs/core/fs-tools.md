@@ -98,5 +98,5 @@ order: 10
 ## 假设
 
 - 代理具有访问工作区目录所需的系统级权限。
-- `ripgrep`（`rg`）二进制由 `@vscode/ripgrep` 依赖提供（通过 `optionalDependencies` 按平台分发，运行时无需系统预装或网络下载），供 `Grep` 工具使用。
+- `ripgrep`（`rg`）二进制由 `@vscode/ripgrep` 依赖提供（通过 `optionalDependencies` 按平台分发，运行时无需系统预装或网络下载），供 `Grep` 工具使用。二进制路径按需解析：平台二进制包缺失时 `Grep` 返回"ripgrep is not available"（文件搜索同理报错），不使宿主进程在加载时崩溃——桌面端与 IDE 插件宿主的 grep 运行在 CLI 子进程中，宿主自身不消费该路径。
 - `PermissionManager` 已正确配置以处理文件系统访问级别。

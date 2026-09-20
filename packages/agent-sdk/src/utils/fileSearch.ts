@@ -10,14 +10,15 @@ const EXCLUDED_FILES = [".git", ".DS_Store"];
  * Execute ripgrep to get all file paths
  */
 async function getAllFiles(workingDirectory: string): Promise<string[]> {
-  if (!rgPath) {
+  const rgBinary = rgPath;
+  if (!rgBinary) {
     throw new Error("ripgrep is not available");
   }
 
   const rgArgs = ["--files", "--color=never", "--hidden"];
 
   return new Promise((resolve, reject) => {
-    const child = spawn(rgPath, rgArgs, {
+    const child = spawn(rgBinary, rgArgs, {
       cwd: workingDirectory,
       stdio: ["ignore", "pipe", "pipe"],
     });
