@@ -4,7 +4,7 @@ import {
   type ChatSessionCallbacks,
 } from "../../src/session/chatSession";
 import type { StdioClient } from "../../src/stdio/stdioClient";
-import type { NotificationRouter } from "wave-agent-sdk/stdio";
+import type { NotificationRouter } from "wave-agent-sdk/host";
 
 /**
  * Regression（Bug #2115：设置页关掉「自动记忆」后仍记忆）——**PR-2 反转了原先的

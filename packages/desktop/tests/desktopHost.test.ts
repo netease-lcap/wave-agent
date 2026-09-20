@@ -214,7 +214,10 @@ vi.mock("../src/main/stdio/stdioClient", () => ({
   },
 }));
 
-vi.mock("wave-agent-sdk/stdio", () => ({
+vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
+  // Spread the real host surface — desktopHost also takes shared literals from
+  // this entry; only the two RPC classes are replaced.
+  ...(await importOriginal<Record<string, unknown>>()),
   NotificationRouter: class {
     attach = vi.fn();
     registerSession = vi.fn();
