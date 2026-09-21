@@ -51,10 +51,13 @@
  * screenshot with the Read tool), so this module is the *detection* half:
  * callers skip the image and tell the model what to do instead.
  *
- * The paste path in `packages/webview/src/utils/imageValidation.ts` keeps its
- * own copy of `MAX_IMAGE_DIMENSION_PX` (a browser bundle cannot import this
- * module) and *downsamples* oversized pastes rather than skipping them. Update
- * both when the upstream bound changes.
+ * The paste path in `packages/webview/src/utils/imageValidation.ts` no longer
+ * mirrors this bound. It targets the tighter outbound budget instead
+ * (`OUTBOUND_IMAGE_MAX_DIMENSION_PX`, shared through `constants/images.ts`) and
+ * *downsamples* an oversized paste rather than skipping it, so a pasted image
+ * is already compliant by the time it is sent. This module remains the
+ * detection half for the images nobody can re-encode — most of all the ones the
+ * model itself reads with the Read tool.
  */
 export const MAX_IMAGE_DIMENSION_PX = 8192;
 

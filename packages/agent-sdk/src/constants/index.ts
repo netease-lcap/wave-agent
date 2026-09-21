@@ -7,6 +7,7 @@
  * therefore take a host down at load time. Every module re-exported below must
  * stay dependency-free so this entry remains cheap to bundle.
  */
+export * from "./images.js";
 export * from "./memory.js";
 export * from "./messages.js";
 export * from "./subagents.js";

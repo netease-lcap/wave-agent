@@ -32,15 +32,19 @@
  * This module holds no image codec and must stay dependency-free so it can be
  * imported from anywhere in the SDK.
  */
+import { OUTBOUND_IMAGE_MAX_DIMENSION_PX } from "../constants/images.js";
 import { exceedsMaxDimension } from "./imageDimensions.js";
 import type { ImageDimensions } from "./imageDimensions.js";
 
 /**
  * Client-side per-side dimension budget (Claude Code's `IMAGE_MAX_WIDTH` /
  * `IMAGE_MAX_HEIGHT`). Distinct from — and much tighter than — the gateway's
- * hard bound in `imageDimensions.ts`.
+ * hard bound in `imageDimensions.ts`. The value itself lives in
+ * `constants/images.ts` so the webview paste path can share it instead of
+ * keeping a copy that could drift; re-exported here because this is the module
+ * every outbound-image caller already imports.
  */
-export const OUTBOUND_IMAGE_MAX_DIMENSION_PX = 2000;
+export { OUTBOUND_IMAGE_MAX_DIMENSION_PX };
 
 /**
  * Maximum base64 payload we are willing to put in a request, counting only the
