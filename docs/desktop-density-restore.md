@@ -5242,3 +5242,99 @@ ghost 图标与「图标 + 文字」控件。
   图：`对比-sticky悬浮内边距.png`、`对比-sticky悬浮三项对齐.png`。
 - IDE 宿主（`ide-chat` / `ide-logged-out`）实测 sticky 仍 6px 10px / 圆角 6px / 行高 normal / 字重 400
   （`[data-host="desktop"]` 作用域未越界）；全轮 **0 `pageerror`**。
+
+## 0921 评论（侧栏「插件市场」入口：与新对话行距 2px + 选中态改成会话行同款）
+
+评论原文（点 `button.desktop-sidebar-new-chat.is-active`「插件市场」）：
+「插件市场距离新对话2px，选中状态和对话的选中状态保持一致，（图标不变色，仅灰色背景色）」。
+设计师追加指示（同轮，看图后）：「hover和选中时图标都提亮」。
+
+### ① 改前实测（`走查/_tools/0921/probe-plugin-entry-gap-0921.mjs`，DPR2 / 指针移开后读）
+
+|                                     | 浅色                               | 深色                                             |
+| ----------------------------------- | ---------------------------------- | ------------------------------------------------ |
+| 入口行距（新对话下缘→插件市场上缘） | **16px**（4 + 12）                 | 16px                                             |
+| 插件市场选中底                      | `#FFEBE8`（淡红）                  | `color-mix(brand 18%, transparent)`（暗红）      |
+| 插件市场选中图标                    | `#C1292E`（品牌红，**变色**）      | `#C1292E`                                        |
+| 插件市场文字                        | `#1F2329`（1 级，未变）            | `#E6E6E6`（1 级，未变）                          |
+| 参照 · 会话行选中态                 | 底 `#EBEDF0`、标题 `#1F2329` / 400 | 底 `rgba(255,255,255,.12)`、标题 `#E6E6E6` / 400 |
+
+根因两条：① 两个固定入口共用 `margin: 12px 0 4px`（host 层「新对话按钮与品牌行间距
+Figma 17094 itemSpacing 12」是给新对话↔品牌行的），插件市场行白拿同样上边距 →
+4 + 12 = 16px（会话树同款行距是 `DesktopApp.css .desktop-session-items` 的 `gap: 2px`）。
+② `.desktop-sidebar-new-chat.is-active` 是品牌红字 + 淡红底，「活动」按钮的同族配色，
+不是会话行选中态。
+
+### ② 改法（2 处 base + 1 处 host 层；IDE 宿主不受影响）
+
+`DesktopApp.css`：`.is-active` 改成与 `.desktop-session-item--current` 逐值相同的灰底，
+**删掉 `color` 声明**（文字仍由 host 层 `span` 定为 1 级）：
+
+```css
+.desktop-sidebar-new-chat.is-active {
+  background-color: #ebedf0; /* = .desktop-session-item--current 浅色档 */
+}
+html[data-theme="dark"] .desktop-sidebar-new-chat.is-active {
+  background-color: rgba(255, 255, 255, 0.12); /* = 同规则深色档 */
+}
+```
+
+`host-desktop.css`：① 图标灰清单仍保留 `:not(.is-active)`（灰清单只管常态），
+按追加指示新增选中态提亮规则 —— **取 hover 提亮家族给同一按钮的两个值**
+（浅 `#1F2329` / 深 `#FFFFFF`，见第三十九轮 hover 提亮清单），即「hover 和选中同档」；
+「活动」按钮 `.desktop-sidebar-more-btn:not(.is-active)` 保持品牌红不动：
+
+```css
+[data-host="desktop"] .desktop-sidebar-new-chat.is-active {
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat.is-active {
+  color: #ffffff;
+}
+```
+
+② 行距（紧跟 `margin: 12px 0 4px` 那条）：
+
+```css
+[data-host="desktop"]
+  .desktop-sidebar-new-chat-tooltip
+  + .desktop-sidebar-new-chat {
+  margin-top: -2px;
+}
+```
+
+选中态 + hover 不套 hover 底色（base `.desktop-sidebar-new-chat:hover:not(.is-active)` /
+host 层两条 hover 覆盖都带 `:not(.is-active)`），与会话行「选中时 hover 不改底」一致。
+
+### ③ 改后实测（浅深双档，全部通过）
+
+- 行距 16 → **2px**（未选中/选中同值）；两个入口盒仍 30 高、`margin` 12/4 与 -2/4，
+  插件市场 y 94 → 80；会话树 y 128 → 114、高度 753 → 767（`flex: 1` 吃掉这 14px），
+  **账户卡片 y 881 未动**（整栏布局不变）。
+- 插件市场选中底 = `rgb(235,237,240)` / `rgba(255,255,255,.12)` **逐值与同页会话行选中态相同**；
+  选中图标 = `#1F2329` / `#FFFFFF`（**与 hover 提亮家族同值**），文字 = `#1F2329` / `#E6E6E6`
+  （= 会话行选中标题）；未选中图标仍是 `#565A60` / `#9A9EA5`（灰清单）。
+  本轮除颜色外无盒属性改动：行高 30 / 外边距 / `border-radius: 8px` 探针里逐值不变。
+- 未选中 hover 两入口仍 `#EEF0F3` / `8% 白`（既有家族值，未触碰）；
+  选中态 hover 底保持选中灰、图标提亮档不回落。全轮 **0 `pageerror`**。
+- 宿主作用域：`DesktopApp.css` 只被 `DesktopApp*` 系列（桌面端专用组件）import，
+  host 层新增规则带 `[data-host="desktop"]` → VSCE / JetBrains 无路径可达。
+
+### ④ 残留 / 备用触发语（未授权，等她点名）
+
+- 本轮追加指示已消解初版的一条残留（初版实现里选中态图标走常态灰、hover 才提亮，
+  她看图后要求「hover 和选中时图标都提亮」→ 两条同档，见 ②①）。
+- 会话行选中态 hover 时标题不变色（它是文字，无 hover 色规则），而本入口选中态 hover
+  图标维持提亮档 —— 两者观感一致，无残留动作。
+- 「活动」按钮（`.desktop-sidebar-more-btn.is-active`）仍是品牌红 + 淡红底 ——
+  触发语：「活动按钮的选中态也一起改成灰底」。
+- 选中灰用的是与会话行相同的字面量 `#EBEDF0` / `12% 白`（设计系统另有
+  `--cc-fill-pressed` 浅 `#E7E9ED` / 深 `#393E41`，与会话行差 2~4 通道）——
+  触发语：「选中底改走 --cc-fill-pressed」。
+
+### 验证脚本与证据
+
+- `CC02/走查/_tools/0921/probe-plugin-entry-gap-0921.mjs`（几何 + 三态 computed：
+  未选中 / 选中 / 选中+hover，另测未选中 hover 两入口，浅深双档）。
+- 数据：`CC02/走查/0921-plugin-entry/{before,after}-desktop-full.json`；
+  图：`0921侧栏插件市场入口-改前改后.png`（浅深 × 未选中/选中 × 改前/改后 八格对照）。

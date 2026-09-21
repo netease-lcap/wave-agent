@@ -1452,6 +1452,17 @@
   margin: 12px 0 4px;
 }
 
+/* 设计师 0921 评论：「插件市场距离新对话 2px」。上一条 margin 是两个固定入口
+   共用的（新对话行下边距 4 + 插件市场行上边距 12），实得行距 16px；会话树同款
+   行距是 2px（DesktopApp.css `.desktop-session-items` gap:2px）→ 插件市场入口用
+   -2px 抵消自己的 12px 上边距，落到 2px。只改这两个入口之间的关系：新对话行到
+   品牌行的 12px、插件市场行到会话树的 4px 均不变（行高 30 / r8 也不动）。 */
+[data-host="desktop"]
+  .desktop-sidebar-new-chat-tooltip
+  + .desktop-sidebar-new-chat {
+  margin-top: -2px;
+}
+
 /* 账户区分隔线：Figma Sidebar 底部分隔 #EBEEF5（codechat --cc-border-lighter），
    base 用 panel-border #e4e7ed 偏深；深色保持中性 */
 [data-host="desktop"][data-theme="light"] .account-card {
@@ -2740,8 +2751,10 @@
 
 /* 桌面端其余控件图标统一 #565A60（同一图标规范；base 各按钮继承
    vscode-foreground，light 下 #202020 深黑偏重）。保留：
-   - `.desktop-sidebar-more-btn.is-active` / `.desktop-sidebar-new-chat.is-active`
-     品牌红 #C1292E（规范「活动器」；插件市场入口复用同一 .is-active 行制）
+   - `.desktop-sidebar-more-btn.is-active` 品牌红 #C1292E（规范「活动器」）
+   - 插件市场入口 `.desktop-sidebar-new-chat.is-active` 自 0921 起**不走灰清单**：
+     设计师要求「hover 和选中时图标都提亮」，选中态改由下一条规则给
+     hover 家族同档的提亮色（不再是品牌红）
    - workdir-trigger / session-group-header 只覆盖内部 codicon 图标，
      触发按钮文字色不动 */
 [data-host="desktop"] .desktop-sidebar-more-btn:not(.is-active),
@@ -2771,6 +2784,18 @@
 [data-host="desktop"][data-theme="dark"] .desktop-session-group-header .codicon,
 [data-host="desktop"][data-theme="dark"] .desktop-workdir-trigger .codicon {
   color: #9a9ea5;
+}
+
+/* 设计师 0921 评论追加（点侧栏「插件市场」入口）：「hover和选中时图标都提亮」
+   —— 该入口选中态的图标与 hover 采用**同一档提亮色**（即下方第三十九轮 hover
+   提亮家族给 `.desktop-sidebar-new-chat` 的两个值：浅 #1F2329 / 深 #FFFFFF），
+   而不是原先的品牌红。底仍是会话行同款选中灰（DesktopApp.css `.is-active`），
+   文字仍由下面 `.desktop-sidebar-new-chat span` 定为 1 级。 */
+[data-host="desktop"] .desktop-sidebar-new-chat.is-active {
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat.is-active {
+  color: #ffffff;
 }
 
 /* 设计师 0916 评论（点侧栏 `span`「新对话」）「这里的字体颜色深浅模式都用 1 级的」：

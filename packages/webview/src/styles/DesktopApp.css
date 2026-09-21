@@ -218,20 +218,20 @@ html[data-theme="dark"] .desktop-sidebar-more-btn.is-active {
   cursor: not-allowed;
 }
 
-/* 插件市场入口（spec ecosystem/plugin.md「插件市场」场景 1/2）：几何与新对话同
-   行制（共用 .desktop-sidebar-new-chat），打开整页时用与「活动」按钮同源的品牌红
-   + 淡红底高亮。 */
+/* 插件市场入口（spec ecosystem/plugin.md「插件市场」场景 1「入口呈高亮态」）：
+   几何与新对话同行制（共用 .desktop-sidebar-new-chat）。
+   设计师 0921 评论（点该入口）：「选中状态和对话的选中状态保持一致（图标不变色，
+   仅灰色背景色）」—— 原品牌红字 + 淡红底改成与**会话行选中态**逐值相同的灰底
+   （`.desktop-session-item--current` @320/338：浅 #EBEDF0 / 深 12% 白）。
+   **不再声明 color**：文字仍由 host 层 `.desktop-sidebar-new-chat span` 定为 1 级
+   （#1F2329 / #E6E6E6，=== 会话行选中标题），图标随之落回控件灰
+   （#565A60 / #9A9EA5，host 层图标清单已放开 :not(.is-active)，见 host-desktop.css）。 */
 .desktop-sidebar-new-chat.is-active {
-  color: var(--vscode-brand-primary, #c1292e);
-  background-color: #ffebe8;
+  background-color: #ebedf0;
 }
 
 html[data-theme="dark"] .desktop-sidebar-new-chat.is-active {
-  background-color: color-mix(
-    in srgb,
-    var(--vscode-brand-primary, #c1292e) 18%,
-    transparent
-  );
+  background-color: rgba(255, 255, 255, 0.12);
 }
 
 /* ---- Sidebar session tree (FR-020) ---- */
