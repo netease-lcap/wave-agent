@@ -36,6 +36,8 @@ interface PickerMessage {
 const HIGHLIGHT_CLASS = "__wave-picker-highlight";
 const CARD_WIDTH = 280;
 const CARD_HEIGHT_ESTIMATE = 100;
+/** Pointer travel (px) between press and release still counted as a click. */
+const CLICK_SLOP_PX = 4;
 
 let active = false;
 let palette: PickerPalette = {};
@@ -43,6 +45,8 @@ let hovered: Element | null = null;
 let selected: Element | null = null;
 let cardHost: HTMLDivElement | null = null;
 let highlightSheet: CSSStyleSheet | null = null;
+/** Where the current press started, while the pointer is down. */
+let pressOrigin: { x: number; y: number } | null = null;
 
 /** Short human-readable element description, e.g. `button.primary`. */
 function summarize(el: Element): string {
@@ -128,6 +132,28 @@ function isInsideCard(e: Event): boolean {
   // composedPath crosses shadow boundaries (and works regardless of whether
   // the engine retargets shadow-internal events at the host).
   return cardHost !== null && e.composedPath().includes(cardHost);
+}
+
+/** Is `node` the card itself, or inside its shadow root? (Point-based twin of
+    isInsideCard: hit testing returns the node, not an event path.) */
+function isCardNode(node: Element | null): boolean {
+  if (!node || !cardHost) return false;
+  return node === cardHost || node.getRootNode() === cardHost.shadowRoot;
+}
+
+/**
+ * Element under a viewport point, or null when that is the card itself.
+ *
+ * Deliberately a hit test rather than `event.target`: the engine gives a
+ * disabled form control no mouse-press events at all (see onPointerUp), and a
+ * page that calls setPointerCapture retargets the pointer events to the
+ * capturing ancestor — the hit test still resolves what the user is pointing
+ * at. It also skips `pointer-events: none` boxes, so those picks fall through
+ * to whatever is behind them (same as the hover highlight already does).
+ */
+function elementAtPoint(x: number, y: number): Element | null {
+  const el = document.elementFromPoint(x, y);
+  return el && !isCardNode(el) ? el : null;
 }
 
 /**
@@ -285,21 +311,48 @@ function onMouseOver(e: MouseEvent): void {
   el.classList.add(HIGHLIGHT_CLASS);
 }
 
-function onClick(e: MouseEvent): void {
-  if (isInsideCard(e)) return;
-  e.preventDefault();
-  e.stopPropagation();
-  // Clicking outside the card cancels the current selection back to
-  // hover-pick state; the next click selects.
+function onPointerDown(e: MouseEvent): void {
+  // Only a primary press can start a pick: a right click never gets a `click`.
+  pressOrigin = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
+}
+
+/**
+ * Picking is driven by the pointer press/release pair instead of `click`:
+ * the engine queues no click at all when the press lands on a disabled form
+ * control or one of its descendants — HTML requires such controls to suppress
+ * the click events, and Chromium drops the entire mousedown/mouseup/click
+ * sequence. mouseover and the pointer events still arrive, so hover worked
+ * while clicking a greyed-out row silently did nothing.
+ */
+function onPointerUp(e: MouseEvent): void {
+  const origin = pressOrigin;
+  pressOrigin = null;
+  if (!origin) return;
+  // Click-like only: a drag (text selection, slider, scrollbar) is not a pick.
+  if (
+    Math.abs(e.clientX - origin.x) > CLICK_SLOP_PX ||
+    Math.abs(e.clientY - origin.y) > CLICK_SLOP_PX
+  )
+    return;
+  // Releasing over our own card changes nothing (and never re-picks the card).
+  const el = elementAtPoint(e.clientX, e.clientY);
+  if (!el) return;
+  // Picking outside the card cancels the current selection back to hover-pick
+  // state; the next press selects.
   if (selected) {
     deselect();
     return;
   }
-  const el = e.target as Element | null;
-  if (!el || el === cardHost) return;
   selected = el;
   el.classList.add(HIGHLIGHT_CLASS);
   showCard(el);
+}
+
+/** Swallow the page's own click while picking (selection lives in onPointerUp). */
+function onClick(e: MouseEvent): void {
+  if (isInsideCard(e)) return;
+  e.preventDefault();
+  e.stopPropagation();
 }
 
 function onSubmit(e: Event): void {
@@ -318,6 +371,8 @@ function activate(msg?: PickerMessage): void {
   palette = msg?.palette ?? {};
   ensureHighlightSheet();
   document.addEventListener("mouseover", onMouseOver, true);
+  document.addEventListener("pointerdown", onPointerDown, true);
+  document.addEventListener("pointerup", onPointerUp, true);
   document.addEventListener("click", onClick, true);
   document.addEventListener("submit", onSubmit, true);
   window.addEventListener("scroll", onScrollOrResize, true);
@@ -328,6 +383,8 @@ function deactivate(): void {
   if (!active) return;
   active = false;
   document.removeEventListener("mouseover", onMouseOver, true);
+  document.removeEventListener("pointerdown", onPointerDown, true);
+  document.removeEventListener("pointerup", onPointerUp, true);
   document.removeEventListener("click", onClick, true);
   document.removeEventListener("submit", onSubmit, true);
   window.removeEventListener("scroll", onScrollOrResize, true);
