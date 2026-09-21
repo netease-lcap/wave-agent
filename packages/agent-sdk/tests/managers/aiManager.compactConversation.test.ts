@@ -557,4 +557,90 @@ describe("AIManager - compactConversation", () => {
       expect(callAgentMock).not.toHaveBeenCalled();
     });
   });
+
+  describe("session switch during compaction (write-phase guard)", () => {
+    /**
+     * spec message-compact.md「压缩期间的会话保护」场景 4-8：压缩是一次耗时数秒
+     * 的 LLM fork，期间 IDE「历史对话」restoreSession / `/clear` 都会把 agent
+     * 原地切到另一个会话（换 sessionId）。写入阶段前必须复核发起时的 sessionId，
+     * 不一致则整个写入阶段放弃 —— 摘要块绝不写进切换后的会话（PM 缺陷
+     * 3478352534577408：压缩结果串到第 3 会话）。
+     */
+    it("abandons the whole write phase when the session was switched mid-compaction", async () => {
+      let resolveFork: (value: {
+        content: string;
+        usage: {
+          prompt_tokens: number;
+          completion_tokens: number;
+          total_tokens: number;
+        };
+        tool_calls: never[];
+      }) => void;
+      callAgentMock.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveFork = resolve as typeof resolveFork;
+          }),
+      );
+
+      const compacting = aiManager.compactConversation();
+      await vi.waitFor(() => {
+        expect(aiManager.getIsCompacting()).toBe(true);
+      });
+
+      // 用户在压缩 LLM 调用期间把 agent 原地切到另一个会话（restoreSession /
+      // /clear 都会换 sessionId）
+      vi.mocked(mockMessageManager.getSessionId).mockReturnValue(
+        "switched-session-id",
+      );
+
+      resolveFork!({
+        content: "Late summary",
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        tool_calls: [],
+      });
+      await compacting;
+
+      // 整个写入阶段放弃：摘要不追加、钩子不跑、无错误块、无 plan 提醒注入
+      expect(
+        mockMessageManager.compactMessagesAndUpdateSession,
+      ).not.toHaveBeenCalled();
+      expect(mockHookManager.executeSessionStartHooks).not.toHaveBeenCalled();
+      expect(mockHookManager.executePostCompactHooks).not.toHaveBeenCalled();
+      expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
+      expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+      // 压缩状态仍必须正常回落（webview 提示消失）
+      expect(aiManager.getIsCompacting()).toBe(false);
+    });
+
+    it("skips the error block too when the fork fails after a session switch", async () => {
+      callAgentMock.mockImplementationOnce(async () => {
+        // fork 抛错前会话已被切走
+        vi.mocked(mockMessageManager.getSessionId).mockReturnValue(
+          "switched-session-id",
+        );
+        throw new Error("fork exploded after switch");
+      });
+
+      await aiManager.compactConversation();
+
+      expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+      expect(
+        mockMessageManager.compactMessagesAndUpdateSession,
+      ).not.toHaveBeenCalled();
+      expect(aiManager.getIsCompacting()).toBe(false);
+    });
+
+    it("keeps writing the error block to the originating session when no switch happened", async () => {
+      // 对照组（场景 7）：会话未切换，失败错误块照写回原会话（现状不变）
+      callAgentMock.mockRejectedValue(new Error("fork exploded"));
+
+      await aiManager.compactConversation();
+
+      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+        expect.stringContaining("fork exploded"),
+      );
+      expect(aiManager.getIsCompacting()).toBe(false);
+    });
+  });
 });

@@ -69,6 +69,8 @@ export class ChatSession {
   public sessionId: string | undefined;
   public isStreaming: boolean = false;
   public isCommandRunning: boolean = false;
+  /** True while a compaction LLM call is in flight; blocks in-place clearChat/restoreSession. */
+  public isCompacting: boolean = false;
   public isInitializing: boolean = false;
   public inputContent: string = "";
   public messageQueue: QueuedMessage[] = [];
@@ -133,6 +135,7 @@ export class ChatSession {
           void this.getMessages();
         },
         onCompactionStateChange: (isCompacting: boolean) => {
+          this.isCompacting = isCompacting;
           this.callbacks.onCompactionStateChange?.(isCompacting);
         },
         onCompactionContentUpdate: (content: string) => {
@@ -576,6 +579,7 @@ export class ChatSession {
     this.pendingConfirmations.clear();
     this.isStreaming = false;
     this.isCommandRunning = false;
+    this.isCompacting = false;
     this.pendingStreamingContentUpdate = undefined;
     this.pendingStreamingReasoningUpdate = undefined;
     this.messageQueue = [];

@@ -1666,10 +1666,16 @@ export class MessageHandler {
     windowId?: string,
   ) {
     const session = this.context.getChatSession(viewType || "tab", windowId);
-    // 单会话原地清空：存在正在运行的后台任务（shell/subagent/workflow）时静默
-    // 忽略 —— webview 已禁用按钮，此为覆盖「通知在途」竞态窗口与其它调用方的
-    // host 侧双防线（spec session-management.md「IDE 插件聊天头部」场景 6/7）。
-    if (session.backgroundTasks.some((t) => t.status === "running")) return;
+    // 单会话原地清空：压缩进行中或存在正在运行的后台任务（shell/subagent/
+    // workflow）时静默忽略 —— webview 已禁用按钮，此为覆盖「通知在途」竞态窗口
+    // 与其它调用方的 host 侧双防线（spec session-management.md「IDE 插件聊天
+    // 头部」场景 6/7；压缩中清空会让压缩摘要写进清空后的新会话 —— spec
+    // message-compact.md「压缩期间的会话保护」）。
+    if (
+      session.isCompacting ||
+      session.backgroundTasks.some((t) => t.status === "running")
+    )
+      return;
     try {
       await session.clearChat();
       // No full-snapshot push from the server — deliver the (now empty)
@@ -1706,8 +1712,12 @@ export class MessageHandler {
   ) {
     if (!sessionId) return;
     const session = this.context.getChatSession(viewType || "tab", windowId);
-    // 同 clearChat 守卫：后台任务运行期间禁止原地恢复历史会话。
-    if (session.backgroundTasks.some((t) => t.status === "running")) return;
+    // 同 clearChat 守卫：压缩进行中或后台任务运行期间禁止原地恢复历史会话。
+    if (
+      session.isCompacting ||
+      session.backgroundTasks.some((t) => t.status === "running")
+    )
+      return;
     try {
       await session.restoreSession(sessionId);
       // No full-snapshot push from the server — deliver the restored list

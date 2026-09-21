@@ -1711,13 +1711,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   }, [pickerWorkdir, isDesktop, postToHost, paneId]);
 
   const handleClearChat = useCallback(() => {
-    // /clear 斜杠命令 + ChatHeader「新建对话」按钮：原地清空当前会话，streaming
-    // 或存在正在运行的后台任务（后台终端工具/子代理/workflow）期间忽略——后
-    // 者防原地清空把正在跑的任务中断/与 UI 脱离。仅 IDE 端可达（桌面端 /clear
-    // 已整端移除 2026-09-05，「新建对话」按钮也被 hideSessionButtons={isDesktop}
-    // 隐藏 —— 见 handleSendMessage）。
+    // /clear 斜杠命令 + ChatHeader「新建对话」按钮：原地清空当前会话，streaming、
+    // 压缩进行中或存在正在运行的后台任务（后台终端工具/子代理/workflow）期间
+    // 忽略——后两者防原地清空把正在跑的任务中断/与 UI 脱离；压缩中清空还会
+    // 让压缩摘要写进清空后的新会话（spec message-compact「压缩期间的会话保护」）。
+    // 仅 IDE 端可达（桌面端 /clear 已整端移除 2026-09-05，「新建对话」按钮也被
+    // hideSessionButtons={isDesktop} 隐藏 —— 见 handleSendMessage）。
     if (
       stateRef.current.isStreaming ||
+      stateRef.current.isCompacting ||
       hasRunningBackgroundTask(stateRef.current.backgroundTasks)
     )
       return;
@@ -2341,9 +2343,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   const handleSessionSelect = useCallback(
     (sessionId: string) => {
-      // streaming 或存在正在运行的后台任务时忽略（与 handleClearChat 同一守卫，
-      // 防原地恢复替换当前会话把后台任务中断/与 UI 脱离）。
-      if (state.isStreaming || hasRunningBackgroundTask(state.backgroundTasks))
+      // streaming、压缩进行中或存在正在运行的后台任务时忽略（与 handleClearChat
+      // 同一守卫，防原地恢复替换当前会话把后台任务中断/与 UI 脱离；压缩中切换
+      // 还会让压缩摘要写进切换后的会话 —— spec message-compact「压缩期间的
+      // 会话保护」）。
+      if (
+        state.isStreaming ||
+        state.isCompacting ||
+        hasRunningBackgroundTask(state.backgroundTasks)
+      )
         return;
 
       // 清空当前任务列表：避免恢复期间残留旧会话的任务，
@@ -2355,7 +2363,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         sessionId,
       });
     },
-    [state.isStreaming, state.backgroundTasks, postToHost],
+    [state.isStreaming, state.isCompacting, state.backgroundTasks, postToHost],
   );
 
   const handleInputCleared = useCallback(() => {
@@ -3686,7 +3694,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         macTrafficSpacer={macTrafficSpacer}
         onNewSession={handleClearChat}
         newSessionDisabled={
-          state.isStreaming || hasRunningBackgroundTask(state.backgroundTasks)
+          state.isStreaming ||
+          state.isCompacting ||
+          hasRunningBackgroundTask(state.backgroundTasks)
         }
         onAbortMessage={handleAbortMessage}
         messages={state.messages}

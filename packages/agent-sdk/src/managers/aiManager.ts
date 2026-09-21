@@ -662,6 +662,13 @@ export class AIManager {
       return;
     }
 
+    // 压缩绑定发起时的会话：LLM fork 期间用户可能已把 agent 原地切到另一会话
+    // （IDE「历史对话」restoreSession / CLI 与插件 `/clear` 都会换 sessionId，
+    // 且均不被 isCompacting 阻拦）。写入阶段前必须复核，否则摘要块会追加进
+    // 切换后会话的内存列表并持久化进其转录文件（spec message-compact「压缩
+    // 期间的会话保护」；PM 缺陷 3478352534577408）。
+    const sessionIdAtStart = this.messageManager.getSessionId();
+
     // 1. Run PreCompact hooks
     let hookInstructions: string | undefined;
     if (this.hookManager) {
@@ -733,7 +740,17 @@ export class AIManager {
       const enhancedSummary =
         await this.buildPostCompactContext(formattedSummary);
 
-      // 8. Execute message reconstruction
+      // 8. Execute message reconstruction — only if the session is still the
+      // one this compaction started for. Abandoning here skips the entire
+      // write phase (summary append, post-compact context restore, plan-mode
+      // reminder, SessionStart/PostCompact hooks); the spent LLM call is not
+      // recovered and the original session simply stays uncompacted.
+      if (this.messageManager.getSessionId() !== sessionIdAtStart) {
+        logger?.warn(
+          `Compaction abandoned: session switched from ${sessionIdAtStart} to ${this.messageManager.getSessionId()} while the summary was being generated`,
+        );
+        return;
+      }
       await this.messageManager.compactMessagesAndUpdateSession(
         enhancedSummary,
         compactUsage,
@@ -831,9 +848,12 @@ export class AIManager {
       logger?.error(
         `Failed to compact messages (${this.consecutiveCompactionFailures} consecutive): ${compactError instanceof Error ? compactError.message : String(compactError)}`,
       );
-      this.messageManager.addErrorBlock(
-        `Failed to compact conversation history: ${compactError instanceof Error ? compactError.message : String(compactError)}. You may encounter context limit issues.`,
-      );
+      // 会话已被切走时错误块同样不得写进切换后的会话（与上面的写入放弃同口径）
+      if (this.messageManager.getSessionId() === sessionIdAtStart) {
+        this.messageManager.addErrorBlock(
+          `Failed to compact conversation history: ${compactError instanceof Error ? compactError.message : String(compactError)}. You may encounter context limit issues.`,
+        );
+      }
     } finally {
       this.setIsCompacting(false);
     }
