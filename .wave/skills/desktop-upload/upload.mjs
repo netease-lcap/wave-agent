@@ -331,6 +331,11 @@ function initBody(opts) {
   if (opts.type === "desktop") {
     body.version = opts.version;
     body.platform = opts.platform;
+    // 通道字段存在两代契约，必须同时发：**线上生产跑的是旧代，只读单数 `channel`**，
+    // 收到 `channels` 数组会静默忽略并回落默认值 stable（2026-09-21 实测：`channel:"bogus"`
+    // → 400「未知的通道」，而 `channels:["bogus"]` → 201 被无视，于是 `--channel beta`
+    // 把包传进了正式通道）。新代后端读 `channels ?? channel`，两个都给即可同时兼容。
+    body.channel = opts.channel;
     body.channels = [opts.channel];
   }
   return body;
@@ -382,6 +387,23 @@ async function main() {
       for (const d of result.desktopDownloads)
         console.log(
           `  ${d.version} ${d.channel} ${d.fileName} → ${d.downloadUrl}`,
+        );
+    }
+    // 落库通道必须等于 --channel：旧代后端会**静默忽略**它不认识的通道字段并回落
+    // stable，HTTP 却照样 2xx —— 只看状态码会把「传 beta 落到正式通道」当成成功
+    // （2026-09-21 实测如此）。这里把它当硬失败，别再静默成功。
+    if (
+      !opts.dryRun &&
+      opts.type === "desktop" &&
+      result.desktopDownloads?.length
+    ) {
+      const landed = [
+        ...new Set(result.desktopDownloads.map((d) => d.channel)),
+      ];
+      if (!landed.includes(opts.channel))
+        die(
+          `请求落库通道 ${opts.channel}，服务端实际写成 ${landed.join(" / ")}；` +
+            `记录已生成，需人工清理（见 initBody 里两代通道字段的注释）`,
         );
     }
     if (opts.dryRun) {
