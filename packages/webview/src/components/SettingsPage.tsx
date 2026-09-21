@@ -49,6 +49,7 @@ import {
   SettingsSkillsIcon,
   SettingsSubagentsIcon,
 } from "./HeaderIcons";
+import { SettingsSelect } from "./SettingsSelect";
 import "../styles/SettingsPage.css";
 import { useDesktopChrome } from "./DesktopChromeContext";
 import { isDesktopHost, isMacHiddenTitlebar } from "../utils/platform";
@@ -145,6 +146,12 @@ type AgentsScope = "user" | "project";
  * 「不改该键」——不提供「清除 / 恢复默认」按钮（载荷没有删键语义）。
  */
 export const UNSET_OPTION_LABEL = "未设置（默认：中文）";
+/** 主题下拉的选项（静态，值与 host 侧 configStore 的 themeSource 同串）。 */
+const THEME_OPTIONS = [
+  { value: "system", label: "跟随系统" },
+  { value: "light", label: "浅色" },
+  { value: "dark", label: "深色" },
+];
 export const CONTEXT_LENGTH_PLACEHOLDER = "跟随模型配置（默认 200K）";
 export const AUTO_MEMORY_FREQUENCY_PLACEHOLDER = "默认 1 轮";
 /**
@@ -598,24 +605,25 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       )}
                     </div>
                     <div className="settings-control">
-                      <select
-                        className="settings-select"
-                        aria-label="AI 回复语言"
+                      {/* 未设置态：文件里没有 language 键时用显式项表达（下拉
+                          没有 placeholder 语义），选中它 = 保持未设置、保存时
+                          不写该键；其默认值与 SDK 解析链末尾的 DEFAULT_LANGUAGE
+                          （zh-CN）同串，保证「未设置时显示 ≡ 生效」。一旦文件里
+                          写过该键就不再显示此项（不提供「恢复默认」入口）。 */}
+                      <SettingsSelect
+                        testId="settings-select-language"
+                        label="AI 回复语言"
                         value={language}
                         disabled={orgManaged("language")}
-                        onChange={(e) => setLanguage(e.target.value)}
-                      >
-                        {/* 未设置态：文件里没有 language 键时用显式项表达（下拉
-                            没有 placeholder 语义），选中它 = 保持未设置、保存时
-                            不写该键；其默认值与 SDK 解析链末尾的 DEFAULT_LANGUAGE
-                            （zh-CN）同串，保证「未设置时显示 ≡ 生效」。一旦文件里
-                            写过该键就不再显示此项（不提供「恢复默认」入口）。 */}
-                        {language === "" && (
-                          <option value="">{UNSET_OPTION_LABEL}</option>
-                        )}
-                        <option value="zh-CN">中文</option>
-                        <option value="en-US">English</option>
-                      </select>
+                        options={[
+                          ...(language === ""
+                            ? [{ value: "", label: UNSET_OPTION_LABEL }]
+                            : []),
+                          { value: "zh-CN", label: "中文" },
+                          { value: "en-US", label: "English" },
+                        ]}
+                        onChange={setLanguage}
+                      />
                     </div>
                   </div>
                   <div className="settings-row">
@@ -725,20 +733,17 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                           <p>选择应用的显示外观，跟随系统或固定浅色/深色</p>
                         </div>
                         <div className="settings-control">
-                          <select
-                            className="settings-select"
-                            aria-label="主题"
+                          <SettingsSelect
+                            testId="settings-select-theme"
+                            label="主题"
                             value={theme}
-                            onChange={(e) => {
-                              const next = e.target.value as ThemeSource;
-                              setTheme(next);
-                              onThemeChange?.(next);
+                            options={THEME_OPTIONS}
+                            onChange={(next) => {
+                              const source = next as ThemeSource;
+                              setTheme(source);
+                              onThemeChange?.(source);
                             }}
-                          >
-                            <option value="system">跟随系统</option>
-                            <option value="light">浅色</option>
-                            <option value="dark">深色</option>
-                          </select>
+                          />
                         </div>
                       </div>
                     )}

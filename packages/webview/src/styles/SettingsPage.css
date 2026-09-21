@@ -411,6 +411,7 @@
 }
 
 .settings-select,
+.settings-select-trigger,
 .settings-number-input,
 .settings-text-input {
   width: 100%;
@@ -423,6 +424,88 @@
   border-radius: 6px;
   font-family: var(--vscode-font-family);
   font-size: 14px;
+}
+
+/* 设计师 0921 评论（点 `select.settings-select` 的「中文English」）：「下拉菜单的左右边距不一致，
+   三角太靠右」——原生外观的三角被系统钉在右框内缘，padding 管不到（实测浅色档墨迹右内衬仅 3.5px，
+   而文字左内衬 13px）。改为自绘三角，右内衬与文字左内衬同为 8px。仅作用于 select，
+   不动同组的 number/text 输入框。
+   评论②（点 `svg.desktop-session-group-chevron`）：「三角可以用这个三角吗？还要注意箭头的方向，
+   现在反了」——三角改用会话分组 chevron 的**同一条官方矢量**（墨迹 8×4.5、描边 1.33、圆角端点，
+   见 DesktopSidebar.tsx GroupChevron），并翻转成朝下（下拉的语义方向；侧栏展开态那条是朝上的「^」）。
+   画法说明：原生 select 只能画背景图，而背景图里的 SVG 不继承 currentColor（实测 fill=currentColor
+   渲染为黑），所以改用「独立元素 + mask」：挂在 `.settings-control` 上，且只在其中是下拉时生效
+   （`:has()` 仓库内已在用；`.settings-control` 也承载文本框，故必须限定）。 */
+.settings-select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 24px; /* 8 内衬 + 8 三角 + 8 间隔 */
+}
+
+.settings-control:has(> .settings-select) {
+  position: relative;
+}
+
+/* 桌面端自绘下拉的触发器（SettingsSelect.tsx，弹层皮肤在 host-desktop.css 末尾的块里）。
+   沿用上一条规则里的控件盒（260×32 / r6 / 1px / 14px / 同一组 `--vscode-input-*` token），
+   此处只补 flex 垂直居中、文字省略与焦点（焦点那条见下方注释）。 */
+.settings-select-trigger {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding-right: 24px; /* 8 内衬 + 8 三角 + 8 间隔（与原生 select 同） */
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-select-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-select-trigger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 焦点与原生 select 逐值同源（`.settings-select:focus` 那条）：输入类控件鼠标点也算
+   （host-desktop.css 的两种焦点语言：输入类 `:focus`、按钮/卡片类 `:focus-visible`），
+   因此替换自绘触发器后焦点行为与改前完全一致。 */
+.settings-select-trigger:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder);
+}
+
+.settings-control:has(> .settings-select)::after,
+.settings-select-trigger::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  /* +1 = 让墨迹距输入框内缘 8px（与文字左内衬对称）：伪元素定位基于 border box */
+  right: 9px;
+  width: 8px;
+  height: 4.5px;
+  transform: translateY(-50%);
+  background: var(--vscode-input-foreground);
+  -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><g transform='translate(0,16) scale(1,-1)'><path d='M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z' fill='%23000'/></g></svg>")
+    center / 16px 16px no-repeat;
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><g transform='translate(0,16) scale(1,-1)'><path d='M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z' fill='%23000'/></g></svg>")
+    center / 16px 16px no-repeat;
+  pointer-events: none; /* 只是装饰：点击照旧落到原生 select（含三角所在区域） */
+}
+
+/* 同一条矢量的第二处落点：桌面端自绘触发器（其 ::after 的包含块是按钮自身的
+   padding box，即已在内缘内侧，故 8px 就是「距内缘 8px」；上面那条挂在
+   `.settings-control` 上，包含块是 border box，故为 9px） */
+.settings-select-trigger::after {
+  right: 8px;
+}
+
+/* 停用态与下拉自身的 opacity: .6 对齐（三角不在 select 内，不会跟着降透明度） */
+.settings-control:has(> .settings-select:disabled)::after {
+  opacity: 0.6;
 }
 
 .settings-select:focus,

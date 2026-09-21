@@ -5465,6 +5465,192 @@ host 层两条 hover 覆盖都带 `:not(.is-active)`），与会话行「选中�
 - 数据：`CC02/走查/0921-scope-option-type/{before,after}-desktop-plugins.json`；
   图：`0921作用域弹窗-描述字号-改前改后.png`（浅深 × 改前改后）。
 
+## 0921 评论（设置页下拉：左右内衬不一致，三角太靠右）
+
+评论原文（点 `select.settings-select`「中文English」）：
+
+「下拉菜单的左右边距不一致，三角太靠右」
+
+### ① 改前实测（`走查/_tools/0921/probe-settings-select-2themes-0921.mjs`，真回退后采集）
+
+| 量项                       | 改前（`appearance:auto`） | 改后（自绘三角） |
+| -------------------------- | ------------------------- | ---------------- |
+| 文字墨迹左内衬             | **13.0px**                | **9.0px**        |
+| 三角墨迹右内衬             | **3.5px**                 | **8.5px**        |
+| 左右内衬差                 | **9.5px**                 | **0.5px**        |
+| 三角墨迹尺寸               | 10.0 × 6.5                | 10.0 × 6.0       |
+| 三角垂直中心（文字 16.50） | 17.00                     | 16.75            |
+| `padding-right`            | 8px                       | 26px             |
+| 盒尺寸 / 圆角 / 边框       | 260×32 / 6px / 1px        | 同（未动）       |
+
+根因：原生外观（`appearance:auto`）的三角由系统绘制并**钉死在右框内缘**，`padding`
+管不到它；同时系统还给文字额外约 4px 的内缩，于是「左边很空、三角贴边」。
+
+> ⚠️ 本节表格里的「自绘三角 10×6」已在同日的评论②被换成官方矢量（8×4.5，见下一节）；
+> 左右内衬、垂直居中、深浅一致这些量测结论不变。
+
+取证方法上的一个坑：**不能靠注入 `appearance:auto` 复现改前态** —— 注入版的文字位置
+比真实改前偏左 4px（浅色 799/34320 像素不同），量出来的内衬就成了 9.0px 而不是 13.0px。
+故本轮改前基线一律用「真回退」（把那 19 行整块摘掉后重新采集），双主题各一张。
+
+### ② 改法（`SettingsPage.css`，只作用于 select，不动同组输入框）
+
+```css
+.settings-select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 26px; /* 8 内衬 + 10 三角 + 8 间隔 */
+  background-image: conic-gradient(
+    from 135deg at 50% 0,
+    currentColor 0 90deg,
+    var(--vscode-input-background) 90deg
+  );
+  background-size: 10px 6px;
+  background-position: right 8px center;
+  background-repeat: no-repeat;
+}
+```
+
+- 三角第二段用**输入框底色（不透明）**而不是 `transparent`：避免插值出深色毛边，
+  深浅两档实测位图逐像素同形。
+- 三角用 `currentColor` 跟随宿主前景色，无需为两档各写一条。
+- 只加 `.settings-select` 覆盖，不改 `.settings-number-input` / `.settings-text-input`
+  共用的 `padding: 4px 8px`，也未动任何 TSX。
+
+### ③ 改后实测（浅深双档）
+
+- 左右内衬 13.0 / 3.5 → **9.0 / 8.5**（差 9.5 → 0.5px，余下 0.5px 是墨迹抗锯齿）；
+  深浅两档数值完全相同。
+- 文字垂直位置 **16.50 未变**；字号 14px / 行高 normal / 圆角 6px / 边框色 /
+  focus 边框（`rgb(160,165,168)`）/ disabled（`opacity .6`、`cursor: not-allowed`）
+  逐值不变。
+- 原生交互未受影响：三角是 `background-image`（不是覆盖层），点击中心与三角区的
+  hit-test 仍都命中 select 本身；focus 后仍可聚焦。
+- 全轮 **0 `pageerror`**。
+- 副作用要主动交代：去掉原生外观后，系统原本给文字的那约 4px 内缩一并消失 →
+  **下拉里的文字左移了 4px（13 → 9）**，正好与同页 `.settings-text-input` /
+  `.settings-number-input` 的文字起点（8px padding）对齐；若更想保持文字原位，
+  可把两侧都钉在 12px（触发语：「文字往回挪 4px」）。
+- 作用域：`.settings-select` 是**共享**类（同一份 CSS，无 `[data-host]` 限定）→
+  base 改动，**IDE 宿主的设置页同样生效**；同页「主题」下拉是第二颗同名控件，
+  一并生效（已实测两颗 padding-right / appearance / 三角位置一致）。
+
+### ④ 残留 / 备用触发语（未授权）
+
+- 「文字往回挪 4px」（左右内衬都改回 12px，保留文字原位）。
+- 「这个只在桌面端收边距」（若她希望 IDE 宿主保持原生外观 → 需要加
+  `[data-host="desktop"]` 限定或宿主分叉）。
+
+### 验证脚本与证据
+
+- `CC02/走查/_tools/0921/probe-settings-select-2themes-0921.mjs <tag>`（打开设置页
+  → 账户卡热区 →「更多」→ 设置；捕获该 select 的盒模型 / 外观 / 三角几何，
+  元素、所在行、页面各截一张，浅深双档）。
+- 数据：`CC02/走查/0921-settings-select/{before2,after2}-settings-select.json`；
+  图：`before2/after2-select-{light,dark}-2x.png`、`before2/after2-row-{light,dark}-2x.png`。
+- 修复对比报告（skill 固定母版 v1.1）：`CC02/走查/0921-settings-select-report/`。
+
+## 0921 评论②（下拉三角改用会话分组 chevron 的官方矢量，并把方向翻正）
+
+评论原文（点 `svg.desktop-session-group-chevron`，DOM `… > div > button > svg`）：
+
+「三角可以用这个三角吗？还要注意箭头的方向，现在反了」
+
+### ① 改前实测（上一版自绘三角画反了）
+
+上一版用 `conic-gradient(from 135deg at 50% 0, …)` 画的三角**朝上**（尖在上、底在下 = ▲），
+而原生外观那条是**朝下**的（尖在下）——实测位图逐行看宽窄：
+
+| 版本                 | 箭头墨迹位图形态                    | 方向       |
+| -------------------- | ----------------------------------- | ---------- |
+| 原生（改前改后基线） | 两臂自上方分开、向下方收成一点（∨） | 朝下 ✓     |
+| 上一版 conic 三角    | 尖在上、底边在下（▲）               | **反了** ✗ |
+
+教训：画箭头必须**验方向**（不能只看尺寸/居中/内衬对不对），位图逐行打印一次就知道。
+
+### ② 参照物（她点名的那个三角）
+
+`svg.desktop-session-group-chevron` = `DesktopSidebar.tsx` 的 `GroupChevron`，16 视框，
+`fill="currentColor"` 的一条官方矢量（Figma 13498:16662 up / 13561:39968 right）：
+
+- 展开态墨迹 **8.00 × 4.50**（CSS），描边**厚 1.33**，圆角端点，两臂夹角 45°，
+  中缝镂空（不是实心三角）；收起态是同一字形的 90° 旋转（「>」）。
+- 颜色：浅色 `#565a60`、深色 `#9a9ea5`（`.desktop-session-group-chevron` 自己的两档）。
+
+### ③ 改法（同一份矢量做 mask + `:has()` 限定，方向翻转成朝下）
+
+```css
+.settings-select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 24px; /* 8 内衬 + 8 三角 + 8 间隔 */
+}
+
+.settings-control:has(> .settings-select) {
+  position: relative;
+}
+
+.settings-control:has(> .settings-select)::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 9px; /* +1 = 让墨迹距输入框内缘 8px（与文字左内衬对称） */
+  width: 8px;
+  height: 4.5px;
+  transform: translateY(-50%);
+  background: var(--vscode-input-foreground);
+  -webkit-mask: url("data:image/svg+xml,<svg …><g transform='translate(0,16) scale(1,-1)'>…</g></svg>")
+    center / 16px 16px no-repeat;
+  mask: url("…同上…") center / 16px 16px no-repeat;
+  pointer-events: none;
+}
+
+.settings-control:has(> .settings-select:disabled)::after {
+  opacity: 0.6;
+}
+```
+
+- **为什么落到容器上**：原生 `select` 只能画背景图，而背景图里的 SVG **不继承 `currentColor`**
+  （实测 `fill='currentColor'` 渲染成纯黑），要「官方矢量 + 跟随主题前景色」就必须用独立元素 +
+  `mask`。`.settings-control` 同时承载文本框（服务端地址）与数字框，故用 `:has(> .settings-select)`
+  限定（`:has()` 仓库内已在用）。
+- `translate(0,16) scale(1,-1)` = 把侧栏那条**朝上的「^」翻转成朝下**（下拉的语义方向）。
+- 停用态：三角不在 select 内，不会跟着 `opacity: .6` 降，故单独补一条。
+
+### ④ 改后实测
+
+- 三角墨迹 **8.00 × 4.00（阈值内的实心区；含抗锯齿端点为 8×4.5）**、厚 1.33、中缝镂空、
+  **尖朝下** ✓（浅深两档位图逐像素同形）。
+- 颜色跟随 `--vscode-input-foreground`：浅 `rgb(32,32,32)` / 深 `rgb(229,231,232)`（同一 token
+  与下拉文字一致）。
+- 墨迹右内衬 **8px**（距输入框内缘，与文字左内衬 8px 对称）；盒 260×32、圆角 6px、边框 1px、
+  focus 边框、文字位置均未变。
+- 作用域：只有「里面是下拉」的控制列出三角 —— 实测 4 个控制列里
+  AI 回复语言 ✓ / 主题 ✓ 有三角，上下文长度（数字框）✗、服务端地址（文本框）✗ 没有。
+- 交互：三角是 `pointer-events: none` 的装饰层，三角所在区域的 hit-test 仍命中原生 `select`
+  （点击照旧打开原下拉）。
+- 停用态：三角与下拉同为 `opacity: .6`。
+- 全轮 **0 `pageerror`**。
+- 与原生外观的差别（主动交代）：尺寸从 10×6.5 收到 **8×4.5**、线宽从 ~2.2 收到 **1.33** ——
+  这是她指定的那条矢量本身的规格（比原生更细、更接近产品自己的 chevron 语言）。
+- 作用域：仍写在共享的 `SettingsPage.css`，**IDE 宿主设置页同样生效**。
+
+### ⑤ 残留 / 备用触发语（未授权）
+
+- 「三角大一点」：现用字形自己的设计尺寸 8×4.5（侧栏就是这个尺寸）；放大需另定数值。
+- 「侧栏分组 chevron 的方向也反了」：现侧栏是 **展开=「^」、收起=「>」**（`DesktopSidebar.tsx`
+  的 `GroupChevron`，与 Figma 13498:16662 / 13561:39968 一致，已在预览实测 `aria-expanded=true`
+  时渲染「^」）。本次未动它 —— 若她认为应该是「展开=∨」，触发语：「分组 chevron 展开朝下」。
+
+### 验证脚本与证据
+
+- `CC02/走查/_tools/0921/probe-select-caret-0921.mjs`（三角的 computed：盒/内衬/mask/颜色/
+  `pointer-events`/命中测试/停用态；浅深双档 + 行上下文截图）。
+- `CC02/走查/_tools/0921/probe-caret-scope-0921.mjs`（逐控制列核验只有下拉出三角）。
+- `CC02/走查/_tools/0921/probe-group-chevron-0921.mjs`（侧栏 chevron 的形状/方向/两态路径）。
+- 数据与图：`CC02/走查/0921-settings-select/caret-*.json|png`、
+  `CC02/走查/0921-group-chevron/header-chevron-{expanded,collapsed}-2x.png`。
+
 ## 0921 评论（深色档四处整页面底色对齐「新对话」顶部/内容区）
 
 评论原文：「深色模式下，下面指出地方的背景色（四处），和新对话顶部、内容区背景色要保持一致」——
@@ -5553,6 +5739,96 @@ host 层两条 hover 覆盖都带 `:not(.is-active)`），与会话行「选中�
 - `CC02/走查/_tools/0921/diff-shots-0921.py`（全图逐像素差异 + 差异框）。
 - 数据与图：`CC02/走查/0921-board-market-bg/{before,after}-desktop-*-board-market-bg.json|png`；
   交付页 `CC02/走查/0921-board-market-bg-report/index.html`（母版 v1.1，本地绝对路径打开）。
+
+## 0921 评论③（设置页下拉列表：原生弹层 → 自绘 listbox，落在触发器下方 2px / 右对齐 / 同宽）
+
+### ① 她的原话与「原生做不到」
+
+设计师原话：「这种类型的选择器点击后的下拉列表应该出现在选择器下方 2px 的位置，右对齐，
+下拉列表的宽度和选择器尽量保持一致」。
+
+前两轮（评论①/②）改的是 `.settings-select` **自身**的外观（左右内衬、三角矢量与方向）；本轮点名的是
+**点击后弹出的那个列表**——而它由系统/Chromium 绘制（`appearance: none` 只改控件本体，弹层是
+独立窗口/原生菜单），**位置、对齐、宽度都无法由 CSS 控制**。故本轮必须把设置页这两颗下拉从
+原生 `<select>` 换成自绘 listbox（不是纯 CSS 调整）。
+
+### ② 实现（新组件 `SettingsSelect.tsx` + 宿主分叉）
+
+- **组件**：`packages/webview/src/components/SettingsSelect.tsx`。分发器 + 两个内部分支：
+  - 桌面端（`isDesktopHost()`）→ `<button class="settings-select-trigger">` + 自绘
+    `<div role="listbox">` / `<div role="option" aria-selected>`；
+  - IDE 宿主 → 原封不动的原生 `<select class="settings-select">`（宿主原生弹层 + 既有
+    e2e `selectOption(...)` / 单测 `.settings-select`·`queryByRole("combobox")` 断言零改动）。
+- **键盘模型**：复用仓库内核 `useRovingMenu`（roving tabindex / Arrow 不循环 / Enter·Space 激活 /
+  Escape 关闭并回焦触发器 / Tab 只关不激活 / 点外部关闭），与 SSH 主机、工作目录、权限模式下拉同源。
+  两处实现细节：`closeOnActivate: true`（默认是关：那是给「添加主机…」这种就地展开的菜单留的）、
+  打开时聚焦**当前选中项**（`openMenu(selectedIndex)`，与基准分支下拉同习惯）。
+- **定位**：`position: fixed` + 触发器 `getBoundingClientRect()` 内联样式 ——
+  `top = 触发器下缘 + 2`、`right = 视口宽 − 触发器右缘`、`width = 触发器宽`。
+  必须是 fixed：卡片 `.settings-card{overflow:hidden}` 会裁掉 absolute 弹层（仓库无 portal，
+  弹层逃出 `overflow` 的既有做法就是 fixed）。滚动时跟随重算（`scroll` 捕获 + `resize`）。
+- **观感**：与本文件弹层家族（`.more-menu`/`.desktop-session-menu`/`.desktop-workdir-menu`）取同一组值 ——
+  浅色 白面 / `#EBEEF5` 边 / r12 / `0 0 12px 12%` 柔影 / 容器 `padding: 8px` / 项 `28px`·`r6`·`14px`·`400`；
+  hover `#EEF0F3`+`#1F2329`、选中 `#E7E9ED`+`#1F2329`（pressed，与权限模式/面板切换菜单一致，无对号）；
+  深色 `--cc-bg-overlay` `#232526` / 12% 白边 / 40% 黑柔影 / 项 `#9A9EA5`、hover 8% 白、选中 12% 白。
+- **新增：键盘焦点环**（同族弹层此前没有）。roving 会把真实焦点放到选项上，
+  故补 `:focus-visible { outline: 2px solid var(--cc-border-focus); outline-offset: -2px }`
+  （环内收 2px 免得被弹层圆角切角；鼠标点击不亮）。axe 结构规则同轮复扫通过。
+- **触发器**：与原生 select 共用同一条控件盒规则（`SettingsPage.css` 的
+  `.settings-select, .settings-select-trigger, .settings-number-input, .settings-text-input`：
+  260×32 / r6 / 1px `--vscode-input-border` / `--vscode-input-*` 色 / 14px），并复用同一条三角规则
+  （`.settings-select-trigger::after` 与 `.settings-control:has(> .settings-select)::after` 并列，
+  矢量只写一份；触发器那条 `right: 8px` 即「距内缘 8px」，原生那条因包含块是 border box 故 9px）。
+  焦点沿用原生 select 的 `:focus` + `var(--vscode-focusBorder)`（**不是** `:focus-visible`）——
+  输入类控件按桌面既有「两种焦点语言」鼠标点也算，替换后焦点行为与改前逐值一致。
+- **一处兜底**：`value` 不在选项里时控件显示**第一项**（原生 select 就是这么渲染 `selectedIndex = -1` 的），
+  避免出现空白控件。调试点：8899 原型 mock 的语言值是 `"zh"`（不在选项集里，见
+  `prototype/mockShared.ts`，属另一窗口的未提交 mock 文件本轮未动），真机是 `"" | "zh-CN" | "en-US"`。
+- 弹层的桌面皮肤写在 `host-desktop.css` 末尾新增块（`[data-host="desktop"] .settings-select-menu` 一族，
+  浅深两档自带），未改动既有 13 个弹层家族的规则，避免牵连同族组件。
+
+### ③ 改后实测（`CC02/走查/0921-settings-dropdown/dropdown-0921.json`）
+
+- **几何三则**（浅/深两档 × 语言/主题两颗下拉，四组数据全同）：`下缘间距 = 2.0`、
+  `右缘差 = 0.0`、`宽度差 = 0.0`（弹层 260×74，与触发器 260×32 同宽同右缘）。
+- **弹层观感**：浅 `#FFFFFF`/`#EBEEF5`/`12px`/`0 0 12px rgb(0 0 0/12%)`/`padding 8px`；
+  深 `#232526`/`rgba(255,255,255,.12)`/`40%`；项 242×28 / r6 / 14px / 400。
+  hover 浅 `#EEF0F3`+`#1F2329`、深 8% 白+`#FFFFFF`；选中 浅 `#E7E9ED`+`#1F2329`、深 12% 白+`#FFFFFF`。
+- **触发器**：260×32 / r6 / 静止边 浅 `#DCDFE6` 深 `#414649` / 聚焦边 浅 `#1F2329` 深 `#A0A5A8` /
+  `padding 4px 24px 4px 8px` / 三角 8×4.5 距内缘 8px —— 与改前原生 select **逐值相同**。
+- **像素级 parity**：同一用例、同一 1440×1000@2x、同一「AI 回复语言」行元素截图，
+  与改前（评论②状态）**差异 0 像素**（浅深两档各 227752 px 全同）——
+  触发器是原 select 的 1:1 替换，行高与内衬零位移。
+- **交互**：Enter 打开并聚焦当前项 → ArrowDown 移动 → Enter 选中并关闭 + 焦点回触发器（标签随值更新）
+  → Tab 只关不激活 → Escape 关闭回焦 → 点行标题（容器外）关闭 → 打开时滚动内容区，弹层跟随
+  （下缘间距仍 2.0、右缘差 0.0）。
+- **宿主分叉**：桌面端 `select.settings-select` 0 个 / 触发器 2 个；把 `waveHostType` 改成非 desktop
+  重渲染后 2 个原生 select 回来、触发器 0 个（选项共 5 个）。
+- **axe**（`/tmp/axe`，只扫触发器 + 弹层）：浅/深两档 `violations: []`、`passes: 5`
+  （aria-required-children / aria-required-parent / aria-allowed-attr / nested-interactive / color-contrast）。
+- 全轮 0 `pageerror`。
+
+### ④ 宿主范围 / 残留（未授权）
+
+- **本轮只改桌面端**：IDE 宿主保留原生 `<select>`（弹层交宿主原生实现），因此四个既有测试文件
+  （`settings-unset-placeholder.e2e.ts`、`settings-save-feedback.e2e.ts`、`settings-org-managed-keys.e2e.ts`
+  的 `selectOption`、`model-status-login-commands.test.tsx` 的 `.settings-select`、
+  `settingsServerConfig.test.tsx` 的 `combobox`）**无需改动**。触发语：「IDE 宿主也改成自绘」。
+- 触发语：「下拉列表的圆角跟随触发器（改成 6px）」（现取弹层家族 r12）；
+  「选项行高跟设置页控件对齐（28 → 32）」；
+  「下拉也加上打开动画」（家族成员目前都没有入场动画）；
+  「触发器焦点只要键盘亮」（现与原生 select 同：鼠标点也亮）；
+  「其他下拉（会话筛选/看板等）也换成这个自绘组件」——`SessionBoard.tsx` 的筛选仍是
+  「透明原生 select + 自绘外壳」，其弹层仍是原生。
+
+### 验证脚本与证据
+
+- `CC02/走查/_tools/0921/probe-settings-dropdown-0921.mjs`（①宿主分叉 ②浅深两档几何/观感/触发器
+  ③悬停态 ④键盘全路径 ④b 主题下拉选中态与焦点环 ⑤点外部 + 滚动跟随 ⑥axe 双档 ⑦IDE 宿主回归）。
+- `CC02/走查/_tools/0921/shot-trigger-row-0921.mjs` + `diff-shots-0921.py`（行级像素 parity 对照）。
+- 数据与图：`CC02/走查/0921-settings-dropdown/dropdown-0921.json`、
+  `dropdown-{light,dark}-2x.png`（触发器 + 弹层）、`dropdown-theme-light-2x.png`（选中态 + 焦点环）、
+  `parity-row-{light,dark}-2x.png`（与 `0921-settings-select/caret-row-*-2x.png` 逐像素 0 差异）。
 
 ## 0921 评论（承上：看板 / 市场顶栏下沿分隔线也对齐对话顶栏）
 
