@@ -150,10 +150,16 @@ test.describe("Desktop batch 2 feature screenshots", () => {
       },
     });
     await openSettingsPage(webviewPage);
-    await expect(webviewPage.getByLabel("AI 回复语言")).toHaveValue("zh-CN");
+    // 桌面端语言 / 主题下拉是自绘触发器（SettingsSelect.tsx，0921 起取代原生
+    // `<select>`），没有 value 语义 —— 断言读可见文案，锚点用组件的 testId。
+    await expect(
+      webviewPage.getByTestId("settings-select-language"),
+    ).toHaveText("中文");
     await expect(webviewPage.getByLabel("上下文长度")).toHaveValue("200");
     // 截图必须截到两行控件（只断言存在会漏掉「渲染了但在视口外」的截图）
-    await expect(webviewPage.getByLabel("AI 回复语言")).toBeInViewport();
+    await expect(
+      webviewPage.getByTestId("settings-select-language"),
+    ).toBeInViewport();
     await expect(webviewPage.getByLabel("上下文长度")).toBeInViewport();
     await screenshotWebp(
       webviewPage,
@@ -271,7 +277,10 @@ test.describe("Desktop batch 2 feature screenshots", () => {
     // 1. 未设置态：settings.json 里没有用户偏好键。
     await pushConfiguration(injector, {});
     await openSettingsPage(webviewPage);
-    await expect(webviewPage.getByLabel("AI 回复语言")).toHaveValue("");
+    // 未设置态的文案 = SettingsPage 的 UNSET_OPTION_LABEL（首项，选中即不写该键）。
+    await expect(
+      webviewPage.getByTestId("settings-select-language"),
+    ).toHaveText("未设置（默认：中文）");
     await expect(webviewPage.getByLabel("上下文长度")).toHaveValue("");
     await expect(webviewPage.getByLabel("上下文长度")).toHaveAttribute(
       "placeholder",
@@ -290,8 +299,12 @@ test.describe("Desktop batch 2 feature screenshots", () => {
       contextLength: 64,
       preferenceSources: { language: "remote", contextLength: "env" },
     });
-    await expect(webviewPage.getByLabel("AI 回复语言")).toHaveValue("en-US");
-    await expect(webviewPage.getByLabel("AI 回复语言")).toBeDisabled();
+    await expect(
+      webviewPage.getByTestId("settings-select-language"),
+    ).toHaveText("English");
+    await expect(
+      webviewPage.getByTestId("settings-select-language"),
+    ).toBeDisabled();
     await expect(webviewPage.getByLabel("上下文长度")).toHaveValue("64");
     await expect(webviewPage.getByLabel("上下文长度")).toBeEnabled();
     await expect(
