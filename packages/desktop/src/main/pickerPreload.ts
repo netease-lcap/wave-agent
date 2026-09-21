@@ -134,13 +134,6 @@ function isInsideCard(e: Event): boolean {
   return cardHost !== null && e.composedPath().includes(cardHost);
 }
 
-/** Is `node` the card itself, or inside its shadow root? (Point-based twin of
-    isInsideCard: hit testing returns the node, not an event path.) */
-function isCardNode(node: Element | null): boolean {
-  if (!node || !cardHost) return false;
-  return node === cardHost || node.getRootNode() === cardHost.shadowRoot;
-}
-
 /**
  * Element under a viewport point, or null when that is the card itself.
  *
@@ -150,10 +143,14 @@ function isCardNode(node: Element | null): boolean {
  * capturing ancestor — the hit test still resolves what the user is pointing
  * at. It also skips `pointer-events: none` boxes, so those picks fall through
  * to whatever is behind them (same as the hover highlight already does).
+ *
+ * Points over the card hit the card's host element (hit tests do not cross a
+ * shadow boundary: measured in Chromium, the content inside the card's shadow
+ * root is retargeted to the host), so comparing the host is enough.
  */
 function elementAtPoint(x: number, y: number): Element | null {
   const el = document.elementFromPoint(x, y);
-  return el && !isCardNode(el) ? el : null;
+  return el && el !== cardHost ? el : null;
 }
 
 /**

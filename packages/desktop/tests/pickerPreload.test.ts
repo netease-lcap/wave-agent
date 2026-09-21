@@ -369,8 +369,10 @@ describe("pickerPreload", () => {
     expect(innerClick.defaultPrevented).toBe(false);
     expect(button.classList.contains("__wave-picker-highlight")).toBe(true);
 
-    // The hit test lands on the card, not on the page behind it.
-    press(textarea);
+    // Hit-testing over the card resolves the card's host element (a shadow
+    // boundary is not crossed by hit tests), so it is never picked — and it
+    // does not cancel the current selection either.
+    press(textarea, { hit: document.body.lastElementChild });
     expect(button.classList.contains("__wave-picker-highlight")).toBe(true);
     expect(textarea.classList.contains("__wave-picker-highlight")).toBe(false);
   });
