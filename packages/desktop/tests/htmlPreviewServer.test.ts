@@ -1,4 +1,15 @@
+import path from "node:path";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+// Fixture paths must be real platform paths, not POSIX literals: the server
+// resolves request paths and containment-checks them with the platform `path`
+// module, so on Windows `path.resolve("/work/a", "./report.html")` yields
+// `C:\work\a\report.html` and a literal "/work/a" root never matches (404).
+const ROOT_A = path.resolve("/work/a");
+const ROOT_B = path.resolve("/work/b");
+/** A file below a served root, joined with the platform separator. */
+const inRoot = (root: string, ...segments: string[]) =>
+  path.join(root, ...segments);
 
 // ---------------------------------------------------------------------------
 // Mocks — the server class is unit-tested without real sockets or a real fs:
@@ -109,14 +120,14 @@ beforeEach(() => {
 
 describe("HtmlPreviewServer", () => {
   it("acquire serves the file's directory on a loopback-bound server", async () => {
-    hf.files.set("/work/a/report.html", "<html>hi</html>");
+    hf.files.set(inRoot(ROOT_A, "report.html"), "<html>hi</html>");
     const server = new HtmlPreviewServer();
 
     const url = await server.acquire(
       "pane-1",
-      "/work/a",
-      "/work/a/report.html",
-      "/work/a/report.html",
+      ROOT_A,
+      inRoot(ROOT_A, "report.html"),
+      inRoot(ROOT_A, "report.html"),
     );
 
     // Loopback-only listener on an OS-assigned port (spec scenario 8).
@@ -138,14 +149,14 @@ describe("HtmlPreviewServer", () => {
   });
 
   it("serves sibling files (relative resources) and nested paths from the same root", async () => {
-    hf.files.set("/work/a/style.css", "body{}");
-    hf.files.set("/work/a/img/logo.png", Buffer.from([1, 2, 3]));
+    hf.files.set(inRoot(ROOT_A, "style.css"), "body{}");
+    hf.files.set(inRoot(ROOT_A, "img", "logo.png"), Buffer.from([1, 2, 3]));
     const server = new HtmlPreviewServer();
     await server.acquire(
       "pane-1",
-      "/work/a",
-      "/work/a/report.html",
-      "/work/a/report.html",
+      ROOT_A,
+      inRoot(ROOT_A, "report.html"),
+      inRoot(ROOT_A, "report.html"),
     );
 
     const css = await serve(0, "GET", "/style.css");
@@ -160,48 +171,62 @@ describe("HtmlPreviewServer", () => {
     expect(img.end).toHaveBeenCalledWith(Buffer.from([1, 2, 3]));
   });
 
+  it("nested file URLs keep forward slashes on every platform", async () => {
+    // The URL is consumed by the webview: a Windows `\` separator would stop
+    // the guest resolving `./img/logo.png` against the page (scenario 3).
+    const server = new HtmlPreviewServer();
+    const url = await server.acquire(
+      "pane-1",
+      ROOT_A,
+      inRoot(ROOT_A, "img", "logo.png"),
+      inRoot(ROOT_A, "img", "logo.png"),
+    );
+
+    expect(url).toBe("http://127.0.0.1:45000/img/logo.png");
+  });
+
   it("reuses one server for the same root across acquires (multiple tabs)", async () => {
-    hf.files.set("/work/a/report.html", "a");
-    hf.files.set("/work/a/other.html", "b");
+    hf.files.set(inRoot(ROOT_A, "report.html"), "a");
+    hf.files.set(inRoot(ROOT_A, "other.html"), "b");
     const server = new HtmlPreviewServer();
 
     await server.acquire(
       "pane-1",
-      "/work/a",
-      "/work/a/report.html",
-      "/work/a/report.html",
+      ROOT_A,
+      inRoot(ROOT_A, "report.html"),
+      inRoot(ROOT_A, "report.html"),
     );
     await server.acquire(
       "pane-2",
-      "/work/a",
-      "/work/a/other.html",
-      "/work/a/other.html",
+      ROOT_A,
+      inRoot(ROOT_A, "other.html"),
+      inRoot(ROOT_A, "other.html"),
     );
 
     expect(hf.servers).toHaveLength(1);
   });
 
   it("keeps distinct roots on separate servers; releasing one root does not kill the other", async () => {
-    hf.files.set("/work/a/report.html", "a");
-    hf.files.set("/work/b/other.html", "b");
+    hf.files.set(inRoot(ROOT_A, "report.html"), "a");
+    hf.files.set(inRoot(ROOT_B, "other.html"), "b");
     const server = new HtmlPreviewServer();
 
     await server.acquire(
       "pane-1",
-      "/work/a",
-      "/work/a/report.html",
-      "/work/a/report.html",
+      ROOT_A,
+      inRoot(ROOT_A, "report.html"),
+      inRoot(ROOT_A, "report.html"),
     );
     await server.acquire(
       "pane-1",
-      "/work/b",
-      "/work/b/other.html",
-      "/work/b/other.html",
+      ROOT_B,
+      inRoot(ROOT_B, "other.html"),
+      inRoot(ROOT_B, "other.html"),
     );
     expect(hf.servers).toHaveLength(2);
 
     // Close the tab previewing /work/a/report.html: only that root dies.
-    server.release("pane-1", "/work/a/report.html");
+    server.release("pane-1", inRoot(ROOT_A, "report.html"));
     expect(hf.servers[0].close).toHaveBeenCalledTimes(1);
     expect(hf.servers[0].closeAllConnections).toHaveBeenCalledTimes(1);
     expect(hf.servers[1].close).not.toHaveBeenCalled();
@@ -212,41 +237,41 @@ describe("HtmlPreviewServer", () => {
   });
 
   it("same-directory tabs share a root: closing one keeps the server for the other (spec scenario 8)", async () => {
-    hf.files.set("/work/a/report.html", "a");
-    hf.files.set("/work/a/other.html", "b");
+    hf.files.set(inRoot(ROOT_A, "report.html"), "a");
+    hf.files.set(inRoot(ROOT_A, "other.html"), "b");
     const server = new HtmlPreviewServer();
 
     await server.acquire(
       "pane-1",
-      "/work/a",
-      "/work/a/report.html",
-      "/work/a/report.html",
+      ROOT_A,
+      inRoot(ROOT_A, "report.html"),
+      inRoot(ROOT_A, "report.html"),
     );
     await server.acquire(
       "pane-1",
-      "/work/a",
-      "/work/a/other.html",
-      "/work/a/other.html",
+      ROOT_A,
+      inRoot(ROOT_A, "other.html"),
+      inRoot(ROOT_A, "other.html"),
     );
 
-    server.release("pane-1", "/work/a/report.html");
+    server.release("pane-1", inRoot(ROOT_A, "report.html"));
     expect(hf.servers[0].close).not.toHaveBeenCalled();
 
     // Last reference of the root → server closes.
-    server.release("pane-1", "/work/a/other.html");
+    server.release("pane-1", inRoot(ROOT_A, "other.html"));
     expect(hf.servers[0].close).toHaveBeenCalledTimes(1);
   });
 
   it("rejects directory traversal outside the served root (spec scenario 8)", async () => {
-    hf.files.set("/work/a/report.html", "a");
+    hf.files.set(inRoot(ROOT_A, "report.html"), "a");
     // One level above the root: `/work/a/../secret.txt` resolves here.
-    hf.files.set("/work/secret.txt", "token");
+    hf.files.set(inRoot(ROOT_A, "..", "secret.txt"), "token");
     const server = new HtmlPreviewServer();
     await server.acquire(
       "pane-1",
-      "/work/a",
-      "/work/a/report.html",
-      "/work/a/report.html",
+      ROOT_A,
+      inRoot(ROOT_A, "report.html"),
+      inRoot(ROOT_A, "report.html"),
     );
 
     const escape = await serve(0, "GET", "/../secret.txt");
@@ -259,15 +284,15 @@ describe("HtmlPreviewServer", () => {
   });
 
   it("rejects symlink escapes via realpath containment", async () => {
-    hf.files.set("/work/a/link.html", "symlink");
+    hf.files.set(inRoot(ROOT_A, "link.html"), "symlink");
     // The entry itself sits inside the root, but realpath resolves outside.
-    hf.symlinks.set("/work/a/link.html", "/etc/passwd");
+    hf.symlinks.set(inRoot(ROOT_A, "link.html"), "/etc/passwd");
     const server = new HtmlPreviewServer();
     await server.acquire(
       "pane-1",
-      "/work/a",
-      "/work/a/link.html",
-      "/work/a/link.html",
+      ROOT_A,
+      inRoot(ROOT_A, "link.html"),
+      inRoot(ROOT_A, "link.html"),
     );
 
     const res = await serve(0, "GET", "/link.html");
@@ -276,13 +301,13 @@ describe("HtmlPreviewServer", () => {
   });
 
   it("answers 404 for missing files and 405 for non-GET methods", async () => {
-    hf.files.set("/work/a/report.html", "a");
+    hf.files.set(inRoot(ROOT_A, "report.html"), "a");
     const server = new HtmlPreviewServer();
     await server.acquire(
       "pane-1",
-      "/work/a",
-      "/work/a/report.html",
-      "/work/a/report.html",
+      ROOT_A,
+      inRoot(ROOT_A, "report.html"),
+      inRoot(ROOT_A, "report.html"),
     );
 
     expect((await serve(0, "GET", "/nope.html")).statusCode).toBe(404);
@@ -291,27 +316,27 @@ describe("HtmlPreviewServer", () => {
   });
 
   it("answers 413 past the byte cap", async () => {
-    hf.files.set("/work/a/big.html", "x");
-    hf.sizes.set("/work/a/big.html", 8 * 1024 * 1024 + 1);
+    hf.files.set(inRoot(ROOT_A, "big.html"), "x");
+    hf.sizes.set(inRoot(ROOT_A, "big.html"), 8 * 1024 * 1024 + 1);
     const server = new HtmlPreviewServer();
     await server.acquire(
       "pane-1",
-      "/work/a",
-      "/work/a/big.html",
-      "/work/a/big.html",
+      ROOT_A,
+      inRoot(ROOT_A, "big.html"),
+      inRoot(ROOT_A, "big.html"),
     );
 
     expect((await serve(0, "GET", "/big.html")).statusCode).toBe(413);
   });
 
   it("HEAD answers headers without a body", async () => {
-    hf.files.set("/work/a/report.html", "abc");
+    hf.files.set(inRoot(ROOT_A, "report.html"), "abc");
     const server = new HtmlPreviewServer();
     await server.acquire(
       "pane-1",
-      "/work/a",
-      "/work/a/report.html",
-      "/work/a/report.html",
+      ROOT_A,
+      inRoot(ROOT_A, "report.html"),
+      inRoot(ROOT_A, "report.html"),
     );
 
     const res = await serve(0, "HEAD", "/report.html");
@@ -321,14 +346,14 @@ describe("HtmlPreviewServer", () => {
   });
 
   it("URL-encodes segments so spaces and CJK filenames survive", async () => {
-    hf.files.set("/work/a/我的 页面.html", "x");
+    hf.files.set(inRoot(ROOT_A, "我的 页面.html"), "x");
     const server = new HtmlPreviewServer();
 
     const url = await server.acquire(
       "pane-1",
-      "/work/a",
-      "/work/a/我的 页面.html",
-      "/work/a/我的 页面.html",
+      ROOT_A,
+      inRoot(ROOT_A, "我的 页面.html"),
+      inRoot(ROOT_A, "我的 页面.html"),
     );
     expect(url).toBe(
       `http://127.0.0.1:45000/${encodeURIComponent("我的")}%20${encodeURIComponent("页面")}.html`,
@@ -336,20 +361,20 @@ describe("HtmlPreviewServer", () => {
   });
 
   it("dispose closes every live server", async () => {
-    hf.files.set("/work/a/report.html", "a");
-    hf.files.set("/work/b/other.html", "b");
+    hf.files.set(inRoot(ROOT_A, "report.html"), "a");
+    hf.files.set(inRoot(ROOT_B, "other.html"), "b");
     const server = new HtmlPreviewServer();
     await server.acquire(
       "pane-1",
-      "/work/a",
-      "/work/a/report.html",
-      "/work/a/report.html",
+      ROOT_A,
+      inRoot(ROOT_A, "report.html"),
+      inRoot(ROOT_A, "report.html"),
     );
     await server.acquire(
       "pane-1",
-      "/work/b",
-      "/work/b/other.html",
-      "/work/b/other.html",
+      ROOT_B,
+      inRoot(ROOT_B, "other.html"),
+      inRoot(ROOT_B, "other.html"),
     );
 
     server.dispose();

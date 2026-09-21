@@ -413,7 +413,7 @@ vi.mock("../src/main/portForward", () => {
 const htmlPreviewMock = vi.hoisted(() => ({
   acquire: vi.fn(
     async (_paneId: string, rootDir: string, servePath: string) =>
-      `http://127.0.0.1:45000/${servePath.split("/").pop()}`,
+      `http://127.0.0.1:45000/${path.basename(servePath)}`,
   ),
   release: vi.fn(),
   dispose: vi.fn(),
@@ -10562,13 +10562,22 @@ describe("html preview (desktopPreviewFile)", () => {
       .update("/remote/site")
       .digest("hex")
       .slice(0, 10);
-    const cacheDir = `/tmp/wave-desktop-test-userData/html-preview-cache/prod/${dirHash}`;
-    expect(h.files.get(`${cacheDir}/report.html`)).toBe("<html>remote</html>");
+    // userData lives on the local disk, so the cache path is built with the
+    // platform separator (the host does the same via path.join).
+    const cacheDir = path.join(
+      "/tmp/wave-desktop-test-userData",
+      "html-preview-cache",
+      "prod",
+      dirHash,
+    );
+    expect(h.files.get(path.join(cacheDir, "report.html"))).toBe(
+      "<html>remote</html>",
+    );
     // The release key stays the clicked path, not the cache path.
     expect(htmlPreviewMock.acquire).toHaveBeenCalledWith(
       "pane-1",
       cacheDir,
-      `${cacheDir}/report.html`,
+      path.join(cacheDir, "report.html"),
       "/remote/site/report.html",
     );
     expect(sent("desktopPreviewFileResult").at(-1)).toMatchObject({
