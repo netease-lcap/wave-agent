@@ -15,7 +15,12 @@
      在顶栏之下缩进 16px（Figma 内容区 padding 16） */
   padding: 0 16px 16px;
   gap: 0;
-  background: var(--vscode-editor-background, #ffffff);
+  /* 与对话列同底：整页看板占的正是 .chat-container 的位置，对话列
+     （顶栏 + 消息沟槽 + 输入）画的是 --vscode-panel-background（见 ChatApp.css
+     .chat-container 注释），宿主 body 的 editor-background 只是编辑器区外壳色。
+     用 editor-background 会让看板与「新对话」顶部/内容区差一档
+     （深色档 #181A1B vs #111314，设计师 0921 评论）。 */
+  background: var(--vscode-panel-background, #ffffff);
   color: var(--vscode-foreground, #1f2329);
   overflow: hidden;
   box-sizing: border-box;
@@ -329,12 +334,15 @@
 /* ---- 深色主题（桌面端面板惯例：12% 白边框 / 白 6-10% 填充） ---- */
 
 [data-host="desktop"][data-theme="dark"] .session-board {
-  background: var(--vscode-editor-background, #1e1e1e);
+  background: var(--vscode-panel-background, #1e1e1e);
   color: #e6e6e6;
 }
 
 [data-host="desktop"][data-theme="dark"] .session-board-toolbar {
-  border-bottom-color: rgba(255, 255, 255, 0.12);
+  /* 下沿描边与对话顶栏（.chat-header 的 --vscode-widget-border）取同一 token：
+     顶栏底色对齐后，原来那层 12% 白（落在 #111314 上实测 #2E3031）比对话顶栏的
+     #34393C 淡一档（设计师 0921 评论「顶栏下沿的分隔线也一起对齐」）。 */
+  border-bottom-color: var(--vscode-widget-border, #34393c);
 }
 
 [data-host="desktop"][data-theme="dark"] .session-board-back {

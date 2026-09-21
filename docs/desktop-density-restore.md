@@ -5464,3 +5464,140 @@ host 层两条 hover 覆盖都带 `:not(.is-active)`），与会话行「选中�
 - `CC02/走查/_tools/0921/compose-scope-option-type-0921.py`（按选项盒动态裁剪的对照图）。
 - 数据：`CC02/走查/0921-scope-option-type/{before,after}-desktop-plugins.json`；
   图：`0921作用域弹窗-描述字号-改前改后.png`（浅深 × 改前改后）。
+
+## 0921 评论（深色档四处整页面底色对齐「新对话」顶部/内容区）
+
+评论原文：「深色模式下，下面指出地方的背景色（四处），和新对话顶部、内容区背景色要保持一致」——
+四条分别点在 `.session-board-toolbar`（看板顶栏）、`.plugin-market-page`（市场整页根面）、
+`.session-board-toolbar`（同前）、`.session-board`（看板根面）。四处都属**「替换会话区的整页面」**
+（`ChatApp.tsx` 里由 `isDesktop` 门控渲染），占的正是 `.chat-container` 的位置。
+
+### ① 实测：深色档整页面比对话面亮一档（浅色档两 token 同值，看不出）
+
+探针 `probe-board-market-header-bg-0921.mjs`（computed + 沿祖先链第一个非透明底色），
+像素带取样（CSS x 300–600，避开 mock 的发布提示 toast：实测占据 x 625–1074 / y 13–57）：
+
+| 面                        | 深色 改前                 | 深色 改后     | 浅色 改前 | 浅色 改后 |
+| ------------------------- | ------------------------- | ------------- | --------- | --------- |
+| 看板根面 `.session-board` | `#181A1B`                 | **`#111314`** | `#FFFFFF` | `#FFFFFF` |
+| 看板顶栏（透明，取根面）  | `#181A1B`                 | **`#111314`** | `#FFFFFF` | `#FFFFFF` |
+| 市场根面/顶栏/内容区      | `#181A1B`                 | **`#111314`** | `#FFFFFF` | `#FFFFFF` |
+| 参照：新对话顶栏/内容区   | `#111314`（前后同值未动） | `#111314`     | `#FFFFFF` | `#FFFFFF` |
+
+全图 dominant 色同样一致：市场整页 `#181A1B` 95.3% → `#111314` 78.9%；看板面本色由
+`#181A1B` 27.7% → `#111314` 10.8%（其余为透明叠层与侧栏 `--vscode-sideBar-background`）。
+
+### ② 根因：整页面画的是「编辑器壳色」，对话列画的是「面板色」
+
+`ChatApp.css` 里 `.chat-container` 的注释已写明这条约定：对话列（顶栏 + 消息沟槽 + 输入）
+统一画 `--vscode-panel-background`，「宿主给 body 的 editor-background 是编辑器区外壳色，
+否则会从透明包裹层透出来」。而看板根面（`SessionBoard.css` 基础规则 + 深色覆盖两处）与市场整页
+根面（`PluginMarketPage.css`）画的是 `--vscode-editor-background` → 深色档两值不同
+（`editorBg #181a1b` / `panelBg #111314`），整页面因此比对话面亮一档。浅色档两 token 同为
+`#ffffff`，故只在深色可见。
+
+### ③ 改法：两个整页面改指对话列同一个 token（+ 连带渐隐色变量）
+
+```css
+/* SessionBoard.css 基础规则 + 深色覆盖都改 */
+.session-board {
+  background: var(--vscode-panel-background, #ffffff);
+}
+[data-host="desktop"][data-theme="dark"] .session-board {
+  background: var(--vscode-panel-background, #1e1e1e);
+}
+
+/* PluginMarketPage.css 根面 + 切换条两端渐隐底色 */
+.plugin-market-page {
+  background: var(--vscode-panel-background, #ffffff);
+}
+.plugin-market-content {
+  --cc-tabs-fade-bg: var(--vscode-panel-background, #ffffff);
+}
+```
+
+- **同族先例**：`TerminalPane.css` 早就是 `var(--vscode-panel-background, var(--vscode-editor-background))`
+  （同为「替换会话区」的整页面），这次是把看板与市场整页对齐到同一约定。
+- **渐隐色必须跟着走**：市场切换条两端的渐隐要盖在真实底色上，底色换 token 而它不换会出现渐隐色阶。
+- `SettingsPage.css` 共享块里给 `.plugin-market-page` 也声明了 `--cc-settings-bg`（= editor-background），
+  但该变量在本面**无人消费**（只有 `.settings-page` 自己用），故未动，避免波及 IDE 宿主设置页。
+- **作用域**：两个面都是桌面端独有（组件在 `ChatApp.tsx` 由 `isDesktop` 门控，IDE 宿主不渲染），
+  与本批其它 base 改动不同，**IDE 宿主不受影响**。
+
+### ④ 改后实测
+
+- 深色档三处（看板根面/顶栏、市场根面/顶栏/内容区）与「新对话」顶部/内容区逐值相同 `#111314`。
+- 浅色档逐值未变 `#FFFFFF`（全图逐像素差异 0.01%，仅 mock 卡片时间戳「今天 13:44」→「今天 13:46」
+  随真实时间前进；看板浅色 0.02% 同因）；参照面 `.chat-header`/`.chat-container`/`.messages-container`
+  改前改后 computed 逐项相同。
+- **顺带变深（同一改动的必然结果，需她确认是否接受）**：看板列区那层 `rgba(255,255,255,.06)` 叠层
+  落地色由 `#262728` → `#1F2122`（半透明白叠在更深的根面上）；列头色块与卡片（不透明 `#27292B`）
+  未变。市场整页无此类叠层。
+- 全轮 0 `pageerror`；桌面预览 1440×960 / DPR 2。
+
+### ⑤ 残留 / 备用触发语（未授权）
+
+- 「顶栏下沿的分隔线也一起对齐」：看板/市场顶栏深色描边为 `rgba(255,255,255,.12)`（落在 `#111314`
+  上≈`#2E3031`），对话顶栏 1px 边为 `#34393C` —— 同底色后两者略有差；她本轮只说背景色，未动。
+- 「列区那层太暗了」：见 ④ 的 `#1F2122`；要恢复原亮度需给该叠层单独提高透明度或换实色。
+- 「设置页背景也一起改」：`.settings-page` 自己仍画 editor-background（真机是独立 webview；8899
+  的 IDE 版设置页 mock 已按她要求移除），本轮未动。
+- 「右侧面板也一起改」：右 pane 面（`--cc-bg-inspector` = editor-background）未动，她未点名。
+
+### 验证脚本与证据
+
+- `CC02/走查/_tools/0921/probe-board-market-header-bg-0921.mjs`（新对话 / 看板 / 市场三步 ×
+  浅深两档：顶栏、内容区、被评论四处的 computed 底色 + 沿祖先链实际画上去的色 + 底边描边）。
+- `CC02/走查/_tools/0921/compose-board-market-bg-0921.py`（并集裁切 + 标注改前/改后与实测值；
+  输出目录已存在即拒绝，不覆盖旧证据）。
+- `CC02/走查/_tools/0921/diff-shots-0921.py`（全图逐像素差异 + 差异框）。
+- 数据与图：`CC02/走查/0921-board-market-bg/{before,after}-desktop-*-board-market-bg.json|png`；
+  交付页 `CC02/走查/0921-board-market-bg-report/index.html`（母版 v1.1，本地绝对路径打开）。
+
+## 0921 评论（承上：看板 / 市场顶栏下沿分隔线也对齐对话顶栏）
+
+她在我上一节的四条底色对齐后追加一条：「顶栏下沿的分隔线也一起对齐」。
+
+### ① 实测：同一层 12% 白，落在更深的底色上就淡了一档
+
+同一次运行、DPR2 截图在 CSS `y=43`（顶栏 44px 盒的底边那一行，描边只有 1px）按 1:1 取色：
+
+| 面（深色）             | 原始态    | 底色对齐后（上一节交付态） | 本轮修正后    |
+| ---------------------- | --------- | -------------------------- | ------------- |
+| 新对话顶栏下沿（参照） | `#34393C` | `#34393C`（未动）          | `#34393C`     |
+| 会话状态看板顶栏下沿   | `#343637` | **`#2E3031`**              | **`#34393C`** |
+| 插件市场整页顶栏下沿   | `#343637` | **`#2E3031`**              | **`#34393C`** |
+| 三处（浅色）           | `#EBEEF5` | `#EBEEF5`                  | `#EBEEF5`     |
+
+即：底色变深后，原来那层 `rgba(255,255,255,.12)` 的合成色从 `#343637` 掉到 `#2E3031`，
+与对话顶栏的 `#34393C` 差开 —— 所以这条是上一节改动的**连带后果**，不是独立缺陷。
+
+### ② 改法（`SessionBoard.css` 深色覆盖一行）
+
+```css
+[data-host="desktop"][data-theme="dark"] .session-board-toolbar {
+  border-bottom-color: var(--vscode-widget-border, #34393c);
+}
+```
+
+- 对话顶栏 `.chat-header` 的底边本来就取 `--vscode-widget-border`（桌面深色档映射到
+  `--cc-border-light` = `#34393c`），改为同一 token 即「永远跟随对话顶栏」，不再写死半透明白。
+- 市场整页顶栏复用同一类名 `.session-board-toolbar`（看板壳类），故**一处改动同时覆盖两个面**。
+- 浅色档 base 本就是 `#ebeef5`，与浅色对话顶栏（`host-desktop.css` 显式钉的 `#ebeef5`）本来就同值，
+  **未动**。
+
+### ③ 残留 / 备用触发语（未授权）
+
+- 「顶栏里那条竖分割线也一起」：`.session-board-toolbar-divider`（图标组与返回钮之间 1×16 的竖线）
+  深色仍是 `rgba(255,255,255,.12)`，与刚改的下沿不同族（竖线本来就不该等同横线）。
+- 「下沿线再淡一点 / 再重一点」：现在与对话顶栏逐值相同（`#34393C`）；要单独调需给新值。
+
+### 验证脚本与证据
+
+- `CC02/走查/_tools/0921/probe-board-market-header-bg-0921.mjs`（三面 × 浅深：底色 computed +
+  实际画上去的色 + 底边描边色）。
+- `CC02/走查/_tools/0921/compose-board-market-bg-0921-v2.py`（面底 1:1 对照 + 1px 描边的
+  **4× 最近邻放大**对照：参照 / 看板 / 市场三行并列，输出目录已存在即拒绝）。
+- 数据与图：`CC02/走查/0921-board-market-bg/{before,after,after2}-desktop-*-board-market-bg.json|png`
+  （`after` = 只对齐底色、`after2` = 底色 + 描边都对齐）；交付页
+  `CC02/走查/0921-board-market-bg-report-v2/index.html`（母版 v1.1，四条，含 B-04 描边放大对照）。
