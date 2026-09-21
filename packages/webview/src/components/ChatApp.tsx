@@ -64,6 +64,7 @@ import type {
 } from "../types";
 import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/constants";
 import { collectWriteEditBlocks, pathsMatch } from "../utils/fileAutoRefresh";
+import { toAbsoluteFilePath } from "../utils/messageUtils";
 import { isMacHiddenTitlebar } from "../utils/platform";
 import { chatReducer, initialState } from "../reducers/chatReducer";
 import { sessionUi, PANEL_DEFAULT_WIDTH } from "../utils/sessionUiStore";
@@ -485,6 +486,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // in PreviewPane would otherwise early-return and skip the forced reload a
   // retry after a guest load failure needs. Remounting restarts the webview.
   const [previewEpoch, setPreviewEpoch] = useState(0);
+  // Local .html preview (spec desktop-preview.md「本地 HTML 文件预览」):
+  // in-flight desktopPreviewFile requests keyed by requestId, plus the source
+  // path to fall back to (file panel) when the host replies with an error.
+  const previewFileRequestsRef = useRef<
+    Map<string, { tabId: string; path: string }>
+  >(new Map());
+  const pendingPreviewFallbackRef = useRef<Map<string, { path: string }>>(
+    new Map(),
+  );
   // Desktop only: the plan panel's latest ExitPlanMode markdown (null = no plan
   // yet). Per-session: approval/rejection keep the panel open, and pane
   // remounts restore it from the group cache. The plan tab is unique, so the
@@ -1074,6 +1084,50 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                     : t,
                 ),
           );
+        }
+        break;
+      case "desktopPreviewFileResult":
+        // Local .html preview reply (spec: desktop-preview.md「本地 HTML 文件
+        // 预览」). Matched by requestId against the pending preview request —
+        // a URL fills the requesting tab (remount via epoch when the tab
+        // already shows it), an error closes the placeholder tab and falls
+        // back to the file panel's normal open flow (scenario 4).
+        if (!forThisPane(message)) break;
+        {
+          const req = previewFileRequestsRef.current.get(message.requestId);
+          if (!req) break;
+          previewFileRequestsRef.current.delete(message.requestId);
+          if (message.url) {
+            setTabs((prev) =>
+              prev.map((t) =>
+                t.id === req.tabId
+                  ? { ...t, previewUrl: message.url as string }
+                  : t,
+              ),
+            );
+            const tab = tabsRef.current.find((t) => t.id === req.tabId);
+            if (!tab) {
+              // The tab was closed while the acquire was in flight — the host
+              // just registered a reference nothing will release; cancel it.
+              pendingPreviewFallbackRef.current.delete(req.tabId);
+              postToHost({
+                command: "desktopPreviewFileRelease",
+                path: req.path,
+              });
+            } else if (tab.previewUrl === message.url) {
+              // Re-acquire returned the same URL: bump the epoch so the
+              // PreviewPane remounts and actually reloads.
+              setPreviewEpoch((e) => e + 1);
+            }
+          } else {
+            // Preview refused (missing/oversized/unpreviewable): drop the
+            // placeholder tab and open the file panel on the source path.
+            setTabs((prev) => prev.filter((t) => t.id !== req.tabId));
+            if (tabsRef.current.length <= 1) setPanelExpanded(false);
+            const pending = pendingPreviewFallbackRef.current.get(req.tabId);
+            pendingPreviewFallbackRef.current.delete(req.tabId);
+            if (pending) openFileInPanelRef.current(pending.path);
+          }
         }
         break;
       case "updateQueue":
@@ -2658,21 +2712,36 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 场景 10: 关闭最后一个 tab 时右侧面板随之一并收起，不显示空态) — the
   // "expanded but no tabs" empty state is only ever reached by the user
   // explicitly expanding the panel, never as the leftover of a close.
-  const handleCloseTab = useCallback((tabId: string) => {
-    const tabs = tabsRef.current;
-    const idx = tabs.findIndex((t) => t.id === tabId);
-    if (idx === -1) return;
-    const closed = tabs[idx];
-    const next = tabs.filter((t) => t.id !== tabId);
-    setTabs(next);
-    if (activeTabIdRef.current === tabId) {
-      setActiveTabId(next.length ? next[Math.max(0, idx - 1)].id : null);
-    }
-    if (closed.kind === "preview" || next.length === 0) {
-      setPreviewFullscreen(false);
-    }
-    if (next.length === 0) setPanelExpanded(false);
-  }, []);
+  const handleCloseTab = useCallback(
+    (tabId: string) => {
+      const tabs = tabsRef.current;
+      const idx = tabs.findIndex((t) => t.id === tabId);
+      if (idx === -1) return;
+      const closed = tabs[idx];
+      const next = tabs.filter((t) => t.id !== tabId);
+      setTabs(next);
+      if (activeTabIdRef.current === tabId) {
+        setActiveTabId(next.length ? next[Math.max(0, idx - 1)].id : null);
+      }
+      // Closing a local-.html preview tab releases the pane's re-hosting
+      // server reference; with the last reference the host tears the server
+      // down (spec desktop-preview.md「本地 HTML 文件预览」 scenario 8). The
+      // release is keyed by the tab's file path — other tabs previewing other
+      // files (even on the same served root) keep their server alive.
+      if (closed.kind === "preview" && closed.previewFilePath) {
+        pendingPreviewFallbackRef.current.delete(closed.id);
+        postToHost({
+          command: "desktopPreviewFileRelease",
+          path: closed.previewFilePath,
+        });
+      }
+      if (closed.kind === "preview" || next.length === 0) {
+        setPreviewFullscreen(false);
+      }
+      if (next.length === 0) setPanelExpanded(false);
+    },
+    [postToHost],
+  );
 
   // Header 面板按钮: expand/collapse the right-hand panel (spec
   // desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」). Collapsing
@@ -2703,6 +2772,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     (kind: DesktopPanelKind) => {
       if (panelDisabledRef.current.includes(kind)) return;
       if (tabsRef.current.some((t) => t.kind === kind)) {
+        const closing = tabsRef.current.filter((t) => t.kind === kind);
         const next = tabsRef.current.filter((t) => t.kind !== kind);
         setTabs(next);
         const active = activeTabIdRef.current;
@@ -2712,17 +2782,80 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         if (kind === "preview" || next.length === 0) {
           setPreviewFullscreen(false);
         }
+        // Same release as handleCloseTab when the menu closes every preview
+        // tab of the kind (including local-.html preview tabs) — one release
+        // per closed file-previewing tab, keyed by its path.
+        if (kind === "preview") {
+          for (const t of closing) {
+            if (t.kind === "preview" && t.previewFilePath) {
+              pendingPreviewFallbackRef.current.delete(t.id);
+              postToHost({
+                command: "desktopPreviewFileRelease",
+                path: t.previewFilePath,
+              });
+            }
+          }
+        }
         if (next.length === 0) setPanelExpanded(false);
       } else {
         tryOpenPanel(kind);
       }
     },
-    [tryOpenPanel],
+    [tryOpenPanel, postToHost],
   );
 
   useEffect(() => {
     togglePanelRef.current = handleTogglePanel;
   }, [handleTogglePanel]);
+
+  // .html / .htm check for the desktop preview routing (spec
+  // desktop-preview.md「本地 HTML 文件预览」— scope is exactly these two
+  // extensions; .svg keeps its inline-image path in the file panel).
+  const isHtmlPath = (p: string) => /\.(html|htm)$/i.test(p);
+
+  // Desktop .html path click → preview tab (spec「本地 HTML 文件预览」).
+  // Same file (normalized absolute path) activates its existing tab and
+  // re-requests the URL (scenario 2); a different file adds a new preview
+  // tab (multi-instance). The tab starts blank (loading shell) and is filled
+  // by the desktopPreviewFileResult reply; an error reply closes the
+  // placeholder and falls back to the file panel (scenario 4).
+  const handlePreviewHtmlFile = useCallback(
+    (path: string) => {
+      const normalized = toAbsoluteFilePath(path, effectiveWorkdir) ?? path;
+      const existing = tabsRef.current.find(
+        (t) =>
+          t.kind === "preview" &&
+          t.previewFilePath !== undefined &&
+          t.previewFilePath === normalized,
+      );
+      const requestId = `preview-file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      let tabId: string;
+      if (existing) {
+        tabId = existing.id;
+        setActiveTabId(tabId);
+        setPanelExpanded(true);
+      } else {
+        const id = addTab({
+          kind: "preview",
+          previewFilePath: normalized,
+          previewTitle: normalized.split(/[\\/]/).pop() || normalized,
+        });
+        if (id === null) return; // space guard refused
+        tabId = id;
+      }
+      previewFileRequestsRef.current.set(requestId, {
+        tabId,
+        path: normalized,
+      });
+      pendingPreviewFallbackRef.current.set(tabId, { path: normalized });
+      postToHost({
+        command: "desktopPreviewFile",
+        path: normalized,
+        requestId,
+      });
+    },
+    [addTab, effectiveWorkdir, postToHost],
+  );
 
   // Desktop file panel (spec: 文件面板): a file path clicked in a message or
   // terminal opens here instead of the OS. Show the panel immediately with a
@@ -2731,13 +2864,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // split-view sibling's click never resolves against this pane's host.
   // IDE hosts (VSCE/JetBrains) keep the plain openFile RPC that opens the file
   // in the IDE — only the desktop host intercepts the click for the panel.
-  const handleOpenFile = useCallback(
+  // Desktop .html/.htm paths are previewed instead (desktop-preview.md「本地
+  // HTML 文件预览」): the host re-hosts the file on a loopback server and the
+  // reply fills a preview tab; errors fall back to the file panel below.
+  const openFileInPanelRef = useRef<
+    (path: string, startLine?: number, endLine?: number) => void
+  >(() => {});
+
+  // The file-panel body of handleOpenFile (no .html routing) — used directly
+  // by the preview fallback so a refused preview can never loop back into
+  // preview routing.
+  const openFileInPanel = useCallback(
     (path: string, startLine?: number, endLine?: number) => {
-      if (!path) return;
-      if (!isDesktop) {
-        vscode.postMessage({ command: "openFile", path, startLine, endLine });
-        return;
-      }
       // The file panel is single-instance: any file click activates the one
       // file tab and switches it to the new path (soft-refresh — the old
       // content stays until the host reply lands, matching the diff pane).
@@ -2798,7 +2936,26 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         endLine,
       });
     },
-    [isDesktop, addTab, effectiveHost, postToHost, vscode],
+    [addTab, effectiveHost, postToHost],
+  );
+  useEffect(() => {
+    openFileInPanelRef.current = openFileInPanel;
+  }, [openFileInPanel]);
+
+  const handleOpenFile = useCallback(
+    (path: string, startLine?: number, endLine?: number) => {
+      if (!path) return;
+      if (!isDesktop) {
+        vscode.postMessage({ command: "openFile", path, startLine, endLine });
+        return;
+      }
+      if (isHtmlPath(path)) {
+        handlePreviewHtmlFile(path);
+        return;
+      }
+      openFileInPanel(path, startLine, endLine);
+    },
+    [isDesktop, vscode, handlePreviewHtmlFile, openFileInPanel],
   );
 
   // prefill 应用 effect（位于本 useCallback 定义之前）经 ref 调用最新
@@ -2815,12 +2972,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // last-seen stage is remembered, so a repeated end-state update (result
   // enrichment, images) or switching back to a session whose history already
   // contains the block never re-fires.
+  // Local .html preview tabs reload through the same trigger (spec
+  // desktop-preview.md「本地 HTML 文件预览」 scenario 5): the matching tab
+  // re-requests its URL and remounts, so the pane shows the new bytes.
   const fileToolStagesRef = useRef<Map<string, ToolBlock["stage"]>>(new Map());
   useEffect(() => {
     if (!isDesktop) return;
     const filePaths = tabsRef.current
       .filter((t) => t.kind === "file" && t.filePath)
       .map((t) => t.filePath)
+      .filter((p): p is string => p !== undefined);
+    const previewFilePaths = tabsRef.current
+      .filter((t) => t.kind === "preview" && t.previewFilePath)
+      .map((t) => t.previewFilePath)
       .filter((p): p is string => p !== undefined);
     const workdir = effectiveWorkdirRef.current;
     const stages = fileToolStagesRef.current;
@@ -2842,10 +3006,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             handleOpenFile(path);
           }
         }
+        // Reload every preview tab previewing that .html file.
+        for (const path of previewFilePaths) {
+          if (pathsMatch(ref.targetPath, path, workdir)) {
+            handlePreviewHtmlFile(path);
+          }
+        }
       }
       stages.set(key, ref.stage);
     }
-  }, [state.messages, isDesktop, handleOpenFile]);
+  }, [state.messages, isDesktop, handleOpenFile, handlePreviewHtmlFile]);
 
   // Local sessions only: leave the panel and open the file in the OS default
   // app (remote hosts have no local file — the button is hidden).
