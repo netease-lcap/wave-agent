@@ -15,16 +15,20 @@
  *   3. tail marker for the formats that carry one (catches truncation),
  *   4. a real decode by the host's own decoder (`createImageBitmap`), which is
  *      the only check that catches structurally-valid-looking garbage,
- *   5. a per-side dimension cap: anything longer than `MAX_IMAGE_DIMENSION_PX`
- *      on either side is downsampled here (canvas re-encode) and sent at that
- *      smaller size — see the constant for the upstream evidence.
+ *   5. a per-side dimension budget: anything longer than
+ *      `MAX_IMAGE_DIMENSION_PX` on either side is downsampled here (canvas
+ *      re-encode), so the paste enters the message already inside the budget —
+ *      see the constant.
  *
  * Steps 4-5 need a Chromium-family host (desktop Electron / VS Code webview /
  * JetBrains JCEF all qualify). Hosts without the API (e.g. jsdom in unit
  * tests) fall back to the byte-level checks instead of rejecting everything —
- * oversized images then reach the SDK, whose dimension gate
- * (packages/agent-sdk/src/utils/imageDimensions.ts) skips them with a note.
+ * an oversized image then takes the long way round and reaches the SDK, whose
+ * outbound rewrite pass (packages/agent-sdk/src/utils/imageRewrite.ts, via
+ * sharp) resizes it, or drops it with a note when no codec is available.
  */
+import { OUTBOUND_IMAGE_MAX_DIMENSION_PX } from "wave-agent-sdk/constants";
+
 export type SupportedImageFormat = "png" | "jpeg" | "gif" | "webp";
 
 export type ImageRejectionReason =
@@ -37,37 +41,43 @@ export type ImageValidationResult =
       ok: true;
       /**
        * The image to send. Byte-identical to the pasted file when it is within
-       * the dimension cap; a re-encoded copy when it was downsampled.
+       * the dimension budget; a re-encoded copy when it was downsampled.
        */
       file: File;
-      /** True only when the paste was re-encoded to fit the dimension cap. */
+      /** True only when the paste was re-encoded to fit the dimension budget. */
       downsampled: boolean;
     }
   | { ok: false; reason: ImageRejectionReason; message: string };
 
 /**
- * Per-side pixel cap enforced by the vision model gateway: any image with
- * width **or** height above this is rejected with
- * `HTTP 400 ... You have uploaded an unsupported image` (a misleading generic
- * message — it is not a format problem), and the whole turn fails.
+ * Per-side pixel budget for a pasted image: anything longer on either side is
+ * downsampled in the browser before it becomes part of a message.
  *
- * Measured against https://codechat.codewave.163.com/api/v1/chat/completions
- * (model `deepseek-flash`, `stream: true`, 2026-09-20): 8192x1500 → 200 while
- * 8193x1500 → 400, and 2250x8192 → 200 while 2250x9500 → 400. The bound is a
- * hard integer comparison, independent of pixel count, byte size and format —
- * the full probe table lives in
- * packages/agent-sdk/src/utils/imageDimensions.ts, which holds the same
- * constant (a browser bundle cannot import that module; keep both in sync).
+ * This is the very same number the SDK enforces on the way out
+ * (`OUTBOUND_IMAGE_MAX_DIMENSION_PX`, Claude Code's `IMAGE_MAX_WIDTH` /
+ * `IMAGE_MAX_HEIGHT`) and it is *imported*, not copied, so the paste gate and
+ * the outbound gate cannot drift apart (the value lives in
+ * packages/agent-sdk/src/constants/images.ts). Shrinking here buys three
+ * things: the request path carries no re-encode work, no oversized image can
+ * depend on the codec sharp installs on demand, and the paste is already
+ * compliant when the user hits Enter.
+ *
+ * Do not confuse it with the gateway's *hard* bound —
+ * `MAX_IMAGE_DIMENSION_PX` in packages/agent-sdk/src/utils/imageDimensions.ts
+ * (8192px per side). That one is external and immovable: crossing it fails the
+ * whole turn with `HTTP 400 ... You have uploaded an unsupported image`, which
+ * is exactly why we stay far away from it. The probe table behind both numbers
+ * lives in that same file.
  */
-export const MAX_IMAGE_DIMENSION_PX = 8192;
+export const MAX_IMAGE_DIMENSION_PX = OUTBOUND_IMAGE_MAX_DIMENSION_PX;
 
 /** JPEG quality used when a downsampled image is re-encoded as JPEG. */
 const DOWNSAMPLE_JPEG_QUALITY = 0.92;
 
 /**
- * A downsampled PNG larger than this is re-encoded as JPEG instead: PNG can be
- * lossless but bulky (a 2250x8192 screenshot is ~4.3 MB), and the gateway's
- * request path is not free. Aligned with Claude Code's 5 MB base64 budget.
+ * A downsampled PNG larger than this is re-encoded as JPEG instead: PNG is
+ * lossless but bulky, and a noisy screenshot can easily exceed this at 2000px.
+ * Aligned with Claude Code's 5 MB base64 budget.
  */
 const DOWNSAMPLE_PNG_MAX_BYTES = 5 * 1024 * 1024;
 
@@ -193,12 +203,12 @@ interface DecodedImage {
 }
 
 /**
- * Target size for an image longer than the cap, or `null` when it already fits.
- * Pure math so the boundary (8192 fits, 8193 does not) is testable without a
- * real decoder. `Math.floor` plus the clamp keep the result on the safe side of
- * the cap — rounding up would recreate the exact `8193` input the gateway
- * rejects — and no extra margin is subtracted: the cap is a hard integer
- * comparison and 8192 itself is accepted on both axes.
+ * Target size for an image longer than the budget, or `null` when it already
+ * fits. Pure math so the boundary (2000 fits, 2001 does not) is testable
+ * without a real decoder. `Math.floor` plus the clamp keep the result on the
+ * safe side of the budget — rounding up would put the copy back over it — and
+ * no extra margin is subtracted: the budget is a plain integer comparison and
+ * 2000 itself is inside it on both axes.
  */
 export function computeDownscaleTarget(
   width: number,
@@ -282,9 +292,9 @@ async function downscaleImage(
 
 /**
  * Validate one pasted image. Never throws: any failure is a rejection with a
- * user-facing Chinese message. An image inside the dimension cap is returned
+ * user-facing Chinese message. An image inside the dimension budget is returned
  * byte-identical (`ok: true, downsampled: false`); a longer one is re-encoded
- * through canvas to fit the cap.
+ * through canvas to fit the budget.
  */
 export async function validateImageFile(
   file: File,

@@ -200,35 +200,37 @@ describe("validateImageFile", () => {
 });
 
 describe("computeDownscaleTarget", () => {
-  it("leaves images at or inside the cap untouched", () => {
-    expect(computeDownscaleTarget(1500, 8192)).toBeNull();
-    expect(computeDownscaleTarget(8192, 1500)).toBeNull();
-    expect(computeDownscaleTarget(2250, 8192)).toBeNull();
+  it("leaves images at or inside the budget untouched", () => {
+    expect(computeDownscaleTarget(1500, 2000)).toBeNull();
+    expect(computeDownscaleTarget(2000, 1500)).toBeNull();
+    expect(computeDownscaleTarget(2000, 2000)).toBeNull();
     expect(computeDownscaleTarget(800, 600)).toBeNull();
   });
 
-  it("downscales one pixel over the cap (8192 accepted upstream, 8193 rejected)", () => {
-    expect(computeDownscaleTarget(8193, 1500)).toEqual({
-      width: 8192,
+  it("downscales one pixel over the budget (2000 fits, 2001 does not)", () => {
+    expect(computeDownscaleTarget(2001, 1500)).toEqual({
+      width: 2000,
       height: 1499,
     });
-    expect(computeDownscaleTarget(1500, 8193)).toEqual({
+    expect(computeDownscaleTarget(1500, 2001)).toEqual({
       width: 1499,
-      height: 8192,
+      height: 2000,
     });
   });
 
-  it("keeps the aspect ratio and never exceeds the cap", () => {
-    // The reported case: a 2250x15474 screenshot.
+  it("keeps the aspect ratio and never exceeds the budget", () => {
+    // The reported case: a 2250x15474 screenshot. `Math.floor` leaves the long
+    // side one pixel under the budget here (the float product lands a hair
+    // below 2000) — under is free, over is not.
     const target = computeDownscaleTarget(2250, 15474);
-    expect(target).toEqual({ width: 1191, height: 8192 });
-    // The rounding trap: a width scaled by exactly max/longest could round up
-    // to 8193; the clamp keeps every branch inside the cap.
+    expect(target).toEqual({ width: 290, height: 1999 });
+    // The rounding trap: the same product can land a hair *above* max, in which
+    // case only the clamp keeps the copy inside the budget.
     for (const [w, h] of [
       [2250, 15474],
       [9999, 9999],
-      [1, 8193],
-      [8193, 1],
+      [1, 2001],
+      [2001, 1],
       [20000, 1],
     ]) {
       const result = computeDownscaleTarget(w, h);
@@ -277,7 +279,7 @@ describe("validateImageFile downsampling", () => {
     return { drawImage, canvas };
   }
 
-  it("re-encodes an oversized PNG to fit the cap and reports it", async () => {
+  it("re-encodes an oversized PNG to fit the budget and reports it", async () => {
     const { drawImage, canvas } = stubCanvas();
     const close = vi.fn();
     vi.stubGlobal(
@@ -293,10 +295,32 @@ describe("validateImageFile downsampling", () => {
     if (!result.ok) throw new Error("expected the image to be accepted");
     expect(result.downsampled).toBe(true);
     expect(result.file.type).toBe("image/png");
-    expect(canvas.width).toBe(1191);
-    expect(canvas.height).toBe(8192);
-    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 1191, 8192);
+    expect(canvas.width).toBe(290);
+    expect(canvas.height).toBe(1999);
+    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 290, 1999);
     expect(close).toHaveBeenCalled();
+  });
+
+  it("shrinks an ordinary 4K screenshot, which used to pass through untouched", async () => {
+    // The behaviour change behind the 2000 budget: 3840x2160 is well inside the
+    // gateway's 8192 hard bound, so it used to be forwarded as-is. It is now
+    // re-encoded at the budget (2000x1125) like every other oversized paste.
+    const { drawImage, canvas } = stubCanvas();
+    vi.stubGlobal(
+      "createImageBitmap",
+      vi.fn().mockResolvedValue({ width: 3840, height: 2160 }),
+    );
+
+    const result = await validateImageFile(
+      makeFile(TINY_PNG_BYTES, "4k.png", "image/png"),
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected the image to be accepted");
+    expect(result.downsampled).toBe(true);
+    expect(canvas.width).toBe(2000);
+    expect(canvas.height).toBe(1125);
+    expect(drawImage).toHaveBeenCalledWith(expect.anything(), 0, 0, 2000, 1125);
   });
 
   it("keeps an oversized JPEG a JPEG", async () => {
@@ -339,7 +363,7 @@ describe("validateImageFile downsampling", () => {
     const close = vi.fn();
     vi.stubGlobal(
       "createImageBitmap",
-      vi.fn().mockResolvedValue({ close, width: 8193, height: 1500 }),
+      vi.fn().mockResolvedValue({ close, width: 2001, height: 1500 }),
     );
 
     await expect(

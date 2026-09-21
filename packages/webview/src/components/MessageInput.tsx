@@ -1621,9 +1621,9 @@ export const MessageInput = forwardRef<
       // Images the model gateway would reject (empty payload, garbage bytes or
       // a format outside png/jpeg/gif/webp) are dropped here instead of being
       // sent and bounced back as `HTTP 400 ... unsupported image`; images whose
-      // width or height exceeds the gateway's per-side cap come back
+      // width or height exceeds the 2000px outbound budget come back
       // downsampled (spec: docs/specs/ui/image-pasting.md「发送前校验图片有效性」
-      // 「超长截图自动降采样」).
+      // 「粘贴时在本地把图片降到 2000 像素预算」).
       const rejectedMessages = new Set<string>();
 
       for (const file of imageFiles) {
