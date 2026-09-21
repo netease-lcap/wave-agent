@@ -262,4 +262,37 @@ test.describe("Desktop Preview Pane Screenshots", () => {
     expect(box.width).toBeGreaterThan(box.height);
     await expect(retry).toHaveText("重试");
   });
+
+  // 围栏代码块中的 localhost 链接同样走预览面板分流（specs/ui/markdown-links.md
+  // 「围栏代码块中的 URL 可点击」）：真 Chromium 下代码块内的 <a> 可点击、DOMPurify
+  // 保留 href，点击路由与正文链接一致。
+  test("fenced-code-block localhost link opens the preview pane", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    // 面板要开得出来需要足够宽度，否则 addTab 被拒（「空间不足，无法开启面板」）。
+    await webviewPage.setViewportSize({ width: 1100, height: 680 });
+
+    await injector.simulateExtensionMessage("desktopWorkdirState", {
+      workdir: DIR_A,
+      recentWorkdirs: [DIR_A],
+    });
+    await injector.waitForChatAppReady();
+    await injector.simulateExtensionMessage("setInitialState", initialState);
+
+    await injector.updateMessages([
+      MockDataGenerator.createAssistantMessage(
+        "原型 v7 已改完并本地跑起来，请过目：\n\n```\nhttp://127.0.0.1:8097/\n```\n",
+        "msg-a1",
+      ),
+    ]);
+
+    const code = webviewPage.locator(".markdown-content pre code");
+    await expect(code).toHaveText("http://127.0.0.1:8097/");
+
+    const link = code.locator('a[href="http://127.0.0.1:8097/"]');
+    await expect(link).toHaveText("http://127.0.0.1:8097/");
+    await link.click();
+    await expect(webviewPage.getByTestId("preview-pane")).toBeVisible();
+  });
 });
