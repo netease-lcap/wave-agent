@@ -75,6 +75,9 @@ class WaveSession(
         private set
     @Volatile var isCommandRunning = false
         private set
+    /** True while a compaction LLM call is in flight; blocks in-place clearChat/restoreSession. */
+    @Volatile var isCompacting = false
+        private set
     @Volatile var isInitializing = false
         private set
     @Volatile var inputContent = ""
@@ -151,6 +154,7 @@ class WaveSession(
     // Forward the compaction state to the shared webview, which renders the
     // "正在压缩对话" hint after the blinking cursor (mirrors VSCE chatSession.ts).
     override fun onCompactionStateChange(isCompacting: Boolean) {
+        this.isCompacting = isCompacting
         postMessage("compactionStateChange", buildJsonObject { put("isCompacting", isCompacting) })
     }
 

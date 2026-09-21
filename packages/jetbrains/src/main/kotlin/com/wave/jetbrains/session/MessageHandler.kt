@@ -91,10 +91,12 @@ class MessageHandler(
                 }
             }
             "clearChat" -> {
-                // IDE 单会话原地清空：存在正在运行的后台任务时静默忽略。webview 已
-                // 禁用按钮/忽略触发，此为覆盖「通知在途」竞态窗口与其它调用方的 host
-                // 侧双防线（spec session-management.md「IDE 插件聊天头部」场景 6/7）。
-                if (hasRunningBackgroundTask()) return
+                // IDE 单会话原地清空：压缩进行中或存在正在运行的后台任务时静默忽略。
+                // webview 已禁用按钮/忽略触发，此为覆盖「通知在途」竞态窗口与其它调用
+                // 方的 host 侧双防线（spec session-management.md「IDE 插件聊天头部」
+                // 场景 6/7；压缩中清空会让压缩摘要写进清空后的新会话 —— spec
+                // message-compact.md「压缩期间的会话保护」）。
+                if (session.isCompacting || hasRunningBackgroundTask()) return
                 session.agent?.let {
                     it.clearMessages()
                     if (session.messageQueue != null) {
@@ -159,8 +161,8 @@ class MessageHandler(
                 session.agent?.deleteQueuedMessageById(id)
             }
             "restoreSession" -> {
-                // 同 clearChat 守卫：后台任务运行期间禁止原地恢复历史会话。
-                if (hasRunningBackgroundTask()) return
+                // 同 clearChat 守卫：压缩进行中或后台任务运行期间禁止原地恢复历史会话。
+                if (session.isCompacting || hasRunningBackgroundTask()) return
                 val sid = msg["sessionId"]?.jsonPrimitive?.content ?: return
                 session.agent?.restoreSession(sid)
                 // Pull the restored messages and push them back (no more full-snapshot
