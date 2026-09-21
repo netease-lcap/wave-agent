@@ -1775,10 +1775,15 @@
   opacity: 1;
 }
 
+/* 设计师 0921 评论（点 `button.settings-scope-option.is-selected`「用户（user）
+   作为你的用户配置，所有项目可用」）：「这里面标题是14px，下面的描述都应该是12px，
+   标题后面（内容）也是12px」—— 标题 14/600 与标题后的 `（user）` 12/500 保持原值
+   （实测本来就是 12px），**描述**从正文档 14/22 收到辅助档 12/20（本文件其余次级
+   文案同档，如 `.settings-scope-option-project` 12px）。 */
 .settings-scope-option-desc {
   color: var(--vscode-descriptionForeground);
-  font-size: 14px;
-  line-height: 22px;
+  font-size: 12px;
+  line-height: 20px;
 }
 
 .settings-modal-actions {

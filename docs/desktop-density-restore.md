@@ -5402,3 +5402,65 @@ host 层两条 hover 覆盖都带 `:not(.is-active)`），与会话行「选中�
 - `CC02/走查/_tools/0921/compose-plugin-market-bg-0921.py`（像素采样表 + 对照图）。
 - 数据：`CC02/走查/0921-plugin-market-bg/{before,after}-desktop-full.json`；
   图：`0921插件市场整页-背景层-改前改后.png`（浅深 × 改前改后，含顶栏与内容区上沿）。
+
+## 0921 评论（作用域弹窗：描述应为 12px，标题 14px 与标题后的（内容）保持 12px）
+
+评论原文（点 `button.settings-scope-option.is-selected`「用户（user）作为你的用户配置，所有项目可用」）：
+「这里面标题是14px，下面的描述都应该是12px，标题后面（内容）也是12px」
+
+### ① 改前实测（`走查/_tools/0921/probe-scope-option-type-0921.mjs`，用例 `desktop-plugins`）
+
+| 元素                        | 改前                            | 改后                            |
+| --------------------------- | ------------------------------- | ------------------------------- |
+| 标题（`…-title`）           | 14px / 600                      | 14px / 600（未动）              |
+| 标题后的 `（user）`（`em`） | **12px / 500**（本来就是 12）   | 12px / 500（未动）              |
+| 描述（`…-desc`）            | **14px / 400 / 22px**（正文档） | **12px / 400 / 20px**（辅助档） |
+| 描述墨迹高（同口径）        | 15.5px                          | 13.5px                          |
+| 选中选项盒高                | 78px                            | 76px                            |
+
+根因：作用域弹窗的 `.settings-scope-option-desc` 是全文件唯一一处仍按正文档
+（14/22）写的说明文案 —— 同级说明（插件行 `.settings-plugin-desc`、锚点工程
+`.settings-scope-option-project`）都已是辅助档 12/20。
+
+### ② 改法（`SettingsPage.css` 单条规则：`color` 保留，只收字号行高）
+
+```css
+.settings-scope-option-desc {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px; /* 14px → 12px */
+  line-height: 20px; /* 22px → 20px */
+}
+```
+
+先按「就近新增一条规则」写过一版，实测未生效：文件里**已有**同名规则（`:1788`）且
+在新增那条之后，同权重后者胜 —— 故最终只改既有那一条，不新增重复声明。
+
+### ③ 改后实测
+
+- 描述 14/400/22 → **12/400/20**（浅深双档逐值相同）；标题 14/600、`（user）` 12/500
+  逐值不变；描述颜色不变（未选中 `descriptionForeground`、选中 `--cc-text-regular`，
+  对比度不受影响）。
+- 盒高随之变化（本次改动的连带结果）：选中选项 78 → **76px**、置灰选项 100.5 → 98.5px，
+  弹窗整体矮 6px；横向尺寸（选项盒宽 540）与左缘 450 不变。
+- 全轮 **0 `pageerror`**。
+- 作用域：`.settings-scope-option-desc` 是**共享**类（桌面端整页与 VSCE / JetBrains
+  设置页同一组件同一弹窗）→ 这次是 base 改动，**IDE 宿主的「安装 / 更换安装作用域」
+  弹窗同样生效**（同一档文案，未做宿主分叉）。设计师 0921 追问后确认「不用分宿主，
+  桌面端与 IDE 一起改」——即保持 base，不为这一条加 `[data-host="desktop"]` 限定。
+
+### ④ 残留 / 备用触发语（未授权）
+
+- 置灰选项里的原因说明 `.settings-scope-option-project`（「需先选择项目目录后才能选择
+  此作用域」）是 12px / 行高 normal（未动）—— 触发语：「那句说明的行高也统一 20px」。
+- 插件行的作用域胶囊 `.settings-scope-pill`（「用户 / 项目 / 本地」，14px/500、28px 高、
+  min-width 88、r8）本轮未动 —— 触发语：「插件行的作用域胶囊也收成 12px」。
+  （以上两条在 0921 的选项澄清里未被勾选。）
+
+### 验证脚本与证据
+
+- `CC02/走查/_tools/0921/probe-scope-option-type-0921.mjs`（用例 `desktop-plugins`：点行内
+  「安装」开弹窗 → 三个作用域选项的 title / em / desc / project 的 computed 字号·字重·
+  行高·颜色 + 墨迹盒，浅深双档）。
+- `CC02/走查/_tools/0921/compose-scope-option-type-0921.py`（按选项盒动态裁剪的对照图）。
+- 数据：`CC02/走查/0921-scope-option-type/{before,after}-desktop-plugins.json`；
+  图：`0921作用域弹窗-描述字号-改前改后.png`（浅深 × 改前改后）。
