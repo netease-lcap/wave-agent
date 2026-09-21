@@ -236,14 +236,20 @@ describe("InputBox Smoke Tests", () => {
       stdin.write("git");
       await vi.waitFor(() => expect(lastFrame()).toContain("git-commit"));
 
-      stdin.write("\r");
-      await vi.waitFor(() => {
+      // Executing the highlighted command takes two React passive-effect
+      // flushes — CommandSelector's decision effect (-> SELECT_COMMAND) and
+      // InputManager's pendingEffect (-> sendMessage) — and each is delivered
+      // as a scheduler macrotask. On a loaded runner the default 1s waitFor can
+      // expire before the second hop lands (in main's Windows job this very
+      // file took 18.1s against 2.9s locally), so retry the press until the
+      // command really executes instead of betting on one flush budget.
+      await pressKey(stdin, "\r", () =>
         expect(mockSendMessage).toHaveBeenCalledWith(
           "/git-commit",
           undefined,
           {},
-        );
-      });
+        ),
+      );
 
       expect(mockHasSlashCommand).toHaveBeenCalledWith("git-commit");
       await vi.waitFor(() => {
