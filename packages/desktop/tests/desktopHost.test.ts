@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { BrowserWindow } from "electron";
 import * as os from "os";
 import * as path from "path";
+import { createHash } from "crypto";
 import { BASH_TOOL_NAME } from "wave-agent-sdk/constants";
 import { fixtures, type HostToWebviewMessage } from "wave-webview-fixtures";
 
@@ -149,6 +150,7 @@ vi.mock("fs", () => ({
   mkdirSync: vi.fn(),
   existsSync: vi.fn((p: string) => h.existingPaths.has(p)),
   promises: {
+    mkdir: vi.fn(async () => undefined),
     writeFile: vi.fn(async (p: string, data: string | Buffer) => {
       h.files.set(p, data);
     }),
@@ -171,9 +173,10 @@ vi.mock("fs", () => ({
         err.code = "ENOENT";
         throw err;
       }
-      return { isDirectory: () => h.dirPaths.has(p) } as unknown as Awaited<
-        ReturnType<typeof import("fs").promises.stat>
-      >;
+      return {
+        isDirectory: () => h.dirPaths.has(p),
+        isFile: () => !h.dirPaths.has(p),
+      } as unknown as Awaited<ReturnType<typeof import("fs").promises.stat>>;
     }),
     open: vi.fn(async (p: string) => ({
       read: vi.fn(
@@ -402,6 +405,26 @@ vi.mock("../src/main/portForward", () => {
     forwardAuthCallback = vi.fn();
   }
   return { PortForwardManager: MockPortForwardManager };
+});
+
+// HtmlPreviewServer opens real loopback listeners — stub it here; the class
+// itself is covered by tests/htmlPreviewServer.test.ts. The shared call log
+// lets the message-flow tests assert acquire/release wiring.
+const htmlPreviewMock = vi.hoisted(() => ({
+  acquire: vi.fn(
+    async (_paneId: string, rootDir: string, servePath: string) =>
+      `http://127.0.0.1:45000/${servePath.split("/").pop()}`,
+  ),
+  release: vi.fn(),
+  dispose: vi.fn(),
+}));
+vi.mock("../src/main/htmlPreviewServer", () => {
+  class MockHtmlPreviewServer {
+    acquire = htmlPreviewMock.acquire;
+    release = htmlPreviewMock.release;
+    dispose = htmlPreviewMock.dispose;
+  }
+  return { HtmlPreviewServer: MockHtmlPreviewServer };
 });
 
 // remoteCli spawns real `ssh` processes — stub the probes, keep the exported
@@ -636,6 +659,9 @@ beforeEach(() => {
   h.agentCounter = 0;
   h.closedHandlers.length = 0;
   h.pendingPermissionRequests = [];
+  htmlPreviewMock.acquire.mockClear();
+  htmlPreviewMock.release.mockClear();
+  htmlPreviewMock.dispose.mockClear();
   vi.clearAllMocks();
   for (const key of Object.keys(auListeners)) delete auListeners[key];
   nativeTheme.__reset();
@@ -10430,6 +10456,220 @@ describe("file panel", () => {
         JSON.stringify(m).includes("打开文件失败: no app registered"),
       ),
     ).toBe(true);
+  });
+});
+
+// spec: docs/specs/desktop/desktop-preview.md「本地 HTML 文件预览」— the host
+// re-hosts a .html file on the (mocked) loopback server and replies with its
+// URL keyed by requestId; errors reply with `error` so the webview falls back
+// to the file panel (scenario 4). Remote sessions are content-level: bytes
+// land in a userData cache dir keyed by host + parent-dir hash, which becomes
+// the serve root (scenario 3).
+describe("html preview (desktopPreviewFile)", () => {
+  it("local file: serves the file's own directory and replies with the URL", async () => {
+    const { host, sent } = await readyHost();
+    h.files.set("/work/a/report.html", "<html>ok</html>");
+    h.existingPaths.add("/work/a/report.html");
+
+    await host.handleWebviewMessage({
+      command: "desktopPreviewFile",
+      path: "/work/a/report.html",
+      requestId: "req-1",
+    });
+
+    // The root is the file's parent dir (relative css/js/img resolve).
+    expect(htmlPreviewMock.acquire).toHaveBeenCalledWith(
+      "pane-1",
+      "/work/a",
+      "/work/a/report.html",
+      "/work/a/report.html",
+    );
+    expect(sent("desktopPreviewFileResult")).toEqual([
+      {
+        command: "desktopPreviewFileResult",
+        paneId: "pane-1",
+        requestId: "req-1",
+        url: "http://127.0.0.1:45000/report.html",
+      },
+    ]);
+  });
+
+  it("missing local file replies with an error (webview falls back)", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopPreviewFile",
+      path: "/work/a/nope.html",
+      requestId: "req-2",
+    });
+
+    expect(htmlPreviewMock.acquire).not.toHaveBeenCalled();
+    expect(sent("desktopPreviewFileResult")).toEqual([
+      {
+        command: "desktopPreviewFileResult",
+        paneId: "pane-1",
+        requestId: "req-2",
+        error: "文件不存在：/work/a/nope.html",
+      },
+    ]);
+  });
+
+  it("a directory path is not previewable (isFile gate)", async () => {
+    const { host, sent } = await readyHost();
+    h.existingPaths.add("/work/a/site");
+    h.dirPaths.add("/work/a/site");
+
+    await host.handleWebviewMessage({
+      command: "desktopPreviewFile",
+      path: "/work/a/site",
+      requestId: "req-dir",
+    });
+
+    expect(htmlPreviewMock.acquire).not.toHaveBeenCalled();
+    expect(sent("desktopPreviewFileResult").at(-1)).toMatchObject({
+      requestId: "req-dir",
+      error: "文件不存在：/work/a/site",
+    });
+  });
+
+  it("remote file: reads via ssh, caches under host+dir-hash, serves the cache dir", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+    vi.mocked(readRemoteFile).mockResolvedValueOnce({
+      type: "text",
+      mime: "text/html",
+      contentBase64: Buffer.from("<html>remote</html>").toString("base64"),
+      truncated: false,
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopPreviewFile",
+      path: "/remote/site/report.html",
+      requestId: "req-3",
+    });
+
+    expect(vi.mocked(readRemoteFile)).toHaveBeenCalledWith(
+      "prod",
+      "/remote/site/report.html",
+    );
+    // The bytes landed in the userData cache (content-level re-hosting);
+    // the dir segment is the sha1 of the remote parent directory.
+    const dirHash = createHash("sha1")
+      .update("/remote/site")
+      .digest("hex")
+      .slice(0, 10);
+    const cacheDir = `/tmp/wave-desktop-test-userData/html-preview-cache/prod/${dirHash}`;
+    expect(h.files.get(`${cacheDir}/report.html`)).toBe("<html>remote</html>");
+    // The release key stays the clicked path, not the cache path.
+    expect(htmlPreviewMock.acquire).toHaveBeenCalledWith(
+      "pane-1",
+      cacheDir,
+      `${cacheDir}/report.html`,
+      "/remote/site/report.html",
+    );
+    expect(sent("desktopPreviewFileResult").at(-1)).toMatchObject({
+      requestId: "req-3",
+      url: "http://127.0.0.1:45000/report.html",
+    });
+  });
+
+  it("remote same-basename files in different dirs use distinct cache dirs", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host } = createHost();
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+    vi.mocked(readRemoteFile).mockResolvedValue({
+      type: "text",
+      mime: "text/html",
+      contentBase64: Buffer.from("x").toString("base64"),
+      truncated: false,
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopPreviewFile",
+      path: "/remote/a/index.html",
+      requestId: "r1",
+    });
+    await host.handleWebviewMessage({
+      command: "desktopPreviewFile",
+      path: "/remote/b/index.html",
+      requestId: "r2",
+    });
+
+    const roots = htmlPreviewMock.acquire.mock.calls.map((c) => c[1]);
+    expect(roots[0]).not.toBe(roots[1]);
+  });
+
+  it("remote binary or oversized files reply with an error", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+    vi.mocked(readRemoteFile).mockResolvedValueOnce({
+      type: "image",
+      mime: "image/png",
+      imageBase64: "data:image/png;base64,aGVsbG8=",
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopPreviewFile",
+      path: "/remote/pic.png",
+      requestId: "req-4",
+    });
+
+    expect(htmlPreviewMock.acquire).not.toHaveBeenCalled();
+    expect(sent("desktopPreviewFileResult").at(-1)).toMatchObject({
+      requestId: "req-4",
+      error: "该文件不是可预览的 HTML 文本",
+    });
+
+    vi.mocked(readRemoteFile).mockResolvedValueOnce({
+      type: "text",
+      mime: "text/html",
+      contentBase64: Buffer.from("x").toString("base64"),
+      truncated: true,
+    });
+    await host.handleWebviewMessage({
+      command: "desktopPreviewFile",
+      path: "/remote/big.html",
+      requestId: "req-5",
+    });
+    expect(sent("desktopPreviewFileResult").at(-1)).toMatchObject({
+      requestId: "req-5",
+      error: "文件过大，无法预览",
+    });
+  });
+
+  it("desktopPreviewFileRelease forwards pane + path to the server", async () => {
+    const { host } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopPreviewFileRelease",
+      path: "/work/a/report.html",
+    });
+
+    expect(htmlPreviewMock.release).toHaveBeenCalledWith(
+      "pane-1",
+      "/work/a/report.html",
+    );
+  });
+
+  it("release without a path is ignored (no crash)", async () => {
+    const { host } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopPreviewFileRelease",
+    });
+
+    expect(htmlPreviewMock.release).not.toHaveBeenCalled();
   });
 });
 

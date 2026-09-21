@@ -623,6 +623,10 @@ export interface PanelTab {
   /** preview tab: the guest page's title (from the webview's
    *  page-title-updated event), shown on the tab like a regular browser tab. */
   previewTitle?: string;
+  /** preview tab: absolute local/remote path of a previewed .html file —
+   *  the identity for same-file tab dedup and the auto-reload match key
+   *  (spec desktop-preview.md「本地 HTML 文件预览」). Absent for URL tabs. */
+  previewFilePath?: string;
   /** file tab: the path being viewed (undefined = blank tab). */
   filePath?: string;
   /** file tab: lines to jump to (1-based), from read offset/limit. */

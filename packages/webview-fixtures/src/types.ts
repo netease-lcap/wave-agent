@@ -279,6 +279,18 @@ export interface DesktopFileContentMessage extends HostToWebviewMessageBase {
   fileView: FileViewState;
 }
 
+/** Reply to desktopPreviewFile — the loopback URL re-hosting the .html file
+ *  for the preview pane, or `error` when the file can't be previewed (the
+ *  webview then falls back to the file panel, spec desktop-preview.md
+ *  「本地 HTML 文件预览」 scenario 4). */
+export interface DesktopPreviewFileResultMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopPreviewFileResult";
+  requestId: string;
+  url?: string;
+  error?: string;
+}
+
 export interface UpdateQueueMessage extends HostToWebviewMessageBase {
   command: "updateQueue";
   queue: QueuedMessage[];
@@ -922,6 +934,7 @@ export type HostToWebviewMessage =
   | DesktopWorktreeCreatedMessage
   | DesktopForwardPortResultMessage
   | DesktopFileContentMessage
+  | DesktopPreviewFileResultMessage
   | UpdateQueueMessage
   | UpdateQueuedMessageMissingMessage
   | UpdateCommandRunningMessage
@@ -1023,6 +1036,9 @@ type ReplyAttribution = {
   btwError: "question";
   // 一次性查询：请求生成 id，回复原样带回（MessageInput requestIdRef 范例）。
   desktopForwardPortResult: "requestId";
+  // 本地 HTML 预览：请求生成 id，回复原样带回（webview 比对 requestId 弃旧
+  // 回复；失败回复触发文件面板回退）。
+  desktopPreviewFileResult: "requestId";
   desktopRemoteDirList: "requestId";
   // 删除确认：请求生成 id，回复原样带回（同一会话可反复开关对话框）。
   desktopWorktreeChanges: "requestId";
@@ -1071,6 +1087,7 @@ export const replyAttributionLocked = {
   btwResponse: true,
   btwError: true,
   desktopForwardPortResult: true,
+  desktopPreviewFileResult: true,
   desktopRemoteDirList: true,
   desktopWorktreeChanges: true,
   pluginMarketFolderSelected: true,

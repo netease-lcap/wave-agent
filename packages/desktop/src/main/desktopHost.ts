@@ -19,6 +19,7 @@ import {
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { createHash } from "crypto";
 import type {
   Message,
   Task,
@@ -84,6 +85,7 @@ import type { ChildProcess } from "child_process";
 import { getWorkspaceDiff } from "./gitDiff";
 import { TerminalManager } from "./terminal";
 import { PortForwardManager, type AuthCallbackForward } from "./portForward";
+import { HtmlPreviewServer } from "./htmlPreviewServer";
 import { AutoUpdaterService } from "./updateAutoUpdater";
 import { parseVersion, compareVersions } from "./version";
 import { HOST_CHANNEL } from "./channels";
@@ -398,6 +400,10 @@ export class DesktopHost {
   /** SSH tunnels serving remote preview URLs, refcounted per (host, remote port). */
   private portForwardManager = new PortForwardManager();
 
+  /** Loopback static server re-hosting local .html files for the preview pane
+   *  (spec: desktop-preview.md「本地 HTML 文件预览」); dies with its last tab. */
+  private htmlPreviewServer = new HtmlPreviewServer();
+
   /** One-shot SSO callback tunnels per host — closed when that host's login settles. */
   private pendingAuthTunnels = new Map<string, AuthCallbackForward>();
 
@@ -591,6 +597,7 @@ export class DesktopHost {
     powerMonitor.off("resume", this.onSystemResume);
     this.terminalManager.killAll();
     this.portForwardManager.dispose();
+    this.htmlPreviewServer.dispose();
     for (const t of this.paneThrottles.values()) {
       for (const timer of [
         t.streamingContentTimer,
@@ -4105,6 +4112,24 @@ export class DesktopHost {
         await this.handleFilePanelOpen(pid, msg.path as string);
         break;
 
+      // Local .html paths clicked in messages preview instead of opening as
+      // source (spec: desktop-preview.md「本地 HTML 文件预览」). Reply carries
+      // the loopback URL to load, or an error → the webview falls back to the
+      // file panel.
+      case "desktopPreviewFile":
+        await this.handlePreviewFile(
+          pid,
+          msg.path as string,
+          msg.requestId as string,
+        );
+        break;
+
+      case "desktopPreviewFileRelease":
+        if (typeof msg.path === "string") {
+          this.htmlPreviewServer.release(pid, msg.path);
+        }
+        break;
+
       // Local sessions only: leave the panel and open in the OS default app.
       case "desktopOpenFileExternal":
         await this.handleOpenPath(msg.path as string);
@@ -6327,6 +6352,86 @@ export class DesktopHost {
           host,
           error: error instanceof Error ? error.message : String(error),
         },
+      });
+    }
+  }
+
+  /**
+   * Re-host a .html file on the loopback preview server and reply with its
+   * URL (spec: desktop-preview.md「本地 HTML 文件预览」). Local sessions serve
+   * the file's real directory (relative css/js/img references resolve);
+   * remote sessions are content-level only — the fetched bytes land in a
+   * userData cache dir which becomes the serve root, so missing siblings
+   * degrade inside the page (scenario 3). Errors reply with `error` and the
+   * webview falls back to the file panel (scenario 4).
+   */
+  private async handlePreviewFile(
+    paneId: string,
+    filePath: string,
+    requestId: string,
+  ): Promise<void> {
+    const reply = (payload: { url?: string; error?: string }) =>
+      this.postMessage({
+        command: "desktopPreviewFileResult",
+        paneId,
+        requestId,
+        ...payload,
+      });
+    if (!filePath || !requestId) return;
+    const host = this.hostForPane(paneId);
+    try {
+      let rootDir: string;
+      let servePath: string;
+      if (host === LOCAL_HOST) {
+        const stat = await fs.promises.stat(filePath).catch(() => null);
+        if (!stat || !stat.isFile()) throw new Error(`文件不存在：${filePath}`);
+        rootDir = path.dirname(filePath);
+        servePath = filePath;
+      } else {
+        // Content-level: fetch the bytes once, cache them locally, serve that.
+        // The cache path is namespaced by the remote parent directory's hash —
+        // same-basename files in different remote dirs must not overwrite each
+        // other while both are being previewed.
+        const result = await readRemoteFile(host, filePath);
+        if (result.type === "binary" || result.type === "image") {
+          throw new Error("该文件不是可预览的 HTML 文本");
+        }
+        const content = Buffer.from(
+          result.contentBase64 ?? "",
+          "base64",
+        ).toString("utf8");
+        if (result.truncated) {
+          throw new Error("文件过大，无法预览");
+        }
+        const dirHash = createHash("sha1")
+          .update(path.dirname(filePath))
+          .digest("hex")
+          .slice(0, 10);
+        const cacheDir = path.join(
+          app.getPath("userData"),
+          "html-preview-cache",
+          host.replace(/[^A-Za-z0-9._-]+/g, "_"),
+          dirHash,
+        );
+        const fileName = path.basename(filePath) || "index.html";
+        await fs.promises.mkdir(cacheDir, { recursive: true });
+        servePath = path.join(cacheDir, fileName);
+        await fs.promises.writeFile(servePath, content, "utf8");
+        rootDir = cacheDir;
+      }
+      // requestPath (the clicked path) is the release key, not the local
+      // servePath — a remote fetch re-homes the bytes, but release comes back
+      // with the path the webview tab remembers.
+      const url = await this.htmlPreviewServer.acquire(
+        paneId,
+        rootDir,
+        servePath,
+        filePath,
+      );
+      reply({ url });
+    } catch (error) {
+      reply({
+        error: error instanceof Error ? error.message : String(error),
       });
     }
   }
