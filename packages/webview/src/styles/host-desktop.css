@@ -1452,6 +1452,17 @@
   margin: 12px 0 4px;
 }
 
+/* 设计师 0921 评论：「插件市场距离新对话 2px」。上一条 margin 是两个固定入口
+   共用的（新对话行下边距 4 + 插件市场行上边距 12），实得行距 16px；会话树同款
+   行距是 2px（DesktopApp.css `.desktop-session-items` gap:2px）→ 插件市场入口用
+   -2px 抵消自己的 12px 上边距，落到 2px。只改这两个入口之间的关系：新对话行到
+   品牌行的 12px、插件市场行到会话树的 4px 均不变（行高 30 / r8 也不动）。 */
+[data-host="desktop"]
+  .desktop-sidebar-new-chat-tooltip
+  + .desktop-sidebar-new-chat {
+  margin-top: -2px;
+}
+
 /* 账户区分隔线：Figma Sidebar 底部分隔 #EBEEF5（codechat --cc-border-lighter），
    base 用 panel-border #e4e7ed 偏深；深色保持中性 */
 [data-host="desktop"][data-theme="light"] .account-card {
@@ -2609,9 +2620,28 @@
 }
 
 /* ② 字重：sticky 内容 400（继承默认）→ 500，与普通用户气泡 14px/500 一致
-   （悬浮前后文字粗细保持不变）。字号 14px 已一致。 */
+   （悬浮前后文字粗细保持不变）。字号 14px 已一致。
+   ④ 行高（0918 追加授权「悬浮态行高也统一成 22px」）：base 继承 line-height
+   normal（≈19.6px），普通气泡是 22px → 首行墨迹上内衬差 2.5px、三行时卡片高差 7px。
+   对齐 22px 后墨迹内衬与未悬浮气泡逐值相同（L12 / T10.5），卡片 76 → 82px。 */
 [data-host="desktop"] .sticky-user-content {
   font-weight: 500;
+  line-height: 22px;
+}
+
+/* ③ 内边距：base `.sticky-user-message` padding 6px 10px，普通用户气泡是桌面档
+   `.user-text-block{padding:0}` + 内层 `.message-content.user-content{padding:8px 12px}`
+   → 同一句话「贴顶悬浮」时文字左内衬从 12px 掉到 10px（上内衬 10.5 → 7.5px），
+   一浮起来文字就往里跳（左 2px / 上 3px）。设计师 0918 评论「这里悬浮起来以后
+   内边距也发生了变化，希望不要变」→ 悬浮态 padding 对齐普通气泡的 8px 12px。
+   实测：文字墨迹内衬 左 10→12、上 7.5→10.5（= padding 8 + 半行距 2.5），
+   与未悬浮气泡逐值相同；卡片 552.5×72 → 552.5×82（含 ④ 行高 +6px）。
+   ⑤ 圆角（0918 追加授权「悬浮态圆角也用 8px」）：base 6px → 与未悬浮气泡
+   `.user-text-block` 同取 `--cc-radius-md`（8px）。
+   只改 CSS，`.sticky-user-message` 上的 onClick（点击滚回该条消息）不动。 */
+[data-host="desktop"] .sticky-user-message {
+  padding: 8px 12px;
+  border-radius: var(--cc-radius-md, 8px);
 }
 
 /* ═══ 第三十八轮：设置界面图标对齐 Figma 13383:4078 图标规范 ═══
@@ -2721,8 +2751,10 @@
 
 /* 桌面端其余控件图标统一 #565A60（同一图标规范；base 各按钮继承
    vscode-foreground，light 下 #202020 深黑偏重）。保留：
-   - `.desktop-sidebar-more-btn.is-active` / `.desktop-sidebar-new-chat.is-active`
-     品牌红 #C1292E（规范「活动器」；插件市场入口复用同一 .is-active 行制）
+   - `.desktop-sidebar-more-btn.is-active` 品牌红 #C1292E（规范「活动器」）
+   - 插件市场入口 `.desktop-sidebar-new-chat.is-active` 自 0921 起**不走灰清单**：
+     设计师要求「hover 和选中时图标都提亮」，选中态改由下一条规则给
+     hover 家族同档的提亮色（不再是品牌红）
    - workdir-trigger / session-group-header 只覆盖内部 codicon 图标，
      触发按钮文字色不动 */
 [data-host="desktop"] .desktop-sidebar-more-btn:not(.is-active),
@@ -2752,6 +2784,18 @@
 [data-host="desktop"][data-theme="dark"] .desktop-session-group-header .codicon,
 [data-host="desktop"][data-theme="dark"] .desktop-workdir-trigger .codicon {
   color: #9a9ea5;
+}
+
+/* 设计师 0921 评论追加（点侧栏「插件市场」入口）：「hover和选中时图标都提亮」
+   —— 该入口选中态的图标与 hover 采用**同一档提亮色**（即下方第三十九轮 hover
+   提亮家族给 `.desktop-sidebar-new-chat` 的两个值：浅 #1F2329 / 深 #FFFFFF），
+   而不是原先的品牌红。底仍是会话行同款选中灰（DesktopApp.css `.is-active`），
+   文字仍由下面 `.desktop-sidebar-new-chat span` 定为 1 级。 */
+[data-host="desktop"] .desktop-sidebar-new-chat.is-active {
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-sidebar-new-chat.is-active {
+  color: #ffffff;
 }
 
 /* 设计师 0916 评论（点侧栏 `span`「新对话」）「这里的字体颜色深浅模式都用 1 级的」：
@@ -3613,5 +3657,86 @@
 [data-host="desktop"][data-theme="dark"]
   .desktop-sidebar-more-btn:not(.is-active):hover {
   background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* ── 设置页下拉：桌面端自绘弹层（SettingsSelect.tsx）────────────────────────
+   设计师 0921 评论（点 `select.settings-select`）：「这种类型的选择器点击后的下拉列表
+   应该出现在选择器下方 2px 的位置，右对齐，下拉列表的宽度和选择器尽量保持一致」。
+   原生 `<select>` 的弹层由系统/Chromium 绘制，位置与尺寸都无法由 CSS 控制，故桌面端
+   换成自绘 listbox（IDE 宿主保留原生 select，见该组件的宿主分叉）。
+
+   几何三则由组件给（`position: fixed` + 触发器 rect 内联样式，卡片
+   `.settings-card{overflow:hidden}` 会裁掉 absolute 弹层）：
+   `top = 触发器下缘 + 2`、`right = 视口右 − 触发器右缘`、`width = 触发器宽`。
+
+   观感取本文件弹层家族同一组值（浅色 白面/#EBEEF5 边/r12/`0 0 12px 12%` 柔影、
+   项 28px/r6/14px/400 + hover #EEF0F3、选中走 pressed #E7E9ED；深色
+   `--cc-bg-overlay`/12% 白边/40% 黑柔影、项 #9A9EA5 + hover 8% 白、选中 12% 白），
+   同族弹层：`.more-menu` / `.desktop-session-menu` / `.desktop-workdir-menu` /
+   `.permission-mode-menu`。 */
+[data-host="desktop"] .settings-select-menu {
+  position: fixed;
+  z-index: 10000;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid #ebeef5;
+  border-radius: 12px;
+  box-shadow: 0 0 12px rgb(0 0 0 / 12%);
+  color: #565a60;
+}
+
+[data-host="desktop"] .settings-select-option {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 400;
+  color: #565a60;
+  cursor: pointer;
+}
+
+[data-host="desktop"] .settings-select-option:hover {
+  background: #eef0f3;
+  color: #1f2329;
+}
+
+[data-host="desktop"] .settings-select-option.is-selected,
+[data-host="desktop"] .settings-select-option.is-selected:hover {
+  background: #e7e9ed;
+  color: #1f2329;
+}
+
+/* 键盘焦点：roving tabindex 会把真实焦点放到选项上（鼠标点击不亮）。
+   环内收 2px，避免被弹层圆角切掉一角。 */
+[data-host="desktop"] .settings-select-option:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #a0a5a8);
+  outline-offset: -2px;
+}
+
+[data-host="desktop"][data-theme="dark"] .settings-select-menu {
+  background: var(--cc-bg-overlay);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 12px rgb(0 0 0 / 40%);
+  color: #9a9ea5;
+}
+
+[data-host="desktop"][data-theme="dark"] .settings-select-option {
+  color: #9a9ea5;
+}
+
+[data-host="desktop"][data-theme="dark"] .settings-select-option:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+[data-host="desktop"][data-theme="dark"] .settings-select-option.is-selected,
+[data-host="desktop"][data-theme="dark"]
+  .settings-select-option.is-selected:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
 }
 
