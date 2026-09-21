@@ -15,7 +15,6 @@ import {
   detectFilePathToken,
   escapeHtml,
   fileLinkHtml,
-  linkifyCodeBlockPaths,
   linkifyFilePathText,
   resolveFilePathMatch,
   stripFilePathLinks,
@@ -400,15 +399,18 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
     infostring: string | undefined,
     escaped: boolean,
   ) => {
-    // 围栏代码块通道（specs/ui/file-path-links.md）：代码块内的路径同样可点击，
-    // 按行内代码通道规则逐 token 识别（引号/标点留在链接外）。包装与 marked 9
-    // 默认实现逐字节一致（语言类名 + 去尾换行后补一个换行），只替换 <code> 正文；
-    // escaped=true 表示正文已是 HTML 原文（当前 marked 不会置位），保持默认实现。
+    // 围栏代码块通道（specs/ui/markdown-links.md「围栏代码块中的 URL 可点击」/
+    // specs/ui/file-path-links.md）：代码块内的裸 http(s) URL 与文件路径都可点击，
+    // 复用 bash 输出通道的链接化函数——按空白分词，逐 token 切出 URL 后，token 内
+    // 其余片段再按路径规则识别（引号/标点留在链接外），两类互不吞并。包装与
+    // marked 9 默认实现逐字节一致（语言类名 + 去尾换行后补一个换行），只替换
+    // <code> 正文；escaped=true 表示正文已是 HTML 原文（当前 marked 不会置位），
+    // 保持默认实现。
     const html = escaped
       ? defaultCode.call(renderer, code, infostring, true)
       : (() => {
           const lang = (infostring || "").match(/^\S*/)?.[0];
-          const body = linkifyCodeBlockPaths(
+          const body = linkifyPlainText(
             code.replace(/\n$/, "") + "\n",
             workdir,
           );
