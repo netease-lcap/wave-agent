@@ -26,6 +26,18 @@ class FakeSheet {
 }
 vi.stubGlobal("CSSStyleSheet", FakeSheet);
 
+/**
+ * jsdom has no hit testing (`document.elementFromPoint` is missing), so tests
+ * register what each point resolves to. Only the coordinate matters, never the
+ * element the events are dispatched on.
+ */
+const hits = new Map<string, Element>();
+(
+  document as unknown as {
+    elementFromPoint: (x: number, y: number) => Element | null;
+  }
+).elementFromPoint = (x, y) => hits.get(`${x},${y}`) ?? null;
+
 import "../src/main/pickerPreload";
 
 // ipcRenderer.on('wave-picker', handler) was registered at import time.
@@ -47,16 +59,54 @@ function shadowRoot(): ShadowRoot {
 
 const mouseOver = (el: Element) =>
   el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-const click = (el: Element) =>
+
+const POINT = { x: 40, y: 40 };
+
+type PressOptions = {
+  /** Point the press lands on. Defaults to POINT. */
+  at?: { x: number; y: number };
+  /** Point the release lands on. Defaults to `at` (a click-like press). */
+  releaseAt?: { x: number; y: number };
+  /** What hit-testing resolves at the release point; `null` = nothing there.
+      Defaults to the element the events are dispatched on. */
+  hit?: Element | null;
+  button?: number;
+};
+
+/**
+ * A pointer press+release pair — the picker's pick trigger. Deliberately NOT
+ * `click`: for a disabled form control the engine queues no click at all (the
+ * whole mousedown/mouseup/click sequence is dropped; only mouseover and the
+ * pointer events arrive), which is why picking a greyed-out element was dead.
+ */
+function press(el: Element, opts: PressOptions = {}) {
+  const at = opts.at ?? POINT;
+  const releaseAt = opts.releaseAt ?? at;
+  const hit = opts.hit === undefined ? el : opts.hit;
+  if (hit) hits.set(`${releaseAt.x},${releaseAt.y}`, hit);
+  const init = { bubbles: true, button: opts.button ?? 0, cancelable: true };
   el.dispatchEvent(
-    new MouseEvent("click", { bubbles: true, cancelable: true }),
+    new MouseEvent("pointerdown", {
+      ...init,
+      clientX: at.x,
+      clientY: at.y,
+    }),
   );
+  el.dispatchEvent(
+    new MouseEvent("pointerup", {
+      ...init,
+      clientX: releaseAt.x,
+      clientY: releaseAt.y,
+    }),
+  );
+}
 
 beforeEach(() => {
   // Reset module state + DOM; keep sendToHost trace so the ready call stays
   // observable for the handshake test.
   deactivate();
   document.body.innerHTML = "";
+  hits.clear();
   (
     document as unknown as { adoptedStyleSheets: unknown[] }
   ).adoptedStyleSheets = [];
@@ -105,10 +155,10 @@ describe("pickerPreload", () => {
     expect(container.classList.contains("__wave-picker-highlight")).toBe(true);
   });
 
-  it("click selects the element and shows the floating comment card", () => {
+  it("press selects the element and shows the floating comment card", () => {
     const { button } = renderPage();
     activate();
-    click(button);
+    press(button);
 
     expect(button.classList.contains("__wave-picker-highlight")).toBe(true);
     const root = shadowRoot();
@@ -122,6 +172,54 @@ describe("pickerPreload", () => {
     expect(send.disabled).toBe(true);
     expect(send.title).toBe("添加到输入框");
     expect(send.textContent).toBe("添加");
+  });
+
+  it("picks a disabled control, which gets no click event at all", () => {
+    // Blink drops the whole mousedown/mouseup/click sequence when the press
+    // lands on a disabled form control or one of its descendants — only
+    // mouseover/pointerdown/pointerup arrive. Picking a greyed-out element used
+    // to be impossible: the click-driven pick never ran.
+    document.body.innerHTML =
+      '<div id="app"><button class="scope" disabled><span class="label">项目共享（project）</span></button></div>';
+    const label = document.querySelector("span.label") as Element;
+    activate();
+
+    press(label);
+    // No click follows the release; the pick must already have happened.
+    expect(label.classList.contains("__wave-picker-highlight")).toBe(true);
+    expect(shadowRoot().querySelector(".tag")?.textContent).toBe("span");
+  });
+
+  it("resolves the pick from the pointer coordinates, not the event target", () => {
+    // A page can retarget the pointer events (setPointerCapture) — measured in
+    // Chromium: pointerup/mouseup/click then report the capturing ancestor,
+    // while elementFromPoint still resolves the element under the cursor.
+    const { button, container } = renderPage();
+    activate();
+
+    press(container, { hit: button });
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(true);
+    expect(container.classList.contains("__wave-picker-highlight")).toBe(false);
+    expect(shadowRoot().querySelector(".tag")?.textContent).toBe("button");
+  });
+
+  it("does not pick when the pointer moved between press and release", () => {
+    const { button } = renderPage();
+    activate();
+
+    // A drag (text selection, slider, scrollbar) is not a pick.
+    press(button, { at: { x: 40, y: 40 }, releaseAt: { x: 90, y: 40 } });
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(false);
+    expect(document.body.lastElementChild?.shadowRoot ?? null).toBeNull();
+  });
+
+  it("ignores non-primary buttons", () => {
+    const { button } = renderPage();
+    activate();
+
+    press(button, { button: 2 });
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(false);
+    expect(document.body.lastElementChild?.shadowRoot ?? null).toBeNull();
   });
 
   it("intercepts page clicks and form submits while active", () => {
@@ -155,7 +253,7 @@ describe("pickerPreload", () => {
   it("Enter submits a structured comment and returns to hover-pick state", () => {
     const { button, container } = renderPage();
     activate({ accent: "#ff0000" });
-    click(button);
+    press(button);
 
     const root = shadowRoot();
     const textarea = root.querySelector("textarea") as HTMLTextAreaElement;
@@ -183,7 +281,7 @@ describe("pickerPreload", () => {
     // second element can be selected for another comment.
     mouseOver(container);
     expect(container.classList.contains("__wave-picker-highlight")).toBe(true);
-    click(container);
+    press(container);
     expect(shadowRoot().querySelector(".tag")?.textContent).toBe("div");
   });
 
@@ -194,7 +292,7 @@ describe("pickerPreload", () => {
     ipcRenderer.sendToHost.mockClear();
     const { button } = renderPage();
     activate({ accent: "#ff0000" });
-    click(button);
+    press(button);
 
     const root = shadowRoot();
     const textarea = root.querySelector("textarea") as HTMLTextAreaElement;
@@ -221,7 +319,7 @@ describe("pickerPreload", () => {
   it("send button is an equivalent submit entry once text is present", () => {
     const { button } = renderPage();
     activate();
-    click(button);
+    press(button);
 
     const root = shadowRoot();
     const textarea = root.querySelector("textarea") as HTMLTextAreaElement;
@@ -237,30 +335,32 @@ describe("pickerPreload", () => {
     );
   });
 
-  it("clicking outside the card cancels the current selection", () => {
+  it("pressing outside the card cancels the current selection", () => {
     const { button, container } = renderPage();
     activate();
-    click(button);
+    press(button);
     expect(shadowRoot()).toBeTruthy();
 
-    click(container); // outside the card → cancel, NOT reselect
+    press(container); // outside the card → cancel, NOT reselect
     expect(button.classList.contains("__wave-picker-highlight")).toBe(false);
     expect(container.classList.contains("__wave-picker-highlight")).toBe(false);
     expect(document.body.lastElementChild?.shadowRoot ?? null).toBeNull();
 
-    click(container); // next click selects
+    press(container); // next press selects
     expect(container.classList.contains("__wave-picker-highlight")).toBe(true);
     expect(shadowRoot().querySelector(".tag")?.textContent).toBe("div");
   });
 
-  it("clicks inside the card do not cancel or propagate", () => {
+  it("never picks the card itself", () => {
     const { button } = renderPage();
     activate();
-    click(button);
+    press(button);
     const textarea = shadowRoot().querySelector(
       "textarea",
     ) as HTMLTextAreaElement;
 
+    // Clicks inside the card must not be swallowed either way: the card's own
+    // textarea/"添加" button keep working.
     const innerClick = new MouseEvent("click", {
       bubbles: true,
       cancelable: true,
@@ -268,12 +368,19 @@ describe("pickerPreload", () => {
     textarea.dispatchEvent(innerClick);
     expect(innerClick.defaultPrevented).toBe(false);
     expect(button.classList.contains("__wave-picker-highlight")).toBe(true);
+
+    // Hit-testing over the card resolves the card's host element (a shadow
+    // boundary is not crossed by hit tests), so it is never picked — and it
+    // does not cancel the current selection either.
+    press(textarea, { hit: document.body.lastElementChild });
+    expect(button.classList.contains("__wave-picker-highlight")).toBe(true);
+    expect(textarea.classList.contains("__wave-picker-highlight")).toBe(false);
   });
 
   it("deactivate removes all picker artifacts", () => {
     const { button } = renderPage();
     activate();
-    click(button);
+    press(button);
     deactivate();
 
     expect(button.classList.contains("__wave-picker-highlight")).toBe(false);
