@@ -5338,3 +5338,67 @@ host 层两条 hover 覆盖都带 `:not(.is-active)`），与会话行「选中�
   未选中 / 选中 / 选中+hover，另测未选中 hover 两入口，浅深双档）。
 - 数据：`CC02/走查/0921-plugin-entry/{before,after}-desktop-full.json`；
   图：`0921侧栏插件市场入口-改前改后.png`（浅深 × 未选中/选中 × 改前/改后 八格对照）。
+
+## 0921 评论（插件市场整页内容区多画了一层底色）
+
+评论原文（点 `div.plugin-market-content`，文案「插件市场浏览并安装插件市场的插件，扩展 Wave 的能力。w…」）：
+「这里多了一层背景色，可以拿掉」。
+
+### ① 实测：深色档下顶栏下方有一条横向色阶（浅色档看不出来）
+
+| 采样点（DPR2 全页截图取像素）     | 浅色 改前 | 浅色 改后 | 深色 改前     | 深色 改后     |
+| --------------------------------- | --------- | --------- | ------------- | ------------- |
+| 内容区（CSS 700,300）/（700,700） | `#FFFFFF` | `#FFFFFF` | **`#111314`** | **`#181A1B`** |
+| 左内衬 16px（268,300）            | `#FFFFFF` | `#FFFFFF` | `#181A1B`     | `#181A1B`     |
+| 底内衬 16px（700,992）            | `#FFFFFF` | `#FFFFFF` | `#181A1B`     | `#181A1B`     |
+
+沿 x=1200 扫列（y 0..140）：改前深色在顶栏 1px 边（`#34393C`）之下由 `#0D0F10` 渐变落进
+`#111314`（内容面），改后同一渐变落进 `#181A1B`（根面）——**断线消失**。
+
+根因：`.plugin-market-page` 根面画 `--vscode-editor-background`（桌面深色档 = `--cc-bg-inspector`
+`#181A1B`），而 `.plugin-market-content` 又画 `--vscode-panel-background`（= `--cc-bg-conversation`
+`#111314`，对话画布）→ 顶栏之下、左右 16px 内衬与底边都露出「整页里套一层」的色阶。
+浅色档两者同为 `#ffffff`，故只在深色可见。同族整页（会话状态看板 `.session-board`）本就是
+单一根面，没有第二层。
+
+### ② 改法（`PluginMarketPage.css`，只删自己那一层 + 跟着改渐隐色变量）
+
+```css
+.plugin-market-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  /* 不画底色：用根面 --vscode-editor-background 透过 */
+  --cc-tabs-fade-bg: var(--vscode-editor-background, #ffffff);
+}
+```
+
+删掉 `background: var(--vscode-panel-background);`；市场切换条两端渐隐的底色
+（spec ecosystem/plugin 场景 5）跟着改成根面同值 —— 本区已不画底色，渐隐色必须取身后
+真实背景，否则渐隐会再次显出色差。根面本身（`--vscode-editor-background`）未动。
+
+### ③ 改后实测
+
+- 深色：内容区与左/底内衬、根面**同值 `#181A1B`**，整页只剩一条面（与 `.session-board` 整页一致）；
+  浅色逐像素与改前一致（都是白）。
+- `--cc-tabs-fade-bg` 计算值 = 根面（深 `#181a1b` / 浅 `#ffffff`）✓。
+- 布局零改动：内容区 rect `[276,44,1148,940]`、`.settings-view` `[470,44,760,352]` 与改前逐值相同；
+  全轮 **0 `pageerror`**。
+- 作用域：`PluginMarketPage` 只在 `ChatApp` 的 `isDesktop` 分支渲染（VSCE / JB 的插件市场在
+  设置页里、由 `.settings-page` 给底色）→ 非桌面宿主无路径可达。
+
+### ④ 残留 / 备用触发语（未授权）
+
+- 顶栏（看板壳类 `.session-board-toolbar`）下方仍有 1px 边 + 一层阴影渐变（改前改后都在，
+  只是现在落进根面）—— 触发语：「顶栏下面那条分隔线/阴影也拿掉」。
+- 若希望整页改成对话画布色（`#111314`）而不是根面 `#181A1B`，改 `.plugin-market-page`
+  根面的 `--vscode-editor-background` 即可 —— 触发语：「插件市场整页底色用对话画布」。
+
+### 验证脚本与证据
+
+- `CC02/走查/_tools/0921/probe-plugin-market-bg-0921.mjs`（内容区 / 根面 / `.settings-view` /
+  空态 / 祖先链的 computed 背景与变量，浅深双档；采样点归属另用 `elementFromPoint` 核实 ——
+  CSS(700,12~46) 是 mock 的浮层 toast，勿当背景采样）。
+- `CC02/走查/_tools/0921/compose-plugin-market-bg-0921.py`（像素采样表 + 对照图）。
+- 数据：`CC02/走查/0921-plugin-market-bg/{before,after}-desktop-full.json`；
+  图：`0921插件市场整页-背景层-改前改后.png`（浅深 × 改前改后，含顶栏与内容区上沿）。

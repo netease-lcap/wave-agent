@@ -21,13 +21,18 @@
   color: var(--vscode-foreground, #1f2329);
 }
 
-/* 内容区：设置页那一列（.settings-view 自带 760px 居中与内边距）的滚动容器 */
+/* 内容区：设置页那一列（.settings-view 自带 760px 居中与内边距）的滚动容器。
+   **不画自己的底色**（设计师 0921 评论：「这里多了一层背景色，可以拿掉」）：
+   此前本区画 --vscode-panel-background（对话画布），根面画
+   --vscode-editor-background —— 深色档两者不同（#111314 vs #181A1B），于是顶栏
+   之下、左右 16px 内衬与底边都出现一条横向/环形色阶，看着像「整页里套了一层」；
+   同族整页（会话状态看板 `.session-board`）本来就是单一根面，去掉后两者一致。 */
 .plugin-market-content {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  background: var(--vscode-panel-background);
   /* 市场切换条两端渐隐的底色（spec ecosystem/plugin 场景 5）：本区是整页形态下
-     切换条身后的背景，故由它给出渐隐色；设置页形态由 .settings-page 给出。 */
-  --cc-tabs-fade-bg: var(--vscode-panel-background);
+     切换条身后的背景，故由它给出渐隐色 —— 本区已不画底色，取根面同值（浅色档
+     与根面一样回落 #ffffff）；设置页形态由 .settings-page 给出。 */
+  --cc-tabs-fade-bg: var(--vscode-editor-background, #ffffff);
 }
