@@ -645,12 +645,50 @@ export interface LogoutResponseMessage extends HostToWebviewMessageBase {
   success: boolean;
 }
 
-/** 套餐用量 (codechat `GET /api/v1/account` → `plan`). */
-export interface AccountPlanInfo {
-  monthlyQuota: number;
-  months: number;
-  used: number;
+/**
+ * 套餐两根额度条的四个数 + 到期日（codechat `GET /api/v1/account` → `billing.plan`）。
+ * 窗口口径与计费闸口同源：滚动月跟套餐开通日、自然周为周一，下界再与开通时刻取较晚——
+ * 这些都在服务端算好，客户端只渲染。限额三态：`null` = 不限制（不画条）、
+ * `0` = 该维度不可用（不画条）、正数 = 限额。
+ */
+export interface AccountBillingPlanUsage {
+  monthUsed: number;
+  /** 滚动月限额；null = 不限制（不画条），0 = 该维度不可用. */
+  monthLimit: number | null;
+  weekUsed: number;
+  /** 自然周限额；null = 不限制（不画条），0 = 该维度不可用. */
+  weekLimit: number | null;
+  /** 套餐到期日（YYYY-MM-DD）. */
+  expireDate: string;
 }
+
+/** 计费降级原因（codechat `BillingDegradeReason`）：客户端据此选结论行文案. */
+export type AccountBillingDegradeReason =
+  | "month"
+  | "week"
+  | "enterprise"
+  | "no_plan"
+  | "dimension_unavailable";
+
+/** 计费阻断码（codechat `BillingCode`）：客户端按 code 复用 proxy 402 的同一句文案. */
+export type AccountBillingCode =
+  | "EXPIRED_NO_API"
+  | "USER_QUOTA_ZERO"
+  | "TEAM_QUOTA_ZERO";
+
+/**
+ * 计费结论（codechat 形态甲：闸口镜像）。判定由后端 `getBillingVerdict` 下发——与 proxy
+ * 扣费**同一份代码**；客户端只渲染、**不自行判断「走套餐还是走 API」**。`plan` 子对象：
+ * 有生效套餐 = 四数 + 到期日；无生效套餐但有已到期订单 = 仅 `{ expireDate }`；从未购买 = null。
+ */
+export type AccountBillingInfo =
+  | { mode: "plan"; plan: AccountBillingPlanUsage }
+  | {
+      mode: "api";
+      reason: AccountBillingDegradeReason;
+      plan: AccountBillingPlanUsage | { expireDate: string } | null;
+    }
+  | { mode: "blocked"; code: AccountBillingCode };
 
 /** API 额度 (codechat `GET /api/v1/account` → `apiQuota`). */
 export interface AccountApiQuotaInfo {
@@ -682,7 +720,8 @@ export interface DesktopAccountInfoMessage extends HostToWebviewMessageBase {
   command: "desktopAccountInfo";
   isAuthenticated: boolean;
   user?: { id: string; email?: string } | null;
-  plan?: AccountPlanInfo | null;
+  /** 套餐两根额度条 + 到期日 + 计费结论；null = 无（未购买/未登录）。 */
+  billing?: AccountBillingInfo | null;
   apiQuota?: AccountApiQuotaInfo | null;
   /** 应用更新状态（S0–S6 按钮状态机输入）；未下发/available=false = 无更新。 */
   update?: AccountUpdateInfo | null;

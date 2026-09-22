@@ -378,7 +378,7 @@ export const fixtures: Fixtures = {
     command: "desktopAccountInfo",
     isAuthenticated: true,
     user: { id: "user-1", email: "alice@example.com" },
-    plan: null,
+    billing: null,
     apiQuota: null,
     update: undefined,
     ...overrides,

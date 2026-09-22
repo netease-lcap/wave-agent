@@ -3101,10 +3101,25 @@ describe("periodic update polling", () => {
 });
 
 describe("account card (desktopAccountInfo)", () => {
+  /**
+   * 生效套餐（计费结论形态甲，codechat `GET /api/v1/account` → `billing`）：本月不
+   * 限额、本周 1 分，2027-03-01 到期 —— 只用于断言宿主原样透传，不做卡片侧解读。
+   */
+  const planBilling = {
+    mode: "plan",
+    plan: {
+      monthUsed: 0,
+      monthLimit: null,
+      weekUsed: 1,
+      weekLimit: 100,
+      expireDate: "2027-03-01",
+    },
+  };
+
   /** getAuthStatus/getAccountInfo/login return rich payloads (email + usage). */
   function stubAccountRpc(
     user: { id: string; email: string },
-    account: { plan: unknown; apiQuota: unknown },
+    account: { billing: unknown; apiQuota: unknown },
     authenticated: boolean,
   ): () => void {
     const orig = h.handleClientRequest;
@@ -3141,7 +3156,7 @@ describe("account card (desktopAccountInfo)", () => {
     const restore = stubAccountRpc(
       { id: "u1", email: "alice@example.com" },
       {
-        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        billing: planBilling,
         apiQuota: { limit: null, used: 1.15314 },
       },
       true,
@@ -3153,7 +3168,7 @@ describe("account card (desktopAccountInfo)", () => {
       expect(card).toMatchObject({
         isAuthenticated: true,
         user: { id: "u1", email: "alice@example.com" },
-        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        billing: planBilling,
         apiQuota: { limit: null, used: 1.15314 },
       });
     });
@@ -3164,7 +3179,7 @@ describe("account card (desktopAccountInfo)", () => {
     const restoreStub = stubAccountRpc(
       { id: "u1", email: "alice@example.com" },
       {
-        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        billing: planBilling,
         apiQuota: { limit: null, used: 1 },
       },
       true,
@@ -3172,7 +3187,7 @@ describe("account card (desktopAccountInfo)", () => {
     const { host, sent } = await readyHost();
     await vi.waitFor(() => {
       expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
-        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        billing: planBilling,
       });
     });
 
@@ -3191,7 +3206,7 @@ describe("account card (desktopAccountInfo)", () => {
       const card = sent("desktopAccountInfo").at(-1);
       expect(card).toMatchObject({
         isAuthenticated: true,
-        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        billing: planBilling,
         apiQuota: { limit: null, used: 1 },
       });
     });
@@ -3202,7 +3217,7 @@ describe("account card (desktopAccountInfo)", () => {
     const restore = stubAccountRpc(
       { id: "u1", email: "carol@example.com" },
       {
-        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        billing: planBilling,
         apiQuota: { limit: null, used: 0 },
       },
       false,
@@ -3216,7 +3231,7 @@ describe("account card (desktopAccountInfo)", () => {
       expect(card).toMatchObject({
         isAuthenticated: true,
         user: { id: "u1", email: "carol@example.com" },
-        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        billing: planBilling,
       });
     });
     restore();
@@ -3226,7 +3241,7 @@ describe("account card (desktopAccountInfo)", () => {
     const restore = stubAccountRpc(
       { id: "u1", email: "bob@example.com" },
       {
-        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        billing: planBilling,
         apiQuota: { limit: null, used: 0 },
       },
       true,
@@ -3245,7 +3260,7 @@ describe("account card (desktopAccountInfo)", () => {
       expect(card).toMatchObject({
         isAuthenticated: false,
         user: null,
-        plan: null,
+        billing: null,
         apiQuota: null,
       });
     });
@@ -3333,7 +3348,7 @@ describe("account card (desktopAccountInfo)", () => {
     const restore = stubAccountRpc(
       { id: "u1", email: "alice@example.com" },
       {
-        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        billing: planBilling,
         apiQuota: { limit: null, used: 1 },
       },
       true,
@@ -3372,7 +3387,7 @@ describe("account card (desktopAccountInfo)", () => {
       expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
         isAuthenticated: true,
         user: { id: "u1", email: "alice@example.com" },
-        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        billing: planBilling,
       });
     });
     // 这条路径上任何一次未登录快照都会点着左下角的登录按钮（远端确实已登录）。

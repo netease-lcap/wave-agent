@@ -78,7 +78,7 @@ import {
 import type {
   ToastAction,
   UpdateToast,
-  AccountPlanInfo,
+  AccountBillingInfo,
   AccountApiQuotaInfo,
 } from "wave-webview-fixtures";
 import type { ChildProcess } from "child_process";
@@ -365,7 +365,7 @@ export class DesktopHost {
     {
       isAuthenticated: boolean;
       user?: { id: string; email?: string } | null;
-      plan?: AccountPlanInfo | null;
+      billing?: AccountBillingInfo | null;
       apiQuota?: AccountApiQuotaInfo | null;
     }
   >();
@@ -731,7 +731,7 @@ export class DesktopHost {
       command: "desktopAccountInfo",
       isAuthenticated: entry?.isAuthenticated ?? false,
       user: entry?.user ?? null,
-      plan: entry?.plan ?? null,
+      billing: entry?.billing ?? null,
       apiQuota: entry?.apiQuota ?? null,
       // 应用更新状态（S0–S6 按钮状态机输入）。App-global：不管侧边栏当前显示
       // 哪个主机，新版本都属于本机应用本身。
@@ -760,7 +760,7 @@ export class DesktopHost {
     this.accountCache.set(host, {
       isAuthenticated: authResult.isAuthenticated,
       user: authResult.user ?? prev?.user ?? null,
-      plan: prev?.plan ?? null,
+      billing: prev?.billing ?? null,
       apiQuota: prev?.apiQuota ?? null,
     });
   }
@@ -772,16 +772,16 @@ export class DesktopHost {
   private async refreshUsageForHost(host: string): Promise<void> {
     const prev = this.accountCache.get(host);
     if (!prev?.isAuthenticated) return;
-    let plan = prev.plan ?? null;
+    let billing = prev.billing ?? null;
     let apiQuota = prev.apiQuota ?? null;
     try {
       const account = (await this.utilityClientFor(host).request(
         "getAccountInfo",
       )) as {
-        plan?: AccountPlanInfo | null;
+        billing?: AccountBillingInfo | null;
         apiQuota?: AccountApiQuotaInfo | null;
       };
-      plan = account.plan ?? null;
+      billing = account.billing ?? null;
       apiQuota = account.apiQuota ?? null;
     } catch (error) {
       console.warn(
@@ -789,7 +789,7 @@ export class DesktopHost {
         error,
       );
     }
-    this.accountCache.set(host, { ...prev, plan, apiQuota });
+    this.accountCache.set(host, { ...prev, billing, apiQuota });
     if (host === this.currentHost) this.pushAccountInfo();
   }
 
@@ -5718,7 +5718,7 @@ export class DesktopHost {
       this.accountCache.set(this.currentHost, {
         isAuthenticated: false,
         user: null,
-        plan: null,
+        billing: null,
         apiQuota: null,
       });
       this.pushAccountInfo();

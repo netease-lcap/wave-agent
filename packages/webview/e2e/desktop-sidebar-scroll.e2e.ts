@@ -116,7 +116,16 @@ test.describe("Desktop sidebar scroll region", () => {
     await injector.simulateExtensionMessage("desktopAccountInfo", {
       isAuthenticated: true,
       user: { id: "user-1", email: "alice@example.com" },
-      plan: { monthlyQuota: 100, months: 12, used: 240 },
+      billing: {
+        mode: "plan",
+        plan: {
+          monthUsed: 400,
+          monthLimit: 1000,
+          weekUsed: 60,
+          weekLimit: 500,
+          expireDate: "2027-03-01",
+        },
+      },
       apiQuota: { limit: null, used: 1153.14 },
     });
 

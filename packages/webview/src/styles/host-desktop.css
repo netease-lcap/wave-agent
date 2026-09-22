@@ -1523,9 +1523,6 @@
 [data-host="desktop"][data-theme="dark"] .account-usage-bar-fill {
   background-color: #9a9ea5;
 }
-[data-host="desktop"][data-theme="dark"] .account-usage-bar-fill.is-empty {
-  background-color: var(--vscode-errorForeground, #f85149);
-}
 
 /* ═══ 第 7 轮：账户卡用量常驻区对齐设计稿 13651:4911（浅色权威帧）═══
    该帧含三实例侧栏对比：用量区「套餐用量 xx% + Bar + API 余额」全部
@@ -1555,9 +1552,12 @@
 [data-host="desktop"][data-theme="light"] .account-usage-bar {
   background-color: #e6e8eb;
 }
-/* 用量百分比 灰色 → 正文炭黑（设计稿 48% #1F2329；耗尽红 is-empty 保留） */
-[data-host="desktop"][data-theme="light"]
-  .account-usage-percent:not(.is-empty) {
+/* 额度条的标签与状态值：浅色取正文炭黑（设计稿 #1F2329）；「已用尽」的琥珀
+   由 base `.is-exhausted` 承担（本层不覆盖它，否则 host 层特异性更高会盖掉
+   琥珀），「无额度限制 / 不可用」保持描述灰；到期日同为正文色。 */
+[data-host="desktop"][data-theme="light"] .account-plan-bar-label,
+[data-host="desktop"][data-theme="light"] .account-plan-bar-value.is-normal,
+[data-host="desktop"][data-theme="light"] .account-plan-expire {
   color: #1f2329;
 }
 /* API 余额金额字重 400 → 500（设计稿 ¥ w500） */
@@ -1569,10 +1569,10 @@
    0916 曾按评论④「字号都大一号」把四段文字抬到 14px/20px，随后设计师改判
    「还是改回来，都用 12px」→ 四段文字回到 base 的 12px（不再覆盖字号，行高
    随之回到 normal，故用量区 / 卡片高度回到 63 / 108px）。
-   仅保留「套餐余量已用完」提示的同档修正：原 11px 越档（契约无此档位），
-   按评论固定为 12px；其 line-height 15px 与盒宽 231px 未动，故该行几何零变化。
+   仅保留计费结论行的同档修正：原 11px 越档（契约无此档位），按评论固定为
+   12px；其 line-height 15px 未动。
    ⓘ 明细图标是 16px svg，不属文字，未动。 */
-[data-host="desktop"] .account-usage-exhausted {
+[data-host="desktop"] .account-plan-conclusion {
   font-size: 12px;
 }
 /* ⓘ 明细钮：官方 info 图标（16px，灰 #8B8F95）已内嵌 svg 替换 codicon；
@@ -3337,15 +3337,18 @@
 
 /* ⑨ 0916 评论③（用户 2026-09-16 逐元素走查：账户卡片 `span.account-card-name`
    「admin@corp.netease.com」、`span.account-usage-label`「API 余额」、
-   `span.account-usage-value-text`「¥6,800.00」、`span.account-usage-percent`
-   「76%」「不加粗」；随后追加同一行的「套餐用量」四个字也不加粗）：账户卡片的
-   名称与用量数值不再用字重分层，全部 regular。`.account-usage-title` 是行容器
-   （「套餐用量」文字是无 class 的 span，靠继承），故改成 400 落在此行本身。
-   base `AccountCard.css` 不动（组件仅桌面侧栏使用，但按 0904 约定桌面值一律
-   落在 host 层）。 */
+   `span.account-usage-value-text`「¥6,800.00」、用量百分比「76%」「不加粗」；
+   随后追加同一行的「套餐用量」四个字也不加粗）：账户卡片的名称与用量数值不再
+   用字重分层，全部 regular（额度条的标签/状态值/到期日/计费结论行同归 regular）。
+   `.account-usage-title` 是行容器（「套餐用量」文字是无 class 的 span，靠继承），
+   故改成 400 落在此行本身。base `AccountCard.css` 不动（组件仅桌面侧栏使用，
+   但按 0904 约定桌面值一律落在 host 层）。 */
 [data-host="desktop"] .account-card-name,
 [data-host="desktop"] .account-usage-title,
-[data-host="desktop"] .account-usage-percent,
+[data-host="desktop"] .account-plan-bar-label,
+[data-host="desktop"] .account-plan-bar-value,
+[data-host="desktop"] .account-plan-expire,
+[data-host="desktop"] .account-plan-conclusion,
 [data-host="desktop"] .account-usage-row .account-usage-label,
 [data-host="desktop"] .account-usage-row .account-usage-value-text {
   font-weight: var(--cc-font-weight-regular, 400);

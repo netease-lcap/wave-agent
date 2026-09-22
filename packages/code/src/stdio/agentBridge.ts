@@ -1708,7 +1708,12 @@ export class AgentBridge {
   }
 
   private async getAccountInfo(): Promise<{
-    plan?: { monthlyQuota: number; months: number; used: number } | null;
+    /**
+     * 计费结论（套餐两根条 + 到期日 + 降级原因），形状见 codechat `GET /api/v1/account` → `billing`
+     * （判定出自与 proxy 扣费同一份代码）。本层只转发、不解析；具体形状由 wave-webview-fixtures
+     * 的 AccountBillingInfo 在宿主/卡片侧约束。
+     */
+    billing?: unknown;
     apiQuota?: { limit: number | null; used: number } | null;
   }> {
     const authService = AuthService.getInstance();
@@ -1727,7 +1732,7 @@ export class AgentBridge {
       throw new Error(`Account query failed (${response.status})`);
     }
     return (await response.json()) as {
-      plan?: { monthlyQuota: number; months: number; used: number } | null;
+      billing?: unknown;
       apiQuota?: { limit: number | null; used: number } | null;
     };
   }
