@@ -45,7 +45,6 @@ import type {
   SkillMetadataResponseMessage,
   HooksResponseMessage,
   McpConfigPathsResponseMessage,
-  ManagedSettingsResponseMessage,
   DesktopPanesMessage,
   DesktopSessionTreeMessage,
   DesktopWorkdirStateMessage,
@@ -159,10 +158,6 @@ export interface Fixtures {
     projectPath: string | null,
     overrides?: Overrides<McpConfigPathsResponseMessage>,
   ) => McpConfigPathsResponseMessage;
-  managedSettingsResponse: (
-    settings: Record<string, unknown> | null,
-    overrides?: Overrides<ManagedSettingsResponseMessage>,
-  ) => ManagedSettingsResponseMessage;
   desktopPanes: (
     overrides?: Overrides<DesktopPanesMessage>,
   ) => DesktopPanesMessage;
@@ -347,15 +342,6 @@ export const fixtures: Fixtures = {
     command: "mcpConfigPathsResponse",
     userPath,
     projectPath,
-    ...overrides,
-  }),
-
-  /** 服务端下发配置回包（设置页「服务端配置」区块）。`settings` 传 null =
-   *  无下发内容（设置页按空态展示）。 */
-  managedSettingsResponse: (settings, overrides = {}) => ({
-    command: "managedSettingsResponse",
-    requestId: "req-managed-settings",
-    managedSettings: settings,
     ...overrides,
   }),
 

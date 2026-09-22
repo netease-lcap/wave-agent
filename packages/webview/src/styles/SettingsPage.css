@@ -384,8 +384,8 @@
 /* 行内补充说明（见 spec agent-config「上下文长度的落点」）。设计师 0916 评论（点
    「全局默认；当前模型自带上下文上限时以模型配置为准」）：「这里用了不一致的字体
    颜色，和其他说明保持一致」——原实现在本行叠了 `opacity: 0.75`，同色被渲成更淡的
-   一层，比同页其他说明（`.settings-row-copy p` / `.settings-managed-empty` /
-   `.settings-plugin-desc`，都直接走 `--vscode-descriptionForeground` 不加透明度）
+   一层，比同页其他说明（`.settings-row-copy p` / `.settings-plugin-desc`，
+   都直接走 `--vscode-descriptionForeground` 不加透明度）
    明显更浅（实测：浅色 #888888 / 3.56:1 对同级说明 #606060 / 6.29:1；深色
    #7C8183 / 4.7:1 对 #A0A5A8 / 7.49:1，卡面浅 #FFFFFF / 深 #111314）。
    去掉该透明度后渲染色与其余说明逐值一致；档位差异只保留字号行高（说明 12/20
@@ -957,32 +957,6 @@
 /* 行内小型开关（钩子） */
 .settings-switch-small {
   flex: 0 0 auto;
-}
-
-/* 「服务端配置」区块的下发原文（spec server-managed-config「在设置页查看服务端
-   下发的配置」）：等宽、可选中复制；不换行（JSON 折行会毁掉层级可读性），超宽
-   由本块自身横向滚动，超高纵向滚动而不是把整页撑长。 */
-.settings-managed-json {
-  overflow: auto;
-  max-height: 360px;
-  margin: 0;
-  /* 左右留白交给 .settings-card 的 padding（0 12px） */
-  padding: 12px 0;
-  color: var(--vscode-foreground);
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 12px;
-  line-height: 18px;
-  white-space: pre;
-  user-select: text;
-}
-
-/* 空态 / 读取中说明：不渲染 `{}` 空块，也不留空白框。 */
-.settings-managed-empty {
-  margin: 0;
-  padding: 12px 0;
-  color: var(--vscode-descriptionForeground);
-  font-size: 12px;
-  line-height: 20px;
 }
 
 /* ---- 插件市场（spec ecosystem/plugin「设置页插件市场」）----

@@ -44,7 +44,6 @@ export {
   getProjectConfigPaths,
 } from "./utils/configPaths.js";
 export {
-  readManagedSettings,
   readUserPreferenceSettings,
   readUserPreferenceView,
   updateUserPreferenceSettings,
