@@ -16,8 +16,8 @@ import { ConfigStore } from "./configStore";
 import { DesktopHost } from "./desktopHost";
 import { isLocalhostUrl } from "./isLocalhostUrl";
 import {
+  attachContextMenu,
   attachDesktopShortcutKeys,
-  attachImageContextMenu,
   installApplicationMenu,
   updateMenuState,
   type DesktopMenuActions,
@@ -316,8 +316,9 @@ function createWindow(): void {
   win.on("enter-full-screen", () => host?.notifyFullScreen(win.isFullScreen()));
   win.on("leave-full-screen", () => host?.notifyFullScreen(win.isFullScreen()));
   attachDesktopShortcutKeys(mainWindow.webContents, menuActions);
-  // Right-click an image (file panel preview, message image) → 复制图片.
-  attachImageContextMenu(mainWindow.webContents);
+  // Right-click: 复制图片 on an image (file panel preview, message image), and on
+  // text the native macOS 查词 + 复制/全选 (+ 剪切/粘贴 in the input box) menu.
+  attachContextMenu(mainWindow.webContents);
 
   // External links always open in the system browser (FR-008).
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -363,8 +364,9 @@ function createWindow(): void {
     // The session-switch/panel-toggle keys must also work while the preview
     // pane has focus.
     attachDesktopShortcutKeys(guest, menuActions);
-    // Preview pages get the same image right-click copy as the main window.
-    attachImageContextMenu(guest);
+    // Preview pages get the same right-click menu (image copy + text menu) as
+    // the main window.
+    attachContextMenu(guest);
     // Guest pages must never spawn windows — open them externally instead.
     // (The <webview> `new-window` DOM event was removed in Electron 39.)
     guest.setWindowOpenHandler(({ url }) => {

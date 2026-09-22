@@ -27,6 +27,7 @@
 
 import {
   Menu,
+  type ContextMenuParams,
   type Input,
   type MenuItemConstructorOptions,
   type WebContents,
@@ -337,21 +338,95 @@ export function attachDesktopShortcutKeys(
   });
 }
 
+/** The dictionary popup only ever looks up a word; keep the label to one short line. */
+function selectionLabel(selectionText: string): string {
+  const text = selectionText.replace(/\s+/g, " ").trim();
+  return text.length > 24 ? `${text.slice(0, 24)}…` : text;
+}
+
 /**
- * Right-click context menu for images: 复制图片 → webContents.copyImageAt.
- * Electron ships no default context menu, so without this a right-click on the
- * file panel's inline image preview (or any message image) does nothing.
- * Non-image right-clicks stay menu-less, matching the current behavior.
+ * Menu template for one right-click, or `[]` when nothing applies (in which case
+ * no menu is shown at all — same as before).
+ *
+ * Images: 复制图片 (copyImageAt).
+ * Text (a selection anywhere, or any position inside an editable field): the
+ * macOS 查词 item (showDefinitionForSelection opens the native dictionary panel,
+ * i.e. the same thing Chromium's own "Look Up" does — Electron's role list has
+ * neither `lookUpSelection` nor `translate`, so the item is hand-built), then
+ * copy/cut/paste driven by `params.editFlags`, then 全选, then on macOS the
+ * system Services submenu.
  */
-export function attachImageContextMenu(contents: WebContents): void {
-  contents.on("context-menu", (_event, params) => {
-    if (params.mediaType !== "image" || !params.srcURL) return;
-    const menu = Menu.buildFromTemplate([
+function buildContextMenuTemplate(
+  contents: WebContents,
+  params: ContextMenuParams,
+  isMac: boolean,
+): MenuItemConstructorOptions[] {
+  if (params.mediaType === "image" && params.srcURL) {
+    return [
       {
         label: "复制图片",
         click: () => contents.copyImageAt(params.x, params.y),
       },
-    ]);
-    menu.popup();
+    ];
+  }
+
+  const hasSelection = params.selectionText.trim().length > 0;
+  if (!hasSelection && !params.isEditable) return [];
+
+  const template: MenuItemConstructorOptions[] = [];
+  if (isMac && hasSelection && !params.linkURL) {
+    template.push({
+      label: `查词 “${selectionLabel(params.selectionText)}”`,
+      click: () => contents.showDefinitionForSelection(),
+    });
+    template.push({ type: "separator" });
+  }
+  if (params.isEditable) {
+    template.push(
+      { role: "cut", label: "剪切", enabled: params.editFlags.canCut },
+      { role: "copy", label: "复制", enabled: params.editFlags.canCopy },
+      { role: "paste", label: "粘贴", enabled: params.editFlags.canPaste },
+    );
+  } else {
+    template.push({
+      role: "copy",
+      label: "复制",
+      enabled: params.editFlags.canCopy,
+    });
+  }
+  template.push({
+    role: "selectAll",
+    label: "全选",
+    enabled: params.editFlags.canSelectAll,
+  });
+  if (isMac) {
+    template.push({ type: "separator" }, { role: "services" });
+  }
+  return template;
+}
+
+/**
+ * Right-click context menu. Electron ships no default context menu, so without
+ * this a right-click does nothing at all.
+ *
+ * `frame: params.frame` is not optional on macOS: Writing Tools / AutoFill /
+ * Services stay disabled in an Electron context menu unless the menu is popped
+ * up with the WebFrameMain it belongs to.
+ *
+ * The whole template is built per right-click — nothing runs (and nothing is
+ * registered) between right-clicks. Deliberately no spellcheck suggestions:
+ * consuming `params.dictionarySuggestions` would turn on the OS spellchecker for
+ * the entire page, which is the one part of this that would actually cost.
+ */
+export function attachContextMenu(
+  contents: WebContents,
+  isMac = process.platform === "darwin",
+): void {
+  contents.on("context-menu", (_event, params) => {
+    const template = buildContextMenuTemplate(contents, params, isMac);
+    if (template.length === 0) return;
+    Menu.buildFromTemplate(template).popup({
+      frame: params.frame ?? undefined,
+    });
   });
 }
