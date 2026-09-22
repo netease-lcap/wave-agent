@@ -313,7 +313,7 @@ describe("AccountCard (desktop sidebar)", () => {
       expect(screen.queryByTestId("account-plan")).not.toBeInTheDocument();
     });
 
-    it("renders no conclusion for the enterprise degrade reason (个人视角本期不渲染)", () => {
+    it("renders the enterprise conclusion line while keeping the personal bars (个人读数不受影响)", () => {
       renderDesktop();
       pushAccount({
         ...loggedIn,
@@ -331,10 +331,15 @@ describe("AccountCard (desktop sidebar)", () => {
         apiQuota: apiPlenty,
       });
 
-      expect(screen.getByTestId("account-plan-month")).toBeInTheDocument();
-      expect(
-        screen.queryByTestId("account-plan-conclusion"),
-      ).not.toBeInTheDocument();
+      // 本人两根条照旧显示个人读数（企业池触顶不改个人数字）.
+      expect(screen.getByTestId("account-plan-month")).toHaveTextContent("40%");
+      expect(screen.getByTestId("account-plan-week")).toHaveTextContent("88%");
+      // 结论行：与月/周同族——下个窗口自动恢复 ⇒ 琥珀预警，不是「需人工干预」的错误色.
+      const conclusion = screen.getByTestId("account-plan-conclusion");
+      expect(conclusion).toHaveTextContent(
+        "企业本期额度已用尽，当前按 API 余额计费",
+      );
+      expect(conclusion.classList.contains("is-warning")).toBe(true);
     });
 
     it("hides the plan block when the host sent no billing at all", () => {
