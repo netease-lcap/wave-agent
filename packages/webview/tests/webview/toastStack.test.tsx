@@ -109,8 +109,8 @@ describe("ToastStack", () => {
         onAction={vi.fn()}
       />,
     );
-    // 信息类 toast 2s 自动消失（spec 场景 7）；带 action 的常驻（下一用例）
-    vi.advanceTimersByTime(1999);
+    // 信息型 toast 8s 自动消失（spec「信息型 toast 停留时长」）；带 action 的常驻（下一用例）
+    vi.advanceTimersByTime(7999);
     expect(onDismiss).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(onDismiss).toHaveBeenCalledWith("t1");
