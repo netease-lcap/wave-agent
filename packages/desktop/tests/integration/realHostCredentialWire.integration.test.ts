@@ -464,6 +464,10 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
     // (packages/webview/e2e/desktop-unauthenticated-input-disabled.e2e.ts and
     // tests/webview/unauthenticatedInputDisabled.test.tsx).
     expect(ctx.last("setInitialState")?.isAuthenticated).toBe(false);
+    // 账户卡片比 setInitialState 晚一个 RPC：宿主先问该主机的 getAuthStatus 再推
+    // 卡片（「没查过」不等于「未登录」，见 syncAccountCard），所以这里等它到达，
+    // 而不是假设它与 setInitialState 同一拍推出去。
+    await ctx.waitFor("desktopAccountInfo");
     expect(ctx.last("desktopAccountInfo")?.isAuthenticated).toBe(false);
 
     // …and the wire carries no credential the CLI could silently use.
