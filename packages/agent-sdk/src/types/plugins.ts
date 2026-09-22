@@ -1,7 +1,7 @@
 import { CustomSlashCommand } from "./commands.js";
 import { Skill } from "./skills.js";
 import { LspConfig } from "./lsp.js";
-import { McpConfig } from "./mcp.js";
+import { McpConfig, McpServerConfig } from "./mcp.js";
 import { PartialHookConfiguration } from "./configuration.js";
 import { SubagentConfiguration } from "../utils/subagentParser.js";
 
@@ -11,10 +11,20 @@ import { SubagentConfiguration } from "../utils/subagentParser.js";
 export interface PluginManifest {
   name: string;
   description: string;
-  version: string;
+  /**
+   * Optional: plugins in the Claude Code ecosystem often omit it (spec plugin
+   * A-022). Install and load both fall back to `1.0.0`.
+   */
+  version?: string;
   author?: {
     name: string;
   };
+  /**
+   * Inline MCP server declarations, equivalent to a sibling `.mcp.json`
+   * (spec plugin A-023). Claude Code also allows a path string or array of
+   * paths here; only the object form is supported.
+   */
+  mcpServers?: Record<string, McpServerConfig>;
 }
 
 /**
@@ -43,6 +53,8 @@ export interface PluginReloadResult {
  * Represents a loaded plugin in the system
  */
 export interface Plugin extends PluginManifest {
+  /** Always resolved on load: a missing manifest version becomes `1.0.0` (A-022). */
+  version: string;
   path: string;
   commands: CustomSlashCommand[];
   skills: Skill[];

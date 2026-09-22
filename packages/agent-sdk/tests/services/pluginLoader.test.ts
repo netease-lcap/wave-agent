@@ -147,7 +147,7 @@ describe("PluginLoader", () => {
       );
     });
 
-    it("should throw error if manifest is missing version", async () => {
+    it("should accept a manifest without version (Claude Code ecosystem omits it)", async () => {
       vi.mocked(fs.readdir).mockResolvedValue([
         "plugin.json",
       ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
@@ -160,9 +160,10 @@ describe("PluginLoader", () => {
         JSON.stringify(mockManifest as unknown),
       );
 
-      await expect(PluginLoader.loadManifest(mockPluginPath)).rejects.toThrow(
-        "Plugin manifest missing 'version'",
-      );
+      // version 缺省不再拒绝加载（否则会出现「安装成功、加载失败」的割裂，A-022）
+      const result = await PluginLoader.loadManifest(mockPluginPath);
+
+      expect(result).toEqual(mockManifest);
     });
 
     it("should throw error if manifest name is invalid", async () => {
@@ -321,6 +322,69 @@ describe("PluginLoader", () => {
       expect(result).toEqual(mockConfig);
 
       delete process.env.TAVILY_API_KEY;
+    });
+
+    it("should accept the flat .mcp.json shape used by Claude Code", async () => {
+      // CC 的 .mcp.json 常写成扁平形态（直接是 server map），没有 mcpServers 外层键
+      const flatConfig = { test: { command: "test" } };
+      vi.mocked(fs.readFile).mockResolvedValue(JSON.stringify(flatConfig));
+
+      const result = await PluginLoader.loadMcpConfig(mockPluginPath);
+
+      expect(result).toEqual({ mcpServers: { test: { command: "test" } } });
+    });
+
+    it("should load inline manifest mcpServers when there is no .mcp.json", async () => {
+      vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
+
+      const result = await PluginLoader.loadMcpConfig(mockPluginPath, {
+        inline: { command: "inline" },
+      });
+
+      expect(result).toEqual({
+        mcpServers: { inline: { command: "inline" } },
+      });
+    });
+
+    it("should let .mcp.json win over inline manifest mcpServers on name clash", async () => {
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify({ mcpServers: { shared: { command: "from-file" } } }),
+      );
+
+      const result = await PluginLoader.loadMcpConfig(mockPluginPath, {
+        shared: { command: "from-manifest" },
+        onlyInline: { command: "inline" },
+      });
+
+      expect(result).toEqual({
+        mcpServers: {
+          shared: { command: "from-file" },
+          onlyInline: { command: "inline" },
+        },
+      });
+    });
+
+    it("should return undefined when neither .mcp.json nor inline servers exist", async () => {
+      vi.mocked(fs.readFile).mockRejectedValue(new Error("ENOENT"));
+
+      const result = await PluginLoader.loadMcpConfig(mockPluginPath);
+
+      expect(result).toBeUndefined();
+    });
+
+    it("should ignore a malformed .mcp.json payload instead of throwing", async () => {
+      // 一份坏声明只应被忽略，不能让整个插件加载失败（A-023）
+      vi.mocked(fs.readFile).mockResolvedValue(
+        JSON.stringify(["not", "a", "map"]),
+      );
+
+      const result = await PluginLoader.loadMcpConfig(mockPluginPath, {
+        inline: { command: "inline" },
+      });
+
+      expect(result).toEqual({
+        mcpServers: { inline: { command: "inline" } },
+      });
     });
   });
 

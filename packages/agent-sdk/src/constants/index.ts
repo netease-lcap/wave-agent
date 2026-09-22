@@ -10,6 +10,7 @@
 export * from "./images.js";
 export * from "./memory.js";
 export * from "./messages.js";
+export * from "./plugins.js";
 export * from "./subagents.js";
 export * from "./toolLimits.js";
 export * from "./tools.js";

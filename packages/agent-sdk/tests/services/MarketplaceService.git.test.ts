@@ -60,6 +60,7 @@ describe("MarketplaceService - General Git Support", () => {
   let mockGitService: {
     clone: ReturnType<typeof vi.fn>;
     pull: ReturnType<typeof vi.fn>;
+    checkout: ReturnType<typeof vi.fn>;
     isGitAvailable: ReturnType<typeof vi.fn>;
   };
 
@@ -78,6 +79,7 @@ describe("MarketplaceService - General Git Support", () => {
     mockGitService = {
       clone: vi.fn(),
       pull: vi.fn(),
+      checkout: vi.fn(),
       isGitAvailable: vi.fn().mockResolvedValue(true),
     };
     vi.mocked(GitService).mockImplementation(function () {
@@ -217,19 +219,15 @@ describe("MarketplaceService - General Git Support", () => {
   });
 
   describe("installPlugin with Git sources", () => {
-    it("should install a plugin from a Git URL source", async () => {
-      const marketplaceName = "test-market";
-      const pluginName = "git-plugin";
-      const gitSource = "https://github.com/other/plugin.git#v2.0.0";
-      const [url, ref] = gitSource.split("#");
-
+    /** 市场清单里放一条插件条目（可带任意 source 形态），其余读取走最小替身。 */
+    function mockMarketplaceWithSource(source: unknown): void {
       mockReadFile.mockImplementation(async (p) => {
         const pathStr = p.toString();
         if (pathStr.includes("known_marketplaces.json")) {
           return JSON.stringify({
             marketplaces: [
               {
-                name: marketplaceName,
+                name: "test-market",
                 source: { source: "directory", path: "/mock/market" },
               },
             ],
@@ -237,18 +235,31 @@ describe("MarketplaceService - General Git Support", () => {
         }
         if (pathStr.includes("marketplace.json")) {
           return JSON.stringify({
-            name: marketplaceName,
-            plugins: [{ name: pluginName, source: gitSource }],
+            name: "test-market",
+            plugins: [{ name: "git-plugin", source }],
           });
         }
         if (pathStr.includes("plugin.json")) {
-          return JSON.stringify({ name: pluginName, version: "2.0.0" });
+          // 故意不写 version：CC 生态的 plugin.json 常常没有版本字段
+          return JSON.stringify({
+            name: "git-plugin",
+            description: "A test plugin",
+          });
         }
         if (pathStr.includes("installed_plugins.json")) {
           return JSON.stringify({ plugins: [] });
         }
         return "";
       });
+    }
+
+    it("should install a plugin from a Git URL source", async () => {
+      const marketplaceName = "test-market";
+      const pluginName = "git-plugin";
+      const gitSource = "https://github.com/other/plugin.git#v2.0.0";
+      const [url, ref] = gitSource.split("#");
+
+      mockMarketplaceWithSource(gitSource);
 
       mockExistsSync.mockReturnValue(true);
 
@@ -266,6 +277,128 @@ describe("MarketplaceService - General Git Support", () => {
         ref,
       );
       expect(vi.mocked(fsPromises.rename)).toHaveBeenCalled();
+    });
+
+    it("should install a plugin from an object url source", async () => {
+      // {"source":"url"} 与字符串 Git URL 等价（A-021）
+      mockMarketplaceWithSource({
+        source: "url",
+        url: "https://github.com/other/plugin.git",
+      });
+      mockExistsSync.mockReturnValue(true);
+
+      const result = await service.installPlugin("git-plugin@test-market", {
+        scope: "project",
+        projectPath: "/mock/project",
+      });
+
+      expect(mockGitService.clone).toHaveBeenCalledWith(
+        "https://github.com/other/plugin.git",
+        expect.stringContaining("clone-"),
+        undefined,
+      );
+      expect(mockGitService.checkout).not.toHaveBeenCalled();
+      expect(result.version).toBe("1.0.0");
+    });
+
+    it("should install from the subdirectory named by a git-subdir source", async () => {
+      mockMarketplaceWithSource({
+        source: "git-subdir",
+        url: "https://github.com/other/monorepo.git",
+        path: "plugins/foo",
+      });
+      mockExistsSync.mockReturnValue(true);
+
+      await service.installPlugin("git-plugin@test-market", {
+        scope: "project",
+        projectPath: "/mock/project",
+      });
+
+      const subdirRename = vi
+        .mocked(fsPromises.rename)
+        .mock.calls.find(([from]) => /plugins[\\/]foo$/.test(String(from)));
+      expect(subdirRename).toBeDefined();
+    });
+
+    it("should fail when the git-subdir path does not exist in the repository", async () => {
+      mockMarketplaceWithSource({
+        source: "git-subdir",
+        url: "https://github.com/other/monorepo.git",
+        path: "plugins/missing",
+      });
+      // 克隆目录存在，但清单里写的子目录不存在 → 明确报错，不许悄悄装整个仓库
+      mockExistsSync.mockImplementation(
+        (p) => !p.toString().includes("plugins/missing"),
+      );
+
+      await expect(
+        service.installPlugin("git-plugin@test-market", {
+          scope: "project",
+          projectPath: "/mock/project",
+        }),
+      ).rejects.toThrow(
+        "Subdirectory 'plugins/missing' not found in repository https://github.com/other/monorepo.git",
+      );
+    });
+
+    it("should check out the pinned sha after cloning", async () => {
+      mockMarketplaceWithSource({
+        source: "git-subdir",
+        url: "https://github.com/other/monorepo.git",
+        path: "plugins/foo",
+        ref: "main",
+        sha: "abc1234",
+      });
+      mockExistsSync.mockReturnValue(true);
+
+      await service.installPlugin("git-plugin@test-market", {
+        scope: "project",
+        projectPath: "/mock/project",
+      });
+
+      expect(mockGitService.clone).toHaveBeenCalledWith(
+        "https://github.com/other/monorepo.git",
+        expect.stringContaining("clone-"),
+        "main",
+      );
+      expect(mockGitService.checkout).toHaveBeenCalledWith(
+        expect.stringContaining("clone-"),
+        "abc1234",
+      );
+    });
+
+    it("should fail loudly when the pinned sha cannot be checked out", async () => {
+      // 不许静默退回分支最新提交（A-021 场景 3）
+      mockMarketplaceWithSource({
+        source: "url",
+        url: "https://github.com/other/plugin.git",
+        sha: "deadbeef",
+      });
+      mockExistsSync.mockReturnValue(true);
+      mockGitService.checkout.mockRejectedValue(new Error("unknown revision"));
+
+      await expect(
+        service.installPlugin("git-plugin@test-market", {
+          scope: "project",
+          projectPath: "/mock/project",
+        }),
+      ).rejects.toThrow("unknown revision");
+    });
+
+    it("should fail with the offending shape for an unsupported source object", async () => {
+      mockMarketplaceWithSource({
+        source: "npm",
+        url: "https://example.com/a",
+      });
+      mockExistsSync.mockReturnValue(true);
+
+      await expect(
+        service.installPlugin("git-plugin@test-market", {
+          scope: "project",
+          projectPath: "/mock/project",
+        }),
+      ).rejects.toThrow('declares an unsupported source: {"source":"npm"');
+      expect(mockGitService.clone).not.toHaveBeenCalled();
     });
   });
 

@@ -10,9 +10,12 @@ import {
   InstalledPlugin,
   KnownMarketplace,
   MarketplaceManifest,
+  MarketplacePluginEntry,
   InstalledPluginsRegistry,
   MarketplacePluginStatus,
 } from "../types/index.js";
+import { parsePluginSource } from "../utils/pluginSource.js";
+import { logger } from "../utils/globalLogger.js";
 
 /**
  * PluginCore
@@ -190,8 +193,15 @@ export class PluginCore {
             scope: installed ? scope : undefined,
           });
         }
-      } catch {
-        // Skip marketplaces that fail to load
+      } catch (error) {
+        // A marketplace that fails to load must be diagnosable: swallowing this
+        // silently is what made an unparsable entry look like an empty market
+        // (spec plugin「兼容 Claude Code 生态的市场清单与插件」场景 5).
+        logger.warn(
+          `Failed to load marketplace ${m.name}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
       }
     }
 
@@ -203,22 +213,19 @@ export class PluginCore {
 
   /**
    * Reads the version declared by a marketplace plugin's own manifest inside the
-   * marketplace checkout — the version a fresh install would get. Git-URL plugin
-   * sources are not fetched here (they have no local copy until install), so they
-   * yield undefined (spec plugin A-010).
+   * marketplace checkout — the version a fresh install would get. Sources that
+   * live outside the checkout (Git URLs and both object shapes, which always point
+   * at an external repository) have no local copy until install, so they yield
+   * undefined (spec plugin A-010 / A-021).
    */
   private async readLatestVersion(
     marketplacePath: string,
-    source: string,
+    source: MarketplacePluginEntry["source"],
   ): Promise<string | undefined> {
-    const isGitSource =
-      source.startsWith("http://") ||
-      source.startsWith("https://") ||
-      source.startsWith("git@") ||
-      source.startsWith("ssh://");
-    if (isGitSource || !source) return undefined;
+    const parsed = parsePluginSource(source);
+    if (!parsed || parsed.kind !== "local") return undefined;
 
-    const pluginPath = path.resolve(marketplacePath, source);
+    const pluginPath = path.resolve(marketplacePath, parsed.path);
     for (const dir of [".wave-plugin", ".claude-plugin"]) {
       try {
         const raw = await fs.readFile(

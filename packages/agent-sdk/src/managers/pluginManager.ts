@@ -19,6 +19,7 @@ import { MarketplaceService } from "../services/MarketplaceService.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import { Container } from "../utils/container.js";
 import { PermissionManager } from "./permissionManager.js";
+import { DEFAULT_PLUGIN_VERSION } from "../constants/plugins.js";
 
 export interface PluginManagerOptions {
   workdir: string;
@@ -238,12 +239,18 @@ export class PluginManager {
 
       const plugin: Plugin = {
         ...manifest,
+        // A manifest without `version` is legal (spec plugin A-022); the default
+        // matches what the install path files under `installed_plugins.json`.
+        version: manifest.version || DEFAULT_PLUGIN_VERSION,
         path: absolutePath,
         commands: PluginLoader.loadCommands(absolutePath),
         skills: await PluginLoader.loadSkills(absolutePath),
         agents: await PluginLoader.loadAgents(absolutePath),
         lspConfig: await PluginLoader.loadLspConfig(absolutePath),
-        mcpConfig: await PluginLoader.loadMcpConfig(absolutePath),
+        mcpConfig: await PluginLoader.loadMcpConfig(
+          absolutePath,
+          manifest.mcpServers,
+        ),
         hooksConfig: await PluginLoader.loadHooksConfig(absolutePath),
       };
 
@@ -270,8 +277,18 @@ export class PluginManager {
         for (const [name, config] of Object.entries(
           plugin.mcpConfig.mcpServers,
         )) {
-          const configWithPluginRoot = { ...config, pluginRoot: plugin.path };
-          this.mcpManager.addServer(name, configWithPluginRoot);
+          // One unusable server declaration must not take the rest of the plugin
+          // down with it (spec plugin A-023).
+          try {
+            const configWithPluginRoot = { ...config, pluginRoot: plugin.path };
+            this.mcpManager.addServer(name, configWithPluginRoot);
+          } catch (error) {
+            logger?.warn(
+              `Failed to register MCP server '${name}' from plugin ${plugin.name}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
         }
       }
 
@@ -284,7 +301,7 @@ export class PluginManager {
       }
 
       this.plugins.set(manifest.name, plugin);
-      logger?.debug(`Loaded plugin: ${manifest.name} v${manifest.version}`);
+      logger?.debug(`Loaded plugin: ${manifest.name} v${plugin.version}`);
     } catch (error) {
       this.loadFailures.push({
         path: absolutePath,

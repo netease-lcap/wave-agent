@@ -6,6 +6,7 @@ import {
   Skill,
   LspConfig,
   McpConfig,
+  McpServerConfig,
   PartialHookConfiguration,
 } from "../types/index.js";
 import { scanCommandsDirectory } from "../utils/customCommands.js";
@@ -162,19 +163,36 @@ export class PluginLoader {
   }
 
   /**
-   * Load MCP configuration from a plugin
+   * Load MCP configuration from a plugin.
+   *
+   * Accepts both declaration shapes found in the wild (spec plugin A-023): the
+   * wrapped `{"mcpServers": {…}}` and the flat `{"<serverName>": {…}}`, matching
+   * Claude Code's `parsed.mcpServers || parsed`. A plugin manifest that declares
+   * `mcpServers` inline is equivalent to a sibling `.mcp.json`; when both exist
+   * they are merged by server name, the file winning.
+   *
+   * @param manifestMcpServers Inline declarations from the plugin manifest
    */
   static async loadMcpConfig(
     pluginPath: string,
+    manifestMcpServers?: Record<string, McpServerConfig>,
   ): Promise<McpConfig | undefined> {
+    const servers: Record<string, McpServerConfig> = {
+      ...(manifestMcpServers ?? {}),
+    };
+
     const mcpPath = path.join(pluginPath, ".mcp.json");
     try {
       const content = await fs.readFile(mcpPath, "utf-8");
+      const parsed: unknown = JSON.parse(content);
       // Return raw config — let McpManager resolve templates and capture originalUrl
-      return JSON.parse(content) as McpConfig;
+      Object.assign(servers, extractMcpServers(parsed));
     } catch {
-      return undefined;
+      // no .mcp.json — inline declarations (if any) stand alone
     }
+
+    if (Object.keys(servers).length === 0) return undefined;
+    return { mcpServers: servers };
   }
 
   /**
@@ -240,13 +258,31 @@ export class PluginLoader {
     if (!manifest.description) {
       throw new Error("Plugin manifest missing 'description'");
     }
-    if (!manifest.version) {
-      throw new Error("Plugin manifest missing 'version'");
-    }
+    // `version` is optional: the Claude Code ecosystem omits it freely and the
+    // install path already defaults it (spec plugin A-022).
     if (!/^[a-z0-9-]+$/.test(manifest.name)) {
       throw new Error(
         `Invalid plugin name: ${manifest.name}. Only lowercase letters, numbers, and hyphens are allowed.`,
       );
     }
   }
+}
+
+/**
+ * Normalizes an MCP declaration to a server map, accepting both the wrapped and
+ * the flat shape (spec plugin A-023). Anything that is not an object of server
+ * configs yields an empty map rather than throwing, so one malformed declaration
+ * cannot fail the whole plugin.
+ */
+function extractMcpServers(parsed: unknown): Record<string, McpServerConfig> {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {};
+  }
+  const record = parsed as Record<string, unknown>;
+  const wrapped = record.mcpServers;
+  const servers =
+    wrapped && typeof wrapped === "object" && !Array.isArray(wrapped)
+      ? (wrapped as Record<string, McpServerConfig>)
+      : (record as Record<string, McpServerConfig>);
+  return servers;
 }
