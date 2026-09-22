@@ -5877,3 +5877,57 @@ host 层两条 hover 覆盖都带 `:not(.is-active)`），与会话行「选中�
 - 数据与图：`CC02/走查/0921-board-market-bg/{before,after,after2}-desktop-*-board-market-bg.json|png`
   （`after` = 只对齐底色、`after2` = 底色 + 描边都对齐）；交付页
   `CC02/走查/0921-board-market-bg-report-v2/index.html`（母版 v1.1，四条，含 B-04 描边放大对照）。
+
+## 0922 评论（插件市场行 hover：与左侧导航同档）
+
+设计师原话（点 `div.settings-plugin-row`「Git Workflow v2.3.1 集成 Git 工作流：智…」）：
+
+「这里的 hover 色应该更浅一些，参考侧导航的」
+
+### ① 先量：浅色档本来就同值，差在深色档
+
+同一次运行、DPR2，逐层把祖先链上的半透明底色**合成为实色**（否则「8% 白」这类值看不出观感）：
+
+| hover 面（桌面宿主）                      | 浅色              | 深色                                    |
+| ----------------------------------------- | ----------------- | --------------------------------------- |
+| 插件市场行 `.settings-plugin-row`（改前） | `#EEF0F3`         | **`#303436`**（实色 `--cc-fill-hover`） |
+| 侧导航：入口 / 会话行 / 分组标题          | `#EEF0F3`         | `rgba(255,255,255,.08)` → `#2A2C2D`     |
+| 插件市场行（改后）                        | `#EEF0F3`（未变） | `rgba(255,255,255,.08)` → `#242627`     |
+
+- **浅色档两条都取 `--cc-fill-hover`（= `--vscode-list-hoverBackground`）`#eef0f3`，逐值相同**，
+  没有可改的差；改后浅色档 1:1 元素截图与改前 **md5 相同**（`db352d54…`）证明零回归。
+- 深色档插件行走的是 `--cc-fill-hover` 的**实色** `#303436`，落在「插件市场」近黑底
+  `#111314` 上是一整块偏重的灰；侧导航侧（入口 / 会话行 / 分组标题，见 `host-desktop.css`
+  的 8% 白两条）是那层 8% 白 —— 差的正是这一档。
+
+### ② 改法（`host-desktop.css` 末尾一条，浅色档不动）
+
+```css
+[data-host="desktop"][data-theme="dark"] .settings-plugin-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+```
+
+桌面端专属覆盖（base 那条 `background: var(--vscode-list-hoverBackground)` 留在
+`SettingsPage.css`，IDE 宿主不受影响）；取值与 `host-desktop.css` 侧栏入口 / 会话行
+hover 逐字相同。
+
+### ③ 改后实测
+
+- 深色：`rgba(255,255,255,.08)`，在 `#111314` 上合成 **`#242627`**（改前 `#303436`），
+  与侧导航同一层 8% 白、观感同样「轻」；
+- 浅色：仍 `#EEF0F3`，与改前**逐像素一致**；
+- 0 `pageerror`。
+
+### ④ 残留触发语（未授权）
+
+- 「再亮一点 / 要更明显」：深色改 `rgba(255,255,255,.12)`（侧栏选中态那一档）。
+- 「浅色档也不够浅」：需给目标色（如 `#F5F6F8`）—— 浅色档目前与侧导航同值，无内部参考。
+
+### 验证脚本与证据
+
+- `CC02/走查/_tools/0922/probe-plugin-row-hover-0922.mjs`（行 vs 侧栏入口两态合成色）、
+  `probe-hover-surfaces-0922.mjs`（入口 / 会话行 / 分组标题四面的合成色表）、
+  `verify-plugin-row-hover-0922.mjs`（改后复验 + 双档截图）。
+- 图：`CC02/走查/0922-plugin-row-hover/pluginRow-hover-dark-2x.png`（改前）、
+  `after-row-hover-{dark,light}-2x.png`（改后）。

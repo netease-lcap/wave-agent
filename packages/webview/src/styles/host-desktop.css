@@ -3740,3 +3740,12 @@
   color: #ffffff;
 }
 
+/* 0922 评论：插件市场行（.settings-plugin-row）hover 与左侧导航同档。
+   浅色档 base 走 `--vscode-list-hoverBackground` = `--cc-fill-hover` #eef0f3，
+   与会话行 / 入口 / 分组标题的侧导航 hover 逐值相同（实测合成 #EEF0F3），无需覆盖。
+   深色档 `--cc-fill-hover` 是实色 #303436，在「插件市场」近黑底（#111314）上比
+   侧导航那层 8% 白重一档（8% 白合成 ≈ #242627），故按侧导航取值收淡。 */
+[data-host="desktop"][data-theme="dark"] .settings-plugin-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
