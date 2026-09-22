@@ -1642,13 +1642,43 @@
   border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
+/* 0922 评论（`input.preview-pane-address` · 预览地址栏）：「预览这里输入连接后，
+   激活文字会抖一下，希望不要抖」。
+
+   地址区是**两个元素**轮换：编辑态 = `input.preview-pane-address`
+   （base 为 `border: none`、未声明 `font-family`），显示态 = `span.preview-pane-url`
+   （base 为 `border: 1px solid transparent`、走页面字体栈）。同一串 URL
+   （`http://localhost:5173`）因此两处不同 —— 实测（Retina DPR 2，墨迹盒 = 文字真正
+   着墨的包围盒，裁切图坐标）：
+     改前 编辑态 l=29 t=27 w=249  ↔  显示态 l=32 t=27 w=261
+   ⇒ 回车提交切两态，文字起点横移 1.5px、墨迹总宽差 6px（「抖一下」）。
+
+   三处对齐，缺一不可：
+   ① 字体族：输入框不继承页面字体（UA = Arial）——见文末桌面字体白名单里的
+      `.preview-pane-address`；
+   ② 描边占位：这里补 1px 透明描边，让文字起点与显示态同为 `1px + 8px`；
+      `box-sizing: border-box` + `height: 26px` ⇒ 盒外形与尺寸零变化；
+   ③ 垂直：改完 ①② 后墨迹左界已重合，但上界仍低 1 CSS px（t=29 vs 27）——
+      同一个字体在 `input` 的内联编辑器里就是比 flex 居中的 `span` 沉 1px，
+      用 `padding-bottom: 1px` 把它顶回去（**不改 `line-height`**：那条路虽也能量到
+      全等，但会把光标行盒从 22px 抬到 26px，编辑态多一个无关变化）。
+      实测该补偿在 DPR 2 与 DPR 1 下都全等（见 0922 第八轮报告）。
+
+   注：本条特异性 (0,3,0) 高于 base `.preview-pane-address:focus` 的 (0,2,0)，
+   即 base 的焦点描边色在本层不会生效——而改前输入框 `border: none`（0 宽）本来
+   也看不见焦点指示，故「焦点指示不可见」是改前既有状态、本轮未改变，也未擅自新增；
+   见残留清单（触发语「编辑态给一条焦点描边」）。 */
 [data-host="desktop"][data-theme="light"] .preview-pane-address {
   background: #f0f2f5;
   color: #1f2329;
+  border: 1px solid transparent;
+  padding-bottom: 1px;
 }
 [data-host="desktop"][data-theme="dark"] .preview-pane-address {
   background: rgba(255, 255, 255, 0.06);
   color: #e6e6e6;
+  border: 1px solid transparent;
+  padding-bottom: 1px;
 }
 [data-host="desktop"][data-theme="light"] .preview-pane-address::placeholder {
   color: #6c7076;
@@ -3836,7 +3866,9 @@
    两颗（明明写了 14px/500，却按 Arial 渲染中文——「假字体」的来源）与弹层主按钮
    `.settings-save-btn`。仓库惯例是逐个类写 `font-family: inherit`（`DesktopApp.css:264`
    / `573`、`ConfirmationDialog.css`、`MessageInput.css` 等），本族当初漏了，这里补齐。
-   输入类（`input` / `select`，如弹层里的 `.settings-text-input`）本来就继承，无残留。
+   输入类（`input` / `select`）多数自带字体声明（如弹层里的 `.settings-text-input`
+   写的是 `font-family: var(--vscode-font-family)`），本身没有声明的那个
+   = `input.preview-pane-address`（0922 第八轮评论点名，本轮并入白名单）。
 
    落点选择：**不逐个改 base 规则**，而用一条桌面作用域白名单——① 她明确要求「仅作用
    在桌面端」，写进 base 会连同 IDE（VS Code / JetBrains）宿主一起变；② 一处可读，
@@ -3876,7 +3908,13 @@
        「是，且允许本会话编辑 X/」与 ExitPlanMode 的「批准并自动接受后续修改」。
        本弹窗其余按钮（-apply / -reject / -secondary / -feedback）未点名，暂维持
        UA 字体，见残留清单。 */
-    .confirmation-btn-auto
+    .confirmation-btn-auto,
+    /* 预览面板地址栏输入框（0922 评论：`input.preview-pane-address`
+       「预览这里输入连接后，激活文字会抖一下，希望不要抖」）—— 输入框不继承页面
+       字体族，与显示态的 `span.preview-pane-url` 同串 URL 墨迹宽不一致，回车提交
+       切换两态就是那「抖一下」的一半根因（另一半 = 描边占位，见上文
+       `.preview-pane-address` 的桌面规则）。 */
+    .preview-pane-address
   ) {
   font-family: inherit;
 }

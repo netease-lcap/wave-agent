@@ -6597,3 +6597,95 @@ computed font-family 立刻回落 `Arial` ⇒ 基础文件未动、IDE（VS Code
   `CC02/走查/_tools/0922/batch-0922-confirm-yes-buttons.json`（F-01 正常态 / F-02 悬停 / F-03 焦点 /
   F-04 Edit 越界同类，各浅深两档）；自检 `verify-repair-report.mjs`：图片加载 true、错误 0、
   axe 浅深 0/0、640 窄屏无横溢。
+
+## 0922 评论（预览地址栏：激活时文字抖一下 → 编辑态与显示态对齐）
+
+### ① 结论
+
+预览地址区是**两个元素轮换**（`PreviewPane.tsx:581`：`addressEditing || !displayUrl` 时渲染
+`input.preview-pane-address`，否则渲染 `span.preview-pane-url`），回车 = `commitAddress()` ⇒
+两态互换。同一串 `http://localhost:5173` 在两态有三处不同：
+
+1. **字体族**：输入框不继承页面字体（UA 回落 Chromium 的 `Arial`），显示态走页面栈；
+2. **描边占位**：输入框 base 是 `border: none`（文字起点 8px），显示态 base 是
+   `border: 1px solid transparent`（文字起点 9px）；
+3. **垂直基线**：补齐 ①② 后，同一字体在输入框的内联编辑器里仍比 flex 居中的 `span` 沉 1 CSS px。
+
+改前墨迹盒（设备像素，同一裁切框）：编辑态 `l=29 t=27 w=249` ↔ 显示态 `l=32 t=27 w=261`
+⇒ 回车即「左移 1.5px + 整串宽差 6px」。三处补齐后两态墨迹盒**逐值全等**，且整幅裁切图
+**逐像素相同（最大通道差 0）**。
+
+### ② 改动落点（`host-desktop.css`，两处，只动桌面壳）
+
+- 预览地址栏深浅两档规则（原只有 `background` / `color`）各加
+  `border: 1px solid transparent; padding-bottom: 1px;`
+  —— 描边对齐显示态的 1px 占位，`padding-bottom` 顶回那 1px 垂直差；
+  `box-sizing: border-box` + `height: 26px` ⇒ 胶囊外形尺寸零变化。
+- 文末桌面字体白名单 `[data-host="desktop"] :is(…) { font-family: inherit }` 追加
+  `.preview-pane-address`（18 → 19 类）。同时修正该块注释里一句不准确的旧话：
+  原文写「输入类本来就继承」，实际 `.settings-text-input` 是**显式声明**
+  `font-family: var(--vscode-font-family)`，而 `input.preview-pane-address` 正是漏网的那个。
+
+基础文件（`DesktopApp.css`）一行未动 ⇒ IDE 宿主不受影响（见 ⑤ 残留①）。
+
+### ③ 实测（浅深两档读数逐值相同）
+
+| 项                               | 改前                                                            | 改后                                                                                                  |
+| -------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| 编辑态墨迹盒（设备像素）         | `l=29 t=27 w=249 h=27`                                          | `l=32 t=27 w=261 h=26`                                                                                |
+| 显示态墨迹盒（目标位，两版未动） | `l=32 t=27 w=261 h=26`                                          | 同左                                                                                                  |
+| 编辑态 → 显示态位移              | Δleft **+3**（1.5 CSS px）、Δ宽 **+12**（6 CSS px）             | **Δleft=0 Δtop=0 Δ宽=0 Δ高=0**                                                                        |
+| 两态整幅逐像素                   | 最大通道差 **209**（浅）/ **193**（深），>60 的像素 2706 / 2744 | **0 / 0（逐像素相同）**                                                                               |
+| 显示态 before vs after           | —                                                               | **最大通道差 0**（稳定的一侧一个像素没动）                                                            |
+| 空态占位墨迹                     | `l=29 t=24 w=386`（Arial）                                      | `l=31 t=24 w=392`（页面字体，宽 +3 CSS px）                                                           |
+| 胶囊盒 / 圆角 / 盒高             | `745,98 587×26` / r8 / 26px                                     | **逐值相同**                                                                                          |
+| 同排工具行三颗按钮               | `1340,99` `1372,99` `1404,99`，24×24                            | **逐值相同**                                                                                          |
+| 计算值                           | 字体 `Arial`、描边 `0px none`、内衬 `0 8px`、`line-height 22px` | 字体 `-apple-system,…`、描边 `1px solid rgba(0,0,0,0)`、内衬 `0 8px 1px`、**`line-height 22px` 未动** |
+| 文字对比度（未改色）             | 浅 14.07:1 / 深 12.02:1                                         | 同左                                                                                                  |
+| axe（预览面板作用域）            | 桌面档 0 / base(ide) 档 0                                       | 同左（浅深各一次）；两阶段 0 pageerror                                                                |
+
+补充两条复核：
+
+- **真实动作**（指针停在地址栏上按回车，不挪开）：两态墨迹盒仍**全等**。此时显示态的
+  `:hover` 描边会出现（浅 `rgb(220,223,230)` / 深 `rgb(65,70,73)`），但两态描边都是 1px
+  占位、**不推动文字**。
+- **IDE 档反证**：`html[data-host]` 切 `ide`（组件树不动）⇒ 编辑态回落 `Arial` + `0px none`，
+  显示态仍是 `-apple-system` + `1px` ⇒ 基础文件未动，同时也是 ⑤ 残留① 的量化。
+
+### ④ 为什么垂直补偿用 `padding-bottom` 而不是 `line-height`
+
+垂直那 1 CSS px 不是「估出来的」，是先按候选声明逐个注入页面、各自截图量墨迹筛出来的：
+共测 12 个候选（`border` / `padding-*` / `line-height` 各组合），能全等的有 5 个；
+其中 `border: 1px solid transparent; line-height: 26px` 也全等，但它把**光标行盒**从 22px
+抬到 26px（编辑态多一个无关变化），所以弃用，改取 `padding-bottom: 1px`。
+最终声明在 **DPR 2 与 DPR 1 下都全等**（0.5px 级补偿最容易只在一种像素密度下成立，
+所以两种密度都验了一遍）。
+
+### ⑤ 残留触发语（未授权）
+
+- 「IDE 宿主也一起对齐」：VS Code / JetBrains 仍是 `Arial` + 无描边（base 未动），抖动照旧；
+  修它要动 `DesktopApp.css` 两处 + 1px 补偿，会连带改到 IDE 外观
+- 「编辑态给一条焦点描边」：编辑态**改前也没有**可见焦点指示（base 只给 `:focus` 换
+  `border-color`，而 `border: none` 时 0 宽边框画不出来）；本轮未擅自新增
+- 「激活瞬间那条 hover 描边也别出现」：指针停在地址栏上回车时，显示态 hover 描边会出现
+  （只换色不占位）
+- 「占位文案再深一档」：占位色浅 `#6C7076` 4.44:1 / 深 `#8B8F95` 4.62:1 是既有取值，本轮只换字体
+
+### 验证脚本与证据
+
+- 采集：`CC02/走查/_tools/0922/capture-0922-preview-address-jitter.mjs <before|after>`
+  （改前 = **真回退**：`cp` 备份 → `git checkout -- host-desktop.css`（`git diff --numstat`
+  复核 0/0）→ 采集 → `cp` 还原并复核 md5 `3d2f08553e8bcd9aa689aff089a45884`（numstat 复核
+  23/5）；用例 `tmp-panels-0916`，状态 = 空 / 编辑 / 显示 × 浅深，裁切框两阶段逐值相同
+  `739,92 599×38`，指标 `/tmp/metrics-0922-preview-address-{before,after}.json`）。
+- 墨迹盒 + 逐像素：`CC02/走查/_tools/0922/diff-and-compare-preview-address-0922.py`
+  → `/tmp/diff-0922-preview-address.json`。
+- 候选声明筛选（DPR 2 / DPR 1 各一遍）：`CC02/走查/_tools/0922/probe-preview-address-candidates-0922.mjs 2|1`。
+- 真实动作与 hover：`CC02/走查/_tools/0922/probe-preview-address-hover-activate-0922.mjs`。
+- 作用域反证 + axe：`CC02/走查/_tools/0922/probe-preview-address-scope-axe-0922.mjs`
+  → `/tmp/probe-0922-preview-address-scope-axe.json`。
+- 叠放 / 5× 放大合成图：`CC02/走查/_tools/0922/make-preview-address-stack-0922.py`。
+- 报告（skill 母版 v1.1）：`CC02/走查/0922-preview-address-jitter-report/index.html`，batch.json =
+  `CC02/走查/_tools/0922/batch-0922-preview-address-jitter.json`（F-01 编辑态对齐 / F-02 两态叠放 /
+  F-03 起点 5× 放大 / F-04 空态占位 / F-05 未修复项：IDE 宿主，各浅深两档）；自检
+  `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
