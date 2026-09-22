@@ -39,7 +39,11 @@ function lastPathSegment(dirPath: string): string {
 /**
  * Radio / Checkbox indicator that matches the Figma design (16×16).
  * - Radio unchecked: hollow ring; checked: accent ring + center dot.
- * - Checkbox unchecked: rounded square; checked: same square with a check mark.
+ * - Checkbox (desktop only): hollow rounded square; checked: accent border +
+ *   check mark — the two shapes share one visual language, so the checkbox no
+ *   longer carries a `checkbox-background` fill (it read as disabled).
+ *   IDE hosts keep the original filled square: the 2026-09-22 decision that
+ *   produced the hollow variant is scoped to the desktop surface.
  * Colors use VS Code theme variables so it adapts to light/dark themes.
  */
 const OptionIndicator: React.FC<{ multiSelect: boolean; checked: boolean }> = ({
@@ -47,6 +51,7 @@ const OptionIndicator: React.FC<{ multiSelect: boolean; checked: boolean }> = ({
   checked,
 }) => {
   if (multiSelect) {
+    const desktop = isDesktopHost();
     return (
       <svg
         className="option-indicator-icon"
@@ -62,13 +67,21 @@ const OptionIndicator: React.FC<{ multiSelect: boolean; checked: boolean }> = ({
           width="15"
           height="15"
           rx="2.5"
-          fill="var(--vscode-checkbox-background)"
-          stroke="var(--vscode-checkbox-border)"
+          fill={desktop ? "none" : "var(--vscode-checkbox-background)"}
+          stroke={
+            desktop && checked
+              ? "var(--vscode-focusBorder)"
+              : "var(--vscode-checkbox-border)"
+          }
         />
         {checked && (
           <path
             d="M4.25 8.1L6.35 9.55L11.25 4.35"
-            stroke="var(--vscode-checkbox-foreground)"
+            stroke={
+              desktop
+                ? "var(--vscode-focusBorder)"
+                : "var(--vscode-checkbox-foreground)"
+            }
             strokeWidth="1.7"
             strokeLinecap="round"
             strokeLinejoin="round"
