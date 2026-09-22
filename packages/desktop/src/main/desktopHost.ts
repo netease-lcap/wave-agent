@@ -795,18 +795,36 @@ export class DesktopHost {
 
   /** 聚焦分屏切换后同步账户卡片：推缓存 + 后台刷新用量（auth 由 refreshAuthStatus 处理）。 */
   private syncAccountCard(): void {
-    this.pushAccountInfo();
-    void this.refreshUsageForHost(this.currentHost);
+    const host = this.currentHost;
+    // 缓存里没有该主机的条目 = 「还没查过」，不等于未登录：卡片把缺失渲染成
+    // 登录按钮（pushAccountInfo 的 `?? false`），而这条路（点开远端会话 →
+    // bindAgentToPane）不会先查一次该主机，轮询也会跳过未登录条目 ⇒ 左下角
+    // 永久停在登录按钮。改为查一次该主机 —— refreshAuthStatus 内含
+    // seedAccountFromAuth + pushAccountInfo，与 handleSelectHost /
+    // handleFocusPane 同一模式（spec 场景 8：卡片跟随聚焦分屏所属主机）。
+    if (!this.accountCache.has(host)) {
+      void this.refreshAuthStatus(host);
+    } else {
+      this.pushAccountInfo();
+      void this.refreshUsageForHost(host);
+    }
     // 用户偏好按 host 分属不同会话进程（远端有自己的 ~/.wave/settings.json），
     // 切换聚焦后重读，避免用上一个 host 的缓存值回包。
-    void this.readUserPreferences(this.currentHost);
+    void this.readUserPreferences(host);
   }
 
   /** 每 60s 轮询当前聚焦主机的用量（仅登录态才拉取，spec 场景 8）。 */
   private startAccountPolling(): void {
     if (this.accountPollTimer) return;
     this.accountPollTimer = setInterval(() => {
-      void this.refreshUsageForHost(this.currentHost);
+      const host = this.currentHost;
+      // 未知条目（首次查询恰好失败，例如远端 daemon 正因 CLI 升级重启）也要
+      // 重查 —— 否则卡片一直停在未登录，只能靠用户手动切一次主机自愈。
+      if (!this.accountCache.has(host)) {
+        void this.refreshAuthStatus(host);
+        return;
+      }
+      void this.refreshUsageForHost(host);
     }, DesktopHost.accountPollIntervalMs);
   }
 

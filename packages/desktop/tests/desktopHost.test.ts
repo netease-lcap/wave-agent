@@ -3244,6 +3244,19 @@ describe("account card (desktopAccountInfo)", () => {
     };
   }
 
+  const accountPollField = DesktopHost as unknown as {
+    accountPollIntervalMs: number;
+  };
+
+  /** Shrink the usage poll interval for a test; returns a restore fn. */
+  function setAccountPollInterval(ms: number): () => void {
+    const original = accountPollField.accountPollIntervalMs;
+    accountPollField.accountPollIntervalMs = ms;
+    return () => {
+      accountPollField.accountPollIntervalMs = original;
+    };
+  }
+
   it("pushes the account card on webviewReady with the auth user and usage", async () => {
     const restore = stubAccountRpc(
       { id: "u1", email: "alice@example.com" },
@@ -3373,8 +3386,10 @@ describe("account card (desktopAccountInfo)", () => {
       lastActiveAt: 1,
     });
     h.existingPaths.add("/work/a");
-    // webview-ready 本地 logged in → focus 本地 pane (cached) → focus prod (logged out).
-    h.authStatusResults = [true, false, false];
+    // getAuthStatus 按 FIFO 消费（mock 客户端不区分主机），顺序 = 开场聚焦本地
+    // （refreshAuthStatus）→ webviewReady（pushInitialState，本地）→ 打开远端会话
+    // （该主机未缓存 → 按需查一次，未登录）→ 聚焦回本地分屏 → 聚焦远端分屏。
+    h.authStatusResults = [true, true, false, true, false];
 
     await host.handleWebviewMessage({ command: "desktopReady" });
     await host.handleWebviewMessage({
@@ -3393,6 +3408,17 @@ describe("account card (desktopAccountInfo)", () => {
       }
     ).panes;
     expect(panes[1]).toMatchObject({ host: "prod" });
+    // 远端会话的恢复是异步的（spawn agent → restoreSession）；它会在落地时聚焦
+    // 该分屏并同步卡片。先等它落定，后面的聚焦断言才只反映聚焦切换本身。
+    await vi.waitFor(() => {
+      const last = sent("setInitialState")
+        .filter((m) => m.paneId === panes[1].paneId)
+        .at(-1) as { isRestoring?: boolean; session?: { id?: string } };
+      expect(last).toMatchObject({
+        isRestoring: false,
+        session: { id: "sess-remote" },
+      });
+    });
 
     // 本地 pane：卡片保持已登录（本地缓存）
     await host.handleWebviewMessage({
@@ -3415,6 +3441,139 @@ describe("account card (desktopAccountInfo)", () => {
         isAuthenticated: false,
       });
     });
+  });
+
+  /**
+   * 「没查过」不等于「未登录」：升级重启后第一次接触远端主机，如果是打开一个远端
+   * 会话（而不是在主机选择器里切到该主机），缓存里并没有该主机的条目 —— 卡片据此
+   * 推的未登录快照会让左下角永久停在登录按钮（用量轮询直接跳过未登录条目），必须
+   * 真的查一次该主机。
+   */
+  it("打开远端会话时须查询该主机，未缓存不得推成未登录", async () => {
+    const restore = stubAccountRpc(
+      { id: "u1", email: "alice@example.com" },
+      {
+        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+        apiQuota: { limit: null, used: 1 },
+      },
+      true,
+    );
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, store, send, sent } = createHost();
+    store.addRecentWorkdir({ host: "local", path: "/work/a" });
+    store.upsertSession({
+      sessionId: "sess-remote",
+      title: "remote",
+      host: "prod",
+      workdir: "/work/b",
+      cwd: "/work/b",
+      createdAt: 1,
+      lastActiveAt: 1,
+    });
+    h.existingPaths.add("/work/a");
+    h.existingPaths.add("/work/b");
+
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      path: "/work/a",
+    });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+
+    // 只看打开远端会话之后的卡片（此前那些属于本地主机）。
+    send.mockClear();
+    await host.handleWebviewMessage({
+      command: "desktopSelectSession",
+      workdir: "/work/b",
+      sessionId: "sess-remote",
+    });
+
+    await vi.waitFor(() => {
+      expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+        isAuthenticated: true,
+        user: { id: "u1", email: "alice@example.com" },
+        plan: { monthlyQuota: 9999, months: 12, used: 0 },
+      });
+    });
+    // 这条路径上任何一次未登录快照都会点着左下角的登录按钮（远端确实已登录）。
+    expect(
+      sent("desktopAccountInfo").filter((c) => c.isAuthenticated !== true),
+    ).toEqual([]);
+    restore();
+  });
+
+  /**
+   * 首次查询恰好失败（远端 daemon 正在被 CLI 升级重启）时，「没查过」仍只是未知
+   * —— 卡片不得回落成未登录；用量轮询会重查未知主机并自愈，否则用户必须手动切一
+   * 次主机才看得到账号。
+   */
+  it("首次查询失败时卡片不回落成未登录，并由轮询自愈", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, store, send, sent } = createHost();
+    store.addRecentWorkdir({ host: "local", path: "/work/a" });
+    store.upsertSession({
+      sessionId: "sess-remote",
+      title: "remote",
+      host: "prod",
+      workdir: "/work/b",
+      cwd: "/work/b",
+      createdAt: 1,
+      lastActiveAt: 1,
+    });
+    h.existingPaths.add("/work/a");
+    h.existingPaths.add("/work/b");
+    // 两台主机都已登录：只有「未知」才会让卡片显示登录按钮。
+    h.authStatusResults = Array(8).fill(true);
+
+    let queries = 0;
+    const orig = h.handleClientRequest;
+    h.handleClientRequest = (m: string, params?: unknown) => {
+      if (m === "getAuthStatus") {
+        queries += 1;
+        // 第 1 次 = webviewReady（本地，成功）；第 2 次 = 打开远端会话那次（失败，
+        // 模拟远端 daemon 正被 CLI 升级重启）。
+        if (queries === 2) throw new Error("remote daemon restarting");
+      }
+      return orig(m, params);
+    };
+    const restoreInterval = setAccountPollInterval(20);
+
+    try {
+      await host.handleWebviewMessage({ command: "desktopReady" });
+      await host.handleWebviewMessage({
+        command: "desktopSelectRecentWorkdir",
+        path: "/work/a",
+      });
+      await host.handleWebviewMessage({ command: "webviewReady" });
+
+      send.mockClear();
+      await host.handleWebviewMessage({
+        command: "desktopSelectSession",
+        workdir: "/work/b",
+        sessionId: "sess-remote",
+      });
+      await vi.waitFor(() => {
+        expect(queries).toBeGreaterThanOrEqual(2);
+      });
+      // 查询失败 → 该主机仍是未知，不得推未登录快照。
+      expect(
+        sent("desktopAccountInfo").filter((c) => c.isAuthenticated !== true),
+      ).toEqual([]);
+
+      // 轮询重查未知主机 → 卡片自愈为已登录。
+      await vi.waitFor(
+        () => {
+          expect(queries).toBeGreaterThanOrEqual(3);
+          expect(sent("desktopAccountInfo").at(-1)).toMatchObject({
+            isAuthenticated: true,
+          });
+        },
+        { timeout: 3000 },
+      );
+    } finally {
+      h.handleClientRequest = orig;
+      restoreInterval();
+    }
   });
 });
 
