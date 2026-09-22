@@ -7,7 +7,7 @@ import type {
 } from "electron";
 import { Menu } from "electron";
 import {
-  attachImageContextMenu,
+  attachContextMenu,
   buildApplicationMenuTemplate,
   installApplicationMenu,
   matchPanelToggleInput,
@@ -704,7 +704,20 @@ describe("installApplicationMenu", () => {
   });
 });
 
-describe("attachImageContextMenu", () => {
+describe("attachContextMenu", () => {
+  const editFlags = (overrides: Partial<ContextMenuParams["editFlags"]> = {}) =>
+    ({
+      canUndo: false,
+      canRedo: false,
+      canCut: false,
+      canCopy: false,
+      canPaste: false,
+      canDelete: false,
+      canSelectAll: true,
+      canEditRichly: false,
+      ...overrides,
+    }) as ContextMenuParams["editFlags"];
+
   const imageParams = (overrides: Partial<ContextMenuParams> = {}) =>
     ({
       mediaType: "image",
@@ -714,40 +727,175 @@ describe("attachImageContextMenu", () => {
       ...overrides,
     }) as ContextMenuParams;
 
-  it("pops a 复制图片 menu on an image right-click and copies the image at that position", () => {
-    const contents = {
+  const textParams = (overrides: Partial<ContextMenuParams> = {}) =>
+    ({
+      mediaType: "none",
+      srcURL: "",
+      x: 0,
+      y: 0,
+      linkURL: "",
+      selectionText: "",
+      isEditable: false,
+      editFlags: editFlags(),
+      ...overrides,
+    }) as ContextMenuParams;
+
+  const contentsMock = () =>
+    ({
       on: vi.fn(),
       copyImageAt: vi.fn(),
-    } as unknown as WebContents;
-    attachImageContextMenu(contents);
+      showDefinitionForSelection: vi.fn(),
+    }) as unknown as WebContents;
 
+  const fire = (contents: WebContents, params: ContextMenuParams) => {
     const handler = vi
       .mocked(contents.on)
       .mock.calls.find(([event]) => event === "context-menu")![1];
-    handler({} as never, imageParams());
+    handler({} as never, params);
+  };
+
+  const popupOfLastMenu = () =>
+    (
+      Menu.buildFromTemplate.mock.results.at(-1)!.value as {
+        popup: ReturnType<typeof vi.fn>;
+      }
+    ).popup;
+  const templateOfLastMenu = () =>
+    Menu.buildFromTemplate.mock.calls.at(
+      -1,
+    )![0] as MenuItemConstructorOptions[];
+
+  it("pops a 复制图片 menu on an image right-click and copies the image at that position", () => {
+    const contents = contentsMock();
+    attachContextMenu(contents, true);
+    const frame = { frameToken: "main" } as never;
+
+    fire(contents, imageParams({ frame }));
 
     expect(Menu.buildFromTemplate).toHaveBeenCalledTimes(1);
-    const template = (
-      Menu.buildFromTemplate.mock.calls[0][0] as MenuItemConstructorOptions[]
-    ).flat();
+    const template = templateOfLastMenu().flat();
     expect(template).toMatchObject([{ label: "复制图片" }]);
     template[0].click?.({} as never, {} as never, {} as never);
     expect(contents.copyImageAt).toHaveBeenCalledWith(12, 34);
+    // The WebFrameMain must ride along: without it macOS keeps Writing Tools /
+    // AutoFill / Services disabled in the popup.
+    expect(popupOfLastMenu()).toHaveBeenCalledWith({ frame });
   });
 
-  it("does nothing on non-image right-clicks", () => {
-    const contents = {
-      on: vi.fn(),
-      copyImageAt: vi.fn(),
-    } as unknown as WebContents;
-    attachImageContextMenu(contents);
-    const handler = vi
-      .mocked(contents.on)
-      .mock.calls.find(([event]) => event === "context-menu")![1];
+  it("pops the macOS 查词 + 复制/全选 menu on a text selection", () => {
+    const contents = contentsMock();
+    attachContextMenu(contents, true);
+    const frame = { frameToken: "main" } as never;
 
-    handler({} as never, imageParams({ mediaType: "none" }));
-    handler({} as never, imageParams({ mediaType: "image", srcURL: "" }));
+    fire(
+      contents,
+      textParams({
+        selectionText: "heuristic",
+        editFlags: editFlags({ canCopy: true }),
+        frame,
+      }),
+    );
+
+    const template = templateOfLastMenu();
+    expect(template).toMatchObject([
+      { label: "查词 “heuristic”" },
+      { type: "separator" },
+      { role: "copy", label: "复制", enabled: true },
+      { role: "selectAll", label: "全选", enabled: true },
+      { type: "separator" },
+      { role: "services" },
+    ]);
+    template[0].click?.({} as never, {} as never, {} as never);
+    expect(contents.showDefinitionForSelection).toHaveBeenCalledTimes(1);
+    expect(popupOfLastMenu()).toHaveBeenCalledWith({ frame });
+  });
+
+  it("truncates a long multi-line selection in the 查词 label", () => {
+    const contents = contentsMock();
+    attachContextMenu(contents, true);
+
+    fire(
+      contents,
+      textParams({ selectionText: "alpha\nbeta gamma delta epsilon zeta" }),
+    );
+
+    expect(templateOfLastMenu()[0]).toMatchObject({
+      label: "查词 “alpha beta gamma delta e…”",
+    });
+  });
+
+  it("adds 剪切/粘贴 in an editable field and greys out what editFlags forbids", () => {
+    const contents = contentsMock();
+    attachContextMenu(contents, true);
+
+    fire(
+      contents,
+      textParams({
+        isEditable: true,
+        editFlags: editFlags({ canPaste: true, canSelectAll: false }),
+      }),
+    );
+
+    expect(templateOfLastMenu()).toMatchObject([
+      { role: "cut", label: "剪切", enabled: false },
+      { role: "copy", label: "复制", enabled: false },
+      { role: "paste", label: "粘贴", enabled: true },
+      { role: "selectAll", label: "全选", enabled: false },
+      { type: "separator" },
+      { role: "services" },
+    ]);
+  });
+
+  it("omits the macOS-only 查词 item on links and on Windows/Linux", () => {
+    const contents = contentsMock();
+    attachContextMenu(contents, true);
+    fire(
+      contents,
+      textParams({
+        selectionText: "wave",
+        linkURL: "https://example.com",
+        editFlags: editFlags({ canCopy: true }),
+      }),
+    );
+    expect(templateOfLastMenu()).toMatchObject([
+      { role: "copy", label: "复制" },
+      { role: "selectAll", label: "全选" },
+      { type: "separator" },
+      { role: "services" },
+    ]);
+    expect(templateOfLastMenu().map((item) => item.label)).not.toContain(
+      "查词 “wave”",
+    );
+
+    vi.clearAllMocks();
+    const winContents = contentsMock();
+    attachContextMenu(winContents, false);
+    fire(
+      winContents,
+      textParams({
+        selectionText: "wave",
+        editFlags: editFlags({ canCopy: true }),
+      }),
+    );
+    expect(templateOfLastMenu()).toMatchObject([
+      { role: "copy", label: "复制", enabled: true },
+      { role: "selectAll", label: "全选", enabled: true },
+    ]);
+    expect(winContents.showDefinitionForSelection).not.toHaveBeenCalled();
+  });
+
+  it("stays menu-less on right-clicks with nothing to act on", () => {
+    const contents = contentsMock();
+    attachContextMenu(contents, true);
+    const handlerFires = (params: ContextMenuParams) => fire(contents, params);
+
+    // Whitespace-only selection in a read-only area.
+    handlerFires(textParams({ selectionText: "   " }));
+    // Non-image media, and an image without a source URL.
+    handlerFires(textParams());
+    handlerFires(textParams({ mediaType: "image", srcURL: "" }));
     expect(Menu.buildFromTemplate).not.toHaveBeenCalled();
     expect(contents.copyImageAt).not.toHaveBeenCalled();
+    expect(contents.showDefinitionForSelection).not.toHaveBeenCalled();
   });
 });
