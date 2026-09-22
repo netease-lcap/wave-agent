@@ -3659,9 +3659,12 @@
   background-color: rgba(255, 255, 255, 0.08);
 }
 
-/* ── 设置页下拉：桌面端自绘弹层（SettingsSelect.tsx）────────────────────────
+/* ── 桌面端自绘下拉弹层：设置页（SettingsSelect.tsx）+ 会话看板项目筛选（SessionBoard.tsx）──
    设计师 0921 评论（点 `select.settings-select`）：「这种类型的选择器点击后的下拉列表
    应该出现在选择器下方 2px 的位置，右对齐，下拉列表的宽度和选择器尽量保持一致」。
+   0922 评论（点 `select.session-board-filter-select`）：「这个选择器的下拉菜单也要遵循
+   规范，昨天改过类似问题」——看板筛选改用同一套弹层，故下面每条规则并列两个 surface 的类
+   （`.settings-select-*` / `.session-board-filter-*`），皮肤只有一份声明，几何由各自组件给。
    原生 `<select>` 的弹层由系统/Chromium 绘制，位置与尺寸都无法由 CSS 控制，故桌面端
    换成自绘 listbox（IDE 宿主保留原生 select，见该组件的宿主分叉）。
 
@@ -3674,7 +3677,8 @@
    `--cc-bg-overlay`/12% 白边/40% 黑柔影、项 #9A9EA5 + hover 8% 白、选中 12% 白），
    同族弹层：`.more-menu` / `.desktop-session-menu` / `.desktop-workdir-menu` /
    `.permission-mode-menu`。 */
-[data-host="desktop"] .settings-select-menu {
+[data-host="desktop"] .settings-select-menu,
+[data-host="desktop"] .session-board-filter-menu {
   position: fixed;
   z-index: 10000;
   box-sizing: border-box;
@@ -3687,7 +3691,8 @@
   color: #565a60;
 }
 
-[data-host="desktop"] .settings-select-option {
+[data-host="desktop"] .settings-select-option,
+[data-host="desktop"] .session-board-filter-option {
   display: flex;
   align-items: center;
   min-height: 28px;
@@ -3699,43 +3704,53 @@
   cursor: pointer;
 }
 
-[data-host="desktop"] .settings-select-option:hover {
+[data-host="desktop"] .settings-select-option:hover,
+[data-host="desktop"] .session-board-filter-option:hover {
   background: #eef0f3;
   color: #1f2329;
 }
 
 [data-host="desktop"] .settings-select-option.is-selected,
-[data-host="desktop"] .settings-select-option.is-selected:hover {
+[data-host="desktop"] .settings-select-option.is-selected:hover,
+[data-host="desktop"] .session-board-filter-option.is-selected,
+[data-host="desktop"] .session-board-filter-option.is-selected:hover {
   background: #e7e9ed;
   color: #1f2329;
 }
 
 /* 键盘焦点：roving tabindex 会把真实焦点放到选项上（鼠标点击不亮）。
    环内收 2px，避免被弹层圆角切掉一角。 */
-[data-host="desktop"] .settings-select-option:focus-visible {
+[data-host="desktop"] .settings-select-option:focus-visible,
+[data-host="desktop"] .session-board-filter-option:focus-visible {
   outline: 2px solid var(--cc-border-focus, #a0a5a8);
   outline-offset: -2px;
 }
 
-[data-host="desktop"][data-theme="dark"] .settings-select-menu {
+[data-host="desktop"][data-theme="dark"] .settings-select-menu,
+[data-host="desktop"][data-theme="dark"] .session-board-filter-menu {
   background: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow: 0 0 12px rgb(0 0 0 / 40%);
   color: #9a9ea5;
 }
 
-[data-host="desktop"][data-theme="dark"] .settings-select-option {
+[data-host="desktop"][data-theme="dark"] .settings-select-option,
+[data-host="desktop"][data-theme="dark"] .session-board-filter-option {
   color: #9a9ea5;
 }
 
-[data-host="desktop"][data-theme="dark"] .settings-select-option:hover {
+[data-host="desktop"][data-theme="dark"] .settings-select-option:hover,
+[data-host="desktop"][data-theme="dark"] .session-board-filter-option:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
 }
 
 [data-host="desktop"][data-theme="dark"] .settings-select-option.is-selected,
 [data-host="desktop"][data-theme="dark"]
-  .settings-select-option.is-selected:hover {
+  .settings-select-option.is-selected:hover,
+[data-host="desktop"][data-theme="dark"] .session-board-filter-option.is-selected,
+[data-host="desktop"][data-theme="dark"]
+  .session-board-filter-option.is-selected:hover {
   background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
 }

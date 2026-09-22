@@ -6022,3 +6022,97 @@ hover 逐字相同。
   640 窄屏无横溢。
 - 图：报告内 `shots/{before,after}/{light,dark}-{scope-row,market-header,sidebar-session,scope-dialog}-2x.png`；
   另存 `CC02/走查/0922-dialog-font/`（四个弹层改后截图）、`CC02/走查/0922-font-desktop-scope/`（反证）。
+
+## 0922 评论（看板项目筛选：原生弹层 → 自绘 listbox；三角位置钉到右内缘）
+
+设计师 0922 预览评论（看板页），两条同控件：
+
+1. `select.session-board-filter-select`「全部项目CC02」——「这个选择器的下拉菜单也要遵循规范，
+   昨天改过类似问题」（昨天 = 0921 设置页 `select.settings-select` 同款诉求）；
+2. 同日追加：「三角的位置也不对」。
+
+### ① 弹层：根因与改法（与设置页共用一份皮肤）
+
+原生 `<select>` 的弹层由系统/Chromium 绘制，`appearance:none` 只改控件本身 —— 位置、宽度、内衬、
+行高、字体、主题**都不受 CSS 控制**（改前的原生弹层是系统浅灰 + 蓝色高亮条 + 左侧对勾，且**不跟随
+应用主题**：深色档下依旧是系统浅灰）。故桌面端（`isDesktopHost()`）换成自绘 listbox：
+
+- `packages/webview/src/components/SessionBoard.tsx`：透明 `<button>` 触发器（同尺寸、同命中区）
+  - `.session-board-filter-menu` / `.session-board-filter-option` 自绘弹层，键盘复用面板内同源的
+    `useRovingMenu`（roving tabindex：Arrow/Enter/Esc/Tab + 点外部关闭）。定位三则由组件给
+    （`top = 可见控件盒下缘 + 2`、`right = 视口右 − 控件右缘`、`width = 控件宽`）。**锚点取可见控件盒
+    `.session-board-filter`（160×32）**，不取透明触发器 —— 后者 `inset: 0` 落在 1px 描边内缘（实测
+    158×30），当锚点会让弹层窄 2px 且错位 1px。IDE 宿主保留原生 `<select>`（行为与既有断言不变）。
+- `packages/webview/src/styles/host-desktop.css`：把 0921 那条弹层规则的**选择器列表并列两个
+  surface**（`.settings-select-*` / `.session-board-filter-*`，共 9 条：浅色、深色、hover、选中、
+  `:focus-visible`），皮肤只有一份声明 —— 以后改一处，两个下拉同时生效。
+
+### ② 三角：位置不对是排布问题，不在三角本身
+
+`.session-board-filter` 是**定宽 160** 的 flex 行（内衬 8 / gap 6）。文字层用默认
+`flex: 0 1 auto`，只占自身内容宽（「全部项目」57px）→ 三角（`flex-shrink: 0`）紧跟文字，右侧白空
+**66.5px**。两条修正（`packages/webview/src/styles/SessionBoard.css`）：
+
+1. `.session-board-filter-text` 加 `flex: 1 1 auto` —— 文字层吃掉剩余空间，把三角顶到右内缘；
+2. `.session-board-filter-arrow` 加 `margin-right: 4.5px` —— codicon 的 16px 盒里 chevron-down
+   **墨迹只有 10×5.5 且居中**（盒缘到墨迹 3.5px）：只把**盒子**贴内缘，墨迹右内衬会只剩 3.5px、比
+   文字左内衬紧 4.5px；补 4.5px 后**墨迹**右内衬 = 8.0px，与文字左内衬（8px）**对称**（口径同设置页
+   自绘三角那条：`SettingsPage.css`「让墨迹距输入框内缘 8px」）。
+
+两条都是 base 规则 ⇒ **IDE（VS Code / JetBrains）宿主的看板同步变化**。这是「控件内左右内衬是否
+对称」的正确性问题、不是桌面密度参数，故没有收进 `[data-host="desktop"]` 作用域；若要只作用桌面端
+需改挂载位置（残留言）。
+
+### ③ 改后实测
+
+- 弹层几何：`gap 2 / rightDelta 0 / widthDelta 0`（浅深两档同值），盒 **160×74**，位触发器下方
+  `(1264, 94)`，完整落在视口内；行 **28px / r6 / 14px / 400 / 页面字体栈**；内衬 8、r12、
+  `1px #EBEEF5` / `0 0 12px 12%`（深色 `--cc-bg-overlay` / 12% 白边 / 40% 黑柔影）；选中
+  浅 `#E7E9ED` / 深 12% 白，hover 浅 `#EEF0F3` / 深 8% 白；主题跟随。
+- 键盘与无障碍：ArrowDown → Enter 选中「CC02」并关闭、焦点回触发器；Esc 关闭并回焦、点外部关闭；
+  `role=listbox` + `aria-label=筛选项目` + `aria-haspopup=listbox` + `aria-expanded` + 选项
+  `aria-selected`；axe-core 4.x 浅深两档 **0 违规**（含 color-contrast）。
+- 三角：墨迹 `1339.0..1348.5`（右内衬 **66.5px**）→ `1397.5..1407.0`（右内衬 **8.0px**），右移
+  58.5px，浅深同值；墨迹 10×5.5 不变、垂直中心 76.0 = 控件中心；文字起止与字形段位置**逐值相同**
+  （没被挤动）；换 347px 长项目名实测仍 `scrollWidth 347 > clientWidth 116` 触发省略、三角不动。
+- 控件盒与命中区：可见盒 `160×32 @ (1264, 60)` 零位移；透明命中区 `158×30`（1px 描边内缘，与改前
+  一致）。
+- IDE 分支**运行时反证**：首帧按非桌面宿主渲染时控件标签 = `SELECT`、选项 `[全部项目, CC02]`、
+  `selectOption` 生效、不创建自绘弹层、0 `pageerror`（`isDesktopHost()` 读的是
+  `window.waveHostType`、不是 `data-host`，且运行时改它不触发重渲染，故反证须在首个脚本前拦截
+  `Object.defineProperty(window,"waveHostType")` 把 getter 钉成非 desktop）。
+- 全程 0 `pageerror`；`pnpm run type-check` 全绿（未跑自动化测试套件，沿用 9/3 起的约定）。
+
+### ④ 认知（后续「原生弹层不受控」类问题可复用）
+
+- **原生弹层页面截屏拍不到**：`page.screenshot()` 里完全没有它（改前「页面截屏内自绘弹层=false」、
+  改后 `=true`，这本身就是「系统绘制」的证据）。要给改前视觉对照，必须让改前改后走**同一条采集
+  链路**（有头 Chromium + macOS `screencapture`，再按同一固定框裁切），内容原点用行/列签名对齐实测
+  （本次 OS device `(0, 252)`）；同链路后「弹层以外区域」逐像素最大差 ≤ 7/255（浅 7 / 深 0）。若改后
+  走 `page.screenshot`、改前走 OS 截屏，文字抗锯齿会不同（灰度 AA vs 子像素 AA）→ 满屏假差异。
+- **量小图标位置用列剖面**：背景取众数 → 逐列统计偏离背景的像素 → 取最右一段为图标墨迹，比取包围盒
+  稳（能排除描边、圆角、文字干扰）；且要写清「图像原点 + 窗口偏移」两层坐标（本次曾漏加窗口偏移，
+  把墨迹量成 1380.5，补齐后 1397.5 与几何算值一致）。
+- **采集顺序会造假象**：用 `Escape` 收弹层后再采下一个主题，程序聚焦选项会命中 `:focus-visible`
+  （截图多出一圈键盘焦点环）→ 改用鼠标点触发器收弹层。
+
+### ⑤ 残留触发语（未授权）
+
+- 「三角也换成设置页那条矢量」：现仍是 codicon `chevron-down`（墨迹 10×5.5），比 0921 那条官方矢量
+  （墨迹 8×4.5、描边 1.33、圆角端点）大一号、笔画略粗；换完墨迹内衬仍应取 8px。
+- 「文字与三角间距也收成 8px」：现 `gap: 6px`（设置页那颗是 8px），只在长项目名压满时可见。
+- 「命中区也铺满 160×32」：透明触发器 `inset: 0` 落在 1px 描边内缘 = 158×30（与改前一致）。
+- 「长项目名允许弹层更宽还是截断」：弹层宽度现恒等于控件宽 160（按 0921 规范「与选择器尽量保持
+  一致」），选项文案长到溢出时的策略待定档。
+- 「三角位置只作用桌面端」：现为 base 规则，IDE 宿主的看板同步变化。
+
+### 验证脚本与证据
+
+- 采集：`CC02/走查/_tools/0922/capture-board-filter-os-0922.mjs <before|after>`
+  （真回退采改前：两文件 `git checkout --` → 采集 → `cp` 还原 + md5 逐字节校验；固定裁切框
+  `/tmp/clips-0922-board.json`）；反证 `probe-board-filter-ide-branch-0922.mjs`；几何/键盘回归
+  `verify-board-filter-menu-0922.mjs`。
+- 报告（skill 母版 v1.1）：`CC02/走查/0922-board-filter-report/index.html`，`batch.json` =
+  `CC02/走查/_tools/0922/batch-0922-board-filter.json`（F-01 弹层 / F-02 三角，各浅深两档）；
+  自检 `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
+- 图：`CC02/走查/0922-board-filter/shots/{before,after}/{light,dark}-{board-filter-menu,board-filter-arrow}-2x.png`。

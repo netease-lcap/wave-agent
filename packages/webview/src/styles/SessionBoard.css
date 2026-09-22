@@ -146,7 +146,12 @@
 }
 
 .session-board-filter-text {
-  min-width: 0; /* 超出 max-width 时省略，hover 经 title 展示全文 */
+  /* 0922 评论（「三角的位置也不对」）：本控件是定宽 160 的输入类控件，文字层必须吃掉剩余
+     空间，三角才会被顶到右内缘——改前 flex 默认 `0 1 auto`，文字只占内容宽（57px），三角
+     紧贴文字、右侧空出 66.5px。flex:1 后文字层 115.5 宽，三角盒子落在右内缘内侧（墨迹的
+     内衬见下一条）。 */
+  flex: 1 1 auto;
+  min-width: 0; /* 超出可用宽时省略，hover 经 Tooltip 展示全文 */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -154,6 +159,11 @@
 
 .session-board-filter-arrow {
   flex-shrink: 0;
+  /* 墨迹内衬对齐：codicon 的 16px 盒里 chevron-down 墨迹实测 10×5.5 且居中（盒右缘到
+     墨迹右缘 3.5px）。本控件的文字左内衬是 8px，故**墨迹**右内衬也应取 8px（左右对称，
+     口径同设置页自绘三角那条：SettingsPage.css「让墨迹距输入框内缘 8px」）→ 盒子再左移
+     4.5px；若让盒子直接贴内缘，墨迹只剩 3.5px，比左侧内衬紧 4.5px。 */
+  margin-right: 4.5px;
   color: #6c7076;
 }
 
