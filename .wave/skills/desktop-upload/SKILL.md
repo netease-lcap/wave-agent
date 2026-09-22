@@ -111,7 +111,7 @@ node .wave/skills/desktop-upload/upload.mjs \
 
 它只做 init + 第一片就停：不调 `complete` ⇒ 不落库、不产生用户可见记录；留下的只是服务端内存里的临时会话（TTL 2h 后随分片目录一起自动清理）。收尾可用下面「验证要点」第 1 步的读接口核对列表里**没有**这个版本号。
 
-## 验证要点（三路硬证，上传后逐一跑）
+## 验证要点（四路硬证，上传后逐一跑）
 
 **1. 接口字段核对（含内容摘要）**：`GET /api/ops/downloads` 的 `desktopDownloads[]` 出 `version` / `channel` / `fileName` / `downloadUrl` / `fileSize` / `sha512`。**`sha512` 是 digest 的 base64（不是 hex）**，可与本地文件直接比：
 
@@ -150,10 +150,57 @@ unzip -o -q /tmp/wave-desktop-1.2.6/CodeWave.IDE-1.2.6-arm64-mac.zip "CodeWave I
 grep -c "<本次修复的特征串>" /tmp/asar-chk/"CodeWave IDE.app/Contents/Resources/app.asar"   # 期望 ≥1
 ```
 
+⚠️ **中文特征串直接 grep 会 0 命中**：打包器（esbuild）把非 ASCII 转义成 `\uXXXX` 存进产物。2026-09-22 实测 1.2.9 的 asar：`grep -c "企业本期额度已用尽"` = **0**，`grep -c '\u4F01\u4E1A\u672C\u671F\u989D\u5EA6\u5DF2\u7528\u5C3D'` = **1**。所以**优先挑 ASCII 锚**（testid / 变量名 / 函数名，如 `account-plan-conclusion`，同一次实测 2 命中）；只有当修复点只有中文字面量可搜时才按转义串搜：
+
+```bash
+# 中文 → \uXXXX（注意 python 那侧要用 raw string，否则 \u%04X 不是合法转义）
+printf '%s' '企业本期额度已用尽' | python3 -c "import sys;print(''.join(r'\u%04X'%ord(c) for c in sys.stdin.read()))"
+# \u4F01\u4E1A\u672C\u671F\u989D\u5EA6\u5DF2\u7528\u5C3D
+```
+
+**4. feed 端到端核对（必做）**：上面第 1 步读的是**运营平台库里的记录**；客户端（electron-updater）实际读的不是它，而是**企业端后端按 electron-builder 格式动态生成的 feed yml**。feed 的基地址就**是客户端配置里的 `serverUrl` 本身**——桌面端把它缓存下来**只为拼 feed URL**（见 `packages/desktop/src/main/updateAutoUpdater.ts` 的 `feedUrlFor`），所以要拿值为准就去读该环境客户端的 `serverUrl`：设置页「服务端地址」/ `~/.wave/settings.json` 的 `env.WAVE_SERVER_URL` / 桌面端 `userData/wave-desktop.json` 里的 `serverUrl` 缓存。**⚠️ 别拿 `--base`（ops 域名）去请求 feed 路径，会 404**（见「坑」）。
+
+- 端点（`serverUrl` 下，**无鉴权**）：beta = `…/api/downloads/desktop-beta/{mac|win}/…`，stable 去掉 `-beta` = `…/api/downloads/desktop/{mac|win}/…`。**mac 用 `latest-mac.yml`（对应 zip 更新包）、win 用 `latest.yml`（对应 exe 安装包）**；dmg 不参与自动更新 feed。
+- 期望：`200` + `version:` 等于本次上传的版本 + `files[0].sha512`（base64）与本地文件 `hashlib.sha512(...).digest()` 的 base64 **一致** + `size` 等于本地字节数 + `path`/`url` 指向该环境的 file-center。
+- 为什么要查：**这是客户端真正读取的东西**——第 1 步只证明「库里有记录 / 对象存进去了」，feed 才证明「客户端会看到这个版本」。顺手还能证明**没污染另一条通道**：往 beta 传完之后 stable feed 的 `version` 应当**不变**（stable / beta 是两条独立的线）。
+
+```bash
+python3 - <<'PY'
+import base64, hashlib, urllib.request
+server = 'https://codechat.codewave.163.com'   # = 该环境客户端的 serverUrl，取值为准
+chan, plat, yml = 'desktop-beta', 'mac', 'latest-mac.yml'   # stable 用 'desktop'；win 用 'latest.yml'
+local = '/tmp/wave-desktop-1.2.9/CodeWave.IDE-1.2.9-arm64-mac.zip'
+txt = urllib.request.urlopen(f'{server}/api/downloads/{chan}/{plat}/{yml}').read().decode()
+lines = txt.splitlines()
+ver = next(l for l in lines if l.startswith('version:')).split(':', 1)[1].strip()
+sha = next(l for l in lines if l.strip().startswith('sha512:')).split(':', 1)[1].strip()
+size = next(l for l in lines if l.strip().startswith('size:')).split(':', 1)[1].strip()
+data = open(local, 'rb').read()
+print('feed version =', ver)
+print('sha512 match =', sha == base64.b64encode(hashlib.sha512(data).digest()).decode())
+print('size  match =', size == str(len(data)))
+PY
+```
+
+**拿错域名的两个反例**（2026-09-22 实测原文，省下一个人 10 分钟）：
+
+```bash
+# ① 用 ops 域名（--base 那个）请求 feed 路径
+curl -s "https://neteasecc.codewave.163.com/api/downloads/desktop-beta/mac/latest-mac.yml"
+# {"error":"Not found"}   ← 404
+
+# ② 反过来用企业端域名请求 ops 接口
+curl -s -o /dev/null -w '%{http_code}\n' "https://codechat.codewave.163.com/api/ops/downloads"
+# 404
+```
+
+两边都是 `404 {"error":"Not found"}` 这个形状，**错误码/错误串都不指向真正的原因（域名打错了）**，别指望 HTTP 状态帮你定位。（别把这里的 404 跟真正的 `401` 混起来：`401` 只在 **ops 域名**下请求 `/api/ops/downloads` 且不带 token 时出现，见第 1 步。）
+
 ## 坑
 
 - **不要用浏览器上传桌面端包**：2026-09-20 生产实测 3/3 被浏览器侧的**连接层中断**打死（`ERR_NETWORK_CHANGED` / `ERR_ABORTED`，断点每次不同）；服务端侧到达的分片全 200、全落同一 pod、失败那片**从未出现在服务端日志里**，即断在浏览器 ↔ ingress 之间，根因未定位。所以本技能的上传路径只有分片直传脚本。
 - **环境别搞混**：默认生产 `neteasecc.codewave.163.com`；只有用户当次明确说「测试环境」才用 `neteasecc.codewave-test.163yun.com`。打错域名**不报错**，会静默写到另一个环境（脚本第一行会打印平台地址，先看一眼）。
+- **别把 ops 域名当 feed 域名**：**上传 / 回读走 ops 域名（`--base`），客户端只读的 feed 走企业端域名**（feed 基地址 = 客户端 `serverUrl`，见「验证要点」第 4 步），两者是两个域名。打错**都不会告诉你"你用错域名了"**：2026-09-22 实测拿 ops 域名请求 feed 路径回 `404 {"error":"Not found"}`，反过来拿企业端域名请求 `/api/ops/downloads` 也回同样的 `404 {"error":"Not found"}`——是**网关不认识这条路**，跟 ops 域名下不带 token 的 `401` 不是一回事。企业端域名易变、且是外部拥有（变了我们不会收到通知），**别写死**——按「验证要点」第 4 步的方式取 `serverUrl`；2026-09-22 实测值为 prod `codechat.codewave.163.com` / test `codechat.codewave-test.163yun.com`，仅供参考。
 - **无 cookie 直传 = 随机 404**：生产多副本 + 分片会话只在 init 那个 pod 的内存与临时目录里，必须带 `codechat-ops-route` 亲和 cookie。脚本自己取一次就够（ingress 对任意请求都下发），但**手搓 curl 直传时必须自己带上**。
 - **同名同通道重传是覆盖**：`(type, version, platform, channel)` 相同即覆盖旧记录（`fileKey` 相同、file-center 幂等覆盖），重传安全；但**版本号必须与 `--version` 一致**。stable / beta 互不覆盖。
 - **文件名与 `platform` 段以接口返回为准**：现行 canonical 名是 `codewave-ide.dmg` / `codewave-ide-mac.zip` / `codewave-ide-setup.exe`（服务端按 `platform` 定名，**不是**你上传时的原始文件名），`platform` 段为 `mac-dmg` / `mac-zip` / `win-exe`；历史行还留着上一代命名 `codechat-desktop.*`。核对时直接比字段，别靠拼字符串匹配。
