@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent, screen, act } from "@testing-library/react";
 import React from "react";
+import type {
+  AccountBillingCode,
+  AccountBillingDegradeReason,
+} from "wave-webview-fixtures";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import {
   createMockVscode,
@@ -340,6 +344,119 @@ describe("AccountCard (desktop sidebar)", () => {
         "企业本期额度已用尽，当前按 API 余额计费",
       );
       expect(conclusion.classList.contains("is-warning")).toBe(true);
+    });
+
+    // 结论行对「规格外枚举」的兜底：`reason` / `code` 是开放集合——服务端可能先于客户端
+    // 发版新增取值（两端不同机发布），客户端必须认出「不认识」并给一句有信息量的兜底，
+    // 而不是静默（空文案红框 / 什么都不画）。2026-09-22 缺陷 3479183306383616 的同款失效。
+    describe("计费结论行的枚举兜底", () => {
+      const usagePlan = {
+        monthUsed: 600,
+        monthLimit: 1000,
+        weekUsed: 60,
+        weekLimit: 500,
+        expireDate: "2027-03-01",
+      };
+      const expiredPlan = { expireDate: "2026-01-31" };
+
+      // 每个已知 reason 都必须渲染出**非空**文案（防「新增分支忘给文案」）。
+      it.each([
+        { reason: "month", plan: usagePlan },
+        { reason: "week", plan: usagePlan },
+        { reason: "enterprise", plan: usagePlan },
+        { reason: "dimension_unavailable", plan: usagePlan },
+        { reason: "no_plan", plan: expiredPlan },
+      ])(
+        "renders a non-empty conclusion line for the known reason=$reason",
+        ({ reason, plan }) => {
+          renderDesktop();
+          pushAccount({
+            ...loggedIn,
+            billing: { mode: "api", reason, plan },
+            apiQuota: apiPlenty,
+          });
+
+          const conclusion = screen.getByTestId("account-plan-conclusion");
+          expect(conclusion.textContent?.trim()).toBeTruthy();
+        },
+      );
+
+      // 三个已知 code（blocked 形态）同理：文案非空 + 错误色。
+      it.each(["EXPIRED_NO_API", "USER_QUOTA_ZERO", "TEAM_QUOTA_ZERO"])(
+        "renders a non-empty error conclusion line for the known code=%s",
+        (code) => {
+          renderDesktop();
+          pushAccount({
+            ...loggedIn,
+            billing: { mode: "blocked", code },
+            apiQuota: { limit: 5, used: 5 },
+          });
+
+          const conclusion = screen.getByTestId("account-plan-conclusion");
+          expect(conclusion.textContent?.trim()).toBeTruthy();
+          expect(conclusion.classList.contains("is-error")).toBe(true);
+        },
+      );
+
+      it("falls back to a warning conclusion line for an out-of-spec reason instead of rendering nothing", () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+          renderDesktop();
+          pushAccount({
+            ...loggedIn,
+            billing: {
+              mode: "api",
+              // 绕过类型：模拟「后端已发版、客户端还不认识这个 reason」。
+              reason: "future_reason" as unknown as AccountBillingDegradeReason,
+              plan: usagePlan,
+            },
+            apiQuota: apiPlenty,
+          });
+
+          const conclusion = screen.getByTestId("account-plan-conclusion");
+          expect(conclusion).toHaveTextContent(
+            "套餐额度当前不可用，按 API 余额计费",
+          );
+          // 未知原因不预设「需人工干预」（error 那档），按会不会自愈的分档规则给琥珀。
+          expect(conclusion.classList.contains("is-warning")).toBe(true);
+          expect(warn).toHaveBeenCalledWith(
+            "未知 billing.reason，已按兜底文案渲染:",
+            "future_reason",
+          );
+        } finally {
+          warn.mockRestore();
+        }
+      });
+
+      it("falls back to a non-empty error conclusion line for an out-of-spec blocked code", () => {
+        const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+        try {
+          renderDesktop();
+          pushAccount({
+            ...loggedIn,
+            billing: {
+              mode: "blocked",
+              // 绕过类型：模拟后端新增了一个客户端不认识的阻断码。
+              code: "FUTURE_CODE" as unknown as AccountBillingCode,
+            },
+            apiQuota: { limit: 5, used: 5 },
+          });
+
+          const conclusion = screen.getByTestId("account-plan-conclusion");
+          expect(conclusion).toHaveTextContent(
+            "当前用量受限，请联系公司管理员",
+          );
+          expect(conclusion.classList.contains("is-error")).toBe(true);
+          // 不是「有结论行元素但文案为空」的空红框。
+          expect(conclusion.textContent?.trim()).toBeTruthy();
+          expect(warn).toHaveBeenCalledWith(
+            "未知 billing.code，已按兜底文案渲染:",
+            "FUTURE_CODE",
+          );
+        } finally {
+          warn.mockRestore();
+        }
+      });
     });
 
     it("hides the plan block when the host sent no billing at all", () => {
