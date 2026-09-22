@@ -6422,3 +6422,90 @@ JSDoc 同步写明「本条只在桌面端生效」。非桌面分支的三处�
 - 报告（skill 母版 v1.1）：`CC02/走查/0922-question-nav-outline-report/index.html`，`batch.json`
   = `CC02/走查/_tools/0922/batch-0922-question-nav-outline.json`（F-01 静止 / F-02 hover / F-03 焦点，各浅深
   两档）；自检 `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
+
+## 0922 评论（确认弹窗两颗「是…」按钮继承页面字体）
+
+设计师 0922 预览评论（`http://localhost:8899/` 权限确认弹窗）：
+
+> `button.confirmation-btn.confirmation-btn-auto`「是，并跳过权限确认」——
+> 「这里两个是的按钮也一样改」。
+
+「也一样改」= 与上一节那条桌面按钮字体白名单同处理（她上一轮给的范围是「同页这些按钮也一起
+继承页面字体，仅作用在桌面端」+「弹层里的按钮和选项也一起继承页面字体」，本轮把确认弹窗这一类
+补进同一条规则）。
+
+### ① 结论
+
+`ConfirmationDialog.css` 里 `.confirmation-btn`（`:446`）**没有声明 `font-family`**，`<button>`
+又不继承页面字体 ⇒ 整个确认弹窗的按钮都按 UA 默认 `Arial` 渲染（本文件只有反馈输入框 `:314`
+与文本输入 `:400` 写了 `inherit`，按钮族漏了）。修法同上一轮：**不动 base**，把
+`.confirmation-btn-auto` 追加进 `host-desktop.css` 那条 `[data-host="desktop"] :is(...) { font-family:
+inherit }` 白名单（17 类 → 18 类）。该 class 覆盖弹窗里全部「是…」按钮：`ConfirmationDialog.tsx:939`
+「是，并跳过权限确认」、`:951`「是，且允许本会话编辑 X/」、`:968` 持久选项、`:977`
+「批准并自动接受后续修改」。
+
+### ② 实测（浅 / 深两档逐值相同；两种弹窗形态）
+
+权限确认弹窗（`desktop-full` 用例）与注入的 Edit 越界确认弹窗（同一条 `showConfirmation`，
+先关掉队首那颗才渲染 —— `chatReducer.ts:139` 是**入队**）：
+
+| 按钮                    | class                    | 字体族               | 盒宽 × 高             | 文字宽         |
+| ----------------------- | ------------------------ | -------------------- | --------------------- | -------------- |
+| 提供反馈（未点名）      | `-feedback`              | `Arial` → `Arial`    | 78×32 → 78×32         | 52 → 52        |
+| 是，并跳过权限确认      | `-auto`                  | `Arial` → 页面字体栈 | 143×32 → 143×32       | 117 → 117      |
+| 是，且不再询问：npm     | `-auto`                  | `Arial` → 页面字体栈 | 155.3×32 → **157.22** | 129.3 → 131.22 |
+| 批准并继续（未点名）    | `-apply`                 | `Arial` → `Arial`    | 91×32 → 91×32         | 65 → 65        |
+| 是，且允许本会话编辑 X/ | `-auto`（Edit 越界弹窗） | `Arial` → 页面字体栈 | 223.2×32 → **230.23** | 197.2 → 204.23 |
+| 是，且自动接受修改      | `-auto`（Edit 越界弹窗） | `Arial` → 页面字体栈 | 143×32 → 143×32       | 117 → 117      |
+
+布局：弹窗 556.5×202（权限）/ 556.5×194（Edit 越界）、按钮行 522.5×32 / 522.5×72、
+`scrollWidth = clientWidth = 523`、行高与折行结构、其余按钮盒 —— **两版逐值相同**；字号 13px、
+圆角 6px、底色与字色（浅 `rgb(240,242,245)` / `rgb(31,35,41)`，深 `rgba(255,255,255,.06)` /
+`rgb(230,230,230)`）两版逐值相同。
+
+### ③ 三条可复用的测量认知（否则会自造假证据）
+
+1. **纯中文文案在 macOS 上「换字体」字形不变**：她点名的「是，并跳过权限确认」盒 143×32、
+   文字宽 117 **两版逐值相同**；**同帧隔离两字体**（同一帧、同一 y、相邻 x、同一套盒模型渲染
+   Arial 与页面字体栈）实测共享区 282×64 设备像素、差 >60 像素 **0**、最大通道差 **0** ⇒ Arial
+   与页面字体栈对中文都回退到同一条系统 CJK 字体。真正可见的变化只在**含拉丁文案**的同类按钮：
+   「…：npm」+1.92px、「…other-repo/」+7.03px（同帧隔离 982 / 2175 像素变化、最大通道差 255）。
+   与上一节的同族结论一致（那一批也是「纯中文按钮族逐像素相同，含拉丁的页面签变宽」）。
+2. **`.confirmation-actions` 是 `justify-content: flex-end`**：一颗按钮变宽会让整行**左移**同样
+   的量（本轮 −1.92px / −7.03px，**非整数 CSS px**）。因此「改前 vs 改后」跨两张图的逐按钮像素
+   对比会掺进亚像素相位残差（2x 下 1.92px = 3.84 设备像素 → 四舍五入后残留 0.16px）：那个「差
+   13%」的读数**不是字形变化的证据**。位移恰好落在整数设备像素时对照按钮差 0（Edit 弹窗的
+   「提供反馈」−7.03px → 自裁差 0/9984），正好反证这一点。**判「某颗按钮变没变」必须用同帧隔离
+   或同 x 位置的 A/B，不要用跨图对比。**
+3. **残留按钮是最干净的对照**：未点名的「批准并继续」两版没变也没位移 ⇒ 跨图逐像素
+   **0/11648、最大通道差 0**，这是「点名的改、没点名的原样」最直接的证据。
+
+### ④ 作用域实证（不靠读代码推断）
+
+把临时按钮挂上 `button.confirmation-btn.confirmation-btn-auto` 后遍历全部样式表：**只有一条**
+声明 `font-family` 的规则能命中它，选择器为
+`[data-host="desktop"] :is(…, .confirmation-btn-auto)`；把 `html[data-host]` 改成 `ide` 后同一按钮
+computed font-family 立刻回落 `Arial` ⇒ 基础文件未动、IDE（VS Code / JetBrains）宿主不受影响。
+
+### ⑤ 残留触发语（未授权）
+
+- 「确认弹窗其余按钮也一起继承页面字体」：同弹窗的 `-apply`（批准并继续）/ `-feedback`（提供反馈）
+  / `-reject` / `-secondary` 仍是 Arial，本轮只按她点名把 `-auto` 一类加进白名单。
+- 「确认弹窗按钮也统一 32/14/8」：同弹窗按钮仍是基础档 13px / 圆角 6px（桌面档只覆盖了
+  `.confirmation-actions` 那一组），与设置页弹窗按钮的 14px / 32px / r8 口径仍不同族。
+- 「长文案按钮固定最大宽」：「是，且允许本会话编辑 X/」这类带目录片段的长文案在字体替换后宽
+  +7.03px（行未新增折行），若要宽度稳定需另定最大宽。
+
+### 验证脚本与证据
+
+- 采集：`CC02/走查/_tools/0922/capture-0922-confirm-btn-font.mjs <before|after>`（改前 = **真回退**：
+  把白名单本轮新加的一节临时去掉，`git diff --numstat -- host-desktop.css` = 0/0 复核；采完按备份
+  `cp` 还原并复核 `git diff --numstat` = 8/1；裁切框存 `/tmp/clips-0922-confirm-btn-font.json`，
+  两阶段复核逐值相同；指标 `/tmp/metrics-0922-confirm-btn-font-{before,after}.json`；两阶段 0 pageerror）。
+- 逐像素（整行 + 逐按钮自裁并列出位移）：`CC02/走查/_tools/0922/diff-confirm-btn-font-0922.py`
+  → `/tmp/diff-0922-confirm-btn-font.json`；同帧隔离判定
+  `CC02/走查/_tools/0922/probe-confirm-font-isolate-0922.mjs`；作用域实证
+  `CC02/走查/_tools/0922/probe-confirm-btn-fontscope-0922.mjs`。
+- 报告（skill 母版 v1.1）：`CC02/走查/0922-confirm-btn-font-report/index.html`，batch.json =
+  `CC02/走查/_tools/0922/batch-0922-confirm-btn-font.json`（F-01 权限弹窗 / F-02 Edit 越界弹窗，
+  各浅深两档）；自检 `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。

@@ -3851,7 +3851,14 @@
     .settings-scope-option,
     .settings-row-btn,
     .settings-modal-seg-item,
-    .settings-save-btn
+    .settings-save-btn,
+    /* 确认弹窗（她点名 `button.confirmation-btn.confirmation-btn-auto`「是，并跳过权限
+       确认」：「这里两个是的按钮也一样改」）—— 本弹窗里两颗「是…」同属这一类：
+       「是，并跳过权限确认」/「是，且不再询问：npm」，另有 Edit 越界的
+       「是，且允许本会话编辑 X/」与 ExitPlanMode 的「批准并自动接受后续修改」。
+       本弹窗其余按钮（-apply / -reject / -secondary / -feedback）未点名，暂维持
+       UA 字体，见残留清单。 */
+    .confirmation-btn-auto
   ) {
   font-family: inherit;
 }
