@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import type {
   AccountApiQuotaInfo,
-  AccountPlanInfo,
+  AccountBillingCode,
+  AccountBillingInfo,
+  AccountBillingPlanUsage,
   AccountUpdateInfo,
 } from "wave-webview-fixtures";
 import { useClickOutside } from "../utils/useClickOutside";
@@ -25,8 +27,9 @@ import "../styles/ConfirmDialog.css";
  * `desktopAccountInfo` 快照；卡片未登录态为整条登录按钮 + 更多按钮，登录态为
  * 三段式：
  *
- *  1. 用量常驻区（套餐用量进度条 + API 余额行 + hover ⓘ 明细气泡），经个人
- *     信息行右侧 chevron 收起/展开；显隐独立记忆、与个人信息菜单开合解耦；
+ *  1. 用量常驻区（套餐两根额度条 + 到期日 + 计费结论行 + API 余额行 + hover ⓘ
+ *     明细气泡），经个人信息行右侧 chevron 收起/展开；显隐独立记忆、与个人信息
+ *     菜单开合解耦；
  *  2. 个人信息行（头像 + 姓名热区 + 更新按钮 + 用量显隐按钮）：点击热区开/关
  *     纯功能菜单（设置/企业控制台/帮助文档/退出登录），菜单贴行弹出盖住用量
  *     区、与卡片等宽；再次点击热区或失焦/Esc 收起；
@@ -38,7 +41,8 @@ import "../styles/ConfirmDialog.css";
 export interface AccountCardAccount {
   isAuthenticated: boolean;
   user?: { id: string; email?: string } | null;
-  plan?: AccountPlanInfo | null;
+  /** 计费结论（套餐两根条 + 到期日 + 降级原因）；null = 无（未登录/未购买）. */
+  billing?: AccountBillingInfo | null;
   apiQuota?: AccountApiQuotaInfo | null;
   update?: AccountUpdateInfo | null;
 }
@@ -75,12 +79,115 @@ export function initialFor(name: string): string {
   return (name.trim()[0] ?? "U").toUpperCase();
 }
 
-/** 套餐余量百分比：max(0, round((1 − used/(monthlyQuota×months)) × 100)). */
-export function planRemainingPercent(plan: AccountPlanInfo): number {
-  const total = plan.monthlyQuota * plan.months;
-  if (total <= 0) return 0;
-  return Math.max(0, Math.round((1 - plan.used / total) * 100));
+/** 单根额度条的余量百分比：max(0, round((1 − used/limit) × 100))；limit 须 > 0. */
+export function barRemainingPercent(used: number, limit: number): number {
+  if (limit <= 0) return 0;
+  return Math.max(0, Math.round((1 - used / limit) * 100));
 }
+
+/** 单根额度条的展示视图；percent 为 null = 不画条（不限制/不可用）. */
+export interface PlanBarView {
+  percent: number | null;
+  text: string;
+  tone: "normal" | "exhausted" | "unlimited" | "unavailable";
+}
+
+/**
+ * 派生单根条的视图。限额三态（codechat `billing.plan`）：null = 不限制（不画条）、
+ * 0 = 该维度不可用（不画条）、正数 = 限额。触顶（used ≥ limit）读「已用尽」（空条），
+ * **不读「0%」**——触顶只是该窗口用完、下窗口恢复，与「不可用」语义不同。
+ */
+export function planBarView(used: number, limit: number | null): PlanBarView {
+  if (limit === null)
+    return { percent: null, text: "无额度限制", tone: "unlimited" };
+  if (limit === 0)
+    return { percent: null, text: "不可用", tone: "unavailable" };
+  if (used >= limit) return { percent: 0, text: "已用尽", tone: "exhausted" };
+  const percent = barRemainingPercent(used, limit);
+  return { percent, text: `${percent}%`, tone: "normal" };
+}
+
+/** 计费阻断码 → proxy 402 的同一句文案（与后端 `BLOCKED_INFO` 逐字一致）. */
+const BLOCKED_TEXT: Record<AccountBillingCode, string> = {
+  EXPIRED_NO_API: "您订购的套餐已过期，无法使用本产品！",
+  USER_QUOTA_ZERO: "您的 API 额度已用完，请联系公司管理员分配额度后使用！",
+  TEAM_QUOTA_ZERO: "团队 API 额度已用完，请联系公司管理员充值后使用！",
+};
+
+/**
+ * 计费结论行（文案 + 色调）；null = 不渲染。色调按「会不会自愈」分：月/周额度触顶下个
+ * 窗口自动恢复 → 琥珀预警；blocked / 维度不可用 / 套餐已到期需人工干预 → 错误色。
+ */
+export function planConclusion(
+  billing: AccountBillingInfo,
+): { text: string; tone: "warning" | "error" } | null {
+  if (billing.mode === "plan") return null;
+  if (billing.mode === "blocked") {
+    return { text: BLOCKED_TEXT[billing.code], tone: "error" };
+  }
+  switch (billing.reason) {
+    case "month":
+      return { text: "本月额度已用尽，当前按 API 余额计费", tone: "warning" };
+    case "week":
+      return { text: "本周额度已用尽，当前按 API 余额计费", tone: "warning" };
+    case "dimension_unavailable":
+      return {
+        text: "套餐额度不可用（限额为 0），当前按 API 余额计费",
+        tone: "error",
+      };
+    case "no_plan":
+      // 从未购买（无到期信息）→ 不渲染；有已到期订单 → 带到期日提示。
+      if (!billing.plan) return null;
+      return {
+        text: `套餐已到期（${billing.plan.expireDate} 到期），当前按 API 余额计费`,
+        tone: "error",
+      };
+    case "enterprise":
+      // 产品口径 2026-09-21：卡片为个人视角，此原因本期不渲染（渲染开关留着）。
+      return null;
+  }
+}
+
+/** 生效套餐形态（四数 + 到期日）区别于「已到期」形态（仅到期日）：后者无月限额键. */
+function isPlanUsage(
+  plan: AccountBillingPlanUsage | { expireDate: string },
+): plan is AccountBillingPlanUsage {
+  return "monthLimit" in plan;
+}
+
+/** 单根套餐额度条（标签 + 条/占位 + 状态值）. */
+const PlanBar: React.FC<{
+  label: string;
+  testId: string;
+  used: number;
+  limit: number | null;
+}> = ({ label, testId, used, limit }) => {
+  const view = planBarView(used, limit);
+  return (
+    <div className="account-plan-bar" data-testid={testId}>
+      <span className="account-plan-bar-label">{label}</span>
+      {view.percent === null ? (
+        <span className="account-plan-bar-spacer" aria-hidden="true" />
+      ) : (
+        <div
+          className="account-usage-bar"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={view.percent}
+        >
+          <div
+            className="account-usage-bar-fill"
+            style={{ width: `${view.percent}%` }}
+          />
+        </div>
+      )}
+      <span className={`account-plan-bar-value is-${view.tone}`}>
+        {view.text}
+      </span>
+    </div>
+  );
+};
 
 /** 金额两位小数 + 千位分隔（手写，避免 toLocaleString 的 Intl 环境差异）. */
 export function formatAmount(value: number): string {
@@ -159,7 +266,6 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const isAuthenticated = account?.isAuthenticated === true;
   // 姓名优先完整邮箱（对齐 codechat sidebar-account），无邮箱时回退前缀/「已登录」。
   const name = account?.user?.email ?? displayNameFor(account?.user);
-  const plan = account?.plan ?? null;
   const apiQuota = account?.apiQuota ?? null;
   const update = account?.update ?? null;
   const updateAvailable = update?.available === true;
@@ -251,11 +357,18 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     );
   }
 
-  const percent = plan ? planRemainingPercent(plan) : 0;
-  const planExhausted = plan !== null && percent <= 0;
+  const billing = account?.billing ?? null;
+  // blocked 形态不带 plan；其余两种才有（生效套餐 = 四数 + 到期日，已到期 = 仅到期日）.
+  const billingPlan = billing && "plan" in billing ? billing.plan : null;
+  // 有两根条四数的 plan 子对象（区别于「仅 expireDate」的已到期形态）。
+  const planUsage =
+    billingPlan && isPlanUsage(billingPlan) ? billingPlan : null;
+  const expireDate = billingPlan?.expireDate ?? null;
+  const conclusion = billing ? planConclusion(billing) : null;
+  const showPlanBlock = planUsage !== null || conclusion !== null;
   // API 余额预警级：null=充足/不限额；"low"=剩余<20%；"exhausted"=剩余≤0。
   const apiWarning = apiQuota ? apiQuotaWarningLevel(apiQuota) : null;
-  const hasUsage = plan !== null || apiQuota !== null;
+  const hasUsage = showPlanBlock || apiQuota !== null;
 
   // 更新按钮文案/状态（S1/S3/S5；无更新 = S0 不渲染）。S3 已去掉省略号、「正在下载更新」
   // 缩为「正在下载」（设计师 2026-09-17）——进行中由转圈弧表达，文案只留最短状态词。
@@ -336,42 +449,41 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           className="account-card-usage-inline"
           data-testid="account-card-usage"
         >
-          {plan !== null && (
+          {showPlanBlock && (
             <div className="account-usage-section" data-testid="account-plan">
               <div className="account-usage-title">
                 <span>套餐用量</span>
-                <span
-                  className={
-                    planExhausted
-                      ? "account-usage-percent is-empty"
-                      : "account-usage-percent"
-                  }
-                >
-                  {percent}%
-                </span>
+                {expireDate && (
+                  <span
+                    className="account-plan-expire"
+                    data-testid="account-plan-expire"
+                  >
+                    {expireDate} 到期
+                  </span>
+                )}
               </div>
-              <div
-                className="account-usage-bar"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={percent}
-              >
+              {planUsage && (
+                <>
+                  <PlanBar
+                    label="本月"
+                    testId="account-plan-month"
+                    used={planUsage.monthUsed}
+                    limit={planUsage.monthLimit}
+                  />
+                  <PlanBar
+                    label="本周"
+                    testId="account-plan-week"
+                    used={planUsage.weekUsed}
+                    limit={planUsage.weekLimit}
+                  />
+                </>
+              )}
+              {conclusion && (
                 <div
-                  className={
-                    planExhausted
-                      ? "account-usage-bar-fill is-empty"
-                      : "account-usage-bar-fill"
-                  }
-                  style={{ width: `${percent}%` }}
-                />
-              </div>
-              {planExhausted && (
-                <div
-                  className="account-usage-exhausted"
-                  data-testid="account-plan-exhausted"
+                  className={`account-plan-conclusion is-${conclusion.tone}`}
+                  data-testid="account-plan-conclusion"
                 >
-                  套餐余量已用完，请联系销售人员充值
+                  {conclusion.text}
                 </div>
               )}
             </div>

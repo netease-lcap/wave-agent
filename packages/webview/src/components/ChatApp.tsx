@@ -1425,7 +1425,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         setAccountInfo({
           isAuthenticated: message.isAuthenticated === true,
           user: message.user ?? null,
-          plan: message.plan ?? null,
+          billing: message.billing ?? null,
           apiQuota: message.apiQuota ?? null,
           update: message.update ?? null,
         });
@@ -1631,7 +1631,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           setAccountInfo((prev) => ({
             isAuthenticated: true,
             user: message.user ?? prev?.user ?? null,
-            plan: prev?.plan ?? null,
+            billing: prev?.billing ?? null,
             apiQuota: prev?.apiQuota ?? null,
           }));
         }
@@ -1643,7 +1643,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           setAccountInfo({
             isAuthenticated: false,
             user: null,
-            plan: null,
+            billing: null,
             apiQuota: null,
           });
         }

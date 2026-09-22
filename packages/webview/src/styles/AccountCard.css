@@ -239,19 +239,53 @@
   font-weight: 500;
 }
 
-.account-usage-percent {
+/* 套餐到期日（标题行右侧；无到期日时不渲染）。 */
+.account-plan-expire {
   color: var(--vscode-descriptionForeground);
-  font-weight: 500;
+  font-weight: 400;
 }
 
-.account-usage-percent.is-empty {
-  color: var(--vscode-errorForeground, #f14c4c);
+/* 单根额度条行：标签 + 条/占位 + 状态值。 */
+.account-plan-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-plan-bar-label {
+  flex-shrink: 0;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* 「不限制 / 不可用」不画条时占住条的宽度，让状态值与百分比列对齐。 */
+.account-plan-bar-spacer {
+  flex: 1 1 auto;
+}
+
+.account-plan-bar-value {
+  flex-shrink: 0;
+  min-width: 48px;
+  text-align: right;
+  color: var(--vscode-descriptionForeground);
+  /* 两行数值等宽对齐（中文状态词与百分比混排也各占一格）。 */
+  font-variant-numeric: tabular-nums;
+}
+
+/* 该窗口用完（下窗口自动恢复）→ 琥珀预警，不用错误红（触顶不是「被拒」）。 */
+.account-plan-bar-value.is-exhausted {
+  color: var(--vscode-editorWarning-foreground, #d18616);
+}
+
+/* 不限制 / 不可用：中性描述色（「不可用」的严重性由结论行承担）。 */
+.account-plan-bar-value.is-unlimited,
+.account-plan-bar-value.is-unavailable {
+  color: var(--vscode-descriptionForeground);
 }
 
 .account-usage-bar {
   height: 4px;
   border-radius: 2px;
-  /* 中性轨道色：0% 用尽态显示「空条」，不能用主题蓝
+  /* 中性轨道色：用尽态显示「空条」，不能用主题蓝
      （progressBar-background），否则用尽态看起来像满格蓝条。 */
   background-color: color-mix(
     in srgb,
@@ -261,6 +295,11 @@
   overflow: hidden;
 }
 
+/* 条本体在条行内占满中间（标签与状态值之间）。 */
+.account-plan-bar .account-usage-bar {
+  flex: 1 1 auto;
+}
+
 .account-usage-bar-fill {
   height: 100%;
   border-radius: 2px;
@@ -268,14 +307,20 @@
   transition: width 0.2s ease;
 }
 
-.account-usage-bar-fill.is-empty {
-  background-color: var(--vscode-errorForeground, #f14c4c);
-}
-
-.account-usage-exhausted {
-  color: var(--vscode-errorForeground, #f14c4c);
+/* 计费结论行。 */
+.account-plan-conclusion {
   font-size: 11px;
   line-height: 15px;
+}
+
+/* 会自愈的（月/周额度触顶，下窗口恢复）→ 琥珀预警。 */
+.account-plan-conclusion.is-warning {
+  color: var(--vscode-editorWarning-foreground, #d18616);
+}
+
+/* 需人工干预的（blocked / 维度不可用 / 套餐已到期）→ 错误色。 */
+.account-plan-conclusion.is-error {
+  color: var(--vscode-errorForeground, #f14c4c);
 }
 
 /* API 余额行：标签与「金额+ⓘ」同行优先；容器放不下时金额组整体换行到下一行

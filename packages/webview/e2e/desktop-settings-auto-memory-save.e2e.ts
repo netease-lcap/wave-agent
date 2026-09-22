@@ -22,7 +22,7 @@ const WORKDIR = "/Users/dev/projects/wave-agent";
 const accountInfo = {
   isAuthenticated: true,
   user: { id: "user-1", email: "alice@example.com" },
-  plan: null,
+  billing: null,
   apiQuota: null,
 };
 
