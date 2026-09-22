@@ -679,7 +679,8 @@ export type AccountBillingCode =
 /**
  * 计费结论（codechat 形态甲：闸口镜像）。判定由后端 `getBillingVerdict` 下发——与 proxy
  * 扣费**同一份代码**；客户端只渲染、**不自行判断「走套餐还是走 API」**。`plan` 子对象：
- * 有生效套餐 = 四数 + 到期日；无生效套餐但有已到期订单 = 仅 `{ expireDate }`；从未购买 = null。
+ * 有生效套餐 = 四数 + 到期日；无生效套餐但有**未作废**的已到期订单 = 仅 `{ expireDate }`；
+ * 从未购买、或订单已全部作废 = null（作废不是到期，`status='active'` 与生效分支同谓词）。
  */
 export type AccountBillingInfo =
   | { mode: "plan"; plan: AccountBillingPlanUsage }
