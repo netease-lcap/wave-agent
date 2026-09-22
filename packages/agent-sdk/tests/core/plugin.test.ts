@@ -4,12 +4,21 @@ import { MarketplaceService } from "../../src/services/MarketplaceService.js";
 import { PluginScopeManager } from "../../src/managers/pluginScopeManager.js";
 import { ConfigurationService } from "../../src/services/configurationService.js";
 import { KnownMarketplace } from "../../src/types/index.js";
+import { logger } from "../../src/utils/globalLogger.js";
 
 vi.mock("../../src/services/MarketplaceService.js");
 vi.mock("../../src/services/GitService.js");
 vi.mock("../../src/managers/pluginScopeManager.js");
 vi.mock("../../src/services/configurationService.js");
 vi.mock("../../src/managers/pluginManager.js");
+vi.mock("../../src/utils/globalLogger.js", () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  },
+}));
 
 describe("PluginCore", () => {
   let pluginCore: PluginCore;
@@ -274,6 +283,117 @@ describe("PluginCore", () => {
 
     const result = await pluginCore.listPlugins();
     expect(result.plugins).toHaveLength(0);
+  });
+
+  it("should list marketplace entries that use object sources", async () => {
+    // 对象形态的 source（CC 市场清单常见）不能让整个市场列表消失：每个条目都
+    // 要照常出现（spec plugin「兼容 Claude Code 生态的市场清单与插件」场景 1/4）
+    mockMarketplaceService.getInstalledPlugins.mockResolvedValue({
+      plugins: [],
+    });
+    mockMarketplaceService.listMarketplaces.mockResolvedValue([
+      { name: "m1", source: { source: "directory", path: "/m1" } },
+    ]);
+    mockMarketplaceService.getMarketplacePath.mockReturnValue("/m1");
+    mockMarketplaceService.loadMarketplaceManifest.mockResolvedValue({
+      name: "m1",
+      owner: { name: "o1" },
+      plugins: [
+        { name: "local-p", description: "d1", source: "plugins/local-p" },
+        {
+          name: "url-p",
+          description: "d2",
+          source: { source: "url", url: "https://example.com/a.git" },
+        },
+        {
+          name: "subdir-p",
+          description: "d3",
+          source: {
+            source: "git-subdir",
+            url: "https://example.com/a.git",
+            path: "plugins/subdir-p",
+          },
+        },
+      ],
+    });
+
+    const result = await pluginCore.listPlugins();
+
+    expect(result.plugins.map((p) => p.name)).toEqual([
+      "local-p",
+      "url-p",
+      "subdir-p",
+    ]);
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("should not report a latestVersion for sources outside the marketplace checkout", async () => {
+    // 对象形态总是指向仓库外的仓库，本机没有可读的副本 ⇒ latestVersion 为空，
+    // 而不是抛错或读出一个假版本（spec plugin A-010 / A-021）
+    mockMarketplaceService.getInstalledPlugins.mockResolvedValue({
+      plugins: [],
+    });
+    mockMarketplaceService.listMarketplaces.mockResolvedValue([
+      { name: "m1", source: { source: "directory", path: "/m1" } },
+    ]);
+    mockMarketplaceService.getMarketplacePath.mockReturnValue("/m1");
+    mockMarketplaceService.loadMarketplaceManifest.mockResolvedValue({
+      name: "m1",
+      owner: { name: "o1" },
+      plugins: [
+        {
+          name: "url-p",
+          description: "d2",
+          source: { source: "url", url: "https://example.com/a.git" },
+        },
+        {
+          name: "git-p",
+          description: "d3",
+          source: "https://example.com/b.git",
+        },
+        { name: "empty-p", description: "d4", source: "" },
+      ],
+    });
+
+    const result = await pluginCore.listPlugins();
+
+    expect(result.plugins).toHaveLength(3);
+    for (const plugin of result.plugins) {
+      expect(plugin.latestVersion).toBeUndefined();
+    }
+    expect(logger.warn).not.toHaveBeenCalled();
+  });
+
+  it("should warn about a failed marketplace and still list the others", async () => {
+    mockMarketplaceService.getInstalledPlugins.mockResolvedValue({
+      plugins: [],
+    });
+    mockMarketplaceService.listMarketplaces.mockResolvedValue([
+      { name: "broken", source: { source: "directory", path: "/broken" } },
+      { name: "ok", source: { source: "directory", path: "/ok" } },
+    ]);
+    mockMarketplaceService.getMarketplacePath.mockImplementation(
+      (source) => (source as { path: string }).path,
+    );
+    mockMarketplaceService.loadMarketplaceManifest.mockImplementation(
+      async (marketplacePath: string) => {
+        if (marketplacePath === "/broken") {
+          throw new Error("Unexpected token } in JSON");
+        }
+        return {
+          name: "ok",
+          owner: { name: "o1" },
+          plugins: [{ name: "p1", description: "desc1", source: "plugins/p1" }],
+        };
+      },
+    );
+
+    const result = await pluginCore.listPlugins();
+
+    expect(result.plugins.map((p) => p.name)).toEqual(["p1"]);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "Failed to load marketplace broken: Unexpected token } in JSON",
+    );
   });
 
   it("should delegate marketplace operations", async () => {

@@ -5,9 +5,25 @@ export interface MarketplaceOwner {
   email?: string;
 }
 
+/**
+ * Object form of a plugin entry's `source` (spec plugin A-021): `url` is a whole
+ * repository, `git-subdir` is a subdirectory of one. Both are outside the
+ * marketplace checkout, so they carry no readable local copy for「最新版本」(A-010).
+ */
+export interface MarketplacePluginObjectSource {
+  source: "url" | "git-subdir";
+  url: string;
+  /** Only for `git-subdir`: path of the plugin inside the repository. */
+  path?: string;
+  /** Branch or tag. */
+  ref?: string;
+  /** Pinned commit; checked out after cloning. */
+  sha?: string;
+}
+
 export interface MarketplacePluginEntry {
   name: string;
-  source: string;
+  source: string | MarketplacePluginObjectSource;
   description: string;
 }
 

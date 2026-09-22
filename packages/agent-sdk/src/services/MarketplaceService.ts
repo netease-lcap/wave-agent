@@ -14,6 +14,11 @@ import {
 } from "../types/marketplace.js";
 import { GitService } from "./GitService.js";
 import {
+  parsePluginSource,
+  describePluginSource,
+} from "../utils/pluginSource.js";
+import { DEFAULT_PLUGIN_VERSION } from "../constants/plugins.js";
+import {
   ALLOW_OFFICIAL_MARKET_GIT_FALLBACK,
   fetchOfficialMarketplaceFromMirror,
 } from "./officialMarketplaceMirror.js";
@@ -1058,27 +1063,43 @@ export class MarketplaceService {
         );
       }
 
-      const isGitSource =
-        pluginEntry.source.startsWith("http://") ||
-        pluginEntry.source.startsWith("https://") ||
-        pluginEntry.source.startsWith("git@") ||
-        pluginEntry.source.startsWith("ssh://");
+      const parsedSource = parsePluginSource(pluginEntry.source);
+      if (!parsedSource) {
+        throw new Error(
+          `Plugin ${pluginName} in marketplace ${marketplaceName} declares an unsupported source: ${describePluginSource(
+            pluginEntry.source,
+          )}`,
+        );
+      }
+      const isGitSource = parsedSource.kind === "git";
 
       let pluginSrcPath: string;
       let tempCloneDir: string | undefined;
 
       try {
-        if (isGitSource) {
+        if (parsedSource.kind === "git") {
           tempCloneDir = path.join(this.tmpDir, `clone-${Date.now()}`);
-          let url = pluginEntry.source;
-          let ref: string | undefined;
-          if (url.includes("#")) {
-            [url, ref] = url.split("#");
+          await this.gitService.clone(
+            parsedSource.url,
+            tempCloneDir,
+            parsedSource.ref,
+          );
+          if (parsedSource.sha) {
+            // Without this a `ref` would drift with its branch; a sha that cannot
+            // be checked out fails loudly instead of silently using the branch tip
+            // (spec plugin A-021 场景 3).
+            await this.gitService.checkout(tempCloneDir, parsedSource.sha);
           }
-          await this.gitService.clone(url, tempCloneDir, ref);
-          pluginSrcPath = tempCloneDir;
+          pluginSrcPath = parsedSource.subdir
+            ? path.join(tempCloneDir, parsedSource.subdir)
+            : tempCloneDir;
+          if (parsedSource.subdir && !existsSync(pluginSrcPath)) {
+            throw new Error(
+              `Subdirectory '${parsedSource.subdir}' not found in repository ${parsedSource.url}`,
+            );
+          }
         } else {
-          pluginSrcPath = path.resolve(marketplacePath, pluginEntry.source);
+          pluginSrcPath = path.resolve(marketplacePath, parsedSource.path);
         }
 
         let pluginManifestPath = path.join(
@@ -1105,7 +1126,7 @@ export class MarketplaceService {
           "utf-8",
         );
         const pluginManifest = JSON.parse(pluginManifestContent);
-        const version = pluginManifest.version || "1.0.0";
+        const version = pluginManifest.version || DEFAULT_PLUGIN_VERSION;
 
         const tmpPluginDir = path.join(
           this.tmpDir,

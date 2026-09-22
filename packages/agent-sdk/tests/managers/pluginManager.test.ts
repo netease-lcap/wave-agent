@@ -191,6 +191,74 @@ describe("PluginManager", () => {
       );
     });
 
+    it("should default a manifest without version to 1.0.0", async () => {
+      // CC 生态的 plugin.json 常常没有 version 字段（spec plugin A-022）
+      const configs: PluginConfig[] = [
+        { type: "local", path: "plugins/test-plugin" },
+      ];
+
+      vi.mocked(PluginLoader.loadManifest).mockResolvedValue({
+        name: "test-plugin",
+        description: "A test plugin",
+      } as PluginManifest);
+      vi.mocked(PluginLoader.loadCommands).mockReturnValue([]);
+      vi.mocked(PluginLoader.loadSkills).mockResolvedValue([]);
+
+      const failures = await pluginManager.loadPlugins(configs);
+
+      expect(failures).toEqual([]);
+      const plugins = pluginManager.getPlugins();
+      expect(plugins).toHaveLength(1);
+      expect(plugins[0].version).toBe("1.0.0");
+      expect(logger.debug).toHaveBeenCalledWith(
+        "Loaded plugin: test-plugin v1.0.0",
+      );
+    });
+
+    it("should keep loading a plugin when one of its MCP servers is unusable", async () => {
+      // 一个坏 server 声明不能拖垮整个插件（spec plugin A-023）
+      const configs: PluginConfig[] = [
+        { type: "local", path: "plugins/test-plugin" },
+      ];
+      const manifest = {
+        name: "test-plugin",
+        version: "1.0.0",
+        description: "A test plugin",
+      };
+      const mcpConfig = {
+        mcpServers: {
+          bad: { command: "bad" },
+          good: { command: "good" },
+        },
+      };
+
+      vi.mocked(PluginLoader.loadManifest).mockResolvedValue(
+        manifest as PluginManifest,
+      );
+      vi.mocked(PluginLoader.loadCommands).mockReturnValue([]);
+      vi.mocked(PluginLoader.loadSkills).mockResolvedValue([]);
+      vi.mocked(PluginLoader.loadMcpConfig).mockResolvedValue(
+        mcpConfig as unknown as McpConfig,
+      );
+      vi.mocked(mockMcpManager.addServer).mockImplementation((name) => {
+        if (name === "bad") throw new Error("Invalid server config");
+        return true;
+      });
+
+      const failures = await pluginManager.loadPlugins(configs);
+
+      expect(failures).toEqual([]);
+      expect(pluginManager.getPlugins()).toHaveLength(1);
+      expect(logger.warn).toHaveBeenCalledWith(
+        "Failed to register MCP server 'bad' from plugin test-plugin: Invalid server config",
+      );
+      expect(mockMcpManager.addServer).toHaveBeenCalledWith("good", {
+        command: "good",
+        pluginRoot: path.resolve(workdir, configs[0].path),
+      });
+      expect(logger.error).not.toHaveBeenCalled();
+    });
+
     it("should skip unsupported plugin types", async () => {
       const configs: PluginConfig[] = [
         { type: "remote" as unknown as "local", path: "http://example.com" },

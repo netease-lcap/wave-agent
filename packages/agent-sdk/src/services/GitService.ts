@@ -69,6 +69,37 @@ export class GitService {
   }
 
   /**
+   * Checks out a specific commit in an existing clone.
+   *
+   * Needed by marketplace plugin sources that pin a `sha` (spec plugin A-021):
+   * `clone -b <ref>` only guarantees the branch, not the exact commit.
+   */
+  async checkout(targetPath: string, sha: string): Promise<void> {
+    if (process.env.VITEST && !process.env.ALLOW_REAL_GIT) {
+      throw new Error(
+        `Real git checkout is disabled in tests. Path: ${targetPath}, Sha: ${sha}`,
+      );
+    }
+    if (!(await this.isGitAvailable())) {
+      throw new Error(
+        "Git is not installed or not found in PATH. Please install Git to use Git/GitHub marketplaces.",
+      );
+    }
+    try {
+      await execFileAsync(
+        "git",
+        ["-C", targetPath, "checkout", "--detach", sha],
+        {
+          env: { ...process.env, LC_ALL: "C" },
+          timeout: this.getTimeout(),
+        },
+      );
+    } catch (error) {
+      throw this.handleGitError(sha, error);
+    }
+  }
+
+  /**
    * Pulls the latest changes in a local repository
    */
   async pull(targetPath: string): Promise<void> {
