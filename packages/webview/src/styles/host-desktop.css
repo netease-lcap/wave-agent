@@ -2407,25 +2407,43 @@
   font-weight: 500;
   justify-content: center;
 }
-/* secondary（是，并跳过权限确认 / 自动接受）：--cc-fill #f0f2f5 底 +
+/* secondary 档（是，并跳过权限确认 / 自动接受）：设计师 0922 点名两颗「是…」按钮
+   「这里两个是的按钮也一样改」→ 追问后裁定「按『上一个 / 下一个』那套再改」：
+   正常态去底色 + 1px 边框线（--cc-border-light）+ 字色 1 级（--vscode-foreground），
+   hover 与尺寸 / 圆角 / 字重不变 —— 与提问弹窗 .confirmation-btn-secondary、
+   设置页弹窗 .settings-row-btn 同一套口径（codechat 次级按钮 = 透明底 + 描边）。
+   .confirmation-btn-reject（「不，现在开始实现」/「取消」）本轮未点名，维持原填充档。 */
+[data-host="desktop"][data-theme="light"] .confirmation-btn-auto {
+  background-color: transparent;
+  border-color: var(--cc-border-light, #e4e7ed);
+  color: var(--vscode-foreground);
+}
+[data-host="desktop"][data-theme="light"] .confirmation-btn-auto:hover {
+  background-color: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-auto {
+  background-color: transparent;
+  border-color: var(--cc-border-light, #34393c);
+  color: var(--vscode-foreground);
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-auto:hover {
+  background-color: rgb(255 255 255 / 8%);
+}
+/* secondary 填充档（本轮未点名，留给 .confirmation-btn-reject）：--cc-fill #f0f2f5 底 +
    --cc-border-lighter #ebeef5 边 + --cc-text-primary 字（codechat approval-secondary） */
-[data-host="desktop"][data-theme="light"] .confirmation-btn-auto,
 [data-host="desktop"][data-theme="light"] .confirmation-btn-reject {
   background-color: #f0f2f5;
   border-color: #ebeef5;
   color: #1f2329;
 }
-[data-host="desktop"][data-theme="light"] .confirmation-btn-auto:hover,
 [data-host="desktop"][data-theme="light"] .confirmation-btn-reject:hover {
   background-color: #eef0f3;
 }
-[data-host="desktop"][data-theme="dark"] .confirmation-btn-auto,
 [data-host="desktop"][data-theme="dark"] .confirmation-btn-reject {
   background-color: rgb(255 255 255 / 6%);
   border-color: rgb(255 255 255 / 12%);
   color: #e6e6e6;
 }
-[data-host="desktop"][data-theme="dark"] .confirmation-btn-auto:hover,
 [data-host="desktop"][data-theme="dark"] .confirmation-btn-reject:hover {
   background-color: rgb(255 255 255 / 8%);
 }

@@ -6509,3 +6509,91 @@ computed font-family 立刻回落 `Arial` ⇒ 基础文件未动、IDE（VS Code
 - 报告（skill 母版 v1.1）：`CC02/走查/0922-confirm-btn-font-report/index.html`，batch.json =
   `CC02/走查/_tools/0922/batch-0922-confirm-btn-font.json`（F-01 权限弹窗 / F-02 Edit 越界弹窗，
   各浅深两档）；自检 `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
+
+## 0922 评论（确认弹窗两颗「是…」按钮：去浅灰底 → 透明底 + 边框线 + 1 级字色）
+
+设计师 0922 预览评论（`http://localhost:8899/` 权限确认弹窗）：
+
+> `button.confirmation-btn.confirmation-btn-auto`「是，并跳过权限确认」——「这里两个是的按钮也一样改」。
+
+★ 该评论的锚点与同一天已推送的字体轮（远端 tip `95f7d7db`「确认弹窗两颗「是…」按钮继承页面
+字体」）**完全重合**，所以交付前先把两种读法摆出来让她裁定（① 与字体白名单同处理 ② 按上一轮
+「上一个 / 下一个」那套去底 + 边框 + 1 级字色），她选 **②**；字体那条保留不撤。
+
+### ① 结论
+
+她点名的「两个是的按钮」= 权限确认弹窗里 class 为 `.confirmation-btn-auto` 的两颗
+（`ConfirmationDialog.tsx:939`「是，并跳过权限确认」、`:968`「是，且不再询问：npm」）。
+改造口径 = 与上一轮提问弹窗「上一个 / 下一个」（`.confirmation-btn-secondary`）**逐值对齐**：
+正常态去底色 + 1px 边框线（`--cc-border-light`）+ 字色 1 级（`--vscode-foreground`），
+尺寸 / 圆角 / 字重 / 内衬一律不动，悬停底色沿用原档。
+
+### ② 改动落点
+
+`packages/webview/src/styles/host-desktop.css`：原来 `.confirmation-btn-auto` 与
+`.confirmation-btn-reject` 共用一组选择器，本轮**拆开**——`.confirmation-btn-auto` 换成
+`background-color: transparent` + `border-color: var(--cc-border-light, #e4e7ed / #34393c)` +
+`color: var(--vscode-foreground)`；`.confirmation-btn-reject`（「不，现在开始实现」/ 反馈流
+「取消」）**未点名**，留在原填充档（浅 `#F0F2F5` / 深 6% 白）。悬停各自保留 `#EEF0F3` / 8% 白。
+焦点环那条同特异性 (0,3,0) 规则在本段之后，仍按后加载胜出。
+
+### ③ 实测（浅 / 深两档，权限弹窗 + Edit 越界弹窗）
+
+| 项             | 浅色                                                                                        | 深色                                                   |
+| -------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| 按钮底色       | `rgb(240,242,245)` → `transparent`（= 露出弹窗面 #FFFFFF）                                  | `rgba(255,255,255,0.06)` → `transparent`（面 #232526） |
+| 描边           | `#EBEEF5` → `#E4E7ED`（1px 不变）                                                           | 12% 白 → `#34393C`                                     |
+| 字色           | `rgb(31,35,41)` → `rgb(32,32,32)`（1 级 → 1 级，改与同栏 `.settings-row-btn` 同一支 token） | `rgb(230,230,230)` → `rgb(229,231,232)`                |
+| 盒 / 文字宽    | 143×32 / 117、157.22×32 / 131.22 —— **两版逐值相同**                                        | 同                                                     |
+| 按钮行 / 弹窗  | 522.5×32、scroll/client 523/523、弹窗 556.5×202 —— 两版逐值相同                             | 同                                                     |
+| 整行跨图逐像素 | max **16**，差 >60 的像素 **0**                                                             | max **22**，差 >60 的像素 **0**                        |
+
+- **同族逐值对照**：上一轮「上一个 / 下一个」= 透明底 / 边 `rgb(228,231,237)`（深 `rgb(52,57,60)`）
+  / 字 `rgb(32,32,32)`（深 `rgb(229,231,232)`），与本轮两颗**逐值完全相同**。
+- **对比度（实测）**：字色对底 **16.29:1**（浅）/ **12.41:1**（深）；描边对弹窗面
+  **1.24:1**（浅，`#E4E7ED` vs `#FFFFFF`）/ **1.32:1**（深，`#34393C` vs `#232526`）——描边是
+  设计令牌本身的亮度，与「上一个 / 下一个」、设置页「取消」同值，低于非文本 3:1 的建议值，
+  已按「要更深就说『框线再深一档』（下一档 `--cc-border`）」交她拍板。
+- **悬停态**：底色逐值未变（浅 `#EEF0F3` / 深 8% 白）；描边与字色随正常态一起换 token。
+  逐按钮自裁 286×64 设备像素里，差异只落在 1px 描边环（浅 1365 / 深 1372 像素）与字形边缘
+  （盒子内浅 2815 / 深 2505 像素，最大通道差 1–7 / 1–22）——后者成因是字色由偏蓝的
+  `#1F2329` 换成中性 `#202020` 的抗锯齿差，非字形或位置变化。
+- **键盘焦点（回归对照）**：焦点色（浅 `rgb(31,35,41)` / 深 `rgb(160,165,168)`）照旧落自身
+  1px 描边；聚焦态 vs 静止态最大通道差 **197（浅）/ 108（深）** ⇒ 可见。第六轮那次「聚焦态与
+  静止态 0 差 = 焦点完全不可见」的回归**没有复现**。
+- **未点名按钮（对照）**：同排「提供反馈」「批准并继续」样式与盒逐值相同，自裁切跨图
+  **差像素 0 / 最大通道差 0**。
+- **axe（弹窗作用域）**：浅色档 1 条 `color-contrast`（`.confirmation-warning` 警告文案
+  `#BF8803` = 3.11:1）；把 `html[data-host]` 切到 `ide`（= 改动前的基础样式）跑同一份 axe
+  **同一条、数量相同** ⇒ 既有问题，本轮未引入也未掩盖；深色档 0 条。
+- **IDE 宿主反证**：`html[data-host]` 切 `ide` 后同一按钮底 `rgb(234,234,234)`（浅）/
+  `rgb(49,49,49)`（深）、边 `rgba(216,216,216,0.4)` / `rgb(60,60,60)` ⇒ 桌面档规则未命中
+  IDE 宿主，基础文件未动。
+
+### ④ 残留触发语（未授权）
+
+- 「框线再深一档」：描边换 `--cc-border`（浅 `#DCDFE6` / 深 `#414649`，并保持与「上一个 / 下一个」同族）
+- 「不，那颗也一起改」：`.confirmation-btn-reject`（「不，现在开始实现」/ 反馈流「取消」）仍是原填充档
+- 「悬停描边回原档」：现在悬停与正常态共用同一支描边 token
+- 「焦点环也用外移 2px 环」：现在焦点色落自身 1px 描边（与 `-apply` / `-feedback` 两颗不同款）
+- 「确认弹窗按钮也统一 32/14/8」：弹窗按钮仍是基础档 13px / r6，与设置页弹窗 14px / r8 不同族
+- 「权限弹窗那句警告文案也修」：`.confirmation-warning` `#BF8803` = 3.11:1（既有）
+
+### 验证脚本与证据
+
+- 采集：`CC02/走查/_tools/0922/capture-0922-confirm-yes-buttons.mjs <before|after>`（改前 = **真回退**：
+  `cp` 备份 → `git checkout -- host-desktop.css`（`git diff --numstat` 复核 0/0）→ 采集 → `cp` 还原并
+  复核 md5 `3d2f08553e8bcd9aa689aff089a45884`（numstat 复核 23/5）；裁切框
+  `/tmp/clips-0922-confirm-yes-buttons.json`（两阶段逐值相同），指标
+  `/tmp/metrics-0922-confirm-yes-buttons-{before,after}.json`；浅深 × 正常 / 悬停 / 焦点 / Edit 越界
+  四组，两阶段 0 pageerror）。
+- 逐像素 + 1:1 并列：`CC02/走查/_tools/0922/diff-and-compare-confirm-yes-0922.py`
+  → `/tmp/diff-0922-confirm-yes.json`（含逐按钮自裁 + 描边环/盒内差异分解）与
+  `CC02/走查/0922-按钮参照/r7-family-vs-yes-{light,dark}-1to1-2x.png`（参照「取消」/ 上一轮
+  「上一个」/ 本轮「是…」三栏）。
+- 对比度与 axe：`CC02/走查/_tools/0922/probe-confirm-yes-contrast-axe-0922.mjs`
+  → `/tmp/probe-0922-confirm-yes-contrast-axe.json`。
+- 报告（skill 母版 v1.1）：`CC02/走查/0922-confirm-yes-buttons-report/index.html`，batch.json =
+  `CC02/走查/_tools/0922/batch-0922-confirm-yes-buttons.json`（F-01 正常态 / F-02 悬停 / F-03 焦点 /
+  F-04 Edit 越界同类，各浅深两档）；自检 `verify-repair-report.mjs`：图片加载 true、错误 0、
+  axe 浅深 0/0、640 窄屏无横溢。
