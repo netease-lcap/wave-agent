@@ -327,8 +327,9 @@ describe("MarketplaceService - General Git Support", () => {
         path: "plugins/missing",
       });
       // 克隆目录存在，但清单里写的子目录不存在 → 明确报错，不许悄悄装整个仓库
+      // 分隔符无关：Windows 上 path.join 拼出的是 …\plugins\missing
       mockExistsSync.mockImplementation(
-        (p) => !p.toString().includes("plugins/missing"),
+        (p) => !/plugins[\\/]missing$/.test(p.toString()),
       );
 
       await expect(
