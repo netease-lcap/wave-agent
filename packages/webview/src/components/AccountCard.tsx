@@ -120,13 +120,25 @@ const BLOCKED_TEXT: Record<AccountBillingCode, string> = {
  *
  * 两类触顶只是「哪一池用完」不同（企业池 vs 本人池），恢复方式与用户可做的事一样
  * （等下个窗口），故同色；差异落在文案里，不在色调里。
+ *
+ * `reason` / `code` 是**开放集合**：服务端可能先于客户端发版新增枚举值（两端不同机发布），
+ * 故两处都有运行时兜底，不能只靠类型。兜底文案「说少而准」——结论行要回答的是「为什么在
+ * 扣 API」，而这件事只需要 `mode === "api"` 就能确定，不需要认识具体的 `reason`。
  */
 export function planConclusion(
   billing: AccountBillingInfo,
 ): { text: string; tone: "warning" | "error" } | null {
   if (billing.mode === "plan") return null;
   if (billing.mode === "blocked") {
-    return { text: BLOCKED_TEXT[billing.code], tone: "error" };
+    // 运行时兜底：规格外的 code（后端先发版）查表得 undefined ⇒ 只剩一条没有文案的空红框。
+    // `BLOCKED_TEXT` 的穷尽 `Record` 只挡仓内漏补文案，挡不住跨仓先发的新枚举值。
+    if (!(billing.code in BLOCKED_TEXT)) {
+      console.warn("未知 billing.code，已按兜底文案渲染:", billing.code);
+    }
+    return {
+      text: BLOCKED_TEXT[billing.code] ?? "当前用量受限，请联系公司管理员",
+      tone: "error",
+    };
   }
   switch (billing.reason) {
     case "month":
@@ -153,6 +165,19 @@ export function planConclusion(
         text: "企业本期额度已用尽，当前按 API 余额计费",
         tone: "warning",
       };
+    default: {
+      // 编译期穷尽性检查：仓内新增 AccountBillingDegradeReason 却忘了处理时，这里会编译失败。
+      // （跨仓拦不住：后端先加枚举、客户端后发版，所以这条兜底不能省。）
+      const _exhaustive: never = billing.reason;
+      void _exhaustive;
+      // 未知原因照渲染、按琥珀（沿用本函数的分档规则：按「会不会自愈」分）。未知原因不预设
+      // 「需人工干预」（那是 error 那档的语义），避免无谓制造焦虑。
+      console.warn("未知 billing.reason，已按兜底文案渲染:", billing.reason);
+      return {
+        text: "套餐额度当前不可用，按 API 余额计费",
+        tone: "warning",
+      };
+    }
   }
 }
 
