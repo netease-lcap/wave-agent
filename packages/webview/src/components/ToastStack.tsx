@@ -60,11 +60,14 @@ interface ToastStackProps {
 }
 
 /**
- * How long a button-less toast stays up before auto-dismissing (ms). 2s:
- * informational toasts are fleeting (spec「账户卡片」场景 7); actionable toasts
+ * How long a button-less toast stays up before auto-dismissing (ms). 8s
+ * (2026-09-22: was 2s — too short to finish reading the plugin-change notice,
+ * which lands together with a second plugin toast; 8s matches Claude Code's
+ * default notification timeout. See spec
+ * desktop-account-and-settings.md「信息型 toast 停留时长」). Actionable toasts
  * never auto-dismiss.
  */
-const AUTO_DISMISS_MS = 2000;
+const AUTO_DISMISS_MS = 8000;
 
 /**
  * One toast row. `position` selects the visual family (from the toast's explicit
