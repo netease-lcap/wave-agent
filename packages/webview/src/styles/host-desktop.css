@@ -2491,6 +2491,49 @@
   color: #9a9ea5;
 }
 
+/* 问题卡片「上一个 / 下一个」：透明底 + 1px 边框线 + 1 级字色（设计师 0922 两轮评论）。
+   第一轮（第四单）：「这里的按钮也要遵循按钮规范，正常状态下应该没有背景色」→ 去掉基础规则
+   （ConfirmationDialog.css:494 —— `--vscode-button-secondaryBackground` 实底 +
+   `--vscode-input-border` 描边，浅色 #F0F0F1 / #DCDFE6）的底色，正常态透明底。
+   第二轮（本单）：她点名插件市场「作用域」弹窗底部的 `button.settings-row-btn`「取消」
+   （SettingsPluginView.tsx:999）为**参照**——「按钮应该带有边框线，字体颜色也是1级，尺寸不变」：
+   ① 描边取参照按钮同源的 `--cc-border-light`（浅 #e4e7ed / 深 #34393c，实测与参照渲染值
+      rgb(228,231,237) / rgb(52,57,60) 逐值相同）；
+   ② 字色由 2 级（`--cc-text-regular` #565a60 / #9a9ea5）提到 1 级，取**本弹窗标题与选项标签
+      用的同一个** `--vscode-foreground`（浅档解析 #202020、深档映射到 `--cc-text-primary`
+      #e5e7e8 —— 与参照按钮的声明和渲染值都逐值相同，不新造色）；
+   ③ 盒 / 字号字重 / 圆角 / 内衬全部不动（239.33×32、13px / 600、r6：边框本就 1px，只是透明）。
+   hover 仍沿用同弹窗 ghost 的反馈面（浅 #eef0f3 / 深 8% 白），描边与字色不动；
+   仅桌面壳生效，IDE 宿主沿用基础 secondary 外观。 */
+[data-host="desktop"][data-theme="light"] .confirmation-btn-secondary {
+  background-color: transparent;
+  border-color: var(--cc-border-light, #e4e7ed);
+  color: var(--vscode-foreground);
+}
+[data-host="desktop"][data-theme="light"] .confirmation-btn-secondary:hover {
+  background-color: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-secondary {
+  background-color: transparent;
+  border-color: var(--cc-border-light, #34393c);
+  color: var(--vscode-foreground);
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-secondary:hover {
+  background-color: rgb(255 255 255 / 8%);
+}
+
+/* 焦点环：修第四轮引入的回归。上面这两条 `border-color` 的特异性 (0,3,0) 与 :2443 那条
+   `.confirmation-btn-secondary:focus-visible { border-color: --cc-border-focus }` 相同，但排在
+   它之后 ⇒ 把焦点色整个盖掉；第四轮又把描边改成透明，于是**键盘聚焦时看不到任何焦点指示**
+   （实测 `:focus-visible` = true 时边框仍 transparent / outline none，走查图 focus 与静止态
+   逐像素相同）。此处以 (0,4,0) 复写：焦点色落在**已有的 1px 描边**上（与参照按钮
+   `.settings-row-btn` 的既有口径同为「焦点色落自身边框」，不再是「凭空出现一条描边」）。 */
+[data-host="desktop"][data-theme="light"] .confirmation-btn-secondary:focus-visible,
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-secondary:focus-visible {
+  outline: none;
+  border-color: var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
+}
+
 /* ③ 关闭按钮对齐：标题 16px/lh32 + 卡片 pad 16 → 标题行中心 = 32px，
    按钮 20×20 → top 22 / right 16（= padding，右缘与内容右端对齐）；
    原来 top 8/right 12 是 base 12px padding 时代的旧值，偏上偏外。 */

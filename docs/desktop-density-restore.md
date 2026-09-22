@@ -6116,3 +6116,309 @@ hover 逐字相同。
   `CC02/走查/_tools/0922/batch-0922-board-filter.json`（F-01 弹层 / F-02 三角，各浅深两档）；
   自检 `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
 - 图：`CC02/走查/0922-board-filter/shots/{before,after}/{light,dark}-{board-filter-menu,board-filter-arrow}-2x.png`。
+
+## 0922 评论（提问弹窗多选指示器：去掉中间实底 + 与单选统一强调色）
+
+设计师 0922 预览评论（`http://localhost:8899/` 提问弹窗「问题待回答 · 多选数据」）：
+
+`rect` · `div:nth-of-type(2) > div > div:nth-of-type(3) > label:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > svg > rect`
+——「多选参考单选的样式，中间不要有背景色，现在像禁用」（同页 Q3 是单选，就是她说的参照物）。
+
+### ① 根因：多选方框带实底，单选是镂空环
+
+`ConfirmationDialog.tsx` 的 `OptionIndicator` 两个分支写法不对称：多选是
+`<rect fill="var(--vscode-checkbox-background)" stroke="var(--vscode-checkbox-border)" />`
+（选中再加一条 `--vscode-checkbox-foreground` 的对勾），单选是 `<circle fill="none">`
+（选中时描边转 `--vscode-focusBorder`，中心再点一个同色圆点）。浅色档
+`--vscode-checkbox-background` = #EAEAEA、描边 #868686 压在 #FFFFFF 弹窗面上，观感就是
+「禁用的输入框」；深色档 #313131 + #3C3C3C 压在 #232526 上同理。两态里更不像单选的其实是
+**选中态**：单选选中用强调色（描边 + 圆点同色），多选选中却仍是灰描边 + 一个浅色对勾。
+
+### ② 改动（base 组件，两个宿主同步）
+
+| 位置               | 改前                                 | 改后                                                                  |
+| ------------------ | ------------------------------------ | --------------------------------------------------------------------- |
+| `rect.fill`        | `var(--vscode-checkbox-background)`  | `none`（透出弹窗底色）                                                |
+| `rect.stroke`      | 固定 `var(--vscode-checkbox-border)` | `checked ? var(--vscode-focusBorder) : var(--vscode-checkbox-border)` |
+| 对勾 `path.stroke` | `var(--vscode-checkbox-foreground)`  | `var(--vscode-focusBorder)`                                           |
+
+改后的 `rect.stroke` 与单选那条 `circle.stroke` **逐字同构**；几何一个字未动（`15×15` + 1px 描边
+= 16×16 盒、`rx 2.5`、对勾 `d` 与 `1.7px`）。★ 这是 base 组件 ⇒ **IDE（VS Code / JetBrains）宿主
+同一颗控件同步生效**（两侧都读宿主主题变量 `checkbox.background` / `checkbox.border` /
+`focusBorder`；桌面壳的值来自仓库内 `theme-base-{light,dark}.css`，两个 token 的定义仍在文件里、
+只是本组件不再引用）。IDE 那档本轮未实测（mock harness 只跑桌面壳）——**该条随后按设计师
+0922 追加口径「上面的改动都只作用于桌面端」收口为桌面端专有，见下节「宿主作用域收口」。**
+
+### ③ 改后实测（浅 / 深两档，未选中 + 选中）
+
+- 方框填充：`rgb(234,234,234)` / `rgb(49,49,49)` → `none`；方框中心像素（2x 图采样）
+  `(234,234,234)→(255,255,255)`、`(49,49,49)→(35,37,38)` = 弹窗面本身。
+- 选中描边：`#868686` / `#3C3C3C` → `rgb(31,35,41)` = #1F2329 / `rgb(160,165,168)` = #A0A5A8
+  （= `--vscode-focusBorder`，与单选选中逐值相同）；对勾 `#606060` / `#CCCCCC` → 同色。
+- 对比度（vs 弹窗面）：选中框线 浅 3.64:1 → **15.78:1**、深 1.40:1 → **6.19:1**；未选中框线
+  浅 3.64:1 / 深 1.40:1 两版不变（与单选未选中同 token 同取值）。
+- 布局零位移：指示器 16×16 盒 @ x496/y545.5、行 708×22 透明底，两版逐值相同；铺满两行 + 上下
+  留白的 300×108 CSS 裁切框两阶段复核「逐值相同」。
+- 逐像素：未选中态方框以外最大差 22（浅）/ 14（深）、>60 像素 **0 个**；选中态的全部差异
+  （278 / 219 个 >60 像素）也落在 x 16..48 设备像素的指示器列内——文字 / 描述 / 行底 / 分隔线
+  逐像素相同。
+- axe-core 4.x：弹窗内浅深两档各 **0 违规**（含 color-contrast）；两阶段 0 pageerror。
+- 类型检查 `pnpm run type-check` 全绿（含 webview / vscode / desktop 四档）。
+
+### ④ 残留触发语（未授权）
+
+- 「深色未选中框线也提亮」：`--vscode-checkbox-border` 深色 #3C3C3C 对弹窗面 #232526 只有
+  **1.40:1**（浅色 3.64:1）——原值未动，且单选未选中用的是同一 token、同一取值；要改会同时
+  改到单选。
+- 「对勾保持原来的浅色」：现在描边与对勾同取 `--vscode-focusBorder`（依据是「参考单选」——
+  单选选中就是描边 + 圆点同一强调色）；若只要描边用强调色，改回一行即可，深色对勾对比度也会
+  从 6.19:1 回到 9.59:1。
+- 「多选方框圆角统一口径」：`rx 2.5` 未动，单选是正圆，两者几何本就不同族。
+- 「IDE 宿主也实测」：需要真机（Electron 安装版 / IDE 宿主），本轮只做了桌面壳预览。
+
+### 验证脚本与证据
+
+- 采集：`CC02/走查/_tools/0922/capture-multiselect-0922.mjs <before|after>`（改前 = 未修改的
+  工作区原始状态，采集前 `git status` 仅两个未跟踪 mock 文件、`git diff --stat` 为空；裁切框存
+  `/tmp/clips-0922-multi.json`，两阶段复核逐值相同），指标存
+  `/tmp/metrics-multiselect-0922-{before,after}.json`。
+- 报告（skill 母版 v1.1）：`CC02/走查/0922-multiselect-indicator-report/index.html`，`batch.json`
+  = `CC02/走查/_tools/0922/batch-0922-multiselect-indicator.json`（F-01 未选中 / F-02 选中，各浅深
+  两档）；自检 `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
+- 图：`CC02/走查/0922-multiselect-indicator-report/shots/{before,after}/{light,dark}-multi-{unchecked,checked}-2x.png`；
+  单选对照另存 `CC02/走查/0922-多选提问/{light,dark}-radio-{unchecked,checked}-2x.png`。
+
+## 0922 评论（提问弹窗「上一个 / 下一个」：正常态去底色，并入同弹窗 ghost 一族）
+
+设计师 0922 预览评论（`http://localhost:8899/` 提问弹窗「问题待回答 · 多选数据」）：
+
+`button.confirmation-btn.confirmation-btn-secondary`「下一个」 ·
+`div > div:nth-of-type(2) > div > div:nth-of-type(2) > div:nth-of-type(3) > div > div:nth-of-type(2) > button:nth-of-type(2)`
+——「这里的按钮也要遵循按钮规范，正常状态下应该没有背景色」。
+
+### ① 根因：一条基础规则把三族 secondary 都给了实底
+
+`ConfirmationDialog.css:494` 把 `-auto` / `-reject` / `-secondary` 并成一条：
+`background-color: var(--vscode-button-secondaryBackground)` +
+`border-color: var(--vscode-input-border)`，即浅色档 #F0F0F1 实底 + #DCDFE6 描边压在白色弹窗面上。
+而**同一份弹窗**里的「提供反馈」早就是透明底 ghost（`host-desktop.css:2474` 那四条，22 轮
+codechat 对齐时定的）。⇒ 问题卡片底部三颗按钮里，只有主按钮「提交回答」该有实底，
+「上一个 / 下一个」应当是同族 ghost。范围：`.confirmation-btn-secondary` 只有这两颗
+（源码 `multi && …`，单问题弹窗不渲染）。
+
+### ② 改动（桌面作用域，+28 行纯追加）
+
+`packages/webview/src/styles/host-desktop.css` 紧随 ghost（提供反馈）四条之后新增四条：
+`[data-host="desktop"][data-theme="light"] .confirmation-btn-secondary`（透明底 + 透明描边 +
+字 #565a60）与 `:hover`（#eef0f3），dark 两条同构（字 #9a9ea5 / hover 8% 白）。取值与同弹窗
+ghost **逐值相同**，不新造色；特异性 (0,4,0) 高于基础规则 (0,1,0) 与其 hover (0,2,0)。
+基础文件一个字未动 ⇒ **IDE 宿主不受影响**（已用 `data-host="ide"` 反证 —— `ide` 是非桌面宿主的
+真值，`src/index.tsx:14-15` 只写 `desktop` / `ide` 两个值；两颗按钮立刻回到
+`rgb(234,234,234)` 底 + `rgba(216,216,216,.4)` 描边，深色档 `rgb(49,49,49)` 底 +
+`rgb(60,60,60)` 描边）。排版（盒 / 内衬 / 圆角 / 字号）、主按钮、
+`-auto` / `-reject` 两族全部未动。
+
+### ③ 改后实测（浅 / 深两档，静止 + hover + 按压）
+
+| 项       | 浅色                                                     | 深色                                                    |
+| -------- | -------------------------------------------------------- | ------------------------------------------------------- |
+| 静止底   | #F0F0F1 → 透明（图内空白处 (240,240,241)→(255,255,255)） | #232526 → 透明（(35,37,38)→(35,37,38)，本就与卡片同色） |
+| 静止描边 | #DCDFE6 → 透明                                           | #414649 → 透明                                          |
+| 字色     | #1F2329 → #565A60（15.78:1 → 6.94:1）                    | #E5E7E8 → #9A9EA5（12.41:1 → 5.72:1）                   |
+| hover 底 | #E7E9ED（= 按压档）→ #EEF0F3                             | #303436 → 8% 白，合成 rgb(52,54,55)                     |
+| 按压     | = hover（两版都无 `:active` 规则）                       | 同左                                                    |
+
+- 布局零位移：两颗按钮 239.33 / 239.34 × 32、圆角 6、内衬 7px 12px、13px 600，两版逐值相同；
+  裁切框两阶段复核「逐值相同」。
+- 逐像素：差包围盒 x 0..972 / y 20..84（设备像素）= 正好是这两颗按钮的矩形；行上方留白 /
+  两钮之间间隙 / 主按钮内部，四种状态 × 两档**全部逐像素相同**（主按钮从 x 977.7 起）。
+- 同族回归：权限弹窗三颗按钮（提供反馈 / 是，并跳过权限确认 / 批准并继续）两阶段底色 / 描边 /
+  字色逐值相同，证明 `-auto` / `-reject` / `-feedback` 未受影响。
+- axe-core：提问弹窗浅深各 0 违规；权限弹窗浅色档命中 `.confirmation-warning` 3.11:1
+  （**既有问题**，真回退复跑同值，本轮未动）。两阶段 0 pageerror；`pnpm run type-check` 全绿。
+
+### ④ 残留触发语（未授权）
+
+- 「字也要保持 1 级色」：本轮字色按「ghost 一族 / 契约 text-regular」一并降到 #565A60 / #9A9EA5
+  （与同弹窗「提供反馈」同值）；只要去底、字不变的话改两行。
+- 「深色 hover 回契约不透明档」：现为 8% 白（同 ghost、同桌面「图标按钮 hover 底」批
+  `e0ddbb00`）；契约 `dark-theme.md:45` 把 8% 白限定在侧栏/页头，浮层通用建议 `--cc-fill-hover`
+  #303436（= 改前深色值，改回则只保留浅色档变化）。
+- 「补按压态」：契约 Text 角色按压用 `--cc-fill-pressed`（浅 #E7E9ED / 深 #393E41），现在按下与
+  悬停同值。
+- 「这一行的字号字重也收进桌面按钮规范」：现在是基础档 13px / 600；桌面那条 14px / 500 只作用在
+  `.confirmation-actions` 行内，`.question-navigation` 行不在其中。
+- 「焦点环也按 ghost 一族改外移环」：桌面既有分派是「自带 1px 描边的按钮焦点色落自身边框」，
+  这两颗静止态已无描边，键盘聚焦时会临时亮出 1px 焦点色边框（本轮未改该条）。
+- 「权限弹窗那句警告文案也修」：`.confirmation-warning`「⚠ 将在工作区执行命令：npm install」
+  #BF8803 对白面 **3.11:1**（axe color-contrast serious，1 节点）——既有问题，真回退复跑同值。
+
+### 验证脚本与证据
+
+- 采集：`CC02/走查/_tools/0922/capture-0922-question-nav-button.mjs <before|after>`（改前 = 写入
+  本轮规则前的工作区原始状态；裁切框存 `/tmp/clips-0922-qnav.json`，两阶段复核逐值相同），
+  指标存 `/tmp/metrics-0922-qnav-{before,after}.json`（含宿主反证段与
+  `themes.*.permissionDialog` 同族回归段；宿主反证段当时把 `data-host` 写成了 `vscode`，
+  真值 `ide` 的复跑见下节）。
+- 报告（skill 母版 v1.1）：`CC02/走查/0922-question-nav-button-report/index.html`，`batch.json`
+  = `CC02/走查/_tools/0922/batch-0922-question-nav-button.json`（F-01 静止 / F-02 hover，各浅深
+  两档）；自检 `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
+- 图：报告内 `shots/{before,after}/{light,dark}-question-nav-{rest,hover}-2x.png`；同族对照与反证
+  另存 `CC02/走查/0922-弹窗按钮族/`（`{light,dark}-permission-actions-2x.png`、
+  `{light,dark}-datahost-ide-counterproof-2x.png`、`{light,dark}-pressed-next-2x.png`、
+  `{light,dark}-focus-first-2x.png`）。
+
+## 0922 评论（宿主作用域收口：上面的改动只作用于桌面端）
+
+设计师 0922 追加口径：「上面的改动都只作用于桌面端」。据此复核本轮改的两处：**④ 弹窗底部
+「上一个 / 下一个」本来就在桌面作用域**（`host-desktop.css` 的 `[data-host="desktop"]` 四条，
++28 行纯追加，基础文件一个字未动）——只需把先前的反证从 `data-host="vscode"` 更正为真值
+`ide`；**③ 多选指示器则写在共用组件里、两个宿主一起吃到了改动**，本轮把它收口成桌面端专有。
+
+### ① 收口改动：`OptionIndicator` 按宿主分叉
+
+`ConfirmationDialog.tsx` 的多选分支新增 `const desktop = isDesktopHost();`，三处取值按宿主分流
+（`isDesktopHost()` = `window.waveHostType === "desktop"`，`src/utils/platform.ts`）：
+
+| 取值                     | 桌面端（新外观）                | 非桌面宿主（原外观）                |
+| ------------------------ | ------------------------------- | ----------------------------------- |
+| `rect.fill`              | `none`                          | `var(--vscode-checkbox-background)` |
+| `rect.stroke`（选中时）  | `var(--vscode-focusBorder)`     | `var(--vscode-checkbox-border)`     |
+| 对勾 `path.stroke`       | `var(--vscode-focusBorder)`     | `var(--vscode-checkbox-foreground)` |
+| 未选中描边（两宿主相同） | `var(--vscode-checkbox-border)` | 同左                                |
+
+为什么用 `isDesktopHost()` 而不是 CSS：指示器颜色是**内联 SVG 属性**，不是能靠
+`[data-host="desktop"]` 覆盖的样式；而且 `isDesktopHost()` 读的是 `window.waveHostType`，与
+`data-host`（只在 `src/index.tsx:14-15` 写入、且只驱动 CSS 层、运行时改它不会重渲染）不是一条路径。
+JSDoc 同步写明「本条只在桌面端生效」。非桌面分支的三处取值与**第三轮改动之前的 HEAD 版逐值相同**
+（`git show HEAD:ConfirmationDialog.tsx` 里 `fill="var(--vscode-checkbox-background)"` +
+`stroke="var(--vscode-checkbox-border)"` + 对勾 `--vscode-checkbox-foreground` 可佐证）。
+
+### ② 收口实测（宿主钉住 `waveHostType`，浅 / 深两档 × 未选中 / 选中）
+
+- 采集方式：`capture-0922-indicator-ide-branch.mjs` 在首个脚本前用 `addInitScript` 拦截原型
+  harness 对 `window.waveHostType` 的 `Object.defineProperty`，把 getter 钉成 `vscode` ⇒ 首帧即走
+  非桌面分支（实测 `window.waveHostType = "vscode"`，`isDesktopHost()` = false）。
+- 非桌面宿主（收口后 = 原外观）：方框填充 `none` → `rgb(234,234,234)` / `rgb(49,49,49)`；选中描边
+  `rgb(31,35,41)` / `rgb(160,165,168)` → `rgb(134,134,134)` = #868686 / `rgb(60,60,60)` = #3C3C3C；
+  对勾同色 → `rgb(96,96,96)` = #606060 / `rgb(204,204,204)` = #CCCCCC（= `--vscode-checkbox-foreground`）。
+- 桌面端零回归（收口 vs 收口前重采）：4 张图里 **3 张 md5 逐字节相同**，1 张
+  （`light-multi-checked`）仅 1 行设备像素有 **1/255** 的灰度差（x 309..600、y 121，233→232，
+  行分隔线的亚像素舍入）——如实记录，不声称四张全等。
+- ④ 的反证复跑（`data-host="ide"`，同屏对照桌面档）：非桌面 浅 `rgb(234,234,234)` +
+  `rgba(216,216,216,.4)` / 深 `rgb(49,49,49)` + `rgb(60,60,60)`；桌面档仍是透明底 + 透明描边
+  （浅字 #565A60、深字 #9A9EA5）。盒宽在反证里是 199.33/199.34×32（桌面档 239.33/239.34×32），
+  那是非桌面宿主自己的密度差异，与本次改动无关。两档 0 pageerror。
+- axe-core：桌面浅深两档各 0 违规（含 color-contrast）；`pnpm run type-check` 全绿。
+
+### ③ 能力边界（如实交代）
+
+原型 harness 会按用例声明把 `document.documentElement[data-host]` 设成 `desktop`，因此
+**真正的 IDE CSS 档在这里复现不出来**——那对「非桌面宿主」图证明的是**组件的宿主分支已正确分流**
+（边框 / 填充 / 对勾三处取值回到原样），画面里的字色与卡片底色仍是桌面档；IDE 侧的实际取值以宿主
+主题注入的 `--vscode-*` 为准，本轮未在真机核对。
+
+### ④ 残留触发语（未授权）
+
+- 「IDE 也一起换成镂空」：现在 IDE 那边留着原实底方框（= 你这次说「像禁用」的那个观感）；
+  要两宿主一致，撤掉这三行分流即可。
+- 「深色未选中框线也提亮」/「对勾保持原来的浅色」/「多选方框圆角统一口径」：同上一节残留，均未授权。
+- 已推送的棋盘筛选浮层三角那轮（基础 `SessionBoard.css` 规则）是否也要收口到桌面端：**待你点名**。
+
+### 验证脚本与证据
+
+- 采集：`CC02/走查/_tools/0922/capture-0922-indicator-ide-branch.mjs <before|after>`（非桌面宿主；
+  裁切框存 `/tmp/clips-0922-ide.json`，两阶段复核逐值相同），指标存
+  `/tmp/metrics-0922-ide-{before,after}.json`；宿主反证复跑脚本 `/tmp/probe-datahost-ide-0922.mjs`。
+- 报告（skill 母版 v1.1）：`CC02/走查/0922-multiselect-indicator-report/index.html`，`batch.json`
+  = `CC02/走查/_tools/0922/batch-0922-multiselect-indicator.json`（F-01 未选中 / F-02 选中 = 桌面端，
+  F-03 未选中 / F-04 选中 = 非桌面宿主的收口反证，各浅深两档）；自检 `verify-repair-report.mjs`：
+  图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。`CC02/走查/0922-question-nav-button-report/index.html`
+  同法同步重建（反证段口径已更正为 `data-host="ide"`）。
+- 图：`CC02/走查/0922-multiselect-indicator-report/shots/{before,after}/{light,dark}-{multi,ide}-{unchecked,checked}-2x.png`；
+  单选对照另存 `CC02/走查/0922-多选提问/{light,dark}-radio-{unchecked,checked}-2x.png`。
+
+## 0922 评论（提问弹窗「上一个 / 下一个」：补边框线 + 字色 1 级 + 修焦点环回归）
+
+设计师 0922 预览评论（插件市场「作用域」弹窗底部）：
+
+`button.settings-row-btn`「取消」 · `div:nth-of-type(2) > div > div:nth-of-type(2) > div > div > div > div:nth-of-type(3) > button:nth-of-type(1)`
+——「可以参考这个按钮，按钮应该带有边框线，字体颜色也是1级，尺寸不变」。
+
+她点的是**参照**、不是要改的元素，落到哪些按钮上经一次性确认：**提问弹窗「上一个 / 下一个」**
+（= 上一轮按「正常状态应该没有背景色」改成无边框 ghost 的那两颗）。
+
+### ① 参照按钮实测（`SettingsPluginView.tsx:999`）
+
+插件市场「作用域」弹窗底部 `.settings-modal-actions` 里的「取消」：透明底 + **1px 描边**
+`rgb(228,231,237)` 浅 / `rgb(52,57,60)` 深 + **1 级字色** `rgb(32,32,32)` 浅 / `rgb(229,231,232)` 深，
+盒 62.6×32 / 14px / r8 / 内衬 `0 16px`。同排「安装」= 主色实心，所以参照给的是「次级按钮」的样子。
+
+### ② 改动（照参照补两项，尺寸一字未动）
+
+`host-desktop.css` 桌面档 `.confirmation-btn-secondary`（浅深两条 + hover）：
+
+| 项                      | 改前（第四轮状态）                            | 改后                                                       |
+| ----------------------- | --------------------------------------------- | ---------------------------------------------------------- |
+| 描边                    | `transparent`（1px 占位，看不见）             | `var(--cc-border-light, #e4e7ed / #34393c)`                |
+| 字色                    | 2 级 `--cc-text-regular`（#565A60 / #9A9EA5） | 1 级 `var(--vscode-foreground)`（浅 #202020 / 深 #E5E7E8） |
+| 底色                    | 透明                                          | 透明（不动）                                               |
+| hover 面                | 浅 #EEF0F3 / 深 8% 白                         | 同左（不动；hover 规则只留 `background-color`）            |
+| 盒 / 字号 / 圆角 / 内衬 | 239.33×32 / 13px / 600 / r6 / 7px 12px        | **逐值相同**（描边本就 1px，只是从透明变可见 ⇒ 无位移）    |
+
+不新造色：两个 token 都是既有设计层变量，且改后取值与参照按钮**逐值相同**
+（`--vscode-panel-border` 在该作用域解析出的就是 `--cc-border-light`；字色是参照按钮自己的声明，
+也是**本弹窗标题与选项标签用的同一个 1 级 token**）。1:1 设备像素并列图：
+`CC02/走查/0922-按钮参照/r6-ref-vs-after-{light,dark}-1to1-2x.png`。
+
+### ③ 改后实测（浅 / 深，静止 + hover + 键盘聚焦）
+
+- 描边：透明 → `rgb(228,231,237)` / `rgb(52,57,60)`；字色：`#565A60` / `#9A9EA5` →
+  `rgb(32,32,32)` / `rgb(229,231,232)`；字色对比度 浅 6.94:1 → **16.29:1**、深 5.72:1 → **12.41:1**。
+- 布局零位移：两颗 239.33 / 239.34 × 32、13px / 600、r6、内衬 `7px 12px` 两档逐值相同；
+  裁切框两阶段复核「逐值相同」。
+- 逐像素：差包围盒 x 0..972 / y 20..84（设备像素）= 正好是这两颗按钮的矩形（>60 差像素 490 浅 /
+  794 深，全在该带内）；同排主按钮「提交回答」与两行留白逐像素相同。
+- 同族回归：权限弹窗四颗（提供反馈 ghost / 是，并跳过权限确认 / 是，且不再询问 / 批准并继续）
+  两阶段底色 / 描边 / 字色逐值相同 —— 本轮只碰 `-secondary` 一族。
+- axe-core：提问弹窗浅深两档各 **0 违规**；两阶段 0 pageerror；`pnpm run type-check` 全绿。
+
+### ④ 顺带修掉上一轮的一个回归：焦点环被自己的规则盖掉
+
+第四轮那条 `border-color: transparent` 与既有桌面焦点规则
+`.confirmation-btn-secondary:focus-visible { border-color: var(--cc-border-focus) }` 特异性**同为 (0,3,0)**，
+但排在它之后 ⇒ 焦点色被整个盖掉；而描边又是透明的 ⇒ **键盘聚焦到这两颗按钮时屏幕没有任何变化**
+（`-- /tmp/diff-0922-qnav-outline.json` 的 `focusVisibility` 段：改前聚焦态与静止态
+**逐像素完全相同 max=0**，浅深两档一致；`document.activeElement.matches(':focus-visible')` = true、
+`outline: none`、`border-color: rgba(0,0,0,0)`）。
+修法 = 以 (0,4,0) 复写 `:focus-visible { outline: none; border-color: var(--cc-border-focus, …) }`，
+焦点色落在本轮新加的那条 1px 描边上（与参照按钮「焦点色落自身边框」同口径）。改后实测：浅
+`rgb(31,35,41)` = #1F2329 / 深 `rgb(160,165,168)` = #A0A5A8，差异包围盒 x 0..478 设备像素 = **只有被聚焦的那一颗**；
+焦点色 vs 常态描边 浅 **12.74:1** / 深 **4.70:1**。:2443 那条规则对 `-auto` / `-reject` 仍照常生效
+（它们排在它之前）—— 这是**单族**回归，不是三族一起坏。
+
+### ⑤ 残留触发语（未授权）
+
+- 「框线再深一档」：现取参照那条「轻边界」`--cc-border-light`，对卡片面只有 **1.24:1 / 1.32:1**；
+  换 `--cc-border`（#DCDFE6 / #414649）会更清晰，但与参照按钮不再同值。
+- 「焦点环也用外移 2px 环」：现为「焦点色落自身描边」（同 `-auto` / `-reject` 与本模板既有分派）；
+  换环即改一行。
+- 「补按压态」：基础档无 `:active`，两版按下 = hover（同上一轮残留）。
+- 「这一行的字号字重也收进桌面规范」：仍是基础档 13px / 600（桌面 14px / 500 只作用在 `.confirmation-actions`）。
+- 「权限弹窗的『提供反馈』也补边框」：她本轮点选的范围只含这两颗；ghost 仍是透明底无边框。
+- 「IDE 宿主也一起」：基础文件未动 ⇒ IDE 沿用基础 secondary（实底 #F0F0F1 类）；本条仅桌面壳。
+
+### 验证脚本与证据
+
+- 采集：`CC02/走查/_tools/0922/capture-0922-question-nav-outline.mjs <before|after>`（改前 = **真回退**：
+  把桌面档 `.confirmation-btn-secondary` 逐字改回第四轮版本、`git diff --numstat` 复核 28/0，
+  采完按备份还原 + `md5` 校验 `bdedf8d932f9538d4d408630e4bb15e3`；裁切框存
+  `/tmp/clips-0922-qnav-outline.json`，两阶段复核逐值相同），指标存
+  `/tmp/metrics-0922-qnav-outline-{before,after}.json`。
+  ★ 采集坑：焦点跨主题残留会让深色档「静止态」带上 light 档 Tab 的焦点环（首轮采集里深色
+  focus 与 rest 曾逐像素相同）→ 脚本已加 `blur()` 后复采。
+- 逐像素与并列图：`CC02/走查/_tools/0922/diff-and-compare-outline-0922.py` → `/tmp/diff-0922-qnav-outline.json`
+  - `CC02/走查/0922-按钮参照/r6-ref-vs-after-{light,dark}-1to1-2x.png`。
+- 报告（skill 母版 v1.1）：`CC02/走查/0922-question-nav-outline-report/index.html`，`batch.json`
+  = `CC02/走查/_tools/0922/batch-0922-question-nav-outline.json`（F-01 静止 / F-02 hover / F-03 焦点，各浅深
+  两档）；自检 `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
