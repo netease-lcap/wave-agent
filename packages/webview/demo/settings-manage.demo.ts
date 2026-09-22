@@ -3,7 +3,6 @@ import { elementScreenshotWebp } from "../e2e/utils/screenshot.js";
 import {
   openSettings,
   simulateHostMessage,
-  waitForSentCommand,
 } from "../e2e/utils/settingsHarness.js";
 
 /**
@@ -162,55 +161,9 @@ test.describe("设置页 MCP 服务选项卡 Demo", () => {
   });
 });
 
-// 服务端下发的托管配置（三端同款「服务端配置」区块）：取一份有代表性的下发
-// 内容——env（含密钥）、权限策略、记忆开关与上下文长度，让截图能体现「组织到底
-// 管控了哪些项」。展示值为原文 JSON，不做字段筛选与脱敏。
-const managedSettings = {
-  env: {
-    WAVE_MODEL: "deepseek-v4",
-    WAVE_BASE_URL: "https://gateway.example.com/v1",
-    WAVE_API_KEY: "sk-org-example-key",
-  },
-  permissions: {
-    defaultMode: "default",
-    deny: ["Bash(rm -rf*)", "Read(.env)"],
-  },
-  autoMemoryEnabled: false,
-  contextLength: 200,
-};
-
-test.describe("设置页服务端配置区块 Demo", () => {
-  test("should show server-managed config as read-only JSON", async ({
-    webviewPage,
-  }) => {
-    await openSettings(webviewPage, {
-      settingsState: { workdir: "/work/wave-agent", nav: "global" },
-    });
-
-    // 等视图挂载（发出 getManagedSettings 请求）后再回数据，避免响应先于 listener
-    const request = await waitForSentCommand(webviewPage, "getManagedSettings");
-    await simulateHostMessage(webviewPage, {
-      command: "managedSettingsResponse",
-      requestId: request.requestId,
-      managedSettings,
-    });
-
-    await expect(
-      webviewPage.getByTestId("settings-managed-json"),
-    ).toBeVisible();
-
-    const view = webviewPage.locator(".settings-page");
-    await elementScreenshotWebp(
-      view,
-      "../../docs/public/screenshots/spec-managed-settings.webp",
-    );
-  });
-});
-
 /**
  * 「全局设置」「个性化」选项卡的 IDE 侧画面（vsce.md 画廊「配置管理」）：两者由
  * 共享 webview 渲染，桌面端只是多一个「桌面端设置」区块（IDE 侧不渲染）。
- * 全局设置只截「基础设置」区块——整页视角已由上面的「服务端配置」用例覆盖。
  */
 
 const userPreferences = {
@@ -236,14 +189,6 @@ test.describe("设置页全局设置选项卡 Demo", () => {
         },
       },
     });
-    // 服务端未下发：区块显示空态说明（加载态文案不该进截图），本用例只截
-    // 「基础设置」区块，但页面整体仍保持自洽。
-    const request = await waitForSentCommand(webviewPage, "getManagedSettings");
-    await simulateHostMessage(webviewPage, {
-      command: "managedSettingsResponse",
-      requestId: request.requestId,
-      managedSettings: null,
-    });
 
     await expect(
       webviewPage.getByRole("heading", { name: "全局设置" }),
@@ -252,9 +197,7 @@ test.describe("设置页全局设置选项卡 Demo", () => {
     await expect(webviewPage.getByLabel("上下文长度")).toHaveValue("200");
 
     await elementScreenshotWebp(
-      webviewPage
-        .locator(".settings-section")
-        .filter({ hasText: "基础设置" }),
+      webviewPage.locator(".settings-section").filter({ hasText: "基础设置" }),
       "../../docs/public/screenshots/spec-settings-global.webp",
     );
   });
