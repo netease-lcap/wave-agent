@@ -1446,12 +1446,16 @@
    也是 `.settings-save-btn` / `.settings-scope-pill` 的既有值）。
    注：skill `theme/element-plus.css:61` 的 `.el-button` 基线是 `--cc-font-weight-regular`
    （400）；本页按钮历来走 medium（500），此处不据契约改档、只与「新建市场」对齐。
-   字重变轻会收窄文字，但本族有 min-width: 88px（文案均 2 字），故宽度不变。 */
+   字重变轻会收窄文字，但本族有 min-width（文案均 2 字），故宽度不变。
+   0922：min-width 88 → 68px，与同行作用域胶囊同步收窄（见下方 `.settings-scope-pill`
+   的 0922 评论；两控件逐值同宽）。字体族（本按钮此前落 UA 默认 Arial）在
+   `host-desktop.css` 的 0922 桌面白名单里补 `font-family: inherit`——她要求「仅作用在
+   桌面端」，故不写进本文件（base 改动会连同 IDE 宿主一起变）。 */
 .settings-plugin-act {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 88px;
+  min-width: 68px;
   height: 28px;
   padding: 0 14px;
   border: 1px solid transparent;
@@ -1479,19 +1483,24 @@
    → 字号 12 → 14px；字色由 description 提到最高级 --cc-text-primary（桌面宿主下
      与 --vscode-foreground 同值 = hover 色，故 hover 不再变色）；宽度与同行
      .settings-plugin-act 对齐（同为 88px），并居中承载「文字 + 下箭头」。
-   宽度取值依据（实测，浅深同）：四种作用域文案（用户/项目/本地/未知）均为 2 字，
-   14px/500 下文字宽 26.84px；内容宽 = 26.84 + gap 6 + chevron 16 + 内衬 24 = 72.84px
-   → 用与 .settings-plugin-act 相同的 min-width: 88px，四档文案均为 88px 恒定（无抖动），
-   余量 15.16px；若横向空间紧，可把这一组一起收到 81px（= 最长文案 80.34 + 内衬）。
-   共用同一 min-width 而非写死 width：文案若将来变长，两个控件同步长高长大，仍对齐。 */
+   设计师 0922 评论（同一条线）：「下拉左右内边距是 8px 的话大概是多宽？按钮也改成
+   相同的宽度，现在选项和按钮都太宽了」→ 内衬 12 → **8px**、两颗 **min-width 88 → 68px**。
+   68 的来路（实测，浅深同）：文字「项目」14px/500 宽 28 + gap 6 + chevron 16 = 内容 50，
+   + 内衬 8×2 + 描边 1×2 = **68**（= 本胶囊自然宽，无余量）；同行按钮内容 28 +
+   内衬 8×2 + 描边 1×2 = 46，靠同值 min-width 拉到 68 与胶囊取齐。
+   四种作用域文案（用户/项目/本地/未知）均 2 字，两档均恒定 68px（无抖动）。
+   共用同一 min-width 而非写死 width：文案若将来变长，两个控件同步长高长大，仍对齐。
+   同一条评论里的「字体检查」结论：本胶囊与同行按钮都落 UA 默认 Arial（`<button>` 不
+   继承页面字体）→ 修在 `host-desktop.css` 的 0922 桌面白名单里，本文件不写 font-family
+   （她要求「仅作用在桌面端」，base 改动会连同 IDE 宿主一起变）。 */
 .settings-scope-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  min-width: 88px;
+  min-width: 68px;
   height: 28px;
-  padding: 0 12px;
+  padding: 0 8px;
   color: var(--cc-text-primary, var(--vscode-foreground));
   background: transparent;
   border: 1px solid var(--cc-settings-border);

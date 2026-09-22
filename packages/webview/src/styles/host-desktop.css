@@ -3749,3 +3749,52 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* ═══ 0922 评论：桌面壳里漏继承页面字体的控件（按钮族，一次补齐）═══
+   她先点名 `button.settings-scope-pill`「项目」：「这里下拉和按钮的字体检查一下…现在
+   选项和按钮都太宽了」，随后给出范围与边界：「同页这些按钮也一起继承页面字体，仅作用
+   在桌面端」；再追加一句「弹层里的按钮和选项也一起继承页面字体」（作用域仍按桌面壳，
+   未改 base）。
+
+   问题：`<button>` **不继承**页面 `font-family`（UA 默认 = Chromium 的 `Arial`，
+   字号 13.3333px）。实测本页共 12 类按钮、四个弹层共 5 类按钮未声明字体族，含她点名的
+   两颗（明明写了 14px/500，却按 Arial 渲染中文——「假字体」的来源）与弹层主按钮
+   `.settings-save-btn`。仓库惯例是逐个类写 `font-family: inherit`（`DesktopApp.css:264`
+   / `573`、`ConfirmationDialog.css`、`MessageInput.css` 等），本族当初漏了，这里补齐。
+   输入类（`input` / `select`，如弹层里的 `.settings-text-input`）本来就继承，无残留。
+
+   落点选择：**不逐个改 base 规则**，而用一条桌面作用域白名单——① 她明确要求「仅作用
+   在桌面端」，写进 base 会连同 IDE（VS Code / JetBrains）宿主一起变；② 一处可读，
+   后续新增同类控件往白名单里加名即可。特异性 (0,2,0) 高于各 base 单类规则 (0,1,0)，
+   与样式表加载顺序无关。
+
+   只改字体族：字号 / 字重 / 盒尺寸 / 圆角 / 间距 / 颜色一律不动（宽度收窄见
+   `SettingsPage.css` 的 0922 评论：胶囊与行按钮 88 → 68px）。`.codicon` 与 svg 有各自
+   规则，不受本条的 `inherit` 影响（实测按钮内 `<i class="codicon">` 仍为 codicon 字体）。 */
+[data-host="desktop"]
+  :is(
+    /* 她点名的两颗：作用域胶囊 + 行操作（安装 / 更新） */
+    .settings-scope-pill,
+    .settings-plugin-act,
+    /* 同页插件市场其余按钮 */
+    .settings-tab,
+    .settings-plugin-chip,
+    .settings-plugin-update-btn,
+    .settings-plugin-icon-btn,
+    /* 侧栏 / 会话 / 账户卡 / 看板返回 */
+    .desktop-sidebar-more-btn,
+    .desktop-sidebar-new-chat,
+    .desktop-session-more-btn,
+    .account-api-info-btn,
+    .account-card-collapse-btn,
+    .session-board-back,
+    /* 弹层（她追加授权：「弹层里的按钮和选项也一起继承页面字体」）
+       —— 作用域 / 安装 / 新建市场 / 管理市场四个弹层穷举后的全部按钮类 */
+    .settings-modal-close,
+    .settings-scope-option,
+    .settings-row-btn,
+    .settings-modal-seg-item,
+    .settings-save-btn
+  ) {
+  font-family: inherit;
+}
+

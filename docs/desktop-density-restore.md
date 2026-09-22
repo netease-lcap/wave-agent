@@ -5931,3 +5931,94 @@ hover 逐字相同。
   `verify-plugin-row-hover-0922.mjs`（改后复验 + 双档截图）。
 - 图：`CC02/走查/0922-plugin-row-hover/pluginRow-hover-dark-2x.png`（改前）、
   `after-row-hover-{dark,light}-2x.png`（改后）。
+
+## 0922 评论（作用域胶囊与行按钮同宽 68px + 按钮族改回页面字体）
+
+设计师 0922 预览评论（`http://localhost:8899/` 插件市场页），分三次给范围和边界：
+
+1. **点名两颗**：`button.settings-scope-pill`「项目」——「这里下拉和按钮的字体检查一下，
+   然后下拉左右内边距是8px的话大概是多宽？按钮也改成相同的宽度，现在选项和按钮都太宽了」；
+2. **扩到同页**：「同页这些按钮也一起继承页面字体，仅作用在桌面端」；
+3. **扩到弹层**：「弹层里的按钮和选项也一起继承页面字体」。
+
+### ① 字体检查结论：两颗都落 UA 默认 Arial
+
+`<button>` **不继承**页面 `font-family`，未显式声明即落回 UA 默认（Chromium = `Arial`，
+13.3333px）。实测两颗明明写了 `14px/500`，computed 字体族却是 `Arial`，页面是
+`-apple-system, "system-ui", sans-serif` —— 这就是「字体检查」查出来的问题。仓库惯例是逐个
+类写 `font-family: inherit`（`DesktopApp.css:264` / `573`、`ConfirmationDialog.css`、
+`MessageInput.css` 等），本族当初漏了。
+
+全页 / 全弹层穷举后共 **17 类按钮**落在 Arial：页面 12 类 + 弹层 5 类（详见下）。
+
+### ② 宽度算式（回答「内边距 8px 大概多宽」）
+
+```
+内容 = 文字「项目」14px/500 宽 28 + gap 6 + chevron 16 = 50
+     + 内衬 8×2 = 16
+     + 描边 1×2 = 2
+──────────────────────────────
+        = 68px（= 胶囊自然宽，无余量）
+```
+
+同行 `.settings-plugin-act`（安装 / 更新）内容只有 28，内衬 8×2 + 描边 1×2 = 46，靠同值
+`min-width` 拉到 68 与胶囊取齐。四种作用域文案（用户 / 项目 / 本地 / 未知，均 2 字）在浅深两档
+都恒定 68px，无抖动。
+
+### ③ 改动落点（base 只改宽度，字体全部收进桌面白名单）
+
+- `packages/webview/src/styles/SettingsPage.css`：`.settings-scope-pill` `min-width`
+  88 → **68px**、`padding: 0 12px` → **`0 8px`**；`.settings-plugin-act` `min-width`
+  88 → **68px**。**本文件不写 `font-family`**（她要求「仅作用在桌面端」，base 改动会连同
+  IDE 宿主一起变）。
+- `packages/webview/src/styles/host-desktop.css`：文件末尾新增一条桌面作用域白名单
+  `[data-host="desktop"] :is(...) { font-family: inherit }`，一次收 17 类：点名两颗
+  （`.settings-scope-pill` / `.settings-plugin-act`）+ 同页 10 类（`.settings-tab` /
+  `.settings-plugin-chip` / `.settings-plugin-update-btn` / `.settings-plugin-icon-btn` /
+  `.desktop-sidebar-more-btn` / `.desktop-sidebar-new-chat` / `.desktop-session-more-btn` /
+  `.account-api-info-btn` / `.account-card-collapse-btn` / `.session-board-back`）+ 弹层 5 类
+  （`.settings-modal-close` / `.settings-scope-option` / `.settings-row-btn` /
+  `.settings-modal-seg-item` / `.settings-save-btn`）。特异性 (0,2,0) 高于各 base 单类规则
+  (0,1,0)，与加载顺序无关；后续新增同类控件往白名单加名即可。`.codicon` / svg 有各自规则，
+  不受 `inherit` 影响（实测弹层关闭按钮与胶囊内的 `<i class="codicon">` 仍是 codicon 字体）。
+  输入类（`input` / `select`，如弹层里的 `.settings-text-input`）本来就继承，无残留。
+
+### ④ 改后实测
+
+- 宽度：全部胶囊 **68×28**（四档文案两档恒定）、同行按钮 **68×28**，内衬 8/8；
+- 字体：桌面宿主下 **12/12 页面类 + 25/25 弹层按钮 = 页面栈**，Arial 0 个，浅深两档皆然；
+- **反证**：把 `data-host` 改成非 desktop → 12/12 与 7/7 全部退回 Arial，证明仅桌面端生效；
+- 盒尺寸副作用（换字体改变文字步进）：拉丁文案才有位移 —— `.settings-tab`
+  161.17 → 174.95（+13.78）、`.session-board-back` 120 → 124、`.settings-plugin-update-btn`
+  +0.72、`.settings-plugin-chip` +0.19，其余 8 类 **0 位移**；`.settings-tabs` 两版都不溢出
+  （client 638 = scroll 638）。弹层按钮盒尺寸**逐值零变化**（中文文案走同一 CJK 回退字体）；
+- 弹层文字折行 0 处（含 0915 修过的「添加」60×32：文字 28 < 可用 42）；两轮探针均 0
+  `pageerror`。
+
+### ⑤ 认知（后续审计可复用）
+
+把 `<button>` 字体族从 Arial 改回页面栈，**纯中文文案的截图会逐像素相同**——Arial 没有中文
+字形，Chromium 一直都在用同一条系统 CJK 字体（苹方）渲染，字形与步进都不变；真正可见的变化
+只出现在**拉丁文案**（市场页签名、弹层选项里的 user / project / local）。⇒ 遇到「改后图看不出
+差异」不要改口径、更不要复制同图改名凑数，而是主动交代原因，并另挑含拉丁文案的区域当可见证据。
+
+### ⑥ 残留触发语（未授权）
+
+- 「其他设置页也一起扫一遍」：本轮只穷举了市场页 DOM + 它的四个弹层；技能 / 账户 / 通用等
+  设置视图不在本页 DOM 内，未扫。
+- 「IDE 宿主也一起变」：当前仅桌面壳（`[data-host="desktop"]`）；要 base 生效需把 `font-family`
+  写进各 base 规则。
+- 「页签宽度回到改前」：页签 ±13.78px 是拉丁文案换字族的必然结果，可钉固定宽或收横向内衬。
+
+### 验证脚本与证据
+
+- 采集：`CC02/走查/_tools/0922/capture-0922-button-font.mjs <after|before|after2>`
+  （真回退采改前：备份 → `git checkout --` 两文件 → 采集 → `cp` 还原 + md5 校验 → 复采
+  `after2` 与原 `after` 逐像素比对 6/6 相同，证明差异只来自这两个文件）；裁切框跨阶段复用同一
+  坐标（`/tmp/clips-0922.json`）。
+- 报告（skill 母版 v1.1）：`CC02/走查/0922-button-font-report/index.html`，`batch.json` =
+  `CC02/走查/_tools/0922/batch-0922-button-font.json`（4 条 finding）；自检
+  `verify-repair-report.mjs` 实测 0 pageerror、图 1:1（1456 → 展示 518）、axe 浅深 0/0、
+  640 窄屏无横溢。
+- 图：报告内 `shots/{before,after}/{light,dark}-{scope-row,market-header,sidebar-session,scope-dialog}-2x.png`；
+  另存 `CC02/走查/0922-dialog-font/`（四个弹层改后截图）、`CC02/走查/0922-font-desktop-scope/`（反证）。
