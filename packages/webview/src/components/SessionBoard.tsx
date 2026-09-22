@@ -1,5 +1,7 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { DesktopSessionGroup, DesktopSessionEntry } from "../types";
+import { isDesktopHost } from "../utils/platform";
+import { useRovingMenu } from "../utils/useRovingMenu";
 import { SidebarExpandIcon } from "./HeaderIcons";
 import { Tooltip } from "./Tooltip";
 import "../styles/SessionBoard.css";
@@ -146,6 +148,77 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
     setFilterOverflow(el.scrollWidth > el.clientWidth + 0.5);
   }, [filterLabel, filterOverflow]);
 
+  // ---- 桌面端自绘下拉列表（设计师 0922 评论：「这个选择器的下拉菜单也要遵循规范，
+  // 昨天改过类似问题」）----
+  // 原生 `<select>` 的弹层由系统/Chromium 绘制，位置、宽度、内衬、行高与字体都无法由
+  // CSS 控制（实测弹层里的文字还是 UA 默认 Arial）⇒ 与设置页 `SettingsSelect.tsx`
+  // 同一套规范：自绘 listbox，落触发器下缘 +2px、右缘对齐、宽度 = 触发器宽。
+  // 弹层皮肤由 `host-desktop.css` 的同一组规则提供（选择器里并列 `.session-board-filter-*`），
+  // 只有一份声明。IDE 宿主保留原生 select（行为与既有断言不变）。
+  const desktopFilter = isDesktopHost();
+  const filterMenuOptions = useMemo(
+    () => [
+      { value: "", label: "全部项目" },
+      ...filterOptions.map((option) => ({
+        value: option.workdir,
+        label: option.name,
+      })),
+    ],
+    [filterOptions],
+  );
+  const filterWrapRef = useRef<HTMLDivElement>(null);
+  const filterTriggerRef = useRef<HTMLButtonElement>(null);
+  const [filterMenuAnchor, setFilterMenuAnchor] = useState<{
+    top: number;
+    right: number;
+    width: number;
+  } | null>(null);
+  const selectedFilterIndex = filterMenuOptions.findIndex(
+    (option) => option.value === selectedWorkdir,
+  );
+  const {
+    open: filterMenuOpen,
+    openMenu: openFilterMenu,
+    closeReturningFocus: closeFilterMenu,
+    getItemProps: getFilterItemProps,
+  } = useRovingMenu(filterWrapRef, {
+    itemSelector: ".session-board-filter-option",
+    itemCount: filterMenuOptions.length,
+    triggerRef: filterTriggerRef,
+    closeOnActivate: true,
+    onActivate: (index) => {
+      const next = filterMenuOptions[index];
+      if (next && next.value !== selectedWorkdir)
+        setSelectedWorkdir(next.value);
+    },
+  });
+  // 弹层定位：fixed + 触发器 rect（看板内容区可滚动 → 跟随重算，避免弹层与触发器脱开）
+  useLayoutEffect(() => {
+    if (!filterMenuOpen) {
+      setFilterMenuAnchor(null);
+      return;
+    }
+    const place = () => {
+      // 锚点取**可见控件盒**（`.session-board-filter` 160×32）：透明触发器是
+      // `inset: 0` 的按钮，位于 1px 描边内缘（实测量到 158×30），拿它当锚点会让
+      // 弹层比选择器窄 2px、也不在其正下方。
+      const rect = filterWrapRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setFilterMenuAnchor({
+        top: rect.bottom + 2,
+        right: window.innerWidth - rect.right,
+        width: rect.width,
+      });
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [filterMenuOpen]);
+
   return (
     <div className="session-board" data-testid="session-board">
       {/* 顶栏（Figma 13561:39312 Header，44px 行）：导航收起时左起为
@@ -205,6 +278,7 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
           <div
             className="session-board-filter"
             data-testid="session-board-filter"
+            ref={filterWrapRef}
           >
             <span ref={filterTextRef} className="session-board-filter-text">
               {filterLabel}
@@ -213,22 +287,76 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
               className="codicon codicon-chevron-down session-board-filter-arrow"
               aria-hidden="true"
             />
-            <select
-              className="session-board-filter-select"
-              aria-label="筛选项目"
-              value={selectedWorkdir}
-              onChange={(event) => setSelectedWorkdir(event.target.value)}
-            >
-              <option value="">全部项目</option>
-              {filterOptions.map((option, index) => (
-                <option
-                  key={`${option.workdir}-${index}`}
-                  value={option.workdir}
-                >
-                  {option.name}
-                </option>
-              ))}
-            </select>
+            {desktopFilter ? (
+              // 桌面端：透明触发器 + 自绘 listbox（命中区与改前同为整块 160×32）
+              <button
+                type="button"
+                ref={filterTriggerRef}
+                className="session-board-filter-select"
+                aria-label="筛选项目"
+                aria-haspopup="listbox"
+                aria-expanded={filterMenuOpen}
+                onClick={() => {
+                  if (filterMenuOpen) closeFilterMenu();
+                  else
+                    openFilterMenu(
+                      selectedFilterIndex > 0 ? selectedFilterIndex : 0,
+                    );
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape" && filterMenuOpen) {
+                    event.preventDefault();
+                    closeFilterMenu();
+                  }
+                }}
+              />
+            ) : (
+              <select
+                className="session-board-filter-select"
+                aria-label="筛选项目"
+                value={selectedWorkdir}
+                onChange={(event) => setSelectedWorkdir(event.target.value)}
+              >
+                <option value="">全部项目</option>
+                {filterOptions.map((option, index) => (
+                  <option
+                    key={`${option.workdir}-${index}`}
+                    value={option.workdir}
+                  >
+                    {option.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            {filterMenuOpen && filterMenuAnchor && (
+              <div
+                className="session-board-filter-menu"
+                role="listbox"
+                aria-label="筛选项目"
+                data-testid="session-board-filter-menu"
+                style={{
+                  top: filterMenuAnchor.top,
+                  right: filterMenuAnchor.right,
+                  width: filterMenuAnchor.width,
+                }}
+              >
+                {filterMenuOptions.map((option, index) => (
+                  <div
+                    key={option.value || "all"}
+                    className={
+                      "session-board-filter-option" +
+                      (option.value === selectedWorkdir ? " is-selected" : "")
+                    }
+                    role="option"
+                    aria-selected={option.value === selectedWorkdir}
+                    data-testid={`session-board-filter-option-${option.value || "unset"}`}
+                    {...getFilterItemProps(index)}
+                  >
+                    {option.label}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </Tooltip>
       </div>

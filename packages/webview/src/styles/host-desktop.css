@@ -1642,13 +1642,43 @@
   border-bottom-color: rgba(255, 255, 255, 0.12);
 }
 
+/* 0922 评论（`input.preview-pane-address` · 预览地址栏）：「预览这里输入连接后，
+   激活文字会抖一下，希望不要抖」。
+
+   地址区是**两个元素**轮换：编辑态 = `input.preview-pane-address`
+   （base 为 `border: none`、未声明 `font-family`），显示态 = `span.preview-pane-url`
+   （base 为 `border: 1px solid transparent`、走页面字体栈）。同一串 URL
+   （`http://localhost:5173`）因此两处不同 —— 实测（Retina DPR 2，墨迹盒 = 文字真正
+   着墨的包围盒，裁切图坐标）：
+     改前 编辑态 l=29 t=27 w=249  ↔  显示态 l=32 t=27 w=261
+   ⇒ 回车提交切两态，文字起点横移 1.5px、墨迹总宽差 6px（「抖一下」）。
+
+   三处对齐，缺一不可：
+   ① 字体族：输入框不继承页面字体（UA = Arial）——见文末桌面字体白名单里的
+      `.preview-pane-address`；
+   ② 描边占位：这里补 1px 透明描边，让文字起点与显示态同为 `1px + 8px`；
+      `box-sizing: border-box` + `height: 26px` ⇒ 盒外形与尺寸零变化；
+   ③ 垂直：改完 ①② 后墨迹左界已重合，但上界仍低 1 CSS px（t=29 vs 27）——
+      同一个字体在 `input` 的内联编辑器里就是比 flex 居中的 `span` 沉 1px，
+      用 `padding-bottom: 1px` 把它顶回去（**不改 `line-height`**：那条路虽也能量到
+      全等，但会把光标行盒从 22px 抬到 26px，编辑态多一个无关变化）。
+      实测该补偿在 DPR 2 与 DPR 1 下都全等（见 0922 第八轮报告）。
+
+   注：本条特异性 (0,3,0) 高于 base `.preview-pane-address:focus` 的 (0,2,0)，
+   即 base 的焦点描边色在本层不会生效——而改前输入框 `border: none`（0 宽）本来
+   也看不见焦点指示，故「焦点指示不可见」是改前既有状态、本轮未改变，也未擅自新增；
+   见残留清单（触发语「编辑态给一条焦点描边」）。 */
 [data-host="desktop"][data-theme="light"] .preview-pane-address {
   background: #f0f2f5;
   color: #1f2329;
+  border: 1px solid transparent;
+  padding-bottom: 1px;
 }
 [data-host="desktop"][data-theme="dark"] .preview-pane-address {
   background: rgba(255, 255, 255, 0.06);
   color: #e6e6e6;
+  border: 1px solid transparent;
+  padding-bottom: 1px;
 }
 [data-host="desktop"][data-theme="light"] .preview-pane-address::placeholder {
   color: #6c7076;
@@ -2407,25 +2437,43 @@
   font-weight: 500;
   justify-content: center;
 }
-/* secondary（是，并跳过权限确认 / 自动接受）：--cc-fill #f0f2f5 底 +
+/* secondary 档（是，并跳过权限确认 / 自动接受）：设计师 0922 点名两颗「是…」按钮
+   「这里两个是的按钮也一样改」→ 追问后裁定「按『上一个 / 下一个』那套再改」：
+   正常态去底色 + 1px 边框线（--cc-border-light）+ 字色 1 级（--vscode-foreground），
+   hover 与尺寸 / 圆角 / 字重不变 —— 与提问弹窗 .confirmation-btn-secondary、
+   设置页弹窗 .settings-row-btn 同一套口径（codechat 次级按钮 = 透明底 + 描边）。
+   .confirmation-btn-reject（「不，现在开始实现」/「取消」）本轮未点名，维持原填充档。 */
+[data-host="desktop"][data-theme="light"] .confirmation-btn-auto {
+  background-color: transparent;
+  border-color: var(--cc-border-light, #e4e7ed);
+  color: var(--vscode-foreground);
+}
+[data-host="desktop"][data-theme="light"] .confirmation-btn-auto:hover {
+  background-color: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-auto {
+  background-color: transparent;
+  border-color: var(--cc-border-light, #34393c);
+  color: var(--vscode-foreground);
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-auto:hover {
+  background-color: rgb(255 255 255 / 8%);
+}
+/* secondary 填充档（本轮未点名，留给 .confirmation-btn-reject）：--cc-fill #f0f2f5 底 +
    --cc-border-lighter #ebeef5 边 + --cc-text-primary 字（codechat approval-secondary） */
-[data-host="desktop"][data-theme="light"] .confirmation-btn-auto,
 [data-host="desktop"][data-theme="light"] .confirmation-btn-reject {
   background-color: #f0f2f5;
   border-color: #ebeef5;
   color: #1f2329;
 }
-[data-host="desktop"][data-theme="light"] .confirmation-btn-auto:hover,
 [data-host="desktop"][data-theme="light"] .confirmation-btn-reject:hover {
   background-color: #eef0f3;
 }
-[data-host="desktop"][data-theme="dark"] .confirmation-btn-auto,
 [data-host="desktop"][data-theme="dark"] .confirmation-btn-reject {
   background-color: rgb(255 255 255 / 6%);
   border-color: rgb(255 255 255 / 12%);
   color: #e6e6e6;
 }
-[data-host="desktop"][data-theme="dark"] .confirmation-btn-auto:hover,
 [data-host="desktop"][data-theme="dark"] .confirmation-btn-reject:hover {
   background-color: rgb(255 255 255 / 8%);
 }
@@ -2489,6 +2537,49 @@
 [data-host="desktop"][data-theme="dark"] .confirmation-btn-feedback:hover {
   background-color: rgb(255 255 255 / 8%);
   color: #9a9ea5;
+}
+
+/* 问题卡片「上一个 / 下一个」：透明底 + 1px 边框线 + 1 级字色（设计师 0922 两轮评论）。
+   第一轮（第四单）：「这里的按钮也要遵循按钮规范，正常状态下应该没有背景色」→ 去掉基础规则
+   （ConfirmationDialog.css:494 —— `--vscode-button-secondaryBackground` 实底 +
+   `--vscode-input-border` 描边，浅色 #F0F0F1 / #DCDFE6）的底色，正常态透明底。
+   第二轮（本单）：她点名插件市场「作用域」弹窗底部的 `button.settings-row-btn`「取消」
+   （SettingsPluginView.tsx:999）为**参照**——「按钮应该带有边框线，字体颜色也是1级，尺寸不变」：
+   ① 描边取参照按钮同源的 `--cc-border-light`（浅 #e4e7ed / 深 #34393c，实测与参照渲染值
+      rgb(228,231,237) / rgb(52,57,60) 逐值相同）；
+   ② 字色由 2 级（`--cc-text-regular` #565a60 / #9a9ea5）提到 1 级，取**本弹窗标题与选项标签
+      用的同一个** `--vscode-foreground`（浅档解析 #202020、深档映射到 `--cc-text-primary`
+      #e5e7e8 —— 与参照按钮的声明和渲染值都逐值相同，不新造色）；
+   ③ 盒 / 字号字重 / 圆角 / 内衬全部不动（239.33×32、13px / 600、r6：边框本就 1px，只是透明）。
+   hover 仍沿用同弹窗 ghost 的反馈面（浅 #eef0f3 / 深 8% 白），描边与字色不动；
+   仅桌面壳生效，IDE 宿主沿用基础 secondary 外观。 */
+[data-host="desktop"][data-theme="light"] .confirmation-btn-secondary {
+  background-color: transparent;
+  border-color: var(--cc-border-light, #e4e7ed);
+  color: var(--vscode-foreground);
+}
+[data-host="desktop"][data-theme="light"] .confirmation-btn-secondary:hover {
+  background-color: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-secondary {
+  background-color: transparent;
+  border-color: var(--cc-border-light, #34393c);
+  color: var(--vscode-foreground);
+}
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-secondary:hover {
+  background-color: rgb(255 255 255 / 8%);
+}
+
+/* 焦点环：修第四轮引入的回归。上面这两条 `border-color` 的特异性 (0,3,0) 与 :2443 那条
+   `.confirmation-btn-secondary:focus-visible { border-color: --cc-border-focus }` 相同，但排在
+   它之后 ⇒ 把焦点色整个盖掉；第四轮又把描边改成透明，于是**键盘聚焦时看不到任何焦点指示**
+   （实测 `:focus-visible` = true 时边框仍 transparent / outline none，走查图 focus 与静止态
+   逐像素相同）。此处以 (0,4,0) 复写：焦点色落在**已有的 1px 描边**上（与参照按钮
+   `.settings-row-btn` 的既有口径同为「焦点色落自身边框」，不再是「凭空出现一条描边」）。 */
+[data-host="desktop"][data-theme="light"] .confirmation-btn-secondary:focus-visible,
+[data-host="desktop"][data-theme="dark"] .confirmation-btn-secondary:focus-visible {
+  outline: none;
+  border-color: var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
 }
 
 /* ③ 关闭按钮对齐：标题 16px/lh32 + 卡片 pad 16 → 标题行中心 = 32px，
@@ -3662,9 +3753,12 @@
   background-color: rgba(255, 255, 255, 0.08);
 }
 
-/* ── 设置页下拉：桌面端自绘弹层（SettingsSelect.tsx）────────────────────────
+/* ── 桌面端自绘下拉弹层：设置页（SettingsSelect.tsx）+ 会话看板项目筛选（SessionBoard.tsx）──
    设计师 0921 评论（点 `select.settings-select`）：「这种类型的选择器点击后的下拉列表
    应该出现在选择器下方 2px 的位置，右对齐，下拉列表的宽度和选择器尽量保持一致」。
+   0922 评论（点 `select.session-board-filter-select`）：「这个选择器的下拉菜单也要遵循
+   规范，昨天改过类似问题」——看板筛选改用同一套弹层，故下面每条规则并列两个 surface 的类
+   （`.settings-select-*` / `.session-board-filter-*`），皮肤只有一份声明，几何由各自组件给。
    原生 `<select>` 的弹层由系统/Chromium 绘制，位置与尺寸都无法由 CSS 控制，故桌面端
    换成自绘 listbox（IDE 宿主保留原生 select，见该组件的宿主分叉）。
 
@@ -3677,7 +3771,8 @@
    `--cc-bg-overlay`/12% 白边/40% 黑柔影、项 #9A9EA5 + hover 8% 白、选中 12% 白），
    同族弹层：`.more-menu` / `.desktop-session-menu` / `.desktop-workdir-menu` /
    `.permission-mode-menu`。 */
-[data-host="desktop"] .settings-select-menu {
+[data-host="desktop"] .settings-select-menu,
+[data-host="desktop"] .session-board-filter-menu {
   position: fixed;
   z-index: 10000;
   box-sizing: border-box;
@@ -3690,7 +3785,8 @@
   color: #565a60;
 }
 
-[data-host="desktop"] .settings-select-option {
+[data-host="desktop"] .settings-select-option,
+[data-host="desktop"] .session-board-filter-option {
   display: flex;
   align-items: center;
   min-height: 28px;
@@ -3702,44 +3798,127 @@
   cursor: pointer;
 }
 
-[data-host="desktop"] .settings-select-option:hover {
+[data-host="desktop"] .settings-select-option:hover,
+[data-host="desktop"] .session-board-filter-option:hover {
   background: #eef0f3;
   color: #1f2329;
 }
 
 [data-host="desktop"] .settings-select-option.is-selected,
-[data-host="desktop"] .settings-select-option.is-selected:hover {
+[data-host="desktop"] .settings-select-option.is-selected:hover,
+[data-host="desktop"] .session-board-filter-option.is-selected,
+[data-host="desktop"] .session-board-filter-option.is-selected:hover {
   background: #e7e9ed;
   color: #1f2329;
 }
 
 /* 键盘焦点：roving tabindex 会把真实焦点放到选项上（鼠标点击不亮）。
    环内收 2px，避免被弹层圆角切掉一角。 */
-[data-host="desktop"] .settings-select-option:focus-visible {
+[data-host="desktop"] .settings-select-option:focus-visible,
+[data-host="desktop"] .session-board-filter-option:focus-visible {
   outline: 2px solid var(--cc-border-focus, #a0a5a8);
   outline-offset: -2px;
 }
 
-[data-host="desktop"][data-theme="dark"] .settings-select-menu {
+[data-host="desktop"][data-theme="dark"] .settings-select-menu,
+[data-host="desktop"][data-theme="dark"] .session-board-filter-menu {
   background: var(--cc-bg-overlay);
   border-color: rgba(255, 255, 255, 0.12);
   box-shadow: 0 0 12px rgb(0 0 0 / 40%);
   color: #9a9ea5;
 }
 
-[data-host="desktop"][data-theme="dark"] .settings-select-option {
+[data-host="desktop"][data-theme="dark"] .settings-select-option,
+[data-host="desktop"][data-theme="dark"] .session-board-filter-option {
   color: #9a9ea5;
 }
 
-[data-host="desktop"][data-theme="dark"] .settings-select-option:hover {
+[data-host="desktop"][data-theme="dark"] .settings-select-option:hover,
+[data-host="desktop"][data-theme="dark"] .session-board-filter-option:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
 }
 
 [data-host="desktop"][data-theme="dark"] .settings-select-option.is-selected,
 [data-host="desktop"][data-theme="dark"]
-  .settings-select-option.is-selected:hover {
+  .settings-select-option.is-selected:hover,
+[data-host="desktop"][data-theme="dark"] .session-board-filter-option.is-selected,
+[data-host="desktop"][data-theme="dark"]
+  .session-board-filter-option.is-selected:hover {
   background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
+}
+
+/* 0922 评论：插件市场行（.settings-plugin-row）hover 与左侧导航同档。
+   浅色档 base 走 `--vscode-list-hoverBackground` = `--cc-fill-hover` #eef0f3，
+   与会话行 / 入口 / 分组标题的侧导航 hover 逐值相同（实测合成 #EEF0F3），无需覆盖。
+   深色档 `--cc-fill-hover` 是实色 #303436，在「插件市场」近黑底（#111314）上比
+   侧导航那层 8% 白重一档（8% 白合成 ≈ #242627），故按侧导航取值收淡。 */
+[data-host="desktop"][data-theme="dark"] .settings-plugin-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* ═══ 0922 评论：桌面壳里漏继承页面字体的控件（按钮族，一次补齐）═══
+   她先点名 `button.settings-scope-pill`「项目」：「这里下拉和按钮的字体检查一下…现在
+   选项和按钮都太宽了」，随后给出范围与边界：「同页这些按钮也一起继承页面字体，仅作用
+   在桌面端」；再追加一句「弹层里的按钮和选项也一起继承页面字体」（作用域仍按桌面壳，
+   未改 base）。
+
+   问题：`<button>` **不继承**页面 `font-family`（UA 默认 = Chromium 的 `Arial`，
+   字号 13.3333px）。实测本页共 12 类按钮、四个弹层共 5 类按钮未声明字体族，含她点名的
+   两颗（明明写了 14px/500，却按 Arial 渲染中文——「假字体」的来源）与弹层主按钮
+   `.settings-save-btn`。仓库惯例是逐个类写 `font-family: inherit`（`DesktopApp.css:264`
+   / `573`、`ConfirmationDialog.css`、`MessageInput.css` 等），本族当初漏了，这里补齐。
+   输入类（`input` / `select`）多数自带字体声明（如弹层里的 `.settings-text-input`
+   写的是 `font-family: var(--vscode-font-family)`），本身没有声明的那个
+   = `input.preview-pane-address`（0922 第八轮评论点名，本轮并入白名单）。
+
+   落点选择：**不逐个改 base 规则**，而用一条桌面作用域白名单——① 她明确要求「仅作用
+   在桌面端」，写进 base 会连同 IDE（VS Code / JetBrains）宿主一起变；② 一处可读，
+   后续新增同类控件往白名单里加名即可。特异性 (0,2,0) 高于各 base 单类规则 (0,1,0)，
+   与样式表加载顺序无关。
+
+   只改字体族：字号 / 字重 / 盒尺寸 / 圆角 / 间距 / 颜色一律不动（宽度收窄见
+   `SettingsPage.css` 的 0922 评论：胶囊与行按钮 88 → 68px）。`.codicon` 与 svg 有各自
+   规则，不受本条的 `inherit` 影响（实测按钮内 `<i class="codicon">` 仍为 codicon 字体）。 */
+[data-host="desktop"]
+  :is(
+    /* 她点名的两颗：作用域胶囊 + 行操作（安装 / 更新） */
+    .settings-scope-pill,
+    .settings-plugin-act,
+    /* 同页插件市场其余按钮 */
+    .settings-tab,
+    .settings-plugin-chip,
+    .settings-plugin-update-btn,
+    .settings-plugin-icon-btn,
+    /* 侧栏 / 会话 / 账户卡 / 看板返回 */
+    .desktop-sidebar-more-btn,
+    .desktop-sidebar-new-chat,
+    .desktop-session-more-btn,
+    .account-api-info-btn,
+    .account-card-collapse-btn,
+    .session-board-back,
+    /* 弹层（她追加授权：「弹层里的按钮和选项也一起继承页面字体」）
+       —— 作用域 / 安装 / 新建市场 / 管理市场四个弹层穷举后的全部按钮类 */
+    .settings-modal-close,
+    .settings-scope-option,
+    .settings-row-btn,
+    .settings-modal-seg-item,
+    .settings-save-btn,
+    /* 确认弹窗（她点名 `button.confirmation-btn.confirmation-btn-auto`「是，并跳过权限
+       确认」：「这里两个是的按钮也一样改」）—— 本弹窗里两颗「是…」同属这一类：
+       「是，并跳过权限确认」/「是，且不再询问：npm」，另有 Edit 越界的
+       「是，且允许本会话编辑 X/」与 ExitPlanMode 的「批准并自动接受后续修改」。
+       本弹窗其余按钮（-apply / -reject / -secondary / -feedback）未点名，暂维持
+       UA 字体，见残留清单。 */
+    .confirmation-btn-auto,
+    /* 预览面板地址栏输入框（0922 评论：`input.preview-pane-address`
+       「预览这里输入连接后，激活文字会抖一下，希望不要抖」）—— 输入框不继承页面
+       字体族，与显示态的 `span.preview-pane-url` 同串 URL 墨迹宽不一致，回车提交
+       切换两态就是那「抖一下」的一半根因（另一半 = 描边占位，见上文
+       `.preview-pane-address` 的桌面规则）。 */
+    .preview-pane-address
+  ) {
+  font-family: inherit;
 }
 
