@@ -1,8 +1,15 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ChatApp } from "./ChatApp";
 import { sessionUi } from "../utils/sessionUiStore";
 import { DesktopChromeProvider } from "./DesktopChromeContext";
 import { useHostMessage } from "../utils/useHostMessage";
+import { useSessionRename } from "../utils/useSessionRename";
 import {
   VsCodeApi,
   DesktopWorkdirState,
@@ -31,6 +38,12 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     null,
   );
   const [sessionTree, setSessionTree] = useState<DesktopSessionGroup[]>([]);
+  // 行内重命名的乐观标题：会话树是宿主推送的快照（侧边栏行与会话看板卡片同源
+  // 读取），改名的即时反馈落在这里；下一次 desktopSessionTree 到达即清空——
+  // 成功的推送已带新标题，失败的推送没来、回滚由 useSessionRename 显式写回。
+  const [sessionTitleOverrides, setSessionTitleOverrides] = useState<
+    Record<string, string>
+  >({});
   const [panes, setPanes] = useState<DesktopPane[]>([]);
   const [rowHeights, setRowHeights] = useState<number[] | undefined>(undefined);
   const [focusedPaneId, setFocusedPaneId] = useState<string | null>(null);
@@ -65,6 +78,8 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     } else if (message.command === "desktopSessionTree") {
       sessionTreeRef.current = message.groups ?? [];
       setSessionTree(sessionTreeRef.current);
+      // 权威快照已到 → 乐观覆盖全部作废（见上方 sessionTitleOverrides 注释）。
+      setSessionTitleOverrides({});
       prunePanels();
     } else if (message.command === "desktopPanes") {
       const nextPanes: DesktopPane[] = message.panes ?? [];
@@ -160,6 +175,31 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
     [vscode],
   );
 
+  // 会话重命名（spec desktop-sessions.md「会话重命名（侧边栏行内编辑）」）：乐观
+  // 更新落在会话树上，因此侧边栏行、看板卡片同时变；当前分屏里该会话的头部由
+  // 宿主推送的 updateCurrentSession 更新。
+  const applySessionTitle = useCallback((sessionId: string, title: string) => {
+    setSessionTitleOverrides((prev) => ({ ...prev, [sessionId]: title }));
+  }, []);
+  const renameSession = useSessionRename(vscode, applySessionTitle);
+
+  // 覆盖生效后的会话树：侧边栏行与会话看板卡片读的都是它。
+  const effectiveSessionTree = useMemo(() => {
+    if (Object.keys(sessionTitleOverrides).length === 0) return sessionTree;
+    return sessionTree.map((group) =>
+      group.sessions.some((s) => s.sessionId in sessionTitleOverrides)
+        ? {
+            ...group,
+            sessions: group.sessions.map((s) =>
+              s.sessionId in sessionTitleOverrides
+                ? { ...s, title: sessionTitleOverrides[s.sessionId] }
+                : s,
+            ),
+          }
+        : group,
+    );
+  }, [sessionTree, sessionTitleOverrides]);
+
   const handleOpenPane = useCallback(
     (workdir: string, sessionId: string, opts?: OpenPaneOptions) => {
       vscode.postMessage({
@@ -201,9 +241,10 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
           onAddHost: handleAddHost,
           onSelectRemotePath: handleSelectRemotePath,
           onListRemoteDir: handleListRemoteDir,
-          sessionTree,
+          sessionTree: effectiveSessionTree,
           onSelectSession: handleSelectSession,
           onDeleteSession: handleDeleteSession,
+          onRenameSession: renameSession,
           onRequestWorktreeChanges: handleRequestWorktreeChanges,
           onOpenPane: handleOpenPane,
           panes,

@@ -122,6 +122,7 @@ export interface InputManagerCallbacks {
   onCompact?: (instructions?: string) => Promise<void>;
   onReloadPlugins?: () => Promise<void>;
   onAddDir?: (args?: string) => Promise<void>;
+  onRenameSession?: (args?: string) => Promise<void>;
   onPlanCommand?: (args?: string) => Promise<void> | void;
   sessionId?: string;
   workdir?: string;

@@ -2,6 +2,7 @@ import React from "react";
 import { render } from "ink-testing-library";
 import { describe, it, expect, vi } from "vitest";
 import { SessionSelector } from "../../src/components/SessionSelector.js";
+import { pressKey } from "../helpers/pressKey.js";
 import type { SessionMetadata } from "wave-agent-sdk";
 
 describe("SessionSelector", () => {
@@ -210,5 +211,154 @@ describe("SessionSelector", () => {
       />,
     );
     expect(withW()).toContain("Ctrl+W");
+  });
+
+  describe("Ctrl+R inline rename", () => {
+    const CTRL_R = "\x12";
+
+    /** Ctrl+R is subject to Ink's key-delivery window (see pressKey). */
+    const openEditor = async (
+      stdin: { write: (data: string) => void },
+      lastFrame: () => string | undefined,
+      expected: string,
+    ) => {
+      await pressKey(stdin, CTRL_R, () => {
+        expect(lastFrame()).toContain(expected);
+      });
+    };
+
+    it("should open the title editor prefilled with the current title", async () => {
+      const onRename = vi.fn().mockResolvedValue(undefined);
+      const sessions = mockSessions.map((s, i) => ({
+        ...s,
+        customTitle: i === 0 ? "My title" : undefined,
+      }));
+      const { lastFrame, stdin } = render(
+        <SessionSelector
+          {...mockProps}
+          sessions={sessions}
+          onRename={onRename}
+        />,
+      );
+
+      await openEditor(stdin, lastFrame, "Rename: My title");
+      expect(lastFrame()).toContain("Enter save");
+    });
+
+    it("should save the edited title on Enter", async () => {
+      const onRename = vi.fn().mockResolvedValue(undefined);
+      const { lastFrame, stdin } = render(
+        <SessionSelector {...mockProps} onRename={onRename} />,
+      );
+
+      // Prefilled with the display title ("Hello world"), cursor at the end
+      await openEditor(stdin, lastFrame, "Rename: Hello world");
+
+      stdin.write("\x7F"); // Backspace — drops the trailing "d"
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Rename: Hello worl");
+      });
+
+      stdin.write("d!"); // Type at the cursor
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Rename: Hello world!");
+      });
+
+      await pressKey(stdin, "\r", () => {
+        expect(onRename).toHaveBeenCalledWith(
+          "12345678-1234-4321-8765-123456789012",
+          "Hello world!",
+        );
+      });
+      // Editor closed, row shows the new title
+      await vi.waitFor(() => {
+        expect(lastFrame()).not.toContain("Rename:");
+      });
+      expect(lastFrame()).toContain("Hello world!");
+    });
+
+    it("should discard the edit on Escape", async () => {
+      const onRename = vi.fn().mockResolvedValue(undefined);
+      const { lastFrame, stdin } = render(
+        <SessionSelector {...mockProps} onRename={onRename} />,
+      );
+
+      await openEditor(stdin, lastFrame, "Rename:");
+
+      await pressKey(stdin, "\u001B", () => {
+        expect(lastFrame()).not.toContain("Rename:");
+      });
+      expect(onRename).not.toHaveBeenCalled();
+      // Original label preserved
+      expect(lastFrame()).toContain("Hello world");
+    });
+
+    it("should be a no-op when the submitted title is blank", async () => {
+      const onRename = vi.fn().mockResolvedValue(undefined);
+      const sessions = mockSessions.map((s, i) => ({
+        ...s,
+        firstMessage: i === 0 ? undefined : s.firstMessage,
+      }));
+      const { lastFrame, stdin } = render(
+        <SessionSelector
+          {...mockProps}
+          sessions={sessions}
+          onRename={onRename}
+        />,
+      );
+
+      await openEditor(stdin, lastFrame, "Rename:");
+
+      await pressKey(stdin, "\r", () => {
+        expect(lastFrame()).not.toContain("Rename:");
+      });
+      expect(onRename).not.toHaveBeenCalled();
+    });
+
+    it("should keep the old title and report the failure when rename rejects", async () => {
+      const onRename = vi.fn().mockRejectedValue(new Error("disk full"));
+      const { lastFrame, stdin } = render(
+        <SessionSelector {...mockProps} onRename={onRename} />,
+      );
+
+      await openEditor(stdin, lastFrame, "Rename:");
+
+      await pressKey(stdin, "\r", () => {
+        expect(lastFrame()).toContain("Failed to rename: disk full");
+      });
+      expect(lastFrame()).not.toContain("Rename:");
+      expect(lastFrame()).toContain("Hello world");
+    });
+
+    it("should not hijack list keys while the editor is open", async () => {
+      const onRename = vi.fn().mockResolvedValue(undefined);
+      const onSelect = vi.fn();
+      const onToggleAllProjects = vi.fn();
+      const { lastFrame, stdin } = render(
+        <SessionSelector
+          {...mockProps}
+          onSelect={onSelect}
+          onRename={onRename}
+          onToggleAllProjects={onToggleAllProjects}
+        />,
+      );
+
+      await openEditor(stdin, lastFrame, "Rename:");
+
+      stdin.write("\u001B[B"); // Down arrow — must not move the selection
+      stdin.write("\x01"); // Ctrl+A — must not toggle the scope
+      await new Promise((r) => setTimeout(r, 20));
+
+      // Still in the editor, still on the first row
+      expect(lastFrame()).toContain("Rename:");
+      expect(lastFrame()).toContain("▶ 12345678");
+      expect(onToggleAllProjects).not.toHaveBeenCalled();
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it("should hide the Ctrl+R hint when the parent cannot persist titles", () => {
+      const { lastFrame } = render(<SessionSelector {...mockProps} />);
+      expect(lastFrame()).not.toContain("Ctrl+R");
+    });
   });
 });

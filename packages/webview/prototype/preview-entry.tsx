@@ -55,6 +55,11 @@ interface MockGlobals {
 }
 const mockWin = window as unknown as MockGlobals;
 
+// 页面加载时的宿主类型（真机由 Electron preload 在 bundle 之前写入）。只在
+// 首屏取一次：下面同步宿主类型的 effect 会把 window.waveHostType 写成当前用例
+// 的值，若每次都实时读它，切到桌面用例后就再也回不到 IDE 用例（选择变成单向）。
+const initialHostType = window.waveHostType;
+
 // ── 存储助手：srcdoc 沙箱无存储，访问即抛 SecurityError，整体降级 ──
 const readSession = (k: string): string | null => {
   try {
@@ -148,9 +153,13 @@ function AppShell() {
   }, [activeKey, activeCase]);
 
   const host =
-    activeCase?.host === "desktop" || window.waveHostType === "desktop"
+    activeCase?.host === "desktop"
       ? "desktop"
-      : "ide";
+      : activeCase?.host === "ide"
+        ? "ide"
+        : initialHostType === "desktop"
+          ? "desktop"
+          : "ide";
   // 同步宿主类型：真实 Electron preload 会设置 window.waveHostType，原型里
   // 桌面用例需手动注入，否则 Message 链接点击/拖拽等 desktop-gated 行为不生效。
   // data-host 同步置上（真机在 src/index.tsx）：host-desktop.css 的桌面语义层

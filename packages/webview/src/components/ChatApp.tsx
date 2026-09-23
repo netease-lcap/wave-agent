@@ -29,6 +29,7 @@ import LoadingLogo from "./LoadingLogo";
 import { SidebarExpandIcon, CloseIcon } from "./HeaderIcons";
 import { useDesktopChrome } from "./DesktopChromeContext";
 import { useHostMessage } from "../utils/useHostMessage";
+import { useSessionRename } from "../utils/useSessionRename";
 import { DesktopHostSelector } from "./DesktopHostSelector";
 import { DesktopShell } from "./DesktopShell";
 import type { AccountCardAccount } from "./AccountCard";
@@ -1665,6 +1666,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     },
     [vscode],
   );
+
+  // 头部标题就地编辑（spec session-management.md「会话重命名入口：CLI 与 IDE
+  // 插件」场景 8/9）：乐观更新走 reducer（sessions 列表 + currentSession 一起
+  // 改，头部立即变），失败时 useSessionRename 回滚，头部就地给出可见提示。
+  const applyRenamedTitle = useCallback((sessionId: string, title: string) => {
+    dispatch({ type: "RENAME_SESSION", payload: { sessionId, title } });
+  }, []);
+  const renameSessionFromHeader = useSessionRename(vscode, applyRenamedTitle);
 
   // Desktop: query this pane's own workdir for its git branches (FR-052). Each
   // pane asks independently so a new-session pane keeps its workdir/branch even
@@ -3727,6 +3736,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             : undefined
         }
         headerActions={headerActions}
+        // 三端共用的头部标题即重命名入口（spec session-management.md「会话重命名
+        // 入口：CLI 与 IDE 插件」场景 8 / desktop-sessions.md 同故事）。
+        onRenameSession={renameSessionFromHeader}
       />
       {isDesktop ? (
         <div

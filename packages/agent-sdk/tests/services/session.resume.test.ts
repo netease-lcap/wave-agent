@@ -56,6 +56,8 @@ describe("Session resume: cross-directory listing & restore", () => {
     getLatestTotalTokens: ReturnType<typeof vi.fn>;
     generateSessionFilename: ReturnType<typeof vi.fn>;
     readMetadata: ReturnType<typeof vi.fn>;
+    readCustomTitle: ReturnType<typeof vi.fn>;
+    appendCustomTitle: ReturnType<typeof vi.fn>;
   };
 
   const makeMessage = (timestamp: string): Message =>
@@ -99,6 +101,8 @@ describe("Session resume: cross-directory listing & restore", () => {
               : `subagent-${sessionId}.jsonl`,
         ),
       readMetadata: vi.fn().mockResolvedValue(null),
+      readCustomTitle: vi.fn().mockResolvedValue(undefined),
+      appendCustomTitle: vi.fn(),
     };
 
     // Point the mocked constructors at our per-test instances

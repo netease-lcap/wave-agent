@@ -403,6 +403,8 @@ export const handleCommandSelect = (
           await callbacks.onReloadPlugins?.();
         } else if (command === "add-dir") {
           await callbacks.onAddDir?.();
+        } else if (command === "rename") {
+          await callbacks.onRenameSession?.();
         }
       }
     })();

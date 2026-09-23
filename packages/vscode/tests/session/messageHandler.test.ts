@@ -1928,3 +1928,131 @@ describe("MessageHandler chat-route configuration toasts", () => {
     expect(errors[0].error).toContain("boom");
   });
 });
+
+// ---------------------------------------------------------------------------
+// 会话重命名（spec ui/session-management.md「会话自定义标题（重命名）」）
+// ---------------------------------------------------------------------------
+
+describe("MessageHandler renameSession", () => {
+  /** Ready session bound to `sessionId` with a renameSession-capable agent. */
+  function createRenamableSession(sessionId = "sess-1") {
+    const session = createReadySession();
+    Object.assign(session, { sessionId });
+    Object.assign(session.agent as object, {
+      sessionId,
+      sessionCwd: "/work/a",
+      renameSession: vi.fn(async () => undefined),
+    });
+    return session;
+  }
+
+  /** The most recent sessionRenamed reply (no Array#at in this tsconfig lib). */
+  const lastRenamed = (context: MessageHandlerContext) => {
+    const replies = sentPosts(context)("sessionRenamed");
+    return replies[replies.length - 1];
+  };
+
+  const renameCalls = (session: ChatSession) =>
+    (session.agent as unknown as { renameSession: ReturnType<typeof vi.fn> })
+      .renameSession;
+
+  test("writes the title through the agent, pushes the new title and replies ok", async () => {
+    const session = createRenamableSession();
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage(
+      {
+        command: "renameSession",
+        sessionId: "sess-1",
+        title: "  我的标题  ",
+        requestId: "r1",
+      },
+      "tab",
+    );
+
+    expect(renameCalls(session)).toHaveBeenCalledWith("我的标题");
+    const pushed = sentPosts(context)("updateCurrentSession");
+    expect(pushed).toHaveLength(1);
+    expect(pushed[0].session).toMatchObject({
+      id: "sess-1",
+      customTitle: "我的标题",
+      workdir: "/work/a",
+    });
+    // 列表刷新（侧边栏「历史对话」列表读的是列表接口）。
+    expect(context.listSessions).toHaveBeenCalled();
+    expect(lastRenamed(context)).toMatchObject({
+      requestId: "r1",
+      sessionId: "sess-1",
+      title: "我的标题",
+      ok: true,
+    });
+  });
+
+  test("replies ok:false for a blank title without writing", async () => {
+    const session = createRenamableSession();
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage(
+      {
+        command: "renameSession",
+        sessionId: "sess-1",
+        title: "  ",
+        requestId: "r2",
+      },
+      "tab",
+    );
+
+    expect(renameCalls(session)).not.toHaveBeenCalled();
+    expect(sentPosts(context)("updateCurrentSession")).toHaveLength(0);
+    expect(lastRenamed(context)).toMatchObject({
+      requestId: "r2",
+      ok: false,
+    });
+  });
+
+  test("refuses to rename when the session switched mid-flight", async () => {
+    const session = createRenamableSession("other-session");
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage(
+      {
+        command: "renameSession",
+        sessionId: "sess-1",
+        title: "改名",
+        requestId: "r3",
+      },
+      "tab",
+    );
+
+    // 宁可失败也不改名到别的会话，且必须回一个与请求配对的失败回复。
+    expect(renameCalls(session)).not.toHaveBeenCalled();
+    const reply = lastRenamed(context);
+    expect(reply).toMatchObject({
+      requestId: "r3",
+      sessionId: "sess-1",
+      ok: false,
+    });
+    expect(reply?.error).toBeTruthy();
+  });
+
+  test("replies ok:false and pushes nothing when the write fails", async () => {
+    const session = createRenamableSession();
+    renameCalls(session).mockRejectedValue(new Error("EACCES"));
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage(
+      {
+        command: "renameSession",
+        sessionId: "sess-1",
+        title: "写不进去",
+        requestId: "r4",
+      },
+      "tab",
+    );
+
+    expect(sentPosts(context)("updateCurrentSession")).toHaveLength(0);
+    const reply = lastRenamed(context);
+    expect(reply).toMatchObject({ requestId: "r4", ok: false });
+    expect(reply?.error).toContain("EACCES");
+  });
+});

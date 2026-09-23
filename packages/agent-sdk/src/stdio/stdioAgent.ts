@@ -210,6 +210,25 @@ export class StdioAgent {
     await this.client.request("restoreSession", { sessionId }, this.sessionId);
   }
 
+  /**
+   * Set this session's custom title (spec session-management.md「会话自定义标题
+   * （重命名）」). The title is appended to the session's own JSONL file as a
+   * reserved `custom-title` entry, so every host reading that file sees it.
+   */
+  async renameSession(title: string): Promise<void> {
+    await this.client.request(
+      "renameSession",
+      {
+        sessionId: this.sessionId,
+        // The session file lives under the session root; a cwd drifted by `cd`
+        // inside a turn must not address it (see sessionCwd).
+        workdir: this.sessionCwd ?? this.workingDirectory,
+        title,
+      },
+      this.sessionId,
+    );
+  }
+
   async updateConfig(
     params: UpdateConfigParams,
   ): Promise<{ sessionId: string }> {

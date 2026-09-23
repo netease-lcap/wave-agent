@@ -109,6 +109,7 @@ describe("ChatProvider", () => {
     getWorkflowRuns: vi.fn(() => []),
     getAdditionalDirectories: vi.fn(() => [] as string[]),
     addAdditionalDirectory: vi.fn(),
+    renameSession: vi.fn(),
   };
 
   beforeEach(() => {
@@ -2574,6 +2575,78 @@ describe("ChatProvider", () => {
       );
       await vi.waitFor(() => {
         expect(lastAssistantText(lastValue)).toContain(" (remembered)");
+      });
+    });
+  });
+
+  describe("/rename", () => {
+    const lastAssistantText = (val?: ChatContextType): string => {
+      const msgs = val?.messages ?? [];
+      const last = msgs[msgs.length - 1];
+      const block = last?.blocks.find((b) => b.type === "text");
+      return (block as { content?: string } | undefined)?.content ?? "";
+    };
+
+    it("sets the session title, trimming surrounding whitespace", async () => {
+      let lastValue: ChatContextType | undefined;
+      renderWithProvider((val) => {
+        lastValue = val;
+      });
+
+      await vi.waitFor(() => {
+        expect(lastValue).toBeDefined();
+      });
+
+      await lastValue!.renameSession("  My title  ");
+
+      expect(mockAgent.renameSession).toHaveBeenCalledWith("My title");
+      await vi.waitFor(() => {
+        expect(lastAssistantText(lastValue)).toContain(
+          'Conversation renamed to "My title"',
+        );
+      });
+    });
+
+    it("only shows the usage hint for a bare /rename", async () => {
+      let lastValue: ChatContextType | undefined;
+      renderWithProvider((val) => {
+        lastValue = val;
+      });
+
+      await vi.waitFor(() => {
+        expect(lastValue).toBeDefined();
+      });
+
+      await lastValue!.renameSession();
+      await lastValue!.renameSession("   ");
+
+      expect(mockAgent.renameSession).not.toHaveBeenCalled();
+      await vi.waitFor(() => {
+        expect(lastAssistantText(lastValue)).toContain(
+          "Usage: /rename <title>",
+        );
+      });
+    });
+
+    it("reports a failed rename instead of pretending it worked", async () => {
+      vi.mocked(mockAgent.renameSession).mockRejectedValueOnce(
+        new Error("disk full"),
+      );
+      let lastValue: ChatContextType | undefined;
+      renderWithProvider((val) => {
+        lastValue = val;
+      });
+
+      await vi.waitFor(() => {
+        expect(lastValue).toBeDefined();
+      });
+
+      await lastValue!.renameSession("My title");
+
+      await vi.waitFor(() => {
+        expect(lastAssistantText(lastValue)).toContain(
+          "Failed to rename conversation: disk full",
+        );
       });
     });
   });

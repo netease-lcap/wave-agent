@@ -721,10 +721,16 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
     });
 
     it("getLastMessage returns null when the file holds only the metadata header", async () => {
-      const { getLastLine } = await import("@/utils/fileUtils.js");
-      vi.mocked(getLastLine).mockResolvedValue(
-        JSON.stringify({ type: "metadata", workdir: "/home/u/repo" }),
+      const { getLastLine, readTailLines } = await import(
+        "@/utils/fileUtils.js"
       );
+      const metadataLine = JSON.stringify({
+        type: "metadata",
+        workdir: "/home/u/repo",
+      });
+      vi.mocked(getLastLine).mockResolvedValue(metadataLine);
+      // The whole file is that one header line, so the tail holds it too.
+      vi.mocked(readTailLines).mockResolvedValue([metadataLine]);
       const { stat } = await import("fs/promises");
       vi.mocked(stat).mockResolvedValue({} as Awaited<ReturnType<typeof stat>>);
 

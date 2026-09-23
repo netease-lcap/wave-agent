@@ -122,14 +122,33 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       // (from JSONL). Backfill it so the header title stays consistent with the
       // session list. New sessions (not yet in the list) keep an empty
       // firstMessage so getSessionTitle falls back to deriving from messages.
+      // Same for customTitle: the pushed session may predate a rename, and the
+      // sessions list (from listSessions → JSONL custom-title entry) is the
+      // authoritative copy — without this the header would lose the custom
+      // title after a pane/session switch or an IDE reload.
       let currentSession = session;
-      if (!session.firstMessage) {
-        const existing = state.sessions.find((s) => s.id === session.id);
-        if (existing?.firstMessage) {
-          currentSession = { ...session, firstMessage: existing.firstMessage };
-        }
+      const existing = state.sessions.find((s) => s.id === session.id);
+      if (existing && (!session.firstMessage || !session.customTitle)) {
+        currentSession = {
+          ...session,
+          firstMessage: session.firstMessage || existing.firstMessage,
+          customTitle: session.customTitle || existing.customTitle,
+        };
       }
       return { ...state, currentSession };
+    }
+    case "RENAME_SESSION": {
+      const { sessionId, title } = action.payload;
+      return {
+        ...state,
+        sessions: state.sessions.map((s) =>
+          s.id === sessionId ? { ...s, customTitle: title } : s,
+        ),
+        currentSession:
+          state.currentSession?.id === sessionId
+            ? { ...state.currentSession, customTitle: title }
+            : state.currentSession,
+      };
     }
     case "SET_SESSIONS_LOADING":
       return {

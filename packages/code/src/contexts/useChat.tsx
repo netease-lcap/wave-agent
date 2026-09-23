@@ -80,6 +80,11 @@ export interface ChatContextType {
   compact: (instructions?: string) => Promise<void>;
   addDir: (args?: string) => Promise<void>;
   /**
+   * Set the current session's custom title (`/rename <title>`). A blank title
+   * only prints the usage hint — no AI-generated titles (spec: session-management.md).
+   */
+  renameSession: (args?: string) => Promise<void>;
+  /**
    * Switch to another conversation in-process (`/resume`). Pass `resumeWorkdir`
    * when the target session lives in a sibling worktree of the same repo — the
    * session then moves into that directory too.
@@ -1097,6 +1102,45 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     );
   }, []);
 
+  // /rename: set the current conversation's custom title. The title is stored
+  // as a reserved `custom-title` entry appended to the session's own JSONL
+  // file, so `wave -r` and every GUI host read the same value. A blank title
+  // only prints the usage hint — no AI-generated titles (spec:
+  // session-management.md "不做 AI 自动标题").
+  const renameSession = useCallback(async (args?: string) => {
+    const agent = agentRef.current;
+    if (!agent) return;
+
+    const title = (args ?? "").trim();
+    const showResult = (content: string) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+          role: "assistant",
+          timestamp: new Date().toISOString(),
+          blocks: [{ type: "text", content, stage: "end" }],
+        },
+      ]);
+    };
+
+    if (!title) {
+      showResult("Usage: /rename <title>");
+      return;
+    }
+
+    try {
+      await agent.renameSession(title);
+      showResult(`Conversation renamed to "${title}".`);
+    } catch (error) {
+      showResult(
+        `Failed to rename conversation: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }, []);
+
   // /resume: switch to another conversation without leaving the process. The
   // session id and its on-disk project directory move together, so the next
   // message is appended to the target's own transcript. A failed restore leaves
@@ -1389,6 +1433,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     clearMessages,
     compact,
     addDir,
+    renameSession,
     resumeSession,
     abortMessage,
     recallQueuedMessage,

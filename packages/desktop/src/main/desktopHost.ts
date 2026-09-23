@@ -2874,6 +2874,92 @@ export class DesktopHost {
   }
 
   /**
+   * 会话重命名（spec session-management.md「会话自定义标题（重命名）」/
+   * desktop-sessions.md 同故事）。
+   *
+   * 权威存储是会话自己的 JSONL 文件里的 `custom-title` 保留条目，因此写盘必须
+   * 经**拥有该会话的主机**执行（远端会话走 ssh 那侧的 `wave --stdio`，本地会话走
+   * 本地）——标题因此对 CLI、插件端、桌面端一致可见。桌面同时把标题写进会话索引
+   * （侧边栏、会话看板、恢复后的头部都读它）；写盘失败一律回 `ok:false`，界面据
+   * 此回滚乐观标题，绝不「只写了本地索引」就报成功。
+   */
+  private async handleRenameSession(
+    sessionId: string,
+    title: string,
+    requestId: string,
+  ): Promise<void> {
+    const trimmed = title.trim();
+    const reply = (ok: boolean, error?: string): void =>
+      this.postMessage({
+        command: "sessionRenamed",
+        requestId,
+        sessionId,
+        title: trimmed,
+        ok,
+        error,
+      });
+    if (!trimmed) {
+      // 空标题不是「清除标题」的信号（spec session-management.md 场景 7）。
+      reply(false, "标题不能为空");
+      return;
+    }
+    const entry = this.configStore
+      ?.getSessionIndex()
+      .find((e) => e.sessionId === sessionId);
+    const host = entry?.host ?? LOCAL_HOST;
+    const agent = this.agents.get(this.agentKey(host, sessionId));
+    // 会话文件所在项目目录：worktree 会话的文件在 worktree 路径（cwd）下，不是
+    // 仓库根（workdir）；尚未登记的会话用绑定 agent 的工作目录。
+    const workdir = entry?.cwd ?? agent?.workingDirectory ?? entry?.workdir;
+    if (!workdir) {
+      reply(false, "找不到该会话的工作目录");
+      return;
+    }
+    try {
+      await this.utilityClientFor(host).request("renameSession", {
+        sessionId,
+        workdir,
+        title: trimmed,
+      });
+    } catch (error) {
+      reply(false, error instanceof Error ? error.message : String(error));
+      return;
+    }
+    // 索引标题与文件里的自定义标题必须一起更新（否则重启后侧边栏又变回旧标题）。
+    if (agent) {
+      this.registerSessionInIndex(agent, sessionId, trimmed);
+    } else if (entry && this.configStore) {
+      this.configStore.upsertSession({ ...entry, title: trimmed });
+    }
+    this.pushSessionTitle(sessionId, trimmed);
+    reply(true);
+  }
+
+  /**
+   * 重命名成功后把新标题推到所有显示它的界面：每个绑定了该会话的 pane 头部
+   * （pane-tagged `updateCurrentSession`）与侧边栏/会话看板（`desktopSessionTree`）。
+   */
+  private pushSessionTitle(sessionId: string, title: string): void {
+    for (const pane of this.panes) {
+      const agent = pane.agent;
+      if (!agent || agent.sessionId !== sessionId) continue;
+      this.postMessage({
+        command: "updateCurrentSession",
+        paneId: pane.paneId,
+        session: {
+          id: sessionId,
+          sessionType: "main",
+          workdir: agent.workingDirectory,
+          lastActiveAt: new Date(),
+          latestTotalTokens: agent.latestTotalTokens,
+          customTitle: title,
+        } as SessionMetadata,
+      });
+    }
+    this.refreshSessionTree();
+  }
+
+  /**
    * FR-025: destroy the live agent (if any), remove from index, best-effort
    * worktree+branch cleanup. Deleting the active session moves to a fresh page
    * — back to the repo root for a worktree session, otherwise a new session.
@@ -3400,6 +3486,14 @@ export class DesktopHost {
       // -- sessions -------------------------------------------------------
       case "desktopDeleteSession":
         await this.handleDeleteSession(msg.sessionId as string);
+        break;
+
+      case "renameSession":
+        await this.handleRenameSession(
+          msg.sessionId as string,
+          msg.title as string,
+          msg.requestId as string,
+        );
         break;
 
       // `/resume`: list this conversation's host's on-disk sessions (all

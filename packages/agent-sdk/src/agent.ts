@@ -48,6 +48,7 @@ import {
   type InteractionContext,
 } from "./services/interactionService.js";
 import { ConfigurationService } from "./services/configurationService.js";
+import { setSessionCustomTitle } from "./services/session.js";
 import { Container } from "./utils/container.js";
 import { setupAgentContainer } from "./utils/containerSetup.js";
 import {
@@ -785,6 +786,18 @@ export class Agent {
       sessionId,
       options,
     );
+  }
+
+  /**
+   * Set this session's user-visible title.
+   *
+   * The title is appended to the session's own JSONL file as a `custom-title`
+   * entry (see `setSessionCustomTitle`), so every host that reads session files
+   * — this process, a later run, the IDE plugins, the desktop app — shows the
+   * same label. A blank title is a no-op.
+   */
+  public async renameSession(title: string): Promise<void> {
+    await setSessionCustomTitle(this.sessionId, this.workdir, title);
   }
 
   /** Shared wiring for the InteractionService entry points. */

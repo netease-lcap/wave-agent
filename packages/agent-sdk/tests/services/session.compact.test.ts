@@ -52,6 +52,8 @@ vi.mock("@/services/jsonlHandler.js", () => ({
       getLatestTotalTokens: vi.fn().mockResolvedValue(0),
       createSession: vi.fn().mockResolvedValue(undefined),
       readMetadata: vi.fn().mockResolvedValue(null),
+      readCustomTitle: vi.fn().mockResolvedValue(undefined),
+      appendCustomTitle: vi.fn(),
     };
   }),
 }));

@@ -105,6 +105,12 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {
+    id: "rename",
+    name: "rename",
+    description: "Set a custom title for the current conversation",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
+  {
     id: "clear",
     name: "clear",
     description: "Clear conversation history and reset session",

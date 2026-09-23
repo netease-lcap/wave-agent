@@ -927,6 +927,37 @@ describe("chatReducer", () => {
       expect(newState.currentSession?.firstMessage).toBeUndefined();
     });
 
+    it("should backfill customTitle from the sessions list when the pushed current session lacks it", () => {
+      const sessionInList: SessionMetadata = {
+        id: "s1",
+        sessionType: "main",
+        firstMessage: "首条消息",
+        customTitle: "我的标题",
+        workdir: "/w",
+        createdAt: new Date(0),
+        lastActiveAt: new Date(0),
+        latestTotalTokens: 0,
+      };
+      const state = { ...initialState, sessions: [sessionInList] };
+
+      const newState = chatReducer(state, {
+        type: "SET_CURRENT_SESSION",
+        payload: {
+          id: "s1",
+          sessionType: "main",
+          firstMessage: "首条消息",
+          workdir: "/w",
+          createdAt: new Date(0),
+          lastActiveAt: new Date(0),
+          latestTotalTokens: 0,
+        },
+      });
+
+      // 重启 IDE / 切会话后头部仍显示自定义标题（spec session-management.md
+      // 「会话自定义标题（重命名）」场景 11）。
+      expect(newState.currentSession?.customTitle).toBe("我的标题");
+    });
+
     it("should clear currentSession when payload is undefined without error", () => {
       const currentSession: SessionMetadata = {
         id: "s1",
@@ -944,6 +975,73 @@ describe("chatReducer", () => {
       });
 
       expect(newState.currentSession).toBeUndefined();
+    });
+  });
+
+  describe("RENAME_SESSION", () => {
+    const session = (id: string, customTitle?: string): SessionMetadata => ({
+      id,
+      sessionType: "main",
+      firstMessage: `${id} 的首条消息`,
+      customTitle,
+      workdir: "/w",
+      createdAt: new Date(0),
+      lastActiveAt: new Date(0),
+      latestTotalTokens: 0,
+    });
+
+    it("should rewrite the matching session's customTitle and the current session", () => {
+      const state = {
+        ...initialState,
+        sessions: [session("s1"), session("s2")],
+        currentSession: session("s1"),
+      };
+
+      const newState = chatReducer(state, {
+        type: "RENAME_SESSION",
+        payload: { sessionId: "s1", title: "新标题" },
+      });
+
+      expect(newState.sessions[0].customTitle).toBe("新标题");
+      // 未命中的会话不受影响。
+      expect(newState.sessions[1].customTitle).toBeUndefined();
+      expect(newState.currentSession?.customTitle).toBe("新标题");
+    });
+
+    it("should not touch the current session when another session is renamed", () => {
+      const state = {
+        ...initialState,
+        sessions: [session("s1"), session("s2")],
+        currentSession: session("s1"),
+      };
+
+      const newState = chatReducer(state, {
+        type: "RENAME_SESSION",
+        payload: { sessionId: "s2", title: "别的标题" },
+      });
+
+      expect(newState.sessions[1].customTitle).toBe("别的标题");
+      expect(newState.currentSession?.customTitle).toBeUndefined();
+    });
+
+    it("should write back the previous title on rollback", () => {
+      const state = {
+        ...initialState,
+        sessions: [session("s1", "旧标题")],
+        currentSession: session("s1", "旧标题"),
+      };
+
+      const renamed = chatReducer(state, {
+        type: "RENAME_SESSION",
+        payload: { sessionId: "s1", title: "写盘失败的新标题" },
+      });
+      const rolledBack = chatReducer(renamed, {
+        type: "RENAME_SESSION",
+        payload: { sessionId: "s1", title: "旧标题" },
+      });
+
+      expect(rolledBack.sessions[0].customTitle).toBe("旧标题");
+      expect(rolledBack.currentSession?.customTitle).toBe("旧标题");
     });
   });
 

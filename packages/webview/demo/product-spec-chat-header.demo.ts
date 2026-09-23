@@ -1,4 +1,4 @@
-import { test } from "../e2e/utils/webviewTestHarness.js";
+import { test, expect } from "../e2e/utils/webviewTestHarness.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { type Message, type SessionMetadata } from "wave-agent-sdk";
 import {
@@ -113,6 +113,21 @@ test.describe("Product Specification Screenshots - Chat Header", () => {
       webviewPage,
       "../../docs/public/screenshots/spec-more-menu.webp",
     );
+    await webviewPage.keyboard.press("Escape");
+    await webviewPage.waitForSelector('[data-testid="more-menu"]', {
+      state: "hidden",
+    });
+
+    // 4. 点击标题就地改名（标题变成预填并全选的输入框）
+    await webviewPage.getByTestId("header-title").click();
+    const titleInput = webviewPage.getByTestId("header-title-input");
+    await expect(titleInput).toBeFocused();
+    await titleInput.fill("支付模块代码结构分析");
+    await elementScreenshotWebp(
+      webviewPage.locator('[data-testid="chat-header"]'),
+      "../../docs/public/screenshots/spec-chat-header-title-edit.webp",
+    );
+    // Esc 取消，保持截图流程无副作用（不改标题、不发请求）
     await webviewPage.keyboard.press("Escape");
   });
 });

@@ -739,6 +739,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
           closePluginMarketThen(() => handleOpenPane(workdir, sessionId))
         }
         onDeleteSession={host.onDeleteSession}
+        onRenameSession={host.onRenameSession}
         onRequestWorktreeChanges={host.onRequestWorktreeChanges}
         sessionBoardActive={sessionBoardActive}
         onToggleSessionBoard={onToggleSessionBoard}
@@ -826,7 +827,9 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
                             className={`desktop-pane${pane.paneId === focusedPaneId ? " desktop-pane--focused" : ""}`}
                             // Marks the pane header as a reorder handle (grab
                             // cursor, CSS side) — only once a second pane exists.
-                            data-draggable={panes.length > 1 ? "true" : undefined}
+                            data-draggable={
+                              panes.length > 1 ? "true" : undefined
+                            }
                             style={paneStyle}
                             onMouseDown={() => handleFocusPane(pane.paneId)}
                             onDragOver={(e) =>

@@ -37,6 +37,7 @@ import {
   isValidHookEvent,
   listSessions,
   listAllSessions,
+  setSessionCustomTitle,
   searchFiles,
   generateRandomName,
   getDefaultRemoteBranch,
@@ -230,6 +231,16 @@ export class AgentBridge {
         // /resume picker lists sessions the app never created, so it cannot use
         // the per-workdir listSessions.
         return this.listAllSessions();
+      case "renameSession":
+        // Host-level like listAllSessions: the target session may have no live
+        // agent (the desktop renames sessions straight from its sidebar, and a
+        // restored one is not running), so the id/workdir come from the caller
+        // instead of the bound session.
+        return this.renameSession(
+          p.sessionId as string,
+          p.workdir as string,
+          p.title as string,
+        );
       case "getSessionInfo":
         return this.getSessionInfo(sessionId);
       case "listPendingPermissions":
@@ -804,6 +815,18 @@ export class AgentBridge {
   private async listAllSessions(): Promise<{ sessions: SessionMetadata[] }> {
     const sessions = await listAllSessions();
     return { sessions };
+  }
+
+  /**
+   * Set a session's user-visible title. Works for any session on this host —
+   * the target does not need to be the bound one, or even live.
+   */
+  private async renameSession(
+    sessionId: string,
+    workdir: string,
+    title: string,
+  ): Promise<void> {
+    await setSessionCustomTitle(sessionId, workdir, title);
   }
 
   // ── Git / worktree ────────────────────────────────────────────

@@ -14,6 +14,7 @@ import {
 import type { Message } from "../types/index.js";
 import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
 import type { SessionFilename } from "../types/session.js";
+import { isReservedEntry } from "./sessionEntries.js";
 
 /**
  * JSONL write options
@@ -36,6 +37,20 @@ export interface SessionMetadataHeader {
   createdAt?: string;
   /** Git branch at creation time (`git branch --show-current`), when the directory is a git repo. */
   gitBranch?: string;
+}
+
+/**
+ * User-set conversation title, appended as its own JSONL entry on rename.
+ * A dedicated entry type (rather than a field on the append-only metadata
+ * header) is what lets the title be changed after creation without rewriting
+ * the file: it is appended at rename time and re-appended at EOF on every
+ * subsequent save, so the listing's tail read always finds it.
+ */
+export interface CustomTitleEntry {
+  type: "custom-title";
+  customTitle: string;
+  /** Session the title belongs to (the file is per-session; kept for traceability). */
+  sessionId?: string;
 }
 
 /**
@@ -83,6 +98,54 @@ export class JsonlHandler {
    */
   async appendMessage(filePath: string, message: Message): Promise<void> {
     return this.appendMessages(filePath, [message]);
+  }
+
+  /**
+   * Append a user-set conversation title (`{"type":"custom-title",...}`).
+   *
+   * Appending — never rewriting — keeps the file's append-only contract intact
+   * and leaves the metadata header and every message untouched. The entry has
+   * no `timestamp`, so it can never be mistaken for a message by readers that
+   * filter on timestamps.
+   */
+  async appendCustomTitle(
+    filePath: string,
+    customTitle: string,
+    sessionId?: string,
+  ): Promise<void> {
+    const entry: CustomTitleEntry & { sessionId?: string } = {
+      type: "custom-title",
+      customTitle,
+      ...(sessionId ? { sessionId } : {}),
+    };
+    await this.ensureDirectory(dirname(filePath));
+    await appendFile(filePath, `${JSON.stringify(entry)}\n`, "utf8");
+  }
+
+  /**
+   * Read the session's user-set title, if any.
+   *
+   * Scans the tail window and keeps the newest entry, so a rename always wins
+   * over an earlier one. Only the tail is read: a rename re-appends the entry
+   * at EOF (see `session.ts` `appendMessages`), which keeps it inside the
+   * window regardless of how long the conversation grows.
+   */
+  async readCustomTitle(filePath: string): Promise<string | undefined> {
+    for (const line of (await readTailLines(filePath)).reverse()) {
+      try {
+        const parsed = JSON.parse(line) as {
+          type?: string;
+          customTitle?: unknown;
+        };
+        if (parsed.type !== "custom-title") continue;
+        return typeof parsed.customTitle === "string" && parsed.customTitle
+          ? parsed.customTitle
+          : undefined;
+      } catch {
+        // Partial line at the tail window's boundary — keep looking.
+      }
+    }
+    return undefined;
   }
 
   /**
@@ -167,8 +230,8 @@ export class JsonlHandler {
           const message = JSON.parse(line) as Message & {
             type?: string;
           };
-          // Metadata header line: not a message, skip
-          if (message.type === "metadata") continue;
+          // Reserved entry (metadata header, custom-title): not a message
+          if (isReservedEntry(message.type)) continue;
           if (message.timestamp) allMessages.push(message);
         } catch (error) {
           // A parse failure on the final line of a file that lacks a trailing
@@ -217,14 +280,26 @@ export class JsonlHandler {
 
       try {
         const parsed = JSON.parse(lastLine) as Message & { type?: string };
-        // A file whose only line is the metadata header has no messages yet
-        if (parsed.type === "metadata") {
-          return null;
+        if (!isReservedEntry(parsed.type)) {
+          return parsed as Message;
         }
-        return parsed as Message;
       } catch (error) {
         throw new Error(`Invalid JSON in last line of "${filePath}": ${error}`);
       }
+
+      // The file ends with a reserved entry — a `custom-title` appended by a
+      // rename, or the metadata header of a session with no messages yet. Both
+      // are non-messages, so walk the tail window back to the newest message.
+      for (const line of (await readTailLines(filePath)).reverse()) {
+        try {
+          const parsed = JSON.parse(line) as Message & { type?: string };
+          if (isReservedEntry(parsed.type)) continue;
+          return parsed as Message;
+        } catch {
+          // Partial line at the tail window's boundary — keep looking.
+        }
+      }
+      return null;
     } catch (error) {
       throw new Error(
         `Failed to get last message from "${filePath}": ${error}`,
@@ -250,8 +325,8 @@ export class JsonlHandler {
     for (const line of await readTailLines(filePath)) {
       try {
         const parsed = JSON.parse(line) as Message & { type?: string };
-        // Metadata header line: not a message, skip
-        if (parsed.type === "metadata") continue;
+        // Reserved entry (metadata header, custom-title): not a message
+        if (isReservedEntry(parsed.type)) continue;
         messages.push(parsed as Message);
       } catch {
         // Partial line at the tail window's boundary — drop it.

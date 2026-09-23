@@ -3,6 +3,7 @@ import { Box, Text, useInput } from "ink";
 import {
   listSessions,
   listAllSessions,
+  setSessionCustomTitle,
   truncateContent,
   type SessionMetadata,
 } from "wave-agent-sdk";
@@ -149,6 +150,22 @@ export function SessionSelectorFlow({
     [sessions, worktreePaths, currentWorkdir, onDone],
   );
 
+  // Ctrl+R rename. The session may belong to another project (or a sibling
+  // worktree), so the write is addressed by the session's own workdir — the
+  // SDK falls back to scanning every project directory when that path no
+  // longer matches. Rejections bubble up so the picker can show the failure.
+  const handleRename = useCallback(
+    async (sessionId: string, title: string) => {
+      const session = sessions.find((s) => s.id === sessionId);
+      await setSessionCustomTitle(
+        sessionId,
+        session?.workdir ?? currentWorkdir,
+        title,
+      );
+    },
+    [sessions, currentWorkdir],
+  );
+
   if (crossProjectCommand) {
     return (
       <CrossProjectMessage
@@ -181,6 +198,7 @@ export function SessionSelectorFlow({
         onCancel={() => onDone(null)}
         onToggleAllProjects={handleToggleAllProjects}
         onToggleAllWorktrees={handleToggleAllWorktrees}
+        onRename={handleRename}
       />
     </Box>
   );

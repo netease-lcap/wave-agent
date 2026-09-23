@@ -316,6 +316,25 @@ export interface OpenPaneOptions {
   newRow?: "above" | "below";
 }
 
+/**
+ * 会话重命名的结果（spec session-management.md「会话自定义标题（重命名）」）：
+ * 提交是乐观的，`ok: false` 表示宿主写盘/远端主机失败，调用方必须把标题回滚为
+ * 原标题并展示 `error`（不得静默回滚）。
+ */
+export interface RenameSessionResult {
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * 提交会话重命名。`title` 是新的自定义标题，`previousTitle` 供失败回滚使用。
+ */
+export type RenameSessionHandler = (
+  sessionId: string,
+  title: string,
+  previousTitle: string,
+) => Promise<RenameSessionResult>;
+
 // Desktop host support — injected when running inside packages/desktop (Electron).
 // window.waveHostType === 'desktop' selects the DesktopApp root in index.tsx.
 export interface DesktopHostProps {
@@ -351,6 +370,13 @@ export interface DesktopHostProps {
   onSelectSession: (workdir: string, sessionId: string) => void;
   /** Delete a session from the index; also removes worktree+branch if applicable. */
   onDeleteSession: (sessionId: string) => void;
+  /**
+   * Rename a session (spec session-management.md「会话自定义标题（重命名）」).
+   * The caller applies the new title optimistically to the sessions list; the
+   * owner posts the `renameSession` request and rolls back to `previousTitle`
+   * when the host reports a failure.
+   */
+  onRenameSession: RenameSessionHandler;
   /**
    * Ask what deleting this worktree session would destroy (uncommitted files,
    * unmerged commits). The host answers with a requestId-matched
@@ -717,6 +743,12 @@ export interface ChatHeaderProps {
   macTrafficSpacer?: boolean;
   /** Extra actions at the right edge of the button row (desktop pane close). */
   headerActions?: React.ReactNode;
+  /**
+   * Rename the current session in place (spec session-management.md「会话重命名入
+   * 口：CLI 与 IDE 插件」场景 7/8): 点击头部标题即就地编辑，Enter/blur 保存，
+   * Esc 回滚。三端共用头部，因此三端一起获得该入口。缺省时不提供就地编辑。
+   */
+  onRenameSession?: RenameSessionHandler;
 }
 
 // Matches wave-agent-sdk's QueuedMessage type
@@ -933,6 +965,13 @@ export type ChatAction =
   | { type: "INPUT_CLEARED" }
   | { type: "SET_SESSIONS"; payload: SessionMetadata[] }
   | { type: "SET_CURRENT_SESSION"; payload: SessionMetadata | undefined }
+  | {
+      /** 会话自定义标题（乐观更新 + 失败回滚，spec session-management.md「会话
+       *  自定义标题（重命名）」）：按 sessionId 改写 sessions 列表里对应条目，
+       *  并在当前会话匹配时一并更新 currentSession。 */
+      type: "RENAME_SESSION";
+      payload: { sessionId: string; title: string };
+    }
   | { type: "SET_SESSIONS_LOADING"; payload: boolean }
   | { type: "SHOW_CONFIRMATION"; payload: ConfirmationRequest }
   | { type: "HIDE_CONFIRMATION"; payload: string }
