@@ -912,9 +912,47 @@ describe("remoteSettingsService", () => {
       expect(result.autoMemoryEnabled).toBe(false);
       expect(result.autoMemoryFrequency).toBe(10);
       expect(result.models).toEqual({ model: { maxInputTokens: 100 } });
-      expect(result.marketplaces).toEqual({ m2: { source: "url" } });
-      expect(result.enabledPlugins).toEqual({ p2: true });
+      // 插件与市场按**键**合并（spec enterprise server-managed-config 场景 5）：
+      // 托管层只覆盖同名键，本机独有的键照常保留。
+      expect(result.marketplaces).toEqual({
+        m1: { source: "url" },
+        m2: { source: "url" },
+      });
+      expect(result.enabledPlugins).toEqual({ p1: true, p2: true });
       expect(result.enableArtifact).toBe(true);
+    });
+
+    it("merges marketplaces and enabledPlugins per key, managed wins on a clash", () => {
+      // 管理者只下发一个插件，不得让成员本机已有的插件与市场失效；同名键以托管层
+      // 为准（同一个插件 id 上托管的 true 要压过本机的 false）。
+      const local = {
+        marketplaces: {
+          shared: { source: "local-url" as const },
+          "local-only": { source: "local-url" as const },
+        },
+        enabledPlugins: { "shared@mkt": false, "local-only@mkt": true },
+      };
+      const remote = {
+        marketplaces: {
+          shared: { source: "remote-url" as const },
+          "managed-only": { source: "remote-url" as const },
+        },
+        enabledPlugins: { "shared@mkt": true, "managed-only@mkt": false },
+      };
+      const result = mergeRemoteSettings(
+        local as unknown as WaveConfiguration,
+        remote as unknown as WaveConfiguration,
+      );
+      expect(result.marketplaces).toEqual({
+        shared: { source: "remote-url" },
+        "local-only": { source: "local-url" },
+        "managed-only": { source: "remote-url" },
+      });
+      expect(result.enabledPlugins).toEqual({
+        "shared@mkt": true,
+        "local-only@mkt": true,
+        "managed-only@mkt": false,
+      });
     });
 
     it("preserves local scalar fields when remote doesn't define them", () => {

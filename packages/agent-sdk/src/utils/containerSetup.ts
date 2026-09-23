@@ -383,9 +383,34 @@ export function setupAgentContainer(
   // The callback strongly captures the per-agent LiveConfigManager, so it MUST
   // be unsubscribed in destroy() via teardown — otherwise the module-level
   // callback array pins the whole agent object graph.
+  // Managed plugin config (enabledPlugins / marketplaces) last applied to the
+  // plugin subsystem, keyed by a JSON signature: a synced change that touches
+  // neither field must not bounce every plugin's MCP servers.
+  const remoteAtSetup = remoteSettingsService.getRemoteSettingsSync();
+  let managedPluginSignature = JSON.stringify([
+    remoteAtSetup?.enabledPlugins ?? null,
+    remoteAtSetup?.marketplaces ?? null,
+  ]);
+
   teardowns.push(
     remoteSettingsService.onSettingsUpdate(async () => {
       await liveConfigManager.reload();
+
+      // Managed settings also drive plugin installation and loading: a synced
+      // change to `enabledPlugins` / `marketplaces` must re-read the plugins in
+      // place, otherwise an admin push would only take effect after a restart
+      // (spec enterprise server-managed-config「托管配置下发插件市场与启用列表」
+      // 场景 1 与 3).
+      const remote = remoteSettingsService.getRemoteSettingsSync();
+      const signature = JSON.stringify([
+        remote?.enabledPlugins ?? null,
+        remote?.marketplaces ?? null,
+      ]);
+      if (signature === managedPluginSignature) {
+        return;
+      }
+      managedPluginSignature = signature;
+      await container.get<PluginManager>("PluginManager")?.reloadAllPlugins();
     }),
   );
 

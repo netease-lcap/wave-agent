@@ -14,6 +14,7 @@ import {
   InstalledPluginsRegistry,
   MarketplacePluginStatus,
 } from "../types/index.js";
+import { remoteSettingsService } from "../services/remoteSettingsService.js";
 import { parsePluginSource } from "../utils/pluginSource.js";
 import { logger } from "../utils/globalLogger.js";
 
@@ -33,6 +34,11 @@ export class PluginCore {
 
   constructor(workdir: string = process.cwd()) {
     this.workdir = workdir;
+    // 托管层（spec plugin A-024）读的是远端设置的磁盘缓存，而 `wave plugin
+    // uninstall` 这类独立命令不经过 Agent 初始化，没人调过 initialize() ⇒
+    // 缓存为空、托管限制在这些入口上形同虚设。这里补上：initialize() 只是
+    // 同步读一次 `~/.wave/remote-settings.json`（幂等），已加载过的进程不受影响。
+    remoteSettingsService.initialize();
     this.container = new Container();
     this.configurationService = new ConfigurationService();
     this.marketplaceService = new MarketplaceService(
@@ -73,12 +79,33 @@ export class PluginCore {
   }
 
   /**
+   * Managed plugins are the ones the organization pushed through remote managed
+   * settings: a member cannot uninstall or disable them (spec plugin A-024).
+   * The check reads the managed layer only — a plugin the admin never mentioned
+   * stays the user's to manage, and dropping the entry restores that at once.
+   */
+  private assertNotManaged(
+    pluginId: string,
+    action: "uninstall" | "disable",
+  ): void {
+    const managed = this.configurationService.getManagedEnabledPlugins();
+    if (!managed || !Object.prototype.hasOwnProperty.call(managed, pluginId)) {
+      return;
+    }
+    const verb = action === "uninstall" ? "uninstalled" : "disabled";
+    throw new Error(
+      `Plugin ${pluginId} is managed by your organization and cannot be ${verb}. Contact your admin to change the managed plugin configuration.`,
+    );
+  }
+
+  /**
    * Uninstalls a plugin from a single scope (spec plugin A-015)：只清除该作用域的
    * 启用记录与该作用域的安装记录，其它作用域（含其它项目的项目/本地作用域）不受
    * 影响；本机产物仅在该插件再无安装记录时删除。未指定作用域时按
    * `local` > `project` > `user` 探测当前生效作用域（与 enable/disable 一致）。
    */
   async uninstallPlugin(pluginId: string, scope?: Scope): Promise<Scope> {
+    this.assertNotManaged(pluginId, "uninstall");
     const targetScope = scope ?? this.findPluginScope(pluginId);
     if (!targetScope) {
       throw new Error(
@@ -108,6 +135,7 @@ export class PluginCore {
    * the scope where the plugin is already configured, or defaults to "user".
    */
   async disablePlugin(pluginId: string, scope?: Scope): Promise<Scope> {
+    this.assertNotManaged(pluginId, "disable");
     const targetScope = scope || this.findPluginScope(pluginId) || "user";
     await this.pluginScopeManager.disablePlugin(targetScope, pluginId);
     return targetScope;
@@ -154,6 +182,8 @@ export class PluginCore {
     const mergedEnabled = this.configurationService.getMergedEnabledPlugins(
       this.workdir,
     );
+    const managedEnabled =
+      this.configurationService.getManagedEnabledPlugins() ?? {};
 
     const allMarketplacePlugins: MarketplacePluginStatus[] = [];
 
@@ -178,11 +208,17 @@ export class PluginCore {
           // 下载过（例如以项目/本地作用域装在别的项目里），若据此判为已安装，会在
           // 当前目录渲染出「已安装 + 作用域未知」。作用域标签与安装态同源，未安装时
           // 不回传作用域。
-          const installed = scope ? installedEntry : undefined;
+          // 托管插件由组织下发（spec plugin A-024）：它在任何工程都算已安装，
+          // 成员本机没有可卸载的记录，界面据此把卸载入口判为不可用。
+          const managed = Object.prototype.hasOwnProperty.call(
+            managedEnabled,
+            pluginId,
+          );
+          const installed = managed || scope ? installedEntry : undefined;
           allMarketplacePlugins.push({
             ...p,
             marketplace: m.name,
-            installed: !!installed,
+            installed: managed || !!installed,
             version: installed?.version,
             latestVersion: await this.readLatestVersion(
               marketplacePath,
@@ -191,6 +227,7 @@ export class PluginCore {
             cachePath: installed?.cachePath,
             projectPath: installed?.projectPath,
             scope: installed ? scope : undefined,
+            managed: managed || undefined,
           });
         }
       } catch (error) {

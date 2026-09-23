@@ -1236,11 +1236,24 @@ export class ConfigurationService {
   }
 
   /**
-   * Get merged marketplaces from all scopes
+   * Get merged marketplaces from all scopes, with admin-managed (remote) entries
+   * taking precedence per key (spec enterprise server-managed-config「托管配置
+   * 下发插件市场与启用列表」场景 5).
    */
   getMergedMarketplaces(workdir: string): Record<string, MarketplaceConfig> {
     const mergedConfig = loadMergedWaveConfig(workdir);
-    return mergedConfig?.marketplaces || {};
+    return {
+      ...(mergedConfig?.marketplaces || {}),
+      ...(this.getManagedMarketplaces() || {}),
+    };
+  }
+
+  /**
+   * Marketplaces declared by the remote (managed) settings. `null` means the
+   * managed layer declares none, leaving the local configuration chain in charge.
+   */
+  getManagedMarketplaces(): Record<string, MarketplaceConfig> | null {
+    return getRemoteSettingsSync()?.marketplaces ?? null;
   }
 
   /**
@@ -1384,11 +1397,26 @@ export class ConfigurationService {
   }
 
   /**
-   * Get merged enabled plugins from all scopes
+   * Get merged enabled plugins from all scopes, with admin-managed (remote)
+   * entries taking precedence per key (spec enterprise server-managed-config
+   * 「托管配置下发插件市场与启用列表」场景 5). A managed `false` therefore
+   * force-disables a plugin no matter what the local files say.
    */
   getMergedEnabledPlugins(workdir: string): Record<string, boolean> {
     const mergedConfig = loadMergedWaveConfig(workdir);
-    return mergedConfig?.enabledPlugins || {};
+    return {
+      ...(mergedConfig?.enabledPlugins || {}),
+      ...(this.getManagedEnabledPlugins() || {}),
+    };
+  }
+
+  /**
+   * Enabled-plugin entries declared by the remote (managed) settings. `null`
+   * means the managed layer declares none. Doubles as the authoritative
+   * "is this plugin managed by the organization" lookup (spec plugin A-024).
+   */
+  getManagedEnabledPlugins(): Record<string, boolean> | null {
+    return getRemoteSettingsSync()?.enabledPlugins ?? null;
   }
 
   /**

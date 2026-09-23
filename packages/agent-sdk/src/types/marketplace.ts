@@ -42,6 +42,12 @@ export interface MarketplacePluginStatus extends MarketplacePluginEntry {
   cachePath?: string;
   projectPath?: string;
   scope?: Scope;
+  /**
+   * 该插件由组织的托管配置（远端托管设置）声明启用：成员不能卸载或禁用它，
+   * 界面据此把卸载入口判为不可用并给出由组织管理的说明（spec plugin A-024）。
+   * 判据只看下发值，本机不落任何标记。
+   */
+  managed?: boolean;
 }
 
 export interface MarketplaceManifest {

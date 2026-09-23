@@ -46,6 +46,22 @@ export class PluginManager {
   private lastLoadConfigs: PluginConfig[] = [];
   /** Failures collected by the current loadPlugins() run. */
   private loadFailures: PluginLoadFailure[] = [];
+  /**
+   * Serializes plugin (re)loads. A managed-settings sync (or an early
+   * `/reload-plugins`) can ask for a reload while the startup load is still
+   * running; interleaving them would leave half-unloaded capability registries.
+   */
+  private loadChain: Promise<unknown> = Promise.resolve();
+
+  private serialize<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.loadChain.then(task, task);
+    // Keep the chain alive after a failure so later reloads still run.
+    this.loadChain = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
 
   constructor(
     private container: Container,
@@ -317,6 +333,16 @@ export class PluginManager {
    * @returns the plugins that failed to load
    */
   async loadPlugins(configs: PluginConfig[]): Promise<PluginLoadFailure[]> {
+    return this.serialize(() => this.doLoadPlugins(configs));
+  }
+
+  /**
+   * The actual load. Reached through [loadPlugins] (which serializes concurrent
+   * requests) and directly from [reloadAllPlugins], which already holds the slot.
+   */
+  private async doLoadPlugins(
+    configs: PluginConfig[],
+  ): Promise<PluginLoadFailure[]> {
     this.lastLoadConfigs = configs;
     this.loadFailures = [];
 
@@ -391,17 +417,19 @@ export class PluginManager {
    * worse than a merely stale one.
    */
   async reloadAllPlugins(): Promise<PluginReloadResult> {
-    for (const name of Array.from(this.plugins.keys())) {
-      await this.unloadPlugin(name);
-    }
+    return this.serialize(async () => {
+      for (const name of Array.from(this.plugins.keys())) {
+        await this.unloadPlugin(name);
+      }
 
-    this.enabledPlugins = this.refreshEnabledPlugins();
-    const failures = await this.loadPlugins(this.lastLoadConfigs);
+      this.enabledPlugins = this.refreshEnabledPlugins();
+      const failures = await this.doLoadPlugins(this.lastLoadConfigs);
 
-    return {
-      plugins: Array.from(this.plugins.keys()),
-      failures,
-    };
+      return {
+        plugins: Array.from(this.plugins.keys()),
+        failures,
+      };
+    });
   }
 
   /**

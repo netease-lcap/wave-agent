@@ -80,6 +80,27 @@ export class InitializationService {
     // Set global logger early so managers can use it during initialization
     setGlobalLogger(logger || null);
 
+    // Load the remote settings disk cache synchronously, before anything reads
+    // the configuration chain. Two consumers depend on it being this early:
+    // loadMergedConfiguration (below) merges the cached managed settings (env,
+    // model, disallowedTools), and plugin loading (also below) reads the managed
+    // enabledPlugins / marketplaces so an admin-pushed plugin is installed and
+    // enabled on this very startup (spec enterprise server-managed-config
+    // 「托管配置下发插件市场与启用列表」场景 1). Settings `env` is stored in the
+    // per-session env snapshot (NOT process.env), except WAVE_SERVER_URL which is
+    // mirrored to process.env so the network fetch (below) can read it via
+    // authService.getServerUrl(); no race.
+    try {
+      const phaseStart = performance.now();
+      await remoteSettingsService.initialize();
+      logger?.debug(
+        `Initialization Phase [Remote Settings Cache] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
+      );
+    } catch (error) {
+      logger?.error("Failed to initialize remote settings:", error);
+      // Don't throw error to prevent app startup failure - continue without remote settings
+    }
+
     // Initialize managers first
     try {
       const phaseStart = performance.now();
@@ -124,23 +145,6 @@ export class InitializationService {
     } catch (error) {
       logger?.error("Failed to initialize MCP servers:", error);
       // Don't throw error to prevent app startup failure
-    }
-
-    // Load remote settings disk cache synchronously.
-    // Must happen BEFORE loadMergedConfiguration so cached managed settings
-    // (env, model, disallowedTools) are merged into the config. Settings `env`
-    // is stored in the per-session env snapshot (NOT process.env), except
-    // WAVE_SERVER_URL which is mirrored to process.env so the network fetch
-    // (below) can read it via authService.getServerUrl(); no race.
-    try {
-      const phaseStart = performance.now();
-      await remoteSettingsService.initialize();
-      logger?.debug(
-        `Initialization Phase [Remote Settings Cache] took ${(performance.now() - phaseStart).toFixed(2)}ms`,
-      );
-    } catch (error) {
-      logger?.error("Failed to initialize remote settings:", error);
-      // Don't throw error to prevent app startup failure - continue without remote settings
     }
 
     // Initialize hooks configuration

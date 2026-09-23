@@ -873,6 +873,9 @@ export interface PluginInfo {
   /** 当前工程里的安装作用域（宿主按当前 workdir 推导；未在当前工程启用时缺失，
    *  UI 显示「未知」）。 */
   scope?: PluginScope;
+  /** 该插件由组织的托管配置启用（spec ecosystem/plugin A-024）：行内作用域显示
+   *  「托管」、卸载入口不可用并给出说明。判据只看下发值，本机不落标记。 */
+  managed?: boolean;
 }
 
 /** 已注册插件市场（宿主 listMarketplaces 下发的 KnownMarketplace 子集：设置页

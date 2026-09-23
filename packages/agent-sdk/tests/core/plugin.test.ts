@@ -447,4 +447,100 @@ describe("PluginCore", () => {
       "p1@m1",
     );
   });
+
+  /* 托管插件（spec plugin A-024、spec enterprise server-managed-config「托管配置
+     下发插件市场与启用列表」）：判据只看托管层下发值——本机怎么操作都改不动它，
+     管理员撤掉条目后立刻回到普通插件。 */
+  describe("managed plugins", () => {
+    it("refuses to uninstall a managed plugin without touching any record", async () => {
+      mockConfigurationService.getManagedEnabledPlugins.mockReturnValue({
+        "test-plugin@market": true,
+      });
+      mockPluginScopeManager.findPluginScope.mockReturnValue("user");
+      mockPluginScopeManager.getInstallLocation.mockReturnValue({
+        scope: "user",
+      });
+
+      await expect(
+        pluginCore.uninstallPlugin("test-plugin@market"),
+      ).rejects.toThrow(/managed by your organization/);
+
+      expect(mockMarketplaceService.uninstallPlugin).not.toHaveBeenCalled();
+      expect(
+        mockPluginScopeManager.removePluginFromScope,
+      ).not.toHaveBeenCalled();
+    });
+
+    it("refuses to disable a managed plugin", async () => {
+      mockConfigurationService.getManagedEnabledPlugins.mockReturnValue({
+        "test-plugin@market": true,
+      });
+
+      await expect(
+        pluginCore.disablePlugin("test-plugin@market"),
+      ).rejects.toThrow(/managed by your organization/);
+
+      expect(mockPluginScopeManager.disablePlugin).not.toHaveBeenCalled();
+    });
+
+    it("does not block plugins the managed layer never mentioned", async () => {
+      // 托管层存在（其它插件被下发）不等于本插件受管：本插件照常可卸载
+      mockConfigurationService.getManagedEnabledPlugins.mockReturnValue({
+        "other-plugin@market": true,
+      });
+      mockPluginScopeManager.findPluginScope.mockReturnValue("user");
+      mockPluginScopeManager.getInstallLocation.mockReturnValue({
+        scope: "user",
+      });
+
+      await expect(
+        pluginCore.uninstallPlugin("test-plugin@market"),
+      ).resolves.toBe("user");
+    });
+
+    it("unblocks the plugin again once the admin drops the entry", async () => {
+      mockConfigurationService.getManagedEnabledPlugins.mockReturnValue({});
+      mockPluginScopeManager.findPluginScope.mockReturnValue("user");
+      mockPluginScopeManager.getInstallLocation.mockReturnValue({
+        scope: "user",
+      });
+
+      await expect(
+        pluginCore.uninstallPlugin("test-plugin@market"),
+      ).resolves.toBe("user");
+    });
+
+    it("lists a managed plugin as installed and marked managed", async () => {
+      // 组织下发、本机还没有安装记录：列表仍要显示为「已安装 + 托管」，
+      // 否则界面会给出「安装」入口，成员点下去也不知道该插件已被组织启用
+      mockMarketplaceService.getInstalledPlugins.mockResolvedValue({
+        plugins: [],
+      });
+      mockMarketplaceService.listMarketplaces.mockResolvedValue([
+        { name: "m1", source: { source: "directory", path: "/m1" } },
+      ]);
+      mockMarketplaceService.getMarketplacePath.mockReturnValue("/m1");
+      mockMarketplaceService.loadMarketplaceManifest.mockResolvedValue({
+        name: "m1",
+        owner: { name: "o1" },
+        plugins: [{ name: "p1", description: "desc1", source: "s1" }],
+      });
+      mockConfigurationService.getMergedEnabledPlugins.mockReturnValue({
+        "p1@m1": true,
+      });
+      mockConfigurationService.getManagedEnabledPlugins.mockReturnValue({
+        "p1@m1": true,
+      });
+      mockPluginScopeManager.findPluginScope.mockReturnValue(null);
+
+      const result = await pluginCore.listPlugins();
+
+      expect(result.plugins[0]).toMatchObject({
+        name: "p1",
+        marketplace: "m1",
+        installed: true,
+        managed: true,
+      });
+    });
+  });
 });
