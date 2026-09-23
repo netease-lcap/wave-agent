@@ -24,6 +24,7 @@ vi.mock("../../src/services/session.js", () => ({
   listSessions: vi.fn(),
   cleanupEmptyProjectDirectories: vi.fn(),
   handleSessionRestoration: vi.fn(),
+  reAppendSessionMetadata: vi.fn().mockResolvedValue(undefined),
   SESSION_DIR: "/mock/session/dir",
 }));
 
@@ -48,13 +49,14 @@ describe("Agent.restoreSession - target workdir", () => {
   const currentWorkdir = "/mock/current/workdir";
   const targetWorkdir = "/mock/other/worktree";
 
-  const sessionData = (id: string, workdir: string) => ({
+  const sessionData = (id: string, workdir: string, customTitle?: string) => ({
     id,
     messages: [],
     metadata: {
       workdir,
       lastActiveAt: new Date().toISOString(),
       latestTotalTokens: 0,
+      ...(customTitle ? { customTitle } : {}),
     },
   });
 
@@ -133,6 +135,55 @@ describe("Agent.restoreSession - target workdir", () => {
 
     expect(load).toHaveBeenCalledWith(targetSessionId, currentWorkdir);
     expect(agent.workingDirectory).toBe(currentWorkdir);
+
+    await agent.destroy();
+  });
+
+  it("re-appends the metadata at both ends of a switch", async () => {
+    const agent = await createAgent();
+    const targetSessionId = randomUUID();
+    await mockTarget(targetSessionId, currentWorkdir);
+    const { reAppendSessionMetadata } = await import(
+      "../../src/services/session.js"
+    );
+
+    await agent.restoreSession(targetSessionId);
+
+    // Once for the session being left behind (it is about to be read from disk
+    // by whoever lists sessions next) and once for the one taken over (its
+    // title was recovered by the load-time whole-file scan and goes back to
+    // EOF).
+    expect(vi.mocked(reAppendSessionMetadata)).toHaveBeenCalledTimes(2);
+
+    await agent.destroy();
+  });
+
+  it("adopts the title recovered from the transcript on resume", async () => {
+    const agent = await createAgent();
+    const targetSessionId = randomUUID();
+    const { loadSessionFromJsonl } = await import(
+      "../../src/services/session.js"
+    );
+    vi.mocked(loadSessionFromJsonl).mockResolvedValue(
+      sessionData(
+        targetSessionId,
+        currentWorkdir,
+        "登录重构",
+      ) as unknown as Awaited<ReturnType<typeof loadSessionFromJsonl>>,
+    );
+
+    await agent.restoreSession(targetSessionId);
+
+    // The whole-file scan on load is what makes the title survive its entry
+    // being pushed out of the listing's tail window: from here on it lives in
+    // memory and is written back at EOF at the next flush point.
+    expect(
+      (
+        agent as unknown as {
+          messageManager: { getCustomTitle: () => string | undefined };
+        }
+      ).messageManager.getCustomTitle(),
+    ).toBe("登录重构");
 
     await agent.destroy();
   });

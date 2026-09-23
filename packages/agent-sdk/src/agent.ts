@@ -797,7 +797,16 @@ export class Agent {
    * same label. A blank title is a no-op.
    */
   public async renameSession(title: string): Promise<void> {
-    await setSessionCustomTitle(this.sessionId, this.workdir, title);
+    const applied = await setSessionCustomTitle(
+      this.sessionId,
+      this.workdir,
+      title,
+    );
+    // Keep the in-memory value in step: it is what gets written back at the
+    // next flush point if the entry has since slid out of the tail window.
+    if (applied) {
+      this.messageManager.setCustomTitle(applied);
+    }
   }
 
   /** Shared wiring for the InteractionService entry points. */
@@ -1039,6 +1048,10 @@ export class Agent {
     }
 
     await this.messageManager.saveSession();
+    // Flush point: the transcript is about to be left behind for other
+    // processes to list, so re-append the metadata entries at EOF. Must come
+    // after saveSession (which returns early when nothing is unsaved).
+    await this.messageManager.reAppendSessionMetadata();
     this.abortAIMessage(); // This will abort tools including Agent tool (subagents)
     this.abortBashCommand();
     this.abortSlashCommand();

@@ -15,6 +15,7 @@ vi.mock("../../src/services/session.js", async (importOriginal) => {
     ...actual,
     createSession: vi.fn().mockResolvedValue(undefined),
     appendMessages: vi.fn().mockResolvedValue(undefined),
+    reAppendSessionMetadata: vi.fn().mockResolvedValue(undefined),
     loadSessionFromJsonl: vi.fn(),
     loadFullMessageThread: vi.fn(),
   };
@@ -44,6 +45,9 @@ describe("MessageManager Single-Session Rewind", () => {
     expect(messageManager.getSessionId()).toBe(originalSessionId);
     // getRootSessionId returns the same ID (no separate root concept)
     expect(messageManager.getRootSessionId()).toBe(originalSessionId);
+    // Compaction is a flush point: the transcript is left readable by the next
+    // process, so the metadata entries go back to EOF.
+    expect(sessionService.reAppendSessionMetadata).toHaveBeenCalledTimes(1);
   });
 
   it("should call loadFullMessageThread when getFullMessageThread is called", async () => {
@@ -95,6 +99,10 @@ describe("MessageManager Single-Session Rewind", () => {
 
     // Truncate to index 1 (keep only msg1)
     await messageManager.truncateHistory(1);
+
+    // Rewriting the transcript truncates it, which physically drops the
+    // custom-title entry: it must be written back immediately.
+    expect(sessionService.reAppendSessionMetadata).toHaveBeenCalledTimes(1);
 
     // Verify messages in memory are truncated
     const currentMessages = messageManager.getMessages();

@@ -39,6 +39,9 @@ vi.mock("@/services/jsonlHandler.js", () => ({
   JsonlHandler: vi.fn().mockImplementation(function () {
     return {
       read: mockRead,
+      readMessagesAndCustomTitle: vi.fn(async (filePath: string) => ({
+        messages: await mockRead(filePath),
+      })),
       append: mockAppend,
       isValidSessionFilename: vi.fn().mockReturnValue(true),
       parseSessionFilename: vi.fn().mockReturnValue({

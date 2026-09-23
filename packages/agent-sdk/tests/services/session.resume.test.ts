@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, vi, type Mock } from "vitest";
 import { randomUUID } from "crypto";
 import { join } from "path";
 import { homedir } from "os";
@@ -51,7 +51,10 @@ describe("Session resume: cross-directory listing & restore", () => {
     decode: ReturnType<typeof vi.fn>;
   };
   let mockJsonlHandler: {
-    read: ReturnType<typeof vi.fn>;
+    read: Mock<(filePath: string) => Promise<Message[]>>;
+    readMessagesAndCustomTitle: (
+      filePath: string,
+    ) => Promise<{ messages: Message[]; customTitle?: string }>;
     getLastMessage: ReturnType<typeof vi.fn>;
     getLatestTotalTokens: ReturnType<typeof vi.fn>;
     generateSessionFilename: ReturnType<typeof vi.fn>;
@@ -90,6 +93,11 @@ describe("Session resume: cross-directory listing & restore", () => {
 
     mockJsonlHandler = {
       read: vi.fn(),
+      // The real handler mirrors the two: a single pass over the file yields
+      // both the messages and the title, so delegate to the `read` mock.
+      readMessagesAndCustomTitle: vi.fn(async (filePath: string) => ({
+        messages: await mockJsonlHandler.read(filePath),
+      })),
       getLastMessage: vi.fn().mockResolvedValue(null),
       getLatestTotalTokens: vi.fn().mockResolvedValue(0),
       generateSessionFilename: vi

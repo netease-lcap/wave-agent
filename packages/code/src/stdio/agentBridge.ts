@@ -826,6 +826,16 @@ export class AgentBridge {
     workdir: string,
     title: string,
   ): Promise<void> {
+    // A session this host is running keeps the title in memory and writes it
+    // back at its next flush point (exit, compaction, resume, rewind), so a
+    // file-only write here would be clobbered by the stale in-memory value.
+    // Route through the agent; fall back to the file for sessions that are not
+    // bound to this host's process.
+    const bound = this.sessions.get(sessionId)?.agent;
+    if (bound) {
+      await bound.renameSession(title);
+      return;
+    }
     await setSessionCustomTitle(sessionId, workdir, title);
   }
 
