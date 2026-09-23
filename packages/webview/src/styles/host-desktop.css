@@ -2898,6 +2898,35 @@
   color: var(--vscode-foreground);
 }
 
+/* ═══ 0923 评论（设置区圆角审计的裁决）：输入类 / 页内提交按钮 / 弹窗关闭统一 8px ═══
+   她 0923 在审计报告（`CC02/走查/0923-设置区圆角审计/index.html` B 表）点名六条：
+     「输入类·下拉触发器、输入类·文本输入、输入类·数字输入、输入类·多行文本域、
+       页内提交按钮、弹窗关闭统一成8px，仅桌面端」
+   → 落点是 base 的 6px 五处声明（SettingsPage.css:413-428 的
+     `.settings-select / -select-trigger / -number-input / -text-input` 一组、
+     `.settings-textarea` :681、`.settings-save-btn` :551、`.settings-modal-close` :1569），
+     这里用 `[data-host="desktop"]` 覆盖层逐条提到 `--cc-radius-md`(8px)——
+     **只改桌面端**：写在 base 会连 IDE / VS Code 宿主一起变（本轮明确不要），
+     故不采用「改 base 值」的做法。
+   8px 的参照 = 同页 `.settings-row-btn`（行操作按钮）/ 桌面左导航项 / 返回（host-desktop.css:2827/2837），
+     以及她 0915 已定的弹窗按钮 8px（SettingsPage.css:1630/1875/1889）与 0916 关闭按钮族
+     （`.desktop-pane-close` 等，host-desktop.css:2070）——本次是把设置区这两族补到同档。
+   覆盖方式：这些 base 声明都是单类 (0,1,0)，`[data-host="desktop"] .x` = (0,2,0) 稳胜；
+     深浅同值（圆角不随主题变，审计实测浅深逐条一致），故不需要 dark 分叉。
+   **未纳入（她未点名，见报告残留清单）**：插件市场小控件（chip / version / upgrade /
+     badge，6px）、弹窗分段内层 `.settings-modal-seg-item`（6px，外壳已是 8px）、
+     `.project-item`（6px，桌面端未渲染）。原生 `select.settings-select` 是 **IDE 宿主专属**
+     （SettingsSelect.tsx:37-54 按 `isDesktopHost()` 分叉，桌面走自绘
+     `.settings-select-trigger`）→ 桌面选择器里不列，避免越权。 */
+[data-host="desktop"] .settings-select-trigger,
+[data-host="desktop"] .settings-number-input,
+[data-host="desktop"] .settings-text-input,
+[data-host="desktop"] .settings-textarea,
+[data-host="desktop"] .settings-save-btn,
+[data-host="desktop"] .settings-modal-close {
+  border-radius: var(--cc-radius-md, 8px);
+}
+
 /* 桌面端其余控件图标统一 #565A60（同一图标规范；base 各按钮继承
    vscode-foreground，light 下 #202020 深黑偏重）。保留：
    - `.desktop-sidebar-more-btn.is-active` 品牌红 #C1292E（规范「活动器」）

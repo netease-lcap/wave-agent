@@ -7205,3 +7205,100 @@ header / body 的 `flex-shrink` 仍为 1、`overflow-y` 仍 auto。
   `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
   方案 A / B 那两版留在 `CC02/走查/0923-选项区滚动报告/index.html`、`…报告-b/index.html`
   （不覆盖历史报告）。
+
+## 0923 评论（设置区圆角统一 8px：输入类 / 页内提交按钮 / 弹窗关闭，仅桌面端）
+
+### ① 来源
+
+她 2026-09-23 在圆角审计报告（`CC02/走查/0923-设置区圆角审计/index.html`）的 B 表上点名六条：
+
+> B中的，输入类·下拉触发器、输入类·文本输入、输入类·数字输入、输入类·多行文本域、页内提交按钮、弹窗关闭统一成8px，仅桌面端
+
+同一轮她还要求先把「插件市场小控件 / 弹窗关闭 / 弹窗分段项 / 项目卡片」这四族截图进报告
+（原话：「插件市场小控件、弹窗关闭、弹窗分段项、项目卡片我不知道是指哪里，可以帮我截图放在 html
+里面我看看吗」）→ 报告新增 **B′ 段**（速查表 + 每族全景红框定位图 + 1:1 / 4× 圆角特写），
+她据此给出上面这条裁决。**报告属走查产物，不进本仓库。**
+
+### ② 改动（1 文件，1 条规则）
+
+`packages/webview/src/styles/host-desktop.css` 新增 0923 块（插在 `.session-board-back .codicon`
+那组之后、`桌面端其余控件图标统一 #565A60` 之前）：
+
+```css
+[data-host="desktop"] .settings-select-trigger,
+[data-host="desktop"] .settings-number-input,
+[data-host="desktop"] .settings-text-input,
+[data-host="desktop"] .settings-textarea,
+[data-host="desktop"] .settings-save-btn,
+[data-host="desktop"] .settings-modal-close {
+  border-radius: var(--cc-radius-md, 8px);
+}
+```
+
+被覆盖的 base 6px 共五处声明（`SettingsPage.css`）：
+
+| base 落点          | 类                                                                       | 值  |
+| ------------------ | ------------------------------------------------------------------------ | --- |
+| `:413-428`（一组） | `.settings-select` / `-select-trigger` / `-number-input` / `-text-input` | 6px |
+| `:551`             | `.settings-save-btn`                                                     | 6px |
+| `:681`             | `.settings-textarea`                                                     | 6px |
+| `:1569`            | `.settings-modal-close`                                                  | 6px |
+
+8px 的参照 = 同页 `.settings-row-btn` / 桌面左导航项 / 返回（`host-desktop.css:2827`、`2837`），
+以及她 0915 已定的弹窗底部按钮 8px（`SettingsPage.css:1630`/`1875`/`1889`）与 0916 关闭按钮族
+（`.desktop-pane-close` 等，`host-desktop.css:2070`）。本轮是把设置区这两族补到同档。
+
+**为什么写在 `[data-host="desktop"]` 而不是改 base 值**：她明确「仅桌面端」；改 base 会连
+IDE / VS Code 宿主一起变。这些 base 声明都是单类 (0,1,0)，`[data-host="desktop"] .x` = (0,2,0) 稳胜；
+圆角不随主题变（审计实测浅深逐条一致）故不需要 dark 分叉。
+
+### ③ 实测（headed Chromium / dpr2，用例 `desktop-full` + `desktop-plugins`，两档 pageerror 0）
+
+| 族         | 选择器                     | 盒       | 改前 | 改后    | 非桌面宿主 |
+| ---------- | -------------------------- | -------- | ---- | ------- | ---------- |
+| 下拉触发器 | `.settings-select-trigger` | 260×32   | 6px  | **8px** | 6px        |
+| 文本输入   | `.settings-text-input`     | 260×32   | 6px  | **8px** | 6px        |
+| 数字输入   | `.settings-number-input`   | 242.9×32 | 6px  | **8px** | 6px        |
+| 多行文本域 | `.settings-textarea`       | 686×120  | 6px  | **8px** | —（未见）  |
+| 页内提交   | `.settings-save-btn`       | 60×32    | 6px  | **8px** | 6px        |
+| 弹窗关闭   | `.settings-modal-close`    | 28×28    | 6px  | **8px** | 6px        |
+
+- **盒子逐值相同、零位移**（改前 / 改后同一元素同尺寸）。
+- **非桌面宿主反证**：同一页面把 `data-host` 改成 `vscode` → 六族逐条回到 6px（覆盖层失配即回落 base）。
+- **未点名控件保持原档**：筛选胶囊 `.settings-plugin-chip` 6px、版本胶囊 `.settings-plugin-version` 6px、
+  插件行 `.settings-plugin-row` 8px（本来就是 8）。
+- **整页像素差**：浅 **300 / 5,184,000**（0.006%，bbox `2036,496–2396,560`）、
+  深 **304 / 5,184,000**（bbox `2036,382–2396,560`）——只落在控件四角，其余零变动。
+
+### ④ 可复用认知
+
+- ★ **`.settings-select` 是 IDE 宿主专属**：`SettingsSelect.tsx:37-54` 按 `isDesktopHost()` 分叉，
+  桌面端渲染的是自绘 `.settings-select-trigger`（0916 起）。写桌面选择器时把 `select.settings-select`
+  列进去是**越权**（它永远不在桌面 DOM 里），正确做法是只列桌面实际命中的那个类。
+- **改前基线用同页注入回滚规则**：把六族按 base 的 6px 写回（`!important`）模拟 base 真值，
+  比真退构建快且可同帧对比；注意**注入了就要在下一族测量前移除**——本轮曾把回滚 `<style>`
+  遗留在页面里，导致 `.settings-textarea` 的「改后」读出 6px（假失败）。已抽成 `applyRollback(on)` 成对调用。
+- **`border-radius` 的证据只能看角**：整页像素差 0.006% 属预期（六族只占极小面积），
+  结论要靠「同族三态值 + 角部 4× 放大图 + 盒子不变」三条并列，别只看 diff 计数。
+
+### ⑤ 未改（她未点名，见报告残留清单）
+
+- 插件市场小控件：`.settings-plugin-chip` / `-version` / `-upgrade` / `-update-badge`（6px）
+- 弹窗分段内层：`.settings-modal-seg-item`（6px，**外壳已是 8px** → 同弹窗内两种口径并存）
+- `.project-item`（6px，桌面端未渲染）、`.settings-project-card`（6px，**死代码**：
+  `bba748e5`「删项目分组与切换按钮」后无渲染点，仅陈旧未跟踪产物里还留着）
+
+### ⑥ 残留触发语
+
+- 「市场小控件也用 8」/「分段项和外壳取同一档」/「项目列表项也用 8」/「项目分组卡片也用 12」
+
+### ⑦ 验证脚本与证据
+
+- 探针 `CC02/走查/_tools/0923/probe-radius-desktop8-0923.mjs` →
+  `CC02/走查/0923-设置区圆角-8px/radius-desktop8.json` + 截图（三态：改后 / 改前 / 非桌面宿主，
+  外加未点名控件对照）。
+- 报告 `CC02/走查/0923-设置区圆角-8px/index.html`（本地原件，未发远端）：4 张统计卡 +
+  每族四张并列（改前/改后 × 浅/深，1:1 + 4× 左上角放大）+ 未点名清单 + 残留触发语 + 复现命令。
+- 审计报告（含本轮新增的 B′ 定位图段）`CC02/走查/0923-设置区圆角审计/index.html`，
+  自检 `verify-settings-radius-report-0923.mjs`：50 图加载、0 错误、锚点可达。
+- 本轮纯 CSS 值改动，无业务单测覆盖。
