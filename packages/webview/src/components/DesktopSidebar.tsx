@@ -88,7 +88,11 @@ const StatusDot: React.FC<{ color: string; label: string }> = ({
  *  双色走 --loading-ring-*（dark 主题下的对比色见 DesktopApp.css）。 */
 
 /** 项目分组展开/收起 chevron（13498:16662 up / 13561:39968 right），
- *  展开组显示「^」、收起组显示「>」，替代 codicon 字形。 */
+ *  展开组显示「v」、收起组显示「>」，替代 codicon 字形。
+ *  ⚠️ 官方矢量只给了「上」与「右」两条；展开态的语义方向是「下」（产品里其它披露
+ *  控件都是 expanded→chevron-down，见 DiffPane / DiffFileTree），所以把「上」这条
+ *  绕盒心转 180° 得到「下」——与 0921 设置页下拉三角「用同一条官方矢量翻转」同一
+ *  做法（她 0923 评论：「这个按钮反了」）。 */
 const GroupChevron: React.FC<{ expanded: boolean }> = ({ expanded }) => (
   <svg
     width="16"
@@ -102,6 +106,7 @@ const GroupChevron: React.FC<{ expanded: boolean }> = ({ expanded }) => (
     {expanded ? (
       <path
         d="M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z"
+        transform="rotate(180 8 8)"
         fill="currentColor"
       />
     ) : (

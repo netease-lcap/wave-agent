@@ -13,7 +13,7 @@ import { ConfirmDialog } from "./ConfirmDialog";
 // 提供独立更多按钮（交互定稿：热区开纯功能菜单）。
 import {
   ApiInfoIcon,
-  ChevronUpIcon,
+  ChevronDownIcon,
   HelpCircleIcon,
   LoadingArcIcon,
   QuotaIcon,
@@ -618,7 +618,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => setUsageCollapsed((v) => !v)}
           >
-            {usageCollapsed ? <QuotaIcon /> : <ChevronUpIcon />}
+            {usageCollapsed ? <QuotaIcon /> : <ChevronDownIcon />}
           </button>
         )}
       </div>

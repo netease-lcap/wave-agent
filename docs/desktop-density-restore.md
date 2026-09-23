@@ -6689,3 +6689,616 @@ computed font-family 立刻回落 `Arial` ⇒ 基础文件未动、IDE（VS Code
   `CC02/走查/_tools/0922/batch-0922-preview-address-jitter.json`（F-01 编辑态对齐 / F-02 两态叠放 /
   F-03 起点 5× 放大 / F-04 空态占位 / F-05 未修复项：IDE 宿主，各浅深两档）；自检
   `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
+
+## 0923 评论（气泡提示 Tooltip：桌面端统一到 skill 的浮层配方）
+
+### ① 结论
+
+她 2026-09-23 预览走查（hover「新对话」时的气泡提示）：「想要优化这里的样式，**只改桌面端**，
+首先需要它符合 **skill 中全局的色彩规范**，然后**字号是 14px，圆角 8px，上下内边距 4px，
+左右内边距 12px**，哪里不确定的你再问我」。
+
+我先量了改前基线（改前走的是宿主编辑器色），再把不确定的三点摆成选项请她裁定，她选：
+
+1. **范围 = 桌面端全部 Tooltip**（同一个 `Tooltip` 组件被 11 个文件 25 处共用，不做单颗特例）；
+2. **去掉三角角标 + 气泡↔触发间距收到 4px**（skill 的下拉契约）；
+3. **阴影按 skill 引入 `--cc-shadow-popover`**。
+
+同一条评论的第二轮（她看完 14px 效果后）：「**我觉得 12px 字号看着是舒服的**，现在需要
+**所有的都加 100ms 的延时**」。延时我又把三处摆成选项，她逐条选：
+
+4. **只延迟「出现」**（移开仍立即淡出）；
+5. **桌面端全部**消费点（IDE 档保持即时出现）；
+6. **键盘 focus 与 hover 同一套时序**（也延时 100ms）。
+
+色彩全部走语义 token，取自 skill `references/dark-theme.md:38`
+「Tooltip = **bg-overlay、text-primary、border、shadow-popover**；same surface family as menus」；
+行高她没给，按 skill 取档：先 14/22（正文档 `references/conversation-typography.md:30`），
+定档 12px 后改为 **12/20**（辅助档）⇒ 气泡高 = 20 + 4×2 + 1×2 = **30px**。
+
+|                    | 改前（base `.tooltip-box` = 宿主编辑器色） | 改后（桌面语义 token）                                               |
+| ------------------ | ------------------------------------------ | -------------------------------------------------------------------- |
+| 字号 / 行高        | 12px / `normal`                            | **12px / 20px**（12px 是她的定档；行高按 skill 辅助档配对）          |
+| 内边距 / 圆角      | `4px 8px` / 2px                            | **`4px 12px` / 8px**                                                 |
+| 底色（浅 / 深）    | `#FAFAFD` / `#202020`                      | `--cc-bg-overlay` = **`#FFFFFF` / `#232526`**                        |
+| 字色（浅 / 深）    | `#202020` / `#CCCCCC`                      | `--cc-text-primary` = **`#1F2329` / `#E5E7E8`**                      |
+| 描边（浅 / 深）    | `#E4E5E6` / `#454545`                      | `--cc-border` = **`#DCDFE6` / `#414649`**                            |
+| 阴影               | `0 1px 4px rgba(0,0,0,.2)`                 | **`--cc-shadow-popover`** = 浅 `0 0 12px 12%` / 深 `0 12px 30px 40%` |
+| 角标               | 有（`::after` 4px 三角）                   | **无**                                                               |
+| 间距（触发↔气泡） | 8px                                        | **4px**                                                              |
+| 出现时机           | 即时（`transition-delay: 0s`）             | **延迟 100ms**（`transition-delay: 0.1s`，只延迟出现）               |
+
+对比度实测：浅色 **15.78:1**、深色 **12.41:1**（AA 要求 4.5:1）；气泡盒 193.4×27 → **201.4×30**
+（14px 那一版是 229.0×32）。**字号回到 base 的 12px ⇒ 字墨迹 175.4×15 与改前逐值相同**，
+所以本轮真正变的是「皮肤 + 内衬 + 圆角 + 阴影 + 角标 + 间距 + 出现时机」。
+
+### ② 改动落点（2 个文件，base 一个字没动）
+
+- `packages/webview/src/styles/host-desktop.css`
+  - 浅色 token 块 + 深色 token 块各新增 `--cc-shadow-popover`（仓库此前**没有**这个角色，
+    只有一处注释提过它的名字；值 = skill `tokens/tokens.css:130` / `theme/desktop-colors.css:174`）。
+  - 文件末尾新增三条桌面规则：`[data-host="desktop"] .tooltip-box`（皮肤，选择器 (0,2,0)
+    稳压 base `.tooltip-box` (0,1,0)，与加载顺序无关）、
+    `[data-host="desktop"] .tooltip-box::after { display: none }`（去角标，(0,2,1) 高于
+    base 的 `.tooltip-top::after` 等 (0,1,1)，无需 `!important`）与
+    `[data-host="desktop"] .tooltip-box.visible { transition-delay: 0.1s }`（出现延时）。
+  - **延时为什么挂在 `.visible` 上**：`transition` 的 delay 取「目标状态」的计算值 ——
+    进入时目标 = `.tooltip-box.visible`（本规则 0.1s），退出时目标 = base `.tooltip-box`（0s），
+    一条规则正好表达「只延迟出现、移开立即淡出」。它叠加 base 已有的 `.1s` 淡入时长
+    ⇒ hover 后 100ms 开始淡入、~200ms 完全显形。**纯 CSS，不动 JS**（组件里的 `isVisible`
+    状态仍在 hover 那一刻翻转，所以既不影响 `calculatePosition` 的测量，也不影响
+    既有单测 / e2e 对 `.tooltip-box.visible` 的断言）。
+  - `max-width: 250px`、`z-index: 10000`、淡入时长、单行省略号策略与 `.tooltip-multiline`
+    全部未动（12px 下本例文案 175.4 + 内衬 24 + 描边 2 = 201.4px，距 250px 还有 48.6px 余量，
+    比 14px 那版更宽松）。
+- `packages/webview/src/components/Tooltip.tsx`
+  - `offset = 8` 默认值 → `const gap = offset ?? (isDesktopHost() ? 4 : 8)`：
+    间距是 JS 算出的 fixed 坐标，**CSS 管不到**，只能组件内按宿主分叉；显式传 `offset` 的调用方
+    不受影响（仓库当前没有这类调用）。
+  - **base 的 `Tooltip.css` 一字未改** ⇒ IDE 档天然保留旧皮肤（12px / r2 / `4px 8px` / 带角标 / 8px 间距）。
+
+### ③ 实测（浅 / 深逐值相同；两颗 placement 不同的气泡交叉验证）
+
+- 侧栏「新对话」（`position="right"`）：横向间距 8 → **4**；角标 `display: block` → **`none`**。
+- 输入区「发送」（`position="top"`）：纵向间距 8 → **4**（`getBoundingClientRect` 实测）；角标同样消失。
+- 九条属性断言（font-size / line-height / padding / border-radius / 底色 / 字色 / 描边色 /
+  间距 / 角标）在浅深两档 **9/9 全绿**（按 12px + 20px 取档）。
+- **出现时序实测**（真实浏览器 rAF 采样 + MutationObserver 对齐 class 翻面，rAF 分辨率 ≈16.7ms）：
+
+  |                        | 改前                   | 改后                        |
+  | ---------------------- | ---------------------- | --------------------------- |
+  | 残留延时（隐藏态读值） | `transition-delay: 0s` | 隐藏态 `0s`                 |
+  | 可见态延时读值         | `0s`                   | **`0.1s`**                  |
+  | hover → 可见           | 14.8 / 16.7ms（≈1 帧） | **107.8 – 116.5ms**         |
+  | hover → 完全显形       | 104.5 – 107.5ms        | **205.1 – 208.2ms**         |
+  | 移开 → 开始淡出        | 14.8 – 16.3ms          | 14.8 – 16.0ms（**未变**）   |
+  | 移开 → 完全隐藏        | 106.7 – 115.7ms        | 107.5 – 117.7ms（**未变**） |
+
+  两颗气泡（新对话 / 发送）× 浅深两档共 6 组，断言 全绿；`pageerror` 0。
+
+- **宿主作用域反证**（同一页只改 `html[data-host]`）：`desktop → ide → 还原`
+  三段读数 = `12px/r8/#FFFFFF/角标 none` → `12px/r2/#FAFAFD/角标 block` → 回到桌面档，
+  证明新规则只挂在桌面档（注意：切属性后间距仍是 4px，因为它由 `isDesktopHost()` 读
+  `window.waveHostType` 决定，属**预期**行为，不是反证失败）。**延时同样随属性回退**：
+  切到 `data-host=ide` 后 hover → 可见回到 14.8 / 16.7ms（无延时），且
+  `transition-delay` 读值回到 `0s`。
+- **真实 IDE 档**：首帧把 `window.waveHostType` 钉成非桌面 ⇒ 渲染的是 `ChatApp`（`DesktopApp`
+  未挂载），输入区「发送」气泡仍是 `12px / 4px 8px / r2 / 角标 block`、间距仍是 **8px**、
+  出现仍是**即时**。
+- axe（wcag2a/aa/21a/aa）浅色档 / 深色档 / IDE 档三份违规集合与**改前逐条一致**
+  （`desktop_light` 那条 `.desktop-session-empty` 与 IDE 档那两条 diff 文字是既有的，非本轮引入；
+  气泡自身 0 违规）；`pageerror` 0。
+- 全族同类：四个不同 surface 的气泡（活动 / 新对话 / 收起侧边栏 / 发送）实测 computed
+  全部 `12px / 20px / 4px 12px / r8`、角标全部 `none`、高度全部 30px ⇒ 桌面档只有一套气泡皮肤。
+
+### ④ 一个必须交代的改动面
+
+Tooltip 组件是共用的，所以这轮**不是**只改了「新对话」那一颗：桌面端 25 处 Tooltip 同时换皮肤
+**并同时多出 100ms 出现延时**（含设置页 / 插件市场 / 会话看板里的气泡）。IDE 档（VS Code /
+JetBrains）**仍是旧皮肤、仍即时出现**，这是「只改桌面端」的必然取舍，已单列在残留清单里。
+延时是观感类改动，若真机上觉得「太钝」或「还不够」，改一个数（`0.1s`）即可。
+
+### ⑤ 残留触发语（未授权）
+
+- 「菜单阴影也统一」：其余桌面浮层（`MoreMenu` / 自绘下拉 / 会话看板筛选弹层）仍各用各的阴影口径，
+  没有消费新引入的 `--cc-shadow-popover`
+- 「气泡层级按 skill 收」：气泡仍是 `z-index: 10000`，未接 skill 的 `--cc-z-tooltip: 600`
+  （产品里没采用 `--cc-z-*` 体系，改动有遮挡风险，本轮未动）
+- 「IDE 也一起改」：撤掉作用域限制即可，代价是 IDE 也换皮肤 + 也加延时（见 ④）
+- 「菜单也加延时」：其余浮层（下拉 / 菜单）的开合时序未动，只有 Tooltip 有这个 100ms
+- 「延时再调」：100ms 是我按她的裁定落的唯一数字，偏快/偏慢都是改 `transition-delay` 一个值
+
+### 验证脚本与证据
+
+- 基线 / 终态读值（含两颗气泡 + 绝对裁切窗口 + 9 条断言）：
+  `CC02/走查/_tools/0922/probe-0922-tooltip-style.mjs <before|after>`
+  （改前 = **真回退**：`cp` 备份 → `git checkout --` 两个文件 → 采集 → `cp` 还原并复核 md5
+  `ff89f8d2d7d218c13b981d37876cbad0`（CSS）/ `d5f63ea690b7200950585d8a13e2fbd7`（TSX）；
+  指标 `/tmp/metrics-0922-tooltip-{before,after}.json`；字号档有变时用
+  `WANT_FONT=12px WANT_LH=20px` 覆盖断言期望）。
+- 出现时序（rAF 采样 + class 翻面对齐 + 曲线图 + 帧统计）：
+  `CC02/走查/_tools/0922/probe-0922-tooltip-delay.mjs <before|after>`
+  → `/tmp/metrics-0922-tooltip-delay-{before,after}.json`；
+  画图 `make-tooltip-delay-chart-0922.py` → `shots/<phase>/<theme>-tooltip-delay-curve-2x.png`
+  - `/tmp/metrics-0922-tooltip-delay-frames.json`。
+- 宿主作用域反证 + IDE 真分叉档：
+  `CC02/走查/_tools/0922/capture-0922-tooltip-host-scope.mjs`
+  → `/tmp/metrics-0922-tooltip-host-scope.json`；axe：`probe-0922-tooltip-axe.mjs <before|after>`
+  → `/tmp/probe-0922-tooltip-axe-{before,after}.json`（axe-core 装 `/tmp/axe`，不碰仓库 package.json）。
+- 全族四颗：`capture-0922-tooltip-family.mjs` + 拼图 `make-tooltip-family-0922.py`
+  → `/tmp/metrics-0922-tooltip-family.json`。
+- 成对图（并集框裁切 + page→窗口坐标换算 + 对齐证明）：
+  `CC02/走查/_tools/0922/make-tooltip-assets-0922.py`；报告（skill 母版 v1.1）：
+  `CC02/走查/0922-tooltip-report/index.html`，batch =
+  `CC02/走查/_tools/0922/batch-0922-tooltip.json`（F-01 皮肤全套 / F-02 5× 放大看圆角与角标 /
+  F-03 发送气泡间距 8→4 / F-04 宿主作用域反证 / F-05 IDE 真分叉残留 / F-06 全族同类 /
+  F-07 出现延时曲线 / F-08 hover 后 ~100ms 的帧 / F-09 残留清单）；
+  自检 `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
+
+## 0923 评论（消息队列：行右缘贴近滚动条 + 三颗操作按钮间距 8 → 4px）
+
+设计师 2026-09-23 两条预览评论，都落在消息队列上（mock 用例 `desktop-queues`，展开态）：
+
+1. 三颗操作按钮「编辑 / 立即发送 / 删除」（`div.queued-item-actions`）：
+   「拿掉这三个按钮之间的间距我看下效果」→ 看过对照后改口「改成4px我再看看效果」
+2. 第 7 条 `div.queued-item`「顺手看下 CI 缓存命中率有没有下降…」：
+   「这个选项到滚动条之间还有很大距离，可以再贴近一些和滚动条到右侧边距保持一致都可以」
+
+两条都是纯几何改动（无颜色 / 无文字 / 无字号），浅深两档逐值相同，`pageerror` 0。
+`packages/webview/src/styles/host-desktop.css` 两处：
+
+### ① 三颗按钮间距 8 → 4px
+
+`[data-host="desktop"] .queued-item-actions { gap: 8px → 4px }`（base 的 2px 留给 IDE 宿主，未动）
+
+| 项                   | 改前                     | 改后                                     |
+| -------------------- | ------------------------ | ---------------------------------------- |
+| 图标墨迹间距         | 16px（= 4+8+4）          | 12px（= 4+4+4）                          |
+| 操作组宽             | 88px @x1120.5            | 80px @x1128.5                            |
+| 三颗按钮盒 x         | 1120.5 / 1152.5 / 1184.5 | 1128.5 / 1156.5 / 1184.5                 |
+| 位移（组右对齐）     | —                        | 编辑 +8px、立即发送 +4px、删除 0         |
+| 行宽 / 行高 / 按钮盒 | 742 / 28 / 24×24         | 742 / 28 / 24×24（文字可用宽 630 → 638） |
+
+我先把「拿掉间距」按 **0** 试做了一版读数（墨迹间距 8px、组宽 72px），她择 4px 收口：
+按钮 24×24 的 hover 底色之间保留 4px 缝，不至于连成一排。
+
+### ② 队列「行右缘 → 滚动条」16px → 4px（与「滚动条 → 卡片右缘」等值）
+
+`[data-host="desktop"] .queued-items.expanded { padding-right: 12px → 0 }`（新增一条覆盖，
+紧跟 0917 那条滚动条定位规则；**仅队列**，任务列表 `.task-list-items` 未点名、维持 12px）
+
+| 项                                                           | 改前                   | 改后                         |
+| ------------------------------------------------------------ | ---------------------- | ---------------------------- |
+| 行右缘 → thumb 墨迹左缘                                      | 16px                   | **4px**                      |
+| thumb 墨迹右缘 → 卡片可见右缘                                | 4px（含 1px 边框 5px） | 不变                         |
+| 滚动条位置（轨道 [1216.5..1232.5] / thumb [1220.5..1228.5]） | —                      | **零位移**（两阶段校验通过） |
+| 行宽 / 文字右缘                                              | 726 / 1112.5           | 738（+12）/ 1124.5（+12）    |
+| 「删除」墨迹右缘 → thumb                                     | 32px                   | 20px                         |
+| 行高 · 圆角 · 行内边距                                       | 28 · 6px · `0 12px`    | 逐值不变                     |
+
+做法是**不动滚动条、只把行往右推**：0917 那条规则（`margin-right:-12px` + `padding-right:12px`）
+把滚动条挪到卡片内衬边缘、并让内容盒宽度保持不变；本轮把队列那半的右内衬归零，于是
+行右缘刚好离 thumb 墨迹 4px = 滚动条自己的右边距。代价：行 / 内容盒加宽 12px
+（文字可用宽 +12px、hover 底色右缘 +12px），行高与三颗按钮相对行右缘的位置不变。
+
+### 两个可复用认知（非显然）
+
+- **量滚动条几何 / 位置必须用 headed Chromium**。headless shell 走 overlay 滚动条：
+  实测 `offsetWidth == clientWidth`（宽 0、不占位、不绘制），`::-webkit-scrollbar` 那套
+  16px 轨道 / 8px 胶囊量不到、截图里也没有 —— 第一版探针据此得到「行右缘 → 轨道 12px」
+  的假读数。headed 下同一页面读数为 16px，并用截图逐列采样复核（thumb 墨迹 x1220.5..1228.0）。
+- **同一页面会话内做「改前 / 改后」两阶段**：`after` 取工作区当前值，`before` 用自建
+  `<style id>` 注入旧值回退（本轮 `padding-right:12px !important`），裁切窗口两阶段逐值相同。
+  截图前两阶段都注入隐藏 `.tooltip-box` 的样式（hover 会同时冒出按钮提示气泡、盖住按钮），
+  两阶段一致故不影响对比。
+
+### ③ 残留触发语（未授权）
+
+- 「任务列表那条也一起」：`.task-list-items` 仍是 12px 右内衬（滚动条离卡片更远一档）
+- 「图标也再贴近滚动条」：行自身右内衬 12px 未动，末按钮墨迹距滚动条 20px →
+  再近就得连行的内衬一起收，图标会贴住行底色边
+- 「行底色右边留一点」：右内衬改 8px（两段间距回到 12px）
+- 「按钮间距再调」：4px 是她择的唯一数字，改一个值即可（0 / 2 / 8px）
+- 「队列卡片宽度也变一下」：卡片仍是 768px（内容盒 742），本轮只动右内衬
+
+### 验证脚本与证据
+
+- 行右缘 / 滚动条两段间距（headed Chromium，2x，两阶段 + 绝对裁切 + 卡片右缘换算）：
+  `CC02/走查/_tools/0923/probe-queued-row-scrollbar-gap-0923.mjs`
+  → `CC02/走查/0923-队列右缘间距/probe-queued-row-scrollbar-gap-0923.json`；
+  成对图 `{before,after}-card-{light,dark}-2x.png` / `{before,after}-right-{light,dark}-2x.png`
+  - 4× 放大对照 `zoom-{light,dark}-before-over-after-4x.png`。
+- 三颗按钮间距：`CC02/走查/_tools/0923/probe-queued-actions-gap-0923.mjs`
+  → `CC02/走查/0923-队列按钮间距/probe-queued-actions-gap-0923.json` + 3× 放大对照
+  `zoom-{light,dark}-before-over-after-3x.png`。
+- 本轮为几何改动、无颜色 / 文字变化，未跑 axe；无业务单测覆盖（纯 CSS 值）。
+
+## 0923 评论（返回按钮同族：会话看板「返回当前会话」对齐设置页「返回」）
+
+设计师 2026-09-23 两条预览评论互为参照（mock 用例 `desktop-full`，看板经侧栏活动器
+`[data-testid="desktop-sidebar-activity"]`，设置页经输入框 `/config`）：
+
+1. 点 `button.session-board-back`「返回当前会话」：「这个返回样式和下面选的保持一致」
+2. 点 `button.settings-back`「返回」：「和这里保持一致」← **参照物 = 2**
+
+读法（已向设计师报备）：② 是参照物，① 指同一件事；看板里唯一「下面」的控件是项目筛选器
+（`.session-board-filter`，160×32 / r6 / 带边框的输入类控件），与 ghost 文字的返回按钮不属同族，
+「保持一致」无从谈起 → 若设计师另有所指需其点名。①的「下面选的」按 ② 解读。
+
+### 改动（2 文件）
+
+- `host-desktop.css` 新增 0923 块（紧接 `.settings-back` 那组之后）：
+  `[data-host="desktop"] .session-board-back { height: 30px; color: var(--vscode-foreground);
+font-weight: var(--cc-font-weight-medium, 500) }`、`:hover { background: #eef0f3 }`，
+  以及 `[data-host="desktop"] .session-board-back .codicon`（两档选择器一组）
+  `{ color: var(--vscode-foreground) }`。
+- `SessionBoard.css` 桌面深色块：静止 `#9a9ea5` → `var(--vscode-foreground)`；
+  hover 去掉 `color: #ffffff`（与 `.settings-back` 同行为：悬停只变底）。
+
+### 实测（headed Chromium / 2x，浅深两档 pageerror 0）
+
+| 量                        | 看板 改前                  | 看板 改后             | 设置页 参照       |
+| ------------------------- | -------------------------- | --------------------- | ----------------- |
+| 盒                        | 124×**32** r8              | 124×**30** r8         | 215×30 r8         |
+| 文字色 浅 / 深            | #6C7076 / #9A9EA5          | **#202020 / #E5E7E8** | #202020 / #E5E7E8 |
+| 图标色 浅 / 深            | #606060 / #CCCCCC          | **#202020 / #E5E7E8** | #202020 / #E5E7E8 |
+| 字重 / 字号 / 内衬 / 圆角 | 500 / 14px / `0 8px` / 8px | 逐值同                | 逐值同            |
+| hover 底 浅 / 深          | #F0F2F5 / 白 8%            | **#EEF0F3** / 白 8%   | #EEF0F3 / 白 8%   |
+| hover 文字色 深           | **#FFFFFF**（提亮）        | #E5E7E8（不变）       | #E5E7E8（不变）   |
+| 正文对比度 浅 / 深        | 4.98:1 / 6.93:1            | **16.29:1 / 15.02:1** | 15.34:1 / 14.08:1 |
+
+九维逐值一致；**邻居零位移**（工具条 / 表头（含下方筛选器）/ 列区 / 面板 dx·dy·dh 全 0——
+少掉的 2px 被工具条内部吸收）。
+
+### 两个可复用认知
+
+- ★ **`.codicon` 的 color 是直接声明、会盖掉继承**：`globals.css` 的
+  `.codicon { color: var(--vscode-icon-foreground) }` 优先级高于「从按钮继承」，
+  只改按钮 `color` 时**图标纹丝不动**（实测停在浅 #606060 / 深 #CCCCCC），
+  必须再单写一条 `.session-board-back .codicon`。设置页那颗是 SVG，0916 就单列了 `.settings-back svg`。
+- **深色档要写回组件 CSS**：`SessionBoard.css` 的深色规则是 `[data-host][data-theme]` = (0,3,0)，
+  与 `host-desktop.css` 的 `[data-host="desktop"] .class` **同分**，而组件 CSS 于 `index.tsx:6`
+  之后加载 ⇒ 同分 base 胜；浅色档 base 只有 (0,1,0)/(0,2,0)，故浅色与几何可写在一处。
+
+### 未改（待设计师裁决）
+
+箭头**字形**：看板是 codicon 字体 `codicon-arrow-left`，设置页是 Figma SVG `SettingsBackIcon`。
+栅格化对齐后墨迹 24×20 vs 22×20 设备像素、墨迹点数 114 vs 140（SVG 笔画略粗）、
+最佳对齐形状不一致 5.14%；改前/改后同一字形 0–0.48%（只换色、几何未动）。
+属「图标换稿」，按 0917 的「逐个点名，只改圈的」不自发做。
+
+### 残留触发语
+
+- 「图标也换成设置页那个箭头」（codicon → Figma SVG）
+- 「① 我说的是下面那个筛选器」/「看板那颗 hover 也提亮」/「返回按钮再矮一点」
+
+### 验证脚本与证据
+
+- `CC02/走查/_tools/0923/probe-back-family-0923.mjs` → `CC02/走查/0923-返回按钮同族/probe-back-family-0923.json`
+  （同页两阶段：after = 工作区；before = 注入 `<style id="rollback-0923-back">` 回退
+  32px / #6C7076 / #F0F2F5，深色再回退 #9A9EA5 + hover #FFFFFF + `.codicon` 的 icon-foreground。
+  设置页需**另开一个页面会话**——看板打开后对话输入框不可见，`/config` 进不去）。
+- 拼图 `CC02/走查/_tools/0923/make-back-family-assets-0923.py` →
+  `zoom-{light,dark}-{rest,hover}-{1x-device,2x}.png`（三行：改前 / 改后 / 参照）
+  - `zoom-{light,dark}-arrow-glyph-4x.png`（箭头字形 4×）。
+- 本轮为配色/几何对齐，无业务单测覆盖（纯 CSS 值）；对比度按 WCAG 相对亮度在探针内计算。
+
+## 0923 评论（图标方向：两颗披露箭头「上 → 下」）
+
+### ① 结论
+
+她 2026-09-23 预览走查，同页两条评论点的是同一族 disclosure chevron 的**展开态**：
+
+1. `svg.desktop-session-group-chevron`（侧栏项目分组头 `button.desktop-session-group-header`，`aria-label="收起分组 CC02"`）：「**这个按钮反了**」；
+2. `svg.header-icon`（账户卡用量区显隐按钮 `button.account-card-collapse-btn`，`aria-label="收起用量"`）：「**这里也是**」。
+
+两颗画的都是官方矢量里的「上」，而产品内其它披露控件的语义是 **展开 = 朝下**（`DiffPane.tsx:443` /
+`DiffFileTree.tsx:89` 都走 `codicon-chevron-${isExpanded ? "down" : "right"}`），她 0921 对同一条官方矢量
+也说过「**还要注意箭头的方向，现在反了**」。
+
+修法 = **同一条官方矢量绕盒心转 180°**（刚体变换 ⇒ 描边粗细、端点圆角、墨迹盒尺寸逐像素保持），
+与 0921 设置页下拉三角「用同一条官方矢量翻转」同一做法，不是换稿。
+
+Figma 这套里 16 画板的分组 chevron 只给了「上」（`13498:16662`）与「右」（`13561:39968`）两条，
+24 画板的账户那颗只给了「上」（`13651:4244`），没有现成的「下」。
+
+### ② 改动落点（3 个文件，base 一个字没动）
+
+| 文件                                   | 改动                                                                   |
+| -------------------------------------- | ---------------------------------------------------------------------- |
+| `DesktopSidebar.tsx`（`GroupChevron`） | 展开态加 `transform="rotate(180 8 8)"`；收起态「右」原样不动           |
+| `HeaderIcons.tsx`                      | `ChevronUpIcon` → `ChevronDownIcon`（同一 path + `rotate(180 12 12)`） |
+| `AccountCard.tsx`                      | 引用改名：`{usageCollapsed ? <QuotaIcon /> : <ChevronDownIcon />}`     |
+
+收起态的两颗（分组「右」= `13561:39968`、账户仪表盘 = 额度图标）本轮没碰，作为对照项。
+
+### ③ 实测（改前为真回退构建：备份 → `git checkout --` → 采集 → 还原后 md5 校验）
+
+方向判定不靠肉眼：把 svg 序列化 → `drawImage` 到 canvas → 逐行/逐列统计墨迹宽度，
+墨迹盒「宽而扁」= 竖 chevron（尖端行落在盒子上半即「上」、下半即「下」）。
+
+|                   | ① 分组头 chevron（展开态）                                | ② 账户卡按钮（展开态）                                                |
+| ----------------- | --------------------------------------------------------- | --------------------------------------------------------------------- |
+| 墨迹朝向          | 上「^」 → 下「v」                                         | 上「^」 → 下「v」                                                     |
+| 墨迹盒（64 栅格） | 32×18 @y23–40 → **32×18 @y23–40（逐值相同）**             | 22×13 @y26–38 → 22×13 @y25–37（同尺寸，位置差 1 栅格 ≈ 0.375 CSS px） |
+| 按钮盒            | x12 y118 235×30（含「CC02」文案）**逐值不变**             | x217 y858 30×30 **逐值不变**                                          |
+| 变化像素          | 108 px（暗）/ 116 px（亮），全落在图标 16×10 设备像素框内 | 116 px（暗、亮相同），全落在图标 16×10 设备像素框内                   |
+| 收起态对照        | 「右」：**0 变化像素**（暗、亮两档都是 0）                | 仪表盘：**0 变化像素**（暗、亮两档都是 0）                            |
+
+- 分组那颗翻转后墨迹盒逐值相同，因为它本身墨迹中心正好在画板中心 8.0；
+- 账户那颗有 **1 栅格（≈0.375 CSS px）** 的上下漂移：源矢量墨迹中心在 12.18，绕画板中心 12 镜像后落到
+  11.82。已作为残留项交她裁决（要不要顺手居中）。
+- 两阶段 `pageerror` 均为 0；`tsc --noEmit` 退出 0；旧名 `ChevronUpIcon` 零残留
+  （grep 全仓 0 命中）。
+- 范围：`DesktopSidebar` / `AccountCard` 只由 `DesktopShell` 渲染 ⇒ **IDE 宿主（VS Code / JetBrains）不受影响**，
+  与「只改桌面端」一致。
+
+### ④ 一个说明
+
+`button.account-card-collapse-btn` 的 `aria-label` 会随状态在「展开用量 / 收起用量」间切换，
+`aria-expanded` 同步；探针是按这两个属性确认「确实处于展开态」才取的方向读数，不是按位置猜的。
+
+### ⑤ 残留触发语（未授权）
+
+- 「箭头再居中一点」（账户卡那颗 0.375 CSS px 的上下漂移抹平）
+- 「同族箭头也一起核」（设置页下拉三角 / DiffPane / DiffFileTree 等其它 chevron 家族）
+- 「箭头再粗一点」/「箭头加个转动过渡」
+- 「收起态也换成箭头」（分组收起态现在仍是「右」，账户收起态是仪表盘）
+
+### 验证脚本与证据
+
+- 探针 `CC02/走查/_tools/0923/probe-chevron-direction-0923.mjs` → `/tmp/metrics-0923-icon-direction-{before,after}.json`
+  （四态 × 双主题；每态**在那一态当场截图**，收起态是真收起后抓的，不是复用展开帧）
+- 裁切 / 逐像素对比 `CC02/走查/_tools/0923/diff-and-compare-icon-direction-0923.py` →
+  `CC02/走查/0923-图标方向/{before,after,shots,compare}/`（并集框裁切，拒绝覆盖旧图）
+- 报告 `CC02/走查/0923-图标方向-report/index.html`（skill 母版 v1.1 生成；verify 脚本退出 0、
+  8 条 finding 全 `broken: []`、axe 浅/深 **0 违规**、640 窄屏无溢出、图片加载 0 错误）
+- 本轮是纯几何翻转（无 CSS 值改动、无业务逻辑），无单测覆盖；对比度不受影响（只翻方向不改颜色）。
+
+## 0923 评论（确认弹窗 AskUserQuestion：滚动区域收进选项列表 + 右缘拉齐）
+
+### ① 结论
+
+她 2026-09-23 预览走查（用例「临时：问题待回答 · 多选数据」）两轮评论：
+
+1. 点 `div.options-list`（「重跑并修复 / 立即重跑失败用例并定位修复 / 先跳过，记录成待办继续当…」）：
+   「**滚动区域应该是这里面**」→ 滚动容器从 `.confirmation-body` 收到 `.options-list`，
+   弹窗标题 / 进度条 / 题干留在原地。
+2. 她随后选「**按 B 实现我看一下，然后规则可以同步到其他端**」= 方案 B（不预留滚动条列，
+   不滚的短题目卡片铺满 734）。看完 B 又点 `div.question-item` 追问
+   「**这里进度条和文案不能右侧也拉齐吗？**」→ 落地**方案 C**：滚动条那一列按需让出。
+
+方案 C 的做法：`.question-item` 的 `padding-right: 16px` 与 `.options-list` 的
+`margin-right: -16px` 都改成「只在列表真的溢出时」生效（组件测 `scrollHeight > clientHeight`
+挂 `.is-list-scrollable`）。于是
+
+- 列表**不**溢出（短题目）：不留列，题干 / 进度条 / 卡片一起铺满 **734**，三者右缘对齐；
+- 列表溢出：三者一起收 **718**，滚动条落回原来那一列（x 1200.5–1216.5，与改前基线同 x）。
+
+「同步到其他端」= 规则写在 base 文件（`ConfirmationDialog.css` + 组件共享逻辑），
+IDE（VS Code / JetBrains）与桌面已经同一行为，不需要额外动作。
+
+改前：溢出全落在 `.confirmation-body` 上（滚轮压在选项行上，动的是 body），
+标题、进度条、题干会一起被卷出视口。
+
+### ② 改前实测（真回退基线）
+
+| 元素                            | clientH / scrollH | overflow-y | 滚轮滚它？                |
+| ------------------------------- | ----------------- | ---------- | ------------------------- |
+| `.confirmation-body`            | 482 / 688         | auto       | **是**（scrollTop 0→206） |
+| `.ask-user-questions`           | 648 / 648         | visible    | 否                        |
+| `.question-item`                | 648 / 648         | visible    | 否                        |
+| `.options-list`（她点的那一层） | 600 / 600         | visible    | 否                        |
+
+滚不动的根因：这一支的容器高度没传下来 —— 每层默认 `min-height: auto`（等于内容高度）
+挡住收缩，于是溢出全落在 `.confirmation-body`。另：`.confirmation-body` 自带
+**16px 滚动条列**（桌面设计层的实占轨道，盒 734 / 内容 718，x 1200.5–1216.5），
+所以改前「题干 / 进度条 / 卡片」右缘都在 1200.5，与滚动条列左缘对齐。
+
+### ③ 改法（`ConfirmationDialog.css` + `ConfirmationDialog.tsx`）
+
+```css
+/* 高度沿 .confirmation-body → .ask-user-questions → .question-item → .options-list 传下去 */
+.ask-user-questions {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.question-item {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.question-progress-bar,
+.question-header-row {
+  flex-shrink: 0;
+} /* 6px 条 / 24px 题干行不许被压 */
+.options-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 滚动条那一列按需让出（方案 C）：溢出时题头 / 进度条内衬 16px、列表盒伸进这 16px
+   （自身滚动条正好落回同一列）；不溢出时两边都不动，三者一起铺满 734。 */
+.question-item.is-list-scrollable {
+  padding-right: 16px;
+}
+.question-item.is-list-scrollable .options-list {
+  margin-right: -16px;
+}
+
+.confirmation-body:has(.ask-user-questions) > .confirmation-header {
+  flex-shrink: 0;
+}
+```
+
+```tsx
+// 组件侧（约 20 行，不动布局结构与语义）：溢出与否只有量了才知道
+const [questionsListScrollable, setQuestionsListScrollable] = useState(false);
+const measureQuestionsList = useCallback(() => {
+  const el = questionsListRef.current;
+  if (el) setQuestionsListScrollable(el.scrollHeight > el.clientHeight);
+}, []);
+useLayoutEffect(measureQuestionsList); // 每次渲染后量一次（切题 / 选中 / 其他输入框长高）
+useEffect(() => {
+  // 只改盒子不改内容（窗口 / 面板宽度）时补量
+  const el = questionsListRef.current;
+  if (!el || typeof ResizeObserver === "undefined") return;
+  const observer = new ResizeObserver(measureQuestionsList);
+  observer.observe(el);
+  return () => observer.disconnect();
+}, [confirmation.toolName, measureQuestionsList]);
+// 渲染：className={`question-item${questionsListScrollable ? " is-list-scrollable" : ""}`}
+```
+
+`flex-shrink: 0` 三处是必需的：不设的话收缩额度会按 basis 分摊，6px 进度条被压到
+4.1px、24px 题干行被压到 16.5px、32px 标题行被压到 22.3px。为什么必须上 JS：
+`scrollbar-gutter` 只能「恒留」或「恒不留」（恒留 = 短题目右缘空 16px；恒不留 = 题头比
+卡片窄 16px），「按需」纯 CSS 表达不了。不会来回抖：列表变窄只会让内容更高，
+状态翻转后不会翻回去（两态各采样 24 次取值唯一，值不变时 React 忽略本次 setState）。
+除题目这一支外，其余确认类型仍由 `.confirmation-body` 滚。
+
+### ④ 改后实测（三版对照）
+
+| 项                             | 未改动基线      | 上一版 B                 | 本版 C（当前）                         |
+| ------------------------------ | --------------- | ------------------------ | -------------------------------------- |
+| 滚轮滚的是谁                   | body 0→206      | `.options-list` 0→206    | `.options-list` 0→206（不变）          |
+| body / list 溢出（长列表）     | 482/688·600/600 | 482/482（不滚）·394/600  | 482/482 · **394/600（不变）**          |
+| 滚动条列 x（滚动中）           | 1200.5–1216.5   | 1200.5–1216.5（不变）    | 1200.5–1216.5（不变）                  |
+| 卡片宽（滚动中 / 不滚）        | 718 / 734       | 718 / 734                | **718 / 734（两态与基线一致）**        |
+| 题干·进度条宽（滚动中 / 不滚） | 718 / 734       | 718 / **718**            | **718 / 734**                          |
+| 不滚时三者右缘（图内像素实测） | 1216 对齐       | 进度条 1200 vs 卡片 1216 | **进度条 1216 vs 卡片 1216**           |
+| 长列表滚动中 B↔C 逐像素差异   | —               | —                        | **0 px**（bbox = None）                |
+| 短题目 B↔C 显著差异（>8/255） | —               | —                        | 880 px（0.08%），只在进度条 12px 横带  |
+| 「其他」输入框长高到溢出       | —               | —                        | class 自动翻转、题头跟着收 16px 仍对齐 |
+
+互动回归：滚到列表底再切题 → 新题 `scrollTop` 被浏览器夹回 0、获焦选项完整可见；
+「其他」输入框撑高 → 弹窗先长高、到 max-height 后列表内滚；两用例 pageerror 0/0。
+其余确认类型（`desktop-full` 的 executeBash）实测未进任何新选择器：`.options-list` 不存在、
+header / body 的 `flex-shrink` 仍为 1、`overflow-y` 仍 auto。
+
+### ⑤ 三案沿革（留给后续裁决）
+
+| 案   | 做法                                                            | 不滚时                   | 代价                                         |
+| ---- | --------------------------------------------------------------- | ------------------------ | -------------------------------------------- |
+| A    | 加 `scrollbar-gutter: stable`（列恒在）                         | 卡片 718、右侧 16px 空列 | 短题目右缘空 16px                            |
+| B    | 不加（列按需，但题头也跟着不留）                                | 卡片铺满 734             | 题头/进度条 718 与卡片错位 16px、切题跳 16px |
+| C ✅ | JS 探测溢出（`scrollHeight > clientHeight` 加 class），两套宽度 | 三者都 734               | 多一个测量 effect + class（纯 CSS 无解）     |
+
+### ⑥ 残留 / 备用触发语
+
+- 「切题时记住上一次滚动位置」（现在是夹回 0，新题从头看）。
+- 「选项列表滚到底时别带动外面」（`overscroll-behavior: contain`）。
+- 「其余确认类型也按这个收一收」—— 目前只改题目这一支，Bash / diff / MCP / 计划确认
+  仍由 `.confirmation-body` 滚。
+- 「滚动条列干脆恒留」——换回方案 A（短题目右缘会恢复那 16px 空档）。
+- 「只留桌面端」—— 现在规则在 base、三端同行为（她 0923 明确说可以同步到其他端）。
+
+### ⑦ 验证脚本与证据
+
+- 探针：`CC02/走查/_tools/0923/probe-options-scroll-0923.mjs`（祖先链几何 + 滚轮归属）、
+  `probe-options-scroll-q2-0923.mjs`（长短题目宽度）、`probe-options-scroll-c-0923.mjs`
+  （C 版：两态 + 「其他」长高翻转 + 24 次稳定性采样）、`probe-verify-0923.mjs`（行为回归 +
+  executeBash 未受影响）、`shots-options-scroll-0923.mjs`（三状态出图，第二参 = 版本后缀；
+  改前基线走真回退：备份 → `git checkout --` → 采集 → 还原并核 md5 逐字节一致）。
+- 报告（skill 母版 v1.1，**改前 = 上一版 B**）：`CC02/走查/0923-选项区滚动报告-c/index.html`
+  （方案 C，3 条：短题目拉齐 / 右缘 ×4 特写 / 长列表滚动两版逐像素相同），自检
+  `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
+  方案 A / B 那两版留在 `CC02/走查/0923-选项区滚动报告/index.html`、`…报告-b/index.html`
+  （不覆盖历史报告）。
+
+## 0923 评论（设置区圆角统一 8px：输入类 / 页内提交按钮 / 弹窗关闭，仅桌面端）
+
+### ① 来源
+
+她 2026-09-23 在圆角审计报告（`CC02/走查/0923-设置区圆角审计/index.html`）的 B 表上点名六条：
+
+> B中的，输入类·下拉触发器、输入类·文本输入、输入类·数字输入、输入类·多行文本域、页内提交按钮、弹窗关闭统一成8px，仅桌面端
+
+同一轮她还要求先把「插件市场小控件 / 弹窗关闭 / 弹窗分段项 / 项目卡片」这四族截图进报告
+（原话：「插件市场小控件、弹窗关闭、弹窗分段项、项目卡片我不知道是指哪里，可以帮我截图放在 html
+里面我看看吗」）→ 报告新增 **B′ 段**（速查表 + 每族全景红框定位图 + 1:1 / 4× 圆角特写），
+她据此给出上面这条裁决。**报告属走查产物，不进本仓库。**
+
+### ② 改动（1 文件，1 条规则）
+
+`packages/webview/src/styles/host-desktop.css` 新增 0923 块（插在 `.session-board-back .codicon`
+那组之后、`桌面端其余控件图标统一 #565A60` 之前）：
+
+```css
+[data-host="desktop"] .settings-select-trigger,
+[data-host="desktop"] .settings-number-input,
+[data-host="desktop"] .settings-text-input,
+[data-host="desktop"] .settings-textarea,
+[data-host="desktop"] .settings-save-btn,
+[data-host="desktop"] .settings-modal-close {
+  border-radius: var(--cc-radius-md, 8px);
+}
+```
+
+被覆盖的 base 6px 共五处声明（`SettingsPage.css`）：
+
+| base 落点          | 类                                                                       | 值  |
+| ------------------ | ------------------------------------------------------------------------ | --- |
+| `:413-428`（一组） | `.settings-select` / `-select-trigger` / `-number-input` / `-text-input` | 6px |
+| `:551`             | `.settings-save-btn`                                                     | 6px |
+| `:681`             | `.settings-textarea`                                                     | 6px |
+| `:1569`            | `.settings-modal-close`                                                  | 6px |
+
+8px 的参照 = 同页 `.settings-row-btn` / 桌面左导航项 / 返回（`host-desktop.css:2827`、`2837`），
+以及她 0915 已定的弹窗底部按钮 8px（`SettingsPage.css:1630`/`1875`/`1889`）与 0916 关闭按钮族
+（`.desktop-pane-close` 等，`host-desktop.css:2070`）。本轮是把设置区这两族补到同档。
+
+**为什么写在 `[data-host="desktop"]` 而不是改 base 值**：她明确「仅桌面端」；改 base 会连
+IDE / VS Code 宿主一起变。这些 base 声明都是单类 (0,1,0)，`[data-host="desktop"] .x` = (0,2,0) 稳胜；
+圆角不随主题变（审计实测浅深逐条一致）故不需要 dark 分叉。
+
+### ③ 实测（headed Chromium / dpr2，用例 `desktop-full` + `desktop-plugins`，两档 pageerror 0）
+
+| 族         | 选择器                     | 盒       | 改前 | 改后    | 非桌面宿主 |
+| ---------- | -------------------------- | -------- | ---- | ------- | ---------- |
+| 下拉触发器 | `.settings-select-trigger` | 260×32   | 6px  | **8px** | 6px        |
+| 文本输入   | `.settings-text-input`     | 260×32   | 6px  | **8px** | 6px        |
+| 数字输入   | `.settings-number-input`   | 242.9×32 | 6px  | **8px** | 6px        |
+| 多行文本域 | `.settings-textarea`       | 686×120  | 6px  | **8px** | —（未见）  |
+| 页内提交   | `.settings-save-btn`       | 60×32    | 6px  | **8px** | 6px        |
+| 弹窗关闭   | `.settings-modal-close`    | 28×28    | 6px  | **8px** | 6px        |
+
+- **盒子逐值相同、零位移**（改前 / 改后同一元素同尺寸）。
+- **非桌面宿主反证**：同一页面把 `data-host` 改成 `vscode` → 六族逐条回到 6px（覆盖层失配即回落 base）。
+- **未点名控件保持原档**：筛选胶囊 `.settings-plugin-chip` 6px、版本胶囊 `.settings-plugin-version` 6px、
+  插件行 `.settings-plugin-row` 8px（本来就是 8）。
+- **整页像素差**：浅 **300 / 5,184,000**（0.006%，bbox `2036,496–2396,560`）、
+  深 **304 / 5,184,000**（bbox `2036,382–2396,560`）——只落在控件四角，其余零变动。
+
+### ④ 可复用认知
+
+- ★ **`.settings-select` 是 IDE 宿主专属**：`SettingsSelect.tsx:37-54` 按 `isDesktopHost()` 分叉，
+  桌面端渲染的是自绘 `.settings-select-trigger`（0916 起）。写桌面选择器时把 `select.settings-select`
+  列进去是**越权**（它永远不在桌面 DOM 里），正确做法是只列桌面实际命中的那个类。
+- **改前基线用同页注入回滚规则**：把六族按 base 的 6px 写回（`!important`）模拟 base 真值，
+  比真退构建快且可同帧对比；注意**注入了就要在下一族测量前移除**——本轮曾把回滚 `<style>`
+  遗留在页面里，导致 `.settings-textarea` 的「改后」读出 6px（假失败）。已抽成 `applyRollback(on)` 成对调用。
+- **`border-radius` 的证据只能看角**：整页像素差 0.006% 属预期（六族只占极小面积），
+  结论要靠「同族三态值 + 角部 4× 放大图 + 盒子不变」三条并列，别只看 diff 计数。
+
+### ⑤ 未改（她未点名，见报告残留清单）
+
+- 插件市场小控件：`.settings-plugin-chip` / `-version` / `-upgrade` / `-update-badge`（6px）
+- 弹窗分段内层：`.settings-modal-seg-item`（6px，**外壳已是 8px** → 同弹窗内两种口径并存）
+- `.project-item`（6px，桌面端未渲染）、`.settings-project-card`（6px，**死代码**：
+  `bba748e5`「删项目分组与切换按钮」后无渲染点，仅陈旧未跟踪产物里还留着）
+
+### ⑥ 残留触发语
+
+- 「市场小控件也用 8」/「分段项和外壳取同一档」/「项目列表项也用 8」/「项目分组卡片也用 12」
+
+### ⑦ 验证脚本与证据
+
+- 探针 `CC02/走查/_tools/0923/probe-radius-desktop8-0923.mjs` →
+  `CC02/走查/0923-设置区圆角-8px/radius-desktop8.json` + 截图（三态：改后 / 改前 / 非桌面宿主，
+  外加未点名控件对照）。
+- 报告 `CC02/走查/0923-设置区圆角-8px/index.html`（本地原件，未发远端）：4 张统计卡 +
+  每族四张并列（改前/改后 × 浅/深，1:1 + 4× 左上角放大）+ 未点名清单 + 残留触发语 + 复现命令。
+- 审计报告（含本轮新增的 B′ 定位图段）`CC02/走查/0923-设置区圆角审计/index.html`，
+  自检 `verify-settings-radius-report-0923.mjs`：50 图加载、0 错误、锚点可达。
+- 本轮纯 CSS 值改动，无业务单测覆盖。
