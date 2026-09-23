@@ -155,7 +155,11 @@
   word-break: break-word;
 }
 
-.messages-container.streaming::after {
+/* The streaming caret is a flex item of the conversation column
+   (.messages-column, which owns the flex-column layout) so it lands at the
+   column's content left edge, exactly as it did when the column WAS
+   .messages-container. */
+.messages-container.streaming .messages-column::after {
   content: "▋";
   animation: blink 1s ease-in-out infinite;
   align-self: flex-start;
@@ -165,7 +169,7 @@
 
 /* While compacting, the hint below carries its own blinking cursor — suppress
    the container's plain streaming cursor to avoid a double cursor. */
-.messages-container.compacting::after {
+.messages-container.compacting .messages-column::after {
   content: none;
 }
 
