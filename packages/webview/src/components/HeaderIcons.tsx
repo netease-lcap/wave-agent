@@ -719,7 +719,10 @@ export const QuotaIcon: React.FC<IconProps> = ({
 // 账户卡片用量区显隐按钮（展开态「收起用量」箭头）— Figma 功能图标
 // (13651:4244，24 artboard chevron，stroke #565A60 → currentColor)。设计稿
 // 13651:4911 三态实例中展开态即此官方 chevron，替换原 codicon-chevron-up 字形。
-export const ChevronUpIcon: React.FC<IconProps> = ({
+// ⚠️ 官方矢量画的是「上」，而展开态的语义方向是「下」（产品里其它披露控件都是
+// expanded→chevron-down：DiffPane / DiffFileTree），故绕画板中心转 180° 得到「下」
+// ——她 0923 评论「这里也是（反了）」；同一形状、同一 stroke，只翻方向。
+export const ChevronDownIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
   <svg
@@ -731,6 +734,7 @@ export const ChevronUpIcon: React.FC<IconProps> = ({
   >
     <path
       d="M8.77539 13.6128L11.6474 10.7408C11.8427 10.5455 12.1593 10.5455 12.3545 10.7408L15.2266 13.6128"
+      transform="rotate(180 12 12)"
       stroke="currentColor"
       strokeWidth="1.4"
       strokeLinecap="round"
