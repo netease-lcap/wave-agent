@@ -3,9 +3,19 @@
  * Handles reading and writing JSONL (JSON Lines) session files for improved performance
  */
 
-import { appendFile, readFile, writeFile, stat, mkdir } from "fs/promises";
+import {
+  appendFile,
+  readFile,
+  writeFile,
+  stat,
+  mkdir,
+  rename,
+  unlink,
+} from "fs/promises";
+import { randomUUID } from "crypto";
 import { dirname } from "path";
 import {
+  forEachLine,
   getLastLine,
   readFirstNLines,
   readTailLines,
@@ -23,6 +33,12 @@ export interface JsonlWriteOptions {
   // Safety options
   atomic?: boolean; // Default: true (write to temp file first)
 }
+
+/**
+ * Flush threshold for `truncateSession`'s output buffer. Only bounds the
+ * rewrite's memory — the file it produces is identical regardless of value.
+ */
+const TRUNCATE_FLUSH_BYTES = 64 * 1024;
 
 /**
  * Creation-time metadata persisted in the session file's header line
@@ -401,6 +417,128 @@ export class JsonlHandler {
       // Unreadable or invalid first line — treat as a legacy file
     }
     return null;
+  }
+
+  /**
+   * Rewrite a session file keeping only its first `keepMessageCount` messages.
+   *
+   * This is the one operation that removes history from a session file
+   * (`/rewind`); every other write appends. It is a filter over the file's
+   * original lines rather than a re-serialization of parsed messages:
+   *
+   * - Reserved entries (`metadata` header, `custom-title`, and any type added
+   *   to `RESERVED_ENTRY_TYPES` later) are carried over byte for byte, wherever
+   *   they sit in the file. Rebuilding the file from `Message[]` used to lose
+   *   them — `read()` filters reserved entries out, so a rewrite could not see
+   *   the header or the title — which silently degraded the session to the
+   *   "legacy file without a header" shape: `createdAt` fell back to
+   *   `new Date()`, `gitBranch` vanished, and the title could never be read
+   *   back again.
+   * - Lines that are neither reserved nor a message (no `timestamp`) are also
+   *   carried over, so an entry type written by a newer version survives a
+   *   rewind performed by an older one.
+   * - Only message lines past `keepMessageCount` are dropped.
+   *
+   * The result is written to a temp file and renamed into place, so an
+   * interrupted rewrite leaves the original file untouched.
+   *
+   * The "is this a message line" test deliberately mirrors `read()`
+   * (`!isReservedEntry(type) && timestamp`) and the partial-trailing-line
+   * tolerance mirrors its interrupted-append handling, so the caller's message
+   * count and this file's line order stay in step.
+   *
+   * @param filePath - Session JSONL path (must already exist)
+   * @param keepMessageCount - Number of leading messages to keep
+   */
+  async truncateSession(
+    filePath: string,
+    keepMessageCount: number,
+  ): Promise<void> {
+    const tempPath = `${filePath}.tmp.${process.pid}.${randomUUID()}`;
+
+    try {
+      // Materialize the temp file up front so an empty result still renames.
+      await writeFile(tempPath, "", "utf8");
+
+      let keptMessages = 0;
+      let pendingBrokenLine = false;
+      let buffered: string[] = [];
+      let bufferedLength = 0;
+
+      const flush = async (): Promise<void> => {
+        if (buffered.length === 0) {
+          return;
+        }
+        await appendFile(tempPath, buffered.join(""), "utf8");
+        buffered = [];
+        bufferedLength = 0;
+      };
+
+      const keepLine = async (line: string): Promise<void> => {
+        const chunk = `${line}\n`;
+        buffered.push(chunk);
+        bufferedLength += chunk.length;
+        if (bufferedLength >= TRUNCATE_FLUSH_BYTES) {
+          await flush();
+        }
+      };
+
+      const handleLine = async (raw: string): Promise<void> => {
+        const line = raw.trim();
+        if (line.length === 0) {
+          return;
+        }
+
+        let parsed: { type?: string; timestamp?: unknown };
+        try {
+          parsed = JSON.parse(line) as { type?: string; timestamp?: unknown };
+        } catch (error) {
+          if (pendingBrokenLine) {
+            throw new Error(
+              `Invalid JSON in session file "${filePath}": ${error}`,
+            );
+          }
+          pendingBrokenLine = true;
+          return;
+        }
+
+        // A parseable line after a broken one proves the broken line was not
+        // the file's last, so it is corruption rather than a partial write.
+        if (pendingBrokenLine) {
+          throw new Error(
+            `Invalid JSON in session file "${filePath}": truncated trailing line`,
+          );
+        }
+
+        if (isReservedEntry(parsed.type) || !parsed.timestamp) {
+          await keepLine(line);
+          return;
+        }
+
+        if (keptMessages < keepMessageCount) {
+          keptMessages++;
+          await keepLine(line);
+        }
+      };
+
+      const { endsWithNewline } = await forEachLine(filePath, handleLine);
+
+      // A broken line is only acceptable as the last line of a file that lacks
+      // a trailing newline — the residue of an interrupted append.
+      if (pendingBrokenLine && endsWithNewline) {
+        throw new Error(`Invalid JSON in session file "${filePath}"`);
+      }
+
+      await flush();
+      await rename(tempPath, filePath);
+    } catch (error) {
+      try {
+        await unlink(tempPath);
+      } catch {
+        // Cleanup is best effort — the original error is more important.
+      }
+      throw error;
+    }
   }
 
   /**

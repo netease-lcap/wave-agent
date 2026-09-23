@@ -16,6 +16,7 @@ vi.mock("../../src/services/session.js", async (importOriginal) => {
     createSession: vi.fn().mockResolvedValue(undefined),
     appendMessages: vi.fn().mockResolvedValue(undefined),
     reAppendSessionMetadata: vi.fn().mockResolvedValue(undefined),
+    truncateSession: vi.fn().mockResolvedValue(undefined),
     loadSessionFromJsonl: vi.fn(),
     loadFullMessageThread: vi.fn(),
   };
@@ -290,16 +291,16 @@ describe("MessageManager Single-Session Rewind", () => {
       "a4b",
     ]);
 
-    // The session file keeps the full truncated history (incl. pre-compact
-    // duplicates) so checkpoints can still rewind before the compact boundary
-    const { writeFile } = await import("fs/promises");
-    expect(writeFile).toHaveBeenCalledTimes(1);
-    const writtenContent = vi.mocked(writeFile).mock.calls[0][1] as string;
-    const writtenIds = writtenContent
-      .trim()
-      .split("\n")
-      .map((line) => (JSON.parse(line) as { id: string }).id);
-    expect(writtenIds).toEqual(messages.slice(0, 18).map((m) => m.id));
+    // The session file is rewritten down to the first 18 messages (incl.
+    // pre-compact duplicates) so checkpoints can still rewind before the
+    // compact boundary. The rewrite itself keeps the file's reserved entries.
+    expect(sessionService.truncateSession).toHaveBeenCalledTimes(1);
+    expect(sessionService.truncateSession).toHaveBeenCalledWith(
+      messageManager.getSessionId(),
+      18,
+      workdir,
+      "main",
+    );
   });
 
   it("should keep savedMessageCount folded after rewinding past a compact boundary so new messages still persist", async () => {

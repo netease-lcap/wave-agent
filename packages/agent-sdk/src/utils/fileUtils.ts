@@ -77,6 +77,49 @@ export async function readFirstNLines(
 }
 
 /**
+ * Streams a file line by line without holding it in memory.
+ *
+ * Splits on `\n` and hands each segment to `onLine`; a trailing `\r` is left
+ * for the callback's own `trim()`. When the file does not end with a newline,
+ * the trailing partial segment is delivered too, so callers can apply the same
+ * "interrupted append" tolerance `JsonlHandler.read()` uses — its
+ * `endsWithNewline` flag is exactly the return value here.
+ *
+ * Memory stays at one line: chunks are consumed as they arrive and are not
+ * accumulated.
+ *
+ * @param {string} filePath - The path to the file.
+ * @param {(line: string) => void | Promise<void>} onLine - Called per segment, in file order.
+ * @return {Promise<{ endsWithNewline: boolean }>} - Whether the file ended with a newline (empty files count as true).
+ */
+export async function forEachLine(
+  filePath: string,
+  onLine: (line: string) => void | Promise<void>,
+): Promise<{ endsWithNewline: boolean }> {
+  const fileStream = createReadStream(filePath, { encoding: "utf8" });
+
+  try {
+    let carry = "";
+    for await (const chunk of fileStream) {
+      carry += chunk as string;
+      let newlineIndex = carry.indexOf("\n");
+      while (newlineIndex !== -1) {
+        await onLine(carry.slice(0, newlineIndex));
+        carry = carry.slice(newlineIndex + 1);
+        newlineIndex = carry.indexOf("\n");
+      }
+    }
+
+    if (carry.length > 0) {
+      await onLine(carry);
+    }
+    return { endsWithNewline: carry.length === 0 };
+  } finally {
+    fileStream.destroy();
+  }
+}
+
+/**
  * Reads a file from the end and returns the last non-empty line.
  *
  * This version supports files that end with:

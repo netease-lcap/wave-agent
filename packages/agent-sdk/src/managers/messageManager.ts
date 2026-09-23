@@ -28,6 +28,7 @@ import {
   generateSessionId,
   // Aliased: this class exposes a `reAppendSessionMetadata` method of its own.
   reAppendSessionMetadata as reAppendSessionMetadataToFile,
+  truncateSession,
   SessionData,
   SESSION_DIR,
 } from "../services/session.js";
@@ -1132,11 +1133,15 @@ export class MessageManager {
       await reversionManager.revertTo(messageIdsToRemove, messages);
     }
 
-    // Rewrite file with truncated messages (full history kept on disk)
-    await this.rewriteSessionFile(newMessages);
-    // The rewrite truncates the file, which physically drops the custom-title
-    // entry (and the metadata header): write the title back immediately, from
-    // the in-memory value.
+    // Keep the first `newMessages.length` messages on disk. Note the count is
+    // the message index, not a file operation: the rewrite walks the file's own
+    // lines and carries reserved entries (metadata header, custom-title) over.
+    await this.rewriteSessionFile(newMessages.length);
+    // The rewrite drops messages but keeps the reserved entries where they sit,
+    // which is not enough for the title: the session list reads only the file's
+    // tail window, and a title written early can end up outside it (the
+    // rewrite keeps the *first* messages, so the survivors after it are exactly
+    // what pushes it away). Re-append it at EOF like the other flush points do.
     await this.reAppendSessionMetadata();
     // The UI keeps the full truncated thread; the agent context folds at the
     // last compact boundary so the agent only sees messages from the latest
@@ -1151,21 +1156,18 @@ export class MessageManager {
   }
 
   /**
-   * Rewrite the session file with the current messages.
+   * Drop everything past the first `keepMessageCount` messages from the
+   * session file. The rewrite is a filter over the file's own lines, so the
+   * metadata header, the user-set title and any other reserved entry survive.
    */
-  private async rewriteSessionFile(messages: Message[]): Promise<void> {
+  private async rewriteSessionFile(keepMessageCount: number): Promise<void> {
     try {
-      const { writeFile } = await import("fs/promises");
-
-      const content =
-        messages
-          .map((m) => {
-            const { timestamp, ...rest } = m;
-            return JSON.stringify({ timestamp, ...rest });
-          })
-          .join("\n") + (messages.length > 0 ? "\n" : "");
-
-      await writeFile(this.transcriptPath, content, "utf8");
+      await truncateSession(
+        this.sessionId,
+        keepMessageCount,
+        this.workdir,
+        this.sessionType,
+      );
     } catch (error) {
       logger?.error("Failed to rewrite session file:", error);
     }
