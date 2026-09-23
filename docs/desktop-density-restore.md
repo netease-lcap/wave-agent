@@ -6689,3 +6689,148 @@ computed font-family 立刻回落 `Arial` ⇒ 基础文件未动、IDE（VS Code
   `CC02/走查/_tools/0922/batch-0922-preview-address-jitter.json`（F-01 编辑态对齐 / F-02 两态叠放 /
   F-03 起点 5× 放大 / F-04 空态占位 / F-05 未修复项：IDE 宿主，各浅深两档）；自检
   `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
+
+## 0922 评论（气泡提示 Tooltip：桌面端统一到 skill 的浮层配方）
+
+### ① 结论
+
+她 2026-09-22 预览走查（hover「新对话」时的气泡提示）：「想要优化这里的样式，**只改桌面端**，
+首先需要它符合 **skill 中全局的色彩规范**，然后**字号是 14px，圆角 8px，上下内边距 4px，
+左右内边距 12px**，哪里不确定的你再问我」。
+
+我先量了改前基线（改前走的是宿主编辑器色），再把不确定的三点摆成选项请她裁定，她选：
+
+1. **范围 = 桌面端全部 Tooltip**（同一个 `Tooltip` 组件被 11 个文件 25 处共用，不做单颗特例）；
+2. **去掉三角角标 + 气泡↔触发间距收到 4px**（skill 的下拉契约）；
+3. **阴影按 skill 引入 `--cc-shadow-popover`**。
+
+同一条评论的第二轮（她看完 14px 效果后）：「**我觉得 12px 字号看着是舒服的**，现在需要
+**所有的都加 100ms 的延时**」。延时我又把三处摆成选项，她逐条选：
+
+4. **只延迟「出现」**（移开仍立即淡出）；
+5. **桌面端全部**消费点（IDE 档保持即时出现）；
+6. **键盘 focus 与 hover 同一套时序**（也延时 100ms）。
+
+色彩全部走语义 token，取自 skill `references/dark-theme.md:38`
+「Tooltip = **bg-overlay、text-primary、border、shadow-popover**；same surface family as menus」；
+行高她没给，按 skill 取档：先 14/22（正文档 `references/conversation-typography.md:30`），
+定档 12px 后改为 **12/20**（辅助档）⇒ 气泡高 = 20 + 4×2 + 1×2 = **30px**。
+
+|                    | 改前（base `.tooltip-box` = 宿主编辑器色） | 改后（桌面语义 token）                                               |
+| ------------------ | ------------------------------------------ | -------------------------------------------------------------------- |
+| 字号 / 行高        | 12px / `normal`                            | **12px / 20px**（12px 是她的定档；行高按 skill 辅助档配对）          |
+| 内边距 / 圆角      | `4px 8px` / 2px                            | **`4px 12px` / 8px**                                                 |
+| 底色（浅 / 深）    | `#FAFAFD` / `#202020`                      | `--cc-bg-overlay` = **`#FFFFFF` / `#232526`**                        |
+| 字色（浅 / 深）    | `#202020` / `#CCCCCC`                      | `--cc-text-primary` = **`#1F2329` / `#E5E7E8`**                      |
+| 描边（浅 / 深）    | `#E4E5E6` / `#454545`                      | `--cc-border` = **`#DCDFE6` / `#414649`**                            |
+| 阴影               | `0 1px 4px rgba(0,0,0,.2)`                 | **`--cc-shadow-popover`** = 浅 `0 0 12px 12%` / 深 `0 12px 30px 40%` |
+| 角标               | 有（`::after` 4px 三角）                   | **无**                                                               |
+| 间距（触发↔气泡） | 8px                                        | **4px**                                                              |
+| 出现时机           | 即时（`transition-delay: 0s`）             | **延迟 100ms**（`transition-delay: 0.1s`，只延迟出现）               |
+
+对比度实测：浅色 **15.78:1**、深色 **12.41:1**（AA 要求 4.5:1）；气泡盒 193.4×27 → **201.4×30**
+（14px 那一版是 229.0×32）。**字号回到 base 的 12px ⇒ 字墨迹 175.4×15 与改前逐值相同**，
+所以本轮真正变的是「皮肤 + 内衬 + 圆角 + 阴影 + 角标 + 间距 + 出现时机」。
+
+### ② 改动落点（2 个文件，base 一个字没动）
+
+- `packages/webview/src/styles/host-desktop.css`
+  - 浅色 token 块 + 深色 token 块各新增 `--cc-shadow-popover`（仓库此前**没有**这个角色，
+    只有一处注释提过它的名字；值 = skill `tokens/tokens.css:130` / `theme/desktop-colors.css:174`）。
+  - 文件末尾新增三条桌面规则：`[data-host="desktop"] .tooltip-box`（皮肤，选择器 (0,2,0)
+    稳压 base `.tooltip-box` (0,1,0)，与加载顺序无关）、
+    `[data-host="desktop"] .tooltip-box::after { display: none }`（去角标，(0,2,1) 高于
+    base 的 `.tooltip-top::after` 等 (0,1,1)，无需 `!important`）与
+    `[data-host="desktop"] .tooltip-box.visible { transition-delay: 0.1s }`（出现延时）。
+  - **延时为什么挂在 `.visible` 上**：`transition` 的 delay 取「目标状态」的计算值 ——
+    进入时目标 = `.tooltip-box.visible`（本规则 0.1s），退出时目标 = base `.tooltip-box`（0s），
+    一条规则正好表达「只延迟出现、移开立即淡出」。它叠加 base 已有的 `.1s` 淡入时长
+    ⇒ hover 后 100ms 开始淡入、~200ms 完全显形。**纯 CSS，不动 JS**（组件里的 `isVisible`
+    状态仍在 hover 那一刻翻转，所以既不影响 `calculatePosition` 的测量，也不影响
+    既有单测 / e2e 对 `.tooltip-box.visible` 的断言）。
+  - `max-width: 250px`、`z-index: 10000`、淡入时长、单行省略号策略与 `.tooltip-multiline`
+    全部未动（12px 下本例文案 175.4 + 内衬 24 + 描边 2 = 201.4px，距 250px 还有 48.6px 余量，
+    比 14px 那版更宽松）。
+- `packages/webview/src/components/Tooltip.tsx`
+  - `offset = 8` 默认值 → `const gap = offset ?? (isDesktopHost() ? 4 : 8)`：
+    间距是 JS 算出的 fixed 坐标，**CSS 管不到**，只能组件内按宿主分叉；显式传 `offset` 的调用方
+    不受影响（仓库当前没有这类调用）。
+  - **base 的 `Tooltip.css` 一字未改** ⇒ IDE 档天然保留旧皮肤（12px / r2 / `4px 8px` / 带角标 / 8px 间距）。
+
+### ③ 实测（浅 / 深逐值相同；两颗 placement 不同的气泡交叉验证）
+
+- 侧栏「新对话」（`position="right"`）：横向间距 8 → **4**；角标 `display: block` → **`none`**。
+- 输入区「发送」（`position="top"`）：纵向间距 8 → **4**（`getBoundingClientRect` 实测）；角标同样消失。
+- 九条属性断言（font-size / line-height / padding / border-radius / 底色 / 字色 / 描边色 /
+  间距 / 角标）在浅深两档 **9/9 全绿**（按 12px + 20px 取档）。
+- **出现时序实测**（真实浏览器 rAF 采样 + MutationObserver 对齐 class 翻面，rAF 分辨率 ≈16.7ms）：
+
+  |                        | 改前                   | 改后                        |
+  | ---------------------- | ---------------------- | --------------------------- |
+  | 残留延时（隐藏态读值） | `transition-delay: 0s` | 隐藏态 `0s`                 |
+  | 可见态延时读值         | `0s`                   | **`0.1s`**                  |
+  | hover → 可见           | 14.8 / 16.7ms（≈1 帧） | **107.8 – 116.5ms**         |
+  | hover → 完全显形       | 104.5 – 107.5ms        | **205.1 – 208.2ms**         |
+  | 移开 → 开始淡出        | 14.8 – 16.3ms          | 14.8 – 16.0ms（**未变**）   |
+  | 移开 → 完全隐藏        | 106.7 – 115.7ms        | 107.5 – 117.7ms（**未变**） |
+
+  两颗气泡（新对话 / 发送）× 浅深两档共 6 组，断言 全绿；`pageerror` 0。
+
+- **宿主作用域反证**（同一页只改 `html[data-host]`）：`desktop → ide → 还原`
+  三段读数 = `12px/r8/#FFFFFF/角标 none` → `12px/r2/#FAFAFD/角标 block` → 回到桌面档，
+  证明新规则只挂在桌面档（注意：切属性后间距仍是 4px，因为它由 `isDesktopHost()` 读
+  `window.waveHostType` 决定，属**预期**行为，不是反证失败）。**延时同样随属性回退**：
+  切到 `data-host=ide` 后 hover → 可见回到 14.8 / 16.7ms（无延时），且
+  `transition-delay` 读值回到 `0s`。
+- **真实 IDE 档**：首帧把 `window.waveHostType` 钉成非桌面 ⇒ 渲染的是 `ChatApp`（`DesktopApp`
+  未挂载），输入区「发送」气泡仍是 `12px / 4px 8px / r2 / 角标 block`、间距仍是 **8px**、
+  出现仍是**即时**。
+- axe（wcag2a/aa/21a/aa）浅色档 / 深色档 / IDE 档三份违规集合与**改前逐条一致**
+  （`desktop_light` 那条 `.desktop-session-empty` 与 IDE 档那两条 diff 文字是既有的，非本轮引入；
+  气泡自身 0 违规）；`pageerror` 0。
+- 全族同类：四个不同 surface 的气泡（活动 / 新对话 / 收起侧边栏 / 发送）实测 computed
+  全部 `12px / 20px / 4px 12px / r8`、角标全部 `none`、高度全部 30px ⇒ 桌面档只有一套气泡皮肤。
+
+### ④ 一个必须交代的改动面
+
+Tooltip 组件是共用的，所以这轮**不是**只改了「新对话」那一颗：桌面端 25 处 Tooltip 同时换皮肤
+**并同时多出 100ms 出现延时**（含设置页 / 插件市场 / 会话看板里的气泡）。IDE 档（VS Code /
+JetBrains）**仍是旧皮肤、仍即时出现**，这是「只改桌面端」的必然取舍，已单列在残留清单里。
+延时是观感类改动，若真机上觉得「太钝」或「还不够」，改一个数（`0.1s`）即可。
+
+### ⑤ 残留触发语（未授权）
+
+- 「菜单阴影也统一」：其余桌面浮层（`MoreMenu` / 自绘下拉 / 会话看板筛选弹层）仍各用各的阴影口径，
+  没有消费新引入的 `--cc-shadow-popover`
+- 「气泡层级按 skill 收」：气泡仍是 `z-index: 10000`，未接 skill 的 `--cc-z-tooltip: 600`
+  （产品里没采用 `--cc-z-*` 体系，改动有遮挡风险，本轮未动）
+- 「IDE 也一起改」：撤掉作用域限制即可，代价是 IDE 也换皮肤 + 也加延时（见 ④）
+- 「菜单也加延时」：其余浮层（下拉 / 菜单）的开合时序未动，只有 Tooltip 有这个 100ms
+- 「延时再调」：100ms 是我按她的裁定落的唯一数字，偏快/偏慢都是改 `transition-delay` 一个值
+
+### 验证脚本与证据
+
+- 基线 / 终态读值（含两颗气泡 + 绝对裁切窗口 + 9 条断言）：
+  `CC02/走查/_tools/0922/probe-0922-tooltip-style.mjs <before|after>`
+  （改前 = **真回退**：`cp` 备份 → `git checkout --` 两个文件 → 采集 → `cp` 还原并复核 md5
+  `ff89f8d2d7d218c13b981d37876cbad0`（CSS）/ `d5f63ea690b7200950585d8a13e2fbd7`（TSX）；
+  指标 `/tmp/metrics-0922-tooltip-{before,after}.json`；字号档有变时用
+  `WANT_FONT=12px WANT_LH=20px` 覆盖断言期望）。
+- 出现时序（rAF 采样 + class 翻面对齐 + 曲线图 + 帧统计）：
+  `CC02/走查/_tools/0922/probe-0922-tooltip-delay.mjs <before|after>`
+  → `/tmp/metrics-0922-tooltip-delay-{before,after}.json`；
+  画图 `make-tooltip-delay-chart-0922.py` → `shots/<phase>/<theme>-tooltip-delay-curve-2x.png`
+  - `/tmp/metrics-0922-tooltip-delay-frames.json`。
+- 宿主作用域反证 + IDE 真分叉档：
+  `CC02/走查/_tools/0922/capture-0922-tooltip-host-scope.mjs`
+  → `/tmp/metrics-0922-tooltip-host-scope.json`；axe：`probe-0922-tooltip-axe.mjs <before|after>`
+  → `/tmp/probe-0922-tooltip-axe-{before,after}.json`（axe-core 装 `/tmp/axe`，不碰仓库 package.json）。
+- 全族四颗：`capture-0922-tooltip-family.mjs` + 拼图 `make-tooltip-family-0922.py`
+  → `/tmp/metrics-0922-tooltip-family.json`。
+- 成对图（并集框裁切 + page→窗口坐标换算 + 对齐证明）：
+  `CC02/走查/_tools/0922/make-tooltip-assets-0922.py`；报告（skill 母版 v1.1）：
+  `CC02/走查/0922-tooltip-report/index.html`，batch =
+  `CC02/走查/_tools/0922/batch-0922-tooltip.json`（F-01 皮肤全套 / F-02 5× 放大看圆角与角标 /
+  F-03 发送气泡间距 8→4 / F-04 宿主作用域反证 / F-05 IDE 真分叉残留 / F-06 全族同类 /
+  F-07 出现延时曲线 / F-08 hover 后 ~100ms 的帧 / F-09 残留清单）；
+  自检 `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。

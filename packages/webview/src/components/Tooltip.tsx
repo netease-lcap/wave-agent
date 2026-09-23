@@ -7,6 +7,7 @@ import React, {
   useCallback,
 } from "react";
 import "../styles/Tooltip.css";
+import { isDesktopHost } from "../utils/platform";
 
 interface TooltipProps {
   text: string;
@@ -20,6 +21,7 @@ interface TooltipProps {
     | "bottom-right"
     | "top-left"
     | "top-right";
+  /** 不传则按宿主取默认值：桌面端 4px、IDE 8px（见组件内 `gap` 注释）。 */
   offset?: number;
   disabled?: boolean;
   className?: string;
@@ -41,12 +43,17 @@ export const Tooltip: React.FC<TooltipProps> = ({
   text,
   children,
   position = "top",
-  offset = 8,
+  offset,
   disabled = false,
   className = "",
   multiline = false,
   anchorRef,
 }) => {
+  // 气泡↔触发的间距：桌面端按 skill 的下拉契约收成 4px（design-system.md:142
+  // 「poppers carry no arrow、trigger-to-panel gap 4px」，桌面档角标已在
+  // host-desktop.css 里去掉）；IDE 档保留 base 的 8px（角标还在，逐值不变）。
+  // 显式传 offset 的调用方仍以后者为准。
+  const gap = offset ?? (isDesktopHost() ? 4 : 8);
   const [isVisible, setIsVisible] = useState(false);
   const [tooltipStyle, setTooltipStyle] = useState<React.CSSProperties>({});
   const id = useId();
@@ -67,38 +74,38 @@ export const Tooltip: React.FC<TooltipProps> = ({
       case "top":
         left =
           containerRect.left + containerRect.width / 2 - tooltipRect.width / 2;
-        top = containerRect.top - tooltipRect.height - offset;
+        top = containerRect.top - tooltipRect.height - gap;
         break;
       case "bottom":
         left =
           containerRect.left + containerRect.width / 2 - tooltipRect.width / 2;
-        top = containerRect.bottom + offset;
+        top = containerRect.bottom + gap;
         break;
       case "left":
-        left = containerRect.left - tooltipRect.width - offset;
+        left = containerRect.left - tooltipRect.width - gap;
         top =
           containerRect.top + containerRect.height / 2 - tooltipRect.height / 2;
         break;
       case "right":
-        left = containerRect.right + offset;
+        left = containerRect.right + gap;
         top =
           containerRect.top + containerRect.height / 2 - tooltipRect.height / 2;
         break;
       case "top-left":
         left = containerRect.right - tooltipRect.width;
-        top = containerRect.top - tooltipRect.height - offset;
+        top = containerRect.top - tooltipRect.height - gap;
         break;
       case "top-right":
         left = containerRect.left;
-        top = containerRect.top - tooltipRect.height - offset;
+        top = containerRect.top - tooltipRect.height - gap;
         break;
       case "bottom-left":
         left = containerRect.right - tooltipRect.width;
-        top = containerRect.bottom + offset;
+        top = containerRect.bottom + gap;
         break;
       case "bottom-right":
         left = containerRect.left;
-        top = containerRect.bottom + offset;
+        top = containerRect.bottom + gap;
         break;
     }
 
@@ -117,7 +124,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
     top = Math.min(Math.max(top, margin), maxTop);
 
     setTooltipStyle({ left, top });
-  }, [position, offset, anchorRef]);
+  }, [position, gap, anchorRef]);
 
   // When disabled, render children without tooltip wrapper
   if (disabled) {

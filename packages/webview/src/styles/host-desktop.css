@@ -62,6 +62,12 @@
   --cc-border: #dcdfe6; /* 强边界（composer/输入框） */
   --cc-border-light: #e4e7ed; /* quiet lines（面板分隔） */
   --cc-border-lighter: #ebeef5; /* 浮层面板边 */
+  /* 浮层阴影：skill references/dark-theme.md:38 的 Tooltip 配方
+     「bg-overlay、text-primary、border、shadow-popover；same surface family as menus」。
+     仓库此前没有这个角色（只有一处注释 2087 行提过它的名字）——设计师 2026-09-22
+     指「按 skill 引入」。值 = skill tokens/tokens.css:130（浅）/
+     theme/desktop-colors.css:174（深，见 dark 块）。 */
+  --cc-shadow-popover: 0 0 12px rgb(0 0 0 / 12%);
   /* 焦点环（浅色档）：skill tokens.css:84 / desktop-colors.css:64 均为
      var(--cc-action-primary)。此前浅色档未定义本角色，只有深色档有，
      于是 --vscode-focusBorder 桥接在浅色取不到值。 */
@@ -163,6 +169,8 @@
   --cc-border-lighter: #2d3133; /* user-approved 分隔/细边 */
   --cc-border-focus: #a0a5a8; /* user-approved 焦点环 */
   --cc-border-translucent: rgb(255 255 255 / 12%); /* derived 浮层边 */
+  /* 浮层阴影深色档（浅色档见上文注释）：skill theme/desktop-colors.css:174 */
+  --cc-shadow-popover: 0 12px 30px rgb(0 0 0 / 40%);
 
   /* 桥接：组件消费的 host token → 语义值（desktop deep 全面覆盖） */
   --vscode-button-background: var(--cc-action-primary);
@@ -3921,5 +3929,56 @@
     .preview-pane-address
   ) {
   font-family: inherit;
+}
+
+/* ═══ 0922 评论：气泡提示（Tooltip）统一桌面皮肤 ═══════════════════════════
+   她 2026-09-22 预览评论（hover「新对话」时的提示）：「想要优化这里的样式，只改桌面端，
+   首先需要它符合 skill 中全局的色彩规范，然后字号是 14px，圆角 8px，上下内边距 4px，
+   左右内边距 12px，哪里不确定的你再问我」。
+   我追问后她裁定三条（本块据此落地）：
+     ① 范围 = 桌面端全部 Tooltip（同一个 Tooltip 组件被 11 个文件 25 处共用，不做单颗特例）；
+     ② 去掉三角角标 + 气泡↔触发间距收到 4px（skill design-system.md:142 下拉契约
+        「poppers carry no arrow、trigger-to-panel gap 4px」）；
+     ③ 阴影按 skill 引入 --cc-shadow-popover（见文件顶部两张 token 表）。
+   色彩来源 = skill references/dark-theme.md:38「Tooltip = bg-overlay、text-primary、
+   border、shadow-popover；same surface family as menus」：
+     浅色 底 #FFFFFF / 字 #1F2329 / 边 #DCDFE6；深色 底 #232526 / 字 #E5E7E8 / 边 #414649。
+   改前（base `.tooltip-box` 走宿主编辑器色 --vscode-editorWidget-*）：浅 #FAFAFD /
+   #202020 / #E4E5E6，深 #202020 / #CCCCCC / #454545，另加 12px 字 / 2px 圆角 /
+   `4px 8px` 内衬 / 4px 三角角标。
+   字号/行高按 skill 正文档（references/conversation-typography.md）取档，两轮：
+     第 1 轮 14/22（正文档，气泡高 = 22 + 4×2 + 1×2 = 32px）；
+     第 2 轮她 2026-09-22 看效果后要「字号改为 12px」⇒ 12/20（辅助档，气泡高 30px）。
+   其余（内衬 4px 12px、圆角 8px、色彩与阴影三件套）两轮不变。
+   `max-width: 250px`、`z-index`、淡入动画与 base 的单行省略号策略都不动。
+   选择器 (0,2,0) 稳压 base `.tooltip-box` (0,1,0)，base 一行不改 ⇒ IDE 档皮肤原样
+   （反证见报告 F-0x：同一页面切 data-host 后逐值回到 12px / r2 / editorWidget 三色）。 */
+[data-host="desktop"] .tooltip-box {
+  background-color: var(--cc-bg-overlay);
+  color: var(--cc-text-primary);
+  border-color: var(--cc-border);
+  border-radius: var(--cc-radius-md, 8px);
+  padding: 4px 12px;
+  font-size: 12px;
+  line-height: 20px;
+  box-shadow: var(--cc-shadow-popover);
+}
+
+/* 角标（base 用 `.tooltip-box::after` 画 4px 三角）桌面端整体去掉。几何随之改变：
+   气泡与触发的间距由 JS 的 Tooltip `offset` 决定，桌面端 8 → 4（Tooltip.tsx 里按
+   `isDesktopHost()` 分叉；IDE 档保留 8 — 它的角标还在，逐值不变）。 */
+[data-host="desktop"] .tooltip-box::after {
+  display: none;
+}
+
+/* 她 2026-09-22 第二条：「现在需要所有的都加 100ms 的延时」。追问后三条裁定：
+   ① 只延迟「出现」（移开仍立即淡出）；② 桌面端全部消费点（IDE 档 base 无延时，逐值不变）；
+   ③ 键盘 focus 与 hover 同一套时序（组件里两者共用一个 handleShow，这条规则一并覆盖）。
+   transition 的 delay 取「目标状态」的计算值，所以挂在 .visible 上正好只影响进入方向：
+   进入 → 目标 = `.tooltip-box.visible`（本规则 0.1s）；退出 → 目标 = base `.tooltip-box`（0s）。
+   叠加 base 的 `.1s` 淡入时长 ⇒ hover 后 100ms 开始淡入、~200ms 完全显形。
+   特异性 (0,3,0) 稳压 base 的 `.tooltip-box.visible` (0,2,0)，与加载顺序无关。 */
+[data-host="desktop"] .tooltip-box.visible {
+  transition-delay: 0.1s;
 }
 
