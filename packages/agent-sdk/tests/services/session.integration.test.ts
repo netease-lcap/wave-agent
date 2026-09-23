@@ -37,6 +37,8 @@ vi.mock("@/services/jsonlHandler.js", () => ({
     return {
       read: vi.fn(),
       append: vi.fn(),
+      appendCustomTitle: vi.fn(),
+      readCustomTitle: vi.fn().mockResolvedValue(undefined),
       isValidSessionFilename: vi.fn(),
       generateSessionFilename: vi.fn(),
       getLastMessage: vi.fn(),
@@ -75,6 +77,10 @@ describe("Session Integration Tests", () => {
   let mockJsonlHandler: {
     read: Mock<(filePath: string) => Promise<Message[]>>;
     append: Mock<(filePath: string, messages: Message[]) => Promise<void>>;
+    appendCustomTitle: Mock<
+      (filePath: string, title: string, sessionId: string) => Promise<void>
+    >;
+    readCustomTitle: Mock<(filePath: string) => Promise<string | undefined>>;
     isValidSessionFilename: Mock<(filename: string) => boolean>;
     generateSessionFilename: Mock<
       (sessionId: string, sessionType?: "main" | "subagent") => string
@@ -138,6 +144,8 @@ describe("Session Integration Tests", () => {
     mockJsonlHandler = {
       read: vi.fn(),
       append: vi.fn(),
+      appendCustomTitle: vi.fn().mockResolvedValue(undefined),
+      readCustomTitle: vi.fn().mockResolvedValue(undefined),
       isValidSessionFilename: vi.fn().mockReturnValue(true),
       generateSessionFilename: vi
         .fn()

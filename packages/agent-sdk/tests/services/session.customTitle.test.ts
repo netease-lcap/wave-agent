@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { join } from "path";
 
 const {
   mockAppend,
@@ -100,7 +101,8 @@ import {
 } from "@/services/session.js";
 
 const SESSION_ID = "11111111-1111-1111-1111-111111111111";
-const SESSION_FILE = `/mock/projects/repo/${SESSION_ID}.jsonl`;
+// session.ts 用 path.join 拼路径，Windows 上分隔符是 `\`，断言必须同样用 join。
+const SESSION_FILE = join("/mock/projects/repo", `${SESSION_ID}.jsonl`);
 /** The listing only accepts `UUID.jsonl` filenames as session files. */
 const UUID_FILE = `${SESSION_ID}.jsonl`;
 
