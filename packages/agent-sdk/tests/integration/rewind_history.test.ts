@@ -2,7 +2,6 @@ import { Mocked } from "vitest";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import { ReversionManager } from "../../src/managers/reversionManager.js";
-import fs from "fs/promises";
 import { Message } from "../../src/types/messaging.js";
 import * as sessionService from "../../src/services/session.js";
 import { Container } from "../../src/utils/container.js";
@@ -15,6 +14,7 @@ vi.mock("../../src/services/session.js", async (importOriginal) => {
     ...actual,
     loadFullMessageThread: vi.fn(),
     loadSessionFromJsonl: vi.fn(),
+    truncateSession: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -80,7 +80,16 @@ describe("MessageManager History Truncation Integration", () => {
       ["msg2", "msg3"],
       expect.any(Array),
     );
-    expect(fs.writeFile).toHaveBeenCalled();
+    // The session file keeps the first message; the rewrite delegates to the
+    // session service, which filters the file's own lines (so reserved entries
+    // such as the metadata header and the custom title survive).
+    expect(sessionService.truncateSession).toHaveBeenCalledTimes(1);
+    expect(sessionService.truncateSession).toHaveBeenCalledWith(
+      messageManager.getSessionId(),
+      1,
+      "/test/workdir",
+      "main",
+    );
   });
 
   it("should throw error for invalid index", async () => {

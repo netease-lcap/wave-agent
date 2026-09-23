@@ -186,6 +186,49 @@ export async function createSession(
 }
 
 /**
+ * Rewrite a session file down to its first `keepMessageCount` messages.
+ *
+ * The only caller is `/rewind`. Unlike `appendMessages` this removes history
+ * from the file, but it keeps every file-level reserved entry (metadata header,
+ * `custom-title`) byte for byte — dropping them would silently turn the session
+ * into the "legacy file without a header" shape, losing its creation time,
+ * git branch and user-set title.
+ *
+ * @param sessionId - UUID session identifier
+ * @param keepMessageCount - Number of leading messages to keep
+ * @param workdir - Working directory for the session
+ * @param sessionType - Type of session ("main" or "subagent", defaults to "main")
+ */
+export async function truncateSession(
+  sessionId: string,
+  keepMessageCount: number,
+  workdir: string,
+  sessionType: "main" | "subagent" = "main",
+): Promise<void> {
+  // Do not save session files in test environment
+  if (process.env.NODE_ENV === "test") {
+    return;
+  }
+
+  const jsonlHandler = new JsonlHandler();
+  const filePath = await generateSessionFilePath(
+    sessionId,
+    workdir,
+    sessionType,
+  );
+
+  try {
+    await fs.access(filePath);
+  } catch {
+    throw new Error(
+      `Session file not found: ${sessionId}. Cannot rewind a session that was never persisted.`,
+    );
+  }
+
+  await jsonlHandler.truncateSession(filePath, keepMessageCount);
+}
+
+/**
  * Append messages to session using JSONL format (new approach)
  *
  * @param sessionId - UUID session identifier

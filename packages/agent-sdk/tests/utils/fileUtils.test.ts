@@ -65,6 +65,70 @@ describe("fileUtils - getLastLine", () => {
   });
 });
 
+describe("fileUtils - forEachLine", () => {
+  const mockStream = async (chunks: string[]) => {
+    const { createReadStream } = await import("node:fs");
+    vi.mocked(createReadStream).mockReturnValue(
+      Readable.from(chunks) as unknown as ReturnType<typeof createReadStream>,
+    );
+  };
+
+  it("delivers every line and reassembles lines split across chunks", async () => {
+    const { forEachLine } = await import("../../src/utils/fileUtils.js");
+    // The same line arrives in two chunks: the split must be invisible.
+    await mockStream(['{"a":1}\n{"b"', ':2}\n{"c":3}\n']);
+    const lines: string[] = [];
+
+    const result = await forEachLine("s.jsonl", (line) => {
+      lines.push(line);
+    });
+
+    expect(lines).toEqual(['{"a":1}', '{"b":2}', '{"c":3}']);
+    expect(result).toEqual({ endsWithNewline: true });
+  });
+
+  it("delivers the unterminated tail and reports endsWithNewline false", async () => {
+    const { forEachLine } = await import("../../src/utils/fileUtils.js");
+    await mockStream(['{"a":1}\n{"b":2}']);
+    const lines: string[] = [];
+
+    const result = await forEachLine("s.jsonl", (line) => {
+      lines.push(line);
+    });
+
+    expect(lines).toEqual(['{"a":1}', '{"b":2}']);
+    expect(result).toEqual({ endsWithNewline: false });
+  });
+
+  it("does not call back for an empty file and reports endsWithNewline true", async () => {
+    const { forEachLine } = await import("../../src/utils/fileUtils.js");
+    await mockStream([]);
+    const onLine = vi.fn();
+
+    const result = await forEachLine("s.jsonl", onLine);
+
+    expect(onLine).not.toHaveBeenCalled();
+    expect(result).toEqual({ endsWithNewline: true });
+  });
+
+  it("propagates a stream error to the caller", async () => {
+    const { forEachLine } = await import("../../src/utils/fileUtils.js");
+    const { createReadStream } = await import("node:fs");
+    const failing = new Readable({
+      read() {
+        this.emit("error", new Error("Read error"));
+      },
+    });
+    vi.mocked(createReadStream).mockReturnValue(
+      failing as unknown as ReturnType<typeof createReadStream>,
+    );
+    const onLine = vi.fn();
+
+    await expect(forEachLine("s.jsonl", onLine)).rejects.toThrow("Read error");
+    expect(onLine).not.toHaveBeenCalled();
+  });
+});
+
 describe("fileUtils - readTailLines", () => {
   /** A file handle whose reads are served from `content` at any position. */
   const handleFor = (content: string) => {

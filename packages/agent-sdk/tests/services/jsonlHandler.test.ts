@@ -6,6 +6,7 @@ import {
 import type { Message } from "@/types/messaging.js";
 import type { TextBlock } from "@/types/messaging.js";
 import { generateMessageId } from "@/utils/messageOperations.js";
+import { forEachLine } from "@/utils/fileUtils.js";
 
 // Mock fs/promises
 vi.mock("fs/promises", () => ({
@@ -15,6 +16,7 @@ vi.mock("fs/promises", () => ({
   writeFile: vi.fn(),
   mkdir: vi.fn(),
   rename: vi.fn(),
+  unlink: vi.fn(),
 }));
 
 // Mock fileUtils
@@ -23,6 +25,7 @@ vi.mock("@/utils/fileUtils.js", () => ({
   readFirstLine: vi.fn(),
   readFirstNLines: vi.fn(),
   readTailLines: vi.fn(),
+  forEachLine: vi.fn(),
 }));
 
 describe("JsonlHandler.append()", () => {
@@ -1659,5 +1662,171 @@ describe("JsonlHandler filename utilities", () => {
 
       expect(total).toBe(12);
     });
+  });
+});
+
+describe("JsonlHandler.truncateSession()", () => {
+  let handler: JsonlHandler;
+  let written: string[];
+  let mockAppendFile: ReturnType<typeof vi.fn>;
+  let mockRename: ReturnType<typeof vi.fn>;
+  let mockUnlink: ReturnType<typeof vi.fn>;
+  let mockWriteFile: ReturnType<typeof vi.fn>;
+
+  const HEADER = JSON.stringify({
+    type: "metadata",
+    workdir: "/home/u/repo",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    gitBranch: "main",
+  });
+  const TITLE = JSON.stringify({
+    type: "custom-title",
+    customTitle: "我的会话",
+    sessionId: "s1",
+  });
+  const messageLine = (id: string) =>
+    JSON.stringify({
+      timestamp: "2026-01-01T00:00:01.000Z",
+      id,
+      role: "user",
+      blocks: [{ type: "text", content: id }],
+    });
+
+  /** Feed the file's segments to the line scanner, as the real reader would. */
+  const driveLines = (lines: string[], endsWithNewline = true) => {
+    vi.mocked(forEachLine).mockImplementation(async (_filePath, onLine) => {
+      for (const line of lines) {
+        await onLine(line);
+      }
+      return { endsWithNewline };
+    });
+  };
+
+  beforeEach(async () => {
+    // resetAllMocks (not clearAllMocks): sibling suites leave rejected-write
+    // implementations behind, and clearAllMocks keeps implementations.
+    vi.resetAllMocks();
+    const fsPromises = await import("fs/promises");
+    mockAppendFile = vi.mocked(fsPromises.appendFile);
+    mockRename = vi.mocked(fsPromises.rename);
+    mockUnlink = vi.mocked(fsPromises.unlink);
+    mockWriteFile = vi.mocked(fsPromises.writeFile);
+    written = [];
+    mockAppendFile.mockImplementation(async (_filePath, data) => {
+      written.push(data as string);
+    });
+
+    handler = new JsonlHandler();
+  });
+
+  it("keeps the metadata header and custom-title entries byte for byte", async () => {
+    driveLines([
+      HEADER,
+      messageLine("u1"),
+      TITLE,
+      messageLine("u2"),
+      messageLine("u3"),
+    ]);
+
+    await handler.truncateSession("/test/s.jsonl", 2);
+
+    expect(written.join("")).toBe(
+      [HEADER, messageLine("u1"), TITLE, messageLine("u2")]
+        .map((line) => `${line}\n`)
+        .join(""),
+    );
+  });
+
+  it("carries over lines that are neither reserved nor messages", async () => {
+    // An entry type written by a newer version: unknown to this build's
+    // `isReservedEntry` and carrying no `timestamp`, so `read()` drops it.
+    const futureEntry = JSON.stringify({ type: "future-entry", payload: 1 });
+    driveLines([HEADER, messageLine("u1"), futureEntry, messageLine("u2")]);
+
+    await handler.truncateSession("/test/s.jsonl", 1);
+
+    expect(written.join("")).toBe(
+      `${HEADER}\n${messageLine("u1")}\n${futureEntry}\n`,
+    );
+  });
+
+  it("does not invent a header for a legacy file", async () => {
+    driveLines([messageLine("u1"), messageLine("u2")]);
+
+    await handler.truncateSession("/test/s.jsonl", 1);
+
+    expect(written.join("")).toBe(`${messageLine("u1")}\n`);
+  });
+
+  it("writes through a temp file and renames it into place", async () => {
+    driveLines([messageLine("u1")]);
+
+    await handler.truncateSession("/test/s.jsonl", 1);
+
+    const tempPath = mockWriteFile.mock.calls[0][0] as string;
+    expect(tempPath).not.toBe("/test/s.jsonl");
+    expect(tempPath.startsWith("/test/s.jsonl.tmp.")).toBe(true);
+    expect(mockRename).toHaveBeenCalledWith(tempPath, "/test/s.jsonl");
+  });
+
+  it("leaves the target untouched when a middle line is corrupt", async () => {
+    driveLines([messageLine("u1"), "{ not json", messageLine("u2")]);
+
+    await expect(handler.truncateSession("/test/s.jsonl", 5)).rejects.toThrow(
+      /Invalid JSON/,
+    );
+
+    expect(mockRename).not.toHaveBeenCalled();
+    expect(mockUnlink).toHaveBeenCalledWith(
+      expect.stringContaining("/test/s.jsonl.tmp."),
+    );
+  });
+
+  it("rejects an unparseable last line when the file ends with a newline", async () => {
+    driveLines([messageLine("u1"), "{ not json"], true);
+
+    await expect(handler.truncateSession("/test/s.jsonl", 5)).rejects.toThrow(
+      /Invalid JSON/,
+    );
+    expect(mockRename).not.toHaveBeenCalled();
+  });
+
+  it("drops the partial trailing line of an interrupted append", async () => {
+    driveLines([messageLine("u1"), '{"timestamp":"2026-01'], false);
+
+    await handler.truncateSession("/test/s.jsonl", 5);
+
+    expect(written.join("")).toBe(`${messageLine("u1")}\n`);
+  });
+
+  it("classifies lines exactly like read() does", async () => {
+    const lines = [
+      HEADER,
+      messageLine("u1"),
+      TITLE,
+      messageLine("u2"),
+      messageLine("u3"),
+      TITLE,
+    ];
+    vi.mocked((await import("fs/promises")).readFile).mockResolvedValue(
+      lines.map((line) => `${line}\n`).join(""),
+    );
+    driveLines(lines);
+
+    // Keep everything: the rewritten file must contain exactly the messages
+    // read() reports, in the same order.
+    await handler.truncateSession("/test/s.jsonl", lines.length);
+
+    const rewrittenIds = written
+      .join("")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { id?: string; timestamp?: string })
+      .filter((entry) => entry.timestamp)
+      .map((entry) => entry.id);
+
+    const readMessages = await handler.read("/test/s.jsonl");
+
+    expect(rewrittenIds).toEqual(readMessages.map((m) => m.id));
   });
 });
