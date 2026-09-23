@@ -26,6 +26,8 @@ import {
   appendMessages,
   createSession,
   generateSessionId,
+  // Aliased: this class exposes a `reAppendSessionMetadata` method of its own.
+  reAppendSessionMetadata as reAppendSessionMetadataToFile,
   SessionData,
   SESSION_DIR,
 } from "../services/session.js";
@@ -126,6 +128,14 @@ export class MessageManager {
   private sessionType: "main" | "subagent";
   private subagentType?: string;
   private _usages: Usage[] = [];
+  /**
+   * This session's user-set title, as last known to this process (set on
+   * rename, or recovered from the transcript on resume). It is the fallback
+   * `reAppendSessionMetadata` writes back at EOF once the `custom-title` entry
+   * has been pushed out of the listing's tail window — at which point the file
+   * itself can no longer answer "what was this session called".
+   */
+  private customTitle?: string;
 
   constructor(
     private container: Container,
@@ -480,6 +490,34 @@ export class MessageManager {
     }
   }
 
+  public getCustomTitle(): string | undefined {
+    return this.customTitle;
+  }
+
+  public setCustomTitle(customTitle: string | undefined): void {
+    this.customTitle = customTitle;
+  }
+
+  /**
+   * Re-append the session's metadata entries at EOF, so they stay inside the
+   * tail window the session list reads. Called at the sparse points where the
+   * transcript is about to be read back by another process (exit, compaction,
+   * resume, rewind); doing it per save would cost a tail read plus a line on
+   * every message.
+   */
+  public async reAppendSessionMetadata(): Promise<void> {
+    try {
+      await reAppendSessionMetadataToFile(
+        this.sessionId,
+        this.workdir,
+        this.customTitle,
+        this.sessionType,
+      );
+    } catch (error) {
+      logger?.error("Failed to re-append session metadata:", error);
+    }
+  }
+
   /**
    * Clear messages
    */
@@ -489,6 +527,9 @@ export class MessageManager {
     this.setSessionId(newSessionId);
     this.setlatestTotalTokens(0);
     this.savedMessageCount = 0; // Reset saved message count
+    // The title belongs to the session that was just abandoned: the new
+    // session id starts untitled until the user renames it.
+    this.customTitle = undefined;
   }
 
   /**
@@ -509,6 +550,10 @@ export class MessageManager {
     });
     this.displayMessages = [...sessionData.messages];
     this.setlatestTotalTokens(sessionData.metadata.latestTotalTokens);
+    // Recovered by the whole-file scan on load: from here on it is the
+    // in-memory fallback that survives the title entry sliding out of the
+    // tail window.
+    this.customTitle = sessionData.metadata.customTitle;
 
     // Rebuild loadedRuleIds from persisted meta messages (session restore)
     this.rebuildLoadedRuleIds();
@@ -719,6 +764,10 @@ export class MessageManager {
       this.workdir,
       this.sessionType,
     );
+
+    // Compaction leaves the transcript readable by the next process that
+    // lists sessions, so this is a flush point for the metadata entries.
+    await this.reAppendSessionMetadata();
 
     // Update in-memory state: the API context folds to [compact, ...last
     // rounds], while the UI display stream keeps the full history and appends
@@ -1085,6 +1134,10 @@ export class MessageManager {
 
     // Rewrite file with truncated messages (full history kept on disk)
     await this.rewriteSessionFile(newMessages);
+    // The rewrite truncates the file, which physically drops the custom-title
+    // entry (and the metadata header): write the title back immediately, from
+    // the in-memory value.
+    await this.reAppendSessionMetadata();
     // The UI keeps the full truncated thread; the agent context folds at the
     // last compact boundary so the agent only sees messages from the latest
     // compact summary forward — matching the compact and resume behaviors.

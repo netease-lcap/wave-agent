@@ -38,6 +38,13 @@ export interface SessionData {
     workdir: string;
     lastActiveAt: string;
     latestTotalTokens: number;
+    /**
+     * User-set title recovered from the whole-file scan (see
+     * `readMessagesAndCustomTitle`). Held in memory by the host so a later
+     * `reAppendSessionMetadata` can write it back at EOF even after later
+     * messages pushed it out of the tail window.
+     */
+    customTitle?: string;
   };
 }
 
@@ -220,24 +227,14 @@ export async function appendMessages(
     );
   }
 
-  // Read the title BEFORE appending. The previous save re-appended it at EOF,
-  // so the tail window is guaranteed to still contain it — whereas after this
-  // batch it might not be.
-  //
-  // Renames append a `custom-title` entry, and appending messages would
-  // eventually push it out of the tail window a listing reads. Claude Code
-  // solves this by re-appending its metadata at EOF on graceful shutdown
-  // (`reAppendSessionMetadata`); wave has no session-level flush hook, so the
-  // equivalent guarantee is maintained here, once per save.
-  const customTitle = await jsonlHandler.readCustomTitle(filePath);
-
+  // Append only. Keeping the title inside the listing's tail window is the
+  // job of `reAppendSessionMetadata`, which runs at the session's sparse flush
+  // points — not here: appending the entry on every save costs a tail read and
+  // an extra line per save, for a guarantee only needed once the session is
+  // about to be read from disk by someone else.
   await jsonlHandler.append(filePath, newMessages, {
     atomic: false,
   });
-
-  if (customTitle) {
-    await jsonlHandler.appendCustomTitle(filePath, customTitle, sessionId);
-  }
 }
 
 /**
@@ -257,16 +254,16 @@ export async function appendMessages(
  * @param sessionId - UUID session identifier
  * @param workdir - Working directory the session belongs to
  * @param title - New title
- * @returns Promise that resolves once the entry is on disk (no-op when blank)
+ * @returns The trimmed title that was written, or undefined for a blank no-op
  */
 export async function setSessionCustomTitle(
   sessionId: string,
   workdir: string,
   title: string,
-): Promise<void> {
+): Promise<string | undefined> {
   const trimmed = title.trim();
   if (!trimmed) {
-    return;
+    return undefined;
   }
 
   const jsonlHandler = new JsonlHandler();
@@ -287,6 +284,73 @@ export async function setSessionCustomTitle(
   }
 
   await jsonlHandler.appendCustomTitle(filePath, trimmed, sessionId);
+  return trimmed;
+}
+
+/**
+ * Re-append the session's reserved metadata entries at EOF.
+ *
+ * A listing reads only the tail window (64 KB) of each session file, so a
+ * `custom-title` entry that later messages pushed past that window becomes
+ * invisible — the session would flip back to showing its first message. This
+ * runs at the session's sparse flush points (spec `session-management.md`
+ * 验收场景 5): graceful exit, compaction, taking over a resumed session,
+ * switching away from one, and after `/rewind` rewrites the file. Claude Code
+ * solves the same problem the same way (`reAppendSessionMetadata`,
+ * `sessionStorage.ts:458/983/1533`, `compact.ts:711/1057`).
+ *
+ * The entry is refreshed from the tail first: another process (the CLI session
+ * picker, a second host) may have renamed the session while we held it, in
+ * which case its value — not our stale in-memory one — is the truth. When the
+ * tail holds nothing (already evicted, or never written by anyone else), the
+ * caller's in-memory value stands.
+ *
+ * A missing transcript file is a no-op: re-appending must never materialize a
+ * session that does not exist.
+ *
+ * @param sessionId - UUID session identifier
+ * @param workdir - Working directory the session belongs to
+ * @param customTitle - Title held in memory by the caller (may be undefined)
+ * @param sessionType - Type of session ("main" or "subagent", defaults to "main")
+ */
+export async function reAppendSessionMetadata(
+  sessionId: string,
+  workdir: string,
+  customTitle: string | undefined,
+  sessionType: "main" | "subagent" = "main",
+): Promise<void> {
+  const jsonlHandler = new JsonlHandler();
+  let filePath = await generateSessionFilePath(sessionId, workdir, sessionType);
+
+  try {
+    await fs.access(filePath);
+  } catch {
+    // The session may live in another project directory (created from a
+    // different cwd, or a git worktree). That sweep costs a directory walk per
+    // flush point, so it runs only when there is a title to write: with no
+    // in-memory title there is nothing this call could add that the entry
+    // already in the file does not say.
+    if (!customTitle) {
+      return;
+    }
+    const fallback = await findSessionFileAcrossProjects(
+      sessionId,
+      sessionType,
+    );
+    if (!fallback) {
+      return;
+    }
+    filePath = fallback;
+  }
+
+  // Absorb a fresher value written by another process since we last looked.
+  const tailTitle = await jsonlHandler.readCustomTitle(filePath);
+  const title = tailTitle ?? customTitle;
+  if (!title) {
+    return;
+  }
+
+  await jsonlHandler.appendCustomTitle(filePath, title, sessionId);
 }
 
 /**
@@ -370,7 +434,8 @@ export async function loadSessionFromJsonl(
       }
     }
 
-    const allMessages = await jsonlHandler.read(resolvedPath);
+    const { messages: allMessages, customTitle } =
+      await jsonlHandler.readMessagesAndCustomTitle(resolvedPath);
 
     // Transcripts written by older CLI versions re-appended the preserved
     // rounds at each compaction point, so a message id can appear twice.
@@ -402,6 +467,10 @@ export async function loadSessionFromJsonl(
         // messages appended (SessionStart hooks), which would otherwise report
         // 0 and blank the context-usage indicator for that conversation.
         latestTotalTokens: extractLatestTotalTokens(messages),
+        // Recovered from the whole-file scan, not the tail window: a title the
+        // conversation has long outgrown is only reachable this way. The host
+        // holds it in memory so `reAppendSessionMetadata` puts it back at EOF.
+        customTitle,
       },
     };
 

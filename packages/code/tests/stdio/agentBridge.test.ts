@@ -2540,7 +2540,7 @@ test("renameSession writes the title for a session owned by any project", async 
   const { bridge } = createBridge();
   // No initialize: the desktop renames sessions straight from its sidebar, so
   // the target has no live agent — the id/workdir come from the caller.
-  vi.mocked(setSessionCustomTitle).mockResolvedValue();
+  vi.mocked(setSessionCustomTitle).mockResolvedValue("My title");
 
   const result = await bridge.handleRequest("renameSession", {
     sessionId: "11111111-1111-1111-1111-111111111111",
@@ -2554,6 +2554,26 @@ test("renameSession writes the title for a session owned by any project", async 
     "My title",
   );
   expect(result).toBeUndefined();
+});
+
+test("renameSession routes a live session through its agent", async () => {
+  const { bridge } = createBridge();
+  const renameSession = vi.fn().mockResolvedValue(undefined);
+  const mockAgent = createMockAgent({ renameSession });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+  await bridge.handleRequest("initialize", { workdir: "/test/workdir" });
+
+  // The bound agent holds the title in memory and writes it back at its own
+  // flush points, so a file-only write here would be overwritten by the stale
+  // in-memory value on exit.
+  await bridge.handleRequest("renameSession", {
+    sessionId: "test-session-id",
+    workdir: "/test/workdir",
+    title: "My title",
+  });
+
+  expect(renameSession).toHaveBeenCalledWith("My title");
+  expect(setSessionCustomTitle).not.toHaveBeenCalled();
 });
 
 test("updateConfig destroys and recreates agent with merged config", async () => {

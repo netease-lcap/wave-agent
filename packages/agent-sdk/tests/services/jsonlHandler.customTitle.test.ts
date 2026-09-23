@@ -91,6 +91,63 @@ describe("JsonlHandler custom-title entries", () => {
     });
   });
 
+  describe("readMessagesAndCustomTitle()", () => {
+    it("returns both the messages and the title from a single read", async () => {
+      const fsPromises = await import("fs/promises");
+      vi.mocked(fsPromises.readFile).mockResolvedValue(
+        [
+          JSON.stringify({ type: "metadata", workdir: "/repo" }),
+          messageLine("hello"),
+          customTitleLine("我的标题"),
+          "",
+        ].join("\n"),
+      );
+
+      const { messages, customTitle } =
+        await handler.readMessagesAndCustomTitle("/p/s.jsonl");
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0]!.blocks).toEqual([{ type: "text", content: "hello" }]);
+      expect(customTitle).toBe("我的标题");
+    });
+
+    it("finds a title that is not the last entry in the file", async () => {
+      const fsPromises = await import("fs/promises");
+      // Since the read covers the whole file rather than a tail window, a title
+      // written early stays visible no matter how many messages follow it.
+      vi.mocked(fsPromises.readFile).mockResolvedValue(
+        [
+          JSON.stringify({ type: "metadata", workdir: "/repo" }),
+          customTitleLine("老标题"),
+          ...Array.from({ length: 5 }, (_, i) => messageLine(`m${i}`)),
+          "",
+        ].join("\n"),
+      );
+
+      const { messages, customTitle } =
+        await handler.readMessagesAndCustomTitle("/p/s.jsonl");
+
+      expect(customTitle).toBe("老标题");
+      expect(messages).toHaveLength(5);
+    });
+
+    it("leaves customTitle undefined for a never-renamed session", async () => {
+      const fsPromises = await import("fs/promises");
+      vi.mocked(fsPromises.readFile).mockResolvedValue(
+        [
+          JSON.stringify({ type: "metadata", workdir: "/repo" }),
+          messageLine("hi"),
+          "",
+        ].join("\n"),
+      );
+
+      const { customTitle } =
+        await handler.readMessagesAndCustomTitle("/p/s.jsonl");
+
+      expect(customTitle).toBeUndefined();
+    });
+  });
+
   describe("reserved entries are never mistaken for messages", () => {
     it("read() skips custom-title lines", async () => {
       const fsPromises = await import("fs/promises");

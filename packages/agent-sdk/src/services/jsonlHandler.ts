@@ -43,8 +43,9 @@ export interface SessionMetadataHeader {
  * User-set conversation title, appended as its own JSONL entry on rename.
  * A dedicated entry type (rather than a field on the append-only metadata
  * header) is what lets the title be changed after creation without rewriting
- * the file: it is appended at rename time and re-appended at EOF on every
- * subsequent save, so the listing's tail read always finds it.
+ * the file: it is appended at rename time, and re-appended at EOF at the
+ * session's sparse flush points (`reAppendSessionMetadata` — exit, compaction,
+ * resume, rewind) rather than on every save.
  */
 export interface CustomTitleEntry {
   type: "custom-title";
@@ -123,12 +124,14 @@ export class JsonlHandler {
   }
 
   /**
-   * Read the session's user-set title, if any.
+   * Read the session's user-set title from the tail window, if present.
    *
-   * Scans the tail window and keeps the newest entry, so a rename always wins
-   * over an earlier one. Only the tail is read: a rename re-appends the entry
-   * at EOF (see `session.ts` `appendMessages`), which keeps it inside the
-   * window regardless of how long the conversation grows.
+   * Scans the tail and keeps the newest entry, so a rename always wins over an
+   * earlier one. Only the tail is read: this is the cheap path used by session
+   * listing and by `reAppendSessionMetadata`'s external-writer refresh, and the
+   * write side re-appends the entry at EOF at its sparse flush points. An entry
+   * that later messages have already pushed out of the window is invisible
+   * here — that is what `readMessagesAndCustomTitle` recovers on resume.
    */
   async readCustomTitle(filePath: string): Promise<string | undefined> {
     for (const line of (await readTailLines(filePath)).reverse()) {
@@ -205,6 +208,26 @@ export class JsonlHandler {
    * Read all messages from JSONL file (simplified - no metadata handling)
    */
   async read(filePath: string): Promise<Message[]> {
+    return (await this.readMessagesAndCustomTitle(filePath)).messages;
+  }
+
+  /**
+   * Read the whole file once, returning every message plus the newest
+   * `custom-title` entry.
+   *
+   * `readCustomTitle` only scans the tail window, so a title that later
+   * messages pushed out of it is invisible there. The whole file still holds
+   * it, and the resume path collects it here: that recovered value is what a
+   * later `reAppendSessionMetadata` writes back at EOF, which is what makes an
+   * evicted title self-heal instead of being lost for good.
+   *
+   * @param filePath - Path to the session JSONL file
+   * @returns The messages (reserved entries filtered out) and the newest
+   *          non-empty custom title, when the file carries one
+   */
+  async readMessagesAndCustomTitle(
+    filePath: string,
+  ): Promise<{ messages: Message[]; customTitle?: string }> {
     try {
       const content = await readFile(filePath, "utf8");
       // append() always terminates a written batch with "\n" (see append),
@@ -217,20 +240,33 @@ export class JsonlHandler {
         .filter((line: string) => line.length > 0);
 
       if (lines.length === 0) {
-        return [];
+        return { messages: [] };
       }
 
       const allMessages: Message[] = [];
+      let customTitle: string | undefined;
 
-      // Parse all messages, skipping the metadata header line (if any)
+      // Parse every line: real messages are kept, reserved entries (the
+      // metadata header, and custom titles) are read for their own fields.
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
 
         try {
           const message = JSON.parse(line) as Message & {
             type?: string;
+            customTitle?: unknown;
           };
-          // Reserved entry (metadata header, custom-title): not a message
+          if (message.type === "custom-title") {
+            // Last one wins: a later rename supersedes an earlier one.
+            if (
+              typeof message.customTitle === "string" &&
+              message.customTitle
+            ) {
+              customTitle = message.customTitle;
+            }
+            continue;
+          }
+          // Any other reserved entry (metadata header): not a message
           if (isReservedEntry(message.type)) continue;
           if (message.timestamp) allMessages.push(message);
         } catch (error) {
@@ -247,10 +283,10 @@ export class JsonlHandler {
         }
       }
 
-      return allMessages;
+      return { messages: allMessages, customTitle };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return [];
+        return { messages: [] };
       }
       throw new Error(`Failed to read JSONL file "${filePath}": ${error}`);
     }

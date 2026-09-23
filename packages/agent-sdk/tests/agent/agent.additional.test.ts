@@ -26,6 +26,8 @@ vi.mock("@/services/session", async () => {
     handleSessionRestoration: vi.fn(),
     loadSessionFromJsonl: vi.fn(),
     appendMessages: vi.fn(),
+    setSessionCustomTitle: vi.fn(),
+    reAppendSessionMetadata: vi.fn().mockResolvedValue(undefined),
   };
 });
 vi.mock("fs/promises");
@@ -164,6 +166,40 @@ describe("Agent additional coverage", () => {
       const currentId = agent.sessionId;
       await agent.restoreSession(currentId);
       expect(sessionService.loadSessionFromJsonl).not.toHaveBeenCalled();
+    });
+
+    it("keeps the custom title in memory so it can be written back on exit", async () => {
+      vi.mocked(sessionService.setSessionCustomTitle).mockResolvedValue(
+        "我的标题",
+      );
+      const agent2 = await Agent.create({ workdir: "/tmp/test-title-exit" });
+
+      await agent2.renameSession("  我的标题  ");
+
+      // Append-only: the rename writes the entry right away...
+      expect(sessionService.setSessionCustomTitle).toHaveBeenCalledWith(
+        "test-session-id",
+        "/tmp/test-title-exit",
+        "  我的标题  ",
+      );
+      // ...and the value is remembered in memory, then flushed back to EOF when
+      // the session is left behind.
+      expect(
+        (
+          agent2 as unknown as {
+            messageManager: { getCustomTitle: () => string | undefined };
+          }
+        ).messageManager.getCustomTitle(),
+      ).toBe("我的标题");
+
+      await agent2.destroy();
+
+      expect(sessionService.reAppendSessionMetadata).toHaveBeenCalledWith(
+        "test-session-id",
+        "/tmp/test-title-exit",
+        "我的标题",
+        "main",
+      );
     });
 
     it("should throw error if restoreSession target not found", async () => {

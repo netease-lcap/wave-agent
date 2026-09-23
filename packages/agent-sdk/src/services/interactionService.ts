@@ -176,6 +176,10 @@ export class InteractionService {
       // Continue with restoration even if save fails
     }
 
+    // 2b. Flush point for the session being left behind: it is about to be
+    //     read from disk again by whoever lists sessions next.
+    await messageManager.reAppendSessionMetadata();
+
     // 3. Run SessionEnd hooks for the current session (cleanup before switching)
     const currentSessionId = messageManager.getSessionId();
     const currentTranscriptPath = messageManager.getTranscriptPath();
@@ -215,6 +219,11 @@ export class InteractionService {
 
     // 8. Initialize session state last
     messageManager.initializeFromSession(sessionData);
+    // 8b. Flush point for the session we just took over. `initializeFromSession`
+    //     has adopted the title recovered by the load-time whole-file scan, so
+    //     this is where a title that had slid out of the tail window is written
+    //     back at EOF (Claude Code's `adoptResumedSessionFile` does the same).
+    await messageManager.reAppendSessionMetadata();
 
     // 9. Run SessionStart hooks for the restored session and inject additional
     //    context as a meta user message (matches Claude Code's resume behavior:

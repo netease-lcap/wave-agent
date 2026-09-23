@@ -80,6 +80,11 @@ describe("Session Core Functionality", () => {
   const SESSION_DIR = join(homedir(), ".wave", "projects");
   let mockJsonlHandler: {
     read: Mock<(filePath: string) => Promise<Message[]>>;
+    readMessagesAndCustomTitle: Mock<
+      (
+        filePath: string,
+      ) => Promise<{ messages: Message[]; customTitle?: string }>
+    >;
     append: Mock<(filePath: string, messages: Message[]) => Promise<void>>;
     isValidSessionFilename: Mock<(filename: string) => boolean>;
     parseSessionFilename: Mock<
@@ -182,6 +187,11 @@ describe("Session Core Functionality", () => {
     // Create fresh mock instances for each test
     mockJsonlHandler = {
       read: vi.fn(),
+      // The real handler mirrors the two: a single pass over the file yields
+      // both the messages and the title, so delegate to the `read` mock.
+      readMessagesAndCustomTitle: vi.fn(async (filePath: string) => ({
+        messages: await mockJsonlHandler.read(filePath),
+      })),
       append: vi.fn(),
       isValidSessionFilename: vi.fn().mockReturnValue(true), // Default: valid filenames
       parseSessionFilename: vi.fn(), // Mock will be set up per test

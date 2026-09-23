@@ -146,7 +146,7 @@ Known legacy hotspots (duplication not yet deduplicated — check **both** copie
 
 ### Architecture
 
-- **Backend** (Extension Host): `src/extension.ts` → `ChatProvider` → `ChatSession` (wraps `wave-agent-sdk` Agent) → `MessageHandler` → services
+- **Backend** (Extension Host): `src/extension.ts` → `ChatProvider` → `ChatSession` (drives a `wave --stdio` child over JSON-RPC via `StdioAgent`; it does **not** embed the SDK `Agent`) → `MessageHandler` → services
 - **Frontend** (Webview): React 18 app whose source lives in `packages/webview/src/` (NOT `packages/vscode/webview/`, which is synced build output), uses `useReducer` for state, communicates via `vscode.postMessage`
 - **Key constraint**: `acquireVsCodeApi()` can only be called once per webview lifecycle — call in root component and pass as prop
 

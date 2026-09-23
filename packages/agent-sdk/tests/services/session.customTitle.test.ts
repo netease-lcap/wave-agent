@@ -5,12 +5,14 @@ const {
   mockAppend,
   mockAppendCustomTitle,
   mockReadCustomTitle,
+  mockReadMessagesAndCustomTitle,
   mockHandlerCreateSession,
   mockGetLastMessage,
 } = vi.hoisted(() => ({
   mockAppend: vi.fn(),
   mockAppendCustomTitle: vi.fn(),
   mockReadCustomTitle: vi.fn(),
+  mockReadMessagesAndCustomTitle: vi.fn(),
   mockHandlerCreateSession: vi.fn(),
   mockGetLastMessage: vi.fn(),
 }));
@@ -75,6 +77,7 @@ vi.mock("@/services/jsonlHandler.js", () => ({
   JsonlHandler: vi.fn().mockImplementation(function () {
     return {
       read: vi.fn().mockResolvedValue([]),
+      readMessagesAndCustomTitle: mockReadMessagesAndCustomTitle,
       append: mockAppend,
       appendCustomTitle: mockAppendCustomTitle,
       readCustomTitle: mockReadCustomTitle,
@@ -97,6 +100,8 @@ vi.mock("@/utils/globalLogger.js", () => ({
 import {
   appendMessages,
   listSessionsFromJsonl,
+  loadSessionFromJsonl,
+  reAppendSessionMetadata,
   setSessionCustomTitle,
 } from "@/services/session.js";
 
@@ -118,6 +123,7 @@ describe("session custom title", () => {
     );
 
     mockReadCustomTitle.mockResolvedValue(undefined);
+    mockReadMessagesAndCustomTitle.mockResolvedValue({ messages: [] });
   });
 
   afterEach(() => {
@@ -163,7 +169,7 @@ describe("session custom title", () => {
   });
 
   describe("appendMessages()", () => {
-    it("re-appends an existing title after the batch so it stays in the tail window", async () => {
+    it("writes only the batch — saving never re-appends the title", async () => {
       mockReadCustomTitle.mockResolvedValue("我的标题");
 
       await appendMessages(
@@ -182,25 +188,65 @@ describe("session custom title", () => {
       expect(mockAppend).toHaveBeenCalledWith(SESSION_FILE, expect.any(Array), {
         atomic: false,
       });
+      // Keeping the title inside the tail window is the job of
+      // reAppendSessionMetadata(), which runs at the sparse flush points; doing
+      // it here would cost a tail read plus a line on every single save.
+      expect(mockReadCustomTitle).not.toHaveBeenCalled();
+      expect(mockAppendCustomTitle).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("reAppendSessionMetadata()", () => {
+    it("writes the title back at EOF", async () => {
+      mockReadCustomTitle.mockResolvedValue(undefined);
+
+      await reAppendSessionMetadata(SESSION_ID, "/repo", "我的标题");
+
+      expect(mockReadCustomTitle).toHaveBeenCalledWith(SESSION_FILE);
       expect(mockAppendCustomTitle).toHaveBeenCalledWith(
         SESSION_FILE,
         "我的标题",
         SESSION_ID,
       );
-      // The title must be read BEFORE the batch is written: afterwards the
-      // entry could already have fallen out of the tail window.
-      expect(mockReadCustomTitle.mock.invocationCallOrder[0]!).toBeLessThan(
-        mockAppend.mock.invocationCallOrder[0]!,
-      );
-      expect(mockAppend.mock.invocationCallOrder[0]!).toBeLessThan(
-        mockAppendCustomTitle.mock.invocationCallOrder[0]!,
+    });
+
+    it("prefers a fresher title written by another process", async () => {
+      mockReadCustomTitle.mockResolvedValue("别处改的");
+
+      await reAppendSessionMetadata(SESSION_ID, "/repo", "我的标题");
+
+      expect(mockAppendCustomTitle).toHaveBeenCalledWith(
+        SESSION_FILE,
+        "别处改的",
+        SESSION_ID,
       );
     });
 
-    it("does not touch titles when the session was never renamed", async () => {
-      await appendMessages(
-        SESSION_ID,
-        [
+    it("does nothing when there is no title in memory and none in the file", async () => {
+      mockReadCustomTitle.mockResolvedValue(undefined);
+
+      await reAppendSessionMetadata(SESSION_ID, "/repo", undefined);
+
+      expect(mockAppendCustomTitle).not.toHaveBeenCalled();
+    });
+
+    it("never materializes a transcript that does not exist", async () => {
+      const fsPromises = (await import("fs")).promises;
+      vi.mocked(fsPromises.access).mockRejectedValue(
+        Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
+      );
+
+      await reAppendSessionMetadata(SESSION_ID, "/repo", "我的标题");
+
+      expect(mockHandlerCreateSession).not.toHaveBeenCalled();
+      expect(mockAppendCustomTitle).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("loadSessionFromJsonl()", () => {
+    it("recovers the title from the transcript", async () => {
+      mockReadMessagesAndCustomTitle.mockResolvedValue({
+        messages: [
           {
             id: "m-1",
             role: "user",
@@ -208,10 +254,12 @@ describe("session custom title", () => {
             timestamp: "2024-05-05T00:00:00.000Z",
           },
         ],
-        "/repo",
-      );
+        customTitle: "登录重构",
+      });
 
-      expect(mockAppendCustomTitle).not.toHaveBeenCalled();
+      const sessionData = await loadSessionFromJsonl(SESSION_ID, "/repo");
+
+      expect(sessionData?.metadata.customTitle).toBe("登录重构");
     });
   });
 
