@@ -614,6 +614,62 @@ describe("SettingsPage 插件市场视图", () => {
     });
   });
 
+  /* 托管插件（spec plugin A-024）：行内作用域显示「托管」、气泡说明来源、卸载入口
+     置灰并给出原因——不是点了之后才被拒绝。 */
+  it("托管插件：行内显示「托管」、气泡说明来源，卸载入口置灰并给出说明", async () => {
+    const { vscode } = await mountWithData();
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            command: "listPluginsResponse",
+            anchorWorkdir: ANCHOR_WORKDIR,
+            plugins: [
+              {
+                id: "team-guard@wave-plugins-official",
+                name: "Team Guard",
+                marketplace: "wave-plugins-official",
+                installed: true,
+                managed: true,
+                version: "1.4.0",
+                latestVersion: "1.4.0",
+              },
+            ],
+          },
+        }),
+      );
+    });
+
+    const row = screen.getByText("Team Guard").closest(".settings-plugin-row");
+    const pill = row?.querySelector(".settings-scope-pill") as HTMLElement;
+    // 托管插件不属于本机任何作用域：标签不给「未知」，也不冒充「用户级」
+    expect(pill.textContent).toContain("托管");
+    expect(
+      pill.closest(".tooltip-container")?.querySelector(".tooltip-box")
+        ?.textContent,
+    ).toBe("由组织管理，不可卸载");
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "更换安装作用域" }));
+    });
+    const dialog = screen.getByRole("dialog", { name: "更换安装作用域" });
+    expect(
+      within(dialog).getByTestId("managed-plugin-notice"),
+    ).toHaveTextContent(
+      "该插件由组织管理，无法卸载或禁用。请联系管理员调整托管配置。",
+    );
+    expect(within(dialog).getByRole("button", { name: "卸载" })).toBeDisabled();
+
+    // 置灰不是摆设：点它也不下发（真正的拦截在 SDK 侧，界面不给用户假希望）
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "卸载" }));
+    });
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "uninstallPlugin" }),
+    );
+  });
+
   it("打开视图后台刷新清单：刷新完成后自动呈现最新版本并收起「检查更新中」", async () => {
     // spec 插件市场「市场清单自动刷新与插件升级解耦」场景 2/12：打开视图触发
     // 一次只拉检出的刷新，列表先显示进入前的清单（此时无「更新」按钮），宿主在

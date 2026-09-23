@@ -3,7 +3,15 @@ import * as os from "os";
 import { existsSync, readFileSync, promises as fs } from "fs";
 import * as path from "path";
 import { ConfigurationService } from "../../src/services/configurationService.js";
+import { getRemoteSettingsSync } from "../../src/services/remoteSettingsService.js";
 import { WaveConfiguration } from "../../src/types/configuration.js";
+
+// 托管层来自远端设置的磁盘缓存（spec enterprise server-managed-config）；默认
+// 返回 null = 从未同步过，本机配置说了算，不影响本文件其余用例。
+vi.mock("../../src/services/remoteSettingsService.js", () => ({
+  getRemoteSettingsSync: vi.fn(),
+  mergeRemoteSettings: vi.fn(),
+}));
 
 vi.mock("fs", async () => {
   return {
@@ -369,6 +377,55 @@ describe("ConfigurationService - Plugins", () => {
       expect(result.errors).toContain(
         "Value for plugin 'plugin-1' in enabledPlugins must be a boolean",
       );
+    });
+  });
+
+  /* 托管层（远端托管设置）与三个本机 settings.json 的合并（spec enterprise
+     server-managed-config「托管配置下发插件市场与启用列表」场景 2/4/5）。 */
+  describe("managed layer", () => {
+    const userConfigPath = path.join(userHome, ".wave", "settings.json");
+
+    beforeEach(() => {
+      vi.mocked(getRemoteSettingsSync).mockReturnValue(null);
+    });
+
+    it("merges per key: managed wins on a clash, local-only keys survive", () => {
+      vi.mocked(existsSync).mockImplementation(
+        (p) => p === userConfigPath || p === workdir || p === userHome,
+      );
+      vi.mocked(readFileSync).mockReturnValue(
+        JSON.stringify({
+          enabledPlugins: { "local-only@mkt": true, "managed@mkt": false },
+          marketplaces: {
+            shared: { source: "local-url" },
+            "local-only": { source: "local-url" },
+          },
+        }),
+      );
+      vi.mocked(getRemoteSettingsSync).mockReturnValue({
+        enabledPlugins: { "managed@mkt": true },
+        marketplaces: { shared: { source: "remote-url" } },
+      } as unknown as WaveConfiguration);
+
+      // 管理者只下发一个插件，成员本机已有的插件与市场照常生效
+      expect(configService.getMergedEnabledPlugins(workdir)).toEqual({
+        "local-only@mkt": true,
+        "managed@mkt": true,
+      });
+      expect(configService.getMergedMarketplaces(workdir)).toEqual({
+        shared: { source: "remote-url" },
+        "local-only": { source: "local-url" },
+      });
+      // 托管取值单独可取：判定「是否受组织管理」只看这一份
+      expect(configService.getManagedEnabledPlugins()).toEqual({
+        "managed@mkt": true,
+      });
+    });
+
+    it("reports no managed entries when the remote cache is empty", () => {
+      // 缓存未加载（未登录 / 从未同步）时托管层不存在，本机配置说了算
+      expect(configService.getManagedEnabledPlugins()).toBeNull();
+      expect(configService.getManagedMarketplaces()).toBeNull();
     });
   });
 });

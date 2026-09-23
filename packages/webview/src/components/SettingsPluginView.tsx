@@ -60,6 +60,15 @@ const SCOPE_LABELS: Record<PluginScope, string> = {
   local: "本地",
 };
 
+/** 托管插件的行内作用域文案（spec plugin A-024）：它不属于本机任何作用域，
+ *  与「用户 / 项目 / 本地」并列显示，用户据此知道这个插件是组织下发的。 */
+const MANAGED_SCOPE_LABEL = "托管";
+
+/** 托管插件的说明文案（spec plugin A-024）：卸载入口置灰时给出原因，不假设
+ *  客户端形态（桌面端 / 插件端 / CLI 三端并存）。 */
+const MANAGED_PLUGIN_NOTICE =
+  "该插件由组织管理，无法卸载或禁用。请联系管理员调整托管配置。";
+
 /** 三种安装作用域（spec 场景 12；标题与说明为定稿文案，不得简写或改写） */
 const SCOPE_OPTIONS: { scope: PluginScope; title: string; desc: string }[] = [
   {
@@ -123,6 +132,8 @@ function formatProject(workdir: string): string {
  *  说明「用户级安装（所有项目可用）」；没有锚点工程时给不出工程名（此时 project /
  *  local 两档也不可选，见场景 12），只能说明「所属工程未知」。 */
 function scopeTooltipText(plugin: PluginInfo, anchorWorkdir?: string): string {
+  // 托管插件不属于本机任何作用域（spec plugin A-024）：气泡只说它的归属来源。
+  if (plugin.managed) return "由组织管理，不可卸载";
   if (plugin.scope === "user") return "用户级安装（所有项目可用）";
   if (!anchorWorkdir) return "所属工程未知";
   if (plugin.scope === "project" || plugin.scope === "local") {
@@ -523,7 +534,11 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
                 aria-label="更换安装作用域"
                 onClick={() => openScopeDialog(plugin)}
               >
-                {plugin.scope ? SCOPE_LABELS[plugin.scope] : "未知"}
+                {plugin.managed
+                  ? MANAGED_SCOPE_LABEL
+                  : plugin.scope
+                    ? SCOPE_LABELS[plugin.scope]
+                    : "未知"}
                 <i
                   className="codicon codicon-chevron-down"
                   aria-hidden="true"
@@ -984,11 +999,24 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
               })}
             </div>
 
+            {/* 托管插件的卸载入口置灰（spec plugin A-024）：不是点了再报错——
+                用户在下发值被管理员撤掉前，本机怎么操作都不会让它停用。说明与
+                置灰同处，避免用户把不可点当成故障。 */}
+            {scopeTarget.managed && (
+              <p
+                className="settings-modal-note"
+                data-testid="managed-plugin-notice"
+              >
+                {MANAGED_PLUGIN_NOTICE}
+              </p>
+            )}
+
             <div className="settings-modal-actions">
               {scopeTarget.installed && (
                 <button
                   type="button"
                   className="settings-row-btn settings-row-btn-danger"
+                  disabled={scopeTarget.managed === true}
                   onClick={handleUninstall}
                 >
                   卸载
@@ -1062,7 +1090,11 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
                   {`v${plugin.version} → v${plugin.latestVersion}`}
                 </span>
                 <span className="settings-plugin-update-scope">
-                  {plugin.scope ? SCOPE_LABELS[plugin.scope] : "未知"}
+                  {plugin.managed
+                    ? MANAGED_SCOPE_LABEL
+                    : plugin.scope
+                      ? SCOPE_LABELS[plugin.scope]
+                      : "未知"}
                 </span>
               </li>
             ))}

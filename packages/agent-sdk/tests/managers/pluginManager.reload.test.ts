@@ -442,4 +442,87 @@ describe("PluginManager in-place reload", () => {
       expect(pluginManager.getPlugins()).toHaveLength(0);
     });
   });
+
+  /* 起始加载与「托管设置同步 / 手动重载」可能同时到达：两次加载交错会把能力注册
+     表拆成「一半旧、一半新」。加载因此串行化，后来的请求排队等前一个跑完。 */
+  describe("load serialization", () => {
+    /** 只卡住**第一次**清单读取；放行后后续读取直接通过（重载还要再读一次）。 */
+    function gateFirstLoadManifest() {
+      let firstGate: (() => void) | null = null;
+      let released = false;
+      vi.mocked(PluginLoader.loadManifest).mockImplementation(
+        async (pluginPath: string) => {
+          const name = path.basename(pluginPath);
+          if (!released) {
+            await new Promise<void>((resolve) => {
+              firstGate = resolve;
+            });
+            released = true;
+          }
+          return {
+            name,
+            version: "1.0.0",
+            description: "d",
+          } as PluginManifest;
+        },
+      );
+      return () => firstGate?.();
+    }
+
+    it("does not start a second load while the first is still running", async () => {
+      stubPluginArtifacts({
+        name: "p1",
+        version: "1.0.0",
+        description: "d",
+      } as PluginManifest);
+      const release = gateFirstLoadManifest();
+
+      const first = pluginManager.loadPlugins([
+        { type: "local", path: "plugins/p1" } as PluginConfig,
+      ]);
+      const second = pluginManager.loadPlugins([
+        { type: "local", path: "plugins/p2" } as PluginConfig,
+      ]);
+
+      // 第一个还卡在清单读取上：第二个必须原地排队（否则两者会交错注册能力）。
+      await Promise.resolve();
+      expect(PluginLoader.loadManifest).toHaveBeenCalledTimes(1);
+
+      release();
+      await first;
+      await Promise.resolve();
+      expect(PluginLoader.loadManifest).toHaveBeenCalledTimes(2);
+
+      await second;
+
+      expect(pluginManager.getPlugins()).toHaveLength(2);
+    });
+
+    it("queues a reload behind an in-flight load", async () => {
+      stubPluginArtifacts({
+        name: "p1",
+        version: "1.0.0",
+        description: "d",
+      } as PluginManifest);
+      const release = gateFirstLoadManifest();
+
+      const loading = pluginManager.loadPlugins([
+        { type: "local", path: "plugins/p1" } as PluginConfig,
+      ]);
+      const reloading = pluginManager.reloadAllPlugins();
+
+      await Promise.resolve();
+      // 加载尚未落地，重载不得先卸载它（否则会卸到一半又装回来）。
+      expect(
+        mockSlashCommandManager.unregisterPluginCommands,
+      ).not.toHaveBeenCalled();
+
+      release();
+      await loading;
+      const result = await reloading;
+
+      expect(result.failures).toEqual([]);
+      expect(pluginManager.getPlugins()).toHaveLength(1);
+    });
+  });
 });

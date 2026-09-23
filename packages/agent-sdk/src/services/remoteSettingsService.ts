@@ -341,10 +341,22 @@ export function mergeRemoteSettings(
     result.autoMemoryFrequency = remote.autoMemoryFrequency;
   if (remote.worktree !== undefined) result.worktree = remote.worktree;
   if (remote.models !== undefined) result.models = remote.models;
+  // Plugin / marketplace maps merge per key (remote wins per key), like `env`
+  // above: the managed layer's keys override same-named local ones while every
+  // key the admin did not mention stays as the user configured it. A wholesale
+  // replace would silently drop all of a user's own plugins the moment an admin
+  // pushes a single managed one (spec enterprise server-managed-config
+  // 「托管配置下发插件市场与启用列表」场景 5, matching Claude Code's policy layer).
   if (remote.marketplaces !== undefined)
-    result.marketplaces = remote.marketplaces;
+    result.marketplaces = {
+      ...localMerged.marketplaces,
+      ...remote.marketplaces,
+    };
   if (remote.enabledPlugins !== undefined)
-    result.enabledPlugins = remote.enabledPlugins;
+    result.enabledPlugins = {
+      ...localMerged.enabledPlugins,
+      ...remote.enabledPlugins,
+    };
   if (remote.enableArtifact !== undefined)
     result.enableArtifact = remote.enableArtifact;
   if (remote.enableExec !== undefined) result.enableExec = remote.enableExec;
