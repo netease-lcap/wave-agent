@@ -848,8 +848,10 @@ export class MarketplaceService {
             // (content-addressed zip over a plain HTTP base, no git/GitHub
             // needed). Only the builtin is special-cased by name — its
             // `source` stays "github" in settings/cache, so there is zero
-            // data migration. On mirror failure (e.g. prod URL not yet live)
-            // fall back to the git path unless the kill switch forbids it.
+            // data migration. Both envs' mirror channels are live and carry
+            // content (verified 2026-09-23); on mirror failure
+            // (network/timeout/404/bad content) fall back to the git path
+            // unless the kill switch forbids it.
             const isOfficialBuiltin =
               marketplace.name === MarketplaceService.BUILTIN_MARKETPLACE.name;
             let mirrorUpdated = false;
