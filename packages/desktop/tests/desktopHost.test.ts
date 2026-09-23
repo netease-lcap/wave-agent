@@ -10806,3 +10806,175 @@ describe("notifyFullScreen (desktopFullScreen)", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// session rename (spec session-management.md「会话自定义标题（重命名）」)
+// ---------------------------------------------------------------------------
+
+describe("renameSession", () => {
+  const entry = (
+    sessionId: string,
+    workdir: string,
+    overrides: Record<string, unknown> = {},
+  ) => ({
+    sessionId,
+    title: "旧标题",
+    workdir,
+    cwd: workdir,
+    createdAt: Date.now(),
+    lastActiveAt: Date.now(),
+    ...overrides,
+  });
+
+  /** readyHost + one live session bound to the sole pane under pool key s1. */
+  async function readyWithLiveSession(workdir = "/work/a") {
+    const ctx = await readyHost();
+    const agent = lastAgent();
+    agent.workingDirectory = workdir;
+    fireSessionId(agent, "s1");
+    ctx.store.upsertSession(entry("s1", workdir));
+    return { ...ctx, agent };
+  }
+
+  it("writes through the session's host with its workdir, updates the index and pushes the new title", async () => {
+    const { host, store, sent } = await readyWithLiveSession();
+
+    await host.handleWebviewMessage({
+      command: "renameSession",
+      sessionId: "s1",
+      title: "  我的标题  ",
+      requestId: "r1",
+    });
+
+    // 权威存储是会话文件：写盘经拥有该会话的主机、带上会话所在目录。
+    expect(h.clientRequests).toContainEqual({
+      method: "renameSession",
+      params: { sessionId: "s1", workdir: "/work/a", title: "我的标题" },
+    });
+    // 索引同步（侧边栏/看板/恢复后的头部都读它）。
+    expect(
+      store.getSessionIndex().find((e) => e.sessionId === "s1")?.title,
+    ).toBe("我的标题");
+    // 结果回传：ok + 原样带回顾问的 requestId/sessionId。
+    expect(sent("sessionRenamed").at(-1)).toMatchObject({
+      requestId: "r1",
+      sessionId: "s1",
+      title: "我的标题",
+      ok: true,
+    });
+    // 侧边栏与会话看板的快照刷新也带上新标题。
+    const tree = sent("desktopSessionTree").at(-1);
+    const titles = (
+      tree?.groups as Array<{ sessions: Array<{ title: string }> }>
+    )?.flatMap((g) => g.sessions.map((s) => s.title));
+    expect(titles).toContain("我的标题");
+  });
+
+  it("pushes the new title into every pane showing that session (header contract)", async () => {
+    const { host, sent } = await readyWithLiveSession();
+
+    await host.handleWebviewMessage({
+      command: "renameSession",
+      sessionId: "s1",
+      title: "新标题",
+      requestId: "r1",
+    });
+
+    const pushed = sent("updateCurrentSession").at(-1);
+    expect(pushed).toMatchObject({
+      session: { id: "s1", customTitle: "新标题" },
+    });
+    expect(typeof pushed?.paneId).toBe("string");
+  });
+
+  it("renames a session that is only in the index (not live) via its recorded workdir", async () => {
+    const { host, store, sent } = await readyHost();
+    store.upsertSession(entry("index-only", "/work/index", { host: "local" }));
+
+    await host.handleWebviewMessage({
+      command: "renameSession",
+      sessionId: "index-only",
+      title: "仅索引",
+      requestId: "r2",
+    });
+
+    expect(h.clientRequests).toContainEqual({
+      method: "renameSession",
+      params: {
+        sessionId: "index-only",
+        workdir: "/work/index",
+        title: "仅索引",
+      },
+    });
+    expect(
+      store.getSessionIndex().find((e) => e.sessionId === "index-only")?.title,
+    ).toBe("仅索引");
+    expect(sent("sessionRenamed").at(-1)).toMatchObject({ ok: true });
+  });
+
+  it("replies ok:false for a blank title without touching the disk", async () => {
+    const { host, store, sent } = await readyWithLiveSession();
+    const before = store
+      .getSessionIndex()
+      .find((e) => e.sessionId === "s1")?.title;
+
+    await host.handleWebviewMessage({
+      command: "renameSession",
+      sessionId: "s1",
+      title: "   ",
+      requestId: "r3",
+    });
+
+    expect(h.clientRequests.some((r) => r.method === "renameSession")).toBe(
+      false,
+    );
+    expect(
+      store.getSessionIndex().find((e) => e.sessionId === "s1")?.title,
+    ).toBe(before);
+    expect(sent("sessionRenamed").at(-1)).toMatchObject({
+      requestId: "r3",
+      ok: false,
+    });
+  });
+
+  it("replies ok:false and keeps the old index title when the write fails (never index-only success)", async () => {
+    const { host, store, sent } = await readyWithLiveSession();
+    const restore = failRpc("renameSession", "EACCES: permission denied");
+    try {
+      await host.handleWebviewMessage({
+        command: "renameSession",
+        sessionId: "s1",
+        title: "写不进去",
+        requestId: "r4",
+      });
+    } finally {
+      restore();
+    }
+
+    const reply = sent("sessionRenamed").at(-1);
+    expect(reply).toMatchObject({ requestId: "r4", ok: false });
+    expect(reply?.error).toContain("EACCES");
+    // 只写了本地索引会造成两端不一致 —— 失败时索引必须保持旧值。
+    expect(
+      store.getSessionIndex().find((e) => e.sessionId === "s1")?.title,
+    ).toBe("旧标题");
+  });
+
+  it("replies ok:false with an actionable error when the session's workdir is unknown", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "renameSession",
+      sessionId: "ghost",
+      title: "无家可归",
+      requestId: "r5",
+    });
+
+    expect(h.clientRequests.some((r) => r.method === "renameSession")).toBe(
+      false,
+    );
+    const reply = sent("sessionRenamed").at(-1);
+    expect(reply).toMatchObject({ requestId: "r5", ok: false });
+    expect(reply?.error).toBeTruthy();
+  });
+});

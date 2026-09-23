@@ -24,6 +24,7 @@ import { promisify } from "util";
 import type { Message } from "../types/index.js";
 import { PathEncoder } from "../utils/pathEncoder.js";
 import { JsonlHandler } from "../services/jsonlHandler.js";
+import { isReservedEntry } from "../services/sessionEntries.js";
 import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
 import { logger } from "../utils/globalLogger.js";
 import { getMessageContent } from "../utils/messageOperations.js";
@@ -49,6 +50,11 @@ export interface SessionMetadata {
   lastActiveAt: Date;
   latestTotalTokens: number;
   firstMessage?: string;
+  /**
+   * User-set conversation title (from a `custom-title` entry in the session
+   * file). Takes precedence over `firstMessage` when rendering a label.
+   */
+  customTitle?: string;
   /** Git branch at session creation time (from the metadata header). */
   branch?: string;
 }
@@ -214,9 +220,73 @@ export async function appendMessages(
     );
   }
 
+  // Read the title BEFORE appending. The previous save re-appended it at EOF,
+  // so the tail window is guaranteed to still contain it — whereas after this
+  // batch it might not be.
+  //
+  // Renames append a `custom-title` entry, and appending messages would
+  // eventually push it out of the tail window a listing reads. Claude Code
+  // solves this by re-appending its metadata at EOF on graceful shutdown
+  // (`reAppendSessionMetadata`); wave has no session-level flush hook, so the
+  // equivalent guarantee is maintained here, once per save.
+  const customTitle = await jsonlHandler.readCustomTitle(filePath);
+
   await jsonlHandler.append(filePath, newMessages, {
     atomic: false,
   });
+
+  if (customTitle) {
+    await jsonlHandler.appendCustomTitle(filePath, customTitle, sessionId);
+  }
+}
+
+/**
+ * Set (or replace) a session's user-set title.
+ *
+ * The title is persisted as a `custom-title` entry appended to the session's
+ * own JSONL file — never as a rewrite of the metadata header, and never in a
+ * sidecar index — so every host that reads session files sees it without any
+ * extra sync channel.
+ *
+ * A session whose transcript has not been materialized yet (only meta messages
+ * so far) is created here: renaming is an explicit user action, so it is not
+ * subject to the "meta-only sessions never hit disk" rule.
+ *
+ * An empty/blank title is a no-op — it is not a signal to clear the title.
+ *
+ * @param sessionId - UUID session identifier
+ * @param workdir - Working directory the session belongs to
+ * @param title - New title
+ * @returns Promise that resolves once the entry is on disk (no-op when blank)
+ */
+export async function setSessionCustomTitle(
+  sessionId: string,
+  workdir: string,
+  title: string,
+): Promise<void> {
+  const trimmed = title.trim();
+  if (!trimmed) {
+    return;
+  }
+
+  const jsonlHandler = new JsonlHandler();
+  let filePath = await generateSessionFilePath(sessionId, workdir, "main");
+
+  try {
+    await fs.access(filePath);
+  } catch {
+    // The session may live in another project directory (created from a
+    // different cwd, or a git worktree that no longer maps to this workdir).
+    const fallback = await findSessionFileAcrossProjects(sessionId, "main");
+    if (fallback) {
+      filePath = fallback;
+    } else {
+      await createSession(sessionId, workdir, "main");
+      filePath = await generateSessionFilePath(sessionId, workdir, "main");
+    }
+  }
+
+  await jsonlHandler.appendCustomTitle(filePath, trimmed, sessionId);
 }
 
 /**
@@ -497,6 +567,9 @@ export async function listSessionsFromJsonl(
           // Ignore errors getting first message
         }
 
+        // A user-set title, when present, wins over the first-message label.
+        sessionMeta.customTitle = await jsonlHandler.readCustomTitle(filePath);
+
         sessions.push(sessionMeta);
       } catch {
         // Skip corrupted session files
@@ -693,6 +766,7 @@ export async function listAllSessions(options?: {
               latestTotalTokens:
                 await jsonlHandler.getLatestTotalTokens(filePath),
               firstMessage,
+              customTitle: await jsonlHandler.readCustomTitle(filePath),
               branch: header?.gitBranch,
             });
           } catch {
@@ -901,8 +975,8 @@ export async function getFirstMessageContentFromFile(
       try {
         const message = JSON.parse(line) as Message & { type?: string };
 
-        // Skip the metadata header line and meta messages
-        if (message.type === "metadata" || message.isMeta) {
+        // Skip reserved entries (metadata header, custom-title) and meta messages
+        if (isReservedEntry(message.type) || message.isMeta) {
           continue;
         }
 

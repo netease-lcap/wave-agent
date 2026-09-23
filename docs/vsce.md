@@ -190,7 +190,11 @@ CodeWave IDE 是一款集成在 VS Code 与 JetBrains IDE（WebStorm、IntelliJ 
 
 在输入框中输入 `/resume` 可打开与顶部「历史对话」按钮完全相同的会话列表（范围一致：当前工作区目录，含命令行在同一目录创建的会话），不用离开聊天面板即可切换会话。
 
+聊天面板顶部的会话标题也可以直接点击改名：标题就地变成输入框并全选原文，`Enter` 或点击别处保存、`Esc` 取消；保存失败时回滚为原标题并给出可见提示。标题以 `custom-title` 保留条目写在会话自己的 JSONL 文件里，因此与命令行、桌面端读到的标题一致——命令行 `/rename`、选择器内 `Ctrl+R` 改过的名字，在插件端头部也会显示。
+
 <div class="screenshot-gallery">
+
+<figure><img src="/screenshots/spec-chat-header-title-edit.webp" alt="点击标题就地改名" /><figcaption>点击标题就地改名</figcaption></figure>
 
 <figure><img src="/screenshots/spec-rewind-button.webp" alt="用户消息上的回滚按钮" /><figcaption>用户消息上的回滚按钮</figcaption></figure>
 

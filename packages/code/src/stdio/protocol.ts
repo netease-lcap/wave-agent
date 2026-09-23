@@ -52,6 +52,7 @@ export type RequestMethod =
   | "restoreSession"
   | "listSessions"
   | "listAllSessions"
+  | "renameSession"
   | "getSessionInfo"
   | "sendMessage"
   | "bang"

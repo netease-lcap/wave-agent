@@ -1337,7 +1337,7 @@ describe("DesktopApp", () => {
       });
     });
 
-    it("offers 并排打开 and 删除会话 in the row's 更多 menu; 并排打开 posts desktopOpenPane", () => {
+    it("offers 并排打开 / 重命名 / 删除会话 in the row's 更多 menu; 并排打开 posts desktopOpenPane", () => {
       const { vscode } = renderDesktopApp();
       sendCommand("desktopWorkdirState", {
         workdir: "/work/a",
@@ -1365,6 +1365,7 @@ describe("DesktopApp", () => {
 
       const menu = screen.getByTestId("desktop-session-menu");
       expect(menu).toHaveTextContent("并排打开");
+      expect(menu).toHaveTextContent("重命名");
       expect(menu).toHaveTextContent("删除会话");
 
       fireEvent.click(screen.getByTestId("desktop-session-menu-split"));

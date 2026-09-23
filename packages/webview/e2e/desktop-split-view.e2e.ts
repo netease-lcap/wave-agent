@@ -13,6 +13,111 @@ const initialState = {
 };
 
 test.describe("Desktop split-view panes", () => {
+  test("editable session title hugs its text and leaves the header draggable", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+
+    await injector.simulateExtensionMessage("desktopWorkdirState", {
+      workdir: DIR_A,
+      recentWorkdirs: [DIR_A],
+    });
+    await injector.waitForChatAppReady();
+    await injector.simulateExtensionMessage("setInitialState", initialState);
+    await injector.simulateExtensionMessage("desktopPanes", {
+      panes: [
+        { paneId: "pane-1", sessionId: "sess-a1" },
+        { paneId: "pane-2", sessionId: "sess-a2" },
+      ],
+      focusedPaneId: "pane-1",
+    });
+    // pane 头部标题要能改名才算「可点标题」（role=button）——这正是最容易把
+    // 整个头部变成不可拖拽区域的形态，所以本用例必须带上 session。
+    await injector.simulateExtensionMessage("setInitialState", {
+      ...initialState,
+      paneId: "pane-1",
+      session: {
+        id: "sess-a1",
+        sessionType: "main",
+        workdir: DIR_A,
+        firstMessage: "修复登录页样式",
+      },
+    });
+
+    const pane = webviewPage.getByTestId("desktop-pane-pane-1");
+    const header = pane.getByTestId("chat-header");
+    const title = pane.getByTestId("header-title");
+    await expect(title).toHaveClass(/header-title-editable/);
+    await expect(title).toHaveText("修复登录页样式");
+
+    // 标题盒只包住文字：撑满剩余宽度（flex:1）时 hover 高亮会糊满整个头部。
+    const headerBox = await header.boundingBox();
+    const titleBox = await title.boundingBox();
+    expect(headerBox).not.toBeNull();
+    expect(titleBox).not.toBeNull();
+    expect(titleBox!.width).toBeLessThan(headerBox!.width * 0.5);
+
+    // 标题右侧的头部空白区必须是可拖拽起手点：拖拽逻辑挂在 .chat-header 上，
+    // 但按下落在标题（[role=button]）上会被否决，所以这块不能是标题的地盘。
+    const probe = await webviewPage.evaluate(
+      ({ x, y }) => {
+        const el = document.elementFromPoint(x, y);
+        return {
+          isHeader: el?.classList.contains("chat-header") === true,
+          blockedBy:
+            el
+              ?.closest('button, a, input, select, textarea, [role="button"]')
+              ?.getAttribute("data-testid") ?? null,
+        };
+      },
+      {
+        x: titleBox!.x + titleBox!.width + 80,
+        y: headerBox!.y + headerBox!.height / 2,
+      },
+    );
+    expect(probe).toEqual({ isHeader: true, blockedBy: null });
+
+    // 真按一次：从该点起手应带上 pane 载荷（未被否决）；落在标题文字上则是
+    // 「点击改名」优先，拖拽被否决。两半都要成立，否则不是修好了而是换了个坏法。
+    await webviewPage.evaluate(() => {
+      const w = window as unknown as { __dragStarts?: Array<unknown> };
+      w.__dragStarts = [];
+      document.addEventListener(
+        "dragstart",
+        (e) => {
+          const dt = (e as DragEvent).dataTransfer;
+          w.__dragStarts!.push({
+            prevented: e.defaultPrevented,
+            payload: dt?.getData("application/x-wave-pane") ?? "",
+          });
+        },
+        false,
+      );
+    });
+    const dragFrom = async (x: number) => {
+      const y = headerBox!.y + headerBox!.height / 2;
+      await webviewPage.mouse.move(x, y);
+      await webviewPage.mouse.down();
+      await webviewPage.mouse.move(x + 40, y, { steps: 6 });
+      await webviewPage.mouse.move(x + 80, y + 30, { steps: 6 });
+      await webviewPage.mouse.up();
+    };
+
+    await dragFrom(titleBox!.x + titleBox!.width + 80);
+    await dragFrom(titleBox!.x + titleBox!.width / 2);
+
+    const dragStarts = await webviewPage.evaluate(
+      () =>
+        (window as unknown as { __dragStarts: Array<unknown> }).__dragStarts,
+    );
+    expect(dragStarts).toEqual([
+      { prevented: false, payload: JSON.stringify({ paneId: "pane-1" }) },
+      { prevented: true, payload: "" },
+    ]);
+  });
+
   test("pane close button does not overlap the header panel toggle", async ({
     webviewPage,
   }) => {

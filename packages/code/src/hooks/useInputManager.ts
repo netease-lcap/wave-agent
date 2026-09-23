@@ -63,6 +63,7 @@ export const useInputManager = (
     onCompact,
     onReloadPlugins,
     onAddDir,
+    onRenameSession,
     onPlanCommand,
     isIdle: isIdleProp,
   } = callbacks;
@@ -287,6 +288,8 @@ export const useInputManager = (
                 await onReloadPlugins?.();
               } else if (command === "add-dir") {
                 await onAddDir?.(effect.args);
+              } else if (command === "rename") {
+                await onRenameSession?.(effect.args);
               } else if (command === "plan") {
                 await onPlanCommand?.(effect.args);
               }
@@ -319,6 +322,7 @@ export const useInputManager = (
     onCompact,
     onReloadPlugins,
     onAddDir,
+    onRenameSession,
     onPlanCommand,
   ]);
 

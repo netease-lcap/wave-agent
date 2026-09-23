@@ -40,6 +40,8 @@ vi.mock("@/services/jsonlHandler.js", () => ({
       getLatestTotalTokens: vi.fn().mockResolvedValue(0),
       createSession: vi.fn(),
       readMetadata: vi.fn().mockResolvedValue(null),
+      readCustomTitle: vi.fn().mockResolvedValue(undefined),
+      appendCustomTitle: vi.fn(),
     };
   }),
 }));
@@ -82,6 +84,10 @@ describe("Session Error Handling and Edge Cases", () => {
         createdAt?: string;
         gitBranch?: string;
       } | null>
+    >;
+    readCustomTitle: Mock<(filePath: string) => Promise<string | undefined>>;
+    appendCustomTitle: Mock<
+      (filePath: string, customTitle: string) => Promise<void>
     >;
   };
   let mockPathEncoder: {
@@ -146,6 +152,8 @@ describe("Session Error Handling and Edge Cases", () => {
       getLatestTotalTokens: vi.fn().mockResolvedValue(0),
       createSession: vi.fn().mockResolvedValue(undefined),
       readMetadata: vi.fn().mockResolvedValue(null),
+      readCustomTitle: vi.fn().mockResolvedValue(undefined),
+      appendCustomTitle: vi.fn(),
     };
 
     mockPathEncoder = {

@@ -170,6 +170,11 @@ test.describe("Desktop sidebar keyboard navigation", () => {
     // The menu mounts open and auto-focuses its first item (并排打开).
     const menuSplit = webviewPage.getByTestId("desktop-session-menu-split");
     await expect(menuSplit).toBeFocused();
+    // 菜单顺序固定为 并排打开 / 重命名 / 删除会话，两个 ArrowDown 才到删除。
+    await webviewPage.keyboard.press("ArrowDown");
+    await expect(
+      webviewPage.getByTestId("desktop-session-menu-rename"),
+    ).toBeFocused();
     await webviewPage.keyboard.press("ArrowDown");
     await webviewPage.keyboard.press("Enter"); // 删除会话
     const overlay = webviewPage.getByTestId("confirm-dialog-overlay");

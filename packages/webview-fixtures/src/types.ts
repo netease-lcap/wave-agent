@@ -358,6 +358,19 @@ export interface UpdateCurrentSessionMessage extends HostToWebviewMessageBase {
   session?: SessionMetadata;
 }
 
+/** Reply to a `renameSession` request (spec session-management.md「会话自定义标题
+ *  （重命名）」/ desktop-sessions.md 同故事): the host relays the rename to the
+ *  session's owning host and reports the outcome. The webview applied the title
+ *  optimistically, so `ok: false` means "roll back and surface `error`". */
+export interface SessionRenamedMessage extends HostToWebviewMessageBase {
+  command: "sessionRenamed";
+  requestId: string;
+  sessionId: string;
+  title: string;
+  ok: boolean;
+  error?: string;
+}
+
 export interface ShowConfirmationMessage extends HostToWebviewMessageBase {
   command: "showConfirmation";
   confirmationId: string;
@@ -969,6 +982,7 @@ export type HostToWebviewMessage =
   | EnsureUIResetMessage
   | UpdateSessionsMessage
   | UpdateCurrentSessionMessage
+  | SessionRenamedMessage
   | ShowConfirmationMessage
   | PlanContentMessage
   | PlanFileUpdatedMessage
@@ -1069,6 +1083,9 @@ type ReplyAttribution = {
   // 晚到的旧列表即弃）。
   desktopResumeSessions: "requestId";
   fileSuggestionsResponse: "requestId";
+  // 会话重命名：请求生成 id，回复原样带回（同一会话可反复改名；晚到的旧回复
+  // 已被乐观更新消费，必须按 requestId 丢弃）。
+  sessionRenamed: "requestId";
 };
 
 // ---- 编译期断言：注册表中的每条响应命令，union 成员必须必填其归属键。 ----
@@ -1111,6 +1128,7 @@ export const replyAttributionLocked = {
   pluginMarketFolderSelected: true,
   desktopResumeSessions: true,
   fileSuggestionsResponse: true,
+  sessionRenamed: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];
 };

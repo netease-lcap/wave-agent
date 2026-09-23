@@ -25,6 +25,12 @@ export const firstUserMessageText = (
 };
 
 export const formatSessionLabel = (session: SessionMetadata): string => {
+  // A user-set title wins over the first-message label (spec:
+  // session-management.md「会话自定义标题（重命名）」).
+  if (session.customTitle && session.customTitle.trim()) {
+    return session.customTitle.trim();
+  }
+
   // Use firstMessage content if available, limited to 30 characters
   if (session.firstMessage && session.firstMessage.trim()) {
     return truncate(session.firstMessage);
@@ -64,6 +70,9 @@ export const getSessionTitle = (
   messages?: Message[],
 ): string => {
   if (!currentSession) return DEFAULT_SESSION_TITLE;
+  if (currentSession.customTitle && currentSession.customTitle.trim()) {
+    return currentSession.customTitle.trim();
+  }
   if (currentSession.firstMessage && currentSession.firstMessage.trim()) {
     return truncate(currentSession.firstMessage);
   }

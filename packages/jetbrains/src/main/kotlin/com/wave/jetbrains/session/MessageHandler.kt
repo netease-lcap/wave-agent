@@ -169,6 +169,55 @@ class MessageHandler(
                 // push from the server; the host pulls on demand — VSCE restoreSession).
                 session.pullAndPushMessages()
             }
+            // 会话自定义标题（spec ui/session-management.md「会话自定义标题（重命名）」）：
+            // 插件端唯一入口是聊天面板头部标题，目标恒为当前会话。标题写进会话自己的
+            // JSONL 文件（跨宿主共享），成功后把新标题推回界面（头部 + 会话列表）；
+            // 失败回 ok:false，界面据此回滚乐观标题（VSCE renameSession 同款）。
+            "renameSession" -> {
+                val sid = msg["sessionId"]?.jsonPrimitive?.content ?: return
+                val title = msg["title"]?.jsonPrimitive?.content ?: ""
+                val requestId = msg["requestId"]?.jsonPrimitive?.content ?: ""
+                val trimmed = title.trim()
+                val reply = { ok: Boolean, error: String? ->
+                    postMessage("sessionRenamed", buildJsonObject {
+                        put("requestId", requestId)
+                        put("sessionId", sid)
+                        put("title", trimmed)
+                        put("ok", ok)
+                        if (error != null) put("error", error)
+                    })
+                }
+                // 空标题不是「清除标题」的信号（spec 场景 7）。
+                if (trimmed.isEmpty()) {
+                    reply(false, "标题不能为空")
+                    return
+                }
+                val agent = session.agent
+                // 头部显示的是当前会话；请求途中被切换则宁可失败也不改名到别的会话。
+                if (agent == null || agent.sessionId != sid) {
+                    reply(false, "会话已切换，请重试")
+                    return
+                }
+                try {
+                    agent.renameSession(trimmed)
+                } catch (e: StdioClientException) {
+                    LOG.warn("renameSession failed: ${e.message}")
+                    reply(false, e.message ?: "重命名失败")
+                    return
+                }
+                postMessage("updateCurrentSession", buildJsonObject {
+                    put("session", buildJsonObject {
+                        put("id", agent.sessionId)
+                        put("sessionType", "main")
+                        put("workdir", agent.sessionCwd ?: agent.workingDirectory ?: "")
+                        put("lastActiveAt", java.time.Instant.now().toString())
+                        put("latestTotalTokens", agent.latestTotalTokens)
+                        put("customTitle", trimmed)
+                    })
+                })
+                session.refreshSessions()
+                reply(true, null)
+            }
             "confirmationResponse" -> {
                 val confirmationId = msg["confirmationId"]?.jsonPrimitive?.content ?: return
                 val approved = msg["approved"]?.jsonPrimitive?.content?.toBoolean() ?: false

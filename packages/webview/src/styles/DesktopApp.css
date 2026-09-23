@@ -321,6 +321,9 @@ html[data-theme="dark"] .desktop-sidebar-new-chat.is-active {
   position: relative;
   display: flex;
   align-items: center;
+  /* 允许折行：重命名失败的行内提示（flex-basis 100%）占第二行，其余行不受影响
+     （行内只有 main 一个在流子元素，状态槽/更多按钮都是绝对定位）。 */
+  flex-wrap: wrap;
   box-sizing: border-box;
   min-height: 30px;
   padding: 0;
@@ -594,6 +597,45 @@ html[data-theme="dark"] .desktop-session-status-slot {
   padding: 4px 8px 4px 16px;
   font-size: 13px;
   opacity: 0.6;
+}
+
+/* ---- 行内重命名（spec desktop-sessions.md「会话重命名（侧边栏行内编辑）」）----
+   标题位被输入框就地顶掉（非模态）；行高/字体与普通行一致，避免列表跳动。 */
+.desktop-session-item-main--rename {
+  /* 输入框是 <div> 不是 <button>（避免行点击逻辑吞掉文本编辑），其余同 main。 */
+  cursor: text;
+  padding-right: 32px;
+}
+
+.desktop-session-rename-input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  /* 行高 22 + 边框 2 = 行内 24，仍是 min-height 30 的行。 */
+  box-sizing: border-box;
+  padding: 0 4px;
+  border: 1px solid var(--vscode-focusBorder, #0a66d6);
+  border-radius: 4px;
+  /* 输入框底色/字色随宿主主题（同 .desktop-host-add-input）：写死白底时深色档会
+     与行内 #e6e6e6 文字撞成低对比，并在深色侧栏里凸出一块亮面。 */
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 20px;
+  outline: none;
+}
+
+/* 保存失败的可见提示（场景 8：不得静默回滚）。占满整行、单行省略。 */
+.desktop-session-rename-error {
+  flex: 0 0 100%;
+  padding: 0 8px 2px 16px;
+  font-size: 12px;
+  line-height: 16px;
+  color: #d03050;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---- Worktree controls: branch selector + checkbox (FR-022/FR-023) ----
@@ -1023,7 +1065,10 @@ html[data-theme="dark"] .desktop-session-status-slot {
   /* 指示线取色（设计师 0916 选定「B」档）：桌面端 = --cc-text-secondary ——
      浅色 #6C7076（次级灰，比炭黑柔和）、深色 #A0A5A8（与原 --cc-border-focus
      同值，故深色观感不变）；插件端无 --cc-* 层，回落 host 焦点色。 */
-  --panel-drag-line: var(--cc-text-secondary, var(--vscode-focusBorder, #007fd4));
+  --panel-drag-line: var(
+    --cc-text-secondary,
+    var(--vscode-focusBorder, #007fd4)
+  );
   position: absolute;
   left: -3px;
   top: 0;

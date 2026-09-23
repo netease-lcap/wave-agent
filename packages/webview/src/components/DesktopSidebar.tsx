@@ -8,6 +8,7 @@ import {
   CollapseIcon,
   MoreIcon,
   QueueTrashIcon,
+  QueueEditIcon,
   SplitIcon,
   LoadingRingIcon,
   SettingsPluginsIcon,
@@ -21,7 +22,11 @@ import {
 } from "../utils/worktreeDeleteWarning";
 import { isMacHiddenTitlebar } from "../utils/platform";
 import { useDesktopChrome } from "./DesktopChromeContext";
-import type { DesktopSessionGroup, DesktopSessionEntry } from "../types";
+import type {
+  DesktopSessionGroup,
+  DesktopSessionEntry,
+  RenameSessionHandler,
+} from "../types";
 import "../styles/DesktopApp.css";
 
 /** dataTransfer MIME carrying { workdir, sessionId } while a sidebar session drags. */
@@ -109,22 +114,26 @@ const GroupChevron: React.FC<{ expanded: boolean }> = ({ expanded }) => (
 );
 
 /** Row menu anchored under a session row's "更多" button (fixed positioning
- *  escapes the sidebar's overflow:hidden). 并排打开 + 删除会话. */
+ *  escapes the sidebar's overflow:hidden). 并排打开 + 重命名 + 删除会话 —
+ *  顺序与配色见 spec desktop-sessions.md「会话重命名（侧边栏行内编辑）」场景 1
+ *  （重命名夹在中间，且不得用删除项的危险配色）。 */
 const SessionItemMenu: React.FC<{
   anchorRect: DOMRect;
   onSplit: () => void;
+  onRename: () => void;
   onDelete: () => void;
   onClose: () => void;
   triggerRef: RefObject<HTMLButtonElement | null>;
-}> = ({ anchorRect, onSplit, onDelete, onClose, triggerRef }) => {
+}> = ({ anchorRect, onSplit, onRename, onDelete, onClose, triggerRef }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const { getItemProps } = useRovingMenu(menuRef, {
     itemSelector: ".desktop-session-menu-item",
-    itemCount: 2,
+    itemCount: 3,
     triggerRef,
     closeOnActivate: true,
     onRequestClose: onClose,
-    onActivate: (i) => (i === 0 ? onSplit() : onDelete()),
+    onActivate: (i) =>
+      i === 0 ? onSplit() : i === 1 ? onRename() : onDelete(),
   });
 
   // Click-outside close; listener registered one tick later (inside
@@ -164,9 +173,18 @@ const SessionItemMenu: React.FC<{
         <span>并排打开</span>
       </div>
       <div
-        className="desktop-session-menu-item desktop-session-menu-item--danger"
+        className="desktop-session-menu-item"
         role="menuitem"
         {...getItemProps(1)}
+        data-testid="desktop-session-menu-rename"
+      >
+        <QueueEditIcon className="desktop-session-menu-icon" />
+        <span>重命名</span>
+      </div>
+      <div
+        className="desktop-session-menu-item desktop-session-menu-item--danger"
+        role="menuitem"
+        {...getItemProps(2)}
         data-testid="desktop-session-menu-delete"
       >
         <QueueTrashIcon className="desktop-session-menu-icon" />
@@ -209,6 +227,12 @@ export interface DesktopSidebarProps {
   onOpenPane: (workdir: string, sessionId: string) => void;
   /** Delete a session from the index (also cleans up worktree if applicable). */
   onDeleteSession: (sessionId: string) => void;
+  /**
+   * 行内重命名会话（spec desktop-sessions.md「会话重命名（侧边栏行内编辑）」）。
+   * 调用方（DesktopApp）负责乐观更新会话树与失败回滚；本组件只提交标题、退出
+   * 编辑并展示失败提示。
+   */
+  onRenameSession?: RenameSessionHandler;
   /**
    * Ask what deleting this worktree session would throw away (uncommitted files
    * and unmerged commits). The host answers with a requestId-matched
@@ -265,6 +289,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onSelectSession,
   onOpenPane,
   onDeleteSession,
+  onRenameSession,
   onRequestWorktreeChanges,
   sessionBoardActive = false,
   onToggleSessionBoard,
@@ -313,12 +338,67 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   };
   // Never let an expiry fire against an unmounted component.
   useEffect(() => clearWorktreeChangesTimeout, []);
-  // Session whose row menu (并排打开/删除) is open, with the trigger's rect so
-  // the fixed-position menu anchors under the button.
+  // Session whose row menu (并排打开/重命名/删除会话) is open, with the trigger's
+  // rect so the fixed-position menu anchors under the button.
   const [openMenuFor, setOpenMenuFor] = useState<{
     sessionId: string;
     rect: DOMRect;
   } | null>(null);
+  // 行内重命名（spec desktop-sessions.md「会话重命名（侧边栏行内编辑）」）：正在
+  // 编辑的会话 + 草稿 + 失败提示。列表本身不进 loading/禁用/骨架态（场景 2）。
+  const [renaming, setRenaming] = useState<{
+    sessionId: string;
+    draft: string;
+  } | null>(null);
+  const [renameError, setRenameError] = useState<{
+    sessionId: string;
+    message: string;
+  } | null>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  // 一次性闩锁：Enter 保存后紧跟的 blur 只提交一次，不得重复写盘（场景 5）。
+  const renameSettledRef = useRef(false);
+  const renamingId = renaming?.sessionId ?? null;
+
+  useEffect(() => {
+    if (!renamingId) return;
+    // 自动聚焦 + 内容全选（场景 2）。
+    renameInputRef.current?.focus();
+    renameInputRef.current?.select();
+  }, [renamingId]);
+
+  const beginRename = (sessionId: string) => {
+    const session = sessionTree
+      .flatMap((g) => g.sessions)
+      .find((s) => s.sessionId === sessionId);
+    renameSettledRef.current = false;
+    setRenameError(null);
+    setRenaming({ sessionId, draft: session?.title || "新对话" });
+  };
+
+  // 结束编辑（保存与回滚共用）：闩锁置位，挡住结束动作自身带来的那次 blur。
+  const settleRename = () => {
+    renameSettledRef.current = true;
+    setRenaming(null);
+  };
+
+  const commitRename = async () => {
+    if (!renaming) return;
+    const { sessionId, draft } = renaming;
+    const previous =
+      sessionTree
+        .flatMap((g) => g.sessions)
+        .find((s) => s.sessionId === sessionId)?.title || "新对话";
+    settleRename();
+    const next = draft.trim();
+    // trim 后为空什么都不做（场景 4）：不发请求、标题不变、退出编辑。
+    if (!next || !onRenameSession) return;
+    // 乐观更新已由 DesktopApp 落进会话树（侧边栏行 + 看板卡片 + 头部立即一起
+    // 变），失败时它已回滚，这里只负责可见提示（场景 8）。
+    const result = await onRenameSession(sessionId, next, previous);
+    setRenameError(
+      result.ok ? null : { sessionId, message: result.error ?? "重命名失败" },
+    );
+  };
   const treeRef = useRef<HTMLDivElement | null>(null);
   // Modifier key label for the side-by-side hints, same platform branch as the
   // click handlers below (Cmd on macOS / Ctrl elsewhere).
@@ -501,11 +581,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         : running
           ? "running"
           : null;
+    const isRenaming = renamingId === session.sessionId;
     return (
       <li
         key={session.sessionId}
         className={`desktop-session-item${isCurrent ? " desktop-session-item--current" : ""}${isVisible ? " desktop-session-item--visible" : ""}${status ? " desktop-session-item--status" : ""}`}
-        draggable
+        // 编辑期间不做整行拖拽，否则拖动选择输入框文本会被行拖拽抢走。
+        draggable={!isRenaming}
         onDragStart={(e) => {
           // Drag into the chat area opens the session in a new pane (drop on a
           // pane gap inserts there, anywhere else appends at the right end).
@@ -532,39 +614,89 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           The delete button stays a sibling so hovering it shows its own
           "删除会话" title instead of the drag hint.
         */}
-        <Tooltip
-          text={`可拖拽或 ${modKeyLabel}+点击 并排打开`}
-          position="right"
-          className="desktop-session-item-tooltip"
-          anchorRef={getAnchorRef(session.sessionId)}
-        >
-          <button
-            type="button"
-            className="desktop-session-item-main"
-            aria-current={isCurrent || undefined}
-            data-session-main=""
-            onClick={(e) => {
-              // Cmd on macOS / Ctrl elsewhere opens the session in a new pane
-              // to the right; a plain click keeps the replace-focused-pane
-              // behavior.
-              if (isMacPlatform() ? e.metaKey : e.ctrlKey) {
-                onOpenPane(group.workdir, session.sessionId);
-              } else {
-                onSelectSession(group.workdir, session.sessionId);
+        {isRenaming ? (
+          // 行内编辑：标题位被输入框就地顶掉（不是模态对话框），行其余部分照旧
+          //（场景 2：不进入 loading/禁用/骨架态）。输入框不是 button，因此不会
+          // 被行的「点击=选中会话」逻辑吃掉。
+          <div className="desktop-session-item-main desktop-session-item-main--rename">
+            <input
+              ref={renameInputRef}
+              className="desktop-session-rename-input"
+              data-testid={`desktop-session-rename-input-${session.sessionId}`}
+              value={renaming?.draft ?? ""}
+              aria-label="会话标题"
+              onChange={(e) =>
+                setRenaming((prev) =>
+                  prev ? { ...prev, draft: e.target.value } : prev,
+                )
               }
-            }}
-            data-testid={`desktop-session-main-${session.sessionId}`}
+              // 场景 7：焦点在输入框时按键不得冒泡（不触发行上的裸键/行菜单快捷键）。
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                // 场景 6：组合输入中的 Enter/Esc 不算保存/取消（keyCode 229 是
+                // 部分输入法的等价信号）。
+                if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void commitRename();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  // 场景 4：Esc 退出编辑并回滚为原标题（取消发生在提交之前）。
+                  settleRename();
+                }
+              }}
+              // 场景 3：点击输入框之外（blur）保存；Enter/Esc 之后的那次 blur 由
+              // 闩锁挡掉（场景 5）。
+              onBlur={() => {
+                if (renameSettledRef.current) return;
+                void commitRename();
+              }}
+            />
+          </div>
+        ) : (
+          <Tooltip
+            text={`可拖拽或 ${modKeyLabel}+点击 并排打开`}
+            position="right"
+            className="desktop-session-item-tooltip"
+            anchorRef={getAnchorRef(session.sessionId)}
           >
-            {/*
-              Title only — per-session state (running/waiting/new-completed) moved
-              to the row's right-end 24px slot (Figma 13656:5470), rendered as a
-              sibling after this button.
-            */}
-            <span className="desktop-session-title">
-              {session.title || "新对话"}
-            </span>
-          </button>
-        </Tooltip>
+            <button
+              type="button"
+              className="desktop-session-item-main"
+              aria-current={isCurrent || undefined}
+              data-session-main=""
+              onClick={(e) => {
+                // Cmd on macOS / Ctrl elsewhere opens the session in a new pane
+                // to the right; a plain click keeps the replace-focused-pane
+                // behavior.
+                if (isMacPlatform() ? e.metaKey : e.ctrlKey) {
+                  onOpenPane(group.workdir, session.sessionId);
+                } else {
+                  onSelectSession(group.workdir, session.sessionId);
+                }
+              }}
+              data-testid={`desktop-session-main-${session.sessionId}`}
+            >
+              {/*
+                Title only — per-session state (running/waiting/new-completed) moved
+                to the row's right-end 24px slot (Figma 13656:5470), rendered as a
+                sibling after this button.
+              */}
+              <span className="desktop-session-title">
+                {session.title || "新对话"}
+              </span>
+            </button>
+          </Tooltip>
+        )}
+        {renameError?.sessionId === session.sessionId && (
+          <div
+            className="desktop-session-rename-error"
+            role="alert"
+            title={renameError.message}
+          >
+            {renameError.message}
+          </div>
+        )}
         {status && (
           <span
             className={`desktop-session-status-slot desktop-session-status-slot--${status}`}
@@ -611,6 +743,10 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             onSplit={() => {
               setOpenMenuFor(null);
               onOpenPane(group.workdir, session.sessionId);
+            }}
+            onRename={() => {
+              setOpenMenuFor(null);
+              beginRename(session.sessionId);
             }}
             onDelete={() => {
               setOpenMenuFor(null);

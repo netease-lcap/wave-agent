@@ -126,6 +126,15 @@ export class MessageHandler {
       case "restoreSession":
         await this.restoreSession(msg.sessionId as string, viewType, windowId);
         break;
+      case "renameSession":
+        await this.renameSession(
+          msg.sessionId as string,
+          msg.title as string,
+          msg.requestId as string,
+          viewType,
+          windowId,
+        );
+        break;
       case "requestFileSuggestions":
         await this.handleFileSuggestionsRequest(
           msg.filterText as string,
@@ -1698,6 +1707,71 @@ export class MessageHandler {
       console.error(`恢复 ${viewType} 会话失败:`, error);
       vscode.window.showErrorMessage("恢复会话失败: " + error);
     }
+  }
+
+  /**
+   * 会话自定义标题（spec ui/session-management.md「会话自定义标题（重命名）」）：
+   * 插件端的唯一入口是聊天面板头部标题本身，因此目标恒为当前会话。标题作为保留
+   * 条目写进会话自己的 JSONL 文件（跨宿主共享），写盘成功后把新标题推回界面：
+   * `updateCurrentSession`（头部即时更新）+ 会话列表（列表/重启后仍显示自定义
+   * 标题）。失败必须回 `ok:false`，界面据此回滚乐观标题（不得静默失败）。
+   */
+  private async renameSession(
+    sessionId: string,
+    title: string,
+    requestId: string,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    const trimmed = title.trim();
+    const reply = (ok: boolean, error?: string) =>
+      this.context.postMessage(
+        {
+          command: "sessionRenamed",
+          requestId,
+          sessionId,
+          title: trimmed,
+          ok,
+          error,
+        },
+        viewType,
+        windowId,
+      );
+    // 空标题不是「清除标题」的信号（spec 场景 7）。
+    if (!trimmed) {
+      reply(false, "标题不能为空");
+      return;
+    }
+    const session = this.context.getChatSession(viewType || "tab", windowId);
+    const agent = session.agent;
+    // 头部显示的是当前会话；会话已在请求途中被切换时宁可失败也不改名到别的会话。
+    if (!agent || agent.sessionId !== sessionId) {
+      reply(false, "会话已切换，请重试");
+      return;
+    }
+    try {
+      await agent.renameSession(trimmed);
+    } catch (error) {
+      reply(false, error instanceof Error ? error.message : String(error));
+      return;
+    }
+    this.context.postMessage(
+      {
+        command: "updateCurrentSession",
+        session: {
+          id: agent.sessionId,
+          sessionType: "main",
+          workdir: agent.sessionCwd ?? agent.workingDirectory,
+          lastActiveAt: new Date(),
+          latestTotalTokens: agent.latestTotalTokens,
+          customTitle: trimmed,
+        },
+      },
+      viewType,
+      windowId,
+    );
+    await this.context.listSessions(viewType, windowId);
+    reply(true);
   }
 
   private async handleFileSuggestionsRequest(

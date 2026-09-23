@@ -219,6 +219,19 @@ class StdioAgent(
         client.request("restoreSession", buildJsonObject { put("sessionId", sessionId) }, this.sessionId)
     }
 
+    /**
+     * 会话自定义标题（spec ui/session-management.md「会话自定义标题（重命名）」）：
+     * 标题作为保留条目追加进会话自己的 JSONL 文件。工作目录用 [sessionCwd]（会话
+     * 稳定根）——它不是被 bash cd 漂移过的 [workingDirectory]，会话文件在它下面。
+     */
+    suspend fun renameSession(title: String) {
+        client.request("renameSession", buildJsonObject {
+            put("sessionId", sessionId)
+            put("workdir", sessionCwd ?: workingDirectory)
+            put("title", title)
+        }, sessionId)
+    }
+
     suspend fun setPermissionMode(mode: String) {
         client.request("setPermissionMode", buildJsonObject { put("mode", mode) }, sessionId)
     }

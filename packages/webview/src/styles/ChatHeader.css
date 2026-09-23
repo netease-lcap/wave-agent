@@ -12,7 +12,12 @@
 }
 
 .header-title {
-  flex: 1;
+  /* 不撑满剩余宽度：标题是「点一下改名」的入口（role=button），撑满时 hover 高亮
+     糊满整个头部，且分屏下 DesktopShell 挂在 .chat-header 上的 pane 拖拽会被
+     「按下落在 [role=button] 上即否决」挡掉——头部没有可抓的地方就没法拖拽换位。
+     改用 margin-right:auto 吸收剩余宽度（文字位置与右侧按钮位置都不变）。 */
+  flex: 0 1 auto;
+  margin-right: auto;
   min-width: 0;
   font-size: 13px;
   font-weight: 600;
@@ -27,6 +32,46 @@
   display: flex;
   gap: 4px;
   align-items: center;
+}
+
+/* 会话标题就地编辑（spec session-management.md「会话重命名入口：CLI 与 IDE
+   插件」场景 8/9）：标题本身是入口，hover 给一点反馈暗示可点击；编辑态用同样
+   的字号/行高，标题位置不跳动（面板布局不变）。 */
+.header-title-editable {
+  cursor: text;
+  border-radius: 4px;
+}
+
+.header-title-editable:hover {
+  background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.header-title-input {
+  /* 标题盒由 flex:1 撑开；输入框的边框与内边距靠 box-sizing 收在盒内，
+     否则会在头部里撑出额外宽度。编辑态仍占满剩余宽度（右侧按钮不位移），
+     与上面「显示态只包住文字」的改动互补。 */
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  padding: 0 4px;
+  border: 1px solid var(--vscode-focusBorder, #007fd4);
+  border-radius: 4px;
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font-family: inherit;
+  outline: none;
+}
+
+/* 保存失败的可见提示（场景 9：不得静默回滚）。 */
+.header-title-error {
+  flex: 0 0 auto;
+  max-width: 40%;
+  margin-left: 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--vscode-errorForeground, #f14c4c);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Sidebar collapsed → 收起态 leading（展开按钮 + 分割线）：对齐原型

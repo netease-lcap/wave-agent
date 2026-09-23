@@ -1,6 +1,7 @@
 export {
   listSessions,
   listAllSessions,
+  setSessionCustomTitle,
   truncateContent,
   loadSessionFromJsonl,
   loadFullMessageThread,

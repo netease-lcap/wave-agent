@@ -6,6 +6,7 @@ import {
   PromptHistoryManager,
   listSessions,
   listAllSessions,
+  setSessionCustomTitle,
   searchFiles,
   generateRandomName,
   getDefaultRemoteBranch,
@@ -2533,6 +2534,26 @@ test("listAllSessions returns every project's sessions with no workdir or agent"
 
   expect(listAllSessions).toHaveBeenCalledWith();
   expect(result).toEqual({ sessions });
+});
+
+test("renameSession writes the title for a session owned by any project", async () => {
+  const { bridge } = createBridge();
+  // No initialize: the desktop renames sessions straight from its sidebar, so
+  // the target has no live agent — the id/workdir come from the caller.
+  vi.mocked(setSessionCustomTitle).mockResolvedValue();
+
+  const result = await bridge.handleRequest("renameSession", {
+    sessionId: "11111111-1111-1111-1111-111111111111",
+    workdir: "/other/project",
+    title: "My title",
+  });
+
+  expect(setSessionCustomTitle).toHaveBeenCalledWith(
+    "11111111-1111-1111-1111-111111111111",
+    "/other/project",
+    "My title",
+  );
+  expect(result).toBeUndefined();
 });
 
 test("updateConfig destroys and recreates agent with merged config", async () => {
