@@ -7054,3 +7054,154 @@ Figma 这套里 16 画板的分组 chevron 只给了「上」（`13498:16662`）
 - 报告 `CC02/走查/0923-图标方向-report/index.html`（skill 母版 v1.1 生成；verify 脚本退出 0、
   8 条 finding 全 `broken: []`、axe 浅/深 **0 违规**、640 窄屏无溢出、图片加载 0 错误）
 - 本轮是纯几何翻转（无 CSS 值改动、无业务逻辑），无单测覆盖；对比度不受影响（只翻方向不改颜色）。
+
+## 0923 评论（确认弹窗 AskUserQuestion：滚动区域收进选项列表 + 右缘拉齐）
+
+### ① 结论
+
+她 2026-09-23 预览走查（用例「临时：问题待回答 · 多选数据」）两轮评论：
+
+1. 点 `div.options-list`（「重跑并修复 / 立即重跑失败用例并定位修复 / 先跳过，记录成待办继续当…」）：
+   「**滚动区域应该是这里面**」→ 滚动容器从 `.confirmation-body` 收到 `.options-list`，
+   弹窗标题 / 进度条 / 题干留在原地。
+2. 她随后选「**按 B 实现我看一下，然后规则可以同步到其他端**」= 方案 B（不预留滚动条列，
+   不滚的短题目卡片铺满 734）。看完 B 又点 `div.question-item` 追问
+   「**这里进度条和文案不能右侧也拉齐吗？**」→ 落地**方案 C**：滚动条那一列按需让出。
+
+方案 C 的做法：`.question-item` 的 `padding-right: 16px` 与 `.options-list` 的
+`margin-right: -16px` 都改成「只在列表真的溢出时」生效（组件测 `scrollHeight > clientHeight`
+挂 `.is-list-scrollable`）。于是
+
+- 列表**不**溢出（短题目）：不留列，题干 / 进度条 / 卡片一起铺满 **734**，三者右缘对齐；
+- 列表溢出：三者一起收 **718**，滚动条落回原来那一列（x 1200.5–1216.5，与改前基线同 x）。
+
+「同步到其他端」= 规则写在 base 文件（`ConfirmationDialog.css` + 组件共享逻辑），
+IDE（VS Code / JetBrains）与桌面已经同一行为，不需要额外动作。
+
+改前：溢出全落在 `.confirmation-body` 上（滚轮压在选项行上，动的是 body），
+标题、进度条、题干会一起被卷出视口。
+
+### ② 改前实测（真回退基线）
+
+| 元素                            | clientH / scrollH | overflow-y | 滚轮滚它？                |
+| ------------------------------- | ----------------- | ---------- | ------------------------- |
+| `.confirmation-body`            | 482 / 688         | auto       | **是**（scrollTop 0→206） |
+| `.ask-user-questions`           | 648 / 648         | visible    | 否                        |
+| `.question-item`                | 648 / 648         | visible    | 否                        |
+| `.options-list`（她点的那一层） | 600 / 600         | visible    | 否                        |
+
+滚不动的根因：这一支的容器高度没传下来 —— 每层默认 `min-height: auto`（等于内容高度）
+挡住收缩，于是溢出全落在 `.confirmation-body`。另：`.confirmation-body` 自带
+**16px 滚动条列**（桌面设计层的实占轨道，盒 734 / 内容 718，x 1200.5–1216.5），
+所以改前「题干 / 进度条 / 卡片」右缘都在 1200.5，与滚动条列左缘对齐。
+
+### ③ 改法（`ConfirmationDialog.css` + `ConfirmationDialog.tsx`）
+
+```css
+/* 高度沿 .confirmation-body → .ask-user-questions → .question-item → .options-list 传下去 */
+.ask-user-questions {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.question-item {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.question-progress-bar,
+.question-header-row {
+  flex-shrink: 0;
+} /* 6px 条 / 24px 题干行不许被压 */
+.options-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 滚动条那一列按需让出（方案 C）：溢出时题头 / 进度条内衬 16px、列表盒伸进这 16px
+   （自身滚动条正好落回同一列）；不溢出时两边都不动，三者一起铺满 734。 */
+.question-item.is-list-scrollable {
+  padding-right: 16px;
+}
+.question-item.is-list-scrollable .options-list {
+  margin-right: -16px;
+}
+
+.confirmation-body:has(.ask-user-questions) > .confirmation-header {
+  flex-shrink: 0;
+}
+```
+
+```tsx
+// 组件侧（约 20 行，不动布局结构与语义）：溢出与否只有量了才知道
+const [questionsListScrollable, setQuestionsListScrollable] = useState(false);
+const measureQuestionsList = useCallback(() => {
+  const el = questionsListRef.current;
+  if (el) setQuestionsListScrollable(el.scrollHeight > el.clientHeight);
+}, []);
+useLayoutEffect(measureQuestionsList); // 每次渲染后量一次（切题 / 选中 / 其他输入框长高）
+useEffect(() => {
+  // 只改盒子不改内容（窗口 / 面板宽度）时补量
+  const el = questionsListRef.current;
+  if (!el || typeof ResizeObserver === "undefined") return;
+  const observer = new ResizeObserver(measureQuestionsList);
+  observer.observe(el);
+  return () => observer.disconnect();
+}, [confirmation.toolName, measureQuestionsList]);
+// 渲染：className={`question-item${questionsListScrollable ? " is-list-scrollable" : ""}`}
+```
+
+`flex-shrink: 0` 三处是必需的：不设的话收缩额度会按 basis 分摊，6px 进度条被压到
+4.1px、24px 题干行被压到 16.5px、32px 标题行被压到 22.3px。为什么必须上 JS：
+`scrollbar-gutter` 只能「恒留」或「恒不留」（恒留 = 短题目右缘空 16px；恒不留 = 题头比
+卡片窄 16px），「按需」纯 CSS 表达不了。不会来回抖：列表变窄只会让内容更高，
+状态翻转后不会翻回去（两态各采样 24 次取值唯一，值不变时 React 忽略本次 setState）。
+除题目这一支外，其余确认类型仍由 `.confirmation-body` 滚。
+
+### ④ 改后实测（三版对照）
+
+| 项                             | 未改动基线      | 上一版 B                 | 本版 C（当前）                         |
+| ------------------------------ | --------------- | ------------------------ | -------------------------------------- |
+| 滚轮滚的是谁                   | body 0→206      | `.options-list` 0→206    | `.options-list` 0→206（不变）          |
+| body / list 溢出（长列表）     | 482/688·600/600 | 482/482（不滚）·394/600  | 482/482 · **394/600（不变）**          |
+| 滚动条列 x（滚动中）           | 1200.5–1216.5   | 1200.5–1216.5（不变）    | 1200.5–1216.5（不变）                  |
+| 卡片宽（滚动中 / 不滚）        | 718 / 734       | 718 / 734                | **718 / 734（两态与基线一致）**        |
+| 题干·进度条宽（滚动中 / 不滚） | 718 / 734       | 718 / **718**            | **718 / 734**                          |
+| 不滚时三者右缘（图内像素实测） | 1216 对齐       | 进度条 1200 vs 卡片 1216 | **进度条 1216 vs 卡片 1216**           |
+| 长列表滚动中 B↔C 逐像素差异   | —               | —                        | **0 px**（bbox = None）                |
+| 短题目 B↔C 显著差异（>8/255） | —               | —                        | 880 px（0.08%），只在进度条 12px 横带  |
+| 「其他」输入框长高到溢出       | —               | —                        | class 自动翻转、题头跟着收 16px 仍对齐 |
+
+互动回归：滚到列表底再切题 → 新题 `scrollTop` 被浏览器夹回 0、获焦选项完整可见；
+「其他」输入框撑高 → 弹窗先长高、到 max-height 后列表内滚；两用例 pageerror 0/0。
+其余确认类型（`desktop-full` 的 executeBash）实测未进任何新选择器：`.options-list` 不存在、
+header / body 的 `flex-shrink` 仍为 1、`overflow-y` 仍 auto。
+
+### ⑤ 三案沿革（留给后续裁决）
+
+| 案   | 做法                                                            | 不滚时                   | 代价                                         |
+| ---- | --------------------------------------------------------------- | ------------------------ | -------------------------------------------- |
+| A    | 加 `scrollbar-gutter: stable`（列恒在）                         | 卡片 718、右侧 16px 空列 | 短题目右缘空 16px                            |
+| B    | 不加（列按需，但题头也跟着不留）                                | 卡片铺满 734             | 题头/进度条 718 与卡片错位 16px、切题跳 16px |
+| C ✅ | JS 探测溢出（`scrollHeight > clientHeight` 加 class），两套宽度 | 三者都 734               | 多一个测量 effect + class（纯 CSS 无解）     |
+
+### ⑥ 残留 / 备用触发语
+
+- 「切题时记住上一次滚动位置」（现在是夹回 0，新题从头看）。
+- 「选项列表滚到底时别带动外面」（`overscroll-behavior: contain`）。
+- 「其余确认类型也按这个收一收」—— 目前只改题目这一支，Bash / diff / MCP / 计划确认
+  仍由 `.confirmation-body` 滚。
+- 「滚动条列干脆恒留」——换回方案 A（短题目右缘会恢复那 16px 空档）。
+- 「只留桌面端」—— 现在规则在 base、三端同行为（她 0923 明确说可以同步到其他端）。
+
+### ⑦ 验证脚本与证据
+
+- 探针：`CC02/走查/_tools/0923/probe-options-scroll-0923.mjs`（祖先链几何 + 滚轮归属）、
+  `probe-options-scroll-q2-0923.mjs`（长短题目宽度）、`probe-options-scroll-c-0923.mjs`
+  （C 版：两态 + 「其他」长高翻转 + 24 次稳定性采样）、`probe-verify-0923.mjs`（行为回归 +
+  executeBash 未受影响）、`shots-options-scroll-0923.mjs`（三状态出图，第二参 = 版本后缀；
+  改前基线走真回退：备份 → `git checkout --` → 采集 → 还原并核 md5 逐字节一致）。
+- 报告（skill 母版 v1.1，**改前 = 上一版 B**）：`CC02/走查/0923-选项区滚动报告-c/index.html`
+  （方案 C，3 条：短题目拉齐 / 右缘 ×4 特写 / 长列表滚动两版逐像素相同），自检
+  `verify-repair-report.mjs`：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
+  方案 A / B 那两版留在 `CC02/走查/0923-选项区滚动报告/index.html`、`…报告-b/index.html`
+  （不覆盖历史报告）。

@@ -1,4 +1,10 @@
-import React, { useRef, useEffect, useState, useCallback } from "react";
+import React, {
+  useRef,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  useCallback,
+} from "react";
 import {
   ASK_USER_QUESTION_TOOL_NAME,
   BASH_TOOL_NAME,
@@ -136,6 +142,33 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
   // ---- Modal focus management ----
   const dialogRef = useRef<HTMLDivElement>(null);
   const questionsListRef = useRef<HTMLDivElement>(null);
+
+  // 选项列表是否真的溢出 —— 决定它那条 16px 滚动条列要不要让出来
+  // （见 ConfirmationDialog.css 的 .question-item.is-list-scrollable）。
+  // 纯 CSS 表达不了「按需预留」：scrollbar-gutter 恒留会让不滚的短题目右缘
+  // 空出 16px，不预留则题头 / 进度条比卡片窄 16px。设计师要求两者右缘对齐
+  // （0923 评论），所以这里量一次 scrollHeight。
+  const [questionsListScrollable, setQuestionsListScrollable] = useState(false);
+
+  const measureQuestionsList = useCallback(() => {
+    const el = questionsListRef.current;
+    if (!el) return;
+    setQuestionsListScrollable(el.scrollHeight > el.clientHeight);
+  }, []);
+
+  // 每次渲染后量一次：切题、选中态变化、其他输入框长高都会改内容高度。
+  // 值没变时 React 会忽略这次 setState，不会多渲染一轮。
+  useLayoutEffect(measureQuestionsList);
+
+  // 只改盒子（窗口 / 面板宽度）不改内容的场景不触发渲染，另挂观察者补量。
+  useEffect(() => {
+    const el = questionsListRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measureQuestionsList);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [confirmation.toolName, measureQuestionsList]);
+
   // The element focused before the dialog took focus; restored on dismiss.
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
@@ -538,7 +571,11 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
 
     return (
       <div className="ask-user-questions">
-        <div className="question-item">
+        <div
+          className={`question-item${
+            questionsListScrollable ? " is-list-scrollable" : ""
+          }`}
+        >
           {questions.length > 1 && (
             <div
               className="question-progress-bar"

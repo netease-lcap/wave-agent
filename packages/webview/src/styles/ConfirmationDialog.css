@@ -45,6 +45,13 @@
   gap: 6px;
 }
 
+/* 只有题目这一支接管滚动时（见下方 .ask-user-questions / .options-list），
+   标题行才不许被压缩额度分走 —— 其余确认类型仍由 .confirmation-body 滚，
+   保持原样。 */
+.confirmation-body:has(.ask-user-questions) > .confirmation-header {
+  flex-shrink: 0;
+}
+
 .confirmation-header-top {
   display: flex;
   align-items: center;
@@ -149,16 +156,37 @@
 }
 
 /* Ask User Questions Styles */
+
+/* 0923 评论（`div.options-list`「滚动区域应该是这里面」）：这一支从
+   .confirmation-body 手里接管滚动 —— 弹窗标题、进度条、题干都留在原地，
+   只有选项列表滚。高度得沿 .confirmation-body → .ask-user-questions →
+   .question-item → .options-list 一路传下去，所以每层都要 flex: 1 1 auto
+   + min-height: 0（默认 min-height: auto 等于内容高度，传不下去，会退回
+   让 .confirmation-body 滚）。 */
 .ask-user-questions {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .question-item {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 滚动条那一列（16px）**按需**让出来（0923 评论「进度条和文案不能右侧也拉齐
+   吗」）：列表溢出时题头 / 进度条内衬 16px，与收窄后的卡片（718）右缘对齐；
+   不溢出时不留空列，和卡片一起铺满 734。滚动条会不会出现只有量了才知道 ——
+   纯 CSS 只能恒留（scrollbar-gutter）或恒不留，前者短题目右缘空 16px，后者
+   题头比卡片窄 16px —— 所以由组件测溢出挂 is-list-scrollable
+   （ConfirmationDialog.tsx 的 questionsListScrollable）。 */
+.question-item.is-list-scrollable {
+  padding-right: 16px;
 }
 
 .question-header-row {
@@ -167,6 +195,8 @@
   justify-content: space-between;
   gap: 8px;
   min-height: 24px;
+  /* 高度分配时不被压缩（压缩额度全部由 .options-list 承担）。 */
+  flex-shrink: 0;
 }
 
 .question-header-chip {
@@ -191,10 +221,22 @@
   min-width: 0;
 }
 
+/* 选项列表 = 滚动容器（0923 评论「滚动区域应该是这里面」）：占满剩余高度，
+   超出即在这里滚（题头 / 进度条 / 弹窗标题都不动）。 */
 .options-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* 溢出时：列表盒伸进 .question-item 让出的那 16px 内衬，自身的 16px 滚动条
+   正好落回这一列 —— 与改动前 .confirmation-body 的滚动条同 x，卡片宽度不变
+   （718）。不溢出时两边都不动，卡片铺满 734。 */
+.question-item.is-list-scrollable .options-list {
+  margin-right: -16px;
 }
 
 .option-item {
@@ -338,6 +380,8 @@
   display: flex;
   gap: 4px;
   margin-bottom: 2px;
+  /* 同 .question-header-row：6px 高的分段条不许被压缩额度分走。 */
+  flex-shrink: 0;
 }
 
 .question-progress-seg {
