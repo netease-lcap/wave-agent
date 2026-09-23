@@ -339,7 +339,7 @@ export const MessageList = forwardRef<
     // timelineRuns) instead of the virtualizer's `gap`: consecutive assistant
     // messages render flush (gap 0) so the timeline line is continuous through
     // a run — a uniform `gap` would break the line at every message boundary.
-    paddingStart: 10, // .messages-container padding
+    paddingStart: 10, // .messages-column padding
     paddingEnd: 10,
     // Keep the reading position anchored on appends; follow new content only
     // when the user is already at the end (streaming bottom-pin).
@@ -771,73 +771,79 @@ export const MessageList = forwardRef<
       className={`messages-container${isStreaming ? " streaming" : ""}${isCompacting ? " compacting" : ""} messages-container--virtual`}
       data-testid="messages-container"
     >
-      {stickyMessage && (
-        <div className="sticky-user-wrapper">
-          <div className="sticky-user-cap" />
-          <div
-            className="sticky-user-message"
-            data-testid="sticky-user-message"
-            onClick={() => scrollToMessage(stickyMessage.id)}
-          >
-            <div className="sticky-user-content">{stickyMessage.text}</div>
-          </div>
-          <div className="sticky-user-scrim" />
-        </div>
-      )}
-      <>
-        {/* In-flow spacer carrying the virtualized total height. The
-            virtualizer writes its height directly (directDomUpdates); it
-            must keep its space in the flex column (flex-shrink: 0). */}
-        <div
-          ref={(node) => {
-            virtualizer.containerRef(node);
-            spacerRef.current = node;
-          }}
-          className="virtual-spacer"
-        />
-        {virtualizer.getVirtualItems().map((virtualRow) => {
-          const message = visibleMessages[virtualRow.index];
-          const runClass = timelineRuns.classes[virtualRow.index];
-          return (
+      {/* The scroll surface is the whole pane; the capped, centered column
+          lives in this inner wrapper (see MessageList.css). Rows resolve
+          against it (position: relative), so its offset from the scroll
+          surface must stay 0 — the 10px padding is inside it. */}
+      <div className="messages-column">
+        {stickyMessage && (
+          <div className="sticky-user-wrapper">
+            <div className="sticky-user-cap" />
             <div
-              key={virtualRow.key}
-              data-index={virtualRow.index}
-              data-measured-message-id={message.id}
-              ref={measureRow}
-              className={`virtual-row${runClass ? ` ${runClass}` : ""}`}
-              style={{
-                paddingBottom: timelineRuns.paddings[virtualRow.index],
-              }}
+              className="sticky-user-message"
+              data-testid="sticky-user-message"
+              onClick={() => scrollToMessage(stickyMessage.id)}
             >
-              <Message
-                key={message.id}
-                message={message}
-                vscode={vscode}
-                onRewindToMessage={onRewindToMessage}
-                workdir={workdir}
-                onOpenPreview={onOpenPreview}
-                onOpenFile={onOpenFile}
-              />
+              <div className="sticky-user-content">{stickyMessage.text}</div>
             </div>
-          );
-        })}
-      </>
-      {/* Compaction hint: blinking cursor + label pinned to the end of the
-          message list, independent of isStreaming (auto-compaction runs between
-          turns, after the streaming cursor is gone). */}
-      {isCompacting && (
-        <div className="compaction-hint" data-testid="compaction-hint">
-          <span className="compaction-hint-cursor">▋</span>正在压缩对话
-          {compactionStream && (
-            <span
-              className="compaction-hint-tail"
-              data-testid="compaction-hint-tail"
-            >
-              {streamingTail(compactionStream)}
-            </span>
-          )}
-        </div>
-      )}
+            <div className="sticky-user-scrim" />
+          </div>
+        )}
+        <>
+          {/* In-flow spacer carrying the virtualized total height. The
+              virtualizer writes its height directly (directDomUpdates); it
+              must keep its space in the flex column (flex-shrink: 0). */}
+          <div
+            ref={(node) => {
+              virtualizer.containerRef(node);
+              spacerRef.current = node;
+            }}
+            className="virtual-spacer"
+          />
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            const message = visibleMessages[virtualRow.index];
+            const runClass = timelineRuns.classes[virtualRow.index];
+            return (
+              <div
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                data-measured-message-id={message.id}
+                ref={measureRow}
+                className={`virtual-row${runClass ? ` ${runClass}` : ""}`}
+                style={{
+                  paddingBottom: timelineRuns.paddings[virtualRow.index],
+                }}
+              >
+                <Message
+                  key={message.id}
+                  message={message}
+                  vscode={vscode}
+                  onRewindToMessage={onRewindToMessage}
+                  workdir={workdir}
+                  onOpenPreview={onOpenPreview}
+                  onOpenFile={onOpenFile}
+                />
+              </div>
+            );
+          })}
+        </>
+        {/* Compaction hint: blinking cursor + label pinned to the end of the
+            message list, independent of isStreaming (auto-compaction runs between
+            turns, after the streaming cursor is gone). */}
+        {isCompacting && (
+          <div className="compaction-hint" data-testid="compaction-hint">
+            <span className="compaction-hint-cursor">▋</span>正在压缩对话
+            {compactionStream && (
+              <span
+                className="compaction-hint-tail"
+                data-testid="compaction-hint-tail"
+              >
+                {streamingTail(compactionStream)}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 });

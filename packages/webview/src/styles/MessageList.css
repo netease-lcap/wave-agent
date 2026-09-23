@@ -1,22 +1,43 @@
 /* Messages */
+/* Outer scroll surface: spans the WHOLE pane so the wheel / trackpad scrolls
+   wherever the pointer sits — the side gutters included. Previously the capped,
+   centered 800px column WAS the scroll container, so the gutters on either side
+   of it were dead to the wheel (user report: 鼠标只能在粉色区域操作).
+   The 800px cap is NOT a bug — it aligns the column with the input box
+   (a2717143). It now lives on .messages-column, an inner wrapper inside this
+   scroll surface, so scrolling and the cap no longer share an element. */
 .messages-container {
   flex: 1;
   box-sizing: border-box;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 10px;
-  /* Cap the conversation column at 800px and center it, mirroring .input-wrapper
-       so messages line up with the input box instead of spanning the full pane
-       width. The panel-background gutters come from .chat-container (see
-       ChatApp.css) so they match this list exactly. */
+  width: 100%;
+  background-color: var(--vscode-panel-background);
+  position: relative;
+}
+
+/* The conversation column: capped at 800px and centered, mirroring
+   .input-wrapper so messages line up with the input box instead of spanning
+   the full pane width (a2717143's cap, kept verbatim — only its placement
+   moved). It carries what .messages-container used to: the 10px message
+   padding, the flex-column layout, and the positioned box the virtualizer's
+   absolute rows resolve against. The panel-background gutters come from
+   .chat-container (see ChatApp.css) so they match this list exactly.
+   overflow-x: clip (not hidden) keeps the old horizontal clipping at the
+   COLUMN edge while leaving overflow-y visible — with hidden, used overflow-y
+   computes to auto, this box becomes a scroll container, and position: sticky
+   (the pinned user-message bar) would stick to it instead of the scrollport. */
+.messages-column {
+  box-sizing: border-box;
   max-width: 800px;
   width: 100%;
   margin: 0 auto;
+  padding: 10px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
-  background-color: var(--vscode-panel-background);
+  overflow-x: clip;
   position: relative;
 }
 
@@ -29,19 +50,25 @@
    scroll is not pushed off by the bar's own height. The cap/card/scrim are
    in-flow children overflowing the zero-height wrapper (overflow visible), so
    the bar renders below the wrapper's top edge.
-   margin-bottom: -10px cancels the .messages-container flex gap on the plain
+   margin-bottom: -10px cancels the .messages-column flex gap on the plain
    branch (gap is 0 on the virtualized branch, overridden below), so
    mounting/unmounting the bar never shifts the message list. */
 .sticky-user-wrapper {
   position: sticky;
-  top: 0;
+  /* 10px, not 0: the bar used to park 10px below the scroll surface top
+     because .messages-container carried `padding: 10px` and Chrome resolves a
+     sticky inset against the scroll container's CONTENT box. That padding now
+     lives on .messages-column (the bar's own parent), so the inset has to be
+     stated explicitly or the bar (and its -10px cap) jumps flush to the
+     surface top, under the header. */
+  top: 10px;
   height: 0;
   margin-bottom: -10px;
-  /* Stretch across the cross axis (the container is flex column with
+  /* Stretch across the cross axis (.messages-column is flex column with
      align-items: flex-start) so the bar spans the list width like the old
      absolute left/right: 0. Stretch alone only reaches the content box (the
-     container's 10px padding insets it), so negative horizontal margins cancel
-     that padding and the bar covers the container edge-to-edge with no
+     column's 10px padding insets it), so negative horizontal margins cancel
+     that padding and the bar covers the column edge-to-edge with no
      left/right gutters. */
   margin-left: -10px;
   margin-right: -10px;
@@ -115,9 +142,9 @@
 
 /* The virtualizer positions rows absolutely; the in-flow spacer carries the
    total height. Row spacing lives in each row's padding-bottom (see
-   MessageList timelineRuns), so the container gap must be zeroed — otherwise
+   MessageList timelineRuns), so the column gap must be zeroed — otherwise
    the flex gap would add extra space around the spacer/compaction hint. */
-.messages-container--virtual {
+.messages-container--virtual .messages-column {
   gap: 0;
 }
 
@@ -135,9 +162,9 @@
 .virtual-row {
   position: absolute;
   top: 0;
-  /* Absolute rows resolve against the container's padding box, so left: 0 +
-     width: 100% would cover the container's 10px padding and butt against
-     the pane edges whenever the pane is narrower than the 800px column.
+  /* Absolute rows resolve against the column's padding box, so left: 0 +
+     width: 100% would cover the column's 10px padding and butt against
+     the column edges whenever the pane is narrower than the 800px column.
      Inset both sides instead so rows stay inside the padding, matching the
      input area's 10px gutters. */
   left: 10px;
