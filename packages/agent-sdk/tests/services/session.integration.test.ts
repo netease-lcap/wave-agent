@@ -36,6 +36,9 @@ vi.mock("@/services/jsonlHandler.js", () => ({
   JsonlHandler: vi.fn().mockImplementation(function () {
     return {
       read: vi.fn(),
+      readMessagesAndCustomTitle: vi
+        .fn()
+        .mockResolvedValue({ messages: [], customTitle: undefined }),
       append: vi.fn(),
       appendCustomTitle: vi.fn(),
       readCustomTitle: vi.fn().mockResolvedValue(undefined),
@@ -76,6 +79,11 @@ describe("Session Integration Tests", () => {
   let testWorkdir: string;
   let mockJsonlHandler: {
     read: Mock<(filePath: string) => Promise<Message[]>>;
+    readMessagesAndCustomTitle: Mock<
+      (
+        filePath: string,
+      ) => Promise<{ messages: Message[]; customTitle?: string }>
+    >;
     append: Mock<(filePath: string, messages: Message[]) => Promise<void>>;
     appendCustomTitle: Mock<
       (filePath: string, title: string, sessionId: string) => Promise<void>
@@ -141,8 +149,17 @@ describe("Session Integration Tests", () => {
     vi.clearAllMocks();
 
     // Create fresh mock instances for each test
+    const readMock = vi.fn();
     mockJsonlHandler = {
-      read: vi.fn(),
+      read: readMock,
+      // The real handler mirrors the two: a single pass over the file yields
+      // both the messages and the title, so delegate to the `read` mock.
+      readMessagesAndCustomTitle: vi
+        .fn()
+        .mockImplementation(async (filePath: string) => ({
+          messages: await readMock(filePath),
+          customTitle: undefined,
+        })),
       append: vi.fn(),
       appendCustomTitle: vi.fn().mockResolvedValue(undefined),
       readCustomTitle: vi.fn().mockResolvedValue(undefined),
