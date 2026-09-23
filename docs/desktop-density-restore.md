@@ -6912,3 +6912,73 @@ JetBrains）**仍是旧皮肤、仍即时出现**，这是「只改桌面端」�
   → `CC02/走查/0923-队列按钮间距/probe-queued-actions-gap-0923.json` + 3× 放大对照
   `zoom-{light,dark}-before-over-after-3x.png`。
 - 本轮为几何改动、无颜色 / 文字变化，未跑 axe；无业务单测覆盖（纯 CSS 值）。
+
+## 0923 评论（返回按钮同族：会话看板「返回当前会话」对齐设置页「返回」）
+
+设计师 2026-09-23 两条预览评论互为参照（mock 用例 `desktop-full`，看板经侧栏活动器
+`[data-testid="desktop-sidebar-activity"]`，设置页经输入框 `/config`）：
+
+1. 点 `button.session-board-back`「返回当前会话」：「这个返回样式和下面选的保持一致」
+2. 点 `button.settings-back`「返回」：「和这里保持一致」← **参照物 = 2**
+
+读法（已向设计师报备）：② 是参照物，① 指同一件事；看板里唯一「下面」的控件是项目筛选器
+（`.session-board-filter`，160×32 / r6 / 带边框的输入类控件），与 ghost 文字的返回按钮不属同族，
+「保持一致」无从谈起 → 若设计师另有所指需其点名。①的「下面选的」按 ② 解读。
+
+### 改动（2 文件）
+
+- `host-desktop.css` 新增 0923 块（紧接 `.settings-back` 那组之后）：
+  `[data-host="desktop"] .session-board-back { height: 30px; color: var(--vscode-foreground);
+font-weight: var(--cc-font-weight-medium, 500) }`、`:hover { background: #eef0f3 }`，
+  以及 `[data-host="desktop"] .session-board-back .codicon`（两档选择器一组）
+  `{ color: var(--vscode-foreground) }`。
+- `SessionBoard.css` 桌面深色块：静止 `#9a9ea5` → `var(--vscode-foreground)`；
+  hover 去掉 `color: #ffffff`（与 `.settings-back` 同行为：悬停只变底）。
+
+### 实测（headed Chromium / 2x，浅深两档 pageerror 0）
+
+| 量                        | 看板 改前                  | 看板 改后             | 设置页 参照       |
+| ------------------------- | -------------------------- | --------------------- | ----------------- |
+| 盒                        | 124×**32** r8              | 124×**30** r8         | 215×30 r8         |
+| 文字色 浅 / 深            | #6C7076 / #9A9EA5          | **#202020 / #E5E7E8** | #202020 / #E5E7E8 |
+| 图标色 浅 / 深            | #606060 / #CCCCCC          | **#202020 / #E5E7E8** | #202020 / #E5E7E8 |
+| 字重 / 字号 / 内衬 / 圆角 | 500 / 14px / `0 8px` / 8px | 逐值同                | 逐值同            |
+| hover 底 浅 / 深          | #F0F2F5 / 白 8%            | **#EEF0F3** / 白 8%   | #EEF0F3 / 白 8%   |
+| hover 文字色 深           | **#FFFFFF**（提亮）        | #E5E7E8（不变）       | #E5E7E8（不变）   |
+| 正文对比度 浅 / 深        | 4.98:1 / 6.93:1            | **16.29:1 / 15.02:1** | 15.34:1 / 14.08:1 |
+
+九维逐值一致；**邻居零位移**（工具条 / 表头（含下方筛选器）/ 列区 / 面板 dx·dy·dh 全 0——
+少掉的 2px 被工具条内部吸收）。
+
+### 两个可复用认知
+
+- ★ **`.codicon` 的 color 是直接声明、会盖掉继承**：`globals.css` 的
+  `.codicon { color: var(--vscode-icon-foreground) }` 优先级高于「从按钮继承」，
+  只改按钮 `color` 时**图标纹丝不动**（实测停在浅 #606060 / 深 #CCCCCC），
+  必须再单写一条 `.session-board-back .codicon`。设置页那颗是 SVG，0916 就单列了 `.settings-back svg`。
+- **深色档要写回组件 CSS**：`SessionBoard.css` 的深色规则是 `[data-host][data-theme]` = (0,3,0)，
+  与 `host-desktop.css` 的 `[data-host="desktop"] .class` **同分**，而组件 CSS 于 `index.tsx:6`
+  之后加载 ⇒ 同分 base 胜；浅色档 base 只有 (0,1,0)/(0,2,0)，故浅色与几何可写在一处。
+
+### 未改（待设计师裁决）
+
+箭头**字形**：看板是 codicon 字体 `codicon-arrow-left`，设置页是 Figma SVG `SettingsBackIcon`。
+栅格化对齐后墨迹 24×20 vs 22×20 设备像素、墨迹点数 114 vs 140（SVG 笔画略粗）、
+最佳对齐形状不一致 5.14%；改前/改后同一字形 0–0.48%（只换色、几何未动）。
+属「图标换稿」，按 0917 的「逐个点名，只改圈的」不自发做。
+
+### 残留触发语
+
+- 「图标也换成设置页那个箭头」（codicon → Figma SVG）
+- 「① 我说的是下面那个筛选器」/「看板那颗 hover 也提亮」/「返回按钮再矮一点」
+
+### 验证脚本与证据
+
+- `CC02/走查/_tools/0923/probe-back-family-0923.mjs` → `CC02/走查/0923-返回按钮同族/probe-back-family-0923.json`
+  （同页两阶段：after = 工作区；before = 注入 `<style id="rollback-0923-back">` 回退
+  32px / #6C7076 / #F0F2F5，深色再回退 #9A9EA5 + hover #FFFFFF + `.codicon` 的 icon-foreground。
+  设置页需**另开一个页面会话**——看板打开后对话输入框不可见，`/config` 进不去）。
+- 拼图 `CC02/走查/_tools/0923/make-back-family-assets-0923.py` →
+  `zoom-{light,dark}-{rest,hover}-{1x-device,2x}.png`（三行：改前 / 改后 / 参照）
+  - `zoom-{light,dark}-arrow-glyph-4x.png`（箭头字形 4×）。
+- 本轮为配色/几何对齐，无业务单测覆盖（纯 CSS 值）；对比度按 WCAG 相对亮度在探针内计算。

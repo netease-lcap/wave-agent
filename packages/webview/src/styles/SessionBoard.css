@@ -355,13 +355,19 @@
   border-bottom-color: var(--vscode-widget-border, #34393c);
 }
 
+/* 0923 评论（点 `button.session-board-back`「返回当前会话」）「这个返回样式和下面选的
+   要保持一致」：深色档原 #9a9ea5（次要灰）→ 与设置页「返回」`.settings-back` 同源的
+   1 级色 `var(--vscode-foreground)`（深色档由 dark 块映射成 #E5E7E8）。codicon 箭头
+   随按钮文字一起提亮（颜色由 host-desktop.css 的 `.session-board-back .codicon` 给）。
+   几何/字重/浅色档取值见 host-desktop.css 的 0923 块。 */
 [data-host="desktop"][data-theme="dark"] .session-board-back {
-  color: #9a9ea5;
+  color: var(--vscode-foreground);
 }
 
+/* hover 只留底（与 `.settings-back` 同行为）：原 `color: #ffffff` 已去，悬停字色
+   不再变化（静止与悬停同为 #E5E7E8）。 */
 [data-host="desktop"][data-theme="dark"] .session-board-back:hover {
   background: rgba(255, 255, 255, 0.08);
-  color: #ffffff;
 }
 
 [data-host="desktop"][data-theme="dark"] .session-board-icon-btn {

@@ -2863,6 +2863,41 @@
   color: var(--vscode-foreground);
 }
 
+/* ═══ 0923 评论：会话看板「返回当前会话」对齐设置页「返回」（同一颗返回控件）═══
+   设计师同日两条评论互为参照：
+     ① 点 `button.session-board-back`「返回当前会话」：「这个返回样式和下面选的保持一致」
+     ② 点 `button.settings-back`「返回」：「和这里保持一致」← 参照物 = ②
+   参照物（`.settings-back` 桌面档，见上一条）的取值：字色/图标 1 级
+   `var(--vscode-foreground)`（浅 #202020 / 深 #E5E7E8）、字重 500、盒高 30px、
+   圆角 8px、hover 底 #EEF0F3（= `--cc-fill-hover`）/ 深色 8% 白，且 hover 不改字色。
+   看板这颗改前：字色 浅 #6C7076 / 深 #9A9EA5（次要灰）、盒高 32px、hover 底 #F0F2F5、
+   深色 hover 把字提到 #FFFFFF。→ 本轮对齐**字色（含图标）**、**盒高 32 → 30**、
+   **hover 底 → #EEF0F3**、**深色 hover 去掉变白**（只留底）。实测九维逐值一致，
+   工具条/表头/列区/面板 dx·dy·dh 全 0（少掉的 2px 被工具条内部吸收）。
+   圆角 8 / 字号 14 / 内衬 `0 8px` / gap 8 / 图标几何（codicon 16px 盒）本来就一致，未动；
+   箭头**字形**未换（看板是 codicon 字体、设置页是 Figma `SettingsBackIcon`，属图标换稿，
+   按 0917「逐个点名」规则待她点名）。
+   浅色档能写在这里是因为 base 的静止/悬停两条分别为 (0,1,0)/(0,2,0)、本文件这两条
+   (0,3,0) 更高；**深色档相反**（base 那条 `[data-host][data-theme]` 同为 (0,3,0)，
+   且组件 CSS 于 index.tsx:6 之后加载 ⇒ 同分 base 胜），故深色值写在
+   SessionBoard.css 的桌面深色块里，此处只管浅色与几何。 */
+[data-host="desktop"] .session-board-back {
+  height: 30px;
+  color: var(--vscode-foreground);
+  font-weight: var(--cc-font-weight-medium, 500);
+}
+[data-host="desktop"] .session-board-back:hover {
+  background: #eef0f3;
+}
+/* 图标（codicon 左箭头）单列：globals.css:35 的 `.codicon { color:
+   var(--vscode-icon-foreground) }` 是**直接声明**，会盖掉从按钮继承来的颜色，
+   实测改前图标停在宿主图标色（浅 #606060 / 深 #CCCCCC）不随文字档位走。
+   与上一条 `.settings-back svg` 同形（两档选择器一组，避免深色档被同分顺序影响）。 */
+[data-host="desktop"] .session-board-back .codicon,
+[data-host="desktop"][data-theme="dark"] .session-board-back .codicon {
+  color: var(--vscode-foreground);
+}
+
 /* 桌面端其余控件图标统一 #565A60（同一图标规范；base 各按钮继承
    vscode-foreground，light 下 #202020 深黑偏重）。保留：
    - `.desktop-sidebar-more-btn.is-active` 品牌红 #C1292E（规范「活动器」）
