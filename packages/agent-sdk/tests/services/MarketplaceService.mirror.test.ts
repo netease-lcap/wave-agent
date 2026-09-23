@@ -467,7 +467,7 @@ describe("officialMarketplaceMirror (zip snapshot)", () => {
   });
 
   describe("MarketplaceService.updateMarketplace mirror routing", () => {
-    it("falls back to git when the mirror 404s (prod content not yet online)", async () => {
+    it("falls back to git when the mirror 404s (e.g. mirror unavailable)", async () => {
       process.env[OFFICIAL_MARKET_MIRROR_BASE_URL_ENV] = mirrorBaseUrl();
       await fs.mkdir(path.join(installLocation, ".wave-plugin"), {
         recursive: true,
@@ -477,7 +477,8 @@ describe("officialMarketplaceMirror (zip snapshot)", () => {
         MARKETPLACE_MANIFEST,
       );
 
-      // Prod ingress/content is not yet live → /latest returns 404.
+      // Mirror returns 404 (both envs are live today; this covers the
+      // ingress-down / path-missing case) → fall back to git.
       latestStatus = 404;
       await service.updateMarketplace("wave-plugins-official");
 

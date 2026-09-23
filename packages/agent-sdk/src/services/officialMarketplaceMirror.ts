@@ -47,8 +47,9 @@ const STAGING_SUFFIX = ".staging";
  * - TEST（验证用）: `https://codechat.codewave-test.163yun.com/wave-plugins-official/`
  *
  * Override with env var `WAVE_OFFICIAL_MARKET_MIRROR_BASE_URL` (highest
- * precedence). 注意：prod 该 URL 的 ingress/内容尚未上线，镜像请求会 404 → 按既有
- * 设计回退 git 兜底（ALLOW_OFFICIAL_MARKET_GIT_FALLBACK），行为安全。
+ * precedence). 两套环境的镜像通道均已上线且有内容（2026-09-23 实测：prod 与 test 的
+ * `/latest` 均返回 sha、`{sha}.zip` 均可下载）。镜像请求若失败（网络/超时/404/内容异常），
+ * 仍按既有设计回退 git 兜底（ALLOW_OFFICIAL_MARKET_GIT_FALLBACK），语义不变。
  */
 const DEFAULT_OFFICIAL_MARKET_MIRROR_BASE_URL =
   "https://codechat.codewave.163.com/wave-plugins-official/";
