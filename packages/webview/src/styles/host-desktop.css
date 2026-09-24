@@ -2615,7 +2615,21 @@
 
 /* ── 第二十一轮：全局滚动条统一（Figma 5809:55691 / codechat global.css 2304-2351） ── */
 
-/* 视觉：8px 胶囊 thumb、16px 轨道 + 4px 透明边距（padding-box 裁剪）、轨道恒透明。
+/* 视觉：6px 胶囊 thumb、8px 轨道 + 靠外一侧 2px 透明边距（padding-box 裁剪）、轨道恒透明。
+   （0924 评论「所有滚动条的宽度改为6px，滚动条到右边2px，选项还可以再往右一点」：
+    轨道 16px → 8px、胶囊 8px → 6px、内缩 4px → 靠外 2px、圆角 8 → 6。
+    内缩沿用「相对自己那圈滚动容器外缘」的口径：竖直滚动条胶囊右缘距容器右缘 2px
+    （面板/卡片自带 1px 边框 ⇒ 距最外沿 3px）；水平滚动条同理落在**下缘**（见下面
+    :vertical / :horizontal 两条）。轨道变窄 8px 后每个滚动容器的内容盒右缘
+    +8px —— 这就是「选项（行）再往右一点」：行右缘正好落到胶囊左缘（间距 0）。
+    侧栏会话树实测：行右缘 243 → 251、行宽 231 → 239、胶囊 [243,249] → [251,257]
+    （胶囊宽 6px、距侧栏内边界 2px）；有/无滚动条两态内容盒右缘仍同值（跳动 0）。）
+   ⚠️ 四边都写 `border: 0` 再按方向留 2px：**base globals.css 那条 thumb 规则有
+   `border: 4px solid transparent`**（特异性 (0,0,0)），只写 `border-right: 2px` 的话
+   另外三边仍然是它给的 4px ⇒ 可见胶囊 = 8 − 4 − 2 = **2px**（设计师 0924 当场发现
+   「你是不是改成2px了」）。border 是逐边属性，特异性逐边比较，不写就等于没覆盖。
+   同理，竖直方向写 border-right 对水平滚动条无效（那 2px 会削在拇指右端而不是厚度上）
+   —— 所以按 :vertical / :horizontal 分两条写。
    三态（变量驱动，index.tsx 的 mousemove 委托 + CSS :active 共同切换）：
    - 默认 8%（--cc-fill-scrollbar，最浅）
    - 鼠标在滚动区域内 24%（--cc-fill-scrollbar-container-hover，中间）
@@ -2641,8 +2655,8 @@
   --cc-fill-scrollbar-active: var(--cc-fill-scrollbar);
 }
 [data-host="desktop"] ::-webkit-scrollbar {
-  width: 16px;
-  height: 16px;
+  width: 8px;
+  height: 8px;
 }
 [data-host="desktop"] ::-webkit-scrollbar-track {
   background: transparent;
@@ -2650,8 +2664,32 @@
 [data-host="desktop"] ::-webkit-scrollbar-thumb {
   background-color: var(--cc-fill-scrollbar-active);
   background-clip: padding-box;
-  border: 4px solid transparent;
-  border-radius: 8px;
+  /* 四边显式归零（base globals.css 是 4px，见上方注释），再按方向留出 2px */
+  border: 0 solid transparent;
+  /* 圆角 = 绘制宽的一半（6 / 2 = 3）⇒ 两端是正半圆；按方向的补偿值见下面两条。
+     注意不能写一个大的统一值：**圆角是逐角属性，且 padding box 的内侧圆角 =
+     外侧圆角 − 该侧 border**。0924 第五轮之前写的是 `border-radius: 6px`（8px 盒
+     被均匀缩放到 4px）⇒ 左端内圆 4px（比半圆还圆）、右端内圆 4 − 2 = 2px（几乎
+     方角），设计师「感觉滚动条的圆角不是很圆」就是这一条。端帽实测（DPR 11 逐像素
+     量端头那一格的左右内缩，见 走查/_tools/0924/analyze-cap-0924.py）：
+       竖直 左 3.27 / 右 1.64（差 1.63px）→ 左 2.45 / 右 2.45（差 0.00px）
+       水平 上 3.36 / 下 1.64（差 1.72px）→ 上 2.45 / 下 2.55（差 0.10px）
+     胶囊实绘宽 6.00px（水平 6.09px）前后一致，浅深两档逐值相同。 */
+  border-radius: 3px;
+}
+/* 「离容器外缘 2px」必须按方向分开写 —— **border 是逐边属性**：
+   竖直滚动条的 2px 在右边、水平滚动条在**下边**（轨道自己那 8px 里，靠外那一侧）。
+   只写 border-right 的话，真机的 <pre> 横向滚动条会变成 8px 厚、那 2px 只会把拇指
+   右端削短 2px（0924 实测：pre 水平胶囊 7.9px 厚、下缘 0 间隙 ⇒ 已修）。
+   右边（下边）那 2px 会把该侧内圆再削掉 2px，所以那两个角要写成 3 + 2 = 5px
+   补回来（顶边圆角之和 3 + 5 = 8 = 盒宽，正好不触发均匀缩放）。 */
+[data-host="desktop"] ::-webkit-scrollbar-thumb:vertical {
+  border-right: 2px solid transparent;
+  border-radius: 3px 5px 5px 3px;
+}
+[data-host="desktop"] ::-webkit-scrollbar-thumb:horizontal {
+  border-bottom: 2px solid transparent;
+  border-radius: 3px 3px 5px 5px;
 }
 /* 拖动滚动条（操作中）—— 最深态；JS 委托在轨道区已设 50%，此规则为兜底 */
 [data-host="desktop"] ::-webkit-scrollbar-thumb:active {
@@ -2672,10 +2710,11 @@
    `-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground) }` (0,2,1) 与下面 base 规则
    同分但加载在后 → 命中时它生效；而 `background` 简写会把 background-clip 重置回 border-box，
    于是本规则那 4px 透明边被涂满 → 8px 胶囊瞬间鼓成 16px 实心条（浅色实测 8px rgb(235,235,235)
-   → 16px rgb(128,128,128)）。下面把两态按设计层重新声明一遍（(0,3,1) 稳定胜出），颜色仍只认三态变量。 */
+   → 16px rgb(128,128,128)）。下面把两态按设计层重新声明一遍（(0,3,1) 稳定胜出），颜色仍只认三态变量。
+   （0924 轨道 16→8 / 胶囊 8→6 后，同一条 :hover 会把那 2px 透明边涂满 ⇒ 6px 鼓成 8px，规则照旧。） */
 [data-host="desktop"] .diff-viewer-content::-webkit-scrollbar {
-  width: 16px;
-  height: 16px;
+  width: 8px;
+  height: 8px;
 }
 [data-host="desktop"] .diff-viewer-content::-webkit-scrollbar-track {
   background: transparent;
@@ -2683,8 +2722,17 @@
 [data-host="desktop"] .diff-viewer-content::-webkit-scrollbar-thumb {
   background-color: var(--cc-fill-scrollbar-active);
   background-clip: padding-box;
-  border: 4px solid transparent;
-  border-radius: 8px;
+  /* 同上：四边显式归零，再按方向留 2px（水平滚动条在下边）+ 圆角按方向补偿 */
+  border: 0 solid transparent;
+  border-radius: 3px;
+}
+[data-host="desktop"] .diff-viewer-content::-webkit-scrollbar-thumb:vertical {
+  border-right: 2px solid transparent;
+  border-radius: 3px 5px 5px 3px;
+}
+[data-host="desktop"] .diff-viewer-content::-webkit-scrollbar-thumb:horizontal {
+  border-bottom: 2px solid transparent;
+  border-radius: 3px 3px 5px 5px;
 }
 [data-host="desktop"] .diff-viewer-content::-webkit-scrollbar-thumb:hover,
 [data-host="desktop"] .diff-viewer-content::-webkit-scrollbar-thumb:active {
@@ -2694,6 +2742,8 @@
 
 /* 任务列表 / 消息队列（展开态）的滚动条**位置**对齐其他面（设计师 0917 评论
    「任务＋消息队列的滚动条位置，可以和其他的下拉或者Bash的展示等等保持一致吗」）。
+   ⚠️ 0924 起轨道 16px → 8px、胶囊 8px → 6px（见上方设计层注释）——下述实测数值是
+   当时的 16px 轨道口径，位置关系（-12px 外边距 + 12px 内衬）与结论不变。
    实测（light，devicePixelRatio 2）：四处滚动条的视觉规格本来就完全一致 —— 16px 轨道 /
    8px 胶囊 / thumb 距自己那圈滚动容器右缘 4~12px（下拉面板有 1px 边框故 5~13px）。
    差异只在容器外那层**内衬**：`.task-list-items`、`.queued-items.expanded` 都长在卡片里
@@ -2702,25 +2752,20 @@
    都只离那圈可见边界 5~13px —— 肉眼就是「任务/队列的滚动条离卡片右缘远了一截」。
    修法 = 负外边距 + 等量右内衬，把滚动容器（连同 16px 轨道）整体右移 12px 到卡片内衬边缘：
    胶囊 → 距卡片可见右缘 5~13px（与下拉面板同值），而内容盒宽度不变（+12 外边距 −12 内衬），
-   故行高/行宽/hover 底色/文字全零位移，只有滚动条与它的透明轨道右移。 */
+   故行高/行宽/hover 底色/文字全零位移，只有滚动条与它的透明轨道右移。
+
+   右内衬 12px → 4px（0924 第六/七轮：`div.queued-items.expanded`「还有这里」、
+   `div.task-list-items`「任务列表那里也一起」）：内衬 12px 是 16px 轨道时代的值，
+   轨道收到 8px 后行右缘离胶囊还剩 12px（比侧栏会话树定稿的 4px 松）——
+   两者都收到 4px（行右缘 → 滚动条列左缘 = 4px，同侧栏会话树）。中途 0923 第 7 条
+   （`div.queued-item`）曾把队列这一处收到 0px（行右缘压在胶囊上），0924 第六轮
+   「不要太贴近滚动条」改为 4px 并沿用至今。胶囊 x 不动（margin-right 不变），
+   行宽各 +8px、行高与行内元素相对关系不变。
+   不溢出时没有轨道：内衬 4px 让行右缘停在小卡可见右缘内 5px（改动前 13px）。 */
 [data-host="desktop"] .task-list-items,
 [data-host="desktop"] .queued-items.expanded {
   margin-right: -12px;
-  padding-right: 12px;
-}
-
-/* 0923 评论：队列里「选项（行）→ 滚动条」的间距收成与「滚动条 → 卡片右缘」等值。
-   设计师（第 7 条 `div.queued-item`）：「这个选项到滚动条之间还有很大距离，可以再贴近一些和
-   滚动条到右侧边距保持一致都可以」。实测（headed Chromium，2x）：行右缘 x1204.5 →
-   thumb 墨迹左缘 x1220.5 = 16px（= 列表右内衬 12px + thumb 在 16px 轨道内缩 4px）；
-   而 thumb 墨迹右缘 x1228.5 → 卡片可见右缘 x1232.5 = 4px（含 1px 边框 5px）。
-   故把这一处（仅队列，任务列表 .task-list-items 未点名、保持 12px）的右内衬 12 → 0：
-   行右缘 1204.5 → 1216.5，距 thumb 墨迹 4px，与滚动条自己的右边距同值；滚动条位置不动
-   （margin-right -12px 不变，仍离卡片可见右缘 4~5px，与下拉面板同档）。
-   代价：行/内容盒加宽 12px（文字可用宽 +12px、hover 底色右缘 +12px），行高与三颗按钮
-   相对行右缘的位置不变。 */
-[data-host="desktop"] .queued-items.expanded {
-  padding-right: 0;
+  padding-right: 4px;
 }
 
 /* ── 第二十三轮：sticky 用户消息对齐普通用户气泡（用户反馈：悬浮后缺左边距 / 字重变细） ── */

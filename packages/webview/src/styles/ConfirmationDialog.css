@@ -179,12 +179,16 @@
   min-height: 0;
 }
 
-/* 滚动条那一列（16px）**按需**让出来（0923 评论「进度条和文案不能右侧也拉齐
-   吗」）：列表溢出时题头 / 进度条内衬 16px，与收窄后的卡片（718）右缘对齐；
-   不溢出时不留空列，和卡片一起铺满 734。滚动条会不会出现只有量了才知道 ——
-   纯 CSS 只能恒留（scrollbar-gutter）或恒不留，前者短题目右缘空 16px，后者
-   题头比卡片窄 16px —— 所以由组件测溢出挂 is-list-scrollable
-   （ConfirmationDialog.tsx 的 questionsListScrollable）。 */
+/* 滚动条那一列**按需**让出来（0923 评论「进度条和文案不能右侧也拉齐吗」）：
+   列表溢出时题头 / 进度条内衬一列，与收窄后的卡片右缘对齐；不溢出时不留空列，
+   和卡片一起铺满。滚动条会不会出现只有量了才知道 —— 纯 CSS 只能恒留
+   （scrollbar-gutter）或恒不留，前者短题目右缘空一列，后者题头比卡片窄一列
+   —— 所以由组件测溢出挂 is-list-scrollable
+   （ConfirmationDialog.tsx 的 questionsListScrollable）。
+   这一列 = **滚动条那一列自身**（列宽对齐轨道宽、内衬 0 ⇒ 选项行右缘正好落在
+   轨道左缘）。base 的值 16px 是 **IDE 宿主**的量（它走 globals.css 的 16px 轨道）；
+   桌面端轨道 8px（见 host-desktop.css 设计层），另有一套 12px 的收窄值 ⇒ 那一档写在
+   下面的 `[data-host="desktop"]` 块里（0924 第七轮设计师「只在桌面端改」）。 */
 .question-item.is-list-scrollable {
   padding-right: 16px;
 }
@@ -232,11 +236,25 @@
   overflow-y: auto;
 }
 
-/* 溢出时：列表盒伸进 .question-item 让出的那 16px 内衬，自身的 16px 滚动条
-   正好落回这一列 —— 与改动前 .confirmation-body 的滚动条同 x，卡片宽度不变
-   （718）。不溢出时两边都不动，卡片铺满 734。 */
+/* 溢出时：列表盒伸进 .question-item 让出的那一列内衬，自身的 16px 滚动条正好落回
+   这一列 —— 与改动前 .confirmation-body 的滚动条同 x，卡片宽度不变（718）。
+   不溢出时两边都不动，卡片铺满 734。 */
 .question-item.is-list-scrollable .options-list {
   margin-right: -16px;
+}
+
+/* 桌面端（8px 轨道 / 6px 胶囊）那一档：让出的列收到 12px，多出的 4px 就是
+   **选项行右缘 → 胶囊左缘**的间距（与侧栏会话树第四轮定稿同值 4px）。
+   题头 / 进度条 / 卡片右缘三者一起收 4px、仍逐值对齐；胶囊与轨道位置不变
+   （列右缘仍在容器右缘 = 轨道右缘）。仅桌面端 —— IDE 宿主继续用上面 base 的
+   16px 列（对齐它自己的 16px 轨道，与 main 逐字相同）。 */
+[data-host="desktop"] .question-item.is-list-scrollable {
+  padding-right: 12px;
+}
+
+[data-host="desktop"] .question-item.is-list-scrollable .options-list {
+  margin-right: -12px;
+  padding-right: 4px;
 }
 
 .option-item {
