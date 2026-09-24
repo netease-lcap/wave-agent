@@ -702,7 +702,12 @@ export const MessageInput = forwardRef<
     if (!input) return null;
 
     if (lastCaretOffsetRef.current !== null) {
-      return findTextOffset(input, lastCaretOffsetRef.current);
+      // The snapshot can go stale — the input is emptied on send (and on
+      // manual delete) without resetting it, so the offset can exceed the
+      // current text length and resolve to nothing. Only trust it when it
+      // still maps to a position; otherwise fall through.
+      const fromSnapshot = findTextOffset(input, lastCaretOffsetRef.current);
+      if (fromSnapshot) return fromSnapshot;
     }
 
     const selection = window.getSelection();
@@ -736,6 +741,11 @@ export const MessageInput = forwardRef<
         range.setStart(insertPoint.node, insertPoint.offset);
         range.collapse(true);
       } else {
+        // 无可靠插入点（光标快照过期 / 实时选区不在输入框内）：插到末尾而不是丢弃，
+        // 失败不再静默 —— 界面上没反应时至少能从 console 定位。
+        console.warn(
+          "[MessageInput] 上传文件路径无法解析插入位置，已回退到输入框末尾",
+        );
         range = document.createRange();
         range.selectNodeContents(textareaRef.current);
         range.collapse(false);
@@ -797,11 +807,25 @@ export const MessageInput = forwardRef<
       textareaRef.current.focus();
 
       const insertPoint = resolveInsertionPoint();
-      if (!insertPoint) return;
-
-      const range = document.createRange();
-      range.setStart(insertPoint.node, insertPoint.offset);
-      range.setEnd(insertPoint.node, insertPoint.offset);
+      // Insert at the saved/pre-blur caret position; fall back to the end of
+      // the input when no reliable position exists (same contract as
+      // insertUploadedFilePaths) so a stale caret snapshot can never make the
+      // tag disappear silently.
+      let range: Range;
+      if (insertPoint) {
+        range = document.createRange();
+        range.setStart(insertPoint.node, insertPoint.offset);
+        range.setEnd(insertPoint.node, insertPoint.offset);
+      } else {
+        // 无可靠插入点（光标快照过期 / 实时选区不在输入框内）：插到末尾而不是丢弃，
+        // 失败不再静默 —— 界面上没反应时至少能从 console 定位。
+        console.warn(
+          "[MessageInput] 选区标签无法解析插入位置，已回退到输入框末尾",
+        );
+        range = document.createRange();
+        range.selectNodeContents(textareaRef.current);
+        range.collapse(false);
+      }
 
       const fileName =
         selection.fileName.split(/[/\\]/).pop() || selection.fileName;

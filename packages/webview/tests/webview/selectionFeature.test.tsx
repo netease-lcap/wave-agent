@@ -169,6 +169,57 @@ describe("Selection Feature (Inline Tags)", () => {
     expect(openFileMsg.endLine).toBe(20);
   });
 
+  // 回归（缺陷：右键「添加到 CodeWave IDE」点了完全没反应）：
+  // lastCaretOffsetRef 只在 blur 时写入、清空输入框时从不重置，而
+  // resolveInsertionPoint 一旦快照非 null 就只信它（不回落到实时选区）。
+  // 用户打过字 → 光标移出输入框（快照 = 文本末尾）→ 输入框被清空（发送后
+  // contenteditable 被清空 / 手动删空）⇒ 快照偏移 > 当前文本长度 ⇒
+  // findTextOffset 返回 null ⇒ insertSelectionTag 直接 return，界面上既无
+  // 标签、也无 toast / 报错。同一族的 insertUploadedFilePaths 有兜底所以不受影响。
+  it("should still insert the tag after the caret snapshot went stale", async () => {
+    renderChatApp();
+
+    await typeInInput("hello world");
+    const input = screen.getByTestId("message-input");
+
+    // 光标移出输入框：blur 时快照下光标偏移（此刻为 11）
+    await act(async () => {
+      fireEvent.focusOut(input);
+    });
+
+    // 清空输入框（等价于发送后 MessageInput 清空 contenteditable）
+    await act(async () => {
+      input.replaceChildren();
+    });
+    expect(input.textContent).toBe("");
+
+    await act(async () => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            command: "addSelectionToInput",
+            selection: {
+              filePath: "/path/to/src/file.ts",
+              fileName: "src/file.ts",
+              startLine: 10,
+              endLine: 20,
+              lineCount: 11,
+              selectedText: "const x = 1;",
+              isEmpty: false,
+            },
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      const inlineTag = document.querySelector(
+        '#messageInput .context-tag-container[data-is-selection="true"]',
+      );
+      expect(inlineTag).toBeInTheDocument();
+    });
+  });
+
   it("should be backward compatible with old selection format", async () => {
     const { vscode } = renderChatApp();
 
