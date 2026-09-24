@@ -703,10 +703,25 @@
   font-size: 14px;
 }
 
-/* 分组头文字色：descriptionForeground（浅色 #606060）偏暗 →
-   codechat --cc-text-secondary #6c7076 */
-[data-host="desktop"][data-theme="light"] .desktop-session-group-header {
-  color: #6c7076;
+/* 分组头文字色 / 展开收起箭头色：都用 skill 的 **4 级字色** --cc-text-placeholder
+   （浅 #8B8F95 / 深 #858B8F）。
+   0924 两轮评论：先「可以参考 skill 中的字体颜色，比如用 3 级或 4 级字体颜色，展开收起箭头
+   颜色保持一致，字号不要改，保持 14px」，我在报告里把 3 级 / 4 级两档摆出来请她裁决，
+   她看完选了 4 级（回复「我觉得4级可以」，并在追问中确认**浅深两色都用 4 级**）。
+   ⇒ 文字与箭头**同用一个 token**；改前浅色文字是 3 级 #6C7076、箭头停在 2 级 #565A60
+   （箭头比文字强一档 = 那次要修的不一致），深色两侧是硬编码 #9A9EA5，一并并到同一个 token。
+   只改颜色：字号（14px）/ 字重（500）/ 盒几何 / hover 底色一律不动；hover 仍由第三十九轮
+   提亮家族把文字与箭头**一起**提到 1 级（浅 #1F2329 / 深 #FFFFFF），两态都保持一致。
+   ⚠️ 已知代价（她 0924 明确接受、记一条例外）：4 级浅色 #8B8F95 在侧栏底上是 **3.06:1，
+   低于 AA 的 4.5:1**；深色 4 级 #858B8F 是 5.06:1 能过。3 级那一档（浅 4.69 / 深 7.02）
+   两色都过 AA，若要回退改回 --cc-text-secondary 即可。 */
+[data-host="desktop"][data-theme="light"] .desktop-session-group-header,
+[data-host="desktop"][data-theme="light"] .desktop-session-group-chevron {
+  color: var(--cc-text-placeholder);
+}
+[data-host="desktop"][data-theme="dark"] .desktop-session-group-header,
+[data-host="desktop"][data-theme="dark"] .desktop-session-group-chevron {
+  color: var(--cc-text-placeholder);
 }
 
 /* hover：codechat --cc-fill-hover #eef0f3（浅色）；深色用中性 8% 白
