@@ -741,6 +741,11 @@ export const MessageInput = forwardRef<
         range.setStart(insertPoint.node, insertPoint.offset);
         range.collapse(true);
       } else {
+        // 无可靠插入点（光标快照过期 / 实时选区不在输入框内）：插到末尾而不是丢弃，
+        // 失败不再静默 —— 界面上没反应时至少能从 console 定位。
+        console.warn(
+          "[MessageInput] 上传文件路径无法解析插入位置，已回退到输入框末尾",
+        );
         range = document.createRange();
         range.selectNodeContents(textareaRef.current);
         range.collapse(false);
@@ -812,6 +817,11 @@ export const MessageInput = forwardRef<
         range.setStart(insertPoint.node, insertPoint.offset);
         range.setEnd(insertPoint.node, insertPoint.offset);
       } else {
+        // 无可靠插入点（光标快照过期 / 实时选区不在输入框内）：插到末尾而不是丢弃，
+        // 失败不再静默 —— 界面上没反应时至少能从 console 定位。
+        console.warn(
+          "[MessageInput] 选区标签无法解析插入位置，已回退到输入框末尾",
+        );
         range = document.createRange();
         range.selectNodeContents(textareaRef.current);
         range.collapse(false);
