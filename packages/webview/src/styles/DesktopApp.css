@@ -244,8 +244,31 @@ html[data-theme="dark"] .desktop-sidebar-new-chat.is-active {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
-  /* 左右缩进由 .desktop-sidebar 的 12px 提供（task-groups 无左右 padding） */
-  padding: 4px 0 8px;
+  /* 左右缩进由 .desktop-sidebar 的 12px 提供（task-groups 无左右 padding），
+     其中右侧那 12px 由本容器自己出（见下面 margin-right）。 */
+  padding: 4px 4px 8px 0;
+  /* 0924 评论（四轮，逐轮追加）：
+     ① 「滚动条希望在外层容器右侧显示、整体更靠右，滚动区域不变」
+        ⇒ 把侧栏右侧那 12px 留白「搬进」滚动容器当内衬：容器右缘外扩到面板边
+        （margin-right: -12px），轨道随之从 [231,247] 移到 [243,259]，
+        胶囊距面板外缘 17px → 5px（其中 4px 是胶囊自带内衬，视觉即贴边）。
+     ② 「右侧感觉可以和滚动条再贴近一些，尽量做到没有感知」= 本节最终值
+        ⇒ 右侧内衬归零（padding-right 0）：行右缘 231 → 243、行宽 219 → 231、
+        行右缘到胶囊 16px → 4px；再加 scrollbar-gutter: stable 恒预留一整条轨道，
+        使「有/无滚动条」两态的内容盒右缘同值（跳动 16px → 0）。
+     胶囊仍为 [247,255]（8px、颜色未动）；行/组头/行主区左起点 x 均不变。
+     ⚠️ ③ 0924 第三轮（「所有滚动条 6px + 距右 2px」）把轨道 16px → 8px 后，
+     上述 ② 的实测值同步右移 8px：行右缘 243 → 251、行宽 231 → 239；
+     预留轨道的宽度也随之变成 8px（跳动仍为 0）。
+     ④ 0924 第四轮「选项和滚动条之间可以再4px的间距，不显示滚动条时两边宽度
+     应该看起来也是一致的」⇒ 右侧内衬 0 → 4px（padding: 4px 4px 8px 0，
+     左侧内衬仍为 0、那 12px 仍由 .desktop-sidebar 出）：
+     行右缘 251 → 247、行宽 239 → 235、行↔胶囊 0 → 4px（胶囊仍 [251,257]）；
+     选 4px 是因为它同时补齐了右半边的总留白 = 4 + 6(胶囊) + 2 = 12px，正好等于
+     左边的 12px，于是「有滚动条」与「不显示滚动条」（预留轨道 8px + 内衬 4px
+     = 12px）两态左右看起来一致（量到 content 右缘差 1px = 面板那条 1px 右边框）。 */
+  margin-right: -12px;
+  scrollbar-gutter: stable;
 }
 
 .desktop-session-group-header {

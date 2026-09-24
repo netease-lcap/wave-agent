@@ -7302,3 +7302,244 @@ IDE / VS Code 宿主一起变。这些 base 声明都是单类 (0,1,0)，`[data-
 - 审计报告（含本轮新增的 B′ 定位图段）`CC02/走查/0923-设置区圆角审计/index.html`，
   自检 `verify-settings-radius-report-0923.mjs`：50 图加载、0 错误、锚点可达。
 - 本轮纯 CSS 值改动，无业务单测覆盖。
+
+## 0924 评论（桌面端滚动条七轮：外移 → 6px/靠右 2px → 侧栏 4px → 端帽圆角 → 选项/队列也 4px → 任务列表也 4px + 只在桌面端生效）
+
+### ① 来源
+
+她 2026-09-24 在预览（`http://localhost:8899`）按元素评论驱动的七轮，逐轮原话：
+
+1. 点 `div.desktop-session-tree`：「这里滚动条，我希望是在外层容器右侧显示，整体更靠右一些，滚动区域
+   不变，可以参考 codex 的实现，我们是可以做到的吗？」→ 她随后裁定「内容完全不动」，再一轮要「再贴近
+   一些，尽量做到没有感知」（我摆 A/B/C 三档让她选，她选 **A = 最贴**）。
+2. 点侧栏：「选项和滚动条之间可以再 4px 的间距，不显示滚动条时两边宽度应该看起来也是一致的，跟你
+   确认下，这次应该是仅桌面端的改动吧？」
+3. 「所有滚动条的宽度改为 6px，滚动条到右边 2px，选项还可以再往右一点」（中途她当场发现我把胶囊
+   写成 2px 并中断）。
+4. 点侧栏滚动条：「感觉滚动条的圆角不是很圆」。
+5. 点 `div.options-list`「这里选项也不要太贴近滚动条」+ 点 `div.queued-items.expanded`「还有这里」。
+6. 「任务列表那里也一起，只在桌面端改」。
+
+### ② 改动（3 个文件，全部纯 CSS 值 / 注释）
+
+`packages/webview/src/styles/host-desktop.css`（桌面语义层）：
+
+```css
+/* 设计层：全局轨道 16 → 8px、胶囊 8 → 6px、内缩 4 → 靠外 2px、圆角按方向补 */
+[data-host="desktop"] ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+[data-host="desktop"] ::-webkit-scrollbar-thumb {
+  background-color: var(--cc-fill-scrollbar-active);
+  background-clip: padding-box;
+  border: 0 solid transparent; /* base globals.css 是 4px，必须显式归零 */
+  border-radius: 3px; /* 6 / 2 = 正半圆 */
+}
+[data-host="desktop"] ::-webkit-scrollbar-thumb:vertical {
+  border-right: 2px solid transparent;
+  border-radius: 3px 5px 5px 3px;
+}
+[data-host="desktop"] ::-webkit-scrollbar-thumb:horizontal {
+  border-bottom: 2px solid transparent;
+  border-radius: 3px 3px 5px 5px;
+}
+/* 三态色仍走 --cc-fill-scrollbar / -container-hover / -hover（8% / 24% / 50%） */
+/* 任务列表 + 队列共用一条「负外边距 + 右内衬」，把容器连同轨道贴到卡片内衬边；内衬 12 → 4px */
+[data-host="desktop"] .task-list-items,
+[data-host="desktop"] .queued-items.expanded {
+  margin-right: -12px;
+  padding-right: 4px;
+}
+```
+
+`packages/webview/src/styles/DesktopApp.css`（侧栏会话树）：
+
+```css
+.desktop-session-tree {
+  padding: 4px 4px 8px 0; /* 必须四位——三位写法会把左侧也写成 4px、整列右移 */
+  margin-right: -12px; /* 容器右缘外扩到面板边 */
+  scrollbar-gutter: stable; /* 恒定预留轨道 ⇒ 有/无滚动条两态内容盒右缘同值（跳动 0） */
+}
+```
+
+`packages/webview/src/styles/ConfirmationDialog.css`（AskUserQuestion 选项列表）：
+
+```css
+/* base = IDE 宿主的量（它的轨道是 globals.css 的 16px） */
+.question-item.is-list-scrollable {
+  padding-right: 16px;
+}
+.question-item.is-list-scrollable .options-list {
+  margin-right: -16px;
+}
+/* 桌面端（8px 轨道）另有一套：那一列收到 12px，多出的 4px 就是行右缘 → 轨道左缘的间距 */
+[data-host="desktop"] .question-item.is-list-scrollable {
+  padding-right: 12px;
+}
+[data-host="desktop"] .question-item.is-list-scrollable .options-list {
+  margin-right: -12px;
+  padding-right: 4px;
+}
+```
+
+`DiffViewer.css` 的那套 `::-webkit-scrollbar` 特化本轮**镜像同步**了 8px/6px/2px/圆角（预览里 diff 不横向
+溢出 ⇒ 只算同步、未算视觉验证）。
+
+### ③ 定稿值（实测，headed Chromium，浅深两档逐值相同）
+
+| 面                                  | 改前               | 改后                       | 依据                             |
+| ----------------------------------- | ------------------ | -------------------------- | -------------------------------- |
+| 侧栏：行右缘 / 行宽 / 行↔滚动条    | 231 / 219 / 16px   | 251 / 231 / **4px**        | 她选 A；胶囊 [247,255]→[251,257] |
+| 侧栏：有/无滚动条跳动               | 16px               | **0**                      | `scrollbar-gutter: stable`       |
+| 全局胶囊                            | 8px 宽 / 4px 内缩  | **6px 宽 / 靠外 2px**      | 她第三轮                         |
+| 选项列表（桌面）：行右缘 / 缝       | x1208.5 / 0px      | x1204.5 / **4px**          | 第六轮；列 8 → 12px              |
+| 队列展开态：行右缘 / 缝             | x1224.5 / 0px      | x1220.5 / **4px**          | 第六轮；内衬 0 → 4px             |
+| 任务列表：行右缘 / 缝               | x1212.5 / **12px** | x1220.5 / **4px**          | 第七轮；内衬 12 → 4px            |
+| 选项列表（IDE）：列宽 / 行右缘 / 缝 | 12px / x1007 / 4px | **16px** / x1011 / **0px** | 第七轮；base 还原成 main 的值    |
+
+未变的横向量：轨道 / 胶囊规格、各滚动容器的盒边界、行高（队列 24px）、行距 gap、hover / 选中底色、
+滚动行为（溢出量、scrim 触发）；窄带图逐像素对照只有「那道缝」所在的带变化（队列与桌面选项列表两处
+改前改后**图区 0 差异**）。代价：贴滚动条那一侧的内容盒宽度随内衬变化（队列 / 任务列表 +8px、选项列表
+−4px），行内右对齐元素随之平移；行主区左右起点不变。
+
+### ④ 原理（三条，可复用）
+
+1. **滚动条 x 由滚动容器自己的右边界决定**：`margin-right: -N` + 父容器预留 N 的列 ⇒ 容器连同轨道停在
+   原地；「行右缘 → 轨道左缘」的间距**恒等于容器自身的 `padding-right`**（不是父容器的内衬）。所以
+   「让出的那一列」只要 ≥ 轨道宽，多出来的部分用容器自己的 `padding-right` 出，就是那道缝。
+2. **让出的一列 = 轨道宽**时缝为 0（0923 选项列表、`scrollbar-gutter: stable` 预留的那段都是这个口径）；
+   列宽必须按宿主各自的轨道宽给 —— IDE 16px、桌面 8px，故 base 写 16px、桌面档写 12px。
+3. **`border-radius` 是逐角属性，且 padding box（真正涂色区）的内侧圆角 = 外侧圆角 − 该侧 border**；相邻
+   圆角之和超过边长会**等比缩放**。6px 胶囊写统一 `6px` 会被 8px 盒缩到 4px ⇒ 一端圆一端方；按方向写
+   `3px 5px 5px 3px`（右端 3 + 2 抵消那 2px 透明边）才是正半圆。
+
+### ⑤ 坑（都真踩过）
+
+- **量滚动条必须 headed Chromium**：headless shell 走 overlay 滚动条 ⇒ `offsetWidth − clientWidth == 0`、
+  不绘制，轨道 / 胶囊位置全读成假值。判据 = 先确认这个差值是 8 / 16（不是 ⇒ 环境不对或用例没溢出）。
+- **逐像素对比必须冻结动画**：侧栏有 8 个 `cc-loading-spin` 转圈环，不冻住连拍两张自身就差 ~470px。
+- **`border` 是逐边属性、特异性逐边比较**：base `globals.css` 的 thumb 有 `border: 4px solid transparent`，
+  只写 `border-right: 2px` 会让另外三边仍是 4px ⇒ 可见胶囊只剩 2px（她当场抓到）；水平条必须另写
+  `:horizontal { border-bottom }`。
+- **单聊（IDE）用例的 mock 消息不能带 `paneId`**：`ChatApp.forThisPane()` 在 `myPane === undefined` 时要求
+  `message.paneId === undefined`，带了就被静默丢弃（界面全空）。桌面用例必须带、IDE 用例必须不带。
+- **报告工具链**：探针 / 素材脚本 / 母版都拒绝覆盖已有产物（每次先 `rm -rf <报告目录>/shots`、每版新目录）；
+  图注栏要自动折行并按折行结果反解显示除数；上下文图的裁切窗口要从「容器右缘 −560px」起（那侧本来就空）。
+- **base 规则没有 `[data-host]` 作用域 ⇒ 组件在哪个宿主都生效**（第三轮选项列表那两条就这样把 IDE 一起
+  改掉了，第七轮才收回桌面档）。
+
+### ⑥ 残留触发语
+
+- 「别的滚动条也一起贴边」（看板 / 设置页右栏 / Diff 面板 / 对话流 —— 这些不是「父容器有右侧留白」的结构）
+- 「再贴一点」（侧栏 B=16px / C=10px 已量）/「间距改成 6px / 8px」/「回到 0」
+- 「还是不是很圆」/「滚动条再粗一点」（只剩「胶囊 6 → 8px」一条路）/「IDE 也一起调」/「diff 里的滚动条也看下」
+- 「滚动条 hover 态也看下」/「侧栏右内边距调一下」/「任务列表不溢出时别占那 4px」（需组件侧按溢出挂类）
+
+### ⑦ 验证脚本与证据
+
+| 轮     | 探针 / 素材脚本（`CC02/走查/_tools/0924/`）                                                              | 报告（`CC02/走查/`）                                                 |
+| ------ | -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| 一、二 | `probe-sidebar-scrollbar-evidence-0924.mjs`                                                              | `0924-侧栏滚动条外移-report/index.html`、`…-report-r2-v3/index.html` |
+| 三     | `probe-scrollbar-pill-0924.mjs`、`probe-hscroll-pill-0924.mjs`、`build-scrollbar6-report-assets-0924.py` | `0924-滚动条6px-report-r3/index.html`（7 条）                        |
+| 四     | `probe-sidebar-gap-r4-0924.mjs`、`build-sidebar-gap-report-assets-0924-r4.py`                            | `0924-侧栏4px间距-report-r4/index.html`（3 条）                      |
+| 五     | `probe-scrollbar-cap-0924.mjs`、`analyze-cap-0924.py`、`build-scrollbar-round-report-assets-0924-r5.py`  | `0924-滚动条圆角-report-r5/index.html`（2 条）                       |
+| 六     | `probe-row-thumb-gap-r6-0924.mjs`、`build-row-gap-report-assets-0924-r6.py`                              | `0924-行与滚动条间距-report-r6/index.html`（4 条）                   |
+| 七     | `probe-tasklist-scope-r7-0924.mjs`、`build-tasklist-scope-report-assets-0924-r7.py`                      | `0924-行与滚动条间距-report-r7/index.html`（6 条）                   |
+
+每轮报告都用 skill 母版 `build_repair_report.py` 生成、`verify-repair-report.mjs` 自检（图片加载 true、
+错误 0、axe 浅深 0/0、640 窄屏无横溢）；「改前」一律是**真回退**（备份 → `git checkout --` / `git show HEAD:`
+→ 采集 → 还原并逐字节核 md5）。本轮纯 CSS 值改动，无业务单测覆盖。
+
+## 0924 评论（分组标题「CC02」字色：文字与展开收起箭头统一到 skill 4 级字色，仅桌面端）
+
+### ① 来源
+
+她 0924 在预览（`http://localhost:8899`）点 `button.desktop-session-group-header`（侧栏第一组「CC02」，
+它同时是展开 / 收起分组的按钮），连发两条：
+
+1. 「深色浅色的这个标题 如果再弱一个字号是什么效果」—— 我出的是 **what-if 试算报告**（产品代码一行未动），
+   结论 = 「一档弱」是 **12px**（契约的桌面元信息地板；13px 在契约里是代码角色）。字号那档**她尚未拍板**。
+2. 「可以参考 skill 中的字体颜色，比如用 3 级或 4 级字体颜色，展开收起箭头颜色保持一致，字号不要改，
+   保持 14px」—— 我先按 3 级落地并出报告，把 3 级 / 4 级两档摆出来请她裁决；她回**「我觉得4级可以」**，
+   我追问「4 级落到哪一侧」，她选**「浅色深色都用 4 级」** ⇒ 本节即该最终落地的记录。
+
+### ② 改动（1 文件，1 处）
+
+`packages/webview/src/styles/host-desktop.css:706-723`：把原来那条**只覆盖浅色**、
+只指向文文字的规则（`[data-host=desktop][data-theme=light] .desktop-session-group-header { color: #6c7076 }`）
+换成**浅 / 深各一条、每条同时覆盖文字与箭头**，值统一写 4 级 token：
+
+```css
+[data-host="desktop"][data-theme="light"] .desktop-session-group-header,
+[data-host="desktop"][data-theme="light"] .desktop-session-group-chevron {
+  color: var(--cc-text-placeholder);
+}
+[data-host="desktop"][data-theme="dark"] .desktop-session-group-header,
+[data-host="desktop"][data-theme="dark"] .desktop-session-group-chevron {
+  color: var(--cc-text-placeholder);
+}
+```
+
+`DesktopApp.css` 里的旧硬编码（浅 `#565a60` / 深 `#9a9ea5`）**保留在下面作分层基底**（被上面的规则覆盖），
+没有改动它 —— 少一次牵连。改前浅色是「文字 3 级 `#6C7076` + 箭头 2 级 `#565A60`」不一致，深色两侧是硬编码
+`#9A9EA5`（不在 token 体系）；本轮把两处并到同一个 token。
+
+### ③ 定稿值（实测，headed Chromium，dpr3，用例 `desktop-full`，两相位 pageerror 0）
+
+| 项                           | 改前（3 级）                                                                       | 改后（4 级）                                                        |
+| ---------------------------- | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| 浅色 文字 = 箭头             | `#6C7076` 4.69:1                                                                   | `#8B8F95` **3.06:1（低于 AA 4.5，她裁定接受的例外）**               |
+| 深色 文字 = 箭头             | `#A0A5A8` 7.02:1                                                                   | `#858B8F` **5.06:1**（过 AA）                                       |
+| hover 两态（文字与箭头一起） | 浅 `#1F2329` 14.86 / 深 `#FFFFFF` 17.46                                            | **未变**（逐像素 0 差异，含 hover 底色）                            |
+| 字号 / 字重 / 行高           | 14px / 500 / 22px                                                                  | 逐值未变（满足「字号不要改，保持 14px」）                           |
+| 几何（12 组逐值比对）        | 按钮盒 235×30 @(12,118)、名字墨迹 37.38×16.5、箭头盒 16×16 @x61.38、首行 top 148px | 全部逐值相同（0 位移）                                              |
+| 1:1 头图像素差异             | —                                                                                  | 浅 1738 个 / 深 1764 个（bbox 159×32，DPR 3）⇒ 文字与箭头两块都在变 |
+| 上下文图（含会话行）         | —                                                                                  | 差异计数与头图**完全相同** ⇒ 会话列表 0 像素变化                    |
+
+### ④ 可复用认知
+
+1. **同一档 token 在浅 / 深两色下的无障碍结论可以不同**：4 级在深色是 5.06:1（过），在浅色只有 3.06:1（破）。
+   两色底亮度不同 ⇒ 同一淡色在深色底上相对亮度差更大。写规则时浅 / 深要分开、注释里各记数值。
+2. **4 级（`--cc-text-placeholder`）的契约角色是占位文案专用**，拿它承载可读标签属于**跨角色借用**；
+   本轮由设计师裁定接受，故在代码注释里记一条「已知例外」，并写明回退路径（改回 `--cc-text-secondary`
+   ⇒ 浅 4.69 / 深 7.02 两色都过 AA）。
+3. **只改 `color` 就不会牵连版面**：分组头与会话行**共用**那条 `font-size: 14px` 声明（所以改字号会牵连），
+   但颜色是分别声明的 ⇒ 本轮对会话行 0 影响，像素证据也支持（上下文图差异计数与头图相同）。
+4. **「保持一致」= 同一个 token、同一个值**：文字与箭头都写 `var(...)` 而不是各自字面量，改档时一处生效。
+
+### ⑤ 坑（都真踩过）
+
+- **hover 截图会拿到静止态**：先 `page.hover()` → 再跑 `page.evaluate()` 量值 → 再截图时，截到的背景与箭头
+  都回到**静止色**（浅色那张 hover 图就是这样废掉的，深色那张恰巧没事 ⇒ 只看跨相位 diff 会误判）。
+  修法 = **每张 hover 图前重新 hover 并等 150ms、然后立刻截图**；核验必须**看像素**（悬停底色 + 1 级墨迹），
+  别只看 DOM 量值。
+- **回退采集「改前」时改后版必须先备份**：这次漏存改后版，只能按记忆重建（靠 md5 比对确认与原件逐字节相同）。
+  规程：swap 前两份都存（`-rNbefore.css` / `-rNafter.css`）。
+- **注入档位会打死 hover**：为比较 3 级 / 4 级注入的 `color: … !important` 会盖过 hover 提亮家族规则 ⇒
+  注入列的 hover 值 == 静止值，不可作为 hover 证据；图注必须写明「注入试算、非真机态」。
+- **图注不能用 emoji / markdown**：图注栏用 Arial Unicode 绘制，`✅` / `⚠️` 会画成方框、`**粗体**` 会原样
+  显示星号 —— 图注一律纯文本。
+- **母版把成对两栏硬编码成「修复前 / 修复后」**，没有自定义标签入口：像「3 级 vs 注入 4 级」这类对比，
+  只能靠图内图注与条目的 desc / coverage 说明清楚。
+
+### ⑥ 残留触发语
+
+- 「浅色太淡了」/「换回 3 级」/「浅色用 3 级深色用 4 级」（回退 = 改回 `--cc-text-secondary`）
+- 「hover 提亮再弱一档」（要动第三十九轮提亮家族规则，它同时管着一批 ghost 图标）
+- 「其他硬编码的地方也收干净」（`DesktopApp.css` 里同类硬编码仍在作分层基底）
+- 「IDE 宿主也一起」（本轮规则带 `[data-host="desktop"]`，IDE 未动）
+- 「字号再弱一档」（上一轮的 12px / 13px 两档仍待她拍板，落点 `host-desktop.css:701-704`）
+
+### ⑦ 验证脚本与证据
+
+| 轮       | 探针 / 素材脚本（`CC02/走查/_tools/0924/`）                                                                            | 报告（`CC02/走查/`）                               |
+| -------- | ---------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| 字号试算 | `probe-group-header-fontsize-0924.mjs`、`build-group-header-fontsize-assets-0924-r8.py`                                | `0924-分组标题字号-弱一档/index.html`（4 条）      |
+| 3 级落地 | `probe-group-header-color-0924.mjs`、`build-group-header-color-assets-0924-r9.py`                                      | `0924-分组标题颜色-r9-report/index.html`（6 条）   |
+| 4 级落地 | `probe-group-header-color-0924.mjs`（`PHASE=before\|after OUT=<目录>`）、`build-group-header-color-assets-0924-r9b.py` | `0924-分组标题4级色-r9b-report/index.html`（5 条） |
+
+两份报告都用 skill 母版 `build_repair_report.py` 生成、`verify-repair-report.mjs` 自检（图片加载 true、
+错误 0、axe 浅深 0/0、640 窄屏无横溢）；「改前」一律是**真回退**（回退 `host-desktop.css` 后重新构建并逐字节
+核 md5，不是注入模拟）；字号那份是唯一的**试算（what-if）**报告、已在报告 notice 里声明。本轮纯 CSS 值改动，
+无业务单测覆盖。
