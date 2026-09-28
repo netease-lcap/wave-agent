@@ -294,7 +294,7 @@ jobs:
         run: |
           pnpm -r --parallel type-check
           pnpm -r --parallel lint
-          pnpm -F wave-desktop -F wave-vscode test:unit
+          pnpm -F wave-desktop -F wave-vscode -F wave-webview-fixtures test:unit
 
   webview-command-audit:
     runs-on: ubuntu-latest

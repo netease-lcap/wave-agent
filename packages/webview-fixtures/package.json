@@ -10,7 +10,8 @@
     "build": "rimraf dist && tsc -p tsconfig.build.json",
     "format": "prettier --write .",
     "type-check": "tsc --noEmit",
-    "test": "vitest run --reporter=dot"
+    "test": "vitest run --reporter=dot",
+    "test:unit": "vitest run --reporter=dot"
   },
   "devDependencies": {
     "rimraf": "^6.0.1",

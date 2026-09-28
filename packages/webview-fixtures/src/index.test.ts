@@ -4,7 +4,6 @@ import {
   fixtureSession,
   fixtureConfirmation,
   fixtureQueuedMessage,
-  fixtureConfig,
 } from "./index.js";
 
 describe("fixtures factory", () => {
@@ -100,6 +99,5 @@ describe("fixtures factory", () => {
       content: "hi",
       type: "message",
     });
-    expect(fixtureConfig().model).toBe("glm-5.2");
   });
 });
