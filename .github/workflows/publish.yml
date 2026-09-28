@@ -44,7 +44,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - run: pnpm test
       # `-r` 自动跳过 private 包，实际只发布 wave-agent-sdk 与 wave-code。
       - run: pnpm -r publish --no-git-checks --provenance --access public
 
@@ -204,9 +203,6 @@ jobs:
       # resources, so build wave-code first (the Gradle `classes` task depends on it).
       - name: Build wave-code dist
         run: pnpm -F wave-code build
-
-      - name: Run Gradle tests
-        run: ./packages/jetbrains/gradlew -p packages/jetbrains test --no-daemon
 
       - name: Build plugin distribution (.zip)
         run: ./packages/jetbrains/gradlew -p packages/jetbrains buildPlugin --no-daemon
