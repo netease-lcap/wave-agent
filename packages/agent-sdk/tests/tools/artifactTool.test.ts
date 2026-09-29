@@ -356,6 +356,13 @@ describe("artifactTool", () => {
       expect(result.content).toContain("Path: doc.md");
       expect(result.content).toContain("Title: Doc");
       expect(result.content).toContain("Version: v1");
+      // A fresh artifact is private server-side; no probe is needed to say so.
+      expect(result.content).toContain(
+        "Sharing: private — only you can open it",
+      );
+      expect(result.content).toContain(
+        "You cannot change sharing; that is done from the page's Share menu.",
+      );
       expect(result.shortResult).toBe(
         "Published doc.md → https://server.test/code/artifact/abc",
       );
@@ -759,6 +766,75 @@ describe("artifactTool", () => {
       expect(getRecordedVersion(SESSION_ID, "abc")).toBe("v3");
     });
 
+    it("should report the probed sharing scope after a redeploy", async () => {
+      (readFileSync as Mock).mockReturnValue(MD_CONTENT);
+      stubFetchRoutes([
+        {
+          match: (url) => url.includes("/api/frame/abc?via=model_read"),
+          respond: () =>
+            jsonResponse(200, {
+              slug: "abc",
+              version: "v2",
+              perm: { mode: "org", role: "owner" },
+            }),
+        },
+        {
+          match: (url) => url.endsWith("/api/frame/deploy/direct"),
+          respond: () =>
+            jsonResponse(201, {
+              url: "https://server.test/code/artifact/abc",
+              slug: "abc",
+              version: "v3",
+            }),
+        },
+      ]);
+
+      const result = await artifactTool.execute(
+        {
+          file_path: "doc.md",
+          url: "https://server.test/code/artifact/abc",
+        },
+        makeContext(),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain(
+        "Sharing: visible to everyone in your organization.",
+      );
+      expect(result.content).not.toContain("private");
+    });
+
+    it("should stay silent about sharing when the probe reports no perm", async () => {
+      (readFileSync as Mock).mockReturnValue(MD_CONTENT);
+      stubFetchRoutes([
+        {
+          match: (url) => url.includes("/api/frame/abc?via=model_read"),
+          respond: () => jsonResponse(200, { slug: "abc", version: "v2" }),
+        },
+        {
+          match: (url) => url.endsWith("/api/frame/deploy/direct"),
+          respond: () =>
+            jsonResponse(201, {
+              url: "https://server.test/code/artifact/abc",
+              slug: "abc",
+              version: "v3",
+            }),
+        },
+      ]);
+
+      const result = await artifactTool.execute(
+        {
+          file_path: "doc.md",
+          url: "https://server.test/code/artifact/abc",
+        },
+        makeContext(),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).not.toContain("Sharing:");
+      expect(result.content).not.toContain("You cannot change sharing");
+    });
+
     it("should fail when the artifact no longer exists", async () => {
       (readFileSync as Mock).mockReturnValue(MD_CONTENT);
       stubFetchRoutes([
@@ -1024,6 +1100,14 @@ describe("artifactTool", () => {
       expect(result.content).toContain("<style>.a{color:red}</style>");
       expect(result.content).toContain("<script>run()</script>");
       expect(result.content).toContain("Version: v2");
+      // The model is told the page is private, so it does not advertise a link
+      // nobody else can open.
+      expect(result.content).toContain(
+        "Sharing: private — only you can open it",
+      );
+      expect(result.content).toContain(
+        "You cannot change sharing; that is done from the page's Share menu.",
+      );
       expect(context.aiService!.processWebContent).not.toHaveBeenCalled();
       expect(result.shortResult).toContain("Read artifact abc");
       // The observed version feeds the stale-version guard.
@@ -1079,7 +1163,13 @@ describe("artifactTool", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.content).toBe("A summary of the shared page.");
+      expect(result.content).toContain("A summary of the shared page.");
+      // The reader's own situation leads the result: someone else's page, and
+      // this session can never publish to it.
+      expect(
+        result.content.indexOf("shared with you by someone else"),
+      ).toBeLessThan(result.content.indexOf("A summary of the shared page."));
+      expect(result.content).toContain("this session can never publish to it");
       expect(manager.createContext).toHaveBeenCalledWith(
         ARTIFACT_TOOL_NAME,
         "default",

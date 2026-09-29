@@ -147,6 +147,40 @@ describe("webFetchTool artifact interception", () => {
     expect(getRecordedVersion(SESSION_ID, "abc")).toBe("v3");
   });
 
+  it("should report the sharing scope, identically to the read action", async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      if (url.includes("/api/frame/abc?via=model_read")) {
+        return Promise.resolve(
+          jsonResponse(200, {
+            slug: "abc",
+            version: "v3",
+            perm: { mode: "org", role: "owner" },
+            contentUrl: CONTENT_URL,
+          }),
+        );
+      }
+      return Promise.resolve(
+        jsonResponse(200, "<html><body><p>Body text</p></body></html>"),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await webFetchTool.execute(
+      { url: ARTIFACT_URL, prompt: "Summarize" },
+      makeContext(),
+    );
+
+    expect(result.success).toBe(true);
+    // Same bytes the Artifact tool's `read` prepends (spec: 逐字一致).
+    expect(result.content).toContain(
+      "Sharing: visible to everyone in your organization.\nYou cannot change sharing; that is done from the page's Share menu.",
+    );
+    // The notice leads; the summary follows.
+    expect(result.content.indexOf("Sharing:")).toBeLessThan(
+      result.content.indexOf("This is a summary of the artifact."),
+    );
+  });
+
   it("should report a 404 artifact as deleted", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(404, {})));
     const result = await webFetchTool.execute(

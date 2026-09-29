@@ -22,6 +22,7 @@ import {
   isValidArtifactSlug,
   artifactVersionOf,
   fetchFrameMeta,
+  formatArtifactSharing,
   readArtifactContent,
   persistArtifactContent,
   summarizeArtifactAsReader,
@@ -406,11 +407,12 @@ async function readArtifact(
       }
       if (sessionId) markArtifactReadApproved(sessionId, slug);
     }
-    return summarizeArtifactAsReader(url, prompt, artifact.html, context);
+    return summarizeArtifactAsReader(url, prompt, artifact, context);
   }
 
   const lines = [`Artifact: ${url}`];
   if (artifact.version) lines.push(`Version: ${artifact.version}`);
+  if (artifact.sharingNotice) lines.push(artifact.sharingNotice);
   const persisted = persistArtifactContent(artifact.html);
   return {
     success: true,
@@ -546,6 +548,7 @@ async function publishArtifact(
   // and the stale-version guard.
   let serverVersion: string | undefined;
   let sharedLive = false;
+  let probedMeta: FrameMeta | undefined;
   if (url && slug) {
     const metaResult = await fetchFrameMeta(slug, {
       abortSignal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
@@ -558,6 +561,7 @@ async function publishArtifact(
       };
     }
     const meta: FrameMeta = metaResult.meta;
+    probedMeta = meta;
     serverVersion = artifactVersionOf(meta);
     sharedLive = !!(meta.perm && meta.perm.mode !== "owner" && !meta.shared);
     const recorded = getRecordedVersion(sessionId, slug);
@@ -647,6 +651,14 @@ async function publishArtifact(
     if (deploy.path) lines.push(`Path: ${deploy.path}`);
     if (deploy.title) lines.push(`Title: ${deploy.title}`);
     lines.push(`Version: ${deploy.version}`);
+    // A 201 can only come from a writer, so the role is known even when the
+    // probe was skipped (first publish) or the metadata omitted `role`. A brand
+    // new artifact is private server-side, hence the synthesized owner probe.
+    const sharing = formatArtifactSharing(
+      probedMeta ?? { perm: { mode: "owner" } },
+      { role: "owner" },
+    );
+    if (sharing) lines.push(sharing);
     return {
       success: true,
       content: lines.join("\n"),
