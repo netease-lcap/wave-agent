@@ -780,6 +780,44 @@ describe("artifactTool", () => {
       );
     });
 
+    it("should compare the numeric version the server sends against the recorded one", async () => {
+      (readFileSync as Mock).mockReturnValue(MD_CONTENT);
+      recordVersion(SESSION_ID, "abc", "2");
+      stubFetchRoutes([
+        {
+          match: (url) => url.includes("/api/frame/abc?via=model_read"),
+          respond: () =>
+            jsonResponse(200, {
+              slug: "abc",
+              version: 2,
+              perm: { mode: "owner" },
+            }),
+        },
+        {
+          match: (url) => url.endsWith("/api/frame/deploy/direct"),
+          respond: () =>
+            jsonResponse(201, {
+              url: "https://server.test/code/artifact/abc",
+              slug: "abc",
+              version: 3,
+            }),
+        },
+      ]);
+
+      const result = await artifactTool.execute(
+        {
+          file_path: "doc.md",
+          url: "https://server.test/code/artifact/abc",
+        },
+        makeContext(),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.error).toBeUndefined();
+      // The numeric version is recorded as a string, so the next probe matches.
+      expect(getRecordedVersion(SESSION_ID, "abc")).toBe("3");
+    });
+
     it("should block stale redeploys unless force is set", async () => {
       (readFileSync as Mock).mockReturnValue(MD_CONTENT);
       recordVersion(SESSION_ID, "abc", "v1");

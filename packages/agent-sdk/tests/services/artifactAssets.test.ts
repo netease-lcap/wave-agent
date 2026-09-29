@@ -522,6 +522,34 @@ describe("artifactAssets", () => {
       expect(blobInit.headers).toBeUndefined();
     });
 
+    it("reads the numeric version the server actually sends", async () => {
+      const fetchMock = stubFetchRoutes([
+        {
+          match: (url) => url.includes("via=model_read"),
+          respond: () =>
+            jsonResponse(200, {
+              slug: SLUG,
+              version: 3,
+              assetToken: "tok-abc",
+              perm: { mode: "owner" },
+            }),
+        },
+        {
+          match: (url) => url.includes("/_blob/"),
+          respond: () => blobResponse(200, Buffer.from("hi"), "text/plain"),
+        },
+      ]);
+
+      const outcome = await readAsset(SLUG, ASSET_ID);
+
+      expect(outcome.kind).toBe("ok");
+      if (outcome.kind !== "ok") return;
+      expect(outcome.value.bytes.toString("utf8")).toBe("hi");
+      expect(fetchMock.mock.calls[1][0]).toBe(
+        `${SERVER_URL}/_f/3/_blob/${ASSET_ID}?__frame_t=tok-abc`,
+      );
+    });
+
     it("treats an artifact with no ownership information as someone else's", async () => {
       stubFetchRoutes([
         {
