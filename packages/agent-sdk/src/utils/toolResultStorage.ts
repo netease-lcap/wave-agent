@@ -47,6 +47,30 @@ export function persistToolResult(
 }
 
 /**
+ * Persist raw bytes to a file in the tool-results directory. Binary results
+ * (an image or a font pulled back from an artifact) cannot travel through the
+ * text channel, so they land on disk for the Read tool instead.
+ * Returns the file path on success, or undefined on failure.
+ */
+export function persistToolResultBuffer(
+  content: Buffer,
+  prefix: string = "tool",
+  extension: string = "bin",
+): string | undefined {
+  try {
+    const dir = getToolResultsDir();
+    const id = `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const safeExt = /^[a-z0-9]{1,12}$/.test(extension) ? extension : "bin";
+    const filePath = path.join(dir, `${id}.${safeExt}`);
+    fs.writeFileSync(filePath, content);
+    return filePath;
+  } catch (error) {
+    logger?.error("Failed to persist tool result:", error);
+    return undefined;
+  }
+}
+
+/**
  * Generate a preview from content: first `previewSize` characters with ellipsis.
  */
 export function generatePreview(

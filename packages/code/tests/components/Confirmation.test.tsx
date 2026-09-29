@@ -227,6 +227,52 @@ describe("Confirmation", () => {
         "Read artifact: https://server.test/code/artifact/abc",
       );
     });
+
+    it("should describe the list and asset actions", async () => {
+      const url = "https://server.test/code/artifact/abc";
+      const { lastFrame } = render(
+        <>
+          <ConfirmationDetails
+            toolName="Artifact"
+            toolInput={{ action: "list", scope: "all" }}
+          />
+          <ConfirmationDetails
+            toolName="Artifact"
+            toolInput={{ action: "upload_asset", file_path: "logo.png", url }}
+          />
+          <ConfirmationDetails
+            toolName="Artifact"
+            toolInput={{ action: "list_assets", url }}
+          />
+          <ConfirmationDetails
+            toolName="Artifact"
+            toolInput={{ action: "read_asset", asset_id: "abc123", url }}
+          />
+          <ConfirmationDetails
+            toolName="Artifact"
+            toolInput={{ action: "delete_asset", asset_id: "abc123", url }}
+          />
+          <ConfirmationDetails
+            toolName="Artifact"
+            toolInput={{ action: "copy_from", url, from: "source" }}
+          />
+        </>,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          "List artifacts (scope: all)",
+        );
+      });
+
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain("List artifacts (scope: all)");
+      expect(frame).toContain("Upload asset: logo.png");
+      expect(frame).toContain(`List assets of artifact: ${url}`);
+      expect(frame).toContain("Read asset: abc123");
+      expect(frame).toContain("Delete asset: abc123");
+      expect(frame).toContain(`Copy assets into artifact: ${url}`);
+    });
   });
 
   describe("User Interaction Tests", () => {

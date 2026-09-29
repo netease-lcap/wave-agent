@@ -437,25 +437,31 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 
 **Artifact URL 拦截**：URL 形如 `{host}/code/artifact/{slug}` 时，WebFetch 走专用读取通道（元数据 + 正文均经登录鉴权），而非抓取公开页面；读取成功时结果附带 `artifactRead: { slug, ver }` 元数据，大内容落盘到临时文件并返回文件路径与预览。
 
-#### Artifact — 发布与读取可分享网页 {#tool-artifact}
+#### Artifact — 发布、读取、列举与资源管理 {#tool-artifact}
 
-将本地已写好的 `.html`/`.md` 文件发布为**默认私有**的可分享网页（Claude Code 风格），返回可传播的 URL；也可以把已发布的页面读回来。默认禁用，需在设置中开启 `enableArtifact` 后才注册该工具与 `/artifact` 技能。
+将本地已写好的 `.html`/`.md` 文件发布为**默认私有**的可分享网页（Claude Code 风格），返回可传播的 URL；也可以把已发布的页面读回来、列举账号可访问的页面，以及管理页面引用的资源（图片 / 字体 / 数据文件）。默认禁用，需在设置中开启 `enableArtifact` 后才注册该工具与 `/artifact` 技能。
 
 **双通道触发**（发布）：
 
 - **自然语言触发（工具）**：模型可自动调用 `Artifact` 工具，工具描述覆盖「发布 / 分享 / 做成网页 / 给链接」等语义（含中文提示词），无需用户记忆特定命令。
 - **人工触发（内置技能 `/artifact`）**：输入 `/` 即可在命令选择器中看到，适合不熟悉提示词编写的用户。技能内容仅指示模型调用 `Artifact` 工具（参数经 `$ARGUMENTS` 透传），**不含任何发布逻辑**——发布 / 校验 / 权限确认 / 会话映射全部由工具完成。技能声明了 `disable-model-invocation: true`，模型不会自行调用该技能，两个通道互不干扰。
 
-| 参数        | 类型    | 说明                                                                                            |
-| ----------- | ------- | ----------------------------------------------------------------------------------------------- |
-| `action`    | string  | `publish`（缺省值，发布/重新部署）或 `read`（读取已发布页面）                                   |
-| `file_path` | string  | 发布时必需，待发布的 `.html` 或 `.md` 文件路径（不接受内联 content）                            |
-| `favicon`   | string  | 页面图标 emoji（如 `📄`）                                                                       |
-| `url`       | string  | artifact URL：发布时为待重新部署的 URL，读取时为待读取的 URL（`read` 必需）                     |
-| `label`     | string  | 本次发布的短名（≤60 字符，如「Draft to legal」），只用于版本列表，不参与标题解析                |
-| `title`     | string  | artifact 标题，仅 `.html` 生效（≤1000 字符）：页面自带 `<title>` 永远优先，缺标签时用文件名兜底 |
-| `force`     | boolean | 冲突时跳过检查直接覆盖发布                                                                      |
-| `prompt`    | string  | 读取**他人分享**的页面时的关注点（如「布局是怎样的」）；读自己的页面时忽略                      |
+| 参数        | 类型     | 说明                                                                                               |
+| ----------- | -------- | -------------------------------------------------------------------------------------------------- |
+| `action`    | string   | `publish`（缺省值，发布/重新部署）、`read`（读取已发布页面）、`list`（列举），或资源五动作（见下） |
+| `file_path` | string   | `publish` 时必需，待发布的 `.html` 或 `.md` 文件；`upload_asset` 时为待上传的本地文件              |
+| `favicon`   | string   | 页面图标 emoji（如 `📄`）                                                                          |
+| `url`       | string   | artifact URL（也接受裸 slug）：发布时为待重新部署的 URL，读取与所有资源动作时为操作对象            |
+| `label`     | string   | 本次发布的短名（≤60 字符，如「Draft to legal」），只用于版本列表，不参与标题解析                   |
+| `title`     | string   | artifact 标题，仅 `.html` 生效（≤1000 字符）：页面自带 `<title>` 永远优先，缺标签时用文件名兜底    |
+| `force`     | boolean  | 冲突时跳过检查直接覆盖发布                                                                         |
+| `prompt`    | string   | 读取**他人分享**的页面时的关注点（如「布局是怎样的」）；读自己的页面时忽略                         |
+| `scope`     | string   | `list` 的范围：`mine`（缺省）/ `shared` / `all`                                                    |
+| `limit`     | number   | `list` 的最大行数（缺省 25，上限 50）                                                              |
+| `asset_id`  | string   | `read_asset` / `delete_asset` 的目标资源 id（32 位 hex，也接受 `_blob/{id}`）                      |
+| `asset_ids` | string[] | `copy_from` 的源资源 id 列表（1–10 个不重复，有序）                                                |
+| `after`     | string   | `list_assets` 的续页游标，取自上次返回的 `next`                                                    |
+| `from`      | string   | `copy_from` 的**源 artifact**（slug 或页面 URL），资源被复制到 `url` 指向的目标                    |
 
 要点：
 
@@ -466,6 +472,10 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 - 发布结果返回 `{ url, path, title, version }`，`url` 形如 `{host}/code/artifact/{slug}`；页面默认仅发布者可见
 - `action: "read"` 读取**自己拥有**的页面时返回原始 HTML（内联 CSS/JS 保留，可直接在其上继续改页面、查样式），内容超过 ~2KB 时落盘到临时文件并返回路径与预览；读取**他人分享**的页面时只返回隔离摘要（`prompt` 引导关注点），全文不进入对话上下文，且首次读取需用户确认、同会话内不再重复确认
 - 读取到的版本号会同步到会话记录，因此「读取最新版本后再重新部署」不会触发 stale 冲突保护；页面不存在（404）与无权限（403）返回不同错误
+- `action: "list"` 列举账号可访问的页面：服务端只提供固定一页（200 行、无 scope、无游标），**过滤与截断都在客户端**；结果按 `(mine)`/`(shared)` 分组，只有自己的行展示 favicon，被截断时提示提高 `limit` 或收窄 `scope`
+- 资源动作都以 `url` 定位目标 artifact：`upload_asset` 把本地文件以裸字节 + 按扩展名映射的 `Content-Type` 上传，返回可在页面里用 `_blob/{id}` 引用的 `asset_id`；`list_assets` 返回资源列表与配额用量（`files`/`bytes` 对 `max_files`/`max_bytes`），续页游标放在 `after`；`read_asset` 经 artifact 的短期 `assetToken` 读取（不携带会话 Bearer，文本类内联、二进制落盘为临时文件）；`delete_asset` 幂等（服务端返回 `{deleted:false}` 时如实呈现「已不存在」）；`copy_from` 从 `from` 复制 1–10 个不重复资源到目标，返回顺序与 `asset_ids` 一致，复制产生独立副本
+- 扩展名白名单（`png`/`jpg`/`gif`/`webp`/`svg`/`mp4`/`webm`/`pdf`/`woff2`/`woff`/`ttf`/`otf`/`csv`/`md`/`json`/`txt`/`ts`/`css`/`js`/`mjs`/`cjs` 等）与单资源上限（SVG 2 MiB，其他 20 MiB）在客户端执行——服务端不校验白名单；上传前拒绝网络路径与非常规文件，并复核读取前后的文件身份（inode + size/mtime），避免把读取期间被替换的内容传上去
+- 资源写动作（`upload_asset` / `delete_asset` / `copy_from`）首次对某个 artifact 确认一次、同会话后续写动作自动允许（与发布同构）；`list_assets` / `read_asset` 只读免确认，其中读取**他人分享** artifact 的资源与 `read` 同口径（先确认、按读者处理）
 
 #### Exec — 沙箱内编排 MCP 调用 {#tool-exec}
 

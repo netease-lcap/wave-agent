@@ -1,6 +1,6 @@
 ---
 name: "Artifact 工具"
-description: "发布本地 HTML/Markdown 为默认私有的可分享网页，读取 artifact 原文/摘要"
+description: "发布本地 HTML/Markdown 为默认私有的可分享网页，枚举/读取 artifact 与摘要，管理 artifact 资源库（上传/列举/读取/删除/复制）"
 order: 35
 ---
 
@@ -14,13 +14,17 @@ order: 35
 > 触发方式定案（双通道并存，2026-08-13）：**模型经自然语言自动调用 `Artifact` 工具**（description 覆盖"发布/分享/做成网页/给链接"语义，中文提示词同样触发）+ **内置技能 `/artifact` 人工斜杠触发**（builtin SKILL.md，`disable-model-invocation: true` 仅人工、模型不可经 Skill 工具调用该技能）。用户在输入框输入 `/` 即可在技能列表看到该命令并一键触发，无需知道怎么写提示词。**技能本身不含任何发布逻辑**——其内容仅指示模型调用 `Artifact` 工具（参数经 `$ARGUMENTS`/`$1` 透传），发布/校验/权限确认/会话映射全部由工具完成，技能不绕过也不复制这些逻辑。
 > 范围：wave-agent 客户端侧工具 + WebFetch 拦截。分享管理（`POST /api/frame/{slug}/share`、pinned_version）由服务端/网页外壳承担，客户端仅发布私有页面并探测分享状态。
 > 对齐 CC 的 Artifact 工具形态（2026-09-11 增补）：工具入口统一为带 `action` 参数的单一工具——`action: "publish"`（省略时的默认值，即现有发布行为）与 `action: "read"`（新增读取动作）。**`read` 的返回形态对齐 CC**：读取当前用户**拥有**的 artifact 返回原文 HTML（含内联 CSS/JS）；读取**他人分享**的 artifact 返回隔离摘要（可选 `prompt` 指明关注点），不把他人页面全文放进上下文。
-> 本期只补 `read`：CC 的 `list`/`watch`/`status`/`upload_asset`/`list_assets`/`read_asset`/`delete_asset`/`list_types` 等动作依赖平台提供枚举、订阅、资源库、模板等能力，codechat 平台暂无对应接口，本期不做；将来平台补齐后再逐个对齐。
+> 动作面分两批对齐：首批（2026-09-11）只补 `read`（当时 codechat 无枚举/资源库接口）；第二批（2026-09-29，见下）补 `list` 与 `assets` 五动作。仍未对齐：`watch`/`unwatch`/`status`（服务端实现已回滚、需求未重开）、Artifact 评论（独立能力，服务端 + 灰度 flag 双门控）、`list_types`/`describe_type`（CC 默认关闭的 Artifact Types 子系统）、`read_db`/`write_db`/`call_endpoint`/`run_script`（页面数据岛与契约子系统）。
 > 读取实现单一化（2026-09-11）：artifact 正文的取用（元数据探测 + Bearer 鉴权 + 正文拉取 + 大内容落盘）收敛为**唯一实现**，`Artifact` 工具的 `read` 动作与 WebFetch 的 artifact URL 拦截共用，不再各写一套。
 > 发布标题与短名对齐 CC（2026-09-18 修正，取代 2026-09-11 的「`label` 当标题兜底」口径）：**标题**与**短名**是两件独立的事，各由一个参数承载。
 >
 > - **`title`（可选，仅 `.html` 生效，≤1000 字符）**：artifact 的标题（浏览器标签 / 画廊显示名）；超过 1000 字符客户端先报错不发请求（服务端 `TITLE_MAX` 同值校验）。服务端解析阶梯 = 页面**前 8KB 内**的 `<title>` > `title` 参数 > 默认名——标签**永不**被参数覆盖（客户端不自行判优先级，也不做冲突提示）；客户端按 CC 的末级兜底补**文件名 basename**，因此 `.html` 发布**总会发一个非空 `title`**，标题链才闭合。
 > - **`label`（可选，≤60 字符）**：**本次发布的短名**（如 "Draft to legal"），只用于版本列表/版本选择器，**不参与标题解析**——工具不再拿它当标题兜底。
 > - **Markdown 保持文件名身份**：客户端渲染时把**文件名**注入 `<title>`（不是 `label`），`title` 参数对 `.md` 不生效，`.md` 页面因此以文件名作标题。
+>   枚举与资源库补齐（2026-09-29，issue #2199 的阻塞条件「codechat 未上生产」已解除）：本轮按 CC 契约补 **`list`** 与 **`assets` 五动作**（`upload_asset` / `list_assets` / `read_asset` / `delete_asset` / `copy_from`）。端点已线上逐条核对：`GET /api/frame/frames?limit=200`（枚举）、`POST /api/frame/blob/{slug}/agent-upload`（裸字节 + `Content-Type`）、`/agent-list`（`{after?, limit}`）、`/{assetId}/agent-delete`（幂等）、`/agent-copy`（`{from, ids}`）、`GET /_f/{ver}/_blob/{assetId}?__frame_t={token}`（资源读取）。
+>   对齐基准 `@anthropic-ai/claude-code@2.1.284`。**服务端只管形状、客户端担语义**：codechat 只校验 MIME 的正则形状（裸 MIME、无参数——带参数或缺失一律 415 `unsupported_type`）+ 长度，**不做扩展名白名单**（实测 `application/x-msdownload` 也照收）；扩展名→MIME 白名单、本地文件语义（常规文件 / 拒绝网络路径 / 解析符号链接后的可读区与常规文件校验 / 上传前后文件身份复核）、配额提示全部在客户端。
+>   `asset_id` = **32 位小写 hex**（响应里的 `opaque_id`），**不是** `_blob/{id}` 路径——服务端 `agent-delete` 路由只接受裸 id（带 `_blob/` 前缀 404，实测）。`/agent-list` 页大小服务端固定 50（收 `limit` 但忽略），游标是不透明串（`after` 传非法值 → 400 `invalid_request`）。`read_asset` 走 **`assetToken`**（`GET /api/frame/{slug}?via=model_read` 已返回，TTL 1 小时、基于 `JWT_SECRET` 派生密钥的 HMAC，**不是会话 JWT、不能当 Bearer 用**），外壳把页面里的 `_blob/{id}` 改写成带 token 的绝对路径。
+>   与 CC 的一处刻意差异：CC 解析 `/agent-list` 响应时把 `content_type` / `created_at` 截到 **40 字符**（超出则整行 safeParse 失败、静默丢行）；codechat 上传侧放宽到 100（DB 列宽），于是 `.docx` 这类长 MIME 在 CC 里会掉行。**wave 不设 40 字符上限**（以服务端口径为准），避免静默丢行。
 
 ## 用户场景与测试 _（必填）_
 
@@ -157,6 +161,60 @@ order: 35
 7. **假设** 服务端 `GET /api/wave/settings` 下发了 `enableArtifact: true`（remote settings），**当** 会话初始化或轮询（60min + 304 checksum）检测到变更时，**则** remote 值优先于本地 settings.json 与代码默认值，`Artifact` 工具按 remote 值注册，`/artifact` 技能命令按同 gate 注册，WebFetch 拦截同样生效（管理员远程灰度/回滚入口）。
 8. **假设** 服务端下发的 remote `enableArtifact` 与本地 settings.json 冲突，**当** 合并配置时，**则** remote 胜出（last-write-wins，与 `model`、`permissions.defaultMode` 等 managed 字段语义一致），工具与技能命令均按 remote 值注册/注销；未下发时回退本地/默认值。
 
+### 用户故事：列举当前账号的 artifact（`list`，优先级：P1）
+
+作为用户，我希望让 AI 列出我拥有或别人分享给我的 artifact，以便在不记得 URL 时也能定位到要读取或继续迭代的页面。
+
+**为什么是这个优先级**：不记得 slug 就无法 `read`；`list` 又是资源动作（`assets`）的前置入口——要操作资源得先知道 artifact 的 URL。
+
+**独立测试**：mock `GET /api/frame/frames?limit=200` 返回 mine/shared 混合行，调用 `Artifact`（`action: "list"`）断言按 `scope` 过滤、`limit` 截断与 `(mine)`/`(shared)` 分组标签；另两个用例断言空结果与未登录。
+
+**验收场景**：
+
+1. **假设** model 调用 `Artifact` 工具且 `action: "list"`（`scope` 省略），**当** 工具执行时，**则** 请求 `GET /api/frame/frames?limit=200`（页大小固定 200，**不传** `scope`、**无**游标参数），只保留 `rel: "mine"` 的行（默认 `scope` = `mine`）。
+2. **假设** `scope: "shared"`，**当** 工具执行时，**则** 只保留 `rel: "shared"` 的行；**假设** `scope: "all"`，**则** 两类都保留并各自标注归属。
+3. **假设** `limit` 省略，**当** 工具执行时，**则** 最多返回 25 行（默认值）；**假设** 传 `limit: 10`，**则** 最多 10 行；**假设** 传超过 50 的 `limit`，**则** 返回 `success: false` 与上限错误（不静默截断）。
+4. **假设** 过滤后可选行仍多于 `limit`，**当** 工具返回时，**则** 结果标注「已截断」，提示提高 `limit` 或收窄 `scope`。
+5. **假设** 结果非空，**当** 工具返回时，**则** 按 `(mine)` / `(shared)` 分组渲染，每行含标题（缺失时为 `Untitled artifact`）、URL `{host}/code/artifact/{slug}`、`updatedAt`；`mine` 行额外带 favicon。
+6. **假设** 某行的 `softDeleted: true` 或 `rel` 不在 `mine|shared` 内，**当** 工具处理响应时，**则** 跳过该行（不整体报错）；**假设** 所有行都不可解析，**则** 返回 `success: false` 与「响应行不可读」类错误。
+7. **假设** 过滤后为空，**当** 工具返回时，**则** 返回 `success: true` 与明确的空结果文案（如 `no artifacts`），不报错。
+8. **假设** 未登录（无有效 token），**当** 工具执行时，**则** 返回鉴权错误并提示先登录。
+9. **假设** 服务端返回非 2xx 或请求失败，**当** 工具执行时，**则** 返回 `success: false` 与状态码错误；首次网络失败或 5xx 时客户端先重试一次（抖动退避），仍失败才报错。
+10. **假设** `enableArtifact` 未开启，**当** 会话初始化时，**则** 工具整体不注册，`list` 同样不可用（与 publish/read 同一 gate）。
+
+### 用户故事：artifact 资源库（`assets` 五动作，优先级：P1）
+
+作为用户，我希望让 AI 把本地文件作为资源上传到某个 artifact，并列出/读取/删除/复制这些资源，以便发布的页面能引用图片、字体、数据等外部文件，也让 AI 能查看与整理已有资源。
+
+**为什么是这个优先级**：资源是 artifact 页面的组成部分（页面里通过 `_blob/{id}` 引用），没有资源能力就只能把内容内联成 base64，页面体积与可维护性都不可接受。
+
+**独立测试**：mock `/agent-upload`（裸字节 body + `Content-Type`）、`/agent-list`、`/agent-copy`、`/agent-delete` 与 `/_f/{ver}/_blob/{id}` 读取通道，逐个断言请求形状、响应解析与错误映射；断言白名单外的扩展名在本地被拒（不发起请求）。
+
+**验收场景**：
+
+1. **假设** model 调用 `action: "upload_asset"` 且 `file_path` 指向一个白名单扩展名的常规文件，**当** 工具执行时，**则** 以**裸字节** + `Content-Type`（按扩展名映射，如 `.png`→`image/png`）`POST /api/frame/blob/{slug}/agent-upload`，返回 `{opaque_id, url, size_bytes, content_type, sha256}`，并告知模型资源可在页面内用 `_blob/{id}` 引用。
+2. **假设** `file_path` 的扩展名不在白名单内（`png`/`jpg`/`jpeg`/`gif`/`webp`/`svg`/`mp4`/`webm`/`pdf`/`woff2`/`woff`/`ttf`/`otf`/`csv`/`md`/`markdown`/`json`/`txt`/`ts`/`css`/`js`/`mjs`/`cjs`），**当** 工具执行时，**则** 返回 `success: false` 并列出允许的类型，**不发起请求**（服务端不做白名单，只有客户端拦得住）。
+3. **假设** `file_path` 不是常规文件（目录/设备/FIFO）、指向网络路径（UNC 共享、`/net` automount、设备式路径）、解析后落在会话可读区之外（符号链接按解析后的真实路径判定，真实路径本身可以是白名单内的常规文件），**当** 工具执行时，**则** 返回 `success: false` 与对应错误，不读取内容。
+4. **假设** 文件为空，**当** 工具执行时，**则** 返回 `success: false` 与「无内容可上传」错误。
+5. **假设** 文件超过单资源上限（SVG 2 MiB，其他类型 20 MiB），**当** 工具执行时，**则** 客户端先报错、不发起请求；**假设** 服务端仍返回 413，**则** 透传为友好的大小错误。
+6. **假设** 上传前后复核发现文件身份变了（路径已移动、被替换，或读取期间 size/mtime 变化），**当** 工具执行时，**则** 中止并提示重试，不把已被换掉的内容上传出去。
+7. **假设** 上传是写动作，**当** 首次对某 artifact 执行时，**则** 触发权限确认；用户同意后，同一 artifact 在本会话内的后续资源写动作不再重复确认（与 publish 的会话内自动允许同构）。
+8. **假设** 服务端返回 415（content type 不是裸 MIME）或 409（配额/状态），**当** 工具执行时，**则** 映射为对应错误（415 明确提示 MIME 不得带参数）。
+9. **假设** model 调用 `action: "list_assets"` 且 `url` 指向某 artifact，**当** 工具执行时，**则** `POST /api/frame/blob/{slug}/agent-list`（body `{limit, after?}`），页大小以服务端为准（固定 50），返回资源列表与配额用量（`files`/`bytes` 对 `max_files`/`max_bytes`）。
+10. **假设** 响应带 `next` 游标，**当** 工具返回时，**则** 附上游标并提示可带 `after` 续页；**假设** `after` 不是合法游标（服务端 400 `invalid_request`），**则** 返回 `success: false` 并提示重新列举。
+11. **假设** 用量已到上限（`files >= max_files` 或 `bytes >= max_bytes`），**当** 工具返回时，**则** 用量信息照常呈现，供模型判断是否需要先删再传。
+12. **假设** model 调用 `action: "read_asset"` 且给了 `url` 与 `asset_id`，**当** 工具执行时，**则** 先探测 `GET /api/frame/{slug}?via=model_read` 取 `assetToken` 与 `version`，再 `GET /_f/{version}/_blob/{assetId}?__frame_t={token}` 取内容（**token 鉴权、不携带 Bearer**）；token 过期（401）时重新探测一次再取。
+13. **假设** 资源是图片/字体等二进制，**当** 工具返回时，**则** 落盘到临时文件并给出路径与 `content_type`/大小，**不**把二进制塞进工具结果；**假设** 资源是文本类（`text/*`、`application/json` 等），**则** 可内联（过大时同样落盘）。
+14. **假设** `asset_id` 不在该 artifact 内（服务端 404 / `asset_not_found`），**当** 工具执行时，**则** 返回 `success: false` 并提示用 `list_assets` 核对 id。
+15. **假设** 读取的是他人分享 artifact 的资源，**当** 工具执行时，**则** 与 `read` 同口径：内容（第三方内容）进入上下文前需确认，且无法确认归属时按读者处理。
+16. **假设** model 调用 `action: "delete_asset"` 且给了 `url` 与 `asset_id`，**当** 工具执行时，**则** `POST /api/frame/blob/{slug}/{assetId}/agent-delete`；服务端幂等——不存在或已删返回 200 `{deleted:false}`，工具如实呈现，不当作错误。
+17. **假设** 删除是写动作，**当** 首次对某 artifact 执行时，**则** 触发权限确认（与 upload 相同的会话内自动允许规则）。
+18. **假设** model 调用 `action: "copy_from"` 且给了目标 `url`、源 artifact（`from`）与 `asset_ids`（1–10 个不重复），**当** 工具执行时，**则** `POST /api/frame/blob/{targetSlug}/agent-copy`，body `{from, ids}`，返回的新资源顺序**严格等于** `asset_ids` 顺序；复制产生独立新副本，源资源不受影响。
+19. **假设** `asset_ids` 为空、超过 10 个或含重复，**当** 工具执行时，**则** 返回 `success: false` 与约束错误，不发起请求。
+20. **假设** 任一资源动作未登录，**当** 工具执行时，**则** 返回鉴权错误并提示先登录。
+21. **假设** 服务端返回 403（含 `not a writer` 纯文本），**当** 工具执行时，**则** 映射为可操作错误：只有 artifact 的 owner/writer 能改资源，读者只能看。
+22. **假设** `enableArtifact` 未开启，**当** 会话初始化时，**则** 工具整体不注册，资源动作同样不可用（与 publish/read 同一 gate）。
+
 ### 非功能需求
 
 - **零新增配置**：API 端点相对 Server URL origin 硬编码（`options.serverUrl > WAVE_SERVER_URL > 默认值`，经 authService.getServerUrl() 获取），不新增 baseUrl/artifactUrl 配置项。
@@ -171,6 +229,11 @@ order: 35
 - **只读性**：WebFetch 侧读取行为保持只读，不修改 artifact 内容。
 - **会话映射**：会话内维护 file_path → artifact URL 映射，用于同会话重发免 `url` 参数与 stale_version_guard。
 - **测试**：SDK 层 mock 服务端（201/409/404/413）覆盖发布、重部署、冲突、读取、禁用开关场景。
+- **枚举口径**：`list` 的 `scope`（`mine`(默认)/`shared`/`all`）与 `limit`（默认 25、最大 50）是**客户端行为**——服务端页大小固定 200、无 `scope`、无游标，过滤与截断由客户端算；`(mine)`/`(shared)` 分组标签由工具层渲染（服务端只给 `rel`）。
+- **资源标识**：`asset_id` 一律用 32 位小写 hex 的 `opaque_id`；`_blob/{id}` 只是展示用 URL，工具在把 URL 当 id 用时先剥掉 `_blob/` 前缀。
+- **资源请求超时与重试**：上传/复制等写请求超时 30s（大文件 90s）；超时或传输中断时提示「可能已成功，最多重试一次」（upload 重复只多占配额、delete 与 copy 可用 `list_assets` 复核）。
+- **二进制处理**：`read_asset` 按 `content_type` 分流——文本类可内联，二进制落盘为文件（不经 UTF-8 文本通道）；落盘沿用现有的工具结果临时文件生命周期。
+- **资源写入粒度**：`upload_asset`/`delete_asset`/`copy_from` 是外发/破坏性动作，走权限确认（首次对某 artifact 确认一次、本会话后续自动允许）；`list_assets`/`read_asset` 是只读动作，免确认。
 
 ### 边界情况
 
@@ -184,3 +247,8 @@ order: 35
 - **读他人 artifact 与 plan 模式？** 读他人 artifact 需用户确认（内容进入上下文、且是第三方内容）；plan 模式下没有可交互的确认面时不自动放行，保持规划状态并提示用户。
 - **enableArtifact 关闭时读动作？** 与发布同 gate：工具整体不注册；WebFetch 的 artifact URL 拦截同步失效（退化为普通 URL 处理）。
 - **Artifact 工具是受限工具吗？** 是——发布是外发网络动作，需加入 RESTRICTED_TOOLS 以触发默认模式的确认流程。
+- **上传的文件在上传过程中被改写怎么办？** 读取前后各取一次文件身份（inode + size/mtime），不一致即中止并提示重试，绝不把替换后的内容当作已确认的文件上传。
+- **`read_asset` 的 `assetToken` 只有 1 小时且不是会话 JWT？** 每次读取都重新探测元数据换取新 token，不做跨调用缓存，也不把它当 Bearer 使用（它是基于 `JWT_SECRET` 派生密钥的 HMAC）。
+- **页面里的 `_blob/{id}` 与工具产出的资源 URL 是什么关系？** 页面外壳负责把 `_blob/{id}` 改写成带 token 的绝对路径；工具只产出/消费 `opaque_id` 与相对 URL，不做改写。
+- **资源配额用尽怎么办？** 工具不自动删除任何资源，只如实呈现 `usage`（`files`/`bytes` 对 `max_files`/`max_bytes`），由模型判断并提示用户。
+- **`list_assets` 的 `content_type` 很长（如 `.docx`）怎么办？** 不设长度上限（服务端 DB 列宽 100），按原值呈现——CC 客户端会因 40 字符上限静默丢行，wave 不沿用该行为。

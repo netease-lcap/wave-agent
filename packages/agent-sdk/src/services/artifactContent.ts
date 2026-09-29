@@ -38,6 +38,12 @@ export interface FrameMeta {
   perm?: { mode: "owner" | "users" | "org"; role?: string };
   url?: string;
   contentUrl?: string;
+  /**
+   * Short-lived (1h) HMAC for reading the artifact's `_blob` assets. Derived
+   * server-side from `JWT_SECRET`, so it is not a session token and must only
+   * travel as the `__frame_t` query parameter.
+   */
+  assetToken?: string;
   /** Empty/missing = shared-live (readers see live updates); non-empty = pinned. */
   shared?: string;
 }
@@ -71,6 +77,26 @@ export function extractArtifactSlug(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Whether a value is usable as a slug in a request path. Slugs are short
+ * alphanumeric tokens; anything else (a decoded `../`, a slash, whitespace) is
+ * rejected so it can never reshape the URL it is interpolated into.
+ */
+export function isValidArtifactSlug(slug: string): boolean {
+  return /^[A-Za-z0-9._-]{1,64}$/.test(slug);
+}
+
+/**
+ * The publishing user's relationship to an artifact, from the metadata probe.
+ * Unknown ownership resolves to "reader": never hand out the full text of a
+ * page we cannot prove the user owns.
+ */
+export function artifactOwnershipFromMeta(meta: FrameMeta): ArtifactOwnership {
+  return meta.perm?.mode === "owner" || meta.perm?.role === "owner"
+    ? "owner"
+    : "reader";
 }
 
 function readSignal(abortSignal?: AbortSignal): AbortSignal {
@@ -162,10 +188,7 @@ export async function readArtifactContent(
 
   // Unknown ownership is treated as reader-owned: never hand out full text of a
   // page we cannot prove the user owns.
-  const ownership: ArtifactOwnership =
-    meta.perm?.mode === "owner" || meta.perm?.role === "owner"
-      ? "owner"
-      : "reader";
+  const ownership = artifactOwnershipFromMeta(meta);
 
   const serverUrl = authService.getServerUrl();
   const authFetch = createAuthAwareFetch(globalThis.fetch);

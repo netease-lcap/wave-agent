@@ -24,6 +24,9 @@ vi.mock("../../src/utils/toolResultStorage.js", () => ({
   persistToolResult: vi
     .fn()
     .mockReturnValue("/tmp/wave-tool-results/artifact_1.txt"),
+  persistToolResultBuffer: vi
+    .fn()
+    .mockReturnValue("/tmp/wave-tool-results/artifact-asset_1.bin"),
   buildPersistedOutputMessage: vi.fn(
     (len: number, filePath: string, preview: string) =>
       `<persisted-output>${len} chars -> ${filePath} preview: ${preview}</persisted-output>`,
@@ -149,7 +152,19 @@ describe("artifactTool", () => {
         string,
         { enum?: string[] }
       >;
-      expect(properties.action.enum).toEqual(["publish", "read"]);
+      // The full action surface is pinned in artifactToolList.test.ts.
+      expect(properties.action.enum).toEqual(
+        expect.arrayContaining([
+          "publish",
+          "list",
+          "read",
+          "upload_asset",
+          "list_assets",
+          "read_asset",
+          "delete_asset",
+          "copy_from",
+        ]),
+      );
       expect(properties.prompt).toBeDefined();
       expect(properties.title).toBeDefined();
       expect(properties.label).toBeDefined();
@@ -937,11 +952,13 @@ describe("artifactTool", () => {
 
     it("should reject an unknown action", async () => {
       const result = await artifactTool.execute(
-        { action: "list" },
+        { action: "watch" },
         makeContext(),
       );
       expect(result.success).toBe(false);
-      expect(result.error).toContain('action must be "publish" or "read"');
+      expect(result.error).toContain(
+        `${ARTIFACT_TOOL_NAME}: unknown action "watch"`,
+      );
     });
 
     it("should reject unauthenticated reads", async () => {
