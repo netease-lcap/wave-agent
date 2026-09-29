@@ -1117,6 +1117,16 @@ export class DesktopHost {
         if (paneId)
           this.postMessage({ command: "appendMessage", paneId, message });
       },
+      onAssistantMessageDiscarded: (messageId: string) => {
+        // The streamed attempt died mid-body and was re-issued without
+        // streaming; drop its half message from the cache as well as the
+        // webview, or a later setInitialState would bring it back
+        // (spec: 流式响应正文中途断连时降级为非流式重发).
+        agentRef.messages = agentRef.messages.filter((m) => m.id !== messageId);
+        const paneId = paneIdOf();
+        if (paneId)
+          this.postMessage({ command: "discardMessage", paneId, messageId });
+      },
       onAssistantContentUpdated: (params) => {
         // The webview merges streaming deltas via UPDATE_STREAMING_CONTENT,
         // but the cache only ever saw the initial empty assistant message.

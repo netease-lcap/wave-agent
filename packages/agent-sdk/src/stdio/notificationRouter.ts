@@ -25,6 +25,7 @@ import type { StdioAgent } from "./stdioAgent.js";
 const ALL_NOTIFICATION_METHODS = [
   "userMessageAdded",
   "assistantMessageAdded",
+  "assistantMessageDiscarded",
   "assistantContentUpdated",
   "assistantReasoningUpdated",
   "toolBlockUpdated",

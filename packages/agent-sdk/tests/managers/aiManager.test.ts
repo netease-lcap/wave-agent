@@ -95,6 +95,7 @@ describe("AIManager", () => {
       getSessionId: vi.fn().mockReturnValue("test-session-id"),
       getMessages: vi.fn().mockReturnValue([]),
       addAssistantMessage: vi.fn(),
+      discardAssistantMessage: vi.fn(),
       addUserMessage: vi.fn(),
       updateCurrentMessageContent: vi.fn(),
       updateToolBlock: vi.fn(),
@@ -1809,6 +1810,62 @@ describe("AIManager", () => {
       expect(editIntervals[1].start).toBeGreaterThanOrEqual(
         editIntervals[0].end,
       );
+    });
+  });
+
+  describe("Streaming mid-body fallback", () => {
+    it("drops the streamed partial message and applies the non-streamed result", async () => {
+      vi.mocked(mockMessageManager.addAssistantMessage)
+        .mockReturnValueOnce("msg-partial")
+        .mockReturnValueOnce("msg-final");
+      vi.mocked(aiService.callAgent).mockImplementationOnce(async (options) => {
+        // The streamed attempt reaches the UI before its connection dies…
+        options.onContentUpdate?.("half an ans");
+        // …and the re-issued non-streaming request returns the whole answer.
+        return { content: "the full answer", stream_fallback: true };
+      });
+
+      const streamingManager = new AIManager(container, {
+        workdir: "/test/workdir",
+        stream: true,
+      });
+      await streamingManager.sendAIMessage();
+
+      // The void half message is dropped rather than finalized with an error.
+      expect(mockMessageManager.discardAssistantMessage).toHaveBeenCalledWith(
+        "msg-partial",
+      );
+      expect(
+        mockMessageManager.finalizeAbortedToolBlocks,
+      ).not.toHaveBeenCalled();
+      expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+
+      // The fallback result lands in a fresh message as a non-streamed response.
+      expect(mockMessageManager.addAssistantMessage).toHaveBeenCalledTimes(2);
+      expect(
+        mockMessageManager.updateCurrentMessageContent,
+      ).toHaveBeenCalledWith("the full answer");
+
+      // Nothing re-issues on top of the fallback: one callAgent, two messages.
+      expect(aiService.callAgent).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves a streamed message alone when no fallback happened", async () => {
+      vi.mocked(mockMessageManager.addAssistantMessage).mockReturnValueOnce(
+        "msg-streamed",
+      );
+      vi.mocked(aiService.callAgent).mockImplementationOnce(async (options) => {
+        options.onContentUpdate?.("streamed answer");
+        return { content: "streamed answer" };
+      });
+
+      const streamingManager = new AIManager(container, {
+        workdir: "/test/workdir",
+        stream: true,
+      });
+      await streamingManager.sendAIMessage();
+
+      expect(mockMessageManager.discardAssistantMessage).not.toHaveBeenCalled();
     });
   });
 });

@@ -204,6 +204,13 @@ export interface CallAgentResult {
   content?: string;
   tool_calls?: ChatCompletionMessageToolCall[];
   reasoning_content?: string;
+  /**
+   * The streamed attempt failed mid-body and this result came from the
+   * non-streaming re-issue. The caller must drop whatever the failed attempt
+   * already streamed into its view (spec: 流式响应正文中途断连时降级为非流式
+   * 重发).
+   */
+  stream_fallback?: boolean;
   usage?: Usage;
   finish_reason?:
     | "stop"
@@ -367,8 +374,9 @@ export async function callAgent(
       createParams.tool_choice = options.toolChoice;
     }
 
-    if (isStreaming) {
-      // Handle streaming response
+    // Streaming request. Kept as a closure so the mid-body failure path below
+    // can re-issue the same params without streaming.
+    const requestStreaming = async (): Promise<CallAgentResult> => {
       const { data: stream, response } = await openai.chat.completions
         .create(createParams as ChatCompletionCreateParamsStreaming, {
           signal: abortSignal,
@@ -389,11 +397,20 @@ export async function callAgent(
         abortSignal,
         responseHeaders,
       );
-    } else {
+    };
+
+    // Non-streaming request — also the fallback target for a stream that dies
+    // mid-body. It deliberately does not invoke the streaming callbacks, so the
+    // caller can apply its result as a fresh, non-streamed response. Params are
+    // passed in so the fallback can flip `stream` without mutating the object
+    // the streamed attempt already sent.
+    const requestNonStreaming = async (
+      params: ChatCompletionCreateParamsNonStreaming,
+    ): Promise<CallAgentResult> => {
       // Handle non-streaming response
       const { data: response, response: rawResponse } =
         await openai.chat.completions
-          .create(createParams as ChatCompletionCreateParamsNonStreaming, {
+          .create(params, {
             signal: abortSignal,
           })
           .withResponse();
@@ -463,6 +480,47 @@ export async function callAgent(
         result.response_headers = responseHeaders;
       }
 
+      return result;
+    };
+
+    if (!isStreaming) {
+      return await requestNonStreaming(
+        createParams as ChatCompletionCreateParamsNonStreaming,
+      );
+    }
+
+    try {
+      return await requestStreaming();
+    } catch (error) {
+      // The exponential-backoff retry inside OpenAIClient only covers the phase
+      // before response headers arrive: `_create` returns as soon as the 200 is
+      // in, while the body is consumed here. A connection lost mid-body (laptop
+      // sleep, network switch, proxy reset) therefore escapes every retry and
+      // would strand the turn with a partial answer plus an error block — on a
+      // long-lived remote daemon for its whole lifetime. Re-issue the same
+      // request without streaming instead (spec: 流式响应正文中途断连时降级为
+      // 非流式重发).
+      if (
+        abortSignal?.aborted ||
+        (error as Error | undefined)?.name === "AbortError"
+      ) {
+        // User cancelled (or a superseding turn aborted us) — never re-issue.
+        throw error;
+      }
+
+      logger.warn(
+        "Streaming response failed mid-body, retrying non-streaming",
+        {
+          model: model || modelConfig.model,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
+
+      const result = await requestNonStreaming({
+        ...createParams,
+        stream: false,
+      } as ChatCompletionCreateParamsNonStreaming);
+      result.stream_fallback = true;
       return result;
     }
   } catch (error) {

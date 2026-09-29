@@ -168,6 +168,47 @@ describe("chatReducer", () => {
     });
   });
 
+  describe("REMOVE_MESSAGE", () => {
+    const userMessage: Message = {
+      id: "user-1",
+      role: "user",
+      timestamp: "0",
+      blocks: [{ type: "text", content: "帮我重构登录模块" }],
+    };
+    const partialAssistant: Message = {
+      id: "assistant-partial",
+      role: "assistant",
+      timestamp: "0",
+      blocks: [{ type: "text", content: "我先看看", stage: "streaming" }],
+    };
+
+    it("drops the streamed half message while keeping earlier ones", () => {
+      const state = {
+        ...initialState,
+        messages: [userMessage, partialAssistant],
+      };
+
+      const newState = chatReducer(state, {
+        type: "REMOVE_MESSAGE",
+        payload: { messageId: "assistant-partial" },
+      });
+
+      expect(newState.messages).toHaveLength(1);
+      expect(newState.messages[0]).toBe(userMessage);
+    });
+
+    it("returns the same state object when the id matches nothing", () => {
+      const state = { ...initialState, messages: [userMessage] };
+
+      const newState = chatReducer(state, {
+        type: "REMOVE_MESSAGE",
+        payload: { messageId: "assistant-partial" },
+      });
+
+      expect(newState).toBe(state);
+    });
+  });
+
   describe("UPDATE_STREAMING_CONTENT", () => {
     it("should update existing text block content and stage", () => {
       const textBlock: TextBlock = {

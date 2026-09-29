@@ -272,8 +272,10 @@ describe("AI Service - Streaming", () => {
       ]);
     });
 
-    it("should handle streaming errors gracefully", async () => {
-      // Mock streaming response that throws an error
+    it("surfaces the fallback error when the stream dies mid-body and the re-issue fails too", async () => {
+      // First attempt: a stream that dies after one chunk. The re-issue (which
+      // runs without streaming, spec: 流式响应正文中途断连时降级为非流式重发)
+      // fails here, so its error is what reaches the caller.
       const mockStream = (async function* () {
         yield {
           choices: [
@@ -285,14 +287,20 @@ describe("AI Service - Streaming", () => {
         throw new Error("Streaming error occurred");
       })();
 
-      mockCreate.mockReturnValue({
-        withResponse: vi.fn().mockResolvedValue({
-          data: mockStream,
-          response: {
-            headers: new Map(),
-          },
-        }),
-      });
+      mockCreate
+        .mockReturnValueOnce({
+          withResponse: vi.fn().mockResolvedValue({
+            data: mockStream,
+            response: {
+              headers: new Map(),
+            },
+          }),
+        })
+        .mockReturnValueOnce({
+          withResponse: vi
+            .fn()
+            .mockRejectedValue(new Error("Fallback error occurred")),
+        });
 
       const contentUpdates: string[] = [];
 
@@ -306,10 +314,13 @@ describe("AI Service - Streaming", () => {
             contentUpdates.push(content);
           },
         }),
-      ).rejects.toThrow("Streaming error occurred");
+      ).rejects.toThrow("Fallback error occurred");
 
-      // Should have received partial content before error
+      // Partial content still reached the caller before the stream died.
       expect(contentUpdates).toEqual(["Starting response..."]);
+      // Exactly one re-issue, and it did not stream.
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+      expect(mockCreate.mock.calls[1][0].stream).toBe(false);
     });
 
     it("should handle AbortSignal during streaming", async () => {

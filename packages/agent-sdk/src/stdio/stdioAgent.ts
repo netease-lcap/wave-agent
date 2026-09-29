@@ -86,6 +86,12 @@ export interface UpdateConfigParams {
 export interface StdioAgentCallbacks {
   onUserMessageAdded?: (message: Message) => void;
   onAssistantMessageAdded?: (message: Message) => void;
+  /**
+   * A message the host already rendered must be dropped from its view: the
+   * streamed attempt it came from failed mid-body and was re-issued without
+   * streaming (spec: 流式响应正文中途断连时降级为非流式重发).
+   */
+  onAssistantMessageDiscarded?: (messageId: string) => void;
   onAssistantContentUpdated?: (params: {
     messageId: string;
     chunk: string;
@@ -610,6 +616,16 @@ export class StdioAgent {
       case "assistantMessageAdded": {
         const p = params as { message: Message };
         if (p.message) this.callbacks.onAssistantMessageAdded?.(p.message);
+        break;
+      }
+      case "assistantMessageDiscarded": {
+        const p = params as { messageId: string };
+        // Keep the cached list consistent too — hosts read `messages` after
+        // pulls, and a stale half message there would come back into view.
+        if (p.messageId) {
+          this.messages = this.messages.filter((m) => m.id !== p.messageId);
+          this.callbacks.onAssistantMessageDiscarded?.(p.messageId);
+        }
         break;
       }
       case "assistantContentUpdated":

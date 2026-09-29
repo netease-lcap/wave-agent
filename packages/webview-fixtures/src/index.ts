@@ -29,6 +29,7 @@ import type {
   ContextUsageMessage,
   UpdateMessagesMessage,
   AppendMessageMessage,
+  DiscardMessageMessage,
   UpdatePermissionModeMessage,
   UpdateCurrentSessionMessage,
   UpdateTasksMessage,
@@ -94,6 +95,10 @@ export interface Fixtures {
     message: Message,
     overrides?: Overrides<AppendMessageMessage>,
   ) => AppendMessageMessage;
+  discardMessage: (
+    messageId: string,
+    overrides?: Overrides<DiscardMessageMessage>,
+  ) => DiscardMessageMessage;
   updatePermissionMode: (
     mode: PermissionMode,
     overrides?: Overrides<UpdatePermissionModeMessage>,
@@ -245,6 +250,12 @@ export const fixtures: Fixtures = {
   appendMessage: (message, overrides = {}) => ({
     command: "appendMessage",
     message,
+    ...overrides,
+  }),
+
+  discardMessage: (messageId, overrides = {}) => ({
+    command: "discardMessage",
+    messageId,
     ...overrides,
   }),
 

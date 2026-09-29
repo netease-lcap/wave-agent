@@ -2165,6 +2165,17 @@ export class AgentBridge {
             ctx.registeredSessionId,
           );
       },
+      onAssistantMessageDiscarded: (messageId: string) => {
+        // A streamed attempt died mid-body and was re-issued without streaming,
+        // so its half message is void: tell the host to drop it instead of
+        // leaving a partial answer above the real one (spec: 流式响应正文中途
+        // 断连时降级为非流式重发).
+        this.emit(
+          "assistantMessageDiscarded",
+          { messageId },
+          ctx.registeredSessionId,
+        );
+      },
       onAssistantContentUpdated: (params) => {
         // Wire carries only the delta; consumers accumulate (spec: 流式通知纯增量负载).
         this.emit(

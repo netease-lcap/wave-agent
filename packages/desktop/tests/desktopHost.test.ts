@@ -1377,6 +1377,32 @@ describe("agent notifications", () => {
     ]);
   });
 
+  it("drops a discarded assistant message from both the cache and the pane's webview", async () => {
+    const { sent } = await readyHost();
+    const agent = lastAgent();
+    const userMsg = {
+      id: "u1",
+      role: "user",
+      blocks: [{ type: "text", content: "你好" }],
+    };
+    const partialAssistant = {
+      id: "a-partial",
+      role: "assistant",
+      blocks: [{ type: "text", content: "我先看看", stage: "streaming" }],
+    };
+    agent.messages = [userMsg, partialAssistant];
+    agent.callbacks.onAssistantMessageAdded(partialAssistant);
+
+    agent.callbacks.onAssistantMessageDiscarded("a-partial");
+
+    // The cache must forget it too: a later setInitialState replays the cached
+    // list, which would otherwise resurrect the half message.
+    expect(agent.messages).toEqual([userMsg]);
+    expect(sent("discardMessage")).toEqual([
+      expect.objectContaining({ messageId: "a-partial" }),
+    ]);
+  });
+
   it("mirrors an error block under the LATEST user message — new assistant message, not the stale one from a previous turn", async () => {
     const { sent } = await readyHost();
     const agent = lastAgent();

@@ -180,6 +180,12 @@ class WaveSession(
         if (message != null) postMessage("appendMessage", buildJsonObject { put("message", message) })
     }
 
+    // The streamed attempt died mid-body and the CLI re-issued it without
+    // streaming: drop the half message the webview already rendered.
+    override fun onAssistantMessageDiscarded(messageId: String) {
+        if (messageId.isNotEmpty()) postMessage("discardMessage", buildJsonObject { put("messageId", messageId) })
+    }
+
     override fun onAssistantContentUpdated(messageId: String, chunk: String, stage: String) {
         scope.launch {
             streamMutex.withLock {

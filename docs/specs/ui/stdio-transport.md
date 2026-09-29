@@ -216,6 +216,7 @@ order: 220
 3. **假设**用户执行 compact / rewind / clearChat / restoreSession，**当**操作完成时，**则**webview（或宿主代表 webview）主动发起 `getMessages` 请求，以返回的全量列表重建消息区
 4. **假设** bash 模式命令（`!ls`）执行，**当**宿主转发增量通知时，**则**webview 经 `userMessageAdded` 创建 user 消息、`toolBlockUpdated` 就地更新 bash tool block（含实时输出），无需拉取全量列表
 5. **假设** CLI 侧移除 `messagesChange` 通知，**当**StdioAgent 收到流式增量通知时，**则**不再通过任何全量消息推送更新缓存；`this.messages` 仅在 `getMessages` 响应或显式初始化时更新
+6. **假设** 流式正文中途断连、宿主降级为非流式重发（见 core/ai-error-handling.md），**当** 需要丢弃已渲染的半截助手消息时，**则** CLI 推送定向删除通知 `assistantMessageDiscarded`（负载 `{messageId}`），消费端按 id 就地移除该条消息与缓存中的同 id 条目，全程无全量列表下发
 
 ---
 

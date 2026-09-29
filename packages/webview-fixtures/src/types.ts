@@ -568,6 +568,16 @@ export interface AppendMessageMessage extends HostToWebviewMessageBase {
   message: Message;
 }
 
+/**
+ * 丢弃一条已经渲染出来的消息：产生它的流式尝试正文中途断连，宿主改为非流式
+ * 重发（规格：流式响应正文中途断连时降级为非流式重发）。属于命令事件——host
+ * 主动推送、无请求-响应配对，因此不需要归属键。
+ */
+export interface DiscardMessageMessage extends HostToWebviewMessageBase {
+  command: "discardMessage";
+  messageId: string;
+}
+
 export interface CompactionStateChangeMessage extends HostToWebviewMessageBase {
   command: "compactionStateChange";
   isCompacting: boolean;
@@ -1004,6 +1014,7 @@ export type HostToWebviewMessage =
   | TriggerShortcutMessage
   | ScrollToBottomMessage
   | AppendMessageMessage
+  | DiscardMessageMessage
   | CompactionStateChangeMessage
   | UpdateStreamingContentMessage
   | UpdateStreamingReasoningMessage

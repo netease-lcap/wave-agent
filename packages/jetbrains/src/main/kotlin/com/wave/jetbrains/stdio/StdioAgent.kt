@@ -18,6 +18,12 @@ import kotlinx.serialization.json.put
 interface AgentCallbacks {
     fun onUserMessageAdded(message: JsonElement?) {}
     fun onAssistantMessageAdded(message: JsonElement?) {}
+    /**
+     * Drop an already-rendered message: the streamed attempt it came from died
+     * mid-body and was re-issued without streaming (spec:
+     * 流式响应正文中途断连时降级为非流式重发).
+     */
+    fun onAssistantMessageDiscarded(messageId: String) {}
     fun onAssistantContentUpdated(messageId: String, chunk: String, stage: String) {}
     fun onAssistantReasoningUpdated(messageId: String, chunk: String, stage: String) {}
     fun onToolBlockUpdated(params: JsonElement?) {}
@@ -80,6 +86,9 @@ class StdioAgent(
         when (method) {
             "userMessageAdded" -> callbacks.onUserMessageAdded(params?.jsonObject?.get("message"))
             "assistantMessageAdded" -> callbacks.onAssistantMessageAdded(params?.jsonObject?.get("message"))
+            "assistantMessageDiscarded" -> callbacks.onAssistantMessageDiscarded(
+                params?.jsonObject?.get("messageId")?.jsonPrimitive?.content ?: ""
+            )
             "assistantContentUpdated" -> {
                 val o = params?.jsonObject
                 callbacks.onAssistantContentUpdated(
