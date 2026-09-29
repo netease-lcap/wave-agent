@@ -1363,6 +1363,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             tasks: message.tasks,
             isStreaming: message.isStreaming,
             isCommandRunning: message.isCommandRunning,
+            // Compaction state is conversation-scoped and the host replays the
+            // activated session's own value (desktop: pushPaneSessionState) —
+            // forward it or the reducer's `?? false` default swallows it and the
+            // hint vanishes when switching back to a still-compacting session.
+            isCompacting: message.isCompacting,
             isTaskListCollapsed: message.isTaskListCollapsed,
             isRestoring: message.isRestoring,
             sessions: message.sessions,
