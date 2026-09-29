@@ -92,9 +92,8 @@ source-level checks in `scripts/check-sdk-surface.mjs`.
 - **Webview command contract**: `pnpm run audit:commands` statically verifies every webview→host `command` literal is registered in all four host routers (this is the `webview-command-audit` CI job).
 - **SDK surface / host import boundary**: `pnpm run check:sdk-surface` (build the SDK first) pins the _shape_ of the public surface rather than the artifacts: each host package may only import its allowed SDK subpath, the `/host` entry's closure must have zero third-party deps and stay under a size budget, every SDK entry must still load with `@vscode/*` removed from the resolution environment, and `sideEffects: false` must stay in place. Seconds long, no host build, so it is a PR gate (`sdk-surface` job).
 
-### CI Parity & Release
+### Release
 
-- **Verify before pushing**: `pnpm run ci` (type-check + lint + unit tests, two workspaces at a time — each package's vitest already fans out per core, so more concurrency flakes on its 5s timeout, #2344). Matches the CI PR gate's `check`/`check-extras` jobs, but not the gate's webview command audit, its sharded demo suites, or its `sdk-surface` job — see `.github/workflows/ci.yml`.
 - **Release**: `pnpm run release:patch` / `release:minor` / `release:major` (runs `scripts/release.js`, then the `publish.yml` GitHub workflow publishes to npm).
 
 ### JetBrains Plugin
