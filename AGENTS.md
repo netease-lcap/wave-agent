@@ -94,7 +94,7 @@ source-level checks in `scripts/check-sdk-surface.mjs`.
 
 ### CI Parity & Release
 
-- **Verify before pushing**: `pnpm run ci` (parallel type-check + lint + unit tests across packages). It matches the CI PR gate's `check`/`check-extras` jobs, but not the gate's webview command audit, its sharded demo suites, or its `sdk-surface` job — see `.github/workflows/ci.yml`.
+- **Verify before pushing**: `pnpm run ci` (type-check + lint + unit tests, two workspaces at a time — each package's vitest already fans out per core, so more concurrency flakes on its 5s timeout, #2344). Matches the CI PR gate's `check`/`check-extras` jobs, but not the gate's webview command audit, its sharded demo suites, or its `sdk-surface` job — see `.github/workflows/ci.yml`.
 - **Release**: `pnpm run release:patch` / `release:minor` / `release:major` (runs `scripts/release.js`, then the `publish.yml` GitHub workflow publishes to npm).
 
 ### JetBrains Plugin
