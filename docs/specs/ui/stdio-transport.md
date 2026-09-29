@@ -58,6 +58,7 @@ order: 220
 5. **假设** 内置 CLI 的 grep 依赖 rg 尚未下载，**当**插件首次启动 CLI 时，**则**由 CLI 自己在**启动期**从 npmmirror 下载 `@vscode/ripgrep` JS 包装与当前平台的 rg 二进制到共享 `~/.wave/cli/node_modules/@vscode/`（wave.mjs 通过 createRequire 向上解析该目录），并在依赖就位前不对外提供会话服务；宿主不参与下载、不显示下载文案（阻塞期间由 webview 的加载态呈现）。
 6. **假设** rg 已下载过（`~/.wave/cli/node_modules/@vscode/` 下存在当前平台的 rg 二进制），**当**插件再次启动 CLI 时，**则**直接复用缓存，不重复下载。
 7. **假设** rg 下载失败（网络不可达、registry 超时等），**当**插件初始化时，**则**CLI 照常启动、不产生初始化错误：本次运行 Grep 工具报"ripgrep is not available"（其余功能不受影响），下次启动自动重试下载——可选依赖不得把插件启动判死。
+8. **假设** 共享 runtime 目录全新（`~/.wave/cli/node_modules/` 不存在）、sharp 与 rg 都需下载，**当** CLI 启动期依次自装这两个依赖时，**则**两个依赖都装上、marker 一次记录两者，且 rg 在**同一次运行的进程内**即可用（Grep 正常工作）——sharp 安装顺带建立的 `node_modules/` 不得让随后对 rg 的可用性探测把本进程的 rg 解析判死。
 
 ---
 
@@ -78,8 +79,9 @@ order: 220
 5. **假设** 内置 CLI 的 grep 依赖 rg 尚未下载，**当**插件首次启动 CLI 时，**则**由 CLI 自己在**启动期**从 npmmirror 下载 `@vscode/ripgrep` JS 包装与当前平台的 rg 二进制到共享 `~/.wave/cli/node_modules/@vscode/`（wave.mjs 通过 createRequire 向上解析该目录），并在依赖就位前不对外提供会话服务；宿主不参与下载、不显示下载文案（阻塞期间由 webview 的加载态呈现）。
 6. **假设** rg 已下载过（`~/.wave/cli/node_modules/@vscode/` 下存在当前平台的 rg 二进制），**当**插件再次启动 CLI 时，**则**直接复用缓存，不重复下载。
 7. **假设** rg 下载失败（网络不可达、registry 超时等），**当**插件初始化时，**则**CLI 照常启动、不产生初始化错误：本次运行 Grep 工具报"ripgrep is not available"（其余功能不受影响），下次启动自动重试下载——可选依赖不得把插件启动判死。
-8. **假设** 系统未安装 Node.js，**当**插件尝试解析二进制时，**则**抛出明确错误："未检测到 Node.js。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"——JB 插件借用系统 Node 作为 CLI 运行时，Node 是必需的。
-9. **假设** 系统 Node.js 版本低于 22，**当**插件尝试解析二进制时，**则**抛出明确错误："Node.js 版本过低（当前 vX，需要 >= 22）。请升级 Node.js (https://nodejs.org)，然后重启编辑器。"
+8. **假设** 共享 runtime 目录全新（`~/.wave/cli/node_modules/` 不存在）、sharp 与 rg 都需下载，**当** CLI 启动期依次自装这两个依赖时，**则**两个依赖都装上、marker 一次记录两者，且 rg 在**同一次运行的进程内**即可用（Grep 正常工作）——sharp 安装顺带建立的 `node_modules/` 不得让随后对 rg 的可用性探测把本进程的 rg 解析判死。
+9. **假设** 系统未安装 Node.js，**当**插件尝试解析二进制时，**则**抛出明确错误："未检测到 Node.js。请先安装 Node.js (https://nodejs.org)，然后重启编辑器。"——JB 插件借用系统 Node 作为 CLI 运行时，Node 是必需的。
+10. **假设** 系统 Node.js 版本低于 22，**当**插件尝试解析二进制时，**则**抛出明确错误："Node.js 版本过低（当前 vX，需要 >= 22）。请升级 Node.js (https://nodejs.org)，然后重启编辑器。"
 
 ---
 
@@ -265,7 +267,7 @@ order: 220
 - **内置 CLI 的宿主运行时**：VSCE 扩展宿主的 `process.execPath` 是有效的 Node 二进制（Electron 扩展宿主运行时），直接以 `process.execPath <bin/wave-code.js> --stdio` 方式 spawn，Windows 上无需 shell、无 `.cmd` 路径注入风险；JB 插件无宿主 Node，以系统 Node.js（`which/where node` → nvm → JBR 逐级查找）执行内置 CLI，Windows 上同样无需 shell。
 - **内置 CLI 布局**（VSCE/JB 通用）：内置内容为三件套——`bin/wave-code.js`（版本探测 shim，处理 `-v` 后 import `../dist/bundle/wave.mjs`）、`package.json`、`dist/bundle/wave.mjs`。wave.mjs 运行时经 `createRequire(import.meta.url)` 向上解析 `@vscode/ripgrep-<platform>-<arch>/bin/rg`，因此下载的 rg 必须放在 CLI 目录的 `node_modules/@vscode/` 下；该路径**每次使用时再解析**，不在模块求值期定死——依赖是 CLI 自己在启动期装进来的，晚于模块求值。
 - **可写区复制**（VSCE/JB 通用）：插件安装目录只读，内置 CLI 在首次启动（或版本变更）时复制到用户目录 `~/.wave/cli/`；复制前只删除 `dist/`、入口与 `package.json`，保留 `node_modules/`（运行时依赖缓存，rg 与 sharp），升级插件不会强制重新下载。VSCE 与 JB 共享同一 runtime 目录。
-- **运行时依赖自装与缓存**（rg 与 sharp 同一套机制）：宿主自带的那份 CLI 不带 `node_modules`，两个依赖都由 **CLI 在启动期**按「运行时依赖表」自装到共享 `~/.wave/cli/node_modules/`：按 CLI `package.json` 声明的范围从 npmmirror 取元数据、选范围内容最高版本（semver `maxSatisfying`）→ 逐个下载 tarball 并**校验 registry 的 sha512 完整性** → 解包到临时目录后原子 `rename` 到位（保留 tarball 内的可执行位，rg 二进制必须可执行）→ 全部成功才写 marker。rg 为 `@vscode/ripgrep`（JS 包装）+ `@vscode/ripgrep-<platform>-<arch>`（rg 二进制，无 musl 变体），落点与旧实现相同 ⇒ 已有缓存直接命中、不重复下载；能解析到即视为就绪。npm 安装的 `wave-code` 自带这两个依赖，第一步即短路、不发生任何下载。
+- **运行时依赖自装与缓存**（rg 与 sharp 同一套机制）：宿主自带的那份 CLI 不带 `node_modules`，两个依赖都由 **CLI 在启动期**按「运行时依赖表」自装到共享 `~/.wave/cli/node_modules/`：按 CLI `package.json` 声明的范围从 npmmirror 取元数据、选范围内容最高版本（semver `maxSatisfying`）→ 逐个下载 tarball 并**校验 registry 的 sha512 完整性** → 解包到临时目录后原子 `rename` 到位（保留 tarball 内的可执行位，rg 二进制必须可执行）→ 全部成功才写 marker。rg 为 `@vscode/ripgrep`（JS 包装）+ `@vscode/ripgrep-<platform>-<arch>`（rg 二进制，无 musl 变体），落点与旧实现相同 ⇒ 已有缓存直接命中、不重复下载。**就绪判定先看文件系统、再看加载**：先在候选 `node_modules` 目录（`requireFn.resolve.paths(name)`，纯路径运算）里确认包目录存在，只有存在时才真正 `require` 加载校验——**绝不拿 `require` 去探测一个尚不存在的包**，因为那次失败的解析会按路径在 Node 内部留下「该包不存在」的进程级缓存，同一进程内包随后落盘也再解析不到（判定假阴性 → 清 marker → 该进程 grep 永久不可用，典型触发序：sharp 先装、其 `node_modules/` 建立后 rg 才被探测）。安装后的加载校验仍走真实 `require`（此时包已在磁盘上，安全），保留「已安装但无法加载」（如平台二进制不匹配）的降级判定。npm 安装的 `wave-code` 自带这两个依赖，第一步即短路、不发生任何下载。
 - **运行时依赖下载失败只降级、不阻断启动**：CLI 在启动期等依赖就位（避免「刚启动就贴图/搜索」撞上还没装好），但安装失败不抛错——记一行警告后照常提供会话服务：Grep 报"ripgrep is not available"、超限图片按降级路径处理，宿主不弹初始化错误、不再代装（分界：旧行为是宿主在 spawn CLI 前代装 rg，并因它失败而拒绝启动）。失败结果在同一进程内不重试（避免每用一次就打一次网络），**下次启动**会再试。
 - **开发覆盖**（VSCE/JB 通用）：`WAVE_CLI_PATH` 环境变量指向工作区构建的 CLI 文件时优先使用，便于本地开发调试；生产环境不设置该变量。
 - **CLI 版本同步**（VSCE/JB 通用）：内置 CLI 与插件版本由发布流程绑定（插件构建时复制对应版本的三件套进包），无运行期独立升级；用户升级插件即获得新 CLI。构建顺序必须先构建 `packages/code`（生成 `dist/bundle/wave.mjs`）再打包插件。

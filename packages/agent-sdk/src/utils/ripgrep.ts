@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { isPackageOnDisk } from "./packageOnDisk.js";
 
 /**
  * Lazy access to the optional `@vscode/ripgrep` search dependency.
@@ -26,8 +27,13 @@ let resolutionAttempted = false;
  * installed. `requireFn` is injectable so the installer can verify an install
  * from the directory the CLI will actually load it from, and so tests can
  * exercise both outcomes without the real package.
+ *
+ * A package that is not on disk is reported as missing *without* asking Node to
+ * resolve it — see {@link isPackageOnDisk} for why the probe itself is the
+ * hazard.
  */
 export function resolveRipgrep(requireFn: NodeRequire): string | undefined {
+  if (!isPackageOnDisk(requireFn, "@vscode/ripgrep")) return undefined;
   try {
     const loaded = requireFn("@vscode/ripgrep") as { rgPath?: unknown };
     return typeof loaded?.rgPath === "string" ? loaded.rgPath : undefined;
