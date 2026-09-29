@@ -31,6 +31,7 @@
  */
 import { createRequire } from "node:module";
 import { logger } from "./globalLogger.js";
+import { isPackageOnDisk } from "./packageOnDisk.js";
 
 export interface SharpMetadata {
   width?: number;
@@ -75,10 +76,15 @@ let resolutionAttempted = false;
  * missing platform build, a failed `dlopen` all come back as `undefined`, with
  * the underlying error logged once so an operator can tell the three apart.
  *
+ * A package that is not on disk is reported as missing *without* asking Node to
+ * resolve it — see {@link isPackageOnDisk} for why the probe itself is the
+ * hazard.
+ *
  * `requireFn` is injectable so tests can exercise every outcome without the real
  * module.
  */
 export function resolveSharp(requireFn: NodeRequire): SharpFactory | undefined {
+  if (!isPackageOnDisk(requireFn, "sharp")) return undefined;
   try {
     const loaded: unknown = requireFn("sharp");
     if (typeof loaded !== "function") {
