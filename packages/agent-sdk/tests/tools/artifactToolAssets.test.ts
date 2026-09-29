@@ -360,6 +360,29 @@ describe("artifactTool asset actions", () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
+    it("accepts a path whose resolved target spells the zone differently", async () => {
+      // macOS: a /var/folders/... workdir resolves to /private/var/folders/...,
+      // and the permission manager compares spellings, not resolved paths.
+      const { manager } = makePermissionManager();
+      manager.isPathInSafeZone.mockImplementation(
+        (target: string) => !target.startsWith("/private/"),
+      );
+      stubLocalFile({ resolved: "/private/test/workdir/logo.png" });
+      const fetchMock = stubAssetEndpoints();
+
+      const result = await artifactTool.execute(
+        {
+          action: "upload_asset",
+          file_path: "logo.png",
+          url: ARTIFACT_URL,
+        },
+        makeContext({ permissionManager: manager as never }),
+      );
+
+      expect(result.success).toBe(true);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
     it("checks the file's resolved location, not its spelling", async () => {
       stubLocalFile({ resolved: "/test/workdir/real/logo.png" });
       const fetchMock = stubAssetEndpoints();

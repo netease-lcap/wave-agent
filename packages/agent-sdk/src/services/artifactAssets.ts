@@ -19,6 +19,7 @@
 import { authService, createAuthAwareFetch } from "./authService.js";
 import {
   artifactOwnershipFromMeta,
+  artifactVersionOf,
   fetchFrameMeta,
   type ArtifactOwnership,
 } from "./artifactContent.js";
@@ -497,7 +498,7 @@ export async function readAsset(
     }
     const meta = metaResult.meta;
     const token = typeof meta.assetToken === "string" ? meta.assetToken : "";
-    const version = typeof meta.version === "string" ? meta.version : "";
+    const version = artifactVersionOf(meta);
     const ownership = artifactOwnershipFromMeta(meta);
     if (!token || !version) {
       return {

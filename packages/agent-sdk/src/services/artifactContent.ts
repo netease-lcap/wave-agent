@@ -32,7 +32,11 @@ export const DEFAULT_READ_SUMMARY_PROMPT =
 /** Frame metadata returned by `GET /api/frame/{slug}?via=model_read`. */
 export interface FrameMeta {
   slug?: string;
-  version?: string;
+  /**
+   * Frame version. The server sends a number (`1`, `2`, …); a string is only
+   * accepted for robustness, so always read it through `artifactVersionOf`.
+   */
+  version?: string | number;
   title?: string;
   favicon?: string;
   perm?: { mode: "owner" | "users" | "org"; role?: string };
@@ -86,6 +90,18 @@ export function extractArtifactSlug(url: string): string | null {
  */
 export function isValidArtifactSlug(slug: string): boolean {
   return /^[A-Za-z0-9._-]{1,64}$/.test(slug);
+}
+
+/**
+ * The frame version as a string, or "" when the server sent none. The wire type
+ * is a number, so a `typeof === "string"` check silently drops it (which would
+ * lose version tracking on reads and make `read_asset` unable to build its URL).
+ */
+export function artifactVersionOf(meta: FrameMeta): string {
+  const { version } = meta;
+  return typeof version === "string" || typeof version === "number"
+    ? String(version)
+    : "";
 }
 
 /**
@@ -177,7 +193,7 @@ export async function readArtifactContent(
   }
 
   const meta = metaResult.meta;
-  const version = typeof meta.version === "string" ? meta.version : "";
+  const version = artifactVersionOf(meta);
   const contentUrl = typeof meta.contentUrl === "string" ? meta.contentUrl : "";
   if (!contentUrl) {
     return {

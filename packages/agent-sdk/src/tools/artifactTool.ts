@@ -20,6 +20,7 @@ import {
 import {
   extractArtifactSlug,
   isValidArtifactSlug,
+  artifactVersionOf,
   fetchFrameMeta,
   readArtifactContent,
   persistArtifactContent,
@@ -85,7 +86,7 @@ interface DeployResponse {
   slug: string;
   path?: string;
   title?: string;
-  version: string;
+  version: string | number;
 }
 
 function isValidFavicon(favicon: string): boolean {
@@ -171,6 +172,26 @@ function isNetworkPath(rawPath: string): boolean {
     /^[\\/]{2}/.test(rawPath) ||
     rawPath === "/net" ||
     rawPath.startsWith("/net/")
+  );
+}
+
+/**
+ * Whether a local file is inside the session's readable zone. The permission
+ * manager compares path *spellings* — it resolves `.`/`..` but does not follow
+ * symlinks — while its workdir may itself sit under a symlinked prefix (on
+ * macOS `/tmp` and `/var/...` are `/private/...`). Both the caller's spelling
+ * and the resolved target are therefore offered, and either one being inside
+ * the zone counts; anything else would reject every upload in such a session.
+ */
+function isInsideReadableZone(
+  permissionManager: NonNullable<ToolContext["permissionManager"]>,
+  absolutePath: string,
+  resolvedPath: string,
+): boolean {
+  if (permissionManager.isPathInSafeZone(absolutePath)) return true;
+  return (
+    resolvedPath !== absolutePath &&
+    permissionManager.isPathInSafeZone(resolvedPath)
   );
 }
 
@@ -537,14 +558,14 @@ async function publishArtifact(
       };
     }
     const meta: FrameMeta = metaResult.meta;
-    serverVersion = meta.version;
+    serverVersion = artifactVersionOf(meta);
     sharedLive = !!(meta.perm && meta.perm.mode !== "owner" && !meta.shared);
     const recorded = getRecordedVersion(sessionId, slug);
-    if (recorded !== undefined && recorded !== meta.version && !force) {
+    if (recorded !== undefined && recorded !== serverVersion && !force) {
       return {
         success: false,
         content: "",
-        error: `${ARTIFACT_TOOL_NAME}: stale version — this artifact has been updated to version ${meta.version} since this session last saw version ${recorded}. Pass "force": true to overwrite it anyway.`,
+        error: `${ARTIFACT_TOOL_NAME}: stale version — this artifact has been updated to version ${serverVersion} since this session last saw version ${recorded}. Pass "force": true to overwrite it anyway.`,
       };
     }
   }
@@ -620,7 +641,7 @@ async function publishArtifact(
     recordArtifact(sessionId, filePath, {
       url: deploy.url,
       slug: deploy.slug,
-      version: deploy.version,
+      version: String(deploy.version),
     });
     const lines = [`Artifact published: ${deploy.url}`];
     if (deploy.path) lines.push(`Path: ${deploy.path}`);
@@ -634,7 +655,11 @@ async function publishArtifact(
   }
 
   if (res.status === 409) {
-    const live = typeof data.live === "string" ? data.live : undefined;
+    const { live: rawLive } = data;
+    const live =
+      typeof rawLive === "string" || typeof rawLive === "number"
+        ? String(rawLive)
+        : undefined;
     if (live && slug) {
       recordVersion(sessionId, slug, live);
     }
@@ -783,7 +808,7 @@ async function readLocalUploadFile(
 
   if (
     context.permissionManager &&
-    !context.permissionManager.isPathInSafeZone(resolvedPath)
+    !isInsideReadableZone(context.permissionManager, absolutePath, resolvedPath)
   ) {
     return {
       kind: "error",
