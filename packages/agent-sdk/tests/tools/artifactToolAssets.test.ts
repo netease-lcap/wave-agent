@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Mock } from "vitest";
 import { readFile, realpath, stat } from "fs/promises";
+import path from "path";
 import { ARTIFACT_TOOL_NAME } from "../../src/constants/tools.js";
 
 vi.mock("../../src/services/authService.js", () => ({
@@ -50,6 +51,7 @@ import { clearArtifactSession } from "../../src/services/artifactSession.js";
 
 const SESSION_ID = "test-session";
 const SERVER_URL = "https://server.test";
+const WORKDIR = "/test/workdir";
 const ARTIFACT_URL = "https://server.test/code/artifact/abc";
 const SLUG = "abc";
 const ASSET_ID = "0123456789abcdef0123456789abcdef";
@@ -221,7 +223,7 @@ function makePermissionManager(behavior: "allow" | "deny" = "allow") {
 
 function makeContext(overrides: Partial<ToolContext> = {}): ToolContext {
   return {
-    workdir: "/test/workdir",
+    workdir: WORKDIR,
     sessionId: SESSION_ID,
     permissionMode: "default",
     ...overrides,
@@ -397,7 +399,11 @@ describe("artifactTool asset actions", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(realpath).toHaveBeenCalledWith("/test/workdir/link/logo.png");
+      // Resolved against the workdir first, so assert through the same helper
+      // (on Windows `path.resolve` prefixes the current drive).
+      expect(realpath).toHaveBeenCalledWith(
+        path.resolve(WORKDIR, "link/logo.png"),
+      );
       expect(stat).toHaveBeenCalledWith("/test/workdir/real/logo.png");
       expect(readFile).toHaveBeenCalledWith("/test/workdir/real/logo.png");
       expect(fetchMock).toHaveBeenCalledTimes(1);
