@@ -110,6 +110,8 @@ describe("bashTool with real shell spawn", () => {
 
     const result = await bashTool.execute({ command: "cd /tmp" }, context);
     expect(result.success).toBe(true);
-    expect(changedTo).toBe("/tmp");
+    // The wrapper reports `pwd -P`, i.e. the physical path, so compare against
+    // the resolved /tmp — on macOS that is /private/tmp.
+    expect(changedTo).toBe(fs.realpathSync("/tmp"));
   });
 });
