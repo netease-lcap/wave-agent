@@ -65,6 +65,7 @@ class NotificationRouter(private val client: StdioClient) {
         private val ALL_NOTIFICATION_METHODS = listOf(
             "userMessageAdded",
             "assistantMessageAdded",
+            "assistantMessageDiscarded",
             "assistantContentUpdated",
             "assistantReasoningUpdated",
             "toolBlockUpdated",

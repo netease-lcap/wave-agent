@@ -137,6 +137,7 @@ export type ClientNotificationMethod = "permissionResponse";
 export type ServerNotificationMethod =
   | "userMessageAdded"
   | "assistantMessageAdded"
+  | "assistantMessageDiscarded"
   | "assistantContentUpdated"
   | "assistantReasoningUpdated"
   | "toolBlockUpdated"

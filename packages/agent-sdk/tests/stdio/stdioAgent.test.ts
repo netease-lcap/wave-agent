@@ -80,6 +80,7 @@ describe("StdioAgent", () => {
     expect(registeredMethods).not.toContain("messagesChange");
     expect(registeredMethods).toContain("userMessageAdded");
     expect(registeredMethods).toContain("assistantMessageAdded");
+    expect(registeredMethods).toContain("assistantMessageDiscarded");
     expect(registeredMethods).toContain("assistantContentUpdated");
     expect(registeredMethods).toContain("assistantReasoningUpdated");
     expect(registeredMethods).toContain("toolBlockUpdated");
@@ -834,6 +835,41 @@ describe("StdioAgent", () => {
     agent.handleNotification("assistantMessageAdded", { message });
 
     expect(onAssistantMessageAdded).toHaveBeenCalledWith(message);
+  });
+
+  it("assistantMessageDiscarded drops the cached message and forwards the id", () => {
+    const onAssistantMessageDiscarded = vi.fn();
+    const { agent } = createAgent({ onAssistantMessageDiscarded });
+    const kept: Message = {
+      id: "u1",
+      role: "user",
+      timestamp: "",
+      blocks: [],
+    };
+    const partial: Message = {
+      id: "a-partial",
+      role: "assistant",
+      timestamp: "",
+      blocks: [],
+    };
+    // The cached list backs later getMessages pulls (it is only ever set from
+    // a pull) — a stale half message there would come back into view.
+    agent.messages = [kept, partial];
+    agent.handleNotification("assistantMessageDiscarded", {
+      messageId: "a-partial",
+    });
+
+    expect(agent.messages).toEqual([kept]);
+    expect(onAssistantMessageDiscarded).toHaveBeenCalledWith("a-partial");
+  });
+
+  it("assistantMessageDiscarded with a missing id is a no-op", () => {
+    const onAssistantMessageDiscarded = vi.fn();
+    const { agent } = createAgent({ onAssistantMessageDiscarded });
+
+    agent.handleNotification("assistantMessageDiscarded", {});
+
+    expect(onAssistantMessageDiscarded).not.toHaveBeenCalled();
   });
 
   it("assistantContentUpdated forwards params to callback", () => {

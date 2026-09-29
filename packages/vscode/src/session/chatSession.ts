@@ -41,6 +41,9 @@ export interface ChatSessionCallbacks {
   // Incremental update callbacks for streaming optimization
   onUserMessageAdded?: (message: Message) => void;
   onAssistantMessageAdded?: (message: Message) => void;
+  /** Drop an already-rendered message: the streamed attempt it came from died
+   * mid-body and was re-issued without streaming. */
+  onAssistantMessageDiscarded?: (messageId: string) => void;
   onStreamingContentUpdate?: (params: {
     messageId: string;
     chunk: string;
@@ -149,6 +152,9 @@ export class ChatSession {
         },
         onAssistantMessageAdded: (message: Message) => {
           this.callbacks.onAssistantMessageAdded?.(message);
+        },
+        onAssistantMessageDiscarded: (messageId: string) => {
+          this.callbacks.onAssistantMessageDiscarded?.(messageId);
         },
         onAssistantContentUpdated: (params) => {
           this.throttledStreamingContentUpdate(

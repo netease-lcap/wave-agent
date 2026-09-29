@@ -308,6 +308,16 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         currentSession: pinSessionTitle(state.currentSession, messages),
       };
     }
+    case "REMOVE_MESSAGE": {
+      // Streamed attempt died mid-body and was re-issued without streaming: the
+      // half message the host already rendered must go away rather than linger
+      // above the real answer.
+      const messages = state.messages.filter(
+        (m) => m.id !== action.payload.messageId,
+      );
+      if (messages.length === state.messages.length) return state;
+      return { ...state, messages };
+    }
     case "UPDATE_STREAMING_CONTENT": {
       const { messageId, chunk, stage } = action.payload;
       const messageIndex = state.messages.findIndex((m) => m.id === messageId);

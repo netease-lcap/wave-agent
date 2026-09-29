@@ -1030,6 +1030,7 @@ export type ChatAction =
     }
   // Incremental update actions for streaming optimization
   | { type: "APPEND_MESSAGE"; payload: Message }
+  | { type: "REMOVE_MESSAGE"; payload: { messageId: string } }
   | {
       type: "UPDATE_STREAMING_CONTENT";
       payload: { messageId: string; chunk: string; stage: "streaming" | "end" };

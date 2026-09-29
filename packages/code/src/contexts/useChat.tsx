@@ -674,6 +674,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           );
           updateMessages.flush();
         },
+        onAssistantMessageDiscarded: (messageId: string) => {
+          // The streamed attempt died mid-body and was re-issued without
+          // streaming; its half message is void (spec: 流式响应正文中途断连时
+          // 降级为非流式重发).
+          if (isExpandedRef.current) return;
+          updateMessages((prev) => prev.filter((m) => m.id !== messageId));
+          updateMessages.flush();
+        },
         onAssistantContentUpdated: (params) => {
           if (isExpandedRef.current) return;
           updateMessages((prev) => applyContentDelta(prev, params));

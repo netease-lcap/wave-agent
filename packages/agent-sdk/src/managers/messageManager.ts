@@ -62,6 +62,11 @@ export interface MessageManagerCallbacks {
   onUserMessageAdded?: (params: UserMessageParams) => void;
   // MODIFIED: Remove arguments for separation of concerns
   onAssistantMessageAdded?: (messageId: string) => void;
+  /**
+   * A message that was already handed to the host must be dropped from its
+   * incremental view (流式降级：失败尝试的半截消息作废).
+   */
+  onAssistantMessageDiscarded?: (messageId: string) => void;
   // NEW: Streaming content callback - FR-001: receives chunk delta and stage
   onAssistantContentUpdated?: (params: {
     messageId: string;
@@ -595,7 +600,7 @@ export class MessageManager {
     toolCalls?: ChatCompletionMessageFunctionToolCall[],
     usage?: Usage,
     additionalFields?: Record<string, unknown>,
-  ): void {
+  ): string | undefined {
     const additionalFieldsRecord = additionalFields
       ? Object.fromEntries(
           Object.entries(additionalFields).filter(
@@ -614,8 +619,39 @@ export class MessageManager {
     this.setMessages(newMessages);
     const messageId = this.messages[this.messages.length - 1]?.id;
     this.callbacks.onAssistantMessageAdded?.(messageId);
+    return messageId;
 
     // Note: Subagent-specific callbacks are now handled by SubagentManager
+  }
+
+  /**
+   * Drop a message from the conversation and from every host's incremental view.
+   *
+   * Used by the streaming → non-streaming fallback: the assistant message the
+   * failed streaming attempt had already streamed into is void, so it is removed
+   * by id instead of being finalized with an error block (spec: 流式响应正文
+   * 中途断连时降级为非流式重发). Only messages past `savedMessageCount` can be
+   * dropped — that prefix is already flushed to the session file, and removing an
+   * entry below it would make `saveSession()`'s `slice(savedMessageCount)` skip a
+   * live message.
+   */
+  public discardAssistantMessage(messageId: string | undefined): boolean {
+    if (!messageId) return false;
+    const index = this.messages.findIndex((m) => m.id === messageId);
+    if (index < 0) return false;
+    if (index < this.savedMessageCount) {
+      logger.warn(
+        "Refusing to discard an already-persisted message (streaming fallback)",
+        { messageId },
+      );
+      return false;
+    }
+    this.messages.splice(index, 1);
+    this.displayMessages = this.displayMessages.filter(
+      (m) => m.id !== messageId,
+    );
+    this.callbacks.onAssistantMessageDiscarded?.(messageId);
+    return true;
   }
 
   public mergeAssistantAdditionalFields(

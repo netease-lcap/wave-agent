@@ -1532,6 +1532,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         if (!forThisPane(message)) break;
         dispatch({ type: "APPEND_MESSAGE", payload: message.message });
         break;
+      case "discardMessage":
+        // The streamed attempt that produced this message failed mid-body and
+        // the host is re-issuing it non-streaming — drop the half message.
+        if (!forThisPane(message)) break;
+        dispatch({
+          type: "REMOVE_MESSAGE",
+          payload: { messageId: message.messageId },
+        });
+        break;
       case "compactionStateChange":
         if (!forThisPane(message)) break;
         dispatch({

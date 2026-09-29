@@ -427,6 +427,13 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           windowId,
         );
       },
+      onAssistantMessageDiscarded: (messageId) => {
+        this.webviewManager.postMessage(
+          { command: "discardMessage", messageId },
+          viewType,
+          windowId,
+        );
+      },
       onStreamingContentUpdate: (params) => {
         this.webviewManager.postMessage(
           { command: "updateStreamingContent", ...params },

@@ -1745,6 +1745,19 @@ ${question}`;
 
           // Track if assistant message has been created
           let assistantMessageCreated = false;
+          /**
+           * Id of the assistant message this iteration streams into. Needed to
+           * drop that message if the streamed attempt dies mid-body and the
+           * request is re-issued non-streaming (spec: 流式响应正文中途断连时
+           * 降级为非流式重发).
+           */
+          let assistantMessageId: string | undefined;
+          const ensureAssistantMessage = () => {
+            if (!assistantMessageCreated) {
+              assistantMessageId = this.messageManager.addAssistantMessage();
+              assistantMessageCreated = true;
+            }
+          };
 
           logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
 
@@ -1820,20 +1833,14 @@ ${question}`;
               // Agent may have been destroyed mid-stream; ignore in-flight updates.
               if (!this.messageManager) return;
               // Create assistant message on first chunk if not already created
-              if (!assistantMessageCreated) {
-                this.messageManager.addAssistantMessage();
-                assistantMessageCreated = true;
-              }
+              ensureAssistantMessage();
               this.messageManager.updateCurrentMessageContent(content);
             };
             callAgentOptions.onToolUpdate = (toolCall) => {
               // Agent may have been destroyed mid-stream; ignore in-flight updates.
               if (!this.messageManager) return;
               // Create assistant message on first tool update if not already created
-              if (!assistantMessageCreated) {
-                this.messageManager.addAssistantMessage();
-                assistantMessageCreated = true;
-              }
+              ensureAssistantMessage();
 
               // Use parametersChunk as compact param for better performance
               // No need to extract params or generate compact params during streaming
@@ -1856,10 +1863,7 @@ ${question}`;
               // Agent may have been destroyed mid-stream; ignore in-flight updates.
               if (!this.messageManager) return;
               // Create assistant message on first reasoning update if not already created
-              if (!assistantMessageCreated) {
-                this.messageManager.addAssistantMessage();
-                assistantMessageCreated = true;
-              }
+              ensureAssistantMessage();
               this.messageManager.updateCurrentMessageReasoning(reasoning);
             };
           }
@@ -1892,6 +1896,17 @@ ${question}`;
             cacheCreationTokens: result.usage?.cache_creation_input_tokens,
             modelOutput: result.content,
           });
+
+          if (result.stream_fallback && assistantMessageCreated) {
+            // The streamed attempt died mid-body and the request was re-issued
+            // without streaming. Whatever it had already streamed in is void, so
+            // drop that message (and tell the hosts) rather than leaving half an
+            // answer above the real one; its tool calls were never executed
+            // (spec: 流式响应正文中途断连时降级为非流式重发).
+            this.messageManager.discardAssistantMessage(assistantMessageId);
+            assistantMessageId = undefined;
+            assistantMessageCreated = false;
+          }
 
           const createdByStreaming = assistantMessageCreated;
 
