@@ -1,10 +1,12 @@
 import { readFileSync } from "fs";
+import { readFile, realpath, stat } from "fs/promises";
 import path from "path";
 import { marked } from "marked";
 import { ARTIFACT_TOOL_NAME } from "../constants/tools.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 import { authService, createAuthAwareFetch } from "../services/authService.js";
 import { logger } from "../utils/globalLogger.js";
+import { persistToolResultBuffer } from "../utils/toolResultStorage.js";
 import {
   recordArtifact,
   getArtifactByFilePath,
@@ -12,15 +14,43 @@ import {
   recordVersion,
   markArtifactReadApproved,
   isArtifactReadApproved,
+  markAssetWriteApproved,
+  isAssetWriteApproved,
 } from "../services/artifactSession.js";
 import {
   extractArtifactSlug,
+  isValidArtifactSlug,
   fetchFrameMeta,
   readArtifactContent,
   persistArtifactContent,
   summarizeArtifactAsReader,
   type FrameMeta,
 } from "../services/artifactContent.js";
+import {
+  ARTIFACT_LIST_DEFAULT_LIMIT,
+  ARTIFACT_LIST_MAX_LIMIT,
+  ARTIFACT_SCOPES,
+  fetchArtifactList,
+  isArtifactScope,
+  type ArtifactListRow,
+  type ArtifactScope,
+} from "../services/artifactList.js";
+import {
+  ASSET_ALLOWED_EXTENSIONS,
+  ASSET_COPY_MAX_IDS,
+  assetContentTypeFor,
+  assetFileExtension,
+  assetSizeLimitFor,
+  copyAssets,
+  deleteAsset,
+  formatMiB,
+  isAssetId,
+  isTextContentType,
+  listAssets,
+  normalizeAssetId,
+  readAsset,
+  uploadAsset,
+} from "../services/artifactAssets.js";
 import { formatSize } from "../services/contentSummarizer.js";
 
 // --- Limits ---
@@ -33,9 +63,21 @@ const LABEL_MAX_LENGTH = 60;
 const TITLE_MAX_LENGTH = 1000;
 const DEFAULT_FAVICON = "📄";
 
-/** The tool's two actions; publishing is the default when `action` is omitted. */
 const PUBLISH_ACTION = "publish";
+const LIST_ACTION = "list";
 const READ_ACTION = "read";
+const UPLOAD_ASSET_ACTION = "upload_asset";
+const LIST_ASSETS_ACTION = "list_assets";
+const READ_ASSET_ACTION = "read_asset";
+const DELETE_ASSET_ACTION = "delete_asset";
+const COPY_FROM_ACTION = "copy_from";
+
+/** Actions that change an artifact's asset store and therefore need confirming. */
+const ASSET_WRITE_ACTIONS: readonly string[] = [
+  UPLOAD_ASSET_ACTION,
+  DELETE_ASSET_ACTION,
+  COPY_FROM_ACTION,
+];
 
 /** Server response shape for a successful deploy (HTTP 201). */
 interface DeployResponse {
@@ -98,6 +140,164 @@ function denyResult(permissionResult: {
     success: false,
     content: "",
     error: `${ARTIFACT_TOOL_NAME} operation denied by user, reason: ${permissionResult.message || "No reason provided"}`,
+  };
+}
+
+/** Shared auth gate — every action needs a logged-in account. */
+function authErrorFor(verb: string): string | null {
+  if (authService.getSSOToken()) return null;
+  return `${ARTIFACT_TOOL_NAME}: not authenticated. Run /login to connect your account before ${verb}.`;
+}
+
+/**
+ * Resolve the artifact slug an action targets. Outside callers hand us a page
+ * URL; slugs are also accepted so a model can reuse a slug it just listed.
+ */
+function resolveSlug(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (isValidArtifactSlug(trimmed)) return trimmed;
+  const fromUrl = extractArtifactSlug(trimmed);
+  return fromUrl && isValidArtifactSlug(fromUrl) ? fromUrl : null;
+}
+
+/**
+ * Network locations are refused before any filesystem access: an upload must
+ * read a local file, and a network path can be re-resolved to something else
+ * mid-flight.
+ */
+function isNetworkPath(rawPath: string): boolean {
+  return (
+    /^[\\/]{2}/.test(rawPath) ||
+    rawPath === "/net" ||
+    rawPath.startsWith("/net/")
+  );
+}
+
+/**
+ * Confirm an asset write (upload / delete / copy). Unlike publishing, the
+ * standing rule is hidden: a persistent rule would silently authorise writes to
+ * every later artifact, so approval stays scoped to this artifact and session.
+ */
+async function confirmAssetWrite(
+  context: ToolContext,
+  slug: string,
+  params: Record<string, unknown>,
+  warning: string,
+): Promise<ToolResult | null> {
+  const sessionId = context.sessionId || "";
+  if (!context.permissionManager) return null;
+  if (sessionId && isAssetWriteApproved(sessionId, slug)) return null;
+
+  const permissionContext = context.permissionManager.createContext(
+    ARTIFACT_TOOL_NAME,
+    context.permissionMode || "default",
+    context.canUseToolCallback,
+    params,
+    context.toolCallId,
+  );
+  permissionContext.warning = warning;
+  permissionContext.hidePersistentOption = true;
+  const permissionResult =
+    await context.permissionManager.checkPermission(permissionContext);
+  if (permissionResult.behavior === "deny") {
+    return denyResult(permissionResult);
+  }
+  if (sessionId) markAssetWriteApproved(sessionId, slug);
+  return null;
+}
+
+// --- List action ---
+
+function formatListRow(row: ArtifactListRow, host: string): string {
+  const favicon = row.favicon ? `${row.favicon} ` : "";
+  const updated = row.updatedAt ? ` (updated ${row.updatedAt})` : "";
+  return `- ${favicon}${row.title} — ${host}/code/artifact/${encodeURIComponent(row.slug)}${updated}`;
+}
+
+/**
+ * Enumerate the account's artifacts, grouped by how they relate to it. Scoping
+ * and truncation are client-side because the server returns one fixed page.
+ */
+async function listArtifacts(
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ToolResult> {
+  const scopeRaw = typeof args.scope === "string" ? args.scope.trim() : "";
+  let scope: ArtifactScope = "mine";
+  if (scopeRaw) {
+    if (!isArtifactScope(scopeRaw)) {
+      return {
+        success: false,
+        content: "",
+        error: `${ARTIFACT_TOOL_NAME}: scope must be one of ${ARTIFACT_SCOPES.join(", ")} (got "${scopeRaw}")`,
+      };
+    }
+    scope = scopeRaw;
+  }
+
+  const limitRaw = args.limit;
+  let limit = ARTIFACT_LIST_DEFAULT_LIMIT;
+  if (limitRaw !== undefined) {
+    if (
+      typeof limitRaw !== "number" ||
+      !Number.isInteger(limitRaw) ||
+      limitRaw < 1
+    ) {
+      return {
+        success: false,
+        content: "",
+        error: `${ARTIFACT_TOOL_NAME}: limit must be a positive integer (got ${JSON.stringify(limitRaw)})`,
+      };
+    }
+    if (limitRaw > ARTIFACT_LIST_MAX_LIMIT) {
+      return {
+        success: false,
+        content: "",
+        error: `${ARTIFACT_TOOL_NAME}: limit must be at most ${ARTIFACT_LIST_MAX_LIMIT} (got ${limitRaw})`,
+      };
+    }
+    limit = limitRaw;
+  }
+
+  const authError = authErrorFor("listing artifacts");
+  if (authError) return { success: false, content: "", error: authError };
+
+  const outcome = await fetchArtifactList(scope, limit, {
+    abortSignal: context.abortSignal,
+  });
+  if (outcome.kind === "error") {
+    return {
+      success: false,
+      content: "",
+      error: `${ARTIFACT_TOOL_NAME}: ${outcome.error}`,
+    };
+  }
+
+  const { rows, truncated } = outcome;
+  const host = authService.getServerUrl();
+  const lines = [`Artifacts (scope: ${scope}) — ${rows.length} listed`];
+  if (rows.length === 0) {
+    lines.push("", "No artifacts matched.");
+  } else {
+    for (const rel of ["mine", "shared"] as const) {
+      const group = rows.filter((row) => row.rel === rel);
+      if (group.length === 0) continue;
+      lines.push("", `(${rel})`);
+      for (const row of group) lines.push(formatListRow(row, host));
+    }
+  }
+  if (truncated) {
+    lines.push(
+      "",
+      `More matches exist — raise "limit" (max ${ARTIFACT_LIST_MAX_LIMIT}) or narrow "scope".`,
+    );
+  }
+
+  return {
+    success: true,
+    content: lines.join("\n"),
+    shortResult: `Listed ${rows.length} artifact${rows.length === 1 ? "" : "s"} (scope: ${scope})`,
   };
 }
 
@@ -492,6 +692,448 @@ async function publishArtifact(
   };
 }
 
+// --- Asset actions ---
+
+function assetError(message: string): ToolResult {
+  return {
+    success: false,
+    content: "",
+    error: `${ARTIFACT_TOOL_NAME}: ${message}`,
+  };
+}
+
+/** Resolve the `url` argument asset actions need to locate their artifact. */
+function requireSlug(args: Record<string, unknown>): string | ToolResult {
+  const url = typeof args.url === "string" ? args.url.trim() : "";
+  if (!url) {
+    return assetError(
+      `missing required parameter "url" (the artifact page URL)`,
+    );
+  }
+  const slug = resolveSlug(url);
+  if (!slug) {
+    return assetError(
+      `url must be an artifact page URL ({host}/code/artifact/{slug}) or an artifact slug (got "${url}")`,
+    );
+  }
+  return slug;
+}
+
+/** Resolve an `asset_id` argument, accepting a bare id or a `_blob/{id}` ref. */
+function requireAssetId(args: Record<string, unknown>): string | ToolResult {
+  const raw = typeof args.asset_id === "string" ? args.asset_id.trim() : "";
+  if (!raw) {
+    return assetError(`missing required parameter "asset_id"`);
+  }
+  const assetId = normalizeAssetId(raw);
+  if (!assetId) {
+    return assetError(
+      `asset_id must be a 32-character hex asset id or a _blob/{id} reference (got "${raw}")`,
+    );
+  }
+  return assetId;
+}
+
+/**
+ * Read the local file an `upload_asset` names, enforcing the client-side file
+ * semantics: a local regular file inside the session's readable zone with an
+ * allowlisted extension, within the per-asset ceiling, and unchanged across the
+ * read (a file rewritten mid-flight must not upload as the checked file).
+ */
+async function readLocalUploadFile(
+  filePath: string,
+  context: ToolContext,
+): Promise<
+  | { kind: "ok"; bytes: Buffer; contentType: string; resolvedPath: string }
+  | { kind: "error"; error: string }
+> {
+  if (isNetworkPath(filePath)) {
+    return {
+      kind: "error",
+      error: `upload_asset reads only local files — "${filePath}" names a network path (a UNC share, /net automount, or a device-style path). Copy it to a local disk and upload the copy.`,
+    };
+  }
+
+  const absolutePath = path.resolve(context.workdir, filePath);
+  let resolvedPath: string;
+  try {
+    resolvedPath = await realpath(absolutePath);
+  } catch {
+    return {
+      kind: "error",
+      error: `file not found or unreadable: ${filePath}`,
+    };
+  }
+
+  let info;
+  try {
+    info = await stat(resolvedPath);
+  } catch {
+    return {
+      kind: "error",
+      error: `file not found or unreadable: ${filePath}`,
+    };
+  }
+  if (!info.isFile()) {
+    return {
+      kind: "error",
+      error: `${filePath} must name a regular file to upload`,
+    };
+  }
+
+  if (
+    context.permissionManager &&
+    !context.permissionManager.isPathInSafeZone(resolvedPath)
+  ) {
+    return {
+      kind: "error",
+      error: `only files this session is allowed to read can be uploaded — ${filePath} is outside the working directory. Add its folder with /add-dir, or copy it into the working directory first.`,
+    };
+  }
+
+  const contentType = assetContentTypeFor(resolvedPath);
+  if (!contentType) {
+    const ext = path.extname(resolvedPath).toLowerCase();
+    return {
+      kind: "error",
+      error: `only these file types are accepted: ${ASSET_ALLOWED_EXTENSIONS.join(", ")} (got "${ext || "no extension"}")`,
+    };
+  }
+
+  if (info.size === 0) {
+    return {
+      kind: "error",
+      error: `${filePath} is empty — nothing to upload`,
+    };
+  }
+  const limitBytes = assetSizeLimitFor(contentType);
+  if (info.size > limitBytes) {
+    const svg = contentType === "image/svg+xml" ? "SVG " : "";
+    return {
+      kind: "error",
+      error: `${filePath} is ${formatSize(info.size)}, over the ${formatMiB(limitBytes)} ${svg}per-asset limit — compress or split it`,
+    };
+  }
+
+  let bytes: Buffer;
+  try {
+    bytes = await readFile(resolvedPath);
+  } catch {
+    return {
+      kind: "error",
+      error: `cannot read ${filePath}`,
+    };
+  }
+
+  const after = await stat(resolvedPath).catch(() => null);
+  if (
+    !after ||
+    after.ino !== info.ino ||
+    after.size !== info.size ||
+    after.mtimeMs !== info.mtimeMs
+  ) {
+    return {
+      kind: "error",
+      error: `${filePath} was moved, was replaced, or was rewritten during the read — retry the upload so the file that uploads is the one that was checked.`,
+    };
+  }
+
+  return { kind: "ok", bytes, contentType, resolvedPath };
+}
+
+async function uploadAssetAction(
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ToolResult> {
+  const filePath =
+    typeof args.file_path === "string" ? args.file_path.trim() : "";
+  if (!filePath) {
+    return assetError(
+      `missing required parameter "file_path" for an upload_asset`,
+    );
+  }
+  const slug = requireSlug(args);
+  if (typeof slug !== "string") return slug;
+
+  const authError = authErrorFor("uploading assets");
+  if (authError)
+    return assetError(authError.replace(`${ARTIFACT_TOOL_NAME}: `, ""));
+
+  const local = await readLocalUploadFile(filePath, context);
+  if (local.kind === "error") return assetError(local.error);
+
+  const denied = await confirmAssetWrite(
+    context,
+    slug,
+    { action: UPLOAD_ASSET_ACTION, file_path: filePath, url: args.url },
+    `上传本地文件 ${filePath} 为 artifact ${slug} 的资源：文件内容会存到服务端，能访问该 artifact 的人都能取到。`,
+  );
+  if (denied) return denied;
+
+  const outcome = await uploadAsset(slug, local.bytes, local.contentType, {
+    abortSignal: context.abortSignal,
+  });
+  if (outcome.kind === "error") return assetError(outcome.error);
+
+  const asset = outcome.value;
+  const lines = [
+    `Asset uploaded: ${asset.asset_id}`,
+    `Reference it in the page as: _blob/${asset.asset_id}`,
+    `Type: ${asset.content_type || local.contentType}`,
+    `Size: ${formatSize(asset.size_bytes)}`,
+  ];
+  if (asset.sha256) lines.push(`sha256: ${asset.sha256}`);
+  return {
+    success: true,
+    content: lines.join("\n"),
+    shortResult: `Uploaded ${filePath} → asset ${asset.asset_id}`,
+  };
+}
+
+async function listAssetsAction(
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ToolResult> {
+  const slug = requireSlug(args);
+  if (typeof slug !== "string") return slug;
+  const after = typeof args.after === "string" ? args.after.trim() : "";
+
+  const authError = authErrorFor("listing assets");
+  if (authError)
+    return assetError(authError.replace(`${ARTIFACT_TOOL_NAME}: `, ""));
+
+  const outcome = await listAssets(slug, after || undefined, {
+    abortSignal: context.abortSignal,
+  });
+  if (outcome.kind === "error") return assetError(outcome.error);
+
+  const { assets, usage, next } = outcome.value;
+  const lines = [
+    `Assets of ${String(args.url)} — ${usage.files}/${usage.max_files} file(s), ${formatSize(usage.bytes)} of ${formatMiB(usage.max_bytes)}`,
+  ];
+  if (assets.length === 0) {
+    lines.push("", "No assets.");
+  } else {
+    lines.push("");
+    for (const asset of assets) {
+      const created = asset.created_at ? `  ${asset.created_at}` : "";
+      lines.push(
+        `- ${asset.asset_id}  ${asset.content_type || "unknown"}  ${formatSize(asset.size_bytes)}${created}`,
+      );
+    }
+  }
+  if (next) {
+    lines.push("", `More assets — call again with "after": "${next}"`);
+  }
+
+  return {
+    success: true,
+    content: lines.join("\n"),
+    shortResult: `Listed ${assets.length} asset(s) of ${slug}`,
+  };
+}
+
+async function readAssetAction(
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ToolResult> {
+  const slug = requireSlug(args);
+  if (typeof slug !== "string") return slug;
+  const assetId = requireAssetId(args);
+  if (typeof assetId !== "string") return assetId;
+
+  const authError = authErrorFor("reading assets");
+  if (authError)
+    return assetError(authError.replace(`${ARTIFACT_TOOL_NAME}: `, ""));
+
+  const outcome = await readAsset(slug, assetId, {
+    abortSignal: context.abortSignal,
+  });
+  if (outcome.kind === "error") return assetError(outcome.error);
+
+  const { bytes, contentType, ownership } = outcome.value;
+  const sessionId = context.sessionId || "";
+
+  // Someone else's asset is third-party content: confirm once per artifact
+  // before it reaches the conversation, exactly as the `read` action does.
+  if (
+    ownership === "reader" &&
+    context.permissionManager &&
+    !isArtifactReadApproved(sessionId, slug)
+  ) {
+    const permissionContext = context.permissionManager.createContext(
+      ARTIFACT_TOOL_NAME,
+      context.permissionMode || "default",
+      context.canUseToolCallback,
+      { action: READ_ASSET_ACTION, url: args.url, asset_id: assetId },
+      context.toolCallId,
+    );
+    permissionContext.warning =
+      "读取他人分享 artifact 的资源：其内容将进入对话上下文。";
+    permissionContext.hidePersistentOption = true;
+    const permissionResult =
+      await context.permissionManager.checkPermission(permissionContext);
+    if (permissionResult.behavior === "deny")
+      return denyResult(permissionResult);
+    if (sessionId) markArtifactReadApproved(sessionId, slug);
+  }
+
+  const described = `${contentType || "application/octet-stream"}, ${formatSize(bytes.byteLength)}`;
+  if (isTextContentType(contentType)) {
+    const text = bytes.toString("utf-8");
+    const persisted = persistArtifactContent(text);
+    return {
+      success: true,
+      content: `Asset ${assetId} (${described})\n\n${persisted ?? text}`,
+      shortResult: `Read asset ${assetId} (${contentType || "text"})`,
+    };
+  }
+
+  const written = persistToolResultBuffer(
+    bytes,
+    "artifact-asset",
+    assetFileExtension(contentType),
+  );
+  if (!written) {
+    return assetError(`failed to write asset ${assetId} to a temporary file`);
+  }
+  return {
+    success: true,
+    content: `Asset ${assetId} (${described}) written to ${written}\nUse Read to view it.`,
+    shortResult: `Read asset ${assetId} (${contentType || "binary"})`,
+  };
+}
+
+async function deleteAssetAction(
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ToolResult> {
+  const slug = requireSlug(args);
+  if (typeof slug !== "string") return slug;
+  const assetId = requireAssetId(args);
+  if (typeof assetId !== "string") return assetId;
+
+  const authError = authErrorFor("deleting assets");
+  if (authError)
+    return assetError(authError.replace(`${ARTIFACT_TOOL_NAME}: `, ""));
+
+  const denied = await confirmAssetWrite(
+    context,
+    slug,
+    { action: DELETE_ASSET_ACTION, url: args.url, asset_id: assetId },
+    `删除 artifact ${slug} 的资源 ${assetId}：引用它的页面位置会失效。`,
+  );
+  if (denied) return denied;
+
+  const outcome = await deleteAsset(slug, assetId, {
+    abortSignal: context.abortSignal,
+  });
+  if (outcome.kind === "error") return assetError(outcome.error);
+
+  return {
+    success: true,
+    content: outcome.value.deleted
+      ? `Deleted asset ${assetId} from ${String(args.url)}.`
+      : `Asset ${assetId} was already gone — nothing was deleted.`,
+    shortResult: outcome.value.deleted
+      ? `Deleted asset ${assetId}`
+      : `Asset ${assetId} already gone`,
+  };
+}
+
+async function copyFromAction(
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ToolResult> {
+  const slug = requireSlug(args);
+  if (typeof slug !== "string") return slug;
+
+  const fromRaw = typeof args.from === "string" ? args.from.trim() : "";
+  if (!fromRaw) {
+    return assetError(
+      `missing required parameter "from" (the source artifact's slug or page URL)`,
+    );
+  }
+  const fromSlug = resolveSlug(fromRaw);
+  if (!fromSlug) {
+    return assetError(
+      `from must be an artifact slug or page URL (got "${fromRaw}")`,
+    );
+  }
+
+  const rawIds = args.asset_ids;
+  if (!Array.isArray(rawIds) || rawIds.length === 0) {
+    return assetError(
+      `"asset_ids" must be a non-empty array of asset ids (1-${ASSET_COPY_MAX_IDS})`,
+    );
+  }
+  if (rawIds.length > ASSET_COPY_MAX_IDS) {
+    return assetError(
+      `"asset_ids" accepts at most ${ASSET_COPY_MAX_IDS} ids (got ${rawIds.length})`,
+    );
+  }
+  const assetIds: string[] = [];
+  for (const raw of rawIds) {
+    const id = typeof raw === "string" ? normalizeAssetId(raw) : null;
+    if (!id) {
+      return assetError(
+        `"asset_ids" entries must be 32-character hex asset ids (got ${JSON.stringify(raw)})`,
+      );
+    }
+    assetIds.push(id);
+  }
+  if (new Set(assetIds).size !== assetIds.length) {
+    return assetError(`"asset_ids" must be distinct`);
+  }
+  if (assetIds.some((id) => !isAssetId(id))) {
+    return assetError(`"asset_ids" entries must be 32-character hex asset ids`);
+  }
+
+  const authError = authErrorFor("copying assets");
+  if (authError)
+    return assetError(authError.replace(`${ARTIFACT_TOOL_NAME}: `, ""));
+
+  const denied = await confirmAssetWrite(
+    context,
+    slug,
+    {
+      action: COPY_FROM_ACTION,
+      url: args.url,
+      from: fromRaw,
+      asset_ids: assetIds,
+    },
+    `从 artifact ${fromSlug} 复制资源到 ${slug}：将在目标 artifact 中产生独立副本。`,
+  );
+  if (denied) return denied;
+
+  const outcome = await copyAssets(slug, fromSlug, assetIds, {
+    abortSignal: context.abortSignal,
+  });
+  if (outcome.kind === "error") return assetError(outcome.error);
+
+  const copies = outcome.value;
+  const lines = [
+    `Copied ${copies.length} asset(s) from ${fromSlug} into ${String(args.url)}:`,
+  ];
+  for (const copy of copies) {
+    lines.push(
+      `- ${copy.from_id ?? "?"} → ${copy.asset_id}  ${copy.content_type || "unknown"}  ${formatSize(copy.size_bytes)}`,
+    );
+  }
+  if (copies.length !== assetIds.length) {
+    lines.push(
+      "",
+      `Only ${copies.length} of ${assetIds.length} were confirmed — run list_assets on the target to check.`,
+    );
+  }
+
+  return {
+    success: true,
+    content: lines.join("\n"),
+    shortResult: `Copied ${copies.length} asset(s) into ${slug}`,
+  };
+}
+
 export const artifactTool: ToolPlugin = {
   name: ARTIFACT_TOOL_NAME,
   isConcurrencySafe: false,
@@ -500,27 +1142,45 @@ export const artifactTool: ToolPlugin = {
     function: {
       name: ARTIFACT_TOOL_NAME,
       description:
-        "Publish local HTML or Markdown files as shareable web pages (artifacts), or read a published artifact back. " +
+        "Publish local HTML or Markdown files as shareable web pages (artifacts), read a published artifact back, " +
+        "list the artifacts this account can reach, and manage an artifact's assets (images, fonts, data files the page references). " +
         `\`action: "publish"\` (the default when omitted) publishes a file: each publish returns a private URL you can share; ` +
         "the page is only accessible to you unless you change its sharing. Only .html and .md files are supported — inline content " +
         "is not accepted. Markdown files are rendered to HTML automatically. Pass `url` (an existing artifact URL) to redeploy that " +
         "artifact, or omit it to republish a file already published in this session. Use `force` to overwrite an artifact that has " +
         `been updated by someone else. \`action: "read"\` returns the current content of an artifact you pass as \`url\`: artifacts you ` +
         "own come back as raw HTML with inline CSS/JS intact (use it to keep editing, style-check, or debug a published page), while " +
-        "artifacts shared by someone else come back as an isolated summary steered by the optional `prompt`.",
+        "artifacts shared by someone else come back as an isolated summary steered by the optional `prompt`. " +
+        `\`action: "list"\` enumerates the artifacts this account can reach (\`scope\`: "mine" by default, "shared", or "all"), ` +
+        "so you can find a page when you do not have its URL. " +
+        `Asset actions all take the artifact as \`url\`: \`action: "upload_asset"\` (+ \`file_path\`) stores a local file and returns an ` +
+        "id the page references as `_blob/{id}`; " +
+        `\`action: "list_assets"\` lists what is stored (with quota usage, and a cursor in \`after\` for the next page); ` +
+        `\`action: "read_asset"\` (+ \`asset_id\`) fetches one back; ` +
+        `\`action: "delete_asset"\` (+ \`asset_id\`) removes one; ` +
+        `\`action: "copy_from"\` (+ \`from\` + \`asset_ids\`) copies assets from another artifact into this one.`,
       parameters: {
         type: "object",
         properties: {
           action: {
             type: "string",
-            enum: [PUBLISH_ACTION, READ_ACTION],
+            enum: [
+              PUBLISH_ACTION,
+              LIST_ACTION,
+              READ_ACTION,
+              UPLOAD_ASSET_ACTION,
+              LIST_ASSETS_ACTION,
+              READ_ASSET_ACTION,
+              DELETE_ASSET_ACTION,
+              COPY_FROM_ACTION,
+            ],
             description:
-              'The action to perform: "publish" (default) publishes a local file, "read" returns an artifact\'s current content.',
+              'The action to perform: "publish" (default) publishes a local file, "read" returns an artifact\'s current content, "list" enumerates the account\'s artifacts, and "upload_asset" / "list_assets" / "read_asset" / "delete_asset" / "copy_from" manage an artifact\'s assets.',
           },
           file_path: {
             type: "string",
             description:
-              'Path to the .html or .md file to publish (relative to the working directory). The file must exist. Required for action "publish".',
+              'Path to a local file (relative to the working directory). For "publish": a .html or .md file. For "upload_asset": any file whose extension is an accepted asset type.',
           },
           favicon: {
             type: "string",
@@ -539,7 +1199,7 @@ export const artifactTool: ToolPlugin = {
           url: {
             type: "string",
             description:
-              "Artifact URL, e.g. https://host/code/artifact/abc123. When publishing: the existing artifact to redeploy (omit when republishing a file already published earlier in this session). When reading: the artifact to read (required).",
+              "Artifact URL, e.g. https://host/code/artifact/abc123 (an artifact slug is also accepted). When publishing: the existing artifact to redeploy (omit when republishing a file already published earlier in this session). For read and every asset action: the artifact to act on (required).",
           },
           force: {
             type: "boolean",
@@ -551,6 +1211,36 @@ export const artifactTool: ToolPlugin = {
             description:
               'Optional steering for action "read" when the artifact is shared by someone else — e.g. "how is the layout structured?" or "what does it render?". Ignored for artifacts you own.',
           },
+          scope: {
+            type: "string",
+            enum: [...ARTIFACT_SCOPES],
+            description:
+              'Which artifacts "list" returns: "mine" (default) = you own them, "shared" = someone shared them with you, "all" = both.',
+          },
+          limit: {
+            type: "number",
+            description: `Maximum rows for "list" (default ${ARTIFACT_LIST_DEFAULT_LIMIT}, max ${ARTIFACT_LIST_MAX_LIMIT}). Ignored by other actions.`,
+          },
+          asset_id: {
+            type: "string",
+            description:
+              'The asset to act on, for "read_asset" / "delete_asset" — the 32-character hex id returned by "list_assets" or "upload_asset" (a _blob/{id} reference is also accepted).',
+          },
+          asset_ids: {
+            type: "array",
+            items: { type: "string" },
+            description: `For "copy_from": the source artifact's asset ids to copy, 1-${ASSET_COPY_MAX_IDS} distinct ids, ordered.`,
+          },
+          after: {
+            type: "string",
+            description:
+              'For "list_assets": the cursor from a previous listing\'s "next" field, to fetch the following page.',
+          },
+          from: {
+            type: "string",
+            description:
+              'For "copy_from": the SOURCE artifact to copy assets out of, as a slug or page URL. Assets are copied into the artifact named by `url`.',
+          },
         },
         required: [],
       },
@@ -561,32 +1251,84 @@ export const artifactTool: ToolPlugin = {
   // printed the name twice.
   formatCompactParams: (params: Record<string, unknown>) => {
     const url = typeof params.url === "string" ? params.url : "";
-    if (params.action === READ_ACTION) {
-      return `read ${url}`;
+    switch (params.action) {
+      case LIST_ACTION: {
+        const scope = typeof params.scope === "string" ? params.scope : "mine";
+        return `list ${scope}`;
+      }
+      case READ_ACTION:
+        return `read ${url}`;
+      case UPLOAD_ASSET_ACTION: {
+        const filePath =
+          typeof params.file_path === "string" ? params.file_path : "";
+        return `upload ${filePath}`;
+      }
+      case LIST_ASSETS_ACTION:
+        return `list assets ${url}`;
+      case READ_ASSET_ACTION: {
+        const assetId =
+          typeof params.asset_id === "string" ? params.asset_id : "";
+        return `read asset ${assetId}${url ? ` of ${url}` : ""}`;
+      }
+      case DELETE_ASSET_ACTION: {
+        const assetId =
+          typeof params.asset_id === "string" ? params.asset_id : "";
+        return `delete asset ${assetId}${url ? ` of ${url}` : ""}`;
+      }
+      case COPY_FROM_ACTION: {
+        const ids = Array.isArray(params.asset_ids)
+          ? params.asset_ids.length
+          : 0;
+        const from = typeof params.from === "string" ? params.from : "";
+        return `copy ${ids} asset(s) ${from} → ${url}`;
+      }
+      default: {
+        const filePath =
+          typeof params.file_path === "string" ? params.file_path : "";
+        return `${filePath}${url ? ` → ${url}` : ""}`;
+      }
     }
-    const filePath =
-      typeof params.file_path === "string" ? params.file_path : "";
-    return `${filePath}${url ? ` → ${url}` : ""}`;
   },
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,
   ): Promise<ToolResult> => {
     const actionRaw = typeof args.action === "string" ? args.action.trim() : "";
+    const action = actionRaw || PUBLISH_ACTION;
     if (
-      actionRaw &&
-      actionRaw !== PUBLISH_ACTION &&
-      actionRaw !== READ_ACTION
+      ![
+        PUBLISH_ACTION,
+        LIST_ACTION,
+        READ_ACTION,
+        ...ASSET_WRITE_ACTIONS,
+        LIST_ASSETS_ACTION,
+        READ_ASSET_ACTION,
+      ].includes(action)
     ) {
       return {
         success: false,
         content: "",
-        error: `${ARTIFACT_TOOL_NAME}: action must be "publish" or "read" (got "${actionRaw}")`,
+        error: `${ARTIFACT_TOOL_NAME}: unknown action "${actionRaw}"`,
       };
     }
-    if (actionRaw === READ_ACTION) {
-      return readArtifact(args, context);
+
+    switch (action) {
+      case LIST_ACTION:
+        return listArtifacts(args, context);
+      case READ_ACTION:
+        return readArtifact(args, context);
+      case UPLOAD_ASSET_ACTION:
+        return uploadAssetAction(args, context);
+      case LIST_ASSETS_ACTION:
+        return listAssetsAction(args, context);
+      case READ_ASSET_ACTION:
+        return readAssetAction(args, context);
+      case DELETE_ASSET_ACTION:
+        return deleteAssetAction(args, context);
+      case COPY_FROM_ACTION:
+        return copyFromAction(args, context);
+      default:
+        return publishArtifact(args, context);
     }
-    return publishArtifact(args, context);
   },
 };

@@ -9,6 +9,9 @@
  *   unless `force` is set) and lets WebFetch record versions it observed.
  * - slug → read approval: reading someone else's artifact is confirmed once
  *   per session; later reads of the same page are not re-confirmed.
+ * - slug → asset write approval: the first asset write (upload / delete / copy)
+ *   against an artifact is confirmed once per session; later writes to the same
+ *   artifact are not re-confirmed.
  *
  * State is keyed by sessionId so parallel sessions never observe each other.
  */
@@ -22,6 +25,7 @@ export interface ArtifactRecord {
 const sessionArtifacts = new Map<string, Map<string, ArtifactRecord>>();
 const sessionSlugVersions = new Map<string, Map<string, string>>();
 const sessionReadApprovals = new Map<string, Set<string>>();
+const sessionAssetWriteApprovals = new Map<string, Set<string>>();
 
 function fileMapFor(sessionId: string): Map<string, ArtifactRecord> {
   let map = sessionArtifacts.get(sessionId);
@@ -97,9 +101,25 @@ export function isArtifactReadApproved(
   return sessionReadApprovals.get(sessionId)?.has(slug) ?? false;
 }
 
+/** Remember that the user approved an asset write against this artifact. */
+export function markAssetWriteApproved(sessionId: string, slug: string): void {
+  let set = sessionAssetWriteApprovals.get(sessionId);
+  if (!set) {
+    set = new Set();
+    sessionAssetWriteApprovals.set(sessionId, set);
+  }
+  set.add(slug);
+}
+
+/** Whether an asset write against this artifact was already approved. */
+export function isAssetWriteApproved(sessionId: string, slug: string): boolean {
+  return sessionAssetWriteApprovals.get(sessionId)?.has(slug) ?? false;
+}
+
 /** Clear all session-scoped artifact state (used when a session ends). */
 export function clearArtifactSession(sessionId: string): void {
   sessionArtifacts.delete(sessionId);
   sessionSlugVersions.delete(sessionId);
   sessionReadApprovals.delete(sessionId);
+  sessionAssetWriteApprovals.delete(sessionId);
 }

@@ -37,10 +37,24 @@ const getActionDescription = (
     case ASK_USER_QUESTION_TOOL_NAME:
       return "Answer questions to clarify intent";
     case ARTIFACT_TOOL_NAME:
-      if (toolInput.action === "read") {
-        return `Read artifact: ${toolInput.url || "unknown artifact"}`;
+      switch (toolInput.action) {
+        case "list":
+          return `List artifacts (scope: ${toolInput.scope || "mine"})`;
+        case "upload_asset":
+          return `Upload asset: ${toolInput.file_path || "unknown file"}`;
+        case "list_assets":
+          return `List assets of artifact: ${toolInput.url || "unknown artifact"}`;
+        case "read_asset":
+          return `Read asset: ${toolInput.asset_id || "unknown asset"}`;
+        case "delete_asset":
+          return `Delete asset: ${toolInput.asset_id || "unknown asset"}`;
+        case "copy_from":
+          return `Copy assets into artifact: ${toolInput.url || "unknown artifact"}`;
+        case "read":
+          return `Read artifact: ${toolInput.url || "unknown artifact"}`;
+        default:
+          return `Publish file: ${toolInput.file_path || "unknown file"}`;
       }
-      return `Publish file: ${toolInput.file_path || "unknown file"}`;
     default:
       return "Execute operation";
   }
