@@ -4,6 +4,8 @@ import {
   renderChatApp,
   screen,
   sendCommand,
+  sendHostMessage,
+  fixtures,
   createMockVscode,
 } from "./test-utils";
 import { ChatApp } from "../../src/components/ChatApp";
@@ -90,6 +92,39 @@ describe("Compaction hint", () => {
     );
 
     sendCommand("compactionStateChange", { isCompacting: false });
+    expect(screen.queryByTestId("compaction-hint")).not.toBeInTheDocument();
+  });
+
+  it("restores the hint from setInitialState when switching back to a still-compacting session", () => {
+    // spec message-compact「手动压缩与压缩状态内联提示」场景 9：桌面端并行会话
+    // 允许压缩中切换；切回的会话若仍在压缩，宿主的 setInitialState 带
+    // isCompacting，webview 必须据此恢复提示（不得被 reducer 的 ?? false 吞掉）。
+    renderChatApp();
+    const messages = [
+      {
+        id: "msg_user_1",
+        role: "user" as const,
+        timestamp: "2024-01-01T00:00:00.000Z",
+        blocks: [{ type: "text" as const, content: "hello" }],
+      },
+    ];
+
+    // Switch away: the activated session is not compacting — no hint.
+    sendHostMessage(
+      fixtures.setInitialState({ messages, isCompacting: false }),
+    );
+    expect(screen.queryByTestId("compaction-hint")).not.toBeInTheDocument();
+
+    // Switch back: the host replays the still-compacting session's state.
+    sendHostMessage(fixtures.setInitialState({ messages, isCompacting: true }));
+    expect(screen.getByTestId("compaction-hint")).toHaveTextContent(
+      "正在压缩对话",
+    );
+
+    // Compaction completes while this session is shown — hint clears.
+    sendHostMessage(
+      fixtures.setInitialState({ messages, isCompacting: false }),
+    );
     expect(screen.queryByTestId("compaction-hint")).not.toBeInTheDocument();
   });
 
