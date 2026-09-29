@@ -35,14 +35,19 @@ import {
   ARTIFACT_PREVIEW_BYTES,
   extractArtifactSlug,
   fetchFrameMeta,
+  formatArtifactSharing,
   readArtifactContent,
   htmlToMarkdown,
   isLargeArtifactContent,
   persistArtifactContent,
+  type FrameMeta,
 } from "../../src/services/artifactContent.js";
 
 const SERVER_URL = "https://server.test";
 const CONTENT_URL = "/api/frame/abc/content";
+/** The fixed closing sentence every sharing note ends with (CC parity). */
+const READONLY_NOTE =
+  "You cannot change sharing; that is done from the page's Share menu.";
 
 function jsonResponse(status: number, body: unknown): Partial<Response> {
   return {
@@ -196,9 +201,63 @@ describe("artifactContent", () => {
           slug: "abc",
           version: "v2",
           ownership: "owner",
+          sharingNotice: `Sharing: private — only you can open it, other people cannot open the link until it is shared.\n${READONLY_NOTE}`,
           html,
           bytes: new TextEncoder().encode(html).length,
         });
+      }
+    });
+
+    it("should omit the sharing notice when the metadata has no perm", async () => {
+      stubFetchRoutes([
+        {
+          match: (url) => url.includes("?via=model_read"),
+          respond: () =>
+            jsonResponse(200, {
+              slug: "abc",
+              version: "v1",
+              contentUrl: CONTENT_URL,
+            }),
+        },
+        {
+          match: () => true,
+          respond: () => textResponse(200, "<html></html>"),
+        },
+      ]);
+
+      const result = await readArtifactContent("abc");
+
+      expect(result.kind).toBe("ok");
+      if (result.kind === "ok") {
+        expect(result.artifact.sharingNotice).toBeNull();
+      }
+    });
+
+    it("should describe an org-shared artifact for the model", async () => {
+      stubFetchRoutes([
+        {
+          match: (url) => url.includes("?via=model_read"),
+          respond: () =>
+            jsonResponse(200, {
+              slug: "abc",
+              version: "v1",
+              perm: { mode: "org", role: "owner" },
+              contentUrl: CONTENT_URL,
+            }),
+        },
+        {
+          match: () => true,
+          respond: () => textResponse(200, "<html></html>"),
+        },
+      ]);
+
+      const result = await readArtifactContent("abc");
+
+      expect(result.kind).toBe("ok");
+      if (result.kind === "ok") {
+        expect(result.artifact.sharingNotice).toBe(
+          `Sharing: visible to everyone in your organization.\n${READONLY_NOTE}`,
+        );
       }
     });
 
@@ -321,6 +380,47 @@ describe("artifactContent", () => {
       if (result.kind === "error") {
         expect(result.error).toContain("500");
       }
+    });
+  });
+
+  describe("formatArtifactSharing", () => {
+    it("should describe the users scope and always forbid changing sharing", () => {
+      expect(
+        formatArtifactSharing({ perm: { mode: "users", role: "owner" } }),
+      ).toBe(`Sharing: shared with specific people.\n${READONLY_NOTE}`);
+    });
+
+    it("should tell a reader that this session can never publish to it", () => {
+      const notice = formatArtifactSharing({
+        perm: { mode: "users", role: "reader" },
+      });
+
+      expect(notice).toContain("shared with you by someone else");
+      expect(notice).toContain("you are a reader");
+      expect(notice).toContain("this session can never publish to it");
+      expect(notice).toContain(READONLY_NOTE);
+    });
+
+    it("should prefer an explicit role over the metadata", () => {
+      // A successful deploy proves ownership even when the probe omitted `role`.
+      const notice = formatArtifactSharing(
+        { perm: { mode: "users" } },
+        { role: "owner" },
+      );
+
+      expect(notice).toBe(
+        `Sharing: shared with specific people.\n${READONLY_NOTE}`,
+      );
+    });
+
+    it("should omit the notice without a perm, and for unrecognized modes", () => {
+      expect(formatArtifactSharing(undefined)).toBeNull();
+      expect(formatArtifactSharing({})).toBeNull();
+      expect(
+        formatArtifactSharing({
+          perm: { mode: "public" },
+        } as unknown as FrameMeta),
+      ).toBeNull();
     });
   });
 

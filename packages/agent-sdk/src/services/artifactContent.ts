@@ -59,6 +59,12 @@ export interface ArtifactContent {
   slug: string;
   version: string;
   ownership: ArtifactOwnership;
+  /**
+   * Model-facing sharing status (scope + this session's role + the read-only
+   * note), or null when the server reported no `perm`. Computed here so the
+   * Artifact tool's `read` and WebFetch's interception render it identically.
+   */
+  sharingNotice: string | null;
   /** Raw HTML as stored server-side (inline CSS/JS preserved). */
   html: string;
   bytes: number;
@@ -109,10 +115,61 @@ export function artifactVersionOf(meta: FrameMeta): string {
  * Unknown ownership resolves to "reader": never hand out the full text of a
  * page we cannot prove the user owns.
  */
-export function artifactOwnershipFromMeta(meta: FrameMeta): ArtifactOwnership {
+export function artifactOwnershipFromMeta(
+  meta: Pick<FrameMeta, "perm">,
+): ArtifactOwnership {
   return meta.perm?.mode === "owner" || meta.perm?.role === "owner"
     ? "owner"
     : "reader";
+}
+
+/** How each server share mode reads to the model. */
+const SHARING_MODE_TEXT: Record<"owner" | "users" | "org", string> = {
+  owner:
+    "private — only you can open it, other people cannot open the link until it is shared",
+  users: "shared with specific people",
+  org: "visible to everyone in your organization",
+};
+
+/**
+ * Claude Code's fixed closing sentence for every sharing note: sharing is not
+ * something the tool can change (the server only lets the owner do it, from the
+ * web shell).
+ */
+const SHARING_READONLY_NOTE =
+  "You cannot change sharing; that is done from the page's Share menu.";
+
+/**
+ * The sharing status rendered for the model, or null when the server sent no
+ * `perm` (never guess "private" — an unshared page and an unreported one must
+ * not look the same).
+ *
+ * `role` overrides the ownership derived from the metadata, for callers that
+ * already proved ownership another way (a successful deploy can only be done by
+ * a writer).
+ */
+export function formatArtifactSharing(
+  meta: FrameMeta | null | undefined,
+  options: { role?: ArtifactOwnership } = {},
+): string | null {
+  const perm = meta?.perm;
+  if (!perm) return null;
+  // Only the three modes codechat actually serves; anything else stays unsaid
+  // rather than being rendered as a guess.
+  const mode = perm.mode;
+  if (mode !== "owner" && mode !== "users" && mode !== "org") return null;
+
+  const ownership = options.role ?? artifactOwnershipFromMeta(meta);
+  if (ownership === "reader") {
+    return [
+      "Sharing: this page is shared with you by someone else — you are a reader, so this session can never publish to it. Publish a new artifact instead.",
+      SHARING_READONLY_NOTE,
+    ].join("\n");
+  }
+
+  return [`Sharing: ${SHARING_MODE_TEXT[mode]}.`, SHARING_READONLY_NOTE].join(
+    "\n",
+  );
 }
 
 function readSignal(abortSignal?: AbortSignal): AbortSignal {
@@ -246,6 +303,7 @@ export async function readArtifactContent(
       slug,
       version,
       ownership,
+      sharingNotice: formatArtifactSharing(meta),
       html,
       bytes: new TextEncoder().encode(html).length,
     },
@@ -284,10 +342,10 @@ export function persistArtifactContent(content: string): string | null {
 export async function summarizeArtifactAsReader(
   url: string,
   prompt: string,
-  html: string,
+  artifact: ArtifactContent,
   context: ToolContext,
 ): Promise<ToolResult> {
-  const markdown = htmlToMarkdown(html);
+  const markdown = htmlToMarkdown(artifact.html);
   const bytes = new TextEncoder().encode(markdown).length;
   const persisted = persistArtifactContent(markdown);
   let aiInput = markdown;
@@ -313,6 +371,13 @@ export async function summarizeArtifactAsReader(
     result.content = result.content
       ? result.content + "\n\n" + persisted
       : persisted;
+  }
+  if (result.success && artifact.sharingNotice) {
+    // Same header the owner-facing `read` prepends, so both routes say the same
+    // thing about sharing.
+    result.content = result.content
+      ? `${artifact.sharingNotice}\n\n${result.content}`
+      : artifact.sharingNotice;
   }
   return result;
 }

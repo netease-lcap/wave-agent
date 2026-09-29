@@ -190,7 +190,7 @@ Usage notes:
         if (readResult.kind === "error") {
           return { success: false, content: "", error: readResult.error };
         }
-        const { slug, version, html } = readResult.artifact;
+        const { slug, version } = readResult.artifact;
         if (context.sessionId && version) {
           // Keep the stale-version guard in sync with what the model has seen.
           recordVersion(context.sessionId, slug, version);
@@ -198,7 +198,7 @@ Usage notes:
         const result = await summarizeArtifactAsReader(
           url,
           prompt,
-          html,
+          readResult.artifact,
           context,
         );
         result.metadata = { artifactRead: { slug, ver: version } };

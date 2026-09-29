@@ -1,6 +1,6 @@
 ---
 name: "Artifact 工具"
-description: "发布本地 HTML/Markdown 为默认私有的可分享网页，枚举/读取 artifact 与摘要，管理 artifact 资源库（上传/列举/读取/删除/复制）"
+description: "发布本地 HTML/Markdown 为默认私有的可分享网页（并向模型告知分享状态），枚举/读取 artifact 与摘要，管理 artifact 资源库（上传/列举/读取/删除/复制）"
 order: 35
 ---
 
@@ -12,7 +12,7 @@ order: 35
 > 服务端契约已落地（codechat 自托管同源实现）：`POST /api/frame/deploy/direct`（发布）、`GET /api/frame/{slug}?via=model_read`（元数据）、`GET /api/frame/{slug}/content?v={version}`（正文，同源 + Bearer 鉴权，无独立域名/assetToken 流程）。
 > 已拍板的简化决定：零新增配置（API 端点复用 Server URL origin：`options.serverUrl > WAVE_SERVER_URL > 默认值`，不新增 baseUrl 配置项）；客户端只实现 inline 直传一条路径（无 signed URL / DIRECT_UPLOAD）；无 AUTO_OPEN / FRAME_TIMING / OWNERSHIP_FRAME 遥测；**启用开关 `enableArtifact`（未设置时跟随代码默认值常量，当前默认禁用**——后端未上线先不发功能，内测/灰度通过 `enableArtifact: true` 显式打开；后端上线后翻转默认值常量为启用）。`disableArtifact` opt-out 开关等 GA 后再对齐 CC，本期不实现。
 > 触发方式定案（双通道并存，2026-08-13）：**模型经自然语言自动调用 `Artifact` 工具**（description 覆盖"发布/分享/做成网页/给链接"语义，中文提示词同样触发）+ **内置技能 `/artifact` 人工斜杠触发**（builtin SKILL.md，`disable-model-invocation: true` 仅人工、模型不可经 Skill 工具调用该技能）。用户在输入框输入 `/` 即可在技能列表看到该命令并一键触发，无需知道怎么写提示词。**技能本身不含任何发布逻辑**——其内容仅指示模型调用 `Artifact` 工具（参数经 `$ARGUMENTS`/`$1` 透传），发布/校验/权限确认/会话映射全部由工具完成，技能不绕过也不复制这些逻辑。
-> 范围：wave-agent 客户端侧工具 + WebFetch 拦截。分享管理（`POST /api/frame/{slug}/share`、pinned_version）由服务端/网页外壳承担，客户端仅发布私有页面并探测分享状态。
+> 范围：wave-agent 客户端侧工具 + WebFetch 拦截。分享管理（`POST /api/frame/{slug}/share`、pinned_version）由服务端/网页外壳承担，客户端仅发布私有页面并探测分享状态；探测到的分享状态以文案形式告知模型（见下「分享状态文案」）。
 > 对齐 CC 的 Artifact 工具形态（2026-09-11 增补）：工具入口统一为带 `action` 参数的单一工具——`action: "publish"`（省略时的默认值，即现有发布行为）与 `action: "read"`（新增读取动作）。**`read` 的返回形态对齐 CC**：读取当前用户**拥有**的 artifact 返回原文 HTML（含内联 CSS/JS）；读取**他人分享**的 artifact 返回隔离摘要（可选 `prompt` 指明关注点），不把他人页面全文放进上下文。
 > 动作面分两批对齐：首批（2026-09-11）只补 `read`（当时 codechat 无枚举/资源库接口）；第二批（2026-09-29，见下）补 `list` 与 `assets` 五动作。仍未对齐：`watch`/`unwatch`/`status`（服务端实现已回滚、需求未重开）、Artifact 评论（独立能力，服务端 + 灰度 flag 双门控）、`list_types`/`describe_type`（CC 默认关闭的 Artifact Types 子系统）、`read_db`/`write_db`/`call_endpoint`/`run_script`（页面数据岛与契约子系统）。
 > 读取实现单一化（2026-09-11）：artifact 正文的取用（元数据探测 + Bearer 鉴权 + 正文拉取 + 大内容落盘）收敛为**唯一实现**，`Artifact` 工具的 `read` 动作与 WebFetch 的 artifact URL 拦截共用，不再各写一套。
@@ -25,6 +25,7 @@ order: 35
 >   对齐基准 `@anthropic-ai/claude-code@2.1.284`。**服务端只管形状、客户端担语义**：codechat 只校验 MIME 的正则形状（裸 MIME、无参数——带参数或缺失一律 415 `unsupported_type`）+ 长度，**不做扩展名白名单**（实测 `application/x-msdownload` 也照收）；扩展名→MIME 白名单、本地文件语义（常规文件 / 拒绝网络路径 / 解析符号链接后的可读区与常规文件校验 / 上传前后文件身份复核）、配额提示全部在客户端。
 >   `asset_id` = **32 位小写 hex**（响应里的 `opaque_id`），**不是** `_blob/{id}` 路径——服务端 `agent-delete` 路由只接受裸 id（带 `_blob/` 前缀 404，实测）。`/agent-list` 页大小服务端固定 50（收 `limit` 但忽略），游标是不透明串（`after` 传非法值 → 400 `invalid_request`）。`read_asset` 走 **`assetToken`**（`GET /api/frame/{slug}?via=model_read` 已返回，TTL 1 小时、基于 `JWT_SECRET` 派生密钥的 HMAC，**不是会话 JWT、不能当 Bearer 用**），外壳把页面里的 `_blob/{id}` 改写成带 token 的绝对路径。
 >   与 CC 的一处刻意差异：CC 解析 `/agent-list` 响应时把 `content_type` / `created_at` 截到 **40 字符**（超出则整行 safeParse 失败、静默丢行）；codechat 上传侧放宽到 100（DB 列宽），于是 `.docx` 这类长 MIME 在 CC 里会掉行。**wave 不设 40 字符上限**（以服务端口径为准），避免静默丢行。
+>   分享状态文案对齐（2026-09-29，issue #2278 差距清单中唯一「数据面已具备、只差提示词」的一条）：`read` / WebFetch 与 `publish` 的工具结果中，把探测到的 **分享范围**（`perm.mode` = `owner`/`users`/`org`）与 **当前会话对该 artifact 的角色**（`role` = `owner`/`reader`）**以文案形式告知模型**，并照 CC 2.1.278 的口径以固定句收尾：**「你不能改分享，改分享在网页的 Share 菜单里」**；未分享（`owner`）时同时说明**别人打不开**，读者视角（`reader`）说明**本会话不能发布到它**。对齐基准 `@anthropic-ai/claude-code@2.1.284`（#2278 的调研基于 2.1.278）。**只读口径不变**：不新增任何写分享的 action/参数（CC 也没有，服务端 `POST /api/frame/{slug}/share` 仅拥有者可用，模型侧无入口看起来是有意设计）。**不做** CC 的「受众变宽提醒」（`{owner:0, users:1, agent_scoped:1, org:2, public:3}` 等级表）：wave 没有任何改分享的入口 ⇒ 受众不会因本工具的动作变宽，该提醒无触发场景；CC 的 `public`（Anyone with the link）与 `agent_scoped`（属于 agent 而非人）两种 mode 在 codechat 也无对应物，文案只覆盖 `owner`/`users`/`org` + 缺省（`perm` 缺失时**不渲染分享行**，不臆断为私有）。
 
 ## 用户场景与测试 _（必填）_
 
@@ -132,6 +133,26 @@ order: 35
 2. **假设** WebFetch 读取 artifact 元数据，**当** 返回结果时，**则** 元数据包含 `perm: { mode, role }`（mode: owner/users/org；role: owner/reader），用于探测当前分享状态。
 3. **假设** 已分享为 shared-live（`shared` 字段为空，读者实时看到更新）的 artifact 被重发布，**当** 工具执行时，**则** 发布确认中提示影响读者可见版本，需用户确认（对齐 CC 行为）。
 
+### 用户故事：向模型告知 artifact 的分享状态（优先级：P2）
+
+作为用户，我希望 AI 在发布或读取 artifact 后自己就知道这个页面的分享范围（私有 / 分享给指定的人 / 组织内可见）以及「改分享要去网页的 Share 菜单、未分享时别人打不开」，以便我不必自己解释为什么同事打开我发过去的链接是 403。
+
+**为什么是这个优先级**：默认私有是 CC 的默认行为，而模型看不到分享状态就会把「发布成功」当成「已经分享给团队了」。CC 2.1.278 对每种 mode 都生成一段说明并以固定句收尾（`You cannot change sharing; that is done from the page's Share menu.`），这是「分享只读探针」能力**唯一的出口**——探针读到了却不告诉模型，等于白读。
+
+**独立测试**：mock `GET /api/frame/{slug}?via=model_read` 分别返回 `perm.mode` = `owner` / `users` / `org` 与 `role: "reader"`，断言 `read` 与 `publish` 的工具结果含对应的分享文案与固定句；mock 元数据缺 `perm` 时断言分享行整体缺席（且结果其余部分正常）。
+
+**验收场景**：
+
+1. **假设** model 首次发布一个**新** artifact（未带 `url`）且服务端返回 201，**当** 工具返回时，**则** 结果除 URL / 版本外还含分享行，说明该页面**私有（只有你能打开，别人打不开）**，并以固定句「你不能改分享；改分享在网页的 Share 菜单里」收尾；新 artifact 服务端必然 `share_mode=owner`，无需额外探测即可断言。
+2. **假设** 带 `url` 重发布一个**已分享**的 artifact（探测到 `perm.mode` = `users` 或 `org`），**当** 发布成功时，**则** 分享行按探测到的 mode 渲染（`users` = 分享给了指定的人；`org` = 组织内可见），同样以固定句收尾。
+3. **假设** model 用 `action: "read"` 读取一个**自己拥有**的 artifact 且元数据 `perm.mode` = `owner`，**当** 工具返回时，**则** 返回原文 HTML 的同时含「私有、别人打不开」的分享行与固定句。
+4. **假设** model 用 `action: "read"` 读取**他人分享**的 artifact（`artifactOwnershipFromMeta` 判定为 `reader`），**当** 返回摘要时，**则** 文案说明这是**别人分享给你的**页面、且**本会话不能发布到它**（要改只能另发一个新 artifact），并以固定句收尾。
+5. **假设** 元数据里没有 `perm`（或 `mode` 不在 `owner|users|org` 内），**当** 工具返回时，**则** **不渲染分享行**（不臆断为私有、不报错），结果其余部分照常。
+6. **假设** WebFetch 命中 artifact URL 走专用读取通道，**当** 结果返回时，**则** 分享文案与 `read` 动作**逐字一致**（同一份实现，不各写一套）。
+7. **假设** 分享行已渲染在工具结果里，**当** 检查权限确认面时，**则** 确认文案与 `warning` **不含**该分享行——模型可见文案与用户确认文案是两条通道，后者沿用既有 shared-live 警告，两者不重复也不冲突。
+8. **假设** model 试图用 `Artifact` 工具改分享范围，**当** 检查工具 schema 时，**则** 不存在任何分享/权限相关参数（`share_scope` / `shareScope` / `access_scope` / `link_access` 零命中），文案本身已明确「不能改分享，去 Share 菜单」。
+9. **假设** `enableArtifact` 未开启，**当** 会话初始化时，**则** 工具整体不注册，分享文案同样不可达（与 publish/read 同一 gate）。
+
 ### 用户故事：发布确认与同会话自动允许（优先级：P2）
 
 作为用户，我希望发布动作默认经过确认、但同会话内的重复发布不再打扰，以便既不误发又保持流畅。
@@ -223,6 +244,9 @@ order: 35
 - **大小上限**：发布内容上限 16MB（413 透传为友好错误）。
 - **文件大小策略**：读取时 >~2KB 的 HTML 落盘到临时文件（返回路径 + head 预览），避免工具结果膨胀。
 - **归属判定**：以服务端元数据判定当前用户对该 artifact 的角色（拥有者 / 读者）。拥有者返回原文 HTML；读者（他人分享）与**无法确认归属**的情况一律走摘要，不返回全文。
+- **分享状态文案的单一实现**：`perm.mode` / `role` → 文案的映射只有一份，与 `artifactOwnershipFromMeta` 同层（artifact 内容层），`read` 动作、WebFetch 拦截与 `publish` 结果**共用**；不得出现两套并行文案。
+- **分享只读口径**：不新增任何写分享的 action 或参数（对齐 CC —— 它同样只能读分享范围，改分享被指向网页 Share 菜单）；分享行恒以固定句「不能改分享」收尾。
+- **分享行的可省略性**：`perm` 缺失或 mode 不可识别时省略分享行，不臆断为私有、不报错。
 - **摘要实现**：读者视角的摘要复用 WebFetch 已有的小模型处理路径（同一份 prompt→答案机制），不新增模型调用通道。
 - **读取实现单一化**：artifact 的元数据探测、Bearer 鉴权、正文拉取、大内容落盘只有一份实现，`Artifact` 工具的 `read` 动作与 WebFetch 的 artifact URL 拦截共同调用；不得出现两套并行逻辑。
 - **工具描述**：`Artifact` 工具的 description 需同时覆盖发布与读取两类意图（"发布/分享/做成网页/给链接" 与 "读取/查看/看下这个链接里的内容"），并说明缺省动作是发布。
@@ -252,3 +276,6 @@ order: 35
 - **页面里的 `_blob/{id}` 与工具产出的资源 URL 是什么关系？** 页面外壳负责把 `_blob/{id}` 改写成带 token 的绝对路径；工具只产出/消费 `opaque_id` 与相对 URL，不做改写。
 - **资源配额用尽怎么办？** 工具不自动删除任何资源，只如实呈现 `usage`（`files`/`bytes` 对 `max_files`/`max_bytes`），由模型判断并提示用户。
 - **`list_assets` 的 `content_type` 很长（如 `.docx`）怎么办？** 不设长度上限（服务端 DB 列宽 100），按原值呈现——CC 客户端会因 40 字符上限静默丢行，wave 不沿用该行为。
+- **服务端没返回 `perm` 怎么办？** 不渲染分享行（模型看不到分享状态，也好过被告知错误的状态），其余结果照常返回；`owner` 的**首次发布**是例外——新 artifact 服务端必然私有，无需探测即可给出文案。
+- **为什么不实现 CC 的「受众变宽提醒」？** CC 用 `{owner:0, users:1, agent_scoped:1, org:2, public:3}` 等级表判断受众是否变宽、要不要提醒模型；wave 没有任何改分享的入口 ⇒ 受众不会因本工具的动作变宽，该提醒无触发场景。
+- **CC 的 `public` / `agent_scoped` 两种 mode 呢？** codechat 的 `perm.mode` 只有 `owner` / `users` / `org`；文案只覆盖这三档 + 缺省，不为服务端不存在的 mode 预留分支。
