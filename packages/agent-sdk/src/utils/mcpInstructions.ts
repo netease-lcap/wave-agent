@@ -4,8 +4,8 @@
  *
  * A server's `initialize.instructions` is the one channel for "you need to know
  * this without calling anything" content: rate limits, preconditions, whole-server
- * conventions. It cannot ride in a tool description — the catalog compresses those
- * — and it must not ride in the system prompt: it appears only when a connection
+ * conventions. It cannot ride in a tool description — a description belongs to one
+ * tool, and this is server-level prose — and it must not ride in the system prompt: it appears only when a connection
  * happens, and a connection that happens mid-session would rewrite the whole
  * cached prefix (that is exactly the note Claude Code left on the system-prompt
  * variant it replaced: "busts the prompt cache on late MCP connect").
@@ -27,7 +27,7 @@ import type { Message } from "../types/messaging.js";
  * `MAX_MCP_DESCRIPTION_LENGTH` (`services/mcp/client.ts`), which caps both MCP tool
  * descriptions and server instructions at this value. Counted in characters like
  * CC, not CJK-aware: what MCP servers write about themselves is overwhelmingly
- * English, the same assumption the catalog budget makes.
+ * English.
  */
 export const MCP_INSTRUCTIONS_MAX_CHARS = 2048;
 

@@ -44,6 +44,9 @@ If called outside an EnterWorktree session, the tool is a **no-op**: it reports 
 
 export const exitWorktreeTool: ToolPlugin = {
   name: EXIT_WORKTREE_TOOL_NAME,
+  defer: true,
+  searchHint:
+    "leave a git worktree and go back to the original working directory",
   config: {
     type: "function",
     function: {

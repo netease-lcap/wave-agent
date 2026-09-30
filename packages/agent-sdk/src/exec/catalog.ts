@@ -1,39 +1,95 @@
 /**
- * The Exec catalog: which MCP tools exist, how they are rendered, how that
- * rendering is budgeted, and the shape of the sandbox's `search` entry point.
+ * The Exec pool: which tools the sandbox may reach, how a tool's call shape is
+ * rendered, and how the sandbox's `search` entry point answers.
  *
- * "Rendered" means into the catalog announcement (`exec/catalogAnnouncement.ts`),
- * not into `Exec`'s tool description: the description has to stay a
- * pool-independent constant, or every server that connects rewrites the cached
- * prefix. This module produces the entries; the announcement wraps them.
+ * "The pool" is the set of tools loaded on demand — see `exec/deferral.ts` for
+ * the judgment that decides membership. Everything here is a pure function of the
+ * candidates plus that judgment's inputs; no manager is involved, so the same
+ * pool can be built for the declaration path, the announcement and the sandbox
+ * without any of them drifting.
  *
- * This module is the single source of truth for "what the sandbox may reach".
  * The hard constraint is that the pool must equal the tools the agent could
  * already call directly — if a tool were reachable from the sandbox but hidden
- * from the agent, Exec would be a permission-escalation channel.
+ * from the agent, Exec would be a permission-escalation channel. Candidates are
+ * therefore filtered by permission *before* they arrive here (see
+ * `toolManager.getExecPool`), and nothing in this module may widen the set.
  *
- * The same reasoning applies to `search`: its call form is written once, as a
- * schema, and both the model-visible prose and the host-side validation derive
- * from that one object. Teaching a form in prose while accepting a different one
- * in code is a bug with no diff to review.
+ * Two things this module deliberately does not have: a size budget and a
+ * truncating renderer. The announcement it feeds is a list of names, so a budget
+ * would buy nothing and a silent cut would read as "that capability does not
+ * exist". What the model needs beyond names — parameter shapes — is what `search`
+ * is for, which is why the search index lives here next to the signature renderer
+ * that both of them share.
+ *
+ * The same reasoning makes `search`'s call form a single object: the shape taught
+ * in prose and the shape the host validates are derived from one schema, because
+ * teaching one form while accepting another is a bug with no diff to review.
  */
-import type { McpManager } from "../managers/mcpManager.js";
-import type { PermissionManager } from "../managers/permissionManager.js";
-import { EXEC_RESERVED_NAMESPACE } from "./constants.js";
+import {
+  EXEC_RESERVED_NAMESPACE,
+  EXEC_SEARCH_DEFAULT_MAX_RESULTS,
+  EXEC_SEARCH_MAX_RESULTS_LIMIT,
+} from "./constants.js";
+import { isDeferredTool } from "./deferral.js";
+import type { DeferralSubject } from "./deferral.js";
 
+/**
+ * One tool the sandbox can call.
+ *
+ * `inputSchema`/`outputSchema` are the raw JSON Schemas, used only to render a
+ * callable signature — the sandbox never sees them.
+ */
 export interface ExecPoolEntry {
-  /** Flattened `mcp__<server>__<tool>` name — the key on the sandbox `tools` object. */
+  /** Flattened `mcp__<server>__<tool>` name, or a built-in tool's name — the key on the sandbox `tools` object. */
   name: string;
   description?: string;
-  /** Raw MCP input schema (JSON Schema), used only to render a compact signature. */
+  /** Curated one-liner; scored above `description` (see `scoreEntry`). */
+  searchHint?: string;
+  /** True when this entry came from an MCP server. */
+  isMcp?: boolean;
   inputSchema?: Record<string, unknown>;
   /**
    * The schema the server declared for this tool's output, rendered as the
-   * signature's return type. Absent for most servers today; a tool without one
-   * still gets a return type (`Promise<unknown>`), because leaving it out would
-   * read as "this call returns nothing".
+   * signature's return type. Absent for most servers today, and never present for
+   * a built-in (its result is a string); a tool without one still gets a return
+   * type (`Promise<unknown>`), because leaving it out would read as "this call
+   * returns nothing".
    */
   outputSchema?: Record<string, unknown>;
+}
+
+/** A pool candidate: the entry data plus the inputs the deferral judgment reads. */
+export interface ExecPoolCandidate extends DeferralSubject {
+  description?: string;
+  searchHint?: string;
+  inputSchema?: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+}
+
+/**
+ * The on-demand subset of `candidates`, in the order given.
+ *
+ * `nonDeferrable` is the resolved non-deferrable list (structural floor already
+ * unioned in — see `getNonDeferrableBuiltins`). Candidates are expected to be
+ * permission-filtered already; this function only decides deferral.
+ */
+export function buildExecPool(
+  candidates: readonly ExecPoolCandidate[],
+  nonDeferrable: ReadonlySet<string>,
+): ExecPoolEntry[] {
+  const pool: ExecPoolEntry[] = [];
+  for (const candidate of candidates) {
+    if (!isDeferredTool(candidate, nonDeferrable)) continue;
+    pool.push({
+      name: candidate.name,
+      description: candidate.description,
+      searchHint: candidate.searchHint,
+      isMcp: candidate.isMcp,
+      inputSchema: candidate.inputSchema,
+      outputSchema: candidate.outputSchema,
+    });
+  }
+  return pool;
 }
 
 /**
@@ -42,60 +98,16 @@ export interface ExecPoolEntry {
  * schema degrades to `unknown` instead of overflowing the stack. Rendering must
  * never throw.
  *
- * This is the *only* silent reduction left in the renderer — there is deliberately
- * no cap on properties per level or on enum variants. A wide schema or a long enum
- * is decision-relevant text, and truncating it is how the model ends up guessing
- * which parameter or which variant to use. Depth 8 and `unknown` are opencode's
- * values (`tool-schema.ts`, `MAX_RENDER_DEPTH`).
+ * This is the *only* silent reduction in the renderer — there is deliberately no
+ * cap on properties per level or on enum variants. A wide schema or a long enum is
+ * decision-relevant text, and truncating it is how the model ends up guessing which
+ * parameter or which variant to use. Depth 8 and `unknown` are opencode's values
+ * (`tool-schema.ts`, `MAX_RENDER_DEPTH`).
  */
 const MAX_SIGNATURE_DEPTH = 8;
-/** Cap a rendered *tool* description at one line of this length. */
-const MAX_DESCRIPTION_CHARS = 120;
 
 /** A property name that can be written bare in TypeScript. */
 const IDENTIFIER_SEGMENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
-
-/**
- * Budget accounting for the catalog, in estimated tokens.
- *
- * Applied to a whole catalog entry, which is a multi-line block: its newlines
- * and indentation are part of `text.length`, so `chars / 4` already covers them.
- *
- * A plain `chars / 4`, same basis as opencode's `catalogBudget`. Deliberately
- * not the CJK-aware `utils/tokenEstimate`: MCP tool descriptions are
- * overwhelmingly English, so telling CJK from Latin text would not move the
- * result in practice.
- */
-const estimateCatalogTokens = (text: string) => Math.round(text.length / 4);
-
-/**
- * Every MCP tool the current agent may call, in catalog form.
- *
- * Derived from `getMcpToolsConfig()` — the exact source that produces the flat
- * `tools[]` declarations when the pool is not collapsed, and the one whose
- * connected/reconnecting filtering already keeps a transient disconnect from
- * churning the tool list. So "the catalog equals what would have been declared"
- * holds structurally, not by parallel construction.
- */
-export function buildExecPool(
-  mcpManager: McpManager,
-  permissionManager?: PermissionManager,
-): ExecPoolEntry[] {
-  const outputSchemas = mcpManager.getMcpToolOutputSchemas();
-  const entries: ExecPoolEntry[] = [];
-  for (const tool of mcpManager.getMcpToolsConfig()) {
-    if (permissionManager?.isToolDenied(tool.function.name)) continue;
-    entries.push({
-      name: tool.function.name,
-      description: tool.function.description,
-      inputSchema: tool.function.parameters as
-        | Record<string, unknown>
-        | undefined,
-      outputSchema: outputSchemas.get(tool.function.name),
-    });
-  }
-  return entries;
-}
 
 /** Render an object key, quoting names that are not valid identifiers. */
 function renderKey(name: string): string {
@@ -110,20 +122,6 @@ function toolExpression(name: string): string {
   return IDENTIFIER_SEGMENT.test(name)
     ? `tools.${name}`
     : `tools[${JSON.stringify(name)}]`;
-}
-
-/**
- * Trim a *tool* description to its first line and cap its length.
- *
- * Only tool-level prose is compressed here: it is padding that the model does not
- * need to act, and the full text stays reachable through search. Field descriptions
- * are never clamped (see `jsdoc`) — those carry the decision guidance.
- */
-function clampDescription(text: string): string {
-  const first = text.split("\n")[0].trim();
-  return first.length > MAX_DESCRIPTION_CHARS
-    ? `${first.slice(0, MAX_DESCRIPTION_CHARS - 3)}...`
-    : first;
 }
 
 /**
@@ -156,9 +154,9 @@ function docTags(schema: unknown): string[] {
  *
  * The description is kept verbatim — multi-line included, no width cap. A field
  * description says what to put in the field ("which of these variants, and why"),
- * so cutting it at a fixed column cuts the guidance and keeps the preamble. Only
- * the tool's own description is clamped (see `clampDescription`); when a model
- * needs that one in full it searches the pool by name.
+ * so cutting it at a fixed column cuts the guidance and keeps the preamble. The
+ * same goes for the tool's own description: it is returned by `search` unClamped,
+ * because a search hit is what the model got in exchange for the round-trip.
  */
 function jsdoc(schema: unknown, pad: string): string {
   const description =
@@ -180,6 +178,18 @@ function jsdoc(schema: unknown, pad: string): string {
     .map((line) => `${pad} *${line === "" ? "" : ` ${line}`}`)
     .join("\n");
   return `${pad}/**\n${body}\n${pad} */\n`;
+}
+
+/**
+ * One JSON Schema type name as a TypeScript one.
+ *
+ * `integer` is the only name that differs: it is a JSON Schema narrowing, not a
+ * TypeScript type, and a signature saying `integer` would be teaching the model a
+ * type the runtime does not distinguish.
+ */
+function scalarType(name: unknown): string {
+  if (typeof name !== "string") return "unknown";
+  return name === "integer" ? "number" : name;
 }
 
 /**
@@ -217,7 +227,7 @@ function renderType(schema: unknown, depth: number): string {
     const names = (typed.type as unknown[]).filter(
       (value): value is string => typeof value === "string",
     );
-    if (names.length > 0) return names.join(" | ");
+    if (names.length > 0) return names.map(scalarType).join(" | ");
     return "unknown";
   }
 
@@ -241,19 +251,19 @@ function renderType(schema: unknown, depth: number): string {
     return `{\n${lines.join("\n")}\n${close}}`;
   }
 
-  return typeof typed.type === "string" ? typed.type : "unknown";
+  return scalarType(typed.type);
 }
 
 /**
- * The callable signature for one tool: parameters and return type. The catalog and
- * search results share it, so the model can copy either one verbatim.
+ * The callable signature for one tool: parameters and return type. This is what
+ * `search` hands back, so the model can copy it verbatim into a call.
  *
  * The return type comes from the schema the server declared for its output, and a
  * tool that declared none still gets `Promise<unknown>` rather than no return type
  * at all: the sandbox resolves every call to the tool's output (its structured
  * content, else its text, else `null`), and a signature ending at the parameters
  * would read as "calls this, get nothing". Rendering it from the same rule the
- * runtime applies is what keeps the catalog from teaching a shape the host will
+ * runtime applies is what keeps a search hit from teaching a shape the host will
  * not deliver.
  */
 export function renderToolSignature(entry: ExecPoolEntry): string {
@@ -264,13 +274,13 @@ export function renderToolSignature(entry: ExecPoolEntry): string {
  * The path the sandbox exposes search under. Built from the reserved namespace
  * (the sandbox builds it the same way), so prose and runtime cannot drift.
  */
-const SEARCH_EXPRESSION = `tools[${JSON.stringify(EXEC_RESERVED_NAMESPACE)}].search`;
+export const EXEC_SEARCH_EXPRESSION = `tools[${JSON.stringify(EXEC_RESERVED_NAMESPACE)}].search`;
 
 /**
  * Input schema of the sandbox's `search` entry point.
  *
  * Load-bearing: the call form in the tool description, the call form in error
- * messages and the validation `resolveSearchQuery` runs all come from this object.
+ * messages and the validation `resolveSearchArgs` runs all come from this object.
  * The description asked for the object form while the host only accepted a
  * positional string, and nothing in the code tied the two together — one object
  * makes that class of drift impossible rather than unlikely.
@@ -281,7 +291,13 @@ const SEARCH_INPUT_SCHEMA: Record<string, unknown> = {
     query: {
       type: "string",
       description:
-        "Substring matched against tool names and descriptions, case-insensitively. Omit it (or pass an empty string) to list the entire pool.",
+        'Keyword(s) matched against tool names, curated hints and descriptions, case-insensitively. Pass "select:<name>[,<name>...]" to fetch exact names instead. Omit it (or pass an empty string) to list the pool.',
+    },
+    max_results: {
+      type: "integer",
+      default: EXEC_SEARCH_DEFAULT_MAX_RESULTS,
+      description:
+        "Maximum hits for a keyword query. Ignored by select:, which returns exactly what it names.",
     },
   },
 };
@@ -294,18 +310,33 @@ const SEARCH_INPUT_SCHEMA: Record<string, unknown> = {
  * both come from this one object, so "what a hit looks like" cannot drift between
  * the prose and the runtime. It also keeps the sandbox API uniform — every call
  * resolves to its output, so nothing hands back a JSON *string* to parse.
+ *
+ * `total` is not decoration: a keyword search is capped, and without the count the
+ * model reads "five hits" as "five matches" — the same failure a silently
+ * truncated announcement would cause.
  */
 const SEARCH_OUTPUT_SCHEMA: Record<string, unknown> = {
-  type: "array",
-  items: {
-    type: "object",
-    properties: {
-      name: { type: "string" },
-      description: { type: "string" },
-      signature: { type: "string" },
+  type: "object",
+  properties: {
+    matches: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          description: { type: "string" },
+          signature: { type: "string" },
+        },
+        required: ["name", "signature"],
+      },
     },
-    required: ["name", "signature"],
+    total: {
+      type: "integer",
+      description:
+        "Hits found before the limit was applied. Greater than matches.length means the query was narrowed, not that the pool is that small.",
+    },
   },
+  required: ["matches", "total"],
 };
 
 const SEARCH_INPUT_KEYS = Object.keys(
@@ -337,38 +368,51 @@ function placeholderFor(schema: unknown): string {
 
 /**
  * The callable signature of search, rendered by the very function that renders
- * every catalog entry, so its shape cannot drift from what the host accepts or
- * returns. Multi-line, for the sandbox API blurb where there is room to show the
+ * every tool signature, so its shape cannot drift from what the host accepts or
+ * returns. Multi-line, for the tool description where there is room to show the
  * field docs.
  */
 export function renderSearchSignature(): string {
-  return `${SEARCH_EXPRESSION}(${renderType(SEARCH_INPUT_SCHEMA, 0)}): Promise<${renderType(SEARCH_OUTPUT_SCHEMA, 0)}>`;
+  return `${EXEC_SEARCH_EXPRESSION}(${renderType(SEARCH_INPUT_SCHEMA, 0)}): Promise<${renderType(SEARCH_OUTPUT_SCHEMA, 0)}>`;
 }
 
 /**
  * The one-line call form of search: the path plus a placeholder per field, all
  * derived from `SEARCH_INPUT_SCHEMA`. For prose that cannot afford the multi-line
- * block — the catalog's `PARTIAL` notice and error messages, which must still name
- * a shape the host accepts.
+ * block — error messages, which must still name a shape the host accepts.
  */
 export function renderSearchCallForm(): string {
   const properties = SEARCH_INPUT_SCHEMA.properties as Record<string, unknown>;
   const fields = Object.keys(properties)
     .map((key) => `${renderKey(key)}: ${placeholderFor(properties[key])}`)
     .join(", ");
-  return `${SEARCH_EXPRESSION}({ ${fields} })`;
+  return `${EXEC_SEARCH_EXPRESSION}({ ${fields} })`;
 }
 
+/** A resolved search call: what to match on and how many hits to allow. */
+export interface ExecSearchArgs {
+  /** Lower-cased keyword query. Empty when the caller omitted it. */
+  query: string;
+  /** Exact names named by a `select:` query, in the order given. */
+  select?: string[];
+  maxResults: number;
+}
+
+/** `select:<name>[,<name>...]` — an exact-name query rather than a keyword one. */
+const SELECT_PREFIX = "select:";
+
 /**
- * Validate a search call's arguments against `SEARCH_INPUT_SCHEMA` and return the
- * query to match on.
+ * Validate a search call's arguments against `SEARCH_INPUT_SCHEMA` and resolve
+ * them into a match plan.
  *
  * The sandbox only guarantees a plain object (see `callHost`); it knows nothing
  * about this schema, so a call naming a field the schema does not have must fail
  * loudly here. Treating `{ q: "..." }` as an empty query would answer "here is the
  * whole pool" and dress a typo up as a successful search.
  */
-export function resolveSearchQuery(args: Record<string, unknown>): string {
+export function resolveSearchArgs(
+  args: Record<string, unknown>,
+): ExecSearchArgs {
   const unexpected = Object.keys(args).find(
     (key) => !SEARCH_INPUT_KEYS.includes(key),
   );
@@ -377,201 +421,165 @@ export function resolveSearchQuery(args: Record<string, unknown>): string {
       `search() does not take "${unexpected}". Expected ${renderSearchCallForm()}`,
     );
   }
-  const query = args.query;
-  if (query === undefined) return "";
-  if (typeof query !== "string") {
+
+  const rawQuery = args.query;
+  if (rawQuery !== undefined && typeof rawQuery !== "string") {
     throw new Error(
-      `search() expects "query" to be a string, got ${typeof query}. Expected ${renderSearchCallForm()}`,
+      `search() expects "query" to be a string, got ${typeof rawQuery}. Expected ${renderSearchCallForm()}`,
     );
   }
-  return query.trim().toLowerCase();
+  const query = (rawQuery ?? "").trim();
+
+  const rawMax = args.max_results;
+  if (rawMax !== undefined && typeof rawMax !== "number") {
+    throw new Error(
+      `search() expects "max_results" to be a number, got ${typeof rawMax}. Expected ${renderSearchCallForm()}`,
+    );
+  }
+  const maxResults =
+    rawMax === undefined
+      ? EXEC_SEARCH_DEFAULT_MAX_RESULTS
+      : Math.max(
+          1,
+          Math.min(EXEC_SEARCH_MAX_RESULTS_LIMIT, Math.floor(rawMax) || 1),
+        );
+
+  if (query.toLowerCase().startsWith(SELECT_PREFIX)) {
+    const select = query
+      .slice(SELECT_PREFIX.length)
+      .split(",")
+      .map((name) => name.trim())
+      .filter((name) => name.length > 0);
+    return { query: "", select, maxResults };
+  }
+
+  return { query: query.toLowerCase(), maxResults };
 }
 
-/**
- * A single catalog entry: its signature (possibly several lines) followed by the
- * first line of its description.
- */
-export function renderCatalogEntry(entry: ExecPoolEntry): string {
-  const signature = renderToolSignature(entry);
-  const description = clampDescription(entry.description ?? "");
-  return description ? `${signature} // ${description}` : signature;
+/** One hit. `signature` is what makes the hit callable without another round. */
+export interface ExecSearchHit {
+  name: string;
+  description?: string;
+  signature: string;
 }
 
-export interface RenderedCatalog {
-  text: string;
-  /** How many entries actually appear in `text`. */
-  shown: number;
+/** What a search call resolves to. See `SEARCH_OUTPUT_SCHEMA`. */
+export interface ExecSearchResult {
+  matches: ExecSearchHit[];
   total: number;
-  /** True when the budget forced entries out. Never silent. */
-  truncated: boolean;
-  /**
-   * Per-server tool counts, in pool order. The rendered entries cannot tell a later
-   * turn what moved — the announcement diff is count-level — so the snapshot is
-   * handed back here rather than recovered by parsing `text`.
-   */
-  namespaces: Array<{ name: string; count: number; shown: number }>;
+}
+
+/** Words inside a tool name: `mcp__github__create_issue` → mcp, github, create, issue. */
+const NAME_SEPARATORS = /[^a-z0-9]+/;
+
+function nameSegments(name: string): string[] {
+  return name.toLowerCase().split(NAME_SEPARATORS).filter(Boolean);
 }
 
 /**
- * The one-line index of a server: `- mcp__github (40 tools, 13 shown)`. The tail
- * is dropped when the server is fully shown, and reads `none shown` when it got
- * no seat at all.
+ * How well one entry matches one query, or 0 when it does not.
  *
- * The prefix is the flattened name's, not the routing key alone, so the line is a
- * substring of every tool name it covers (and of what search matches on). For a
- * server whose name itself contains `__` the key is only the first segment — the
- * same pre-existing ambiguity the grouping key has (see `execNamespace`).
+ * Only ever called with at least one term: "no query" is not a query that matches
+ * nothing, it is a request for the whole pool, and it is answered without scoring
+ * (see `searchPool`).
  *
- * Exported for the announcement's per-namespace delta lines: the same renderer for
- * the same counts, so a summary line and a delta line cannot drift apart.
- */
-export function summarizeNamespace(
-  name: string,
-  count: number,
-  shownCount: number,
-): string {
-  const label = `${count} tool${count === 1 ? "" : "s"}`;
-  const detail =
-    shownCount === count
-      ? ""
-      : shownCount === 0
-        ? ", none shown"
-        : `, ${shownCount} shown`;
-  return `- mcp__${name} (${label}${detail})`;
-}
-
-/**
- * The server a flat MCP tool name routes to. Mirrors the split `executeMcpTool`
- * does on the way back (`parts[1]`), so a group key always agrees with where a
- * call would actually go — including its behaviour for server names that
- * themselves contain `__`.
- */
-function execNamespace(name: string): string {
-  return name.split("__")[1] ?? name;
-}
-
-/**
- * Cheapest rendered block first, ties broken by tool name.
+ * The scale is the contract, not the numbers: an exact name beats a whole name
+ * word beats a name substring, and all three beat a hit in the curated hint,
+ * which in turn beats a hit in the full description. The model usually arrives
+ * with a name in hand (it read the announcement), so name matches must win;
+ * description matches exist so a model that only knows what it wants to *do* can
+ * still find the tool.
  *
- * The rotation takes each server's next unshown entry every round, so this order
- * *is* the seat order: cheapest-first means one budget buys the most entries, and
- * the tie-break keeps the result a pure function of the entries themselves — the
- * order `tools/list` happened to return is not a reason to seat one tool first.
- * opencode ranks its listings the same way (`rankListings`: cost, then path).
+ * Every keyword must match somewhere — the sum is only taken when no term came up
+ * empty. Otherwise "create issue" would return everything that mentions "create".
  */
-function orderByCost(group: ExecPoolEntry[]): ExecPoolEntry[] {
-  return [...group].sort((left, right) => {
-    const delta =
-      estimateCatalogTokens(renderCatalogEntry(left)) -
-      estimateCatalogTokens(renderCatalogEntry(right));
-    if (delta !== 0) return delta;
-    return left.name < right.name ? -1 : left.name > right.name ? 1 : 0;
-  });
-}
-
-/** Groups in order of first appearance; within a group, cheapest block first. */
-function groupByNamespace(entries: ExecPoolEntry[]): ExecPoolEntry[][] {
-  const groups = new Map<string, ExecPoolEntry[]>();
-  for (const entry of entries) {
-    const namespace = execNamespace(entry.name);
-    const group = groups.get(namespace);
-    if (group) {
-      group.push(entry);
+function scoreEntry(entry: ExecPoolEntry, terms: readonly string[]): number {
+  const name = entry.name.toLowerCase();
+  const segments = nameSegments(name);
+  const hint = (entry.searchHint ?? "").toLowerCase();
+  const description = (entry.description ?? "").toLowerCase();
+  let score = 0;
+  for (const term of terms) {
+    if (name === term) {
+      score += 100;
+    } else if (segments.includes(term)) {
+      score += 60;
+    } else if (name.includes(term)) {
+      score += 40;
+    } else if (hint.includes(term)) {
+      score += 25;
+    } else if (description.includes(term)) {
+      score += 15;
     } else {
-      groups.set(namespace, [entry]);
+      return 0;
     }
   }
-  return [...groups.values()].map(orderByCost);
+  // An MCP name carries the server and the tool, so the model is guessing at two
+  // words it did not choose; a built-in name is one word it already knows.
+  if (entry.isMcp === true) score += 5;
+  return score;
 }
 
 /**
- * Render the catalog within an estimated-token budget.
+ * Answer one search call against the whole pool.
  *
- * Selection round-robins across servers: one entry per server per round, so
- * every server gets a seat before any server gets its second. A plain first-N
- * cut would drop whole servers that happen to be connected later, and the model
- * reads a missing server as "those tools do not exist" — the failure mode this
- * whole feature has to avoid.
+ * Never throws for "no match": an empty result is an answer, and the model acts on
+ * it. A `select:` query returns exactly the names it named (in the order named)
+ * and ignores the limit — naming tools is not fuzzy matching, and capping it would
+ * make "these ones please" inexpressible.
  *
- * An entry is a whole multi-line block and is budgeted and placed atomically: a
- * server either gets the block this round or sits the round out, never half a
- * signature.
- *
- * A truncated catalog additionally prints one summary line per server (see
- * `summarizeNamespace`), before that server's blocks and outside the budget.
- *
- * The truncation notice deliberately carries no budget number: the budget is a
- * tuning knob, and rendering it would make an unchanged tool pool produce
- * different model-visible text after a config change.
+ * Ordering is a pure function of the pool and the query: score descending, then
+ * name ascending. Nothing about connection state or arrival order leaks in, so the
+ * same query against the same pool always answers the same way.
  */
-export function renderCatalog(
-  entries: ExecPoolEntry[],
-  budgetTokens: number,
-): RenderedCatalog {
-  const groups = groupByNamespace(entries);
-  const picked: string[][] = groups.map(() => []);
-  let used = 0;
-  let shown = 0;
-
-  let active = groups.map((_, index) => index);
-  while (active.length > 0) {
-    const stillActive: number[] = [];
-    for (const index of active) {
-      const group = groups[index];
-      const entry = group[picked[index].length];
-      if (entry === undefined) continue;
-      const block = renderCatalogEntry(entry);
-      const cost = estimateCatalogTokens(block) + 1;
-      // The very first entry is always shown even if it alone is over budget:
-      // an empty catalog would be worse than an over-budget one.
-      if (shown > 0 && used + cost > budgetTokens) continue;
-      picked[index].push(block);
-      used += cost;
-      shown += 1;
-      if (picked[index].length < group.length) stillActive.push(index);
+export function searchPool(
+  pool: readonly ExecPoolEntry[],
+  args: ExecSearchArgs,
+): ExecSearchResult {
+  if (args.select) {
+    const byName = new Map(
+      pool.map((entry) => [entry.name.toLowerCase(), entry]),
+    );
+    const matches: ExecSearchHit[] = [];
+    for (const requested of args.select) {
+      const entry = byName.get(requested.toLowerCase());
+      if (entry && !matches.some((hit) => hit.name === entry.name)) {
+        matches.push(toHit(entry));
+      }
     }
-    active = stillActive;
+    return { matches, total: matches.length };
   }
 
-  const truncated = shown < entries.length;
-
-  // Rotation alone cannot promise any server a seat — a group whose block does
-  // not fit the remaining budget sits the round out for good — so a truncated
-  // catalog also names every server, one line each, outside the budget. Without
-  // that line a server nobody picked is invisible, and "not in the catalog" is
-  // read as "that capability does not exist". An untruncated catalog skips them:
-  // the entries are already the index.
-  const lines: string[] = [];
-  for (let index = 0; index < groups.length; index += 1) {
-    if (truncated) {
-      const group = groups[index];
-      lines.push(
-        summarizeNamespace(
-          execNamespace(group[0].name),
-          group.length,
-          picked[index].length,
-        ),
-      );
-    }
-    lines.push(...picked[index]);
-  }
-
-  if (truncated) {
-    // Counts only: the call form that reaches the rest is taught once, in the
-    // announcement's search section, which exists in exactly this state. Writing it
-    // here as well would give the same call two spellings to drift between.
-    lines.push(`PARTIAL — ${shown} of ${entries.length} tools shown.`);
-  }
+  const terms = args.query.split(/\s+/).filter(Boolean);
+  const scored = (
+    terms.length === 0
+      ? // An empty query lists the pool rather than searching it, so nothing is
+        // filtered out — scoring an empty term list would keep only the entries that
+        // happen to earn the MCP tie-break bonus.
+        pool.map((entry) => ({ entry, score: 0 }))
+      : pool
+          .map((entry) => ({ entry, score: scoreEntry(entry, terms) }))
+          .filter((candidate) => candidate.score > 0)
+  ).sort((left, right) =>
+    left.score !== right.score
+      ? right.score - left.score
+      : left.entry.name < right.entry.name
+        ? -1
+        : left.entry.name > right.entry.name
+          ? 1
+          : 0,
+  );
 
   return {
-    text: lines.join("\n"),
-    shown,
-    total: entries.length,
-    truncated,
-    namespaces: groups.map((group, index) => ({
-      name: execNamespace(group[0].name),
-      count: group.length,
-      shown: picked[index].length,
-    })),
+    matches: scored.slice(0, args.maxResults).map(({ entry }) => toHit(entry)),
+    total: scored.length,
+  };
+}
+
+function toHit(entry: ExecPoolEntry): ExecSearchHit {
+  return {
+    name: entry.name,
+    description: entry.description,
+    signature: renderToolSignature(entry),
   };
 }

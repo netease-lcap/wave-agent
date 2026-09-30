@@ -1588,6 +1588,11 @@ export function loadWaveConfigFromFile(
         config.enableArtifact !== undefined ? config.enableArtifact : undefined,
       enableExec:
         config.enableExec !== undefined ? config.enableExec : undefined,
+      nonDeferrableBuiltins: Array.isArray(config.nonDeferrableBuiltins)
+        ? config.nonDeferrableBuiltins.filter(
+            (name): name is string => typeof name === "string",
+          )
+        : undefined,
     };
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -1766,6 +1771,13 @@ export function loadMergedWaveConfig(
       mergedConfig.enableExec = config.enableExec;
     }
 
+    // Merge nonDeferrableBuiltins (last one wins; a higher-precedence file
+    // replaces the list rather than appending to it, so an admin push can also
+    // *shrink* it)
+    if (config.nonDeferrableBuiltins !== undefined) {
+      mergedConfig.nonDeferrableBuiltins = config.nonDeferrableBuiltins;
+    }
+
     // Merge models
     if (config.models) {
       if (!mergedConfig.models) mergedConfig.models = {};
@@ -1814,6 +1826,7 @@ export function loadMergedWaveConfig(
     worktree: mergedConfig.worktree,
     enableArtifact: mergedConfig.enableArtifact,
     enableExec: mergedConfig.enableExec,
+    nonDeferrableBuiltins: mergedConfig.nonDeferrableBuiltins,
   };
 }
 

@@ -38,6 +38,7 @@ function findActiveStreamingBlock(
  */
 export const agentTool: ToolPlugin = {
   name: AGENT_TOOL_NAME,
+  searchHint: "delegate work to a subagent",
   config: {
     type: "function" as const,
     function: {

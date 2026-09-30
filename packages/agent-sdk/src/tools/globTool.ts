@@ -14,6 +14,7 @@ const MAX_GLOB_RESULTS = 100;
  */
 export const globTool: ToolPlugin = {
   name: GLOB_TOOL_NAME,
+  searchHint: "find files by name pattern",
   config: {
     type: "function",
     function: {

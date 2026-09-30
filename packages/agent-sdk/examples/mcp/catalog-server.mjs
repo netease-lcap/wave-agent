@@ -1,8 +1,8 @@
 /**
- * An MCP server whose tools exercise every branch of the `Exec` catalog renderer:
- * a deeply nested schema (depth guard), a wide enum, a long tool description (the
- * one thing that gets clamped), a multi-line field description (kept verbatim),
- * and a wide `anyOf` union.
+ * An MCP server whose tools exercise every branch of the `Exec` signature renderer:
+ * a deeply nested schema (depth guard), a wide enum, a long multi-line tool
+ * description (kept whole), a multi-line field description (kept verbatim), and a
+ * wide `anyOf` union.
  *
  * Also carries the simple tools the other examples call.
  */
@@ -66,7 +66,7 @@ const TOOLS = [
   {
     name: "describe_registry",
     description:
-      "Registers a component in the catalog so that later tool calls can refer to it by short name; the registry is per-session and is cleared when the connection drops.\nThis second line is padding and must not survive the clamp.",
+      "Registers a component in the catalog so that later tool calls can refer to it by short name; the registry is per-session and is cleared when the connection drops.\nThis second line is kept, not clamped.",
     inputSchema: {
       type: "object",
       properties: {
@@ -108,8 +108,8 @@ const TOOLS = [
       },
       required: ["text"],
     },
-    // The one tool here that declares its output, so the catalog has a return
-    // type to render and the sandbox has a `structuredContent` to resolve to.
+    // The one tool here that declares its output, so `search` has a return type to
+    // render and the sandbox has a `structuredContent` to resolve to.
     outputSchema: {
       type: "object",
       properties: {

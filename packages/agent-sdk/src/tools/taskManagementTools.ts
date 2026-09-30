@@ -8,6 +8,13 @@ import {
 } from "../constants/tools.js";
 
 /**
+ * The four task-list tools are deferred, matching Claude Code (`shouldDefer: true`
+ * on all four). The session's task pane is a host-pushed snapshot of the task
+ * manager, so a nested call moves it exactly like a flat one — deferring changes
+ * only where the transcript draws the row, not whether the list updates.
+ */
+
+/**
  * Helper to record and commit a reversion snapshot for a task file.
  */
 async function recordSnapshot(
@@ -45,6 +52,8 @@ async function updateTaskField(
 
 export const taskCreateTool: ToolPlugin = {
   name: TASK_CREATE_TOOL_NAME,
+  defer: true,
+  searchHint: "create a task in the task list",
   config: {
     type: "function",
     function: {
@@ -143,6 +152,8 @@ NOTE that you should not use this tool if there is only one trivial task to do. 
 
 export const taskGetTool: ToolPlugin = {
   name: TASK_GET_TOOL_NAME,
+  defer: true,
+  searchHint: "retrieve a task by ID",
   config: {
     type: "function",
     function: {
@@ -217,6 +228,8 @@ Returns full task details:
 
 export const taskUpdateTool: ToolPlugin = {
   name: TASK_UPDATE_TOOL_NAME,
+  defer: true,
+  searchHint: "update a task",
   config: {
     type: "function",
     function: {
@@ -500,6 +513,8 @@ Set up task dependencies:
 
 export const taskListTool: ToolPlugin = {
   name: TASK_LIST_TOOL_NAME,
+  defer: true,
+  searchHint: "list all tasks",
   config: {
     type: "function",
     function: {

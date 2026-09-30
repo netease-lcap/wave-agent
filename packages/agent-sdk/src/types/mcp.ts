@@ -30,6 +30,16 @@ export interface McpTool {
    * (`{ type: "object" }`) when present.
    */
   outputSchema?: Record<string, unknown>;
+  /**
+   * The tool's `_meta` as the server listed it, passed through untouched. The only
+   * key read from it today is `anthropic/alwaysLoad` — a server asking for this tool
+   * to be declared flat instead of loaded on demand (see `utils/mcpUtils.ts`).
+   *
+   * Carried raw rather than picked apart at the connection site: which keys matter is
+   * a question for the code that reads them, and this field's job is only to survive
+   * the trip from `tools/list`.
+   */
+  _meta?: Record<string, unknown>;
 }
 
 /**
@@ -39,7 +49,7 @@ export interface McpTool {
  *   when the tool said nothing (`No content`) or returned only images.
  * - `output` is what a sandbox `await` resolves to: the server's
  *   `structuredContent` when it returned one, otherwise its text, otherwise
- *   `null`. The catalog renders its return types from this same rule, so a
+ *   `null`. A signature renders its return type from this same rule, so a
  *   signature can never promise a shape the sandbox does not deliver.
  */
 export interface McpToolCallResult {
@@ -72,8 +82,7 @@ export interface McpServerStatus {
    * (`instructions`): rate limits, preconditions, how the server is meant to be
    * used. Server-level prose, announced once in the conversation instead of the
    * system prompt — see `utils/mcpInstructions.ts` for why, and for the per-server
-   * cap — and already truncated by the time it lands here, unlike a tool
-   * description, which the catalog compresses.
+   * cap — and already truncated by the time it lands here.
    * Retained across a reconnecting server (like `tools`) and cleared once the
    * server is gone, so a dropped server cannot keep talking to the model.
    */

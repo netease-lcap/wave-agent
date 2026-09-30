@@ -15,6 +15,16 @@ import type { BackgroundTaskManager } from "@/managers/backgroundTaskManager.js"
 import type { IForegroundTaskManager } from "@/types/processes.js";
 import type { ILspManager } from "@/types/index.js";
 
+// Exec is off by default, and these tests are about the deferral shape (which
+// tools stay flat, which ones reach the sandbox), so they turn it on explicitly
+// rather than depend on the code default.
+vi.mock("../../src/services/execAvailability.js", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("../../src/services/execAvailability.js")
+  >()),
+  isExecEnabled: () => true,
+}));
+
 describe("ToolManager.initializeBuiltInTools", () => {
   it("should be callable as a public method", async () => {
     // Create mock MCP manager
@@ -119,10 +129,11 @@ describe("ToolManager.initializeBuiltInTools", () => {
 });
 
 describe("ToolManager bypassPermissions mode", () => {
-  it("should include both EnterPlanMode and ExitPlanMode in bypassPermissions mode", async () => {
+  it("should keep both plan-mode tools reachable in bypassPermissions mode", async () => {
     const mockMcpManager = {
       getMcpToolsConfig: vi.fn().mockReturnValue([]),
       getMcpToolOutputSchemas: vi.fn().mockReturnValue(new Map()),
+      getMcpToolPlugins: vi.fn().mockReturnValue([]),
     } as unknown as McpManager;
 
     const mockPermissionManager = {
@@ -151,9 +162,15 @@ describe("ToolManager bypassPermissions mode", () => {
 
     const toolsConfig = toolManager.getToolsConfig();
     const names = toolsConfig.map((t) => t.function.name);
+    const pooled = toolManager.getExecPool().map((entry) => entry.name);
 
-    expect(names).toContain("ExitPlanMode");
-    expect(names).toContain("EnterPlanMode");
+    // The pair is deferred, so it reaches this mode through the pool. What must not
+    // depend on the permission mode is that it is reachable at all — the bug this
+    // guards against is the plan tools disappearing, and "deferred" is not that.
+    expect(names).not.toContain("ExitPlanMode");
+    expect(names).not.toContain("EnterPlanMode");
+    expect(pooled).toContain("ExitPlanMode");
+    expect(pooled).toContain("EnterPlanMode");
     expect(names).toContain("AskUserQuestion");
     expect(names).toContain("Bash");
     expect(names).toContain("Read");
@@ -163,6 +180,7 @@ describe("ToolManager bypassPermissions mode", () => {
     const mockMcpManager = {
       getMcpToolsConfig: vi.fn().mockReturnValue([]),
       getMcpToolOutputSchemas: vi.fn().mockReturnValue(new Map()),
+      getMcpToolPlugins: vi.fn().mockReturnValue([]),
     } as unknown as McpManager;
 
     const mockPermissionManager = {
@@ -191,15 +209,20 @@ describe("ToolManager bypassPermissions mode", () => {
 
     const toolsConfig = toolManager.getToolsConfig();
     const names = toolsConfig.map((t) => t.function.name);
+    const pooled = toolManager.getExecPool().map((entry) => entry.name);
 
+    // AskUserQuestion is the one tool whose whole job is reaching the user, so it is
+    // never deferred; the plan-mode pair is, in every mode.
     expect(names).toContain("AskUserQuestion");
-    expect(names).toContain("ExitPlanMode"); // always in tool list
+    expect(names).not.toContain("ExitPlanMode");
+    expect(pooled).toContain("ExitPlanMode");
   });
 
   it("should include both EnterPlanMode and ExitPlanMode in plan mode", async () => {
     const mockMcpManager = {
       getMcpToolsConfig: vi.fn().mockReturnValue([]),
       getMcpToolOutputSchemas: vi.fn().mockReturnValue(new Map()),
+      getMcpToolPlugins: vi.fn().mockReturnValue([]),
     } as unknown as McpManager;
 
     const mockPermissionManager = {
@@ -228,9 +251,12 @@ describe("ToolManager bypassPermissions mode", () => {
 
     const toolsConfig = toolManager.getToolsConfig();
     const names = toolsConfig.map((t) => t.function.name);
+    const pooled = toolManager.getExecPool().map((entry) => entry.name);
 
-    expect(names).toContain("ExitPlanMode");
-    expect(names).toContain("EnterPlanMode");
+    expect(names).not.toContain("ExitPlanMode");
+    expect(names).not.toContain("EnterPlanMode");
+    expect(pooled).toContain("ExitPlanMode");
+    expect(pooled).toContain("EnterPlanMode");
     expect(names).toContain("AskUserQuestion");
   });
 

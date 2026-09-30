@@ -2,12 +2,9 @@ import { describe, it, expect, vi } from "vitest";
 import type { ChatCompletionFunctionTool } from "openai/resources.js";
 import { execTool } from "../../src/tools/execTool.js";
 import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
-import {
-  EXEC_RESERVED_NAMESPACE,
-  EXEC_DEFAULT_CATALOG_TOKENS,
-} from "../../src/exec/constants.js";
+import { EXEC_RESERVED_NAMESPACE } from "../../src/exec/constants.js";
+import type { ExecPoolEntry } from "../../src/exec/catalog.js";
 import type { McpManager } from "../../src/managers/mcpManager.js";
-import type { PermissionManager } from "../../src/managers/permissionManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
 
 function mcpConfig(
@@ -31,6 +28,7 @@ function mcpConfig(
 function contextWith(
   configs: ChatCompletionFunctionTool[] = [],
   options: {
+    /** Which tools the manager's pool leaves out, standing in for a denial. */
     denied?: (name: string) => boolean;
     execute?: ReturnType<typeof vi.fn>;
     onShortResultUpdate?: (shortResult: string) => void;
@@ -44,33 +42,29 @@ function contextWith(
       output: `ok:${name}`,
     }));
 
+  // The pool is the manager's answer, not something Exec derives from the MCP
+  // manager: who is deferred (and who is denied) is decided in one place
+  // (`ToolManager.getExecPool`), and this double stands in for its verdict.
+  const pool: ExecPoolEntry[] = configs
+    .filter((config) => !options.denied?.(config.function.name))
+    .map((config) => ({
+      name: config.function.name,
+      isMcp: true,
+      description: config.function.description,
+    }));
+
   return {
     workdir: "/tmp",
     mcpManager: {
-      getMcpToolsConfig: () => configs,
-      getMcpToolOutputSchemas: () => new Map(),
       executeMcpTool,
     } as unknown as McpManager,
-    ...(options.denied
-      ? {
-          permissionManager: {
-            isToolDenied: options.denied,
-          } as unknown as PermissionManager,
-        }
-      : {}),
+    toolManager: {
+      getExecPool: () => pool,
+    } as unknown as ToolContext["toolManager"],
     ...(options.onShortResultUpdate
       ? { onShortResultUpdate: options.onShortResultUpdate }
       : {}),
   } as unknown as ToolContext;
-}
-
-/** Matches the catalog budget being spelled out in model-visible text. */
-function budgetForm(): RegExp {
-  return new RegExp(
-    `(?:${EXEC_DEFAULT_CATALOG_TOKENS}\\s*(?:tokens?|budget)` +
-      `|(?:tokens?|budget)\\s*[:=]?\\s*${EXEC_DEFAULT_CATALOG_TOKENS})`,
-    "i",
-  );
 }
 
 describe("execTool declaration", () => {
@@ -91,37 +85,35 @@ describe("execTool declaration", () => {
   it("names the sandbox surface without any tunable limit", () => {
     const description = execTool.prompt!()!;
     expect(description).toContain(`tools["${EXEC_RESERVED_NAMESPACE}"].search`);
-    // Budgets live in constants.ts and must stay out of model-visible text, or
-    // changing one would change the prompt for an unchanged pool. Assert on the
-    // budget-denoting form rather than on any bare number: legitimate numbers are
-    // expected in the text.
-    expect(description).not.toMatch(budgetForm());
+    // The execution budgets live in constants.ts and must stay out of
+    // model-visible text: the description is byte-frozen for any pool, and a
+    // number here would invite the model to reason about the limit instead of
+    // about the script. (The only digits it may contain are a word count like
+    // "5-10".)
+    expect(description).not.toMatch(/\b\d{3,}\b/);
   });
 
   it("is the same text the tool manager declares", () => {
     expect(execTool.prompt!()).toBe(execTool.config.function.description);
   });
 
-  it("renders no catalog, no tool name and no truncation notice", () => {
+  it("renders no pool, no tool name and no truncation notice", () => {
     // The description has to be byte-identical for every pool: `tools[]` is inside
     // the cached prefix, so a server connecting would otherwise drop the whole
-    // prefix. The catalog is a tail announcement instead
+    // prefix. The pool is a tail announcement instead
     // (`tests/exec/catalogAnnouncement.test.ts`).
     const description = execTool.prompt!()!;
     expect(description).not.toContain("mcp__");
     expect(description).not.toContain("PARTIAL");
     expect(description).not.toContain("tools.mcp__");
-    expect(description).not.toContain("No MCP tools are currently available");
   });
 
   it("names the search entry point without teaching its call form", () => {
-    // The call form and the "empty query lists everything" doc belong to the
-    // announcement, which carries them only while the catalog is truncated. Doing it
-    // here would advertise a search on every turn — this text cannot know whether the
-    // catalog was truncated.
+    // The call shape belongs to `search`'s own schema — that is the one place the
+    // model reads the parameters from, and a second copy here could drift from it.
     const description = execTool.prompt!()!;
-    expect(description).not.toContain("query?: string");
-    expect(description).not.toMatch(/empty string\) to list the entire pool/);
+    expect(description).not.toContain("query");
+    expect(description).not.toContain("max_results");
   });
 
   it("guides the model to describe the script, like Bash does", () => {
@@ -196,12 +188,12 @@ describe("execTool execution", () => {
     expect(result.error).toContain("missing required parameter");
   });
 
-  it("reports a missing MCP manager instead of throwing", async () => {
+  it("reports a missing tool manager instead of throwing", async () => {
     const result = await execTool.execute({ code: "return 1;" }, {
       workdir: "/tmp",
     } as unknown as ToolContext);
     expect(result.success).toBe(false);
-    expect(result.error).toContain("MCP manager is not available");
+    expect(result.error).toContain("tool manager is not available");
   });
 
   it("runs a script against the pool and formats the outcome", async () => {
@@ -303,7 +295,10 @@ describe("execTool execution", () => {
     expect(result.shortResult).toBe(updates[updates.length - 1]);
   });
 
-  it("excludes denied tools from the pool it exposes to the sandbox", async () => {
+  it("reaches exactly what the manager's pool offers and nothing else", async () => {
+    // A denied tool is absent from the pool rather than rejected at call time —
+    // the same shape a deferred or simply undiscovered tool has inside the
+    // sandbox, so there is no "off the list but still callable" state.
     const context = contextWith(
       [mcpConfig("mcp__srv__allowed"), mcpConfig("mcp__srv__denied")],
       { denied: (name) => name === "mcp__srv__denied" },

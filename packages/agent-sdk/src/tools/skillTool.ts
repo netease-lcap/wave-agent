@@ -16,6 +16,7 @@ const SKILL_TOOL_DESCRIPTION =
 
 export const skillTool: ToolPlugin = {
   name: SKILL_TOOL_NAME,
+  searchHint: "invoke a slash-command skill",
   config: {
     type: "function" as const,
     function: {

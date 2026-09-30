@@ -83,6 +83,19 @@ export function mcpToolToOpenAITool(
 }
 
 /**
+ * `_meta["anthropic/alwaysLoad"]` — the server asking for this tool to be declared
+ * flat rather than loaded on demand.
+ *
+ * The same meaning as `ToolPlugin.alwaysLoad`, and the only opt-out an MCP tool has:
+ * the deferral judgment defers MCP tools unconditionally (a server's tool set is
+ * large and mostly unvisited, which is exactly what deferral is for), so a server
+ * that knows a tool is used every turn states it here.
+ */
+function readAlwaysLoad(mcpTool: McpTool): boolean | undefined {
+  return mcpTool._meta?.["anthropic/alwaysLoad"] === true ? true : undefined;
+}
+
+/**
  * Create a tool plugin wrapper for an MCP tool
  */
 export function createMcpToolPlugin(
@@ -103,6 +116,7 @@ export function createMcpToolPlugin(
   return {
     name: prefixedName,
     config: mcpToolToOpenAITool(mcpTool, serverName),
+    alwaysLoad: readAlwaysLoad(mcpTool),
     async execute(
       args: Record<string, unknown>,
       context?: ToolContext,

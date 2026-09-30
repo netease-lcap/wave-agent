@@ -105,6 +105,8 @@ function isPermittedRedirect(
 
 export const webFetchTool: ToolPlugin = {
   name: WEB_FETCH_TOOL_NAME,
+  defer: true,
+  searchHint: "fetch a URL and extract its readable text to read or summarize",
   config: {
     type: "function",
     function: {

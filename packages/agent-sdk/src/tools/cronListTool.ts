@@ -7,6 +7,8 @@ const CRON_LIST_PROMPT = `List all cron jobs scheduled via CronCreate in this se
 
 export const cronListTool: ToolPlugin = {
   name: CRON_LIST_TOOL_NAME,
+  defer: true,
+  searchHint: "list the scheduled cron jobs and when they next run",
   config: {
     type: "function",
     function: {

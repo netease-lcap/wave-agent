@@ -65,6 +65,32 @@ export interface ToolPlugin {
    * perform read-modify-write on shared resources (e.g. Edit, Write).
    */
   isConcurrencySafe?: boolean;
+  /**
+   * This tool's own claim that it should be loaded on demand rather than
+   * declared flat. Absent/false is the default: a tool that says nothing stays
+   * declared, because deferring it costs a search round-trip the first time it
+   * is used.
+   *
+   * This is only one input to the host-side deferral judgment — see
+   * `exec/deferral.ts`. `alwaysLoad` and the non-deferrable list both override
+   * it, and an MCP tool never needs to set it (MCP is deferred unconditionally).
+   */
+  defer?: boolean;
+  /**
+   * Escape hatch: never load this tool on demand, whatever the other inputs say.
+   * The first condition of the deferral judgment, so it also overrides the
+   * unconditional MCP rule.
+   */
+  alwaysLoad?: boolean;
+  /**
+   * One-line curated phrase describing what this tool is for, weighted above
+   * the full description by sandbox `search` scoring.
+   *
+   * Curated rather than derived: the point is to say the same thing in the words
+   * a model would search with, which the full description (written to be read
+   * once, in full) usually does not.
+   */
+  searchHint?: string;
 }
 
 export interface ToolResult {

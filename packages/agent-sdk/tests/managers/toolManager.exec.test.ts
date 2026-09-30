@@ -3,50 +3,102 @@ import type { ChatCompletionFunctionTool } from "openai/resources.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
 import { McpManager } from "../../src/managers/mcpManager.js";
 import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
-import { EXEC_DEFAULT_CATALOG_TOKENS } from "../../src/exec/constants.js";
 import { Container } from "../../src/utils/container.js";
-import { estimateTokens } from "../../src/utils/tokenEstimate.js";
+import type { ToolPlugin } from "../../src/tools/types.js";
 
-const gate = vi.hoisted(() => ({ execEnabled: true }));
+const gate = vi.hoisted(() => ({
+  execEnabled: true,
+  nonDeferrable: new Set<string>(),
+}));
 
 vi.mock("../../src/services/execAvailability.js", () => ({
   EXEC_DEFAULT_ENABLED: true,
   isExecEnabled: () => gate.execEnabled,
+  getNonDeferrableBuiltins: () => gate.nonDeferrable,
 }));
 
-function mcpConfig(name: string, description = `${name} description`) {
+/**
+ * The deferred built-ins, i.e. everything the pool holds with no MCP server
+ * connected. Chosen by frequency rather than by size: the ones that come up once
+ * in a while and can be discovered by name.
+ *
+ * This is Claude Code's list, not a wave-specific one: every tool here carries
+ * `shouldDefer: true` in 2.1.285, including the plan-mode pair and the four task
+ * tools. Deferring them costs one `search` per signature rather than one per call,
+ * since the rendered signature stays in the conversation once fetched.
+ */
+const DEFERRED_BUILTINS = [
+  "CronCreate",
+  "CronDelete",
+  "CronList",
+  "EnterPlanMode",
+  "EnterWorktree",
+  "ExitPlanMode",
+  "ExitWorktree",
+  "LSP",
+  "TaskCreate",
+  "TaskGet",
+  "TaskList",
+  "TaskStop",
+  "TaskUpdate",
+  "WebFetch",
+];
+
+/**
+ * Declared flat whatever the pool does: the core loop the model runs on, and the
+ * two entry points that must never be reachable only from inside something else
+ * (`Exec` itself, and `AskUserQuestion`, whose whole job is to reach the user).
+ */
+const NATIVE_BUILTINS = [
+  "AskUserQuestion",
+  "Bash",
+  "Edit",
+  "Glob",
+  "Grep",
+  "Read",
+  "Skill",
+  "Write",
+];
+
+function mcpPlugin(name: string, alwaysLoad = false): ToolPlugin {
   return {
-    type: "function",
-    function: {
-      name,
-      description,
-      parameters: {
-        type: "object",
-        properties: { input: { type: "string" } },
-        required: ["input"],
+    name,
+    alwaysLoad: alwaysLoad ? true : undefined,
+    config: {
+      type: "function",
+      function: {
+        name,
+        description: `${name} description`,
+        parameters: {
+          type: "object",
+          properties: { input: { type: "string" } },
+          required: ["input"],
+        },
       },
-    },
-  } as ChatCompletionFunctionTool;
+    } as ChatCompletionFunctionTool,
+    execute: async () => ({ success: true, content: "" }),
+  };
 }
 
-function mcpPool(count: number): ChatCompletionFunctionTool[] {
+function mcpPlugins(count: number): ToolPlugin[] {
   return Array.from({ length: count }, (_, i) =>
-    mcpConfig(`mcp__srv__tool${i}`),
+    mcpPlugin(`mcp__srv__tool${i}`),
   );
 }
 
 interface HarnessOptions {
-  pool?: ChatCompletionFunctionTool[];
+  plugins?: ToolPlugin[];
   denied?: string[];
   outputSchemas?: Map<string, Record<string, unknown>>;
 }
 
 function build(options: HarnessOptions = {}) {
-  const pool = options.pool ?? [];
+  const plugins = options.plugins ?? [];
   const denied = new Set(options.denied ?? []);
 
   const mcpManager = {
-    getMcpToolsConfig: () => pool,
+    getMcpToolPlugins: () => plugins,
+    getMcpToolsConfig: () => plugins.map((plugin) => plugin.config),
     getMcpToolOutputSchemas: () => options.outputSchemas ?? new Map(),
     isMcpTool: (name: string) => name.startsWith("mcp__"),
   } as unknown as McpManager;
@@ -74,202 +126,195 @@ function descriptionOf(toolManager: ToolManager, name: string): string {
   );
 }
 
-/** The catalog the announcement channel reads. */
-function catalogText(toolManager: ToolManager): string {
-  return toolManager.getExecCatalog()?.text ?? "";
-}
-
 beforeEach(() => {
   gate.execEnabled = true;
+  gate.nonDeferrable = new Set<string>();
 });
 
-describe("MCP pool collapse", () => {
-  it("declares Exec and drops every flat MCP declaration once the pool is non-empty", () => {
-    const { toolManager } = build({ pool: mcpPool(5) });
-    const declared = names(toolManager);
-
-    expect(declared).toContain(EXEC_TOOL_NAME);
-    expect(declared.filter((name) => name.startsWith("mcp__"))).toEqual([]);
-  });
-
-  it("collapses a pool of one: there is no minimum tool count", () => {
-    // Aligned with opencode, which collapses any non-empty pool. The switch, not
-    // a count, decides whether Exec is used.
-    const { toolManager } = build({ pool: mcpPool(1) });
-    const declared = names(toolManager);
-
-    expect(declared).toContain(EXEC_TOOL_NAME);
-    expect(declared.filter((name) => name.startsWith("mcp__"))).toEqual([]);
-  });
-
-  it("keeps Exec undeclared while there is nothing to catalog", () => {
-    const { toolManager } = build({ pool: mcpPool(0) });
-    const declared = names(toolManager);
-
-    expect(declared).not.toContain(EXEC_TOOL_NAME);
-    expect(declared.filter((name) => name.startsWith("mcp__"))).toEqual([]);
-  });
-
-  it("re-evaluates the collapse in both directions on each assembly", () => {
-    const pool = mcpPool(2);
-    const { toolManager } = build({ pool });
+describe("which tools are declared flat", () => {
+  it("declares Exec even with no MCP server connected", () => {
+    // The pool is never empty — the deferred built-ins are always in it — so `Exec`
+    // is declared for as long as the feature is on. That is what finally makes
+    // `tools[]` independent of the pool: a server connecting no longer moves it.
+    const { toolManager } = build();
     expect(names(toolManager)).toContain(EXEC_TOOL_NAME);
-
-    pool.length = 0; // the last MCP server disconnected
-    expect(names(toolManager)).not.toContain(EXEC_TOOL_NAME);
   });
 
-  it("falls back to flat declarations when Exec itself is denied", () => {
-    // Denying Exec must not silently drop the MCP tools it was standing in for.
+  it("drops the deferred built-ins from the declarations and keeps the rest", () => {
+    const declared = names(build().toolManager);
+
+    for (const name of DEFERRED_BUILTINS) expect(declared).not.toContain(name);
+    for (const name of NATIVE_BUILTINS) expect(declared).toContain(name);
+  });
+
+  it("keeps a deferred tool reachable from the sandbox instead of just hiding it", () => {
+    // Declaring a tool in neither place would be a capability loss rather than a
+    // relocation, so the two lists have to partition the same set.
+    const { toolManager } = build();
+    expect(toolManager.getOnDemandToolNames()).toEqual(
+      expect.arrayContaining(DEFERRED_BUILTINS),
+    );
+  });
+
+  it("never declares an MCP tool flat while it is in the pool", () => {
+    const { toolManager } = build({ plugins: mcpPlugins(5) });
+    const declared = names(toolManager);
+
+    expect(declared).toContain(EXEC_TOOL_NAME);
+    expect(declared.filter((name) => name.startsWith("mcp__"))).toEqual([]);
+    expect(toolManager.getOnDemandToolNames()).toContain("mcp__srv__tool0");
+  });
+
+  it("declares everything flat when Exec itself is denied", () => {
+    // Denying Exec must not silently drop the tools it was standing in for.
     const { toolManager } = build({
-      pool: mcpPool(5),
+      plugins: mcpPlugins(5),
       denied: [EXEC_TOOL_NAME],
     });
     const declared = names(toolManager);
 
     expect(declared).not.toContain(EXEC_TOOL_NAME);
     expect(declared.filter((name) => name.startsWith("mcp__"))).toHaveLength(5);
+    for (const name of DEFERRED_BUILTINS) expect(declared).toContain(name);
   });
 
-  it("does not register Exec at all when the feature is switched off", () => {
+  it("leaves every declaration flat when the feature is switched off", () => {
     gate.execEnabled = false;
-    const { toolManager } = build({ pool: mcpPool(20) });
+    const { toolManager } = build({ plugins: mcpPlugins(20) });
     const declared = names(toolManager);
 
     expect(declared).not.toContain(EXEC_TOOL_NAME);
     expect(declared.filter((name) => name.startsWith("mcp__"))).toHaveLength(
       20,
     );
+    expect(declared).toContain("WebFetch");
+  });
+
+  it("re-evaluates in both directions without rebuilding the manager", () => {
+    const plugins = mcpPlugins(2);
+    const { toolManager } = build({ plugins });
+    expect(names(toolManager)).toContain(EXEC_TOOL_NAME);
+    expect(toolManager.getOnDemandToolNames()).toContain("mcp__srv__tool0");
+
+    plugins.length = 0; // the last MCP server disconnected
+    expect(names(toolManager)).toContain(EXEC_TOOL_NAME);
+    expect(toolManager.getOnDemandToolNames()).not.toContain("mcp__srv__tool0");
   });
 
   it("leaves the MCP tools executable through the registry even when undeclared", () => {
-    // The collapse is a declaration change only: execution keeps routing to the
-    // same MCP funnel, which is what makes an in-sandbox call equivalent to a
-    // direct one.
-    const { toolManager } = build({ pool: mcpPool(5) });
+    // The pool is a declaration change only: execution keeps routing to the same
+    // funnels, which is what makes an in-sandbox call equivalent to a direct one.
+    const { toolManager } = build({ plugins: mcpPlugins(5) });
     expect(toolManager.isConcurrencySafe("mcp__srv__tool0")).toBe(false);
   });
 });
 
-describe("Exec catalog content", () => {
-  it("renders exactly the pool that was dropped from declarations", () => {
-    const { toolManager } = build({ pool: mcpPool(8) });
-    const catalog = catalogText(toolManager);
+describe("getExecPool", () => {
+  it("holds the deferred built-ins and every MCP tool", () => {
+    const { toolManager } = build({ plugins: mcpPlugins(2) });
+    const pool = toolManager.getExecPool();
 
-    for (let i = 0; i < 8; i++) {
-      expect(catalog).toContain(`tools.mcp__srv__tool${i}`);
-    }
-    // Nothing was truncated, so the catalog is the whole pool.
-    expect(catalog).not.toContain("PARTIAL");
+    expect(pool.map((entry) => entry.name)).toEqual(
+      expect.arrayContaining([...DEFERRED_BUILTINS, "mcp__srv__tool0"]),
+    );
   });
 
-  it("renders each tool's declared output schema as its return type", () => {
+  it("marks MCP entries and carries their declared output schema", () => {
+    const outputSchema = {
+      type: "object",
+      properties: { id: { type: "string" } },
+      required: ["id"],
+    };
     const { toolManager } = build({
-      pool: [mcpConfig("mcp__srv__lookup")],
-      outputSchemas: new Map([
-        [
-          "mcp__srv__lookup",
-          {
-            type: "object",
-            properties: { id: { type: "string" } },
-            required: ["id"],
-          },
-        ],
-      ]),
+      plugins: [mcpPlugin("mcp__srv__lookup")],
+      outputSchemas: new Map([["mcp__srv__lookup", outputSchema]]),
     });
+    const entry = toolManager
+      .getExecPool()
+      .find((each) => each.name === "mcp__srv__lookup");
 
-    // A tool declaration has no field for an output schema, so it rides beside
-    // the pool (see `getMcpToolOutputSchemas`) and lands in the signature.
-    expect(catalogText(toolManager)).toContain(
-      [
-        "tools.mcp__srv__lookup({",
-        "  input: string,",
-        "}): Promise<{",
-        "  id: string,",
-        "}>",
-      ].join("\n"),
-    );
+    // `isMcp` is what picks the dispatch funnel at call time, and the output schema
+    // is what a search hit renders as its return type.
+    expect(entry?.isMcp).toBe(true);
+    expect(entry?.outputSchema).toBe(outputSchema);
   });
 
-  it("keeps denied MCP tools out of the catalog", () => {
+  it("never holds Exec, which is the pool's own carrier", () => {
+    // Otherwise the sandbox could call Exec, i.e. run a script that runs a script.
+    expect(
+      build({ plugins: mcpPlugins(3) })
+        .toolManager.getExecPool()
+        .map((entry) => entry.name),
+    ).not.toContain(EXEC_TOOL_NAME);
+  });
+
+  it("keeps denied tools out of the pool", () => {
     const { toolManager } = build({
-      pool: [...mcpPool(6), mcpConfig("mcp__srv__secret")],
-      denied: ["mcp__srv__secret"],
+      plugins: [...mcpPlugins(6), mcpPlugin("mcp__srv__secret")],
+      denied: ["mcp__srv__secret", "WebFetch"],
     });
+    const pooled = toolManager.getExecPool().map((entry) => entry.name);
 
-    const catalog = catalogText(toolManager);
-    expect(catalog).not.toContain("mcp__srv__secret");
-    expect(catalog).toContain("tools.mcp__srv__tool0");
-    expect(catalog).not.toContain("PARTIAL");
+    expect(pooled).not.toContain("mcp__srv__secret");
+    expect(pooled).not.toContain("WebFetch");
+    expect(pooled).toContain("mcp__srv__tool0");
   });
 
-  it("announces truncation instead of dropping tools silently", () => {
-    const many = Array.from({ length: 2_000 }, (_, i) =>
-      mcpConfig(`mcp__srv__tool_${i}`, "d".repeat(300)),
-    );
-    const { toolManager } = build({ pool: many });
-    const catalog = catalogText(toolManager);
+  it("honours the configured non-deferrable list in both directions", () => {
+    // The escape hatch for a tool that turns out to be needed every turn: it goes
+    // back to a flat declaration without a release.
+    gate.nonDeferrable = new Set(["WebFetch", "mcp__srv__tool0"]);
+    const { toolManager } = build({ plugins: mcpPlugins(1) });
+    const declared = names(toolManager);
 
-    expect(catalog).toMatch(/PARTIAL — \d+ of 2000 tools shown/);
-    // The budget is a knob; it must not be rendered, or tuning it would change
-    // model-visible text for an unchanged pool. Assert on the budget-denoting
-    // form rather than on the bare number: this fixture's pool happens to be as
-    // large as the default budget, so a bare "2000" is a legitimate pool size.
-    expect(catalog).not.toMatch(
-      new RegExp(
-        `(?:${EXEC_DEFAULT_CATALOG_TOKENS}\\s*(?:tokens?|budget)` +
-          `|(?:tokens?|budget)\\s*[:=]?\\s*${EXEC_DEFAULT_CATALOG_TOKENS})`,
-        "i",
-      ),
-    );
+    expect(toolManager.getOnDemandToolNames()).toContain("LSP");
+    expect(toolManager.getOnDemandToolNames()).not.toContain("WebFetch");
+    expect(toolManager.getOnDemandToolNames()).not.toContain("mcp__srv__tool0");
+    expect(declared).toContain("WebFetch");
+    // An MCP tool exempted from deferral is declared flat, which is the same path a
+    // server's own `alwaysLoad` takes.
+    expect(declared).toContain("mcp__srv__tool0");
   });
 
-  it("stays inside the catalog budget", () => {
-    const many = Array.from({ length: 2_000 }, (_, i) =>
-      mcpConfig(`mcp__srv__tool_${i}`, "d".repeat(300)),
-    );
-    const { toolManager } = build({ pool: many });
+  it("honours an MCP tool's own alwaysLoad, which the plugin carries", () => {
+    const { toolManager } = build({
+      plugins: [mcpPlugin("mcp__srv__hot", true), mcpPlugin("mcp__srv__cold")],
+    });
+    const declared = names(toolManager);
 
-    expect(estimateTokens(catalogText(toolManager))).toBeLessThan(
-      EXEC_DEFAULT_CATALOG_TOKENS + 500,
-    );
+    expect(toolManager.getOnDemandToolNames()).not.toContain("mcp__srv__hot");
+    // Opting out of deferral puts it back in the flat declarations, which is the
+    // whole point of the escape hatch.
+    expect(declared).toContain("mcp__srv__hot");
+    expect(declared).not.toContain("mcp__srv__cold");
+  });
+
+  it("reports no on-demand names while Exec is not declared", () => {
+    // `undefined` is what tells the announcement the channel is closed, and a list
+    // for an undeclared tool would advertise a way in that does not exist.
+    const denied = build({ plugins: mcpPlugins(3), denied: [EXEC_TOOL_NAME] });
+    expect(denied.toolManager.getOnDemandToolNames()).toBeUndefined();
+
+    gate.execEnabled = false;
+    expect(
+      build({ plugins: mcpPlugins(3) }).toolManager.getOnDemandToolNames(),
+    ).toBeUndefined();
   });
 
   it("keeps the Exec declaration independent of the pool", () => {
-    // The catalog used to be rendered into this description, which meant every
-    // server that connected rewrote `tools[]` and dropped the cached prefix. It is a
-    // tail announcement now, so the declaration must not mention a single tool.
-    const first = build({ pool: mcpPool(3) });
-    const second = build({
-      pool: [...mcpPool(9), mcpConfig("mcp__srv__other")],
-    });
+    // The list used to be rendered into this description, which meant every server
+    // that connected rewrote `tools[]` and dropped the cached prefix. It is a tail
+    // announcement now, so the declaration must not mention a single tool.
+    const first = build({ plugins: mcpPlugins(3) });
+    const second = build({ plugins: mcpPlugins(9) });
 
     const description = descriptionOf(first.toolManager, EXEC_TOOL_NAME);
     expect(description).not.toContain("mcp__");
-    expect(description).not.toContain("PARTIAL");
     expect(description).toBe(descriptionOf(second.toolManager, EXEC_TOOL_NAME));
   });
 
-  it("reports no catalog while Exec is not declared", () => {
-    // The channel is closed exactly when Exec is: a catalog for an undeclared tool
-    // would advertise a way in that does not exist. `undefined` is what tells the
-    // announcement to say the catalog no longer applies.
-    const denied = build({ pool: mcpPool(3), denied: [EXEC_TOOL_NAME] });
-    expect(denied.toolManager.getExecCatalog()).toBeUndefined();
-
-    gate.execEnabled = false;
-    const off = build({ pool: mcpPool(3) });
-    expect(off.toolManager.getExecCatalog()).toBeUndefined();
-  });
-
-  it("reports an empty catalog while Exec is declared over an empty pool", () => {
-    // Distinct from "no channel": there is a catalog, and it is empty. That is what
-    // the announcement turns into the "nothing available right now" note.
-    const { toolManager } = build({ pool: mcpPool(0) });
-    const catalog = toolManager.getExecCatalog();
-
-    expect(catalog).toBeDefined();
-    expect(catalog?.total).toBe(0);
-    expect(catalog?.truncated).toBe(false);
+  it("answers the same thing twice for an unchanged session", () => {
+    const { toolManager } = build({ plugins: mcpPlugins(4) });
+    expect(toolManager.getExecPool()).toEqual(toolManager.getExecPool());
   });
 });

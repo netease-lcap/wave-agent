@@ -1,7 +1,7 @@
 /**
  * Parent-side driver for the Exec sandbox worker.
  *
- * Owns everything the sandbox must not: the MCP pool, the permission context,
+ * Owns everything the sandbox must not: the tool pool, the permission context,
  * the wall-clock budget and termination. The sandbox only ever sends plain
  * JSON (`{ name, args }`) and only ever receives plain JSON back.
  */
@@ -20,14 +20,14 @@ import {
 import { EXEC_WORKER_SOURCE } from "./workerSource.js";
 import {
   renderSearchCallForm,
-  renderToolSignature,
-  resolveSearchQuery,
+  resolveSearchArgs,
+  searchPool,
 } from "./catalog.js";
 import type { ExecPoolEntry } from "./catalog.js";
 
 export interface RunExecOptions {
   code: string;
-  /** Every MCP tool the sandbox may call. Also the allowlist for nested calls. */
+  /** Every on-demand tool the sandbox may call. Also the allowlist for nested calls. */
   pool: ExecPoolEntry[];
   context: ToolContext;
   /**
@@ -45,9 +45,9 @@ export interface RunExecOptions {
 export interface ExecCallResult {
   /**
    * What the script's `await` resolves to — the tool's structured output, else its
-   * text, else `null` (the rule `renderToolSignature` promises in the catalog).
-   * Plain JSON only: it crosses the worker boundary and is deep-cloned inside the
-   * sandbox.
+   * text, else `null` (the rule `renderToolSignature` promises a signature's return
+   * type from). Plain JSON only: it crosses the worker boundary and is deep-cloned
+   * inside the sandbox.
    */
   output: unknown;
   /**
@@ -93,52 +93,75 @@ function humanizeError(message: string): string {
 async function handleExecCall(
   name: string,
   args: Record<string, unknown>,
-  pool: Map<string, ExecPoolEntry>,
+  pool: readonly ExecPoolEntry[],
   context: ToolContext,
 ): Promise<ExecCallResult> {
   if (name === EXEC_SEARCH_CALL) {
-    // The shape is validated against the schema the tool description renders from,
-    // not by hand — see `resolveSearchQuery`.
-    const query = resolveSearchQuery(args);
-    const matches = [...pool.values()].filter((entry) => {
-      if (query.length === 0) return true;
-      return (
-        entry.name.toLowerCase().includes(query) ||
-        (entry.description ?? "").toLowerCase().includes(query)
-      );
-    });
-    // Return the same rendered signature the catalog shows, not the raw schema,
-    // so a hit can be copied verbatim into a call. Rendering is done on the
-    // matched entries only, never the whole pool. The value is the array itself,
-    // not its JSON text — same rule as an MCP call: a script composes values, and
-    // making it parse a string first is the kind of extra step a signature should
-    // not have to mention.
-    return {
-      output: matches.map((entry) => ({
-        name: entry.name,
-        description: entry.description,
-        signature: renderToolSignature(entry),
-      })),
-    };
+    // Matching, ranking and the result cap all live in `searchPool`, so the value
+    // the script reads is exactly what `SEARCH_OUTPUT_SCHEMA` promises. The output
+    // is the object itself, not its JSON text — the same rule an MCP call follows:
+    // a script composes values, and making it parse a string first is the kind of
+    // extra step a signature should not have to mention.
+    return { output: searchPool(pool, resolveSearchArgs(args)) };
   }
 
-  if (!pool.has(name)) {
+  const entry = pool.find((candidate) => candidate.name === name);
+  if (!entry) {
     throw new Error(
-      `Unknown tool "${name}". Only MCP tools are reachable from Exec. ` +
+      `Unknown tool "${name}". Only the tools listed as reachable from Exec can be called this way. ` +
         `Use ${renderSearchCallForm()} to find one.`,
     );
   }
 
+  return entry.isMcp === true
+    ? callMcpTool(name, args, context)
+    : callBuiltInTool(name, args, context);
+}
+
+/**
+ * Dispatch an MCP call through its single funnel: it runs the permission/approval
+ * check internally and keys it on the flattened name, so a nested call is approved
+ * exactly like a flat MCP call.
+ */
+async function callMcpTool(
+  name: string,
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ExecCallResult> {
   const mcpManager = context.mcpManager;
   if (!mcpManager) {
     throw new Error("MCP manager is not available in the Exec context");
   }
-
-  // The single MCP funnel: it runs the permission/approval check internally and
-  // keys it on the flattened name, so a nested call is approved exactly like a
-  // flat MCP call.
   const result = await mcpManager.executeMcpTool(name, args, context);
   return { output: result.output, images: result.images };
+}
+
+/**
+ * Dispatch a built-in call through `ToolManager.execute`, which is the built-ins'
+ * equivalent funnel: each built-in runs its own `checkPermission` inside
+ * `execute()`, and this entry point is what supplies the enhanced context (permission
+ * manager, task manager, …) they read it from. Routing around it would hand a
+ * built-in a context missing the managers it needs.
+ *
+ * `execute()` reports failure in the result rather than by throwing, so a failed
+ * call is turned back into a rejection here. Both tool kinds then behave the same
+ * way inside the script: a failed `await` lands in the script's `catch`, instead
+ * of resolving to a value that looks like a successful empty result.
+ */
+async function callBuiltInTool(
+  name: string,
+  args: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ExecCallResult> {
+  const toolManager = context.toolManager;
+  if (!toolManager) {
+    throw new Error("Tool manager is not available in the Exec context");
+  }
+  const result = await toolManager.execute(name, args, context);
+  if (!result.success) {
+    throw new Error(result.error || `${name} failed`);
+  }
+  return { output: result.content, images: result.images };
 }
 
 function terminate(worker: Worker): void {
@@ -159,7 +182,6 @@ export function runExecScript(options: RunExecOptions): Promise<ExecRunResult> {
   const maxLogChars = options.maxLogChars ?? EXEC_DEFAULT_MAX_LOG_CHARS;
   const maxResultChars =
     options.maxResultChars ?? EXEC_DEFAULT_MAX_RESULT_CHARS;
-  const pool = new Map(options.pool.map((entry) => [entry.name, entry]));
   const images: Array<{ data: string; mediaType?: string }> = [];
 
   return new Promise<ExecRunResult>((resolve) => {
@@ -223,7 +245,12 @@ export function runExecScript(options: RunExecOptions): Promise<ExecRunResult> {
             });
             return;
           }
-          handleExecCall(call.name, call.args, pool, options.context).then(
+          handleExecCall(
+            call.name,
+            call.args,
+            options.pool,
+            options.context,
+          ).then(
             (result) => {
               if (result.images?.length) {
                 for (const image of result.images) {

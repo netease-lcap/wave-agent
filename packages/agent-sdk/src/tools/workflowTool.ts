@@ -48,6 +48,7 @@ function summarizeUnparsedScript(script: string): string {
  */
 export const workflowTool: ToolPlugin = {
   name: WORKFLOW_TOOL_NAME,
+  searchHint: "run a multi-agent workflow script",
   config: {
     type: "function" as const,
     function: {

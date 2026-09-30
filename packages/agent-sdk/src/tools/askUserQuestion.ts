@@ -4,6 +4,7 @@ import { ASK_USER_QUESTION_TOOL_NAME } from "../constants/tools.js";
 
 export const askUserQuestionTool: ToolPlugin = {
   name: ASK_USER_QUESTION_TOOL_NAME,
+  searchHint: "ask the user a multiple-choice question",
   config: {
     type: "function",
     function: {

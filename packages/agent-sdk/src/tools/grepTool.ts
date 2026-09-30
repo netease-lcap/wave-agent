@@ -27,6 +27,7 @@ const VCS_DIRECTORIES_TO_EXCLUDE = [
  */
 export const grepTool: ToolPlugin = {
   name: GREP_TOOL_NAME,
+  searchHint: "search file contents with regex (ripgrep)",
   config: {
     type: "function",
     function: {

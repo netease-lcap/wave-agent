@@ -1,10 +1,9 @@
 /**
- * An MCP server with more documented tools than the catalog budget can hold.
+ * An MCP server with enough documented tools to make the `Exec` pool large.
  *
- * Every tool carries three fields whose descriptions are kept verbatim (only the
- * tool's own description gets clamped), which is what pushes the pool past the
- * deployed 2000 estimated tokens. That makes the catalog announce itself as
- * PARTIAL — and makes a namespace-level delta the short form of "a server left".
+ * Every tool carries three documented fields, so one `search` hit is a long
+ * signature block — the reason the announcement lists names only and leaves the
+ * schemas to be pulled one at a time.
  */
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";

@@ -49,6 +49,9 @@ export const ENTER_WORKTREE_TOOL_PROMPT = `Use this tool ONLY when the user expl
 
 export const enterWorktreeTool: ToolPlugin = {
   name: ENTER_WORKTREE_TOOL_NAME,
+  defer: true,
+  searchHint:
+    "work in a separate git worktree so the current checkout stays untouched",
   config: {
     type: "function",
     function: {

@@ -494,6 +494,7 @@ async function publishArtifact(
 
 export const artifactTool: ToolPlugin = {
   name: ARTIFACT_TOOL_NAME,
+  searchHint: "publish local HTML or Markdown as a shareable web page",
   isConcurrencySafe: false,
   config: {
     type: "function",
