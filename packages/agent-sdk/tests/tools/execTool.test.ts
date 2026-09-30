@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { ChatCompletionFunctionTool } from "openai/resources.js";
 import { execTool } from "../../src/tools/execTool.js";
 import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
-import { EXEC_RESERVED_NAMESPACE } from "../../src/exec/constants.js";
+import { EXEC_SEARCH_NAME } from "../../src/exec/constants.js";
 import type { ExecPoolEntry } from "../../src/exec/catalog.js";
 import type { McpManager } from "../../src/managers/mcpManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
@@ -84,7 +84,7 @@ describe("execTool declaration", () => {
 
   it("names the sandbox surface without any tunable limit", () => {
     const description = execTool.prompt!()!;
-    expect(description).toContain(`tools["${EXEC_RESERVED_NAMESPACE}"].search`);
+    expect(description).toContain(`tools.${EXEC_SEARCH_NAME}(`);
     // The execution budgets live in constants.ts and must stay out of
     // model-visible text: the description is byte-frozen for any pool, and a
     // number here would invite the model to reason about the limit instead of

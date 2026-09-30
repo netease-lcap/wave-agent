@@ -9,7 +9,7 @@ import {
 } from "../../src/exec/catalog.js";
 import type { ExecPoolEntry } from "../../src/exec/catalog.js";
 import {
-  EXEC_RESERVED_NAMESPACE,
+  EXEC_SEARCH_NAME,
   EXEC_SEARCH_DEFAULT_MAX_RESULTS,
   EXEC_SEARCH_MAX_RESULTS_LIMIT,
 } from "../../src/exec/constants.js";
@@ -132,6 +132,28 @@ describe("buildExecPool", () => {
 
     expect(pool[0].outputSchema).toBe(outputSchema);
     expect(pool[1].outputSchema).toBeUndefined();
+  });
+
+  it("refuses a pooled tool named like the sandbox's own search entry", () => {
+    // The sandbox assigns its search entry under that key after filling the pool,
+    // so a member carrying the name would be shadowed rather than called: the model
+    // would read the tool in the announcement and silently reach search. `$codemode`
+    // could not collide because of its `$`; this name can, and refusing to build the
+    // pool is what replaces that prefix.
+    expect(() =>
+      buildExecPool([{ name: EXEC_SEARCH_NAME, defer: true }], none),
+    ).toThrow(`Tool "${EXEC_SEARCH_NAME}" cannot be loaded on demand`);
+  });
+
+  it("leaves a tool with that name alone while it stays out of the pool", () => {
+    // Only a pooled member can shadow anything: declared flat, the name is the
+    // model's own call and the sandbox never sees it.
+    expect(
+      buildExecPool(
+        [{ name: EXEC_SEARCH_NAME }, { name: EXEC_SEARCH_NAME, defer: true }],
+        new Set([EXEC_SEARCH_NAME]),
+      ),
+    ).toEqual([]);
   });
 });
 
@@ -439,9 +461,7 @@ describe("search entry", () => {
     // multi-line signature in the Exec description and the one-line form in error
     // messages. Both come from one schema, so they cannot disagree.
     const signature = renderSearchSignature();
-    expect(signature.split("\n")[0]).toBe(
-      `tools["${EXEC_RESERVED_NAMESPACE}"].search({`,
-    );
+    expect(signature.split("\n")[0]).toBe(`tools.${EXEC_SEARCH_NAME}({`);
     expect(signature).toContain("  query?: string,");
     // JSON Schema's `integer` renders as `number`: TypeScript has no such type, and
     // a signature must be copyable as written.
@@ -451,7 +471,7 @@ describe("search entry", () => {
     expect(signature).toContain("  matches: Array<{");
     expect(signature).toContain("  total: number,");
     expect(renderSearchCallForm()).toBe(
-      `tools["${EXEC_RESERVED_NAMESPACE}"].search({ query: "...", max_results: 0 })`,
+      `tools.${EXEC_SEARCH_NAME}({ query: "...", max_results: 0 })`,
     );
   });
 
@@ -478,19 +498,19 @@ describe("search entry", () => {
     // `{ q: "..." }` used to read as "no query" and answer with the whole pool,
     // dressing a typo up as a successful search.
     expect(() => resolveSearchArgs({ q: "sum" })).toThrow(
-      `search() does not take "q". Expected ${renderSearchCallForm()}`,
+      `${EXEC_SEARCH_NAME}() does not take "q". Expected ${renderSearchCallForm()}`,
     );
   });
 
   it("rejects a non-string query", () => {
     expect(() => resolveSearchArgs({ query: 42 })).toThrow(
-      `search() expects "query" to be a string, got number. Expected ${renderSearchCallForm()}`,
+      `${EXEC_SEARCH_NAME}() expects "query" to be a string, got number. Expected ${renderSearchCallForm()}`,
     );
   });
 
   it("rejects a non-numeric max_results", () => {
     expect(() => resolveSearchArgs({ query: "a", max_results: "3" })).toThrow(
-      'search() expects "max_results" to be a number, got string.',
+      `${EXEC_SEARCH_NAME}() expects "max_results" to be a number, got string.`,
     );
   });
 

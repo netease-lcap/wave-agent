@@ -57,9 +57,15 @@ interface MarkerPayload {
   h?: unknown;
 }
 
-/** Opens the list of names; the names follow, one per line. */
+/**
+ * Opens the list of names; the names follow, one per line.
+ *
+ * "No other tool name" rather than "no other name": the search entry below is
+ * reachable as `tools.<name>` too, and it is the one thing on that object that is
+ * not a tool from the pool.
+ */
 const POOL_HEADER =
-  "Tools reachable inside a sandbox script as `tools.<name>` (no other name resolves):";
+  "Tools reachable inside a sandbox script as `tools.<name>` (no other tool name resolves):";
 
 /**
  * How the model gets from a name to a call. The signatures are deliberately not

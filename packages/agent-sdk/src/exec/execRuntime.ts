@@ -14,8 +14,7 @@ import {
   EXEC_DEFAULT_MAX_RESULT_CHARS,
   EXEC_DEFAULT_MAX_TOOL_CALLS,
   EXEC_DEFAULT_TIMEOUT_MS,
-  EXEC_RESERVED_NAMESPACE,
-  EXEC_SEARCH_CALL,
+  EXEC_SEARCH_NAME,
 } from "./constants.js";
 import { EXEC_WORKER_SOURCE } from "./workerSource.js";
 import {
@@ -96,7 +95,7 @@ async function handleExecCall(
   pool: readonly ExecPoolEntry[],
   context: ToolContext,
 ): Promise<ExecCallResult> {
-  if (name === EXEC_SEARCH_CALL) {
+  if (name === EXEC_SEARCH_NAME) {
     // Matching, ranking and the result cap all live in `searchPool`, so the value
     // the script reads is exactly what `SEARCH_OUTPUT_SCHEMA` promises. The output
     // is the object itself, not its JSON text — the same rule an MCP call follows:
@@ -334,8 +333,7 @@ export function runExecScript(options: RunExecOptions): Promise<ExecRunResult> {
       kind: "run",
       code: options.code,
       toolNames: options.pool.map((entry) => entry.name),
-      searchName: EXEC_SEARCH_CALL,
-      reservedNamespace: EXEC_RESERVED_NAMESPACE,
+      searchName: EXEC_SEARCH_NAME,
       timeoutMs,
       maxLogChars,
       maxResultChars,

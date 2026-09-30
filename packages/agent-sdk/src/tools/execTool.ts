@@ -1,5 +1,6 @@
 import { EXEC_TOOL_NAME } from "../constants/tools.js";
-import { EXEC_RESERVED_NAMESPACE } from "../exec/constants.js";
+import { EXEC_SEARCH_EXPRESSION } from "../exec/catalog.js";
+import { EXEC_SEARCH_NAME } from "../exec/constants.js";
 import { runExecScript, type ExecRunResult } from "../exec/execRuntime.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 
@@ -7,11 +8,11 @@ import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
  * The `search` bullet of the sandbox API blurb. It names the entry point and its
  * purpose; the tool description teaches the call form from `search`'s own schema.
  *
- * The path is derived from the reserved namespace, the same constant the sandbox
- * builds its `tools` object from, so the two cannot drift.
+ * The path is the very expression the signature renderer uses, and both come from
+ * the constant the sandbox assigns the entry under, so the three cannot drift.
  */
 const SEARCH_ENTRY =
-  `- \`tools[${JSON.stringify(EXEC_RESERVED_NAMESPACE)}].search(...)\` — ` +
+  `- \`${EXEC_SEARCH_EXPRESSION}(...)\` — ` +
   "find a tool's parameters and return type. The pool is announced by name only, so this is how a call is built.";
 
 /**
@@ -26,7 +27,7 @@ const SEARCH_ENTRY =
 const EXEC_DESCRIPTION = `Run a JavaScript script in a sandbox where this session's on-demand tools are exposed as functions, so a whole sequence of calls can be composed in a single turn instead of one model round-trip per call.
 
 Sandbox API:
-- \`await tools.<name>(args)\` — call a tool, passing that tool's own arguments object directly. Resolves to the tool's output: a structured object when the tool returned one, otherwise its text, otherwise \`null\`. \`search\` gives each tool's return type.
+- \`await tools.<name>(args)\` — call a tool, passing that tool's own arguments object directly. Resolves to the tool's output: a structured object when the tool returned one, otherwise its text, otherwise \`null\`. \`${EXEC_SEARCH_NAME}\` gives each tool's return type.
 ${SEARCH_ENTRY}
 - \`console.log(...)\` — collected and returned alongside the result. Use it to inspect intermediate values.
 - \`return <value>\` — the returned value is JSON-serialized and given back to you.

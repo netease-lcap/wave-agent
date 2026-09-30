@@ -48,7 +48,7 @@ const SANDBOX_HELPERS = `
     return obj;
   }
   return {
-    build: function (callHost, emit, toolNames, searchName, reservedNamespace) {
+    build: function (callHost, emit, toolNames, searchName) {
       // Everything handed to the script is built here, so every function object
       // the script receives belongs to the context realm: reaching
       // \`tools.x.constructor\` yields the context's Function, which refuses to
@@ -64,9 +64,13 @@ const SANDBOX_HELPERS = `
       for (let i = 0; i < toolNames.length; i++) {
         tools[toolNames[i]] = makeTool(toolNames[i]);
       }
-      const namespace = { __proto__: null };
-      namespace.search = makeTool(searchName);
-      tools[reservedNamespace] = Object.freeze(namespace);
+      // Search is assigned last, so it wins a collision — which is only safe
+      // because no pool member can carry this name: \`buildExecPool\` refuses to
+      // build a pool containing it. Swapping the two lines would not remove the
+      // ambiguity, it would just decide it the other way. The entry is an ordinary
+      // call on the tool path: the host recognises the name and answers from the
+      // pool instead of dispatching it.
+      tools[searchName] = makeTool(searchName);
 
       // A name that is not in the pool must reach the host so it can answer with
       // a pointer to search; otherwise the script would only see a bare
@@ -237,7 +241,6 @@ function runScript(message) {
     emit,
     message.toolNames,
     message.searchName,
-    message.reservedNamespace,
   );
   sandbox.tools = globals.tools;
   sandbox.console = globals.console;

@@ -2,7 +2,7 @@
  * Exec sandbox constants.
  *
  * Everything here is a tunable default, not a contract — with one exception,
- * `EXEC_RESERVED_NAMESPACE`: it is part of the sandbox API surface, so the tool
+ * `EXEC_SEARCH_NAME`: it is part of the sandbox API surface, so the tool
  * description has to name it (and it is derived from the same constant, so the
  * two cannot drift).
  *
@@ -53,13 +53,15 @@ export const EXEC_SEARCH_DEFAULT_MAX_RESULTS = 5;
 export const EXEC_SEARCH_MAX_RESULTS_LIMIT = 50;
 
 /**
- * Reserved property on the sandbox `tools` object hosting search. The `$`
- * prefix cannot collide with an MCP tool name (`[A-Za-z0-9_.-]`).
+ * The sandbox property hosting catalog search — the one name in the sandbox that
+ * is not a tool, and the only one that has to be named in model-visible text.
+ *
+ * Deliberately *not* namespaced. `tools["$codemode"].search` bought one property
+ * (the `$` prefix cannot collide with an MCP tool name) at the cost of a
+ * one-member namespace, which is a layer with nothing in it. A name that matches
+ * Claude Code's `ToolSearch` is worth more than that prefix: the two entries are
+ * the same idea under the same name. What the prefix did not buy back is the
+ * collision guarantee, so `buildExecPool` asserts that no pool member carries this
+ * name — see the comment there for why the assertion lives host-side.
  */
-export const EXEC_RESERVED_NAMESPACE = "$codemode";
-
-/**
- * Internal name the sandbox uses to reach host-side catalog search. Matches the
- * sandbox path `tools.$codemode.search` but never appears in model-visible text.
- */
-export const EXEC_SEARCH_CALL = "$codemode.search";
+export const EXEC_SEARCH_NAME = "ToolSearch";
