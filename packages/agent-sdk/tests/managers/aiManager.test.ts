@@ -1916,4 +1916,64 @@ describe("AIManager", () => {
       expect(reminderTexts()).toHaveLength(0);
     });
   });
+
+  describe("System prompt tool guidance reachability", () => {
+    /** `buildUsingToolsPrompt` reads the plugin list by name only. */
+    function plugin(name: string) {
+      return { name } as unknown as ReturnType<ToolManager["getTools"]>[number];
+    }
+
+    function declaredTool(name: string) {
+      return {
+        type: "function",
+        function: { name, description: "", parameters: {} },
+      } as unknown as ReturnType<ToolManager["getToolsConfig"]>[number];
+    }
+
+    function systemPromptText(): string {
+      return flattenSystemPrompt(
+        vi.mocked(aiService.callAgent).mock.calls[0][0].systemPrompt,
+      );
+    }
+
+    it("keeps the TaskCreate guidance line when the tool is reachable only from the sandbox", async () => {
+      // Deferred: absent from `tools[]`, callable from `Exec`. Reading the
+      // declarations as "unavailable" is what silenced this line too.
+      vi.mocked(mockToolManager.getToolsConfig).mockReturnValue([
+        declaredTool("Bash"),
+      ]);
+      vi.mocked(mockToolManager.getTools).mockReturnValue([
+        plugin("Bash"),
+        plugin("TaskCreate"),
+      ]);
+      vi.mocked(mockToolManager.getOnDemandToolNames).mockReturnValue([
+        "TaskCreate",
+      ]);
+
+      await aiManager.sendAIMessage();
+
+      expect(systemPromptText()).toContain(
+        "Use TaskCreate to plan and track work",
+      );
+    });
+
+    it("drops it when neither the declarations nor the sandbox reach the tool", async () => {
+      vi.mocked(mockToolManager.getToolsConfig).mockReturnValue([
+        declaredTool("Bash"),
+      ]);
+      vi.mocked(mockToolManager.getTools).mockReturnValue([
+        plugin("Bash"),
+        plugin("TaskCreate"),
+      ]);
+      vi.mocked(mockToolManager.getOnDemandToolNames).mockReturnValue([
+        "WebFetch",
+      ]);
+
+      await aiManager.sendAIMessage();
+
+      expect(systemPromptText()).not.toContain(
+        "Use TaskCreate to plan and track work",
+      );
+    });
+  });
 });

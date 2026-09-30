@@ -884,7 +884,7 @@ export class AIManager {
    * match the main conversation's for the prompt cache to be reused.
    */
   private async buildMainSystemPrompt(
-    filteredToolPlugins: ReturnType<ToolManager["getTools"]>,
+    reachableToolPlugins: ReturnType<ToolManager["getTools"]>,
   ) {
     let autoMemoryOptions: { directory: string; content: string } | undefined;
 
@@ -898,7 +898,7 @@ export class AIManager {
       autoMemoryOptions = { directory, content };
     }
 
-    return buildSystemPrompt(this.systemPrompt, filteredToolPlugins, {
+    return buildSystemPrompt(this.systemPrompt, reachableToolPlugins, {
       workdir: this.getWorkdir(),
       originalWorkdir: this.getOriginalWorkdir(),
       language: this.getLanguage(),
@@ -976,13 +976,32 @@ export class AIManager {
     });
   }
 
+  /**
+   * The tool set the system prompt is built from, plus the declaration set the
+   * request carries. Two different questions, deliberately answered separately:
+   *
+   * - `toolNames` (declarations, i.e. `tools[]`) answers "what does the model see
+   *   declared" and is what the request payload needs.
+   * - `reachableToolPlugins` answers "what can this session call" and is what
+   *   `# Using your tools` gates its entries on. Reachability, not declaration: a
+   *   deferred tool is absent from `tools[]` yet callable from the sandbox, so
+   *   gating that section on declarations alone silently drops its guidance line
+   *   (e.g. the TaskCreate entry; see `docs/specs/core/exec-tool.md`).
+   */
   private resolveFilteredTools() {
     const toolsConfig = this.getFilteredToolsConfig();
     const toolNames = new Set(toolsConfig.map((t) => t.function.name));
-    const filteredToolPlugins = this.toolManager
+    // Same optional-channel rule as the catalog announcement: a host or test
+    // double without `getOnDemandToolNames` means "no sandbox", not "pool gone".
+    const onDemandToolNames =
+      typeof this.toolManager?.getOnDemandToolNames === "function"
+        ? (this.toolManager.getOnDemandToolNames() ?? [])
+        : [];
+    const reachableNames = new Set([...toolNames, ...onDemandToolNames]);
+    const reachableToolPlugins = this.toolManager
       .getTools()
-      .filter((t) => toolNames.has(t.name));
-    return { toolsConfig, toolNames, filteredToolPlugins };
+      .filter((t) => reachableNames.has(t.name));
+    return { toolsConfig, toolNames, reachableToolPlugins };
   }
 
   /**
@@ -1030,8 +1049,8 @@ export class AIManager {
 
     forkMessages.push({ role: "user", content: prompt });
 
-    const { toolsConfig, filteredToolPlugins } = this.resolveFilteredTools();
-    const systemPrompt = await this.buildMainSystemPrompt(filteredToolPlugins);
+    const { toolsConfig, reachableToolPlugins } = this.resolveFilteredTools();
+    const systemPrompt = await this.buildMainSystemPrompt(reachableToolPlugins);
 
     // Clone the parent session's read state so the fork inherits the read/dedup
     // baseline (aligned with Claude Code's cloneFileStateCache): the fork can
@@ -1351,8 +1370,8 @@ Simply answer the question with the information you have.</system-reminder>
 ${question}`;
     forkMessages.push({ role: "user", content: wrappedQuestion });
 
-    const { toolsConfig, filteredToolPlugins } = this.resolveFilteredTools();
-    const systemPrompt = await this.buildMainSystemPrompt(filteredToolPlugins);
+    const { toolsConfig, reachableToolPlugins } = this.resolveFilteredTools();
+    const systemPrompt = await this.buildMainSystemPrompt(reachableToolPlugins);
 
     try {
       // Surface partial output to the caller (e.g. the /btw overlay's
@@ -1780,7 +1799,7 @@ ${question}`;
 
           logger?.debug("modelConfig in sendAIMessage", this.getModelConfig());
 
-          const { toolsConfig, toolNames, filteredToolPlugins } =
+          const { toolsConfig, toolNames, reachableToolPlugins } =
             this.resolveFilteredTools();
 
           // Get memory for message-array injection (not system prompt)
@@ -1788,7 +1807,7 @@ ${question}`;
             await this.messageManager.getMemoryForInjection();
 
           const mainSystemPrompt =
-            await this.buildMainSystemPrompt(filteredToolPlugins);
+            await this.buildMainSystemPrompt(reachableToolPlugins);
 
           // Call AI service with streaming callbacks if enabled
           const callAgentOptions: CallAgentOptions = {
