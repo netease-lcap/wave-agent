@@ -68,6 +68,16 @@ export interface WaveConfiguration {
   /** Whether the Exec tool is enabled. Unset follows the code default constant (EXEC_DEFAULT_ENABLED). */
   enableExec?: boolean;
   /**
+   * Built-in tool names that must stay declared flat instead of being loaded on
+   * demand (the "do not defer" override, aligned with Claude Code's
+   * `non_deferrable_builtins`). Unioned with the structural floor
+   * (`STRUCTURAL_NON_DEFERRABLE`) before the deferral judgment runs.
+   *
+   * Exists so a tool that turns out to be needed every turn can be pulled back out
+   * of the pool by configuration or by a remote push, without a release.
+   */
+  nonDeferrableBuiltins?: string[];
+  /**
    * Session transcript retention in days (aligned with Claude Code's
    * cleanupPeriodDays). Session jsonl files in ~/.wave/projects older than
    * this many days are cleaned up in the background at startup.

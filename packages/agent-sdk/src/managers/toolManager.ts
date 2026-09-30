@@ -13,10 +13,12 @@ import { webFetchTool } from "../tools/webFetchTool.js";
 import { artifactTool } from "../tools/artifactTool.js";
 import { execTool } from "../tools/execTool.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
-import { isExecEnabled } from "../services/execAvailability.js";
-import { buildExecPool, renderCatalog } from "../exec/catalog.js";
-import type { ExecPoolEntry, RenderedCatalog } from "../exec/catalog.js";
-import { EXEC_DEFAULT_CATALOG_TOKENS } from "../exec/constants.js";
+import {
+  getNonDeferrableBuiltins,
+  isExecEnabled,
+} from "../services/execAvailability.js";
+import { buildExecPool } from "../exec/catalog.js";
+import type { ExecPoolCandidate, ExecPoolEntry } from "../exec/catalog.js";
 import { EXEC_TOOL_NAME } from "../constants/tools.js";
 // New tools
 import { globTool } from "../tools/globTool.js";
@@ -150,10 +152,9 @@ class ToolManager {
       builtInTools.push(artifactTool);
     }
 
-    // Exec is on by default; enableExec: false restores flat MCP declarations.
-    // Registration is decoupled from declaration: getToolsConfig() only declares
-    // it (and only then collapses the MCP pool) once MCP servers have connected
-    // and yielded a non-empty pool, which cannot be known until then.
+    // Exec is off by default; enableExec: true registers it. Registration is
+    // decoupled from declaration: getToolsConfig() declares it only while the
+    // deferral table yields a non-empty pool, which depends on the runtime tool set.
     if (isExecEnabled(this.container.get<string>("Workdir"))) {
       builtInTools.push(execTool);
     }
@@ -412,9 +413,10 @@ class ToolManager {
   }
 
   /**
-   * Whether `Exec` is declared at all: registered and not denied. Exactly when the
-   * catalog channel is open — an undeclared `Exec` cannot be called, so a catalog
-   * for it would advertise a way in that does not exist.
+   * Whether `Exec` exists for this session: registered and not denied by a
+   * permission rule. Exactly when the sandbox channel does — an undeclared `Exec`
+   * cannot be called, so declaring the deferred tools only inside it would hide
+   * them for good.
    */
   private isExecDeclared(): boolean {
     return (
@@ -423,24 +425,81 @@ class ToolManager {
     );
   }
 
-  /** The tools the sandbox may reach — the pool the flat declarations give up. */
-  private execPool(): ExecPoolEntry[] {
-    return buildExecPool(this.mcpManager, this.getPermissionManager());
+  /**
+   * Every tool a deferral decision has to be made about — built-ins and MCP alike,
+   * in declaration order.
+   *
+   * Permission filtering happens here rather than inside `buildExecPool`, because
+   * "which tools may this session call" is a manager question, and the pool's hard
+   * constraint is that it never exceeds that set: a tool reachable from the sandbox
+   * but hidden from the agent would make `Exec` a permission-escalation channel.
+   *
+   * `Exec` is a candidate like any other. The structural non-deferrable list keeps
+   * it out of the pool by name, so there is no special case here — and a tool that
+   * is in the pool is never declared flat (see `getToolsConfig`), so the two places
+   * agree by construction rather than by parallel bookkeeping.
+   */
+  private deferralCandidates(): ExecPoolCandidate[] {
+    const permissionManager = this.getPermissionManager();
+    const candidates: ExecPoolCandidate[] = [];
+
+    for (const tool of this.toolsRegistry.values()) {
+      if (permissionManager?.isToolDenied(tool.name)) continue;
+      candidates.push({
+        name: tool.name,
+        description: tool.config.function.description,
+        searchHint: tool.searchHint,
+        defer: tool.defer,
+        alwaysLoad: tool.alwaysLoad,
+        inputSchema: tool.config.function.parameters as
+          | Record<string, unknown>
+          | undefined,
+      });
+    }
+
+    const outputSchemas = this.mcpManager.getMcpToolOutputSchemas();
+    for (const tool of this.mcpManager.getMcpToolPlugins()) {
+      if (permissionManager?.isToolDenied(tool.name)) continue;
+      candidates.push({
+        name: tool.name,
+        description: tool.config.function.description,
+        // MCP tools need not set `defer`: the judgment table defers them
+        // unconditionally. `alwaysLoad` is the server's own opt-out from that.
+        alwaysLoad: tool.alwaysLoad,
+        isMcp: true,
+        inputSchema: tool.config.function.parameters as
+          | Record<string, unknown>
+          | undefined,
+        outputSchema: outputSchemas.get(tool.name),
+      });
+    }
+
+    return candidates;
   }
 
   /**
-   * The MCP catalog as the model is meant to see it, or `undefined` when the
-   * catalog channel is closed.
+   * The tools the sandbox may reach: the deferred subset of `deferralCandidates`,
+   * minus the names the non-deferrable list exempts.
    *
-   * A function of the pool alone, and computed per call: with the catalog out of
-   * `tools[]` the declaration no longer moves when a server comes or goes, and the
-   * announcement channel diffs this against the history. Caching the rendering would
-   * mean caching pool state, which is exactly the process-side bookkeeping the
-   * channel is built to avoid.
+   * Computed per call, never cached. The pool is a function of the registry, the MCP
+   * connections and the settings, all of which move at runtime, and a cached copy
+   * would be a second source of truth for what the sandbox can reach.
    */
-  public getExecCatalog(): RenderedCatalog | undefined {
+  public getExecPool(): ExecPoolEntry[] {
+    return buildExecPool(
+      this.deferralCandidates(),
+      getNonDeferrableBuiltins(this.container.get<string>("Workdir")),
+    );
+  }
+
+  /**
+   * The deferred tool names, or `undefined` when the channel is closed — the input
+   * the announcement is diffed against the conversation history. Names only, because
+   * names are all the announcement carries; see `exec/catalogAnnouncement.ts`.
+   */
+  public getOnDemandToolNames(): string[] | undefined {
     if (!this.isExecDeclared()) return undefined;
-    return renderCatalog(this.execPool(), EXEC_DEFAULT_CATALOG_TOKENS);
+    return this.getExecPool().map((entry) => entry.name);
   }
 
   getToolsConfig(options?: {
@@ -451,24 +510,24 @@ class ToolManager {
   }): ChatCompletionFunctionTool[] {
     const permissionManager = this.getPermissionManager();
 
-    // Exec either replaces the flat MCP declarations or is absent: the two must
-    // never coexist, or the model would see the same tool twice while the
-    // catalog claimed to be the only way in. Both halves are derived from the
-    // same pool, and the pool is exactly what the agent could already call
-    // directly, so collapsing it cannot widen access.
-    const execPool = this.execPool();
-    // No minimum pool size: any catalogable tool collapses the pool, matching
-    // opencode. The switch (`enableExec`), not a count, decides whether Exec is
-    // used at all.
-    const collapseMcp = this.isExecDeclared() && execPool.length > 0;
+    // A tool in the pool is declared only inside the sandbox, never flat as well:
+    // the two must not coexist, or the model would see the same tool twice while
+    // the announcement claimed to be the only way in. Both halves are derived from
+    // this one pool, and the pool is exactly what the agent could already call
+    // directly, so deferring it cannot widen access.
+    //
+    // The pool is non-empty whenever `Exec` exists (the deferred built-ins are
+    // always there), so `Exec` is declared for as long as the feature is on. That
+    // is the point: `tools[]` no longer moves when an MCP server comes or goes,
+    // which is what keeps the cached prefix stable.
+    const pool = this.isExecDeclared() ? this.getExecPool() : [];
+    const pooled = new Set(pool.map((entry) => entry.name));
+    const execDeclared = pool.length > 0;
 
     const builtInToolsConfig = Array.from(this.toolsRegistry.values())
       .filter((tool) => {
-        // With an empty pool there is nothing to collapse, so Exec stays
-        // registered but undeclared rather than declaring an empty catalog.
-        if (tool.name === EXEC_TOOL_NAME && !collapseMcp) {
-          return false;
-        }
+        if (tool.name === EXEC_TOOL_NAME) return execDeclared;
+        if (pooled.has(tool.name)) return false;
         // If tool is explicitly denied by name in permission rules, filter it out
         if (permissionManager?.isToolDenied(tool.name)) {
           return false;
@@ -489,14 +548,17 @@ class ToolManager {
         }
         return config;
       });
-    const mcpToolsConfig = collapseMcp
-      ? []
-      : this.mcpManager.getMcpToolsConfig().filter((tool) => {
-          if (permissionManager?.isToolDenied(tool.function.name)) {
-            return false;
-          }
-          return true;
-        });
+    // Every MCP tool is deferred, so this is empty while `Exec` exists; it is the
+    // only path that declares an MCP tool at all when `Exec` is off or denied.
+    const mcpToolsConfig = this.mcpManager
+      .getMcpToolsConfig()
+      .filter((tool) => {
+        if (pooled.has(tool.function.name)) return false;
+        if (permissionManager?.isToolDenied(tool.function.name)) {
+          return false;
+        }
+        return true;
+      });
     return [...builtInToolsConfig, ...mcpToolsConfig];
   }
 

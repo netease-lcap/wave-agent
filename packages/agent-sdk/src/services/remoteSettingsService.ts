@@ -360,6 +360,8 @@ export function mergeRemoteSettings(
   if (remote.enableArtifact !== undefined)
     result.enableArtifact = remote.enableArtifact;
   if (remote.enableExec !== undefined) result.enableExec = remote.enableExec;
+  if (remote.nonDeferrableBuiltins !== undefined)
+    result.nonDeferrableBuiltins = remote.nonDeferrableBuiltins;
 
   return result;
 }

@@ -1,42 +1,39 @@
 import { EXEC_TOOL_NAME } from "../constants/tools.js";
 import { EXEC_RESERVED_NAMESPACE } from "../exec/constants.js";
-import { buildExecPool } from "../exec/catalog.js";
 import { runExecScript, type ExecRunResult } from "../exec/execRuntime.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 
 /**
- * The `search` bullet of the sandbox API blurb. It names the entry point and stops
- * there: the call form is taught by the catalog announcement, and only while the
- * catalog is actually truncated. Printing it here would advertise a search on every
- * turn, complete catalog or not — the tool has no idea how many tools exist.
+ * The `search` bullet of the sandbox API blurb. It names the entry point and its
+ * purpose; the tool description teaches the call form from `search`'s own schema.
  *
  * The path is derived from the reserved namespace, the same constant the sandbox
  * builds its `tools` object from, so the two cannot drift.
  */
 const SEARCH_ENTRY =
   `- \`tools[${JSON.stringify(EXEC_RESERVED_NAMESPACE)}].search(...)\` — ` +
-  "search the whole pool from inside the script.";
+  "find a tool's parameters and return type. The pool is announced by name only, so this is how a call is built.";
 
 /**
  * Model-visible API description.
  *
  * Static on purpose, and not merely "no tunable limits in it": it must be identical
  * for any tool pool. `tools[]` sits in the cached prefix, so a description that
- * mentioned the MCP servers (or their tools) would rewrite that prefix every time a
- * server connected or dropped. The catalog is a tail announcement instead — see
+ * mentioned the session's servers (or their tools) would rewrite that prefix every
+ * time one connected or dropped. The pool is a tail announcement instead — see
  * `exec/catalogAnnouncement.ts`.
  */
-const EXEC_DESCRIPTION = `Run a JavaScript script in a sandbox where every MCP tool of this session is exposed as a function, so a whole sequence of MCP calls can be composed in a single turn instead of one model round-trip per call.
+const EXEC_DESCRIPTION = `Run a JavaScript script in a sandbox where this session's on-demand tools are exposed as functions, so a whole sequence of calls can be composed in a single turn instead of one model round-trip per call.
 
 Sandbox API:
-- \`await tools.<name>(args)\` — call an MCP tool, passing that tool's own arguments object directly. Resolves to the tool's output: its \`structuredContent\` object when it returned one, otherwise its text, otherwise \`null\`. The catalog gives each tool's return type.
+- \`await tools.<name>(args)\` — call a tool, passing that tool's own arguments object directly. Resolves to the tool's output: a structured object when the tool returned one, otherwise its text, otherwise \`null\`. \`search\` gives each tool's return type.
 ${SEARCH_ENTRY}
 - \`console.log(...)\` — collected and returned alongside the result. Use it to inspect intermediate values.
 - \`return <value>\` — the returned value is JSON-serialized and given back to you.
 
 It is very helpful if you write a clear, concise description of what this script does in 5-10 words.
 
-Which MCP tools are reachable is announced in the conversation as the catalog changes. The script has no filesystem, no network, no \`import\`, and no \`eval\`/\`new Function\`. It stops when it exceeds its time or tool-call budget. Every nested MCP call goes through the normal permission check, so it can still be denied — a denied call rejects with the reason.`;
+Which tools are reachable is announced in the conversation as it changes. The script has no filesystem, no network, no \`import\`, and no \`eval\`/\`new Function\`. It stops when it exceeds its time or tool-call budget. Every nested call goes through the normal permission check, so it can still be denied — a denied call rejects with the reason.`;
 
 /**
  * How many of the most recent nested calls the result summary lists, mirroring
@@ -98,6 +95,7 @@ function formatRun(
 
 export const execTool: ToolPlugin = {
   name: EXEC_TOOL_NAME,
+  searchHint: "run code in a sandbox to search and call the on-demand tools",
   // Nested calls reach arbitrary MCP tools, which are conservatively non-safe.
   isConcurrencySafe: false,
   config: {
@@ -157,20 +155,20 @@ export const execTool: ToolPlugin = {
       };
     }
 
-    const mcpManager = context.mcpManager;
-    if (!mcpManager) {
+    const toolManager = context.toolManager;
+    if (!toolManager) {
       return {
         success: false,
         content: "",
-        error: `${EXEC_TOOL_NAME}: MCP manager is not available in this session`,
+        error: `${EXEC_TOOL_NAME}: tool manager is not available in this session`,
       };
     }
 
-    // Recomputed here rather than reused from the declaration-time catalog: a
-    // server may have connected or dropped since. Both are derived from the same
-    // `buildExecPool`, so the sandbox can never reach a tool the agent could not
-    // already call directly.
-    const pool = buildExecPool(mcpManager, context.permissionManager);
+    // Recomputed here rather than reused from the declaration-time pool: a server
+    // may have connected or dropped since. Declaring and running call the same
+    // `ToolManager.getExecPool`, so the sandbox can never reach a tool the agent
+    // could not already call directly.
+    const pool = toolManager.getExecPool();
     const calls: string[] = [];
     const result = await runExecScript({
       code,

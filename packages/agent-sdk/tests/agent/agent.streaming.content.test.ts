@@ -13,7 +13,20 @@ import * as aiService from "@/services/aiService.js";
 import type { TextBlock } from "@/types/messaging.js";
 
 // Mock AI Service
-vi.mock("@/services/aiService");
+vi.mock("@/services/aiService.js");
+
+/**
+ * The assistant reply under test.
+ *
+ * Read by role rather than by index: a session's first turn also appends the host's
+ * own meta notice (the on-demand tool list), so `messages[1]` is not the reply.
+ */
+function assistantText(agent: Agent): string | undefined {
+  const message = agent.messages.find((each) => each.role === "assistant");
+  return message?.blocks.find(
+    (block): block is TextBlock => block.type === "text",
+  )?.content;
+}
 
 describe("Agent Content Streaming Tests", () => {
   let agent: Agent;
@@ -81,14 +94,15 @@ describe("Agent Content Streaming Tests", () => {
       expect(mockCallbacks.onAssistantMessageAdded).toHaveBeenCalled();
       const messages = agent.messages;
 
-      expect(messages).toHaveLength(2); // User message + assistant message
-      expect(messages[1].role).toBe("assistant");
+      expect(
+        messages.filter((message) => message.isMeta !== true),
+      ).toHaveLength(2); // user message + assistant message
+      expect(
+        messages.find((message) => message.role === "assistant")?.role,
+      ).toBe("assistant");
 
       // Content is stored in blocks, not directly in message
-      const textBlock = messages[1].blocks.find(
-        (block): block is TextBlock => block.type === "text",
-      );
-      expect(textBlock?.content).toBe(
+      expect(assistantText(agent)).toBe(
         "Hello, I'm analyzing your request and will help you with it.",
       );
     });
@@ -112,11 +126,7 @@ describe("Agent Content Streaming Tests", () => {
       expect(mockCallAgent).toHaveBeenCalledTimes(1);
 
       // Verify final message contains complete content
-      const messages = agent.messages;
-      const textBlock = messages[1].blocks.find(
-        (block): block is TextBlock => block.type === "text",
-      );
-      expect(textBlock?.content).toBe("I will help you with this task.");
+      expect(assistantText(agent)).toBe("I will help you with this task.");
     });
 
     it("should handle empty streaming updates gracefully", async () => {
@@ -131,11 +141,7 @@ describe("Agent Content Streaming Tests", () => {
 
       expect(mockCallAgent).toHaveBeenCalled();
 
-      const messages = agent.messages;
-      const textBlock = messages[1].blocks.find(
-        (block): block is TextBlock => block.type === "text",
-      );
-      expect(textBlock?.content).toBe("Starting...");
+      expect(assistantText(agent)).toBe("Starting...");
     });
   });
 });

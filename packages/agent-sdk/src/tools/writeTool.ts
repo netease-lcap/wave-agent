@@ -12,6 +12,7 @@ import { READ_TOOL_NAME } from "../constants/tools.js";
  */
 export const writeTool: ToolPlugin = {
   name: "Write",
+  searchHint: "create or overwrite files",
   isConcurrencySafe: false,
   config: {
     type: "function",

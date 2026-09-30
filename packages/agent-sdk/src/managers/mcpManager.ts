@@ -622,6 +622,7 @@ export class McpManager {
             description: tool.description,
             inputSchema: tool.inputSchema,
             outputSchema: tool.outputSchema,
+            _meta: tool._meta,
           })) || [];
         logger?.info(`Connected to MCP server ${name} using Streamable HTTP`);
       } else if (serverType === "sse") {
@@ -648,6 +649,7 @@ export class McpManager {
             description: tool.description,
             inputSchema: tool.inputSchema,
             outputSchema: tool.outputSchema,
+            _meta: tool._meta,
           })) || [];
         logger?.info(`Connected to MCP server ${name} using SSE`);
       } else if (
@@ -757,6 +759,7 @@ export class McpManager {
             description: tool.description,
             inputSchema: tool.inputSchema,
             outputSchema: tool.outputSchema,
+            _meta: tool._meta,
           })) || [];
       } else if (serverType) {
         // Unknown type value
@@ -904,6 +907,7 @@ export class McpManager {
             description: tool.description,
             inputSchema: tool.inputSchema,
             outputSchema: tool.outputSchema,
+            _meta: tool._meta,
           })) || [];
         logger?.info(
           `MCP Server ${name} auto-reconnected successfully (attempt ${i + 1})`,
@@ -1138,8 +1142,8 @@ export class McpManager {
       // The sandbox's value, decided from the text parts rather than from
       // `textContentStr`: that one carries display placeholders ("No content"),
       // and a script has to be able to tell "the tool said nothing" (`null`) from
-      // "the tool said 'No content'". Same rule the catalog renders return types
-      // from: structured, else text, else null.
+      // "the tool said 'No content'". Same rule a signature's return type is
+      // rendered from: structured, else text, else null.
       const text = textContent.join("\n");
       const output = result.structuredContent ?? (text === "" ? null : text);
 

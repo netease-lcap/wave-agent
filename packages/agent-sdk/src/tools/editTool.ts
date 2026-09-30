@@ -23,6 +23,7 @@ function formatCompactParams(
  */
 export const editTool: ToolPlugin = {
   name: EDIT_TOOL_NAME,
+  searchHint: "replace exact strings in an existing file",
   isConcurrencySafe: false,
   formatCompactParams,
   prompt: () =>

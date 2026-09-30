@@ -5,8 +5,6 @@ import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 import type { Message } from "../../src/types/messaging.js";
-import { renderCatalog } from "../../src/exec/catalog.js";
-import type { RenderedCatalog } from "../../src/exec/catalog.js";
 import * as aiService from "../../src/services/aiService.js";
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
@@ -102,9 +100,9 @@ function createHarness(
     isConcurrencySafe: vi.fn().mockReturnValue(true),
   };
   if (options.catalogChannel) {
-    // Read once per turn: the test flips `catalogChannelState.catalog` between turns
-    // to model a server connecting, the pool emptying, or Exec being switched off.
-    mockToolManager.getExecCatalog = () => catalogChannelState.catalog;
+    // Read once per turn: the test flips `poolChannelState.pool` between turns
+    // to model a server connecting, a tool being deferred, or Exec being switched off.
+    mockToolManager.getOnDemandToolNames = () => poolChannelState.pool;
   }
 
   container.register("ConfigurationService", {
@@ -164,20 +162,14 @@ function createHarness(
   return { aiManager, messages };
 }
 
-/** `undefined` here is the channel being closed (Exec undeclared). */
-const catalogChannelState: { catalog: RenderedCatalog | undefined } = {
-  catalog: undefined,
+/** `undefined` here is the channel being closed (`Exec` not declared). */
+const poolChannelState: { pool: string[] | undefined } = {
+  pool: undefined,
 };
 
-function catalogOf(counts: Record<string, number>): RenderedCatalog {
-  return renderCatalog(
-    Object.entries(counts).flatMap(([server, count]) =>
-      Array.from({ length: count }, (_, index) => ({
-        name: `mcp__${server}__tool${index}`,
-      })),
-    ),
-    10_000,
-  );
+/** The on-demand set as the manager reports it: names only, and only the deferred ones. */
+function poolOf(...names: string[]): string[] {
+  return names;
 }
 
 function callAgentReturningText() {
@@ -207,37 +199,37 @@ function lastCallOptions(): CallOptions {
   return calls[calls.length - 1][0] as unknown as CallOptions;
 }
 
-describe("AIManager MCP catalog announcement", () => {
+describe("AIManager on-demand tool announcement", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     callAgentReturningText();
-    catalogChannelState.catalog = undefined;
+    poolChannelState.pool = undefined;
   });
 
-  it("announces the catalog in the same request that can already use it, and keeps it out of the system prompt", async () => {
-    catalogChannelState.catalog = catalogOf({ alpha: 2 });
+  it("announces the pool in the same request that can already use it, and keeps it out of the system prompt", async () => {
+    poolChannelState.pool = poolOf("mcp__alpha__tool0", "mcp__alpha__tool1");
     const { aiManager, messages } = createHarness();
 
     await aiManager.sendAIMessage({ recursionDepth: 0 });
 
     const [announcement] = announcements(messages);
     expect(announcement?.isMeta).toBe(true);
-    expect(textOf(announcement)).toContain("tools.mcp__alpha__tool0");
+    expect(textOf(announcement)).toContain("- `mcp__alpha__tool0`");
 
     // Same request: the snapshot is taken after the announcement is persisted.
     expect(JSON.stringify(lastCallOptions().messages)).toContain(
-      "tools.mcp__alpha__tool0",
+      "mcp__alpha__tool0",
     );
-    // And the prompt itself never carries it: the catalog is a function of the pool,
+    // And the prompt itself never carries it: the pool is a function of the session,
     // and rewriting the prompt would drop the whole cached prefix
     // (docs/specs/core/prompt-cache-control.md 边界情况 9).
     expect(JSON.stringify(lastCallOptions().systemPrompt)).not.toContain(
-      "tools.mcp__alpha__tool0",
+      "mcp__alpha__tool0",
     );
   });
 
   it("announces a state once, not once per turn", async () => {
-    catalogChannelState.catalog = catalogOf({ alpha: 2 });
+    poolChannelState.pool = poolOf("mcp__alpha__tool0");
     const { aiManager, messages } = createHarness();
 
     await aiManager.sendAIMessage({ recursionDepth: 0 });
@@ -248,18 +240,18 @@ describe("AIManager MCP catalog announcement", () => {
   });
 
   it("appends a new announcement when the pool changes, leaving every earlier message untouched", async () => {
-    catalogChannelState.catalog = catalogOf({ alpha: 2 });
+    poolChannelState.pool = poolOf("mcp__alpha__tool0");
     const { aiManager, messages } = createHarness();
 
     await aiManager.sendAIMessage({ recursionDepth: 0 });
     const before = messages.map((message) => JSON.stringify(message));
 
-    catalogChannelState.catalog = catalogOf({ alpha: 2, beta: 3 });
+    poolChannelState.pool = poolOf("mcp__alpha__tool0", "mcp__beta__tool0");
     await aiManager.sendAIMessage({ recursionDepth: 0 });
 
     const all = announcements(messages);
     expect(all).toHaveLength(2);
-    expect(textOf(all[1])).toContain("tools.mcp__beta__tool0");
+    expect(textOf(all[1])).toContain("- `mcp__beta__tool0`");
     // Only ever appended: nothing already sent is rewritten, so nothing already
     // cached is invalidated.
     expect(
@@ -267,37 +259,51 @@ describe("AIManager MCP catalog announcement", () => {
     ).toEqual(before);
   });
 
-  it("stays silent for an empty pool it has never announced, then reports it emptying", async () => {
-    catalogChannelState.catalog = renderCatalog([], 10_000);
+  it("lists names only, never a signature", async () => {
+    poolChannelState.pool = poolOf("mcp__alpha__tool0", "WebFetch");
     const { aiManager, messages } = createHarness();
 
     await aiManager.sendAIMessage({ recursionDepth: 0 });
-    // With an empty pool `Exec` is not even declared, so a session with no MCP servers
-    // must not pay a message describing a capability it never saw.
+
+    const [announcement] = announcements(messages);
+    const text = textOf(announcement);
+    // The sandbox gets an entry called `tools.<name>`; the parameters and return type
+    // are reachable only through `search`, so the announcement must not carry them.
+    for (const name of ["mcp__alpha__tool0", "WebFetch"]) {
+      expect(text).toContain(`- \`${name}\``);
+    }
+    expect(text).not.toContain("Promise<");
+  });
+
+  it("stays silent when Exec was never declared, and says so only once it has been announced", async () => {
+    // `[]` is the channel reporting an empty pool, which in practice means `Exec` is
+    // not declared at all — a session that never saw the capability must not pay for a
+    // message about it.
+    poolChannelState.pool = [];
+    const { aiManager, messages } = createHarness();
+
+    await aiManager.sendAIMessage({ recursionDepth: 0 });
     expect(announcements(messages)).toHaveLength(0);
 
-    catalogChannelState.catalog = catalogOf({ alpha: 1 });
+    poolChannelState.pool = poolOf("mcp__alpha__tool0");
     await aiManager.sendAIMessage({ recursionDepth: 0 });
     expect(announcements(messages)).toHaveLength(1);
 
-    catalogChannelState.catalog = renderCatalog([], 10_000);
+    poolChannelState.pool = [];
     await aiManager.sendAIMessage({ recursionDepth: 0 });
 
     const all = announcements(messages);
     expect(all).toHaveLength(2);
-    expect(textOf(all[1])).toContain("No MCP tools are currently available");
-    // Names no tool: with an empty pool `Exec` is not declared, so naming it would
-    // point at a tool the model cannot call.
-    expect(textOf(all[1])).not.toContain("Exec");
+    expect(textOf(all[1])).toContain("no longer available");
   });
 
-  it("says the catalog no longer applies when the channel closes, and re-announces when it reopens", async () => {
-    catalogChannelState.catalog = catalogOf({ alpha: 1 });
+  it("says the pool no longer applies when the channel closes, and re-announces when it reopens", async () => {
+    poolChannelState.pool = poolOf("mcp__alpha__tool0");
     const { aiManager, messages } = createHarness();
 
     await aiManager.sendAIMessage({ recursionDepth: 0 });
 
-    catalogChannelState.catalog = undefined;
+    poolChannelState.pool = undefined;
     await aiManager.sendAIMessage({ recursionDepth: 0 });
     await aiManager.sendAIMessage({ recursionDepth: 0 });
 
@@ -305,15 +311,15 @@ describe("AIManager MCP catalog announcement", () => {
     expect(all).toHaveLength(2);
     expect(textOf(all[1])).toContain("no longer available");
 
-    // Re-opening is not compared by content — a closed channel has no catalog to
-    // hash, so going by content would leave the session mute for good.
-    catalogChannelState.catalog = catalogOf({ alpha: 1 });
+    // Re-opening is not compared by content — a closed channel has no pool to hash,
+    // so going by content would leave the session mute for good.
+    poolChannelState.pool = poolOf("mcp__alpha__tool0");
     await aiManager.sendAIMessage({ recursionDepth: 0 });
     expect(announcements(messages)).toHaveLength(3);
   });
 
-  it("announces the full catalog again after the history lost the marker", async () => {
-    catalogChannelState.catalog = catalogOf({ alpha: 2 });
+  it("announces the full pool again after the history lost the marker", async () => {
+    poolChannelState.pool = poolOf("mcp__alpha__tool0");
     const { aiManager, messages } = createHarness();
 
     await aiManager.sendAIMessage({ recursionDepth: 0 });
@@ -328,7 +334,7 @@ describe("AIManager MCP catalog announcement", () => {
   });
 
   it("does not read a quoted marker as an announcement that never happened", async () => {
-    catalogChannelState.catalog = catalogOf({ alpha: 2 });
+    poolChannelState.pool = poolOf("mcp__alpha__tool0");
     const { aiManager, messages } = createHarness();
     messages.push({
       id: "reply",
@@ -345,16 +351,15 @@ describe("AIManager MCP catalog announcement", () => {
 
     await aiManager.sendAIMessage({ recursionDepth: 0 });
 
-    // The unreadable-to-the-scan marker (a hash with no catalog behind it) cannot be
-    // mistaken for the current state, so the catalog is still announced.
+    // The marker cannot be mistaken for the current state, so the pool is announced.
     const meta = announcements(messages.filter((message) => message.isMeta));
     expect(meta).toHaveLength(1);
-    expect(textOf(meta[0])).toContain("tools.mcp__alpha__tool0");
+    expect(textOf(meta[0])).toContain("- `mcp__alpha__tool0`");
   });
 
-  it("tolerates a manager double without the catalog channel", async () => {
-    // Reading an absent channel as "the catalog is gone" would tell the model to
-    // stop using every tool an earlier catalog listed; calling through would take the
+  it("tolerates a manager double without the announcement channel", async () => {
+    // Reading an absent channel as "the pool is gone" would tell the model to stop
+    // using every tool an earlier announcement listed; calling through would take the
     // turn down.
     const { aiManager, messages } = createHarness({ catalogChannel: false });
     await aiManager.sendAIMessage({ recursionDepth: 0 });
@@ -367,7 +372,7 @@ describe("AIManager MCP catalog announcement", () => {
         {
           type: "text",
           content:
-            '<!-- exec-catalog {"k":"full","h":"deadbeefcafe","t":0,"ns":{"alpha":2}} -->\n<system-reminder>\nMCP tools reachable…\n</system-reminder>',
+            '<!-- exec-catalog {"k":"full","h":"deadbeefcafe"} -->\n<system-reminder>\nTools reachable inside a sandbox script…\n</system-reminder>',
         },
       ],
     });

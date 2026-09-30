@@ -521,7 +521,9 @@ describe("Agent Message Compaction Tests", () => {
     // Get compacted message list
     const messagesAfterCompaction = agent.messages;
 
-    // Verify that the message list now contains the compacted message plus the last 3 messages
+    // Verify that the message list now contains the compacted message and the last
+    // 3 messages. `Exec` is off by default, so there is no on-demand-tool notice
+    // riding at the tail to count.
     expect(messagesAfterCompaction.length).toBe(4);
     const compactedMessage = messagesAfterCompaction[0];
     expect(compactedMessage.role).toBe("assistant");
@@ -546,7 +548,8 @@ describe("Agent Message Compaction Tests", () => {
     expect(callAgentCallCount).toBe(3);
 
     // Verify that messages passed to callAgent include the compacted message plus the 3 preserved messages plus the new message
-    // Plus 1 prepend memory message (system-reminder with AGENTS.md + user memory)
+    // Plus 1 prepend memory message (system-reminder with AGENTS.md + user memory).
+    // No on-demand-tool notice: `Exec` is off by default.
     expect(messagesPassedToCallAgent.length).toBe(6);
 
     // Verify the structure of messages passed to callAgent

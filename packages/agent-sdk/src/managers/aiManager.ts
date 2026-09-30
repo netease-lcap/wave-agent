@@ -931,23 +931,22 @@ export class AIManager {
   }
 
   /**
-   * Announce the MCP catalog in the conversation, whenever the pool renders
-   * differently from the last announcement. Keeping it out of `Exec`'s description
-   * is what makes that declaration a constant: a server connecting would otherwise
-   * rewrite `tools[]`, which sits in the cached prefix (see
-   * `exec/catalogAnnouncement.ts`).
+   * Announce the on-demand tool pool in the conversation, whenever it differs from
+   * the last announcement. Keeping it out of `Exec`'s description is what makes that
+   * declaration a constant: a server connecting would otherwise rewrite `tools[]`,
+   * which sits in the cached prefix (see `exec/catalogAnnouncement.ts`).
    */
   private maybeAnnounceExecCatalog(): void {
     const toolManager = this.toolManager;
     // Optional for the same reason as `maybeAnnounceMcpInstructions` above, and it
-    // matters just as much here: reading an absent channel as "the catalog is gone"
-    // would tell the model to stop using every tool an earlier catalog listed.
-    if (!toolManager || typeof toolManager.getExecCatalog !== "function")
+    // matters just as much here: reading an absent channel as "the pool is gone"
+    // would tell the model to stop using every tool an earlier announcement named.
+    if (!toolManager || typeof toolManager.getOnDemandToolNames !== "function")
       return;
 
     const text = buildExecCatalogAnnouncement(
       collectExecCatalogState(this.messageManager.getMessages()),
-      toolManager.getExecCatalog(),
+      toolManager.getOnDemandToolNames(),
     );
     if (!text) return;
 

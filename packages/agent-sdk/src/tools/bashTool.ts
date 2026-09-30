@@ -67,6 +67,7 @@ function isAutobackgroundingAllowed(command: string): boolean {
  */
 export const bashTool: ToolPlugin = {
   name: BASH_TOOL_NAME,
+  searchHint: "run a shell command",
   isConcurrencySafe: false,
   config: {
     type: "function",

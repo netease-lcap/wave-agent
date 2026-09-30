@@ -1,15 +1,14 @@
 /**
  * Exec sandbox constants.
  *
- * Almost everything here is a tunable default, not a contract. In particular no
- * *knob* may be rendered into model-visible text: the catalog has to stay
- * byte-identical for an unchanged MCP pool, so changing a budget must not change
- * what the model reads (see `Exec`'s description and
- * `exec/catalogAnnouncement.ts`).
+ * Everything here is a tunable default, not a contract — with one exception,
+ * `EXEC_RESERVED_NAMESPACE`: it is part of the sandbox API surface, so the tool
+ * description has to name it (and it is derived from the same constant, so the
+ * two cannot drift).
  *
- * The exception is `EXEC_RESERVED_NAMESPACE`: it is part of the sandbox API
- * surface, so the tool description has to name it (and it is derived from the
- * same constant, so the two cannot drift).
+ * Note what is deliberately *absent*: no budget bounds the announcement. The
+ * announcement is a list of names, and a name list that stops early reads as
+ * "those capabilities do not exist" — the worst failure mode this feature has.
  */
 
 /**
@@ -37,14 +36,21 @@ export const EXEC_DEFAULT_MAX_RESULT_CHARS = 100_000;
 export const EXEC_DEFAULT_MAX_IMAGES = 4;
 
 /**
- * Maximum size of the MCP catalog, in estimated tokens (a plain `chars / 4`; see
- * `estimateCatalogTokens`).
+ * How many hits a keyword search returns by default.
  *
- * Provenance: opencode's `catalogBudget` — `defaultCatalogBudget = 2_000` in
- * `packages/codemode/src/tool-runtime.ts`. Deliberately not CJK-aware: MCP tool
- * descriptions are overwhelmingly English. Tunable, not a contract.
+ * Provenance: Claude Code's `ToolSearch` `max_results = 5`. The point is not the
+ * number but that there *is* one: a search that can return the whole pool is a
+ * search whose result is a second announcement, and the model asked for it
+ * precisely because it did not want to read the whole pool.
  */
-export const EXEC_DEFAULT_CATALOG_TOKENS = 2_000;
+export const EXEC_SEARCH_DEFAULT_MAX_RESULTS = 5;
+
+/**
+ * Hard ceiling on `max_results`, whatever the caller asks for. The sandbox takes
+ * its limit from the model, so without a ceiling one script could dump the entire
+ * pool into the context in a single call.
+ */
+export const EXEC_SEARCH_MAX_RESULTS_LIMIT = 50;
 
 /**
  * Reserved property on the sandbox `tools` object hosting search. The `$`

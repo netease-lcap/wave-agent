@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import type { ToolContext } from "../../src/tools/types.js";
 import type { McpManager } from "../../src/managers/mcpManager.js";
 import { runExecScript } from "../../src/exec/execRuntime.js";
+import type { ExecPoolEntry } from "../../src/exec/catalog.js";
 
 interface FakeMcpOptions {
   content?: string;
@@ -46,14 +47,16 @@ function contextWith(options: FakeMcpOptions = {}): {
 }
 
 const POOL = [
-  { name: "mcp__srv__echo", description: "Echo back" },
-  { name: "mcp__srv__sum", description: "Add numbers" },
+  // `isMcp` is what picks the dispatch funnel, and `buildExecPool` is its only
+  // producer: a pool entry that says nothing routes to the built-in path.
+  { name: "mcp__srv__echo", isMcp: true, description: "Echo back" },
+  { name: "mcp__srv__sum", isMcp: true, description: "Add numbers" },
 ];
 
 function run(
   code: string,
   options: FakeMcpOptions & {
-    pool?: typeof POOL;
+    pool?: ExecPoolEntry[];
     timeoutMs?: number;
     maxToolCalls?: number;
     maxLogChars?: number;
@@ -193,14 +196,16 @@ describe("runExecScript — the bridge", () => {
     expect(outcome).toContain("mcp__srv__nope");
     // The pointer names a call the host actually accepts, derived from the same
     // schema the tool description is rendered from.
-    expect(outcome).toContain(`tools["$codemode"].search({ query: "..." })`);
+    expect(outcome).toContain(
+      `tools["$codemode"].search({ query: "...", max_results: 0 })`,
+    );
   });
 
   it("offers search over the full pool", async () => {
     const result = await run(`
       const all = await tools["$codemode"].search({ query: "" });
       const sums = await tools["$codemode"].search({ query: "sum" });
-      return { all: all.length, sums: sums.map((t) => t.name) };
+      return { all: all.total, sums: sums.matches.map((t) => t.name) };
     `);
 
     expect(result.ok).toBe(true);
@@ -210,13 +215,31 @@ describe("runExecScript — the bridge", () => {
     });
   });
 
+  it("reports how many hits the cap hid", async () => {
+    // Without `total` the model reads "five hits" as "five matches", which is the
+    // same failure a silently truncated announcement would cause.
+    const pool = Array.from({ length: 8 }, (_, i) => ({
+      name: `mcp__srv__tool${i}`,
+    }));
+    const result = await run(
+      `
+        const found = await tools["$codemode"].search({ query: "tool", max_results: 2 });
+        return { shown: found.matches.length, total: found.total };
+      `,
+      { pool },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(result.value!)).toEqual({ shown: 2, total: 8 });
+  });
+
   it("fails a search whose arguments do not match the documented shape", async () => {
     // A typo'd field used to fall through as "no query" and answer with the whole
     // pool — a wrong call dressed up as a successful search.
     const result = await run(`
       try {
         const res = await tools["$codemode"].search({ q: "sum" });
-        return { outcome: "returned " + res.length };
+        return { outcome: "returned " + res.total };
       } catch (error) {
         return { outcome: error.message };
       }
@@ -225,13 +248,15 @@ describe("runExecScript — the bridge", () => {
     expect(result.ok).toBe(true);
     const { outcome } = JSON.parse(result.value!);
     expect(outcome).toContain(`does not take "q"`);
-    expect(outcome).toContain(`tools["$codemode"].search({ query: "..." })`);
+    expect(outcome).toContain(
+      `tools["$codemode"].search({ query: "...", max_results: 0 })`,
+    );
   });
 
   it("returns the rendered signature rather than the raw JSON Schema", async () => {
     // The point of search is that the model can copy the result verbatim into a
-    // call, so the entry must carry the same rendering the catalog uses — and
-    // must not leak the schema object itself.
+    // call, so the entry must carry the same rendering the signature renderer
+    // produces — and must not leak the schema object itself.
     const pool = [
       {
         name: "mcp__srv__sum",
@@ -249,7 +274,7 @@ describe("runExecScript — the bridge", () => {
     const result = await run(
       `
         const found = await tools["$codemode"].search({ query: "sum" });
-        return found;
+        return found.matches;
       `,
       { pool },
     );
@@ -282,6 +307,98 @@ describe("runExecScript — the bridge", () => {
 
     expect(result.ok).toBe(true);
     expect(result.value).toContain("plain object");
+  });
+});
+
+describe("runExecScript — built-in dispatch", () => {
+  /** A pool of one built-in, and a context whose tool manager records the call. */
+  function builtInRun(
+    code: string,
+    result:
+      | { success: true; content: string; images?: Array<{ data: string }> }
+      | { success: false; error: string },
+  ) {
+    const execute = vi.fn(async () => result);
+    const { context } = contextWith();
+    context.toolManager = { execute } as unknown as ToolContext["toolManager"];
+    return {
+      execute,
+      promise: runExecScript({
+        code,
+        pool: [{ name: "WebFetch", description: "Fetch a URL" }],
+        context,
+      }),
+    };
+  }
+
+  it("routes a non-MCP tool through the tool manager and resolves to its text", async () => {
+    const { execute, promise } = builtInRun(
+      `
+        const r = await tools.WebFetch({ url: "https://example.com" });
+        return { type: typeof r, value: r };
+      `,
+      { success: true, content: "hello" },
+    );
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(result.value!)).toEqual({
+      type: "string",
+      value: "hello",
+    });
+    // `ToolManager.execute` is the built-ins' funnel: it supplies the enhanced
+    // context a built-in reads its permission manager out of. Routing around it
+    // would hand the tool a context missing the managers it needs.
+    expect(execute).toHaveBeenCalledWith(
+      "WebFetch",
+      { url: "https://example.com" },
+      expect.objectContaining({ workdir: "/tmp" }),
+    );
+  });
+
+  it("rejects a built-in that reports failure, so the script's catch sees it", async () => {
+    // `execute()` signals failure in the result rather than by throwing; both tool
+    // kinds have to behave the same way inside the script, or a failed call would
+    // resolve to something that looks like a successful empty answer.
+    const { promise } = builtInRun(
+      `
+        try {
+          await tools.WebFetch({ url: "https://example.com" });
+          return { outcome: "resolved" };
+        } catch (error) {
+          return { outcome: error.message };
+        }
+      `,
+      { success: false, error: "Permission denied by user" },
+    );
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(result.value!)).toEqual({
+      outcome: "Permission denied by user",
+    });
+  });
+
+  it("propagates images from a built-in call", async () => {
+    const { promise } = builtInRun(`return await tools.WebFetch({});`, {
+      success: true,
+      content: "with image",
+      images: [{ data: "BBB" }],
+    });
+
+    expect((await promise).images).toEqual([{ data: "BBB" }]);
+  });
+
+  it("refuses a built-in call when the context carries no tool manager", async () => {
+    const { context } = contextWith();
+    const result = await runExecScript({
+      code: `return await tools.WebFetch({});`,
+      pool: [{ name: "WebFetch" }],
+      context,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("Tool manager is not available");
   });
 });
 

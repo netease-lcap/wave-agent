@@ -83,10 +83,16 @@ describe("Hook Success Behavior (User Story 1)", () => {
       // agent.sendMessage() results in agent.messages containing two user role messages,
       // where the second message contains the hook stdout content
       const messages = agent.messages;
-      expect(messages).toHaveLength(3); // user message + injected context + assistant response
+      // user message + injected context + assistant response. `Exec` is off by
+      // default, so the host appends no on-demand-tool notice on the first turn.
+      expect(messages).toHaveLength(3);
 
-      // Find user messages - should have original prompt and injected context
-      const userMessages = messages.filter((msg) => msg.role === "user");
+      // Find user messages - should have original prompt and injected context. The
+      // meta notice (when there is one) is a `user`-role message too, so it is
+      // filtered out: what is under test here is what the *hook* injected.
+      const userMessages = messages.filter(
+        (msg) => msg.role === "user" && msg.isMeta !== true,
+      );
       expect(userMessages).toHaveLength(2);
 
       // First user message should be original prompt
@@ -139,7 +145,9 @@ describe("Hook Success Behavior (User Story 1)", () => {
 
       // Verify no context injection
       const messages = agent.messages;
-      const userMessages = messages.filter((msg) => msg.role === "user");
+      const userMessages = messages.filter(
+        (msg) => msg.role === "user" && msg.isMeta !== true,
+      );
 
       // Should only have the original user message
       expect(userMessages).toHaveLength(1);
@@ -150,7 +158,8 @@ describe("Hook Success Behavior (User Story 1)", () => {
           : undefined,
       ).toBe("test prompt");
 
-      // Total messages should be user + assistant (no injected context)
+      // Total messages should be user + assistant: no injected context, and no
+      // on-demand-tool notice while `Exec` is off by default.
       expect(messages).toHaveLength(2);
     });
   });
@@ -244,7 +253,9 @@ describe("Hook Success Behavior (User Story 1)", () => {
 
       // Verify that NO additional user messages were injected from PreToolUse stdout
       const messages = agent.messages;
-      const userMessages = messages.filter((msg) => msg.role === "user");
+      const userMessages = messages.filter(
+        (msg) => msg.role === "user" && msg.isMeta !== true,
+      );
 
       // Should only have original user message
       expect(userMessages).toHaveLength(1);
@@ -350,7 +361,9 @@ describe("Hook Success Behavior (User Story 1)", () => {
 
       // Verify that NO additional user messages were injected from PostToolUse stdout
       const messages = agent.messages;
-      const userMessages = messages.filter((msg) => msg.role === "user");
+      const userMessages = messages.filter(
+        (msg) => msg.role === "user" && msg.isMeta !== true,
+      );
 
       // Should only have original user message
       expect(userMessages).toHaveLength(1);
@@ -419,7 +432,9 @@ describe("Hook Success Behavior (User Story 1)", () => {
 
       // Verify that NO additional user messages were injected from Stop stdout
       const messages = agent.messages;
-      const userMessages = messages.filter((msg) => msg.role === "user");
+      const userMessages = messages.filter(
+        (msg) => msg.role === "user" && msg.isMeta !== true,
+      );
 
       // Should only have original user message
       expect(userMessages).toHaveLength(1);

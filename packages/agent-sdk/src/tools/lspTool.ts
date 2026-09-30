@@ -686,6 +686,9 @@ function formatOutgoingCallsResult(
  */
 export const lspTool: ToolPlugin = {
   name: LSP_TOOL_NAME,
+  defer: true,
+  searchHint:
+    "look up a symbol's definition, references, or hover info in the language server",
   config: {
     type: "function",
     function: {

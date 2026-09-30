@@ -3,6 +3,8 @@ import { ToolContext, ToolPlugin, ToolResult } from "./types.js";
 
 export const taskStopTool: ToolPlugin = {
   name: TASK_STOP_TOOL_NAME,
+  defer: true,
+  searchHint: "stop a running background task by its id",
   config: {
     type: "function",
     function: {

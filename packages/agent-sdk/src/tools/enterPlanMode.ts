@@ -5,9 +5,17 @@ import { OPERATION_CANCELLED_BY_USER } from "../types/permissions.js";
 
 /**
  * Enter Plan Mode Tool Plugin
+ *
+ * Deferred, like `ExitPlanMode` — the pair is used at most twice per plan-mode
+ * cycle, so their schemas and the long `prompt` below do not belong in every
+ * request's prefix. The approval flow is unaffected by the deferral: every plan
+ * decision (CLI, webview, daemon) keys on the *tool name*, and a nested call
+ * carries the leaf name (see `confirmationReducer.ts`, `ConfirmationDialog.tsx`).
  */
 export const enterPlanModeTool: ToolPlugin = {
   name: ENTER_PLAN_MODE_TOOL_NAME,
+  defer: true,
+  searchHint: "switch to plan mode to design an approach before coding",
   config: {
     type: "function",
     function: {
