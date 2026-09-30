@@ -3,7 +3,7 @@ import { render } from "ink-testing-library";
 import { describe, it, expect, vi } from "vitest";
 import { Text } from "ink";
 import { MessageBlockItem } from "../../src/components/MessageBlockItem.js";
-import { MessageSource, type Message, type MessageBlock } from "wave-agent-sdk";
+import { type Message, type MessageBlock } from "wave-agent-sdk";
 
 // Mock sub-components to isolate MessageBlockItem
 vi.mock("../../src/components/ToolDisplay.js", () => ({
@@ -33,25 +33,6 @@ describe("MessageBlockItem Component", () => {
         <MessageBlockItem block={block} message={message} isExpanded={false} />,
       );
       expect(lastFrame()).toContain("plain text");
-    });
-
-    it("should render text block with HOOK source (🔗)", () => {
-      const message: Message = {
-        id: "test-id",
-        role: "user",
-        blocks: [],
-        timestamp: new Date().toISOString(),
-      };
-      const block: MessageBlock = {
-        type: "text",
-        content: "hook text",
-        source: MessageSource.HOOK,
-      };
-      const { lastFrame } = render(
-        <MessageBlockItem block={block} message={message} isExpanded={false} />,
-      );
-      expect(lastFrame()).toContain("~");
-      expect(lastFrame()).toContain("hook text");
     });
 
     it("should render error block", () => {

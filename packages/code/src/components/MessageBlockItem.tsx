@@ -1,7 +1,6 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { Message, MessageBlock } from "wave-agent-sdk";
-import { MessageSource } from "wave-agent-sdk";
 import { ToolDisplay } from "./ToolDisplay.js";
 import { CompactDisplay } from "./CompactDisplay.js";
 import { ReasoningDisplay } from "./ReasoningDisplay.js";
@@ -25,11 +24,6 @@ export const MessageBlockItem = ({
     <Box flexDirection="column" paddingTop={paddingTop}>
       {block.type === "text" && block.content.trim() && (
         <Box>
-          {block.source === MessageSource.HOOK && (
-            <Text color="magenta" bold>
-              ~{" "}
-            </Text>
-          )}
           {message.role === "user" || isExpanded ? (
             <Text
               backgroundColor={message.role === "user" ? "gray" : undefined}

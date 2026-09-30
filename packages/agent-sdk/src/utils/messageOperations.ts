@@ -5,7 +5,6 @@ import type {
   ToolBlock,
   TaskNotificationBlock,
 } from "../types/index.js";
-import { MessageSource } from "../types/index.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
 import { ChatCompletionMessageFunctionToolCall } from "openai/resources.js";
@@ -16,7 +15,6 @@ export interface UserMessageParams {
   content: string;
   customCommandContent?: string;
   images?: Array<{ path: string; mimeType: string }>;
-  source?: MessageSource;
   isMeta?: boolean;
 }
 
@@ -142,19 +140,17 @@ export const addUserMessageToMessages = ({
   content,
   customCommandContent,
   images,
-  source,
   id,
   isMeta,
 }: AddUserMessageParams): Message[] => {
   const blocks: Message["blocks"] = [];
 
-  // Create text block with optional source and customCommandContent
+  // Create text block with optional customCommandContent
   const textBlock = {
     type: "text" as const,
     content,
     stage: "end" as const,
     ...(customCommandContent && { customCommandContent }),
-    ...(source && { source }),
   };
   blocks.push(textBlock);
 
@@ -195,7 +191,6 @@ export const updateUserMessageInMessages = (
             ...(params.customCommandContent !== undefined && {
               customCommandContent: params.customCommandContent,
             }),
-            ...(params.source !== undefined && { source: params.source }),
           };
         }
         return block;

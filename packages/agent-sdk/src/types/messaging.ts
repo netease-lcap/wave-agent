@@ -5,11 +5,6 @@
 
 import type { Usage } from "./core.js";
 
-export enum MessageSource {
-  USER = "user",
-  HOOK = "hook",
-}
-
 export interface Message {
   id: string; // Unique identifier for the message
   role: "user" | "assistant";
@@ -34,7 +29,6 @@ export interface TextBlock {
   type: "text";
   content: string;
   customCommandContent?: string;
-  source?: MessageSource;
   stage?: "streaming" | "end";
 }
 

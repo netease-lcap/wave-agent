@@ -47,6 +47,7 @@ import type {
 } from "../types/index.js";
 import type { SubagentManager } from "./subagentManager.js";
 import type { SkillManager } from "./skillManager.js";
+import { HookBlockedToolError } from "../types/hooks.js";
 
 import { ReversionManager } from "./reversionManager.js";
 import * as aiService from "../services/aiService.js";
@@ -331,7 +332,9 @@ class ToolManager {
       hasPermissionManager: !!permissionManager,
     });
 
-    // Check if it's an MCP tool first
+    // Check if it's an MCP tool first. Tool-event hooks for MCP live in
+    // `McpManager.executeMcpTool` — the one funnel every MCP call goes through,
+    // flat or nested — so they are not run a second time here.
     if (this.mcpManager.isMcpTool(name)) {
       try {
         const result = await this.mcpManager.executeMcpToolByRegistry(
@@ -346,46 +349,72 @@ class ToolManager {
         });
         return result;
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         endToolSpan({
           success: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: message,
           durationMs: Date.now() - toolStartTime,
         });
-        return {
-          success: false,
-          content: "",
-          error: error instanceof Error ? error.message : String(error),
-        };
+        // A hook block is a refusal, not a tool failure: keep its wording in
+        // the result so a flat call shows the model what a nested one sees.
+        return error instanceof HookBlockedToolError
+          ? { success: false, content: message, error: message }
+          : { success: false, content: "", error: message };
       }
     }
 
-    // Check built-in tools
+    // Check built-in tools. PreToolUse / PostToolUse belong here rather than in
+    // the tool-call loop: this is the one funnel built-ins are reached through,
+    // so a call made from inside the Exec sandbox runs the same hooks a flat
+    // call does.
     const plugin = this.toolsRegistry.get(name);
     if (plugin) {
+      const hookManager = enhancedContext.hookManager;
+      const blocked = await hookManager?.executePreToolUseHooks(
+        name,
+        args,
+        enhancedContext,
+      );
+      if (blocked) {
+        endToolSpan({
+          success: false,
+          error: blocked,
+          durationMs: Date.now() - toolStartTime,
+        });
+        return { success: false, content: blocked, error: blocked };
+      }
+
+      let result: ToolResult;
       try {
-        const result = await plugin.execute(args, enhancedContext);
+        result = await plugin.execute(args, enhancedContext);
         endToolSpan({
           success: result.success,
           durationMs: Date.now() - toolStartTime,
           output: result.content,
         });
-        return result;
       } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         logger?.error("Tool execution failed", {
           toolName: name,
-          error: error instanceof Error ? error.message : String(error),
+          error: message,
         });
         endToolSpan({
           success: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: message,
           durationMs: Date.now() - toolStartTime,
         });
-        return {
-          success: false,
-          content: "",
-          error: error instanceof Error ? error.message : String(error),
-        };
+        result = { success: false, content: "", error: message };
       }
+
+      // PostToolUse hooks run for a failed call too — the tool was attempted,
+      // and PostToolUse cannot block anything at this point.
+      await hookManager?.executePostToolUseHooks(
+        name,
+        args,
+        result,
+        enhancedContext,
+      );
+      return result;
     }
 
     logger?.warn("Tool not found", { toolName: name });

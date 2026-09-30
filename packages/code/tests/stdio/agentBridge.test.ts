@@ -965,7 +965,8 @@ test("listRewindCheckpoints filters to real user messages and flattens content",
     {
       role: "user",
       id: "u5",
-      blocks: [{ type: "text", content: "hook 输出", source: "hook" }],
+      isMeta: true,
+      blocks: [{ type: "text", content: "hook 输出" }],
     },
     // bash 模式命令消息（user 文本 + bash tool block）是用户真实输入，与
     // fork skill 命令一致，可作为回滚点

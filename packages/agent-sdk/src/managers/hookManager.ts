@@ -24,12 +24,24 @@ import type {
 } from "../types/configuration.js";
 import { HookMatcher } from "../utils/hookMatcher.js";
 import { executeCommand, isCommandSafe } from "../services/hook.js";
-import { MessageSource } from "../types/index.js";
 import type { MessageManager } from "./messageManager.js";
 import { Container } from "../utils/container.js";
 import type { ConfigurationService } from "../services/configurationService.js";
+import type { ToolContext, ToolResult } from "../tools/types.js";
+import { logOTelEvent } from "../telemetry/events.js";
 
 import { logger } from "../utils/globalLogger.js";
+
+/** Debug-log shape for hook results, shared by the tool-event executors. */
+function summarizeHookResults(results: HookExecutionResult[]) {
+  return results.map((r) => ({
+    success: r.success,
+    duration: r.duration,
+    exitCode: r.exitCode,
+    timedOut: r.timedOut,
+    stderr: r.stderr,
+  }));
+}
 
 export class HookManager {
   private configuration: PartialHookConfiguration | undefined;
@@ -239,7 +251,7 @@ export class HookManager {
           }
 
           const result = await executeCommand(command, execContext, options);
-          results.push(result);
+          results.push({ ...result, command });
 
           // Continue with next command even if this one fails
           // This allows for non-critical hooks to fail without stopping the workflow
@@ -256,6 +268,7 @@ export class HookManager {
             stderr: errorMessage,
             duration: 0,
             timedOut: false,
+            command: hookCommand.command,
           });
         }
       }
@@ -265,15 +278,196 @@ export class HookManager {
   }
 
   /**
-   * Process hook execution results and determine appropriate actions
-   * based on exit codes and hook event type
+   * Run the PreToolUse hooks for one tool call and report whether it is blocked.
+   *
+   * Tool events live here rather than in the tool-call loop because a tool can be
+   * reached two ways — declared flat, or through the Exec sandbox's pool — and
+   * both take the same execution funnel (`ToolManager.execute` for built-ins,
+   * `McpManager.executeMcpTool` for MCP). Hanging the hooks on the funnels is
+   * what makes a nested call auditable exactly like a flat one.
+   *
+   * Returns the text the model must see for a blocked call (Claude Code's
+   * `PreToolUse:<tool> hook error: <stderr>`), or null to let the call run.
+   * Hook failures fail open: a hook that cannot run never blocks a tool.
+   */
+  async executePreToolUseHooks(
+    toolName: string,
+    toolInput: Record<string, unknown> | undefined,
+    context: ToolContext,
+  ): Promise<string | null> {
+    try {
+      const results = await this.executeHooks(
+        "PreToolUse",
+        this.buildToolHookContext(
+          "PreToolUse",
+          toolName,
+          toolInput,
+          undefined,
+          context,
+        ),
+      );
+      if (results.length === 0) return null;
+
+      logger?.debug(
+        `Executed ${results.length} PreToolUse hook(s) for ${toolName}:`,
+        summarizeHookResults(results),
+      );
+
+      const blocking = this.processToolHookResults(
+        "PreToolUse",
+        results,
+        context.messageManager,
+      );
+
+      logOTelEvent("tool_decision", {
+        tool_name: toolName,
+        decision: blocking ? "blocked" : "approved",
+        source: "hook",
+      }).catch(() => {}); // Non-blocking
+
+      return blocking
+        ? this.formatToolHookMessage("PreToolUse", toolName, blocking)
+        : null;
+    } catch (error) {
+      // Hook execution errors should not interrupt the main workflow
+      logger?.error("PreToolUse hook execution failed:", error);
+      return null;
+    }
+  }
+
+  /**
+   * Run the PostToolUse hooks for one tool call.
+   *
+   * Exit code 2 cannot block a call that already ran: Claude Code shows the
+   * stderr to the model as an injected message instead, and so do we — the tool
+   * result itself is never rewritten.
+   */
+  async executePostToolUseHooks(
+    toolName: string,
+    toolInput: Record<string, unknown> | undefined,
+    toolResponse: ToolResult | undefined,
+    context: ToolContext,
+  ): Promise<void> {
+    try {
+      const results = await this.executeHooks(
+        "PostToolUse",
+        this.buildToolHookContext(
+          "PostToolUse",
+          toolName,
+          toolInput,
+          toolResponse,
+          context,
+        ),
+      );
+      if (results.length === 0) return;
+
+      logger?.debug(
+        `Executed ${results.length} PostToolUse hook(s) for ${toolName}:`,
+        summarizeHookResults(results),
+      );
+
+      const blocking = this.processToolHookResults(
+        "PostToolUse",
+        results,
+        context.messageManager,
+      );
+
+      if (blocking && context.messageManager) {
+        context.messageManager.addUserMessage({
+          content: this.formatToolHookMessage(
+            "PostToolUse",
+            toolName,
+            blocking,
+          ),
+          isMeta: true,
+        });
+      }
+    } catch (error) {
+      // Hook execution errors should not interrupt the main workflow
+      logger?.error("PostToolUse hook execution failed:", error);
+    }
+  }
+
+  /**
+   * Exit-code handling for tool events: a blocking result (exit code 2) takes
+   * precedence and is returned for the caller to surface, every other result
+   * only reaches the user — stdout of tool hooks is dropped, as in Claude Code.
+   */
+  private processToolHookResults(
+    event: "PreToolUse" | "PostToolUse",
+    results: HookExecutionResult[],
+    messageManager?: MessageManager,
+  ): HookExecutionResult | undefined {
+    const blocking = results.find((result) => result.exitCode === 2);
+    if (blocking) return blocking;
+    if (!messageManager) return undefined;
+
+    for (const result of results) {
+      if (result.exitCode === undefined) continue;
+      if (result.exitCode === 0) {
+        this.handleHookSuccess(event, result, messageManager);
+      } else {
+        this.handleNonBlockingError(result, messageManager);
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * The model-visible wording of a tool-event hook result, verbatim from Claude
+   * Code: the same string on both sides is what lets a hook (and its author's
+   * expectations) move between the two without re-reading the docs. PostToolUse
+   * also names the command, since several hooks can match one tool and the model
+   * needs to know which one objected.
+   */
+  private formatToolHookMessage(
+    event: "PreToolUse" | "PostToolUse",
+    toolName: string,
+    result: HookExecutionResult,
+  ): string {
+    const stderr = result.stderr?.trim() || "Hook execution failed";
+    const label = `${event}:${toolName}`;
+    return event === "PreToolUse"
+      ? `${label} hook error: ${stderr}`
+      : `${label} hook blocking error from command: "${result.command ?? ""}": ${stderr}`;
+  }
+
+  private buildToolHookContext(
+    event: "PreToolUse" | "PostToolUse",
+    toolName: string,
+    toolInput: Record<string, unknown> | undefined,
+    toolResponse: ToolResult | undefined,
+    context: ToolContext,
+  ): ExtendedHookExecutionContext {
+    const workdir = context.workdir || this.workdir;
+    return {
+      event,
+      projectDir: workdir,
+      timestamp: new Date(),
+      toolName,
+      sessionId: context.sessionId ?? context.messageManager?.getSessionId(),
+      transcriptPath: context.messageManager?.getTranscriptPath(),
+      cwd: workdir,
+      toolInput,
+      toolResponse,
+      subagentType: context.aiManager?.getSubagentType(),
+      planFilePath: context.permissionManager?.getPlanFilePath(),
+      env: context.sessionEnv,
+    };
+  }
+
+  /**
+   * Process hook execution results for the non-tool events and determine
+   * appropriate actions based on exit codes and hook event type.
+   *
+   * Tool events (PreToolUse / PostToolUse) do not come through here: they have
+   * their own executors on the execution funnels, because their feedback has to
+   * reach a nested call inside the Exec sandbox too.
    */
   processHookResults(
     event: HookEvent,
     results: HookExecutionResult[],
     messageManager?: MessageManager,
-    toolId?: string,
-    toolParameters?: string,
   ): {
     shouldBlock: boolean;
     errorMessage?: string;
@@ -291,8 +485,6 @@ export class HookManager {
           event,
           result,
           messageManager,
-          toolId,
-          toolParameters,
         );
         return {
           shouldBlock: blockingResult.shouldBlock,
@@ -332,7 +524,7 @@ export class HookManager {
       // Inject stdout as user message context for UserPromptSubmit
       messageManager.addUserMessage({
         content: result.stdout.trim(),
-        source: MessageSource.HOOK,
+        isMeta: true,
       });
     }
     // For SessionStart, stdout is processed separately in executeSessionStartHooks
@@ -347,8 +539,6 @@ export class HookManager {
     event: HookEvent,
     result: HookExecutionResult,
     messageManager: MessageManager,
-    toolId?: string,
-    toolParameters?: string,
   ): {
     shouldBlock: boolean;
     errorMessage?: string;
@@ -365,33 +555,11 @@ export class HookManager {
           errorMessage,
         };
 
-      case "PreToolUse":
-        // Block tool execution and show error to Wave Agent via tool block
-        if (toolId) {
-          messageManager.updateToolBlock({
-            id: toolId,
-            parameters: toolParameters || "",
-            result: errorMessage,
-            success: false,
-            error: "Hook blocked tool execution",
-            stage: "end", // Hook blocking results in end stage with error
-          });
-        }
-        return { shouldBlock: true };
-
-      case "PostToolUse":
-        // Show error to Wave Agent via user message and allow AI to continue
-        messageManager.addUserMessage({
-          content: errorMessage,
-          source: MessageSource.HOOK,
-        });
-        return { shouldBlock: false };
-
       case "Stop":
         // Show error to Wave Agent via user message and block stopping to continue conversation
         messageManager.addUserMessage({
           content: errorMessage,
-          source: MessageSource.HOOK,
+          isMeta: true,
         });
         return { shouldBlock: true, errorMessage };
 
@@ -404,7 +572,7 @@ export class HookManager {
         // Similar to Stop, show error and allow blocking
         messageManager.addUserMessage({
           content: errorMessage,
-          source: MessageSource.HOOK,
+          isMeta: true,
         });
         return { shouldBlock: true, errorMessage };
 

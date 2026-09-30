@@ -2,6 +2,7 @@ import { ChatCompletionFunctionTool } from "openai/resources.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 import type { McpTool, McpServerStatus } from "../types/index.js";
 import { processToolResult } from "./toolResultStorage.js";
+import { HookBlockedToolError } from "../types/hooks.js";
 import { DEFAULT_MAX_RESULT_SIZE_CHARS } from "../constants/toolLimits.js";
 
 /**
@@ -137,6 +138,10 @@ export function createMcpToolPlugin(
           images: result.images,
         };
       } catch (error) {
+        // A PreToolUse block is a refusal, not a tool failure: let it through
+        // with its class intact so ToolManager can return the hook's own
+        // wording instead of flattening it into a generic failure.
+        if (error instanceof HookBlockedToolError) throw error;
         return {
           success: false,
           content: "",

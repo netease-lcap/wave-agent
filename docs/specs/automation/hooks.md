@@ -19,6 +19,7 @@ Hook 通过退出码、stdout 和 stderr 传达状态：
 - **退出码 0**：成功。stdout 仅在 `UserPromptSubmit` 时添加到上下文中。
 - **退出码 2**：阻止性错误。`stderr` 反馈给 Wave 进行自动处理。参见下方各 hook 事件的行为。
 - **其他退出码**：非阻止性错误。`stderr` 显示给用户，执行继续。
+- **注入的 user 消息一律带 `isMeta: true`**：hook 产生的上下文与反馈（`UserPromptSubmit` 的 stdout、`PostToolUse` / `Stop` / `SubagentStop` 的 stderr）对模型可见，但不显示在 CLI 与 Webview 的对话里，与 Claude Code 同形。
 
 ::: warning
 提醒：如果退出码为 0，Wave Agent 不会看到 stdout，除了 `UserPromptSubmit` hook 的 stdout 会作为上下文注入。
@@ -26,18 +27,18 @@ Hook 通过退出码、stdout 和 stderr 传达状态：
 
 #### 退出码 2 行为
 
-| Hook 事件           | 行为                                                                                                                      |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `PreToolUse`        | 阻止工具调用，向 Wave 显示 stderr                                                                                         |
-| `PostToolUse`       | 向 Wave 显示 stderr 并允许 AI 继续（工具已执行）                                                                          |
-| `UserPromptSubmit`  | 阻止提示处理，清除提示，仅向用户显示 stderr                                                                               |
-| `Stop`              | 阻止停止（AI 继续对话），向 Wave 显示 stderr                                                                              |
-| `SubagentStop`      | 阻止停止（子代理继续），向 Wave 显示 stderr                                                                               |
-| `PermissionRequest` | 阻止（拒绝）权限，仅向用户显示 stderr                                                                                     |
-| `WorktreeCreate`    | 接管创建（Path return）：stdout 输出 worktree path；所有 hook 均失败或无输出时创建被阻止                                  |
-| `WorktreeRemove`    | 接管 hook-based worktree 的删除（wave 不执行 `git worktree remove`）；失败仅记录（非阻止），worktree 是否残留由 hook 负责 |
-| `PreCompact`        | 非阻止；stderr 不显示给用户（静默丢弃），压缩继续                                                                         |
-| `PostCompact`       | 仅向用户显示 stderr（非阻止）                                                                                             |
+| Hook 事件           | 行为                                                                                                                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PreToolUse`        | 阻止工具调用；模型看到的工具结果变为失败，文本为 `PreToolUse:<工具名> hook error: <stderr>`                                                                                     |
+| `PostToolUse`       | 向模型注入一条 `isMeta: true` 的用户角色消息，内容为 `PostToolUse:<工具名> hook blocking error from command: "<命令原文>": <stderr>`，原始工具结果不改写，AI 继续（工具已执行） |
+| `UserPromptSubmit`  | 阻止提示处理，清除提示，仅向用户显示 stderr                                                                                                                                     |
+| `Stop`              | 阻止停止（AI 继续对话），向 Wave 显示 stderr（`isMeta: true` 的用户角色消息）                                                                                                   |
+| `SubagentStop`      | 阻止停止（子代理继续），向 Wave 显示 stderr（`isMeta: true` 的用户角色消息）                                                                                                    |
+| `PermissionRequest` | 阻止（拒绝）权限，仅向用户显示 stderr                                                                                                                                           |
+| `WorktreeCreate`    | 接管创建（Path return）：stdout 输出 worktree path；所有 hook 均失败或无输出时创建被阻止                                                                                        |
+| `WorktreeRemove`    | 接管 hook-based worktree 的删除（wave 不执行 `git worktree remove`）；失败仅记录（非阻止），worktree 是否残留由 hook 负责                                                       |
+| `PreCompact`        | 非阻止；stderr 不显示给用户（静默丢弃），压缩继续                                                                                                                               |
+| `PostCompact`       | 仅向用户显示 stderr（非阻止）                                                                                                                                                   |
 
 ## 用户场景与测试 _（必填）_
 
@@ -203,7 +204,7 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 
 **验收场景**：
 
-1. **假设**`UserPromptSubmit` hook 返回退出码 0 并带有 stdout 内容，**当**hook 完成时，**则**stdout 内容被注入到 Wave Agent 的上下文中，且 `agent.messages` 包含两条用户角色消息，第二条包含 hook stdout
+1. **假设**`UserPromptSubmit` hook 返回退出码 0 并带有 stdout 内容，**当**hook 完成时，**则**stdout 内容被注入到 Wave Agent 的上下文中，且 `agent.messages` 包含两条用户角色消息，第二条包含 hook stdout 且标记为 `isMeta: true`
 2. **假设**任何其他 hook 类型返回退出码 0 并带有 stdout 内容，**当**hook 完成时，**则**stdout 内容被忽略，Wave Agent 不可见
 3. **假设**任何 hook 返回退出码 0 并带有 stderr 内容，**当**hook 完成时，**则**stderr 内容被忽略，执行正常继续
 
@@ -219,10 +220,10 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 
 **验收场景**：
 
-1. **假设**`PreToolUse` hook 返回退出码 2 并带有 stderr，**当**hook 完成时，**则**工具调用被阻止，且 `agent.messages` 包含一个 `ToolBlock`，其 result 字段包含 stderr 内容
-2. **假设**`PostToolUse` hook 返回退出码 2 并带有 stderr，**当**hook 完成时，**则**`agent.messages` 包含带有 stderr 内容的用户角色消息，AI 继续处理
+1. **假设**`PreToolUse` hook 返回退出码 2 并带有 stderr，**当**hook 完成时，**则**工具调用被阻止，且 `agent.messages` 包含一个 `ToolBlock`，其失败文本为 `PreToolUse:<工具名> hook error: <stderr>`
+2. **假设**`PostToolUse` hook 返回退出码 2 并带有 stderr，**当**hook 完成时，**则**`agent.messages` 包含一条 `isMeta: true` 的用户角色消息，内容为 `PostToolUse:<工具名> hook blocking error from command: "<命令原文>": <stderr>`，AI 继续处理
 3. **假设**`UserPromptSubmit` hook 返回退出码 2 并带有 stderr，**当**hook 完成时，**则**提示处理被阻止，提示被清除，且 `agent.messages` 包含助手消息中的 `ErrorBlock`，以 stderr 内容为内容（仅用户可见）
-4. **假设**`Stop` hook 返回退出码 2 并带有 stderr，**当**hook 完成时，**则**停止被阻止，且 `agent.messages` 包含带有 stderr 内容的用户角色消息
+4. **假设**`Stop` hook 返回退出码 2 并带有 stderr，**当**hook 完成时，**则**停止被阻止，且 `agent.messages` 包含带有 stderr 内容的 `isMeta: true` 用户角色消息
 
 ---
 
@@ -238,6 +239,24 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 
 1. **假设**任何 hook 返回除 0 或 2 以外的退出码并带有 stderr 内容，**当**hook 完成时，**则**stderr 显示给用户，执行正常继续
 2. **假设**任何 hook 返回除 0 或 2 以外的退出码并带有 stdout 内容，**当**hook 完成时，**则**stdout 被忽略，执行正常继续
+
+---
+
+### 用户故事：工具事件的 hook 反馈与 Claude Code 同形（优先级：P2）
+
+作为 hook 作者，我希望 PreToolUse / PostToolUse 喂回模型的那两条文本与 Claude Code 逐字同形，以便我在 Claude Code 里写的 hook（及它自己的文档）搬到 wave 时行为一致，不需要重新推理一遍"这里会看到什么"。
+
+**为什么是这个优先级**：不是核心能力，但"同形"是可持续的前提——工具事件是 hooks 里唯一模型可见的输出，两端文案一旦漂移，按 Claude Code 文档写的预期就落空。它也决定了嵌套调用该喂什么文本（见 `exec-tool.md` 的嵌套 hook 故事），所以必须先钉死这一份模板。
+
+**独立测试**：让 PreToolUse / PostToolUse hook 分别以 exit 2 退出，断言模型侧文本逐字等于模板（含 `PreToolUse:<工具名>` / `PostToolUse:<工具名>` 前缀与命令原文）；再断言 exit ≠ 0、2 的 stderr 与 exit 0 的 stdout 都不进模型。
+
+**验收场景**：
+
+1. **假设**`PreToolUse` hook 对 `Write` 以 exit 2 退出并输出 stderr，**当**hook 完成时，**则**模型可见的工具结果文本为 `PreToolUse:Write hook error: <stderr>`，其中工具名是模型发出的那个工具名（MCP 工具即 `mcp__<server>__<tool>`）。
+2. **假设**`PostToolUse` hook 对 `Write` 以 exit 2 退出并输出 stderr，**当**hook 完成时，**则**对话新增一条 `isMeta: true` 的用户角色消息 `PostToolUse:Write hook blocking error from command: "<该 hook 的命令原文>": <stderr>`，且工具的原始结果不被改写。
+3. **假设**工具事件的 hook 以除 0、2 以外的退出码退出，**当**hook 完成时，**则**stderr 只呈现给用户（错误块），模型侧不新增消息、工具结果不变。
+4. **假设**工具事件的 hook 以 exit 0 退出并带有 stdout，**当**hook 完成时，**则**stdout 不进模型——只有 `UserPromptSubmit` 的 stdout 进上下文。
+5. **假设**多个 hook 在同一工具上都以 exit 2 退出，**当**处理结果时，**则**模型可见文本取自按配置顺序的第一个（后续 hook 的阻塞结果不再处理），与现状一致。
 
 ---
 
@@ -419,11 +438,15 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 - **新建/编辑钩子提示词中的 `/settings` 前缀怎么办？** GUI 中 `/settings` 不是可拦截的本地斜杠命令，预填文本作为普通用户消息原样发送给 AI；前缀仅作为自然语言指令的一部分提示 AI 处理钩子配置请求
 - **IDE 侧「打开配置文件」与「关闭设置页」的先后顺序？** 两个动作都由设置页入口向宿主发出，且关闭动作会销毁设置页载体（VS Code 设置 WebviewPanel 被 dispose、JetBrains 设置文件编辑器被 close）；**打开文件必须先于关闭设置页发出**，否则销毁后到达的打开请求被丢弃——表现为四个视图（技能 / 子代理 / 钩子 / MCP 服务）点「编辑」都不打开文件（桌面端设置页与聊天共用一个 webview，不涉及此顺序）。同理，配置文件路径缺失时只预填提示词、不打开文件（不自造占位路径）
 
+- **`PostToolUse` 为什么注入一条消息、而不是把工具结果改成失败？** 工具确实已经执行完了，把结果改成失败是在伪造历史；Claude Code 的做法同样是注入一条 `isMeta` 用户消息（`hook_blocking_error` 附件），wave 对齐它——本文件里 hook 注入的 user 消息统统带 `isMeta: true`（对模型可见、UI 不显示）。因此"post 事件能拦下工具"这件事在两端都不成立——要拦必须用 `PreToolUse`。
+- **Claude Code 的另外三个 hook 输出通道做不做？** 本次不做：`hookSpecificOutput.additionalContext`（注入额外上下文）、`updatedToolOutput` / `updatedMCPToolOutput`（改写工具结果）、`PreToolUse` 的 `updatedInput`（改写入参）。它们是**新能力**而不是"呈现形态对齐"，各自需要单独定安全语义（尤其是改写结果/入参），不裹进这次对齐。
+- **Exec 沙箱内嵌套调用的 hook 归谁管？** 工具事件的 hook 语义只有这一份（本文件），"嵌套调用也要触发"是执行路径的事，写在 `docs/specs/core/exec-tool.md`；两处不得各自定义一套 hook 行为。
+
 ### 测试验证需求
 
-- 系统必须通过检查 `agent.sendMessage()` 使 `agent.messages` 包含两条用户角色消息（第二条包含 hook stdout 内容）来验证 `UserPromptSubmit` 成功
-- 系统必须通过检查 `agent.messages` 包含 `ToolBlock`（其 result 字段包含 stderr 内容）来验证 `PreToolUse` 阻止性错误
-- 系统必须通过检查 `agent.messages` 包含带有 stderr 内容的用户角色消息来验证 `PostToolUse` 错误反馈
+- 系统必须通过检查 `agent.sendMessage()` 使 `agent.messages` 包含两条用户角色消息（第二条包含 hook stdout 内容且 `isMeta: true`）来验证 `UserPromptSubmit` 成功
+- 系统必须通过检查 `agent.messages` 包含 `ToolBlock`（其失败文本为 `PreToolUse:<工具名> hook error: <stderr>`）来验证 `PreToolUse` 阻止性错误
+- 系统必须通过检查 `agent.messages` 包含内容为 `PostToolUse:<工具名> hook blocking error from command: "<命令>": <stderr>` 且 `isMeta: true` 的用户角色消息来验证 `PostToolUse` 错误反馈
 - 系统必须通过检查 `agent.messages` 不包含用户角色消息且助手消息中包含以 stderr 为内容的 `ErrorBlock` 来验证 `UserPromptSubmit` 阻止性错误
 - 系统必须确保 `ErrorBlock` 内容不被 `packages/agent-sdk/src/utils/convertMessagesForAPI.ts` 处理，使其仅用户可见且不发送给代理
-- 系统必须通过检查 `agent.messages` 包含带有 stderr 内容的用户角色消息来验证 `Stop` hook 阻止行为
+- 系统必须通过检查 `agent.messages` 包含带有 stderr 内容的 `isMeta: true` 用户角色消息来验证 `Stop` hook 阻止行为

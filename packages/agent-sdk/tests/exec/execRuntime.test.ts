@@ -619,3 +619,57 @@ describe("runExecScript — budgets and lifecycle", () => {
     expect(result.error).toContain("aborted");
   });
 });
+
+describe("runExecScript — a hook-blocked nested call", () => {
+  // Both funnels turn a PreToolUse refusal into a rejection carrying the hook's
+  // wording, so the script — and, when it does not catch, the model — sees the
+  // same text a flat call would have shown.
+  const BLOCKED = "PreToolUse:mcp__srv__echo hook error: Blocked by policy";
+
+  it("hands the hook's wording to the script's catch", async () => {
+    const result = await run(
+      `
+        try {
+          await tools.mcp__srv__echo({});
+          return "called";
+        } catch (error) {
+          return error.message;
+        }
+      `,
+      { behavior: () => new Error(BLOCKED) },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.value).toBe(BLOCKED);
+  });
+
+  it("fails the whole Exec with the hook's wording when the script does not catch", async () => {
+    const result = await run(`return await tools.mcp__srv__echo({});`, {
+      behavior: () => new Error(BLOCKED),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe(BLOCKED);
+  });
+
+  it("fails a hook-blocked built-in the same way", async () => {
+    const blocked = "PreToolUse:WebFetch hook error: Blocked by policy";
+    const { context } = contextWith();
+    context.toolManager = {
+      execute: vi.fn(async () => ({
+        success: false,
+        content: blocked,
+        error: blocked,
+      })),
+    } as unknown as ToolContext["toolManager"];
+
+    const result = await runExecScript({
+      code: `return await tools.WebFetch({});`,
+      pool: [{ name: "WebFetch", description: "Fetch a URL" }],
+      context,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe(blocked);
+  });
+});

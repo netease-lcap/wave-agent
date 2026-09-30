@@ -12,6 +12,7 @@ import {
   findToolServer,
   mcpToolFlatName,
 } from "../utils/mcpUtils.js";
+import { HookBlockedToolError } from "../types/hooks.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 import { Container } from "../utils/container.js";
 import { truncateMcpInstructions } from "../utils/mcpInstructions.js";
@@ -1042,6 +1043,25 @@ export class McpManager {
       );
     }
 
+    // PreToolUse hooks run before the permission check, exactly as they do for
+    // a built-in: a hook that refuses the call means the user is never asked.
+    // This is the one funnel every MCP call goes through — flat as well as
+    // nested, from inside the Exec sandbox — so hooks cannot be skipped by
+    // reaching a tool through the pool.
+    if (context?.hookManager) {
+      const blocked = await context.hookManager.executePreToolUseHooks(
+        toolName,
+        args,
+        context,
+      );
+      if (blocked) {
+        // The MCP contract reports failures by throwing; a block travels the
+        // same route and is told apart by its class, so the funnels can show
+        // the model the hook's wording rather than "tool failed".
+        throw new HookBlockedToolError(blocked);
+      }
+    }
+
     // Permission check
     if (context?.permissionManager) {
       const permissionContext = context.permissionManager.createContext(
@@ -1075,12 +1095,33 @@ export class McpManager {
       if (tool) {
         const connection = this.connections.get(targetServerName);
         if (connection) {
-          return this.executeToolOnConnection(
-            connection,
-            actualToolName,
-            args,
-            targetServerName,
-          );
+          try {
+            const result = await this.executeToolOnConnection(
+              connection,
+              actualToolName,
+              args,
+              targetServerName,
+            );
+            await context?.hookManager?.executePostToolUseHooks(
+              toolName,
+              args,
+              { success: true, content: result.content },
+              context,
+            );
+            return result;
+          } catch (error) {
+            await context?.hookManager?.executePostToolUseHooks(
+              toolName,
+              args,
+              {
+                success: false,
+                content: "",
+                error: error instanceof Error ? error.message : String(error),
+              },
+              context,
+            );
+            throw error;
+          }
         }
       }
     }

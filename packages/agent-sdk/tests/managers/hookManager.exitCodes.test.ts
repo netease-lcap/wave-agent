@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { HookManager } from "../../src/managers/hookManager.js";
 import { Container } from "../../src/utils/container.js";
 import { HookMatcher } from "../../src/utils/hookMatcher.js";
-import { MessageSource } from "../../src/types/index.js";
 import { MessageManager } from "../../src/managers/messageManager.js";
+import type { ToolContext } from "../../src/tools/types.js";
 import * as hookService from "../../src/services/hook.js";
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
@@ -100,7 +100,7 @@ describe("HookManager exit-code semantics", () => {
       expect(mockMessageManager.removeLastUserMessage).toHaveBeenCalled();
     });
 
-    it("should handle PreToolUse blocking error (exit code 2)", () => {
+    it("should handle stop-style events through processHookResults unchanged", () => {
       const results = [
         {
           success: false,
@@ -110,44 +110,19 @@ describe("HookManager exit-code semantics", () => {
           timedOut: false,
         },
       ];
-      const res = manager.processHookResults(
-        "PreToolUse",
-        results,
-        mockMessageManager as unknown as MessageManager,
-        "tool-1",
-        "{}",
-      );
-      expect(res.shouldBlock).toBe(true);
-      expect(mockMessageManager.updateToolBlock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: "tool-1",
-          error: "Hook blocked tool execution",
-        }),
-      );
-    });
-
-    it("should handle PostToolUse blocking error (exit code 2)", () => {
-      const results = [
-        {
-          success: false,
-          exitCode: 2,
-          stderr: "Post Error",
-          duration: 0,
-          timedOut: false,
-        },
-      ];
-      const res = manager.processHookResults(
-        "PostToolUse",
-        results,
-        mockMessageManager as unknown as MessageManager,
-      );
-      expect(res.shouldBlock).toBe(false);
-      expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          content: "Post Error",
-          source: MessageSource.HOOK,
-        }),
-      );
+      // Tool events have their own executors (executePreToolUseHooks /
+      // executePostToolUseHooks) because their feedback has to reach nested
+      // calls inside the Exec sandbox; here it is only asserted that the
+      // generic path no longer claims them.
+      expect(
+        manager.processHookResults(
+          "PreToolUse",
+          results,
+          mockMessageManager as unknown as MessageManager,
+        ),
+      ).toEqual({ shouldBlock: false });
+      expect(mockMessageManager.updateToolBlock).not.toHaveBeenCalled();
+      expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
     });
 
     it("should handle Stop blocking error (exit code 2)", () => {
@@ -254,7 +229,7 @@ describe("HookManager exit-code semantics", () => {
       expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           content: "Injected Context",
-          source: MessageSource.HOOK,
+          isMeta: true,
         }),
       );
     });
@@ -315,6 +290,189 @@ describe("HookManager exit-code semantics", () => {
       expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
         "SessionEnd cleanup failed",
       );
+    });
+  });
+
+  describe("tool-event executors", () => {
+    let mockMessageManager: {
+      addUserMessage: ReturnType<typeof vi.fn>;
+      addErrorBlock: ReturnType<typeof vi.fn>;
+      getSessionId: ReturnType<typeof vi.fn>;
+      getTranscriptPath: ReturnType<typeof vi.fn>;
+    };
+
+    const toolContext = () =>
+      ({
+        workdir: "/test/workdir",
+        messageManager: mockMessageManager,
+      }) as unknown as ToolContext;
+
+    const loadWriteHook = (event: "PreToolUse" | "PostToolUse") => {
+      manager.loadConfiguration({
+        [event]: [
+          {
+            matcher: "Write",
+            hooks: [{ type: "command", command: "check.sh" }],
+          },
+        ],
+      });
+    };
+
+    beforeEach(() => {
+      mockMessageManager = {
+        addUserMessage: vi.fn(),
+        addErrorBlock: vi.fn(),
+        getSessionId: vi.fn().mockReturnValue("session-1"),
+        getTranscriptPath: vi.fn().mockReturnValue("/tmp/transcript.jsonl"),
+      };
+    });
+
+    it("should report a PreToolUse block to the model with Claude Code's wording", async () => {
+      loadWriteHook("PreToolUse");
+      mockExecuteCommand.mockResolvedValue({
+        success: false,
+        exitCode: 2,
+        stdout: "",
+        stderr: "Blocked by policy\n",
+        duration: 5,
+        timedOut: false,
+      });
+
+      const blocked = await manager.executePreToolUseHooks(
+        "Write",
+        { file_path: "/a" },
+        toolContext(),
+      );
+
+      expect(blocked).toBe("PreToolUse:Write hook error: Blocked by policy");
+      // The block travels back to the model as the tool result, not as a message
+      expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
+      expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+    });
+
+    it("should let a PreToolUse hook allow the call and drop its stdout", async () => {
+      loadWriteHook("PreToolUse");
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout: "noise",
+        stderr: "",
+        duration: 5,
+        timedOut: false,
+      });
+
+      await expect(
+        manager.executePreToolUseHooks("Write", {}, toolContext()),
+      ).resolves.toBeNull();
+      expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
+    });
+
+    it("should not run PreToolUse hooks for unmatched tools", async () => {
+      loadWriteHook("PreToolUse");
+
+      await expect(
+        manager.executePreToolUseHooks("Bash", {}, toolContext()),
+      ).resolves.toBeNull();
+      expect(mockExecuteCommand).not.toHaveBeenCalled();
+    });
+
+    it("should show a PreToolUse non-blocking error to the user only", async () => {
+      loadWriteHook("PreToolUse");
+      mockExecuteCommand.mockResolvedValue({
+        success: false,
+        exitCode: 1,
+        stdout: "",
+        stderr: "deprecated tool usage",
+        duration: 5,
+        timedOut: false,
+      });
+
+      await expect(
+        manager.executePreToolUseHooks("Write", {}, toolContext()),
+      ).resolves.toBeNull();
+      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+        "deprecated tool usage",
+      );
+      expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
+    });
+
+    it("should inject a PostToolUse block as a user message without rewriting the result", async () => {
+      loadWriteHook("PostToolUse");
+      mockExecuteCommand.mockResolvedValue({
+        success: false,
+        exitCode: 2,
+        stdout: "",
+        stderr: "Needs formatting",
+        duration: 5,
+        timedOut: false,
+      });
+
+      await manager.executePostToolUseHooks(
+        "Write",
+        { file_path: "/a" },
+        { success: true, content: "file written" },
+        toolContext(),
+      );
+
+      expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith({
+        content:
+          'PostToolUse:Write hook blocking error from command: "check.sh": Needs formatting',
+        isMeta: true,
+      });
+    });
+
+    it("should show a PostToolUse non-blocking error to the user only", async () => {
+      loadWriteHook("PostToolUse");
+      mockExecuteCommand.mockResolvedValue({
+        success: false,
+        exitCode: 1,
+        stdout: "",
+        stderr: "lint warning",
+        duration: 5,
+        timedOut: false,
+      });
+
+      await manager.executePostToolUseHooks(
+        "Write",
+        {},
+        { success: true, content: "file written" },
+        toolContext(),
+      );
+
+      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+        "lint warning",
+      );
+      expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
+    });
+
+    it("should ignore PostToolUse stdout on success", async () => {
+      loadWriteHook("PostToolUse");
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout: "context that must not be injected",
+        stderr: "",
+        duration: 5,
+        timedOut: false,
+      });
+
+      await manager.executePostToolUseHooks(
+        "Write",
+        {},
+        { success: true, content: "file written" },
+        toolContext(),
+      );
+
+      expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
+    });
+
+    it("should fail open when a tool-event hook cannot run", async () => {
+      loadWriteHook("PreToolUse");
+      mockExecuteCommand.mockRejectedValue(new Error("spawn failed"));
+
+      await expect(
+        manager.executePreToolUseHooks("Write", {}, toolContext()),
+      ).resolves.toBeNull();
     });
   });
 });
