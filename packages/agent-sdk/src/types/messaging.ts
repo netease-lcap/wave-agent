@@ -75,6 +75,18 @@ export interface ToolBlock {
   backgroundedByUser?: boolean;
   // True if the command was auto-backgrounded after exceeding the timeout
   assistantAutoBackgrounded?: boolean;
+  /**
+   * The tool names one `Exec` call reached inside the sandbox, in call order and
+   * with repeats kept. Host-side only.
+   *
+   * A deferred tool is callable from the sandbox but absent from `tools[]`, so its
+   * calls leave no `tool` block of their own — the names ride on the `Exec` block
+   * that carried them. A host-side judgment asking "has the agent called X" must
+   * read this rather than the block name (see `docs/specs/core/exec-tool.md`).
+   * Never sent to the model: `convertMessagesForAPI` takes only `id`/`result`/
+   * `images` off a tool block.
+   */
+  nestedToolCalls?: string[];
   timestamp?: number; // Unix ms, set when tool result is finalized (stage="end")
 }
 

@@ -125,6 +125,10 @@ export interface ToolResult {
   backgroundedByUser?: boolean;
   // True if the command was auto-backgrounded after exceeding the timeout
   assistantAutoBackgrounded?: boolean;
+  // Tool names reached inside a sandboxed call (Exec), in call order with repeats
+  // kept. Host-side only, and the only trace a deferred tool's call leaves — see
+  // `ToolBlock.nestedToolCalls`.
+  nestedToolCalls?: string[];
   // Optional metadata for the tool result
   metadata?: Record<string, unknown>;
 }

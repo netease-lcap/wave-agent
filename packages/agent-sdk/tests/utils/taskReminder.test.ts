@@ -42,6 +42,20 @@ function makeToolBlock(name: string): ToolBlock {
   };
 }
 
+/**
+ * A deferred task tool leaves no block of its own — its name rides on the `Exec`
+ * block that carried it (`ToolBlock.nestedToolCalls`).
+ */
+function makeExecBlock(nestedToolCalls: string[]): ToolBlock {
+  return {
+    type: "tool",
+    name: "Exec",
+    stage: "end",
+    success: true,
+    nestedToolCalls,
+  };
+}
+
 function makeTask(overrides: Partial<Task> & { id: string }): Task {
   return {
     subject: "Test task",
@@ -77,6 +91,34 @@ describe("getTaskReminderTurnCounts", () => {
 
     const result = getTaskReminderTurnCounts(messages);
     expect(result.turnsSinceLastTaskManagement).toBe(15);
+  });
+
+  it("treats a task tool called inside Exec as a task-management write", () => {
+    // A deferred task tool is absent from `tools[]`, so its call shows up as a
+    // name on the Exec block instead of a block of its own. Reading only the
+    // block name would keep counting right after an update.
+    const messages: Message[] = [
+      makeAssistantMessage(),
+      makeAssistantMessage(),
+      makeAssistantMessage({ blocks: [makeExecBlock(["TaskUpdate"])] }),
+    ];
+
+    expect(
+      getTaskReminderTurnCounts(messages).turnsSinceLastTaskManagement,
+    ).toBe(0);
+  });
+
+  it("still ignores read-only task tools called inside Exec", () => {
+    const messages: Message[] = [
+      makeAssistantMessage(),
+      makeAssistantMessage({
+        blocks: [makeExecBlock(["TaskList", "TaskGet"])],
+      }),
+    ];
+
+    expect(
+      getTaskReminderTurnCounts(messages).turnsSinceLastTaskManagement,
+    ).toBe(2);
   });
 
   it("counts turns since last reminder marker correctly", () => {

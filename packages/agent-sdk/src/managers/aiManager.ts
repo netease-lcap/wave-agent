@@ -23,7 +23,11 @@ import {
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import * as path from "node:path";
-import { EDIT_TOOL_NAME, WRITE_TOOL_NAME } from "../constants/tools.js";
+import {
+  EDIT_TOOL_NAME,
+  TASK_UPDATE_TOOL_NAME,
+  WRITE_TOOL_NAME,
+} from "../constants/tools.js";
 import type {
   GatewayConfig,
   ModelConfig,
@@ -513,10 +517,24 @@ export class AIManager {
   }
 
   private async maybeGetTaskReminderText(
-    toolNames: Set<string>,
+    declaredToolNames: Set<string>,
   ): Promise<string | null> {
-    // Guard: no task tools available
-    if (!toolNames.has("TaskUpdate")) return null;
+    // Guard: no task tools available. Reachability, not declaration — a deferred
+    // tool is absent from `tools[]` yet callable from the sandbox, so reading the
+    // declarations alone would silence the reminder for every pooled tool (see
+    // `docs/specs/core/exec-tool.md`). The channel is optional, same as the catalog
+    // announcement's guard: a host or test double without it means "no sandbox",
+    // not "the pool is gone".
+    const sandboxToolNames =
+      typeof this.toolManager?.getOnDemandToolNames === "function"
+        ? (this.toolManager.getOnDemandToolNames() ?? [])
+        : [];
+    if (
+      !declaredToolNames.has(TASK_UPDATE_TOOL_NAME) &&
+      !sandboxToolNames.includes(TASK_UPDATE_TOOL_NAME)
+    ) {
+      return null;
+    }
 
     const internalMessages = this.messageManager.getMessages();
     const turnCounts = getTaskReminderTurnCounts(internalMessages);
@@ -2666,6 +2684,7 @@ ${question}`;
         backgroundTaskId: toolResult.backgroundTaskId,
         backgroundedByUser: toolResult.backgroundedByUser,
         assistantAutoBackgrounded: toolResult.assistantAutoBackgrounded,
+        nestedToolCalls: toolResult.nestedToolCalls,
         startLineNumber: toolResult.startLineNumber,
         images: toolImages,
         timestamp: Date.now(),
