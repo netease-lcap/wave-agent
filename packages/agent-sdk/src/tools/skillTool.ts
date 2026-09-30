@@ -39,6 +39,34 @@ export const skillTool: ToolPlugin = {
     },
   },
 
+  leanPrompt: (args?: {
+    availableSkills?: SkillMetadata[];
+    isSubagent?: boolean;
+  }) => {
+    let availableSkills = args?.availableSkills?.filter(
+      (skill) => !skill.disableModelInvocation,
+    );
+
+    if (args?.isSubagent) {
+      availableSkills = availableSkills?.filter(
+        (skill) => skill.context !== "fork",
+      );
+    }
+
+    const base = `Execute a skill within the main conversation. Do not invoke the same skill repeatedly if it has already been called with the same arguments.`;
+
+    if (!availableSkills || availableSkills.length === 0) {
+      return `${base} No skills are currently available.`;
+    }
+
+    const skillList = availableSkills
+      .map(
+        (skill) => `• **${skill.name}** (${skill.type}): ${skill.description}`,
+      )
+      .join("\n");
+
+    return `${base}\n\nAvailable skills:\n${skillList}`;
+  },
   prompt: (args?: {
     availableSkills?: SkillMetadata[];
     isSubagent?: boolean;

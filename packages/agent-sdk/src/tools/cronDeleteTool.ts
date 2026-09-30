@@ -26,6 +26,7 @@ export const cronDeleteTool: ToolPlugin = {
       },
     },
   },
+  leanPrompt: `Cancel a cron job previously scheduled with CronCreate, removing it from both the session store and durable storage.`,
   prompt: () => CRON_DELETE_PROMPT,
   execute: async (
     args: Record<string, unknown>,

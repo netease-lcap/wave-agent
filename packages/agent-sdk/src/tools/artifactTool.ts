@@ -1174,6 +1174,12 @@ async function copyFromAction(
 export const artifactTool: ToolPlugin = {
   name: ARTIFACT_TOOL_NAME,
   searchHint: "publish local HTML or Markdown as a shareable web page",
+  leanPrompt: `Publish local HTML or Markdown files as shareable web pages, read them back, list them, and manage their assets. Only .html and .md files are supported; Markdown is rendered to HTML.
+
+- \`publish\` (default): publish \`file_path\` and return a private URL. Pass \`url\` to redeploy an existing artifact, and \`force\` to overwrite one changed elsewhere.
+- \`read\`: return the content of the artifact at \`url\`; \`prompt\` steers what comes back for artifacts shared by someone else.
+- \`list\`: enumerate artifacts by \`scope\` ("mine" default, "shared", or "all").
+- Asset actions take the artifact as \`url\`: \`upload_asset\` (+ \`file_path\`), \`list_assets\`, \`read_asset\` (+ \`asset_id\`), \`delete_asset\` (+ \`asset_id\`), \`copy_from\` (+ \`from\` + \`asset_ids\`).`,
   isConcurrencySafe: false,
   config: {
     type: "function",

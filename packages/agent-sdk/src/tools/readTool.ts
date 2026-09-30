@@ -165,6 +165,13 @@ Usage:
 - You will regularly be asked to read screenshots. If the user provides a path to a screenshot ALWAYS use this tool to view the file at the path. This tool will work with all temporary file paths like /var/folders/123/abc/T/TemporaryItems/NSIRD_screencaptureui_ZfB1tD/Screenshot.png
 - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
 - Binary document formats (PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX) are not supported and will return an error.`,
+  leanPrompt: `Reads a file from the local filesystem. You can access any file directly by using this tool, and a path the user provides can be assumed valid.
+
+- \`file_path\` must be an absolute path.
+- Reads up to 2000 lines by default; use \`offset\` and \`limit\` for a long file instead of reading all of it.
+- Results come back in \`cat -n\` format, line numbers starting at 1.
+- Reads images (PNG, JPG, …) and presents them visually. Binary document formats (PDF, DOC, DOCX, XLSX, PPT, PPTX) are not supported.
+- Reading a file that exists but is empty returns a system reminder instead of content.`,
   config: {
     type: "function",
     function: {

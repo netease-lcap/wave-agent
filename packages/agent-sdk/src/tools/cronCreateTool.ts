@@ -83,6 +83,14 @@ export const cronCreateTool: ToolPlugin = {
       },
     },
   },
+  leanPrompt: `Schedule a prompt to run at a future time — recurring on a 5-field cron in the user's local timezone, or once with \`recurring: false\`.
+
+- Recurring (default): "*/5 * * * *" (every 5 min), "7 * * * *" (hourly), "3 9 * * 1-5" (weekdays ~9am).
+- One-shot: pin every field, e.g. "30 14 <day-of-month> <month> *" for 2:30pm today; it fires once, then is deleted.
+- Avoid minute 0 and 30 unless the user names that exact time — otherwise every "9am" lands on the same instant.
+- Jobs fire only while the session is idle; recurring jobs auto-expire after ${DEFAULT_MAX_AGE_DAYS} days, with one final fire. Tell the user about that limit.
+- \`durable: true\` persists the job to \`.wave/scheduled_tasks.json\` so it survives restarts.
+Returns a job id you can pass to CronDelete.`,
   prompt: () => CRON_CREATE_PROMPT,
   execute: async (
     args: Record<string, unknown>,

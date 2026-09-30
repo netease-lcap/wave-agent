@@ -99,6 +99,13 @@ export const bashTool: ToolPlugin = {
       },
     },
   },
+  leanPrompt: `Executes a bash command and returns its output. Each invocation runs in a fresh shell process starting from the project root, and the working directory persists between calls — prefer absolute paths over \`cd\`.
+
+- IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. Avoid running \`find\`, \`grep\`, \`cat\`, \`head\`, \`tail\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the dedicated tool — it gives the user a much better experience.
+- \`timeout\` is in milliseconds: default ${BASH_DEFAULT_TIMEOUT_MS} (${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes), max ${BASH_MAX_TIMEOUT_MS} (${BASH_MAX_TIMEOUT_MS / 60000} minutes).
+- \`run_in_background\` runs the command detached so you can keep working; you are notified when it finishes. No \`&\` needed.
+- Output over ${BASH_MAX_OUTPUT_CHARS.toLocaleString()} characters is truncated and persisted to a file you can read with the ${READ_TOOL_NAME} tool.
+- Independent commands go in parallel tool calls in one message; dependent ones chain with \`&&\`.`,
   prompt: () => `
 Executes a given bash command with optional timeout, ensuring proper handling and security measures. Each invocation runs in a fresh shell process starting from the project root.
 

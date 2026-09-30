@@ -1588,6 +1588,8 @@ export function loadWaveConfigFromFile(
         config.enableArtifact !== undefined ? config.enableArtifact : undefined,
       enableExec:
         config.enableExec !== undefined ? config.enableExec : undefined,
+      leanPrompt:
+        config.leanPrompt !== undefined ? config.leanPrompt : undefined,
       nonDeferrableBuiltins: Array.isArray(config.nonDeferrableBuiltins)
         ? config.nonDeferrableBuiltins.filter(
             (name): name is string => typeof name === "string",
@@ -1771,6 +1773,11 @@ export function loadMergedWaveConfig(
       mergedConfig.enableExec = config.enableExec;
     }
 
+    // Merge leanPrompt (last one wins)
+    if (config.leanPrompt !== undefined) {
+      mergedConfig.leanPrompt = config.leanPrompt;
+    }
+
     // Merge nonDeferrableBuiltins (last one wins; a higher-precedence file
     // replaces the list rather than appending to it, so an admin push can also
     // *shrink* it)
@@ -1826,6 +1833,7 @@ export function loadMergedWaveConfig(
     worktree: mergedConfig.worktree,
     enableArtifact: mergedConfig.enableArtifact,
     enableExec: mergedConfig.enableExec,
+    leanPrompt: mergedConfig.leanPrompt,
     nonDeferrableBuiltins: mergedConfig.nonDeferrableBuiltins,
   };
 }

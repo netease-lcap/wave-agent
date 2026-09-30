@@ -65,6 +65,7 @@ import { AsyncWorkRegistry } from "../utils/asyncWorkRegistry.js";
 import type { WorktreeSession } from "../utils/worktreeSession.js";
 import { recoverTruncatedJson } from "../utils/stringUtils.js";
 import { ConfigurationService } from "../services/configurationService.js";
+import { isLeanPromptEnabled } from "../services/leanPrompt.js";
 import type { MessageQueue } from "./messageQueue.js";
 import { logger } from "../utils/globalLogger.js";
 import {
@@ -888,6 +889,7 @@ export class AIManager {
       additionalWorkingDirectories:
         this.permissionManager?.getEffectiveAdditionalDirectories?.() ?? [],
       autoMemory: autoMemoryOptions,
+      leanPrompt: isLeanPromptEnabled(this.getWorkdir()),
     });
   }
 

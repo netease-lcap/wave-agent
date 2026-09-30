@@ -2,6 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   buildSystemPrompt,
   DEFAULT_SYSTEM_PROMPT,
+  DOING_TASKS_PROMPT,
+  LEAN_SYSTEM_PROMPT,
+  OUTPUT_EFFICIENCY_PROMPT,
+  TONE_AND_STYLE_PROMPT,
   TOOL_POLICY,
   type SystemPromptBlock,
 } from "../../src/prompts/index.js";
@@ -60,5 +64,35 @@ describe("buildSystemPrompt", () => {
 
     expect(prompt).not.toContain("<mcp_instructions>");
     expect(prompt).not.toContain("mcp-instructions");
+  });
+
+  it("replaces every static section with the lean block when leanPrompt is on", () => {
+    const tools = [
+      {
+        name: READ_TOOL_NAME,
+        prompt: () => "Read for reading files",
+      } as unknown as ToolPlugin,
+    ];
+    const prompt = flattenBlocks(
+      buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, tools, { leanPrompt: true }),
+    );
+
+    expect(prompt).toContain(LEAN_SYSTEM_PROMPT);
+    // The identity line is the base prompt and survives in either mode.
+    expect(prompt).toContain(DEFAULT_SYSTEM_PROMPT);
+    expect(prompt).not.toContain(DOING_TASKS_PROMPT);
+    expect(prompt).not.toContain(TOOL_POLICY);
+    expect(prompt).not.toContain(OUTPUT_EFFICIENCY_PROMPT);
+    expect(prompt).not.toContain(TONE_AND_STYLE_PROMPT);
+  });
+
+  it("keeps the full static sections when leanPrompt is off", () => {
+    const prompt = flattenBlocks(
+      buildSystemPrompt(DEFAULT_SYSTEM_PROMPT, [], { leanPrompt: false }),
+    );
+
+    expect(prompt).toContain(DOING_TASKS_PROMPT);
+    expect(prompt).toContain(TONE_AND_STYLE_PROMPT);
+    expect(prompt).not.toContain(LEAN_SYSTEM_PROMPT);
   });
 });

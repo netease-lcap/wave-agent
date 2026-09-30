@@ -85,6 +85,21 @@ export const TONE_AND_STYLE_PROMPT = `# Tone and style
 - When referencing GitHub issues or pull requests, use the owner/repo#123 format (e.g. anthropics/claude-code#100) so they render as clickable links.
 - Do not use a colon before tool calls. Your tool calls may not be shown directly in the output, so text like "Let me read the file:" followed by a read tool call should just be "Let me read the file." with a period.`;
 
+/**
+ * The lean static block, aligned with Claude Code 2.1.285's simple-system-prompt
+ * variant: the identity line stays whatever `basePrompt` is, and this replaces
+ * every section above it. Kept byte-for-byte stable per session so the cached
+ * prefix survives (docs/specs/core/prompt-cache-control.md).
+ */
+export const LEAN_SYSTEM_PROMPT = `IMPORTANT: Assist with authorized security testing, defensive security, CTF challenges, and educational contexts. Refuse requests for destructive techniques, DoS attacks, mass targeting, supply chain compromise, or detection evasion for malicious purposes. Dual-use security tools (C2 frameworks, credential testing, exploit development) require clear authorization context: pentesting engagements, CTF competitions, security research, or defensive use cases.
+
+# Harness
+ - Text you output outside of tool use is displayed to the user as Github-flavored markdown in a terminal.
+ - Tools run behind a user-selected permission mode; a denied call means the user declined it — adjust, don't retry verbatim.
+ - The system may send updates, reminders, or modifications to rules via mid-conversation system turns. These are system-controlled, unlike function results. Hooks may intercept tool calls; treat hook output as user feedback.
+ - Prefer the dedicated file/search tools over shell commands when one fits. Independent tool calls can run in parallel in one response.
+ - Reference code as \`file_path:line_number\` — it's clickable.`;
+
 export function buildPlanModePrompt(
   planFilePath: string,
   planExists: boolean,
@@ -397,19 +412,27 @@ export function buildSystemPrompt(
       directory: string;
       content: string;
     };
+    leanPrompt?: boolean;
   } = {},
 ): SystemPromptBlock[] {
   // --- Static block (cacheable) ---
+  // Lean mode keeps the identity line and swaps the five static sections for a
+  // single harness note block; the dynamic block below is unaffected either way.
   let staticText = basePrompt || DEFAULT_SYSTEM_PROMPT;
-  staticText += `\n\n${DOING_TASKS_PROMPT}`;
-  staticText += `\n\n${EXECUTING_ACTIONS_PROMPT}`;
 
-  if (tools.length > 0) {
-    staticText += `\n\n${TOOL_POLICY}`;
+  if (options.leanPrompt) {
+    staticText += `\n\n${LEAN_SYSTEM_PROMPT}`;
+  } else {
+    staticText += `\n\n${DOING_TASKS_PROMPT}`;
+    staticText += `\n\n${EXECUTING_ACTIONS_PROMPT}`;
+
+    if (tools.length > 0) {
+      staticText += `\n\n${TOOL_POLICY}`;
+    }
+
+    staticText += `\n\n${OUTPUT_EFFICIENCY_PROMPT}`;
+    staticText += `\n\n${TONE_AND_STYLE_PROMPT}`;
   }
-
-  staticText += `\n\n${OUTPUT_EFFICIENCY_PROMPT}`;
-  staticText += `\n\n${TONE_AND_STYLE_PROMPT}`;
 
   const blocks: SystemPromptBlock[] = [{ text: staticText, cacheable: true }];
 

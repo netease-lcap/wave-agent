@@ -28,6 +28,7 @@ export const taskStopTool: ToolPlugin = {
 - Returns a success or failure status
 - Use this tool when you need to terminate a long-running task
 `,
+  leanPrompt: `Stops a running background task by its \`task_id\`.`,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,

@@ -37,6 +37,11 @@ Usage:
 - Use the smallest \`old_string\` that's clearly unique — usually 2-4 adjacent lines is sufficient. Avoid including 10+ lines of context when less uniquely identifies the target. Shorter matches are less likely to contain reproduction errors.
 - The edit will FAIL if \`old_string\` is not unique in the file. Either provide a larger string with more surrounding context to make it unique or use \`replace_all\` to change every instance of \`old_string\`. 
 - Use \`replace_all\` for replacing and renaming strings across the file. This parameter is useful if you want to rename a variable for instance.`,
+  leanPrompt: `Performs exact string replacement in a file.
+
+- You must ${READ_TOOL_NAME} the file in this conversation before editing, or the call will fail.
+- \`old_string\` must match the file exactly, including indentation, and be unique — the edit fails otherwise. Strip the Read line prefix (spaces + line number + tab) before matching.
+- \`replace_all: true\` replaces every occurrence instead.`,
   config: {
     type: "function",
     function: {

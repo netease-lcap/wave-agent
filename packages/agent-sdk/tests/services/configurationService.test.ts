@@ -1527,6 +1527,39 @@ describe("ConfigurationService", () => {
     });
   });
 
+  describe("loadMergedWaveConfig — leanPrompt field", () => {
+    it("should propagate leanPrompt from project settings", () => {
+      const userSettingsPath = path.join(userHome, ".wave", "settings.json");
+      const projectSettingsPath = path.join(tempDir, ".wave", "settings.json");
+
+      mockExistsSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        return [userSettingsPath, projectSettingsPath].some((expected) =>
+          pathStr.includes(expected),
+        );
+      });
+
+      mockReadFileSync.mockImplementation((p) => {
+        const pathStr = p.toString();
+        if (pathStr.includes(userSettingsPath)) return JSON.stringify({});
+        if (pathStr.includes(projectSettingsPath))
+          return JSON.stringify({ leanPrompt: true });
+        return "";
+      });
+
+      // The file loader rebuilds a whitelist object, so a field it forgets to
+      // copy reads as "unset" no matter what the file says — the switch would
+      // then silently never turn on.
+      expect(loadMergedWaveConfig(tempDir)?.leanPrompt).toBe(true);
+    });
+
+    it("should keep leanPrompt unset when no file sets it", () => {
+      mockExistsSync.mockReturnValue(false);
+
+      expect(loadMergedWaveConfig(tempDir)?.leanPrompt).toBeUndefined();
+    });
+  });
+
   describe("loadWaveConfigFromFile — read tolerance", () => {
     it("should return null for empty file (not throw)", () => {
       const configPath = path.join(tempDir, "settings.json");

@@ -68,6 +68,15 @@ export interface WaveConfiguration {
   /** Whether the Exec tool is enabled. Unset follows the code default constant (EXEC_DEFAULT_ENABLED). */
   enableExec?: boolean;
   /**
+   * Whether to send the lean (condensed) prompt set: the static system prompt
+   * collapses to the identity line plus the harness notes, and every built-in
+   * tool that declares `leanPrompt` sends that text instead of its full
+   * description. Text only — the tool set, parameter schemas, permission
+   * decisions and every runtime behaviour stay identical.
+   * Unset follows the code default constant (LEAN_PROMPT_DEFAULT_ENABLED).
+   */
+  leanPrompt?: boolean;
+  /**
    * Built-in tool names that must stay declared flat instead of being loaded on
    * demand (the "do not defer" override, aligned with Claude Code's
    * `non_deferrable_builtins`). Unioned with the structural floor
