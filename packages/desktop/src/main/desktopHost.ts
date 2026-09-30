@@ -82,7 +82,6 @@ import type {
   AccountApiQuotaInfo,
 } from "wave-webview-fixtures";
 import type { ChildProcess } from "child_process";
-import { getWorkspaceDiff } from "./gitDiff";
 import { TerminalManager } from "./terminal";
 import { PortForwardManager, type AuthCallbackForward } from "./portForward";
 import { HtmlPreviewServer } from "./htmlPreviewServer";
@@ -3546,18 +3545,32 @@ export class DesktopHost {
         );
         break;
 
-      // Read-only workspace diff for the diff panel — runs git directly in
-      // the main process rather than via the stdio CLI (large output, and
-      // the CLI has no reusable implementation). Remote sessions run the git
-      // and file reads over ssh (spec scenario 14).
+      // Read-only workspace diff for the diff panel. Answered by the CLI on
+      // the host that owns the repository — the same RPC the other git
+      // queries use, so a remote session does the work in its remote daemon
+      // instead of the desktop shelling out over ssh once per git command and
+      // once per changed file (spec desktop-sessions.md scenario 14).
       case "desktopGetWorkspaceDiff": {
         const paneAgent = this.agentForPane(pid);
+        const host = this.hostForAgent(paneAgent);
         const cwd = paneAgent?.workingDirectory ?? this.workdir;
-        const result = cwd
-          ? await getWorkspaceDiff(cwd, this.hostForAgent(paneAgent), {
-              commit: msg.commit as string | undefined,
-            })
-          : ({ kind: "not-a-repo" } as const);
+        const commit = msg.commit as string | undefined;
+        let result: unknown = { kind: "not-a-repo" };
+        if (cwd) {
+          try {
+            // A fresh launch's first query can land before the client exists.
+            await this.ensureClientFor(host);
+            result = await this.utilityClientFor(host).request(
+              "getWorkspaceDiff",
+              commit ? { workdir: cwd, commit } : { workdir: cwd },
+            );
+          } catch {
+            // Host unreachable / daemon gone / not a repo — the panel falls
+            // back to its "非 git 仓库" placeholder, exactly as it did when the
+            // main process ran git itself.
+            result = { kind: "not-a-repo" };
+          }
+        }
         this.postMessage({
           command: "desktopWorkspaceDiff",
           paneId: pid,

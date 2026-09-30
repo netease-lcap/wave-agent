@@ -1,12 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import * as fs from "fs";
-import * as path from "path";
-import { getWorkspaceDiff, MAX_DIFF_LINES } from "../src/main/gitDiff";
-import type { WorkspaceDiffResult } from "../src/main/gitDiff";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import {
+  getWorkspaceDiff,
+  MAX_DIFF_LINES,
+} from "../../src/utils/workspaceDiff.js";
+import type { WorkspaceDiffResult } from "../../src/utils/workspaceDiff.js";
 
 /**
- * gitDiff shells out via `promisify(execFile)` bound at module load. The mock
- * therefore implements the promisify-custom signature (resolved value =
+ * workspaceDiff shells out via `promisify(execFile)` bound at module load. The
+ * mock therefore implements the promisify-custom signature (resolved value =
  * { stdout }) and dispatches on the git args that follow `-C <cwd>`.
  */
 
@@ -15,78 +18,42 @@ const h = vi.hoisted(() => ({
   gitHandler: (args: string[]): string => {
     throw new Error(`git not stubbed: ${args.join(" ")}`);
   },
-  // Every git invocation (local or via ssh), in order — lets tests assert on
-  // what was NOT called (no patch for binaries, no ls-files for one commit).
+  // Every git invocation, in order — lets tests assert on what was NOT called
+  // (no patch for binaries, no ls-files for one commit).
   gitCommands: [] as string[],
-  // Receives the ssh argv (base options + host + remote command); dispatches
-  // stat/cat/git commands and records every remote command issued.
-  sshHandler: (args: string[]): string | Buffer => {
-    throw new Error(`ssh not stubbed: ${args.join(" ")}`);
-  },
-  sshCommands: [] as string[],
-  // Remote untracked-file fixtures, keyed by absolute remote path.
-  remoteFiles: {} as Record<string, { size: number; content: Buffer }>,
+  // Whole-tree `git diff <rev>` calls (no pathspec) and per-file fallback
+  // calls (pathspec after `--`), recorded separately so a test can tell which
+  // path the hunks actually came from.
+  wholeTreeCalls: [] as string[],
+  perFileCalls: [] as string[],
   // Untracked-file fs stubs.
   statResult: null as null | { isFile: boolean; size: number },
   fileContent: null as null | Buffer,
 }));
 
-/** Unwrap a shellQuote'd token (single quotes, no embedded quotes in fixtures). */
-function unquote(t: string): string {
-  return t.length >= 2 && t.startsWith("'") && t.endsWith("'")
-    ? t.slice(1, -1)
-    : t;
-}
-
-/**
- * Default ssh dispatcher: records the remote command, then routes it like the
- * real implementation — `stat -c %s` → size, `cat` → content bytes, and
- * `git -C <cwd> …` → the git handler (reconstructed as local git args).
- */
-function defaultSshHandler(args: string[]): string | Buffer {
-  const remoteCmd = args[args.length - 1];
-  h.sshCommands.push(remoteCmd);
-  const statM = /^stat -c %s (.+)$/.exec(remoteCmd);
-  if (statM) {
-    const f = h.remoteFiles[unquote(statM[1])];
-    if (!f) throw new Error(`stat: cannot stat ${statM[1]}`);
-    return String(f.size);
-  }
-  const catM = /^cat (.+)$/.exec(remoteCmd);
-  if (catM) {
-    const f = h.remoteFiles[unquote(catM[1])];
-    if (!f) throw new Error(`cat: ${catM[1]}: No such file or directory`);
-    return f.content;
-  }
-  const gitM = /^git -C '([^']*)' (.*)$/.exec(remoteCmd);
-  if (gitM) {
-    const gitArgs = gitM[2].split(" ").map(unquote);
-    return h.gitHandler(gitArgs);
-  }
-  throw new Error(`unexpected ssh command: ${remoteCmd}`);
-}
-
-vi.mock("child_process", async () => {
-  const { promisify } = await import("util");
+vi.mock("node:child_process", async () => {
+  const { promisify } = await import("node:util");
   const execFileMock = Object.assign(vi.fn(), {
     [promisify.custom]: (file: string, args: string[]) => {
-      if (file === "ssh")
-        return Promise.resolve({ stdout: h.sshHandler(args) });
+      // The diff service always shells out to git — never ssh. It runs on the
+      // host that owns the repository (spec desktop-sessions.md scenario 14).
+      if (file !== "git") throw new Error(`unexpected executable: ${file}`);
       return Promise.resolve({ stdout: h.gitHandler(args.slice(2)) });
     },
   });
   return { execFile: execFileMock };
 });
 
-vi.mock("fs", async () => {
-  const actual = await vi.importActual<typeof import("fs")>("fs");
+vi.mock("node:fs", async () => {
+  const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
   return {
     ...actual,
     promises: {
       ...actual.promises,
       stat: vi.fn(async () => {
-        if (!h.statResult) throw new Error("ENOENT");
-        return { isFile: () => h.statResult.isFile, size: h.statResult.size };
+        const stat = h.statResult;
+        if (!stat) throw new Error("ENOENT");
+        return { isFile: () => stat.isFile, size: stat.size };
       }),
       readFile: vi.fn(async () => {
         if (!h.fileContent) throw new Error("ENOENT");
@@ -118,10 +85,22 @@ interface StubMap {
   untracked?: string;
   /** `log …` records. */
   log?: string;
-  /** Per-file patches, keyed by the joined pathspec. */
+  /** The single whole-tree `git diff` output. */
+  wholeTreePatch?: string;
+  /** Per-file patches, keyed by the joined pathspec (fallback path only). */
   patch?: Record<string, string>;
   /** `rev-parse --show-toplevel`. */
   toplevel?: string;
+}
+
+/** The whole-tree patch call: `git diff <rev>` with no pathspec and no `--name-status`/`--numstat`. */
+function isWholeTreeDiff(args: string[]): boolean {
+  return (
+    args[0] === "diff" &&
+    !args.includes("--name-status") &&
+    !args.includes("--numstat") &&
+    !args.includes("--")
+  );
 }
 
 /**
@@ -178,7 +157,14 @@ function stubGit(map: StubMap = {}) {
     if (args[0] === "diff") {
       if (args.includes("--name-status")) return map.nameStatus ?? "";
       if (args.includes("--numstat")) return map.numstat ?? "";
-      const paths = args.slice(args.indexOf("--") + 1).join(" ");
+      const sep = args.indexOf("--");
+      // No pathspec → the whole-tree patch every file's hunks come from.
+      if (isWholeTreeDiff(args)) {
+        h.wholeTreeCalls.push(key);
+        return map.wholeTreePatch ?? "";
+      }
+      const paths = args.slice(sep + 1).join(" ");
+      h.perFileCalls.push(paths);
       return map.patch?.[paths] ?? "";
     }
     throw new Error(`unexpected git args: ${key}`);
@@ -188,23 +174,26 @@ function stubGit(map: StubMap = {}) {
 /** Successful result or a loud failure (keeps each test free of narrowing). */
 async function ok(
   cwd = CWD,
-  host?: string,
   options?: { commit?: string },
 ): Promise<Extract<WorkspaceDiffResult, { kind: "ok" }>> {
-  const result = await getWorkspaceDiff(cwd, host, options);
+  const result = await getWorkspaceDiff(cwd, options);
   if (result.kind !== "ok")
     throw new Error(`expected an ok result, got ${result.kind}`);
   return result;
+}
+
+/** Two files' worth of one `git diff <rev>` output, blocks in path order. */
+function wholeTree(...blocks: string[]): string {
+  return blocks.join("\n");
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
   h.statResult = null;
   h.fileContent = null;
-  h.sshCommands = [];
   h.gitCommands = [];
-  h.remoteFiles = {};
-  h.sshHandler = defaultSshHandler;
+  h.wholeTreeCalls = [];
+  h.perFileCalls = [];
 });
 
 describe("getWorkspaceDiff", () => {
@@ -220,14 +209,16 @@ describe("getWorkspaceDiff", () => {
     const result = await ok();
     expect(result.files).toEqual([]);
     expect(result.scope).toEqual({ kind: "all" });
+    // Nothing changed → no patch is worth fetching at all.
+    expect(h.wholeTreeCalls).toEqual([]);
   });
 
-  it("parses a modified tracked file with numstat and hunks from the first @@", async () => {
+  it("takes every changed file's hunks from ONE whole-tree diff", async () => {
     stubGit({
-      nameStatus: "M\0src/a.ts\0",
-      numstat: "3\t1\tsrc/a.ts\0",
-      patch: {
-        "src/a.ts": [
+      nameStatus: "M\0src/a.ts\0M\0src/b.ts\0",
+      numstat: "3\t1\tsrc/a.ts\u00002\t0\tsrc/b.ts\u0000",
+      wholeTreePatch: wholeTree(
+        [
           "diff --git a/src/a.ts b/src/a.ts",
           "index 111..222 100644",
           "--- a/src/a.ts",
@@ -239,7 +230,10 @@ describe("getWorkspaceDiff", () => {
           "+new2",
           "+new3",
         ].join("\n"),
-      },
+        ["diff --git a/src/b.ts b/src/b.ts", "@@ -1 +1,3 @@", "+x", "+y"].join(
+          "\n",
+        ),
+      ),
     });
     const result = await ok();
     expect(result.files).toEqual([
@@ -253,7 +247,91 @@ describe("getWorkspaceDiff", () => {
         truncated: false,
         binary: false,
       },
+      {
+        path: "src/b.ts",
+        status: "modified",
+        oldPath: undefined,
+        additions: 2,
+        deletions: 0,
+        hunks: "@@ -1 +1,3 @@\n+x\n+y",
+        truncated: false,
+        binary: false,
+      },
     ]);
+    // One git process for both files — the whole point of the change.
+    expect(h.wholeTreeCalls).toHaveLength(1);
+    expect(h.perFileCalls).toEqual([]);
+  });
+
+  it("matches a renamed file's block by its old→new header", async () => {
+    stubGit({
+      nameStatus: "R100\0src/old.ts\0src/new.ts\0",
+      numstat: "1\t2\t\0src/old.ts\0src/new.ts\0",
+      wholeTreePatch: wholeTree(
+        [
+          "diff --git a/src/old.ts b/src/new.ts",
+          "similarity index 80%",
+          "rename from src/old.ts",
+          "rename to src/new.ts",
+          "--- a/src/old.ts",
+          "+++ b/src/new.ts",
+          "@@ -1,2 +1,2 @@",
+          "-before",
+          "+after",
+        ].join("\n"),
+      ),
+    });
+    const result = await ok();
+    expect(result.files).toEqual([
+      {
+        path: "src/new.ts",
+        oldPath: "src/old.ts",
+        status: "renamed",
+        additions: 1,
+        deletions: 2,
+        hunks: "@@ -1,2 +1,2 @@\n-before\n+after",
+        truncated: false,
+        binary: false,
+      },
+    ]);
+    expect(h.perFileCalls).toEqual([]);
+  });
+
+  it("re-fetches per file when the whole-tree header does not match", async () => {
+    // git quotes paths in the `diff --git` header (`core.quotePath`), so the
+    // index misses them: the per-file call covers the gap rather than leaving
+    // the file with no hunks at all.
+    stubGit({
+      nameStatus: "M\0中文.ts\0",
+      numstat: "1\t0\t中文.ts\0",
+      wholeTreePatch: 'diff --git "a/中文.ts" "b/中文.ts"\n@@ -1 +1 @@\n+x',
+      patch: { "中文.ts": "@@ -1 +1 @@\n+y" },
+    });
+    const result = await ok();
+    expect(result.files[0].hunks).toBe("@@ -1 +1 @@\n+y");
+    // Both paths must be passed: limiting the pathspec to the new path turns
+    // rename detection off, and the patch then reads as a full file rewrite.
+    expect(h.perFileCalls).toEqual(["中文.ts"]);
+  });
+
+  it("falls back per file when the whole-tree diff fails outright", async () => {
+    // A whole-tree patch past maxBuffer makes execFile reject, which the
+    // whole-tree fetch swallows — the per-file calls are then the safety net
+    // rather than an empty panel.
+    stubGit({
+      nameStatus: "M\0src/a.ts\0",
+      numstat: "1\t0\tsrc/a.ts\0",
+      patch: { "src/a.ts": "@@ -1 +1,2 @@\n ctx\n+added" },
+    });
+    const inner = h.gitHandler;
+    h.gitHandler = (args) => {
+      if (isWholeTreeDiff(args))
+        throw new Error("stdout maxBuffer length exceeded");
+      return inner(args);
+    };
+    const result = await ok();
+    expect(result.files[0].hunks).toBe("@@ -1 +1,2 @@\n ctx\n+added");
+    expect(h.perFileCalls).toEqual(["src/a.ts"]);
   });
 
   it('marks binary tracked files from "-" numstat and skips the patch call', async () => {
@@ -264,7 +342,7 @@ describe("getWorkspaceDiff", () => {
       binary: true,
       hunks: "",
     });
-    expect(h.gitCommands.some((c) => c.includes(" -- img.png"))).toBe(false);
+    expect(h.perFileCalls).toEqual([]);
   });
 
   it("reads a rename's OLD path first and the NEW path second", async () => {
@@ -277,9 +355,6 @@ describe("getWorkspaceDiff", () => {
       patch: {
         "src/old.ts src/new.ts": [
           "diff --git a/src/old.ts b/src/new.ts",
-          "similarity index 80%",
-          "rename from src/old.ts",
-          "rename to src/new.ts",
           "@@ -1,2 +1,2 @@",
           "-before",
           "+after",
@@ -300,13 +375,11 @@ describe("getWorkspaceDiff", () => {
       },
     ]);
     // Both pathspecs are passed: the new path alone disables rename detection.
-    expect(
-      h.gitCommands.some((c) => c.endsWith("-- src/old.ts src/new.ts")),
-    ).toBe(true);
+    expect(h.perFileCalls).toEqual(["src/old.ts src/new.ts"]);
   });
 
   it("skips the patch call for a file with no net change", async () => {
-    // A pure rename: no hunks to fetch, so the extra git call is wasted.
+    // A pure rename: no hunks to fetch, so no lookup is worth doing at all.
     stubGit({
       nameStatus: "R100\0src/old.ts\0src/new.ts\0",
       numstat: "0\t0\t\0src/old.ts\0src/new.ts\0",
@@ -320,7 +393,8 @@ describe("getWorkspaceDiff", () => {
       deletions: 0,
       hunks: "",
     });
-    expect(h.gitCommands.some((c) => c.endsWith("src/new.ts"))).toBe(false);
+    expect(h.perFileCalls).toEqual([]);
+    expect(h.wholeTreeCalls).toHaveLength(1);
   });
 
   it("diffs against --cached when the repo has no HEAD commit", async () => {
@@ -426,7 +500,9 @@ describe("getWorkspaceDiff", () => {
     stubGit({
       nameStatus: "M\0big.ts\0",
       numstat: `${MAX_DIFF_LINES + 50}\t0\tbig.ts\0`,
-      patch: { "big.ts": body.join("\n") },
+      wholeTreePatch: wholeTree(
+        ["diff --git a/big.ts b/big.ts", ...body].join("\n"),
+      ),
     });
     const result = await ok();
     expect(result.files[0].truncated).toBe(true);
@@ -543,11 +619,16 @@ describe("getWorkspaceDiff", () => {
       nameStatus: "M\0src/a.ts\0",
       numstat: "2\t1\tsrc/a.ts\0",
       untracked: "notes.txt\0",
-      patch: {
-        "src/a.ts": "@@ -1,1 +1,2 @@\n ctx\n+added",
-      },
+      wholeTreePatch: wholeTree(
+        [
+          "diff --git a/src/a.ts b/src/a.ts",
+          "@@ -1,1 +1,2 @@",
+          " ctx",
+          "+added",
+        ].join("\n"),
+      ),
     });
-    const result = await ok(CWD, undefined, { commit: sha });
+    const result = await ok(CWD, { commit: sha });
     expect(result.scope).toEqual({
       kind: "commit",
       sha,
@@ -569,109 +650,11 @@ describe("getWorkspaceDiff", () => {
       nameStatus: "M\0src/a.ts\0",
       numstat: "2\t1\tsrc/a.ts\0",
     });
-    const result = await ok(CWD, undefined, {
+    const result = await ok(CWD, {
       commit: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     });
     expect(result.scope).toEqual({ kind: "all" });
     for (const call of h.gitCommands.filter((c) => c.startsWith("diff ")))
       expect(call).toContain("base123");
-  });
-
-  // -- remote hosts (spec scenario 14) --------------------------------------
-
-  it("runs git over ssh for remote hosts with the quoted remote cwd", async () => {
-    stubGit({
-      nameStatus: "M\0src/a.ts\0",
-      numstat: "3\t1\tsrc/a.ts\0",
-      patch: {
-        "src/a.ts": [
-          "diff --git a/src/a.ts b/src/a.ts",
-          "@@ -1,2 +1,4 @@",
-          "-old",
-          "+new1",
-          "+new2",
-          "+new3",
-        ].join("\n"),
-      },
-    });
-    const result = await ok("/remote/repo", "myhost");
-    expect(result.files).toEqual([
-      {
-        path: "src/a.ts",
-        status: "modified",
-        oldPath: undefined,
-        additions: 3,
-        deletions: 1,
-        hunks: "@@ -1,2 +1,4 @@\n-old\n+new1\n+new2\n+new3",
-        truncated: false,
-        binary: false,
-      },
-    ]);
-    expect(h.sshCommands[0]).toBe(
-      "git -C '/remote/repo' 'rev-parse' '--is-inside-work-tree'",
-    );
-    // Every git invocation went through ssh, never the local `git` executable.
-    expect(h.sshCommands.length).toBeGreaterThan(0);
-  });
-
-  it("returns not-a-repo when the remote ssh probe fails", async () => {
-    h.sshHandler = () => {
-      throw new Error("Connection refused");
-    };
-    expect(await getWorkspaceDiff("/remote/repo", "dead-host")).toEqual({
-      kind: "not-a-repo",
-    });
-  });
-
-  it("reads remote untracked files via ssh stat + cat", async () => {
-    stubGit({ untracked: "notes.txt\0" });
-    // path.join keeps the fixture key identical to the abs path the source
-    // builds (backslash-separated on Windows, forward-slash on POSIX).
-    const remoteAbs = path.join("/remote/repo", "notes.txt");
-    h.remoteFiles[remoteAbs] = {
-      size: 12,
-      content: Buffer.from("hello\nworld\n"),
-    };
-    const result = await ok("/remote/repo", "myhost");
-    expect(result.files).toEqual([
-      {
-        path: "notes.txt",
-        status: "untracked",
-        oldPath: undefined,
-        additions: 2,
-        deletions: 0,
-        hunks: "+hello\n+world",
-        truncated: false,
-        binary: false,
-      },
-    ]);
-    expect(h.sshCommands).toContain(`stat -c %s '${remoteAbs}'`);
-    expect(h.sshCommands).toContain(`cat '${remoteAbs}'`);
-  });
-
-  it("treats oversized remote untracked files as binary without downloading them", async () => {
-    stubGit({ untracked: "huge.log\0" });
-    h.remoteFiles["/remote/repo/huge.log"] = {
-      size: 3 * 1024 * 1024,
-      content: Buffer.from("x"),
-    };
-    const result = await ok("/remote/repo", "myhost");
-    expect(result.files[0]).toMatchObject({
-      path: "huge.log",
-      binary: true,
-      hunks: "",
-    });
-    expect(h.sshCommands.some((c) => c.startsWith("cat "))).toBe(false);
-  });
-
-  it("keeps a vanished remote untracked file as an unreadable entry", async () => {
-    stubGit({ untracked: "gone.txt\0" });
-    // remoteFiles has no entry → the remote stat rejects.
-    const result = await ok("/remote/repo", "myhost");
-    expect(result.files[0]).toMatchObject({
-      path: "gone.txt",
-      status: "untracked",
-      binary: true,
-    });
   });
 });

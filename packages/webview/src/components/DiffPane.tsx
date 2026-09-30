@@ -23,9 +23,11 @@ export type WorkspaceFileStatus =
   | "renamed"
   | "untracked";
 
-// Contract shapes mirror the host's `packages/desktop/src/main/gitDiff.ts`
-// (the webview is shared by four hosts, so it cannot import from the desktop
-// package — keep the two definitions in sync when the payload changes).
+// Contract shapes mirror the CLI's diff service
+// (`packages/code/src/utils/workspaceDiff.ts`), which answers the desktop's
+// `getWorkspaceDiff` RPC on whichever host owns the repository. The webview is
+// shared by four hosts, so it cannot import that module — keep the two
+// definitions in sync when the payload changes.
 export interface WorkspaceDiffFile {
   path: string;
   status: WorkspaceFileStatus;

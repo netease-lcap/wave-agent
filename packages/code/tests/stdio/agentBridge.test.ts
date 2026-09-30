@@ -23,6 +23,8 @@ import {
   getWorktreeChanges,
   removeWorktree,
 } from "../../src/utils/worktree.js";
+import { getWorkspaceDiff } from "../../src/utils/workspaceDiff.js";
+import type { WorkspaceDiffResult } from "../../src/utils/workspaceDiff.js";
 
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
@@ -39,6 +41,13 @@ vi.mock("../../src/utils/worktree.js", () => ({
   createWorktree: vi.fn(),
   getWorktreeChanges: vi.fn(),
   removeWorktree: vi.fn(),
+}));
+
+// The diff service shells out to real git; the bridge only has to pass the
+// workdir/commit through, so the service itself is stubbed here and covered by
+// tests/utils/workspaceDiff.test.ts + its real-git integration suite.
+vi.mock("../../src/utils/workspaceDiff.js", () => ({
+  getWorkspaceDiff: vi.fn(),
 }));
 
 // writeArtifactFile writes into the artifacts dir on the machine where the
@@ -3149,6 +3158,56 @@ test("listGitBranches returns an empty list when the repo has no refs", async ()
 
   expect(result.branches).toEqual([]);
   expect(result.current).toBe("main");
+});
+
+// ── getWorkspaceDiff ───────────────────────────────────────────
+
+test("getWorkspaceDiff computes the diff in this CLI's process", async () => {
+  const { bridge } = createBridge();
+  const payload = {
+    kind: "ok",
+    base: {
+      label: "origin/main",
+      sha: "base123",
+      kind: "default-branch",
+      ref: "refs/remotes/origin/main",
+    },
+    scope: { kind: "all" },
+    commits: [],
+    files: [],
+  };
+  vi.mocked(getWorkspaceDiff).mockResolvedValue(
+    payload as unknown as WorkspaceDiffResult,
+  );
+
+  const result = await bridge.handleRequest("getWorkspaceDiff", {
+    workdir: "/repo",
+  });
+
+  expect(result).toEqual(payload);
+  // The CLI does the work itself — for a remote session that is the remote
+  // daemon, so the desktop never shells out to ssh for the panel.
+  expect(getWorkspaceDiff).toHaveBeenCalledWith("/repo", {});
+});
+
+test("getWorkspaceDiff passes the selected commit through", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(getWorkspaceDiff).mockResolvedValue({ kind: "not-a-repo" });
+
+  await bridge.handleRequest("getWorkspaceDiff", {
+    workdir: "/repo",
+    commit: "abc",
+  });
+
+  expect(getWorkspaceDiff).toHaveBeenCalledWith("/repo", { commit: "abc" });
+});
+
+test("getWorkspaceDiff throws when workdir is missing", async () => {
+  const { bridge } = createBridge();
+  await expect(bridge.handleRequest("getWorkspaceDiff", {})).rejects.toThrow(
+    "workdir is required",
+  );
+  expect(getWorkspaceDiff).not.toHaveBeenCalled();
 });
 
 // ── createWorktree ─────────────────────────────────────────────

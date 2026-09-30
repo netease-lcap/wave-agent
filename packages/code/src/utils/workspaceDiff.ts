@@ -1,16 +1,21 @@
 /**
- * Read-only workspace git-diff service for the diff panel.
- * Runs git directly in the main process — this is a read-only query with
- * potentially large output and the stdio CLI has no reusable implementation,
- * so (unlike the worktree write ops) it does NOT go through the CLI.
+ * Read-only workspace git-diff service for the desktop diff panel.
+ *
+ * It lives here rather than in the desktop main process because it must run on
+ * the machine that owns the repository: the desktop reaches it over the same
+ * CLI RPC every other git operation uses (`listGitBranches`, worktrees), so a
+ * remote session does the work inside its remote daemon. The desktop running
+ * it itself meant one `ssh` process per git command and per file — dozens of
+ * connection handshakes for a single panel refresh.
  */
 
-import { execFile } from "child_process";
-import * as fs from "fs";
-import * as path from "path";
-import { promisify } from "util";
-import { buildSshSpawnArgs, LOCAL_HOST, shellQuote } from "./sshHosts";
+import { execFile } from "node:child_process";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { promisify } from "node:util";
 
+// Never execFileSync: the shared `wave --stdio` process handles every desktop
+// session, so a synchronous git call would freeze them all (see utils/worktree).
 const execFileAsync = promisify(execFile);
 
 export type WorkspaceFileStatus =
@@ -75,53 +80,13 @@ export const MAX_DIFF_LINES = 2000;
 const MAX_UNTRACKED_BYTES = 2 * 1024 * 1024;
 const GIT_BUFFER = 16 * 1024 * 1024;
 
-/**
- * Run git in `cwd`. Remote hosts run `git -C <cwd> …` through ssh — every
- * token is shell-quoted because paths come from `diff --name-status -z` /
- * `ls-files -z` records and may contain spaces or shell metacharacters.
- */
-async function git(host: string, cwd: string, args: string[]): Promise<string> {
-  const options = { encoding: "utf-8" as const, maxBuffer: GIT_BUFFER };
-  const { stdout } =
-    host === LOCAL_HOST
-      ? await execFileAsync("git", ["-C", cwd, ...args], options)
-      : await execFileAsync(
-          "ssh",
-          buildSshSpawnArgs(
-            host,
-            ["git", "-C", shellQuote(cwd), ...args.map(shellQuote)].join(" "),
-          ),
-          options,
-        );
+/** Run git in `cwd` and return stdout. */
+async function git(cwd: string, args: string[]): Promise<string> {
+  const { stdout } = await execFileAsync("git", ["-C", cwd, ...args], {
+    encoding: "utf-8" as const,
+    maxBuffer: GIT_BUFFER,
+  });
   return stdout;
-}
-
-/** Remote `stat -c %s` — the byte size, or null when the path is unreadable. */
-async function remoteStatSize(
-  host: string,
-  absPath: string,
-): Promise<number | null> {
-  try {
-    const { stdout } = await execFileAsync(
-      "ssh",
-      buildSshSpawnArgs(host, `stat -c %s ${shellQuote(absPath)}`),
-      { encoding: "utf-8", maxBuffer: 1024 * 1024 },
-    );
-    const size = Number.parseInt(stdout.trim(), 10);
-    return Number.isInteger(size) && size >= 0 ? size : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Remote `cat` — the raw file bytes (throws when unreadable). */
-async function remoteCat(host: string, absPath: string): Promise<Buffer> {
-  const { stdout } = await execFileAsync(
-    "ssh",
-    buildSshSpawnArgs(host, `cat ${shellQuote(absPath)}`),
-    { encoding: "buffer", maxBuffer: GIT_BUFFER },
-  );
-  return stdout as Buffer;
 }
 
 /** Options shared by every diff invocation: renames on, no user color/ext hooks. */
@@ -248,7 +213,6 @@ interface ResolvedBase {
  * either — or without a common ancestor — fall back to `HEAD`.
  */
 async function resolveDiffBase(
-  host: string,
   cwd: string,
   headSha: string | null,
 ): Promise<ResolvedBase> {
@@ -261,7 +225,7 @@ async function resolveDiffBase(
   }
 
   const remoteHead = (
-    await git(host, cwd, [
+    await git(cwd, [
       "symbolic-ref",
       "-q",
       "--short",
@@ -275,7 +239,7 @@ async function resolveDiffBase(
   candidates.push({ ref: "refs/heads/master", label: "master" });
 
   for (const candidate of candidates) {
-    const exists = await git(host, cwd, [
+    const exists = await git(cwd, [
       "rev-parse",
       "--verify",
       "--quiet",
@@ -286,9 +250,7 @@ async function resolveDiffBase(
     );
     if (!exists) continue;
     const mergeBase = (
-      await git(host, cwd, ["merge-base", "HEAD", candidate.ref]).catch(
-        () => "",
-      )
+      await git(cwd, ["merge-base", "HEAD", candidate.ref]).catch(() => "")
     ).trim();
     // A default branch exists but has no fork point with HEAD (unrelated
     // histories): the spec asks for the HEAD fallback, not for probing on.
@@ -314,11 +276,10 @@ async function resolveDiffBase(
 
 /** The session's own commits (merges excluded — they replay others' work). */
 async function listCommits(
-  host: string,
   cwd: string,
   from: string,
 ): Promise<WorkspaceDiffCommit[]> {
-  const out = await git(host, cwd, [
+  const out = await git(cwd, [
     "log",
     "-z",
     "--no-merges",
@@ -341,12 +302,55 @@ async function listCommits(
   return commits;
 }
 
+/**
+ * The `diff --git` header git prints for `entry` — renames are `old → new`.
+ * The per-file lookup below uses it as a key, so it must match git byte for
+ * byte; a path git quotes (`core.quotePath`, embedded quotes) simply misses
+ * and is re-fetched on its own.
+ */
+function headerFor(entry: DiffEntry): string {
+  return `diff --git a/${entry.oldPath ?? entry.path} b/${entry.path}`;
+}
+
+/**
+ * Fetch every changed file's patch with ONE `git diff <rev>` and index the
+ * result by header. The alternative — a `git diff <rev> -- <paths>` per file —
+ * costs one git process per file, which the original ssh-based caller paid as
+ * a full connection handshake each.
+ */
+async function wholeTreePatches(
+  cwd: string,
+  rev: string,
+): Promise<Map<string, string>> {
+  const patch = await git(cwd, diffArgs(rev, [])).catch(() => "");
+  const blocks = new Map<string, string>();
+  // `diff --git ` cannot occur inside a hunk body: an added line is prefixed
+  // with `+`, so every occurrence starts a file block.
+  for (const block of patch.split(/^diff --git /m).slice(1)) {
+    const newline = block.indexOf("\n");
+    if (newline === -1) continue;
+    blocks.set(
+      `diff --git ${block.slice(0, newline)}`,
+      block.slice(newline + 1),
+    );
+  }
+  return blocks;
+}
+
+/** The hunk body of a file's patch — everything from its first `@@` on. */
+function hunksFromPatch(patch: string): { hunks: string; truncated: boolean } {
+  const lines = patch.split("\n");
+  const at = lines.findIndex((line) => line.startsWith("@@"));
+  if (at === -1) return { hunks: "", truncated: false };
+  return truncateHunks(lines.slice(at).join("\n").trimEnd());
+}
+
 async function diffForTracked(
-  host: string,
-  repoRoot: string,
+  cwd: string,
   rev: string,
   entry: DiffEntry,
   stats: FileStats | undefined,
+  patches: Map<string, string>,
 ): Promise<WorkspaceDiffFile> {
   const binary = stats?.binary ?? false;
   const additions = stats?.additions ?? 0;
@@ -357,16 +361,14 @@ async function diffForTracked(
   // A binary file has no textual patch, and a file whose net change is empty
   // (pure rename, mode-only change) has no hunks — skip the extra call.
   if (!binary && additions + deletions > 0) {
-    // Both paths must be passed: limiting the pathspec to the new path turns
-    // rename detection off, and the patch then reads as a full file rewrite.
-    const paths = entry.oldPath ? [entry.oldPath, entry.path] : [entry.path];
-    const patch = await git(host, repoRoot, diffArgs(rev, [], paths)).catch(
-      () => "",
-    );
-    const lines = patch.split("\n");
-    const at = lines.findIndex((line) => line.startsWith("@@"));
-    const body = at === -1 ? "" : lines.slice(at).join("\n").trimEnd();
-    ({ hunks, truncated } = truncateHunks(body));
+    let patch = patches.get(headerFor(entry));
+    if (patch === undefined) {
+      // Both paths must be passed: limiting the pathspec to the new path turns
+      // rename detection off, and the patch then reads as a full file rewrite.
+      const paths = entry.oldPath ? [entry.oldPath, entry.path] : [entry.path];
+      patch = await git(cwd, diffArgs(rev, [], paths)).catch(() => "");
+    }
+    ({ hunks, truncated } = hunksFromPatch(patch));
   }
   return {
     path: entry.path,
@@ -390,31 +392,24 @@ const UNREADABLE: Omit<WorkspaceDiffFile, "path" | "status"> = {
 
 /**
  * Read an untracked file's content, or null when it is unreadable or
- * oversized. Remote files are fetched via ssh (`stat` for the size so
- * oversized files are never downloaded, then `cat` for the bytes).
+ * oversized. This runs on the repository's own host, so a plain read is enough
+ * — the size check is for memory, not for avoiding a download.
  */
 async function readUntrackedFile(
-  host: string,
   absPath: string,
 ): Promise<{ content: Buffer } | null> {
-  if (host === LOCAL_HOST) {
-    const st = await fs.promises.stat(absPath);
-    if (!st.isFile() || st.size > MAX_UNTRACKED_BYTES) return null;
-    return { content: await fs.promises.readFile(absPath) };
-  }
-  const size = await remoteStatSize(host, absPath);
-  if (size === null || size > MAX_UNTRACKED_BYTES) return null;
-  return { content: await remoteCat(host, absPath) };
+  const st = await fs.promises.stat(absPath);
+  if (!st.isFile() || st.size > MAX_UNTRACKED_BYTES) return null;
+  return { content: await fs.promises.readFile(absPath) };
 }
 
 async function diffForUntracked(
-  host: string,
   repoRoot: string,
   relPath: string,
 ): Promise<WorkspaceDiffFile> {
   const full = path.join(repoRoot, relPath);
   try {
-    const file = await readUntrackedFile(host, full);
+    const file = await readUntrackedFile(full);
     if (!file) {
       return { path: relPath, status: "untracked", ...UNREADABLE };
     }
@@ -449,11 +444,10 @@ async function diffForUntracked(
  */
 export async function getWorkspaceDiff(
   cwd: string,
-  host: string = LOCAL_HOST,
   options: { commit?: string } = {},
 ): Promise<WorkspaceDiffResult> {
   try {
-    await git(host, cwd, ["rev-parse", "--is-inside-work-tree"]);
+    await git(cwd, ["rev-parse", "--is-inside-work-tree"]);
   } catch {
     return { kind: "not-a-repo" };
   }
@@ -466,18 +460,17 @@ export async function getWorkspaceDiff(
   // once and run everything from there; fall back to cwd if rev-parse is
   // unavailable.
   const root =
-    (
-      await git(host, cwd, ["rev-parse", "--show-toplevel"]).catch(() => "")
-    ).trim() || cwd;
+    (await git(cwd, ["rev-parse", "--show-toplevel"]).catch(() => "")).trim() ||
+    cwd;
 
   const headSha =
     (
-      await git(host, root, ["rev-parse", "--verify", "HEAD"]).catch(() => "")
+      await git(root, ["rev-parse", "--verify", "HEAD"]).catch(() => "")
     ).trim() || null;
-  const resolved = await resolveDiffBase(host, root, headSha);
+  const resolved = await resolveDiffBase(root, headSha);
 
   const commits = resolved.commitsFrom
-    ? await listCommits(host, root, resolved.commitsFrom)
+    ? await listCommits(root, resolved.commitsFrom)
     : [];
   const picked = options.commit
     ? commits.find((commit) => commit.sha === options.commit)
@@ -490,31 +483,34 @@ export async function getWorkspaceDiff(
   const rev = picked ? `${picked.sha}^!` : resolved.rev;
 
   const entries = parseNameStatusZ(
-    await git(host, root, diffArgs(rev, ["--name-status", "-z"])).catch(
-      () => "",
-    ),
+    await git(root, diffArgs(rev, ["--name-status", "-z"])).catch(() => ""),
   );
   const stats = parseNumstatZ(
-    await git(host, root, diffArgs(rev, ["--numstat", "-z"])).catch(() => ""),
+    await git(root, diffArgs(rev, ["--numstat", "-z"])).catch(() => ""),
   );
+  // One whole-tree patch for every file, rather than one git process per file.
+  const patches =
+    entries.length > 0
+      ? await wholeTreePatches(root, rev)
+      : new Map<string, string>();
 
   const files: WorkspaceDiffFile[] = [];
   for (const entry of entries) {
     files.push(
-      await diffForTracked(host, root, rev, entry, stats.get(entry.path)),
+      await diffForTracked(root, rev, entry, stats.get(entry.path), patches),
     );
   }
   // Untracked files live in the worktree, so they only belong to the
   // all-changes range — a single commit cannot contain them.
   if (scope.kind === "all") {
-    const untracked = await git(host, root, [
+    const untracked = await git(root, [
       "ls-files",
       "--others",
       "--exclude-standard",
       "-z",
     ]).catch(() => "");
     for (const relPath of parseZRecords(untracked)) {
-      files.push(await diffForUntracked(host, root, relPath));
+      files.push(await diffForUntracked(root, relPath));
     }
   }
   return { kind: "ok", base: resolved.base, scope, commits, files };

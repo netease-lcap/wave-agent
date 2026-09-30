@@ -1,25 +1,25 @@
 /**
  * Real-git tests for the diff service's base and range resolution.
  *
- * tests/gitDiff.test.ts mocks `child_process`, so it pins the parsing of
- * fixture strings — it can never tell whether the commands git is actually
- * given produce those strings. This suite runs the real service against a real
- * (throwaway) repository: the merge-base default-branch resolution, rename
- * detection, the single-commit range and the no-HEAD fallback are all verified
- * through git's real output.
+ * tests/utils/workspaceDiff.test.ts mocks `child_process`, so it pins the
+ * parsing of fixture strings — it can never tell whether the commands git is
+ * actually given produce those strings. This suite runs the real service
+ * against a real (throwaway) repository: the merge-base default-branch
+ * resolution, rename detection, the single-commit range and the no-HEAD
+ * fallback are all verified through git's real output.
  *
  * Lives under tests/integration/ (excluded from the unit gate, picked up by
- * vitest.integration.config.ts) because it shells out to git and writes to a
+ * `pnpm run test:integration`) because it shells out to git and writes to a
  * temp directory.
  */
 
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { execFileSync } from "child_process";
-import { getWorkspaceDiff } from "../../src/main/gitDiff";
-import type { WorkspaceDiffResult } from "../../src/main/gitDiff";
-import { longFormTempDir } from "../helpers/tempDir";
+import { getWorkspaceDiff } from "../../src/utils/workspaceDiff.js";
+import type { WorkspaceDiffResult } from "../../src/utils/workspaceDiff.js";
 
 function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, {
@@ -31,7 +31,7 @@ function git(cwd: string, args: string[]): string {
 
 /** A repo with an identity, no autocrlf and no signing — commits must not depend on the runner's global config. */
 function initRepo(prefix: string, branch = "main"): string {
-  const root = fs.mkdtempSync(path.join(longFormTempDir(), prefix));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   git(root, ["init", "-b", branch, "-q"]);
   git(root, ["config", "user.name", "Wave Test"]);
   git(root, ["config", "user.email", "wave-test@example.com"]);
@@ -50,7 +50,7 @@ async function ok(
   cwd: string,
   options?: { commit?: string },
 ): Promise<Extract<WorkspaceDiffResult, { kind: "ok" }>> {
-  const result = await getWorkspaceDiff(cwd, undefined, options);
+  const result = await getWorkspaceDiff(cwd, options);
   if (result.kind !== "ok")
     throw new Error(`expected an ok result, got ${result.kind}`);
   return result;

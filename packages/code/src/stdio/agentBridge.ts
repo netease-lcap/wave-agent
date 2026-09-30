@@ -77,6 +77,7 @@ import {
 } from "../utils/worktree.js";
 import { logger } from "../utils/logger.js";
 import { isUserCheckpointMessage } from "../utils/rewindCheckpoints.js";
+import { getWorkspaceDiff } from "../utils/workspaceDiff.js";
 
 export type NotificationEmitter = (
   method: string,
@@ -551,6 +552,11 @@ export class AgentBridge {
             hookBased?: boolean;
           },
         );
+      case "getWorkspaceDiff":
+        return this.getWorkspaceDiff(
+          p.workdir as string | undefined,
+          p.commit as string | undefined,
+        );
 
       default:
         throw new RpcError(
@@ -885,6 +891,18 @@ export class AgentBridge {
       current = null;
     }
     return { branches, current };
+  }
+
+  /**
+   * Read-only workspace diff for the desktop diff panel. Runs wherever this
+   * CLI runs, so a remote session answers it inside the remote daemon instead
+   * of the desktop shelling out over ssh per git command.
+   */
+  private getWorkspaceDiff(workdir?: string, commit?: string) {
+    if (!workdir) {
+      throw new RpcError(PROTOCOL_INTERNAL_ERROR, "workdir is required");
+    }
+    return getWorkspaceDiff(workdir, commit ? { commit } : {});
   }
 
   private async createWorktreeSession(params: {
