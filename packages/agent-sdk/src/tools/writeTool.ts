@@ -46,6 +46,9 @@ Usage:
 - NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
 - Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.
 - IMPORTANT: Always provide file_path parameter before content parameter when calling this tool.`,
+  leanPrompt: `Writes a file to the local filesystem, overwriting if one exists.
+
+When to use: creating a new file, or fully replacing one you've already ${READ_TOOL_NAME}. Overwriting an existing file you haven't ${READ_TOOL_NAME} will fail. For partial changes, use Edit instead.`,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,

@@ -121,6 +121,13 @@ export const grepTool: ToolPlugin = {
   - Pattern syntax: Uses ripgrep (not grep) - literal braces need escaping (use \`interface\\{\\}\` to find \`interface{}\` in Go code)
   - Multiline matching: By default patterns match within single lines only. For cross-line patterns like \`struct \\{[\\s\\S]*?field\`, use \`multiline: true\`
 `,
+  leanPrompt: `Content search built on ripgrep. Prefer this over \`grep\`/\`rg\` via ${BASH_TOOL_NAME} — results integrate with the permission UI and file links.
+
+- Full regex syntax (e.g. "log.*Error", "function\\s+\\w+"). Ripgrep, not grep — escape literal braces (\`interface\\{\\}\`).
+- Filter with \`glob\` (e.g. "**/*.tsx") or \`type\` (e.g. "js", "py", "rust").
+- \`output_mode\`: "content" (matching lines), "files_with_matches" (paths only, default), or "count".
+- \`-B\` / \`-A\` / \`-C\` add context lines around each match; \`context\` is an alias for \`-C\`.
+- \`multiline: true\` for patterns that span lines.`,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,

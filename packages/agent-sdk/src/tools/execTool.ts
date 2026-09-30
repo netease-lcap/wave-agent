@@ -122,6 +122,13 @@ export const execTool: ToolPlugin = {
     },
   },
 
+  leanPrompt: `Run a JavaScript script in a sandbox where this session's on-demand tools are exposed as functions, composing a whole sequence of calls in one turn instead of one model round-trip per call.
+
+- \`await tools.<name>(args)\` — call a tool with its own arguments object; resolves to its output.
+- ${SEARCH_ENTRY}
+- \`console.log(...)\` — collected and returned alongside the result.
+- \`return <value>\` — the returned value is JSON-serialized and given back to you.
+Write a clear, concise description of what the script does in 5-10 words. The script has no filesystem, no network, no \`import\`, and no \`eval\`/\`new Function\`; it stops at its time or tool-call budget, and every nested call still goes through the permission check, so it can still be denied.`,
   prompt: () => EXEC_DESCRIPTION,
 
   /**

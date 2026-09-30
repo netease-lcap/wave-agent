@@ -71,6 +71,10 @@ export const exitWorktreeTool: ToolPlugin = {
       },
     },
   },
+  leanPrompt: `Leave a worktree session created by EnterWorktree and restore the session's original working directory. Only operates on a worktree created by EnterWorktree in this session; outside such a session it is a no-op.
+
+- \`action\`: "keep" (leave the worktree directory and branch on disk) or "remove" (delete both).
+- \`discard_changes\` (default false, only meaningful with "remove"): the tool REFUSES to remove uncommitted work unless this is true — confirm with the user before setting it.`,
   prompt: () => EXIT_WORKTREE_TOOL_PROMPT,
 
   async execute(

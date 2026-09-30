@@ -69,6 +69,11 @@ export const enterWorktreeTool: ToolPlugin = {
       },
     },
   },
+  leanPrompt: `Create an isolated git worktree inside \`.wave/worktrees/\` and switch the session into it. Use this ONLY when the user explicitly asks to work in a worktree — never for a plain branch request or an ordinary feature or bug task.
+
+- Requires a git repository, unless a WorktreeCreate hook is configured (the hook creates it instead).
+- \`name\` is optional; a random name is generated when it is omitted.
+- Use ExitWorktree to leave the worktree mid-session.`,
   prompt: () => ENTER_WORKTREE_TOOL_PROMPT,
 
   async execute(

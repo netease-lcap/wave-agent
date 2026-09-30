@@ -84,6 +84,12 @@ export const taskCreateTool: ToolPlugin = {
       },
     },
   },
+  leanPrompt: `Create a new task in the task list for multi-step work — 3 or more distinct steps, or work that benefits from tracking. Do not create one for a single trivial task.
+
+- \`subject\`: imperative title, e.g. "Fix authentication bug in login flow".
+- \`description\`: what needs to be done, with context and acceptance criteria.
+- \`activeForm\`: present continuous form shown while the task runs, e.g. "Fixing authentication bug".
+All tasks are created with status \`pending\`.`,
   prompt:
     () => `Use this tool to create a structured task list for your current coding session. This helps you track progress, organize complex tasks, and demonstrate thoroughness to the user.
 It also helps the user understand the progress of the task and overall progress of their requests.
@@ -171,6 +177,7 @@ export const taskGetTool: ToolPlugin = {
       },
     },
   },
+  leanPrompt: `Get a task by ID, including its \`subject\`, \`description\`, \`status\`, \`blocks\`, and \`blockedBy\`. Check that \`blockedBy\` is empty before starting work.`,
   prompt: () => `Use this tool to retrieve a task by its ID from the task list.
 
 ## When to Use This Tool
@@ -284,6 +291,9 @@ export const taskUpdateTool: ToolPlugin = {
       },
     },
   },
+  leanPrompt: `Update a task: \`status\` (\`pending\` → \`in_progress\` → \`completed\`, or \`deleted\` to remove it), \`subject\`, \`description\`, \`activeForm\`, \`owner\`, \`metadata\`, or the \`blocks\` / \`blockedBy\` dependencies. Read the task's latest state first.
+
+Only mark a task \`completed\` when it is fully done — if tests fail or the work is partial, leave it \`in_progress\`.`,
   prompt: () => `Use this tool to update a task in the task list.
 
 ## When to Use This Tool
@@ -526,6 +536,7 @@ export const taskListTool: ToolPlugin = {
       },
     },
   },
+  leanPrompt: `List all tasks with their \`id\`, \`subject\`, \`status\`, \`owner\`, and \`blockedBy\`. Prefer working the lowest id first. Use TaskGet for a task's full details.`,
   prompt: () => `Use this tool to list all tasks in the task list.
 
 ## When to Use This Tool

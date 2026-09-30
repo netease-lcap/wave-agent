@@ -52,6 +52,9 @@ export const enterPlanModeTool: ToolPlugin = {
 3. Task: "Migrate the database schema to support multi-tenancy" - Use EnterPlanMode to plan the migration steps.
 4. Task: "Fix the off-by-one error in the pagination logic" - Do NOT use EnterPlanMode, just fix the bug.
 `,
+  leanPrompt: `Proactively request plan mode when a task is non-trivial and benefits from planning before implementation.
+
+Good fits: multi-file changes or refactors that need architectural decisions, new features with design trade-offs, complex fixes spanning several components. Not for simple fixes, research tasks, or an approach that is already unambiguous — and not while already in plan mode.`,
   execute: async (
     _args: Record<string, unknown>,
     context: ToolContext,

@@ -62,6 +62,9 @@ Ensure your plan is complete and unambiguous:
 2. Initial task: "Help me implement yank mode for vim" - Use the exit plan mode tool after you have finished planning the implementation steps of the task.
 3. Initial task: "Add a new feature to handle user authentication" - If unsure about auth method (OAuth, JWT, etc.), use AskUserQuestion first, then use exit plan mode tool after clarifying the approach.
 `,
+  leanPrompt: `Use this tool when you are in plan mode, have finished writing your plan to the plan file, and are ready for user approval. It reads the plan from that file — the plan content is not a parameter.
+
+Only for tasks that require planning implementation steps; for research or codebase understanding, do NOT use this tool. Use AskUserQuestion first if requirements or approach are still unclear, but never to ask whether the plan is okay — that is what this tool does.`,
   execute: async (
     _args: Record<string, unknown>,
     context: ToolContext,

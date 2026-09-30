@@ -107,6 +107,12 @@ export const webFetchTool: ToolPlugin = {
   name: WEB_FETCH_TOOL_NAME,
   defer: true,
   searchHint: "fetch a URL and extract its readable text to read or summarize",
+  leanPrompt: `Fetches a URL, converts the page to markdown, and answers \`prompt\` about it with a small, fast model. Read-only; no files are modified.
+
+- The URL must be fully formed; HTTP is upgraded to HTTPS.
+- WILL FAIL for authenticated or private URLs (Google Docs, Confluence, Jira, GitHub) — look for an MCP tool that has authenticated access instead.
+- Content over ${formatSize(MAX_MARKDOWN_LENGTH)} is truncated, and very large results may be summarized.
+- If the tool reports a redirect to another host, call it again with the redirect URL.`,
   config: {
     type: "function",
     function: {

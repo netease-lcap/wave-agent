@@ -71,6 +71,31 @@ export const agentTool: ToolPlugin = {
     },
   },
 
+  leanPrompt: (args?: { availableSubagents?: SubagentConfiguration[] }) => {
+    const subagentList = args?.availableSubagents
+      ? args.availableSubagents
+          .map((config) => {
+            const toolsStr =
+              config.tools && config.tools.length > 0
+                ? ` (Tools: ${config.tools.join(", ")})`
+                : " (Tools: *)";
+            return `- ${config.name}: ${config.description}${toolsStr}`;
+          })
+          .join("\n")
+      : "";
+
+    return `Launch a new agent to handle complex, multi-step tasks autonomously. Each agent type has specific capabilities and tools available to it.
+
+Available agent types and the tools they have access to:
+${subagentList || "No agents configured"}
+
+You must specify a subagent_type from the list above, choosing the one whose description best matches the task.
+
+- For broad codebase exploration that is not a needle query for a specific file, class, or function, use the ${AGENT_TOOL_NAME} tool with subagent_type=${EXPLORE_SUBAGENT_TYPE} instead of running search commands directly.
+- Prefer this tool over direct search commands for open-ended exploration that would fill your context with raw output.
+- Use \`run_in_background\` for work you can do in parallel; you are notified when it completes — do not sleep, poll, or guess at what it found.
+- Avoid duplicating work a subagent is already doing.`;
+  },
   prompt: (args?: { availableSubagents?: SubagentConfiguration[] }) => {
     const subagentList = args?.availableSubagents
       ? args.availableSubagents

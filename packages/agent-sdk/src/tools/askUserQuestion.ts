@@ -100,6 +100,12 @@ Usage notes:
 
 Plan mode note: In plan mode, use this tool to clarify requirements or choose between approaches BEFORE finalizing your plan. Do NOT use this tool to ask "Is my plan ready?" or "Should I proceed?" - use ExitPlanMode for plan approval.
 `,
+  leanPrompt: `Use this tool when you need to ask the user questions during execution: preferences, clarifications, decisions on implementation choices, or a choice of direction.
+
+- Users can always select "Other" to provide custom text input.
+- \`multiSelect: true\` allows multiple answers to be selected for a question.
+- If you recommend an option, put it first and append "(Recommended)" to its label.
+In plan mode, use it to clarify requirements or choose between approaches before finalizing the plan — never to ask whether the plan is ready; that is what ExitPlanMode is for.`,
   execute: async (args, context) => {
     const {
       questions,

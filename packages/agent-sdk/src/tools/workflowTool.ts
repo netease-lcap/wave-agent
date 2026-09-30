@@ -82,6 +82,17 @@ export const workflowTool: ToolPlugin = {
     },
   },
 
+  leanPrompt: `Execute a workflow script that orchestrates multiple subagents deterministically. It runs in the background: the tool returns immediately with a task ID, and a <task-notification> arrives when the workflow completes.
+
+ONLY call this tool when the user has explicitly opted into multi-agent orchestration — they asked for a workflow, fan-out, or subagent orchestration in their own words, invoked a skill or slash command that says to call it, or named a specific workflow. A task that would merely benefit from parallelism does not count: use Agent for individual subagents, or ask the user whether to run it and what it would roughly cost.
+
+Every script must begin with \`export const meta = {...}\`, then compose the hooks:
+- \`agent(prompt, opts?)\` — spawn a subagent; with a JSON Schema it returns the validated object, otherwise its final text.
+- \`pipeline(items, stage1, stage2, ...)\` — run each item through all stages independently, with no barrier between stages. This is the default for multi-stage work.
+- \`parallel(thunks)\` — run tasks concurrently; this one is a barrier that awaits all of them.
+- \`phase(title)\`, \`log(message)\`, the verbatim \`args\`, and \`budget\`.
+
+Scripts are plain JavaScript — no type annotations, no filesystem, no network, no \`import\`.`,
   prompt: () =>
     `Execute a workflow script that orchestrates multiple subagents deterministically. Workflows run in the background — this tool returns immediately with a task ID, and a <task-notification> arrives when the workflow completes. Use /workflows to watch live progress.
 

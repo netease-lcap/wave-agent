@@ -749,6 +749,11 @@ All operations require:
 - character: The character offset (1-based, as shown in editors)
 
 Note: LSP servers must be configured for the file type. If no server is available, an error will be returned.`,
+  leanPrompt: `Interact with Language Server Protocol (LSP) servers for code intelligence.
+
+Operations: \`goToDefinition\`, \`findReferences\`, \`hover\`, \`documentSymbol\`, \`workspaceSymbol\`, \`goToImplementation\`, \`prepareCallHierarchy\`, \`incomingCalls\`, \`outgoingCalls\`.
+
+All operations require \`filePath\`, plus \`line\` and \`character\` (both 1-based, as shown in editors). An LSP server must be configured for the file type, or an error is returned.`,
   execute: async (
     args: Record<string, unknown>,
     context: ToolContext,

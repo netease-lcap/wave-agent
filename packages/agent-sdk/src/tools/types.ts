@@ -39,6 +39,14 @@ export interface ReadFileStateEntry {
 /** Per-session read state keyed by resolved absolute path. */
 export type ReadFileState = Map<string, ReadFileStateEntry>;
 
+/** Session context a tool's description may depend on. */
+export interface ToolPromptArgs {
+  availableSubagents?: SubagentConfiguration[];
+  availableSkills?: SkillMetadata[];
+  workdir?: string;
+  isSubagent?: boolean;
+}
+
 export interface ToolPlugin {
   name: string;
   config: ChatCompletionFunctionTool;
@@ -53,12 +61,15 @@ export interface ToolPlugin {
   /**
    * Function to provide a prompt to be added to the tool description
    */
-  prompt?: (args?: {
-    availableSubagents?: SubagentConfiguration[];
-    availableSkills?: SkillMetadata[];
-    workdir?: string;
-    isSubagent?: boolean;
-  }) => string;
+  prompt?: (args?: ToolPromptArgs) => string;
+  /**
+   * Condensed replacement for the description, sent instead of `prompt` while
+   * the lean prompt set is on (`leanPrompt` in settings). Same shape as
+   * `prompt`, so a description that depends on session context can stay a
+   * function. A tool that declares nothing here keeps its full description
+   * under lean mode — the fallback is never an empty description.
+   */
+  leanPrompt?: string | ((args?: ToolPromptArgs) => string);
   /**
    * Whether this tool is safe to run in parallel with other tools.
    * Default (undefined) = true (parallel). Set to false for tools that

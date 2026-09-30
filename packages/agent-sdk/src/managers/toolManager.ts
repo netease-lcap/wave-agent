@@ -17,6 +17,7 @@ import {
   getNonDeferrableBuiltins,
   isExecEnabled,
 } from "../services/execAvailability.js";
+import { isLeanPromptEnabled } from "../services/leanPrompt.js";
 import { buildExecPool } from "../exec/catalog.js";
 import type { ExecPoolCandidate, ExecPoolEntry } from "../exec/catalog.js";
 import { EXEC_TOOL_NAME } from "../constants/tools.js";
@@ -509,6 +510,7 @@ class ToolManager {
     isSubagent?: boolean;
   }): ChatCompletionFunctionTool[] {
     const permissionManager = this.getPermissionManager();
+    const leanPromptEnabled = isLeanPromptEnabled(options?.workdir);
 
     // A tool in the pool is declared only inside the sandbox, never flat as well:
     // the two must not coexist, or the model would see the same tool twice while
@@ -542,8 +544,15 @@ class ToolManager {
             ...tool.config.function,
           },
         };
-        // Override description with prompt if available
-        if (tool.prompt) {
+        // Lean mode sends the tool's condensed variant when it declares one; a
+        // tool without one keeps its full description, so lean never yields an
+        // empty description. Only text changes — schemas, the tool set and
+        // permission decisions are untouched.
+        const lean = leanPromptEnabled ? tool.leanPrompt : undefined;
+        if (lean !== undefined) {
+          config.function.description =
+            typeof lean === "function" ? lean({ ...options }) : lean;
+        } else if (tool.prompt) {
           config.function.description = tool.prompt({ ...options });
         }
         return config;
