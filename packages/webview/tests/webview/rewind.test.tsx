@@ -9,7 +9,6 @@ import {
 } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 import type { Message } from "wave-agent-sdk";
-import { MessageSource } from "wave-agent-sdk";
 
 describe("Rewind Feature", () => {
   beforeEach(() => {
@@ -243,10 +242,9 @@ describe("Rewind Feature", () => {
     const hookMessage: Message = {
       id: "msg-hook",
       role: "user",
+      isMeta: true,
       timestamp: "2024-01-01T00:00:00.000Z",
-      blocks: [
-        { type: "text", content: "hook context", source: MessageSource.HOOK },
-      ],
+      blocks: [{ type: "text", content: "hook context" }],
     };
 
     const messages = [

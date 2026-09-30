@@ -601,14 +601,13 @@ const parseMarkdownWithMermaid = (
 };
 
 // 与 CLI /rewind 检查点判定（isUserCheckpointMessage）保持一致：后台任务
-// 通知与 hook 注入的系统生成消息不作为回滚目标。bash 模式命令消息（`!ls`）
-// 是用户真实输入，与 fork skill 命令一致，可显示回滚按钮。
+// 通知与 hook 注入的系统生成消息（meta）不作为回滚目标。bash 模式命令消息
+// （`!ls`）是用户真实输入，与 fork skill 命令一致，可显示回滚按钮。
 const isRewindTargetMessage = (message: MessageType): boolean =>
   message.role === "user" &&
   !message.isMeta &&
   !!message.id &&
-  !message.blocks.some((b) => b.type === "task_notification") &&
-  !message.blocks.some((b) => b.type === "text" && b.source === "hook");
+  !message.blocks.some((b) => b.type === "task_notification");
 
 export const Message: React.FC<MessageProps> = React.memo(
   (props: MessageProps) => {

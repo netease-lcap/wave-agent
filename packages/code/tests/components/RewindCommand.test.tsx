@@ -2,7 +2,7 @@ import React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render } from "ink-testing-library";
 import { RewindCommand } from "../../src/components/RewindCommand.js";
-import { stripAnsiColors, MessageSource } from "wave-agent-sdk";
+import { stripAnsiColors } from "wave-agent-sdk";
 import type { Message } from "wave-agent-sdk";
 
 describe("RewindCommand Content", () => {
@@ -112,9 +112,8 @@ describe("RewindCommand Content", () => {
       {
         id: "3",
         role: "user",
-        blocks: [
-          { type: "text", content: "hook 输出", source: MessageSource.HOOK },
-        ],
+        isMeta: true,
+        blocks: [{ type: "text", content: "hook 输出" }],
       },
     ];
 

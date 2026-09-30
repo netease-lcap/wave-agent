@@ -36,7 +36,7 @@ import type {
   Message,
 } from "../types/index.js";
 import type { ToolManager } from "./toolManager.js";
-import type { ToolContext, ToolResult, ReadFileState } from "../tools/types.js";
+import type { ToolContext, ReadFileState } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
 import type { BackgroundTaskManager } from "./backgroundTaskManager.js";
 import {
@@ -205,6 +205,11 @@ export class AIManager {
     | "none"
     | "required"
     | { type: "function"; function: { name: string } };
+
+  /** Subagent type, or undefined for the main agent (tool-event hook context) */
+  getSubagentType(): string | undefined {
+    return this.subagentType;
+  }
 
   // Service overrides
   constructor(
@@ -2595,19 +2600,6 @@ ${question}`;
     });
 
     try {
-      // Execute PreToolUse hooks before tool execution
-      const shouldExecuteTool = await this.executePreToolUseHooks(
-        toolName,
-        toolArgs,
-        toolId,
-      );
-
-      // If PreToolUse hooks blocked execution, skip tool execution
-      if (!shouldExecuteTool) {
-        logger?.info(`Tool ${toolName} execution blocked by PreToolUse hooks`);
-        return;
-      }
-
       // Create tool execution context
       const context: ToolContext = {
         abortSignal: toolAbortController.signal,
@@ -2713,14 +2705,6 @@ ${question}`;
       // Write/Edit of the plan file broadcasts the new content so hosts can
       // update an already-open plan panel without waiting for ExitPlanMode.
       await this.notifyPlanFileUpdate(toolName, toolArgs, toolResult.success);
-
-      // Execute PostToolUse hooks after successful tool completion
-      await this.executePostToolUseHooks(
-        toolId,
-        toolName,
-        toolArgs,
-        toolResult,
-      );
     } catch (toolError) {
       const errorMessage =
         toolError instanceof Error ? toolError.message : String(toolError);
@@ -2774,143 +2758,6 @@ ${question}`;
         `Failed to read plan file for panel refresh: ${planFilePath}`,
         error,
       );
-    }
-  }
-
-  /**
-   * Execute PreToolUse hooks before tool execution
-   * Returns true if hooks allow tool execution, false if blocked
-   */
-  private async executePreToolUseHooks(
-    toolName: string,
-    toolInput?: Record<string, unknown>,
-    toolId?: string,
-  ): Promise<boolean> {
-    if (!this.hookManager) return true;
-
-    try {
-      const context: ExtendedHookExecutionContext = {
-        event: "PreToolUse",
-        projectDir: this.getWorkdir(),
-        timestamp: new Date(),
-        toolName,
-        sessionId: this.messageManager.getSessionId(),
-        transcriptPath: this.messageManager.getTranscriptPath(),
-        cwd: this.getWorkdir(),
-        toolInput,
-        subagentType: this.subagentType, // Include subagent type in hook context
-        env: Object.fromEntries(
-          Object.entries(this.mergedEnv).filter((e) => e[1] !== undefined),
-        ) as Record<string, string>, // Include environment variables
-      };
-
-      const results = await this.hookManager.executeHooks(
-        "PreToolUse",
-        context,
-      );
-
-      // Process hook results to handle exit codes and determine if tool should be blocked
-      let shouldContinue = true;
-      if (results.length > 0) {
-        const processResult = this.hookManager.processHookResults(
-          "PreToolUse",
-          results,
-          this.messageManager,
-          toolId, // Pass toolId for proper PreToolUse blocking error handling
-          JSON.stringify(toolInput || {}, null, 2), // Pass serialized tool parameters
-        );
-        shouldContinue = !processResult.shouldBlock;
-      }
-
-      // Log tool_decision event
-      logOTelEvent("tool_decision", {
-        tool_name: toolName,
-        decision: shouldContinue ? "approved" : "blocked",
-        source: "hook",
-      }).catch(() => {}); // Non-blocking
-
-      // Log hook execution results for debugging
-      if (results.length > 0) {
-        logger?.debug(
-          `Executed ${results.length} PreToolUse hook(s) for ${toolName}:`,
-          results.map((r) => ({
-            success: r.success,
-            duration: r.duration,
-            exitCode: r.exitCode,
-            timedOut: r.timedOut,
-            stderr: r.stderr,
-          })),
-        );
-      }
-
-      return shouldContinue;
-    } catch (error) {
-      // Hook execution errors should not interrupt the main workflow
-      logger?.error("PreToolUse hook execution failed:", error);
-      return true; // Allow tool execution on hook errors
-    }
-  }
-
-  /**
-   * Execute PostToolUse hooks after tool completion
-   */
-  private async executePostToolUseHooks(
-    toolId: string,
-    toolName: string,
-    toolInput?: Record<string, unknown>,
-    toolResponse?: ToolResult,
-  ): Promise<void> {
-    if (!this.hookManager) return;
-
-    try {
-      const context: ExtendedHookExecutionContext = {
-        event: "PostToolUse",
-        projectDir: this.getWorkdir(),
-        timestamp: new Date(),
-        toolName,
-        sessionId: this.messageManager.getSessionId(),
-        transcriptPath: this.messageManager.getTranscriptPath(),
-        cwd: this.getWorkdir(),
-        toolInput,
-        toolResponse,
-        subagentType: this.subagentType, // Include subagent type in hook context
-        planFilePath: this.permissionManager?.getPlanFilePath(),
-        env: Object.fromEntries(
-          Object.entries(this.mergedEnv).filter((e) => e[1] !== undefined),
-        ) as Record<string, string>, // Include environment variables
-      };
-
-      const results = await this.hookManager.executeHooks(
-        "PostToolUse",
-        context,
-      );
-
-      // Process hook results to handle exit codes and update tool results
-      if (results.length > 0) {
-        this.hookManager.processHookResults(
-          "PostToolUse",
-          results,
-          this.messageManager,
-          toolId,
-        );
-      }
-
-      // Log hook execution results for debugging
-      if (results.length > 0) {
-        logger?.debug(
-          `Executed ${results.length} PostToolUse hook(s) for ${toolName}:`,
-          results.map((r) => ({
-            success: r.success,
-            duration: r.duration,
-            exitCode: r.exitCode,
-            timedOut: r.timedOut,
-            stderr: r.stderr,
-          })),
-        );
-      }
-    } catch (error) {
-      // Hook execution errors should not interrupt the main workflow
-      logger?.error("PostToolUse hook execution failed:", error);
     }
   }
 }

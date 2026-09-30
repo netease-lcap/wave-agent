@@ -112,6 +112,21 @@ export class HookExecutionError extends Error {
   }
 }
 
+/**
+ * A PreToolUse hook refused a tool call.
+ *
+ * The MCP funnel reports failures by throwing, so a block travels as an error
+ * there — but it is a refusal rather than a tool failure, and the funnels must
+ * show the model the same hook wording either way. The class is what lets them
+ * tell the two apart.
+ */
+export class HookBlockedToolError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "HookBlockedToolError";
+  }
+}
+
 // Configuration validation errors (blocking)
 export class HookConfigurationError extends Error {
   constructor(
