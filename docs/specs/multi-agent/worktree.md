@@ -260,7 +260,7 @@ order: 90
 
 作为开发者，我希望即使开启了"跳过权限确认"（bypassPermissions）模式，worktree 会话中修改主仓库文件仍被拦截，以便安全隔离不因权限模式而失效。
 
-**为什么是这个优先级**：worktree 隔离是防数据破坏的安全机制（防止误写主仓库），与权限模式无关。read-before-edit 校验也是不区分权限模式的无条件安全检查——worktree 安全拦截应遵循同样的语义。bypassPermissions 的语义是"跳过权限确认"，不是"跳过安全校验"。
+**为什么是这个优先级**：worktree 隔离是防数据破坏的安全机制（防止误写主仓库），与权限模式无关。同类先例是 `USER_INTERACTION_REQUIRED_TOOLS`——`AskUserQuestion` / `ExitPlanMode` 在 bypassPermissions 下同样必须到达用户。bypassPermissions 的语义是"跳过权限确认"，不是"跳过安全校验"。
 
 **独立测试**：在 worktree 会话中通过 webview 或 CLI 将权限模式切换为 bypassPermissions，要求 AI 用 Write/Edit 修改主仓库（worktree 外）文件，验证操作被拒绝且出现 worktree 安全错误消息；再要求修改 worktree 内文件，验证正常写入。
 

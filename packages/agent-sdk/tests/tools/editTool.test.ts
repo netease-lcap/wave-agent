@@ -44,9 +44,10 @@ describe("editTool", () => {
       abortSignal: new AbortController().signal,
       workdir: WORKDIR,
       taskManager: new TaskManager(new Container(), "test-session"),
-      // Pre-populate readFileState so read-before-edit check passes.
-      // Keys must be the *resolved* path (matches source's resolvePath()).
-      // Individual tests can override with an empty Map or undefined.
+      // Pre-populate readFileState so the staleness check has a baseline to
+      // compare against. Keys must be the *resolved* path (matches source's
+      // resolvePath()). Individual tests can override with an empty Map or
+      // undefined to exercise the "never read in this session" path.
       readFileState: new Map([
         [r("/test/file.js"), { mtime: 1000, hash: "abc", source: "read" }],
         [
@@ -573,12 +574,17 @@ describe("editTool", () => {
     expect(result).toBe("src/index.ts");
   });
 
-  it("should reject edit when file has not been read first", async () => {
+  it("should edit a file that was not read in this session", async () => {
+    // No read-before-edit gate: a file the model only saw through Grep, git
+    // diff or a subagent report edits straight through.
+    vi.mocked(readFile).mockResolvedValue("some content");
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
     const result = await editTool.execute(
       {
         file_path: "/test/workdir/file.js",
-        old_string: "old",
-        new_string: "new",
+        old_string: "some",
+        new_string: "other",
       },
       {
         ...mockContext,
@@ -586,9 +592,8 @@ describe("editTool", () => {
       },
     );
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("must read the file");
-    expect(result.error).toContain("Read");
+    expect(result.success).toBe(true);
+    expect(result.content).not.toContain("modified on disk");
   });
 
   it("should allow edit when file has been read first", async () => {
@@ -659,7 +664,7 @@ describe("editTool", () => {
     expect(result.success).toBe(true);
   });
 
-  it("should fail with staleness error when file modified since last read", async () => {
+  it("should reject a stale-read edit whose old_string no longer matches", async () => {
     const mockContent = "some content";
     vi.mocked(readFile).mockResolvedValue(mockContent);
 
@@ -687,7 +692,7 @@ describe("editTool", () => {
     const result = await editTool.execute(
       {
         file_path: "/test/file.js",
-        old_string: "some",
+        old_string: "gone from the file",
         new_string: "other",
       },
       { ...mockContext, readFileState },
@@ -696,6 +701,61 @@ describe("editTool", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("unexpectedly modified");
     expect(writeFile).not.toHaveBeenCalled();
+  });
+
+  it("should apply a stale-read edit that still matches and flag the unseen changes", async () => {
+    const mockContent = "some content";
+    vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
+
+    const readFileState = new Map<
+      string,
+      {
+        mtime: number;
+        hash: string;
+        source: "read" | "edit";
+        offset?: number;
+        limit?: number;
+      }
+    >();
+    readFileState.set(r("/test/file.js"), {
+      mtime: 1000,
+      hash: "abc",
+      source: "read",
+    });
+
+    // First stat: staleness check (newer mtime) → old_string still matches, so
+    // the edit applies against the current content. Second stat: post-write
+    // state update.
+    vi.mocked(stat)
+      .mockResolvedValueOnce({
+        mtime: { getTime: () => 2000 } as Date,
+      } as unknown as Awaited<ReturnType<typeof stat>>)
+      .mockResolvedValueOnce({
+        mtime: { getTime: () => 3000 } as Date,
+      } as unknown as Awaited<ReturnType<typeof stat>>);
+
+    const result = await editTool.execute(
+      {
+        file_path: "/test/file.js",
+        old_string: "some",
+        new_string: "other",
+      },
+      { ...mockContext, readFileState },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain(
+      "the file had been modified on disk since you last read it",
+    );
+    expect(result.content).toContain(
+      "the file contains other changes not in your context",
+    );
+    expect(result.shortResult).not.toContain("modified on disk");
+    expect(atomicWriteFile).toHaveBeenCalledWith(
+      r("/test/file.js"),
+      "other content",
+    );
   });
 
   it("should pass staleness check when file mtime matches readFileState", async () => {
@@ -786,11 +846,13 @@ describe("editTool", () => {
     expect(writeFile).toHaveBeenCalled();
   });
 
-  it("should fail staleness check for partial read even when content hash matches", async () => {
+  it("should recover a stale partial read when the edit still matches", async () => {
     const mockContent = "some content";
     vi.mocked(readFile).mockResolvedValue(mockContent);
+    vi.mocked(writeFile).mockResolvedValue(undefined);
 
-    // Partial read: offset/limit defined → no content fallback
+    // Partial read: offset/limit defined → no content-hash fallback. The edit
+    // still matches the current content, so it is applied with the note.
     const readFileState = new Map<
       string,
       {
@@ -822,9 +884,14 @@ describe("editTool", () => {
       { ...mockContext, readFileState },
     );
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("unexpectedly modified");
-    expect(writeFile).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(result.content).toContain(
+      "the file had been modified on disk since you last read it",
+    );
+    expect(atomicWriteFile).toHaveBeenCalledWith(
+      r("/test/file.js"),
+      "other content",
+    );
   });
 
   it("should pass staleness check when mtime went backward (only newer flagged)", async () => {
@@ -917,13 +984,14 @@ describe("editTool", () => {
     expect(updated?.mtime).toBe(2000);
   });
 
-  it("should reject edit when readFileState is not provided", async () => {
+  it("should edit with no readFileState at all", async () => {
     const mockContent = "some content";
     vi.mocked(readFile).mockResolvedValue(mockContent);
     vi.mocked(writeFile).mockResolvedValue(undefined);
 
-    // No readFileState in context — read-before-edit check rejects,
-    // staleness check never reached (stat not called)
+    // No readFileState in context — nothing to gate on and nothing to compare
+    // against, so no stat at all (stat is only reached by the staleness check
+    // and the post-write state update).
     const result = await editTool.execute(
       {
         file_path: "/test/file.js",
@@ -933,8 +1001,7 @@ describe("editTool", () => {
       { ...mockContext, readFileState: undefined },
     );
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("must read the file");
+    expect(result.success).toBe(true);
     expect(stat).not.toHaveBeenCalled();
   });
 });
