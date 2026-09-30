@@ -66,8 +66,8 @@ describe("lean prompt mode", () => {
   });
 
   it("declares a lean description on the opt-in tools too", () => {
-    // Artifact is gated off by default, so `initializeBuiltInTools` never
-    // registers it and the sweep above cannot see it.
+    // Artifact's registration depends on the account (it defaults on only for a
+    // logged-in user), so the sweep above may or may not have seen it.
     expect(artifactTool.leanPrompt).toBeDefined();
     expect(execTool.leanPrompt).toBeDefined();
   });

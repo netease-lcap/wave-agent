@@ -195,6 +195,19 @@ export function setupAgentContainer(
       } else if (event === "logout") {
         remoteSettingsService.clear();
       }
+      // The Artifact code default depends on the account (see
+      // artifactAvailability.ts) and its registration was decided at setup time,
+      // so a mid-session login/logout must re-evaluate the gated tools and the
+      // /artifact skill — otherwise a first-run user who logs in from inside the
+      // session would only get the feature after a restart. The refresh above
+      // does not cover this: it reloads only when the managed-settings checksum
+      // changed, which a login does not touch.
+      // Resolved through the container rather than the locals below, which are
+      // declared after this callback is registered.
+      container.get<ToolManager>("ToolManager")?.reloadFeatureGatedTools();
+      await container
+        .get<SkillManager>("SkillManager")
+        ?.reloadFeatureGatedSkills();
     }),
   );
 

@@ -148,8 +148,8 @@ class ToolManager {
       workflowTool,
     ];
 
-    // Artifact is a feature-gated tool: not registered at all while the frame
-    // backend is not live, unless settings.json opts in via enableArtifact: true.
+    // Artifact is a feature-gated tool: on by default for a logged-in account,
+    // opt-in via enableArtifact: true for anyone else, opt-out via false.
     if (isArtifactEnabled(this.container.get<string>("Workdir"))) {
       builtInTools.push(artifactTool);
     }

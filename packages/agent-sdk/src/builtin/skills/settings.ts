@@ -1041,7 +1041,7 @@ For detailed guidance on creating plugins and marketplaces, see [PLUGINS.md](\${
 - \`language\`: Preferred language for agent communication (e.g., \`"en"\`, \`"zh"\`).
 - \`autoMemoryEnabled\`: Enable or disable auto-memory (default: \`true\`).
 - \`autoMemoryFrequency\`: Frequency of auto-memory extraction turns (default: \`1\`).
-- \`enableArtifact\`: Enable the Artifact tool, which publishes local \`.html\`/\`.md\` files as shareable (default-private) web pages. Defaults to \`false\` while the frame backend is not live; set to \`true\` to register the tool and enable WebFetch interception for artifact URLs. Toggling it hot-reloads the tool registry.
+- \`enableArtifact\`: Enable the Artifact tool, which publishes local \`.html\`/\`.md\` files as shareable (default-private) web pages, and makes WebFetch read artifact URLs through its own channel. Defaults to \`true\` for a signed-in account and \`false\` when nobody is signed in (every Artifact request carries the SSO token); set \`true\` to register the tool even without an account, or \`false\` to turn it off. Toggling it hot-reloads the tool registry, and signing in/out re-evaluates it too.
 - \`worktree.baseRef\`: Base ref for new worktrees. \`"fresh"\` (default) creates a new branch from \`origin/<default branch>\`; \`"head"\` branches from the current local HEAD, skipping origin resolution and network fetch. Use \`"head"\` when working from un-pushed local branches.
 
 \`\`\`json

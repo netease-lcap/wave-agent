@@ -10,7 +10,7 @@ order: 35
 
 > 对齐 Claude Code 的内建 Artifact 工具：把本地 `.html`/`.md` 文件发布为默认私有的可分享网页（claude.ai 风格），并通过 WebFetch 拦截读取已发布的 artifact 页面。
 > 服务端契约已落地（codechat 自托管同源实现）：`POST /api/frame/deploy/direct`（发布）、`GET /api/frame/{slug}?via=model_read`（元数据）、`GET /api/frame/{slug}/content?v={version}`（正文，同源 + Bearer 鉴权，无独立域名/assetToken 流程）。
-> 已拍板的简化决定：零新增配置（API 端点复用 Server URL origin：`options.serverUrl > WAVE_SERVER_URL > 默认值`，不新增 baseUrl 配置项）；客户端只实现 inline 直传一条路径（无 signed URL / DIRECT_UPLOAD）；无 AUTO_OPEN / FRAME_TIMING / OWNERSHIP_FRAME 遥测；**启用开关 `enableArtifact`（未设置时跟随代码默认值常量，当前默认禁用**——后端未上线先不发功能，内测/灰度通过 `enableArtifact: true` 显式打开；后端上线后翻转默认值常量为启用）。`disableArtifact` opt-out 开关等 GA 后再对齐 CC，本期不实现。
+> 已拍板的简化决定：零新增配置（API 端点复用 Server URL origin：`options.serverUrl > WAVE_SERVER_URL > 默认值`，不新增 baseUrl 配置项）；客户端只实现 inline 直传一条路径（无 signed URL / DIRECT_UPLOAD）；无 AUTO_OPEN / FRAME_TIMING / OWNERSHIP_FRAME 遥测；**启用开关 `enableArtifact`（未设置时跟随代码默认值常量：2026-09-30 起 = 已登录则启用、未登录则禁用——发布/读取/资源每个请求都要带 SSO token，没有账号时注册出来只会次次失败；显式 `true` 仍强制启用（首次调用提示先 `/login`），显式 `false` 与远端下发 `false` 一律关闭）**。`disableArtifact` opt-out 开关等 GA 后再对齐 CC，本期不实现。
 > 触发方式定案（双通道并存，2026-08-13）：**模型经自然语言自动调用 `Artifact` 工具**（description 覆盖"发布/分享/做成网页/给链接"语义，中文提示词同样触发）+ **内置技能 `/artifact` 人工斜杠触发**（builtin SKILL.md，`disable-model-invocation: true` 仅人工、模型不可经 Skill 工具调用该技能）。用户在输入框输入 `/` 即可在技能列表看到该命令并一键触发，无需知道怎么写提示词。**技能本身不含任何发布逻辑**——其内容仅指示模型调用 `Artifact` 工具（参数经 `$ARGUMENTS`/`$1` 透传），发布/校验/权限确认/会话映射全部由工具完成，技能不绕过也不复制这些逻辑。
 > 范围：wave-agent 客户端侧工具 + WebFetch 拦截。分享管理（`POST /api/frame/{slug}/share`、pinned_version）由服务端/网页外壳承担，客户端仅发布私有页面并探测分享状态；探测到的分享状态以文案形式告知模型（见下「分享状态文案」）。
 > 对齐 CC 的 Artifact 工具形态（2026-09-11 增补）：工具入口统一为带 `action` 参数的单一工具——`action: "publish"`（省略时的默认值，即现有发布行为）与 `action: "read"`（新增读取动作）。**`read` 的返回形态对齐 CC**：读取当前用户**拥有**的 artifact 返回原文 HTML（含内联 CSS/JS）；读取**他人分享**的 artifact 返回隔离摘要（可选 `prompt` 指明关注点），不把他人页面全文放进上下文。
@@ -67,7 +67,7 @@ order: 35
 3. **假设** 用户输入 `/artifact <file_path>`（带参数），**当** 命令执行时，**则** 文件路径作为参数（`$ARGUMENTS`/`$1` 语义）透传给技能内容，agent 直接以该路径为 `file_path` 调用 `Artifact` 工具，不再询问。
 4. **假设** 模型试图通过 `Skill` 工具调用 artifact 技能，**当** 调用时，**则** 返回 "not available for model invocation"（`disable-model-invocation: true`）；模型的发布入口只有 `Artifact` 工具，两通道不重叠。
 5. **假设** 用户经 `/artifact` 触发发布，**当** `Artifact` 工具执行时，**则** 与自然语言路径走完全相同的工具调用：文件存在性/扩展名/大小校验、权限确认（首次）与同会话自动允许（重复发布）、409 冲突与 stale_version_guard 全部生效——技能不含任何绕过或复制这些逻辑的实现。
-6. **假设** `enableArtifact` 未开启（默认禁用），**当** 会话初始化时，**则** artifact 技能不注册，popup 不显示 `/artifact`（与工具注册同 gate）。
+6. **假设** `enableArtifact` 未开启（未登录默认如此，或显式 `false`），**当** 会话初始化时，**则** artifact 技能不注册，popup 不显示 `/artifact`（与工具注册同 gate）。
 7. **假设** 运行中的会话中 `enableArtifact` 由禁用热重载为启用，**当** 配置重载时，**则** `/artifact` 技能命令即时注册、popup 可见；反向关闭时即时注销（与工具注册同 gate）。
 
 ### 用户故事：WebFetch 读取 artifact 页面（优先级：P1）
@@ -165,22 +165,25 @@ order: 35
 2. **假设** 同会话内 model 再次发布本会话已发布过的文件（`url` 省略，靠会话内 file_path → artifact URL 映射），**当** 调用 `Artifact` 工具时，**则** 自动允许，不再弹确认。
 3. **假设** 会话内映射不存在（本会话未发布过该文件）且用户未配置自动允许，**当** 调用 `Artifact` 工具时，**则** 仍弹确认。
 
-### 用户故事：启用开关与默认禁用（优先级：P2）
+### 用户故事：启用开关与默认启用（优先级：P2）
 
-作为管理员或内测用户，我希望 Artifact 功能默认不可用、但可显式开启，以便在后端上线前不暴露无效工具，同时支持内测/灰度先行体验。
+作为用户，我希望登录之后就能直接用 Artifact（自然语言或 `/artifact`），而不必先去设置里打开开关，以便开箱即用；同时希望开关仍可显式关闭，作为回退入口。
 
-**为什么是这个优先级**：当前 frame 后端尚未上线，功能需默认禁用（不注册工具、不拦截读取）；内测/灰度通过 `enableArtifact: true` 显式打开（无需改代码）；后端上线后把代码默认值常量翻转为启用（未设置 = 启用，对齐 CC `enableArtifact` 的"未设置跟随功能可用性"语义）。开关支持热更新：运行中的会话修改 settings.json 后，配置重载会即时重评估工具注册（无需重启会话）。
+**为什么是这个优先级**：frame 后端已上线，功能可以默认可用；但 Artifact 的每个请求（发布 / 读取 / 资源）都要带 SSO token，**没有账号时注册出来只会次次失败**——所以"默认开启"的前提是**已登录**。账号判据 = `authService.getSSOToken()` 存在（不看过期：token 过期会在下一次请求时经 `createAuthAwareFetch` 惰性刷新，这与 CLI 欢迎页判断"是否提示 /login"用的是同一个判据）。口径对齐 CC：CC 是 `enabled = 没有"关"的来源 && (defaultOn || 显式 true)`，其账号层判定（`no_auth` / provider / token scope）正对应这里的"有没有可用凭据"（`@anthropic-ai/claude-code-linux-x64@2.1.285` 的 `resolveArtifactEnableSetting` / `getArtifactDefaultOn`，`defaultOn: true`；账号层判定在 `artifactToolWithholdingGate`，取值为 `no_auth` / provider / token scope）。开关支持热更新：运行中的会话修改 settings.json、**或会话内登录 / 登出**，都会即时重评估工具与技能注册（无需重启会话）。
+
+**独立测试**：断言 `ARTIFACT_DEFAULT_ENABLED === true`；`isArtifactEnabled()` 四种组合（未配 + 已登录 ⇒ 开；未配 + 未登录 ⇒ 关；显式 `true` + 未登录 ⇒ 开；显式 `false` / 远端 `false` ⇒ 关）；登录 / 登出后 `reloadFeatureGatedTools()` 与 `reloadFeatureGatedSkills()` 被触发。
 
 **验收场景**：
 
-1. **假设** 未配置 `enableArtifact`（默认状态，后端上线前），**当** 会话初始化时，**则** `Artifact` 工具不注册、不可调用，`/artifact` 技能命令同样不注册、popup 不显示。
-2. **假设** settings.json 配置 `enableArtifact: true`，**当** 会话初始化时，**则** `Artifact` 工具注册、可调用，`/artifact` 技能命令同步注册、popup 可见（内测/灰度入口）。
-3. **假设** 后端已上线、代码默认值常量已翻转为启用，**当** 会话初始化时，**则** 未配置 `enableArtifact` 也默认启用（工具与技能命令均注册）。
-4. **假设** Artifact 被禁用（默认或显式），**当** WebFetch 收到 artifact URL 时，**则** 不进入专用读取通道（按普通 URL 处理或报错），不执行 `via=model_read` 调用。
-5. **假设** 运行中的会话未配置 `enableArtifact`（工具未注册），**当** 用户在 settings.json 中改为 `enableArtifact: true` 触发配置热重载时，**则** `Artifact` 工具即时注册、可调用，`/artifact` 技能命令同步注册、popup 可见，无需重启会话。
-6. **假设** 运行中的会话已启用 `enableArtifact`，**当** 用户改为 `false` 触发配置热重载时，**则** `Artifact` 工具即时注销、不可调用，`/artifact` 技能命令同步注销、popup 隐藏，同时 WebFetch 的 artifact URL 拦截（逐调用检查 `isArtifactEnabled`）同步失效。
-7. **假设** 服务端 `GET /api/wave/settings` 下发了 `enableArtifact: true`（remote settings），**当** 会话初始化或轮询（60min + 304 checksum）检测到变更时，**则** remote 值优先于本地 settings.json 与代码默认值，`Artifact` 工具按 remote 值注册，`/artifact` 技能命令按同 gate 注册，WebFetch 拦截同样生效（管理员远程灰度/回滚入口）。
-8. **假设** 服务端下发的 remote `enableArtifact` 与本地 settings.json 冲突，**当** 合并配置时，**则** remote 胜出（last-write-wins，与 `model`、`permissions.defaultMode` 等 managed 字段语义一致），工具与技能命令均按 remote 值注册/注销；未下发时回退本地/默认值。
+1. **假设** 未配置 `enableArtifact` 且当前已登录（有 SSO token），**当** 会话初始化时，**则** `Artifact` 工具注册、可调用，`/artifact` 技能命令同步注册、popup 可见。
+2. **假设** 未配置 `enableArtifact` 且当前未登录（无 SSO token），**当** 会话初始化时，**则** `Artifact` 工具不注册、不可调用，`/artifact` 技能命令同样不注册、popup 不显示（注册出来也只有失败一条路）。
+3. **假设** settings.json 配置 `enableArtifact: true` 但当前未登录（显式要求优先），**当** 会话初始化时，**则** 工具与技能命令照常注册，首次调用返回鉴权错误并提示先 `/login`。
+4. **假设** settings.json 配置 `enableArtifact: false`，**当** 会话初始化时，**则** 工具与技能命令不注册（无论是否登录）。
+5. **假设** 未配置 `enableArtifact` 且会话启动时未登录，**当** 用户在本会话内 `/login` 成功后，**则** `Artifact` 工具与 `/artifact` 技能命令即时注册、可调用（无需重启会话）；**假设** 随后登出，**则** 两者即时注销、popup 隐藏。
+6. **假设** Artifact 被禁用（未登录默认关闭，或显式 / 远端关闭），**当** WebFetch 收到 artifact URL 时，**则** 不进入专用读取通道（按普通 URL 处理或报错），不执行 `via=model_read` 调用。
+7. **假设** 运行中的会话未启用 Artifact（未登录），**当** 用户在 settings.json 中改为 `enableArtifact: true` 触发配置热重载时，**则** `Artifact` 工具即时注册、可调用，`/artifact` 技能命令同步注册、popup 可见，无需重启会话；**假设** 改为 `false`，**则** 即时注销，同时 WebFetch 的 artifact URL 拦截（逐调用检查 `isArtifactEnabled`）同步失效。
+8. **假设** 服务端 `GET /api/wave/settings` 下发了 `enableArtifact: true`（remote settings），**当** 会话初始化或轮询（60min + 304 checksum）检测到变更时，**则** remote 值优先于本地 settings.json 与代码默认值（未登录也照开），`Artifact` 工具按 remote 值注册，`/artifact` 技能命令按同 gate 注册，WebFetch 拦截同样生效（管理员远程灰度/回滚入口）。
+9. **假设** 服务端下发的 remote `enableArtifact` 与本地 settings.json 冲突，**当** 合并配置时，**则** remote 胜出（last-write-wins，与 `model`、`permissions.defaultMode` 等 managed 字段语义一致），工具与技能命令均按 remote 值注册/注销；未下发时回退本地/默认值。
 
 ### 用户故事：列举当前账号的 artifact（`list`，优先级：P1）
 
@@ -239,6 +242,8 @@ order: 35
 ### 非功能需求
 
 - **零新增配置**：API 端点相对 Server URL origin 硬编码（`options.serverUrl > WAVE_SERVER_URL > 默认值`，经 authService.getServerUrl() 获取），不新增 baseUrl/artifactUrl 配置项。
+- **默认启用的账号判据**：`isArtifactEnabled()` 落到代码默认值时还要求**存在 SSO token**（`authService.getSSOToken()` 非空），即"已登录才默认开"。判据**只存在性、不看有效期**——会话启动时不刷新 token，过期 token 会在下一次请求时经 `createAuthAwareFetch` 惰性刷新（与 CLI 欢迎页判断是否提示 `/login` 同一口径），若改看有效期会让"只是 token 陈旧"的老用户被静默关掉。判据是同步文件读，因此 `isArtifactEnabled()` 保持同步（注册处 `ToolManager.initializeBuiltInTools()` 同步调用）；判据只作用于**代码默认**这一步，远端托管设置与显式 `enableArtifact` 都不受账号影响。
+- **登录 / 登出的即时性**：注册发生在会话初始化时，而账号可能中途变化，因此 `authService.onAuthChange` 回调在原有"刷新/清理 remote settings"之外，还要重新评估 feature-gated 工具与技能（`reloadFeatureGatedTools()` + `reloadFeatureGatedSkills()`）——否则首次运行的用户在会话内 `/login` 后要重启才见得到 Artifact。`remoteSettingsService.refresh()` 不覆盖这一点：它只在托管设置 checksum 变化时才触发配置重载。
 - **双通道不重叠**：`Artifact` 工具保留模型自动调用（自然语言触发）；内置技能 `/artifact`（builtin SKILL.md，`disable-model-invocation: true`）仅人工斜杠触发。技能仅指示模型调用 `Artifact` 工具，不含任何发布逻辑，与自然语言路径走完全相同的工具调用；技能注册与工具注册同 gate（`isArtifactEnabled`），禁用时两者都不暴露。
 - **鉴权**：发布（deploy/direct）与读取（model_read、contentUrl）请求均携带当前登录 token（Bearer）；未登录返回明确错误。
 - **大小上限**：发布内容上限 16MB（413 透传为友好错误）。
@@ -266,7 +271,10 @@ order: 35
 - **artifact URL 的主机与 Server URL 不一致？** 自托管场景下发布返回的 URL 即当前 Server URL origin 下的 `/code/artifact/{slug}`；WebFetch 按 URL 路径格式 `{host}/code/artifact/{slug}` 识别，读取请求发往同一 origin。
 - **并发发布同一 slug（跨会话）怎么办？** 服务端 409 + `live` 版本号；客户端透传错误并提示先 WebFetch 最新内容，或带 `force: true` 覆盖。
 - **大文件读取的临时文件何时清理？** 沿用现有工具临时文件生命周期管理，不引入独立清理机制。
-- **与 disallowedTools 的关系？** `enableArtifact` 是独立功能开关（未设置跟随默认值常量）；disallowedTools 对 Artifact 工具的显式禁用仍生效（两者取并集）。
+- **与 disallowedTools 的关系？** `enableArtifact` 是独立功能开关（未设置时 = 已登录则开）；disallowedTools 对 Artifact 工具的显式禁用仍生效（两者取并集）。
+- **token 存在但已过期 / 已失效？** 仍算"已登录"⇒ 默认开启（不看过期时间）；请求时按既有鉴权链处理：`createAuthAwareFetch` 先惰性刷新，401/403 再走一次恢复重试，都失败则工具返回鉴权错误并提示 `/login`。
+- **未登录用户想强制打开？** 显式 `enableArtifact: true`（本地或远端下发）照开，工具照常注册；首次调用返回 `Artifact: not authenticated. Run /login to connect your account before …`——即"注册出来但用不了"是用户主动选择的结果，不是默认行为。
+- **`auth.json` 存在但内容损坏 / 无 `SSO_TOKEN` 字段？** `loadAuth()` 解析失败返回 `{}`，判据为假 ⇒ 按未登录处理（默认不开），不报错。
 - **读到的内容比会话内记录的版本新怎么办？** 以读取到的版本号覆盖会话内记录（读取即"已看到最新版本"），随后同会话重发布不再因 stale_version_guard 被拦。
 - **读他人 artifact 与 plan 模式？** 读他人 artifact 需用户确认（内容进入上下文、且是第三方内容）；plan 模式下没有可交互的确认面时不自动放行，保持规划状态并提示用户。
 - **enableArtifact 关闭时读动作？** 与发布同 gate：工具整体不注册；WebFetch 的 artifact URL 拦截同步失效（退化为普通 URL 处理）。
