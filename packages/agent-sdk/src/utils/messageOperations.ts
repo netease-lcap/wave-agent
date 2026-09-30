@@ -51,6 +51,12 @@ export interface UpdateToolBlockParams {
   backgroundTaskId?: string;
   backgroundedByUser?: boolean;
   assistantAutoBackgrounded?: boolean;
+  /**
+   * Tool names reached inside a sandboxed call (`Exec`), in call order with
+   * repeats kept — the only trace a deferred tool's call leaves (see
+   * `ToolBlock.nestedToolCalls`).
+   */
+  nestedToolCalls?: string[];
   timestamp?: number;
 }
 
@@ -296,6 +302,7 @@ export const updateToolBlockInMessage = ({
   backgroundTaskId,
   backgroundedByUser,
   assistantAutoBackgrounded,
+  nestedToolCalls,
 }: UpdateToolBlockParams): { messages: Message[]; messageId?: string } => {
   const newMessages = [...messages];
 
@@ -332,6 +339,8 @@ export const updateToolBlockInMessage = ({
             toolBlock.backgroundedByUser = backgroundedByUser;
           if (assistantAutoBackgrounded !== undefined)
             toolBlock.assistantAutoBackgrounded = assistantAutoBackgrounded;
+          if (nestedToolCalls !== undefined)
+            toolBlock.nestedToolCalls = nestedToolCalls;
         }
       }
     }
@@ -370,6 +379,8 @@ export const updateToolBlockInMessage = ({
             toolBlock.backgroundedByUser = backgroundedByUser;
           if (assistantAutoBackgrounded !== undefined)
             toolBlock.assistantAutoBackgrounded = assistantAutoBackgrounded;
+          if (nestedToolCalls !== undefined)
+            toolBlock.nestedToolCalls = nestedToolCalls;
         }
         const foundMessageId = newMessages[i].id;
         return { messages: newMessages, messageId: foundMessageId };
@@ -394,6 +405,7 @@ export const updateToolBlockInMessage = ({
           backgroundTaskId: backgroundTaskId,
           backgroundedByUser: backgroundedByUser,
           assistantAutoBackgrounded: assistantAutoBackgrounded,
+          nestedToolCalls: nestedToolCalls,
         });
         const foundMessageId = newMessages[i].id;
         return { messages: newMessages, messageId: foundMessageId };

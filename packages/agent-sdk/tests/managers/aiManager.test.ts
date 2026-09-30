@@ -6,7 +6,11 @@ import { ConfigurationService } from "../../src/services/configurationService.js
 import type { MessageManager } from "../../src/managers/messageManager.js";
 import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
-import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
+import type {
+  GatewayConfig,
+  Message,
+  ModelConfig,
+} from "../../src/types/index.js";
 import * as aiService from "../../src/services/aiService.js";
 import { DEFAULT_LANGUAGE } from "../../src/utils/constants.js";
 import { logger } from "../../src/utils/globalLogger.js";
@@ -119,6 +123,7 @@ describe("AIManager", () => {
     mockToolManager = {
       getToolsConfig: vi.fn().mockReturnValue([]),
       getTools: vi.fn().mockReturnValue([]),
+      getOnDemandToolNames: vi.fn().mockReturnValue(undefined),
       list: vi.fn().mockReturnValue([]),
       execute: vi
         .fn()
@@ -1866,6 +1871,49 @@ describe("AIManager", () => {
       await streamingManager.sendAIMessage();
 
       expect(mockMessageManager.discardAssistantMessage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Task reminder reachability", () => {
+    /** Enough idle assistant turns to clear both reminder thresholds. */
+    function idleTurns(count: number): Message[] {
+      return Array.from({ length: count }, (_, i) => ({
+        id: `m${i}`,
+        role: "assistant",
+        blocks: [{ type: "text", content: "did something" }],
+        timestamp: new Date().toISOString(),
+      })) as unknown as Message[];
+    }
+
+    function reminderTexts(): string[] {
+      return vi
+        .mocked(mockMessageManager.addUserMessage)
+        .mock.calls.map((call) => call[0]?.content ?? "")
+        .filter((content) => content.includes("haven't been used recently"));
+    }
+
+    it("fires when TaskUpdate is reachable only from the sandbox", async () => {
+      // Deferred: absent from `tools[]`, callable from `Exec`. Reading the
+      // declarations as "unavailable" is what silenced this reminder.
+      vi.mocked(mockMessageManager.getMessages).mockReturnValue(idleTurns(12));
+      vi.mocked(mockToolManager.getOnDemandToolNames).mockReturnValue([
+        "TaskUpdate",
+      ]);
+
+      await aiManager.sendAIMessage();
+
+      expect(reminderTexts()).toHaveLength(1);
+    });
+
+    it("stays silent when neither the declarations nor the sandbox reach it", async () => {
+      vi.mocked(mockMessageManager.getMessages).mockReturnValue(idleTurns(12));
+      vi.mocked(mockToolManager.getOnDemandToolNames).mockReturnValue([
+        "WebFetch",
+      ]);
+
+      await aiManager.sendAIMessage();
+
+      expect(reminderTexts()).toHaveLength(0);
     });
   });
 });

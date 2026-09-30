@@ -226,6 +226,56 @@ describe("execTool execution", () => {
     );
   });
 
+  it("records every nested call by name, in order, repeats kept", async () => {
+    // A deferred tool leaves no block of its own, so this record is the only
+    // trace of the call a host-side judgment can read (spec: 记录并展示实际的内层调用).
+    const context = contextWith([
+      mcpConfig("mcp__srv__a"),
+      mcpConfig("mcp__srv__b"),
+    ]);
+
+    const result = await execTool.execute(
+      {
+        code: `
+          await tools.mcp__srv__a({ input: "1" });
+          await tools.mcp__srv__b({ input: "2" });
+          await tools.mcp__srv__a({ input: "3" });
+          return 1;
+        `,
+      },
+      context,
+    );
+
+    expect(result.nestedToolCalls).toEqual([
+      "mcp__srv__a",
+      "mcp__srv__b",
+      "mcp__srv__a",
+    ]);
+  });
+
+  it("omits the record when the script called nothing", async () => {
+    const result = await execTool.execute(
+      { code: "return 1;" },
+      contextWith([mcpConfig("mcp__srv__a")]),
+    );
+
+    expect(result.nestedToolCalls).toBeUndefined();
+  });
+
+  it("keeps the record when the script fails after calling", async () => {
+    // A call that happened still happened, failure or not.
+    const context = contextWith([mcpConfig("mcp__srv__a")]);
+    const result = await execTool.execute(
+      {
+        code: `await tools.mcp__srv__a({ input: "1" }); throw new Error("boom");`,
+      },
+      context,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.nestedToolCalls).toEqual(["mcp__srv__a"]);
+  });
+
   it("lists only the two most recent calls under the count", async () => {
     const context = contextWith(
       ["a", "b", "c"].map((suffix) => mcpConfig(`mcp__srv__${suffix}`)),

@@ -89,6 +89,11 @@ function formatRun(
     content,
     ...(result.ok ? {} : { error: result.error }),
     shortResult: result.ok ? formatSummary(calls) : "failed",
+    // The calls themselves, not just their summary: a deferred tool leaves no
+    // block of its own, so this is the only trace a host-side judgment (e.g. the
+    // task reminder's counter) has of it. Carried on failure too — a call that
+    // happened still happened.
+    ...(calls.length > 0 ? { nestedToolCalls: [...calls] } : {}),
     ...(result.images.length > 0 ? { images: result.images } : {}),
   };
 }

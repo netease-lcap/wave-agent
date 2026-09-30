@@ -1,4 +1,4 @@
-import type { Message } from "../types/messaging.js";
+import type { Message, MessageBlock } from "../types/messaging.js";
 import type { Task } from "../types/tasks.js";
 
 export const TASK_REMINDER_CONFIG = {
@@ -8,6 +8,24 @@ export const TASK_REMINDER_CONFIG = {
 
 const TASK_MANAGEMENT_TOOLS = new Set(["TaskCreate", "TaskUpdate"]);
 const TASK_REMINDER_MARKER = "<!-- task-reminder -->";
+
+/**
+ * Whether this block is a task-management write.
+ *
+ * One question, two shapes. A flat `TaskUpdate` is a block of its own; a deferred
+ * one is only reachable from the sandbox, so it leaves no block of its own and its
+ * name rides on the `Exec` block that carried it (`ToolBlock.nestedToolCalls`, see
+ * `docs/specs/core/exec-tool.md`). Both must reset the counter — reading only the
+ * block name would let the reminder nag an agent that just updated its task list,
+ * and would make the count depend on how the tool happened to be declared.
+ */
+function isTaskManagementWrite(block: MessageBlock): boolean {
+  if (block.type !== "tool") return false;
+  if (block.name && TASK_MANAGEMENT_TOOLS.has(block.name)) return true;
+  return (block.nestedToolCalls ?? []).some((name) =>
+    TASK_MANAGEMENT_TOOLS.has(name),
+  );
+}
 
 function isQualifyingAssistantMessage(message: Message): boolean {
   if (message.role !== "assistant") return false;
@@ -30,9 +48,7 @@ export function getTaskReminderTurnCounts(messages: Message[]): {
     for (const block of message.blocks) {
       if (
         turnsSinceLastTaskManagement === undefined &&
-        block.type === "tool" &&
-        block.name &&
-        TASK_MANAGEMENT_TOOLS.has(block.name)
+        isTaskManagementWrite(block)
       ) {
         turnsSinceLastTaskManagement = assistantTurnCount;
       }
