@@ -85,7 +85,7 @@ order: 90
 
 作为使用 Claude 模型的开发者，我希望系统提示被拆分为静态块（cacheable: true）和动态块（cacheable: false），使得动态内容变更（MEMORY.md、权限模式、环境信息）不会失效静态块的缓存，从而最大化缓存命中率。
 
-**为什么是这个优先级**：此前整个系统提示作为单一字符串传递给 `transformMessagesForExplicitCache`，该函数对系统消息整体添加 cache_control。这意味着任何动态内容变更（如日期变化、MEMORY.md 更新、权限模式切换）都会改变系统消息内容，导致整个系统提示的缓存被失效。通过将静态内容（base prompt + DOING_TASKS + EXECUTING_ACTIONS + TOOL_POLICY + OUTPUT_EFFICIENCY + TONE_AND_STYLE）和动态内容（权限模式 + 语言 + 环境信息 + auto memory + MEMORY.md）分离为独立的 `SystemPromptBlock`，静态块获得自己的 cache_control 标记，动态块不获得标记，动态内容变更不会影响静态块缓存。
+**为什么是这个优先级**：此前整个系统提示作为单一字符串传递给 `transformMessagesForExplicitCache`，该函数对系统消息整体添加 cache_control。这意味着任何动态内容变更（如日期变化、MEMORY.md 更新、权限模式切换）都会改变系统消息内容，导致整个系统提示的缓存被失效。通过将静态内容（身份段 + SYSTEM + DOING_TASKS + EXECUTING_ACTIONS + USING_YOUR_TOOLS + TONE_AND_STYLE）和动态内容（权限模式 + 语言 + 环境信息 + auto memory + MEMORY.md）分离为独立的 `SystemPromptBlock`，静态块获得自己的 cache_control 标记，动态块不获得标记，动态内容变更不会影响静态块缓存。
 
 **独立测试**：可以调用 `buildSystemPrompt` 并验证返回值为 `SystemPromptBlock[]`，第一个块 `cacheable: true` 且包含静态内容，后续块 `cacheable: false` 且包含环境信息。可以验证两次调用（不同 workdir）的静态块文本完全相同，动态块文本不同。可以验证 `callAgent` 在 Claude 模型下将 cacheable 块映射为带 `cache_control: {type: "ephemeral"}` 的内容部分，非 cacheable 块映射为不带 cache_control 的内容部分。可以验证 `callAgent` 在非 Claude 模型下将所有块拼接为单个字符串。
 
