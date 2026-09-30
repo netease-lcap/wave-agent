@@ -126,7 +126,9 @@ export type RequestMethod =
   | "listGitBranches"
   | "createWorktree"
   | "getWorktreeChanges"
-  | "removeWorktree";
+  | "removeWorktree"
+  // Read-only workspace diff for the desktop diff panel
+  | "getWorkspaceDiff";
 
 // ── Client → Server notification methods ────────────────────────
 
