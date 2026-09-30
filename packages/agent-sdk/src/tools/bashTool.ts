@@ -134,12 +134,12 @@ Usage notes:
   - If the output exceeds ${BASH_MAX_OUTPUT_CHARS.toLocaleString()} characters, output will be truncated and the full output will be persisted to a file you can read with the Read tool.
   - You can use the \`run_in_background\` parameter to run the command in the background, which allows you to continue working while the command runs. You can monitor the output using the ${READ_TOOL_NAME} tool as it becomes available. You do not need to use '&' at the end of the command when using this parameter.
   - Avoid using ${BASH_TOOL_NAME} with the \`find\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
-    - File search: Use ${GLOB_TOOL_NAME} (NOT find or ls)
-    - Content search: Use ${GREP_TOOL_NAME} (NOT grep or rg)
-    - Read files: Use ${READ_TOOL_NAME} (NOT cat/head/tail)
-    - Edit files: Use ${EDIT_TOOL_NAME} (NOT sed/awk)
-    - Write files: Use ${WRITE_TOOL_NAME} (NOT echo >/cat <<EOF)
-    - Communication: Output text directly (NOT echo/printf)
+    - To read files use ${READ_TOOL_NAME} instead of cat, head, tail, or sed
+    - To edit files use ${EDIT_TOOL_NAME} instead of sed or awk
+    - To create files use ${WRITE_TOOL_NAME} instead of cat with heredoc or echo redirection
+    - To search for files use ${GLOB_TOOL_NAME} instead of find or ls
+    - To search the content of files, use ${GREP_TOOL_NAME} instead of grep or rg
+    - Reserve using the ${BASH_TOOL_NAME} exclusively for system commands and terminal operations that require shell execution. If you are unsure and there is a relevant dedicated tool, default to using the dedicated tool and only fallback on using the ${BASH_TOOL_NAME} tool for these if it is absolutely necessary.
   - When issuing multiple commands:
     - If the commands are independent and can run in parallel, make multiple ${BASH_TOOL_NAME} tool calls in a single message. For example, if you need to run "git status" and "git diff", send a single message with two ${BASH_TOOL_NAME} tool calls in parallel.
     - If the commands depend on each other and must run sequentially, use a single ${BASH_TOOL_NAME} call with '&&' to chain them together (e.g., \`git add . && git commit -m "message" && git push\`). For instance, if one operation must complete before another starts (like mkdir before cp, ${WRITE_TOOL_NAME} before ${BASH_TOOL_NAME} for git operations, or git add before git commit), run these operations sequentially instead.
