@@ -1985,8 +1985,9 @@ describe("AskUserQuestion Other input", () => {
         ).toBeInTheDocument();
       });
       const dialog = document.querySelector(".confirmation-dialog")!;
-      // With the question unanswered the enabled focusables are the three
-      // option labels and the close button (nav + submit disabled).
+      // With the question unanswered the enabled focusables are the collapse
+      // toggle, the three option labels and the close button (nav + submit
+      // disabled).
       const enabled = Array.from(
         dialog.querySelectorAll<HTMLElement>(
           'button:not([disabled]), [tabindex]:not([tabindex="-1"])',
@@ -1994,7 +1995,7 @@ describe("AskUserQuestion Other input", () => {
       ).filter((el) => el.tabIndex !== -1);
       const first = enabled[0];
       const last = enabled[enabled.length - 1];
-      expect(enabled.length).toBe(4);
+      expect(enabled.length).toBe(5);
 
       // Tab from the last wraps to the first.
       last.focus();
@@ -2126,5 +2127,246 @@ describe("AskUserQuestion Other input", () => {
       // Every option remains a Tab stop.
       expect(other.tabIndex).toBe(0);
     });
+  });
+});
+
+describe("AskUserQuestion 选项区折叠", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const showAskUser = (
+    questions: unknown[],
+    confirmationId = "ask-collapse",
+  ) => {
+    act(() => {
+      sendCommand("showConfirmation", {
+        confirmationId,
+        toolName: ASK_USER_QUESTION_TOOL_NAME,
+        confirmationType: "需要确认",
+        toolInput: { questions },
+      });
+    });
+  };
+
+  const questions = [
+    {
+      question: "Q1 选哪个？",
+      options: [{ label: "方案 A" }, { label: "方案 B" }],
+      multiSelect: false,
+    },
+    {
+      question: "Q2 选择语言？",
+      options: [{ label: "TypeScript" }, { label: "Python" }],
+      multiSelect: false,
+    },
+  ];
+
+  const waitForDialog = () =>
+    waitFor(() => {
+      expect(
+        document.querySelector(".confirmation-dialog"),
+      ).toBeInTheDocument();
+    });
+
+  const toggle = () =>
+    screen.getByTestId("confirmation-collapse-toggle") as HTMLButtonElement;
+
+  const dialogEl = () => document.querySelector(".confirmation-dialog")!;
+
+  const navLabels = () =>
+    Array.from(
+      document.querySelectorAll(".question-navigation .confirmation-btn"),
+    ).map((b) => b.textContent!.trim());
+
+  // 折叠的视觉结果（选项区真的被 display:none 收掉、弹窗变矮、消息列表拿回空间）
+  // 由 e2e/confirm-collapse.e2e.ts 在真实浏览器里量；jsdom 不解析外部样式表，
+  // 这里只断「状态类 + aria + DOM 归属 + 交互后果」。
+  it("folds the option area, keeping the question chip, progress bar and nav bar", async () => {
+    renderChatApp();
+    showAskUser(questions);
+    await waitForDialog();
+
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+    expect(toggle()).toHaveAccessibleName("折叠选项");
+    const list = document.querySelector(".options-list");
+    expect(list).toBeInTheDocument();
+
+    act(() => {
+      fireEvent.click(toggle());
+    });
+
+    expect(dialogEl()).toHaveClass("is-options-collapsed");
+    // 收起 ≠ 卸载：列表节点留在 DOM 上，滚动位置由组件显式保存/回填。
+    expect(document.querySelector(".options-list")).toBe(list);
+    // 上下文（题干、题号进度）与底部三按钮留在原位。
+    expect(screen.getByTestId("question-progress-bar")).toBeInTheDocument();
+    expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+      "Q1 选哪个？",
+    );
+    expect(navLabels()).toEqual(["上一个", "下一个", "提交回答"]);
+    // 折叠键自身转为「展开」语义。
+    expect(toggle()).toHaveAttribute("aria-expanded", "false");
+    expect(toggle()).toHaveAccessibleName("展开选项");
+
+    act(() => {
+      fireEvent.click(toggle());
+    });
+    expect(dialogEl()).not.toHaveClass("is-options-collapsed");
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("keeps answers, Other text, current question and list scroll offset across a fold", async () => {
+    renderChatApp();
+    showAskUser(questions);
+    await waitForDialog();
+
+    // Q1：选中「其他」并输入自定义答案。
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.option-item[data-option-index="other"] input',
+        )!,
+      );
+    });
+    const otherInput = (await waitFor(() => {
+      const el =
+        document.querySelector<HTMLTextAreaElement>(".other-text-input");
+      expect(el).toBeInTheDocument();
+      return el!;
+    })) as HTMLTextAreaElement;
+    act(() => {
+      fireEvent.change(otherInput, { target: { value: "自定义回答" } });
+    });
+
+    // 切到 Q2（当前题号 = 1），并给选项列表一个滚动位置。
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.question-navigation [aria-label="下一个"]',
+        ) as HTMLElement,
+      );
+    });
+    const list = document.querySelector<HTMLElement>(".options-list")!;
+    list.scrollTop = 120;
+
+    act(() => {
+      fireEvent.click(toggle());
+    });
+    act(() => {
+      fireEvent.click(toggle());
+    });
+
+    // 当前题号仍在 Q2。
+    expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+      "Q2 选择语言？",
+    );
+    // 列表滚动位置回填（display:none 会丢掉它）。
+    expect(
+      document.querySelector<HTMLElement>(".options-list")!.scrollTop,
+    ).toBe(120);
+    // Q1 的「其他」输入内容仍在（切回 Q1 验证）。
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          '.question-navigation [aria-label="上一个"]',
+        ) as HTMLElement,
+      );
+    });
+    expect(
+      document.querySelector<HTMLTextAreaElement>(".other-text-input")!.value,
+    ).toBe("自定义回答");
+  });
+
+  it("drops the folded options from the Tab cycle (wrap goes close → collapse toggle)", async () => {
+    renderChatApp();
+    showAskUser([questions[0]]);
+    await waitForDialog();
+
+    act(() => {
+      fireEvent.click(toggle());
+    });
+
+    // 选项标签降为 tabIndex=-1 —— display:none 之外的第二道保险：焦点圈的
+    // first/last 按 tabIndex 过滤，否则回绕会把焦点丢给隐藏元素。
+    for (const el of document.querySelectorAll(".option-item")) {
+      expect((el as HTMLElement).tabIndex).toBe(-1);
+    }
+
+    const close = document.querySelector<HTMLElement>(
+      ".confirmation-close-btn",
+    )!;
+    close.focus();
+    act(() => {
+      fireEvent.keyDown(window, { key: "Tab" });
+    });
+    expect(document.activeElement).toBe(toggle());
+  });
+
+  it("renders the collapse toggle only for AskUserQuestion", async () => {
+    renderChatApp();
+    await act(async () => {
+      sendCommand("showConfirmation", {
+        confirmationId: "bash-collapse",
+        toolName: BASH_TOOL_NAME,
+        confirmationType: "命令执行待确认",
+        toolInput: { command: "pnpm test" },
+      });
+    });
+    await waitForDialog();
+    expect(screen.queryByTestId("confirmation-collapse-toggle")).toBeNull();
+    // 关闭键仍在（头部按钮组对其它确认类型照旧）。
+    expect(
+      document.querySelector(".confirmation-close-btn"),
+    ).toBeInTheDocument();
+  });
+
+  it("resets a folded dialog back to expanded when the next queued confirmation shows", async () => {
+    renderChatApp();
+    showAskUser([questions[0]], "ask-collapse-1");
+    await waitForDialog();
+
+    // 答完唯一一题后收起，再从折叠态提交（提交按钮不在被收起的区域内）。
+    act(() => {
+      fireEvent.click(
+        document.querySelector('.option-item[data-option-index="0"] input')!,
+      );
+    });
+    act(() => {
+      fireEvent.click(toggle());
+    });
+    expect(dialogEl()).toHaveClass("is-options-collapsed");
+    act(() => {
+      fireEvent.click(
+        document.querySelector(
+          ".question-navigation .confirmation-btn-apply",
+        ) as HTMLElement,
+      );
+    });
+
+    // 队列里的下一个确认（新 confirmationId → ChatApp 换 key 重挂载）总是展开态。
+    await act(async () => {
+      sendCommand("showConfirmation", {
+        confirmationId: "ask-collapse-2",
+        toolName: ASK_USER_QUESTION_TOOL_NAME,
+        confirmationType: "需要确认",
+        toolInput: {
+          questions: [
+            {
+              question: "Q9 队列里的下一题？",
+              options: [{ label: "确定" }],
+              multiSelect: false,
+            },
+          ],
+        },
+      });
+    });
+    await waitFor(() => {
+      expect(document.querySelector(".question-header-chip")).toHaveTextContent(
+        "Q9 队列里的下一题？",
+      );
+    });
+    expect(dialogEl()).not.toHaveClass("is-options-collapsed");
+    expect(toggle()).toHaveAttribute("aria-expanded", "true");
   });
 });

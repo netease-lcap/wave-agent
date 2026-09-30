@@ -67,12 +67,19 @@
   color: var(--vscode-editor-foreground);
 }
 
-.confirmation-close-btn {
-  /* Pinned to the dialog's top-right corner and placed last in the DOM so the
-     primary action stays first in the Tab cycle. */
+/* 头部尾部按钮组（折叠键 + 关闭键），钉在弹窗右上角。放在 DOM 最后一段，
+   主操作（提交回答 / 批准并继续）因此仍排在 Tab 循环最前。 */
+.confirmation-header-actions {
   position: absolute;
   top: 8px;
   right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.confirmation-collapse-btn,
+.confirmation-close-btn {
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -87,9 +94,22 @@
   cursor: pointer;
 }
 
+.confirmation-collapse-btn:hover,
 .confirmation-close-btn:hover {
   background: var(--vscode-toolbar-hoverBackground);
   color: var(--vscode-foreground);
+}
+
+/* 折叠键：chevron 收起态指向右、展开态朝下（与消息队列 / 推理块同一套折叠
+   语言，见 Message.css 的 .reasoning-chevron）。 */
+.confirmation-collapse-chevron {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.15s ease;
+}
+
+.confirmation-collapse-chevron.expanded {
+  transform: rotate(90deg);
 }
 
 .confirmation-command {
@@ -234,6 +254,15 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* 折叠态：只收起选项交互区，题干 chip、进度条与底部三按钮留在原位，弹窗高度
+   随之收缩、把空间还给消息列表（小屏笔记本上弹窗上限 min(70vh, 560px) 可吃掉
+   面板约 70%）。折叠键本身不在这里，见 .confirmation-header-actions。
+   收起后选项不再 Tab 可达（tabIndex 由组件一并改掉，光靠 display:none 会让
+   焦点圈的 first/last 落到隐藏元素上）。 */
+.confirmation-dialog.is-options-collapsed .options-list {
+  display: none;
 }
 
 /* 溢出时：列表盒伸进 .question-item 让出的那一列内衬，自身的 16px 滚动条正好落回
