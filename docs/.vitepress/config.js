@@ -91,7 +91,6 @@ export default {
               text: "规格驱动开发工作流",
               link: "/tutorials#_2-规格驱动开发工作流",
             },
-            { text: "实际产出统计", link: "/tutorials#_3-实际产出统计" },
           ],
         },
         {
