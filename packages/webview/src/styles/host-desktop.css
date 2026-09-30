@@ -1839,7 +1839,9 @@
 /* 深色档同款复位：第十三轮的深色面板规则选择器是 (0,3,0)，与上一条平手时按书写
    顺序取胜（该块在下方），故深色必须再抬一级 —— 否则面板里会多出一圈 12% 白边
    + 40% 黑影的内嵌矩形。 */
-[data-host="desktop"][data-theme="dark"] .file-pane-search-popover .file-suggestion-dropdown {
+[data-host="desktop"][data-theme="dark"]
+  .file-pane-search-popover
+  .file-suggestion-dropdown {
   background: transparent;
   border: none;
   box-shadow: none;
@@ -2600,24 +2602,33 @@
    （实测 `:focus-visible` = true 时边框仍 transparent / outline none，走查图 focus 与静止态
    逐像素相同）。此处以 (0,4,0) 复写：焦点色落在**已有的 1px 描边**上（与参照按钮
    `.settings-row-btn` 的既有口径同为「焦点色落自身边框」，不再是「凭空出现一条描边」）。 */
-[data-host="desktop"][data-theme="light"] .confirmation-btn-secondary:focus-visible,
-[data-host="desktop"][data-theme="dark"] .confirmation-btn-secondary:focus-visible {
+[data-host="desktop"][data-theme="light"]
+  .confirmation-btn-secondary:focus-visible,
+[data-host="desktop"][data-theme="dark"]
+  .confirmation-btn-secondary:focus-visible {
   outline: none;
   border-color: var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
 }
 
 /* ③ 关闭按钮对齐：标题 16px/lh32 + 卡片 pad 16 → 标题行中心 = 32px，
    按钮 20×20 → top 22 / right 16（= padding，右缘与内容右端对齐）；
-   原来 top 8/right 12 是 base 12px padding 时代的旧值，偏上偏外。 */
-[data-host="desktop"] .confirmation-close-btn {
+   原来 top 8/right 12 是 base 12px padding 时代的旧值，偏上偏外。
+   角标落在按钮组上（关闭键现在是组内最后一个 flex 项，右缘 = 组右缘，
+   对齐关系不变；组内左侧多出的折叠键只占 AskUserQuestion 的头部）。 */
+[data-host="desktop"] .confirmation-header-actions {
   top: 22px;
   right: 16px;
+}
+[data-host="desktop"] .confirmation-collapse-btn,
+[data-host="desktop"] .confirmation-close-btn {
   border-radius: var(--cc-radius-md, 8px);
 }
+[data-host="desktop"][data-theme="light"] .confirmation-collapse-btn:hover,
 [data-host="desktop"][data-theme="light"] .confirmation-close-btn:hover {
   background-color: #eef0f3;
   color: #1f2329;
 }
+[data-host="desktop"][data-theme="dark"] .confirmation-collapse-btn:hover,
 [data-host="desktop"][data-theme="dark"] .confirmation-close-btn:hover {
   background-color: rgb(255 255 255 / 8%);
   color: #ffffff;
@@ -3003,6 +3014,7 @@
 [data-host="desktop"] .desktop-pane-close,
 [data-host="desktop"] .write-preview-open,
 [data-host="desktop"] .toast-close,
+[data-host="desktop"] .confirmation-collapse-btn,
 [data-host="desktop"] .confirmation-close-btn,
 [data-host="desktop"] .desktop-session-group-header .codicon,
 [data-host="desktop"] .desktop-workdir-trigger .codicon {
@@ -3018,6 +3030,7 @@
 [data-host="desktop"][data-theme="dark"] .desktop-pane-close,
 [data-host="desktop"][data-theme="dark"] .write-preview-open,
 [data-host="desktop"][data-theme="dark"] .toast-close,
+[data-host="desktop"][data-theme="dark"] .confirmation-collapse-btn,
 [data-host="desktop"][data-theme="dark"] .confirmation-close-btn,
 [data-host="desktop"][data-theme="dark"] .desktop-session-group-header .codicon,
 [data-host="desktop"][data-theme="dark"] .desktop-workdir-trigger .codicon {
@@ -3994,7 +4007,8 @@
 [data-host="desktop"][data-theme="dark"] .settings-select-option.is-selected,
 [data-host="desktop"][data-theme="dark"]
   .settings-select-option.is-selected:hover,
-[data-host="desktop"][data-theme="dark"] .session-board-filter-option.is-selected,
+[data-host="desktop"][data-theme="dark"]
+  .session-board-filter-option.is-selected,
 [data-host="desktop"][data-theme="dark"]
   .session-board-filter-option.is-selected:hover {
   background: rgba(255, 255, 255, 0.12);
@@ -4124,4 +4138,3 @@
 [data-host="desktop"] .tooltip-box.visible {
   transition-delay: 0.1s;
 }
-

@@ -13,7 +13,11 @@ import {
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
 } from "wave-agent-sdk/constants";
-import { CloseIcon, ConversationCloseIcon } from "./HeaderIcons";
+import {
+  CloseIcon,
+  ConversationCloseIcon,
+  QueueChevronIcon,
+} from "./HeaderIcons";
 import { isDesktopHost } from "../utils/platform";
 import type {
   ConfirmationDialogProps,
@@ -168,6 +172,29 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
     observer.observe(el);
     return () => observer.disconnect();
   }, [confirmation.toolName, measureQuestionsList]);
+
+  // ---- 选项区折叠（仅 AskUserQuestion，见 ask-user-tool.md「提问弹窗选项区可折叠」）----
+  // 收起的是选项交互区：题干 chip、进度条与底部三按钮留在原位，作答前必须展开。
+  // 折叠态随本组件实例生灭——ChatApp 用 confirmationId 作 key 重挂载，队列里的
+  // 下一个确认因此自动回到展开态。
+  const [optionsCollapsed, setOptionsCollapsed] = useState(false);
+  // display:none 会丢掉列表的滚动位置（浏览器不保留被折叠元素的滚动状态），
+  // 折叠时记下、展开后回填（场景 3「折叠前选项区的滚动位置不丢失」）。
+  const optionsScrollTopRef = useRef(0);
+
+  const toggleOptionsCollapsed = useCallback(() => {
+    if (!optionsCollapsed) {
+      const el = questionsListRef.current;
+      if (el) optionsScrollTopRef.current = el.scrollTop;
+    }
+    setOptionsCollapsed((prev) => !prev);
+  }, [optionsCollapsed]);
+
+  useLayoutEffect(() => {
+    if (optionsCollapsed) return;
+    const el = questionsListRef.current;
+    if (el) el.scrollTop = optionsScrollTopRef.current;
+  }, [optionsCollapsed]);
 
   // The element focused before the dialog took focus; restored on dismiss.
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -616,7 +643,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
                     ? "selected"
                     : ""
                 }`}
-                tabIndex={0}
+                tabIndex={optionsCollapsed ? -1 : 0}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     // Enter 仅用于提交：全部题目已答完时提交，未答完时
@@ -691,7 +718,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
                   className={`option-item other-option ${
                     isOtherChecked ? "selected" : ""
                   }`}
-                  tabIndex={0}
+                  tabIndex={optionsCollapsed ? -1 : 0}
                   onKeyDown={(e) => {
                     // The Other textarea stopPropagation's its own keys, so
                     // keydown here always originates from the label itself.
@@ -898,7 +925,13 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
   }, [confirmation, showFeedbackInput, feedback, isQuestionAnswered]);
 
   return (
-    <div ref={dialogRef} className="confirmation-dialog" tabIndex={-1}>
+    <div
+      ref={dialogRef}
+      className={`confirmation-dialog${
+        optionsCollapsed ? " is-options-collapsed" : ""
+      }`}
+      tabIndex={-1}
+    >
       <div className="confirmation-dialog-inner">
         <div className="confirmation-body">
           <div className="confirmation-header">
@@ -1082,22 +1115,41 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
           </div>
         )}
 
-        <button
-          type="button"
-          className="confirmation-close-btn"
-          onClick={handleReject}
-          aria-label="关闭"
-          title="关闭"
-        >
-          {/* 桌面端与 pane 头部关闭同一官方矢量（用户 0916：「toast 关闭 /
-              确认弹层关闭应该是和 pane 头部关闭用同一个图标」）；IDE 宿主
-              保持原 CloseIcon 不变 */}
-          {isDesktopHost() ? (
-            <ConversationCloseIcon className="confirmation-close-btn-icon" />
-          ) : (
-            <CloseIcon className="confirmation-close-btn-icon" />
+        <div className="confirmation-header-actions">
+          {confirmation.toolName === ASK_USER_QUESTION_TOOL_NAME && (
+            <button
+              type="button"
+              className="confirmation-collapse-btn"
+              data-testid="confirmation-collapse-toggle"
+              onClick={toggleOptionsCollapsed}
+              aria-expanded={!optionsCollapsed}
+              aria-label={optionsCollapsed ? "展开选项" : "折叠选项"}
+              title={optionsCollapsed ? "展开选项" : "折叠选项"}
+            >
+              <QueueChevronIcon
+                className={`confirmation-collapse-chevron${
+                  optionsCollapsed ? "" : " expanded"
+                }`}
+              />
+            </button>
           )}
-        </button>
+          <button
+            type="button"
+            className="confirmation-close-btn"
+            onClick={handleReject}
+            aria-label="关闭"
+            title="关闭"
+          >
+            {/* 桌面端与 pane 头部关闭同一官方矢量（用户 0916：「toast 关闭 /
+                确认弹层关闭应该是和 pane 头部关闭用同一个图标」）；IDE 宿主
+                保持原 CloseIcon 不变 */}
+            {isDesktopHost() ? (
+              <ConversationCloseIcon className="confirmation-close-btn-icon" />
+            ) : (
+              <CloseIcon className="confirmation-close-btn-icon" />
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
