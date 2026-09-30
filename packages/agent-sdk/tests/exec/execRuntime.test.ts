@@ -197,14 +197,14 @@ describe("runExecScript — the bridge", () => {
     // The pointer names a call the host actually accepts, derived from the same
     // schema the tool description is rendered from.
     expect(outcome).toContain(
-      `tools["$codemode"].search({ query: "...", max_results: 0 })`,
+      `tools.ToolSearch({ query: "...", max_results: 0 })`,
     );
   });
 
   it("offers search over the full pool", async () => {
     const result = await run(`
-      const all = await tools["$codemode"].search({ query: "" });
-      const sums = await tools["$codemode"].search({ query: "sum" });
+      const all = await tools.ToolSearch({ query: "" });
+      const sums = await tools.ToolSearch({ query: "sum" });
       return { all: all.total, sums: sums.matches.map((t) => t.name) };
     `);
 
@@ -223,7 +223,7 @@ describe("runExecScript — the bridge", () => {
     }));
     const result = await run(
       `
-        const found = await tools["$codemode"].search({ query: "tool", max_results: 2 });
+        const found = await tools.ToolSearch({ query: "tool", max_results: 2 });
         return { shown: found.matches.length, total: found.total };
       `,
       { pool },
@@ -238,7 +238,7 @@ describe("runExecScript — the bridge", () => {
     // pool — a wrong call dressed up as a successful search.
     const result = await run(`
       try {
-        const res = await tools["$codemode"].search({ q: "sum" });
+        const res = await tools.ToolSearch({ q: "sum" });
         return { outcome: "returned " + res.total };
       } catch (error) {
         return { outcome: error.message };
@@ -249,7 +249,7 @@ describe("runExecScript — the bridge", () => {
     const { outcome } = JSON.parse(result.value!);
     expect(outcome).toContain(`does not take "q"`);
     expect(outcome).toContain(
-      `tools["$codemode"].search({ query: "...", max_results: 0 })`,
+      `tools.ToolSearch({ query: "...", max_results: 0 })`,
     );
   });
 
@@ -273,7 +273,7 @@ describe("runExecScript — the bridge", () => {
     ];
     const result = await run(
       `
-        const found = await tools["$codemode"].search({ query: "sum" });
+        const found = await tools.ToolSearch({ query: "sum" });
         return found.matches;
       `,
       { pool },

@@ -24,10 +24,9 @@ const failures: string[] = [];
 
 /** Names in call order, as they appear in the script the model wrote. */
 function callsIn(script: string): string[] {
-  const pattern = /mcp__[A-Za-z0-9_.-]+|\$codemode"?\]?\.search/g;
-  return (script.match(pattern) ?? []).map((match) =>
-    match.startsWith("$codemode") ? "$codemode.search" : match,
-  );
+  // Search is an ordinary call on the tool path now (`tools.ToolSearch(...)`), so
+  // the name it is reported under is the name it is written with.
+  return script.match(/mcp__[A-Za-z0-9_.-]+|ToolSearch/g) ?? [];
 }
 
 /** The summary shape the row is supposed to have for `count` calls. */

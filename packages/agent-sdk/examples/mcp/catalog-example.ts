@@ -203,7 +203,7 @@ async function main(): Promise<void> {
       "the announcement carries a truncation notice or a budget number",
     );
     check(
-      note.includes('tools["$codemode"].search'),
+      note.includes("tools.ToolSearch"),
       "the announcement does not point at the search entry",
     );
 

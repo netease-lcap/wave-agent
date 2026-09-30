@@ -26,9 +26,9 @@
  * teaching one form while accepting another is a bug with no diff to review.
  */
 import {
-  EXEC_RESERVED_NAMESPACE,
   EXEC_SEARCH_DEFAULT_MAX_RESULTS,
   EXEC_SEARCH_MAX_RESULTS_LIMIT,
+  EXEC_SEARCH_NAME,
 } from "./constants.js";
 import { isDeferredTool } from "./deferral.js";
 import type { DeferralSubject } from "./deferral.js";
@@ -72,6 +72,23 @@ export interface ExecPoolCandidate extends DeferralSubject {
  * `nonDeferrable` is the resolved non-deferrable list (structural floor already
  * unioned in — see `getNonDeferrableBuiltins`). Candidates are expected to be
  * permission-filtered already; this function only decides deferral.
+ *
+ * A candidate named like the sandbox's own search entry is refused rather than
+ * pooled. The sandbox assigns that entry to the same key the pool is spread
+ * across, so a member carrying the name would be shadowed instead of called: the
+ * model would read the tool in the announcement, call it, and silently reach
+ * search. Refusing here is what keeps such a pool from existing at all — this
+ * builder feeds the flat declarations, the announcement and the sandbox alike, so
+ * neither of the other two can be handed one either. It also puts the failure on
+ * the registration that caused it, at turn assembly, instead of on an unrelated
+ * script that happens to run later. Claude Code's `registerTool` takes the same
+ * position ("collides with a built-in global"); it keeps the collision away with a
+ * reserved prefix on dynamically registered names, which is the option this name
+ * deliberately gave up.
+ *
+ * Only a *pooled* member can shadow anything, so the check sits after the deferral
+ * judgment: a tool with that name that is declared flat is left alone, and one
+ * that the non-deferrable list exempts is not a reason to fail a turn either.
  */
 export function buildExecPool(
   candidates: readonly ExecPoolCandidate[],
@@ -80,6 +97,12 @@ export function buildExecPool(
   const pool: ExecPoolEntry[] = [];
   for (const candidate of candidates) {
     if (!isDeferredTool(candidate, nonDeferrable)) continue;
+    if (candidate.name === EXEC_SEARCH_NAME) {
+      throw new Error(
+        `Tool "${EXEC_SEARCH_NAME}" cannot be loaded on demand, because the sandbox exposes its own search entry under that name. ` +
+          `Rename the tool, or mark it \`alwaysLoad\` so it stays out of the Exec pool.`,
+      );
+    }
     pool.push({
       name: candidate.name,
       description: candidate.description,
@@ -271,10 +294,11 @@ export function renderToolSignature(entry: ExecPoolEntry): string {
 }
 
 /**
- * The path the sandbox exposes search under. Built from the reserved namespace
- * (the sandbox builds it the same way), so prose and runtime cannot drift.
+ * The path the sandbox exposes search under: `tools.ToolSearch`. Rendered by the
+ * same function that renders every tool's path — and the sandbox assigns the entry
+ * to exactly that key — so prose and runtime cannot drift.
  */
-export const EXEC_SEARCH_EXPRESSION = `tools[${JSON.stringify(EXEC_RESERVED_NAMESPACE)}].search`;
+export const EXEC_SEARCH_EXPRESSION = toolExpression(EXEC_SEARCH_NAME);
 
 /**
  * Input schema of the sandbox's `search` entry point.
@@ -418,14 +442,14 @@ export function resolveSearchArgs(
   );
   if (unexpected !== undefined) {
     throw new Error(
-      `search() does not take "${unexpected}". Expected ${renderSearchCallForm()}`,
+      `${EXEC_SEARCH_NAME}() does not take "${unexpected}". Expected ${renderSearchCallForm()}`,
     );
   }
 
   const rawQuery = args.query;
   if (rawQuery !== undefined && typeof rawQuery !== "string") {
     throw new Error(
-      `search() expects "query" to be a string, got ${typeof rawQuery}. Expected ${renderSearchCallForm()}`,
+      `${EXEC_SEARCH_NAME}() expects "query" to be a string, got ${typeof rawQuery}. Expected ${renderSearchCallForm()}`,
     );
   }
   const query = (rawQuery ?? "").trim();
@@ -433,7 +457,7 @@ export function resolveSearchArgs(
   const rawMax = args.max_results;
   if (rawMax !== undefined && typeof rawMax !== "number") {
     throw new Error(
-      `search() expects "max_results" to be a number, got ${typeof rawMax}. Expected ${renderSearchCallForm()}`,
+      `${EXEC_SEARCH_NAME}() expects "max_results" to be a number, got ${typeof rawMax}. Expected ${renderSearchCallForm()}`,
     );
   }
   const maxResults =

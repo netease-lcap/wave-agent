@@ -49,10 +49,10 @@ describe("renderPoolNote", () => {
     const note = renderPoolNote(["mcp__alpha__tool0", "WebFetch"]);
     expect(note).toBe(
       [
-        "Tools reachable inside a sandbox script as `tools.<name>` (no other name resolves):",
+        "Tools reachable inside a sandbox script as `tools.<name>` (no other tool name resolves):",
         "- `WebFetch`",
         "- `mcp__alpha__tool0`",
-        'Call `tools["$codemode"].search(...)` for any of their parameters and return types.',
+        "Call `tools.ToolSearch(...)` for any of their parameters and return types.",
       ].join("\n"),
     );
   });

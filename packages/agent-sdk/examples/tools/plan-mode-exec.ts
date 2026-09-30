@@ -114,7 +114,7 @@ async function main(): Promise<void> {
       agent.messages
         .flatMap((message) => message.blocks)
         .map((block) => (block.type === "text" ? block.content : ""))
-        .find((text) => text.includes("$codemode")) ?? "";
+        .find((text) => text.includes("ToolSearch")) ?? "";
     check(
       announcement.includes("ExitPlanMode") &&
         announcement.includes("EnterPlanMode"),
