@@ -2,17 +2,16 @@
  * Exec feature availability.
  *
  * Exec collapses the on-demand tool pool into a single scriptable tool, which
- * changes what the model sees in `tools[]`. It is off by default — the mechanism
- * is implemented, but rewriting the shape of `tools[]` is a large enough change
- * that a session opts in with `enableExec: true` (or a remote push) rather than
- * getting it silently.
+ * changes what the model sees in `tools[]`. It is on by default — the mechanism
+ * shipped behind an opt-in switch first, and that switch stays as the way back:
+ * `enableExec: false` (or a remote push) restores the flat declarations.
  */
 import { loadMergedWaveConfig } from "./configurationService.js";
 import { getRemoteSettingsSync } from "./remoteSettingsService.js";
 import { STRUCTURAL_NON_DEFERRABLE } from "../exec/deferral.js";
 
 /** Code default for Exec availability. */
-export const EXEC_DEFAULT_ENABLED = false;
+export const EXEC_DEFAULT_ENABLED = true;
 
 /**
  * Whether the Exec tool may be registered for the given workdir.

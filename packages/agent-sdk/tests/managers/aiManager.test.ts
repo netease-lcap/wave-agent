@@ -65,6 +65,12 @@ vi.mock("../../src/services/memory.js", () => ({
 
 vi.mock("../../src/utils/messageOperations.js", () => ({}));
 
+// The prompt text asserted below lives in the full tier, so pin the lean switch
+// off for this file (the code default is on).
+vi.mock("../../src/services/leanPrompt.js", () => ({
+  isLeanPromptEnabled: vi.fn().mockReturnValue(false),
+}));
+
 vi.mock("../../src/utils/convertMessagesForAPI.js", () => ({
   convertMessagesForAPI: vi.fn().mockReturnValue([]),
 }));

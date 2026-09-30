@@ -21,8 +21,8 @@ describe("execAvailability", () => {
     vi.clearAllMocks();
   });
 
-  it("should default to disabled", () => {
-    expect(EXEC_DEFAULT_ENABLED).toBe(false);
+  it("should default to enabled", () => {
+    expect(EXEC_DEFAULT_ENABLED).toBe(true);
   });
 
   it("should follow the code default when no workdir is given", () => {

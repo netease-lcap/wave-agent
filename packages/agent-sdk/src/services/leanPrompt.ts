@@ -3,13 +3,13 @@
  *
  * Lean replaces the static system prompt and each built-in tool's description
  * with condensed text (aligned with Claude Code's simple-system-prompt variant).
- * It rewrites what the model reads every turn, so it is off by default and a
- * session opts in with `leanPrompt: true` rather than getting it silently.
+ * It rewrites what the model reads every turn and is on by default; a session
+ * that wants the full tier back sets `leanPrompt: false`.
  */
 import { loadMergedWaveConfig } from "./configurationService.js";
 
 /** Code default for the lean prompt set. */
-export const LEAN_PROMPT_DEFAULT_ENABLED = false;
+export const LEAN_PROMPT_DEFAULT_ENABLED = true;
 
 /**
  * Whether the lean prompt set is used for the given workdir.

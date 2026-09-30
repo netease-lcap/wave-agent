@@ -82,15 +82,17 @@ describe("Hook Success Behavior (User Story 1)", () => {
       // agent.sendMessage() results in agent.messages containing two user role messages,
       // where the second message contains the hook stdout content
       const messages = agent.messages;
-      // user message + injected context + assistant response. `Exec` is off by
-      // default, so the host appends no on-demand-tool notice on the first turn.
-      expect(messages).toHaveLength(3);
+      // user message + injected context + on-demand-tool notice + assistant
+      // response. `Exec` is on by default, so the host appends the notice as a
+      // meta message before the first request.
+      expect(messages).toHaveLength(4);
 
       // Find user messages - should have original prompt and injected context.
       // The injected one carries `isMeta: true` (hook feedback is hidden from the
-      // UI, visible to the model), which is asserted below.
+      // UI, visible to the model), which is asserted below; the notice at index 2
+      // is meta as well.
       const userMessages = messages.filter((msg) => msg.role === "user");
-      expect(userMessages).toHaveLength(2);
+      expect(userMessages).toHaveLength(3);
 
       // First user message should be original prompt
       const firstUserBlock = userMessages[0].blocks?.[0];
@@ -157,9 +159,9 @@ describe("Hook Success Behavior (User Story 1)", () => {
           : undefined,
       ).toBe("test prompt");
 
-      // Total messages should be user + assistant: no injected context, and no
-      // on-demand-tool notice while `Exec` is off by default.
-      expect(messages).toHaveLength(2);
+      // Total messages should be user + notice + assistant: no injected context,
+      // and the on-demand-tool notice `Exec` appends by default.
+      expect(messages).toHaveLength(3);
     });
   });
 
