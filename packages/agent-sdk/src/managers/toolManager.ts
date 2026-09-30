@@ -154,7 +154,7 @@ class ToolManager {
       builtInTools.push(artifactTool);
     }
 
-    // Exec is off by default; enableExec: true registers it. Registration is
+    // Exec is on by default; enableExec: false turns it off. Registration is
     // decoupled from declaration: getToolsConfig() declares it only while the
     // deferral table yields a non-empty pool, which depends on the runtime tool set.
     if (isExecEnabled(this.container.get<string>("Workdir"))) {

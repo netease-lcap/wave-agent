@@ -9,7 +9,7 @@ const { isLeanPromptEnabled } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/services/leanPrompt.js", () => ({
-  LEAN_PROMPT_DEFAULT_ENABLED: false,
+  LEAN_PROMPT_DEFAULT_ENABLED: true,
   isLeanPromptEnabled,
 }));
 
@@ -66,8 +66,8 @@ describe("lean prompt mode", () => {
   });
 
   it("declares a lean description on the opt-in tools too", () => {
-    // Artifact and Exec are gated off by default, so `initializeBuiltInTools`
-    // never registers them and the sweep above cannot see them.
+    // Artifact is gated off by default, so `initializeBuiltInTools` never
+    // registers it and the sweep above cannot see it.
     expect(artifactTool.leanPrompt).toBeDefined();
     expect(execTool.leanPrompt).toBeDefined();
   });

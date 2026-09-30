@@ -15,9 +15,8 @@ import type { BackgroundTaskManager } from "@/managers/backgroundTaskManager.js"
 import type { IForegroundTaskManager } from "@/types/processes.js";
 import type { ILspManager } from "@/types/index.js";
 
-// Exec is off by default, and these tests are about the deferral shape (which
-// tools stay flat, which ones reach the sandbox), so they turn it on explicitly
-// rather than depend on the code default.
+// These tests are about the deferral shape (which tools stay flat, which ones
+// reach the sandbox), so they pin Exec on rather than depend on the code default.
 vi.mock("../../src/services/execAvailability.js", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("../../src/services/execAvailability.js")
