@@ -77,7 +77,7 @@ describe("editTool serialization (real fs)", () => {
     expect(content).toBe("LINE1\nLINE2\nLINE3\nline4\nline5\n");
   });
 
-  it("should fail with staleness error when file modified externally", async () => {
+  it("should apply an edit to a file modified externally and flag the change", async () => {
     // Externally modify the file and bump mtime forward by 10 seconds
     await writeFile(
       tempFile,
@@ -92,8 +92,14 @@ describe("editTool serialization (real fs)", () => {
       context,
     );
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("unexpectedly modified");
+    // old_string still matches the content on disk → the edit applies, with a
+    // note that the file holds changes this session has not seen.
+    expect(result.success).toBe(true);
+    expect(result.content).toContain(
+      "the file had been modified on disk since you last read it",
+    );
+    const content = await readFile(tempFile, "utf-8");
+    expect(content).toBe("LINE1\nline2\nMODIFIED\nline4\nline5\n");
   });
 
   it("should allow subsequent edit after readFileState is updated", async () => {

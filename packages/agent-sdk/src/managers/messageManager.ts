@@ -50,7 +50,7 @@ import { Container } from "../utils/container.js";
 // (top 5 for post-compact restoration), so bound both the entry count and the
 // number of entries that keep full content (aligned with Claude Code's
 // FileStateCache 100-entry limit). Paths beyond the content cap are kept so
-// hasFileBeenRead still works for read-before-edit enforcement.
+// hasFileBeenRead can still answer for every file read this session.
 const RECENT_FILE_READS_CACHE_LIMIT = 100;
 const RECENT_FILE_READS_CONTENT_LIMIT = 10;
 
@@ -381,7 +381,7 @@ export class MessageManager {
   }
 
   /**
-   * Check if a file has been read (for read-before-edit enforcement).
+   * Check if a file has been read in this session.
    * Uses recentFileReads Map populated from Read tool execution.
    */
   public hasFileBeenRead(filePath: string): boolean {

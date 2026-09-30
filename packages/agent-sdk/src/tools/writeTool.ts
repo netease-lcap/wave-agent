@@ -88,32 +88,29 @@ Usage:
         isExistingFile = false;
       }
 
-      // Read-before-write + staleness guards (aligned with Claude Code).
-      // Only enforced for existing files when readFileState is available
-      // (production always injects it; new-file creation always bypasses).
-      // Grep does not register a file as read, so Grep-then-Write on an
-      // existing file is still rejected. Staleness uses the same `>` + full-
-      // read content-hash fallback as editTool to avoid false positives from
-      // git checkout / editor round-trip save / cloud sync / antivirus.
+      // Staleness check, aligned with Claude Code and shared with editTool. It
+      // only applies to an existing file this session read: an unread file has
+      // no state to compare against, so it is overwritten straight through (see
+      // docs/specs/core/fs-tools.md "不要求先读取"). Unlike Edit, Write has no
+      // "applies cleanly" escape hatch — it replaces the whole file, so a read
+      // state that no longer matches the disk content is still refused. The
+      // full-read content-hash fallback avoids false positives from git
+      // checkout / editor round-trip save / cloud sync / antivirus.
       // Plan mode is excluded: it has its own stricter write gate (plan-file-
       // only, enforced in permissionManager) whose denial message must surface
-      // instead of being masked by a read-state rejection.
+      // first.
       if (
         isExistingFile &&
         context.readFileState &&
         context.permissionMode !== "plan"
       ) {
         const state = context.readFileState.get(resolvedPath);
-        if (!state) {
-          return {
-            success: false,
-            content: "",
-            error:
-              "File has not been read yet. Read it first before writing to it.",
-          };
-        }
-        const currentStats = await stat(resolvedPath);
-        if (currentStats.mtime.getTime() > state.mtime) {
+        const currentStats = state ? await stat(resolvedPath) : undefined;
+        if (
+          state &&
+          currentStats &&
+          currentStats.mtime.getTime() > state.mtime
+        ) {
           const isFullRead =
             state.offset === undefined && state.limit === undefined;
           const contentUnchanged =

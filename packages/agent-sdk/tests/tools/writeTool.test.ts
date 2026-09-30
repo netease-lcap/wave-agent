@@ -36,10 +36,10 @@ describe("writeTool", () => {
       abortSignal: new AbortController().signal,
       workdir: "/test/workdir",
       taskManager: new TaskManager(new Container(), "test-session"),
-      // Pre-populate readFileState so read-before-write + staleness checks
-      // pass for existing-file happy-path tests. Keys are the *resolved*
-      // path (matches source's resolvePath()). Individual tests override
-      // with an empty Map or undefined to exercise rejection.
+      // Pre-populate readFileState so the staleness check has a baseline to
+      // compare against. Keys are the *resolved* path (matches source's
+      // resolvePath()). Individual tests override with an empty Map or
+      // undefined to exercise the "never read in this session" path.
       readFileState: new Map([
         [
           path.resolve("/test/file.js"),
@@ -541,8 +541,8 @@ describe("writeTool", () => {
     });
   });
 
-  describe("Read-before-write & staleness", () => {
-    it("should reject writing an existing file not read in this session", async () => {
+  describe("staleness", () => {
+    it("should overwrite an existing file not read in this session", async () => {
       const originalContent = "old content";
       vi.mocked(readFile).mockResolvedValue(originalContent);
 
@@ -551,9 +551,8 @@ describe("writeTool", () => {
         { ...mockContext, readFileState: new Map() },
       );
 
-      expect(result.success).toBe(false);
-      expect(result.error).toContain("File has not been read yet");
-      expect(writeFile).not.toHaveBeenCalled();
+      expect(result.success).toBe(true);
+      expect(writeFile).toHaveBeenCalled();
     });
 
     it("should reject when existing file modified since read (content changed)", async () => {

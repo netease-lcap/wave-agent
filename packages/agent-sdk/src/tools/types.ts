@@ -13,7 +13,7 @@ import type { SkillMetadata } from "../types/skills.js";
 
 /**
  * Read state recorded for a file by the Read/Write/Edit tools. Used for
- * read-before-write enforcement, staleness detection, Read dedup, and the
+ * staleness detection (see docs/specs/core/fs-tools.md), Read dedup, and the
  * external-change notification (diffing `content` against the disk).
  */
 export interface ReadFileStateEntry {
