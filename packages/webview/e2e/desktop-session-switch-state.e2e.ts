@@ -39,6 +39,7 @@ function paneMessages(paneId: string, sessionId: string) {
 async function setupPane(
   webviewPage: Page,
   panes: Array<{ paneId: string; sessionId: string }>,
+  extraSessionIds: string[] = [],
 ) {
   const injector = new MessageInjector(webviewPage);
   await webviewPage.setViewportSize({ width: 1280, height: 800 });
@@ -59,14 +60,16 @@ async function setupPane(
     groups: [
       {
         workdir: DIR_A,
-        sessions: panes.map((p) => ({
-          sessionId: p.sessionId,
-          title: p.sessionId,
-          lastActiveAt: Date.now(),
-          hasWorktree: false,
-          running: false,
-          waitingConfirmation: false,
-        })),
+        sessions: [...panes.map((p) => p.sessionId), ...extraSessionIds].map(
+          (sessionId) => ({
+            sessionId,
+            title: sessionId,
+            lastActiveAt: Date.now(),
+            hasWorktree: false,
+            running: false,
+            waitingConfirmation: false,
+          }),
+        ),
       },
     ],
   });
@@ -320,5 +323,91 @@ test.describe("桌面会话切换状态收敛", () => {
     });
     await webviewPage.waitForTimeout(700);
     expect(await bottomGap()).toBeLessThan(2);
+  });
+
+  /**
+   * preview guest 跨会话保活（spec desktop-panels.md「右侧面板 · preview guest
+   * 跨会话保活」）。真实浏览器验三件 jsdom 验不了的事：
+   *  ① guest 的 DOM 节点在切会话时**没有被重建**（身份标记还在，等价 Electron 里
+   *    guest 存活 —— 页面内部状态因此不丢）；
+   *  ② 可见态几何：常驻层严丝合缝盖在面板 body 上（不是标签条、不是整列）；停靠
+   *    态真的不可见（visibility:hidden）；
+   *  ③ 切回来时 tab（地址栏里的 URL）与 guest 一并原样恢复。
+   */
+  test("preview guest 跨会话保活：切走停靠不销毁，切回同一个 <webview> 实例", async ({
+    webviewPage,
+  }) => {
+    const injector = await setupPane(
+      webviewPage,
+      [{ paneId: "pane-1", sessionId: "sess-keep-a" }],
+      ["sess-keep-b"],
+    );
+    const pane = webviewPage.getByTestId("desktop-pane-pane-1");
+
+    // 会话 A：助手消息里带 localhost 链接，点开进预览面板
+    await injector.simulateExtensionMessage("updateMessages", {
+      paneId: "pane-1",
+      messages: [
+        MockDataGenerator.createUserMessage("跑起来看看", "u-keep"),
+        MockDataGenerator.createAssistantMessage(
+          "已启动，点 [http://localhost:5173](http://localhost:5173) 预览。",
+          "a-keep",
+        ),
+      ],
+    });
+    await webviewPage.locator('a[href="http://localhost:5173"]').click();
+    const liveGuest = pane.locator('.preview-guest[data-parked="false"]');
+    await expect(liveGuest).toBeVisible();
+    const parkedGuest = pane.locator('.preview-guest[data-parked="true"]');
+    await expect(parkedGuest).toHaveCount(0);
+
+    // 给 guest 打身份标记：data 属性只属于这个 DOM 节点，React 一旦重建
+    // <webview>（= Electron 里 guest 被销毁）标记就没了。
+    await webviewPage.evaluate(() => {
+      const wv = document.querySelector("webview") as unknown as Record<
+        string,
+        unknown
+      > &
+        HTMLElement;
+      wv.send = () => {};
+      wv.loadURL = async () => {};
+      wv.reload = () => {};
+      wv.getURL = () => "http://localhost:5173/";
+      wv.dataset.keepId = "keep-a";
+      wv.dispatchEvent(new Event("dom-ready"));
+    });
+    const markedGuest = webviewPage.locator('webview[data-keep-id="keep-a"]');
+    await expect(markedGuest).toHaveCount(1);
+
+    // ① 可见态几何：常驻层与面板 body 重合
+    const geo = async () => ({
+      body: await pane.locator(".desktop-panel-body").boundingBox(),
+      guest: await liveGuest.boundingBox(),
+    });
+    const near = (a: number, b: number) => Math.abs(a - b) <= 2;
+    const checkGeometry = async () => {
+      const { body, guest } = await geo();
+      if (!body || !guest) throw new Error("panel body / guest not laid out");
+      expect(near(guest.x, body.x)).toBe(true);
+      expect(near(guest.width, body.width)).toBe(true);
+      expect(near(guest.y, body.y)).toBe(true);
+      expect(near(guest.height, body.height)).toBe(true);
+    };
+    await checkGeometry();
+
+    // ② 切到会话 B：guest 不销毁，转停靠（隐藏但保尺寸）
+    await switchPaneSession(injector, "pane-1", "sess-keep-b");
+    await expect(parkedGuest).toHaveCount(1);
+    await expect(parkedGuest).toBeHidden();
+    await expect(markedGuest).toHaveCount(1);
+
+    // ③ 切回会话 A：仍是同一个 guest 节点，tab 的 URL 也原样恢复
+    await switchPaneSession(injector, "pane-1", "sess-keep-a");
+    await expect(liveGuest).toBeVisible();
+    await expect(markedGuest).toHaveCount(1);
+    await expect(pane.locator(".desktop-panel-tabs-strip")).toContainText(
+      "localhost:5173",
+    );
+    await checkGeometry();
   });
 });
