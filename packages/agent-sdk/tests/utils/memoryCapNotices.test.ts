@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fsPromises from "node:fs/promises";
+import path from "node:path";
 import {
   appendMemoryCapNotice,
   buildEntrypointCapNotice,
@@ -387,7 +388,7 @@ describe("appendMemoryCapNotice", () => {
     );
 
     expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
-      `${MEMORY_DIR}/MEMORY.md`,
+      path.join(MEMORY_DIR, "MEMORY.md"),
       "utf-8",
     );
     expect(toolResult.content).toBe("Wrote file");

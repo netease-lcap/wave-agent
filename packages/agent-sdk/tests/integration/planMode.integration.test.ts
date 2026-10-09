@@ -241,10 +241,20 @@ describe("Plan Mode Integration", () => {
     }
     expect(planFilePath).toBeDefined();
 
-    // Both plan mode tools always in tool list (runtime guard handles mode validation)
-    const tools = agent.getAvailableToolNames();
-    expect(tools).toContain("ExitPlanMode");
-    expect(tools).toContain("EnterPlanMode");
+    // Both plan mode tools stay reachable in every permission mode; the
+    // runtime guard, not the tool list, validates the mode. They are deferred
+    // (Claude Code's `shouldDefer: true` pair), so they live in exactly one
+    // place: inside the Exec sandbox when that channel is open, and flat in
+    // `tools[]` when it is closed.
+    const toolManager = (agent as unknown as { toolManager: ToolManager })
+      .toolManager;
+    const flat = agent.getAvailableToolNames();
+    const sandboxed = toolManager.getOnDemandToolNames() ?? [];
+    for (const name of ["ExitPlanMode", "EnterPlanMode"]) {
+      // Exactly one of the two homes: never both (the model would see the same
+      // tool twice) and never neither (it must stay reachable in every mode).
+      expect(flat.includes(name)).not.toBe(sandboxed.includes(name));
+    }
 
     await agent.destroy();
     activeAgent = undefined;

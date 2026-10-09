@@ -96,9 +96,12 @@ describe("real host · session lifecycle", () => {
     await ctx.turn("你好");
 
     // The user message and the streamed assistant reply reached the webview.
-    const userPushes = ctx
-      .of("appendMessage")
-      .filter((m) => (m.message as { role?: string }).role === "user");
+    // The session also announces its on-demand tool catalog, which arrives as a
+    // meta user message — only the non-meta push is the typed turn.
+    const userPushes = ctx.of("appendMessage").filter((m) => {
+      const message = m.message as { role?: string; isMeta?: boolean };
+      return message.role === "user" && !message.isMeta;
+    });
     expect(userPushes).toHaveLength(1);
     expect(JSON.stringify(userPushes[0].message)).toContain("你好");
     expect(ctx.streamedText()).toContain("这是真实回复。");
@@ -107,7 +110,8 @@ describe("real host · session lifecycle", () => {
     // The model received the user text (the request really left the process).
     expect(model.sawRequest("你好")).toBe(true);
 
-    // …and the turn was flushed to a real transcript file.
+    // …and the turn was flushed to a real transcript file. The catalog
+    // announcement is persisted too and is flagged `isMeta`, so it is not a turn.
     const files = transcriptFiles(dirA);
     expect(files).toHaveLength(1);
     const lines = readFileSync(files[0], "utf-8")
@@ -115,7 +119,7 @@ describe("real host · session lifecycle", () => {
       .split("\n")
       .map((l) => JSON.parse(l) as Record<string, unknown>);
     expect(lines[0]).toMatchObject({ type: "metadata", workdir: dirA });
-    const turns = lines.filter((l) => l.role);
+    const turns = lines.filter((l) => l.role && !l.isMeta);
     expect(turns.map((l) => l.role)).toEqual(["user", "assistant"]);
     expect(JSON.stringify(turns[0])).toContain("你好");
     expect(JSON.stringify(turns[1])).toContain("这是真实回复。");
