@@ -81,12 +81,21 @@ describe("MemoryService Auto-Memory", () => {
   });
 
   describe("ensureAutoMemoryDirectory", () => {
-    it("should create the directory and MEMORY.md if they don't exist", async () => {
+    it("should backfill MEMORY.md from the topic files when the index is missing", async () => {
       vi.mocked(getGitCommonDir).mockReturnValue("/repo/root/.git");
       vi.mocked(pathEncoder.encodeSync).mockReturnValue("repo-root-hash");
       vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
       vi.mocked(fsPromises.access).mockRejectedValue({ code: "ENOENT" });
       vi.mocked(fsPromises.writeFile).mockResolvedValue(undefined);
+      vi.mocked(fsPromises.readdir).mockResolvedValue([
+        "feedback_testing.md",
+      ] as unknown as Awaited<ReturnType<typeof fsPromises.readdir>>);
+      vi.mocked(fsPromises.readFile).mockResolvedValue(
+        "---\nname: testing\ndescription: Integration tests hit a real database\ntype: feedback\n---\n\nbody",
+      );
+      vi.mocked(fsPromises.stat).mockResolvedValue({
+        mtimeMs: 0,
+      } as unknown as Awaited<ReturnType<typeof fsPromises.stat>>);
 
       await memoryService.ensureAutoMemoryDirectory("/repo/root/worktree");
 
@@ -97,19 +106,32 @@ describe("MemoryService Auto-Memory", () => {
         "repo-root-hash",
         "memory",
       );
-      const expectedFile = path.join(expectedDir, "MEMORY.md");
 
       expect(fsPromises.mkdir).toHaveBeenCalledWith(expectedDir, {
         recursive: true,
       });
       expect(fsPromises.writeFile).toHaveBeenCalledWith(
-        expectedFile,
-        expect.stringContaining("# Project Memory"),
+        path.join(expectedDir, "MEMORY.md"),
+        "- [feedback_testing](feedback_testing.md) — Integration tests hit a real database\n",
         "utf-8",
       );
     });
 
-    it("should not create MEMORY.md if it already exists", async () => {
+    it("should not create an empty MEMORY.md when there are no topic files", async () => {
+      vi.mocked(getGitCommonDir).mockReturnValue("/repo/root/.git");
+      vi.mocked(pathEncoder.encodeSync).mockReturnValue("repo-root-hash");
+      vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fsPromises.access).mockRejectedValue({ code: "ENOENT" });
+      vi.mocked(fsPromises.readdir).mockResolvedValue(
+        [] as unknown as Awaited<ReturnType<typeof fsPromises.readdir>>,
+      );
+
+      await memoryService.ensureAutoMemoryDirectory("/repo/root/worktree");
+
+      expect(fsPromises.writeFile).not.toHaveBeenCalled();
+    });
+
+    it("should not touch MEMORY.md if it already exists", async () => {
       vi.mocked(getGitCommonDir).mockReturnValue("/repo/root/.git");
       vi.mocked(pathEncoder.encodeSync).mockReturnValue("repo-root-hash");
       vi.mocked(fsPromises.mkdir).mockResolvedValue(undefined);
@@ -117,6 +139,7 @@ describe("MemoryService Auto-Memory", () => {
 
       await memoryService.ensureAutoMemoryDirectory("/repo/root/worktree");
 
+      expect(fsPromises.readdir).not.toHaveBeenCalled();
       expect(fsPromises.writeFile).not.toHaveBeenCalled();
     });
   });
@@ -136,10 +159,13 @@ describe("MemoryService Auto-Memory", () => {
         "/repo/root/worktree",
       );
 
-      expect(result).toContain("Line 1\n");
-      expect(result).toContain("Line 200");
-      expect(result).not.toContain("Line 201");
-      expect(result).toContain("WARNING: MEMORY.md is 300 lines (limit: 200)");
+      const body = result.split("\n\n> WARNING:")[0];
+      expect(body).toContain("Line 1\n");
+      expect(body).toContain("Line 200");
+      expect(body).not.toContain("Line 201");
+      expect(result).toContain(
+        '100 of 300 lines were cut off, starting at line 201 ("Line 201")',
+      );
     });
 
     it("should leave a MEMORY.md under both caps untouched", async () => {

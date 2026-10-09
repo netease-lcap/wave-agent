@@ -9,6 +9,10 @@ import { getGitCommonDir } from "../utils/gitUtils.js";
 import { pathEncoder } from "../utils/pathEncoder.js";
 import { MEMORY_ENTRYPOINT_NAME } from "../constants/memory.js";
 import { truncateEntrypointContent } from "../utils/memoryEntrypoint.js";
+import {
+  buildMemoryEntrypoint,
+  scanMemoryFiles,
+} from "../utils/memoryIndex.js";
 
 export class MemoryService {
   private _cachedProjectMemory: string | null = null;
@@ -48,32 +52,47 @@ export class MemoryService {
   }
 
   /**
-   * Ensure the auto-memory directory and initial MEMORY.md exist.
+   * Ensure the auto-memory directory exists, and rebuild `MEMORY.md` from the
+   * topic files when the index is missing but those files are not.
+   *
+   * The index is deliberately never created empty. An initial template is
+   * indistinguishable from "no memories yet" to a reader, and — because the
+   * backfill only runs while the index is absent — writing one would also mean
+   * a memory directory copied in from elsewhere never gets an index at all,
+   * leaving every topic file in it undiscoverable. Claude Code behaves the same
+   * way: its memory directory is created bare, and the index appears only once
+   * there is something to point at (or the model writes it).
    */
   async ensureAutoMemoryDirectory(workdir: string): Promise<void> {
     const memoryDir = this.getAutoMemoryDirectory(workdir);
-    const memoryFile = path.join(memoryDir, "MEMORY.md");
+    const memoryFile = path.join(memoryDir, MEMORY_ENTRYPOINT_NAME);
 
     try {
       await fs.mkdir(memoryDir, { recursive: true });
 
-      try {
-        await fs.access(memoryFile);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          const initialContent =
-            "# Project Memory\n\nThis file serves as an index for the project's auto-memory. Wave uses this to track knowledge across sessions.\n\n";
-          await atomicWriteFile(memoryFile, initialContent);
-          logger.debug(`Created auto-memory file: ${memoryFile}`);
-        } else {
-          throw error;
-        }
-      }
+      if (await this.fileExists(memoryFile)) return;
+
+      const entrypoint = buildMemoryEntrypoint(
+        await scanMemoryFiles(memoryDir),
+      );
+      if (!entrypoint) return;
+
+      await atomicWriteFile(memoryFile, entrypoint);
+      logger.debug(`Backfilled auto-memory index: ${memoryFile}`);
     } catch (error) {
       logger.error("Failed to ensure auto-memory directory:", error);
       throw new Error(
         `Failed to ensure auto-memory directory: ${(error as Error).message}`,
       );
+    }
+  }
+
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
     }
   }
 

@@ -18,6 +18,30 @@ export const MAX_MEMORY_ENTRYPOINT_CHARS = 25_000;
 /** Recommended per-line length for `MEMORY.md` index entries. */
 export const MEMORY_INDEX_LINE_GUIDANCE_CHARS = 150;
 
+/**
+ * Per-file caps for a single memory topic file. Measured in bytes, not
+ * characters, because the file is read whole whenever it is opened — a cap in
+ * characters would let a CJK-heavy file cost three times as much. Aligned with
+ * Claude Code (`Sne=4096` / `LTe=200`).
+ */
+export const MAX_MEMORY_FILE_BYTES = 4096;
+export const MAX_MEMORY_FILE_LINES = 200;
+
+/**
+ * Frontmatter `description` upper bound. A description becomes one index line,
+ * so anything much past a line has to be shortened before it can be used.
+ */
+export const MAX_MEMORY_DESCRIPTION_CHARS = 300;
+
+/**
+ * Occupancy ratio at which a write is flagged, and the fraction of the cap a
+ * flagged file should be compacted back to. Aligned with Claude Code's
+ * write-time gate (`iDn=0.8` / `QG=0.7`), whose targets are `cap * 0.7` —
+ * 140 lines / 17,500 characters for the index.
+ */
+export const MEMORY_CAP_WARN_RATIO = 0.8;
+export const MEMORY_CAP_TARGET_RATIO = 0.7;
+
 export const MEMORY_TYPES = [
   "user",
   "feedback",

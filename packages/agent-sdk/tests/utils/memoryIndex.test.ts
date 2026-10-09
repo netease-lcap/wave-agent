@@ -1,10 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fsPromises from "node:fs/promises";
 import {
+  buildMemoryEntrypoint,
   formatMemoryManifest,
   scanMemoryFiles,
   type MemoryHeader,
 } from "@/utils/memoryIndex.js";
+import {
+  MAX_MEMORY_ENTRYPOINT_CHARS,
+  MAX_MEMORY_ENTRYPOINT_LINES,
+  MEMORY_CAP_TARGET_RATIO,
+  MEMORY_INDEX_LINE_GUIDANCE_CHARS,
+} from "@/constants/memory.js";
 
 vi.mock("node:fs/promises");
 
@@ -191,5 +198,93 @@ describe("formatMemoryManifest", () => {
 
   it("returns an empty string for an empty directory", () => {
     expect(formatMemoryManifest([])).toBe("");
+  });
+});
+
+describe("buildMemoryEntrypoint", () => {
+  it("derives one index line per topic file from its description", () => {
+    const entrypoint = buildMemoryEntrypoint([
+      header(),
+      header({
+        filename: "user_role.md",
+        description: "Senior engineer",
+        type: "user",
+      }),
+    ]);
+
+    expect(entrypoint.split("\n").filter(Boolean)).toEqual([
+      "- [feedback_testing](feedback_testing.md) — Prefer explicit assertions",
+      "- [user_role](user_role.md) — Senior engineer",
+    ]);
+  });
+
+  it("keeps a link for a file with no description", () => {
+    expect(buildMemoryEntrypoint([header({ description: null })])).toBe(
+      "- [feedback_testing](feedback_testing.md)\n",
+    );
+  });
+
+  it("collapses whitespace and clamps the description to the line guidance", () => {
+    const entrypoint = buildMemoryEntrypoint([
+      header({ description: `  first\n\n  ${"x".repeat(300)}  ` }),
+    ]);
+
+    const [line] = entrypoint.split("\n");
+    expect(line).toHaveLength(MEMORY_INDEX_LINE_GUIDANCE_CHARS);
+    expect(
+      line.startsWith("- [feedback_testing](feedback_testing.md) — first "),
+    ).toBe(true);
+    expect(line).not.toContain("\n");
+  });
+
+  it("skips a file whose name cannot be linked to", () => {
+    const entrypoint = buildMemoryEntrypoint([
+      header({ filename: "weird (1).md" }),
+      header({ filename: "bracket[1].md" }),
+      header({ filename: "ok.md" }),
+    ]);
+
+    expect(entrypoint).toBe("- [ok](ok.md) — Prefer explicit assertions\n");
+  });
+
+  it("uses the basename as the title and keeps the relative path in the link", () => {
+    expect(buildMemoryEntrypoint([header({ filename: "sub/topic.md" })])).toBe(
+      "- [topic](sub/topic.md) — Prefer explicit assertions\n",
+    );
+  });
+
+  it("caps the index at the target line count", () => {
+    const memories = Array.from({ length: 200 }, (_, i) =>
+      header({ filename: `note-${i}.md`, description: null }),
+    );
+
+    const lines = buildMemoryEntrypoint(memories).split("\n").filter(Boolean);
+
+    expect(lines).toHaveLength(
+      Math.floor(MAX_MEMORY_ENTRYPOINT_LINES * MEMORY_CAP_TARGET_RATIO),
+    );
+    expect(lines[0]).toBe("- [note-0](note-0.md)");
+    // The tail is dropped, never the head — the newest files sort first.
+    expect(lines).not.toContain("- [note-199](note-199.md)");
+  });
+
+  it("caps the index at the target character count before the line count", () => {
+    const memories = Array.from({ length: 200 }, (_, i) =>
+      header({ filename: `note-${i}.md`, description: "x".repeat(400) }),
+    );
+
+    const entrypoint = buildMemoryEntrypoint(memories);
+    const lines = entrypoint.split("\n").filter(Boolean);
+
+    expect(entrypoint.length).toBeLessThanOrEqual(
+      Math.floor(MAX_MEMORY_ENTRYPOINT_CHARS * MEMORY_CAP_TARGET_RATIO),
+    );
+    expect(lines.length).toBeLessThan(
+      Math.floor(MAX_MEMORY_ENTRYPOINT_LINES * MEMORY_CAP_TARGET_RATIO),
+    );
+  });
+
+  it("returns an empty string when there is nothing to index", () => {
+    expect(buildMemoryEntrypoint([])).toBe("");
   });
 });

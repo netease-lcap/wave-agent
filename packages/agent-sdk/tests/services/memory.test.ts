@@ -110,23 +110,62 @@ describe("MemoryService", () => {
   });
 
   describe("ensureAutoMemoryDirectory", () => {
-    it("should create directory and MEMORY.md if they don't exist", async () => {
+    const expectedDir = path.join(
+      homedir(),
+      ".wave",
+      "projects",
+      Buffer.from("/mock/workdir").toString("base64"),
+      "memory",
+    );
+    const expectedFile = path.join(expectedDir, "MEMORY.md");
+
+    it("should backfill MEMORY.md from the topic files when the index is missing", async () => {
       const workdir = "/mock/workdir";
-      vi.mocked(fsPromises.access).mockRejectedValueOnce({ code: "ENOENT" });
+      vi.mocked(fsPromises.access).mockRejectedValue({ code: "ENOENT" });
+      vi.mocked(fsPromises.readdir).mockResolvedValue([
+        "user_role.md",
+      ] as unknown as Awaited<ReturnType<typeof fsPromises.readdir>>);
+      vi.mocked(fsPromises.readFile).mockResolvedValue(
+        "---\nname: role\ndescription: The user's role on the team\ntype: user\n---\n\nbody",
+      );
+      vi.mocked(fsPromises.stat).mockResolvedValue({
+        mtimeMs: 0,
+      } as unknown as Awaited<ReturnType<typeof fsPromises.stat>>);
 
       await memoryService.ensureAutoMemoryDirectory(workdir);
 
-      expect(fsPromises.mkdir).toHaveBeenCalled();
+      expect(fsPromises.mkdir).toHaveBeenCalledWith(expectedDir, {
+        recursive: true,
+      });
       // Written through the atomic writer (temp file + rename).
       expect(atomicWriteFile).toHaveBeenCalledWith(
-        expect.stringContaining("MEMORY.md"),
-        expect.stringContaining("# Project Memory"),
+        expectedFile,
+        "- [user_role](user_role.md) — The user's role on the team\n",
       );
-      expect(fsPromises.writeFile).toHaveBeenCalledWith(
-        expect.stringContaining("MEMORY.md"),
-        expect.stringContaining("# Project Memory"),
-        "utf-8",
+    });
+
+    it("should not create an empty index when there are no topic files", async () => {
+      vi.mocked(fsPromises.access).mockRejectedValue({ code: "ENOENT" });
+      vi.mocked(fsPromises.readdir).mockResolvedValue(
+        [] as unknown as Awaited<ReturnType<typeof fsPromises.readdir>>,
       );
+
+      await memoryService.ensureAutoMemoryDirectory("/mock/workdir");
+
+      expect(fsPromises.mkdir).toHaveBeenCalled();
+      expect(atomicWriteFile).not.toHaveBeenCalled();
+    });
+
+    it("should not touch MEMORY.md when it already exists", async () => {
+      vi.mocked(fsPromises.access).mockResolvedValue(undefined);
+      vi.mocked(fsPromises.readdir).mockResolvedValue([
+        "user_role.md",
+      ] as unknown as Awaited<ReturnType<typeof fsPromises.readdir>>);
+
+      await memoryService.ensureAutoMemoryDirectory("/mock/workdir");
+
+      expect(fsPromises.readdir).not.toHaveBeenCalled();
+      expect(atomicWriteFile).not.toHaveBeenCalled();
     });
   });
 
@@ -143,8 +182,10 @@ describe("MemoryService", () => {
 
       expect(resultLines[0]).toBe("line 1");
       expect(resultLines[199]).toBe("line 200");
-      expect(result).not.toContain("line 201");
-      expect(result).toContain("WARNING: MEMORY.md is 300 lines (limit: 200)");
+      expect(resultLines[200]).toBe("");
+      expect(resultLines[201]).toBe(
+        '> WARNING: MEMORY.md is 300 lines (limit: 200). Only part of it was loaded: 100 of 300 lines were cut off, starting at line 201 ("line 201"). Keep index entries to one line under ~150 chars; move detail into topic files.',
+      );
     });
 
     it("should return empty string if MEMORY.md doesn't exist", async () => {

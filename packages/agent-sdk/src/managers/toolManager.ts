@@ -53,6 +53,7 @@ import { ReversionManager } from "./reversionManager.js";
 import * as aiService from "../services/aiService.js";
 
 import { Container } from "../utils/container.js";
+import { appendMemoryCapNotice } from "../utils/memoryCapNotices.js";
 
 import { logger } from "../utils/globalLogger.js";
 
@@ -413,6 +414,17 @@ class ToolManager {
         args,
         result,
         enhancedContext,
+      );
+
+      // A memory write that left the file over its cap is worth saying out loud
+      // in the result: unlike the load-time warning, this reaches the model
+      // while it still has the file in hand.
+      await appendMemoryCapNotice(
+        name,
+        args,
+        result,
+        enhancedContext.workdir,
+        enhancedContext.autoMemoryDir,
       );
       return result;
     }
