@@ -53,7 +53,10 @@ describe("auto-memory prompt", () => {
       expect(prompt).toContain("Saving a memory is a two-step process:");
       expect(prompt).toContain("**Step 1**");
       expect(prompt).toContain("**Step 2**");
-      expect(prompt).toContain("It has no frontmatter.");
+      // The index line is derived from the topic file's frontmatter description,
+      // not written as a fresh hook — that is what keeps lines short.
+      expect(prompt).toContain("frontmatter description");
+      expect(prompt).toContain("create it with the Write tool");
       expect(prompt).toContain(
         `lines after ${MAX_MEMORY_ENTRYPOINT_LINES} or characters past ${MAX_MEMORY_ENTRYPOINT_CHARS}`,
       );

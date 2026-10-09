@@ -14,11 +14,12 @@
  */
 
 import {
+  MAX_MEMORY_ENTRYPOINT_CHARS,
+  MAX_MEMORY_ENTRYPOINT_LINES,
+  MAX_MEMORY_FILE_BYTES,
   MEMORY_ENTRYPOINT_NAME,
   MEMORY_INDEX_LINE_GUIDANCE_CHARS,
   MEMORY_TYPES,
-  MAX_MEMORY_ENTRYPOINT_CHARS,
-  MAX_MEMORY_ENTRYPOINT_LINES,
 } from "../constants/memory.js";
 
 /**
@@ -198,9 +199,10 @@ export function buildHowToSaveSection(): readonly string[] {
     "",
     ...MEMORY_FRONTMATTER_EXAMPLE,
     "",
-    `**Step 2** — add a pointer to that file in \`${MEMORY_ENTRYPOINT_NAME}\`. \`${MEMORY_ENTRYPOINT_NAME}\` is an index, not a memory — each entry should be one line, under ~${MEMORY_INDEX_LINE_GUIDANCE_CHARS} characters: \`- [Title](file.md) — one-line hook\`. It has no frontmatter. Never write memory content directly into \`${MEMORY_ENTRYPOINT_NAME}\`.`,
+    `**Step 2** — add a pointer to that file in \`${MEMORY_ENTRYPOINT_NAME}\`: \`- [Title](file.md) — <the file's frontmatter description>\`. Derive the line from that description instead of writing a fresh hook, and keep the whole line under ~${MEMORY_INDEX_LINE_GUIDANCE_CHARS} characters. \`${MEMORY_ENTRYPOINT_NAME}\` is an index, not a memory — one line per entry, no frontmatter, and never memory content. If it does not exist yet, create it with the Write tool.`,
     "",
     `- \`${MEMORY_ENTRYPOINT_NAME}\` is always loaded into your conversation context — lines after ${MAX_MEMORY_ENTRYPOINT_LINES} or characters past ${MAX_MEMORY_ENTRYPOINT_CHARS} will be truncated, so keep the index concise`,
+    `- Keep each memory file to one fact and under ~${MAX_MEMORY_FILE_BYTES} bytes including frontmatter — a topic file is read whole whenever it is opened, and distinct facts belong in their own files`,
     "- Keep the name, description, and type fields in memory files up-to-date with the content",
     "- Organize memory semantically by topic, not chronologically",
     "- Update or remove memories that turn out to be wrong or outdated",

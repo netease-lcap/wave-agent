@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import fsPromises from "node:fs/promises";
 import { ToolManager } from "@/managers/toolManager.js";
 import { Container } from "@/utils/container.js";
 import type { ToolContext, ToolPlugin } from "@/tools/types.js";
@@ -11,6 +12,8 @@ import type { IForegroundTaskManager } from "@/types/processes.js";
 import type { ILspManager } from "@/types/index.js";
 import type { ConfigurationService } from "@/services/configurationService.js";
 import type { MemoryService } from "@/services/memory.js";
+
+vi.mock("node:fs/promises");
 
 /**
  * The Read tool reads `context.autoMemoryDir` to decide whether to prepend a
@@ -77,6 +80,10 @@ const baseContext = {
 };
 
 describe("ToolManager auto-memory context", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("resolves the auto-memory directory for the session workdir", async () => {
     const { manager, seen } = buildManager({ autoMemoryEnabled: true });
 
@@ -91,5 +98,39 @@ describe("ToolManager auto-memory context", () => {
     await manager.execute("Probe", {}, baseContext);
 
     expect(seen[0].autoMemoryDir).toBeUndefined();
+  });
+
+  it("appends the capacity notice to a memory write's result", async () => {
+    // The gate hangs off `executeTool` so that every write reaching the memory
+    // directory is checked, whichever agent made it — this pins that wiring.
+    vi.mocked(fsPromises.readFile).mockResolvedValue(
+      Array.from({ length: 250 }, () => "x".repeat(130)).join(
+        "\n",
+      ) as unknown as Awaited<ReturnType<typeof fsPromises.readFile>>,
+    );
+    const { manager } = buildManager({ autoMemoryEnabled: true });
+    const write: ToolPlugin = {
+      name: "Write",
+      config: {
+        type: "function",
+        function: {
+          name: "Write",
+          description: "Writes a file",
+          parameters: { type: "object", properties: {} },
+        },
+      },
+      execute: async () => ({ success: true, content: "Wrote file" }),
+    };
+    manager.register(write);
+
+    const result = await manager.execute(
+      "Write",
+      { file_path: "/repo/worktree/memory/MEMORY.md" },
+      baseContext,
+    );
+
+    expect(result.content).toContain(
+      "Wrote file\n\nError: this write left MEMORY.md",
+    );
   });
 });
