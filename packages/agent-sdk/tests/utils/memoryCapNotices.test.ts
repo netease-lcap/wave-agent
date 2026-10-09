@@ -387,8 +387,11 @@ describe("appendMemoryCapNotice", () => {
       MEMORY_DIR,
     );
 
+    // The implementation resolves the relative path with `path.resolve`, so the
+    // expectation has to as well: on Windows `join` keeps the root-relative form
+    // (`\home\user\…`) while `resolve` adds the drive (`D:\home\user\…`).
     expect(vi.mocked(fsPromises.readFile)).toHaveBeenCalledWith(
-      path.join(MEMORY_DIR, "MEMORY.md"),
+      path.resolve(MEMORY_DIR, "MEMORY.md"),
       "utf-8",
     );
     expect(toolResult.content).toBe("Wrote file");
