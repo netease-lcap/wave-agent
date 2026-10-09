@@ -93,7 +93,17 @@ describe("Recovery Message Integration", () => {
 
     // Verify MessageManager contains the recovery message with isMeta: true
     const allMessages = messageManager.getMessages();
-    const recoveryMessage = allMessages.find((m) => m.isMeta === true);
+    // The session injects meta messages of its own (the on-demand tool catalog
+    // announcement), so `isMeta` alone no longer identifies this one.
+    const recoveryMessage = allMessages.find(
+      (m) =>
+        m.isMeta === true &&
+        m.blocks.some(
+          (block) =>
+            block.type === "text" &&
+            block.content.includes("Output token limit hit"),
+        ),
+    );
     expect(recoveryMessage).toBeDefined();
     expect(recoveryMessage?.role).toBe("user");
     expect(recoveryMessage?.blocks[0].type).toBe("text");

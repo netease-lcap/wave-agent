@@ -153,7 +153,7 @@ order: 140
 - **目录创建**：如果 `~/.wave/plans` 不存在，系统应该自动创建。
 - **名称冲突**：随机英文名称生成器应该最小化冲突的可能性，但如果文件已存在，应该处理（如生成新名称）。
 - **会话持久化**：如果会话重启或消息被压缩，系统必须重用现有的计划文件路径。这通过使用 `rootSessionId`（链中第一个会话的 ID）作为确定性名称生成的种子来实现。
-- **`ExitPlanMode` 在计划模式外被调用怎么办？** `ExitPlanMode` 工具始终在工具列表中可见。当 agent 不在计划模式时，工具通过运行时守卫返回错误信息。
+- **`ExitPlanMode` 在计划模式外被调用怎么办？** `ExitPlanMode` 工具始终可用。当 agent 不在计划模式时，工具通过运行时守卫返回错误信息。注意它在工具列表里的位置随 Exec 通道而变：这一对（`EnterPlanMode`/`ExitPlanMode`）是延迟工具（与 Claude Code 的 `shouldDefer: true` 对齐，见 `core/exec-tool.md`），Exec 通道打开时只声明在沙箱内、不在 `tools[]` 里平铺，通道关闭时才平铺——两处不得同时出现，否则模型会看到同名工具两次。
 - **系统如何处理多次调用 `ExitPlanMode`？** 如果已在退出中或第一次调用待处理，后续调用应该被优雅地处理（如忽略或返回为待处理）。
 - **获得绕过授权的会话里，plan 的约束由谁执行？** 权限层不再拦截（Bash 与 Edit/Write 都不弹窗），约束只剩两处：注入的系统提示词要求模型只规划、不改代码；以及 `ExitPlanMode` 需要用户批准才离开计划模式。这是该设计的已知代价，与 Claude Code 在 `isBypassPermissionsModeAvailable` 为真时的行为一致。
 - **绕过授权与 `dontAsk` 的优先级**：绕过授权只作用于 "plan" 模式的判定，不改变 `dontAsk` 的自动拒绝行为。

@@ -47,59 +47,39 @@ describe("ExitPlanMode Integration", () => {
     vi.restoreAllMocks();
   });
 
-  it("should include both EnterPlanMode and ExitPlanMode in all permission modes", async () => {
+  it("should keep both plan mode tools declared in all permission modes", async () => {
     const agent = await Agent.create({
       workdir: "/test/workdir",
       permissionMode: "default",
     });
     activeAgent = agent;
 
-    // Both tools always in tool list (runtime guard handles mode validation)
-    const tools = (
-      agent as unknown as AgentInternal
-    ).toolManager.getToolsConfig();
-    expect(
-      tools.find(
-        (t: { function: { name: string } }) =>
-          t.function.name === "ExitPlanMode",
-      ),
-    ).toBeDefined();
-    expect(
-      tools.find(
-        (t: { function: { name: string } }) =>
-          t.function.name === "EnterPlanMode",
-      ),
-    ).toBeDefined();
+    const toolManager = (agent as unknown as AgentInternal).toolManager;
 
-    // Switch to plan mode — tools unchanged
+    // Both tools stay declared whatever the permission mode — the runtime guard,
+    // not the tool list, validates the mode. They are deferred (Claude Code's
+    // `shouldDefer: true` pair), so they are declared exactly once: inside the
+    // Exec sandbox when that channel is open, flat in `tools[]` when it is
+    // closed. The model must never see the same tool twice.
+    const expectDeclaredOnce = () => {
+      const flat = toolManager
+        .getToolsConfig()
+        .map((tool) => tool.function.name);
+      const sandboxed = toolManager.getOnDemandToolNames() ?? [];
+      for (const name of ["ExitPlanMode", "EnterPlanMode"]) {
+        expect(flat.includes(name)).not.toBe(sandboxed.includes(name));
+      }
+    };
+
+    expectDeclaredOnce();
+
+    // Switch to plan mode — unchanged
     agent.setPermissionMode("plan");
-    const toolsInPlan = (
-      agent as unknown as AgentInternal
-    ).toolManager.getToolsConfig();
-    expect(
-      toolsInPlan.find(
-        (t: { function: { name: string } }) =>
-          t.function.name === "ExitPlanMode",
-      ),
-    ).toBeDefined();
-    expect(
-      toolsInPlan.find(
-        (t: { function: { name: string } }) =>
-          t.function.name === "EnterPlanMode",
-      ),
-    ).toBeDefined();
+    expectDeclaredOnce();
 
-    // Switch back to default — tools unchanged
+    // Switch back to default — unchanged
     agent.setPermissionMode("default");
-    const toolsBack = (
-      agent as unknown as AgentInternal
-    ).toolManager.getToolsConfig();
-    expect(
-      toolsBack.find(
-        (t: { function: { name: string } }) =>
-          t.function.name === "ExitPlanMode",
-      ),
-    ).toBeDefined();
+    expectDeclaredOnce();
   });
 
   it("should transition to default mode when ExitPlanMode is approved with default", async () => {
