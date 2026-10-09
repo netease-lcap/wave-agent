@@ -4,6 +4,7 @@ import { PANEL_LABELS } from "./ChatApp";
 import { MaximizeIcon, UnmaximizeIcon } from "./HeaderIcons";
 import { PanelKindIcon } from "./PanelKindIcon";
 import { PanelToggleMenu } from "./PanelToggleMenu";
+import { Tooltip } from "./Tooltip";
 import "../styles/DesktopPanelTabs.css";
 
 export interface DesktopPanelTabsProps {
@@ -240,11 +241,35 @@ export const DesktopPanelTabs: React.FC<DesktopPanelTabsProps> = ({
             the fullscreen action below, so it never scrolls out of view. The
             switch is measured in useLayoutEffect (pinned state) — no JS scroll
             bookkeeping, and the strip scrolls tabs independently either way. */}
+        {/* 1009 评论（同族收齐）：页签条上的两颗动作按钮（「＋」新建面板、全屏）
+            从原生 `title` 换成自绘气泡，文案原样搬进气泡、`title` 移除
+            （`aria-label` 本来就有同文案，这里是「气泡 = 同一句话」）。
+            ⚠️ 页签本体（`title={label}`）与页签关闭按钮（`title="关闭…"`）**故意不动**：
+            关闭按钮在页签内部，两者都包 `Tooltip` 时鼠标落在关闭按钮上会
+            **同时**触发外层与内层两个气泡（`Tooltip` 靠包裹层自己的 mouseenter /
+            mouseleave 工作，内层并不算离开外层）。要收这一对得先决定
+            「悬停关闭按钮时只出哪一个气泡」，故留给她点名。 */}
         {!pinned && (
+          <Tooltip text="新建面板" position="bottom">
+            <button
+              ref={inlineAddRef}
+              className="desktop-panel-tabs-add"
+              aria-label="新建面板"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              data-testid="panel-tabs-add"
+              onClick={toggleAddMenu}
+            >
+              <AddTabGlyph />
+            </button>
+          </Tooltip>
+        )}
+      </div>
+      {pinned && (
+        <Tooltip text="新建面板" position="bottom">
           <button
-            ref={inlineAddRef}
+            ref={pinnedAddRef}
             className="desktop-panel-tabs-add"
-            title="新建面板"
             aria-label="新建面板"
             aria-haspopup="menu"
             aria-expanded={menuOpen}
@@ -253,37 +278,24 @@ export const DesktopPanelTabs: React.FC<DesktopPanelTabsProps> = ({
           >
             <AddTabGlyph />
           </button>
-        )}
-      </div>
-      {pinned && (
-        <button
-          ref={pinnedAddRef}
-          className="desktop-panel-tabs-add"
-          title="新建面板"
-          aria-label="新建面板"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          data-testid="panel-tabs-add"
-          onClick={toggleAddMenu}
-        >
-          <AddTabGlyph />
-        </button>
+        </Tooltip>
       )}
       <div className="desktop-panel-tabs-actions">
-        <button
-          className="preview-pane-button"
-          title={fullscreen ? "退出全屏" : "全屏"}
-          aria-label={fullscreen ? "退出全屏" : "全屏"}
-          aria-pressed={fullscreen}
-          data-testid="panel-fullscreen"
-          onClick={onToggleFullscreen}
-        >
-          {fullscreen ? (
-            <UnmaximizeIcon className="desktop-panel-tabs-action-icon" />
-          ) : (
-            <MaximizeIcon className="desktop-panel-tabs-action-icon" />
-          )}
-        </button>
+        <Tooltip text={fullscreen ? "退出全屏" : "全屏"} position="bottom">
+          <button
+            className="preview-pane-button"
+            aria-label={fullscreen ? "退出全屏" : "全屏"}
+            aria-pressed={fullscreen}
+            data-testid="panel-fullscreen"
+            onClick={onToggleFullscreen}
+          >
+            {fullscreen ? (
+              <UnmaximizeIcon className="desktop-panel-tabs-action-icon" />
+            ) : (
+              <MaximizeIcon className="desktop-panel-tabs-action-icon" />
+            )}
+          </button>
+        </Tooltip>
       </div>
       {menuOpen && (
         <PanelToggleMenu

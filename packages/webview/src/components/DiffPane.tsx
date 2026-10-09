@@ -13,6 +13,7 @@ import { DiffFileRows, type DiffViewMode } from "./DiffFileRows";
 import { DiffFileTree } from "./DiffFileTree";
 import { RefreshIcon } from "./HeaderIcons";
 import { PanePlaceholder, PaneShell } from "./PaneShell";
+import { Tooltip } from "./Tooltip";
 import "../styles/DiffViewer.css";
 import "../styles/DiffPane.css";
 
@@ -522,15 +523,24 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
               <span className="diff-file-count">{files.length} 个文件</span>
             </span>
           )}
-          <button
-            className="preview-pane-button"
-            title={treeVisible ? "隐藏文件树" : "显示文件树"}
-            aria-pressed={treeVisible}
-            data-testid="diff-tree-toggle"
-            onClick={() => onTreeVisibleChange(!treeVisible)}
+          {/* 1009 评论（同族收齐）：差异面板工具条的两颗图标按钮换成自绘气泡。
+              两颗的文案本来就是动态的（文件树开关 / 刷新是固定文案），
+              `title` 移除后由气泡承载，`aria-label` 取与 `ChatHeader` 的
+              面板开关同一套写法（开关类 = 名字随状态变 + `aria-pressed`）。 */}
+          <Tooltip
+            text={treeVisible ? "隐藏文件树" : "显示文件树"}
+            position="bottom"
           >
-            <i className="codicon codicon-list-tree" />
-          </button>
+            <button
+              className="preview-pane-button"
+              aria-label={treeVisible ? "隐藏文件树" : "显示文件树"}
+              aria-pressed={treeVisible}
+              data-testid="diff-tree-toggle"
+              onClick={() => onTreeVisibleChange(!treeVisible)}
+            >
+              <i className="codicon codicon-list-tree" />
+            </button>
+          </Tooltip>
           <div className="diff-view-switch" role="group" aria-label="差异视图">
             <button
               className={`diff-view-option${viewMode === "unified" ? " is-active" : ""}`}
@@ -549,16 +559,18 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
               并排
             </button>
           </div>
-          <button
-            className="preview-pane-button"
-            title="刷新"
-            data-testid="diff-refresh"
-            onClick={() => refresh()}
-          >
-            <RefreshIcon
-              className={`preview-pane-icon${refreshing ? " is-spinning" : ""}`}
-            />
-          </button>
+          <Tooltip text="刷新" position="bottom">
+            <button
+              className="preview-pane-button"
+              aria-label="刷新"
+              data-testid="diff-refresh"
+              onClick={() => refresh()}
+            >
+              <RefreshIcon
+                className={`preview-pane-icon${refreshing ? " is-spinning" : ""}`}
+              />
+            </button>
+          </Tooltip>
         </>
       }
       bodyClassName="diff-pane-body"

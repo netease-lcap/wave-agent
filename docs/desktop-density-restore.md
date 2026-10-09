@@ -7744,3 +7744,121 @@ hidden`）；两行 = 2 × 19.5px 行盒（12px × 1.3）。行盒 31.2px，与 
 用例：`tmp-slash-long-1009`（桌面，7 条命令覆盖一档/刚好两档/三档/四档）与 `tmp-slash-long-1009-ide`
 （IDE 宿主，同款描述）。纯 CSS 值 + 一个子组件 + 一个可选 prop，无业务单测覆盖；`pnpm -F wave-webview run
 type-check` 通过。
+
+## 1009 评论（同族工具条图标按钮的气泡提示：文件面板 / 终端 / diff / 面板页签共 7 处）
+
+### ① 来源
+
+上一轮（预览面板工具条三颗）报告 ⑥ 里我列了同族残留清单，她 1009 回：「**同族残留，可以都加上**」。
+
+范围口径 = 清单里那 **7 处**（文件面板「在默认应用中打开」「搜索文件」、终端图标按钮「重启终端」、diff 面板
+「文件树」「刷新」、面板页签「新建面板」「全屏」）。**两类故意不动**，见 ⑥。
+
+### ② 改动（4 文件，7 处）
+
+`FilePane.tsx`（2 处）、`TerminalPane.tsx`（1 处）、`DiffPane.tsx`（2 处）、`DesktopPanelTabs.tsx`（2 处）：
+每处都是「引入既有 `Tooltip` → 按钮外包 `<Tooltip text="…" position="bottom">` → 删原 `title`、同文案落到
+`aria-label`」。按钮自己的 `className` / `data-testid` / `onClick` / `aria-expanded` / `aria-pressed` /
+图标**一字未动**；`aria-label` 本来就已经等于气泡文案的 3 处（搜索文件 / 新建面板 / 全屏）保持原值。
+
+```tsx
+// FilePane.tsx：文件面板工具条
+<Tooltip text="在默认应用中打开" position="bottom">
+  <button className="preview-pane-button" aria-label="在默认应用中打开" data-testid="file-open-external" …>
+    <OpenBrowserIcon className="preview-pane-icon" />
+  </button>
+</Tooltip>
+
+// DesktopPanelTabs.tsx：面板页签条（该按钮有两处渲染分支，两处都包了）
+<Tooltip text="新建面板" position="bottom">
+  <button className="panel-tabs-add" aria-label="新建面板" data-testid="panel-tabs-add" …>
+    <PlusIcon … />
+  </button>
+</Tooltip>
+```
+
+**没有新增任何 CSS 或 token**：气泡外观（12px / r8 / 投影）、位置档 `bottom`、间距 `4px`、延时 100ms 全部来自
+0923 轮已落地的桌面皮肤与 `ChatHeader.tsx` 同档的那套写法。三处开关类文案（搜索文件 ⇄ 收起文件搜索、
+隐藏文件树 ⇄ 显示文件树、全屏 ⇄ 退出全屏）本来就是动态的，气泡跟着状态走。
+
+### ③ 定稿值（headed Chromium 1440×960 DPR2，用例 `tmp-tooltips-1009`，两档 pageerror 0）
+
+| 位点（`data-testid`）      | 按钮盒 / 尺寸     | 气泡文案 / 盒（随文案自适应）     | 差异像素（深 / 浅，1:1 设备像素） |
+| -------------------------- | ----------------- | --------------------------------- | --------------------------------- |
+| `file-open-external`       | 1372,99 / 24×24   | 在默认应用中打开 124×30 @1312,127 | 14676 / 7411                      |
+| `file-pane-search-trigger` | 1404,99 / 24×24   | 搜索文件 75×30 @1361,127          | 8797 / 4576                       |
+| 终端「重启终端」           | 1404,99 / 24×24   | 重启终端 75×30 @1361,127          | 8798 / 4752                       |
+| `diff-tree-toggle`         | 874.5,99 / 24×24  | 隐藏文件树 87.3×30 @842.8,127     | 10259 / 5470                      |
+| `diff-refresh`             | 985.4,99 / 24×24  | 刷新 50.5×30 @972.2,127           | 6724 / 3548                       |
+| `panel-tabs-add`           | 1129.5,54 / 24×24 | 新建面板 75×30 @1104,82           | 8794 / 4811                       |
+| `panel-fullscreen`         | 1403,54 / 24×24   | 全屏 50.5×30 @1385.5,82           | 5854 / 3066                       |
+
+- **按钮盒改前改后逐值相同**（采集脚本对 before/after 的 rect 做 `assert` 相等）；间距恒 **4px**；
+  出现延时 **100ms**（0/46/91ms 仍透明 → 134ms≈0.13 → 221ms=1）。
+- **「只多了一层包裹」的三重断言**（`verify-pane-tooltip-diff-1009.py`，实跑「通过 ✓」）：① 按钮盒内差异
+  **0 px**（仅深色「搜索文件」盒内 1 px 抗锯齿噪声）；② 气泡盒四周外扩 60 设备像素（30 CSS px）后**带以外
+  0 px** ⇒ 工具条行左右两端、按钮之间、行下方正文都逐像素相同；③ 行盒另一侧 707×45 @(733,89) /
+  页签条 707×45 @(732,44) 两侧一致。
+- **右缘守卫实测生效**：贴窗口右缘的 4 颗（在默认应用中打开 / 搜索文件 / 重启终端 / 全屏）气泡右缘都停在
+  **1436 = 1440 − 4**（与上一轮预览面板「在浏览器中打开」同一个值），即「收回不越界」，不是翻到另一侧。
+- 可访问名：4 处 `title` → 同文案 `aria-label`（在默认应用中打开 / 重启终端 / 隐藏文件树 / 刷新），3 处原本
+  已有同文案 `aria-label` 的只删 `title`；7 处都挂 `aria-describedby`（实测 `:rd:` 新建面板、`:re:` 全屏、
+  `:rf:` 搜索文件、`:rg:` 在默认应用中打开、`:rh:` 隐藏文件树、`:ri:` 刷新、`:rj:` 重启终端）。
+- 改动后 md5：`FilePane b8c376b8…` / `TerminalPane 5313c3e0…` / `DiffPane df170cf2…` /
+  `DesktopPanelTabs 263b6030…`；改前（`HEAD`）`447bbaa7…` / `00068a7b…` / `a8ad4490…` / `f67b52c9…`。
+
+### ④ 可复用认知
+
+1. **这一套气泡是「按组件」而不是「按位置」统一的**：同一颗 `<Tooltip position="bottom">` 包在面板工具条
+   （行盒 y=89）与页签条（行盒 y=44）上，落点规则、4px 间距、投影与右缘守卫**逐值一致** ⇒ 后续任何图标按钮
+   直接包一层就能得到同样观感，不需要按位置调参。
+2. **`Tooltip` 包裹层不会改变 flex 行的排版**：包裹层是 `display: inline-flex; flex-shrink: 0`，与按钮同宽
+   ⇒ 7 颗按钮的 x / w / h 一位都没变。这条要用实测证明（几何 assert + 像素差分），别只写「理论上没变」。
+3. **气泡宽度随文案自适应**：同一条工具条上并排出现 87.3px（隐藏文件树）与 50.5px（刷新），说明包裹层没有
+   给固定宽度；这也让「气泡最小宽度」变成一个纯样式层面的公共改动（会影响对话头 / 侧栏所有气泡）。
+4. **开关类按钮的文案口径**：气泡跟状态走（搜索文件 / 隐藏文件树 / 全屏），可访问名保持稳定（配合
+   `aria-expanded` / `aria-pressed` 表达状态）—— 7 处里唯一的例外是 `diff-tree-toggle`（它原本就没有
+   `aria-label`，所以 `aria-label` 也随状态）。
+
+### ⑤ 坑（都真踩过）
+
+- **「行盒内差异 0」不能直接当位移证据**：行盒的 y 区间本来就盖住气泡顶缘与投影 ⇒ 气泡上缘会被算进
+  「行盒内」。本轮第一版按 `y < 行盒底` 统计，得到 1310~3370 px 的「行盒内差异」，看起来像版面动了。
+  正解 = 把容许带定义成**气泡盒四周外扩 60 设备像素**（浅色 `0 0 12px` 向上外溢约 3.5 CSS px、深色
+  `0 12px 30px` 向下外溢可达 26 CSS px），再断言带外 0 px。
+- **投影外溢量要按投影最大侧算**：深色投影 `0 12px 30px` 的向下外溢比向上大得多（12px 偏移 + 30px 模糊），
+  容差取小了会误报「带外有差异」。
+- **`desktopFileContent` 的时序**：`ChatApp.tsx:1072` 只把回复绑给「同路径的 file 页签」或「**当前 active**
+  的 file 页签」⇒ 用例必须在 file 面板刚开、还是 active 时推（本轮 1500ms 开 file、1700ms 切 diff，所以推在
+  1600ms）。推早了（面板还没开）或晚了（已切到 diff）都会落空，表现是「在默认应用中打开」这颗按钮不存在、
+  `page.hover` 超时。
+- **改前基线要真回退**：`cp` 到 `/tmp` → `git show HEAD:<path> > <path>` → 采集 → 从 `/tmp` 还原 → md5 逐字节核。
+  改前侧 `measure-pane-before.json` 里 `tooltip=null && wrapper=false` 就是「页面里本来没有气泡」的机器证据
+  （原生 `title` 由 OS 绘制，页面截图原理上截不到，报告 notice 里已写明这条限制）。
+
+### ⑥ 残留触发语（未授权）
+
+- 「页签也加上气泡，两个一起弹的问题按你说的方案改」—— 页签本体 `title={label}`（`DesktopPanelTabs.tsx:216`）
+  与页签关闭按钮 `title=关闭…`（`:226`）**故意没做**：关闭按钮在页签**内部**，两者都包 `Tooltip` 时鼠标落在
+  关闭按钮上会**同时**弹外层与内层两个气泡（`Tooltip` 靠包裹层自己的 mouseenter / mouseleave 工作，内层不算
+  离开外层）⇒ 需要先给 Tooltip 加「子节点命中就抑制外层」的机制，属组件行为改动。
+- 「diff 的『添加到输入框』也换成自绘气泡」—— `DiffPane.tsx:417`，以及一批**信息性** `title`（文件行 /
+  commit 行 / range 全文 `:453/:509/:609`、评论区标签 `:405`、`file-pane-path` `FilePane.tsx:451`、
+  `displayUrl` `PreviewPane.tsx:598`）。当前建议是**保持原生**（长文本更适合原生提示、且不遮挡下方内容）。
+- 「终端的文字按钮也要气泡」—— 终端退出态那颗文本按钮「重启终端」保持原生。
+- 「读屏名也跟着状态变」—— 现在 3 处开关的可访问名是稳定的（搜索文件 / 新建面板 / 全屏），状态靠
+  `aria-expanded` / `aria-pressed`；若要让读屏念「收起文件搜索」，改 `aria-label` 即可。
+
+### ⑦ 验证脚本与证据
+
+| 用途     | 脚本（`CC02/走查/_tools/1009/`）                 | 产物（`CC02/走查/`）                                                                       |
+| -------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| 采集素材 | `capture-pane-tooltips-1009.mjs <before\|after>` | `1009-同类面板气泡报告/shots/{_raw,before,after}/`、`measure-pane-{before,after}.json`     |
+| 裁图     | `build-pane-tooltip-assets-1009.py`              | 同上 `shots/<side>/<theme>-<asset>-2x.png`（7 位点 × 浅深 × 前后 = 28 张）                 |
+| 位移断言 | `verify-pane-tooltip-diff-1009.py`               | 控制台输出「通过 ✓」（按钮盒内 ≤1 px、气泡+投影带以外 0 px、按钮 rect 逐值相同、间距 4px） |
+| 报告     | `batch-1009-pane-toolbar-tooltips.json`          | `1009-同类面板气泡报告/index.html`（7 条 finding）                                         |
+
+报告用 skill 母版 `build_repair_report.py`（v1.1）生成、`verify-repair-report.mjs`（在 `_tools/0921/`，
+不在 skill 的 scripts 目录）自检：图片 14/14 加载、0 破图、**axe 浅深 0/0**、640 窄屏无横溢。「改前」是
+**真回退**（`git show HEAD:` 出旧版后重新加载，md5 逐字节核过），不是注入模拟。本轮纯 JSX 改动、无 CSS；
+用例 `tmp-tooltips-1009`（mock 目录 gitignore、不进推送集）。
