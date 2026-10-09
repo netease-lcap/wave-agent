@@ -37,7 +37,11 @@
 
 /* 键盘聚焦提示交给浏览器原生焦点环（不补 focus-visible 底色，下同） */
 .account-card-login:hover {
-  background: color-mix(in srgb, var(--vscode-brand-primary, #c1292e) 88%, black);
+  background: color-mix(
+    in srgb,
+    var(--vscode-brand-primary, #c1292e) 88%,
+    black
+  );
 }
 
 /* 已登录：头像+姓名热区 与 热区右侧「更新/用量显隐」按钮同行。 */
@@ -110,10 +114,7 @@
 .account-card-update-btn.is-restart {
   background: transparent;
   color: var(--vscode-button-secondaryForeground, #e9e9e9);
-  border-color: var(
-    --vscode-button-secondaryBorder,
-    rgba(255, 255, 255, 0.25)
-  );
+  border-color: var(--vscode-button-secondaryBorder, rgba(255, 255, 255, 0.25));
 }
 
 .account-card-update-btn.is-restart:hover {
@@ -153,7 +154,8 @@
   width: 100%;
   box-sizing: border-box;
   padding: 0 2px 8px;
-  border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+  border-bottom: 1px solid
+    var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
 }
 
 .account-card-hotzone {
@@ -271,10 +273,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 该窗口用完（下窗口自动恢复）→ 琥珀预警，不用错误红（触顶不是「被拒」）。 */
-.account-plan-bar-value.is-exhausted {
-  color: var(--vscode-editorWarning-foreground, #d18616);
-}
+/* 触顶（该窗口用完）也读「0%」、走上面的常规色：条只表达余量，2026-10-09 起不再
+   单独给琥珀 +「已用尽」文案（「为什么在扣 API」由结论行回答）。 */
 
 /* 不限制 / 不可用：中性描述色（「不可用」的严重性由结论行承担）。 */
 .account-plan-bar-value.is-unlimited,
@@ -351,8 +351,10 @@
   gap: 4px;
 }
 
+/* 金额等宽数字：不同数字组合（1 vs 8）宽度一致，两行金额的右边缘才真对齐。 */
 .account-usage-row .account-usage-value-text {
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 金额文本默认正常色；余额不足（<20%）→ 琥珀预警（仅金额变色，ⓘ/标签不变）。 */
@@ -364,7 +366,48 @@
   color: var(--vscode-errorForeground, #f14c4c);
 }
 
-/* ⓘ 明细触发钮：仅图标热区，hover/focus 高亮（hover 弹气泡由组件状态管理）。 */
+/* 用量维度切换器（套餐用量 / API 余额）：行内两个文字页签，右侧跟套餐到期日。
+   只有一维可用时组件不渲染切换器，该行整体消失。 */
+.account-usage-tabs-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.account-usage-tabs {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.account-usage-tab {
+  border: none;
+  background: transparent;
+  padding: 0 0 2px;
+  margin: 0;
+  font: inherit;
+  color: var(--vscode-descriptionForeground, #9d9d9d);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.account-usage-tab:hover {
+  color: var(--vscode-foreground);
+}
+
+.account-usage-tab.is-active {
+  color: var(--vscode-foreground);
+  font-weight: 500;
+  border-bottom-color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+.account-usage-tab:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: 2px;
+}
+
+/* ⓘ 余额说明钮：仅图标热区，hover/focus 出 Tooltip（文案见组件）。 */
 .account-api-info-btn {
   border: none;
   background: transparent;
@@ -378,9 +421,25 @@
   flex-shrink: 0;
 }
 
+/* ⓘ 与左侧文字水平对齐：ⓘ 被 Tooltip 包成 `span.tooltip-container`（inline-flex、
+   里面没有文字），合成基线落在盒子下缘，按 baseline 对齐会把图标顶上去——像素级
+   实测图标墨迹中线比文字墨迹中线高约 3.3px，肉眼即「浮在文字上方」。只改按行盒
+   居中又不够：页签行里页签自带 `padding-bottom: 2px` + `border-bottom: 2px`，行盒
+   中心被这两段推低，图标反而落到文字下方约 2.5px。故再给 `margin-bottom: 5px`
+   把容器在行盒内抬回 2.5px——图标墨迹中线与左侧文字墨迹中线重合（栅格取整后
+   实测差 ≤0.5px）。单维标题行没有下边框，只居中即可（实测差 0.3px）。同行其它
+   纯文本（套餐到期日）仍走 baseline，不受影响。 */
+.account-usage-tabs-row > .tooltip-container {
+  align-self: center;
+  margin-bottom: 5px;
+}
+
+.account-usage-title > .tooltip-container {
+  align-self: center;
+}
+
 .account-api-info-btn:hover {
   color: var(--vscode-foreground);
-  background-color: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.06));
 }
 
 .account-api-info-btn .codicon {
@@ -388,57 +447,11 @@
   line-height: 1;
 }
 
-/* API 余额明细气泡：fixed 定位逃逸 .desktop-sidebar 的 overflow:hidden；贴
-   「API 余额」行顶向上弹出、与卡片等宽，盖住上方套餐用量区。 */
-.api-quota-popover {
-  position: fixed;
-  z-index: 1200;
-  box-sizing: border-box;
-  padding: 10px 12px;
-  background: var(--vscode-panel-background, #131415);
-  border: 1px solid var(--vscode-widget-border, #1f2021);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.42);
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.api-popover-title {
-  font-weight: 600;
-  color: var(--vscode-foreground, #e9e9e9);
-  margin-bottom: 6px;
-}
-
-.api-popover-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 16px;
-  color: var(--vscode-descriptionForeground, #9d9d9d);
-}
-
-/* 金额列右对齐 + 等宽数字（已用/剩余便于比较）。 */
-.api-popover-amt {
-  color: var(--vscode-foreground, #e9e9e9);
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.api-popover-amt.is-empty {
-  color: var(--vscode-errorForeground, #f14c4c);
-}
-
-.api-popover-warn {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
-}
-
-.api-popover-warn.is-warning {
+/* 余额维度的预警文案（原 ⓘ 气泡的告警行，现在直接排在面板内）。 */
+.account-api-warn.is-warning {
   color: var(--vscode-editorWarning-foreground, #d18616);
 }
 
-.api-popover-warn.is-empty {
+.account-api-warn.is-empty {
   color: var(--vscode-errorForeground, #f14c4c);
 }

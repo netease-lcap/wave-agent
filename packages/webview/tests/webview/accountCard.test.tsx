@@ -109,24 +109,19 @@ describe("AccountCard (desktop sidebar)", () => {
   });
 
   describe("用量常驻区（套餐用量 + API 余额）", () => {
-    it("renders the resident usage area without any click: two plan bars + expiry + API balance", () => {
+    it("常驻区默认停在套餐维度（本周在上、本月在下 + 到期日），余额行不占版面", () => {
       renderDesktop();
       pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
 
       const usage = screen.getByTestId("account-card-usage");
       expect(usage).toBeInTheDocument();
-      // 套餐块：标题 + 到期日 + 两根条（标签 + 余量百分比 + progressbar）.
       const planBlock = screen.getByTestId("account-plan");
-      expect(planBlock).toHaveTextContent("套餐用量");
+      // 「套餐用量」这个称呼由页签承担，块内不再重复一行标题.
+      expect(screen.getByTestId("account-usage-tab-plan")).toHaveTextContent(
+        "套餐用量",
+      );
       expect(screen.getByTestId("account-plan-expire")).toHaveTextContent(
         "2027-03-01 到期",
-      );
-      const month = screen.getByTestId("account-plan-month");
-      expect(month).toHaveTextContent("本月");
-      expect(month).toHaveTextContent("40%");
-      expect(month.querySelector('[role="progressbar"]')).toHaveAttribute(
-        "aria-valuenow",
-        "40",
       );
       const week = screen.getByTestId("account-plan-week");
       expect(week).toHaveTextContent("本周");
@@ -135,19 +130,79 @@ describe("AccountCard (desktop sidebar)", () => {
         "aria-valuenow",
         "88",
       );
+      const month = screen.getByTestId("account-plan-month");
+      expect(month).toHaveTextContent("本月");
+      expect(month).toHaveTextContent("40%");
+      expect(month.querySelector('[role="progressbar"]')).toHaveAttribute(
+        "aria-valuenow",
+        "40",
+      );
+      // 本周排在前面（2026-10-09 交互定稿：自然周更易触顶，优先关注）.
+      const barLabels = [
+        ...planBlock.querySelectorAll(".account-plan-bar-label"),
+      ].map((el) => el.textContent);
+      expect(barLabels).toEqual(["本周", "本月"]);
       // 有生效套餐（mode: plan）⇒ 没有结论行.
       expect(
         screen.queryByTestId("account-plan-conclusion"),
       ).not.toBeInTheDocument();
-      // API 余额行：金额 ¥ 前缀 + 千位分隔 + 两位小数；label 已含「余额」不带「剩余」.
-      const apiRow = screen.getByTestId("account-api-quota");
-      expect(apiRow).toHaveTextContent("API 余额");
-      expect(apiRow).toHaveTextContent("¥8,846.86");
-      expect(apiRow.querySelector(".is-warning")).toBeNull();
+      // 默认停在套餐维度 ⇒ API 余额整块不渲染（2026-10-09 定稿：套餐没耗尽时
+      // 余额不参与计费，默认不占版面）.
+      expect(screen.queryByTestId("account-api-quota")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("api-quota-info")).not.toBeInTheDocument();
+    });
+
+    it("切到余额维度：已用 / 剩余 + ⓘ 说明，到期日随套餐维度隐去", () => {
+      renderDesktop();
+      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+
+      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
+      const apiBlock = screen.getByTestId("account-api-quota");
+      // 金额 ¥ 前缀 + 千位分隔 + 两位小数.
+      expect(apiBlock).toHaveTextContent("已用");
+      expect(apiBlock).toHaveTextContent("¥1,153.14");
+      expect(apiBlock).toHaveTextContent("剩余");
+      expect(apiBlock).toHaveTextContent("¥8,846.86");
+      expect(apiBlock.querySelector(".is-warning")).toBeNull();
       expect(screen.getByTestId("api-quota-info")).toHaveAttribute(
         "aria-label",
-        "API 余额明细",
+        "API 余额说明",
       );
+      // ⓘ 在余额维度的右上角（页签行内），不进金额行——两行金额才能右对齐.
+      expect(
+        document
+          .querySelector(".account-usage-tabs-row")!
+          .contains(screen.getByTestId("api-quota-info")),
+      ).toBe(true);
+      // 套餐块与到期日属套餐维度，余额维度不再渲染.
+      expect(screen.queryByTestId("account-plan")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("account-plan-expire"),
+      ).not.toBeInTheDocument();
+
+      // 切回套餐维度：余额块让位、到期日回来.
+      fireEvent.click(screen.getByTestId("account-usage-tab-plan"));
+      expect(screen.getByTestId("account-plan")).toBeInTheDocument();
+      expect(screen.getByTestId("account-plan-expire")).toHaveTextContent(
+        "2027-03-01 到期",
+      );
+      expect(screen.queryByTestId("account-api-quota")).not.toBeInTheDocument();
+    });
+
+    it("两维只有一维可用时不渲染切换器，直接展示那一维", () => {
+      renderDesktop();
+      pushAccount({ ...loggedIn, billing: null, apiQuota: apiPlenty });
+
+      expect(
+        screen.queryByTestId("account-usage-tab-plan"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("account-usage-tab-api"),
+      ).not.toBeInTheDocument();
+      // 单维也保留块内标题行（没有页签可替代它），ⓘ 落到标题行右侧.
+      const apiBlock = screen.getByTestId("account-api-quota");
+      expect(apiBlock).toHaveTextContent("API 余额");
+      expect(apiBlock.querySelector(".account-api-info-btn")).not.toBeNull();
     });
 
     it("renders the avatar initial + full email name when logged in", () => {
@@ -160,7 +215,7 @@ describe("AccountCard (desktop sidebar)", () => {
       );
     });
 
-    it("reads 已用尽 (amber, empty bar) when a window hits its cap, plus the month conclusion line", () => {
+    it("reads 0% (normal tone, empty bar) when a window hits its cap, plus the month conclusion line", () => {
       renderDesktop();
       pushAccount({
         ...loggedIn,
@@ -178,14 +233,15 @@ describe("AccountCard (desktop sidebar)", () => {
         apiQuota: { limit: 5, used: 5 },
       });
 
-      // 触顶读「已用尽」而不是「0%」：该窗口下期自愈，与「不可用」是两个语义.
+      // 触顶读「0%」、常规色（2026-10-09 交互定稿）：条只表达余量、超用封底到 0，
+      // 「哪个窗口用完、现在按什么计费」交给结论行，条上不再单独读「已用尽」+ 琥珀.
       const month = screen.getByTestId("account-plan-month");
-      expect(month).toHaveTextContent("已用尽");
-      expect(month).not.toHaveTextContent("0%");
+      expect(month).toHaveTextContent("0%");
+      expect(month).not.toHaveTextContent("已用尽");
       // 不显示负数（0% 封底）.
       expect(month).not.toHaveTextContent("-");
       expect(
-        month.querySelector(".account-plan-bar-value.is-exhausted"),
+        month.querySelector(".account-plan-bar-value.is-normal"),
       ).not.toBeNull();
       expect(month.querySelector('[role="progressbar"]')).toHaveAttribute(
         "aria-valuenow",
@@ -201,6 +257,8 @@ describe("AccountCard (desktop sidebar)", () => {
       );
       expect(conclusion.classList.contains("is-warning")).toBe(true);
 
+      // 余额维度照常可切：这里余额也耗尽 ⇒ 红色「已用完」.
+      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
       const apiRow = screen.getByTestId("account-api-quota");
       expect(
         apiRow.querySelector(".account-usage-value.is-empty"),
@@ -226,9 +284,7 @@ describe("AccountCard (desktop sidebar)", () => {
         apiQuota: apiPlenty,
       });
 
-      expect(screen.getByTestId("account-plan-week")).toHaveTextContent(
-        "已用尽",
-      );
+      expect(screen.getByTestId("account-plan-week")).toHaveTextContent("0%");
       expect(screen.getByTestId("account-plan-conclusion")).toHaveTextContent(
         "本周额度已用尽，当前按 API 余额计费",
       );
@@ -484,7 +540,7 @@ describe("AccountCard (desktop sidebar)", () => {
       expect(screen.getByTestId("account-card-name")).toBeInTheDocument();
     });
 
-    it("shows 不限额 for a null API limit and keeps the used amount in the popover instead", () => {
+    it("shows 不限额 on the balance tab when the API limit is null", () => {
       renderDesktop();
       pushAccount({
         ...loggedIn,
@@ -492,69 +548,34 @@ describe("AccountCard (desktop sidebar)", () => {
         apiQuota: { limit: null, used: 1153.14 },
       });
 
+      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
       const apiRow = screen.getByTestId("account-api-quota");
-      expect(apiRow).toHaveTextContent("不限额");
-      expect(apiRow).not.toHaveTextContent("¥");
-
-      fireEvent.mouseEnter(screen.getByTestId("api-quota-info"));
-      const popover = screen.getByTestId("api-quota-popover");
-      expect(popover).toHaveTextContent("已用");
-      expect(popover).toHaveTextContent("¥1,153.14");
-      expect(popover).toHaveTextContent("不限额");
-    });
-
-    it("does not open the popover when the amount text itself is clicked", () => {
-      renderDesktop();
-      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
-
-      fireEvent.click(screen.getByText("¥8,846.86"));
-      expect(screen.queryByTestId("api-quota-popover")).not.toBeInTheDocument();
+      expect(apiRow).toHaveTextContent("已用");
+      expect(apiRow).toHaveTextContent("¥1,153.14");
+      // 「剩余」行读「不限额」——该行不出现金额.
+      const rows = apiRow.querySelectorAll(".account-usage-row");
+      const remaining = rows[rows.length - 1];
+      expect(remaining).toHaveTextContent("剩余");
+      expect(remaining).toHaveTextContent("不限额");
+      expect(remaining).not.toHaveTextContent("¥");
     });
   });
 
-  describe("API 明细气泡（hover ⓘ）", () => {
-    it("opens on hover/focus of ⓘ, shows used/remaining amounts, closes on outside click and Esc", async () => {
+  describe("余额维度（API 余额面板）", () => {
+    it("ⓘ 的 tooltip 说明余额只在套餐耗尽后才参与计费", () => {
       renderDesktop();
       pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
+      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
+
       const info = screen.getByTestId("api-quota-info");
-
-      fireEvent.mouseEnter(info);
-      let popover = screen.getByTestId("api-quota-popover");
-      expect(popover).toHaveTextContent("API 余额");
-      expect(popover).toHaveTextContent("已用");
-      expect(popover).toHaveTextContent("¥1,153.14");
-      expect(popover).toHaveTextContent("剩余");
-      expect(popover).toHaveTextContent("¥8,846.86");
-
-      fireEvent.keyDown(document, { key: "Escape" });
-      expect(screen.queryByTestId("api-quota-popover")).not.toBeInTheDocument();
-
-      fireEvent.mouseEnter(info);
-      popover = screen.getByTestId("api-quota-popover");
-      // Outside-click listener registers one tick after the popover mounts
-      // (useClickOutside defers it) — wait before simulating the outside click.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      fireEvent.mouseDown(document.body);
-      expect(screen.queryByTestId("api-quota-popover")).not.toBeInTheDocument();
+      expect(info).toHaveAttribute("aria-label", "API 余额说明");
+      const tooltip = document.getElementById(
+        info.getAttribute("aria-describedby")!,
+      );
+      expect(tooltip).toHaveTextContent("将在套餐用量耗尽时使用API余额");
     });
 
-    it("auto-hides ~150ms after the mouse leaves ⓘ (no flicker between icon and popover)", () => {
-      vi.useFakeTimers();
-      renderDesktop();
-      pushAccount({ ...loggedIn, billing: planBilling, apiQuota: apiPlenty });
-      const info = screen.getByTestId("api-quota-info");
-
-      fireEvent.mouseEnter(info);
-      expect(screen.getByTestId("api-quota-popover")).toBeInTheDocument();
-      fireEvent.mouseLeave(info);
-      expect(screen.getByTestId("api-quota-popover")).toBeInTheDocument();
-      act(() => {
-        vi.advanceTimersByTime(160);
-      });
-      expect(screen.queryByTestId("api-quota-popover")).not.toBeInTheDocument();
-    });
-
-    it("warns in amber when the balance drops below 20% of the limit", () => {
+    it("warns in amber + 文案 when the balance drops below 20% of the limit", () => {
       renderDesktop();
       pushAccount({
         ...loggedIn,
@@ -562,21 +583,19 @@ describe("AccountCard (desktop sidebar)", () => {
         apiQuota: { limit: 1000, used: 950 },
       });
 
-      // 行内金额预警色 + 文案（无「剩余」前缀）.
+      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
       const apiRow = screen.getByTestId("account-api-quota");
-      const value = apiRow.querySelector(".account-usage-value");
+      // 预警色落在「剩余」行（末行）的金额上，「已用」行不受影响.
+      const rows = apiRow.querySelectorAll(".account-usage-row");
+      const remaining = rows[rows.length - 1];
+      const value = remaining.querySelector(".account-usage-value");
       expect(value).not.toBeNull();
       expect(value!.classList.contains("is-warning")).toBe(true);
       expect(apiRow).toHaveTextContent("¥50.00");
-
-      fireEvent.mouseEnter(screen.getByTestId("api-quota-info"));
-      const popover = screen.getByTestId("api-quota-popover");
-      expect(popover).toHaveTextContent("¥950.00");
-      expect(popover).toHaveTextContent("¥50.00");
-      expect(popover).toHaveTextContent("余额不足20%，建议及时充值");
+      expect(apiRow).toHaveTextContent("余额不足20%，建议及时充值");
     });
 
-    it("shows the exhausted popover in red with 额度已用完 guidance", () => {
+    it("reads 已用完 in red with guidance when the balance is exhausted", () => {
       renderDesktop();
       pushAccount({
         ...loggedIn,
@@ -584,17 +603,15 @@ describe("AccountCard (desktop sidebar)", () => {
         apiQuota: { limit: 1000, used: 1500 },
       });
 
+      fireEvent.click(screen.getByTestId("account-usage-tab-api"));
       const apiRow = screen.getByTestId("account-api-quota");
       expect(
         apiRow.querySelector(".account-usage-value.is-empty"),
       ).not.toBeNull();
       expect(apiRow).toHaveTextContent("已用完");
-
-      fireEvent.mouseEnter(screen.getByTestId("api-quota-info"));
-      const popover = screen.getByTestId("api-quota-popover");
-      expect(popover).toHaveTextContent("¥0.00");
-      expect(popover.querySelector(".api-popover-amt.is-empty")).not.toBeNull();
-      expect(popover).toHaveTextContent("额度已用完，请联系管理员充值");
+      expect(apiRow).toHaveTextContent("额度已用完，请联系管理员充值");
+      // 剩余封底 0：不出现负数.
+      expect(apiRow).not.toHaveTextContent("¥-");
     });
   });
 
