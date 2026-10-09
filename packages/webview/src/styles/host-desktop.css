@@ -1576,9 +1576,9 @@
 [data-host="desktop"][data-theme="light"] .account-usage-bar {
   background-color: #e6e8eb;
 }
-/* 额度条的标签与状态值：浅色取正文炭黑（设计稿 #1F2329）；「已用尽」的琥珀
-   由 base `.is-exhausted` 承担（本层不覆盖它，否则 host 层特异性更高会盖掉
-   琥珀），「无额度限制 / 不可用」保持描述灰；到期日同为正文色。 */
+/* 额度条的标签与状态值：浅色取正文炭黑（设计稿 #1F2329）；触顶读「0%」后与其余
+   百分比同走 `.is-normal`（2026-10-09 起不再有 `.is-exhausted` 琥珀档），
+   「无额度限制 / 不可用」保持描述灰；到期日同为正文色。 */
 [data-host="desktop"][data-theme="light"] .account-plan-bar-label,
 [data-host="desktop"][data-theme="light"] .account-plan-bar-value.is-normal,
 [data-host="desktop"][data-theme="light"] .account-plan-expire {
@@ -1613,33 +1613,10 @@
   color: var(--vscode-foreground);
 }
 
-/* ═══ ⓘ API 余额明细气泡卡对齐设计稿 13651:4864（Frame 1321327547）═══
-   悬浮卡：白底 #FFFFFF、1px 描边 #EBEEF5、圆角 r12、柔和投影
-   0/0/12 rgba(0,0,0,.12)；内边距 9（外框 235×78 − 内容 217×60，四边同距）。
-   内容 12px：标题与金额 #1F2329 w500、行标签 #565A60 w400。警示文案（琥珀/
-   红）不由设计帧决定，走主题变量（--vscode-editorWarning-foreground /
-   --vscode-errorForeground），见文件尾审计说明。深色无设计帧，保持 base
-   vscode token 方案（面板底 + widget 描边 + 强投影），仅统一几何。 */
-[data-host="desktop"] .api-quota-popover {
-  padding: 9px;
-  border-radius: 12px;
-}
-[data-host="desktop"][data-theme="light"] .api-quota-popover {
-  background: #ffffff;
-  border: 1px solid #ebeef5;
-  box-shadow: 0 0 12px rgba(0, 0, 0, 0.12);
-}
-[data-host="desktop"][data-theme="light"] .api-popover-title {
-  color: #1f2329;
-  font-weight: 500;
-}
-[data-host="desktop"][data-theme="light"] .api-popover-row {
-  color: #565a60;
-}
-[data-host="desktop"][data-theme="light"] .api-popover-amt:not(.is-empty) {
-  color: #1f2329;
-  font-weight: 500;
-}
+/* ═══ API 余额明细气泡卡（设计稿 13651:4864 / Frame 1321327547）══════
+   2026-10-09：明细内容改为「余额维度」本体（已用 / 剩余两行 + 预警），
+   原 hover 气泡整套样式（白底卡、r12、投影、标题/金额色）随之删除；
+   余额面板的排版走 AccountCard.css 的 `.account-usage-row`。 */
 
 /* Composer 卡片最大宽：Figma Form - 发送消息 768px（Container 800 = 768 + pad 16×2；
    base input-wrapper 800 使卡片在宽 pane 下宽出 32px） */
@@ -3524,10 +3501,9 @@
   font-weight: var(--cc-font-weight-semibold, 600);
 }
 
-/* ③ 角标/状态 chip 类 → medium 500：头像首字母、API 气泡标题、mermaid
-   zoom chip、远程浏览器搜索命中 mark（700→500） */
+/* ③ 角标/状态 chip 类 → medium 500：头像首字母、mermaid zoom chip、
+   远程浏览器搜索命中 mark（700→500） */
 [data-host="desktop"] .account-card-avatar,
-[data-host="desktop"] .api-popover-title,
 [data-host="desktop"] .zoom-info,
 [data-host="desktop"] .desktop-remote-browser-mark {
   font-weight: var(--cc-font-weight-medium, 500);

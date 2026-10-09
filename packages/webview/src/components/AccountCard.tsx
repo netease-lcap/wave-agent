@@ -6,9 +6,9 @@ import type {
   AccountBillingPlanUsage,
   AccountUpdateInfo,
 } from "wave-webview-fixtures";
-import { useClickOutside } from "../utils/useClickOutside";
 import { MoreMenu } from "./MoreMenu";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { Tooltip } from "./Tooltip";
 // 未登录态「更多」按钮沿用 0902 第 5 轮问号圆（ailsa 新基线）；已登录态不再
 // 提供独立更多按钮（交互定稿：热区开纯功能菜单）。
 import {
@@ -27,9 +27,11 @@ import "../styles/ConfirmDialog.css";
  * `desktopAccountInfo` 快照；卡片未登录态为整条登录按钮 + 更多按钮，登录态为
  * 三段式：
  *
- *  1. 用量常驻区（套餐两根额度条 + 到期日 + 计费结论行 + API 余额行 + hover ⓘ
- *     明细气泡），经个人信息行右侧 chevron 收起/展开；显隐独立记忆、与个人信息
- *     菜单开合解耦；
+ *  1. 用量常驻区（2026-10-09 起为「套餐用量 / API 余额」两个互斥维度切换：套餐
+ *     维度 = 本周条 + 本月条 + 到期日 + 计费结论行；余额维度 = 已用 + 剩余 + 预警。
+ *     套餐未用尽时 API 余额不参与计费，故默认停在套餐维度。两维只有一维可用时
+ *     不渲染切换器、直接展示那一维），经个人信息行右侧 chevron 收起/展开；显隐
+ *     独立记忆、与个人信息菜单开合解耦；
  *  2. 个人信息行（头像 + 姓名热区 + 更新按钮 + 用量显隐按钮）：点击热区开/关
  *     纯功能菜单（设置/企业控制台/帮助文档/退出登录），菜单贴行弹出盖住用量
  *     区、与卡片等宽；再次点击热区或失焦/Esc 收起；
@@ -89,20 +91,20 @@ export function barRemainingPercent(used: number, limit: number): number {
 export interface PlanBarView {
   percent: number | null;
   text: string;
-  tone: "normal" | "exhausted" | "unlimited" | "unavailable";
+  tone: "normal" | "unlimited" | "unavailable";
 }
 
 /**
  * 派生单根条的视图。限额三态（codechat `billing.plan`）：null = 不限制（不画条）、
- * 0 = 该维度不可用（不画条）、正数 = 限额。触顶（used ≥ limit）读「已用尽」（空条），
- * **不读「0%」**——触顶只是该窗口用完、下窗口恢复，与「不可用」语义不同。
+ * 0 = 该维度不可用（不画条）、正数 = 限额。触顶（used ≥ limit）读「0%」、常规色
+ * （2026-10-09 交互定稿，原读「已用尽」+ 琥珀）——条只表达余量，超用封底到 0；
+ * 「哪个窗口用完、现在按什么计费」由结论行承担，不重复表达。
  */
 export function planBarView(used: number, limit: number | null): PlanBarView {
   if (limit === null)
     return { percent: null, text: "无额度限制", tone: "unlimited" };
   if (limit === 0)
     return { percent: null, text: "不可用", tone: "unavailable" };
-  if (used >= limit) return { percent: 0, text: "已用尽", tone: "exhausted" };
   const percent = barRemainingPercent(used, limit);
   return { percent, text: `${percent}%`, tone: "normal" };
 }
@@ -275,13 +277,11 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   // 个人信息纯功能菜单：热区点击开/关（MoreMenu 把热区排除在 click-outside 外）。
   const [showMenu, setShowMenu] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<DOMRect | null>(null);
-  // API 余额明细气泡：hover/focus ⓘ 唤起（移出自动收起，Esc/外部立即收起）。
-  const [showApiPopover, setShowApiPopover] = useState(false);
-  const [apiPopoverAnchor, setApiPopoverAnchor] = useState<DOMRect | null>(
-    null,
-  );
   // 用量常驻区收起/展开（独立记忆，与菜单开合解耦）。
   const [usageCollapsed, setUsageCollapsed] = useState(false);
+  // 用量维度（2026-10-09 交互定稿）：套餐未用尽时 API 余额不参与计费，默认停在
+  // 「套餐用量」不占版面，想看余额再切过去；两维只有一维可用时无切换器。
+  const [usageTab, setUsageTab] = useState<"plan" | "api">("plan");
   // 更新确认对话框：download = S2 下载二次确认；restart = S4 重启确认。
   const [updateDialog, setUpdateDialog] = useState<
     "download" | "restart" | null
@@ -289,10 +289,6 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   const moreBtnRef = useRef<HTMLButtonElement | null>(null);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const hotzoneRef = useRef<HTMLDivElement | null>(null);
-  const apiTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const apiPopoverRef = useRef<HTMLDivElement | null>(null);
-  // 移出 ⓘ/气泡后延迟收起（防指针在图标↔气泡间移动时闪烁，~150ms）。
-  const apiHideTimer = useRef<number | null>(null);
   // S4 自动弹窗护栏：status 每轮变为 ready 只自动弹一次（离开 ready 复位）。
   const [restartPrompted, setRestartPrompted] = useState(false);
 
@@ -313,34 +309,6 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     }
     if (updateStatus !== "ready") setRestartPrompted(false);
   }, [updateStatus, updateAvailable, restartPrompted]);
-
-  // 卸载时清理气泡延迟收起定时器（同样须在早退之前注册；ref 稳定 = 挂载一次）。
-  useEffect(
-    () => () => {
-      if (apiHideTimer.current !== null) {
-        window.clearTimeout(apiHideTimer.current);
-        apiHideTimer.current = null;
-      }
-    },
-    [apiHideTimer],
-  );
-
-  // API 余额气泡：点击外部或 Esc 立即强制收起（悬停态也生效）。Click-outside
-  // 豁免气泡与 ⓘ 触发按钮本身（再点 ⓘ toggle）；listener 经 useClickOutside
-  // 延迟一帧注册，气泡被自身打开点击误关的防御见其注释。
-  useClickOutside({
-    refs: [apiPopoverRef, apiTriggerRef],
-    enabled: showApiPopover,
-    onClickOutside: () => setShowApiPopover(false),
-  });
-  useEffect(() => {
-    if (!showApiPopover) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setShowApiPopover(false);
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [showApiPopover]);
 
   // 未登录：整条登录按钮 + 右侧「更多」按钮（沿用当前基线视觉）。
   if (!isAuthenticated) {
@@ -402,6 +370,14 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   // API 余额预警级：null=充足/不限额；"low"=剩余<20%；"exhausted"=剩余≤0。
   const apiWarning = apiQuota ? apiQuotaWarningLevel(apiQuota) : null;
   const hasUsage = showPlanBlock || apiQuota !== null;
+  // 两个维度都有才给切换器；只有一维时直接展示那一维（不看 usageTab，避免
+  // 数据变化后停在空的维度上）。
+  const showUsageTabs = showPlanBlock && apiQuota !== null;
+  const activeUsageTab = showUsageTabs
+    ? usageTab
+    : showPlanBlock
+      ? "plan"
+      : "api";
 
   // 更新按钮文案/状态（S1/S3/S5；无更新 = S0 不渲染）。S3 已去掉省略号、「正在下载更新」
   // 缩为「正在下载」（设计师 2026-09-17）——进行中由转圈弧表达，文案只留最短状态词。
@@ -416,39 +392,21 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     setUpdateDialog(updateStatus === "ready" ? "restart" : "download");
   };
 
-  const clearApiHideTimer = () => {
-    if (apiHideTimer.current !== null) {
-      window.clearTimeout(apiHideTimer.current);
-      apiHideTimer.current = null;
-    }
-  };
-  const scheduleHideApiPopover = () => {
-    clearApiHideTimer();
-    apiHideTimer.current = window.setTimeout(() => {
-      setShowApiPopover(false);
-      apiHideTimer.current = null;
-    }, 150);
-  };
-  // 打开明细气泡：锚点 y 取 ⓘ 按钮顶部（气泡贴 API 行向上弹出），x/宽取整张
-  // 卡片——气泡与卡片等宽，盖住上方套餐用量区。
-  const openApiPopover = () => {
-    clearApiHideTimer();
-    const el = cardRef.current;
-    const trigger = apiTriggerRef.current;
-    if (el && trigger) {
-      const cardRect = el.getBoundingClientRect();
-      const triggerRect = trigger.getBoundingClientRect();
-      setApiPopoverAnchor(
-        new DOMRect(
-          cardRect.x,
-          triggerRect.top,
-          cardRect.width,
-          triggerRect.height,
-        ),
-      );
-    }
-    setShowApiPopover(true);
-  };
+  // 余额用途说明钮（2026-10-09）：排在**余额维度的右上角**——与套餐维度的到期日
+  // 同一位置，两个维度各占各的右上角信息。放在金额行里会把「剩余」的数字挤得比
+  // 「已用」短一截、两行右边缘对不齐，故不进金额行。
+  const apiInfoButton = (
+    <Tooltip text="将在套餐用量耗尽时使用API余额" position="top">
+      <button
+        type="button"
+        className="account-api-info-btn"
+        aria-label="API 余额说明"
+        data-testid="api-quota-info"
+      >
+        <ApiInfoIcon />
+      </button>
+    </Tooltip>
+  );
 
   // 个人信息热区：点击开/关纯功能菜单。锚点 = 整张卡片（等宽）+ 个人信息行顶部
   // （+4 抵消 MoreMenu 固定定位的上移间隙 → 菜单底缘贴行弹出），盖住上方用量区。
@@ -482,32 +440,99 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           className="account-card-usage-inline"
           data-testid="account-card-usage"
         >
-          {showPlanBlock && (
-            <div className="account-usage-section" data-testid="account-plan">
-              <div className="account-usage-title">
-                <span>套餐用量</span>
-                {expireDate && (
-                  <span
-                    className="account-plan-expire"
-                    data-testid="account-plan-expire"
-                  >
-                    {expireDate} 到期
-                  </span>
-                )}
+          {/* 两个维度都有 ⇒ 顶部切换器（到期日跟到右侧）；只有一维 ⇒ 不渲染
+              切换器，直接展示那一维并在块内保留标题行。 */}
+          {showUsageTabs && (
+            <div className="account-usage-tabs-row">
+              <div
+                className="account-usage-tabs"
+                role="tablist"
+                aria-label="用量维度"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  id="account-usage-tab-plan"
+                  aria-selected={activeUsageTab === "plan"}
+                  aria-controls="account-usage-panel-plan"
+                  className={
+                    "account-usage-tab" +
+                    (activeUsageTab === "plan" ? " is-active" : "")
+                  }
+                  data-testid="account-usage-tab-plan"
+                  onClick={() => setUsageTab("plan")}
+                >
+                  套餐用量
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="account-usage-tab-api"
+                  aria-selected={activeUsageTab === "api"}
+                  aria-controls="account-usage-panel-api"
+                  className={
+                    "account-usage-tab" +
+                    (activeUsageTab === "api" ? " is-active" : "")
+                  }
+                  data-testid="account-usage-tab-api"
+                  onClick={() => setUsageTab("api")}
+                >
+                  API 余额
+                </button>
               </div>
+              {/* 右上角随维度换：套餐维度 = 到期日，余额维度 = ⓘ（2026-10-09
+                  交互定稿——到期日属套餐信息、ⓘ 属余额信息，各归各的维度）。 */}
+              {activeUsageTab === "plan" && expireDate && (
+                <span
+                  className="account-plan-expire"
+                  data-testid="account-plan-expire"
+                >
+                  {expireDate} 到期
+                </span>
+              )}
+              {activeUsageTab === "api" && apiQuota !== null && apiInfoButton}
+            </div>
+          )}
+          {activeUsageTab === "plan" && showPlanBlock && (
+            <div
+              className="account-usage-section"
+              data-testid="account-plan"
+              id="account-usage-panel-plan"
+              {...(showUsageTabs
+                ? {
+                    role: "tabpanel",
+                    "aria-labelledby": "account-usage-tab-plan",
+                  }
+                : {})}
+            >
+              {!showUsageTabs && (
+                <div className="account-usage-title">
+                  <span>套餐用量</span>
+                  {expireDate && (
+                    <span
+                      className="account-plan-expire"
+                      data-testid="account-plan-expire"
+                    >
+                      {expireDate} 到期
+                    </span>
+                  )}
+                </div>
+              )}
               {planUsage && (
                 <>
-                  <PlanBar
-                    label="本月"
-                    testId="account-plan-month"
-                    used={planUsage.monthUsed}
-                    limit={planUsage.monthLimit}
-                  />
+                  {/* 本周在上：自然周窗口短、更容易触顶，是更该优先关注的维度
+                      （2026-10-09 交互定稿，原本月在上）。 */}
                   <PlanBar
                     label="本周"
                     testId="account-plan-week"
                     used={planUsage.weekUsed}
                     limit={planUsage.weekLimit}
+                  />
+                  <PlanBar
+                    label="本月"
+                    testId="account-plan-month"
+                    used={planUsage.monthUsed}
+                    limit={planUsage.monthLimit}
                   />
                 </>
               )}
@@ -521,38 +546,59 @@ export const AccountCard: React.FC<AccountCardProps> = ({
               )}
             </div>
           )}
-          {apiQuota !== null && (
-            <div className="account-usage-row" data-testid="account-api-quota">
-              <span className="account-usage-label">API 余额</span>
-              <span
-                className={
-                  "account-usage-value" +
-                  (apiWarning === "low"
-                    ? " is-warning"
-                    : apiWarning === "exhausted"
-                      ? " is-empty"
-                      : "")
-                }
-              >
-                <span className="account-usage-value-text">
-                  {apiQuotaInlineText(apiQuota)}
+          {activeUsageTab === "api" && apiQuota !== null && (
+            <div
+              className="account-usage-section"
+              data-testid="account-api-quota"
+              id="account-usage-panel-api"
+              {...(showUsageTabs
+                ? {
+                    role: "tabpanel",
+                    "aria-labelledby": "account-usage-tab-api",
+                  }
+                : {})}
+            >
+              {!showUsageTabs && (
+                <div className="account-usage-title">
+                  <span>API 余额</span>
+                  {apiInfoButton}
+                </div>
+              )}
+              <div className="account-usage-row">
+                <span className="account-usage-label">已用</span>
+                <span className="account-usage-value">
+                  <span className="account-usage-value-text">
+                    ¥{formatAmount(apiQuota.used)}
+                  </span>
                 </span>
-                <button
-                  ref={apiTriggerRef}
-                  type="button"
-                  className="account-api-info-btn"
-                  aria-label="API 余额明细"
-                  aria-haspopup="dialog"
-                  aria-expanded={showApiPopover}
-                  data-testid="api-quota-info"
-                  onMouseEnter={openApiPopover}
-                  onMouseLeave={scheduleHideApiPopover}
-                  onFocus={openApiPopover}
-                  onBlur={scheduleHideApiPopover}
+              </div>
+              <div className="account-usage-row">
+                <span className="account-usage-label">剩余</span>
+                <span
+                  className={
+                    "account-usage-value" +
+                    (apiWarning === "low"
+                      ? " is-warning"
+                      : apiWarning === "exhausted"
+                        ? " is-empty"
+                        : "")
+                  }
                 >
-                  <ApiInfoIcon />
-                </button>
-              </span>
+                  <span className="account-usage-value-text">
+                    {apiQuotaInlineText(apiQuota)}
+                  </span>
+                </span>
+              </div>
+              {apiWarning === "low" && (
+                <div className="account-api-warn is-warning">
+                  余额不足20%，建议及时充值
+                </div>
+              )}
+              {apiWarning === "exhausted" && (
+                <div className="account-api-warn is-empty">
+                  额度已用完，请联系管理员充值
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -635,55 +681,6 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           triggerRef={hotzoneRef}
           onClose={() => setShowMenu(false)}
         />
-      )}
-      {showApiPopover && apiQuota !== null && apiPopoverAnchor && (
-        <div
-          ref={apiPopoverRef}
-          className="api-quota-popover"
-          data-testid="api-quota-popover"
-          role="dialog"
-          aria-label="API 余额明细"
-          onMouseEnter={clearApiHideTimer}
-          onMouseLeave={scheduleHideApiPopover}
-          style={{
-            left: apiPopoverAnchor.x,
-            bottom: window.innerHeight - apiPopoverAnchor.y + 4,
-            width: apiPopoverAnchor.width,
-          }}
-        >
-          <div className="api-popover-title">API 余额</div>
-          <div className="api-popover-row">
-            <span>已用</span>
-            <span className="api-popover-amt">
-              ¥{formatAmount(apiQuota.used)}
-            </span>
-          </div>
-          <div className="api-popover-row">
-            <span>剩余</span>
-            {apiQuota.limit === null ? (
-              <span className="api-popover-amt">不限额</span>
-            ) : (
-              <span
-                className={
-                  "api-popover-amt" +
-                  (apiWarning === "exhausted" ? " is-empty" : "")
-                }
-              >
-                ¥{formatAmount(Math.max(0, apiQuota.limit - apiQuota.used))}
-              </span>
-            )}
-          </div>
-          {apiWarning === "low" && (
-            <div className="api-popover-warn is-warning">
-              余额不足20%，建议及时充值
-            </div>
-          )}
-          {apiWarning === "exhausted" && (
-            <div className="api-popover-warn is-empty">
-              额度已用完，请联系管理员充值
-            </div>
-          )}
-        </div>
       )}
       {updateDialog === "download" && (
         <ConfirmDialog
