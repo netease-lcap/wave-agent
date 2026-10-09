@@ -7543,3 +7543,96 @@ IDE / VS Code 宿主一起变。这些 base 声明都是单类 (0,1,0)，`[data-
 错误 0、axe 浅深 0/0、640 窄屏无横溢）；「改前」一律是**真回退**（回退 `host-desktop.css` 后重新构建并逐字节
 核 md5，不是注入模拟）；字号那份是唯一的**试算（what-if）**报告、已在报告 notice 里声明。本轮纯 CSS 值改动，
 无业务单测覆盖。
+
+## 1009 评论（预览面板工具条三颗图标按钮的气泡提示）
+
+### ① 来源
+
+她 1009 在预览（`http://localhost:8899`）点 `button.preview-pane-button` —— path 为
+`div:nth-of-type(2) > div:nth-of-type(3) > div > div > aside > div > div:nth-of-type(1) > button:nth-of-type(1)`
+（预览面板工具条第一颗，即「选择元素并评论」）：「**这边三个功能缺少气泡提示**」。
+
+范围口径 = 同一行那**三颗图标按钮**（选择元素并评论 / 刷新 / 在浏览器中打开）。第 4 颗（加载失败态才出现的
+文本按钮「重试」）与别处同族按钮（文件面板、终端面板、diff 面板、面板页签）**本轮不动**，列在 ⑥ 等你点名。
+
+### ② 改动（1 文件，3 处）
+
+`packages/webview/src/components/PreviewPane.tsx`：① 引入既有的 `Tooltip`；② 三颗按钮各包一层
+`<Tooltip text="…" position="bottom">`；③ 原来的 `title` 删掉、同一句文案落到 `aria-label`。
+
+```tsx
+<Tooltip text="选择元素并评论" position="bottom">
+  <button
+    className={`preview-pane-button${pickerActive ? " active" : ""}`}
+    aria-label="选择元素并评论"
+    aria-pressed={pickerActive}
+    data-testid="preview-picker-toggle"
+    onClick={togglePicker}
+  >
+    <InspectorCursorIcon className="preview-pane-icon" />
+  </button>
+</Tooltip>
+```
+
+三颗的 `className` / `data-testid` / `onClick` / `aria-pressed` 一字未动；**没有新增任何 CSS 或 token** ——
+气泡外观（12px / 圆角 8 / 内边距 / 投影）与出现延时（100ms）全部来自 0923 轮已落地的桌面皮肤，
+位置档 `bottom` 与间距 `4px` 与 `ChatHeader.tsx` 那一排工具条**同档**（`Tooltip.tsx` 里
+`gap = offset ?? (isDesktopHost() ? 4 : 8)`）。
+
+### ③ 定稿值（headed Chromium 1440×960 DPR2，用例 `tmp-panels-0916`，两档 pageerror 0）
+
+| 项                       | 改前（原生 `title`）                            | 改后（`<Tooltip>`）                                                                                                                     |
+| ------------------------ | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 三颗按钮几何             | x=1340 / 1372 / 1404，w=24 h=24                 | **逐值相同**（0 位移）                                                                                                                  |
+| 工具条行盒               | 707×36 @(733,87)                                | 逐值相同；行内**0 差异像素**（含悬停底色）                                                                                              |
+| 气泡文案                 | `title`：选择元素并评论 / 刷新 / 在浏览器中打开 | 同一句原文（气泡）                                                                                                                      |
+| 气泡盒                   | —                                               | 111.8×30 / 50.5×30 / 111.8×30（随文案自适应）                                                                                           |
+| 气泡规格（浅 / 深）      | —                                               | 12px / r8 / `bottom`；浅 白底 + 1px `#DCDFE6` + `0 0 12px rgba(0,0,0,.12)`；深 `#232526` + 1px `#414649` + `0 12px 30px rgba(0,0,0,.4)` |
+| 气泡与按钮底缘间距       | —                                               | 4px（与对话头工具条同档）                                                                                                               |
+| 出现延时                 | —                                               | 100ms（0/44/87ms 仍透明 → 129ms≈0.06 → 214ms=1，既有 `transition-delay:.1s`）                                                           |
+| 可访问名                 | `title`（原生提示，无 aria-label）              | `aria-label` 同文案 + `aria-describedby`（实测 `:rd:`/`:re:`/`:rf:`）                                                                   |
+| 差异像素（1:1 设备像素） | —                                               | 浅 6877 / 3191 / 6785；深 13236 / 5916 / 13236，**全部落在气泡及其投影内**（浅色投影对称上溢约 6 CSS px）                               |
+
+### ④ 可复用认知
+
+1. **工具条图标按钮补气泡 = 抄 `ChatHeader.tsx` 那一排的写法**：包 `<Tooltip text position="bottom">` +
+   `title` 改成同文案的 `aria-label` + 保留原有 `data-testid`。去掉 `title` 是必须的（否则 OS 原生气泡与
+   自绘气泡会叠成两层），`aria-label` 补上可访问名才不丢（图标按钮没有文字）。
+2. **纯 JSX 包裹可以做到版面 0 位移**：`Tooltip` 的包裹层是 `display: inline-flex; flex-shrink: 0`，
+   在工具条这种 flex 行里与按钮同宽 ⇒ 三颗按钮 x / w 逐值不变，工具条行内 0 像素变化。
+3. **「补气泡」这类改动的证据形态**：① 每颗按钮一张前后对比（1:1 设备像素紧裁窗）；② 一张整条工具条上下文图
+   证明版面没动；③ 气泡规格 / 间距 / 延时 / 可访问名逐项列值。四样齐了才算说清「只多了气泡」。
+
+### ⑤ 坑（都真踩过）
+
+- **定时截图会拿到「没气泡」的那一帧**：`hover()` → `waitForTimeout(310)` → 截图，偶尔截到过渡中途或
+  hover 被打断的帧，而同一份 JSON 里的文案 / 几何字段仍然是对的 ⇒ **只看 JSON 会误判取证成功**。
+  正解 = 轮询到 `class` 含 `visible` 且 `opacity ≥ 0.99` 才按快门，并在**快门前后各校验一次**该状态
+  （不满足就重发 hover 重试，上限 4 次；本轮六张图都是第 1 次通过）。
+- **紧裁窗坐标**：原始图的 (0,0) 对应截图的 clip 起点（CSS 坐标）⇒ `device = (css − clipOrigin) × DPR`。
+  我第一版按 CSS 坐标直接当像素用，裁到了空域 ⇒ 两侧 diff 恒为 0（假「无差异」）。
+- **改前侧的原生 `title` 气泡是 OS 绘制的，页面截图原理上截不到**：所以「改前」图只能证明「页面里没有
+  自己的气泡」，不能给出同一时刻的视觉对照 —— 这条要在报告 notice 里写明，并把 `title` 原文抄进测量 json 留痕。
+- **改前基线要真回退、不是注入**：`git show HEAD:<file> > <file>` → 采集 → 从 `/tmp` 还原 → **md5 逐字节核**
+  （本次 before `6086eaaf…` / after `09cd263c…`）。回退期间别去跑别的采集。
+
+### ⑥ 残留触发语（未授权）
+
+- 「同族一起收」/「文件面板也加气泡」/「终端和 diff 面板也要」/「面板页签也要」—— 文件面板工具条的
+  「在默认应用中打开」「搜索文件」、终端面板、diff 面板、`DesktopPanelTabs` 目前仍是原生 `title`
+- 「重试按钮也要气泡」（错误态的文本按钮，本轮未包）
+- 「气泡文案改一下」（三颗的文案是从原 `title` 原样搬的，改文案会与别处工具条叫法不一致）
+- 「气泡贴边要翻转」（1440 宽下「在浏览器中打开」的气泡右缘落在 1436、余 4px，未触发翻转；更窄窗口未测）
+- 「给气泡一个最小宽度」（属公共气泡样式改动，会同时影响对话头 / 侧栏等所有气泡）
+
+### ⑦ 验证脚本与证据
+
+| 用途     | 脚本（`CC02/走查/_tools/1009/`）                    | 产物（`CC02/走查/`）                                                                |
+| -------- | --------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 采集素材 | `capture-preview-tooltips-1009.mjs <before\|after>` | `1009-预览工具条气泡报告/shots/{_raw,before,after}/`、`measure-{before,after}.json` |
+| 裁图     | `build-preview-tooltip-assets-1009.py`              | 同上 `shots/<side>/<theme>-<asset>-2x.png`                                          |
+| 报告     | `batch-1009-preview-toolbar-tooltips.json`          | `1009-预览工具条气泡报告/index.html`（4 条）                                        |
+
+报告用 skill 母版 `build_repair_report.py`（v1.1）生成、`verify-repair-report.mjs` 自检（图片加载 true、
+错误 0、axe 浅深 0/0、640 窄屏无横溢）。「改前」是**真回退**（`git show HEAD:` 出旧版文件后重新加载，md5 逐字节核过），
+不是注入模拟。本轮纯 JSX 改动、无 CSS，无业务单测覆盖。

@@ -7,6 +7,7 @@ import {
 } from "./HeaderIcons";
 import { PanelKindIcon } from "./PanelKindIcon";
 import { PaneShell } from "./PaneShell";
+import { Tooltip } from "./Tooltip";
 import { readRootCssVar } from "../utils/cssVars";
 
 /**
@@ -603,31 +604,41 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
               <span className="preview-pane-url-text">{displayUrl}</span>
             </span>
           )}
-          <button
-            className={`preview-pane-button${pickerActive ? " active" : ""}`}
-            title="选择元素并评论"
-            aria-pressed={pickerActive}
-            data-testid="preview-picker-toggle"
-            onClick={togglePicker}
-          >
-            <InspectorCursorIcon className="preview-pane-icon" />
-          </button>
-          <button
-            className="preview-pane-button"
-            title="刷新"
-            data-testid="preview-refresh"
-            onClick={handleRefresh}
-          >
-            <RefreshIcon className="preview-pane-icon" />
-          </button>
-          <button
-            className="preview-pane-button"
-            title="在浏览器中打开"
-            data-testid="preview-open-external"
-            onClick={handleOpenExternal}
-          >
-            <OpenBrowserIcon className="preview-pane-icon" />
-          </button>
+          {/* 1009 评论（她点 `button.preview-pane-button`「这边三个功能缺少气泡提示」）：
+              三颗图标按钮的气泡文案沿用原来各颗的 `title` 原文，`title` 换成
+              `aria-label`（去掉原生 title 以免与气泡叠成两层提示；图标按钮的
+              可访问名仍由 aria-label 给）。位置与 ChatHeader 工具条同档 = `bottom`。 */}
+          <Tooltip text="选择元素并评论" position="bottom">
+            <button
+              className={`preview-pane-button${pickerActive ? " active" : ""}`}
+              aria-label="选择元素并评论"
+              aria-pressed={pickerActive}
+              data-testid="preview-picker-toggle"
+              onClick={togglePicker}
+            >
+              <InspectorCursorIcon className="preview-pane-icon" />
+            </button>
+          </Tooltip>
+          <Tooltip text="刷新" position="bottom">
+            <button
+              className="preview-pane-button"
+              aria-label="刷新"
+              data-testid="preview-refresh"
+              onClick={handleRefresh}
+            >
+              <RefreshIcon className="preview-pane-icon" />
+            </button>
+          </Tooltip>
+          <Tooltip text="在浏览器中打开" position="bottom">
+            <button
+              className="preview-pane-button"
+              aria-label="在浏览器中打开"
+              data-testid="preview-open-external"
+              onClick={handleOpenExternal}
+            >
+              <OpenBrowserIcon className="preview-pane-icon" />
+            </button>
+          </Tooltip>
         </>
       }
       betweenToolbarAndBody={
