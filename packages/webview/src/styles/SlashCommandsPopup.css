@@ -107,3 +107,27 @@
      避免标签底边紧贴/叠到描述首行 */
   margin-top: 2px;
 }
+
+/* 设计师 2026-10-09 评论（`div.slash-group` 里的选项）：「描述最多显示两行，末尾处
+   ...省略，hover 可以在气泡中显示全部内容」；同日她裁定范围 —— 「只留桌面」。
+   两行 = 2 × 19.5px 行盒（12px × 1.3），超出的整行裁掉、末行右侧出省略号；气泡由
+   组件侧 Tooltip 给出，且只在真被截断时挂（见 SlashCommandsPopup.tsx 的
+   CommandDescription）。base（IDE 宿主）保持自由折行、无省略号 —— 上面那条规则里只有
+   字号/字色/行高，与 main 逐字相同。 */
+[data-host="desktop"] .slash-command-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Tooltip 的容器（Tooltip.css `.tooltip-container`）默认为 inline-flex —— 是给图标按钮
+   那类「一行一个触发」的场景定的。这里的子元素是块级描述 div，若沿用 inline-flex，
+   触发盒宽度会从「撑满整行」变成 shrink-to-fit，折行位置跟着变（两行截断的断点也就
+   变了）。改回块级：触发盒宽度 = 描述原宽，包不包气泡都逐像素一致。
+   选择器带上 `[data-host="desktop"]`（0,3,0）既稳压 Tooltip.css 的 `.tooltip-container`
+   （0,1,0，与两份 CSS 的加载顺序无关），又和上面那条截断规则同属「只留桌面」；
+   IDE 宿主下描述不截断 ⇒ Tooltip 是 `disabled` ⇒ 这个包裹层根本不存在。 */
+[data-host="desktop"] .tooltip-container.slash-command-description-wrap {
+  display: block;
+}

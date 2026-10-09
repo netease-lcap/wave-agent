@@ -7636,3 +7636,111 @@ IDE / VS Code 宿主一起变。这些 base 声明都是单类 (0,1,0)，`[data-
 报告用 skill 母版 `build_repair_report.py`（v1.1）生成、`verify-repair-report.mjs` 自检（图片加载 true、
 错误 0、axe 浅深 0/0、640 窄屏无横溢）。「改前」是**真回退**（`git show HEAD:` 出旧版文件后重新加载，md5 逐字节核过），
 不是注入模拟。本轮纯 JSX 改动、无 CSS，无业务单测覆盖。
+
+## 1009 评论（斜杠命令弹窗的选项描述：最多两行 + 末尾省略 + 截断时 hover 出全文气泡，仅桌面端）
+
+### ① 来源
+
+她 1009 在预览（`http://localhost:8899`）点 `div.slash-group` 里的一条项（她给的 path 是 `div > div`，指
+「系统指令 / clear 清空当前会话 / compact 压缩当前会话…」这个下拉）：「**这个下拉中的选项，我希望描述最多
+显示两行，末尾处...省略，hover 可以在气泡中显示全部内容**」。
+
+范围口径 = 这个弹窗里**每条选项的描述行**。同日她三点裁决：① 范围 **只留桌面**（我第一版没加
+`[data-host="desktop"]`，先把这句摆给她看过）；② 「只对真被省略的那些出气泡」这个读法**正确**（一行装得下 /
+刚好两行的描述 hover **不出**气泡）；③ 气泡方位 `right`、距描述 4px 可接受。
+
+### ② 改动（3 文件，1 处 CSS 值 + 1 个新子组件 + 1 个可选 prop）
+
+`packages/webview/src/styles/SlashCommandsPopup.css`（纯新增，末尾两条规则）：
+
+```css
+[data-host="desktop"] .slash-command-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+[data-host="desktop"] .tooltip-container.slash-command-description-wrap {
+  display: block;
+}
+```
+
+base 那条 `.slash-command-description`（字号 12 / 字重 400 / `--vscode-descriptionForeground` / 行高 1.3）**逐字节
+未动** ⇒ IDE 宿主与 main 完全相同；「只留桌面」只由 CSS 作用域这一处表达。
+
+`packages/webview/src/components/SlashCommandsPopup.tsx`：新增子组件 `CommandDescription` —— 描述节点用
+**callback ref 存进 state**，`useLayoutEffect` 里量 `scrollHeight > clientHeight + 1` 判定「真被裁掉」，并挂
+`ResizeObserver` 重测（弹窗宽度随内容浮动）；渲染 `Tooltip multiline position="right" portal
+disabled={!isTruncated}`。
+
+`packages/webview/src/components/Tooltip.tsx`：新增**可选** `portal?: boolean`（默认 `false`），为真时用
+`createPortal` 把气泡挂到 `document.body`。既有 29 处调用（13 个文件）都不传 ⇒ 行为不变。
+
+### ③ 定稿值（headed Chromium 1440×960 DPR2，用例 `tmp-slash-long-1009`（桌面）/ `tmp-slash-long-1009-ide`
+
+（IDE 宿主），两相位 pageerror 0）
+
+| 项                                 | 改前                                     | 改后                                                                                           |
+| ---------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `config`（74 字）描述              | 3.01 行全显示、无省略号                  | **1.99 行**（裁掉 16px）+ 末行「…」                                                            |
+| `rewind`（84 字）描述              | 3.01 行                                  | **1.99 行**（裁掉 16px）                                                                       |
+| `code-review`（101 字）描述        | 3.97 行                                  | **1.99 行**（裁掉 31px）                                                                       |
+| `compact`（29 字，刚好两行）描述   | 1.99 行、无气泡                          | 1.99 行、**无气泡**（不出省略号就不挂包裹层）                                                  |
+| `clear`/`model`/`btw`（一行）描述  | 40.1 / 40.1 / 40.1px 行盒                | **逐值相同**                                                                                   |
+| 弹窗几何                           | 7 项 li 合计 405.5px（弹窗盒 322，可滚） | 7 项 li 合计 **343.1**（`config`/`rewind` 各 −15.6、`code-review` −31.2；盒 322 不变，仍可滚） |
+| 气泡盒（`config` / `code-review`） | —                                        | 386×70 / 386×90（`multiline` 既有规格：12px、`pre-line`、`max-width: 360px`）                  |
+| 气泡与描述右缘间距 / 垂直中心差    | —                                        | **4px** / **0**                                                                                |
+| 气泡文案                           | —                                        | 与描述**逐字相同**（`sameAsFullText: true`）                                                   |
+| 出现时序                           | —                                        | 0/47/96ms 透明 → 141ms≈0.14 → 188ms≈0.88 → **233ms=1**（既有 100ms 延时）                      |
+| 包裹层                             | 不存在                                   | `display: block`（352 宽 = 描述原宽，**0 位移**）                                              |
+| IDE 宿主（`[data-host="ide"]`）    | 3.01 / 3.01 / 3.97 行，无气泡            | **逐值相同**（无 clamp、无包裹层、无气泡）                                                     |
+
+### ④ 可复用认知
+
+1. **`transform` / `overflow` 祖先会把 `position: fixed` 的气泡收进自己的坐标系并裁掉**：
+   `.slash-commands-popup` 有 `transform: translateY(-100%)` + `overflow-y: auto`，不开 portal 时气泡实测塌成
+   **38.3×1450**、横在视口中间（x=1309）被裁得只剩一条边。这类容器里的气泡必须 `createPortal` 到 `body`。
+   本次把开关做成 `Tooltip` 的**可选** prop（默认 false），既有 25 个调用点零影响。
+2. **截断判定的观察节点要存在 state 里（callback ref），不能是 `useRef`**：气泡一挂上，描述 div 就从 `li` 的
+   直接子节点变成包裹层的子节点、**DOM 节点被重建**；`useRef` 抓的旧节点卸载后报 `0/0` ⇒ 判定翻回「未截断」
+   ⇒ 包裹层被摘掉 ⇒ 震荡（实测最终停在「没有气泡」那一侧）。挂 state 上，节点一换就重跑 effect 并重新
+   `observe()`，一次收敛。
+3. **两行 + 末尾省略号只有 `-webkit-line-clamp` 这一条路**（`-webkit-box` + `box-orient: vertical` + `overflow:
+hidden`）；两行 = 2 × 19.5px 行盒（12px × 1.3）。行盒 31.2px，与 `MessageList.css` 里同款 clamp 同值。
+4. **「只留桌面」的最省表达是 CSS 作用域**：组件不做宿主判断 —— IDE 宿主下描述不被裁 ⇒ 量出来就是不截断 ⇒
+   `Tooltip` 走 `disabled` 直接返回原 children（DOM 与 main 逐字相同）。判据 = base 规则里不含 clamp。
+5. `Tooltip` 的包裹层默认 `inline-flex`（为图标按钮那类「一行一个触发」定的）：子元素是块级描述时会把触发盒
+   压成 shrink-to-fit、折行位置跟着变 ⇒ 必须改回 `display: block`；选择器写成
+   `.tooltip-container.slash-command-description-wrap`（0,2,0）稳压 `Tooltip.css` 的 `.tooltip-container`（0,1,0），
+   与两份 CSS 的加载顺序无关。
+
+### ⑤ 坑（都真踩过）
+
+- **portal 之后按 DOM 位置找气泡全部落空**：气泡从包裹层里搬到了 `body` 下，探针里 `wrap.querySelector(".tooltip-box")`
+  恒为 null ⇒ 假「没有气泡」。正解 = 用描述节点上的 `aria-describedby` 反查 `getElementById`。
+- **`+1` 容差是必须的**：12px × 1.3 = 15.6px 的亚像素行高 + 浏览器取整，会把「刚好两行」读成 1px 溢出 ⇒ 边界项
+  会误挂气泡。实测「刚好两行」（`compact`）在 `+1` 下判定 `false`。
+- **新建 mock 文件后的第一次采集会超时**：vite 的用例 glob 感知到新文件会整页重载，`openPopup()` 恰好撞在重载
+  窗口里 ⇒ `waitForSelector('.slash-commands-popup')` 4s 超时。正解 = 重跑一次（本轮第二次即通过）。
+- **改前基线的形态**：本轮改的是「有没有这两条规则」，所以 before = **同页注入回退规则**
+  （`display: block !important` + `-webkit-line-clamp: unset` + `overflow: visible`）—— 注入态下测量值与原文件
+  逐值一致（3.01 / 3.01 / 3.97 行、短描述几何相同），不需要真回退重建；报告里已写明是注入而非回退。
+
+### ⑥ 残留触发语（未授权）
+
+- 「描述改成三行」/「气泡放左边」/「气泡再宽一点」—— 行数与方位是我按她原话定的（两行 / `right`）
+- 「写进规格」—— `docs/specs/ui/slash-commands.md` 目前没有「描述最多两行」这条（规格是设计、不是变更日志）
+- 「别的地方也这样截断」—— 其他宿主里同样会长的描述文本本轮未扫（本次只动这一个弹窗）
+- 「portal 提到通用」—— 目前只有这一个调用点传 `portal`，其余 24 个调用点是否也有 transform 祖先未逐一核
+- 「IDE 宿主也要省略号」—— 本轮她裁定「只留桌面」，base 规则保持原样
+
+### ⑦ 验证脚本与证据
+
+| 用途       | 脚本（`CC02/走查/_tools/1009/`）                       | 产物（`CC02/走查/`）                                                                                          |
+| ---------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| 采集三相位 | `probe-slash-desc-clamp-1009.mjs <before\|after\|ide>` | `1009-斜杠命令描述截断/{measure-before.json, measure-after.json, measure-ide.json, after/ before/ ide/*.png}` |
+
+用例：`tmp-slash-long-1009`（桌面，7 条命令覆盖一档/刚好两档/三档/四档）与 `tmp-slash-long-1009-ide`
+（IDE 宿主，同款描述）。纯 CSS 值 + 一个子组件 + 一个可选 prop，无业务单测覆盖；`pnpm -F wave-webview run
+type-check` 通过。
