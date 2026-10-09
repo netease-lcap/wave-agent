@@ -5,6 +5,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { MessageList } from "./MessageList";
 import { MessageInput } from "./MessageInput";
@@ -70,6 +71,14 @@ import { isMacHiddenTitlebar } from "../utils/platform";
 import { chatReducer, initialState } from "../reducers/chatReducer";
 import { sessionUi, PANEL_DEFAULT_WIDTH } from "../utils/sessionUiStore";
 import type { SessionUiState, RemoteForwardRef } from "../utils/sessionUiStore";
+import {
+  parkGroup,
+  parkedGroupsFor,
+  releaseParkedGroups,
+  reportLiveGuests,
+  subscribeParkedGroups,
+  unparkGroup,
+} from "../utils/previewGuestKeep";
 import "../styles/ChatApp.css";
 
 /** Chinese names shown in the panel tabs / space hints. */
@@ -487,6 +496,26 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // in PreviewPane would otherwise early-return and skip the forced reload a
   // retry after a guest load failure needs. Remounting restarts the webview.
   const [previewEpoch, setPreviewEpoch] = useState(0);
+  // preview guest 跨会话保活（spec desktop-panels.md「右侧面板 · preview guest
+  // 跨会话保活」）：切走的会话组登记在窗口级台账（utils/previewGuestKeep.ts）里，
+  // 它的 preview guest 继续挂在常驻层（见 previewGuestEntries /
+  // .preview-guest-layer），只有真正关闭才销毁——关 tab、重置（epoch）、会话/分屏
+  // 消失、超出保活额度。台账是模块级的（额度跨分屏共享），本实例订阅自己名下的
+  // 条目；owner 让每个停靠 guest 只由一个 ChatApp 实例渲染。
+  const guestOwnerRef = useRef<object>({});
+  const retainedPreviewGroups = useSyncExternalStore(
+    subscribeParkedGroups,
+    () => parkedGroupsFor(guestOwnerRef.current),
+  );
+  // guest 条目的稳定次序：React 在同一父节点内重排 keyed 子节点会移动 <webview>
+  // 的 DOM 节点（对 Electron 来说等于重新挂载 → guest 被销毁）。每个 key 只在
+  // 首次出现时分配序号，之后永远按序号渲染。
+  const guestOrderRef = useRef<Map<string, number>>(new Map());
+  const guestSeqRef = useRef(0);
+  // 每个会话组最后一次的 remount 代号：`previewEpoch` 是全局 state，只随当前
+  // 显示的组推进。停靠组必须记住自己的代号——否则当前组代号一变，停靠组的
+  // React key 跟着变，切回来时 guest 被重新挂载（保活失效）。
+  const guestEpochRef = useRef<Map<string, number>>(new Map());
   // Local .html preview (spec desktop-preview.md「本地 HTML 文件预览」):
   // in-flight desktopPreviewFile requests keyed by requestId, plus the source
   // path to fall back to (file panel) when the host replies with an error.
@@ -556,6 +585,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
+  // 当前 state（tabs/宽度/激活 tab…）属于哪个会话组。它必须是被 swap effect 与
+  // setTabs 一起切换的 state，而不是 groupKey 或 groupKeyRef：`groupKey` 一到就
+  // 是新会话的，`groupKeyRef.current` 在 swap effect 里即刻改写；两者都会在
+  // 「state 还没换过去」的那一两个提交里先行变成新会话，于是快照写错组（把上一
+  // 会话的 tabs 写进新会话的缓存）、guest 的 React key 抖动（<webview> 被重建，
+  // 保活失效）。state 与 state 之间永远同步。
+  const [stateGroupKey, setStateGroupKey] = useState<string | null>(
+    groupKey ?? null,
+  );
+  // guest 的 key 必须跟「state 属于哪个组」走（stateGroupKey；理由见其声明处）：
+  // 用 groupKey 或 groupKeyRef 都会在切换提交里让 key 从 `s1#x` 变成 `s2#x`，
+  // React 于是把 <webview> 摘掉重建，保活前功尽弃。无 pane 的单栏布局没有会话
+  // 键，用 "root" 占位（那里「切换会话」不重挂载 ChatApp，guest 一直在显示态）。
+  const stateGuestGroup = stateGroupKey ?? groupKey ?? "root";
   // Desktop panel expand/collapse (spec desktop-panels.md「右侧面板 · 展开/折叠、
   // 空间守卫与欢迎页共存」): the header button
   // toggles whether the panel slot is visible. Collapsing only HIDES the slot —
@@ -736,7 +779,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // later session switch can restore it. Skipped on the render where the key
   // flips — the swap effect below re-seeds the state from the new key first.
   useEffect(() => {
-    if (!groupKey || groupKey !== groupKeyRef.current) return;
+    if (!groupKey || groupKey !== stateGroupKey) return;
     const snapshot: SessionUiState = {
       checked: tabs,
       panelWidth,
@@ -752,6 +795,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     sessionUi.set(groupKey, snapshot);
   }, [
     groupKey,
+    stateGroupKey,
     tabs,
     panelWidth,
     panelWidthManual,
@@ -795,6 +839,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setPreviewFullscreen(false);
     setPreviewForwardError(group?.forwardError ?? null);
     setCurrentForward(group?.forward ?? null);
+    // 新会话的 tabs 一起换掉，stateGroupKey 必须跟着同一个批换（见其声明处）——
+    // 慢一个批就会在中间那一个提交里「新组名 + 旧 tabs」。
+    setStateGroupKey(groupKey);
     setTabs(group?.checked ?? []);
     setPanelWidth(group?.panelWidth ?? PANEL_DEFAULT_WIDTH);
     setPanelWidthManual(group?.panelWidthManual ?? false);
@@ -815,7 +862,51 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setPlanContent(group?.planContent ?? null);
     setDiffTreeVisible(group?.diffTreeVisible ?? true);
     setDiffSelectedCommit(group?.diffSelectedCommit ?? null);
+    // 切走的会话：它的 preview guest 不销毁，登记为停靠组保活（额度与 LRU 见
+    // utils/previewGuestKeep.ts）。登记必须落在这一个提交里——晚一个提交，槽位
+    // 已按新会话重建，guest 会被连同销毁，「切走再切回不重载」就失效了。
+    const previewTabCount = (list: PanelTab[] | undefined) =>
+      (list ?? []).filter((t) => t.kind === "preview").length;
+    if (prevKey) {
+      // 可见数就地改成新会话的值：park 掉的那一个 guest 正是上一刻还算在可见数里
+      // 的（上报是 state 驱动的，此刻还停留在上一会话的值），不改就会把它既算作
+      // 可见又算作停靠——额度少一个，白白多淘汰一个会话。
+      reportLiveGuests(
+        guestOwnerRef.current,
+        groupKey,
+        previewTabCount(group?.checked),
+      );
+      parkGroup(
+        guestOwnerRef.current,
+        prevKey,
+        previewTabCount(sessionUi.get(prevKey)?.checked),
+      );
+    }
   }, [paneId, groupKey]);
+
+  // 切到的会话重新成为前台：把它从保活台账里摘掉（guest 改由本实例的可见分支渲
+  // 染）。必须等 state 真的换过去（stateGroupKey 与 tabs 同批切换）——在 swap
+  // effect 里立刻摘掉的话，「新会话 tabs 还没进 state」的那一两个提交会既没有 live
+  // 条目也没有停靠条目，常驻层整个消失，<webview> 被摘掉重建（保活失效）。重叠的
+  // 那一个提交由 previewGuestEntries 的 key 去重兜住（两边 key 相同 → React 原地
+  // 复用）。
+  useEffect(() => {
+    if (stateGroupKey) unparkGroup(stateGroupKey);
+  }, [stateGroupKey]);
+
+  // 可见 guest 数上报（额度含可见者，窗口级汇总）：本实例的会话里多出一个 preview
+  // tab 也可能挤掉最旧的停靠组。stateGroupKey 也在依赖里——换会话时可见数可能不变
+  // （两边各一个 preview tab），但里面那个 guest 已经换人了，必须重新上报一次。
+  const livePreviewGuests = tabs.filter((t) => t.kind === "preview").length;
+  useEffect(() => {
+    reportLiveGuests(guestOwnerRef.current, stateGuestGroup, livePreviewGuests);
+  }, [livePreviewGuests, stateGuestGroup]);
+
+  // 实例卸载（分屏关闭 / 窗口关闭）：名下的停靠 guest 随之销毁、释放额度。
+  useEffect(() => {
+    const owner = guestOwnerRef.current;
+    return () => releaseParkedGroups(owner);
+  }, []);
 
   // Desktop plan panel: ExitPlanMode plans that arrive via the setInitialState
   // replay of a re-activated session are routed HERE instead of in the message
@@ -3210,47 +3301,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       const isForwardOwner =
         currentForward !== null &&
         forwardTabIdRef.current.get(currentForward.requestId) === id;
-      const pane = (
-        <PreviewPane
-          key={`${id}:${previewEpoch}`}
-          url={url}
-          originalUrl={currentForward?.originalUrl}
-          onRetry={currentForward ? handleRemotePreviewRetry : undefined}
-          vscode={vscode}
-          onAddComment={handleAddComment}
-          onTitleChange={(title) => {
-            setTabs((prev) =>
-              prev.map((t) =>
-                t.id === id ? { ...t, previewTitle: title } : t,
-              ),
-            );
-          }}
-          onNavigate={(url) => {
-            // Address-bar commits and in-guest navigation become the tab's
-            // URL, so the page a session was last showing survives a session
-            // switch / remount (kept in the session's cached panel group).
-            setTabs((prev) => {
-              const cur = prev.find((t) => t.id === id);
-              if (!cur || cur.previewUrl === url) return prev;
-              return prev.map((t) =>
-                t.id === id ? { ...t, previewUrl: url } : t,
-              );
-            });
-          }}
-          {...common}
-        />
-      );
-      if (url) return pane;
-      // Empty preview: reuse PreviewPane with a blank tab so the address bar
-      // and "+" tab actions stay available — typing a URL starts previewing.
-      // A remote forward error (no URL yet) overlays a retry stub instead.
+      // PreviewPane 的本体不在这里渲染（见 previewGuestEntries 与
+      // .preview-guest-layer）：它的 DOM 归属必须与会话/槽位无关，否则切会话时
+      // React 摘掉槽位子树就会销毁 <webview>——「切走再切回，预览工具条/主题/位置
+      // 全回默认」的根因（spec desktop-panels.md「preview guest 跨会话保活」）。
+      // 槽位里只留两样：
+      //  - 空态外壳（`preview-pane-empty`，全屏宽度覆盖的锚点）；
+      //  - remote forward 失败时的重试占位（z-index 10，盖在 guest 之上）。
+      if (url) return null;
       return (
         <div
           className="preview-pane-empty-wrap"
           style={{ width: common.width }}
           data-testid="preview-pane-empty"
         >
-          {pane}
           {isForwardOwner && previewForwardError && (
             <div
               className="preview-pane-forward-error"
@@ -3314,6 +3378,160 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       />
     );
   };
+
+  // ---- preview guest 常驻层（spec desktop-panels.md「preview guest 跨会话保活」）----
+  // guest 的宿主是下面这份清单，而不是槽位里的 tab stack：槽位子树随会话切换整体
+  // 重建（tabs / 宽度 / 激活 tab 都按新会话重播种），挂在里面的 `<webview>` 会被
+  // 连同销毁——这正是「切走再切回，预览的工具条/主题/位置全回默认」的根因。清单
+  // 的 key 与 React 位置在会话切换时都不变，翻转的只有「显示 ↔ 停靠」，于是
+  // guest 一直活着，页面自身状态（原型工具条、主题、滚动位置）全部保留。
+  type PreviewGuestEntry = {
+    /** `${groupKey}#${tabId}`：跨会话稳定，切回时命中同一个 PreviewPane 实例。 */
+    key: string;
+    group: string;
+    tabId: string;
+    /** PreviewPane 的 React key：只随该组的「重置」代号变（换掉即重挂载重载）。 */
+    epoch: number;
+    url: string;
+    width: number;
+    originalUrl?: string;
+    onRetry?: () => void;
+    onAddComment?: (text: string) => void;
+    onTitleChange: (title: string) => void;
+    onNavigate: (url: string) => void;
+    /** 停靠：保活但不显示（非激活一级 tab / 面板折叠 / 已切走的会话）。 */
+    parked: boolean;
+  };
+
+  guestEpochRef.current.set(stateGuestGroup, previewEpoch);
+
+  /** 停靠组的事件回落：它的 tab 状态不在本组 state 里（state 已是新会话的），
+   *  写回 sessionUi 快照——切回来时由 swap effect 按快照重播种，于是 [url]
+   *  effect 认定「已经在要去的地址」、不会再多导航一次。 */
+  const patchCachedPreviewTab = useCallback(
+    (group: string, tabId: string, patch: Partial<PanelTab>) => {
+      const cached = sessionUi.get(group);
+      if (!cached) return;
+      sessionUi.patch(group, {
+        checked: cached.checked.map((t) =>
+          t.id === tabId ? { ...t, ...patch } : t,
+        ),
+      });
+    },
+    [],
+  );
+  const setPreviewTabUrl = useCallback(
+    (group: string, tabId: string, url: string) => {
+      if (group !== (groupKeyRef.current ?? "root")) {
+        patchCachedPreviewTab(group, tabId, { previewUrl: url });
+        return;
+      }
+      // Address-bar commits and in-guest navigation become the tab's URL, so the
+      // page a session was last showing survives a session switch (kept in the
+      // session's cached panel group).
+      setTabs((prev) => {
+        const cur = prev.find((t) => t.id === tabId);
+        if (!cur || cur.previewUrl === url) return prev;
+        return prev.map((t) =>
+          t.id === tabId ? { ...t, previewUrl: url } : t,
+        );
+      });
+    },
+    [patchCachedPreviewTab],
+  );
+  const setPreviewTabTitle = useCallback(
+    (group: string, tabId: string, title: string) => {
+      if (group !== (groupKeyRef.current ?? "root")) {
+        patchCachedPreviewTab(group, tabId, { previewTitle: title });
+        return;
+      }
+      setTabs((prev) =>
+        prev.map((t) => (t.id === tabId ? { ...t, previewTitle: title } : t)),
+      );
+    },
+    [patchCachedPreviewTab],
+  );
+
+  const previewGuestEntries = (() => {
+    const entries: PreviewGuestEntry[] = [];
+    const push = (
+      group: string,
+      tab: PanelTab,
+      opts: {
+        parked: boolean;
+        width: number;
+        originalUrl?: string;
+        onRetry?: () => void;
+        live: boolean;
+      },
+    ) => {
+      entries.push({
+        key: `${group}#${tab.id}`,
+        group,
+        tabId: tab.id,
+        epoch: opts.live
+          ? previewEpoch
+          : (guestEpochRef.current.get(group) ?? 0),
+        url: tab.previewUrl ?? "",
+        width: opts.width,
+        originalUrl: opts.originalUrl,
+        onRetry: opts.onRetry,
+        // 停靠的 guest 收不到用户操作（面板不可见），评论也没有归属会话可落：
+        // 一律不接（场景 5）。
+        onAddComment: opts.live ? handleAddComment : undefined,
+        onTitleChange: (title) => setPreviewTabTitle(group, tab.id, title),
+        onNavigate: (url) => setPreviewTabUrl(group, tab.id, url),
+        parked: opts.parked,
+      });
+    };
+    // 当前 state 所属会话的 preview tabs：活动的那个显示，其余停靠（切一级 tab
+    // 不重载）。用 stateGuestGroup 而非 liveGuestGroup 的理由见其定义处。
+    for (const tab of tabs) {
+      if (tab.kind !== "preview") continue;
+      push(stateGuestGroup, tab, {
+        parked: !panelExpanded || activeTabId !== tab.id,
+        width: panelWidth,
+        originalUrl: currentForward?.originalUrl,
+        onRetry: currentForward ? handleRemotePreviewRetry : undefined,
+        live: true,
+      });
+    }
+    // 停靠会话组的 preview tabs：一律停靠，宽度/URL 取该组自己的快照（不是当前
+    // 会话的宽），这样面板宽度变化不会连带改停靠 guest 的缩放基准。
+    //
+    // 按 key 去重（而不是跳过「当前会话组」）：切回一个保活组的那个提交里，
+    // groupKey 已经换了但 tabs 还是上一组的（swap effect 还没跑），此时该组的
+    // guest 只能由这条停靠分支提供——少渲染一帧就会把 <webview> 摘掉，保活
+    // 前功尽弃。下一个提交 tabs 换成该组自己的快照，key 相同 → React 原地复用。
+    const seenGuestKeys = new Set(entries.map((e) => e.key));
+    for (const group of retainedPreviewGroups) {
+      const cached = sessionUi.get(group);
+      for (const tab of cached?.checked ?? []) {
+        if (tab.kind !== "preview") continue;
+        const key = `${group}#${tab.id}`;
+        if (seenGuestKeys.has(key)) continue;
+        seenGuestKeys.add(key);
+        push(group, tab, {
+          parked: true,
+          width: cached?.panelWidth ?? PANEL_DEFAULT_WIDTH,
+          originalUrl: cached?.forward?.originalUrl,
+          live: false,
+        });
+      }
+    }
+    for (const entry of entries) {
+      if (!guestOrderRef.current.has(entry.key)) {
+        guestOrderRef.current.set(entry.key, guestSeqRef.current++);
+      }
+    }
+    // 稳定次序（见 guestOrderRef 注释）：绝不因保活组的增减而重排——同一父节点
+    // 内重排 keyed 子节点会让 React 移动 <webview> DOM 节点，等于重新挂载。
+    return entries.sort(
+      (a, b) =>
+        (guestOrderRef.current.get(a.key) ?? 0) -
+        (guestOrderRef.current.get(b.key) ?? 0),
+    );
+  })();
 
   const chatBodyContent = state.isRestoring ? (
     // Desktop restore in progress: the pane already switched to the target
@@ -3762,6 +3980,39 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         >
           {!previewFullscreen && (
             <div className="desktop-chat-main">{chatBodyContent}</div>
+          )}
+          {/* preview guest 常驻层：guest 的 DOM 归属与会话/槽位无关，这是「切会
+              话不销毁预览」的机制基础。可见态用 CSS 盖在面板 body 的位置上，停
+              靠态保留自身尺寸但不显示；槽位里对应的位置只留占位（renderPanelSlot）。 */}
+          {previewGuestEntries.length > 0 && (
+            <div
+              className="preview-guest-layer"
+              data-testid="preview-guest-layer"
+            >
+              {previewGuestEntries.map((entry) => (
+                <div
+                  key={entry.key}
+                  className="preview-guest"
+                  data-parked={entry.parked ? "true" : "false"}
+                  data-testid="preview-guest"
+                  style={{ width: entry.width }}
+                >
+                  <PreviewPane
+                    // 只随该组的「重置」代号重挂载（重新加载 guest）。
+                    key={entry.epoch}
+                    url={entry.url}
+                    originalUrl={entry.originalUrl}
+                    onRetry={entry.onRetry}
+                    vscode={vscode}
+                    onAddComment={entry.onAddComment}
+                    onTitleChange={entry.onTitleChange}
+                    onNavigate={entry.onNavigate}
+                    parked={entry.parked}
+                    width={entry.width}
+                  />
+                </div>
+              ))}
+            </div>
           )}
           {panelExpanded || tabs.length > 0 ? (
             <div

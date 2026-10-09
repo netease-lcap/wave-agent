@@ -171,6 +171,16 @@ export interface PreviewPaneProps {
    * preview tab so a session switch / remount restores the same page instead
    * of falling back to the originally-requested URL. */
   onNavigate?: (url: string) => void;
+  /**
+   * 停靠态：这个 guest 仍活着（保活），但当前不在槽位里显示——切走的会话、非
+   * 激活的一级 tab、折叠的面板（spec desktop-panels.md「preview guest 跨会话
+   * 保活」场景 5）。
+   *
+   * 停靠期间必须关掉元素拾取器：它的评论无处可去（会落到别的会话的输入框里），
+   * 而且面板不可见时用户也点不到它。地址栏也不许抢焦点（停靠的面板通常被
+   * `visibility:hidden` 隐藏，焦点落在隐藏输入框上会把用户的输入框顶掉）。
+   */
+  parked?: boolean;
 }
 
 export const PreviewPane: React.FC<PreviewPaneProps> = ({
@@ -182,6 +192,7 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   onRetry,
   onTitleChange,
   onNavigate,
+  parked = false,
 }) => {
   // URL the address bar shows — "" while empty (blank pane awaiting an
   // address); follows in-guest navigation via did-navigate.
@@ -295,10 +306,13 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     [],
   );
 
-  // Focus the address bar while editing / on a blank pane.
+  // Focus the address bar while editing / on a blank pane. 停靠时不抢焦点（见
+  // `parked` 注释）：停靠的 pane 是隐藏的，焦点落到它上面会把用户正在用的输入
+  // 框顶掉。
   useEffect(() => {
+    if (parked) return;
     if (addressEditing || !displayUrl) addressInputRef.current?.focus();
-  }, [addressEditing, displayUrl]);
+  }, [addressEditing, displayUrl, parked]);
 
   const sendPicker = useCallback((action: "activate" | "deactivate") => {
     const wv = webviewRef.current;
@@ -314,6 +328,12 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     setPickerActive(false);
     sendPicker("deactivate");
   }, [sendPicker]);
+
+  // 转入停靠 → 立刻关掉拾取器（见 `parked` 注释）。回到可见态不自动打开：用户
+  // 的拾取意图在切走时已经结束，重新打开会让切回来的面板「自己亮着」。
+  useEffect(() => {
+    if (parked) deactivatePicker();
+  }, [parked, deactivatePicker]);
 
   // Wire the <webview> once. `src` is set imperatively (never from JSX) so
   // React re-renders can't reload the guest; later navigations use loadURL.

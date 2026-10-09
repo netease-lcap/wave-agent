@@ -165,14 +165,15 @@ test.describe("Desktop interaction refinements", () => {
     );
 
     // Fullscreen (spec 预览面板全屏): the pane fills the content area and the
-    // conversation column is hidden; Esc restores the layout. Two preview tabs
-    // are mounted, so scope to the ACTIVE stack (inactive ones are
-    // display:none via inline style).
+    // conversation column is hidden; Esc restores the layout. Preview guests
+    // live in the keep-alive layer (spec desktop-panels.md「preview guest 跨会话
+    // 保活」) — the shown one carries data-parked="false", the parked ones are
+    // invisible but still mounted.
     await webviewPage.getByTestId("panel-fullscreen").click();
     await expect(webviewPage.locator(".desktop-chat-main")).toHaveCount(0);
     await expect(
       webviewPage.locator(
-        '.desktop-panel-stack:not([style]) [data-testid="preview-pane"]',
+        '.preview-guest[data-parked="false"] [data-testid="preview-pane"]',
       ),
     ).toBeVisible();
     await screenshotWebp(

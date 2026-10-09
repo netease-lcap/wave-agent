@@ -33,8 +33,13 @@
    Stretch the slot with a top margin equal to the header height so the panel
    starts below the header — the same top edge the in-flow header gives the
    non-welcome layout (align-self:stretch overrides the row's centering). */
+.chat-container--welcome {
+  /* 浮层头部的高度（下方 margin-top 与常驻层 guest 的起点共用，
+     见 DesktopPanelTabs.css :root）。 */
+  --desktop-panel-top-offset: 45px;
+}
 .chat-container--welcome .desktop-panel-slot {
-  margin-top: 45px;
+  margin-top: var(--desktop-panel-top-offset);
   align-self: stretch;
   height: auto;
 }

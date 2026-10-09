@@ -1,12 +1,28 @@
 /* Tabbed desktop panel slot: tab strip on top, one active panel body below. */
 
+/* 面板头部高度（Figma 13438:8119 Header 44px，codechat .preview-tabbar 同值）。
+   两条规则共享它：标签条自己，以及挂 guest 的常驻层「可见态」的起点（guest 要
+   盖在标签条之下、面板 body 之上；见 DesktopApp.css .preview-guest）。改高度只
+   需要改这里一处。 */
+:root {
+  --desktop-panel-tabs-height: 44px;
+  /* 槽位顶部的额外下让量：欢迎页的头部是绝对定位浮层，槽位要自己让出头部高度
+     （.chat-container--welcome .desktop-panel-slot 的 margin-top），其余布局为
+     0。常驻层的可见 guest 必须盖在「槽位里标签条之下的面板 body」上，所以它跟
+     槽位共用这一个数值——两处各写一个数就会在欢迎页错开一整个头部高度（guest
+     盖住标签条、面板地址栏被顶掉）。 */
+  --desktop-panel-top-offset: 0px;
+}
+
 .desktop-panel-tabs {
+  /* 常驻层的可见 guest（z-index 2）之下压着面板 body，但标签条必须始终可点：
+     抬到 3（层只盖面板 body，不盖 chrome）。 */
   position: relative;
+  z-index: 3;
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  /* 面板头部高度：Figma 13438:8119 Header 44px（codechat .preview-tabbar 同值） */
-  height: 44px;
+  height: var(--desktop-panel-tabs-height);
   padding: 0 12px;
   gap: 4px;
   /* 左分隔线覆盖标签条段：tab 化后标签条在 pane 上方、与 pane 同宽同左缘，

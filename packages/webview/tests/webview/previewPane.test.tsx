@@ -15,15 +15,16 @@ import { MockDataGenerator } from "../fixtures/mockData";
 
 vi.mock("../../src/styles/DesktopApp.css", () => ({}));
 
-// Multi-instance tabs can render several preview panes at once. Find the one
-// belonging to the ACTIVE tab — the only visible .desktop-panel-stack.
+// Preview panes live in the guest keep-alive layer (spec desktop-panels.md
+//「preview guest 跨会话保活」): the shown one carries data-parked="false", the
+// parked ones (other sessions / inactive tabs) are kept alive but hidden.
 const activePane = (testId: string) =>
   screen
     .getAllByTestId(testId)
     .find(
       (p) =>
-        (p.closest(".desktop-panel-stack") as HTMLElement | null)?.style
-          .display !== "none",
+        (p.closest("[data-testid='preview-guest']") as HTMLElement | null)
+          ?.dataset.parked === "false",
     );
 
 type MockWebview = Omit<
