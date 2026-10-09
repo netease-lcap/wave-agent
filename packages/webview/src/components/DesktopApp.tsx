@@ -7,6 +7,10 @@ import React, {
 } from "react";
 import { ChatApp } from "./ChatApp";
 import { sessionUi } from "../utils/sessionUiStore";
+import {
+  livePanelGroupKeys,
+  pruneParkedGroups,
+} from "../utils/previewGuestKeep";
 import { DesktopChromeProvider } from "./DesktopChromeContext";
 import { useHostMessage } from "../utils/useHostMessage";
 import { useSessionRename } from "../utils/useSessionRename";
@@ -54,17 +58,14 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
 
   // Panel groups are remembered per session: keep entries for live pane
   // buckets, pane-bound sessions, and sessions still in the sidebar tree —
-  // a deleted session forgets its panel group here.
+  // a deleted session forgets its panel group here. The key rule is shared with
+  // the preview guests' keep-alive (ChatApp) so the two can never diverge.
   const prunePanels = () => {
-    const keep = new Set<string>();
-    for (const p of panesRef.current) {
-      keep.add(`new:${p.paneId}`);
-      if (p.sessionId) keep.add(p.sessionId);
-    }
-    for (const g of sessionTreeRef.current) {
-      for (const s of g.sessions) keep.add(s.sessionId);
-    }
+    const keep = livePanelGroupKeys(panesRef.current, sessionTreeRef.current);
     sessionUi.prune(keep);
+    // preview guest 的保活台账同一口径：会话/分屏消失后它的停靠 guest 必须真正
+    // 销毁（否则会挂着一个再也回不去的页面）。
+    pruneParkedGroups(keep);
   };
 
   useHostMessage((message) => {

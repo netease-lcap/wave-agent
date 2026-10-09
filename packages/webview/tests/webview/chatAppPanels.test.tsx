@@ -48,16 +48,20 @@ const lastPanelState = (vscode: ReturnType<typeof createMockVscode>) => {
 };
 
 // Multi-instance tabs can render several panes of the same kind at once (e.g.
-// two preview tabs). Find the pane belonging to the ACTIVE tab — the only one
-// whose .desktop-panel-stack is visible.
+// two preview tabs). Find the pane belonging to the ACTIVE tab — preview panes
+// live in the guest layer (保活层) where the shown one carries
+// data-parked="false", every other kind sits in its own .desktop-panel-stack.
 const activePane = (testId: string) =>
-  screen
-    .getAllByTestId(testId)
-    .find(
-      (p) =>
-        (p.closest(".desktop-panel-stack") as HTMLElement | null)?.style
-          .display !== "none",
+  screen.getAllByTestId(testId).find((p) => {
+    const guest = p.closest(
+      "[data-testid='preview-guest']",
+    ) as HTMLElement | null;
+    if (guest) return guest.dataset.parked === "false";
+    return (
+      (p.closest(".desktop-panel-stack") as HTMLElement | null)?.style
+        .display !== "none"
     );
+  });
 
 beforeEach(() => {
   // The panel-group cache is module-level — isolate tests from each other.
@@ -1120,20 +1124,171 @@ describe("session-level panel groups", () => {
       }),
     );
 
-    // Switch to s2 (no cached preview) and back: the typed URL is a part of
-    // s1's remembered panel group and must come back with it.
+    // Switch to s2 (no cached preview) and back. 保活（spec desktop-panels.md
+    //「preview guest 跨会话保活」）：s1 的 guest 不销毁、只是停靠在常驻层里
+    //（data-parked=true），切回来还是同一个 <webview> 实例——不重载，地址栏里的
+    // URL 与页面自身状态原样保留。
+    const guestWebview = screen
+      .getByTestId("preview-pane")
+      .querySelector("webview");
     pushPanes("s2");
-    expect(screen.queryByTestId("preview-pane")).not.toBeInTheDocument();
+    expect(activePane("preview-pane")).toBeUndefined();
+    expect(screen.getByTestId("preview-guest")).toHaveAttribute(
+      "data-parked",
+      "true",
+    );
     pushPanes("s1");
-    expect(screen.getByTestId("preview-pane")).toBeInTheDocument();
+    expect(activePane("preview-pane")).toBeDefined();
+    expect(activePane("preview-pane")?.querySelector("webview")).toBe(
+      guestWebview,
+    );
     expect(
-      screen
-        .getByTestId("preview-pane")
-        .querySelector("webview")
-        ?.getAttribute("src"),
+      activePane("preview-pane")?.querySelector("webview")?.getAttribute("src"),
     ).toBe("http://localhost:8899/");
     expect(screen.getByTestId("panel-tab-preview-1")).toHaveTextContent(
       "localhost:8899",
+    );
+  });
+
+  it("keeps at most four preview guests window-wide, evicting the least recently used (spec 场景 3)", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+    const ids = ["s1", "s2", "s3", "s4", "s5"];
+    pushTree(ids);
+    // 每个会话各开一个带独立地址的 preview tab：guest 的 src 就是它的身份。
+    ids.forEach((id, i) => {
+      pushPanes(id);
+      openPanel("preview");
+      const input = activePane("preview-address-input") as HTMLInputElement;
+      fireEvent.change(input, { target: { value: `localhost:900${i}/` } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      // guest 加载完成后回报真实地址：它同时被记到 tab 上（记忆地址）。
+      const wv = activePane("preview-pane")?.querySelector(
+        "webview",
+      ) as Element;
+      fireEvent(
+        wv,
+        Object.assign(new Event("did-navigate"), {
+          url: `http://localhost:900${i}/`,
+        }),
+      );
+    });
+
+    const guestSrcs = () =>
+      screen
+        .getAllByTestId("preview-guest")
+        .map((g) => g.querySelector("webview")?.getAttribute("src"));
+    // 额度 4：当前显示的 s5 + 最近停靠的 s2/s3/s4；最久未用的 s1 已被淘汰销毁。
+    expect(guestSrcs()).toEqual([
+      "http://localhost:9001/",
+      "http://localhost:9002/",
+      "http://localhost:9003/",
+      "http://localhost:9004/",
+    ]);
+
+    // 被淘汰的会话切回来时是全新加载（记忆地址还在，页面从头来）。
+    pushPanes("s1");
+    expect(guestSrcs().sort()).toEqual([
+      "http://localhost:9000/",
+      "http://localhost:9002/",
+      "http://localhost:9003/",
+      "http://localhost:9004/",
+    ]);
+  });
+
+  it("closing a preview tab destroys its kept-alive guest (spec 场景 4)", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+    pushTree(["s1", "s2"]);
+    pushPanes("s1");
+    openPanel("preview");
+    const firstGuest = screen.getByTestId("preview-guest");
+
+    // 切走再切回：guest 一直在（保活）。
+    pushPanes("s2");
+    expect(screen.getByTestId("preview-guest")).toBe(firstGuest);
+    pushPanes("s1");
+    expect(screen.getByTestId("preview-guest")).toBe(firstGuest);
+
+    // 关掉这个 tab：guest 随之销毁，重开是全新的一个。
+    fireEvent.click(screen.getByTestId("panel-tab-close-preview-1"));
+    expect(screen.queryByTestId("preview-guest")).not.toBeInTheDocument();
+    openPanel("preview");
+    expect(screen.getByTestId("preview-guest")).not.toBe(firstGuest);
+  });
+
+  it("a deleted session's kept-alive guest is destroyed (spec 场景 4)", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+    pushTree(["s1", "s2"]);
+    pushPanes("s1");
+    openPanel("preview");
+    pushPanes("s2");
+    expect(screen.getByTestId("preview-guest")).toHaveAttribute(
+      "data-parked",
+      "true",
+    );
+
+    // s1 从会话树里消失（被删）：它的面板快照与保活 guest 一起清掉。
+    pushTree(["s2"]);
+    expect(screen.queryByTestId("preview-guest")).not.toBeInTheDocument();
+  });
+
+  it("a parked guest cannot append picker comments to any conversation (spec 场景 5)", () => {
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop({ workdir: "/work/a" });
+    pushTree(["s1", "s2"]);
+    pushPanes("s1");
+    openPanel("preview");
+    const input = activePane("preview-address-input") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "localhost:8899/" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    const wv = activePane("preview-pane")?.querySelector(
+      "webview",
+    ) as unknown as Omit<WebviewTagElement, "send" | "loadURL"> & {
+      send: ReturnType<typeof vi.fn>;
+      loadURL: ReturnType<typeof vi.fn>;
+    };
+    wv.send = vi.fn();
+    wv.loadURL = vi.fn().mockResolvedValue(undefined);
+    fireEvent(wv, new Event("dom-ready"));
+    fireEvent(
+      wv,
+      Object.assign(new Event("ipc-message"), {
+        channel: "wave-picker",
+        args: [{ type: "ready" }],
+      }),
+    );
+
+    // 切走后 guest 仍在（停靠），但它已经不属于任何可见会话——此时页面里的拾取
+    // 提交不允许落进任何会话的输入框。
+    pushPanes("s2");
+    const parkInputCount = () =>
+      vscode.postMessage.mock.calls.filter(
+        ([msg]) => msg.command === "updateInputContent",
+      ).length;
+    const before = parkInputCount();
+    fireEvent(
+      wv,
+      Object.assign(new Event("ipc-message"), {
+        channel: "wave-picker",
+        args: [
+          {
+            type: "submit",
+            url: "http://localhost:8899/",
+            selector: "#app > div > button.primary",
+            summary: "button.primary",
+            text: "去支付",
+            comment: "这里改成主要按钮样式",
+          },
+        ],
+      }),
+    );
+    expect(parkInputCount()).toBe(before);
+    expect(screen.getByTestId("preview-guest")).toHaveAttribute(
+      "data-parked",
+      "true",
     );
   });
 
@@ -1673,8 +1828,13 @@ describe("remote preview port forwarding", () => {
       }),
     );
     expect(releasePosts(vscode)).toHaveLength(0);
-    // s2 has no cached panel state — the preview slot is not mounted.
-    expect(screen.queryByTestId("preview-pane")).not.toBeInTheDocument();
+    // s2 has no cached panel state — nothing of its own is shown, and s1's
+    // preview stays alive parked in the guest layer (保活).
+    expect(activePane("preview-pane")).toBeUndefined();
+    expect(screen.getByTestId("preview-guest")).toHaveAttribute(
+      "data-parked",
+      "true",
+    );
 
     // Switch back to s1: the forwarded URL is restored from the session
     // cache, and the tunnel was never released — no re-acquire needed.
@@ -1693,10 +1853,7 @@ describe("remote preview port forwarding", () => {
       }),
     );
     expect(
-      screen
-        .getByTestId("preview-pane")
-        .querySelector("webview")
-        ?.getAttribute("src"),
+      activePane("preview-pane")?.querySelector("webview")?.getAttribute("src"),
     ).toBe("http://127.0.0.1:5173/app");
     expect(forwardPosts(vscode)).toHaveLength(1);
     expect(releasePosts(vscode)).toHaveLength(0);
@@ -1791,10 +1948,7 @@ describe("remote preview port forwarding", () => {
       originalUrl: "http://localhost:8080/app",
     });
     expect(
-      screen
-        .getByTestId("preview-pane")
-        .querySelector("webview")
-        ?.getAttribute("src"),
+      activePane("preview-pane")?.querySelector("webview")?.getAttribute("src"),
     ).toBe("http://127.0.0.1:8080/app");
 
     // A late reply for s1's forward (fwd-1) lands in s1's cached session
@@ -1808,10 +1962,7 @@ describe("remote preview port forwarding", () => {
     });
     // The pane still shows s2's URL (s1's cached URL is untouched here).
     expect(
-      screen
-        .getByTestId("preview-pane")
-        .querySelector("webview")
-        ?.getAttribute("src"),
+      activePane("preview-pane")?.querySelector("webview")?.getAttribute("src"),
     ).toBe("http://127.0.0.1:8080/app");
 
     // Switch back to s1: its own forwarded URL shows again from the session
@@ -1831,10 +1982,7 @@ describe("remote preview port forwarding", () => {
       }),
     );
     expect(
-      screen
-        .getByTestId("preview-pane")
-        .querySelector("webview")
-        ?.getAttribute("src"),
+      activePane("preview-pane")?.querySelector("webview")?.getAttribute("src"),
     ).toBe("http://127.0.0.1:5173/app");
     expect(forwardPosts(vscode)).toHaveLength(2);
     expect(releasePosts(vscode)).toHaveLength(0);

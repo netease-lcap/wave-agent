@@ -1589,6 +1589,59 @@ body.is-panel-resizing webview {
   height: 100%;
 }
 
+/* preview guest 常驻层（spec desktop-panels.md「preview guest 跨会话保活」）：
+   guest 的 DOM 归属不随会话/槽位变动，否则切会话时槽位子树被摘掉会连坐销毁
+   <webview>（页面自身状态一起丢）。层本身不参与布局（绝对定位、无背景、
+   pointer-events:none），只提供 guest 的定位上下文。
+
+   可见态：盖住「槽位里标签条之下的面板 body」——右缘与槽位同宽同右缘，顶部从
+   标签条底部开始。面板宽度拖拽 → ChatApp 把新的 panelWidth 写进内联 width，这
+   里跟着变；全屏时槽位铺满，可见 guest 随之铺满（见下方 preview-fullscreen 规则）。
+
+   停靠态：保尺寸但不显示。保留尺寸是有意的——把 guest 缩到 0 会让页面按 0 宽
+   重排（响应式布局错乱），保尺寸则缩放基准和页面布局都不动，切回来即可用。 */
+.preview-guest-layer {
+  position: absolute;
+  inset: 0;
+  /* 面板 chrome 之下：拖拽把手 / forward 重试占位是 z-index 10，分屏浮层是
+     5/6/7；空态入口等槽位内容在层下方，靠层的 pointer-events:none 保持可点。 */
+  z-index: 2;
+  pointer-events: none;
+}
+
+.preview-guest {
+  position: absolute;
+  /* 槽位里「标签条之下」的位置 = 标签条高度 + 槽位自身的顶部下让量（欢迎页的浮层
+     头部；见 DesktopPanelTabs.css :root）。 */
+  top: calc(var(--desktop-panel-tabs-height) + var(--desktop-panel-top-offset));
+  right: 0;
+  bottom: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.preview-guest[data-parked="false"] {
+  visibility: visible;
+  /* 可见 guest 自己打开命中：它是一整块可交互的 web contents。 */
+  pointer-events: auto;
+}
+
+/* 常驻层里的 pane 不再是 .desktop-panel-stack 的孩子，那条 height:100% 不适用。 */
+.preview-guest > .preview-pane {
+  height: 100%;
+}
+
+/* 全屏：槽位 flex:1 铺满，可见 guest 跟着铺满（宽度由内联 width 决定，这里用
+   left 把它拉到同一左缘；全屏时 .preview-pane 的宽度覆盖规则同名段已在上面）。 */
+.desktop-chat-body.preview-fullscreen .preview-guest[data-parked="false"] {
+  left: 0;
+}
+.desktop-chat-body.preview-fullscreen
+  .preview-guest[data-parked="false"]
+  > .preview-pane {
+  width: 100% !important;
+}
+
 /* Preview fullscreen (spec: 预览面板全屏): the conversation column is hidden
    and the preview pane fills the content area. The pane's inline width is
    overridden with !important — the pane keeps its controlled-width prop for
