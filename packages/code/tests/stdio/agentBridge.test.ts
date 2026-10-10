@@ -326,11 +326,17 @@ test("onCompactBlockAdded emits compactBlockAdded notification", async () => {
   const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
     .callbacks as AgentCallbacks;
 
-  callbacks.onCompactBlockAdded!("summary content");
+  const compactMessage: Message = {
+    id: "c1",
+    role: "assistant",
+    timestamp: new Date().toISOString(),
+    blocks: [{ type: "compact" as const, content: "summary content" }],
+  };
+  callbacks.onCompactBlockAdded!("summary content", compactMessage);
 
   expect(notifications).toContainEqual({
     method: "compactBlockAdded",
-    params: { content: "summary content" },
+    params: { content: "summary content", message: compactMessage },
     sessionId: "test-session-id",
   });
 });

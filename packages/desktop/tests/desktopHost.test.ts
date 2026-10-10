@@ -1635,14 +1635,13 @@ describe("agent notifications", () => {
 
     // Compaction truncates the agent's message list to the compact boundary,
     // so a re-pushed pane state can no longer derive the title from messages.
-    agent.messages = [
-      {
-        id: "c1",
-        role: "assistant",
-        blocks: [{ type: "compact", content: "对话摘要" }],
-      },
-    ];
-    agent.callbacks.onCompactBlockAdded("对话摘要");
+    const compactMsg = {
+      id: "c1",
+      role: "assistant",
+      blocks: [{ type: "compact", content: "对话摘要" }],
+    };
+    agent.messages = [];
+    agent.callbacks.onCompactBlockAdded("对话摘要", compactMsg);
 
     await host.handleWebviewMessage({ command: "webviewReady" });
 
@@ -1650,6 +1649,41 @@ describe("agent notifications", () => {
       id: "sess-1",
       firstMessage: "帮我重构登录模块",
     });
+  });
+
+  it("compaction appends the summary block incrementally instead of re-pushing the list", async () => {
+    const { sent } = await readyHost();
+    const agent = lastAgent();
+    const updateMessagesBefore = sent("updateMessages").length;
+
+    const compactMsg = {
+      id: "c1",
+      role: "assistant",
+      blocks: [{ type: "compact", content: "对话摘要" }],
+    };
+    agent.callbacks.onCompactBlockAdded("对话摘要", compactMsg);
+
+    // The webview is told about the one new message ...
+    expect(sent("appendMessage").at(-1)?.message).toMatchObject({ id: "c1" });
+    // ... and the host cache mirrors the server so a later setInitialState keeps it.
+    expect(agent.messages).toContainEqual(compactMsg);
+    // No full-list pull/push: compaction is a pure append on the display stream.
+    expect(sent("updateMessages")).toHaveLength(updateMessagesBefore);
+    expect(agent.getMessages).not.toHaveBeenCalled();
+  });
+
+  it("compaction without a message on the wire falls back to the full pull", async () => {
+    const { sent } = await readyHost();
+    const agent = lastAgent();
+    const updateMessagesBefore = sent("updateMessages").length;
+
+    // An older CLI sends only the summary text.
+    agent.callbacks.onCompactBlockAdded("对话摘要");
+
+    await vi.waitFor(() => {
+      expect(sent("updateMessages")).toHaveLength(updateMessagesBefore + 1);
+    });
+    expect(agent.getMessages).toHaveBeenCalled();
   });
 
   it("restoring a historical session backfills its sidebar title from history (FR-024)", async () => {

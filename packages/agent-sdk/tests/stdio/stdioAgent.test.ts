@@ -921,7 +921,27 @@ describe("StdioAgent", () => {
     expect(onErrorBlockAdded).toHaveBeenCalledWith("Something went wrong");
   });
 
-  it("compactBlockAdded forwards content to callback", () => {
+  it("compactBlockAdded forwards content and message to callback", () => {
+    const onCompactBlockAdded = vi.fn();
+    const { agent } = createAgent({ onCompactBlockAdded });
+
+    const message = {
+      id: "c1",
+      role: "assistant",
+      blocks: [{ type: "compact", content: "compacted summary" }],
+    };
+    agent.handleNotification("compactBlockAdded", {
+      content: "compacted summary",
+      message,
+    });
+
+    expect(onCompactBlockAdded).toHaveBeenCalledWith(
+      "compacted summary",
+      message,
+    );
+  });
+
+  it("compactBlockAdded tolerates a payload without a message (older CLI)", () => {
     const onCompactBlockAdded = vi.fn();
     const { agent } = createAgent({ onCompactBlockAdded });
 
@@ -929,7 +949,10 @@ describe("StdioAgent", () => {
       content: "compacted summary",
     });
 
-    expect(onCompactBlockAdded).toHaveBeenCalledWith("compacted summary");
+    expect(onCompactBlockAdded).toHaveBeenCalledWith(
+      "compacted summary",
+      undefined,
+    );
   });
 
   it("compactionStateChange forwards isCompacting boolean to callback", () => {

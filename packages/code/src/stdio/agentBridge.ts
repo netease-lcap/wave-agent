@@ -2326,8 +2326,12 @@ export class AgentBridge {
           ctx.registeredSessionId,
         );
       },
-      onCompactBlockAdded: (content: string) => {
-        this.emit("compactBlockAdded", { content }, ctx.registeredSessionId);
+      onCompactBlockAdded: (content: string, message?: Message) => {
+        this.emit(
+          "compactBlockAdded",
+          { content, message },
+          ctx.registeredSessionId,
+        );
       },
       onCompactionStateChange: (isCompacting: boolean) => {
         this.emit(

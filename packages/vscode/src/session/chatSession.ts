@@ -56,6 +56,9 @@ export interface ChatSessionCallbacks {
   }) => void;
   onToolBlockUpdate?: (params: ToolBlockUpdateCallbackParams) => void;
   onErrorBlockAdded?: (error: string) => void;
+  /** The compact summary block the server appended to its display stream; the
+   * host appends it to the webview list instead of re-pushing the whole list. */
+  onCompactBlockAdded?: (message: Message) => void;
   onBtwContent?: (params: {
     question: string;
     content: string;
@@ -133,8 +136,17 @@ export class ChatSession {
       }
 
       const agentCallbacks: StdioAgentCallbacks = {
-        onCompactBlockAdded: () => {
-          // 压缩后按需拉取截断后的完整消息列表
+        onCompactBlockAdded: (content: string, message?: Message) => {
+          // Compaction only folds the API context; the display stream just gained
+          // the summary block, so append it like any other new message — no
+          // full-list push to the webview.
+          if (message) {
+            this.messages = [...this.messages, message];
+            this.callbacks.onCompactBlockAdded?.(message);
+            return;
+          }
+          // Older CLI without the field on the wire: refresh the cache (the
+          // webview picks the list up on its next webviewReady).
           void this.getMessages();
         },
         onCompactionStateChange: (isCompacting: boolean) => {

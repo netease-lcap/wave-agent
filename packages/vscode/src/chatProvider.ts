@@ -434,6 +434,15 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           windowId,
         );
       },
+      // The compact summary block arrives as an ordinary message; append it
+      // instead of re-pushing the whole list (spec: 压缩走增量通道).
+      onCompactBlockAdded: (message) => {
+        this.webviewManager.postMessage(
+          { command: "appendMessage", message },
+          viewType,
+          windowId,
+        );
+      },
       onStreamingContentUpdate: (params) => {
         this.webviewManager.postMessage(
           { command: "updateStreamingContent", ...params },
