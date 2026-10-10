@@ -77,6 +77,35 @@ describe("MessageManager compaction display stream", () => {
     expect(messageManager.getSessionId()).toBe(initialSessionId);
   });
 
+  it("compactMessagesAndUpdateSession hands the compact message to the callback", async () => {
+    const onCompactBlockAdded = vi.fn();
+    const manager = new MessageManager(container, {
+      callbacks: { onCompactBlockAdded },
+      workdir,
+    });
+    manager.addUserMessage({ content: "msg1" });
+    manager.addAssistantMessage("msg2");
+
+    await manager.compactMessagesAndUpdateSession("compacted content");
+
+    // Hosts append this message to their webview list instead of pulling the
+    // full list (spec: 压缩走增量通道).
+    expect(onCompactBlockAdded).toHaveBeenCalledTimes(1);
+    const [content, message] = onCompactBlockAdded.mock.calls[0] as [
+      string,
+      Message,
+    ];
+    expect(content).toBe("compacted content");
+    expect(message).toEqual(
+      expect.objectContaining({
+        role: "assistant",
+        blocks: [{ type: "compact", content: "compacted content" }],
+      }),
+    );
+    // The same object is in the display stream — no second copy to reconcile.
+    expect(manager.getMessages()).toContain(message);
+  });
+
   it("initializeFromSession keeps the full transcript in displayMessages while folding the context", () => {
     const makeMsg = (
       id: string,

@@ -897,9 +897,10 @@ export class DesktopHost {
    * Pull the authoritative message list (getMessages RPC) into the agent's
    * cache and push it to the pane's webview as updateMessages. Replaces the
    * removed full-snapshot messagesChange push for structural transitions
-   * (compact / rewind) where incremental events can't rebuild the
-   * list. Binding is re-checked after the RPC — the agent may have been
-   * rebound while the request was in flight.
+   * (rewind) where incremental events can't rebuild the list. Compaction is
+   * not one of them — its display-stream effect is a single appended block,
+   * delivered through onCompactBlockAdded. Binding is re-checked after the
+   * RPC — the agent may have been rebound while the request was in flight.
    */
   private async pullAndPushMessages(
     agent: StdioAgent,
@@ -1094,16 +1095,24 @@ export class DesktopHost {
     const callbacks: StdioAgentCallbacks = {
       // NOTE: no full-list push here. The server no longer emits messagesChange;
       // the cache is kept fresh via incremental appends below (user/assistant
-      // adds) and pull-based refreshes on structural transitions
-      // (webviewReady / restore / compact / rewind) via
+      // adds, compact summary block) and pull-based refreshes on structural
+      // transitions (webviewReady / restore / rewind) via
       // getMessages(). Full-list pushes to the webview happen only through
       // pullAndPushMessages (updateMessages) and pushPaneSessionState
       // (setInitialState).
-      onCompactBlockAdded: () => {
+      onCompactBlockAdded: (content: string, message?: Message) => {
         const paneId = paneIdOf();
+        // Compaction only folds the API context; the display stream just gained
+        // the summary block, so append it like any other new message instead of
+        // pulling and replacing the whole list. Hosts too old to carry the
+        // message fall back to the pull.
+        if (message) {
+          agentRef.messages = [...agentRef.messages, message];
+          if (paneId)
+            this.postMessage({ command: "appendMessage", paneId, message });
+          return;
+        }
         if (!paneId) return;
-        // Compaction truncates the list server-side; pull it and replace the
-        // webview list.
         void this.pullAndPushMessages(agentRef, paneId);
       },
       onCompactionStateChange: (isCompacting: boolean) => {

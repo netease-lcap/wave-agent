@@ -28,7 +28,13 @@ interface AgentCallbacks {
     fun onAssistantReasoningUpdated(messageId: String, chunk: String, stage: String) {}
     fun onToolBlockUpdated(params: JsonElement?) {}
     fun onErrorBlockAdded(error: String) {}
-    fun onCompactBlockAdded(content: String) {}
+    /**
+     * [message] is the compact message the CLI appended to its display stream;
+     * hosts append it incrementally instead of pulling the full list. Null when
+     * talking to a CLI that predates the field — the host then falls back to
+     * `getMessages`.
+     */
+    fun onCompactBlockAdded(content: String, message: JsonElement?) {}
     fun onCompactionStateChange(isCompacting: Boolean) {}
     fun onCompactionContentUpdate(content: String) {}
     /** Full plan-file content after the model writes it (spec: 计划文件更新后刷新计划面板). */
@@ -153,7 +159,10 @@ class StdioAgent(
                     o?.get("type")?.jsonPrimitive?.content ?: "",
                 )
             }
-            "compactBlockAdded" -> callbacks.onCompactBlockAdded(params?.jsonObject?.get("content")?.jsonPrimitive?.content ?: "")
+            "compactBlockAdded" -> callbacks.onCompactBlockAdded(
+                params?.jsonObject?.get("content")?.jsonPrimitive?.content ?: "",
+                params?.jsonObject?.get("message")
+            )
             "compactionStateChange" -> callbacks.onCompactionStateChange(
                 params?.jsonObject?.get("isCompacting")?.jsonPrimitive?.content?.toBoolean() ?: false
             )

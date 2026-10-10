@@ -145,10 +145,19 @@ class WaveSession(
 
     // ── AgentCallbacks: route notifications → webview commands ────
 
-    override fun onCompactBlockAdded(content: String) {
-        // Compaction truncated the list server-side; pull the fresh list and push it
-        // to the webview (mirrors VSCE chatSession.ts:91-94, spec pull model).
-        scope.launch { pullAndPushMessages() }
+    override fun onCompactBlockAdded(content: String, message: JsonElement?) {
+        val compactMessage = message
+        // Older CLI without the field on the wire: fall back to the full pull.
+        if (compactMessage == null) {
+            scope.launch { pullAndPushMessages() }
+            return
+        }
+        // Compaction only folds the API context; the display stream just gained the
+        // summary block, so append it like any other new message instead of pulling
+        // and replacing the whole list (spec: 压缩走增量通道).
+        val current = messages as? JsonArray ?: JsonArray(emptyList())
+        messages = JsonArray(current + compactMessage)
+        postMessage("appendMessage", buildJsonObject { put("message", compactMessage) })
     }
 
     // Forward the compaction state to the shared webview, which renders the
@@ -422,8 +431,10 @@ class WaveSession(
     /**
      * Pull the full message list via the `getMessages` RPC into the [messages] cache.
      * The webview no longer subscribes to a full-snapshot push; hosts pull on demand
-     * after webviewReady / compact / rewind / clearChat / restoreSession (spec pull model,
-     * mirrors VSCE chatSession.getMessages). The cache field [messages] is maintained
+     * after webviewReady / rewind / clearChat / restoreSession (spec pull model,
+     * mirrors VSCE chatSession.getMessages). Compaction is not a pull: the display
+     * stream only gains the summary block, appended incrementally in
+     * [onCompactBlockAdded]. The cache field [messages] is otherwise maintained
      * exclusively from these pulls.
      */
     suspend fun refreshMessages() {

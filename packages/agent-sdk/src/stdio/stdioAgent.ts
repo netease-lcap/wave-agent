@@ -104,7 +104,13 @@ export interface StdioAgentCallbacks {
   }) => void;
   onToolBlockUpdated?: (params: ToolBlockUpdateCallbackParams) => void;
   onErrorBlockAdded?: (error: string) => void;
-  onCompactBlockAdded?: (content: string) => void;
+  /**
+   * `message` is the compact message the CLI appended to its display stream;
+   * hosts append it incrementally instead of pulling the full list. Absent
+   * when talking to a CLI that predates the field — the host then falls back
+   * to `getMessages`.
+   */
+  onCompactBlockAdded?: (content: string, message?: Message) => void;
   onCompactionStateChange?: (isCompacting: boolean) => void;
   onCompactionContentUpdate?: (content: string) => void;
   /** Full plan-file content after the model writes it (spec: 计划文件更新后刷新计划面板). */
@@ -657,8 +663,8 @@ export class StdioAgent {
         break;
       }
       case "compactBlockAdded": {
-        const p = params as { content: string };
-        this.callbacks.onCompactBlockAdded?.(p.content);
+        const p = params as { content: string; message?: Message };
+        this.callbacks.onCompactBlockAdded?.(p.content, p.message);
         break;
       }
       case "compactionStateChange": {

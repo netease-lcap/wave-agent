@@ -81,7 +81,15 @@ export interface MessageManagerCallbacks {
   }) => void;
   onToolBlockUpdated?: (params: ToolBlockUpdateCallbackParams) => void;
   onErrorBlockAdded?: (error: string) => void;
-  onCompactBlockAdded?: (content: string) => void;
+  /**
+   * Fires after compaction has written its state. `content` is the summary
+   * text; `message` is the whole compact message that was appended to
+   * `displayMessages` — hosts forward it to the webview through their
+   * incremental append channel instead of pulling the full list. It is
+   * optional so existing consumers keep working and a host that gets no
+   * message falls back to a `getMessages` pull.
+   */
+  onCompactBlockAdded?: (content: string, message?: Message) => void;
   onCompactionStateChange?: (isCompacting: boolean) => void;
   onInfoBlockAdded?: (content: string) => void;
   // Rewind callbacks
@@ -826,8 +834,10 @@ export class MessageManager {
     // again in this session.
     this.loadedNestedMemoryPaths.clear();
 
-    // Trigger compaction callback
-    this.callbacks.onCompactBlockAdded?.(compactedContent);
+    // Trigger compaction callback. The compact message rides along so hosts
+    // can append it incrementally (the display stream only gained one message
+    // — the API context folding above is invisible to the UI).
+    this.callbacks.onCompactBlockAdded?.(compactedContent, compactMessage);
   }
 
   public addFileHistoryBlock(
