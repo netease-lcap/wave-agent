@@ -1,32 +1,70 @@
 import { spawn, spawnSync } from "child_process";
-import https from "https";
 import chalk from "chalk";
 import { isUpdateAvailable } from "../utils/version.js";
 import { readNearestPackageJson } from "../utils/readPackageJson.js";
 
 const currentVersion = readNearestPackageJson().version;
 
-async function getLatestVersion(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    https
-      .get("https://registry.npmjs.org/wave-code/latest", (res) => {
-        let data = "";
-        res.on("data", (chunk) => {
-          data += chunk;
-        });
-        res.on("end", () => {
-          try {
-            const json = JSON.parse(data);
-            resolve(json.version);
-          } catch {
-            reject(new Error("Failed to parse npm registry response"));
-          }
-        });
-      })
-      .on("error", (err) => {
-        reject(err);
-      });
+/** npm registry mirror for China users (the CLI downloads its runtime deps from the same one). */
+const REGISTRY_MIRROR = "https://registry.npmmirror.com";
+/** Official registry — the fallback when the mirror is unreachable. */
+const REGISTRY_OFFICIAL = "https://registry.npmjs.org";
+/** Cap each registry request so a hanging one cannot stall the fallback. */
+const REGISTRY_TIMEOUT_MS = 5000;
+
+interface LatestVersion {
+  version: string;
+  /** The registry that answered — the install reuses it (see getLatestVersion). */
+  registry: string;
+}
+
+async function fetchLatestVersion(registry: string): Promise<string> {
+  const response = await fetch(`${registry}/wave-code/latest`, {
+    signal: AbortSignal.timeout(REGISTRY_TIMEOUT_MS),
   });
+  if (!response.ok) {
+    throw new Error(
+      `HTTP ${response.status} fetching ${registry}/wave-code/latest`,
+    );
+  }
+  const json = (await response.json()) as { version?: string };
+  if (!json.version) {
+    throw new Error(`No version in the response from ${registry}`);
+  }
+  return json.version;
+}
+
+/**
+ * The mirror answers first so the check is fast in CN; the official registry is
+ * a silent fallback so an unreachable mirror never blocks the check.
+ *
+ * The install reuses whichever registry answered: a machine that can only reach
+ * the official registry would fail the install for the very reason the check
+ * fell back.
+ */
+async function getLatestVersion(): Promise<LatestVersion> {
+  try {
+    return {
+      version: await fetchLatestVersion(REGISTRY_MIRROR),
+      registry: REGISTRY_MIRROR,
+    };
+  } catch (mirrorError) {
+    try {
+      return {
+        version: await fetchLatestVersion(REGISTRY_OFFICIAL),
+        registry: REGISTRY_OFFICIAL,
+      };
+    } catch (officialError) {
+      throw new Error(
+        `Could not reach ${REGISTRY_MIRROR} (${errorText(mirrorError)}) ` +
+          `or ${REGISTRY_OFFICIAL} (${errorText(officialError)})`,
+      );
+    }
+  }
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function detectPackageManager(): "npm" | "pnpm" | "yarn" {
@@ -53,7 +91,7 @@ export async function updateCommand() {
   console.log(chalk.dim(`Current version: ${currentVersion}`));
 
   try {
-    const latestVersion = await getLatestVersion();
+    const { version: latestVersion, registry } = await getLatestVersion();
     console.log(chalk.dim(`Latest version: ${latestVersion}`));
 
     if (!isUpdateAvailable(currentVersion, latestVersion)) {
@@ -79,6 +117,8 @@ export async function updateCommand() {
       updateCmd = "npm";
       args = ["install", "-g", "wave-code@latest"];
     }
+    // Appended once so every package manager (including a future branch) gets it.
+    args.push(`--registry=${registry}`);
 
     console.log(chalk.blue(`Updating WAVE Code using ${packageManager}...`));
     console.log(chalk.dim(`Running: ${updateCmd} ${args.join(" ")}`));

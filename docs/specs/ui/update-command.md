@@ -35,8 +35,26 @@ order: 200
 
 **验收场景**：
 
-1. **假设**有新版本可用且工具通过 `npm` 安装，**当**用户运行 `wave update` 时，**则**系统执行 `npm install -g wave-code@latest`。
-2. **假设**有新版本可用且工具通过 `pnpm` 安装，**当**用户运行 `wave update` 时，**则**系统执行 `pnpm add -g wave-code@latest`。
+1. **假设**有新版本可用且工具通过 `npm` 安装，**当**用户运行 `wave update` 时，**则**系统执行 `npm install -g wave-code@latest --registry=https://registry.npmmirror.com`。
+2. **假设**有新版本可用且工具通过 `pnpm` 安装，**当**用户运行 `wave update` 时，**则**系统执行 `pnpm add -g wave-code@latest --registry=https://registry.npmmirror.com`。
+3. **假设**有新版本可用且工具通过 `yarn` 安装，**当**用户运行 `wave update` 时，**则**系统执行 `yarn global add wave-code@latest --registry=https://registry.npmmirror.com`。
+
+---
+
+### 用户故事：走 npm 国内镜像加速（优先级：P2）
+
+作为国内用户，我希望 `wave update` 的版本查询与安装都走 npm 国内镜像，以便更新不会因为直连 `registry.npmjs.org` 而缓慢或超时。
+
+**为什么是这个优先级**：内置运行时依赖（rg / sharp）的下载以及文档里的安装说明都已统一走 npmmirror，`wave update` 是唯一仍直连官方源的路径。官方源在国内更新一个包可能需要数分钟甚至失败，而这是用户主动触发的、必须成功的操作。
+
+**独立测试**：运行 `wave update`，验证版本查询发往镜像、安装命令带 `--registry=https://registry.npmmirror.com`；再模拟镜像不可达，验证版本查询回退到官方源。
+
+**验收场景**：
+
+1. **假设**用户运行 `wave update`，**当**系统查询最新版本时，**则**请求发往 `https://registry.npmmirror.com/wave-code/latest`。
+2. **假设**镜像不可达（网络不可达、超时或响应无法解析），**当**系统查询最新版本时，**则**静默回退到官方源 `https://registry.npmjs.org/wave-code/latest`，且随后的安装也使用回退命中的那个源（只连得上官方源的机器，改用镜像安装会以同样原因失败）。
+3. **假设**两个源都不可达，**当**系统查询最新版本时，**则**报错退出，且不执行任何安装命令。
+4. **假设**用户在 Windows 上运行 `wave update` 且走后台执行，**当**分离子进程执行安装时，**则**命令同样附带镜像 registry 参数（与前台更新一致）。
 
 ---
 
@@ -57,6 +75,6 @@ order: 200
 
 ### 边界情况
 
-- **网络不可用怎么办？** 系统应该优雅地处理错误并通知用户无法检查更新。
-- **更新命令失败（如权限问题）怎么办？** 系统应该通知用户失败原因并提供手动运行的命令（可能需要 `sudo`，Windows 上可能需要先关闭 wave 再运行）。
+- **网络不可用怎么办？** 系统应该优雅地处理错误并通知用户无法检查更新（镜像与官方源都不可达时才报错）。
+- **更新命令失败（如权限问题）怎么办？** 系统应该通知用户失败原因并提供手动运行的命令（含镜像 registry 参数，与实际执行的命令一致；可能需要 `sudo`，Windows 上可能需要先关闭 wave 再运行）。
 - **工具未全局安装怎么办？** 系统仍应尝试检测包管理器并执行更新，或在无法做到时提供说明。
