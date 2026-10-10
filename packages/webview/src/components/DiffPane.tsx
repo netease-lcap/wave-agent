@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { VsCodeApi } from "../types";
+import { formatCodeComment } from "../utils/codeComment";
 import { useHostMessage } from "../utils/useHostMessage";
 import {
   DIFF_COLLAPSE_THRESHOLD,
@@ -12,6 +13,7 @@ import {
 import { DiffFileRows, type DiffViewMode } from "./DiffFileRows";
 import { DiffFileTree } from "./DiffFileTree";
 import { RefreshIcon } from "./HeaderIcons";
+import { LineCommentBox } from "./LineCommentBox";
 import { PanePlaceholder, PaneShell } from "./PaneShell";
 import "../styles/DiffViewer.css";
 import "../styles/DiffPane.css";
@@ -76,29 +78,6 @@ const STATUS_LABEL: Record<WorkspaceFileStatus, string> = {
   renamed: "重命名",
   untracked: "未跟踪",
 };
-
-export interface DiffComment {
-  path?: string;
-  prefix?: string;
-  text?: string;
-  comment?: string;
-}
-
-/** User-visible markdown for a diff-line comment — appended to the chat input. */
-export function formatDiffComment(msg: DiffComment): string {
-  const prefixLabel =
-    msg.prefix && msg.prefix !== " " ? `\`${msg.prefix}\`` : "";
-  const location = [prefixLabel, msg.text ? `「${msg.text}」` : ""]
-    .filter(Boolean)
-    .join("");
-  const lines = [
-    `**差异评论** · ${msg.path ?? ""}`,
-    location,
-    "",
-    msg.comment ?? "",
-  ];
-  return lines.join("\n");
-}
 
 export interface DiffPaneProps {
   vscode: VsCodeApi;
@@ -175,7 +154,6 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   const [commentDraft, setCommentDraft] = useState("");
   const onAddCommentRef = useRef(onAddComment);
   onAddCommentRef.current = onAddComment;
-  const commentInputRef = useRef<HTMLTextAreaElement | null>(null);
   const asideRef = useRef<HTMLElement>(null);
   // File the accordion should scroll to once it re-renders expanded (set by a
   // tree click — the accordion does not exist until after that render).
@@ -192,7 +170,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     const comment = commentDraft.trim();
     if (!target || !comment) return;
     onAddCommentRef.current?.(
-      formatDiffComment({
+      formatCodeComment({
         // Only the expanded file can hold an open comment box.
         path: expandedPath ?? "",
         prefix: target.prefix,
@@ -202,11 +180,6 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
     );
     closeComment();
   }, [commentTarget, commentDraft, expandedPath, closeComment]);
-
-  // Auto-focus the textarea when a comment box opens.
-  useEffect(() => {
-    if (commentTarget) commentInputRef.current?.focus();
-  }, [commentTarget]);
 
   // Hard refresh clears current content to the loading placeholder (used when
   // the session/workdir context changes); soft refresh keeps showing the old
@@ -378,50 +351,14 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
 
   const renderCommentBox = (index: number) =>
     commentTarget?.index === index ? (
-      <div className="diff-comment-box" data-testid="diff-comment-box">
-        <textarea
-          ref={commentInputRef}
-          className="diff-comment-input"
-          data-testid="diff-comment-input"
-          placeholder="评论这行改动…"
-          value={commentDraft}
-          onChange={(e) => setCommentDraft(e.target.value)}
-          onKeyDown={(e) => {
-            // IME composing (e.g. Chinese pinyin): Enter confirms the
-            // candidate, not a submit. keyCode 229 covers older engines
-            // where isComposing is unset.
-            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              submitComment();
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              closeComment();
-            }
-          }}
-        />
-        <div className="diff-comment-box-footer">
-          <span className="diff-comment-box-tag" title={expandedPath ?? ""}>
-            {expandedPath}
-          </span>
-          <button
-            className="diff-comment-box-cancel"
-            data-testid="diff-comment-cancel"
-            onClick={closeComment}
-          >
-            取消
-          </button>
-          <button
-            className="diff-comment-box-send"
-            title="添加到输入框"
-            data-testid="diff-comment-submit"
-            disabled={commentDraft.trim() === ""}
-            onClick={submitComment}
-          >
-            添加
-          </button>
-        </div>
-      </div>
+      <LineCommentBox
+        draft={commentDraft}
+        onDraftChange={setCommentDraft}
+        onSubmit={submitComment}
+        onCancel={closeComment}
+        tag={expandedPath ?? ""}
+        placeholder="评论这行改动…"
+      />
     ) : null;
 
   const renderFile = (file: WorkspaceDiffFile) => {

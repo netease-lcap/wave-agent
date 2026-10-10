@@ -108,5 +108,33 @@ test.describe("Desktop file pane screenshots", () => {
       webviewPage,
       "../../docs/public/screenshots/desktop-file-pane.webp",
     );
+
+    // ── Inline line comment (same interaction as the diff pane) ──────
+    // The "+" button is revealed on hover (GitHub/GitLab style) and Playwright
+    // auto-hovers before clicking. Key on the aria-label: the testid only
+    // carries the line number, which is not unique across panes.
+    await webviewPage
+      .getByRole("button", { name: "评论 src/pages/login.tsx 第 12 行" })
+      .click();
+    await expect(webviewPage.getByTestId("line-comment-box")).toBeVisible();
+    await webviewPage
+      .getByTestId("line-comment-input")
+      .fill("登录成功后应先回到用户原本要访问的页面，再兜底 /dashboard");
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-file-comment.webp",
+    );
+
+    // Submitting appends the comment to the chat input — nothing is sent to
+    // the agent and the pane keeps no trace of it, so several lines can be
+    // commented before sending once.
+    await webviewPage.getByTestId("line-comment-submit").click();
+    await expect(webviewPage.getByTestId("message-input")).toContainText(
+      "登录成功后应先回到用户原本要访问的页面",
+    );
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-file-comment-input.webp",
+    );
   });
 });
