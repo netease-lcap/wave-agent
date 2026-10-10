@@ -443,6 +443,15 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           windowId,
         );
       },
+      // Compact fallback only (old CLI whose notification carries no message):
+      // the session re-pulled the list, so replace the webview's copy.
+      onMessagesReplaced: (messages) => {
+        this.webviewManager.postMessage(
+          { command: "updateMessages", messages },
+          viewType,
+          windowId,
+        );
+      },
       onStreamingContentUpdate: (params) => {
         this.webviewManager.postMessage(
           { command: "updateStreamingContent", ...params },

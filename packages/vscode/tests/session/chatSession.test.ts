@@ -32,6 +32,7 @@ function callbacks(): ChatSessionCallbacks {
     })),
     onError: vi.fn(),
     onCompactBlockAdded: vi.fn(),
+    onMessagesReplaced: vi.fn(),
   };
 }
 
@@ -171,6 +172,45 @@ describe("ChatSession · 压缩摘要块走增量通道", () => {
     await vi.waitFor(() => {
       expect(getMessagesCalls(client.request)).toBe(1);
     });
+    expect(cbs.onCompactBlockAdded).not.toHaveBeenCalled();
+  });
+
+  // 回落的另一半：只刷缓存不推 webview 的话，摘要在下一次 webviewReady 之前一直不
+  // 显示 —— 与上面修掉的缺陷同形，只是触发前提收窄到「CLI 比插件旧」。desktop 与
+  // JetBrains 的同一回落点都是「拉取 + 推送」（pullAndPushMessages），这里是三端里
+  // 唯一只写不推的一处。
+  it("旧 CLI 回落：拉取后把全量列表推给 webview，而不是只刷缓存", async () => {
+    const client = fakeClient();
+    const pulledMessages = [compactMessage];
+    client.request.mockImplementation(async (method: string) => {
+      if (method === "initialize") {
+        return {
+          sessionId: "sess-1",
+          workingDirectory: "/test-workspace",
+          permissionMode: "default",
+          latestTotalTokens: 0,
+        };
+      }
+      if (method === "getMessages") return { messages: pulledMessages };
+      return {};
+    });
+    const cbs = callbacks();
+    const session = new ChatSession("sidebar", undefined, cbs);
+    await session.initialize(
+      undefined,
+      client as unknown as StdioClient,
+      fakeRouter() as unknown as NotificationRouter,
+    );
+
+    session.agent!.handleNotification("compactBlockAdded", {
+      content: "对话摘要",
+    });
+
+    await vi.waitFor(() => {
+      expect(cbs.onMessagesReplaced).toHaveBeenCalledWith(pulledMessages);
+    });
+    // The cache was re-pulled too — the push is an addition, not a replacement.
+    expect(session.messages).toContainEqual(compactMessage);
     expect(cbs.onCompactBlockAdded).not.toHaveBeenCalled();
   });
 });

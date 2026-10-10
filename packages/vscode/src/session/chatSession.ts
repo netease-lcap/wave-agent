@@ -59,6 +59,9 @@ export interface ChatSessionCallbacks {
   /** The compact summary block the server appended to its display stream; the
    * host appends it to the webview list instead of re-pushing the whole list. */
   onCompactBlockAdded?: (message: Message) => void;
+  /** Full-list push — only used by the compact fallback below (an old CLI whose
+   * notification carries no `message`, so the list had to be re-pulled). */
+  onMessagesReplaced?: (messages: Message[]) => void;
   onBtwContent?: (params: {
     question: string;
     content: string;
@@ -145,9 +148,14 @@ export class ChatSession {
             this.callbacks.onCompactBlockAdded?.(message);
             return;
           }
-          // Older CLI without the field on the wire: refresh the cache (the
-          // webview picks the list up on its next webviewReady).
-          void this.getMessages();
+          // Older CLI without the field on the wire: the summary is already in
+          // the server's display stream, so re-pull the cache AND push the list.
+          // Refreshing the cache alone would leave the webview showing a list
+          // without the summary until its next webviewReady — i.e. the very bug
+          // the append path above fixes, just with a narrower trigger.
+          void this.getMessages().then((messages) => {
+            this.callbacks.onMessagesReplaced?.(messages);
+          });
         },
         onCompactionStateChange: (isCompacting: boolean) => {
           this.isCompacting = isCompacting;
