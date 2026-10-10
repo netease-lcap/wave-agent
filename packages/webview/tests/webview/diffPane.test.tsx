@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent, screen } from "@testing-library/react";
 import React from "react";
-import { DiffPane, formatDiffComment } from "../../src/components/DiffPane";
+import { DiffPane } from "../../src/components/DiffPane";
+import { formatCodeComment } from "../../src/utils/codeComment";
 import type {
   WorkspaceDiffBase,
   WorkspaceDiffCommit,
@@ -279,8 +280,8 @@ describe("DiffPane", () => {
     sendDiffResult([
       makeFile({ hunks: "@@ -1 +1 @@\n-const x = 1;\n+const x = 2;" }),
     ]);
-    expect(screen.getByTestId("diff-comment-add-1")).toBeInTheDocument();
-    expect(screen.getByTestId("diff-comment-add-2")).toBeInTheDocument();
+    expect(screen.getByTestId("line-comment-add-1")).toBeInTheDocument();
+    expect(screen.getByTestId("line-comment-add-2")).toBeInTheDocument();
   });
 
   it("binary files show a placeholder instead of hunks", () => {
@@ -741,7 +742,7 @@ describe("DiffPane", () => {
         "const x = 1;",
       );
       expect(container.querySelector(".diff-line-added")).not.toBeNull();
-      expect(screen.getByTestId("diff-comment-add-1")).toBeInTheDocument();
+      expect(screen.getByTestId("line-comment-add-1")).toBeInTheDocument();
     });
   });
 
@@ -786,19 +787,19 @@ describe("DiffPane", () => {
       sendDiffResult([
         makeFile({ hunks: "@@ -1 +1 @@\n-const x = 1;\n+const x = 2;" }),
       ]);
-      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
-      fireEvent.change(screen.getByTestId("diff-comment-input"), {
+      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      fireEvent.change(screen.getByTestId("line-comment-input"), {
         target: { value: "半截草稿" },
       });
       const before = lastDiffRequest(vscode).length;
       fireEvent.click(screen.getByTestId("diff-view-split"));
-      expect(screen.queryByTestId("diff-comment-box")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("line-comment-box")).not.toBeInTheDocument();
       expect(lastDiffRequest(vscode).length).toBe(before);
       // Back to unified: the draft is gone, the file is still expanded.
       fireEvent.click(screen.getByTestId("diff-view-unified"));
       expect(container.querySelectorAll(".diff-file-body")).toHaveLength(1);
-      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
-      expect(screen.getByTestId("diff-comment-input")).toHaveValue("");
+      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      expect(screen.getByTestId("line-comment-input")).toHaveValue("");
     });
 
     it("spans the comment box across both columns", () => {
@@ -807,8 +808,8 @@ describe("DiffPane", () => {
         makeFile({ hunks: "@@ -1 +1 @@\n-const x = 1;\n+const x = 2;" }),
       ]);
       fireEvent.click(screen.getByTestId("diff-view-split"));
-      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
-      const box = screen.getByTestId("diff-comment-box");
+      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      const box = screen.getByTestId("line-comment-box");
       expect(box.closest(".diff-split-row")).not.toBeNull();
     });
   });
@@ -909,32 +910,32 @@ describe("DiffPane", () => {
   describe("line comments", () => {
     it("formats a diff-line comment with path, prefix and text", () => {
       expect(
-        formatDiffComment({
+        formatCodeComment({
           path: "a.ts",
           prefix: "+",
           text: "x",
           comment: "改这里",
         }),
-      ).toBe("**差异评论** · a.ts\n`+`「x」\n\n改这里");
+      ).toBe("**代码评论** · a.ts\n`+`「x」\n\n改这里");
       // context-line prefix (space) is omitted
       expect(
-        formatDiffComment({
+        formatCodeComment({
           path: "a.ts",
           prefix: " ",
           text: "x",
           comment: "c",
         }),
-      ).toBe("**差异评论** · a.ts\n「x」\n\nc");
+      ).toBe("**代码评论** · a.ts\n「x」\n\nc");
     });
 
     it("shows a comment button on each commentable line (not on @@ headers)", () => {
       renderPane();
       sendDiffResult([makeFile()]);
-      expect(screen.getByTestId("diff-comment-add-1")).toBeInTheDocument();
-      expect(screen.getByTestId("diff-comment-add-2")).toBeInTheDocument();
-      expect(screen.getByTestId("diff-comment-add-3")).toBeInTheDocument();
+      expect(screen.getByTestId("line-comment-add-1")).toBeInTheDocument();
+      expect(screen.getByTestId("line-comment-add-2")).toBeInTheDocument();
+      expect(screen.getByTestId("line-comment-add-3")).toBeInTheDocument();
       expect(
-        screen.queryByTestId("diff-comment-add-0"),
+        screen.queryByTestId("line-comment-add-0"),
       ).not.toBeInTheDocument();
     });
 
@@ -963,11 +964,11 @@ describe("DiffPane", () => {
     it("opens a comment box under the clicked line with the file path", () => {
       renderPane();
       sendDiffResult([makeFile()]);
-      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
-      const box = screen.getByTestId("diff-comment-box");
+      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      const box = screen.getByTestId("line-comment-box");
       expect(box).toBeInTheDocument();
-      expect(screen.getByTestId("diff-comment-input")).toBeInTheDocument();
-      expect(box.querySelector(".diff-comment-box-tag")).toHaveTextContent(
+      expect(screen.getByTestId("line-comment-input")).toBeInTheDocument();
+      expect(box.querySelector(".line-comment-box-tag")).toHaveTextContent(
         "src/a.ts",
       );
     });
@@ -976,23 +977,23 @@ describe("DiffPane", () => {
       const onAddComment = vi.fn();
       renderPane({ onAddComment });
       sendDiffResult([makeFile()]);
-      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
-      fireEvent.change(screen.getByTestId("diff-comment-input"), {
+      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      fireEvent.change(screen.getByTestId("line-comment-input"), {
         target: { value: "改这里" },
       });
-      fireEvent.click(screen.getByTestId("diff-comment-submit"));
+      fireEvent.click(screen.getByTestId("line-comment-submit"));
       expect(onAddComment).toHaveBeenCalledWith(
-        "**差异评论** · src/a.ts\n`+`「new1」\n\n改这里",
+        "**代码评论** · src/a.ts\n`+`「new1」\n\n改这里",
       );
-      expect(screen.queryByTestId("diff-comment-box")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("line-comment-box")).not.toBeInTheDocument();
     });
 
     it("submits on Enter (without shift)", () => {
       const onAddComment = vi.fn();
       renderPane({ onAddComment });
       sendDiffResult([makeFile()]);
-      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
-      const input = screen.getByTestId("diff-comment-input");
+      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      const input = screen.getByTestId("line-comment-input");
       fireEvent.change(input, { target: { value: "好" } });
       fireEvent.keyDown(input, { key: "Enter" });
       expect(onAddComment).toHaveBeenCalled();
@@ -1002,8 +1003,8 @@ describe("DiffPane", () => {
       const onAddComment = vi.fn();
       renderPane({ onAddComment });
       sendDiffResult([makeFile()]);
-      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
-      const input = screen.getByTestId("diff-comment-input");
+      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      const input = screen.getByTestId("line-comment-input");
       fireEvent.change(input, { target: { value: "改这里" } });
       // Chinese IME uses Enter to confirm the candidate; that keydown fires
       // with isComposing=true (keyCode 229) and must NOT submit the draft.
@@ -1019,45 +1020,45 @@ describe("DiffPane", () => {
       const onAddComment = vi.fn();
       renderPane({ onAddComment });
       sendDiffResult([makeFile()]);
-      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
-      fireEvent.click(screen.getByTestId("diff-comment-submit"));
+      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      fireEvent.click(screen.getByTestId("line-comment-submit"));
       expect(onAddComment).not.toHaveBeenCalled();
     });
 
     it("closes the box on Escape", () => {
       renderPane();
       sendDiffResult([makeFile()]);
-      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
-      fireEvent.keyDown(screen.getByTestId("diff-comment-input"), {
+      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      fireEvent.keyDown(screen.getByTestId("line-comment-input"), {
         key: "Escape",
       });
-      expect(screen.queryByTestId("diff-comment-box")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("line-comment-box")).not.toBeInTheDocument();
     });
 
     it("closes the box via the cancel button", () => {
       renderPane();
       sendDiffResult([makeFile()]);
-      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
-      fireEvent.click(screen.getByTestId("diff-comment-cancel"));
-      expect(screen.queryByTestId("diff-comment-box")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      fireEvent.click(screen.getByTestId("line-comment-cancel"));
+      expect(screen.queryByTestId("line-comment-box")).not.toBeInTheDocument();
     });
 
     it("discards the open comment box on refresh", () => {
       renderPane();
       sendDiffResult([makeFile()]);
-      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
-      expect(screen.getByTestId("diff-comment-box")).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      expect(screen.getByTestId("line-comment-box")).toBeInTheDocument();
       fireEvent.click(screen.getByTestId("diff-refresh"));
-      expect(screen.queryByTestId("diff-comment-box")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("line-comment-box")).not.toBeInTheDocument();
     });
 
     it("keeps at most one comment box open (clicking another line moves it)", () => {
       renderPane();
       sendDiffResult([makeFile()]);
-      fireEvent.click(screen.getByTestId("diff-comment-add-2"));
-      expect(screen.getByTestId("diff-comment-box")).toBeInTheDocument();
-      fireEvent.click(screen.getByTestId("diff-comment-add-3"));
-      expect(screen.queryAllByTestId("diff-comment-box")).toHaveLength(1);
+      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      expect(screen.getByTestId("line-comment-box")).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("line-comment-add-3"));
+      expect(screen.queryAllByTestId("line-comment-box")).toHaveLength(1);
     });
   });
 });

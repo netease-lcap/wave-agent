@@ -104,6 +104,7 @@ function renderPane(
     onOpenExternal?: (path: string) => void;
     vscode?: VsCodeApi;
     onOpenFileInPanel?: (path: string) => void;
+    onAddComment?: (text: string) => void;
   } = {},
 ) {
   const fileView =
@@ -115,6 +116,7 @@ function renderPane(
     workdir: options.workdir,
     vscode: options.vscode,
     onOpenFileInPanel: options.onOpenFileInPanel,
+    onAddComment: options.onAddComment,
   };
   const result = render(<FilePane {...props} />);
   const rerenderWith = (next: FileViewState | null) =>
@@ -340,6 +342,116 @@ describe("FilePane", () => {
   it("has no in-pane close button (关闭统一由一级 tab 控制)", () => {
     renderPane();
     expect(screen.queryByTestId("file-close")).not.toBeInTheDocument();
+  });
+
+  describe("line comments", () => {
+    it("renders no comment affordance without a comment sink", () => {
+      renderPane({ fileView: makeFileView({ content: "a\nb\n" }) });
+      expect(
+        screen.queryByTestId("line-comment-add-1"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("puts a comment button on every rendered line", () => {
+      renderPane({
+        fileView: makeFileView({ content: "a\nb\n" }),
+        onAddComment: vi.fn(),
+      });
+      expect(screen.getByTestId("line-comment-add-1")).toBeInTheDocument();
+      expect(screen.getByTestId("line-comment-add-2")).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("line-comment-add-3"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("appends the comment with path, line number and line content", () => {
+      const onAddComment = vi.fn();
+      renderPane({
+        fileView: makeFileView({ content: "const a = 1;\nconst b = 2;\n" }),
+        workdir: "/work/a",
+        onAddComment,
+      });
+      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      const box = screen.getByTestId("line-comment-box");
+      expect(box.querySelector(".line-comment-box-tag")).toHaveTextContent(
+        "src/app.ts",
+      );
+      fireEvent.change(screen.getByTestId("line-comment-input"), {
+        target: { value: "这里要改" },
+      });
+      fireEvent.click(screen.getByTestId("line-comment-submit"));
+      expect(onAddComment).toHaveBeenCalledWith(
+        "**代码评论** · src/app.ts\n第 2 行「const b = 2;」\n\n这里要改",
+      );
+      // The box closes and the comment is not kept in the pane — only the
+      // chat input has it (spec「文件面板行评论」场景 2).
+      expect(screen.queryByTestId("line-comment-box")).not.toBeInTheDocument();
+    });
+
+    it("submits with Enter and closes without submitting on Escape", () => {
+      const onAddComment = vi.fn();
+      renderPane({
+        fileView: makeFileView({ content: "a\nb\n" }),
+        onAddComment,
+      });
+      fireEvent.click(screen.getByTestId("line-comment-add-1"));
+      const input = screen.getByTestId("line-comment-input");
+      fireEvent.change(input, { target: { value: "first" } });
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(onAddComment).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(screen.getByTestId("line-comment-add-1"));
+      fireEvent.change(screen.getByTestId("line-comment-input"), {
+        target: { value: "dropped" },
+      });
+      fireEvent.keyDown(screen.getByTestId("line-comment-input"), {
+        key: "Escape",
+      });
+      expect(screen.queryByTestId("line-comment-box")).not.toBeInTheDocument();
+      expect(onAddComment).toHaveBeenCalledTimes(1);
+    });
+
+    it("discards the open box and its draft when the panel switches files", () => {
+      const { rerenderWith } = renderPane({
+        fileView: makeFileView({ content: "a\nb\n" }),
+        onAddComment: vi.fn(),
+      });
+      fireEvent.click(screen.getByTestId("line-comment-add-1"));
+      fireEvent.change(screen.getByTestId("line-comment-input"), {
+        target: { value: "半截草稿" },
+      });
+      rerenderWith(
+        makeFileView({ path: "/work/a/src/other.ts", content: "x\ny\n" }),
+      );
+      expect(screen.queryByTestId("line-comment-box")).not.toBeInTheDocument();
+    });
+
+    it("offers no comment button on markdown files", () => {
+      renderPane({
+        fileView: makeFileView({
+          path: "/work/a/README.md",
+          content: "# title\n",
+        }),
+        onAddComment: vi.fn(),
+      });
+      expect(
+        screen.queryByTestId("line-comment-add-1"),
+      ).not.toBeInTheDocument();
+    });
+
+    it("offers no comment button on images", () => {
+      renderPane({
+        fileView: makeFileView({
+          path: "/work/a/logo.png",
+          content: undefined,
+          imageBase64: "data:image/png;base64,AAAA",
+        }),
+        onAddComment: vi.fn(),
+      });
+      expect(
+        screen.queryByTestId("line-comment-add-1"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe("FilePane search (toolbar trigger + popover)", () => {

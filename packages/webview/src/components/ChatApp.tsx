@@ -3359,6 +3359,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           workdir={effectiveWorkdir}
           vscode={vscode}
           onOpenFileInPanel={(path) => handleOpenFile(path)}
+          onAddComment={handleAddComment}
           {...common}
         />
       );

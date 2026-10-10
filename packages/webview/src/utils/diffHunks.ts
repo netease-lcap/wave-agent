@@ -30,7 +30,7 @@ export type DiffRowKind =
 export interface DiffRowSide {
   /**
    * Raw line index inside the hunks text. Unique within one file, so it doubles
-   * as the React key and as the comment-target id (`diff-comment-add-<index>`,
+   * as the React key and as the comment-target id (`line-comment-add-<index>`,
    * which the existing tests pin).
    */
   index: number;

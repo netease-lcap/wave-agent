@@ -9,11 +9,13 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
 import type { FileItem, FileViewState, VsCodeApi } from "../types";
+import { formatCodeComment } from "../utils/codeComment";
 import { toRelativePath } from "../utils/messageUtils";
 import { useClickOutside } from "../utils/useClickOutside";
 import { useHostMessage } from "../utils/useHostMessage";
 import { FileSuggestionDropdown } from "./FileSuggestionDropdown";
 import { OpenBrowserIcon, SearchIcon } from "./HeaderIcons";
+import { LineCommentBox } from "./LineCommentBox";
 import { PanelKindIcon } from "./PanelKindIcon";
 import { PanePlaceholder, PaneShell } from "./PaneShell";
 import "../styles/FilePane.css";
@@ -209,6 +211,11 @@ export interface FilePaneProps {
   vscode?: VsCodeApi;
   /** Open a file in the panel (same flow as clicking a message file path). */
   onOpenFileInPanel?: (path: string) => void;
+  /**
+   * Receives a formatted line comment; appended to the chat input. Absent →
+   * the code view renders no comment buttons at all.
+   */
+  onAddComment?: (text: string) => void;
 }
 
 /**
@@ -225,6 +232,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   workdir,
   vscode,
   onOpenFileInPanel,
+  onAddComment,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -395,25 +403,33 @@ export const FilePane: React.FC<FilePaneProps> = ({
   );
 
   // Per-line fragments: syntax-highlighted (balanced spans) or plain text.
+  // `text` is kept alongside `html` because a line comment quotes the source,
+  // not the highlighted markup.
   const contentLines = useMemo(() => {
     const content = fileView?.content;
     if (!content) return null;
     const raw = content.replace(/\n$/, "");
+    const rawLines = raw.split("\n");
     const ext = (fileView.path.split(".").pop() ?? "").toLowerCase();
     const language =
       EXT_LANGUAGE[ext] && hljs.getLanguage(EXT_LANGUAGE[ext])
         ? EXT_LANGUAGE[ext]
         : "";
+    let highlighted: string[] | null = null;
     if (language) {
       try {
-        return splitHighlightedHtml(
+        highlighted = splitHighlightedHtml(
           hljs.highlight(raw, { language, ignoreIllegals: true }).value,
         );
       } catch {
         /* fall back to plain text below */
       }
     }
-    return escapeHtml(raw).split("\n");
+    return rawLines.map((text, i) => ({
+      text,
+      // `&nbsp;` keeps an empty line from collapsing to zero height.
+      html: highlighted?.[i] || escapeHtml(text) || "&nbsp;",
+    }));
   }, [fileView?.content, fileView?.path]);
 
   // Jump to the requested line range on open / file switch.
@@ -433,6 +449,50 @@ export const FilePane: React.FC<FilePaneProps> = ({
   );
   const isLocal = fileView?.host === "local";
   const markdown = fileView?.content ? isMarkdownPath(fileView.path) : false;
+
+  // Inline line comments — the same interaction as the diff pane: hovering a
+  // line reveals a "+" button, clicking opens a box under that line, and the
+  // submitted comment is appended to the chat input (never sent directly, and
+  // never kept in the panel). Only the code view can host them: a markdown file
+  // renders to HTML with no line numbers, and an image has no lines at all.
+  const [commentLine, setCommentLine] = useState<number | null>(null);
+  const [commentDraft, setCommentDraft] = useState("");
+
+  const closeComment = useCallback(() => {
+    setCommentLine(null);
+    setCommentDraft("");
+  }, []);
+
+  // A different file — or a fresh read of the same one — invalidates both the
+  // open box and its draft: the line it pointed at may no longer be there
+  // (spec「文件面板行评论」场景 5).
+  useEffect(() => {
+    closeComment();
+  }, [fileView?.path, fileView?.content, closeComment]);
+
+  const submitComment = useCallback(() => {
+    const comment = commentDraft.trim();
+    if (commentLine === null || !comment || !onAddComment || !fileView) return;
+    onAddComment(
+      formatCodeComment({
+        path: relativePath || fileView.path,
+        line: commentLine,
+        text: contentLines?.[commentLine - 1]?.text,
+        comment,
+      }),
+    );
+    closeComment();
+  }, [
+    commentDraft,
+    commentLine,
+    onAddComment,
+    fileView,
+    relativePath,
+    contentLines,
+    closeComment,
+  ]);
+
+  const commentTag = relativePath || fileView?.path || "";
 
   return (
     <PaneShell
@@ -581,16 +641,42 @@ export const FilePane: React.FC<FilePaneProps> = ({
               lineNo >= fileView.startLine &&
               (fileView.endLine === undefined || lineNo <= fileView.endLine);
             return (
-              <div
-                key={i}
-                className={`file-pane-line${active ? " file-pane-line--active" : ""}`}
-              >
-                <span className="file-pane-line-no">{lineNo}</span>
-                <span
-                  className="file-pane-line-code"
-                  dangerouslySetInnerHTML={{ __html: line || "&nbsp;" }}
-                />
-              </div>
+              <React.Fragment key={i}>
+                <div
+                  className={`file-pane-line${active ? " file-pane-line--active" : ""}`}
+                >
+                  <span className="file-pane-line-no">
+                    {onAddComment && (
+                      <button
+                        className="line-comment-btn"
+                        title="评论这行"
+                        aria-label={`评论 ${commentTag} 第 ${lineNo} 行`}
+                        data-testid={`line-comment-add-${lineNo}`}
+                        onClick={() => {
+                          setCommentLine(lineNo);
+                          setCommentDraft("");
+                        }}
+                      >
+                        <i className="codicon codicon-add" />
+                      </button>
+                    )}
+                    {lineNo}
+                  </span>
+                  <span
+                    className="file-pane-line-code"
+                    dangerouslySetInnerHTML={{ __html: line.html }}
+                  />
+                </div>
+                {commentLine === lineNo && (
+                  <LineCommentBox
+                    draft={commentDraft}
+                    onDraftChange={setCommentDraft}
+                    onSubmit={submitComment}
+                    onCancel={closeComment}
+                    tag={commentTag}
+                  />
+                )}
+              </React.Fragment>
             );
           })}
           {fileView.truncated && fileView.totalLines === undefined && (

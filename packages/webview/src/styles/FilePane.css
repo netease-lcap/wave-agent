@@ -123,8 +123,12 @@
   position: sticky;
   left: 0;
   flex-shrink: 0;
-  min-width: 52px;
-  padding: 0 10px 0 8px;
+  /* The extra 16px on the left is the comment gutter: it holds the absolutely
+     positioned comment button (LineCommentBox.css) and, because the cell is
+     the sticky one, the button scrolls together with the number instead of
+     sliding under the code column. */
+  min-width: 68px;
+  padding: 0 10px 0 24px;
   text-align: right;
   color: var(--vscode-editorLineNumber-foreground, #858585);
   background: var(--vscode-sideBar-background, var(--vscode-panel-background));
@@ -137,6 +141,13 @@
 
 .file-pane-line-code {
   padding-right: 24px;
+}
+
+/* The code column is as wide as the longest line; cap the comment box so a
+   file with one very long line still gets a readable box. */
+.file-pane-code .line-comment-box {
+  max-width: 560px;
+  margin-left: 24px;
 }
 
 .file-pane-truncated-hint {

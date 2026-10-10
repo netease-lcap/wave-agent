@@ -45,17 +45,15 @@ export const DiffFileRows: React.FC<DiffFileRowsProps> = ({
     sideName: string,
   ) => (
     <button
-      className="diff-line-comment-btn"
+      className="line-comment-btn"
       title="评论这行"
       aria-label={
         side.line === null
           ? `评论 ${file.path}`
           : `评论 ${file.path} 第 ${side.line} 行${sideName}`
       }
-      data-testid={`diff-comment-add-${side.index}`}
-      onClick={() =>
-        onComment({ index: side.index, prefix, text: side.text.slice(0, 30) })
-      }
+      data-testid={`line-comment-add-${side.index}`}
+      onClick={() => onComment({ index: side.index, prefix, text: side.text })}
     >
       <i className="codicon codicon-add" />
     </button>

@@ -158,9 +158,9 @@ test.describe("Desktop Diff Pane Screenshots", () => {
         name: "评论 src/components/LoginForm.tsx 第 14 行（新）",
       })
       .click();
-    await expect(webviewPage.getByTestId("diff-comment-box")).toBeVisible();
+    await expect(webviewPage.getByTestId("line-comment-box")).toBeVisible();
     await webviewPage
-      .getByTestId("diff-comment-input")
+      .getByTestId("line-comment-input")
       .fill("表单提交前先做空值校验，空字段直接返回");
     await screenshotWebp(
       webviewPage,
@@ -168,7 +168,7 @@ test.describe("Desktop Diff Pane Screenshots", () => {
     );
 
     // ── 3. Submit appends the comment to the chat input ──────────
-    await webviewPage.getByTestId("diff-comment-submit").click();
+    await webviewPage.getByTestId("line-comment-submit").click();
     await expect(webviewPage.getByTestId("message-input")).toContainText(
       "表单提交前先做空值校验",
     );

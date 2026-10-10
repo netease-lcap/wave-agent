@@ -1,0 +1,130 @@
+/* Line-comment UI shared by the diff pane and the file pane: the gutter button
+   that opens the box (LineCommentBox.tsx renders the box itself). Both panes
+   use the same markup, so only the host line element differs — `.diff-line`
+   vs `.file-pane-line`. Each host reserves a 16px gutter (the diff line via
+   padding-left, the file pane's sticky line-number cell via its own padding)
+   so the absolutely positioned button never covers code or line numbers. */
+
+.line-comment-btn {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  border: none;
+  border-radius: 4px;
+  padding: 0;
+  color: var(--vscode-textLink-foreground, #3794ff);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s;
+  line-height: 1;
+  z-index: 1;
+}
+
+/* Revealed by hovering the line that hosts it, in either pane. */
+.diff-line:hover .line-comment-btn,
+.file-pane-line:hover .line-comment-btn {
+  opacity: 1;
+}
+
+.line-comment-btn:hover {
+  background: var(--vscode-textLink-foreground, #3794ff);
+  color: var(--vscode-editor-background, #1e1e1e);
+}
+
+/* Bump specificity to (0,3,0) so it beats the codicons.css baseline
+   `.codicon[class*="codicon-"]` (0,2,0) that otherwise pins icons to 16px. */
+.diff-line .line-comment-btn .codicon,
+.file-pane-line .line-comment-btn .codicon {
+  font-size: 9px;
+}
+
+/* Inline comment box rendered under the commented line. */
+.line-comment-box {
+  margin: 4px 8px;
+  padding: 6px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 4px;
+  background: var(--vscode-input-background);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.line-comment-box:focus-within {
+  border-color: var(--vscode-focusBorder);
+}
+
+.line-comment-input {
+  width: 100%;
+  min-height: 40px;
+  resize: vertical;
+  box-sizing: border-box;
+  background: transparent;
+  color: var(--vscode-input-foreground);
+  border: none;
+  padding: 0;
+  font: inherit;
+  outline: none;
+}
+
+.line-comment-box-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.line-comment-box-tag {
+  flex: 1;
+  color: var(--vscode-textLink-foreground, var(--vscode-foreground));
+  font-family: var(
+    --vscode-editor-font-family,
+    "Consolas",
+    "Monaco",
+    monospace
+  );
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line-comment-box-cancel {
+  background: transparent;
+  color: var(--vscode-foreground);
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 3px;
+  font-size: 11px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.line-comment-box-cancel:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.line-comment-box-send {
+  background: transparent;
+  color: var(--vscode-textLink-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 3px;
+  font-size: 11px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
+.line-comment-box-send:hover:not(:disabled) {
+  background: var(--vscode-list-hoverBackground);
+  border-color: var(--vscode-focusBorder);
+}
+
+.line-comment-box-send:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
