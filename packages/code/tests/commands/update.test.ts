@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { spawnSync, spawn, fetchMock } = vi.hoisted(() => ({
+const { spawnSync, spawn, fetchMock, unref } = vi.hoisted(() => ({
   spawnSync: vi.fn(),
   spawn: vi.fn(),
   fetchMock: vi.fn(),
+  unref: vi.fn(),
 }));
 
 vi.mock("child_process", () => ({ spawnSync, spawn }));
@@ -36,6 +37,14 @@ const exitSpy = vi
     throw new ExitSignal(exitCode);
   });
 
+/** Pins the platform the command reads, because the install forks on it: Windows
+ * spawns a detached `cmd.exe` instead of running `spawnSync` in-process. Left to
+ * the host, the suite would silently exercise one branch and skip the other —
+ * the CI matrix runs this file on Windows, where the opposite branch is the one
+ * that gets exercised. Defaults to a non-Windows host; the Windows tests
+ * override it. */
+const platformSpy = vi.spyOn(process, "platform", "get");
+
 /** Runs the command and returns the first exit code it asked for.
  *
  * The command wraps its body in a try/catch that reports and then exits 1, so
@@ -61,6 +70,22 @@ function installCall() {
   return spawnSync.mock.calls.at(-1) as [string, string[], object];
 }
 
+/** The args of the final spawn — the detached `cmd.exe` install, which is the
+ * only child the Windows path spawns. */
+function installChild() {
+  return spawn.mock.calls.at(-1) as [string, string[], object];
+}
+
+/** The install commands hidden among the detection probes — empty whenever the
+ * install did not go through spawnSync (the Windows path, where the probes are
+ * all spawnSync is for). */
+function spawnSyncInstalls() {
+  return spawnSync.mock.calls.filter((call) => {
+    const args = call[1] as string[];
+    return args.includes("wave-code@latest");
+  });
+}
+
 /**
  * Answers every spawnSync with the given package manager owning the global
  * install: its probes report wave-code as installed and its install succeeds,
@@ -79,6 +104,10 @@ beforeEach(() => {
   logSpy.mockClear();
   errorSpy.mockClear();
   exitSpy.mockClear();
+  platformSpy.mockReturnValue("linux");
+  // Returns a child so `unref()` resolves: a bare vi.fn() returns undefined and
+  // the detached branch dies on it before it can exit.
+  spawn.mockReturnValue({ unref });
   vi.stubGlobal("fetch", fetchMock);
   usePackageManager("npm");
 });
@@ -86,6 +115,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   spawnSync.mockReset();
+  spawn.mockReset();
+  unref.mockReset();
   fetchMock.mockReset();
 });
 
@@ -108,6 +139,8 @@ describe("updateCommand registry", () => {
       ["install", "-g", "wave-code@latest", `--registry=${MIRROR}`],
       { stdio: "inherit" },
     ]);
+    // In-process install off Windows: nothing detached.
+    expect(spawn).not.toHaveBeenCalled();
   });
 
   it("installs from the mirror for pnpm", async () => {
@@ -181,5 +214,47 @@ describe("updateCommand registry", () => {
 
     expect(await runUpdate()).toBe(0);
     expect(spawnSync).not.toHaveBeenCalled();
+  });
+});
+
+describe("updateCommand on Windows", () => {
+  beforeEach(() => {
+    platformSpy.mockReturnValue("win32");
+  });
+
+  it("hands the install to a detached cmd.exe that repeats the registry", async () => {
+    fetchMock.mockResolvedValue(latestResponse("99.0.0"));
+
+    expect(await runUpdate()).toBe(0);
+
+    const [command, args, options] = installChild();
+    expect(command).toBe("cmd.exe");
+    expect(args[0]).toBe("/c");
+    // The delayed in-place install, as one shell string for cmd.exe.
+    expect(args[1]).toContain("npm install -g wave-code@latest");
+    expect(args[1]).toContain(`--registry=${MIRROR}`);
+    expect(options).toEqual({
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(unref).toHaveBeenCalled();
+    // spawnSync still detected the package manager, but ran no install: the
+    // install is the child's job, and the process exited before it.
+    expect(spawnSync).toHaveBeenCalled();
+    expect(spawnSyncInstalls()).toEqual([]);
+  });
+
+  it("repeats the fallback registry in the detached command", async () => {
+    fetchMock
+      .mockRejectedValueOnce(new Error("getaddrinfo ENOTFOUND"))
+      .mockResolvedValueOnce(latestResponse("99.0.0"));
+
+    await runUpdate();
+
+    const embeddedCommand = installChild()[1][1];
+    expect(embeddedCommand).toContain(`--registry=${OFFICIAL}`);
+    expect(embeddedCommand).not.toContain(MIRROR);
   });
 });
