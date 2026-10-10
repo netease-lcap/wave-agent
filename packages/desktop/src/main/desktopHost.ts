@@ -1093,13 +1093,15 @@ export class DesktopHost {
     const paneIdOf = () => this.paneIdForAgent(agentRef);
 
     const callbacks: StdioAgentCallbacks = {
-      // NOTE: no full-list push here. The server no longer emits messagesChange;
-      // the cache is kept fresh via incremental appends below (user/assistant
-      // adds, compact summary block) and pull-based refreshes on structural
-      // transitions (webviewReady / restore / rewind) via
-      // getMessages(). Full-list pushes to the webview happen only through
-      // pullAndPushMessages (updateMessages) and pushPaneSessionState
-      // (setInitialState).
+      // NOTE: no full-list push here. The server no longer emits messagesChange,
+      // so every message callback below must mirror `agentRef.messages` itself —
+      // the desktop serves setInitialState straight from that cache on session /
+      // pane switches, with no pull. The only pull-based refreshes are restore
+      // (getMessages), rewind and the compact fallback (pullAndPushMessages);
+      // webviewReady deliberately does NOT pull, it replays the cache through
+      // pushInitialState → pushPaneSessionState (setInitialState). Full-list
+      // pushes to the webview happen only through pullAndPushMessages
+      // (updateMessages) and pushPaneSessionState (setInitialState).
       onCompactBlockAdded: (content: string, message?: Message) => {
         const paneId = paneIdOf();
         // Compaction only folds the API context; the display stream just gained
@@ -1431,12 +1433,22 @@ export class DesktopHost {
           this.postMessage({ command: "mcpServersUpdate", paneId, servers });
       },
       onNotificationMessageAdded: (params) => {
+        // Mirror the cache first — before the pane check, and even when no pane
+        // is bound, like every sibling callback above. The notification itself
+        // is filtered out of the rendered stream (role user + isMeta, spec
+        // background-task-notification 场景 6), but it still shifts the last
+        // message the error-block branch reads (APPEND_ERROR_BLOCK appends to
+        // the last message only when it is an assistant one), so a cache
+        // missing it would place a later error block differently from the
+        // webview once setInitialState re-renders from the cache.
+        const message = params.message;
+        if (message) agentRef.messages = [...agentRef.messages, message];
         const paneId = paneIdOf();
-        if (paneId && params.message) {
+        if (paneId && message) {
           this.postMessage({
             command: "appendMessage",
             paneId,
-            message: params.message,
+            message,
           });
         }
       },

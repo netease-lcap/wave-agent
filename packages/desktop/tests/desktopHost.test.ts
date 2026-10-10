@@ -1686,6 +1686,107 @@ describe("agent notifications", () => {
     expect(agent.getMessages).toHaveBeenCalled();
   });
 
+  // Regression (9cea65ea): the messagesChange full-snapshot push was replaced by
+  // per-callback cache mirrors, but onNotificationMessageAdded was left as a
+  // push-only callback. The notification itself is filtered out of the rendered
+  // stream (role user + isMeta, spec background-task-notification), yet it still
+  // moves the "last message" the error-block branch reads — a cache missing it
+  // places a later error block differently from the webview, which only shows up
+  // once setInitialState re-renders from the cache (session/pane switch, reload).
+  it("a notification message is mirrored into the cache as well as pushed", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+
+    const notification = {
+      id: "n1",
+      role: "user",
+      isMeta: true,
+      blocks: [
+        {
+          type: "task_notification",
+          taskId: "t1",
+          taskType: "bash",
+          status: "completed",
+          summary: "后台任务完成",
+        },
+      ],
+    };
+    agent.callbacks.onNotificationMessageAdded({
+      taskId: "t1",
+      taskType: "bash",
+      status: "completed",
+      summary: "后台任务完成",
+      message: notification,
+    });
+
+    // The webview is told about the new message ...
+    expect(sent("appendMessage").at(-1)?.message).toMatchObject({ id: "n1" });
+    // ... and the host cache mirrors the server, so a later setInitialState keeps it.
+    expect(agent.messages).toContainEqual(notification);
+
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    expect(sent("setInitialState").at(-1)?.messages).toContainEqual(
+      notification,
+    );
+  });
+
+  it("a notification is mirrored into the cache even when no pane shows the session", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    // A real conversation, so closing its pane leaves the agent in the pool
+    // (only blank agents are destroyed) instead of destroying it.
+    agent.messages = [{ id: "m1", role: "user", blocks: [] }];
+    fireSessionId(agent, "sess-1");
+    await host.handleWebviewMessage({ command: "desktopNewSessionInPane" });
+    const layout = () =>
+      sent("desktopPanes").at(-1)!.panes as Array<{ paneId: string }>;
+    expect(layout()).toHaveLength(2);
+    await host.handleWebviewMessage({
+      command: "desktopClosePane",
+      paneId: layout()[0].paneId,
+    });
+    expect(layout()).toHaveLength(1);
+    expect(agent.destroy).not.toHaveBeenCalled();
+    const appendsBefore = sent("appendMessage").length;
+
+    const notification = {
+      id: "n1",
+      role: "user",
+      isMeta: true,
+      blocks: [{ type: "task_notification", taskId: "t1" }],
+    };
+    agent.callbacks.onNotificationMessageAdded({
+      taskId: "t1",
+      taskType: "bash",
+      status: "completed",
+      summary: "后台任务完成",
+      message: notification,
+    });
+
+    // Nothing is pushed (the session is not displayed anywhere) ...
+    expect(sent("appendMessage")).toHaveLength(appendsBefore);
+    // ... but the cache still records it: the desktop serves setInitialState
+    // from it with no pull, so the message is there when the session is shown again.
+    expect(agent.messages).toContainEqual(notification);
+  });
+
+  it("a notification without a message on the wire leaves the cache untouched", async () => {
+    const { sent } = await readyHost();
+    const agent = lastAgent();
+    const messagesBefore = agent.messages.length;
+    const appendsBefore = sent("appendMessage").length;
+
+    agent.callbacks.onNotificationMessageAdded({
+      taskId: "t1",
+      taskType: "bash",
+      status: "completed",
+      summary: "后台任务完成",
+    });
+
+    expect(agent.messages).toHaveLength(messagesBefore);
+    expect(sent("appendMessage")).toHaveLength(appendsBefore);
+  });
+
   it("restoring a historical session backfills its sidebar title from history (FR-024)", async () => {
     const { host, store, sent } = await readyHost();
     store.upsertSession({
