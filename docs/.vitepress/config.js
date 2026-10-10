@@ -110,6 +110,40 @@ export default {
             { text: "测试报告与回归", link: "/tutorials#_4-测试报告与回归" },
           ],
         },
+        {
+          text: "五、研发知识库：团队知识如何进入 AI",
+          link: "/tutorials#knowledge-base",
+          collapsed: false,
+          items: [
+            {
+              text: "团队知识如何进入 AI 的工作上下文",
+              link: "/tutorials#knowledge-carriers",
+            },
+            {
+              text: "为什么是这个形态",
+              link: "/tutorials#knowledge-rationale",
+            },
+            {
+              text: "能力边界：不对代码仓库建索引",
+              link: "/tutorials#knowledge-limits",
+            },
+          ],
+        },
+        {
+          text: "六、研发效能度量与治理",
+          link: "/tutorials#metrics-governance",
+          collapsed: false,
+          items: [
+            { text: "效能度量分三层看", link: "/tutorials#metrics-layers" },
+            { text: "用量与成本", link: "/tutorials#usage-cost" },
+            {
+              text: "遥测导出（OpenTelemetry）",
+              link: "/tutorials#telemetry-export",
+            },
+            { text: "用量回调（SDK 集成）", link: "/tutorials#usage-callback" },
+            { text: "隐私与治理", link: "/tutorials#telemetry-privacy" },
+          ],
+        },
       ],
       "/guide": [
         {
