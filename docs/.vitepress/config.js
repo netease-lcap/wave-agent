@@ -110,6 +110,21 @@ export default {
             { text: "测试报告与回归", link: "/tutorials#_4-测试报告与回归" },
           ],
         },
+        {
+          text: "五、研发效能度量与治理",
+          link: "/tutorials#五、研发效能度量与治理",
+          collapsed: false,
+          items: [
+            { text: "效能度量分三层看", link: "/tutorials#metrics-layers" },
+            { text: "用量与成本", link: "/tutorials#usage-cost" },
+            {
+              text: "遥测导出（OpenTelemetry）",
+              link: "/tutorials#telemetry-export",
+            },
+            { text: "用量回调（SDK 集成）", link: "/tutorials#usage-callback" },
+            { text: "隐私与治理", link: "/tutorials#telemetry-privacy" },
+          ],
+        },
       ],
       "/guide": [
         {
@@ -128,13 +143,6 @@ export default {
             { text: "套餐产品", link: "/guide#套餐产品" },
             { text: "API 额度", link: "/guide#api-额度" },
             { text: "使用明细", link: "/guide#使用明细" },
-            { text: "效能与用量度量（三层）", link: "/guide#metrics-layers" },
-            {
-              text: "遥测导出（OpenTelemetry）",
-              link: "/guide#telemetry-export",
-            },
-            { text: "用量回调（SDK 集成）", link: "/guide#usage-callback" },
-            { text: "隐私与治理", link: "/guide#telemetry-privacy" },
             { text: "五、订单管理", link: "/guide#orders" },
           ],
         },
