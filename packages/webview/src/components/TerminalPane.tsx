@@ -8,6 +8,7 @@ import { useHostMessage } from "../utils/useHostMessage";
 import { readRootCssVar } from "../utils/cssVars";
 import { RefreshIcon } from "./HeaderIcons";
 import { PanePlaceholder, PaneShell } from "./PaneShell";
+import { Tooltip } from "./Tooltip";
 import "../styles/TerminalPane.css";
 
 declare global {
@@ -296,14 +297,18 @@ export const TerminalPane: React.FC<TerminalPaneProps> = ({
       toolbar={
         <>
           <span className="desktop-panel-toolbar-title">终端</span>
-          <button
-            className="preview-pane-button"
-            title="重启终端"
-            data-testid="terminal-restart"
-            onClick={restart}
-          >
-            <RefreshIcon className="desktop-panel-toolbar-icon" />
-          </button>
+          {/* 1009 评论（同族收齐）：工具条的「重启终端」从原生 `title` 换成自绘
+              气泡；文案原样，`title` 移除、补 `aria-label` 作可访问名。 */}
+          <Tooltip text="重启终端" position="bottom">
+            <button
+              className="preview-pane-button"
+              aria-label="重启终端"
+              data-testid="terminal-restart"
+              onClick={restart}
+            >
+              <RefreshIcon className="desktop-panel-toolbar-icon" />
+            </button>
+          </Tooltip>
         </>
       }
       bodyClassName="terminal-pane-body"

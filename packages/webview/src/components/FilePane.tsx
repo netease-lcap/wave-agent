@@ -18,6 +18,7 @@ import { OpenBrowserIcon, SearchIcon } from "./HeaderIcons";
 import { LineCommentBox } from "./LineCommentBox";
 import { PanelKindIcon } from "./PanelKindIcon";
 import { PanePlaceholder, PaneShell } from "./PaneShell";
+import { Tooltip } from "./Tooltip";
 import "../styles/FilePane.css";
 
 /** Debounce for the panel search requests, matching the message input's. */
@@ -514,29 +515,42 @@ export const FilePane: React.FC<FilePaneProps> = ({
           ) : (
             <span className="desktop-panel-toolbar-title">文件</span>
           )}
+          {/* 1009 评论（三处工具条气泡同族收齐的其中一处）：文件面板工具条的
+              两颗图标按钮从原生 `title` 换成桌面端自绘气泡（`Tooltip`，
+              `position="bottom"`，与预览面板工具条同档）。原 `title` 文案原样
+              搬进气泡；`title` 移除以免 OS 原生气泡叠成两层。
+              - 「在默认应用中打开」：原 `title`/气泡文案一致，`aria-label` 同文案。
+              - 搜索触发器：气泡文案跟随状态（原 `title` 就是动态的），
+                而 `aria-label` 保持稳定的「搜索文件」（改的是开关，名字不该跟着翻）。 */}
           {fileView && isLocal && onOpenExternal && (
-            <button
-              className="preview-pane-button"
-              title="在默认应用中打开"
-              data-testid="file-open-external"
-              onClick={() => onOpenExternal(fileView.path)}
-            >
-              <OpenBrowserIcon className="preview-pane-icon" />
-            </button>
+            <Tooltip text="在默认应用中打开" position="bottom">
+              <button
+                className="preview-pane-button"
+                aria-label="在默认应用中打开"
+                data-testid="file-open-external"
+                onClick={() => onOpenExternal(fileView.path)}
+              >
+                <OpenBrowserIcon className="preview-pane-icon" />
+              </button>
+            </Tooltip>
           )}
           {vscode && (
-            <button
-              type="button"
-              ref={searchTriggerRef}
-              className={`preview-pane-button file-pane-search-trigger${searchOpen ? " active" : ""}`}
-              data-testid="file-pane-search-trigger"
-              title={searchOpen ? "收起文件搜索" : "搜索文件"}
-              aria-label="搜索文件"
-              aria-expanded={searchOpen}
-              onClick={searchOpen ? closeSearch : openSearch}
+            <Tooltip
+              text={searchOpen ? "收起文件搜索" : "搜索文件"}
+              position="bottom"
             >
-              <SearchIcon className="preview-pane-icon" />
-            </button>
+              <button
+                type="button"
+                ref={searchTriggerRef}
+                className={`preview-pane-button file-pane-search-trigger${searchOpen ? " active" : ""}`}
+                data-testid="file-pane-search-trigger"
+                aria-label="搜索文件"
+                aria-expanded={searchOpen}
+                onClick={searchOpen ? closeSearch : openSearch}
+              >
+                <SearchIcon className="preview-pane-icon" />
+              </button>
+            </Tooltip>
           )}
         </>
       }

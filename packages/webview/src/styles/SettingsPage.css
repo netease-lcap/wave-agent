@@ -1725,7 +1725,11 @@
   color: var(--vscode-foreground);
   text-align: left;
   /* 0915-T-01：静态选项面 = resting 填充（原借 toolbar-hoverBackground）；
-     0915-D-01：10px → 8px（回到 4/6/8/12/999 刻度） */
+     0915-D-01：10px → 8px（回到 4/6/8/12/999 刻度）。
+     ⚠️ 这里是 **IDE 档**（VS Code / JetBrains）的取值；桌面端 1009 评论的选项状态重排
+     （未选中去填充面 + 1px 描边、hover 描边加深一档、禁用 not-allowed）写在
+     `host-desktop.css` 的「1009 评论：作用域弹窗选项状态重排」一节，只走
+     `[data-host="desktop"]`（她 2026-10-10 裁定「收窄到只桌面端」）。 */
   background: var(--cc-fill, var(--vscode-toolbar-hoverBackground));
   border: 1px solid transparent;
   border-radius: 8px;
@@ -1797,7 +1801,8 @@
 }
 
 /* 锚点为空：project / local 两档置灰不可选（spec 场景 12），连悬浮高亮一起停掉，
-   不留「看起来还能点」的观感 */
+   不留「看起来还能点」的观感。⚠️ 同上：桌面端的禁用档（去灰底 + 常显描边 +
+   `cursor: not-allowed`）在 `host-desktop.css` 的同一节，base 保持 IDE 原样。 */
 .settings-scope-option:disabled {
   opacity: 0.6;
   cursor: default;

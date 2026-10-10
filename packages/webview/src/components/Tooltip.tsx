@@ -6,6 +6,7 @@ import React, {
   useRef,
   useCallback,
 } from "react";
+import { createPortal } from "react-dom";
 import "../styles/Tooltip.css";
 import { isDesktopHost } from "../utils/platform";
 
@@ -37,6 +38,17 @@ interface TooltipProps {
    * the hint starts at the row's visual edge rather than the content's).
    */
   anchorRef?: RefObject<HTMLElement>;
+  /**
+   * 把气泡挂到 `document.body`（默认 `false` = 留在原地）。
+   *
+   * 触发元素落在带 `transform` / `overflow` 的容器里时必须开：`transform` 会给
+   * `position: fixed` 的后代**换一个包含块**（气泡被压进那个容器的坐标系，宽度按
+   * 容器余量收缩、`left/top` 也按容器算），容器自己的 `overflow: auto/hidden` 还会
+   * 把气泡裁掉。斜杠命令弹窗（`.slash-commands-popup`：`transform: translateY(-100%)`
+   * + `overflow-y: auto`）正是这种情况——实测不开 portal 时气泡会塌成 38px 宽、
+   * 1450px 高并跑到视口外。
+   */
+  portal?: boolean;
 }
 
 export const Tooltip: React.FC<TooltipProps> = ({
@@ -48,6 +60,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
   className = "",
   multiline = false,
   anchorRef,
+  portal = false,
 }) => {
   // 气泡↔触发的间距：桌面端按 skill 的下拉契约收成 4px（design-system.md:142
   // 「poppers carry no arrow、trigger-to-panel gap 4px」，桌面档角标已在
@@ -138,6 +151,18 @@ export const Tooltip: React.FC<TooltipProps> = ({
   };
   const handleHide = () => setIsVisible(false);
 
+  const tooltipBox = (
+    <div
+      id={id}
+      role="tooltip"
+      ref={tooltipRef}
+      className={`tooltip-box tooltip-${position} ${isVisible ? "visible" : ""} ${multiline ? "tooltip-multiline" : ""}`}
+      style={tooltipStyle}
+    >
+      {text}
+    </div>
+  );
+
   return (
     <span
       className={`tooltip-container ${className}`}
@@ -150,15 +175,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
       {React.cloneElement(children, {
         "aria-describedby": id,
       })}
-      <div
-        id={id}
-        role="tooltip"
-        ref={tooltipRef}
-        className={`tooltip-box tooltip-${position} ${isVisible ? "visible" : ""} ${multiline ? "tooltip-multiline" : ""}`}
-        style={tooltipStyle}
-      >
-        {text}
-      </div>
+      {portal ? createPortal(tooltipBox, document.body) : tooltipBox}
     </span>
   );
 };

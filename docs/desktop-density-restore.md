@@ -7543,3 +7543,529 @@ IDE / VS Code 宿主一起变。这些 base 声明都是单类 (0,1,0)，`[data-
 错误 0、axe 浅深 0/0、640 窄屏无横溢）；「改前」一律是**真回退**（回退 `host-desktop.css` 后重新构建并逐字节
 核 md5，不是注入模拟）；字号那份是唯一的**试算（what-if）**报告、已在报告 notice 里声明。本轮纯 CSS 值改动，
 无业务单测覆盖。
+
+## 1009 评论（预览面板工具条三颗图标按钮的气泡提示）
+
+### ① 来源
+
+她 1009 在预览（`http://localhost:8899`）点 `button.preview-pane-button` —— path 为
+`div:nth-of-type(2) > div:nth-of-type(3) > div > div > aside > div > div:nth-of-type(1) > button:nth-of-type(1)`
+（预览面板工具条第一颗，即「选择元素并评论」）：「**这边三个功能缺少气泡提示**」。
+
+范围口径 = 同一行那**三颗图标按钮**（选择元素并评论 / 刷新 / 在浏览器中打开）。第 4 颗（加载失败态才出现的
+文本按钮「重试」）与别处同族按钮（文件面板、终端面板、diff 面板、面板页签）**本轮不动**，列在 ⑥ 等你点名。
+
+### ② 改动（1 文件，3 处）
+
+`packages/webview/src/components/PreviewPane.tsx`：① 引入既有的 `Tooltip`；② 三颗按钮各包一层
+`<Tooltip text="…" position="bottom">`；③ 原来的 `title` 删掉、同一句文案落到 `aria-label`。
+
+```tsx
+<Tooltip text="选择元素并评论" position="bottom">
+  <button
+    className={`preview-pane-button${pickerActive ? " active" : ""}`}
+    aria-label="选择元素并评论"
+    aria-pressed={pickerActive}
+    data-testid="preview-picker-toggle"
+    onClick={togglePicker}
+  >
+    <InspectorCursorIcon className="preview-pane-icon" />
+  </button>
+</Tooltip>
+```
+
+三颗的 `className` / `data-testid` / `onClick` / `aria-pressed` 一字未动；**没有新增任何 CSS 或 token** ——
+气泡外观（12px / 圆角 8 / 内边距 / 投影）与出现延时（100ms）全部来自 0923 轮已落地的桌面皮肤，
+位置档 `bottom` 与间距 `4px` 与 `ChatHeader.tsx` 那一排工具条**同档**（`Tooltip.tsx` 里
+`gap = offset ?? (isDesktopHost() ? 4 : 8)`）。
+
+### ③ 定稿值（headed Chromium 1440×960 DPR2，用例 `tmp-panels-0916`，两档 pageerror 0）
+
+| 项                       | 改前（原生 `title`）                            | 改后（`<Tooltip>`）                                                                                                                     |
+| ------------------------ | ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 三颗按钮几何             | x=1340 / 1372 / 1404，w=24 h=24                 | **逐值相同**（0 位移）                                                                                                                  |
+| 工具条行盒               | 707×36 @(733,87)                                | 逐值相同；行内**0 差异像素**（含悬停底色）                                                                                              |
+| 气泡文案                 | `title`：选择元素并评论 / 刷新 / 在浏览器中打开 | 同一句原文（气泡）                                                                                                                      |
+| 气泡盒                   | —                                               | 111.8×30 / 50.5×30 / 111.8×30（随文案自适应）                                                                                           |
+| 气泡规格（浅 / 深）      | —                                               | 12px / r8 / `bottom`；浅 白底 + 1px `#DCDFE6` + `0 0 12px rgba(0,0,0,.12)`；深 `#232526` + 1px `#414649` + `0 12px 30px rgba(0,0,0,.4)` |
+| 气泡与按钮底缘间距       | —                                               | 4px（与对话头工具条同档）                                                                                                               |
+| 出现延时                 | —                                               | 100ms（0/44/87ms 仍透明 → 129ms≈0.06 → 214ms=1，既有 `transition-delay:.1s`）                                                           |
+| 可访问名                 | `title`（原生提示，无 aria-label）              | `aria-label` 同文案 + `aria-describedby`（实测 `:rd:`/`:re:`/`:rf:`）                                                                   |
+| 差异像素（1:1 设备像素） | —                                               | 浅 6877 / 3191 / 6785；深 13236 / 5916 / 13236，**全部落在气泡及其投影内**（浅色投影对称上溢约 6 CSS px）                               |
+
+### ④ 可复用认知
+
+1. **工具条图标按钮补气泡 = 抄 `ChatHeader.tsx` 那一排的写法**：包 `<Tooltip text position="bottom">` +
+   `title` 改成同文案的 `aria-label` + 保留原有 `data-testid`。去掉 `title` 是必须的（否则 OS 原生气泡与
+   自绘气泡会叠成两层），`aria-label` 补上可访问名才不丢（图标按钮没有文字）。
+2. **纯 JSX 包裹可以做到版面 0 位移**：`Tooltip` 的包裹层是 `display: inline-flex; flex-shrink: 0`，
+   在工具条这种 flex 行里与按钮同宽 ⇒ 三颗按钮 x / w 逐值不变，工具条行内 0 像素变化。
+3. **「补气泡」这类改动的证据形态**：① 每颗按钮一张前后对比（1:1 设备像素紧裁窗）；② 一张整条工具条上下文图
+   证明版面没动；③ 气泡规格 / 间距 / 延时 / 可访问名逐项列值。四样齐了才算说清「只多了气泡」。
+
+### ⑤ 坑（都真踩过）
+
+- **定时截图会拿到「没气泡」的那一帧**：`hover()` → `waitForTimeout(310)` → 截图，偶尔截到过渡中途或
+  hover 被打断的帧，而同一份 JSON 里的文案 / 几何字段仍然是对的 ⇒ **只看 JSON 会误判取证成功**。
+  正解 = 轮询到 `class` 含 `visible` 且 `opacity ≥ 0.99` 才按快门，并在**快门前后各校验一次**该状态
+  （不满足就重发 hover 重试，上限 4 次；本轮六张图都是第 1 次通过）。
+- **紧裁窗坐标**：原始图的 (0,0) 对应截图的 clip 起点（CSS 坐标）⇒ `device = (css − clipOrigin) × DPR`。
+  我第一版按 CSS 坐标直接当像素用，裁到了空域 ⇒ 两侧 diff 恒为 0（假「无差异」）。
+- **改前侧的原生 `title` 气泡是 OS 绘制的，页面截图原理上截不到**：所以「改前」图只能证明「页面里没有
+  自己的气泡」，不能给出同一时刻的视觉对照 —— 这条要在报告 notice 里写明，并把 `title` 原文抄进测量 json 留痕。
+- **改前基线要真回退、不是注入**：`git show HEAD:<file> > <file>` → 采集 → 从 `/tmp` 还原 → **md5 逐字节核**
+  （本次 before `6086eaaf…` / after `09cd263c…`）。回退期间别去跑别的采集。
+
+### ⑥ 残留触发语（未授权）
+
+- 「同族一起收」/「文件面板也加气泡」/「终端和 diff 面板也要」/「面板页签也要」—— 文件面板工具条的
+  「在默认应用中打开」「搜索文件」、终端面板、diff 面板、`DesktopPanelTabs` 目前仍是原生 `title`
+- 「重试按钮也要气泡」（错误态的文本按钮，本轮未包）
+- 「气泡文案改一下」（三颗的文案是从原 `title` 原样搬的，改文案会与别处工具条叫法不一致）
+- 「气泡贴边要翻转」（1440 宽下「在浏览器中打开」的气泡右缘落在 1436、余 4px，未触发翻转；更窄窗口未测）
+- 「给气泡一个最小宽度」（属公共气泡样式改动，会同时影响对话头 / 侧栏等所有气泡）
+
+### ⑦ 验证脚本与证据
+
+| 用途     | 脚本（`CC02/走查/_tools/1009/`）                    | 产物（`CC02/走查/`）                                                                |
+| -------- | --------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 采集素材 | `capture-preview-tooltips-1009.mjs <before\|after>` | `1009-预览工具条气泡报告/shots/{_raw,before,after}/`、`measure-{before,after}.json` |
+| 裁图     | `build-preview-tooltip-assets-1009.py`              | 同上 `shots/<side>/<theme>-<asset>-2x.png`                                          |
+| 报告     | `batch-1009-preview-toolbar-tooltips.json`          | `1009-预览工具条气泡报告/index.html`（4 条）                                        |
+
+报告用 skill 母版 `build_repair_report.py`（v1.1）生成、`verify-repair-report.mjs` 自检（图片加载 true、
+错误 0、axe 浅深 0/0、640 窄屏无横溢）。「改前」是**真回退**（`git show HEAD:` 出旧版文件后重新加载，md5 逐字节核过），
+不是注入模拟。本轮纯 JSX 改动、无 CSS，无业务单测覆盖。
+
+## 1009 评论（斜杠命令弹窗的选项描述：最多两行 + 末尾省略 + 截断时 hover 出全文气泡，仅桌面端）
+
+### ① 来源
+
+她 1009 在预览（`http://localhost:8899`）点 `div.slash-group` 里的一条项（她给的 path 是 `div > div`，指
+「系统指令 / clear 清空当前会话 / compact 压缩当前会话…」这个下拉）：「**这个下拉中的选项，我希望描述最多
+显示两行，末尾处...省略，hover 可以在气泡中显示全部内容**」。
+
+范围口径 = 这个弹窗里**每条选项的描述行**。同日她三点裁决：① 范围 **只留桌面**（我第一版没加
+`[data-host="desktop"]`，先把这句摆给她看过）；② 「只对真被省略的那些出气泡」这个读法**正确**（一行装得下 /
+刚好两行的描述 hover **不出**气泡）；③ 气泡方位 `right`、距描述 4px 可接受。
+
+### ② 改动（3 文件，1 处 CSS 值 + 1 个新子组件 + 1 个可选 prop）
+
+`packages/webview/src/styles/SlashCommandsPopup.css`（纯新增，末尾两条规则）：
+
+```css
+[data-host="desktop"] .slash-command-description {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+[data-host="desktop"] .tooltip-container.slash-command-description-wrap {
+  display: block;
+}
+```
+
+base 那条 `.slash-command-description`（字号 12 / 字重 400 / `--vscode-descriptionForeground` / 行高 1.3）**逐字节
+未动** ⇒ IDE 宿主与 main 完全相同；「只留桌面」只由 CSS 作用域这一处表达。
+
+`packages/webview/src/components/SlashCommandsPopup.tsx`：新增子组件 `CommandDescription` —— 描述节点用
+**callback ref 存进 state**，`useLayoutEffect` 里量 `scrollHeight > clientHeight + 1` 判定「真被裁掉」，并挂
+`ResizeObserver` 重测（弹窗宽度随内容浮动）；渲染 `Tooltip multiline position="right" portal
+disabled={!isTruncated}`。
+
+`packages/webview/src/components/Tooltip.tsx`：新增**可选** `portal?: boolean`（默认 `false`），为真时用
+`createPortal` 把气泡挂到 `document.body`。既有 29 处调用（13 个文件）都不传 ⇒ 行为不变。
+
+### ③ 定稿值（headed Chromium 1440×960 DPR2，用例 `tmp-slash-long-1009`（桌面）/ `tmp-slash-long-1009-ide`
+
+（IDE 宿主），两相位 pageerror 0）
+
+| 项                                 | 改前                                     | 改后                                                                                           |
+| ---------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `config`（74 字）描述              | 3.01 行全显示、无省略号                  | **1.99 行**（裁掉 16px）+ 末行「…」                                                            |
+| `rewind`（84 字）描述              | 3.01 行                                  | **1.99 行**（裁掉 16px）                                                                       |
+| `code-review`（101 字）描述        | 3.97 行                                  | **1.99 行**（裁掉 31px）                                                                       |
+| `compact`（29 字，刚好两行）描述   | 1.99 行、无气泡                          | 1.99 行、**无气泡**（不出省略号就不挂包裹层）                                                  |
+| `clear`/`model`/`btw`（一行）描述  | 40.1 / 40.1 / 40.1px 行盒                | **逐值相同**                                                                                   |
+| 弹窗几何                           | 7 项 li 合计 405.5px（弹窗盒 322，可滚） | 7 项 li 合计 **343.1**（`config`/`rewind` 各 −15.6、`code-review` −31.2；盒 322 不变，仍可滚） |
+| 气泡盒（`config` / `code-review`） | —                                        | 386×70 / 386×90（`multiline` 既有规格：12px、`pre-line`、`max-width: 360px`）                  |
+| 气泡与描述右缘间距 / 垂直中心差    | —                                        | **4px** / **0**                                                                                |
+| 气泡文案                           | —                                        | 与描述**逐字相同**（`sameAsFullText: true`）                                                   |
+| 出现时序                           | —                                        | 0/47/96ms 透明 → 141ms≈0.14 → 188ms≈0.88 → **233ms=1**（既有 100ms 延时）                      |
+| 包裹层                             | 不存在                                   | `display: block`（352 宽 = 描述原宽，**0 位移**）                                              |
+| IDE 宿主（`[data-host="ide"]`）    | 3.01 / 3.01 / 3.97 行，无气泡            | **逐值相同**（无 clamp、无包裹层、无气泡）                                                     |
+
+### ④ 可复用认知
+
+1. **`transform` / `overflow` 祖先会把 `position: fixed` 的气泡收进自己的坐标系并裁掉**：
+   `.slash-commands-popup` 有 `transform: translateY(-100%)` + `overflow-y: auto`，不开 portal 时气泡实测塌成
+   **38.3×1450**、横在视口中间（x=1309）被裁得只剩一条边。这类容器里的气泡必须 `createPortal` 到 `body`。
+   本次把开关做成 `Tooltip` 的**可选** prop（默认 false），既有 25 个调用点零影响。
+2. **截断判定的观察节点要存在 state 里（callback ref），不能是 `useRef`**：气泡一挂上，描述 div 就从 `li` 的
+   直接子节点变成包裹层的子节点、**DOM 节点被重建**；`useRef` 抓的旧节点卸载后报 `0/0` ⇒ 判定翻回「未截断」
+   ⇒ 包裹层被摘掉 ⇒ 震荡（实测最终停在「没有气泡」那一侧）。挂 state 上，节点一换就重跑 effect 并重新
+   `observe()`，一次收敛。
+3. **两行 + 末尾省略号只有 `-webkit-line-clamp` 这一条路**（`-webkit-box` + `box-orient: vertical` + `overflow:
+hidden`）；两行 = 2 × 19.5px 行盒（12px × 1.3）。行盒 31.2px，与 `MessageList.css` 里同款 clamp 同值。
+4. **「只留桌面」的最省表达是 CSS 作用域**：组件不做宿主判断 —— IDE 宿主下描述不被裁 ⇒ 量出来就是不截断 ⇒
+   `Tooltip` 走 `disabled` 直接返回原 children（DOM 与 main 逐字相同）。判据 = base 规则里不含 clamp。
+5. `Tooltip` 的包裹层默认 `inline-flex`（为图标按钮那类「一行一个触发」定的）：子元素是块级描述时会把触发盒
+   压成 shrink-to-fit、折行位置跟着变 ⇒ 必须改回 `display: block`；选择器写成
+   `.tooltip-container.slash-command-description-wrap`（0,2,0）稳压 `Tooltip.css` 的 `.tooltip-container`（0,1,0），
+   与两份 CSS 的加载顺序无关。
+
+### ⑤ 坑（都真踩过）
+
+- **portal 之后按 DOM 位置找气泡全部落空**：气泡从包裹层里搬到了 `body` 下，探针里 `wrap.querySelector(".tooltip-box")`
+  恒为 null ⇒ 假「没有气泡」。正解 = 用描述节点上的 `aria-describedby` 反查 `getElementById`。
+- **`+1` 容差是必须的**：12px × 1.3 = 15.6px 的亚像素行高 + 浏览器取整，会把「刚好两行」读成 1px 溢出 ⇒ 边界项
+  会误挂气泡。实测「刚好两行」（`compact`）在 `+1` 下判定 `false`。
+- **新建 mock 文件后的第一次采集会超时**：vite 的用例 glob 感知到新文件会整页重载，`openPopup()` 恰好撞在重载
+  窗口里 ⇒ `waitForSelector('.slash-commands-popup')` 4s 超时。正解 = 重跑一次（本轮第二次即通过）。
+- **改前基线的形态**：本轮改的是「有没有这两条规则」，所以 before = **同页注入回退规则**
+  （`display: block !important` + `-webkit-line-clamp: unset` + `overflow: visible`）—— 注入态下测量值与原文件
+  逐值一致（3.01 / 3.01 / 3.97 行、短描述几何相同），不需要真回退重建；报告里已写明是注入而非回退。
+
+### ⑥ 残留触发语（未授权）
+
+- 「描述改成三行」/「气泡放左边」/「气泡再宽一点」—— 行数与方位是我按她原话定的（两行 / `right`）
+- 「写进规格」—— `docs/specs/ui/slash-commands.md` 目前没有「描述最多两行」这条（规格是设计、不是变更日志）
+- 「别的地方也这样截断」—— 其他宿主里同样会长的描述文本本轮未扫（本次只动这一个弹窗）
+- 「portal 提到通用」—— 目前只有这一个调用点传 `portal`，其余 24 个调用点是否也有 transform 祖先未逐一核
+- 「IDE 宿主也要省略号」—— 本轮她裁定「只留桌面」，base 规则保持原样
+
+### ⑦ 验证脚本与证据
+
+| 用途       | 脚本（`CC02/走查/_tools/1009/`）                       | 产物（`CC02/走查/`）                                                                                          |
+| ---------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| 采集三相位 | `probe-slash-desc-clamp-1009.mjs <before\|after\|ide>` | `1009-斜杠命令描述截断/{measure-before.json, measure-after.json, measure-ide.json, after/ before/ ide/*.png}` |
+
+用例：`tmp-slash-long-1009`（桌面，7 条命令覆盖一档/刚好两档/三档/四档）与 `tmp-slash-long-1009-ide`
+（IDE 宿主，同款描述）。纯 CSS 值 + 一个子组件 + 一个可选 prop，无业务单测覆盖；`pnpm -F wave-webview run
+type-check` 通过。
+
+## 1009 评论（同族工具条图标按钮的气泡提示：文件面板 / 终端 / diff / 面板页签共 7 处）
+
+### ① 来源
+
+上一轮（预览面板工具条三颗）报告 ⑥ 里我列了同族残留清单，她 1009 回：「**同族残留，可以都加上**」。
+
+范围口径 = 清单里那 **7 处**（文件面板「在默认应用中打开」「搜索文件」、终端图标按钮「重启终端」、diff 面板
+「文件树」「刷新」、面板页签「新建面板」「全屏」）。**两类故意不动**，见 ⑥。
+
+### ② 改动（4 文件，7 处）
+
+`FilePane.tsx`（2 处）、`TerminalPane.tsx`（1 处）、`DiffPane.tsx`（2 处）、`DesktopPanelTabs.tsx`（2 处）：
+每处都是「引入既有 `Tooltip` → 按钮外包 `<Tooltip text="…" position="bottom">` → 删原 `title`、同文案落到
+`aria-label`」。按钮自己的 `className` / `data-testid` / `onClick` / `aria-expanded` / `aria-pressed` /
+图标**一字未动**；`aria-label` 本来就已经等于气泡文案的 3 处（搜索文件 / 新建面板 / 全屏）保持原值。
+
+```tsx
+// FilePane.tsx：文件面板工具条
+<Tooltip text="在默认应用中打开" position="bottom">
+  <button className="preview-pane-button" aria-label="在默认应用中打开" data-testid="file-open-external" …>
+    <OpenBrowserIcon className="preview-pane-icon" />
+  </button>
+</Tooltip>
+
+// DesktopPanelTabs.tsx：面板页签条（该按钮有两处渲染分支，两处都包了）
+<Tooltip text="新建面板" position="bottom">
+  <button className="panel-tabs-add" aria-label="新建面板" data-testid="panel-tabs-add" …>
+    <PlusIcon … />
+  </button>
+</Tooltip>
+```
+
+**没有新增任何 CSS 或 token**：气泡外观（12px / r8 / 投影）、位置档 `bottom`、间距 `4px`、延时 100ms 全部来自
+0923 轮已落地的桌面皮肤与 `ChatHeader.tsx` 同档的那套写法。三处开关类文案（搜索文件 ⇄ 收起文件搜索、
+隐藏文件树 ⇄ 显示文件树、全屏 ⇄ 退出全屏）本来就是动态的，气泡跟着状态走。
+
+### ③ 定稿值（headed Chromium 1440×960 DPR2，用例 `tmp-tooltips-1009`，两档 pageerror 0）
+
+| 位点（`data-testid`）      | 按钮盒 / 尺寸     | 气泡文案 / 盒（随文案自适应）     | 差异像素（深 / 浅，1:1 设备像素） |
+| -------------------------- | ----------------- | --------------------------------- | --------------------------------- |
+| `file-open-external`       | 1372,99 / 24×24   | 在默认应用中打开 124×30 @1312,127 | 14676 / 7411                      |
+| `file-pane-search-trigger` | 1404,99 / 24×24   | 搜索文件 75×30 @1361,127          | 8797 / 4576                       |
+| 终端「重启终端」           | 1404,99 / 24×24   | 重启终端 75×30 @1361,127          | 8798 / 4752                       |
+| `diff-tree-toggle`         | 874.5,99 / 24×24  | 隐藏文件树 87.3×30 @842.8,127     | 10259 / 5470                      |
+| `diff-refresh`             | 985.4,99 / 24×24  | 刷新 50.5×30 @972.2,127           | 6724 / 3548                       |
+| `panel-tabs-add`           | 1129.5,54 / 24×24 | 新建面板 75×30 @1104,82           | 8794 / 4811                       |
+| `panel-fullscreen`         | 1403,54 / 24×24   | 全屏 50.5×30 @1385.5,82           | 5854 / 3066                       |
+
+- **按钮盒改前改后逐值相同**（采集脚本对 before/after 的 rect 做 `assert` 相等）；间距恒 **4px**；
+  出现延时 **100ms**（0/46/91ms 仍透明 → 134ms≈0.13 → 221ms=1）。
+- **「只多了一层包裹」的三重断言**（`verify-pane-tooltip-diff-1009.py`，实跑「通过 ✓」）：① 按钮盒内差异
+  **0 px**（仅深色「搜索文件」盒内 1 px 抗锯齿噪声）；② 气泡盒四周外扩 60 设备像素（30 CSS px）后**带以外
+  0 px** ⇒ 工具条行左右两端、按钮之间、行下方正文都逐像素相同；③ 行盒另一侧 707×45 @(733,89) /
+  页签条 707×45 @(732,44) 两侧一致。
+- **右缘守卫实测生效**：贴窗口右缘的 4 颗（在默认应用中打开 / 搜索文件 / 重启终端 / 全屏）气泡右缘都停在
+  **1436 = 1440 − 4**（与上一轮预览面板「在浏览器中打开」同一个值），即「收回不越界」，不是翻到另一侧。
+- 可访问名：4 处 `title` → 同文案 `aria-label`（在默认应用中打开 / 重启终端 / 隐藏文件树 / 刷新），3 处原本
+  已有同文案 `aria-label` 的只删 `title`；7 处都挂 `aria-describedby`（实测 `:rd:` 新建面板、`:re:` 全屏、
+  `:rf:` 搜索文件、`:rg:` 在默认应用中打开、`:rh:` 隐藏文件树、`:ri:` 刷新、`:rj:` 重启终端）。
+- 改动后 md5：`FilePane b8c376b8…` / `TerminalPane 5313c3e0…` / `DiffPane df170cf2…` /
+  `DesktopPanelTabs 263b6030…`；改前（`HEAD`）`447bbaa7…` / `00068a7b…` / `a8ad4490…` / `f67b52c9…`。
+
+### ④ 可复用认知
+
+1. **这一套气泡是「按组件」而不是「按位置」统一的**：同一颗 `<Tooltip position="bottom">` 包在面板工具条
+   （行盒 y=89）与页签条（行盒 y=44）上，落点规则、4px 间距、投影与右缘守卫**逐值一致** ⇒ 后续任何图标按钮
+   直接包一层就能得到同样观感，不需要按位置调参。
+2. **`Tooltip` 包裹层不会改变 flex 行的排版**：包裹层是 `display: inline-flex; flex-shrink: 0`，与按钮同宽
+   ⇒ 7 颗按钮的 x / w / h 一位都没变。这条要用实测证明（几何 assert + 像素差分），别只写「理论上没变」。
+3. **气泡宽度随文案自适应**：同一条工具条上并排出现 87.3px（隐藏文件树）与 50.5px（刷新），说明包裹层没有
+   给固定宽度；这也让「气泡最小宽度」变成一个纯样式层面的公共改动（会影响对话头 / 侧栏所有气泡）。
+4. **开关类按钮的文案口径**：气泡跟状态走（搜索文件 / 隐藏文件树 / 全屏），可访问名保持稳定（配合
+   `aria-expanded` / `aria-pressed` 表达状态）—— 7 处里唯一的例外是 `diff-tree-toggle`（它原本就没有
+   `aria-label`，所以 `aria-label` 也随状态）。
+
+### ⑤ 坑（都真踩过）
+
+- **「行盒内差异 0」不能直接当位移证据**：行盒的 y 区间本来就盖住气泡顶缘与投影 ⇒ 气泡上缘会被算进
+  「行盒内」。本轮第一版按 `y < 行盒底` 统计，得到 1310~3370 px 的「行盒内差异」，看起来像版面动了。
+  正解 = 把容许带定义成**气泡盒四周外扩 60 设备像素**（浅色 `0 0 12px` 向上外溢约 3.5 CSS px、深色
+  `0 12px 30px` 向下外溢可达 26 CSS px），再断言带外 0 px。
+- **投影外溢量要按投影最大侧算**：深色投影 `0 12px 30px` 的向下外溢比向上大得多（12px 偏移 + 30px 模糊），
+  容差取小了会误报「带外有差异」。
+- **`desktopFileContent` 的时序**：`ChatApp.tsx:1072` 只把回复绑给「同路径的 file 页签」或「**当前 active**
+  的 file 页签」⇒ 用例必须在 file 面板刚开、还是 active 时推（本轮 1500ms 开 file、1700ms 切 diff，所以推在
+  1600ms）。推早了（面板还没开）或晚了（已切到 diff）都会落空，表现是「在默认应用中打开」这颗按钮不存在、
+  `page.hover` 超时。
+- **改前基线要真回退**：`cp` 到 `/tmp` → `git show HEAD:<path> > <path>` → 采集 → 从 `/tmp` 还原 → md5 逐字节核。
+  改前侧 `measure-pane-before.json` 里 `tooltip=null && wrapper=false` 就是「页面里本来没有气泡」的机器证据
+  （原生 `title` 由 OS 绘制，页面截图原理上截不到，报告 notice 里已写明这条限制）。
+
+### ⑥ 残留触发语（未授权）
+
+- 「页签也加上气泡，两个一起弹的问题按你说的方案改」—— 页签本体 `title={label}`（`DesktopPanelTabs.tsx:216`）
+  与页签关闭按钮 `title=关闭…`（`:226`）**故意没做**：关闭按钮在页签**内部**，两者都包 `Tooltip` 时鼠标落在
+  关闭按钮上会**同时**弹外层与内层两个气泡（`Tooltip` 靠包裹层自己的 mouseenter / mouseleave 工作，内层不算
+  离开外层）⇒ 需要先给 Tooltip 加「子节点命中就抑制外层」的机制，属组件行为改动。
+- 「diff 的『添加到输入框』也换成自绘气泡」—— `DiffPane.tsx:417`，以及一批**信息性** `title`（文件行 /
+  commit 行 / range 全文 `:453/:509/:609`、评论区标签 `:405`、`file-pane-path` `FilePane.tsx:451`、
+  `displayUrl` `PreviewPane.tsx:598`）。当前建议是**保持原生**（长文本更适合原生提示、且不遮挡下方内容）。
+- 「终端的文字按钮也要气泡」—— 终端退出态那颗文本按钮「重启终端」保持原生。
+- 「读屏名也跟着状态变」—— 现在 3 处开关的可访问名是稳定的（搜索文件 / 新建面板 / 全屏），状态靠
+  `aria-expanded` / `aria-pressed`；若要让读屏念「收起文件搜索」，改 `aria-label` 即可。
+
+### ⑦ 验证脚本与证据
+
+| 用途     | 脚本（`CC02/走查/_tools/1009/`）                 | 产物（`CC02/走查/`）                                                                       |
+| -------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| 采集素材 | `capture-pane-tooltips-1009.mjs <before\|after>` | `1009-同类面板气泡报告/shots/{_raw,before,after}/`、`measure-pane-{before,after}.json`     |
+| 裁图     | `build-pane-tooltip-assets-1009.py`              | 同上 `shots/<side>/<theme>-<asset>-2x.png`（7 位点 × 浅深 × 前后 = 28 张）                 |
+| 位移断言 | `verify-pane-tooltip-diff-1009.py`               | 控制台输出「通过 ✓」（按钮盒内 ≤1 px、气泡+投影带以外 0 px、按钮 rect 逐值相同、间距 4px） |
+| 报告     | `batch-1009-pane-toolbar-tooltips.json`          | `1009-同类面板气泡报告/index.html`（7 条 finding）                                         |
+
+报告用 skill 母版 `build_repair_report.py`（v1.1）生成、`verify-repair-report.mjs`（在 `_tools/0921/`，
+不在 skill 的 scripts 目录）自检：图片 14/14 加载、0 破图、**axe 浅深 0/0**、640 窄屏无横溢。「改前」是
+**真回退**（`git show HEAD:` 出旧版后重新加载，md5 逐字节核过），不是注入模拟。本轮纯 JSX 改动、无 CSS；
+用例 `tmp-tooltips-1009`（mock 目录 gitignore、不进推送集）。
+
+## 1009 评论（插件市场作用域弹窗的选项状态：去灰底 → 补描边 → 禁用指针，共四条）
+
+她 1009 / 1010 在预览（`http://localhost:8899`；桌面端「插件市场」入口在**侧栏**
+`[data-testid="desktop-plugin-market"]`，设置页左导航没有这一项；弹窗用「更换安装作用域」胶囊
+`.settings-scope-pill` 打开）连发四条：
+
+1. 点 `button.settings-scope-option`「项目共享（project）写入当前项目配置，项目的其他协作者…」：
+   「**禁用状态保留选项描边，去掉背景灰色**」（④）
+2. 点 `button.settings-scope-option`「用户（user）作为你的用户配置，所有项目可用」：
+   「**这项未选中也不用加灰色背景**」（⑤）
+3. 点 `label.option-item`「先跳过记录到待办，先继续当前任务」（实时 AskUserQuestion 的选项）：
+   「**未选中的时候应该也带边框，可以参考这里**」（⑥）
+4. 「**不能选的选项鼠标要变禁用**」（⑦）
+
+### ① 改前的问题
+
+作用域三张卡的静止态是「`--cc-fill` 填充面 + 描边恒透明」（0915-T-01 给未选中态上的 resting 填充），
+于是**四个状态里有三个读不出来**：
+
+- 未选中可用 = 灰面（浅 `#f0f2f5` 与白底 1.12 / 深 `#25292b` 1.19 —— 弱信号）；
+- 禁用 = 同一张灰面再叠整卡 `opacity: .6` ⇒ 只剩「更浅的灰」一个信号（浅色渲成 `#f6f7f9`，与底色
+  **1.07**，几乎看不见），而且 `:disabled:hover` 特意把描边抹平 ⇒ 连 hover 都被吞掉；
+- 选中 = `--cc-fill-pressed` + focusBorder 描边 —— **唯一有描边的状态**，于是「有描边 = 已选中」这条
+  观感与「描边卡 = 不可选」打架。
+
+### ② 定稿（`packages/webview/src/styles/SettingsPage.css`，四条合成一套状态语言）
+
+|          | 静止（未选中可用）               | 选中                | 禁用                             |
+| -------- | -------------------------------- | ------------------- | -------------------------------- |
+| 底色     | `transparent`（原 `--cc-fill`）  | `--cc-fill-pressed` | `transparent`（原 `--cc-fill`）  |
+| 1px 描边 | `--cc-settings-border`（原透明） | focusBorder         | `--cc-settings-border`（原透明） |
+| 指针     | `pointer`                        | `pointer`           | `not-allowed`（原 `default`）    |
+| 其余     | 圆角 8px 不变                    | 不变                | `opacity: .6` 不变               |
+
+- 弹窗里的填充面只剩「选中」一种 ⇒ 禁用与未选中都读作「描边卡」，靠 `opacity` 与文案区分。
+- 取值：`--cc-settings-border` = `--vscode-panel-border` = `--cc-border-light`，与参考件 `.option-item`
+  （`ConfirmationDialog.css:296`）用的 `--vscode-widget-border` 在桌面端**是同一条 token**，实测渲染色
+  `#e4e7ed` / `#34393c` 逐值相同；圆角各留各档（参考件 6px 控件档 / 作用域选项 8px 设置页弹窗档，只统一描边）。
+- 删掉两条：「`:hover` 补描边」（描边进静止态后成同值冗余）与「`:disabled:hover` 把描边抹成透明」（同理）。
+  ⇒ 未选中选项的 hover 现在是**视觉零变化**，与参考件一致（`.option-item` 也没有 hover 规则，反馈只靠
+  focus 描边与选中底）。
+- 指针口径：与本文件其余 4 处禁用控件（`:470` / `:532` / `:576` / `:751`）及全仓另外 13 处禁用态一致，
+  改后 `SettingsPage.css` 已无 `cursor: default`。
+
+### ③ 实测（headed Chromium 1440×960 DPR2，浅深两档，`pageerror 0`）
+
+| 项                  | 改前                                     | 改后                                                            |
+| ------------------- | ---------------------------------------- | --------------------------------------------------------------- |
+| 未选中可用·浅       | 填充 `#f0f2f5`（与底 1.12）· 描边透明    | 底透明 · 描边 `#e4e7ed`（与底 1.24，**与参考件逐值相同**）      |
+| 未选中可用·深       | 填充 `#25292b`（1.19）· 描边透明         | 底透明 · 描边 `#34393c`（1.49；参考件 1.32，同色不同底）        |
+| 禁用·浅（未选中档） | 填充 `#f6f7f9`（1.07）· 描边透明         | 底透明 · 描边 `#eff1f4`（`#e4e7ed` 经 `opacity .6` 合成，1.13） |
+| 禁用·深（未选中档） | 填充 `#202325`（1.10）· 描边透明         | 底透明 · 描边 `#292d2f`（`#34393c` 合成，1.26）                 |
+| 选中·浅             | 填充 `#e7e9ed` + 描边 `#1f2329`（15.78） | 不变（本轮未动）                                                |
+| 禁用指针            | `default`（浅/深）                       | `not-allowed`（浅/深）；可用卡两相都 `pointer`                  |
+
+- **几何零位移**：三张卡 rect 改前改后逐值相同（`(450,327.5,540,76)` / `(450,415.5,540,98.5)` /
+  `(450,526,540,98.5)`），弹窗恒 **590×439 @(425,260.5)**；描边本来占位，本轮改的只是它的颜色与整卡
+  `opacity`，不会撑动盒子。
+- 鼠标指针由 OS / Chromium 绘制，**页面截图原理上截不到** ⇒ 指针一项的证据是 computed 值
+  （`measure.json` 里 `cursor` 字段：`before` 浅深都 `default`、`after` 浅深都 `not-allowed`），要看效果得现场 hover。
+- 改动后 `SettingsPage.css` md5 `f62b6f2ad8c0e220a004f23f2f11795e`（改前 = 分支 tip 版本
+  `2b86b8b319f4a7764efce5d1b157cec6`）。
+
+### ④ 可复用认知
+
+1. **「有描边」是稀缺信号，别让它同时表示两件事**：本轮把描边从「只属于选中态」放开成「未选中与禁用的
+   常态」，才让选中态可以独占填充面 ⇒ 后续任何「多状态 + 单一弱信号」的控件组都按这个分工改。
+2. **整卡 `opacity` 会把描边一起压淡**：禁用卡声明 `#e4e7ed`，渲染出来是 `#eff1f4`（`0.6×声明色 + 0.4×底色`）。
+   要「禁用但也看得出描边」，就得接受这条合成关系（或者把 `opacity` 拆成对文字生效的局部透明度）。
+3. **「参考件」要照形制而不是照数值**：参考件 6px 圆角、桌面端设置页弹窗 8px，只统一描边 token 与
+   「透明底 + 1px」这套形制，其余各留各档。
+4. **改前基线用注入回退，别用 `git stash`**（共享 checkout 里有别窗口的在途改动）：注入的规则必须**同特异性
+   或更高**，否则会被新规则压住——本轮 `:disabled` 是 (0,2,0)，裸类选择器注入压不住它，得按
+   `:enabled` / `:disabled` / `.is-selected` 的顺序把旧层叠关系复现出来；指针那一条也要一并回退，否则
+   「改前」列会印出改后的值，看着像「没变化」。
+
+### ⑤ 坑（都真踩过）
+
+- **PIL 取样负索引会造假数据**：截图 `clip` 的原点取在卡片上方时 `y < 0`，Python `image.getpixel(负值)`
+  会绕到图像底部，量出「1.0:1 / 0 差异」这种假结论。正解 = clip 上下各留 12px 余量 + 越界返回 `None`。
+- **取整口径要对齐**：CSS 的 `rect.x = 482.5` 经 `Math.round` 是 483、Python `round()` 是 482（银行家舍入），
+  差 1 CSS px = 2 设备像素，描边列会被整列跳过（量出 `#ffffff` 的「没有描边」）。正解 = 统一
+  `jsround = floor(v + 0.5)`，并按「左侧 8 列里与内部底色最大偏离」取样，别写死 `x + 0.5`。
+- **入口找错**：桌面端设置页左导航里**没有**「插件市场」，照着 IDE 的路径点会拿到 `null` ⇒ 探针崩在
+  `Cannot read properties of null`。桌面入口是侧栏的 `[data-testid="desktop-plugin-market"]`。
+- **两个弹窗别混**：安装弹窗（`openInstallDialog`，默认选中 user 卡）与更换弹窗（`openScopeDialog`，user 卡
+  **未选中且可用**）——⑤⑥ 引用的是后者，取错弹窗会得到「用户卡已选中」的现场，看不到问题。
+  另外 `anchorWorkdir` 由宿主上报（vscode `pluginService.getWorkdir()` / 桌面 `pluginAnchorWorkdir`），
+  两份 mock 都不上报 ⇒ **预览环境里 project / local 恒为禁用**，正好是 ④⑦ 的现场。
+
+### ⑥ 残留触发语（未授权）
+
+- 「**这些改动都落在 base，IDE 端会一起变**」——本轮四条都写在基础样式层（不是 `[data-host="desktop"]`
+  块内）⇒ VS Code / JetBrains 的同一弹窗也会变成「透明底 + 1px 描边 + `not-allowed`」。她说「推送」= 授权
+  把当前形态推上去，**是否收窄到桌面端另等她一句话**。
+- 「禁用 + 当前作用域那张卡要不要把 focusBorder 描边还回来」——现在禁用态一律 `--cc-settings-border`，
+  当前作用域（更换弹窗里的 project 卡）不再有强调色。
+- 「未选中选项的 hover 要不要补反馈」——现在是视觉零变化（与参考件一致）。
+- 同族盘点：`AccountCard` / `DesktopApp`（4 处）/ `DiffPane` / `FileSuggestionDropdown` / `MessageInput`（3 处）
+  另有 10 处 `cursor: default`，但都是纯展示文本 / 标签，用 `default` 是对的 ⇒ 本轮无同族残留。
+
+### ⑦ 验证脚本与证据
+
+| 用途         | 脚本（`CC02/走查/_tools/`）                  | 产物（`CC02/走查/`）                                                                    |
+| ------------ | -------------------------------------------- | --------------------------------------------------------------------------------------- |
+| ④⑤ 采集      | `1009/probe-scope-option-disabled-1009.mjs`  | `1009-作用域禁用选项/{install-,change-}{before,after}-{light,dark}.png`、`measure.json` |
+| ④⑤ 量测/裁图 | `1009/measure-scope-option-disabled-1009.py` | 同上 `compare-{modal,card,change}*`、`contrast.json`                                    |
+| ⑥⑦ 采集      | `1010/probe-scope-option-border-1010.mjs`    | `1010-作用域选项描边/{change-*,ref-*}.png`、`measure.json`（含 `cursor`）               |
+| ⑥⑦ 量测/裁图 | `1010/measure-scope-option-border-1010.py`   | 同上 `compare-scope-*`、`ref-vs-scope-*[-2x]`、`contrast.json`                          |
+
+用例：`tmp-settings-data-1009`（设置页数据 mock，走「更换安装作用域」弹窗）；参考件取自
+`desktop-tool-states`（`showConfirmation` 延迟 900ms 弹实时 AskUserQuestion，第 2 项就是她引用的文案）。
+两份 mock 工具文件在 gitignore 目录内，不进推送集。「改前」是注入回退（不是真回退，因为文件里还有同批
+其它改动），回退规则见 ④ 第 4 条。
+
+## 1009 评论（作用域选项状态重排：收窄到桌面端 + 未选中选项的 hover 描边）
+
+上一节把四条状态改动写在 base 后，她 2026-10-10 给了三条裁定（随后又确认两条）：
+
+1. 「**收窄到只桌面端**」；
+2. 禁用 + 当前作用域要不要恢复 focusBorder 强调环 —— 「**不用**」；
+3. 「**hover 可以加个描边，都加**」；追问后确认：「**禁用不用 hover 描边**」「**IDE 不需要**（跟进这套）」。
+
+### ① 落点搬家：上一节的四条从 base 搬进桌面作用域
+
+| 规则                          | base（上一节，已回退）                                | `[data-host="desktop"]`（本节）                                |
+| ----------------------------- | ----------------------------------------------------- | -------------------------------------------------------------- |
+| `.settings-scope-option` 静止 | `--cc-fill` 填充 + `1px solid transparent`            | 透明底 + `1px solid var(--cc-settings-border)`                 |
+| `:hover`                      | `border-color: var(--cc-settings-border)`（hairline） | `border-color: var(--cc-border)`（加深一档）                   |
+| `:disabled`                   | `opacity: .6` + `cursor: default`                     | 透明底 + hairline 描边 + `opacity: .6` + `cursor: not-allowed` |
+| `:disabled:hover`             | `border-color: transparent`（把 hover 抹平）          | hairline（与静止同值，即禁用无 hover 反馈）                    |
+| `.is-selected`                | 未动（`--cc-fill-pressed` 底 + focusBorder 描边）     | 未动（同上，两宿主同值）                                       |
+
+- 依据：`--cc-*` 语义层只挂在 `:root[data-host="desktop"]`（`host-desktop.css` 顶部注释：桌面端入口置
+  `data-host`，插件端同样加载本文件但 `data-host` 永不为 `desktop`）⇒ 桌面块对 IDE 宿主是死代码。
+- **base 逐字节回到改前**（`7d05ed04` 版本）：本轮只在该处加了两行指向注释，
+  `git diff 7d05ed04 -- packages/webview/src/styles/SettingsPage.css` 只剩注释行、无一条声明值变化
+  ⇒ IDE 宿主（VS Code / JetBrains）的样式表逐字节未变，渲染必然相同。
+- 新块三条选择器（特异性见括号，均与加载顺序无关）：
+  - `:not(:disabled):not(.is-selected)`（(0,4,0)）—— 两条 `:not(…)` **是必需的**：桌面块 (0,4,0) 会盖掉
+    base 的 `.is-selected` (0,2,0) 与 `:disabled` (0,2,0)，把选中面与禁用档一起抹平；
+  - `:not(:disabled):not(.is-selected):hover`（(0,5,0)）—— 稳压 base 的 `:hover` (0,2,0)；
+  - `:disabled, :disabled:hover`（(0,3,0) / (0,4,0)）—— 显式列出 hover，压掉 base 的 `:disabled:hover` (0,3,0)。
+- 只覆盖 `background` / `border-color`，**不重声明 `border-width: 1px`**（描边本来占位）⇒ 盒几何零位移。
+
+### ② hover 描边（本节新增的手感）
+
+| 状态              | 浅色                | 深色                |
+| ----------------- | ------------------- | ------------------- |
+| 静止（hairline）  | `#e4e7ed`（1.24:1） | `#34393c`（1.49:1） |
+| hover（加深一档） | `#dcdfe6`（1.33:1） | `#414649`（1.83:1） |
+
+- 取值 = 同一套 token 阶梯：`--cc-border-light`（静止）→ `--cc-border`（hover，与 composer / 输入框同档）
+  → `--vscode-focusBorder`（选中），三档互不重叠。
+- 实测：被 hover 那张的差异像素 **4812 px（浅）/ 4868 px（深）**＝ 1px 环带周长 ×2（只有描边一圈在变）；
+  同屏另两张卡逐值不变；三张卡 rect 逐值相同；**安装弹窗里「选中且可用」那张 hover 前后 0 px**
+  （`:not(.is-selected)` 守卫生效，选中面与 focusBorder 描边都没被抹平）。
+- 禁用两档**不参与** hover（她裁定）：保持「描边卡 + 淡化文字 + 禁止指针」，不给「可点」暗示。
+
+### ③ IDE 档的两条判据（拿不到 IDE 真机截图时的取证法）
+
+1. **源码级**（更强）：本批只新增 `[data-host="desktop"]` 选择器 + base 只加注释 ⇒ IDE 样式表逐字节未变。
+2. **运行时反证**：同一页面把 `documentElement.dataset.host` 切成 `ide`（React 树不重挂），新块整段失配，
+   实测逐值回到 base 声明 —— 未选中描边回到透明（渲染 1.0:1）、`cursor: default`、hover 描边回到 hairline。
+   ⚠️ 该相位 `--cc-*` 语义层也一并失效，**绝对色值只能以 base 声明为准**（IDE 真机 = 宿主注入的
+   `--vscode-*`，与 base 声明同源）；反证截图存放于报告 `shots/ide/`，仅作「本块确实失配」的现场。
+
+### ④ 可复用认知
+
+1. **宿主覆盖块里必须写状态排除**：`[data-host="desktop"] .x` 是 (0,2,0)，与 base 的 `.x.is-selected` (0,2,0)
+   同特异性 ⇒ 「后加载就能赢」不成立，必须 `:not(.is-selected)` / `:not(:disabled)` 显式排除，否则
+   一次「收窄」就会把选中/禁用态一起抹平。
+2. **「收窄到某宿主」的正确做法是搬家而不是复制**：base 回到原值 + 桌面块承载新值；两边都留着才是双份维护。
+3. **「base 逐字节未变」比截图更适合当另一个宿主的证据**：拿不到该宿主渲染时，源码级 + 运行时反证
+   比一张「长得像」的截图强。
+4. **hover 手感 = 描边阶梯**：静止 hairline → hover 强边界 → 选中 focusBorder；三档各自唯一，不靠加粗。
+
+### ⑤ 坑（都真踩过）
+
+- ★★ **Chromium 偶发不重绘 `:hover` 帧**：computed 已经是 hover 色、截图却仍是静止帧（浅色档第一次跑就中），
+  差一点交出「假的 0 差异」。⇒ hover 证据必须**逐字节自检「该帧 ≠ 静止帧」**，不一致就换
+  `page.hover()`（Playwright 自己的命中测试路径）重试，并记录重试序列（本轮两档都是 `[false,true]`）。
+- **采集相位的先后**：安装弹窗那一相曾把「静止」条图拍在 hover 之后（顺序写反）⇒ 误把 hover 帧当基线。
+- **PIL 差值要求两侧同尺寸**：单卡特写图与三卡条图裁出来的框大小不同，直接相减会失真 ⇒ 两侧一律从条图同几何裁。
+- 改写既有规则时勿用 `git stash`（共享 checkout 有他窗在途改动）：先 `git show <远端 tip>:<文件> > <文件>`
+  取回原值再改，逐字节核 md5 确认（本轮 base 回退即此法）。
+
+### ⑥ 残留触发语（她已明确不做/未授权）
+
+- 「禁用两档也加 hover 描边」—— 她已明确：「禁用不用 hover 描边」。
+- 「IDE 档也跟进这套」—— 她已明确：「IDE 不需要」。
+- 键盘 focus 态未动（base 的 focus 反馈仍在）；「选中 + 禁用」那张卡的填充面仍被 `:disabled` 覆盖为透明
+  （与上一轮一致，她 1009 已确认）。
+
+### ⑦ 验证脚本与证据
+
+| 用途       | 脚本（`CC02/走查/_tools/1010/`）             | 产物（`CC02/走查/1010-作用域选项桌面化/`）                                                                     |
+| ---------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 采集四态   | `probe-scope-option-desktop-scope-1010.mjs`  | `desktop-rest/hover/install/install-hover-{light,dark}.png`、`desktop-card-*`、`ide-reverse-*`、`measure.json` |
+| 量测与对比 | `measure-scope-option-desktop-scope-1010.py` | `compare-hover-*[-2x]`、`compare-selected-*`、`compare-desktop-vs-ide-*`、`contrast.json`                      |
+| 报告       | `batch-1010-scope-desktop.json`              | `CC02/走查/1010-scope-desktop-report/index.html`（2 条 finding）                                               |
+
+报告按 skill 母版（v1.1）生成、`verify-repair-report.mjs` 自检：2/2 条目显示、图 1:1（原始 1088 → 展示 518）、
+0 破图、**axe 浅深 0/0**、640 窄屏无横溢、复制回退可用（1265 字）。用例 `tmp-settings-data-1009`（mock 目录
+gitignore、不进推送集）。探针覆盖率：两档主题 ×（静止 / hover 未选中 / hover 选中 / hover 禁用 / 反证 ide /
+安装弹窗静止 + hover），`pageerror 0`。
