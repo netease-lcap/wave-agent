@@ -7862,3 +7862,118 @@ type-check` 通过。
 不在 skill 的 scripts 目录）自检：图片 14/14 加载、0 破图、**axe 浅深 0/0**、640 窄屏无横溢。「改前」是
 **真回退**（`git show HEAD:` 出旧版后重新加载，md5 逐字节核过），不是注入模拟。本轮纯 JSX 改动、无 CSS；
 用例 `tmp-tooltips-1009`（mock 目录 gitignore、不进推送集）。
+
+## 1009 评论（插件市场作用域弹窗的选项状态：去灰底 → 补描边 → 禁用指针，共四条）
+
+她 1009 / 1010 在预览（`http://localhost:8899`；桌面端「插件市场」入口在**侧栏**
+`[data-testid="desktop-plugin-market"]`，设置页左导航没有这一项；弹窗用「更换安装作用域」胶囊
+`.settings-scope-pill` 打开）连发四条：
+
+1. 点 `button.settings-scope-option`「项目共享（project）写入当前项目配置，项目的其他协作者…」：
+   「**禁用状态保留选项描边，去掉背景灰色**」（④）
+2. 点 `button.settings-scope-option`「用户（user）作为你的用户配置，所有项目可用」：
+   「**这项未选中也不用加灰色背景**」（⑤）
+3. 点 `label.option-item`「先跳过记录到待办，先继续当前任务」（实时 AskUserQuestion 的选项）：
+   「**未选中的时候应该也带边框，可以参考这里**」（⑥）
+4. 「**不能选的选项鼠标要变禁用**」（⑦）
+
+### ① 改前的问题
+
+作用域三张卡的静止态是「`--cc-fill` 填充面 + 描边恒透明」（0915-T-01 给未选中态上的 resting 填充），
+于是**四个状态里有三个读不出来**：
+
+- 未选中可用 = 灰面（浅 `#f0f2f5` 与白底 1.12 / 深 `#25292b` 1.19 —— 弱信号）；
+- 禁用 = 同一张灰面再叠整卡 `opacity: .6` ⇒ 只剩「更浅的灰」一个信号（浅色渲成 `#f6f7f9`，与底色
+  **1.07**，几乎看不见），而且 `:disabled:hover` 特意把描边抹平 ⇒ 连 hover 都被吞掉；
+- 选中 = `--cc-fill-pressed` + focusBorder 描边 —— **唯一有描边的状态**，于是「有描边 = 已选中」这条
+  观感与「描边卡 = 不可选」打架。
+
+### ② 定稿（`packages/webview/src/styles/SettingsPage.css`，四条合成一套状态语言）
+
+|          | 静止（未选中可用）               | 选中                | 禁用                             |
+| -------- | -------------------------------- | ------------------- | -------------------------------- |
+| 底色     | `transparent`（原 `--cc-fill`）  | `--cc-fill-pressed` | `transparent`（原 `--cc-fill`）  |
+| 1px 描边 | `--cc-settings-border`（原透明） | focusBorder         | `--cc-settings-border`（原透明） |
+| 指针     | `pointer`                        | `pointer`           | `not-allowed`（原 `default`）    |
+| 其余     | 圆角 8px 不变                    | 不变                | `opacity: .6` 不变               |
+
+- 弹窗里的填充面只剩「选中」一种 ⇒ 禁用与未选中都读作「描边卡」，靠 `opacity` 与文案区分。
+- 取值：`--cc-settings-border` = `--vscode-panel-border` = `--cc-border-light`，与参考件 `.option-item`
+  （`ConfirmationDialog.css:296`）用的 `--vscode-widget-border` 在桌面端**是同一条 token**，实测渲染色
+  `#e4e7ed` / `#34393c` 逐值相同；圆角各留各档（参考件 6px 控件档 / 作用域选项 8px 设置页弹窗档，只统一描边）。
+- 删掉两条：「`:hover` 补描边」（描边进静止态后成同值冗余）与「`:disabled:hover` 把描边抹成透明」（同理）。
+  ⇒ 未选中选项的 hover 现在是**视觉零变化**，与参考件一致（`.option-item` 也没有 hover 规则，反馈只靠
+  focus 描边与选中底）。
+- 指针口径：与本文件其余 4 处禁用控件（`:470` / `:532` / `:576` / `:751`）及全仓另外 13 处禁用态一致，
+  改后 `SettingsPage.css` 已无 `cursor: default`。
+
+### ③ 实测（headed Chromium 1440×960 DPR2，浅深两档，`pageerror 0`）
+
+| 项                  | 改前                                     | 改后                                                            |
+| ------------------- | ---------------------------------------- | --------------------------------------------------------------- |
+| 未选中可用·浅       | 填充 `#f0f2f5`（与底 1.12）· 描边透明    | 底透明 · 描边 `#e4e7ed`（与底 1.24，**与参考件逐值相同**）      |
+| 未选中可用·深       | 填充 `#25292b`（1.19）· 描边透明         | 底透明 · 描边 `#34393c`（1.49；参考件 1.32，同色不同底）        |
+| 禁用·浅（未选中档） | 填充 `#f6f7f9`（1.07）· 描边透明         | 底透明 · 描边 `#eff1f4`（`#e4e7ed` 经 `opacity .6` 合成，1.13） |
+| 禁用·深（未选中档） | 填充 `#202325`（1.10）· 描边透明         | 底透明 · 描边 `#292d2f`（`#34393c` 合成，1.26）                 |
+| 选中·浅             | 填充 `#e7e9ed` + 描边 `#1f2329`（15.78） | 不变（本轮未动）                                                |
+| 禁用指针            | `default`（浅/深）                       | `not-allowed`（浅/深）；可用卡两相都 `pointer`                  |
+
+- **几何零位移**：三张卡 rect 改前改后逐值相同（`(450,327.5,540,76)` / `(450,415.5,540,98.5)` /
+  `(450,526,540,98.5)`），弹窗恒 **590×439 @(425,260.5)**；描边本来占位，本轮改的只是它的颜色与整卡
+  `opacity`，不会撑动盒子。
+- 鼠标指针由 OS / Chromium 绘制，**页面截图原理上截不到** ⇒ 指针一项的证据是 computed 值
+  （`measure.json` 里 `cursor` 字段：`before` 浅深都 `default`、`after` 浅深都 `not-allowed`），要看效果得现场 hover。
+- 改动后 `SettingsPage.css` md5 `f62b6f2ad8c0e220a004f23f2f11795e`（改前 = 分支 tip 版本
+  `2b86b8b319f4a7764efce5d1b157cec6`）。
+
+### ④ 可复用认知
+
+1. **「有描边」是稀缺信号，别让它同时表示两件事**：本轮把描边从「只属于选中态」放开成「未选中与禁用的
+   常态」，才让选中态可以独占填充面 ⇒ 后续任何「多状态 + 单一弱信号」的控件组都按这个分工改。
+2. **整卡 `opacity` 会把描边一起压淡**：禁用卡声明 `#e4e7ed`，渲染出来是 `#eff1f4`（`0.6×声明色 + 0.4×底色`）。
+   要「禁用但也看得出描边」，就得接受这条合成关系（或者把 `opacity` 拆成对文字生效的局部透明度）。
+3. **「参考件」要照形制而不是照数值**：参考件 6px 圆角、桌面端设置页弹窗 8px，只统一描边 token 与
+   「透明底 + 1px」这套形制，其余各留各档。
+4. **改前基线用注入回退，别用 `git stash`**（共享 checkout 里有别窗口的在途改动）：注入的规则必须**同特异性
+   或更高**，否则会被新规则压住——本轮 `:disabled` 是 (0,2,0)，裸类选择器注入压不住它，得按
+   `:enabled` / `:disabled` / `.is-selected` 的顺序把旧层叠关系复现出来；指针那一条也要一并回退，否则
+   「改前」列会印出改后的值，看着像「没变化」。
+
+### ⑤ 坑（都真踩过）
+
+- **PIL 取样负索引会造假数据**：截图 `clip` 的原点取在卡片上方时 `y < 0`，Python `image.getpixel(负值)`
+  会绕到图像底部，量出「1.0:1 / 0 差异」这种假结论。正解 = clip 上下各留 12px 余量 + 越界返回 `None`。
+- **取整口径要对齐**：CSS 的 `rect.x = 482.5` 经 `Math.round` 是 483、Python `round()` 是 482（银行家舍入），
+  差 1 CSS px = 2 设备像素，描边列会被整列跳过（量出 `#ffffff` 的「没有描边」）。正解 = 统一
+  `jsround = floor(v + 0.5)`，并按「左侧 8 列里与内部底色最大偏离」取样，别写死 `x + 0.5`。
+- **入口找错**：桌面端设置页左导航里**没有**「插件市场」，照着 IDE 的路径点会拿到 `null` ⇒ 探针崩在
+  `Cannot read properties of null`。桌面入口是侧栏的 `[data-testid="desktop-plugin-market"]`。
+- **两个弹窗别混**：安装弹窗（`openInstallDialog`，默认选中 user 卡）与更换弹窗（`openScopeDialog`，user 卡
+  **未选中且可用**）——⑤⑥ 引用的是后者，取错弹窗会得到「用户卡已选中」的现场，看不到问题。
+  另外 `anchorWorkdir` 由宿主上报（vscode `pluginService.getWorkdir()` / 桌面 `pluginAnchorWorkdir`），
+  两份 mock 都不上报 ⇒ **预览环境里 project / local 恒为禁用**，正好是 ④⑦ 的现场。
+
+### ⑥ 残留触发语（未授权）
+
+- 「**这些改动都落在 base，IDE 端会一起变**」——本轮四条都写在基础样式层（不是 `[data-host="desktop"]`
+  块内）⇒ VS Code / JetBrains 的同一弹窗也会变成「透明底 + 1px 描边 + `not-allowed`」。她说「推送」= 授权
+  把当前形态推上去，**是否收窄到桌面端另等她一句话**。
+- 「禁用 + 当前作用域那张卡要不要把 focusBorder 描边还回来」——现在禁用态一律 `--cc-settings-border`，
+  当前作用域（更换弹窗里的 project 卡）不再有强调色。
+- 「未选中选项的 hover 要不要补反馈」——现在是视觉零变化（与参考件一致）。
+- 同族盘点：`AccountCard` / `DesktopApp`（4 处）/ `DiffPane` / `FileSuggestionDropdown` / `MessageInput`（3 处）
+  另有 10 处 `cursor: default`，但都是纯展示文本 / 标签，用 `default` 是对的 ⇒ 本轮无同族残留。
+
+### ⑦ 验证脚本与证据
+
+| 用途         | 脚本（`CC02/走查/_tools/`）                  | 产物（`CC02/走查/`）                                                                    |
+| ------------ | -------------------------------------------- | --------------------------------------------------------------------------------------- |
+| ④⑤ 采集      | `1009/probe-scope-option-disabled-1009.mjs`  | `1009-作用域禁用选项/{install-,change-}{before,after}-{light,dark}.png`、`measure.json` |
+| ④⑤ 量测/裁图 | `1009/measure-scope-option-disabled-1009.py` | 同上 `compare-{modal,card,change}*`、`contrast.json`                                    |
+| ⑥⑦ 采集      | `1010/probe-scope-option-border-1010.mjs`    | `1010-作用域选项描边/{change-*,ref-*}.png`、`measure.json`（含 `cursor`）               |
+| ⑥⑦ 量测/裁图 | `1010/measure-scope-option-border-1010.py`   | 同上 `compare-scope-*`、`ref-vs-scope-*[-2x]`、`contrast.json`                          |
+
+用例：`tmp-settings-data-1009`（设置页数据 mock，走「更换安装作用域」弹窗）；参考件取自
+`desktop-tool-states`（`showConfirmation` 延迟 900ms 弹实时 AskUserQuestion，第 2 项就是她引用的文案）。
+两份 mock 工具文件在 gitignore 目录内，不进推送集。「改前」是注入回退（不是真回退，因为文件里还有同批
+其它改动），回退规则见 ④ 第 4 条。
