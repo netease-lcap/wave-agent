@@ -7977,3 +7977,95 @@ type-check` 通过。
 `desktop-tool-states`（`showConfirmation` 延迟 900ms 弹实时 AskUserQuestion，第 2 项就是她引用的文案）。
 两份 mock 工具文件在 gitignore 目录内，不进推送集。「改前」是注入回退（不是真回退，因为文件里还有同批
 其它改动），回退规则见 ④ 第 4 条。
+
+## 1009 评论（作用域选项状态重排：收窄到桌面端 + 未选中选项的 hover 描边）
+
+上一节把四条状态改动写在 base 后，她 2026-10-10 给了三条裁定（随后又确认两条）：
+
+1. 「**收窄到只桌面端**」；
+2. 禁用 + 当前作用域要不要恢复 focusBorder 强调环 —— 「**不用**」；
+3. 「**hover 可以加个描边，都加**」；追问后确认：「**禁用不用 hover 描边**」「**IDE 不需要**（跟进这套）」。
+
+### ① 落点搬家：上一节的四条从 base 搬进桌面作用域
+
+| 规则                          | base（上一节，已回退）                                | `[data-host="desktop"]`（本节）                                |
+| ----------------------------- | ----------------------------------------------------- | -------------------------------------------------------------- |
+| `.settings-scope-option` 静止 | `--cc-fill` 填充 + `1px solid transparent`            | 透明底 + `1px solid var(--cc-settings-border)`                 |
+| `:hover`                      | `border-color: var(--cc-settings-border)`（hairline） | `border-color: var(--cc-border)`（加深一档）                   |
+| `:disabled`                   | `opacity: .6` + `cursor: default`                     | 透明底 + hairline 描边 + `opacity: .6` + `cursor: not-allowed` |
+| `:disabled:hover`             | `border-color: transparent`（把 hover 抹平）          | hairline（与静止同值，即禁用无 hover 反馈）                    |
+| `.is-selected`                | 未动（`--cc-fill-pressed` 底 + focusBorder 描边）     | 未动（同上，两宿主同值）                                       |
+
+- 依据：`--cc-*` 语义层只挂在 `:root[data-host="desktop"]`（`host-desktop.css` 顶部注释：桌面端入口置
+  `data-host`，插件端同样加载本文件但 `data-host` 永不为 `desktop`）⇒ 桌面块对 IDE 宿主是死代码。
+- **base 逐字节回到改前**（`7d05ed04` 版本）：本轮只在该处加了两行指向注释，
+  `git diff 7d05ed04 -- packages/webview/src/styles/SettingsPage.css` 只剩注释行、无一条声明值变化
+  ⇒ IDE 宿主（VS Code / JetBrains）的样式表逐字节未变，渲染必然相同。
+- 新块三条选择器（特异性见括号，均与加载顺序无关）：
+  - `:not(:disabled):not(.is-selected)`（(0,4,0)）—— 两条 `:not(…)` **是必需的**：桌面块 (0,4,0) 会盖掉
+    base 的 `.is-selected` (0,2,0) 与 `:disabled` (0,2,0)，把选中面与禁用档一起抹平；
+  - `:not(:disabled):not(.is-selected):hover`（(0,5,0)）—— 稳压 base 的 `:hover` (0,2,0)；
+  - `:disabled, :disabled:hover`（(0,3,0) / (0,4,0)）—— 显式列出 hover，压掉 base 的 `:disabled:hover` (0,3,0)。
+- 只覆盖 `background` / `border-color`，**不重声明 `border-width: 1px`**（描边本来占位）⇒ 盒几何零位移。
+
+### ② hover 描边（本节新增的手感）
+
+| 状态              | 浅色                | 深色                |
+| ----------------- | ------------------- | ------------------- |
+| 静止（hairline）  | `#e4e7ed`（1.24:1） | `#34393c`（1.49:1） |
+| hover（加深一档） | `#dcdfe6`（1.33:1） | `#414649`（1.83:1） |
+
+- 取值 = 同一套 token 阶梯：`--cc-border-light`（静止）→ `--cc-border`（hover，与 composer / 输入框同档）
+  → `--vscode-focusBorder`（选中），三档互不重叠。
+- 实测：被 hover 那张的差异像素 **4812 px（浅）/ 4868 px（深）**＝ 1px 环带周长 ×2（只有描边一圈在变）；
+  同屏另两张卡逐值不变；三张卡 rect 逐值相同；**安装弹窗里「选中且可用」那张 hover 前后 0 px**
+  （`:not(.is-selected)` 守卫生效，选中面与 focusBorder 描边都没被抹平）。
+- 禁用两档**不参与** hover（她裁定）：保持「描边卡 + 淡化文字 + 禁止指针」，不给「可点」暗示。
+
+### ③ IDE 档的两条判据（拿不到 IDE 真机截图时的取证法）
+
+1. **源码级**（更强）：本批只新增 `[data-host="desktop"]` 选择器 + base 只加注释 ⇒ IDE 样式表逐字节未变。
+2. **运行时反证**：同一页面把 `documentElement.dataset.host` 切成 `ide`（React 树不重挂），新块整段失配，
+   实测逐值回到 base 声明 —— 未选中描边回到透明（渲染 1.0:1）、`cursor: default`、hover 描边回到 hairline。
+   ⚠️ 该相位 `--cc-*` 语义层也一并失效，**绝对色值只能以 base 声明为准**（IDE 真机 = 宿主注入的
+   `--vscode-*`，与 base 声明同源）；反证截图存放于报告 `shots/ide/`，仅作「本块确实失配」的现场。
+
+### ④ 可复用认知
+
+1. **宿主覆盖块里必须写状态排除**：`[data-host="desktop"] .x` 是 (0,2,0)，与 base 的 `.x.is-selected` (0,2,0)
+   同特异性 ⇒ 「后加载就能赢」不成立，必须 `:not(.is-selected)` / `:not(:disabled)` 显式排除，否则
+   一次「收窄」就会把选中/禁用态一起抹平。
+2. **「收窄到某宿主」的正确做法是搬家而不是复制**：base 回到原值 + 桌面块承载新值；两边都留着才是双份维护。
+3. **「base 逐字节未变」比截图更适合当另一个宿主的证据**：拿不到该宿主渲染时，源码级 + 运行时反证
+   比一张「长得像」的截图强。
+4. **hover 手感 = 描边阶梯**：静止 hairline → hover 强边界 → 选中 focusBorder；三档各自唯一，不靠加粗。
+
+### ⑤ 坑（都真踩过）
+
+- ★★ **Chromium 偶发不重绘 `:hover` 帧**：computed 已经是 hover 色、截图却仍是静止帧（浅色档第一次跑就中），
+  差一点交出「假的 0 差异」。⇒ hover 证据必须**逐字节自检「该帧 ≠ 静止帧」**，不一致就换
+  `page.hover()`（Playwright 自己的命中测试路径）重试，并记录重试序列（本轮两档都是 `[false,true]`）。
+- **采集相位的先后**：安装弹窗那一相曾把「静止」条图拍在 hover 之后（顺序写反）⇒ 误把 hover 帧当基线。
+- **PIL 差值要求两侧同尺寸**：单卡特写图与三卡条图裁出来的框大小不同，直接相减会失真 ⇒ 两侧一律从条图同几何裁。
+- 改写既有规则时勿用 `git stash`（共享 checkout 有他窗在途改动）：先 `git show <远端 tip>:<文件> > <文件>`
+  取回原值再改，逐字节核 md5 确认（本轮 base 回退即此法）。
+
+### ⑥ 残留触发语（她已明确不做/未授权）
+
+- 「禁用两档也加 hover 描边」—— 她已明确：「禁用不用 hover 描边」。
+- 「IDE 档也跟进这套」—— 她已明确：「IDE 不需要」。
+- 键盘 focus 态未动（base 的 focus 反馈仍在）；「选中 + 禁用」那张卡的填充面仍被 `:disabled` 覆盖为透明
+  （与上一轮一致，她 1009 已确认）。
+
+### ⑦ 验证脚本与证据
+
+| 用途       | 脚本（`CC02/走查/_tools/1010/`）             | 产物（`CC02/走查/1010-作用域选项桌面化/`）                                                                     |
+| ---------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| 采集四态   | `probe-scope-option-desktop-scope-1010.mjs`  | `desktop-rest/hover/install/install-hover-{light,dark}.png`、`desktop-card-*`、`ide-reverse-*`、`measure.json` |
+| 量测与对比 | `measure-scope-option-desktop-scope-1010.py` | `compare-hover-*[-2x]`、`compare-selected-*`、`compare-desktop-vs-ide-*`、`contrast.json`                      |
+| 报告       | `batch-1010-scope-desktop.json`              | `CC02/走查/1010-scope-desktop-report/index.html`（2 条 finding）                                               |
+
+报告按 skill 母版（v1.1）生成、`verify-repair-report.mjs` 自检：2/2 条目显示、图 1:1（原始 1088 → 展示 518）、
+0 破图、**axe 浅深 0/0**、640 窄屏无横溢、复制回退可用（1265 字）。用例 `tmp-settings-data-1009`（mock 目录
+gitignore、不进推送集）。探针覆盖率：两档主题 ×（静止 / hover 未选中 / hover 选中 / hover 禁用 / 反证 ide /
+安装弹窗静止 + hover），`pageerror 0`。

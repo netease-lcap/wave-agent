@@ -4138,3 +4138,46 @@
 [data-host="desktop"] .tooltip-box.visible {
   transition-delay: 0.1s;
 }
+
+/* ═══ 1009 评论：插件市场作用域弹窗的选项状态重排（仅桌面端）══════════════════
+   她 2026-10-10 在本轮报告后给出三条裁定：
+     ① **「收窄到只桌面端」** —— 前四条（去灰底 / 未选中补描边 / 禁用 not-allowed）我先前
+        写在 base，她说收窄，故 base 逐字回到 `7d05ed04` 版本（本文件承载桌面档）；
+     ② 「禁用 + 当前作用域要不要恢复 focusBorder 强调环」—— **不用**；
+     ③ **「hover 可以加个描边，都加」** —— 未选中可用那档加 hover 描边（本条新增）。
+
+   桌面档的状态语言（四态，填充面只归「选中」独占）：
+       静止（未选中可用）= 透明底 + 1px `--cc-settings-border`（形制照 AskUserQuestion 的
+                          `.option-item`：`ConfirmationDialog.css:296` 1px + 透明底）；
+       hover            = 描边加深一档 → `--cc-border`（= 与「composer / 输入框」同档的强边界）；
+       选中             = base 的 `--cc-fill-pressed` 底 + focusBorder 描边（未动）；
+       禁用             = 透明底 + `--cc-settings-border` + `opacity: .6` + `cursor: not-allowed`
+                          （原 `cursor: default`，与本文件外 13 处禁用态同口径）。
+   改前（base 档值）= 静止 `--cc-fill` 填充 + 描边恒透明，禁用只是「更浅的灰卡」（浅色渲成
+   `#f6f7f9`，与底色 1.07）且 `:disabled:hover` 把描边一并抹平 ⇒ 四种状态里三种读不出来。
+   取值同源：`--cc-settings-border` = `--vscode-panel-border` = `--cc-border-light`，与参考件
+   的 `--vscode-widget-border` 在桌面端是同一条 token（实测渲染色 `#e4e7ed` / `#34393c` 逐值相同）。
+
+   写法：`background` / `border-color` 只覆盖取值，**`border-width: 1px` 不重声明** ⇒ 盒几何
+   零位移（描边本来占位）；两条 `:not(...)` 是必需的，否则本块 (0,4,0) 会盖掉 base 的
+   `.settings-scope-option.is-selected` (0,2,0) 与 `:disabled`（(0,2,0)），把选中/禁用一起抹平。
+   `:disabled:hover` 也显式列出（(0,4,0) > base 的 (0,3,0)），压掉 base「hover 把描边抹成透明」
+   那条 —— 与加载顺序无关。
+   反证（IDE 档不受影响）：同一页面把 `documentElement.dataset.host` 切成 `ide`，本块整段失配，
+   逐值回到 base（填充面 `#f0f2f5` / 描边透明 / `cursor: default` / hover 描边 `#e4e7ed`）。 */
+[data-host="desktop"] .settings-scope-option:not(:disabled):not(.is-selected) {
+  background: transparent;
+  border-color: var(--cc-settings-border);
+}
+
+[data-host="desktop"]
+  .settings-scope-option:not(:disabled):not(.is-selected):hover {
+  border-color: var(--cc-border);
+}
+
+[data-host="desktop"] .settings-scope-option:disabled,
+[data-host="desktop"] .settings-scope-option:disabled:hover {
+  background: transparent;
+  border-color: var(--cc-settings-border);
+  cursor: not-allowed;
+}
