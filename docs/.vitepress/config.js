@@ -128,6 +128,13 @@ export default {
             { text: "套餐产品", link: "/guide#套餐产品" },
             { text: "API 额度", link: "/guide#api-额度" },
             { text: "使用明细", link: "/guide#使用明细" },
+            { text: "效能与用量度量（三层）", link: "/guide#metrics-layers" },
+            {
+              text: "遥测导出（OpenTelemetry）",
+              link: "/guide#telemetry-export",
+            },
+            { text: "用量回调（SDK 集成）", link: "/guide#usage-callback" },
+            { text: "隐私与治理", link: "/guide#telemetry-privacy" },
             { text: "五、订单管理", link: "/guide#orders" },
           ],
         },
