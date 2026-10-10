@@ -11218,3 +11218,109 @@ describe("renameSession", () => {
     expect(groups.map((g) => g.workdir)).toEqual(["/work/a"]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 项目根口径：会话稳定根（`sessionCwd`）vs 被 bash cd 漂移的 `workingDirectory`
+//
+// 判据：**用户正在看的目录**（文件面板 / 差异 / 终端）用
+// `workingDirectory` / `this.workdir`；**会话所属的项目**（项目级配置、
+// 会话元信息）用 initialize 时的 cwd（`sessionCwd`）。会话内 bash `cd` 只漂移
+// 前者——锚错会让项目级设置读写到嵌套子目录、让会话元信息把子目录当成项目。
+// ---------------------------------------------------------------------------
+
+describe("项目根口径（sessionCwd vs 漂移的 workingDirectory）", () => {
+  /** 让分屏的会话「跑过一次 cd」：像真 StdioAgent 那样先覆盖字段、再发通知。 */
+  function driftAgentTo(
+    agent: ReturnType<typeof lastAgent>,
+    dir: string,
+  ): void {
+    agent.workingDirectory = dir;
+    agent.callbacks.onWorkdirChange(dir);
+  }
+
+  /** 某个 RPC 每次调用带上的 workdir，按调用顺序。 */
+  function rpcWorkdirs(method: string): unknown[] {
+    return h.clientRequests
+      .filter((r) => r.method === method)
+      .map((r) => (r.params as { workdir?: string }).workdir);
+  }
+
+  it("项目级配置 RPC 一律以会话稳定根为项目根", async () => {
+    const { host } = await readyHost();
+    const agent = lastAgent();
+    driftAgentTo(agent, "/work/a/src");
+    expect(agent.sessionCwd).toBe("/work/a");
+
+    await host.handleWebviewMessage({ command: "getProjectSettings" });
+    await host.handleWebviewMessage({
+      command: "getHooksConfig",
+      scope: "project",
+    });
+    await host.handleWebviewMessage({
+      command: "getMcpConfig",
+      scope: "project",
+    });
+    await host.handleWebviewMessage({
+      command: "setBuiltinPluginEnabled",
+      pluginId: "sdd@builtin",
+      enabled: true,
+      scope: "project",
+    });
+    await host.handleWebviewMessage({
+      command: "getAgentsContent",
+      scope: "project",
+    });
+    await host.handleWebviewMessage({
+      command: "setAgentsContent",
+      scope: "project",
+      content: "# 项目规则",
+    });
+
+    // 六条 RPC 都读到项目根，而不是 agent 漂移后的子目录。
+    for (const method of [
+      "getProjectSettings",
+      "getHooksConfig",
+      "getMcpConfig",
+      "setBuiltinPluginEnabled",
+      "getAgentsContent",
+      "setAgentsContent",
+    ]) {
+      expect(rpcWorkdirs(method)).toEqual(["/work/a"]);
+    }
+  });
+
+  it("会话元信息（updateCurrentSession / setInitialState）以会话稳定根为项目目录", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    driftAgentTo(agent, "/work/a/src");
+
+    // sessionId 变更（rekey）后的推送。
+    fireSessionId(agent, "s1");
+    expect(sent("updateCurrentSession").at(-1)?.session?.workdir).toBe(
+      "/work/a",
+    );
+
+    // 分屏重新就绪时的整块重推。
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    expect(sent("setInitialState").at(-1)?.session?.workdir).toBe("/work/a");
+  });
+
+  it("重命名后的会话推送同样保持会话稳定根", async () => {
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    fireSessionId(agent, "s1");
+    driftAgentTo(agent, "/work/a/src");
+
+    await host.handleWebviewMessage({
+      command: "renameSession",
+      sessionId: "s1",
+      title: "改个名",
+      requestId: "r-project-root",
+    });
+
+    expect(sent("sessionRenamed").at(-1)).toMatchObject({ ok: true });
+    expect(sent("updateCurrentSession").at(-1)?.session?.workdir).toBe(
+      "/work/a",
+    );
+  });
+});

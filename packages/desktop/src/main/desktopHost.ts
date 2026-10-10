@@ -420,6 +420,36 @@ export class DesktopHost {
   }
 
   /**
+   * A session's *project* directory: the stable root captured at CLI
+   * initialize time (`sessionCwd`; the worktree path for a worktree session).
+   * Session metadata pushed to the webview describes the conversation, so it
+   * must carry this and not `workingDirectory` — that one drifts into a
+   * subdirectory as soon as the agent bash-`cd`s, which would make the pushed
+   * metadata claim a nested directory as the conversation's project.
+   */
+  private sessionRootOf(agent: StdioAgent): string | undefined {
+    return agent.sessionCwd ?? agent.workingDirectory;
+  }
+
+  /**
+   * A pane's *project* root — its session's stable root (the cwd at CLI
+   * initialize time; the worktree path for a worktree session), falling back to
+   * the focused workdir before any session is bound.
+   *
+   * Project-scoped configuration (AGENTS.md / project settings / hooks / MCP)
+   * must resolve against this, never against `workingDirectory`: a bash `cd`
+   * inside the session drifts that field into a subdirectory, so the settings
+   * panel would read and write a nested directory's config instead of the
+   * project's. "The directory the user is looking at" (file/diff/terminal
+   * panels) is the opposite case and keeps using `workingDirectory` /
+   * `this.workdir`.
+   */
+  private projectRootForPane(paneId?: string): string | undefined {
+    const agent = this.agentForPane(paneId);
+    return (agent ? this.sessionRootOf(agent) : undefined) ?? this.workdir;
+  }
+
+  /**
    * Key for a pane's input draft. Drafts are per-session (desktop-sessions.md
    * 「会话管理」scenario 11/12): typed-but-unsent text must not leak across
    * sessions shown in the same pane, and follows the session between panes.
@@ -1296,7 +1326,7 @@ export class DesktopHost {
             session: {
               id: sessionId,
               sessionType: "main",
-              workdir: agentRef.workingDirectory,
+              workdir: this.sessionRootOf(agentRef),
               lastActiveAt: new Date(),
               latestTotalTokens: agentRef.latestTotalTokens ?? 0,
               firstMessage:
@@ -2712,7 +2742,7 @@ export class DesktopHost {
           ? {
               id: current.sessionId,
               sessionType: "main",
-              workdir: current.workingDirectory,
+              workdir: this.sessionRootOf(current),
               lastActiveAt: new Date(),
               latestTotalTokens: current.latestTotalTokens,
               // Backfill the header title from the session index: after compaction
@@ -2941,7 +2971,7 @@ export class DesktopHost {
         session: {
           id: sessionId,
           sessionType: "main",
-          workdir: agent.workingDirectory,
+          workdir: this.sessionRootOf(agent),
           lastActiveAt: new Date(),
           latestTotalTokens: agent.latestTotalTokens,
           customTitle: title,
@@ -5622,11 +5652,11 @@ export class DesktopHost {
    * AGENTS.md settings UI: fetch user (~/.wave/AGENTS.md) or project
    * (<workdir>/AGENTS.md) memory file content.
    *
-   * The project scope is resolved against the target pane's bound session
-   * (agentForPane(paneId)?.workingDirectory ?? this.workdir), mirroring the
-   * other project-scoped settings RPCs (getProjectSettings/getHooksConfig/
-   * getMcpConfig) — the webview cannot supply a trustworthy workdir because
-   * the desktop settings full-page lives on the root instance, which owns no
+   * The project scope is resolved against the target pane's session *project*
+   * root (projectRootForPane — stable initialize-time cwd), mirroring the other
+   * project-scoped settings RPCs (getProjectSettings/getHooksConfig/
+   * getMcpConfig) — the webview cannot supply a trustworthy workdir because the
+   * desktop settings full-page lives on the root instance, which owns no
    * session of its own and must follow the focused pane. Trusting a
    * webview-sent path made the editor read/write whichever directory happened
    * to sit at the head of the window's recents instead of the current
@@ -5638,9 +5668,7 @@ export class DesktopHost {
   ): Promise<void> {
     try {
       const workdir =
-        scope === "project"
-          ? (this.agentForPane(paneId)?.workingDirectory ?? this.workdir)
-          : undefined;
+        scope === "project" ? this.projectRootForPane(paneId) : undefined;
       const result = (await this.utilityClientFor(
         this.hostForPane(paneId),
       ).request("getAgentsContent", { scope, workdir })) as {
@@ -5664,8 +5692,8 @@ export class DesktopHost {
 
   /**
    * AGENTS.md settings UI: persist content via the stdio setAgentsContent RPC.
-   * The project workdir is resolved from the target pane's bound session, same
-   * as handleGetAgentsContent (see above).
+   * The project workdir is resolved from the target pane's session project root,
+   * same as handleGetAgentsContent (see above).
    */
   private async handleSetAgentsContent(
     paneId: string,
@@ -5674,9 +5702,7 @@ export class DesktopHost {
   ): Promise<void> {
     try {
       const workdir =
-        scope === "project"
-          ? (this.agentForPane(paneId)?.workingDirectory ?? this.workdir)
-          : undefined;
+        scope === "project" ? this.projectRootForPane(paneId) : undefined;
       await this.utilityClientFor(this.hostForPane(paneId)).request(
         "setAgentsContent",
         {
@@ -5928,8 +5954,7 @@ export class DesktopHost {
 
   private async handleGetProjectSettings(paneId: string): Promise<void> {
     try {
-      const workdir =
-        this.agentForPane(paneId)?.workingDirectory ?? this.workdir;
+      const workdir = this.projectRootForPane(paneId);
       const result = (await this.utilityClientFor(
         this.hostForPane(paneId),
       ).request("getProjectSettings", { workdir })) as {
@@ -5952,8 +5977,7 @@ export class DesktopHost {
     scope?: string,
   ): Promise<void> {
     try {
-      const workdir =
-        this.agentForPane(paneId)?.workingDirectory ?? this.workdir;
+      const workdir = this.projectRootForPane(paneId);
       const result = (await this.utilityClientFor(
         this.hostForPane(paneId),
       ).request("getHooksConfig", {
@@ -5977,8 +6001,7 @@ export class DesktopHost {
     scope?: string,
   ): Promise<void> {
     try {
-      const workdir =
-        this.agentForPane(paneId)?.workingDirectory ?? this.workdir;
+      const workdir = this.projectRootForPane(paneId);
       const result = (await this.utilityClientFor(
         this.hostForPane(paneId),
       ).request("getMcpConfig", {
@@ -6004,8 +6027,7 @@ export class DesktopHost {
     scope?: Scope,
   ): Promise<void> {
     try {
-      const workdir =
-        this.agentForPane(paneId)?.workingDirectory ?? this.workdir;
+      const workdir = this.projectRootForPane(paneId);
       const result = (await this.utilityClientFor(
         this.hostForPane(paneId),
       ).request("setBuiltinPluginEnabled", {
