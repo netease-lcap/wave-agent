@@ -11004,4 +11004,125 @@ describe("renameSession", () => {
     expect(reply).toMatchObject({ requestId: "r5", ok: false });
     expect(reply?.error).toBeTruthy();
   });
+
+  // Regression: a session that ran `cd <subdir>` drifts the agent's
+  // workingDirectory (the CLI broadcasts workdirChange). Re-registering it on
+  // rename must keep the sidebar group anchored to the session root, or the
+  // renamed conversation "promotes" itself into a new subdir-named group.
+  it("keeps the sidebar group when a bash cd drifted the working directory before the rename", async () => {
+    const { host, store, sent, agent } = await readyWithLiveSession();
+    // The agent ran `cd src` — mirror what the real StdioAgent does on
+    // workdirChange: overwrite the field, then fire the notification.
+    agent.workingDirectory = "/work/a/src";
+    agent.callbacks.onWorkdirChange("/work/a/src");
+
+    await host.handleWebviewMessage({
+      command: "renameSession",
+      sessionId: "s1",
+      title: "改个名",
+      requestId: "r-drift",
+    });
+
+    const entry = store.getSessionIndex().find((e) => e.sessionId === "s1");
+    expect(entry?.workdir).toBe("/work/a");
+    expect(entry?.cwd).toBe("/work/a");
+    const tree = sent("desktopSessionTree").at(-1);
+    const groups = (tree?.groups as Array<{ workdir: string }>) ?? [];
+    expect(groups.map((g) => g.workdir)).toEqual(["/work/a"]);
+  });
+
+  // The same drift on a remote (ssh) session: the group key is (host, workdir),
+  // so the root must be negotiated per host just like a local one.
+  it("keeps the sidebar group for a remote session after a bash cd drift", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, store, sent } = await readyHost();
+    store.upsertSession(entry("sess-remote", "/work/a", { host: "prod" }));
+    // Open the remote session in a pane: spawns the agent under the 'prod' key
+    // (the only way it reaches the re-registration path below).
+    await host.handleWebviewMessage({
+      command: "desktopOpenPane",
+      workdir: "/work/a",
+      sessionId: "sess-remote",
+    });
+    // Wait for the restore to settle — the agent is only re-keyed to the
+    // restored sessionId once spawn + restoreSession + getMessages are done.
+    const paneId = (
+      sent("desktopPanes").at(-1) as { panes: Array<{ paneId: string }> }
+    ).panes.at(-1)!.paneId;
+    await vi.waitFor(() => {
+      expect(
+        sent("setInitialState")
+          .filter((m) => m.paneId === paneId)
+          .at(-1),
+      ).toMatchObject({
+        isRestoring: false,
+        session: { id: "sess-remote" },
+      });
+    });
+    // The agent now live on 'prod' — cd inside the remote session drifts its cwd.
+    const agent = lastAgent();
+    agent.workingDirectory = "/work/a/src";
+    agent.callbacks.onWorkdirChange("/work/a/src");
+
+    await host.handleWebviewMessage({
+      command: "renameSession",
+      sessionId: "sess-remote",
+      title: "远端改个名",
+      requestId: "r-drift-remote",
+    });
+
+    expect(sent("sessionRenamed").at(-1)).toMatchObject({ ok: true });
+    const entryAfter = store
+      .getSessionIndex()
+      .find((e) => e.sessionId === "sess-remote");
+    expect(entryAfter?.host).toBe("prod");
+    expect(entryAfter?.workdir).toBe("/work/a");
+    expect(entryAfter?.cwd).toBe("/work/a");
+    const tree = sent("desktopSessionTree").at(-1);
+    const groups =
+      (tree?.groups as Array<{ host: string; workdir: string }>) ?? [];
+    expect(groups).toEqual([
+      expect.objectContaining({ host: "prod", workdir: "/work/a" }),
+    ]);
+  });
+
+  // A worktree session's sidebar group is the repo root while its own files
+  // live at the worktree path — a cd drift must not disturb either.
+  it("keeps the worktree session grouped under the repo root after a bash cd drift", async () => {
+    const { host, store, sent } = await readyHost();
+    const agent = lastAgent();
+    const worktree = {
+      path: "/work/wt-1",
+      branch: "wave/wt-1",
+      baseBranch: "main",
+      repoRoot: "/work/a",
+    };
+    // Register the worktree session the way spawnAgent does: the agent starts
+    // at the worktree path and the host maps it to its worktree info.
+    agent.workingDirectory = "/work/wt-1";
+    agent.sessionCwd = "/work/wt-1";
+    fireSessionId(agent, "s1");
+    store.upsertSession(
+      entry("s1", "/work/a", { cwd: "/work/wt-1", worktree }),
+    );
+    // cd inside the worktree drifts the agent's cwd.
+    agent.workingDirectory = "/work/wt-1/src";
+    agent.callbacks.onWorkdirChange("/work/wt-1/src");
+
+    await host.handleWebviewMessage({
+      command: "renameSession",
+      sessionId: "s1",
+      title: "worktree 改个名",
+      requestId: "r-drift-wt",
+    });
+
+    const entryAfter = store
+      .getSessionIndex()
+      .find((e) => e.sessionId === "s1");
+    expect(entryAfter?.workdir).toBe("/work/a");
+    expect(entryAfter?.cwd).toBe("/work/wt-1");
+    const tree = sent("desktopSessionTree").at(-1);
+    const groups = (tree?.groups as Array<{ workdir: string }>) ?? [];
+    expect(groups.map((g) => g.workdir)).toEqual(["/work/a"]);
+  });
 });

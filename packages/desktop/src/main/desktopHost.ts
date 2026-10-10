@@ -2828,7 +2828,12 @@ export class DesktopHost {
     sessionId: string,
     title = "",
   ): void {
-    const cwd = agent.workingDirectory;
+    // Anchor to the session's stable root (initialize-time cwd), not
+    // `workingDirectory` — the CLI broadcasts workdirChange when the agent
+    // bash-cd's into a subdir, and that transient cwd must never become the
+    // (host, workdir) group key, or the conversation "promotes" itself into a
+    // new subdir-named sidebar group on the next re-registration (rename).
+    const cwd = agent.sessionCwd ?? agent.workingDirectory;
     if (!cwd || !this.configStore) return;
     const existing = this.configStore
       .getSessionIndex()
@@ -2918,8 +2923,13 @@ export class DesktopHost {
     const host = entry?.host ?? LOCAL_HOST;
     const agent = this.agents.get(this.agentKey(host, sessionId));
     // 会话文件所在项目目录：worktree 会话的文件在 worktree 路径（cwd）下，不是
-    // 仓库根（workdir）；尚未登记的会话用绑定 agent 的工作目录。
-    const workdir = entry?.cwd ?? agent?.workingDirectory ?? entry?.workdir;
+    // 仓库根（workdir）；尚未登记的会话用绑定 agent 的稳定根（同 registerSessionInIndex
+    // —— bash cd 会把 workingDirectory 漂移到子目录，绝不能用它定位会话文件）。
+    const workdir =
+      entry?.cwd ??
+      agent?.sessionCwd ??
+      agent?.workingDirectory ??
+      entry?.workdir;
     if (!workdir) {
       reply(false, "找不到该会话的工作目录");
       return;
