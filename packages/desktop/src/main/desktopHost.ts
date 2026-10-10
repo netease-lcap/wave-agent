@@ -1490,7 +1490,6 @@ export class DesktopHost {
       // filter), so switching away later does not re-light it without a fresh
       // completion.
       this.newCompletedAgents.delete(agent);
-      this.touchAgentAsRecent(agent);
     }
     // The pane may now run on a different host — the sidebar account card
     // follows the focused pane's host (spec 场景 8).
@@ -1500,18 +1499,6 @@ export class DesktopHost {
     if (outgoing && outgoing !== agent && this.isBlankAgent(outgoing)) {
       void this.discardAgent(outgoing);
     }
-  }
-
-  /**
-   * Mark an agent as most-recently-used by moving it to the end of the pool
-   * Map — iteration order doubles as the recency order activateWorkdir uses
-   * to pick a reusable session.
-   */
-  private touchAgentAsRecent(agent: StdioAgent): void {
-    const key = this.agentKey(this.hostForAgent(agent), agent.sessionId ?? "");
-    if (!agent.sessionId || this.agents.get(key) !== agent) return;
-    this.agents.delete(key);
-    this.agents.set(key, agent);
   }
 
   /** Point a pane at an agent: sync workdir context, refresh sidebar, push its state. */
@@ -2222,7 +2209,12 @@ export class DesktopHost {
       targets.push({
         paneId: pane.paneId,
         sessionId: agent.sessionId,
-        workdir: entry?.cwd ?? agent.workingDirectory ?? "",
+        // Reconnect spawns a fresh agent rooted at this workdir, so it must be
+        // the session's stable root — same convention as registerSessionInIndex
+        // (`sessionCwd`): `workingDirectory` drifts into the subdirectory the
+        // agent bash-cd'd into, and a reconnect would then come back rooted
+        // there instead of at the project root.
+        workdir: entry?.cwd ?? agent.sessionCwd ?? agent.workingDirectory ?? "",
         host,
         entry,
       });
@@ -2353,42 +2345,23 @@ export class DesktopHost {
   }
 
   /**
-   * Switch a pane into a directory (FR-031). Existing agents are never
-   * destroyed — the most recently activated live session in this directory is
-   * reused when present (and not already shown in another pane), otherwise a
-   * fresh agent is spawned.
+   * Open a directory as a new session (FR-031). Existing agents are never
+   * destroyed — every live session keeps running in the background — but this
+   * always spawns a fresh agent: picking a directory means "start a new
+   * conversation here", never "go back to the one already open in this
+   * directory" (returning to an existing conversation is the sidebar's job).
+   * See desktop-sessions.md「会话管理」scenario 22.
    */
   private async activateWorkdir(opts: {
     host?: string;
     dir: string;
-    forceNew?: boolean;
     paneId?: string;
   }): Promise<void> {
-    const { dir, forceNew = false } = opts;
+    const { dir } = opts;
     const host = opts.host ?? LOCAL_HOST;
     const paneId = opts.paneId ?? this.focusedPaneId;
     this.workdir = dir;
     this.configStore.addRecentWorkdir({ host, path: dir });
-
-    if (!forceNew) {
-      // Pool iteration order is recency order (bindAgentToPane re-keys), so
-      // the last match is the most recently activated session in this dir.
-      // Only reuse agents running on the same host — a local and a remote
-      // session in the same path are different processes (spec scenario 9).
-      let best: StdioAgent | null = null;
-      for (const agent of this.agents.values()) {
-        if (this.hostForAgent(agent) !== host) continue;
-        if (agent.workingDirectory !== dir) continue;
-        // Never steal an agent shown in another pane — one session, one pane.
-        if (this.panes.some((p) => p.agent === agent && p.paneId !== paneId))
-          continue;
-        best = agent;
-      }
-      if (best) {
-        await this.activateAgentInPane(paneId, best);
-        return;
-      }
-    }
 
     try {
       const agent = await this.spawnAgent({ host, workdir: dir });
@@ -3087,11 +3060,7 @@ export class DesktopHost {
         }
       }
       if (repoRootExists && repoRoot) {
-        await this.activateWorkdir({
-          host,
-          dir: repoRoot,
-          forceNew: true,
-        });
+        await this.activateWorkdir({ host, dir: repoRoot });
       } else {
         await this.handleNewSession(undefined, true);
       }
