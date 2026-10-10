@@ -6868,9 +6868,9 @@ describe("multi-session parallel (FR-031)", () => {
     expect(sent("setInitialState")).toHaveLength(states);
   });
 
-  it("switching back to a directory reactivates its live agent instead of spawning", async () => {
+  it("switching back to a directory starts a fresh session instead of reviving its old one (场景 22)", async () => {
     const { host, store, sent } = await readyHost();
-    seedActiveSession("sess-1");
+    const first = seedActiveSession("sess-1");
     store.addRecentWorkdir({ host: "local", path: "/work/b" });
     h.existingPaths.add("/work/b");
 
@@ -6885,10 +6885,15 @@ describe("multi-session parallel (FR-031)", () => {
       path: "/work/a",
     });
 
-    expect(h.agentInstances).toHaveLength(2);
+    // 选目录 = 新对话：sess-1 的 agent 仍在池中存活，但分屏绑的是新会话，
+    // 不是当初在 /work/a 的那条（回到旧会话只经侧边栏会话树）。
+    expect(h.agentInstances).toHaveLength(3);
+    const third = lastAgent();
+    expect(third).not.toBe(first);
     expect(sent("setInitialState").at(-1)).toMatchObject({
-      session: { id: "sess-1" },
+      session: { id: third.sessionId },
     });
+    expect(first.destroy).not.toHaveBeenCalled();
   });
 
   it("keeps the running dot on background sessions in the tree", async () => {
@@ -9530,18 +9535,66 @@ describe("SSH remote hosts", () => {
       index.find((e) => e.cwd === "/repo" && e.host === "local"),
     ).toBeDefined();
 
-    // Activating the same remote path again reuses the remote agent — host
-    // equality is part of the reuse key, and the two never collapse.
+    // Picking the same remote path again starts a NEW session — selecting a
+    // directory never reopens the one already open there (scenario 22), and the
+    // two sessions in the same path stay separate processes either way.
     await host.handleWebviewMessage({
       command: "desktopSelectRemotePath",
       host: "prod",
       path: "/repo",
     });
-    expect(h.agentInstances.length).toBe(3);
+    expect(h.agentInstances.length).toBe(4);
+    const third = lastAgent();
+    expect(third).not.toBe(remoteAgent);
+    expect(third).not.toBe(localAgent);
     const panes = sent("desktopPanes").at(-1) as {
       panes: Array<{ sessionId: string; host: string }>;
     };
-    expect(panes.panes[0]).toMatchObject({ sessionId: "sess-2", host: "prod" });
+    expect(panes.panes[0]).toMatchObject({
+      sessionId: third.sessionId,
+      host: "prod",
+    });
+    expect(panes.panes[0].sessionId).not.toBe(remoteAgent.sessionId);
+    // The sessions it replaced keep running — a directory pick never destroys
+    // anything.
+    expect(remoteAgent.destroy).not.toHaveBeenCalled();
+    expect(localAgent.destroy).not.toHaveBeenCalled();
+  });
+
+  it("选同一目录再次打开时必须新开会话，不复用池中该目录的旧会话（场景 22）", async () => {
+    const { host, sent } = await readyHost();
+    const first = lastAgent(); // pane-1, /work/a
+    registerAgentInIndex(first); // has content → stays alive in the pool when replaced
+    h.existingPaths.add("/work/b");
+
+    // The user picks another directory, then comes back to the first one.
+    await host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      path: "/work/b",
+    });
+    const second = lastAgent();
+    expect(second).not.toBe(first);
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectRecentWorkdir",
+      path: "/work/a",
+    });
+
+    // 回到 /work/a 是「新对话」，不是「回到刚才那条对话」。
+    expect(h.agentInstances.length).toBe(3);
+    const third = lastAgent();
+    expect(third).not.toBe(first);
+    expect(third).not.toBe(second);
+    expect(third.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ workdir: "/work/a" }),
+    );
+    const panes = sent("desktopPanes").at(-1) as {
+      panes: Array<{ sessionId?: string }>;
+    };
+    expect(panes.panes[0].sessionId).toBe(third.sessionId);
+    expect(panes.panes[0].sessionId).not.toBe(first.sessionId);
+    // 旧会话仍在池中存活，只是不再显示在这个分屏。
+    expect(first.destroy).not.toHaveBeenCalled();
   });
 
   it("desktopListRemoteDir replies with the resolved path and subdirectory list", async () => {
@@ -9790,6 +9843,45 @@ describe("SSH remote hosts", () => {
         ),
       ).toBe(true);
     });
+  });
+
+  it("auto-reconnect re-roots the session at its stable root, not the bash-cd'd subdir", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    h.existingPaths.add("/remote/repo");
+    const { host, store } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectRemotePath",
+      host: "prod",
+      path: "/remote/repo",
+    });
+    await vi.waitFor(() => expect(h.closedHandlers).toHaveLength(1));
+    const remoteAgent = lastAgent();
+    // No index entry: a message-less session is never registered (FR-024), so
+    // the reconnect target has no `entry.cwd` to fall back on.
+    expect(
+      store
+        .getSessionIndex()
+        .find((e) => e.sessionId === remoteAgent.sessionId),
+    ).toBeUndefined();
+    // The agent ran `cd src` — the CLI broadcast workdirChange, drifting its
+    // workingDirectory while sessionCwd stays the initialize-time root.
+    remoteAgent.workingDirectory = "/remote/repo/src";
+    remoteAgent.callbacks.onWorkdirChange("/remote/repo/src");
+    expect(remoteAgent.sessionCwd).toBe("/remote/repo");
+
+    h.closedHandlers[0]();
+
+    // The reconnect spawns the replacement at the session root — rooting it at
+    // the drifted subdir would silently re-home the session a level down.
+    await vi.waitFor(() => {
+      expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(2);
+    });
+    const reconnected = lastAgent();
+    expect(reconnected).not.toBe(remoteAgent);
+    expect(reconnected.initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ workdir: "/remote/repo" }),
+    );
   });
 
   it("auto-reconnect gives up after the backoff cap, leaving the pane as a new session with a final message", async () => {
