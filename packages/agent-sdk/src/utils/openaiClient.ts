@@ -6,6 +6,7 @@ import {
 } from "openai/resources.js";
 import { GatewayConfig } from "../types/config.js";
 import { logger } from "./globalLogger.js";
+import { serializeError } from "./errorUtils.js";
 
 const MAX_RETRIES = 10;
 const BASE_DELAY_MS = 500;
@@ -137,7 +138,7 @@ export class OpenAIClient {
           logger.warn("OpenAI API network error, retrying...", {
             model: params.model,
             attempt: attempt + 1,
-            error: e,
+            error: serializeError(e),
           });
           lastError = e as Error;
           lastRetryAfter = null;
@@ -173,7 +174,9 @@ export class OpenAIClient {
       try {
         responseText = await response.text();
       } catch (e) {
-        logger.error("Failed to read error response text", { error: e });
+        logger.error("Failed to read error response text", {
+          error: serializeError(e),
+        });
       }
 
       const error = new Error(
