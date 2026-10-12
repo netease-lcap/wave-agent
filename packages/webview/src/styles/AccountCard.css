@@ -366,8 +366,24 @@
   color: var(--vscode-errorForeground, #f14c4c);
 }
 
-/* 用量维度切换器（套餐用量 / API 余额）：行内两个文字页签，右侧跟套餐到期日。
-   只有一维可用时组件不渲染切换器，该行整体消失。 */
+/* 用量维度切换器（套餐用量 / API 余额）：行内两个**下划线式文字页签**，右侧跟套餐
+   到期日。只有一维可用时组件不渲染切换器，该行整体消失。
+   设计师 2026-10-12 评论（点 `.account-usage-tabs`）：「…这样的样式，我想要改回来，
+   改成设置页那种下面是下划线的，但是不要很长的分割线，因为用这种方式套餐用量和
+   本周就文字上对不齐了」。
+   ① 选中态 = **下划线**（撤掉当日早些时候那版填充胶囊），下划线规格最终档
+      （设计师评论「线可以细一些 2px，上下圆角一致，看起来是椭圆，然后距离文本远
+      一些」+「用 2px 的，颜色同设置页的下划线」）：高 **2px**、四角同值 `999px`
+      （2px 盒上折算 1px = 两端半圆，即椭圆端）、`--vscode-foreground`（与设置页
+      页签下划线同 token）、整条挂在页签盒下缘之外 2px；宽度
+      （left/right 0）**只跟文字等宽**，不是整行的分割线。
+   ② 为什么不能上填充面：本行页签文字必须与**下方用量条的标签**（本周 / 本月）左缘
+      对齐（同在 231px 内容宽里，都是这一块的左起文字）。填充面必须给横向内衬才成形，
+      内衬 6px ⇒ 页签文字左缘被推进 6px，而下方标签不动 ⇒ 错位 6px（实测）。下划线式
+      横向内衬为 0，页签文字左缘与标签左缘都落在 x=14，差 0px。
+   ③ 盒高守恒：原「下衬 2px + 下边框 2px」→ 现「下衬 4px」（下划线改由 `::after`
+      绝对定位绘制，不占布局）⇒ 页签盒仍 16.5 + 4 = 20.5px，页签行 / 用量块 / 卡片
+      几何逐值不变，行内文字基线也不动（所以 ⓘ 的 5px 基线补偿沿用，见文件末尾）。 */
 .account-usage-tabs-row {
   display: flex;
   align-items: baseline;
@@ -382,14 +398,42 @@
 }
 
 .account-usage-tab {
+  position: relative;
   border: none;
   background: transparent;
-  padding: 0 0 2px;
+  padding: 0 0 4px;
   margin: 0;
   font: inherit;
   color: var(--vscode-descriptionForeground, #9d9d9d);
   cursor: pointer;
-  border-bottom: 2px solid transparent;
+  /* 单行不折：页签文字左缘要与下方用量条标签（本周 / 本月）左对齐，横向内衬必须是 0，
+     于是长度只能靠内容自己收；留这条守卫是为了让将来文案变长时表现为**可见的横向
+     溢出**（一眼看得见），而不是中文静默折成两行、页签行 20.5 → 37px 的高度跳变。 */
+  white-space: nowrap;
+}
+
+/* 选中下划线：不占布局（绝对定位），规格按设计师 2026-10-12 的连续评论收口 ——
+   「线可以细一些 2px，上下圆角一致，看起来是椭圆，然后距离文本远一些」+ 「用 2px 的，
+   颜色同设置页的下划线」⇒ **定档 2px**（3px 那档是当轮试档，已按本句撤回）。
+   · 椭圆端：四角同值 `999px`，在 2px 高的盒上被「圆角收缩」折算成 **1px = 半高**
+     （两端半圆）⇒ 读起来是一枚细椭圆胶囊。这里**要的**就是这个折算结果（与设置页
+     3px 高亮条写 `1.5px` 要方端是同一个折算规则、方向相反）。
+   · 离文本远一些：`bottom: -2px` ⇒ 整条挂在页签盒**下缘之外**，线顶落在盒底
+     （= 文本行盒底 852 + 4px 下衬）附近，不与字形贴在一起。页签盒与行盒都不动
+     （绝对定位），线底到下一行「本周」仍有余量。
+   · 颜色 = `--vscode-foreground`，与设置页页签下划线 `.settings-tab.is-active::after`
+     的取值**同一个 token**（实测两处 computed 背景逐值相同，见本轮报告 F-02）。
+   · `pointer-events: none`：装饰线不参与命中，免得把页签热区向下撑。 */
+.account-usage-tab::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -2px;
+  left: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: transparent;
+  pointer-events: none;
 }
 
 .account-usage-tab:hover {
@@ -399,7 +443,10 @@
 .account-usage-tab.is-active {
   color: var(--vscode-foreground);
   font-weight: 500;
-  border-bottom-color: var(--vscode-textLink-foreground, #3794ff);
+}
+
+.account-usage-tab.is-active::after {
+  background: var(--vscode-foreground);
 }
 
 .account-usage-tab:focus-visible {
@@ -424,11 +471,12 @@
 /* ⓘ 与左侧文字水平对齐：ⓘ 被 Tooltip 包成 `span.tooltip-container`（inline-flex、
    里面没有文字），合成基线落在盒子下缘，按 baseline 对齐会把图标顶上去——像素级
    实测图标墨迹中线比文字墨迹中线高约 3.3px，肉眼即「浮在文字上方」。只改按行盒
-   居中又不够：页签行里页签自带 `padding-bottom: 2px` + `border-bottom: 2px`，行盒
-   中心被这两段推低，图标反而落到文字下方约 2.5px。故再给 `margin-bottom: 5px`
-   把容器在行盒内抬回 2.5px——图标墨迹中线与左侧文字墨迹中线重合（栅格取整后
-   实测差 ≤0.5px）。单维标题行没有下边框，只居中即可（实测差 0.3px）。同行其它
-   纯文本（套餐到期日）仍走 baseline，不受影响。 */
+   居中又不够：页签行里页签自带 4px 下衬（原来是 `padding-bottom: 2px` +
+   `border-bottom: 2px`，下划线改 `::after` 后合并成一条 `padding-bottom: 4px`，
+   盒高与基线位置均未变），行盒中心被这段下衬推低，图标反而落到文字下方约 2.5px。
+   故再给 `margin-bottom: 5px` 把容器在行盒内抬回 2.5px——图标墨迹中线与左侧文字
+   墨迹中线重合（栅格取整后实测差 ≤0.5px）。单维标题行没有下衬，只居中即可
+   （实测差 0.3px）。同行其它纯文本（套餐到期日）仍走 baseline，不受影响。 */
 .account-usage-tabs-row > .tooltip-container {
   align-self: center;
   margin-bottom: 5px;
