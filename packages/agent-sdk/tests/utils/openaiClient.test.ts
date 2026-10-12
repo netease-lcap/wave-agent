@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { OpenAIClient } from "../../src/utils/openaiClient.js";
+import {
+  setGlobalLogger,
+  clearGlobalLogger,
+} from "../../src/utils/globalLogger.js";
+import { createMockLogger } from "./mockLogger.js";
 
 describe("OpenAIClient", () => {
   beforeEach(() => {
@@ -10,6 +15,7 @@ describe("OpenAIClient", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+    clearGlobalLogger();
   });
 
   it("should correctly handle SSE data lines with and without a space after the colon", async () => {
@@ -618,6 +624,59 @@ describe("OpenAIClient", () => {
 
       await expect(promise).rejects.toThrow("The operation was aborted");
       expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("should log the underlying cause of a network error, not an empty object", async () => {
+      const mockLogger = createMockLogger();
+      setGlobalLogger(mockLogger);
+
+      const cause = Object.assign(new Error("certificate has expired"), {
+        code: "CERT_HAS_EXPIRED",
+      });
+      // undici wraps the real failure as a non-enumerable `cause`.
+      const networkError = new TypeError("fetch failed");
+      Object.defineProperty(networkError, "cause", { value: cause });
+      const mockFetch = vi
+        .fn()
+        .mockRejectedValueOnce(networkError)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            choices: [{ message: { content: "success" } }],
+          }),
+          headers: new Headers(),
+        });
+
+      const client = new OpenAIClient({
+        baseURL: "https://api.openai.com/v1",
+        apiKey: "test-key",
+        fetch: mockFetch,
+      });
+
+      const promise = client.chat.completions.create({
+        model: "gpt-4",
+        messages: [{ role: "user", content: "hi" }],
+      });
+
+      await vi.runAllTimersAsync();
+      await promise;
+
+      expect(mockLogger.warn).toHaveBeenCalledWith(
+        "OpenAI API network error, retrying...",
+        {
+          model: "gpt-4",
+          attempt: 1,
+          error: {
+            name: "TypeError",
+            message: "fetch failed",
+            cause: {
+              name: "Error",
+              message: "certificate has expired",
+              code: "CERT_HAS_EXPIRED",
+            },
+          },
+        },
+      );
     });
   });
 });
