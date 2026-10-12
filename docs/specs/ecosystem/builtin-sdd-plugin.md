@@ -1,6 +1,6 @@
 ---
 name: "内置 SDD 插件"
-description: "规格优先工作流：specify 技能、会话引导与规格校验"
+description: "规格优先工作流插件：`specify` 技能、会话引导、spec-count 校验与阶段单选衔接"
 order: 65
 ---
 

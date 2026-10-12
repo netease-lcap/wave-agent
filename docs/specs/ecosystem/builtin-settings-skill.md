@@ -1,6 +1,6 @@
 ---
 name: "内置 Settings 技能"
-description: "引导用户配置 `settings.json`、钩子和 Wave 设置管理"
+description: "内置 `settings` 技能，查看与修改各作用域 settings.json，并提供 hook 编写指导"
 order: 20
 ---
 

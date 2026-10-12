@@ -1,6 +1,6 @@
 ---
 name: "Stdio 传输层"
-description: "编辑器插件与 `wave --stdio` 子进程的 JSON-RPC 通信，CLI 解析/安装/升级、多会话路由、错误诊断"
+description: "宿主（IDE 插件/桌面端）驱动 `wave --stdio` 的 JSON-RPC 传输层：CLI 解析同步、多会话路由、消息拉取/增量通知与失败诊断"
 order: 220
 ---
 

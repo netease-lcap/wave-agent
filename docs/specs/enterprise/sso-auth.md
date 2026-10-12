@@ -1,6 +1,6 @@
 ---
 name: "SSO 认证"
-description: "/login 浏览器 SSO 登录、token 存储、自动 API 代理路由"
+description: "`/login` 浏览器 SSO 登录、token 自动刷新与网关路由，含 IDE/桌面登录入口与未登录输入禁用"
 order: 10
 ---
 

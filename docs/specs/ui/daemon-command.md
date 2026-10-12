@@ -1,6 +1,6 @@
 ---
 name: "Daemon 客户端命令"
-description: "`wave daemon create/list/status/wait/send/respond/abort/destroy/stop/restart` — 按需创建、查看、阻塞等待空闲、续聊、审批、中断、销毁与优雅停止/重启 daemon 托管的远端后台会话"
+description: "`wave daemon` 子命令组：按需拉起常驻 daemon，创建、查看、阻塞等待空闲、续聊、审批、中断、销毁远端后台会话，并优雅停止/重启 daemon"
 order: 270
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: "输入编辑键与清空"
-description: "修复 SSH/tmux 退格失效、新增 Ctrl+U/K/W/A/E 行编辑键与空闲态 Esc 双击清空输入"
+description: "输入行编辑键：Ctrl+U/K/W/A/E 行编辑、空闲 Esc 双击清空输入、SSH/tmux 退格兼容与占位符删除支持"
 order: 215
 ---
 

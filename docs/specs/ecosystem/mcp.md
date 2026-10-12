@@ -1,6 +1,6 @@
 ---
 name: "MCP"
-description: "Model Context Protocol 外部工具和上下文源支持"
+description: "MCP 服务器接入与管理：项目/用户/插件来源配置合并、生命周期控制、`instructions` 播报与设置页增删改"
 order: 60
 ---
 

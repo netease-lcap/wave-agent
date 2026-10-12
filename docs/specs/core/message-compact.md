@@ -1,6 +1,6 @@
 ---
 name: "消息压缩"
-description: "对话历史和用户输入大小管理"
+description: "自动与手动 `/compact` 上下文压缩：请求前触发、摘要 fork、熔断上限、压缩钩子与旧消息 UI 保留"
 order: 70
 ---
 

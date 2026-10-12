@@ -1,6 +1,6 @@
 ---
 name: "上下文工程"
-description: "提示文本与上下文消息的构建、组装和管理框架"
+description: "系统提示词静态/动态分块与精简模式、`<system-reminder>` 注入、messages 组装层次与 fork 上下文边界"
 order: 80
 ---
 

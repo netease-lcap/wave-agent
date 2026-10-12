@@ -1,6 +1,6 @@
 ---
 name: "钩子命令"
-description: "通过 /hooks 斜杠命令查看已配置的钩子"
+description: "`/hooks` 浏览用户/项目/插件三级作用域的已配置钩子与各 HookEvent 事件摘要，CLI 只读覆盖层与 IDE 设置页钩子选项卡"
 order: 146
 ---
 

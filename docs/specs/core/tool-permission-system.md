@@ -1,6 +1,6 @@
 ---
 name: "工具权限系统"
-description: "权限系统，支持模式、通配符、拒绝规则、信任、acceptEdits、dontAsk、安全区"
+description: "权限规则通配符匹配、复合命令结构感知判定、安全区域/附加目录、MCP 工具权限与 `acceptEdits`/`dontAsk` 等模式"
 order: 130
 ---
 

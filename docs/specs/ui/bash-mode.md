@@ -1,6 +1,6 @@
 ---
 name: "Bash 模式"
-description: "`!` 前缀直接从聊天输入执行 shell 命令"
+description: "`!` 前缀在聊天输入直接执行 shell 命令，输出以 bash tool block 全量展示并进入模型上下文，命令可中止"
 order: 140
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: "Agent 技能"
-description: "可发现的技能包，通过 SKILL.md 文件提供模型可调用的能力"
+description: "`SKILL.md` 技能包的发现与解析、`/` 调用、`allowed-tools` 限制与派生到子代理"
 order: 10
 ---
 

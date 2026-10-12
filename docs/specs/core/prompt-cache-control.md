@@ -1,6 +1,6 @@
 ---
 name: "Prompt 缓存控制"
-description: "基于正则匹配的显式缓存标记，支持 Claude、Qwen 等多种模型"
+description: "按模型能力声明注入 cache_control：系统提示静态/动态分块、最后消息标记与缓存 token 追踪口径"
 order: 90
 ---
 

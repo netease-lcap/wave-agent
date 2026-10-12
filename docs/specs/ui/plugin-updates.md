@@ -1,6 +1,6 @@
 ---
 name: "插件更新策略"
-description: "VS Code 扩展与 JetBrains 插件的更新统一交给官方市场机制，插件自身不再内置更新检查"
+description: "VS Code 扩展与 JetBrains 插件的更新交由官方市场机制，状态对话框不提供手动检查更新入口"
 order: 240
 ---
 
@@ -11,7 +11,7 @@ order: 240
 
 > 本规格定义 VS Code 扩展（`packages/vscode`）与 JetBrains 插件（`packages/jetbrains`）的版本更新策略：插件不内置更新检查（不查询 GitHub Releases、不查询企业 manifest、不自动下载安装），更新完全由官方市场机制负责（VS Code 扩展自动更新 / JetBrains Marketplace 插件更新）。桌面应用（`packages/desktop`）是独立 Electron 应用，走 electron-updater 自有机制，不在本规格范围。CLI 的 `wave update` 命令见 [Update 命令](update-command.md)。
 
-## 用户场景与测试 *（必填）*
+## 用户场景与测试 _（必填）_
 
 ### 用户故事：插件更新由官方市场机制管理（优先级：P1）
 

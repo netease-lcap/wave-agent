@@ -1,6 +1,6 @@
 ---
 name: "CLI Worktree"
-description: "`-w/--worktree` 隔离的 git worktree，位于 `.wave/worktrees/`，支持安全退出"
+description: "`-w/--worktree`、会话内 `EnterWorktree`/`ExitWorktree` 工具与 worktree hook 支持"
 order: 90
 ---
 

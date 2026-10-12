@@ -1,6 +1,6 @@
 ---
 name: "桌面端壳层与分发"
-description: "CodeWave IDE 桌面端壳层：内置 CLI 交付、SSO 登录、与 IDE 一致的交互、跨平台分发、自动更新、主题设置、应用菜单栏与 macOS 隐藏标题栏"
+description: "CodeWave IDE 桌面端壳层：内置 CLI、SSO 登录、与 IDE 一致的交互、跨平台分发、自动更新/Beta 通道、主题设置与 macOS 标题栏"
 order: 10
 ---
 

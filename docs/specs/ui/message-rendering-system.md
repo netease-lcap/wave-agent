@@ -1,6 +1,6 @@
 ---
 name: "消息渲染"
-description: "基于 Ink 的消息/块渲染——静态历史 + 动态工具执行"
+description: "Ink 消息流（静态历史 + 动态块）与 webview 工具结果渲染：差异/写入预览、路径相对化与跨会话高度缓存"
 order: 30
 ---
 

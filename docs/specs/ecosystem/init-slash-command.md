@@ -1,6 +1,6 @@
 ---
 name: "Init 命令"
-description: "`/init` 斜杠命令，使用 init-prompt.md 进行项目初始化"
+description: "`/init` 内置技能，分析代码库并创建或改进 `AGENTS.md` 指导文件"
 order: 30
 ---
 
@@ -8,7 +8,7 @@ order: 30
 
 **创建日期**：2026-01-27
 
-## 用户场景与测试 *（必填）*
+## 用户场景与测试 _（必填）_
 
 ### 用户故事：为 Agent 初始化仓库（优先级：P1）
 
