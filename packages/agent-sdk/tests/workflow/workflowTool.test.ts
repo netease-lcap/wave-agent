@@ -31,6 +31,7 @@ describe("workflowTool", () => {
         status: "running",
       }),
       startRun: vi.fn().mockResolvedValue(undefined),
+      getTurnTokenTarget: vi.fn().mockReturnValue(null),
     };
 
     const result = await workflowTool.execute(
@@ -41,6 +42,14 @@ describe("workflowTool", () => {
     expect(result.success).toBe(true);
     expect(result.content as string).toContain("wf_test123");
     expect(result.content as string).toContain("test-wf");
+    // The receipt states the envelope the run launched under, so the model can
+    // tell the user what this workflow may cost (场景 8).
+    expect(result.content as string).toContain(
+      "Limits: 1000 agents maximum for this run",
+    );
+    expect(result.content as string).toContain(
+      "no token target set for this turn",
+    );
     expect(mockManager.createRun).toHaveBeenCalledWith(
       VALID_SCRIPT,
       undefined,
@@ -49,6 +58,28 @@ describe("workflowTool", () => {
       },
     );
     expect(mockManager.startRun).toHaveBeenCalledWith("wf_test123");
+  });
+
+  it("names the turn's token target in the receipt when the user gave one", async () => {
+    const mockManager = {
+      createRun: vi.fn().mockResolvedValue({
+        runId: "wf_test789",
+        meta: { name: "capped-wf", description: "A test", phases: [] },
+        scriptPath: "/tmp/test.js",
+        status: "running",
+      }),
+      startRun: vi.fn().mockResolvedValue(undefined),
+      getTurnTokenTarget: vi.fn().mockReturnValue(500_000),
+    };
+
+    const result = await workflowTool.execute(
+      { script: VALID_SCRIPT },
+      createMockContext(mockManager),
+    );
+
+    expect(result.content as string).toContain(
+      "500000 output tokens for this turn",
+    );
   });
 
   it("starts a workflow with scriptPath", async () => {
@@ -68,6 +99,7 @@ describe("workflowTool", () => {
         status: "running",
       }),
       startRun: vi.fn().mockResolvedValue(undefined),
+      getTurnTokenTarget: vi.fn().mockReturnValue(null),
     };
 
     const result = await workflowTool.execute(
@@ -146,6 +178,7 @@ describe("workflowTool", () => {
         status: "running",
       }),
       startRun: vi.fn().mockResolvedValue(undefined),
+      getTurnTokenTarget: vi.fn().mockReturnValue(null),
     };
 
     await workflowTool.execute(
@@ -177,6 +210,7 @@ describe("workflowTool", () => {
         status: "running",
       }),
       startRun: vi.fn().mockResolvedValue(undefined),
+      getTurnTokenTarget: vi.fn().mockReturnValue(null),
     };
 
     const result = await workflowTool.execute(

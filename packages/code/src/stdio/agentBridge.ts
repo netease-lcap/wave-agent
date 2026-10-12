@@ -2311,7 +2311,11 @@ export class AgentBridge {
         this.emit("mcpServersChange", { servers }, ctx.registeredSessionId);
       },
       onNotificationMessageAdded: (params) => {
-        const msg = ctx.agent?.displayMessages.find(
+        // The LAST matching message, not the first: one task can notify more
+        // than once under the same task id (a workflow warns about its size
+        // mid-run, then notifies again when it finishes), and this callback
+        // fires for the message that was just appended — the newest one.
+        const matches = (ctx.agent?.displayMessages ?? []).filter(
           (m) =>
             m.role === "user" &&
             m.blocks.some(
@@ -2320,6 +2324,7 @@ export class AgentBridge {
                 (b as { taskId: string }).taskId === params.taskId,
             ),
         );
+        const msg = matches[matches.length - 1];
         this.emit(
           "notificationMessageAdded",
           { ...params, message: msg },

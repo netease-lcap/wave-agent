@@ -111,7 +111,13 @@ export interface TaskNotificationBlock {
   type: "task_notification";
   taskId: string;
   taskType: "shell" | "agent" | "workflow";
-  status: "completed" | "failed" | "killed" | "aborted";
+  /**
+   * `"running"` is the one non-terminal member: a task that is still alive can
+   * still notify about itself (a workflow crossing a size threshold), and a
+   * consumer must not read that as "this task is over". Every other value ends
+   * the task.
+   */
+  status: "running" | "completed" | "failed" | "killed" | "aborted";
   summary: string;
   outputFile?: string;
   /** Full final response of the task (e.g. a fork subagent's result). */

@@ -7,6 +7,7 @@ import { BackgroundTaskManager } from "./backgroundTaskManager.js";
 import { MessageQueue } from "./messageQueue.js";
 import { SubagentManager } from "./subagentManager.js";
 import { taskNotificationToXml } from "../utils/notificationXml.js";
+import { TASK_STOP_TOOL_NAME } from "../constants/tools.js";
 import { ConcurrencyLimiter } from "../workflow/concurrencyLimiter.js";
 import { TurnBudgetLedger } from "./turnBudgetLedger.js";
 import { ProgressReporter } from "../workflow/progressReporter.js";
@@ -22,6 +23,11 @@ import {
 } from "../workflow/scriptRuntime.js";
 import type { WorkflowRun } from "../workflow/types.js";
 import { RunStateStore } from "../workflow/runState.js";
+import {
+  WORKFLOW_AGENT_CALL_CAP,
+  WORKFLOW_SIZE_WARNING_AGENTS,
+  WORKFLOW_SIZE_WARNING_TOKENS,
+} from "../workflow/workflowErrors.js";
 import { logger } from "../utils/globalLogger.js";
 
 /**
@@ -83,13 +89,26 @@ export class WorkflowManager {
   }
 
   /**
-   * Runs directory of the run itself, derived from its own script path rather
-   * than from `runsDir`: a run outlives the session id it started under when
-   * `/clear` mints a new one mid-flight, and its state must keep being written
-   * where the run actually lives.
+   * Directory of the run itself (`<runsDir>/<runId>`): script.js, `agents/`
+   * metadata, everything that belongs to this one run. Derived from the run's
+   * own script path rather than from `runsDir`: a run outlives the session id it
+   * started under when `/clear` mints a new one mid-flight, and its files must
+   * keep being written where the run actually lives.
    */
   private runDirOf(run: WorkflowRun): string {
     return path.dirname(run.scriptPath);
+  }
+
+  /**
+   * The runs directory the run lives in — the parent of `runDirOf`, i.e.
+   * `<project>/workflows/<sessionId>`. Journals and run-state live HERE (one
+   * per run id), not inside the run's own directory: `listRuns()` and the resume
+   * path both look for `<runsDir>/<runId>/…`, so writing them a level deeper
+   * would make every finished run invisible to the next process and every
+   * resume start from an empty journal.
+   */
+  private runsDirOf(run: WorkflowRun): string {
+    return path.dirname(this.runDirOf(run));
   }
 
   private get backgroundTaskManager(): BackgroundTaskManager {
@@ -121,6 +140,16 @@ export class WorkflowManager {
     const ledger = new TurnBudgetLedger();
     this.container.register("TurnBudgetLedger", ledger);
     return ledger;
+  }
+
+  /**
+   * The turn's token target, or null when the user gave none — the number the
+   * start receipt states back to the model, next to the agent call cap
+   * (spec「预算与规模硬上限」场景 8: the model must be able to name the
+   * constraint it just launched under before the user asks).
+   */
+  getTurnTokenTarget(): number | null {
+    return this.turnBudgetLedger.total;
   }
 
   /**
@@ -205,18 +234,18 @@ export class WorkflowManager {
       totalTokens: 0,
       failures: [],
       resumeFromRunId: opts?.resumeFromRunId,
+      sizeWarningSent: false,
     };
 
     this.runs.set(runId, run);
 
-    // Persist run state
-    this.stateStoreFor(runDir)
-      .save(run)
-      .catch((err) => {
-        logger.warn(
-          `[Workflow] Failed to persist run state: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
+    // Persist run state — into the RUNS directory (the store appends the run id
+    // itself), which is where `listRuns()` and the resume path look for it.
+    this.stateStore.save(run).catch((err) => {
+      logger.warn(
+        `[Workflow] Failed to persist run state: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
 
     return run;
   }
@@ -264,13 +293,15 @@ export class WorkflowManager {
       run.phases = progressReporter.getPhaseStates();
       run.totalAgents = progressReporter.totalAgents;
       run.totalTokens = progressReporter.totalTokens;
+      this.maybeWarnSize(run);
       this.backgroundTaskManager.notifyTasksChange();
     };
     progressReporter.onEvent(onProgress);
 
-    // Journal — load previous journal if resuming. Pinned to the run's own
-    // directory (see `runDirOf`), not to the session's current one.
-    const runsDir = this.runDirOf(run);
+    // Journal — load previous journal if resuming. Pinned to the runs directory
+    // the run belongs to (see `runsDirOf`), not to the session's current one.
+    const runDir = this.runDirOf(run);
+    const runsDir = this.runsDirOf(run);
     let journal: Journal;
     let initialAgentCount = 0;
     if (run.resumeFromRunId || opts?.retryAgentIndex !== undefined) {
@@ -334,7 +365,7 @@ export class WorkflowManager {
       abortSignal: abortController.signal,
       args: run.args,
       initialAgentCount,
-      runDir: runsDir,
+      runDir,
       agentControllers: runAgentControllers,
       onLog: (message: string) => {
         logger.info(`[Workflow:${runId}] ${message}`);
@@ -459,6 +490,55 @@ export class WorkflowManager {
 
     // Don't await — let it run in background
     run.completionPromise.catch(() => {}); // Prevent unhandled rejection
+  }
+
+  /**
+   * One heads-up notification the first time a run crosses a size threshold —
+   * Claude Code's `CLAUDE_CODE_WORKFLOW_SIZE_WARNING_*` behaviour, which it
+   * surfaces as a marker in its workflow list; wave puts it in the model's
+   * context instead, so the model can act on it (stop the run, or say what the
+   * run is about to cost) without a human watching the list
+   * (spec「预算与规模硬上限」场景 7).
+   *
+   * Fires at most once per run (`run.sizeWarningSent`). The status is
+   * `"running"`: the run is alive, this is not a completion, and the block type
+   * carries non-terminal states precisely so a consumer never reads this as
+   * "the task is over".
+   */
+  private maybeWarnSize(run: WorkflowRun): void {
+    if (run.sizeWarningSent) return;
+    const tooManyAgents = run.totalAgents > WORKFLOW_SIZE_WARNING_AGENTS;
+    const tooManyTokens = run.totalTokens > WORKFLOW_SIZE_WARNING_TOKENS;
+    if (!tooManyAgents && !tooManyTokens) return;
+
+    run.sizeWarningSent = true;
+
+    const tokenTarget = this.getTurnTokenTarget();
+    const hardCaps =
+      `${WORKFLOW_AGENT_CALL_CAP} agents per run` +
+      (tokenTarget === null
+        ? ""
+        : `, ${tokenTarget} output tokens for the turn`);
+    const warning =
+      `Dynamic workflow "${run.meta.name}" is large: ${run.totalAgents} agents started ` +
+      `and ${run.totalTokens} tokens spent so far (warning thresholds: ` +
+      `${WORKFLOW_SIZE_WARNING_AGENTS} agents / ${WORKFLOW_SIZE_WARNING_TOKENS} tokens). ` +
+      `Hard caps: ${hardCaps}. ` +
+      `Stop it if this is not what the user asked for: ${TASK_STOP_TOOL_NAME} with task_id "${run.runId}".`;
+
+    this.messageQueue.enqueueNotification(
+      taskNotificationToXml({
+        type: "task_notification",
+        taskId: run.runId,
+        taskType: "workflow",
+        status: "running",
+        summary: warning,
+      }),
+    );
+
+    logger.warn(
+      `[Workflow] Run ${run.runId} crossed the size warning threshold: ${run.totalAgents} agents, ${run.totalTokens} tokens`,
+    );
   }
 
   /**
@@ -622,19 +702,89 @@ export class WorkflowManager {
 
   /**
    * List all workflow runs (includes in-memory and persisted).
+   *
+   * Loading the list is also where stale `running` states converge: a run only
+   * lives in the process that started it, so a persisted run that is still
+   * marked `running` while this process has no in-memory record of it was
+   * interrupted by a process exit (host closed, Ctrl-C, crash) and must stop
+   * claiming to run (spec「停止运行并如实上报失败」场景 8 — no cross-process
+   * takeover is required or attempted). The correction is written back to disk
+   * and announced once per interrupted run, so a later process — and the user —
+   * inherits the truth instead of an eternally "running" ghost.
    */
   async listRuns(): Promise<WorkflowRun[]> {
     // Load persisted runs that aren't already in memory
     const persistedIds = await this.stateStore.listRuns();
+    const interrupted: WorkflowRun[] = [];
     for (const runId of persistedIds) {
       if (!this.runs.has(runId)) {
         const run = await this.stateStore.load(runId);
         if (run) {
+          if (run.status === "running") {
+            this.markInterrupted(run);
+            interrupted.push(run);
+          }
           this.runs.set(runId, run);
         }
       }
     }
+
+    for (const run of interrupted) {
+      // Awaited, not fire-and-forget: the point of the correction is that the
+      // next reader — the next process, the /workflows detail view — sees an
+      // ended run, and returning before the write lands would hand out the
+      // ghost we just buried.
+      try {
+        await this.stateStore.save(run);
+      } catch (err) {
+        logger.warn(
+          `[Workflow] Failed to persist interrupted state: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      this.notifyInterrupted(run);
+    }
+
     return Array.from(this.runs.values());
+  }
+
+  /**
+   * Turn a stale `running` run into an aborted one, in place. The status word is
+   * the existing `aborted` (the same state a user-requested stop produces) — the
+   * difference from a stop is the error text, which says who ended it.
+   */
+  private markInterrupted(run: WorkflowRun): void {
+    run.status = "aborted";
+    run.endTime = run.endTime ?? Date.now();
+    run.error = "interrupted: the process that was running it exited";
+  }
+
+  /**
+   * One notification per interrupted run, pointing at the resume path. It goes
+   * through the same queue as a completion notification, so the model finds out
+   * the run is gone instead of waiting forever for a notification that will
+   * never arrive.
+   */
+  private notifyInterrupted(run: WorkflowRun): void {
+    this.messageQueue.enqueueNotification(
+      taskNotificationToXml({
+        type: "task_notification",
+        taskId: run.runId,
+        taskType: "workflow",
+        status: "aborted",
+        summary: this.buildInterruptedSummary(run),
+      }),
+    );
+
+    logger.warn(`[Workflow] Run ${run.runId} marked interrupted on load`);
+  }
+
+  /** Resume guidance for a run whose process exited (see `listRuns`). */
+  private buildInterruptedSummary(run: WorkflowRun): string {
+    return (
+      `Dynamic workflow "${run.meta.name}" was interrupted: the process running it exited. ` +
+      `To pick up where it left off, relaunch with Workflow({scriptPath, resumeFromRunId: "${run.runId}"}) ` +
+      `using the run id from this summary — completed agent() calls return cached.`
+    );
   }
 
   /**

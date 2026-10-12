@@ -435,6 +435,38 @@ describe("convertMessagesForAPI", () => {
     ]);
   });
 
+  it("should not report a still-running task as completed", async () => {
+    // A workflow warns about its size while it is running (status "running"):
+    // the lead-in has to follow the status, or the model reads the opposite of
+    // what happened.
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [
+          {
+            type: "task_notification",
+            taskId: "wf_1",
+            taskType: "workflow",
+            status: "running",
+            summary: 'Dynamic workflow "big" is large',
+          },
+        ],
+        isMeta: true,
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = await convertMessagesForAPI(messages);
+
+    expect(apiMessages[0].content).toEqual([
+      {
+        type: "text",
+        text: `A background task is still running:\n<task-notification>\n<task-id>wf_1</task-id>\n<task-type>workflow</task-type>\n<status>running</status>\n<summary>Dynamic workflow "big" is large</summary>\n</task-notification>`,
+      },
+    ]);
+  });
+
   it("should include reasoning content in assistant messages for API", async () => {
     const messages: Message[] = [
       {
