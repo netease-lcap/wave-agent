@@ -11,7 +11,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { Chalk } from "chalk";
-import { getLastLines } from "wave-agent-sdk";
+import { getLastLines, errorReplacer } from "wave-agent-sdk";
 import { LOG_FILE } from "./constants.js";
 
 const chalk = new Chalk({ level: 3 });
@@ -132,7 +132,10 @@ const formatArg = (arg: unknown): string => {
     result = arg.stack || arg.message || String(arg);
   } else if (typeof arg === "object") {
     try {
-      result = JSON.stringify(arg);
+      // The replacer keeps Errors nested inside a payload ({ error: e }) from
+      // serializing to `{}` — the `instanceof` check above only covers args
+      // passed bare.
+      result = JSON.stringify(arg, errorReplacer);
     } catch {
       // If JSON.stringify fails, fallback to String()
       result = String(arg);

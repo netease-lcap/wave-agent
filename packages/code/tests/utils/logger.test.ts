@@ -122,6 +122,31 @@ describe("Logger Utility", () => {
         "stack line2",
       );
     });
+
+    it("should keep the cause chain of an error nested in a payload", () => {
+      const appendSpy = vi.mocked(fs.appendFileSync);
+      process.env.DISABLE_LOGGER_IO = "false";
+      vi.mocked(fs.existsSync).mockReturnValue(true);
+
+      const cause = Object.assign(new Error("self-signed certificate"), {
+        code: "SELF_SIGNED_CERT_IN_CHAIN",
+      });
+      const networkError = new TypeError("fetch failed");
+      Object.defineProperty(networkError, "cause", { value: cause });
+
+      logger.warn("OpenAI API network error, retrying...", {
+        model: "deepseek-flash",
+        attempt: 1,
+        error: networkError,
+      });
+
+      const line = stripAnsiColors(appendSpy.mock.calls[0][1] as string);
+
+      expect(line).not.toContain('"error":{}');
+      expect(line).toContain('"name":"TypeError"');
+      expect(line).toContain('"message":"fetch failed"');
+      expect(line).toContain('"code":"SELF_SIGNED_CERT_IN_CHAIN"');
+    });
   });
 
   describe("shouldLog logic", () => {
