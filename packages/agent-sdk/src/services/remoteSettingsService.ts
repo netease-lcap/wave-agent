@@ -11,6 +11,7 @@ import type {
 import type { WaveConfiguration } from "../types/configuration.js";
 import type { HookEvent, HookEventConfig } from "../types/hooks.js";
 import { logger } from "../utils/globalLogger.js";
+import { serializeError } from "../utils/errorUtils.js";
 
 const CACHE_FILE = path.join(homedir(), ".wave", "remote-settings.json");
 const POLLING_INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
@@ -174,7 +175,9 @@ async function fetchRemoteSettings(): Promise<RemoteSettingsFetchResult> {
       checksum: data.checksum,
     };
   } catch (err) {
-    logger.debug("remoteSettings: network error, using cache", { err });
+    logger.debug("remoteSettings: network error, using cache", {
+      err: serializeError(err),
+    });
     return {
       success: false,
       error: err instanceof Error ? err.message : String(err),
@@ -191,7 +194,9 @@ function startPolling(): void {
     try {
       await fetchRemoteSettings();
     } catch (err) {
-      logger.debug("remoteSettings: polling fetch error", { err });
+      logger.debug("remoteSettings: polling fetch error", {
+        err: serializeError(err),
+      });
     }
   }, POLLING_INTERVAL_MS);
   _pollingTimer.unref();

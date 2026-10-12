@@ -12,6 +12,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { errorReplacer } from "wave-agent-sdk/host";
 
 const LOG_FILE = path.join(
   process.env.WAVE_LOGS_DIR || path.join(os.homedir(), ".wave", "logs"),
@@ -22,7 +23,10 @@ const KEEP_LINES = 1000;
 
 const safeJson = (arg: object): string => {
   try {
-    return JSON.stringify(arg);
+    // The replacer keeps Errors nested inside a payload ({ error: e }) from
+    // serializing to `{}` — the `instanceof` check below only covers args
+    // passed bare.
+    return JSON.stringify(arg, errorReplacer);
   } catch {
     return String(arg);
   }

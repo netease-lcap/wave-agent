@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { homedir } from "node:os";
 import { USER_MEMORY_FILE, DATA_DIRECTORY } from "../utils/constants.js";
 import { logger } from "../utils/globalLogger.js";
+import { serializeError } from "../utils/errorUtils.js";
 import { atomicWriteFile } from "../utils/atomicWrite.js";
 import { Container } from "../utils/container.js";
 import { getGitCommonDir } from "../utils/gitUtils.js";
@@ -228,12 +229,15 @@ export class MemoryService {
           }
           logger.error("Failed to read CLAUDE.md fallback", {
             memoryFilePath: claudeMemoryPath,
-            error: claudeError,
+            error: serializeError(claudeError),
           });
           return "";
         }
       }
-      logger.error("Failed to read memory file", { memoryFilePath, error });
+      logger.error("Failed to read memory file", {
+        memoryFilePath,
+        error: serializeError(error),
+      });
       return "";
     }
   }

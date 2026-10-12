@@ -6,6 +6,8 @@
  *   - `./stdio`：RPC 客户端封装（StdioAgent / rpcClient / NotificationRouter）
  *   - `./constants`：与 CLI 共用的字面量（工具名、逐字文案）
  *   - `./types`：协议与消息类型
+ *   - `./utils/errorUtils`：日志里序列化 Error（宿主自己的 hostLog 也要用同一套，
+ *     否则嵌套的 Error 会被 `JSON.stringify` 吞成 `{}`）
  *
  * 为什么要有这个入口：桶入口会把整套 agent 运行时（工具、供应商 SDK、OTel…）连成
  * 一张图，而图里有些模块在**求值期**就会抛（可选原生包缺席时，如 `sharp`）。
@@ -21,3 +23,4 @@
 export * from "../constants/index.js";
 export * from "../stdio/index.js";
 export * from "../types/index.js";
+export * from "../utils/errorUtils.js";
