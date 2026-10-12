@@ -10,6 +10,7 @@ const nav = [
   { text: "CLI", link: "/cli" },
   { text: "SDK", link: "/sdk" },
   { text: "企业管控台", link: "/guide" },
+  { text: "功能清单", link: "/specs/" },
 ];
 
 // specs sidebar: generated from docs/specs/<group>/*.md, ordered the same as
