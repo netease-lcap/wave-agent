@@ -34,7 +34,12 @@ import type {
   Usage,
   PermissionMode,
   Message,
+  TextBlock,
 } from "../types/index.js";
+import {
+  TurnBudgetLedger,
+  parseTokenBudgetTarget,
+} from "./turnBudgetLedger.js";
 import type { ToolManager } from "./toolManager.js";
 import type { ToolContext, ReadFileState } from "../tools/types.js";
 import type { MessageManager } from "./messageManager.js";
@@ -805,6 +810,7 @@ export class AIManager {
       }
 
       // 9. Track usage
+      this.recordTurnOutputTokens(compactUsage);
       if (compactUsage && this.callbacks?.onUsageAdded) {
         this.callbacks.onUsageAdded(compactUsage);
       }
@@ -1230,6 +1236,7 @@ export class AIManager {
       signal,
     );
 
+    this.recordTurnOutputTokens(result.usage);
     if (result.usage && this.callbacks?.onUsageAdded) {
       this.callbacks.onUsageAdded({
         ...result.usage,
@@ -1606,6 +1613,46 @@ ${question}`;
     return this.container.get<LiveConfigManager>("LiveConfigManager");
   }
 
+  /**
+   * The turn's output-token ledger (registered by the agent container setup).
+   * Undefined in bare containers (some tests build one by hand), in which case
+   * token accounting is simply skipped.
+   */
+  private get turnBudgetLedger(): TurnBudgetLedger | undefined {
+    return this.container.get<TurnBudgetLedger>("TurnBudgetLedger");
+  }
+
+  /**
+   * Text of the most recent real user prompt. Background-task notifications are
+   * user-role messages too — they carry a task_notification block and no text —
+   * so they are skipped: a notification-triggered turn must keep reading the
+   * user's own instruction (and hence its token target).
+   */
+  private getLastUserPromptText(): string {
+    const messages = this.messageManager.getMessages();
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
+      if (message.role !== "user") continue;
+      const text = message.blocks
+        .filter((block): block is TextBlock => block.type === "text")
+        .map((block) => block.content)
+        .join("\n");
+      if (text) return text;
+    }
+    return "";
+  }
+
+  /**
+   * Charge one LLM response to the turn's budget ledger. Output-only means
+   * `completion_tokens`: `total_tokens` also carries the prompt side (with the
+   * cache hits baked into it), so charging it would bill the whole context once
+   * per request — see utils/tokenCalculation.ts for the same accounting.
+   */
+  private recordTurnOutputTokens(usage: Usage | undefined): void {
+    if (!usage) return;
+    this.turnBudgetLedger?.addOutputTokens(usage.completion_tokens);
+  }
+
   public async sendAIMessage(
     options: {
       recursionDepth?: number;
@@ -1627,6 +1674,22 @@ ${question}`;
     const ownsTurnSnapshot = recursionDepth === 0;
     if (ownsTurnSnapshot) {
       this.liveConfigManager?.onTurnStart();
+    }
+
+    // Turn boundary for the shared output-token ledger. Only the MAIN agent
+    // starts a turn: a subagent turn (including every workflow agent) nests
+    // inside its parent's and its tokens count toward the same budget, so it must
+    // not re-baseline the ledger (spec multi-agent/workflow.md 场景 5 — the main
+    // loop and every workflow of the turn share one `spent()`).
+    //
+    // The target is re-read from the last user prompt on each turn: that keeps a
+    // "+500k"/"use 500k tokens" instruction in force across notification-driven
+    // turns (where the spend restarts) while a later message with no target clears
+    // it (场景 1/2).
+    if (ownsTurnSnapshot && !this.subagentType) {
+      this.turnBudgetLedger?.beginTurn(
+        parseTokenBudgetTarget(this.getLastUserPromptText()),
+      );
     }
 
     // Reserve this turn synchronously before any async work. Bumping the
@@ -2018,6 +2081,9 @@ ${question}`;
 
           // Set usage on the assistant message if available
           if (usage) {
+            // Charge the turn's budget ledger before anything else can fail:
+            // the tokens were spent whether or not the message is persisted.
+            this.recordTurnOutputTokens(usage);
             const messages = this.messageManager.getMessages();
             const lastMessage = messages[messages.length - 1];
             if (lastMessage && lastMessage.role === "assistant") {

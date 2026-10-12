@@ -256,6 +256,20 @@ export class MessageManager {
     return SESSION_DIR;
   }
 
+  /**
+   * Directory of the project this session works in (`<session root>/<encoded
+   * workdir>`) — the same directory the transcript lives in.
+   *
+   * Anything that belongs to the code being worked on rather than to the
+   * machine goes here: the transcript (`computeTranscriptPath`) and the workflow
+   * run directories. Keying those off the session ROOT instead made every run
+   * visible to every other project on the machine (spec
+   * multi-agent/workflow.md「从日志恢复工作流」场景 3).
+   */
+  public getProjectDir(): string {
+    return join(SESSION_DIR, this.encodedWorkdir);
+  }
+
   public getTranscriptPath(): string {
     return this.transcriptPath;
   }
@@ -310,11 +324,9 @@ export class MessageManager {
    * Called during construction and when sessionId changes
    */
   private computeTranscriptPath(): string {
-    const baseDir = join(SESSION_DIR, this.encodedWorkdir);
-
     // All sessions now go in the same directory
     // Session type is determined by metadata, not file path
-    return join(baseDir, `${this.sessionId}.jsonl`);
+    return join(this.getProjectDir(), `${this.sessionId}.jsonl`);
   }
 
   // Setter methods, will trigger callbacks

@@ -1,8 +1,16 @@
 import * as path from "node:path";
-import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
-import { WORKFLOW_TOOL_NAME } from "../constants/tools.js";
+import type {
+  ToolPlugin,
+  ToolResult,
+  ToolContext,
+  ToolPromptArgs,
+} from "./types.js";
+import { WORKFLOW_TOOL_NAME, TASK_STOP_TOOL_NAME } from "../constants/tools.js";
 import { parseScript } from "../workflow/scriptRuntime.js";
 import { logger } from "../utils/globalLogger.js";
+// Single source of truth for the authoring reference: the same string is the body of
+// the built-in skill, so the on-demand copy and the inlined fallback cannot drift.
+import { WORKFLOW_AUTHORING_REFERENCE } from "../builtin/skills/workflow-authoring.js";
 
 /** Characters that would corrupt a single-line summary (ANSI-adjacent controls, separators, invisibles). */
 const SUMMARY_UNSAFE_CHARS =
@@ -36,6 +44,65 @@ function summarizeUnparsedScript(script: string): string {
     return preview;
   }
   return `${preview} … +${extraLines} line${extraLines === 1 ? "" : "s"}`;
+}
+
+/** Name of the built-in skill that carries the complete authoring reference. */
+const WORKFLOW_AUTHORING_SKILL_NAME = "workflow-authoring";
+
+/** Opt-in policy, lean tier. Verbatim external contract — do not reword. */
+const OPT_IN_POLICY_LEAN = `ONLY call this tool when the user has explicitly opted into multi-agent orchestration — they asked for a workflow, fan-out, or subagent orchestration in their own words, invoked a skill or slash command that says to call it, or named a specific workflow. A task that would merely benefit from parallelism does not count: use Agent for individual subagents, or ask the user whether to run it and what it would roughly cost.`;
+
+/** Opt-in policy, full tier. Verbatim external contract — do not reword. */
+const OPT_IN_POLICY_FULL = `ONLY call this tool when the user has explicitly opted into multi-agent orchestration. Workflows can spawn dozens of agents and consume a large amount of tokens; the user must request that scale, not have it inferred. Explicit opt-in means one of:
+- The user directly asked you to run a workflow or use multi-agent orchestration in their own words ("use a workflow", "run a workflow", "fan out agents", "orchestrate this with subagents"). The ask must be in the user's words — a task that would merely benefit from a workflow does not count.
+- The user invoked a skill or slash command whose instructions tell you to call Workflow.
+- The user asked you to run a specific named or saved workflow.
+
+For any other task — even one that would clearly benefit from parallelism — do NOT call this tool. Use the Agent tool for individual subagents, or briefly describe what a multi-agent workflow could do and how much it would roughly cost, and ask the user whether to run it.`;
+
+/**
+ * Shape-and-signature essentials of a workflow script. Both tiers send this
+ * verbatim: lean mode condenses the surrounding guidance, never the API shape the
+ * model has to write the script against.
+ */
+const WORKFLOW_SCRIPT_ESSENTIALS = `Writing the script — the essentials:
+- Every script must begin with \`export const meta = {...}\` — a pure literal, and the script's first statement. \`name\` and \`description\` are required; \`phases\` is optional and every element is \`{ title, detail? }\`:
+    export const meta = { name: 'find-flaky-tests', description: 'Find flaky tests and propose fixes', phases: [{ title: 'Scan' }, { title: 'Fix' }] }
+- \`agent(prompt, opts?)\` — spawn a subagent. Without \`opts.schema\` it resolves to the subagent's final text, as a string; with \`opts.schema\` (a JSON Schema) it resolves to the validated object. It resolves to \`null\` only when the user skips that agent (drop nulls with \`.filter(Boolean)\`); a terminal failure rejects, so wrap it in try/catch when you want a fallback.
+- \`pipeline(items, stage1, stage2, ...)\` — run each item through all stages independently, with no barrier between stages; the default for multi-stage work. Every stage callback receives \`(prevResult, originalItem, index)\` — in the first stage \`prevResult\` is the item itself, in later stages it is the previous stage's return value. A stage that returns \`null\` skips the remaining stages for that item.
+- \`parallel(thunks)\` — run tasks concurrently; this one is a BARRIER that awaits all of them. Use it only when you genuinely need all results together; every entry must be a function (\`() => agent(...)\`).
+- \`phase(title)\`, \`log(message)\`, the verbatim \`args\`, and \`budget\` — \`{ total, spent(), remaining() }\`: this turn's token target as a hard cap, shared with the main loop and with any other workflow of the turn (\`total\` is \`null\` when the user gave none). Reaching it stops new \`agent()\` calls, while in-flight agents finish and keep their results — so a "loop until the budget runs out" pattern needs its own hard iteration cap.
+- \`getFailures()\` — this run's failure lines (\`pipeline[3] failed: …\`); \`recordFailure(message)\` adds one of your own. Call it from a \`catch\` you handle yourself, so the completion report says why the item is missing instead of silently dropping it.
+
+Scripts are plain JavaScript — no type annotations, no filesystem, no network, no \`import\`. The right move is often hybrid: scout inline first (list the files, scope the diff) to discover the work-list, then pipeline over it.`;
+
+/** Pointer to the on-demand copy of the reference. */
+const WORKFLOW_AUTHORING_POINTER = `For the complete authoring reference — full hook signatures and \`opts\`, \`meta\` shape, \`args\`/\`budget\` semantics, resume rules, concurrency and scale caps, quality patterns and a runnable example — load the \`${WORKFLOW_AUTHORING_SKILL_NAME}\` skill before writing the script.`;
+
+/**
+ * Whether the model can load the authoring reference on demand this turn. A skill
+ * that is not registered — or is registered with model invocation disabled — is
+ * unreachable for the model, and then the reference has to be inlined instead.
+ */
+function canLoadAuthoringReference(args?: ToolPromptArgs): boolean {
+  return Boolean(
+    args?.availableSkills?.some(
+      (skill) =>
+        skill.name === WORKFLOW_AUTHORING_SKILL_NAME &&
+        !skill.disableModelInvocation,
+    ),
+  );
+}
+
+/**
+ * Progressive disclosure for the authoring reference: a pointer while the skill is
+ * loadable, the full reference inlined when it is not, so the description never
+ * degrades into a strictly smaller one.
+ */
+function authoringReferenceSection(args?: ToolPromptArgs): string {
+  return canLoadAuthoringReference(args)
+    ? WORKFLOW_AUTHORING_POINTER
+    : WORKFLOW_AUTHORING_REFERENCE;
 }
 
 /**
@@ -75,86 +142,29 @@ export const workflowTool: ToolPlugin = {
           resumeFromRunId: {
             type: "string",
             description:
-              "Resume from a previous run's journal. Cached agent results are replayed instantly; the first edited/new call and everything after it runs live.",
+              "Run ID of a prior Workflow invocation in THIS session to resume from. Completed agent() calls with unchanged (prompt, opts) return their cached results instantly; only edited or new calls run live. Same-session only: a run started in another session or another working directory has no journal here and cannot be resumed. Stop the prior run first (TaskStop with that run id) before resuming.",
           },
         },
       },
     },
   },
 
-  leanPrompt: `Execute a workflow script that orchestrates multiple subagents deterministically. It runs in the background: the tool returns immediately with a task ID, and a <task-notification> arrives when the workflow completes.
+  leanPrompt: (args?: ToolPromptArgs) =>
+    [
+      "Execute a workflow script that orchestrates multiple subagents deterministically. It runs in the background: the tool returns immediately with a task ID, and a <task-notification> arrives when the workflow completes.",
+      OPT_IN_POLICY_LEAN,
+      WORKFLOW_SCRIPT_ESSENTIALS,
+      authoringReferenceSection(args),
+    ].join("\n\n"),
 
-ONLY call this tool when the user has explicitly opted into multi-agent orchestration — they asked for a workflow, fan-out, or subagent orchestration in their own words, invoked a skill or slash command that says to call it, or named a specific workflow. A task that would merely benefit from parallelism does not count: use Agent for individual subagents, or ask the user whether to run it and what it would roughly cost.
-
-Every script must begin with \`export const meta = {...}\`, then compose the hooks:
-- \`agent(prompt, opts?)\` — spawn a subagent; with a JSON Schema it returns the validated object, otherwise its final text.
-- \`pipeline(items, stage1, stage2, ...)\` — run each item through all stages independently, with no barrier between stages. This is the default for multi-stage work.
-- \`parallel(thunks)\` — run tasks concurrently; this one is a barrier that awaits all of them.
-- \`phase(title)\`, \`log(message)\`, the verbatim \`args\`, and \`budget\`.
-
-Scripts are plain JavaScript — no type annotations, no filesystem, no network, no \`import\`.`,
-  prompt: () =>
-    `Execute a workflow script that orchestrates multiple subagents deterministically. Workflows run in the background — this tool returns immediately with a task ID, and a <task-notification> arrives when the workflow completes. Use /workflows to watch live progress.
-
-A workflow structures work across many agents — to be comprehensive (decompose and cover in parallel), to be confident (independent perspectives and adversarial checks before committing), or to take on scale one context can't hold (migrations, audits, broad sweeps). The script is where you encode that structure: what fans out, what verifies, what synthesizes.
-
-ONLY call this tool when the user has explicitly opted into multi-agent orchestration. Workflows can spawn dozens of agents and consume a large amount of tokens; the user must request that scale, not have it inferred. Explicit opt-in means one of:
-- The user directly asked you to run a workflow or use multi-agent orchestration in their own words ("use a workflow", "run a workflow", "fan out agents", "orchestrate this with subagents"). The ask must be in the user's words — a task that would merely benefit from a workflow does not count.
-- The user invoked a skill or slash command whose instructions tell you to call Workflow.
-- The user asked you to run a specific named or saved workflow.
-
-For any other task — even one that would clearly benefit from parallelism — do NOT call this tool. Use the Agent tool for individual subagents, or briefly describe what a multi-agent workflow could do and how much it would roughly cost, and ask the user whether to run it.
-
-When you do call it, the right move is often **hybrid**: scout inline first (list the files, find the channels, scope the diff) to discover the work-list, then call Workflow to pipeline over it.
-
-Common single-phase workflows you can chain across turns:
-- **Understand** — parallel readers over relevant subsystems → structured map
-- **Design** — judge panel of N independent approaches → scored synthesis
-- **Review** — dimensions → find → adversarially verify
-- **Research** — multi-modal sweep → deep-read → synthesize
-- **Migrate** — discover sites → transform each (worktree isolation) → verify
-
-For larger work, run several in sequence — read each result before deciding the next phase.
-
-Every script must begin with \`export const meta = {...}\`:
-  export const meta = {
-    name: 'find-flaky-tests',
-    description: 'Find flaky tests and propose fixes',
-    phases: [
-      { title: 'Scan', detail: 'grep test logs for retries' },
-      { title: 'Fix', detail: 'one agent per flaky test' },
-    ],
-  }
-  // script body starts here — use agent()/parallel()/pipeline()/phase()/log()
-
-Script body hooks:
-- **agent(prompt, opts?)**: Promise<any> — spawn a subagent. Without schema, returns its final text as a string. With schema (a JSON Schema), the subagent is forced to call a StructuredOutput tool and agent() returns the validated object — no parsing needed. Returns null if the user skips the agent mid-run or the subagent dies on a terminal API error (filter with .filter(Boolean)). opts.label overrides the display label. opts.phase assigns this agent to a progress group. opts.model overrides the model for this agent call. opts.agentType uses a custom subagent type instead of the default.
-- **pipeline(items, stage1, stage2, ...)**: Promise<any[]> — run each item through all stages independently, NO barrier between stages. Item A can be in stage 3 while item B is still in stage 1. This is the DEFAULT for multi-stage work. Every stage callback receives (prevResult, originalItem, index). In the first stage prevResult is undefined; in later stages it is the return value of the previous stage. A stage that throws drops that item to null. Example single-stage: \`pipeline(files, (prev, file) => agent('Read ' + file))\`. Example two-stage: \`pipeline(files, (prev, file) => agent('Read ' + file), (prev, file) => agent('Summarize: ' + prev))\`.
-- **parallel(thunks: Array<() => Promise<any>>)**: Promise<any[]> — run tasks concurrently. This is a BARRIER: awaits all thunks before returning. A thunk that throws resolves to null in the result array. Use ONLY when you genuinely need all results together.
-- **log(message: string)**: void — emit a progress message
-- **phase(title: string)**: void — start a new phase; subsequent agent() calls are grouped under this title
-- **args**: any — the value passed as Workflow's args input, verbatim
-- **budget**: {total: number|null, spent(): number, remaining(): number} — the turn's token target
-
-Scripts are plain JavaScript, NOT TypeScript — type annotations fail to parse. The script body runs in an async context — use await directly. Standard JS built-ins (JSON, Math, Array, etc.) are available — EXCEPT Date.now()/Math.random()/argless new Date(), which throw (they would break resume). No filesystem or Node.js API access.
-
-DEFAULT TO pipeline(). Only reach for a barrier (parallel between stages) when you genuinely need ALL prior-stage results together.
-
-Concurrent agent() calls are capped at min(16, cpu cores - 2) per workflow. Total agent count is capped at 1000 per run. A single parallel()/pipeline() call accepts at most 4096 items.
-
-Quality patterns:
-- **Adversarial verify**: spawn N independent skeptics per finding, each prompted to REFUTE. Kill if >=majority refute.
-- **Judge panel**: generate N independent approaches, score with parallel judges, synthesize from the winner.
-- **Loop-until-dry**: keep spawning finders until K consecutive rounds return nothing new.
-- **Multi-modal sweep**: parallel agents each searching a different way (by-container, by-content, by-entity).
-- **Completeness critic**: a final agent that asks "what's missing?" — findings become next round of work.
-- **No silent caps**: if a workflow bounds coverage, log() what was dropped.
-
-## Resume
-
-The tool result includes a runId. To resume after a pause, kill, or script edit, relaunch with Workflow({scriptPath, resumeFromRunId}) — the longest unchanged prefix of agent() calls returns cached results instantly; the first edited/new call and everything after it runs live.
-
-Use this tool for multi-step orchestration where control flow should be deterministic (loops, conditionals, fan-out) rather than model-driven.`,
+  prompt: (args?: ToolPromptArgs) =>
+    [
+      "Execute a workflow script that orchestrates multiple subagents deterministically. Workflows run in the background — this tool returns immediately with a task ID, and a <task-notification> arrives when the workflow completes. Use /workflows to watch live progress.",
+      "A workflow structures work across many agents — to be comprehensive (decompose and cover in parallel), to be confident (independent perspectives and adversarial checks before committing), or to take on scale one context can't hold (migrations, audits, broad sweeps). The script is where you encode that structure: what fans out, what verifies, what synthesizes. Use this tool for multi-step orchestration where control flow should be deterministic (loops, conditionals, fan-out) rather than model-driven.",
+      OPT_IN_POLICY_FULL,
+      WORKFLOW_SCRIPT_ESSENTIALS,
+      authoringReferenceSection(args),
+    ].join("\n\n"),
 
   execute: async (
     args: Record<string, unknown>,
@@ -219,6 +229,7 @@ Use this tool for multi-step orchestration where control flow should be determin
             ? `Phases: ${run.meta.phases.map((p) => p.title).join(" → ")}`
             : "",
           `The workflow is running in the background. You will be notified automatically when it completes.`,
+          `To stop it, use ${TASK_STOP_TOOL_NAME} with task_id "${run.runId}".`,
           `Use /workflows to watch live progress.`,
           `Script saved to: ${run.scriptPath}`,
         ]

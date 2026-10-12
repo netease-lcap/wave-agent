@@ -1234,6 +1234,14 @@ await agent.triggerWorktreeRemoveHook("/path/to/worktree");
 - **要点**: 会话经 `wave daemon create --worktree` 建立在隔离 worktree 中，默认 `bypassPermissions`（不产生审批）；`wave daemon send` 默认异步派单，进度与最终汇报用 `wave daemon status [--lines N]` 查看（默认只展示最后 1 条消息，`--lines 0` 只看状态行）；盯会话改用 `wave daemon wait <sessionId>` 阻塞等到空闲并直接把最终快照打到 stdout（退出码 0=空闲 / 3=挂起等审批 / 1=错误，含等待期间该会话被其它客户端销毁——不挂住也不误报完成；三种终止已覆盖无人值守监控的全部情形，替代自建 shell 轮询脚本，`status` 仍是「取一次快照、立刻返回」）；子命令语法细节见 [Daemon 客户端命令](cli.md#daemon-commands)
 - **主要经验**: 被中断的 `send` 不等于消息没送达（先 `status` 复核再决定是否重发）；紧跟异步 `send` 之后 `wait` 要加 `--from-busy`（否则 turn 尚未开始的 stale `loading:false` 会让 wait 提前结束）；改范围先 `abort`；审批刷屏的根因是 daemon 进程重启后权限模式回落，用 `respond <id> --allow --mode bypassPermissions` 一步恢复；`destroy --remove-worktree` 是两步操作，中断会部分执行
 
+### workflow-authoring — 工作流脚本编写参考 {#skill-workflow-authoring}
+
+承载 Workflow 脚本的完整编写参考：钩子签名与 `opts`、`meta` 形状、`args` / `budget` 语义、恢复（resume）规则、并发与规模上限、质量模式（对抗验证、评审团、循环至无新发现等）以及一份可运行示例。
+
+- **名称**: `workflow-authoring`
+- **使用方式**: 由模型在编写 Workflow 脚本前自行加载，无需用户手动触发
+- **要点**: [Workflow 工具](#builtin-tools)的描述按需披露——模型可加载本技能时，描述只给"形状与签名要点 + 本技能指针"；不可加载时（技能未注册或声明了 `disable-model-invocation`）把参考正文**内联**进描述，两种模式下信息都不缺失。参考正文是单一事实源：SKILL.md 正文与工具描述的内联兜底取自同一常量，不会各自漂移。误读签名的代价不是报错而是"返回值莫名是 `undefined`/空值"，所以写脚本前应先加载本技能。
+
 ## 13. 内置 Subagents {#builtin-subagents}
 
 ### Bash — 命令执行 {#subagent-bash}

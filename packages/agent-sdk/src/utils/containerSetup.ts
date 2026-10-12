@@ -5,6 +5,7 @@ import { MessageQueue } from "../managers/messageQueue.js";
 import { TaskManager } from "../services/taskManager.js";
 import { MessageManager } from "../managers/messageManager.js";
 import { AIManager } from "../managers/aiManager.js";
+import { TurnBudgetLedger } from "../managers/turnBudgetLedger.js";
 import { ToolManager } from "../managers/toolManager.js";
 import { McpManager } from "../managers/mcpManager.js";
 import { LspManager } from "../managers/lspManager.js";
@@ -448,6 +449,13 @@ export function setupAgentContainer(
     stream,
   });
   container.register("SubagentManager", subagentManager);
+
+  // Turn-scoped output-token ledger, shared by the main agent loop and every
+  // workflow of the same turn (spec multi-agent/workflow.md 场景 5). Registered
+  // before both AIManager (which counts into it) and WorkflowManager (which reads
+  // it) so they resolve the same instance; subagent containers inherit it through
+  // the container parent chain, so a workflow agent's tokens count too.
+  container.register("TurnBudgetLedger", new TurnBudgetLedger());
 
   const aiManager = new AIManager(container, {
     callbacks: {

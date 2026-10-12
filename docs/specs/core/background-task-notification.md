@@ -20,10 +20,11 @@ order: 150
 
 1. **假设** 后台任务完成，**当** 完成通知注入主对话时，**则** 通知成为 role:user 的 meta 消息（`isMeta: true`），在 CLI 与 Webview 消息流中均不显示。
 2. **假设** 后台任务完成通知已注入，**当** 模型读取消息上下文时，**则** 模型看到包装文本 "A background agent completed a task:" 加 `<task-notification>` XML（含 task-id、task-type、status、summary、output-file）。
-3. **假设** 后台任务完成通知已注入并触发新一轮 AI 应答，**当** 会话保存时，**则** 通知消息（isMeta）与随后的 assistant 消息一同写入会话 jsonl，恢复会话后模型上下文与通知行为不变。
-4. **假设** 后台任务被手动终止（killed），**当** 任务结束时，**则** 不注入完成通知。
-5. **假设** 多个后台任务同时完成，**当** 通知注入时，**则** 所有通知合并进同一轮 AI 应答（批量处理）。
-6. **假设** 通知消息被注入（role:user + `isMeta: true`），**当** 宿主收到 `notificationMessageAdded` 时，**则** 除按 `appendMessage` 增量下发给 webview 外，还必须把该消息按到达顺序写入宿主自己的消息缓存——通知虽不在消息流中显示，却仍占据"最后一条消息"这个位置：只推不写会让宿主缓存与 webview 对 `errorBlockAdded` 的落位判定（末条为 assistant 则合并进该条，否则新建一条）读到不同的末条，于 `setInitialState` 从缓存重放时（桌面端会话/分栏切换、界面重载）把同一轮的错误块画到与 webview 不同的气泡里。此约束只针对 **`setInitialState` 直接取自宿主缓存、不重新拉取**的宿主（桌面端）；读缓存前必先 `getMessages` 的纯拉取型宿主（VS Code / JetBrains 插件）由拉取自愈，无需增量镜像。
+3. **假设** 完成的是 workflow 任务，**当** 模型读取通知正文时，**则** 正文除公共标签外还带逐 agent 的用量计数（`agent_count` / `agents_done` / `agents_error` / `agents_skipped` / `agents_empty_result` / `subagent_tokens` / `tool_uses` / `duration_ms`）与失败明细，失败时给出逐 agent 结果文件位置与恢复指引；计数不写进说明结局的那一行标题；这些标签只有 SDK 内的解析点读取，消息流的隐藏渲染不受标签增减影响。
+4. **假设** 后台任务完成通知已注入并触发新一轮 AI 应答，**当** 会话保存时，**则** 通知消息（isMeta）与随后的 assistant 消息一同写入会话 jsonl，恢复会话后模型上下文与通知行为不变。
+5. **假设** 后台任务被手动终止（killed），**当** 任务结束时，**则** 不注入完成通知。
+6. **假设** 多个后台任务同时完成，**当** 通知注入时，**则** 所有通知合并进同一轮 AI 应答（批量处理）。
+7. **假设** 通知消息被注入（role:user + `isMeta: true`），**当** 宿主收到 `notificationMessageAdded` 时，**则** 除按 `appendMessage` 增量下发给 webview 外，还必须把该消息按到达顺序写入宿主自己的消息缓存——通知虽不在消息流中显示，却仍占据"最后一条消息"这个位置：只推不写会让宿主缓存与 webview 对 `errorBlockAdded` 的落位判定（末条为 assistant 则合并进该条，否则新建一条）读到不同的末条，于 `setInitialState` 从缓存重放时（桌面端会话/分栏切换、界面重载）把同一轮的错误块画到与 webview 不同的气泡里。此约束只针对 **`setInitialState` 直接取自宿主缓存、不重新拉取**的宿主（桌面端）；读缓存前必先 `getMessages` 的纯拉取型宿主（VS Code / JetBrains 插件）由拉取自愈，无需增量镜像。
 
 ### 边界情况
 

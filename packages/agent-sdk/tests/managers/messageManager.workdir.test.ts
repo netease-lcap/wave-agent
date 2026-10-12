@@ -91,4 +91,22 @@ describe("MessageManager.setWorkdir", () => {
 
     expect(manager.getTranscriptPath()).toBe(before);
   });
+
+  it("exposes the project directory (transcript + workflow runs live there)", () => {
+    const manager = createManager(initialWorkdir);
+
+    // The session ROOT is machine-wide (`~/.wave/projects`), so anything that
+    // belongs to the code being worked on keys off the project directory
+    // instead — keying workflow runs off the root made every run on the machine
+    // visible to every project (spec「从日志恢复工作流」场景 3).
+    expect(manager.getProjectDir()).toBe(
+      join(manager.getSessionDir(), pathEncoder.encodeSync(initialWorkdir)),
+    );
+    expect(dirname(manager.getTranscriptPath())).toBe(manager.getProjectDir());
+
+    manager.setWorkdir(otherWorkdir);
+    expect(manager.getProjectDir()).toBe(
+      join(manager.getSessionDir(), pathEncoder.encodeSync(otherWorkdir)),
+    );
+  });
 });
