@@ -521,6 +521,10 @@ export default {
               text: "wave-daemon — 后台会话委托",
               link: "/sdk#skill-wave-daemon",
             },
+            {
+              text: "workflow-authoring — 工作流脚本编写参考",
+              link: "/sdk#skill-workflow-authoring",
+            },
           ],
         },
         {

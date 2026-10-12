@@ -158,6 +158,46 @@ function effectiveDisableThinkingOptions(
   return modelConfig.disableThinkingOptions;
 }
 
+/**
+ * Whether the resolved request params enable extended thinking. `thinking` is
+ * passed through verbatim from `models[X].options` (or turned off by
+ * `disableThinkingOptions`), so the merged params are the only reliable read:
+ * `{ type: "enabled" }` / `{ type: "adaptive" }` count as on, `disabled` and an
+ * absent value as off.
+ */
+function isThinkingActive(thinking: unknown): boolean {
+  if (thinking === true) return true;
+  if (typeof thinking !== "object" || thinking === null) return false;
+  const type = (thinking as { type?: unknown }).type;
+  return type === "enabled" || type === "adaptive";
+}
+
+/**
+ * A tool choice that FORCES a tool (all of them, or one by name) rather than
+ * leaving the choice to the model. Only these conflict with extended thinking.
+ */
+function isForcedToolChoice(
+  toolChoice: CallAgentOptions["toolChoice"],
+): boolean {
+  if (toolChoice === undefined) return false;
+  if (typeof toolChoice === "string") return toolChoice === "required";
+  return toolChoice.type === "function";
+}
+
+/**
+ * Claude Code 2.1.293 logs
+ * `` `tool_choice {type:'tool', name:'${name}'} demoted to auto: extended thinking is active` ``.
+ */
+function describeForcedToolChoice(
+  toolChoice: CallAgentOptions["toolChoice"],
+): string {
+  if (toolChoice === "required") return "'required'";
+  if (toolChoice === undefined || typeof toolChoice === "string") {
+    return `'${toolChoice}'`;
+  }
+  return `{type:'function', name:'${toolChoice.function.name}'}`;
+}
+
 export interface CallAgentOptions {
   // Resolved configuration
   gatewayConfig: GatewayConfig;
@@ -369,9 +409,24 @@ export async function callAgent(
       createParams.tools = processedTools;
     }
 
-    // Add tool_choice if specified
+    // Add tool_choice if specified. A FORCED tool choice is demoted to "auto"
+    // when extended thinking is active for this request: providers reject the
+    // combination, and the request must not fail because of it (spec
+    // multi-agent/workflow.md 「来自 agent 的结构化输出」场景 6). The demotion is
+    // logged, so a caller that meant to force a tool can see it did not happen.
     if (options.toolChoice) {
-      createParams.tool_choice = options.toolChoice;
+      const requestThinking = (createParams as { thinking?: unknown }).thinking;
+      if (
+        isForcedToolChoice(options.toolChoice) &&
+        isThinkingActive(requestThinking)
+      ) {
+        logger.warn(
+          `tool_choice ${describeForcedToolChoice(options.toolChoice)} demoted to auto: extended thinking is active`,
+        );
+        createParams.tool_choice = "auto";
+      } else {
+        createParams.tool_choice = options.toolChoice;
+      }
     }
 
     // Streaming request. Kept as a closure so the mid-body failure path below

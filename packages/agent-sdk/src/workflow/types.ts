@@ -32,6 +32,17 @@ export interface WorkflowRun {
   totalTokens: number;
   result?: unknown;
   error?: string;
+  /**
+   * Run-level failure details recorded by pipeline()/parallel()
+   * (`pipeline[3] failed: <message>`), in Claude Code's format. Token-budget
+   * drops are not listed per slot — they add one aggregate
+   * `pipeline: 2 slot(s) dropped — token budget exceeded` entry instead, so
+   * "ran out of budget" is never reported as a broken agent.
+   *
+   * Optional so hosts that build run objects themselves (older persisted
+   * run-state.json, UI fixtures) stay valid — read it as `run.failures ?? []`.
+   */
+  failures?: string[];
   /** Resolves when the background execution finishes (completed/failed/aborted) */
   completionPromise?: Promise<void>;
   /** If set, this run resumes from a previous run's journal */
@@ -54,6 +65,11 @@ export interface JournalEntry {
   opts: Record<string, unknown>;
   result: unknown;
   tokens: number;
+  /**
+   * Tool calls this agent made. Optional so journals written before the count
+   * existed still parse (a resumed run reports 0 for those agents).
+   */
+  toolUses?: number;
   /** Subagent instance ID for linking to the full conversation transcript */
   subagentId?: string;
   /** Path to the subagent's transcript JSONL file */

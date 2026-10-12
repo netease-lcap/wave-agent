@@ -8,10 +8,13 @@ import { MessageQueue } from "./messageQueue.js";
 import { SubagentManager } from "./subagentManager.js";
 import { taskNotificationToXml } from "../utils/notificationXml.js";
 import { ConcurrencyLimiter } from "../workflow/concurrencyLimiter.js";
-import { BudgetTracker } from "../workflow/budgetTracker.js";
+import { TurnBudgetLedger } from "./turnBudgetLedger.js";
 import { ProgressReporter } from "../workflow/progressReporter.js";
 import { Journal } from "../workflow/journal.js";
-import { createWorkflowApis } from "../workflow/workflowApis.js";
+import {
+  createWorkflowApis,
+  type WorkflowApis,
+} from "../workflow/workflowApis.js";
 import {
   validateScript,
   parseScript,
@@ -21,28 +24,72 @@ import type { WorkflowRun } from "../workflow/types.js";
 import { RunStateStore } from "../workflow/runState.js";
 import { logger } from "../utils/globalLogger.js";
 
+/**
+ * Per-workflow agent concurrency: min(16, max(2, cpus - 2)) — Claude Code's
+ * formula, so a 1-3 core box still runs 2 agents instead of serialising.
+ */
 const DEFAULT_CONCURRENCY = () =>
-  Math.max(1, Math.min(16, os.cpus().length - 2));
+  Math.min(16, Math.max(2, os.cpus().length - 2));
+
+/** Failure details embedded in a notification summary before it is truncated. */
+const MAX_FAILURES_IN_SUMMARY = 5;
 
 export class WorkflowManager {
-  private runs = new Map<string, WorkflowRun>();
+  /**
+   * In-memory runs, keyed by the runs directory they belong to — one entry per
+   * session this Agent instance has lived through (`/clear` mints a new session
+   * id on the SAME Agent). Keeping them apart is what makes the session boundary
+   * hold in-process: after a clear the previous conversation's runs are neither
+   * listed nor resumable, while a run that is still executing is not destroyed —
+   * it stays reachable by its own id (`TaskStop` goes through the abort
+   * controllers) and still reports its completion notification.
+   */
+  private runsByDir = new Map<string, Map<string, WorkflowRun>>();
   private abortControllers = new Map<string, AbortController>();
   private agentControllers = new Map<string, Map<number, AbortController>>();
   private container: Container;
-  private runStateStore: RunStateStore | null = null;
+  private stateStores = new Map<string, RunStateStore>();
 
   constructor(container: Container) {
     this.container = container;
-    // Initialize RunStateStore lazily (sessionDir depends on MessageManager)
+    // Everything directory-dependent (runs + run-state store) resolves lazily:
+    // both need MessageManager, which is registered after this constructor runs.
+  }
+
+  private get runs(): Map<string, WorkflowRun> {
+    return this.runsFor(this.runsDir);
+  }
+
+  private runsFor(dir: string): Map<string, WorkflowRun> {
+    let runs = this.runsByDir.get(dir);
+    if (!runs) {
+      runs = new Map<string, WorkflowRun>();
+      this.runsByDir.set(dir, runs);
+    }
+    return runs;
   }
 
   private get stateStore(): RunStateStore {
-    if (!this.runStateStore) {
-      this.runStateStore = new RunStateStore(
-        path.join(this.sessionDir, "workflows"),
-      );
+    return this.stateStoreFor(this.runsDir);
+  }
+
+  private stateStoreFor(dir: string): RunStateStore {
+    let store = this.stateStores.get(dir);
+    if (!store) {
+      store = new RunStateStore(dir);
+      this.stateStores.set(dir, store);
     }
-    return this.runStateStore;
+    return store;
+  }
+
+  /**
+   * Runs directory of the run itself, derived from its own script path rather
+   * than from `runsDir`: a run outlives the session id it started under when
+   * `/clear` mints a new one mid-flight, and its state must keep being written
+   * where the run actually lives.
+   */
+  private runDirOf(run: WorkflowRun): string {
+    return path.dirname(run.scriptPath);
   }
 
   private get backgroundTaskManager(): BackgroundTaskManager {
@@ -61,14 +108,51 @@ export class WorkflowManager {
     return this.container.get<string>("workdir") || process.cwd();
   }
 
-  private get sessionDir(): string {
+  /**
+   * The turn's output-token ledger. It is registered by the agent container
+   * setup, so this resolves the SAME instance the main agent loop counts into
+   * and every concurrent workflow of the turn reads (spec
+   * multi-agent/workflow.md 场景 5). A standalone container (tests, embedders)
+   * gets its own, whose `total` stays null — no cap, no shared spend.
+   */
+  private get turnBudgetLedger(): TurnBudgetLedger {
+    const existing = this.container.get<TurnBudgetLedger>("TurnBudgetLedger");
+    if (existing) return existing;
+    const ledger = new TurnBudgetLedger();
+    this.container.register("TurnBudgetLedger", ledger);
+    return ledger;
+  }
+
+  /**
+   * Directory holding the runs of THIS session: two levels, both load-bearing.
+   *
+   * 1. The project directory (`<projects>/<encoded workdir>` — the directory the
+   *    transcript lives in), NOT the session root: keying runs off
+   *    `~/.wave/projects` made `listRuns()` — and therefore `/workflows` and
+   *    `resumeFromRunId` — see every run of every project on the machine.
+   * 2. The session id, because a run belongs to the conversation that started
+   *    it. Claude Code draws the same line — `resumeFromRunId`'s schema says
+   *    "Same-session only. Stop the prior run first before resuming", and a run's
+   *    journal can only be re-read by the session that owns it. Restoring a
+   *    session keeps its id, so its runs stay reachable.
+   *
+   * Both come from the same place as the transcript path, so they are consistent
+   * by construction (spec multi-agent/workflow.md「从日志恢复工作流」场景 3).
+   */
+  private get runsDir(): string {
     const messageManager =
       this.container.get<import("./messageManager.js").MessageManager>(
         "MessageManager",
       );
-    return (
-      messageManager?.getSessionDir() ||
-      path.join(os.homedir(), ".wave", "sessions")
+    if (!messageManager) {
+      // No MessageManager means no session identity at all (embedders, tests):
+      // there is nothing to scope by, so fall back to the shared project root.
+      return path.join(os.homedir(), ".wave", "projects", "workflows");
+    }
+    return path.join(
+      messageManager.getProjectDir(),
+      "workflows",
+      messageManager.getSessionId(),
     );
   }
 
@@ -79,7 +163,7 @@ export class WorkflowManager {
   async createRun(
     script: string,
     args?: unknown,
-    opts?: { budget?: number | null; resumeFromRunId?: string },
+    opts?: { resumeFromRunId?: string },
   ): Promise<WorkflowRun> {
     // Validate script
     const validation = validateScript(script);
@@ -96,13 +180,15 @@ export class WorkflowManager {
     if (opts?.resumeFromRunId) {
       const prevRun = this.runs.get(opts.resumeFromRunId);
       if (!prevRun) {
-        throw new Error(`Cannot resume: run ${opts.resumeFromRunId} not found`);
+        throw new Error(
+          `Cannot resume: run ${opts.resumeFromRunId} not found in this session`,
+        );
       }
     }
 
     // Generate run ID and persist script
     const runId = `wf_${randomUUID().slice(0, 8)}`;
-    const runDir = path.join(this.sessionDir, "workflows", runId);
+    const runDir = path.join(this.runsDir, runId);
     await fs.promises.mkdir(path.join(runDir, "agents"), { recursive: true });
     const scriptPath = path.join(runDir, "script.js");
     await fs.promises.writeFile(scriptPath, script, "utf-8");
@@ -117,17 +203,20 @@ export class WorkflowManager {
       phases: [],
       totalAgents: 0,
       totalTokens: 0,
+      failures: [],
       resumeFromRunId: opts?.resumeFromRunId,
     };
 
     this.runs.set(runId, run);
 
     // Persist run state
-    this.stateStore.save(run).catch((err) => {
-      logger.warn(
-        `[Workflow] Failed to persist run state: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
+    this.stateStoreFor(runDir)
+      .save(run)
+      .catch((err) => {
+        logger.warn(
+          `[Workflow] Failed to persist run state: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
 
     return run;
   }
@@ -155,13 +244,11 @@ export class WorkflowManager {
 
     // Set up infrastructure
     const concurrencyLimiter = new ConcurrencyLimiter(DEFAULT_CONCURRENCY());
-    const budgetTracker = new BudgetTracker(
-      run.args &&
-      typeof run.args === "object" &&
-      "budget" in (run.args as Record<string, unknown>)
-        ? ((run.args as Record<string, unknown>).budget as number | null)
-        : null,
-    );
+    // The budget the script reads comes from the turn's shared ledger, not from
+    // the run's args: `args.budget` was a wave-only magic key with no counterpart
+    // in Claude Code, and the token target is a property of the turn (parsed off
+    // the user's message), not of a run.
+    const ledger = this.turnBudgetLedger;
     const progressReporter = new ProgressReporter(run.meta, runId);
 
     // Forward progress events: mirror live counts onto the WorkflowRun and
@@ -181,23 +268,16 @@ export class WorkflowManager {
     };
     progressReporter.onEvent(onProgress);
 
-    // Journal — load previous journal if resuming
+    // Journal — load previous journal if resuming. Pinned to the run's own
+    // directory (see `runDirOf`), not to the session's current one.
+    const runsDir = this.runDirOf(run);
     let journal: Journal;
     let initialAgentCount = 0;
     if (run.resumeFromRunId || opts?.retryAgentIndex !== undefined) {
       // Try new-format path first, fall back to old format
       const sourceRunId = run.resumeFromRunId || runId;
-      const newJournalPath = path.join(
-        this.sessionDir,
-        "workflows",
-        sourceRunId,
-        "journal.jsonl",
-      );
-      const oldJournalPath = path.join(
-        this.sessionDir,
-        "workflows",
-        `journal-${sourceRunId}.jsonl`,
-      );
+      const newJournalPath = path.join(runsDir, sourceRunId, "journal.jsonl");
+      const oldJournalPath = path.join(runsDir, `journal-${sourceRunId}.jsonl`);
       const journalPath = (await fs.promises
         .access(newJournalPath)
         .then(() => true)
@@ -219,18 +299,17 @@ export class WorkflowManager {
         `[Workflow] Resuming from ${sourceRunId} with ${initialAgentCount} cached agent results`,
       );
     } else {
-      const journalPath = path.join(
-        this.sessionDir,
-        "workflows",
-        runId,
-        "journal.jsonl",
-      );
+      const journalPath = path.join(runsDir, runId, "journal.jsonl");
       journal = new Journal(journalPath);
       await journal.init();
     }
 
-    // Register as background task
-    const taskId = this.backgroundTaskManager.generateId();
+    // Register as background task. The task id IS the runId: the receipt and
+    // the completion notification both surface the runId (notification
+    // <task-id>, receipt "Run ID"), so `TaskStop({task_id: "wf_..."})` must
+    // resolve to this same registry key. Generating a separate
+    // `task_<pid>_<n>` id here left the model with an id it could not stop.
+    const taskId = runId;
     this.backgroundTaskManager.addTask({
       id: taskId,
       type: "workflow",
@@ -249,14 +328,13 @@ export class WorkflowManager {
     const apis = createWorkflowApis({
       subagentManager: this.subagentManager,
       concurrencyLimiter,
-      budgetTracker,
+      ledger,
       progressReporter,
       journal,
       abortSignal: abortController.signal,
       args: run.args,
       initialAgentCount,
-      sessionDir: this.sessionDir,
-      runDir: path.join(this.sessionDir, "workflows", runId),
+      runDir: runsDir,
       agentControllers: runAgentControllers,
       onLog: (message: string) => {
         logger.info(`[Workflow:${runId}] ${message}`);
@@ -279,9 +357,12 @@ export class WorkflowManager {
         run.phases = progressReporter.getPhaseStates();
         run.totalAgents = progressReporter.totalAgents;
         run.totalTokens = progressReporter.totalTokens;
+        run.failures = apis.getFailures();
 
         // Persist final state
-        this.stateStore.save(run).catch(() => {});
+        this.stateStoreFor(runsDir)
+          .save(run)
+          .catch(() => {});
 
         // Close journal
         await journal.close();
@@ -305,13 +386,14 @@ export class WorkflowManager {
             taskId: runId,
             taskType: "workflow",
             status: "completed",
-            summary: `Workflow "${run.meta.name}" completed — ${run.totalAgents} agents, ${(run.totalTokens / 1000).toFixed(1)}k tokens`,
+            summary: this.buildRunSummary(run, apis, "completed"),
             ...(journalPath && { outputFile: journalPath }),
           }),
         );
 
+        const failureCount = (run.failures ?? []).length;
         logger.info(
-          `[Workflow] Run ${runId} completed: ${run.totalAgents} agents, ${run.totalTokens} tokens`,
+          `[Workflow] Run ${runId} completed: ${run.totalAgents} agents, ${run.totalTokens} tokens${failureCount > 0 ? `, ${failureCount} failure(s)` : ""}`,
         );
       } catch (error) {
         // Only update if stopRun hasn't already set the status
@@ -327,9 +409,12 @@ export class WorkflowManager {
         run.phases = progressReporter.getPhaseStates();
         run.totalAgents = progressReporter.totalAgents;
         run.totalTokens = progressReporter.totalTokens;
+        run.failures = apis.getFailures();
 
         // Persist failure/abort state
-        this.stateStore.save(run).catch(() => {});
+        this.stateStoreFor(runsDir)
+          .save(run)
+          .catch(() => {});
 
         await journal.close();
 
@@ -343,13 +428,23 @@ export class WorkflowManager {
         // Push the terminal snapshot (see the completion branch above).
         this.backgroundTaskManager.notifyTasksChange();
 
+        // The failed run points at the same files as a completed one: the journal
+        // carries every agent's prompt/result and `agents/<index>.meta.json` links
+        // each one to its transcript, so the model can read before concluding
+        // (spec「停止运行并如实上报失败」场景 6).
+        const failureJournalPath = journal.filePath;
         this.messageQueue.enqueueNotification(
           taskNotificationToXml({
             type: "task_notification",
             taskId: runId,
             taskType: "workflow",
             status: run.status === "aborted" ? "aborted" : "failed",
-            summary: `Workflow "${run.meta.name}" ${run.status}${run.error ? `: ${run.error}` : ""}`,
+            summary: this.buildRunSummary(
+              run,
+              apis,
+              run.status === "aborted" ? "aborted" : "failed",
+            ),
+            ...(failureJournalPath && { outputFile: failureJournalPath }),
           }),
         );
 
@@ -364,6 +459,80 @@ export class WorkflowManager {
 
     // Don't await — let it run in background
     run.completionPromise.catch(() => {}); // Prevent unhandled rejection
+  }
+
+  /**
+   * Text of the completion/failure notification.
+   *
+   * The information surface follows the spec (「停止运行并如实上报失败」场景 4
+   * 与 6 / 「预算与规模硬上限」): the per-agent tallies in a `<usage>` block, the
+   * failure details recorded by pipeline()/parallel()/the script itself, where the
+   * per-agent result files live, and Claude Code's resume instruction verbatim
+   * (evidence §4: "relaunch with Workflow({scriptPath, resumeFromRunId}) …
+   * completed agent() calls return cached"). The run id it tells the model to
+   * reuse travels in the same notification's `<task-id>` (the runId IS the
+   * background task id). It stays inside the existing `<summary>` tag — no new
+   * XML tags, the decoder (utils/notificationXml.ts) only knows the ones that are
+   * there, so the `<usage>`/`<agents_*>` names are text inside the summary, not
+   * tags the decoder has to learn.
+   */
+  private buildRunSummary(
+    run: WorkflowRun,
+    apis: WorkflowApis,
+    outcome: "completed" | "failed" | "aborted",
+  ): string {
+    const stats = apis.getStats();
+    const failures = apis.getFailures();
+
+    // The headline carries NO counts (Claude Code's verbatim shape:
+    // `Dynamic workflow "<name>" completed` / `failed: <error>` / `was stopped`).
+    // "0 failed" sitting next to a `Failures:` line reads as a contradiction —
+    // the tallies belong in the `<usage>` block below, where the tag names also
+    // say what is being counted (agents, not runs).
+    const headline =
+      outcome === "completed"
+        ? `Dynamic workflow "${run.meta.name}" completed`
+        : `Dynamic workflow "${run.meta.name}" ${outcome}${run.error ? `: ${run.error}` : ""}`;
+
+    // Claude Code's `<usage>` block verbatim in tag names and units. `agent_count`
+    // is every agent() call that started, `agents_done` are the ones that returned
+    // a result, `agents_error` the ones that threw, `agents_skipped` the user
+    // skips (counted apart from errors, see the kernel) and `agents_empty_result`
+    // the ones that returned `null`/`undefined`/an empty container.
+    const durationMs = (run.endTime ?? Date.now()) - run.startTime;
+    const usage =
+      `<usage>` +
+      `<agent_count>${run.totalAgents}</agent_count>` +
+      `<agents_done>${stats.completed}</agents_done>` +
+      `<agents_error>${stats.failed}</agents_error>` +
+      `<agents_skipped>${stats.skipped}</agents_skipped>` +
+      `<agents_empty_result>${stats.empty}</agents_empty_result>` +
+      `<subagent_tokens>${run.totalTokens}</subagent_tokens>` +
+      `<tool_uses>${stats.toolUses}</tool_uses>` +
+      `<duration_ms>${durationMs}</duration_ms>` +
+      `</usage>`;
+
+    const parts = [headline, usage];
+
+    if (failures.length > 0) {
+      const shown = failures.slice(0, MAX_FAILURES_IN_SUMMARY);
+      const hidden = failures.length - shown.length;
+      parts.push(
+        `Failures: ${shown.join("; ")}${hidden > 0 ? `; … (+${hidden} more)` : ""}`,
+      );
+    }
+
+    parts.push(
+      // Derived from the run's own script path rather than from `runsDir`: a run
+      // outlives the session id it started under when `/clear` mints a new one
+      // mid-flight, and the notification has to point at the files that exist.
+      `Agent results: ${path.join(path.dirname(run.scriptPath), "agents", "<index>.meta.json")}`,
+    );
+    parts.push(
+      `To pick up where it left off, relaunch with Workflow({scriptPath, resumeFromRunId}) using the run id from the summary — completed agent() calls return cached.`,
+    );
+
+    return parts.join("\n");
   }
 
   /**
@@ -489,10 +658,13 @@ export class WorkflowManager {
       }
     }
     this.agentControllers.clear();
-    for (const run of this.runs.values()) {
-      if (run.status === "running") {
-        run.status = "aborted";
-        run.endTime = Date.now();
+    // Every session this Agent instance lived through: teardown is not scoped.
+    for (const runs of this.runsByDir.values()) {
+      for (const run of runs.values()) {
+        if (run.status === "running") {
+          run.status = "aborted";
+          run.endTime = Date.now();
+        }
       }
     }
   }

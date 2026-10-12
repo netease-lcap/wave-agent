@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { WorkflowManager } from "../../src/managers/workflowManager.js";
+import { TurnBudgetLedger } from "../../src/managers/turnBudgetLedger.js";
 import { Container } from "../../src/utils/container.js";
 import * as fs from "fs";
 import * as path from "path";
@@ -33,14 +34,26 @@ function createMockContainer(sessionDir?: string) {
       messageManager: {
         getMessages: vi.fn().mockReturnValue([]),
         getLatestTotalTokens: vi.fn().mockReturnValue(100),
+        // Agent() records each subagent's transcript path; without it the call
+        // fails for real now (agent() no longer swallows its own errors).
+        getTranscriptPath: vi
+          .fn()
+          .mockReturnValue("/tmp/sessions/agent-transcript.jsonl"),
       },
     }),
     executeAgent: vi.fn().mockResolvedValue("result"),
     cleanupInstance: vi.fn(),
   };
 
+  const testSessionId = "sess-test-0001";
   const mockMessageManager = {
     getSessionDir: vi.fn().mockReturnValue(testSessionDir),
+    // Runs live under the PROJECT dir + this session's id (the session root made
+    // every run visible to every project on the machine, and a project-level key
+    // still leaked runs across the sessions sharing that project —
+    // spec「从日志恢复工作流」场景 3).
+    getProjectDir: vi.fn().mockReturnValue(testSessionDir),
+    getSessionId: vi.fn().mockReturnValue(testSessionId),
   };
 
   container.register("BackgroundTaskManager", mockBackgroundTaskManager);
@@ -91,10 +104,14 @@ describe("WorkflowManager", () => {
       expect(run.args).toEqual({ input: "hello" });
     });
 
-    it("accepts opts parameter", async () => {
+    it("keeps the run free of any budget input (the budget lives on the turn)", async () => {
       const script = `export const meta = { name: "test-wf", description: "A test" };\nreturn 1;`;
-      const run = await manager.createRun(script, {}, { budget: 1000 });
-      expect(run.runId).toMatch(/^wf_/);
+      // A run can no longer be handed a budget: `args.budget` was a wave-only
+      // magic key, and the token target belongs to the turn (parsed off the
+      // user's message, read through the shared ledger).
+      const run = await manager.createRun(script, { input: "hello" });
+      expect(run.args).toEqual({ input: "hello" });
+      expect(run.failures).toEqual([]);
     });
   });
 
@@ -119,6 +136,163 @@ describe("WorkflowManager", () => {
       const script = `export const meta = { name: "test-wf", description: "A test" };\nreturn 1;`;
       const run = await manager.createRun(script);
       expect(manager.getRun(run.runId)).toBe(run);
+    });
+  });
+
+  describe("run directory", () => {
+    const script = `export const meta = { name: "iso", description: "d" };\nreturn 1;`;
+
+    it("keys runs off the project directory + the session id, never the machine-wide session root", async () => {
+      // A fabricated project dir: every filesystem write is mocked, so nothing
+      // touches disk (and no temp dir is created).
+      const projectDir = path.join(os.tmpdir(), "wave-project-isolation");
+      mocks = createMockContainer(projectDir);
+      manager = new WorkflowManager(mocks.container);
+      const sessionId = mocks.mockMessageManager.getSessionId();
+
+      const mkdir = vi
+        .spyOn(fs.promises, "mkdir")
+        .mockResolvedValue(undefined as never);
+      const writeFile = vi
+        .spyOn(fs.promises, "writeFile")
+        .mockResolvedValue(undefined as never);
+      const readdir = vi
+        .spyOn(fs.promises, "readdir")
+        .mockResolvedValue([] as never);
+      try {
+        const run = await manager.createRun(script);
+
+        // The script and every later artifact of the run live under the PROJECT
+        // directory (+ this session's id) — the same root the transcript uses —
+        // so a run started in another worktree is neither listed nor resumable
+        // here (场景 3).
+        expect(run.scriptPath).toBe(
+          path.join(projectDir, "workflows", sessionId, run.runId, "script.js"),
+        );
+        expect(writeFile).toHaveBeenCalledWith(
+          run.scriptPath,
+          expect.any(String),
+          "utf-8",
+        );
+        // Listing reads that same directory, which is what makes a foreign run
+        // invisible: another worktree's runs are not in this list (场景 3).
+        expect((await manager.listRuns()).map((r) => r.runId)).toEqual([
+          run.runId,
+        ]);
+        expect(readdir).toHaveBeenCalledWith(
+          path.join(projectDir, "workflows", sessionId),
+          expect.anything(),
+        );
+
+        // The session root is the whole machine's `/projects` folder: asking for
+        // it is exactly the bug this pins down.
+        expect(mocks.mockMessageManager.getProjectDir).toHaveBeenCalled();
+        expect(mocks.mockMessageManager.getSessionId).toHaveBeenCalled();
+        expect(mocks.mockMessageManager.getSessionDir).not.toHaveBeenCalled();
+      } finally {
+        mkdir.mockRestore();
+        writeFile.mockRestore();
+        readdir.mockRestore();
+      }
+    });
+
+    it("hides the runs of another session in the same project (Same-session only)", async () => {
+      const projectDir = path.join(os.tmpdir(), "wave-session-isolation");
+      mocks = createMockContainer(projectDir);
+      const first = new WorkflowManager(mocks.container);
+      const firstSessionId = mocks.mockMessageManager.getSessionId();
+
+      const mkdir = vi
+        .spyOn(fs.promises, "mkdir")
+        .mockResolvedValue(undefined as never);
+      const writeFile = vi
+        .spyOn(fs.promises, "writeFile")
+        .mockResolvedValue(undefined as never);
+      const readdir = vi
+        .spyOn(fs.promises, "readdir")
+        .mockResolvedValue([] as never);
+      try {
+        const firstRun = await first.createRun(script);
+
+        // Same project, another conversation: `/clear`, a second CLI session or a
+        // second desktop pane all mint a new session id under the same project
+        // directory. Its manager must resolve a different runs directory.
+        mocks.mockMessageManager.getSessionId.mockReturnValue("sess-second");
+        const second = new WorkflowManager(mocks.container);
+        readdir.mockClear();
+        await second.listRuns();
+
+        expect(firstSessionId).not.toBe("sess-second");
+        expect(firstRun.scriptPath).toContain(
+          path.join("workflows", firstSessionId, firstRun.runId),
+        );
+        expect(readdir).toHaveBeenCalledWith(
+          path.join(projectDir, "workflows", "sess-second"),
+          expect.anything(),
+        );
+        expect(readdir).not.toHaveBeenCalledWith(
+          path.join(projectDir, "workflows", firstSessionId),
+          expect.anything(),
+        );
+        // And a run id from the other session is not resumable from here.
+        await expect(
+          second.createRun(script, undefined, {
+            resumeFromRunId: firstRun.runId,
+          }),
+        ).rejects.toThrow(
+          `Cannot resume: run ${firstRun.runId} not found in this session`,
+        );
+      } finally {
+        mkdir.mockRestore();
+        writeFile.mockRestore();
+        readdir.mockRestore();
+      }
+    });
+
+    it("moves the view to the new session when /clear re-ids the same Agent", async () => {
+      const projectDir = path.join(os.tmpdir(), "wave-clear-isolation");
+      mocks = createMockContainer(projectDir);
+      // The SAME manager: `/clear` calls messageManager.clearMessages(), which
+      // mints a new session id without recreating the Agent (or this manager).
+      manager = new WorkflowManager(mocks.container);
+
+      const mkdir = vi
+        .spyOn(fs.promises, "mkdir")
+        .mockResolvedValue(undefined as never);
+      const writeFile = vi
+        .spyOn(fs.promises, "writeFile")
+        .mockResolvedValue(undefined as never);
+      const readdir = vi
+        .spyOn(fs.promises, "readdir")
+        .mockResolvedValue([] as never);
+      try {
+        const before = await manager.createRun(script);
+
+        mocks.mockMessageManager.getSessionId.mockReturnValue("sess-cleared");
+        readdir.mockClear();
+
+        // Not listed, not fetchable, not resumable any more (场景 3)...
+        expect(manager.getRun(before.runId)).toBeUndefined();
+        expect((await manager.listRuns()).map((r) => r.runId)).toEqual([]);
+        expect(readdir).toHaveBeenCalledWith(
+          path.join(projectDir, "workflows", "sess-cleared"),
+          expect.anything(),
+        );
+        await expect(
+          manager.createRun(script, undefined, {
+            resumeFromRunId: before.runId,
+          }),
+        ).rejects.toThrow(
+          `Cannot resume: run ${before.runId} not found in this session`,
+        );
+        // ...because the previous session's run is not destroyed, only out of
+        // view: it keeps living (and reporting) under its own session.
+        expect(before.status).toBe("running");
+      } finally {
+        mkdir.mockRestore();
+        writeFile.mockRestore();
+        readdir.mockRestore();
+      }
     });
   });
 
@@ -193,8 +367,13 @@ describe("WorkflowManager", () => {
       expect(run.result).toBe(42);
       expect(run.endTime).toBeDefined();
       expect(mocks.mockMessageQueue.enqueueNotification).toHaveBeenCalled();
+      // The registry key must be the runId: the tool receipt and the completion
+      // notification both advertise the runId as the handle, so TaskStop(
+      // {task_id: runId}) has to resolve against this same id.
       expect(mocks.mockBackgroundTaskManager.addTask).toHaveBeenCalledWith(
         expect.objectContaining({
+          id: run.runId,
+          runId: run.runId,
           type: "workflow",
           description: "Workflow: simple-wf",
         }),
@@ -227,19 +406,46 @@ describe("WorkflowManager", () => {
       expect(run.error).toBe("script error");
       expect(mocks.mockMessageQueue.enqueueNotification).toHaveBeenCalled();
 
+      // A failed run reports through the same information surface as a completed
+      // one — tallies, where the per-agent results live, how to resume — so the
+      // model can read before concluding (场景 4 与 6).
+      const xml = mocks.mockMessageQueue.enqueueNotification.mock
+        .calls[0][0] as string;
+      expect(xml).toContain("<status>failed</status>");
+      expect(xml).toContain(`Dynamic workflow "fail-wf" failed: script error`);
+      // The headline carries no counts; they live in the <usage> block, whose
+      // tag names say what is counted (agents) — "N failed" next to a
+      // "Failures:" line read as a contradiction (场景 4).
+      expect(xml).toContain(
+        "<usage><agent_count>0</agent_count><agents_done>0</agents_done><agents_error>0</agents_error><agents_skipped>0</agents_skipped><agents_empty_result>0</agents_empty_result>",
+      );
+      expect(xml).not.toContain("completed, 0 failed");
+      expect(xml).toContain("Agent results: ");
+      expect(xml).toContain("<output-file>");
+
       // Cleanup
       await fs.promises.rm(tmpDir, { recursive: true });
     });
 
-    it("starts a run with budget from args", async () => {
+    it("reads the budget from the shared turn ledger, not from args", async () => {
       const tmpDir = await fs.promises.mkdtemp(
         path.join(os.tmpdir(), "wf-test-"),
       );
       mocks = createMockContainer(tmpDir);
       manager = new WorkflowManager(mocks.container);
 
-      const script = `export const meta = { name: "budget-wf", description: "With budget" };\nreturn 1;`;
-      const run = await manager.createRun(script, { budget: 50000 });
+      // The ledger is the turn's: the main loop and every workflow count into it
+      const ledger = new TurnBudgetLedger();
+      ledger.beginTurn(500_000);
+      ledger.addOutputTokens(1_250);
+      mocks.container.register("TurnBudgetLedger", ledger);
+
+      const script = [
+        "export const meta = { name: 'budget-wf', description: 'With budget' };",
+        "return { total: budget.total, spent: budget.spent(), remaining: budget.remaining() };",
+      ].join("\n");
+      // `args.budget` must have no effect on the number the script reads
+      const run = await manager.createRun(script, { budget: 1 });
 
       const task: Record<string, unknown> = { id: "task-1", status: "running" };
       mocks.mockBackgroundTaskManager.getTask.mockReturnValue(task);
@@ -248,6 +454,95 @@ describe("WorkflowManager", () => {
       await run.completionPromise;
 
       expect(run.status).toBe("completed");
+      expect(run.result).toEqual({
+        total: 500_000,
+        spent: 1_250,
+        remaining: 498_750,
+      });
+
+      // Cleanup
+      await fs.promises.rm(tmpDir, { recursive: true });
+    });
+
+    it("fails the run when an uncaught agent() error escapes the script", async () => {
+      const tmpDir = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), "wf-test-"),
+      );
+      mocks = createMockContainer(tmpDir);
+      manager = new WorkflowManager(mocks.container);
+
+      const script = [
+        "export const meta = { name: 'agent-fail', description: 'd' };",
+        "return await agent('work');",
+      ].join("\n");
+      const run = await manager.createRun(script);
+
+      const task: Record<string, unknown> = { id: "task-1", status: "running" };
+      mocks.mockBackgroundTaskManager.getTask.mockReturnValue(task);
+      (
+        mocks.mockSubagentManager.executeAgent as ReturnType<typeof vi.fn>
+      ).mockRejectedValue(new Error("API error"));
+
+      await manager.startRun(run.runId);
+      await run.completionPromise;
+
+      // agent() failures are catchable, not silently folded into null, so an
+      // uncaught one fails the whole script.
+      expect(run.status).toBe("failed");
+      expect(run.error).toBe("API error");
+
+      // Cleanup
+      await fs.promises.rm(tmpDir, { recursive: true });
+    });
+
+    it("reports counts and failure details in the completion notification", async () => {
+      const tmpDir = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), "wf-test-"),
+      );
+      mocks = createMockContainer(tmpDir);
+      manager = new WorkflowManager(mocks.container);
+
+      const script = [
+        "export const meta = { name: 'detail-wf', description: 'd' };",
+        "const results = await pipeline([1, 2], async (_prev, item) => {",
+        "  if (item === 2) throw new Error('boom');",
+        "  return await agent('work ' + item);",
+        "});",
+        "return results;",
+      ].join("\n");
+      const run = await manager.createRun(script);
+
+      const task: Record<string, unknown> = { id: "task-1", status: "running" };
+      mocks.mockBackgroundTaskManager.getTask.mockReturnValue(task);
+
+      await manager.startRun(run.runId);
+      await run.completionPromise;
+
+      expect(run.status).toBe("completed");
+      expect(run.result).toEqual(["result", null]);
+      expect(run.failures).toEqual(["pipeline[1] failed: boom"]);
+
+      const xml = mocks.mockMessageQueue.enqueueNotification.mock
+        .calls[0][0] as string;
+      expect(xml).toContain("<summary>");
+      expect(xml).toContain(`Dynamic workflow "detail-wf" completed`);
+      // Item 2 threw inside the stage, BEFORE any agent() ran, so the run has one
+      // agent and one failure — the failure is not an agent error (agent errors
+      // are counted where agent() itself threw) and the dropped item never became
+      // an agent at all.
+      expect(xml).toContain("<agent_count>1</agent_count>");
+      expect(xml).toContain("<agents_done>1</agents_done>");
+      expect(xml).toContain("<agents_error>0</agents_error>");
+      expect(xml).toContain("<tool_uses>");
+      expect(xml).toContain("<duration_ms>");
+      expect(xml).toContain("Failures: pipeline[1] failed: boom");
+      // The recovery instruction travels with the summary (verbatim Claude Code,
+      // evidence §4); the run id it refers to is this notification's <task-id>.
+      expect(xml).toContain(
+        `relaunch with Workflow({scriptPath, resumeFromRunId}) using the run id from the summary — completed agent() calls return cached.`,
+      );
+      expect(xml).toContain(`<task-id>${run.runId}</task-id>`);
+      expect(xml).toContain("<output-file>");
 
       // Cleanup
       await fs.promises.rm(tmpDir, { recursive: true });
@@ -317,7 +612,7 @@ describe("WorkflowManager", () => {
       const script = `export const meta = { name: "test-wf", description: "A test" };\nreturn 1;`;
       await expect(
         manager.createRun(script, undefined, { resumeFromRunId: "wf_nope" }),
-      ).rejects.toThrow("Cannot resume: run wf_nope not found");
+      ).rejects.toThrow("Cannot resume: run wf_nope not found in this session");
     });
 
     it("stores resumeFromRunId on the run", async () => {
@@ -417,11 +712,13 @@ describe("WorkflowManager", () => {
           toolManager: { register: vi.fn() },
           permissionManager: { addTemporaryRules: vi.fn() },
           messageManager: {
-            getMessages: vi
-              .fn()
-              .mockReturnValue([
-                { role: "assistant", usage: { total_tokens: 1234 } },
-              ]),
+            getMessages: vi.fn().mockReturnValue([
+              {
+                role: "assistant",
+                blocks: [],
+                usage: { total_tokens: 1234 },
+              },
+            ]),
             getTranscriptPath: vi.fn().mockReturnValue(undefined),
           },
         }),
@@ -440,6 +737,8 @@ describe("WorkflowManager", () => {
       });
       container.register("MessageManager", {
         getSessionDir: vi.fn().mockReturnValue(tmpDir),
+        getProjectDir: vi.fn().mockReturnValue(tmpDir),
+        getSessionId: vi.fn().mockReturnValue("sess-live-progress"),
       });
       container.register("workdir", tmpDir);
 

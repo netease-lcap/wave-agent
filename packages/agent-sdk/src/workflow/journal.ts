@@ -27,9 +27,7 @@ export class Journal {
   }
 
   getCachedResult(agentIndex: number): unknown | undefined {
-    const agentEntries = this.entries.filter(
-      (e): e is import("./types.js").JournalEntry => !("type" in e),
-    );
+    const agentEntries = this.agentEntries();
     // Check if this agent was marked as failed
     const failedEntry = this.entries.find(
       (e): e is import("./types.js").AgentFailedEntry =>
@@ -42,6 +40,20 @@ export class Journal {
       return agentEntries[agentIndex].result;
     }
     return undefined;
+  }
+
+  /**
+   * Tool calls of a cached agent — the only record of them, since resuming does
+   * not re-run the agent. 0 for entries written before the count existed.
+   */
+  getCachedToolUses(agentIndex: number): number {
+    return this.agentEntries()[agentIndex]?.toolUses ?? 0;
+  }
+
+  private agentEntries(): import("./types.js").JournalEntry[] {
+    return this.entries.filter(
+      (e): e is import("./types.js").JournalEntry => !("type" in e),
+    );
   }
 
   get length(): number {
