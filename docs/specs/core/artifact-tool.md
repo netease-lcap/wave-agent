@@ -1,6 +1,6 @@
 ---
 name: "Artifact 工具"
-description: "发布本地 HTML/Markdown 为默认私有的可分享网页（并向模型告知分享状态），枚举/读取 artifact 与摘要，管理 artifact 资源库（上传/列举/读取/删除/复制）"
+description: "发布本地 HTML/Markdown 为默认私有网页、读取/列举 artifact、资源库五动作与 WebFetch 拦截"
 order: 35
 ---
 

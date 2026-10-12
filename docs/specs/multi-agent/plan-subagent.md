@@ -1,6 +1,6 @@
 ---
 name: "Plan 子代理"
-description: "内置 Plan 子代理，在编码前设计实现方案"
+description: "内置 Plan 子代理，只读探索代码库，输出多视角实现方案与关键文件"
 order: 40
 ---
 

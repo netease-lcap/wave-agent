@@ -1,6 +1,6 @@
 ---
 name: "文本粘贴"
-description: "修复粘贴文本被立即提交：对齐 Claude Code 启用 bracketed paste（DECSET 2004）并在 stdin 原始字节层识别粘贴标记，粘贴内容仅插入不提交"
+description: "终端输入框的粘贴处理：启用 bracketed paste（DECSET 2004）识别粘贴标记，粘贴内容仅插入不提交"
 order: 260
 ---
 

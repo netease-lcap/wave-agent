@@ -1,6 +1,6 @@
 ---
 name: "确认 UI"
-description: "工具权限审批的确认对话框 UI 组件"
+description: "工具权限确认弹窗：按钮布局与滚动、确认队列、持久权限模式与 Bypass 切换、模态焦点圈"
 order: 70
 ---
 

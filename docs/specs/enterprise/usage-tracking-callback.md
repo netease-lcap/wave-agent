@@ -1,6 +1,6 @@
 ---
 name: "用量追踪"
-description: "SDK 用量追踪回调（`onUsagesChange`），用于 AI 调用和压缩"
+description: "SDK 用量追踪：`onUsagesChange` 回调、`usages` 读取与 CLI 退出 token 摘要"
 order: 40
 ---
 

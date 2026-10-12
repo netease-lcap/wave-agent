@@ -1,6 +1,6 @@
 ---
 name: "Plan 模式"
-description: "Shift+Tab plan 模式，只读分析并增量编辑 plan 文件"
+description: "Shift+Tab、`/plan`、`EnterPlanMode` 进入的只读计划模式，`ExitPlanMode` 审批与三端计划面板预览"
 order: 140
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: "AskUserQuestion 工具"
-description: "结构化用户交互工具，支持选项"
+description: "`AskUserQuestion` 结构化提问工具：单选/多选选项、多问题循环轮播、键盘可达与选项区折叠"
 order: 80
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: "会话生命周期钩子"
-description: "SessionStart / SessionEnd 钩子在会话启动与运行时恢复时的行为"
+description: "`restoreSession` 运行时切换会话时按序触发 SessionEnd/SessionStart 钩子并注入上下文"
 order: 20
 ---
 

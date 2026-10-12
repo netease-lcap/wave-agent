@@ -1,6 +1,6 @@
 ---
 name: "桌面端会话与远程"
-description: "CodeWave IDE 桌面端会话与远程：会话管理、SSH 远程主机/后台/重连、远程 daemon 常驻、历史恢复、worktree 隔离、快捷键、后台通知与会话状态看板"
+description: "CodeWave IDE 桌面端会话与远程：会话新建/切换/重命名/删除、SSH 远程与自动重连、daemon 常驻、历史恢复、worktree 隔离与会话看板"
 order: 20
 ---
 

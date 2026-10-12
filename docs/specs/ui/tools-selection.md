@@ -1,6 +1,6 @@
 ---
 name: "工具选择"
-description: "CLI `--tools` 标志限制 agent 使用特定工具集"
+description: "`--tools` 以逗号名单限定 agent 可用工具集（空串全禁、`default` 复原），含打印模式与 `Exec`/MCP 边界"
 order: 120
 ---
 

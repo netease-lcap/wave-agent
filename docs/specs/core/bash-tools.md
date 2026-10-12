@@ -1,6 +1,6 @@
 ---
 name: "Bash 工具"
-description: "Bash, BashOutput, KillBash shell 命令执行工具"
+description: "`Bash` 前台/后台命令执行：超时上限与自动转后台、实时流式输出、跨平台 bash/zsh 与 Git Bash 解析、登录 shell 环境注入"
 order: 20
 ---
 

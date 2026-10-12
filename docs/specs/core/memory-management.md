@@ -1,6 +1,6 @@
 ---
 name: "记忆管理"
-description: "通过记忆文件在对话间持久化信息"
+description: "`AGENTS.md` 与 `.wave/rules` 分层记忆、自动记忆提取 fork 与 `MEMORY.md` 容量治理、嵌套注入与陈旧提醒"
 order: 100
 ---
 

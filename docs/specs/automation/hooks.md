@@ -1,6 +1,6 @@
 ---
 name: "钩子系统"
-description: "扩展 Wave 行为的事件钩子系统"
+description: "`PreToolUse`、`PostToolUse`、`Stop`、`PreCompact` 等事件钩子的配置、退出码语义与设置页管理"
 order: 10
 ---
 

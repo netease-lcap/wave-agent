@@ -1,6 +1,6 @@
 ---
 name: "Rewind 命令"
-description: "`/rewind` 回退对话到上一条用户消息，同时回退文件变更"
+description: "`/rewind` 从检查点列表回退对话与文件变更，保留会话标题与文件级元数据"
 order: 100
 ---
 

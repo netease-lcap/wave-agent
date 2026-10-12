@@ -1,6 +1,6 @@
 ---
 name: "任务后台执行"
-description: "`run_in_background`、`TaskOutput`/`TaskStop` 工具，`/tasks` 命令替代 `/bashes`"
+description: "`run_in_background` 后台执行、`TaskStop` 终止、Ctrl-B 前台转后台、`/tasks` 列表与完成通知"
 order: 60
 ---
 

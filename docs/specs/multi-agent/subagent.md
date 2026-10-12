@@ -1,6 +1,6 @@
 ---
 name: "子代理"
-description: "将任务委派给预配置 AI 人格的子代理支持"
+description: "加载 `.wave/agents/` 子代理并经 `Agent` 工具委派，支持自动委托与上下文隔离"
 order: 10
 ---
 

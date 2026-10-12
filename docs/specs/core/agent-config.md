@@ -1,6 +1,6 @@
 ---
 name: "Agent 配置"
-description: "基于构造函数的配置替代环境变量，支持 max output tokens 和自定义 headers"
+description: "Agent 构造参数与 settings.json 分层配置：模型、token 上限、语言、env/headers、服务端地址与热重载语义"
 order: 60
 ---
 

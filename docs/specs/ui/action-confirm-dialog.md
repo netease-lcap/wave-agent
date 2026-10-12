@@ -1,6 +1,6 @@
 ---
 name: "操作确认对话框"
-description: ""
+description: "三端共享的破坏性操作确认对话框：消息回滚、删除会话（含 worktree 改动检查）、主按钮初始焦点与 Enter/Esc 键盘语义"
 order: 250
 ---
 

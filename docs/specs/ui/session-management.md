@@ -1,6 +1,6 @@
 ---
 name: "会话管理"
-description: "高性能、基于项目的会话管理系统"
+description: "按项目目录组织的会话存储与聚合列表：跨目录/worktree 聚合、`/resume` 热切换、`/rename` 重命名与子代理会话分离"
 order: 10
 ---
 

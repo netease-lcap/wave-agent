@@ -1,6 +1,6 @@
 ---
 name: "插件系统"
-description: "插件系统，支持 marketplace、作用域、技能、LSP、MCP、钩子、代理"
+description: "插件加载与市场生态：作用域管理、命令/技能/代理/钩子/LSP/MCP 组件与就地重载"
 order: 70
 ---
 
