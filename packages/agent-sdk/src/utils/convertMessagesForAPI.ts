@@ -417,9 +417,16 @@ export async function convertMessagesForAPI(
 
         // If there is a task notification block, convert it back to XML
         if (block.type === "task_notification") {
+          // The lead-in has to match the status: a workflow that crossed a size
+          // threshold is still running, and calling that "completed a task"
+          // would tell the model the opposite of what happened.
+          const lead =
+            block.status === "running"
+              ? "A background task is still running:"
+              : "A background agent completed a task:";
           contentParts.push({
             type: "text",
-            text: `A background agent completed a task:\n${taskNotificationToXml(block)}`,
+            text: `${lead}\n${taskNotificationToXml(block)}`,
           });
         }
       }

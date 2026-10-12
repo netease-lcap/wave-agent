@@ -77,6 +77,12 @@ every element is \`{ title, detail? }\` (an element of any other shape is droppe
   fill it; so does **\`recordFailure(message)\`**, for a failure your own \`catch\`
   decided on. Use \`recordFailure()\` whenever you swallow an error — a run that
   hides why an item vanished is worse than one that reports it.
+- **getAgentCount()** and **getStats()** — how far this run has got. \`getAgentCount()\`
+  is the number of \`agent()\` calls started (entries replayed from a resumed
+  journal included); \`getStats()\` is \`{ completed, failed, skipped, empty, toolUses }\`,
+  the same per-outcome tallies the completion report's \`<usage>\` block is built
+  from. Read them when the script has to ration its own fan-out (stop before a
+  self-imposed ceiling) or to report honestly how much of the work it dropped.
 - **budget** — \`{ total, spent(), remaining() }\`. The turn's token target: \`total\`
   is the number the user gave for this turn, or \`null\` when they gave none (then
   \`remaining()\` is \`Infinity\`). It is a hard cap, not a suggestion — once spent

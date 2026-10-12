@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { WorkflowManager } from "../../src/managers/workflowManager.js";
 import { TurnBudgetLedger } from "../../src/managers/turnBudgetLedger.js";
+import { RunStateStore } from "../../src/workflow/runState.js";
+import type { WorkflowRun } from "../../src/workflow/types.js";
 import { Container } from "../../src/utils/container.js";
 import * as fs from "fs";
 import * as path from "path";
@@ -124,6 +126,90 @@ describe("WorkflowManager", () => {
       const script = `export const meta = { name: "test-wf", description: "A test" };\nreturn 1;`;
       await manager.createRun(script);
       expect(await manager.listRuns()).toHaveLength(1);
+    });
+  });
+
+  describe("stale running states", () => {
+    const sessionId = "sess-test-0001";
+
+    /** A run persisted by a process that then exited, mid-run. */
+    const persistedRunningRun = (
+      sessionDir: string,
+    ): { store: RunStateStore; run: WorkflowRun } => {
+      const runsDir = path.join(sessionDir, "workflows", sessionId);
+      const run: WorkflowRun = {
+        runId: "wf_stale01",
+        meta: { name: "ghost-wf", description: "d" },
+        status: "running",
+        scriptPath: path.join(runsDir, "wf_stale01", "script.js"),
+        startTime: 1000,
+        phases: [],
+        totalAgents: 3,
+        totalTokens: 120,
+        failures: [],
+      };
+      return { store: new RunStateStore(runsDir), run };
+    };
+
+    it("converges a persisted running run to interrupted, once, and says how to resume", async () => {
+      const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "wf-"));
+      try {
+        const { store, run } = persistedRunningRun(tmpDir);
+        await store.save(run);
+
+        // A fresh manager stands in for the next process: nothing is in memory,
+        // so nothing of this run is alive.
+        const reloaded = createMockContainer(tmpDir);
+        const next = new WorkflowManager(reloaded.container);
+        const runs = await next.listRuns();
+
+        expect(runs).toHaveLength(1);
+        expect(runs[0].status).toBe("aborted");
+        expect(runs[0].error).toContain("interrupted");
+        expect(runs[0].endTime).toBeDefined();
+        // The work already done is not thrown away — only the status is.
+        expect(runs[0].totalAgents).toBe(3);
+
+        const xml = reloaded.mockMessageQueue.enqueueNotification.mock
+          .calls[0]?.[0] as string;
+        expect(xml).toContain("<status>aborted</status>");
+        expect(xml).toContain('Dynamic workflow "ghost-wf" was interrupted');
+        expect(xml).toContain('resumeFromRunId: "wf_stale01"');
+
+        // The correction is durable: it is written back, so the next process
+        // does not have to rediscover the ghost.
+        expect((await store.load("wf_stale01"))?.status).toBe("aborted");
+
+        // And the announcement is one-shot: reloading the list does not repeat
+        // it (场景 8: 该提示对本会话每次中断只出现一次).
+        await next.listRuns();
+        expect(
+          reloaded.mockMessageQueue.enqueueNotification,
+        ).toHaveBeenCalledTimes(1);
+      } finally {
+        await fs.promises.rm(tmpDir, { recursive: true });
+      }
+    });
+
+    it("leaves a run this process is executing alone", async () => {
+      const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "wf-"));
+      try {
+        mocks = createMockContainer(tmpDir);
+        manager = new WorkflowManager(mocks.container);
+        const script = `export const meta = { name: "live-wf", description: "d" };\nreturn 1;`;
+        const run = await manager.createRun(script);
+
+        await manager.listRuns();
+
+        // In memory ⇒ this process owns it, whatever the disk says (the file is
+        // written asynchronously and may not even be there yet).
+        expect(run.status).toBe("running");
+        expect(
+          mocks.mockMessageQueue.enqueueNotification,
+        ).not.toHaveBeenCalled();
+      } finally {
+        await fs.promises.rm(tmpDir, { recursive: true });
+      }
     });
   });
 
@@ -623,6 +709,56 @@ describe("WorkflowManager", () => {
       });
       expect(newRun.resumeFromRunId).toBe(prevRun.runId);
     });
+
+    it("reuses the previous run's cached agents, from a journal that is still on disk", async () => {
+      const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "wf-"));
+      try {
+        const first = createMockContainer(tmpDir);
+        const firstManager = new WorkflowManager(first.container);
+        const script = [
+          "export const meta = { name: 'resume-me', description: 'd' }",
+          "await agent('one');",
+          "await agent('two');",
+          "return 'done'",
+        ].join("\n");
+        const runA = await firstManager.createRun(script);
+        await firstManager.startRun(runA.runId);
+        await runA.completionPromise;
+        expect(first.mockSubagentManager.executeAgent).toHaveBeenCalledTimes(2);
+
+        // A later process has to be able to see the finished run — that is what
+        // makes `resumeFromRunId` usable at all. It only works while run state
+        // and journal sit in the runs directory (`<runsDir>/<runId>/…`), which
+        // is where `listRuns()` and the resume path look (场景 3 / 场景 1).
+        const runsDir = path.join(tmpDir, "workflows", "sess-test-0001");
+        expect(
+          fs.existsSync(path.join(runsDir, runA.runId, "run-state.json")),
+        ).toBe(true);
+        expect(
+          fs.existsSync(path.join(runsDir, runA.runId, "journal.jsonl")),
+        ).toBe(true);
+
+        const later = createMockContainer(tmpDir);
+        const laterManager = new WorkflowManager(later.container);
+        expect((await laterManager.listRuns()).map((r) => r.status)).toEqual([
+          "completed",
+        ]);
+
+        const runB = await laterManager.createRun(script, undefined, {
+          resumeFromRunId: runA.runId,
+        });
+        await laterManager.startRun(runB.runId);
+        await runB.completionPromise;
+
+        // Not one agent ran twice: both results came back from run A's journal
+        // (场景 2: 完全缓存命中).
+        expect(later.mockSubagentManager.executeAgent).not.toHaveBeenCalled();
+        expect(runB.status).toBe("completed");
+        expect(runB.totalAgents).toBe(2);
+      } finally {
+        await fs.promises.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("cleanup", () => {
@@ -802,6 +938,151 @@ describe("WorkflowManager", () => {
       expect(run.phases[1].tokens).toBe(1234);
 
       await fs.promises.rm(tmpDir, { recursive: true, force: true });
+    });
+  });
+
+  describe("size warning", () => {
+    /** A container whose subagents resolve instantly, with control over the tokens they report. */
+    const buildContainer = (
+      sessionDir: string,
+      getAgentMessages: () => unknown[],
+    ) => {
+      const enqueueNotification = vi.fn();
+      const container = new Container();
+      container.register("BackgroundTaskManager", {
+        generateId: vi.fn().mockReturnValue("task-size"),
+        addTask: vi.fn(),
+        getTask: vi
+          .fn()
+          .mockReturnValue({ id: "task-size", status: "running" }),
+        notifyTasksChange: vi.fn(),
+      });
+      container.register("MessageQueue", { enqueueNotification });
+      container.register("SubagentManager", {
+        findSubagent: vi.fn().mockResolvedValue({ id: "general-purpose" }),
+        createInstance: vi.fn().mockResolvedValue({
+          subagentId: "sub-1",
+          toolManager: { register: vi.fn() },
+          permissionManager: { addTemporaryRules: vi.fn() },
+          messageManager: {
+            getMessages: getAgentMessages,
+            getTranscriptPath: vi.fn().mockReturnValue(undefined),
+          },
+        }),
+        executeAgent: vi.fn().mockResolvedValue("result"),
+        cleanupInstance: vi.fn(),
+      });
+      container.register("MessageManager", {
+        getSessionDir: vi.fn().mockReturnValue(sessionDir),
+        getProjectDir: vi.fn().mockReturnValue(sessionDir),
+        getSessionId: vi.fn().mockReturnValue("sess-size-warning"),
+      });
+      container.register("workdir", sessionDir);
+      return { container, enqueueNotification };
+    };
+
+    const runScript = async (
+      container: Container,
+      agentCalls: number,
+    ): Promise<string> => {
+      const sizeManager = new WorkflowManager(container);
+      // A phase is declared on purpose: this is the shape real scripts have,
+      // and it is where per-phase token accounting lives.
+      const script = [
+        "export const meta = { name: 'big-wf', description: 'd', phases: [{ title: 'Work' }] }",
+        `for (let i = 0; i < ${agentCalls}; i++) { await agent('task ' + i); }`,
+        "return 'done'",
+      ].join("\n");
+      const run = await sizeManager.createRun(script);
+      await sizeManager.startRun(run.runId);
+      await run.completionPromise;
+      return run.runId;
+    };
+
+    const warningsIn = (xs: string[]): string[] =>
+      xs.filter((xml) => xml.includes("<status>running</status>"));
+
+    it("warns once per run when the agent count crosses the threshold", async () => {
+      const tmpDir = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), "wf-size-"),
+      );
+      try {
+        const { container, enqueueNotification } = buildContainer(
+          tmpDir,
+          () => [],
+        );
+        const runId = await runScript(container, 26);
+
+        const xmls = enqueueNotification.mock.calls.map(
+          (call) => call[0] as string,
+        );
+        const warnings = warningsIn(xmls);
+        // Once, not once per completed agent: the notification goes out at the
+        // crossing and never again (场景 7「每个运行最多预警一次」).
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]).toContain('Dynamic workflow "big-wf" is large');
+        expect(warnings[0]).toContain("26 agents started");
+        // The heads-up carries the hard cap and the stop handle — what the model
+        // needs to act on it, not just a number.
+        expect(warnings[0]).toContain("1000 agents per run");
+        expect(warnings[0]).toContain(runId);
+        // "running" is not an ending: the completion notification still arrives.
+        expect(
+          xmls.some((xml) => xml.includes("<status>completed</status>")),
+        ).toBe(true);
+      } finally {
+        await fs.promises.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("does not warn at or below the threshold", async () => {
+      const tmpDir = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), "wf-size-"),
+      );
+      try {
+        const { container, enqueueNotification } = buildContainer(
+          tmpDir,
+          () => [],
+        );
+        // Exactly 25: the warning is for crossing the line, not for reaching it.
+        await runScript(container, 25);
+
+        const xmls = enqueueNotification.mock.calls.map(
+          (call) => call[0] as string,
+        );
+        expect(warningsIn(xmls)).toHaveLength(0);
+      } finally {
+        await fs.promises.rm(tmpDir, { recursive: true, force: true });
+      }
+    });
+
+    it("warns on the token threshold even when the agent count is low", async () => {
+      const tmpDir = await fs.promises.mkdtemp(
+        path.join(os.tmpdir(), "wf-size-"),
+      );
+      try {
+        const { container, enqueueNotification } = buildContainer(
+          tmpDir,
+          () => [
+            {
+              role: "assistant",
+              blocks: [],
+              usage: { total_tokens: 1_600_000 },
+            },
+          ],
+        );
+        await runScript(container, 1);
+
+        const xmls = enqueueNotification.mock.calls.map(
+          (call) => call[0] as string,
+        );
+        const warnings = warningsIn(xmls);
+        expect(warnings).toHaveLength(1);
+        expect(warnings[0]).toContain("1600000 tokens spent so far");
+        expect(warnings[0]).toContain("1500000 tokens");
+      } finally {
+        await fs.promises.rm(tmpDir, { recursive: true, force: true });
+      }
     });
   });
 });

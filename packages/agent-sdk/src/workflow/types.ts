@@ -47,6 +47,12 @@ export interface WorkflowRun {
   completionPromise?: Promise<void>;
   /** If set, this run resumes from a previous run's journal */
   resumeFromRunId?: string;
+  /**
+   * Whether the one-shot size warning has already been injected for this run
+   * (spec「预算与规模硬上限」场景 7: warn once per run, never repeatedly). Not
+   * persisted state the UI reads — it only has to survive within the run.
+   */
+  sizeWarningSent?: boolean;
   /** Index of the agent that caused the workflow to fail */
   failedAgentIndex?: number;
   /** Error message from the failed agent */

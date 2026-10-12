@@ -278,16 +278,29 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
     }
 
     const index = agentCounter++;
+    // Cache lookups are keyed by call order WITHIN this execution (0, 1, 2, …):
+    // a resumed run numbers its agents past the replayed ones (`initialAgentCount`,
+    // so `getAgentCount()`/the cap see the real total), while the previous
+    // journal's entries sit at positions 0..N-1. Looking the cached result up by
+    // the absolute index therefore missed every entry on every resume, and the
+    // run silently paid for all of them again (spec「从日志恢复工作流」场景 1/2).
+    const cacheIndex = index - (ctx.initialAgentCount ?? 0);
 
     // Check journal for cached result (resume)
-    const cached = ctx.journal.getCachedResult(index);
+    const cached = ctx.journal.getCachedResult(cacheIndex);
     if (cached !== undefined) {
       logger.debug(`[Workflow] agent(${index}): using cached result`);
+      // Replayed agents are part of this run's `agent_count` even though no
+      // subagent was started for them: the count has to stay consistent with
+      // `agents_done` (which counts the cached result) and with the run's own
+      // progress view, or a fully cached resume reports "0 agents, 2 done".
+      // Their tokens are NOT re-added — that spend was the previous run's.
+      ctx.progressReporter.agentStarted();
       countAgentResult(cached);
       // A cached agent does not run again, so its tool count can only come from
       // the journal — otherwise a resumed run would report 0 tool uses for work
       // it did pay for.
-      stats.toolUses += ctx.journal.getCachedToolUses(index);
+      stats.toolUses += ctx.journal.getCachedToolUses(cacheIndex);
       return cached;
     }
 

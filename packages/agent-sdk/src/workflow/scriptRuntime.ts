@@ -8,6 +8,7 @@ import type {
 } from "acorn";
 import { ancestor } from "acorn-walk";
 import type { BudgetInfo, WorkflowMeta, WorkflowMetaPhase } from "./types.js";
+import type { WorkflowApiStats } from "./workflowApis.js";
 import { describeFailure, evaluateMetaLiteral } from "./metaLiteral.js";
 import { logger } from "../utils/globalLogger.js";
 
@@ -213,6 +214,15 @@ export interface WorkflowScriptApis {
   budget: BudgetInfo;
   getFailures: () => string[];
   recordFailure: (message: string) => void;
+  /**
+   * agent() calls started so far (entries replayed from a resumed journal
+   * included) and the per-outcome tallies. Same counters the completion
+   * notification's `<usage>` block reports, exposed so a script can ration its
+   * own fan-out — or state how much it dropped — without guessing
+   * (spec「预算与规模硬上限」场景 6).
+   */
+  getAgentCount: () => number;
+  getStats: () => WorkflowApiStats;
 }
 
 /**
@@ -660,6 +670,11 @@ function createSandboxContext(apis: WorkflowScriptApis): vm.Context {
     // copy — the script cannot reach the host array by keeping a reference.
     getFailures: boundary.call(apis.getFailures),
     recordFailure: boundary.call(apis.recordFailure),
+    // Read-only run tallies (场景 6). They cross the boundary through `call`
+    // too, so `getStats()` hands the script a realm-local copy of the counters
+    // rather than the host object itself.
+    getAgentCount: boundary.call(apis.getAgentCount),
+    getStats: boundary.call(apis.getStats),
     setTimeout: boundary.call(timers.setTimeout),
     clearTimeout: boundary.call(timers.clearTimeout),
   };

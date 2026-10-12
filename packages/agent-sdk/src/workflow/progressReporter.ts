@@ -8,6 +8,14 @@ export class ProgressReporter {
   private phases: WorkflowPhaseState[] = [];
   private currentPhaseIndex = -1;
   private agentCounter = 0;
+  /**
+   * Run-level token tally, kept apart from the per-phase sums: a script that
+   * never calls `phase()` and declares no `meta.phases` has no active phase at
+   * all (`currentPhaseIndex === -1`), and its spend still belongs in the run's
+   * total — the completion notification's `<subagent_tokens>` and the size
+   * warning both read this number.
+   */
+  private tokenCounter = 0;
   private listeners: Array<(event: WorkflowProgressEvent) => void> = [];
   private runId: string;
 
@@ -76,6 +84,7 @@ export class ProgressReporter {
   }
 
   agentCompleted(tokens: number): void {
+    this.tokenCounter += tokens;
     if (this.currentPhaseIndex >= 0) {
       this.phases[this.currentPhaseIndex].tokens += tokens;
       this.phases[this.currentPhaseIndex].elapsed =
@@ -101,9 +110,8 @@ export class ProgressReporter {
       this.currentPhaseIndex >= 0
         ? `Phase ${this.currentPhaseIndex + 1}/${this.phases.length}: ${this.phases[this.currentPhaseIndex].title}`
         : "Initializing";
-    const totalTokens = this.phases.reduce((sum, p) => sum + p.tokens, 0);
     const elapsed = this.phases.reduce((sum, p) => sum + p.elapsed, 0);
-    return `${phaseInfo} | ${this.agentCounter} agents | ${(totalTokens / 1000).toFixed(1)}k tokens | ${Math.round(elapsed / 1000)}s`;
+    return `${phaseInfo} | ${this.agentCounter} agents | ${(this.tokenCounter / 1000).toFixed(1)}k tokens | ${Math.round(elapsed / 1000)}s`;
   }
 
   getPhaseStates(): WorkflowPhaseState[] {
@@ -115,7 +123,7 @@ export class ProgressReporter {
   }
 
   get totalTokens(): number {
-    return this.phases.reduce((sum, p) => sum + p.tokens, 0);
+    return this.tokenCounter;
   }
 
   onEvent(listener: (event: WorkflowProgressEvent) => void): void {

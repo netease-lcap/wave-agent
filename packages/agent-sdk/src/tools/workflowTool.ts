@@ -6,6 +6,7 @@ import type {
   ToolPromptArgs,
 } from "./types.js";
 import { WORKFLOW_TOOL_NAME, TASK_STOP_TOOL_NAME } from "../constants/tools.js";
+import { WORKFLOW_AGENT_CALL_CAP } from "../workflow/workflowErrors.js";
 import { parseScript } from "../workflow/scriptRuntime.js";
 import { logger } from "../utils/globalLogger.js";
 // Single source of truth for the authoring reference: the same string is the body of
@@ -73,6 +74,7 @@ const WORKFLOW_SCRIPT_ESSENTIALS = `Writing the script — the essentials:
 - \`parallel(thunks)\` — run tasks concurrently; this one is a BARRIER that awaits all of them. Use it only when you genuinely need all results together; every entry must be a function (\`() => agent(...)\`).
 - \`phase(title)\`, \`log(message)\`, the verbatim \`args\`, and \`budget\` — \`{ total, spent(), remaining() }\`: this turn's token target as a hard cap, shared with the main loop and with any other workflow of the turn (\`total\` is \`null\` when the user gave none). Reaching it stops new \`agent()\` calls, while in-flight agents finish and keep their results — so a "loop until the budget runs out" pattern needs its own hard iteration cap.
 - \`getFailures()\` — this run's failure lines (\`pipeline[3] failed: …\`); \`recordFailure(message)\` adds one of your own. Call it from a \`catch\` you handle yourself, so the completion report says why the item is missing instead of silently dropping it.
+- \`getAgentCount()\` / \`getStats()\` — how far this run has got: the number of \`agent()\` calls started, and the per-outcome tallies (\`completed\` / \`failed\` / \`skipped\` / \`empty\` / \`toolUses\`) the completion report is built from. Read them to ration your own fan-out, or to say how much you dropped.
 
 Scripts are plain JavaScript — no type annotations, no filesystem, no network, no \`import\`. The right move is often hybrid: scout inline first (list the files, scope the diff) to discover the work-list, then pipeline over it.`;
 
@@ -219,6 +221,12 @@ export const workflowTool: ToolPlugin = {
       // Start execution in background
       await workflowManager.startRun(run.runId);
 
+      // The constraints the run just launched under: the hard agent cap and the
+      // turn's token target (or the fact that there is none), so the model can
+      // state the cost envelope to the user while it is still cheap to change
+      // (spec「预算与规模硬上限」场景 8).
+      const tokenTarget = workflowManager.getTurnTokenTarget();
+
       return {
         success: true,
         content: [
@@ -228,6 +236,11 @@ export const workflowTool: ToolPlugin = {
           run.meta.phases?.length
             ? `Phases: ${run.meta.phases.map((p) => p.title).join(" → ")}`
             : "",
+          `Limits: ${WORKFLOW_AGENT_CALL_CAP} agents maximum for this run, and ${
+            tokenTarget === null
+              ? 'no token target set for this turn (the user can set one, e.g. "+500k")'
+              : `${tokenTarget} output tokens for this turn`
+          }.`,
           `The workflow is running in the background. You will be notified automatically when it completes.`,
           `To stop it, use ${TASK_STOP_TOOL_NAME} with task_id "${run.runId}".`,
           `Use /workflows to watch live progress.`,

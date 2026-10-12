@@ -564,7 +564,8 @@ export interface AddNotificationMessageParams {
   messages: Message[];
   taskId: string;
   taskType: "shell" | "agent" | "workflow";
-  status: "completed" | "failed" | "killed" | "aborted";
+  /** `"running"` = still alive, not terminal (see TaskNotificationBlock). */
+  status: "running" | "completed" | "failed" | "killed" | "aborted";
   summary: string;
   outputFile?: string;
   result?: string;

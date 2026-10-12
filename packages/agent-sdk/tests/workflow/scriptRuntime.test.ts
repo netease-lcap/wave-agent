@@ -40,6 +40,14 @@ const mockApis = {
   budget: { total: null, spent: () => 0, remaining: () => Infinity },
   getFailures: () => [],
   recordFailure: () => {},
+  getAgentCount: () => 0,
+  getStats: () => ({
+    completed: 0,
+    failed: 0,
+    skipped: 0,
+    empty: 0,
+    toolUses: 0,
+  }),
 };
 
 beforeEach(() => {
@@ -598,6 +606,36 @@ describe("sandbox realm boundary", () => {
       mockApis,
     );
     expect(result).toBe("number");
+  });
+
+  it("lets the script read the run's own size tallies", async () => {
+    // spec「预算与规模硬上限」场景 6: the script can ration its own fan-out, so
+    // both counters have to be reachable from inside the sandbox…
+    const getAgentCount = vi.fn(() => 7);
+    const getStats = vi.fn(() => ({
+      completed: 5,
+      failed: 1,
+      skipped: 1,
+      empty: 0,
+      toolUses: 12,
+    }));
+    const { result } = await executeScript(
+      scriptOf(
+        [
+          `const stats = getStats();`,
+          // …as realm-local copies: mutating them cannot reach the host object.
+          `stats.completed = 999;`,
+          `return { agents: getAgentCount(), stats, again: getStats() };`,
+        ].join("\n"),
+      ),
+      { ...mockApis, getAgentCount, getStats },
+    );
+
+    expect(result).toEqual({
+      agents: 7,
+      stats: { completed: 999, failed: 1, skipped: 1, empty: 0, toolUses: 12 },
+      again: { completed: 5, failed: 1, skipped: 1, empty: 0, toolUses: 12 },
+    });
   });
 
   it("lets the script read and append the run's failure list", async () => {

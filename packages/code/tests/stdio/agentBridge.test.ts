@@ -2269,6 +2269,66 @@ test("onNotificationMessageAdded emits with full message", async () => {
   expect(notificationMessage.isMeta).toBe(true);
 });
 
+test("onNotificationMessageAdded forwards the newest message of a task, not the first", async () => {
+  // One task can notify more than once under the same task id: a workflow warns
+  // about its size mid-run (still "running") and then notifies again when it
+  // finishes. Picking the first match would hand the host the stale warning on
+  // completion — and the completion notification would never be shown.
+  const { bridge, notifications } = createBridge();
+  const warningMessage: Message = {
+    id: "notif-warning",
+    role: "user",
+    isMeta: true,
+    timestamp: new Date().toISOString(),
+    blocks: [
+      {
+        type: "task_notification",
+        taskId: "wf_1",
+        status: "running",
+      } as never,
+    ],
+  };
+  const completionMessage: Message = {
+    id: "notif-completed",
+    role: "user",
+    isMeta: true,
+    timestamp: new Date().toISOString(),
+    blocks: [
+      {
+        type: "task_notification",
+        taskId: "wf_1",
+        status: "completed",
+      } as never,
+    ],
+  };
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ messages: [warningMessage, completionMessage] }),
+  );
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  callbacks.onNotificationMessageAdded!({
+    taskId: "wf_1",
+    taskType: "workflow",
+    status: "completed",
+    summary: 'Dynamic workflow "big" completed',
+  });
+
+  expect(notifications).toContainEqual({
+    method: "notificationMessageAdded",
+    params: {
+      taskId: "wf_1",
+      taskType: "workflow",
+      status: "completed",
+      summary: 'Dynamic workflow "big" completed',
+      message: completionMessage,
+    },
+    sessionId: "test-session-id",
+  });
+});
+
 // ── Branch coverage: null params, untested switch cases ──────────
 
 test("handleRequest with null params defaults to empty object", async () => {
