@@ -4194,3 +4194,52 @@
 [data-host="desktop"] .mcp-server-meta {
   color: var(--cc-text-secondary);
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   1013 批 2 · MCP 列表行（6 视图共用类）色彩收口 —— 仅桌面端
+   ──────────────────────────────────────────────────────────────────────────
+   同一条评论的「色彩规范」部分：C-01 状态点 / C-02 计数徽标 / C-03 行底色。
+   · C-01 状态点 `.mcp-status-*`：原用宿主 `--vscode-testing-iconPassed`（#73c991），
+     实测**浅色档对比度 1.88:1**（深色档 8.73:1）—— 浅色面上几乎读不出「已连接」是绿的。
+     改绑本产品既有的状态语义层 `--cc-state-*`（F-08 起 agent 状态 dot / 任务行 icon 同源，
+     浅深两档都有值）：succeeded / waiting（connecting 与 reconnecting）/ failed / idle。
+   · C-02 计数徽标 `.mcp-tool-count`：底色原是宿主 `--vscode-badge-background` ⇒ 浅色档
+     实测 **rgb(0,105,204) 蓝底**、深色档灰底，同一角色两档语义不一致，也让一条元信息
+     徽标变成高饱和强调物；按契约「普通中性计数徽标 = `--cc-fill` 底 + `--cc-text-regular`
+     字」改绑产品 token。（base 里那行死声明 `color: var(--vscode-testing-iconPassed)` 已被
+     下一行覆盖、无任何渲染效果，同批删掉。）
+   · C-03 行底色 `.mcp-server-item`：原用宿主 `--vscode-sideBar-background`（**导航面**，
+     浅 rgb(247,248,251) / 深 rgb(24,26,27)），比参考件卡片面暗一档 ⇒ 列表行看起来「比卡片
+     灰一层」。改吃**所在上下文的卡片面**：设置页内 = `--cc-settings-surface`（＝参考件
+     `.settings-card` 同一个 token，浅 #fff / 深 #111314），设置页之外（工作流 /
+     后台任务两个 pane 里也复用这个类）= `--cc-bg-panel`（浅 #fff / 深 #181a1b，
+     输入区卡片角色）—— 避免在 pane 上把行染成与画布同色、只剩描边。
+     描边不动：base 的 `--vscode-panel-border` 实测与参考件卡片描边逐值相同
+     （浅 rgb(228,231,237) / 深 rgb(52,57,60) = `--cc-border-light`），改色只会引入差异。
+   反证（IDE 档不受影响）：`documentElement.dataset.host = 'ide'` 时本节整段失配 ⇒
+   状态点回到 #73c991、徽标回到宿主 badge 蓝/灰、行底回到 `--vscode-sideBar-background`。 */
+[data-host="desktop"] .mcp-status-connected {
+  color: var(--cc-state-succeeded, #16a34a);
+}
+
+[data-host="desktop"] .mcp-status-connecting,
+[data-host="desktop"] .mcp-status-reconnecting {
+  color: var(--cc-state-waiting, #e6a23c);
+}
+
+[data-host="desktop"] .mcp-status-error {
+  color: var(--cc-state-failed, #d92d20);
+}
+
+[data-host="desktop"] .mcp-status-disconnected {
+  color: var(--cc-state-idle, var(--vscode-descriptionForeground));
+}
+
+[data-host="desktop"] .mcp-tool-count {
+  background-color: var(--cc-fill);
+  color: var(--cc-text-regular);
+}
+
+[data-host="desktop"] .mcp-server-item {
+  background: var(--cc-settings-surface, var(--cc-bg-panel));
+}

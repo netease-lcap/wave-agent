@@ -261,7 +261,8 @@
 
 .mcp-tool-count {
   font-size: 11px;
-  color: var(--vscode-testing-iconPassed);
+  /* 1013-C-02：原此处还有一行 `color: var(--vscode-testing-iconPassed);`，被下一行
+     同属性覆盖 ⇒ 死声明、任何宿主都不产生渲染效果，随 1013 色彩批一并删除。 */
   background-color: var(--vscode-badge-background);
   color: var(--vscode-badge-foreground);
   padding: 1px 6px;
