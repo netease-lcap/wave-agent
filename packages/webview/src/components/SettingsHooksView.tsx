@@ -180,23 +180,10 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
               <span className="mcp-server-name">{name}</span>
             </div>
             {summary && (
-              <div
-                style={{
-                  fontSize: "12px",
-                  color: "var(--vscode-descriptionForeground)",
-                }}
-              >
-                {summary}
-              </div>
+              <div className="mcp-server-meta">{summary}</div>
             )}
             {commands && (
-              <div
-                style={{
-                  fontSize: "12px",
-                  color: "var(--vscode-descriptionForeground)",
-                  wordBreak: "break-all",
-                }}
-              >
+              <div className="mcp-server-meta mcp-server-meta--break">
                 {commands}
               </div>
             )}

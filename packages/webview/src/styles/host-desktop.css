@@ -4157,3 +4157,40 @@
   border-color: var(--cc-settings-border);
   cursor: not-allowed;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   1013 批 1 · MCP 列表行（**6 个视图共用的类**）字号收口 —— 仅桌面端
+   ──────────────────────────────────────────────────────────────────────────
+   设计师 2026-10-13 评论（点钩子页 `div.mcp-server-item`「PreToolUse:Bash 工具执行前…」）：
+   「检查字体字号规范及色彩圆角规范」⇒ 授权 T-01 / T-02 / T-03，并加一句
+   「这次所有的修改都是桌面端的」⇒ 本节只用 `[data-host="desktop"]` 前缀，
+   IDE / JetBrains 宿主完全保持原样（base 声明在 ConfigurationDialog.css 里一字未动）。
+   · T-01 行标题 `.mcp-server-name`：13px / w600 → **14px / w400**（契约
+     design-system.md:214「设置页分区标题与卡片行标题 14px regular 400」；13px 在契约里
+     只属**代码角色**），行高给 22px（契约正文档整数行高；参考件卡片行标题 26px 是卡片
+     自己的节奏，不在本条范围）。
+   · T-02 11px → **12px**（design-system.md:69「桌面 UI 元信息地板 12px，11px 不是任何
+     标准档」）：计数徽标 / 最近连接 / 错误行。
+     ⚠️ 按钮（连接 / 断开）的 12px **不在本节** —— 它们连同底色一并在「1013 批 4」按
+     按钮族统一处理，避免两批声明同一属性。
+   · T-03 说明文字的**颜色**：base 类 `.mcp-server-meta`（ConfigurationDialog.css，取值与
+     原先 TSX 内联逐字节等价 ⇒ IDE 不变）在桌面端改绑 `--cc-text-secondary`，即同一个
+     语义角色的产品 token。字号 12px 合规，留在 base。
+   反证（IDE 档不受影响）：同一页面把 `documentElement.dataset.host` 切成 `ide`，本节整段
+   失配 ⇒ 行标题回到 13px/w600、徽标与最近连接回到 11px、说明文字回到
+   `--vscode-descriptionForeground`（见本轮报告 F-01 的 IDE 反证）。 */
+[data-host="desktop"] .mcp-server-name {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 22px;
+}
+
+[data-host="desktop"] .mcp-tool-count,
+[data-host="desktop"] .mcp-server-last-connected,
+[data-host="desktop"] .mcp-server-error {
+  font-size: 12px;
+}
+
+[data-host="desktop"] .mcp-server-meta {
+  color: var(--cc-text-secondary);
+}
