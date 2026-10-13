@@ -872,7 +872,7 @@ Add a plugin directly in \`settings.json\`:
 
 ### \`\${WAVE_PLUGIN_ROOT}\` Placeholder
 
-Plugin skills, hooks, MCP servers, and LSP servers can reference their parent plugin's directory using \`\${WAVE_PLUGIN_ROOT}\`. Wave substitutes this placeholder with the plugin's absolute directory path at load time, and also injects \`WAVE_PLUGIN_ROOT\` as an environment variable into spawned processes.
+Plugin skills, hooks, MCP servers, and LSP servers can reference their parent plugin's directory using \`\${WAVE_PLUGIN_ROOT}\`. Wave substitutes this placeholder with the plugin's absolute directory path at load time, and also injects \`WAVE_PLUGIN_ROOT\` as an environment variable into spawned processes. Inside a skill this works both in the body and in \`allowed-tools\` rules; \`\${WAVE_SKILL_DIR}\` works in the same two places and resolves to the skill's own directory.
 
 Example hook command:
 \`\`\`json
@@ -1152,7 +1152,7 @@ By default, new skills only include \`name\` and \`description\`. Only add \`con
 
 - \`name\`: (Required) Unique identifier (lowercase, numbers, hyphens).
 - \`description\`: (Required) Explains when the AI should use this skill.
-- \`allowed-tools\`: (Optional) List of tools the skill can use, written in the same rule syntax as \`permissions.allow\` — e.g. \`Bash(git diff*)\`, \`Read\`. The rules are registered as temporary rules when the skill runs, and any command the skill injects with the \`!\` syntax must be covered by them or by wave's built-in defaults, or the skill is refused before it runs. Note that \`Bash(git diff:*)\` (Claude Code's older form) is **not** a valid rule: \`*\` is a wildcard, so a colon is matched literally.
+- \`allowed-tools\`: (Optional) List of tools the skill can use, written in the same rule syntax as \`permissions.allow\` — e.g. \`Bash(git diff*)\`, \`Read\`. The rules are registered as temporary rules when the skill runs, and any command the skill injects with the \`!\` syntax must be covered by them or by wave's built-in defaults, or the skill is refused before it runs. \`\${WAVE_SKILL_DIR}\` and \`\${WAVE_PLUGIN_ROOT}\` are substituted inside a rule before it is registered — \`Bash(node \${WAVE_SKILL_DIR}/tool.mjs*)\` is the intended way to let a skill run its own script without a prompt. An unresolvable placeholder (e.g. \`\${WAVE_PLUGIN_ROOT}\` in a non-plugin skill) makes the rule drop with a visible warning rather than register a rule that can never match. Note that \`Bash(git diff:*)\` (Claude Code's older form) is **not** a valid rule: \`*\` is a wildcard, so a colon is matched literally.
 - \`context: fork\`: (Optional) Run the skill in a separate subagent.
 - \`agent\`: (Optional) Specify the subagent type (default: \`general-purpose\`).
 - \`disable-model-invocation\`: (Optional, default: \`false\`) Set to \`true\` to hide the skill from the AI's available skills list. The skill can still be invoked by users via slash commands.
@@ -1216,7 +1216,7 @@ Empty or whitespace-only commands are silently skipped.
 
 - **Clear Descriptions**: Write descriptions that help the AI understand exactly when the skill is relevant.
 - **Modular Design**: Keep skills focused on a single task or capability.
-- **Use \`\${WAVE_SKILL_DIR}\`**: Use this placeholder to reference files within the skill directory.
+- **Use \`\${WAVE_SKILL_DIR}\`**: Use this placeholder to reference files within the skill directory — in the body, and in \`allowed-tools\` rules for the skill's own scripts.
 - **Bash Commands**: Use \`!\`command\`\` for inline output or \` \`\`\`! \` blocks for multi-line commands. Keep outputs concise.
 `,
   "skills/settings/SUBAGENTS.md": `# Creating and Managing Wave Subagents

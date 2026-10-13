@@ -13,6 +13,7 @@ import type {
   SkillInvocationContext,
 } from "../types/index.js";
 import { parseSkillFile, formatSkillError } from "../utils/skillParser.js";
+import { substituteSkillPlaceholders } from "../utils/skillPlaceholders.js";
 import { substituteCommandParameters } from "../utils/commandArgumentParser.js";
 import {
   parseBashCommands,
@@ -393,6 +394,7 @@ export class SkillManager extends EventEmitter {
             frontmatter: parsed.frontmatter,
             isValid: parsed.isValid,
             errors: parsed.validationErrors,
+            warnings: parsed.warnings,
           };
 
           collection.skills.set(skillMetadata.name, skillMetadata);
@@ -585,26 +587,25 @@ export class SkillManager extends EventEmitter {
     // 1. Substitute parameters ($1, $ARGUMENTS, etc.)
     mainContent = substituteCommandParameters(mainContent, argsString);
 
-    // 2. Substitute ${WAVE_SKILL_DIR} and ${CLAUDE_SKILL_DIR}
-    mainContent = mainContent.replace(/\$\{WAVE_SKILL_DIR\}/g, skill.skillPath);
-    mainContent = mainContent.replace(
-      /\$\{CLAUDE_SKILL_DIR\}/g,
-      skill.skillPath,
-    );
+    // 2. Substitute the directory placeholders. The same resolver the skill's
+    // `allowed-tools` rules went through at parse time, so the body and the
+    // rules can never disagree about what `${WAVE_SKILL_DIR}` means.
+    mainContent = substituteSkillPlaceholders(mainContent, {
+      skillPath: skill.skillPath,
+      pluginRoot: skill.pluginRoot,
+    });
 
-    // 3. Substitute ${WAVE_PLUGIN_ROOT} and ${CLAUDE_PLUGIN_ROOT}
-    if (skill.pluginRoot) {
-      mainContent = mainContent.replace(
-        /\$\{WAVE_PLUGIN_ROOT\}/g,
-        skill.pluginRoot,
-      );
-      mainContent = mainContent.replace(
-        /\$\{CLAUDE_PLUGIN_ROOT\}/g,
-        skill.pluginRoot,
-      );
-    }
+    return skillPath + this.skillWarningNotice(skill) + mainContent;
+  }
 
-    return skillPath + mainContent;
+  /**
+   * A mis-authored skill must say so where its author will see it: a rule left
+   * holding an unresolvable placeholder was dropped, so the command it meant to
+   * pre-authorize will ask for confirmation (spec ecosystem/agent-skills 场景 5).
+   */
+  private skillWarningNotice(skill: Skill): string {
+    if (!skill.warnings?.length) return "";
+    return `> **Skill warning**: ${skill.warnings.join("; ")}\n\n`;
   }
 
   /**

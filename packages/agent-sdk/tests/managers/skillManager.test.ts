@@ -796,6 +796,68 @@ describe("SkillManager", () => {
 
       expect(result.content).toContain("Plugin root is /plugin/root");
     });
+
+    it("surfaces a dropped allowed-tools rule as a visible warning", async () => {
+      // The rule was not registered (its placeholder had nothing to resolve
+      // against), so the author must be told why their command keeps asking
+      // for confirmation instead of finding out by trial and error.
+      const mockSkill: Skill = {
+        name: "warned-skill",
+        description: "A skill with an unresolvable rule",
+        type: "personal",
+        skillPath: "/path/to/warned-skill",
+        content:
+          "---\nname: warned-skill\ndescription: A skill with an unresolvable rule\n---\n\nBody text",
+        frontmatter: {
+          name: "warned-skill",
+          description: "A skill with an unresolvable rule",
+        },
+        isValid: true,
+        errors: [],
+        warnings: [
+          'allowed-tools rule "Bash(node ${WAVE_PLUGIN_ROOT}/x.mjs*)" keeps ${WAVE_PLUGIN_ROOT}',
+        ],
+      };
+
+      vi.mocked(readdir).mockResolvedValue([]);
+      await skillManager.initialize();
+      skillManager.registerPluginSkills("test-plugin", [mockSkill]);
+
+      const result = await skillManager.executeSkill({
+        skill_name: "test-plugin:warned-skill",
+      });
+
+      expect(result.content).toContain("Skill warning");
+      expect(result.content).toContain("${WAVE_PLUGIN_ROOT}");
+      expect(result.content).toContain("Body text");
+    });
+
+    it("says nothing extra when a skill declared no unresolvable rule", async () => {
+      const mockSkill: Skill = {
+        name: "clean-skill",
+        description: "A skill without warnings",
+        type: "personal",
+        skillPath: "/path/to/clean-skill",
+        content:
+          "---\nname: clean-skill\ndescription: A skill without warnings\n---\n\nBody text",
+        frontmatter: {
+          name: "clean-skill",
+          description: "A skill without warnings",
+        },
+        isValid: true,
+        errors: [],
+      };
+
+      vi.mocked(readdir).mockResolvedValue([]);
+      await skillManager.initialize();
+      skillManager.registerPluginSkills("test-plugin", [mockSkill]);
+
+      const result = await skillManager.executeSkill({
+        skill_name: "test-plugin:clean-skill",
+      });
+
+      expect(result.content).not.toContain("Skill warning");
+    });
   });
 
   describe("executeSkill", () => {

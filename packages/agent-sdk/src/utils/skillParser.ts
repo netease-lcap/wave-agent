@@ -1,6 +1,10 @@
 import { readFileSync } from "fs";
 import { dirname } from "path";
 import { parseFrontmatterYaml, splitFrontmatter } from "./frontmatterYaml.js";
+import {
+  findUnresolvedSkillPlaceholders,
+  substituteSkillPlaceholders,
+} from "./skillPlaceholders.js";
 import type {
   ParsedSkillFile,
   SkillParseOptions,
@@ -15,7 +19,7 @@ export function parseSkillFile(
   filePath: string,
   options: SkillParseOptions = {},
 ): ParsedSkillFile {
-  const { validateMetadata = true, basePath } = options;
+  const { validateMetadata = true, basePath, pluginRoot } = options;
 
   const result: ParsedSkillFile = {
     frontmatter: { name: "", description: "" },
@@ -27,6 +31,7 @@ export function parseSkillFile(
       skillPath: "",
     },
     validationErrors: [],
+    warnings: [],
     isValid: false,
   };
 
@@ -73,6 +78,33 @@ export function parseSkillFile(
         .split(",")
         .map((t) => t.trim())
         .filter((t) => t.length > 0);
+    }
+
+    // Resolve directory placeholders here, at the single point every consumer
+    // of `allowedTools` reads from (the temporary rules registered on
+    // invocation, the list handed back to the `Skill` tool, and the rules a
+    // forked subagent inherits). A rule left holding a literal placeholder
+    // never matches anything, so it is dropped and reported instead of being
+    // registered as a no-op (spec ecosystem/agent-skills 场景 4/5).
+    if (allowedTools?.length) {
+      const resolved: string[] = [];
+      for (const rule of allowedTools) {
+        const substituted = substituteSkillPlaceholders(rule, {
+          skillPath,
+          pluginRoot,
+        });
+        const unresolved = findUnresolvedSkillPlaceholders(substituted);
+        if (unresolved.length > 0) {
+          result.warnings.push(
+            `allowed-tools rule "${rule}" keeps ${unresolved.join(", ")} — ` +
+              `no path to substitute it with, so the rule is not registered ` +
+              `and its command will ask for confirmation`,
+          );
+          continue;
+        }
+        resolved.push(substituted);
+      }
+      allowedTools = resolved;
     }
 
     // Extract disable-model-invocation

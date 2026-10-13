@@ -209,6 +209,85 @@ count: 3
       expect(result.frontmatter.count).toBe("3");
     });
 
+    it("resolves ${WAVE_SKILL_DIR} inside an allowed-tools rule", () => {
+      // The skill's own rules are registered into the permission system, so a
+      // literal placeholder there is a rule that never matches anything: the
+      // skill's own script would ask for confirmation on every call.
+      const mockContent = `---
+name: tally-skill
+description: A skill that pre-authorizes its own script
+allowed-tools:
+  - Read
+  - Bash(node \${WAVE_SKILL_DIR}/scripts/tally.mjs*)
+---
+
+# Tally`;
+
+      mockReadFileSync.mockReturnValue(mockContent);
+
+      const result = parseSkillFile("/repo/.wave/skills/tally-skill/SKILL.md");
+
+      expect(result.skillMetadata.allowedTools).toEqual([
+        "Read",
+        "Bash(node /repo/.wave/skills/tally-skill/scripts/tally.mjs*)",
+      ]);
+      expect(result.warnings).toHaveLength(0);
+      expect(result.isValid).toBe(true);
+    });
+
+    it("resolves ${WAVE_PLUGIN_ROOT} in an allowed-tools rule when the plugin root is known", () => {
+      const mockContent = `---
+name: plugin-skill
+description: A plugin skill
+allowed-tools:
+  - Bash(node \${WAVE_PLUGIN_ROOT}/scripts/tally.mjs*)
+---
+
+# Plugin skill`;
+
+      mockReadFileSync.mockReturnValue(mockContent);
+
+      const result = parseSkillFile(
+        "/plugins/acme/skills/plugin-skill/SKILL.md",
+        {
+          basePath: "/plugins/acme/skills/plugin-skill",
+          pluginRoot: "/plugins/acme",
+        },
+      );
+
+      expect(result.skillMetadata.allowedTools).toEqual([
+        "Bash(node /plugins/acme/scripts/tally.mjs*)",
+      ]);
+      expect(result.warnings).toHaveLength(0);
+    });
+
+    it("drops an allowed-tools rule whose placeholder cannot be resolved, and warns", () => {
+      // A personal skill has no plugin root, so ${WAVE_PLUGIN_ROOT} has no
+      // value. Registering the rule as written would leave a permanently
+      // inert rule in the permission system; dropping it and saying so in the
+      // invoked content is the honest outcome (a warning, not an invalid skill).
+      const mockContent = `---
+name: personal-skill
+description: A personal skill
+allowed-tools:
+  - Read
+  - Bash(node \${WAVE_PLUGIN_ROOT}/scripts/tally.mjs*)
+---
+
+# Personal skill`;
+
+      mockReadFileSync.mockReturnValue(mockContent);
+
+      const result = parseSkillFile(
+        "/home/u/.wave/skills/personal-skill/SKILL.md",
+      );
+
+      expect(result.skillMetadata.allowedTools).toEqual(["Read"]);
+      expect(result.isValid).toBe(true);
+      expect(result.warnings).toHaveLength(1);
+      expect(result.warnings[0]).toContain("${WAVE_PLUGIN_ROOT}");
+    });
+
     it("should handle missing YAML frontmatter", () => {
       const mockContent = `# Test Skill
 
