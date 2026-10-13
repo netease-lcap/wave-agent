@@ -83,4 +83,4 @@ order: 230
 - **JetBrains 无法从 jar 内直接加载 webview 资源怎么办？** 将 `chat.js`/`chat.css`/`vscode-shim.js` 解包到临时目录，以 `file://` 加载 `index.html`，使页面获得 `file://` 源以自由加载同源兄弟资源。
 - **`acquireVsCodeApi()` 被重复调用怎么办？** shim 在已获取后抛错；VS Code 原生同样仅允许一次。入口只调用一次并向下传 props。
 - **React 在宿主桥就绪前发送消息怎么办？** JetBrains shim 将消息入队并轮询 `__wavePostMessage`，就绪后冲刷；不丢消息。
-- **某个组件用了 webview 自定义变量但宿主未提供怎么办？** 以 CSS fallback 值兜底（如 `var(--wave-blue, #75beff)`），保证未注入时仍有可用外观。
+- **某个组件用了 webview 自定义变量但宿主未提供怎么办？** 以 CSS fallback 值兜底，保证未注入时仍有可用的默认呈现。

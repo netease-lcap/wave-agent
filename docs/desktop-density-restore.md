@@ -2355,7 +2355,7 @@ wave 深色下 fill 原走 `--vscode-button-background`（desktop dark 主按钮
 
 ## 对话流排版契约第 1 项（conversation-typography TXT-01）：阅读正文改用 UI 字体（F-01）
 
-> **规则已归档**：本节及以下至「表格对齐（F-17）」各节定下的规则，已整理为规格 `docs/specs/desktop/desktop-conversation-typography.md`（权威来源）；台账继续保留走查过程、前后实测与截图。
+> **规则去向**：本节及以下至「表格对齐（F-17）」各节定下的规则，已并入规格 `docs/specs/ui/message-rendering-system.md`（权威来源，见其「表格展示与滚动」「表格对齐」「链接角色与下划线时机」「键盘可达与无障碍」「桌面状态指示的语义色」各故事）；台账继续保留走查过程、前后实测与截图。
 
 依据来源：codechat-desktop-skill 的 `references/conversation-typography.md`（提交 b7058b0）渲染不变量 **TXT-01**「阅读正文使用 UI 字体角色，不继承 editor-font-family；代码字段显式绑定等宽角色」；`references/conversation-audit.md` 第 33 行定位线索（浏览器中 Markdown 正文 computed 栈为 Menlo/Monaco/Courier New，需追踪 `.message-content` 祖先）。走查清单见工作目录外 `conversation-style-audit.html`（F-01，分组 G1）。
 
