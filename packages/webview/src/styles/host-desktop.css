@@ -4243,3 +4243,29 @@
 [data-host="desktop"] .mcp-server-item {
   background: var(--cc-settings-surface, var(--cc-bg-panel));
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   1013 批 3 · MCP 列表行（6 视图共用类）圆角收口 —— 仅桌面端
+   ──────────────────────────────────────────────────────────────────────────
+   契约圆角刻度只有 4 / 6 / 8 / 12 / pill 五档（skill tokens.css:124-128），本行原有的两个
+   值都落在刻度之外/错档：
+   · R-02 行容器 `.mcp-server-item` 4px：4px 是 `--cc-radius-xs`，**标签档**，不是容器档。
+     设计师定档 **12px**（= `--cc-radius-lg`），与参考件 `.settings-card` 同一档。
+   · R-03 计数徽标 `.mcp-tool-count` 3px → **4px**（标签档 `--cc-radius-xs`）。
+   · R-04 按钮族 `.mcp-connect-btn` / `.mcp-disconnect-btn`：断开原是 3px（设计师 1013 评论
+     「断开按钮圆角要和编辑按钮保持一致」），连接原是 3px（设计师「连接也一起改」）⇒
+     两个都抬到 **8px**（= 同行「编辑 / 删除」的 `.settings-row-btn` 那一档，`--cc-radius-md`）。
+     本批**只动圆角**；按钮的底色 / 字号在批 4，两批不重叠声明同一属性。
+   反证（IDE 档不受影响）：切成 `ide` 后行 r 回到 4px、徽标 r 回到 3px、两个按钮 r 回到 3px。 */
+[data-host="desktop"] .mcp-server-item {
+  border-radius: 12px;
+}
+
+[data-host="desktop"] .mcp-tool-count {
+  border-radius: 4px;
+}
+
+[data-host="desktop"] .mcp-connect-btn,
+[data-host="desktop"] .mcp-disconnect-btn {
+  border-radius: 8px;
+}
