@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as os from "os";
 import * as fs from "fs";
+import * as path from "path";
 import {
   GIT_CREDENTIAL_HELPER_FILENAME,
   gitCredentialHelperPath,
@@ -9,11 +10,28 @@ import {
   shellQuote,
 } from "../../src/utils/gitCredentialHelper.js";
 
+/**
+ * Every path expectation in this file is *derived* with `path.join` from this
+ * one fake home (and from the filename constant), never written as a literal
+ * with `/` in it: the code under test builds paths with `path.join`, so a
+ * hard-coded POSIX expectation pins the separator of the machine running the
+ * suite instead of the derivation, and fails on Windows (where `path.join`
+ * yields `\`). The Windows CI job runs this file too.
+ */
+const { FAKE_HOME } = vi.hoisted(() => ({ FAKE_HOME: "/tmp/fake-home" }));
+
+/** Mirrors `AuthService.getAuthPath()`: `path.join(homedir(), ".wave", "auth.json")`. */
+const AUTH_PATH = path.join(FAKE_HOME, ".wave", "auth.json");
+/** Mirrors `path.dirname(AUTH_PATH)` — the directory the helper is installed in. */
+const WAVE_DIR = path.dirname(AUTH_PATH);
+/** Mirrors `gitCredentialHelperPath()`. */
+const SCRIPT_PATH = path.join(WAVE_DIR, GIT_CREDENTIAL_HELPER_FILENAME);
+
 vi.mock("os", async () => {
   const actual = await vi.importActual("os");
   return {
     ...actual,
-    homedir: vi.fn().mockReturnValue("/tmp/fake-home"),
+    homedir: vi.fn().mockReturnValue(FAKE_HOME),
   };
 });
 
@@ -79,31 +97,30 @@ describe("renderGitCredentialHelper", () => {
 
 describe("gitCredentialHelperPath", () => {
   it("sits next to auth.json so both live with the login state", () => {
-    expect(gitCredentialHelperPath()).toBe(
-      `/tmp/fake-home/.wave/${GIT_CREDENTIAL_HELPER_FILENAME}`,
-    );
+    expect(gitCredentialHelperPath()).toBe(SCRIPT_PATH);
   });
 });
 
 describe("installGitCredentialHelper", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    vi.mocked(os.homedir).mockReturnValue("/tmp/fake-home");
+    vi.mocked(os.homedir).mockReturnValue(FAKE_HOME);
   });
 
   it("writes the script executable and returns the config value", () => {
     const installed = installGitCredentialHelper();
 
-    const scriptPath = `/tmp/fake-home/.wave/${GIT_CREDENTIAL_HELPER_FILENAME}`;
-    expect(installed.path).toBe(scriptPath);
-    expect(installed.command).toBe(`!exec '${scriptPath}'`);
+    expect(installed.path).toBe(SCRIPT_PATH);
+    // `shellQuote` only wraps the value in single quotes (no platform branch),
+    // so the quoted literal can stay literal here.
+    expect(installed.command).toBe(`!exec '${SCRIPT_PATH}'`);
     expect(mockedWriteFile).toHaveBeenCalledWith(
-      scriptPath,
-      renderGitCredentialHelper("/tmp/fake-home/.wave/auth.json"),
+      SCRIPT_PATH,
+      renderGitCredentialHelper(AUTH_PATH),
       "utf-8",
     );
-    expect(mockedChmod).toHaveBeenCalledWith(scriptPath, 0o755);
-    expect(mockedMkdir).toHaveBeenCalledWith("/tmp/fake-home/.wave", {
+    expect(mockedChmod).toHaveBeenCalledWith(SCRIPT_PATH, 0o755);
+    expect(mockedMkdir).toHaveBeenCalledWith(WAVE_DIR, {
       recursive: true,
     });
   });
