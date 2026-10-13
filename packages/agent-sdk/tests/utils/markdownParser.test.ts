@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import {
   parseFrontmatter,
   parseMarkdownFile,
@@ -6,6 +6,7 @@ import {
   replaceBashCommandsWithOutput,
   truncateOutput,
   executeBashCommands,
+  BashCommandPermissionError,
   type BashCommandResult,
 } from "../../src/utils/markdownParser.js";
 import {
@@ -198,6 +199,34 @@ describe("markdownParser", () => {
       expect(result.commands).toEqual([]);
     });
 
+    // Prose that ends a word or code span with `!` immediately before another
+    // code span is not an injected command (Claude Code's INLINE_PATTERN has
+    // the same whitespace lookbehind). Parsing it as one is not harmless: a
+    // denied injected command aborts the whole skill, so a document that lists
+    // error codes would stop working. First hit in the wild: the market
+    // `document-skills/xlsx` skill, whose `#REF!`/`#DIV/0!` table broke.
+    it("should not treat a code span after a word as an injected command", () => {
+      const content = [
+        "Common errors:",
+        "- `#REF!`: Invalid cell references",
+        "- `#DIV/0!`: Division by zero",
+        "- `#VALUE!`: Wrong data type in formula",
+      ].join("\n");
+      const result = parseBashCommands(content);
+      expect(result.commands).toEqual([]);
+      expect(replaceBashCommandsWithOutput(content, [])).toBe(content);
+    });
+
+    it("should not treat a neighbouring code span as an injected command", () => {
+      const result = parseBashCommands("Adjacent: `foo`!`bar` and `$!`");
+      expect(result.commands).toEqual([]);
+    });
+
+    it("should parse inline commands at start of line", () => {
+      const result = parseBashCommands("!`git status`\nand\n  !`git diff`");
+      expect(result.commands).toEqual(["git status", "git diff"]);
+    });
+
     it("should return original content without modification", () => {
       const content = "Run this: !`ls -la`";
       const result = parseBashCommands(content);
@@ -363,6 +392,86 @@ describe("markdownParser", () => {
         expect(results[0].output).toBe("");
       },
     );
+  });
+
+  // spec `ecosystem/agent-skills` / 注入命令执行前的权限校验
+  describe("executeBashCommands permission gate", () => {
+    it("runs the command and passes the workdir when the gate allows it", async () => {
+      const check = vi.fn().mockResolvedValue({ behavior: "allow" });
+      const results = await executeBashCommands(
+        ["echo allowed"],
+        process.cwd(),
+        undefined,
+        { check },
+      );
+
+      expect(check).toHaveBeenCalledWith("echo allowed", process.cwd());
+      expect(results[0].output).toBe("allowed");
+    });
+
+    it("aborts with the Claude Code error text when the gate denies", async () => {
+      const check = vi
+        .fn()
+        .mockResolvedValue({ behavior: "deny", message: "blocked by rule" });
+
+      await expect(
+        executeBashCommands(["echo nope"], process.cwd(), undefined, {
+          check,
+        }),
+      ).rejects.toThrow(
+        'Shell command permission check failed for pattern "echo nope": blocked by rule',
+      );
+
+      const error = await executeBashCommands(
+        ["echo nope"],
+        process.cwd(),
+        undefined,
+        { check },
+      ).catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(BashCommandPermissionError);
+      expect((error as BashCommandPermissionError).command).toBe("echo nope");
+    });
+
+    it("falls back to a default reason when the gate gives none", async () => {
+      await expect(
+        executeBashCommands(["echo nope"], process.cwd(), undefined, {
+          check: async () => ({ behavior: "deny" }),
+        }),
+      ).rejects.toThrow(
+        'Shell command permission check failed for pattern "echo nope": Permission denied',
+      );
+    });
+
+    it("stops at the first denied command without judging later ones", async () => {
+      const judged: string[] = [];
+      const check = vi.fn().mockImplementation(async (command: string) => {
+        judged.push(command);
+        return command === "echo bad"
+          ? { behavior: "deny" }
+          : { behavior: "allow" };
+      });
+
+      await expect(
+        executeBashCommands(
+          ["echo ok", "echo bad", "echo never"],
+          process.cwd(),
+          undefined,
+          { check },
+        ),
+      ).rejects.toThrow(
+        'Shell command permission check failed for pattern "echo bad"',
+      );
+
+      expect(judged).toEqual(["echo ok", "echo bad"]);
+    });
+
+    it("leaves execution ungated when no gate is supplied", async () => {
+      const results = await executeBashCommands(
+        ["echo ungated"],
+        process.cwd(),
+      );
+      expect(results[0].output).toBe("ungated");
+    });
   });
 
   describe("performance gate", () => {

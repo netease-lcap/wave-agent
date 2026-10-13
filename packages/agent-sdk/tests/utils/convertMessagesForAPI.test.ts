@@ -467,6 +467,39 @@ describe("convertMessagesForAPI", () => {
     ]);
   });
 
+  it("should not describe a rewaking hook as a completed background agent", async () => {
+    // `hook` notifications reuse the task-notification channel because it is
+    // the only way to reach the model after the turn is over, but a hook is not
+    // a task: the generic "a background agent completed a task" lead-in would
+    // describe the wrong thing entirely.
+    const messages: Message[] = [
+      {
+        id: generateMessageId(),
+        role: "user",
+        blocks: [
+          {
+            type: "task_notification",
+            taskId: "hook-PostToolUse:0:0",
+            taskType: "hook",
+            status: "failed",
+            summary: "<system-reminder>\nboom\n</system-reminder>",
+          },
+        ],
+        isMeta: true,
+        timestamp: new Date().toISOString(),
+      },
+    ];
+
+    const apiMessages = await convertMessagesForAPI(messages);
+
+    expect(apiMessages[0].content).toEqual([
+      {
+        type: "text",
+        text: `A hook reported a blocking error:\n<task-notification>\n<task-id>hook-PostToolUse:0:0</task-id>\n<task-type>hook</task-type>\n<status>failed</status>\n<summary><system-reminder>\nboom\n</system-reminder></summary>\n</task-notification>`,
+      },
+    ]);
+  });
+
   it("should include reasoning content in assistant messages for API", async () => {
     const messages: Message[] = [
       {

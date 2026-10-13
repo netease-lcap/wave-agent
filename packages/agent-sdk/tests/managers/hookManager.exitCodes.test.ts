@@ -233,6 +233,60 @@ describe("HookManager exit-code semantics", () => {
         }),
       );
     });
+
+    // spec `automation/hooks` / 结构化方式：JSON 输出
+    it("injects the additionalContext value, not the raw JSON, for UserPromptSubmit", () => {
+      const results = [
+        {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: "UserPromptSubmit",
+              additionalContext: "Structured context",
+            },
+          }),
+          duration: 0,
+          timedOut: false,
+        },
+      ];
+      manager.processHookResults(
+        "UserPromptSubmit",
+        results,
+        mockMessageManager as unknown as MessageManager,
+      );
+
+      expect(mockMessageManager.addUserMessage).toHaveBeenCalledTimes(1);
+      expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith({
+        content: "<system-reminder>\nStructured context\n</system-reminder>",
+        isMeta: true,
+      });
+    });
+
+    it("ignores additionalContext on Stop, which the field does not support", () => {
+      const results = [
+        {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            hookSpecificOutput: {
+              hookEventName: "Stop",
+              additionalContext: "must not be injected",
+            },
+          }),
+          duration: 0,
+          timedOut: false,
+        },
+      ];
+      manager.processHookResults(
+        "Stop",
+        results,
+        mockMessageManager as unknown as MessageManager,
+      );
+
+      expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
+      expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+    });
   });
 
   describe("SessionStart in processHookResults", () => {
@@ -473,6 +527,156 @@ describe("HookManager exit-code semantics", () => {
       await expect(
         manager.executePreToolUseHooks("Write", {}, toolContext()),
       ).resolves.toBeNull();
+    });
+
+    // spec `automation/hooks` / 结构化方式：JSON 输出
+    const structuredStdout = (
+      hookEventName: string,
+      additionalContext: string,
+    ) =>
+      JSON.stringify({
+        hookSpecificOutput: { hookEventName, additionalContext },
+      });
+
+    it("injects hookSpecificOutput.additionalContext on PreToolUse without blocking", async () => {
+      loadWriteHook("PreToolUse");
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout: structuredStdout("PreToolUse", "touching auth, check callers"),
+        stderr: "",
+        duration: 5,
+        timedOut: false,
+      });
+
+      await expect(
+        manager.executePreToolUseHooks("Write", {}, toolContext()),
+      ).resolves.toBeNull();
+
+      expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith({
+        content:
+          "<system-reminder>\ntouching auth, check callers\n</system-reminder>",
+        isMeta: true,
+      });
+      expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+    });
+
+    it("injects hookSpecificOutput.additionalContext on PostToolUse", async () => {
+      loadWriteHook("PostToolUse");
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout: structuredStdout("PostToolUse", "remember to update the tests"),
+        stderr: "",
+        duration: 5,
+        timedOut: false,
+      });
+
+      await manager.executePostToolUseHooks(
+        "Write",
+        {},
+        { success: true, content: "file written" },
+        toolContext(),
+      );
+
+      expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith({
+        content:
+          "<system-reminder>\nremember to update the tests\n</system-reminder>",
+        isMeta: true,
+      });
+    });
+
+    it("reads additionalContext even when the hook exits 2 — the channel is orthogonal to the exit code", async () => {
+      loadWriteHook("PreToolUse");
+      mockExecuteCommand.mockResolvedValue({
+        success: false,
+        exitCode: 2,
+        stdout: structuredStdout("PreToolUse", "context next to the block"),
+        stderr: "Blocked by policy",
+        duration: 5,
+        timedOut: false,
+      });
+
+      await expect(
+        manager.executePreToolUseHooks("Write", {}, toolContext()),
+      ).resolves.toBe("PreToolUse:Write hook error: Blocked by policy");
+
+      expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith({
+        content:
+          "<system-reminder>\ncontext next to the block\n</system-reminder>",
+        isMeta: true,
+      });
+    });
+
+    it("reports an event-name mismatch instead of injecting the payload", async () => {
+      loadWriteHook("PostToolUse");
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout: structuredStdout("PreToolUse", "wrong event"),
+        stderr: "",
+        duration: 5,
+        timedOut: false,
+      });
+
+      await manager.executePostToolUseHooks(
+        "Write",
+        {},
+        { success: true, content: "file written" },
+        toolContext(),
+      );
+
+      expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
+      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+        "Hook returned incorrect event name: expected 'PostToolUse' but got 'PreToolUse'",
+      );
+    });
+
+    it("needs the event name to be declared at all", async () => {
+      loadWriteHook("PostToolUse");
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout: JSON.stringify({
+          hookSpecificOutput: { additionalContext: "no event name" },
+        }),
+        stderr: "",
+        duration: 5,
+        timedOut: false,
+      });
+
+      await manager.executePostToolUseHooks(
+        "Write",
+        {},
+        { success: true, content: "file written" },
+        toolContext(),
+      );
+
+      expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
+      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+        "Hook returned incorrect event name: expected 'PostToolUse' but got 'undefined'",
+      );
+    });
+
+    it("ignores an empty additionalContext", async () => {
+      loadWriteHook("PostToolUse");
+      mockExecuteCommand.mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        stdout: structuredStdout("PostToolUse", "   "),
+        stderr: "",
+        duration: 5,
+        timedOut: false,
+      });
+
+      await manager.executePostToolUseHooks(
+        "Write",
+        {},
+        { success: true, content: "file written" },
+        toolContext(),
+      );
+
+      expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
     });
   });
 });

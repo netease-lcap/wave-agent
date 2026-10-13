@@ -382,7 +382,11 @@ export class PermissionManager {
    * Add temporary rules for the current session
    */
   public addTemporaryRules(rules: string[]): void {
-    this.temporaryRules.push(...rules);
+    // Deduplicate: the same rule set is registered from more than one place —
+    // a skill's `allowed-tools` is applied before its injected commands run and
+    // again by the skill tool — and within a turn each extra copy would
+    // otherwise accumulate.
+    this.temporaryRules = [...new Set([...this.temporaryRules, ...rules])];
   }
 
   /**

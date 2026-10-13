@@ -563,7 +563,9 @@ export function getMessageContent(message: Message): string {
 export interface AddNotificationMessageParams {
   messages: Message[];
   taskId: string;
-  taskType: "shell" | "agent" | "workflow";
+  // Derived rather than repeated: the union lives on the block, and a copy here
+  // silently excludes any member added there.
+  taskType: TaskNotificationBlock["taskType"];
   /** `"running"` = still alive, not terminal (see TaskNotificationBlock). */
   status: "running" | "completed" | "failed" | "killed" | "aborted";
   summary: string;

@@ -110,7 +110,12 @@ export interface FileHistoryBlock {
 export interface TaskNotificationBlock {
   type: "task_notification";
   taskId: string;
-  taskType: "shell" | "agent" | "workflow";
+  /**
+   * `"hook"` is not a task: it is an async hook with `asyncRewake` that exited
+   * with code 2, delivered through this channel because a notification is the
+   * only way to reach the model once the turn that launched the hook is over.
+   */
+  taskType: "shell" | "agent" | "workflow" | "hook";
   /**
    * `"running"` is the one non-terminal member: a task that is still alive can
    * still notify about itself (a workflow crossing a size threshold), and a

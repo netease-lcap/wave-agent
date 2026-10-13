@@ -14,6 +14,8 @@ import type { SubagentManager } from "../../src/managers/subagentManager.js";
 import type { SkillManager } from "../../src/managers/skillManager.js";
 import type { TextBlock } from "../../src/types/index.js";
 import type { MemoryService } from "../../src/services/memory.js";
+import { BASH_TOOL_NAME } from "../../src/constants/tools.js";
+import type { PermissionManager } from "../../src/managers/permissionManager.js";
 // Mock child_process for bash command execution tests
 const mockExec = vi.hoisted(() => vi.fn());
 vi.mock("child_process", () => ({
@@ -44,11 +46,12 @@ describe("SlashCommandManager", () => {
   let aiManager: AIManager;
   let mockSubagentManager: SubagentManager;
   let mockSkillManager: SkillManager;
+  let container: Container;
 
   beforeEach(() => {
     // Reset mocks
     vi.clearAllMocks();
-    const container = new Container();
+    container = new Container();
     // Create MessageManager with necessary callbacks
     messageManager = new MessageManager(container, {
       callbacks: {},
@@ -464,6 +467,54 @@ describe("SlashCommandManager", () => {
 
       expect(executeBashOrder).toBeLessThan(updateUserMessageOrder);
       expect(updateUserMessageOrder).toBeLessThan(sendAIMessageOrder);
+    });
+
+    // spec `ecosystem/agent-skills` / 注入命令执行前的权限校验
+    it("registers allowed-tools before bash and gates injected commands", async () => {
+      const checkPermission = vi.fn().mockResolvedValue({
+        behavior: "deny",
+        message: "blocked by test rule",
+      });
+      const addTemporaryRules = vi.fn();
+      const createContext = vi.fn().mockReturnValue({});
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
+        createContext,
+        checkPermission,
+        addTemporaryRules,
+      } as unknown as PermissionManager);
+
+      const customCommand = {
+        id: "test-gated",
+        name: "test-gated",
+        content: "PR is !`gh pr view`",
+        config: { allowedTools: ["Bash(gh pr view*)"] },
+      };
+
+      slashCommandManager.registerPluginCommands("test", [
+        customCommand,
+      ] as unknown as CustomSlashCommand[]);
+
+      await slashCommandManager.getCommand("test:test-gated")?.handler();
+
+      expect(addTemporaryRules).toHaveBeenCalledWith(["Bash(gh pr view*)"]);
+      expect(addTemporaryRules.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(markdownParser.executeBashCommands).mock
+          .invocationCallOrder[0],
+      );
+
+      const gate = vi.mocked(markdownParser.executeBashCommands).mock
+        .calls[0][3];
+      await expect(gate?.check("gh pr view", "/proj")).resolves.toEqual({
+        behavior: "deny",
+        message: "blocked by test rule",
+      });
+      expect(createContext).toHaveBeenCalledWith(
+        BASH_TOOL_NAME,
+        "default",
+        undefined,
+        { command: "gh pr view", workdir: "/proj" },
+      );
     });
 
     it("should update user message after bash execution in skill command", async () => {

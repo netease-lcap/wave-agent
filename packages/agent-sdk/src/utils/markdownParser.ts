@@ -104,8 +104,14 @@ const BLOCK_BASH_REGEX = /```!\s*\n?([\s\S]*?)\n?```/g;
 
 /**
  * Inline syntax pattern: !`command`
+ *
+ * The lookbehind requires start-of-line or whitespace before the `!`, matching
+ * Claude Code's `INLINE_PATTERN` (`promptShellExecution.ts`). Without it a
+ * document that merely mentions an error code in a code span — `` `#REF!`: `` —
+ * parses as an injected command, and since a denied injected command aborts the
+ * whole skill, prose would break the skill rather than be ignored.
  */
-const INLINE_BASH_REGEX = /!`([^`]+)`/g;
+const INLINE_BASH_REGEX = /(?<=^|\s)!`([^`]+)`/gm;
 
 export function parseBashCommands(content: string): {
   commands: string[];
@@ -221,16 +227,62 @@ export function replaceBashCommandsWithOutput(
 }
 
 /**
+ * Gate consulted before an injected command runs.
+ *
+ * Deliberately a structural interface instead of an import of
+ * `PermissionManager`: this module must stay free of SDK-internal imports so it
+ * keeps zero import-time side effects (SDK surface rules, see AGENTS.md).
+ * Callers (skill / custom-command loading) inject an implementation that
+ * delegates to the very same `PermissionManager` the Bash tool uses, so both
+ * paths judge by one rule set.
+ */
+export interface BashCommandGate {
+  check(
+    command: string,
+    workdir: string,
+  ): Promise<{ behavior: "allow" } | { behavior: "deny"; message?: string }>;
+}
+
+/**
+ * Thrown when an injected command is denied. Aborts the whole skill / command
+ * invocation so the body never reaches the model, and carries the user-facing
+ * text (spec `ecosystem/agent-skills` / 注入命令执行前的权限校验).
+ */
+export class BashCommandPermissionError extends Error {
+  constructor(
+    public readonly command: string,
+    public readonly reason?: string,
+  ) {
+    super(
+      `Shell command permission check failed for pattern "${command}": ${
+        reason || "Permission denied"
+      }`,
+    );
+    this.name = "BashCommandPermissionError";
+  }
+}
+
+/**
  * Execute bash commands and return results
  */
 export async function executeBashCommands(
   commands: string[],
   workdir: string,
   timeout: number = 30000,
+  gate?: BashCommandGate,
 ): Promise<BashCommandResult[]> {
   const results: BashCommandResult[] = [];
 
   for (const originalCommand of commands) {
+    // Judge the command as written, before the Windows fallback rewrites it
+    // into a `chcp 65001 && …` wrapper.
+    if (gate) {
+      const decision = await gate.check(originalCommand, workdir);
+      if (decision.behavior === "deny") {
+        throw new BashCommandPermissionError(originalCommand, decision.message);
+      }
+    }
+
     let command = originalCommand;
     const execOptions: { cwd: string; timeout: number; shell?: string } = {
       cwd: workdir,

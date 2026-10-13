@@ -18,6 +18,8 @@ import {
   replaceBashCommandsWithOutput,
   executeBashCommands,
 } from "../utils/markdownParser.js";
+import { createBashCommandGate } from "../utils/bashCommandGate.js";
+import type { PermissionManager } from "./permissionManager.js";
 import {
   countToolBlocks,
   formatToolTokenSummary,
@@ -561,9 +563,24 @@ export class SlashCommandManager {
         customCommandContent: processedContent,
       });
 
+      // Register the command's own `allowed-tools` BEFORE its injected commands
+      // run, so a command that declares e.g. `Bash(gh pr view*)` authorizes its
+      // own `!`gh pr view``.
+      const permissionManager = this.container.has("PermissionManager")
+        ? this.container.get<PermissionManager>("PermissionManager")
+        : undefined;
+      if (permissionManager && config?.allowedTools?.length) {
+        permissionManager.addTemporaryRules(config.allowedTools);
+      }
+
       // Execute bash commands and update the message if any exist
       if (commands.length > 0) {
-        const bashResults = await executeBashCommands(commands, this.workdir);
+        const bashResults = await executeBashCommands(
+          commands,
+          this.workdir,
+          undefined,
+          createBashCommandGate(this.container),
+        );
         const finalContent = replaceBashCommandsWithOutput(
           processedContent,
           bashResults,

@@ -140,6 +140,7 @@ Hooks are configured in the \`hooks\` field of \`settings.json\`. Each event can
   - \`command\`: The shell command to execute.
   - \`description\`: A brief description of the hook's purpose.
   - \`async\`: (Optional) Whether the hook should run in the background without blocking (default: \`false\`).
+  - \`asyncRewake\`: (Optional) Run the hook in the background and wake the model when it exits with code \`2\`, delivering its output as a system reminder. Implies \`async\`.
   - \`timeout\`: (Optional) Maximum execution time in seconds (default: \`600\`).
 
 ## Hook Input JSON
@@ -185,6 +186,49 @@ Hooks can communicate status and control Wave's behavior using exit codes:
     - \`WorktreeCreate\` / \`WorktreeRemove\` / \`CwdChanged\` / \`PreCompact\` / \`PostCompact\`: Shows \`stderr\` in an error block, but does not block the operation.
     - \`SessionStart\` / \`SessionEnd\`: Shows \`stderr\` in an error block, but does not block startup or shutdown.
 - **Other Exits (e.g., Exit 1)**: Non-blocking error. Wave continues execution but shows \`stderr\` as a warning to the user.
+
+### Async Hooks That Wake the Model
+
+A hook marked \`asyncRewake\` does not participate in the exit-code handling above — by the time it finishes, the step that launched it is usually over. Instead, when it exits with code \`2\`, its \`stderr\` (or \`stdout\` if \`stderr\` is empty) is wrapped as a system reminder and delivered as a notification, which wakes the model: an idle session starts a new turn, a busy one has the text injected into the turn already running. Any other exit code, a timeout, or a failure to start the command stays silent.
+
+Use it for checks that are too slow to sit in the critical path but whose findings must not be dropped:
+
+\`\`\`json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "command": "pnpm audit --audit-level=high && pnpm test",
+            "asyncRewake": true
+          }
+        ]
+      }
+    ]
+  }
+}
+\`\`\`
+
+## Hook JSON Output
+
+Beyond exit codes, a hook can write a JSON object to \`stdout\`. Wave reads that channel on its own, independent of the exit code: the object is parsed whether the hook exited \`0\` or \`2\`.
+
+\`\`\`json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "additionalContext": "This repository pins Node 22; run scripts with pnpm."
+  }
+}
+\`\`\`
+
+- \`hookEventName\` must match the event that fired, or the output is reported as a hook error and discarded.
+- \`additionalContext\` is injected as a \`<system-reminder>\`, so it reaches the model as context rather than as a user request.
+- Supported events: \`UserPromptSubmit\`, \`PreToolUse\`, \`PostToolUse\`, and \`SessionStart\` (which additionally accepts a non-JSON stdout as context — see below). \`Stop\` and \`SubagentStop\` do not support this field.
+
+For \`UserPromptSubmit\`, a stdout that is *not* JSON keeps its own meaning: the text is appended to the prompt as context rather than replacing it.
 
 ## SessionStart Hooks
 
@@ -1108,7 +1152,7 @@ By default, new skills only include \`name\` and \`description\`. Only add \`con
 
 - \`name\`: (Required) Unique identifier (lowercase, numbers, hyphens).
 - \`description\`: (Required) Explains when the AI should use this skill.
-- \`allowed-tools\`: (Optional) List of tools the skill can use.
+- \`allowed-tools\`: (Optional) List of tools the skill can use, written in the same rule syntax as \`permissions.allow\` — e.g. \`Bash(git diff*)\`, \`Read\`. The rules are registered as temporary rules when the skill runs, and any command the skill injects with the \`!\` syntax must be covered by them or by wave's built-in defaults, or the skill is refused before it runs. Note that \`Bash(git diff:*)\` (Claude Code's older form) is **not** a valid rule: \`*\` is a wildcard, so a colon is matched literally.
 - \`context: fork\`: (Optional) Run the skill in a separate subagent.
 - \`agent\`: (Optional) Specify the subagent type (default: \`general-purpose\`).
 - \`disable-model-invocation\`: (Optional, default: \`false\`) Set to \`true\` to hide the skill from the AI's available skills list. The skill can still be invoked by users via slash commands.

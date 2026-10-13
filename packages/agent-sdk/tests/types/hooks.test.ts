@@ -74,6 +74,24 @@ describe("Hook Types", () => {
         command: 'echo "hello"',
       };
       expect(isValidHookCommand(validCommand)).toBe(true);
+
+      const rewakingCommand: HookCommand = {
+        type: "command",
+        command: 'echo "hello"',
+        async: true,
+        asyncRewake: true,
+      };
+      expect(isValidHookCommand(rewakingCommand)).toBe(true);
+    });
+
+    it("should reject a hook command whose asyncRewake is not a boolean", () => {
+      expect(
+        isValidHookCommand({
+          type: "command",
+          command: 'echo "hello"',
+          asyncRewake: "yes",
+        }),
+      ).toBe(false);
     });
 
     it("should reject invalid hook commands", () => {

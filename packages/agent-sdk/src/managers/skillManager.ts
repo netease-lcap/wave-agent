@@ -19,6 +19,8 @@ import {
   replaceBashCommandsWithOutput,
   executeBashCommands,
 } from "../utils/markdownParser.js";
+import { createBashCommandGate } from "../utils/bashCommandGate.js";
+import type { PermissionManager } from "./permissionManager.js";
 import { getBuiltinSkillsDir } from "../utils/configPaths.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 
@@ -484,6 +486,18 @@ export class SkillManager extends EventEmitter {
       return { content: prepared.content };
     }
 
+    // Register the skill's own `allowed-tools` BEFORE its injected commands
+    // run, so a skill that declares e.g. `Bash(git push*)` authorizes its own
+    // `!`git push``. The skill tool registers the same list again afterwards;
+    // PermissionManager.addTemporaryRules deduplicates.
+    const permissionManager = this.container.has("PermissionManager")
+      ? this.container.get<PermissionManager>("PermissionManager")
+      : undefined;
+    const allowedTools = prepared.skill.allowedTools;
+    if (permissionManager && allowedTools?.length) {
+      permissionManager.addTemporaryRules(allowedTools);
+    }
+
     try {
       const finalContent = await this.executeBashInSkillContent(
         prepared.content,
@@ -601,7 +615,12 @@ export class SkillManager extends EventEmitter {
     if (commands.length > 0) {
       const currentWorkdir =
         this.container.get<string>("Workdir") ?? this.workdir;
-      const results = await executeBashCommands(commands, currentWorkdir);
+      const results = await executeBashCommands(
+        commands,
+        currentWorkdir,
+        undefined,
+        createBashCommandGate(this.container),
+      );
       return replaceBashCommandsWithOutput(content, results);
     }
     return content;
