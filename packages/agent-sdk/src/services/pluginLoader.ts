@@ -123,8 +123,12 @@ export class PluginLoader {
             const parsed = parseSkillFile(skillFilePath, {
               basePath: skillDir,
               validateMetadata: true,
+              pluginRoot: pluginPath,
             });
             if (parsed.isValid) {
+              for (const warning of parsed.warnings) {
+                logger?.warn(`Skill ${skillDir}: ${warning}`);
+              }
               skills.push({
                 ...parsed.skillMetadata,
                 type: "project", // Plugin skills are treated as project skills
@@ -133,6 +137,7 @@ export class PluginLoader {
                 frontmatter: parsed.frontmatter,
                 isValid: parsed.isValid,
                 errors: parsed.validationErrors,
+                warnings: parsed.warnings,
               });
             }
           } catch {

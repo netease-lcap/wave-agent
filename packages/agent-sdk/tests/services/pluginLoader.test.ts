@@ -220,6 +220,7 @@ describe("PluginLoader", () => {
         content: "Skill content",
         frontmatter: { name: "skill1", description: "Skill 1" },
         validationErrors: [],
+        warnings: [],
       } as unknown as ReturnType<typeof parseSkillFile>);
 
       const result = await PluginLoader.loadSkills(mockPluginPath);
@@ -247,11 +248,19 @@ describe("PluginLoader", () => {
         content: "content",
         frontmatter: { name: "skill1", description: "Skill 1" },
         validationErrors: [],
+        warnings: [],
       } as unknown as ReturnType<typeof parseSkillFile>);
 
       const result = await PluginLoader.loadSkills("/my/plugin");
 
       expect(result[0].pluginRoot).toBe("/my/plugin");
+      // The parse has to know the plugin root, or an `allowed-tools` rule
+      // written as `Bash(node ${WAVE_PLUGIN_ROOT}/scripts/x.mjs*)` would keep
+      // a placeholder no command can ever match.
+      expect(vi.mocked(parseSkillFile)).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ pluginRoot: "/my/plugin" }),
+      );
     });
 
     it("should return empty array if skills directory does not exist", async () => {
