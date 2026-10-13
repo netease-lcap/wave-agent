@@ -979,6 +979,50 @@ describe("remoteSettingsService", () => {
       expect(result.enableArtifact).toBe(false);
     });
 
+    it("merges monitoring.telemetry per key, managed wins on a clash", () => {
+      // An admin pushing only an endpoint must not wipe the user's headers, and
+      // the managed layer is one of the two layers allowed to set the headers
+      // helper (the other is the user's own file — the project layer is
+      // stripped in loadMergedWaveConfig).
+      const local = {
+        monitoring: {
+          telemetry: {
+            endpoint: "http://local:4318",
+            headers: { "local-header": "1" },
+            headersHelper: "user-helper",
+          },
+        },
+      } as unknown as WaveConfiguration;
+      const remote = {
+        monitoring: {
+          telemetry: {
+            endpoint: "http://managed:4318",
+            headersHelper: "managed-helper",
+          },
+        },
+      } as unknown as WaveConfiguration;
+
+      const result = mergeRemoteSettings(local, remote);
+      expect(result.monitoring).toEqual({
+        telemetry: {
+          endpoint: "http://managed:4318",
+          headers: { "local-header": "1" },
+          headersHelper: "managed-helper",
+        },
+      });
+    });
+
+    it("keeps local monitoring when remote doesn't define it", () => {
+      const local = {
+        monitoring: { telemetry: { headersHelper: "user-helper" } },
+      } as unknown as WaveConfiguration;
+
+      const result = mergeRemoteSettings(local, {});
+      expect(result.monitoring).toEqual({
+        telemetry: { headersHelper: "user-helper" },
+      });
+    });
+
     it("handles both empty objects", () => {
       const result = mergeRemoteSettings({}, {});
       expect(result).toEqual({});

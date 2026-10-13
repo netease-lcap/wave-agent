@@ -243,6 +243,23 @@ export function validateConfigurationObject(
     }
   }
 
+  // Validate monitoring if present. A malformed `headersHelper` is only a
+  // warning: telemetry degrades to the static headers instead of the session
+  // failing to start over a monitoring setting.
+  if (config.monitoring !== undefined) {
+    if (typeof config.monitoring !== "object" || config.monitoring === null) {
+      result.isValid = false;
+      result.errors.push("monitoring configuration must be an object");
+    } else {
+      const headersHelper = config.monitoring.telemetry?.headersHelper;
+      if (headersHelper !== undefined && typeof headersHelper !== "string") {
+        result.warnings.push(
+          "monitoring.telemetry.headersHelper must be a command string; ignoring it",
+        );
+      }
+    }
+  }
+
   // Validate worktree if present
   if (config.worktree !== undefined) {
     if (typeof config.worktree !== "object" || config.worktree === null) {
@@ -988,12 +1005,18 @@ export class ConfigurationService {
   }
 
   /**
-   * Get the telemetry config from the loaded settings.
+   * Get the telemetry config from the loaded settings, merged with the
+   * per-agent `AgentOptions.telemetry` overrides (options win per key).
    */
   resolveTelemetryConfig():
     | Partial<import("../types/telemetry.js").TelemetryConfig>
     | undefined {
-    return this.liveConfiguration?.monitoring?.telemetry;
+    const settingsTelemetry = this.liveConfiguration?.monitoring?.telemetry;
+    const optionTelemetry = this.options.telemetry;
+    if (!optionTelemetry) {
+      return settingsTelemetry;
+    }
+    return { ...settingsTelemetry, ...optionTelemetry };
   }
 
   /**
@@ -1583,6 +1606,7 @@ export function loadWaveConfigFromFile(
           : undefined,
       models: config.models || undefined,
       marketplaces: config.marketplaces || undefined,
+      monitoring: config.monitoring || undefined,
       worktree: config.worktree || undefined,
       enableArtifact:
         config.enableArtifact !== undefined ? config.enableArtifact : undefined,
@@ -1640,22 +1664,25 @@ export function loadMergedWaveConfig(
     projectPaths[0], // local settings.local.json
   ];
 
-  const configs: WaveConfiguration[] = [];
-  for (const path of pathsToLoad) {
+  // The first path is the user's own file; the other two live inside the
+  // checked-out repository, i.e. their content can be changed by whoever
+  // controls the repo (see the `monitoring` merge below).
+  const layers: Array<{ config: WaveConfiguration; fromRepo: boolean }> = [];
+  pathsToLoad.forEach((path, index) => {
     const config = loadWaveConfigFromFile(path);
     if (config) {
-      configs.push(config);
+      layers.push({ config, fromRepo: index > 0 });
     }
-  }
+  });
 
-  if (configs.length === 0) {
+  if (layers.length === 0) {
     return null;
   }
 
   // Merge all configurations in order
   const mergedConfig: WaveConfiguration = {};
 
-  for (const config of configs) {
+  for (const { config, fromRepo } of layers) {
     // Merge hooks
     if (config.hooks) {
       if (!mergedConfig.hooks) mergedConfig.hooks = {};
@@ -1758,6 +1785,28 @@ export function loadMergedWaveConfig(
       Object.assign(mergedConfig.marketplaces, config.marketplaces);
     }
 
+    // Merge monitoring (last one wins per telemetry key)
+    if (config.monitoring) {
+      let telemetry = { ...config.monitoring.telemetry };
+      // `headersHelper` names a command that will be executed on this machine
+      // to mint OTLP credentials, so only the user's own file may set it — a
+      // checked-out repo must not be able to point it at something. Claude Code
+      // reaches the same place by ignoring project-layer credential helpers
+      // unless the project is explicitly trusted; Wave has no trust model, so
+      // the repo layer never counts. The server-managed layer is allowed
+      // (see mergeRemoteSettings).
+      if (fromRepo && telemetry.headersHelper !== undefined) {
+        delete telemetry.headersHelper;
+        logger.warn(
+          "Ignoring monitoring.telemetry.headersHelper from a project settings file: the headers helper runs a command on this machine, so only ~/.wave/settings.json or the server-managed layer may set it",
+        );
+      }
+      telemetry = { ...mergedConfig.monitoring?.telemetry, ...telemetry };
+      if (Object.keys(telemetry).length > 0) {
+        mergedConfig.monitoring = { ...mergedConfig.monitoring, telemetry };
+      }
+    }
+
     // Merge worktree (last one wins)
     if (config.worktree !== undefined) {
       mergedConfig.worktree = config.worktree;
@@ -1829,6 +1878,10 @@ export function loadMergedWaveConfig(
     models:
       mergedConfig.models && Object.keys(mergedConfig.models).length > 0
         ? mergedConfig.models
+        : undefined,
+    monitoring:
+      mergedConfig.monitoring && Object.keys(mergedConfig.monitoring).length > 0
+        ? mergedConfig.monitoring
         : undefined,
     worktree: mergedConfig.worktree,
     enableArtifact: mergedConfig.enableArtifact,

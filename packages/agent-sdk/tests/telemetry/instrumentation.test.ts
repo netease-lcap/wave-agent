@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { EventEmitter } from "node:events";
 import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
 import type { ReadableLogRecord } from "@opentelemetry/sdk-logs";
 
@@ -11,6 +12,37 @@ vi.mock("@/utils/globalLogger.js", () => ({
     error: vi.fn(),
   },
 }));
+
+/**
+ * The OTLP headers helper shells out, so `spawn` is stubbed here: this file is
+ * about the wiring (config → provider → exporter headers), not about running
+ * commands — `tests/telemetry/headersHelper.test.ts` covers the executor.
+ */
+const spawnMock = vi.fn();
+vi.mock("node:child_process", async () => {
+  const actual =
+    await vi.importActual<typeof import("node:child_process")>(
+      "node:child_process",
+    );
+  return { ...actual, spawn: (...args: unknown[]) => spawnMock(...args) };
+});
+
+/** A fake shell child that writes `stdout` and exits 0. */
+function fakeHelperChild(stdout: string): EventEmitter {
+  const child = new EventEmitter() as EventEmitter & {
+    stdout: EventEmitter;
+    stderr: EventEmitter;
+    kill: () => void;
+  };
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = () => {};
+  queueMicrotask(() => {
+    child.stdout.emit("data", Buffer.from(stdout));
+    child.emit("close", 0, null);
+  });
+  return child;
+}
 
 function setupMocks() {
   const mockTracerShutdown = vi.fn().mockResolvedValue(undefined);
@@ -73,8 +105,18 @@ function setupMocks() {
     mockLoggerShutdown,
     mockSetGlobalTracerProvider,
     mockSetGlobalLoggerProvider,
+    mockOTLPTraceExporter,
+    mockOTLPLogExporter,
     mockResource,
   };
+}
+
+/** The exporter config object a mocked OTLP exporter was constructed with. */
+function exporterConfig(
+  mock: ReturnType<typeof vi.fn>,
+  index = 0,
+): { url?: string; headers?: unknown } {
+  return mock.mock.calls[index]![0] as { url?: string; headers?: unknown };
 }
 
 describe("instrumentation", () => {
@@ -96,6 +138,7 @@ describe("instrumentation", () => {
     delete process.env.OTEL_LOG_TOOL_CONTENT;
     delete process.env.OTEL_SPAN_TTL_MS;
     delete process.env.OTEL_SHUTDOWN_TIMEOUT_MS;
+    spawnMock.mockReset();
     vi.resetModules();
     mocks = setupMocks();
     instrumentation = await import("@/telemetry/instrumentation.js");
@@ -451,6 +494,171 @@ describe("instrumentation", () => {
       expect(config.shutdownTimeoutMs).toBe(2000);
 
       process.env = originalEnv;
+    });
+  });
+
+  describe("dynamic OTLP headers", () => {
+    it("should pass a static headers map through unchanged", async () => {
+      process.env.OTEL_EXPORTER_OTLP_HEADERS = "api-key=abc";
+
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        tracesExporter: "otlp",
+        endpoint: "http://localhost:4318",
+      });
+
+      expect(exporterConfig(mocks.mockOTLPTraceExporter).headers).toEqual({
+        "api-key": "abc",
+      });
+    });
+
+    it("should not read the helper unless it is configured", async () => {
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        tracesExporter: "otlp",
+        logsExporter: "otlp",
+        endpoint: "http://localhost:4318",
+      });
+
+      expect(spawnMock).not.toHaveBeenCalled();
+      expect(
+        exporterConfig(mocks.mockOTLPTraceExporter).headers,
+      ).toBeUndefined();
+    });
+
+    it("should merge injected dynamic headers over the static base, per send", async () => {
+      process.env.OTEL_EXPORTER_OTLP_HEADERS =
+        "static-key=static-value,shared=static";
+      const provider = vi
+        .fn<() => Promise<Record<string, string>>>()
+        .mockResolvedValueOnce({ shared: "first", fresh: "v1" })
+        .mockResolvedValue({ shared: "second", fresh: "v2" });
+
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        tracesExporter: "otlp",
+        logsExporter: "otlp",
+        endpoint: "http://localhost:4318",
+        headersProvider: provider,
+      });
+
+      const headers = exporterConfig(mocks.mockOTLPTraceExporter)
+        .headers as () => Promise<Record<string, string>>;
+      expect(typeof headers).toBe("function");
+      await expect(headers()).resolves.toEqual({
+        "static-key": "static-value",
+        shared: "first",
+        fresh: "v1",
+      });
+      // Re-read for every batch, so a rotated credential lands without a restart.
+      await expect(headers()).resolves.toEqual({
+        "static-key": "static-value",
+        shared: "second",
+        fresh: "v2",
+      });
+      expect(provider).toHaveBeenCalledTimes(2);
+    });
+
+    it("should share one provider between the traces and logs exporters", async () => {
+      const provider = vi
+        .fn<() => Promise<Record<string, string>>>()
+        .mockResolvedValue({ shared: "once" });
+
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        tracesExporter: "otlp",
+        logsExporter: "otlp",
+        endpoint: "http://localhost:4318",
+        headersProvider: provider,
+      });
+
+      const traceHeaders = exporterConfig(mocks.mockOTLPTraceExporter)
+        .headers as () => Promise<Record<string, string>>;
+      const logHeaders = exporterConfig(mocks.mockOTLPLogExporter)
+        .headers as () => Promise<Record<string, string>>;
+
+      await expect(traceHeaders()).resolves.toEqual({ shared: "once" });
+      await expect(logHeaders()).resolves.toEqual({ shared: "once" });
+      expect(provider).toHaveBeenCalledTimes(2);
+    });
+
+    it("should run a configured helper command and use its stdout", async () => {
+      spawnMock.mockImplementationOnce(() =>
+        fakeHelperChild('{"kubeinsight-client-token":"rotated"}'),
+      );
+
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        tracesExporter: "otlp",
+        endpoint: "http://localhost:4318",
+        headersHelper: "  mint-token --env prod  ",
+      });
+
+      const headers = exporterConfig(mocks.mockOTLPTraceExporter)
+        .headers as () => Promise<Record<string, string>>;
+      expect(typeof headers).toBe("function");
+      await expect(headers()).resolves.toEqual({
+        "kubeinsight-client-token": "rotated",
+      });
+      expect(spawnMock).toHaveBeenCalledTimes(1);
+      // Trimmed before use, and shared with the second exporter rather than run twice.
+      expect((spawnMock.mock.calls[0]![1] as string[])[1]).toContain(
+        "mint-token --env prod",
+      );
+    });
+
+    it("should prefer an injected provider over the configured helper", async () => {
+      const provider = vi
+        .fn<() => Promise<Record<string, string>>>()
+        .mockResolvedValue({ from: "provider" });
+
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        tracesExporter: "otlp",
+        endpoint: "http://localhost:4318",
+        headersHelper: "mint-token",
+        headersProvider: provider,
+      });
+
+      const headers = exporterConfig(mocks.mockOTLPTraceExporter)
+        .headers as () => Promise<Record<string, string>>;
+      await expect(headers()).resolves.toEqual({ from: "provider" });
+      expect(spawnMock).not.toHaveBeenCalled();
+    });
+
+    it("should carry the helper command through resolveTelemetryConfig", () => {
+      const config = instrumentation.resolveTelemetryConfig({
+        headersHelper: "  mint-token  ",
+      });
+      expect(config.headersHelper).toBe("mint-token");
+
+      expect(
+        instrumentation.resolveTelemetryConfig({ headersHelper: "   " })
+          .headersHelper,
+      ).toBeUndefined();
+    });
+
+    it("should keep the dynamic headers factory out of the exporters after shutdown", async () => {
+      const provider = vi
+        .fn<() => Promise<Record<string, string>>>()
+        .mockResolvedValue({ shared: "once" });
+
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        tracesExporter: "otlp",
+        endpoint: "http://localhost:4318",
+        headersProvider: provider,
+      });
+      await instrumentation.shutdownTelemetry();
+
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        tracesExporter: "otlp",
+        endpoint: "http://localhost:4318",
+      });
+
+      const config = exporterConfig(mocks.mockOTLPTraceExporter, 1);
+      expect(config.headers).toBeUndefined();
     });
   });
 
