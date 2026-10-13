@@ -767,6 +767,122 @@ html[data-theme="dark"] .desktop-session-status-slot {
   flex-shrink: 0;
 }
 
+/* ---- 新会话「先指定文件夹」引导气泡 ----
+   场景：从 CodeWave 高码应用唤起 IDE 后，新会话还没有项目目录，用户不知道该先选
+   文件夹才能提问（输入框此刻是禁用的）。气泡浮在选择器上方、箭头指向它，同时给
+   触发器加描边呼吸高亮；选到目录后由 ChatApp 收回（effectiveWorkdir 非空）。
+   浮层语言与 workdir 菜单一致：12px / 圆角 6px / 4px 间距 / widget-shadow。 */
+
+.desktop-workdir-trigger--guide {
+  background: var(--vscode-list-hoverBackground);
+  /* 高亮与气泡里的主按钮同色（桌面档：浅色键 = 炭黑 / 深色键 = 浅灰）——
+     focusBorder 在桌面档是中性焦点环，深色底下与气泡面太近、读不出「指这里」。 */
+  outline: 1px solid var(--vscode-button-background, #007acc);
+  outline-offset: -1px;
+  animation: desktop-workdir-guide-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes desktop-workdir-guide-pulse {
+  0%,
+  100% {
+    outline-color: var(--vscode-button-background, #007acc);
+  }
+  50% {
+    outline-color: transparent;
+  }
+}
+
+.desktop-workdir-guide {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px;
+  z-index: 10000;
+  width: max-content;
+  max-width: 260px;
+  box-sizing: border-box;
+  padding: 8px 10px 10px;
+  text-align: left;
+  font-size: 12px;
+  line-height: 18px;
+  background: var(
+    --vscode-editorWidget-background,
+    var(--vscode-dropdown-background)
+  );
+  color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-widget-border, var(--vscode-dropdown-border));
+  border-radius: 6px;
+  box-shadow: 0 6px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
+}
+
+.desktop-workdir-guide-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.desktop-workdir-guide-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.desktop-workdir-guide-close {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0;
+  margin-top: 2px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.desktop-workdir-guide-close:hover {
+  opacity: 1;
+}
+
+.desktop-workdir-guide-close-icon {
+  font-size: 12px;
+}
+
+.desktop-workdir-guide-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* 引导气泡只有一个动作（去选目录）→ 用主按钮，视觉重心落在「用户接下来该点的
+   那一个」上。 */
+.desktop-workdir-guide-action {
+  padding: 3px 10px;
+  font: inherit;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border: 1px solid transparent;
+}
+
+.desktop-workdir-guide-action:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+/* 箭头指向下方的选择器触发器：用与触发器描边同一个主色实心三角，让「气泡→控件」
+   的指向关系一眼可读（两层描边三角在深色档里与气泡底色太近，读不出来）。 */
+.desktop-workdir-guide-arrow {
+  position: absolute;
+  top: 100%;
+  left: 12px;
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 7px solid var(--vscode-button-background, #007acc);
+}
+
 .desktop-workdir-menu {
   position: absolute;
   bottom: 100%;
