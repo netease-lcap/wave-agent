@@ -100,7 +100,9 @@ export interface MessageManagerCallbacks {
   // Notification callback
   onNotificationMessageAdded?: (params: {
     taskId: string;
-    taskType: "shell" | "agent" | "workflow";
+    // Derived rather than repeated: the union lives on the block, and a copy
+    // here silently excludes any member added there.
+    taskType: import("../types/messaging.js").TaskNotificationBlock["taskType"];
     /** `"running"` = still alive, not terminal (see TaskNotificationBlock). */
     status: "running" | "completed" | "failed" | "killed" | "aborted";
     summary: string;

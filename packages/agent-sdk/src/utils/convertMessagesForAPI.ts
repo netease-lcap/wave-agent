@@ -419,11 +419,15 @@ export async function convertMessagesForAPI(
         if (block.type === "task_notification") {
           // The lead-in has to match the status: a workflow that crossed a size
           // threshold is still running, and calling that "completed a task"
-          // would tell the model the opposite of what happened.
+          // would tell the model the opposite of what happened. A rewaking hook
+          // has no task to report on, so it gets its own wording instead of
+          // being described as a background agent that "completed a task".
           const lead =
             block.status === "running"
               ? "A background task is still running:"
-              : "A background agent completed a task:";
+              : block.taskType === "hook"
+                ? "A hook reported a blocking error:"
+                : "A background agent completed a task:";
           contentParts.push({
             type: "text",
             text: `${lead}\n${taskNotificationToXml(block)}`,

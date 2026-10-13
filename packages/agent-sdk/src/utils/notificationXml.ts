@@ -31,6 +31,7 @@ export function parseTaskNotificationXml(
       | "shell"
       | "agent"
       | "workflow"
+      | "hook"
       | null;
     const status = extractTag(xml, "status") as
       | "completed"

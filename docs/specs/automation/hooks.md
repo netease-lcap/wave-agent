@@ -40,6 +40,17 @@ Hook 通过退出码、stdout 和 stderr 传达状态：
 | `PreCompact`        | 非阻止；stderr 不显示给用户（静默丢弃），压缩继续                                                                                                                               |
 | `PostCompact`       | 仅向用户显示 stderr（非阻止）                                                                                                                                                   |
 
+### 结构化方式：JSON 输出
+
+Hook 也可以在 stdout 输出一个 JSON 对象，通过 `hookSpecificOutput` 传回结构化结果。当前 wave 支持 `additionalContext` 一个字段（对齐 Claude Code）：
+
+- **读取通道与退出码正交**：只要 stdout 是含 `hookSpecificOutput.additionalContext` 的合法 JSON 就注入，**不需要用退出码 2**。这是它与「退出码 2 + stderr」的核心差别——不是「能不能送到」而是**档位**：同一个通道在 exit 2 下送达的文本被当作"hook 报错"，`additionalContext` 则是非错误的附加上下文。Claude Code 同样在退出码判定之前解析 stdout JSON。
+- **注入形态**：文本以 `<system-reminder>` 包裹，作为一条 `isMeta: true` 的用户角色消息追加到对话中，与 SessionStart 钩子的注入方式一致（见 `session-hooks.md`）。
+- **支持的事件**：`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`SessionStart`。与 Claude Code 一致，`Stop` / `SubagentStop` **不支持**该字段——要它们继续干活仍用退出码 2。
+- **`UserPromptSubmit` 的 stdout 语义收窄**：该事件的 stdout 若是合法 JSON，注入其 `additionalContext` 值而**不是**把 JSON 原文塞进上下文；不是 JSON 时按原行为把文本注入。
+- **`hookEventName` 必须与触发事件一致**：不一致视为非法 JSON 输出，按"非阻止性错误"呈现给用户，不注入上下文。
+- **其余字段本次不做**：`updatedToolOutput` / `updatedMCPToolOutput`（改写工具结果）、`PreToolUse` 的 `updatedInput`（改写入参）。它们要改写**既有事实**（已发生的工具结果、模型已发出的入参），不是新增一段文本，需要单独定安全语义。
+
 ## 用户场景与测试 _（必填）_
 
 ### 用户故事：配置 Hook 进行代码质量检查（优先级：P1）
@@ -175,7 +186,47 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 
 1. **假设**配置了 `async: true` 的异步 hook，**当**触发事件发生时，**则**hook 命令在后台开始执行，Wave 立即继续其工作流
 2. **假设**配置了自定义 `timeout` 的异步 hook，**当**hook 执行时，**则**它允许运行到指定的超时时间后才被终止
-3. **假设**异步 hook 产生了输出，**当**它完成时，**则**其输出被记录但不会传递到对话中
+3. **假设**异步 hook（`async: true` 且未开 `asyncRewake`）产生了输出，**当**它完成时，**则**其输出被记录但不会传递到对话中（**例外**：`asyncRewake: true` 的 hook 在退出码 2 时会回灌唤醒模型，见下一条用户故事）
+
+---
+
+### 用户故事：异步 Hook 回灌唤醒（`asyncRewake`）（优先级：P2）
+
+作为 hook 作者，我希望把回合结束后的复核（如安全扫描、测试完整性检查）作为后台 hook 运行，并在它发现问题时把结论回灌给 Wave 让它继续处理，以便复核既不拖慢本次回复，又不会因为"跑完没人看"而白跑。
+
+**为什么是这个优先级**：现有 `async: true` 的 hook 跑完结果被丢弃（见上一条场景 3），因此任何"后台发现 → 需要模型处置"的流程在 wave 上都不成立——只能退回同步执行，代价是把回复卡在扫描上。Claude Code 用 `asyncRewake` 解决这个问题。
+
+**独立测试**：配置一个 `asyncRewake: true` 的 Stop hook（`sleep 1` 后 `echo 发现硬编码密钥 >&2; exit 2`），发送一条消息；断言回复立即返回、不等待 sleep，随后模型自动获得一条 `<system-reminder>` 包裹的、内容含该 stderr 的通知并继续对话；再把 hook 换成 exit 0 的版本，断言没有任何后续唤醒。
+
+**验收场景**：
+
+1. **假设**配置了 `asyncRewake: true` 的 hook，**当**触发事件发生，**则** hook 在后台开始执行，Wave 立即继续（与 `async: true` 相同，不等待它结束）
+2. **假设**该后台 hook 以退出码 2 结束，**当**它结束时，**则**其 stderr（stderr 为空时取 stdout）以 `<system-reminder>` 包裹、作为一条通知投递并**唤醒模型**：会话空闲时开启新回合，正在处理时作为排队消息注入当前回合
+3. **假设**该后台 hook 以退出码 0 或其他退出码结束，**当**它结束时，**则**不唤醒模型、不注入任何消息（输出仅记入日志）
+4. **假设** `asyncRewake: true` 且未显式写 `async`，**当** hook 被执行时，**则**按异步处理（`asyncRewake` 隐含 `async`）
+5. **假设**用户在 hook 后台运行期间提交了新的消息，**当** hook 以退出码 2 结束，**则**唤醒照常投递（提交新消息不取消已启动的后台 hook）；用户显式中断当前回合时 hook 被终止、不投递
+6. **假设**该后台 hook 超时或进程启动失败，**当**它结束时，**则**不唤醒模型，仅按非阻止性错误记入日志
+
+---
+
+### 用户故事：Hook 用 JSON 输出注入附加上下文（优先级：P2）
+
+作为 hook 作者，我希望在**不制造错误**的前提下把一段文本送进模型上下文（例如"这次改动碰了鉴权路径，注意同步改测试"），以便让 hook 的发现以"上下文"而非"阻塞错误"的身份出现。字段与支持范围对齐 Claude Code 的 `hookSpecificOutput.additionalContext`。
+
+**为什么是这个优先级**：wave 今天只能靠退出码 2 + stderr 注入文本（见「退出码 2 行为」），而 exit 2 在所有事件上都是**错误**语义——用它送一条善意提示，模型和用户看到的是"hook 报错了"。差别不在送达能力（能送到），而在**档位**。
+
+**独立测试**：配置一个 PostToolUse hook，以 exit 0 输出 `{"hookSpecificOutput":{"hookEventName":"PostToolUse","additionalContext":"X"}}`，编辑一个文件；断言 `agent.messages` 新增一条 `isMeta: true` 的用户角色消息、其文本含 X 且被 `<system-reminder>` 包裹，且全程不出现错误块。
+
+**验收场景**：
+
+1. **假设** `PostToolUse` hook 以退出码 0 输出含 `hookSpecificOutput.additionalContext` 的合法 JSON，**当** hook 完成时，**则**该文本以 `<system-reminder>` 包裹作为一条 `isMeta: true` 的用户角色消息注入，工具原始结果不变，且不产生错误反馈
+2. **假设** `PreToolUse` hook 以退出码 0 输出同样的 JSON，**当** hook 完成时，**则**注入同上，且工具继续正常执行（exit 0 不阻止）
+3. **假设** `UserPromptSubmit` hook 以退出码 0 输出带 `additionalContext` 的合法 JSON，**当** hook 完成时，**则**注入的是 `additionalContext` 的值，**不是** JSON 原文
+4. **假设** `UserPromptSubmit` hook 以退出码 0 输出普通文本（不是 JSON），**当** hook 完成时，**则**按现状把该文本注入上下文（原行为不变）
+5. **假设** hook 以退出码 2 输出含 `additionalContext` 的 JSON，**当** hook 完成时，**则**退出码 2 的既有行为照旧执行，**且** `additionalContext` 也注入（读取通道与退出码正交）
+6. **假设** hook 输出的 JSON 中 `hookEventName` 与触发事件不一致，**当**解析时，**则**视为非法输出按"非阻止性错误"呈现给用户，不注入任何上下文
+7. **假设** `Stop` 或 `SubagentStop` hook 输出含 `additionalContext` 的 JSON，**当** hook 完成时，**则**不注入该上下文（这两个事件不支持该字段，与 Claude Code 一致），仅退出码 2 的 stderr 生效
+8. **假设** `additionalContext` 为空字符串，**当**解析时，**则**视为未提供，不注入消息
 
 ---
 
@@ -439,7 +490,11 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 - **IDE 侧「打开配置文件」与「关闭设置页」的先后顺序？** 两个动作都由设置页入口向宿主发出，且关闭动作会销毁设置页载体（VS Code 设置 WebviewPanel 被 dispose、JetBrains 设置文件编辑器被 close）；**打开文件必须先于关闭设置页发出**，否则销毁后到达的打开请求被丢弃——表现为四个视图（技能 / 子代理 / 钩子 / MCP 服务）点「编辑」都不打开文件（桌面端设置页与聊天共用一个 webview，不涉及此顺序）。同理，配置文件路径缺失时只预填提示词、不打开文件（不自造占位路径）
 
 - **`PostToolUse` 为什么注入一条消息、而不是把工具结果改成失败？** 工具确实已经执行完了，把结果改成失败是在伪造历史；Claude Code 的做法同样是注入一条 `isMeta` 用户消息（`hook_blocking_error` 附件），wave 对齐它——本文件里 hook 注入的 user 消息统统带 `isMeta: true`（对模型可见、UI 不显示）。因此"post 事件能拦下工具"这件事在两端都不成立——要拦必须用 `PreToolUse`。
-- **Claude Code 的另外三个 hook 输出通道做不做？** 本次不做：`hookSpecificOutput.additionalContext`（注入额外上下文）、`updatedToolOutput` / `updatedMCPToolOutput`（改写工具结果）、`PreToolUse` 的 `updatedInput`（改写入参）。它们是**新能力**而不是"呈现形态对齐"，各自需要单独定安全语义（尤其是改写结果/入参），不裹进这次对齐。
+- **`hookSpecificOutput.additionalContext` 做不做？** **做**（2026-10-13 用户拍板解冻）。原「本次不做」的理由是「它是新能力而不是呈现形态对齐」，实际判反了：会话恢复（`session-hooks.md`）早已用它在 `SessionStart` 注入上下文，其余事件只是把同一通道补齐，差别在**档位**（退出码 2 + stderr 送达的文本会被当成 hook 报错，`additionalContext` 则是非错误的附加上下文）。支持范围严格对齐 Claude Code：`UserPromptSubmit` / `PreToolUse` / `PostToolUse` / `SessionStart`，**不含 `Stop` / `SubagentStop`**。
+- **注入的上下文算不算可信指令？** 一律包在 `<system-reminder>` 里注入，与 `SessionStart` 的注入方式一致。它不构成新的信任边界：能写 hook 配置的人（用户 / 项目 / 插件来源）本来就能跑任意命令与脚本，该字段只是把已有能力的结果喂进上下文。模型侧不得把其中文本当作新的用户指令用于提权或跳过权限确认。
+- **Claude Code 的另外两个 hook 输出通道做不做？** 本次不做：`updatedToolOutput` / `updatedMCPToolOutput`（改写工具结果）、`PreToolUse` 的 `updatedInput`（改写入参）。它们要改写**既有事实**（已经发生的工具结果、模型已经发出的入参），不是新增一段文本，各自需要单独定安全语义，不裹进这次对齐。
+- **`asyncRewake` 的唤醒投给哪个会话？** 投给发起该 hook 的那个会话（按 sessionId 归属），不跨会话投递；该会话已关闭或已被销毁时丢弃并记日志，不新建会话。
+- **`asyncRewake` 唤醒会不会与用户正在进行的操作冲突？** 不会覆盖或抢占：会话空闲时它开启新回合，忙碌时它作为排队消息注入，与普通排队消息同序处理；它不改变用户的权限模式，也不跳过任何权限确认。
 - **Exec 沙箱内嵌套调用的 hook 归谁管？** 工具事件的 hook 语义只有这一份（本文件），"嵌套调用也要触发"是执行路径的事，写在 `docs/specs/core/exec-tool.md`；两处不得各自定义一套 hook 行为。
 
 ### 测试验证需求

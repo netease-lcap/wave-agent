@@ -10,7 +10,7 @@ export const code_reviewSkill: Record<string, string> = {
   "skills/code-review/SKILL.md": `---
 name: code-review
 description: Review the current diff for correctness bugs and reuse/simplification/efficiency cleanups at the given effort level (low/medium: fewer, high-confidence findings; high/max: broader coverage, may include lower-confidence findings)
-allowed-tools: ${BASH_TOOL_NAME}(git diff:*), ${BASH_TOOL_NAME}(git status:*), ${BASH_TOOL_NAME}(git log:*), ${BASH_TOOL_NAME}(git show:*), ${BASH_TOOL_NAME}(git blame:*), ${BASH_TOOL_NAME}(git remote:*), ${BASH_TOOL_NAME}(command -v:*), ${BASH_TOOL_NAME}(gh pr comment:*), ${BASH_TOOL_NAME}(gh pr view:*), ${BASH_TOOL_NAME}(glab mr note:*), ${BASH_TOOL_NAME}(glab mr view:*), ${READ_TOOL_NAME}, ${GLOB_TOOL_NAME}, ${GREP_TOOL_NAME}, ${AGENT_TOOL_NAME}
+allowed-tools: ${BASH_TOOL_NAME}(git diff*), ${BASH_TOOL_NAME}(git status*), ${BASH_TOOL_NAME}(git log*), ${BASH_TOOL_NAME}(git show*), ${BASH_TOOL_NAME}(git blame*), ${BASH_TOOL_NAME}(git remote*), ${BASH_TOOL_NAME}(git merge-base*), ${BASH_TOOL_NAME}(command -v*), ${BASH_TOOL_NAME}(gh pr view*), ${BASH_TOOL_NAME}(glab mr view*), ${READ_TOOL_NAME}, ${GLOB_TOOL_NAME}, ${GREP_TOOL_NAME}, ${AGENT_TOOL_NAME}
 disable-model-invocation: true
 ---
 

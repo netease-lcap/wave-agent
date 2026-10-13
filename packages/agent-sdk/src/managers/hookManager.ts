@@ -25,6 +25,8 @@ import type {
 import { HookMatcher } from "../utils/hookMatcher.js";
 import { executeCommand, isCommandSafe } from "../services/hook.js";
 import type { MessageManager } from "./messageManager.js";
+import type { MessageQueue } from "./messageQueue.js";
+import { taskNotificationToXml } from "../utils/notificationXml.js";
 import { Container } from "../utils/container.js";
 import type { ConfigurationService } from "../services/configurationService.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
@@ -235,17 +237,29 @@ export class HookManager {
             );
           }
 
-          if (hookCommand.async) {
-            // Execute async command without awaiting
-            executeCommand(command, execContext, options).catch((error) => {
-              const errorMessage =
-                error instanceof Error
-                  ? error.message
-                  : "Unknown execution error";
-              logger?.error(
-                `[HookManager] Async hook command ${commandIndex + 1} failed: ${errorMessage}`,
+          if (hookCommand.async || hookCommand.asyncRewake) {
+            // Execute async command without awaiting. `asyncRewake` implies
+            // `async` — a hook whose result is only ever read on exit code 2
+            // has nothing to contribute to the caller's return value.
+            const execution = executeCommand(command, execContext, options);
+            if (hookCommand.asyncRewake) {
+              // A rewaking hook has to inspect its own result rather than just
+              // its rejection, so it cannot share the failure logger below.
+              void this.rewakeOnBlockingError(
+                `${event}:${configIndex}:${commandIndex}`,
+                execution,
               );
-            });
+            } else {
+              execution.catch((error) => {
+                const errorMessage =
+                  error instanceof Error
+                    ? error.message
+                    : "Unknown execution error";
+                logger?.error(
+                  `[HookManager] Async hook command ${commandIndex + 1} failed: ${errorMessage}`,
+                );
+              });
+            }
             // Async hooks are not included in results to prevent blocking
             continue;
           }
@@ -275,6 +289,56 @@ export class HookManager {
     }
 
     return results;
+  }
+
+  /**
+   * Deliver an async hook's blocking-error output to the model.
+   *
+   * `asyncRewake` is not "run in the background" — it is "keep the result of a
+   * background run". Nobody awaits the hook, and by the time it finishes the
+   * turn that launched it is usually over, so the only channel left to reach the
+   * model is a queued notification: an idle session starts a new turn, a busy
+   * one has the text injected into the turn already running, and either way the
+   * user's next action is not displaced. Exit code 2 is the wake condition (the
+   * blocking-error code everywhere else in this file); any other exit code, a
+   * timeout, or a spawn failure stays silent, because a hook that could not run
+   * must never wake the model.
+   */
+  private async rewakeOnBlockingError(
+    hookId: string,
+    execution: Promise<HookExecutionResult>,
+  ): Promise<void> {
+    let result: HookExecutionResult;
+    try {
+      result = await execution;
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown execution error";
+      logger?.error(
+        `[HookManager] Rewaking hook ${hookId} failed: ${errorMessage}`,
+      );
+      return;
+    }
+
+    if (result.timedOut || result.exitCode !== 2) return;
+
+    const text = result.stderr?.trim() || result.stdout?.trim();
+    if (!text) return;
+
+    const messageQueue = this.container.has("MessageQueue")
+      ? this.container.get<MessageQueue>("MessageQueue")
+      : undefined;
+    if (!messageQueue) return;
+
+    messageQueue.enqueueNotification(
+      taskNotificationToXml({
+        type: "task_notification",
+        taskId: `hook-${hookId}`,
+        taskType: "hook",
+        status: "failed",
+        summary: `<system-reminder>\n${text}\n</system-reminder>`,
+      }),
+    );
   }
 
   /**
@@ -391,7 +455,10 @@ export class HookManager {
   /**
    * Exit-code handling for tool events: a blocking result (exit code 2) takes
    * precedence and is returned for the caller to surface, every other result
-   * only reaches the user — stdout of tool hooks is dropped, as in Claude Code.
+   * only reaches the user — plain-text stdout of tool hooks is dropped, as in
+   * Claude Code. The structured (`hookSpecificOutput.additionalContext`)
+   * channel is read from every result, whatever the exit code, because it is
+   * orthogonal to it.
    */
   private processToolHookResults(
     event: "PreToolUse" | "PostToolUse",
@@ -399,6 +466,13 @@ export class HookManager {
     messageManager?: MessageManager,
   ): HookExecutionResult | undefined {
     const blocking = results.find((result) => result.exitCode === 2);
+
+    if (messageManager) {
+      for (const result of results) {
+        this.injectAdditionalContext(event, result, messageManager);
+      }
+    }
+
     if (blocking) return blocking;
     if (!messageManager) return undefined;
 
@@ -476,6 +550,12 @@ export class HookManager {
       return { shouldBlock: false };
     }
 
+    // Context from the structured channel is orthogonal to the exit code, so it
+    // is collected from every result before the exit-code branches below.
+    for (const result of results) {
+      this.injectAdditionalContext(event, result, messageManager);
+    }
+
     // First pass: Check for any blocking errors (exit code 2)
     // Blocking errors take precedence and stop all processing
     for (const result of results) {
@@ -513,17 +593,101 @@ export class HookManager {
   }
 
   /**
+   * Set the events that honour `hookSpecificOutput.additionalContext`, verbatim
+   * from Claude Code's hook output switch: `UserPromptSubmit` / `PreToolUse` /
+   * `PostToolUse` (plus `SessionStart`, which keeps its own parsing below).
+   * `Stop` / `SubagentStop` are deliberately absent — on those two the only
+   * model-visible channel is exit code 2, so a hook that wants to re-prompt the
+   * agent exits 2 rather than adding context.
+   */
+  private static readonly ADDITIONAL_CONTEXT_EVENTS: readonly HookEvent[] = [
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PostToolUse",
+  ];
+
+  /**
+   * Inject `hookSpecificOutput.additionalContext` from a hook's stdout.
+   *
+   * The channel is orthogonal to the exit code (spec `automation/hooks` /
+   * 结构化方式：JSON 输出): Claude Code parses stdout JSON before it looks at the
+   * exit code, so a hook can add context without manufacturing an error. That is
+   * the whole point of the field — exit code 2 + stderr already reaches the
+   * model, but it reaches it wearing an error.
+   *
+   * `SessionStart` is not handled here: it has its own parsing in
+   * `executeSessionStartHooks`, which additionally treats non-JSON stdout as
+   * context (spec `automation/session-hooks`).
+   */
+  private injectAdditionalContext(
+    event: HookEvent,
+    result: HookExecutionResult,
+    messageManager: MessageManager,
+  ): void {
+    if (!HookManager.ADDITIONAL_CONTEXT_EVENTS.includes(event)) return;
+
+    const stdout = result.stdout?.trim();
+    if (!stdout || !stdout.startsWith("{")) return;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stdout);
+    } catch {
+      return; // not structured output
+    }
+    if (typeof parsed !== "object" || parsed === null) return;
+
+    const hookSpecificOutput = (parsed as Record<string, unknown>)
+      .hookSpecificOutput;
+    if (typeof hookSpecificOutput !== "object" || hookSpecificOutput === null) {
+      return;
+    }
+
+    const output = hookSpecificOutput as Record<string, unknown>;
+
+    if (output.hookEventName !== event) {
+      // A hook declared output for a different event: the payload cannot be
+      // trusted to belong here, so it is reported rather than injected.
+      this.handleNonBlockingError(
+        {
+          ...result,
+          stderr: `Hook returned incorrect event name: expected '${event}' but got '${String(
+            output.hookEventName,
+          )}'`,
+        },
+        messageManager,
+      );
+      return;
+    }
+
+    const additionalContext = output.additionalContext;
+    if (typeof additionalContext !== "string" || !additionalContext.trim()) {
+      return;
+    }
+
+    messageManager.addUserMessage({
+      content: `<system-reminder>\n${additionalContext.trim()}\n</system-reminder>`,
+      isMeta: true,
+    });
+  }
+
+  /**
    * Handle successful hook execution (exit code 0)
+   *
+   * `UserPromptSubmit` keeps the contract that its stdout is context for the
+   * prompt being submitted — but only while that stdout is plain text. When it
+   * is structured, `injectAdditionalContext` already took the context out of it,
+   * and dumping the raw JSON into the conversation as well would be noise.
    */
   private handleHookSuccess(
     event: HookEvent,
     result: HookExecutionResult,
     messageManager: MessageManager,
   ): void {
-    if (event === "UserPromptSubmit" && result.stdout?.trim()) {
-      // Inject stdout as user message context for UserPromptSubmit
+    const stdout = result.stdout?.trim();
+    if (event === "UserPromptSubmit" && stdout && !stdout.startsWith("{")) {
       messageManager.addUserMessage({
-        content: result.stdout.trim(),
+        content: stdout,
         isMeta: true,
       });
     }

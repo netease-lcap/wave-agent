@@ -35,6 +35,8 @@ import {
 } from "../../src/utils/skillParser.js";
 import { executeBashCommands } from "../../src/utils/markdownParser.js";
 import { isArtifactEnabled } from "../../src/services/artifactAvailability.js";
+import { BASH_TOOL_NAME } from "../../src/constants/tools.js";
+import type { PermissionManager } from "../../src/managers/permissionManager.js";
 
 vi.mock("fs/promises");
 vi.mock("../../src/services/fileWatcher.js");
@@ -970,10 +972,93 @@ describe("SkillManager", () => {
       await skillManager.executeSkill({ skill_name: "bash-skill" });
 
       // executeBashCommands should receive the updated workdir, not the original "/test/workdir"
-      expect(executeBashCommands).toHaveBeenCalledWith(
-        ["echo hello"],
-        "/new/worktree/path",
+      const [executedCommands, executedWorkdir] =
+        vi.mocked(executeBashCommands).mock.calls[0];
+      expect(executedCommands).toEqual(["echo hello"]);
+      expect(executedWorkdir).toBe("/new/worktree/path");
+    });
+
+    // spec `ecosystem/agent-skills` / 注入命令执行前的权限校验
+    it("registers allowed-tools before running injected commands and gates them via the shared manager", async () => {
+      const checkPermission = vi.fn().mockResolvedValue({
+        behavior: "deny",
+        message: "blocked by test rule",
+      });
+      const addTemporaryRules = vi.fn();
+      const createContext = vi.fn().mockReturnValue({});
+      const permissionManager = {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
+        createContext,
+        checkPermission,
+        addTemporaryRules,
+      };
+      container.register(
+        "PermissionManager",
+        permissionManager as unknown as PermissionManager,
       );
+
+      const mockSkill: Skill = {
+        name: "gated-skill",
+        description: "A skill with injected commands",
+        type: "personal",
+        skillPath: "/path/to/skill",
+        content:
+          "---\nname: gated-skill\ndescription: d\n---\n\nResult: !`git push`",
+        frontmatter: {
+          name: "gated-skill",
+          description: "d",
+          "allowed-tools": ["Bash(git push*)"],
+        },
+        allowedTools: ["Bash(git push*)"],
+        isValid: true,
+        errors: [],
+      };
+
+      vi.mocked(skillManager.loadSkill).mockResolvedValue(mockSkill);
+
+      await skillManager.executeSkill({ skill_name: "gated-skill" });
+
+      // The skill's own allowed-tools must be in force *before* its injected
+      // commands are judged, otherwise a skill cannot authorize its own body.
+      expect(addTemporaryRules).toHaveBeenCalledWith(["Bash(git push*)"]);
+      expect(addTemporaryRules.mock.invocationCallOrder[0]).toBeLessThan(
+        vi.mocked(executeBashCommands).mock.invocationCallOrder[0],
+      );
+
+      const gate = vi.mocked(executeBashCommands).mock.calls[0][3];
+      await expect(gate?.check("git push", "/proj")).resolves.toEqual({
+        behavior: "deny",
+        message: "blocked by test rule",
+      });
+
+      // Judged by the same manager, with the Bash tool name and the command as
+      // tool input, and deliberately without a permission callback.
+      expect(createContext).toHaveBeenCalledWith(
+        BASH_TOOL_NAME,
+        "default",
+        undefined,
+        { command: "git push", workdir: "/proj" },
+      );
+    });
+
+    it("leaves injected commands ungated when no permission manager is registered", async () => {
+      const mockSkill: Skill = {
+        name: "ungated-skill",
+        description: "A skill with injected commands",
+        type: "personal",
+        skillPath: "/path/to/skill",
+        content:
+          "---\nname: ungated-skill\ndescription: d\n---\n\nResult: !`echo hello`",
+        frontmatter: { name: "ungated-skill", description: "d" },
+        isValid: true,
+        errors: [],
+      };
+
+      vi.mocked(skillManager.loadSkill).mockResolvedValue(mockSkill);
+
+      await skillManager.executeSkill({ skill_name: "ungated-skill" });
+
+      expect(vi.mocked(executeBashCommands).mock.calls[0][3]).toBeUndefined();
     });
   });
 

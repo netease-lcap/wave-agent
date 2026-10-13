@@ -146,6 +146,23 @@ export default {
             { text: "隐私与治理", link: "/tutorials#telemetry-privacy" },
           ],
         },
+        {
+          text: "七、代码安全",
+          link: "/tutorials#code-security",
+          collapsed: false,
+          items: [
+            {
+              text: "按触发时机分工的几层能力",
+              link: "/tutorials#code-security-layers",
+            },
+            { text: "怎么用", link: "/tutorials#code-security-setup" },
+            {
+              text: "用项目自己的规则扩展",
+              link: "/tutorials#code-security-custom-rules",
+            },
+            { text: "能力边界", link: "/tutorials#code-security-limits" },
+          ],
+        },
       ],
       "/guide": [
         {
