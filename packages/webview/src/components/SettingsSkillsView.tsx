@@ -171,23 +171,13 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
                 <div className="mcp-server-header">
                   <span className="mcp-server-name">{selectedSkill.name}</span>
                   {selectedSkill.pluginName && (
-                    <span
-                      style={{
-                        fontSize: "12px",
-                        color: "var(--vscode-descriptionForeground)",
-                      }}
-                    >
+                    <span className="mcp-server-meta">
                       · {selectedSkill.pluginName}
                     </span>
                   )}
                 </div>
                 {selectedSkill.description && (
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "var(--vscode-descriptionForeground)",
-                    }}
-                  >
+                  <div className="mcp-server-meta">
                     {selectedSkill.description}
                   </div>
                 )}
@@ -269,25 +259,13 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
                       {skill.name}
                     </span>
                     {skill.pluginName && (
-                      <span
-                        style={{
-                          fontSize: "12px",
-                          color: "var(--vscode-descriptionForeground)",
-                        }}
-                      >
+                      <span className="mcp-server-meta">
                         · {skill.pluginName}
                       </span>
                     )}
                   </div>
                   {skill.description && (
-                    <div
-                      style={{
-                        fontSize: "12px",
-                        color: "var(--vscode-descriptionForeground)",
-                      }}
-                    >
-                      {skill.description}
-                    </div>
+                    <div className="mcp-server-meta">{skill.description}</div>
                   )}
                 </div>
                 <div className="mcp-server-actions">

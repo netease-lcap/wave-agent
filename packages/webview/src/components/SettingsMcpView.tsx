@@ -170,13 +170,7 @@ const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
           )}
         </div>
         {configLabel(server) && (
-          <div
-            style={{
-              fontSize: "12px",
-              color: "var(--vscode-descriptionForeground)",
-              wordBreak: "break-all",
-            }}
-          >
+          <div className="mcp-server-meta mcp-server-meta--break">
             {configLabel(server)}
           </div>
         )}

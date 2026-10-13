@@ -142,23 +142,13 @@ const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
                 <div className="mcp-server-header">
                   <span className="mcp-server-name">{selectedAgent.name}</span>
                   {selectedAgent.scope && (
-                    <span
-                      style={{
-                        fontSize: "12px",
-                        color: "var(--vscode-descriptionForeground)",
-                      }}
-                    >
+                    <span className="mcp-server-meta">
                       {SCOPE_LABELS[selectedAgent.scope] || selectedAgent.scope}
                     </span>
                   )}
                 </div>
                 {selectedAgent.description && (
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "var(--vscode-descriptionForeground)",
-                    }}
-                  >
+                  <div className="mcp-server-meta">
                     {selectedAgent.description}
                   </div>
                 )}
@@ -243,25 +233,11 @@ const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
                   <div className="mcp-server-header">
                     <span className="mcp-server-name">{agent.name}</span>
                     {agent.model && (
-                      <span
-                        style={{
-                          fontSize: "12px",
-                          color: "var(--vscode-descriptionForeground)",
-                        }}
-                      >
-                        · {agent.model}
-                      </span>
+                      <span className="mcp-server-meta">· {agent.model}</span>
                     )}
                   </div>
                   {agent.description && (
-                    <div
-                      style={{
-                        fontSize: "12px",
-                        color: "var(--vscode-descriptionForeground)",
-                      }}
-                    >
-                      {agent.description}
-                    </div>
+                    <div className="mcp-server-meta">{agent.description}</div>
                   )}
                 </div>
                 <div className="mcp-server-actions">

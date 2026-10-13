@@ -261,7 +261,8 @@
 
 .mcp-tool-count {
   font-size: 11px;
-  color: var(--vscode-testing-iconPassed);
+  /* 1013-C-02：原此处还有一行 `color: var(--vscode-testing-iconPassed);`，被下一行
+     同属性覆盖 ⇒ 死声明、任何宿主都不产生渲染效果，随 1013 色彩批一并删除。 */
   background-color: var(--vscode-badge-background);
   color: var(--vscode-badge-foreground);
   padding: 1px 6px;
@@ -284,6 +285,20 @@
 .mcp-server-last-connected {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
+}
+
+/* 列表行内的「说明文字」（标题下方的描述 / 命令 / 摘要）：**1013-T-03** 把原先散在四个
+   设置视图 TSX 里的内联 `style={{fontSize:'12px', color:'var(--vscode-descriptionForeground)'}}`
+   收到这里统一收口（`--break` 修饰符 = 原 `wordBreak: 'break-all'` 那一档）。
+   取值与内联写法**逐字节等价** ⇒ IDE 宿主（非桌面）渲染结果零变化；桌面端把色改成
+   `--cc-text-secondary` 的那条在 host-desktop.css 的 1013 节里，仅 `[data-host="desktop"]` 命中。 */
+.mcp-server-meta {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.mcp-server-meta--break {
+  word-break: break-all;
 }
 
 .mcp-server-actions {
