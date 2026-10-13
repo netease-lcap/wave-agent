@@ -299,6 +299,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // sent with the checkbox on — shows "worktree 创建中…" next to the checkbox.
   // Cleared by the host's desktopWorktreeCreated ack (success or failure).
   const [worktreeCreating, setWorktreeCreating] = useState(false);
+  // 「先指定文件夹」引导气泡（desktop 新会话、尚未选目录时）：从 CodeWave 高码
+  // 应用唤起 IDE 后用户不知道要先选文件夹才能提问。点「×」后本会话内不再出现；
+  // 选到目录后由 effectiveWorkdir 非空自动收回（见 workdirSelector 的 guide 传参）。
+  const [workdirGuideDismissed, setWorkdirGuideDismissed] = useState(false);
   // Per-pane git branches for this pane's OWN workdir (FR-022). The host-level
   // workdir follows the focused pane — sharing it would bleed one pane's
   // directory/branch into a sibling new-session pane, so each new-session pane
@@ -3659,6 +3663,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                       }
                       onSelectRecentWorkdir={host.onSelectRecentWorkdir}
                       onRemoveRecentWorkdir={host.onRemoveRecentWorkdir}
+                      guide={
+                        // 只在**还没有目录**的新会话里引导选目录（用户 2026-10-13 口径：
+                        // 已有目录时不再多一次确认——宿主自动带出的最近目录直接可用，
+                        // 不打扰；自己选的目录更是明确意图）。选到目录后 guide 因
+                        // effectiveWorkdir 非空自动消失。
+                        !workdirGuideDismissed && !effectiveWorkdir
+                          ? {
+                              text: "请先选择要开发的文件夹",
+                              onDismiss: () => setWorkdirGuideDismissed(true),
+                            }
+                          : undefined
+                      }
                     />
                     {gitBranches ? (
                       <DesktopWorktreeControls

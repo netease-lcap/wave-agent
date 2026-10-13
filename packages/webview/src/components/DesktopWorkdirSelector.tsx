@@ -5,6 +5,22 @@ import { useHostMessage } from "../utils/useHostMessage";
 import { ContextDirectoryIcon, PermCaretIcon, CloseIcon } from "./HeaderIcons";
 import "../styles/DesktopApp.css";
 
+/**
+ * 新会话未指定目录时的常驻引导气泡内容（从 CodeWave 高码应用唤起 IDE 后，
+ * 用户不知道要先指定文件夹才能提问——气泡指向选择器把这一步讲清楚）。
+ *
+ * 只在**没有目录**时出现：已有目录（宿主自动带出的最近目录、或用户自己选的）
+ * 一律不再多一次确认，见 ChatApp 的 guide 传参。
+ */
+export interface DesktopWorkdirGuide {
+  /** 气泡主句。 */
+  text: string;
+  /** 选目录按钮的文案，默认「选择文件夹」。 */
+  actionLabel?: string;
+  /** 点「×」关闭：本会话内不再出现（选择器本身仍可用）。 */
+  onDismiss: () => void;
+}
+
 export interface DesktopWorkdirSelectorProps {
   workdir?: string;
   recentWorkdirs: string[];
@@ -26,6 +42,11 @@ export interface DesktopWorkdirSelectorProps {
   /** `host` scopes the recents lookup to a specific host (defaults to the current one). */
   onSelectRecentWorkdir: (path: string, host?: string) => void;
   onRemoveRecentWorkdir: (path: string, host?: string) => void;
+  /**
+   * 常驻引导气泡：不传即不渲染。仅在「桌面端 + 新会话 + 尚未选目录」时由 ChatApp
+   * 传入——选到目录后 effectiveWorkdir 非空，气泡自动收回（无需额外清理）。
+   */
+  guide?: DesktopWorkdirGuide;
 }
 
 /** Join a normalized absolute path with a child name. */
@@ -64,6 +85,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   onListRemoteDir,
   onSelectRecentWorkdir,
   onRemoveRecentWorkdir,
+  guide,
 }) => {
   const [browsing, setBrowsing] = useState(false);
   const [currentPath, setCurrentPath] = useState("~");
@@ -265,7 +287,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
   return (
     <div className="desktop-workdir-container" ref={menuRef}>
       <div
-        className="desktop-workdir-trigger"
+        className={`desktop-workdir-trigger${guide ? " desktop-workdir-trigger--guide" : ""}`}
         ref={triggerRef}
         onClick={() => {
           if (menuOpen) closeReturningFocus();
@@ -291,6 +313,42 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
         <span className="desktop-workdir-name">{dirName}</span>
         <PermCaretIcon className="desktop-workdir-caret" />
       </div>
+      {guide && (
+        <div
+          className="desktop-workdir-guide"
+          role="note"
+          data-testid="desktop-workdir-guide"
+        >
+          <div className="desktop-workdir-guide-row">
+            <span className="desktop-workdir-guide-text">{guide.text}</span>
+            <button
+              className="desktop-workdir-guide-close"
+              title="我知道了"
+              aria-label="关闭引导"
+              onClick={guide.onDismiss}
+              data-testid="desktop-workdir-guide-close"
+            >
+              <CloseIcon className="desktop-workdir-guide-close-icon" />
+            </button>
+          </div>
+          <div className="desktop-workdir-guide-actions">
+            <button
+              className="desktop-workdir-guide-action"
+              // 文案两档统一，动作按主机分流：本地 → 系统目录对话框
+              // （desktopSelectWorkdir），远程 → 远程目录浏览面板（系统对话框选不到
+              // 远端路径，真宿主还会把主机钉回本地）。
+              onClick={() => {
+                if (isRemote) openBrowser();
+                else handleBrowse();
+              }}
+              data-testid="desktop-workdir-guide-action"
+            >
+              {guide.actionLabel ?? "选择文件夹"}
+            </button>
+          </div>
+          <span className="desktop-workdir-guide-arrow" aria-hidden="true" />
+        </div>
+      )}
       {menuOpen && !browsing && (
         <div
           className="desktop-workdir-menu"
