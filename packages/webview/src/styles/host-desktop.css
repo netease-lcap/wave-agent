@@ -4269,3 +4269,38 @@
 [data-host="desktop"] .mcp-disconnect-btn {
   border-radius: 8px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   1013 批 4 · 按钮族皮肤 + 行内衬 —— 仅桌面端
+   ──────────────────────────────────────────────────────────────────────────
+   · 设计师 1013 追加评论（点 MCP 服务页 `button.mcp-disconnect-btn`「断开」）：
+     「断开按钮的背景色和字号也不对」+「（跟编辑）完全一致」⇒ 把「连接 / 断开」整块皮肤
+     对齐同行 `.settings-row-btn`（SettingsPage.css:909，0915-D-02 定的档）：
+     无底色 + 同款 1px 描边（`--vscode-panel-border`，原 `--vscode-button-border` 在浅色档
+     实测是蓝的 rgb(0,105,204)、深色档是 7% 白）+ 12px 字号（T-02 里按钮那一半）+ 28px 行高
+     与 `0 10px` 横向内衬 + hover 改用 `--cc-fill-hover`（原 secondaryHoverBackground）。
+     「连接」同步：R-04「连接也一起改」。
+   · G-01 行内衬 `.mcp-server-item` 10px → **12px**（契约内容面板 16/20、设置行 `12px 0`；
+     10px 不在任何一档）。行高随之变化属预期。
+   反证（IDE 档不受影响）：切成 `ide` 后两个按钮回到 secondaryBackground 白/灰底 +
+   `--vscode-button-border` + 11px + `4px 10px` 内衬，行内衬回到 10px。 */
+[data-host="desktop"] .mcp-connect-btn,
+[data-host="desktop"] .mcp-disconnect-btn {
+  height: 28px;
+  padding: 0 10px;
+  background: none;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  font-size: 12px;
+}
+
+[data-host="desktop"] .mcp-connect-btn:hover,
+[data-host="desktop"] .mcp-disconnect-btn:hover {
+  background: var(
+    --cc-fill-hover,
+    var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.15))
+  );
+}
+
+[data-host="desktop"] .mcp-server-item {
+  padding: 12px;
+}
