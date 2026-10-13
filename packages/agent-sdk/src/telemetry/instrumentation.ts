@@ -9,8 +9,10 @@ import type {
   TelemetryConfig,
   ExporterTarget,
   OTLPProtocol,
+  HeadersProvider,
 } from "../types/telemetry.js";
 import { logger } from "../utils/globalLogger.js";
+import { createHeadersHelperProvider } from "./headersHelper.js";
 import * as fs from "node:fs";
 
 import type {
@@ -52,6 +54,13 @@ let initialized = false;
 
 /** Current resolved config */
 let currentConfig: TelemetryConfig | undefined;
+
+/**
+ * Dynamic header source for this process, resolved once per initialization.
+ * Both exporters must share one instance: its cache and in-flight dedup are
+ * per-instance, so two instances would run the helper twice per refresh.
+ */
+let headersProvider: HeadersProvider | undefined;
 
 /** Default telemetry file path */
 const DEFAULT_TELEMETRY_FILE = "~/.wave/telemetry.jsonl";
@@ -133,10 +142,10 @@ function resolveProtocol(
 }
 
 /**
- * Resolve OTLP headers from environment variable or config.
+ * Resolve the static OTLP headers from environment variable or config.
  * Env var format: "key1=value1,key2=value2"
  */
-function resolveHeaders(
+function resolveStaticHeaders(
   config?: Partial<TelemetryConfig>,
 ): Record<string, string> | undefined {
   const envHeaders = process.env.OTEL_EXPORTER_OTLP_HEADERS;
@@ -151,6 +160,51 @@ function resolveHeaders(
     return Object.keys(headers).length > 0 ? headers : undefined;
   }
   return config?.headers;
+}
+
+/**
+ * Resolve the dynamic OTLP headers source, if any.
+ *
+ * Two doors onto the same slot, in precedence order:
+ * 1. `headersProvider` — injected in process (a host embedding the SDK);
+ * 2. `headersHelper` — a command from settings.json / the managed layer whose
+ *    stdout is the header object, re-run on a refresh interval so a rotating
+ *    credential is picked up without a restart.
+ *
+ * Neither can travel through `OTEL_EXPORTER_OTLP_HEADERS`, and a function
+ * cannot travel through settings.json, which is why both exist.
+ */
+function resolveHeadersProvider(
+  config?: Partial<TelemetryConfig>,
+): HeadersProvider | undefined {
+  if (config?.headersProvider) {
+    return config.headersProvider;
+  }
+  const command = config?.headersHelper?.trim();
+  if (!command) {
+    return undefined;
+  }
+  return createHeadersHelperProvider({ command });
+}
+
+/**
+ * Build the `headers` value handed to the OTLP exporters.
+ *
+ * A static map is passed through as-is (the exporter accepts either form); a
+ * dynamic source becomes an async factory, which the exporter transport calls
+ * before every batch send. Dynamic keys win per key over the static base, so
+ * `OTEL_EXPORTER_OTLP_HEADERS` stays usable for local overrides while the
+ * helper supplies the rotating ones (same composition as Claude Code).
+ */
+function buildExporterHeaders(
+  config: TelemetryConfig,
+): Record<string, string> | HeadersProvider | undefined {
+  const provider = headersProvider;
+  if (!provider) {
+    return config.headers;
+  }
+  const baseHeaders = config.headers;
+  return async () => ({ ...baseHeaders, ...(await provider()) });
 }
 
 /**
@@ -213,7 +267,9 @@ export function resolveTelemetryConfig(
     logsExporter,
     endpoint: resolveEndpoint(settingsConfig),
     protocol: resolveProtocol(settingsConfig),
-    headers: resolveHeaders(settingsConfig),
+    headers: resolveStaticHeaders(settingsConfig),
+    headersHelper: settingsConfig?.headersHelper?.trim() || undefined,
+    headersProvider: settingsConfig?.headersProvider,
     logUserPrompts: resolveLogUserPrompts(settingsConfig),
     logToolContent: resolveLogToolContent(settingsConfig),
     shutdownTimeoutMs: resolveShutdownTimeoutMs(settingsConfig),
@@ -227,14 +283,15 @@ export function resolveTelemetryConfig(
 function createOTLPTraceExporter(config: TelemetryConfig) {
   const exporterConfig: {
     url?: string;
-    headers?: Record<string, string>;
+    headers?: Record<string, string> | HeadersProvider;
   } = {};
 
   if (config.endpoint) {
     exporterConfig.url = `${config.endpoint}/v1/traces`;
   }
-  if (config.headers) {
-    exporterConfig.headers = config.headers;
+  const headers = buildExporterHeaders(config);
+  if (headers) {
+    exporterConfig.headers = headers;
   }
 
   return new exporterTraceOtlpHttp!.OTLPTraceExporter(exporterConfig);
@@ -246,14 +303,15 @@ function createOTLPTraceExporter(config: TelemetryConfig) {
 function createOTLPLogExporter(config: TelemetryConfig) {
   const exporterConfig: {
     url?: string;
-    headers?: Record<string, string>;
+    headers?: Record<string, string> | HeadersProvider;
   } = {};
 
   if (config.endpoint) {
     exporterConfig.url = `${config.endpoint}/v1/logs`;
   }
-  if (config.headers) {
-    exporterConfig.headers = config.headers;
+  const headers = buildExporterHeaders(config);
+  if (headers) {
+    exporterConfig.headers = headers;
   }
 
   return new exporterLogsOtlpHttp!.OTLPLogExporter(exporterConfig);
@@ -376,6 +434,7 @@ export async function initializeTelemetry(
 
   try {
     currentConfig = resolveTelemetryConfig(config);
+    headersProvider = resolveHeadersProvider(currentConfig);
 
     if (!currentConfig.enabled) {
       logger?.debug("Telemetry not enabled (no exporters configured)");
@@ -492,6 +551,7 @@ export async function shutdownTelemetry(): Promise<void> {
     loggerProvider = undefined;
     initialized = false;
     currentConfig = undefined;
+    headersProvider = undefined;
   }
 }
 

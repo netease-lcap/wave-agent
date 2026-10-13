@@ -115,6 +115,7 @@ const agent = await Agent.create({
 | `name`          | `string`                          | worktree 名称                          |
 | `isNewWorktree` | `boolean`                         | 是否为新创建的 worktree                |
 | `watchSkills`   | `boolean`                         | 是否监听 Skill 文件变化（默认 `true`） |
+| `telemetry`     | `Partial<TelemetryConfig>`        | 遥测配置，见 [出站头](#otel-headers)   |
 
 #### 回调与日志
 
@@ -1367,7 +1368,7 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 | `OTEL_ENABLED`                | 是否启用遥测（设为 `false` 禁用） |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP 导出端点                     |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | 导出协议（`grpc` / `http`）       |
-| `OTEL_EXPORTER_OTLP_HEADERS`  | 导出附加头（JSON 格式）           |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | 导出附加头（`k=v,k2=v2`）         |
 | `OTEL_LOG_USER_PROMPTS`       | 是否记录用户 Prompt               |
 | `OTEL_LOG_TOOL_CONTENT`       | 是否记录工具调用内容              |
 | `OTEL_SPAN_TTL_MS`            | Span 存活时间（毫秒）             |
@@ -1525,7 +1526,7 @@ Wave 支持为每种信号类型（Traces、Metrics、Logs）配置不同的导�
 - **OTLP 导出器**：将遥测数据发送到标准 OTLP 收集器（如 Jaeger、Grafana Tempo、Honeycomb）。通过 `OTEL_EXPORTER_OTLP_ENDPOINT` 设置收集器地址。
 - **JSONL 文件导出器**：将遥测数据写入 `~/.wave/telemetry.jsonl`，每行一条独立的 JSON 记录。
 
-**配置方式**：通过 `OTEL_*` 环境变量或 `settings.json` 中的 `monitoring.telemetry` 字段配置，环境变量优先。
+**配置方式**：通过 `OTEL_*` 环境变量或 `settings.json`（以及服务端下发的托管配置）中的 `monitoring.telemetry` 字段配置，环境变量优先。
 
 ```json
 {
@@ -1541,6 +1542,39 @@ Wave 支持为每种信号类型（Traces、Metrics、Logs）配置不同的导�
   }
 }
 ```
+
+> `monitoring.telemetry` 只从**用户级 `~/.wave/settings.json`**、项目 `.wave/settings.json` / `settings.local.json`（后两者的 `headersHelper` 除外，见下）与服务端托管配置读取。settings.json 里的 `env` 块**不**映射为 OS 环境变量（只有 `WAVE_SERVER_URL` 例外），因此把 `OTEL_*` 写进 `env` 是静默无效的——要么用真实环境变量，要么用 `monitoring.telemetry`。
+
+### 出站头 (Headers) {#otel-headers}
+
+OTLP 出站头有两个来源，**动态头按 key 覆盖静态头**：
+
+| 来源                                     | 形态                                    | 何时读取                                                                                    |
+| ---------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `OTEL_EXPORTER_OTLP_HEADERS`             | `key1=value1,key2=value2`               | 进程启动                                                                                    |
+| `monitoring.telemetry.headers`           | `{ "key": "value" }`                    | 进程启动                                                                                    |
+| `monitoring.telemetry.headersHelper`     | 一条命令，stdout 是头部 JSON 对象       | 首次导出前 + 每次刷新间隔（默认 29 分钟，可用 `WAVE_OTEL_HEADERS_HELPER_DEBOUNCE_MS` 覆盖） |
+| `AgentOptions.telemetry.headersProvider` | `() => Promise<Record<string, string>>` | 同 helper（可选，优先级高于 helper）                                                        |
+
+静态头适合固定凭据（如 `Authorization: Bearer <长期 token>`）；**`headersHelper` 适合按设备签发、可吊销、会轮换的凭据**——凭据本身不写进配置或分发包，改一次 token 不需要重新下发配置，也不需要重启长驻宿主（桌面端 / VS Code）里的会话。
+
+```json
+{
+  "monitoring": {
+    "telemetry": {
+      "tracesExporter": "otlp",
+      "logsExporter": "otlp",
+      "endpoint": "https://your-collector.example.com",
+      "headersHelper": "/usr/local/bin/get-otel-headers",
+      "headers": { "x-application": "wave" }
+    }
+  }
+}
+```
+
+helper 命令跑在 shell 里（Windows 下是 Git Bash，与 hook 一致），stdin 为空、无参数，stdout 必须是 `{"header-name": "value"}`（值必须都是字符串，且对象非空）。它不需要任何权限确认——与 hook 一样属于「配置声明的执行者」；**但只有用户级 `~/.wave/settings.json` 与服务端托管配置能设置它**，项目里的 `.wave/settings.json` 会被忽略（只忽略这一个键，同块的其它遥测设置照常生效）并打一条警告：helper 是一台机器上会执行的命令，随仓库分发的配置不该能指定它。
+
+失败语义（非 0 退出 / 超时 / stdout 不是合法 JSON 对象）时**不丢批次、不影响 agent**：先沿用上一次成功取到的头，没有则只发静态头；失败按「失败种类变化」限流打警告。**stdout 就是凭据**，因此它不进日志、不进审计、不进 span 属性，失败告警里也只带失败种类与退出码。
 
 ### Span 体系 {#otel-spans}
 

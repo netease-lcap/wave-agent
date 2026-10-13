@@ -577,6 +577,7 @@ export default {
           collapsed: true,
           items: [
             { text: "导出器", link: "/sdk#otel-exporters" },
+            { text: "出站头", link: "/sdk#otel-headers" },
             { text: "Span 体系", link: "/sdk#otel-spans" },
             { text: "事件日志", link: "/sdk#otel-events" },
             { text: "PII 保护", link: "/sdk#otel-privacy" },

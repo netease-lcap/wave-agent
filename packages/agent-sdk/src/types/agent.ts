@@ -15,6 +15,7 @@ import type { BackgroundTaskManagerCallbacks } from "../managers/backgroundTaskM
 import type { McpManagerCallbacks } from "../managers/mcpManager.js";
 import type { SubagentManagerCallbacks } from "../managers/subagentManager.js";
 import type { PartialHookConfiguration } from "./configuration.js";
+import type { TelemetryConfig } from "./telemetry.js";
 import type { ToolPlugin } from "../tools/types.js";
 
 /**
@@ -122,6 +123,14 @@ export interface AgentOptions {
    * File-based hooks (from config.json/.waverc.json) merge on top of these.
    */
   hooks?: PartialHookConfiguration;
+  /**
+   * Telemetry overrides for this agent, merged per key over
+   * `settings.json`'s `monitoring.telemetry` (options win). Mainly the
+   * in-process door for dynamic OTLP headers: a host that holds a rotating
+   * credential (a per-device token it refreshes itself) passes a
+   * `headersProvider`, which no JSON config could carry.
+   */
+  telemetry?: Partial<TelemetryConfig>;
   [key: string]: unknown;
 }
 

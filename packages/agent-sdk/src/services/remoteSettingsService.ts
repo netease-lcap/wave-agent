@@ -367,6 +367,21 @@ export function mergeRemoteSettings(
   if (remote.enableExec !== undefined) result.enableExec = remote.enableExec;
   if (remote.nonDeferrableBuiltins !== undefined)
     result.nonDeferrableBuiltins = remote.nonDeferrableBuiltins;
+  // monitoring: merge per telemetry key (remote wins per key), like `env` and
+  // the plugin maps above — an admin pushing only an endpoint must not wipe the
+  // user's headers, and vice versa. The managed layer is also the *only* layer
+  // besides the user's own file allowed to set `telemetry.headersHelper`; the
+  // project layer is stripped in loadMergedWaveConfig.
+  if (remote.monitoring !== undefined) {
+    result.monitoring = {
+      ...localMerged.monitoring,
+      ...remote.monitoring,
+      telemetry: {
+        ...localMerged.monitoring?.telemetry,
+        ...remote.monitoring.telemetry,
+      },
+    };
+  }
 
   return result;
 }
