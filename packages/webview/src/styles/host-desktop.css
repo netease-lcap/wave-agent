@@ -4304,3 +4304,63 @@
 [data-host="desktop"] .mcp-server-item {
   padding: 12px;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   1013 追加单 · 删除按钮（`.settings-row-btn-danger`）颜色对齐产品危险红 —— 仅桌面端
+   ──────────────────────────────────────────────────────────────────────────
+   设计师 2026-10-13 评论（点 MCP 服务页 `button.settings-row-btn.settings-row-btn-danger`
+   「删除」）：「删除按钮的颜色不符合规范」。回源核实后她在我给的三个读法里选
+   **「跟产品危险红统一」**（另两个 = 只修 hover 底 / 描边改中性）：
+   · 改前：文字+描边吃 base 的 `--cc-color-danger` = 浅 #DC2626 / 深 #F19B95
+     （= skill 契约 token 值；浅色档与产品危险红只差一档，深色档 #F19B95 明显更浅偏粉）。
+   · 改后：与本产品既有的危险红**同值**（Figma 权威 → 权限「跳过权限确认」/ 菜单危险项
+     的实测值，本文件 2217 / 2345 行那两条规则用的就是这一对）：
+     浅 #D92D20 + hover 红软底 #FFF0EF；深 #F4655C + hover `rgb(217 45 32 / 20%)`。
+   · hover 底同时修掉契约明确的偏差：`common-components.md:19`「Destructive secondary：
+     neutral surface, danger label/border → **danger-soft background**」与
+     `design-system.md:153`「destructive items use the danger token for text and a
+     **soft danger hover background**」——改前它跟「编辑」一样吃中性 `--cc-fill-hover`。
+   · 焦点环同批对齐：`.settings-page .settings-row-btn-danger:focus-visible`（SettingsPage.css:93）
+     原用 `--cc-color-danger` 画「贴边红环」，若只改静止色会与环**异色**，故一并改同值
+     （特异度需 0,4,0 才压得住 base 的 0,3,0；加载顺序上组件 CSS 早于本文件，故必须升特异度）。
+   · 取值写**字面量**而非 token：产品危险红没有单一 token 能覆盖两档
+     （`--cc-state-failed` 浅色 = #D92D20 ✓ 但深色 = #F19B95 ✗），与本文件既有的危险项规则
+     保持同一种写法（那两条也是字面量）。⚠️ 残留：若要消字面量，需回写 skill 的
+     `--cc-color-danger` 两档取值（属契约层，不在本单范围）。
+   作用域说明：本类是**族级**共享（MCP 服务 / 钩子 / 技能 / 子代理 四个设置视图的行内
+   「删除」+ 插件市场行的「移除」+ 作用域弹窗的「卸载」），本单按类生效、六处同时变色。
+   反证（IDE 档不受影响）：切成 `ide` 后本节整段失配 ⇒ 回到 `--cc-color-danger`
+   （浅 #DC2626 / 深 #F19B95）与中性 hover `--cc-fill-hover`。 */
+[data-host="desktop"] .settings-row-btn-danger {
+  color: #d92d20;
+  border-color: #d92d20;
+}
+
+[data-host="desktop"] .settings-row-btn-danger:not(:disabled):hover {
+  background: #fff0ef;
+}
+
+[data-host="desktop"] .settings-page .settings-row-btn-danger:focus-visible,
+[data-host="desktop"] .plugin-market-page .settings-row-btn-danger:focus-visible {
+  border-color: #d92d20;
+  outline: 2px solid #d92d20;
+  outline-offset: 0;
+}
+
+[data-host="desktop"][data-theme="dark"] .settings-row-btn-danger {
+  color: #f4655c;
+  border-color: #f4655c;
+}
+
+[data-host="desktop"][data-theme="dark"] .settings-row-btn-danger:not(:disabled):hover {
+  background: rgb(217 45 32 / 20%);
+}
+
+[data-host="desktop"][data-theme="dark"] .settings-page .settings-row-btn-danger:focus-visible,
+[data-host="desktop"][data-theme="dark"]
+  .plugin-market-page
+  .settings-row-btn-danger:focus-visible {
+  border-color: #f4655c;
+  outline: 2px solid #f4655c;
+  outline-offset: 0;
+}
