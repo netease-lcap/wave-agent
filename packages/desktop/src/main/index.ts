@@ -15,6 +15,7 @@ import { WEBVIEW_CHANNEL } from "./channels";
 import { ConfigStore } from "./configStore";
 import { DesktopHost } from "./desktopHost";
 import { isLocalhostUrl } from "./isLocalhostUrl";
+import { DEEP_LINK_SCHEME, findDeepLink } from "./deepLink";
 import {
   attachContextMenu,
   attachDesktopShortcutKeys,
@@ -186,19 +187,87 @@ const menuActions: DesktopMenuActions = {
   },
 };
 
+/**
+ * Register `wave://` with the OS.
+ *
+ * electron-builder's `protocols` field only covers macOS (Info.plist) and Linux
+ * (.desktop) — the NSIS installer writes no registry entry at all, so on Windows
+ * this runtime call is the *only* thing that creates
+ * `HKCU\Software\Classes\wave`. Consequence worth knowing: a freshly installed
+ * app cannot be woken by a link until it has been launched once.
+ */
+function registerDeepLinkProtocol(): void {
+  try {
+    if (process.defaultApp) {
+      // Dev launches the bare Electron binary, so the app entry script has to be
+      // passed along — otherwise the protocol spawns an electron.exe that knows
+      // nothing about this app.
+      if (process.argv.length >= 2) {
+        app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME, process.execPath, [
+          path.resolve(process.argv[1]),
+        ]);
+      }
+    } else {
+      app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME);
+    }
+  } catch (error) {
+    // Never fatal — everything else works without the protocol.
+    hostLog.error("[Wave Desktop] Failed to register wave:// protocol:", error);
+  }
+}
+
 const gotLock = app.requestSingleInstanceLock();
 
 if (!gotLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
+  /**
+   * Links that arrive before the host exists. macOS delivers `open-url` before
+   * the window is ready and a cold-start link rides in on argv; both would
+   * otherwise be dropped. The host serializes them once handed over.
+   */
+  const pendingDeepLinks: string[] = [];
+
+  const focusMainWindow = (): void => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+  };
+
+  const routeDeepLink = (url: string): void => {
+    focusMainWindow();
+    if (host) {
+      void host.handleDeepLink(url);
+      return;
     }
+    pendingDeepLinks.push(url);
+  };
+
+  // macOS: LaunchServices pushes the URL to the *running* instance as an Apple
+  // Event. The listener must exist before `ready` — registering it inside
+  // `whenReady()` is the classic way to lose a launch-triggering URL.
+  app.on("open-url", (event, url) => {
+    event.preventDefault();
+    routeDeepLink(url);
+  });
+
+  // Windows/Linux: a protocol URL starts a *new* process. The single-instance
+  // lock makes that process hand its command line over and quit, and the URL is
+  // somewhere inside it — never at a fixed position, since Chromium appends its
+  // own switches to a second instance's argv.
+  app.on("second-instance", (_event, commandLine) => {
+    const url = findDeepLink(commandLine);
+    if (url) {
+      routeDeepLink(url);
+      return;
+    }
+    // A plain second launch (no link) still just brings the window forward.
+    focusMainWindow();
   });
 
   void app.whenReady().then(() => {
+    registerDeepLinkProtocol();
+
     // Dev launches the bare Electron binary, whose default atom icon shows in
     // the Dock — swap in the brand icon (packaged apps get it from the icns).
     if (!app.isPackaged) {
@@ -237,6 +306,16 @@ if (!gotLock) {
     });
 
     createWindow();
+
+    // Drain the links that arrived before the host was ready, plus this
+    // process's own argv (a cold start on Windows/Linux).
+    if (host) {
+      const coldStartLink = findDeepLink(process.argv);
+      if (coldStartLink) pendingDeepLinks.push(coldStartLink);
+      for (const url of pendingDeepLinks.splice(0)) {
+        void host.handleDeepLink(url);
+      }
+    }
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {

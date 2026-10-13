@@ -81,7 +81,13 @@ import type {
   AccountBillingInfo,
   AccountApiQuotaInfo,
 } from "wave-webview-fixtures";
-import type { ChildProcess } from "child_process";
+import { execFile, type ChildProcess } from "child_process";
+import { promisify } from "util";
+import {
+  parseCloneDeepLink,
+  repoDirectoryName,
+  type CloneDeepLink,
+} from "./deepLink";
 import { TerminalManager } from "./terminal";
 import { PortForwardManager, type AuthCallbackForward } from "./portForward";
 import { HtmlPreviewServer } from "./htmlPreviewServer";
@@ -113,6 +119,35 @@ interface WorktreeInfo {
   baseBranch: string;
   repoRoot: string;
   hookBased?: boolean;
+}
+
+const execFileAsync = promisify(execFile);
+
+/** Upper bound on a deep-link clone before the child is killed. Generous: a
+ *  large repository over a slow link is normal, a hung one is not. */
+const DEEP_LINK_CLONE_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
+ * How long an identical link stays "already seen". A double-click sends two
+ * platform events for one URL (spec: 同一条链接被重复触发不得产生重复的 clone),
+ * while a genuine second attempt — sdd re-posting after a failure, or the user
+ * clicking again minutes later — is well outside this window.
+ */
+const DEEP_LINK_DEDUPE_MS = 3_000;
+
+/**
+ * Pull the useful part out of a failed `git` invocation: the last few stderr
+ * lines carry the real reason (auth rejected, host unreachable, no space), the
+ * first line usually just names the command.
+ */
+function formatGitError(error: unknown): string {
+  if (error && typeof error === "object" && "stderr" in error) {
+    const stderr = (error as { stderr?: unknown }).stderr;
+    if (typeof stderr === "string" && stderr.trim()) {
+      return stderr.trim().split("\n").slice(-3).join("\n");
+    }
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 interface Pane {
@@ -170,6 +205,17 @@ interface PluginListRow {
 
 export class DesktopHost {
   private mainWindow: BrowserWindow | null = null;
+
+  /**
+   * Serializes `wave://` deep links. Each one runs a user-gated flow (confirm →
+   * pick a directory → clone), so two links arriving at once — a double click,
+   * or the cold-start queue draining — must queue up rather than stack two
+   * dialogs on top of each other.
+   */
+  private deepLinkChain: Promise<void> = Promise.resolve();
+
+  /** Last deep link accepted, for the double-click guard (see DEEP_LINK_DEDUPE_MS). */
+  private lastDeepLink: { url: string; at: number } | undefined;
 
   // stdio infrastructure
   private client: StdioClient | null = null;
@@ -4679,6 +4725,262 @@ export class DesktopHost {
     await this.activateWorkdir({ host: h, dir });
   }
 
+  // ------------------------------------------------------------------
+  // Deep link (`wave://clone`) — spec docs/specs/desktop/desktop-deep-link.md
+  // ------------------------------------------------------------------
+
+  /**
+   * Handle one `wave://` URL. Called from all three platform receive paths
+   * (macOS `open-url`, Windows/Linux cold-start argv, `second-instance`), so it
+   * must tolerate being invoked before the window exists.
+   *
+   * An identical URL arriving twice in quick succession is one intent, not two:
+   * a double click on the link would otherwise raise two clone flows (and, once
+   * the first clone lands, a "目录已存在" on top of it).
+   */
+  handleDeepLink(rawUrl: string): Promise<void> {
+    const now = Date.now();
+    if (
+      this.lastDeepLink &&
+      this.lastDeepLink.url === rawUrl &&
+      now - this.lastDeepLink.at < DEEP_LINK_DEDUPE_MS
+    ) {
+      return Promise.resolve();
+    }
+    this.lastDeepLink = { url: rawUrl, at: now };
+
+    this.deepLinkChain = this.deepLinkChain.then(() =>
+      this.processDeepLink(rawUrl).catch((error) => {
+        // The individual rejection paths already reported themselves; this is
+        // the last-resort net so a broken link can never poison the chain and
+        // swallow every later one.
+        console.error("[DesktopHost] Deep link failed:", error);
+        this.showToast({
+          message: `打开链接失败：${formatGitError(error)}`,
+        });
+      }),
+    );
+    return this.deepLinkChain;
+  }
+
+  private async processDeepLink(rawUrl: string): Promise<void> {
+    let link: CloneDeepLink;
+    try {
+      link = parseCloneDeepLink(rawUrl);
+    } catch (error) {
+      this.showToast({
+        message: `无法打开链接：${error instanceof Error ? error.message : String(error)}`,
+      });
+      return;
+    }
+
+    const host = LOCAL_HOST;
+    await this.ensureClientFor(host);
+
+    // The link carries no credential, so cloning is only possible on top of an
+    // existing login — say so before asking to clone (spec「认证只来自本机登录
+    // 态」场景 2), never after the user already said yes.
+    if (!(await this.isAuthenticated(host))) {
+      if (!(await this.promptDeepLinkLogin(host))) return;
+    }
+
+    if (!(await this.confirmDeepLinkClone(link))) return;
+
+    const target = await this.pickCloneTarget(link.repo);
+    if (!target) return;
+
+    const helper = await this.prepareGitCredentialHelper(host);
+    if (!helper) return;
+
+    await this.cloneAndStartSession(link, target, helper);
+  }
+
+  /**
+   * The ordinary SSO login, run for a deep link on a machine that is not logged
+   * in. There is nothing else to authenticate with: the link itself carries no
+   * credential (deliberately — any web page can build one), and this login is
+   * what later `git push` from the cloned repository will also use.
+   */
+  private async promptDeepLinkLogin(host: string): Promise<boolean> {
+    const win = this.mainWindow;
+    if (!win) return false;
+    const choice = await dialog.showMessageBox(win, {
+      type: "info",
+      buttons: ["登录", "取消"],
+      defaultId: 0,
+      cancelId: 1,
+      message: "需要先登录才能克隆该仓库",
+      detail: "该仓库的认证使用你的 Wave 登录凭据。",
+    });
+    if (choice.response !== 0) return false;
+
+    try {
+      const result = (await this.utilityClientFor(host).request("login")) as {
+        user?: { id: string; email?: string };
+      };
+      await this.afterLogin(host, result.user);
+      return true;
+    } catch (error) {
+      this.showToast({
+        message: `登录失败：${error instanceof Error ? error.message : String(error)}`,
+      });
+      return false;
+    }
+  }
+
+  private async isAuthenticated(host: string): Promise<boolean> {
+    try {
+      const status = (await this.utilityClientFor(host).request(
+        "getAuthStatus",
+      )) as { isAuthenticated?: boolean };
+      return !!status.isAuthenticated;
+    } catch {
+      // Unreachable CLI reads as "not logged in" — the login prompt below is
+      // the honest answer, and it fails visibly instead of proceeding blind.
+      return false;
+    }
+  }
+
+  /**
+   * The dialog is the only human checkpoint in this flow. Any web page can
+   * build such a link (and on Windows any app can register the scheme), so what
+   * is about to happen must be legible before it happens: which repository,
+   * which branch, and the prompt — in full — that is about to be sent.
+   */
+  private async confirmDeepLinkClone(link: CloneDeepLink): Promise<boolean> {
+    const win = this.mainWindow;
+    if (!win) return false;
+    const result = await dialog.showMessageBox(win, {
+      type: "question",
+      buttons: ["继续", "取消"],
+      defaultId: 0,
+      cancelId: 1,
+      title: "从链接克隆仓库",
+      message: "是否克隆以下仓库并开始开发？",
+      detail: [
+        `仓库：${link.repo}`,
+        `分支：${link.ref ?? "（默认分支）"}`,
+        "",
+        "将自动发送的提示词：",
+        link.prompt ?? "（无）",
+      ].join("\n"),
+    });
+    return result.response === 0;
+  }
+
+  /**
+   * Ask for the *parent* directory — VS Code's Git: Clone works the same way —
+   * and derive the destination from the repository name, so a link can never
+   * name an absolute path. An existing destination is never overwritten; the
+   * picker simply reopens.
+   */
+  private async pickCloneTarget(repo: string): Promise<string | undefined> {
+    const win = this.mainWindow;
+    if (!win) return undefined;
+    const dirName = repoDirectoryName(repo);
+    if (!dirName) {
+      this.showToast({ message: `无法从仓库地址推导目录名：${repo}` });
+      return undefined;
+    }
+    for (;;) {
+      const picked = await dialog.showOpenDialog(win, {
+        title: "选择仓库克隆位置",
+        buttonLabel: "克隆到此处",
+        properties: ["openDirectory", "createDirectory"],
+      });
+      if (picked.canceled || picked.filePaths.length === 0) return undefined;
+      const target = path.join(picked.filePaths[0], dirName);
+      if (!fs.existsSync(target)) return target;
+      const retry = await dialog.showMessageBox(win, {
+        type: "warning",
+        buttons: ["重新选择", "取消"],
+        defaultId: 0,
+        cancelId: 1,
+        message: `目录已存在：${target}`,
+        detail: "已存在的目录不会被覆盖，请另选一个位置。",
+      });
+      if (retry.response !== 0) return undefined;
+    }
+  }
+
+  /** Generate the credential helper script and return its `credential.helper`
+   *  value. The script itself is written CLI-side, next to `auth.json` (see
+   *  packages/code/src/utils/gitCredentialHelper.ts). */
+  private async prepareGitCredentialHelper(
+    host: string,
+  ): Promise<string | undefined> {
+    try {
+      const result = (await this.utilityClientFor(host).request(
+        "installGitCredentialHelper",
+      )) as { command?: string };
+      if (!result.command) throw new Error("empty helper command");
+      return result.command;
+    } catch (error) {
+      this.showToast({
+        message: `准备 git 凭据失败：${error instanceof Error ? error.message : String(error)}`,
+      });
+      return undefined;
+    }
+  }
+
+  /**
+   * Clone into `target`, then hand the user to a fresh session there.
+   *
+   * `credential.helper` is passed as a *pair*: an empty first entry resets
+   * whatever the machine's system/global config installed (a store or cache
+   * helper would otherwise also run and pin the first credential it saw, so
+   * later logins and refreshes would never be picked up), ours second. Both
+   * entries are written into the new repository's config by `clone -c`, which
+   * is what keeps later `git push`/`pull` authenticated without ever putting a
+   * credential on disk.
+   */
+  private async cloneAndStartSession(
+    link: CloneDeepLink,
+    target: string,
+    helper: string,
+  ): Promise<void> {
+    this.showToast({ message: `正在克隆 ${path.basename(target)}…` });
+    try {
+      await execFileAsync(
+        "git",
+        [
+          "clone",
+          "-c",
+          "credential.helper=",
+          "-c",
+          `credential.helper=${helper}`,
+          ...(link.ref ? ["--branch", link.ref] : []),
+          "--",
+          link.repo,
+          target,
+        ],
+        {
+          cwd: path.dirname(target),
+          // Belt to the helper's braces: a missing credential must fail the
+          // operation, never park it on an interactive prompt nobody can answer.
+          env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+          timeout: DEEP_LINK_CLONE_TIMEOUT_MS,
+        },
+      );
+    } catch (error) {
+      // A half-cloned directory must not survive (spec 场景 10). The target was
+      // verified absent before the clone started, so removing it can only
+      // delete what this clone created.
+      try {
+        fs.rmSync(target, { recursive: true, force: true });
+      } catch (cleanupError) {
+        console.warn("[DesktopHost] Failed to clean up", target, cleanupError);
+      }
+      this.showToast({ message: `克隆失败：${formatGitError(error)}` });
+      return;
+    }
+
+    await this.activateWorkdir({ host: LOCAL_HOST, dir: target });
+    if (link.prompt) {
+      await this.handleSendMessage(link.prompt);
+    }
+  }
+
   /**
    * Open a session from the sidebar tree (FR-020/031) in a pane (FR-032). Three
    * branches: the live agent is activated in place (nothing destroyed); a
@@ -5814,6 +6116,24 @@ export class DesktopHost {
     }
   }
 
+  /**
+   * Post-login bookkeeping shared by the webview's 登录 button and the deep
+   * link's auth gate: seed the account card, refresh usage, and rebuild the
+   * agent so it picks up the SSO gateway config.
+   */
+  private async afterLogin(
+    host: string,
+    user: { id: string; email?: string } | undefined,
+  ): Promise<void> {
+    this.seedAccountFromAuth(host, {
+      isAuthenticated: true,
+      user: user ?? null,
+    });
+    if (host === this.currentHost) this.syncAccountCard();
+    // Reinitialize agent to pick up SSO config
+    await this.updateAgentConfig();
+  }
+
   private async handleLogin(): Promise<void> {
     const host = this.currentHost;
     try {
@@ -5827,13 +6147,7 @@ export class DesktopHost {
       });
       // 登录完成：seed 账户卡片 + 拉用量。登录态进入不弹重启确认（重启确认
       // 只在 downloading→ready 转变时由 webview 侧触发）。
-      this.seedAccountFromAuth(host, {
-        isAuthenticated: true,
-        user: result.user ?? null,
-      });
-      this.syncAccountCard();
-      // Reinitialize agent to pick up SSO config
-      await this.updateAgentConfig();
+      await this.afterLogin(host, result.user);
     } catch (error) {
       console.error("[DesktopHost] 登录失败:", error);
       this.postMessage({

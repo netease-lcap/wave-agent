@@ -61,6 +61,15 @@
       }
     ],
     "afterPack": "scripts/afterPack.js",
+    "protocols": [
+      {
+        "name": "CodeWave IDE",
+        "schemes": [
+          "wave"
+        ],
+        "role": "Editor"
+      }
+    ],
     "mac": {
       "category": "public.app-category.developer-tools",
       "identity": "Hangzhou Langhe Technology Company Limited (86Y5QKVXN9)",
@@ -90,7 +99,8 @@
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "include": "scripts/installer.nsh"
     }
   },
   "dependencies": {

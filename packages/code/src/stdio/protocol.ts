@@ -101,6 +101,9 @@ export type RequestMethod =
   | "getAccountInfo"
   | "login"
   | "logout"
+  // Git (deep link: install the credential helper git calls for repositories
+  // cloned from the link)
+  | "installGitCredentialHelper"
   // Memory files (user-level ~/.wave/AGENTS.md and project-level <workdir>/AGENTS.md)
   | "getAgentsContent"
   | "setAgentsContent"
