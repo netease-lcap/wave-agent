@@ -43,6 +43,7 @@ export default {
           items: [
             { text: "产品矩阵：五种形态", link: "/#产品矩阵-五种形态" },
             { text: "使用场景", link: "/#使用场景" },
+            { text: "与 Claude Code 的对比", link: "/#vs-claude-code" },
             { text: "支持的操作系统", link: "/#支持的操作系统" },
           ],
         },
