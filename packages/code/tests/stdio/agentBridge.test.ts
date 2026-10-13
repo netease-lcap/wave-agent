@@ -25,6 +25,7 @@ import {
 } from "../../src/utils/worktree.js";
 import { getWorkspaceDiff } from "../../src/utils/workspaceDiff.js";
 import type { WorkspaceDiffResult } from "../../src/utils/workspaceDiff.js";
+import { installGitCredentialHelper } from "../../src/utils/gitCredentialHelper.js";
 
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
@@ -48,6 +49,14 @@ vi.mock("../../src/utils/worktree.js", () => ({
 // tests/utils/workspaceDiff.test.ts + its real-git integration suite.
 vi.mock("../../src/utils/workspaceDiff.js", () => ({
   getWorkspaceDiff: vi.fn(),
+}));
+
+// The deep-link clone's credential helper writes a real script next to
+// auth.json; the bridge's job is only to expose it over RPC, and the script
+// itself is covered by tests/utils/gitCredentialHelper.test.ts plus its
+// real-git integration suite.
+vi.mock("../../src/utils/gitCredentialHelper.js", () => ({
+  installGitCredentialHelper: vi.fn(),
 }));
 
 // writeArtifactFile writes into the artifacts dir on the machine where the
@@ -1756,6 +1765,19 @@ test("logout clears auth", async () => {
   await bridge.handleRequest("logout", {});
 
   expect(clearAuth).toHaveBeenCalled();
+});
+
+test("installGitCredentialHelper 回带 credential.helper 取值（深链 clone）", async () => {
+  const { bridge } = createBridge();
+  const helper = {
+    path: "/home/u/.wave/git-credential-wave",
+    command: "!exec '/home/u/.wave/git-credential-wave'",
+  };
+  vi.mocked(installGitCredentialHelper).mockReturnValue(helper);
+
+  const result = await bridge.handleRequest("installGitCredentialHelper", {});
+
+  expect(result).toEqual(helper);
 });
 
 // ── User preference handlers（设置页保存路径，会话无关） ──────────

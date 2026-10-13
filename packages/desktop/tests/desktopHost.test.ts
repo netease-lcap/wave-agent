@@ -11459,3 +11459,150 @@ describe("项目根口径（sessionCwd vs 漂移的 workingDirectory）", () => 
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// Deep link (wave://clone) — spec docs/specs/desktop/desktop-deep-link.md
+// ---------------------------------------------------------------------------
+
+describe("deep link clone", () => {
+  const REPO = "https://git.example.com/team/repo.git";
+
+  function cloneLink(): string {
+    const params = [`repo=${encodeURIComponent(REPO)}`];
+    params.push(`prompt=${encodeURIComponent("实现 spec")}`);
+    return `wave://clone?${params.join("&")}`;
+  }
+
+  /**
+   * Script both dialogs. `responses` are consumed in call order by
+   * showMessageBox (confirm / login / 目录已存在 warnings); showOpenDialog
+   * answers `picked` once and reports "cancelled" afterwards.
+   */
+  function scriptDialogs(responses: number[], picked?: string): void {
+    const queue = [...responses];
+    type MessageResult = Awaited<ReturnType<typeof dialog.showMessageBox>>;
+    type OpenResult = Awaited<ReturnType<typeof dialog.showOpenDialog>>;
+    vi.mocked(dialog.showMessageBox).mockImplementation(
+      async () =>
+        ({ response: queue.shift() ?? 0 }) as unknown as MessageResult,
+    );
+    vi.mocked(dialog.showOpenDialog).mockImplementation(
+      async () =>
+        ({
+          canceled: picked === undefined,
+          filePaths: picked === undefined ? [] : [picked],
+        }) as unknown as OpenResult,
+    );
+  }
+
+  /** Requests only this flow can make (the CLI owns both). */
+  function deepLinkRequests(method: string) {
+    return h.clientRequests.filter((request) => request.method === method);
+  }
+
+  // Restore the electron mock's defaults so no later suite inherits a script.
+  afterEach(() => {
+    type MessageResult = Awaited<ReturnType<typeof dialog.showMessageBox>>;
+    type OpenResult = Awaited<ReturnType<typeof dialog.showOpenDialog>>;
+    vi.mocked(dialog.showMessageBox).mockImplementation(
+      async () => ({ response: 0 }) as unknown as MessageResult,
+    );
+    vi.mocked(dialog.showOpenDialog).mockImplementation(
+      async () => ({ canceled: true, filePaths: [] }) as unknown as OpenResult,
+    );
+  });
+
+  it("拒绝不支持的唤起动作：只给可读提示，不弹对话框、不发起任何工作", async () => {
+    const { host, sent } = await readyHost();
+    h.clientRequests.length = 0;
+
+    await host.handleDeepLink(`wave://open?repo=${encodeURIComponent(REPO)}`);
+
+    expect(sent("showToast").at(-1)?.toast.message).toContain(
+      "不支持的唤起动作",
+    );
+    expect(dialog.showMessageBox).not.toHaveBeenCalled();
+    expect(dialog.showOpenDialog).not.toHaveBeenCalled();
+    expect(deepLinkRequests("installGitCredentialHelper")).toHaveLength(0);
+  });
+
+  it("链接里的未知参数一律不读取：带了 token 也仍要求本机登录", async () => {
+    const { host } = await readyHost();
+    h.authStatusResults = Array(4).fill(false);
+    h.clientRequests.length = 0;
+    scriptDialogs([1]); // 登录引导 → 取消
+
+    await host.handleDeepLink(
+      `wave://clone?repo=${encodeURIComponent(REPO)}&token=${encodeURIComponent("sso-abc")}`,
+    );
+
+    // 凭据不能由一条任何网页都能构造的链接安装（契约见 deepLink.ts），所以
+    // 本机没登录时唯一的出路仍是登录引导；`saveAuthToken` 这个 RPC 也随之
+    // 从协议里删掉了，这条断言是防止它被重新接回来的回归闸。
+    expect(deepLinkRequests("saveAuthToken")).toHaveLength(0);
+    expect(vi.mocked(dialog.showMessageBox).mock.calls[0][1].message).toContain(
+      "需要先登录",
+    );
+    expect(h.agentInstances).toHaveLength(1);
+  });
+
+  it("本机未登录时先引导登录，用户取消即结束（不弹确认框、不 clone）", async () => {
+    const { host } = await readyHost();
+    h.authStatusResults = Array(4).fill(false);
+    scriptDialogs([1]); // 登录引导 → 取消
+
+    await host.handleDeepLink(cloneLink());
+
+    // 链接不携带凭据 ⇒ 没有第二条认证路径，登录被拒就不该再问「要不要 clone」。
+    expect(dialog.showMessageBox).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(dialog.showMessageBox).mock.calls[0][1].message).toContain(
+      "需要先登录",
+    );
+    expect(dialog.showOpenDialog).not.toHaveBeenCalled();
+    expect(deepLinkRequests("installGitCredentialHelper")).toHaveLength(0);
+    expect(h.agentInstances).toHaveLength(1);
+  });
+
+  it("未登录时登录引导先于确认框；登录完成后继续走确认框", async () => {
+    const { host } = await readyHost();
+    h.authStatusResults = Array(4).fill(false);
+    h.clientRequests.length = 0;
+    scriptDialogs([0, 1]); // 登录引导 → 登录；确认框 → 取消
+
+    await host.handleDeepLink(cloneLink());
+
+    expect(deepLinkRequests("login")).toHaveLength(1);
+    // 第二个对话框是 clone 确认框（不是又一次登录引导）。
+    expect(vi.mocked(dialog.showMessageBox).mock.calls[1][1].message).toContain(
+      "是否克隆以下仓库",
+    );
+    expect(dialog.showOpenDialog).not.toHaveBeenCalled();
+  });
+
+  it("目标目录已存在时提示另选，不 clone、不新建会话", async () => {
+    const { host } = await readyHost();
+    h.authStatusResults = Array(4).fill(true);
+    h.existingPaths.add(path.join("/work", "repo"));
+    scriptDialogs([0, 1], "/work"); // 确认 → 继续；目录已存在 → 取消
+
+    await host.handleDeepLink(cloneLink());
+
+    expect(dialog.showOpenDialog).toHaveBeenCalledTimes(1);
+    // 目录校验发生在准备凭据之前 —— 没有 clone 起手，也没有新会话。
+    expect(deepLinkRequests("installGitCredentialHelper")).toHaveLength(0);
+    expect(h.agentInstances).toHaveLength(1);
+  });
+
+  it("同一条链接被重复触发时只处理一次", async () => {
+    const { host } = await readyHost();
+    h.authStatusResults = Array(4).fill(true);
+    scriptDialogs([1]); // 确认框 → 取消
+    const link = cloneLink();
+
+    await host.handleDeepLink(link);
+    await host.handleDeepLink(link);
+
+    expect(dialog.showMessageBox).toHaveBeenCalledTimes(1);
+    expect(dialog.showOpenDialog).not.toHaveBeenCalled();
+  });
+});

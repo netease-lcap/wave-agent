@@ -78,6 +78,7 @@ import {
 import { logger } from "../utils/logger.js";
 import { isUserCheckpointMessage } from "../utils/rewindCheckpoints.js";
 import { getWorkspaceDiff } from "../utils/workspaceDiff.js";
+import { installGitCredentialHelper } from "../utils/gitCredentialHelper.js";
 
 export type NotificationEmitter = (
   method: string,
@@ -391,6 +392,8 @@ export class AgentBridge {
         return this.login(p.serverUrl as string | undefined);
       case "logout":
         return this.logout();
+      case "installGitCredentialHelper":
+        return installGitCredentialHelper();
 
       // ── Memory files (settings UI — user-level ~/.wave/AGENTS.md and
       //    project-level <workdir>/AGENTS.md) ──
