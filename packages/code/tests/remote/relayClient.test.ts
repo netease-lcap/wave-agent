@@ -12,6 +12,7 @@ import {
   parseRelayControlFrame,
   parseRelayFrame,
   type RelayEnvelope,
+  RELAY_CLOSE_BACKPRESSURE,
   RELAY_MAX_ATTEMPTS,
   RELAY_MAX_BUFFERED_BYTES,
   RELAY_MAX_UNAVAILABLE_ATTEMPTS,
@@ -181,6 +182,9 @@ describe("RelayClient", () => {
     const client = createClient();
     client.start();
     sockets[0].open();
+    sockets[0].deliver(
+      JSON.stringify({ type: "auth_ok", role: "host", hostId: "h1" }),
+    );
 
     vi.advanceTimersByTime(RELAY_PING_INTERVAL_MS * 3);
     const pings = sockets[0].frames().filter((f) => f.type === "ping");
@@ -211,7 +215,74 @@ describe("RelayClient", () => {
 
     sockets[0].open();
     expect(client.send({ method: "pong" })).toBe(true);
+    sockets[0].deliver(
+      JSON.stringify({ type: "auth_ok", role: "host", hostId: "h1" }),
+    );
     expect(sockets[0].frames().at(-1)).toEqual({ method: "pong" });
+  });
+
+  it("should hold back every frame until auth_ok, then replay them in order", () => {
+    const client = createClient();
+    client.start();
+    sockets[0].open();
+
+    client.send({ method: "sessionStatus", params: { sessions: [] } });
+    client.sendControl({ type: "host_state", sessionId: "s1", state: "idle" });
+    client.send({ method: "messageDelta", params: { text: "hi" } });
+
+    // An unauthenticated connection carries the handshake and nothing else:
+    // the relay parses any other frame as `auth`, and a frame it cannot parse
+    // is a permanent 4003 — the machine would never come back on its own.
+    expect(sockets[0].frames()).toEqual([
+      {
+        type: "auth",
+        credential: { type: "host", token: "rch_host-token" },
+        version: "1.3.0",
+      },
+    ]);
+
+    sockets[0].deliver(
+      JSON.stringify({ type: "auth_ok", role: "host", hostId: "h1" }),
+    );
+    expect(sockets[0].frames().map((f) => f.type ?? f.method)).toEqual([
+      "auth",
+      "sessionStatus",
+      "host_state",
+      "messageDelta",
+    ]);
+  });
+
+  it("should replay what was parked on the connection that dropped", () => {
+    const client = createClient();
+    client.start();
+    sockets[0].open();
+    client.send({ method: "messageDelta", params: { text: "hi" } });
+    sockets[0].drop(1006);
+
+    vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS);
+    const retried = sockets.at(-1)!;
+    retried.open();
+    retried.deliver(
+      JSON.stringify({ type: "auth_ok", role: "host", hostId: "h1" }),
+    );
+
+    expect(retried.frames().map((f) => f.type ?? f.method)).toEqual([
+      "auth",
+      "messageDelta",
+    ]);
+  });
+
+  it("should drop the link rather than park past the queue ceiling", () => {
+    const client = createClient();
+    client.start();
+    sockets[0].open();
+
+    const huge = "x".repeat(RELAY_MAX_BUFFERED_BYTES + 1);
+    expect(client.send({ method: "messageDelta", params: { huge } })).toBe(
+      false,
+    );
+    expect(sockets[0].closed?.code).toBe(RELAY_CLOSE_BACKPRESSURE);
+    expect(client.getState()).toBe("closed");
   });
 
   it("should retry a dropped link up to the budget, then report fatal", () => {
@@ -289,6 +360,9 @@ describe("RelayClient", () => {
     const client = createClient();
     client.start();
     sockets[0].open();
+    sockets[0].deliver(
+      JSON.stringify({ type: "auth_ok", role: "host", hostId: "h1" }),
+    );
 
     sockets[0].bufferedAmount = RELAY_MAX_BUFFERED_BYTES + 1;
     expect(client.send({ method: "pong" })).toBe(false);
@@ -404,6 +478,10 @@ describe("relay control frames", () => {
     });
     client.start();
     sockets[0].open();
+    // A usable connection: nothing but the auth frame may precede `auth_ok`.
+    sockets[0].deliver(
+      JSON.stringify({ type: "auth_ok", role: "host", hostId: "h1" }),
+    );
     return client;
   }
 
@@ -487,7 +565,10 @@ describe("relay control frames", () => {
       }),
     );
 
-    expect(onAuthenticated).not.toHaveBeenCalled();
+    // One handshake, from `openClient` — not two: `jsonrpc` disqualifies this
+    // frame as a control frame, so it is a JSON-RPC call and belongs to the
+    // bridge, `type` and all.
+    expect(onAuthenticated).toHaveBeenCalledTimes(1);
     expect(onFrame).toHaveBeenCalledWith({ method: "getMessages" });
   });
 });
