@@ -77,6 +77,11 @@ import {
   removeWorktree,
 } from "../utils/worktree.js";
 import { logger } from "../utils/logger.js";
+import {
+  InvalidMessageWindowError,
+  sliceMessageWindow,
+  type MessageWindowResult,
+} from "../remote/messageWindow.js";
 import { isUserCheckpointMessage } from "../utils/rewindCheckpoints.js";
 import { getWorkspaceDiff } from "../utils/workspaceDiff.js";
 import { installGitCredentialHelper } from "../utils/gitCredentialHelper.js";
@@ -1432,72 +1437,20 @@ export class AgentBridge {
     const all = entry.agent.displayMessages;
     const contextUsagePercent = this.contextUsagePercentOf(entry.agent);
 
-    const before = window?.before;
-    const since = window?.since;
-    const rawLimit = window?.limit;
-    if (
-      rawLimit !== undefined &&
-      (!Number.isInteger(rawLimit) || rawLimit < 1)
-    ) {
-      // Refusing beats quietly widening the read: a caller that meant to bound
-      // the payload and got the whole thread back has no way to notice.
-      throw new RpcError(
-        PROTOCOL_INVALID_PARAMS,
-        `getMessages limit must be a positive integer, got ${String(rawLimit)}`,
-      );
-    }
-    const limit = rawLimit === undefined ? undefined : rawLimit;
-
-    if (before === undefined && since === undefined && limit === undefined) {
-      return { messages: all, contextUsagePercent };
-    }
-
-    const lastIndexOfId = (id: string): number => {
-      for (let i = all.length - 1; i >= 0; i--) {
-        if (all[i].id === id) return i;
+    // The slicing is shared with the CLI front end (`RemoteControlCliHost`): the
+    // phone's reconciliation rules belong to the wire contract, not to this
+    // registry, and the two hosts must answer identically.
+    let sliced: MessageWindowResult | undefined;
+    try {
+      sliced = sliceMessageWindow(all, window);
+    } catch (err) {
+      if (err instanceof InvalidMessageWindowError) {
+        throw new RpcError(PROTOCOL_INVALID_PARAMS, err.message);
       }
-      return -1;
-    };
-
-    if (since !== undefined) {
-      const at = lastIndexOfId(since);
-      if (at === -1) {
-        return {
-          messages: [],
-          contextUsagePercent,
-          reset: true,
-          total: all.length,
-        };
-      }
-      const later = all.slice(at + 1);
-      return {
-        messages: limit === undefined ? later : later.slice(-limit),
-        contextUsagePercent,
-        hasMore: false,
-        total: all.length,
-      };
+      throw err;
     }
-
-    // Backward paging; without `before` this is a tail read (`limit` only).
-    const end = before === undefined ? all.length : lastIndexOfId(before);
-    if (end === -1) {
-      // The anchor is gone. Older history may have been truncated along with
-      // it, so answer with an empty page: the caller stops paging rather than
-      // looping on an anchor that will never resolve.
-      return {
-        messages: [],
-        contextUsagePercent,
-        hasMore: false,
-        total: all.length,
-      };
-    }
-    const start = limit === undefined ? 0 : Math.max(0, end - limit);
-    return {
-      messages: all.slice(start, end),
-      contextUsagePercent,
-      hasMore: start > 0,
-      total: all.length,
-    };
+    if (!sliced) return { messages: all, contextUsagePercent };
+    return { ...sliced, contextUsagePercent };
   }
 
   private async getFullMessageThread(sessionId?: string): Promise<{

@@ -64,6 +64,7 @@ export const useInputManager = (
     onReloadPlugins,
     onAddDir,
     onRenameSession,
+    onRemoteControlCommand,
     onPlanCommand,
     isIdle: isIdleProp,
   } = callbacks;
@@ -290,6 +291,8 @@ export const useInputManager = (
                 await onAddDir?.(effect.args);
               } else if (command === "rename") {
                 await onRenameSession?.(effect.args);
+              } else if (command === "remote-control") {
+                await onRemoteControlCommand?.(effect.args);
               } else if (command === "plan") {
                 await onPlanCommand?.(effect.args);
               }
@@ -323,6 +326,7 @@ export const useInputManager = (
     onReloadPlugins,
     onAddDir,
     onRenameSession,
+    onRemoteControlCommand,
     onPlanCommand,
   ]);
 
