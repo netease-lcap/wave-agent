@@ -605,6 +605,17 @@ export const MessageList = forwardRef<
     [virtualizer],
   );
 
+  // The bottom WITHOUT the virtualizer's accounting: used for content that sits
+  // outside the row spacer (the compaction hint), where scrollToEnd lands short
+  // by that content's own height. Marked programmatic like every other write, so
+  // its 'scroll' event can never be read as a user gesture.
+  const pinToTrueBottom = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    markProgrammaticScroll();
+    container.scrollTop = container.scrollHeight;
+  }, [markProgrammaticScroll]);
+
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = "smooth", force = false) => {
       const container = containerRef.current;
@@ -639,9 +650,15 @@ export const MessageList = forwardRef<
     [messages, isStreaming, doScrollToBottom],
   );
 
-  // Expose scrollToBottom method to parent component
+  // Expose ONE explicit "bring me to the bottom" request to the parent (host
+  // commands: confirmation shown, pane/session bound, after rewind, settings
+  // saved). It is a request, not an order — a user who scrolled up to read
+  // history must not be yanked down because a dialog appeared somewhere else
+  // (spec: 显式置底请求不得覆盖阅读位置). Restoring follow has exactly two
+  // ways: the user scrolls back to the real bottom, or sends a new message.
   useImperativeHandle(ref, () => ({
     scrollToBottom: (behavior: ScrollBehavior = "smooth") => {
+      if (userScrolledUpRef.current) return;
       doScrollToBottom(behavior);
     },
   }));
@@ -888,10 +905,9 @@ export const MessageList = forwardRef<
   // static one-liner, so no re-pin is needed as its tail grows. Respect an
   // opt-out: a user reading history isn't yanked back down.
   useEffect(() => {
-    const container = containerRef.current;
-    if (!isCompacting || !container || userScrolledUpRef.current) return;
-    container.scrollTop = container.scrollHeight;
-  }, [isCompacting]);
+    if (!isCompacting || userScrolledUpRef.current) return;
+    pinToTrueBottom();
+  }, [isCompacting, pinToTrueBottom]);
 
   return (
     <div

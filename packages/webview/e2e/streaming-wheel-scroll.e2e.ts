@@ -321,3 +321,71 @@ test("a light wheel nudge inside the old 300px band still suspends following", a
   expect(Math.min(...gaps)).toBeGreaterThan(10);
   expect(end.gap).toBeGreaterThan(300);
 });
+
+/**
+ * The host's "scroll to bottom" command (confirmation shown, pane/session
+ * bound, after rewind, settings saved) is a REQUEST, not an order: a user who
+ * scrolled up to read history must not be yanked down because one of those
+ * events happened somewhere else. The imperative handle used to call
+ * scrollToEnd unconditionally — which is how a permission dialog appearing
+ * mid-stream snapped a parked viewport straight back to the bottom.
+ */
+test("host scrollToBottom request does not override the reading position", async ({
+  webviewPage,
+}) => {
+  const injector = new MessageInjector(webviewPage);
+  await injector.simulateExtensionMessage("setInitialState", {
+    isAuthenticated: true,
+    messages: [],
+    isStreaming: false,
+    sessions: [],
+    permissionMode: "default",
+  });
+  const history = buildHistory(140);
+  history.push({
+    id: "live-msg",
+    role: "assistant",
+    timestamp: new Date().toISOString(),
+    blocks: [{ type: "text", content: "开头", stage: "streaming" }],
+  });
+  await injector.updateMessages(history);
+  await injector.startStreaming();
+  await webviewPage.waitForSelector('[data-message-id="live-msg"]');
+  await webviewPage.waitForFunction(() => {
+    const c = document.getElementById("messagesContainer") as HTMLElement;
+    return c.scrollHeight - c.scrollTop - c.clientHeight <= 2;
+  });
+  await webviewPage.waitForTimeout(300);
+
+  const box = await webviewPage.locator("#messagesContainer").boundingBox();
+  if (!box) throw new Error("no container box");
+  await webviewPage.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  for (let i = 0; i < 12; i++) {
+    const g = await geometry(webviewPage);
+    if (g.gap > 2000) break;
+    await webviewPage.mouse.wheel(0, -240);
+    await webviewPage.waitForTimeout(60);
+  }
+  const parked = await geometry(webviewPage);
+  console.log(`[host-request] parked gap=${parked.gap.toFixed(0)}`);
+  expect(parked.gap).toBeGreaterThan(1500);
+
+  // The host asks for the bottom, twice, while the stream keeps producing.
+  const gaps: number[] = [];
+  for (let i = 0; i < 6; i++) {
+    if (i === 0 || i === 3) {
+      await injector.simulateExtensionMessage("scrollToBottom", {});
+    }
+    await injector.simulateExtensionMessage("updateStreamingContent", {
+      messageId: "live-msg",
+      chunk: chunk(i + 1),
+      stage: "streaming",
+    });
+    await webviewPage.waitForTimeout(140);
+    gaps.push((await geometry(webviewPage)).gap);
+  }
+  console.log(
+    `[host-request] gaps=${JSON.stringify(gaps.map((g) => Math.round(g)))}`,
+  );
+  expect(Math.min(...gaps)).toBeGreaterThan(1500);
+});
