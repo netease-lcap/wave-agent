@@ -11,7 +11,7 @@ vi.mock("@/services/aiService");
 // Mock telemetry modules so Agent.create/destroy don't touch real OTEL
 vi.mock("@/telemetry/instrumentation.js", () => ({
   initializeTelemetry: vi.fn().mockResolvedValue(undefined),
-  shutdownTelemetry: vi.fn().mockResolvedValue(undefined),
+  flushTelemetry: vi.fn().mockResolvedValue(undefined),
   getCurrentConfig: vi.fn().mockReturnValue(undefined),
   getOTELApi: vi.fn().mockReturnValue(undefined),
   isInitialized: vi.fn().mockReturnValue(false),

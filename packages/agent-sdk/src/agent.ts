@@ -53,7 +53,7 @@ import { Container } from "./utils/container.js";
 import { setupAgentContainer } from "./utils/containerSetup.js";
 import {
   initializeTelemetry,
-  shutdownTelemetry,
+  flushTelemetry,
 } from "./telemetry/instrumentation.js";
 import { logOTelEvent } from "./telemetry/events.js";
 import { remoteSettingsService } from "./services/remoteSettingsService.js";
@@ -1016,13 +1016,15 @@ export class Agent {
     // is terminal, no dispatch should ever start afterwards.
     this.isDestroyed = true;
 
-    // Log session_end event and shutdown telemetry
+    // Log session_end event and flush telemetry. Only a flush: the providers are
+    // process-scoped, and tearing them down here would silence the other agents
+    // sharing this process (the daemon hosts every session at once).
     await logOTelEvent("session_end", {
       duration: String(Math.round((Date.now() - this.sessionStartTime) / 1000)),
       totalTokens: String(this.messageManager.getLatestTotalTokens()),
       exitReason: "destroy",
     }).catch(() => {});
-    await shutdownTelemetry();
+    await flushTelemetry();
 
     // Clear message queue callback first to prevent any late triggers from
     // starting async work during teardown

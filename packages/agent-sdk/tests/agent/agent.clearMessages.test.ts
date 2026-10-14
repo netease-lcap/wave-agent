@@ -17,7 +17,7 @@ import type { Usage } from "@/types/index.js";
 vi.mock("@/services/aiService");
 vi.mock("@/telemetry/instrumentation.js", () => ({
   initializeTelemetry: vi.fn().mockResolvedValue(undefined),
-  shutdownTelemetry: vi.fn().mockResolvedValue(undefined),
+  flushTelemetry: vi.fn().mockResolvedValue(undefined),
   getCurrentConfig: vi.fn().mockReturnValue(undefined),
   getOTELApi: vi.fn().mockReturnValue(undefined),
   isInitialized: vi.fn().mockReturnValue(false),

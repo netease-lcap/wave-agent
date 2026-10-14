@@ -24,6 +24,7 @@ order: 30
 1. **假设** `OTEL_TRACES_EXPORTER=otlp` 且 `OTEL_EXPORTER_OTLP_ENDPOINT` 设置为运行中的收集器，**当**用户发送消息且 agent 响应时，**则**收集器收到完整的 trace，包含交互 span、带 token 计数的 LLM 请求 span 和带持续时间的工具执行 span。
 2. **假设** `OTEL_METRICS_EXPORTER=otlp` 且有收集器端点，**当** agent 完成一轮时，**则**收集器收到定期的 metric 导出，包含 token 使用量、延迟直方图和错误计数器。
 3. **假设** `OTEL_LOGS_EXPORTER=otlp` 且有收集器端点，**当**会话开始和结束时，**则**收集器收到 `session_start` 和 `session_end` 的结构化日志事件。
+4. **假设** 同一进程内已经有会话结束过（长驻宿主可承载多个会话，如桌面端远程主机连的 daemon），**当**新会话开始、完成一轮并在其中记录事件时，**则**收集器仍收到该会话的 trace 与事件——导出器是进程级的，单个会话结束不得停止采集。
 
 ---
 

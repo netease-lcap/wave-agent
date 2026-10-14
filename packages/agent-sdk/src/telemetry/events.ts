@@ -20,12 +20,18 @@ interface OTelLogger {
 }
 
 let cachedLogger: OTelLogger | undefined;
+let cachedProvider: unknown;
 
 async function getOTelLogger(): Promise<OTelLogger | undefined> {
-  if (cachedLogger) return cachedLogger;
   try {
     const { logs } = await import("@opentelemetry/api-logs");
-    cachedLogger = logs.getLogger("wave") as OTelLogger;
+    // Keyed on the provider: `shutdownTelemetry()` unregisters it, and a logger
+    // captured from the retired provider would keep dropping every event.
+    const provider = logs.getLoggerProvider();
+    if (!cachedLogger || cachedProvider !== provider) {
+      cachedLogger = logs.getLogger("wave") as OTelLogger;
+      cachedProvider = provider;
+    }
     return cachedLogger;
   } catch {
     return undefined;
