@@ -5,6 +5,9 @@ const mockIsInitialized = vi.fn();
 const mockGetCurrentConfig = vi.fn();
 const mockGetTelemetryAttributes = vi.fn().mockReturnValue({});
 const mockLogEmit = vi.fn();
+// Identity of the registered logger provider — `events.ts` re-resolves the
+// logger when it changes, because the retired provider's logger keeps dropping.
+const mockLoggerProvider: { current: unknown } = { current: {} };
 
 vi.mock("@/telemetry/instrumentation.js", () => ({
   isInitialized: () => mockIsInitialized(),
@@ -14,6 +17,7 @@ vi.mock("@/telemetry/instrumentation.js", () => ({
 
 vi.mock("@opentelemetry/api-logs", () => ({
   logs: {
+    getLoggerProvider: () => mockLoggerProvider.current,
     getLogger: vi.fn().mockReturnValue({ emit: mockLogEmit }),
   },
 }));
@@ -46,6 +50,26 @@ describe("events", () => {
       });
 
       expect(mockLogEmit).not.toHaveBeenCalled();
+    });
+
+    it("should re-resolve the logger when the global provider is replaced", async () => {
+      mockIsInitialized.mockReturnValue(true);
+      mockGetCurrentConfig.mockReturnValue({
+        logUserPrompts: false,
+        logToolContent: false,
+      });
+
+      await events.logOTelEvent("session_start", {});
+      await events.logOTelEvent("session_start", {});
+      const { logs } = await import("@opentelemetry/api-logs");
+      expect(vi.mocked(logs.getLogger)).toHaveBeenCalledTimes(1);
+
+      mockLoggerProvider.current = {};
+
+      await events.logOTelEvent("session_start", {});
+
+      expect(vi.mocked(logs.getLogger)).toHaveBeenCalledTimes(2);
+      expect(mockLogEmit).toHaveBeenCalledTimes(3);
     });
 
     it("should emit event with correct attributes when initialized", async () => {

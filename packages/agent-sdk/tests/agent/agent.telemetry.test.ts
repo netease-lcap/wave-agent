@@ -14,7 +14,7 @@ vi.mock("@/services/aiService");
 // Mock telemetry modules — top-level, referencing hoisted mocks
 vi.mock("@/telemetry/instrumentation.js", () => ({
   initializeTelemetry: initTelemetryMock,
-  shutdownTelemetry: vi.fn().mockResolvedValue(undefined),
+  flushTelemetry: vi.fn().mockResolvedValue(undefined),
   getCurrentConfig: vi.fn().mockReturnValue(undefined),
   getOTELApi: vi.fn().mockReturnValue(undefined),
   isInitialized: vi.fn().mockReturnValue(false),

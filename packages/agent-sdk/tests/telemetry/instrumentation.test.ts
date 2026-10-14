@@ -47,16 +47,21 @@ function fakeHelperChild(stdout: string): EventEmitter {
 function setupMocks() {
   const mockTracerShutdown = vi.fn().mockResolvedValue(undefined);
   const mockLoggerShutdown = vi.fn().mockResolvedValue(undefined);
+  const mockTracerFlush = vi.fn().mockResolvedValue(undefined);
+  const mockLoggerFlush = vi.fn().mockResolvedValue(undefined);
   const mockBasicTracerProvider = vi.fn().mockImplementation(function () {
-    return { shutdown: mockTracerShutdown };
+    return { shutdown: mockTracerShutdown, forceFlush: mockTracerFlush };
   });
   const mockLoggerProvider = vi.fn().mockImplementation(function () {
-    return { shutdown: mockLoggerShutdown };
+    return { shutdown: mockLoggerShutdown, forceFlush: mockLoggerFlush };
   });
   const mockBatchSpanProcessor = vi.fn();
   const mockBatchLogRecordProcessor = vi.fn();
   const mockSetGlobalTracerProvider = vi.fn();
   const mockSetGlobalLoggerProvider = vi.fn();
+  const mockTraceDisable = vi.fn();
+  const mockLogsDisable = vi.fn();
+  const mockDiagSetLogger = vi.fn();
 
   const mockOTLPTraceExporter = vi.fn();
   const mockOTLPLogExporter = vi.fn();
@@ -76,11 +81,19 @@ function setupMocks() {
   vi.doMock("@opentelemetry/resources", () => mockResource);
 
   vi.doMock("@opentelemetry/api", () => ({
-    trace: { setGlobalTracerProvider: mockSetGlobalTracerProvider },
+    trace: {
+      setGlobalTracerProvider: mockSetGlobalTracerProvider,
+      disable: mockTraceDisable,
+    },
+    diag: { setLogger: mockDiagSetLogger },
+    DiagLogLevel: { ERROR: 0 },
   }));
 
   vi.doMock("@opentelemetry/api-logs", () => ({
-    logs: { setGlobalLoggerProvider: mockSetGlobalLoggerProvider },
+    logs: {
+      setGlobalLoggerProvider: mockSetGlobalLoggerProvider,
+      disable: mockLogsDisable,
+    },
   }));
 
   vi.doMock("@opentelemetry/sdk-logs", () => ({
@@ -103,8 +116,13 @@ function setupMocks() {
     mockBatchLogRecordProcessor,
     mockTracerShutdown,
     mockLoggerShutdown,
+    mockTracerFlush,
+    mockLoggerFlush,
     mockSetGlobalTracerProvider,
     mockSetGlobalLoggerProvider,
+    mockTraceDisable,
+    mockLogsDisable,
+    mockDiagSetLogger,
     mockOTLPTraceExporter,
     mockOTLPLogExporter,
     mockResource,
@@ -804,6 +822,34 @@ describe("instrumentation", () => {
       await instrumentation.shutdownTelemetry();
       expect(mocks.mockTracerShutdown).not.toHaveBeenCalled();
       expect(mocks.mockLoggerShutdown).not.toHaveBeenCalled();
+      expect(mocks.mockTraceDisable).not.toHaveBeenCalled();
+    });
+
+    it("should unregister the global providers", async () => {
+      // The API refuses to replace an already-registered global provider, so a
+      // later initializeTelemetry() would keep delegating to this dead one.
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        tracesExporter: "jsonl",
+        logsExporter: "jsonl",
+      });
+
+      await instrumentation.shutdownTelemetry();
+
+      expect(mocks.mockTraceDisable).toHaveBeenCalledTimes(1);
+      expect(mocks.mockLogsDisable).toHaveBeenCalledTimes(1);
+    });
+
+    it("should unregister only the providers that were registered", async () => {
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        tracesExporter: "jsonl",
+      });
+
+      await instrumentation.shutdownTelemetry();
+
+      expect(mocks.mockTraceDisable).toHaveBeenCalledTimes(1);
+      expect(mocks.mockLogsDisable).not.toHaveBeenCalled();
     });
 
     it("should call SDK shutdown when initialized", async () => {
@@ -855,6 +901,67 @@ describe("instrumentation", () => {
 
       // State should still be reset
       expect(instrumentation.isInitialized()).toBe(false);
+    });
+  });
+
+  describe("flushTelemetry", () => {
+    it("should be no-op if not initialized", async () => {
+      await instrumentation.flushTelemetry();
+      expect(mocks.mockTracerFlush).not.toHaveBeenCalled();
+      expect(mocks.mockLoggerFlush).not.toHaveBeenCalled();
+    });
+
+    it("should flush both providers without tearing them down", async () => {
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        tracesExporter: "jsonl",
+        logsExporter: "jsonl",
+      });
+
+      await instrumentation.flushTelemetry();
+
+      expect(mocks.mockTracerFlush).toHaveBeenCalledTimes(1);
+      expect(mocks.mockLoggerFlush).toHaveBeenCalledTimes(1);
+      // Process-scoped: the agent that just finished must not silence the
+      // sessions still running in this process.
+      expect(mocks.mockTracerShutdown).not.toHaveBeenCalled();
+      expect(mocks.mockTraceDisable).not.toHaveBeenCalled();
+      expect(instrumentation.isInitialized()).toBe(true);
+    });
+
+    it("should leave telemetry initialized afterwards", async () => {
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        tracesExporter: "jsonl",
+      });
+      await instrumentation.flushTelemetry();
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        tracesExporter: "jsonl",
+      });
+
+      // Still the first provider — nothing was rebuilt, nothing was skipped.
+      expect(mocks.mockBasicTracerProvider).toHaveBeenCalledTimes(1);
+      expect(instrumentation.isInitialized()).toBe(true);
+    });
+  });
+
+  describe("otel diagnostics", () => {
+    it("should route API diagnostics into the wave logger at error level", async () => {
+      await instrumentation.initializeTelemetry({ enabled: false });
+
+      const [adapter, level] = mocks.mockDiagSetLogger.mock.calls[0]!;
+      expect(level).toBe(0); // DiagLogLevel.ERROR
+
+      const globalLogger = await import("@/utils/globalLogger.js");
+      const warn = vi.mocked(globalLogger.logger.warn);
+      warn.mockClear();
+
+      (adapter as { error: (message: string) => void }).error(
+        "registration refused",
+      );
+
+      expect(warn).toHaveBeenCalledWith("[otel] registration refused");
     });
   });
 

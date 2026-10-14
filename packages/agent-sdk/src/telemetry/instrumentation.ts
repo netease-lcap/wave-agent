@@ -96,6 +96,29 @@ async function loadOTELModules(): Promise<void> {
     import("@opentelemetry/exporter-trace-otlp-http"),
     import("@opentelemetry/exporter-logs-otlp-http"),
   ]);
+
+  installDiagLogger(api!);
+}
+
+/**
+ * Route the OTel API's own diagnostics into wave's logger.
+ *
+ * Everything the API refuses to do (a second global provider registration, a
+ * failed export, an invalid config) is reported only through `diag`, whose
+ * default logger drops the message on the floor. Without this, telemetry that
+ * never took effect is indistinguishable from telemetry that works.
+ */
+function installDiagLogger(otelApi: typeof import("@opentelemetry/api")): void {
+  otelApi.diag.setLogger(
+    {
+      error: (message: string) => logger?.warn(`[otel] ${message}`),
+      warn: (message: string) => logger?.debug(`[otel] ${message}`),
+      info: () => {},
+      debug: () => {},
+      verbose: () => {},
+    },
+    otelApi.DiagLogLevel.ERROR,
+  );
 }
 
 /**
@@ -521,18 +544,67 @@ export async function initializeTelemetry(
 }
 
 /**
- * Shut down OpenTelemetry, flushing all pending data.
+ * Flush pending telemetry without tearing anything down.
+ *
+ * The providers are process-scoped: agents come and go inside one process (the
+ * daemon hosts every session of a remote desktop, `--stdio` re-creates the
+ * agent on `updateConfig`), and one of them finishing must not stop collection
+ * for the sessions still running. So an agent's teardown only flushes — the
+ * lifetime teardown is `shutdownTelemetry()`, which callers reach for when the
+ * process itself is done. Respects shutdownTimeoutMs config.
+ */
+export async function flushTelemetry(): Promise<void> {
+  if (!tracerProvider && !loggerProvider) {
+    return;
+  }
+
+  const timeout = currentConfig?.shutdownTimeoutMs ?? 2_000;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    const timeoutPromise = new Promise<void>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("Telemetry flush timed out")),
+        timeout,
+      );
+    });
+
+    const flushes: Promise<void>[] = [];
+    if (tracerProvider) flushes.push(tracerProvider.forceFlush());
+    if (loggerProvider) flushes.push(loggerProvider.forceFlush());
+
+    await Promise.race([Promise.all(flushes), timeoutPromise]);
+    logger?.debug("OpenTelemetry flushed");
+  } catch (error) {
+    logger?.warn("OpenTelemetry flush failed:", error);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Shut down OpenTelemetry, flushing all pending data and unregistering the
+ * global providers.
  * Respects shutdownTimeoutMs config.
+ *
+ * The unregistration matters: `@opentelemetry/api` refuses to replace an
+ * already-registered global provider — the second `setGlobalTracerProvider()`
+ * returns `false` without touching the delegate — so leaving the providers
+ * registered would make every later `initializeTelemetry()` in the same process
+ * a silent no-op that keeps delegating to this shut-down provider (and
+ * `initialized = true`, so nothing complains). Only `disable()` clears the slot.
  */
 export async function shutdownTelemetry(): Promise<void> {
   if (!tracerProvider && !loggerProvider) {
     return;
   }
 
+  const timeout = currentConfig?.shutdownTimeoutMs ?? 2_000;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
   try {
-    const timeout = currentConfig?.shutdownTimeoutMs ?? 2_000;
     const timeoutPromise = new Promise<void>((_, reject) => {
-      setTimeout(
+      timer = setTimeout(
         () => reject(new Error("Telemetry shutdown timed out")),
         timeout,
       );
@@ -547,6 +619,11 @@ export async function shutdownTelemetry(): Promise<void> {
   } catch (error) {
     logger?.warn("OpenTelemetry shutdown failed:", error);
   } finally {
+    clearTimeout(timer);
+    // Unregister only what this module registered — the global slots are
+    // process-wide, and a host may have put its own provider there.
+    if (tracerProvider) api?.trace.disable();
+    if (loggerProvider) apiLogs?.logs.disable();
     tracerProvider = undefined;
     loggerProvider = undefined;
     initialized = false;
