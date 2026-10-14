@@ -319,11 +319,12 @@ describe("RemoteControlService", () => {
     expect(bridge.handleRequest).not.toHaveBeenCalled();
     expect(socket.frames().at(-1)).toMatchObject({ method: "error" });
 
-    // The eight chat methods are the whole surface.
+    // The nine chat methods are the whole surface.
     expect([...REMOTE_ALLOWED_METHODS].sort()).toEqual([
       "abortMessage",
       "getMessages",
       "getSessionInfo",
+      "listDaemonSessions",
       "listPendingPermissions",
       "listSessions",
       "permissionResponse",
@@ -389,7 +390,9 @@ describe("RemoteControlService", () => {
 
   it("should turn the full-list snapshot into a content-free signal", async () => {
     // The bridge's `messagesChange` carries every display message; forwarding it
-    // verbatim would put a 13 MB frame on the relay.
+    // verbatim would put a 13 MB frame on the relay. The signal keeps the same
+    // method name and drops the payload — the page reads the two shapes apart
+    // (spec remote-control「messagesChange 的两种形态」).
     const service = await connect(createBridgeStub());
     socket.sent.length = 0;
 
@@ -400,7 +403,7 @@ describe("RemoteControlService", () => {
     );
 
     expect(socket.frames()).toEqual([
-      { method: "messagesChanged", sessionId: "s1" },
+      { method: "messagesChange", sessionId: "s1" },
     ]);
   });
 

@@ -313,6 +313,17 @@ export class Agent {
     return this.messageManager.getLatestTotalTokens();
   }
 
+  /**
+   * User-set conversation title, or undefined when the session has none
+   * (`custom-title` in the transcript, spec session-management.md「会话自定义
+   * 标题（重命名）」). Exposed so a host can label a *live* session without
+   * reading the transcript off disk — the remote-control page builds its session
+   * list from in-memory sessions only.
+   */
+  public get customTitle(): string | undefined {
+    return this.messageManager.getCustomTitle();
+  }
+
   /** Get working directory */
   public get workingDirectory(): string {
     return this.workdir;

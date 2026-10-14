@@ -73,7 +73,9 @@
     socketUrl: query.get("ws") || PAGE_CONFIG.socketUrl || "",
     /** Channel key: the `?host=` from the page address the computer printed. */
     hostId: query.get("host") || PAGE_CONFIG.hostId || "",
-    /** Pin the page to one session; otherwise the newest one on the host wins. */
+    /** Pin the page to one session; otherwise the most recently active one wins.
+     * A pin is honored only while that session is still live in the serving
+     * process — the list has no other rule for what the page may open. */
     sessionId: query.get("session") || PAGE_CONFIG.sessionId || "",
     /** First screen: the tail only — never the whole thread (13 MB on a long one). */
     firstPageLimit:
@@ -132,8 +134,14 @@
   var warned = {};
   /** Everything the page has seen for the current session — the window it keeps. */
   var messages = [];
+  /** The serving process's live sessions, as the shared session list renders them. */
   var sessions = [];
   var sessionId = CONFIG.sessionId;
+  /** False until the page has chosen a session once: `?session=` only wins then. */
+  var picked = false;
+  /** Bumped by every pull and by every switch, so a reply that a switch
+   *  overtook can be recognized and dropped instead of landing in the new view. */
+  var pullToken = 0;
   var banner = null;
 
   // ── Page → host plumbing ────────────────────────────────────────
@@ -496,10 +504,32 @@
 
   function deliver(method, params, frameSessionId) {
     var p = params || {};
-    if (frameSessionId) sessionId = frameSessionId;
+    // The channel is device-level: every session this machine's process holds
+    // emits on it, and the envelope's sessionId is the only thing that says
+    // which one a frame belongs to. The page renders exactly one conversation,
+    // so a frame for another session is dropped here — dropping costs nothing
+    // (a session the user switches to is re-read through `getMessages`), while
+    // letting it through mixes two conversations into one list and, worse,
+    // re-points the page's own sessionId at whichever session spoke last.
+    //
+    // Approvals are the exception: a pending request is a process-wide fact
+    // (`listPendingPermissions` reports every session's, and the reply is routed
+    // by requestId, not by session), and it is the one thing the user must not
+    // miss — it is usually waiting in a session they are not looking at.
+    if (
+      frameSessionId &&
+      frameSessionId !== sessionId &&
+      method !== "permissionRequest"
+    ) {
+      return;
+    }
 
     switch (method) {
       case "messagesChange":
+      // The machine's remote path sends the same notification under the older
+      // name when the CLI on the other end predates the rename; both mean "the
+      // list changed, no payload".
+      case "messagesChanged":
         // Two shapes: the full array (a host snapshot) and the content-free
         // signal the remote path sends instead. The signal is the norm here —
         // 13 MB of displayMessages must never reach the phone.
@@ -606,16 +636,19 @@
     // Nothing to ask: `boot` already put the reason on screen (not logged in,
     // no channel key, handshake refused).
     if (blocked) return Promise.resolve();
+    var token = ++pullToken;
     return pickSession()
       .then(function () {
-        if (!sessionId) return null;
+        if (token !== pullToken || !sessionId) return null;
         return request("getMessages", { limit: CONFIG.firstPageLimit });
       })
       .then(function (result) {
+        if (token !== pullToken) return null;
         if (result) messages = result.messages || [];
         return request("listPendingPermissions", {});
       })
       .then(function (result) {
+        if (token !== pullToken) return null;
         var requests = (result && result.requests) || [];
         if (!sessionId && requests.length)
           sessionId = requests[0].sessionId || "";
@@ -638,7 +671,7 @@
         });
       })
       .catch(function (err) {
-        if (blocked) return;
+        if (blocked || token !== pullToken) return;
         showStatus("拉取会话失败：" + err.message);
       });
   }
@@ -648,36 +681,96 @@
     if (!sessionId) return pullSnapshot();
     var last = messages.length ? messages[messages.length - 1].id : "";
     if (!last) return pullSnapshot();
+    var token = pullToken;
     return request("getMessages", { since: last, limit: CONFIG.firstPageLimit })
       .then(function (result) {
+        // A switch since this was sent owns the view now: its own snapshot is
+        // already on its way, and this reply describes the previous session.
+        if (token !== pullToken) return null;
         if (result.reset) return pullSnapshot();
         var later = result.messages || [];
         for (var i = 0; i < later.length; i++) messages.push(later[i]);
         post({ command: "updateMessages", messages: messages });
       })
       .catch(function (err) {
+        if (token !== pullToken) return null;
         warnOnce("resync", "补差失败，改为重拉：" + err.message);
         return pullSnapshot();
       });
   }
 
+  /**
+   * The sessions this machine's process holds **right now** — the page's session
+   * list, and the only set it can actually open.
+   *
+   * Deliberately `listDaemonSessions` (the in-memory registry) and not
+   * `listSessions` (the transcripts on disk): reading a session requires it to
+   * be live in the serving process, so the disk list would render entries that
+   * fail the moment they are tapped, and it only spans one working directory.
+   * Entries are mapped onto the shape the shared list renders, so the webview
+   * needs no special case.
+   */
   function pickSession() {
-    return request("listSessions", {})
+    return request("listDaemonSessions", {})
       .then(function (result) {
-        sessions = (result && result.sessions) || [];
-        if (!sessionId && sessions.length) {
-          sessionId =
-            CONFIG.sessionId || sessions[0].id || sessions[0].sessionId;
-        }
-        if (!sessionId) showStatus("电脑侧还没有会话。");
+        sessions = ((result && result.sessions) || []).map(toSessionMetadata);
+        // Most recently active first: the list is a picker, and this is the only
+        // ordering signal the page has (it cannot see the computer's screen).
+        sessions.sort(function (a, b) {
+          return String(b.lastActiveAt || "").localeCompare(
+            String(a.lastActiveAt || ""),
+          );
+        });
+        chooseSession();
+        if (!sessionId) showStatus("电脑侧还没有正在跑的会话。");
         else clearStatus();
       })
       .catch(function (err) {
-        console.warn("[wave-remote] listSessions 失败", err);
+        // A refusal here is not cosmetic: with no list there is no session, so
+        // the page would otherwise sit there blank. The likeliest cause is a
+        // machine older than this page (the method is behind the machine's own
+        // remote allowlist), which the relay's version floor is meant to catch
+        // before this can happen.
+        showStatus("读不到电脑侧的会话列表：" + err.message);
       });
   }
 
+  /**
+   * Keep the current pick if it is still live, else re-pick. A session can end
+   * while the page sits idle (the user closed it, or the daemon was restarted),
+   * and a dead id would only produce "Session not found" on every read.
+   */
+  function chooseSession() {
+    if (currentSession(sessions, sessionId)) {
+      picked = true;
+      return;
+    }
+    // `?session=` is a pin from the address, honored only on the first pick and
+    // only when it names a session this process holds — the same rule the list
+    // itself follows. Afterwards the user's own choice wins.
+    var pinned = picked
+      ? undefined
+      : currentSession(sessions, CONFIG.sessionId);
+    picked = true;
+    var next = pinned || sessions[0];
+    sessionId = next ? next.id : "";
+  }
+
+  /** Registry entry (`listDaemonSessions`) → what the shared list renders. */
+  function toSessionMetadata(entry) {
+    return {
+      id: entry.sessionId,
+      sessionType: "main",
+      workdir: entry.workingDirectory,
+      customTitle: entry.customTitle,
+      firstMessage: entry.firstMessage,
+      lastActiveAt: entry.lastActiveAt,
+      isLoading: entry.isLoading === true,
+    };
+  }
+
   function currentSession(list, id) {
+    if (!id) return undefined;
     for (var i = 0; i < list.length; i++) {
       if (list[i].id === id || list[i].sessionId === id) return list[i];
     }
@@ -733,6 +826,33 @@
           });
         });
         return;
+
+      case "restoreSession": {
+        // "Show me that conversation in this view" — answered **locally**, which
+        // is the whole point of the phone being a control surface. The machine's
+        // own `restoreSession` is an *in-place* load: it swaps the target
+        // conversation into the session it replaces, which on a desktop host is
+        // the conversation the user is looking at. The page only re-points its
+        // own view at a session that is already live in the serving process, so
+        // nothing on the computer moves (spec remote-control「Web 页作为第五种
+        // 宿主」场景 9).
+        if (!msg.sessionId || msg.sessionId === sessionId) return;
+        var target = currentSession(sessions, msg.sessionId);
+        if (!target) {
+          // Only live sessions are actionable; the list is built from them, so
+          // this is the "the session ended while the list was open" case.
+          showStatus("这条会话已经不在电脑侧的运行中了。");
+          return;
+        }
+        sessionId = target.id;
+        picked = true;
+        messages = [];
+        // Re-pull instead of asking the machine to switch: the target is already
+        // live, so its tail and its pending approvals come through the same
+        // `getMessages` + `listPendingPermissions` path a cold start uses.
+        pullSnapshot();
+        return;
+      }
 
       case "abortMessage":
         request("abortMessage", {}).catch(function () {});

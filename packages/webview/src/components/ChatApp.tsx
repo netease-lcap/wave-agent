@@ -368,6 +368,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         : (host?.recentWorkdirs?.[0] ?? host?.workdir)
       : effectiveWorkdir;
   const isDesktop = host?.type === "desktop";
+  // The remote-control Web page (spec remote-control「Web 页作为第五种宿主」):
+  // the shim sets `window.waveRemotePage` — the same flag RemoteControlDialog
+  // reads to skip drawing the QR it is itself the target of. That page hides the
+  // new/history buttons like the desktop does and gets one entry of its own: the
+  // sessions the serving process holds right now, which is all it can open.
+  const isRemotePage =
+    typeof window !== "undefined" && window.waveRemotePage === true;
   // Batch 2 (designer prototype): desktop settings full-page and session board
   // view switches. Only the root instance (paneId undefined) owns these — a
   // split-view pane never renders them. settingsOpen covers the desktop
@@ -4019,7 +4026,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         isAuthenticated={state.isAuthenticated}
         // Desktop: 会话新建/历史按钮回归 DesktopSidebar（revert #2021 移除
         // 聊天顶栏「历史对话」跨目录弹窗入口后，顶栏不再渲染会话按钮）。
-        hideSessionButtons={isDesktop}
+        // Remote Web page: 同口径隐藏这一对，改为单个「会话」入口。
+        hideSessionButtons={isDesktop || isRemotePage}
+        sessionSwitchButton={isRemotePage}
         hideMoreButton={isDesktop}
         panelToggle={
           isDesktop

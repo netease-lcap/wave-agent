@@ -1119,6 +1119,76 @@ test("getFullMessageThread returns messages and sessionIds", async () => {
   expect(mockAgent.getFullMessageThread).toHaveBeenCalled();
 });
 
+test("listDaemonSessions labels live sessions for the remote page's list", async () => {
+  const { bridge } = createBridge();
+  // The SDK module is auto-mocked; give getMessageContent a real-ish implementation.
+  vi.mocked(getMessageContent).mockImplementation((m) => {
+    const block = m.blocks.find((b) => b.type === "text");
+    return block && "content" in block ? (block.content as string) : "";
+  });
+  const displayMessages = [
+    // A meta user message is UI scaffolding, not something the user typed, so it
+    // must not become the session's label.
+    {
+      id: "m1",
+      role: "user",
+      isMeta: true,
+      blocks: [{ type: "text", content: "system reminder" }],
+      timestamp: "2026-10-14T10:00:00.000Z",
+    },
+    {
+      id: "m2",
+      role: "user",
+      blocks: [{ type: "text", content: "  修一下登录页的报错  " }],
+      timestamp: "2026-10-14T10:00:01.000Z",
+    },
+    {
+      id: "m3",
+      role: "assistant",
+      blocks: [{ type: "text", content: "好" }],
+      timestamp: "2026-10-14T10:00:09.000Z",
+    },
+  ] as Message[];
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ displayMessages, customTitle: "登录页" }),
+  );
+
+  await bridge.handleRequest("initialize", {});
+  const result = (await bridge.handleRequest("listDaemonSessions", {})) as {
+    sessions: Array<Record<string, unknown>>;
+  };
+
+  expect(result.sessions).toHaveLength(1);
+  expect(result.sessions[0]).toMatchObject({
+    sessionId: "test-session-id",
+    workingDirectory: "/test/workdir",
+    customTitle: "登录页",
+    firstMessage: "修一下登录页的报错",
+    // The ordering key is the *last* display message, so a running session sorts
+    // above an idle one that was started later.
+    lastActiveAt: "2026-10-14T10:00:09.000Z",
+    messageCount: 3,
+  });
+});
+
+test("listDaemonSessions omits the label fields it has no material for", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(getMessageContent).mockImplementation(() => "");
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const result = (await bridge.handleRequest("listDaemonSessions", {})) as {
+    sessions: Array<Record<string, unknown>>;
+  };
+
+  // Absent rather than empty: the page's list falls back to its own placeholder
+  // and its sort key, and an older CLI that never heard of these fields stays
+  // wire-compatible either way.
+  expect(result.sessions[0]).not.toHaveProperty("customTitle");
+  expect(result.sessions[0]).not.toHaveProperty("firstMessage");
+  expect(result.sessions[0]).not.toHaveProperty("lastActiveAt");
+});
+
 test("listRewindCheckpoints filters to real user messages and flattens content", async () => {
   const { bridge } = createBridge();
   // The SDK module is auto-mocked; give getMessageContent a real-ish implementation.
