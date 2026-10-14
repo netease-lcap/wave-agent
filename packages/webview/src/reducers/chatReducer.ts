@@ -213,10 +213,16 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         // 原样落镜像供 SettingsPage 渲染期守卫比对。
         projectSettingsWorkdir: action.payload.workdir,
       };
-    case "SET_INITIAL_STATE":
+    case "SET_INITIAL_STATE": {
+      // rewind 路径带 keepMessages：宿主已按同一条规则切过自己的缓存，这份快照
+      // 只为更新其余字段，列表必须保留 webview 切好的那份 —— 否则整份列表会被
+      // 重传覆盖，本地切等于白做。
+      const messages = action.payload.keepMessages
+        ? state.messages
+        : action.payload.messages;
       return {
         ...state,
-        messages: action.payload.messages,
+        messages,
         tasks: action.payload.tasks || [],
         isTaskListCollapsed:
           action.payload.isTaskListCollapsed !== undefined
@@ -242,7 +248,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         // object without firstMessage on pane/webview re-init.
         currentSession: pinSessionTitle(
           action.payload.currentSession || state.currentSession,
-          action.payload.messages,
+          messages,
         ),
         configurationData:
           action.payload.configurationData || state.configurationData,
@@ -266,6 +272,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
             ? action.payload.workdir
             : state.workdir,
       };
+    }
     case "UPDATE_SELECTION":
       return {
         ...state,
@@ -317,6 +324,16 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       );
       if (messages.length === state.messages.length) return state;
       return { ...state, messages };
+    }
+    case "TRUNCATE_MESSAGES": {
+      // rewind：保留到 `messageId` 最后一次出现之前。用 lastIndexOf 与服务端
+      // 同规则（压缩后同 id 会重复出现，用户看到的是最后一次那份），因此两边
+      // 各自本地切完的结果一致。锚点不在列表里就 no-op —— 交回宿主的下一次快照。
+      const index = state.messages
+        .map((m) => m.id)
+        .lastIndexOf(action.payload.messageId);
+      if (index === -1) return state;
+      return { ...state, messages: state.messages.slice(0, index) };
     }
     case "UPDATE_STREAMING_CONTENT": {
       const { messageId, chunk, stage } = action.payload;

@@ -242,6 +242,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     useDesktopChrome();
   // Message id awaiting rewind confirmation; non-null shows the ConfirmDialog.
   const [pendingRewindId, setPendingRewindId] = useState<string | null>(null);
+  // In-flight rewind requests, keyed by requestId. The host answers with a
+  // `rewindResult` (no payload) and the webview cuts its own list, so a reply
+  // that arrives late — or for a rewind already superseded — must not touch the
+  // current list (same shape as useSessionRename's pending map).
+  const pendingRewindsRef = useRef(new Map<string, string>());
   // /rewind popup: checkpoint list requested from the host on open.
   const [rewindPopupOpen, setRewindPopupOpen] = useState(false);
   const [rewindCheckpoints, setRewindCheckpoints] = useState<
@@ -1246,6 +1251,25 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         setRewindCheckpoints(message.checkpoints || []);
         setRewindCheckpointsLoading(false);
         break;
+      case "rewindResult": {
+        if (!forThisPane(message)) break;
+        const requestId = String(message.requestId);
+        const anchor = pendingRewindsRef.current.get(requestId);
+        // Unknown / already-consumed reply, or one for a different anchor:
+        // dropping it is the whole point of carrying the attribution key.
+        if (anchor === undefined || message.messageId !== anchor) break;
+        pendingRewindsRef.current.delete(requestId);
+        // The host reports success only after the session file was rewritten;
+        // the list is cut locally rather than re-sent (rewind carries no
+        // payload). A failure leaves the list exactly as it was.
+        if (message.ok === true) {
+          dispatch({
+            type: "TRUNCATE_MESSAGES",
+            payload: { messageId: anchor },
+          });
+        }
+        break;
+      }
       case "configuredModels":
         if (!forThisPane(message)) break;
         setConfiguredModels(message.models || []);
@@ -1456,6 +1480,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           type: "SET_INITIAL_STATE",
           payload: {
             messages: message.messages,
+            // Rewind snapshots ship an empty list + this flag: the webview cut
+            // its own copy and must keep it. Without forwarding the flag the
+            // reducer would take the empty list at face value and blank the
+            // conversation.
+            keepMessages: message.keepMessages,
             tasks: message.tasks,
             isStreaming: message.isStreaming,
             isCommandRunning: message.isCommandRunning,
@@ -2649,9 +2678,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     const messageId = pendingRewindId;
     setPendingRewindId(null);
     if (messageId) {
+      // The host replies with `rewindResult` on this requestId; the list itself
+      // is never re-sent — the reply is what authorizes the local cut below.
+      const requestId = `rewind-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      pendingRewindsRef.current.set(requestId, messageId);
       postToHost({
         command: "rewindToMessage",
         messageId,
+        requestId,
       });
     }
   }, [pendingRewindId, postToHost]);

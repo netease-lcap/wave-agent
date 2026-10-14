@@ -9009,6 +9009,72 @@ describe("input drafts per session (desktop-sessions.md scenario 11/12)", () => 
     });
   });
 
+  it("rewindToMessage with a requestId replies instead of re-sending the list", async () => {
+    const { host, sent } = await readyHost();
+    const agent = seedActiveSession("sess-A");
+    // Compaction can leave the same id twice; both ends cut at the LAST
+    // occurrence, which is what makes the two local truncations agree.
+    agent.messages = [
+      { id: "u1" },
+      { id: "a1" },
+      { id: "u2" },
+      { id: "u3" },
+      { id: "u2" },
+      { id: "a3" },
+    ];
+    agent.getMessages.mockClear();
+
+    await host.handleWebviewMessage({
+      command: "rewindToMessage",
+      messageId: "u2",
+      requestId: "rewind-1",
+    });
+
+    await vi.waitFor(() => {
+      expect(lastAgent().rewindToMessage).toHaveBeenCalledWith("u2");
+      expect(lastState(sent)?.inputContent).toBe("rewound draft");
+    });
+
+    // The reply carries the attribution key and the outcome — never a list.
+    const reply = sent("rewindResult").at(-1) as Record<string, unknown>;
+    expect(reply).toMatchObject({
+      requestId: "rewind-1",
+      messageId: "u2",
+      ok: true,
+    });
+    expect(reply.messages).toBeUndefined();
+    // The host cache was cut in place, at the last occurrence of the anchor.
+    expect(
+      (lastAgent().messages as Array<{ id: string }>).map((m) => m.id),
+    ).toEqual(["u1", "a1", "u2", "u3"]);
+    // The snapshot that follows keeps the webview's own list out of the wire.
+    expect(lastState(sent)).toMatchObject({ keepMessages: true, messages: [] });
+    // Nothing pulled the full list back — that is the cost this removes.
+    expect(agent.getMessages).not.toHaveBeenCalled();
+  });
+
+  it("rewindResult reports failure when the rewind throws", async () => {
+    const { host, sent } = await readyHost();
+    const agent = seedActiveSession("sess-A");
+    agent.rewindToMessage.mockRejectedValueOnce(new Error("disk full"));
+
+    await host.handleWebviewMessage({
+      command: "rewindToMessage",
+      messageId: "u1",
+      requestId: "rewind-2",
+    });
+
+    await vi.waitFor(() => {
+      const reply = sent("rewindResult").at(-1) as Record<string, unknown>;
+      expect(reply).toMatchObject({
+        requestId: "rewind-2",
+        messageId: "u1",
+        ok: false,
+      });
+      expect(typeof reply.error).toBe("string");
+    });
+  });
+
   it("closing a pane keeps the session draft — reopening the session elsewhere restores it", async () => {
     const { host, sent } = await readyHost();
     seedActiveSession("sess-A");

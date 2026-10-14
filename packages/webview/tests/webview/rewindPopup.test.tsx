@@ -119,10 +119,12 @@ describe("/rewind Popup", () => {
     act(() => {
       fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
     });
-    expect(vscode.postMessage).toHaveBeenCalledWith({
-      command: "rewindToMessage",
-      messageId: "u2",
-    });
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "rewindToMessage",
+        messageId: "u2",
+      }),
+    );
   });
 
   it("Escape closes the popup without sending anything", async () => {
@@ -172,9 +174,11 @@ describe("/rewind Popup", () => {
     act(() => {
       fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
     });
-    expect(vscode.postMessage).toHaveBeenCalledWith({
-      command: "rewindToMessage",
-      messageId: "u1",
-    });
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "rewindToMessage",
+        messageId: "u1",
+      }),
+    );
   });
 });
