@@ -5,6 +5,7 @@ import { Agent } from "../../src/agent.js";
 import { buildExecCatalogAnnouncement } from "../../src/exec/catalogAnnouncement.js";
 import {
   renderSearchCallForm,
+  renderSearchSignature,
   resolveSearchArgs,
   searchPool,
 } from "../../src/exec/catalog.js";
@@ -171,6 +172,33 @@ async function main(): Promise<void> {
       !(execTool.config.function.description ?? "").includes("mcp__"),
       "the Exec description names a tool: it must stay independent of the pool",
     );
+
+    section("the Exec description teaches the entry point its own shape");
+    // Every pool tool's shape is reachable *through* `ToolSearch`, which is why the
+    // announcement is a list of names and nothing more. `ToolSearch` is not in the
+    // pool, so its own shape has no other channel: left out of the description, the
+    // model can only guess a parameter name and wait for the error to correct it.
+    const description = execTool.config.function.description ?? "";
+    console.log(
+      description
+        .slice(
+          description.indexOf("- `tools."),
+          description.indexOf("- `console.log"),
+        )
+        .trimEnd(),
+    );
+    // Indented under its bullet, so this is the signature's own bytes plus two spaces.
+    check(
+      description.replace(/^ {2}/gm, "").includes(renderSearchSignature()),
+      "the Exec description does not carry ToolSearch's own signature",
+    );
+    const lean =
+      typeof execTool.leanPrompt === "string" ? execTool.leanPrompt : "";
+    check(
+      lean.includes(renderSearchCallForm()),
+      "the lean prompt does not carry the one-line call form",
+    );
+    check(!/^- - /m.test(lean), "the lean prompt doubles its bullet marker");
 
     section("the announcement — names, sorted, nothing else");
     console.log(note);
@@ -384,6 +412,52 @@ async function main(): Promise<void> {
     if (!used) {
       console.log(
         "   (the model did not get there — the mechanism is what was under test, not the model)",
+      );
+    }
+
+    section("the entry point's shape, as the turn actually used it");
+    // The payoff of putting the signature in the description: the call is built the
+    // first time. Without it the transcript carries the correction round-trip
+    // instead — a guessed parameter name, then the error that names the right one.
+    const searches = agent.messages.flatMap((message) =>
+      message.blocks.flatMap((block) =>
+        block.type === "tool" && (block.parameters ?? "").includes("ToolSearch")
+          ? [block.parameters ?? ""]
+          : [],
+      ),
+    );
+    const toolResults = agent.messages.reduce(
+      (count, message) =>
+        count +
+        message.blocks.filter((block) => block.type === "tool" && block.result)
+          .length,
+      0,
+    );
+    const corrected = agent.messages.reduce(
+      (count, message) =>
+        count +
+        message.blocks.filter(
+          (block) =>
+            block.type === "tool" &&
+            /does not take "|expects "(query|max_results)"/.test(
+              block.result ?? "",
+            ),
+        ).length,
+      0,
+    );
+    if (searches.length > 0) {
+      console.log("— the script it wrote:");
+      console.log(searches[searches.length - 1]);
+    }
+    console.log(
+      `ToolSearch calls: ${searches.length}; tool results scanned: ${toolResults}; ` +
+        `shape errors: ${corrected}`,
+    );
+    // A soft signal on purpose: one sample of one model. Zero reads as "the call was
+    // built without guessing"; it only means anything because something was scanned.
+    if (searches.length > 0 && toolResults > 0 && corrected > 0) {
+      findings.push(
+        `${corrected} ToolSearch shape error(s) — a parameter name was guessed, which the signature in the description exists to prevent`,
       );
     }
   } catch (error) {

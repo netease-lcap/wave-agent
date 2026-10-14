@@ -3,6 +3,7 @@ import type { ChatCompletionFunctionTool } from "openai/resources.js";
 import { execTool } from "../../src/tools/execTool.js";
 import { EXEC_TOOL_NAME } from "../../src/constants/tools.js";
 import { EXEC_SEARCH_NAME } from "../../src/exec/constants.js";
+import { renderSearchSignature } from "../../src/exec/catalog.js";
 import type { ExecPoolEntry } from "../../src/exec/catalog.js";
 import type { McpManager } from "../../src/managers/mcpManager.js";
 import type { ToolContext } from "../../src/tools/types.js";
@@ -82,14 +83,14 @@ describe("execTool declaration", () => {
     expect(execTool.isConcurrencySafe).toBe(false);
   });
 
-  it("names the sandbox surface without any tunable limit", () => {
+  it("names the sandbox surface without any execution budget", () => {
     const description = execTool.prompt!()!;
     expect(description).toContain(`tools.${EXEC_SEARCH_NAME}(`);
     // The execution budgets live in constants.ts and must stay out of
     // model-visible text: the description is byte-frozen for any pool, and a
     // number here would invite the model to reason about the limit instead of
-    // about the script. (The only digits it may contain are a word count like
-    // "5-10".)
+    // about the script. The digits it does carry are a word count like "5-10" and
+    // the search schema's `@default` — the model's own knob, not a hidden budget.
     expect(description).not.toMatch(/\b\d{3,}\b/);
   });
 
@@ -108,12 +109,16 @@ describe("execTool declaration", () => {
     expect(description).not.toContain("tools.mcp__");
   });
 
-  it("names the search entry point without teaching its call form", () => {
-    // The call shape belongs to `search`'s own schema — that is the one place the
-    // model reads the parameters from, and a second copy here could drift from it.
-    const description = execTool.prompt!()!;
-    expect(description).not.toContain("query");
-    expect(description).not.toContain("max_results");
+  it("teaches the search entry point its own call form", () => {
+    // Every other tool's signature is reachable *through* `ToolSearch`; `ToolSearch`
+    // is not in the pool, so its own shape is the one with no other channel. Left out,
+    // the model can only guess a parameter name and wait for the error to correct it.
+    // Rendered from the schema, so this copy cannot drift from what the host accepts.
+    const indented = renderSearchSignature()
+      .split("\n")
+      .map((line) => `  ${line}`)
+      .join("\n");
+    expect(execTool.prompt!()!).toContain(indented);
   });
 
   it("guides the model to describe the script, like Bash does", () => {
