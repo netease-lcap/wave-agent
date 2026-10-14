@@ -420,6 +420,23 @@ export const MessageList = forwardRef<
     paddingEnd: 10,
     // Keep the reading position anchored on appends; follow new content only
     // when the user is already at the end (streaming bottom-pin).
+    // KNOWN BOUNDARY (measured 2026-10-14): this is a SECOND follower that
+    // knows nothing about userScrolledUpRef. On a row-size change the core
+    // keeps the end by itself whenever its own virtual distance from the end is
+    // <= scrollEndThreshold (default 1px), writing through scrollToFn — with the
+    // opt-out latched and every one of our own pins denied, its offsets still
+    // ran 33635 -> 33927 -> 34220 -> 34493 -> 34785 (+292 per streaming chunk).
+    // The window is only that 1px, so an ordinary wheel notch (~120-240px) is
+    // far outside it and the core yields as soon as the viewport has left the
+    // bottom (measured gap 312 -> 1755, growing). Do not "simplify" the follow
+    // away in either direction: handing it to the core drops the gesture layer
+    // (the same bug at 1px instead of 300px), and turning the core's own path
+    // off (anchorTo: "start") strands the initial pin — the 30-row scrolling
+    // conversation in e2e/user-image-tag-tooltip.e2e.ts then never reaches the
+    // bottom within its 5s wait (2/2 reproducible; only followOnAppend: false
+    // is a no-op). shouldAdjustScrollPositionOnItemSizeChange cannot govern it
+    // either: the core consults that hook only on the branch where wasAtEnd is
+    // false (virtual-core index.js:857/876).
     anchorTo: "end",
     followOnAppend: true,
     getItemKey: (i) => visibleMessages[i].id,
