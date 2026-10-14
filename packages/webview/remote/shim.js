@@ -77,11 +77,18 @@
      * A pin is honored only while that session is still live in the serving
      * process — the list has no other rule for what the page may open. */
     sessionId: query.get("session") || PAGE_CONFIG.sessionId || "",
-    /** First screen: the tail only — never the whole thread (13 MB on a long one). */
+    /**
+     * First screen: the tail only — never the whole thread (13 MB on a long
+     * one). 100 messages is ≈0.57 MB at the measured 5.7 KB/message, and that
+     * is the point: the relay's per-subscriber buffer is 1 MiB, and a frame
+     * over it is dropped **without an error** — the phone would then ask for
+     * the same page again, forever. The machine trims any page that comes back
+     * over budget too, so this number is an economy rather than the guarantee.
+     */
     firstPageLimit:
       Number(query.get("limit")) > 0
         ? Number(query.get("limit"))
-        : PAGE_CONFIG.firstPageLimit || 300,
+        : PAGE_CONFIG.firstPageLimit || 100,
   };
 
   var RETRY_MS = 2000;
@@ -488,12 +495,24 @@
     });
   }
 
+  /**
+   * A reply arrives in the host's JSON-RPC envelope — `{id, method:"result",
+   * params:{result}}`, or `method:"error"` with `params:{code,message}` — not as
+   * a bare `{result}`. Reading `frame.result` resolved every request to
+   * `undefined`: `listSessions` fell through to "电脑侧还没有会话。", an empty
+   * `getMessages` page looked like the beginning of the conversation, and no
+   * reply ever rejected.
+   */
   function settle(frame) {
     var entry = pending[frame.id];
     if (!entry) return;
     delete pending[frame.id];
-    if (frame.error) entry.reject(new Error(frame.error.message || "RPC 失败"));
-    else entry.resolve(frame.result);
+    var params = frame.params || {};
+    if (frame.method === "error") {
+      entry.reject(new Error(params.message || "RPC 失败"));
+    } else {
+      entry.resolve(params.result);
+    }
   }
 
   // ── Host → page translation ─────────────────────────────────────
@@ -536,6 +555,12 @@
         if (Array.isArray(p.messages)) {
           messages = p.messages;
           post({ command: "updateMessages", messages: messages });
+        } else if (p.full) {
+          // The signal that stands in for a frame too large to send. It may
+          // have been an approval request (those carry the command and the
+          // diff), so re-reading only the messages is not enough — the whole
+          // snapshot, pending approvals included, is what makes it recoverable.
+          pullSnapshot();
         } else {
           resync();
         }
@@ -673,6 +698,48 @@
       .catch(function (err) {
         if (blocked || token !== pullToken) return;
         showStatus("拉取会话失败：" + err.message);
+      });
+  }
+
+  /**
+   * Scroll-up paging: the page the reader pulled the list up to the top of. The
+   * host's `before` is an EXCLUSIVE anchor and `hasMore` says whether anything is
+   * older still — false is "this was the beginning", which the page shows and
+   * stops asking after. A failure moves nothing and does not fall back to a tail
+   * re-pull: that path replaces the very position the reader is holding on to
+   * (spec「Web 页作为第五种宿主」场景 12).
+   */
+  function loadOlder(before, requestId) {
+    if (!sessionId || !before) {
+      post({
+        command: "olderMessages",
+        requestId: requestId,
+        messages: [],
+        hasMore: false,
+      });
+      return;
+    }
+    request("getMessages", { before: before, limit: CONFIG.firstPageLimit })
+      .then(function (result) {
+        var earlier = (result && result.messages) || [];
+        // This array is the page's window: `resync` anchors its `since` on the
+        // last entry of it. Older messages join the front, exactly as they do in
+        // the webview's own list.
+        if (earlier.length) messages = earlier.concat(messages);
+        post({
+          command: "olderMessages",
+          requestId: requestId,
+          messages: earlier,
+          hasMore: !!(result && result.hasMore),
+        });
+      })
+      .catch(function (err) {
+        warnOnce("older", "翻更早失败：" + err.message);
+        post({
+          command: "olderMessagesError",
+          requestId: requestId,
+          error: String(err.message || err),
+        });
       });
   }
 
@@ -856,6 +923,10 @@
 
       case "abortMessage":
         request("abortMessage", {}).catch(function () {});
+        return;
+
+      case "loadOlderMessages":
+        loadOlder(msg.before, msg.requestId);
         return;
 
       case "confirmationResponse":

@@ -1,5 +1,6 @@
 import React, {
   useEffect,
+  useLayoutEffect,
   useRef,
   useImperativeHandle,
   forwardRef,
@@ -70,6 +71,15 @@ const USER_INPUT_GRACE_MS = 200;
 // compensation writes scrollTop directly — so the threshold is an independent
 // guard, on top of recognizing our own writes by position (see autoScrollRef).
 const BOTTOM_FOLLOW_THRESHOLD_PX = 10;
+
+// How close to the start of the history the viewport has to be before pulling
+// further up counts as "give me the previous page" (phone page only — the three
+// local hosts hand the list the whole transcript, so none of them passes
+// `onLoadOlderMessages`). Not 0: touch scrolling overshoots and settles back, and
+// a wheel/trackpad tick that lands at 3px must still mean "more", not "nothing
+// happened". Same order of magnitude as the bottom threshold above, for the same
+// reason — it is a decision boundary, not a grace margin.
+const OLDER_MESSAGES_TRIGGER_PX = 24;
 
 // Is the viewport at the real bottom? One definition, used both to decide
 // whether following may continue and to re-engage it from the scroll handler.
@@ -261,6 +271,9 @@ export const MessageList = forwardRef<
     compactionStream,
     vscode,
     onRewindToMessage,
+    onLoadOlderMessages,
+    loadingOlder,
+    historyExhausted,
     workdir,
     onOpenPreview,
     onOpenFile,
@@ -270,6 +283,11 @@ export const MessageList = forwardRef<
   const containerRef = useRef<HTMLDivElement>(null);
 
   const prevMessagesLengthRef = useRef(messages.length);
+  // 尾锚定判据用的「上一条尾巴」。列表从此不再只从尾部增长：手机上「上拉翻更早」
+  // 会往**前面**接一整页（长度也变长），而重连补差、rewind 又会截短它。所以「长度
+  // 变长了就是来了新消息」不再成立（会把手翻出来的历史当成新消息、把视口拽到底），
+  // 判据换成「尾巴这条消息 id 变了」——尾部追加才改尾巴，prepend 不改。
+  const prevTailIdRef = useRef(messages[messages.length - 1]?.id);
   const prevQueuedLengthRef = useRef(queuedMessages?.length || 0);
   // True until the first effect run after mount. MessageList only renders once
   // messages exist (empty state shows LoadingLogo/WelcomeView), so the first run
@@ -329,6 +347,23 @@ export const MessageList = forwardRef<
   // size changes (see the re-pin effect below) so any late growth of the
   // total — estimate→measure waves after the initial pin — re-pins.
   const spacerRef = useRef<HTMLDivElement | null>(null);
+
+  // 上拉翻更早：请求发出时读者在看哪条消息、离视口顶多远，以及当时那份列表。
+  // 前两项是「prepend 之后把视口放回原处」要还原的那对坐标——新插进来的行会把
+  // 后面所有行的 offset 整体下移，scrollTop 不动就等于读者被内容顶走了。
+  // `seen` 用来区分「这次列表变化正是那一页」和「请求失败/没有更早」：只有前者
+  // 才动视口（spec remote-control.md 场景 12：失败就原地不动，不回落重拉尾页）。
+  const pendingOlderAnchorRef = useRef<{
+    id: string;
+    offset: number;
+    seen: MessageType[];
+  } | null>(null);
+
+  // 视口是否停在历史最开头。只给「没有更早的消息」那条提示用；和 sticky 一样在
+  // computeSticky 里算，并用同样的「比对 ref、没变就不 setState」避免在流式热路径
+  // 上产生无谓更新。
+  const [atHistoryStart, setAtHistoryStart] = useState(false);
+  const atHistoryStartRef = useRef(false);
 
   // The most-recent user message that has scrolled above the viewport top; pinned
   // at the top of the list as a context hint (设计稿 2236-3792).
@@ -513,6 +548,64 @@ export const MessageList = forwardRef<
     [virtualizer],
   );
 
+  // Ask the host for the page before the message the reader is sitting on
+  // (phone page only — see MessageListProps.onLoadOlderMessages). Every caller is
+  // a real upward gesture, so a programmatic scroll, a resize compensation or a
+  // browser clamp can never be mistaken for "the user pulled up at the top": they
+  // either go through the gesture gate in handleScroll or do not reach here at
+  // all.
+  const requestOlderMessages = useCallback(() => {
+    if (!onLoadOlderMessages || loadingOlder || historyExhausted) return;
+    const container = containerRef.current;
+    if (!container || container.scrollTop > OLDER_MESSAGES_TRIGGER_PX) return;
+    const at = virtualizer.getVirtualItemForOffset(container.scrollTop);
+    const rows = visibleMessagesRef.current;
+    const anchor = at ? rows[at.index] : rows[0];
+    if (!anchor?.id) return;
+    // Measured from the row's own top edge, so restoring it puts that row back
+    // under the reader at the same distance — the pixel offset within the row
+    // matters as much as the row itself (a long message is usually what the
+    // reader is halfway through).
+    const offset = at ? Math.max(0, container.scrollTop - at.start) : 0;
+    pendingOlderAnchorRef.current = {
+      id: anchor.id,
+      offset,
+      seen: rows,
+    };
+    onLoadOlderMessages(anchor.id);
+  }, [onLoadOlderMessages, loadingOlder, historyExhausted, virtualizer]);
+
+  // Put the reader back on that message once the older page has landed. The
+  // restore has to happen in the same commit as the prepend (layout, not passive)
+  // or the viewport is painted one frame at the wrong place first; it goes
+  // through the virtualizer so the spacer height is written BEFORE the scroll (see
+  // scrollToFn) and the landing is stamped programmatic — otherwise the resulting
+  // scroll event would read as the user's own gesture.
+  useLayoutEffect(() => {
+    const pending = pendingOlderAnchorRef.current;
+    if (!pending) return;
+    // Still in flight: this change is somebody else's (a streaming chunk), so the
+    // anchor stays put and waits for the page itself.
+    if (loadingOlder) return;
+    pendingOlderAnchorRef.current = null;
+    // The list was not extended — the request failed, or it answered "no more".
+    // Either way the reader keeps the position they have (spec 场景 11 / 12).
+    if (messages === pending.seen) return;
+    const index = visibleMessagesRef.current.findIndex(
+      (m) => m.id === pending.id,
+    );
+    // The anchor is gone (a rewind / clear truncated past it): there is no place
+    // in this list to restore, and jumping to the tail would replace what the
+    // reader is looking at.
+    if (index < 0) return;
+    const target = virtualizer.getOffsetForIndex(index, "start");
+    if (!target) return;
+    virtualizer.scrollToOffset(target[0] + pending.offset, {
+      align: "start",
+      behavior: "auto",
+    });
+  }, [messages, loadingOlder, virtualizer]);
+
   // Per-message timeline run data. A run is a maximal sequence of consecutive
   // assistant messages (the virtualized analogue of the old .assistant-group
   // wrapper). Multi-dot runs draw a continuous vertical line: the run's first
@@ -580,6 +673,13 @@ export const MessageList = forwardRef<
       return;
     }
     const scrollTop = container.scrollTop;
+    // Only the "no older messages" line reads this, and only when the host has
+    // said that this is the beginning of the history.
+    const atStart = scrollTop <= OLDER_MESSAGES_TRIGGER_PX;
+    if (atStart !== atHistoryStartRef.current) {
+      atHistoryStartRef.current = atStart;
+      setAtHistoryStart(atStart);
+    }
     // The DOM only holds the visible window, so the sticky candidate is
     // derived from the data + the virtualizer's offset table. The candidate is
     // the last user message whose top edge sits above the viewport top, i.e.
@@ -731,13 +831,19 @@ export const MessageList = forwardRef<
 
     // Initial load scrolls instantly ('auto') — a smooth animation would compute
     // its target once and land short while async content (images, webfonts,
-    // mermaid) is still loading. isNewMessage marks appended messages.
+    // mermaid) is still loading. isNewMessage marks messages appended AT THE TAIL:
+    // the judgement has to look at the tail's identity, not at the length, because
+    // a prepended page also makes this list longer (and a rewind makes it
+    // shorter) without any new message existing at the end.
     const isInitialLoad = isFirstEffectRef.current && messages.length > 0;
     isFirstEffectRef.current = false;
+    const tailId = messages[messages.length - 1]?.id;
     const isNewMessage =
-      messages.length > prevMessagesLengthRef.current ||
+      (tailId !== prevTailIdRef.current &&
+        messages.length >= prevMessagesLengthRef.current) ||
       (queuedMessages?.length || 0) > prevQueuedLengthRef.current;
     prevMessagesLengthRef.current = messages.length;
+    prevTailIdRef.current = tailId;
     prevQueuedLengthRef.current = queuedMessages?.length || 0;
     const reason: FollowReason = isInitialLoad
       ? "initial"
@@ -828,6 +934,10 @@ export const MessageList = forwardRef<
       prevScrollHeightRef.current = container.scrollHeight;
       prevClientHeightRef.current = container.clientHeight;
       computeSticky();
+      // A gesture that took the reader to the top of a window they know is
+      // incomplete asks for the page before it. Deliberately here, past the gate:
+      // only a scroll the user's own gesture produced may page in older history.
+      requestOlderMessages();
     };
 
     // Does this gesture belong to a region INSIDE the list that scrolls
@@ -878,6 +988,10 @@ export const MessageList = forwardRef<
       markUserInput();
       if (!e.ctrlKey && e.deltaY < 0 && !ownsVerticalScroll(e.target)) {
         userScrolledUpRef.current = true;
+        // At the very top there is nothing left to scroll, so this gesture
+        // produces no 'scroll' event at all — the pull-up has to be read from the
+        // wheel itself or the reader keeps pulling at a dead end.
+        requestOlderMessages();
       }
     };
 
@@ -901,6 +1015,9 @@ export const MessageList = forwardRef<
         !ownsVerticalScroll(e.target)
       ) {
         userScrolledUpRef.current = true;
+        // Same reason as the wheel: a finger still pulling at the top moves
+        // nothing, so no 'scroll' event follows to page on.
+        requestOlderMessages();
       }
       lastTouchY = y;
     };
@@ -922,6 +1039,8 @@ export const MessageList = forwardRef<
       // business too (the focus holders here include the table wrapper).
       if (up && !ownsVerticalScroll(e.target)) {
         userScrolledUpRef.current = true;
+        // An arrow / PageUp / Home already at the top scrolls nothing further.
+        requestOlderMessages();
       }
     };
 
@@ -995,7 +1114,14 @@ export const MessageList = forwardRef<
       window.removeEventListener("mousemove", handleWindowMouseMove);
       window.removeEventListener("mouseup", handleWindowMouseUp);
     };
-  }, [messages, queuedMessages, isStreaming, scrollToBottom, computeSticky]);
+  }, [
+    messages,
+    queuedMessages,
+    isStreaming,
+    scrollToBottom,
+    computeSticky,
+    requestOlderMessages,
+  ]);
 
   // Re-pin to the true bottom after async content finishes loading (image
   // decode, webfont reflow, mermaid render). 'load' doesn't bubble, so listen in
@@ -1062,6 +1188,16 @@ export const MessageList = forwardRef<
               <div className="sticky-user-content">{stickyMessage.text}</div>
             </div>
             <div className="sticky-user-scrim" />
+          </div>
+        )}
+        {historyExhausted && atHistoryStart && (
+          // Height-0 sticky box (see MessageList.css): the reader pulled up and
+          // there is nothing before this, so say so instead of letting the pull
+          // die silently. Shown only while the viewport is at the start — that is
+          // where they asked from, and a line parked at the top of the list would
+          // just cover the messages of a reader who is somewhere else entirely.
+          <div className="history-start-hint">
+            <span data-testid="history-start-hint">没有更早的消息</span>
           </div>
         )}
         <>

@@ -219,6 +219,37 @@ export interface UpdateMessagesMessage extends HostToWebviewMessageBase {
   messages: Message[];
 }
 
+/**
+ * Reply to `loadOlderMessages` (spec remote-control.md「Web 页作为第五种宿主」场景
+ * 11): the page pulled itself to the top of a window it only ever had the tail of,
+ * so the host answers with the page **before** that anchor — exclusive of it,
+ * chronological — for the webview to prepend.
+ *
+ * The phone page is the only sender (`window.waveRemotePage`): the three local
+ * hosts hand the webview the whole transcript, so there is nothing older to ask
+ * for. `hasMore: false` is "this was the beginning": the page says so and stops
+ * asking, rather than turning a pull-up into nothing at all.
+ */
+export interface OlderMessagesMessage extends HostToWebviewMessageBase {
+  command: "olderMessages";
+  requestId: number;
+  messages: Message[];
+  hasMore: boolean;
+}
+
+/**
+ * Reply to `loadOlderMessages` that could not be served (the relay link dropped,
+ * the host did not answer). Its job is to end the page's in-flight state without
+ * moving anything: spec 场景 12 keeps the reader's viewport where it is and
+ * refuses to fall back to a tail re-pull, which would replace what they are
+ * reading.
+ */
+export interface OlderMessagesErrorMessage extends HostToWebviewMessageBase {
+  command: "olderMessagesError";
+  requestId: number;
+  error: string;
+}
+
 export interface UpdateTasksMessage extends HostToWebviewMessageBase {
   command: "updateTasks";
   tasks: Task[];
@@ -1011,6 +1042,8 @@ export interface HistoryErrorMessage extends HostToWebviewMessageBase {
 
 export type HostToWebviewMessage =
   | UpdateMessagesMessage
+  | OlderMessagesMessage
+  | OlderMessagesErrorMessage
   | UpdateTasksMessage
   | UpdateBackgroundTasksMessage
   | UpdateWorkflowRunsMessage
@@ -1126,6 +1159,11 @@ type ReplyAttribution = {
   btwError: "question";
   // 一次性查询：请求生成 id，回复原样带回（MessageInput requestIdRef 范例）。
   desktopForwardPortResult: "requestId";
+  // 手机页上滑翻更早：请求生成 id，回复原样带回。用户在顶部停留会连续请求多页，
+  // 且「翻更早」与「重连补差」共用同一条会话列表，晚到的旧页必须按 requestId 丢弃
+  // （否则会把上一页 prepend 到已经翻走的位置上）。
+  olderMessages: "requestId";
+  olderMessagesError: "requestId";
   // 本地 HTML 预览：请求生成 id，回复原样带回（webview 比对 requestId 弃旧
   // 回复；失败回复触发文件面板回退）。
   desktopPreviewFileResult: "requestId";
@@ -1183,6 +1221,8 @@ export const replyAttributionLocked = {
   btwResponse: true,
   btwError: true,
   desktopForwardPortResult: true,
+  olderMessages: true,
+  olderMessagesError: true,
   desktopPreviewFileResult: true,
   desktopRemoteDirList: true,
   desktopWorktreeChanges: true,

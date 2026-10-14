@@ -1037,6 +1037,25 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         if (!forThisPane(message)) break;
         dispatch({ type: "SET_MESSAGES", payload: message.messages });
         break;
+      case "olderMessages":
+        if (!forThisPane(message)) break;
+        // requestId 归属：读者停在顶部会连续翻好几页，「翻更早」又与重连补差共用
+        // 同一份列表 —— 晚到的旧页必须丢弃，否则会把上一页 prepend 到已经翻走的
+        // 位置上。
+        if (message.requestId !== loadOlderRequestRef.current) break;
+        setLoadingOlder(false);
+        dispatch({
+          type: "PREPEND_MESSAGES",
+          payload: { messages: message.messages, hasMore: message.hasMore },
+        });
+        break;
+      case "olderMessagesError":
+        if (!forThisPane(message)) break;
+        if (message.requestId !== loadOlderRequestRef.current) break;
+        // 失败就是失败：位置不动，也不回落成「重拉尾页」（spec 场景 12 —— 那是冷启动
+        // 与补差路径的动作，用在这里会把读者看到的位置整段换掉）。
+        setLoadingOlder(false);
+        break;
       case "updateTasks":
         if (!forThisPane(message)) break;
         dispatch({ type: "SET_TASKS", payload: message.tasks });
@@ -2611,6 +2630,37 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [state.isStreaming],
   );
 
+  // 手机页是唯一「手上只有一页历史」的宿主：它按窗口拉消息，所以也是唯一能往上翻的
+  // 宿主（见 MessageListProps.onLoadOlderMessages 与 spec remote-control.md「Web 页
+  // 作为第五种宿主」场景 11）。三个本地宿主把整段记录一次灌进来，这里给 undefined，
+  // 那条上拉请求就永远发不出去 —— 门禁与「二维码」同一套能力位（waveHostType 在 IDE
+  // 宿主也是空的，认不得它们）。
+  const canLoadOlderMessages =
+    typeof window !== "undefined" && window.waveRemotePage === true;
+  const loadOlderRequestRef = useRef(0);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+
+  const handleLoadOlderMessages = useCallback(
+    (before: string) => {
+      if (!canLoadOlderMessages) return;
+      setLoadingOlder(true);
+      postToHost({
+        command: "loadOlderMessages",
+        before,
+        requestId: ++loadOlderRequestRef.current,
+      });
+    },
+    [canLoadOlderMessages, postToHost],
+  );
+
+  // 翻更早是一次会话内的动作：切会话时作废在途请求，否则它的回包会把上一个会话的
+  // 消息 prepend 进新会话的列表。和 btw 面板同一套「本地 state 要自己按会话重置」
+  // 的理由（desktop 的 pane 不随会话重挂）。
+  useEffect(() => {
+    loadOlderRequestRef.current += 1;
+    setLoadingOlder(false);
+  }, [state.currentSession?.id]);
+
   // /rewind popup selection reuses the same ConfirmDialog flow as the
   // per-message rewind button.
   const handleRewindCheckpointSelect = useCallback((messageId: string) => {
@@ -3621,6 +3671,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           compactionStream={compactionStream}
           vscode={vscode}
           onRewindToMessage={handleRewindToMessage}
+          onLoadOlderMessages={
+            canLoadOlderMessages ? handleLoadOlderMessages : undefined
+          }
+          loadingOlder={loadingOlder}
+          historyExhausted={state.historyExhausted}
           workdir={state.workdir}
           onOpenPreview={openPreviewHandler}
           onOpenFile={handleOpenFile}

@@ -159,6 +159,33 @@
   flex-shrink: 0;
 }
 
+/* The "no older messages" line (phone page only; the local hosts always hold the
+   whole transcript). A height-0 sticky box, mirroring .sticky-user-wrapper — the
+   virtual rows are absolutely positioned against .messages-column, so any in-flow
+   height here would push the spacer down while the rows stayed put. Its content
+   is absolutely positioned inside it, i.e. it floats at the top of the scrollport
+   for as long as MessageList renders it (which is only while the reader is
+   parked at the start of the history). */
+.history-start-hint {
+  position: sticky;
+  top: 0;
+  height: 0;
+  align-self: stretch;
+  z-index: 15;
+  pointer-events: none;
+}
+
+.history-start-hint > span {
+  position: absolute;
+  top: 6px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--vscode-descriptionForeground);
+}
+
 .virtual-row {
   position: absolute;
   top: 0;

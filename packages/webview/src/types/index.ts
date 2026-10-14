@@ -520,6 +520,18 @@ export interface MessageListProps {
   compactionStream?: string;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
+  /**
+   * 手机页专属：列表被上拉到顶时请求**更早的一页**（宿主按 `before` 取回，见
+   * spec remote-control.md「Web 页作为第五种宿主」场景 11）。传了它才装上滑分页：
+   * 本地三个宿主把整段历史一次灌进来，没有「更早」可要，因此它们永远不传。
+   *
+   * `before` 是列表最上面那条可见消息的 id——宿主侧是**排他**上锚点。
+   */
+  onLoadOlderMessages?: (before: string) => void;
+  /** 上一次「翻更早」还在路上：期间不再重复请求。 */
+  loadingOlder?: boolean;
+  /** 宿主已经说过没有更早的消息：显示提示并停止请求。 */
+  historyExhausted?: boolean;
   workdir?: string;
   /** Desktop host only: open a localhost URL in the preview pane. */
   onOpenPreview?: (url: string) => void;
@@ -791,6 +803,12 @@ export interface QueuedMessageListProps {
 // Chat state management
 export interface ChatState {
   messages: Message[];
+  /**
+   * 已经翻到这段历史的开头（宿主回的 `hasMore: false`）。只在手机页会变成 true——
+   * 本地宿主一次性灌整表，从不翻页；它同时是「显示『没有更早的消息』」与「不再发
+   * 请求」的判据（spec remote-control.md 场景 11）。
+   */
+  historyExhausted: boolean;
   tasks: Task[];
   backgroundTasks: BackgroundTaskSummary[];
   workflowRuns: SerializableWorkflowRun[];
@@ -981,6 +999,16 @@ export interface WorkflowManagerProps {
 
 export type ChatAction =
   | { type: "SET_MESSAGES"; payload: Message[] }
+  /**
+   * 手机页上滑翻更早（spec remote-control.md「Web 页作为第五种宿主」场景 11）：把宿主
+   * 取回的**更早**一段接到列表前面。与 SET_MESSAGES 分开是因为两者的语义相反——整表
+   * 替换会丢掉列表头部，prepend 只加头部；`hasMore: false` 记下「已经到底」，页面据
+   * 此提示并停止再请求。
+   */
+  | {
+      type: "PREPEND_MESSAGES";
+      payload: { messages: Message[]; hasMore: boolean };
+    }
   | { type: "SET_TASKS"; payload: Task[] }
   | { type: "SET_BACKGROUND_TASKS"; payload: BackgroundTaskSummary[] }
   | { type: "SET_WORKFLOW_RUNS"; payload: SerializableWorkflowRun[] }

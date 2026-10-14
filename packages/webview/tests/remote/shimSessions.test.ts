@@ -120,17 +120,27 @@ function startPage(search: string, handshake = true) {
     /**
      * Reply to the oldest unanswered request for `method`, as the machine would,
      * and let the page take its next step before returning.
+     *
+     * The machine answers in the JSON-RPC envelope — `{id, method:"result",
+     * params:{result}}` (see `RemoteControlService.sendResult`) — not with a
+     * bare `result` field. The bare shape is what an earlier version of this
+     * harness used, and it is exactly the shape the page could not read: every
+     * reply silently resolved to `undefined`.
      */
     async answer(method: string, result: unknown) {
       const frame = nextFrame(method);
-      socket.receive({ id: frame.id, result });
+      socket.receive({ id: frame.id, method: "result", params: { result } });
       await flush();
       return frame;
     },
     /** Refuse the oldest unanswered request for `method`, as a machine would. */
     async refuse(method: string, message: string) {
       const frame = nextFrame(method);
-      socket.receive({ id: frame.id, error: { message } });
+      socket.receive({
+        id: frame.id,
+        method: "error",
+        params: { code: -32603, message },
+      });
       await flush();
       return frame;
     },
@@ -272,7 +282,11 @@ describe("remote page shim", () => {
     // that is the only ordering signal it has.
     const pull = await page.answer("getMessages", { messages: [SEED] });
     expect(pull.sessionId).toBe("s-new");
-    expect(pull.params).toEqual({ limit: 300 });
+    // The first page is sized by the frame BUDGET, not by "300 looks like
+    // enough": at the measured 5.7 KB/message 100 messages ≈ 0.57 MB already
+    // sits at the 512 KiB budget, and the relay drops an over-buffer frame
+    // without an error.
+    expect(pull.params).toEqual({ limit: 100 });
 
     await page.answer("listPendingPermissions", { requests: [] });
 
@@ -343,7 +357,7 @@ describe("remote page shim", () => {
     expect(pull.sessionId).toBe("s-old");
     // A switch re-reads from scratch: the window the page held belongs to the
     // session it just left.
-    expect(pull.params).toEqual({ limit: 300 });
+    expect(pull.params).toEqual({ limit: 100 });
 
     await page.answer("listPendingPermissions", { requests: [] });
     expect(lastPosted(page)).toMatchObject({

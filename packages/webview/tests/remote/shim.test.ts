@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 /**
  * The phone page's shim is browser JS with no imports and no build step — it
@@ -75,6 +75,16 @@ interface Harness {
   banner(): string;
   session: Map<string, string>;
   warns: string[];
+  /** Host → page: the messages the shim dispatched at the webview. */
+  posted: unknown[];
+  /** Page → host: what the mounted webview's `postMessage` would send. */
+  post(message: Record<string, unknown>): void;
+  /** The requests the shim put on the wire, parsed, auth frame excluded. */
+  requests(): { id: number; method: string; params: Record<string, unknown> }[];
+  /** Answer the request the shim sent most recently, the way the host does. */
+  reply(result: unknown): void;
+  /** The error half of the same envelope. */
+  replyWithError(message: string): void;
 }
 
 function loadShim(options: {
@@ -89,6 +99,7 @@ function loadShim(options: {
   const navigations: string[] = [];
   const warns: string[] = [];
   const sockets: FakeSocket[] = [];
+  const posted: unknown[] = [];
   let banner: Banner | null = null;
 
   const local = new Map<string, string>();
@@ -123,7 +134,18 @@ function loadShim(options: {
     },
     localStorage: storage(local, options.storageBroken ?? false),
     sessionStorage: storage(session, false),
-    dispatchEvent: vi.fn(),
+    // Host → page traffic lands here and nowhere else: the shim does not
+    // register listeners itself (the webview app does), so recording what it
+    // dispatches *is* observing what the page would receive.
+    dispatchEvent: (event: { data: unknown }) => {
+      posted.push(event.data);
+      return true;
+    },
+    // Installed by the shim itself, the way a real host installs it — hence the
+    // placeholder rather than an implementation.
+    acquireVsCodeApi: null as unknown as () => {
+      postMessage(message: Record<string, unknown>): void;
+    },
   };
 
   const document = {
@@ -145,7 +167,11 @@ function loadShim(options: {
   const hostGlobals = {
     window,
     document,
-    console: { warn: (message: string) => warns.push(message) },
+    // The shim logs the failure with the error as a second argument, the way
+    // the console would render it; both halves belong in the line.
+    console: {
+      warn: (...args: unknown[]) => warns.push(args.map(String).join(" ")),
+    },
     URL,
     URLSearchParams,
     WebSocket: class extends FakeSocket {
@@ -164,17 +190,44 @@ function loadShim(options: {
 
   vm.runInNewContext(SHIM, hostGlobals, { filename: "shim.js" });
 
+  const socketOf = () => {
+    const socket = sockets[sockets.length - 1];
+    if (!socket) throw new Error("the page never opened a relay socket");
+    return socket;
+  };
+
+  const parsed = () => socketOf().sent.map((frame) => JSON.parse(frame));
+
+  /** The newest request on the wire — the one a reply has to answer. */
+  const lastRequest = () => {
+    const frames = parsed().filter((frame) => frame.id !== undefined);
+    const last = frames[frames.length - 1];
+    if (!last) throw new Error("the shim has not asked the host anything");
+    return last;
+  };
+
+  const answer = (method: string, params: unknown) => {
+    socketOf().receive({ id: lastRequest().id, method, params });
+  };
+
   return {
     navigations,
     sockets,
-    socket: () => {
-      const socket = sockets[sockets.length - 1];
-      if (!socket) throw new Error("the page never opened a relay socket");
-      return socket;
-    },
+    socket: socketOf,
     banner: () => banner?.textContent ?? "",
     session,
     warns,
+    posted,
+    post: (message) => {
+      window.acquireVsCodeApi().postMessage(message);
+    },
+    requests: () => parsed().filter((frame) => frame.id !== undefined),
+    reply: (result) => {
+      answer("result", { result });
+    },
+    replyWithError: (message) => {
+      answer("error", { code: -32603, message });
+    },
   };
 }
 
@@ -242,5 +295,163 @@ describe("remote page shim — logging in", () => {
 
     expect(page.navigations).toEqual([]);
     expect(page.banner()).toContain("没有登记过这个通道");
+  });
+});
+
+/**
+ * Let the shim's promise chain (request → then → post) run out. A macrotask is
+ * the boundary: the vm context shares this realm's microtask queue, and the
+ * shim's own `setTimeout` is stubbed out.
+ */
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+/** Handshake + first screen, the state every RPC test starts from. */
+async function openPage(): Promise<Harness> {
+  const page = loadShim({ token: "jwt" });
+  const socket = page.socket();
+  socket.onopen?.();
+  socket.receive({ type: "auth_ok" });
+  page.post({ command: "webviewReady" });
+  await flush();
+  // The live-session registry's own field names (`sessionId` /
+  // `workingDirectory`), which the page maps onto what the shared list renders.
+  page.reply({
+    sessions: [
+      { sessionId: "s1", workingDirectory: "/tmp", customTitle: "会话一" },
+    ],
+  });
+  await flush();
+  page.reply({ messages: [{ id: "m10" }, { id: "m11" }], hasMore: true });
+  await flush();
+  page.reply({ requests: [] });
+  await flush();
+  return page;
+}
+
+describe("remote page shim — talking to the host", () => {
+  it("reads a reply as the host's JSON-RPC envelope, not a bare result", async () => {
+    const page = await openPage();
+
+    expect(page.requests().map((frame) => frame.method)).toEqual([
+      "listDaemonSessions",
+      "getMessages",
+      "listPendingPermissions",
+    ]);
+    expect(page.requests()[1]?.params).toEqual({ limit: 100 });
+    // The whole point: `params.result` is what reached the page. Reading
+    // `frame.result` left every reply `undefined`, so this object arrived with
+    // no sessions and no messages — the page then showed "电脑侧还没有正在跑的
+    // 会话。" on a machine that had sessions, and nothing it asked for ever
+    // worked.
+    expect(page.posted).toEqual([
+      expect.objectContaining({
+        command: "setInitialState",
+        messages: [{ id: "m10" }, { id: "m11" }],
+        sessions: [expect.objectContaining({ id: "s1", workdir: "/tmp" })],
+        session: expect.objectContaining({ id: "s1" }),
+        isAuthenticated: true,
+      }),
+    ]);
+    expect(page.banner()).toBe("");
+  });
+
+  it("rejects the error half of the envelope instead of resolving it", async () => {
+    const page = loadShim({ token: "jwt" });
+    const socket = page.socket();
+    socket.onopen?.();
+    socket.receive({ type: "auth_ok" });
+
+    page.post({ command: "webviewReady" });
+    await flush();
+    page.replyWithError(
+      "listDaemonSessions: the answer is larger than the frame budget",
+    );
+    await flush();
+
+    // A refusal has to surface as a refusal: with the reply misread as an empty
+    // success the page shows an empty picker instead of the reason.
+    expect(page.banner()).toContain("读不到电脑侧的会话列表");
+    expect(page.banner()).toContain("frame budget");
+  });
+});
+
+describe("remote page shim — pulling the list further up", () => {
+  it("asks for the page above the anchor, at the first screen's page size", async () => {
+    const page = await openPage();
+
+    page.post({ command: "loadOlderMessages", before: "m10", requestId: 7 });
+    await flush();
+
+    // `before` is exclusive: the host returns what is older than m10, so the
+    // message the reader is holding is never re-sent.
+    expect(page.requests()[3]).toMatchObject({
+      method: "getMessages",
+      params: { before: "m10", limit: 100 },
+      sessionId: "s1",
+    });
+
+    page.reply({ messages: [{ id: "m8" }, { id: "m9" }], hasMore: true });
+    await flush();
+
+    expect(page.posted[1]).toEqual({
+      command: "olderMessages",
+      requestId: 7,
+      messages: [{ id: "m8" }, { id: "m9" }],
+      hasMore: true,
+    });
+  });
+
+  it("carries the end-of-history flag through, so the page can stop asking", async () => {
+    const page = await openPage();
+
+    page.post({ command: "loadOlderMessages", before: "m10", requestId: 8 });
+    await flush();
+    page.reply({ messages: [{ id: "m1" }], hasMore: false });
+    await flush();
+
+    expect(page.posted[1]).toEqual({
+      command: "olderMessages",
+      requestId: 8,
+      messages: [{ id: "m1" }],
+      hasMore: false,
+    });
+  });
+
+  it("reports a failed page and leaves the reader where they were", async () => {
+    const page = await openPage();
+    const before = page.requests().length;
+
+    page.post({ command: "loadOlderMessages", before: "m10", requestId: 9 });
+    await flush();
+    page.replyWithError(
+      "getMessages: the answer is larger than the frame budget",
+    );
+    await flush();
+
+    expect(page.posted[1]).toEqual({
+      command: "olderMessagesError",
+      requestId: 9,
+      error: "getMessages: the answer is larger than the frame budget",
+    });
+    expect(page.warns).toContain(
+      "[wave-remote] 翻更早失败：getMessages: the answer is larger than the frame budget",
+    );
+    // No tail re-pull: that would replace the very position being held on to.
+    expect(page.requests().length).toBe(before + 1);
+  });
+
+  it("answers an empty page itself when the page has no session yet", async () => {
+    const page = loadShim({ token: "jwt" });
+    page.socket().onopen?.();
+    page.socket().receive({ type: "auth_ok" });
+
+    page.post({ command: "loadOlderMessages", before: "m1", requestId: 10 });
+    await flush();
+
+    // Nothing to ask: no session means there is no anchor to page from.
+    expect(page.requests()).toEqual([]);
+    expect(page.posted).toEqual([
+      { command: "olderMessages", requestId: 10, messages: [], hasMore: false },
+    ]);
   });
 });
