@@ -25,19 +25,44 @@ body {
   height: 100%;
 }
 
-/* ---- 远控 Web 页：让开系统 UI（只对这一种宿主生效）----
+/* ---- 远控 Web 页专属覆盖（只对这一种宿主生效）----
    `data-remote-page` 由 remote/shim.js 打在 <html> 上（这页是唯一跑在浏览器里的
-   宿主）。页面 index.html 声明了 viewport-fit=cover 以吃满全面屏，于是状态栏 /
-   灵动岛（top）、Home 指示条（bottom）、横屏时的圆角区（左右）都压在内容之上，
-   让位只能由页面自己负责。放在 body 上并配 border-box：安全区从 100dvh 里扣，
-   而不是加在它之外——后者会把刚修掉的「比可视区高」原样加回来（padding 默认
-   算在高度之外）。本地四端不设这个属性，也不会被系统 UI 压住，因此不适用。 */
+   宿主）。下面两条都只应落在这一种宿主上：让开系统 UI，以及把输入控件字号抬到
+   16px（防聚焦自动放大）——其余四端不跑在浏览器里，两条都不适用。
+
+   一、让开系统 UI：页面 index.html 声明了 viewport-fit=cover 以吃满全面屏，于是
+   状态栏 / 灵动岛（top）、Home 指示条（bottom）、横屏时的圆角区（左右）都压在内容
+   之上，让位只能由页面自己负责。放在 body 上并配 border-box：安全区从 100dvh 里扣，
+   而不是加在它之外——后者会把刚修掉的「比可视区高」原样加回来（padding 默认算在
+   高度之外）。 */
 [data-remote-page] body {
   box-sizing: border-box;
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* 二、输入控件字号 ≥16px：iOS Safari 聚焦 computed `font-size` 小于 16px 的文本
+   控件时，会把整页缩放到等效 16px 且此后不自动还原——用户看到的是「整页放大、
+   横纵都能滚」，每次聚焦都要手动缩回去。页面上每个输入框都在线下（消息输入区
+   12px、设置项 14px），所以不覆盖就是必现。范围按「会不会触发缩放」这一类来划：
+   文本可编辑的控件（`input` 的文本类、`textarea`、`select`、`contenteditable`
+   编辑区），非文本的 `input` 用黑名单排除——宁可多设一次字号，也不要漏掉一个又能
+   复现缩放的控件。行高跟着字号抬：base 的 12px/16px 是紧行高，16px 的字会被挤住，
+   22px 取项目里正文档的既有值（桌面端 composer 与 `.settings-textarea`）。
+   见 docs/specs/ui/remote-control.md 场景 14。 */
+[data-remote-page]
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+    [type="file"]
+  ):not([type="color"]):not([type="button"]):not([type="submit"]):not(
+    [type="reset"]
+  ),
+[data-remote-page] textarea,
+[data-remote-page] select,
+[data-remote-page] [contenteditable]:not([contenteditable="false"]) {
+  font-size: 16px;
+  line-height: 22px;
 }
 
 /* Animations */
