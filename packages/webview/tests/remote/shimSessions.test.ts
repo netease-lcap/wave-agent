@@ -829,4 +829,75 @@ describe("remote page shim", () => {
 
     visibility.mockRestore();
   });
+
+  test("a rename is answered with ok, so the page keeps the new title", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "renameSession",
+      sessionId: "s-new",
+      title: "登录页 v2",
+      requestId: "rename-1",
+    });
+    await flush();
+
+    const sent = page.socket.framesFor("renameSession")[0];
+    expect(sent).toMatchObject({
+      params: { title: "登录页 v2" },
+      sessionId: "s-new",
+    });
+
+    // The shared UI reads `ok !== true` as a failure and rolls the optimistic
+    // title back (`useSessionRename`), so a success reply without the flag is a
+    // rename that always undoes itself on screen and reports 「重命名失败」.
+    await page.answer("renameSession", null);
+    expect(lastPosted(page)).toEqual({
+      command: "sessionRenamed",
+      requestId: "rename-1",
+      sessionId: "s-new",
+      title: "登录页 v2",
+      ok: true,
+    });
+  });
+
+  test("a rename the machine refuses comes back as a visible failure", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "renameSession",
+      sessionId: "s-gone",
+      title: "登录页 v2",
+      requestId: "rename-2",
+    });
+    await flush();
+    await page.refuse("renameSession", "no such session");
+
+    // An empty `.catch` here would leave the optimistic title on screen with
+    // nothing said — i.e. a rename that looks like it worked and did not.
+    expect(lastPosted(page)).toEqual({
+      command: "sessionRenamed",
+      requestId: "rename-2",
+      sessionId: "s-gone",
+      title: "登录页 v2",
+      ok: false,
+      error: "no such session",
+    });
+  });
+
+  test("the slash-command menu is served from the machine's own list", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({ command: "requestSlashCommands" });
+    await flush();
+    await page.answer("getSlashCommands", {
+      commands: [{ id: "c1", name: "/review", description: "复盘这次改动" }],
+    });
+
+    // Narrowed objects only — the SDK's own command objects carry handlers,
+    // which have no business travelling over the relay.
+    expect(lastPosted(page)).toEqual({
+      command: "slashCommandsResponse",
+      commands: [{ id: "c1", name: "/review", description: "复盘这次改动" }],
+    });
+  });
 });

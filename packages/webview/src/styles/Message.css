@@ -398,6 +398,14 @@ button.reasoning-header {
   line-height: 16px;
 }
 
+/* 没有可打开去处的宿主（远控 Web 页，spec ui/remote-control.md 场景 23）：路径
+   只当文本显示 —— 去掉链接色/虚下划线/手型光标，否则它看起来仍像入口。 */
+.write-tool-path--plain {
+  color: var(--vscode-descriptionForeground);
+  text-decoration: none;
+  cursor: default;
+}
+
 .write-tool-stats {
   margin-top: 2px;
   font-size: 11px;

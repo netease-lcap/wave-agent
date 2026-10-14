@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
+  createMockVscode,
+  render,
   renderChatApp,
   screen,
   waitFor,
@@ -9,6 +11,7 @@ import {
   fixtures,
   fireInput,
 } from "./test-utils";
+import RemoteControlDialog from "../../src/components/RemoteControlDialog";
 
 async function typeAndSend(text: string) {
   const input = screen.getByTestId("message-input");
@@ -94,13 +97,44 @@ describe("远程控制弹窗（/remote-control）", () => {
     );
   });
 
-  it("draws no QR on the phone page itself (it is the scanning side)", async () => {
+  it("the phone page cannot open it at all (the entry is not rendered there)", async () => {
+    // 远程控制页本身就是在被手机控制的那一端，页面上再开「手机接管本机会话」是
+    // 自我指涉：弹窗里的连接/断开都发不出去（shim 不认 remoteControl）。所以页面上
+    // 这个入口不渲染（spec ui/remote-control.md 场景 24），敲命令也不会弹窗。
     window.waveRemotePage = true;
     try {
-      const { mountRequest } = await openDialog();
+      const { vscode } = renderChatApp();
+      await act(async () => {
+        await typeAndSend("/remote-control");
+      });
+
+      expect(screen.queryByTestId("remote-control-dialog")).toBeNull();
+      expect(
+        vscode.postMessage.mock.calls.filter(
+          (call) =>
+            (call[0] as { command?: string }).command === "remoteControl",
+        ),
+      ).toHaveLength(0);
+    } finally {
+      delete window.waveRemotePage;
+    }
+  });
+
+  it("draws no QR on the phone page itself (it is the scanning side)", async () => {
+    // 上面那条已经让页面进不到这个弹窗；这条直接挂载弹窗，钉住「即便挂上了也不画
+    // 二维码」——页面就是二维码指向的那一端，画它没有意义，地址本身照旧可读。
+    window.waveRemotePage = true;
+    try {
+      const vscode = createMockVscode();
+      render(<RemoteControlDialog onClose={vi.fn()} vscode={vscode} />);
+      const mountCalls = vscode.postMessage.mock.calls
+        .map((call) => call[0] as { command?: string; requestId?: string })
+        .filter((message) => message.command === "remoteControl");
+      const mountRequest = mountCalls[mountCalls.length - 1]
+        .requestId as string;
 
       await act(async () => {
-        sendHostMessage(reply(mountRequest.requestId as string));
+        sendHostMessage(reply(mountRequest));
       });
 
       expect(screen.queryByTestId("remote-control-qr")).toBeNull();

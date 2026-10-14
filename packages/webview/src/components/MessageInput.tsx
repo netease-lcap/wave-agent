@@ -10,6 +10,7 @@ import React, {
 import { convertToMarkdown } from "../utils/messageUtils";
 import { validateImageFile } from "../utils/imageValidation";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import { isRemotePageHost } from "../utils/platform";
 import { useHostMessage } from "../utils/useHostMessage";
 import { ContextTag } from "./ContextTag";
 import { Tooltip } from "./Tooltip";
@@ -1319,11 +1320,18 @@ export const MessageInput = forwardRef<
     setIsHistorySearchVisible(true);
   }, [calculateDropdownPosition]);
 
+  // 「上传文件」要宿主的 artifacts 上传能力，远程控制 Web 页没有它
+  // （spec ui/remote-control.md 场景 24）—— 页面上这一项不渲染，菜单里只剩
+  // 历史提示词。
   const plusMenuItems = [
-    {
-      label: "上传文件",
-      run: () => handleFileUpload(),
-    },
+    ...(isRemotePageHost()
+      ? []
+      : [
+          {
+            label: "上传文件",
+            run: () => handleFileUpload(),
+          },
+        ]),
     {
       label: "历史提示词",
       run: () => openHistorySearch(),
@@ -1378,11 +1386,14 @@ export const MessageInput = forwardRef<
       // Handle Ctrl+B to background the current foreground task (same as CLI).
       // Only intercepted while a turn is running — when idle the key falls
       // through so the host keeps its own Ctrl+B binding (e.g. VS Code's
-      // Toggle Sidebar).
+      // Toggle Sidebar). Never on the remote-control Web page: backgrounding is
+      // a host-side move with no reply there (spec ui/remote-control.md 场景 24),
+      // and a phone browser has no binding to protect anyway.
       if (
         event.key === "b" &&
         (event.ctrlKey || event.metaKey) &&
-        !isComposing
+        !isComposing &&
+        !isRemotePageHost()
       ) {
         if (isStreaming) {
           event.preventDefault();
@@ -1523,11 +1534,12 @@ export const MessageInput = forwardRef<
 
       const textBeforeCursor = pre.toString();
 
-      // Use textBeforeCursor for detection as it's more reliable for cursor position
-      const mentionState = detectAtMention(
-        textBeforeCursor,
-        textBeforeCursor.length,
-      );
+      // `@` 文件提及只对能列出工作目录文件的宿主开放。远程控制 Web 页没有这条
+      // 宿主能力（spec ui/remote-control.md 场景 24），照旧「活跃」的话会发出一个
+      // 没人应答的 requestFileSuggestions，下拉永远停在「正在搜索文件…」。
+      const mentionState: AtMentionState = isRemotePageHost()
+        ? { isActive: false, filterText: "", startPos: 0, endPos: 0 }
+        : detectAtMention(textBeforeCursor, textBeforeCursor.length);
       const slashCommandState = detectSlashCommand(
         textBeforeCursor,
         textBeforeCursor.length,

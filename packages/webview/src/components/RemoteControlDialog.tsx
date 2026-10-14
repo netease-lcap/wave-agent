@@ -33,6 +33,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { useClickOutside } from "../utils/useClickOutside";
 import { useHostMessage } from "../utils/useHostMessage";
+import { isRemotePageHost } from "../utils/platform";
 import { RemoteControlDialogProps } from "../types";
 import type { RemoteControlSnapshot } from "wave-agent-sdk/types";
 import "../styles/ConfigurationDialog.css";
@@ -146,9 +147,7 @@ const RemoteControlDialog: React.FC<
   // The page to open. Shown whenever the CLI reported one; a link that is still
   // connecting has none yet, and the next poll picks it up.
   const pageUrl = snapshot?.pageUrl;
-  const showQr =
-    Boolean(pageUrl) &&
-    !(typeof window !== "undefined" && window.waveRemotePage === true);
+  const showQr = Boolean(pageUrl) && !isRemotePageHost();
 
   return (
     <div className="configuration-dialog-overlay">

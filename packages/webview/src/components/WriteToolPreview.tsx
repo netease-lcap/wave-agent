@@ -3,7 +3,7 @@ import { ExternalLinkIcon } from "./HeaderIcons";
 import { FileToolHeader } from "./FileToolHeader";
 import type { ToolBlock } from "../types";
 import { toRelativePath } from "../utils/messageUtils";
-import { isDesktopHost } from "../utils/platform";
+import { isDesktopHost, isRemotePageHost } from "../utils/platform";
 
 interface WriteToolPreviewProps {
   toolBlock: ToolBlock;
@@ -32,8 +32,13 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
     content = null;
   }
 
+  // 远程控制 Web 页没有编辑器/文件面板可打开路径（spec ui/remote-control.md
+  // 场景 23）：「打开预览」按钮不渲染，块头的路径也退化为纯文本。**内容预览保留**
+  // —— 那是手机上唯一能读到写入内容的路径。
+  const canOpenFile = !isRemotePageHost();
+
   const openFile = () => {
-    if (filePath) {
+    if (filePath && canOpenFile) {
       if (onOpenFile) {
         onOpenFile(filePath);
       } else {
@@ -46,7 +51,7 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
     <FileToolHeader
       toolBlock={toolBlock}
       filePath={toRelativePath(filePath, workdir)}
-      onOpenFile={openFile}
+      onOpenFile={canOpenFile ? openFile : undefined}
     />
   );
 
@@ -70,15 +75,19 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
         >
           <pre className="write-preview-content">{content}</pre>
         </div>
-        <div className="write-preview-scrim" />
-        <button
-          className="write-preview-open"
-          aria-label="打开预览"
-          data-testid="write-preview-open"
-          onClick={openFile}
-        >
-          <ExternalLinkIcon className="write-preview-open-icon" />
-        </button>
+        {canOpenFile && (
+          <>
+            <div className="write-preview-scrim" />
+            <button
+              className="write-preview-open"
+              aria-label="打开预览"
+              data-testid="write-preview-open"
+              onClick={openFile}
+            >
+              <ExternalLinkIcon className="write-preview-open-icon" />
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

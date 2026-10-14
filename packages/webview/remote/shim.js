@@ -1352,6 +1352,11 @@
         return;
 
       case "renameSession":
+        // The page's rename handler is 「乐观更新 → 按 requestId 关联回复 → 失败回滚」
+        // (useSessionRename), and it reads `ok` off this reply: `ok !== true` is
+        // treated as a **failure** and rolls the title back. Leaving `ok` out
+        // (as this used to) made a successful rename snap back the moment the
+        // reply landed, with no error shown anywhere.
         request("renameSession", {
           sessionId: msg.sessionId,
           workdir: msg.workdir,
@@ -1363,9 +1368,19 @@
               requestId: msg.requestId,
               sessionId: msg.sessionId,
               title: msg.title,
+              ok: true,
             });
           })
-          .catch(function () {});
+          .catch(function (err) {
+            post({
+              command: "sessionRenamed",
+              requestId: msg.requestId,
+              sessionId: msg.sessionId,
+              title: msg.title,
+              ok: false,
+              error: String(err.message || err),
+            });
+          });
         return;
 
       case "requestSlashCommands":

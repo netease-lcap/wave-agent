@@ -21,6 +21,7 @@ import type {
   PermissionMode,
   RemoteControlSnapshot,
   RemoteControlStatus,
+  SlashCommand,
   ToolPermissionContext,
 } from "wave-agent-sdk";
 import {
@@ -47,6 +48,12 @@ export interface UseRemoteControlOptions {
   abort: () => void;
   setPermissionMode: (mode: PermissionMode) => void;
   respondPermission: (requestId: string, decision: PermissionDecision) => void;
+  /** Rename the conversation (the title `wave -r` lists). */
+  renameSession: (title: string) => void | Promise<void>;
+  /** Compact the conversation; errors must propagate (the page shows them). */
+  compact: (customInstructions?: string) => void | Promise<void>;
+  /** Slash commands the page may offer (SDK commands: skills / custom). */
+  slashCommands: () => SlashCommand[];
 }
 
 export interface RemoteControlApi {
@@ -212,5 +219,8 @@ function adapterOf(latest: {
     setPermissionMode: (mode) => latest.current.setPermissionMode(mode),
     respondPermission: (requestId, decision) =>
       latest.current.respondPermission(requestId, decision),
+    renameSession: (title) => latest.current.renameSession(title),
+    compact: (customInstructions) => latest.current.compact(customInstructions),
+    slashCommands: () => latest.current.slashCommands(),
   };
 }

@@ -5,7 +5,13 @@ import { getToolStatusColor } from "../utils/statusColors";
 interface FileToolHeaderProps {
   toolBlock: ToolBlock;
   filePath: string;
-  onOpenFile: () => void;
+  /**
+   * Opens the file in the host. Omitted by hosts that have nowhere to open it —
+   * the remote-control Web page (spec ui/remote-control.md 场景 23) — in which
+   * case the path renders as plain text: no role, no tab stop, no handler, so
+   * there is nothing that looks clickable and does nothing.
+   */
+  onOpenFile?: () => void;
 }
 
 export const FileToolHeader: React.FC<FileToolHeaderProps> = ({
@@ -22,22 +28,27 @@ export const FileToolHeader: React.FC<FileToolHeaderProps> = ({
         ●
       </span>
       <span className="write-tool-label">{toolBlock.name || "Tool"}</span>
-      {filePath && (
-        <span
-          className="write-tool-path"
-          role="button"
-          tabIndex={0}
-          onClick={onOpenFile}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              onOpenFile();
-            }
-          }}
-        >
-          {filePath}
-        </span>
-      )}
+      {filePath &&
+        (onOpenFile ? (
+          <span
+            className="write-tool-path"
+            role="button"
+            tabIndex={0}
+            onClick={onOpenFile}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onOpenFile();
+              }
+            }}
+          >
+            {filePath}
+          </span>
+        ) : (
+          <span className="write-tool-path write-tool-path--plain">
+            {filePath}
+          </span>
+        ))}
     </div>
   );
 };
