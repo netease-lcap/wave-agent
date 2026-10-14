@@ -12,21 +12,21 @@
  *    reply RPC everything else uses. A push would mean a new notification out
  *    of the CLI (a wider change than this dialog is worth), so the dialog asks
  *    once per second while it is open — the CLI's own `wave remote-control` does
- *    the same thing while it waits for a pairing code.
+ *    the same thing while it waits for the page address.
  * 2. **It filters replies by requestId.** Polling puts several requests in
  *    flight; `connect` also answers twice (the immediate `connecting` snapshot
- *    and the later one carrying the pairing code that registration returned).
- *    Only a reply matching the newest request may render — a stale "off"
- *    arriving one second late must not undo a link the user just brought up.
+ *    and the later one carrying the page address). Only a reply matching the
+ *    newest request may render — a stale "off" arriving one second late must not
+ *    undo a link the user just brought up.
  *
- * The pairing code is shown as text and, when the registration response brought
- * one back, as a QR of the pairing page URL: scanning is the shortest path to
- * pairing (the page is a plain web page, so a desktop browser can also just open
- * the address). Two limits keep that honest — no page URL in the reply means no
- * QR (never a made-up one), and the Web page itself never draws one: it *is* what
- * the QR points at, so drawing it there would be circular (that page sets
- * `window.waveRemotePage`; the IDE hosts leave `waveHostType` unset too, so this
- * flag is the only way to tell them apart).
+ * The page address comes from the CLI — the process that holds the channel key,
+ * and the only one that can build the address. It is shown as text and as a QR:
+ * scanning is the shortest path to a phone (the page is a plain web page, so a
+ * desktop browser can also just open the address). Two limits keep that honest —
+ * no address in the reply means no QR (never a made-up one), and the Web page
+ * itself never draws one: it *is* what the QR points at, so drawing it there
+ * would be circular (that page sets `window.waveRemotePage`; the IDE hosts leave
+ * `waveHostType` unset too, so this flag is the only way to tell them apart).
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -116,7 +116,7 @@ const RemoteControlDialog: React.FC<
     request("disconnect");
   };
 
-  const handleOpenPairingUrl = (url: string) => {
+  const handleOpenPageUrl = (url: string) => {
     // `openExternal` 是四端都注册过的既有命令，因此这里不引入新的宿主契约；
     // Web 页（shim）把它列在忽略清单里 —— 页面上本来就在浏览器里，不需要再开。
     vscode?.postMessage({ command: "openExternal", url });
@@ -143,12 +143,11 @@ const RemoteControlDialog: React.FC<
   // `off` is the only state where connecting makes sense; a link that is already
   // up (or on its way) is disconnected instead.
   const showConnect = state === "off" || state === "error";
-  // The page to open: the relay hands it back at registration. The CLI's
-  // `Web 页：…` line prints the same one (it only falls back to a locally
-  // derived URL, which this dialog has no server URL to build).
-  const pairingPageUrl = snapshot?.pairing?.url;
+  // The page to open. Shown whenever the CLI reported one; a link that is still
+  // connecting has none yet, and the next poll picks it up.
+  const pageUrl = snapshot?.pageUrl;
   const showQr =
-    Boolean(pairingPageUrl) &&
+    Boolean(pageUrl) &&
     !(typeof window !== "undefined" && window.waveRemotePage === true);
 
   return (
@@ -157,9 +156,8 @@ const RemoteControlDialog: React.FC<
         ref={dialogRef}
         className="configuration-dialog"
         data-testid="remote-control-dialog"
-        // 内容（状态/中继/Web 页/按钮/二维码/配对码/提示）实测需要 ~670px，压到 500
-        // 会把配对码与提示挤进滚动区——首次使用只看得到二维码，看不到要手输的码。
-        // 高度仍受窗口限制，矮窗口下退回滚动。
+        // 内容（状态/中继/Web 页/按钮/二维码/提示）比普通配置弹窗高，压到 500
+        // 会把二维码与提示挤进滚动区。高度仍受窗口限制，矮窗口下退回滚动。
         style={{ height: "auto", maxHeight: "min(680px, 88vh)" }}
       >
         <div className="configuration-dialog-header">
@@ -174,17 +172,15 @@ const RemoteControlDialog: React.FC<
             ) : null}
             {error ? <Row label="无法读取状态" value={error} /> : null}
             {snapshot?.url ? <Row label="中继" value={snapshot.url} /> : null}
-            {pairingPageUrl ? (
+            {pageUrl ? (
               <>
-                <Row label="Web 页" value={pairingPageUrl} />
+                <Row label="Web 页" value={pageUrl} />
                 <div className="configuration-field">
                   <div style={{ padding: "4px 0" }}>
                     <button
                       type="button"
                       className="configuration-cancel-btn"
-                      onClick={() =>
-                        handleOpenPairingUrl(pairingPageUrl as string)
-                      }
+                      onClick={() => handleOpenPageUrl(pageUrl)}
                     >
                       在浏览器中打开
                     </button>
@@ -209,16 +205,15 @@ const RemoteControlDialog: React.FC<
                     theming the code would break exactly the scanning this QR
                     exists for. */}
                 <QRCodeSVG
-                  value={pairingPageUrl as string}
+                  value={pageUrl as string}
                   size={160}
                   level="M"
                   marginSize={2}
-                  title="扫码打开配对页"
+                  title="扫码打开远程控制页"
                 />
               </div>
             ) : null}
-            <Row label="配对码" value={snapshot?.pairing?.code} />
-            {snapshot?.pairing ? (
+            {pageUrl ? (
               <div
                 style={{
                   fontSize: "12px",
@@ -226,12 +221,7 @@ const RemoteControlDialog: React.FC<
                   padding: "2px 0",
                 }}
               >
-                {pairingPageUrl
-                  ? "用手机扫码打开配对页，或在浏览器里打开上面的地址后手动输入配对码"
-                  : "在浏览器打开远程控制页并输入配对码"}
-                {snapshot.pairing.expiresAt
-                  ? `（${snapshot.pairing.expiresAt} 前有效）`
-                  : ""}
+                页面用企业端登录态认证：扫码的浏览器需要已登录同一个企业账号。
               </div>
             ) : null}
           </div>

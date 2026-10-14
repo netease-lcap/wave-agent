@@ -1883,7 +1883,7 @@ export class AgentBridge {
    *
    * `connect` carries the optional label the user gave this machine
    * (`wave remote-control on <name>`), which the relay hands to the phone so
-   * the pairing list can tell two of the user's computers apart.
+   * its computer list can tell two of the user's computers apart.
    */
   private remoteControlRequest(
     method: string,

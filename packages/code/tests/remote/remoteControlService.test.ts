@@ -67,7 +67,7 @@ type ResolveFn = (options?: { name?: string }) => Promise<{
     hostToken: string;
     version: string;
   };
-  pairing?: { code: string; url?: string; expiresAt?: string };
+  pageUrl?: string;
   error?: string;
 }>;
 
@@ -109,8 +109,8 @@ describe("RemoteControlService", () => {
 
   /**
    * Register-and-connect as one step: resolving the identity is an HTTP round
-   * trip on a machine that has never paired, so the socket only exists after a
-   * tick. `auth_ok` is what makes the link usable, so the helper waits for it.
+   * trip on a machine that has never registered, so the socket only exists after
+   * a tick. `auth_ok` is what makes the link usable, so the helper waits for it.
    */
   async function connect(
     bridge: AgentBridge,
@@ -260,21 +260,15 @@ describe("RemoteControlService", () => {
     expect(socket.frames().some((f) => f.type === "ping")).toBe(true);
   });
 
-  it("should show the pairing code the registration returned", async () => {
+  it("should show the page address resolved for this machine", async () => {
     const service = await connect(createBridgeStub(), async () => ({
       ...defaultResolve(),
-      pairing: {
-        code: "AB12CD34",
-        url: "https://codechat.example.com/remote/pair?code=AB12CD34",
-        expiresAt: "2026-10-13T10:00:00Z",
-      },
+      pageUrl: "https://codechat.example.com/remote/?host=h1",
     }));
 
-    expect(service.getSnapshot().pairing).toEqual({
-      code: "AB12CD34",
-      url: "https://codechat.example.com/remote/pair?code=AB12CD34",
-      expiresAt: "2026-10-13T10:00:00Z",
-    });
+    expect(service.getSnapshot().pageUrl).toBe(
+      "https://codechat.example.com/remote/?host=h1",
+    );
   });
 
   it("should route an allowlisted request to the bridge and reply with the result", async () => {

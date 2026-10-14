@@ -94,7 +94,10 @@ describe("fixtures factory", () => {
     expect(msg).toMatchObject({
       command: "remoteControlResponse",
       requestId: "rc1",
-      snapshot: { state: "online", pairing: { code: "4821-9930" } },
+      snapshot: {
+        state: "online",
+        pageUrl: "https://relay.example/remote/?host=h1",
+      },
     });
     // 失败形态走 error，快照缺席（宿主 RPC 失败时不许伪造 state 快照）。
     const failure = fixtures.remoteControlResponse("rc2", {

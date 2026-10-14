@@ -45,8 +45,8 @@
  *   CSS on the next load. Split this way, that redeploy re-fetches a 1 KB
  *   skeleton and the CSS/JS come from cache. The cost is one extra
  *   render-blocking request on a first visit — affordable here because the page
- *   is only reachable through the pairing URL, and it is the reason the desktop
- *   page keeps inlining.
+ *   is only reachable through the address the computer prints, and it is the
+ *   reason the desktop page keeps inlining.
  * - Mermaid rides in its own chunk instead of in `chat.js` (78% of that bundle,
  *   measured: 3.27 MB of 4.09 MB), fetched by the page the first time a message
  *   actually contains a diagram. The loader is `src/mermaid-lazy.ts`, wired in by
@@ -64,7 +64,7 @@
  *   node packages/webview/remote/build.mjs                 # production (minified)
  *   node packages/webview/remote/build.mjs --dev           # unminified, for local iteration
  *   node packages/webview/remote/build.mjs --zip           # …plus dist/remote-page.zip
- *   node packages/webview/remote/build.mjs --socket=wss://relay.example/v1/hosts/ws/<id>/client
+ *   node packages/webview/remote/build.mjs --socket=wss://relay.example/v1/hosts/ws/<id>/subscribe
  *
  * (or `pnpm -F wave-webview build:remote` / `pnpm -F wave-webview pack:remote`)
  */
@@ -86,8 +86,20 @@ const argv = process.argv.slice(2);
 const production = !argv.includes("--dev");
 const wantZip = argv.includes("--zip");
 const socketArg = argv.find((a) => a.startsWith("--socket="));
-/** Empty unless the caller pins one: the page then reads `?ws=`/`?code=`. */
+/**
+ * Empty unless the caller pins one: the deployed page derives its socket from
+ * its own origin (`/remote/` sits on the relay's domain), so a pinned address
+ * is a local-debug override only.
+ */
 const socketUrl = socketArg ? socketArg.slice("--socket=".length) : "";
+/**
+ * The page's own version, reported in the relay handshake. The relay reads that
+ * field for the *host* role only (minimum-version floor), so here it is
+ * informational — but it has to exist and sit at the frame's top level.
+ */
+const pageVersion = JSON.parse(
+  fs.readFileSync(path.join(WEBVIEW, "package.json"), "utf-8"),
+).version;
 
 const CSP = [
   "default-src 'none'",
@@ -96,7 +108,10 @@ const CSP = [
   "img-src 'self' data: https:",
   "font-src 'self' data:",
   // The one widening over the desktop page: the phone page is not bridged to a
-  // parent process, so the relay connection is the page's own.
+  // parent process, so the relay connection is the page's own. Nothing else is
+  // allowed out — the page sends no same-origin requests of its own (its assets
+  // are `script-src` / `style-src`), so a future same-origin `fetch` would be
+  // blocked silently and has to bring `'self'` back with it.
   "connect-src wss:",
 ].join("; ");
 
@@ -199,7 +214,7 @@ function emit({ chatJs, chatCss, mermaid }) {
        script-src 'self' copied from the desktop page blocks inline execution,
        so an inline window.WAVE_REMOTE = … is silently dropped — measured, not
        theorised. A meta tag also stays editable on the deployed artifact. -->
-  <meta name="wave-remote-config" content='${JSON.stringify({ socketUrl })}' />
+  <meta name="wave-remote-config" content='${JSON.stringify({ socketUrl, version: pageVersion })}' />
 </head>
 <body>
   <div id="root"></div>

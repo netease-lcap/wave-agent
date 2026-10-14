@@ -409,17 +409,14 @@ export const fixtures: Fixtures = {
   remoteControlResponse: (requestId, overrides = {}) => ({
     command: "remoteControlResponse",
     requestId,
-    // Default = the answer a healthy machine gives: link up, phone paired. The
-    // two URLs stay distinct here because they are distinct in the reply — `url`
-    // is the relay socket this machine holds, `pairing.url` is the page the phone
-    // opens (and the one a GUI draws as a QR).
+    // Default = the answer a healthy machine gives: link up, page address ready.
+    // The two URLs stay distinct here because they are distinct in the reply —
+    // `url` is the relay socket this machine holds, `pageUrl` is the address the
+    // phone opens (and the one a GUI draws as a QR).
     snapshot: {
       state: "online",
       url: "wss://relay.example/v1/hosts/ws/h1/subscribe",
-      pairing: {
-        code: "4821-9930",
-        url: "https://relay.example/remote/pair?code=4821-9930",
-      },
+      pageUrl: "https://relay.example/remote/?host=h1",
     },
     ...overrides,
   }),

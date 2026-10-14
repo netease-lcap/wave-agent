@@ -20,23 +20,6 @@
 /** Lifecycle of the outbound relay link. `off` = never connected/dialed. */
 export type RemoteControlState = "off" | "connecting" | "online" | "error";
 
-/**
- * A one-time pairing code, issued by the relay at registration time and
- * displayed on this machine.
- *
- * The code belongs to the relay, not to us: it is the relay that keeps the
- * pairing table and trades the code for a long-lived token. It reaches this
- * side as a field of the `POST /api/relay/hosts` response — the relay never
- * pushes one over the socket — so a phone that types an expired code gets its
- * answer from the relay, not from here.
- */
-export interface PairingInfo {
-  code: string;
-  /** Subscribe URL the phone should open, when the relay sends one. */
-  url?: string;
-  expiresAt?: string;
-}
-
 export interface RemoteControlStatus {
   state: RemoteControlState;
   /**
@@ -50,5 +33,14 @@ export interface RemoteControlStatus {
 export interface RemoteControlSnapshot extends RemoteControlStatus {
   /** Subscribe URL for the current (or last attempted) connection. */
   url?: string;
-  pairing?: PairingInfo;
+  /**
+   * The page a phone should open: `<server>/remote/?host=<hostId>`.
+   *
+   * Built by whichever process holds the channel key, because only that process
+   * knows both halves — a host's webview has no server URL of its own. The key
+   * in it is not a credential: the relay checks on handshake that the channel
+   * belongs to the signed-in account, and that the account is an active member
+   * of the enterprise.
+   */
+  pageUrl?: string;
 }

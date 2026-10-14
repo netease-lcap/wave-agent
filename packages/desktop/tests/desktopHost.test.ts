@@ -367,7 +367,7 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     remoteControlStatus = vi.fn(async () => ({
       state: "online",
       url: "wss://relay.example/v1/hosts/ws/h1/client",
-      pairing: { code: "4821-9930" },
+      pageUrl: "https://relay.example/remote/?host=h1",
     }));
     remoteControlConnect = vi.fn(async () => ({ state: "connecting" }));
     remoteControlDisconnect = vi.fn(async () => ({ state: "off" }));
@@ -11634,7 +11634,10 @@ describe("remoteControl（/remote-control 弹窗）", () => {
     expect(sent("remoteControlResponse")).toMatchObject([
       {
         requestId: "rc1",
-        snapshot: { state: "online", pairing: { code: "4821-9930" } },
+        snapshot: {
+          state: "online",
+          pageUrl: "https://relay.example/remote/?host=h1",
+        },
       },
     ]);
   });

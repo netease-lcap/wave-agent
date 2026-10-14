@@ -54,6 +54,7 @@ vi.mock("../../src/utils/readPackageJson.js", () => ({
 }));
 
 import {
+  buildPageUrl,
   buildSubscribeUrl,
   ensureRelayHostRegistration,
   getRemoteControlStatePath,
@@ -106,9 +107,6 @@ const REGISTERED = {
       status: "pending",
     },
     hostToken: "rch_secret",
-    pairingCode: "AB12CD34",
-    pairingUrl: "https://codechat.example.com/remote/pair?code=AB12CD34",
-    pairingExpiresAt: new Date(Date.now() + 600_000).toISOString(),
   },
 };
 
@@ -164,6 +162,30 @@ describe("remoteControlConfig", () => {
     });
   });
 
+  describe("buildPageUrl", () => {
+    it("should point the page at this machine's channel on the configured server", () => {
+      expect(buildPageUrl("h1")).toBe(
+        "https://codechat.example.com/remote/?host=h1",
+      );
+    });
+
+    it("should escape a host id so it cannot forge a query", () => {
+      expect(buildPageUrl("a/b&c=d")).toBe(
+        "https://codechat.example.com/remote/?host=a%2Fb%26c%3Dd",
+      );
+    });
+
+    it("should drop any path, query or hash on the server url", () => {
+      auth.getServerUrl.mockReturnValue("https://host/base?a=1#frag");
+      expect(buildPageUrl("h1")).toBe("https://host/remote/?host=h1");
+    });
+
+    it("should report nothing when the server url cannot be parsed", () => {
+      auth.getServerUrl.mockReturnValue("not a url");
+      expect(buildPageUrl("h1")).toBeUndefined();
+    });
+  });
+
   describe("getRelayApiBaseUrl", () => {
     it("should follow the subscribe-url override to the relay that will be dialed", () => {
       process.env.WAVE_REMOTE_CONTROL_URL =
@@ -186,8 +208,6 @@ describe("remoteControlConfig", () => {
       // a channel with no row behind it, and both ends are refused on it.
       expect(registration.hostId).toBe("relay-assigned-id");
       expect(registration.hostToken).toBe("rch_secret");
-      expect(registration.pairing?.code).toBe("AB12CD34");
-      expect(registration.pairing?.url).toContain("/remote/pair?code=AB12CD34");
       expect(calls).toHaveLength(1);
       expect(calls[0].url).toBe("https://codechat.example.com/api/relay/hosts");
       expect(calls[0].method).toBe("POST");
@@ -230,23 +250,6 @@ describe("remoteControlConfig", () => {
 
       expect(registration.hostId).toBe("relay-assigned-id");
       expect(storedState().hostId).toBe("relay-assigned-id");
-    });
-
-    it("should stop showing a pairing code the relay has expired", async () => {
-      stubFetch({
-        status: 201,
-        body: {
-          ...REGISTERED.body,
-          pairingExpiresAt: new Date(Date.now() - 1_000).toISOString(),
-        },
-      });
-      await ensureRelayHostRegistration("mac");
-
-      const again = await ensureRelayHostRegistration("mac");
-
-      expect(again.hostId).toBe("relay-assigned-id");
-      expect(again.pairing).toBeUndefined();
-      expect(calls).toHaveLength(1);
     });
 
     it("should tell the two 403s apart", async () => {
@@ -319,7 +322,9 @@ describe("remoteControlConfig", () => {
         hostToken: "rch_secret",
         version: "1.3.0",
       });
-      expect(resolved.pairing?.code).toBe("AB12CD34");
+      expect(resolved.pageUrl).toBe(
+        "https://codechat.example.com/remote/?host=relay-assigned-id",
+      );
     });
 
     it("should prefer an explicit relay url, and register against that relay", async () => {
