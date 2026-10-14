@@ -240,11 +240,14 @@ describe("remote page shim", () => {
     );
   });
 
-  test("says what is missing when the page has no enterprise login", () => {
+  test("says what is missing when the page has no enterprise login", async () => {
     window.history.replaceState({}, "", "/remote/?host=h-1");
     window.localStorage.setItem("token", "");
 
     new Function(SHIM)();
+    // Boot asks whether the enterprise gave it anything to renew with before it
+    // decides the credential is missing, so the verdict lands a turn later.
+    await flush();
 
     // Nothing to connect with, so nothing is attempted.
     expect(FakeSocket.opened).toHaveLength(0);
