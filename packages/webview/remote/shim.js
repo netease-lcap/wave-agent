@@ -44,6 +44,17 @@
    */
   window.waveRemotePage = true;
 
+  /**
+   * The same fact, in the DOM: this page is the only host a browser runs, so it is
+   * the only one whose viewport shrinks and grows with browser chrome and whose
+   * edges sit under the system UI. `globals.css` keys those rules on this
+   * attribute and they must not reach the other four hosts. Not `data-host`: that
+   * one selects the desktop density tokens, and this page belongs to the `ide`
+   * default with the IDE hosts. Set before `chat.js` runs, so the first paint
+   * already has it (index.html loads this file first).
+   */
+  document.documentElement.setAttribute("data-remote-page", "1");
+
   var PAGE_CONFIG = readPageConfig();
   var query = new URLSearchParams(window.location.search);
 
