@@ -929,18 +929,32 @@
         loadOlder(msg.before, msg.requestId);
         return;
 
-      case "confirmationResponse":
+      case "confirmationResponse": {
+        // An approval is a **notification**, not a request: that is the frame
+        // shape this protocol defines for `permissionResponse` (the IDE and
+        // desktop hosts send it through `sendPermissionResponse` → `notify`,
+        // with no id), and the host side has no request handler for it. Both
+        // `AgentBridge` and `RemoteControlCliHost` answer an id-carrying
+        // `permissionResponse` with "Method not found" — so asking it as a
+        // request made every approval on this page fail invisibly: the reply
+        // came back as an error frame the page logged and dropped, the machine
+        // kept waiting, and the approval reappeared on the next resync.
+        //
         // The webview names it confirmationId and may send only `approved`;
         // the wire wants a requestId and a decision.
-        request("permissionResponse", {
-          requestId: msg.confirmationId,
-          decision: msg.decision || {
-            behavior: msg.approved ? "allow" : "deny",
+        var approval = {
+          method: "permissionResponse",
+          params: {
+            requestId: msg.confirmationId,
+            decision: msg.decision || {
+              behavior: msg.approved ? "allow" : "deny",
+            },
           },
-        }).catch(function (err) {
-          console.warn("[wave-remote] 审批回执失败", err);
-        });
+        };
+        if (sessionId) approval.sessionId = sessionId;
+        send(approval);
         return;
+      }
 
       case "setPermissionMode":
         request("setPermissionMode", { mode: msg.mode }).catch(function () {});

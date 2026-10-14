@@ -373,6 +373,69 @@ describe("remote page shim — talking to the host", () => {
     expect(page.banner()).toContain("读不到电脑侧的会话列表");
     expect(page.banner()).toContain("frame budget");
   });
+
+  it("sends an approval as a notification, never an id-carrying request", async () => {
+    const page = await openPage();
+    const askedBefore = page.requests().length;
+
+    page.post({
+      command: "confirmationResponse",
+      confirmationId: "req-1",
+      approved: true,
+      decision: { behavior: "allow", message: JSON.stringify({ q: "other" }) },
+    });
+    await flush();
+
+    // `permissionResponse` is a notification in this protocol — the IDE and
+    // desktop hosts send it through `notify`, with no id, and the host side
+    // answers an id-carrying one with "Method not found". Framing it as a
+    // request is what made every approval on this page do nothing at all: the
+    // machine kept waiting, and the approval reappeared on the next resync.
+    const approvalFrames = page
+      .socket()
+      .sent.map((line) => JSON.parse(line))
+      .filter((frame) => frame.method === "permissionResponse");
+    expect(approvalFrames).toEqual([
+      {
+        method: "permissionResponse",
+        params: {
+          requestId: "req-1",
+          decision: { behavior: "allow", message: '{"q":"other"}' },
+        },
+        sessionId: "s1",
+      },
+    ]);
+    // Nothing was asked, so nothing is pending: no 20 s timeout, and no
+    // rejection swallowed into a warning the phone can never see.
+    expect(page.requests().length).toBe(askedBefore);
+    expect(page.warns).toEqual([]);
+  });
+
+  it("turns a bare yes/no into an allow/deny decision", async () => {
+    const page = await openPage();
+
+    page.post({
+      command: "confirmationResponse",
+      confirmationId: "req-1",
+      approved: true,
+    });
+    page.post({
+      command: "confirmationResponse",
+      confirmationId: "req-2",
+      approved: false,
+    });
+    await flush();
+
+    const decisions = page
+      .socket()
+      .sent.map((line) => JSON.parse(line))
+      .filter((frame) => frame.method === "permissionResponse")
+      .map((frame) => frame.params);
+    expect(decisions).toEqual([
+      { requestId: "req-1", decision: { behavior: "allow" } },
+      { requestId: "req-2", decision: { behavior: "deny" } },
+    ]);
+  });
 });
 
 describe("remote page shim — pulling the list further up", () => {
