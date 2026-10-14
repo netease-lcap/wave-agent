@@ -113,6 +113,22 @@
   /** Application-level keepalive; the relay answers each `ping` with a `pong`. */
   var HEARTBEAT_MS = 30000;
   /**
+   * How long a request may stay unanswered, by method.
+   *
+   * 20s is the budget for "the machine answers at once": every read and every
+   * control write. A **turn-length** method is the exception — its reply is sent
+   * only once the whole turn is over, and a turn has no upper bound. It can loop
+   * through tools for minutes, and it parks indefinitely on an approval nobody
+   * has answered yet — usually the person holding this phone. Waiting for that
+   * reply is therefore not a liveness check at all: the message is delivered the
+   * moment the frame leaves, and the turn itself is visible in the message
+   * stream. `TURN_METHODS` is what keeps a 40-second turn from being reported as
+   * a failure; see `timeoutText` and the `sendMessage` case.
+   */
+  var REQUEST_TIMEOUT_MS = 20000;
+  var TURN_TIMEOUT_MS = 300000;
+  var TURN_METHODS = { sendMessage: true, compact: true };
+  /**
    * The enterprise login page, and the parameter it reads to know where to send
    * the user back to. Same-origin coupling like the `token` key below: this page
    * is served from the enterprise's own domain, so both names belong to its
@@ -678,11 +694,40 @@
       var frame = { id: id, method: method, params: params || {} };
       if (withSession !== false && sessionId) frame.sessionId = sessionId;
       send(frame);
-      setTimeout(function () {
-        if (!pending[id]) return;
-        delete pending[id];
-        reject(new Error(method + " 超时（中继或电脑侧没有响应）"));
-      }, 20000);
+      setTimeout(
+        function () {
+          if (!pending[id]) return;
+          delete pending[id];
+          reject(new Error(timeoutText(method)));
+        },
+        TURN_METHODS[method] ? TURN_TIMEOUT_MS : REQUEST_TIMEOUT_MS,
+      );
+    });
+  }
+
+  /**
+   * What a missing reply is called. A turn-length method must not be described
+   * as 「中继或电脑侧没有响应」: both ends did answer — the machine is still working,
+   * which is exactly what the message stream shows. That wording is what made
+   * every turn past 20s read as a delivery failure.
+   */
+  function timeoutText(method) {
+    return TURN_METHODS[method]
+      ? method + " 还没有回执（电脑侧仍在处理，回合可能还没结束）"
+      : method + " 超时（中继或电脑侧没有响应）";
+  }
+
+  /**
+   * A control write the user drives from this page — stop the turn, switch the
+   * permission tier, compact the context. Their **success** needs no reply: the
+   * new state grows back out of the message stream (the busy flag, the mode, the
+   * shortened list). Their **failure** must not be swallowed, which is what an
+   * empty `.catch` used to do: 「点了暂停但没反应」 then had no explanation anywhere
+   * on screen, and a phone has neither an Escape key nor a terminal to go look.
+   */
+  function controlRequest(method, params, label) {
+    request(method, params).catch(function (err) {
+      showStatus(label + "指令没有回执：" + (err.message || err));
     });
   }
 
@@ -1141,6 +1186,18 @@
           text: msg.text,
           force: msg.force,
         }).catch(function (err) {
+          // A late reply is only an error when no turn is running. While the page
+          // knows this session is generating, the stream itself proves the message
+          // landed — a red block under a running turn reads as 「没发出去」, the user
+          // resends, and the machine receives the same message twice. (This block
+          // is where 「sendMessage 超时」 came from, on every turn past 20s.)
+          if (streaming) {
+            warnOnce(
+              "sendMessage-late",
+              "sendMessage 没有回执，但这条会话仍在生成",
+            );
+            return;
+          }
           post({
             command: "updateErrorBlock",
             error: String(err.message || err),
@@ -1176,7 +1233,7 @@
       }
 
       case "abortMessage":
-        request("abortMessage", {}).catch(function () {});
+        controlRequest("abortMessage", {}, "暂停");
         return;
 
       case "loadOlderMessages":
@@ -1211,13 +1268,15 @@
       }
 
       case "setPermissionMode":
-        request("setPermissionMode", { mode: msg.mode }).catch(function () {});
+        controlRequest("setPermissionMode", { mode: msg.mode }, "切换权限档");
         return;
 
       case "compact":
-        request("compact", {
-          customInstructions: msg.customInstructions,
-        }).catch(function () {});
+        controlRequest(
+          "compact",
+          { customInstructions: msg.customInstructions },
+          "压缩上下文",
+        );
         return;
 
       case "renameSession":
