@@ -63,6 +63,15 @@ import type { RemoteControlEndpoint } from "./remoteControlConfig.js";
  * (`getMessages` requires the envelope's sessionId to be in the registry), while
  * `listSessions` reads the transcripts on disk and would offer it conversations
  * it cannot read. See 规格 remote-control「边界情况」。
+ *
+ * `renameSession` / `compact` / `getSlashCommands` (2026-10-14): conversation
+ * upkeep the phone can do without an editor, a file system or a plugin manager —
+ * all three are session-scoped and already implemented by both hosts
+ * (`AgentBridge` for daemon sessions, `RemoteControlCliHost` for a foreground
+ * CLI session). The page's slash-command menu reads `getSlashCommands`; the same
+ * method is what makes 重命名 / 压缩 usable there instead of a request that comes
+ * back unreachable. Anything the page cannot *carry* (settings, file paths,
+ * rewind, background tasks) stays out, both here and in the UI.
  */
 export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   "listSessions",
@@ -74,6 +83,9 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   "sendMessage",
   "abortMessage",
   "setPermissionMode",
+  "renameSession",
+  "compact",
+  "getSlashCommands",
 ]);
 
 /**

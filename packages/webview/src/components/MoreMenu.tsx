@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
+import { isRemotePageHost } from "../utils/platform";
 import {
   ExternalLinkIcon,
   FileTextIcon,
@@ -54,19 +55,18 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   anchorRect,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
+  // Remote-control Web page: 设置 and 登录/退出登录 act on the host (a settings
+  // tab webview, a login flow) and this page has neither — clicking them would
+  // do nothing at all, so they are not rendered. 企业控制台 / 帮助文档 stay: they
+  // are just URLs, and the page's handler opens them in a browser tab
+  // (spec ui/remote-control.md 场景 24).
+  const remotePage = isRemotePageHost();
 
   // Roving keyboard model shared with the other custom dropdowns: Arrow keys
   // move, Enter/Space activate, Escape closes back to the trigger. The hook
   // calls onRequestClose for the in-menu close paths; this component keeps
-  // its own click-outside / global-Escape listeners (see below).
-  const { getItemProps } = useRovingMenu(menuRef, {
-    itemSelector: ".more-menu-item",
-    itemCount: 4,
-    triggerRef,
-    closeOnActivate: true,
-    onRequestClose: onClose,
-    onActivate: (i) => entries[i].run(),
-  });
+  // its own click-outside / global-Escape listeners (see below). It is wired
+  // below the entry list because `itemCount` is derived from it.
 
   const handleSettings = () => onOpenSettings();
   const handleEnterprise = () => onOpenEnterpriseConsole();
@@ -74,7 +74,10 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   const authLabelSuffix = hostLabel ? `（${hostLabel}）` : "";
 
   // Entry order matches focus order; the fourth slot is 登录/退出登录 by auth,
-  // danger-styled and separated when it is 退出登录 (spec 场景 4).
+  // danger-styled and separated when it is 退出登录 (spec 场景 4). The remote
+  // page drops the 设置 and auth slots, so `itemCount` is derived from the array
+  // rather than the literal 4 it used to be — a hardcoded count would let the
+  // arrow keys walk off the end of the list.
   const entries: Array<{
     id: string;
     run: () => void;
@@ -82,16 +85,20 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
     className?: string;
     separator?: boolean;
   }> = [
-    {
-      id: "more-menu-settings",
-      run: handleSettings,
-      content: (
-        <>
-          <SettingsGearIcon className="more-menu-item-icon" />
-          <span>设置{authLabelSuffix}</span>
-        </>
-      ),
-    },
+    ...(remotePage
+      ? []
+      : [
+          {
+            id: "more-menu-settings",
+            run: handleSettings,
+            content: (
+              <>
+                <SettingsGearIcon className="more-menu-item-icon" />
+                <span>设置{authLabelSuffix}</span>
+              </>
+            ),
+          },
+        ]),
     {
       id: "more-menu-enterprise",
       className: "more-menu-item--between",
@@ -120,30 +127,43 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
         </>
       ),
     },
-    isAuthenticated
-      ? {
-          id: "more-menu-logout",
-          className: "more-menu-item--danger",
-          separator: true,
-          run: onLogout,
-          content: (
-            <>
-              <LogOutIcon className="more-menu-item-icon" />
-              <span>退出登录{authLabelSuffix}</span>
-            </>
-          ),
-        }
-      : {
-          id: "more-menu-login",
-          run: onLogin,
-          content: (
-            <>
-              <LogOutIcon className="more-menu-item-icon" />
-              <span>登录{authLabelSuffix}</span>
-            </>
-          ),
-        },
+    ...(remotePage
+      ? []
+      : [
+          isAuthenticated
+            ? {
+                id: "more-menu-logout",
+                className: "more-menu-item--danger",
+                separator: true,
+                run: onLogout,
+                content: (
+                  <>
+                    <LogOutIcon className="more-menu-item-icon" />
+                    <span>退出登录{authLabelSuffix}</span>
+                  </>
+                ),
+              }
+            : {
+                id: "more-menu-login",
+                run: onLogin,
+                content: (
+                  <>
+                    <LogOutIcon className="more-menu-item-icon" />
+                    <span>登录{authLabelSuffix}</span>
+                  </>
+                ),
+              },
+        ]),
   ];
+
+  const { getItemProps } = useRovingMenu(menuRef, {
+    itemSelector: ".more-menu-item",
+    itemCount: entries.length,
+    triggerRef,
+    closeOnActivate: true,
+    onRequestClose: onClose,
+    onActivate: (i) => entries[i]?.run(),
+  });
 
   // Click-outside + global Escape fallback (the hook only handles Escape from
   // a focused item). Focus returns to the trigger on those in-menu paths.

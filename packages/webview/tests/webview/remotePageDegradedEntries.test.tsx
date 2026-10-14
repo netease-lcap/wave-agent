@@ -1,0 +1,390 @@
+/**
+ * The remote-control Web page renders the IDE branch of the shared chat UI, so
+ * without guards it also renders the IDE's host-side entries — settings, plugin
+ * tabs, the editor-open path, rewind checkpoints, backgrounded tasks. None of
+ * them exist on the serving machine *from the page*: the page has no editor, no
+ * host to route to, and no second carrier to put a UI in. This file pins the two
+ * halves of spec ui/remote-control.md 场景 23–24:
+ *
+ * - what has nowhere to open is **degraded, not removed**: a file path stays
+ *   readable as plain text (the Write block's content preview especially is the
+ *   only way to read what was written on a phone);
+ * - what can only fail is **not rendered at all**, so nothing on the page looks
+ *   clickable and then does nothing.
+ *
+ * The counter-assertions matter as much as the asserts: the same fixture renders
+ * the link / the button in every other host, so a guard that over-reaches breaks
+ * a test here rather than shipping.
+ */
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { render, fireEvent } from "@testing-library/react";
+import React from "react";
+import {
+  act,
+  createMockVscode,
+  fireInput,
+  renderChatApp,
+  screen,
+  sendCommand,
+  sendHostMessage,
+  waitFor,
+} from "./test-utils";
+import { fixtures } from "wave-webview-fixtures";
+import { MockDataGenerator } from "../fixtures/mockData";
+import { Message } from "../../src/components/Message";
+import { WriteToolPreview } from "../../src/components/WriteToolPreview";
+import { BASH_TOOL_NAME, READ_TOOL_NAME } from "wave-agent-sdk";
+import type { Message as MessageType, ToolBlock } from "../../src/types";
+
+const ABSOLUTE_PATH = "/home/user/project/src/styles/QueuedMessageList.css";
+
+/** Mount one message the way the page does — through the shared UI's renderer. */
+function showMessage(message: MessageType) {
+  const vscode = createMockVscode();
+  return render(<Message message={message} vscode={vscode} />);
+}
+
+function renderAssistantMarkdown(content: string) {
+  return showMessage(MockDataGenerator.createAssistantMessage(content));
+}
+
+function readToolMessage() {
+  return MockDataGenerator.createAssistantMessageWithTool(
+    "I'll read the file.",
+    READ_TOOL_NAME,
+    JSON.stringify({ file_path: ABSOLUTE_PATH }),
+    "File contents read successfully",
+  );
+}
+
+function bashToolMessage(result: string) {
+  return {
+    id: "msg-bash-1",
+    role: "assistant",
+    blocks: [
+      {
+        type: "tool",
+        name: BASH_TOOL_NAME,
+        parameters: JSON.stringify({ command: "ls" }),
+        compactParams: "ls",
+        stage: "end",
+        success: true,
+        result,
+      },
+    ],
+  } as unknown as MessageType;
+}
+
+async function typeAndSend(text: string) {
+  const input = screen.getByTestId("message-input");
+  input.textContent = text;
+  await fireInput(input);
+  fireEvent.keyDown(input, { key: "Enter" });
+}
+
+function postsOf(vscode: ReturnType<typeof createMockVscode>) {
+  return vscode.postMessage.mock.calls.map(
+    ([msg]) => msg as Record<string, unknown>,
+  );
+}
+
+/**
+ * Webview→host commands a host-local slash command would post on any other host:
+ * the ones that make a dialog or RPC on the host side. The page must post none
+ * of them (spec ui/remote-control.md 场景 24).
+ */
+const HOST_ONLY_COMMANDS = new Set([
+  "askBtw",
+  "backgroundCurrentTask",
+  "clearChat",
+  "compact",
+  "getConfiguredModels",
+  "listRewindCheckpoints",
+  "openExternal",
+  "openFile",
+  "planCommand",
+  "reloadPlugins",
+  "remoteControl",
+  "updateConfiguration",
+]);
+
+afterEach(() => {
+  delete window.waveRemotePage;
+  vi.restoreAllMocks();
+});
+
+describe("file paths on the remote-control Web page", () => {
+  it("renders a path in the message body as plain text, not an entry", () => {
+    window.waveRemotePage = true;
+    const { container } = renderAssistantMarkdown(
+      `改动在 ${ABSOLUTE_PATH} 里。`,
+    );
+
+    expect(container.querySelectorAll("a.file-path-link")).toHaveLength(0);
+    // Degraded, not dropped — the path is still the thing you read.
+    expect(container.textContent).toContain(ABSOLUTE_PATH);
+  });
+
+  it("still links the same path in every other host", () => {
+    const { container } = renderAssistantMarkdown(
+      `改动在 ${ABSOLUTE_PATH} 里。`,
+    );
+
+    expect(
+      container.querySelectorAll(".markdown-content a.file-path-link").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("leaves the inline-code and fenced-code channels unlinked too", () => {
+    window.waveRemotePage = true;
+    const { container } = renderAssistantMarkdown(
+      `看 \`${ABSOLUTE_PATH}\`：\n\n\`\`\`text\n${ABSOLUTE_PATH}\n\`\`\`\n`,
+    );
+
+    expect(container.querySelectorAll("code a.file-path-link")).toHaveLength(0);
+    expect(container.textContent).toContain(ABSOLUTE_PATH);
+  });
+
+  it("leaves a bash output path unlinked", () => {
+    window.waveRemotePage = true;
+    const { container } = showMessage(
+      bashToolMessage(`wrote ${ABSOLUTE_PATH}\n`),
+    );
+
+    const output = container.querySelector(".bash-command-output");
+    expect(output).not.toBeNull();
+    expect(output?.querySelectorAll("a.file-path-link")).toHaveLength(0);
+    expect(output?.textContent).toContain(ABSOLUTE_PATH);
+  });
+
+  it("keeps the tool header path visible but inert, with no openFile on click", async () => {
+    window.waveRemotePage = true;
+    const { container } = showMessage(readToolMessage());
+
+    const path = await waitFor(() => {
+      const el = container.querySelector(".write-tool-path") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    expect(path).toHaveTextContent("QueuedMessageList.css");
+    // Plain text: no button role, not in the tab order.
+    expect(path.getAttribute("role")).not.toBe("button");
+    expect(path.getAttribute("tabindex")).toBeNull();
+    expect(path.className).toContain("write-tool-path--plain");
+  });
+
+  it("keeps the Write block's content preview but drops its 打开预览 button", () => {
+    window.waveRemotePage = true;
+    const block = {
+      type: "tool",
+      name: "Write",
+      parameters: JSON.stringify({ file_path: "/a/b.md", content: "l1\nl2" }),
+      stage: "end",
+      success: true,
+      shortResult: "File created (2 lines, 5 characters)",
+      id: "write_1",
+    } as unknown as ToolBlock;
+    const vscode = createMockVscode();
+    const { container } = render(
+      <WriteToolPreview toolBlock={block} vscode={vscode} />,
+    );
+
+    // The written content is the only way to read a Write on a phone — kept.
+    expect(container.querySelector(".write-preview-content")).toHaveTextContent(
+      "l1",
+    );
+    expect(container.querySelector(".write-preview-scrim")).toBeNull();
+    expect(container.querySelector(".write-preview-open")).toBeNull();
+  });
+
+  it("still renders the same Write block's 打开预览 button in every other host", () => {
+    const block = {
+      type: "tool",
+      name: "Write",
+      parameters: JSON.stringify({ file_path: "/a/b.md", content: "l1\nl2" }),
+      stage: "end",
+      success: true,
+      shortResult: "File created (2 lines, 5 characters)",
+      id: "write_1",
+    } as unknown as ToolBlock;
+    const { container } = render(
+      <WriteToolPreview
+        toolBlock={block}
+        vscode={createMockVscode()}
+        onOpenFile={vi.fn()}
+      />,
+    );
+
+    expect(container.querySelector(".write-preview-open")).not.toBeNull();
+  });
+});
+
+describe("entries that can only fail on the page", () => {
+  it("drops 设置 and 登录/退出登录 from the more menu, keeping the two real links", () => {
+    window.waveRemotePage = true;
+    renderChatApp();
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("more-btn"));
+    });
+
+    expect(screen.getByTestId("more-menu-enterprise")).toBeInTheDocument();
+    expect(screen.getByTestId("more-menu-help-docs")).toBeInTheDocument();
+    expect(screen.queryByTestId("more-menu-settings")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("more-menu-logout")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("more-menu-login")).not.toBeInTheDocument();
+  });
+
+  it("bounds the arrow keys to the entries that are actually left", () => {
+    window.waveRemotePage = true;
+    renderChatApp();
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("more-btn"));
+    });
+
+    const menu = screen.getByTestId("more-menu");
+    const items = Array.from(
+      menu.querySelectorAll<HTMLElement>(".more-menu-item"),
+    );
+    expect(items).toHaveLength(2);
+
+    act(() => {
+      fireEvent.keyDown(items[0], { key: "ArrowDown" });
+    });
+    expect(items[1].tabIndex).toBe(0);
+
+    // At the last entry the roving stops: with a stale item count it would move
+    // to a slot that is not there, leaving the whole menu without a tab stop.
+    act(() => {
+      fireEvent.keyDown(items[1], { key: "ArrowDown" });
+    });
+    expect(items[1].tabIndex).toBe(0);
+    expect(menu.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
+  });
+
+  it("opens 企业控制台 and 帮助文档 in a browser tab instead of asking the host", () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    window.waveRemotePage = true;
+    const { vscode } = renderChatApp();
+    act(() => {
+      sendHostMessage(
+        fixtures.authStatusResponse({
+          serverUrl: "https://console.example.com",
+        }),
+      );
+    });
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("more-btn"));
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId("more-menu-enterprise"));
+    });
+
+    expect(open).toHaveBeenCalledWith(
+      "https://console.example.com",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(postsOf(vscode)).not.toContainEqual(
+      expect.objectContaining({ command: "openExternal" }),
+    );
+  });
+
+  it("renders the queued messages as a read-only list", () => {
+    window.waveRemotePage = true;
+    renderChatApp();
+
+    act(() => {
+      sendCommand("startStreaming");
+      sendCommand("updateQueue", {
+        queue: [{ id: "q1", content: "排队中的消息" }],
+      });
+    });
+
+    expect(screen.getByTestId("queued-item-q1")).toHaveTextContent(
+      "排队中的消息",
+    );
+    // The three actions all need host-side queue surgery the page has no method
+    // for — and 「立即发送」 in particular would send the message twice.
+    expect(screen.queryByTestId("queued-edit-q1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("queued-send-q1")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("queued-delete-q1")).not.toBeInTheDocument();
+  });
+
+  it("drops the rewind button from the messages", () => {
+    window.waveRemotePage = true;
+    renderChatApp();
+
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [MockDataGenerator.createUserMessage("你好", "msg-1")],
+      });
+    });
+
+    expect(screen.queryByText("回滚到此消息")).not.toBeInTheDocument();
+    expect(document.querySelectorAll(".message-action-btn")).toHaveLength(0);
+  });
+
+  it("sends every host-local slash command as an ordinary message", async () => {
+    window.waveRemotePage = true;
+    const { vscode } = renderChatApp();
+
+    const hostLocal = [
+      "/clear",
+      "/config",
+      "/plugin",
+      "/reload-plugins",
+      "/mcp",
+      "/agents",
+      "/skills",
+      "/hooks",
+      "/rewind",
+      "/model",
+      "/btw 今天几号",
+      "/plan",
+      "/tasks",
+      "/workflows",
+      "/remote-control",
+    ];
+
+    for (const text of hostLocal) {
+      vscode.postMessage.mockClear();
+      await act(async () => {
+        await typeAndSend(text);
+      });
+
+      const posts = postsOf(vscode);
+      // One ordinary message out — the same fallback an unregistered command
+      // gets, which the machine answers like any other text.
+      expect(posts.filter((p) => p.command === "sendMessage")).toEqual([
+        expect.objectContaining({ command: "sendMessage", text }),
+      ]);
+      // And nothing host-only went out behind it: no dialog's RPC, no
+      // listRewindCheckpoints / getConfiguredModels / planCommand / askBtw …
+      expect(
+        posts.filter((p) => HOST_ONLY_COMMANDS.has(p.command as string)),
+      ).toEqual([]);
+    }
+  });
+
+  it("keeps the two commands the machine can really serve", async () => {
+    window.waveRemotePage = true;
+    const { vscode } = renderChatApp();
+
+    await act(async () => {
+      await typeAndSend("/compact");
+    });
+    expect(postsOf(vscode)).toContainEqual({
+      command: "compact",
+      customInstructions: undefined,
+    });
+
+    vscode.postMessage.mockClear();
+    await act(async () => {
+      await typeAndSend("/status");
+    });
+    expect(screen.getByTestId("status-dialog")).toBeInTheDocument();
+  });
+});

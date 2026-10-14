@@ -25,6 +25,7 @@ import type {
   PermissionDecision,
   PermissionMode,
   SessionMetadata,
+  SlashCommand,
   ToolPermissionContext,
 } from "wave-agent-sdk";
 import { listSessions } from "wave-agent-sdk";
@@ -63,6 +64,16 @@ export interface RemoteControlCliSession {
   setPermissionMode(mode: PermissionMode): void;
   /** Resolve a pending approval, whichever side asked for it. */
   respondPermission(requestId: string, decision: PermissionDecision): void;
+  /** Set this session's custom title (the value `wave -r` lists). */
+  renameSession(title: string): void | Promise<void>;
+  /** Compact this conversation, optionally with custom instructions. */
+  compact(customInstructions?: string): void | Promise<void>;
+  /**
+   * The slash commands this session offers (skills / custom commands). The
+   * page renders these as a menu; the SDK's own list is exactly what a phone
+   * can run, since host-local commands (`/plan`, `/config`, …) live outside it.
+   */
+  slashCommands(): SlashCommand[];
 }
 
 /** The JSON-RPC code for a rejected parameter (matches the daemon's answer). */
@@ -112,6 +123,37 @@ export class RemoteControlCliHost implements RemoteControlHost {
       case "setPermissionMode":
         this.session.setPermissionMode(p.mode as PermissionMode);
         return null;
+      case "renameSession": {
+        // The daemon's AgentBridge takes the target session from params (a host
+        // serves many). This host serves exactly one, so the title is the only
+        // input that means anything here — an empty one is a caller bug.
+        const title = typeof p.title === "string" ? p.title.trim() : "";
+        if (!title) throw invalidParams("renameSession requires a title");
+        await this.session.renameSession(title);
+        return null;
+      }
+      case "compact":
+        await this.session.compact(
+          typeof p.customInstructions === "string"
+            ? p.customInstructions
+            : undefined,
+        );
+        return null;
+      case "getSlashCommands":
+        return {
+          // Narrowed to what the page renders, like the desktop host does: the
+          // SDK's SlashCommand carries a `handler` function, which has no
+          // business travelling over a relay (and would be dropped silently,
+          // leaving the frame's shape to chance).
+          commands: this.session.slashCommands().map((command) => ({
+            id: command.id,
+            name: command.name,
+            description: command.description,
+            ...(command.skillSource
+              ? { skillSource: command.skillSource }
+              : {}),
+          })),
+        };
       default:
         // The service's white list already rejected anything else; reaching
         // here means the two lists drifted apart, which must be loud.

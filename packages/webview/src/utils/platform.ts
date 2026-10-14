@@ -24,3 +24,18 @@ export const isMacHiddenTitlebar = (): boolean =>
  */
 export const isDesktopHost = (): boolean =>
   typeof window !== "undefined" && window.waveHostType === "desktop";
+
+/**
+ * True inside the remote-control Web page — the shim explicitly leaves
+ * `waveHostType` unset (so the page renders the IDE branch: no panes, no
+ * workdir picker) and sets `waveRemotePage` instead. This is the one flag that
+ * distinguishes "an IDE host" from "a browser page holding a token", and the
+ * difference is a capability difference, not a taste one: the page has no
+ * editor to open a file in, no settings tab, no plugin manager, no local host
+ * to route a command to (spec `ui/remote-control.md` 场景 23/24).
+ *
+ * Prefer this over testing `waveHostType !== "desktop"`: the VSCE and JetBrains
+ * hosts are also not desktop, and they *do* have all of the above.
+ */
+export const isRemotePageHost = (): boolean =>
+  typeof window !== "undefined" && window.waveRemotePage === true;

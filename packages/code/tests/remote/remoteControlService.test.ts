@@ -320,15 +320,20 @@ describe("RemoteControlService", () => {
     expect(bridge.handleRequest).not.toHaveBeenCalled();
     expect(socket.frames().at(-1)).toMatchObject({ method: "error" });
 
-    // The nine chat methods are the whole surface.
+    // The nine chat methods + the three conversation-upkeep ones are the whole
+    // surface. Adding a method here is a deliberate widening, so this list is
+    // pinned rather than derived.
     expect([...REMOTE_ALLOWED_METHODS].sort()).toEqual([
       "abortMessage",
+      "compact",
       "getMessages",
       "getSessionInfo",
+      "getSlashCommands",
       "listDaemonSessions",
       "listPendingPermissions",
       "listSessions",
       "permissionResponse",
+      "renameSession",
       "sendMessage",
       "setPermissionMode",
     ]);

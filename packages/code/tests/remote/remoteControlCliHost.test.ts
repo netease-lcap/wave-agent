@@ -49,6 +49,9 @@ function makeSession(
     abort: vi.fn(),
     setPermissionMode: vi.fn(),
     respondPermission: vi.fn(),
+    renameSession: vi.fn(),
+    compact: vi.fn(),
+    slashCommands: () => [],
     ...overrides,
   };
 }
@@ -232,6 +235,76 @@ test("sendMessage / abortMessage / setPermissionMode reach the session", async (
 
   await host.handleRequest("setPermissionMode", { mode: "plan" });
   expect(session.setPermissionMode).toHaveBeenCalledWith("plan");
+});
+
+test("renameSession trims the title and refuses an empty one", async () => {
+  // The daemon's bridge takes a target sessionId (a host serves many); this host
+  // serves exactly one, so the title is the only parameter that means anything
+  // here — and an empty title would write a nameless session.
+  const session = makeSession();
+  const host = new RemoteControlCliHost(session);
+
+  await host.handleRequest("renameSession", {
+    sessionId: "sess-1",
+    title: "  会话标题  ",
+  });
+  expect(session.renameSession).toHaveBeenCalledWith("会话标题");
+
+  await expect(
+    host.handleRequest("renameSession", { sessionId: "sess-1", title: "   " }),
+  ).rejects.toMatchObject({ code: -32602 });
+  await expect(
+    host.handleRequest("renameSession", { sessionId: "sess-1" }),
+  ).rejects.toMatchObject({ code: -32602 });
+  expect(session.renameSession).toHaveBeenCalledTimes(1);
+});
+
+test("compact forwards custom instructions and tolerates their absence", async () => {
+  const session = makeSession();
+  const host = new RemoteControlCliHost(session);
+
+  await host.handleRequest("compact", { customInstructions: "keep the API" });
+  expect(session.compact).toHaveBeenCalledWith("keep the API");
+
+  await host.handleRequest("compact", {});
+  expect(session.compact).toHaveBeenLastCalledWith(undefined);
+});
+
+test("getSlashCommands narrows the SDK command to what the page renders", async () => {
+  // `handler` is a function: it cannot travel over the relay, and dropping it
+  // implicitly (JSON.stringify ignores function-valued properties) would leave
+  // the frame's shape to chance.
+  const session = makeSession({
+    slashCommands: () =>
+      [
+        {
+          id: "review",
+          name: "review",
+          description: "技能：代码评审",
+          skillSource: "user",
+          handler: () => {},
+        },
+        {
+          id: "ship",
+          name: "ship",
+          description: "自定义命令",
+          handler: () => {},
+        },
+      ] as unknown as ReturnType<RemoteControlCliSession["slashCommands"]>,
+  });
+  const host = new RemoteControlCliHost(session);
+
+  await expect(host.handleRequest("getSlashCommands", {})).resolves.toEqual({
+    commands: [
+      {
+        id: "review",
+        name: "review",
+        description: "技能：代码评审",
+        skillSource: "user",
+      },
+      { id: "ship", name: "ship", description: "自定义命令" },
+    ],
+  });
 });
 
 test("a permissionResponse notification settles the matching request", () => {

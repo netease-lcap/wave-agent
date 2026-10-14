@@ -50,7 +50,7 @@ import { CompactBlockView } from "./CompactBlockView";
 import { WriteToolPreview } from "./WriteToolPreview";
 import { FileToolHeader } from "./FileToolHeader";
 import { getStageColor, getToolStatusColor } from "../utils/statusColors";
-import { isDesktopHost } from "../utils/platform";
+import { isDesktopHost, isRemotePageHost } from "../utils/platform";
 import "../styles/Message.css";
 
 // Configure marked for VS Code webview context
@@ -335,7 +335,12 @@ const applyTableColumnAlign = (tableHtml: string): string => {
   });
 };
 
-const createMessageMarkdownRenderer = (workdir?: string) => {
+const createMessageMarkdownRenderer = (
+  workdir?: string,
+  // 远程控制 Web 页关掉文件路径链接化（spec ui/remote-control.md 场景 23）：
+  // 页面上没有编辑器可打开路径。URL 与其余 markdown 渲染不受影响。
+  linkFilePaths: boolean = true,
+) => {
   const renderer = new marked.Renderer();
   renderer.listitem = renderTaskListitem;
   // 表格包一层滚动容器（specs 走查 F-06 / conversation-typography.md TXT-06）：
@@ -413,6 +418,7 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
           const body = linkifyPlainText(
             code.replace(/\n$/, "") + "\n",
             workdir,
+            linkFilePaths,
           );
           const cls = lang ? ` class="language-${escapeHtml(lang)}"` : "";
           return `<pre><code${cls}>${body}</code></pre>\n`;
@@ -425,10 +431,12 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
       return `<code><a href="${url}">${url}</a></code>`;
     }
     // 行内代码通道：整串是文件路径（含可选 :N / :N-M）→ 代码样式的可点击元素
-    const matched = detectFilePathToken(decodeHtmlEntities(text), {
-      allowRelative: true,
-      requireExtension: true,
-    });
+    const matched = linkFilePaths
+      ? detectFilePathToken(decodeHtmlEntities(text), {
+          allowRelative: true,
+          requireExtension: true,
+        })
+      : null;
     if (matched && resolveFilePathMatch(matched, workdir) !== null) {
       return `<code>${fileLinkHtml(matched.display)}</code>`;
     }
@@ -436,7 +444,9 @@ const createMessageMarkdownRenderer = (workdir?: string) => {
   };
   renderer.text = (text: string) =>
     // 正文纯文本通道：绝对路径 → 链接；其余文本按原转义形式原样保留
-    linkifyFilePathText(decodeHtmlEntities(text));
+    linkFilePaths
+      ? linkifyFilePathText(decodeHtmlEntities(text))
+      : escapeHtml(decodeHtmlEntities(text));
   // 链接角色（用户 2026-09-10 规则）：按「显示文本本身的含义」区分两种链接——
   //   ① 描述性链接（查看预览、参考文档、发送邮件、联系我们…）与所在正文同为
   //      UI 角色，不加类；
@@ -498,6 +508,9 @@ const parseMarkdownWithMermaid = (
     return { elements: [] };
   }
 
+  // 远程控制 Web 页：不把文件路径变成链接（见 createMessageMarkdownRenderer）。
+  const linkFilePaths = !isRemotePageHost();
+
   const elements: Array<{
     type: "html" | "mermaid";
     content: string;
@@ -526,7 +539,7 @@ const parseMarkdownWithMermaid = (
     } else if (part.trim()) {
       // This is regular markdown content
       const html = marked.parse(part, {
-        renderer: createMessageMarkdownRenderer(workdir),
+        renderer: createMessageMarkdownRenderer(workdir, linkFilePaths),
       });
       const sanitizedHtml = DOMPurify.sanitize(html, {
         ALLOWED_TAGS: [
@@ -638,6 +651,12 @@ export const Message: React.FC<MessageProps> = React.memo(
         });
       }
     };
+
+    // 远程控制 Web 页没有编辑器、也没有文件面板（spec ui/remote-control.md 场景 23）：
+    // 文件路径一律不渲染成入口 —— 正文/代码块里的路径不生成链接（见
+    // createMessageMarkdownRenderer），工具块头的路径与 Write 预览的「打开预览」
+    // 也不给点击。路径文本本身照旧显示。
+    const canOpenFile = !isRemotePageHost();
 
     const getMessageClassName = () => {
       const classes = ["message"];
@@ -796,7 +815,9 @@ export const Message: React.FC<MessageProps> = React.memo(
               {/* 输出中的裸 http(s) URL 与文件路径链接化（见
                   specs/ui/markdown-links.md 与 specs/ui/file-path-links.md），
                   点击路由复用 handleContentClick：desktop 上 localhost → 预览
-                  面板、其余 → 系统浏览器；IDE 保持原生链接处理；路径走 openFile。 */}
+                  面板、其余 → 系统浏览器；IDE 保持原生链接处理；路径走 openFile。
+                  远程控制 Web 页只留 URL：那里没有 openFile 的去处
+                  （specs/ui/remote-control.md 场景 23）。 */}
               {/* tabIndex（F-10 / WCAG 2.1.1）：max-height 120 + overflow-y:auto
                   是可滚动区域，键盘用户需能聚焦后用方向键翻看完整输出。
                   仅桌面端注入——焦点环样式只存在于 `[data-host="desktop"]` 层。 */}
@@ -804,7 +825,11 @@ export const Message: React.FC<MessageProps> = React.memo(
                 className="bash-command-output"
                 tabIndex={isDesktopHost() ? 0 : undefined}
                 dangerouslySetInnerHTML={{
-                  __html: linkifyPlainText(result, props.workdir || undefined),
+                  __html: linkifyPlainText(
+                    result,
+                    props.workdir || undefined,
+                    !isRemotePageHost(),
+                  ),
                 }}
               />
             </div>
@@ -899,7 +924,7 @@ export const Message: React.FC<MessageProps> = React.memo(
                 toolBlock={toolBlock}
                 vscode={props.vscode}
                 workdir={workdir}
-                onOpenFile={openFile}
+                onOpenFile={canOpenFile ? openFile : undefined}
               />
             )}
             {errorContent && toolHeader}
@@ -929,7 +954,7 @@ export const Message: React.FC<MessageProps> = React.memo(
             <FileToolHeader
               toolBlock={toolBlock}
               filePath={toRelativePath(editFilePath, workdir)}
-              onOpenFile={openEditFile}
+              onOpenFile={canOpenFile ? openEditFile : undefined}
             />
             {!errorContent && <DiffViewer toolBlock={toolBlock} />}
             {errorContent}
@@ -978,7 +1003,7 @@ export const Message: React.FC<MessageProps> = React.memo(
             <FileToolHeader
               toolBlock={toolBlock}
               filePath={displayPath}
-              onOpenFile={openReadFile}
+              onOpenFile={canOpenFile ? openReadFile : undefined}
             />
             {!errorContent && toolBlock.shortResult && (
               <div className="write-tool-stats">{toolBlock.shortResult}</div>
@@ -1363,7 +1388,9 @@ export const Message: React.FC<MessageProps> = React.memo(
         data-role={message.role}
       >
         {message.blocks?.map((block, index) => renderBlock(block, index))}
-        {isRewindTargetMessage(message) && !isQueued && (
+        {/* 回滚入口只在宿主给了处理器时才渲染：远程控制 Web 页没有回滚检查点
+            （spec ui/remote-control.md 场景 24），少一个「点了没反应」的按钮。 */}
+        {onRewindToMessage && isRewindTargetMessage(message) && !isQueued && (
           <div className="message-actions">
             <Tooltip text="回滚到此消息" position="bottom">
               <button

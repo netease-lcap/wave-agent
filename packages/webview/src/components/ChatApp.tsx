@@ -68,7 +68,7 @@ import type {
 import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/constants";
 import { collectWriteEditBlocks, pathsMatch } from "../utils/fileAutoRefresh";
 import { toAbsoluteFilePath } from "../utils/messageUtils";
-import { isMacHiddenTitlebar } from "../utils/platform";
+import { isMacHiddenTitlebar, isRemotePageHost } from "../utils/platform";
 import { chatReducer, initialState } from "../reducers/chatReducer";
 import { sessionUi, PANEL_DEFAULT_WIDTH } from "../utils/sessionUiStore";
 import type {
@@ -377,8 +377,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // reads to skip drawing the QR it is itself the target of. That page hides the
   // new/history buttons like the desktop does and gets one entry of its own: the
   // sessions the serving process holds right now, which is all it can open.
-  const isRemotePage =
-    typeof window !== "undefined" && window.waveRemotePage === true;
+  //
+  // It is also the host every guard in this file is about: rendering the IDE
+  // branch buys it the IDE's UI, but not the IDE's capabilities (no editor, no
+  // settings tab, no plugin manager, no local host to route a command to), so
+  // the entries below that can only fail there are not rendered at all
+  // (spec ui/remote-control.md 场景 24).
+  const isRemotePage = isRemotePageHost();
   // Batch 2 (designer prototype): desktop settings full-page and session board
   // view switches. Only the root instance (paneId undefined) owns these — a
   // split-view pane never renders them. settingsOpen covers the desktop
@@ -1393,7 +1398,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // plan pane, not the (compact) confirmation dialog — mirror the VSCE
         // claudePlanPreview panel and the JB editor column. The dialog gets
         // the plan stripped so it stays small.
-        if (message.toolName === EXIT_PLAN_MODE_TOOL_NAME) {
+        //
+        // Exception — the remote-control Web page: it has no editor column and
+        // no pane system, so the dialog IS the plan's carrier
+        // (spec core/plan-mode.md 场景 13 / ui/remote-control.md 场景 22). This
+        // is the single place that decides it; ConfirmationDialog just renders
+        // whatever plan arrived.
+        const planStrippedToPanel =
+          message.toolName === EXIT_PLAN_MODE_TOOL_NAME && !isRemotePage;
+        if (planStrippedToPanel) {
           routePlanToPanel(message.planContent);
         }
         dispatch({
@@ -1403,10 +1416,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             toolName: message.toolName,
             confirmationType: message.confirmationType,
             toolInput: message.toolInput,
-            planContent:
-              message.toolName === EXIT_PLAN_MODE_TOOL_NAME
-                ? undefined
-                : message.planContent,
+            planContent: planStrippedToPanel ? undefined : message.planContent,
             suggestedPrefix: message.suggestedPrefix,
             hidePersistentOption: message.hidePersistentOption,
             outsideSafeZoneDirectory: message.outsideSafeZoneDirectory,
@@ -1497,9 +1507,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // plan. It is staged — not routed here — because a same-batch pane
         // rebind re-seeds tabs from the incoming cache after this handler runs
         // and would wipe an eagerly opened plan tab (see the routing effect).
+        //
+        // Skipped on the remote-control Web page: there the plan is rendered
+        // inside the confirmation dialog itself, so staging it for the pane
+        // system would open a second carrier for the same plan.
         for (const c of message.pendingConfirmations ||
           (message.pendingConfirmation ? [message.pendingConfirmation] : [])) {
           if (
+            !isRemotePage &&
             c.toolName === EXIT_PLAN_MODE_TOOL_NAME &&
             typeof c.planContent === "string" &&
             c.planContent.trim() !== ""
@@ -2001,21 +2016,37 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [vscode, isDesktop, paneId, onOpenSettingsFromPane],
   );
 
+  // Remote-control Web page: the host has no `openExternal` to route to (the page
+  // IS a browser), so these two open a plain browser tab instead of a dead
+  // request — same URL, native behaviour (spec ui/remote-control.md 场景 24).
+  const openInBrowser = useCallback((url: string) => {
+    window.open(url, "_blank", "noopener,noreferrer");
+  }, []);
+
   const handleOpenEnterpriseConsole = useCallback(() => {
     if (serverUrl) {
+      if (isRemotePage) {
+        openInBrowser(serverUrl);
+        return;
+      }
       vscode.postMessage({ command: "openExternal", url: serverUrl });
     }
-  }, [vscode, serverUrl]);
+  }, [vscode, serverUrl, isRemotePage, openInBrowser]);
 
   // 账户卡片的「帮助文档」：serverUrl + /docs 走系统浏览器（spec 场景 4）.
   const handleOpenHelpDocs = useCallback(() => {
     if (serverUrl) {
+      const url = `${serverUrl.replace(/\/+$/, "")}/docs/`;
+      if (isRemotePage) {
+        openInBrowser(url);
+        return;
+      }
       vscode.postMessage({
         command: "openExternal",
-        url: `${serverUrl.replace(/\/+$/, "")}/docs/`,
+        url,
       });
     }
-  }, [vscode, serverUrl]);
+  }, [vscode, serverUrl, isRemotePage, openInBrowser]);
 
   const handleLogout = useCallback(() => {
     vscode.postMessage({ command: "logout" });
@@ -2134,10 +2165,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       const trimmedText = text.trim();
       if (!trimmedText && (!images || images.length === 0)) return;
 
+      // 宿主本地的斜杠命令：远程控制 Web 页一律不拦（spec ui/remote-control.md
+      // 场景 24）。它们要么要一个只有宿主才有的界面（设置页 / 插件市场 / 回滚 /
+      // 模型选择 / 后台任务 / 工作流），要么本身就是宿主侧动作（/remote-control 在
+      // 控制页上是自我指涉）。页面不拦 = 不打开一个永远加载中的死弹窗；文本按普通
+      // 消息发给宿主 —— 与桌面端 /clear 的既有处置同源（「SDK 从未注册，发给模型
+      // 无害」）。服务端真能做的两条（/compact、/status）不受影响，照旧拦截。
+      const interceptHostLocalCommand = !isRemotePage;
+
       // Intercept local slash commands — open dialogs instead of sending to agent
       // Desktop: /clear 已整端移除（2026-09-05 拍板），不再拦截 —— 手动敲 /clear
       // 作为普通消息发送（SDK 从未注册 clear，发给模型无害）；IDE 端保留拦截。
-      if (!isDesktop && trimmedText === "/clear") {
+      if (!isDesktop && interceptHostLocalCommand && trimmedText === "/clear") {
         handleClearChat();
         return;
       }
@@ -2150,14 +2189,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         });
         return;
       }
-      if (trimmedText === "/config") {
+      if (interceptHostLocalCommand && trimmedText === "/config") {
         // 不再弹窗：与点击头部设置按钮一致，打开设置页「全局设置」选项卡
         // （2026-08-29 用户拍板，对齐 /agents → subagents、/skills → skills；
         // 见 SettingsPage 全局设置视图）。
         handleOpenSettings();
         return;
       }
-      if (trimmedText === "/plugin") {
+      if (interceptHostLocalCommand && trimmedText === "/plugin") {
         // 桌面端在设置页里不再有「插件市场」入口（spec ecosystem/plugin.md 场景 3、
         // A-016），视图只由侧边栏整页承载，故 /plugin 也落到整页；IDE 宿主没有
         // 侧边栏整页，仍唤起设置页并选中「插件市场」选项卡（对齐 /mcp、/skills）。
@@ -2175,13 +2214,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         handleOpenSettings("plugins");
         return;
       }
-      if (trimmedText === "/reload-plugins") {
+      if (interceptHostLocalCommand && trimmedText === "/reload-plugins") {
         // 插件变更的就地重载：不重建会话、不进对话，只让宿主把磁盘上的插件状态
         // 换装进当前进程内的 live 会话（docs/specs/ecosystem/plugin.md）。
         postToHost({ command: "reloadPlugins" });
         return;
       }
-      if (trimmedText === "/mcp") {
+      if (interceptHostLocalCommand && trimmedText === "/mcp") {
         // 不再弹窗：唤起设置页并选中「MCP 服务」选项卡（2026-08-29 用户拍板，
         // 弹窗内容已迁移到设置页，见 SettingsMcpView）。
         handleOpenSettings("mcp");
@@ -2191,39 +2230,42 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         dispatch({ type: "SHOW_DIALOG", payload: { type: "status" } });
         return;
       }
-      if (trimmedText === "/tasks") {
+      if (interceptHostLocalCommand && trimmedText === "/tasks") {
         dispatch({ type: "SHOW_DIALOG", payload: { type: "tasks" } });
         return;
       }
-      if (trimmedText === "/workflows" || trimmedText === "/workflows ") {
+      if (
+        interceptHostLocalCommand &&
+        (trimmedText === "/workflows" || trimmedText === "/workflows ")
+      ) {
         dispatch({ type: "SHOW_DIALOG", payload: { type: "workflows" } });
         return;
       }
-      if (trimmedText === "/remote-control") {
+      if (interceptHostLocalCommand && trimmedText === "/remote-control") {
         // 手机接管本机会话（远端控制面）：弹窗自己问宿主/轮询状态，故这里只
         // 负责唤起。桌面端与 IDE 端都放行 —— 各自的会话就在自己那个 stdio
         // 子进程里，手机要在哪套会话上做审批，就得由那台进程去连 relay。
         dispatch({ type: "SHOW_DIALOG", payload: { type: "remote" } });
         return;
       }
-      if (trimmedText === "/agents") {
+      if (interceptHostLocalCommand && trimmedText === "/agents") {
         // 不再弹窗：唤起设置页并选中「子代理」选项卡（2026-08-29 用户拍板，
         // 弹窗内容已迁移到设置页，见 SettingsSubagentsView）。
         handleOpenSettings("subagents");
         return;
       }
-      if (trimmedText === "/skills") {
+      if (interceptHostLocalCommand && trimmedText === "/skills") {
         // 不再弹窗：唤起设置页并选中「技能」选项卡（见 SettingsSkillsView）。
         handleOpenSettings("skills");
         return;
       }
-      if (trimmedText === "/hooks") {
+      if (interceptHostLocalCommand && trimmedText === "/hooks") {
         // 唤起设置页并选中「钩子」选项卡（对齐 /agents → subagents、/skills →
         // skills 的现有模式；见 SettingsHooksView）。
         handleOpenSettings("hooks");
         return;
       }
-      if (trimmedText === "/rewind") {
+      if (interceptHostLocalCommand && trimmedText === "/rewind") {
         if (stateRef.current.isStreaming) return;
         setRewindPopupOpen(true);
         setRewindCheckpointsLoading(true);
@@ -2231,7 +2273,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         return;
       }
       // /model is allowed mid-stream (spec scenario 8): no isStreaming guard.
-      if (trimmedText === "/model") {
+      if (interceptHostLocalCommand && trimmedText === "/model") {
         setModelPopupOpen(true);
         setModelLoading(true);
         postToHost({ command: "getConfiguredModels" });
@@ -2255,7 +2297,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         return;
       }
       // /btw side question — answered out-of-band via askBtw, never enters the chat.
-      if (trimmedText === "/btw" || trimmedText.startsWith("/btw ")) {
+      if (
+        interceptHostLocalCommand &&
+        (trimmedText === "/btw" || trimmedText.startsWith("/btw "))
+      ) {
         const question = trimmedText.slice("/btw".length).trim();
         if (!question) {
           // Code span keeps `<your question>` from being parsed as an HTML tag.
@@ -2279,8 +2324,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }
       // /plan — host-local command (CLI Ink overlay / IDE plan preview /
       // desktop Plan panel). Forwarded to the host instead of being sent to the
-      // agent; the host switches to plan mode or shows the current plan.
-      if (trimmedText === "/plan" || trimmedText.startsWith("/plan ")) {
+      // agent; the host switches to plan mode or shows the current plan. Not on
+      // the remote page: there is no plan preview there and no place to show
+      // the current plan except the ExitPlanMode card.
+      if (
+        interceptHostLocalCommand &&
+        (trimmedText === "/plan" || trimmedText.startsWith("/plan "))
+      ) {
         const args = trimmedText.slice("/plan".length).trim() || undefined;
         postToHost({ command: "planCommand", args });
         return;
@@ -2321,6 +2371,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     },
     [
       isDesktop,
+      isRemotePage,
       handleClearChat,
       handleOpenSettings,
       host,
@@ -2640,8 +2691,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 作为第五种宿主」场景 11）。三个本地宿主把整段记录一次灌进来，这里给 undefined，
   // 那条上拉请求就永远发不出去 —— 门禁与「二维码」同一套能力位（waveHostType 在 IDE
   // 宿主也是空的，认不得它们）。
-  const canLoadOlderMessages =
-    typeof window !== "undefined" && window.waveRemotePage === true;
+  const canLoadOlderMessages = isRemotePage;
   const loadOlderRequestRef = useRef(0);
   const [loadingOlder, setLoadingOlder] = useState(false);
 
@@ -3675,7 +3725,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           isCompacting={state.isCompacting}
           compactionStream={compactionStream}
           vscode={vscode}
-          onRewindToMessage={handleRewindToMessage}
+          // 远程控制 Web 页没有回滚检查点（listRewindCheckpoints 不在远端白名单，
+          // spec ui/remote-control.md 场景 24）：不给处理器 ⇒ 回滚按钮不渲染。
+          onRewindToMessage={isRemotePage ? undefined : handleRewindToMessage}
           onLoadOlderMessages={
             canLoadOlderMessages ? handleLoadOlderMessages : undefined
           }

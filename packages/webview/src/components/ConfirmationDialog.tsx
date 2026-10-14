@@ -26,6 +26,54 @@ import type {
 } from "../types";
 import "../styles/ConfirmationDialog.css";
 import { DiffViewer } from "./DiffViewer";
+import { marked } from "marked";
+import DOMPurify from "dompurify";
+
+/**
+ * Sanitiser allowlist for the plan body. Deliberately the same set the message
+ * renderer allows (see `Message.tsx` `parseMarkdownWithMermaid`): the plan is
+ * model-authored markdown like any message, and `div` only survives because the
+ * table renderer wraps wide tables in a scroll container. Anything else
+ * (script/style/iframe/event handlers) is dropped by DOMPurify.
+ */
+const PLAN_ALLOWED_TAGS = [
+  "div",
+  "p",
+  "br",
+  "strong",
+  "b",
+  "em",
+  "i",
+  "code",
+  "pre",
+  "h1",
+  "h2",
+  "h3",
+  "h4",
+  "h5",
+  "h6",
+  "ul",
+  "ol",
+  "li",
+  "a",
+  "blockquote",
+  "hr",
+  "table",
+  "thead",
+  "tbody",
+  "tr",
+  "th",
+  "td",
+  "del",
+];
+const PLAN_ALLOWED_ATTR = ["href", "title", "align"];
+
+const renderPlanHtml = (planContent: string): string =>
+  DOMPurify.sanitize(marked.parse(planContent) as string, {
+    ALLOWED_TAGS: PLAN_ALLOWED_TAGS,
+    ALLOWED_ATTR: PLAN_ALLOWED_ATTR,
+    ALLOW_DATA_ATTR: false,
+  });
 
 // Selector for the dialog's focusable elements. Used by the modal focus trap:
 // Tab/Shift+Tab cycle within the dialog so focus never leaks into the message
@@ -582,6 +630,39 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
     return "是，且自动接受修改";
   };
 
+  /**
+   * The plan full text, rendered inside the dialog.
+   *
+   * Which host that happens on is decided upstream, not here: every host with an
+   * editor column or a pane routes the plan there and strips it from the dialog
+   * (`ChatApp` `showConfirmation`), while the remote-control Web page keeps it —
+   * a phone has neither, and the plan is the only basis for approving it
+   * (spec `core/plan-mode.md` 场景 13 / `ui/remote-control.md` 场景 22). So this
+   * renders whenever a plan arrived, and the strip is the single policy point.
+   */
+  const renderPlanContent = () => {
+    const planContent = confirmation.planContent;
+    if (
+      confirmation.toolName !== EXIT_PLAN_MODE_TOOL_NAME ||
+      typeof planContent !== "string" ||
+      planContent.trim() === ""
+    ) {
+      return null;
+    }
+
+    return (
+      <div className="plan-content-preview" data-testid="plan-content-preview">
+        <h3>计划内容：</h3>
+        <div
+          className="markdown-content"
+          // Sanitised in renderPlanHtml (DOMPurify allowlist, same set as the
+          // message renderer).
+          dangerouslySetInnerHTML={{ __html: renderPlanHtml(planContent) }}
+        />
+      </div>
+    );
+  };
+
   const renderQuestions = () => {
     if (
       confirmation.toolName !== ASK_USER_QUESTION_TOOL_NAME ||
@@ -967,6 +1048,8 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
               </div>
             )}
           </div>
+
+          {renderPlanContent()}
 
           {renderQuestions()}
 
