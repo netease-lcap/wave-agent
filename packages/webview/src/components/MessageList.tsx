@@ -71,6 +71,40 @@ const USER_INPUT_GRACE_MS = 200;
 // guard, on top of recognizing our own writes by position (see autoScrollRef).
 const BOTTOM_FOLLOW_THRESHOLD_PX = 10;
 
+// Is the viewport at the real bottom? One definition, used both to decide
+// whether following may continue and to re-engage it from the scroll handler.
+const atBottom = (container: HTMLElement) =>
+  container.scrollTop + container.clientHeight >=
+  container.scrollHeight - BOTTOM_FOLLOW_THRESHOLD_PX;
+
+/**
+ * Why the viewport is being asked to move. The reason is the answer to "may
+ * this override the user's reading position?" — it is not decoration, and it is
+ * the only thing that may re-arm following:
+ *
+ * - `initial`   the pane just mounted / a session was bound. Nothing is being
+ *               read yet, so this pins unless the user had already opted out.
+ * - `user-sent` the user just sent a message: the reply is what they are
+ *               waiting for, so this is the one reason that lifts an earlier
+ *               opt-out. Together with "scrolled back to the real bottom" it is
+ *               the second and last way back into following.
+ * - `new-message` a message was appended (or the queue changed): the reader
+ *               wants to see it, so it pins unless they opted out.
+ * - `content`   the message already on screen changed — a streaming chunk. This
+ *               one additionally requires the stream to be running or the
+ *               viewport to be at the bottom, so a parked reader is never
+ *               chased by the reply growing under them.
+ * - `ambient`   the conversation did not change: an async resource finished
+ *               loading, a row was measured, the host asked for the bottom.
+ *               Pins unless the user opted out.
+ */
+type FollowReason =
+  | "initial"
+  | "user-sent"
+  | "new-message"
+  | "content"
+  | "ambient";
+
 // How long a programmatic-scroll position stays recognizable, and how close the
 // viewport has to be to it. Same values as opencode's markAuto/isAuto: the
 // window must outlive the dispatch lag of the synthesized 'scroll' event, and
@@ -629,38 +663,36 @@ export const MessageList = forwardRef<
     container.scrollTop = container.scrollHeight;
   }, [markAutoScroll]);
 
-  const scrollToBottom = useCallback(
-    (behavior: ScrollBehavior = "smooth", force = false) => {
-      const container = containerRef.current;
-      if (!container) return;
-
-      const isNearBottom =
-        container.scrollTop + container.clientHeight >=
-        container.scrollHeight - BOTTOM_FOLLOW_THRESHOLD_PX;
-
-      const isUserMessage =
-        messages.length > 0 && messages[messages.length - 1].role === "user";
-      // Force scroll if it's a new message AND (it's from user OR user is already at bottom)
-      const shouldForce =
-        force && (isUserMessage || !userScrolledUpRef.current);
-
-      // Always scroll if:
-      // 1. It's a brand new message that should be forced
-      // 2. We are currently streaming content AND user hasn't scrolled up
-      // 3. The user is already near the bottom AND hasn't scrolled up
-      if (
-        shouldForce ||
-        ((isStreaming || isNearBottom) && !userScrolledUpRef.current)
-      ) {
-        // A new user message means the user wants to follow the upcoming reply:
-        // clear any prior opt-out so streaming auto-scrolls into view.
-        if (shouldForce && isUserMessage) {
-          userScrolledUpRef.current = false;
-        }
-        doScrollToBottom(behavior);
+  // Whether the viewport may move, decided in ONE place and pure — it writes
+  // nothing, so no caller has to wonder which state a scroll left behind (the
+  // re-arming that `user-sent` does happens in scrollToBottom, before this is
+  // asked).
+  const mayFollow = useCallback(
+    (reason: FollowReason): boolean => {
+      if (userScrolledUpRef.current) return false;
+      // A content change must not chase a reader who is somewhere else in the
+      // history: either the stream is running (the reply is arriving and the
+      // reader was following it) or the viewport is at the bottom anyway.
+      if (reason === "content") {
+        const container = containerRef.current;
+        return isStreaming || (!!container && atBottom(container));
       }
+      return true;
     },
-    [messages, isStreaming, doScrollToBottom],
+    [isStreaming],
+  );
+
+  const scrollToBottom = useCallback(
+    (behavior: ScrollBehavior = "smooth", reason: FollowReason = "ambient") => {
+      // The user's own message re-arms following. It is the counterpart to the
+      // two ways OUT of it (a scroll-away gesture, clicking the sticky bar) and
+      // is expressed here rather than hidden inside the judgement below, so
+      // "why did following come back?" has exactly one answer per reason.
+      if (reason === "user-sent") userScrolledUpRef.current = false;
+      if (!mayFollow(reason)) return;
+      doScrollToBottom(behavior);
+    },
+    [doScrollToBottom, mayFollow],
   );
 
   // Expose ONE explicit "bring me to the bottom" request to the parent (host
@@ -671,8 +703,7 @@ export const MessageList = forwardRef<
   // ways: the user scrolls back to the real bottom, or sends a new message.
   useImperativeHandle(ref, () => ({
     scrollToBottom: (behavior: ScrollBehavior = "smooth") => {
-      if (userScrolledUpRef.current) return;
-      doScrollToBottom(behavior);
+      scrollToBottom(behavior, "ambient");
     },
   }));
 
@@ -691,6 +722,13 @@ export const MessageList = forwardRef<
       (queuedMessages?.length || 0) > prevQueuedLengthRef.current;
     prevMessagesLengthRef.current = messages.length;
     prevQueuedLengthRef.current = queuedMessages?.length || 0;
+    const reason: FollowReason = isInitialLoad
+      ? "initial"
+      : isNewMessage
+        ? messages[messages.length - 1]?.role === "user"
+          ? "user-sent"
+          : "new-message"
+        : "content";
 
     // The scroll event fires for user scrolling (wheel, trackpad, keyboard,
     // scrollbar drag) AND for everything we or the virtualizer do to the
@@ -744,9 +782,7 @@ export const MessageList = forwardRef<
           );
         }
       }
-      const isNearBottom =
-        container.scrollTop + container.clientHeight >=
-        container.scrollHeight - BOTTOM_FOLLOW_THRESHOLD_PX;
+      const isNearBottom = atBottom(container);
       const scrolledUp = container.scrollTop < prevScrollTopRef.current;
       // A clamp from a content-shrink reflow (scrollHeight decreased) moves
       // scrollTop downward but is NOT user intent — ignore it so auto-follow
@@ -925,12 +961,10 @@ export const MessageList = forwardRef<
     resizeObserver.observe(container);
 
     // Follow new content: scroll on every messages change (incl. streaming text
-    // chunks so streamed text stays visible), gated by userScrolledUp inside
-    // scrollToBottom. A brand-new message forces the scroll.
-    scrollToBottom(
-      isStreaming || isInitialLoad ? "auto" : "smooth",
-      isNewMessage || isInitialLoad,
-    );
+    // chunks so streamed text stays visible). The reason carries the decision —
+    // whether this change is allowed to override the user's reading position is
+    // scrollToBottom's judgement, not a flag assembled here.
+    scrollToBottom(isStreaming || isInitialLoad ? "auto" : "smooth", reason);
     computeSticky();
 
     return () => {
@@ -952,13 +986,11 @@ export const MessageList = forwardRef<
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const repin = () => {
-      if (!userScrolledUpRef.current) doScrollToBottom("auto");
-    };
+    const repin = () => scrollToBottom("auto", "ambient");
     container.addEventListener("load", repin, true);
     document.fonts?.ready.then(repin);
     return () => container.removeEventListener("load", repin, true);
-  }, [doScrollToBottom]);
+  }, [scrollToBottom]);
 
   // Persistent bottom-follow on the spacer itself, OpenCode-style (their
   // resizeItem override re-scrolls to the end on every measurement; ours
@@ -972,11 +1004,11 @@ export const MessageList = forwardRef<
     const spacer = spacerRef.current;
     if (!spacer) return;
     const observer = new ResizeObserver(() => {
-      if (!userScrolledUpRef.current) doScrollToBottom("auto");
+      scrollToBottom("auto", "ambient");
     });
     observer.observe(spacer);
     return () => observer.disconnect();
-  }, [doScrollToBottom]);
+  }, [scrollToBottom]);
 
   // The compaction hint mounts below the last message (after the virtualizer's
   // in-flow spacer). scrollToEnd only accounts for row heights, so a pinned
@@ -986,9 +1018,9 @@ export const MessageList = forwardRef<
   // static one-liner, so no re-pin is needed as its tail grows. Respect an
   // opt-out: a user reading history isn't yanked back down.
   useEffect(() => {
-    if (!isCompacting || userScrolledUpRef.current) return;
+    if (!isCompacting || !mayFollow("ambient")) return;
     pinToTrueBottom();
-  }, [isCompacting, pinToTrueBottom]);
+  }, [isCompacting, mayFollow, pinToTrueBottom]);
 
   return (
     <div
