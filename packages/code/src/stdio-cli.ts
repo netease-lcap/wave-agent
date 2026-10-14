@@ -8,6 +8,7 @@
 
 import { ensureRuntimeDeps } from "wave-agent-sdk";
 import { StdioServer } from "./stdio/stdioServer.js";
+import { createRemoteControlSinkFactory } from "./remote/remoteControlSink.js";
 import { logger } from "./utils/logger.js";
 
 /**
@@ -69,7 +70,11 @@ export async function startStdioCli(): Promise<void> {
     crashHandler("unhandledRejection", reason),
   );
 
-  const server = new StdioServer();
+  const server = new StdioServer({
+    // This child owns the sessions its host shows, so it — not a daemon on the
+    // same machine — is what serves a paired phone.
+    createRemoteSink: createRemoteControlSinkFactory(process.cwd()),
+  });
   server.start();
 
   // Keep the process alive — readline on stdin handles the event loop.

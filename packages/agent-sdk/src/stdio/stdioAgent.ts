@@ -34,6 +34,7 @@ import type {
   McpServerConfig,
   SubagentConfiguration,
   SkillMetadata,
+  RemoteControlSnapshot,
 } from "../types/index.js";
 import type { RpcClient } from "./rpcClient.js";
 import type { NotificationRouter } from "./notificationRouter.js";
@@ -608,6 +609,44 @@ export class StdioAgent {
       this.sessionId,
     )) as { skills: SkillMetadata[] };
     return result.skills;
+  }
+
+  // ── Remote control ────────────────────────────────────────────
+  //
+  // The outbound relay link that serves a paired phone. It belongs to the
+  // process this agent's client speaks to — the `wave --stdio` child — not to
+  // the session, so the three calls carry no session semantics: the envelope
+  // still needs `this.sessionId` (the server routes every request by it), but
+  // the bridge answers from the process-wide controller.
+  //
+  // All three return the same snapshot, taken *after* the action, so a caller
+  // never needs a second round trip. `connect` is asynchronous by nature (the
+  // relay has not answered yet when it returns), which is why the snapshot can
+  // legitimately come back as `connecting`.
+
+  async remoteControlStatus(): Promise<RemoteControlSnapshot> {
+    return (await this.client.request(
+      "remoteControlStatus",
+      undefined,
+      this.sessionId,
+    )) as RemoteControlSnapshot;
+  }
+
+  /** `name` is an optional label for this machine, shown on the phone. */
+  async remoteControlConnect(name?: string): Promise<RemoteControlSnapshot> {
+    return (await this.client.request(
+      "remoteControlConnect",
+      { name },
+      this.sessionId,
+    )) as RemoteControlSnapshot;
+  }
+
+  async remoteControlDisconnect(): Promise<RemoteControlSnapshot> {
+    return (await this.client.request(
+      "remoteControlDisconnect",
+      undefined,
+      this.sessionId,
+    )) as RemoteControlSnapshot;
   }
 
   // ── Notification dispatch (called by NotificationRouter) ──────

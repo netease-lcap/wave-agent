@@ -364,6 +364,13 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
         type: "builtin",
       },
     ]);
+    remoteControlStatus = vi.fn(async () => ({
+      state: "online",
+      url: "wss://relay.example/v1/hosts/ws/h1/client",
+      pairing: { code: "4821-9930" },
+    }));
+    remoteControlConnect = vi.fn(async () => ({ state: "connecting" }));
+    remoteControlDisconnect = vi.fn(async () => ({ state: "off" }));
 
     constructor(
       _client: unknown,
@@ -11604,5 +11611,105 @@ describe("deep link clone", () => {
 
     expect(dialog.showMessageBox).toHaveBeenCalledTimes(1);
     expect(dialog.showOpenDialog).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /remote-control 弹窗（手机接管本机会话）
+// ---------------------------------------------------------------------------
+
+describe("remoteControl（/remote-control 弹窗）", () => {
+  it("转发本分屏子进程的快照，并原样带回 requestId", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "remoteControl",
+      action: "status",
+      requestId: "rc1",
+    });
+
+    // 目标就是本分屏自己的 `wave --stdio` 子进程（会话在哪个进程里，就由哪个
+    // 进程连 relay），所以断言落在这一分屏的 agent 上。
+    expect(lastAgent().remoteControlStatus).toHaveBeenCalledTimes(1);
+    expect(sent("remoteControlResponse")).toMatchObject([
+      {
+        requestId: "rc1",
+        snapshot: { state: "online", pairing: { code: "4821-9930" } },
+      },
+    ]);
+  });
+
+  it("connect/disconnect 打到同一个子进程并把新状态回给弹窗", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "remoteControl",
+      action: "connect",
+      name: "笔记本",
+      requestId: "rc2",
+    });
+    await host.handleWebviewMessage({
+      command: "remoteControl",
+      action: "disconnect",
+      requestId: "rc3",
+    });
+
+    expect(lastAgent().remoteControlConnect).toHaveBeenCalledWith("笔记本");
+    expect(lastAgent().remoteControlDisconnect).toHaveBeenCalledTimes(1);
+    expect(sent("remoteControlResponse")).toMatchObject([
+      { requestId: "rc2", snapshot: { state: "connecting" } },
+      { requestId: "rc3", snapshot: { state: "off" } },
+    ]);
+  });
+
+  it("RPC 失败报 error 字段，不伪造 state:error 快照", async () => {
+    const { host, sent } = await readyHost();
+    lastAgent().remoteControlStatus.mockRejectedValueOnce(
+      new Error(
+        "Remote control is not enabled on this process (set enableRemoteControl: true).",
+      ),
+    );
+
+    await host.handleWebviewMessage({
+      command: "remoteControl",
+      action: "status",
+      requestId: "rc4",
+    });
+
+    const reply = sent("remoteControlResponse").at(-1);
+    expect(reply).toMatchObject({ requestId: "rc4" });
+    expect(reply?.snapshot).toBeUndefined();
+    expect(reply?.error).toContain("enableRemoteControl");
+  });
+
+  it("没有绑定会话的分屏如实回报，而不是抛出去打断宿主", async () => {
+    const { host, sent } = createHost();
+
+    await host.handleWebviewMessage({
+      command: "remoteControl",
+      action: "status",
+      requestId: "rc5",
+      paneId: "pane-nonexistent",
+    });
+
+    const reply = sent("remoteControlResponse").at(-1);
+    expect(reply).toMatchObject({ requestId: "rc5" });
+    expect(reply?.snapshot).toBeUndefined();
+    expect(reply?.error).toBeTruthy();
+  });
+
+  it("本分屏的斜杠命令清单里带 /remote-control", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "requestSlashCommands",
+      filterText: "",
+    });
+
+    expect(
+      sent("slashCommandsResponse")
+        .at(-1)
+        ?.commands.find((c) => c.id === "remote-control"),
+    ).toMatchObject({ name: "remote-control" });
   });
 });

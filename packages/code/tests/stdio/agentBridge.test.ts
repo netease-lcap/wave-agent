@@ -920,6 +920,189 @@ test("getMessages omits contextUsagePercent when the session has no tokens yet",
   expect(r.contextUsagePercent).toBeUndefined();
 });
 
+// ── getMessages: the optional window (remote clients) ────────────
+//
+// The window exists so a phone can cold-start on the tail of a long
+// conversation instead of the whole thread. Everything here is opt-in: the
+// tests above share the same session setup and never pass a parameter, which is
+// what pins the "no window ⇒ full list, unchanged" contract for the three
+// desktop-type hosts.
+
+function windowedMessages(count: number): Message[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `m${i}`,
+    role: i % 2 === 0 ? "user" : "assistant",
+    blocks: [],
+  })) as unknown as Message[];
+}
+
+async function bridgeWithMessages(count: number) {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent({ messages: windowedMessages(count) });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  return { bridge, sessionId };
+}
+
+type MessageWindowResult = {
+  messages: Message[];
+  hasMore?: boolean;
+  reset?: boolean;
+  total?: number;
+};
+
+test("getMessages with only a limit returns the tail page and reports more", async () => {
+  const { bridge, sessionId } = await bridgeWithMessages(10);
+
+  const r = (await bridge.handleRequest(
+    "getMessages",
+    { limit: 3 },
+    sessionId,
+  )) as MessageWindowResult;
+
+  expect(r.messages.map((m) => m.id)).toEqual(["m7", "m8", "m9"]);
+  expect(r.hasMore).toBe(true);
+  expect(r.total).toBe(10);
+});
+
+test("getMessages tail page reports no more once the list fits in one page", async () => {
+  const { bridge, sessionId } = await bridgeWithMessages(2);
+
+  const r = (await bridge.handleRequest(
+    "getMessages",
+    { limit: 5 },
+    sessionId,
+  )) as MessageWindowResult;
+
+  expect(r.messages.map((m) => m.id)).toEqual(["m0", "m1"]);
+  expect(r.hasMore).toBe(false);
+});
+
+test("getMessages pages backwards from a before anchor", async () => {
+  const { bridge, sessionId } = await bridgeWithMessages(10);
+
+  const page1 = (await bridge.handleRequest(
+    "getMessages",
+    { before: "m7", limit: 3 },
+    sessionId,
+  )) as MessageWindowResult;
+  expect(page1.messages.map((m) => m.id)).toEqual(["m4", "m5", "m6"]);
+  expect(page1.hasMore).toBe(true);
+
+  const page2 = (await bridge.handleRequest(
+    "getMessages",
+    { before: "m4", limit: 3 },
+    sessionId,
+  )) as MessageWindowResult;
+  expect(page2.messages.map((m) => m.id)).toEqual(["m1", "m2", "m3"]);
+  expect(page2.hasMore).toBe(true);
+
+  const page3 = (await bridge.handleRequest(
+    "getMessages",
+    { before: "m1", limit: 3 },
+    sessionId,
+  )) as MessageWindowResult;
+  expect(page3.messages.map((m) => m.id)).toEqual(["m0"]);
+  expect(page3.hasMore).toBe(false);
+});
+
+test("getMessages with a before anchor resolves the newest copy of a repeated id", async () => {
+  // A compacted message is re-added, so the display list can hold the same id
+  // twice; the caller's "where I am" is the newest copy it could have seen.
+  const repeated = [
+    { id: "a", role: "user", blocks: [] },
+    { id: "compact", role: "user", blocks: [] },
+    { id: "b", role: "assistant", blocks: [] },
+    { id: "compact", role: "user", blocks: [] },
+    { id: "c", role: "assistant", blocks: [] },
+  ] as unknown as Message[];
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ messages: repeated }),
+  );
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+
+  const r = (await bridge.handleRequest(
+    "getMessages",
+    { before: "compact" },
+    sessionId,
+  )) as MessageWindowResult;
+
+  expect(r.messages.map((m) => m.id)).toEqual(["a", "compact", "b"]);
+  expect(r.hasMore).toBe(false);
+});
+
+test("getMessages with a before anchor that is gone returns an empty page", async () => {
+  // The anchor was truncated (rewind / clear); older history may be gone with
+  // it, so the caller must stop paging rather than loop on a dead anchor.
+  const { bridge, sessionId } = await bridgeWithMessages(5);
+
+  const r = (await bridge.handleRequest(
+    "getMessages",
+    { before: "gone", limit: 3 },
+    sessionId,
+  )) as MessageWindowResult;
+
+  expect(r.messages).toEqual([]);
+  expect(r.hasMore).toBe(false);
+  expect(r.total).toBe(5);
+});
+
+test("getMessages with a since anchor returns only what came after it", async () => {
+  const { bridge, sessionId } = await bridgeWithMessages(10);
+
+  const r = (await bridge.handleRequest(
+    "getMessages",
+    { since: "m6" },
+    sessionId,
+  )) as MessageWindowResult;
+
+  expect(r.messages.map((m) => m.id)).toEqual(["m7", "m8", "m9"]);
+  expect(r.reset).toBeUndefined();
+});
+
+test("getMessages with a since anchor returns nothing when already caught up", async () => {
+  const { bridge, sessionId } = await bridgeWithMessages(10);
+
+  const r = (await bridge.handleRequest(
+    "getMessages",
+    { since: "m9" },
+    sessionId,
+  )) as MessageWindowResult;
+
+  expect(r.messages).toEqual([]);
+  expect(r.reset).toBeUndefined();
+});
+
+test("getMessages with an unknown since anchor asks the caller to reset", async () => {
+  // The only failure signal available: the store has no seq/version, so a
+  // missing anchor is how "your view can no longer be extended" is reported.
+  const { bridge, sessionId } = await bridgeWithMessages(10);
+
+  const r = (await bridge.handleRequest(
+    "getMessages",
+    { since: "truncated-away" },
+    sessionId,
+  )) as MessageWindowResult;
+
+  expect(r.messages).toEqual([]);
+  expect(r.reset).toBe(true);
+  expect(r.total).toBe(10);
+});
+
+test("getMessages rejects a non-positive limit instead of silently widening", async () => {
+  // A caller that asked for a bound and got the whole thread back has no way to
+  // notice — refuse loudly rather than hand a phone the 13 MB page it was
+  // trying to avoid.
+  const { bridge, sessionId } = await bridgeWithMessages(4);
+
+  await expect(
+    bridge.handleRequest("getMessages", { limit: 0 }, sessionId),
+  ).rejects.toThrow(/limit must be a positive integer/);
+});
+
 test("getFullMessageThread returns messages and sessionIds", async () => {
   const { bridge } = createBridge();
   const mockAgent = createMockAgent();

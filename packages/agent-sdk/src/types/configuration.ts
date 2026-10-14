@@ -68,6 +68,17 @@ export interface WaveConfiguration {
   /** Whether the Exec tool is enabled. Unset follows the code default constant (EXEC_DEFAULT_ENABLED). */
   enableExec?: boolean;
   /**
+   * Whether this machine may serve its sessions to a paired phone over the
+   * remote-control relay. Unset follows the code default constant
+   * (REMOTE_CONTROL_DEFAULT_ENABLED).
+   *
+   * Judged by the host process (the CLI / daemon that owns the sessions), not
+   * by the agent: turning it on opens an outbound connection to a relay server
+   * and makes pending tool approvals reachable from off the machine, so it is
+   * off unless explicitly asked for.
+   */
+  enableRemoteControl?: boolean;
+  /**
    * Whether to send the lean (condensed) prompt set: the static system prompt
    * collapses to the identity line plus the harness notes, and every built-in
    * tool that declares `leanPrompt` sends that text instead of its full

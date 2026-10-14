@@ -538,6 +538,41 @@ export async function main() {
         },
       )
       .command(
+        "remote-control [action] [name]",
+        "Serve this machine's sessions to a paired phone (via the wave daemon)",
+        (yargs) => {
+          return yargs
+            .positional("action", {
+              describe: "on | off | status",
+              type: "string",
+              default: "status",
+            })
+            .positional("name", {
+              describe: "Label for this machine, shown on the phone",
+              type: "string",
+            });
+        },
+        async (argv) => {
+          const {
+            remoteControlOnCommand,
+            remoteControlOffCommand,
+            remoteControlStatusCommand,
+          } = await import("./remote/remoteControlCommands.js");
+          const action = (argv.action as string | undefined) ?? "status";
+          if (action === "on") {
+            await remoteControlOnCommand(argv.name as string | undefined);
+          } else if (action === "off") {
+            await remoteControlOffCommand();
+          } else if (action === "status") {
+            await remoteControlStatusCommand();
+          } else {
+            console.error(`Unknown remote-control action: ${action}`);
+            console.error("Usage: wave remote-control [on|off|status] [name]");
+            process.exit(1);
+          }
+        },
+      )
+      .command(
         "update",
         "Update WAVE Code to the latest version",
         {},

@@ -18,10 +18,19 @@ import net from "net";
 import * as fs from "fs";
 import { AgentBridge, type AgentBridgeOptions } from "./agentBridge.js";
 import { JsonRpcConnection } from "./jsonRpcConnection.js";
+import type { RemoteControlSink } from "../remote/remoteControlSink.js";
 
 export interface DaemonServerOptions {
   socketPath: string;
   bridgeOptions?: AgentBridgeOptions;
+  /**
+   * Built with the bridge (which the daemon owns privately) so the sink can
+   * route inbound phone requests back through it. Its notifications are wired
+   * up here; connecting is the user's call, not ours. Unset means remote
+   * control is off for this daemon — the `remoteControl*` RPCs then report
+   * exactly that through the bridge's own error.
+   */
+  createRemoteSink?: (bridge: AgentBridge) => RemoteControlSink;
 }
 
 export class DaemonServer {
@@ -30,11 +39,17 @@ export class DaemonServer {
   private bridge: AgentBridge;
   private connections = new Set<JsonRpcConnection>();
   private sockets = new Set<net.Socket>();
+  private remoteSink: RemoteControlSink | undefined;
 
   constructor(options: DaemonServerOptions) {
     this.socketPath = options.socketPath;
+    let remoteSink: RemoteControlSink | undefined;
     this.bridge = new AgentBridge({
       ...options.bridgeOptions,
+      // The sink is handed the bridge it must route phone requests back
+      // through, so it can only be built after it; reading it lazily keeps the
+      // two from having to be constructed in a circle.
+      remoteControl: () => remoteSink,
       // Notifications go to every attached client; a fully detached daemon
       // has none, and the write is dropped silently (the attach snapshot
       // re-syncs state on reconnect).
@@ -42,11 +57,20 @@ export class DaemonServer {
         for (const conn of this.connections) {
           conn.sendNotification(method, params, sessionId);
         }
+        // The phone must never be able to take the local clients down with
+        // it, so a remote-path failure is contained here rather than thrown.
+        try {
+          this.remoteSink?.sendNotification(method, params, sessionId);
+        } catch {
+          // Dropped frame; the phone re-syncs on reconnect.
+        }
       },
       // The `shutdown` RPC (wave daemon stop/restart) destroys every session in
       // the bridge, then hands off here to tear the process down.
       onShutdownRequest: () => this.shutdown(),
     });
+    remoteSink = options.createRemoteSink?.(this.bridge);
+    this.remoteSink = remoteSink;
     this.server = net.createServer((socket) => {
       const conn = new JsonRpcConnection(socket, socket, this.bridge);
       this.connections.add(conn);
@@ -124,6 +148,8 @@ export class DaemonServer {
 
   stop(): Promise<void> {
     return new Promise((resolve) => {
+      this.remoteSink?.stop();
+      this.remoteSink = undefined;
       const server = this.server;
       if (!server) return resolve();
       this.server = undefined;
@@ -140,6 +166,10 @@ export class DaemonServer {
    * teardown.
    */
   private shutdown(): void {
+    // Drop the relay link explicitly: the process is about to exit, and leaving
+    // the socket to the OS would have the relay hold a dead subscription.
+    this.remoteSink?.stop();
+    this.remoteSink = undefined;
     for (const socket of this.sockets) socket.destroy();
     this.sockets.clear();
     this.server?.close();

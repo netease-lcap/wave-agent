@@ -1588,6 +1588,10 @@ export function loadWaveConfigFromFile(
         config.enableArtifact !== undefined ? config.enableArtifact : undefined,
       enableExec:
         config.enableExec !== undefined ? config.enableExec : undefined,
+      enableRemoteControl:
+        config.enableRemoteControl !== undefined
+          ? config.enableRemoteControl
+          : undefined,
       leanPrompt:
         config.leanPrompt !== undefined ? config.leanPrompt : undefined,
       nonDeferrableBuiltins: Array.isArray(config.nonDeferrableBuiltins)
@@ -1773,6 +1777,11 @@ export function loadMergedWaveConfig(
       mergedConfig.enableExec = config.enableExec;
     }
 
+    // Merge enableRemoteControl (last one wins)
+    if (config.enableRemoteControl !== undefined) {
+      mergedConfig.enableRemoteControl = config.enableRemoteControl;
+    }
+
     // Merge leanPrompt (last one wins)
     if (config.leanPrompt !== undefined) {
       mergedConfig.leanPrompt = config.leanPrompt;
@@ -1833,6 +1842,7 @@ export function loadMergedWaveConfig(
     worktree: mergedConfig.worktree,
     enableArtifact: mergedConfig.enableArtifact,
     enableExec: mergedConfig.enableExec,
+    enableRemoteControl: mergedConfig.enableRemoteControl,
     leanPrompt: mergedConfig.leanPrompt,
     nonDeferrableBuiltins: mergedConfig.nonDeferrableBuiltins,
   };

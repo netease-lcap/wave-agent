@@ -42,11 +42,7 @@
 /* Focus state: neutral border emphasis + a soft popover shadow (prototype
    composer focus) — the brand red stays reserved for blocking confirmations. */
 .input-content:focus-within {
-  border-color: color-mix(
-    in srgb,
-    var(--vscode-foreground) 35%,
-    transparent
-  );
+  border-color: color-mix(in srgb, var(--vscode-foreground) 35%, transparent);
   box-shadow: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.2));
 }
 
@@ -158,7 +154,10 @@
 
 .ai-send-btn:hover:not(:disabled),
 .ai-abort-btn:hover {
-  background: var(--vscode-button-hoverBackground, var(--vscode-button-background));
+  background: var(
+    --vscode-button-hoverBackground,
+    var(--vscode-button-background)
+  );
 }
 
 .ai-send-btn:disabled {

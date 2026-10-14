@@ -41,6 +41,10 @@ export {
   loadWaveConfigFromFile,
 } from "./services/configurationService.js";
 export {
+  REMOTE_CONTROL_DEFAULT_ENABLED,
+  isRemoteControlEnabled,
+} from "./services/remoteControlAvailability.js";
+export {
   getUserConfigPaths,
   getProjectConfigPaths,
 } from "./utils/configPaths.js";

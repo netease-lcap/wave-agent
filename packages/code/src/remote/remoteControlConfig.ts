@@ -1,0 +1,353 @@
+/**
+ * Where remote control dials out to, who this machine is on that channel, and
+ * how it gets itself registered there.
+ *
+ * Three things have to be resolved before a process can subscribe:
+ *
+ * - **The relay URL.** Derived from the same server URL the rest of the CLI
+ *   uses for SSO (`authService.getServerUrl()`), so a private deployment that
+ *   sets `WAVE_SERVER_URL` gets its own relay without a second knob. A relay
+ *   that lives elsewhere is reachable through `WAVE_REMOTE_CONTROL_URL`, which
+ *   is the **whole** subscribe URL (host id included), not an origin.
+ * - **This machine's identity.** The channel is keyed by the machine
+ *   (`/v1/hosts/ws/{hostId}/subscribe`) and **the relay assigns the id**: it is
+ *   the row the relay inserts when a machine registers (`POST /api/relay/hosts`)
+ *   and the credential returned with it (`rch_…`) is checked against that same
+ *   row on every handshake. An id minted here would name a channel that does not
+ *   exist — both ends get refused long before anything is forwarded.
+ * - **The pairing code.** Also from that one response, and shown once: the relay
+ *   never pushes a code over the WebSocket.
+ *
+ * Registration happens **once per machine**. The id and its token are long-lived
+ * (90 days, revocable) and the endpoint is not idempotent — calling it again
+ * leaves a second row behind that still connects. So the pair is kept in
+ * `~/.wave/remote-control.json`, read on every boot and written only when a
+ * machine registers for the first time.
+ */
+
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { authService, createAuthAwareFetch } from "wave-agent-sdk";
+import type { PairingInfo } from "wave-agent-sdk";
+import { readNearestPackageJson } from "../utils/readPackageJson.js";
+
+/** Everything the relay connection needs, resolved fresh at connect time. */
+export interface RemoteControlEndpoint {
+  url: string;
+  /** The relay-assigned channel id (also the path segment of `url`). */
+  hostId: string;
+  /** Long-lived host credential. Never logged, never shown. */
+  hostToken: string;
+  version: string;
+}
+
+export interface RelayHostRegistration {
+  hostId: string;
+  hostToken: string;
+  /** Only present right after registering, while the code is still live. */
+  pairing?: PairingInfo;
+}
+
+/** Registration is a one-shot call on a very slow path; it may not hang the daemon. */
+const REGISTER_TIMEOUT_MS = 10_000;
+
+const NOT_SIGNED_IN =
+  "Not signed in: remote control registers this machine with the relay and needs an SSO credential to do it (run /login).";
+
+export function getRemoteControlStatePath(): string {
+  return path.join(os.homedir(), ".wave", "remote-control.json");
+}
+
+interface RemoteControlStateFile {
+  /** Both assigned by the relay; both needed before anything can connect. */
+  hostId?: string;
+  hostToken?: string;
+  /** The label registration sent, so a later `on` does not silently rename. */
+  name?: string;
+  pairing?: PairingInfo;
+}
+
+function readState(): RemoteControlStateFile {
+  try {
+    const raw = fs.readFileSync(getRemoteControlStatePath(), "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed === "object" && parsed !== null) {
+      return parsed as RemoteControlStateFile;
+    }
+  } catch {
+    // Missing or unreadable reads as "not registered yet". That is also what a
+    // half-written file must look like: registering again is recoverable (it
+    // leaves an orphan row), crashing a daemon that is already serving is not.
+  }
+  return {};
+}
+
+function writeState(state: RemoteControlStateFile): void {
+  const filePath = getRemoteControlStatePath();
+  try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    // Write-then-rename: a daemon killed mid-write must not leave a truncated
+    // file that reads back as "not registered" and registers a second machine.
+    const tmp = `${filePath}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, `${JSON.stringify(state, null, 2)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    fs.renameSync(tmp, filePath);
+  } catch {
+    // A read-only home is not fatal — the machine just registers again next
+    // time, which the relay tolerates (it only costs an extra row).
+  }
+}
+
+/** A code the relay has already expired is worse than no code: it looks usable. */
+function livePairing(
+  pairing: PairingInfo | undefined,
+): PairingInfo | undefined {
+  if (
+    !pairing ||
+    typeof pairing.code !== "string" ||
+    pairing.code.length === 0
+  ) {
+    return undefined;
+  }
+  if (pairing.expiresAt === undefined) return pairing;
+  const expiresAt = Date.parse(pairing.expiresAt);
+  if (!Number.isFinite(expiresAt)) return pairing;
+  return expiresAt > Date.now() ? pairing : undefined;
+}
+
+/**
+ * RPC base for the relay's REST surface (`/api/relay/hosts`, …): the same
+ * deployment that serves the WebSocket channel.
+ *
+ * The subscribe-URL override wins when set, because a relay reached through it
+ * is by definition not the one `getServerUrl()` points at — and registration has
+ * to land on the relay the machine will actually connect to.
+ */
+export function getRelayApiBaseUrl(): string {
+  const override = process.env.WAVE_REMOTE_CONTROL_URL;
+  if (override) {
+    try {
+      const url = new URL(override);
+      url.protocol = url.protocol === "wss:" ? "https:" : "http:";
+      return url.origin;
+    } catch {
+      // Not a URL at all: fall back to the configured server.
+    }
+  }
+  return authService.getServerUrl();
+}
+
+interface RegisterResponseBody {
+  host?: { id?: unknown; name?: unknown; platform?: unknown; status?: unknown };
+  hostToken?: unknown;
+  pairingCode?: unknown;
+  pairingUrl?: unknown;
+  pairingExpiresAt?: unknown;
+  error?: unknown;
+}
+
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+/**
+ * The relay's refusals are not interchangeable: "this account has no enterprise
+ * context" and "this account is not an active member" are the same status code
+ * and need different things done about them, so the two are kept apart here
+ * rather than collapsed into "403".
+ */
+export function describeRegistrationFailure(
+  status: number,
+  error: string | undefined,
+): string {
+  if (error === "Enterprise access required") {
+    return "this account has no enterprise context, and remote control is enterprise-only (ops administrators and personal accounts are not eligible).";
+  }
+  if (error === "You must be an active enterprise member") {
+    return "this account is not an active member of the enterprise that runs the relay — ask an administrator to activate the membership, then try again.";
+  }
+  if (status === 401) {
+    return "the sign-in is missing or expired: registering this machine needs a current enterprise member credential (run /login).";
+  }
+  if (error === "invalid_name" || error === "invalid_platform") {
+    return "the relay rejected this machine's name or platform (the name is limited to 100 characters).";
+  }
+  if (status === 503) {
+    return "this deployment has remote control switched off.";
+  }
+  return `the relay refused to register this machine (${status}${error ? `: ${error}` : ""}).`;
+}
+
+/**
+ * Register this machine with the relay and take the identity it hands back.
+ *
+ * Called through `createAuthAwareFetch` so the credential is the current SSO
+ * token — refreshed if it is about to expire, which matters because a daemon can
+ * sit idle for hours before someone turns remote control on.
+ */
+export async function registerRelayHost(options: {
+  name: string;
+  platform?: string;
+}): Promise<RelayHostRegistration> {
+  if (!authService.getSSOToken()) throw new Error(NOT_SIGNED_IN);
+
+  let response: Response;
+  try {
+    response = await createAuthAwareFetch(globalThis.fetch)(
+      `${getRelayApiBaseUrl()}/api/relay/hosts`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: options.name,
+          platform: options.platform ?? process.platform,
+        }),
+        signal: AbortSignal.timeout(REGISTER_TIMEOUT_MS),
+      },
+    );
+  } catch (err) {
+    throw new Error(
+      `cannot reach the relay to register this machine: ${(err as Error).message}`,
+    );
+  }
+
+  const body = (await response.json().catch(() => undefined)) as
+    | RegisterResponseBody
+    | undefined;
+  if (!response.ok) {
+    throw new Error(
+      describeRegistrationFailure(response.status, asString(body?.error)),
+    );
+  }
+
+  const hostId = asString(body?.host?.id);
+  const hostToken = asString(body?.hostToken);
+  if (!hostId || !hostToken) {
+    throw new Error(
+      "the relay accepted the registration but returned no host id / token — this machine cannot be trusted to reach it again.",
+    );
+  }
+
+  const code = asString(body?.pairingCode);
+  const url = asString(body?.pairingUrl);
+  const expiresAt = asString(body?.pairingExpiresAt);
+  const pairing: PairingInfo | undefined = code
+    ? { code, ...(url ? { url } : {}), ...(expiresAt ? { expiresAt } : {}) }
+    : undefined;
+
+  return { hostId, hostToken, ...(pairing ? { pairing } : {}) };
+}
+
+/**
+ * This machine's relay identity: the stored one when there is one, otherwise a
+ * fresh registration. Never registers twice for the same machine.
+ */
+export async function ensureRelayHostRegistration(
+  name?: string,
+): Promise<RelayHostRegistration> {
+  const state = readState();
+  const storedId = asString(state.hostId);
+  const storedToken = asString(state.hostToken);
+  if (storedId && storedToken) {
+    const pairing = livePairing(state.pairing);
+    return {
+      hostId: storedId,
+      hostToken: storedToken,
+      ...(pairing ? { pairing } : {}),
+    };
+  }
+
+  const label = name && name.trim().length > 0 ? name.trim() : os.hostname();
+  const registration = await registerRelayHost({ name: label });
+  writeState({
+    hostId: registration.hostId,
+    hostToken: registration.hostToken,
+    name: label,
+    ...(registration.pairing ? { pairing: registration.pairing } : {}),
+  });
+  return registration;
+}
+
+/**
+ * `https://host` → `wss://host`, `http://host` → `ws://host`. An explicit
+ * scheme in `WAVE_REMOTE_CONTROL_URL` is used as given.
+ */
+export function buildSubscribeUrl(serverUrl: string, hostId: string): string {
+  const parsed = new URL(serverUrl);
+  parsed.protocol = parsed.protocol === "http:" ? "ws:" : "wss:";
+  parsed.pathname = `/v1/hosts/ws/${encodeURIComponent(hostId)}/subscribe`;
+  parsed.search = "";
+  parsed.hash = "";
+  return parsed.toString();
+}
+
+/**
+ * The page a phone should open to claim a pairing code.
+ *
+ * Only a fallback: the registration response carries the relay's own
+ * `pairingUrl`, which wins when present. This one is derived from the server URL
+ * the phone page is served from — it is hosted by the enterprise deployment,
+ * next to the SSO login it reuses, so the host matches `WAVE_SERVER_URL` by
+ * construction. Undefined when that URL cannot be parsed (the code is still
+ * printable; only the QR needs a URL).
+ */
+export function buildPairingPageUrl(code: string): string | undefined {
+  try {
+    const url = new URL("/remote/", authService.getServerUrl());
+    url.searchParams.set("code", code);
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Resolve the connection target, or say why there isn't one. Called at connect
+ * time rather than at daemon boot: a resident daemon outlives the SSO token it
+ * was started with, and the user may turn remote control on hours later — and,
+ * on a machine that has never paired, this is also where the one registration
+ * call happens.
+ */
+export async function resolveRemoteControlEndpoint(
+  options: {
+    name?: string;
+  } = {},
+): Promise<{
+  endpoint?: RemoteControlEndpoint;
+  pairing?: PairingInfo;
+  error?: string;
+}> {
+  let registration: RelayHostRegistration;
+  try {
+    registration = await ensureRelayHostRegistration(options.name);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+
+  const override = process.env.WAVE_REMOTE_CONTROL_URL;
+  let url: string;
+  if (override) {
+    url = override;
+  } else {
+    try {
+      url = buildSubscribeUrl(authService.getServerUrl(), registration.hostId);
+    } catch (err) {
+      return {
+        error: `Cannot build the relay URL from the server URL: ${(err as Error).message}`,
+      };
+    }
+  }
+
+  return {
+    endpoint: {
+      url,
+      hostId: registration.hostId,
+      hostToken: registration.hostToken,
+      version: readNearestPackageJson().version,
+    },
+    ...(registration.pairing ? { pairing: registration.pairing } : {}),
+  };
+}

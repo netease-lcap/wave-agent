@@ -101,6 +101,22 @@ describe("SlashCommandsPopup grouping", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("groups /remote-control with the system commands, not with skills", () => {
+    // 它是 webview 本地拦截、打开弹窗的指令（同 status/tasks/workflows）；
+    // 漏登记会掉进「技能」分组，用户在下拉里会去技能里找一个不存在的技能。
+    renderPopup([
+      { id: "remote-control", name: "remote-control", description: "远程控制" },
+      { id: "deepwiki:ask", name: "deepwiki:ask", description: "DeepWiki" },
+    ]);
+
+    expect(
+      within(getGroup("系统指令")).getByTestId("slash-command-remote-control"),
+    ).toBeInTheDocument();
+    expect(
+      within(getGroup("技能")).queryByTestId("slash-command-remote-control"),
+    ).not.toBeInTheDocument();
+  });
+
   it("renders groups in a fixed order: 插件管理 -> 系统指令 -> 技能", () => {
     const commands: Command[] = [
       { id: "settings", name: "settings", description: "设置技能" },
