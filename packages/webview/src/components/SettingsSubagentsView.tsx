@@ -270,6 +270,7 @@ const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
         <ConfirmDialog
           title={`删除子代理「${pendingDelete.name}」`}
           description={`将删除子代理文件${pendingDelete.filePath ? `（${pendingDelete.filePath}）` : ""}，此操作不可撤销。`}
+          destructive
           confirmText="确认删除"
           cancelText="取消"
           onConfirm={handleConfirmDelete}

@@ -110,3 +110,154 @@
 .confirm-dialog-btn-confirm:hover:not(:disabled) {
   background-color: var(--vscode-button-hoverBackground, #2690c7);
 }
+
+/* ═══ 1014 · 桌面端按 skill「Compact confirmation dialog visual variant」重做 ═══
+   契约出处 = common-components.md:73-85（该节即专为「删除类确认弹窗」写的桌面变体）。
+   逐条落地：
+   · 左对齐标题+描述、右上角关闭控件、页脚右对齐；省略前置警示三角（TSX 侧）
+   · 宽 440px + max-width calc(100vw - 32px)；r12 + 24px 内衬 + --cc-shadow-overlay
+   · 标题 16/24/600 --cc-text-primary；描述 14/22/400 --cc-text-regular；标题↔描述 8px
+   · 页脚前 24px（= 容器 gap）、按钮间 8px（base 已是）；按钮 32px 高 / 14 / 500 / r8
+     / 12px 内衬 / 内容驱动宽度（去掉 base 的 min-width:64 强制等宽）
+   · 确认键两档：破坏性操作（删除/移除）走 soft-danger 变体（--cc-color-danger-soft
+     底 + --cc-color-danger 字、无红描边，契约 :83），hover 保软底转
+     --cc-color-danger-hover、pressed → --cc-color-danger-active；非破坏操作
+     （更新/重启/批量更新）走普通填充主按钮档（见文件末尾两段注释）
+   · 遮罩保持既有 40%（契约 :67 把「40% mask + 22% shadow」记录为既有实现例外，不动）
+   仅 [data-host="desktop"]；IDE / 插件宿主保持 base 原样（skill 一贯口径）。
+   影响面 = 所有复用 ConfirmDialog 的 10 处入口（删除会话 / 回滚到此消息 /
+   账户卡 更新·重启 / 删除技能·子代理·钩子·MCP 服务 / 移除市场 / 更新 N 个插件），
+   属族级同变。 */
+
+[data-host="desktop"] .confirm-dialog {
+  box-sizing: border-box;
+  position: relative;
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  padding: var(--cc-space-6, 24px);
+  gap: var(--cc-space-6, 24px);
+  background-color: var(--cc-bg-modal, var(--vscode-panel-background, #131415));
+  border: 1px solid var(--cc-border, var(--vscode-widget-border, #1f2021));
+  border-radius: var(--cc-radius-lg, 12px);
+  box-shadow: var(--cc-shadow-overlay, 0 12px 36px rgb(31 35 41 / 16%));
+}
+
+/* 右上角关闭控件：与 pane 头部 / toast / 确认弹层同一官方矢量与同一族 8px 圆角 */
+[data-host="desktop"] .confirm-dialog-close {
+  position: absolute;
+  top: var(--cc-space-6, 24px);
+  right: var(--cc-space-6, 24px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--cc-radius-md, 8px);
+  background: transparent;
+  color: var(--cc-text-regular);
+  cursor: pointer;
+}
+[data-host="desktop"] .confirm-dialog-close:hover {
+  background-color: var(--cc-fill-hover, #eef0f3);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"][data-theme="dark"] .confirm-dialog-close:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+/* 24 的图标盒在 20 的按钮里会被 flex 压小（0916 踩过：computed 20×24、字形被
+   压到 0.83 倍）→ flex-shrink: 0 保持 24×24 居中溢出，字形与 pane 头部关闭同尺寸 */
+[data-host="desktop"] .confirm-dialog-close-icon {
+  flex-shrink: 0;
+}
+
+[data-host="desktop"] .confirm-dialog-message-content {
+  /* 右侧给关闭控件让位（契约 :80「reserve room for the close control without overlap」） */
+  padding-right: 28px;
+  gap: var(--cc-space-2, 8px);
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+}
+[data-host="desktop"] .confirm-dialog-title {
+  font-size: var(--cc-font-size-lg, 16px);
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"] .confirm-dialog-description {
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+  font-weight: 400;
+  color: var(--cc-text-regular);
+}
+
+[data-host="desktop"] .confirm-dialog-btn {
+  height: 32px;
+  /* 契约 :82「content-driven widths」→ 去掉 base 的 min-width:64 等宽盒子 */
+  min-width: 0;
+  padding: 0 12px;
+  border-radius: var(--cc-radius-md, 8px);
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+  font-weight: 500;
+}
+
+/* soft-danger 的焦点环：契约 :84 要求「focus-visible 与『没有装饰性红描边』可区分」，
+   故焦点用中性焦点色，不借用危险红 */
+[data-host="desktop"] .confirm-dialog-btn:focus-visible,
+[data-host="desktop"] .confirm-dialog-close:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
+}
+
+/* 次级按钮（取消）：桌面端口径 = 「透明底 + 1px 描边」，与 0922 裁定的
+   `.confirmation-btn-auto`、设置页弹窗 `.settings-row-btn` 完全同族
+   （浅 border-light #e4e7ed / 深 #34393c，hover 浅 #eef0f3 / 深 8% 白，
+   字色 1 级）——即 normal 态没有背景色，hover 才出面。
+   设计师 2026-10-14：「取消按钮应该再参考下其他的按钮，normal 状态没有背景色」。 */
+[data-host="desktop"] .confirm-dialog-btn-cancel {
+  background-color: transparent;
+  border: 1px solid var(--cc-border-light, #e4e7ed);
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+[data-host="desktop"] .confirm-dialog-btn-cancel:not(:disabled):hover {
+  background-color: var(--cc-fill-hover, #eef0f3);
+}
+[data-host="desktop"][data-theme="dark"] .confirm-dialog-btn-cancel {
+  border-color: var(--cc-border-light, #34393c);
+}
+[data-host="desktop"][data-theme="dark"] .confirm-dialog-btn-cancel:not(:disabled):hover {
+  background-color: rgb(255 255 255 / 8%);
+}
+
+/* 确认键分两档（设计师 2026-10-14：「危险操作的按钮才用 danger，3、4、10 我理解用
+   普通的填充按钮就好，尺寸不变」）：
+   · 默认 = 普通填充主按钮（action-primary 角色）—— 更新/重启/批量更新等非破坏操作；
+   · `is-destructive` = 契约 :83-84 的 soft-danger 变体 —— 删除/移除类。
+   两档尺寸完全一致（上一条 .confirm-dialog-btn 的 32/r8/14/500/12px）。 */
+[data-host="desktop"] .confirm-dialog-btn-confirm {
+  background-color: var(--cc-action-primary, #1f2329);
+  color: var(--cc-action-primary-text, #ffffff);
+  border: none;
+}
+[data-host="desktop"] .confirm-dialog-btn-confirm:not(:disabled):hover {
+  background-color: var(--cc-action-primary-hover, #34383f);
+}
+/* 浅色档未定义 --cc-action-primary-active（同 0915 第十处）→ fallback 取 skill
+   浅色档字面量 #111318；深色档有该 token，自动生效。 */
+[data-host="desktop"] .confirm-dialog-btn-confirm:not(:disabled):active {
+  background-color: var(--cc-action-primary-active, #111318);
+}
+[data-host="desktop"] .confirm-dialog-btn-confirm.is-destructive {
+  background-color: var(--cc-color-danger-soft);
+  color: var(--cc-color-danger);
+}
+[data-host="desktop"] .confirm-dialog-btn-confirm.is-destructive:not(:disabled):hover {
+  background-color: var(--cc-color-danger-soft);
+  color: var(--cc-color-danger-hover, #b91c1c);
+}
+[data-host="desktop"] .confirm-dialog-btn-confirm.is-destructive:not(:disabled):active {
+  background-color: var(--cc-color-danger-soft);
+  color: var(--cc-color-danger-active, #991b1b);
+}

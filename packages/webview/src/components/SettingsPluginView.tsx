@@ -1053,6 +1053,7 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
               ? `该市场下的 ${installedRemovingCount} 个已安装插件将一并移除。`
               : undefined
           }
+          destructive
           confirmText="移除"
           cancelText="取消"
           onConfirm={handleConfirmRemove}

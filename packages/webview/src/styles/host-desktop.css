@@ -110,6 +110,12 @@
   --cc-color-success-soft: #f0fdf4;
   --cc-color-danger: #dc2626;
   --cc-color-danger-soft: #fef2f2;
+  /* 危险档的 hover/active 与浮层阴影：值取自 skill 权威表（theme/desktop-colors.css
+     :33-34 / :79，浅色档），非自造。1014 确认弹窗按 skill compact confirmation
+     变体消费（软底 + 危险字，hover 只提字色）。 */
+  --cc-color-danger-hover: #b91c1c;
+  --cc-color-danger-active: #991b1b;
+  --cc-shadow-overlay: 0 12px 36px rgb(31 35 41 / 16%);
   --cc-color-info: #2563eb;
   --cc-color-info-soft: #eff6ff;
   /* 桌面端错误/危险语义统一（2026-10-14「统一到 danger 档」第三条）：宿主注入的
@@ -223,6 +229,11 @@
   --cc-color-success-soft: #192b21;
   --cc-color-danger: #fc4e52;
   --cc-color-danger-soft: #332021;
+  /* 危险档 hover/active 与浮层阴影深色档：权威 = skill theme/desktop-colors.css
+     :134-135 / :180（PR #6 同批新增，非自造）。 */
+  --cc-color-danger-hover: #fd7175;
+  --cc-color-danger-active: #fd9597;
+  --cc-shadow-overlay: 0 16px 38px rgb(0 0 0 / 40%);
   --cc-color-info: #8bbcf0;
   --cc-color-info-soft: #1b2939;
   /* 桌面端错误/危险语义统一（同浅色档说明）：深色下 errorForeground = #FC4E52 */

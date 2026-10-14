@@ -179,9 +179,7 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
             <div className="mcp-server-header">
               <span className="mcp-server-name">{name}</span>
             </div>
-            {summary && (
-              <div className="mcp-server-meta">{summary}</div>
-            )}
+            {summary && <div className="mcp-server-meta">{summary}</div>}
             {commands && (
               <div className="mcp-server-meta mcp-server-meta--break">
                 {commands}
@@ -258,6 +256,7 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
         <ConfirmDialog
           title={`删除钩子「${formatHookName(pendingDelete.event, pendingDelete.matcher)}」`}
           description={`将从 ${configPathLabel(configPath)} 中移除该钩子配置，此操作不可撤销。`}
+          destructive
           confirmText="确认删除"
           cancelText="取消"
           onConfirm={handleConfirmDelete}
