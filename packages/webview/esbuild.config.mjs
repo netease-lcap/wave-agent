@@ -1,14 +1,43 @@
 import * as esbuild from "esbuild";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const production = process.argv.includes("--production");
-const watch = process.argv.includes("--watch");
+const argv = process.argv.slice(2);
+const production = argv.includes("--production");
+const watch = argv.includes("--watch");
+
+/**
+ * Two opt-in flags, both passed only by `remote/build.mjs` (the Web page build).
+ * The default invocation — what every host artifact comes from
+ * (`pnpm -F wave-webview build`) — passes neither and is byte-for-byte unchanged.
+ *
+ * `--outdir=<dir>`: write the bundles somewhere other than `dist/` (the remote
+ * build sends them to a temp dir it then deletes), so building the page can
+ * never overwrite the `dist/chat.js` the IDE and desktop hosts read.
+ *
+ * `--lazy-mermaid=<relative url>`: frontend bundle only — alias `mermaid` to the
+ * loader in `src/mermaid-lazy.ts` and hand it the chunk URL, so the ~3.3 MB chart
+ * library is fetched by the page on demand instead of riding in `chat.js` (78%
+ * of that bundle; see the loader's header). Combining it with the default outdir
+ * is refused: that would drop the page-shaped bundle where the hosts read theirs.
+ */
+const outDirArg = argv.find((a) => a.startsWith("--outdir="));
+const lazyMermaidArg = argv.find((a) => a.startsWith("--lazy-mermaid="));
+if (lazyMermaidArg && !outDirArg) {
+  throw new Error(
+    "--lazy-mermaid requires --outdir: the page bundle must not land in dist/, " +
+      "which is what the IDE and desktop hosts load.",
+  );
+}
+const OUT_DIR = outDirArg ? outDirArg.slice("--outdir=".length) : "dist";
+const out = (name) => path.join(OUT_DIR, name);
 
 const frontendConfig = {
   entryPoints: ["src/index.tsx"],
   bundle: true,
   format: "iife",
   platform: "browser",
-  outfile: "dist/chat.js",
+  outfile: out("chat.js"),
   minify: production,
   sourcemap: !production,
   sourcesContent: false,
@@ -20,7 +49,23 @@ const frontendConfig = {
   },
   define: {
     "process.env.NODE_ENV": production ? '"production"' : '"development"',
+    ...(lazyMermaidArg
+      ? {
+          __WAVE_MERMAID_CHUNK_URL__: JSON.stringify(
+            lazyMermaidArg.slice("--lazy-mermaid=".length),
+          ),
+        }
+      : {}),
   },
+  ...(lazyMermaidArg
+    ? {
+        alias: {
+          mermaid: fileURLToPath(
+            new URL("./src/mermaid-lazy.ts", import.meta.url),
+          ),
+        },
+      }
+    : {}),
 };
 
 // Desktop-only terminal chunk (xterm.js). Exposes `window.WaveTerminal` and is
@@ -30,7 +75,7 @@ const terminalConfig = {
   ...frontendConfig,
   entryPoints: ["src/terminal-entry.ts"],
   globalName: "WaveTerminal",
-  outfile: "dist/terminal.js",
+  outfile: out("terminal.js"),
 };
 
 // VS Code plan-preview chunk (claudePlanPreview equivalent): a tiny standalone
@@ -40,7 +85,7 @@ const terminalConfig = {
 const planPreviewConfig = {
   ...frontendConfig,
   entryPoints: ["src/plan-preview-entry.ts"],
-  outfile: "dist/plan-preview.js",
+  outfile: out("plan-preview.js"),
 };
 
 // Settings chunk: the shared SettingsPage rendered inside the editor-area
@@ -50,7 +95,7 @@ const planPreviewConfig = {
 const settingsConfig = {
   ...frontendConfig,
   entryPoints: ["src/settings-preview-entry.tsx"],
-  outfile: "dist/settings.js",
+  outfile: out("settings.js"),
 };
 
 async function main() {

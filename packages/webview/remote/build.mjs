@@ -1,43 +1,90 @@
 #!/usr/bin/env node
 /**
- * Build the phone page (PWA-ish) from the shared webview bundle.
+ * Build the Web page (PWA-ish) for remote control from the shared webview.
  *
- * The page is the same `chat.js` the desktop/IDE hosts embed, plus
- * `remote/shim.js` as the host-side transport (see that file's header for why
- * the browser shim is what makes the webview a fifth host). Nothing here is
- * built by the normal product build: it writes only into `remote/dist/`, which
- * is gitignored, and touches no existing artifact or workflow.
+ * The page runs the same frontend bundle the desktop/IDE hosts embed — built
+ * from the same `esbuild.config.mjs`, from the same entry — plus `remote/shim.js`
+ * as the host-side transport (see that file's header for why the browser shim is
+ * what makes the webview a fifth host). Nothing here is built by the normal
+ * product build: it writes only into `remote/dist/` (gitignored) and a temp dir
+ * it deletes, and touches no existing artifact or workflow. The host artifacts
+ * under `packages/webview/dist/` are deliberately left untouched, so a page build
+ * can never change what the IDE and desktop apps load.
  *
  * Mirrors `packages/desktop/scripts/syncWebview.mjs` on purpose — same HTML
- * skeleton, same inlined theme-base CSS (with `:root` rewritten per theme so
- * both variable sets coexist), same "copy the JS, inline the CSS" split. The
- * two deliberate deltas:
+ * skeleton, same theme-base CSS (with `:root` rewritten per theme so both
+ * variable sets coexist). The deliberate deltas:
  *
  * - `connect-src 'none'` → `wss:`: the desktop page talks to its host over
  *   `postMessage` only, while the phone page must reach the relay.
  * - `terminal.*` is filtered out (the phone has no terminal pane), matching the
  *   exclusion `packages/webview/scripts/syncTargets.mjs` applies for VS Code.
+ * - Every asset carries a content hash in its file name and the HTML points at
+ *   the hashed names; the four IDE hosts keep reading `dist/chat.js` from disk,
+ *   so this rename is confined to this build. Rationale: this page is the only
+ *   HTTP-served form of the bundle, and a fixed name plus a long cache TTL leaves
+ *   phones running yesterday's `chat.js` after a redeploy — silently, because the
+ *   page's own version reporting is still a stub (`getStatus` answers
+ *   `version: ""`). With hashes the two halves can be cached differently:
+ *
+ *     /remote/pair…  index.html     no-cache (or a short TTL) — the stable
+ *                                  entry point and stays hand-editable
+ *     *.<hash>.js/.css              immutable, max-age=31536000
+ *
+ *   Nothing enforces those headers yet (the hosting task owns that), and the
+ *   `no-cache` half is load-bearing: a browser left holding a stale `index.html`
+ *   after a deploy pruned the old hashed assets would 404 its own scripts — a
+ *   visible break instead of the silent staleness this change exists to remove.
+ *   The asset URLs are relative (`./chat.<hash>.js`), so the hosting must serve
+ *   the HTML from the directory that holds them — i.e. `/remote/pair` → this
+ *   `index.html`, and `/remote/<name>` → the file.
+ * - The CSS is a hashed file too, not an inline `<style>`. Inlining it (which is
+ *   what the desktop page does) makes `index.html` 508 KB / 130 KB gzipped, of
+ *   which all but 636 bytes is CSS — and since the HTML's hash changes whenever
+ *   the *JS* does, a JS-only redeploy would resend ~120 KB gzipped of unchanged
+ *   CSS on the next load. Split this way, that redeploy re-fetches a 1 KB
+ *   skeleton and the CSS/JS come from cache. The cost is one extra
+ *   render-blocking request on a first visit — affordable here because the page
+ *   is only reachable through the pairing URL, and it is the reason the desktop
+ *   page keeps inlining.
+ * - Mermaid rides in its own chunk instead of in `chat.js` (78% of that bundle,
+ *   measured: 3.27 MB of 4.09 MB), fetched by the page the first time a message
+ *   actually contains a diagram. The loader is `src/mermaid-lazy.ts`, wired in by
+ *   `--lazy-mermaid=`; the hosts keep the eager bundle. So the page ships five
+ *   files, four of them on the critical path and one on demand.
+ *
+ * `--zip` additionally packs those five files into `dist/remote-page.zip` with
+ * `index.html` at the archive root — the exact shape codechat's Ops upload route
+ * takes (`POST /api/ops/remote-page` unpacks it into file-center objects under
+ * `codechat/remote/`, served back at `${origin}/remote/`). Handing the zip over
+ * is still a manual step on the Ops side (admin-only, writes live objects); this
+ * repo only produces it. `remote/zip.mjs` is the writer — no dependency.
  *
  * Usage:
  *   node packages/webview/remote/build.mjs                 # production (minified)
  *   node packages/webview/remote/build.mjs --dev           # unminified, for local iteration
+ *   node packages/webview/remote/build.mjs --zip           # …plus dist/remote-page.zip
  *   node packages/webview/remote/build.mjs --socket=wss://relay.example/v1/hosts/ws/<id>/client
  *
- * (or `pnpm -F wave-webview build:remote` from the repo root)
+ * (or `pnpm -F wave-webview build:remote` / `pnpm -F wave-webview pack:remote`)
  */
 
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import * as esbuild from "esbuild";
+import { createZip } from "./zip.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url)); // packages/webview/remote
 const WEBVIEW = path.join(HERE, ".."); // packages/webview
-const DIST = path.join(WEBVIEW, "dist");
 const OUT = path.join(HERE, "dist");
 
 const argv = process.argv.slice(2);
 const production = !argv.includes("--dev");
+const wantZip = argv.includes("--zip");
 const socketArg = argv.find((a) => a.startsWith("--socket="));
 /** Empty unless the caller pins one: the page then reads `?ws=`/`?code=`. */
 const socketUrl = socketArg ? socketArg.slice("--socket=".length) : "";
@@ -57,41 +104,86 @@ const CSP = [
 const rewriteThemeBase = (css, theme) =>
   css.replace(/:root\s*\{/g, `:root[data-theme="${theme}"] {`);
 
-function build() {
-  // `--production` is what the release pipelines pass for the host embeds; the
-  // difference is not cosmetic (measured 2026-10-13: 10.3 MB dev vs 4.2 MB
-  // minified for chat.js).
-  const args = ["esbuild.config.mjs"];
-  if (production) args.push("--production");
-  execFileSync("node", args, { cwd: WEBVIEW, stdio: "inherit" });
+/**
+ * `<base>.<sha256-10>.<ext>` — content-addressed, so the emitted `index.html` is
+ * the only thing a redeploy needs to replace: any byte change in the asset
+ * changes the name the HTML asks for, and a browser that cached the old name
+ * never gets asked for it again. Hence the split in the header comment: HTML
+ * `no-cache`, hashed assets `immutable`. Same rule in `--dev` (one code path).
+ */
+const hashedName = (base, text, ext = "js") =>
+  `${base}.${createHash("sha256").update(text).digest("hex").slice(0, 10)}.${ext}`;
+
+/**
+ * The chart library as its own file, so the page pays for it only when a diagram
+ * is rendered. Built before the frontend bundle because the loader needs the
+ * hashed name baked in as an esbuild `define`, and it must stay an ES module:
+ * the loader fetches it with a runtime `import()`.
+ */
+function buildMermaidChunk() {
+  const { outputFiles } = esbuild.buildSync({
+    // A bare specifier is a valid entry point: this is exactly the `mermaid`
+    // the frontend would otherwise inline, same version, same entry.
+    entryPoints: ["mermaid"],
+    bundle: true,
+    format: "esm",
+    platform: "browser",
+    minify: production,
+    sourcemap: false,
+    write: false,
+    logLevel: "warning",
+    absWorkingDir: WEBVIEW,
+    define: {
+      "process.env.NODE_ENV": production ? '"production"' : '"development"',
+    },
+  });
+  const text = outputFiles[0].text;
+  return { name: hashedName("mermaid", text), text };
 }
 
-function emit() {
-  const read = (name) => {
-    const file = path.join(DIST, name);
-    if (!fs.existsSync(file)) {
-      throw new Error(
-        `missing ${name} in packages/webview/dist — run \`pnpm -F wave-webview build\` first`,
-      );
-    }
-    return fs.readFileSync(file, "utf-8");
-  };
+/**
+ * The frontend bundle, built by the normal config with two extra flags: write to
+ * a temp dir instead of `dist/`, and alias `mermaid` to the lazy loader pointed
+ * at the chunk above (see `esbuild.config.mjs`).
+ */
+function buildFrontend(mermaidName) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "wave-remote-"));
+  const args = ["esbuild.config.mjs"];
+  if (production) args.push("--production");
+  args.push(`--outdir=${tmp}`, `--lazy-mermaid=./${mermaidName}`);
+  try {
+    execFileSync("node", args, { cwd: WEBVIEW, stdio: "inherit" });
+    return {
+      chatJs: fs.readFileSync(path.join(tmp, "chat.js"), "utf-8"),
+      chatCss: fs.readFileSync(path.join(tmp, "chat.css"), "utf-8"),
+    };
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
 
+function emit({ chatJs, chatCss, mermaid }) {
   const readTheme = (name) =>
     fs.readFileSync(path.join(WEBVIEW, "theme", name), "utf-8");
 
-  const chatJs = read("chat.js");
-  const chatCss = read("chat.css");
   const darkTheme = rewriteThemeBase(readTheme("theme-base-dark.css"), "dark");
   const lightTheme = rewriteThemeBase(
     readTheme("theme-base-light.css"),
     "light",
   );
   const shim = fs.readFileSync(path.join(HERE, "shim.js"), "utf-8");
+  // Both theme variable sets plus the bundle's stylesheet, in one hashed file —
+  // see the header comment for why this is not an inline <style>.
+  const pageCss = `${darkTheme}\n${lightTheme}\n${chatCss}\n`;
+  const chatName = hashedName("chat", chatJs);
+  const cssName = hashedName("chat", pageCss, "css");
+  const shimName = hashedName("shim", shim);
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
-  fs.writeFileSync(path.join(OUT, "chat.js"), chatJs);
-  fs.writeFileSync(path.join(OUT, "shim.js"), shim);
+  fs.writeFileSync(path.join(OUT, chatName), chatJs);
+  fs.writeFileSync(path.join(OUT, cssName), pageCss);
+  fs.writeFileSync(path.join(OUT, shimName), shim);
+  fs.writeFileSync(path.join(OUT, mermaid.name), mermaid.text);
 
   const html = `<!DOCTYPE html>
 <html lang="zh-CN" data-theme="dark">
@@ -101,26 +193,38 @@ function emit() {
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="dark light" />
   <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="./${cssName}" />
   <title>CodeWave 远程控制</title>
   <!-- The page config rides a meta tag, not an inline script: the
        script-src 'self' copied from the desktop page blocks inline execution,
        so an inline window.WAVE_REMOTE = … is silently dropped — measured, not
        theorised. A meta tag also stays editable on the deployed artifact. -->
   <meta name="wave-remote-config" content='${JSON.stringify({ socketUrl })}' />
-  <style>
-${darkTheme}
-${lightTheme}
-${chatCss}
-  </style>
 </head>
 <body>
   <div id="root"></div>
-  <script src="./shim.js"></script>
-  <script src="./chat.js"></script>
+  <script src="./${shimName}"></script>
+  <script src="./${chatName}"></script>
 </body>
 </html>
 `;
   fs.writeFileSync(path.join(OUT, "index.html"), html, "utf-8");
+
+  const pageFiles = ["index.html", cssName, chatName, shimName, mermaid.name];
+  if (wantZip) {
+    // 根含 index.html（收端的准入条件），文件名就是相对路径 —— 解包后逐文件
+    // 落成 `codechat/remote/<相对路径>` 的对象。
+    const zipPath = path.join(OUT, "remote-page.zip");
+    fs.writeFileSync(
+      zipPath,
+      createZip(
+        pageFiles.map((name) => ({
+          path: name,
+          data: fs.readFileSync(path.join(OUT, name)),
+        })),
+      ),
+    );
+  }
 
   const kb = (name) =>
     Math.round(fs.statSync(path.join(OUT, name)).size / 1024) + " KB";
@@ -128,10 +232,18 @@ ${chatCss}
     `remote page -> packages/webview/remote/dist (${production ? "production" : "dev"})`,
   );
   console.log(
-    `  index.html  chat.js ${kb("chat.js")}  shim.js ${kb("shim.js")}` +
+    `  index.html ${kb("index.html")}  ${cssName} ${kb(cssName)}  ${chatName} ${kb(chatName)}  ${shimName} ${kb(shimName)}` +
       (socketUrl ? `  socket ${socketUrl}` : "  socket: from ?ws="),
   );
+  console.log(
+    `  on demand: ${mermaid.name} ${kb(mermaid.name)} — fetched when a diagram first renders`,
+  );
+  if (wantZip) {
+    console.log(
+      `  zip: remote-page.zip ${kb("remote-page.zip")} (${pageFiles.length} files, root index.html)`,
+    );
+  }
 }
 
-build();
-emit();
+const mermaid = buildMermaidChunk();
+emit({ ...buildFrontend(mermaid.name), mermaid });

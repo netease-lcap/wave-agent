@@ -189,7 +189,7 @@ order: 280
 - **中继服务本身**：会话中继、设备配对表、Web Push 的触发都在另一个仓库（内部 GitLab codechat 的 `#40`），本仓库不含其实现；本规格只约束本机侧与它交互的最小契约（登记 REST、订阅 URL 形态、控制帧与回程控制帧、信封逐字透传），跨仓细节以对方仓库为准，这里不复制其 schema。
 - **Web Push 推送**：Web 端订阅/注销与「添加到主屏幕」引导均未实现（页面产物里没有任何 push 代码）。本机已上报的 `requires_action` 状态信号正是为它准备的输入，但目前没有消费者。
 - **Web 端到端**：**电脑侧与真中继的联调已实测通过**（登记拿 hostId/hostToken/配对码 → 订阅 → `auth_ok` → 会话列表 → 审批往返 → 状态信号 → 重连与版本门槛）；未验证的是 Web 那一半——页面 shim 目前还按旧契约说话（`{method:'pair', params:{code}}` 配对、不发送 `auth` 帧、没有心跳），尚未改到本规格描述的形状。页面侧对「CLI 版本过旧」的明确提示（「请升级电脑侧 wave」）也未实现。
-- **页面产物的打包与分发**：把 `remote/dist` 打成包上传运营平台、由企业端托管在 `<服务端地址>/remote/` 这条链路未实现（也未授权开工）；目前页面可由 `pnpm -F wave-webview build:remote` 本地构建，本机/中继地址经页面配置或 URL 参数指定。
+- **页面产物的打包与分发**：本仓库侧已就绪——`pnpm -F wave-webview pack:remote` 构建页面并把 `remote/dist` 里的产物（`index.html` + `chat`/`shim` 两个哈希命名的 JS 与 `chat` 哈希命名的 CSS，加上按需拉取的 `mermaid` 哈希 JS，共五个文件）打成 `remote/dist/remote-page.zip`，**根含 `index.html`**，即运营平台上传接口（`POST /api/ops/remote-page/upload`，管理员权限）吃的形状。入口 HTML 只留骨架（约 1 KB），样式与脚本全部走哈希命名：这样入口重校验时不必捎带没变过的 CSS，而未变的资源可长期缓存（入口 `index.html` 走 `no-cache`，哈希资源可走 `immutable`）。**未实现的是这条链路的另一半**：把 zip 传上去、由企业端在 `<服务端地址>/remote/` 托管并配好缓存策略——上传是运营平台侧的管理员动作、落的是线上对象，不在本仓库；在托管就位之前，页面可由 `pnpm -F wave-webview build:remote` 本地构建，本机/中继地址经页面配置或 URL 参数指定。
 - **CLI TUI 内的 `/remote-control`**：未实现。CLI 侧目前的入口是 `wave remote-control on|off|status [name]` 子命令组；交互式 TUI 里没有同名斜杠命令。
 - **状态行展示**：把连接状态与「待审批数」显示在状态行（第二行）未实现。
 - **Web 端多会话 UI**：首期不做（页面固定单会话；daemon 侧能力上支持多会话）。
