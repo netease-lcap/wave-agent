@@ -157,7 +157,10 @@ const RemoteControlDialog: React.FC<
         ref={dialogRef}
         className="configuration-dialog"
         data-testid="remote-control-dialog"
-        style={{ height: "auto", maxHeight: "500px" }}
+        // 内容（状态/中继/Web 页/按钮/二维码/配对码/提示）实测需要 ~670px，压到 500
+        // 会把配对码与提示挤进滚动区——首次使用只看得到二维码，看不到要手输的码。
+        // 高度仍受窗口限制，矮窗口下退回滚动。
+        style={{ height: "auto", maxHeight: "min(680px, 88vh)" }}
       >
         <div className="configuration-dialog-header">
           <h3>远程控制</h3>

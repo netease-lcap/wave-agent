@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import hljs from "highlight.js/lib/common";
+import hljs from "../utils/highlight";
 import type { FileItem, FileViewState, VsCodeApi } from "../types";
 import { formatCodeComment } from "../utils/codeComment";
 import { toRelativePath } from "../utils/messageUtils";
@@ -24,8 +24,8 @@ import "../styles/FilePane.css";
 /** Debounce for the panel search requests, matching the message input's. */
 const SEARCH_DEBOUNCE_MS = 200;
 
-/** Extension → highlight.js language name (subset shipped by hljs/lib/common). */
-const EXT_LANGUAGE: Record<string, string> = {
+/** Extension → highlight.js language name (registered in utils/highlight.ts). */
+export const EXT_LANGUAGE: Record<string, string> = {
   js: "javascript",
   mjs: "javascript",
   cjs: "javascript",
