@@ -112,6 +112,13 @@
   --cc-color-danger-soft: #fef2f2;
   --cc-color-info: #2563eb;
   --cc-color-info-soft: #eff6ff;
+  /* 桌面端错误/危险语义统一（2026-10-14「统一到 danger 档」第三条）：宿主注入的
+     errorForeground 在桌面端改由 --cc-color-danger 供值 ⇒ 所有
+     var(--vscode-errorForeground) 消费点在桌面端自动跟随危险红档。
+     受影响：账户卡阻断结论 / 用量已用完 / 强警示行、配置弹窗 required-star 与
+     mcp 错误、diff-error、file-pane 状态图标、settings-tag-off、chat header
+     错误标记、远程目录浏览错误等（19 处）。IDE/插件宿主不受影响。 */
+  --vscode-errorForeground: var(--cc-color-danger);
   /* 状态色（F-08）：权威 = codechat theme/desktop-colors.css --cc-state-*
      浅色档（:78-83）。此前只在 wave 侧硬编码（statusColors.ts 的 hex +
      任务状态 !important），运行时取不到 --cc-state-*，深色也没有对应档。
@@ -208,13 +215,18 @@
   --cc-text-link: #4daafc;
 
   /* 状态语义三色 + soft 底（深色档：feat/approved-dark-theme-contract
-     build_desktop_dark.py 生成值，user-approved） */
+     build_desktop_dark.py 生成值，user-approved）
+     --cc-color-danger：2026-10-14 随 skill「统一到 danger 档」重定
+     #F19B95 → #FC4E52（skill `91b70e4` / PR #6，user-approved 2026-10-14）。
+     连带：所有消费该 token 的深色前景（toast error / 设置页错误提示等）同步变化。 */
   --cc-color-success: #83d6a0;
   --cc-color-success-soft: #192b21;
-  --cc-color-danger: #f19b95;
+  --cc-color-danger: #fc4e52;
   --cc-color-danger-soft: #332021;
   --cc-color-info: #8bbcf0;
   --cc-color-info-soft: #1b2939;
+  /* 桌面端错误/危险语义统一（同浅色档说明）：深色下 errorForeground = #FC4E52 */
+  --vscode-errorForeground: var(--cc-color-danger);
   /* 状态色深色档（F-08）：权威 = codechat theme/desktop-colors.css --cc-state-*
      深色档（:173-178）。此前桌面端「深色沿用浅色值」（无 dark token），
      任务状态与时间线节点在深色画布上偏暗；接入后随主题自动切换。 */
@@ -346,7 +358,8 @@
 
 /* 权限模式选择器（修改前询问）：14px 字号、32px 高（codechat permission-button）。
    Figma 文字/图标统一中性 #565A60（base 按模式着色绿/黄/蓝是错位）；
-   仅「跳过权限确认」为 danger 红 #D92D20（codechat is-danger）。
+   仅「跳过权限确认」为 danger 红（= 契约 `--cc-color-danger`；2026-10-14「统一到
+   danger 档」后不再用字面量 #D92D20）。
    第二十轮：固定宽度 112px + 居中（codechat .permission-button width:112px
    justify-content:center）、无 caret（codechat 权限按钮只有 icon+label，
    chevron 仅 contextbar picker 有）。
@@ -371,7 +384,7 @@
   font-weight: 400;
 }
 [data-host="desktop"] .permission-mode-select.mode-bypassPermissions {
-  color: #d92d20;
+  color: var(--cc-color-danger);
   font-weight: 400;
 }
 [data-host="desktop"] .permission-mode-select:hover {
@@ -387,14 +400,14 @@
   border-color: transparent;
 }
 [data-host="desktop"] .permission-mode-select.mode-bypassPermissions:hover {
-  color: #d92d20;
+  color: var(--cc-color-danger);
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-select {
   color: #9a9ea5;
 }
 [data-host="desktop"][data-theme="dark"]
   .permission-mode-select.mode-bypassPermissions {
-  color: #f4655c;
+  color: var(--cc-color-danger);
 }
 [data-host="desktop"][data-theme="dark"] .permission-mode-select:hover {
   background: rgba(255, 255, 255, 0.08);
@@ -407,7 +420,7 @@
   .permission-mode-select.mode-bypassPermissions:hover,
 [data-host="desktop"][data-theme="dark"]
   .permission-mode-select.mode-bypassPermissions:focus {
-  color: #f4655c;
+  color: var(--cc-color-danger);
 }
 
 /* 权限下拉 caret：第二十轮起 desktop 移除（codechat permission-button 无
@@ -465,11 +478,11 @@
   color: #1f2329;
 }
 [data-host="desktop"] .permission-mode-item.mode-bypassPermissions {
-  color: #d92d20;
+  color: var(--cc-color-danger);
 }
 [data-host="desktop"] .permission-mode-item.mode-bypassPermissions:hover {
-  background: #fff0ef;
-  color: #d92d20;
+  background: var(--cc-color-danger-soft);
+  color: var(--cc-color-danger);
 }
 [data-host="desktop"] .permission-mode-icon {
   width: 16px;
@@ -496,12 +509,12 @@
 }
 [data-host="desktop"][data-theme="dark"]
   .permission-mode-item.mode-bypassPermissions {
-  color: #f4655c;
+  color: var(--cc-color-danger);
 }
 [data-host="desktop"][data-theme="dark"]
   .permission-mode-item.mode-bypassPermissions:hover {
-  background: rgb(217 45 32 / 20%);
-  color: #f4655c;
+  background: var(--cc-color-danger-soft);
+  color: var(--cc-color-danger);
 }
 
 /* 发送按钮：Figma 32×32 r8 —— 未激活底 + 禁用文字（disabled），
@@ -2214,15 +2227,15 @@
   margin-left: 8px;
 }
 
-/* 危险项：codechat --cc-color-danger #D92D20 + hover 红软底 #FFF0EF */
+/* 危险项（2026-10-14 起消费契约 token，不再用字面量；见文件末 1014 收口块） */
 [data-host="desktop"] .more-menu-item--danger,
 [data-host="desktop"] .desktop-session-menu-item--danger {
-  color: #d92d20;
+  color: var(--cc-color-danger);
 }
 [data-host="desktop"] .more-menu-item--danger:hover,
 [data-host="desktop"] .desktop-session-menu-item--danger:hover {
-  background: #fff0ef;
-  color: #d92d20;
+  background: var(--cc-color-danger-soft);
+  color: var(--cc-color-danger);
 }
 
 /* 分隔线：codechat divided → #EBEEF5 */
@@ -2346,13 +2359,13 @@
 }
 [data-host="desktop"][data-theme="dark"] .more-menu-item--danger,
 [data-host="desktop"][data-theme="dark"] .desktop-session-menu-item--danger {
-  color: #f4655c;
+  color: var(--cc-color-danger);
 }
 [data-host="desktop"][data-theme="dark"] .more-menu-item--danger:hover,
 [data-host="desktop"][data-theme="dark"]
   .desktop-session-menu-item--danger:hover {
-  background: rgb(217 45 32 / 20%);
-  color: #f4655c;
+  background: var(--cc-color-danger-soft);
+  color: var(--cc-color-danger);
 }
 [data-host="desktop"][data-theme="dark"] .more-menu-separator {
   background-color: rgba(255, 255, 255, 0.12);
@@ -4330,37 +4343,65 @@
    作用域说明：本类是**族级**共享（MCP 服务 / 钩子 / 技能 / 子代理 四个设置视图的行内
    「删除」+ 插件市场行的「移除」+ 作用域弹窗的「卸载」），本单按类生效、六处同时变色。
    反证（IDE 档不受影响）：切成 `ide` 后本节整段失配 ⇒ 回到 `--cc-color-danger`
-   （浅 #DC2626 / 深 #F19B95）与中性 hover `--cc-fill-hover`。 */
+   （浅 #DC2626 / 深 #FC4E52）与中性 hover `--cc-fill-hover`。
+
+   ── 1014 收口（2026-10-14）────────────────────────────────────────────
+   设计师在「W-31 危险红收口」三选一里选 **「统一到 danger 档」**：skill 已把
+   `--cc-color-danger` 深色档重定为 `#FC4E52`（skill `91b70e4` / PR #6，
+   user-approved 2026-10-14），故本族由字面量改为消费契约 token，消掉 1013 留的
+   「产品危险红没有单一 token 能覆盖两档」残留：
+   · 文字 / 描边 / 焦点环 → `var(--cc-color-danger)`（浅 #DC2626 / 深 #FC4E52）
+   · hover 底 → `var(--cc-color-danger-soft)`（浅 #FEF2F2 / 深 #332021）
+   与 1013 落地值的差异（需人工走查确认）：浅文字 #D92D20→#DC2626、浅 hover 底
+   #FFF0EF→#FEF2F2；深文字 #F4655C→#FC4E52、深 hover 底 `rgb(217 45 32 / 20%)`
+   →#332021（由半透明叠加改为不透明）。
+   深色块保留：内容与浅色块相同，仅用于维持原有特异度（data-theme 0,3,0）结构，
+   避免与 base 同特异度规则竞争——不是「两套值」。
+   ── 同批扩展（2026-10-14 后续授权）────────────────────────────────────
+   设计师追加三条：「权限『跳过权限确认』、危险菜单项也可以绑定这些颜色；账户卡 /
+   配置弹窗在桌面端可以定义成这些颜色」。故本文件继续统一：
+   · 权限 `.permission-mode-select.mode-bypassPermissions`（:374/390/397/410）
+     与权限菜单项 `.permission-mode-item.mode-bypassPermissions`（:468/472 + 深 :499/504）
+     → 文字 `var(--cc-color-danger)`、hover 底 `var(--cc-color-danger-soft)`
+   · 危险菜单项 `.more-menu-item--danger` / `.desktop-session-menu-item--danger`
+     （:2220/2225 + 深 :2349/2355）→ 同上
+   · 浅/深两个语义变量块新增 `--vscode-errorForeground: var(--cc-color-danger)`
+     ⇒ 桌面端 19 处 `var(--vscode-errorForeground)` 消费点（账户卡阻断结论 / 用量已用完 /
+     强警示行、配置弹窗 required-star 与 mcp 错误、diff-error、file-pane 状态图标、
+     settings-tag-off、chat header 错误标记、远程目录浏览错误…）统一跟随危险红档。
+   至此本文件内已无危险红字面量。下列**保持不动**：`--cc-state-failed`
+   （浅 #D92D20 / 深 #F19B95）属**失败状态语义**（任务状态点、时间线节点），
+   与危险红是不同角色，不得互换。 */
 [data-host="desktop"] .settings-row-btn-danger {
-  color: #d92d20;
-  border-color: #d92d20;
+  color: var(--cc-color-danger);
+  border-color: var(--cc-color-danger);
 }
 
 [data-host="desktop"] .settings-row-btn-danger:not(:disabled):hover {
-  background: #fff0ef;
+  background: var(--cc-color-danger-soft);
 }
 
 [data-host="desktop"] .settings-page .settings-row-btn-danger:focus-visible,
 [data-host="desktop"] .plugin-market-page .settings-row-btn-danger:focus-visible {
-  border-color: #d92d20;
-  outline: 2px solid #d92d20;
+  border-color: var(--cc-color-danger);
+  outline: 2px solid var(--cc-color-danger);
   outline-offset: 0;
 }
 
 [data-host="desktop"][data-theme="dark"] .settings-row-btn-danger {
-  color: #f4655c;
-  border-color: #f4655c;
+  color: var(--cc-color-danger);
+  border-color: var(--cc-color-danger);
 }
 
 [data-host="desktop"][data-theme="dark"] .settings-row-btn-danger:not(:disabled):hover {
-  background: rgb(217 45 32 / 20%);
+  background: var(--cc-color-danger-soft);
 }
 
 [data-host="desktop"][data-theme="dark"] .settings-page .settings-row-btn-danger:focus-visible,
 [data-host="desktop"][data-theme="dark"]
   .plugin-market-page
   .settings-row-btn-danger:focus-visible {
-  border-color: #f4655c;
-  outline: 2px solid #f4655c;
+  border-color: var(--cc-color-danger);
+  outline: 2px solid var(--cc-color-danger);
   outline-offset: 0;
 }
