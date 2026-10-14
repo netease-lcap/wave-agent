@@ -47,6 +47,7 @@ import type {
   ToolBlockUpdateCallbackParams,
   UserPreferenceKey,
   UserPreferenceSource,
+  RemoteControlSnapshot,
 } from "wave-agent-sdk/types";
 
 export type {
@@ -543,6 +544,26 @@ export interface ConfigurationUpdatedMessage extends HostToWebviewMessageBase {
 export interface StatusResponseMessage extends HostToWebviewMessageBase {
   command: "statusResponse";
   configurationData?: ConfigurationData;
+}
+
+/**
+ * Reply to the webview's `remoteControl` request (the `/remote-control`
+ * dialog): the host asked its own `wave --stdio` child what the outbound relay
+ * link looks like, and forwards the child's snapshot verbatim.
+ *
+ * Exactly one of the two fields is set: a snapshot when the child answered, a
+ * message when the RPC itself failed. The two are different situations and the
+ * dialog says so differently — a failing relay is a snapshot with
+ * `state: "error"` (built by the service and worth reading), while an RPC
+ * failure means this process has no relay link at all, almost always because
+ * `enableRemoteControl` is off (the child's own error text says which key to
+ * set, so it is forwarded verbatim rather than paraphrased here).
+ */
+export interface RemoteControlResponseMessage extends HostToWebviewMessageBase {
+  command: "remoteControlResponse";
+  requestId: string;
+  snapshot?: RemoteControlSnapshot;
+  error?: string;
 }
 
 export interface ConfigurationErrorMessage extends HostToWebviewMessageBase {
@@ -1052,7 +1073,8 @@ export type HostToWebviewMessage =
   | DesktopRemoteDirListMessage
   | DesktopWorktreeChangesMessage
   | PluginMarketFolderSelectedMessage
-  | DesktopResumeSessionsMessage;
+  | DesktopResumeSessionsMessage
+  | RemoteControlResponseMessage;
 
 /**
  * Reply-to 消息归属键注册表（契约锁，见文件头部「归属契约」）。
@@ -1097,6 +1119,10 @@ type ReplyAttribution = {
   // 会话重命名：请求生成 id，回复原样带回（同一会话可反复改名；晚到的旧回复
   // 已被乐观更新消费，必须按 requestId 丢弃）。
   sessionRenamed: "requestId";
+  // `/remote-control` 弹窗：打开期间轮询状态、连接/断开后还会再查一次，同一
+  // requestId 通道上会有多笔在途请求 —— 只认最新一笔，晚到的旧快照即弃（否则
+  // 「刚连上」会被一秒前的 "off" 覆盖回去）。
+  remoteControlResponse: "requestId";
 };
 
 // ---- 编译期断言：注册表中的每条响应命令，union 成员必须必填其归属键。 ----
@@ -1140,6 +1166,7 @@ export const replyAttributionLocked = {
   desktopResumeSessions: true,
   fileSuggestionsResponse: true,
   sessionRenamed: true,
+  remoteControlResponse: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];
 };

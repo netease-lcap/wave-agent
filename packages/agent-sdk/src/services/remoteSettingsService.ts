@@ -365,6 +365,8 @@ export function mergeRemoteSettings(
   if (remote.enableArtifact !== undefined)
     result.enableArtifact = remote.enableArtifact;
   if (remote.enableExec !== undefined) result.enableExec = remote.enableExec;
+  if (remote.enableRemoteControl !== undefined)
+    result.enableRemoteControl = remote.enableRemoteControl;
   if (remote.nonDeferrableBuiltins !== undefined)
     result.nonDeferrableBuiltins = remote.nonDeferrableBuiltins;
   // monitoring: merge per telemetry key (remote wins per key), like `env` and

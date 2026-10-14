@@ -19,7 +19,11 @@ const stderrWriteSpy = vi
   .spyOn(process.stderr, "write")
   .mockImplementation(() => true);
 
-import { StdioServer } from "../../src/stdio/stdioServer.js";
+import {
+  StdioServer,
+  type StdioServerOptions,
+} from "../../src/stdio/stdioServer.js";
+import type { RemoteControlSink } from "../../src/remote/remoteControlSink.js";
 import type { Message } from "wave-agent-sdk";
 
 // ── Helpers ──────────────────────────────────────────────────────
@@ -62,10 +66,10 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
   return agent as unknown as Agent;
 }
 
-function createServer() {
+function createServer(options: Partial<StdioServerOptions> = {}) {
   const input = new PassThrough();
   const output = new PassThrough();
-  const server = new StdioServer({ input, output });
+  const server = new StdioServer({ input, output, ...options });
 
   const lines: string[] = [];
   output.on("data", (chunk: Buffer) => {
@@ -577,4 +581,154 @@ test("handleNotification forwards permissionResponse notification without throwi
   expect(true).toBe(true);
 
   server.stop();
+});
+
+// ── Remote-control sink (phone relay) ────────────────────────────
+//
+// The `--stdio` child owns the sessions its host shows, so it is the process
+// that serves a paired phone (same seam as the daemon — see
+// src/remote/remoteControlSink.ts).
+
+/** A stand-in for RemoteControlService, recording what the server fans out. */
+function createSink(overrides: Partial<RemoteControlSink> = {}) {
+  return {
+    sendNotification: vi.fn(),
+    stop: vi.fn(),
+    getSnapshot: vi.fn(() => ({
+      state: "off" as const,
+      url: "wss://relay/h1",
+    })),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    ...overrides,
+  } satisfies RemoteControlSink;
+}
+
+/** Fire the first bridge notification the server fans out (a tool approval). */
+async function emitPermissionRequest(getMessages: () => unknown[]) {
+  const options = vi.mocked(Agent.create).mock.calls[0][0];
+  void options.canUseTool!({
+    toolName: "Bash",
+    permissionMode: "default",
+    toolInput: { command: "ls" },
+  });
+  await vi.waitFor(() => {
+    expect(
+      getMessages().some(
+        (m) => (m as { method: string }).method === "permissionRequest",
+      ),
+    ).toBe(true);
+  });
+}
+
+test("fans notifications out to the remote sink beside the host's client", async () => {
+  const sink = createSink();
+  const bridgeArg: unknown[] = [];
+  const { server, send, getMessages, waitForMessages } = createServer({
+    createRemoteSink: (bridge) => {
+      bridgeArg.push(bridge);
+      return sink;
+    },
+  });
+  server.start();
+
+  // The sink is handed the live bridge, so inbound phone requests can be routed.
+  expect(
+    typeof (bridgeArg[0] as { handleRequest?: unknown }).handleRequest,
+  ).toBe("function");
+
+  send({ id: 1, method: "initialize", params: {} });
+  const initMsgs = await waitForMessages(1);
+  const sessionId = (initMsgs[0] as { result: { sessionId: string } }).result
+    .sessionId;
+
+  await emitPermissionRequest(getMessages);
+
+  expect(sink.sendNotification).toHaveBeenCalledWith(
+    "permissionRequest",
+    expect.objectContaining({ requestId: expect.any(String) }),
+    sessionId,
+  );
+  server.stop();
+});
+
+test("routes the three remoteControl RPCs to this child's sink", async () => {
+  const sink = createSink();
+  const { server, send, waitForMessages } = createServer({
+    createRemoteSink: () => sink,
+  });
+  server.start();
+
+  send({ id: 1, method: "remoteControlStatus", params: {} });
+  const msgs = await waitForMessages(1);
+  expect(msgs[0]).toEqual({
+    id: 1,
+    result: { state: "off", url: "wss://relay/h1" },
+  });
+
+  send({ id: 2, method: "remoteControlConnect", params: { name: "笔记本" } });
+  await waitForMessages(2);
+  expect(sink.connect).toHaveBeenCalledWith("笔记本");
+
+  send({ id: 3, method: "remoteControlDisconnect", params: {} });
+  await waitForMessages(3);
+  expect(sink.disconnect).toHaveBeenCalledTimes(1);
+
+  server.stop();
+});
+
+test("keeps serving the host when the remote sink throws", async () => {
+  const sink = createSink({
+    sendNotification: vi.fn(() => {
+      throw new Error("relay exploded");
+    }),
+  });
+  const { server, send, getMessages, waitForMessages } = createServer({
+    createRemoteSink: () => sink,
+  });
+  server.start();
+
+  send({ id: 1, method: "initialize", params: {} });
+  await waitForMessages(1);
+  await emitPermissionRequest(getMessages);
+
+  expect(sink.sendNotification).toHaveBeenCalled();
+  // The host's own client still got the frame.
+  expect(
+    getMessages().some(
+      (m) => (m as { method: string }).method === "permissionRequest",
+    ),
+  ).toBe(true);
+  server.stop();
+});
+
+test("with remote control off the three RPCs report why, instead of hanging", async () => {
+  // `stdio-cli` only passes a factory when the switch is on; without one the
+  // bridge has no controller and must say so on every remoteControl call.
+  const { server, send, waitForMessages } = createServer();
+  server.start();
+
+  const methods = [
+    "remoteControlStatus",
+    "remoteControlConnect",
+    "remoteControlDisconnect",
+  ];
+  for (const [i, method] of methods.entries()) {
+    send({ id: 1, method, params: {} });
+    const msgs = await waitForMessages(i + 1);
+    expect(msgs[i]).toMatchObject({
+      id: 1,
+      error: { message: expect.stringContaining("not enabled") },
+    });
+  }
+  server.stop();
+});
+
+test("stop() tears the remote sink down with the connection", () => {
+  const sink = createSink();
+  const { server } = createServer({ createRemoteSink: () => sink });
+  server.start();
+  server.stop();
+
+  expect(sink.stop).toHaveBeenCalledTimes(1);
 });

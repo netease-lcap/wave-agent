@@ -218,6 +218,27 @@ class StdioAgent(
     suspend fun abortMessage() { client.request("abortMessage", sessionId = sessionId) }
     suspend fun clearMessages() { client.request("clearMessages", sessionId = sessionId) }
 
+    // ── 远程控制（手机接管本机会话）────────────────────────────────
+    //
+    // relay 链路属于这个子进程，不属于某个会话：这三个调用是进程级的（会话在
+    // 哪个进程里，就由哪个进程去连 relay），只是 JSON-RPC 信封仍需要 sessionId。
+    // 三者都返回同一个快照——动作**之后**的状态，宿主原样转发给弹窗即可。
+    // connect 是异步的（relay 还没答复），所以快照可以是 `connecting`。
+
+    suspend fun remoteControlStatus(): JsonElement? =
+        client.request("remoteControlStatus", sessionId = sessionId)
+
+    /** [name] 是本机在手机上的显示名（可选）。 */
+    suspend fun remoteControlConnect(name: String? = null): JsonElement? =
+        client.request(
+            "remoteControlConnect",
+            buildJsonObject { if (name != null) put("name", name) },
+            sessionId,
+        )
+
+    suspend fun remoteControlDisconnect(): JsonElement? =
+        client.request("remoteControlDisconnect", sessionId = sessionId)
+
     suspend fun getMessages(): JsonElement {
         val res = client.request("getMessages", sessionId = sessionId) ?: JsonObject(emptyMap())
         // Hosts replay this on webviewReady (see MessageHandler.handleWebviewReady);

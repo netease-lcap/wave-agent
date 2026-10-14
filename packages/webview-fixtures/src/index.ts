@@ -53,6 +53,7 @@ import type {
   DesktopPanelKind,
   DesktopAccountInfoMessage,
   DesktopFullScreenMessage,
+  RemoteControlResponseMessage,
   ToolBlockUpdateCallbackParams,
   ConfigurationData,
   ConfirmationRequest,
@@ -182,6 +183,10 @@ export interface Fixtures {
   desktopFullScreen: (
     overrides?: Overrides<DesktopFullScreenMessage>,
   ) => DesktopFullScreenMessage;
+  remoteControlResponse: (
+    requestId: string,
+    overrides?: Overrides<RemoteControlResponseMessage>,
+  ) => RemoteControlResponseMessage;
 }
 
 const noopSession = (): SessionMetadata => ({
@@ -398,6 +403,24 @@ export const fixtures: Fixtures = {
   desktopFullScreen: (overrides = {}) => ({
     command: "desktopFullScreen",
     fullScreen: false,
+    ...overrides,
+  }),
+
+  remoteControlResponse: (requestId, overrides = {}) => ({
+    command: "remoteControlResponse",
+    requestId,
+    // Default = the answer a healthy machine gives: link up, phone paired. The
+    // two URLs stay distinct here because they are distinct in the reply — `url`
+    // is the relay socket this machine holds, `pairing.url` is the page the phone
+    // opens (and the one a GUI draws as a QR).
+    snapshot: {
+      state: "online",
+      url: "wss://relay.example/v1/hosts/ws/h1/subscribe",
+      pairing: {
+        code: "4821-9930",
+        url: "https://relay.example/remote/pair?code=4821-9930",
+      },
+    },
     ...overrides,
   }),
 };

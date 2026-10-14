@@ -38,6 +38,7 @@ import type {
   UserPreferenceSettingsView,
   PluginReloadResult,
   StdioAgentCallbacks,
+  RemoteControlSnapshot,
 } from "wave-agent-sdk/host";
 import {
   EDIT_TOOL_NAME,
@@ -2958,6 +2959,48 @@ export class DesktopHost {
   }
 
   /**
+   * `/remote-control` 弹窗：把「这个分屏的会话是否正被手机接管」查出来/连上/断开。
+   *
+   * 目标 agent 是**这个分屏自己的** `wave --stdio` 子进程 `agentForPane(pid)`，
+   * 不是常驻 daemon：手机要在哪套会话上做审批，就得由持有那套会话的进程去连
+   * relay（见 `remoteControlSink` 头注）。桌面端每个分屏一个子进程，所以连/断
+   * 的作用域是「这个分屏的那台子进程」，与「哪个分屏点了按钮」一致。
+   *
+   * 回复不带 paneId、按 requestId 归属（同 `sessionRenamed`）：被问的是进程级
+   * 的 relay 链路，不是某个分屏的渲染状态，弹窗用 requestId 丢弃晚到的旧快照。
+   */
+  private async handleRemoteControl(
+    action: string,
+    name: string | undefined,
+    requestId: string,
+    paneId?: string,
+  ): Promise<void> {
+    const reply = (payload: {
+      snapshot?: RemoteControlSnapshot;
+      error?: string;
+    }): void =>
+      this.postMessage({
+        command: "remoteControlResponse",
+        requestId,
+        ...payload,
+      });
+    try {
+      const agent = this.agentForPane(paneId);
+      if (!agent) throw new Error("会话尚未就绪，请稍后再试");
+      reply({
+        snapshot:
+          action === "connect"
+            ? await agent.remoteControlConnect(name)
+            : action === "disconnect"
+              ? await agent.remoteControlDisconnect()
+              : await agent.remoteControlStatus(),
+      });
+    } catch (error) {
+      reply({ error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  /**
    * 会话重命名（spec session-management.md「会话自定义标题（重命名）」/
    * desktop-sessions.md 同故事）。
    *
@@ -3482,6 +3525,15 @@ export class DesktopHost {
         await agent?.abortMessage();
         break;
       }
+
+      case "remoteControl":
+        await this.handleRemoteControl(
+          msg.action as string,
+          msg.name as string | undefined,
+          msg.requestId as string,
+          pid,
+        );
+        break;
 
       case "newSession":
         await this.handleNewSession(pid);
@@ -6969,6 +7021,11 @@ export class DesktopHost {
         },
         { id: "mcp", name: "mcp", description: "打开 MCP 服务器管理" },
         { id: "status", name: "status", description: "查看当前状态" },
+        {
+          id: "remote-control",
+          name: "remote-control",
+          description: "远程控制（用手机接管本机会话）",
+        },
         { id: "compact", name: "compact", description: "手动压缩对话历史" },
         { id: "tasks", name: "tasks", description: "查看后台任务" },
         { id: "workflows", name: "workflows", description: "查看工作流运行" },

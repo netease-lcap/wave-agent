@@ -27,6 +27,7 @@ const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
 });
 
 import { DaemonServer } from "../../src/stdio/daemonServer.js";
+import type { RemoteControlSink } from "../../src/remote/remoteControlSink.js";
 import type { Message } from "wave-agent-sdk";
 
 function createMockAgent(overrides: Record<string, unknown> = {}) {
@@ -330,6 +331,192 @@ test("daemon stays resident after clients detach and the session settles", async
   expect(result.result.sessionId).toBe(sessionId);
   b.close();
   await s.stop();
+});
+
+// ── Remote-control sink (phone relay) ──────────────────────────
+
+/** A stand-in for RemoteControlService, recording what the daemon fans out. */
+function createSink(overrides: Partial<RemoteControlSink> = {}) {
+  return {
+    sendNotification: vi.fn(),
+    stop: vi.fn(),
+    getSnapshot: vi.fn(() => ({
+      state: "off" as const,
+      url: "wss://relay/h1",
+    })),
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    ...overrides,
+  } satisfies RemoteControlSink;
+}
+
+/** Trigger the first bridge notification the daemon fans out (a tool approval). */
+async function emitPermissionRequest(client: { lines: string[] }) {
+  const options = vi.mocked(Agent.create).mock.calls[0][0];
+  void options.canUseTool!({
+    toolName: "Bash",
+    permissionMode: "default",
+    toolInput: { command: "ls" },
+  });
+  await vi.waitFor(() => {
+    expect(
+      client.lines
+        .map((l) => JSON.parse(l))
+        .find((m) => m.method === "permissionRequest"),
+    ).toBeDefined();
+  });
+}
+
+test("fans notifications out to the remote sink beside the local clients", async () => {
+  const localPath = socketPath + "-remote-sink";
+  const sink = createSink();
+  const bridgeArg: unknown[] = [];
+  const s = new DaemonServer({
+    socketPath: localPath,
+    createRemoteSink: (bridge) => {
+      bridgeArg.push(bridge);
+      return sink;
+    },
+  });
+  await s.start();
+
+  // The sink is handed the live bridge, so inbound phone requests can be routed.
+  expect(
+    typeof (bridgeArg[0] as { handleRequest?: unknown }).handleRequest,
+  ).toBe("function");
+
+  const client = connectClient(localPath);
+  const initMsgs = await client.send({
+    id: 1,
+    method: "initialize",
+    params: {},
+  });
+  const sessionId = (initMsgs[0] as { result: { sessionId: string } }).result
+    .sessionId;
+
+  await emitPermissionRequest(client);
+
+  expect(sink.sendNotification).toHaveBeenCalledWith(
+    "permissionRequest",
+    expect.objectContaining({ requestId: expect.any(String) }),
+    sessionId,
+  );
+  client.close();
+  await s.stop();
+});
+
+test("routes the three remoteControl RPCs to the daemon's sink", async () => {
+  const localPath = socketPath + "-remote-rpc";
+  const sink = createSink();
+  const s = new DaemonServer({
+    socketPath: localPath,
+    createRemoteSink: () => sink,
+  });
+  await s.start();
+
+  const client = connectClient(localPath);
+  const status = await client.send({
+    id: 1,
+    method: "remoteControlStatus",
+    params: {},
+  });
+  expect(status[0]).toEqual({
+    id: 1,
+    result: { state: "off", url: "wss://relay/h1" },
+  });
+
+  await client.send({
+    id: 2,
+    method: "remoteControlConnect",
+    params: { name: "笔记本" },
+  });
+  expect(sink.connect).toHaveBeenCalledWith("笔记本");
+
+  await client.send({ id: 3, method: "remoteControlDisconnect", params: {} });
+  expect(sink.disconnect).toHaveBeenCalledTimes(1);
+
+  client.close();
+  await s.stop();
+});
+
+test("keeps serving local clients when the remote sink throws", async () => {
+  const localPath = socketPath + "-remote-sink-throws";
+  const sink = createSink({
+    sendNotification: vi.fn(() => {
+      throw new Error("relay exploded");
+    }),
+  });
+  const s = new DaemonServer({
+    socketPath: localPath,
+    createRemoteSink: () => sink,
+  });
+  await s.start();
+
+  const client = connectClient(localPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  await emitPermissionRequest(client);
+
+  expect(sink.sendNotification).toHaveBeenCalled();
+  expect(
+    client.lines
+      .map((l) => JSON.parse(l))
+      .some((m) => m.method === "permissionRequest"),
+  ).toBe(true);
+  client.close();
+  await s.stop();
+});
+
+test("with remote control off the three RPCs report why, instead of hanging", async () => {
+  // `daemon-cli` only passes a factory when the switch is on; without one the
+  // bridge has no controller and must say so on every remoteControl call.
+  const localPath = socketPath + "-remote-off";
+  const s = new DaemonServer({ socketPath: localPath });
+  await s.start();
+
+  const client = connectClient(localPath);
+  for (const method of [
+    "remoteControlStatus",
+    "remoteControlConnect",
+    "remoteControlDisconnect",
+  ]) {
+    const msgs = await client.send({ id: 1, method, params: {} });
+    expect(msgs[0]).toMatchObject({
+      id: 1,
+      error: { message: expect.stringContaining("not enabled") },
+    });
+  }
+  client.close();
+  await s.stop();
+});
+
+test("stop() tears the remote sink down with the listener", async () => {
+  const localPath = socketPath + "-remote-stop";
+  const sink = createSink();
+  const s = new DaemonServer({
+    socketPath: localPath,
+    createRemoteSink: () => sink,
+  });
+  await s.start();
+  await s.stop();
+
+  expect(sink.stop).toHaveBeenCalledTimes(1);
+});
+
+test("non-shutdown teardown does not leave the relay link up", async () => {
+  const localPath = socketPath + "-remote-shutdown";
+  const sink = createSink();
+  const s = new DaemonServer({
+    socketPath: localPath,
+    createRemoteSink: () => sink,
+  });
+  await s.start();
+
+  const client = connectClient(localPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.socket.write(JSON.stringify({ id: 2, method: "shutdown" }) + "\n");
+  await vi.waitFor(() => expect(exitSpy).toHaveBeenCalledWith(0));
+
+  expect(sink.stop).toHaveBeenCalled();
 });
 
 // ── Graceful shutdown RPC (spec: wave daemon stop/restart) ─────

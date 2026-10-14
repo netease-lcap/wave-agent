@@ -135,6 +135,13 @@ declare global {
     acquireVsCodeApi(): VsCodeApi;
     /** Set by the Electron preload (packages/desktop); undefined in IDE hosts. */
     waveHostType?: string;
+    /**
+     * Set by the phone page's browser shim (packages/webview/remote/shim.js).
+     * IDE hosts leave `waveHostType` unset too, so this flag — not the absence of
+     * a host type — is what tells the shared UI it is running inside the phone
+     * page (a phone must not be shown a QR it cannot scan).
+     */
+    waveRemotePage?: boolean;
     /** Host platform, set by the Electron preload (process.platform: "darwin"/
      *  "win32"/"linux"); undefined in IDE hosts and browser previews. */
     wavePlatform?: string;
@@ -806,7 +813,7 @@ export interface ChatState {
   // Agent working directory, used to render tool file paths as relative.
   workdir?: string;
   // Dialog state
-  activeDialog: "mcp" | "status" | "tasks" | "workflows" | null;
+  activeDialog: "mcp" | "status" | "tasks" | "workflows" | "remote" | null;
   configurationData?: ConfigurationData;
   configurationLoading: boolean;
   configurationError?: string;
@@ -946,6 +953,16 @@ export interface StatusDialogProps {
   onClose: () => void;
 }
 
+/**
+ * Props for the remote-control dialog (`/remote-control`): the phone-as-second-
+ * control-plane entry point. The dialog owns its own host conversation
+ * (request/poll + requestId correlation), so it needs nothing but the host API
+ * and a way to close.
+ */
+export interface RemoteControlDialogProps {
+  onClose: () => void;
+}
+
 export interface BackgroundTaskManagerProps {
   onClose: () => void;
 }
@@ -981,7 +998,9 @@ export type ChatAction =
   | {
       type: "SHOW_DIALOG";
       payload: {
-        type: "mcp" | "status" | "tasks" | "workflows";
+        // Derived from the state field it writes — the two were separate literal
+        // lists until it bit (a new dialog type compiled here but not there).
+        type: NonNullable<ChatState["activeDialog"]>;
       };
     }
   | { type: "HIDE_DIALOG" }

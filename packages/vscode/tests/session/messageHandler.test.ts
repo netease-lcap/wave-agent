@@ -2056,3 +2056,129 @@ describe("MessageHandler renameSession", () => {
     expect(reply?.error).toContain("EACCES");
   });
 });
+
+// ── /remote-control（手机接管本机会话）────────────────────────────
+//
+// 弹窗问的是**本窗口自己的** `wave --stdio` 子进程（会话在哪个进程里，就由
+// 哪个进程连 relay），宿主只做转发：命令 → agent 的 remoteControl* 方法 →
+// `remoteControlResponse`（带请求方 requestId）。
+describe("remoteControl（/remote-control 弹窗）", () => {
+  function sessionWithAgent(agent: Record<string, unknown>): ChatSession {
+    const session = createMockSession();
+    (session as unknown as { agent: unknown }).agent = agent;
+    return session;
+  }
+
+  function lastRemoteReply(context: { postMessage: unknown }) {
+    const replies = sentPosts(context)("remoteControlResponse");
+    return replies[replies.length - 1];
+  }
+
+  test("status forwards this window's child snapshot under the requestId", async () => {
+    const snapshot = {
+      state: "online",
+      url: "wss://relay/h1",
+      pairing: { code: "1234" },
+    };
+    const agent = { remoteControlStatus: vi.fn(async () => snapshot) };
+    const { handler, context } = createHandler(sessionWithAgent(agent));
+
+    await handler.handleMessage(
+      { command: "remoteControl", action: "status", requestId: "rc1" },
+      "tab",
+    );
+
+    expect(agent.remoteControlStatus).toHaveBeenCalledTimes(1);
+    expect(lastRemoteReply(context)).toEqual({
+      command: "remoteControlResponse",
+      requestId: "rc1",
+      snapshot,
+    });
+  });
+
+  test("connect and disconnect call the matching RPC and return its snapshot", async () => {
+    const agent = {
+      remoteControlStatus: vi.fn(async () => ({ state: "off" })),
+      remoteControlConnect: vi.fn(async () => ({ state: "connecting" })),
+      remoteControlDisconnect: vi.fn(async () => ({ state: "off" })),
+    };
+    const { handler, context } = createHandler(sessionWithAgent(agent));
+
+    await handler.handleMessage(
+      {
+        command: "remoteControl",
+        action: "connect",
+        name: "笔记本",
+        requestId: "rc2",
+      },
+      "tab",
+    );
+    await handler.handleMessage(
+      { command: "remoteControl", action: "disconnect", requestId: "rc3" },
+      "tab",
+    );
+
+    expect(agent.remoteControlConnect).toHaveBeenCalledWith("笔记本");
+    expect(agent.remoteControlDisconnect).toHaveBeenCalledTimes(1);
+    expect(lastRemoteReply(context)).toMatchObject({
+      requestId: "rc3",
+      snapshot: { state: "off" },
+    });
+  });
+
+  test("an RPC failure is reported as error, never as a fabricated snapshot", async () => {
+    // 子进程根本没开远程控制时 bridge 直接抛错（带 enableRemoteControl 提示）：
+    // 报成 `error` 字段，弹窗照登原文 —— 不能伪造成 `state: "error"` 快照，
+    // 那会把「这台进程没有 relay 链路」混同于「relay 连不上」。
+    const agent = {
+      remoteControlStatus: vi.fn(async () => {
+        throw new Error(
+          "Remote control is not enabled on this process (set enableRemoteControl: true).",
+        );
+      }),
+    };
+    const { handler, context } = createHandler(sessionWithAgent(agent));
+
+    await handler.handleMessage(
+      { command: "remoteControl", action: "status", requestId: "rc4" },
+      "tab",
+    );
+
+    const reply = lastRemoteReply(context);
+    expect(reply).toMatchObject({ requestId: "rc4" });
+    expect(reply?.snapshot).toBeUndefined();
+    expect(reply?.error).toContain("enableRemoteControl");
+  });
+
+  test("a session without an agent yet reports that instead of throwing", async () => {
+    const { handler, context } = createHandler(createMockSession());
+
+    await handler.handleMessage(
+      { command: "remoteControl", action: "status", requestId: "rc5" },
+      "tab",
+    );
+
+    const reply = lastRemoteReply(context);
+    expect(reply?.snapshot).toBeUndefined();
+    expect(reply?.error).toBeTruthy();
+  });
+
+  test("requestSlashCommands offers /remote-control in the system command list", async () => {
+    const session = createMockSession();
+
+    const { handler, context } = createHandler(session);
+    await handler.handleMessage(
+      { command: "requestSlashCommands", filterText: "" },
+      "tab",
+    );
+
+    const posted = sentPosts(context)(
+      "slashCommandsResponse",
+    )[0] as unknown as {
+      commands: Array<{ id: string; name: string }>;
+    };
+    expect(
+      posted.commands.find((c) => c.id === "remote-control"),
+    ).toMatchObject({ name: "remote-control" });
+  });
+});

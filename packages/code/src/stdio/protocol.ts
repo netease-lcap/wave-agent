@@ -96,6 +96,12 @@ export type RequestMethod =
   | "listPendingPermissions"
   // Daemon (global — list in-memory session registry, no session required)
   | "listDaemonSessions"
+  // Remote control (daemon-level: the outbound relay connection that serves a
+  // paired phone). The bridge only routes these to the daemon's controller —
+  // see src/remote/remoteControlService.ts.
+  | "remoteControlStatus"
+  | "remoteControlConnect"
+  | "remoteControlDisconnect"
   // Auth
   | "getAuthStatus"
   | "getAccountInfo"

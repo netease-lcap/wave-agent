@@ -36,6 +36,7 @@ const SYSTEM_COMMANDS = [
   "config",
   "mcp",
   "status",
+  "remote-control",
   "tasks",
   "workflows",
   "agents",

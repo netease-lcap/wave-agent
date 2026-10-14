@@ -89,6 +89,22 @@ describe("fixtures factory", () => {
     });
   });
 
+  it("remoteControlResponse defaults to a connected link, attributed by requestId", () => {
+    const msg = fixtures.remoteControlResponse("rc1");
+    expect(msg).toMatchObject({
+      command: "remoteControlResponse",
+      requestId: "rc1",
+      snapshot: { state: "online", pairing: { code: "4821-9930" } },
+    });
+    // 失败形态走 error，快照缺席（宿主 RPC 失败时不许伪造 state 快照）。
+    const failure = fixtures.remoteControlResponse("rc2", {
+      snapshot: undefined,
+      error: "Remote control is not enabled on this process",
+    });
+    expect(failure.snapshot).toBeUndefined();
+    expect(failure.error).toBeTruthy();
+  });
+
   it("nested value helpers carry realistic defaults", () => {
     expect(fixtureSession().id).toBe("test-session");
     expect(fixtureConfirmation()).toMatchObject({

@@ -19,6 +19,7 @@
     "watch": "node esbuild.config.mjs --watch",
     "preview": "vite --config prototype/vite.config.ts",
     "build:prototype": "vite build --config prototype/vite.config.ts",
+    "build:remote": "node remote/build.mjs",
     "type-check": "tsc --noEmit --incremental && tsc -p tests --noEmit --incremental && tsc -p e2e --noEmit && tsc -p demo --noEmit",
     "lint": "oxlint",
     "test": "vitest run",
@@ -60,6 +61,7 @@
     "dompurify": "^3.3.0",
     "highlight.js": "^11.11.1",
     "marked": "^9.1.6",
-    "mermaid": "^11.12.2"
+    "mermaid": "^11.12.2",
+    "qrcode.react": "^4.2.0"
   }
 }

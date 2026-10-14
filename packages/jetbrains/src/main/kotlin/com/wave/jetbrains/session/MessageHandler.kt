@@ -139,6 +139,43 @@ class MessageHandler(
                 }
             }
             "abortMessage" -> session.agent?.abortMessage()
+            // /remote-control 弹窗（手机接管本机会话）。问的是**本会话自己的**
+            // `wave --stdio` 子进程 —— 会话在哪个进程里，就由哪个进程去连 relay，
+            // 宿主只把子进程给的快照转发回弹窗。
+            //
+            // 失败一律回 error 字段，不伪造成 `state:"error"` 快照：最常见的是子
+            // 进程没开 `enableRemoteControl`，错误原文里就带该键名与提示，弹窗照登。
+            "remoteControl" -> {
+                val action = msg["action"]?.jsonPrimitive?.content ?: "status"
+                val name = msg["name"]?.jsonPrimitive?.contentOrNull
+                val requestId = msg["requestId"]?.jsonPrimitive?.content ?: return
+                var snapshot: JsonElement? = null
+                var error: String? = null
+                val agent = session.agent
+                if (agent == null) {
+                    error = "会话尚未就绪，请稍后再试"
+                } else {
+                    try {
+                        // 刻意用 if/else 而不是内层 `when (action)`：audit-webview-commands
+                        // 用 `^\s*"x" ->` 扫本文件的路由 when，内层 when 的分支会被当成
+                        // 「宿主处理了 webview 永不发送的命令 xxx」而判死注册（实测踩到）。
+                        snapshot = if (action == "connect") {
+                            agent.remoteControlConnect(name)
+                        } else if (action == "disconnect") {
+                            agent.remoteControlDisconnect()
+                        } else {
+                            agent.remoteControlStatus()
+                        }
+                    } catch (e: StdioClientException) {
+                        error = e.message ?: "远程控制调用失败"
+                    }
+                }
+                postMessage("remoteControlResponse", buildJsonObject {
+                    put("requestId", requestId)
+                    if (snapshot != null) put("snapshot", snapshot)
+                    if (error != null) put("error", error)
+                })
+            }
             "setPermissionMode" -> {
                 val mode = msg["mode"]?.jsonPrimitive?.content ?: "default"
                 session.agent?.setPermissionMode(mode)
@@ -1350,6 +1387,7 @@ class MessageHandler(
             triple("plugin", "plugin", "打开插件市场"),
             triple("mcp", "mcp", "打开 MCP 服务器管理"),
             triple("status", "status", "查看当前状态"),
+            triple("remote-control", "remote-control", "远程控制（用手机接管本机会话）"),
             triple("tasks", "tasks", "查看后台任务"),
             triple("workflows", "workflows", "查看工作流运行"),
             triple("agents", "agents", "查看可用 agents"),

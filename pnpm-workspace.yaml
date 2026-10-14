@@ -1,7 +1,18 @@
 packages:
   - "packages/*"
+# qrcode.react ships `import React from "react"` in its .d.ts but declares only
+# `react` as a peer. TypeScript then resolves `@types/react` by walking up from
+# the package, landing on pnpm's hoisted copy — @types/react@19 (pulled in by
+# packages/code) — while the webview is React 18, so `QRCodeSVG` fails TS2786 on
+# a ReactNode mismatch. Naming @types/react as a peer makes pnpm link the
+# webview's own @types/react@18 next to the package, which is where the lookup
+# then finds it. Drop this once the webview moves to React 19.
+packageExtensions:
+  qrcode.react:
+    peerDependencies:
+      "@types/react": "^18.0.0"
 allowBuilds:
-  '@vscode/vsce-sign': true
+  "@vscode/vsce-sign": true
   electron: true
   electron-winstaller: false
   esbuild: true

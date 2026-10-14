@@ -9,23 +9,47 @@
 import type { Readable, Writable } from "stream";
 import { AgentBridge, type AgentBridgeOptions } from "./agentBridge.js";
 import { JsonRpcConnection } from "./jsonRpcConnection.js";
+import type { RemoteControlSink } from "../remote/remoteControlSink.js";
 
 export interface StdioServerOptions {
   input?: Readable;
   output?: Writable;
   bridgeOptions?: AgentBridgeOptions;
+  /**
+   * Same seam as `DaemonServerOptions.createRemoteSink`, for the other server
+   * that owns sessions: the `--stdio` child a GUI host spawns. Unset means
+   * remote control is off for this child — the `remoteControl*` RPCs then
+   * report exactly that through the bridge's own error.
+   */
+  createRemoteSink?: (bridge: AgentBridge) => RemoteControlSink;
 }
 
 export class StdioServer {
   private bridge: AgentBridge;
   private conn: JsonRpcConnection;
+  private remoteSink: RemoteControlSink | undefined;
 
   constructor(options: StdioServerOptions = {}) {
+    let remoteSink: RemoteControlSink | undefined;
     this.bridge = new AgentBridge({
       ...options.bridgeOptions,
-      emit: (method, params, sessionId) =>
-        this.sendNotification(method, params, sessionId),
+      // The sink is handed the bridge it must route phone requests back
+      // through, so it can only be built after it; reading it lazily keeps the
+      // two from having to be constructed in a circle.
+      remoteControl: () => remoteSink,
+      emit: (method, params, sessionId) => {
+        this.sendNotification(method, params, sessionId);
+        // The phone must never be able to take the host's own client down with
+        // it, so a remote-path failure is contained here rather than thrown.
+        try {
+          this.remoteSink?.sendNotification(method, params, sessionId);
+        } catch {
+          // Dropped frame; the phone re-syncs on reconnect.
+        }
+      },
     });
+    remoteSink = options.createRemoteSink?.(this.bridge);
+    this.remoteSink = remoteSink;
     this.conn = new JsonRpcConnection(
       options.input ?? process.stdin,
       options.output ?? process.stdout,
@@ -43,6 +67,8 @@ export class StdioServer {
   }
 
   stop(): void {
+    this.remoteSink?.stop();
+    this.remoteSink = undefined;
     this.conn.stop();
   }
 
@@ -52,9 +78,14 @@ export class StdioServer {
    * auto-memory first; a timeout bounds it so a stuck agent can't orphan the
    * exit. This is the real-world "parent died" path: without it the process
    * lingers forever whenever an agent keeps event-loop handles alive.
+   *
+   * The relay link is dropped explicitly before the exit: leaving the socket to
+   * the OS would have the relay hold a subscription for a process that is gone.
    */
   private async onConnectionClosed(): Promise<void> {
     const SHUTDOWN_TIMEOUT_MS = 5_000;
+    this.remoteSink?.stop();
+    this.remoteSink = undefined;
     await Promise.race([
       this.bridge.destroyAll(),
       new Promise((resolve) => setTimeout(resolve, SHUTDOWN_TIMEOUT_MS)),

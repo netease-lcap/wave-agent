@@ -1179,6 +1179,7 @@ export const MessageInput = forwardRef<
         "reload-plugins",
         "mcp",
         "status",
+        "remote-control",
         "tasks",
         "workflows",
         "agents",

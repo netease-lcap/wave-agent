@@ -12,6 +12,7 @@ import type {
   Scope,
   PermissionMode,
   PermissionDecision,
+  RemoteControlSnapshot,
 } from "wave-agent-sdk/host";
 import {
   PLUGIN_CHANGE_PENDING_MESSAGE,
@@ -119,6 +120,15 @@ export class MessageHandler {
         break;
       case "abortMessage":
         await this.abortMessage(viewType, windowId);
+        break;
+      case "remoteControl":
+        await this.handleRemoteControl(
+          msg.action as string,
+          msg.name as string | undefined,
+          msg.requestId as string,
+          viewType,
+          windowId,
+        );
         break;
       case "listSessions":
         await this.context.listSessions(viewType, windowId);
@@ -1637,6 +1647,53 @@ export class MessageHandler {
     session.abortMessage();
   }
 
+  /**
+   * `/remote-control` 弹窗：把「本窗口的会话是否正被手机接管」查出来/连上/断开。
+   *
+   * 问的是**本窗口自己的** `wave --stdio` 子进程，而不是常驻 daemon：手机要在
+   * 哪套会话上做审批，就必须由持有那套会话的进程去连 relay（见 remoteControlSink
+   * 的头注），而本窗口的会话在这个子进程里。子进程是宿主拉起来的，所以这里只需
+   * 转发它给的快照。
+   *
+   * 三种失败一律回 `error`（不是伪造一个 `state: "error"` 快照）：最常见的
+   * 「子进程根本没开远程控制」由 bridge 直接抛出带 `enableRemoteControl` 提示的
+   * 原文，弹窗照登即可；relay 侧的失败才走快照的 `state: "error"`。
+   */
+  private async handleRemoteControl(
+    action: string,
+    name: string | undefined,
+    requestId: string,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    const reply = (payload: {
+      snapshot?: RemoteControlSnapshot;
+      error?: string;
+    }) =>
+      this.context.postMessage(
+        { command: "remoteControlResponse", requestId, ...payload },
+        viewType,
+        windowId,
+      );
+    try {
+      const agent = this.context.getChatSession(
+        viewType || "tab",
+        windowId,
+      ).agent;
+      if (!agent) throw new Error("会话尚未就绪，请稍后再试");
+      reply({
+        snapshot:
+          action === "connect"
+            ? await agent.remoteControlConnect(name)
+            : action === "disconnect"
+              ? await agent.remoteControlDisconnect()
+              : await agent.remoteControlStatus(),
+      });
+    } catch (error) {
+      reply({ error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
   private async clearChat(
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
@@ -2071,6 +2128,11 @@ export class MessageHandler {
         },
         { id: "mcp", name: "mcp", description: "打开 MCP 服务器管理" },
         { id: "status", name: "status", description: "查看当前状态" },
+        {
+          id: "remote-control",
+          name: "remote-control",
+          description: "远程控制（用手机接管本机会话）",
+        },
         { id: "clear", name: "clear", description: "清除对话历史并重置会话" },
         { id: "compact", name: "compact", description: "手动压缩对话历史" },
         { id: "tasks", name: "tasks", description: "查看后台任务" },

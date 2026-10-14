@@ -25,6 +25,7 @@ import McpDialog from "./McpDialog";
 import StatusDialog from "./StatusDialog";
 import BackgroundTaskManager from "./BackgroundTaskManager";
 import WorkflowManager from "./WorkflowManager";
+import RemoteControlDialog from "./RemoteControlDialog";
 import WelcomeView from "./WelcomeView";
 import LoadingLogo from "./LoadingLogo";
 import { SidebarExpandIcon, CloseIcon } from "./HeaderIcons";
@@ -2138,6 +2139,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         dispatch({ type: "SHOW_DIALOG", payload: { type: "workflows" } });
         return;
       }
+      if (trimmedText === "/remote-control") {
+        // 手机接管本机会话（远端控制面）：弹窗自己问宿主/轮询状态，故这里只
+        // 负责唤起。桌面端与 IDE 端都放行 —— 各自的会话就在自己那个 stdio
+        // 子进程里，手机要在哪套会话上做审批，就得由那台进程去连 relay。
+        dispatch({ type: "SHOW_DIALOG", payload: { type: "remote" } });
+        return;
+      }
       if (trimmedText === "/agents") {
         // 不再弹窗：唤起设置页并选中「子代理」选项卡（2026-08-29 用户拍板，
         // 弹窗内容已迁移到设置页，见 SettingsSubagentsView）。
@@ -3880,6 +3888,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           vscode={vscode}
           onCancel={handleDialogClose}
         />
+      )}
+      {state.activeDialog === "remote" && (
+        <RemoteControlDialog onClose={handleDialogClose} vscode={vscode} />
       )}
       {pendingRewindId && (
         <ConfirmDialog

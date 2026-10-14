@@ -103,7 +103,9 @@ function startDaemon(socketPath: string): void {
  * connection (or daemonStartTimeout.ms elapses). Exits (nonzero) with the
  * spec'd error when the daemon cannot be started/reached.
  */
-async function connectDaemonOrExit(socketPath: string): Promise<SocketClient> {
+export async function connectDaemonOrExit(
+  socketPath: string,
+): Promise<SocketClient> {
   try {
     return await connectDaemon(socketPath);
   } catch (err) {
@@ -1367,7 +1369,7 @@ export const daemonStopTimeout = { ms: 10_000 };
 const DAEMON_STOP_POLL_INTERVAL_MS = 200;
 
 /** Connect to the daemon socket without starting one; undefined when it is not running. */
-async function tryConnectDaemon(
+export async function connectDaemonIfRunning(
   socketPath: string,
 ): Promise<SocketClient | undefined> {
   try {
@@ -1381,7 +1383,7 @@ async function tryConnectDaemon(
 async function waitForDaemonExit(socketPath: string): Promise<void> {
   const deadline = Date.now() + daemonStopTimeout.ms;
   while (Date.now() < deadline) {
-    const client = await tryConnectDaemon(socketPath);
+    const client = await connectDaemonIfRunning(socketPath);
     if (!client) return;
     client.dispose();
     await sleep(DAEMON_STOP_POLL_INTERVAL_MS);
@@ -1399,7 +1401,7 @@ async function waitForDaemonExit(socketPath: string): Promise<void> {
  * Throws when a running daemon fails to exit in time.
  */
 async function stopDaemon(socketPath: string): Promise<boolean> {
-  const client = await tryConnectDaemon(socketPath);
+  const client = await connectDaemonIfRunning(socketPath);
   if (!client) return false;
   try {
     // The daemon may drop the socket before responding to the RPC — the wait

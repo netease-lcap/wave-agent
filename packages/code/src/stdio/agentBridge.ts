@@ -58,6 +58,7 @@ import {
   type SubagentConfiguration,
   type SkillMetadata,
   type PluginReloadResult,
+  type RemoteControlSnapshot,
 } from "wave-agent-sdk";
 import {
   type JsonRpcError,
@@ -79,6 +80,7 @@ import { logger } from "../utils/logger.js";
 import { isUserCheckpointMessage } from "../utils/rewindCheckpoints.js";
 import { getWorkspaceDiff } from "../utils/workspaceDiff.js";
 import { installGitCredentialHelper } from "../utils/gitCredentialHelper.js";
+import type { RemoteControlController } from "../remote/remoteControlService.js";
 
 export type NotificationEmitter = (
   method: string,
@@ -93,6 +95,17 @@ export interface AgentBridgeOptions {
    * down its socket and exits. stdio mode leaves it unset, so `shutdown` is
    * "Method not found" there. */
   onShutdownRequest?: () => void;
+  /** Daemon transport only. Remote control is a daemon-level concern (it owns
+   * an outbound socket and a relay session); the bridge owns nothing here and
+   * only routes the three `remoteControl*` RPCs to it, exactly as it routes
+   * `shutdown` to `onShutdownRequest`. Unset ⇒ those RPCs report that remote
+   * control is not enabled, which is the state on every stdio-mode process.
+   *
+   * Resolved on demand rather than passed as an object: the controller needs
+   * this bridge to route the phone's requests back in, so the two are built in
+   * a circle. Reading it when an RPC arrives — long after both exist — keeps
+   * that circle from having to be broken with a placeholder. */
+  remoteControl?: () => RemoteControlController | undefined;
 }
 
 interface InitializeParams {
@@ -193,12 +206,16 @@ export class AgentBridge {
   private permissionCounter = 0;
   private emit: NotificationEmitter;
   private onShutdownRequest: (() => void) | undefined;
+  private remoteControl:
+    | (() => RemoteControlController | undefined)
+    | undefined;
   private pluginCore: PluginCore | undefined;
   private pluginCoreWorkdir: string | undefined;
 
   constructor(options: AgentBridgeOptions) {
     this.emit = options.emit;
     this.onShutdownRequest = options.onShutdownRequest;
+    this.remoteControl = options.remoteControl;
     // Mirror the user-level settings env WAVE_SERVER_URL into process.env
     // before any agent initializes. getAuthStatus (webviewReady →
     // pushInitialState) can run before the first agent, and AuthService falls
@@ -313,9 +330,20 @@ export class AgentBridge {
       case "deleteQueuedMessageById":
         return this.deleteQueuedMessageById(p.id as string, sessionId);
       case "getMessages":
-        return this.getMessages(sessionId);
+        return this.getMessages(sessionId, {
+          before: p.before as string | undefined,
+          since: p.since as string | undefined,
+          limit: p.limit as number | undefined,
+        });
       case "getFullMessageThread":
         return this.getFullMessageThread(sessionId);
+
+      // ── Remote control (daemon-level) ──
+      // The daemon owns the outbound relay socket; the bridge only routes.
+      case "remoteControlStatus":
+      case "remoteControlConnect":
+      case "remoteControlDisconnect":
+        return this.remoteControlRequest(method, p);
 
       // ── Permissions ──
       case "setPermissionMode":
@@ -1360,14 +1388,115 @@ export class AgentBridge {
     return null;
   }
 
-  private getMessages(sessionId?: string): {
+  /**
+   * Read a session's display messages.
+   *
+   * With no window this returns the whole list — that is the contract every
+   * existing host relies on (VS Code / JetBrains / desktop call `getMessages`
+   * with no parameters and must keep seeing the full thread, byte for byte).
+   * The window exists for remote clients on a phone, which only ever want the
+   * tail of a long conversation and must not be handed 13 MB on every cold
+   * start:
+   *
+   * - `limit`  — page size.
+   * - `before` — the page that ends immediately before the given message id
+   *              (paging *backwards* into history).
+   * - `since`  — everything appended after the given message id (catching up
+   *              after a reconnect).
+   *
+   * `since` is a position, not a version number: message ids are stable, so a
+   * caller can name its last known message without the list carrying a
+   * sequence number. The one failure that matters is the anchor having been
+   * truncated away (rewind / clear) — there is no seq/version in the store that
+   * could detect it otherwise — and that comes back as `reset: true` so the
+   * caller re-pulls the tail instead of guessing.
+   *
+   * Ids can repeat in the display list (a compacted message is re-added), so
+   * anchors are resolved to their **last** occurrence: "after `since`" means
+   * after the newest copy the caller could have seen.
+   */
+  private getMessages(
+    sessionId?: string,
+    window?: { before?: string; since?: string; limit?: number },
+  ): {
     messages: Message[];
     contextUsagePercent?: number;
+    /** Older messages exist before the returned page. */
+    hasMore?: boolean;
+    /** The `since` anchor is gone — rebuild from the tail. */
+    reset?: boolean;
+    /** Total display messages held for the session. */
+    total?: number;
   } {
     const entry = this.requireSessionForRead(sessionId);
+    const all = entry.agent.displayMessages;
+    const contextUsagePercent = this.contextUsagePercentOf(entry.agent);
+
+    const before = window?.before;
+    const since = window?.since;
+    const rawLimit = window?.limit;
+    if (
+      rawLimit !== undefined &&
+      (!Number.isInteger(rawLimit) || rawLimit < 1)
+    ) {
+      // Refusing beats quietly widening the read: a caller that meant to bound
+      // the payload and got the whole thread back has no way to notice.
+      throw new RpcError(
+        PROTOCOL_INVALID_PARAMS,
+        `getMessages limit must be a positive integer, got ${String(rawLimit)}`,
+      );
+    }
+    const limit = rawLimit === undefined ? undefined : rawLimit;
+
+    if (before === undefined && since === undefined && limit === undefined) {
+      return { messages: all, contextUsagePercent };
+    }
+
+    const lastIndexOfId = (id: string): number => {
+      for (let i = all.length - 1; i >= 0; i--) {
+        if (all[i].id === id) return i;
+      }
+      return -1;
+    };
+
+    if (since !== undefined) {
+      const at = lastIndexOfId(since);
+      if (at === -1) {
+        return {
+          messages: [],
+          contextUsagePercent,
+          reset: true,
+          total: all.length,
+        };
+      }
+      const later = all.slice(at + 1);
+      return {
+        messages: limit === undefined ? later : later.slice(-limit),
+        contextUsagePercent,
+        hasMore: false,
+        total: all.length,
+      };
+    }
+
+    // Backward paging; without `before` this is a tail read (`limit` only).
+    const end = before === undefined ? all.length : lastIndexOfId(before);
+    if (end === -1) {
+      // The anchor is gone. Older history may have been truncated along with
+      // it, so answer with an empty page: the caller stops paging rather than
+      // looping on an anchor that will never resolve.
+      return {
+        messages: [],
+        contextUsagePercent,
+        hasMore: false,
+        total: all.length,
+      };
+    }
+    const start = limit === undefined ? 0 : Math.max(0, end - limit);
     return {
-      messages: entry.agent.displayMessages,
-      contextUsagePercent: this.contextUsagePercentOf(entry.agent),
+      messages: all.slice(start, end),
+      contextUsagePercent,
+      hasMore: start > 0,
+      total: all.length,
     };
   }
 
@@ -1745,8 +1874,74 @@ export class AgentBridge {
     };
   }
 
-  // ── Auth (global) ────────────────────────────────────────────
+  /**
+   * Route the `remoteControl*` RPCs to the daemon's controller.
+   *
+   * `connect` / `disconnect` change the relay session; all three return the
+   * same snapshot so a caller can render the result without a second round
+   * trip (and a caller that only wanted to read gets `remoteControlStatus`).
+   *
+   * `connect` carries the optional label the user gave this machine
+   * (`wave remote-control on <name>`), which the relay hands to the phone so
+   * the pairing list can tell two of the user's computers apart.
+   */
+  private remoteControlRequest(
+    method: string,
+    params: Record<string, unknown>,
+  ): RemoteControlSnapshot {
+    const controller = this.remoteControl?.();
+    if (!controller) {
+      throw new RpcError(
+        PROTOCOL_INVALID_PARAMS,
+        "Remote control is not enabled on this process (set enableRemoteControl: true).",
+      );
+    }
+    if (method === "remoteControlConnect") {
+      const name = typeof params.name === "string" ? params.name : undefined;
+      controller.connect(name);
+    } else if (method === "remoteControlDisconnect") {
+      controller.disconnect();
+    }
+    return controller.getSnapshot();
+  }
 
+  /**
+   * Per-session status for the remote-control signal.
+   *
+   * The relay forwards bytes without looking inside them, so it can never
+   * discover that somebody is waiting on an approval — and "push to the phone
+   * when a session is stuck on the user" is the whole point of the feature.
+   * The machine therefore reports one word per session, carrying no content:
+   * ids and a status, nothing else.
+   *
+   * `running` includes background work: read from a phone there is no terminal
+   * to glance at, so "something is still in flight" is the useful meaning of
+   * busy rather than the narrower "a model turn is streaming".
+   */
+  listSessionStatuses(): Array<{
+    sessionId: string;
+    status: "running" | "idle" | "requires_action";
+  }> {
+    const awaiting = new Set<string>();
+    for (const entry of this.pendingPermissions.values()) {
+      if (entry.sessionId) awaiting.add(entry.sessionId);
+    }
+    return [...this.sessions.entries()].map(([sessionId, entry]) => {
+      let status: "running" | "idle" | "requires_action" = "idle";
+      if (awaiting.has(sessionId)) {
+        status = "requires_action";
+      } else if (
+        entry.transitioning === true ||
+        entry.agent.isLoading ||
+        entry.agent.hasRunningBackgroundWork
+      ) {
+        status = "running";
+      }
+      return { sessionId, status };
+    });
+  }
+
+  // ── Auth (global) ────────────────────────────────────────────
   private async getAuthStatus(): Promise<{
     isAuthenticated: boolean;
     user: { id: string; email?: string } | undefined;
