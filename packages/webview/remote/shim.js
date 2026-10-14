@@ -605,6 +605,10 @@
           // asked while the link was down was dropped, and no amount of message
           // delta brings it back. See `refreshPending`.
           refreshPending();
+          // …and a mode switched while the link was down was equally dropped,
+          // leaving the page on a permission the session no longer has. See
+          // `refreshPermissionMode`.
+          refreshPermissionMode();
         }
         connectedOnce = true;
         return;
@@ -1030,6 +1034,11 @@
         // `applyStreaming`. Reading it off the same reply also means a page that
         // opens (or switches) mid-turn knows it is mid-turn.
         applyStreaming(isBusy(currentSession(sessions, sessionId)));
+        // Also the moment the pick is known, which is what the mode read needs:
+        // cold start and 「切到这条会话」 both come through here. Started rather
+        // than awaited — nothing else on the snapshot path depends on it, and it
+        // lands long before the first paint does.
+        refreshPermissionMode();
         if (!sessionId) showStatus("电脑侧还没有正在跑的会话。");
         else clearStatus();
       })
@@ -1115,6 +1124,43 @@
       })
       .catch(function (err) {
         warnOnce("pending", "待审批补读失败：" + err.message);
+      });
+  }
+
+  /**
+   * Re-read the session's permission mode, which is the third thing the page
+   * only ever hears as a *transition*.
+   *
+   * The adapter pushes `permissionModeChange` whenever the value changes, so a
+   * phone that is connected and looking at this session follows along — but a
+   * mode picked *before* the page arrived never reaches it, and the page then
+   * renders its own reducer default (`default`, shown as 「修改前询问」). That is
+   * not a cosmetic gap: the user sees a tighter permission than the session
+   * actually runs with, and on a session switch the label stays on the
+   * conversation they just left. `getSessionInfo` is the only method that
+   * carries the value — it is in the remote white list and both hosts answer it
+   * — which is why this is its own request rather than a field of the snapshot
+   * (the registry entry has busy but not mode).
+   *
+   * No local mirror of what the page believes (unlike `applyStreaming`): the
+   * reply is a read of the truth, so re-stating an unchanged value costs one
+   * frame and is what puts a re-mounted app — whose reducer went back to
+   * `default` — right again.
+   */
+  function refreshPermissionMode() {
+    var asked = sessionId;
+    if (!asked) return Promise.resolve();
+    return request("getSessionInfo", {})
+      .then(function (info) {
+        // The request named the session it was asked for: a pick that moved on
+        // while it was in flight must not repaint the page with the mode of the
+        // conversation the reader has left.
+        if (asked !== sessionId) return;
+        if (!info || !info.permissionMode) return;
+        post({ command: "updatePermissionMode", mode: info.permissionMode });
+      })
+      .catch(function (err) {
+        warnOnce("mode", "权限模式补读失败：" + err.message);
       });
   }
 
@@ -1240,6 +1286,9 @@
           // …and its copy of the pending approvals went with it. This side keeps
           // the same list, which is now a list of cards that are not on screen.
           refreshPending(true);
+          // …as did the mode: the remounted reducer is back at `default` while
+          // the session may be running wide open. See `refreshPermissionMode`.
+          refreshPermissionMode();
         } else {
           openedOnce = true;
           pullSnapshot();
@@ -1429,11 +1478,11 @@
    * picture of the past: messages that stop short, a busy/idle state that may
    * have flipped, and no card for anything that asked for approval while nobody
    * was listening. That is the disconnect gap one level up, so it is repaired the
-   * same way: the three re-reads `auth_ok` does.
+   * same way: the re-reads `auth_ok` does.
    *
    * Only when the link can carry them. A request sent while it cannot just piles
    * up in the outbox and ends as a timeout describing nothing real, and the
-   * reconnect that follows does these same three reads on its own.
+   * reconnect that follows does these same reads on its own.
    */
   function onResume() {
     if (document.visibilityState !== "visible") return;
@@ -1442,6 +1491,7 @@
     resync();
     refreshStreaming(true);
     refreshPending(true);
+    refreshPermissionMode();
   }
 
   document.addEventListener("visibilitychange", onResume);

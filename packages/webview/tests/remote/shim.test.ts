@@ -690,10 +690,13 @@ describe("remote page shim — talking to the host", () => {
 
     expect(page.requests().map((frame) => frame.method)).toEqual([
       "listDaemonSessions",
+      "getSessionInfo",
       "getMessages",
       "listPendingPermissions",
     ]);
-    expect(page.requests()[1]?.params).toEqual({ limit: 100 });
+    expect(
+      page.requests().find((frame) => frame.method === "getMessages")?.params,
+    ).toEqual({ limit: 100 });
     // The whole point: `params.result` is what reached the page. Reading
     // `frame.result` left every reply `undefined`, so this object arrived with
     // no sessions and no messages — the page then showed "电脑侧还没有正在跑的
@@ -803,7 +806,10 @@ describe("remote page shim — pulling the list further up", () => {
 
     // `before` is exclusive: the host returns what is older than m10, so the
     // message the reader is holding is never re-sent.
-    expect(page.requests()[3]).toMatchObject({
+    const asked = page
+      .requests()
+      .filter((frame) => frame.method === "getMessages");
+    expect(asked[asked.length - 1]).toMatchObject({
       method: "getMessages",
       params: { before: "m10", limit: 100 },
       sessionId: "s1",

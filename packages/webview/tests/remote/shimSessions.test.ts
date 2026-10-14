@@ -222,13 +222,24 @@ async function answerRereads(socket: FakeSocket, requests: Frame[] = []) {
   await flush();
 }
 
-/** Boot + mount (webviewReady) + first snapshot, i.e. the page as the phone sees it. */
-async function openPage(search = "?host=h-1") {
+/**
+ * Boot + mount (webviewReady) + first snapshot, i.e. the page as the phone sees it.
+ *
+ * `permissionMode` is what the machine answers the first screen's mode read with
+ * (`getSessionInfo`). Every re-alignment asks for it — the adapter only pushes
+ * the *changes* — so a harness that stayed silent would leave those reads to
+ * time out and put a warning on the suite's stderr.
+ */
+async function openPage(search = "?host=h-1", permissionMode = "default") {
   const page = startPage(search);
   await flush();
   page.api.postMessage({ command: "webviewReady" });
   await flush();
   await page.answer("listDaemonSessions", { sessions: SESSIONS });
+  await page.answer("getSessionInfo", {
+    sessionId: "s-new",
+    permissionMode,
+  });
   const pull = await page.answer("getMessages", { messages: [SEED] });
   await page.answer("listPendingPermissions", { requests: [] });
   return { page, pull };
@@ -899,5 +910,188 @@ describe("remote page shim", () => {
       command: "slashCommandsResponse",
       commands: [{ id: "c1", name: "/review", description: "复盘这次改动" }],
     });
+  });
+
+  // ── The permission mode the page displays ────────────────────────
+  //
+  // The adapter only pushes `permissionModeChange` — a *transition*. A mode
+  // picked before the page arrived (or while the link was down, or on the
+  // conversation the reader just left) has no transition left to deliver, so the
+  // page would keep rendering its own reducer default `default` — 「修改前询问」,
+  // a permission the session does not have. `getSessionInfo` carries the value,
+  // and every path that re-aligns the page has to read it.
+
+  /** The mode the page was last told to display. */
+  function shownMode(page: { posted: Frame[] }) {
+    const shown = page.posted.filter(
+      (message) => message.command === "updatePermissionMode",
+    );
+    return shown.length ? shown[shown.length - 1].mode : undefined;
+  }
+
+  test("reads the session's current mode into the first screen", async () => {
+    // Built by hand rather than through `openPage`, which answers this read
+    // itself: the point here is the request the page makes on its own.
+    const page = startPage("?host=h-1");
+    await flush();
+    page.api.postMessage({ command: "webviewReady" });
+    await flush();
+    await page.answer("listDaemonSessions", { sessions: SESSIONS });
+
+    // Addressed to the session the page just picked — the host answers for the
+    // id in the envelope.
+    const asked = await page.answer("getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "bypassPermissions",
+    });
+    await page.answer("getMessages", { messages: [SEED] });
+    await page.answer("listPendingPermissions", { requests: [] });
+
+    expect(asked.sessionId).toBe("s-new");
+    expect(shownMode(page)).toBe("bypassPermissions");
+  });
+
+  test("follows a mode switched while the page is looking at it", async () => {
+    const { page } = await openPage();
+
+    page.socket.receive({
+      method: "permissionModeChange",
+      params: { mode: "acceptEdits" },
+      sessionId: "s-new",
+    });
+    await flush();
+
+    expect(shownMode(page)).toBe("acceptEdits");
+  });
+
+  test("re-reads the mode when the reader switches conversation", async () => {
+    // The conversation being left is running wide open; the one being opened is
+    // not. A switch that only re-pulled the messages would leave the label on
+    // the permission of the conversation the reader has left.
+    const { page } = await openPage("?host=h-1", "bypassPermissions");
+    expect(shownMode(page)).toBe("bypassPermissions");
+
+    page.api.postMessage({ command: "restoreSession", sessionId: "s-old" });
+    await flush();
+    // The switch re-pulls through the same path a cold start uses, so the read
+    // goes out again — for the conversation being opened.
+    await page.answer("listDaemonSessions", { sessions: SESSIONS });
+    const asked = await page.answer("getSessionInfo", {
+      sessionId: "s-old",
+      permissionMode: "plan",
+    });
+
+    expect(asked.sessionId).toBe("s-old");
+    expect(shownMode(page)).toBe("plan");
+  });
+
+  test("a mode read that lands after a switch cannot repaint the new conversation", async () => {
+    // Hand-built: the race needs the first screen's read to still be in flight
+    // when the reader switches away.
+    const page = startPage("?host=h-1");
+    await flush();
+    page.api.postMessage({ command: "webviewReady" });
+    await flush();
+    await page.answer("listDaemonSessions", { sessions: SESSIONS });
+
+    page.api.postMessage({ command: "restoreSession", sessionId: "s-old" });
+    await flush();
+    await page.answer("listDaemonSessions", { sessions: SESSIONS });
+
+    // Oldest first: this reply describes `s-new`, which the page has left.
+    await page.answer("getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "bypassPermissions",
+    });
+    expect(shownMode(page)).toBeUndefined();
+
+    await page.answer("getSessionInfo", {
+      sessionId: "s-old",
+      permissionMode: "default",
+    });
+    expect(shownMode(page)).toBe("default");
+  });
+
+  test("a mode switched while the link was down is re-read on reconnect", async () => {
+    const { page } = await openPage();
+    expect(shownMode(page)).toBe("default");
+
+    const next = await reconnect(page.socket);
+    answerOn(next, "getMessages", { messages: [] });
+    answerOn(next, "listDaemonSessions", { sessions: SESSIONS });
+    answerOn(next, "getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "bypassPermissions",
+    });
+    await flush();
+
+    expect(shownMode(page)).toBe("bypassPermissions");
+  });
+
+  test("coming back to the foreground re-reads the mode too", async () => {
+    const { page } = await openPage();
+    expect(shownMode(page)).toBe("default");
+
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flush();
+
+    expect(page.requests("getSessionInfo")).toBe(2);
+    await page.answer("getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "acceptEdits",
+    });
+    expect(shownMode(page)).toBe("acceptEdits");
+    visibility.mockRestore();
+  });
+
+  test("a re-mounted app is told the mode again", async () => {
+    const { page } = await openPage("?host=h-1", "bypassPermissions");
+    expect(shownMode(page)).toBe("bypassPermissions");
+
+    // The app re-mounted (a pane was rebuilt behind our back) and its reducer
+    // started over at `default`; the value it had been told went with it, so
+    // "already said so once" is not a reason to stay quiet.
+    page.api.postMessage({ command: "webviewReady" });
+    await flush();
+    answerOn(page.socket, "getMessages", { messages: [SEED] });
+    answerOn(page.socket, "listDaemonSessions", { sessions: SESSIONS });
+    answerOn(page.socket, "listPendingPermissions", { requests: [] });
+    answerOn(page.socket, "getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "acceptEdits",
+    });
+    await flush();
+
+    expect(page.requests("getSessionInfo")).toBe(2);
+    expect(shownMode(page)).toBe("acceptEdits");
+  });
+
+  test("a machine that refuses the read leaves the mode unshown, not the page broken", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { page } = await openPage();
+
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flush();
+    await page.refuse(
+      "getSessionInfo",
+      "Method not available over remote control: getSessionInfo",
+    );
+    visibility.mockRestore();
+
+    // The mode is display-only — the pick itself is a request — so a refusal
+    // must not cost the page its session: the reason goes to the log rather
+    // than onto the screen, and the page keeps what it had.
+    expect(shownMode(page)).toBe("default");
+    expect(warn.mock.calls.flat().join(" ")).toContain("权限模式补读失败");
+    expect(
+      page.posted.some((message) => message.command === "setInitialState"),
+    ).toBe(true);
+    warn.mockRestore();
   });
 });
