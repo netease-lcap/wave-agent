@@ -22,6 +22,12 @@
  * for an answer) answered with an explicit error — never left hanging, never
  * silently ignored.
  *
+ * Login is not this page's own: it rides the enterprise login the user already
+ * has (same origin, same `localStorage.token`). When that credential is missing
+ * or has expired, the page hands the user to the enterprise login page and asks
+ * to be returned to this same address afterwards (`hopToLogin`) — the one case
+ * where the page navigates away instead of reporting a status.
+ *
  * Protocol note: the relay's handshake (`authFrame` below) belongs to the server
  * work (vusion/codechat#40). Its shape is fixed there; the frame types are kept
  * as literals here so a change lands in one place.
@@ -82,6 +88,17 @@
   var AUTH_TIMEOUT_CLOSE = 4003;
   /** Application-level keepalive; the relay answers each `ping` with a `pong`. */
   var HEARTBEAT_MS = 30000;
+  /**
+   * The enterprise login page, and the parameter it reads to know where to send
+   * the user back to. Same-origin coupling like the `token` key below: this page
+   * is served from the enterprise's own domain, so both names belong to its
+   * frontend and are written exactly once, here.
+   */
+  var LOGIN_PATH = "/login";
+  var REDIRECT_PARAM = "redirect";
+  /** How long one automatic login round-trip counts as "just happened" (ms). */
+  var LOGIN_HOP_MS = 30000;
+  var LOGIN_HOP_KEY = "wave_remote_login_hop";
   /** Answered locally: the page has no filesystem and no local CLI to update. */
   var UNSUPPORTED_NO_REPLY = {
     updateInputContent: "草稿只留在本机浏览器里",
@@ -106,6 +123,8 @@
   var fatal = "";
   /** The enterprise login token — the credential the relay credits as subscriber. */
   var credential = "";
+  /** Browser storage is unusable, so a login page could not persist a token either. */
+  var storageBlocked = false;
   var heartbeatTimer = null;
   var nextId = 1;
   var pending = {};
@@ -168,7 +187,10 @@
       return window.localStorage.getItem("token") || "";
     } catch (err) {
       // Storage blocked (private mode, partitioned context): indistinguishable
-      // from "not logged in" here, and the relay would refuse us anyway.
+      // from "not logged in" here, and the relay would refuse us anyway. It also
+      // means a login round-trip is pointless — the login page could not store
+      // the token we came back for.
+      storageBlocked = true;
       warnOnce("storage", "读不到浏览器存储，按未登录处理：" + err.message);
       return "";
     }
@@ -181,6 +203,68 @@
     url.search = "";
     url.hash = "";
     return url.toString();
+  }
+
+  /**
+   * Whether there is a login page to send the user to. In production the page is
+   * served from the enterprise's own domain, so the login page is one path away;
+   * the local debug copy (`file:`, localhost) has nothing to log in to, and
+   * navigating would only land on a 404 — it keeps the on-page notice instead.
+   */
+  function canReachLogin() {
+    var protocol = window.location.protocol;
+    if (protocol !== "http:" && protocol !== "https:") return false;
+    var host = window.location.hostname;
+    return (
+      host !== "localhost" &&
+      host !== "127.0.0.1" &&
+      host !== "::1" &&
+      host !== "[::1]" &&
+      !/\.localhost$/.test(host)
+    );
+  }
+
+  /**
+   * One automatic round-trip per window. The marker must outlive the navigation
+   * (we leave the page and come back), so it lives in sessionStorage — per tab,
+   * and dropped with it. Without it, a login that cannot fix the credential
+   * (revoked account, storage the page cannot read) would ping-pong the browser
+   * between the two pages forever.
+   */
+  function hoppedRecently() {
+    try {
+      var at = Number(window.sessionStorage.getItem(LOGIN_HOP_KEY));
+      return !!at && Date.now() - at < LOGIN_HOP_MS;
+    } catch {
+      return true;
+    }
+  }
+
+  /**
+   * Take the user to the enterprise login page and bring them back to this very
+   * address (channel key included) once they are logged in. Returns false when
+   * that is not an option, so the caller puts the reason on the page instead:
+   * local debug page, unusable storage, or we just came back from a hop that
+   * fixed nothing.
+   *
+   * The login page owns the "logged in, now go back" half — all this page does is
+   * hand it a same-origin path and ask to be returned to it. Nothing is preserved
+   * beyond the address, because there is nothing else to preserve: no state, no
+   * second account.
+   */
+  function hopToLogin() {
+    if (!canReachLogin() || storageBlocked || hoppedRecently()) return false;
+    var target = window.location.pathname + window.location.search;
+    try {
+      window.sessionStorage.setItem(LOGIN_HOP_KEY, String(Date.now()));
+    } catch {
+      // The marker is only the loop guard; the hop itself still works.
+    }
+    warnOnce("login", "登录态不可用，转去企业端登录页：" + target);
+    window.location.replace(
+      LOGIN_PATH + "?" + REDIRECT_PARAM + "=" + encodeURIComponent(target),
+    );
+    return true;
   }
 
   function authFrame() {
@@ -197,6 +281,9 @@
   function boot() {
     credential = readCredential();
     if (!credential) {
+      // No token at all: go get one (see `hopToLogin`). When a round-trip is not
+      // available, the reason stays on the page.
+      if (hopToLogin()) return;
       fail("请先在企业端登录，再打开这个页面（页面复用企业端登录态）。");
       return;
     }
@@ -304,6 +391,10 @@
       case "pong":
         return;
       case "auth_error":
+        // A token we did send came back invalid (expired or revoked): same
+        // remedy as having no token at all, so try the login round-trip before
+        // settling for a permanent error.
+        if (frame.error === "invalid_token" && hopToLogin()) return;
         fatal = authErrorMessage(frame);
         showStatus(fatal);
         return;
