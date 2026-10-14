@@ -222,3 +222,102 @@ test("sticky-bar jump lands during streaming and survives it", async ({
   );
   expect(end.gap).toBeGreaterThan(1500);
 });
+
+/**
+ * The "at the bottom" band must be tight. With the old 300px band, a user who
+ * nudge-scrolled up but stayed within 300px of the bottom was still classified
+ * as being at the bottom, so the next non-programmatic scroll event cleared the
+ * opt-out and the streaming pin dragged the viewport back down — which is what
+ * the intermittent "I scrolled up and it pulled me back" report looks like.
+ * Park the viewport INSIDE that old band (10px < gap < 300px), keep streaming,
+ * and require it to stay parked.
+ */
+test("a light wheel nudge inside the old 300px band still suspends following", async ({
+  webviewPage,
+}) => {
+  const injector = new MessageInjector(webviewPage);
+  await injector.simulateExtensionMessage("setInitialState", {
+    isAuthenticated: true,
+    messages: [],
+    isStreaming: false,
+    sessions: [],
+    permissionMode: "default",
+  });
+  const history = buildHistory(140);
+  history.push({
+    id: "live-msg",
+    role: "assistant",
+    timestamp: new Date().toISOString(),
+    blocks: [{ type: "text", content: "开头", stage: "streaming" }],
+  });
+  await injector.updateMessages(history);
+  await injector.startStreaming();
+  await webviewPage.waitForSelector('[data-message-id="live-msg"]');
+  await webviewPage.waitForFunction(() => {
+    const c = document.getElementById("messagesContainer") as HTMLElement;
+    return c.scrollHeight - c.scrollTop - c.clientHeight <= 2;
+  });
+  await webviewPage.waitForTimeout(300);
+
+  const box = await webviewPage.locator("#messagesContainer").boundingBox();
+  if (!box) throw new Error("no container box");
+  await webviewPage.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+
+  // A light nudge, not a deep scroll: converge on the band the old threshold
+  // wrongly called "at the bottom".
+  for (let i = 0; i < 8; i++) {
+    const g = await geometry(webviewPage);
+    if (g.gap > 140 && g.gap < 280) break;
+    await webviewPage.mouse.wheel(0, g.gap < 140 ? -120 : 120);
+    await webviewPage.waitForTimeout(80);
+  }
+  const parked = await geometry(webviewPage);
+  console.log(
+    `[nudge-park] parked gap=${parked.gap.toFixed(0)} scrollTop=${parked.scrollTop}`,
+  );
+  expect(parked.gap).toBeGreaterThan(10);
+  expect(parked.gap).toBeLessThan(300);
+
+  // The virtualizer's own resize compensation scrolls the container directly —
+  // it does not go through scrollToFn, so the event carries no programmatic
+  // mark. Reproduce that shape: an unmarked downward nudge that leaves the
+  // viewport far from the bottom. On the old 300px band this single event was
+  // enough to clear the opt-out ("still within 300px, so the user is at the
+  // bottom"), and the next chunk's pin dragged the viewport all the way down.
+  const compensated = await webviewPage.evaluate(() => {
+    const c = document.getElementById("messagesContainer") as HTMLElement;
+    c.scrollTop = Math.min(
+      c.scrollTop + 60,
+      Math.max(0, c.scrollHeight - c.clientHeight - 40),
+    );
+    return { gap: c.scrollHeight - c.scrollTop - c.clientHeight };
+  });
+  await webviewPage.waitForTimeout(120);
+  console.log(
+    `[nudge-park] after unmarked down nudge gap=${compensated.gap.toFixed(0)}`,
+  );
+  expect(compensated.gap).toBeGreaterThan(10);
+  expect(compensated.gap).toBeLessThan(300);
+
+  const gaps: number[] = [];
+  for (let i = 1; i <= 40; i++) {
+    await injector.simulateExtensionMessage("updateStreamingContent", {
+      messageId: "live-msg",
+      chunk: chunk(i),
+      stage: "streaming",
+    });
+    if (i % 5 === 0) gaps.push((await geometry(webviewPage)).gap);
+    await webviewPage.waitForTimeout(30);
+  }
+  await webviewPage.waitForTimeout(400);
+
+  const end = await geometry(webviewPage);
+  console.log(
+    `[nudge-park] sampledGaps=${JSON.stringify(gaps.map((g) => Math.round(g)))} endGap=${end.gap.toFixed(0)}`,
+  );
+  // Never re-classified as "at the bottom" while streaming (a single such
+  // sample is the pull-back), and the viewport only drifts DOWN in gap terms
+  // because the stream keeps growing the content under it.
+  expect(Math.min(...gaps)).toBeGreaterThan(10);
+  expect(end.gap).toBeGreaterThan(300);
+});

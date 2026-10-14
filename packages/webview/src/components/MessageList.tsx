@@ -44,6 +44,32 @@ type FoldState = "collapsed" | "expanded" | null;
 // swallow a later genuine gesture.
 const USER_INPUT_GRACE_MS = 200;
 
+// How close to the real bottom the viewport must be to count as "at the bottom"
+// — used both to re-engage following after an opt-out and to follow a freshly
+// appended message when the user never opted out.
+//
+// Deliberately tight (a few px to ~10), matching the rest of the field:
+// opencode's `createAutoScroll` defaults `bottomThreshold` to 10, react-virtuoso's
+// `atBottomThreshold` defaults to 4, claude.ai's bundles use 2/4/8. A wide band is
+// not a grace margin but a bug: it declares "at the bottom" for a user who has
+// visibly left it, and then the very next non-programmatic scroll event (resize
+// compensation, an image settling, a stray wheel tick) clears the opt-out and the
+// streaming pin yanks the viewport back down. That is the intermittent
+// "I scrolled up and it pulled me back" report this replaced — the previous 300px
+// band (introduced by 9b856225 with no external rationale) was an order of
+// magnitude wider than any comparable implementation.
+//
+// Measured A/B on the same build (e2e/streaming-wheel-scroll.e2e.ts, "a light
+// wheel nudge inside the old 300px band"): park the viewport 183px from the
+// bottom, then deliver one unmarked scroll event. With 300px it reads as "the
+// user is back at the bottom", clears the opt-out, and the next streaming pin
+// drags the viewport to gap 0; with 10px it stays parked. The unmarked event is
+// not hypothetical — the virtualizer's resize compensation writes scrollTop
+// directly — and whether the event carries a programmatic mark is a race
+// (pendingProgrammaticScrollsRef is not conserved), so the threshold is the only
+// guard here that does not depend on timing.
+const BOTTOM_FOLLOW_THRESHOLD_PX = 10;
+
 interface MeasuredEntry {
   height: number;
   fold: FoldState;
@@ -586,7 +612,7 @@ export const MessageList = forwardRef<
 
       const isNearBottom =
         container.scrollTop + container.clientHeight >=
-        container.scrollHeight - 300;
+        container.scrollHeight - BOTTOM_FOLLOW_THRESHOLD_PX;
 
       const isUserMessage =
         messages.length > 0 && messages[messages.length - 1].role === "user";
@@ -658,7 +684,7 @@ export const MessageList = forwardRef<
       }
       const isNearBottom =
         container.scrollTop + container.clientHeight >=
-        container.scrollHeight - 300;
+        container.scrollHeight - BOTTOM_FOLLOW_THRESHOLD_PX;
       const scrolledUp = container.scrollTop < prevScrollTopRef.current;
       // A clamp from a content-shrink reflow (scrollHeight decreased) moves
       // scrollTop downward but is NOT user intent — ignore it so auto-follow
