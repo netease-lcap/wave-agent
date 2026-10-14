@@ -451,7 +451,11 @@
   top: 0;
   left: 0;
   width: 100vw;
+  /* 与 body 同一档：高度取可视区（dvh），否则 iOS Safari 上这层全屏浮层比可视区
+     高一条工具栏，居中放大的图会被顶到折叠线以下——浮层里没有第二条滚动路径把
+     它救回来。本地四端两个单位同值。 */
   height: 100vh;
+  height: 100dvh;
   background-color: rgba(0, 0, 0, 0.85);
   display: flex;
   justify-content: center;

@@ -75,6 +75,8 @@ interface Harness {
   banner(): string;
   session: Map<string, string>;
   warns: string[];
+  /** An attribute the shim set on <html> (the page's CSS hooks live there). */
+  htmlAttribute(name: string): string | null;
   /** Host → page: the messages the shim dispatched at the webview. */
   posted: unknown[];
   /** Page → host: what the mounted webview's `postMessage` would send. */
@@ -149,6 +151,17 @@ function loadShim(options: {
   };
 
   const document = {
+    // The shim marks the page for its own CSS by setting an attribute on <html>;
+    // recorded the way a browser would answer `getAttribute`.
+    documentElement: (() => {
+      const attributes = new Map<string, string>();
+      return {
+        setAttribute: (name: string, value: string) => {
+          attributes.set(name, value);
+        },
+        getAttribute: (name: string) => attributes.get(name) ?? null,
+      };
+    })(),
     querySelector: () => null,
     createElement: (): Banner => ({
       textContent: "",
@@ -217,6 +230,7 @@ function loadShim(options: {
     banner: () => banner?.textContent ?? "",
     session,
     warns,
+    htmlAttribute: (name) => document.documentElement.getAttribute(name),
     posted,
     post: (message) => {
       window.acquireVsCodeApi().postMessage(message);
@@ -230,6 +244,20 @@ function loadShim(options: {
     },
   };
 }
+
+describe("remote page shim — this page is the browser host", () => {
+  it("marks <html> for the Web-page-only viewport rules", () => {
+    // No credential here either: the mark belongs to the page, not to a
+    // successful connection, and it is set before chat.js runs (index.html loads
+    // this file first) so the first paint already has it. The shared CSS hangs
+    // the phone-only viewport rules (visible height + safe-area insets) on it —
+    // the other four hosts embed in a window that IS the screen, so those rules
+    // must not reach them.
+    const page = loadShim({});
+
+    expect(page.htmlAttribute("data-remote-page")).toBe("1");
+  });
+});
 
 describe("remote page shim — logging in", () => {
   it("hops to the enterprise login page and asks to come back to this address", () => {
