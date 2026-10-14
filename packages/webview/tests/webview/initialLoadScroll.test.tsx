@@ -140,6 +140,12 @@ describe("initial load scroll + async-content re-pin", () => {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 50));
     });
+    // Dispatch the wheel a real gesture would ship: the list gates on the
+    // input event, not on the bare synthesized 'scroll' alone.
+    fireEvent.wheel(screen.getByTestId("messages-container"), {
+      deltaY: -100,
+      ctrlKey: false,
+    });
     setGeometryAndScroll(1500, 2000);
     scrollTo.mockClear();
 
