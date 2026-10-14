@@ -176,6 +176,15 @@ export class RelayClient {
   private stopped = false;
   /** Why the relay refused us, kept so the `4003` that follows can say more. */
   private authError: { error: string; minVersion?: string } | undefined;
+  /**
+   * `auth_ok` has arrived. Until it does the relay parses *every* frame as the
+   * auth frame, and one it cannot parse closes the connection for good
+   * (`4003`, never retried) — so nothing but the auth frame may go out first.
+   */
+  private authed = false;
+  /** Frames held back until `auth_ok`, replayed in order once it lands. */
+  private outbox: string[] = [];
+  private outboxBytes = 0;
 
   constructor(private readonly options: RelayClientOptions) {}
 
@@ -194,6 +203,7 @@ export class RelayClient {
   stop(): void {
     this.stopped = true;
     this.clearTimers();
+    this.clearOutbox();
     const socket = this.socket;
     this.socket = undefined;
     this.state = "closed";
@@ -215,7 +225,9 @@ export class RelayClient {
   /**
    * Send one envelope. Returns false when there is nowhere to put it (the link
    * is down) — the caller may drop the frame; the phone re-syncs from a
-   * snapshot on reconnect, so a gap is recoverable, a crash is not.
+   * snapshot on reconnect, so a gap is recoverable, a crash is not. A frame
+   * handed over before the handshake completes is parked rather than dropped:
+   * it still goes out, in order, the moment the relay accepts us.
    */
   send(frame: RelayEnvelope): boolean {
     return this.write(JSON.stringify(frame));
@@ -230,7 +242,26 @@ export class RelayClient {
     return this.write(JSON.stringify(frame));
   }
 
+  /**
+   * The handshake owns the first frame. On an unauthenticated connection the
+   * relay parses *every* frame it receives as `auth` (it has no way to tell a
+   * straggler apart from the handshake), and a frame that does not parse is a
+   * permanent `4003` — so going out early is the difference between "the phone
+   * is reconnecting" and "this machine never comes back".
+   */
   private write(payload: string): boolean {
+    const socket = this.socket;
+    if (!socket || this.state !== "open") return false;
+    if (!this.authed) return this.park(payload);
+    return this.writeNow(payload);
+  }
+
+  /**
+   * Straight to the wire: the auth frame, and the replay after `auth_ok`. Kept
+   * separate from `write` so the one frame that is allowed before the handshake
+   * completes has to say so at the call site.
+   */
+  private writeNow(payload: string): boolean {
     const socket = this.socket;
     if (!socket || this.state !== "open") return false;
 
@@ -248,10 +279,47 @@ export class RelayClient {
     }
   }
 
+  /**
+   * Hold one frame until `auth_ok`. The window is a single relay round trip
+   * (the relay verifies the token against the database before answering), so
+   * this stays tiny — but it is capped anyway, at the same ceiling `writeNow`
+   * uses: a queue that can grow without bound is exactly what the backpressure
+   * judgement exists to prevent, and the remedy is the same (drop the link,
+   * let the phone resync).
+   */
+  private park(payload: string): boolean {
+    const bytes = Buffer.byteLength(payload, "utf8");
+    if (this.outboxBytes + bytes > RELAY_MAX_BUFFERED_BYTES) {
+      this.dropForBackpressure();
+      return false;
+    }
+    this.outbox.push(payload);
+    this.outboxBytes += bytes;
+    return true;
+  }
+
+  /** Replay what was parked, in order. Called the moment `auth_ok` lands. */
+  private flushOutbox(): void {
+    const queued = this.outbox;
+    this.clearOutbox();
+    for (const payload of queued) {
+      // The gate is behind us, so these are ordinary sends again — the
+      // backpressure judgement still applies to every one of them.
+      if (!this.writeNow(payload)) return;
+    }
+  }
+
+  private clearOutbox(): void {
+    this.outbox = [];
+    this.outboxBytes = 0;
+  }
+
   // ── Connection lifecycle ──────────────────────────────────────
 
   private connect(): void {
     this.state = "connecting";
+    // Every socket starts unauthenticated, however the last one ended.
+    this.authed = false;
     let socket: RelaySocket;
     try {
       socket = (this.options.createSocket ?? defaultRelaySocketFactory)(
@@ -271,15 +339,19 @@ export class RelayClient {
       this.unavailableAttempts = 0;
       // The relay authenticates the runner before it will fan anything out, and
       // it reads the version from the top level of this same frame. Ten seconds
-      // without it and the relay closes with `auth_timeout` (4003).
-      this.sendControl({
-        type: "auth",
-        credential: {
-          type: this.options.credential.type,
-          token: this.options.credential.token,
-        },
-        version: this.options.version,
-      });
+      // without it and the relay closes with `auth_timeout` (4003). This is the
+      // one frame that may travel before `auth_ok`, so it goes to the wire
+      // directly instead of through the gate in `write`.
+      this.writeNow(
+        JSON.stringify({
+          type: "auth",
+          credential: {
+            type: this.options.credential.type,
+            token: this.options.credential.token,
+          },
+          version: this.options.version,
+        }),
+      );
       this.startPing();
       this.options.onOpen?.();
     };
@@ -397,6 +469,10 @@ export class RelayClient {
     switch (frame.type) {
       case "auth_ok":
         this.authError = undefined;
+        this.authed = true;
+        // Before anything the callback sends: parked frames are older, and the
+        // phone has to see them in the order they were produced.
+        this.flushOutbox();
         this.options.onAuthenticated?.({
           ...(frame.role !== undefined ? { role: frame.role } : {}),
           ...(frame.hostId !== undefined ? { hostId: frame.hostId } : {}),
@@ -439,6 +515,7 @@ export class RelayClient {
   private fail(reason: string): void {
     this.stopped = true;
     this.clearTimers();
+    this.clearOutbox();
     this.state = "closed";
     this.options.onFatal?.(reason);
   }
