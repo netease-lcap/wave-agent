@@ -700,6 +700,94 @@ describe("chatReducer", () => {
     });
   });
 
+  describe("PREPEND_MESSAGES", () => {
+    const message = (id: string): Message => ({
+      id,
+      role: "user",
+      timestamp: "0",
+      blocks: [],
+    });
+
+    it("should put the older page in front of what is already held", () => {
+      const state = {
+        ...initialState,
+        messages: [message("m5"), message("m6")],
+      };
+
+      const newState = chatReducer(state, {
+        type: "PREPEND_MESSAGES",
+        payload: { messages: [message("m3"), message("m4")], hasMore: true },
+      });
+
+      expect(newState.messages.map((m) => m.id)).toEqual([
+        "m3",
+        "m4",
+        "m5",
+        "m6",
+      ]);
+      expect(newState.historyExhausted).toBe(false);
+    });
+
+    it("should drop rows this list already has", () => {
+      // The host resolves a `before` anchor to its LAST occurrence and ids repeat
+      // in this list (a compacted message is added back), so a legitimate page can
+      // include rows that are already here.
+      const state = {
+        ...initialState,
+        messages: [message("m3"), message("m4")],
+      };
+
+      const newState = chatReducer(state, {
+        type: "PREPEND_MESSAGES",
+        payload: { messages: [message("m1"), message("m3")], hasMore: true },
+      });
+
+      expect(newState.messages.map((m) => m.id)).toEqual(["m1", "m3", "m4"]);
+    });
+
+    it("should remember that the beginning of the history was reached", () => {
+      const state = { ...initialState, messages: [message("m1")] };
+
+      const newState = chatReducer(state, {
+        type: "PREPEND_MESSAGES",
+        payload: { messages: [], hasMore: false },
+      });
+
+      // 空页 + hasMore:false 是宿主说的「这就是开头」：页面据此提示并停止再请求。
+      expect(newState.messages.map((m) => m.id)).toEqual(["m1"]);
+      expect(newState.historyExhausted).toBe(true);
+    });
+
+    it("should keep the list identity when the page added nothing", () => {
+      const held = [message("m1")];
+      const state = { ...initialState, messages: held };
+
+      const newState = chatReducer(state, {
+        type: "PREPEND_MESSAGES",
+        payload: { messages: [message("m1")], hasMore: true },
+      });
+
+      // 没有新行时列表引用不变：MessageList 用「列表引用变了」区分「这一页到了」
+      // 与「请求失败」，引用抖动会让它在失败时也去动视口。
+      expect(newState.messages).toBe(held);
+    });
+
+    it("should reset the exhausted flag when the list is replaced", () => {
+      const state = {
+        ...initialState,
+        messages: [message("m1")],
+        historyExhausted: true,
+      };
+
+      const newState = chatReducer(state, {
+        type: "SET_MESSAGES",
+        payload: [message("m1"), message("m2")],
+      });
+
+      expect(newState.historyExhausted).toBe(false);
+    });
+  });
+
   describe("APPEND_ERROR_BLOCK", () => {
     it("should append error block to last assistant message", () => {
       const textBlock: TextBlock = {

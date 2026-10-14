@@ -11,6 +11,7 @@ import { pinSessionTitle } from "../utils/session";
 
 export const initialState: ChatState = {
   messages: [],
+  historyExhausted: false,
   tasks: [],
   backgroundTasks: [],
   workflowRuns: [],
@@ -54,7 +55,27 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         ...state,
         messages: action.payload,
+        // A replacement list is a new window: whatever the previous one knew
+        // about the beginning of the history no longer describes this one
+        // (session switch, a re-read, a structural truncation).
+        historyExhausted: false,
         currentSession: pinSessionTitle(state.currentSession, action.payload),
+      };
+    }
+    case "PREPEND_MESSAGES": {
+      const { messages, hasMore } = action.payload;
+      // The host's window is exclusive of the anchor the page sent, so a
+      // well-behaved page comes back with messages this list has never seen. The
+      // filter is for the case it does not: ids repeat in this list (a compacted
+      // message is added back), and the anchor resolves to its LAST occurrence
+      // host-side, so a page can legitimately include rows that are already here.
+      // Dropping them by id keeps the older-rows-first order without a duplicate.
+      const held = new Set(state.messages.map((m) => m.id));
+      const older = messages.filter((m) => !held.has(m.id));
+      return {
+        ...state,
+        messages: older.length ? [...older, ...state.messages] : state.messages,
+        historyExhausted: !hasMore,
       };
     }
     case "SET_TASKS":

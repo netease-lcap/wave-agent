@@ -20,12 +20,23 @@
  *    therefore reports `running` / `idle` / `requires_action` per session.
  *    This carries no message content, by construction: session ids and one word
  *    each.
+ * 4. **A frame budget.** The relay drops any single frame that does not fit its
+ *    per-subscriber buffer (1 MiB by default) and asks the phone for a resync —
+ *    silently, with no error for us to see. So nothing over budget is handed
+ *    over: pages are trimmed to the newest messages that fit, and a
+ *    notification too large to send becomes a content-free "re-read" signal.
+ *    See `frameBudget.ts` for why the number is what it is.
  */
 
 import type {
   RemoteControlSnapshot,
   RemoteControlStatus,
 } from "wave-agent-sdk";
+import {
+  frameBytes,
+  REMOTE_MAX_FRAME_BYTES,
+  trailingCountThatFits,
+} from "./frameBudget.js";
 import {
   NotificationCoalescer,
   type RelayFrame,
@@ -343,9 +354,13 @@ export class RemoteControlService implements RemoteControlController {
       return;
     }
 
+    // Captured once: the narrowing above does not survive into the callbacks
+    // below, and a reply without an id is not a reply.
+    const replyId = frame.id;
+
     if (!REMOTE_ALLOWED_METHODS.has(frame.method)) {
       this.send({
-        id: frame.id,
+        id: replyId,
         method: "error",
         params: {
           code: -32601,
@@ -358,17 +373,75 @@ export class RemoteControlService implements RemoteControlController {
     void this.bridge
       .handleRequest(frame.method, frame.params, frame.sessionId)
       .then((result) => {
-        this.send({ id: frame.id, method: "result", params: { result } });
+        this.sendResult(replyId, frame.method, result);
         this.scheduleStatus();
       })
       .catch((err: unknown) => {
         const { code, message } = describeRpcError(err);
         this.send({
-          id: frame.id,
+          id: replyId,
           method: "error",
           params: { code, message },
         });
       });
+  }
+
+  /**
+   * Answer a request, hammering the answer into the frame budget.
+   *
+   * A read answer is the one frame whose size follows the session (a page of
+   * `displayMessages`), so it is the one frame that gets trimmed instead of
+   * dropped. `getMessages` answers are pageable and the phone asked for the
+   * tail, so an over-budget page is cut to the **newest** messages that fit and
+   * flagged `hasMore` — the phone keeps a usable page instead of nothing, and
+   * walking further back is a smaller `limit` away. Every other over-budget
+   * answer is an explicit error: truncating a `getSessionInfo` or a
+   * `listSessions` would hand the phone a well-formed lie about which sessions
+   * exist, and there is no "newer part" of such an answer to prefer.
+   */
+  private sendResult(
+    replyId: number | string,
+    method: string,
+    result: unknown,
+  ): void {
+    const envelope: RelayEnvelope = {
+      id: replyId,
+      method: "result",
+      params: { result },
+    };
+    const bytes = frameBytes(envelope);
+    if (bytes <= REMOTE_MAX_FRAME_BYTES) {
+      this.send(envelope);
+      return;
+    }
+
+    const page = asMessagePage(result);
+    if (page) {
+      const kept = trailingCountThatFits(
+        page.messages.length,
+        (count) =>
+          frameBytes(pageFrame(replyId, page, count)) <= REMOTE_MAX_FRAME_BYTES,
+      );
+      // Not even one message fits: pageable or not, there is nothing to send
+      // that the phone could render, and an empty page claiming `hasMore` would
+      // only make it ask again forever.
+      if (kept > 0) {
+        this.send(pageFrame(replyId, page, kept));
+        return;
+      }
+    }
+
+    this.send({
+      id: replyId,
+      method: "error",
+      params: {
+        code: -32603,
+        message:
+          `${method}: the answer is larger than the remote channel's frame budget` +
+          ` (${String(bytes)} bytes over the ${String(REMOTE_MAX_FRAME_BYTES)}-byte limit)` +
+          ` — ask for a smaller page`,
+      },
+    });
   }
 
   // ── Plumbing ──────────────────────────────────────────────────
@@ -378,13 +451,36 @@ export class RemoteControlService implements RemoteControlController {
     this.client?.send(frame);
   }
 
+  /**
+   * Hand the coalesced notifications over, one frame each — unless a frame is
+   * over budget, which for a notification means "the phone must re-read".
+   *
+   * The relay would drop such a frame anyway and ask for a resync, so saying it
+   * ourselves is the same outcome without the round trip — and it is the only
+   * way the phone hears about it *before* the drop. Which matters, because the
+   * notification most likely to be oversized is a **permission request** (its
+   * payload carries the command and the diff): dropping it silently would leave
+   * an approval that nobody can answer. So the stand-in is the `full` variant of
+   * the list-changed signal, and the page answers it by re-pulling the snapshot
+   * — messages *and* pending approvals — rather than only the messages it is
+   * missing.
+   */
   private write(frames: RelayFrame[]): void {
     for (const frame of frames) {
-      this.send({
+      const envelope: RelayEnvelope = {
         method: frame.method,
         params: frame.params,
         sessionId: frame.sessionId,
-      });
+      };
+      if (frameBytes(envelope) > REMOTE_MAX_FRAME_BYTES) {
+        this.send({
+          method: "messagesChanged",
+          params: { full: true },
+          sessionId: frame.sessionId,
+        });
+        continue;
+      }
+      this.send(envelope);
     }
   }
 
@@ -465,4 +561,46 @@ function describeRpcError(err: unknown): { code: number; message: string } {
       : -32603;
   const message = err instanceof Error ? err.message : String(err);
   return { code: Number.isFinite(code) ? code : -32603, message };
+}
+
+/** A `getMessages` answer: the one read shape that can be cut into a page. */
+interface MessagePage {
+  messages: unknown[];
+  /** Whatever else the host put in the answer (`hasMore` / `reset` / `total`). */
+  rest: Record<string, unknown>;
+}
+
+/**
+ * Recognise a pageable answer by its shape rather than by the method that
+ * produced it: `getMessages` is the only method that returns `messages` today,
+ * and matching on the shape means a future paged read is covered without a
+ * second list of method names to keep in sync.
+ */
+function asMessagePage(result: unknown): MessagePage | undefined {
+  if (typeof result !== "object" || result === null) return undefined;
+  const { messages, ...rest } = result as { messages?: unknown };
+  return Array.isArray(messages)
+    ? { messages, rest: rest as Record<string, unknown> }
+    : undefined;
+}
+
+/** The answer, cut to its newest `count` messages. */
+function pageFrame(
+  replyId: number | string,
+  page: MessagePage,
+  count: number,
+): RelayEnvelope {
+  return {
+    id: replyId,
+    method: "result",
+    params: {
+      result: {
+        ...page.rest,
+        messages: page.messages.slice(-count),
+        // The page is by definition no longer the whole answer, and the phone
+        // reads this flag to decide whether asking again is worth anything.
+        hasMore: true,
+      },
+    },
+  };
 }

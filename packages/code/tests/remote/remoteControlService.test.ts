@@ -13,6 +13,7 @@ import {
   REMOTE_ALLOWED_METHODS,
   REMOTE_STATUS_DEBOUNCE_MS,
 } from "../../src/remote/remoteControlService.js";
+import { REMOTE_MAX_FRAME_BYTES } from "../../src/remote/frameBudget.js";
 import type { RemoteControlStatus } from "wave-agent-sdk";
 import {
   RELAY_PING_INTERVAL_MS,
@@ -674,5 +675,166 @@ describe("RemoteControlService", () => {
     expect(bridge.handleNotification).not.toHaveBeenCalled();
     expect(bridge.handleRequest).not.toHaveBeenCalled();
     expect(socket.frames()).toHaveLength(0);
+  });
+
+  // ── The frame budget ──────────────────────────────────────────────
+  //
+  // The relay drops any single frame that does not fit its per-subscriber
+  // buffer, and it drops it silently. So the budget is enforced here, where we
+  // can still choose what the phone gets instead of losing the frame.
+
+  /** A page of messages whose serialized size is comfortably over the budget. */
+  function oversizedMessages(count: number) {
+    return Array.from({ length: count }, (_, index) => ({
+      id: `m${String(index)}`,
+      content: "x".repeat(16 * 1024),
+    }));
+  }
+
+  it("should trim an over-budget page to the newest messages that fit", async () => {
+    const all = oversizedMessages(40);
+    const bridge = createBridgeStub({
+      handleRequest: vi.fn(async () => ({ messages: all, total: all.length })),
+    });
+    await connect(bridge);
+    socket.sent.length = 0;
+
+    socket.deliver({ id: 9, method: "getMessages", params: { limit: 40 } });
+    await vi.waitFor(() => {
+      expect(socket.frames().at(-1)?.method).toBe("result");
+    });
+
+    const frame = socket.frames().at(-1) as {
+      id: number;
+      params: {
+        result: {
+          messages: Array<{ id: string }>;
+          hasMore?: boolean;
+          total?: number;
+        };
+      };
+    };
+    const kept = frame.params.result.messages;
+    expect(frame.id).toBe(9);
+    // A usable page rather than nothing — and the newest end of it, because
+    // that is the part the phone was asking for.
+    expect(kept.length).toBeGreaterThan(0);
+    expect(kept.length).toBeLessThan(all.length);
+    expect(kept.at(-1)?.id).toBe("m39");
+    expect(kept[0]?.id).toBe(`m${String(all.length - kept.length)}`);
+    // `hasMore` is what turns the trim into an instruction to walk further back.
+    expect(frame.params.result.hasMore).toBe(true);
+    expect(frame.params.result.total).toBe(all.length);
+    // The trim is against the frame as it goes on the wire, envelope included.
+    expect(
+      Buffer.byteLength(JSON.stringify(frame), "utf8"),
+    ).toBeLessThanOrEqual(REMOTE_MAX_FRAME_BYTES);
+  });
+
+  it("should send a page that already fits untouched", async () => {
+    const all = oversizedMessages(2);
+    const bridge = createBridgeStub({
+      handleRequest: vi.fn(async () => ({ messages: all, total: all.length })),
+    });
+    await connect(bridge);
+    socket.sent.length = 0;
+
+    socket.deliver({ id: 10, method: "getMessages", params: { limit: 2 } });
+    await vi.waitFor(() => {
+      expect(socket.frames().at(-1)?.method).toBe("result");
+    });
+
+    expect(socket.frames().at(-1)).toEqual({
+      id: 10,
+      method: "result",
+      params: { result: { messages: all, total: all.length } },
+    });
+  });
+
+  it("should refuse an over-budget answer that cannot be paged", async () => {
+    const bridge = createBridgeStub({
+      handleRequest: vi.fn(async () => ({
+        sessions: [
+          { sessionId: "s1", title: "x".repeat(REMOTE_MAX_FRAME_BYTES + 1024) },
+        ],
+      })),
+    });
+    await connect(bridge);
+    socket.sent.length = 0;
+
+    socket.deliver({ id: 11, method: "listSessions", params: {} });
+    await vi.waitFor(() => {
+      expect(socket.frames().at(-1)?.method).toBe("error");
+    });
+
+    // Truncating it would hand the phone a well-formed lie about which sessions
+    // exist; there is no "newer part" of such an answer to prefer.
+    expect(socket.frames().at(-1)).toMatchObject({
+      id: 11,
+      method: "error",
+      params: {
+        code: -32603,
+        message: expect.stringContaining("frame budget"),
+      },
+    });
+  });
+
+  it("should refuse a page not even one message of which fits", async () => {
+    const bridge = createBridgeStub({
+      handleRequest: vi.fn(async () => ({
+        messages: [
+          { id: "m1", content: "x".repeat(REMOTE_MAX_FRAME_BYTES + 1024) },
+        ],
+      })),
+    });
+    await connect(bridge);
+    socket.sent.length = 0;
+
+    socket.deliver({ id: 12, method: "getMessages", params: { limit: 1 } });
+    await vi.waitFor(() => {
+      expect(socket.frames().at(-1)?.method).toBe("error");
+    });
+
+    // An empty page claiming `hasMore` would only make the phone ask forever.
+    expect(socket.frames().at(-1)).toMatchObject({
+      id: 12,
+      method: "error",
+      params: { code: -32603 },
+    });
+  });
+
+  it("should stand in for an over-budget notification with a re-read signal", async () => {
+    const service = await connect(createBridgeStub());
+    socket.sent.length = 0;
+
+    service.sendNotification(
+      "permissionRequest",
+      {
+        requestId: "r1",
+        context: { planContent: "x".repeat(REMOTE_MAX_FRAME_BYTES + 1024) },
+      },
+      "s1",
+    );
+
+    // Silently dropping this one would leave an approval nobody can answer, so
+    // the phone is told to re-read the snapshot instead of nothing at all.
+    expect(socket.frames()).toEqual([
+      { method: "messagesChanged", params: { full: true }, sessionId: "s1" },
+    ]);
+  });
+
+  it("should leave a notification that fits alone", async () => {
+    const service = await connect(createBridgeStub());
+    socket.sent.length = 0;
+
+    service.sendNotification("permissionRequest", { requestId: "r1" }, "s1");
+
+    expect(socket.frames()).toEqual([
+      {
+        method: "permissionRequest",
+        params: { requestId: "r1" },
+        sessionId: "s1",
+      },
+    ]);
   });
 });

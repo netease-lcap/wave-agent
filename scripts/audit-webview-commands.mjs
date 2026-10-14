@@ -119,6 +119,23 @@ const DESKTOP_GATED_NON_PREFIX = new Set([
 ]);
 
 /**
+ * 手机页专属命令（webview 在 `window.waveRemotePage === true` 时才会发送）。
+ * 它们的宿主路由是**第五个**：`packages/webview/remote/shim.js` —— 同一份 webview
+ * 代码在浏览器里跑，命令由 shim 接到并转成中继 RPC。三个本地宿主永远收不到，所以
+ * 不要求它们注册；反过来要求 shim 里有 `case "X":`（漏了就是「点上去没反应」那个
+ * 静默失败，正是本脚本存在的理由）。
+ *
+ * 门禁依据必须是能力位而不是「有没有 waveHostType」：IDE 宿主的 waveHostType 也是空
+ * 的（见 packages/webview/src/types/index.ts 的 window.waveRemotePage 注释）。
+ */
+const REMOTE_PAGE_GATED = new Set([
+  "loadOlderMessages", // ChatApp.handleLoadOlderMessages：上拉翻更早（spec remote-control.md 场景 11）
+]);
+
+/** 第五个路由实例：手机页 shim 的 case 注册集合。 */
+const REMOTE_PAGE_SHIM = join(ROOT, "packages/webview/remote/shim.js");
+
+/**
  * 按发送表面划分时无法从文件路径推出的特例命令 → 显式路由要求（覆盖推导）。
  * 推导规则默认：有 chat 发送方 → 要求 vscode_chat + jetbrains；有 settings
  * 发送方 → 要求 vscode_settings + jetbrains；非 gated 非 IDE-only → 要求 desktop。
@@ -310,6 +327,29 @@ function collectHostCases() {
     if (m) jb.add(m[1]);
   }
   result.jetbrains = jb;
+
+  // 「第五个路由」：手机页 shim（见 REMOTE_PAGE_GATED）。只扫 handleCommand 这一个
+  // switch 的函数体——shim 里另一个 switch 是 host→page 的翻译表（deliver），那些名字
+  // 是 RPC 方法而不是 webview 发的命令，混进来会让本表失去意义。函数体按缩进界定：
+  // 函数在 IIFE 内，收尾那行正好是两空格缩进的 `}`。
+  const remotePage = new Set();
+  const shimLines = readFileSync(REMOTE_PAGE_SHIM, "utf8").split("\n");
+  const handleCommandAt = shimLines.findIndex((line) =>
+    line.startsWith("  function handleCommand("),
+  );
+  if (handleCommandAt === -1) {
+    console.error(
+      `  ! ${REMOTE_PAGE_SHIM.replace(ROOT, "")} 里找不到 handleCommand，手机页路由的要求无法核对`,
+    );
+    process.exitCode = 1;
+  } else {
+    for (let i = handleCommandAt + 1; i < shimLines.length; i++) {
+      if (shimLines[i] === "  }") break;
+      const m = shimLines[i].match(/^\s*case "([A-Za-z][A-Za-z0-9_]*)":/);
+      if (m) remotePage.add(m[1]);
+    }
+  }
+  result.remote_page = remotePage;
   return result;
 }
 
@@ -319,6 +359,9 @@ function collectHostCases() {
 function requiredRoutes(cmd, senderSurfaces) {
   if (cmd.startsWith("desktop") || DESKTOP_GATED_NON_PREFIX.has(cmd)) {
     return ["desktop"]; // 桌面专属：webview 在 IDE 从不发送
+  }
+  if (REMOTE_PAGE_GATED.has(cmd)) {
+    return ["remote_page"]; // 手机页专属：只有 shim 那个「路由」会收到
   }
   const spec = SPECIFIC_REQUIREMENTS[cmd];
   if (spec) return Object.keys(spec).filter((r) => spec[r]);
@@ -342,12 +385,17 @@ function requiredRoutes(cmd, senderSurfaces) {
 const problems = [];
 let checked = 0;
 
+/** 路由实例的注册点文件（手机页那个不在 HOST_FILES 里，见 REMOTE_PAGE_GATED）。 */
+function routePath(route) {
+  return route === "remote_page" ? REMOTE_PAGE_SHIM : HOST_FILES[route].path;
+}
+
 function check(hostCases, cmd, routes, senderByCmd) {
   for (const route of routes) {
     checked++;
     if (!hostCases[route].has(cmd)) {
       problems.push(
-        `  [缺失] ${cmd.padEnd(24)} 要求注册在 ${route}，但 ${HOST_FILES[route].path.replace(ROOT, "")} 未处理\n` +
+        `  [缺失] ${cmd.padEnd(24)} 要求注册在 ${route}，但 ${routePath(route).replace(ROOT, "")} 未处理\n` +
           `         webview 发送方: ${[...senderByCmd.get(cmd)].join(", ")}`,
       );
     }
@@ -379,11 +427,15 @@ function main() {
   // 3b) 反向：host 独有 case（webview 永不发送）必须登记在 LEGACY_HOST_CASES
   const universe = new Set(senderByCmd.keys());
   for (const [route, cases] of Object.entries(hostCases)) {
+    // 手机页 shim 不是宿主路由：它的 case 集合只用来核对 REMOTE_PAGE_GATED，
+    // 「webview 永不发送」对它不适用（它本来就只收手机页那几条命令）。
+    const legacy = LEGACY_HOST_CASES[route];
+    if (!legacy) continue;
     for (const c of cases) {
       if (universe.has(c)) continue;
-      if (!LEGACY_HOST_CASES[route].has(c)) {
+      if (!legacy.has(c)) {
         problems.push(
-          `  [死注册] ${route} 处理了 webview 永不发送的命令 "${c}"（${HOST_FILES[route].path.replace(ROOT, "")}）。\n` +
+          `  [死注册] ${route} 处理了 webview 永不发送的命令 "${c}"（${routePath(route).replace(ROOT, "")}）。\n` +
             `         若为宿主主动发起/历史遗留，请登记进脚本 LEGACY_HOST_CASES[${route}]（附注释）；否则删除该 case。`,
         );
       }
@@ -402,6 +454,11 @@ function main() {
   console.log(
     "✓ 4 个路由实例（vscode_chat / vscode_settings / desktop / jetbrains）覆盖完整",
   );
+  if (REMOTE_PAGE_GATED.size) {
+    console.log(
+      `✓ 手机页专属命令（${[...REMOTE_PAGE_GATED].join(" / ")}）已在 shim 注册`,
+    );
+  }
   console.log("✓ host 独有 case 全部登记在 legacy 豁免清单");
 }
 
