@@ -1,0 +1,308 @@
+/* ── 远控 Web 页：手机档（第三种密度档）────────────────────────────────
+   远控页是五端里唯一「一种宿主对应两种设备」的页面：手机浏览器和 PC 浏览器
+   打开的是同一张 `/remote/`，所以「这是哪一页」不足以决定字号，判据是**输入
+   能力**——`pointer: coarse` / `hover: none`（主输入是手指、没有悬停），手机与
+   平板的共同点。宽度断点做不到这件事：宽度是连续量，「多大算手机」没有自然分界
+   点，只能任选一个阈值，两侧都会误判——PC 上把窗口拉窄会被判成手机（那里原本
+   是设计稿的密度），平板（768–1024）又会被判成桌面。横屏手机同样会漏，但他
+   2026-10-14 判这一页竖着才装得下更多信息、横屏概率很低，所以那只是补充。
+
+   与另两档的关系：插件（IDE）高密度 13px / 桌面中密度 14px（后者是
+   `host-desktop.css` 里 `[data-host="desktop"]` 的一批覆写）；本档是第三档，
+   挂在 `[data-remote-page]`（`remote/shim.js` 打在 <html> 上的唯一标记）下，
+   同一批角色、取值再大一档，其余四端与共享组件样式一个像素都不动。
+
+   档位怎么取：以现有值为基线统一 +2px（阅读主体 13 → 15、辅助 11 → 13、
+   代码 12 → 14、设置页 14 → 16），图标字形（codicon）不参与——它们按容器摆位，
+   放大反而错位。具体数值待设计师过一遍，见 docs/specs/ui/remote-control.md
+   场景 16 与「未落地与待决」里的那条。
+
+   两处例外，都写在下面：
+   ① 文本类控件一律 ≥16px，且**不判设备**（iOS 平台契约，见场景 15）；
+   ② MermaidRenderer.css 自己那几条 `@media (max-width: 600px|768px)` 覆盖不
+      跟档——那是全屏查看器的控件，手机上极少用到，留着它们自己的响应式规则。 */
+
+@media (pointer: coarse), (hover: none) {
+  /* 阅读主体（markdown 正文、用户消息正文等）没有自己的 `font-size`，继承自
+     `body`，所以「整页正文抬一档」要从这里入手。两行都要：token 是这一档的旋钮
+     （`--vscode-editor-font-size` 还被 mermaid 源码视图消费，只能在根上改），而
+     主题把 token 挂的是 `:root[data-theme="…"]`（根 + 一个属性 = 两个选择器），
+     所以覆写也必须带两个属性才压得住；`body` 那行是兜底，不依赖 `data-theme`
+     是否在，免得将来谁把那个属性去掉、正文静默掉回 13px。 */
+  [data-remote-page][data-theme] {
+    --vscode-font-size: 15px;
+    --vscode-editor-font-size: 14px;
+  }
+
+  [data-remote-page] body {
+    font-size: 15px;
+  }
+
+  /* 辅助信息：图片角标、排队消息标签、工具状态点、斜杠命令标签 */
+  [data-remote-page]
+    :is(
+      .image-size,
+      .message.user.queued .context-tag,
+      .tool-status-dot,
+      .slash-command-tag
+    ) {
+    font-size: 12px;
+  }
+
+  /* 辅助信息：工具结果、统计、时间、标签、空态与加载文案 */
+  [data-remote-page]
+    :is(
+      .image-item,
+      .paste-hint,
+      .mcp-tool-count,
+      .mcp-server-command,
+      .mcp-server-error,
+      .mcp-server-last-connected,
+      .mcp-connect-btn,
+      .mcp-disconnect-btn,
+      .recommended-tag,
+      .history-item-time,
+      .line-comment-box-tag,
+      .line-comment-box-cancel,
+      .line-comment-box-send,
+      .message.user.queued .message-content.user-content,
+      .write-tool-stats,
+      .tool-result-block,
+      .result-answer,
+      .result-raw,
+      .tool-result-inline,
+      .compress-context-pct,
+      .selection-tag,
+      .session-list-item-project,
+      .settings-tag,
+      .zoom-info
+    ) {
+    font-size: 13px;
+  }
+
+  [data-remote-page] :is(.account-plan-conclusion, .compact-params, .task-dep) {
+    font-size: 13px;
+    line-height: 20px;
+  }
+
+  /* 次级信息与代码角色：弹窗次级行、路径与预览、命令行与输出、菜单项 */
+  [data-remote-page]
+    :is(
+      .account-card,
+      .chat-drag-overlay-sub,
+      .preview-pane-forward-error,
+      .queue-edit-warning-banner,
+      .configuration-cancel-btn,
+      .configuration-save-btn,
+      .mcp-status-icon,
+      .mcp-server-meta,
+      .mcp-hint,
+      .mcp-hint code,
+      .confirmation-command,
+      .confirmation-mcp-params,
+      .confirmation-btn .btn-enter-hint,
+      .history-search-input,
+      .history-search-loading,
+      .history-search-empty,
+      .message-action-btn,
+      .image-item-message,
+      .bash-command-input,
+      .bash-command-output,
+      .lsp-output,
+      .permission-mode-select,
+      .permission-mode-caret,
+      .compress-context-button,
+      .permission-mode-menu,
+      .plus-menu-item,
+      .queued-edit-chip,
+      .history-start-hint > span,
+      .model-popup-header,
+      .model-popup-loading,
+      .model-popup-empty,
+      .queued-message-list-title,
+      .queued-item-text,
+      .rewind-popup-header,
+      .rewind-popup-loading,
+      .rewind-popup-empty,
+      .session-list-search,
+      .session-list-label,
+      .session-list-item-title,
+      .session-list-item-time,
+      .session-list-loading,
+      .session-list-empty,
+      .settings-card-link-btn,
+      .settings-row-btn,
+      .settings-modal-note,
+      .settings-market-manage-note,
+      .settings-scope-option-title em,
+      .settings-scope-option-project,
+      .slash-commands-empty,
+      .slash-group-title,
+      .slash-command-name,
+      .slash-command-description,
+      .todo-item,
+      .tooltip-box,
+      .mermaid-tabs .tab-button,
+      .error-message pre,
+      .control-btn,
+      .fullscreen-help,
+      .more-menu-item,
+      .session-card-project
+    ) {
+    font-size: 14px;
+  }
+
+  [data-remote-page]
+    :is(
+      .account-card-update-btn,
+      .account-card-avatar,
+      .header-title-error,
+      .confirm-dialog-message-content,
+      .confirmation-file-path,
+      .confirmation-warning,
+      .option-label,
+      .option-description,
+      .write-tool-path,
+      .write-preview-content,
+      .ask-user-result-q,
+      .ask-user-result-a,
+      .settings-section-heading p,
+      .settings-row-copy p,
+      .settings-row-copy .settings-row-hint,
+      .settings-tab-count,
+      .settings-plugin-checking,
+      .settings-plugin-version,
+      .settings-plugin-upgrade,
+      .settings-plugin-update-badge,
+      .settings-plugin-desc,
+      .settings-scope-option-desc,
+      .task-list-title,
+      .task-list-stat-text,
+      .task-title,
+      .session-board-column-count,
+      .session-card-status
+    ) {
+    font-size: 14px;
+    line-height: 22px;
+  }
+
+  /* 阅读主体：顶栏标题、工具块标题、思考标题、审批卡与问答、Toast */
+  [data-remote-page]
+    :is(
+      .account-card-login,
+      .header-title,
+      .confirm-dialog-btn,
+      .confirmation-title,
+      .question-header-chip,
+      .question-text,
+      .confirmation-btn,
+      .tool-block
+    ) {
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  [data-remote-page]
+    :is(
+      .btw-panel-header,
+      .btw-panel-loading,
+      .configuration-field label,
+      .radio-label,
+      .mcp-server-name,
+      .history-item-prompt,
+      .reasoning-title,
+      .write-tool-label,
+      .model-popup-item,
+      .rewind-popup-item,
+      .toast,
+      .toast-action,
+      .error-message,
+      .mermaid-empty p
+    ) {
+    font-size: 15px;
+  }
+
+  /* 设置页与看板（这些面本身的基线就比对话流大一档） */
+  [data-remote-page]
+    :is(
+      .account-card-name,
+      .chat-drag-overlay-title,
+      .configuration-dialog-header h3,
+      .settings-back,
+      .settings-number-control,
+      .settings-select,
+      .settings-select-trigger,
+      .settings-save-btn,
+      .memory-turns,
+      .settings-readonly-value,
+      .settings-placeholder,
+      .settings-project-card-header,
+      .settings-plugin-chip,
+      .settings-plugin-update-btn,
+      .settings-plugin-name,
+      .settings-plugin-act,
+      .settings-scope-pill,
+      .settings-modal-block-btn,
+      .settings-market-manage-name,
+      .settings-scope-option-title,
+      .settings-modal-actions .settings-row-btn,
+      .mermaid-loading,
+      .close-btn,
+      .session-board-back,
+      .session-board-filter,
+      .session-board-column-name,
+      .session-board-empty,
+      .plan-pane .plan-pane-placeholder-empty
+    ) {
+    font-size: 16px;
+  }
+
+  [data-remote-page]
+    :is(
+      .btw-panel-answer,
+      .settings-nav-group h2,
+      .settings-nav-item,
+      .settings-page-header p,
+      .settings-section-heading h2,
+      .settings-row-copy h3,
+      .settings-tab,
+      .project-item,
+      .settings-modal-seg-item,
+      .session-card-title
+    ) {
+    font-size: 16px;
+    line-height: 24px;
+  }
+
+  [data-remote-page] :is(.remove-image-btn, .settings-modal-header h3) {
+    font-size: 18px;
+  }
+
+  [data-remote-page] :is(.session-board-title) {
+    font-size: 18px;
+    line-height: 26px;
+  }
+
+  [data-remote-page] :is(.settings-page-header h1) {
+    font-size: 22px;
+    line-height: 30px;
+  }
+}
+
+/* ── 文本类控件一律 ≥16px，且**不判设备** ─────────────────────────────
+   iOS Safari 对 computed `font-size` 小于 16px 的文本控件，会在聚焦时把整页缩放
+   到等效 16px 且此后不自动还原（15px 仍触发，16px 起才不触发）——用户看到的是
+   「整页放大、横纵都能滚」，每次聚焦都要手动缩回去。页面上每个输入框本来都在线
+   下（消息输入区 12px、设置项 14px），所以不覆盖就是必现。
+
+   这一条不放进上面的媒体查询、也不按窗口宽度开关：它是一条平台契约，漏判的代价
+   是整页不可用，误判的代价只是 PC 浏览器上打开这一页时输入框略大（16px 本就是
+   Web 输入框的常见默认值）——代价不对称，所以宁可一律给足。范围按元素划而不是
+   按类名划：原生 `input` / `textarea` / `select` 与可编辑区，新增控件自动被覆盖。
+
+   放在文件最后：与上面的档位规则同特异性时，后写的生效——于是任何本档没抬到 16px
+   的控件（如 `.message-input` 被算进次级信息组）也不会掉到线下。 */
+[data-remote-page] :is(input, textarea, select, [contenteditable]) {
+  font-size: 16px;
+  line-height: 24px;
+}

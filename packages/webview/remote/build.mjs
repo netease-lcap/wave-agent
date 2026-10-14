@@ -205,13 +205,12 @@ function emit({ chatJs, chatCss, mermaid }) {
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="${CSP}" />
-  <!-- maximum-scale 是这一页「聚焦不放大」的手段：iOS Safari 聚焦 computed
-       font-size < 16px 的文本控件时，会把整页缩放到等效 16px（15px 仍触发），而页面
-       上每个输入框都在线下（消息输入区 12px、设置项 14px）。锁住最大缩放比把全部
-       输入框抬到 16px 更不动设计稿——16px 那版他 2026-10-14 真机看过，判「确实
-       大了」。代价是这页不能再手动双指缩放，对一张已经响应式的控制面板无妨。
-       见 docs/specs/ui/remote-control.md 场景 14。 -->
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+  <!-- 这里**不锁**缩放：双指放大是这一页上唯一的「字不够大我自己放大」退路，
+       得留着。聚焦不放大改由样式层做到——把文本类控件抬到 16px（iOS Safari 对
+       computed font-size < 16px 的文本控件会在聚焦时把整页缩放到等效 16px，15px
+       仍触发），见 src/styles/remote-page.css 与 docs/specs/ui/remote-control.md
+       场景 15。锁缩放那条路 2026-10-14 上过真机，被判定为「字太小又没得放大」。 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="dark light" />
   <link rel="icon" href="data:," />
   <link rel="stylesheet" href="./${cssName}" />
