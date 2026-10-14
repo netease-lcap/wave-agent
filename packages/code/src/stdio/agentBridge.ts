@@ -1804,7 +1804,15 @@ export class AgentBridge {
    * reading only `isLoading` reports "done" in both cases. They are read from the
    * live agent here rather than tracked separately, and mirror it as-is: the
    * rebuild window above is already covered by `isLoading`, so there is no need
-   * to also claim a `transitioning` session owns background work it doesn't. */
+   * to also claim a `transitioning` session owns background work it doesn't.
+   *
+   * The three label fields are additive (an older CLI simply ignores them) and
+   * exist for the remote-control page: it lists **this process's** sessions —
+   * the only ones it can actually open — and cannot read the machine's disk, so
+   * the title material and the ordering key have to come off the live agent
+   * rather than from `listSessions`, which reads jsonl and would offer it
+   * sessions that are not loaded here (spec remote-control「Web 页作为第五种宿主」
+   * 场景 2）。 */
   private listDaemonSessions(): {
     sessions: Array<{
       sessionId: string;
@@ -1813,17 +1821,32 @@ export class AgentBridge {
       hasRunningBackgroundWork: boolean;
       hasPendingMessages: boolean;
       messageCount: number;
+      /** User-set title; wins over `firstMessage` in the UI. */
+      customTitle?: string;
+      /** First real user message — the label when no custom title is set. */
+      firstMessage?: string;
+      /** Last display message's timestamp: the session list's ordering key. */
+      lastActiveAt?: string;
     }>;
   } {
     return {
-      sessions: [...this.sessions.entries()].map(([sessionId, entry]) => ({
-        sessionId,
-        workingDirectory: entry.createdWorkdir,
-        isLoading: entry.transitioning === true || entry.agent.isLoading,
-        hasRunningBackgroundWork: entry.agent.hasRunningBackgroundWork,
-        hasPendingMessages: entry.agent.hasPendingMessages,
-        messageCount: entry.agent.displayMessages.length,
-      })),
+      sessions: [...this.sessions.entries()].map(([sessionId, entry]) => {
+        const messages = entry.agent.displayMessages;
+        const customTitle = entry.agent.customTitle;
+        const firstMessage = firstUserText(messages);
+        const lastActiveAt = messages[messages.length - 1]?.timestamp;
+        return {
+          sessionId,
+          workingDirectory: entry.createdWorkdir,
+          isLoading: entry.transitioning === true || entry.agent.isLoading,
+          hasRunningBackgroundWork: entry.agent.hasRunningBackgroundWork,
+          hasPendingMessages: entry.agent.hasPendingMessages,
+          messageCount: messages.length,
+          ...(customTitle ? { customTitle } : {}),
+          ...(firstMessage ? { firstMessage } : {}),
+          ...(lastActiveAt ? { lastActiveAt } : {}),
+        };
+      }),
     };
   }
 
@@ -2592,6 +2615,22 @@ function isSessionRecoveryError(error: unknown): boolean {
     message.includes("not found on disk") ||
     message.startsWith("Session not found:")
   );
+}
+
+/**
+ * The label a session list shows when no custom title is set: the first real
+ * user message. Same rule as the webview's `firstUserMessageText` — meta messages
+ * (task notifications and other injected turns) are skipped, because they are not
+ * what the user typed — so the phone labels a conversation the way the IDE hosts
+ * do.
+ */
+function firstUserText(messages: Message[]): string | undefined {
+  for (const message of messages) {
+    if (message.role !== "user" || message.isMeta) continue;
+    const text = getMessageContent(message).trim();
+    if (text) return text;
+  }
+  return undefined;
 }
 
 /** Read a text file, returning "" when it does not exist. */

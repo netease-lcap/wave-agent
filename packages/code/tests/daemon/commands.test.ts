@@ -1441,6 +1441,10 @@ test("wait: a session being reconfigured (updateConfig) keeps waiting instead of
           hasRunningBackgroundWork: false,
           hasPendingMessages: false,
           messageCount: 1,
+          // The label fields are read off the outgoing agent's transcript, same
+          // as the read-only RPCs further down.
+          firstMessage: "在做的任务",
+          lastActiveAt: "t",
         },
       ],
     },

@@ -116,9 +116,14 @@ export const SessionList: React.FC<SessionListProps> = ({
                   {session.workdir}
                 </div>
               )}
-              <div className="session-list-item-time">
-                {new Date(session.lastActiveAt).toLocaleString()}
-              </div>
+              {/* Missing for a session with no messages yet (a live session the
+                  remote page lists before its first turn) — omitted rather than
+                  rendered as an invalid date. */}
+              {session.lastActiveAt && (
+                <div className="session-list-item-time">
+                  {new Date(session.lastActiveAt).toLocaleString()}
+                </div>
+              )}
             </li>
           ))}
         </ul>

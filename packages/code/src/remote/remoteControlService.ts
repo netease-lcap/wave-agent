@@ -46,9 +46,16 @@ import type { RemoteControlEndpoint } from "./remoteControlConfig.js";
  * of what it may ask for (the chat subset the phone actually renders, taken
  * from the method list in the feature request). Widening it is a deliberate
  * act, not an accident of the bridge's surface.
+ *
+ * `listDaemonSessions` is the session list's data source rather than
+ * `listSessions`: the page can only open sessions that are live in this process
+ * (`getMessages` requires the envelope's sessionId to be in the registry), while
+ * `listSessions` reads the transcripts on disk and would offer it conversations
+ * it cannot read. See 规格 remote-control「边界情况」。
  */
 export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   "listSessions",
+  "listDaemonSessions",
   "getSessionInfo",
   "getMessages",
   "listPendingPermissions",
@@ -309,7 +316,11 @@ export class RemoteControlService implements RemoteControlController {
     if (method === "messagesChange") {
       // Full-list snapshot. On a long session this is the largest frame the
       // bridge can produce; the phone pulls what it actually needs instead.
-      this.send({ method: "messagesChanged", sessionId });
+      // Same method name, no `messages` field: the two shapes of one
+      // notification are what the spec pins (「messagesChange 的两种形态」), and a
+      // phone that only ever saw the signal would otherwise have to treat the
+      // machine's newest build and an older one as two protocols.
+      this.send({ method: "messagesChange", sessionId });
       this.scheduleStatus();
       return;
     }

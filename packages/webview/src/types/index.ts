@@ -734,6 +734,14 @@ export interface ChatHeaderProps {
   isAuthenticated: boolean;
   // Desktop host: session new/list buttons live in DesktopSidebar instead.
   hideSessionButtons?: boolean;
+  /**
+   * Remote Web page (the fifth host): its one session entry. The pair above stays
+   * hidden there — both of them are wrong for a control surface (`clearChat` is
+   * unimplemented on that page, and "history" is the disk list it cannot open) —
+   * and this opens the list of sessions the serving process holds right now
+   * (spec remote-control「Web 页作为第五种宿主」场景 9).
+   */
+  sessionSwitchButton?: boolean;
   // Desktop host: the more button + menu live in DesktopSidebar instead.
   hideMoreButton?: boolean;
   /** Open the history popup without the header button — `/resume` routes

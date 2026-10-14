@@ -28,6 +28,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onLogout,
   isAuthenticated,
   hideSessionButtons = false,
+  sessionSwitchButton = false,
   hideMoreButton = false,
   sessionListOpen = false,
   onSessionListClose,
@@ -191,6 +192,19 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             </Tooltip>
           </>
         )}
+        {sessionSwitchButton && (
+          <Tooltip text="会话" position="bottom">
+            <button
+              className="header-button"
+              onClick={() => setShowSessionList((prev) => !prev)}
+              data-testid="session-switch-btn"
+              aria-label="会话"
+              aria-expanded={sessionListVisible}
+            >
+              <HistoryIcon />
+            </button>
+          </Tooltip>
+        )}
         {!hideMoreButton && (
           <Tooltip text="更多" position="bottom">
             <button
@@ -235,6 +249,11 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           onSessionSelect={onSessionSelect}
           loading={sessionsLoading}
           onClose={closeSessionList}
+          // The remote page's list holds what the serving process is running, not
+          // history, and it spans every working directory of that process — so it
+          // says so, and shows the project the way the desktop modal does.
+          title={sessionSwitchButton ? "会话" : "历史对话"}
+          showProject={sessionSwitchButton}
         />
       )}
       {showMoreMenu && !hideMoreButton && (
