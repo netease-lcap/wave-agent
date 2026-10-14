@@ -451,4 +451,94 @@ describe("remote page shim", () => {
       (await stale.answer("getMessages", { messages: [] })).sessionId,
     ).toBe("s-new");
   });
+
+  test("a page that arrives mid-turn still offers the stop button", async () => {
+    const page = startPage("?host=h-1");
+    await flush();
+    page.api.postMessage({ command: "webviewReady" });
+    await flush();
+
+    // The turn has been running since before this page existed. `loadingChange`
+    // is a *transition* — the one that started this turn was delivered to
+    // nobody — so the machine's registry is the only place the page can learn
+    // it is mid-turn.
+    await page.answer("listDaemonSessions", {
+      sessions: [{ ...SESSIONS[1], isLoading: true }, SESSIONS[0]],
+    });
+    await page.answer("getMessages", { messages: [SEED] });
+    await page.answer("listPendingPermissions", { requests: [] });
+
+    expect(page.posted).toContainEqual({ command: "startStreaming" });
+    expect(
+      page.posted.find((message) => message.command === "setInitialState"),
+    ).toMatchObject({ isStreaming: true });
+
+    // A phone has no Escape key, so this flag is the only way to reach the
+    // abort — and the abort has to actually go out.
+    page.api.postMessage({ command: "abortMessage" });
+    await flush();
+    expect(page.requests("abortMessage")).toBe(1);
+  });
+
+  test("switching into a session that is already generating shows its stop button", async () => {
+    const { page } = await openPage();
+    expect(
+      page.posted.filter((message) => message.command === "startStreaming"),
+    ).toHaveLength(0);
+
+    page.api.postMessage({ command: "restoreSession", sessionId: "s-old" });
+    await flush();
+    await page.answer("listDaemonSessions", {
+      sessions: [SESSIONS[1], { ...SESSIONS[0], isLoading: true }],
+    });
+    await page.answer("getMessages", { messages: [SEED] });
+    await page.answer("listPendingPermissions", { requests: [] });
+
+    expect(lastPosted(page)).toMatchObject({
+      command: "setInitialState",
+      session: { id: "s-old" },
+      isStreaming: true,
+    });
+
+    // The other direction still comes from the transition: once the page is
+    // listening, `loadingChange` is the cheapest and most current signal.
+    page.socket.receive({
+      method: "loadingChange",
+      params: { loading: false },
+      sessionId: "s-old",
+    });
+    expect(lastPosted(page)).toEqual({ command: "endStreaming" });
+  });
+
+  test("a reconnect re-reads the busy state a message delta cannot carry", async () => {
+    const { page } = await openPage();
+
+    // The phone slept and the socket dropped; the turn the user comes back to
+    // starts while nobody is listening.
+    page.socket.onclose?.({ code: 1006 });
+    await vi.advanceTimersByTimeAsync(2000);
+    const next = FakeSocket.opened[FakeSocket.opened.length - 1];
+    next.open();
+    next.receive({ type: "auth_ok" });
+    await flush();
+
+    // Both halves are re-read, each from its own source: the messages by delta,
+    // the state from the registry. They go out on the *new* socket, so the
+    // harness' `answer` (bound to the first one) does not apply.
+    const answerOn = (method: string, result: unknown) => {
+      const frames = next.framesFor(method);
+      next.receive({
+        id: frames[frames.length - 1]?.id,
+        method: "result",
+        params: { result },
+      });
+    };
+    answerOn("getMessages", { messages: [] });
+    answerOn("listDaemonSessions", {
+      sessions: [{ ...SESSIONS[1], isLoading: true }],
+    });
+    await flush();
+
+    expect(page.posted).toContainEqual({ command: "startStreaming" });
+  });
 });
