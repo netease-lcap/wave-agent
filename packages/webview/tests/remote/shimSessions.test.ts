@@ -45,6 +45,22 @@ const SESSIONS = [
 
 const SEED = { id: "m1", role: "user", blocks: [] };
 
+/** A request waiting on the machine, in the shape `listPendingPermissions` returns. */
+const QUESTION_PENDING = {
+  requestId: "req-auq",
+  context: {
+    toolName: "AskUserQuestion",
+    toolInput: { questions: [{ question: "先做哪个？" }] },
+  },
+};
+
+/** The same shape for an ordinary tool approval, which needs no options to be
+ *  answerable — it is here to pin the card arithmetic, not the dialog. */
+const BASH_PENDING = {
+  requestId: "req-bash",
+  context: { toolName: "Bash", toolInput: { command: "rm -rf build" } },
+};
+
 /** Stands in for the relay's socket: frames out are recorded, frames in are pushed. */
 class FakeSocket {
   static opened: FakeSocket[] = [];
@@ -165,6 +181,45 @@ async function flush() {
 /** The last message the page handed to the shared UI. */
 function lastPosted(page: { posted: Frame[] }) {
   return page.posted[page.posted.length - 1];
+}
+
+/**
+ * Answer the newest request for `method` on `socket`, as the machine would.
+ *
+ * A reconnect replaces the socket, so the harness' `answer` — bound to the socket
+ * the page started on — does not apply to anything sent after it, and the shim
+ * ignores frames from a socket that is no longer the current one.
+ */
+function answerOn(socket: FakeSocket, method: string, result: unknown) {
+  const frames = socket.framesFor(method);
+  socket.receive({
+    id: frames[frames.length - 1]?.id,
+    method: "result",
+    params: { result },
+  });
+}
+
+/**
+ * Drop the link the way a sleeping phone does, and let the page's retry open the
+ * next one. Everything from here on goes over the returned socket.
+ */
+async function reconnect(current: FakeSocket) {
+  current.onclose?.({ code: 1006 });
+  await vi.advanceTimersByTimeAsync(2000);
+  const next = FakeSocket.opened[FakeSocket.opened.length - 1];
+  next.open();
+  next.receive({ type: "auth_ok" });
+  await flush();
+  return next;
+}
+
+/** Answer the reads a reconnect makes — messages by delta, the two states from
+ *  their own registries — as the machine would. */
+async function answerRereads(socket: FakeSocket, requests: Frame[] = []) {
+  answerOn(socket, "getMessages", { messages: [] });
+  answerOn(socket, "listDaemonSessions", { sessions: SESSIONS });
+  answerOn(socket, "listPendingPermissions", { requests });
+  await flush();
 }
 
 /** Boot + mount (webviewReady) + first snapshot, i.e. the page as the phone sees it. */
@@ -515,26 +570,13 @@ describe("remote page shim", () => {
 
     // The phone slept and the socket dropped; the turn the user comes back to
     // starts while nobody is listening.
-    page.socket.onclose?.({ code: 1006 });
-    await vi.advanceTimersByTimeAsync(2000);
-    const next = FakeSocket.opened[FakeSocket.opened.length - 1];
-    next.open();
-    next.receive({ type: "auth_ok" });
-    await flush();
+    const next = await reconnect(page.socket);
 
-    // Both halves are re-read, each from its own source: the messages by delta,
-    // the state from the registry. They go out on the *new* socket, so the
-    // harness' `answer` (bound to the first one) does not apply.
-    const answerOn = (method: string, result: unknown) => {
-      const frames = next.framesFor(method);
-      next.receive({
-        id: frames[frames.length - 1]?.id,
-        method: "result",
-        params: { result },
-      });
-    };
-    answerOn("getMessages", { messages: [] });
-    answerOn("listDaemonSessions", {
+    // Each half is re-read from its own source: the messages by delta, the state
+    // from the registry. (A third read — the pending approvals — goes out here
+    // too; it is the subject of the tests further down.)
+    answerOn(next, "getMessages", { messages: [] });
+    answerOn(next, "listDaemonSessions", {
       sessions: [{ ...SESSIONS[1], isLoading: true }],
     });
     await flush();
@@ -630,5 +672,161 @@ describe("remote page shim", () => {
     expect(page.posted.slice(before)).toContainEqual(
       expect.objectContaining({ command: "slashCommandsError" }),
     );
+  });
+
+  test("an approval that arrives while the link is down is re-read on reconnect", async () => {
+    const { page } = await openPage();
+
+    // The model asks for an approval while nobody is subscribed. The remote path
+    // drops notifications rather than buffering them (`RemoteControlService`:
+    // nothing to serve while the link is down), so this one is not late — it is
+    // never sent at all.
+    const next = await reconnect(page.socket);
+
+    // The delta a reconnect pulls carries no approvals, so the registry is the
+    // only place this card can come from.
+    await answerRereads(next, [QUESTION_PENDING]);
+
+    // The options are the half the user reported missing: with no card, the list
+    // shows the tool block (name and icon) and nothing to tap — which reads as a
+    // turn that has stopped for no reason. Killing the app "fixed" it because a
+    // cold start's snapshot reads the same registry.
+    expect(
+      page.posted.filter((message) => message.command === "showConfirmation"),
+    ).toEqual([
+      expect.objectContaining({
+        confirmationId: "req-auq",
+        toolName: "AskUserQuestion",
+        toolInput: { questions: [{ question: "先做哪个？" }] },
+      }),
+    ]);
+  });
+
+  test("a re-read does not put up a second card for an approval the page already has", async () => {
+    const { page } = await openPage();
+
+    // It arrived the ordinary way, while the page was listening…
+    page.socket.receive({
+      method: "permissionRequest",
+      params: BASH_PENDING,
+      sessionId: "s-new",
+    });
+    await flush();
+
+    // …and the machine is still waiting on it, so every reconnect reports it
+    // again. The page's reducer appends (`SHOW_CONFIRMATION`), so re-posting the
+    // same id would leave two cards standing for one approval — and the dialog
+    // only ever shows the first, so the second could never be answered.
+    let current = page.socket;
+    for (let i = 0; i < 2; i++) {
+      current = await reconnect(current);
+      await answerRereads(current, [BASH_PENDING]);
+    }
+
+    expect(
+      page.posted.filter((message) => message.command === "showConfirmation"),
+    ).toHaveLength(1);
+  });
+
+  test("an app that re-mounted is handed the cards it lost", async () => {
+    const { page } = await openPage();
+    page.socket.receive({
+      method: "permissionRequest",
+      params: BASH_PENDING,
+      sessionId: "s-new",
+    });
+    await flush();
+
+    // The page re-mounted, so its own list is empty again — while this shim still
+    // remembers handing that card over. What this side believes about the page is
+    // exactly what has to go: otherwise the one approval the machine is waiting on
+    // is the one thing the fresh page never hears about.
+    page.api.postMessage({ command: "webviewReady" });
+    await flush();
+    answerOn(page.socket, "getMessages", { messages: [SEED] });
+    answerOn(page.socket, "listDaemonSessions", { sessions: SESSIONS });
+    answerOn(page.socket, "listPendingPermissions", {
+      requests: [BASH_PENDING],
+    });
+    await flush();
+
+    expect(
+      page.posted.filter((message) => message.command === "showConfirmation"),
+    ).toHaveLength(2);
+  });
+
+  test("an answer lost on the way out leaves an approval that can still be answered", async () => {
+    const { page } = await openPage();
+    page.socket.receive({
+      method: "permissionRequest",
+      params: BASH_PENDING,
+      sessionId: "s-new",
+    });
+    await flush();
+
+    // The user taps 允许. The page hides its card in the same tick
+    // (`handleConfirmation` hides optimistically), and the answer itself is a
+    // notification with no reply — so if that frame never lands, the machine is
+    // parked on a request no card is offering anymore, and the turn waits with
+    // nothing on screen to unblock it.
+    page.api.postMessage({
+      command: "confirmationResponse",
+      confirmationId: "req-bash",
+      approved: true,
+    });
+    await flush();
+
+    const next = await reconnect(page.socket);
+    await answerRereads(next, [BASH_PENDING]);
+
+    // Two cards for one id is the correct arithmetic here: the first one belongs
+    // to the card the user already answered and the page already hid.
+    const cards = page.posted.filter(
+      (message) => message.command === "showConfirmation",
+    );
+    expect(cards).toHaveLength(2);
+    expect(cards[1]).toEqual(
+      expect.objectContaining({ confirmationId: "req-bash" }),
+    );
+  });
+
+  test("coming back to the foreground aligns what the page slept through", async () => {
+    const { page } = await openPage();
+    const before = {
+      messages: page.requests("getMessages"),
+      sessions: page.requests("listDaemonSessions"),
+      pending: page.requests("listPendingPermissions"),
+    };
+
+    // jsdom reports its own `prerender` and never changes it; a phone that comes
+    // back to the foreground is `visible`, which is what the page acts on.
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
+
+    // iOS suspends a backgrounded page outright: while it is away nothing is
+    // delivered at all — no messages, no busy transitions, no approvals — so
+    // coming back to a picture of the past is the only possible outcome unless
+    // the page asks again.
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flush();
+
+    expect(page.requests("getMessages")).toBe(before.messages + 1);
+    expect(page.requests("listDaemonSessions")).toBe(before.sessions + 1);
+    expect(page.requests("listPendingPermissions")).toBe(before.pending + 1);
+
+    // A first load fires the same event; only a bfcache restore means "you were
+    // away and are back".
+    window.dispatchEvent(new Event("pageshow"));
+    await flush();
+    expect(page.requests("getMessages")).toBe(before.messages + 1);
+
+    const restored = new Event("pageshow");
+    Object.defineProperty(restored, "persisted", { value: true });
+    window.dispatchEvent(restored);
+    await flush();
+    expect(page.requests("getMessages")).toBe(before.messages + 2);
+
+    visibility.mockRestore();
   });
 });

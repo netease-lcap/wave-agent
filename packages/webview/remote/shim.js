@@ -207,6 +207,20 @@
    * `abortMessage` any other way. See `applyStreaming`.
    */
   var streaming = false;
+  /**
+   * The approvals this page is showing because this shim put the cards there —
+   * the ids, not the cards.
+   *
+   * It exists for the re-read in `refreshPending`: the registry is a *state*, so
+   * a request it reports may be one the page already has from the notification
+   * (which is a *transition*), and the page's reducer **appends** — posting the
+   * same id twice would leave two cards standing for one approval, and the
+   * dialog only ever shows the first. An id leaves this set when the user answers
+   * on this page, and only then: the card is gone from the page either way, so
+   * keeping it would merely stop a request the machine is still waiting on from
+   * ever being offered again.
+   */
+  var shownApprovals = {};
   var banner = null;
 
   // ── Page → host plumbing ────────────────────────────────────────
@@ -587,6 +601,10 @@
           // may be one that started while the connection was down — its
           // `loadingChange` was never delivered. See `refreshStreaming`.
           refreshStreaming();
+          // Same reason, and the cost of missing it is higher: an approval that
+          // asked while the link was down was dropped, and no amount of message
+          // delta brings it back. See `refreshPending`.
+          refreshPending();
         }
         connectedOnce = true;
         return;
@@ -860,23 +878,11 @@
       case "planFileUpdated":
         post({ command: "planFileUpdated", content: p.content });
         return;
-      case "permissionRequest": {
+      case "permissionRequest":
         // The whole reason this page exists: an approval that arrived while the
         // user was away has to be answerable from the phone.
-        var ctx = p.context || {};
-        post({
-          command: "showConfirmation",
-          confirmationId: p.requestId,
-          toolName: ctx.toolName,
-          confirmationType: ctx.toolName,
-          toolInput: ctx.toolInput,
-          planContent: ctx.planContent,
-          suggestedPrefix: ctx.suggestedPrefix,
-          hidePersistentOption: ctx.hidePersistentOption,
-          outsideSafeZoneDirectory: ctx.outsideSafeZoneDirectory,
-        });
+        showApproval(p);
         return;
-      }
       case "sessionIdChange":
         sessionId = p.sessionId;
         return;
@@ -1076,6 +1082,42 @@
       .catch(function () {});
   }
 
+  /**
+   * Re-read the approvals the machine is waiting on, and hand the page the cards
+   * it is not already showing.
+   *
+   * A re-read rather than a notification, for the reason `refreshStreaming` is
+   * one: the notification is a *transition*, and the link drops it while there is
+   * no subscriber ("nothing to serve while the link is down" — `RemoteControlService`).
+   * The message delta a reconnect pulls carries no approvals at all, so without
+   * this the request the model is parked on never reaches the phone: the list
+   * shows the tool block (name and icon) and the options — which only the approval
+   * card renders — are simply absent, looking like a stuck turn. A cold start goes
+   * through the snapshot instead (which does read the registry), which is why
+   * killing the app brings the options back.
+   *
+   * Not scoped to the session on screen: the registry reports every session's
+   * requests, and an approval is usually waiting in one the user is not looking at
+   * (see the note in `deliver`).
+   *
+   * `force` forgets what this shim believed was up: a page that re-mounted reset
+   * its own list, so "already shown" is no longer true.
+   */
+  function refreshPending(force) {
+    if (force) shownApprovals = {};
+    return request("listPendingPermissions", {})
+      .then(function (result) {
+        var requests = (result && result.requests) || [];
+        for (var i = 0; i < requests.length; i++) {
+          if (shownApprovals[requests[i].requestId]) continue;
+          showApproval(requests[i]);
+        }
+      })
+      .catch(function (err) {
+        warnOnce("pending", "待审批补读失败：" + err.message);
+      });
+  }
+
   /** A registry entry's busy flag: the host's own "this turn is running". */
   function isBusy(entry) {
     return !!(entry && entry.isLoading === true);
@@ -1153,6 +1195,26 @@
     };
   }
 
+  /**
+   * Put one approval card on the page, and remember that it is up.
+   *
+   * One payload shape for both ways a card gets here — the `permissionRequest`
+   * notification, and a re-read of the registry (`refreshPending`) — because they
+   * describe the same request and the page must not be able to tell them apart.
+   * `confirmationOf` is that shape; the snapshot's `pendingConfirmations` uses it
+   * too.
+   */
+  function showApproval(pendingRequest) {
+    if (!pendingRequest || !pendingRequest.requestId) return;
+    shownApprovals[pendingRequest.requestId] = true;
+    post(
+      Object.assign(
+        { command: "showConfirmation" },
+        confirmationOf(pendingRequest),
+      ),
+    );
+  }
+
   // ── Page → host command handling ────────────────────────────────
 
   function handleCommand(msg) {
@@ -1175,6 +1237,9 @@
           // A re-mounted app reset its own reducer to idle, so the flag is
           // re-stated even if this page believes it already said so.
           refreshStreaming(true);
+          // …and its copy of the pending approvals went with it. This side keeps
+          // the same list, which is now a list of cards that are not on screen.
+          refreshPending(true);
         } else {
           openedOnce = true;
           pullSnapshot();
@@ -1262,6 +1327,13 @@
             },
           },
         };
+        // The page hid its own card the moment the user tapped it (it hides
+        // optimistically, in `handleConfirmation`), so there is no card left to
+        // reconcile against — forget the id rather than remember it. An answer
+        // can still be lost on the way out (`permissionResponse` is a
+        // notification with no reply), and an approval the machine is still
+        // waiting on has to be able to come back on the next re-read.
+        delete shownApprovals[msg.confirmationId];
         if (sessionId) approval.sessionId = sessionId;
         send(approval);
         return;
@@ -1331,6 +1403,40 @@
         );
     }
   }
+
+  // ── Coming back to the foreground ───────────────────────────────
+
+  /**
+   * The page was backgrounded and is on screen again.
+   *
+   * While it was away nothing was delivered — iOS suspends a backgrounded page
+   * outright, and frames are not queued behind it — so the page comes back to a
+   * picture of the past: messages that stop short, a busy/idle state that may
+   * have flipped, and no card for anything that asked for approval while nobody
+   * was listening. That is the disconnect gap one level up, so it is repaired the
+   * same way: the three re-reads `auth_ok` does.
+   *
+   * Only when the link can carry them. A request sent while it cannot just piles
+   * up in the outbox and ends as a timeout describing nothing real, and the
+   * reconnect that follows does these same three reads on its own.
+   */
+  function onResume() {
+    if (document.visibilityState !== "visible") return;
+    if (!connectedOnce) return;
+    if (!authed || !socket || socket.readyState !== 1) return;
+    resync();
+    refreshStreaming(true);
+    refreshPending(true);
+  }
+
+  document.addEventListener("visibilitychange", onResume);
+  // A page restored from the back/forward cache gets its own event, and the
+  // socket behind it is normally already gone — `onResume` no-ops on that and the
+  // retry path owns it. `persisted` is what tells a restore apart from the first
+  // load, which fires the same event.
+  window.addEventListener("pageshow", function (event) {
+    if (event.persisted) onResume();
+  });
 
   // ── Host plumbing the webview expects ───────────────────────────
 

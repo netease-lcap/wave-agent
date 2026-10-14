@@ -181,13 +181,19 @@ function loadShim(options: {
     },
     localStorage: storage(local, options.storageBroken ?? false),
     sessionStorage: storage(session, false),
-    // Host → page traffic lands here and nowhere else: the shim does not
-    // register listeners itself (the webview app does), so recording what it
-    // dispatches *is* observing what the page would receive.
+    // Host → page traffic lands here and nowhere else: the page's `message`
+    // listener belongs to the webview app, not the shim, so recording what the
+    // shim dispatches *is* observing what the page would receive. (The shim does
+    // register resume listeners of its own — hence the stub below — but those
+    // never carry host frames.)
     dispatchEvent: (event: { data: unknown }) => {
       posted.push(event.data);
       return true;
     },
+    // `pageshow`. The sibling `shimSessions.test.ts` drives the resume path
+    // through jsdom's real event target; nothing here fires either event, and
+    // the shim only needs the registration itself to succeed.
+    addEventListener: () => {},
     // Installed by the shim itself, the way a real host installs it — hence the
     // placeholder rather than an implementation.
     acquireVsCodeApi: null as unknown as () => {
@@ -208,6 +214,9 @@ function loadShim(options: {
       };
     })(),
     querySelector: () => null,
+    // `visibilitychange`. See the note on the window stub: registered, never
+    // fired here.
+    addEventListener: () => {},
     createElement: (): Banner => ({
       textContent: "",
       setAttribute: () => {},
