@@ -777,6 +777,35 @@ export const MessageList = forwardRef<
       computeSticky();
     };
 
+    // Does this gesture belong to a region INSIDE the list that scrolls
+    // vertically on its own? Tool output, the diff view, reasoning, the write
+    // preview and capped user content each carry a max-height + overflow-y
+    // (nine rules across Message.css alone): a wheel or drag there is that
+    // region's, not a request to leave the bottom — opencode excludes these
+    // too (`[data-scrollable]`). Detected from layout rather than a
+    // hand-maintained marker attribute: the containers live in a dozen CSS
+    // rules across components, and "actually overflows vertically" is exactly
+    // the condition that decides whether the inner region can consume the
+    // gesture (a capped-but-short region does not swallow a wheel, so it must
+    // not suppress the list's own reading intent either).
+    //
+    // What this decides is only whether the intent may be LATCHED at the input
+    // event; the input itself is always recorded (see handleWheel). opencode
+    // draws the same line in `markBoundaryGesture`: a gesture inside a nested
+    // region is forwarded to the list only when that region is at its own edge
+    // and the delta is going to be scrolled by the list.
+    const ownsVerticalScroll = (target: EventTarget | null): boolean => {
+      let el = target instanceof Element ? target : null;
+      while (el && el !== container) {
+        if (el.scrollHeight > el.clientHeight + 1) {
+          const overflowY = getComputedStyle(el).overflowY;
+          if (overflowY === "auto" || overflowY === "scroll") return true;
+        }
+        el = el.parentElement;
+      }
+      return false;
+    };
+
     // A wheel scroll-up is recognized synchronously at the INPUT event, not at
     // the browser's synthesized 'scroll' event — the browser dispatches that on
     // a later rendering frame, and a streaming chunk's programmatic pin can win
@@ -787,13 +816,23 @@ export const MessageList = forwardRef<
     // the opt-out is set here; re-engaging follow is unchanged (scrolling back
     // down to the bottom region clears userScrolledUp in handleScroll).
     const handleWheel = (e: WheelEvent) => {
+      // markUserInput is NOT gated on ownsVerticalScroll: when the inner region
+      // cannot consume the wheel (it is already at its own top) the delta ends
+      // up scrolling the list, and that scroll event must find the gesture gate
+      // open or the list's own scroll-up goes unrecorded and the reader gets
+      // pulled back to the bottom. Only the synchronous opt-out is withheld,
+      // since a wheel the inner region actually consumes never moves the list.
       markUserInput();
-      if (!e.ctrlKey && e.deltaY < 0) userScrolledUpRef.current = true;
+      if (!e.ctrlKey && e.deltaY < 0 && !ownsVerticalScroll(e.target)) {
+        userScrolledUpRef.current = true;
+      }
     };
 
     // Touch: a finger moving DOWN drags the content UP (earlier history), the
     // same intent as a wheel with deltaY < 0 — latched at the input event for
-    // the same reason, since touch scrolling ships no wheel events.
+    // the same reason, since touch scrolling ships no wheel events. Same
+    // division as the wheel: the drag is always recorded, only the opt-out is
+    // held back while the finger is on a nested scroller.
     let lastTouchY: number | null = null;
     const handleTouchStart = (e: TouchEvent) => {
       markUserInput();
@@ -803,7 +842,11 @@ export const MessageList = forwardRef<
       markUserInput();
       const y = e.touches[0]?.clientY;
       if (y === undefined) return;
-      if (lastTouchY !== null && y > lastTouchY) {
+      if (
+        lastTouchY !== null &&
+        y > lastTouchY &&
+        !ownsVerticalScroll(e.target)
+      ) {
         userScrolledUpRef.current = true;
       }
       lastTouchY = y;
@@ -822,7 +865,11 @@ export const MessageList = forwardRef<
         e.key === " ";
       if (!up && !down) return;
       markUserInput();
-      if (up) userScrolledUpRef.current = true;
+      // Arrowing inside a region that scrolls on its own is that region's
+      // business too (the focus holders here include the table wrapper).
+      if (up && !ownsVerticalScroll(e.target)) {
+        userScrolledUpRef.current = true;
+      }
     };
 
     // Scrollbar drag: Chromium targets the scroll container itself for mouse

@@ -298,4 +298,97 @@ describe("auto-scroll follow during streaming", () => {
 
     expect(scrollTo).toHaveBeenCalled();
   });
+
+  /**
+   * Regions that scroll on their own inside the list (tool output, reasoning,
+   * diff, write preview, capped user content). They are recognized from layout
+   * — a max-height + overflow-y that really overflows — so jsdom needs the
+   * geometry faked the same way the container's is.
+   */
+  function addNestedScroller(scrollTop: number, scrollHeight = 800) {
+    const container = screen.getByTestId("messages-container");
+    const inner = document.createElement("div");
+    inner.style.overflowY = "auto";
+    Object.defineProperty(inner, "scrollTop", {
+      value: scrollTop,
+      configurable: true,
+      writable: true,
+    });
+    Object.defineProperty(inner, "clientHeight", {
+      value: 200,
+      configurable: true,
+    });
+    Object.defineProperty(inner, "scrollHeight", {
+      value: scrollHeight,
+      configurable: true,
+    });
+    const child = document.createElement("span");
+    inner.appendChild(child);
+    container.appendChild(inner);
+    return child;
+  }
+
+  async function renderStreamingAtBottom() {
+    renderChatApp();
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [userMsg("问题", "u1"), assistantMsg("正在回答", "a1")],
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
+    );
+    act(() => {
+      sendCommand("startStreaming");
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    setGeometryAndScroll(1600, 2000);
+  }
+
+  function pushChunk() {
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          userMsg("问题", "u1"),
+          assistantMsg("正在回答……更多内容追加", "a1"),
+        ],
+      });
+    });
+  }
+
+  it("keeps following when a nested scroller consumes the wheel", async () => {
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
+    await renderStreamingAtBottom();
+
+    // The wheel belongs to the reasoning/tool-output region: it is not a
+    // request to leave the bottom, so following must survive it.
+    const child = addNestedScroller(300);
+    scrollTo.mockClear();
+    fireEvent.wheel(child, { deltaY: -120 });
+    pushChunk();
+
+    expect(scrollTo).toHaveBeenCalled();
+  });
+
+  it("still opts out when the wheel is over a nested scroller but scrolls the list", async () => {
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
+    await renderStreamingAtBottom();
+
+    // The nested region is already at its own top, so this upward wheel is
+    // scrolled by the list instead. The intent must be recorded: if the input
+    // handler returns before marking the gesture, the list's scroll event
+    // finds the gate closed and the next chunk's pin drags the reader back
+    // down — the very bug the nested-region exclusion must not reintroduce.
+    const child = addNestedScroller(0);
+    fireEvent.wheel(child, { deltaY: -120 });
+    setGeometryAndScroll(1480, 2000);
+    scrollTo.mockClear();
+    pushChunk();
+
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
 });

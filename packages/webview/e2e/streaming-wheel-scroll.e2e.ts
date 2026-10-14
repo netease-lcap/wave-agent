@@ -389,3 +389,148 @@ test("host scrollToBottom request does not override the reading position", async
   );
   expect(Math.min(...gaps)).toBeGreaterThan(1500);
 });
+
+/**
+ * Setup for the two nested-region cases below: a long reasoning block sits in
+ * the list (`.reasoning-content` carries a max-height + overflow-y, so it
+ * scrolls on its own) with a live stream below it.
+ */
+async function setupNestedScroll(page: Page) {
+  const injector = new MessageInjector(page);
+  await injector.simulateExtensionMessage("setInitialState", {
+    isAuthenticated: true,
+    messages: [],
+    isStreaming: false,
+    sessions: [],
+    permissionMode: "default",
+  });
+  const history = buildHistory(140);
+  history.push({
+    id: "reason-1",
+    role: "assistant",
+    timestamp: new Date().toISOString(),
+    blocks: [
+      {
+        type: "reasoning",
+        content: `推理过程：${"先看调用方再决定改哪一层。".repeat(120)}`,
+      },
+    ],
+  });
+  history.push({
+    id: "live-msg",
+    role: "assistant",
+    timestamp: new Date().toISOString(),
+    blocks: [{ type: "text", content: "开头", stage: "streaming" }],
+  });
+  await injector.updateMessages(history);
+  await injector.startStreaming();
+  await page.waitForSelector('[data-message-id="live-msg"]');
+  await page.waitForFunction(() => {
+    const c = document.getElementById("messagesContainer") as HTMLElement;
+    return c.scrollHeight - c.scrollTop - c.clientHeight <= 2;
+  });
+  await page.waitForTimeout(300);
+
+  const reasoning = page.locator(".reasoning-content").first();
+  await reasoning.waitFor();
+  // The nested region really does overflow vertically — otherwise the wheel
+  // would fall through to the list and these cases would prove nothing.
+  const overflow = await reasoning.evaluate(
+    (el) => el.scrollHeight - el.clientHeight,
+  );
+  expect(overflow).toBeGreaterThan(120);
+  return { injector, reasoning, overflow };
+}
+
+/**
+ * A viewport point that is genuinely over the VISIBLE part of the nested region.
+ * The reasoning block is taller than the container and sits partly above the
+ * clip, so the region's own centre is not necessarily inside it; probing with
+ * elementFromPoint keeps the gesture honest. The point is sampled until it
+ * repeats because the first layout read settles the virtualizer's row
+ * measurements and shifts the rows under the cursor — a point taken mid-settle
+ * lands on a neighbouring row by the time the wheel is dispatched.
+ */
+async function nestedRegionPoint(page: Page) {
+  const probe = () =>
+    page.evaluate(() => {
+      const el = document.querySelector<HTMLElement>(".reasoning-content");
+      const container = document.getElementById("messagesContainer");
+      if (!el || !container) return null;
+      const r = el.getBoundingClientRect();
+      const c = container.getBoundingClientRect();
+      const top = Math.max(r.top, c.top);
+      const bottom = Math.min(r.bottom, c.bottom);
+      const x = r.left + r.width / 2;
+      const mid = (top + bottom) / 2;
+      const hit = document.elementFromPoint(x, mid);
+      if (!hit || !el.contains(hit)) return null;
+      return {
+        x,
+        y: mid,
+        rect: `${r.top.toFixed(1)},${r.bottom.toFixed(1)},${container.scrollTop.toFixed(1)}`,
+      };
+    });
+  let prev = await probe();
+  let stable = 0;
+  for (let i = 0; i < 20; i++) {
+    await page.waitForTimeout(150);
+    const next = await probe();
+    if (!next) throw new Error("no point over the nested region");
+    stable =
+      prev && next.x === prev.x && next.rect === prev.rect ? stable + 1 : 0;
+    prev = next;
+    if (stable >= 3) return next;
+  }
+  throw new Error("the nested region never settled under the cursor");
+}
+
+/**
+ * A wheel aimed at a region that scrolls on its own INSIDE the list (tool
+ * output, reasoning, diff, write preview, capped user content) belongs to that
+ * region — it is not a request to leave the bottom. Before this, every upward
+ * wheel latched the opt-out regardless of where it was aimed.
+ *
+ * Only the half where the nested region consumes the gesture can be driven from
+ * the browser side: when the region is already at its own top the wheel is
+ * delivered to the list (measured — the event's target is not inside the nested
+ * region), so that half lives in the unit suite
+ * (autoScrollFollow.test.tsx, "…but scrolls the list").
+ */
+test("a wheel a nested region consumes does not suspend following", async ({
+  webviewPage,
+}) => {
+  const { injector, reasoning, overflow } =
+    await setupNestedScroll(webviewPage);
+  // Park the inner region away from its own top edge so that it can consume the
+  // whole gesture.
+  await reasoning.evaluate((el) => {
+    el.scrollTop = el.scrollHeight;
+  });
+  const point = await nestedRegionPoint(webviewPage);
+  await webviewPage.mouse.move(point.x, point.y);
+  for (let i = 0; i < 3; i++) {
+    await webviewPage.mouse.wheel(0, -80);
+    await webviewPage.waitForTimeout(50);
+  }
+  const innerTop = await reasoning.evaluate((el) => el.scrollTop);
+
+  const gaps: number[] = [];
+  for (let i = 1; i <= 6; i++) {
+    await injector.simulateExtensionMessage("updateStreamingContent", {
+      messageId: "live-msg",
+      chunk: chunk(i),
+      stage: "streaming",
+    });
+    await webviewPage.waitForTimeout(60);
+    gaps.push((await geometry(webviewPage)).gap);
+  }
+  console.log(
+    `[nested-inner] overflow=${overflow} innerTop=${innerTop} gaps=${JSON.stringify(gaps.map((g) => Math.round(g)))}`,
+  );
+  // The inner region scrolled under the wheel and never hit its own top …
+  expect(innerTop).toBeGreaterThan(0);
+  expect(innerTop).toBeLessThan(overflow);
+  // … so the list never moved and never latched an opt-out: it kept following.
+  expect(Math.max(...gaps)).toBeLessThanOrEqual(30);
+});
