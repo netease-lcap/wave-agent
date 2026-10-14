@@ -73,13 +73,9 @@ async function waitForRemotePageUrl(
  * `wave remote-control on` prints, because that pair is the whole contract with
  * the phone — the two entry points must not diverge on how it is rendered.
  */
-async function describeRemotePage(
-  pageUrl: string,
-  url?: string,
-): Promise<string> {
+async function describeRemotePage(pageUrl: string): Promise<string> {
   const lines = [
     "Remote control is on — this terminal's session is now served to your phone.",
-    ...(url ? [`Relay: ${url}`] : []),
     `Page: ${pageUrl}`,
   ];
   try {
@@ -1588,7 +1584,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       if (action === "status" || (!action && serving)) {
         showResult(
           current.pageUrl
-            ? await describeRemotePage(current.pageUrl, current.url)
+            ? await describeRemotePage(current.pageUrl)
             : `Remote control status: ${current.state}${
                 current.message ? ` — ${current.message}` : ""
               }`,
@@ -1607,7 +1603,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         );
         return;
       }
-      showResult(await describeRemotePage(pageUrl, after.url));
+      showResult(await describeRemotePage(pageUrl));
     },
     [remoteControl],
   );

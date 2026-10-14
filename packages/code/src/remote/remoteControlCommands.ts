@@ -121,7 +121,6 @@ export async function remoteControlOnCommand(name?: string): Promise<void> {
       printEnableHint(`远程控制开启失败：${connecting.message ?? "未知错误"}`);
       process.exit(1);
     }
-    if (connecting.url) console.log(`远程控制中继：${connecting.url}`);
 
     const pageUrl = await waitForPageUrl(client, connecting);
     if (!pageUrl) {
@@ -181,7 +180,6 @@ export async function remoteControlStatusCommand(): Promise<void> {
       {},
     )) as RemoteControlSnapshot;
     console.log(`状态：${snapshot.state}`);
-    if (snapshot.url) console.log(`中继：${snapshot.url}`);
     if (snapshot.message) console.log(`说明：${snapshot.message}`);
     if (snapshot.pageUrl) await printPageUrl(snapshot.pageUrl);
   } catch (err) {

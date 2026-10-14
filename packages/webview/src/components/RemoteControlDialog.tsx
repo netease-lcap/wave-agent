@@ -156,7 +156,7 @@ const RemoteControlDialog: React.FC<
         ref={dialogRef}
         className="configuration-dialog"
         data-testid="remote-control-dialog"
-        // 内容（状态/中继/Web 页/按钮/二维码/提示）比普通配置弹窗高，压到 500
+        // 内容（状态/Web 页/按钮/二维码/提示）比普通配置弹窗高，压到 500
         // 会把二维码与提示挤进滚动区。高度仍受窗口限制，矮窗口下退回滚动。
         style={{ height: "auto", maxHeight: "min(680px, 88vh)" }}
       >
@@ -171,7 +171,6 @@ const RemoteControlDialog: React.FC<
               <Row label="说明" value={snapshot.message} />
             ) : null}
             {error ? <Row label="无法读取状态" value={error} /> : null}
-            {snapshot?.url ? <Row label="中继" value={snapshot.url} /> : null}
             {pageUrl ? (
               <>
                 <Row label="Web 页" value={pageUrl} />
