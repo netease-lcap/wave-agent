@@ -105,6 +105,8 @@ interface Harness {
   /** The renewal requests the page sent, in order. */
   fetches: { url: string; init: { body: string } }[];
   warns: string[];
+  /** An attribute the shim set on <html> (the page's CSS hooks live there). */
+  htmlAttribute(name: string): string | null;
   /** Host → page: the messages the shim dispatched at the webview. */
   posted: unknown[];
   /** Page → host: what the mounted webview's `postMessage` would send. */
@@ -194,6 +196,17 @@ function loadShim(options: {
   };
 
   const document = {
+    // The shim marks the page for its own CSS by setting an attribute on <html>;
+    // recorded the way a browser would answer `getAttribute`.
+    documentElement: (() => {
+      const attributes = new Map<string, string>();
+      return {
+        setAttribute: (name: string, value: string) => {
+          attributes.set(name, value);
+        },
+        getAttribute: (name: string) => attributes.get(name) ?? null,
+      };
+    })(),
     querySelector: () => null,
     createElement: (): Banner => ({
       textContent: "",
@@ -275,6 +288,7 @@ function loadShim(options: {
     local,
     fetches,
     warns,
+    htmlAttribute: (name) => document.documentElement.getAttribute(name),
     posted,
     post: (message) => {
       window.acquireVsCodeApi().postMessage(message);
@@ -288,6 +302,20 @@ function loadShim(options: {
     },
   };
 }
+
+describe("remote page shim — this page is the browser host", () => {
+  it("marks <html> for the Web-page-only viewport rules", () => {
+    // No credential here either: the mark belongs to the page, not to a
+    // successful connection, and it is set before chat.js runs (index.html loads
+    // this file first) so the first paint already has it. The shared CSS hangs
+    // the phone-only viewport rules (visible height + safe-area insets) on it —
+    // the other four hosts embed in a window that IS the screen, so those rules
+    // must not reach them.
+    const page = loadShim({});
+
+    expect(page.htmlAttribute("data-remote-page")).toBe("1");
+  });
+});
 
 describe("remote page shim — logging in", () => {
   it("hops to the enterprise login page and asks to come back to this address", async () => {
@@ -691,6 +719,69 @@ describe("remote page shim — talking to the host", () => {
     // success the page shows an empty picker instead of the reason.
     expect(page.banner()).toContain("读不到电脑侧的会话列表");
     expect(page.banner()).toContain("frame budget");
+  });
+
+  it("sends an approval as a notification, never an id-carrying request", async () => {
+    const page = await openPage();
+    const askedBefore = page.requests().length;
+
+    page.post({
+      command: "confirmationResponse",
+      confirmationId: "req-1",
+      approved: true,
+      decision: { behavior: "allow", message: JSON.stringify({ q: "other" }) },
+    });
+    await flush();
+
+    // `permissionResponse` is a notification in this protocol — the IDE and
+    // desktop hosts send it through `notify`, with no id, and the host side
+    // answers an id-carrying one with "Method not found". Framing it as a
+    // request is what made every approval on this page do nothing at all: the
+    // machine kept waiting, and the approval reappeared on the next resync.
+    const approvalFrames = page
+      .socket()
+      .sent.map((line) => JSON.parse(line))
+      .filter((frame) => frame.method === "permissionResponse");
+    expect(approvalFrames).toEqual([
+      {
+        method: "permissionResponse",
+        params: {
+          requestId: "req-1",
+          decision: { behavior: "allow", message: '{"q":"other"}' },
+        },
+        sessionId: "s1",
+      },
+    ]);
+    // Nothing was asked, so nothing is pending: no 20 s timeout, and no
+    // rejection swallowed into a warning the phone can never see.
+    expect(page.requests().length).toBe(askedBefore);
+    expect(page.warns).toEqual([]);
+  });
+
+  it("turns a bare yes/no into an allow/deny decision", async () => {
+    const page = await openPage();
+
+    page.post({
+      command: "confirmationResponse",
+      confirmationId: "req-1",
+      approved: true,
+    });
+    page.post({
+      command: "confirmationResponse",
+      confirmationId: "req-2",
+      approved: false,
+    });
+    await flush();
+
+    const decisions = page
+      .socket()
+      .sent.map((line) => JSON.parse(line))
+      .filter((frame) => frame.method === "permissionResponse")
+      .map((frame) => frame.params);
+    expect(decisions).toEqual([
+      { requestId: "req-1", decision: { behavior: "allow" } },
+      { requestId: "req-2", decision: { behavior: "deny" } },
+    ]);
   });
 });
 
