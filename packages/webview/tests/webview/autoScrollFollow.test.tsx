@@ -186,7 +186,14 @@ describe("auto-scroll follow during streaming", () => {
     scrollTo.mockClear();
 
     // Genuine user scroll-up: scrollTop decreases while scrollHeight AND
-    // clientHeight stay the same — no layout clamp involved.
+    // clientHeight stay the same — no layout clamp involved. A real gesture
+    // ships an input event alongside the scroll, and the list gates on that
+    // input (a bare 'scroll' event with no input behind it is our own pin or a
+    // virtualizer compensation), so dispatch the wheel the browser would.
+    fireEvent.wheel(screen.getByTestId("messages-container"), {
+      deltaY: -100,
+      ctrlKey: false,
+    });
     setGeometryAndScroll(1500, 2000);
     scrollTo.mockClear();
 

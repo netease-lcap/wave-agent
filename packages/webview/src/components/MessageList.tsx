@@ -38,10 +38,12 @@ import "../styles/MessageList.css";
 type FoldState = "collapsed" | "expanded" | null;
 
 // How long after a real input event (wheel / touch / scroll key / scrollbar
-// drag) the shipped 'scroll' events still count as the user's. Covers the
-// ~1-frame dispatch lag of synthesized scroll events (measured: ~70% land
-// after the next rAF) plus trackpad inertia, without letting a stale timestamp
-// swallow a later genuine gesture.
+// drag) the shipped 'scroll' events still count as the user's. This is the
+// gesture window the scroll handler gates on — events older than it are our own
+// pins, the virtualizer's compensations or a browser clamp, and never touch the
+// opt-out. It therefore has to cover the ~1-frame dispatch lag of synthesized
+// scroll events (measured: ~70% land after the next rAF) plus trackpad inertia,
+// without letting a stale timestamp swallow a later genuine gesture.
 const USER_INPUT_GRACE_MS = 200;
 
 // How close to the real bottom the viewport must be to count as "at the bottom"
@@ -61,14 +63,20 @@ const USER_INPUT_GRACE_MS = 200;
 //
 // Measured A/B on the same build (e2e/streaming-wheel-scroll.e2e.ts, "a light
 // wheel nudge inside the old 300px band"): park the viewport 183px from the
-// bottom, then deliver one unmarked scroll event. With 300px it reads as "the
-// user is back at the bottom", clears the opt-out, and the next streaming pin
-// drags the viewport to gap 0; with 10px it stays parked. The unmarked event is
-// not hypothetical — the virtualizer's resize compensation writes scrollTop
-// directly — and whether the event carries a programmatic mark is a race
-// (pendingProgrammaticScrollsRef is not conserved), so the threshold is the only
-// guard here that does not depend on timing.
+// bottom, then deliver one scroll event that our own write did not produce.
+// With 300px it reads as "the user is back at the bottom", clears the opt-out,
+// and the next streaming pin drags the viewport to gap 0; with 10px it stays
+// parked. Such an event is not hypothetical — the virtualizer's resize
+// compensation writes scrollTop directly — so the threshold is an independent
+// guard, on top of recognizing our own writes by position (see autoScrollRef).
 const BOTTOM_FOLLOW_THRESHOLD_PX = 10;
+
+// How long a programmatic-scroll position stays recognizable, and how close the
+// viewport has to be to it. Same values as opencode's markAuto/isAuto: the
+// window must outlive the dispatch lag of the synthesized 'scroll' event, and
+// the tolerance absorbs the browser clamping the write.
+const AUTO_SCROLL_WINDOW_MS = 1500;
+const AUTO_SCROLL_TOLERANCE_PX = 2;
 
 interface MeasuredEntry {
   height: number;
@@ -242,37 +250,33 @@ export const MessageList = forwardRef<
   // to the bottom region.
   const userScrolledUpRef = useRef(false);
   // 最近一次真实输入（wheel / 触摸 / 滚动键 / 拖动滚动条）的时间戳。它只在上锁侧
-  // 使用：窗口内的向上滚动一律算用户意图，哪怕此刻还挂着程序滚动标记。标记计数与
-  // 实际 'scroll' 事件数并不守恒（程序滚动若没移动视口就不派发事件 ⇒ 计数透支，
-  // 下一次真实手势被误当成我们自己的事件），而触摸/拖动滚动条/键盘没有 wheel
-  // 事件可以在输入时刻同步置锁——被吞掉的上滚就是视口被钉底拽回底部的原因。
+  // 使用：窗口内的向上滚动一律算用户意图，哪怕这次事件正好落在程序滚动的落点上。
+  // 触摸/拖动滚动条/键盘没有 wheel 事件可以在输入时刻同步置锁，这个窗口是它们
+  // 唯一的同步钩子。
   const lastUserInputAtRef = useRef(0);
-  // Outstanding programmatic scrolls (doScrollToBottom / scrollToIndex /
-  // resizeItem compensation — everything routes through scrollToFn). Each such
-  // scroll is answered by the browser with a 'scroll' event on a LATER task:
-  // measured in real Chromium, ~70% of those events arrive AFTER the next
-  // requestAnimationFrame, so a one-frame boolean flag (rAF reset) is already
-  // cleared when the handler runs and the programmatic pin gets misread as
-  // user intent — a pin-down event read while the user idles in the bottom
-  // band clears userScrolledUp mid-stream (yanking the user back down), a
-  // compensation-up event wrongly suspends following. Instead the scroll
-  // handler CONSUMES one pending count per event and ignores it, whatever the
-  // dispatch timing. The counter self-clears after a short timeout so a scroll
-  // that did not move the viewport (no event fired) cannot swallow a later
-  // genuine gesture.
-  const pendingProgrammaticScrollsRef = useRef(0);
-  const programmaticClearTimerRef = useRef<
-    ReturnType<typeof setTimeout> | undefined
-  >(undefined);
-  const markProgrammaticScroll = useCallback(() => {
-    pendingProgrammaticScrollsRef.current++;
-    if (programmaticClearTimerRef.current === undefined) {
-      programmaticClearTimerRef.current = setTimeout(() => {
-        programmaticClearTimerRef.current = undefined;
-        pendingProgrammaticScrollsRef.current = 0;
-      }, 100);
-    }
+  // 我们自己那次滚动落在哪儿、什么时候落的（doScrollToBottom / scrollToIndex /
+  // resizeItem 补偿——所有虚拟器滚动都经 scrollToFn）。
+  //
+  // 判据是**位置**而不是计数：'scroll' 事件在更晚的任务里派发（实测 ~70% 晚于
+  // 下一帧 rAF），所以「这次事件是不是我造成的」不能靠一个「待消费计数」回答——
+  // 一次没有移动视口的程序滚动根本不会派发事件，计数就透支了，下一次真实手势被
+  // 当成我们自己的事件吞掉（上滚被吞 ⇒ 视口被钉底拽回）。改为记住我们瞄准的
+  // 落点，窗口内落到该位置的事件就认作自己的。对齐 opencode 的 markAuto/isAuto。
+  //
+  // 记的是**一组**候选落点而不是单个：虚拟器瞄准的 offset（resizeItem 补偿会把
+  // scrollTop 移到那里，那个位置通常不是底部）与当次写入能被 clamp 到的上界
+  // （max scrollTop —— 钉底时实际落在这里，因为写入值可能超过可滚范围）。只记
+  // 后者会让补偿落点认不出来，从而把「测量修正」误判成用户上滚、冻住首开钉底。
+  const autoScrollRef = useRef<{ tops: number[]; at: number } | undefined>(
+    undefined,
+  );
+  const markAutoScroll = useCallback((tops: number[]) => {
+    autoScrollRef.current = { tops, at: performance.now() };
   }, []);
+  // True from a mousedown on the scrollbar track until the button is released:
+  // the drag has to keep re-marking the input as it goes, because a thumb drag
+  // lasts far longer than the gesture window the scroll handler gates on.
+  const trackDragRef = useRef(false);
   // Last seen scrollTop, used to detect scroll direction (up vs down).
   const prevScrollTopRef = useRef(0);
   // Last seen scrollHeight, used to tell a content-shrink clamp apart from a
@@ -427,13 +431,21 @@ export const MessageList = forwardRef<
       if (spacerRef.current) {
         spacerRef.current.style.height = `${instance.getTotalSize()}px`;
       }
-      // Mark the scroll as programmatic so the scroll handler consumes it as
-      // ours (see pendingProgrammaticScrollsRef) instead of reading it as user
-      // intent. The virtualizer's resizeItem compensations route here too —
-      // a row measuring SHORTER than its estimate shifts scrollTop by the
-      // negative delta, and that spurious scroll would otherwise latch
-      // userScrolledUpRef and freeze the bottom-pin mid-growth.
-      markProgrammaticScroll();
+      // Mark where this scroll lands so the scroll handler can recognize the
+      // event as ours (see autoScrollRef) instead of reading it as user intent.
+      // The virtualizer's resizeItem compensations route here too — a row
+      // measuring SHORTER than its estimate shifts scrollTop by the negative
+      // delta, and that spurious scroll would otherwise latch userScrolledUpRef
+      // and freeze the bottom-pin mid-growth. Two candidate landings: the offset
+      // the virtualizer aimed at, and the clamp ceiling — recorded AFTER the
+      // spacer write above, so the ceiling is this write's real max scrollTop.
+      const container = containerRef.current;
+      if (container) {
+        markAutoScroll([
+          offset,
+          Math.max(0, container.scrollHeight - container.clientHeight),
+        ]);
+      }
       elementScroll(offset, opts, instance);
     },
   });
@@ -587,15 +599,14 @@ export const MessageList = forwardRef<
     [virtualizer],
   );
 
-  // Perform a programmatic scroll-to-bottom, guarding it with the
-  // markProgrammaticScroll counter (applied inside scrollToFn, which every
-  // virtualizer scroll routes through) so the scroll handler treats the
-  // resulting 'scroll' event as ours (not the user's) and leaves userScrolledUp
-  // alone. scrollToFn writes the spacer height before the scroll (see above),
-  // so the browser clamps against the CURRENT total — no stale-height short
-  // pin. Any later estimate→measure growth is followed event-driven by the
-  // spacer ResizeObserver (see the re-pin effect below) — no frame budget,
-  // matching OpenCode's persistent bottom-anchor.
+  // Perform a programmatic scroll-to-bottom. Every virtualizer scroll routes
+  // through scrollToFn, which stamps its landing position (see autoScrollRef) so
+  // the scroll handler treats the resulting 'scroll' event as ours (not the
+  // user's) and leaves userScrolledUp alone. scrollToFn writes the spacer height
+  // before the scroll (see above), so the browser clamps against the CURRENT
+  // total — no stale-height short pin. Any later estimate→measure growth is
+  // followed event-driven by the spacer ResizeObserver (see the re-pin effect
+  // below) — no frame budget, matching OpenCode's persistent bottom-anchor.
   const doScrollToBottom = useCallback(
     (behavior: ScrollBehavior) => {
       const container = containerRef.current;
@@ -612,9 +623,11 @@ export const MessageList = forwardRef<
   const pinToTrueBottom = useCallback(() => {
     const container = containerRef.current;
     if (!container) return;
-    markProgrammaticScroll();
+    markAutoScroll([
+      Math.max(0, container.scrollHeight - container.clientHeight),
+    ]);
     container.scrollTop = container.scrollHeight;
-  }, [markProgrammaticScroll]);
+  }, [markAutoScroll]);
 
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = "smooth", force = false) => {
@@ -680,24 +693,56 @@ export const MessageList = forwardRef<
     prevQueuedLengthRef.current = queuedMessages?.length || 0;
 
     // The scroll event fires for user scrolling (wheel, trackpad, keyboard,
-    // scrollbar drag) AND our own programmatic scrolls (scrollToEnd etc.). The
-    // pendingProgrammaticScrolls counter separates the two for the RE-ENGAGE
-    // decision below — one 'scroll' event consumes one mark, whatever the
-    // dispatch timing (they land on a later task, usually after the next
-    // animation frame). Intent itself is read from DIRECTION: any upward
-    // scroll (even a few px) suspends following, so a light nudge up is
-    // respected instead of being overridden by the bottom-threshold check.
-    // handleScroll explains why the two directions are asymmetric.
+    // scrollbar drag) AND for everything we or the virtualizer do to the
+    // viewport (scrollToEnd, resizeItem compensation, browser clamps). Two
+    // layers separate them, in this order:
+    //   1. a GESTURE GATE — an event with no real input behind it never reaches
+    //      the intent decision at all (see handleScroll);
+    //   2. a POSITION STAMP (autoScrollRef) — among the events that do have a
+    //      gesture behind them, one landing exactly where our own write aimed is
+    //      still ours. A counter cannot do this job: a programmatic scroll that
+    //      moves nothing fires no event, so the count over-credits the next
+    //      genuine gesture.
+    // Intent itself is read from DIRECTION: any upward scroll (even a few px)
+    // suspends following, so a light nudge up is respected instead of being
+    // overridden by the bottom-threshold check. handleScroll explains why the
+    // two directions are asymmetric.
     const markUserInput = () => {
       lastUserInputAtRef.current = performance.now();
     };
 
     const handleScroll = () => {
-      const wasProgrammatic = pendingProgrammaticScrollsRef.current > 0;
-      if (wasProgrammatic) {
-        // Consume one mark per event, whatever the dispatch timing (see the
-        // counter comment above).
-        pendingProgrammaticScrollsRef.current--;
+      // GATE: a 'scroll' event with no real input behind it — our own pin, the
+      // virtualizer's resize compensation, a browser clamp — carries no user
+      // intent at all, so it must not be allowed to move the opt-out in either
+      // direction. opencode does exactly this (`if (!props.hasScrollGesture())
+      // return`); it is the only thing that survives the compensations that
+      // write back and forth within one frame (measured here: the same tick
+      // writes 160619 then 160123, 500px apart, and the event lands at 160103 —
+      // no position-stamp tolerance covers that). Baselines still have to be
+      // refreshed, or the next genuine gesture is read against a stale
+      // prevScrollTop.
+      const userJustInteracted =
+        performance.now() - lastUserInputAtRef.current <= USER_INPUT_GRACE_MS;
+      if (!userJustInteracted) {
+        prevScrollTopRef.current = container.scrollTop;
+        prevScrollHeightRef.current = container.scrollHeight;
+        prevClientHeightRef.current = container.clientHeight;
+        computeSticky();
+        return;
+      }
+      const stamp = autoScrollRef.current;
+      let wasProgrammatic = false;
+      if (stamp) {
+        if (performance.now() - stamp.at > AUTO_SCROLL_WINDOW_MS) {
+          // Stale: the position is nobody's claim any more.
+          autoScrollRef.current = undefined;
+        } else {
+          wasProgrammatic = stamp.tops.some(
+            (top) =>
+              Math.abs(container.scrollTop - top) <= AUTO_SCROLL_TOLERANCE_PX,
+          );
+        }
       }
       const isNearBottom =
         container.scrollTop + container.clientHeight >=
@@ -713,29 +758,17 @@ export const MessageList = forwardRef<
       // e.g. when the confirmation dialog closes and the input area comes back
       // shorter than the dialog.
       const viewportGrew = container.clientHeight > prevClientHeightRef.current;
-      const userJustInteracted =
-        performance.now() - lastUserInputAtRef.current <= USER_INPUT_GRACE_MS;
-      // Opting out accepts an upward move either when a real input just
-      // happened (the user's gesture, even if a programmatic mark is still
-      // outstanding — the marks are not conserved, see lastUserInputAtRef) or
-      // when the event provably isn't ours. Both halves are needed: dropping
-      // the input half swallows the touch / scrollbar-drag / keyboard
-      // gestures, which have no wheel event to latch on; dropping the
-      // "provably isn't ours" half latches the virtualizer's own upward
-      // resize compensation (a row measuring shorter than its estimate pulls
-      // scrollTop down) and freezes the initial bottom-pin mid-convergence.
-      if (
-        scrolledUp &&
-        !contentShrank &&
-        !viewportGrew &&
-        (userJustInteracted || !wasProgrammatic)
-      ) {
+      // Past the gate, every event has a real input behind it, so an upward
+      // move is the user's — unless it is a clamp from a reflow that happened
+      // in the same frame (content shrinking, or the container growing under a
+      // parked position), which the two flags above rule out.
+      if (scrolledUp && !contentShrank && !viewportGrew) {
         userScrolledUpRef.current = true;
       } else if (!wasProgrammatic && isNearBottom) {
-        // Re-engaging still requires an event we are sure is the user's: a
-        // programmatic event lands at the bottom by construction, so reading
-        // it as "the user is back at the bottom" would unlock on every pin
-        // and drag the reader down again.
+        // Re-engaging still requires an event we are sure is the user's: our own
+        // pin lands at the bottom by construction, so reading it as "the user is
+        // back at the bottom" would unlock on every pin and drag the reader down
+        // again.
         userScrolledUpRef.current = false;
       }
       prevScrollTopRef.current = container.scrollTop;
@@ -795,14 +828,24 @@ export const MessageList = forwardRef<
     // Scrollbar drag: Chromium targets the scroll container itself for mouse
     // events on its track, and the track band is exactly the width the classic
     // scrollbar takes out of the layout (0 for overlay scrollbars, where
-    // grabbing the track isn't possible anyway). The drag itself is recognized
-    // from the upward direction of the resulting scroll events; this only
-    // marks the input so those events aren't taken for our own.
+    // grabbing the track isn't possible anyway). The drag's direction is read
+    // from the resulting scroll events; what this has to supply is the gesture
+    // the gate looks for — and it must keep supplying it for the WHOLE drag,
+    // not just the mousedown: a thumb drag lasts far longer than the grace
+    // window, and once the gate closed mid-drag, dragging down to the bottom
+    // would no longer re-engage following.
     const handleMouseDown = (e: MouseEvent) => {
       const track = container.offsetWidth - container.clientWidth;
       if (track <= 0) return;
       if (e.clientX < container.getBoundingClientRect().right - track) return;
+      trackDragRef.current = true;
       markUserInput();
+    };
+    const handleWindowMouseMove = () => {
+      if (trackDragRef.current) markUserInput();
+    };
+    const handleWindowMouseUp = () => {
+      trackDragRef.current = false;
     };
 
     container.addEventListener("scroll", handleScroll);
@@ -813,6 +856,8 @@ export const MessageList = forwardRef<
     container.addEventListener("touchmove", handleTouchMove, { passive: true });
     container.addEventListener("keydown", handleKeyDown);
     container.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("mousemove", handleWindowMouseMove);
+    window.addEventListener("mouseup", handleWindowMouseUp);
 
     // Use ResizeObserver to recompute sticky state on content height changes
     // (images, diffs, etc.). Auto-scroll itself is driven by the messages
@@ -849,6 +894,8 @@ export const MessageList = forwardRef<
       container.removeEventListener("touchmove", handleTouchMove);
       container.removeEventListener("keydown", handleKeyDown);
       container.removeEventListener("mousedown", handleMouseDown);
+      window.removeEventListener("mousemove", handleWindowMouseMove);
+      window.removeEventListener("mouseup", handleWindowMouseUp);
     };
   }, [messages, queuedMessages, isStreaming, scrollToBottom, computeSticky]);
 
@@ -883,19 +930,6 @@ export const MessageList = forwardRef<
     observer.observe(spacer);
     return () => observer.disconnect();
   }, [doScrollToBottom]);
-
-  // Clear the programmatic-scroll counter's fallback timer on unmount so a
-  // scroll-happy message list being torn down (pane close / session switch)
-  // cannot leave a dangling timeout behind.
-  useEffect(
-    () => () => {
-      if (programmaticClearTimerRef.current !== undefined) {
-        clearTimeout(programmaticClearTimerRef.current);
-        programmaticClearTimerRef.current = undefined;
-      }
-    },
-    [],
-  );
 
   // The compaction hint mounts below the last message (after the virtualizer's
   // in-flow spacer). scrollToEnd only accounts for row heights, so a pinned
