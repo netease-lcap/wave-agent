@@ -541,4 +541,94 @@ describe("remote page shim", () => {
 
     expect(page.posted).toContainEqual({ command: "startStreaming" });
   });
+
+  test("a turn that outlives the request budget is not reported as a failed send", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { page } = await openPage();
+
+    page.api.postMessage({ command: "sendMessage", text: "跑一个长任务" });
+    await flush();
+    // The machine took the message; the turn is running, so the page can see the
+    // send landed (and the composer already offers the stop entry).
+    page.socket.receive({
+      method: "loadingChange",
+      params: { loading: true },
+      sessionId: "s-new",
+    });
+    await flush();
+
+    // `sendMessage`'s reply is sent when the whole turn is over, and a turn has
+    // no upper bound: it loops through tools, and it parks indefinitely on an
+    // approval nobody has answered yet. So neither the read budget nor the much
+    // longer turn budget arriving means anything went wrong.
+    await vi.advanceTimersByTimeAsync(20000);
+    await vi.advanceTimersByTimeAsync(300000);
+
+    expect(
+      page.posted.filter((message) => message.command === "updateErrorBlock"),
+    ).toHaveLength(0);
+    // Nothing for the user to act on, but not swallowed either — the log line is
+    // the only place this leaves a trace.
+    expect(warn.mock.calls.flat().join(" ")).toContain("sendMessage 没有回执");
+    warn.mockRestore();
+  });
+
+  test("a send with no reply and no turn says so in its own words", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({ command: "sendMessage", text: "hi" });
+    await flush();
+
+    // No reply ever comes and no turn starts, so nothing here proves the message
+    // landed: the page must say something. But not 「中继或电脑侧没有响应」 — that
+    // describes a failure that did not happen, and it is the line users resend
+    // on because it reads as 「没发出去」.
+    //
+    // It also says it on the *turn* budget rather than the read one: a turn can
+    // legitimately stay silent this long, so 20s is not yet evidence of anything.
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(
+      page.posted.filter((message) => message.command === "updateErrorBlock"),
+    ).toHaveLength(0);
+
+    await vi.advanceTimersByTimeAsync(300000);
+    const error = page.posted.find(
+      (message) => message.command === "updateErrorBlock",
+    );
+    expect(String(error?.error)).toContain("还没有回执");
+    expect(String(error?.error)).not.toContain("没有响应");
+  });
+
+  test("a control指令 that never gets a reply says so instead of failing silently", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({ command: "abortMessage" });
+    await flush();
+
+    // Stop / switch tier / compact all end in a state the message stream carries
+    // back, so their success needs no reply — while their failure used to be an
+    // empty `.catch`. A phone has no Escape key and no terminal, so 「点了暂停但没
+    // 反应」 had nowhere at all to be explained.
+    await vi.advanceTimersByTimeAsync(20000);
+
+    expect(document.getElementById("remote-status")?.textContent).toContain(
+      "暂停指令没有回执",
+    );
+  });
+
+  test("a read still gets the short budget", async () => {
+    const { page } = await openPage();
+    const before = page.posted.length;
+
+    page.api.postMessage({ command: "requestSlashCommands" });
+    await flush();
+
+    // The default tier is unchanged: a read the machine answers at once is still
+    // reported within 20s, so a machine that is not answering stays visible.
+    await vi.advanceTimersByTimeAsync(20000);
+
+    expect(page.posted.slice(before)).toContainEqual(
+      expect.objectContaining({ command: "slashCommandsError" }),
+    );
+  });
 });
