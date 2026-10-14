@@ -31,7 +31,13 @@ export interface RemoteControlStatus {
 }
 
 export interface RemoteControlSnapshot extends RemoteControlStatus {
-  /** Subscribe URL for the current (or last attempted) connection. */
+  /**
+   * Subscribe URL for the current (or last attempted) connection.
+   *
+   * Never rendered: it is an outbound endpoint the user cannot open or type,
+   * and the channel key it carries is already visible in `pageUrl`. Kept on the
+   * snapshot because the connection and the logs still need it.
+   */
   url?: string;
   /**
    * The page a phone should open: `<server>/remote/?host=<hostId>`.

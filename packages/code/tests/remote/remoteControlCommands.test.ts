@@ -106,7 +106,9 @@ describe("wave remote-control", () => {
       await expect(remoteControlOnCommand()).rejects.toThrow("__exit__");
 
       expect(client.request).toHaveBeenCalledWith("remoteControlConnect", {});
-      expect(text()).toContain("wss://relay/v1/hosts/ws/h1/subscribe");
+      // Same reason as `status` below: the snapshot carries the subscribe URL,
+      // but only the page address is printable.
+      expect(text()).not.toContain("wss://relay/v1/hosts/ws/h1/subscribe");
       expect(text()).toContain(`Web 页：${PAGE_URL}`);
       expect(text()).toContain(`QR(${PAGE_URL})`);
       expect(encodeQr).toHaveBeenCalledTimes(1);
@@ -248,7 +250,7 @@ describe("wave remote-control", () => {
       expect(text()).toContain("未开启");
     });
 
-    it("should print the state, relay url and page address", async () => {
+    it("should print the state and page address, never the relay url", async () => {
       const client = createClient({
         remoteControlStatus: {
           state: "online",
@@ -261,7 +263,10 @@ describe("wave remote-control", () => {
       await expect(remoteControlStatusCommand()).rejects.toThrow("__exit__");
 
       expect(text()).toContain("状态：online");
-      expect(text()).toContain("中继：wss://relay/v1/hosts/ws/h1/subscribe");
+      // The subscribe endpoint is an internal address the user cannot act on;
+      // the snapshot still carries it (the page address is the only half that
+      // goes on screen), so assert the absence rather than dropping the field.
+      expect(text()).not.toContain("wss://relay/v1/hosts/ws/h1/subscribe");
       expect(text()).toContain(`Web 页：${PAGE_URL}`);
       expect(client.dispose).toHaveBeenCalled();
     });
