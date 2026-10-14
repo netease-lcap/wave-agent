@@ -157,7 +157,10 @@ describe("sticky user message", () => {
     });
     expect(scrollTo).toHaveBeenCalledWith({
       top: 610, // u2 start 610 + (600 - viewport 600) / 2 = 610
-      behavior: "smooth",
+      // 瞬时落位，不是平滑：平滑跳转逐帧推进期间，进入视口的行会被首次测量，
+      // 虚拟列表的尺寸补偿会把它拽回记录中的偏移（仍是底部）从而取消跳转
+      // ——流式时表现为「点了吸顶条没反应」。见 MessageList.scrollToMessage。
+      behavior: "auto",
     });
   });
 

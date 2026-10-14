@@ -121,3 +121,104 @@ test("dense streaming + wheel up never yanks back to bottom", async ({
   // the bottom (gap ≫ 0).
   expect(end.gap).toBeGreaterThan(1500);
 });
+
+/**
+ * Clicking the sticky user bar while the model is streaming must LAND on that
+ * message and stay there. Two independent failures made the bar look dead
+ * mid-stream: (1) the click didn't opt out of bottom-following, so the next
+ * chunk's programmatic pin yanked the viewport back; (2) the jump was smooth,
+ * and while a smooth jump walks frame by frame the rows entering the viewport
+ * get measured, the virtualizer's resize compensation scrolls back to its
+ * recorded (still bottom) offset and cancels the jump — measured, the
+ * viewport moved 71px and snapped back. Real Chromium only: both are
+ * frame-level races.
+ */
+test("sticky-bar jump lands during streaming and survives it", async ({
+  webviewPage,
+}) => {
+  const injector = new MessageInjector(webviewPage);
+  await injector.simulateExtensionMessage("setInitialState", {
+    isAuthenticated: true,
+    messages: [],
+    isStreaming: false,
+    sessions: [],
+    permissionMode: "default",
+  });
+  const history = buildHistory(140);
+  history.push({
+    id: "live-msg",
+    role: "assistant",
+    timestamp: new Date().toISOString(),
+    blocks: [{ type: "text", content: "开头", stage: "streaming" }],
+  });
+  await injector.updateMessages(history);
+  await injector.startStreaming();
+  await webviewPage.waitForSelector('[data-message-id="live-msg"]');
+  await webviewPage.waitForFunction(() => {
+    const c = document.getElementById("messagesContainer") as HTMLElement;
+    return c.scrollHeight - c.scrollTop - c.clientHeight <= 2;
+  });
+  await webviewPage.waitForSelector('[data-testid="sticky-user-message"]');
+
+  // Same convergence guard as the virtual-list suite: while measurements
+  // settle the sticky candidate can briefly flip between two adjacent user
+  // messages, so only trust the text once it is stable across two samples.
+  const stickyText = await webviewPage.evaluate(async () => {
+    const sel = '[data-testid="sticky-user-message"] .sticky-user-content';
+    let prev = "";
+    for (let i = 0; i < 20; i++) {
+      const cur = document.querySelector(sel)?.textContent?.trim() ?? "";
+      if (cur && cur === prev) return cur;
+      prev = cur;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    return prev;
+  });
+  const targetId = buildHistory(140).find(
+    (m) =>
+      m.role === "user" &&
+      (m.blocks ?? [])
+        .filter((b) => b.type === "text")
+        .map((b) => b.content || "")
+        .join(" ")
+        .trim() === stickyText,
+  )?.id;
+  expect(targetId).toBeTruthy();
+
+  await webviewPage.click('[data-testid="sticky-user-message"]');
+
+  // Keep streaming while the user reads the message they just jumped to.
+  for (let i = 1; i <= 40; i++) {
+    await injector.simulateExtensionMessage("updateStreamingContent", {
+      messageId: "live-msg",
+      chunk: chunk(i),
+      stage: "streaming",
+    });
+    await webviewPage.waitForTimeout(30);
+  }
+  await webviewPage.waitForTimeout(500);
+
+  // The target row must sit inside the viewport (the jump really landed) …
+  const row = await webviewPage.evaluate((id) => {
+    const c = document.getElementById("messagesContainer") as HTMLElement;
+    const el = c.querySelector<HTMLElement>(`[data-message-id="${id}"]`);
+    if (!el) return null;
+    return {
+      top: Math.round(
+        el.getBoundingClientRect().top - c.getBoundingClientRect().top,
+      ),
+      clientHeight: c.clientHeight,
+    };
+  }, targetId as string);
+  console.log(`[sticky-jump] row=${JSON.stringify(row)}`);
+  expect(row).not.toBeNull();
+  expect(row!.top).toBeGreaterThanOrEqual(0);
+  expect(row!.top).toBeLessThan(row!.clientHeight);
+
+  // … and the viewport must not have been dragged back to the bottom since.
+  const end = await geometry(webviewPage);
+  console.log(
+    `[sticky-jump] end scrollTop=${end.scrollTop} gap=${end.gap.toFixed(0)}`,
+  );
+  expect(end.gap).toBeGreaterThan(1500);
+});
