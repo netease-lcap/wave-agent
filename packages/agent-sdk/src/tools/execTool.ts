@@ -1,19 +1,50 @@
 import { EXEC_TOOL_NAME } from "../constants/tools.js";
-import { EXEC_SEARCH_EXPRESSION } from "../exec/catalog.js";
+import {
+  EXEC_SEARCH_EXPRESSION,
+  renderSearchCallForm,
+  renderSearchSignature,
+} from "../exec/catalog.js";
 import { EXEC_SEARCH_NAME } from "../exec/constants.js";
 import { runExecScript, type ExecRunResult } from "../exec/execRuntime.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
 
 /**
  * The `search` bullet of the sandbox API blurb. It names the entry point and its
- * purpose; the tool description teaches the call form from `search`'s own schema.
+ * purpose; the call form follows it, in one of the two shapes below.
  *
  * The path is the very expression the signature renderer uses, and both come from
- * the constant the sandbox assigns the entry under, so the three cannot drift.
+ * the constant the sandbox assigns the entry under, so the two cannot drift.
  */
 const SEARCH_ENTRY =
   `- \`${EXEC_SEARCH_EXPRESSION}(...)\` — ` +
   "find a tool's parameters and return type. The pool is announced by name only, so this is how a call is built.";
+
+/**
+ * The bullet with `ToolSearch`'s own signature indented under it.
+ *
+ * This one signature has to be spelled out, unlike every other tool's. The name-only
+ * announcement is the only place a pool tool appears, and turning a name into a
+ * signature means calling `ToolSearch` — but `ToolSearch` is not in the pool (the
+ * sandbox assigns it that key, and `buildExecPool` rejects a member of that name), so
+ * it is the one entry whose own shape has no channel to be looked up on. Omitted, the
+ * model can only guess a parameter name and wait for the error to correct it.
+ *
+ * Rendered, never written out by hand, so it cannot drift from the form the error
+ * messages teach or from what the host accepts.
+ */
+const SEARCH_ENTRY_WITH_SIGNATURE = [
+  SEARCH_ENTRY,
+  ...renderSearchSignature()
+    .split("\n")
+    .map((line) => `  ${line}`),
+].join("\n");
+
+/**
+ * The bullet in its one-line form, for the lean prompt: a block of field docs is the
+ * one thing a prompt that exists to be short cannot carry. Same renderer the error
+ * messages use, so the two cannot disagree about a parameter.
+ */
+const SEARCH_ENTRY_ONELINE = `${SEARCH_ENTRY} Call it as \`${renderSearchCallForm()}\`.`;
 
 /**
  * Model-visible API description.
@@ -23,12 +54,15 @@ const SEARCH_ENTRY =
  * mentioned the session's servers (or their tools) would rewrite that prefix every
  * time one connected or dropped. The pool is a tail announcement instead — see
  * `exec/catalogAnnouncement.ts`.
+ *
+ * The search signature it carries is no exception: it describes the entry point, not
+ * the pool, so it is the same bytes for every session.
  */
 const EXEC_DESCRIPTION = `Run a JavaScript script in a sandbox where this session's on-demand tools are exposed as functions, so a whole sequence of calls can be composed in a single turn instead of one model round-trip per call.
 
 Sandbox API:
 - \`await tools.<name>(args)\` — call a tool, passing that tool's own arguments object directly. Resolves to the tool's output: a structured object when the tool returned one, otherwise its text, otherwise \`null\`. \`${EXEC_SEARCH_NAME}\` gives each tool's return type.
-${SEARCH_ENTRY}
+${SEARCH_ENTRY_WITH_SIGNATURE}
 - \`console.log(...)\` — collected and returned alongside the result. Use it to inspect intermediate values.
 - \`return <value>\` — the returned value is JSON-serialized and given back to you.
 
@@ -131,7 +165,7 @@ export const execTool: ToolPlugin = {
   leanPrompt: `Run a JavaScript script in a sandbox where this session's on-demand tools are exposed as functions, composing a whole sequence of calls in one turn instead of one model round-trip per call.
 
 - \`await tools.<name>(args)\` — call a tool with its own arguments object; resolves to its output.
-- ${SEARCH_ENTRY}
+${SEARCH_ENTRY_ONELINE}
 - \`console.log(...)\` — collected and returned alongside the result.
 - \`return <value>\` — the returned value is JSON-serialized and given back to you.
 Write a clear, concise description of what the script does in 5-10 words. The script has no filesystem, no network, no \`import\`, and no \`eval\`/\`new Function\`; it stops at its time or tool-call budget, and every nested call still goes through the permission check, so it can still be denied.`,
