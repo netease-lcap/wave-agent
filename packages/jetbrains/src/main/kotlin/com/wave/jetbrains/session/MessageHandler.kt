@@ -324,7 +324,8 @@ class MessageHandler(
             // VSCE :199 → modal warning, rewind, handleWebviewReady, focusInput, scrollToBottom
             "rewindToMessage" -> {
                 val messageId = msg["messageId"]?.jsonPrimitive?.content ?: return
-                handleRewindToMessage(messageId)
+                val requestId = msg["requestId"]?.jsonPrimitive?.contentOrNull
+                handleRewindToMessage(messageId, requestId)
             }
             "listRewindCheckpoints" -> handleListRewindCheckpoints()
             "getConfiguredModels" -> handleGetConfiguredModels()
@@ -1053,17 +1054,46 @@ class MessageHandler(
         }
     }
 
-    // ── Rewind: webview already confirmed → rewind → setInitialState + focusInput + scrollToBottom ──
-    private suspend fun handleRewindToMessage(messageId: String) {
+    // ── Rewind: webview already confirmed → rewind → rewindResult + setInitialState(keepMessages) + focusInput + scrollToBottom ──
+    //
+    // 截断不回传列表：这里按与 webview 相同的规则切掉缓存（保留 messageId 最后一次
+    // 出现之前的内容），回发 rewindResult 让 webview 对自己的副本做同样的事，随后
+    // 的快照带 keepMessages（列表因此不在这条路径上重传）。没带 requestId 的旧
+    // webview / 远程页退回全量推送。
+    private suspend fun handleRewindToMessage(messageId: String, requestId: String?) {
         try {
             val inputContent = session.agent?.rewindToMessage(messageId) ?: ""
             session.inputContent = inputContent
-            // VSCE calls handleWebviewReady to re-push full state.
-            handleWebviewReady()
+            if (requestId != null) {
+                val list = session.messages as? JsonArray
+                if (list != null) {
+                    val index = list.indexOfLast { m ->
+                        ((m as? JsonObject)?.get("id") as? JsonPrimitive)?.contentOrNull == messageId
+                    }
+                    if (index >= 0) session.messages = JsonArray(list.take(index))
+                }
+                postMessage("rewindResult", buildJsonObject {
+                    put("requestId", requestId)
+                    put("messageId", messageId)
+                    put("ok", true)
+                })
+                handleWebviewReady(keepMessages = true)
+            } else {
+                // VSCE calls handleWebviewReady to re-push full state.
+                handleWebviewReady()
+            }
             postMessage("focusInput", JsonObject(emptyMap()))
             postMessage("scrollToBottom", JsonObject(emptyMap()))
         } catch (e: StdioClientException) {
             LOG.warn("rewindToMessage failed: ${e.message}", e)
+            if (requestId != null) {
+                postMessage("rewindResult", buildJsonObject {
+                    put("requestId", requestId)
+                    put("messageId", messageId)
+                    put("ok", false)
+                    put("error", e.message ?: "unknown")
+                })
+            }
             IdeService.showError(project, "回滚失败: ${e.message}")
         }
     }
@@ -1281,7 +1311,7 @@ class MessageHandler(
         client.request("updateUserSettings", patch)
     }
 
-    private suspend fun handleWebviewReady() {
+    private suspend fun handleWebviewReady(keepMessages: Boolean = false) {
         if (session.agent == null) {
             WaveBackendService.getInstance(project).initializeSession(session, null)
         }
@@ -1292,7 +1322,11 @@ class MessageHandler(
         // Pull the full message list on demand (mirrors VSCE messageHandler.ts
         // handleWebviewReady → session.getMessages()). The server no longer pushes
         // full snapshots; the host pulls and delivers them via setInitialState.
-        session.refreshMessages()
+        // keepMessages（仅 rewind）跳过这次拉取：调用方已按同一条规则切过缓存、
+        // webview 手里那份也是它自己切的 —— 重拉重传正是这条路径要省掉的开销。
+        if (!keepMessages) {
+            session.refreshMessages()
+        }
         // Refresh serverUrl + isAuthenticated from auth status before sending initial state.
         // Mirrors VSCE messageHandler.ts:622-633: without isAuthenticated the webview's
         // WelcomeView wrongly shows the login CTA to already-logged-in users (it never
@@ -1313,7 +1347,12 @@ class MessageHandler(
             LOG.warn("getAuthStatus on webviewReady failed: ${e.message}")
         }
         postMessage("setInitialState", buildJsonObject {
-            put("messages", session.messages ?: JsonArray(emptyList()))
+            // keepMessages（仅 rewind）：列表不入载荷，由 webview 保留自己切好的那份。
+            put(
+                "messages",
+                if (keepMessages) JsonArray(emptyList()) else (session.messages ?: JsonArray(emptyList())),
+            )
+            if (keepMessages) put("keepMessages", true)
             put("tasks", session.tasks ?: JsonArray(emptyList()))
             put("backgroundTasks", session.backgroundTasks ?: JsonArray(emptyList()))
             put("workflowRuns", session.workflowRuns ?: JsonArray(emptyList()))

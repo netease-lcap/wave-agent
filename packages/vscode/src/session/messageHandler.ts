@@ -270,6 +270,7 @@ export class MessageHandler {
       case "rewindToMessage":
         await this.handleRewindToMessage(
           msg.messageId as string,
+          msg.requestId as string | undefined,
           viewType,
           windowId,
         );
@@ -1318,8 +1319,16 @@ export class MessageHandler {
     }
   }
 
+  /**
+   * `/rewind`：截断后**不回传列表**。`session.rewindToMessage` 已按与 webview 相同
+   * 的规则切掉缓存，这里回发 `rewindResult` 让 webview 对自己的副本做同样的事，
+   * 随后那次快照带 `keepMessages`（列表因此不在这条路径上重传）。
+   *
+   * 没带 `requestId`（旧 webview / 远程页）时退回全量推送。
+   */
   private async handleRewindToMessage(
     messageId: string,
+    requestId?: string,
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
   ) {
@@ -1327,8 +1336,24 @@ export class MessageHandler {
     const session = this.context.getChatSession(viewType || "tab", windowId);
     try {
       await session.rewindToMessage(messageId);
-      // Notify frontend to update state (including inputContent)
-      await this.handleWebviewReady(viewType, windowId);
+      if (requestId) {
+        this.context.postMessage(
+          {
+            command: "rewindResult",
+            requestId,
+            messageId,
+            ok: true,
+          },
+          viewType,
+          windowId,
+        );
+        await this.handleWebviewReady(viewType, windowId, {
+          keepMessages: true,
+        });
+      } else {
+        // Notify frontend to update state (including inputContent)
+        await this.handleWebviewReady(viewType, windowId);
+      }
       this.context.postMessage({ command: "focusInput" }, viewType, windowId);
       this.context.postMessage(
         { command: "scrollToBottom" },
@@ -1337,6 +1362,19 @@ export class MessageHandler {
       );
     } catch (error) {
       console.error(`回滚 ${viewType} 会话失败:`, error);
+      if (requestId) {
+        this.context.postMessage(
+          {
+            command: "rewindResult",
+            requestId,
+            messageId,
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          viewType,
+          windowId,
+        );
+      }
       vscode.window.showErrorMessage("回滚失败: " + error);
     }
   }
@@ -2012,6 +2050,7 @@ export class MessageHandler {
   private async handleWebviewReady(
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
+    opts?: { keepMessages?: boolean },
   ): Promise<void> {
     const session = this.context.getChatSession(viewType || "tab", windowId);
     if (!session.agent) {
@@ -2019,7 +2058,14 @@ export class MessageHandler {
     }
     // No full-snapshot push anymore — the webview pulls the message list on
     // demand (webviewReady / restore / rewind / clear / compact).
-    await session.getMessages();
+    //
+    // `keepMessages` (rewind only) skips BOTH the pull and the list in the
+    // payload: the caller already cut the cached list with the same rule the
+    // webview applies to its copy, so re-reading and re-sending it is exactly
+    // the cost this path exists to avoid. Every other caller must send it.
+    if (!opts?.keepMessages) {
+      await session.getMessages();
+    }
     const configurationData = await this.configService.loadConfiguration();
     const sessions = await this.sessionService.getSessionsList();
     let isAuthenticated = false;
@@ -2062,7 +2108,8 @@ export class MessageHandler {
     this.context.postMessage(
       {
         command: "setInitialState",
-        messages: session.messages,
+        messages: opts?.keepMessages ? [] : session.messages,
+        ...(opts?.keepMessages ? { keepMessages: true } : {}),
         tasks: session.tasks,
         backgroundTasks: session.backgroundTasks,
         workflowRuns: session.workflowRuns,

@@ -191,7 +191,7 @@ order: 220
 
 **验收场景**：
 
-1. **假设** UI 需要完整消息列表（webviewReady、rewind、clearChat、restoreSession），**当**调用 `getMessages` 请求时，**则**StdioAgent 向 CLI 发起请求，将返回的 `Message[]` 更新到 `this.messages` 缓存。`messagesChange` 通知已从协议中移除，消息缓存不再由推送维护（压缩不走拉取——见「Webview 按需拉取全量消息」场景 7）。
+1. **假设** UI 需要完整消息列表（webviewReady、clearChat、restoreSession），**当**调用 `getMessages` 请求时，**则**StdioAgent 向 CLI 发起请求，将返回的 `Message[]` 更新到 `this.messages` 缓存。`messagesChange` 通知已从协议中移除，消息缓存不再由推送维护（压缩不走拉取——见「Webview 按需拉取全量消息」场景 7）。
 2. **假设** CLI 推送 `tasksChange` 通知，**当**StdioAgent 处理该通知时，**则**更新 `this.tasks` 缓存并触发 `onTasksChange` 回调。
 3. **假设** CLI 推送 `permissionModeChange` 通知，**当**StdioAgent 处理该通知时，**则**更新 `this.permissionMode` 缓存并触发 `onPermissionModeChange` 回调。
 4. **假设** CLI 推送 `loadingChange` 通知，**当**StdioAgent 处理该通知时，**则**更新 `this.latestTotalTokens` 缓存并触发 `onLoadingChange` 回调。
@@ -203,21 +203,22 @@ order: 220
 
 ### 用户故事：Webview 按需拉取全量消息（优先级：P1）
 
-作为 webview UI 层，我希望完整消息列表只在主动请求时获取（webviewReady、rewind、clearChat、restoreSession），而不是订阅持续的 `messagesChange` 全量推送，以便流式更新保持纯增量，长会话不因每次 chunk 全量序列化而下发。
+作为 webview UI 层，我希望完整消息列表只在主动请求时获取（webviewReady、clearChat、restoreSession），而不是订阅持续的 `messagesChange` 全量推送，以便流式更新保持纯增量，长会话不因每次 chunk 全量序列化而下发。
 
 **为什么是这个优先级**：移除 `onMessagesChange` 后，stdio 通道上的消息数据流必须是"增量通知 + 按需拉取"：流式期间只流动消息/块粒度的增量通知（bash 模式命令以 user 消息 + bash tool block 承载，经 `userMessageAdded`/`toolBlockUpdated` 增量定位），全量列表仅作为对 webview 主动请求（`getMessages`）或初始化（`webviewReady` → `setInitialState`）的响应下发。这是消息流式化架构在传输层的核心诉求。
 
-**独立测试**：打开插件聊天面板发送一条触发流式的消息，在 CLI 侧记录 stdout：流式期间仅出现 `assistantMessageAdded`/`assistantContentUpdated` 等增量通知，无 `messagesChange` 或等价的全量推送；面板初始化、执行 rewind 后各出现一次 `getMessages` 请求；执行 compact 后**不出现** `getMessages`，只出现一条带 `message` 的 `compactBlockAdded`，端上表现为把该条消息 `appendMessage` 进消息列表；bash 模式命令（`!ls`）期间仅出现携带 `messageId` 的 `userMessageAdded`/`toolBlockUpdated` 增量通知。
+**独立测试**：打开插件聊天面板发送一条触发流式的消息，在 CLI 侧记录 stdout：流式期间仅出现 `assistantMessageAdded`/`assistantContentUpdated` 等增量通知，无 `messagesChange` 或等价的全量推送；面板初始化后出现一次 `getMessages` 请求，执行 rewind 后**不出现** `getMessages`——宿主只回一条不带消息载荷的 `rewindResult`，两端各自按锚点截断本地列表；执行 compact 后**不出现** `getMessages`，只出现一条带 `message` 的 `compactBlockAdded`，端上表现为把该条消息 `appendMessage` 进消息列表；bash 模式命令（`!ls`）期间仅出现携带 `messageId` 的 `userMessageAdded`/`toolBlockUpdated` 增量通知。
 
 **验收场景**：
 
 1. **假设**插件 webview 首次加载，**当**发送 `webviewReady` 时，**则**宿主调用 `getMessages` 拉取完整消息列表，并在 `setInitialState` 响应中下发
 2. **假设**助手正在流式响应，**当**CLI 产生新 chunk 时，**则**webview 仅收到增量通知（`userMessageAdded`/`assistantMessageAdded`/`assistantContentUpdated`/`toolBlockUpdated` 等）并就地更新对应消息块，全程无全量列表下发
-3. **假设**用户执行 rewind / clearChat / restoreSession，**当**操作完成时，**则**webview（或宿主代表 webview）主动发起 `getMessages` 请求，以返回的全量列表重建消息区
+3. **假设**用户执行 clearChat / restoreSession，**当**操作完成时，**则**webview（或宿主代表 webview）主动发起 `getMessages` 请求，以返回的全量列表重建消息区
 4. **假设** bash 模式命令（`!ls`）执行，**当**宿主转发增量通知时，**则**webview 经 `userMessageAdded` 创建 user 消息、`toolBlockUpdated` 就地更新 bash tool block（含实时输出），无需拉取全量列表
 5. **假设** CLI 侧移除 `messagesChange` 通知，**当**StdioAgent 收到流式增量通知时，**则**不再通过任何全量消息推送更新缓存；`this.messages` 仅在 `getMessages` 响应或显式初始化时更新
 6. **假设** 流式正文中途断连、宿主降级为非流式重发（见 core/ai-error-handling.md），**当** 需要丢弃已渲染的半截助手消息时，**则** CLI 推送定向删除通知 `assistantMessageDiscarded`（负载 `{messageId}`），消费端按 id 就地移除该条消息与缓存中的同 id 条目，全程无全量列表下发
 7. **假设**会话发生压缩（自动或手动），**当**压缩写入完成时，**则**CLI 推送 `compactBlockAdded`（负载 `{content, message}`，`message` 为摘要块那条完整消息），宿主把它追加进自己的消息缓存并经 `appendMessage` 下发给 webview——全程不发起 `getMessages`；`message` 缺席（版本错配）时宿主回落为 `getMessages` 拉取
+8. **假设**用户执行 rewind，**当**宿主完成会话文件重写时，**则**它不发起 `getMessages`：宿主按与 webview 相同的规则切掉自己缓存中锚点消息最后一次出现之后的部分，并回发一条**不含消息载荷**的 `rewindResult`（`requestId` 归属键 + `ok` / `error`），webview 收到匹配的回执后对本地列表做同样的截断；随后的 `setInitialState` 以「保留 webview 现有列表」的形式下发，列表不入载荷。请求未携带 `requestId`（旧 webview / 远程页）时退回 `getMessages` 全量拉取；`ok: false` 或 `requestId` 不匹配的回执不得触发截断
 
 ---
 

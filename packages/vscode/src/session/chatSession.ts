@@ -568,8 +568,14 @@ export class ChatSession {
     const { inputContent } = await this.agent.rewindToMessage(messageId);
     this.inputContent = inputContent;
 
-    // Messages truncated server-side; pull the new list for the webview
-    await this.getMessages();
+    // Truncation carries no payload anymore: cut the cached list with the same
+    // rule the webview applies to its own copy (keep everything before the
+    // LAST occurrence of the anchor) instead of pulling the whole list back.
+    const index = this.messages.map((m) => m.id).lastIndexOf(messageId);
+    if (index !== -1) {
+      this.messages = this.messages.slice(0, index);
+      this.agent.messages = this.messages;
+    }
   }
 
   public async askBtw(question: string): Promise<string> {

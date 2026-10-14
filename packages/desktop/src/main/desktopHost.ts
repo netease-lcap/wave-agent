@@ -942,12 +942,15 @@ export class DesktopHost {
 
   /**
    * Pull the authoritative message list (getMessages RPC) into the agent's
-   * cache and push it to the pane's webview as updateMessages. Replaces the
-   * removed full-snapshot messagesChange push for structural transitions
-   * (rewind) where incremental events can't rebuild the list. Compaction is
-   * not one of them — its display-stream effect is a single appended block,
-   * delivered through onCompactBlockAdded. Binding is re-checked after the
-   * RPC — the agent may have been rebound while the request was in flight.
+   * cache and push it to the pane's webview as updateMessages.
+   *
+   * Both remaining callers are fallbacks: an `/rewind` from a client that sent
+   * no `requestId` (an older remote page / webview bundle), and a host too old
+   * to carry the compact block. A current `/rewind` does NOT come through here —
+   * truncation carries no payload anymore (the host cuts its own cache with the
+   * same rule the webview applies, and tells it so via `rewindResult`). Binding
+   * is re-checked after the RPC — the agent may have been rebound while the
+   * request was in flight.
    */
   private async pullAndPushMessages(
     agent: StdioAgent,
@@ -1144,7 +1147,8 @@ export class DesktopHost {
       // so every message callback below must mirror `agentRef.messages` itself —
       // the desktop serves setInitialState straight from that cache on session /
       // pane switches, with no pull. The only pull-based refreshes are restore
-      // (getMessages), rewind and the compact fallback (pullAndPushMessages);
+      // (getMessages) and the two fallbacks (a client without `requestId` on
+      // rewind, and the compact fallback) via pullAndPushMessages;
       // webviewReady deliberately does NOT pull, it replays the cache through
       // pushInitialState → pushPaneSessionState (setInitialState). Full-list
       // pushes to the webview happen only through pullAndPushMessages
@@ -2748,7 +2752,10 @@ export class DesktopHost {
    * because the instances that render the shell, sidebar and settings page are
    * not the ones that consume this pane-tagged snapshot.
    */
-  private async pushPaneSessionState(paneId: string): Promise<void> {
+  private async pushPaneSessionState(
+    paneId: string,
+    opts?: { keepMessages?: boolean },
+  ): Promise<void> {
     const agent = this.agentForPane(paneId);
     // Workflow runs refresh in the background — a live remote session's RPC
     // round trip (SSH hop) must not delay the session switch. The cache shows
@@ -2779,7 +2786,12 @@ export class DesktopHost {
     this.postMessage({
       command: "setInitialState",
       paneId,
-      messages: current?.messages ?? [],
+      // keepMessages (rewind only): the host cache was already cut with the same
+      // rule the webview applies to its own copy, so the list is left out of the
+      // payload instead of being re-sent in full — the flag tells the webview to
+      // keep what it has. Every other caller must send the real list.
+      messages: opts?.keepMessages ? [] : (current?.messages ?? []),
+      ...(opts?.keepMessages ? { keepMessages: true } : {}),
       tasks: current?.tasks ?? [],
       backgroundTasks: current?.backgroundTasks ?? [],
       workflowRuns: this.workflowRuns.get(paneId) ?? [],
@@ -3554,7 +3566,11 @@ export class DesktopHost {
         break;
 
       case "rewindToMessage":
-        await this.handleRewindToMessage(msg.messageId as string, pid);
+        await this.handleRewindToMessage(
+          msg.messageId as string,
+          msg.requestId as string | undefined,
+          pid,
+        );
         break;
 
       case "listRewindCheckpoints":
@@ -5564,8 +5580,18 @@ export class DesktopHost {
     }
   }
 
+  /**
+   * `/rewind`：截断后**不回传列表**。宿主按与 webview 相同的规则切自己的缓存
+   * （保留 `messageId` 最后一次出现之前的内容）并回发 `rewindResult`，由 webview
+   * 对自己的副本做同样的事；随后的会话快照带 `keepMessages`，整份列表不在这条
+   * 路径上重传（回滚因此与会话总长脱钩）。
+   *
+   * 客户端没带 `requestId`（旧的远程页 / 旧 webview 包）时退回全量推送：它收不到
+   * 回执，只能靠快照更新。
+   */
   private async handleRewindToMessage(
     messageId: string,
+    requestId?: string,
     paneId?: string,
   ): Promise<void> {
     const pid = paneId ?? this.focusedPaneId;
@@ -5575,14 +5601,38 @@ export class DesktopHost {
     try {
       const { inputContent } = await agent.rewindToMessage(messageId);
       this.inputDrafts.set(this.draftKeyForPane(pid), inputContent);
-      // Rewind truncates the list server-side; pull it into the cache, then
-      // setInitialState below carries it to the webview.
-      await this.pullAndPushMessages(agent, pid);
-      await this.pushPaneSessionState(pid);
+      if (requestId) {
+        const index = agent.messages.map((m) => m.id).lastIndexOf(messageId);
+        if (index !== -1) {
+          agent.messages = agent.messages.slice(0, index);
+        }
+        this.postMessage({
+          command: "rewindResult",
+          paneId: pid,
+          requestId,
+          messageId,
+          ok: true,
+        });
+        await this.pushPaneSessionState(pid, { keepMessages: true });
+      } else {
+        // Old client: it only learns about the truncation from the snapshot.
+        await this.pullAndPushMessages(agent, pid);
+        await this.pushPaneSessionState(pid);
+      }
       this.postMessage({ command: "focusInput", paneId: pid });
       this.postMessage({ command: "scrollToBottom", paneId: pid });
     } catch (error) {
       console.error("[DesktopHost] 回滚会话失败:", error);
+      if (requestId) {
+        this.postMessage({
+          command: "rewindResult",
+          paneId: pid,
+          requestId,
+          messageId,
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       this.pushSystemMessage(`回滚失败: ${error}`, pid);
     }
   }

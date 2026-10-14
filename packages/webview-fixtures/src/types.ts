@@ -318,6 +318,22 @@ export interface RewindCheckpointsMessage extends HostToWebviewMessageBase {
   }>;
 }
 
+/** Reply to a `rewindToMessage` request: whether the truncation happened.
+ *
+ * Truncation is destructive but it carries **no payload** — the webview holds
+ * the anchor (`messageId` it asked for) and the list it is displaying, so it
+ * cuts its own copy with the same rule the host uses (keep everything before
+ * the **last** occurrence of `messageId`). Re-sending the list would cost a
+ * full snapshot per rewind. `ok: false` means nothing was truncated and the
+ * list must be left untouched. */
+export interface RewindResultMessage extends HostToWebviewMessageBase {
+  command: "rewindResult";
+  requestId: string;
+  messageId: string;
+  ok: boolean;
+  error?: string;
+}
+
 export interface BtwStreamMessage extends HostToWebviewMessageBase {
   command: "btwStream";
   question: string;
@@ -436,6 +452,11 @@ export interface McpConfigResponseMessage extends HostToWebviewMessageBase {
 export interface SetInitialStateMessage extends HostToWebviewMessageBase {
   command: "setInitialState";
   messages: Message[];
+  /** 只允许 rewind 路径置真：宿主已按同一条规则本地切完自己的缓存，因此这一份
+   *  快照只更新其余字段，让 webview 保留它刚切好的列表，省掉整份列表的重传。
+   *  切会话 / 新建会话 / 恢复完成**不得**使用 —— 那些场景 webview 的列表本来
+   *  就不对，必须靠 `messages` 覆盖。 */
+  keepMessages?: boolean;
   tasks: Task[];
   backgroundTasks: BackgroundTaskSummary[];
   workflowRuns: SerializableWorkflowRun[];
@@ -1005,6 +1026,7 @@ export type HostToWebviewMessage =
   | UpdateQueuedMessageMissingMessage
   | UpdateCommandRunningMessage
   | RewindCheckpointsMessage
+  | RewindResultMessage
   | BtwStreamMessage
   | BtwResponseMessage
   | BtwErrorMessage
@@ -1123,6 +1145,8 @@ type ReplyAttribution = {
   // requestId 通道上会有多笔在途请求 —— 只认最新一笔，晚到的旧快照即弃（否则
   // 「刚连上」会被一秒前的 "off" 覆盖回去）。
   remoteControlResponse: "requestId";
+  // 回滚：请求生成 id，回复原样带回（同一会话可反复回滚，晚到的旧回复即弃）。
+  rewindResult: "requestId";
 };
 
 // ---- 编译期断言：注册表中的每条响应命令，union 成员必须必填其归属键。 ----
@@ -1167,6 +1191,7 @@ export const replyAttributionLocked = {
   fileSuggestionsResponse: true,
   sessionRenamed: true,
   remoteControlResponse: true,
+  rewindResult: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];
 };

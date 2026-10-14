@@ -1026,6 +1026,10 @@ export type ChatAction =
       type: "SET_INITIAL_STATE";
       payload: {
         messages: Message[];
+        /** rewind 专用：宿主已按同一条规则切过自己的缓存，本次快照只更新其余
+         *  字段、保留 webview 手里刚切好的列表（省掉整份列表的重传）。切会话 /
+         *  新建会话必须为假 —— 那些场景 webview 的列表本来就不对。 */
+        keepMessages?: boolean;
         tasks?: Task[];
         isStreaming: boolean;
         isCommandRunning?: boolean;
@@ -1050,6 +1054,13 @@ export type ChatAction =
   // Incremental update actions for streaming optimization
   | { type: "APPEND_MESSAGE"; payload: Message }
   | { type: "REMOVE_MESSAGE"; payload: { messageId: string } }
+  | {
+      /** rewind：把列表截断到 `messageId` **最后一次出现之前**。与服务端同一条
+       *  规则（压缩后同 id 会重复出现，用户看到的是最后一次那份），因此两边本地
+       *  各自切完的结果一致。锚点不在列表里时 no-op —— 等宿主的下一次快照。 */
+      type: "TRUNCATE_MESSAGES";
+      payload: { messageId: string };
+    }
   | {
       type: "UPDATE_STREAMING_CONTENT";
       payload: { messageId: string; chunk: string; stage: "streaming" | "end" };

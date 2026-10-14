@@ -114,7 +114,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 作为 CLI 或 IDE 插件的使用者，我希望在积累了大量消息的会话中，助手流式输出时界面依然即时、平滑地更新，以便消息越多时交互越不卡顿。
 
-**为什么是这个优先级**：当前每次流式 chunk 都会触发 `onMessagesChange` 全量回调，CLI 侧随之全量 `setMessages`、插件宿主经 stdio 全量下发消息列表，序列化与传输成本随会话长度线性增长，是长会话流式卡顿的主要来源；且它与增量回调在时间上重复（同一 chunk 同时触发 `onAssistantContentUpdated` 与 `onMessagesChange`），造成数据冗余与竞态。为此移除 `onMessagesChange`，使流式更新全链路走增量通道；bash 模式命令以 user 消息 + bash tool block 承载，经 `userMessageAdded`/`toolBlockUpdated` 增量定位，完整消息列表仅在"拉取"场景（初始化、rewind、clear、restore）传输——压缩不进该名单：压缩对 UI 显示流是纯追加（只折叠 API 上下文、保留全量历史并把摘要块追加到显示流末尾），因此经 `compactBlockAdded` 通知携带摘要块那条完整 `Message`、由宿主 `appendMessage` 增量送达 webview。进一步地，增量负载从"chunk + accumulated 并存"收敛为"纯 chunk delta"（tool block streaming 只携带 `parametersChunk`），SDK 回调与跨进程（stdio）通知统一不再携带 `accumulated`，使单个通知的序列化成本与已流式内容总长度解耦，从根源消除传输层随流式累积的内存/带宽压力；进程内消费者（CLI、print-cli）改为消费纯 chunk 并自行累积追加（详见下方"状态管理架构"与 2026-08-08 会议记录）。
+**为什么是这个优先级**：当前每次流式 chunk 都会触发 `onMessagesChange` 全量回调，CLI 侧随之全量 `setMessages`、插件宿主经 stdio 全量下发消息列表，序列化与传输成本随会话长度线性增长，是长会话流式卡顿的主要来源；且它与增量回调在时间上重复（同一 chunk 同时触发 `onAssistantContentUpdated` 与 `onMessagesChange`），造成数据冗余与竞态。为此移除 `onMessagesChange`，使流式更新全链路走增量通道；bash 模式命令以 user 消息 + bash tool block 承载，经 `userMessageAdded`/`toolBlockUpdated` 增量定位，完整消息列表仅在"拉取"场景（初始化、clear、restore）传输——压缩与 rewind 都不进该名单：压缩对 UI 显示流是纯追加（只折叠 API 上下文、保留全量历史并把摘要块追加到显示流末尾），因此经 `compactBlockAdded` 通知携带摘要块那条完整 `Message`、由宿主 `appendMessage` 增量送达 webview；rewind 是截断而非追加，宿主与 webview 各自在本地按同一条规则切自己的副本（保留锚点消息**最后一次**出现之前的内容），宿主只回发一条不带消息载荷的回执 `rewindResult`（带 `requestId` 归属键与 `ok`/`error`）来授权这次本地截断，整份列表因此不在这条路径上重传，回滚耗时与会话总长脱钩；仅当请求未携带 `requestId`（旧 webview / 远程页）时才回落到 `getMessages` 全量拉取。进一步地，增量负载从"chunk + accumulated 并存"收敛为"纯 chunk delta"（tool block streaming 只携带 `parametersChunk`），SDK 回调与跨进程（stdio）通知统一不再携带 `accumulated`，使单个通知的序列化成本与已流式内容总长度解耦，从根源消除传输层随流式累积的内存/带宽压力；进程内消费者（CLI、print-cli）改为消费纯 chunk 并自行累积追加（详见下方"状态管理架构"与 2026-08-08 会议记录）。
 
 **独立测试**：构造一个包含数百条消息的长会话并发送一条消息触发流式响应：CLI 消息内容增量就地更新、无整屏刷新闪烁；插件侧记录 CLI stdout，流式期间只出现增量通知、无全量消息推送。执行 `!` bash 模式命令后消息列表正确显示命令输出。
 
@@ -124,13 +124,15 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 2. **假设**助手响应正在流式传输，**当**每个内容 chunk 到达时，**则**SDK 只触发 `onAssistantContentUpdated` 等增量回调，不再触发任何携带完整消息列表的回调
 3. **假设**CLI 正在渲染流式响应，**当**新 chunk 到达时，**则**消息内容就地更新，不再执行全量 `setMessages`
 4. **假设**CLI 收到 bash 模式命令消息增量（`userMessageAdded` 创建 user 消息，`onToolBlockUpdated` 更新 `name: "Bash"` 的 tool block），**当**需要渲染命令消息时，**则**按 messageId 就地创建/更新消息块，无需读取 `agent.messages`
-5. **假设**插件 webview 需要完整会话（webviewReady / rewind / clearChat / restoreSession），**当**触发上述任一场景时，**则**宿主主动调用 `getMessages` 请求拉取并下发全量渲染，而非订阅持续的全量推送
+5. **假设**插件 webview 需要完整会话（webviewReady / clearChat / restoreSession），**当**触发上述任一场景时，**则**宿主主动调用 `getMessages` 请求拉取并下发全量渲染，而非订阅持续的全量推送
 6. **假设**子代理（subagent）运行中，**当**其消息变更时，**则** `SubagentManager` 通过 `instance.messageManager.getMessages()` 拉取最新列表维护 `instance.messages` 与 `usedTools`，并继续转发 `onSubagentMessagesChange`，不再依赖子代理的 `onMessagesChange`
 7. **假设**助手响应正在流式传输，**当**每个内容/推理 chunk 到达时，**则**增量回调与 stdio 增量通知都只携带 `chunk`（增量片段）+ `messageId` + `stage`，不再携带 `accumulated` 累积值；进程内消费者（CLI、print-cli）与跨进程宿主（agentBridge）统一消费纯 chunk，自行累积追加
 8. **假设**工具参数正在经 stdio 流式传输，**当** `stage="streaming"` 通知到达时，**则**只携带 `parametersChunk`（增量），不再携带累积 `parameters`；**当** `stage="end"` 通知到达时，**则**携带全量 `parameters` + `result` 作为一次性权威值
 9. **假设**宿主（VSCE/桌面/CLI）对增量通知做了节流（如 16ms/500ms 窗口），**当**窗口内累积了多个 chunk 时，**则**按到达顺序将窗口内所有 chunks 拼接为一个合并 delta 发送，而非 last-value-wins 丢弃中间值——丢弃中间 chunk 会造成内容永久缺失，只能由后续 `getMessages` 拉取自愈
 10. **假设**webview 正在追加流式 delta，**当**触发 `getMessages` 拉取全量列表时，**则**全量响应整体替换消息块为权威快照，随后到达的 delta 继续追加；管道 FIFO 保证拉取响应包含其之前发出的所有 chunk，不发生重复或错乱
 11. **假设**会话发生压缩（自动或手动），**当**压缩写入完成时，**则**宿主不发起 `getMessages` 拉取，而是收到 `compactBlockAdded` 通知（载荷含摘要块那条完整 `Message`）并把它经 `appendMessage` 增量追加到 webview 消息列表末尾（同时写入宿主自己的消息缓存，保证后续 `setInitialState` 不丢该块）；仅当 `message` 字段缺席（版本错配）时才回落到 `getMessages` 全量拉取
+12. **假设**用户确认 `/rewind` 回滚到某条用户消息，**当**宿主完成会话文件重写时，**则**它按与 webview 相同的规则切掉自己缓存中该消息最后一次出现之后的部分、并回发一条**不含消息载荷**的 `rewindResult`（携带请求的 `requestId` 作归属键，以及 `ok` / `error`）；webview 收到匹配的 `ok: true` 回执后对本地列表做同样的截断，随后的会话快照以「保留 webview 现有列表」的形式下发（列表不入载荷），整份消息列表不在这条路径上传输——回滚耗时与会话总长脱钩
+13. **假设** `/rewind` 的请求缺少 `requestId`（旧 webview 或远程页），**当**宿主完成重写时，**则**它退回 `getMessages` 拉取并下发全量列表，因为这些客户端收不到回执、只能靠快照更新；**当**回执为 `ok: false` 时，**则**两端列表都保持原样不动，**当**回执携带的 `requestId` 与在途请求不匹配（晚到或已被取代）时，**则**必须丢弃该回执、不得截断列表
 
 ---
 
