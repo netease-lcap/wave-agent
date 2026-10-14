@@ -179,6 +179,18 @@
   /** Bumped by every pull and by every switch, so a reply that a switch
    *  overtook can be recognized and dropped instead of landing in the new view. */
   var pullToken = 0;
+  /**
+   * Whether the session on screen is generating, as the page last learned it.
+   *
+   * One variable rather than a value read off each push, because this state has
+   * two sources and they must not disagree: the host's `loadingChange` is a
+   * *transition* (only the start or end that happens while this page is
+   * listening) while the session registry is a *state* readable at any moment.
+   * A page that arrived mid-turn has heard neither, so the composer would offer
+   * 「发送」 for the whole turn — and a phone has no Escape key to reach
+   * `abortMessage` any other way. See `applyStreaming`.
+   */
+  var streaming = false;
   var banner = null;
 
   // ── Page → host plumbing ────────────────────────────────────────
@@ -553,7 +565,13 @@
         flushOutbox();
         // A reconnect only needs the delta; the first connection already has
         // its initial pull queued (or about to be asked for).
-        if (connectedOnce) resync();
+        if (connectedOnce) {
+          resync();
+          // …but a delta carries no state, and the turn the user came back to
+          // may be one that started while the connection was down — its
+          // `loadingChange` was never delivered. See `refreshStreaming`.
+          refreshStreaming();
+        }
         connectedOnce = true;
         return;
       case "pong":
@@ -768,9 +786,7 @@
         post({ command: "updateErrorBlock", error: p.error });
         return;
       case "loadingChange":
-        post({
-          command: p.loading ? "startStreaming" : "endStreaming",
-        });
+        applyStreaming(p.loading === true);
         return;
       case "contextUsage":
         post({ command: "contextUsage", percent: p.percent });
@@ -856,7 +872,11 @@
           tasks: [],
           backgroundTasks: [],
           workflowRuns: [],
-          isStreaming: false,
+          // Read off the registry by `pickSession`, not assumed: a page that
+          // arrives mid-turn must still offer the stop button — the phone has no
+          // Escape key. Read here rather than captured, so a transition that
+          // arrived while `getMessages` was in flight still wins.
+          isStreaming: streaming,
           isCommandRunning: false,
           sessions: sessions,
           session: currentSession(sessions, sessionId),
@@ -951,17 +971,14 @@
    * needs no special case.
    */
   function pickSession() {
-    return request("listDaemonSessions", {})
-      .then(function (result) {
-        sessions = ((result && result.sessions) || []).map(toSessionMetadata);
-        // Most recently active first: the list is a picker, and this is the only
-        // ordering signal the page has (it cannot see the computer's screen).
-        sessions.sort(function (a, b) {
-          return String(b.lastActiveAt || "").localeCompare(
-            String(a.lastActiveAt || ""),
-          );
-        });
+    return loadSessions()
+      .then(function () {
         chooseSession();
+        // The registry is read right here anyway, and it is the only place the
+        // busy state exists as a *state* rather than as a transition — see
+        // `applyStreaming`. Reading it off the same reply also means a page that
+        // opens (or switches) mid-turn knows it is mid-turn.
+        applyStreaming(isBusy(currentSession(sessions, sessionId)));
         if (!sessionId) showStatus("电脑侧还没有正在跑的会话。");
         else clearStatus();
       })
@@ -973,6 +990,66 @@
         // before this can happen.
         showStatus("读不到电脑侧的会话列表：" + err.message);
       });
+  }
+
+  /** Re-read the live session registry into `sessions`. */
+  function loadSessions() {
+    return request("listDaemonSessions", {}).then(function (result) {
+      sessions = ((result && result.sessions) || []).map(toSessionMetadata);
+      // Most recently active first: the list is a picker, and this is the only
+      // ordering signal the page has (it cannot see the computer's screen).
+      sessions.sort(function (a, b) {
+        return String(b.lastActiveAt || "").localeCompare(
+          String(a.lastActiveAt || ""),
+        );
+      });
+    });
+  }
+
+  /**
+   * Catch up on the one thing a reconnect cannot have heard: `loadingChange`.
+   *
+   * A connection that was down missed every transition that happened while it
+   * was down — including the one that started the turn the user is coming back
+   * to, which is the common case on a phone (a backgrounded page has its socket
+   * dropped and its turn keeps running). `resync` carries a message delta and no
+   * state, so the busy flag is re-read from the registry, which is where the
+   * transitions come from in the first place. The pick is deliberately left
+   * alone: a reconnect is not a reason to move the reader to another
+   * conversation, and a pick that died meanwhile fails on its own read and lands
+   * on `pullSnapshot`, which re-picks.
+   *
+   * `force` is for the caller that knows the UI is **not** where this page left
+   * it (a re-mounted app reset its own reducer to idle), where "already told
+   * them once" is no longer a reason to stay quiet.
+   */
+  function refreshStreaming(force) {
+    return loadSessions()
+      .then(function () {
+        applyStreaming(isBusy(currentSession(sessions, sessionId)), force);
+      })
+      .catch(function () {});
+  }
+
+  /** A registry entry's busy flag: the host's own "this turn is running". */
+  function isBusy(entry) {
+    return !!(entry && entry.isLoading === true);
+  }
+
+  /**
+   * Set the composer's busy state and tell the page.
+   *
+   * Both sources land here and the later one wins, which is the right rule on an
+   * ordered channel: whichever of the two describes the machine later also
+   * arrives later. Only a change is sent (a page that is idle and hears "idle"
+   * has nothing to do), and every snapshot re-states the flag in its own
+   * `setInitialState` payload anyway, so the two together cover both the
+   * silent-agreement case and a UI that re-mounted behind our back.
+   */
+  function applyStreaming(busy, force) {
+    if (!force && busy === streaming) return;
+    streaming = busy;
+    post({ command: busy ? "startStreaming" : "endStreaming" });
   }
 
   /**
@@ -1048,8 +1125,12 @@
       case "webviewReady":
         // The app has mounted and its message listener is live; only now is it
         // safe to answer, otherwise the snapshot lands before the reducer.
-        if (openedOnce) resync();
-        else {
+        if (openedOnce) {
+          resync();
+          // A re-mounted app reset its own reducer to idle, so the flag is
+          // re-stated even if this page believes it already said so.
+          refreshStreaming(true);
+        } else {
           openedOnce = true;
           pullSnapshot();
         }
