@@ -405,6 +405,8 @@ export const handleCommandSelect = (
           await callbacks.onAddDir?.();
         } else if (command === "rename") {
           await callbacks.onRenameSession?.();
+        } else if (command === "remote-control") {
+          await callbacks.onRemoteControlCommand?.();
         }
       }
     })();

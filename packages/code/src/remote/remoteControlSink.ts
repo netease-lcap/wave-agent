@@ -1,26 +1,30 @@
 /**
- * The seam between a JSON-RPC server and the outbound relay that serves a
+ * The seam between a session holder and the outbound relay that serves a
  * paired phone.
  *
- * Both servers a wave process can stand up need it, for the same reason and
- * with the same shape:
+ * Every process that holds sessions needs it, for the same reason and with the
+ * same shape:
  *
  * - `--daemon <socket>` — the resident process on a remote host;
  * - `--stdio` — the child each GUI host (desktop / VS Code / JetBrains) spawns
- *   and drives over JSON-RPC.
+ *   and drives over JSON-RPC;
+ * - the interactive CLI itself — the session the user is sitting in front of,
+ *   which lives in that process's React state and nowhere else.
  *
  * Whichever one holds the sessions has to be the one serving them: a phone
  * pointed at another process would show a different session set than the user
- * is looking at. So the sink is built where the `AgentBridge` is, never shared
- * across processes.
+ * is looking at. So the sink is built where the sessions are, never shared
+ * across processes — and, for the CLI, that means built on a `RemoteControlHost`
+ * the front end implements rather than on an `AgentBridge` (which the CLI has
+ * none of).
  */
 
 import { isRemoteControlEnabled } from "wave-agent-sdk";
-import type { AgentBridge } from "../stdio/agentBridge.js";
 import { resolveRemoteControlEndpoint } from "./remoteControlConfig.js";
 import {
   RemoteControlService,
   type RemoteControlController,
+  type RemoteControlHost,
 } from "./remoteControlService.js";
 
 /**
@@ -46,28 +50,28 @@ export interface RemoteControlSink
     RemoteControlController {}
 
 /**
- * Build the sink factory a server takes, or `undefined` when remote control is
- * switched off for this process.
+ * Build the sink factory a session holder takes, or `undefined` when remote
+ * control is switched off for this process.
  *
  * The switch is read **once**, here, at process start: a machine that was
  * already running keeps its old answer, which is why the CLI hint says to
- * restart the daemon after changing it. `workdir` decides which settings files
- * are merged — the user-level `~/.wave/settings.json` is always consulted, the
- * workdir's own `.wave/settings.json` only when the process was started there
- * (a GUI host's `--stdio` child inherits the app's cwd, not the project's, so
- * user-level is the reliable place to set it).
+ * restart (the daemon, or the TUI itself) after changing it. `workdir` decides
+ * which settings files are merged — the user-level `~/.wave/settings.json` is
+ * always consulted, the workdir's own `.wave/settings.json` only when the
+ * process was started there (a GUI host's `--stdio` child inherits the app's
+ * cwd, not the project's, so user-level is the reliable place to set it).
  */
 export function createRemoteControlSinkFactory(
   workdir: string,
-): ((bridge: AgentBridge) => RemoteControlSink) | undefined {
+): ((host: RemoteControlHost) => RemoteControlSink) | undefined {
   // Opt-in twice over: this switch says the machine *may* serve its sessions to
   // a paired phone, and `wave remote-control on` / `/remote-control` is what
   // actually dials out. The sink is therefore built but not connected.
   if (!isRemoteControlEnabled(workdir)) {
     return undefined;
   }
-  return (bridge: AgentBridge): RemoteControlSink =>
-    new RemoteControlService(bridge, {
+  return (host: RemoteControlHost): RemoteControlSink =>
+    new RemoteControlService(host, {
       resolveEndpoint: resolveRemoteControlEndpoint,
     });
 }

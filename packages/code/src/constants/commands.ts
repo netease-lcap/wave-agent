@@ -111,6 +111,12 @@ export const AVAILABLE_COMMANDS: SlashCommand[] = [
     handler: () => {}, // Handler here won't be used, actual processing is in the hook
   },
   {
+    id: "remote-control",
+    name: "remote-control",
+    description: "Serve this terminal's session to a phone",
+    handler: () => {}, // Handler here won't be used, actual processing is in the hook
+  },
+  {
     id: "clear",
     name: "clear",
     description: "Clear conversation history and reset session",

@@ -22,7 +22,6 @@
  *    each.
  */
 
-import type { AgentBridge } from "../stdio/agentBridge.js";
 import type {
   RemoteControlSnapshot,
   RemoteControlStatus,
@@ -83,6 +82,33 @@ export interface RemoteControlController {
   disconnect(): void;
 }
 
+/**
+ * The host a service serves. Two shapes satisfy it:
+ *
+ * - `AgentBridge` — a process that stands up a JSON-RPC server (`--daemon`,
+ *   `--stdio`) and keeps its sessions in a registry;
+ * - the interactive CLI front end (`RemoteControlCliHost`) — one session held in
+ *   React state, with no RPC server (and so no `AgentBridge`) anywhere.
+ *
+ * These three methods are the whole of what a service asks of its host: fan
+ * inbound frames back in, and read the per-session status the relay cannot
+ * derive for itself. Keeping the type this narrow is what lets the CLI serve the
+ * session the user is sitting in front of, instead of only the sessions that
+ * happen to live behind an RPC server.
+ */
+export interface RemoteControlHost {
+  handleRequest(
+    method: string,
+    params: unknown,
+    sessionId?: string,
+  ): Promise<unknown>;
+  handleNotification(method: string, params: unknown): void;
+  listSessionStatuses(): Array<{
+    sessionId: string;
+    status: "running" | "idle" | "requires_action";
+  }>;
+}
+
 export interface RemoteControlServiceOptions {
   /**
    * Resolved when connecting, not when the service is built: a resident daemon
@@ -121,7 +147,7 @@ export class RemoteControlService implements RemoteControlController {
   private generation = 0;
 
   constructor(
-    private readonly bridge: AgentBridge,
+    private readonly bridge: RemoteControlHost,
     private readonly options: RemoteControlServiceOptions,
   ) {
     this.coalescer = new NotificationCoalescer((frames) => this.write(frames));

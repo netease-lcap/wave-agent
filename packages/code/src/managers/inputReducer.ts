@@ -123,6 +123,7 @@ export interface InputManagerCallbacks {
   onReloadPlugins?: () => Promise<void>;
   onAddDir?: (args?: string) => Promise<void>;
   onRenameSession?: (args?: string) => Promise<void>;
+  onRemoteControlCommand?: (args?: string) => Promise<void>;
   onPlanCommand?: (args?: string) => Promise<void> | void;
   sessionId?: string;
   workdir?: string;

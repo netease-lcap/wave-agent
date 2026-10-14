@@ -1,12 +1,16 @@
 /**
  * `wave remote-control` — the operator's handle on the relay connection.
  *
- * Remote control is served by the **daemon**, not by whatever process the user
- * is typing in: the daemon is the resident host (it owns sessions across
- * client detach/attach and keeps generating while nothing is attached), and it
- * is the process whose emit fan-out the relay subscribes to. These subcommands
- * are therefore a client of the daemon socket, exactly like `wave daemon …` —
- * `on` starts a daemon on demand, `off`/`status` never do.
+ * These subcommands serve the **daemon**: it is the resident host (it owns
+ * sessions across client detach/attach and keeps generating while nothing is
+ * attached), and it is the process whose emit fan-out the relay subscribes to.
+ * They are therefore a client of the daemon socket, exactly like `wave daemon …`
+ * — `on` starts a daemon on demand, `off`/`status` never do.
+ *
+ * A session that lives in the *foreground* CLI process is out of reach from
+ * here; that process serves itself through the TUI's `/remote-control` command
+ * (see `remoteControlCliHost.ts`). The switch can be on for both at once without
+ * either one covering the other's sessions.
  *
  * The page address a phone opens is assembled from this machine's channel key,
  * which the daemon got by registering with the relay (an HTTP call) — nothing is
