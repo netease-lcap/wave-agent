@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const store = vi.hoisted(() => ({ files: new Map<string, string>() }));
@@ -62,7 +63,15 @@ import {
   resolveRemoteControlEndpoint,
 } from "../../src/remote/remoteControlConfig.js";
 
-const STATE_PATH = "/fake-home/.wave/remote-control.json";
+/**
+ * Derived with `path.join` from the same fake home the `node:os` mock returns,
+ * never written as a literal with `/` in it: the code under test builds the path
+ * with `path.join`, so a hard-coded POSIX expectation pins the separator of the
+ * machine running the suite instead of the derivation and fails on Windows
+ * (where `path.join` yields `\`). This key is also the in-memory fs mock's, so
+ * getting it wrong makes a written state file invisible to `storedState()`.
+ */
+const STATE_PATH = path.join("/fake-home", ".wave", "remote-control.json");
 
 type StubReply = { status: number; body?: unknown };
 
