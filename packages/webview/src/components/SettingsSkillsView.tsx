@@ -298,6 +298,7 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
         <ConfirmDialog
           title={`删除技能「${pendingDelete.name}」`}
           description={`将删除技能目录${pendingDelete.skillPath ? `（${pendingDelete.skillPath}）` : ""}，此操作不可撤销。`}
+          destructive
           confirmText="确认删除"
           cancelText="取消"
           onConfirm={handleConfirmDelete}

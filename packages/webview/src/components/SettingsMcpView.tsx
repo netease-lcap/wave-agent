@@ -271,6 +271,7 @@ const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
       {pendingDelete && (
         <ConfirmDialog
           title={`删除 MCP 服务「${pendingDelete.name}」`}
+          destructive
           description={`将从 ${
             pendingDelete.scope === "user"
               ? (mcpConfigPaths?.userPath ?? "~/.wave/mcp.json")

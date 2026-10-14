@@ -1004,6 +1004,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           title={pendingDelete.title}
           description={pendingDelete.description}
           confirmDisabled={pendingDelete.checking === true}
+          destructive
           onConfirm={() => {
             clearWorktreeChangesTimeout();
             onDeleteSession(pendingDelete.sessionId);

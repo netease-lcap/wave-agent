@@ -1,4 +1,6 @@
 import React, { useEffect, useRef } from "react";
+import { ConversationCloseIcon } from "./HeaderIcons";
+import { isDesktopHost } from "../utils/platform";
 import "../styles/ConfirmDialog.css";
 
 export interface ConfirmDialogProps {
@@ -10,6 +12,12 @@ export interface ConfirmDialogProps {
    *  (e.g. counting what deleting a worktree would destroy). Cancel stays
    *  available so the dialog is never a dead end. */
   confirmDisabled?: boolean;
+  /** Whether confirming destroys something (delete / remove / discard). Set it
+   *  for those callers so the desktop confirm button uses the skill's
+   *  soft-danger variant; everything else (download, restart, bulk update)
+   *  keeps the ordinary filled primary button. Wording is not a signal — "确定"
+   *  appears in both kinds — so this is explicit rather than inferred. */
+  destructive?: boolean;
   /** Optional structured body under the description, for confirmations whose
    *  consequences are a list rather than a sentence (e.g. the plugins a global
    *  update would touch — spec ecosystem/plugin 场景 21). Callers own its
@@ -29,6 +37,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   confirmText = "确定",
   cancelText = "取消",
   confirmDisabled = false,
+  destructive = false,
   children,
   onConfirm,
   onCancel,
@@ -86,11 +95,30 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         aria-modal="true"
         aria-label={title}
       >
+        {/* 桌面端按 skill「compact confirmation dialog」变体省略前置警示三角
+            （common-components.md:77「Omit the leading warning triangle」）；
+            IDE / 插件宿主保持原样。 */}
+        {isDesktopHost() && (
+          <button
+            type="button"
+            className="confirm-dialog-close"
+            data-testid="confirm-dialog-close"
+            onClick={onCancel}
+            aria-label="关闭"
+            title="关闭"
+          >
+            {/* 与 pane 头部 / toast / 确认弹层同一个官方关闭矢量（Figma 关闭
+                13440:12465），圆角走同一族 8px —— 见 host-desktop.css 关闭按钮族。 */}
+            <ConversationCloseIcon className="confirm-dialog-close-icon" />
+          </button>
+        )}
         <div className="confirm-dialog-message-row">
-          <i
-            className="codicon codicon-warning confirm-dialog-icon"
-            aria-hidden="true"
-          ></i>
+          {!isDesktopHost() && (
+            <i
+              className="codicon codicon-warning confirm-dialog-icon"
+              aria-hidden="true"
+            ></i>
+          )}
           <div className="confirm-dialog-message-content">
             <div className="confirm-dialog-title">{title}</div>
             {description && (
@@ -111,7 +139,10 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <button
             type="button"
             ref={confirmBtnRef}
-            className="confirm-dialog-btn confirm-dialog-btn-confirm"
+            className={
+              "confirm-dialog-btn confirm-dialog-btn-confirm" +
+              (destructive ? " is-destructive" : "")
+            }
             data-testid="confirm-dialog-confirm"
             disabled={confirmDisabled}
             onClick={onConfirm}

@@ -3937,6 +3937,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         <ConfirmDialog
           title="确定要回滚到此消息吗？"
           description="这将删除之后的所有消息并撤销相关的文件更改。"
+          destructive
           onConfirm={handleRewindConfirm}
           onCancel={() => setPendingRewindId(null)}
         />
