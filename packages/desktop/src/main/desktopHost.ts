@@ -3699,6 +3699,9 @@ export class DesktopHost {
         const host = this.hostForAgent(paneAgent);
         const cwd = paneAgent?.workingDirectory ?? this.workdir;
         const commit = msg.commit as string | undefined;
+        // Viewing range: "uncommitted" measures against HEAD, anything else
+        // (or absent) keeps the fork-point base.
+        const scope = msg.scope as string | undefined;
         let result: unknown = { kind: "not-a-repo" };
         if (cwd) {
           try {
@@ -3706,7 +3709,11 @@ export class DesktopHost {
             await this.ensureClientFor(host);
             result = await this.utilityClientFor(host).request(
               "getWorkspaceDiff",
-              commit ? { workdir: cwd, commit } : { workdir: cwd },
+              {
+                workdir: cwd,
+                ...(commit ? { commit } : {}),
+                ...(scope ? { scope } : {}),
+              },
             );
           } catch {
             // Host unreachable / daemon gone / not a repo — the panel falls

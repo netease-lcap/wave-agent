@@ -10,6 +10,7 @@ import type {
   WorkspaceDiffScope,
 } from "../../src/components/DiffPane";
 import { createMockVscode, sendCommand } from "./test-utils";
+import type { DiffSelection } from "../../src/utils/sessionUiStore";
 
 function makeFile(
   overrides: Partial<WorkspaceDiffFile> = {},
@@ -34,10 +35,10 @@ interface PaneOptions {
   workdir?: string;
   onAddComment?: (text: string) => void;
   treeVisible?: boolean;
-  selectedCommit?: string | null;
+  selection?: DiffSelection;
   width?: number;
   onTreeVisibleChange?: (visible: boolean) => void;
-  onSelectedCommitChange?: (sha: string | null) => void;
+  onSelectionChange?: (selection: DiffSelection) => void;
 }
 
 function renderPane(options?: PaneOptions) {
@@ -49,8 +50,8 @@ function renderPane(options?: PaneOptions) {
     onAddComment: options?.onAddComment,
     treeVisible: options?.treeVisible ?? true,
     onTreeVisibleChange: options?.onTreeVisibleChange ?? (() => {}),
-    selectedCommit: options?.selectedCommit ?? null,
-    onSelectedCommitChange: options?.onSelectedCommitChange ?? (() => {}),
+    selection: options?.selection ?? ({ kind: "all" } as DiffSelection),
+    onSelectionChange: options?.onSelectionChange ?? (() => {}),
   };
   const result = render(
     <DiffPane
@@ -67,7 +68,7 @@ function renderPane(options?: PaneOptions) {
     sessionId?: string;
     workdir?: string;
     treeVisible?: boolean;
-    selectedCommit?: string | null;
+    selection?: DiffSelection;
     width?: number;
   }) =>
     result.rerender(
@@ -79,13 +80,7 @@ function renderPane(options?: PaneOptions) {
         sessionId={props.sessionId}
         workdir={props.workdir}
         treeVisible={props.treeVisible ?? shared.treeVisible}
-        // `null` is a real selection ("all changes") — only an absent key
-        // falls back to the initially rendered value.
-        selectedCommit={
-          props.selectedCommit === undefined
-            ? shared.selectedCommit
-            : props.selectedCommit
-        }
+        selection={props.selection ?? shared.selection}
       />,
     );
   return { ...result, rerenderWith, vscode };
@@ -569,6 +564,106 @@ describe("DiffPane", () => {
     });
   });
 
+  describe("viewing range", () => {
+    const base: WorkspaceDiffBase = {
+      label: "main",
+      sha: "b".repeat(40),
+      kind: "default-branch",
+      ref: "refs/remotes/origin/main",
+    };
+    const commits: WorkspaceDiffCommit[] = [
+      { sha: "c".repeat(40), shortSha: "c111111", subject: "add feature" },
+      { sha: "b".repeat(40), shortSha: "b222222", subject: "fix bug" },
+    ];
+
+    it("offers both named ranges with 'all changes' active by default", () => {
+      renderPane();
+      sendDiffResult([makeFile()], { base, commits });
+      expect(screen.getByTestId("diff-scope-all")).toHaveTextContent(
+        "全部改动",
+      );
+      expect(screen.getByTestId("diff-scope-uncommitted")).toHaveTextContent(
+        "未提交改动",
+      );
+      expect(screen.getByTestId("diff-scope-all")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(screen.getByTestId("diff-scope-uncommitted")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+    });
+
+    it("requests the HEAD range when '未提交改动' is picked", () => {
+      const onSelectionChange = vi.fn();
+      const { vscode, rerenderWith } = renderPane({ onSelectionChange });
+      sendDiffResult([makeFile()], { base, commits });
+      fireEvent.click(screen.getByTestId("diff-scope-uncommitted"));
+      expect(onSelectionChange).toHaveBeenCalledWith({ kind: "uncommitted" });
+      expect(latestDiffPayload(vscode)).toEqual({
+        command: "desktopGetWorkspaceDiff",
+        requestId: 2,
+        scope: "uncommitted",
+      });
+      // The selection is owned by the session store, so the pressed state
+      // follows the prop the parent feeds back; the range then shows HEAD.
+      rerenderWith({
+        selection: { kind: "uncommitted" },
+      });
+      expect(screen.getByTestId("diff-scope-uncommitted")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(screen.getByTestId("diff-scope-all")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      sendDiffResult([], {
+        base: { label: "HEAD", sha: "c".repeat(40), kind: "head", ref: null },
+        scope: { kind: "uncommitted" },
+        commits,
+      });
+      expect(screen.getByText("无未提交改动")).toBeInTheDocument();
+      expect(screen.getByTestId("diff-range")).toHaveTextContent(
+        "HEAD → 工作树",
+      );
+    });
+
+    it("ignores re-picking the range that is already active", () => {
+      const { vscode } = renderPane({ selection: { kind: "uncommitted" } });
+      sendDiffResult([makeFile()], {
+        base: { label: "HEAD", sha: "c".repeat(40), kind: "head", ref: null },
+        scope: { kind: "uncommitted" },
+      });
+      const before = lastDiffRequest(vscode).length;
+      fireEvent.click(screen.getByTestId("diff-scope-uncommitted"));
+      expect(lastDiffRequest(vscode).length).toBe(before);
+    });
+
+    it("keeps the range switch reachable when the range is empty", () => {
+      // No file tree and no commits — the switch is still the way back.
+      renderPane({ selection: { kind: "uncommitted" } });
+      sendDiffResult([], {
+        base: { label: "HEAD", sha: "c".repeat(40), kind: "head", ref: null },
+        scope: { kind: "uncommitted" },
+      });
+      expect(screen.getByTestId("diff-scope-all")).toBeInTheDocument();
+      expect(screen.queryByTestId("diff-commits")).not.toBeInTheDocument();
+    });
+
+    it("shows a transient-state note instead of incoming changes", () => {
+      renderPane();
+      sendCommand("desktopWorkspaceDiff", {
+        result: { kind: "transient", operation: "rebase" },
+      });
+      expect(
+        screen.getByText("正在变基（rebase），暂不展示差异"),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId("diff-sidebar")).not.toBeInTheDocument();
+    });
+  });
+
   describe("commit selection", () => {
     const base: WorkspaceDiffBase = {
       label: "main",
@@ -581,7 +676,7 @@ describe("DiffPane", () => {
       { sha: "b".repeat(40), shortSha: "b222222", subject: "fix bug" },
     ];
 
-    it("lists all changes first, then the commits newest first", () => {
+    it("lists the commits newest first under a titled section", () => {
       renderPane();
       sendDiffResult([makeFile()], { base, commits });
       const labels = Array.from(
@@ -589,11 +684,11 @@ describe("DiffPane", () => {
           .getByTestId("diff-commits")
           .querySelectorAll(".diff-commit-subject"),
       ).map((el) => el.textContent);
-      expect(labels).toEqual(["全部改动", "add feature", "fix bug"]);
-      expect(screen.getByTestId("diff-commit-all")).toHaveAttribute(
-        "aria-pressed",
-        "true",
+      expect(labels).toEqual(["add feature", "fix bug"]);
+      expect(screen.getByTestId("diff-commits-title")).toHaveTextContent(
+        "提交",
       );
+      expect(screen.getByTestId("diff-commits-title")).toHaveTextContent("2");
     });
 
     it("renders no commit list when the range has no commits", () => {
@@ -603,34 +698,42 @@ describe("DiffPane", () => {
     });
 
     it("requests the selected commit's diff and reports the selection", () => {
-      const onSelectedCommitChange = vi.fn();
-      const { vscode, rerenderWith } = renderPane({ onSelectedCommitChange });
+      const onSelectionChange = vi.fn();
+      const { vscode, rerenderWith } = renderPane({ onSelectionChange });
       sendDiffResult([makeFile()], { base, commits });
       fireEvent.click(screen.getAllByTestId("diff-commit")[0]);
-      expect(onSelectedCommitChange).toHaveBeenCalledWith("c".repeat(40));
+      expect(onSelectionChange).toHaveBeenCalledWith({
+        kind: "commit",
+        sha: "c".repeat(40),
+      });
       expect(latestDiffPayload(vscode)).toEqual({
         command: "desktopGetWorkspaceDiff",
         requestId: 2,
         commit: "c".repeat(40),
       });
       // The selection is owned by the session store, so the pressed state
-      // follows the prop the parent feeds back.
-      rerenderWith({ selectedCommit: "c".repeat(40) });
+      // follows the prop the parent feeds back — and neither named range is
+      // active while a commit is.
+      rerenderWith({ selection: { kind: "commit", sha: "c".repeat(40) } });
       expect(screen.getAllByTestId("diff-commit")[0]).toHaveAttribute(
         "aria-pressed",
         "true",
       );
-      expect(screen.getByTestId("diff-commit-all")).toHaveAttribute(
+      expect(screen.getByTestId("diff-scope-all")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
+      expect(screen.getByTestId("diff-scope-uncommitted")).toHaveAttribute(
         "aria-pressed",
         "false",
       );
     });
 
     it("switches back to all changes and ignores re-selecting the current range", () => {
-      const onSelectedCommitChange = vi.fn();
+      const onSelectionChange = vi.fn();
       const { vscode, rerenderWith } = renderPane({
-        onSelectedCommitChange,
-        selectedCommit: "c".repeat(40),
+        onSelectionChange,
+        selection: { kind: "commit", sha: "c".repeat(40) },
       });
       sendDiffResult([makeFile()], {
         base,
@@ -643,31 +746,31 @@ describe("DiffPane", () => {
         },
       });
       const before = lastDiffRequest(vscode).length;
-      fireEvent.click(screen.getByTestId("diff-commit-all"));
-      expect(onSelectedCommitChange).toHaveBeenCalledWith(null);
+      fireEvent.click(screen.getByTestId("diff-scope-all"));
+      expect(onSelectionChange).toHaveBeenCalledWith({ kind: "all" });
       expect(lastDiffRequest(vscode).length).toBe(before + 1);
       expect(latestDiffPayload(vscode)).not.toHaveProperty("commit");
       // "全部改动" is now the active range: clicking it again is a no-op.
-      rerenderWith({ selectedCommit: null });
-      fireEvent.click(screen.getByTestId("diff-commit-all"));
+      rerenderWith({ selection: { kind: "all" } });
+      fireEvent.click(screen.getByTestId("diff-scope-all"));
       expect(lastDiffRequest(vscode).length).toBe(before + 1);
     });
 
     it("clears a selection the host has already fallen back from", () => {
-      const onSelectedCommitChange = vi.fn();
+      const onSelectionChange = vi.fn();
       renderPane({
-        onSelectedCommitChange,
-        selectedCommit: "c".repeat(40),
+        onSelectionChange,
+        selection: { kind: "commit", sha: "c".repeat(40) },
       });
       sendDiffResult([makeFile()], { base, scope: { kind: "all" } });
-      expect(onSelectedCommitChange).toHaveBeenCalledWith(null);
+      expect(onSelectionChange).toHaveBeenCalledWith({ kind: "all" });
     });
 
     it("keeps a selection the host still honours", () => {
-      const onSelectedCommitChange = vi.fn();
+      const onSelectionChange = vi.fn();
       renderPane({
-        onSelectedCommitChange,
-        selectedCommit: "c".repeat(40),
+        onSelectionChange,
+        selection: { kind: "commit", sha: "c".repeat(40) },
       });
       sendDiffResult([makeFile()], {
         base,
@@ -678,7 +781,7 @@ describe("DiffPane", () => {
           subject: "add feature",
         },
       });
-      expect(onSelectedCommitChange).not.toHaveBeenCalled();
+      expect(onSelectionChange).not.toHaveBeenCalled();
     });
   });
 

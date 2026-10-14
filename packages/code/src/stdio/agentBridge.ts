@@ -592,6 +592,7 @@ export class AgentBridge {
         return this.getWorkspaceDiff(
           p.workdir as string | undefined,
           p.commit as string | undefined,
+          p.scope as string | undefined,
         );
 
       default:
@@ -933,12 +934,18 @@ export class AgentBridge {
    * Read-only workspace diff for the desktop diff panel. Runs wherever this
    * CLI runs, so a remote session answers it inside the remote daemon instead
    * of the desktop shelling out over ssh per git command.
+   *
+   * `scope` selects the viewing range: omitted / "all" = the fork-point base,
+   * "uncommitted" = `HEAD` (the panel's "未提交改动"). A `commit` outranks it.
    */
-  private getWorkspaceDiff(workdir?: string, commit?: string) {
+  private getWorkspaceDiff(workdir?: string, commit?: string, scope?: string) {
     if (!workdir) {
       throw new RpcError(PROTOCOL_INTERNAL_ERROR, "workdir is required");
     }
-    return getWorkspaceDiff(workdir, commit ? { commit } : {});
+    return getWorkspaceDiff(workdir, {
+      ...(commit ? { commit } : {}),
+      ...(scope === "uncommitted" ? { uncommitted: true } : {}),
+    });
   }
 
   private async createWorktreeSession(params: {

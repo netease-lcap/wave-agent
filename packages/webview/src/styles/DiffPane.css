@@ -40,12 +40,47 @@
   padding: 4px 0;
 }
 
+/* Viewing range: the two named ranges, shared chip look with the view switch. */
+.diff-scope {
+  display: flex;
+  flex-shrink: 0;
+  padding: 6px 8px;
+}
+
+.diff-tree + .diff-scope {
+  border-top: 1px solid var(--vscode-panel-border);
+}
+
+.diff-scope .diff-view-switch {
+  flex: 1;
+}
+
+.diff-scope .diff-view-option {
+  flex: 1;
+  padding: 3px 6px;
+  text-align: center;
+}
+
 .diff-commits {
   flex-shrink: 0;
   max-height: 40%;
   overflow-y: auto;
   padding: 4px 0;
   border-top: 1px solid var(--vscode-panel-border);
+}
+
+.diff-commits-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.diff-commits-count {
+  font-variant-numeric: tabular-nums;
 }
 
 .diff-commit {

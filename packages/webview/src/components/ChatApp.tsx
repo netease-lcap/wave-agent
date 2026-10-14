@@ -71,7 +71,11 @@ import { toAbsoluteFilePath } from "../utils/messageUtils";
 import { isMacHiddenTitlebar } from "../utils/platform";
 import { chatReducer, initialState } from "../reducers/chatReducer";
 import { sessionUi, PANEL_DEFAULT_WIDTH } from "../utils/sessionUiStore";
-import type { SessionUiState, RemoteForwardRef } from "../utils/sessionUiStore";
+import type {
+  SessionUiState,
+  RemoteForwardRef,
+  DiffSelection,
+} from "../utils/sessionUiStore";
 import {
   parkGroup,
   parkedGroupsFor,
@@ -550,17 +554,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     () => (groupKey ? sessionUi.get(groupKey)?.planContent : undefined) ?? null,
   );
   // Desktop diff panel: sidebar (file tree + commit list) visibility and the
-  // selected commit range. Both are per-session (spec desktop-panels.md「文件树
-  // 与导航」场景 4 /「提交选择」场景 5), so they ride the sessionUi snapshot
+  // viewing range. Both are per-session (spec desktop-panels.md「文件树与导航」
+  // 场景 4 /「差异面板查看范围」场景 5), so they ride the sessionUi snapshot
   // alongside the panel tabs and are restored on a session switch.
   const [diffTreeVisible, setDiffTreeVisible] = useState<boolean>(
     () =>
       (groupKey ? sessionUi.get(groupKey)?.diffTreeVisible : undefined) ?? true,
   );
-  const [diffSelectedCommit, setDiffSelectedCommit] = useState<string | null>(
+  const [diffSelection, setDiffSelection] = useState<DiffSelection>(
     () =>
-      (groupKey ? sessionUi.get(groupKey)?.diffSelectedCommit : undefined) ??
-      null,
+      (groupKey ? sessionUi.get(groupKey)?.diffSelection : undefined) ?? {
+        kind: "all",
+      },
   );
   // Desktop plan panel: the ExitPlanMode plan content a setInitialState replay
   // carried for a re-activated session, staged until the swap-effect ordering
@@ -805,7 +810,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       panelExpanded,
       planContent,
       diffTreeVisible,
-      diffSelectedCommit,
+      diffSelection,
       forward: currentForward,
       forwardError: previewForwardError,
     };
@@ -820,7 +825,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     panelExpanded,
     planContent,
     diffTreeVisible,
-    diffSelectedCommit,
+    diffSelection,
     currentForward,
     previewForwardError,
   ]);
@@ -878,7 +883,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setActiveTabId(active);
     setPlanContent(group?.planContent ?? null);
     setDiffTreeVisible(group?.diffTreeVisible ?? true);
-    setDiffSelectedCommit(group?.diffSelectedCommit ?? null);
+    setDiffSelection(group?.diffSelection ?? { kind: "all" });
     // 切走的会话：它的 preview guest 不销毁，登记为停靠组保活（额度与 LRU 见
     // utils/previewGuestKeep.ts）。登记必须落在这一个提交里——晚一个提交，槽位
     // 已按新会话重建，guest 会被连同销毁，「切走再切回不重载」就失效了。
@@ -3448,8 +3453,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           onAddComment={handleAddComment}
           treeVisible={diffTreeVisible}
           onTreeVisibleChange={setDiffTreeVisible}
-          selectedCommit={diffSelectedCommit}
-          onSelectedCommitChange={setDiffSelectedCommit}
+          selection={diffSelection}
+          onSelectionChange={setDiffSelection}
           {...common}
         />
       );

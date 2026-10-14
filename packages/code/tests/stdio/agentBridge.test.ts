@@ -3544,6 +3544,18 @@ test("getWorkspaceDiff passes the selected commit through", async () => {
   expect(getWorkspaceDiff).toHaveBeenCalledWith("/repo", { commit: "abc" });
 });
 
+test("getWorkspaceDiff maps the uncommitted scope onto the HEAD range", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(getWorkspaceDiff).mockResolvedValue({ kind: "not-a-repo" });
+
+  await bridge.handleRequest("getWorkspaceDiff", {
+    workdir: "/repo",
+    scope: "uncommitted",
+  });
+
+  expect(getWorkspaceDiff).toHaveBeenCalledWith("/repo", { uncommitted: true });
+});
+
 test("getWorkspaceDiff throws when workdir is missing", async () => {
   const { bridge } = createBridge();
   await expect(bridge.handleRequest("getWorkspaceDiff", {})).rejects.toThrow(

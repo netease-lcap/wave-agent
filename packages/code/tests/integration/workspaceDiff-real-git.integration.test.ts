@@ -48,7 +48,7 @@ function write(root: string, rel: string, content: string) {
 
 async function ok(
   cwd: string,
-  options?: { commit?: string },
+  options?: { commit?: string; uncommitted?: boolean },
 ): Promise<Extract<WorkspaceDiffResult, { kind: "ok" }>> {
   const result = await getWorkspaceDiff(cwd, options);
   if (result.kind !== "ok")
@@ -245,6 +245,87 @@ describe("getWorkspaceDiff against a real repository", () => {
       expect(result.scope).toEqual({ kind: "all" });
       expect(result.files.map((f) => f.path)).toContain("src/renamed.ts");
     }
+  });
+
+  it("measures the uncommitted range against HEAD and drops committed files", async () => {
+    const result = await ok(root, { uncommitted: true });
+    expect(result.scope).toEqual({ kind: "uncommitted" });
+    expect(result.base).toMatchObject({ label: "HEAD", kind: "head" });
+    const paths = result.files.map((f) => f.path);
+    // The session's committed work is exactly what this range must hide — the
+    // point of switching to it once a batch has been merged.
+    expect(paths).not.toContain("src/added.ts");
+    // A file with BOTH a committed and a dirty edit stays, but only its dirty
+    // part shows: against HEAD the renamed file is a plain modification.
+    const renamed = result.files.find((f) => f.path === "src/renamed.ts");
+    expect(renamed).toMatchObject({
+      status: "modified",
+      additions: 1,
+      deletions: 1,
+    });
+    expect(renamed?.hunks).toContain("+L8-dirty");
+    // The committed rename/reword is gone: its lines are context at most.
+    expect(renamed?.hunks).not.toContain("+L5-renamed");
+    expect(renamed?.hunks).not.toContain("-l5");
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        "tests/a.test.ts",
+        "docs/readme.md",
+        "notes.txt",
+        "docs/untracked.md",
+      ]),
+    );
+    // The commits stay listed: they are the way back to the other range.
+    expect(result.commits).toHaveLength(2);
+  });
+
+  it("honours an injected base ref over the discovered default branch", async () => {
+    process.env.WAVE_DIFF_BASE_REF = "origin/main";
+    try {
+      const result = await ok(root);
+      expect(result.base).toEqual({
+        label: "origin/main",
+        sha: initSha,
+        kind: "env",
+        ref: null,
+      });
+    } finally {
+      delete process.env.WAVE_DIFF_BASE_REF;
+    }
+  });
+});
+
+describe("getWorkspaceDiff while a git operation is half-finished", () => {
+  let root: string;
+  let marker: string;
+
+  beforeAll(() => {
+    root = initRepo("wave-diff-transient-");
+    write(root, "src/a.ts", "one\n");
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-m", "init", "-q"]);
+    write(root, "src/a.ts", "one\ntwo\n");
+    // The worktree now looks like a merge that stopped on a conflict — the
+    // marker file is what git itself leaves behind.
+    marker = path.join(root, ".git", "MERGE_HEAD");
+    fs.writeFileSync(marker, git(root, ["rev-parse", "HEAD"]));
+  });
+
+  afterAll(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("reports the operation and diffs nothing", async () => {
+    expect(await getWorkspaceDiff(root)).toEqual({
+      kind: "transient",
+      operation: "merge",
+    });
+  });
+
+  it("returns to the normal ranges once the operation is resolved", async () => {
+    fs.rmSync(marker);
+    const result = await ok(root, { uncommitted: true });
+    expect(result.files.map((f) => f.path)).toEqual(["src/a.ts"]);
   });
 });
 

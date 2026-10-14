@@ -50,11 +50,11 @@ export interface WorkspaceDiffCommit {
 
 /** What the whole file list is measured against. */
 export interface WorkspaceDiffBase {
-  /** Display name: the default branch, "HEAD", or "索引". */
+  /** Display name: the default branch, the injected ref, "HEAD", or "索引". */
   label: string;
   /** Full sha of the base commit; null when the base is the index. */
   sha: string | null;
-  kind: "default-branch" | "head" | "index";
+  kind: "default-branch" | "env" | "head" | "index";
   /** Resolved ref of the default branch, null for the other kinds. */
   ref: string | null;
 }
@@ -62,10 +62,19 @@ export interface WorkspaceDiffBase {
 /** Which range the file list covers. */
 export type WorkspaceDiffScope =
   | { kind: "all" }
+  | { kind: "uncommitted" }
   | { kind: "commit"; sha: string; shortSha: string; subject: string };
+
+/** A merge/rebase/cherry-pick/revert that has not finished yet. */
+export type TransientGitOperation =
+  | "merge"
+  | "rebase"
+  | "cherry-pick"
+  | "revert";
 
 export type WorkspaceDiffResult =
   | { kind: "not-a-repo" }
+  | { kind: "transient"; operation: TransientGitOperation }
   | {
       kind: "ok";
       base: WorkspaceDiffBase;
@@ -76,6 +85,12 @@ export type WorkspaceDiffResult =
 
 /** Per-file hunk line cap — beyond this the panel shows a truncation note. */
 export const MAX_DIFF_LINES = 2000;
+/**
+ * External base injection for the "all changes" range, mirroring Claude Code's
+ * `CLAUDE_CODE_BASE_REF`: a sandbox / managed container knows what the base
+ * should be and cannot rely on the local fork point being it.
+ */
+const BASE_REF_ENV = "WAVE_DIFF_BASE_REF";
 /** Untracked files larger than this are treated as binary (never read). */
 const MAX_UNTRACKED_BYTES = 2 * 1024 * 1024;
 const GIT_BUFFER = 16 * 1024 * 1024;
@@ -210,20 +225,17 @@ interface ResolvedBase {
  *
  * `refs/remotes/origin/HEAD` names that branch; without it (a repo that never
  * had a default branch set) fall back to a local `main`/`master`, and without
- * either — or without a common ancestor — fall back to `HEAD`.
+ * either — or without a common ancestor — fall back to `HEAD`. An injected
+ * `WAVE_DIFF_BASE_REF` is tried before all of them and simply loses its turn
+ * when the ref it names does not resolve.
  */
 async function resolveDiffBase(
   cwd: string,
   headSha: string | null,
 ): Promise<ResolvedBase> {
-  if (!headSha) {
-    return {
-      base: { label: "索引", sha: null, kind: "index", ref: null },
-      rev: "--cached",
-      commitsFrom: null,
-    };
-  }
+  if (!headSha) return indexBase();
 
+  const injected = (process.env[BASE_REF_ENV] ?? "").trim();
   const remoteHead = (
     await git(cwd, [
       "symbolic-ref",
@@ -232,11 +244,29 @@ async function resolveDiffBase(
       "refs/remotes/origin/HEAD",
     ]).catch(() => "")
   ).trim();
-  const candidates: { ref: string; label: string }[] = [];
+  const candidates: {
+    ref: string;
+    label: string;
+    kind: WorkspaceDiffBase["kind"];
+  }[] = [];
+  if (injected)
+    candidates.push({ ref: injected, label: injected, kind: "env" });
   if (remoteHead)
-    candidates.push({ ref: `refs/remotes/${remoteHead}`, label: remoteHead });
-  candidates.push({ ref: "refs/heads/main", label: "main" });
-  candidates.push({ ref: "refs/heads/master", label: "master" });
+    candidates.push({
+      ref: `refs/remotes/${remoteHead}`,
+      label: remoteHead,
+      kind: "default-branch",
+    });
+  candidates.push({
+    ref: "refs/heads/main",
+    label: "main",
+    kind: "default-branch",
+  });
+  candidates.push({
+    ref: "refs/heads/master",
+    label: "master",
+    kind: "default-branch",
+  });
 
   for (const candidate of candidates) {
     const exists = await git(cwd, [
@@ -259,19 +289,69 @@ async function resolveDiffBase(
       base: {
         label: candidate.label,
         sha: mergeBase,
-        kind: "default-branch",
-        ref: candidate.ref,
+        kind: candidate.kind,
+        // The injected ref is whatever the caller wrote (possibly a sha), so
+        // only a real default branch contributes a ref to display.
+        ref: candidate.kind === "default-branch" ? candidate.ref : null,
       },
       rev: mergeBase,
       commitsFrom: mergeBase,
     };
   }
+  return headBase(headSha);
+}
+
+/** `--cached` semantics: a repository that has no commit yet. */
+function indexBase(): ResolvedBase {
+  return {
+    base: { label: "索引", sha: null, kind: "index", ref: null },
+    rev: "--cached",
+    commitsFrom: null,
+  };
+}
+
+/** `HEAD` semantics: the "未提交改动" range, and the no-default-branch fallback. */
+function headBase(headSha: string): ResolvedBase {
   return {
     base: { label: "HEAD", sha: headSha, kind: "head", ref: null },
     rev: "HEAD",
     // HEAD..HEAD is empty by construction, so no log call is needed.
     commitsFrom: null,
   };
+}
+
+/**
+ * The unfinished operation whose incoming changes are sitting in the worktree,
+ * or null. Same list, same reasoning and same `fs.access` probe as Claude
+ * Code's `isInTransientGitState()`: those changes were not made by this session
+ * on purpose, so presenting them as the user's own diff is wrong.
+ */
+async function transientOperation(
+  root: string,
+): Promise<TransientGitOperation | null> {
+  // The marker files live in the git dir, which is NOT `<root>/.git` inside a
+  // worktree (it is `<common>/worktrees/<name>`) — resolve it instead of
+  // assuming the layout.
+  const gitDir = (
+    await git(root, ["rev-parse", "--absolute-git-dir"]).catch(() => "")
+  ).trim();
+  if (!gitDir) return null;
+  const markers: { file: string; operation: TransientGitOperation }[] = [
+    { file: "MERGE_HEAD", operation: "merge" },
+    { file: "REBASE_HEAD", operation: "rebase" },
+    { file: "CHERRY_PICK_HEAD", operation: "cherry-pick" },
+    { file: "REVERT_HEAD", operation: "revert" },
+  ];
+  for (const marker of markers) {
+    const present = await fs.promises
+      .access(path.join(gitDir, marker.file))
+      .then(
+        () => true,
+        () => false,
+      );
+    if (present) return marker.operation;
+  }
+  return null;
 }
 
 /** The session's own commits (merges excluded — they replay others' work). */
@@ -441,10 +521,12 @@ async function diffForUntracked(
  *   own range. Ignored when that commit is not in the range any more (a rebase
  *   leaves the old object dangling, so existence is not the test — membership
  *   is); the reply's `scope` then says which range was actually used.
+ * @param options.uncommitted Measure against `HEAD` instead of the fork point
+ *   (the panel's "未提交改动" range). Ignored when `commit` selects a range.
  */
 export async function getWorkspaceDiff(
   cwd: string,
-  options: { commit?: string } = {},
+  options: { commit?: string; uncommitted?: boolean } = {},
 ): Promise<WorkspaceDiffResult> {
   try {
     await git(cwd, ["rev-parse", "--is-inside-work-tree"]);
@@ -463,6 +545,13 @@ export async function getWorkspaceDiff(
     (await git(cwd, ["rev-parse", "--show-toplevel"]).catch(() => "")).trim() ||
     cwd;
 
+  // A half-finished merge/rebase/cherry-pick/revert means the worktree holds
+  // incoming changes this session did not make — no range can describe that
+  // honestly, so the panel goes empty and says why (spec「会话变更差异面板」
+  // 场景 13).
+  const operation = await transientOperation(root);
+  if (operation) return { kind: "transient", operation };
+
   const headSha =
     (
       await git(root, ["rev-parse", "--verify", "HEAD"]).catch(() => "")
@@ -475,12 +564,26 @@ export async function getWorkspaceDiff(
   const picked = options.commit
     ? commits.find((commit) => commit.sha === options.commit)
     : undefined;
+  const uncommitted = !picked && options.uncommitted === true;
   const scope: WorkspaceDiffScope = picked
     ? { kind: "commit", ...picked }
-    : { kind: "all" };
+    : uncommitted
+      ? { kind: "uncommitted" }
+      : { kind: "all" };
   // `<sha>^!` is the commit's own diff (and prints the whole tree for a root
   // commit, which `<sha>^ <sha>` cannot).
-  const rev = picked ? `${picked.sha}^!` : resolved.rev;
+  const rev = picked
+    ? `${picked.sha}^!`
+    : uncommitted
+      ? headSha
+        ? "HEAD"
+        : "--cached"
+      : resolved.rev;
+  const base = uncommitted
+    ? headSha
+      ? headBase(headSha).base
+      : indexBase().base
+    : resolved.base;
 
   const entries = parseNameStatusZ(
     await git(root, diffArgs(rev, ["--name-status", "-z"])).catch(() => ""),
@@ -500,9 +603,9 @@ export async function getWorkspaceDiff(
       await diffForTracked(root, rev, entry, stats.get(entry.path), patches),
     );
   }
-  // Untracked files live in the worktree, so they only belong to the
-  // all-changes range — a single commit cannot contain them.
-  if (scope.kind === "all") {
+  // Untracked files live in the worktree, so they belong to every range that
+  // includes it — a single commit cannot contain them.
+  if (scope.kind !== "commit") {
     const untracked = await git(root, [
       "ls-files",
       "--others",
@@ -513,5 +616,5 @@ export async function getWorkspaceDiff(
       files.push(await diffForUntracked(root, relPath));
     }
   }
-  return { kind: "ok", base: resolved.base, scope, commits, files };
+  return { kind: "ok", base, scope, commits, files };
 }
