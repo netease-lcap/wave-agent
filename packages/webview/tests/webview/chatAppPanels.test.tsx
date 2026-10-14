@@ -948,7 +948,7 @@ describe("session-level panel groups", () => {
     expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
   });
 
-  it("remembers the diff sidebar visibility and the selected commit per session", () => {
+  it("remembers the diff sidebar visibility and the viewing range per session", () => {
     window.waveHostType = "desktop";
     const { vscode } = renderDesktop({ workdir: "/work/a" });
     pushTree(["s1", "s2"]);
@@ -1006,7 +1006,7 @@ describe("session-level panel groups", () => {
       result: diffResult,
     });
     expect(screen.getByTestId("diff-sidebar")).toBeInTheDocument();
-    expect(screen.getByTestId("diff-commit-all")).toHaveAttribute(
+    expect(screen.getByTestId("diff-scope-all")).toHaveAttribute(
       "aria-pressed",
       "true",
     );

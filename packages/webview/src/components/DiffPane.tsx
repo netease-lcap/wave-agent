@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import type { VsCodeApi } from "../types";
 import { formatCodeComment } from "../utils/codeComment";
+import { diffSelectionKey, type DiffSelection } from "../utils/sessionUiStore";
 import { useHostMessage } from "../utils/useHostMessage";
 import {
   DIFF_COLLAPSE_THRESHOLD,
@@ -51,17 +52,26 @@ export interface WorkspaceDiffCommit {
 export interface WorkspaceDiffBase {
   label: string;
   sha: string | null;
-  kind: "default-branch" | "head" | "index";
+  kind: "default-branch" | "env" | "head" | "index";
   ref: string | null;
 }
 
 export type WorkspaceDiffScope =
   | { kind: "all" }
+  | { kind: "uncommitted" }
   | { kind: "commit"; sha: string; shortSha: string; subject: string };
+
+/** A merge/rebase/cherry-pick/revert still in flight (host answers this). */
+export type TransientGitOperation =
+  | "merge"
+  | "rebase"
+  | "cherry-pick"
+  | "revert";
 
 type DiffState =
   | { kind: "loading" }
   | { kind: "not-a-repo" }
+  | { kind: "transient"; operation: TransientGitOperation }
   | {
       kind: "ok";
       base?: WorkspaceDiffBase;
@@ -78,6 +88,27 @@ const STATUS_LABEL: Record<WorkspaceFileStatus, string> = {
   deleted: "删除",
   renamed: "重命名",
   untracked: "未跟踪",
+};
+
+/** Why the panel is empty while a git operation is half-finished. */
+const TRANSIENT_LABEL: Record<TransientGitOperation, string> = {
+  merge: "正在合并（merge）",
+  rebase: "正在变基（rebase）",
+  "cherry-pick": "正在拣选提交（cherry-pick）",
+  revert: "正在回滚（revert）",
+};
+
+/** The panel's own selection for a range the host echoed back. */
+function selectionFromScope(scope: WorkspaceDiffScope): DiffSelection {
+  if (scope.kind === "commit") return { kind: "commit", sha: scope.sha };
+  if (scope.kind === "uncommitted") return { kind: "uncommitted" };
+  return { kind: "all" };
+}
+
+/** Labels of the two named ranges ("全部改动" / "未提交改动"). */
+const RANGE_LABEL: Record<"all" | "uncommitted", string> = {
+  all: "全部改动",
+  uncommitted: "未提交改动",
 };
 
 export interface DiffPaneProps {
@@ -97,15 +128,15 @@ export interface DiffPaneProps {
   /** Sidebar (file tree + commit list) visibility — per-session state. */
   treeVisible: boolean;
   onTreeVisibleChange: (visible: boolean) => void;
-  /** Selected commit sha, or null for "all changes". Per-session state. */
-  selectedCommit: string | null;
-  onSelectedCommitChange: (sha: string | null) => void;
+  /** Viewing range (all changes / uncommitted / one commit) — per-session. */
+  selection: DiffSelection;
+  onSelectionChange: (selection: DiffSelection) => void;
 }
 
 /**
- * Workspace git-diff panel: a sidebar (file tree with the commit list under it)
- * plus an accordion of per-file collapsible diff blocks that can render unified
- * or side by side.
+ * Workspace git-diff panel: a sidebar (file tree, the range switch and the
+ * commit list under it) plus an accordion of per-file collapsible diff blocks
+ * that can render unified or side by side.
  */
 export const DiffPane: React.FC<DiffPaneProps> = ({
   vscode,
@@ -118,8 +149,8 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   onAddComment,
   treeVisible,
   onTreeVisibleChange,
-  selectedCommit,
-  onSelectedCommitChange,
+  selection,
+  onSelectionChange,
 }) => {
   const [state, setState] = useState<DiffState>({ kind: "loading" });
   // Mutual-exclusion accordion: at most one file is expanded at a time, so the
@@ -134,11 +165,11 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   // True while a refresh request is in flight; drives the toolbar spinner.
   const [refreshing, setRefreshing] = useState(false);
   const [narrow, setNarrow] = useState(false);
-  // Monotonic request id: a commit switch and a refresh can be in flight at the
+  // Monotonic request id: a range switch and a refresh can be in flight at the
   // same time, and the late reply of the previous range must never be painted.
   const requestIdRef = useRef(0);
   /** Range the last request asked for — see the selection-change effect below. */
-  const requestedCommitRef = useRef(selectedCommit);
+  const requestedKeyRef = useRef(diffSelectionKey(selection));
 
   // Inline diff-line comment box (GitHub/GitLab style): hovering a line shows a
   // "+" button; clicking opens a comment box under that line whose contents
@@ -186,31 +217,32 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   // the session/workdir context changes); soft refresh keeps showing the old
   // content until the new diff arrives, so auto-refreshes don't flicker.
   const refresh = useCallback(
-    (hard = false, commit: string | null = selectedCommit) => {
+    (hard = false, next: DiffSelection = selection) => {
       if (hard) setState({ kind: "loading" });
       setRefreshing(true);
       // A new result rewrites the hunks, so any open comment box + draft is
       // stale (spec「行评论」场景 4).
       closeComment();
       requestIdRef.current += 1;
-      requestedCommitRef.current = commit;
+      requestedKeyRef.current = diffSelectionKey(next);
       vscode.postMessage({
         command: "desktopGetWorkspaceDiff",
         ...(paneId ? { paneId } : {}),
         requestId: requestIdRef.current,
-        ...(commit ? { commit } : {}),
+        ...(next.kind === "commit" ? { commit: next.sha } : {}),
+        ...(next.kind === "uncommitted" ? { scope: "uncommitted" } : {}),
       });
     },
-    [vscode, paneId, selectedCommit, closeComment],
+    [vscode, paneId, selection, closeComment],
   );
 
   // Switching the range re-points the accordion at a different file list.
-  const pickCommit = (sha: string | null) => {
+  const pickSelection = (next: DiffSelection) => {
     // Compared against the requested range, not the prop: the prop is echoed
     // back by the parent, so a double click would otherwise fire twice.
-    if (sha === requestedCommitRef.current) return;
-    onSelectedCommitChange(sha);
-    refresh(false, sha);
+    if (diffSelectionKey(next) === requestedKeyRef.current) return;
+    onSelectionChange(next);
+    refresh(false, next);
   };
 
   // Layout-only switch: no request, no re-pairing of the hunks (both views read
@@ -233,6 +265,10 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
       if (requestId !== undefined && requestId !== requestIdRef.current) return;
       const result = message.result;
       setRefreshing(false);
+      if (result?.kind === "transient") {
+        setState({ kind: "transient", operation: result.operation });
+        return;
+      }
       if (result?.kind !== "ok") {
         setState({ kind: "not-a-repo" });
         return;
@@ -254,10 +290,18 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
       setExpandedPath((prev) => nextExpandedPath(prev, files, collapseAll));
       // The host is authoritative about the range it answered with: a commit
       // that no longer exists fell back to "all changes", so mirror that in the
-      // per-session selection instead of leaving a dead sha selected.
+      // per-session selection instead of leaving a dead sha selected. Writing
+      // the requested key too keeps the effect below from re-asking for the
+      // range the host just refused.
       const scope = result.scope;
-      if (scope && scope.kind !== "commit" && selectedCommit !== null)
-        onSelectedCommitChange(null);
+      const hostSelection = scope ? selectionFromScope(scope) : null;
+      if (
+        hostSelection &&
+        diffSelectionKey(hostSelection) !== diffSelectionKey(selection)
+      ) {
+        requestedKeyRef.current = diffSelectionKey(hostSelection);
+        onSelectionChange(hostSelection);
+      }
     },
     { paneId },
   );
@@ -277,17 +321,18 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   }, [visible, sessionId, workdir, isStreaming, refresh]);
 
   // The selected range is per-session state owned by the parent, which restores
-  // it one commit AFTER this pane first sees the new session (child effects run
+  // it one render AFTER this pane first sees the new session (child effects run
   // before the parent's swap effect) — so the context-change trigger above fires
-  // with the OUTGOING session's commit. Re-issue whenever the range the panel is
-  // told to show differs from the one it last asked for; the requestId guard then
-  // drops the stale reply.
+  // with the OUTGOING session's range. Re-issue whenever the range the panel is
+  // told to show differs from the one it last asked for; the requestId guard
+  // then drops the stale reply.
   useEffect(() => {
-    if (requestedCommitRef.current === selectedCommit) return;
-    requestedCommitRef.current = selectedCommit;
+    const key = diffSelectionKey(selection);
+    if (requestedKeyRef.current === key) return;
+    requestedKeyRef.current = key;
     if (!visible) return;
-    refresh(false, selectedCommit);
-  }, [selectedCommit, visible, refresh]);
+    refresh(false, selection);
+  }, [selection, visible, refresh]);
 
   // Auto-hide the sidebar when the panel leaves too little room for the diff
   // itself (spec「文件树与导航」场景 5). Only the layout degrades — the
@@ -347,6 +392,9 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
       : base
         ? [base.label, base.ref, base.sha].filter(Boolean).join(" ")
         : undefined;
+  // The host is authoritative: a range with nothing in it says so in its own
+  // words ("未提交改动" vs. the fork-point range).
+  const emptyText = scope?.kind === "uncommitted" ? "无未提交改动" : "无改动";
   const additions = files.reduce((sum, file) => sum + file.additions, 0);
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
 
@@ -430,8 +478,11 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   };
 
   const commits = state.kind === "ok" ? state.commits : [];
-  const showSidebar =
-    treeVisible && !narrow && state.kind === "ok" && files.length > 0;
+  // The range switch and the commit list are the way back when a range is
+  // empty (spec「差异面板查看范围」场景 1), so the sidebar outlives the file
+  // list: only its tree needs files to show.
+  const showSidebar = treeVisible && !narrow && state.kind === "ok";
+  const hasCommits = commits.length > 0;
 
   return (
     <PaneShell
@@ -443,7 +494,11 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
         <>
           <span className="desktop-panel-toolbar-title">差异</span>
           {range && (
-            <span className="diff-range" title={rangeTitle}>
+            <span
+              className="diff-range"
+              title={rangeTitle}
+              data-testid="diff-range"
+            >
               {range.lead && (
                 <span className="diff-range-lead">{range.lead}</span>
               )}
@@ -515,36 +570,66 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
       <div className="diff-pane-layout">
         {showSidebar && (
           <div className="diff-sidebar" data-testid="diff-sidebar">
-            <DiffFileTree
-              files={files}
-              selectedPath={expandedPath ?? null}
-              onSelect={selectFromTree}
-            />
-            {/* Commit selection sits under the tree (spec「提交选择」场景 1);
-                a range with no commits renders no list at all (场景 4). */}
-            {commits.length > 0 && (
+            {files.length > 0 && (
+              <DiffFileTree
+                files={files}
+                selectedPath={expandedPath ?? null}
+                onSelect={selectFromTree}
+              />
+            )}
+            {/* One range at a time, the two named ranges first (spec「差异面板
+                查看范围」场景 1); a commit selection shows as its own row. */}
+            <div className="diff-scope" data-testid="diff-scope">
+              <div
+                className="diff-view-switch"
+                role="group"
+                aria-label="查看范围"
+              >
+                {(["all", "uncommitted"] as const).map((kind) => (
+                  <button
+                    key={kind}
+                    className={`diff-view-option${
+                      selection.kind === kind ? " is-active" : ""
+                    }`}
+                    aria-pressed={selection.kind === kind}
+                    data-testid={`diff-scope-${kind}`}
+                    onClick={() => pickSelection({ kind })}
+                  >
+                    {RANGE_LABEL[kind]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Commit selection sits under the range switch (spec「提交选择」
+                场景 1); a range with no commits renders no list at all (场景 4). */}
+            {hasCommits && (
               <div className="diff-commits" data-testid="diff-commits">
-                <button
-                  className={`diff-commit${
-                    selectedCommit === null ? " is-selected" : ""
-                  }`}
-                  aria-pressed={selectedCommit === null}
-                  data-testid="diff-commit-all"
-                  onClick={() => pickCommit(null)}
+                <div
+                  className="diff-commits-title"
+                  data-testid="diff-commits-title"
                 >
-                  <span className="diff-commit-subject">全部改动</span>
-                </button>
+                  提交
+                  <span className="diff-commits-count">{commits.length}</span>
+                </div>
                 {commits.map((commit) => (
                   <button
                     key={commit.sha}
                     className={`diff-commit${
-                      selectedCommit === commit.sha ? " is-selected" : ""
+                      selection.kind === "commit" &&
+                      selection.sha === commit.sha
+                        ? " is-selected"
+                        : ""
                     }`}
-                    aria-pressed={selectedCommit === commit.sha}
+                    aria-pressed={
+                      selection.kind === "commit" &&
+                      selection.sha === commit.sha
+                    }
                     data-testid="diff-commit"
                     data-sha={commit.sha}
                     title={`${commit.subject} (${commit.sha})`}
-                    onClick={() => pickCommit(commit.sha)}
+                    onClick={() =>
+                      pickSelection({ kind: "commit", sha: commit.sha })
+                    }
                   >
                     <span className="diff-commit-sha">{commit.shortSha}</span>
                     <span className="diff-commit-subject">
@@ -563,8 +648,13 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
           {state.kind === "not-a-repo" && (
             <PanePlaceholder>非 git 仓库</PanePlaceholder>
           )}
+          {state.kind === "transient" && (
+            <PanePlaceholder>
+              {`${TRANSIENT_LABEL[state.operation]}，暂不展示差异`}
+            </PanePlaceholder>
+          )}
           {state.kind === "ok" && state.files.length === 0 && (
-            <PanePlaceholder>无改动</PanePlaceholder>
+            <PanePlaceholder>{emptyText}</PanePlaceholder>
           )}
           {state.kind === "ok" && state.collapseAll && (
             <div className="diff-notice" data-testid="diff-collapse-notice">

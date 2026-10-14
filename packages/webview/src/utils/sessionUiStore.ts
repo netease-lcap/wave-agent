@@ -83,11 +83,13 @@ export interface SessionUiState {
    */
   diffTreeVisible: boolean;
   /**
-   * Diff panel: the commit sha currently selected as the viewing range, or null
-   * for "all changes" (spec「提交选择」场景 5: 切换会话保持当前选择，该提交已
-   * 不存在时回落「全部改动」).
+   * Diff panel: which viewing range is selected for this session — the
+   * fork-point base ("all"), `HEAD` ("uncommitted"), or one commit of the
+   * session's range (spec desktop-panels.md「差异面板查看范围」场景 5: 随会话
+   * 记忆，切走切回保持；某 commit 在当前仓库不存在时回落 "all"，见「提交选择」
+   * 场景 5).
    */
-  diffSelectedCommit: string | null;
+  diffSelection: DiffSelection;
   /**
    * This session's remote port forward (scenario 18). The tunnel is owned by
    * the session, not the pane: it survives panel close, host switches, pane
@@ -101,6 +103,22 @@ export interface SessionUiState {
 
 export type SessionUiKey = string;
 
+/**
+ * The diff panel's viewing range. One value, three mutually exclusive kinds —
+ * a commit selection and the two named ranges can never be active at once.
+ */
+export type DiffSelection =
+  | { kind: "all" }
+  | { kind: "uncommitted" }
+  | { kind: "commit"; sha: string };
+
+/** Stable identity of a selection, for comparing what was asked vs. what is now. */
+export function diffSelectionKey(selection: DiffSelection): string {
+  return selection.kind === "commit"
+    ? `commit:${selection.sha}`
+    : selection.kind;
+}
+
 export function emptySessionUiState(): SessionUiState {
   return {
     checked: [],
@@ -110,7 +128,7 @@ export function emptySessionUiState(): SessionUiState {
     panelExpanded: false,
     planContent: null,
     diffTreeVisible: true,
-    diffSelectedCommit: null,
+    diffSelection: { kind: "all" },
     forward: null,
     forwardError: null,
   };

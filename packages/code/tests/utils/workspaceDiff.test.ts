@@ -29,6 +29,8 @@ const h = vi.hoisted(() => ({
   // Untracked-file fs stubs.
   statResult: null as null | { isFile: boolean; size: number },
   fileContent: null as null | Buffer,
+  // Filename of the in-flight-operation marker that exists in the git dir.
+  transientMarker: null as null | string,
 }));
 
 vi.mock("node:child_process", async () => {
@@ -58,6 +60,11 @@ vi.mock("node:fs", async () => {
       readFile: vi.fn(async () => {
         if (!h.fileContent) throw new Error("ENOENT");
         return h.fileContent;
+      }),
+      // Transient-state probe: only the stubbed marker file exists.
+      access: vi.fn(async (file: string) => {
+        if (!h.transientMarker || !String(file).endsWith(h.transientMarker))
+          throw new Error("ENOENT");
       }),
     },
   };
@@ -91,6 +98,10 @@ interface StubMap {
   patch?: Record<string, string>;
   /** `rev-parse --show-toplevel`. */
   toplevel?: string;
+  /** Ref injected via WAVE_DIFF_BASE_REF; its merge base is `envbase`. */
+  injectedRef?: string;
+  /** The operation marker present in the git dir (see transientOperation). */
+  transientMarker?: string;
 }
 
 /** The whole-tree patch call: `git diff <rev>` with no pathspec and no `--name-status`/`--numstat`. */
@@ -113,11 +124,13 @@ function stubGit(map: StubMap = {}) {
   const originHead =
     map.originHead === undefined ? "origin/main" : map.originHead;
   const mergeBase = map.mergeBase === undefined ? "base123" : map.mergeBase;
+  h.transientMarker = map.transientMarker ?? null;
   h.gitHandler = (args) => {
     const key = args.join(" ");
     h.gitCommands.push(key);
     if (key === "rev-parse --is-inside-work-tree") return "true\n";
     if (key === "rev-parse --show-toplevel") return `${map.toplevel ?? ""}\n`;
+    if (key === "rev-parse --absolute-git-dir") return "/repo/.git\n";
     if (key === "rev-parse --verify HEAD") {
       if (!hasHead) throw new Error("fatal: Needed a single revision");
       return `${HEAD_SHA}\n`;
@@ -128,6 +141,8 @@ function stubGit(map: StubMap = {}) {
       args[2] === "--quiet"
     ) {
       const ref = args[3] ?? "";
+      if (map.injectedRef && ref === `${map.injectedRef}^{commit}`)
+        return "injected123\n";
       if (ref.startsWith("refs/remotes/"))
         return map.staleRemote
           ? (() => {
@@ -150,6 +165,9 @@ function stubGit(map: StubMap = {}) {
     }
     if (args[0] === "merge-base") {
       if (mergeBase === null) throw new Error("fatal: no merge base");
+      // The injected base has its own fork point, so a test can tell which
+      // candidate actually won.
+      if (map.injectedRef && args[2] === map.injectedRef) return "envbase\n";
       return `${mergeBase}\n`;
     }
     if (args[0] === "log") return map.log ?? "";
@@ -174,7 +192,7 @@ function stubGit(map: StubMap = {}) {
 /** Successful result or a loud failure (keeps each test free of narrowing). */
 async function ok(
   cwd = CWD,
-  options?: { commit?: string },
+  options?: { commit?: string; uncommitted?: boolean },
 ): Promise<Extract<WorkspaceDiffResult, { kind: "ok" }>> {
   const result = await getWorkspaceDiff(cwd, options);
   if (result.kind !== "ok")
@@ -191,9 +209,11 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.statResult = null;
   h.fileContent = null;
+  h.transientMarker = null;
   h.gitCommands = [];
   h.wholeTreeCalls = [];
   h.perFileCalls = [];
+  delete process.env.WAVE_DIFF_BASE_REF;
 });
 
 describe("getWorkspaceDiff", () => {
@@ -656,5 +676,110 @@ describe("getWorkspaceDiff", () => {
     expect(result.scope).toEqual({ kind: "all" });
     for (const call of h.gitCommands.filter((c) => c.startsWith("diff ")))
       expect(call).toContain("base123");
+  });
+
+  // -- uncommitted scope (spec 差异面板查看范围) ------------------------------
+
+  it("measures the uncommitted range against HEAD and keeps the commit list", async () => {
+    const sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    stubGit({
+      log: `${sha} first commit\0`,
+      nameStatus: "M\0src/a.ts\0",
+      numstat: "2\t1\tsrc/a.ts\0",
+      untracked: "notes.txt\0",
+    });
+    h.fileContent = Buffer.from("hello\n");
+    const result = await ok(CWD, { uncommitted: true });
+    expect(result.scope).toEqual({ kind: "uncommitted" });
+    expect(result.base).toEqual({
+      label: "HEAD",
+      sha: HEAD_SHA,
+      kind: "head",
+      ref: null,
+    });
+    for (const call of h.gitCommands.filter((c) => c.startsWith("diff ")))
+      expect(call).toContain("HEAD");
+    // The session's own commits still belong to the baseline range, so the
+    // panel can offer them as a way out of this range (spec 场景 3).
+    expect(result.commits.map((c) => c.sha)).toEqual([sha]);
+    // Untracked files live in the worktree, so they count here too.
+    expect(result.files.map((f) => f.path)).toContain("notes.txt");
+  });
+
+  it("falls back to the index for the uncommitted range without a HEAD", async () => {
+    stubGit({ hasHead: false, untracked: "notes.txt\0" });
+    h.fileContent = Buffer.from("hello\n");
+    const result = await ok(CWD, { uncommitted: true });
+    expect(result.scope).toEqual({ kind: "uncommitted" });
+    expect(result.base.kind).toBe("index");
+    for (const call of h.gitCommands.filter((c) => c.startsWith("diff ")))
+      expect(call).toContain("--cached");
+  });
+
+  it("lets a commit outrank the uncommitted range", async () => {
+    const sha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    stubGit({ log: `${sha} first commit\0` });
+    const result = await ok(CWD, { commit: sha, uncommitted: true });
+    expect(result.scope).toEqual({
+      kind: "commit",
+      sha,
+      shortSha: "aaaaaaa",
+      subject: "first commit",
+    });
+  });
+
+  // -- injected base (WAVE_DIFF_BASE_REF) ------------------------------------
+
+  it("prefers the injected base ref over the discovered default branch", async () => {
+    stubGit({ injectedRef: "develop" });
+    process.env.WAVE_DIFF_BASE_REF = "develop";
+    const result = await ok();
+    expect(result.base).toEqual({
+      label: "develop",
+      sha: "envbase",
+      kind: "env",
+      ref: null,
+    });
+    for (const call of h.gitCommands.filter((c) => c.startsWith("diff ")))
+      expect(call).toContain("envbase");
+  });
+
+  it("falls through to the default branch when the injected ref does not resolve", async () => {
+    // The stub only resolves the refs it is told about, so "gone" is a ref that
+    // does not exist — the candidate loses its turn instead of ending the walk.
+    stubGit();
+    process.env.WAVE_DIFF_BASE_REF = "gone";
+    const result = await ok();
+    expect(result.base).toEqual({
+      label: "origin/main",
+      sha: "base123",
+      kind: "default-branch",
+      ref: "refs/remotes/origin/main",
+    });
+  });
+
+  // -- transient git state (spec 场景 13) ------------------------------------
+
+  it("goes empty while a merge/rebase/cherry-pick/revert is in flight", async () => {
+    stubGit({ transientMarker: "REBASE_HEAD", nameStatus: "M\0src/a.ts\0" });
+    expect(await getWorkspaceDiff(CWD)).toEqual({
+      kind: "transient",
+      operation: "rebase",
+    });
+    // The incoming changes are not the user's, so nothing is diffed at all.
+    expect(h.gitCommands.some((c) => c.startsWith("diff "))).toBe(false);
+  });
+
+  it("inspects the worktree's own git dir, not <root>/.git", async () => {
+    stubGit({ transientMarker: "MERGE_HEAD" });
+    // The probe path is the resolved git dir; a wrong assumption about the
+    // layout inside a worktree would silently disable the check.
+    expect(await getWorkspaceDiff(CWD)).toEqual({
+      kind: "transient",
+      operation: "merge",
+    });
+    expect(fs.promises.access).toHaveBeenCalledWith(
+      path.join("/repo/.git", "MERGE_HEAD"),
+    );
   });
 });

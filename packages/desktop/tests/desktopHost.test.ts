@@ -11105,6 +11105,33 @@ describe("desktopGetWorkspaceDiff (diff panel)", () => {
     });
   });
 
+  it("forwards the uncommitted viewing range to the CLI", async () => {
+    const { host } = await readyHost();
+    h.workspaceDiffResult = { kind: "ok", base: null, commits: [], files: [] };
+
+    await host.handleWebviewMessage({
+      command: "desktopGetWorkspaceDiff",
+      scope: "uncommitted",
+    });
+
+    expect(h.clientRequests).toContainEqual({
+      method: "getWorkspaceDiff",
+      params: { workdir: "/work/a", scope: "uncommitted" },
+    });
+  });
+
+  it("passes a transient git state through to the panel", async () => {
+    const { host, send } = await readyHost();
+    h.workspaceDiffResult = { kind: "transient", operation: "rebase" };
+
+    await host.handleWebviewMessage({ command: "desktopGetWorkspaceDiff" });
+
+    const reply = send.mock.calls
+      .map(([, msg]) => msg as Record<string, unknown>)
+      .find((msg) => msg.command === "desktopWorkspaceDiff");
+    expect(reply?.result).toEqual({ kind: "transient", operation: "rebase" });
+  });
+
   it("turns a failed diff request into the non-repo placeholder", async () => {
     const { host, send } = await readyHost();
     h.workspaceDiffError = new Error("Host unreachable");
