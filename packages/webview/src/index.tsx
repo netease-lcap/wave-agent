@@ -4,6 +4,7 @@ import { ChatApp } from "./components/ChatApp";
 import { DesktopApp } from "./components/DesktopApp";
 import "./styles/globals.css";
 import "./styles/host-desktop.css";
+import "./styles/remote-page.css";
 import "@vscode/codicons/dist/codicon.css";
 
 // window.acquireVsCodeApi / window.waveHostType are declared in types/index.ts.
