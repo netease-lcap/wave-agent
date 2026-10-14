@@ -23,10 +23,14 @@
  * silently ignored.
  *
  * Login is not this page's own: it rides the enterprise login the user already
- * has (same origin, same `localStorage.token`). When that credential is missing
- * or has expired, the page hands the user to the enterprise login page and asks
- * to be returned to this same address afterwards (`hopToLogin`) — the one case
- * where the page navigates away instead of reporting a status.
+ * has (same origin, same `localStorage.token`). That access token lives an hour
+ * while the refresh token behind it lives a month, so an expired one is renewed
+ * in place (`renewSession`) instead of being paid for with a login — this page
+ * stays open for days, and a token that ages out under it is the norm, not an
+ * error. Only a renewal that comes back empty-handed hands the user to the
+ * enterprise login page and asks to be returned to this same address afterwards
+ * (`hopToLogin`) — the one case where the page navigates away instead of
+ * reporting a status.
  *
  * Protocol note: the relay's handshake (`authFrame` below) belongs to the server
  * work (vusion/codechat#40). Its shape is fixed there; the frame types are kept
@@ -116,6 +120,17 @@
    */
   var LOGIN_PATH = "/login";
   var REDIRECT_PARAM = "redirect";
+  /**
+   * The rest of the enterprise's stored session and the endpoint that renews it
+   * — the other half of the same coupling: these four names and the shape of
+   * that answer belong to the enterprise frontend, so they are written once,
+   * here. Getting one wrong does not break the page: it degrades to the login
+   * hop below, which is the failure mode we chose over a hard dependency.
+   */
+  var REFRESH_KEY = "refreshToken";
+  var EXPIRES_KEY = "expiresAt";
+  var USER_KEY = "user";
+  var REFRESH_PATH = "/api/auth/refresh";
   /** How long one automatic login round-trip counts as "just happened" (ms). */
   var LOGIN_HOP_MS = 30000;
   var LOGIN_HOP_KEY = "wave_remote_login_hop";
@@ -145,6 +160,10 @@
   var credential = "";
   /** Browser storage is unusable, so a login page could not persist a token either. */
   var storageBlocked = false;
+  /** This page's one automatic renewal has been spent (see `renewSession`). */
+  var renewedOnce = false;
+  /** The renewal in flight, shared by every caller while it lasts. */
+  var refreshPromise = null;
   var heartbeatTimer = null;
   var nextId = 1;
   var pending = {};
@@ -201,16 +220,17 @@
   // Both are same-origin facts rather than build-time config: the page is
   // served from `/remote/` on the relay's own domain, so its socket address is
   // derivable, and the credential is the enterprise login the user already has
-  // (same origin ⇒ same storage). The enterprise frontend owns that key name
-  // and its expiry — `localStorage.token` is a coupling we do not control, so
-  // it is named exactly once, here.
+  // (same origin ⇒ same storage). The enterprise frontend owns those key names,
+  // when they expire, and the endpoint that renews them — a coupling we do not
+  // control, so every name of theirs is spelled out once, in the constants at
+  // the top of this file, and nowhere else.
 
   /** Relay channel path; mirrors `hostChannelPath` from `GET /api/relay/config`. */
   var CHANNEL_PATH = "/v1/hosts/ws/{hostId}/subscribe";
 
-  function readCredential() {
+  function readStored(key) {
     try {
-      return window.localStorage.getItem("token") || "";
+      return window.localStorage.getItem(key) || "";
     } catch (err) {
       // Storage blocked (private mode, partitioned context): indistinguishable
       // from "not logged in" here, and the relay would refuse us anyway. It also
@@ -220,6 +240,102 @@
       warnOnce("storage", "读不到浏览器存储，按未登录处理：" + err.message);
       return "";
     }
+  }
+
+  /**
+   * Write a renewed credential back. A storage that refuses writes is the same
+   * situation as one that refuses reads (the login page could not persist a
+   * token either), so it sets the same flag — but the caller still holds a
+   * usable credential for as long as this page stays open.
+   */
+  function writeStored(key, value) {
+    try {
+      window.localStorage.setItem(key, value);
+    } catch (err) {
+      storageBlocked = true;
+      warnOnce(
+        "storage-write",
+        "写不进浏览器存储（新凭证只在本次打开期间有效）：" + err.message,
+      );
+    }
+  }
+
+  /**
+   * Whether the stored token is past its own expiry. An absent `expiresAt`
+   * counts as usable: that key belongs to the enterprise, and a blank answer is
+   * not evidence of expiry — the handshake is the only authority we trust on it.
+   */
+  function tokenExpired() {
+    var at = Number(readStored(EXPIRES_KEY));
+    return !!at && Date.now() >= at;
+  }
+
+  /**
+   * Renew the enterprise session in place. The enterprise's own SPA does exactly
+   * this on cold start, and not doing it is why an hour-old page used to cost a
+   * login round-trip even though the refresh token was good for 30 days.
+   *
+   * One request at a time, and one attempt per page load. At a time, because
+   * renewal rotates the refresh token — a second request would carry the one the
+   * first just invalidated. Per page load, because a renewal the relay still
+   * refuses must not become the page bouncing between a renewal and a login
+   * page.
+   *
+   * False means "no usable credential came out of this", never "the stored
+   * credentials are bad": nothing is written unless the whole answer arrived, so
+   * a network blip cannot cost the user a refresh token that is still valid.
+   */
+  function renewSession() {
+    // A renewal already in flight is shared, not repeated: the refresh token
+    // rotates, so a second request would carry the one the first just
+    // invalidated — and both callers are asking the same question.
+    if (refreshPromise) return refreshPromise;
+    if (renewedOnce) return Promise.resolve(false);
+    renewedOnce = true;
+    if (storageBlocked) return Promise.resolve(false);
+    var refreshToken = readStored(REFRESH_KEY);
+    if (!refreshToken) return Promise.resolve(false);
+    refreshPromise = fetch(REFRESH_PATH, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken: refreshToken }),
+    })
+      .then(function (response) {
+        if (!response.ok) return null;
+        return response.json();
+      })
+      .then(function (body) {
+        // The answer is the login response's shape (see the constants above), and
+        // a body without a token is not one.
+        if (!body || !body.token) return false;
+        credential = body.token;
+        writeStored("token", body.token);
+        // A field the answer left out keeps the value already stored, rather than
+        // being written as "undefined" / "NaN": the enterprise's own SPA writes
+        // every one of them unconditionally, but a refresh token turned into a
+        // literal is one nothing can repair short of a fresh login, and it would
+        // replace one that may still be good. Only what actually arrived is
+        // written.
+        if (body.refreshToken) writeStored(REFRESH_KEY, body.refreshToken);
+        if (body.expiresInSeconds)
+          writeStored(
+            EXPIRES_KEY,
+            String(Date.now() + body.expiresInSeconds * 1000),
+          );
+        // Same shape as login, so the freshest user comes back too (an email
+        // changed elsewhere should not be displayed from the old one).
+        if (body.user) writeStored(USER_KEY, JSON.stringify(body.user));
+        return true;
+      })
+      .catch(function (err) {
+        warnOnce("refresh", "静默续期失败：" + err.message);
+        return false;
+      })
+      .then(function (renewed) {
+        refreshPromise = null;
+        return renewed;
+      });
+    return refreshPromise;
   }
 
   function deriveSocketUrl(hostId) {
@@ -305,20 +421,37 @@
 
   /** Resolve where to connect and what to say, then connect. */
   function boot() {
-    credential = readCredential();
-    if (!credential) {
-      // No token at all: go get one (see `hopToLogin`). When a round-trip is not
-      // available, the reason stays on the page.
-      if (hopToLogin()) return;
-      fail("请先在企业端登录，再打开这个页面（页面复用企业端登录态）。");
-      return;
-    }
+    credential = readStored("token");
+    // The ordinary case for a page that stays open, or is opened days later: a
+    // token with nothing wrong with it goes straight out, no request spent on
+    // asking whether it is still good.
+    if (credential && !tokenExpired()) return startConnecting();
+    // Missing or stale — the two look the same from here, and both are worth one
+    // renewal before the user is asked for a password.
+    renewSession().then(function (renewed) {
+      if (renewed) startConnecting();
+      else noCredential();
+    });
+  }
+
+  /** Everything after "there is a credential": where to go, and what to say. */
+  function startConnecting() {
     if (CONFIG.socketUrl) return connect();
     if (CONFIG.hostId) {
       CONFIG.socketUrl = deriveSocketUrl(CONFIG.hostId);
       return connect();
     }
     fail("地址里没有通道键（host=）：请打开电脑侧给出的那个页面地址。");
+  }
+
+  /**
+   * Nothing usable to say to the relay and no way to renew one: go get a
+   * credential (see `hopToLogin`). When a round-trip is not available, the
+   * reason stays on the page.
+   */
+  function noCredential() {
+    if (hopToLogin()) return;
+    fail("请先在企业端登录，再打开这个页面（页面复用企业端登录态）。");
   }
 
   function fail(reason) {
@@ -337,18 +470,26 @@
     }
     authed = false;
     fatal = "";
-    socket = new WebSocket(CONFIG.socketUrl);
+    // `socket` is always the connection in use: a handshake redone after a
+    // renewal abandons the refused one, and that socket's late frames (its own
+    // `auth_error`, or the 4003 the relay follows it with) describe a connection
+    // nobody is using — they must not paint over the live one or schedule a
+    // retry on its behalf.
+    var ws = new WebSocket(CONFIG.socketUrl);
+    socket = ws;
 
-    socket.onopen = function () {
+    ws.onopen = function () {
+      if (ws !== socket) return;
       attempts = 0;
       clearStatus();
       // The handshake owns the first frame. On an unauthenticated connection
       // the relay parses *every* frame as `auth`, and a parse failure is a
       // permanent 4003 — so nothing else may go out until `auth_ok`.
-      socket.send(JSON.stringify(authFrame()));
+      ws.send(JSON.stringify(authFrame()));
     };
 
-    socket.onmessage = function (event) {
+    ws.onmessage = function (event) {
+      if (ws !== socket) return;
       var frame;
       try {
         frame = JSON.parse(event.data);
@@ -371,7 +512,8 @@
         deliver(frame.method, frame.params, frame.sessionId);
     };
 
-    socket.onclose = function (event) {
+    ws.onclose = function (event) {
+      if (ws !== socket) return;
       authed = false;
       stopHeartbeat();
       if (fatal) {
@@ -397,7 +539,7 @@
       setTimeout(connect, RETRY_MS);
     };
 
-    socket.onerror = function () {
+    ws.onerror = function () {
       // `close` follows and owns the retry/status decision.
     };
   }
@@ -417,12 +559,20 @@
       case "pong":
         return;
       case "auth_error":
-        // A token we did send came back invalid (expired or revoked): same
-        // remedy as having no token at all, so try the login round-trip before
-        // settling for a permanent error.
-        if (frame.error === "invalid_token" && hopToLogin()) return;
-        fatal = authErrorMessage(frame);
-        showStatus(fatal);
+        // A token we did send came back invalid (expired or revoked). It may
+        // only be an hour old while the refresh token behind it is good for a
+        // month, so the first refusal gets a silent renewal before the login
+        // round-trip; `renewSession` owns "one, and only one".
+        if (frame.error === "invalid_token") {
+          renewSession().then(function (renewed) {
+            // `connect` sends the handshake again, by then carrying whatever
+            // credential we hold.
+            if (renewed) connect();
+            else settleAuthError(frame);
+          });
+          return;
+        }
+        settleAuthError(frame);
         return;
       case "peer_disconnected":
         showStatus("电脑侧已断开（这台机器没在跑，或刚重启过）。");
@@ -436,6 +586,18 @@
       default:
         warnOnce("ctrl:" + frame.type, "未识别的中继控制帧：" + frame.type);
     }
+  }
+
+  /**
+   * The ending every refused handshake shares: an unusable token is the login
+   * page's business, anything else is a permanent reason to park on screen. The
+   * two lines the `auth_error` branch has always ended with, moved out so a
+   * renewal that came back empty-handed exits through the very same door.
+   */
+  function settleAuthError(frame) {
+    if (frame.error === "invalid_token" && hopToLogin()) return;
+    fatal = authErrorMessage(frame);
+    showStatus(fatal);
   }
 
   function authErrorMessage(frame) {
