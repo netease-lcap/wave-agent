@@ -8,10 +8,11 @@
  * are therefore a client of the daemon socket, exactly like `wave daemon …` —
  * `on` starts a daemon on demand, `off`/`status` never do.
  *
- * The pairing code comes from registering this machine with the relay (an HTTP
- * call the daemon makes), not from a frame pushed down the WebSocket — the relay
- * never pushes one. So `on` may have to wait for a registration round trip and
- * everything it learned stays on the daemon, where `status` can pick it up.
+ * The page address a phone opens is assembled from this machine's channel key,
+ * which the daemon got by registering with the relay (an HTTP call) — nothing is
+ * pushed down the WebSocket for it. So `on` may have to wait for a registration
+ * round trip, and everything it learned stays on the daemon, where `status` can
+ * pick it up.
  *
  * All subcommands are non-interactive (stdout for results, stderr for
  * diagnostics, exit code set here) — yargs would otherwise fall through to the
@@ -19,27 +20,17 @@
  */
 
 import { toString as qrToString } from "qrcode";
-import type { PairingInfo, RemoteControlSnapshot } from "wave-agent-sdk";
+import type { RemoteControlSnapshot } from "wave-agent-sdk";
 import {
   DEFAULT_DAEMON_SOCKET,
   connectDaemonIfRunning,
   connectDaemonOrExit,
 } from "../daemon/commands.js";
 import type { SocketClient } from "../daemon/socketClient.js";
-import {
-  buildPairingPageUrl,
-  getRemoteControlStatePath,
-} from "./remoteControlConfig.js";
 
-/** How long `on` waits for the registration round trip to deliver a code. */
-export const PAIRING_WAIT_MS = 5_000;
-const PAIRING_POLL_MS = 500;
-
-/**
- * A code is issued once, at registration, and expires in ten minutes. There is
- * no "show me another one" call, so the recovery is to register afresh.
- */
-const PAIRING_RECOVERY_HINT = `配对码只在注册这台电脑时下发一次（10 分钟内有效）。需要重新配对时删除 ${getRemoteControlStatePath()} 后重跑 \`wave remote-control on\` —— 这会在中继上登记成一台新电脑（旧的那台仍留在中继的电脑列表里，可在电脑列表里吊销）。`;
+/** How long `on` waits for the page address to come back from the daemon. */
+export const PAGE_WAIT_MS = 5_000;
+const PAGE_POLL_MS = 500;
 
 function describe(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -62,26 +53,18 @@ function printEnableHint(message: string): void {
 }
 
 /**
- * Print the code, the page the phone should open, and a QR of that page.
+ * Print the page the phone should open, and a QR of that page.
  *
  * The options are Claude Code's bridge-dialog pair (`type: "utf8"`,
  * `errorCorrectionLevel: "L"`) minus its `small: true`, which is inert here:
  * node-qrcode reads `small` only in the *terminal* renderer, and `utf8` is
  * already the compact half-block form (`▀▄█`) with no ANSI — so the code stays
  * copyable out of a terminal. Encoding is the only thing that can fail (and only
- * for absurd input), and the code and the URL above are the real contract — a
+ * for absurd input), and the address printed above is the real contract — a
  * missing QR is not worth failing the command.
  */
-async function printPairing(pairing: PairingInfo): Promise<void> {
+async function printPageUrl(pageUrl: string): Promise<void> {
   console.log("");
-  console.log(`配对码：${pairing.code}`);
-  if (pairing.expiresAt) console.log(`有效期至：${pairing.expiresAt}`);
-
-  const pageUrl = pairing.url ?? buildPairingPageUrl(pairing.code);
-  if (!pageUrl) {
-    console.log("在浏览器打开远程控制页并输入上面的配对码。");
-    return;
-  }
   console.log(`Web 页：${pageUrl}`);
   try {
     console.log(
@@ -95,31 +78,31 @@ async function printPairing(pairing: PairingInfo): Promise<void> {
   }
 }
 
-/** Poll the daemon until the registration round trip hands back a code. */
-async function waitForPairing(
+/** Poll the daemon until the registration round trip hands back a page address. */
+async function waitForPageUrl(
   client: SocketClient,
   initial: RemoteControlSnapshot,
-): Promise<PairingInfo | undefined> {
-  const deadline = Date.now() + PAIRING_WAIT_MS;
+): Promise<string | undefined> {
+  const deadline = Date.now() + PAGE_WAIT_MS;
   let snapshot = initial;
   while (Date.now() < deadline) {
-    if (snapshot.pairing) return snapshot.pairing;
+    if (snapshot.pageUrl) return snapshot.pageUrl;
     if (snapshot.state === "error") {
       printEnableHint(`远程控制连接失败：${snapshot.message ?? "未知错误"}`);
       process.exit(1);
     }
-    await new Promise((resolve) => setTimeout(resolve, PAIRING_POLL_MS));
+    await new Promise((resolve) => setTimeout(resolve, PAGE_POLL_MS));
     snapshot = (await client.request(
       "remoteControlStatus",
       {},
     )) as RemoteControlSnapshot;
   }
-  return snapshot.pairing;
+  return snapshot.pageUrl;
 }
 
 /**
- * Turn remote control on for this machine and show how to pair a phone.
- * Idempotent: running it while already online re-reads the current code.
+ * Turn remote control on for this machine and show the page a phone opens.
+ * Idempotent: running it while already online re-reads the same address.
  */
 export async function remoteControlOnCommand(name?: string): Promise<void> {
   let client: SocketClient | undefined;
@@ -136,13 +119,12 @@ export async function remoteControlOnCommand(name?: string): Promise<void> {
     }
     if (connecting.url) console.log(`远程控制中继：${connecting.url}`);
 
-    const pairing = await waitForPairing(client, connecting);
-    if (!pairing) {
-      console.log("没有拿到配对码。");
-      console.log(PAIRING_RECOVERY_HINT);
-      process.exit(0);
+    const pageUrl = await waitForPageUrl(client, connecting);
+    if (!pageUrl) {
+      console.error("远程控制已连上，但没能从 daemon 拿到页面地址。");
+      process.exit(1);
     }
-    await printPairing(pairing);
+    await printPageUrl(pageUrl);
     console.log("");
     console.log("关闭远程控制：`wave remote-control off`");
   } catch (err) {
@@ -181,7 +163,7 @@ export async function remoteControlOffCommand(): Promise<void> {
   process.exit(0);
 }
 
-/** Report the connection state, and the pairing code when the relay gave one. */
+/** Report the connection state, and the page address when there is one. */
 export async function remoteControlStatusCommand(): Promise<void> {
   const client = await connectDaemonIfRunning(DEFAULT_DAEMON_SOCKET);
   if (!client) {
@@ -197,10 +179,7 @@ export async function remoteControlStatusCommand(): Promise<void> {
     console.log(`状态：${snapshot.state}`);
     if (snapshot.url) console.log(`中继：${snapshot.url}`);
     if (snapshot.message) console.log(`说明：${snapshot.message}`);
-    if (snapshot.pairing) await printPairing(snapshot.pairing);
-    else if (snapshot.state !== "off") {
-      console.log("配对码：无（注册时下发，10 分钟内有效）");
-    }
+    if (snapshot.pageUrl) await printPageUrl(snapshot.pageUrl);
   } catch (err) {
     // Unlike `off`, a status we could not read is a real failure: the daemon
     // may be an older build that predates this method.

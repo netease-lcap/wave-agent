@@ -24,7 +24,6 @@
 
 import type { AgentBridge } from "../stdio/agentBridge.js";
 import type {
-  PairingInfo,
   RemoteControlSnapshot,
   RemoteControlStatus,
 } from "wave-agent-sdk";
@@ -88,12 +87,13 @@ export interface RemoteControlServiceOptions {
   /**
    * Resolved when connecting, not when the service is built: a resident daemon
    * outlives the SSO token it booted with, and remote control is usually turned
-   * on long after the process started. On a machine that has never paired this
-   * is also where the one registration call happens, which is why it is async.
+   * on long after the process started. On a machine that has never registered
+   * this is also where the one registration call happens, which is why it is
+   * async.
    */
   resolveEndpoint: (options?: { name?: string }) => Promise<{
     endpoint?: RemoteControlEndpoint;
-    pairing?: PairingInfo;
+    pageUrl?: string;
     error?: string;
   }>;
   createSocket?: RelaySocketFactory;
@@ -106,7 +106,7 @@ export class RemoteControlService implements RemoteControlController {
   private status: RemoteControlStatus = { state: "off" };
   private statusTimer: ReturnType<typeof setTimeout> | undefined;
   private lastStatusPayload = "";
-  private pairing: PairingInfo | undefined;
+  private pageUrl: string | undefined;
   private url: string | undefined;
   private name: string | undefined;
   /** Last state announced per session over the control channel. */
@@ -153,7 +153,7 @@ export class RemoteControlService implements RemoteControlController {
     }
     const { url, hostToken, version } = resolved.endpoint;
     this.url = url;
-    if (resolved.pairing) this.pairing = resolved.pairing;
+    if (resolved.pageUrl) this.pageUrl = resolved.pageUrl;
     // A reconnect has to re-announce every session: the relay keeps the last
     // state it was told, and that state may be minutes old.
     this.lastHostStates.clear();
@@ -234,7 +234,7 @@ export class RemoteControlService implements RemoteControlController {
     const client = this.client;
     this.client = undefined;
     client?.stop();
-    this.pairing = undefined;
+    this.pageUrl = undefined;
     this.lastHostStates.clear();
     this.notice = undefined;
     this.lastStatusPayload = "";
@@ -253,7 +253,7 @@ export class RemoteControlService implements RemoteControlController {
       state: this.status.state,
       ...(this.url ? { url: this.url } : {}),
       ...(message ? { message } : {}),
-      ...(this.pairing ? { pairing: this.pairing } : {}),
+      ...(this.pageUrl ? { pageUrl: this.pageUrl } : {}),
     };
   }
 

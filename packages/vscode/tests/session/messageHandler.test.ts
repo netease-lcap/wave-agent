@@ -2078,7 +2078,7 @@ describe("remoteControl（/remote-control 弹窗）", () => {
     const snapshot = {
       state: "online",
       url: "wss://relay/h1",
-      pairing: { code: "1234" },
+      pageUrl: "https://relay.example/remote/?host=h1",
     };
     const agent = { remoteControlStatus: vi.fn(async () => snapshot) };
     const { handler, context } = createHandler(sessionWithAgent(agent));

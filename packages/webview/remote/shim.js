@@ -22,10 +22,9 @@
  * for an answer) answered with an explicit error — never left hanging, never
  * silently ignored.
  *
- * Protocol note: the relay's *pairing* handshake (`PAIR_FRAME` below) is the
- * one piece of the wire contract that belongs to the server work
- * (vusion/codechat#40) and is therefore not fixed by wave. It is kept as a
- * single literal here so a change lands in one place.
+ * Protocol note: the relay's handshake (`authFrame` below) belongs to the server
+ * work (vusion/codechat#40). Its shape is fixed there; the frame types are kept
+ * as literals here so a change lands in one place.
  */
 (function () {
   "use strict";
@@ -33,9 +32,9 @@
   /**
    * Marks the page as the remote Web host. The shared UI cannot tell the two apart
    * by `waveHostType` — the IDE hosts leave that unset as well — and exactly one
-   * surface has to differ: the pairing QR. This page is what the QR points at, so
-   * drawing it here would be circular (RemoteControlDialog skips it when this flag
-   * is set): the QR exists to bring a second device onto this page.
+   * surface has to differ: the QR that brings a second device here. This page is
+   * what that QR points at, so drawing it here would be circular
+   * (RemoteControlDialog skips it when this flag is set).
    */
   window.waveRemotePage = true;
 
@@ -59,10 +58,15 @@
   }
 
   var CONFIG = {
-    /** Relay socket. Supplied by the generated index.html, or `?ws=` for local runs. */
+    /**
+     * Relay socket. Normally derived from the page's own origin — the page is
+     * served from `/remote/` on the relay's domain, so there is nothing to
+     * configure (see `deriveSocketUrl`). `?ws=` and the generated meta stay as
+     * the local-debug override.
+     */
     socketUrl: query.get("ws") || PAGE_CONFIG.socketUrl || "",
-    /** Pairing code the page was opened with (`/remote/?code=1234`). */
-    pairingCode: query.get("code") || "",
+    /** Channel key: the `?host=` from the page address the computer printed. */
+    hostId: query.get("host") || PAGE_CONFIG.hostId || "",
     /** Pin the page to one session; otherwise the newest one on the host wins. */
     sessionId: query.get("session") || PAGE_CONFIG.sessionId || "",
     /** First screen: the tail only — never the whole thread (13 MB on a long one). */
@@ -72,11 +76,12 @@
         : PAGE_CONFIG.firstPageLimit || 300,
   };
 
-  /** Sent once the socket is up, when the page was opened with a code. */
-  var PAIR_FRAME = { method: "pair", params: { code: CONFIG.pairingCode } };
-
   var RETRY_MS = 2000;
   var MAX_ATTEMPTS = 5;
+  /** The relay closes an unauthenticated connection after this long. */
+  var AUTH_TIMEOUT_CLOSE = 4003;
+  /** Application-level keepalive; the relay answers each `ping` with a `pong`. */
+  var HEARTBEAT_MS = 30000;
   /** Answered locally: the page has no filesystem and no local CLI to update. */
   var UNSUPPORTED_NO_REPLY = {
     updateInputContent: "草稿只留在本机浏览器里",
@@ -91,6 +96,17 @@
   var socket = null;
   var attempts = 0;
   var openedOnce = false;
+  /** The relay completed the handshake — nothing may be sent before that. */
+  var authed = false;
+  /** One successful handshake has happened, so a later one is a reconnect. */
+  var connectedOnce = false;
+  /** Non-empty ⇒ this page can never reach a host; the reason stays on screen. */
+  var blocked = "";
+  /** Set when the relay refused us for good (4003): the reason, and no retry. */
+  var fatal = "";
+  /** The enterprise login token — the credential the relay credits as subscriber. */
+  var credential = "";
+  var heartbeatTimer = null;
   var nextId = 1;
   var pending = {};
   var outbox = [];
@@ -135,24 +151,88 @@
     console.warn("[wave-remote] " + message);
   }
 
+  // ── Where to go, and what to say ────────────────────────────────
+  //
+  // Both are same-origin facts rather than build-time config: the page is
+  // served from `/remote/` on the relay's own domain, so its socket address is
+  // derivable, and the credential is the enterprise login the user already has
+  // (same origin ⇒ same storage). The enterprise frontend owns that key name
+  // and its expiry — `localStorage.token` is a coupling we do not control, so
+  // it is named exactly once, here.
+
+  /** Relay channel path; mirrors `hostChannelPath` from `GET /api/relay/config`. */
+  var CHANNEL_PATH = "/v1/hosts/ws/{hostId}/subscribe";
+
+  function readCredential() {
+    try {
+      return window.localStorage.getItem("token") || "";
+    } catch (err) {
+      // Storage blocked (private mode, partitioned context): indistinguishable
+      // from "not logged in" here, and the relay would refuse us anyway.
+      warnOnce("storage", "读不到浏览器存储，按未登录处理：" + err.message);
+      return "";
+    }
+  }
+
+  function deriveSocketUrl(hostId) {
+    var url = new URL(window.location.href);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.pathname = CHANNEL_PATH.replace("{hostId}", encodeURIComponent(hostId));
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  }
+
+  function authFrame() {
+    // `version` belongs at the top level — inside `params` the relay cannot
+    // read it and quietly lets everything through.
+    return {
+      type: "auth",
+      credential: { type: "sso", token: credential },
+      version: PAGE_CONFIG.version || "",
+    };
+  }
+
+  /** Resolve where to connect and what to say, then connect. */
+  function boot() {
+    credential = readCredential();
+    if (!credential) {
+      fail("请先在企业端登录，再打开这个页面（页面复用企业端登录态）。");
+      return;
+    }
+    if (CONFIG.socketUrl) return connect();
+    if (CONFIG.hostId) {
+      CONFIG.socketUrl = deriveSocketUrl(CONFIG.hostId);
+      return connect();
+    }
+    fail("地址里没有通道键（host=）：请打开电脑侧给出的那个页面地址。");
+  }
+
+  function fail(reason) {
+    blocked = reason;
+    showStatus(reason);
+  }
+
   // ── Transport ───────────────────────────────────────────────────
 
   function connect() {
     if (!CONFIG.socketUrl) {
-      showStatus(
-        "页面缺少中继地址：在 index.html 里配置 window.WAVE_REMOTE.socketUrl，或用 ?ws=wss://… 打开（中继服务见 codechat#40）。",
+      fail(
+        "页面缺少中继地址：地址里要有 host=，或用 ?ws=wss://… 打开（中继服务见 codechat#40）。",
       );
       return;
     }
+    authed = false;
+    fatal = "";
     socket = new WebSocket(CONFIG.socketUrl);
 
     socket.onopen = function () {
       attempts = 0;
       clearStatus();
-      if (CONFIG.pairingCode) send(PAIR_FRAME);
-      for (var i = 0; i < outbox.length; i++) socket.send(outbox[i]);
-      outbox = [];
-      if (openedOnce) resync();
+      // The handshake owns the first frame. On an unauthenticated connection
+      // the relay parses *every* frame as `auth`, and a parse failure is a
+      // permanent 4003 — so nothing else may go out until `auth_ok`.
+      socket.send(JSON.stringify(authFrame()));
     };
 
     socket.onmessage = function (event) {
@@ -163,25 +243,44 @@
         console.warn("[wave-remote] 丢弃无法解析的帧", err);
         return;
       }
+      // Control frames (a top-level `type`, no `method`) are the relay's own
+      // and must never reach the agent bridge; JSON-RPC never carries `type`.
+      if (
+        frame &&
+        typeof frame.type === "string" &&
+        frame.method === undefined
+      ) {
+        handleControl(frame);
+        return;
+      }
       if (frame && frame.id !== undefined) settle(frame);
       else if (frame && frame.method)
         deliver(frame.method, frame.params, frame.sessionId);
     };
 
     socket.onclose = function (event) {
-      var reason = "relay connection lost (" + event.code + ")";
-      if (event.code === 4003) {
+      authed = false;
+      stopHeartbeat();
+      if (fatal) {
+        showStatus(fatal);
+        return;
+      }
+      if (event.code === AUTH_TIMEOUT_CLOSE) {
         showStatus(
           "中继拒绝了这个连接（未授权）。请在电脑侧重新开启远程控制。",
         );
         return;
       }
       if (attempts >= MAX_ATTEMPTS) {
-        showStatus(reason + " — 已停止重试。");
+        showStatus("中继连接断开（" + event.code + "）— 已停止重试。");
         return;
       }
       attempts++;
-      showStatus("正在重连…(第 " + attempts + " 次)");
+      showStatus(
+        event.code === 4001
+          ? "电脑侧不在线，正在重试…(第 " + attempts + " 次)"
+          : "正在重连…(第 " + attempts + " 次)",
+      );
       setTimeout(connect, RETRY_MS);
     };
 
@@ -190,10 +289,89 @@
     };
   }
 
+  /** The relay's own frames: five kinds, none of which is an RPC call. */
+  function handleControl(frame) {
+    switch (frame.type) {
+      case "auth_ok":
+        authed = true;
+        startHeartbeat();
+        flushOutbox();
+        // A reconnect only needs the delta; the first connection already has
+        // its initial pull queued (or about to be asked for).
+        if (connectedOnce) resync();
+        connectedOnce = true;
+        return;
+      case "pong":
+        return;
+      case "auth_error":
+        fatal = authErrorMessage(frame);
+        showStatus(fatal);
+        return;
+      case "peer_disconnected":
+        showStatus("电脑侧已断开（这台机器没在跑，或刚重启过）。");
+        return;
+      case "resync_required":
+        // The relay dropped frames for a slow subscriber. The delta anchor is
+        // no longer trustworthy, so this is the full re-pull.
+        warnOnce("resync_required", "中继丢弃了积压的帧，正在重拉快照。");
+        pullSnapshot();
+        return;
+      default:
+        warnOnce("ctrl:" + frame.type, "未识别的中继控制帧：" + frame.type);
+    }
+  }
+
+  function authErrorMessage(frame) {
+    switch (frame.error) {
+      case "invalid_token":
+        return "登录态无效或已过期：请在企业端重新登录后再打开这个页面。";
+      case "unknown_host":
+        return "这台电脑没有登记过这个通道（可能已被解绑）：请在电脑侧重新开启远程控制。";
+      case "unauthorized":
+        return "这个通道不属于当前账号。";
+      case "invalid_channel":
+        return "地址里的通道键形状不对：请用电脑侧给出的页面地址打开。";
+      case "host_version_unsupported":
+        return (
+          "电脑侧 wave 版本过低（需要 ≥ " +
+          (frame.minVersion || "?") +
+          "），请升级电脑侧。"
+        );
+      case "auth_timeout":
+        return "握手超时：中继没有在时限内收到凭证。";
+      case "relay_disabled":
+        return "这个部署没有启用远程会话。";
+      default:
+        return "中继拒绝了握手（" + (frame.error || "未知原因") + "）。";
+    }
+  }
+
+  function startHeartbeat() {
+    stopHeartbeat();
+    heartbeatTimer = setInterval(function () {
+      if (socket && socket.readyState === 1)
+        socket.send(JSON.stringify({ type: "ping" }));
+    }, HEARTBEAT_MS);
+  }
+
+  function stopHeartbeat() {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+  }
+
   function send(frame) {
     var line = JSON.stringify(frame);
-    if (socket && socket.readyState === 1) socket.send(line);
+    if (authed && socket && socket.readyState === 1) socket.send(line);
     else outbox.push(line);
+  }
+
+  function flushOutbox() {
+    if (!socket || socket.readyState !== 1) return;
+    var queued = outbox;
+    outbox = [];
+    for (var i = 0; i < queued.length; i++) socket.send(queued[i]);
   }
 
   function request(method, params, withSession) {
@@ -334,6 +512,9 @@
 
   /** First screen: the tail of one session, plus whatever is awaiting approval. */
   function pullSnapshot() {
+    // Nothing to ask: `boot` already put the reason on screen (not logged in,
+    // no channel key, handshake refused).
+    if (blocked) return Promise.resolve();
     return pickSession()
       .then(function () {
         if (!sessionId) return null;
@@ -366,6 +547,7 @@
         });
       })
       .catch(function (err) {
+        if (blocked) return;
         showStatus("拉取会话失败：" + err.message);
       });
   }
@@ -553,5 +735,5 @@
     };
   };
 
-  connect();
+  boot();
 })();

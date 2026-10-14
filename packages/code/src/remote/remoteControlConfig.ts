@@ -15,8 +15,9 @@
  *   and the credential returned with it (`rch_…`) is checked against that same
  *   row on every handshake. An id minted here would name a channel that does not
  *   exist — both ends get refused long before anything is forwarded.
- * - **The pairing code.** Also from that one response, and shown once: the relay
- *   never pushes a code over the WebSocket.
+ * - **The page a phone opens.** `<server>/remote/?host={hostId}`, assembled here
+ *   because the process holding the channel key is the only one that knows both
+ *   halves of it — and it is what the QR code encodes.
  *
  * Registration happens **once per machine**. The id and its token are long-lived
  * (90 days, revocable) and the endpoint is not idempotent — calling it again
@@ -29,7 +30,6 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { authService, createAuthAwareFetch } from "wave-agent-sdk";
-import type { PairingInfo } from "wave-agent-sdk";
 import { readNearestPackageJson } from "../utils/readPackageJson.js";
 
 /** Everything the relay connection needs, resolved fresh at connect time. */
@@ -45,8 +45,6 @@ export interface RemoteControlEndpoint {
 export interface RelayHostRegistration {
   hostId: string;
   hostToken: string;
-  /** Only present right after registering, while the code is still live. */
-  pairing?: PairingInfo;
 }
 
 /** Registration is a one-shot call on a very slow path; it may not hang the daemon. */
@@ -65,7 +63,6 @@ interface RemoteControlStateFile {
   hostToken?: string;
   /** The label registration sent, so a later `on` does not silently rename. */
   name?: string;
-  pairing?: PairingInfo;
 }
 
 function readState(): RemoteControlStateFile {
@@ -101,23 +98,6 @@ function writeState(state: RemoteControlStateFile): void {
   }
 }
 
-/** A code the relay has already expired is worse than no code: it looks usable. */
-function livePairing(
-  pairing: PairingInfo | undefined,
-): PairingInfo | undefined {
-  if (
-    !pairing ||
-    typeof pairing.code !== "string" ||
-    pairing.code.length === 0
-  ) {
-    return undefined;
-  }
-  if (pairing.expiresAt === undefined) return pairing;
-  const expiresAt = Date.parse(pairing.expiresAt);
-  if (!Number.isFinite(expiresAt)) return pairing;
-  return expiresAt > Date.now() ? pairing : undefined;
-}
-
 /**
  * RPC base for the relay's REST surface (`/api/relay/hosts`, …): the same
  * deployment that serves the WebSocket channel.
@@ -143,9 +123,6 @@ export function getRelayApiBaseUrl(): string {
 interface RegisterResponseBody {
   host?: { id?: unknown; name?: unknown; platform?: unknown; status?: unknown };
   hostToken?: unknown;
-  pairingCode?: unknown;
-  pairingUrl?: unknown;
-  pairingExpiresAt?: unknown;
   error?: unknown;
 }
 
@@ -231,14 +208,7 @@ export async function registerRelayHost(options: {
     );
   }
 
-  const code = asString(body?.pairingCode);
-  const url = asString(body?.pairingUrl);
-  const expiresAt = asString(body?.pairingExpiresAt);
-  const pairing: PairingInfo | undefined = code
-    ? { code, ...(url ? { url } : {}), ...(expiresAt ? { expiresAt } : {}) }
-    : undefined;
-
-  return { hostId, hostToken, ...(pairing ? { pairing } : {}) };
+  return { hostId, hostToken };
 }
 
 /**
@@ -252,12 +222,7 @@ export async function ensureRelayHostRegistration(
   const storedId = asString(state.hostId);
   const storedToken = asString(state.hostToken);
   if (storedId && storedToken) {
-    const pairing = livePairing(state.pairing);
-    return {
-      hostId: storedId,
-      hostToken: storedToken,
-      ...(pairing ? { pairing } : {}),
-    };
+    return { hostId: storedId, hostToken: storedToken };
   }
 
   const label = name && name.trim().length > 0 ? name.trim() : os.hostname();
@@ -266,7 +231,6 @@ export async function ensureRelayHostRegistration(
     hostId: registration.hostId,
     hostToken: registration.hostToken,
     name: label,
-    ...(registration.pairing ? { pairing: registration.pairing } : {}),
   });
   return registration;
 }
@@ -285,19 +249,21 @@ export function buildSubscribeUrl(serverUrl: string, hostId: string): string {
 }
 
 /**
- * The page a phone should open to claim a pairing code.
+ * The page a phone should open for this machine's channel.
  *
- * Only a fallback: the registration response carries the relay's own
- * `pairingUrl`, which wins when present. This one is derived from the server URL
- * the phone page is served from — it is hosted by the enterprise deployment,
- * next to the SSO login it reuses, so the host matches `WAVE_SERVER_URL` by
- * construction. Undefined when that URL cannot be parsed (the code is still
+ * It is derived from the server URL the page is served from — the enterprise
+ * deployment hosts it, next to the SSO login it reuses, so the host matches
+ * `WAVE_SERVER_URL` by construction and the page reads the signed-in token from
+ * its own origin. The channel id is the only thing that has to come from here,
+ * and it is not a secret: the relay checks on handshake that the channel belongs
+ * to the signed-in account and that the account is an active member of the
+ * enterprise. Undefined when that URL cannot be parsed (the channel id is still
  * printable; only the QR needs a URL).
  */
-export function buildPairingPageUrl(code: string): string | undefined {
+export function buildPageUrl(hostId: string): string | undefined {
   try {
     const url = new URL("/remote/", authService.getServerUrl());
-    url.searchParams.set("code", code);
+    url.searchParams.set("host", hostId);
     return url.toString();
   } catch {
     return undefined;
@@ -317,7 +283,7 @@ export async function resolveRemoteControlEndpoint(
   } = {},
 ): Promise<{
   endpoint?: RemoteControlEndpoint;
-  pairing?: PairingInfo;
+  pageUrl?: string;
   error?: string;
 }> {
   let registration: RelayHostRegistration;
@@ -341,6 +307,7 @@ export async function resolveRemoteControlEndpoint(
     }
   }
 
+  const pageUrl = buildPageUrl(registration.hostId);
   return {
     endpoint: {
       url,
@@ -348,6 +315,6 @@ export async function resolveRemoteControlEndpoint(
       hostToken: registration.hostToken,
       version: readNearestPackageJson().version,
     },
-    ...(registration.pairing ? { pairing: registration.pairing } : {}),
+    ...(pageUrl ? { pageUrl } : {}),
   };
 }

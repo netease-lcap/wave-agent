@@ -34,7 +34,7 @@ import {
   remoteControlOnCommand,
   remoteControlOffCommand,
   remoteControlStatusCommand,
-  PAIRING_WAIT_MS,
+  PAGE_WAIT_MS,
 } from "../../src/remote/remoteControlCommands.js";
 
 const onExit = connectDaemonOrExit as ReturnType<typeof vi.fn>;
@@ -60,10 +60,7 @@ function createClient(responses: Record<string, unknown | (() => unknown)>): {
   };
 }
 
-const PAIRING = {
-  code: "4821",
-  expiresAt: "2026-10-13T10:00:00Z",
-};
+const PAGE_URL = "https://codechat.example.com/remote/?host=h1";
 
 describe("wave remote-control", () => {
   let out: string[];
@@ -96,12 +93,12 @@ describe("wave remote-control", () => {
   }
 
   describe("on", () => {
-    it("should connect the daemon and print the pairing code with a QR", async () => {
+    it("should connect the daemon and print the page address with a QR", async () => {
       const client = createClient({
         remoteControlConnect: {
           state: "online",
           url: "wss://relay/v1/hosts/ws/h1/subscribe",
-          pairing: PAIRING,
+          pageUrl: PAGE_URL,
         },
       });
       onExit.mockResolvedValue(client);
@@ -110,20 +107,15 @@ describe("wave remote-control", () => {
 
       expect(client.request).toHaveBeenCalledWith("remoteControlConnect", {});
       expect(text()).toContain("wss://relay/v1/hosts/ws/h1/subscribe");
-      expect(text()).toContain("配对码：4821");
-      expect(text()).toContain(
-        "Web 页：https://codechat.example.com/remote/?code=4821",
-      );
-      expect(text()).toContain(
-        "QR(https://codechat.example.com/remote/?code=4821)",
-      );
+      expect(text()).toContain(`Web 页：${PAGE_URL}`);
+      expect(text()).toContain(`QR(${PAGE_URL})`);
       expect(encodeQr).toHaveBeenCalledTimes(1);
       expect(client.dispose).toHaveBeenCalled();
     });
 
     it("should pass the machine label through to the daemon", async () => {
       const client = createClient({
-        remoteControlConnect: { state: "online", pairing: PAIRING },
+        remoteControlConnect: { state: "online", pageUrl: PAGE_URL },
       });
       onExit.mockResolvedValue(client);
 
@@ -135,7 +127,7 @@ describe("wave remote-control", () => {
       });
     });
 
-    it("should wait for the registration round trip to deliver a code", async () => {
+    it("should wait for the registration round trip to deliver an address", async () => {
       let polls = 0;
       const client = createClient({
         remoteControlConnect: { state: "connecting" },
@@ -143,7 +135,7 @@ describe("wave remote-control", () => {
           polls += 1;
           return polls < 2
             ? { state: "connecting" }
-            : { state: "online", pairing: PAIRING };
+            : { state: "online", pageUrl: PAGE_URL };
         },
       });
       onExit.mockResolvedValue(client);
@@ -152,10 +144,10 @@ describe("wave remote-control", () => {
       await vi.advanceTimersByTimeAsync(2_000);
       await expect(pending).resolves.toBe("__exit__");
 
-      expect(text()).toContain("配对码：4821");
+      expect(text()).toContain(`Web 页：${PAGE_URL}`);
     });
 
-    it("should say how to get a code when none is available", async () => {
+    it("should fail when the daemon never reports an address", async () => {
       const client = createClient({
         remoteControlConnect: { state: "connecting" },
         remoteControlStatus: { state: "connecting" },
@@ -163,14 +155,14 @@ describe("wave remote-control", () => {
       onExit.mockResolvedValue(client);
 
       const pending = remoteControlOnCommand().catch((e: Error) => e.message);
-      await vi.advanceTimersByTimeAsync(PAIRING_WAIT_MS + 1_000);
+      await vi.advanceTimersByTimeAsync(PAGE_WAIT_MS + 1_000);
       await expect(pending).resolves.toBe("__exit__");
 
-      // A code is issued once, at registration, and lasts ten minutes — there
-      // is no "give me another one" call, so the recovery is spelled out.
-      expect(text()).toContain("没有拿到配对码");
-      expect(text()).toContain("10 分钟内有效");
-      expect(text()).toContain("remote-control.json");
+      // No half-success: without an address there is nothing to scan, and the
+      // address is the whole point of the command.
+      expect(err.join("\n")).toContain("没能从 daemon 拿到页面地址");
+      expect(encodeQr).not.toHaveBeenCalled();
+      expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
     it("should explain how to enable the switch when the daemon says it is off", async () => {
@@ -256,12 +248,12 @@ describe("wave remote-control", () => {
       expect(text()).toContain("未开启");
     });
 
-    it("should print the state, relay url and pairing code", async () => {
+    it("should print the state, relay url and page address", async () => {
       const client = createClient({
         remoteControlStatus: {
           state: "online",
           url: "wss://relay/v1/hosts/ws/h1/subscribe",
-          pairing: PAIRING,
+          pageUrl: PAGE_URL,
         },
       });
       ifRunning.mockResolvedValue(client);
@@ -270,22 +262,8 @@ describe("wave remote-control", () => {
 
       expect(text()).toContain("状态：online");
       expect(text()).toContain("中继：wss://relay/v1/hosts/ws/h1/subscribe");
-      expect(text()).toContain("配对码：4821");
+      expect(text()).toContain(`Web 页：${PAGE_URL}`);
       expect(client.dispose).toHaveBeenCalled();
-    });
-
-    it("should say plainly that the code is gone rather than leave it blank", async () => {
-      const client = createClient({
-        remoteControlStatus: {
-          state: "online",
-          url: "wss://relay/v1/hosts/ws/h1/subscribe",
-        },
-      });
-      ifRunning.mockResolvedValue(client);
-
-      await expect(remoteControlStatusCommand()).rejects.toThrow("__exit__");
-
-      expect(text()).toContain("配对码：无");
     });
 
     it("should report an error state without exiting nonzero", async () => {

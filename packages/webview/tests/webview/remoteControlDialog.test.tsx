@@ -49,7 +49,7 @@ describe("远程控制弹窗（/remote-control）", () => {
     );
   });
 
-  it("renders the state and pairing code from the host's reply", async () => {
+  it("renders the state and page address from the host's reply", async () => {
     const { mountRequest } = await openDialog();
 
     await act(async () => {
@@ -58,10 +58,10 @@ describe("远程控制弹窗（/remote-control）", () => {
 
     const dialog = screen.getByTestId("remote-control-dialog");
     expect(dialog).toHaveTextContent("已连接");
-    expect(dialog).toHaveTextContent("4821-9930");
+    expect(dialog).toHaveTextContent("https://relay.example/remote/?host=h1");
   });
 
-  it("draws a scannable QR of the pairing page the relay handed back", async () => {
+  it("draws a scannable QR of the page address the CLI resolved", async () => {
     const { mountRequest } = await openDialog();
 
     await act(async () => {
@@ -70,27 +70,27 @@ describe("远程控制弹窗（/remote-control）", () => {
 
     const qr = screen.getByTestId("remote-control-qr");
     expect(qr.querySelector("svg")).toBeTruthy();
-    // The phone is the scanning side: what it opens is the pairing page, not the
-    // relay socket this machine holds.
+    // The phone is the scanning side: what it opens is the page, not the relay
+    // socket this machine holds.
     expect(screen.getByTestId("remote-control-dialog")).toHaveTextContent(
-      "https://relay.example/remote/pair?code=4821-9930",
+      "https://relay.example/remote/?host=h1",
     );
   });
 
-  it("draws no QR when the reply carried no pairing page (never invents one)", async () => {
+  it("draws no QR when the reply carried no page address (never invents one)", async () => {
     const { mountRequest } = await openDialog();
 
     await act(async () => {
       sendHostMessage(
         reply(mountRequest.requestId as string, {
-          snapshot: { state: "online", pairing: { code: "4821-9930" } },
+          snapshot: { state: "online" },
         }),
       );
     });
 
     expect(screen.queryByTestId("remote-control-qr")).toBeNull();
     expect(screen.getByTestId("remote-control-dialog")).toHaveTextContent(
-      "4821-9930",
+      "已连接",
     );
   });
 
@@ -104,9 +104,9 @@ describe("远程控制弹窗（/remote-control）", () => {
       });
 
       expect(screen.queryByTestId("remote-control-qr")).toBeNull();
-      // The code is still readable there — only the QR is pointless.
+      // The address is still readable there — only the QR is pointless.
       expect(screen.getByTestId("remote-control-dialog")).toHaveTextContent(
-        "4821-9930",
+        "https://relay.example/remote/?host=h1",
       );
     } finally {
       delete window.waveRemotePage;
