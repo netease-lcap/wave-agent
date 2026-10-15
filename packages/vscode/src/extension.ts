@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { ChatProvider } from "./chatProvider";
+import { registerInlineCompletion } from "./services/inlineCompletionProvider";
 import { adoptLoginPathIntoEnv } from "./stdio/loginPath";
 import { hostLog } from "./hostLog";
 
@@ -116,6 +117,11 @@ export function activate(context: vscode.ExtensionContext) {
     addToWaveCommand,
     openSettingsCommand,
   );
+
+  // Ghost-text completion for every file. Registered regardless of whether a
+  // chat panel is open; the provider itself degrades to "no suggestion" until a
+  // session exists (the session owns the completion model).
+  registerInlineCompletion(context, chatProvider);
 
   console.log("Wave 聊天命令注册成功");
 }

@@ -142,7 +142,11 @@ export type RequestMethod =
   // page share one implementation).
   | "listDirectories"
   // Read-only workspace diff for the desktop diff panel
-  | "getWorkspaceDiff";
+  | "getWorkspaceDiff"
+  // Inline (ghost-text) code completion for the editor plugins. Session-scoped:
+  // the model and the gateway credentials are resolved inside that session, and
+  // a new request supersedes the session's previous in-flight one.
+  | "getCompletion";
 
 // ── Client → Server notification methods ────────────────────────
 

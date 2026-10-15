@@ -390,6 +390,25 @@ export class StdioAgent {
     await this.client.request("setModel", { model }, this.sessionId);
   }
 
+  /**
+   * Requests one inline (ghost-text) completion for a cursor context. Both
+   * editor hosts call this directly instead of building their own model client:
+   * the session owns the model configuration and the gateway credentials, and a
+   * new request supersedes this session's previous one inside the CLI.
+   */
+  async getCompletion(params: {
+    prefix: string;
+    suffix: string;
+    language?: string;
+    filePath?: string;
+  }): Promise<{ text: string; model: string }> {
+    return (await this.client.request(
+      "getCompletion",
+      params,
+      this.sessionId,
+    )) as { text: string; model: string };
+  }
+
   // ── Permissions ───────────────────────────────────────────────
 
   async setPermissionMode(mode: PermissionMode): Promise<void> {

@@ -838,6 +838,65 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  /**
+   * Runs one inline (ghost-text) completion for the editor.
+   *
+   * The completion model and the gateway credentials are resolved inside the
+   * session that owns them (the CLI), so this only picks a session to ask and
+   * forwards the cursor context. Best-effort by design: no session yet, a CLI
+   * that failed to start and a model error all collapse into `undefined`, which
+   * the editor reads as "no suggestion" — completion must never surface an
+   * error into the buffer.
+   */
+  public async requestInlineCompletion(params: {
+    prefix: string;
+    suffix: string;
+    language: string;
+    filePath: string;
+  }): Promise<string | undefined> {
+    await this.initPromise.catch(() => {});
+    const client = this.sharedClient;
+    const sessionId = this.completionSessionId();
+    if (!client || !sessionId) {
+      return undefined;
+    }
+
+    try {
+      const result = (await client.request(
+        "getCompletion",
+        params,
+        sessionId,
+      )) as {
+        text?: string;
+      };
+      return result?.text;
+    } catch (error) {
+      hostLog.error("[Wave] Inline completion request failed:", error);
+      return undefined;
+    }
+  }
+
+  /**
+   * The session whose model configuration answers completion. The sidebar
+   * session is the default chat; a tab/window session is used when the sidebar
+   * has not created one yet (completion has no session of its own on purpose —
+   * a second source of model configuration is exactly what the spec forbids).
+   */
+  private completionSessionId(): string | undefined {
+    if (this.sidebarSession.sessionId) {
+      return this.sidebarSession.sessionId;
+    }
+    for (const session of [
+      ...this.tabSessions.values(),
+      ...this.windowSessions.values(),
+    ]) {
+      if (session.sessionId) {
+        return session.sessionId;
+      }
+    }
+    return undefined;
+  }
+
   private getSettingsWorkdir(): string | undefined {
     const folder = vscode.workspace.workspaceFolders?.[0];
     if (folder) {

@@ -52,6 +52,13 @@ export interface WaveConfiguration {
   model?: string;
   /** Model-specific configuration overrides */
   models?: Record<string, Partial<ModelConfig>>;
+  /**
+   * Model used for inline code completion. Unset falls back to the fast model,
+   * so a project can enable completion without picking a second model.
+   */
+  completionModel?: string;
+  /** Whether inline code completion is enabled. Unset follows the default (enabled). */
+  completionEnabled?: boolean;
   /** Scoped marketplace declarations */
   marketplaces?: Record<string, MarketplaceConfig>;
   /** OpenTelemetry monitoring configuration */

@@ -24,6 +24,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 import {
+  CODE_COMPLETION_SYSTEM_PROMPT,
   WEB_CONTENT_SYSTEM_PROMPT,
   type SystemPromptBlock,
 } from "../prompts/index.js";
@@ -1008,6 +1009,138 @@ export async function processWebContent(
       throw new Error("Web content processing request was aborted");
     }
     logger.error("Failed to process web content:", error);
+    throw error;
+  }
+}
+
+/** Output cap for a single completion: the host truncates to 10 lines / 1000 chars anyway. */
+const COMPLETION_MAX_TOKENS = 256;
+
+export interface CompletionOptions {
+  // Resolved configuration
+  gatewayConfig: GatewayConfig;
+  modelConfig: ModelConfig;
+
+  // Cursor context
+  /** Code before the cursor. */
+  prefix: string;
+  /** Code after the cursor. */
+  suffix: string;
+  /** Language id reported by the host (e.g. `typescript`). */
+  language?: string;
+  /** File path, so the model can tell a test file from a source file. */
+  filePath?: string;
+  abortSignal?: AbortSignal;
+}
+
+export interface CompletionResult {
+  /** Completion text as it should be inserted. Empty when the model declined. */
+  text: string;
+  /** Model that served the request. */
+  model: string;
+}
+
+/**
+ * Inline (ghost-text) code completion — a single, tool-less, latency-critical
+ * model call.
+ *
+ * Deliberately **not** routed through `acquireSlot`: the process-wide 1 QPS
+ * interval exists to keep conversation turns from piling onto the gateway, and
+ * a typing pause happens far more often than once a second. Sharing it would
+ * both throttle completion to unusable latency and let completion hold up the
+ * conversation. Throttling and cancellation for completion are the host's job
+ * (one in-flight request per editor, superseded on the next keystroke).
+ *
+ * Never throws on an empty answer: an empty completion is a normal outcome
+ * (spec: 模型返回空文本时不渲染任何幽灵文本), unlike `processWebContent` where
+ * an empty body is a failure.
+ */
+export async function getCompletion(
+  options: CompletionOptions,
+): Promise<CompletionResult> {
+  const { gatewayConfig, modelConfig, prefix, suffix, abortSignal } = options;
+
+  // The switch is honoured here rather than in the host: the CLI owns the
+  // configuration, and a disabled completion must not spend a model call at all
+  // (spec: 补全开关为关闭时不发起请求).
+  if (modelConfig.completionEnabled === false) {
+    return {
+      text: "",
+      model: modelConfig.completionModel ?? modelConfig.fastModel ?? "",
+    };
+  }
+
+  // Completion falls back to the fast model; an agent model alone is not enough
+  // to serve it (see ModelConfig.completionModel).
+  const completionModel =
+    modelConfig.completionModel || modelConfig.fastModel || modelConfig.model;
+  if (!completionModel) {
+    throw new ConfigurationError(CONFIG_ERRORS.MISSING_MODEL, "model", {
+      constructor: undefined,
+      environment: process.env.WAVE_MODEL,
+    });
+  }
+
+  const openai = new OpenAIClient({
+    apiKey: gatewayConfig.apiKey,
+    baseURL: gatewayConfig.baseURL,
+    defaultHeaders: gatewayConfig.defaultHeaders,
+    fetchOptions: gatewayConfig.fetchOptions,
+    fetch: gatewayConfig.fetch,
+  });
+
+  const openaiModelConfig = getModelConfig(completionModel, {
+    temperature: 0.1,
+    max_tokens: COMPLETION_MAX_TOKENS,
+    ...(modelConfig.completionModelOptions || {}),
+  });
+
+  const contextLines = [
+    options.filePath
+      ? `File: ${options.filePath}${options.language ? ` (${options.language})` : ""}`
+      : options.language
+        ? `Language: ${options.language}`
+        : undefined,
+  ].filter((line): line is string => line !== undefined);
+
+  try {
+    const response = await openai.chat.completions.create(
+      {
+        ...openaiModelConfig,
+        messages: [
+          {
+            role: "system",
+            content: CODE_COMPLETION_SYSTEM_PROMPT,
+          },
+          {
+            role: "user",
+            content: [
+              ...contextLines,
+              "<code_before_cursor>",
+              prefix,
+              "</code_before_cursor>",
+              "<code_after_cursor>",
+              suffix,
+              "</code_after_cursor>",
+            ].join("\n"),
+          },
+        ],
+      },
+      {
+        signal: abortSignal,
+      },
+    );
+
+    return {
+      text: response.choices[0]?.message?.content?.trim() ?? "",
+      model: completionModel,
+    };
+  } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      logger.info("Completion request was aborted");
+      throw new Error("Completion request was aborted");
+    }
+    logger.error("Failed to get code completion:", error);
     throw error;
   }
 }

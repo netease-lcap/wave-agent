@@ -390,6 +390,14 @@ export function formatCompactSummary(summary: string): string {
 export const WEB_CONTENT_SYSTEM_PROMPT = `You are a helpful assistant that extracts information from web content. The content is provided in Markdown format.`;
 
 /**
+ * System prompt for inline (ghost-text) code completion. The model sees the code
+ * before and after the cursor and must answer with the inserted text alone —
+ * anything else (prose, markdown fences, an echo of the surrounding code) would
+ * land verbatim in the user's buffer.
+ */
+export const CODE_COMPLETION_SYSTEM_PROMPT = `You are a code completion engine. You are given the code before and after the cursor position. Reply with ONLY the code that belongs at the cursor position, exactly as it should be inserted. Do not explain, do not wrap the answer in markdown fences, and do not repeat code that already appears before or after the cursor. If no useful continuation exists, reply with an empty string.`;
+
+/**
  * Notes block prepended to the subagent env section, aligned with Claude
  * Code's enhanceSystemPromptWithEnvDetails().
  */

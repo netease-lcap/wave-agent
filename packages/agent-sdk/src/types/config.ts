@@ -43,4 +43,19 @@ export interface ModelConfig {
    * never in the agent loop. `{}` clears the default.
    */
   disableThinkingOptions?: Record<string, unknown>;
+  /**
+   * Model used for inline (ghost-text) code completion. Resolved from
+   * settings.json `completionModel` / `WAVE_COMPLETION_MODEL`, falling back to
+   * `fastModel`. Kept out of `model` on purpose: completion fires on every typing
+   * pause, so it must not pay the agent model's latency.
+   */
+  completionModel?: string;
+  /**
+   * Generation params for the completion model, resolved from
+   * `models[completionModel]` (`options` merged with `disableThinkingOptions` —
+   * extended thinking is disqualified for a latency-critical call).
+   */
+  completionModelOptions?: Record<string, unknown>;
+  /** Whether inline code completion is enabled. Unset follows the default (enabled). */
+  completionEnabled?: boolean;
 }

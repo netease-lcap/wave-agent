@@ -44,6 +44,7 @@ import type { WorktreeSession } from "./utils/worktreeSession.js";
 import path from "node:path";
 import { parseTaskNotificationXml } from "./utils/notificationXml.js";
 import { InitializationService } from "./services/initializationService.js";
+import { getCompletion } from "./services/aiService.js";
 import {
   InteractionService,
   type InteractionContext,
@@ -179,6 +180,29 @@ export class Agent {
    */
   public getConfiguredModels(): string[] {
     return this.configurationService.getConfiguredModels();
+  }
+
+  /**
+   * Run one inline (ghost-text) code completion for a cursor context.
+   *
+   * This is deliberately outside the conversation turn loop: no tools, no
+   * system prompt assembly, no hooks, and **no** share of the conversation's
+   * 1 QPS slot (completion fires on every typing pause, the conversation does
+   * not). Throttling and cancellation belong to the caller — a host supersedes
+   * its own in-flight request on the next keystroke.
+   */
+  public async getCompletion(params: {
+    prefix: string;
+    suffix: string;
+    language?: string;
+    filePath?: string;
+    abortSignal?: AbortSignal;
+  }): Promise<{ text: string; model: string }> {
+    return getCompletion({
+      gatewayConfig: this.getGatewayConfig(),
+      modelConfig: this.getModelConfig(),
+      ...params,
+    });
   }
 
   /**
