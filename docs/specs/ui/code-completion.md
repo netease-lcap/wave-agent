@@ -140,8 +140,8 @@ order: 235
 - **补全开关在 SDK 侧生效。** 开关关闭时 `getCompletion` 在发起模型调用前直接返回空文本，不消耗一次模型请求。开关与补全模型读 settings.json 的顶层键 `completionModel` / `completionEnabled`，解析优先级为 `AgentOptions` > settings.json > 环境变量 `WAVE_COMPLETION_MODEL` > `fastModel`；`completionEnabled` 缺省为开，设置页的开关**不做占位态**（它的真实默认就是「开」，口径与自动记忆开关一致），未设置且未被拨动时不写该键。补全模型未设置时回退快速模型，**不**回退对话主模型；快速模型自身的取值链与 `model` 对称（`AgentOptions` > settings.json `fastModel` > `env.WAVE_FAST_MODEL`）。
 - **3 秒请求超时。** 宿主侧对单个补全请求设 3 秒上限，超时即按“无建议”处理并取消在途请求——超过这个时间的建议已无价值，且持续占用在途通道。
 - **补全通道不得把 agent 运行时拖进宿主包。** 宿主只能从 `wave-agent-sdk/host` 导入，且该入口的依赖闭包必须零第三方依赖、体积受限（`scripts/check-sdk-surface.mjs`）；补全的请求实现只能放在 CLI/SDK 侧，插件端拿不到也不得拿到底层模型客户端。
-- **上下文范围：** 请求内容默认包含光标前缀最多 150 行与光标后缀最多 30 行，并对前缀+后缀设总字符上限（默认 12000 字符），超出时从离光标最远处开始截断；首期不引入跨文件检索、不引入代码库向量索引。
-- **隐私与数据外发：** 前缀/后缀内容会随补全请求发送到用户已配置的模型服务（与对话同一网关与凭据），不额外上传整个文件或仓库；首期不支持本地推理。
+- **上下文范围：** 请求内容默认包含光标前缀最多 150 行与光标后缀最多 30 行，并对前缀+后缀设总字符上限（默认 12000 字符），超出时从离光标最远处开始截断；首期不引入跨文件检索、不引入代码库向量索引。**后续若做跨文件上下文，范围限于「光标处符号的定义」这一种** —— 复用宿主平台已有的语言服务能力（VS Code 的 `vscode.executeDefinitionProvider` 等 LSP 调用、JetBrains 的 PSI）获取，不引入 tree-sitter 等新增解析栈、不解析 import 图、不上传已打开文件全文、不引入任何形式的检索（不做向量索引、不做仓库索引）；并且必须落在补全的延迟预算内（取不到即放弃本次附带，不得等待、不得阻塞本次建议）。
+- **隐私与数据外发：** 前缀/后缀内容会随补全请求发送到用户已配置的模型服务（与对话同一网关与凭据）；**除当前文件的光标上下文外，最多附带与光标处符号直接相关的少量代码片段（即该符号的定义体），不整文件、不整仓上传**；首期实现不附带任何此类片段（见上条「上下文范围」），该边界为后续跨文件增量预留；首期不支持本地推理。
 - **JetBrains 平台差异（已对照 IC-2024.2.6 平台源码验证）：** JetBrains 侧使用平台行内补全扩展点（`<inline.completion.provider>` / `InlineCompletionProvider` + `InlineCompletionSingleSuggestion.build { emit(InlineCompletionGrayTextElement(text)) }`），而非自绘 Inlay；防抖、取消与多光标过滤由平台负责，插件侧不再叠加自己的防抖，只做 3 秒超时与返回前的光标位置校验。
 - **只读与不可写文档按 scheme 判定：** VS Code 侧用 `workspace.fs.isWritableFileSystem(scheme)`（仅明确返回 false 时跳过）判断可写性，JetBrains 侧用 `Document.isWritable`；未命名文档、虚拟文件（非 `file` scheme）、内联 diff / 多差异编辑器中的探针文档一律跳过。
 - **手动触发复用平台内置动作：** 两端均绑定平台自带的行内建议触发命令（VS Code `editor.action.inlineSuggest.trigger`，默认快捷键 `Alt+\`），不新增插件命令；手动触发跳过防抖等待，直接进入请求。
