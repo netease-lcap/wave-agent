@@ -8,9 +8,12 @@ import type {
 import { LOCAL_HOST } from "./sshHosts";
 
 /**
- * 桌面本地存储的键。**只剩服务地址**：模型选择与用户偏好都不落这里——
- * 模型经 `/model` 命令走宿主 RPC（`getConfiguredModels` / `setModel`），用户偏好
- * （语言 / 上下文长度 / 自动记忆）的唯一落点是用户级 `~/.wave/settings.json`。
+ * 桌面本地存储的键。**只剩服务地址**：用户偏好都不落这里——
+ * **对话模型**经 `/model` 命令走宿主 RPC（`getConfiguredModels` / `setModel`），
+ * 用户偏好（语言 / 上下文长度 / 自动记忆 / **补全模型与补全开关**）的唯一落点是
+ * 用户级 `~/.wave/settings.json`——补全模型虽与模型相关，但它是配置文件里的一
+ * 个用户偏好键（顶层 `completionModel`，spec ui/code-completion.md 故事 4），
+ * 随本载荷读写。
  * `serverUrl` 由 CLI 的 `getAuthStatus` 解析（宿主只缓存，用于拼更新 feed URL）。
  *
  * 设置页配置回包载荷只承载用户偏好键（见 `ConfigurationData`）。
@@ -34,6 +37,14 @@ export interface DesktopConfigData {
   autoMemoryEnabled?: boolean;
   /** 用户偏好：自动记忆提取轮次频率（1–100）。 */
   autoMemoryFrequency?: number;
+  /**
+   * 用户偏好：行内补全使用的模型（settings.json 顶层 `completionModel`，未设置时
+   * 回退快速模型）。**对话模型**不在本载荷里（那是 `/model` 命令的会话级 RPC），
+   * 补全模型是配置文件里的一个用户偏好键（spec ui/code-completion.md 故事 4）。
+   */
+  completionModel?: string;
+  /** 用户偏好：是否启用行内补全（顶层 `completionEnabled`，缺省为开）。 */
+  completionEnabled?: boolean;
   /**
    * 用户偏好每个键的**来源层**（`remote` / `user` / `env` / `default`）：回包
    * 里带上它，设置页才能把被组织配置（Remote）覆盖的键显示为「生效值 + 置灰」

@@ -5787,6 +5787,17 @@ export class DesktopHost {
     if (typeof configData.serverUrl === "string") {
       patch.serverUrl = configData.serverUrl;
     }
+    // 补全模型 / 开关（顶层 `completionModel` / `completionEnabled`，spec
+    // ui/code-completion.md 故事 4–5）：与对话模型不同，它们是**配置文件里的用户
+    // 偏好键**，故走本载荷（对话模型经 `/model` 的 setModel 会话级 RPC）。空串
+    // 视作未提供，否则「清空下拉」会被翻译成写一个空模型名。
+    if (typeof configData.completionModel === "string") {
+      const model = configData.completionModel.trim();
+      if (model !== "") patch.completionModel = model;
+    }
+    if (configData.completionEnabled !== undefined) {
+      patch.completionEnabled = configData.completionEnabled;
+    }
     const settings = (await this.utilityClientFor(host).request(
       "updateUserSettings",
       patch,

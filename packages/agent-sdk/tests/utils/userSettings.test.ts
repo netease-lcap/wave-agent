@@ -153,6 +153,8 @@ describe("userSettings", () => {
         {
           values: { language: "English" },
           sources: {
+            completionModel: "default",
+            completionEnabled: "default",
             language: "remote",
             contextLength: "default",
             autoMemoryEnabled: "default",
@@ -170,6 +172,8 @@ describe("userSettings", () => {
         // 「开」由设置页按 SDK 默认展示，不靠回包补一个 true）。
         values: {},
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -194,6 +198,8 @@ describe("userSettings", () => {
           autoMemoryFrequency: 3,
         },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "user",
           contextLength: "user",
           autoMemoryEnabled: "user",
@@ -209,6 +215,8 @@ describe("userSettings", () => {
       expect(readUserPreferenceView(remoteEnv, FILE, {})).toEqual({
         values: { contextLength: 256 },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "remote",
           autoMemoryEnabled: "default",
@@ -221,6 +229,8 @@ describe("userSettings", () => {
       ).toEqual({
         values: { contextLength: 128 },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "user",
           autoMemoryEnabled: "default",
@@ -234,6 +244,8 @@ describe("userSettings", () => {
       ).toEqual({
         values: { contextLength: 64 },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "env",
           autoMemoryEnabled: "default",
@@ -250,6 +262,8 @@ describe("userSettings", () => {
       ).toEqual({
         values: { autoMemoryEnabled: false },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "remote",
@@ -269,6 +283,8 @@ describe("userSettings", () => {
       ).toEqual({
         values: { autoMemoryEnabled: false },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "remote",
@@ -294,6 +310,8 @@ describe("userSettings", () => {
       ).toEqual({
         values: { autoMemoryEnabled: true, autoMemoryFrequency: 3 },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "user",
@@ -312,6 +330,8 @@ describe("userSettings", () => {
       ).toEqual({
         values: { autoMemoryEnabled: false },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "user",
@@ -327,6 +347,8 @@ describe("userSettings", () => {
       ).toEqual({
         values: { autoMemoryEnabled: false },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "env",
@@ -339,6 +361,8 @@ describe("userSettings", () => {
       ).toEqual({
         values: {},
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -355,6 +379,8 @@ describe("userSettings", () => {
       ).toEqual({
         values: { autoMemoryFrequency: 9 },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -373,6 +399,8 @@ describe("userSettings", () => {
       ).toEqual({
         values: { autoMemoryFrequency: 12 },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -385,6 +413,8 @@ describe("userSettings", () => {
       ).toEqual({
         values: { autoMemoryFrequency: 4 },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -406,6 +436,8 @@ describe("userSettings", () => {
           contextLength: 64,
         },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "remote",
           contextLength: "env",
           autoMemoryEnabled: "default",
@@ -425,6 +457,8 @@ describe("userSettings", () => {
       ).toEqual({
         values: { serverUrl: "https://from-file.test" },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -442,6 +476,8 @@ describe("userSettings", () => {
       ).toEqual({
         values: { serverUrl: "https://from-os-env.test" },
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -461,6 +497,8 @@ describe("userSettings", () => {
       ).toEqual({
         values: {},
         sources: {
+          completionModel: "default",
+          completionEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -611,6 +649,107 @@ describe("userSettings", () => {
         recursive: true,
       });
       expect(writtenJson()).toEqual({ language: "English" });
+    });
+  });
+
+  /**
+   * 补全模型 / 开关（spec ui/code-completion 故事 4/5）：落 settings.json 顶层键，
+   * 与其余用户偏好共用同一份真源与同一套「省略键 = 不改该键」语义。
+   */
+  describe("补全偏好", () => {
+    it("读回补全模型与开关（顶层键）", () => {
+      seedFile({ completionModel: "completion-x", completionEnabled: false });
+
+      expect(readUserPreferenceSettings(FILE)).toEqual({
+        completionModel: "completion-x",
+        completionEnabled: false,
+      });
+    });
+
+    it("空串/纯空白的补全模型视作未设置（不编造模型名）", () => {
+      seedFile({ completionModel: "   " });
+
+      expect(readUserPreferenceSettings(FILE)).toEqual({});
+    });
+
+    it("生效视图：用户文件提供时来源是 user", () => {
+      seedFile({ completionModel: "completion-x", completionEnabled: false });
+      const view = readUserPreferenceView(null, FILE, {});
+
+      expect(view.values).toEqual({
+        completionModel: "completion-x",
+        completionEnabled: false,
+      });
+      expect(view.sources.completionModel).toBe("user");
+      expect(view.sources.completionEnabled).toBe("user");
+    });
+
+    it("生效视图：completionModel 的 env 落点是 WAVE_COMPLETION_MODEL，用户文件优先", () => {
+      const env = { WAVE_COMPLETION_MODEL: "env-x" };
+
+      mockExists.mockReturnValue(false);
+      const fromEnv = readUserPreferenceView(null, FILE, env);
+      expect(fromEnv.values.completionModel).toBe("env-x");
+      expect(fromEnv.sources.completionModel).toBe("env");
+
+      seedFile({ completionModel: "completion-x" });
+      const fromFile = readUserPreferenceView(null, FILE, env);
+      expect(fromFile.values.completionModel).toBe("completion-x");
+      expect(fromFile.sources.completionModel).toBe("user");
+    });
+
+    it("远端下发的补全键不进生效视图（mergeRemoteSettings 尚未接管该键）", () => {
+      mockExists.mockReturnValue(false);
+      const view = readUserPreferenceView(
+        { completionModel: "remote-x", completionEnabled: false },
+        FILE,
+        {},
+      );
+
+      // 归因必须与解析链一致：远端下发的这两个键到不了 resolveModelConfig，
+      // 若在这里标成 remote，设置页会把一个并未生效的值当成生效值展示。
+      expect(view.values).toEqual({});
+      expect(view.sources.completionModel).toBe("default");
+      expect(view.sources.completionEnabled).toBe("default");
+    });
+
+    it("写入落顶层键，且与其余偏好、env 块共存", async () => {
+      seedFile({ language: "Chinese", env: { KEEP: "1" } });
+
+      const result = await updateUserPreferenceSettings(
+        { completionModel: "completion-x", completionEnabled: false },
+        FILE,
+      );
+
+      expect(writtenJson()).toEqual({
+        language: "Chinese",
+        env: { KEEP: "1" },
+        completionModel: "completion-x",
+        completionEnabled: false,
+      });
+      expect(result).toEqual({
+        language: "Chinese",
+        completionModel: "completion-x",
+        completionEnabled: false,
+      });
+    });
+
+    it("显式打开补全开关也是一次真实改动（默认开不等于不写）", async () => {
+      seedFile({});
+
+      await updateUserPreferenceSettings({ completionEnabled: true }, FILE);
+
+      expect(writtenJson()).toEqual({ completionEnabled: true });
+    });
+
+    it("空串补全模型不落盘（省略键 = 不改该键）", async () => {
+      seedFile({ language: "Chinese" });
+
+      await updateUserPreferenceSettings({ completionModel: "  " }, FILE);
+
+      // 空载荷 = 无差异保存：只回读、不落盘（否则会把「清空下拉」翻译成
+      // 写一个空模型名）。
+      expect(mockWrite).not.toHaveBeenCalled();
     });
   });
 });

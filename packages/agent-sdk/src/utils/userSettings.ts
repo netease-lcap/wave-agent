@@ -16,6 +16,10 @@
  * settings `env` 的值经 `setEnvironmentVars` 特例镜像到 `process.env`，
  * 见 docs/specs/core/agent-config.md 边界说明「服务端地址的落点」）。
  *
+ * 行内补全的键 = 顶层 `completionModel` / `completionEnabled`（与 `model` 同一层，
+ * 解析链见 `ConfigurationService.resolveModelConfig`；补全模型另有
+ * `env.WAVE_COMPLETION_MODEL` 逃生口），见 docs/specs/ui/code-completion.md 故事 4/5。
+ *
  * 写入是「读-改-写」：只覆盖这些键，其余顶层键与 `env` 下其它键原样保留。
  *
  * `readUserPreferenceView` 额外回答**当前生效值来自哪一层**：用户级文件是用户
@@ -55,6 +59,12 @@ export const AUTO_MEMORY_FREQUENCY_ENV_KEY = "WAVE_AUTO_MEMORY_FREQUENCY";
  */
 export const SERVER_URL_ENV_KEY = "WAVE_SERVER_URL";
 
+/**
+ * 补全模型的 env 键（`WAVE_COMPLETION_MODEL`）。顶层 `completionModel` 优先，
+ * 与 `model` / `WAVE_MODEL` 的关系一致。
+ */
+export const COMPLETION_MODEL_ENV_KEY = "WAVE_COMPLETION_MODEL";
+
 /** 用户偏好键（设置页控件）。 */
 export type { UserPreferenceKey, UserPreferenceSource };
 
@@ -86,8 +96,8 @@ function envAutoMemoryFrequency(raw: unknown): number | undefined {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-/** 服务端地址：非空字符串 / 未提供（空串视作未提供，不编造默认值）。 */
-function envNonEmptyString(raw: unknown): string | undefined {
+/** 非空字符串 / 未提供（空串视作未提供，不编造默认值）。 */
+function nonEmptyString(raw: unknown): string | undefined {
   return typeof raw === "string" && raw.trim() !== "" ? raw : undefined;
 }
 
@@ -154,8 +164,14 @@ function toSettings(data: Record<string, unknown>): UserPreferenceSettings {
   if (typeof data.autoMemoryFrequency === "number") {
     settings.autoMemoryFrequency = data.autoMemoryFrequency;
   }
-  const serverUrl = envNonEmptyString(env[SERVER_URL_ENV_KEY]);
+  const serverUrl = nonEmptyString(env[SERVER_URL_ENV_KEY]);
   if (serverUrl !== undefined) settings.serverUrl = serverUrl;
+  // 补全模型 / 开关落顶层键（与 `model` 同一层，spec ui/code-completion 故事 4/5）。
+  const completionModel = nonEmptyString(data.completionModel);
+  if (completionModel !== undefined) settings.completionModel = completionModel;
+  if (typeof data.completionEnabled === "boolean") {
+    settings.completionEnabled = data.completionEnabled;
+  }
   return settings;
 }
 
@@ -218,6 +234,8 @@ export function readUserPreferenceView(
     autoMemoryEnabled: "default",
     autoMemoryFrequency: "default",
     serverUrl: "default",
+    completionModel: "default",
+    completionEnabled: "default",
   };
 
   // language 没有 env 落点（`resolveLanguage` 只读合并后的顶层键）。
@@ -279,11 +297,36 @@ export function readUserPreferenceView(
   // 见 spec core/agent-config.md 边界说明「服务端地址的落点」）。
   const serverUrl = selectPreference<string>([
     ["user", user.serverUrl],
-    ["env", envNonEmptyString(env[SERVER_URL_ENV_KEY])],
+    ["env", nonEmptyString(env[SERVER_URL_ENV_KEY])],
   ]);
   if (serverUrl) {
     values.serverUrl = serverUrl.value;
     sources.serverUrl = serverUrl.source;
+  }
+
+  // 补全模型的落点 = 顶层 `completionModel`（或 `env.WAVE_COMPLETION_MODEL`），
+  // 来源只可能是 user / env / default——不归因 remote：`mergeRemoteSettings` 尚未
+  // 接管该键，远端下发不会进解析链（归因必须与解析链一致，否则设置页会把一个
+  // 没生效的层标成生效值）。未设置时解析链回落到快速模型，那是**回退**而不是
+  // 该键的提供者，故不在这里编造值。
+  const completionModel = selectPreference<string>([
+    ["user", user.completionModel],
+    ["env", nonEmptyString(env[COMPLETION_MODEL_ENV_KEY])],
+  ]);
+  if (completionModel) {
+    values.completionModel = completionModel.value;
+    sources.completionModel = completionModel.source;
+  }
+
+  // 补全开关：顶层标量，没有 env 落点（`resolveModelConfig` 只读 config 与
+  // 构造参数），故只归因 user；无提供者时键缺失，设置页按 SDK 默认显示为「开」，
+  // 与 autoMemoryEnabled 同一处理。
+  const completionEnabled = selectPreference<boolean>([
+    ["user", user.completionEnabled],
+  ]);
+  if (completionEnabled) {
+    values.completionEnabled = completionEnabled.value;
+    sources.completionEnabled = completionEnabled.source;
   }
 
   return { values, sources };
@@ -303,16 +346,22 @@ export async function updateUserPreferenceSettings(
   const hasContextLength = patch.contextLength !== undefined;
   const hasEnabled = patch.autoMemoryEnabled !== undefined;
   const hasFrequency = patch.autoMemoryFrequency !== undefined;
-  // 空串视作未提供（与回读侧 `envNonEmptyString` 同一判据）：写进去会在
+  // 空串视作未提供（与回读侧 `nonEmptyString` 同一判据）：写进去会在
   // `process.env` 镜像里遮蔽 OS 环境变量（解析链用 `||` 回落到默认值），而回读侧
   // 又按「未设置」展示 ⇒ 显示值与生效值分叉。省略键 = 不改该键。
-  const serverUrl = envNonEmptyString(patch.serverUrl);
+  const serverUrl = nonEmptyString(patch.serverUrl);
+  const hasCompletionEnabled = patch.completionEnabled !== undefined;
+  // 补全模型与 serverUrl 同一判据：空串 = 未提供（省略键 = 不改该键，UI 也没有
+  // 删键语义），避免把「清空下拉」翻译成写一个空模型名。
+  const completionModel = nonEmptyString(patch.completionModel);
   if (
     !hasLanguage &&
     !hasContextLength &&
     !hasEnabled &&
     !hasFrequency &&
-    serverUrl === undefined
+    serverUrl === undefined &&
+    !hasCompletionEnabled &&
+    completionModel === undefined
   ) {
     return toSettings(data);
   }
@@ -345,6 +394,10 @@ export async function updateUserPreferenceSettings(
     env[SERVER_URL_ENV_KEY] = serverUrl;
     data.env = env;
   }
+
+  // 补全模型 / 开关落顶层键（与 `model` 同层）。
+  if (completionModel !== undefined) data.completionModel = completionModel;
+  if (hasCompletionEnabled) data.completionEnabled = patch.completionEnabled;
 
   // 首次保存时 `~/.wave` 可能尚不存在（会话启动时文件不存在，场景 7），
   // 原子写需要同目录可写，先确保目录存在。

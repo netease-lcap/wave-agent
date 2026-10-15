@@ -4004,6 +4004,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         })
       }
       onPrefillPrompt={handlePrefillPrompt}
+      configuredModels={configuredModels}
+      onLoadConfiguredModels={() =>
+        postToHost({ command: "getConfiguredModels" })
+      }
     />
   ) : null;
 

@@ -17,6 +17,13 @@ export interface ConfigurationData {
   /** Wave 服务端地址（落 `env.WAVE_SERVER_URL`）。 */
   serverUrl?: string;
   /**
+   * 行内补全使用的模型（settings.json 顶层 `completionModel`，未设置时回退快速
+   * 模型）；候选清单与 `/model` 同源（经 `getConfiguredModels` 拉取）。
+   */
+  completionModel?: string;
+  /** 是否启用行内补全（settings.json 顶层 `completionEnabled`，缺省为开）。 */
+  completionEnabled?: boolean;
+  /**
    * 每个用户偏好键的来源层（`remote` / `user` / `env` / `default`）：回包带上
    * 它，设置页才能把被组织配置（Remote）覆盖的键显示为「生效值 + 置灰」而不是
    * 回退成用户文件里的值（spec core/agent-config.md 边界说明「用户偏好的层与来源」）。
@@ -26,9 +33,12 @@ export interface ConfigurationData {
 
 /**
  * 设置页配置载荷：**只有用户偏好**（AI 回复语言 / 上下文长度 / 自动记忆开关与
- * 频率 / 服务端地址），落点唯一为用户级 `~/.wave/settings.json`。
+ * 频率 / 服务端地址 / 补全模型与补全开关），落点唯一为用户级 `~/.wave/settings.json`。
  *
- * 模型选择不属于这里：模型经 `/model` 命令走 `getConfiguredModels` / `setModel`。
+ * **对话模型**选择不属于这里：它经 `/model` 命令走 `getConfiguredModels` /
+ * `setModel`（会话级 RPC）。补全模型是**配置文件里的一个用户偏好键**（顶层
+ * `completionModel`，见 spec ui/code-completion.md 故事 4），故走本载荷——它的
+ * 候选清单才复用 `getConfiguredModels`。
  * 服务端地址的用户偏好落点（`env.WAVE_SERVER_URL`）属于这里；宿主的
  * `authStatusResponse.serverUrl` 仍单独下发（由 CLI 的 `getAuthStatus` 解析）。
  *
@@ -105,5 +115,13 @@ function pickUserPreferences(
     patch.autoMemoryFrequency = configData.autoMemoryFrequency;
   if (typeof configData.serverUrl === "string")
     patch.serverUrl = configData.serverUrl;
+  // 补全模型 / 开关：空串视作未提供（与回读侧同一判据），否则会把「清空下拉」
+  // 翻译成写一个空模型名（见 SDK `nonEmptyString` 的注释）。
+  if (typeof configData.completionModel === "string") {
+    const model = configData.completionModel.trim();
+    if (model !== "") patch.completionModel = model;
+  }
+  if (configData.completionEnabled !== undefined)
+    patch.completionEnabled = configData.completionEnabled;
   return patch;
 }

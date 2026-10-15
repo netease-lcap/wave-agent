@@ -13,7 +13,8 @@
  *   `closeSettings`、编辑操作的 `openFile` + `prefillPrompt`（`openFile` 必须先发：
  *   host 处理 `prefillPrompt` 即关闭本设置 webview，之后到达的 `openFile` 会被丢弃）
  * - host → webview: `configurationResponse`, `agentsContentResponse`,
- *   `agentsContentSaved`, `projectSettings`, `settingsState` (workdir push on open)
+ *   `agentsContentSaved`, `projectSettings`, `configuredModels`（补全模型下拉的
+ *   候选清单）, `settingsState` (workdir push on open)
  */
 import React, { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -59,6 +60,10 @@ function SettingsPreview() {
   const [projectSettingsWorkdir, setProjectSettingsWorkdir] = useState<
     string | undefined
   >(undefined);
+  // 补全模型下拉的候选清单（与 `/model` 同源，经宿主的 `getConfiguredModels`
+  // 会话级 RPC —— 本设置 webview 是独立外壳，chat 的那条回包到不了这里，故
+  // 由本页自己发请求；宿主未接该命令时保持空数组 = 下拉只显示当前值与未设置态）。
+  const [configuredModels, setConfiguredModels] = useState<string[]>([]);
 
   useEffect(() => {
     // Report readiness before pulling data: the host re-serves the cached
@@ -109,6 +114,11 @@ function SettingsPreview() {
         // 保存结果复位 agentsSaving（按钮/文本区重新可用）；结果 toast 由宿主
         // 在发出本消息时一并推送。
         setAgentsSaving(false);
+        break;
+      case "configuredModels":
+        setConfiguredModels(
+          Array.isArray(msg.models) ? (msg.models as string[]) : [],
+        );
         break;
       case "projectSettings":
         if (msg.enabledPlugins && typeof msg.enabledPlugins === "object") {
@@ -170,6 +180,10 @@ function SettingsPreview() {
           enabled,
           scope: "project",
         })
+      }
+      configuredModels={configuredModels}
+      onLoadConfiguredModels={() =>
+        vscode.postMessage({ command: "getConfiguredModels" })
       }
       onPrefillPrompt={(prompt, openFile) => {
         // 顺序关键：openFile 必须先于 prefillPrompt 发出。host 处理 prefillPrompt

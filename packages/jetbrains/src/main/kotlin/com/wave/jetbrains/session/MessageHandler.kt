@@ -1265,7 +1265,9 @@ class MessageHandler(
      * 标明每个键的来源层，设置页据此把被组织配置覆盖的键显示为「生效值 + 置灰」。
      * 读取失败降级为空。
      *
-     * 模型选择不在回包里：模型经 `/model` 命令走宿主 RPC。服务端地址的用户偏好
+     * **对话模型**选择不在回包里（经 `/model` 命令走宿主 RPC）；补全模型
+     * （顶层 `completionModel`）是配置文件里的用户偏好键，故在回包里（见
+     * spec ui/code-completion.md 故事 4）。服务端地址的用户偏好
      * （`env.WAVE_SERVER_URL`）属于回包；宿主的 `authStatusResponse.serverUrl`
      * 仍单独下发（由 CLI 的 getAuthStatus 解析）。
      */
@@ -1282,6 +1284,11 @@ class MessageHandler(
             prefs["autoMemoryEnabled"]?.let { put("autoMemoryEnabled", it) }
             prefs["autoMemoryFrequency"]?.let { put("autoMemoryFrequency", it) }
             prefs["serverUrl"]?.let { put("serverUrl", it) }
+            // 补全模型 / 开关（顶层 completionModel / completionEnabled，spec
+            // ui/code-completion.md 故事 4–5）：与对话模型不同，它们是配置文件里的
+            // 用户偏好键，故随本回包走。
+            prefs["completionModel"]?.let { put("completionModel", it) }
+            prefs["completionEnabled"]?.let { put("completionEnabled", it) }
             prefs["preferenceSources"]?.let { put("preferenceSources", it) }
         }
     }
@@ -1296,8 +1303,10 @@ class MessageHandler(
     }
 
     /**
-     * 写用户级偏好（settings.json）——只取用户偏好键，扩展本地键与模型键
-     * 不落该文件（spec agent-config 边界说明「用户偏好的落点」）。
+     * 写用户级偏好（settings.json）——只取用户偏好键，扩展本地键不落该文件
+     * （spec agent-config 边界说明「用户偏好的落点」）。补全模型/开关是配置文件
+     * 里的用户偏好键，故在白名单内；**对话模型**不在（那是 `/model` 命令写顶层
+     * `model` 的路径）。
      */
     private suspend fun writeUserSettings(data: JsonObject) {
         val patch = buildJsonObject {
@@ -1306,6 +1315,14 @@ class MessageHandler(
             data["autoMemoryEnabled"]?.let { put("autoMemoryEnabled", it) }
             data["autoMemoryFrequency"]?.let { put("autoMemoryFrequency", it) }
             data["serverUrl"]?.let { put("serverUrl", it) }
+            // 补全模型：空串视作未提供（省略键 = 不改该键）；否则「清空下拉」会被
+            // 翻译成写一个空模型名（与回读侧同一判据）。
+            data["completionModel"]
+                ?.jsonPrimitive?.contentOrNull
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { put("completionModel", it) }
+            data["completionEnabled"]?.let { put("completionEnabled", it) }
         }
         val (client, _) = WaveBackendService.getInstance(project).ensureClient()
         client.request("updateUserSettings", patch)
