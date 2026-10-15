@@ -235,6 +235,19 @@
    */
   var streaming = false;
   /**
+   * 会话列表两类标记的原始事实：**有待确认请求**的会话 id、**注册表里
+   * `isLoading`** 的会话 id（两个集合都含当前这条，标不标当前那条由列表自己定）。
+   *
+   * 两个集合来自两次**不同的读**（`listPendingPermissions` 与会话注册表
+   * `listDaemonSessions`），所以各自维护、不互相推导；当前这条的「运行中」还在
+   * `runningIds` 里按 `streaming` 现算，见那里。合起来是本故事的整个设计：「弹哪张
+   * 卡是会话级的、标记是进程级的」——读是进程级的（报告全部会话），弹只弹当前这条，
+   * 别条会话的等待由这两个集合在会话列表上承接（spec remote-control.md「待确认只在
+   * 它自己的对话里弹，对话状态在会话列表标出来」）。
+   */
+  var waitingSessionIds = [];
+  var runningSessionIds = [];
+  /**
    * The approvals this page is showing because this shim put the cards there —
    * the ids, not the cards.
    *
@@ -1318,15 +1331,17 @@
     // letting it through mixes two conversations into one list and, worse,
     // re-points the page's own sessionId at whichever session spoke last.
     //
-    // Approvals are the exception: a pending request is a process-wide fact
-    // (`listPendingPermissions` reports every session's, and the reply is routed
-    // by requestId, not by session), and it is the one thing the user must not
-    // miss — it is usually waiting in a session they are not looking at.
-    if (
-      frameSessionId &&
-      frameSessionId !== sessionId &&
-      method !== "permissionRequest"
-    ) {
+    // **Approvals are no exception.** They used to be one, on the grounds that a
+    // pending request is a process-wide fact the user must not miss — and that is
+    // true, but a card in the conversation on screen is the wrong carrier: it has
+    // no room to say which conversation it came from (`confirmationOf` maps the
+    // tool and its input, not the owner), so answering it in someone else's
+    // context is exactly the bug the user hit on 2026-10-15 (spec scenario 1),
+    // and it could even hide the current conversation's own card behind it. What
+    // the frame *does* still do here is feed the session list's 「待确认」 marker:
+    // absorbed, not rendered (see `markWaiting`).
+    if (frameSessionId && frameSessionId !== sessionId) {
+      if (method === "permissionRequest") markWaiting(frameSessionId);
       return;
     }
 
@@ -1418,7 +1433,12 @@
         return;
       case "permissionRequest":
         // The whole reason this page exists: an approval that arrived while the
-        // user was away has to be answerable from the phone.
+        // user was away has to be answerable from the phone — but only in the
+        // conversation it belongs to (the filter above drops the others). An
+        // untagged frame (`frameSessionId` absent) lands here for the current
+        // session, which is the fail-open rule `belongsToCurrentSession` states.
+        if (!belongsToCurrentSession(p)) return;
+        markWaiting(frameSessionId || sessionId);
         showApproval(p);
         return;
       case "sessionIdChange":
@@ -1472,6 +1492,20 @@
         var requests = (result && result.requests) || [];
         if (!sessionId && requests.length)
           sessionId = requests[0].sessionId || "";
+        // The read is process-wide, the cards are not: this is where 「读是进程级的、
+        // 弹是会话级的」 lands. The wait set is rewritten from the reply (a fact, not
+        // an accumulation — scenario 4) and the cards are filtered to the session on
+        // screen, whose own requests are the only ones whose context the reader is
+        // looking at (scenario 1/2). Nothing new is read for either of them.
+        waitingSessionIds = [];
+        var cards = [];
+        for (var i = 0; i < requests.length; i++) {
+          var owner = requests[i].sessionId;
+          if (owner && waitingSessionIds.indexOf(owner) === -1)
+            waitingSessionIds.push(owner);
+          if (belongsToCurrentSession(requests[i]))
+            cards.push(confirmationOf(requests[i]));
+        }
         post({
           command: "setInitialState",
           messages: messages,
@@ -1497,7 +1531,12 @@
           sessions: sessions,
           session: currentSession(sessions, sessionId),
           currentSession: currentSession(sessions, sessionId),
-          pendingConfirmations: requests.map(confirmationOf),
+          pendingConfirmations: cards,
+          // The session list is re-posted only by a snapshot, so the markers ride
+          // this one (spec 「待确认只在它自己的对话里弹，对话状态在会话列表标出来」);
+          // the paths that do not rebuild the snapshot send them through
+          // `updateSessionStatus` instead.
+          sessionStatus: { waiting: waitingSessionIds, running: runningIds() },
           queuedMessages: (state && state.queuedMessages) || [],
           // The relay authenticated this page with the machine's own
           // credential; there is no separate phone login to satisfy.
@@ -1626,7 +1665,17 @@
   /** Re-read the live session registry into `sessions`. */
   function loadSessions() {
     return request("listDaemonSessions", {}).then(function (result) {
-      sessions = ((result && result.sessions) || []).map(toSessionMetadata);
+      var entries = (result && result.sessions) || [];
+      sessions = entries.map(toSessionMetadata);
+      // Same read, second fact: which sessions are generating. The registry is
+      // the only place that state exists as a *state* (see `applyStreaming`), so
+      // the 「运行中」 marker rides this read rather than adding one — which is
+      // also why no extra RPC is needed for either marker (spec scenario 8).
+      runningSessionIds = [];
+      for (var i = 0; i < entries.length; i++) {
+        if (entries[i].isLoading === true && entries[i].sessionId)
+          runningSessionIds.push(entries[i].sessionId);
+      }
       // Most recently active first: the list is a picker, and this is the only
       // ordering signal the page has (it cannot see the computer's screen).
       sessions.sort(function (a, b) {
@@ -1658,6 +1707,11 @@
     return loadSessions()
       .then(function () {
         applyStreaming(isBusy(currentSession(sessions, sessionId)), force);
+        // That read also realigned 「谁在跑」: post it even when the busy flag
+        // itself did not change (`applyStreaming` then posts nothing), because
+        // *another* session's run may have started or ended while the link was
+        // down (spec scenarios 5 and 8).
+        postSessionStatus();
       })
       .catch(function () {});
   }
@@ -1677,8 +1731,10 @@
    * killing the app brings the options back.
    *
    * Not scoped to the session on screen: the registry reports every session's
-   * requests, and an approval is usually waiting in one the user is not looking at
-   * (see the note in `deliver`).
+   * requests, and the 「待确认」 marker on the session list is where the others
+   * surface (see the note in `deliver`). The **cards** it posts are scoped: only
+   * the requests belonging to the conversation on screen become cards, because a
+   * card carries no notion of which conversation asked (spec scenario 1/2).
    *
    * `force` forgets what this shim believed was up: a page that re-mounted reset
    * its own list, so "already shown" is no longer true.
@@ -1688,10 +1744,20 @@
     return request("listPendingPermissions", {})
       .then(function (result) {
         var requests = (result && result.requests) || [];
+        // The reply is the truth *now*, so the wait set is rewritten rather than
+        // appended to: a request the user answered on the computer (or one that
+        // went away with its session) only disappears in this read — the marker
+        // goes with it on the next one (spec scenario 4).
+        waitingSessionIds = [];
         for (var i = 0; i < requests.length; i++) {
+          var owner = requests[i].sessionId;
+          if (owner && waitingSessionIds.indexOf(owner) === -1)
+            waitingSessionIds.push(owner);
+          if (!belongsToCurrentSession(requests[i])) continue;
           if (shownApprovals[requests[i].requestId]) continue;
           showApproval(requests[i]);
         }
+        postSessionStatus();
       })
       .catch(function (err) {
         warnOnce("pending", "待审批补读失败：" + err.message);
@@ -1775,6 +1841,79 @@
     if (!force && busy === streaming) return;
     streaming = busy;
     post({ command: busy ? "startStreaming" : "endStreaming" });
+    // The current session's 「运行中」 marker is derived from this very value (see
+    // `runningIds`), so it moves with the transition instead of waiting for the
+    // next registry read — the run the reader just started shows up in the list.
+    postSessionStatus();
+  }
+
+  // ── Session-list markers (「待确认」 / 「运行中」) ───────────────────
+  //
+  // Two facts, two reads, one broadcast to the session list. The *card* is
+  // per-conversation and the *marker* is process-wide: this page pops an
+  // approval only in the conversation that asked, and answers the question
+  // 「别处有东西在等我吗」 on the session list instead (spec remote-control.md
+  // 「待确认只在它自己的对话里弹，对话状态在会话列表标出来」).
+
+  /**
+   * Does this pending request belong to the conversation on screen?
+   *
+   * **An untagged request counts as the current session** (fail-open): the
+   * `sessionId` is a field a machine older than this page does not send, and in
+   * that case showing the card is the old behaviour while hiding it would put an
+   * approval somewhere the reader cannot reach at all.
+   */
+  function belongsToCurrentSession(pendingRequest) {
+    var owner = pendingRequest && pendingRequest.sessionId;
+    return !owner || owner === sessionId;
+  }
+
+  /**
+   * The sessions the list should mark 「运行中」.
+   *
+   * The registry read gives that set as a *state*, but the conversation on
+   * screen is reported by `streaming` — the one variable the busy state is
+   * allowed to live in, fed by both the registry and the `loadingChange`
+   * transitions ("two sources, the later one wins", see its declaration). So the
+   * current session is taken from there and the others from the registry: one
+   * value per session, never two that disagree.
+   */
+  function runningIds() {
+    var ids = [];
+    for (var i = 0; i < runningSessionIds.length; i++) {
+      if (runningSessionIds[i] !== sessionId) ids.push(runningSessionIds[i]);
+    }
+    if (sessionId && streaming) ids.push(sessionId);
+    return ids;
+  }
+
+  /**
+   * Record 「这条会话在等我」 and say so at once: the notification path is the
+   * only thing that knows about an approval which arrived while the page was
+   * connected, and the next re-read (`refreshPending`) may be a reconnect away.
+   */
+  function markWaiting(id) {
+    if (!id || waitingSessionIds.indexOf(id) !== -1) return;
+    waitingSessionIds.push(id);
+    postSessionStatus();
+  }
+
+  /**
+   * Hand both marker sets to the session list. The snapshot path carries the same
+   * pair inside `setInitialState` (one read, one paint); every path that does not
+   * rebuild the snapshot uses this command — the session list itself is only
+   * re-posted by a snapshot, so a marker change has no other way to reach it.
+   *
+   * Sent whether or not anything changed: it is two small arrays, and "unchanged"
+   * is not worth a local mirror that could drift from what the page holds (the
+   * page may have re-mounted behind our back and reset its own copy).
+   */
+  function postSessionStatus() {
+    post({
+      command: "updateSessionStatus",
+      waiting: waitingSessionIds,
+      running: runningIds(),
+    });
   }
 
   /**

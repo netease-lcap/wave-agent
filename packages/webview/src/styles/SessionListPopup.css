@@ -102,13 +102,37 @@
   background-color: var(--vscode-list-activeSelectionBackground);
 }
 
+/* 标题行：标题占满、状态标记（远控页专用）贴右端。标记只在那条有话说时才渲染
+   （见 SessionList.sessionStatusMarker），所以其余宿主这里只有标题一个孩子。 */
+.session-list-item-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .session-list-item-title {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
   font-weight: 500;
   color: var(--vscode-foreground);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 「待确认 / 运行中」标记槽：16px 图标（琥珀点 8px 居 16 盒内 / loading 环 16）。
+   深色下 loading 环换对比色，与桌面侧栏同一条规则（DesktopApp.css
+   html[data-theme="dark"] .desktop-session-status-slot）。 */
+.session-list-item-status {
+  display: flex;
+  align-items: center;
+  flex: none;
+}
+
+html[data-theme="dark"] .session-list-item-status {
+  --loading-ring-track: rgba(255, 255, 255, 0.16);
+  --loading-ring-head: #d4d7de;
 }
 
 .session-list-highlight {

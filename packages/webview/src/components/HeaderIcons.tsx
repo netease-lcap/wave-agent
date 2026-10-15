@@ -942,6 +942,29 @@ export const LoadingRingIcon: React.FC<{
 );
 
 /**
+ * 8px 状态点（24 盒内 r=4）：amber `#E6A23C` = 等待确认、green `#16A34A` =
+ * 已完成未读。桌面端侧栏的会话状态位与远控页会话列表的状态标记共用这一个
+ * 资产——`size` 按消费方的槽位给（侧栏 24、列表行 16）。
+ */
+export const StatusDotIcon: React.FC<{
+  color: string;
+  label: string;
+  size?: number;
+}> = ({ color, label, size = 24 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    role="img"
+    aria-label={label}
+    style={{ display: "block" }}
+  >
+    <circle cx="12" cy="12" r="4" fill={color} />
+  </svg>
+);
+
+/**
  * 16px 加载弧（设计师 2026-09-17 给的 `loading.svg`）：**渐变尾巴**的环——
  * 整圈用 conic-gradient 从 `currentColor` 渐隐到透明，尾巴扫一圈。
  *

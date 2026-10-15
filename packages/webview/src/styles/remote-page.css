@@ -325,6 +325,13 @@
     height: 20px;
   }
 
+  /* 「会话」入口用的是 codicon 字形（语义见 ChatHeader：这一端列的是会话，不是
+     历史）。codicons.css 把字号写死在 `font:` 简写里（16px/1），所以要跟着同一
+     档一起抬，否则它比旁边的 SVG 图标小一档。 */
+  [data-remote-page] .header-button .codicon {
+    font-size: 20px;
+  }
+
   /* 输入区按钮行：40px 的按钮在原来的 40px 行高里会顶满上下边，抬到 48；
      左内边距 12→4 是为了让第一个按钮的**字形**（不是按钮盒）留在原处——
      原来 22px 按钮里 16px 字形居中，字形左边缘在 12+3=15px；现在

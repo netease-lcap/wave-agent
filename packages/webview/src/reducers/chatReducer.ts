@@ -27,6 +27,9 @@ export const initialState: ChatState = {
   currentSession: undefined,
   sessionsLoading: false,
   pendingConfirmations: [],
+  // 会话列表的状态标记（远控 Web 页）：读不到任何状态时不标任何对话——空集是
+  // 「没有对话在等 / 没有对话在跑」，与 undefined 区分开（后者是宿主没给）。
+  sessionStatus: { waiting: [], running: [] },
   queuedMessages: [],
   // Dialog state
   activeDialog: null,
@@ -132,6 +135,14 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         sessions: action.payload,
         sessionsLoading: false,
+      };
+    // 会话列表的两类标记（远控 Web 页）：两个集合一起给——它们是同一次重读的
+    // 两半（待确认来自 listPendingPermissions、忙闲来自会话注册表），分开给会让
+    // 没变的那一半在到达时被清空。
+    case "SET_SESSION_STATUS":
+      return {
+        ...state,
+        sessionStatus: action.payload,
       };
     case "SET_CURRENT_SESSION": {
       const session = action.payload;
@@ -274,6 +285,10 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         configurationData:
           action.payload.configurationData || state.configurationData,
         pendingConfirmations: action.payload.pendingConfirmations || [],
+        // 快照里没有这两组 id 时保留现值，而不是清空：缺席只说明宿主那份快照
+        // 早于本字段（或该宿主根本没有会话列表），把它当「没有对话在等/在跑」
+        // 会给出一个比事实更安静的画面。
+        sessionStatus: action.payload.sessionStatus || state.sessionStatus,
         queuedMessages: action.payload.queuedMessages || [],
         backgroundTasks: action.payload.backgroundTasks ?? [],
         workflowRuns: action.payload.workflowRuns ?? [],

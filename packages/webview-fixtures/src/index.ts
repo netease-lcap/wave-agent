@@ -33,6 +33,7 @@ import type {
   UpdatePermissionModeMessage,
   UpdateCurrentSessionMessage,
   UpdateTasksMessage,
+  UpdateSessionStatusMessage,
   UpdateToolBlockMessage,
   UpdateErrorBlockMessage,
   UpdateWorkdirMessage,
@@ -112,6 +113,11 @@ export interface Fixtures {
     tasks: Task[],
     overrides?: Overrides<UpdateTasksMessage>,
   ) => UpdateTasksMessage;
+  updateSessionStatus: (
+    waiting: string[],
+    running: string[],
+    overrides?: Overrides<UpdateSessionStatusMessage>,
+  ) => UpdateSessionStatusMessage;
   updateToolBlock: (
     params: ToolBlockUpdateCallbackParams,
     overrides?: Overrides<UpdateToolBlockMessage>,
@@ -279,6 +285,13 @@ export const fixtures: Fixtures = {
   updateTasks: (tasks, overrides = {}) => ({
     command: "updateTasks",
     tasks,
+    ...overrides,
+  }),
+
+  updateSessionStatus: (waiting, running, overrides = {}) => ({
+    command: "updateSessionStatus",
+    waiting,
+    running,
     ...overrides,
   }),
 

@@ -1077,6 +1077,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           });
         }
         break;
+      // 会话列表的两类标记（远控 Web 页）：远程 shim 在每次重读后整组重发，
+      // 「待确认」与「运行中」一起给（见 SET_SESSION_STATUS）。
+      case "updateSessionStatus":
+        if (!forThisPane(message)) break;
+        dispatch({
+          type: "SET_SESSION_STATUS",
+          payload: { waiting: message.waiting, running: message.running },
+        });
+        break;
       case "updateBackgroundTasks":
         if (!forThisPane(message)) break;
         dispatch({ type: "SET_BACKGROUND_TASKS", payload: message.tasks });
@@ -1567,6 +1576,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             // until the next incremental updateBackgroundTasks (e.g. stop).
             backgroundTasks: message.backgroundTasks,
             workflowRuns: message.workflowRuns,
+            // 会话列表的两类标记随快照一起下发（远控 Web 页）：列表与标记来自
+            // 同一次读，所以能一次上屏。其余宿主不携带 —— 缺席时保留现值，见
+            // reducer 里那行的注释。
+            sessionStatus: message.sessionStatus,
           },
         });
         break;
@@ -4165,6 +4178,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         currentSession={state.currentSession}
         onSessionSelect={handleSessionSelect}
         sessionsLoading={state.sessionsLoading}
+        // 会话列表的「待确认 / 运行中」标记：只有远控 Web 页有这两组数据（它没有
+        // 侧栏，会话列表就是它唯一能标记状态的地方）；其余四端传 undefined，列表
+        // 照旧只渲染标题与时间（spec remote-control.md「待确认只在它自己的对话里
+        // 弹，对话状态在会话列表标出来」）。
+        sessionStatus={isRemotePage ? state.sessionStatus : undefined}
         // `/resume` (IDE hosts) opens this very popup — one list, one scope, no
         // second implementation to drift.
         sessionListOpen={!isDesktop && resumePickerOpen}
