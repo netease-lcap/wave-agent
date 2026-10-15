@@ -253,6 +253,7 @@ describe("metrics", () => {
       metrics.initMetrics(fake.meter, {
         includeSessionId: false,
         includeRepository: false,
+        includeEntrypoint: false,
         resourceAttributes: {},
         ...policy,
       } as Parameters<typeof metrics.initMetrics>[1]);
@@ -267,6 +268,7 @@ describe("metrics", () => {
         sessionId: undefined,
         workdir: "/repo",
         includeRepository: false,
+        entrypoint: undefined,
       });
     });
 
@@ -284,6 +286,7 @@ describe("metrics", () => {
         sessionId: "session-1",
         workdir: "/repo",
         includeRepository: false,
+        entrypoint: undefined,
       });
       expect(fake.counter("wave.api.requests").add).toHaveBeenCalledWith(1, {
         "session.id": "session-1",
@@ -298,6 +301,38 @@ describe("metrics", () => {
       );
       expect(fake.counter("wave.sessions").add).toHaveBeenCalledWith(1, {
         "session.id": "session-1",
+      });
+    });
+
+    it("should put the declared entrypoint on data points when the switch is on", () => {
+      standardAttributes.mockReturnValue({ "app.entrypoint": "desktop" });
+      initWithPolicy({ includeEntrypoint: true });
+
+      metrics.recordSession({ sessionId: "s-1", entrypoint: "desktop" });
+
+      // The context reaches the shared builder only when the switch is on —
+      // events get the entrypoint from their own context either way.
+      expect(standardAttributes).toHaveBeenCalledWith({
+        sessionId: undefined,
+        workdir: undefined,
+        includeRepository: false,
+        entrypoint: "desktop",
+      });
+      expect(fake.counter("wave.sessions").add).toHaveBeenCalledWith(1, {
+        "app.entrypoint": "desktop",
+      });
+    });
+
+    it("should drop the entrypoint when the switch is off", () => {
+      initWithPolicy({ includeEntrypoint: false });
+
+      metrics.recordSession({ sessionId: "s-1", entrypoint: "desktop" });
+
+      expect(standardAttributes).toHaveBeenCalledWith({
+        sessionId: undefined,
+        workdir: undefined,
+        includeRepository: false,
+        entrypoint: undefined,
       });
     });
 

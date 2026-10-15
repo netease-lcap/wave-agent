@@ -16,6 +16,7 @@ import type { McpManagerCallbacks } from "../managers/mcpManager.js";
 import type { SubagentManagerCallbacks } from "../managers/subagentManager.js";
 import type { PartialHookConfiguration } from "./configuration.js";
 import type { TelemetryConfig } from "./telemetry.js";
+import type { HostEntrypoint } from "../constants/telemetry.js";
 import type { ToolPlugin } from "../tools/types.js";
 
 /**
@@ -131,6 +132,15 @@ export interface AgentOptions {
    * `headersProvider`, which no JSON config could carry.
    */
   telemetry?: Partial<TelemetryConfig>;
+  /**
+   * Which host entrypoint this session belongs to → the `app.entrypoint`
+   * attribute (docs/specs/enterprise/opentelemetry.md「宿主入口标识」).
+   *
+   * Declared by whoever creates the session. Left unset, records simply carry
+   * no entrypoint: we never guess one from the process, because a long-lived
+   * daemon hosts sessions created from several front ends at once.
+   */
+  entrypoint?: HostEntrypoint;
   [key: string]: unknown;
 }
 

@@ -15,6 +15,7 @@ import {
   loadUserConfigEnv,
   readUserPreferenceView,
   updateUserPreferenceSettings,
+  normalizeEntrypoint,
 } from "wave-agent-sdk";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -241,6 +242,58 @@ test("initialize forwards worktreeName and isNewWorktree to Agent options", asyn
   const options = vi.mocked(Agent.create).mock.calls[0][0];
   expect(options.worktreeName).toBe("feat");
   expect(options.isNewWorktree).toBe(true);
+});
+
+test("initialize forwards the declared entrypoint to Agent options", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+  vi.mocked(normalizeEntrypoint).mockReturnValue("jetbrains");
+
+  await bridge.handleRequest("initialize", {
+    workdir: "/repo",
+    entrypoint: "jetbrains",
+  });
+
+  // The wire value is narrowed before it reaches the SDK; the table itself is
+  // covered by tests/constants/telemetry.test.ts.
+  expect(normalizeEntrypoint).toHaveBeenCalledWith("jetbrains");
+  expect(vi.mocked(Agent.create).mock.calls[0][0].entrypoint).toBe("jetbrains");
+});
+
+test("initialize drops an unrecognised entrypoint instead of passing it on", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+  vi.mocked(normalizeEntrypoint).mockReturnValue(undefined);
+
+  await bridge.handleRequest("initialize", {
+    workdir: "/repo",
+    entrypoint: "terminal",
+  });
+
+  // Nothing to record: an unknown value must not mint a series of its own.
+  expect(vi.mocked(Agent.create).mock.calls[0][0].entrypoint).toBeUndefined();
+});
+
+test("updateConfig keeps the entrypoint across the agent recreation", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+  vi.mocked(normalizeEntrypoint).mockReturnValue("vscode");
+
+  const init = (await bridge.handleRequest("initialize", {
+    workdir: "/repo",
+    entrypoint: "vscode",
+  })) as { sessionId: string };
+  vi.mocked(Agent.create).mockClear();
+
+  await bridge.handleRequest(
+    "updateConfig",
+    { model: "gpt-4" },
+    init.sessionId,
+  );
+
+  // The host declaration outlives the rebuild — an updateConfig replaces the
+  // agent, not the host that asked for the session.
+  expect(vi.mocked(Agent.create).mock.calls[0][0].entrypoint).toBe("vscode");
 });
 
 // ── Callbacks → Notifications ────────────────────────────────────

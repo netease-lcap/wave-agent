@@ -117,6 +117,21 @@ describe("ChatSession · 配置不经 CLI 参数覆盖层下发", () => {
     const params = paramsFor(client.request, "updateConfig");
     expect(params).toEqual({});
   });
+
+  it("initialize 声明 vscode 入口标识（遥测的 app.entrypoint）", async () => {
+    const client = fakeClient();
+    const session = new ChatSession("sidebar", undefined, callbacks());
+
+    await session.initialize(
+      undefined,
+      client as unknown as StdioClient,
+      fakeRouter() as unknown as NotificationRouter,
+    );
+
+    expect(paramsFor(client.request, "initialize")).toMatchObject({
+      entrypoint: "vscode",
+    });
+  });
 });
 
 /**

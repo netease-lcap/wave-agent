@@ -20,6 +20,8 @@ import {
   AuthService,
   getOrCreateAnonymousId,
 } from "../services/authService.js";
+import type { HostEntrypoint } from "../constants/telemetry.js";
+import type { Container } from "../utils/container.js";
 
 /** What the caller knows about the record it is about to make. */
 export interface StandardAttributeContext {
@@ -29,6 +31,8 @@ export interface StandardAttributeContext {
   workdir?: string;
   /** Whether repository attributes may be resolved (opt-in, default off) */
   includeRepository?: boolean;
+  /** Host entrypoint that created the session → `app.entrypoint` */
+  entrypoint?: HostEntrypoint;
 }
 
 /**
@@ -61,6 +65,18 @@ export function getTerminalType(): string | undefined {
   return (
     process.env.TERM_PROGRAM?.trim() || process.env.TERM?.trim() || undefined
   );
+}
+
+/**
+ * The entrypoint a session declared when it was created, read from the agent's
+ * DI container — where `setupContainer` stores it, already narrowed to the known
+ * table (see `normalizeEntrypoint`).
+ *
+ * Behind an accessor because five managers read it while making records and the
+ * container token is a bare string: one place to keep them from drifting.
+ */
+export function entrypointOf(container: Container): HostEntrypoint | undefined {
+  return container.get<HostEntrypoint>("Entrypoint");
 }
 
 let cachedServiceVersion: string | undefined;
@@ -193,7 +209,9 @@ export function getRepositoryAttributes(
  * Identity and terminal type always apply; `session.id` applies whenever the
  * caller knows the session (the metrics module applies the
  * `OTEL_METRICS_INCLUDE_SESSION_ID` switch before calling); repository
- * attributes only when explicitly enabled.
+ * attributes only when explicitly enabled; the entrypoint whenever the session's
+ * creator declared one. Neither is ever filled with a placeholder — a record
+ * simply carries no `app.entrypoint` when nobody declared it.
  */
 export function standardAttributes(
   context: StandardAttributeContext = {},
@@ -206,6 +224,9 @@ export function standardAttributes(
   }
   if (context.sessionId) {
     attributes["session.id"] = context.sessionId;
+  }
+  if (context.entrypoint) {
+    attributes["app.entrypoint"] = context.entrypoint;
   }
   if (context.includeRepository) {
     Object.assign(attributes, getRepositoryAttributes(context.workdir));

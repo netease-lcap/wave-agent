@@ -12,5 +12,6 @@ export * from "./memory.js";
 export * from "./messages.js";
 export * from "./plugins.js";
 export * from "./subagents.js";
+export * from "./telemetry.js";
 export * from "./toolLimits.js";
 export * from "./tools.js";

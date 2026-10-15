@@ -874,6 +874,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           isNewWorktree: worktreeSession?.isNew,
           model,
           mcpServers,
+          // This session was created from the interactive CLI → `app.entrypoint`.
+          entrypoint: "cli",
         });
 
         agentRef.current = agent;

@@ -231,5 +231,22 @@ describe("standard attributes", () => {
         "session.id",
       );
     });
+
+    it("should carry the entrypoint the session's creator declared", () => {
+      expect(
+        attributes.standardAttributes({ entrypoint: "jetbrains" }),
+      ).toMatchObject({ "app.entrypoint": "jetbrains" });
+    });
+
+    it("should carry no entrypoint when nothing was declared", () => {
+      // No placeholder, no guess from the terminal type — the record simply
+      // has no entrypoint, and a collector sees it as unattributed.
+      expect(attributes.standardAttributes({})).not.toHaveProperty(
+        "app.entrypoint",
+      );
+      expect(
+        attributes.standardAttributes({ entrypoint: undefined }),
+      ).not.toHaveProperty("app.entrypoint");
+    });
   });
 });

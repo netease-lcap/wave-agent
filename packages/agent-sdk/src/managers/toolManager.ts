@@ -64,6 +64,7 @@ import {
   recordToolActivity,
 } from "../telemetry/metrics.js";
 import type { RecordContext } from "../telemetry/metrics.js";
+import { entrypointOf } from "../telemetry/attributes.js";
 import { detectBashActivity } from "../telemetry/toolActivity.js";
 
 export interface ToolManagerOptions {
@@ -77,13 +78,22 @@ export interface ToolManagerOptions {
 /**
  * The session a tool call belongs to, for the standard attributes of the
  * records it produces. The tool context is the one place every call passes
- * through, so both the flat and the nested (Exec sandbox) path have it.
+ * through, so both the flat and the nested (Exec sandbox) path have it; the
+ * entrypoint comes from the container instead — it is a property of the session,
+ * not of the call, and the context is rebuilt per call.
  */
-function recordContextOf(context: {
-  sessionId?: string;
-  workdir?: string;
-}): RecordContext {
-  return { sessionId: context.sessionId, workdir: context.workdir };
+function recordContextOf(
+  context: {
+    sessionId?: string;
+    workdir?: string;
+  },
+  container: Container,
+): RecordContext {
+  return {
+    sessionId: context.sessionId,
+    workdir: context.workdir,
+    entrypoint: entrypointOf(container),
+  };
 }
 
 /**
@@ -96,6 +106,7 @@ function recordContextOf(context: {
 function recordLinesChangedFromResult(
   result: ToolResult,
   context: { sessionId?: string; workdir?: string },
+  container: Container,
 ): void {
   const metadata = result.metadata;
   if (!result.success || !metadata) return;
@@ -106,7 +117,7 @@ function recordLinesChangedFromResult(
       added: Number.isFinite(added) ? added : undefined,
       removed: Number.isFinite(removed) ? removed : undefined,
     },
-    recordContextOf(context),
+    recordContextOf(context, container),
   );
 }
 
@@ -120,11 +131,15 @@ function recordBashActivity(
   args: Record<string, unknown>,
   result: ToolResult,
   context: { sessionId?: string; workdir?: string },
+  container: Container,
 ): void {
   if (name !== "Bash" || !result.success) return;
   const command = typeof args.command === "string" ? args.command : "";
   if (!command) return;
-  recordToolActivity(detectBashActivity(command), recordContextOf(context));
+  recordToolActivity(
+    detectBashActivity(command),
+    recordContextOf(context, container),
+  );
 }
 
 /**
@@ -427,8 +442,8 @@ class ToolManager {
       let result: ToolResult;
       try {
         result = await plugin.execute(args, enhancedContext);
-        recordLinesChangedFromResult(result, context);
-        recordBashActivity(name, args, result, context);
+        recordLinesChangedFromResult(result, context, this.container);
+        recordBashActivity(name, args, result, context, this.container);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         logger?.error("Tool execution failed", {

@@ -113,6 +113,9 @@ class WaveSession(
             val params = buildJsonObject {
                 put("workdir", project.basePath ?: System.getProperty("user.dir"))
                 if (restoreSessionId != null) put("restoreSessionId", restoreSessionId)
+                // 遥测的 app.entrypoint：本会话由 JetBrains 插件创建
+                // （spec enterprise/opentelemetry.md「宿主入口标识」）。
+                put("entrypoint", "jetbrains")
                 // 不下发任何会话级覆盖项：模型经 `/model` 命令走宿主 RPC；用户偏好
                 // （语言 / 上下文长度 / 自动记忆）落点唯一为用户级
                 // ~/.wave/settings.json，经 SDK 实时重载生效

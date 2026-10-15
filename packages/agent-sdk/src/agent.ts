@@ -58,6 +58,7 @@ import {
 } from "./telemetry/instrumentation.js";
 import { logOTelEvent } from "./telemetry/events.js";
 import { recordSession } from "./telemetry/metrics.js";
+import { entrypointOf } from "./telemetry/attributes.js";
 import { remoteSettingsService } from "./services/remoteSettingsService.js";
 
 export class Agent {
@@ -783,6 +784,7 @@ export class Agent {
       const sessionContext = {
         sessionId: this.messageManager.getSessionId(),
         workdir: this.workdir,
+        entrypoint: entrypointOf(this.container),
       };
       if (modelConfig.model) {
         await logOTelEvent(
@@ -1062,6 +1064,7 @@ export class Agent {
       {
         sessionId: this.messageManager.getSessionId(),
         workdir: this.workdir,
+        entrypoint: entrypointOf(this.container),
       },
     ).catch(() => {});
     await flushTelemetry();

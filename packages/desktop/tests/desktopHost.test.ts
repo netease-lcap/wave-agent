@@ -1055,6 +1055,16 @@ describe("webviewReady / setInitialState", () => {
     expect(last.paneId).toBeTypeOf("string");
   });
 
+  it("declares the desktop entrypoint so telemetry can attribute the session", async () => {
+    await readyHost();
+
+    // The value travels the wire as `initialize.entrypoint` and is what the SDK
+    // exports as `app.entrypoint` (spec enterprise/opentelemetry.md).
+    expect(lastAgent().initialize).toHaveBeenCalledWith(
+      expect.objectContaining({ entrypoint: "desktop" }),
+    );
+  });
+
   it("starts a fresh session on every launch: agent.initialize never carries restoreSessionId", async () => {
     await readyHost();
 

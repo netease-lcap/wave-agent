@@ -31,6 +31,7 @@ import { Container } from "../utils/container.js";
 import type { ConfigurationService } from "../services/configurationService.js";
 import type { ToolContext, ToolResult } from "../tools/types.js";
 import { logOTelEvent } from "../telemetry/events.js";
+import { entrypointOf } from "../telemetry/attributes.js";
 
 import { logger } from "../utils/globalLogger.js";
 
@@ -390,7 +391,11 @@ export class HookManager {
           decision: blocking ? "blocked" : "approved",
           source: "hook",
         },
-        { sessionId: context.sessionId, workdir: context.workdir },
+        {
+          sessionId: context.sessionId,
+          workdir: context.workdir,
+          entrypoint: entrypointOf(this.container),
+        },
       ).catch(() => {}); // Non-blocking
 
       return blocking

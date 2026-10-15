@@ -139,6 +139,7 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       isNewWorktree: worktreeSession?.isNew,
       model,
       mcpServers,
+      entrypoint: "cli",
       // 保持流式模式以获得更好的命令行用户体验
     });
 

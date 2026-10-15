@@ -14,6 +14,7 @@ import {
 } from "../utils/mcpUtils.js";
 import { HookBlockedToolError } from "../types/hooks.js";
 import { recordToolActivity } from "../telemetry/metrics.js";
+import { entrypointOf } from "../telemetry/attributes.js";
 import { detectMcpActivity } from "../telemetry/toolActivity.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 import { Container } from "../utils/container.js";
@@ -1116,6 +1117,7 @@ export class McpManager {
             recordToolActivity(detectMcpActivity(toolName), {
               sessionId: context?.sessionId,
               workdir: context?.workdir,
+              entrypoint: entrypointOf(this.container),
             });
             return result;
           } catch (error) {

@@ -1551,6 +1551,10 @@ export class DesktopHost {
       ...(opts.sessionId ? { restoreSessionId: opts.sessionId } : {}),
       worktreeName: opts.worktreeName,
       isNewWorktree: opts.isNewWorktree,
+      // Whatever child this lands in (a local `wave --stdio` or a remote
+      // daemon over the tunnel), the front end asking for the session is this
+      // desktop window.
+      entrypoint: "desktop",
     });
     if (agent.sessionId) {
       this.agents.set(this.agentKey(host, agent.sessionId), agent);
