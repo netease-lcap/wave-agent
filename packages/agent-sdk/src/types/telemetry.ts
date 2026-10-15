@@ -22,8 +22,8 @@ export type HeadersProvider = () => Promise<Record<string, string>>;
 export interface TelemetryConfig {
   /** Master switch for telemetry */
   enabled: boolean;
-  /** Trace export target */
-  tracesExporter?: ExporterTarget;
+  /** Metric export target */
+  metricsExporter?: ExporterTarget;
   /** Log export target */
   logsExporter?: ExporterTarget;
   /** OTLP collector URL */
@@ -38,9 +38,9 @@ export interface TelemetryConfig {
    * server-side) never has to be written into config or shipped in a build.
    * Aligned with Claude Code's `otelHeadersHelper`.
    *
-   * stdout only — it is a credential, so it never reaches a log, an audit
-   * trail or a span attribute. Env var `OTEL_EXPORTER_OTLP_HEADERS` and the
-   * static `headers` above stay as the base; the helper's keys win per key.
+   * stdout only — it is a credential, so it never reaches a log or an audit
+   * trail. Env var `OTEL_EXPORTER_OTLP_HEADERS` and the static `headers` above
+   * stay as the base; the helper's keys win per key.
    *
    * Only the user layer (`~/.wave/settings.json`) or the server-managed layer
    * may set this — a checked-out repo must not be able to name a command that
@@ -60,60 +60,6 @@ export interface TelemetryConfig {
   logToolContent: boolean;
   /** Max flush time on exit (default 2000) */
   shutdownTimeoutMs: number;
-  /** Stale span eviction TTL (default 1800000 = 30min) */
-  spanTtlMs: number;
-}
-
-/** Metadata for LLM request spans */
-export interface LLMRequestMetadata {
-  /** Model identifier */
-  model: string;
-  /** Scope context */
-  context?: "interaction" | "standalone";
-  /** Prompt tokens consumed */
-  inputTokens?: number;
-  /** Completion tokens generated */
-  outputTokens?: number;
-  /** Cache hit tokens */
-  cacheReadTokens?: number;
-  /** Cache write tokens */
-  cacheCreationTokens?: number;
-  /** Time to first token (ms) */
-  ttftMs?: number;
-  /** Time to last token / total duration (ms) */
-  ttltMs?: number;
-  /** Request succeeded */
-  success: boolean;
-  /** Error message if failed */
-  error?: string;
-  /** Response included tool calls */
-  hasToolCall?: boolean;
-  /** Model text output (recorded when logToolContent is true) */
-  modelOutput?: string;
-}
-
-/** Input context for an LLM request span (content capture gated by logToolContent) */
-export interface LLMRequestInput {
-  /** Scope context */
-  context?: "interaction" | "standalone";
-  /** System prompt string (when available) */
-  systemPrompt?: string;
-  /** Messages array sent to the API */
-  inputMessages?: unknown[];
-  /** Tool schemas JSON string */
-  toolsSchema?: string;
-}
-
-/** Metadata for tool execution spans */
-export interface ToolMetadata {
-  /** Tool execution succeeded */
-  success: boolean;
-  /** Error message if failed */
-  error?: string;
-  /** Execution time (ms) */
-  durationMs: number;
-  /** Tool output content (recorded when logToolContent is true) */
-  output?: string;
 }
 
 /** Event names for OTel structured logging */

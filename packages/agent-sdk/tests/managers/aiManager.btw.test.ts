@@ -72,6 +72,8 @@ vi.mock("../../src/utils/messageOperations.js", () => ({}));
 
 vi.mock("../../src/telemetry/events.js", () => ({
   logOTelEvent: vi.fn().mockResolvedValue(undefined),
+  logRequestContentEvents: vi.fn().mockResolvedValue(undefined),
+  resetContentEventState: vi.fn(),
 }));
 
 const functionToolCall = {

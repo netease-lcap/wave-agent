@@ -240,6 +240,12 @@ When to use: creating a new file, or fully replacing one you've already ${READ_T
         shortResult,
         filePath: resolvedPath,
         startLineNumber: 1,
+        // Line delta for the `wave.lines.changed` metric: a new file adds its
+        // own lines and removes none; an overwrite replaces what was there.
+        metadata: {
+          linesAdded: lines,
+          linesRemoved: isExistingFile ? originalContent.split("\n").length : 0,
+        },
       };
     } catch (error) {
       const errorMessage =

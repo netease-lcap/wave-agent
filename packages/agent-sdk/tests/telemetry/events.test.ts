@@ -301,6 +301,150 @@ describe("events", () => {
       });
     });
   });
+
+  describe("logRequestContentEvents", () => {
+    beforeEach(() => {
+      mockIsInitialized.mockReturnValue(true);
+      mockGetCurrentConfig.mockReturnValue({
+        logUserPrompts: false,
+        logToolContent: true,
+      });
+    });
+
+    /**
+     * `logRequestContentEvents` fires its events without awaiting them, so an
+     * assertion right after the call would hold even with the gate or the
+     * dedupe removed. Every call below is therefore followed by `settleEmits()`
+     * — and by an assertion that *this* call landed — before the next one is
+     * made: two emissions started back to back do not both reach the mock (the
+     * second one's dynamic import can resolve to the real `api-logs` module and
+     * is dropped), which would make any "only one event went out" assertion pass
+     * for free. The gate-off case proves the harness sees emissions at all.
+     */
+    async function settleEmits(): Promise<void> {
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    it("should be a no-op when not initialized", async () => {
+      mockIsInitialized.mockReturnValue(false);
+
+      await events.logRequestContentEvents({ systemPrompt: "prompt" });
+
+      expect(mockLogEmit).not.toHaveBeenCalled();
+    });
+
+    it("should be a no-op when the logToolContent gate is off", async () => {
+      // Proof the harness sees emissions at all: with the gate on, the very
+      // same call does reach `emit`.
+      await events.logRequestContentEvents({ systemPrompt: "prompt" });
+      await settleEmits();
+      expect(mockLogEmit).toHaveBeenCalledTimes(1);
+
+      mockLogEmit.mockClear();
+      mockGetCurrentConfig.mockReturnValue({
+        logUserPrompts: false,
+        logToolContent: false,
+      });
+
+      await events.logRequestContentEvents({ systemPrompt: "another prompt" });
+      await settleEmits();
+
+      expect(mockLogEmit).not.toHaveBeenCalled();
+    });
+
+    it("should emit the system prompt once per distinct hash", async () => {
+      await events.logRequestContentEvents({ systemPrompt: "Same prompt" });
+      await settleEmits();
+
+      expect(mockLogEmit).toHaveBeenCalledTimes(1);
+      const record = mockLogEmit.mock.calls[0]![0] as {
+        body: string;
+        attributes: Record<string, string>;
+      };
+      expect(record.body).toBe("system_prompt");
+      expect(record.attributes.system_prompt).toBe("Same prompt");
+      expect(record.attributes.system_prompt_hash).toMatch(/^[0-9a-f]{12}$/);
+
+      // The same prompt again — already sent, nothing new goes out.
+      await events.logRequestContentEvents({ systemPrompt: "Same prompt" });
+      await settleEmits();
+
+      expect(mockLogEmit).toHaveBeenCalledTimes(1);
+
+      // A different prompt is a different variant — it must go out too.
+      await events.logRequestContentEvents({ systemPrompt: "Another prompt" });
+      await settleEmits();
+
+      expect(mockLogEmit).toHaveBeenCalledTimes(2);
+    });
+
+    it("should emit a tool_schema event per tool, deduped by hash", async () => {
+      // One tool per call on purpose: `logRequestContentEvents` fires its
+      // events without awaiting them, and a whole batch under a mocked
+      // `@opentelemetry/api-logs` does not reliably resolve to the mock. The
+      // multi-tool batch is covered end to end in `events.content.test.ts`.
+      await events.logRequestContentEvents({
+        toolsSchema: JSON.stringify([
+          { type: "function", function: { name: "Bash", parameters: {} } },
+        ]),
+      });
+
+      await settleEmits();
+      expect(mockLogEmit).toHaveBeenCalledTimes(1);
+      const record = mockLogEmit.mock.calls[0]![0] as {
+        body: string;
+        attributes: Record<string, string>;
+      };
+      expect(record.body).toBe("tool_schema");
+      expect(record.attributes.tool_name).toBe("Bash");
+      expect(record.attributes.tool_hash).toMatch(/^[0-9a-f]{12}$/);
+      expect(record.attributes.tool_schema).toContain('"Bash"');
+
+      // Same schema again — the hash was already sent, so nothing new goes out.
+      await events.logRequestContentEvents({
+        toolsSchema: JSON.stringify([
+          { type: "function", function: { name: "Bash", parameters: {} } },
+        ]),
+      });
+      await settleEmits();
+      expect(mockLogEmit).toHaveBeenCalledTimes(1);
+    });
+
+    it("should name a tool without a function name 'unknown'", async () => {
+      await events.logRequestContentEvents({
+        toolsSchema: JSON.stringify([{ type: "function" }]),
+      });
+
+      await settleEmits();
+      expect(mockLogEmit).toHaveBeenCalledTimes(1);
+      const record = mockLogEmit.mock.calls[0]![0] as {
+        attributes: Record<string, string>;
+      };
+      expect(record.attributes.tool_name).toBe("unknown");
+    });
+
+    it("should re-emit after resetContentEventState (compaction)", async () => {
+      await events.logRequestContentEvents({ systemPrompt: "Same prompt" });
+      await settleEmits();
+      expect(mockLogEmit).toHaveBeenCalledTimes(1);
+
+      // After a compaction the same prompt must be reported again — the count
+      // it would otherwise be compared against has changed.
+      events.resetContentEventState();
+      await events.logRequestContentEvents({ systemPrompt: "Same prompt" });
+      await settleEmits();
+
+      expect(mockLogEmit).toHaveBeenCalledTimes(2);
+    });
+
+    it("should skip a tools schema that is not valid JSON", async () => {
+      await events.logRequestContentEvents({ toolsSchema: "not-json" });
+      await settleEmits();
+
+      expect(mockLogEmit).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe("events with logger import failure", () => {

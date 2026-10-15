@@ -1,24 +1,43 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
-import type { TracerProvider } from "@opentelemetry/api";
+import type { ResourceMetrics } from "@opentelemetry/sdk-metrics";
+import type { MeterProvider } from "@opentelemetry/api";
 import type { TelemetryConfig } from "@/types/telemetry.js";
 
 /**
- * These tests deliberately use the REAL `@opentelemetry/api` and the real trace
- * SDK, and only fake the OTLP exporter so spans leaving the process are
- * visible. A mocked API cannot reproduce the bug these lock: the API's global
- * provider slot is set-once, so a second `setGlobalTracerProvider()` silently
- * returns `false` and keeps delegating to the provider that was just shut down.
+ * These tests deliberately use the REAL `@opentelemetry/api` and the real
+ * metrics SDK, and only fake the OTLP exporter so metrics leaving the process
+ * are visible. A mocked API cannot reproduce the bug these lock: the API's
+ * global provider slot is set-once, so a second `setGlobalMeterProvider()`
+ * silently returns `false` and keeps delegating to the provider that was just
+ * shut down.
  */
-const { exported } = vi.hoisted(() => ({ exported: [] as string[] }));
+const { exported } = vi.hoisted(() => ({
+  exported: [] as Array<{ name: string; values: number[] }>,
+}));
 
-vi.mock("@opentelemetry/exporter-trace-otlp-http", () => ({
-  OTLPTraceExporter: class {
+vi.mock("@opentelemetry/exporter-metrics-otlp-http", () => ({
+  OTLPMetricExporter: class {
     export(
-      spans: ReadableSpan[],
+      metrics: ResourceMetrics,
       resultCallback: (result: { code: number }) => void,
     ): void {
-      exported.push(...spans.map((span) => span.name));
+      for (const scope of metrics.scopeMetrics) {
+        for (const metric of scope.metrics) {
+          const loose = metric as unknown as {
+            descriptor: { name: string };
+            dataPoints: Array<{ value: unknown }>;
+          };
+          exported.push({
+            name: loose.descriptor.name,
+            // A sum point carries a number, a histogram point a bucket summary.
+            values: loose.dataPoints.map((point) =>
+              typeof point.value === "number"
+                ? point.value
+                : (point.value as { count: number }).count,
+            ),
+          });
+        }
+      }
       resultCallback({ code: 0 });
     }
     shutdown(): Promise<void> {
@@ -41,19 +60,20 @@ vi.mock("@/utils/globalLogger.js", () => ({
 
 const OTLP_CONFIG: Partial<TelemetryConfig> = {
   enabled: true,
-  tracesExporter: "otlp",
+  metricsExporter: "otlp",
   endpoint: "http://localhost:4318",
 };
 
 describe("telemetry lifecycle", () => {
   let instrumentation: typeof import("@/telemetry/instrumentation.js");
+  let metrics: typeof import("@/telemetry/metrics.js");
   let api: typeof import("@opentelemetry/api");
   let originalEnv: NodeJS.ProcessEnv;
 
   beforeEach(async () => {
     originalEnv = { ...process.env };
     delete process.env.OTEL_ENABLED;
-    delete process.env.OTEL_TRACES_EXPORTER;
+    delete process.env.OTEL_METRICS_EXPORTER;
     delete process.env.OTEL_LOGS_EXPORTER;
     delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
 
@@ -63,8 +83,9 @@ describe("telemetry lifecycle", () => {
     // The global provider slot lives in the API module, which Node may cache
     // for the whole worker — start from an empty slot regardless.
     api = await import("@opentelemetry/api");
-    api.trace.disable();
+    api.metrics.disable();
     instrumentation = await import("@/telemetry/instrumentation.js");
+    metrics = await import("@/telemetry/metrics.js");
   });
 
   afterEach(() => {
@@ -72,34 +93,42 @@ describe("telemetry lifecycle", () => {
     vi.restoreAllMocks();
   });
 
-  it("should export spans again after a shutdown and re-initialization", async () => {
+  it("should export metrics again after a shutdown and re-initialization", async () => {
     await instrumentation.initializeTelemetry(OTLP_CONFIG);
-    api.trace.getTracer("test").startSpan("before-shutdown").end();
+    metrics.recordSession();
+    await instrumentation.flushTelemetry();
+    expect(exported).toEqual([{ name: "wave.sessions", values: [1] }]);
+
     await instrumentation.shutdownTelemetry();
-    expect(exported).toEqual(["before-shutdown"]);
+    // The SDK's own final export on shutdown is not what this test locks.
+    exported.length = 0;
 
     // A new session in the same process (the daemon hosts many) must collect.
     await instrumentation.initializeTelemetry(OTLP_CONFIG);
-    api.trace.getTracer("test").startSpan("after-reinit").end();
-    await instrumentation.shutdownTelemetry();
+    metrics.recordSession();
+    await instrumentation.flushTelemetry();
 
-    expect(exported).toEqual(["before-shutdown", "after-reinit"]);
+    expect(exported).toEqual([{ name: "wave.sessions", values: [1] }]);
   });
 
   it("should keep collecting for the surviving agents after one flushes", async () => {
     await instrumentation.initializeTelemetry(OTLP_CONFIG);
+    metrics.recordSession();
 
     // What one agent's destroy does now — the others must be unaffected.
     await instrumentation.flushTelemetry();
+    exported.length = 0;
 
-    api.trace.getTracer("test").startSpan("after-flush").end();
-    await instrumentation.shutdownTelemetry();
+    metrics.recordSession();
+    await instrumentation.flushTelemetry();
 
-    expect(exported).toEqual(["after-flush"]);
+    // Cumulative and still running: the second agent's record added to the first.
+    expect(exported).toEqual([{ name: "wave.sessions", values: [2] }]);
+    expect(instrumentation.isInitialized()).toBe(true);
   });
 
   it("should report a refused global registration instead of staying silent", async () => {
-    api.trace.setGlobalTracerProvider({} as unknown as TracerProvider);
+    api.metrics.setGlobalMeterProvider({} as unknown as MeterProvider);
 
     await instrumentation.initializeTelemetry(OTLP_CONFIG);
 

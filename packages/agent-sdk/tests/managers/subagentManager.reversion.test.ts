@@ -15,6 +15,7 @@ import { ReversionManager } from "../../src/managers/reversionManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 import { Container } from "../../src/utils/container.js";
+import { readFile } from "fs/promises";
 
 // Mock fs/promises so the Write tool never touches the real filesystem
 vi.mock("fs/promises");
@@ -59,6 +60,16 @@ describe("SubagentManager - ReversionManager isolation", () => {
   let container: Container;
 
   beforeEach(async () => {
+    // The Write tool reads its target first. A path that does not exist is what
+    // this test is about (the subagent creates a new file) — the auto-mock's
+    // `undefined` is not a shape `fs` ever returns, and the tool has to fail
+    // rather than treat it as an empty file.
+    vi.mocked(readFile).mockImplementation(async () => {
+      throw Object.assign(new Error("ENOENT: no such file"), {
+        code: "ENOENT",
+      });
+    });
+
     mockReversionService = {
       saveSnapshot: vi.fn(),
       readSnapshotContent: vi.fn(),
