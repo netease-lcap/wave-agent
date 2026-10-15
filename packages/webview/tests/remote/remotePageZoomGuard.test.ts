@@ -187,6 +187,68 @@ describe("remote page autozoom guard", () => {
     expect(size).toBeGreaterThanOrEqual(15);
   });
 
+  it("gives both icon-button clusters a finger-sized target on touch devices", () => {
+    // spec 场景 27. The two densest icon clusters on the page — the header's
+    // right side (new session / session / switch machine / more) and the
+    // composer's bottom left ("+" / "/") — were sized for a mouse pointer:
+    // 22×22 buttons, 16×16 glyphs, 4px apart (26px between centres). Touch
+    // needs 40×40 and 8px, and the two numbers have to move together: growing
+    // the hit box while leaving the gap alone makes the boxes touch or overlap,
+    // which makes mistaps *more* likely — exactly what he reported.
+    const media = rules.findIndex((r) => r.sel.startsWith("@media"));
+    expect(media).toBeGreaterThanOrEqual(0);
+    const inTier = (sel: string) => {
+      const r = rules.find((x) => x.sel === `@media> ${sel}`);
+      expect(r, `no mobile-tier rule for ${sel}`).toBeDefined();
+      expect(
+        r!.index,
+        `${sel} must sit inside the touch-device media query`,
+      ).toBeGreaterThan(media);
+      return r!.body;
+    };
+
+    for (const button of [
+      "[data-remote-page] .header-button",
+      "[data-remote-page] .toolbar-icon-button",
+    ]) {
+      const size = Number(/width:\s*([\d.]+)px/.exec(inTier(button))?.[1]);
+      expect(size, button).toBeGreaterThanOrEqual(40);
+    }
+    for (const glyph of [
+      "[data-remote-page] .header-button .header-icon",
+      "[data-remote-page] .toolbar-icon-button .toolbar-icon",
+    ]) {
+      const size = Number(/width:\s*([\d.]+)px/.exec(inTier(glyph))?.[1]);
+      expect(size, glyph).toBeGreaterThanOrEqual(20);
+    }
+    for (const cluster of [
+      "[data-remote-page] .header-buttons",
+      "[data-remote-page] .context-actions",
+    ]) {
+      const gap = Number(/gap:\s*([\d.]+)px/.exec(inTier(cluster))?.[1]);
+      expect(gap, cluster).toBeGreaterThanOrEqual(8);
+    }
+  });
+
+  it("grows the two fixed-height rails that carry the enlarged buttons", () => {
+    // The header is a fixed 44px and the composer's button row a fixed 40px;
+    // a 40px button in either one sits flush against both edges, so the height
+    // has to come along with the size. Whatever it becomes must still keep the
+    // buttons off the edges (spec 场景 14's one-screen constraint is the harder
+    // half and is checked on device, not here).
+    const inTier = (sel: string) => {
+      const r = rules.find((x) => x.sel === `@media> ${sel}`);
+      expect(r, `no mobile-tier rule for ${sel}`).toBeDefined();
+      return Number(/height:\s*([\d.]+)px/.exec(r!.body)?.[1]);
+    };
+    expect(inTier("[data-remote-page] .chat-header")).toBeGreaterThanOrEqual(
+      48,
+    );
+    expect(
+      inTier("[data-remote-page] .input-buttons-row"),
+    ).toBeGreaterThanOrEqual(48);
+  });
+
   it("keeps every rule scoped to the remote page", () => {
     // Unscoped rules here would lift the IDE and desktop density too, since all
     // five hosts load this file.
