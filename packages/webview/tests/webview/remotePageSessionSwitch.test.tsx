@@ -129,4 +129,46 @@ describe("remote page session switcher", () => {
       "session-list-item--current",
     );
   });
+
+  /**
+   * 忙时选会话**必须真的发得出去**（spec remote-control.md「Web 页作为第五种宿主」
+   * 场景 10 与「Web 端也能发起新会话」场景 10）：页面上这次「恢复」只改自己这份
+   * `sessionId` 与视图，电脑侧那条会话照旧跑着——被静默忽略就是「点了没反应」，
+   * 正是同一份 spec 禁止的形态。IDE 端的原地守卫不受影响（见
+   * backgroundTaskBlocksSessionSwitch / compactingBlocksSessionSwitch）。
+   */
+  it("switches conversations while the watched session is generating, compacting or running a background task", () => {
+    const { vscode } = renderRemotePage();
+
+    act(() => {
+      sendCommand("startStreaming");
+      sendCommand("updateBackgroundTasks", {
+        tasks: [
+          {
+            id: "bg-shell-1",
+            type: "shell",
+            status: "running",
+            startTime: 1000,
+            command: "sleep 300",
+          },
+        ],
+      });
+      sendCommand("compactionStateChange", { isCompacting: true });
+    });
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("session-switch-btn"));
+    });
+    vscode.postMessage.mockClear();
+    act(() => {
+      fireEvent.click(screen.getByTestId("session-list-item-session-1"));
+    });
+
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "restoreSession",
+        sessionId: "session-1",
+      }),
+    );
+  });
 });
