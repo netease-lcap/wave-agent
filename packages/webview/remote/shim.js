@@ -253,23 +253,40 @@
   // ── Page → host plumbing ────────────────────────────────────────
 
   /**
+   * The banner's look. Two tones, because the banner says two different kinds of
+   * thing: a refusal (`#5a1d1d` — the link is down or something was refused) and
+   * `"progress"` (`#333333` — the page is doing something and has nothing else
+   * to show yet). A progress line in the error colour reads as 「出事了」, which
+   * is why the machine list moved its own two states off this banner entirely
+   * (spec「机器列表与切换」场景 8).
+   */
+  function bannerStyle(tone) {
+    return (
+      "position:fixed;z-index:9999;left:0;right:0;top:0;padding:8px 12px;" +
+      "display:flex;align-items:center;flex-wrap:wrap;gap:8px;" +
+      "font:13px/1.5 -apple-system,system-ui,sans-serif;color:#fff;" +
+      "background:" +
+      (tone === "progress" ? "#333333" : "#5a1d1d") +
+      ";"
+    );
+  }
+
+  /**
    * The page's status surface. `actions` adds tappable buttons after the text —
    * the two things this page can always do for itself while the link is down:
    * retry now, or go pick another machine (spec「断线自愈」场景 4、「机器列表与
    * 切换」场景 5). Without actions it is the plain banner it always was.
+   *
+   * Every call states its tone: the banner outlives a single message, so the one
+   * that follows a refusal must be able to paint it neutral again.
    */
-  function showStatus(text, actions) {
+  function showStatus(text, actions, tone) {
     if (!banner) {
       banner = document.createElement("div");
       banner.id = "remote-status";
-      banner.setAttribute(
-        "style",
-        "position:fixed;z-index:9999;left:0;right:0;top:0;padding:8px 12px;" +
-          "display:flex;align-items:center;flex-wrap:wrap;gap:8px;" +
-          "font:13px/1.5 -apple-system,system-ui,sans-serif;background:#5a1d1d;color:#fff;",
-      );
       document.body.appendChild(banner);
     }
+    banner.setAttribute("style", bannerStyle(tone));
     banner.textContent = "";
     var label = document.createElement("span");
     label.textContent = text;
@@ -304,8 +321,8 @@
     return { label: "换机器", onClick: openMachinePicker };
   }
 
-  function retryHostsAction() {
-    return { label: "重试", onClick: chooseHost };
+  function retryHostsAction(surface) {
+    return { label: "重试", onClick: surface.retry };
   }
 
   /** Deliver a host → page message exactly the way the IDE hosts do. */
@@ -837,17 +854,55 @@
     });
   }
 
+  /**
+   * Where a machine-list refusal is painted, and what its 重试 runs.
+   *
+   * There are two, because the two entry points are in different situations: on a
+   * cold start the banner *is* the page's only surface (nothing else has anything
+   * to say yet), while a reader who came from the header already has a dialog in
+   * front of them — and an untouched banner behind it (spec 场景 8).
+   */
+  function bannerSurface() {
+    return {
+      show: function (text, actions) {
+        showStatus(text, actions);
+      },
+      retry: chooseHost,
+    };
+  }
+
+  function pickerSurface(list) {
+    return {
+      show: function (text, actions) {
+        // The reader closed the dialog while the request was out: this refusal
+        // was for a list nobody is looking at any more, so it goes nowhere —
+        // the 重试 that would answer it went with the dialog.
+        if (!pickerOpen()) return;
+        paintMachineList(list, null, { text: text, actions: actions });
+      },
+      retry: function () {
+        loadMachineList(list);
+      },
+    };
+  }
+
   /** What both entry points do when the list will not come. */
-  function hostsFetchFailed(err) {
+  function hostsFetchFailed(err, surface) {
     if (err && err.authRequired) {
       renewSession().then(function (renewed) {
-        if (renewed) return chooseHost();
+        if (renewed) return surface.retry();
         if (hopToLogin()) return;
-        fail("登录态无效：请在企业端重新登录后再打开这个页面。");
+        // Neither round-trip is available, so this page can never reach a machine
+        // (see `fail`) — the sentence just lands wherever this read was being read.
+        var text = "登录态无效：请在企业端重新登录后再打开这个页面。";
+        blocked = text;
+        surface.show(text, [retryHostsAction(surface)]);
       });
       return;
     }
-    showStatus("取不到机器列表：" + (err.message || err), [retryHostsAction()]);
+    surface.show("取不到机器列表：" + (err.message || err), [
+      retryHostsAction(surface),
+    ]);
   }
 
   /**
@@ -858,16 +913,24 @@
    * handshake with nothing but a refusal to show (spec 场景 2 / 3).
    */
   function chooseHost() {
-    showStatus("正在读取机器列表…");
+    // A progress line, not a refusal: on a cold start this banner is the only
+    // thing the page can say while it reads (spec 场景 8).
+    showStatus("正在读取机器列表…", [], "progress");
     fetchHosts()
       .then(function (hosts) {
         var saved = readStored(LAST_HOST_KEY);
         for (var i = 0; i < hosts.length; i++) {
           if (hosts[i].id === saved) return adoptHost(hosts[i]);
         }
-        showMachinePicker(hosts, false);
+        // Nothing remembered, or it is gone: the list is the answer, and from
+        // here on the dialog carries it — so the banner goes back to saying
+        // nothing rather than keep a line the dialog now repeats.
+        clearStatus();
+        paintMachineList(showMachinePicker(false), hosts);
       })
-      .catch(hostsFetchFailed);
+      .catch(function (err) {
+        hostsFetchFailed(err, bannerSurface());
+      });
   }
 
   /**
@@ -876,13 +939,27 @@
    * connected — the current connection stays up until one is chosen.
    */
   function openMachinePicker() {
-    if (document.getElementById("remote-machine-picker")) return;
-    showStatus("正在读取机器列表…");
+    if (pickerOpen()) return;
+    loadMachineList(showMachinePicker(!!CONFIG.hostId));
+  }
+
+  /**
+   * One read of the list, painted into the dialog's own slot: reading now, then
+   * either the rows or a refusal with 重试. The page banner is deliberately not
+   * involved — it belongs to the connection, which stays exactly as it was,
+   * including the 「重新连接 / 换机器」 a reader may have opened this dialog from
+   * and must find again when they close it (spec 场景 8).
+   */
+  function loadMachineList(list) {
+    paintMachineList(list, null, { text: "正在读取机器列表…" });
     fetchHosts()
       .then(function (hosts) {
-        showMachinePicker(hosts, !!CONFIG.hostId);
+        // Closed while the request was out: the reply has nothing left to paint.
+        if (pickerOpen()) paintMachineList(list, hosts);
       })
-      .catch(hostsFetchFailed);
+      .catch(function (err) {
+        hostsFetchFailed(err, pickerSurface(list));
+      });
   }
 
   /**
@@ -948,7 +1025,19 @@
     removePicker();
   }
 
-  function showMachinePicker(hosts, canCancel) {
+  /** The dialog's plain buttons: 取消 and the list's 重试 look the same. */
+  var PICKER_BUTTON_STYLE =
+    "padding:6px 16px;font:inherit;color:inherit;background:none;" +
+    "border:1px solid var(--vscode-widget-border,#313131);border-radius:8px;" +
+    "cursor:pointer;";
+
+  /**
+   * The machine dialog's shell: title, the list slot, the home-screen guide and
+   * 取消 when a machine is already connected. It returns that slot, which
+   * `paintMachineList` fills — the list is a request away, and the shell must not
+   * wait for it before it can be seen (spec 场景 8).
+   */
+  function showMachinePicker(canCancel) {
     removePicker();
     var overlay = document.createElement("div");
     overlay.id = "remote-machine-picker";
@@ -980,25 +1069,9 @@
       "font-size:13px;opacity:0.7;margin-bottom:8px;",
     );
     panel.appendChild(subtitle);
-
-    if (!hosts.length) {
-      // An empty account is a state, not a blank screen: the page says what is
-      // missing and where to switch it on (spec 场景 4).
-      var empty = document.createElement("div");
-      empty.setAttribute("style", "padding:20px 0 12px;text-align:center;");
-      var emptyTitle = document.createElement("div");
-      emptyTitle.textContent = "还没有开启远程控制的电脑";
-      emptyTitle.setAttribute("style", "font-size:15px;margin-bottom:4px;");
-      empty.appendChild(emptyTitle);
-      var emptyHint = document.createElement("div");
-      emptyHint.textContent =
-        "在电脑侧运行 wave remote-control on，这里就会出现它。";
-      emptyHint.setAttribute("style", "font-size:13px;opacity:0.7;");
-      empty.appendChild(emptyHint);
-      panel.appendChild(empty);
-    }
-    for (var i = 0; i < hosts.length; i++)
-      panel.appendChild(machineRow(hosts[i]));
+    var list = document.createElement("div");
+    list.id = "remote-machine-list";
+    panel.appendChild(list);
 
     // The one thing this page cannot do for the reader is put itself on the
     // home screen — and the wrong container silently cannot either
@@ -1016,19 +1089,67 @@
 
     if (canCancel) {
       var cancel = document.createElement("button");
+      cancel.id = "remote-machine-cancel";
       cancel.type = "button";
       cancel.textContent = "取消";
-      cancel.setAttribute(
-        "style",
-        "margin-top:12px;padding:6px 16px;font:inherit;color:inherit;" +
-          "background:none;border:1px solid var(--vscode-widget-border,#313131);" +
-          "border-radius:8px;cursor:pointer;",
-      );
+      cancel.setAttribute("style", PICKER_BUTTON_STYLE + "margin-top:12px;");
       cancel.onclick = removePicker;
       panel.appendChild(cancel);
     }
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
+    return list;
+  }
+
+  /**
+   * Fill the dialog's list slot: the machines, or one line saying why there are
+   * none — with 重试 when that line is a refusal.
+   *
+   * Both non-row states live here rather than on the page banner: their subject
+   * is *this dialog*, while the banner's subject is the connection, and the
+   * reader has not closed the connection by opening the list (spec 场景 8).
+   */
+  function paintMachineList(list, hosts, note) {
+    list.textContent = "";
+    if (note) {
+      var line = document.createElement("div");
+      line.textContent = note.text;
+      line.setAttribute(
+        "style",
+        "padding:20px 0 12px;text-align:center;font-size:14px;",
+      );
+      list.appendChild(line);
+      for (var n = 0; n < (note.actions || []).length; n++) {
+        var action = document.createElement("button");
+        action.type = "button";
+        action.textContent = note.actions[n].label;
+        action.setAttribute(
+          "style",
+          PICKER_BUTTON_STYLE + "display:block;margin:0 auto;",
+        );
+        action.onclick = note.actions[n].onClick;
+        list.appendChild(action);
+      }
+      return;
+    }
+    if (!hosts.length) {
+      // An empty account is a state, not a blank screen: the dialog says what is
+      // missing and where to switch it on (spec 场景 4).
+      var empty = document.createElement("div");
+      empty.setAttribute("style", "padding:20px 0 12px;text-align:center;");
+      var emptyTitle = document.createElement("div");
+      emptyTitle.textContent = "还没有开启远程控制的电脑";
+      emptyTitle.setAttribute("style", "font-size:15px;margin-bottom:4px;");
+      empty.appendChild(emptyTitle);
+      var emptyHint = document.createElement("div");
+      emptyHint.textContent =
+        "在电脑侧运行 wave remote-control on，这里就会出现它。";
+      emptyHint.setAttribute("style", "font-size:13px;opacity:0.7;");
+      empty.appendChild(emptyHint);
+      list.appendChild(empty);
+    }
+    for (var i = 0; i < hosts.length; i++)
+      list.appendChild(machineRow(hosts[i]));
   }
 
   /** One machine in the list: name, platform, and its online state. */
@@ -1077,6 +1198,11 @@
       adoptHost(host);
     };
     return row;
+  }
+
+  /** Is the machine dialog up? Its id is the only handle on it (see `removePicker`). */
+  function pickerOpen() {
+    return !!document.getElementById("remote-machine-picker");
   }
 
   function removePicker() {

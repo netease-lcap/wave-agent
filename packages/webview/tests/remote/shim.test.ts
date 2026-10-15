@@ -77,6 +77,7 @@ class FakeElement {
   onclick: (() => void) | null = null;
   removed = false;
   private ownText = "";
+  private attributes = new Map<string, string>();
   children: FakeElement[] = [];
 
   get textContent(): string {
@@ -93,7 +94,13 @@ class FakeElement {
   }
 
   setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
     if (name === "id") this.id = value;
+  }
+
+  /** The shim styles everything inline, so the tone is a style attribute. */
+  getAttribute(name: string): string | null {
+    return this.attributes.get(name) ?? null;
   }
 
   appendChild(child: FakeElement): FakeElement {
@@ -102,7 +109,10 @@ class FakeElement {
   }
 
   remove(): void {
+    // A real node takes its subtree with it, and the shim's dialogs are one
+    // (the picker's list is nested inside its overlay).
     this.removed = true;
+    for (const child of this.children) child.remove();
   }
 }
 
@@ -143,7 +153,7 @@ interface Harness {
   fetches: { url: string; init: { body: string } }[];
   /** Addresses written by `history.replaceState` (the picker's URL writes). */
   replaced: string[];
-  /** A page-shell element by id — the machine picker lives there. */
+  /** A page-shell element by id, whole-tree — the machine picker and its list live there. */
   element(id: string): FakeElement | null;
   /** The status banner's action buttons, label plus what a tap runs. */
   bannerButtons(): { label: string; click: () => void }[];
@@ -220,6 +230,17 @@ function loadShim(options: {
     },
   });
 
+  /** `getElementById`, whole-tree: a removed node takes its subtree with it. */
+  const findById = (nodes: FakeElement[], id: string): FakeElement | null => {
+    for (const node of nodes) {
+      if (node.removed) continue;
+      if (node.id === id) return node;
+      const nested = findById(node.children, id);
+      if (nested) return nested;
+    }
+    return null;
+  };
+
   const window = {
     location: {
       href: location.toString(),
@@ -282,13 +303,17 @@ function loadShim(options: {
     // fired here.
     addEventListener: () => {},
     createElement: (): FakeElement => new FakeElement(),
+    // Whole-tree, the way a browser does it: the machine picker's list is nested
+    // one level below the overlay the shim appends to the body.
     getElementById: (id: string): FakeElement | null =>
-      bodyChildren.find((element) => element.id === id && !element.removed) ??
-      null,
+      findById(bodyChildren, id),
     body: {
       appendChild: (element: FakeElement) => {
         bodyChildren.push(element);
-        banner = element;
+        // The status banner is the element the shim names as such. The machine
+        // picker is appended here too, and `banner()` has to keep reading the
+        // status one while it is.
+        if (element.id === "remote-status") banner = element;
       },
     },
   };
@@ -380,9 +405,9 @@ function loadShim(options: {
     navigations,
     sockets,
     socket: socketOf,
-    banner: () => banner?.textContent ?? "",
+    banner: () => (banner && !banner.removed ? banner.textContent : ""),
     bannerButtons: () =>
-      (banner?.children ?? [])
+      (banner && !banner.removed ? banner.children : [])
         .filter((child) => child.onclick)
         .map((child) => ({
           label: child.textContent,
@@ -1041,10 +1066,11 @@ describe("remote page shim — choosing a machine (the picker)", () => {
     expect(picker?.textContent).toContain("macOS");
     expect(picker?.textContent).toContain("离线");
 
-    const panel = picker?.children[0];
-    const row = panel?.children.find(
-      (child) => child.onclick && child.textContent.includes("家里那台"),
-    );
+    const row = page
+      .element("remote-machine-list")
+      ?.children.find(
+        (child) => child.onclick && child.textContent.includes("家里那台"),
+      );
     row?.onclick?.();
     await flush();
 
@@ -1125,6 +1151,96 @@ describe("remote page shim — choosing a machine (the picker)", () => {
     // The connection stays up: switching happens when one is chosen.
     expect(page.socket().readyState).toBe(1);
   });
+
+  it("the header's read waits inside the dialog, not on the page banner", async () => {
+    const page = loadShim({ token: "jwt", hosts: HOSTS });
+    await flush();
+    page.post({ command: "webviewReady" });
+    await flush();
+
+    page.post({ command: "openMachinePicker" });
+    // The answer is still out: the wait belongs to the dialog that asked for it.
+    expect(page.element("remote-machine-picker")?.textContent).toContain(
+      "正在读取机器列表",
+    );
+    expect(page.banner()).toBe("");
+
+    await flush();
+    expect(page.element("remote-machine-list")?.textContent).toContain(
+      "工位机",
+    );
+    expect(page.banner()).toBe("");
+  });
+
+  it("a list that will not come refuses inside the dialog, and its 重试 re-reads", async () => {
+    const page = loadShim({ token: "jwt", hosts: "network" });
+    await flush();
+    page.post({ command: "webviewReady" });
+    await flush();
+
+    page.post({ command: "openMachinePicker" });
+    await flush();
+
+    const list = page.element("remote-machine-list");
+    expect(list?.textContent).toContain("取不到机器列表");
+    expect(page.banner()).toBe("");
+
+    const reads = () =>
+      page.fetches.filter((fetch) => fetch.url === "/api/relay/hosts").length;
+    const before = reads();
+    list?.children.find((child) => child.onclick)?.onclick?.();
+    await flush();
+
+    expect(reads()).toBe(before + 1);
+    expect(page.element("remote-machine-list")?.textContent).toContain(
+      "取不到机器列表",
+    );
+  });
+
+  it("closing the dialog gives the reader their connection banner back", async () => {
+    const page = loadShim({ token: "jwt", hosts: HOSTS });
+    await flush();
+    page.post({ command: "webviewReady" });
+    await flush();
+
+    // The machine is gone: the banner is now the reader's 重新连接 and 换机器.
+    page.socket().onclose?.({ code: 4001 });
+    const waiting = page.banner();
+    expect(waiting).toContain("等待上线");
+
+    page
+      .bannerButtons()
+      .find((button) => button.label === "换机器")
+      ?.click();
+    await flush();
+    expect(page.element("remote-machine-picker")).toBeTruthy();
+
+    page.element("remote-machine-cancel")?.onclick?.();
+    expect(page.element("remote-machine-picker")).toBeNull();
+    // Every word of it survived the detour — the two actions included.
+    expect(page.banner()).toBe(waiting);
+    expect(page.bannerButtons().map((button) => button.label)).toEqual([
+      "重新连接",
+      "换机器",
+    ]);
+  });
+
+  it("a cold start reads the list on a neutral banner, not the error one", async () => {
+    const page = loadShim({ url: BARE_URL, token: "jwt", hosts: HOSTS });
+
+    expect(page.banner()).toContain("正在读取机器列表");
+    expect(page.element("remote-status")?.getAttribute("style")).toContain(
+      "background:#333333",
+    );
+
+    await flush();
+    // The dialog has the list now, so the line goes — and it takes nothing with
+    // it that the banner would have to give back later.
+    expect(page.element("remote-machine-list")?.textContent).toContain(
+      "工位机",
+    );
+    expect(page.banner()).toBe("");
+  });
 });
 
 describe("remote page shim — a machine switch resets the view", () => {
@@ -1150,10 +1266,11 @@ describe("remote page shim — a machine switch resets the view", () => {
 
     page.post({ command: "openMachinePicker" });
     await flush();
-    const panel = page.element("remote-machine-picker")?.children[0];
-    const row = panel?.children.find(
-      (child) => child.onclick && child.textContent.includes("家里那台"),
-    );
+    const row = page
+      .element("remote-machine-list")
+      ?.children.find(
+        (child) => child.onclick && child.textContent.includes("家里那台"),
+      );
     row?.onclick?.();
     await flush();
 
