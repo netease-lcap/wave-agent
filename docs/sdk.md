@@ -1517,14 +1517,14 @@ Tavily AI 驱动的搜索引擎 MCP 服务器，通过 `https://mcp.tavily.com/m
 
 ## 16. OpenTelemetry 遥测 {#opentelemetry-telemetry}
 
-Wave 支持 OpenTelemetry 可观测性标准，提供结构化的遥测数据（Traces、Metrics、Logs），帮助开发者观察 Agent 行为、调试性能问题并分析会话模式。
+Wave 支持 OpenTelemetry 可观测性标准，提供结构化的遥测数据（Traces、Logs），帮助开发者观察 Agent 行为、调试性能问题并分析会话模式。
 
 ### 导出器 (Exporters) {#otel-exporters}
 
-Wave 支持为每种信号类型（Traces、Metrics、Logs）配置不同的导出目标：
+Wave 支持为每种信号类型（Traces、Logs）配置不同的导出目标：
 
 - **OTLP 导出器**：将遥测数据发送到标准 OTLP 收集器（如 Jaeger、Grafana Tempo、Honeycomb）。通过 `OTEL_EXPORTER_OTLP_ENDPOINT` 设置收集器地址。
-- **JSONL 文件导出器**：将遥测数据写入 `~/.wave/telemetry.jsonl`，每行一条独立的 JSON 记录。
+- **Console 导出器**：把遥测以可读形式直接打印到终端（对齐 Claude Code 的 `console` 导出器）。交互 TUI 下输出呈现在界面上方、不打碎界面；**只在交互模式生效**——`--stdio` / `--print` 宿主的 stdout 是协议/结果通道，console 导出器在那里会被自动剥除。旧 `jsonl` 文件导出器已移除，配置里遗留的 `"jsonl"` 值会被忽略并告警。
 
 **配置方式**：通过 `OTEL_*` 环境变量或 `settings.json`（以及服务端下发的托管配置）中的 `monitoring.telemetry` 字段配置，环境变量优先。
 
@@ -1534,8 +1534,7 @@ Wave 支持为每种信号类型（Traces、Metrics、Logs）配置不同的导�
     "telemetry": {
       "enabled": true,
       "tracesExporter": "otlp",
-      "metricsExporter": "jsonl",
-      "logsExporter": "jsonl",
+      "logsExporter": "otlp",
       "endpoint": "https://your-collector.example.com",
       "headers": { "Authorization": "Bearer ..." }
     }

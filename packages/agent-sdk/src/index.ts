@@ -77,3 +77,7 @@ export {
 // Export tool building utilities
 export * from "./tools/buildTool.js";
 export type { ToolPlugin, ToolResult, ToolContext } from "./tools/types.js";
+
+// Telemetry: stdout protection for structured-output hosts (--stdio / --print);
+// console exporters are stripped there so they cannot corrupt the channel.
+export { setTelemetryStdoutProtected } from "./telemetry/instrumentation.js";
