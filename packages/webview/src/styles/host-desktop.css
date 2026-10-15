@@ -3680,9 +3680,13 @@
   max-width: min(460px, calc(100vw - 24px));
   padding: 9px 8px 9px 12px;
   border-radius: 10px;
-  /* 中性默认面（无 type 时）：默认浮层底 + 常规前景，不给任何彩色语义 */
+  /* 中性默认面（无 type 时）：默认浮层底 + 常规前景，不给任何彩色语义。
+     2026-10-15 她裁定「提示的背景应该是纯白色」⇒ 底改浮层族 token --cc-bg-overlay
+     （浅 #FFFFFF 纯白 / 深 #232526，与 Tooltip、菜单、确认卡同族；改前浅 #FAFAFD
+     来自 base --vscode-menu-background，深 #1F1F1F）。语义色 toast--success/error/
+     info 仍走各自 soft 底，不受影响。 */
   color: var(--vscode-foreground);
-  background: var(--vscode-menu-background);
+  background: var(--cc-bg-overlay, var(--vscode-menu-background));
   border: 1px solid var(--vscode-widget-border);
   font-size: 14px;
   line-height: 1.45;
@@ -3709,6 +3713,40 @@
 
 [data-host="desktop"] .toast-stack--top .toast-kind-icon {
   flex-shrink: 0;
+}
+
+/* 动作按钮（如「查看更新」）样式参考确认弹窗「取消」键（她 2026-10-15：
+   「按钮样式参考」+ 锚点 confirm-dialog-btn-cancel）= 透明底 + 1px 描边 + 字色 1 级、
+   normal 无背景、hover 才出面。她同日追加「按钮缩小一个层级，参考」+ 锚点
+   `button.settings-row-btn`「编辑」⇒ 尺寸落到设置页行按钮档（SettingsPage.css:909，
+   0915-D-02 定档，桌面端实测 28px / 12px / 400 / 0 10px / r8），非确认弹窗的
+   32px / 14px / 500 档。
+   改前（base 消费宿主按钮 token）：浅色 #F0F0F1 灰底 + 蓝描边 #0069CC、深色
+   #232526 底 + 7% 白描边、13px / r4 / 26px。只作用于顶部栈（右下角后台确认 toast
+   保持 base 形态）。 */
+[data-host="desktop"] .toast-stack--top .toast-action {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--cc-radius-md, 8px);
+  font-size: var(--cc-font-size-md, 14px);
+  font-weight: 400;
+  font-family: inherit;
+  background: transparent;
+  border: 1px solid var(--cc-border-light, #e4e7ed);
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+[data-host="desktop"] .toast-stack--top .toast-action:hover {
+  background: var(--cc-fill-hover, #eef0f3);
+}
+[data-host="desktop"][data-theme="dark"] .toast-stack--top .toast-action {
+  border-color: var(--cc-border-light, #34393c);
+}
+[data-host="desktop"][data-theme="dark"] .toast-stack--top .toast-action:hover {
+  background: rgb(255 255 255 / 8%);
+}
+[data-host="desktop"] .toast-stack--top .toast-action:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
 }
 
 /* 关闭钮与语义图标同色同浓度（用户 0909 走查：深浅模式下 × 应与勾/圆图标
