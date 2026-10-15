@@ -156,27 +156,25 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 ---
 
-### 用户故事：CLI 消息状态按「更新是否改变卡片高度」分流渲染，全量刷新时快照安全取消（优先级：P1）
+### 用户故事：CLI 消息状态全量立即渲染，无数据层节流（优先级：P1）
 
-作为 CLI 使用者，我希望只有会改变消息卡片高度的更新——工具 `running` 阶段逐 chunk 到达的 `shortResult`/`result`——经 500ms 窗口合并渲染（leading edge 立即、窗口内更新按到达顺序排队、`end` 立即冲刷），其余更新（文本/推理流式 delta、结构性更新）逐条立即渲染，以便工具输出的行数震荡不再造成布局跳动闪烁，同时流式正文保持逐 delta 的即时打字机反馈。
+作为 CLI 使用者，我希望所有消息状态更新——文本/推理流式 delta、工具全阶段（`start`/`streaming`/`running`/`end`）、消息新增与 error 块——到达即立即应用到消息状态并渲染，以便流式正文保持逐 delta 的打字机反馈、工具输出实时可见，终端写入频率由 Ink 内置 `maxFps: 30` 兜底，不因数据层节流引入任何显示延迟或窗口/排队复杂度。
 
-**为什么是这个优先级**：2026-08-17 曾因节流器 trailing edge 冲刷与全量列表替换（`refreshMessages`）交错导致内容重复而移除 CLI 节流（见下方 2026-08-17 会议记录）；2026-08-19 决定恢复节流并在竞态源头修复——`refreshMessages` 拉取权威快照后立即取消节流窗口：pending 内的旧更新在拉取前已写入 SDK 消息状态，必然已包含在快照中，丢弃无损失；拉取之后到达的更新开启全新窗口、追加在快照之上。2026-08-19 同次会议把三通道节流器（content/reasoning/tool）统一为一个 `updateMessages(updater)` 入口，让 bash 等前台工具逐 chunk 的 `running` 阶段 `shortResult`/`result` 更新（短结果行数 1–4 行来回变化，即闪烁源）也受 500ms 窗口约束。统一的代价是把文本/推理流式一并限频到每窗口一次：模型逐 token 产出（如 30ms/chunk）时正文以每 500ms 成块出现的节奏推进，而非逐字浮现。2026-10-15 复盘把两类更新的渲染特征分开看：文本/推理 delta 使动态区高度**单调递增**（Ink `log-update` 只在尾部追加/重写，不产生来回位移），工具 `running` 的 `shortResult`/`result` 使高度在 1–N 行之间**反复震荡**（其下方内容被反复推下/拉上）——闪烁源只存在于后者。因此把节流范围收窄到高度敏感更新：防闪烁效果不变，流式即时性恢复；逐 delta 渲染的 React commit 成本对典型会话规模为亚毫秒级（2026-08-17 评估），终端写入频率仍由 Ink 内置 `maxFps: 30` 兜底。
+**为什么是这个优先级**：节流设计经历三轮演进——2026-08-17 曾因节流器 trailing edge 冲刷与全量列表替换（`refreshMessages`）交错导致内容重复而移除 CLI 节流（见下方会议记录）；2026-08-19 恢复单一 500ms 窗口并在竞态源头修复（快照拉取后 `cancel()`）；2026-10-15 改为按「更新是否改变卡片高度」分流（文本/推理立即、工具 `running` 节流）并提供实验开关 `WAVE_STREAM_THROTTLE_MS`。2026-10-15 用户以 `WAVE_STREAM_THROTTLE_MS=0` 在真实终端初步体验（长文本流式 + 工具运行输出），确认全立即渲染观感正常、无闪烁困扰，据此彻底移除数据层节流：节流的唯一存在理由是压制工具 `running` 短结果行数震荡（1–N 行反复推拉下方内容）的闪烁担忧，实测在 Ink `log-update` 只重写动态区尾部 + `maxFps: 30` 合帧下不成立；逐 delta 渲染的 React commit 成本对典型会话规模为亚毫秒级（2026-08-17 评估）；节流只增加显示延迟与窗口/排队/冲刷/快照取消的实现复杂度。若未来真实场景出现闪烁，应在渲染层解决（如 Ink fork 增量 diff + 双缓冲虚拟屏，参照 Claude Code 的 16ms 帧节流），而非恢复数据层节流。
 
-**独立测试**：构造带 reasoning 流式的会话，在流式期间触发一次全量刷新（/clear、/compact、/rewind 或折叠切换），验证最终消息内容与 SDK 权威内容逐字节一致、无重复片段（`useChat.test.tsx`：refresh-interleave 场景在节流 + 快照取消下通过）；构造 bash 前台任务，连续触发 `running` 阶段 `shortResult` 更新，断言窗口内多次更新合并为一次渲染（`ToolDisplay` 行数不逐 chunk 跳变）；构造文本/推理流式并断言每个 delta 到达后立即渲染（不被 500ms 窗口延迟）；设置 `WAVE_STREAM_THROTTLE_MS=0` 后重复 `running` 连发场景，断言每个更新立即应用、无窗口合并（开关旁路），未设置时默认 500ms 行为不变。
+**独立测试**：构造 bash 前台任务，连续触发 `running` 阶段 `shortResult` 更新，断言每个更新立即应用（无窗口合并、无排队延迟）；构造流式期间的全量刷新（refresh-interleave），验证快照替换后新 delta 立即追加、内容不重复不丢失；运行既有双计数回归测试（content/reasoning 同批 double-count、refresh-interleave duplication）继续通过。
 
 **验收场景**：
 
-1. **假设** CLI 正在消费消息状态更新，**当**任一消息更新回调到达时，**则**按「更新是否改变折叠视图下消息卡片的高度」分流：**高度敏感**更新（`onToolBlockUpdated` 且 `stage="running"`，即逐 chunk 到达的 `shortResult`/`result`）以 updater 形式（`(prev: Message[]) => Message[]`）经 500ms 节流入口 `updateMessages` 处理——leading edge 立即应用并开启窗口，窗口内后续更新按到达顺序排队，窗口关闭时以单个组合 updater 一次性应用（顺序 = 到达顺序，无更新丢失）；**非高度敏感**更新（文本 delta、推理 delta、工具 `start`/`streaming`/`end`、消息新增与 error 块等结构性更新）直接应用，不被窗口延迟
+1. **假设** CLI 正在消费消息状态更新，**当**任一消息更新回调到达时，**则**更新立即以 updater 形式（`(prev: Message[]) => Message[]`）应用到消息状态——无节流窗口、无排队、无延迟；到达顺序即应用顺序
 2. **假设**模型逐 token 产出文本/推理（如 30ms/chunk），**当**每个 delta 到达时，**则**消息内容逐 delta 立即就地更新（打字机效果），终端写入频率由 Ink 内置 `maxFps: 30` 约束，不出现逐 chunk 整屏重绘
-3. **假设**工具运行阶段逐 chunk 更新 `shortResult`/`result`（bash 前台任务经 `onToolBlockUpdated` `stage="running"` 高频到达），**当**同一窗口内到达多个更新时，**则**它们在窗口内合并为一次应用，窗口内至多一次渲染，短结果行数不逐 chunk 跳变（工具卡片高度稳定）
-4. **假设**工具 `stage="end"` 事件到达，**当**窗口内仍有排队的高度敏感更新时，**则**先 `flush()` 冲刷排队更新再应用 `end` 收尾信号，避免 `end` 之后 pending 的 `running` 值复活 shortResult 或造成阶段回退
-5. **假设**流式期间发生了全量列表替换（`refreshMessages`，/clear、/compact、/rewind、Ctrl+O 折叠触发），**当**替换发生时，**则**节流窗口在拉取快照后立即 `cancel()`——排队中的旧 `running` 更新被丢弃（其内容已包含在权威快照中），trailing edge 不会把刷新前的更新重新追加到快照之上
-6. **假设**全量刷新替换完成，**当**其后仍有流式 delta 到达时，**则**新 delta 立即应用、高度敏感更新开启全新节流窗口，内容追加在权威快照之上，不丢失、不重复
-7. **假设**同一工具块的 `streaming` 参数 chunk 与 `running` 权威快照先后到达，**当** `streaming` chunk 立即应用、`running` 更新进入节流窗口时，**则**最终 `stage="running"`、`parameters` 为权威值——同一工具块的参数流在 `streaming` 阶段结束后不再产生 chunk（协议保证到达顺序），running 在窗口内排队期间不会有同块的晚到 chunk 插队覆盖权威值，故原统一窗口 FIFO 的「防 stale streaming 晚于 running 冲刷导致阶段回退」语义在分流后仍成立
-8. **假设**节流窗口打开期间到达一次性结构更新（消息新增、error 块），**当**其到达时，**则**结构更新立即应用、不进入节流队列（其为一发式、无合并价值），消息卡片/错误块即时可见，不被最长 500ms 的窗口延迟拖慢
-9. **假设**长会话中流式输出，**当**消息不断积累时，**则**界面依然平滑即时更新，不因分流而卡顿（与「长会话流式输出保持流畅」验收场景 1 一致）
-10. **假设**存在内容重复的回归测试，**当**运行现有双计数回归测试（content/reasoning 同批 double-count、refresh-interleave duplication）时，**则**测试继续通过
-11. **假设**设置了实验开关 `WAVE_STREAM_THROTTLE_MS`（毫秒），**当** CLI 挂载消费端时，**则**高度敏感节流窗口采用该值：未设置保持 500ms 默认不变；设为 `0` 或负数时彻底禁用节流——高度敏感更新（工具 `running` 阶段 `shortResult`/`result`）也逐条立即应用（不开窗口、不排队，`flush()`/`cancel()` 为安全 no-op），用于观察全立即渲染的效果；设为正数时以该值开窗。Ink 内置 `maxFps: 30` 渲染层兜底不受该开关影响
+3. **假设**工具运行阶段逐 chunk 更新 `shortResult`/`result`（bash 前台任务经 `onToolBlockUpdated` `stage="running"` 高频到达），**当**每个更新到达时，**则**立即应用、短结果实时增长（实测行数震荡在 Ink 合帧下无可感知闪烁）
+4. **假设**工具 `stage="end"` 事件到达，**当**其应用时，**则**直接以权威终值收尾（无 flush 语义——无 pending 更新可冲刷）
+5. **假设**流式期间发生了全量列表替换（`refreshMessages`，/clear、/compact、/rewind、Ctrl+O 折叠触发），**当**替换发生时，**则**权威快照直接覆盖当前状态（无需 cancel——无 pending 更新可复活）；替换完成后到达的 delta 立即追加在快照之上，不丢失、不重复
+6. **假设**同一工具块的 `streaming` 参数 chunk 与 `running` 权威快照先后到达，**当**两者依次立即应用时，**则**最终 `stage="running"`、`parameters` 为权威值——到达顺序即应用顺序（强于原节流 FIFO 队列保证），且同一工具块的参数流在 `streaming` 阶段结束后不再产生 chunk（SDK 协议保证）；即便出现协议外非法交错，也会被随后的 `end` 权威值覆盖自愈
+7. **假设**长会话中流式输出，**当**消息不断积累时，**则**界面依然平滑即时更新，不因无节流的逐 delta commit 而卡顿（与「长会话流式输出保持流畅」验收场景 1 一致）
+8. **假设**节流基础设施已移除，**当**检查消费端代码时，**则**`createThrottledUpdater`、`resolveStreamThrottleMs`、`DEFAULT_STREAM_THROTTLE_MS` 与实验开关 `WAVE_STREAM_THROTTLE_MS` 均已删除（无死代码；回滚路径由 git 历史保留），`refreshMessages`、isExpanded 切换与卸载清理不再有 cancel 调用
+9. **假设**存在内容重复的回归测试，**当**运行现有双计数回归测试（content/reasoning 同批 double-count、refresh-interleave duplication）时，**则**测试继续通过
 
 ---
 
@@ -332,11 +330,18 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - 问：受影响范围 → 答：仅 CLI 进程内消费端（`packages/code/src/contexts/useChat.tsx`）——`initializeAgent` 的回调按分流提交；SDK 回调、wire 通知、VSCE/桌面跨进程通道的 window-concat 节流语义均不变。回归测试：既有 500ms 节流、tool 参数累积、同批 double-count、refresh-interleave 测试改写为分流语义后继续通过；新增「文本 delta 立即渲染、不被窗口延迟」断言
 - 问：如何观察「彻底移除节流」的效果 → 答：实验环境变量 `WAVE_STREAM_THROTTLE_MS`（毫秒）：未设置/空白/非数字 = 500 默认（行为不变），`<=0` = 彻底禁用节流（高度敏感更新也逐条立即应用，观察全立即渲染），正数 = 自定义窗口。实现为 `createThrottledUpdater` 的 `wait <= 0` 旁路——直接应用、不开窗口、不排队，`flush()`/`cancel()` 天然为 no-op（timer 永不创建、队列永为空）；仅在 CLI 消费端 `updateMessages` 创建处读取（挂载时读一次，进程内 env 不变），VSCE/桌面跨进程通道不受影响；Ink `maxFps: 30` 渲染层兜底保留。定位：观察/实验开关，用于在真实终端验证「数据层节流是否必要」——若全立即渲染无闪烁，后续可考虑收窄或移除高度敏感节流；不改变未设置时的默认行为
 
+### 2026-10-15 会议（移除 CLI 数据层节流）
+
+- 问：为什么彻底移除而非保留分流或开关 → 答：分流实现后提供实验开关 `WAVE_STREAM_THROTTLE_MS`（`0` = 彻底禁用），用户在真实终端以 `=0` 初步体验长文本流式与工具运行输出，确认全立即渲染观感正常、无闪烁困扰——节流的唯一存在理由（压制工具 `running` 短结果行数震荡的闪烁担忧）实测不成立：Ink `log-update` 只重写动态区尾部、`maxFps: 30` 合帧吸收行数震荡。数据层节流只增加显示延迟与复杂度（窗口/排队/FIFO/flush/cancel/快照取消语义 + 相应测试矩阵），移除后 `updateMessages` 退化为直接 `setMessages`
+- 问：无节流后还有顺序/竞态风险吗 → 答：到达顺序即应用顺序，强于此前节流 FIFO 队列提供的保证。原分流插队矩阵中所有「queued vs immediate」组合随队列消失；同块 `streaming`→`running` 阶段回退由 SDK 协议保证（参数流先于工具执行，`running` emit 之后仅剩 `onShortResultUpdate`/`onResultUpdate`）+ `end` 权威值覆盖自愈；`refreshMessages` 拉快照后无需 cancel（无 pending 可复活），刷新后新 delta 直接追加在快照之上
+- 问：移除范围 → 答：删除 `createThrottledUpdater`、`resolveStreamThrottleMs`、`DEFAULT_STREAM_THROTTLE_MS` 与实验开关 `WAVE_STREAM_THROTTLE_MS`（一次性实验设施，设计定型后无存在意义，git 历史保留回滚路径）；`onToolBlockUpdated` 全 stage 直接应用；`refreshMessages`、isExpanded effect 与卸载清理中的 cancel 移除。渲染层 Ink `maxFps: 30` 兜底不变；VSCE/桌面跨进程通道的 window-concat 节流语义不受影响
+- 问：如何防闪烁回归 → 答：假设部分记录观察条件（长 bash 任务短结果行数震荡 + 长文本流式，真实终端）；若未来真实场景出现闪烁，应在渲染层解决（Ink fork 增量 diff / 双缓冲虚拟屏，参照 Claude Code 的 16ms 帧节流），而非恢复数据层节流
+
 ## 假设 _（必填）_
 
 - 底层 AI 服务支持流式响应（增量内容传递）
 - 网络连接对大多数用户通常稳定
-- 终端/CLI 界面可以处理逐 delta 的高频文本更新（终端写入频率由 Ink 内置 `maxFps: 30` 输出节流兜底）；文本/推理 delta 使高度单调递增、无需节流，仅高度反复震荡的工具 `running` 更新需要 500ms 窗口合并（可经实验开关 `WAVE_STREAM_THROTTLE_MS=0` 禁用以观察全立即渲染）
+- 终端/CLI 界面可以处理逐 delta 的高频文本更新（终端写入频率由 Ink 内置 `maxFps: 30` 输出节流兜底）；工具 `running` 短结果的行数震荡实测在 `log-update` 尾部重写 + `maxFps: 30` 合帧下无可感知闪烁（2026-10-15 真实终端以全立即渲染初步验证），CLI 数据层无需节流
 - 用户通常使用支持实时文本渲染的标准终端模拟器
 - 在正常网络条件下内容流按时间顺序到达
 - 消息变更通过增量回调对外发布，完整列表按需拉取（`agent.messages` / `getMessages` 请求）；每次流式 chunk 不触发全量列表推送
