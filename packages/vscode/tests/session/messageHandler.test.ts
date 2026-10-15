@@ -72,6 +72,7 @@ function createReadySession(): ChatSession {
     agent: {
       getPermissionMode: vi.fn(() => "default"),
       setPermissionMode: vi.fn(async () => undefined),
+      getConfiguredModels: vi.fn(),
       sendMessage: vi.fn(async () => undefined),
       getPlanFile: vi.fn(async () => ({
         path: "/tmp/plan.md",
@@ -906,6 +907,47 @@ describe("MessageHandler settings tab", () => {
     expect(posted.command).toBe("configurationResponse");
     expect(posted.configurationData).toEqual({ language: "Chinese" });
     expect(context.postMessage).not.toHaveBeenCalled();
+  });
+
+  test("getConfiguredModels from the settings tab replies to the settings panel (completion model dropdown)", async () => {
+    const session = createReadySession();
+    // 候选清单来自 sidebar 会话的 CLI agent（与 `/model` 同源）。
+    const agent = session.agent as unknown as {
+      getConfiguredModels: ReturnType<typeof vi.fn>;
+    };
+    agent.getConfiguredModels.mockResolvedValue({
+      models: ["qwen2.5-coder", "gemini-3-flash"],
+      currentModel: "gemini-3-flash",
+    });
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleSettingsMessage({ command: "getConfiguredModels" });
+
+    // 回包必须发给设置面板本身：设置页在独立 settings tab 里渲染，聊天 webview
+    // 收不到也消费不了它（漏接时「补全模型」下拉只剩「未设置」一项）。
+    expect(context.postSettingsMessage).toHaveBeenCalledWith({
+      command: "configuredModels",
+      models: ["qwen2.5-coder", "gemini-3-flash"],
+      currentModel: "gemini-3-flash",
+    });
+    expect(context.postMessage).not.toHaveBeenCalled();
+  });
+
+  test("getConfiguredModels failure degrades to an empty list (dropdown still renders the current value)", async () => {
+    const session = createReadySession();
+    const agent = session.agent as unknown as {
+      getConfiguredModels: ReturnType<typeof vi.fn>;
+    };
+    agent.getConfiguredModels.mockRejectedValue(new Error("cli down"));
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleSettingsMessage({ command: "getConfiguredModels" });
+
+    expect(context.postSettingsMessage).toHaveBeenCalledWith({
+      command: "configuredModels",
+      models: [],
+      currentModel: undefined,
+    });
   });
 
   test("updateConfiguration saves user preferences and replies without recreating agents", async () => {

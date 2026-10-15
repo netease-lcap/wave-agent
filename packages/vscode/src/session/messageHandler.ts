@@ -496,6 +496,13 @@ export class MessageHandler {
           msg.scope as string,
         );
         break;
+      case "getConfiguredModels":
+        // 设置页「补全模型」下拉的候选清单（与 `/model` 同源）。chat 路由也有同名
+        // case，但设置页在独立 settings tab（settings-preview-entry）里渲染，回包
+        // 必须发给设置面板本身（postSettingsMessage）——漏掉时下拉只剩「未设置」
+        // 一项（script audit-webview-commands 会拦下这种漏注册）。
+        await this.handleSettingsGetConfiguredModels();
+        break;
       // 插件市场（设置页「AI 与扩展 → 插件市场」视图）：命令与回包都走设置
       // 面板路由——插件市场只在设置页渲染（PluginDialog 已删除，/plugin 变为
       // 唤起设置页该选项卡），聊天路由不再注册这批命令。
@@ -863,6 +870,30 @@ export class MessageHandler {
       console.error("修改项目设置失败:", error);
       vscode.window.showErrorMessage("修改项目设置失败: " + error);
     }
+  }
+
+  /**
+   * 设置页「补全模型」下拉的候选清单：与 `/model` 同源（`getConfiguredModels`
+   * 会话级 RPC），经 sidebar 会话的 CLI agent 读取（同 `getSettingsSession` 的
+   * 口径）；回包发给设置面板。读取失败降级为空列表——下拉仍可显示当前值
+   * （无效值行内提示由设置页给出，spec ui/code-completion.md 故事 4 场景 4）。
+   */
+  private async handleSettingsGetConfiguredModels(): Promise<void> {
+    let models: string[] = [];
+    let currentModel: string | undefined;
+    try {
+      const result =
+        await this.getSettingsSession().agent?.getConfiguredModels();
+      models = result?.models ?? [];
+      currentModel = result?.currentModel;
+    } catch (error) {
+      console.error("获取模型列表失败:", error);
+    }
+    this.context.postSettingsMessage({
+      command: "configuredModels",
+      models,
+      currentModel,
+    });
   }
 
   /**

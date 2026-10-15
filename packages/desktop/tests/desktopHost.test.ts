@@ -2471,6 +2471,46 @@ describe("configuration and status", () => {
     expect(lastAgent().updateConfig).not.toHaveBeenCalled();
   });
 
+  it("updateConfiguration forwards the completion model / switch to the CLI (top-level keys)", async () => {
+    const { host } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "updateConfiguration",
+      configurationData: {
+        completionModel: "qwen2.5-coder",
+        completionEnabled: false,
+      },
+    });
+
+    // 与对话模型不同：补全模型/开关是配置文件里的**用户偏好键**（顶层
+    // completionModel / completionEnabled，spec ui/code-completion.md 故事 4–5），
+    // 故走 updateUserSettings；`false` 不得被吞掉。
+    expect(
+      h.clientRequests
+        .filter((r) => r.method === "updateUserSettings")
+        .map((r) => r.params),
+    ).toEqual([{ completionModel: "qwen2.5-coder", completionEnabled: false }]);
+    expect(lastAgent().updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("updateConfiguration drops a blank completion model (clearing the dropdown writes nothing)", async () => {
+    const { host } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "updateConfiguration",
+      configurationData: { completionModel: "  " },
+    });
+
+    // 空载荷 = 不改该键：写一个空模型名会让「显示未设置 ≡ 生效值」分叉。
+    // （本宿主对空 patch 仍发一次 `updateUserSettings`——CLI 侧把空 patch 当
+    // 「无差异保存」只回读、不落盘，故这里断言的是**载荷里没有该键**。）
+    expect(
+      h.clientRequests
+        .filter((r) => r.method === "updateUserSettings")
+        .map((r) => r.params),
+    ).toEqual([{}]);
+  });
+
   it("getStatus replies with app version, session id and workdir", async () => {
     const { host, sent } = await readyHost();
     await host.handleWebviewMessage({ command: "getStatus" });

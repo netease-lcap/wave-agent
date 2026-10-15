@@ -943,7 +943,9 @@ export interface ConfirmationDialogProps {
 
 /**
  * 用户偏好配置（设置页载荷）。**只含落 `~/.wave/settings.json` 的偏好键**：
- * 模型经 `/model` 命令走宿主 RPC，不在这个信封里。
+ * **对话模型**经 `/model` 命令走宿主 RPC，不在这个信封里；补全模型
+ * （`completionModel`）是配置文件里的用户偏好键，故在这个信封里——它的候选清单
+ * 才复用 `/model` 的 `getConfiguredModels`（spec ui/code-completion.md 故事 4）。
  */
 export interface ConfigurationData {
   /** Preferred language for agent communication */
@@ -959,6 +961,14 @@ export interface ConfigurationData {
    * 输入框读写该键（spec core/agent-config.md「配置服务端地址」）。
    */
   serverUrl?: string;
+  /**
+   * 行内补全使用的模型（settings.json 顶层 `completionModel`）。未设置时回退到
+   * 快速模型（spec ui/code-completion.md 故事 4 场景 1）；下拉的未设置态用显式项
+   * 「未设置（跟随快速模型）」表达。
+   */
+  completionModel?: string;
+  /** 是否启用行内补全（settings.json 顶层 `completionEnabled`，缺省为开）。 */
+  completionEnabled?: boolean;
   /**
    * 每个用户偏好键的来源层：用户级 `~/.wave/settings.json` 是用户偏好的**落点**，
    * 但生效值可能来自更高层（`remote` = 企业下发的组织配置，`env` = 机器环境变量）。

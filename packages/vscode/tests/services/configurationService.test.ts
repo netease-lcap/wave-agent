@@ -136,6 +136,63 @@ describe("ConfigurationService", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("save forwards the completion model / switch (top-level completionModel / completionEnabled)", async () => {
+    const service = createService();
+    const { client, calls } = createClient();
+    service.attachClient(client);
+
+    await service.saveConfiguration({
+      completionModel: "qwen2.5-coder",
+      completionEnabled: false,
+    });
+
+    // 补全两项是配置文件里的用户偏好键（顶层），随同一个 updateUserSettings 走；
+    // `false` 不得被 `||` 吞掉（否则「关掉补全」保存后仍是开）。
+    expect(calls.filter((c) => c.method === "updateUserSettings")).toEqual([
+      {
+        method: "updateUserSettings",
+        params: {
+          completionModel: "qwen2.5-coder",
+          completionEnabled: false,
+        },
+      },
+    ]);
+  });
+
+  it("blank completion model is treated as 'not provided' (clearing the dropdown writes nothing)", async () => {
+    const service = createService();
+    const { client, calls } = createClient();
+    service.attachClient(client);
+
+    await service.saveConfiguration({ completionModel: "   " });
+
+    // 空串落盘会写一个空模型名（下一环按 `||` 落回默认），而回读侧按「未设置」
+    // 展示 ⇒ 显示值与生效值分叉。省略键 = 不改该键。
+    expect(calls).toHaveLength(0);
+  });
+
+  it("loads the completion preferences through the shared CLI client", async () => {
+    const service = createService();
+    const { client } = createClient({
+      completionModel: "qwen2.5-coder",
+      completionEnabled: false,
+      preferenceSources: {
+        completionModel: "user",
+        completionEnabled: "user",
+      },
+    });
+    service.attachClient(client);
+
+    await expect(service.loadConfiguration()).resolves.toEqual({
+      completionModel: "qwen2.5-coder",
+      completionEnabled: false,
+      preferenceSources: {
+        completionModel: "user",
+        completionEnabled: "user",
+      },
+    });
+  });
+
   it("degrades to empty preferences when the CLI read fails (settings page still renders)", async () => {
     const service = createService();
     const failing = {

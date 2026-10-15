@@ -154,6 +154,13 @@ export interface ConfigurationData {
   /** Wave 服务端地址（落 `env.WAVE_SERVER_URL`）。 */
   serverUrl?: string;
   /**
+   * 行内补全使用的模型（settings.json 顶层 `completionModel`）。未设置时回退快速
+   * 模型（spec ui/code-completion.md 故事 4）；候选清单与 `/model` 同源。
+   */
+  completionModel?: string;
+  /** 是否启用行内补全（settings.json 顶层 `completionEnabled`，缺省为开）。 */
+  completionEnabled?: boolean;
+  /**
    * 每个用户偏好键的来源层（`remote` = 企业下发的组织配置 / `user` = 用户级
    * `~/.wave/settings.json` / `env` = 机器环境变量 / `default` = 谁都没提供）。
    * 设置为 `remote` 的键，设置页显示生效值 + 置灰 + 「由组织配置管理」。

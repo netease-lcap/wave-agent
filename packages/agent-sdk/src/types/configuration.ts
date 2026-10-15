@@ -136,6 +136,13 @@ export interface UserPreferenceSettings {
   autoMemoryFrequency?: number;
   /** Wave 服务端地址（settings.json 的 `env.WAVE_SERVER_URL`，如 https://…）。 */
   serverUrl?: string;
+  /**
+   * 行内补全使用的模型（settings.json 顶层 `completionModel`）。未设置时回退
+   * 快速模型（spec ui/code-completion 故事 4）。
+   */
+  completionModel?: string;
+  /** 是否启用行内补全（settings.json 顶层 `completionEnabled`，缺省为开）。 */
+  completionEnabled?: boolean;
 }
 
 /** 用户偏好键（设置页控件）。 */

@@ -2073,6 +2073,8 @@ test("getUserSettings 回包 = 生效值 + 每键来源层", async () => {
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "user",
       serverUrl: "default",
+      completionModel: "default",
+      completionEnabled: "default",
     },
   });
   const { bridge } = createBridge();
@@ -2090,6 +2092,8 @@ test("getUserSettings 回包 = 生效值 + 每键来源层", async () => {
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "user",
       serverUrl: "default",
+      completionModel: "default",
+      completionEnabled: "default",
     },
   });
 });
@@ -2111,6 +2115,8 @@ test("updateUserSettings writes the patch and returns the read-back values", asy
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "default",
       serverUrl: "user",
+      completionModel: "default",
+      completionEnabled: "default",
     },
   });
   const { bridge } = createBridge();
@@ -2137,6 +2143,8 @@ test("updateUserSettings writes the patch and returns the read-back values", asy
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "default",
       serverUrl: "user",
+      completionModel: "default",
+      completionEnabled: "default",
     },
   });
 });
@@ -2153,6 +2161,8 @@ test("updateUserSettings 写完后显式重载本进程内全部会话（不依�
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "default",
       serverUrl: "default",
+      completionModel: "default",
+      completionEnabled: "default",
     },
   });
   const { bridge } = createBridge();
@@ -2182,6 +2192,8 @@ test("空载荷（无差异保存）既不落盘也不重载", async () => {
       autoMemoryEnabled: "default",
       autoMemoryFrequency: "default",
       serverUrl: "default",
+      completionModel: "default",
+      completionEnabled: "default",
     },
   });
   const { bridge } = createBridge();

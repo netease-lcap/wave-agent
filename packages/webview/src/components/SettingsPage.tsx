@@ -117,6 +117,15 @@ export interface SettingsPageProps {
    *  会话视图右侧文件面板打开该文件）；IDE 由 settings-preview-entry 转发
    *  prefillPrompt + openFile RPC 给 host（host 用 IDE 自身编辑器打开）。 */
   onPrefillPrompt?: (prompt: string, openFile?: string) => void;
+  /**
+   * 「补全模型」下拉的候选清单（与 `/model` 同源，经宿主 `getConfiguredModels`
+   * 拉取）。未传入 / 尚未回包 = 空数组：下拉只显示当前值（含未设置态），不误报
+   * 「当前值不在列表里」（spec ui/code-completion.md 故事 4 场景 2/4）。
+   */
+  configuredModels?: string[];
+  /** 进入「全局设置」视图时向宿主拉取补全模型候选（幂等；宿主未注册该命令时
+   *  不传本回调，下拉退化为「只有当前值」）。 */
+  onLoadConfiguredModels?: () => void;
 }
 
 export type NavKey =
@@ -145,6 +154,16 @@ type AgentsScope = "user" | "project";
  * 「不改该键」——不提供「清除 / 恢复默认」按钮（载荷没有删键语义）。
  */
 export const UNSET_OPTION_LABEL = "未设置（默认：中文）";
+/**
+ * 补全模型下拉的未设置态（settings.json 顶层没有 `completionModel`）：下拉没有
+ * placeholder 语义，故用显式项表达；文案写明「跟随快速模型」= SDK 解析链末尾的
+ * 回落目标（`completionModel ?? fastModel`，见 spec ui/code-completion.md 故事 4
+ * 场景 1），保证「未设置时显示 ≡ 生效」。
+ */
+export const COMPLETION_MODEL_UNSET_LABEL = "未设置（跟随快速模型）";
+/** 补全模型当前值不在已配置模型列表里时的行内提示（spec 故事 4 场景 4）。 */
+export const COMPLETION_MODEL_STALE_HINT =
+  "当前值不在已配置的模型列表中，补全会按该模型名请求并可能静默失败";
 /** 主题下拉的选项（静态，值与 host 侧 configStore 的 themeSource 同串）。 */
 const THEME_OPTIONS = [
   { value: "system", label: "跟随系统" },
@@ -266,6 +285,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onLoadProjectSettings,
   onToggleBuiltinPlugin,
   onPrefillPrompt,
+  configuredModels,
+  onLoadConfiguredModels,
 }) => {
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav ?? "global");
 
@@ -299,6 +320,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   const [autoMemoryFrequency, setAutoMemoryFrequency] = useState("");
   // 自动记忆开关不做占位态：它的真实默认就是「开」，三态开关更难用（spec 场景 7）。
   const [autoMemoryEnabled, setAutoMemoryEnabled] = useState(true);
+  // 补全模型草稿（`""` = 未设置，落点 settings.json 顶层 `completionModel`）与
+  // 补全开关（同样不做占位态：真实默认就是「开」，spec ui/code-completion.md 故事 5）。
+  const [completionModel, setCompletionModel] = useState("");
+  const [completionEnabled, setCompletionEnabled] = useState(true);
   // 主题偏好（仅桌面端有值）：选择即生效（onThemeChange 已即时上送 host），
   // 此处本地 state 保持选中态直到 host 广播 desktopThemeSource 回写。
   const [theme, setTheme] = useState<ThemeSource>(themeSource ?? "system");
@@ -334,6 +359,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         ? ""
         : String(configurationData.autoMemoryFrequency),
     );
+    setCompletionModel(configurationData.completionModel ?? "");
+    setCompletionEnabled(configurationData.completionEnabled ?? true);
   }, [configurationData]);
 
   // 窗口级广播 desktopThemeSource 同步主题选中态（启动时 host 推一次 + 用户切换时）
@@ -388,6 +415,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     }
   }, [projectViewKey, activeNav, workdir, onLoadProjectSettings]);
 
+  // 进入「全局设置」视图时拉一次补全模型候选（与上面「项目设置」进视图重读同一
+  // 模式：只有视图切换触发重读，宿主回包不构成触发源——否则 fetch→reply→fetch
+  // 死循环）。宿主未接该命令时不传回调，下拉退化为「只有当前值 + 未设置」。
+  const completionViewKeyRef = useRef<string>("");
+  useEffect(() => {
+    if (completionViewKeyRef.current === activeNav) return;
+    completionViewKeyRef.current = activeNav;
+    if (activeNav === "global") onLoadConfiguredModels?.();
+  }, [activeNav, onLoadConfiguredModels]);
+
   // 缓存的项目设置仅当其标注的工作目录与当前工作目录一致时才可信：不一致说明
   // 缓存属于另一项目（或早于会话切换），在 host 回发当前项目数据前按未加载
   // 处理（开关禁用）——避免「项目目录提示已切到新项目、开关还短暂显示上个
@@ -414,6 +451,31 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   // （`language` 解析链上没有 env 键，故其来源只可能是 remote / user / default。）
   const envManaged = (key: UserPreferenceKey) =>
     configurationData?.preferenceSources?.[key] === "env";
+
+  // 补全模型候选与失效值判定（spec ui/code-completion.md 故事 4 场景 2/4）：
+  // 候选清单未回包（空数组）时**不判定失效**——否则会把「列表还没回来」误报成
+  // 「模型名已失效」；当前值不在候选里时仍把它作为一项放进下拉，避免受控下拉选
+  // 不到值时显示成第一项（原生 select 的 selectedIndex = -1 就是这么渲染的）。
+  const completionModelCandidates = configuredModels ?? [];
+  const completionModelStale =
+    completionModel !== "" &&
+    completionModelCandidates.length > 0 &&
+    !completionModelCandidates.includes(completionModel);
+  const completionModelOptions = [
+    ...(completionModel === ""
+      ? [{ value: "", label: COMPLETION_MODEL_UNSET_LABEL }]
+      : []),
+    // 当前值不在候选里（候选还没回包，或模型名已失效）时也作为一项放进去：受控
+    // 下拉选不到值会退化成显示第一项/空白，等于把用户已配置的值藏起来。
+    ...(completionModel !== "" &&
+    !completionModelCandidates.includes(completionModel)
+      ? [{ value: completionModel, label: completionModel }]
+      : []),
+    ...completionModelCandidates.map((model) => ({
+      value: model,
+      label: model,
+    })),
+  ];
 
   // 保存类操作反馈统一由宿主全局 toast 提示（2026-09-09 拍板，见
   // desktop-account-and-settings「设置页反馈语义」），本组件不生成/渲染任何
@@ -446,6 +508,19 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         configurationData.serverUrl,
       );
       if (serverUrlPatch !== undefined) patch.serverUrl = serverUrlPatch;
+    }
+    // 补全模型（顶层键）：未设置态/未改动不写该键（「清空下拉」= 不改该键，载荷
+    // 没有删键语义，spec agent-config 边界说明）；补全开关无占位态，比较基准是它
+    // **显示的初始值**（未设置时显示默认「开」）。
+    const completionModelPatch = changedString(
+      completionModel,
+      configurationData.completionModel,
+    );
+    if (completionModelPatch !== undefined) {
+      patch.completionModel = completionModelPatch;
+    }
+    if (completionEnabled !== (configurationData.completionEnabled ?? true)) {
+      patch.completionEnabled = completionEnabled;
     }
     onSave(patch);
   };
@@ -658,6 +733,59 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                           setServerUrlInvalid(false);
                           keepServerUrlDraftRef.current = false;
                         }}
+                      />
+                    </div>
+                  </div>
+                  {/* 代码补全两行（spec ui/code-completion.md 故事 4–5）：开关是行内
+                      补全的总闸（缺省为开、不做占位态），模型是补全专用模型（未设置时
+                      跟随快速模型）。二者与上面的语言/上下文长度/服务端地址共用本卡片
+                      的「保存」按钮与 diff 载荷——同一份用户偏好、同一份落点。
+                      候选清单与 `/model` 同源，进本视图时拉一次。 */}
+                  <div className="settings-row">
+                    <div className="settings-row-copy">
+                      <h3>代码补全</h3>
+                      <p>在编辑器里停顿后自动给出行内续写建议，按 Tab 采纳</p>
+                    </div>
+                    <div className="settings-control">
+                      <label className="settings-switch">
+                        <input
+                          type="checkbox"
+                          aria-label="代码补全"
+                          checked={completionEnabled}
+                          onChange={(e) =>
+                            setCompletionEnabled(e.target.checked)
+                          }
+                        />
+                        <span className="settings-switch-slider"></span>
+                      </label>
+                    </div>
+                  </div>
+                  <div className="settings-row">
+                    <div className="settings-row-copy">
+                      <h3>补全模型</h3>
+                      <p>行内补全使用的模型，建议选低延迟的补全专用模型</p>
+                      {envManaged("completionModel") && (
+                        <p className="settings-row-hint">{ENV_SOURCE_HINT}</p>
+                      )}
+                      {completionModelStale && (
+                        <p
+                          className="settings-row-hint"
+                          data-testid="completion-model-stale-hint"
+                        >
+                          {COMPLETION_MODEL_STALE_HINT}
+                        </p>
+                      )}
+                    </div>
+                    <div className="settings-control">
+                      {/* 未设置态：文件里没有 completionModel 键时用显式项表达（下拉
+                          没有 placeholder 语义），选中它 = 保持未设置、保存时不写该
+                          键；其文案里的「跟随快速模型」= SDK 解析链末尾的回落目标。 */}
+                      <SettingsSelect
+                        testId="settings-select-completion-model"
+                        label="补全模型"
+                        value={completionModel}
+                        options={completionModelOptions}
+                        onChange={setCompletionModel}
                       />
                     </div>
                   </div>

@@ -2,6 +2,8 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "./test-utils";
 import SettingsPage, {
+  COMPLETION_MODEL_STALE_HINT,
+  COMPLETION_MODEL_UNSET_LABEL,
   ENV_SOURCE_HINT,
   SERVER_URL_INVALID_HINT,
   SERVER_URL_PLACEHOLDER,
@@ -27,14 +29,19 @@ function renderGlobalView(options?: {
   /** 设置页初值（来自 settings.json）。不传 = 沿用「已设置语言」的常规回包。 */
   configurationData?: ConfigurationData;
   onSave?: (data: ConfigurationData) => void;
+  /** 补全模型候选（宿主 getConfiguredModels 回包）。不传 = 尚未回包（空列表）。 */
+  configuredModels?: string[];
 }) {
   const onThemeChange = vi.fn();
   const onUpdateChannelChange = vi.fn();
   const onSave = vi.fn();
+  const onLoadConfiguredModels = vi.fn();
   render(
     <SettingsPage
       configurationData={options?.configurationData ?? { language: "zh-CN" }}
       onSave={options?.onSave ?? onSave}
+      configuredModels={options?.configuredModels}
+      onLoadConfiguredModels={onLoadConfiguredModels}
       themeSource={options?.themeSource}
       onThemeChange={onThemeChange}
       updateChannel={options?.updateChannel}
@@ -45,7 +52,12 @@ function renderGlobalView(options?: {
       onLoadAgentsContent={() => {}}
     />,
   );
-  return { onThemeChange, onUpdateChannelChange, onSave };
+  return {
+    onThemeChange,
+    onUpdateChannelChange,
+    onSave,
+    onLoadConfiguredModels,
+  };
 }
 
 /** 定位某区块 <section>（区块标题 h2 所在的最外层 section 容器）。 */
@@ -680,5 +692,146 @@ describe("SettingsPage「服务端地址」行（落 env.WAVE_SERVER_URL）", ()
       within(serverUrlRow()).getByText(ENV_SOURCE_HINT),
     ).toBeInTheDocument();
     expect(screen.queryByText("由组织配置管理")).not.toBeInTheDocument();
+  });
+});
+
+describe("SettingsPage「代码补全 / 补全模型」两行（spec ui/code-completion.md 故事 4–5）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function completionSelect(): HTMLSelectElement {
+    return screen.getByLabelText("补全模型") as HTMLSelectElement;
+  }
+
+  function completionSwitch(): HTMLInputElement {
+    return screen.getByLabelText("代码补全") as HTMLInputElement;
+  }
+
+  it("未设置补全模型 → 选中「未设置（跟随快速模型）」，开关默认开", () => {
+    renderGlobalView({ configurationData: {} });
+
+    const select = completionSelect();
+    // 未设置 = 文件里没有该键：显式项表达未设置（下拉没有 placeholder 语义），
+    // 文案里的回落目标必须与 SDK 解析链末尾一致（completionModel ?? fastModel）。
+    expect(select.value).toBe("");
+    expect(select.selectedOptions[0].textContent).toBe(
+      COMPLETION_MODEL_UNSET_LABEL,
+    );
+    // 开关不做占位态：真实默认就是「开」（与自动记忆开关同一口径）。
+    expect(completionSwitch().checked).toBe(true);
+  });
+
+  it("候选清单来自宿主：未设置时下拉 = 未设置项 + 全部候选", () => {
+    renderGlobalView({
+      configurationData: {},
+      configuredModels: ["qwen2.5-coder", "gemini-3-flash"],
+    });
+
+    expect([...completionSelect().options].map((o) => o.value)).toEqual([
+      "",
+      "qwen2.5-coder",
+      "gemini-3-flash",
+    ]);
+  });
+
+  it("settings.json 有值时选中该值，且不再出现「未设置」项（无恢复默认入口）", () => {
+    renderGlobalView({
+      configurationData: { completionModel: "qwen2.5-coder" },
+      configuredModels: ["qwen2.5-coder", "gemini-3-flash"],
+    });
+
+    const select = completionSelect();
+    expect(select.value).toBe("qwen2.5-coder");
+    expect(
+      [...select.options].some(
+        (o) => o.textContent === COMPLETION_MODEL_UNSET_LABEL,
+      ),
+    ).toBe(false);
+  });
+
+  it("当前值不在已配置模型列表里 → 保留该值为选项并给出行内提示（故事 4 场景 4）", () => {
+    renderGlobalView({
+      configurationData: { completionModel: "removed-model" },
+      configuredModels: ["qwen2.5-coder"],
+    });
+
+    const select = completionSelect();
+    // 受控下拉选不到值会显示成第一项/空白，等于把用户已配置的值藏起来。
+    expect(select.value).toBe("removed-model");
+    expect([...select.options].map((o) => o.value)).toEqual([
+      "removed-model",
+      "qwen2.5-coder",
+    ]);
+    expect(screen.getByTestId("completion-model-stale-hint")).toHaveTextContent(
+      COMPLETION_MODEL_STALE_HINT,
+    );
+  });
+
+  it("候选清单还没回包时不误报失效（列表为空 ≠ 模型名失效）", () => {
+    renderGlobalView({ configurationData: { completionModel: "any-model" } });
+
+    expect(completionSelect().value).toBe("any-model");
+    expect(
+      screen.queryByTestId("completion-model-stale-hint"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("进入「全局设置」视图时向宿主拉一次候选（切走再回来会重拉）", () => {
+    const { onLoadConfiguredModels } = renderGlobalView({
+      configurationData: {},
+    });
+
+    expect(onLoadConfiguredModels).toHaveBeenCalledTimes(1);
+
+    // 切到别的视图再回到全局设置：重读一次（与「项目设置」进视图重读同一模式，
+    // 宿主回包不构成触发源，否则 fetch→reply→fetch 死循环）。
+    fireEvent.click(screen.getByRole("button", { name: "个性化" }));
+    fireEvent.click(screen.getByRole("button", { name: "全局设置" }));
+
+    expect(onLoadConfiguredModels).toHaveBeenCalledTimes(2);
+  });
+
+  it("只改补全模型 → 载荷只有 completionModel", () => {
+    const { onSave } = renderGlobalView({
+      configurationData: {},
+      configuredModels: ["qwen2.5-coder"],
+    });
+
+    fireEvent.change(completionSelect(), {
+      target: { value: "qwen2.5-coder" },
+    });
+    fireEvent.click(saveButton());
+
+    expect(onSave).toHaveBeenCalledWith({ completionModel: "qwen2.5-coder" });
+  });
+
+  it("关闭补全开关 → 载荷只有 completionEnabled: false", () => {
+    const { onSave } = renderGlobalView({ configurationData: {} });
+
+    fireEvent.click(completionSwitch());
+    fireEvent.click(saveButton());
+
+    expect(onSave).toHaveBeenCalledWith({ completionEnabled: false });
+  });
+
+  it("两个补全键都未设置且没动过 → 载荷为空（不把默认值钉进文件）", () => {
+    const { onSave } = renderGlobalView({ configurationData: {} });
+
+    fireEvent.click(saveButton());
+
+    expect(onSave).toHaveBeenCalledWith({});
+  });
+
+  it("补全开关已显式关闭时，重新打开也写一次（默认开 ≠ 已是文件里的值）", () => {
+    const { onSave } = renderGlobalView({
+      configurationData: { completionEnabled: false },
+    });
+
+    expect(completionSwitch().checked).toBe(false);
+    fireEvent.click(completionSwitch());
+    fireEvent.click(saveButton());
+
+    expect(onSave).toHaveBeenCalledWith({ completionEnabled: true });
   });
 });
