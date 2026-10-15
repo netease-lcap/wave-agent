@@ -137,11 +137,12 @@ export default {
           collapsed: false,
           items: [
             { text: "效能度量分三层看", link: "/tutorials#metrics-layers" },
-            { text: "用量与成本", link: "/tutorials#usage-cost" },
             {
-              text: "遥测导出（OpenTelemetry）",
-              link: "/tutorials#telemetry-export",
+              text: "企业端「研发效能」页面",
+              link: "/tutorials#efficiency-board",
             },
+            { text: "用量与成本", link: "/tutorials#usage-cost" },
+            { text: "遥测导出：三条通道", link: "/tutorials#telemetry-export" },
             { text: "用量回调（SDK 集成）", link: "/tutorials#usage-callback" },
             { text: "隐私与治理", link: "/tutorials#telemetry-privacy" },
           ],
