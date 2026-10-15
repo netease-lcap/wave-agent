@@ -434,6 +434,11 @@ const applyToolBlockUpdate = (
  * refreshMessages after pulling the authoritative snapshot — the queued
  * updates are already contained in it).
  *
+ * `wait <= 0` disables the window entirely: every update applies immediately
+ * (experimental escape hatch — WAVE_STREAM_THROTTLE_MS=0, see
+ * resolveStreamThrottleMs). The timer is never armed and the queue stays
+ * empty, so `flush`/`cancel` become safe no-ops.
+ *
  * Cross-channel reordering (a non-throttled update landing before a queued
  * running update) is safe: every combination touches disjoint state
  * (different message/block/field), `end` flushes before applying, and a full
@@ -466,6 +471,13 @@ export function createThrottledUpdater<T>(
   };
 
   const throttled = (updater: (prev: T) => T) => {
+    // Disabled mode (wait <= 0): apply immediately — no window, no queue.
+    // The timer below is never armed and the queue stays empty, so
+    // cancel/flush are safe no-ops.
+    if (wait <= 0) {
+      apply(updater);
+      return;
+    }
     if (timer) {
       queued.push(updater);
       return;
@@ -496,6 +508,22 @@ export function createThrottledUpdater<T>(
   };
 
   return throttled;
+}
+
+export const DEFAULT_STREAM_THROTTLE_MS = 500;
+
+/**
+ * Resolve the height-sensitive throttle window from WAVE_STREAM_THROTTLE_MS.
+ * Unset/blank/non-numeric → the 500ms default; `<= 0` disables throttling
+ * entirely (experimental escape hatch to observe fully-immediate rendering);
+ * a positive value is used as-is. Read once when ChatProvider mounts —
+ * process env does not change mid-run.
+ */
+export function resolveStreamThrottleMs(raw: string | undefined): number {
+  const trimmed = raw?.trim();
+  if (!trimmed) return DEFAULT_STREAM_THROTTLE_MS;
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : DEFAULT_STREAM_THROTTLE_MS;
 }
 
 export const ChatProvider: React.FC<ChatProviderProps> = ({
@@ -535,11 +563,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // (content/reasoning deltas, tool start/streaming/end, structural updates)
   // applies via setMessages directly: its height change is monotonic (text)
   // or one-shot, so the window would only add latency, and Ink's built-in
-  // maxFps:30 already bounds terminal writes. See createThrottledUpdater +
-  // docs/specs/core/stream-content-updates.md (2026-10-15 会议).
+  // maxFps:30 already bounds terminal writes. WAVE_STREAM_THROTTLE_MS
+  // overrides the window (<= 0 disables throttling entirely — experimental
+  // escape hatch to observe fully-immediate rendering). See
+  // createThrottledUpdater + docs/specs/core/stream-content-updates.md
+  // (2026-10-15 会议).
   const updateMessages = useMemo(
     () =>
-      createThrottledUpdater<Message[]>((updater) => setMessages(updater), 500),
+      createThrottledUpdater<Message[]>(
+        (updater) => setMessages(updater),
+        resolveStreamThrottleMs(process.env.WAVE_STREAM_THROTTLE_MS),
+      ),
     [],
   );
 

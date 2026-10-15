@@ -162,7 +162,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 **为什么是这个优先级**：2026-08-17 曾因节流器 trailing edge 冲刷与全量列表替换（`refreshMessages`）交错导致内容重复而移除 CLI 节流（见下方 2026-08-17 会议记录）；2026-08-19 决定恢复节流并在竞态源头修复——`refreshMessages` 拉取权威快照后立即取消节流窗口：pending 内的旧更新在拉取前已写入 SDK 消息状态，必然已包含在快照中，丢弃无损失；拉取之后到达的更新开启全新窗口、追加在快照之上。2026-08-19 同次会议把三通道节流器（content/reasoning/tool）统一为一个 `updateMessages(updater)` 入口，让 bash 等前台工具逐 chunk 的 `running` 阶段 `shortResult`/`result` 更新（短结果行数 1–4 行来回变化，即闪烁源）也受 500ms 窗口约束。统一的代价是把文本/推理流式一并限频到每窗口一次：模型逐 token 产出（如 30ms/chunk）时正文以每 500ms 成块出现的节奏推进，而非逐字浮现。2026-10-15 复盘把两类更新的渲染特征分开看：文本/推理 delta 使动态区高度**单调递增**（Ink `log-update` 只在尾部追加/重写，不产生来回位移），工具 `running` 的 `shortResult`/`result` 使高度在 1–N 行之间**反复震荡**（其下方内容被反复推下/拉上）——闪烁源只存在于后者。因此把节流范围收窄到高度敏感更新：防闪烁效果不变，流式即时性恢复；逐 delta 渲染的 React commit 成本对典型会话规模为亚毫秒级（2026-08-17 评估），终端写入频率仍由 Ink 内置 `maxFps: 30` 兜底。
 
-**独立测试**：构造带 reasoning 流式的会话，在流式期间触发一次全量刷新（/clear、/compact、/rewind 或折叠切换），验证最终消息内容与 SDK 权威内容逐字节一致、无重复片段（`useChat.test.tsx`：refresh-interleave 场景在节流 + 快照取消下通过）；构造 bash 前台任务，连续触发 `running` 阶段 `shortResult` 更新，断言窗口内多次更新合并为一次渲染（`ToolDisplay` 行数不逐 chunk 跳变）；构造文本/推理流式并断言每个 delta 到达后立即渲染（不被 500ms 窗口延迟）。
+**独立测试**：构造带 reasoning 流式的会话，在流式期间触发一次全量刷新（/clear、/compact、/rewind 或折叠切换），验证最终消息内容与 SDK 权威内容逐字节一致、无重复片段（`useChat.test.tsx`：refresh-interleave 场景在节流 + 快照取消下通过）；构造 bash 前台任务，连续触发 `running` 阶段 `shortResult` 更新，断言窗口内多次更新合并为一次渲染（`ToolDisplay` 行数不逐 chunk 跳变）；构造文本/推理流式并断言每个 delta 到达后立即渲染（不被 500ms 窗口延迟）；设置 `WAVE_STREAM_THROTTLE_MS=0` 后重复 `running` 连发场景，断言每个更新立即应用、无窗口合并（开关旁路），未设置时默认 500ms 行为不变。
 
 **验收场景**：
 
@@ -176,6 +176,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 8. **假设**节流窗口打开期间到达一次性结构更新（消息新增、error 块），**当**其到达时，**则**结构更新立即应用、不进入节流队列（其为一发式、无合并价值），消息卡片/错误块即时可见，不被最长 500ms 的窗口延迟拖慢
 9. **假设**长会话中流式输出，**当**消息不断积累时，**则**界面依然平滑即时更新，不因分流而卡顿（与「长会话流式输出保持流畅」验收场景 1 一致）
 10. **假设**存在内容重复的回归测试，**当**运行现有双计数回归测试（content/reasoning 同批 double-count、refresh-interleave duplication）时，**则**测试继续通过
+11. **假设**设置了实验开关 `WAVE_STREAM_THROTTLE_MS`（毫秒），**当** CLI 挂载消费端时，**则**高度敏感节流窗口采用该值：未设置保持 500ms 默认不变；设为 `0` 或负数时彻底禁用节流——高度敏感更新（工具 `running` 阶段 `shortResult`/`result`）也逐条立即应用（不开窗口、不排队，`flush()`/`cancel()` 为安全 no-op），用于观察全立即渲染的效果；设为正数时以该值开窗。Ink 内置 `maxFps: 30` 渲染层兜底不受该开关影响
 
 ---
 
@@ -329,12 +330,13 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - 问：`refreshMessages` 的取消语义是否变化 → 答：不变。拉取权威快照后 `cancel()` 节流窗口（立即通道无 pending，无需取消）；pending 内的旧 `running` 更新已包含在快照中，丢弃无损失
 - 问：被节流延迟的 running 更新会不会在消息已写入 `<Static>` 后才应用、在终端留下冻结痕迹 → 答：不会。静态/动态分区按渲染时刻的 state 判定（`MessageList.tsx` 的 `runningMessageIndices`：含 running/streaming/start 块的消息整体动态）；running 更新 pending 的唯一前提是窗口已被前一个 running 打开（首个 running 走 leading 立即应用），故 pending 期间 state 中该块 stage 必为 `running`、消息必在动态区。它被应用的三条路径均无「先冻结、后应用」窗口：窗口 trailing 应用后块仍 `running`（消息仍动态，动态区由 Ink 每帧重绘、中间态不残留）；同块 `end` 先 `flush()` 再应用（R 值先于 end 落定，之后消息才可能整体迁入 Static，冻结内容已含最终值）；全量刷新 `cancel()` 丢弃（以含该内容的权威快照重建）。reopen 的 `frozenContentRef` 机制只记录 text/reasoning 块内容，与工具块 `shortResult` 的更新路径互不相交
 - 问：受影响范围 → 答：仅 CLI 进程内消费端（`packages/code/src/contexts/useChat.tsx`）——`initializeAgent` 的回调按分流提交；SDK 回调、wire 通知、VSCE/桌面跨进程通道的 window-concat 节流语义均不变。回归测试：既有 500ms 节流、tool 参数累积、同批 double-count、refresh-interleave 测试改写为分流语义后继续通过；新增「文本 delta 立即渲染、不被窗口延迟」断言
+- 问：如何观察「彻底移除节流」的效果 → 答：实验环境变量 `WAVE_STREAM_THROTTLE_MS`（毫秒）：未设置/空白/非数字 = 500 默认（行为不变），`<=0` = 彻底禁用节流（高度敏感更新也逐条立即应用，观察全立即渲染），正数 = 自定义窗口。实现为 `createThrottledUpdater` 的 `wait <= 0` 旁路——直接应用、不开窗口、不排队，`flush()`/`cancel()` 天然为 no-op（timer 永不创建、队列永为空）；仅在 CLI 消费端 `updateMessages` 创建处读取（挂载时读一次，进程内 env 不变），VSCE/桌面跨进程通道不受影响；Ink `maxFps: 30` 渲染层兜底保留。定位：观察/实验开关，用于在真实终端验证「数据层节流是否必要」——若全立即渲染无闪烁，后续可考虑收窄或移除高度敏感节流；不改变未设置时的默认行为
 
 ## 假设 _（必填）_
 
 - 底层 AI 服务支持流式响应（增量内容传递）
 - 网络连接对大多数用户通常稳定
-- 终端/CLI 界面可以处理逐 delta 的高频文本更新（终端写入频率由 Ink 内置 `maxFps: 30` 输出节流兜底）；文本/推理 delta 使高度单调递增、无需节流，仅高度反复震荡的工具 `running` 更新需要 500ms 窗口合并
+- 终端/CLI 界面可以处理逐 delta 的高频文本更新（终端写入频率由 Ink 内置 `maxFps: 30` 输出节流兜底）；文本/推理 delta 使高度单调递增、无需节流，仅高度反复震荡的工具 `running` 更新需要 500ms 窗口合并（可经实验开关 `WAVE_STREAM_THROTTLE_MS=0` 禁用以观察全立即渲染）
 - 用户通常使用支持实时文本渲染的标准终端模拟器
 - 在正常网络条件下内容流按时间顺序到达
 - 消息变更通过增量回调对外发布，完整列表按需拉取（`agent.messages` / `getMessages` 请求）；每次流式 chunk 不触发全量列表推送
