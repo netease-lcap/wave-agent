@@ -3626,10 +3626,11 @@
    用户走查：设置页保存成功 toast 参考 codex 样式（顶部居中、描边圆勾图标 +
    文字 + 关闭、soft 彩底 + 同色文字），颜色绑语义层变量不写死。
    **两栈分流（2026-09-10 拍板）**：ToastStack 按宿主声明的 `position` 渲染两个
-   栈——本段只覆盖 `.toast-stack--top`（应用级全局提示，顶部居中新形态）；
-   后台会话确认 toast 走 `.toast-stack--bottomRight`，**完全落回 base
-   ToastStack.css 的右下角 VS Code 通知形态**（深底浅字、toast-slide-in），
-   此处不得触碰该栈的选择器。
+   栈——本段覆盖 `.toast-stack--top`（应用级全局提示，顶部居中新形态）；
+   后台会话确认 toast 走 `.toast-stack--bottomRight`。该栈原先**完全落回 base
+   ToastStack.css 的右下角 VS Code 通知形态**，2026-10-15 她看过两栈同屏 mock 后
+   裁定「样式需要保持一致」⇒ 皮肤（底/描边/圆角/内衬/字号/行高/阴影/动作按钮/
+   关闭钮）已向本段看齐，见下方「1015 追加」段；位置与动效仍分家。
    语义色**只有设置页结果型提示**标注：success → --cc-color-success(+soft)、
    error → --cc-color-danger(+soft)、info → --cc-color-info(+soft)；**缺省
    （无 type）= 中性**——不套语义类、不渲染图标，用默认浮层底色 + 常规前景
@@ -3749,22 +3750,124 @@
   outline-offset: 2px;
 }
 
-/* 关闭钮与语义图标同色同浓度（用户 0909 走查：深浅模式下 × 应与勾/圆图标
-   颜色一致，勿淡显；hover 仅加深背景、色不变）。只作用于顶部栈——盖过上方
-   0908 全局图标 #565a60 规则（右下角确认栈保持既有灰值不变） */
+/* 关闭钮「勿淡显」（0909 走查：深浅模式下 × 不作 80% 淡显）+ 中性 × 的默认色修正
+   （2026-10-15 她点右下栈那条：「这里的关闭默认色值不对，参考 `svg.header-icon`」
+   ⇒ 中性 toast 的 × 走**桌面图标灰**，与 header 图标 / pane 头部关闭同档，由下方
+   0908 全局 `.toast-close` #565A60 / #9A9EA5 规则供给，此处不再 `color: inherit`）。
+   **语义色 toast 的 × 仍跟语义色**（0909 原裁定「× 与勾/圆图标同色同浓度」
+   只在有语义图标时才成立）——单列一条 :is(...) 规则接回 inherit。
+   hover（2026-10-15 她「hover图标应该变深，现在没有效果」）：0909 原为「hover 仅
+   加深背景、色不变」，实测 hover 时只有 14% 派生底、图标色逐值不变 ⇒ 补**中性档
+   的 hover 图标色**，接 1 级色 `--cc-text-primary`（浅 #1F2329 = 比图标灰更深 /
+   深 #E5E7E8 = 比图标灰更亮，与图标族 0917「hover 提亮」同口径、与确认弹层关闭钮
+   hover 的浅色 #1f2329 同值）。**语义档 × 的 hover 仍不变色**，故用 :not() 链把
+   中性档单列（:is() 那条语义 inherit 与本规则同特异性，必须靠 :not 而非顺序取胜）。 */
 [data-host="desktop"] .toast-stack--top .toast-close,
 [data-host="desktop"][data-theme="dark"] .toast-stack--top .toast-close {
-  color: inherit;
   opacity: 1;
+}
+[data-host="desktop"]
+  .toast-stack--top
+  :is(.toast--success, .toast--error, .toast--info)
+  .toast-close,
+[data-host="desktop"][data-theme="dark"]
+  .toast-stack--top
+  :is(.toast--success, .toast--error, .toast--info)
+  .toast-close {
+  color: inherit;
 }
 [data-host="desktop"] .toast-stack--top .toast-close:hover,
 [data-host="desktop"][data-theme="dark"] .toast-stack--top .toast-close:hover {
   background: color-mix(in srgb, currentColor 14%, transparent);
 }
+[data-host="desktop"]
+  .toast-stack--top
+  .toast:not(.toast--success):not(.toast--error):not(.toast--info)
+  .toast-close:hover,
+[data-host="desktop"][data-theme="dark"]
+  .toast-stack--top
+  .toast:not(.toast--success):not(.toast--error):not(.toast--info)
+  .toast-close:hover {
+  color: var(--cc-text-primary, #1f2329);
+}
 [data-host="desktop"] .toast-stack--top .toast-message {
   flex: 0 1 auto;
   min-width: 0;
   word-break: break-word;
+}
+
+/* ═══ 1015 追加：右下栈（后台会话确认 toast）皮肤向顶部栈看齐 ═══
+   她 2026-10-15 看过两条栈同屏的 mock（8899「1015 提示两栈对照（完成/确认）」）
+   后裁定：「样式需要保持一致，其他的不调整，只改桌面端」。故本段只对齐**静态
+   皮肤**——底 / 描边 / 圆角 / 内衬 / 字号 / 行高 / 阴影 / 动作按钮 / 关闭钮，
+   每一项都复用顶部栈那条规则的同一个 token 与同一个值（不另造值、不改落点）。
+   **故意不动**（属两栈分工，不是皮肤）：位置（右下 12px / 栈宽上限 min(420px,
+   100vw-24px)）、入场动效（toast-slide-in 从下发）、形状（无语义图标，仅 loading
+   出 spinner）、层级（base z-index 1000）、行为（带按钮不自动消失）；文案长度
+   不同的多条里，动作按钮仍靠右对齐（`.toast-message` 保留 base 的 flex:1，未镜像
+   顶部那条 flex:0 1 auto——顶部是多条居中收缩宽度、右下是整栈拉伸，镜像过去会让
+   短条的按钮跑到文字后面与长条错位）。
+   改前（base 宿主通知皮肤）：浅 #FAFAFD / 深 #1F1F1F、r6、8px 12px、13px、阴影
+   0 4px 12px rgb(0 0 0/30%)；动作按钮浅 #F0F0F1 + 蓝描边 #0069CC / 深 #232526 +
+   7% 白描边、r4 / 26px / 13px / **Arial（不继承应用字体）**；关闭钮 #565a60 /
+   #9a9ea5。全部只作用 [data-host="desktop"]，base ToastStack.css 与 IDE/VS Code
+   宿主（从不推 showToast）零改动。 */
+[data-host="desktop"] .toast-stack--bottomRight .toast {
+  box-sizing: border-box;
+  padding: 9px 8px 9px 12px;
+  border-radius: 10px;
+  color: var(--vscode-foreground);
+  background: var(--cc-bg-overlay, var(--vscode-menu-background));
+  border: 1px solid var(--vscode-widget-border);
+  font-size: 14px;
+  line-height: 1.45;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 6%);
+}
+[data-host="desktop"] .toast-stack--bottomRight .toast-action {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--cc-radius-md, 8px);
+  font-size: var(--cc-font-size-md, 14px);
+  font-weight: 400;
+  font-family: inherit;
+  background: transparent;
+  border: 1px solid var(--cc-border-light, #e4e7ed);
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+[data-host="desktop"] .toast-stack--bottomRight .toast-action:hover {
+  background: var(--cc-fill-hover, #eef0f3);
+}
+[data-host="desktop"][data-theme="dark"]
+  .toast-stack--bottomRight
+  .toast-action {
+  border-color: var(--cc-border-light, #34393c);
+}
+[data-host="desktop"][data-theme="dark"]
+  .toast-stack--bottomRight
+  .toast-action:hover {
+  background: rgb(255 255 255 / 8%);
+}
+[data-host="desktop"] .toast-stack--bottomRight .toast-action:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
+}
+/* × 默认色不再跟文字（她 2026-10-15：「关闭默认色值不对，参考 svg.header-icon」）
+   ⇒ 只保留「勿淡显」的 opacity: 1，颜色落回 0908 全局图标灰 #565A60 / #9A9EA5。 */
+[data-host="desktop"] .toast-stack--bottomRight .toast-close,
+[data-host="desktop"][data-theme="dark"]
+  .toast-stack--bottomRight
+  .toast-close {
+  opacity: 1;
+}
+/* hover（她 2026-10-15「hover图标应该变深，现在没有效果」）：底仍是 0909 那条
+   14% 派生底，只补**图标色** → 1 级色（浅 #1F2329 / 深 #E5E7E8）。右下栈 toast 无
+   语义档（kindClass 由 isTop 门控，不经 bottomRight），故本栈不必排除语义色。 */
+[data-host="desktop"] .toast-stack--bottomRight .toast-close:hover,
+[data-host="desktop"][data-theme="dark"]
+  .toast-stack--bottomRight
+  .toast-close:hover {
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  color: var(--cc-text-primary, #1f2329);
 }
 
 /* ═══ 批 1 · 无障碍与行高（F-09/F-10/F-11/F-12/F-13，用户 2026-09-10 授权）═══
