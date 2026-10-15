@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { ChatApp } from "./components/ChatApp";
 import { DesktopApp } from "./components/DesktopApp";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles/globals.css";
 import "./styles/host-desktop.css";
 import "./styles/remote-page.css";
@@ -61,9 +62,13 @@ if (window.waveHostType === "desktop") {
 // Create root and render React app
 const root = ReactDOM.createRoot(document.getElementById("root")!);
 root.render(
-  window.waveHostType === "desktop" ? (
-    <DesktopApp vscode={vscode} />
-  ) : (
-    <ChatApp vscode={vscode} />
-  ),
+  // 边界包在根上、四个宿主共用：任何一处渲染期抛错，原本都会卸载整棵树变成
+  // 纯白页，用户除了重启客户端没有别的动作。
+  <ErrorBoundary>
+    {window.waveHostType === "desktop" ? (
+      <DesktopApp vscode={vscode} />
+    ) : (
+      <ChatApp vscode={vscode} />
+    )}
+  </ErrorBoundary>,
 );

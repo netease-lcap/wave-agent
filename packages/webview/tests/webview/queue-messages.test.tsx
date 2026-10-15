@@ -197,6 +197,24 @@ describe("Message Queuing", () => {
     expect(itemText("q1")).toBe("Queued message 1");
   });
 
+  it("should keep the page alive when a queue update arrives without a list", () => {
+    renderChatApp();
+
+    sendCommand("updateQueue", {
+      queue: [{ id: "q1", content: "Queued message 1" }],
+    });
+    expect(itemText("q1")).toBe("Queued message 1");
+
+    // 宿主推来的更新里 `queue` 缺失：远控页的 shim 曾把机器的 `messages` 原样
+    // 转发出去，webview 读到的就是 undefined。原样写进 state 会让
+    // QueuedMessageList 在 `.slice` 上抛错，React 卸载整棵树 —— 手机上就是一片
+    // 纯白，而 standalone PWA 连下拉刷新都没有。留住现有队列，页面必须还在。
+    sendCommand("updateQueue", { queue: undefined });
+
+    expect(screen.getByTestId("message-input")).toBeInTheDocument();
+    expect(itemText("q1")).toBe("Queued message 1");
+  });
+
   it("should delete a specific queued message by id when clicking the delete icon", () => {
     const { vscode } = renderChatApp();
 

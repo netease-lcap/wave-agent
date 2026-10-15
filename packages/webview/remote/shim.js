@@ -1394,7 +1394,12 @@
         post({ command: "updateTasks", tasks: p.tasks });
         return;
       case "queuedMessagesChange":
-        post({ command: "updateQueue", messages: p.messages });
+        // The webview message carries the queue under `queue` (same as the VSCE
+        // and desktop hosts); the host's notification calls it `messages`. Send
+        // the wrong name and the webview reads `undefined`, writes it into
+        // `state.queuedMessages`, and the list render throws — which unmounts
+        // the whole app.
+        post({ command: "updateQueue", queue: p.messages });
         return;
       case "commandRunningChange":
         post({ command: "updateCommandRunning", running: p.running });
@@ -1744,7 +1749,7 @@
             running: info.isCommandRunning,
           });
         if (info.queuedMessages)
-          post({ command: "updateQueue", messages: info.queuedMessages });
+          post({ command: "updateQueue", queue: info.queuedMessages });
       })
       .catch(function (err) {
         warnOnce("sessionState", "会话状态补读失败：" + err.message);

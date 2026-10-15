@@ -1289,7 +1289,30 @@ describe("remote page shim", () => {
     });
     expect(lastOf(page, "updateQueue")).toEqual({
       command: "updateQueue",
-      messages: [],
+      queue: [],
+    });
+  });
+
+  test("a queue change reaches the webview under the name the webview reads", async () => {
+    const { page } = await openPage();
+
+    // The machine's notification calls the list `messages`; the webview's own
+    // vocabulary calls it `queue` — the same name the VSCE and desktop hosts
+    // send (webview-fixtures). Forwarding the host's name verbatim made the
+    // webview read `undefined`, write it into `state.queuedMessages`, and throw
+    // in the list render, which unmounts the whole app: the white page a phone
+    // showed after being backgrounded and reopened.
+    const queued = [{ id: "q1", text: "补一条" }];
+    page.socket.receive({
+      method: "queuedMessagesChange",
+      params: { messages: queued },
+      sessionId: "s-new",
+    });
+    await flush();
+
+    expect(lastOf(page, "updateQueue")).toEqual({
+      command: "updateQueue",
+      queue: queued,
     });
   });
 
