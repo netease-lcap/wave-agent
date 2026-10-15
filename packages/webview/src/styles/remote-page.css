@@ -287,6 +287,66 @@
     font-size: 22px;
     line-height: 30px;
   }
+
+  /* ── 图标按钮：点击热区、间距与字形一起放大（spec 场景 27）─────────────
+     页面上相邻图标最密、最容易被误触的两族——顶栏右侧（新建对话 / 会话 /
+     切换电脑 / 更多）与输入区左下角（「+」/「/」）——原先是按**鼠标指针**
+     定的：按钮 22×22、字形 16×16、间距 4px（中心距 26px）。手指的接触面
+     远大于指针热区，Apple HIG 的最小可点目标是 44pt、Material 是 48dp，
+     26px 的中心距在手机上必然误触。
+
+     热区与间距**必须同时给足**：只把热区撑大而不动间距，相邻两个按钮的
+     可点区域就会相贴甚至重叠，误触反而更容易发生——这正是用户报的现象
+     （「图标有点小，手指点起来很容易碰到其他图标」）。所以这一组里
+     `gap` 与 `width/height` 成对出现，改一个就得一起看另一个。
+
+     字形 16→20 是跟着按钮走的（仍是「按钮带内边距、字形居中」的原有
+     关系，只是两个数各放大一档）；按钮长到 40 后，两个容器原本的固定
+     高度（顶栏 44、输入区按钮行 40）已经装不下，所以高度也要一并抬。
+
+     范围只这两族：输入区右下角的权限档与发送按钮目标本就更大、也不与谁
+     紧挨着，不在此列。整屏约束（场景 14）仍须成立——长高的量不得把消息区
+     挤到「顶栏与输入区无法同屏」。 */
+  [data-remote-page] .chat-header {
+    height: 56px;
+  }
+
+  [data-remote-page] .header-buttons {
+    gap: 8px;
+  }
+
+  [data-remote-page] .header-button {
+    width: 40px;
+    height: 40px;
+  }
+
+  [data-remote-page] .header-button .header-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* 输入区按钮行：40px 的按钮在原来的 40px 行高里会顶满上下边，抬到 48；
+     左内边距 12→4 是为了让第一个按钮的**字形**（不是按钮盒）留在原处——
+     原来 22px 按钮里 16px 字形居中，字形左边缘在 12+3=15px；现在
+     40px 按钮里 20px 字形居中，4+10=14px，视觉位置基本不动。 */
+  [data-remote-page] .input-buttons-row {
+    height: 48px;
+    padding: 0 4px;
+  }
+
+  [data-remote-page] .context-actions {
+    gap: 8px;
+  }
+
+  [data-remote-page] .toolbar-icon-button {
+    width: 40px;
+    height: 40px;
+  }
+
+  [data-remote-page] .toolbar-icon-button .toolbar-icon {
+    width: 20px;
+    height: 20px;
+  }
 }
 
 /* ── 文本类控件一律 ≥16px，且**不判设备** ─────────────────────────────
