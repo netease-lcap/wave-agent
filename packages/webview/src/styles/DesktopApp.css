@@ -771,12 +771,16 @@ html[data-theme="dark"] .desktop-session-status-slot {
    场景：从 CodeWave 高码应用唤起 IDE 后，新会话还没有项目目录，用户不知道该先选
    文件夹才能提问（输入框此刻是禁用的）。气泡浮在选择器上方、箭头指向它，同时给
    触发器加描边呼吸高亮；选到目录后由 ChatApp 收回（effectiveWorkdir 非空）。
-   浮层语言与 workdir 菜单一致：12px / 圆角 6px / 4px 间距 / widget-shadow。 */
+   浮层语言 2026-10-15 起对齐桌面端 hover 提示（Tooltip）规范（她预览评论裁定）：
+   底/边/阴影 = --cc-bg-overlay / --cc-border / --cc-shadow-popover（与 Tooltip 同源），
+   圆角 8px、提示文字 14/22；下方三角与气泡背景同色（Tooltip 角标同款手法），
+   不再用主色（避免「三角像按钮」的误读）。 */
 
 .desktop-workdir-trigger--guide {
   background: var(--vscode-list-hoverBackground);
-  /* 高亮与气泡里的主按钮同色（桌面档：浅色键 = 炭黑 / 深色键 = 浅灰）——
-     focusBorder 在桌面档是中性焦点环，深色底下与气泡面太近、读不出「指这里」。 */
+  /* 呼吸描边用主色（focusBorder 在桌面档是中性焦点环，深色底下与气泡面太近、
+     读不出「指这里」）。气泡内的动作按钮 2026-10-15 起改为取消键同款透明档，
+     不再与此描边同色（她裁定按钮参考 confirm-dialog-btn-cancel）。 */
   outline: 1px solid var(--vscode-button-background, #007acc);
   outline-offset: -1px;
   animation: desktop-workdir-guide-pulse 2.4s ease-in-out infinite;
@@ -801,18 +805,15 @@ html[data-theme="dark"] .desktop-session-status-slot {
   width: max-content;
   max-width: 260px;
   box-sizing: border-box;
-  padding: 8px 10px 10px;
+  padding: 8px 12px 10px;
   text-align: left;
-  font-size: 12px;
-  line-height: 18px;
-  background: var(
-    --vscode-editorWidget-background,
-    var(--vscode-dropdown-background)
-  );
-  color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
-  border: 1px solid var(--vscode-widget-border, var(--vscode-dropdown-border));
-  border-radius: 6px;
-  box-shadow: 0 6px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
+  font-size: 14px;
+  line-height: 22px;
+  background: var(--cc-bg-overlay, var(--vscode-editorWidget-background));
+  color: var(--cc-text-primary, var(--vscode-editorWidget-foreground));
+  border: 1px solid var(--cc-border, var(--vscode-widget-border));
+  border-radius: var(--cc-radius-md, 8px);
+  box-shadow: var(--cc-shadow-popover, 0 6px 16px rgba(0, 0, 0, 0.4));
 }
 
 .desktop-workdir-guide-row {
@@ -854,33 +855,53 @@ html[data-theme="dark"] .desktop-session-status-slot {
   margin-top: 8px;
 }
 
-/* 引导气泡只有一个动作（去选目录）→ 用主按钮，视觉重心落在「用户接下来该点的
-   那一个」上。 */
+/* 引导气泡只有一个动作（去选目录）。2026-10-15 她裁定「按钮参考」确认弹窗的
+   取消键（`confirm-dialog-btn-cancel` 桌面档）= 透明底 + 1px 描边 + 字色 1 级、
+   hover 才出面（normal 态没有背景色），尺寸同族：32px 高 / 14/22/500 / r8 / 12px 内衬。 */
 .desktop-workdir-guide-action {
-  padding: 3px 10px;
-  font: inherit;
-  border-radius: 4px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  font-family: inherit;
+  border-radius: var(--cc-radius-md, 8px);
   cursor: pointer;
-  color: var(--vscode-button-foreground);
-  background: var(--vscode-button-background);
-  border: 1px solid transparent;
+  color: var(--cc-text-primary, var(--vscode-foreground));
+  background: transparent;
+  border: 1px solid var(--cc-border-light, #e4e7ed);
 }
 
 .desktop-workdir-guide-action:hover {
-  background: var(--vscode-button-hoverBackground);
+  background: var(--cc-fill-hover, #eef0f3);
 }
 
-/* 箭头指向下方的选择器触发器：用与触发器描边同一个主色实心三角，让「气泡→控件」
-   的指向关系一眼可读（两层描边三角在深色档里与气泡底色太近，读不出来）。 */
+[data-theme="dark"] .desktop-workdir-guide-action:hover {
+  background: rgb(255 255 255 / 8%);
+}
+
+.desktop-workdir-guide-action:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
+}
+
+/* 箭头指向下方的选择器触发器（设计师 2026-10-15 两轮裁定：①「三角和背景色要保持
+   一致」②「三角没有描边，底部没有圆角」）：10×10 方块 rotate(45°) 成菱形 ——
+   底/右两条边带 1px 描边（= 气泡边框 --cc-border），底角 r2 圆角尖端；底色 =
+   气泡背景并盖住气泡底边那段描边（中心压在气泡底缘，外露 ~7px 与旧三角一致）。 */
 .desktop-workdir-guide-arrow {
   position: absolute;
   top: 100%;
-  left: 12px;
-  width: 0;
-  height: 0;
-  border-left: 7px solid transparent;
-  border-right: 7px solid transparent;
-  border-top: 7px solid var(--vscode-button-background, #007acc);
+  left: 14px;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  transform: rotate(45deg);
+  background: var(--cc-bg-overlay, var(--vscode-editorWidget-background));
+  border-right: 1px solid var(--cc-border, var(--vscode-widget-border));
+  border-bottom: 1px solid var(--cc-border, var(--vscode-widget-border));
+  border-bottom-right-radius: 2px;
+  z-index: -1;
 }
 
 .desktop-workdir-menu {
