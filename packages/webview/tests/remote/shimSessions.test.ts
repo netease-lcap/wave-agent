@@ -213,11 +213,15 @@ async function reconnect(current: FakeSocket) {
   return next;
 }
 
-/** Answer the reads a reconnect makes — messages by delta, the two states from
+/** Answer the reads a reconnect makes — messages by delta, the states from
  *  their own registries — as the machine would. */
 async function answerRereads(socket: FakeSocket, requests: Frame[] = []) {
   answerOn(socket, "getMessages", { messages: [] });
   answerOn(socket, "listDaemonSessions", { sessions: SESSIONS });
+  answerOn(socket, "getSessionInfo", {
+    sessionId: "s-new",
+    permissionMode: "default",
+  });
   answerOn(socket, "listPendingPermissions", { requests });
   await flush();
 }
@@ -225,22 +229,36 @@ async function answerRereads(socket: FakeSocket, requests: Frame[] = []) {
 /**
  * Boot + mount (webviewReady) + first snapshot, i.e. the page as the phone sees it.
  *
- * `permissionMode` is what the machine answers the first screen's mode read with
- * (`getSessionInfo`). Every re-alignment asks for it — the adapter only pushes
- * the *changes* — so a harness that stayed silent would leave those reads to
- * time out and put a warning on the suite's stderr.
+ * `permissionMode` is what the machine answers the snapshot's session-state read
+ * with; `family` adds the rest of the state family the same reply carries
+ * (scenario 26 — `contextUsagePercent` is stripped out of it and attached to the
+ * `getMessages` reply, where the machine actually puts it). Every re-alignment
+ * asks for these — the adapter only pushes the *changes* — so a harness that
+ * stayed silent would leave those reads to time out and put a warning on the
+ * suite's stderr.
  */
-async function openPage(search = "?host=h-1", permissionMode = "default") {
+async function openPage(
+  search = "?host=h-1",
+  permissionMode = "default",
+  family: Frame = {},
+) {
   const page = startPage(search);
   await flush();
   page.api.postMessage({ command: "webviewReady" });
   await flush();
   await page.answer("listDaemonSessions", { sessions: SESSIONS });
+  const { contextUsagePercent, ...info } = family as {
+    contextUsagePercent?: number;
+  };
   await page.answer("getSessionInfo", {
     sessionId: "s-new",
     permissionMode,
+    ...info,
   });
-  const pull = await page.answer("getMessages", { messages: [SEED] });
+  const pull = await page.answer("getMessages", {
+    messages: [SEED],
+    ...(typeof contextUsagePercent === "number" ? { contextUsagePercent } : {}),
+  });
   await page.answer("listPendingPermissions", { requests: [] });
   return { page, pull };
 }
@@ -346,6 +364,12 @@ describe("remote page shim", () => {
     expect(page.requests("listDaemonSessions")).toBe(1);
 
     await page.answer("listDaemonSessions", { sessions: SESSIONS });
+    // The snapshot chain's session-state read (scenario 26) sits between the
+    // registry and the message pull.
+    await page.answer("getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "default",
+    });
 
     // Most recently active wins: the page cannot see the computer's screen, so
     // that is the only ordering signal it has.
@@ -419,6 +443,10 @@ describe("remote page shim", () => {
     // The switch re-reads the registry first: a session can end while the picker
     // sits open, and an id that is gone only produces "Session not found".
     await page.answer("listDaemonSessions", { sessions: SESSIONS });
+    await page.answer("getSessionInfo", {
+      sessionId: "s-old",
+      permissionMode: "default",
+    });
 
     const pull = await page.answer("getMessages", {
       messages: [{ id: "old-1", role: "user", blocks: [] }],
@@ -502,6 +530,10 @@ describe("remote page shim", () => {
     pinned.api.postMessage({ command: "webviewReady" });
     await flush();
     await pinned.answer("listDaemonSessions", { sessions: SESSIONS });
+    await pinned.answer("getSessionInfo", {
+      sessionId: "s-old",
+      permissionMode: "default",
+    });
     expect(
       (await pinned.answer("getMessages", { messages: [] })).sessionId,
     ).toBe("s-old");
@@ -513,6 +545,10 @@ describe("remote page shim", () => {
     stale.api.postMessage({ command: "webviewReady" });
     await flush();
     await stale.answer("listDaemonSessions", { sessions: SESSIONS });
+    await stale.answer("getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "default",
+    });
     expect(
       (await stale.answer("getMessages", { messages: [] })).sessionId,
     ).toBe("s-new");
@@ -530,6 +566,10 @@ describe("remote page shim", () => {
     // it is mid-turn.
     await page.answer("listDaemonSessions", {
       sessions: [{ ...SESSIONS[1], isLoading: true }, SESSIONS[0]],
+    });
+    await page.answer("getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "default",
     });
     await page.answer("getMessages", { messages: [SEED] });
     await page.answer("listPendingPermissions", { requests: [] });
@@ -556,6 +596,10 @@ describe("remote page shim", () => {
     await flush();
     await page.answer("listDaemonSessions", {
       sessions: [SESSIONS[1], { ...SESSIONS[0], isLoading: true }],
+    });
+    await page.answer("getSessionInfo", {
+      sessionId: "s-old",
+      permissionMode: "default",
     });
     await page.answer("getMessages", { messages: [SEED] });
     await page.answer("listPendingPermissions", { requests: [] });
@@ -921,12 +965,23 @@ describe("remote page shim", () => {
   // a permission the session does not have. `getSessionInfo` carries the value,
   // and every path that re-aligns the page has to read it.
 
-  /** The mode the page was last told to display. */
+  /** The mode the page was last told to display. The paths that rebuild the
+   *  snapshot carry it inside `setInitialState` (the hosts' own snapshots do
+   *  the same); the paths that do not rebuild it get a standalone
+   *  `updatePermissionMode` post. The last writer wins, in post order. */
   function shownMode(page: { posted: Frame[] }) {
-    const shown = page.posted.filter(
+    const updates = page.posted.filter(
       (message) => message.command === "updatePermissionMode",
     );
-    return shown.length ? shown[shown.length - 1].mode : undefined;
+    if (updates.length) return updates[updates.length - 1].mode;
+    const snapshots = page.posted.filter(
+      (message) => message.command === "setInitialState",
+    );
+    // The latest snapshot: a switch rebuilds it, and the one being left is not
+    // the conversation on screen any more.
+    return snapshots.length
+      ? snapshots[snapshots.length - 1].permissionMode
+      : undefined;
   }
 
   test("reads the session's current mode into the first screen", async () => {
@@ -980,6 +1035,10 @@ describe("remote page shim", () => {
       sessionId: "s-old",
       permissionMode: "plan",
     });
+    // The mode now rides the snapshot (the hosts' own snapshots carry it too),
+    // so the pull has to complete before the page can show it.
+    await page.answer("getMessages", { messages: [SEED] });
+    await page.answer("listPendingPermissions", { requests: [] });
 
     expect(asked.sessionId).toBe("s-old");
     expect(shownMode(page)).toBe("plan");
@@ -1009,6 +1068,8 @@ describe("remote page shim", () => {
       sessionId: "s-old",
       permissionMode: "default",
     });
+    await page.answer("getMessages", { messages: [SEED] });
+    await page.answer("listPendingPermissions", { requests: [] });
     expect(shownMode(page)).toBe("default");
   });
 
@@ -1088,10 +1149,265 @@ describe("remote page shim", () => {
     // must not cost the page its session: the reason goes to the log rather
     // than onto the screen, and the page keeps what it had.
     expect(shownMode(page)).toBe("default");
-    expect(warn.mock.calls.flat().join(" ")).toContain("权限模式补读失败");
+    expect(warn.mock.calls.flat().join(" ")).toContain("会话状态补读失败");
     expect(
       page.posted.some((message) => message.command === "setInitialState"),
     ).toBe(true);
     warn.mockRestore();
+  });
+
+  // ── The session-state family (scenario 26) ───────────────────────
+  //
+  // Mode, todo list, compaction, command running and the queue are all
+  // *states*: the adapter pushes their changes, but a page that arrives late
+  // (or re-mounted, or slept through the change) has no transition left to
+  // hear. `getSessionInfo` carries the family; the snapshot path folds it into
+  // `setInitialState`, the paths that do not rebuild the snapshot get the
+  // standalone posts. The last member of the family rides for free: the
+  // context ring comes off the `getMessages` reply the page was already
+  // pulling.
+
+  /** The last post for `command`, if the page was ever told. */
+  function lastOf(page: { posted: Frame[] }, command: string) {
+    const found = page.posted.filter((message) => message.command === command);
+    return found[found.length - 1];
+  }
+
+  test("the first screen carries the family as the machine answered it", async () => {
+    const tasks = [{ id: "t1", subject: "改规格", status: "in_progress" }];
+    const queued = [{ id: "q1", text: "补一条" }];
+    const { page } = await openPage("?host=h-1", "bypassPermissions", {
+      tasks,
+      isCompacting: true,
+      isCommandRunning: true,
+      queuedMessages: queued,
+      contextUsagePercent: 42,
+    });
+
+    const snapshot = lastOf(page, "setInitialState");
+    expect(snapshot).toMatchObject({
+      // Every member is the machine's answer, not the page's default: a
+      // first screen that *looks* idle while the machine is mid-compaction
+      // with a queue is the bug this family exists for.
+      tasks,
+      isCompacting: true,
+      isCommandRunning: true,
+      queuedMessages: queued,
+      permissionMode: "bypassPermissions",
+    });
+    // The ring rides the `getMessages` reply — no read of its own — and it is
+    // posted, not folded: the webview keeps it outside the reducer.
+    expect(lastOf(page, "contextUsage")).toEqual({
+      command: "contextUsage",
+      percent: 42,
+    });
+  });
+
+  test("a re-mounted app is told the whole family again, not just the mode", async () => {
+    const { page } = await openPage("?host=h-1", "default", {
+      tasks: [{ id: "t1", subject: "改规格", status: "pending" }],
+      isCompacting: true,
+      queuedMessages: [{ id: "q1", text: "补一条" }],
+    });
+
+    page.api.postMessage({ command: "webviewReady" });
+    await flush();
+    answerOn(page.socket, "getMessages", { messages: [SEED] });
+    answerOn(page.socket, "listDaemonSessions", { sessions: SESSIONS });
+    answerOn(page.socket, "listPendingPermissions", { requests: [] });
+    answerOn(page.socket, "getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "default",
+      tasks: [],
+      isCompacting: false,
+      isCommandRunning: false,
+      queuedMessages: [],
+    });
+    await flush();
+
+    // The remounted reducer went back to *all* of its defaults — an empty todo
+    // list, no compaction hint, no queue — so a re-read that only fixed the
+    // mode would leave the other three stale. The machine now says "empty /
+    // not compacting / not running / empty", and all four must arrive.
+    expect(lastOf(page, "updateTasks")).toEqual({
+      command: "updateTasks",
+      tasks: [],
+    });
+    expect(lastOf(page, "compactionStateChange")).toEqual({
+      command: "compactionStateChange",
+      isCompacting: false,
+    });
+    expect(lastOf(page, "updateCommandRunning")).toEqual({
+      command: "updateCommandRunning",
+      running: false,
+    });
+    expect(lastOf(page, "updateQueue")).toEqual({
+      command: "updateQueue",
+      messages: [],
+    });
+  });
+
+  test("switching conversations re-reads the family for the one being opened", async () => {
+    const { page } = await openPage("?host=h-1", "bypassPermissions", {
+      tasks: [{ id: "t1", subject: "旧会话的活", status: "in_progress" }],
+      isCompacting: true,
+      queuedMessages: [{ id: "q1", text: "旧的" }],
+    });
+
+    page.api.postMessage({ command: "restoreSession", sessionId: "s-old" });
+    await flush();
+    await page.answer("listDaemonSessions", { sessions: SESSIONS });
+    await page.answer("getSessionInfo", {
+      sessionId: "s-old",
+      permissionMode: "plan",
+      tasks: [{ id: "t2", subject: "新会话的活", status: "pending" }],
+      isCompacting: false,
+      isCommandRunning: false,
+      queuedMessages: [],
+    });
+    await page.answer("getMessages", { messages: [SEED] });
+    await page.answer("listPendingPermissions", { requests: [] });
+
+    // The snapshot rebuilt for the switch carries the new conversation's
+    // family — the previous one's todo list and queue must not follow the
+    // reader across.
+    const snapshot = lastOf(page, "setInitialState");
+    expect(snapshot).toMatchObject({
+      tasks: [{ id: "t2", subject: "新会话的活", status: "pending" }],
+      isCompacting: false,
+      isCommandRunning: false,
+      queuedMessages: [],
+      permissionMode: "plan",
+    });
+  });
+
+  test("a machine older than this page cannot have its fields written as empty", async () => {
+    // Scenario 26's version-skew rule: a reply without the new fields is
+    // 「this build cannot say」, not 「the machine has none」. Writing them
+    // absent would clobber a value the page already holds with `undefined` —
+    // the todo list the machine pushed a moment ago would blink away.
+    const { page } = await openPage(); // family omitted from the reply entirely
+
+    expect(lastOf(page, "updateTasks")).toBeUndefined();
+    expect(lastOf(page, "compactionStateChange")).toBeUndefined();
+    expect(lastOf(page, "updateCommandRunning")).toBeUndefined();
+    expect(lastOf(page, "updateQueue")).toBeUndefined();
+    // The snapshot still has to say *something* on first paint; the neutral
+    // values are the fallback for 「cannot ask」, not the machine's answer.
+    expect(lastOf(page, "setInitialState")).toMatchObject({
+      tasks: [],
+      isCompacting: false,
+      isCommandRunning: false,
+      queuedMessages: [],
+    });
+
+    // Same rule on the standalone re-read (a remount here): the machine that
+    // cannot answer the family must not get its absence written either.
+    page.api.postMessage({ command: "webviewReady" });
+    await flush();
+    answerOn(page.socket, "getMessages", { messages: [SEED] });
+    answerOn(page.socket, "listDaemonSessions", { sessions: SESSIONS });
+    answerOn(page.socket, "listPendingPermissions", { requests: [] });
+    answerOn(page.socket, "getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "default",
+    });
+    await flush();
+
+    expect(lastOf(page, "updateTasks")).toBeUndefined();
+    expect(lastOf(page, "compactionStateChange")).toBeUndefined();
+    expect(lastOf(page, "updateCommandRunning")).toBeUndefined();
+    expect(lastOf(page, "updateQueue")).toBeUndefined();
+  });
+
+  test("a state read that lands after a switch cannot repaint the new conversation", async () => {
+    // The guard in `refreshSessionState`: the request names the session it was
+    // asked for, and a reader who moved on before the reply landed must not be
+    // shown the conversation they left — its wide-open mode, its todo list.
+    const { page } = await openPage("?host=h-1", "default");
+
+    page.api.postMessage({ command: "restoreSession", sessionId: "s-old" });
+    await flush();
+    await page.answer("listDaemonSessions", { sessions: SESSIONS });
+    await page.answer("getSessionInfo", {
+      sessionId: "s-old",
+      permissionMode: "bypassPermissions",
+      tasks: [{ id: "t1", subject: "旧会话的活", status: "in_progress" }],
+      isCompacting: true,
+      queuedMessages: [{ id: "q1", text: "旧的" }],
+    });
+    await page.answer("getMessages", { messages: [SEED] });
+    await page.answer("listPendingPermissions", { requests: [] });
+
+    // The resume read goes out for s-old…
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flush();
+    // …its other reads get answered; the session-state one stays in flight.
+    await page.answer("getMessages", { messages: [] });
+    await page.answer("listDaemonSessions", { sessions: SESSIONS });
+    await page.answer("listPendingPermissions", { requests: [] });
+
+    // …and the reader switches before its reply lands.
+    page.api.postMessage({ command: "restoreSession", sessionId: "s-new" });
+    await flush();
+    await page.answer("listDaemonSessions", { sessions: SESSIONS });
+
+    // Oldest first: this reply describes s-old, which the page has left.
+    await page.answer("getSessionInfo", {
+      sessionId: "s-old",
+      permissionMode: "bypassPermissions",
+      tasks: [{ id: "t1", subject: "旧会话的活", status: "in_progress" }],
+      isCompacting: true,
+      queuedMessages: [{ id: "q1", text: "旧的" }],
+    });
+    await page.answer("getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "default",
+      tasks: [],
+      isCompacting: false,
+      isCommandRunning: false,
+      queuedMessages: [],
+    });
+    await page.answer("getMessages", { messages: [SEED] });
+    await page.answer("listPendingPermissions", { requests: [] });
+    visibility.mockRestore();
+
+    // Nothing was *posted* — the family rides the snapshots, and the stale
+    // reply must contribute neither the mode nor any family member.
+    expect(
+      page.posted.filter(
+        (message) => message.command === "updatePermissionMode",
+      ),
+    ).toEqual([]);
+    expect(lastOf(page, "updateTasks")).toBeUndefined();
+    expect(lastOf(page, "compactionStateChange")).toBeUndefined();
+    // And the view is the conversation being read now.
+    expect(shownMode(page)).toBe("default");
+  });
+
+  test("a reconnect realigns the context ring from the delta it was already pulling", async () => {
+    const { page } = await openPage("?host=h-1", "default", {
+      contextUsagePercent: 30,
+    });
+
+    const next = await reconnect(page.socket);
+    answerOn(next, "getMessages", { messages: [], contextUsagePercent: 87 });
+    answerOn(next, "listDaemonSessions", { sessions: SESSIONS });
+    answerOn(next, "listPendingPermissions", { requests: [] });
+    answerOn(next, "getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "default",
+    });
+    await flush();
+
+    // The ring moves with the resync reply itself: a reconnect that pulled a
+    // delta anyway needs no read of its own to fix a stale percentage.
+    expect(lastOf(page, "contextUsage")).toEqual({
+      command: "contextUsage",
+      percent: 87,
+    });
   });
 });

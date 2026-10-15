@@ -131,6 +131,11 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     getSlashCommands: vi.fn().mockReturnValue([]),
     getAvailableToolNames: vi.fn().mockReturnValue(["Bash", "Read", "Write"]),
     reloadConfiguration: vi.fn().mockResolvedValue(undefined),
+    // The session-state family `getSessionInfo` reads (scenario 26).
+    getTasks: vi.fn().mockResolvedValue([]),
+    isCompacting: false,
+    isCommandRunning: false,
+    queuedMessages: [],
     ...overrides,
   };
   // displayMessages (full UI stream) tracks messages unless explicitly
@@ -1346,6 +1351,11 @@ test("getSessionInfo returns session info", async () => {
     latestTotalTokens: 100,
     permissionMode: "default",
     availableTools: ["Bash", "Read", "Write"],
+    // The session-state family the remote page re-reads (scenario 26).
+    tasks: [],
+    isCompacting: false,
+    isCommandRunning: false,
+    queuedMessages: [],
   });
 });
 
@@ -1373,6 +1383,10 @@ test("getSessionInfo reports the creation workdir even after the agent's live wo
     latestTotalTokens: 100,
     permissionMode: "default",
     availableTools: ["Bash", "Read", "Write"],
+    tasks: [],
+    isCompacting: false,
+    isCommandRunning: false,
+    queuedMessages: [],
   });
 });
 
@@ -2621,6 +2635,10 @@ test("handleRequest with null params defaults to empty object", async () => {
     latestTotalTokens: 100,
     permissionMode: "default",
     availableTools: ["Bash", "Read", "Write"],
+    tasks: [],
+    isCompacting: false,
+    isCommandRunning: false,
+    queuedMessages: [],
   });
 });
 
@@ -2717,6 +2735,10 @@ test("initialize from-disk re-attach recovers the creation workdir from the tran
       latestTotalTokens: 100,
       permissionMode: "default",
       availableTools: ["Bash", "Read", "Write"],
+      tasks: [],
+      isCompacting: false,
+      isCommandRunning: false,
+      queuedMessages: [],
     });
   } finally {
     await rm(transcript, { force: true });

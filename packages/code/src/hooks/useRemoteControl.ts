@@ -19,9 +19,11 @@ import type {
   Message,
   PermissionDecision,
   PermissionMode,
+  QueuedMessage,
   RemoteControlSnapshot,
   RemoteControlStatus,
   SlashCommand,
+  Task,
   ToolPermissionContext,
 } from "wave-agent-sdk";
 import {
@@ -41,6 +43,16 @@ export interface UseRemoteControlOptions {
   maxInputTokens: number;
   hasRunningBackgroundWork: boolean;
   hasPendingMessages: boolean;
+  /**
+   * The session-state family the page re-reads off `getSessionInfo` (spec
+   * remote-control「Web 页作为第五种宿主」场景 26) — current values, so the
+   * long-lived host answers reads even though the session underneath it is
+   * replaced.
+   */
+  tasks: Task[];
+  isCompacting: boolean;
+  isCommandRunning: boolean;
+  queuedMessages: QueuedMessage[];
   /** Approvals waiting on the user right now. */
   pending: Array<{ requestId: string; context: ToolPermissionContext }>;
   availableTools: () => string[];
@@ -213,6 +225,10 @@ function adapterOf(latest: {
     isLoading: () => latest.current.isLoading,
     hasRunningBackgroundWork: () => latest.current.hasRunningBackgroundWork,
     hasPendingMessages: () => latest.current.hasPendingMessages,
+    tasks: () => latest.current.tasks,
+    isCompacting: () => latest.current.isCompacting,
+    isCommandRunning: () => latest.current.isCommandRunning,
+    queuedMessages: () => latest.current.queuedMessages,
     pendingPermissions: () => latest.current.pending,
     sendMessage: (text, force) => latest.current.sendMessage(text, force),
     abort: () => latest.current.abort(),

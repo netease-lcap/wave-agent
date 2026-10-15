@@ -605,10 +605,10 @@
           // asked while the link was down was dropped, and no amount of message
           // delta brings it back. See `refreshPending`.
           refreshPending();
-          // …and a mode switched while the link was down was equally dropped,
-          // leaving the page on a permission the session no longer has. See
-          // `refreshPermissionMode`.
-          refreshPermissionMode();
+          // …and the session-state family (mode, todo list, compaction, command
+          // running, queue) was equally dropped mid-change, leaving the page on
+          // values the session no longer has. See `refreshSessionState`.
+          refreshSessionState();
         }
         connectedOnce = true;
         return;
@@ -906,14 +906,31 @@
     // no channel key, handshake refused).
     if (blocked) return Promise.resolve();
     var token = ++pullToken;
+    // The session-state read (`getSessionInfo`) feeds the snapshot below. Kept
+    // in the chain rather than fired and forgotten so the first paint — the
+    // page's one transition-free initialization — carries the *current* values
+    // of the state family (spec Web-page story scenario 26), not the reducer's
+    // defaults.
+    var state = null;
+    var usage;
     return pickSession()
       .then(function () {
         if (token !== pullToken || !sessionId) return null;
+        return request("getSessionInfo", {});
+      })
+      .then(function (info) {
+        if (token !== pullToken) return null;
+        state = info;
         return request("getMessages", { limit: CONFIG.firstPageLimit });
       })
       .then(function (result) {
         if (token !== pullToken) return null;
         if (result) messages = result.messages || [];
+        // The context ring lives outside the reducer (the webview keeps it in
+        // its own state), so it is posted rather than folded into the snapshot;
+        // every `getMessages` reply carries the percent, which is why no extra
+        // read is needed — each (re)pull realigns it for free.
+        usage = result && result.contextUsagePercent;
         return request("listPendingPermissions", {});
       })
       .then(function (result) {
@@ -924,7 +941,12 @@
         post({
           command: "setInitialState",
           messages: messages,
-          tasks: [],
+          // Read off `getSessionInfo`, not assumed: an empty todo list, a quiet
+          // queue or "not compacting" in the snapshot must mean the machine
+          // *said so*, not that this build cannot ask (scenario 26). Absent
+          // fields — an older host — fall back to the neutral values; posting
+          // `undefined` into the reducer is not an option.
+          tasks: (state && state.tasks) || [],
           backgroundTasks: [],
           workflowRuns: [],
           // Read off the registry by `pickSession`, not assumed: a page that
@@ -932,16 +954,23 @@
           // Escape key. Read here rather than captured, so a transition that
           // arrived while `getMessages` was in flight still wins.
           isStreaming: streaming,
-          isCommandRunning: false,
+          isCompacting: !!(state && state.isCompacting),
+          isCommandRunning: !!(state && state.isCommandRunning),
+          // Folded in from the same read: the hosts' own snapshots carry the
+          // mode too, and the standalone re-read (`refreshSessionState`) keeps
+          // covering the paths that do not rebuild the snapshot.
+          permissionMode: (state && state.permissionMode) || "default",
           sessions: sessions,
           session: currentSession(sessions, sessionId),
           currentSession: currentSession(sessions, sessionId),
           pendingConfirmations: requests.map(confirmationOf),
-          queuedMessages: [],
+          queuedMessages: (state && state.queuedMessages) || [],
           // The relay authenticated this page with the machine's own
           // credential; there is no separate phone login to satisfy.
           isAuthenticated: true,
         });
+        if (typeof usage === "number")
+          post({ command: "contextUsage", percent: usage });
       })
       .catch(function (err) {
         if (blocked || token !== pullToken) return;
@@ -1006,6 +1035,14 @@
         var later = result.messages || [];
         for (var i = 0; i < later.length; i++) messages.push(later[i]);
         post({ command: "updateMessages", messages: messages });
+        // Same reply, same rule as the snapshot's: the percent rides every
+        // `getMessages` answer, so a reconnect realigns the ring with the
+        // delta it was already pulling — no read of its own.
+        if (typeof result.contextUsagePercent === "number")
+          post({
+            command: "contextUsage",
+            percent: result.contextUsagePercent,
+          });
       })
       .catch(function (err) {
         if (token !== pullToken) return null;
@@ -1034,11 +1071,11 @@
         // `applyStreaming`. Reading it off the same reply also means a page that
         // opens (or switches) mid-turn knows it is mid-turn.
         applyStreaming(isBusy(currentSession(sessions, sessionId)));
-        // Also the moment the pick is known, which is what the mode read needs:
-        // cold start and 「切到这条会话」 both come through here. Started rather
-        // than awaited — nothing else on the snapshot path depends on it, and it
-        // lands long before the first paint does.
-        refreshPermissionMode();
+        // The session-state family is deliberately NOT read here: every caller
+        // of `pickSession` is a snapshot path (`pullSnapshot`), and the snapshot
+        // chain reads `getSessionInfo` itself and folds it into
+        // `setInitialState` — one read, one paint. The paths that do not rebuild
+        // the snapshot (reconnect, remount, resume) use `refreshSessionState`.
         if (!sessionId) showStatus("电脑侧还没有正在跑的会话。");
         else clearStatus();
       })
@@ -1128,39 +1165,60 @@
   }
 
   /**
-   * Re-read the session's permission mode, which is the third thing the page
-   * only ever hears as a *transition*.
+   * Re-read the session's **state** — the family of values the page otherwise
+   * only ever hears as *transitions*: permission mode, the todo list,
+   * compaction, command running, the outbound queue (spec Web-page story
+   * scenario 26). Busy and pending approvals have their own reads
+   * (`refreshStreaming` / `refreshPending`) because their sources are the
+   * registry and the process-wide request list, not this method.
    *
-   * The adapter pushes `permissionModeChange` whenever the value changes, so a
-   * phone that is connected and looking at this session follows along — but a
-   * mode picked *before* the page arrived never reaches it, and the page then
-   * renders its own reducer default (`default`, shown as 「修改前询问」). That is
-   * not a cosmetic gap: the user sees a tighter permission than the session
-   * actually runs with, and on a session switch the label stays on the
-   * conversation they just left. `getSessionInfo` is the only method that
-   * carries the value — it is in the remote white list and both hosts answer it
-   * — which is why this is its own request rather than a field of the snapshot
-   * (the registry entry has busy but not mode).
+   * The adapter pushes each of these as a change notification, so a phone that
+   * is connected and looking at this session follows along — but a value set
+   * *before* the page arrived never reaches it, and the page then renders its
+   * own reducer defaults: an empty todo list, 「修改前询问」 for a mode the
+   * session does not have, a queue that looks empty while the machine holds
+   * messages. `getSessionInfo` is the method that carries them — it is in the
+   * remote white list and both hosts answer it.
+   *
+   * Field by field, and only what the reply carries: a host **older** than
+   * this page does not answer the new fields (which build serves the session
+   * is not ours to pick), and writing a missing field would clobber a value we
+   * already hold with `undefined` — a missing list there means "this build
+   * cannot say", not "the machine has none".
    *
    * No local mirror of what the page believes (unlike `applyStreaming`): the
    * reply is a read of the truth, so re-stating an unchanged value costs one
-   * frame and is what puts a re-mounted app — whose reducer went back to
-   * `default` — right again.
+   * frame and is what puts a re-mounted app — whose reducer went back to its
+   * defaults — right again.
    */
-  function refreshPermissionMode() {
+  function refreshSessionState() {
     var asked = sessionId;
     if (!asked) return Promise.resolve();
     return request("getSessionInfo", {})
       .then(function (info) {
         // The request named the session it was asked for: a pick that moved on
-        // while it was in flight must not repaint the page with the mode of the
-        // conversation the reader has left.
+        // while it was in flight must not repaint the page with the state of
+        // the conversation the reader has left.
         if (asked !== sessionId) return;
-        if (!info || !info.permissionMode) return;
-        post({ command: "updatePermissionMode", mode: info.permissionMode });
+        if (!info) return;
+        if (info.permissionMode)
+          post({ command: "updatePermissionMode", mode: info.permissionMode });
+        if (info.tasks) post({ command: "updateTasks", tasks: info.tasks });
+        if (typeof info.isCompacting === "boolean")
+          post({
+            command: "compactionStateChange",
+            isCompacting: info.isCompacting,
+          });
+        if (typeof info.isCommandRunning === "boolean")
+          post({
+            command: "updateCommandRunning",
+            running: info.isCommandRunning,
+          });
+        if (info.queuedMessages)
+          post({ command: "updateQueue", messages: info.queuedMessages });
       })
       .catch(function (err) {
-        warnOnce("mode", "权限模式补读失败：" + err.message);
+        warnOnce("sessionState", "会话状态补读失败：" + err.message);
       });
   }
 
@@ -1286,9 +1344,10 @@
           // …and its copy of the pending approvals went with it. This side keeps
           // the same list, which is now a list of cards that are not on screen.
           refreshPending(true);
-          // …as did the mode: the remounted reducer is back at `default` while
-          // the session may be running wide open. See `refreshPermissionMode`.
-          refreshPermissionMode();
+          // …as did the session-state family: the remounted reducer is back at
+          // its defaults while the session may be mid-compaction with a todo
+          // list and a queue. See `refreshSessionState`.
+          refreshSessionState();
         } else {
           openedOnce = true;
           pullSnapshot();
@@ -1491,7 +1550,7 @@
     resync();
     refreshStreaming(true);
     refreshPending(true);
-    refreshPermissionMode();
+    refreshSessionState();
   }
 
   document.addEventListener("visibilitychange", onResume);

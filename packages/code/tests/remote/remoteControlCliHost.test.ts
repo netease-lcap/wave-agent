@@ -7,7 +7,9 @@ vi.mock("wave-agent-sdk", () => ({
 import { listSessions } from "wave-agent-sdk";
 import type {
   Message,
+  QueuedMessage,
   SessionMetadata,
+  Task,
   ToolPermissionContext,
 } from "wave-agent-sdk";
 import {
@@ -44,6 +46,10 @@ function makeSession(
     isLoading: () => false,
     hasRunningBackgroundWork: () => false,
     hasPendingMessages: () => false,
+    tasks: () => [],
+    isCompacting: () => false,
+    isCommandRunning: () => false,
+    queuedMessages: () => [],
     pendingPermissions: () => [],
     sendMessage: vi.fn(),
     abort: vi.fn(),
@@ -331,6 +337,35 @@ test("a method outside the white list fails loudly instead of answering nothing"
   await expect(host.handleRequest("truncateHistory", {})).rejects.toMatchObject(
     {
       code: -32602,
+    },
+  );
+});
+
+test("getSessionInfo answers the session-state family the page re-reads", async () => {
+  // 场景 26: these four are *states* the remote page re-reads on every
+  // re-alignment, so the reply must carry the facade's current values —
+  // whatever the chat hook holds right now — not a transition or a default.
+  const tasks = [
+    { id: "t1", subject: "改规格", status: "in_progress" },
+  ] as unknown as Task[];
+  const queued = [{ id: "q1", text: "补一条" }] as unknown as QueuedMessage[];
+  const host = new RemoteControlCliHost(
+    makeSession({
+      tasks: () => tasks,
+      isCompacting: () => true,
+      isCommandRunning: () => false,
+      queuedMessages: () => queued,
+      permissionMode: () => "bypassPermissions",
+    }),
+  );
+
+  await expect(host.handleRequest("getSessionInfo", {})).resolves.toMatchObject(
+    {
+      tasks,
+      isCompacting: true,
+      isCommandRunning: false,
+      queuedMessages: queued,
+      permissionMode: "bypassPermissions",
     },
   );
 });

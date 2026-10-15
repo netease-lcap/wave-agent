@@ -60,6 +60,11 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     isLoading: false,
     hasPendingMessages: false,
     hasRunningBackgroundWork: false,
+    // The session-state family `getSessionInfo` reads (scenario 26).
+    getTasks: vi.fn().mockResolvedValue([]),
+    isCompacting: false,
+    isCommandRunning: false,
+    queuedMessages: [],
     ...overrides,
   };
   // displayMessages (full UI stream) tracks messages unless overridden.
@@ -164,9 +169,26 @@ test("multiple connections share the same AgentBridge (in-memory sessions)", asy
     params: {},
     sessionId,
   });
-  const result = msgs[0] as { id: number; result: { sessionId: string } };
+  const result = msgs[0] as {
+    id: number;
+    result: {
+      sessionId: string;
+      tasks: unknown[];
+      isCompacting: boolean;
+      isCommandRunning: boolean;
+      queuedMessages: unknown[];
+    };
+  };
   expect(result.id).toBe(2);
   expect(result.result.sessionId).toBe(sessionId);
+  // The session-state family the remote page re-reads (spec remote-control
+  // 「Web 页作为第五种宿主」场景 26) rides the same reply; a fresh session
+  // answers the neutral values through the real bridge — `getTasks` included,
+  // reading the session's (empty) task directory.
+  expect(result.result.tasks).toEqual([]);
+  expect(result.result.isCompacting).toBe(false);
+  expect(result.result.isCommandRunning).toBe(false);
+  expect(result.result.queuedMessages).toEqual([]);
 
   a.close();
   b.close();

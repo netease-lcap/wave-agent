@@ -24,8 +24,10 @@ import type {
   Message,
   PermissionDecision,
   PermissionMode,
+  QueuedMessage,
   SessionMetadata,
   SlashCommand,
+  Task,
   ToolPermissionContext,
 } from "wave-agent-sdk";
 import { listSessions } from "wave-agent-sdk";
@@ -54,6 +56,11 @@ export interface RemoteControlCliSession {
   isLoading(): boolean;
   hasRunningBackgroundWork(): boolean;
   hasPendingMessages(): boolean;
+  /** The todo list (TaskCreate/TaskUpdate) — a *state*, the page re-reads it. */
+  tasks(): Task[];
+  isCompacting(): boolean;
+  isCommandRunning(): boolean;
+  queuedMessages(): QueuedMessage[];
   /** Approvals waiting on the user right now (terminal or phone). */
   pendingPermissions(): Array<{
     requestId: string;
@@ -232,6 +239,10 @@ export class RemoteControlCliHost implements RemoteControlHost {
     latestTotalTokens: number;
     permissionMode: PermissionMode;
     availableTools: string[];
+    tasks: Task[];
+    isCompacting: boolean;
+    isCommandRunning: boolean;
+    queuedMessages: QueuedMessage[];
   } {
     return {
       sessionId: this.session.sessionId(),
@@ -239,6 +250,12 @@ export class RemoteControlCliHost implements RemoteControlHost {
       latestTotalTokens: this.session.latestTotalTokens(),
       permissionMode: this.session.permissionMode(),
       availableTools: this.session.availableTools(),
+      // The session-state family the page re-reads (spec remote-control
+      // 「Web 页作为第五种宿主」场景 26): current values, not transitions.
+      tasks: this.session.tasks(),
+      isCompacting: this.session.isCompacting(),
+      isCommandRunning: this.session.isCommandRunning(),
+      queuedMessages: this.session.queuedMessages(),
     };
   }
 
