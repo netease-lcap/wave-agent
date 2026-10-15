@@ -101,6 +101,31 @@ describe("events", () => {
       });
     });
 
+    it("should forward the whole record context to the standard attribute surface", async () => {
+      mockIsInitialized.mockReturnValue(true);
+      mockGetCurrentConfig.mockReturnValue({
+        logUserPrompts: false,
+        logToolContent: false,
+        includeRepository: false,
+      });
+
+      await events.logOTelEvent(
+        "session_start",
+        { model: "gpt-4" },
+        {
+          sessionId: "abc123",
+          workdir: "/test",
+          entrypoint: "cli",
+        },
+      );
+
+      // `app.entrypoint` is an event-side attribute like `session.id`: dropping
+      // it here is invisible to metrics, which is how it went missing once.
+      expect(mockStandardAttributes).toHaveBeenCalledWith(
+        expect.objectContaining({ entrypoint: "cli" }),
+      );
+    });
+
     it("should strip prompt attribute when logUserPrompts is false", async () => {
       mockIsInitialized.mockReturnValue(true);
       mockGetCurrentConfig.mockReturnValue({

@@ -70,9 +70,11 @@ export async function logOTelEvent(
     body: eventName,
     attributes: {
       "event.name": eventName,
+      // The whole context rides along (session, entrypoint, …): events carry
+      // the standard attributes unconditionally, and re-listing the fields here
+      // is how `app.entrypoint` went missing while metrics kept it.
       ...standardAttributes({
-        sessionId: context?.sessionId,
-        workdir: context?.workdir,
+        ...context,
         includeRepository: config?.includeRepository,
       }),
       ...attributes,
