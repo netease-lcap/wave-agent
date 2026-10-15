@@ -78,6 +78,13 @@ export interface TelemetryConfig {
    * `OTEL_METRICS_INCLUDE_REPOSITORY`.
    */
   includeRepository: boolean;
+  /**
+   * Attach `app.entrypoint` (the host that created the session) to metric data
+   * points (default false). Events always carry it; this switch only controls
+   * the metrics side — aligned with Claude Code's
+   * `OTEL_METRICS_INCLUDE_ENTRYPOINT`.
+   */
+  includeEntrypoint: boolean;
   /** Max flush time on exit (default 2000) */
   shutdownTimeoutMs: number;
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import type { TelemetryConfig } from "@/types/telemetry.js";
+import type { HostEntrypoint } from "@/constants/telemetry.js";
 
 // Mock globalLogger to suppress output
 vi.mock("@/services/authService.js", () => ({
@@ -227,6 +228,7 @@ describe("instrumentation", () => {
     delete process.env.OTEL_METRICS_INCLUDE_SESSION_ID;
     delete process.env.OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES;
     delete process.env.OTEL_METRICS_INCLUDE_REPOSITORY;
+    delete process.env.OTEL_METRICS_INCLUDE_ENTRYPOINT;
     delete process.env.OTEL_SHUTDOWN_TIMEOUT_MS;
     spawnMock.mockReset();
     execFileSyncMock.mockReset();
@@ -520,6 +522,34 @@ describe("instrumentation", () => {
         logToolContent: true,
       });
       expect(config.logToolContent).toBe(true);
+    });
+
+    it("should leave includeEntrypoint off by default", () => {
+      const config = instrumentation.resolveTelemetryConfig();
+      expect(config.includeEntrypoint).toBe(false);
+    });
+
+    it("should resolve includeEntrypoint with env=1", () => {
+      process.env.OTEL_METRICS_INCLUDE_ENTRYPOINT = "1";
+
+      const config = instrumentation.resolveTelemetryConfig();
+      expect(config.includeEntrypoint).toBe(true);
+    });
+
+    it("should resolve includeEntrypoint with env=0 over the config", () => {
+      process.env.OTEL_METRICS_INCLUDE_ENTRYPOINT = "0";
+
+      const config = instrumentation.resolveTelemetryConfig({
+        includeEntrypoint: true,
+      });
+      expect(config.includeEntrypoint).toBe(false);
+    });
+
+    it("should fall back to the settings key when the env var is absent", () => {
+      const config = instrumentation.resolveTelemetryConfig({
+        includeEntrypoint: true,
+      });
+      expect(config.includeEntrypoint).toBe(true);
     });
 
     it("should resolve shutdownTimeoutMs with valid env", () => {
@@ -899,11 +929,15 @@ describe("instrumentation", () => {
       });
 
     /** Record one session and read back the `wave.sessions` data point. */
-    async function recordAndReadPoint(): Promise<
-      [unknown, Record<string, unknown>]
-    > {
+    async function recordAndReadPoint(
+      entrypoint?: HostEntrypoint,
+    ): Promise<[unknown, Record<string, unknown>]> {
       const metrics = await import("@/telemetry/metrics.js");
-      metrics.recordSession({ sessionId: "session-1", workdir: "/repo" });
+      metrics.recordSession({
+        sessionId: "session-1",
+        workdir: "/repo",
+        entrypoint,
+      });
       return counterCalls(mocks.mockCreateCounter, "wave.sessions")[0] as [
         unknown,
         Record<string, unknown>,
@@ -971,6 +1005,34 @@ describe("instrumentation", () => {
       // The resource keeps them regardless — only the data point projection is
       // what the switch controls.
       expect(mocks.mockResource.detectResources).toHaveBeenCalled();
+    });
+
+    it("should leave the entrypoint off data points by default", async () => {
+      await init();
+
+      const [, attributes] = await recordAndReadPoint("desktop");
+
+      expect(attributes).not.toHaveProperty("app.entrypoint");
+    });
+
+    it("should put the declared entrypoint on data points when the switch is on", async () => {
+      process.env.OTEL_METRICS_INCLUDE_ENTRYPOINT = "1";
+
+      await init();
+
+      const [, attributes] = await recordAndReadPoint("desktop");
+
+      expect(attributes).toMatchObject({ "app.entrypoint": "desktop" });
+    });
+
+    it("should leave the attribute out when the session declared no entrypoint", async () => {
+      process.env.OTEL_METRICS_INCLUDE_ENTRYPOINT = "1";
+
+      await init();
+
+      const [, attributes] = await recordAndReadPoint();
+
+      expect(attributes).not.toHaveProperty("app.entrypoint");
     });
 
     it("should not touch git unless repository attributes are enabled", async () => {

@@ -348,6 +348,11 @@ export function resolveTelemetryConfig(
       settingsConfig?.includeRepository,
       false,
     ),
+    includeEntrypoint: resolveBooleanSwitch(
+      "OTEL_METRICS_INCLUDE_ENTRYPOINT",
+      settingsConfig?.includeEntrypoint,
+      false,
+    ),
     shutdownTimeoutMs: resolveShutdownTimeoutMs(settingsConfig),
   };
 }
@@ -498,6 +503,7 @@ export async function initializeTelemetry(
         initMetrics(meterProvider.getMeter("wave"), {
           includeSessionId: currentConfig.includeSessionId,
           includeRepository: currentConfig.includeRepository,
+          includeEntrypoint: currentConfig.includeEntrypoint,
           resourceAttributes: currentConfig.includeResourceAttributes
             ? envResource.attributes
             : {},

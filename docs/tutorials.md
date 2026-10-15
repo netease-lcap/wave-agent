@@ -363,7 +363,7 @@ CodeWave IDE 支持 OpenTelemetry 标准的遥测，企业可以把 Agent 侧数
 | Metrics | 请求计数 / 错误计数 / 请求耗时、按模型与类型拆分的 token 用量、会话数、编辑类工具的增删行数与经由工具创建的提交 / PR-MR 数 |
 | Logs    | `session_start` / `session_end` 等会话生命周期事件，以及工具权限决策、压缩等结构化事件                                     |
 
-指标与事件都带同一组**标准归属属性**：会话 id、账号 id 与（已认证时的）邮箱、终端类型；部署方还可以用 `OTEL_RESOURCE_ATTRIBUTES` 给自己的车队打团队 / 部门标签（例如 `department.name=infra`），该标签既进遥测资源也会投影到指标数据点上，按团队过滤在各类收集器里都成立。**仓库维度（`vcs.repository.*`）默认关闭**，需要按仓库归因时用 `OTEL_METRICS_INCLUDE_REPOSITORY=1` 打开（远端 URL 里的凭据会被剥离，本地路径不出现在遥测里）。
+指标与事件都带同一组**标准归属属性**：会话 id、账号 id 与（已认证时的）邮箱、终端类型；部署方还可以用 `OTEL_RESOURCE_ATTRIBUTES` 给自己的车队打团队 / 部门标签（例如 `department.name=infra`），该标签既进遥测资源也会投影到指标数据点上，按团队过滤在各类收集器里都成立。**仓库维度（`vcs.repository.*`）默认关闭**，需要按仓库归因时用 `OTEL_METRICS_INCLUDE_REPOSITORY=1` 打开（远端 URL 里的凭据会被剥离，本地路径不出现在遥测里）。**入口标识（`app.entrypoint`）默认也关闭**：需要按「CLI / 桌面端 / VS Code / JetBrains / 远控通道」拆用量时用 `OTEL_METRICS_INCLUDE_ENTRYPOINT=1` 打开（事件面恒带）。
 
 导出器选择与完整配置项见[功能规格说明：OpenTelemetry 集成](/specs/enterprise/opentelemetry)。
 

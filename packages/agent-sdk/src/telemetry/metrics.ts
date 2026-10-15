@@ -16,6 +16,7 @@
 import type { Attributes, Counter, Histogram, Meter } from "@opentelemetry/api";
 import { standardAttributes } from "./attributes.js";
 import type { ToolActivity } from "./toolActivity.js";
+import type { HostEntrypoint } from "../constants/telemetry.js";
 
 /** One LLM request's outcome, as recorded by the metrics family. */
 export interface ApiRequestRecord {
@@ -37,6 +38,8 @@ export interface RecordContext {
   sessionId?: string;
   /** Session working directory — used only to derive `vcs.repository.*` */
   workdir?: string;
+  /** Host entrypoint that created the session → `app.entrypoint` */
+  entrypoint?: HostEntrypoint;
 }
 
 /**
@@ -44,13 +47,16 @@ export interface RecordContext {
  *
  * `session.id` is a per-record attribute rather than a resource one: one
  * process hosts several sessions (the daemon), so it cannot be resolved once
- * for the provider.
+ * for the provider. `app.entrypoint` rides along for the same reason — the same
+ * daemon hosts sessions created from different front ends.
  */
 export interface MetricAttributePolicy {
   /** Attach `session.id` to every data point */
   includeSessionId: boolean;
   /** Resolve `vcs.repository.*` (opt-in) */
   includeRepository: boolean;
+  /** Attach `app.entrypoint` to every data point (opt-in) */
+  includeEntrypoint: boolean;
   /** `OTEL_RESOURCE_ATTRIBUTES` keys projected onto every data point */
   resourceAttributes: Attributes;
 }
@@ -70,6 +76,7 @@ let active = false;
 let policy: MetricAttributePolicy = {
   includeSessionId: false,
   includeRepository: false,
+  includeEntrypoint: false,
   resourceAttributes: {},
 };
 
@@ -148,6 +155,7 @@ function attributesWithContext(context?: RecordContext): Attributes {
       sessionId: policy.includeSessionId ? context?.sessionId : undefined,
       workdir: context?.workdir,
       includeRepository: policy.includeRepository,
+      entrypoint: policy.includeEntrypoint ? context?.entrypoint : undefined,
     }),
   };
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Agent } from "@/agent.js";
+import type { HostEntrypoint } from "@/constants/telemetry.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
 
 // Use vi.hoisted for mock functions referenced in vi.mock factories
@@ -135,5 +136,50 @@ describe("Agent - Telemetry Initialization", () => {
         workdir: "/tmp/test-telemetry-order",
       }),
     );
+  });
+
+  it("carries the host's declared entrypoint into the record context", async () => {
+    initTelemetryMock.mockResolvedValue(undefined);
+    logOTelEventMock.mockResolvedValue(undefined);
+
+    await Agent.create({
+      apiKey: "test-key",
+      workdir: "/tmp/test-telemetry-entrypoint",
+      entrypoint: "vscode",
+      callbacks: {
+        onLoadingChange: vi.fn(),
+      },
+    });
+
+    const sessionStartCall = logOTelEventMock.mock.calls.find(
+      (c: unknown[]) => c[0] === "session_start",
+    );
+    // Agent option → container → record context: the whole chain, not just the
+    // builder at the end of it.
+    expect(sessionStartCall![2]).toEqual(
+      expect.objectContaining({ entrypoint: "vscode" }),
+    );
+  });
+
+  it("drops an entrypoint outside the known table instead of exporting it", async () => {
+    initTelemetryMock.mockResolvedValue(undefined);
+    logOTelEventMock.mockResolvedValue(undefined);
+
+    // What an older host, or a hand-written frame, would declare.
+    const declaredByAStaleHost: string = "terminal";
+
+    await Agent.create({
+      apiKey: "test-key",
+      workdir: "/tmp/test-telemetry-unknown-entrypoint",
+      entrypoint: declaredByAStaleHost as HostEntrypoint,
+      callbacks: {
+        onLoadingChange: vi.fn(),
+      },
+    });
+
+    const sessionStartCall = logOTelEventMock.mock.calls.find(
+      (c: unknown[]) => c[0] === "session_start",
+    );
+    expect(sessionStartCall![2].entrypoint).toBeUndefined();
   });
 });

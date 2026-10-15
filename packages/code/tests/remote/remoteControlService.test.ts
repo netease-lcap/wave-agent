@@ -363,12 +363,21 @@ describe("RemoteControlService", () => {
         pluginDirs: ["/tmp/evil"],
         mcpServers: { evil: {} },
         restoreSessionId: "s1",
+        // …including the telemetry entrypoint: the channel stamps its own below.
+        entrypoint: "desktop",
       },
     });
     await vi.waitFor(() => {
       expect(bridge.handleRequest).toHaveBeenCalledWith(
         "initialize",
-        { workdir: "~/repos/wave", permissionMode: "acceptEdits" },
+        {
+          workdir: "~/repos/wave",
+          permissionMode: "acceptEdits",
+          // Stamped by the channel rather than picked: a session created from
+          // the page is `remote` even though the daemon hosting it was started
+          // from a CLI (docs/specs/enterprise/opentelemetry.md「宿主入口标识」).
+          entrypoint: "remote",
+        },
         undefined,
       );
     });

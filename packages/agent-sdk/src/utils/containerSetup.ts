@@ -1,4 +1,5 @@
 import { Container } from "./container.js";
+import { normalizeEntrypoint } from "../constants/telemetry.js";
 import { ForegroundTaskManager } from "../managers/foregroundTaskManager.js";
 import { BackgroundTaskManager } from "../managers/backgroundTaskManager.js";
 import { MessageQueue } from "../managers/messageQueue.js";
@@ -96,6 +97,11 @@ export function setupAgentContainer(
   const container = new Container();
   container.register("AgentOptions", options);
   container.register("Workdir", workdir);
+  // Normalised here rather than at each record site: the entrypoint is declared
+  // once by the session's creator (the CLI, a host over stdio, the remote-control
+  // channel), and every manager reads the same container key. A value outside
+  // the known table resolves to undefined — "not declared", never exported.
+  container.register("Entrypoint", normalizeEntrypoint(options.entrypoint));
 
   // Module-level listener teardowns collected during setup and returned to the
   // agent, which invokes them in destroy(). The remote-settings callback

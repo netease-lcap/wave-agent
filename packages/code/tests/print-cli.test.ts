@@ -78,6 +78,7 @@ test("startPrintCli sends message and exits after completion", async () => {
     callbacks: expect.any(Object),
     restoreSessionId: undefined,
     continueLastSession: undefined,
+    entrypoint: "cli",
   });
 
   // Verify that sendMessage was called with the correct message
@@ -147,6 +148,7 @@ test("startPrintCli works with continue session", async () => {
     callbacks: expect.any(Object),
     restoreSessionId: undefined,
     continueLastSession: true,
+    entrypoint: "cli",
   });
 
   // Verify that sendMessage was NOT called (no message provided)
@@ -500,6 +502,7 @@ test("startPrintCli does not display stats by default", async () => {
     callbacks: expect.any(Object),
     restoreSessionId: undefined,
     continueLastSession: undefined,
+    entrypoint: "cli",
   });
 
   // Verify that sendMessage was called with the correct message

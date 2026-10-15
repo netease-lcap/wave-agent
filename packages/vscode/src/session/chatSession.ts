@@ -14,6 +14,7 @@ import type {
 import { StdioClient } from "../stdio/stdioClient";
 import {
   StdioAgent,
+  type InitializeParams,
   type StdioAgentCallbacks,
   type NotificationRouter,
 } from "wave-agent-sdk/host";
@@ -250,9 +251,12 @@ export class ChatSession {
 
       this.agent = new StdioAgent(sharedClient, router, agentCallbacks);
 
-      const initParams = {
+      const initParams: InitializeParams = {
         workdir,
         restoreSessionId,
+        // 会话由本窗口的 `wave --stdio` 子进程承载 → 遥测里的 app.entrypoint
+        // （docs/specs/enterprise/opentelemetry.md「宿主入口标识」）。
+        entrypoint: "vscode",
         // 模型不进覆盖层：由 `/model` 命令经 `getConfiguredModels` / `setModel`
         // RPC 管理。用户偏好（language / autoMemory*）也不经此下发——它们落在
         // 用户级 ~/.wave/settings.json 并由 SDK 实时重载生效（spec agent-config

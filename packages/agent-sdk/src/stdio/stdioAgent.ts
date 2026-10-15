@@ -38,6 +38,7 @@ import type {
 } from "../types/index.js";
 import type { RpcClient } from "./rpcClient.js";
 import type { NotificationRouter } from "./notificationRouter.js";
+import type { HostEntrypoint } from "../constants/telemetry.js";
 
 // ── Params / Results ─────────────────────────────────────────────
 
@@ -58,6 +59,12 @@ export interface InitializeParams {
   mcpServers?: Record<string, McpServerConfig>;
   worktreeName?: string;
   isNewWorktree?: boolean;
+  /**
+   * Which host this session belongs to → the `app.entrypoint` attribute
+   * (docs/specs/enterprise/opentelemetry.md「宿主入口标识」). Declared by the
+   * host that spawns this process; omitted, records simply carry no entrypoint.
+   */
+  entrypoint?: HostEntrypoint;
 }
 
 export interface InitializeResult {

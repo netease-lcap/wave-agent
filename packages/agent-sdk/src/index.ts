@@ -4,6 +4,7 @@ export * from "./services/authService.js";
 export * from "./services/worktreeHooks.js";
 
 // Export constants
+export * from "./constants/telemetry.js";
 export * from "./constants/tools.js";
 
 // Export main agent

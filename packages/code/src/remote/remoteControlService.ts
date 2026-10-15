@@ -101,10 +101,16 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
  * its parameter surface (model / apiKey / tools / plugins / mcpServers /
  * restoreSessionId …) is dropped, not validated — a whitelisted method must
  * not smuggle in knobs the whitelist never approved.
+ *
+ * `entrypoint` is stamped here rather than picked: it describes the CHANNEL, not
+ * the caller's request, and must not be spoofable (the page cannot claim to be
+ * the desktop app). A session created this way runs in whichever process serves
+ * the relay — a daemon or the interactive CLI — so without this the phone's
+ * usage would be indistinguishable from that process's own sessions.
  */
 function pickInitializeParams(params: unknown): Record<string, unknown> {
   const p = (params ?? {}) as Record<string, unknown>;
-  const picked: Record<string, unknown> = {};
+  const picked: Record<string, unknown> = { entrypoint: "remote" };
   if (typeof p.workdir === "string" && p.workdir) picked.workdir = p.workdir;
   if (typeof p.permissionMode === "string" && p.permissionMode) {
     picked.permissionMode = p.permissionMode;

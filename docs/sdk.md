@@ -1601,7 +1601,7 @@ helper 命令跑在 shell 里（Windows 下是 Git Bash，与 hook 一致），s
 
 ### 归属属性 (Attributes) {#otel-attributes}
 
-**每条指标数据点与每条事件**都带同一组标准属性，接入方据此按人、按会话、按团队切片，而不是只能看全局总量。开关名与 Claude Code 一致，同名键也可写在 `monitoring.telemetry` 下（camelCase：`includeSessionId` / `includeResourceAttributes` / `includeRepository`）。
+**每条指标数据点与每条事件**都带同一组标准属性，接入方据此按人、按会话、按团队切片，而不是只能看全局总量。开关名与 Claude Code 一致，同名键也可写在 `monitoring.telemetry` 下（camelCase：`includeSessionId` / `includeResourceAttributes` / `includeRepository` / `includeEntrypoint`）。
 
 | 属性                                                                                       | 何时带上                   | 开关（默认）                                     |
 | ------------------------------------------------------------------------------------------ | -------------------------- | ------------------------------------------------ |
@@ -1613,12 +1613,15 @@ helper 命令跑在 shell 里（Windows 下是 Git Bash，与 hook 一致），s
 | `service.version` / `service.name` / `os.type` / `host.arch`                               | 遥测资源                   | 恒带                                             |
 | `OTEL_RESOURCE_ATTRIBUTES` 里的键                                                          | 遥测资源 + 指标数据点      | `OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES`（开） |
 | `vcs.repository.url.full` / `vcs.owner.name` / `vcs.repository.name` / `vcs.provider.name` | 每条记录                   | `OTEL_METRICS_INCLUDE_REPOSITORY`（**关**）      |
+| `app.entrypoint`                                                                           | 指标数据点                 | `OTEL_METRICS_INCLUDE_ENTRYPOINT`（**关**）      |
+| `app.entrypoint`                                                                           | 每条事件                   | 恒带（事件面不受开关影响）                       |
 
 - **`session.id` 是逐条记录的属性**：长驻宿主（daemon、桌面端远程主机）在一个进程里承载多个会话，一个进程共享的 resource 无法表达「这条记录属于哪个会话」，所以它挂在数据点/事件上。多会话并发时各记录的归属互不串味。
 - **`OTEL_RESOURCE_ATTRIBUTES` 会投影到数据点**：`OTEL_RESOURCE_ATTRIBUTES="department.name=infra"` 这类自定义标签既进遥测资源，也直接落在每个指标数据点上——即使收集器不把资源属性落成序列标签，按团队过滤在指标侧依然成立。
 - **仓库维度默认关闭**：`OTEL_METRICS_INCLUDE_REPOSITORY=1` 时从会话工作目录的 `origin` remote 派生上述四个键（`provider.name` 为 `github` / `gitlab` / `unknown`）；**远端 URL 里的凭据会被剥掉**，本地路径不出现在遥测里；目录不是 git 仓库或没有 `origin` 时整组不带。
 - **`service.version` 取构建产物自身的版本**：不再依赖 `npm_package_version`（打包后的宿主没有这个环境变量，会退化成 `unknown` 并把同一车队拆成多条序列）。
-- **刻意与 Claude Code 不同的地方**：不额外提供 `app.version`（版本已在遥测资源里）；身份属性固定为 `user.id` + `user.email`，我们账号体系里没有 `account_uuid` / `organization.id`，不造字段；宿主入口标识（Claude Code 的 `app.entrypoint`）尚未实现，见[功能规格说明：OpenTelemetry 集成](/specs/enterprise/opentelemetry)。
+- **入口标识由创建会话的那一方声明**：取值为固定的五档 `cli` / `desktop` / `vscode` / `jetbrains` / `remote`（远控通道），来自「谁创建（或 daemon 重启后重新托管）了这条会话」，不靠进程形态猜；会话跑在哪个进程里不决定取值——同一个 daemon 进程里，本机建的会话与远控进来的会话各自带自己的入口标识。声明了才带，认不出的值（拼写错误、第三方客户端）当作未声明处理：不带该键，也不把原值落成新序列。
+- **刻意与 Claude Code 不同的地方**：不额外提供 `app.version`（版本已在遥测资源里）；身份属性固定为 `user.id` + `user.email`，我们账号体系里没有 `account_uuid` / `organization.id`，不造字段；`app.entrypoint` 的取值域是我们自己的五档而不是 Claude Code 的 `cli` / `sdk-ts` / `claude-vscode…`，见[功能规格说明：OpenTelemetry 集成](/specs/enterprise/opentelemetry)。
 
 ### 事件日志 (Event Logging) {#otel-events}
 

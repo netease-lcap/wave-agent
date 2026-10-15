@@ -236,6 +236,10 @@ async function attachSession(
   const init = (await client.request("initialize", {
     workdir: process.cwd(),
     restoreSessionId: sessionId,
+    // A daemon restart leaves the session on disk and re-hosts it here; the
+    // re-hosting client is the CLI, and the session file carries no record of
+    // its original creator (see the entrypoint story in the telemetry spec).
+    entrypoint: "cli",
   })) as { sessionId: string; workingDirectory: string };
   const initId = init.sessionId;
   options.onInitialized?.(initId);
@@ -359,6 +363,9 @@ export async function daemonCreateCommand(
       workdir,
       permissionMode: mode,
       model: options.model,
+      // The daemon hosts sessions built from several front ends; this one is
+      // being created by the CLI (`wave daemon create`).
+      entrypoint: "cli",
     })) as { sessionId: string };
     console.log(result.sessionId);
     if (worktreePath !== undefined) {

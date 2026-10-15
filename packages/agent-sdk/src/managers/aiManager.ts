@@ -83,6 +83,8 @@ import {
   resetContentEventState,
 } from "../telemetry/events.js";
 import { recordApiRequest } from "../telemetry/metrics.js";
+import { entrypointOf } from "../telemetry/attributes.js";
+import type { HostEntrypoint } from "../constants/telemetry.js";
 import type { BackgroundTask } from "../types/processes.js";
 
 /** Result of a fork-path agent loop (compaction or auto-memory extraction). */
@@ -365,17 +367,20 @@ export class AIManager {
 
   /**
    * What the telemetry layer needs to attribute a record to this turn: the
-   * session it belongs to (it can change mid-flight — `/clear` mints a new id)
-   * and the session's working directory (only read when repository attributes
-   * are enabled).
+   * session it belongs to (it can change mid-flight — `/clear` mints a new id),
+   * the session's working directory (only read when repository attributes are
+   * enabled) and the entrypoint its creator declared (only read when the
+   * entrypoint switch is on).
    */
   private get telemetryContext(): {
     sessionId: string;
     workdir: string;
+    entrypoint: HostEntrypoint | undefined;
   } {
     return {
       sessionId: this.messageManager.getSessionId(),
       workdir: this.originalWorkdir,
+      entrypoint: entrypointOf(this.container),
     };
   }
 
@@ -843,7 +848,11 @@ export class AIManager {
           afterTokens: "1",
           model: compactModel,
         },
-        { sessionId: sessionIdAtStart, workdir: this.originalWorkdir },
+        {
+          sessionId: sessionIdAtStart,
+          workdir: this.originalWorkdir,
+          entrypoint: entrypointOf(this.container),
+        },
       ).catch(() => {});
 
       // 11. Run SessionStart hooks (existing behavior)

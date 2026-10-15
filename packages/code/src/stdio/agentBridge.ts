@@ -59,6 +59,7 @@ import {
   type SkillMetadata,
   type PluginReloadResult,
   type RemoteControlSnapshot,
+  normalizeEntrypoint,
 } from "wave-agent-sdk";
 import {
   type JsonRpcError,
@@ -137,6 +138,13 @@ interface InitializeParams {
   mcpServers?: Record<string, McpServerConfig>;
   worktreeName?: string;
   isNewWorktree?: boolean;
+  /**
+   * Which host the session belongs to → the `app.entrypoint` attribute. A raw
+   * string: it arrives over the wire, from hosts this process does not compile
+   * against (the JetBrains plugin builds its own frames). Narrowed to the known
+   * table below before it reaches the SDK.
+   */
+  entrypoint?: string;
 }
 
 // 会话级覆盖项：用户偏好（语言 / 上下文长度 / 自动记忆开关与频率）不在此层——
@@ -653,6 +661,16 @@ export class AgentBridge {
     const ctx: SessionContext = {};
     const callbacks = this.createCallbacks(ctx);
 
+    const entrypoint = normalizeEntrypoint(params.entrypoint);
+    if (params.entrypoint !== undefined && entrypoint === undefined) {
+      // A host that ships a value this version does not know (an older client,
+      // a hand-written frame) is treated as if it had declared nothing: an
+      // unrecognised value must not mint a series of its own.
+      logger?.warn(
+        `Unknown entrypoint: ${String(params.entrypoint)}, ignoring`,
+      );
+    }
+
     const options: AgentOptions = {
       callbacks,
       logger,
@@ -671,6 +689,7 @@ export class AgentBridge {
       mcpServers: params.mcpServers,
       worktreeName: params.worktreeName,
       isNewWorktree: params.isNewWorktree,
+      entrypoint,
       canUseTool: (context: ToolPermissionContext) =>
         this.canUseTool(context, ctx),
     };
@@ -1167,6 +1186,9 @@ export class AgentBridge {
         // Keep worktree context (permission safety) across recreation, but never
         // re-fire WorktreeCreate — the hook ran at initial creation.
         worktreeName: entry.storedConfig.worktreeName,
+        // The declaration outlives the rebuild: an `updateConfig` replaces the
+        // agent, not the host that asked for the session.
+        entrypoint: normalizeEntrypoint(entry.storedConfig.entrypoint),
         canUseTool: (context: ToolPermissionContext) =>
           this.canUseTool(context, ctx),
       };
