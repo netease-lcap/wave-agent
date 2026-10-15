@@ -3,6 +3,7 @@ import { Tooltip } from "./Tooltip";
 import {
   NewSessionIcon,
   HistoryIcon,
+  MachineIcon,
   MoreIcon,
   PanelCollapseIcon,
   PanelExpandIcon,
@@ -29,6 +30,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   isAuthenticated,
   hideSessionButtons = false,
   sessionSwitchButton = false,
+  onSwitchMachine,
   hideMoreButton = false,
   sessionListOpen = false,
   onSessionListClose,
@@ -202,6 +204,21 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               aria-expanded={sessionListVisible}
             >
               <HistoryIcon />
+            </button>
+          </Tooltip>
+        )}
+        {/* 远控页专属：「换机器」的常驻入口——一个主屏图标管所有机器，入口
+            收在页面侧的 shim（REMOTE_PAGE_GATED，audit:commands 把关），不改
+            其余四端的顶栏（spec remote-control.md「机器列表与切换」场景 5）。 */}
+        {onSwitchMachine && (
+          <Tooltip text="切换电脑" position="bottom">
+            <button
+              className="header-button"
+              onClick={onSwitchMachine}
+              data-testid="switch-machine-btn"
+              aria-label="切换电脑"
+            >
+              <MachineIcon />
             </button>
           </Tooltip>
         )}

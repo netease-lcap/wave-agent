@@ -212,15 +212,27 @@ const RemoteControlDialog: React.FC<
               </div>
             ) : null}
             {pageUrl ? (
-              <div
-                style={{
-                  fontSize: "12px",
-                  color: "var(--vscode-descriptionForeground)",
-                  padding: "2px 0",
-                }}
-              >
-                页面用企业端登录态认证：扫码的浏览器需要已登录同一个企业账号。
-              </div>
+              <>
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--vscode-descriptionForeground)",
+                    padding: "2px 0",
+                  }}
+                >
+                  页面用企业端登录态认证：扫码的浏览器需要已登录同一个企业账号。
+                </div>
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "var(--vscode-descriptionForeground)",
+                    padding: "2px 0",
+                  }}
+                >
+                  手机上请用相机扫码或在 Safari
+                  中打开，再「添加到主屏幕」；控制中心的扫码器打开的容器加不了主屏。
+                </div>
+              </>
             ) : null}
           </div>
 

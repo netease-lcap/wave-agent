@@ -50,10 +50,11 @@
  * - Mermaid rides in its own chunk instead of in `chat.js` (78% of that bundle,
  *   measured: 3.27 MB of 4.09 MB), fetched by the page the first time a message
  *   actually contains a diagram. The loader is `src/mermaid-lazy.ts`, wired in by
- *   `--lazy-mermaid=`; the hosts keep the eager bundle. So the page ships five
- *   files, four of them on the critical path and one on demand.
+ *   `--lazy-mermaid=`; the hosts keep the eager bundle. So the page ships four
+ *   files on the critical path (HTML, CSS, the bundle, the shim), one on demand
+ *   (mermaid), and three for the home screen (manifest + two icons).
  *
- * `--zip` additionally packs those five files into `dist/remote-page.zip` with
+ * `--zip` additionally packs all of those into `dist/remote-page.zip` with
  * `index.html` at the archive root — the exact shape codechat's Ops upload route
  * takes (`POST /api/ops/remote-page` unpacks it into file-center objects under
  * `codechat/remote/`, served back at `${origin}/remote/`). Handing the zip over
@@ -101,18 +102,28 @@ const pageVersion = JSON.parse(
   fs.readFileSync(path.join(WEBVIEW, "package.json"), "utf-8"),
 ).version;
 
+/**
+ * The dark theme's page background (`--vscode-editor-background`), the color
+ * the browser chrome and the splash take from (`theme-color` meta, manifest
+ * `theme_color` / `background_color`). The page boots dark-first.
+ */
+const PAGE_BACKGROUND = "#1f1f1f";
+
 const CSP = [
   "default-src 'none'",
   "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https:",
   "font-src 'self' data:",
-  // The one widening over the desktop page: the phone page is not bridged to a
-  // parent process, so the relay connection is the page's own. Nothing else is
-  // allowed out — the page sends no same-origin requests of its own (its assets
-  // are `script-src` / `style-src`), so a future same-origin `fetch` would be
-  // blocked silently and has to bring `'self'` back with it.
-  "connect-src wss:",
+  // Two widenings over the desktop page, both load-bearing: the relay
+  // connection is the page's own (`wss:`), and the page talks same-origin REST
+  // — the login renewal (`POST /api/auth/refresh`) and the machine list
+  // (`GET /api/relay/hosts`) — hence `'self'`. (The renewal once shipped
+  // without it: CSP silently blocked the request, jsdom does not execute CSP,
+  // and every test stayed green.) `manifest-src` falls back to `default-src`,
+  // which is `'none'` here, so the manifest link needs its own line.
+  "connect-src wss: 'self'",
+  "manifest-src 'self'",
 ].join("; ");
 
 /** `:root {}` → `:root[data-theme="dark|light"] {}` so both sets coexist. */
@@ -193,12 +204,55 @@ function emit({ chatJs, chatCss, mermaid }) {
   const chatName = hashedName("chat", chatJs);
   const cssName = hashedName("chat", pageCss, "css");
   const shimName = hashedName("shim", shim);
+  // The home-screen icons (generated from the desktop app's icon by
+  // `generate-icons.mjs`, committed under `remote/assets/`): one 180 file
+  // serves as favicon and `apple-touch-icon` alike, the 512 backs the
+  // manifest. Hashed like every other asset, so a redeploy never serves a
+  // stale icon against a fresh page.
+  const appleTouch = fs.readFileSync(
+    path.join(HERE, "assets", "apple-touch-icon.png"),
+  );
+  const icon512 = fs.readFileSync(path.join(HERE, "assets", "icon-512.png"));
+  const appleTouchName = hashedName("apple-touch-icon", appleTouch, "png");
+  const icon512Name = hashedName("icon-512", icon512, "png");
+  /**
+   * The web app manifest. `start_url` is the page root **without** a query:
+   * which machine to connect to is state the page manages (last choice, then
+   * the list), not something the entry point pins — an icon added from a
+   * `?host=` address keeps that address regardless. Colors follow the dark
+   * theme (`--vscode-editor-background`), the page's default.
+   */
+  const manifest = JSON.stringify(
+    {
+      name: "CodeWave 远程控制",
+      short_name: "CodeWave",
+      start_url: "./",
+      scope: "./",
+      display: "standalone",
+      background_color: PAGE_BACKGROUND,
+      theme_color: PAGE_BACKGROUND,
+      icons: [
+        {
+          src: `./${icon512Name}`,
+          sizes: "512x512",
+          type: "image/png",
+          purpose: "any",
+        },
+      ],
+    },
+    null,
+    2,
+  );
+  const manifestName = hashedName("manifest", manifest, "json");
   fs.rmSync(OUT, { recursive: true, force: true });
   fs.mkdirSync(OUT, { recursive: true });
   fs.writeFileSync(path.join(OUT, chatName), chatJs);
   fs.writeFileSync(path.join(OUT, cssName), pageCss);
   fs.writeFileSync(path.join(OUT, shimName), shim);
   fs.writeFileSync(path.join(OUT, mermaid.name), mermaid.text);
+  fs.writeFileSync(path.join(OUT, manifestName), manifest);
+  fs.writeFileSync(path.join(OUT, appleTouchName), appleTouch);
+  fs.writeFileSync(path.join(OUT, icon512Name), icon512);
 
   const html = `<!DOCTYPE html>
 <html lang="zh-CN" data-theme="dark">
@@ -212,7 +266,17 @@ function emit({ chatJs, chatCss, mermaid }) {
        场景 15。锁缩放那条路 2026-10-14 上过真机，被判定为「字太小又没得放大」。 -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="dark light" />
-  <link rel="icon" href="data:," />
+  <!-- 主屏元信息：图标与名字（spec remote-control.md「PWA 主屏元信息」）。
+       apple-touch-icon 是 iOS 认的那一个；standalone 双声明（manifest 与
+       meta 各代 iOS 各取其一）；black-translucent 让内容延伸到状态栏之下，
+       与 viewport-fit=cover + 安全区内边距的既有设计配套。 -->
+  <link rel="icon" type="image/png" href="./${appleTouchName}" />
+  <link rel="apple-touch-icon" href="./${appleTouchName}" />
+  <link rel="manifest" href="./${manifestName}" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CodeWave" />
+  <meta name="theme-color" content="${PAGE_BACKGROUND}" />
   <link rel="stylesheet" href="./${cssName}" />
   <title>CodeWave 远程控制</title>
   <!-- The page config rides a meta tag, not an inline script: the
@@ -230,7 +294,16 @@ function emit({ chatJs, chatCss, mermaid }) {
 `;
   fs.writeFileSync(path.join(OUT, "index.html"), html, "utf-8");
 
-  const pageFiles = ["index.html", cssName, chatName, shimName, mermaid.name];
+  const pageFiles = [
+    "index.html",
+    cssName,
+    chatName,
+    shimName,
+    mermaid.name,
+    manifestName,
+    appleTouchName,
+    icon512Name,
+  ];
   if (wantZip) {
     // 根含 index.html（收端的准入条件），文件名就是相对路径 —— 解包后逐文件
     // 落成 `codechat/remote/<相对路径>` 的对象。

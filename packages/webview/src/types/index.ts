@@ -754,6 +754,14 @@ export interface ChatHeaderProps {
    * (spec remote-control「Web 页作为第五种宿主」场景 9).
    */
   sessionSwitchButton?: boolean;
+  /**
+   * Remote Web page (the fifth host) only: the standing 「切换电脑」 entry. One
+   * home-screen icon serves every machine, so the page needs a way back to the
+   * machine list from a live session; the command routes to the page shim (the
+   * fifth router), not to any local host (spec remote-control「机器列表与切换」
+   * 场景 5).
+   */
+  onSwitchMachine?: () => void;
   // Desktop host: the more button + menu live in DesktopSidebar instead.
   hideMoreButton?: boolean;
   /** Open the history popup without the header button — `/resume` routes
