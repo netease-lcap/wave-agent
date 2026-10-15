@@ -4,9 +4,25 @@ import { readFileSync } from "node:fs";
 import type { TelemetryConfig } from "@/types/telemetry.js";
 import type { HostEntrypoint } from "@/constants/telemetry.js";
 
+/**
+ * Controllable auth state. The first-party channel refuses to send unless the
+ * machine is signed in and has a server URL, so those two need to be settable
+ * per test; the remaining tests leave them undefined and stay anonymous.
+ */
+const authState = vi.hoisted(() => ({
+  token: undefined as string | undefined,
+  serverUrl: undefined as string | undefined,
+}));
+
 // Mock globalLogger to suppress output
 vi.mock("@/services/authService.js", () => ({
-  AuthService: { getInstance: () => ({ getAuthUser: () => undefined }) },
+  AuthService: {
+    getInstance: () => ({
+      getAuthUser: () => undefined,
+      getSSOToken: () => authState.token,
+      getServerUrl: () => authState.serverUrl,
+    }),
+  },
   getOrCreateAnonymousId: () => "anon-id-test",
 }));
 
@@ -230,6 +246,10 @@ describe("instrumentation", () => {
     delete process.env.OTEL_METRICS_INCLUDE_REPOSITORY;
     delete process.env.OTEL_METRICS_INCLUDE_ENTRYPOINT;
     delete process.env.OTEL_SHUTDOWN_TIMEOUT_MS;
+    delete process.env.WAVE_DISABLE_TELEMETRY;
+    delete process.env.WAVE_OTEL_URL;
+    authState.token = undefined;
+    authState.serverUrl = undefined;
     spawnMock.mockReset();
     execFileSyncMock.mockReset();
     vi.resetModules();
@@ -918,6 +938,95 @@ describe("instrumentation", () => {
       // Metrics are off: no meter, so every record call stays a no-op.
       expect(mocks.mockMeterProvider).not.toHaveBeenCalled();
       expect(mocks.mockCreateCounter).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("first-party channel", () => {
+    const SIGNED_IN = {
+      token: "sso-token",
+      serverUrl: "https://codechat.codewave-test.163yun.com",
+    };
+    const FIRST_PARTY_METRICS =
+      "https://codechat.codewave-test.163yun.com/otel/v1/metrics";
+
+    it("首方打开、用户没配任何导出器时仍然初始化", async () => {
+      Object.assign(authState, SIGNED_IN);
+
+      await instrumentation.initializeTelemetry({ firstPartyEnabled: true });
+
+      expect(instrumentation.isInitialized()).toBe(true);
+      expect(exporterConfig(mocks.mockOTLPMetricExporter).url).toBe(
+        FIRST_PARTY_METRICS,
+      );
+      expect(exporterConfig(mocks.mockOTLPLogExporter).url).toBe(
+        "https://codechat.codewave-test.163yun.com/otel/v1/logs",
+      );
+    });
+
+    it("用户自配的 collector 与首方出口并存，两条管道各发一份", async () => {
+      Object.assign(authState, SIGNED_IN);
+
+      await instrumentation.initializeTelemetry({
+        metricsExporter: "otlp",
+        logsExporter: "otlp",
+        endpoint: "https://collector.example.com",
+        firstPartyEnabled: true,
+      });
+
+      expect(mocks.mockPeriodicExportingMetricReader).toHaveBeenCalledTimes(2);
+      expect(mocks.mockBatchLogRecordProcessor).toHaveBeenCalledTimes(2);
+      expect(exporterConfig(mocks.mockOTLPMetricExporter, 0).url).toBe(
+        "https://collector.example.com/v1/metrics",
+      );
+      expect(exporterConfig(mocks.mockOTLPMetricExporter, 1).url).toBe(
+        FIRST_PARTY_METRICS,
+      );
+    });
+
+    it("首方批次带 SSO token 作 Bearer 头", async () => {
+      Object.assign(authState, SIGNED_IN);
+
+      await instrumentation.initializeTelemetry({ firstPartyEnabled: true });
+
+      const headers = exporterConfig(mocks.mockOTLPMetricExporter).headers;
+      expect(typeof headers).toBe("function");
+      await expect(
+        (headers as () => Promise<Record<string, string>>)(),
+      ).resolves.toEqual({ Authorization: "Bearer sso-token" });
+    });
+
+    it("首方打开但机器未登录时不初始化（不产生只能 401 的流量）", async () => {
+      authState.serverUrl = SIGNED_IN.serverUrl;
+
+      await instrumentation.initializeTelemetry({ firstPartyEnabled: true });
+
+      expect(instrumentation.isInitialized()).toBe(false);
+      expect(mocks.mockMeterProvider).not.toHaveBeenCalled();
+    });
+
+    it("WAVE_DISABLE_TELEMETRY 关掉首方出口", async () => {
+      Object.assign(authState, SIGNED_IN);
+      process.env.WAVE_DISABLE_TELEMETRY = "1";
+
+      await instrumentation.initializeTelemetry({ firstPartyEnabled: true });
+
+      expect(instrumentation.isInitialized()).toBe(false);
+    });
+
+    it("退出开关只关首方，用户自配的 collector 照常收到", async () => {
+      Object.assign(authState, SIGNED_IN);
+      process.env.WAVE_DISABLE_TELEMETRY = "1";
+
+      await instrumentation.initializeTelemetry({
+        metricsExporter: "otlp",
+        endpoint: "https://collector.example.com",
+        firstPartyEnabled: true,
+      });
+
+      expect(mocks.mockPeriodicExportingMetricReader).toHaveBeenCalledTimes(1);
+      expect(exporterConfig(mocks.mockOTLPMetricExporter).url).toBe(
+        "https://collector.example.com/v1/metrics",
+      );
     });
   });
 

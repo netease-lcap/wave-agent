@@ -14,6 +14,10 @@ import type {
 import { logger } from "../utils/globalLogger.js";
 import { createHeadersHelperProvider } from "./headersHelper.js";
 import { initMetrics, resetMetrics } from "./metrics.js";
+import {
+  resolveFirstPartyChannel,
+  resolveFirstPartyEnabled,
+} from "./firstParty.js";
 import { getServiceVersion } from "./attributes.js";
 
 import type { MeterProvider } from "@opentelemetry/sdk-metrics";
@@ -316,6 +320,7 @@ export function resolveTelemetryConfig(
       process.env.OTEL_ENABLED === "false"
         ? false
         : (settingsConfig?.enabled ?? !!(metricsExporter || logsExporter)),
+    firstPartyEnabled: resolveFirstPartyEnabled(settingsConfig),
     metricsExporter,
     logsExporter,
     endpoint: resolveEndpoint(settingsConfig),
@@ -425,7 +430,15 @@ export async function initializeTelemetry(
     currentConfig = resolveTelemetryConfig(config);
     headersProvider = resolveHeadersProvider(currentConfig);
 
-    if (!currentConfig.enabled) {
+    // The two pipelines are independent, so neither decides for the other: a
+    // machine with nothing configured still reports to Wave while the
+    // first-party channel is on, and one whose first-party channel is off
+    // still exports to its own collector.
+    const firstParty = currentConfig.firstPartyEnabled
+      ? resolveFirstPartyChannel()
+      : undefined;
+
+    if (!currentConfig.enabled && !firstParty) {
       logger?.debug("Telemetry not enabled (no exporters configured)");
       return;
     }
@@ -486,6 +499,30 @@ export async function initializeTelemetry(
       );
     }
 
+    // First-party channel: the same exporters with a different endpoint and
+    // credential. Additive on purpose — whatever the block above configured
+    // keeps receiving everything (spec 场景 2), and this one never borrows its
+    // endpoint, so pointing Wave at a customer collector cannot misfile
+    // first-party data.
+    if (firstParty) {
+      metricReaders.push(
+        new sdkMetrics!.PeriodicExportingMetricReader({
+          exporter: new exporterMetricsOtlpHttp!.OTLPMetricExporter({
+            url: `${firstParty.endpoint}/v1/metrics`,
+            headers: firstParty.headers,
+          }),
+        }),
+      );
+      logProcessors.push(
+        new sdkLogs!.BatchLogRecordProcessor(
+          new exporterLogsOtlpHttp!.OTLPLogExporter({
+            url: `${firstParty.endpoint}/v1/logs`,
+            headers: firstParty.headers,
+          }),
+        ),
+      );
+    }
+
     // Only initialize providers if at least one exporter is configured
     if (metricReaders.length > 0 || logProcessors.length > 0) {
       if (metricReaders.length > 0) {
@@ -524,6 +561,7 @@ export async function initializeTelemetry(
         metricsExporter,
         logsExporter,
         endpoint: currentConfig.endpoint,
+        firstPartyEndpoint: firstParty?.endpoint,
       });
     } else {
       logger?.debug("No telemetry exporters configured, skipping init");
