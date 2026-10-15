@@ -38,6 +38,11 @@
         <editorTabTitleProvider implementation="com.wave.jetbrains.editor.WaveSettingsEditorTabTitleProvider"/>
         <notificationGroup id="Wave" displayType="BALLOON"/>
         <iconMapper mappingFile="WavePluginIconMappings.json"/>
+        <!-- Ghost-text completion (2024.2+). The provider reads the completion
+             model off the chat session inside the CLI, so it stays quiet until a
+             session exists. -->
+        <inline.completion.provider
+            implementation="com.wave.jetbrains.completion.WaveInlineCompletionProvider"/>
     </extensions>
 
     <actions>

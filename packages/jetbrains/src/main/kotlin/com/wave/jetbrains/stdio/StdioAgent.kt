@@ -341,6 +341,15 @@ class StdioAgent(
         client.request("setModel", buildJsonObject { put("model", model) }, sessionId)
     }
 
+    /**
+     * One inline (ghost-text) completion for the editor. Session-scoped on
+     * purpose: the completion model and the gateway credentials are resolved
+     * inside this session, and the CLI supersedes this session's previous
+     * in-flight request (spec docs/specs/ui/code-completion.md).
+     */
+    suspend fun getCompletion(params: JsonObject): JsonObject? =
+        client.request("getCompletion", params, sessionId)?.jsonObject
+
     suspend fun getMcpServers(): JsonElement =
         client.request("getMcpServers", sessionId = sessionId) ?: JsonObject(emptyMap())
 

@@ -213,6 +213,24 @@ export function validateConfigurationObject(
     );
   }
 
+  // Validate completionModel if present
+  if (
+    config.completionModel !== undefined &&
+    typeof config.completionModel !== "string"
+  ) {
+    result.isValid = false;
+    result.errors.push("completionModel configuration must be a string");
+  }
+
+  // Validate completionEnabled if present
+  if (
+    config.completionEnabled !== undefined &&
+    typeof config.completionEnabled !== "boolean"
+  ) {
+    result.isValid = false;
+    result.errors.push("completionEnabled configuration must be a boolean");
+  }
+
   // Validate cleanupPeriodDays if present
   if (
     config.cleanupPeriodDays !== undefined &&
@@ -688,6 +706,45 @@ export class ConfigurationService {
       visionModel: resolvedVisionModel,
       permissionMode: permissionMode ?? this.options.permissionMode,
     };
+
+    // Resolve the inline completion model: override > options > settings.json >
+    // env, falling back to the fast model. Deliberately never inherits the agent
+    // model: completion fires on every typing pause, so a slow agent model would
+    // make it unusable.
+    const resolvedCompletionModel =
+      this.options.completionModel ||
+      this.liveConfiguration?.completionModel ||
+      (this.liveEnvSnapshot.WAVE_COMPLETION_MODEL ??
+        process.env.WAVE_COMPLETION_MODEL) ||
+      resolvedFastModel;
+
+    if (resolvedCompletionModel) {
+      baseConfig.completionModel = resolvedCompletionModel;
+    }
+
+    // Completion params come from models[completionModel]: `options` merged with
+    // `disableThinkingOptions`, because extended thinking is disqualified for a
+    // latency-critical call.
+    const completionModelSource =
+      resolvedCompletionModel &&
+      this.liveConfiguration?.models?.[resolvedCompletionModel];
+    const completionModelOptions = completionModelSource
+      ? {
+          ...completionModelSource.options,
+          ...completionModelSource.disableThinkingOptions,
+        }
+      : undefined;
+    if (
+      completionModelOptions &&
+      Object.keys(completionModelOptions).length > 0
+    ) {
+      baseConfig.completionModelOptions = completionModelOptions;
+    }
+
+    baseConfig.completionEnabled =
+      this.options.completionEnabled ??
+      this.liveConfiguration?.completionEnabled ??
+      true;
 
     // Resolve fast model generation params from models[fastModel].options.
     // Set on baseConfig before the modelSpecificConfig spread so it isn't overwritten.
@@ -1592,6 +1649,11 @@ export function loadWaveConfigFromFile(
       enabledPlugins: config.enabledPlugins || undefined,
       language: config.language || undefined,
       model: config.model || undefined,
+      completionModel: config.completionModel || undefined,
+      completionEnabled:
+        config.completionEnabled !== undefined
+          ? config.completionEnabled
+          : undefined,
       autoMemoryEnabled:
         config.autoMemoryEnabled !== undefined
           ? config.autoMemoryEnabled
@@ -1768,6 +1830,15 @@ export function loadMergedWaveConfig(
       mergedConfig.model = config.model;
     }
 
+    // Merge the inline completion model / switch (last one wins)
+    // (docs/specs/ui/code-completion.md story 3, story 4 scenario 2)
+    if (config.completionModel !== undefined) {
+      mergedConfig.completionModel = config.completionModel;
+    }
+    if (config.completionEnabled !== undefined) {
+      mergedConfig.completionEnabled = config.completionEnabled;
+    }
+
     // Merge autoMemoryEnabled (last one wins)
     if (config.autoMemoryEnabled !== undefined) {
       mergedConfig.autoMemoryEnabled = config.autoMemoryEnabled;
@@ -1876,6 +1947,8 @@ export function loadMergedWaveConfig(
         : undefined,
     language: mergedConfig.language,
     model: mergedConfig.model,
+    completionModel: mergedConfig.completionModel,
+    completionEnabled: mergedConfig.completionEnabled,
     autoMemoryEnabled: mergedConfig.autoMemoryEnabled,
     autoMemoryFrequency: mergedConfig.autoMemoryFrequency,
     cleanupPeriodDays: mergedConfig.cleanupPeriodDays,

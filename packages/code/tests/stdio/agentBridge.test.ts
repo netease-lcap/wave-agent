@@ -4002,3 +4002,166 @@ test("removeWorktree keeps hookBased false/undefined for git-based worktrees", a
     }),
   );
 });
+
+// ── getCompletion ──────────────────────────────────────────────
+
+test("getCompletion forwards the cursor context to the session's agent", async () => {
+  const { bridge } = createBridge();
+  const getCompletion = vi
+    .fn()
+    .mockResolvedValue({ text: "42", model: "fast-model" });
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent({ getCompletion }));
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+
+  const result = await bridge.handleRequest(
+    "getCompletion",
+    {
+      prefix: "const answer = ",
+      suffix: ";",
+      language: "typescript",
+      filePath: "/repo/src/index.ts",
+    },
+    init.sessionId,
+  );
+
+  expect(result).toEqual({ text: "42", model: "fast-model" });
+  expect(getCompletion).toHaveBeenCalledWith({
+    prefix: "const answer = ",
+    suffix: ";",
+    language: "typescript",
+    filePath: "/repo/src/index.ts",
+    abortSignal: expect.any(AbortSignal),
+  });
+});
+
+test("getCompletion defaults a missing prefix/suffix to an empty string", async () => {
+  const { bridge } = createBridge();
+  const getCompletion = vi
+    .fn()
+    .mockResolvedValue({ text: "", model: "fast-model" });
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent({ getCompletion }));
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+
+  await bridge.handleRequest("getCompletion", {}, init.sessionId);
+
+  expect(getCompletion).toHaveBeenCalledWith({
+    prefix: "",
+    suffix: "",
+    abortSignal: expect.any(AbortSignal),
+  });
+});
+
+test("getCompletion requires a session", async () => {
+  const { bridge } = createBridge();
+
+  await expect(
+    bridge.handleRequest("getCompletion", { prefix: "", suffix: "" }),
+  ).rejects.toThrow("sessionId is required for this request");
+});
+
+test("getCompletion rejects an unknown session", async () => {
+  const { bridge } = createBridge();
+
+  await expect(
+    bridge.handleRequest("getCompletion", { prefix: "", suffix: "" }, "nope"),
+  ).rejects.toThrow("Session not found: nope");
+});
+
+test("getCompletion supersedes the session's in-flight request", async () => {
+  const { bridge } = createBridge();
+  const signals: AbortSignal[] = [];
+  let releaseFirst:
+    | ((value: { text: string; model: string }) => void)
+    | undefined;
+  const first = new Promise<{ text: string; model: string }>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const getCompletion = vi
+    .fn()
+    .mockImplementationOnce((params: { abortSignal: AbortSignal }) => {
+      signals.push(params.abortSignal);
+      return first;
+    })
+    .mockImplementationOnce((params: { abortSignal: AbortSignal }) => {
+      signals.push(params.abortSignal);
+      return Promise.resolve({ text: "second", model: "fast-model" });
+    });
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent({ getCompletion }));
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+
+  const superseded = bridge.handleRequest(
+    "getCompletion",
+    { prefix: "a", suffix: "b" },
+    init.sessionId,
+  );
+  const winner = bridge.handleRequest(
+    "getCompletion",
+    { prefix: "a", suffix: "bc" },
+    init.sessionId,
+  );
+
+  // The keystroke that triggered the second request invalidated the first one:
+  // its answer would land at a cursor position that no longer exists.
+  expect(signals[0].aborted).toBe(true);
+  expect(signals[1].aborted).toBe(false);
+  await expect(winner).resolves.toEqual({
+    text: "second",
+    model: "fast-model",
+  });
+
+  releaseFirst?.({ text: "first", model: "fast-model" });
+  await expect(superseded).resolves.toEqual({
+    text: "first",
+    model: "fast-model",
+  });
+});
+
+test("getCompletion lets concurrent sessions run independently", async () => {
+  const { bridge } = createBridge();
+  const signals: AbortSignal[] = [];
+  const getCompletion = vi
+    .fn()
+    .mockImplementation((params: { abortSignal: AbortSignal }) => {
+      signals.push(params.abortSignal);
+      return Promise.resolve({ text: "42", model: "fast-model" });
+    });
+  vi.mocked(Agent.create)
+    .mockResolvedValueOnce(createMockAgent({ sessionId: "s1", getCompletion }))
+    .mockResolvedValueOnce(createMockAgent({ sessionId: "s2", getCompletion }));
+  const first = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+  const second = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+
+  await Promise.all([
+    bridge.handleRequest("getCompletion", {}, first.sessionId),
+    bridge.handleRequest("getCompletion", {}, second.sessionId),
+  ]);
+
+  expect(signals).toHaveLength(2);
+  expect(signals[0].aborted).toBe(false);
+  expect(signals[1].aborted).toBe(false);
+});
+
+test("getCompletion surfaces a model failure to the caller", async () => {
+  const { bridge } = createBridge();
+  const getCompletion = vi
+    .fn()
+    .mockRejectedValue(new Error("Failed to get code completion"));
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent({ getCompletion }));
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+
+  await expect(
+    bridge.handleRequest("getCompletion", {}, init.sessionId),
+  ).rejects.toThrow("Failed to get code completion");
+});

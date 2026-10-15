@@ -224,6 +224,14 @@ export class AgentBridge {
     }
   >();
   private permissionCounter = 0;
+  /**
+   * In-flight completion calls, keyed by envelope sessionId. Completion answers
+   * a keystroke pause, so a newer request makes the previous one worthless —
+   * superseding it here is what keeps "one in-flight request per editor" true
+   * even when the host cannot cancel (spec
+   * docs/specs/ui/code-completion.md: 同一时刻只允许一个补全请求在途).
+   */
+  private inFlightCompletions = new Map<string, AbortController>();
   private emit: NotificationEmitter;
   private onShutdownRequest: (() => void) | undefined;
   private remoteControl:
@@ -610,6 +618,16 @@ export class AgentBridge {
           p.workdir as string | undefined,
           p.commit as string | undefined,
           p.scope as string | undefined,
+        );
+      case "getCompletion":
+        return this.getCompletion(
+          p as unknown as {
+            prefix?: string;
+            suffix?: string;
+            language?: string;
+            filePath?: string;
+          },
+          sessionId,
         );
 
       default:
@@ -1018,6 +1036,48 @@ export class AgentBridge {
       ...(commit ? { commit } : {}),
       ...(scope === "uncommitted" ? { uncommitted: true } : {}),
     });
+  }
+
+  /**
+   * One inline (ghost-text) completion for the editor plugins.
+   *
+   * Session-scoped on purpose: the completion model and the gateway credentials
+   * are resolved inside that session (the CLI owns the model configuration —
+   * the plugin never holds a second source of truth). Read-only, so it keeps
+   * working while `updateConfig` is rebuilding the session.
+   */
+  private async getCompletion(
+    params: {
+      prefix?: string;
+      suffix?: string;
+      language?: string;
+      filePath?: string;
+    },
+    sessionId?: string,
+  ): Promise<{ text: string; model: string }> {
+    const entry = this.requireSessionForRead(sessionId);
+    const key = sessionId as string;
+
+    // Supersede the session's previous request: its answer would land at a
+    // cursor position that no longer exists.
+    this.inFlightCompletions.get(key)?.abort();
+    const controller = new AbortController();
+    this.inFlightCompletions.set(key, controller);
+
+    try {
+      return await entry.agent.getCompletion({
+        prefix: params.prefix ?? "",
+        suffix: params.suffix ?? "",
+        ...(params.language ? { language: params.language } : {}),
+        ...(params.filePath ? { filePath: params.filePath } : {}),
+        abortSignal: controller.signal,
+      });
+    } finally {
+      // Only clear our own slot — a newer request may already own it.
+      if (this.inFlightCompletions.get(key) === controller) {
+        this.inFlightCompletions.delete(key);
+      }
+    }
   }
 
   private async createWorktreeSession(params: {

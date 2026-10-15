@@ -43,6 +43,15 @@ export interface AgentOptions {
   maxInputTokens?: number;
   maxTokens?: number;
   /**
+   * Per-session override for the inline completion model (defaults to the fast
+   * model). The three hosts' settings pages do **not** go through this layer —
+   * they write user-level `~/.wave/settings.json`, picked up by the next
+   * resolution (same pattern as `autoMemoryEnabled`).
+   */
+  completionModel?: string;
+  /** Per-session override for inline completion. See `completionModel`. */
+  completionEnabled?: boolean;
+  /**
    * Preferred language for agent communication, injected verbatim into the
    * system prompt (`# Language\nAlways respond in <value>`). When unset, the
    * resolve chain falls back to `DEFAULT_LANGUAGE` (`zh-CN`).
