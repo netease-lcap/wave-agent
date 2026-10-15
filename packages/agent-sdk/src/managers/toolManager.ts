@@ -63,6 +63,7 @@ import {
   recordLinesChanged,
   recordToolActivity,
 } from "../telemetry/metrics.js";
+import type { RecordContext } from "../telemetry/metrics.js";
 import { detectBashActivity } from "../telemetry/toolActivity.js";
 
 export interface ToolManagerOptions {
@@ -74,21 +75,39 @@ export interface ToolManagerOptions {
 }
 
 /**
+ * The session a tool call belongs to, for the standard attributes of the
+ * records it produces. The tool context is the one place every call passes
+ * through, so both the flat and the nested (Exec sandbox) path have it.
+ */
+function recordContextOf(context: {
+  sessionId?: string;
+  workdir?: string;
+}): RecordContext {
+  return { sessionId: context.sessionId, workdir: context.workdir };
+}
+
+/**
  * Feed an edit tool's line delta into the `wave.lines.changed` counter.
  *
  * Editing tools report `linesAdded` / `linesRemoved` in `result.metadata`;
  * every other tool carries no metadata and contributes nothing. A failed call
  * changed no file, so nothing is recorded.
  */
-function recordLinesChangedFromResult(result: ToolResult): void {
+function recordLinesChangedFromResult(
+  result: ToolResult,
+  context: { sessionId?: string; workdir?: string },
+): void {
   const metadata = result.metadata;
   if (!result.success || !metadata) return;
   const added = Number(metadata.linesAdded);
   const removed = Number(metadata.linesRemoved);
-  recordLinesChanged({
-    added: Number.isFinite(added) ? added : undefined,
-    removed: Number.isFinite(removed) ? removed : undefined,
-  });
+  recordLinesChanged(
+    {
+      added: Number.isFinite(added) ? added : undefined,
+      removed: Number.isFinite(removed) ? removed : undefined,
+    },
+    recordContextOf(context),
+  );
 }
 
 /**
@@ -100,11 +119,12 @@ function recordBashActivity(
   name: string,
   args: Record<string, unknown>,
   result: ToolResult,
+  context: { sessionId?: string; workdir?: string },
 ): void {
   if (name !== "Bash" || !result.success) return;
   const command = typeof args.command === "string" ? args.command : "";
   if (!command) return;
-  recordToolActivity(detectBashActivity(command));
+  recordToolActivity(detectBashActivity(command), recordContextOf(context));
 }
 
 /**
@@ -407,8 +427,8 @@ class ToolManager {
       let result: ToolResult;
       try {
         result = await plugin.execute(args, enhancedContext);
-        recordLinesChangedFromResult(result);
-        recordBashActivity(name, args, result);
+        recordLinesChangedFromResult(result, context);
+        recordBashActivity(name, args, result, context);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         logger?.error("Tool execution failed", {

@@ -363,6 +363,22 @@ export class AIManager {
     return this.configurationService.resolveWorktreeBaseRef();
   }
 
+  /**
+   * What the telemetry layer needs to attribute a record to this turn: the
+   * session it belongs to (it can change mid-flight — `/clear` mints a new id)
+   * and the session's working directory (only read when repository attributes
+   * are enabled).
+   */
+  private get telemetryContext(): {
+    sessionId: string;
+    workdir: string;
+  } {
+    return {
+      sessionId: this.messageManager.getSessionId(),
+      workdir: this.originalWorkdir,
+    };
+  }
+
   public getWorkdir(): string {
     const workdir = this.container.get<string>("Workdir") ?? process.cwd();
     if (existsSync(workdir)) {
@@ -820,11 +836,15 @@ export class AIManager {
       resetContentEventState();
 
       // 10. Log OTEL event
-      logOTelEvent("compaction", {
-        beforeTokens: String(messagesToCompact.length),
-        afterTokens: "1",
-        model: compactModel,
-      }).catch(() => {});
+      logOTelEvent(
+        "compaction",
+        {
+          beforeTokens: String(messagesToCompact.length),
+          afterTokens: "1",
+          model: compactModel,
+        },
+        { sessionId: sessionIdAtStart, workdir: this.originalWorkdir },
+      ).catch(() => {});
 
       // 11. Run SessionStart hooks (existing behavior)
       if (this.hookManager) {
@@ -1713,9 +1733,13 @@ ${question}`;
           lastUserMessage?.blocks.find((b) => b.type === "text")?.content || "";
 
         // Log user_prompt event
-        logOTelEvent("user_prompt", {
-          prompt_length: String(userPromptText.length),
-        }).catch(() => {}); // Non-blocking
+        logOTelEvent(
+          "user_prompt",
+          {
+            prompt_length: String(userPromptText.length),
+          },
+          this.telemetryContext,
+        ).catch(() => {}); // Non-blocking
       }
 
       // Apply allowed rules for the initial call
@@ -1975,30 +1999,36 @@ ${question}`;
 
           // Content-level events (opt-in): the system prompt and tool schemas,
           // deduped by hash inside — a no-op unless OTEL_LOG_TOOL_CONTENT is on.
-          logRequestContentEvents({
-            systemPrompt:
-              typeof callAgentOptions.systemPrompt === "string"
-                ? callAgentOptions.systemPrompt
+          logRequestContentEvents(
+            {
+              systemPrompt:
+                typeof callAgentOptions.systemPrompt === "string"
+                  ? callAgentOptions.systemPrompt
+                  : undefined,
+              toolsSchema: callAgentOptions.tools
+                ? JSON.stringify(callAgentOptions.tools)
                 : undefined,
-            toolsSchema: callAgentOptions.tools
-              ? JSON.stringify(callAgentOptions.tools)
-              : undefined,
-          }).catch(() => {}); // Non-blocking
+            },
+            this.telemetryContext,
+          ).catch(() => {}); // Non-blocking
 
           llmRequestStartMs = Date.now();
           const result = await aiService.callAgent(callAgentOptions);
 
           // Record the request in the metric families: count/duration always,
           // token kinds by model — the fleet-level view of cost and latency.
-          recordApiRequest({
-            model: model || this.getModelConfig().model || "",
-            durationMs: Date.now() - llmRequestStartMs,
-            success: true,
-            inputTokens: result.usage?.prompt_tokens,
-            outputTokens: result.usage?.completion_tokens,
-            cacheReadTokens: result.usage?.cache_read_input_tokens,
-            cacheCreationTokens: result.usage?.cache_creation_input_tokens,
-          });
+          recordApiRequest(
+            {
+              model: model || this.getModelConfig().model || "",
+              durationMs: Date.now() - llmRequestStartMs,
+              success: true,
+              inputTokens: result.usage?.prompt_tokens,
+              outputTokens: result.usage?.completion_tokens,
+              cacheReadTokens: result.usage?.cache_read_input_tokens,
+              cacheCreationTokens: result.usage?.cache_creation_input_tokens,
+            },
+            this.telemetryContext,
+          );
           llmRequestStartMs = undefined;
 
           if (result.stream_fallback && assistantMessageCreated) {
@@ -2315,19 +2345,26 @@ ${question}`;
           // Record a request that was in flight when it failed — it consumed
           // wall clock and is exactly what the error rate is meant to capture.
           if (llmRequestStartMs !== undefined) {
-            recordApiRequest({
-              model: model || this.getModelConfig().model || "",
-              durationMs: Date.now() - llmRequestStartMs,
-              success: false,
-            });
+            recordApiRequest(
+              {
+                model: model || this.getModelConfig().model || "",
+                durationMs: Date.now() - llmRequestStartMs,
+                success: false,
+              },
+              this.telemetryContext,
+            );
           }
 
           // Log error event
-          logOTelEvent("error", {
-            error_type:
-              error instanceof Error ? error.constructor.name : "Unknown",
-            message: error instanceof Error ? error.message : String(error),
-          }).catch(() => {}); // Non-blocking
+          logOTelEvent(
+            "error",
+            {
+              error_type:
+                error instanceof Error ? error.constructor.name : "Unknown",
+              message: error instanceof Error ? error.message : String(error),
+            },
+            this.telemetryContext,
+          ).catch(() => {}); // Non-blocking
 
           // Finalize any streaming text/reasoning blocks so the UI stops ticking
           // its in-progress timer (e.g. when the request is aborted mid-thought).

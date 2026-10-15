@@ -17,9 +17,13 @@ const { recordLinesChanged } = vi.hoisted(() => ({
 vi.mock("@/telemetry/metrics.js", () => ({ recordLinesChanged }));
 
 const baseContext = {
+  sessionId: "session-1",
   workdir: "/repo/worktree",
   taskManager: {} as unknown as TaskManager,
 } as ToolContext;
+
+/** The standard-attribute context every record carries for this base context. */
+const baseRecordContext = { sessionId: "session-1", workdir: "/repo/worktree" };
 
 /** A manager with one tool that returns whatever result the test hands it. */
 function buildManager(result: ToolResult): ToolManager {
@@ -74,10 +78,10 @@ describe("ToolManager line-delta metric", () => {
 
     await manager.execute("Edit", {}, baseContext);
 
-    expect(recordLinesChanged).toHaveBeenCalledWith({
-      added: 12,
-      removed: 3,
-    });
+    expect(recordLinesChanged).toHaveBeenCalledWith(
+      { added: 12, removed: 3 },
+      baseRecordContext,
+    );
   });
 
   it("stays silent for a tool that reports no line delta", async () => {

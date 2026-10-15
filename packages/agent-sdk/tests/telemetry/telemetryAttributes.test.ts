@@ -26,7 +26,7 @@ vi.mock("@/utils/globalLogger.js", () => ({
   },
 }));
 
-import { getTelemetryAttributes } from "../../src/telemetry/instrumentation.js";
+import { getTelemetryAttributes } from "../../src/telemetry/attributes.js";
 
 describe("getTelemetryAttributes", () => {
   beforeEach(() => {

@@ -21,9 +21,13 @@ vi.mock("@/telemetry/metrics.js", () => ({
 }));
 
 const baseContext = {
+  sessionId: "session-1",
   workdir: "/repo/worktree",
   taskManager: {} as unknown as TaskManager,
 } as ToolContext;
+
+/** The standard-attribute context every record carries for this base context. */
+const baseRecordContext = { sessionId: "session-1", workdir: "/repo/worktree" };
 
 /** A manager with one tool that returns whatever result the test hands it. */
 function buildManager(name: string, result: ToolResult): ToolManager {
@@ -80,10 +84,10 @@ describe("ToolManager creation counters", () => {
       baseContext,
     );
 
-    expect(recordToolActivity).toHaveBeenCalledWith({
-      commits: true,
-      pullRequests: false,
-    });
+    expect(recordToolActivity).toHaveBeenCalledWith(
+      { commits: true, pullRequests: false },
+      baseRecordContext,
+    );
   });
 
   it("records the pull request a successful Bash call created", async () => {
@@ -91,10 +95,10 @@ describe("ToolManager creation counters", () => {
 
     await manager.execute("Bash", { command: "glab mr create" }, baseContext);
 
-    expect(recordToolActivity).toHaveBeenCalledWith({
-      commits: false,
-      pullRequests: true,
-    });
+    expect(recordToolActivity).toHaveBeenCalledWith(
+      { commits: false, pullRequests: true },
+      baseRecordContext,
+    );
   });
 
   it("records nothing for a successful call that created neither", async () => {
@@ -102,10 +106,10 @@ describe("ToolManager creation counters", () => {
 
     await manager.execute("Bash", { command: "npm test" }, baseContext);
 
-    expect(recordToolActivity).toHaveBeenCalledWith({
-      commits: false,
-      pullRequests: false,
-    });
+    expect(recordToolActivity).toHaveBeenCalledWith(
+      { commits: false, pullRequests: false },
+      baseRecordContext,
+    );
     expect(recordLinesChanged).not.toHaveBeenCalled();
   });
 

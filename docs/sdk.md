@@ -1580,7 +1580,7 @@ helper 命令跑在 shell 里（Windows 下是 Git Bash，与 hook 一致），s
 
 ### 指标 (Metrics) {#otel-metrics}
 
-指标回答的是车队级问题——哪个模型在吃预算、用量是否在涨、错误率有没有变。命名稳定在 `wave.*` 下，归属属性刻意保持低基数：只有模型 id、token 类型与行数方向，**不含提示词、文件路径或任何内容级数据**。
+指标回答的是车队级问题——哪个模型在吃预算、用量是否在涨、错误率有没有变。命名稳定在 `wave.*` 下，每个数据点在家族属性（模型 id、token 类型、行数方向）之外还会带上下面那套标准归属属性；属性面刻意保持低基数，**不含提示词、文件路径或任何内容级数据**。
 
 | 指标                 | 类型   | 说明                    | 归属属性                                                         |
 | -------------------- | ------ | ----------------------- | ---------------------------------------------------------------- |
@@ -1598,18 +1598,41 @@ helper 命令跑在 shell 里（Windows 下是 Git Bash，与 hook 一致），s
 - **创建动作按调用判定**：`wave.commits` / `wave.pull_requests` 只看这次工具调用是否**成功创建**了提交 / PR——对齐 Claude Code 的 `commit.count` / `pull_request.count` 口径（不看是否被合并、不看后续改动）。判定不询问任何 Git 托管平台，因此私有化 GitLab 与 GitHub 同等成立；一次调用最多计一次，失败的调用不计。
 - **进程级累加**：指标按进程累加，不随单个会话结束而重置；压缩（compaction）后 token 继续累加在同一计数器上。
 
+### 归属属性 (Attributes) {#otel-attributes}
+
+**每条指标数据点与每条事件**都带同一组标准属性，接入方据此按人、按会话、按团队切片，而不是只能看全局总量。开关名与 Claude Code 一致，同名键也可写在 `monitoring.telemetry` 下（camelCase：`includeSessionId` / `includeResourceAttributes` / `includeRepository`）。
+
+| 属性                                                                                       | 何时带上                   | 开关（默认）                                     |
+| ------------------------------------------------------------------------------------------ | -------------------------- | ------------------------------------------------ |
+| `session.id`                                                                               | 指标数据点                 | `OTEL_METRICS_INCLUDE_SESSION_ID`（开）          |
+| `session.id`                                                                               | 每条事件                   | 恒带（事件面不受开关影响）                       |
+| `user.id`                                                                                  | 每条记录                   | 恒带（未登录时为本机持久匿名 id）                |
+| `user.email`                                                                               | 每条记录（已认证且有邮箱） | 恒带                                             |
+| `terminal.type`                                                                            | 每条记录（探测到时）       | 恒带                                             |
+| `service.version` / `service.name` / `os.type` / `host.arch`                               | 遥测资源                   | 恒带                                             |
+| `OTEL_RESOURCE_ATTRIBUTES` 里的键                                                          | 遥测资源 + 指标数据点      | `OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES`（开） |
+| `vcs.repository.url.full` / `vcs.owner.name` / `vcs.repository.name` / `vcs.provider.name` | 每条记录                   | `OTEL_METRICS_INCLUDE_REPOSITORY`（**关**）      |
+
+- **`session.id` 是逐条记录的属性**：长驻宿主（daemon、桌面端远程主机）在一个进程里承载多个会话，一个进程共享的 resource 无法表达「这条记录属于哪个会话」，所以它挂在数据点/事件上。多会话并发时各记录的归属互不串味。
+- **`OTEL_RESOURCE_ATTRIBUTES` 会投影到数据点**：`OTEL_RESOURCE_ATTRIBUTES="department.name=infra"` 这类自定义标签既进遥测资源，也直接落在每个指标数据点上——即使收集器不把资源属性落成序列标签，按团队过滤在指标侧依然成立。
+- **仓库维度默认关闭**：`OTEL_METRICS_INCLUDE_REPOSITORY=1` 时从会话工作目录的 `origin` remote 派生上述四个键（`provider.name` 为 `github` / `gitlab` / `unknown`）；**远端 URL 里的凭据会被剥掉**，本地路径不出现在遥测里；目录不是 git 仓库或没有 `origin` 时整组不带。
+- **`service.version` 取构建产物自身的版本**：不再依赖 `npm_package_version`（打包后的宿主没有这个环境变量，会退化成 `unknown` 并把同一车队拆成多条序列）。
+- **刻意与 Claude Code 不同的地方**：不额外提供 `app.version`（版本已在遥测资源里）；身份属性固定为 `user.id` + `user.email`，我们账号体系里没有 `account_uuid` / `organization.id`，不造字段；宿主入口标识（Claude Code 的 `app.entrypoint`）尚未实现，见[功能规格说明：OpenTelemetry 集成](/specs/enterprise/opentelemetry)。
+
 ### 事件日志 (Event Logging) {#otel-events}
 
 Wave 在关键会话生命周期节点记录结构化事件：
 
-| 事件            | 触发时机     | 关键属性                                 |
-| --------------- | ------------ | ---------------------------------------- |
-| `session_start` | 会话启动     | `sessionId`、`model`、`workdir`          |
-| `session_end`   | 会话结束     | `duration`、`totalTokens`、`exitReason`  |
-| `user_prompt`   | 用户发送消息 | `prompt_length`、`prompt`（若启用）      |
-| `tool_decision` | 工具权限决策 | `tool_name`、`decision`、`source`        |
-| `compaction`    | 自动压缩触发 | `beforeTokens`、`afterTokens`、`model`   |
-| `error`         | 错误发生     | `error_type`、`message`、`stack`（截断） |
+| 事件            | 触发时机     | 关键属性                                               |
+| --------------- | ------------ | ------------------------------------------------------ |
+| `session_start` | 会话启动     | `model`、`workdir`（会话由标准属性 `session.id` 表达） |
+| `session_end`   | 会话结束     | `duration`、`totalTokens`、`exitReason`                |
+| `user_prompt`   | 用户发送消息 | `prompt_length`、`prompt`（若启用）                    |
+| `tool_decision` | 工具权限决策 | `tool_name`、`decision`、`source`                      |
+| `compaction`    | 自动压缩触发 | `beforeTokens`、`afterTokens`、`model`                 |
+| `error`         | 错误发生     | `error_type`、`message`、`stack`（截断）               |
+
+上表是每个事件自己的字段；**每条事件另外都带一组标准归属属性**（`session.id`、身份、`terminal.type`，以及开启时的 `vcs.repository.*`），见上面的「归属属性」。`session.id` 因此不是 `session_start` 独有的字段——同一进程里的多个会话，靠它把各自的事件区分开。
 
 ### PII 保护 {#otel-privacy}
 
@@ -1617,6 +1640,8 @@ Wave 在关键会话生命周期节点记录结构化事件：
 
 - `OTEL_LOG_USER_PROMPTS=1`：在事件中包含用户提示文本
 - `OTEL_LOG_TOOL_CONTENT=1`：在事件中包含工具输入/输出内容
+
+与提示内容无关、且**默认就带**的归属属性是：账号 id 与邮箱（已认证时；未登录时用本机持久匿名 id，不含 PII）、会话 id、终端类型，以及部署方自己通过 `OTEL_RESOURCE_ATTRIBUTES` 声明的标签。仓库维度（`vcs.repository.*`）默认关闭；`session.id` 若要从指标侧去掉，设 `OTEL_METRICS_INCLUDE_SESSION_ID=0`。
 
 ### 可靠性保障 {#otel-reliability}
 

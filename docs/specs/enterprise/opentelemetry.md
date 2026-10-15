@@ -1,6 +1,6 @@
 ---
 name: "OpenTelemetry 集成"
-description: "OpenTelemetry 指标与日志插桩，支持 console 与 OTLP 导出器与可轮换的出站头"
+description: "OpenTelemetry 指标与日志插桩，支持 console 与 OTLP 导出器、可轮换的出站头与统一的标准归属属性面"
 order: 30
 ---
 
@@ -42,7 +42,7 @@ order: 30
 - 会话类：`wave.sessions`（计数）
 - 产出类：`wave.lines.changed`（计数，按 `direction`：added / removed，来源为编辑类工具的执行结果）、`wave.commits`（计数，来源为经由工具成功创建提交的动作）、`wave.pull_requests`（计数，PR 与 MR 合入同一计数，来源为经由 shell 命令或 MCP 工具成功发起创建 PR/MR 的动作）
 
-其中 `wave.commits` / `wave.pull_requests` 对齐 Claude Code 的 `commit.count` / `pull_request.count` 口径：**只认「经由工具、且成功」的创建动作**，不看结果是否被合并、不依赖任何托管平台（私有化 GitLab 与 GitHub 同等成立），也不携带归属属性。
+其中 `wave.commits` / `wave.pull_requests` 对齐 Claude Code 的 `commit.count` / `pull_request.count` 口径：**只认「经由工具、且成功」的创建动作**，不看结果是否被合并、不依赖任何托管平台（私有化 GitLab 与 GitHub 同等成立），也不按托管平台或仓库拆分序列；标准归属属性按「统一的归属属性面」一节统一附带。
 
 **验收场景**：
 
@@ -55,7 +55,63 @@ order: 30
 7. **假设** OTEL 指标已启用，**当** agent 经由 Bash 工具成功创建了一个提交（含 `git -C <dir> commit`、前导环境变量赋值、`--amend`、以及 `git add -A && git commit -m x` 这类复合命令）时，**则** `wave.commits` 递增一次；一次工具调用无论涉及多少个提交动作，最多只计一次。
 8. **假设** 创建提交的命令执行失败（非 0 退出），**则** `wave.commits` 不递增；由脚本内部或非提交类命令（如 `git merge`）间接产生的提交也不计——口径与 Claude Code 一致，只认「经由工具、且成功」的建提交动作。
 9. **假设** OTEL 指标已启用，**当** agent 经由 shell 命令（如 `gh pr create`、`glab mr create`）或 MCP 的建 PR/MR 工具成功创建了一个 PR 或 MR 时，**则** `wave.pull_requests` 递增一次；创建失败的调用不计；PR 与 MR 不作区分，同一个计数。
-10. **假设** 这两个指标已启用，**则** 它们不携带归属属性（不按模型、仓库或人拆分），也不依赖任何 Git 托管平台的 API 或凭据——私有化 GitLab 与公有 GitHub 场景下行为一致。
+10. **假设** 这两个指标已启用，**则** 它们不带模型维度、也不因托管平台不同而分裂序列，并且不依赖任何 Git 托管平台的 API 或凭据——私有化 GitLab 与公有 GitHub 场景下行为一致；标准归属属性（会话与身份）按统一规则附带。
+
+---
+
+### 用户故事：统一的归属属性面（对齐 Claude Code 的标准属性，优先级：P1）
+
+作为把 Wave 接入企业度量平台的接入方，我希望**每条**指标数据点与**每条**事件都自动带上同一组低基数归属属性（会话、身份、资源自定义属性），以便在收集器侧按人、按会话、按团队切片，把用量摊到团队与成本中心，而不是只能看全局总量、或只有少数事件能归属到会话。
+
+**为什么是这个优先级**：属性决定了指标「能不能用」——没有会话标识的指标只能看总量，没有身份属性就无法做成本分摊。而长驻宿主（daemon、桌面端远程主机）在同一进程里承载多个会话，缺了会话标识的事件在收集器里无法归属到具体会话（现状是只有 `session_start` 带会话标识）。这也是 Claude Code 的做法：标准属性对**所有**指标与事件生效。
+
+**独立测试**：在同一个进程里跑两个会话（例如 daemon 承载两个会话），导出到收集器，验证每条记录都带 `session.id` 且各自归属正确的会话；再设 `OTEL_RESOURCE_ATTRIBUTES="team=infra"`，验证该键在指标侧可用。
+
+**属性面（API 契约）**：
+
+默认生效：
+
+- `session.id`：每条指标数据点与每条事件都带，同一会话内取值一致、同进程内不同会话互不串味；指标侧由开关 `OTEL_METRICS_INCLUDE_SESSION_ID` 控制（默认开），事件面恒带。
+- 身份：`user.id` 与 `user.email`（有则带）——与事件日志共用同一套归属属性构造：已认证时用账号 id 与邮箱，未认证时用本机持久匿名 id（不含 PII）。指标与事件口径一致，恒带。
+- `terminal.type`：从终端环境探测得到的终端类型，探测不到则不带。
+- 遥测资源：接入 `OTEL_RESOURCE_ATTRIBUTES` 机制（接入方可用它放自己的团队 / 部门标识），并把这些键投影到指标数据点属性（默认开，开关 `OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES`）；资源层始终保留。
+- `service.version`：遥测资源里的版本号取构建期注入的真实版本，不再因取值 `unknown` 让服务端按版本分裂序列。
+
+按需开启（默认关，独立开关控基数）：
+
+- 仓库维度：`vcs.repository.url.full` / `vcs.owner.name` / `vcs.repository.name` / `vcs.provider.name`（开关 `OTEL_METRICS_INCLUDE_REPOSITORY`，默认关，对齐 Claude Code 默认）——从会话工作目录的 `origin` remote 派生，**不落本地绝对路径**；不是 git 仓库或没有 `origin` 时整组不带。
+
+开关在 `~/.wave/settings.json` 的 `monitoring.telemetry` 下也有对应的 camelCase 键（`includeSessionId` / `includeResourceAttributes` / `includeRepository`），与既有 `logUserPrompts` 一致；环境变量优先。
+
+**与 Claude Code 的刻意差异**：不新增 `app.version` 属性——版本已在遥测资源里，加第二个版本属性只是重复；身份属性固定为 `user.id` + `user.email`（我们账号体系没有 `account_uuid` / `organization.id`，不造字段）。
+
+**验收场景**：
+
+1. **假设** 指标已启用，**当**任一指标记录一次时，**则** 该数据点带 `session.id` 与身份属性（`user.id`，已认证时含 `user.email`）。
+2. **假设** 事件已启用，**当**任一事件（含 `compaction` / `tool_decision` / `user_prompt` / `error`）记录时，**则** 该事件带 `session.id` 与身份属性，而不只是 `session_start` 带。
+3. **假设** 同一进程里同时存在两个会话（daemon 承载多会话），**当** 两个会话各自记录指标与事件时，**则** 每条记录归属自己的 `session.id`，不出现串味。
+4. **假设** `OTEL_METRICS_INCLUDE_SESSION_ID=0`，**当**记录指标时，**则** 指标不带 `session.id`；事件面不受该开关影响。
+5. **假设** 设了 `OTEL_RESOURCE_ATTRIBUTES="department=infra,team.id=42"`，**当**遥测导出时，**则** 这些键出现在遥测资源里，且指标数据点属性里也带同样的键（数据点投影与收集器是否把资源属性落成序列标签无关）；`OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES=0` 时只保留在资源层。
+6. **假设** 读取遥测资源里的 `service.version`，**当**从任意安装形态（非 npm 脚本启动、打包后的宿主）运行时，**则** 是真实版本号，不出现 `unknown`。
+7. **假设** `OTEL_METRICS_INCLUDE_REPOSITORY=1` 且会话工作目录是带 `origin` 的 git 仓库，**当**记录指标与事件时，**则** 带上 `vcs.repository.*` 四个键（`url.full` 为远端 URL，`owner.name` / `repository.name` 从 URL 解析，`provider.name` 为 `github` / `gitlab` / `unknown`）；仓库的本地路径不出现在遥测里。
+8. **假设** `OTEL_METRICS_INCLUDE_REPOSITORY` 未开启（默认）或工作目录不是 git 仓库，**则** 不产生任何 `vcs.*` 键——默认配置下遥测不泄露内部仓库坐标。
+9. **假设** 遥测启用但未认证，**当**记录指标时，**则** 身份属性为匿名 id（每机一个、跨会话稳定），不出现空值或本机路径。
+
+---
+
+### 用户故事：宿主入口标识（优先级：P2）
+
+作为接入方，我希望遥测里能区分一条记录来自哪个宿主入口（CLI / 桌面端 / VS Code / JetBrains / 远程主机），以便判断各端的使用分布与问题面，而不是所有端混成一个量。
+
+**为什么是这个优先级**：这是属性面里唯一需要跨宿主改动的一项——SDK 目前没有「宿主是谁」的概念，取值必须由宿主自己声明（宿主经 stdio 协议把客户端标识交给 SDK）；不配也能用，因此排在其他属性之后。
+
+**独立测试**：分别从 CLI、桌面端（`--stdio`）、VS Code 各跑一次会话，验证事件里 `app.entrypoint` 分别是各端的取值；未声明标识的运行形态不带该属性。
+
+**验收场景**：
+
+1. **假设** 宿主在创建 agent 时声明了入口标识，**当**记录遥测时，**则** 事件带 `app.entrypoint`，取值为该宿主声明的标识（如 `cli` / `desktop` / `vscode` / `jetbrains`）；指标在开关开启时同样带上。
+2. **假设** 宿主未声明标识（直接用 SDK、或旧版宿主），**当**记录遥测时，**则** 不带 `app.entrypoint`（不猜、不填默认值），其余属性照常。
+3. **假设** `OTEL_METRICS_INCLUDE_ENTRYPOINT` 未开启（默认关，对齐 Claude Code），**当**记录指标时，**则** 指标不带该属性；事件面不受该开关影响。
 
 ---
 
@@ -69,7 +125,7 @@ order: 30
 
 **验收场景**：
 
-1. **假设** OTEL 日志已启用，**当**会话开始时，**则**记录 `session_start` 事件，包含 sessionId、model 和 workdir。
+1. **假设** OTEL 日志已启用，**当**会话开始时，**则**记录 `session_start` 事件，包含 model 和 workdir，并按标准属性面带 `session.id`。
 2. **假设** OTEL 日志已启用，**当** agent 自动压缩对话时，**则**记录 `compaction` 事件，包含压缩前后的 token 计数。
 3. **假设** OTEL 日志已启用，**当**工具权限被拒绝时，**则**记录 `tool_decision` 事件，包含工具名称和决策。
 4. **假设** `OTEL_LOG_USER_PROMPTS=1`，**当**用户发送消息时，**则** `user_prompt` 事件包含实际提示文本。**假设** `OTEL_LOG_USER_PROMPTS` 未设置，**则**排除提示文本。
@@ -118,6 +174,9 @@ order: 30
 - **如果导出端点（OTLP 收集器 / 转发层入口）不可达会怎样？** 遥测导出应优雅失败并记录警告；agent 会话必须正常继续而不阻塞。
 - **如果出站头由命令提供、而该命令失败会怎样？** 遥测链路保持可用（沿用上次成功的头，否则只发静态头），失败以限流警告呈现；agent 会话必须不受影响，命令 stdout（即凭据）不得进入任何日志面。
 - **如果出站头命令来自仓库内的配置文件会怎样？** 该键被忽略（随仓库分发的配置不得指定本机要执行的命令），其它遥测设置仍生效。
+- **如果收集器不把遥测资源属性落成序列标签会怎样？** 归属属性仍可用：资源属性同时投影到指标数据点属性（默认开），按团队 / 部门过滤在指标侧成立；资源层始终保留原键。
+- **如果接入方在 `OTEL_RESOURCE_ATTRIBUTES` 里放了高基数取值（如会话 id）会怎样？** 序列数量由该取值决定，属于接入方配置选择；我们只为自己引入的维度提供基数开关（会话、仓库），不校验对方自定义的键值。
+- **如果仓库维度开关打开、而工作目录不是 git 仓库会怎样？** 整组 `vcs.*` 键都不出现（不填占位值）；会话照常运行。
 - **如果 OTEL 已启用但未配置导出器会怎样？** 不设置默认导出器。用户必须显式配置至少一个导出器。这避免在交互模式中意外的 stdout 污染。
 - **如果 console 导出器跑在结构化输出宿主（`--stdio` / `--print`）里会怎样？** console 在遥测初始化处被自动剥除（对齐 Claude Code 的 stream-json 处理），stdout 协议通道保持纯净；console 只在交互 TUI 下生效。
 - **如果配置里还留着早期版本的导出器值（`jsonl`、`tracesExporter` 整键）会怎样？** 认不出或已下架的取值被忽略并记录告警，其余遥测设置照常生效——不因为遗留配置使整个遥测初始化失败。

@@ -7,11 +7,9 @@
 
 import type { OTelEventName } from "../types/telemetry.js";
 import { createHash } from "node:crypto";
-import {
-  isInitialized,
-  getCurrentConfig,
-  getTelemetryAttributes,
-} from "./instrumentation.js";
+import { isInitialized, getCurrentConfig } from "./instrumentation.js";
+import { standardAttributes } from "./attributes.js";
+import type { StandardAttributeContext } from "./attributes.js";
 
 interface OTelLogger {
   emit: (logRecord: {
@@ -41,10 +39,17 @@ async function getOTelLogger(): Promise<OTelLogger | undefined> {
 
 /**
  * Logs a structured event via the OTEL logs API. Respects PII gates.
+ *
+ * `context` carries what the caller knows about the record (the session it
+ * belongs to, and its working directory); every event gets the standard
+ * attributes, not just `session_start` — one process hosts several sessions,
+ * so an event without `session.id` cannot be attributed to the turn it
+ * describes.
  */
 export async function logOTelEvent(
   eventName: OTelEventName,
   metadata: Record<string, string | undefined>,
+  context?: StandardAttributeContext,
 ): Promise<void> {
   if (!isInitialized()) return;
 
@@ -65,7 +70,11 @@ export async function logOTelEvent(
     body: eventName,
     attributes: {
       "event.name": eventName,
-      ...getTelemetryAttributes(),
+      ...standardAttributes({
+        sessionId: context?.sessionId,
+        workdir: context?.workdir,
+        includeRepository: config?.includeRepository,
+      }),
       ...attributes,
     },
   });
@@ -89,10 +98,13 @@ function hashContent(content: string): string {
  * once instead of on every request. Gated by `OTEL_LOG_TOOL_CONTENT` — with
  * the gate off this is a no-op, and the caller does not have to check.
  */
-export async function logRequestContentEvents(input: {
-  systemPrompt?: string;
-  toolsSchema?: string;
-}): Promise<void> {
+export async function logRequestContentEvents(
+  input: {
+    systemPrompt?: string;
+    toolsSchema?: string;
+  },
+  context?: StandardAttributeContext,
+): Promise<void> {
   if (!isInitialized()) return;
   const config = getCurrentConfig();
   if (!config?.logToolContent) return;
@@ -101,10 +113,14 @@ export async function logRequestContentEvents(input: {
     const hash = hashContent(input.systemPrompt);
     if (!seenSystemPromptHashes.has(hash)) {
       seenSystemPromptHashes.add(hash);
-      logOTelEvent("system_prompt", {
-        system_prompt_hash: hash,
-        system_prompt: input.systemPrompt,
-      }).catch(() => {});
+      logOTelEvent(
+        "system_prompt",
+        {
+          system_prompt_hash: hash,
+          system_prompt: input.systemPrompt,
+        },
+        context,
+      ).catch(() => {});
     }
   }
 
@@ -119,11 +135,15 @@ export async function logRequestContentEvents(input: {
           const hash = hashContent(JSON.stringify(tool));
           if (seenToolSchemaHashes.has(hash)) continue;
           seenToolSchemaHashes.add(hash);
-          logOTelEvent("tool_schema", {
-            tool_name: name,
-            tool_hash: hash,
-            tool_schema: JSON.stringify(tool),
-          }).catch(() => {});
+          logOTelEvent(
+            "tool_schema",
+            {
+              tool_name: name,
+              tool_hash: hash,
+              tool_schema: JSON.stringify(tool),
+            },
+            context,
+          ).catch(() => {});
         }
       }
     } catch {

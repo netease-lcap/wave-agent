@@ -383,11 +383,15 @@ export class HookManager {
         context.messageManager,
       );
 
-      logOTelEvent("tool_decision", {
-        tool_name: toolName,
-        decision: blocking ? "blocked" : "approved",
-        source: "hook",
-      }).catch(() => {}); // Non-blocking
+      logOTelEvent(
+        "tool_decision",
+        {
+          tool_name: toolName,
+          decision: blocking ? "blocked" : "approved",
+          source: "hook",
+        },
+        { sessionId: context.sessionId, workdir: context.workdir },
+      ).catch(() => {}); // Non-blocking
 
       return blocking
         ? this.formatToolHookMessage("PreToolUse", toolName, blocking)
