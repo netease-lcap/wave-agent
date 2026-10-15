@@ -1363,17 +1363,17 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 
 #### OTEL\_\* 变量（OpenTelemetry）
 
-| 变量                          | 描述                               |
-| ----------------------------- | ---------------------------------- |
-| `OTEL_ENABLED`                | 是否启用遥测（设为 `false` 禁用）  |
-| `OTEL_METRICS_EXPORTER`       | 指标导出目标（`console` / `otlp`） |
-| `OTEL_LOGS_EXPORTER`          | 日志导出目标（`console` / `otlp`） |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP 导出端点                      |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | 导出协议（`grpc` / `http`）        |
-| `OTEL_EXPORTER_OTLP_HEADERS`  | 导出附加头（`k=v,k2=v2`）          |
-| `OTEL_LOG_USER_PROMPTS`       | 是否记录用户 Prompt                |
-| `OTEL_LOG_TOOL_CONTENT`       | 是否记录工具调用内容               |
-| `OTEL_SHUTDOWN_TIMEOUT_MS`    | 关闭超时时间（毫秒）               |
+| 变量                          | 描述                                             |
+| ----------------------------- | ------------------------------------------------ |
+| `OTEL_ENABLED`                | 是否启用遥测（设为 `false` 禁用）                |
+| `OTEL_METRICS_EXPORTER`       | 指标导出目标（`console` / `otlp` / `none` 关闭） |
+| `OTEL_LOGS_EXPORTER`          | 日志导出目标（`console` / `otlp` / `none` 关闭） |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP 导出端点                                    |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | 导出协议（`grpc` / `http`）                      |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | 导出附加头（`k=v,k2=v2`）                        |
+| `OTEL_LOG_USER_PROMPTS`       | 是否记录用户 Prompt                              |
+| `OTEL_LOG_TOOL_CONTENT`       | 是否记录工具调用内容                             |
+| `OTEL_SHUTDOWN_TIMEOUT_MS`    | 关闭超时时间（毫秒）                             |
 
 ### 工具权限 {#settings-permissions}
 
@@ -1527,6 +1527,7 @@ Wave 支持 OpenTelemetry 可观测性标准，提供结构化的遥测数据（
 Wave 支持为每种信号类型（Metrics、Logs）配置不同的导出目标：
 
 - **OTLP 导出器**：将遥测数据发送到标准 OTLP 收集器（Grafana、Datadog 等兼容后端均可）。通过 `OTEL_EXPORTER_OTLP_ENDPOINT` 设置收集器地址；端点即基址，指标发往 `<endpoint>/v1/metrics`、日志发往 `<endpoint>/v1/logs`。
+- **`none`（显式关闭）**：某类信号的环境变量设为 `none` 时该类信号不导出，且**不**回退到 `settings.json` 里配的导出器——用来在一台已配好遥测的机器上单独关掉某一类信号；另一类信号不受影响，两类都关等于遥测不启用。
 - **Console 导出器**：把遥测以可读形式直接打印到终端（对齐 Claude Code 的 `console` 导出器）。交互 TUI 下输出呈现在界面上方、不打碎界面；**只在交互模式生效**——`--stdio` / `--print` 宿主的 stdout 是协议/结果通道，console 导出器在那里会被自动剥除。旧 `jsonl` 文件导出器已移除，配置里遗留的 `"jsonl"` 值会被忽略并告警。
 
 **配置方式**：通过 `OTEL_*` 环境变量或 `settings.json`（以及服务端下发的托管配置）中的 `monitoring.telemetry` 字段配置，环境变量优先。

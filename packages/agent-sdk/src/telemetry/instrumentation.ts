@@ -125,7 +125,13 @@ function resolveExporter(
   if (envValue === "console" || envValue === "otlp") {
     return envValue;
   }
-  if (envValue && envValue !== "none") {
+  // `none` is an explicit "do not export this signal", not an unknown value:
+  // it must win over the configured exporter instead of falling back to it.
+  if (envValue === "none") {
+    logger?.debug(`${envVar}=none: ${signal} export disabled`);
+    return undefined;
+  }
+  if (envValue) {
     logger?.warn(`Unknown OTEL exporter: ${envValue}, ignoring`);
   }
 

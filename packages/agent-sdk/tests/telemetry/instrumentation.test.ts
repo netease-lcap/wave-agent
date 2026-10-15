@@ -328,14 +328,50 @@ describe("instrumentation", () => {
       );
     });
 
-    it("should treat OTEL_METRICS_EXPORTER=none as unset (fall to config)", () => {
+    it("should treat OTEL_METRICS_EXPORTER=none as an explicit opt-out", () => {
       process.env.OTEL_METRICS_EXPORTER = "none";
 
       const config = instrumentation.resolveTelemetryConfig({
         metricsExporter: "console",
       });
 
-      expect(config.metricsExporter).toBe("console");
+      // `none` wins over the configured exporter — falling back to `console`
+      // here would send a signal the user explicitly turned off.
+      expect(config.metricsExporter).toBeUndefined();
+    });
+
+    it("should treat OTEL_LOGS_EXPORTER=none as an explicit opt-out", () => {
+      process.env.OTEL_LOGS_EXPORTER = "none";
+
+      const config = instrumentation.resolveTelemetryConfig({
+        logsExporter: "otlp",
+      });
+
+      expect(config.logsExporter).toBeUndefined();
+    });
+
+    it("should leave the other signal alone when one is opted out", () => {
+      process.env.OTEL_METRICS_EXPORTER = "none";
+
+      const config = instrumentation.resolveTelemetryConfig({
+        metricsExporter: "otlp",
+        logsExporter: "otlp",
+      });
+
+      expect(config.metricsExporter).toBeUndefined();
+      expect(config.logsExporter).toBe("otlp");
+    });
+
+    it("should leave telemetry disabled when both signals are opted out", () => {
+      process.env.OTEL_METRICS_EXPORTER = "none";
+      process.env.OTEL_LOGS_EXPORTER = "none";
+
+      const config = instrumentation.resolveTelemetryConfig({
+        metricsExporter: "otlp",
+        logsExporter: "otlp",
+      });
+
+      expect(config.enabled).toBe(false);
     });
 
     it("should use logs exporter from env var", () => {
