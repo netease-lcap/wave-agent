@@ -5,7 +5,7 @@
  */
 
 /** Exporter target for telemetry signals */
-export type ExporterTarget = "jsonl" | "otlp";
+export type ExporterTarget = "console" | "otlp";
 
 /** OTLP transport protocol */
 export type OTLPProtocol = "http/protobuf" | "http/json" | "grpc";

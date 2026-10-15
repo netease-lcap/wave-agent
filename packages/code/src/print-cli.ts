@@ -5,6 +5,7 @@ import {
   hasNewCommits,
   getDefaultRemoteBranch,
   validateWorktreeRemovalPath,
+  setTelemetryStdoutProtected,
   type WorktreeSession,
 } from "wave-agent-sdk";
 import { displayUsageSummary } from "./utils/usageSummary.js";
@@ -35,6 +36,9 @@ function displayTimingInfo(startTime: Date, showStats: boolean): void {
 }
 
 export async function startPrintCli(options: PrintCliOptions): Promise<void> {
+  // stdout carries the printed result here; console telemetry exporters would
+  // mix structured telemetry into it — strip them at config resolution.
+  setTelemetryStdoutProtected(true);
   const startTime = new Date();
   const {
     restoreSessionId,

@@ -1,7 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
-import type { ReadableSpan } from "@opentelemetry/sdk-trace-base";
-import type { ReadableLogRecord } from "@opentelemetry/sdk-logs";
 
 // Mock globalLogger to suppress output
 vi.mock("@/utils/globalLogger.js", () => ({
@@ -65,6 +63,8 @@ function setupMocks() {
 
   const mockOTLPTraceExporter = vi.fn();
   const mockOTLPLogExporter = vi.fn();
+  const mockConsoleSpanExporter = vi.fn();
+  const mockConsoleLogRecordExporter = vi.fn();
 
   const mockResource = {
     defaultResource: vi.fn().mockReturnValue({
@@ -76,6 +76,7 @@ function setupMocks() {
   vi.doMock("@opentelemetry/sdk-trace-base", () => ({
     BasicTracerProvider: mockBasicTracerProvider,
     BatchSpanProcessor: mockBatchSpanProcessor,
+    ConsoleSpanExporter: mockConsoleSpanExporter,
   }));
 
   vi.doMock("@opentelemetry/resources", () => mockResource);
@@ -99,6 +100,7 @@ function setupMocks() {
   vi.doMock("@opentelemetry/sdk-logs", () => ({
     LoggerProvider: mockLoggerProvider,
     BatchLogRecordProcessor: mockBatchLogRecordProcessor,
+    ConsoleLogRecordExporter: mockConsoleLogRecordExporter,
   }));
 
   vi.doMock("@opentelemetry/exporter-trace-otlp-http", () => ({
@@ -125,6 +127,8 @@ function setupMocks() {
     mockDiagSetLogger,
     mockOTLPTraceExporter,
     mockOTLPLogExporter,
+    mockConsoleSpanExporter,
+    mockConsoleLogRecordExporter,
     mockResource,
   };
 }
@@ -180,14 +184,14 @@ describe("instrumentation", () => {
     it("should read from settings config", () => {
       const config = instrumentation.resolveTelemetryConfig({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
         logsExporter: "otlp",
         endpoint: "http://localhost:4318",
         logUserPrompts: true,
         spanTtlMs: 60000,
       });
       expect(config.enabled).toBe(true);
-      expect(config.tracesExporter).toBe("jsonl");
+      expect(config.tracesExporter).toBe("console");
       expect(config.logsExporter).toBe("otlp");
       expect(config.endpoint).toBe("http://localhost:4318");
       expect(config.logUserPrompts).toBe(true);
@@ -204,7 +208,7 @@ describe("instrumentation", () => {
 
       const config = instrumentation.resolveTelemetryConfig({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
         logUserPrompts: false,
         spanTtlMs: 30000,
       });
@@ -243,7 +247,7 @@ describe("instrumentation", () => {
 
       const config = instrumentation.resolveTelemetryConfig({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
       expect(config.enabled).toBe(false);
 
@@ -252,7 +256,7 @@ describe("instrumentation", () => {
 
     it("should enable telemetry when exporters are configured", () => {
       const config = instrumentation.resolveTelemetryConfig({
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
       expect(config.enabled).toBe(true);
     });
@@ -262,11 +266,11 @@ describe("instrumentation", () => {
       process.env.OTEL_TRACES_EXPORTER = "unknown_exporter";
 
       const config = instrumentation.resolveTelemetryConfig({
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
 
-      // Falls through to config value since unknown is not jsonl/otlp
-      expect(config.tracesExporter).toBe("jsonl");
+      // Falls through to config value since unknown is not console/otlp
+      expect(config.tracesExporter).toBe("console");
 
       process.env = originalEnv;
     });
@@ -276,27 +280,27 @@ describe("instrumentation", () => {
       process.env.OTEL_TRACES_EXPORTER = "none";
 
       const config = instrumentation.resolveTelemetryConfig({
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
 
-      expect(config.tracesExporter).toBe("jsonl");
+      expect(config.tracesExporter).toBe("console");
 
       process.env = originalEnv;
     });
 
     it("should use logs exporter from env var", () => {
       const originalEnv = { ...process.env };
-      process.env.OTEL_LOGS_EXPORTER = "jsonl";
+      process.env.OTEL_LOGS_EXPORTER = "console";
 
       const config = instrumentation.resolveTelemetryConfig();
-      expect(config.logsExporter).toBe("jsonl");
+      expect(config.logsExporter).toBe("console");
 
       process.env = originalEnv;
     });
 
     it("should enable telemetry when only logs exporter configured", () => {
       const config = instrumentation.resolveTelemetryConfig({
-        logsExporter: "jsonl",
+        logsExporter: "console",
       });
       expect(config.enabled).toBe(true);
     });
@@ -684,7 +688,7 @@ describe("instrumentation", () => {
     it("should be idempotent — skip on second call", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
 
       expect(mocks.mockBasicTracerProvider).toHaveBeenCalledTimes(1);
@@ -692,7 +696,7 @@ describe("instrumentation", () => {
 
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
 
       expect(mocks.mockBasicTracerProvider).toHaveBeenCalledTimes(1);
@@ -702,7 +706,7 @@ describe("instrumentation", () => {
     it("should set isInitialized to true after successful init", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
       expect(instrumentation.isInitialized()).toBe(true);
     });
@@ -710,12 +714,12 @@ describe("instrumentation", () => {
     it("should set currentConfig after successful init", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
         endpoint: "http://localhost:4318",
       });
       const config = instrumentation.getCurrentConfig();
       expect(config).toBeDefined();
-      expect(config?.tracesExporter).toBe("jsonl");
+      expect(config?.tracesExporter).toBe("console");
       expect(config?.endpoint).toBe("http://localhost:4318");
     });
 
@@ -739,7 +743,7 @@ describe("instrumentation", () => {
       await expect(
         instrumentation.initializeTelemetry({
           enabled: true,
-          tracesExporter: "jsonl",
+          tracesExporter: "console",
         }),
       ).resolves.toBeUndefined();
 
@@ -806,8 +810,8 @@ describe("instrumentation", () => {
     it("should initialize with both JSONL exporters", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
-        logsExporter: "jsonl",
+        tracesExporter: "console",
+        logsExporter: "console",
       });
 
       expect(instrumentation.isInitialized()).toBe(true);
@@ -830,8 +834,8 @@ describe("instrumentation", () => {
       // later initializeTelemetry() would keep delegating to this dead one.
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
-        logsExporter: "jsonl",
+        tracesExporter: "console",
+        logsExporter: "console",
       });
 
       await instrumentation.shutdownTelemetry();
@@ -843,7 +847,7 @@ describe("instrumentation", () => {
     it("should unregister only the providers that were registered", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
 
       await instrumentation.shutdownTelemetry();
@@ -855,7 +859,7 @@ describe("instrumentation", () => {
     it("should call SDK shutdown when initialized", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
       expect(instrumentation.isInitialized()).toBe(true);
 
@@ -866,7 +870,7 @@ describe("instrumentation", () => {
     it("should reset initialized state after shutdown", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
       await instrumentation.shutdownTelemetry();
 
@@ -876,7 +880,7 @@ describe("instrumentation", () => {
     it("should be no-op if called twice", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
       await instrumentation.shutdownTelemetry();
       await instrumentation.shutdownTelemetry();
@@ -891,7 +895,7 @@ describe("instrumentation", () => {
 
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
 
       // Should not throw despite shutdown failing
@@ -914,8 +918,8 @@ describe("instrumentation", () => {
     it("should flush both providers without tearing them down", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
-        logsExporter: "jsonl",
+        tracesExporter: "console",
+        logsExporter: "console",
       });
 
       await instrumentation.flushTelemetry();
@@ -932,12 +936,12 @@ describe("instrumentation", () => {
     it("should leave telemetry initialized afterwards", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
       await instrumentation.flushTelemetry();
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
 
       // Still the first provider — nothing was rebuilt, nothing was skipped.
@@ -981,7 +985,7 @@ describe("instrumentation", () => {
     it("isInitialized returns true after init", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "jsonl",
+        tracesExporter: "console",
       });
       expect(instrumentation.isInitialized()).toBe(true);
     });
@@ -989,64 +993,61 @@ describe("instrumentation", () => {
     it("getCurrentConfig returns config after init", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        logsExporter: "jsonl",
+        logsExporter: "console",
         logUserPrompts: true,
       });
       const config = instrumentation.getCurrentConfig();
       expect(config).toBeDefined();
-      expect(config?.logsExporter).toBe("jsonl");
+      expect(config?.logsExporter).toBe("console");
       expect(config?.logUserPrompts).toBe(true);
     });
   });
 
-  describe("JSONL exporters", () => {
-    it("JsonlSpanExporter should export span data", async () => {
-      const { JsonlSpanExporter } = instrumentation;
-      const exporter = new JsonlSpanExporter("/tmp/test-spans.jsonl");
-
-      const mockSpan = {
-        name: "test-span",
-        spanContext: () => ({ traceId: "abc123", spanId: "def456" }),
-        parentSpanId: undefined,
-        startTime: [1, 0],
-        endTime: [2, 0],
-        status: { code: 0 },
-        attributes: { key: "value" },
-      };
-
-      const callback = vi.fn();
-      exporter.export([mockSpan as unknown as ReadableSpan], callback);
-
-      expect(callback).toHaveBeenCalledWith({ code: 0 });
+  describe("console exporter stdout protection", () => {
+    afterEach(() => {
+      instrumentation.setTelemetryStdoutProtected(false);
     });
 
-    it("JsonlLogExporter should export log data", async () => {
-      const { JsonlLogExporter } = instrumentation;
-      const exporter = new JsonlLogExporter("/tmp/test-logs.jsonl");
-
-      const mockLog = {
-        severityNumber: 9,
-        body: "compaction",
-        hrTime: [1, 0],
-        attributes: { "event.name": "compaction" },
-      };
-
-      const callback = vi.fn();
-      exporter.export([mockLog as unknown as ReadableLogRecord], callback);
-
-      expect(callback).toHaveBeenCalledWith({ code: 0 });
+    it("keeps console exporters by default (interactive hosts)", () => {
+      const config = instrumentation.resolveTelemetryConfig({
+        tracesExporter: "console",
+        logsExporter: "console",
+      });
+      expect(config.tracesExporter).toBe("console");
+      expect(config.logsExporter).toBe("console");
+      expect(config.enabled).toBe(true);
     });
 
-    it("JsonlSpanExporter shutdown resolves", async () => {
-      const { JsonlSpanExporter } = instrumentation;
-      const exporter = new JsonlSpanExporter();
-      await expect(exporter.shutdown()).resolves.toBeUndefined();
+    it("strips console exporters on protected stdout (--stdio / --print)", () => {
+      instrumentation.setTelemetryStdoutProtected(true);
+
+      const config = instrumentation.resolveTelemetryConfig({
+        tracesExporter: "console",
+        logsExporter: "console",
+      });
+      expect(config.tracesExporter).toBeUndefined();
+      expect(config.logsExporter).toBeUndefined();
+      expect(config.enabled).toBe(false);
     });
 
-    it("JsonlLogExporter forceFlush resolves", async () => {
-      const { JsonlLogExporter } = instrumentation;
-      const exporter = new JsonlLogExporter();
-      await expect(exporter.forceFlush()).resolves.toBeUndefined();
+    it("strips only console; otlp is unaffected", () => {
+      instrumentation.setTelemetryStdoutProtected(true);
+
+      const config = instrumentation.resolveTelemetryConfig({
+        tracesExporter: "otlp",
+        logsExporter: "console",
+        endpoint: "http://localhost:4318",
+      });
+      expect(config.tracesExporter).toBe("otlp");
+      expect(config.logsExporter).toBeUndefined();
+    });
+  });
+
+  describe("setTelemetryStdoutProtected", () => {
+    it("is exported for structured-output CLI entries", () => {
+      expect(typeof instrumentation.setTelemetryStdoutProtected).toBe(
+        "function",
+      );
     });
   });
 });

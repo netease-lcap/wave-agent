@@ -13,18 +13,9 @@ import type {
 } from "../types/telemetry.js";
 import { logger } from "../utils/globalLogger.js";
 import { createHeadersHelperProvider } from "./headersHelper.js";
-import * as fs from "node:fs";
 
-import type {
-  SpanExporter,
-  ReadableSpan,
-  BasicTracerProvider,
-} from "@opentelemetry/sdk-trace-base";
-import type {
-  LogRecordExporter,
-  ReadableLogRecord,
-  LoggerProvider,
-} from "@opentelemetry/sdk-logs";
+import type { BasicTracerProvider } from "@opentelemetry/sdk-trace-base";
+import type { LoggerProvider } from "@opentelemetry/sdk-logs";
 import {
   AuthService,
   getOrCreateAnonymousId,
@@ -62,15 +53,17 @@ let currentConfig: TelemetryConfig | undefined;
  */
 let headersProvider: HeadersProvider | undefined;
 
-/** Default telemetry file path */
-const DEFAULT_TELEMETRY_FILE = "~/.wave/telemetry.jsonl";
-
 /**
- * Resolve the telemetry file path, expanding ~ to home directory.
+ * Whether stdout is a structured channel in this host (`--stdio` JSON-RPC,
+ * `--print` result stream). The CLI entries turn this on before any agent
+ * exists; console exporters print to stdout and would corrupt those channels,
+ * so they are stripped at config resolution — same treatment as Claude Code's
+ * stream-json mode, which removes `console` from the exporter env vars.
  */
-function resolveTelemetryFilePath(): string {
-  const homeDir = process.env.HOME || process.env.USERPROFILE || "";
-  return DEFAULT_TELEMETRY_FILE.replace("~", homeDir);
+let stdoutProtected = false;
+
+export function setTelemetryStdoutProtected(value = true): void {
+  stdoutProtected = value;
 }
 
 /**
@@ -131,7 +124,7 @@ function resolveExporter(
 ): ExporterTarget | undefined {
   const envVar = `OTEL_${signal.toUpperCase()}_EXPORTER`;
   const envValue = process.env[envVar];
-  if (envValue === "jsonl" || envValue === "otlp") {
+  if (envValue === "console" || envValue === "otlp") {
     return envValue;
   }
   if (envValue && envValue !== "none") {
@@ -140,6 +133,22 @@ function resolveExporter(
 
   const configKey = `${signal}Exporter` as keyof TelemetryConfig;
   return config?.[configKey] as ExporterTarget | undefined;
+}
+
+/**
+ * Drop the console exporter on hosts whose stdout is a structured channel
+ * (`--stdio` / `--print`); see `setTelemetryStdoutProtected`.
+ */
+function stripConsoleOnProtectedStdout(
+  target: ExporterTarget | undefined,
+): ExporterTarget | undefined {
+  if (target === "console" && stdoutProtected) {
+    logger?.debug(
+      "console exporter stripped: this host's stdout is a structured channel",
+    );
+    return undefined;
+  }
+  return target;
 }
 
 /**
@@ -278,8 +287,12 @@ function resolveShutdownTimeoutMs(config?: Partial<TelemetryConfig>): number {
 export function resolveTelemetryConfig(
   settingsConfig?: Partial<TelemetryConfig>,
 ): TelemetryConfig {
-  const tracesExporter = resolveExporter("traces", settingsConfig);
-  const logsExporter = resolveExporter("logs", settingsConfig);
+  const tracesExporter = stripConsoleOnProtectedStdout(
+    resolveExporter("traces", settingsConfig),
+  );
+  const logsExporter = stripConsoleOnProtectedStdout(
+    resolveExporter("logs", settingsConfig),
+  );
 
   return {
     enabled:
@@ -341,97 +354,6 @@ function createOTLPLogExporter(config: TelemetryConfig) {
 }
 
 /**
- * JSONL Span Exporter — writes span data as JSON lines to a file.
- */
-class JsonlSpanExporter implements SpanExporter {
-  private filePath: string;
-
-  constructor(filePath?: string) {
-    this.filePath = filePath || resolveTelemetryFilePath();
-  }
-
-  export(
-    spans: ReadableSpan[],
-    resultCallback: (result: { code: number }) => void,
-  ): void {
-    try {
-      const lines = spans.map((span) => {
-        const record: Record<string, unknown> = {
-          type: "span",
-          span_name: span.name,
-          trace_id: span.spanContext().traceId,
-          span_id: span.spanContext().spanId,
-          parent_span_id: span.parentSpanContext?.spanId,
-          start_time: span.startTime,
-          end_time: span.endTime,
-          status: span.status.code,
-          attributes: span.attributes,
-        };
-        return JSON.stringify(record);
-      });
-      fs.appendFileSync(this.filePath, lines.join("\n") + "\n", "utf8");
-      resultCallback({ code: 0 });
-    } catch (error) {
-      logger?.warn("JSONL span export failed:", error);
-      resultCallback({ code: 1 });
-    }
-  }
-
-  shutdown(): Promise<void> {
-    return Promise.resolve();
-  }
-
-  forceFlush(): Promise<void> {
-    return Promise.resolve();
-  }
-}
-
-/**
- * JSONL Log Exporter — writes log records as JSON lines to a file.
- */
-class JsonlLogExporter implements LogRecordExporter {
-  private filePath: string;
-
-  constructor(filePath?: string) {
-    this.filePath = filePath || resolveTelemetryFilePath();
-  }
-
-  export(
-    logs: ReadableLogRecord[],
-    resultCallback: (result: { code: number }) => void,
-  ): void {
-    try {
-      const lines = logs.map((log) => {
-        const record: Record<string, unknown> = {
-          type: "log",
-          event_name: (log.attributes as Record<string, unknown>)?.[
-            "event.name"
-          ],
-          severity: log.severityNumber,
-          body: log.body,
-          timestamp: log.hrTime,
-          attributes: log.attributes,
-        };
-        return JSON.stringify(record);
-      });
-      fs.appendFileSync(this.filePath, lines.join("\n") + "\n", "utf8");
-      resultCallback({ code: 0 });
-    } catch (error) {
-      logger?.warn("JSONL log export failed:", error);
-      resultCallback({ code: 1 });
-    }
-  }
-
-  shutdown(): Promise<void> {
-    return Promise.resolve();
-  }
-
-  forceFlush(): Promise<void> {
-    return Promise.resolve();
-  }
-}
-
-/**
  * Initialize OpenTelemetry SDK with providers and exporters.
  * Idempotent — safe to call multiple times.
  *
@@ -485,9 +407,11 @@ export async function initializeTelemetry(
           createOTLPTraceExporter(currentConfig),
         ),
       );
-    } else if (tracesExporter === "jsonl") {
+    } else if (tracesExporter === "console") {
       spanProcessors.push(
-        new sdkTraceBase!.BatchSpanProcessor(new JsonlSpanExporter()),
+        new sdkTraceBase!.BatchSpanProcessor(
+          new sdkTraceBase!.ConsoleSpanExporter(),
+        ),
       );
     }
 
@@ -500,9 +424,11 @@ export async function initializeTelemetry(
           createOTLPLogExporter(currentConfig),
         ),
       );
-    } else if (logsExporter === "jsonl") {
+    } else if (logsExporter === "console") {
       logProcessors.push(
-        new sdkLogs!.BatchLogRecordProcessor(new JsonlLogExporter()),
+        new sdkLogs!.BatchLogRecordProcessor(
+          new sdkLogs!.ConsoleLogRecordExporter(),
+        ),
       );
     }
 
@@ -653,9 +579,6 @@ export function getCurrentConfig(): TelemetryConfig | undefined {
 export function isInitialized(): boolean {
   return initialized;
 }
-
-// Export JSONL exporters for testing
-export { JsonlSpanExporter, JsonlLogExporter };
 
 /**
  * Get telemetry attributes for the current session.

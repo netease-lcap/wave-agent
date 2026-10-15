@@ -6,7 +6,7 @@
  * the client sends an "initialize" request.
  */
 
-import { ensureRuntimeDeps } from "wave-agent-sdk";
+import { ensureRuntimeDeps, setTelemetryStdoutProtected } from "wave-agent-sdk";
 import { StdioServer } from "./stdio/stdioServer.js";
 import { createRemoteControlSinkFactory } from "./remote/remoteControlSink.js";
 import { logger } from "./utils/logger.js";
@@ -56,6 +56,10 @@ export function guardStdoutForJsonRpc(): void {
 
 export async function startStdioCli(): Promise<void> {
   guardStdoutForJsonRpc();
+  // stdout is the JSON-RPC channel here: console telemetry exporters would
+  // print onto it (OTel's console exporters use console.dir, which
+  // guardStdoutForJsonRpc does not cover) — strip them at config resolution.
+  setTelemetryStdoutProtected(true);
   // Install the on-demand runtime dependencies (image codec + ripgrep) before
   // answering any RPC (see cli.tsx). Blocking here is what closes the race: the
   // host's `initialize` — and with it the webview's initial state — only lands
