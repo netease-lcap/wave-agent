@@ -1590,9 +1590,12 @@ helper 命令跑在 shell 里（Windows 下是 Git Bash，与 hook 一致），s
 | `wave.tokens`        | 计数   | 消耗的 token 数         | `model` + `type`（input / output / cache_read / cache_creation） |
 | `wave.sessions`      | 计数   | 启动的 Agent 会话数     | —                                                                |
 | `wave.lines.changed` | 计数   | 编辑类工具增删的行数    | `direction`（added / removed）                                   |
+| `wave.commits`       | 计数   | 经由工具创建的提交数    | —                                                                |
+| `wave.pull_requests` | 计数   | 经由工具创建的 PR/MR 数 | —                                                                |
 
 - **失败也计时**：一次请求失败仍计入 `wave.api.requests` 与 `wave.api.duration`（失败的请求同样占了墙钟时间），并额外计入 `wave.api.errors`。
 - **零值不上报**：编辑结果里为 0 或缺失的一侧不产生记录，纯新增与纯删除因此可区分。
+- **创建动作按调用判定**：`wave.commits` / `wave.pull_requests` 只看这次工具调用是否**成功创建**了提交 / PR——对齐 Claude Code 的 `commit.count` / `pull_request.count` 口径（不看是否被合并、不看后续改动）。判定不询问任何 Git 托管平台，因此私有化 GitLab 与 GitHub 同等成立；一次调用最多计一次，失败的调用不计。
 - **进程级累加**：指标按进程累加，不随单个会话结束而重置；压缩（compaction）后 token 继续累加在同一计数器上。
 
 ### 事件日志 (Event Logging) {#otel-events}

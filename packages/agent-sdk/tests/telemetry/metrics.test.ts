@@ -74,6 +74,18 @@ describe("metrics", () => {
             unit: "{line}",
           },
         ],
+        [
+          "wave.commits",
+          { description: "Commits created through a tool", unit: "{commit}" },
+        ],
+        [
+          "wave.pull_requests",
+          {
+            description:
+              "Pull requests or merge requests created through a tool",
+            unit: "{pull_request}",
+          },
+        ],
       ]);
       expect(fake.createHistogram.mock.calls).toEqual([
         [
@@ -192,6 +204,29 @@ describe("metrics", () => {
     });
   });
 
+  describe("recordToolActivity", () => {
+    it("should count the commit a tool call created", () => {
+      metrics.recordToolActivity({ commits: true, pullRequests: false });
+
+      expect(fake.counter("wave.commits").add).toHaveBeenCalledWith(1);
+      expect(fake.counter("wave.pull_requests").add).not.toHaveBeenCalled();
+    });
+
+    it("should count a created pull request", () => {
+      metrics.recordToolActivity({ commits: false, pullRequests: true });
+
+      expect(fake.counter("wave.pull_requests").add).toHaveBeenCalledWith(1);
+      expect(fake.counter("wave.commits").add).not.toHaveBeenCalled();
+    });
+
+    it("should stay silent for a call that created neither", () => {
+      metrics.recordToolActivity({ commits: false, pullRequests: false });
+
+      expect(fake.counter("wave.commits").add).not.toHaveBeenCalled();
+      expect(fake.counter("wave.pull_requests").add).not.toHaveBeenCalled();
+    });
+  });
+
   describe("resetMetrics", () => {
     it("should stop recording into the retired instruments", () => {
       metrics.recordSession();
@@ -201,6 +236,17 @@ describe("metrics", () => {
       metrics.recordSession();
 
       expect(fake.counter("wave.sessions").add).toHaveBeenCalledTimes(1);
+    });
+
+    it("should retire the creation counters too", () => {
+      metrics.recordToolActivity({ commits: true, pullRequests: true });
+      expect(fake.counter("wave.commits").add).toHaveBeenCalledTimes(1);
+
+      metrics.resetMetrics();
+      metrics.recordToolActivity({ commits: true, pullRequests: true });
+
+      expect(fake.counter("wave.commits").add).toHaveBeenCalledTimes(1);
+      expect(fake.counter("wave.pull_requests").add).toHaveBeenCalledTimes(1);
     });
 
     it("should record on the fresh instruments after a re-initialization", () => {
@@ -224,6 +270,7 @@ describe("metrics", () => {
         fresh.recordApiRequest({ model: "m", durationMs: 1, success: false });
         fresh.recordSession();
         fresh.recordLinesChanged({ added: 1 });
+        fresh.recordToolActivity({ commits: true, pullRequests: true });
       }).not.toThrow();
     });
   });

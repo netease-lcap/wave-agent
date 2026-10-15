@@ -13,6 +13,8 @@ import {
   mcpToolFlatName,
 } from "../utils/mcpUtils.js";
 import { HookBlockedToolError } from "../types/hooks.js";
+import { recordToolActivity } from "../telemetry/metrics.js";
+import { detectMcpActivity } from "../telemetry/toolActivity.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "../tools/types.js";
 import { Container } from "../utils/container.js";
 import { truncateMcpInstructions } from "../utils/mcpInstructions.js";
@@ -1108,6 +1110,10 @@ export class McpManager {
               { success: true, content: result.content },
               context,
             );
+            // A PR/MR created by an MCP tool scores here rather than in
+            // `ToolManager`: this is the one funnel every MCP call goes through,
+            // so a nested call from inside the Exec sandbox counts too.
+            recordToolActivity(detectMcpActivity(toolName));
             return result;
           } catch (error) {
             await context?.hookManager?.executePostToolUseHooks(
