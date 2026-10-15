@@ -12,6 +12,7 @@
  */
 
 import type { Counter, Histogram, Meter } from "@opentelemetry/api";
+import type { ToolActivity } from "./toolActivity.js";
 
 /** One LLM request's outcome, as recorded by the metrics family. */
 export interface ApiRequestRecord {
@@ -33,6 +34,8 @@ let apiDuration: Histogram | undefined;
 let tokens: Counter | undefined;
 let sessions: Counter | undefined;
 let linesChanged: Counter | undefined;
+let commits: Counter | undefined;
+let pullRequests: Counter | undefined;
 
 /**
  * Create the instruments on the given meter. Called by `initializeTelemetry()`
@@ -64,6 +67,14 @@ export function initMetrics(meter: Meter): void {
     description: "Lines added or removed by edit tools",
     unit: "{line}",
   });
+  commits = meter.createCounter("wave.commits", {
+    description: "Commits created through a tool",
+    unit: "{commit}",
+  });
+  pullRequests = meter.createCounter("wave.pull_requests", {
+    description: "Pull requests or merge requests created through a tool",
+    unit: "{pull_request}",
+  });
 }
 
 /** Drop the instruments: telemetry was shut down, later records must no-op. */
@@ -74,6 +85,8 @@ export function resetMetrics(): void {
   tokens = undefined;
   sessions = undefined;
   linesChanged = undefined;
+  commits = undefined;
+  pullRequests = undefined;
 }
 
 /**
@@ -105,6 +118,20 @@ export function recordApiRequest(record: ApiRequestRecord): void {
 /** Record a started session. */
 export function recordSession(): void {
   sessions?.add(1);
+}
+
+/**
+ * Record the creation actions a tool call performed — today the commit and
+ * PR/MR counters. A call that created neither records nothing, so the common
+ * case costs one call and no instrument lookup.
+ */
+export function recordToolActivity(activity: ToolActivity): void {
+  if (activity.commits) {
+    commits?.add(1);
+  }
+  if (activity.pullRequests) {
+    pullRequests?.add(1);
+  }
 }
 
 /**

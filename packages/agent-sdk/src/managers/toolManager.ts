@@ -59,7 +59,11 @@ import { logger } from "../utils/globalLogger.js";
 
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { SkillMetadata } from "../types/skills.js";
-import { recordLinesChanged } from "../telemetry/metrics.js";
+import {
+  recordLinesChanged,
+  recordToolActivity,
+} from "../telemetry/metrics.js";
+import { detectBashActivity } from "../telemetry/toolActivity.js";
 
 export interface ToolManagerOptions {
   container: Container;
@@ -85,6 +89,22 @@ function recordLinesChangedFromResult(result: ToolResult): void {
     added: Number.isFinite(added) ? added : undefined,
     removed: Number.isFinite(removed) ? removed : undefined,
   });
+}
+
+/**
+ * Count the commit / PR-MR a Bash call created (see `detectBashActivity`).
+ * Recognition is of the command the tool was asked to run, so a failed call
+ * created nothing and records nothing — the same gate as the line delta above.
+ */
+function recordBashActivity(
+  name: string,
+  args: Record<string, unknown>,
+  result: ToolResult,
+): void {
+  if (name !== "Bash" || !result.success) return;
+  const command = typeof args.command === "string" ? args.command : "";
+  if (!command) return;
+  recordToolActivity(detectBashActivity(command));
 }
 
 /**
@@ -388,6 +408,7 @@ class ToolManager {
       try {
         result = await plugin.execute(args, enhancedContext);
         recordLinesChangedFromResult(result);
+        recordBashActivity(name, args, result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         logger?.error("Tool execution failed", {
