@@ -18,7 +18,10 @@
    场景 16 与「未落地与待决」里的那条。
 
    两处例外，都写在下面：
-   ① 文本类控件一律 ≥16px，且**不判设备**（iOS 平台契约，见场景 15）；
+   ① 文本类控件一律 ≥16px，且**不判设备**（iOS 平台契约，见场景 15）——
+      因此**下面每一组档位里都不列「元素本身就是文本控件」的类名**（如
+      `.session-list-search`、`.history-search-input`）：那些控件的字号由文件
+      末尾那条下限统一决定，写在这里只会与之打架（详见那段的注释）；
    ② MermaidRenderer.css 自己那几条 `@media (max-width: 600px|768px)` 覆盖不
       跟档——那是全屏查看器的控件，手机上极少用到，留着它们自己的响应式规则。 */
 
@@ -101,7 +104,6 @@
       .confirmation-command,
       .confirmation-mcp-params,
       .confirmation-btn .btn-enter-hint,
-      .history-search-input,
       .history-search-loading,
       .history-search-empty,
       .message-action-btn,
@@ -124,7 +126,6 @@
       .rewind-popup-header,
       .rewind-popup-loading,
       .rewind-popup-empty,
-      .session-list-search,
       .session-list-label,
       .session-list-item-title,
       .session-list-item-time,
@@ -230,7 +231,6 @@
       .configuration-dialog-header h3,
       .settings-back,
       .settings-number-control,
-      .settings-select,
       .settings-select-trigger,
       .settings-save-btn,
       .memory-turns,
@@ -300,9 +300,17 @@
    Web 输入框的常见默认值）——代价不对称，所以宁可一律给足。范围按元素划而不是
    按类名划：原生 `input` / `textarea` / `select` 与可编辑区，新增控件自动被覆盖。
 
-   放在文件最后：与上面的档位规则同特异性时，后写的生效——于是任何本档没抬到 16px
-   的控件（如 `.message-input` 被算进次级信息组）也不会掉到线下。 */
+   `!important` 不是图省事，是这一条的**前提**：它的选择器是「一个属性 + 一个元素」
+   （0,1,1），而上面每个档位组都是「一个属性 + 一个类」（0,2,0）——档位组只要收录
+   了某个控件的类名，就**比特异性**赢掉这条，写在后面、顺序再晚也没用。2026-10-15
+   真机报的就是这个：`.session-list-search` 被收进次级信息组抬到 14px（控件基线
+   12px），右上角「会话」按钮弹窗一打开就自动聚焦那个搜索框 ⇒ 整页放大；同族的
+   `.history-search-input` 14px、编辑态 `.header-title` 15px 一样在线下。已把纯控件
+   类名从各档位组移走，但**同名的类还会服务非控件元素**（`.header-title` 同时也是
+   显示态标题、`.settings-select-trigger` 是触发器按钮），所以不能靠「把类名挑干净」
+   收尾——只有 `!important` 能让这条契约真正无条件成立，将来谁再往档位组里加控件
+   类名也不会静默复发。 */
 [data-remote-page] :is(input, textarea, select, [contenteditable]) {
-  font-size: 16px;
+  font-size: 16px !important;
   line-height: 24px;
 }

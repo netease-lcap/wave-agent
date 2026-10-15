@@ -106,14 +106,58 @@ describe("remote page autozoom guard", () => {
     expect(size).toBeGreaterThanOrEqual(16);
   });
 
-  it("applies the floor after the tier it has to win against", () => {
+  it("wins against the tier groups by importance, not by source order", () => {
+    // The floor's selector is attribute + element (0,1,1) while every tier group is
+    // attribute + class (0,2,0): a tier group that lists a control's class name wins
+    // on specificity alone, no matter how late the floor is written. On device
+    // 2026-10-15 that is exactly what happened — `.session-list-search` was listed in
+    // the secondary-info group (14px against its 12px component baseline), so opening
+    // the header's「会话」popup auto-focused the search box and zoomed the whole page.
+    // Hence `!important`; source order only decides among equals.
+    const floor = rules.find((r) =>
+      /input,\s*textarea,\s*select,\s*\[contenteditable\]/.test(r.sel),
+    );
+    expect(floor).toBeDefined();
+    expect(floor!.body).toMatch(/font-size:\s*16px\s*!important/);
+  });
+
+  it("applies the floor after the tier it shares specificity with", () => {
     const floor = rules.findIndex((r) =>
       /input,\s*textarea,\s*select,\s*\[contenteditable\]/.test(r.sel),
     );
     const media = rules.findIndex((r) => r.sel.startsWith("@media"));
     expect(media).toBeGreaterThanOrEqual(0);
-    // Same specificity ⇒ source order decides, so the floor must come last.
+    // Same specificity ⇒ source order decides, so the floor must still come last.
     expect(floor).toBeGreaterThan(media);
+  });
+
+  it("keeps text-control class names out of the tier groups", () => {
+    // Controls get their size from the floor alone, so a tier group must not carry
+    // their class names: doing so shadows the floor (see the test above). These are
+    // the three that were listed and shipped a page that zoomed on focus.
+    const tier = new Set(
+      rules
+        .filter((r) => r.sel.startsWith("@media> "))
+        .flatMap((r) =>
+          [...r.sel.matchAll(/\.([a-z0-9_-]+)/g)].map((m) => m[1]),
+        ),
+    );
+    for (const cls of [
+      "session-list-search",
+      "history-search-input",
+      "settings-select",
+    ]) {
+      expect(tier.has(cls), `${cls} must not sit in a tier group`).toBe(false);
+    }
+  });
+
+  it("carries exactly one font-size !important — the floor's", () => {
+    // A second one could pull a control back below the line, and would make the
+    // winner depend on file order again.
+    const important = rules.filter((r) =>
+      /font-size:[^;]*!important/.test(r.body),
+    );
+    expect(important).toHaveLength(1);
   });
 
   it("gates the mobile type tier on the device, not the page identity", () => {
