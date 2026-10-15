@@ -847,7 +847,15 @@ export interface ChatState {
   // Agent working directory, used to render tool file paths as relative.
   workdir?: string;
   // Dialog state
-  activeDialog: "mcp" | "status" | "tasks" | "workflows" | "remote" | null;
+  activeDialog:
+    | "mcp"
+    | "status"
+    | "tasks"
+    | "workflows"
+    | "remote"
+    // 远控 Web 页顶栏「新建对话」重绑的弹窗（initialize 建新会话，非 clearChat）。
+    | "remoteNewSession"
+    | null;
   configurationData?: ConfigurationData;
   configurationLoading: boolean;
   configurationError?: string;

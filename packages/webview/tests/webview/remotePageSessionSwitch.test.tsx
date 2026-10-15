@@ -2,12 +2,12 @@
  * The phone page is the shared webview plus a browser shim, so its header
  * differences are the only thing the shared UI has to know about it:
  *
- * - no 「新建对话」/「历史对话」 — the page is a control surface for one
- *   conversation, and neither a new conversation nor a disk-history list is
- *   something the serving process can act on (spec remote-control「Web 页作为第五种
- *   宿主」场景 5);
- * - one 「会话」 entry instead, whose list holds the sessions that process is
- *   running right now and switches the page's own view between them (场景 8).
+ * - no 「历史对话」 — a disk-history list is not something the serving process
+ *   can act on; one 「会话」 entry instead, whose list holds the sessions that
+ *   process is running right now and switches the page's own view between them
+ *   (spec remote-control「Web 页作为第五种宿主」场景 5/8);
+ * - 「新建对话」 stays ( rebound to the remote new-session flow, spec
+ *   remote-control.md「Web 端也能发起新会话」).
  */
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -57,11 +57,11 @@ afterEach(() => {
 });
 
 describe("remote page session switcher", () => {
-  it("replaces the new-chat and history buttons with a single session entry", () => {
+  it("keeps 新建对话 (rebound) and the session entry, drops 历史对话", () => {
     renderRemotePage();
 
     expect(screen.getByTestId("session-switch-btn")).toBeInTheDocument();
-    expect(screen.queryByTestId("new-session-btn")).not.toBeInTheDocument();
+    expect(screen.getByTestId("new-session-btn")).toBeInTheDocument();
     expect(screen.queryByTestId("history-btn")).not.toBeInTheDocument();
   });
 

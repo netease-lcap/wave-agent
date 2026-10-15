@@ -70,6 +70,8 @@ vi.mock("node:fs", async (importOriginal) => {
     mkdirSync: vi.fn(() => undefined),
     existsSync: vi.fn(() => false),
     writeFileSync: vi.fn(() => undefined),
+    readdirSync: vi.fn(),
+    realpathSync: vi.fn(),
   };
 });
 
@@ -88,9 +90,16 @@ const stderrWriteSpy = vi
 
 import { AgentBridge, RpcError } from "../../src/stdio/agentBridge.js";
 import { INVALID_PARAMS } from "../../src/stdio/protocol.js";
-import { mkdirSync, existsSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  existsSync,
+  writeFileSync,
+  readdirSync,
+  realpathSync,
+} from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 import type {
   AgentCallbacks,
   McpServerStatus,
@@ -3522,6 +3531,89 @@ test("listGitBranches returns an empty list when the repo has no refs", async ()
 
   expect(result.branches).toEqual([]);
   expect(result.current).toBe("main");
+});
+
+// ── listDirectories ────────────────────────────────────────────
+
+test("listDirectories lists immediate subdirectories sorted, excluding files and symlinks", async () => {
+  const { bridge } = createBridge();
+
+  vi.mocked(realpathSync).mockReturnValueOnce("/home/u/repos");
+  vi.mocked(readdirSync).mockReturnValueOnce([
+    { name: "zeta", isDirectory: () => true },
+    { name: "alpha", isDirectory: () => true },
+    { name: "README.md", isDirectory: () => false },
+    { name: "link", isDirectory: () => false, isSymbolicLink: () => true },
+  ] as unknown as ReturnType<typeof readdirSync>);
+
+  const result = (await bridge.handleRequest("listDirectories", {
+    dir: "/home/u/repos",
+  })) as { resolvedPath: string; dirs: string[] };
+
+  expect(result).toEqual({
+    resolvedPath: "/home/u/repos",
+    dirs: ["alpha", "zeta"],
+  });
+  expect(realpathSync).toHaveBeenCalledWith("/home/u/repos");
+  expect(readdirSync).toHaveBeenCalledWith("/home/u/repos", {
+    withFileTypes: true,
+  });
+});
+
+test("listDirectories expands ~ against the process user's home", async () => {
+  const { bridge } = createBridge();
+
+  vi.mocked(realpathSync).mockReturnValueOnce("/home/u/repos");
+  vi.mocked(readdirSync).mockReturnValueOnce(
+    [] as unknown as ReturnType<typeof readdirSync>,
+  );
+
+  await bridge.handleRequest("listDirectories", { dir: "~/repos" });
+
+  expect(realpathSync).toHaveBeenCalledWith(join(homedir(), "/repos"));
+});
+
+test("listDirectories expands a bare ~ to the home directory itself", async () => {
+  const { bridge } = createBridge();
+
+  vi.mocked(realpathSync).mockReturnValueOnce("/home/u");
+  vi.mocked(readdirSync).mockReturnValueOnce(
+    [] as unknown as ReturnType<typeof readdirSync>,
+  );
+
+  await bridge.handleRequest("listDirectories", { dir: "~" });
+
+  expect(realpathSync).toHaveBeenCalledWith(homedir());
+});
+
+test("listDirectories throws a picker-facing verdict when the path is missing", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(realpathSync).mockImplementationOnce(() => {
+    throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  });
+
+  await expect(
+    bridge.handleRequest("listDirectories", { dir: "/nope" }),
+  ).rejects.toThrow("目录不存在或不可读");
+});
+
+test("listDirectories throws the same verdict when the path exists but is unreadable", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(realpathSync).mockReturnValueOnce("/locked");
+  vi.mocked(readdirSync).mockImplementationOnce(() => {
+    throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+  });
+
+  await expect(
+    bridge.handleRequest("listDirectories", { dir: "/locked" }),
+  ).rejects.toThrow("目录不存在或不可读");
+});
+
+test("listDirectories throws when dir is missing", async () => {
+  const { bridge } = createBridge();
+  await expect(bridge.handleRequest("listDirectories", {})).rejects.toThrow(
+    "dir is required",
+  );
 });
 
 // ── getWorkspaceDiff ───────────────────────────────────────────

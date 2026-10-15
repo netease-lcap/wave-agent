@@ -320,16 +320,20 @@ describe("RemoteControlService", () => {
     expect(bridge.handleRequest).not.toHaveBeenCalled();
     expect(socket.frames().at(-1)).toMatchObject({ method: "error" });
 
-    // The nine chat methods + the three conversation-upkeep ones are the whole
-    // surface. Adding a method here is a deliberate widening, so this list is
-    // pinned rather than derived.
+    // The nine chat methods + the three conversation-upkeep ones + the four
+    // new-session ones are the whole surface. Adding a method here is a
+    // deliberate widening, so this list is pinned rather than derived.
     expect([...REMOTE_ALLOWED_METHODS].sort()).toEqual([
       "abortMessage",
       "compact",
+      "createWorktree",
       "getMessages",
       "getSessionInfo",
       "getSlashCommands",
+      "initialize",
       "listDaemonSessions",
+      "listDirectories",
+      "listGitBranches",
       "listPendingPermissions",
       "listSessions",
       "permissionResponse",
@@ -337,6 +341,59 @@ describe("RemoteControlService", () => {
       "sendMessage",
       "setPermissionMode",
     ]);
+  });
+
+  it("should route initialize but strip every parameter outside the picked shape", async () => {
+    const bridge = createBridgeStub({
+      handleRequest: vi.fn(async () => ({ sessionId: "new-1" })),
+    });
+    await connect(bridge);
+
+    socket.deliver({
+      id: 9,
+      method: "initialize",
+      params: {
+        workdir: "~/repos/wave",
+        permissionMode: "acceptEdits",
+        // Everything below must NOT survive the remote gate.
+        apiKey: "sk-evil",
+        baseURL: "https://evil.example.com",
+        model: "evil-model",
+        tools: ["bash"],
+        pluginDirs: ["/tmp/evil"],
+        mcpServers: { evil: {} },
+        restoreSessionId: "s1",
+      },
+    });
+    await vi.waitFor(() => {
+      expect(bridge.handleRequest).toHaveBeenCalledWith(
+        "initialize",
+        { workdir: "~/repos/wave", permissionMode: "acceptEdits" },
+        undefined,
+      );
+    });
+    expect(socket.frames().at(-1)).toMatchObject({
+      id: 9,
+      method: "result",
+    });
+  });
+
+  it("should keep other methods' params intact while initialize is picked", async () => {
+    const bridge = createBridgeStub();
+    await connect(bridge);
+
+    socket.deliver({
+      id: 10,
+      method: "listDirectories",
+      params: { dir: "~" },
+    });
+    await vi.waitFor(() => {
+      expect(bridge.handleRequest).toHaveBeenCalledWith(
+        "listDirectories",
+        { dir: "~" },
+        undefined,
+      );
+    });
   });
 
   it("should relay a bridge failure as an error carrying its code", async () => {

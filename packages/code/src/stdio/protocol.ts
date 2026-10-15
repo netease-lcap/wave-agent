@@ -136,6 +136,11 @@ export type RequestMethod =
   | "createWorktree"
   | "getWorktreeChanges"
   | "removeWorktree"
+  // Filesystem (global — no session required): the new-session directory
+  // pickers. Host-agnostic like listGitBranches — whichever wave process
+  // receives it lists its own machine (desktop remote browser and the Web
+  // page share one implementation).
+  | "listDirectories"
   // Read-only workspace diff for the desktop diff panel
   | "getWorkspaceDiff";
 

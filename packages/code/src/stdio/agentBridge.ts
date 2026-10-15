@@ -67,7 +67,14 @@ import {
   METHOD_NOT_FOUND as PROTOCOL_METHOD_NOT_FOUND,
 } from "./protocol.js";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  realpathSync,
+} from "node:fs";
 import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
@@ -564,7 +571,9 @@ export class AgentBridge {
       case "stopWorkflowRun":
         return this.stopWorkflowRun(p.runId as string, sessionId);
 
-      // ── Git / worktree (global — no session required) ──
+      // ── Filesystem / Git / worktree (global — no session required) ──
+      case "listDirectories":
+        return this.listDirectories(p.dir as string | undefined);
       case "listGitBranches":
         return this.listGitBranches(p.workdir as string | undefined);
       case "createWorktree":
@@ -883,6 +892,50 @@ export class AgentBridge {
   }
 
   // ── Git / worktree ────────────────────────────────────────────
+
+  /**
+   * List the subdirectories of a directory on the machine this CLI runs on —
+   * host-agnostic like `listGitBranches`: whichever wave process receives the
+   * request lists its own filesystem. Serves the new-session directory pickers
+   * (the desktop's remote host browser and the Web page now share this one
+   * implementation; the desktop's ssh shell one-liner retires into it).
+   *
+   * `~` / `~/…` expand against the service process user's home. `resolvedPath`
+   * is the realpath so the picker shows where the user actually is (symlinked
+   * parents normalized). Symlinked subdirectories are NOT listed — the shell
+   * `find -type d` this replaces didn't list them either, and the two paths
+   * must stay interchangeable. A missing or unreadable directory is an explicit
+   * error, never an empty list (an empty list would read as "no subdirs" and
+   * strand the user on a path they can't leave).
+   */
+  private listDirectories(dir?: string): {
+    resolvedPath: string;
+    dirs: string[];
+  } {
+    if (!dir) {
+      throw new RpcError(PROTOCOL_INTERNAL_ERROR, "dir is required");
+    }
+    const expanded =
+      dir === "~" || dir.startsWith("~/") ? join(homedir(), dir.slice(1)) : dir;
+    let resolvedPath: string;
+    try {
+      resolvedPath = realpathSync(expanded);
+    } catch {
+      throw new RpcError(PROTOCOL_INTERNAL_ERROR, `目录不存在或不可读：${dir}`);
+    }
+    let dirs: string[];
+    try {
+      dirs = readdirSync(resolvedPath, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .sort((a, b) => a.localeCompare(b));
+    } catch {
+      // realpath succeeded (the path exists) but reading it didn't — same
+      // verdict as missing: the picker cannot descend into either.
+      throw new RpcError(PROTOCOL_INTERNAL_ERROR, `目录不存在或不可读：${dir}`);
+    }
+    return { resolvedPath, dirs };
+  }
 
   private listGitBranches(workdir?: string): {
     branches: string[];
