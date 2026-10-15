@@ -688,10 +688,16 @@ export class ConfigurationService {
       this.liveConfiguration?.model ||
       (this.liveEnvSnapshot.WAVE_MODEL ?? process.env.WAVE_MODEL);
 
-    // Resolve fast model: override > options > process.env (includes settings.json env)
+    // Resolve fast model: override > options > settings.json `fastModel` > env
+    // (WAVE_FAST_MODEL from settings.json env / machine env). The settings.json
+    // scalar is listed as a hot-reload key next to `model`
+    // (spec core/agent-config.md 设置实时重载 scenario 4), so it has to be read
+    // here as well — reading env only made a hand-written `fastModel` key a
+    // silent no-op.
     const resolvedFastModel =
       fastModel ||
       this.options.fastModel ||
+      this.liveConfiguration?.fastModel ||
       (this.liveEnvSnapshot.WAVE_FAST_MODEL ?? process.env.WAVE_FAST_MODEL);
 
     // Resolve vision model: override > options > process.env (includes settings.json env)
@@ -1649,6 +1655,7 @@ export function loadWaveConfigFromFile(
       enabledPlugins: config.enabledPlugins || undefined,
       language: config.language || undefined,
       model: config.model || undefined,
+      fastModel: config.fastModel || undefined,
       completionModel: config.completionModel || undefined,
       completionEnabled:
         config.completionEnabled !== undefined
@@ -1830,6 +1837,12 @@ export function loadMergedWaveConfig(
       mergedConfig.model = config.model;
     }
 
+    // Merge fast model (last one wins). Listed as a hot-reload key alongside
+    // `model` (spec core/agent-config.md 设置实时重载 scenario 4).
+    if (config.fastModel !== undefined) {
+      mergedConfig.fastModel = config.fastModel;
+    }
+
     // Merge the inline completion model / switch (last one wins)
     // (docs/specs/ui/code-completion.md story 3, story 4 scenario 2)
     if (config.completionModel !== undefined) {
@@ -1947,6 +1960,7 @@ export function loadMergedWaveConfig(
         : undefined,
     language: mergedConfig.language,
     model: mergedConfig.model,
+    fastModel: mergedConfig.fastModel,
     completionModel: mergedConfig.completionModel,
     completionEnabled: mergedConfig.completionEnabled,
     autoMemoryEnabled: mergedConfig.autoMemoryEnabled,

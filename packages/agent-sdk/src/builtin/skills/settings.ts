@@ -709,10 +709,12 @@ If a model does not support a default parameter (like \`temperature\` for some r
 
 ## Global Model Selection
 
-You can also set the default models Wave uses via environment variables in \`settings.json\`:
+Set the model for the main conversation and the fast model used by lightweight tasks (subagent summaries, WebFetch content processing, inline completion) with the top-level \`model\` / \`fastModel\` scalars, or via environment variables in \`settings.json\`. The scalars take precedence over the matching environment variables:
 
 \`\`\`json
 {
+  "model": "gemini-3-flash",
+  "fastModel": "gemini-2.5-flash",
   "env": {
     "WAVE_MODEL": "gemini-3-flash",
     "WAVE_FAST_MODEL": "gemini-2.5-flash",
@@ -727,7 +729,7 @@ You can also set the default models Wave uses via environment variables in \`set
 
 ## Live Reload
 
-Model configurations support **live reload**. When you modify the \`models\` field or model-related environment variables in \`settings.json\`, the changes take effect immediately without restarting Wave.
+Model configurations support **live reload**. When you modify the \`models\` field, the \`model\` / \`fastModel\` scalars or model-related environment variables in \`settings.json\`, the changes take effect at the start of the next turn without restarting Wave.
 `,
   "skills/settings/PERMISSIONS.md": `# Tool Permissions & Safe Zone
 

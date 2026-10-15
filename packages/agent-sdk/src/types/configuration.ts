@@ -50,6 +50,12 @@ export interface WaveConfiguration {
   autoMemoryFrequency?: number;
   /** Persisted model selection (from /model command) */
   model?: string;
+  /**
+   * Model used for lightweight tasks (subagent summaries, WebFetch content
+   * processing, inline completion). Takes precedence over the
+   * `WAVE_FAST_MODEL` env variable, like `model` does over `WAVE_MODEL`.
+   */
+  fastModel?: string;
   /** Model-specific configuration overrides */
   models?: Record<string, Partial<ModelConfig>>;
   /**
