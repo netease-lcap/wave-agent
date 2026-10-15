@@ -6,6 +6,8 @@ import {
   useChat,
   ChatContextType,
   createThrottledUpdater,
+  resolveStreamThrottleMs,
+  DEFAULT_STREAM_THROTTLE_MS,
 } from "../../src/contexts/useChat.js";
 import { Agent, BackgroundShell, Task } from "wave-agent-sdk";
 import { AppProvider } from "../../src/contexts/useAppConfig.js";
@@ -125,6 +127,7 @@ describe("ChatProvider", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   // Helper component to test the hook
@@ -1600,6 +1603,107 @@ describe("ChatProvider", () => {
     });
   });
 
+  it("honors WAVE_STREAM_THROTTLE_MS as the window length for running updates", async () => {
+    // Real timers: vi.waitFor advances fake clocks past short windows while
+    // polling for a commit, which would close the very window under test
+    // (the queued update would slip onto the next leading edge). Real wall
+    // time keeps the window honest.
+    vi.useRealTimers();
+    vi.stubEnv("WAVE_STREAM_THROTTLE_MS", "200");
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    const assistantMsg = {
+      id: "msg-nothr",
+      role: "assistant" as const,
+      blocks: [],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [assistantMsg] });
+    callbacks.onAssistantMessageAdded!("msg-nothr");
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toHaveLength(1);
+    });
+
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-nothr",
+      id: "tool-nothr",
+      name: "bash",
+      stage: "start",
+      parameters: "",
+    });
+    await vi.waitFor(() => {
+      expect(
+        lastValue?.messages[0].blocks.some(
+          (b) => b.type === "tool" && b.id === "tool-nothr",
+        ),
+      ).toBe(true);
+    });
+
+    const readShortResult = () => {
+      const toolBlock = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "tool" && b.id === "tool-nothr",
+      );
+      return (toolBlock as { shortResult?: string } | undefined)?.shortResult;
+    };
+
+    // env=200 → the window is 200ms (spec: positive value is used as-is).
+    // The first running update applies on the leading edge…
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-nothr",
+      id: "tool-nothr",
+      stage: "running",
+      name: "bash",
+      shortResult: "line1",
+    });
+    await vi.waitFor(
+      () => {
+        expect(readShortResult()).toBe("line1");
+      },
+      { timeout: 500, interval: 10 },
+    );
+
+    // …the second one queues inside the 200ms window: nothing may commit it
+    // before the trailing edge (negative assertion, timeout 50 < 200).
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-nothr",
+      id: "tool-nothr",
+      stage: "running",
+      name: "bash",
+      shortResult: "line1\nline2",
+    });
+    await expect(
+      vi.waitFor(
+        () => {
+          expect(readShortResult()).toBe("line1\nline2");
+        },
+        { timeout: 50, interval: 10 },
+      ),
+    ).rejects.toThrow();
+
+    // The queued value lands at the trailing edge — before a wiring bug that
+    // ignored the env (default 500ms window) would fire (final wait starts
+    // ~50ms into the test, timeout 200 ⇒ covered before t≈250ms; the 500ms
+    // trailing edge would land at t≈450ms+ and time this wait out).
+    await vi.waitFor(
+      () => {
+        expect(readShortResult()).toBe("line1\nline2");
+      },
+      { timeout: 200, interval: 10 },
+    );
+  });
+
   it("accumulates parametersChunk per tool during multi-tool streaming", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
@@ -2117,6 +2221,49 @@ describe("ChatProvider", () => {
       // refreshMessages) — no "Let me me"
       expect(apply).toHaveBeenCalledTimes(1);
       expect(state).toEqual({ content: "Let" });
+    });
+
+    it("applies every update immediately when wait <= 0 disables the window", () => {
+      vi.useFakeTimers();
+      const applied: Array<(prev: number[]) => number[]> = [];
+      const apply = vi.fn((updater: (prev: number[]) => number[]) => {
+        applied.push(updater);
+      });
+      const throttled = createThrottledUpdater<number[]>(apply, 0);
+
+      throttled((prev) => [...prev, 1]);
+      throttled((prev) => [...prev, 2]);
+      throttled((prev) => [...prev, 3]);
+      // Disabled mode: every update applies synchronously in arrival order
+      expect(apply).toHaveBeenCalledTimes(3);
+      const state = applied[2](applied[1](applied[0]([])));
+      expect(state).toEqual([1, 2, 3]);
+
+      // No timer was armed — advancing time must not apply anything more
+      vi.advanceTimersByTime(600);
+      expect(apply).toHaveBeenCalledTimes(3);
+
+      // flush/cancel are safe no-ops in disabled mode
+      throttled.flush();
+      throttled.cancel();
+      expect(apply).toHaveBeenCalledTimes(3);
+    });
+  });
+
+  describe("resolveStreamThrottleMs", () => {
+    it("falls back to the 500ms default when unset, blank, or non-numeric", () => {
+      expect(resolveStreamThrottleMs(undefined)).toBe(
+        DEFAULT_STREAM_THROTTLE_MS,
+      );
+      expect(resolveStreamThrottleMs("")).toBe(DEFAULT_STREAM_THROTTLE_MS);
+      expect(resolveStreamThrottleMs("   ")).toBe(DEFAULT_STREAM_THROTTLE_MS);
+      expect(resolveStreamThrottleMs("abc")).toBe(DEFAULT_STREAM_THROTTLE_MS);
+    });
+
+    it("passes 0/negative through (disable) and positive values as-is", () => {
+      expect(resolveStreamThrottleMs("0")).toBe(0);
+      expect(resolveStreamThrottleMs("-5")).toBe(-5);
+      expect(resolveStreamThrottleMs("100")).toBe(100);
     });
   });
 
