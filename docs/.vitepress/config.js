@@ -199,6 +199,7 @@ export default {
                 { text: "JetBrains 插件", link: "/vsce#jetbrains-插件" },
               ],
             },
+            { text: "代码补全", link: "/vsce#代码补全" },
             {
               text: "画廊",
               collapsed: false,
