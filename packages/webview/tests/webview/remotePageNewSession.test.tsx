@@ -20,6 +20,7 @@ import {
   sendCommand,
   within,
 } from "./test-utils";
+import type { BackgroundTaskSummary } from "../../src/types";
 
 /** renderChatApp 回传的 vscode 是 vi.fn 替身（比 src 的 VsCodeApi 多 .mock）。 */
 type MockVscode = ReturnType<typeof renderChatApp>["vscode"];
@@ -354,5 +355,72 @@ describe("remote page new-session dialog", () => {
     expect(screen.getByTestId("remote-new-session-error")).toHaveTextContent(
       "目录不存在或不可读：/repo",
     );
+  });
+});
+
+/**
+ * 忙闲三态不构成页面上的禁用理由（spec remote-control.md「Web 端也能发起新会话」
+ * 场景 10）：页面上这个图标是「在机器上另起一条会话」，不是 IDE 的原地清空
+ * `clearChat`——电脑侧那条会话照旧跑着，所以 streaming / 压缩中 / 有正在跑的
+ * 后台任务时入口照常可用（反过来，IDE 端那条守卫一字不变）。
+ */
+describe("remote page new-session entry under busy states", () => {
+  const runningTask: BackgroundTaskSummary = {
+    id: "bg-shell-1",
+    type: "shell",
+    status: "running",
+    startTime: 1000,
+    command: "sleep 300",
+  };
+
+  it("stays usable while the machine generates, compacts or runs a background task", () => {
+    renderRemotePage();
+    const newSessionBtn = screen.getByTestId("new-session-btn");
+    expect(newSessionBtn).not.toBeDisabled();
+
+    act(() => {
+      sendCommand("startStreaming");
+    });
+    expect(newSessionBtn).not.toBeDisabled();
+
+    act(() => {
+      sendCommand("endStreaming");
+      sendCommand("compactionStateChange", { isCompacting: true });
+    });
+    expect(newSessionBtn).not.toBeDisabled();
+
+    act(() => {
+      sendCommand("compactionStateChange", { isCompacting: false });
+      sendCommand("updateBackgroundTasks", { tasks: [runningTask] });
+    });
+    expect(newSessionBtn).not.toBeDisabled();
+
+    // 不只是「看着能点」：点下去真的打开新建会话流程。
+    act(() => {
+      fireEvent.click(newSessionBtn);
+    });
+    expect(screen.getByTestId("remote-new-session-dialog")).toBeInTheDocument();
+  });
+
+  it("still greys the IDE entry out in the very same states", () => {
+    renderChatApp();
+    const newSessionBtn = screen.getByTestId("new-session-btn");
+    expect(newSessionBtn).not.toBeDisabled();
+
+    act(() => {
+      sendCommand("startStreaming");
+    });
+    expect(newSessionBtn).toBeDisabled();
+
+    act(() => {
+      sendCommand("endStreaming");
+      sendCommand("updateBackgroundTasks", { tasks: [runningTask] });
+    });
+    expect(newSessionBtn).toBeDisabled();
+
+    act(() => {
+      sendCommand("updateBackgroundTasks", { tasks: [] });
+    });
+    expect(newSessionBtn).not.toBeDisabled();
   });
 });

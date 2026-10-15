@@ -1905,6 +1905,22 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     return () => clearTimeout(timer);
   }, [pickerWorkdir, isDesktop, postToHost, paneId]);
 
+  // 「原地守卫」：清空（`/clear`）或原地恢复替换当前会话会把正在跑的这一轮生成、
+  // 正在进行的压缩、正在跑的后台任务打断，或让它们与 UI 脱离 —— streaming / 压缩
+  // / 后台任务三态共用这一个守卫位（spec session-management.md 场景 2 / 6 / 7、
+  // message-compact.md「压缩期间的会话保护」）。
+  //
+  // 它只对「原地」动作成立，所以远控页**不套用**：页面上的「新建对话」在机器上
+  // 另起一条会话（initialize）、「会话」入口只改页面自己这份 sessionId 与视图，
+  // 两条都不触动电脑侧正在跑的那条会话（spec remote-control.md「Web 端也能发起
+  // 新会话」场景 10 与「Web 页作为第五种宿主」场景 10；桌面端多会话并行模型同样
+  // 不吃这条守卫）。
+  const inPlaceBusy =
+    state.isStreaming ||
+    state.isCompacting ||
+    hasRunningBackgroundTask(state.backgroundTasks);
+  const inPlaceGuard = !isRemotePage && inPlaceBusy;
+
   const handleClearChat = useCallback(() => {
     // /clear 斜杠命令 + ChatHeader「新建对话」按钮：原地清空当前会话，streaming、
     // 压缩进行中或存在正在运行的后台任务（后台终端工具/子代理/workflow）期间
@@ -1912,6 +1928,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     // 让压缩摘要写进清空后的新会话（spec message-compact「压缩期间的会话保护」）。
     // 仅 IDE 端可达（桌面端 /clear 已整端移除 2026-09-05，「新建对话」按钮也被
     // hideSessionButtons={isDesktop} 隐藏 —— 见 handleSendMessage）。
+    // 这里的守卫**不**收窄成上面的 inPlaceGuard：`/clear` 无论从哪一端触发都是
+    // 真正的原地清空，将来若在远控页可达也照旧该被挡住。
     if (
       stateRef.current.isStreaming ||
       stateRef.current.isCompacting ||
@@ -1926,7 +1944,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // 远控页顶栏「新建对话」：不是 clearChat —— 它打开弹窗，经 shim 发
   // initialize 在远端机器上建一个全新会话（spec remote-control.md「Web 端也能
-  // 发起新会话」）。禁用态沿用 newSessionDisabled（streaming/压缩/后台任务）。
+  // 发起新会话」）。它是新建、不是原地清空，所以页面上不吃那条忙闲守卫——电脑侧
+  // 那条会话照旧跑着（同故事场景 10）。
   const handleRemoteNewSession = useCallback(() => {
     dispatch({ type: "SHOW_DIALOG", payload: { type: "remoteNewSession" } });
   }, [dispatch]);
@@ -2598,16 +2617,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   const handleSessionSelect = useCallback(
     (sessionId: string) => {
-      // streaming、压缩进行中或存在正在运行的后台任务时忽略（与 handleClearChat
-      // 同一守卫，防原地恢复替换当前会话把后台任务中断/与 UI 脱离；压缩中切换
-      // 还会让压缩摘要写进切换后的会话 —— spec message-compact「压缩期间的
-      // 会话保护」）。
-      if (
-        state.isStreaming ||
-        state.isCompacting ||
-        hasRunningBackgroundTask(state.backgroundTasks)
-      )
-        return;
+      // 原地守卫（streaming / 压缩中 / 正在跑的后台任务）：恢复替换当前会话会把
+      // 后台任务中断或与 UI 脱离，压缩中切换还会让压缩摘要写进切换后的会话
+      // （spec message-compact「压缩期间的会话保护」）。远控页的「会话」入口不在
+      // 此列——它只改页面自己这份视图，电脑侧那条会话照旧跑着（spec
+      // remote-control.md「Web 页作为第五种宿主」场景 10）。
+      if (inPlaceGuard) return;
 
       // 清空当前任务列表：避免恢复期间残留旧会话的任务，
       // 并让新会话任务从空状态进入（若全部已完成则直接保持隐藏）
@@ -2618,7 +2633,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         sessionId,
       });
     },
-    [state.isStreaming, state.isCompacting, state.backgroundTasks, postToHost],
+    [inPlaceGuard, postToHost],
   );
 
   const handleInputCleared = useCallback(() => {
@@ -4141,11 +4156,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         leading={collapsedLeading(expandBtn)}
         macTrafficSpacer={macTrafficSpacer}
         onNewSession={isRemotePage ? handleRemoteNewSession : handleClearChat}
-        newSessionDisabled={
-          state.isStreaming ||
-          state.isCompacting ||
-          hasRunningBackgroundTask(state.backgroundTasks)
-        }
+        // 禁用态只属于 IDE 那个原地清空语义（见 inPlaceGuard）；远控页重绑为
+        // 「在远端机器上另起一条会话」，忙时不置灰。
+        newSessionDisabled={inPlaceGuard}
         onAbortMessage={handleAbortMessage}
         messages={state.messages}
         sessions={state.sessions}
