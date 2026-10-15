@@ -59,7 +59,6 @@ class WaveSession(
     @Volatile var agent: StdioAgent? = null
         private set
     @Volatile var messages: JsonElement? = null
-        private set
     @Volatile var tasks: JsonElement? = null
         private set
     @Volatile var backgroundTasks: JsonElement? = null
