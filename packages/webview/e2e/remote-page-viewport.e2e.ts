@@ -6,7 +6,7 @@ import { Message } from "wave-agent-sdk";
 
 /**
  * The remote Web page's viewport rules (spec remote-control「Web 页作为第五种宿主」
- * 场景 13) — real-browser only, in both directions:
+ * 场景 14) — real-browser only, in both directions:
  *
  * - The page must fit the phone screen in ONE screen: header and input area both
  *   visible, no page-level scrolling. This is what a static `100vh` breaks on iOS
@@ -14,17 +14,23 @@ import { Message } from "wave-agent-sdk";
  *   toolbars retracted — so the bottom-anchored input area lands below the fold),
  *   and why the height is declared in `dvh`.
  * - The safe-area insets must come OUT of that height, not add to it: the page
- *   opts into `viewport-fit=cover`, so the system UI (status bar, Home indicator)
- *   overlaps its edges.
+ *   opts into `viewport-fit=cover`, so the system UI (status bar, Dynamic Island)
+ *   overlaps its top edge.
+ * - Only the **top** (and the landscape sides) reserve an inset. The bottom does
+ *   not: in the standalone form the viewport iOS hands the page has already
+ *   excluded the bottom inset, so reserving it again leaves a same-colour band
+ *   under the input area (measured on device, 2026-10-15), and the strip below
+ *   that is the system gesture zone no page can paint into anyway.
  *
  * ⚠️ What this file can and cannot see. A headless browser has neither a
  * collapsing toolbar (so `dvh` and `vh` are the same number here) nor safe-area
  * insets (so `env()` resolves to its fallback): those two *behaviours* need a real
  * iPhone to confirm. What is asserted here is the wiring the phone depends on —
  * the declarations are in the shipped stylesheet (read as text: `vh` winning back
- * over `dvh` is invisible in this browser but reproduces the original bug), and
- * the inset padding keeps the page exactly one screen tall instead of growing it
- * (the failure mode a dropped `box-sizing` reintroduces).
+ * over `dvh`, or a `padding-bottom` creeping back into the inset rule, is
+ * invisible in this browser but reproduces one of the two device-measured bugs),
+ * and the inset padding keeps the page exactly one screen tall instead of growing
+ * it (the failure mode a dropped `box-sizing` reintroduces).
  */
 
 const build = (count: number): Message[] =>
@@ -85,6 +91,10 @@ test("远控页：顶栏与输入区同屏、页面不滚动、安全区从高�
     ),
     "安全区让位规则必须与 border-box 同在一处；先跑 pnpm -F wave-webview build",
   ).toBe(true);
+  expect(
+    /\[data-remote-page\]\s*body\s*\{[^}]*padding-bottom/.test(css),
+    "底部不让位：这条规则里不该再出现 padding-bottom（真机上它会在输入区下方留一条同色空带）",
+  ).toBe(false);
 
   await webviewPage.setViewportSize({ width: 390, height: 664 });
   const injector = new MessageInjector(webviewPage);
@@ -115,9 +125,10 @@ test("远控页：顶栏与输入区同屏、页面不滚动、安全区从高�
   expect(marked.inputArea!.bottom).toBeLessThanOrEqual(marked.innerHeight);
   expect(marked.scrollHeight).toBe(marked.innerHeight);
 
-  // 4. 让位是「从可视高度里扣」而不是「加在高度之外」：注入 iPhone 独立窗口的
-  //    安全区取值（顶 47 / 底 34），只覆盖 padding、不动产物里那条 box-sizing
-  //    —— 产物里那条一旦被摘掉，这里立刻变成整页滚动。
+  // 4. 让位是「从可视高度里扣」而不是「加在高度之外」：注入 iPhone 独立窗口的顶部
+  //    安全区取值（47），只覆盖 padding、不动产物里那条 box-sizing —— 产物里那条
+  //    一旦被摘掉，这里立刻变成整页滚动。底部不再注入任何让位：真机上视口高度本身
+  //    已经扣过底部安全区，再让一条就是空带 ⇒ 输入区底边必须正好落在可视区底边。
   //
   //    先按真页面的形状修掉测试外壳的一处差异：harness 的 <style> 给 #root 钉了
   //    `height: 100vh`，而真远控页的 index.html 里没有这条（#root 只有共用样式的
@@ -128,16 +139,14 @@ test("远控页：顶栏与输入区同屏、页面不滚动、安全区从高�
     (document.getElementById("root") as HTMLElement).style.height = "100%";
   });
   await webviewPage.addStyleTag({
-    content: `[data-remote-page] body {
-      padding-top: 47px;
-      padding-bottom: 34px;
-    }`,
+    content: `[data-remote-page] body { padding-top: 47px; }`,
   });
   const insets = await geometry(webviewPage);
   expect(insets.paddingTop).toBe("47px");
-  expect(insets.paddingBottom).toBe("34px");
+  expect(insets.paddingBottom).toBe("0px");
   expect(insets.boxSizing).toBe("border-box");
   expect(insets.header!.top).toBe(47);
-  expect(insets.inputArea!.bottom).toBe(insets.innerHeight - 34);
+  // 输入区底边 = 可视区底边：底部不让位，也不越过可视区。
+  expect(insets.inputArea!.bottom).toBe(insets.innerHeight);
   expect(insets.scrollHeight).toBe(insets.innerHeight);
 });

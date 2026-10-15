@@ -28,14 +28,22 @@ body {
 /* ---- 远控 Web 页：让开系统 UI（只对这一种宿主生效）----
    `data-remote-page` 由 remote/shim.js 打在 <html> 上（这页是唯一跑在浏览器里的
    宿主）。页面 index.html 声明了 viewport-fit=cover 以吃满全面屏，于是状态栏 /
-   灵动岛（top）、Home 指示条（bottom）、横屏时的圆角区（左右）都压在内容之上，
-   让位只能由页面自己负责。放在 body 上并配 border-box：安全区从 100dvh 里扣，
-   而不是加在它之外——后者会把刚修掉的「比可视区高」原样加回来（padding 默认
-   算在高度之外）。本地四端不设这个属性，也不会被系统 UI 压住，因此不适用。 */
+   灵动岛（top）与横屏时的圆角区（左右）都压在内容之上，让位只能由页面自己负责。
+   放在 body 上并配 border-box：安全区从 100dvh 里扣，而不是加在它之外——后者会
+   把刚修掉的「比可视区高」原样加回来（padding 默认算在高度之外）。本地四端不设
+   这个属性，也不会被系统 UI 压住，因此不适用。
+
+   **底部不在这里让位**（2026-10-15 真机定的）：standalone 形态下 iOS 的 CSS 视口
+   单位本身就少一条——`100vh` / `dvh` / `lvh` 全落在「布局视口 − safe-area-inset-
+   -bottom」上（WebKit bug 254868，Face ID 机型上差 34px），而屏幕最下面那一条
+   WebKit 保留给返回手势、页面漆不进去（只有 html/body 底色显示在那里）。于是
+   视口底边本来就已经在 Home 指示条上方了，这里再按 insets 让一条，输入框下面会
+   出现两倍宽的同色空带（真机实测：「底部有空白」，且摘掉后底部正常）。顶部那条
+   相反、必须留：`black-translucent` 下内容画到状态栏底下，不让位则顶栏按钮被
+   WLAN / 电量压住、点不动。⇒ 只让顶部与横屏左右，不让底部。 */
 [data-remote-page] body {
   box-sizing: border-box;
   padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
 }
