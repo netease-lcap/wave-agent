@@ -103,4 +103,92 @@ test.describe("Background Task Manager Demo", () => {
       "../../docs/public/screenshots/spec-background-task-detail.webp",
     );
   });
+
+  test("should show workflow progress for a workflow task", async ({
+    webviewPage,
+  }) => {
+    await webviewPage.setViewportSize({ width: 800, height: 700 });
+
+    // A workflow background task's id IS its run id, so the panel renders the
+    // run's structured progress instead of an output tail the workflow never
+    // writes (spec `multi-agent/workflow`「在后台任务面板里看到工作流进度」).
+    const runId = "wf_9c1d2e3f";
+    await webviewPage.evaluate((id) => {
+      window.simulateExtensionMessage({
+        command: "updateBackgroundTasks",
+        tasks: [
+          {
+            id,
+            type: "workflow",
+            status: "running",
+            startTime: Date.now() - 180000,
+            description: "Workflow: deep-research",
+          },
+        ],
+      });
+      window.simulateExtensionMessage({
+        command: "updateWorkflowRuns",
+        runs: [
+          {
+            runId: id,
+            meta: {
+              name: "deep-research",
+              description: "深度研究并生成带引用的报告",
+            },
+            status: "running",
+            scriptPath: `/runs/${id}/script.js`,
+            startTime: Date.now() - 180000,
+            phases: [
+              {
+                title: "Search",
+                agentCount: 4,
+                tokens: 21400,
+                elapsed: 52000,
+                startTime: Date.now() - 180000,
+              },
+              {
+                title: "Fetch",
+                agentCount: 3,
+                tokens: 18700,
+                elapsed: 61000,
+                startTime: Date.now() - 128000,
+              },
+              {
+                title: "Synthesize",
+                agentCount: 1,
+                tokens: 9600,
+                elapsed: 22000,
+                startTime: Date.now() - 67000,
+              },
+            ],
+            totalAgents: 8,
+            totalTokens: 49700,
+            logs: [
+              "phase() Search — 4 个代理并行检索",
+              "phase() Fetch — 抓取 12 个来源",
+              "phase() Synthesize — 汇总并交叉验证",
+            ],
+          },
+        ],
+      });
+      window.simulateExtensionMessage({
+        command: "showDialog",
+        dialogType: "tasks",
+      });
+    }, runId);
+
+    const dialog = webviewPage.getByTestId("background-task-manager");
+    await expect(dialog).toBeVisible();
+    await dialog.getByText(`[${runId}] workflow`).click();
+
+    // Progress, not "(无输出)": the run's phases and counts are on screen while
+    // it still runs.
+    await expect(dialog.getByText("Phases:")).toBeVisible();
+    await expect(dialog.getByText("OUTPUT (last 20 lines):")).toHaveCount(0);
+
+    await elementScreenshotWebp(
+      dialog,
+      "../../docs/public/screenshots/spec-background-task-workflow.webp",
+    );
+  });
 });

@@ -40,6 +40,25 @@ const DEFAULT_CONCURRENCY = () =>
 /** Failure details embedded in a notification summary before it is truncated. */
 const MAX_FAILURES_IN_SUMMARY = 5;
 
+/**
+ * Script-log retention on the run (`WorkflowRun.logs`): past
+ * `WORKFLOW_LOG_TRIM_THRESHOLD` accumulated lines the oldest are dropped down to
+ * `MAX_WORKFLOW_LOG_LINES`. Same order of magnitude as Claude Code's cap on its
+ * task-side progress entries (drop oldest past 1000, keep 500) — a workflow that
+ * logs per item would otherwise grow `run-state.json` without bound.
+ */
+const WORKFLOW_LOG_TRIM_THRESHOLD = 1000;
+const MAX_WORKFLOW_LOG_LINES = 500;
+
+/** Append a script `log()` line to the run, trimming the oldest past the cap. */
+function appendWorkflowLog(run: WorkflowRun, message: string): void {
+  const logs = (run.logs ??= []);
+  logs.push(message);
+  if (logs.length > WORKFLOW_LOG_TRIM_THRESHOLD) {
+    logs.splice(0, logs.length - MAX_WORKFLOW_LOG_LINES);
+  }
+}
+
 export class WorkflowManager {
   /**
    * In-memory runs, keyed by the runs directory they belong to — one entry per
@@ -235,6 +254,7 @@ export class WorkflowManager {
       failures: [],
       resumeFromRunId: opts?.resumeFromRunId,
       sizeWarningSent: false,
+      logs: [],
     };
 
     this.runs.set(runId, run);
@@ -369,6 +389,11 @@ export class WorkflowManager {
       agentControllers: runAgentControllers,
       onLog: (message: string) => {
         logger.info(`[Workflow:${runId}] ${message}`);
+        appendWorkflowLog(run, message);
+        // Push the new line. The progress events push on every phase/agent
+        // change, but a script that only logs between agents would otherwise
+        // leave both dialogs on a stale tail until the next phase flips.
+        this.backgroundTaskManager.notifyTasksChange();
       },
     });
 

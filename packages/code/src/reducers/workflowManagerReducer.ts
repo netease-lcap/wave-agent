@@ -29,8 +29,27 @@ export function workflowManagerReducer(
   action: WorkflowManagerAction,
 ): WorkflowManagerState {
   switch (action.type) {
-    case "SET_RUNS":
-      return { ...state, runs: action.runs };
+    case "SET_RUNS": {
+      // Newest first (spec multi-agent/workflow「工作流管理对话框（IDE 与 CLI）」场景
+      // 1): the run just started is the one to look at. The host hands them over
+      // in its own map order (creation order, plus whatever a session restore
+      // appended), which puts it at the bottom.
+      const runs = [...action.runs].sort((a, b) => b.startTime - a.startTime);
+      // The sort moves rows when a run appears at the top, so an index-stable
+      // selection would silently follow the position instead of the run.
+      const previous = state.runs[state.selectedIndex];
+      const keptIndex = previous
+        ? runs.findIndex((r) => r.runId === previous.runId)
+        : -1;
+      return {
+        ...state,
+        runs,
+        selectedIndex:
+          keptIndex >= 0
+            ? keptIndex
+            : Math.min(state.selectedIndex, Math.max(0, runs.length - 1)),
+      };
+    }
     case "SELECT_INDEX":
       return { ...state, selectedIndex: action.index };
     case "MOVE_UP":

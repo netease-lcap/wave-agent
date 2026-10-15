@@ -469,6 +469,75 @@ describe("WorkflowManager", () => {
       await fs.promises.rm(tmpDir, { recursive: true });
     });
 
+    it("appends script log() lines to the run", async () => {
+      // The run is the second place script `log()` output has to be readable —
+      // the `/workflows` detail and the `/tasks` panel both render the run, and
+      // an agent's background-task entry has no output file to read instead.
+      const tmpDir = path.join(
+        os.tmpdir(),
+        `wf-log-test-${process.pid}-${Date.now()}`,
+      );
+      mocks = createMockContainer(tmpDir);
+      manager = new WorkflowManager(mocks.container);
+
+      const script = `export const meta = { name: "log-wf", description: "Logs" };
+log("phase() Scan 开始");
+phase("Scan");
+log("grep 测试日志：找到 2 个重试用例");
+return 1;`;
+      const run = await manager.createRun(script);
+      expect(run.logs).toEqual([]);
+
+      mocks.mockBackgroundTaskManager.getTask.mockReturnValue({
+        id: run.runId,
+        status: "running",
+      });
+
+      await manager.startRun(run.runId);
+      await run.completionPromise;
+
+      expect(run.status).toBe("completed");
+      // `phase()` itself writes no log line: the phase list is the structured
+      // record of progress, so a script that only calls phase() (the
+      // deep-research skill does exactly this) has nothing here.
+      expect(run.logs).toEqual([
+        "phase() Scan 开始",
+        "grep 测试日志：找到 2 个重试用例",
+      ]);
+
+      await fs.promises.rm(tmpDir, { recursive: true, force: true });
+    });
+
+    it("keeps only the most recent log lines on the run", async () => {
+      const tmpDir = path.join(
+        os.tmpdir(),
+        `wf-log-trim-test-${process.pid}-${Date.now()}`,
+      );
+      mocks = createMockContainer(tmpDir);
+      manager = new WorkflowManager(mocks.container);
+
+      // `run-state.json` is rewritten on every progress event, so a workflow
+      // logging inside a loop must not grow it without bound.
+      const script = `export const meta = { name: "chatty-wf", description: "Chatty" };
+for (let i = 0; i <= 1000; i++) log("line " + i);
+return 1;`;
+      const run = await manager.createRun(script);
+
+      mocks.mockBackgroundTaskManager.getTask.mockReturnValue({
+        id: run.runId,
+        status: "running",
+      });
+
+      await manager.startRun(run.runId);
+      await run.completionPromise;
+
+      expect(run.logs).toHaveLength(500);
+      expect(run.logs?.[0]).toBe("line 501");
+      expect(run.logs?.[499]).toBe("line 1000");
+
+      await fs.promises.rm(tmpDir, { recursive: true, force: true });
+    });
+
     it("starts a run that fails with an error", async () => {
       const tmpDir = await fs.promises.mkdtemp(
         path.join(os.tmpdir(), "wf-test-"),

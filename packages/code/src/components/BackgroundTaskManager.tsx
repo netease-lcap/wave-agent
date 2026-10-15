@@ -6,6 +6,10 @@ import {
   backgroundTaskManagerReducer,
   type BackgroundTaskManagerState,
 } from "../reducers/backgroundTaskManagerReducer.js";
+import WorkflowRunDetail, {
+  formatDuration,
+  formatTime,
+} from "./WorkflowRunDetail.js";
 
 export interface BackgroundTaskManagerProps {
   onCancel: () => void;
@@ -14,8 +18,12 @@ export interface BackgroundTaskManagerProps {
 export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
   onCancel,
 }) => {
-  const { backgroundTasks, getBackgroundTaskOutput, stopBackgroundTask } =
-    useChat();
+  const {
+    backgroundTasks,
+    workflowRuns,
+    getBackgroundTaskOutput,
+    stopBackgroundTask,
+  } = useChat();
   const MAX_VISIBLE_ITEMS = 3;
 
   const [state, dispatch] = useReducer(backgroundTaskManagerReducer, {
@@ -71,18 +79,6 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
     }
   }, [viewMode, detailTaskId, getBackgroundTaskOutput]);
 
-  const formatDuration = (ms: number): string => {
-    if (ms < 1000) return `${ms}ms`;
-    if (ms < 60000) return `${Math.round(ms / 1000)}s`;
-    const minutes = Math.floor(ms / 60000);
-    const seconds = Math.round((ms % 60000) / 1000);
-    return `${minutes}m ${seconds}s`;
-  };
-
-  const formatTime = (timestamp: number): string => {
-    return new Date(timestamp).toLocaleTimeString();
-  };
-
   // Calculate visible window
   const startIndex = Math.max(
     0,
@@ -103,6 +99,15 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
       dispatch({ type: "RESET_DETAIL" });
       return null;
     }
+
+    // A workflow background task's id IS its run id, so a workflow task can show
+    // real progress instead of the (always empty) text output: the same run
+    // fields `/workflows` shows, via the same component. Absent run (e.g. the
+    // session was cleared) falls back to the plain task detail below.
+    const selectedRun =
+      task.type === "workflow"
+        ? (workflowRuns.find((r) => r.runId === task.id) ?? null)
+        : null;
 
     return (
       <Box
@@ -134,53 +139,70 @@ export const BackgroundTaskManager: React.FC<BackgroundTaskManagerProps> = ({
               </Text>
             </Box>
           )}
-          <Box>
-            <Text>
-              <Text color="blue">Status:</Text> {task.status}
-              {task.exitCode !== undefined && ` (exit code: ${task.exitCode})`}
-            </Text>
-          </Box>
-          <Box>
-            <Text>
-              <Text color="blue">Started:</Text> {formatTime(task.startTime)}
-              {task.runtime !== undefined && (
+          {/* With the run block below, the task's own status and start time
+              would repeat it — the run is the authority on how far the
+              workflow got. The header keeps only what identifies the task. */}
+          {!selectedRun && (
+            <>
+              <Box>
                 <Text>
-                  {" "}
-                  | <Text color="blue">Runtime:</Text>{" "}
-                  {formatDuration(task.runtime)}
+                  <Text color="blue">Status:</Text> {task.status}
+                  {task.exitCode !== undefined &&
+                    ` (exit code: ${task.exitCode})`}
                 </Text>
+              </Box>
+              <Box>
+                <Text>
+                  <Text color="blue">Started:</Text>{" "}
+                  {formatTime(task.startTime)}
+                  {task.runtime !== undefined && (
+                    <Text>
+                      {" "}
+                      | <Text color="blue">Runtime:</Text>{" "}
+                      {formatDuration(task.runtime)}
+                    </Text>
+                  )}
+                </Text>
+              </Box>
+              {task.outputPath && (
+                <Box>
+                  <Text>
+                    <Text color="blue">Log File:</Text> {task.outputPath}
+                  </Text>
+                </Box>
               )}
-            </Text>
-          </Box>
-          {task.outputPath && (
-            <Box>
-              <Text>
-                <Text color="blue">Log File:</Text> {task.outputPath}
-              </Text>
-            </Box>
+            </>
           )}
         </Box>
 
-        {detailOutput.stdout && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text color="green" bold>
-              OUTPUT (last 10 lines):
-            </Text>
-            <Box borderStyle="single" borderColor="green" padding={1}>
-              <Text>{getLastLines(detailOutput.stdout, 10)}</Text>
-            </Box>
-          </Box>
-        )}
+        {selectedRun ? (
+          <WorkflowRunDetail run={selectedRun} />
+        ) : (
+          <>
+            {detailOutput.stdout && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text color="green" bold>
+                  OUTPUT (last 10 lines):
+                </Text>
+                <Box borderStyle="single" borderColor="green" padding={1}>
+                  <Text>{getLastLines(detailOutput.stdout, 10)}</Text>
+                </Box>
+              </Box>
+            )}
 
-        {detailOutput.stderr && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text color="red" bold>
-              ERRORS:
-            </Text>
-            <Box borderStyle="single" borderColor="red" padding={1}>
-              <Text color="red">{getLastLines(detailOutput.stderr, 10)}</Text>
-            </Box>
-          </Box>
+            {detailOutput.stderr && (
+              <Box flexDirection="column" marginTop={1}>
+                <Text color="red" bold>
+                  ERRORS:
+                </Text>
+                <Box borderStyle="single" borderColor="red" padding={1}>
+                  <Text color="red">
+                    {getLastLines(detailOutput.stderr, 10)}
+                  </Text>
+                </Box>
+              </Box>
+            )}
+          </>
         )}
 
         <Box marginTop={1}>

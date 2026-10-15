@@ -11,7 +11,7 @@ const render = (tree: React.ReactElement) => {
 import { BackgroundTaskManager } from "../../src/components/BackgroundTaskManager.js";
 import { ChatProvider } from "../../src/contexts/useChat.js";
 import { AppProvider } from "../../src/contexts/useAppConfig.js";
-import { Agent, type BackgroundTask } from "wave-agent-sdk";
+import { Agent, type BackgroundTask, type WorkflowRun } from "wave-agent-sdk";
 
 // Mock useAppConfig
 vi.mock("../../src/contexts/useAppConfig.js", async () => {
@@ -513,6 +513,156 @@ describe("BackgroundTaskManager", () => {
     stdin.write("\u001B[A");
     await vi.waitFor(() => {
       expect(lastFrame()).toContain("▶ 1.");
+    });
+  });
+
+  // A workflow background task's id IS its run id, so `/tasks` can show the run's
+  // progress instead of the (always empty) text output. The fields come from the
+  // same run data `/workflows` renders (spec multi-agent/workflow「在后台任务面板里
+  // 看到工作流进度」).
+  describe("workflow task progress", () => {
+    const workflowTask = {
+      id: "wf_123",
+      type: "workflow" as const,
+      description: "Workflow: audit-and-fix",
+      status: "running" as const,
+      startTime: Date.now() - 3000,
+      stdout: "",
+      stderr: "",
+    };
+    const workflowRun: WorkflowRun = {
+      runId: "wf_123",
+      meta: { name: "audit-and-fix", description: "Audit then fix" },
+      status: "running",
+      scriptPath: "/tmp/workflows/run/script.ts",
+      startTime: Date.now() - 3000,
+      phases: [
+        {
+          title: "Scan",
+          agentCount: 2,
+          tokens: 1200,
+          elapsed: 1500,
+          startTime: Date.now() - 2800,
+        },
+        {
+          title: "Fix",
+          agentCount: 1,
+          tokens: 800,
+          elapsed: 900,
+          startTime: Date.now() - 1000,
+        },
+      ],
+      totalAgents: 3,
+      totalTokens: 2000,
+      logs: ["scanning files", "found 3 issues"],
+    };
+
+    const setup = async (runs: WorkflowRun[]) => {
+      vi.mocked(Agent.create).mockResolvedValue({
+        ...mockAgent,
+        getWorkflowRuns: vi.fn(async () => runs),
+        // A workflow task carries no text output, exactly like the real one.
+        getBackgroundTaskOutput: vi.fn(() => ({
+          stdout: "",
+          stderr: "",
+          status: "running",
+        })),
+      } as unknown as Agent);
+
+      const result = render(
+        <AppProvider>
+          <ChatProvider>
+            <BackgroundTaskManager onCancel={vi.fn()} />
+          </ChatProvider>
+        </AppProvider>,
+      );
+
+      await vi.waitFor(() => {
+        expect(Agent.create).toHaveBeenCalled();
+      });
+
+      const callbacks = vi.mocked(Agent.create).mock.calls[0][0].callbacks!;
+      callbacks.onBackgroundTasksChange!([
+        workflowTask,
+      ] as unknown as BackgroundTask[]);
+
+      await vi.waitFor(() => expect(result.lastFrame()).toContain("wf_123"));
+      return result;
+    };
+
+    it("should render the run's progress on Enter instead of an empty output", async () => {
+      const { lastFrame, stdin } = await setup([workflowRun]);
+
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Background Task Details: wf_123");
+      });
+
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("Phases:");
+      expect(frame).toContain("Scan — 2 agents | 1.2k tokens | 2s");
+      expect(frame).toContain("Fix — 1 agents | 800 tokens | 900ms");
+      expect(frame).toContain("Agents: 3");
+      expect(frame).toContain("Tokens: 2.0k");
+      expect(frame).toContain("Script: /tmp/workflows/run/script.ts");
+      expect(frame).toContain("Logs (last 10 lines):");
+      expect(frame).toContain("scanning files");
+      // The workflow task has no text output at all — that is the whole point.
+      expect(frame).not.toContain("OUTPUT (last 10 lines):");
+      // The run block owns status/时间, so the task header does not repeat it.
+      expect(frame).not.toContain("Runtime:");
+    });
+
+    it("should keep showing progress with the final state and error once the run ended", async () => {
+      const failedRun: WorkflowRun = {
+        ...workflowRun,
+        status: "failed",
+        endTime: workflowRun.startTime + 5000,
+        error: "2 of 3 agents failed",
+        failures: ["Scan: boom"],
+      };
+      const { lastFrame, stdin } = await setup([failedRun]);
+
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Background Task Details: wf_123");
+      });
+
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("Status: failed");
+      expect(frame).toContain("Error: 2 of 3 agents failed");
+      expect(frame).toContain("Failures:");
+      expect(frame).toContain("Scan: boom");
+      expect(frame).toContain("Phases:");
+    });
+
+    it("should fall back to the task header when the run is no longer listed", async () => {
+      const { lastFrame, stdin } = await setup([]);
+
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Background Task Details: wf_123");
+      });
+
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("Status: running");
+      expect(frame).toContain("Started:");
+      expect(frame).not.toContain("Phases:");
+      expect(frame).not.toContain("Run ID:");
+    });
+
+    it("should ignore runs whose id is not the selected task", async () => {
+      const otherRun: WorkflowRun = { ...workflowRun, runId: "wf_other" };
+      const { lastFrame, stdin } = await setup([otherRun]);
+
+      stdin.write("\r");
+      await vi.waitFor(() => {
+        expect(lastFrame()).toContain("Background Task Details: wf_123");
+      });
+
+      const frame = lastFrame() ?? "";
+      expect(frame).toContain("Status: running");
+      expect(frame).not.toContain("Phases:");
     });
   });
 });

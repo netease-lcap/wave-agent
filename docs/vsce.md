@@ -146,6 +146,8 @@ CodeWave IDE 是一款集成在 VS Code 与 JetBrains IDE（WebStorm、IntelliJ 
 
 <figure><img src="/screenshots/spec-background-task-detail.webp" alt="后台任务管理 - 详情" /><figcaption>后台任务管理 - 详情</figcaption></figure>
 
+<figure><img src="/screenshots/spec-background-task-workflow.webp" alt="后台任务管理 - 工作流进度" /><figcaption>后台任务管理 - 工作流进度</figcaption></figure>
+
 <figure><img src="/screenshots/spec-workflow-list.webp" alt="工作流管理 - 列表" /><figcaption>工作流管理 - 列表</figcaption></figure>
 
 <figure><img src="/screenshots/spec-workflow-detail.webp" alt="工作流管理 - 详情" /><figcaption>工作流管理 - 详情</figcaption></figure>

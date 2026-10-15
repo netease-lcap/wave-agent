@@ -1,48 +1,19 @@
 import React, { useEffect, useReducer } from "react";
 import { Box, Text, useInput } from "ink";
 import { useChat } from "../contexts/useChat.js";
-import type { WorkflowRun } from "wave-agent-sdk";
 import {
   workflowManagerReducer,
   type WorkflowManagerState,
 } from "../reducers/workflowManagerReducer.js";
+import WorkflowRunDetail, {
+  formatDuration,
+  formatTokens,
+  workflowStatusColor,
+} from "./WorkflowRunDetail.js";
 
 export interface WorkflowManagerProps {
   onCancel: () => void;
 }
-
-const statusColor = (
-  status: WorkflowRun["status"],
-): "green" | "blue" | "red" | "yellow" => {
-  switch (status) {
-    case "running":
-      return "green";
-    case "completed":
-      return "blue";
-    case "failed":
-    case "aborted":
-      return "red";
-    case "paused":
-      return "yellow";
-  }
-};
-
-const formatDuration = (ms: number): string => {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${Math.round(ms / 1000)}s`;
-  const minutes = Math.floor(ms / 60000);
-  const seconds = Math.round((ms % 60000) / 1000);
-  return `${minutes}m ${seconds}s`;
-};
-
-const formatTime = (timestamp: number): string => {
-  return new Date(timestamp).toLocaleTimeString();
-};
-
-const formatTokens = (tokens: number): string => {
-  if (tokens < 1000) return `${tokens}`;
-  return `${(tokens / 1000).toFixed(1)}k`;
-};
 
 export const WorkflowManager: React.FC<WorkflowManagerProps> = ({
   onCancel,
@@ -94,10 +65,6 @@ export const WorkflowManager: React.FC<WorkflowManagerProps> = ({
       return null;
     }
 
-    const elapsed = run.endTime
-      ? run.endTime - run.startTime
-      : Date.now() - run.startTime;
-
     return (
       <Box
         flexDirection="column"
@@ -115,75 +82,7 @@ export const WorkflowManager: React.FC<WorkflowManagerProps> = ({
           </Text>
         </Box>
 
-        <Box flexDirection="column" gap={0}>
-          <Box>
-            <Text>
-              <Text color="blue">Run ID:</Text> {run.runId}
-            </Text>
-          </Box>
-          {run.meta.description && (
-            <Box>
-              <Text>
-                <Text color="blue">Description:</Text> {run.meta.description}
-              </Text>
-            </Box>
-          )}
-          <Box>
-            <Text>
-              <Text color="blue">Status:</Text>{" "}
-              <Text color={statusColor(run.status)}>{run.status}</Text>
-            </Text>
-          </Box>
-          <Box>
-            <Text>
-              <Text color="blue">Started:</Text> {formatTime(run.startTime)}
-              {run.endTime && (
-                <Text>
-                  {" "}
-                  | <Text color="blue">Ended:</Text> {formatTime(run.endTime)}
-                </Text>
-              )}
-              {" | "}
-              <Text color="blue">Duration:</Text> {formatDuration(elapsed)}
-            </Text>
-          </Box>
-          <Box>
-            <Text>
-              <Text color="blue">Agents:</Text> {run.totalAgents} {" | "}
-              <Text color="blue">Tokens:</Text> {formatTokens(run.totalTokens)}
-            </Text>
-          </Box>
-          <Box>
-            <Text>
-              <Text color="blue">Script:</Text> {run.scriptPath}
-            </Text>
-          </Box>
-          {run.error && (
-            <Box>
-              <Text color="red">
-                <Text color="blue">Error:</Text> {run.error}
-              </Text>
-            </Box>
-          )}
-        </Box>
-
-        {run.phases.length > 0 && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text color="cyan" bold>
-              Phases:
-            </Text>
-            {run.phases.map((phase, i) => (
-              <Box key={i} marginLeft={2}>
-                <Text>
-                  <Text color="blue">{phase.title}</Text>
-                  {" — "}
-                  {phase.agentCount} agents | {formatTokens(phase.tokens)}{" "}
-                  tokens | {formatDuration(phase.elapsed)}
-                </Text>
-              </Box>
-            ))}
-          </Box>
-        )}
+        <WorkflowRunDetail run={run} />
 
         <Box marginTop={1}>
           <Text dimColor>
@@ -225,6 +124,17 @@ export const WorkflowManager: React.FC<WorkflowManagerProps> = ({
   );
   const visibleRuns = runs.slice(startIndex, startIndex + MAX_VISIBLE_ITEMS);
 
+  // Header counts of the states a user acts on (a failed run is plain to see in
+  // its own row, so it needs no tally).
+  const runningCount = runs.filter((r) => r.status === "running").length;
+  const completedCount = runs.filter((r) => r.status === "completed").length;
+  const subtitle = [
+    runningCount > 0 ? `${runningCount} running` : "",
+    completedCount > 0 ? `${completedCount} completed` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <Box
       flexDirection="column"
@@ -240,6 +150,7 @@ export const WorkflowManager: React.FC<WorkflowManagerProps> = ({
         <Text color="cyan" bold>
           Workflows
         </Text>
+        {subtitle && <Text dimColor> {subtitle}</Text>}
       </Box>
       <Text dimColor>Select a run to view details</Text>
 
@@ -250,7 +161,15 @@ export const WorkflowManager: React.FC<WorkflowManagerProps> = ({
           const elapsed = run.endTime
             ? run.endTime - run.startTime
             : Date.now() - run.startTime;
-          const phaseText = run.phases.map((p) => p.title).join(" → ");
+          // Duration always reads; the two counters are dropped at zero so an
+          // unstarted run does not claim "0 agents · 0 tokens".
+          const meta = [
+            formatDuration(elapsed),
+            run.totalAgents > 0 ? `${run.totalAgents} agents` : "",
+            run.totalTokens > 0
+              ? `${formatTokens(run.totalTokens)} tokens`
+              : "",
+          ].filter(Boolean);
 
           return (
             <Box key={run.runId} flexDirection="column">
@@ -259,43 +178,19 @@ export const WorkflowManager: React.FC<WorkflowManagerProps> = ({
                 backgroundColor={isSelected ? "cyan" : undefined}
               >
                 {isSelected ? "▶ " : "  "}
-                {actualIndex + 1}. {run.runId.slice(0, 8)} {run.meta.name}
-                <Text color={statusColor(run.status)}> ({run.status})</Text>
+                {actualIndex + 1}. {run.meta.name || run.meta.description}
+                <Text color={workflowStatusColor(run.status)}>
+                  {" "}
+                  ({run.status})
+                </Text>
               </Text>
               <Text
                 color={isSelected ? "black" : "gray"}
                 backgroundColor={isSelected ? "cyan" : undefined}
               >
                 {"     "}
-                {run.totalAgents} agents · {formatTokens(run.totalTokens)}{" "}
-                tokens · {formatDuration(elapsed)}
+                {meta.join(" · ")}
               </Text>
-              {phaseText && (
-                <Text
-                  color={isSelected ? "black" : "gray"}
-                  backgroundColor={isSelected ? "cyan" : undefined}
-                >
-                  {"     "}
-                  {run.phases.map((p, pi) => (
-                    <React.Fragment key={pi}>
-                      {pi > 0 && " → "}
-                      <Text
-                        color={
-                          isSelected
-                            ? "black"
-                            : pi === run.phases.length - 1 &&
-                                run.status === "running"
-                              ? "green"
-                              : undefined
-                        }
-                        backgroundColor={isSelected ? "cyan" : undefined}
-                      >
-                        {p.title}
-                      </Text>
-                    </React.Fragment>
-                  ))}
-                </Text>
-              )}
               {isSelected && (
                 <Box marginLeft={4} flexDirection="column">
                   <Text color="gray" dimColor>
