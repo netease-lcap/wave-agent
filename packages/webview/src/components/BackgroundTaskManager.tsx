@@ -9,7 +9,15 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useClickOutside } from "../utils/useClickOutside";
 import { useHostMessage } from "../utils/useHostMessage";
-import { BackgroundTaskManagerProps, BackgroundTaskSummary } from "../types";
+import {
+  BackgroundTaskManagerProps,
+  BackgroundTaskSummary,
+  SerializableWorkflowRun,
+} from "../types";
+import WorkflowRunProgress, {
+  formatDuration,
+  formatTime,
+} from "./WorkflowRunProgress";
 import "../styles/ConfigurationDialog.css";
 
 interface BackgroundTaskOutput {
@@ -28,18 +36,6 @@ interface BackgroundTaskOutput {
  */
 const BACKGROUND_TASK_OUTPUT_POLL_MS = 1500;
 
-const formatDuration = (ms: number): string => {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${Math.round(ms / 1000)}s`;
-  const minutes = Math.floor(ms / 60000);
-  const seconds = Math.round((ms % 60000) / 1000);
-  return `${minutes}m ${seconds}s`;
-};
-
-const formatTime = (timestamp: number): string => {
-  return new Date(timestamp).toLocaleTimeString();
-};
-
 const getLastLines = (text: string, count: number): string => {
   if (!text) return "";
   const lines = text.split("\n");
@@ -49,9 +45,10 @@ const getLastLines = (text: string, count: number): string => {
 const BackgroundTaskManager: React.FC<
   BackgroundTaskManagerProps & {
     tasks: BackgroundTaskSummary[];
+    workflowRuns: SerializableWorkflowRun[];
     vscode: { postMessage: (msg: unknown) => void };
   }
-> = ({ onClose, tasks, vscode }) => {
+> = ({ onClose, tasks, workflowRuns, vscode }) => {
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [output, setOutput] = useState<BackgroundTaskOutput | null>(null);
   const [loadingOutput, setLoadingOutput] = useState(false);
@@ -67,6 +64,23 @@ const BackgroundTaskManager: React.FC<
   } | null>(null);
 
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) || null;
+
+  /**
+   * The run behind the selected task, when the selected task IS a workflow: a
+   * workflow background task's id is its runId, so the two slices of chat state
+   * join on it directly. A workflow has no text tail to show — the SDK never
+   * points the task at an output file and its own progress is what it reports —
+   * so the run's structured progress (phases, agents, tokens, `log()` lines) is
+   * rendered in place of the output box. Both dialogs render it through the same
+   * component, which is what stops `/tasks` and `/workflows` from disagreeing.
+   *
+   * `null` (the run is gone from the session's list — `/clear`, a resumed
+   * session) falls back to the text output box rather than an empty pane.
+   */
+  const selectedWorkflowRun =
+    selectedTask?.type === "workflow"
+      ? (workflowRuns.find((r) => r.runId === selectedTask.id) ?? null)
+      : null;
 
   // Fetch output for the selected task, and refetch whenever its status
   // changes (running → completed/failed/killed) so the terminal output is not
@@ -103,7 +117,12 @@ const BackgroundTaskManager: React.FC<
   // cadence: the fetch effect above only fires on transitions (selection /
   // status change), so live progress would otherwise freeze on the first
   // snapshot. Stops on terminal status, task switch and unmount.
-  const selectedTaskRunning = selectedTask?.status === "running";
+  //
+  // A workflow task is the exception: its progress arrives through
+  // `updateWorkflowRuns`, which the host pushes on every progress event, so
+  // polling its (empty) output has nothing to add.
+  const selectedTaskRunning =
+    selectedTask?.status === "running" && !selectedWorkflowRun;
   useEffect(() => {
     if (!selectedTaskId || !selectedTaskRunning) {
       return;
@@ -234,16 +253,21 @@ const BackgroundTaskManager: React.FC<
                       $ {selectedTask.command}
                     </div>
                   )}
-                  <div
-                    style={{
-                      fontSize: "12px",
-                      color: "var(--vscode-descriptionForeground)",
-                    }}
-                  >
-                    Started: {formatTime(selectedTask.startTime)}
-                    {selectedTask.runtime !== undefined &&
-                      ` · Runtime: ${formatDuration(selectedTask.runtime)}`}
-                  </div>
+                  {/* The progress block carries Started / Ended / Duration for
+                      a workflow run, so the task's own start-and-runtime line
+                      would only repeat it with a coarser value. */}
+                  {!selectedWorkflowRun && (
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: "var(--vscode-descriptionForeground)",
+                      }}
+                    >
+                      Started: {formatTime(selectedTask.startTime)}
+                      {selectedTask.runtime !== undefined &&
+                        ` · Runtime: ${formatDuration(selectedTask.runtime)}`}
+                    </div>
+                  )}
                   {selectedTask.outputPath && (
                     <div
                       style={{
@@ -256,6 +280,9 @@ const BackgroundTaskManager: React.FC<
                     >
                       Log: {selectedTask.outputPath}
                     </div>
+                  )}
+                  {selectedWorkflowRun && (
+                    <WorkflowRunProgress run={selectedWorkflowRun} />
                   )}
                 </div>
                 <div className="mcp-server-actions">
@@ -271,69 +298,74 @@ const BackgroundTaskManager: React.FC<
                 </div>
               </div>
 
-              <div style={{ marginTop: "12px" }}>
-                <div
-                  style={{
-                    fontSize: "12px",
-                    color: "#4ec9b0",
-                    marginBottom: "4px",
-                  }}
-                >
-                  OUTPUT (last 20 lines):
+              {/* The text tail is the fallback: a workflow task has no output
+                  file to read, so it is only reachable here when the run itself
+                  is no longer listed by the session. */}
+              {!selectedWorkflowRun && (
+                <div style={{ marginTop: "12px" }}>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "#4ec9b0",
+                      marginBottom: "4px",
+                    }}
+                  >
+                    OUTPUT (last 20 lines):
+                  </div>
+                  <pre
+                    style={{
+                      background:
+                        "var(--vscode-textCodeBlock-background, rgba(0,0,0,0.15))",
+                      padding: "8px",
+                      borderRadius: "4px",
+                      fontSize: "12px",
+                      fontFamily: "var(--vscode-editor-font-family, monospace)",
+                      maxHeight: "200px",
+                      overflow: "auto",
+                      whiteSpace: "pre-wrap",
+                      margin: 0,
+                    }}
+                  >
+                    {loadingOutput
+                      ? "加载中..."
+                      : output
+                        ? getLastLines(output.stdout, 20) || "(无输出)"
+                        : "(无输出)"}
+                  </pre>
+                  {output && output.stderr && (
+                    <>
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: "#f48771",
+                          marginTop: "8px",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        ERRORS:
+                      </div>
+                      <pre
+                        style={{
+                          background:
+                            "var(--vscode-textCodeBlock-background, rgba(0,0,0,0.15))",
+                          padding: "8px",
+                          borderRadius: "4px",
+                          fontSize: "12px",
+                          color: "#f48771",
+                          fontFamily:
+                            "var(--vscode-editor-font-family, monospace)",
+                          maxHeight: "150px",
+                          overflow: "auto",
+                          whiteSpace: "pre-wrap",
+                          margin: 0,
+                        }}
+                      >
+                        {getLastLines(output.stderr, 20)}
+                      </pre>
+                    </>
+                  )}
                 </div>
-                <pre
-                  style={{
-                    background:
-                      "var(--vscode-textCodeBlock-background, rgba(0,0,0,0.15))",
-                    padding: "8px",
-                    borderRadius: "4px",
-                    fontSize: "12px",
-                    fontFamily: "var(--vscode-editor-font-family, monospace)",
-                    maxHeight: "200px",
-                    overflow: "auto",
-                    whiteSpace: "pre-wrap",
-                    margin: 0,
-                  }}
-                >
-                  {loadingOutput
-                    ? "加载中..."
-                    : output
-                      ? getLastLines(output.stdout, 20) || "(无输出)"
-                      : "(无输出)"}
-                </pre>
-                {output && output.stderr && (
-                  <>
-                    <div
-                      style={{
-                        fontSize: "12px",
-                        color: "#f48771",
-                        marginTop: "8px",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      ERRORS:
-                    </div>
-                    <pre
-                      style={{
-                        background:
-                          "var(--vscode-textCodeBlock-background, rgba(0,0,0,0.15))",
-                        padding: "8px",
-                        borderRadius: "4px",
-                        fontSize: "12px",
-                        color: "#f48771",
-                        fontFamily:
-                          "var(--vscode-editor-font-family, monospace)",
-                        maxHeight: "150px",
-                        overflow: "auto",
-                        whiteSpace: "pre-wrap",
-                        margin: 0,
-                      }}
-                    >
-                      {getLastLines(output.stderr, 20)}
-                    </pre>
-                  </>
-                )}
-              </div>
+              )}
             </div>
           ) : (
             <div className="mcp-server-list">

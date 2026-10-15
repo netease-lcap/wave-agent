@@ -1,41 +1,13 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useClickOutside } from "../utils/useClickOutside";
 import { useHostMessage } from "../utils/useHostMessage";
 import { WorkflowManagerProps, SerializableWorkflowRun } from "../types";
+import WorkflowRunProgress, {
+  formatDuration,
+  formatTokens,
+  workflowStatusColor,
+} from "./WorkflowRunProgress";
 import "../styles/ConfigurationDialog.css";
-
-const formatDuration = (ms: number): string => {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${Math.round(ms / 1000)}s`;
-  const minutes = Math.floor(ms / 60000);
-  const seconds = Math.round((ms % 60000) / 1000);
-  return `${minutes}m ${seconds}s`;
-};
-
-const formatTime = (timestamp: number): string => {
-  return new Date(timestamp).toLocaleTimeString();
-};
-
-const formatTokens = (tokens: number): string => {
-  if (tokens < 1000) return `${tokens}`;
-  return `${(tokens / 1000).toFixed(1)}k`;
-};
-
-const statusColor = (status: string): string => {
-  switch (status) {
-    case "running":
-      return "#4ec9b0";
-    case "completed":
-      return "#569cd6";
-    case "failed":
-    case "aborted":
-      return "#f48771";
-    case "paused":
-      return "#dcdcaa";
-    default:
-      return "var(--vscode-descriptionForeground)";
-  }
-};
 
 const WorkflowManager: React.FC<
   WorkflowManagerProps & {
@@ -47,7 +19,25 @@ const WorkflowManager: React.FC<
   const [stoppingId, setStoppingId] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  // Newest first. The host hands the runs over in the order its own map holds
+  // them (creation order, plus whatever a session restore appended), which puts
+  // the run the user just started at the bottom of the list.
+  const orderedRuns = [...runs].sort((a, b) => b.startTime - a.startTime);
+
   const selectedRun = runs.find((r) => r.runId === selectedRunId) || null;
+
+  // A one-run list is pure friction — one row whose only content is the thing
+  // the dialog was opened to look at — so a single run opens straight into its
+  // detail. Backing out of that detail then closes the dialog rather than
+  // landing on a list of one (Claude Code's Dynamic workflows dialog draws the
+  // same line for a one-item list), which is also what keeps "back" from being
+  // a no-op: with one run the list is unreachable by design, not by accident.
+  const onlyRun = orderedRuns.length === 1 ? orderedRuns[0] : null;
+  useEffect(() => {
+    if (onlyRun && !selectedRunId) {
+      setSelectedRunId(onlyRun.runId);
+    }
+  }, [onlyRun, selectedRunId]);
 
   useHostMessage((message) => {
     if (message.command === "workflowRunStopped") {
@@ -60,6 +50,14 @@ const WorkflowManager: React.FC<
     vscode.postMessage({ command: "stopWorkflowRun", runId });
   };
 
+  const handleBackFromDetail = () => {
+    if (runs.length <= 1) {
+      onCancel();
+      return;
+    }
+    setSelectedRunId(null);
+  };
+
   // Click-outside close (listener registered one tick later inside the hook,
   // so the click that opened this dialog doesn't immediately close it).
   useClickOutside({
@@ -69,114 +67,46 @@ const WorkflowManager: React.FC<
 
   useEffect(() => {
     const handleEscapeKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        if (selectedRunId) {
-          setSelectedRunId(null);
-        } else {
-          onCancel();
-        }
+      if (event.key !== "Escape") return;
+      // Escape leaves the detail, then the dialog — but there is no list to
+      // return to when the detail was opened because it is the only run.
+      if (selectedRunId && runs.length > 1) {
+        setSelectedRunId(null);
+      } else {
+        onCancel();
       }
     };
     document.addEventListener("keydown", handleEscapeKey);
     return () => document.removeEventListener("keydown", handleEscapeKey);
-  }, [onCancel, selectedRunId]);
+  }, [onCancel, selectedRunId, runs.length]);
 
   const renderDetail = () => {
     if (!selectedRun) return null;
-    const elapsed = selectedRun.endTime
-      ? selectedRun.endTime - selectedRun.startTime
-      : Date.now() - selectedRun.startTime;
 
     return (
       <div className="mcp-server-list">
         <div className="mcp-server-item">
           <div className="mcp-server-info">
             <div className="mcp-server-header">
-              <span style={{ color: statusColor(selectedRun.status) }}>●</span>
+              <span
+                role="img"
+                aria-label={selectedRun.status}
+                title={selectedRun.status}
+                style={{ color: workflowStatusColor(selectedRun.status) }}
+              >
+                ●
+              </span>
               <span className="mcp-server-name">{selectedRun.meta.name}</span>
               <span
                 style={{
-                  color: statusColor(selectedRun.status),
+                  color: workflowStatusColor(selectedRun.status),
                   fontSize: "12px",
                 }}
               >
                 {selectedRun.status}
               </span>
             </div>
-            <div
-              style={{
-                fontSize: "12px",
-                color: "var(--vscode-descriptionForeground)",
-              }}
-            >
-              <span style={{ color: "#569cd6" }}>Run ID:</span>{" "}
-              {selectedRun.runId}
-            </div>
-            {selectedRun.meta.description && (
-              <div
-                style={{
-                  fontSize: "12px",
-                  color: "var(--vscode-descriptionForeground)",
-                }}
-              >
-                <span style={{ color: "#569cd6" }}>Description:</span>{" "}
-                {selectedRun.meta.description}
-              </div>
-            )}
-            <div
-              style={{
-                fontSize: "12px",
-                color: "var(--vscode-descriptionForeground)",
-              }}
-            >
-              <span style={{ color: "#569cd6" }}>Started:</span>{" "}
-              {formatTime(selectedRun.startTime)}
-              {selectedRun.endTime && (
-                <>
-                  {" | "}
-                  <span style={{ color: "#569cd6" }}>Ended:</span>{" "}
-                  {formatTime(selectedRun.endTime)}
-                </>
-              )}
-              {" | "}
-              <span style={{ color: "#569cd6" }}>Duration:</span>{" "}
-              {formatDuration(elapsed)}
-            </div>
-            <div
-              style={{
-                fontSize: "12px",
-                color: "var(--vscode-descriptionForeground)",
-              }}
-            >
-              <span style={{ color: "#569cd6" }}>Agents:</span>{" "}
-              {selectedRun.totalAgents}
-              {" | "}
-              <span style={{ color: "#569cd6" }}>Tokens:</span>{" "}
-              {formatTokens(selectedRun.totalTokens)}
-            </div>
-            <div
-              style={{
-                fontSize: "12px",
-                color: "var(--vscode-descriptionForeground)",
-                fontFamily: "var(--vscode-editor-font-family, monospace)",
-                wordBreak: "break-all",
-              }}
-            >
-              <span style={{ color: "#569cd6" }}>Script:</span>{" "}
-              {selectedRun.scriptPath}
-            </div>
-            {selectedRun.error && (
-              <div
-                style={{
-                  fontSize: "12px",
-                  color: "#f48771",
-                  wordBreak: "break-all",
-                }}
-              >
-                <span style={{ color: "#569cd6" }}>Error:</span>{" "}
-                {selectedRun.error}
-              </div>
-            )}
+            <WorkflowRunProgress run={selectedRun} />
           </div>
           <div className="mcp-server-actions">
             {selectedRun.status === "running" && (
@@ -190,47 +120,23 @@ const WorkflowManager: React.FC<
             )}
           </div>
         </div>
-
-        {selectedRun.phases.length > 0 && (
-          <div style={{ marginTop: "12px" }}>
-            <div
-              style={{
-                fontSize: "12px",
-                color: "#4ec9b0",
-                marginBottom: "4px",
-              }}
-            >
-              Phases:
-            </div>
-            {selectedRun.phases.map((phase, i) => (
-              <div
-                key={i}
-                style={{
-                  fontSize: "12px",
-                  color: "var(--vscode-descriptionForeground)",
-                  marginLeft: "8px",
-                  marginBottom: "2px",
-                }}
-              >
-                <span style={{ color: "#569cd6" }}>{phase.title}</span>
-                {" — "}
-                {phase.agentCount} agents | {formatTokens(phase.tokens)} tokens
-                | {formatDuration(phase.elapsed)}
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     );
   };
 
   const renderList = () => (
     <div className="mcp-server-list">
-      {runs.map((run) => {
+      {orderedRuns.map((run) => {
         const elapsed = run.endTime
           ? run.endTime - run.startTime
           : Date.now() - run.startTime;
-        const phaseText = run.phases.map((p) => p.title).join(" → ");
+        // Duration always reads; the two counters are dropped at zero so an
+        // unstarted run does not claim "0 agents · 0 tokens".
+        const meta = [
+          formatDuration(elapsed),
+          run.totalAgents > 0 ? `${run.totalAgents} agents` : "",
+          run.totalTokens > 0 ? `${formatTokens(run.totalTokens)} tokens` : "",
+        ].filter(Boolean);
         return (
           <div
             key={run.runId}
@@ -240,50 +146,29 @@ const WorkflowManager: React.FC<
           >
             <div className="mcp-server-info">
               <div className="mcp-server-header">
-                <span style={{ color: statusColor(run.status) }}>●</span>
-                <span className="mcp-server-name">
-                  [{run.runId.slice(0, 8)}] {run.meta.name}
-                </span>
+                {/* Status is the dot: its colour is the whole signal, so the
+                    word rides along as the accessible name instead of
+                    competing with the workflow name for the row's width. */}
                 <span
-                  style={{ color: statusColor(run.status), fontSize: "12px" }}
+                  role="img"
+                  aria-label={run.status}
+                  title={run.status}
+                  style={{ color: workflowStatusColor(run.status) }}
                 >
-                  {run.status}
+                  ●
+                </span>
+                <span className="mcp-server-name">
+                  {run.meta.name || run.meta.description}
                 </span>
               </div>
-              {run.meta.description && (
-                <div
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--vscode-descriptionForeground)",
-                  }}
-                >
-                  {run.meta.description}
-                </div>
-              )}
               <div
                 style={{
                   fontSize: "12px",
                   color: "var(--vscode-descriptionForeground)",
                 }}
               >
-                {run.totalAgents} agents · {formatTokens(run.totalTokens)}{" "}
-                tokens · {formatDuration(elapsed)}
+                {meta.join(" · ")}
               </div>
-              {phaseText && (
-                <div
-                  style={{
-                    fontSize: "12px",
-                    color: "var(--vscode-descriptionForeground)",
-                  }}
-                >
-                  {run.phases.map((p, pi) => (
-                    <React.Fragment key={pi}>
-                      {pi > 0 && " → "}
-                      {p.title}
-                    </React.Fragment>
-                  ))}
-                </div>
-              )}
             </div>
             <div className="mcp-server-actions">
               {run.status === "running" && (
@@ -305,6 +190,15 @@ const WorkflowManager: React.FC<
     </div>
   );
 
+  const runningCount = runs.filter((r) => r.status === "running").length;
+  const completedCount = runs.filter((r) => r.status === "completed").length;
+  const subtitle = [
+    runningCount > 0 ? `${runningCount} 运行中` : "",
+    completedCount > 0 ? `${completedCount} 已完成` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
   return (
     <div className="configuration-dialog-overlay">
       <div
@@ -314,7 +208,26 @@ const WorkflowManager: React.FC<
         style={{ maxWidth: "760px" }}
       >
         <div className="configuration-dialog-header">
-          <h3>工作流</h3>
+          <h3
+            style={{
+              display: "flex",
+              alignItems: "baseline",
+              gap: "8px",
+            }}
+          >
+            工作流
+            {subtitle && (
+              <span
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 400,
+                  color: "var(--vscode-descriptionForeground)",
+                }}
+              >
+                {subtitle}
+              </span>
+            )}
+          </h3>
         </div>
 
         <div className="mcp-container">
@@ -329,10 +242,10 @@ const WorkflowManager: React.FC<
           )}
 
           <div className="configuration-actions">
-            {selectedRun && (
+            {selectedRun && runs.length > 1 && (
               <button
                 type="button"
-                onClick={() => setSelectedRunId(null)}
+                onClick={handleBackFromDetail}
                 className="configuration-cancel-btn"
               >
                 返回列表

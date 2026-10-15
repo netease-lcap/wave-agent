@@ -50,6 +50,12 @@ test.describe("Workflow Manager Demo", () => {
             ],
             totalAgents: 7,
             totalTokens: 49700,
+            logs: [
+              "phase() Scan — 派发 4 个代理",
+              "grep 测试日志：找到 3 个重试用例",
+              "phase() Fix — 每个 flaky 测试派一个代理",
+              "agent #5 flaky.test.ts 修复完成，等待校验",
+            ],
           },
           {
             runId: "run-98765432-fedcba10",
@@ -102,6 +108,10 @@ test.describe("Workflow Manager Demo", () => {
             totalAgents: 6,
             totalTokens: 45300,
             error: "Agent #3 exceeded token budget and aborted",
+            failures: [
+              "pipeline[2] failed: 代理在预算耗尽前未返回结构化结果",
+              "pipeline[3] failed: 无法解析来源 http://example.com",
+            ],
           },
         ],
       });
@@ -117,9 +127,11 @@ test.describe("Workflow Manager Demo", () => {
       "../../docs/public/screenshots/spec-workflow-list.webp",
     );
 
-    // 3. Click the running run to enter detail view
-    await dialog.getByText("[run-abc1]").click();
+    // 3. Click the running run to enter detail view (the row is labelled by the
+    // workflow name, not the run id)
+    await dialog.getByText("audit-and-fix").click();
     await expect(webviewPage.getByText("Phases:")).toBeVisible();
+    await expect(webviewPage.getByText("Logs:")).toBeVisible();
 
     // Screenshot the detail view
     await elementScreenshotWebp(

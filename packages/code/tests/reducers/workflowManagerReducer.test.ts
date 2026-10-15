@@ -46,7 +46,56 @@ describe("workflowManagerReducer", () => {
       type: "SET_RUNS",
       runs: mockRuns,
     });
-    expect(result.runs).toEqual(mockRuns);
+    expect(result.runs).toHaveLength(mockRuns.length);
+  });
+
+  it("should sort runs by start time descending on SET_RUNS", () => {
+    const result = workflowManagerReducer(initialState, {
+      type: "SET_RUNS",
+      runs: mockRuns,
+    });
+    expect(result.runs.map((r) => r.runId)).toEqual(["run-2", "run-1"]);
+    // The context's array must not be reordered in place.
+    expect(mockRuns.map((r) => r.runId)).toEqual(["run-1", "run-2"]);
+  });
+
+  it("should keep the selected run selected across SET_RUNS", () => {
+    // Newest-first list: run-2 then run-1. The user selected run-1…
+    const state: WorkflowManagerState = {
+      ...initialState,
+      runs: [mockRuns[1], mockRuns[0]],
+      selectedIndex: 1,
+    };
+    // …and a refresh arrives with a newer run prepended, shifting run-1 down.
+    const newerRun: WorkflowRun = {
+      ...mockRuns[1],
+      runId: "run-3",
+      startTime: 3000,
+    };
+    const result = workflowManagerReducer(state, {
+      type: "SET_RUNS",
+      runs: [mockRuns[0], mockRuns[1], newerRun],
+    });
+    expect(result.runs.map((r) => r.runId)).toEqual([
+      "run-3",
+      "run-2",
+      "run-1",
+    ]);
+    expect(result.runs[result.selectedIndex].runId).toBe("run-1");
+  });
+
+  it("should clamp the selection when the selected run is gone on SET_RUNS", () => {
+    const state: WorkflowManagerState = {
+      ...initialState,
+      runs: [mockRuns[1], mockRuns[0]],
+      selectedIndex: 1,
+    };
+    const result = workflowManagerReducer(state, {
+      type: "SET_RUNS",
+      runs: [],
+    });
+    expect(result.runs).toEqual([]);
+    expect(result.selectedIndex).toBe(0);
   });
 
   it("should handle SELECT_INDEX", () => {

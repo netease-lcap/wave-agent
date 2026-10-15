@@ -4064,6 +4064,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       {state.activeDialog === "tasks" && (
         <BackgroundTaskManager
           tasks={state.backgroundTasks}
+          workflowRuns={state.workflowRuns}
           vscode={vscode}
           onClose={handleDialogClose}
         />

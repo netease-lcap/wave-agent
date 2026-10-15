@@ -48,6 +48,19 @@ export interface WorkflowRun {
   /** If set, this run resumes from a previous run's journal */
   resumeFromRunId?: string;
   /**
+   * Lines the script wrote with `log()` / `console.log()`. They live on the run
+   * (not only in the journal) so the two places a run is inspected — the
+   * `/workflows` dialog and the `/tasks` panel — can show them while it is
+   * running and after it ends; the journal stays the structured, resumable
+   * record of agent results, and only the completion notification points at it.
+   *
+   * Capped, and persisted with the rest of the run state: a long workflow logs
+   * inside a loop, and `run-state.json` is rewritten on every progress event.
+   * Optional so runs persisted before the field existed stay valid — read it as
+   * `run.logs ?? []`.
+   */
+  logs?: string[];
+  /**
    * Whether the one-shot size warning has already been injected for this run
    * (spec「预算与规模硬上限」场景 7: warn once per run, never repeatedly). Not
    * persisted state the UI reads — it only has to survive within the run.
