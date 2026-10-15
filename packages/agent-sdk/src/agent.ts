@@ -34,6 +34,7 @@ import type {
   PluginReloadResult,
 } from "./types/index.js";
 import type { HookEvent, HookEventConfig } from "./types/hooks.js";
+import type { Task } from "./types/tasks.js";
 import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
 import { LiveConfigManager } from "./managers/liveConfigManager.js";
 import { configValidator } from "./utils/configValidator.js";
@@ -437,6 +438,16 @@ export class Agent {
     return this.messageQueue
       .getQueue()
       .filter((m) => m.type !== "notification");
+  }
+
+  /**
+   * The foreground task list (the todo list). File-backed — the manager owns
+   * the session directory and keeps no in-memory copy — so this is async,
+   * unlike the state getters above. Readers that want the current value of a
+   * live session (the remote hosts' `getSessionInfo`) await it.
+   */
+  public async getTasks(): Promise<Task[]> {
+    return this.taskManager.listTasks();
   }
 
   /**

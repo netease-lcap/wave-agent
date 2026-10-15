@@ -677,6 +677,11 @@ async function openPage(): Promise<Harness> {
     ],
   });
   await flush();
+  // The snapshot path's own session-state read (`getSessionInfo`, scenario 26):
+  // the page asks before it pulls messages, and the machine answers for the
+  // session in the envelope.
+  page.reply({ sessionId: "s1", permissionMode: "default" });
+  await flush();
   page.reply({ messages: [{ id: "m10" }, { id: "m11" }], hasMore: true });
   await flush();
   page.reply({ requests: [] });

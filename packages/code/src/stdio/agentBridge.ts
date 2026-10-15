@@ -1033,13 +1033,17 @@ export class AgentBridge {
     return { ok: true };
   }
 
-  private getSessionInfo(sessionId?: string): {
+  private async getSessionInfo(sessionId?: string): Promise<{
     sessionId: string;
     workingDirectory: string;
     latestTotalTokens: number;
     permissionMode: PermissionMode;
     availableTools: string[];
-  } {
+    tasks: Task[];
+    isCompacting: boolean;
+    isCommandRunning: boolean;
+    queuedMessages: QueuedMessage[];
+  }> {
     const entry = this.requireSessionForRead(sessionId);
     return {
       sessionId: entry.agent.sessionId,
@@ -1050,6 +1054,16 @@ export class AgentBridge {
       latestTotalTokens: entry.agent.latestTotalTokens,
       permissionMode: entry.agent.getPermissionMode(),
       availableTools: entry.agent.getAvailableToolNames(),
+      // The session-state family the remote page re-reads (spec
+      // remote-control「Web 页作为第五种宿主」场景 26): the todo list —
+      // file-backed in the SDK, hence the await — plus compaction, command
+      // running and the outbound queue, all read off the agent itself so the
+      // reply is the current value, never a transition the page may have
+      // missed.
+      tasks: await entry.agent.getTasks(),
+      isCompacting: entry.agent.isCompacting,
+      isCommandRunning: entry.agent.isCommandRunning,
+      queuedMessages: entry.agent.queuedMessages,
     };
   }
 

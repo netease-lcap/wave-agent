@@ -222,6 +222,11 @@ function createMockAgent(
     getAvailableToolNames: vi.fn().mockReturnValue(["Bash"]),
     hasPendingMessages: false,
     hasRunningBackgroundWork: false,
+    // The session-state family `getSessionInfo` reads (scenario 26).
+    getTasks: vi.fn().mockResolvedValue([]),
+    isCompacting: false,
+    isCommandRunning: false,
+    queuedMessages: [],
     ...rest,
   };
   // displayMessages (full UI stream) tracks messages unless overridden.
