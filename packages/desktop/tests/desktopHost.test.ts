@@ -58,6 +58,20 @@ const h = vi.hoisted(() => ({
         if (!h.branchesResult) throw new Error("not a git repository");
         return h.branchesResult;
       }
+      case "listDirectories": {
+        const dir = (params as { dir?: string } | undefined)?.dir ?? "";
+        const queued = h.dirListResults.shift();
+        if (queued instanceof Error) throw queued;
+        if (queued) return queued;
+        if (h.dirListGate) {
+          return new Promise<{ resolvedPath: string; dirs: string[] }>(
+            (resolve) => {
+              h.dirListRelease = resolve;
+            },
+          );
+        }
+        return { resolvedPath: dir, dirs: [] };
+      }
       // Diff-panel query: answered by the CLI on the host that owns the repo,
       // so the desktop never runs git (or ssh) for it.
       case "getWorkspaceDiff": {
@@ -104,6 +118,19 @@ const h = vi.hoisted(() => ({
   },
   worktreeError: null as Error | null,
   branchesResult: null as null | { branches: string[]; current: string },
+  // listDirectories RPC queue (remote dir browser + remote existence probes).
+  // Each entry is consumed once: an Error entry rejects the request — with the
+  // bridge's「目录不存在或不可读：…」verdict it means "missing dir", anything
+  // else is a transport failure; a result entry is returned verbatim. An
+  // empty queue answers a generic success for the requested dir.
+  dirListResults: [] as Array<{ resolvedPath: string; dirs: string[] } | Error>,
+  // When set, the listDirectories RPC parks until released via dirListRelease
+  // (simulates a slow probe so a test can prove the optimistic switch
+  // precedes it). Reset per-test like removeWorktreeGate.
+  dirListGate: false as boolean,
+  dirListRelease: null as
+    | null
+    | ((v: { resolvedPath: string; dirs: string[] }) => void),
   // getWorkspaceDiff RPC result, returned verbatim to the diff panel.
   workspaceDiffResult: null as unknown,
   // When set, the getWorkspaceDiff RPC rejects (host unreachable, daemon gone,
@@ -474,11 +501,6 @@ vi.mock("../src/main/remoteCli", async () => {
       },
       tunnel: { kill: vi.fn() },
     })),
-    remotePathExists: vi.fn(async () => true),
-    listRemoteDirs: vi.fn(async () => ({
-      resolvedPath: "/remote/repo",
-      dirs: ["a", "b"],
-    })),
     readRemoteFile: vi.fn(async () => ({
       type: "text",
       mime: "text/plain",
@@ -511,9 +533,6 @@ import { autoUpdater } from "electron-updater";
 import {
   ensureRemoteDaemon,
   connectRemoteDaemon,
-  remotePathExists,
-  RemoteHostUnreachableError,
-  listRemoteDirs,
   readRemoteFile,
   REMOTE_FILE_MAX_LINES,
   REMOTE_FILE_MAX_BYTES,
@@ -644,6 +663,9 @@ beforeEach(() => {
   h.worktreeResult = null;
   h.worktreeError = null;
   h.branchesResult = null;
+  h.dirListResults.length = 0;
+  h.dirListGate = false;
+  h.dirListRelease = null;
   h.workspaceDiffResult = null;
   h.workspaceDiffError = null;
   h.removeWorktreeGate = null;
@@ -5401,16 +5423,10 @@ describe("session tree", () => {
     );
     send.mockClear();
 
-    // remotePathExists is a fresh `ssh test -d` process (no connection reuse),
-    // so a slow remote hop must not gate the "selected" feedback: park the
-    // probe unresolved and prove the optimistic switch happens first.
-    let resolveProbe!: (value: boolean) => void;
-    vi.mocked(remotePathExists).mockImplementationOnce(
-      () =>
-        new Promise<boolean>((resolve) => {
-          resolveProbe = resolve;
-        }),
-    );
+    // The probe rides the host's daemon tunnel (`listDirectories` RPC) — it
+    // must not gate the "selected" feedback: park it on the gate and prove
+    // the optimistic switch happens first.
+    h.dirListGate = true;
 
     const selectPromise = host.handleWebviewMessage({
       command: "desktopSelectSession",
@@ -5425,9 +5441,14 @@ describe("session tree", () => {
       expect(first?.isRestoring).toBe(true);
       expect(first?.session).toMatchObject({ id: "rem-1" });
     });
-    expect(remotePathExists).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(h.clientRequests.some((r) => r.method === "listDirectories")).toBe(
+        true,
+      );
+    });
 
-    resolveProbe(true);
+    h.dirListRelease?.({ resolvedPath: "/work/remote", dirs: [] });
+    h.dirListGate = false;
     await selectPromise;
     await vi.waitFor(() => {
       const last = sent("setInitialState").at(-1);
@@ -5443,7 +5464,7 @@ describe("session tree", () => {
       makeIndexEntry("gone-1", "/work/remote", { host: "ssh.example" }),
     );
     send.mockClear();
-    vi.mocked(remotePathExists).mockResolvedValueOnce(false);
+    h.dirListResults.push(new Error("目录不存在或不可读：/work/remote"));
 
     await host.handleWebviewMessage({
       command: "desktopSelectSession",
@@ -5482,13 +5503,8 @@ describe("session tree", () => {
     // A dead host is a transport failure, not a vanished directory — the
     // probe must NOT clean up the session (desktop-sessions.md「远端主机不可
     // 达时不得删除会话/最近目录」).
-    vi.mocked(remotePathExists).mockRejectedValueOnce(
-      new RemoteHostUnreachableError(
-        "ssh.example",
-        new Error(
-          "ssh: connect to host ssh.example port 22: Connection refused",
-        ),
-      ),
+    h.dirListResults.push(
+      new Error("ssh: connect to host ssh.example port 22: Connection refused"),
     );
 
     await host.handleWebviewMessage({
@@ -5521,9 +5537,7 @@ describe("session tree", () => {
     const { host, store, send } = await readyHost();
     store.addRecentWorkdir({ host: "ssh.example", path: "/work/remote" });
     send.mockClear();
-    vi.mocked(remotePathExists).mockRejectedValueOnce(
-      new RemoteHostUnreachableError("ssh.example", new Error("host down")),
-    );
+    h.dirListResults.push(new Error("host down"));
 
     await host.handleWebviewMessage({
       command: "desktopSelectRecentWorkdir",
@@ -5657,9 +5671,7 @@ describe("/resume disk sessions", () => {
     const before = h.agentInstances.length;
     // An unreachable host says nothing about the directory — the probe must not
     // be read as "missing" (desktop-sessions.md「远端主机不可达时不得删除会话」).
-    vi.mocked(remotePathExists).mockRejectedValueOnce(
-      new RemoteHostUnreachableError("prod", new Error("host down")),
-    );
+    h.dirListResults.push(new Error("host down"));
 
     await host.handleWebviewMessage({
       command: "desktopResumeSession",
@@ -9632,10 +9644,14 @@ describe("SSH remote hosts", () => {
       path: "/remote/repo",
     });
 
-    expect(vi.mocked(remotePathExists)).toHaveBeenCalledWith(
-      "prod",
-      "/remote/repo",
-    );
+    // Validation now rides the host's listDirectories RPC (ssh shell retired).
+    expect(
+      h.clientRequests.some(
+        (r) =>
+          r.method === "listDirectories" &&
+          (r.params as { dir?: string })?.dir === "/remote/repo",
+      ),
+    ).toBe(true);
     const agent = lastAgent();
     expect(agent.initialize).toHaveBeenCalledWith(
       expect.objectContaining({ workdir: "/remote/repo" }),
@@ -9663,7 +9679,8 @@ describe("SSH remote hosts", () => {
   it("desktopSelectRemotePath rejects a directory that does not exist on the host", async () => {
     seedSshConfig("Host prod\n");
     const { host, sent } = await readyHost();
-    vi.mocked(remotePathExists).mockResolvedValueOnce(false);
+    // The bridge's explicit "missing dir" verdict — not a transport failure.
+    h.dirListResults.push(new Error("目录不存在或不可读：/gone"));
 
     await host.handleWebviewMessage({
       command: "desktopSelectRemotePath",
@@ -9808,7 +9825,7 @@ describe("SSH remote hosts", () => {
   it("desktopListRemoteDir replies with the resolved path and subdirectory list", async () => {
     seedSshConfig("Host prod\n");
     const { host, sent } = await readyHost();
-    vi.mocked(listRemoteDirs).mockResolvedValueOnce({
+    h.dirListResults.push({
       resolvedPath: "/remote/repo/src",
       dirs: ["app", "lib"],
     });
@@ -9820,10 +9837,15 @@ describe("SSH remote hosts", () => {
       requestId: "r9",
     });
 
-    expect(vi.mocked(listRemoteDirs)).toHaveBeenCalledWith(
-      "prod",
-      "/remote/repo/src",
-    );
+    // The listing rides the host's daemon tunnel — the same host-agnostic
+    // RPC the Web page uses (remote-control 场景 3), no ssh shell runs.
+    expect(
+      h.clientRequests.some(
+        (r) =>
+          r.method === "listDirectories" &&
+          (r.params as { dir?: string })?.dir === "/remote/repo/src",
+      ),
+    ).toBe(true);
     expect(sent("desktopRemoteDirList")).toEqual([
       {
         command: "desktopRemoteDirList",
@@ -9838,9 +9860,7 @@ describe("SSH remote hosts", () => {
   it("desktopListRemoteDir returns a retryable error in the reply on failure", async () => {
     seedSshConfig("Host prod\n");
     const { host, sent } = await readyHost();
-    vi.mocked(listRemoteDirs).mockRejectedValueOnce(
-      new Error("读取远端目录失败：目录不存在或不可读"),
-    );
+    h.dirListResults.push(new Error("目录不存在或不可读：/gone"));
 
     await host.handleWebviewMessage({
       command: "desktopListRemoteDir",
@@ -9854,7 +9874,7 @@ describe("SSH remote hosts", () => {
         command: "desktopRemoteDirList",
         host: "prod",
         requestId: "r10",
-        error: "读取远端目录失败：目录不存在或不可读",
+        error: "目录不存在或不可读：/gone",
       },
     ]);
     // No session side effects — the browser stays put for a retry.
@@ -9884,7 +9904,9 @@ describe("SSH remote hosts", () => {
       requestId: "",
     });
 
-    expect(vi.mocked(listRemoteDirs)).not.toHaveBeenCalled();
+    expect(h.clientRequests.some((r) => r.method === "listDirectories")).toBe(
+      false,
+    );
     expect(sent("desktopRemoteDirList")).toEqual([]);
   });
 

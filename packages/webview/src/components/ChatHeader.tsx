@@ -169,30 +169,35 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         </div>
       )}
       <div className="header-buttons">
+        {/* 新建对话：IDE 一对齐全出；远控页与「会话」入口成对出现（图标重绑
+            到 RemoteNewSessionDialog，底层是 initialize 而非 clearChat —— spec
+            remote-control.md「Web 端也能发起新会话」故事）；桌面端仍由
+            DesktopSidebar 拥有，不在此渲染。 */}
+        {(!hideSessionButtons || sessionSwitchButton) && (
+          <Tooltip text="新建对话" position="bottom">
+            <button
+              className="header-button"
+              onClick={onNewSession}
+              disabled={newSessionDisabled}
+              data-testid="new-session-btn"
+              aria-label="新建对话"
+            >
+              <NewSessionIcon />
+            </button>
+          </Tooltip>
+        )}
+        {/* 历史对话：仅 IDE。远控页的列表入口是右侧的「会话」按钮。 */}
         {!hideSessionButtons && (
-          <>
-            <Tooltip text="新建对话" position="bottom">
-              <button
-                className="header-button"
-                onClick={onNewSession}
-                disabled={newSessionDisabled}
-                data-testid="new-session-btn"
-                aria-label="新建对话"
-              >
-                <NewSessionIcon />
-              </button>
-            </Tooltip>
-            <Tooltip text="历史对话" position="bottom">
-              <button
-                className="header-button"
-                onClick={() => setShowSessionList((prev) => !prev)}
-                data-testid="history-btn"
-                aria-label="历史对话"
-              >
-                <HistoryIcon />
-              </button>
-            </Tooltip>
-          </>
+          <Tooltip text="历史对话" position="bottom">
+            <button
+              className="header-button"
+              onClick={() => setShowSessionList((prev) => !prev)}
+              data-testid="history-btn"
+              aria-label="历史对话"
+            >
+              <HistoryIcon />
+            </button>
+          </Tooltip>
         )}
         {sessionSwitchButton && (
           <Tooltip text="会话" position="bottom">

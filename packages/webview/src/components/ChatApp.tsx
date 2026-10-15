@@ -26,6 +26,7 @@ import StatusDialog from "./StatusDialog";
 import BackgroundTaskManager from "./BackgroundTaskManager";
 import WorkflowManager from "./WorkflowManager";
 import RemoteControlDialog from "./RemoteControlDialog";
+import RemoteNewSessionDialog from "./RemoteNewSessionDialog";
 import WelcomeView from "./WelcomeView";
 import LoadingLogo from "./LoadingLogo";
 import { SidebarExpandIcon, CloseIcon } from "./HeaderIcons";
@@ -1922,6 +1923,23 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       command: "clearChat",
     });
   }, [postToHost]);
+
+  // 远控页顶栏「新建对话」：不是 clearChat —— 它打开弹窗，经 shim 发
+  // initialize 在远端机器上建一个全新会话（spec remote-control.md「Web 端也能
+  // 发起新会话」）。禁用态沿用 newSessionDisabled（streaming/压缩/后台任务）。
+  const handleRemoteNewSession = useCallback(() => {
+    dispatch({ type: "SHOW_DIALOG", payload: { type: "remoteNewSession" } });
+  }, [dispatch]);
+
+  // 弹窗「最近目录」：当前进程跑过的会话按工作目录去重（sessions 列表本身按
+  // 最近活跃排序，直接沿用其顺序）。没有会话/还没有目录时只留「浏览…」。
+  const remoteRecentDirs = useMemo(() => {
+    const seen = new Set<string>();
+    for (const s of state.sessions) {
+      if (s.workdir) seen.add(s.workdir);
+    }
+    return [...seen];
+  }, [state.sessions]);
 
   const handleToastDismiss = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -4045,6 +4063,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       {state.activeDialog === "remote" && (
         <RemoteControlDialog onClose={handleDialogClose} vscode={vscode} />
       )}
+      {state.activeDialog === "remoteNewSession" && (
+        <RemoteNewSessionDialog
+          recentDirs={remoteRecentDirs}
+          vscode={vscode}
+          onClose={handleDialogClose}
+        />
+      )}
       {pendingRewindId && (
         <ConfirmDialog
           title="确定要回滚到此消息吗？"
@@ -4115,7 +4140,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       <ChatHeader
         leading={collapsedLeading(expandBtn)}
         macTrafficSpacer={macTrafficSpacer}
-        onNewSession={handleClearChat}
+        onNewSession={isRemotePage ? handleRemoteNewSession : handleClearChat}
         newSessionDisabled={
           state.isStreaming ||
           state.isCompacting ||
@@ -4139,7 +4164,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         isAuthenticated={state.isAuthenticated}
         // Desktop: 会话新建/历史按钮回归 DesktopSidebar（revert #2021 移除
         // 聊天顶栏「历史对话」跨目录弹窗入口后，顶栏不再渲染会话按钮）。
-        // Remote Web page: 同口径隐藏这一对，改为单个「会话」入口。
+        // Remote Web page: 「历史对话」同口径隐藏、改单个「会话」入口；
+        // 「新建对话」例外放行（ChatHeader 按 sessionSwitchButton 渲染），
+        // 重绑到远端建新会话（initialize，非 clearChat）。
         hideSessionButtons={isDesktop || isRemotePage}
         sessionSwitchButton={isRemotePage}
         // 远控页专属：「切换电脑」入口，路由是页面 shim（REMOTE_PAGE_GATED）。

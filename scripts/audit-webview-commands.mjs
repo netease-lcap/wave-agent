@@ -131,6 +131,12 @@ const DESKTOP_GATED_NON_PREFIX = new Set([
 const REMOTE_PAGE_GATED = new Set([
   "loadOlderMessages", // ChatApp.handleLoadOlderMessages：上拉翻更早（spec remote-control.md 场景 11）
   "openMachinePicker", // ChatHeader「切换电脑」：顶栏换机器入口（spec remote-control.md「机器列表与切换」场景 5）
+  // 新会话命令族（RemoteNewSessionDialog，spec remote-control.md「Web 端也能
+  // 发起新会话」）：目录列表 / 分支列表 / 创建，shim 转中继 listDirectories /
+  // listGitBranches / (createWorktree +) initialize。
+  "newSessionListDirs",
+  "newSessionListBranches",
+  "newSessionCreate",
 ]);
 
 /** 第五个路由实例：手机页 shim 的 case 注册集合。 */

@@ -86,7 +86,31 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   "renameSession",
   "compact",
   "getSlashCommands",
+  // 发起新会话（spec ui/remote-control.md「Web 端也能发起新会话」）：白名单
+  // 从「只碰已存在的会话」显式扩到「可在选定目录建会话」。initialize 在下方
+  // 收敛入参——放行的是「建一条会话」这个能力，不是它的整张参数表。
+  "initialize",
+  "listDirectories",
+  "listGitBranches",
+  "createWorktree",
 ]);
+
+/**
+ * The only `initialize` shape the remote channel may request: create a session
+ * in a chosen directory, with an optional permission mode. Everything else in
+ * its parameter surface (model / apiKey / tools / plugins / mcpServers /
+ * restoreSessionId …) is dropped, not validated — a whitelisted method must
+ * not smuggle in knobs the whitelist never approved.
+ */
+function pickInitializeParams(params: unknown): Record<string, unknown> {
+  const p = (params ?? {}) as Record<string, unknown>;
+  const picked: Record<string, unknown> = {};
+  if (typeof p.workdir === "string" && p.workdir) picked.workdir = p.workdir;
+  if (typeof p.permissionMode === "string" && p.permissionMode) {
+    picked.permissionMode = p.permissionMode;
+  }
+  return picked;
+}
 
 /**
  * How long to wait before recomputing the session status signal. Any
@@ -382,8 +406,21 @@ export class RemoteControlService implements RemoteControlController {
       return;
     }
 
+    // `initialize` is whitelisted for exactly one shape: create a session in a
+    // chosen directory (and optionally set its permission mode). Its full
+    // parameter surface — apiKey / baseURL / model / tools / plugins /
+    // mcpServers … — would let the page reshape the machine-side agent, so
+    // everything outside the two allowed keys is dropped here rather than
+    // trusted to the caller (spec 「Web 端也能发起新会话」场景 5). Re-attach
+    // (`restoreSessionId`) is NOT part of the whitelisted shape: the page
+    // switches sessions via `getMessages`, not by re-binding the host agent.
+    const requestParams =
+      frame.method === "initialize"
+        ? pickInitializeParams(frame.params)
+        : frame.params;
+
     void this.bridge
-      .handleRequest(frame.method, frame.params, frame.sessionId)
+      .handleRequest(frame.method, requestParams, frame.sessionId)
       .then((result) => {
         this.sendResult(replyId, frame.method, result);
         this.scheduleStatus();

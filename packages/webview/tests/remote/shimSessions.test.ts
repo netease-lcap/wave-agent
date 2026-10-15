@@ -1456,4 +1456,230 @@ describe("remote page shim", () => {
       percent: 87,
     });
   });
+
+  // ── 发起新会话（spec「Web 端也能发起新会话」）──────────────────
+  //
+  // The dialog is the page's own UI; the shim ferries four whitelisted RPCs.
+  // All four are session-less utility calls: the envelope must NOT carry the
+  // page's current sessionId, and the machine-side gate strips `initialize`
+  // down to `workdir`/`permissionMode` regardless of what the page sends.
+
+  test("lists a machine directory without tying the call to the open session", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "newSessionListDirs",
+      dir: "~",
+      requestId: "dirs-1",
+    });
+    await flush();
+
+    const asked = page.socket.framesFor("listDirectories")[0];
+    expect(asked).toMatchObject({ params: { dir: "~" } });
+    // A session-less call: creating/browsing must work from an empty view too.
+    expect(asked.sessionId).toBeUndefined();
+
+    await page.answer("listDirectories", {
+      resolvedPath: "/home/u",
+      dirs: ["repos", "docs"],
+    });
+    expect(lastPosted(page)).toEqual({
+      command: "newSessionDirs",
+      requestId: "dirs-1",
+      resolvedPath: "/home/u",
+      dirs: ["repos", "docs"],
+    });
+  });
+
+  test("a missing or unreadable directory comes back as an error, not an empty list", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "newSessionListDirs",
+      dir: "/nope",
+      requestId: "dirs-2",
+    });
+    await flush();
+    await page.refuse("listDirectories", "目录不存在或不可读：/nope");
+
+    expect(lastPosted(page)).toEqual({
+      command: "newSessionDirs",
+      requestId: "dirs-2",
+      error: "目录不存在或不可读：/nope",
+    });
+  });
+
+  test("branches are fetched for the picked workdir", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "newSessionListBranches",
+      workdir: "/repo",
+      requestId: "br-1",
+    });
+    await flush();
+
+    const branchFrame = page.socket.framesFor("listGitBranches")[0];
+    expect(branchFrame).toMatchObject({ params: { workdir: "/repo" } });
+    expect(branchFrame.sessionId).toBeUndefined();
+
+    await page.answer("listGitBranches", {
+      branches: ["main", "dev"],
+      current: "main",
+    });
+    expect(lastPosted(page)).toEqual({
+      command: "newSessionBranches",
+      requestId: "br-1",
+      result: { branches: ["main", "dev"], current: "main" },
+    });
+  });
+
+  test("creating a session points the page's own view at the new one", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "newSessionCreate",
+      workdir: "/new/repo",
+      requestId: "mk-1",
+    });
+    await flush();
+
+    const init = page.socket.framesFor("initialize")[0];
+    expect(init).toMatchObject({ params: { workdir: "/new/repo" } });
+    expect(init.sessionId).toBeUndefined();
+    // The page never asked for a worktree, so the machine sees exactly the
+    // picked shape — nothing else rides along.
+    expect(Object.keys(init.params as object)).toEqual(["workdir"]);
+
+    await page.answer("initialize", {
+      sessionId: "s-created",
+      workingDirectory: "/new/repo",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+
+    // The re-pull's first read is the registry, and it must already know the
+    // new session — on a live machine it does, because `initialize` resolves
+    // after the session is registered. `chooseSession` keeps the id it was
+    // handed only while the registry confirms it.
+    await page.answer("listDaemonSessions", {
+      sessions: [
+        ...SESSIONS,
+        { sessionId: "s-created", workingDirectory: "/new/repo" },
+      ],
+    });
+    // The snapshot chain reads in order: registry → getSessionInfo →
+    // getMessages, so the session info answer must land before the pull.
+    await page.answer("getSessionInfo", {
+      sessionId: "s-created",
+      permissionMode: "default",
+    });
+
+    // The machine built the session in its registry; this side re-points its
+    // own view and lets the cold-start path fill it in — the computer moves
+    // for nobody.
+    const pulls = page.socket.framesFor("getMessages");
+    const pull = pulls[pulls.length - 1];
+    expect(pull.sessionId).toBe("s-created");
+    expect(pull.params).toEqual({ limit: 100 });
+    await page.answer("getMessages", { messages: [] });
+    await page.answer("listPendingPermissions", { requests: [] });
+    await flush();
+
+    expect(
+      page.posted.find((message) => message.command === "newSessionCreated"),
+    ).toMatchObject({
+      requestId: "mk-1",
+      sessionId: "s-created",
+      workingDirectory: "/new/repo",
+      worktreeName: undefined,
+    });
+  });
+
+  test("a worktree creation is the desktop's two-step, pointed at the worktree", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "newSessionCreate",
+      workdir: "/repo",
+      useWorktree: true,
+      baseBranch: "main",
+      name: "warm-bear",
+      requestId: "mk-2",
+    });
+    await flush();
+
+    const worktreeFrame = page.socket.framesFor("createWorktree")[0];
+    expect(worktreeFrame).toMatchObject({
+      params: { workdir: "/repo", baseBranch: "main", name: "warm-bear" },
+    });
+    expect(worktreeFrame.sessionId).toBeUndefined();
+
+    await page.answer("createWorktree", {
+      name: "warm-bear",
+      path: "/repo/.wave/worktrees/warm-bear",
+      branch: "warm-bear",
+      repoRoot: "/repo",
+    });
+    await flush();
+
+    const init = page.socket.framesFor("initialize")[0];
+    expect(init.params).toMatchObject({
+      workdir: "/repo/.wave/worktrees/warm-bear",
+    });
+
+    await page.answer("initialize", {
+      sessionId: "s-wt",
+      workingDirectory: "/repo/.wave/worktrees/warm-bear",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+    // The registry confirms the new session before the switch's pull continues.
+    await page.answer("listDaemonSessions", {
+      sessions: [
+        ...SESSIONS,
+        {
+          sessionId: "s-wt",
+          workingDirectory: "/repo/.wave/worktrees/warm-bear",
+        },
+      ],
+    });
+    await page.answer("getSessionInfo", {
+      sessionId: "s-wt",
+      permissionMode: "default",
+    });
+    await page.answer("getMessages", { messages: [] });
+    await page.answer("listPendingPermissions", { requests: [] });
+    await flush();
+
+    expect(
+      page.posted.find((message) => message.command === "newSessionCreated"),
+    ).toMatchObject({
+      requestId: "mk-2",
+      sessionId: "s-wt",
+      worktreeName: "warm-bear",
+    });
+  });
+
+  test("a refused creation leaves the page where it was, with the reason said", async () => {
+    const { page } = await openPage();
+    const pulls = page.requests("getMessages");
+
+    page.api.postMessage({
+      command: "newSessionCreate",
+      workdir: "/nope",
+      requestId: "mk-3",
+    });
+    await flush();
+    await page.refuse("initialize", "目录不存在或不可读：/nope");
+
+    expect(lastPosted(page)).toEqual({
+      command: "newSessionCreateFailed",
+      requestId: "mk-3",
+      error: "目录不存在或不可读：/nope",
+    });
+    // The view still belongs to the session it was on: a failed create must
+    // not strand the page on an empty list.
+    expect(page.requests("getMessages")).toBe(pulls);
+  });
 });

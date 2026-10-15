@@ -1910,6 +1910,107 @@
           });
         return;
 
+      // ── 发起新会话（spec ui/remote-control.md「Web 端也能发起新会话」）──
+      // The dialog itself is the page's own UI state; the shim only ferries the
+      // four whitelisted RPCs behind it. All four are session-less utility
+      // calls — the envelope must not carry the page's current sessionId
+      // (`withSession: false`), or creating a session from an empty view would
+      // be refused before it starts and browsing would be tied to one.
+
+      case "newSessionListDirs":
+        request("listDirectories", { dir: msg.dir }, false)
+          .then(function (result) {
+            post({
+              command: "newSessionDirs",
+              requestId: msg.requestId,
+              resolvedPath: result && result.resolvedPath,
+              dirs: (result && result.dirs) || [],
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "newSessionDirs",
+              requestId: msg.requestId,
+              error: String(err.message || err),
+            });
+          });
+        return;
+
+      case "newSessionListBranches":
+        request("listGitBranches", { workdir: msg.workdir }, false)
+          .then(function (result) {
+            post({
+              command: "newSessionBranches",
+              requestId: msg.requestId,
+              result: result || null,
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "newSessionBranches",
+              requestId: msg.requestId,
+              result: null,
+              error: String(err.message || err),
+            });
+          });
+        return;
+
+      case "newSessionCreate": {
+        // Worktree first (the desktop's FR-022/FR-023 two-step), then
+        // `initialize` pointed at the directory to run in. The remote gate on
+        // the machine side picks `initialize` apart — only `workdir` /
+        // `permissionMode` survive — so nothing else the page might send gets
+        // through even if this call site grew a knob by accident.
+        var createParams = {
+          workdir: msg.workdir,
+          permissionMode: msg.permissionMode,
+        };
+        var worktreeName;
+        var worktreeStep = msg.useWorktree
+          ? request(
+              "createWorktree",
+              {
+                workdir: msg.workdir,
+                baseBranch: msg.baseBranch,
+                name: msg.name,
+              },
+              false,
+            ).then(function (worktree) {
+              worktreeName = worktree && worktree.name;
+              createParams.workdir = worktree.path;
+            })
+          : Promise.resolve();
+        worktreeStep
+          .then(function () {
+            return request("initialize", createParams, false);
+          })
+          .then(function (result) {
+            // The machine created a session in its registry; this side does
+            // exactly what 「会话」切换 does — re-point its own view, then let
+            // the same snapshot path a cold start uses fill it in. Nothing
+            // else on the computer moves.
+            sessionId = result.sessionId;
+            picked = true;
+            messages = [];
+            pullSnapshot();
+            post({
+              command: "newSessionCreated",
+              requestId: msg.requestId,
+              sessionId: result.sessionId,
+              workingDirectory: result.workingDirectory,
+              worktreeName: worktreeName,
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "newSessionCreateFailed",
+              requestId: msg.requestId,
+              error: String(err.message || err),
+            });
+          });
+        return;
+      }
+
       case "getStatus":
         post({
           command: "statusResponse",

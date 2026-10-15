@@ -67,9 +67,7 @@ import {
 } from "./configStore";
 import { LOCAL_HOST, parseSshConfigHosts, addSshHost } from "./sshHosts";
 import {
-  remotePathExists,
   RemoteHostUnreachableError,
-  listRemoteDirs,
   readRemoteFile,
   ensureRemoteDaemon,
   connectRemoteDaemon,
@@ -4538,10 +4536,38 @@ export class DesktopHost {
     }
   }
 
-  /** Check a directory exists on a host — local via fs, remote via `test -d`. */
+  /**
+   * Check a directory exists on a host — local via fs, remote via the shared
+   * `listDirectories` RPC over the host's daemon tunnel (spec remote-control
+   * 「Web 端也能发起新会话」场景 3：桌面远程目录浏览与 Web 页吃同一份实现，ssh
+   * shell 路径退役). Success is the verdict "usable directory" — exactly what
+   * every caller (typed path, recent entry, repo root, restore) needs.
+   *
+   * The two failure classes stay distinguishable for callers: a missing or
+   * unreadable directory is the bridge's explicit verdict (`false`); anything
+   * else — tunnel dropped, daemon gone, client not initialized — is a
+   * transport failure and throws `RemoteHostUnreachableError`, where the
+   * directory's existence is simply unknown (desktop-sessions.md「远端主机不可
+   * 达时不得删除会话/最近目录」).
+   */
   private async pathExistsOn(host: string, dir: string): Promise<boolean> {
     if (host === LOCAL_HOST) return fs.existsSync(dir);
-    return remotePathExists(host, dir);
+    try {
+      await this.ensureClientFor(host);
+      await this.utilityClientFor(host).request("listDirectories", { dir });
+      return true;
+    } catch (error) {
+      // agentBridge.listDirectories answers a missing/unreadable dir with this
+      // verdict (the ssh shell it replaced used to say the same); the RPC error
+      // code is lost at the client boundary, so the message is the contract.
+      if (
+        error instanceof Error &&
+        error.message.includes("目录不存在或不可读")
+      ) {
+        return false;
+      }
+      throw new RemoteHostUnreachableError(host, error);
+    }
   }
 
   /**
@@ -4696,9 +4722,9 @@ export class DesktopHost {
   }
 
   /**
-   * Remote workdir via text input (spec scenario 3): validate with
-   * `test -d` on the host, then activate. Shared by the picker's typed-path
-   * input and the browser panel's 选择此目录 button.
+   * Remote workdir via text input (spec scenario 3): validate on the host,
+   * then activate. Shared by the picker's typed-path input and the browser
+   * panel's 选择此目录 button.
    */
   private async handleSelectRemotePath(
     host: string,
@@ -4711,7 +4737,7 @@ export class DesktopHost {
     }
     let exists: boolean;
     try {
-      exists = await remotePathExists(host, path);
+      exists = await this.pathExistsOn(host, path);
     } catch (error) {
       // Host unreachable — not a "directory missing" verdict, so don't claim
       // the path doesn't exist (desktop-sessions.md「远端主机不可达时不得删除会
@@ -4731,7 +4757,11 @@ export class DesktopHost {
   /**
    * Remote directory browser (spec scenarios 20/21): list the subdirectories
    * of a remote path and reply with a requestId-matched `desktopRemoteDirList`
-   * message. Errors (missing dir, ssh failure) are returned in the reply so
+   * message. Since the unification (remote-control「Web 端也能发起新会话」场景 3)
+   * the listing rides the same host-agnostic `listDirectories` RPC the Web
+   * page uses — the remote daemon serves the same bridge as stdio, so the
+   * tunnel client asks it directly and no ssh shell runs. Errors (missing dir,
+   * dead tunnel, stale CLI without the method) are returned in the reply so
    * the panel can show a retryable error instead of silently entering the
    * session.
    */
@@ -4742,13 +4772,19 @@ export class DesktopHost {
   ): Promise<void> {
     if (host === LOCAL_HOST || !path || !requestId) return;
     try {
-      const { resolvedPath, dirs } = await listRemoteDirs(host, path);
+      // The browser can open on a fresh launch before webviewReady spawned the
+      // client — await it instead of failing the request (same reasoning as
+      // handleListGitBranches).
+      await this.ensureClientFor(host);
+      const result = (await this.utilityClientFor(host).request(
+        "listDirectories",
+        { dir: path },
+      )) as { resolvedPath: string; dirs: string[] };
       this.postMessage({
         command: "desktopRemoteDirList",
         host,
         requestId,
-        resolvedPath,
-        dirs,
+        ...result,
       });
     } catch (error) {
       this.postMessage({
@@ -5199,10 +5235,10 @@ export class DesktopHost {
     this.startPaneRestore(pid, { sessionId, workdir: targetDir, host });
 
     void (async () => {
-      // The directory probe is a remote `ssh test -d` (fresh process, no
-      // connection reuse) — it must run behind the overlay, not in front of
-      // the pane switch, or the user waits for the SSH hop before the
-      // "selected" feedback (desktop-sessions.md「历史会话即时进入」scenario 2).
+      // The directory probe rides the host's daemon tunnel (`listDirectories`
+      // RPC) — it must run behind the overlay, not in front of the pane
+      // switch, or the user waits for the probe before the "selected"
+      // feedback (desktop-sessions.md「历史会话即时进入」scenario 2).
       let exists: boolean;
       try {
         exists = await this.pathExistsOn(host, targetDir);
