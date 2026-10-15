@@ -416,26 +416,34 @@ const applyToolBlockUpdate = (
 };
 
 /**
- * Single throttled updater entry for ALL message-state updates. The one
- * 500ms window-concat window replaces the previous three-channel throttles
- * (content/reasoning/tool), so every message-state update — including the
- * tool `running` stage's high-frequency `shortResult`/`result` updates from
- * bash — coalesces into the same window.
+ * Throttled updater for HEIGHT-SENSITIVE message-state updates only. The one
+ * 500ms window-concat window now carries ONLY tool `running`-stage updates
+ * (the `shortResult`/`result` chunks bash streams while executing) — the only
+ * updates whose line count oscillates 1–N lines and causes layout flicker.
+ * Text/reasoning deltas and structural updates bypass this window entirely
+ * (applied via setMessages directly), so streaming keeps its per-delta
+ * typewriter cadence. See docs/specs/core/stream-content-updates.md
+ * (「CLI 消息状态按更新是否改变卡片高度分流渲染」+ 2026-10-15 会议).
  *
  * Semantics: leading edge applies immediately and opens a window; updates
  * arriving within the window are queued in arrival order (FIFO) and applied
  * at the trailing edge as ONE composed updater, so no update is lost and no
  * update is reordered. `flush` applies queued updates immediately (used by
- * end signals and one-shot structural updates); `cancel` drops queued
- * updates (used by refreshMessages after pulling the authoritative snapshot —
- * the queued updates are already contained in it).
+ * tool `end`, which must land AFTER any pending running value so the final
+ * result cannot be resurrected); `cancel` drops queued updates (used by
+ * refreshMessages after pulling the authoritative snapshot — the queued
+ * updates are already contained in it).
  *
- * The FIFO queue structurally replaces the old tool throttle's "drop a
- * tool's buffered streaming deltas when running arrives" logic: a running
- * updater is queued BEHIND the streaming chunks that preceded it and applies
- * after them, so a stale streaming event can never flush after running and
- * regress the stage (yellow dot -> gray). See
- * docs/specs/core/stream-content-updates.md.
+ * Cross-channel reordering (a non-throttled update landing before a queued
+ * running update) is safe: every combination touches disjoint state
+ * (different message/block/field), `end` flushes before applying, and a full
+ * refresh cancels. A queued running update can also never land after its
+ * message entered Ink's <Static>: pending implies the block's stage is still
+ * "running" in state, which keeps the whole message in the dynamic zone (see
+ * MessageList's runningMessageIndices). The one protocol-illegal case — a
+ * streaming chunk for a tool block that is already running — is unreachable
+ * (parameter streaming precedes execution) and would be overwritten by the
+ * authoritative `end` anyway.
  */
 export function createThrottledUpdater<T>(
   apply: (updater: (prev: T) => T) => void,
@@ -520,13 +528,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [latestTotalTokens, setLatestTotalTokens] = useState(0);
   const [maxInputTokens, setMaxInputTokens] = useState(200000);
 
-  // Single throttled entry for ALL message-state updates — one 500ms
-  // window-concat window shared by every callback (content/reasoning deltas,
-  // tool parametersChunk, tool `running` stage shortResult/result, one-shot
-  // structural updates). The tool `running` stage used to bypass throttling
-  // (bash shortResult height changes per chunk → layout flicker); routing it
-  // through the same window as streaming deltas coalesces it to ≤1 render per
-  // window. See createThrottledUpdater + docs/specs/core/stream-content-updates.md.
+  // Throttled entry for HEIGHT-SENSITIVE message-state updates — the 500ms
+  // window-concat window carries ONLY the tool `running` stage's
+  // `shortResult`/`result` updates (bash streams them per chunk; the short
+  // result line count oscillates 1–N lines → layout flicker). Everything else
+  // (content/reasoning deltas, tool start/streaming/end, structural updates)
+  // applies via setMessages directly: its height change is monotonic (text)
+  // or one-shot, so the window would only add latency, and Ink's built-in
+  // maxFps:30 already bounds terminal writes. See createThrottledUpdater +
+  // docs/specs/core/stream-content-updates.md (2026-10-15 会议).
   const updateMessages = useMemo(
     () =>
       createThrottledUpdater<Message[]>((updater) => setMessages(updater), 500),
@@ -772,8 +782,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
       const callbacks: AgentCallbacks = {
         // ── Incremental message updates (no full-list pushes) ──────
-        // All of these funnel through the single throttled `updateMessages`
-        // entry, so every message-state update shares one 500ms window.
+        // Split by "does this update change card height?" (spec 2026-10-15):
+        // tool `running` shortResult/result goes through the throttled
+        // `updateMessages` (line-count oscillation → flicker); everything
+        // else applies immediately via setMessages — its height change is
+        // monotonic (text/reasoning) or one-shot (structural/tool stages).
         onUserMessageAdded: () => {
           if (isExpandedRef.current || !agentRef.current) return;
           const msgs = agentRef.current.messages;
@@ -783,12 +796,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           // the batch flush, so evaluating snapshotMessage inside the updater
           // would read the SDK message after its in-place mutations.
           const snapshot = snapshotMessage(last);
-          updateMessages((prev) =>
+          // One-shot structural update — applied directly (a window would
+          // only delay the message card, no coalescing value).
+          setMessages((prev) =>
             prev.some((m) => m.id === last.id) ? prev : [...prev, snapshot],
           );
-          // One-shot structural update — flush immediately so the message
-          // card appears at once (queuing it gains no coalescing).
-          updateMessages.flush();
         },
         onAssistantMessageAdded: (messageId: string) => {
           if (isExpandedRef.current || !agentRef.current) return;
@@ -798,37 +810,48 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           // fires this callback BEFORE the first delta writes into the shared
           // message, so capturing here copies the pre-mutation (empty) blocks.
           const snapshot = snapshotMessage(msg);
-          updateMessages((prev) =>
+          setMessages((prev) =>
             prev.some((m) => m.id === messageId) ? prev : [...prev, snapshot],
           );
-          updateMessages.flush();
         },
         onAssistantMessageDiscarded: (messageId: string) => {
           // The streamed attempt died mid-body and was re-issued without
           // streaming; its half message is void (spec: 流式响应正文中途断连时
           // 降级为非流式重发).
           if (isExpandedRef.current) return;
-          updateMessages((prev) => prev.filter((m) => m.id !== messageId));
-          updateMessages.flush();
+          setMessages((prev) => prev.filter((m) => m.id !== messageId));
         },
         onAssistantContentUpdated: (params) => {
           if (isExpandedRef.current) return;
-          updateMessages((prev) => applyContentDelta(prev, params));
-          if (params.stage === "end") updateMessages.flush();
+          // Text delta: height grows monotonically → per-delta application.
+          // No flush on end: this channel has no pending updates, and the
+          // tool-running window must not be cut short by a text end.
+          setMessages((prev) => applyContentDelta(prev, params));
         },
         onAssistantReasoningUpdated: (params) => {
           if (isExpandedRef.current) return;
-          updateMessages((prev) => applyReasoningDelta(prev, params));
-          if (params.stage === "end") updateMessages.flush();
+          setMessages((prev) => applyReasoningDelta(prev, params));
         },
         onToolBlockUpdated: (params) => {
           if (isExpandedRef.current) return;
-          updateMessages((prev) => applyToolBlockUpdate(prev, params));
+          if (params.stage === "running") {
+            // Height-sensitive: shortResult/result stream per chunk and the
+            // short-result line count oscillates → coalesce in the 500ms
+            // window (≤1 render per window, stable card height).
+            updateMessages((prev) => applyToolBlockUpdate(prev, params));
+            return;
+          }
+          // start/streaming/end apply directly. `end` first flushes any
+          // queued running update so the authoritative final value lands
+          // last (a pending running value cannot resurrect after end).
           if (params.stage === "end") updateMessages.flush();
+          setMessages((prev) => applyToolBlockUpdate(prev, params));
         },
         onErrorBlockAdded: (error: string) => {
           if (isExpandedRef.current) return;
-          updateMessages((prev) => {
+          // One-shot structural update — applied directly (errors must not be
+          // delayed by the tool-running window).
+          setMessages((prev) => {
             // Append to the LAST message only if it is an assistant message
             // (the current turn's in-flight reply). If the last message is a
             // user message, the error belongs BELOW it — create a new
@@ -856,9 +879,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
               },
             ];
           });
-          // One-shot structural update — flush immediately (errors must not be
-          // delayed by a streaming window).
-          updateMessages.flush();
         },
         onLatestTotalTokensChange: (tokens) => {
           setLatestTotalTokens(tokens);
