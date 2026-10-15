@@ -1447,7 +1447,7 @@ describe("ChatProvider", () => {
     ]);
   });
 
-  it("throttles streaming updates to 500ms and flushes immediately on end", async () => {
+  it("renders text deltas immediately and coalesces only tool running updates", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
       lastValue = val;
@@ -1474,19 +1474,13 @@ describe("ChatProvider", () => {
       expect(lastValue?.messages).toHaveLength(1);
     });
 
-    // Leading edge applies immediately
+    // Text deltas apply per-chunk — no 500ms window (spec 2026-10-15 分流:
+    // text height grows monotonically, throttling would only add latency).
     callbacks.onAssistantContentUpdated!({
       messageId: "msg-throttle",
       chunk: "Hel",
       stage: "streaming",
     });
-    await vi.waitFor(() => {
-      expect(
-        (lastValue!.messages[0].blocks[0] as { content: string }).content,
-      ).toBe("Hel");
-    });
-
-    // Subsequent chunks within the 500ms window are coalesced (trailing)
     callbacks.onAssistantContentUpdated!({
       messageId: "msg-throttle",
       chunk: "lo",
@@ -1497,12 +1491,12 @@ describe("ChatProvider", () => {
       chunk: " Wor",
       stage: "streaming",
     });
-    // No timer advanced yet — still shows the leading update
-    expect(
-      (lastValue!.messages[0].blocks[0] as { content: string }).content,
-    ).toBe("Hel");
+    await vi.waitFor(() => {
+      expect(
+        (lastValue!.messages[0].blocks[0] as { content: string }).content,
+      ).toBe("Hello Wor");
+    });
 
-    // stage === "end" flushes pending deltas and applies the end signal
     callbacks.onAssistantContentUpdated!({
       messageId: "msg-throttle",
       chunk: "ld",
@@ -1514,7 +1508,8 @@ describe("ChatProvider", () => {
       ).toBe("Hello World");
     });
 
-    // Tool block updates are throttled too; start applies immediately
+    // Tool start/streaming apply immediately too (compact params are single
+    // truncated lines — no height oscillation)
     callbacks.onToolBlockUpdated!({
       messageId: "msg-throttle",
       id: "tool-thr",
@@ -1530,7 +1525,6 @@ describe("ChatProvider", () => {
       ).toBe(true);
     });
 
-    // Mid-stream parameter updates coalesce; end applies the final state right away
     callbacks.onToolBlockUpdated!({
       messageId: "msg-throttle",
       id: "tool-thr",
@@ -1543,24 +1537,66 @@ describe("ChatProvider", () => {
       stage: "streaming",
       parametersChunk: '"cmd"',
     });
+    await vi.waitFor(() => {
+      const toolBlock = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "tool" && b.id === "tool-thr",
+      );
+      expect(
+        (toolBlock as { parameters?: string } | undefined)?.parameters,
+      ).toBe('{"cmd"');
+    });
+
+    // The ONLY throttled channel: tool `running` shortResult/result. First
+    // running update applies on the leading edge; subsequent ones within the
+    // 500ms window coalesce into ONE state commit at the trailing edge — the
+    // short-result line count never jumps per chunk (no layout flicker).
     callbacks.onToolBlockUpdated!({
       messageId: "msg-throttle",
       id: "tool-thr",
-      stage: "end",
-      result: "ok",
-      success: true,
-      parameters: '{"cmd":"ls"}',
+      stage: "running",
+      name: "bash",
+      shortResult: "line1",
     });
     await vi.waitFor(() => {
       const toolBlock = lastValue?.messages[0].blocks.find(
         (b) => b.type === "tool" && b.id === "tool-thr",
       );
-      expect(toolBlock).toMatchObject({
-        stage: "end",
-        result: "ok",
-        success: true,
-        parameters: '{"cmd":"ls"}',
-      });
+      expect((toolBlock as { shortResult?: string }).shortResult).toBe("line1");
+    });
+
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-throttle",
+      id: "tool-thr",
+      stage: "running",
+      name: "bash",
+      shortResult: "line1\nline2",
+    });
+    // The second running update is QUEUED: nothing may commit it inside the
+    // window. Assert the negative — a poll for the new value must NEVER
+    // resolve inside the window (a trivial sync check would early-resolve on
+    // uncommitted React work; same pattern as the stage-regression guard).
+    await expect(
+      vi.waitFor(
+        () => {
+          const toolBlock = lastValue?.messages[0].blocks.find(
+            (b) => b.type === "tool" && b.id === "tool-thr",
+          );
+          expect((toolBlock as { shortResult?: string }).shortResult).toBe(
+            "line1\nline2",
+          );
+        },
+        { timeout: 300, interval: 50 },
+      ),
+    ).rejects.toThrow();
+
+    await vi.advanceTimersByTimeAsync(600);
+    await vi.waitFor(() => {
+      const toolBlock = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "tool" && b.id === "tool-thr",
+      );
+      expect((toolBlock as { shortResult?: string }).shortResult).toBe(
+        "line1\nline2",
+      );
     });
   });
 
@@ -1658,7 +1694,7 @@ describe("ChatProvider", () => {
     });
   });
 
-  it("keeps a tool block running when the throttle window straddles streaming→running", async () => {
+  it("keeps a tool block running when streaming chunks and the authoritative running update interleave", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
       lastValue = val;
@@ -1685,8 +1721,8 @@ describe("ChatProvider", () => {
       expect(lastValue?.messages).toHaveLength(1);
     });
 
-    // Tool args start streaming; the last chunk lands inside the 500ms
-    // throttle window (buffered, timer still armed)
+    // Tool args start streaming; chunks apply immediately (spec 2026-10-15
+    // 分流: only `running` updates are throttled)
     callbacks.onToolBlockUpdated!({
       messageId: "msg-dot",
       id: "tool-dot",
@@ -1709,8 +1745,7 @@ describe("ChatProvider", () => {
       parametersChunk: "{",
     });
 
-    // running arrives before the window elapses — applied immediately with
-    // the authoritative parameters
+    // running applies on the leading edge with the authoritative parameters
     callbacks.onToolBlockUpdated!({
       messageId: "msg-dot",
       id: "tool-dot",
@@ -1725,13 +1760,11 @@ describe("ChatProvider", () => {
       expect(toolBlock).toMatchObject({ stage: "running" });
     });
 
-    // Regression: the pending streaming flush must not fire late and regress
-    // the block back to "streaming" (yellow dot → gray mid-execution), nor
-    // append the stale buffered chunk to the authoritative parameters.
-    // The stale flush (if armed) fires as soon as the 500ms window elapses;
-    // a waitFor asserting "running" would early-resolve on the not-yet-committed
-    // state, so instead assert the opposite: a short poll for a regressed
-    // "streaming" stage must NEVER resolve.
+    // Regression guard: nothing may regress the block back to "streaming"
+    // (yellow dot → gray mid-execution) or append a stale chunk to the
+    // authoritative parameters. Since the 2026-10-15 split no streaming chunk
+    // is ever buffered inside a throttle window, so nothing should fire late;
+    // the negative assertion pins that invariant against future regressions.
     await vi.advanceTimersByTimeAsync(600);
     await expect(
       vi.waitFor(
@@ -1754,6 +1787,221 @@ describe("ChatProvider", () => {
     expect(toolBlock).toMatchObject({
       stage: "running",
       parameters: '{"cmd":"ls"}',
+    });
+  });
+
+  it("flushes queued running updates before applying tool end", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    const assistantMsg = {
+      id: "msg-end",
+      role: "assistant" as const,
+      blocks: [],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [assistantMsg] });
+    callbacks.onAssistantMessageAdded!("msg-end");
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toHaveLength(1);
+    });
+
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-end",
+      id: "tool-end",
+      name: "bash",
+      stage: "start",
+      parameters: "",
+    });
+    await vi.waitFor(() => {
+      expect(
+        lastValue?.messages[0].blocks.some(
+          (b) => b.type === "tool" && b.id === "tool-end",
+        ),
+      ).toBe(true);
+    });
+
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-end",
+      id: "tool-end",
+      stage: "running",
+      name: "bash",
+      shortResult: "a",
+    });
+    await vi.waitFor(() => {
+      const toolBlock = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "tool" && b.id === "tool-end",
+      );
+      expect((toolBlock as { shortResult?: string }).shortResult).toBe("a");
+    });
+
+    // Second running update lands inside the window — queued, not applied
+    // (a poll for the new value must never resolve inside the window).
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-end",
+      id: "tool-end",
+      stage: "running",
+      name: "bash",
+      shortResult: "a\nb",
+    });
+    await expect(
+      vi.waitFor(
+        () => {
+          const queued = lastValue?.messages[0].blocks.find(
+            (b) => b.type === "tool" && b.id === "tool-end",
+          );
+          expect((queued as { shortResult?: string }).shortResult).toBe("a\nb");
+        },
+        { timeout: 300, interval: 50 },
+      ),
+    ).rejects.toThrow();
+
+    // `end` must flush the queued running update BEFORE applying the
+    // authoritative final value, so the stale "a\nb" can never land after end
+    // and resurrect the short result (spec 场景 4).
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-end",
+      id: "tool-end",
+      stage: "end",
+      result: "done",
+      success: true,
+      shortResult: "final",
+    });
+    await vi.waitFor(() => {
+      const toolBlock = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "tool" && b.id === "tool-end",
+      );
+      expect(toolBlock).toMatchObject({
+        stage: "end",
+        result: "done",
+        success: true,
+        shortResult: "final",
+      });
+    });
+
+    // Let any leftover timer fire — the end state must not regress.
+    await vi.advanceTimersByTimeAsync(600);
+    const settled = lastValue?.messages[0].blocks.find(
+      (b) => b.type === "tool" && b.id === "tool-end",
+    );
+    expect(settled).toMatchObject({
+      stage: "end",
+      result: "done",
+      shortResult: "final",
+    });
+  });
+
+  it("drops a stale queued running update when a full-list refresh interleaves mid-run", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    // SDK already holds the NEWER value ("final"): any CLI-side queued update
+    // is stale relative to the authoritative snapshot.
+    const assistantMsg = {
+      id: "msg-refresh-run",
+      role: "assistant" as const,
+      blocks: [
+        {
+          type: "tool" as const,
+          id: "tool-refresh",
+          name: "bash",
+          stage: "running" as const,
+          parameters: "",
+          shortResult: "final",
+        },
+      ],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [assistantMsg] });
+    callbacks.onAssistantMessageAdded!("msg-refresh-run");
+    await vi.waitFor(() => {
+      expect(lastValue?.messages).toHaveLength(1);
+    });
+
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-refresh-run",
+      id: "tool-refresh",
+      stage: "running",
+      name: "bash",
+      shortResult: "partial",
+    });
+    await vi.waitFor(() => {
+      const toolBlock = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "tool" && b.id === "tool-refresh",
+      );
+      expect((toolBlock as { shortResult?: string }).shortResult).toBe(
+        "partial",
+      );
+    });
+
+    // Queued inside the window (stale: the SDK already moved on to "final").
+    callbacks.onToolBlockUpdated!({
+      messageId: "msg-refresh-run",
+      id: "tool-refresh",
+      stage: "running",
+      name: "bash",
+      shortResult: "partial\nmore",
+    });
+
+    // A structural action (e.g. /clear) replaces CLI state with the SDK's
+    // authoritative snapshot and cancels the throttle window — the queued
+    // stale update must be dropped, not flushed on top of the snapshot.
+    Object.assign(mockAgent, {
+      clearMessages: vi.fn().mockResolvedValue(undefined),
+    });
+    await lastValue?.clearMessages();
+    await vi.waitFor(() => {
+      const toolBlock = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "tool" && b.id === "tool-refresh",
+      );
+      expect((toolBlock as { shortResult?: string }).shortResult).toBe("final");
+    });
+
+    // Let any leftover timer fire — without the cancel the stale queued
+    // "partial\nmore" would flush here and regress below "final". Assert the
+    // negative: the stale value must NEVER surface (a sync check would
+    // early-resolve on uncommitted React work).
+    await vi.advanceTimersByTimeAsync(1000);
+    await expect(
+      vi.waitFor(
+        () => {
+          const toolBlock = lastValue?.messages[0].blocks.find(
+            (b) => b.type === "tool" && b.id === "tool-refresh",
+          );
+          expect((toolBlock as { shortResult?: string }).shortResult).toBe(
+            "partial\nmore",
+          );
+        },
+        { timeout: 200, interval: 50 },
+      ),
+    ).rejects.toThrow();
+    await vi.waitFor(() => {
+      const current = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "tool" && b.id === "tool-refresh",
+      );
+      expect((current as { shortResult?: string }).shortResult).toBe("final");
     });
   });
 
@@ -1872,7 +2120,7 @@ describe("ChatProvider", () => {
     });
   });
 
-  it("throttles reasoning streaming updates and flushes on end", async () => {
+  it("renders reasoning deltas immediately without a throttle window", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
       lastValue = val;
@@ -1901,7 +2149,7 @@ describe("ChatProvider", () => {
       expect(lastValue?.messages).toHaveLength(1);
     });
 
-    // Leading edge appends a new reasoning block immediately
+    // First chunk appends a new reasoning block immediately
     callbacks.onAssistantReasoningUpdated!({
       messageId: "msg-reason",
       chunk: "Th",
@@ -1914,7 +2162,8 @@ describe("ChatProvider", () => {
       expect(reasoning?.content).toBe("Th");
     });
 
-    // Subsequent chunks within the 500ms window are coalesced (trailing)
+    // Per-delta application (spec 2026-10-15 分流): subsequent chunks land
+    // without any timer advance
     callbacks.onAssistantReasoningUpdated!({
       messageId: "msg-reason",
       chunk: "ink",
@@ -1925,12 +2174,14 @@ describe("ChatProvider", () => {
       chunk: "ing",
       stage: "streaming",
     });
-    const beforeFlush = lastValue?.messages[0].blocks.find(
-      (b) => b.type === "reasoning",
-    ) as { content: string } | undefined;
-    expect(beforeFlush?.content).toBe("Th");
+    await vi.waitFor(() => {
+      const reasoning = lastValue?.messages[0].blocks.find(
+        (b) => b.type === "reasoning",
+      ) as { content: string } | undefined;
+      expect(reasoning?.content).toBe("Thinking");
+    });
 
-    // stage === "end" flushes pending deltas and applies the end signal
+    // stage === "end" applies the final signal
     callbacks.onAssistantReasoningUpdated!({
       messageId: "msg-reason",
       chunk: "…",
