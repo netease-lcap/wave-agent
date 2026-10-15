@@ -22,6 +22,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   currentSession,
   onSessionSelect,
   sessionsLoading,
+  sessionStatus,
   onOpenSettings,
   onOpenEnterpriseConsole,
   onOpenHelpDocs,
@@ -208,7 +209,16 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               aria-label="会话"
               aria-expanded={sessionListVisible}
             >
-              <HistoryIcon />
+              {/* 这一端列的是**会话**（进程内活会话，可切可标记），不是「历史」——
+                  复用 IDE 那个 HistoryIcon（时钟 + 回溯箭头）会让图标说一件页面上
+                  不存在的事（页面不提供历史入口，见 spec remote-control.md「Web 页
+                  作为第五种宿主」场景 5 / 24）。codicon 双气泡读作「多条对话」，与
+                  旁边「新建对话」同一族；字号在手机档随其余图标一起抬（40×40 / 20px，
+                  见 remote-page.css 与场景 27）。 */}
+              <span
+                className="codicon codicon-comment-discussion"
+                aria-hidden="true"
+              />
             </button>
           </Tooltip>
         )}
@@ -276,6 +286,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           // says so, and shows the project the way the desktop modal does.
           title={sessionSwitchButton ? "会话" : "历史对话"}
           showProject={sessionSwitchButton}
+          sessionStatus={sessionStatus}
         />
       )}
       {showMoreMenu && !hideMoreButton && (

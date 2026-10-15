@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { SessionMetadata } from "wave-agent-sdk/types";
+import type { SessionListStatus } from "../types";
 import { useClickOutside } from "../utils/useClickOutside";
 import { formatSessionLabel } from "../utils/session";
 import { SessionList } from "./SessionList";
@@ -21,6 +22,8 @@ interface SessionListPopupProps {
   showProject?: boolean;
   /** Dialog label for the modal variant. */
   title?: string;
+  /** 「待确认 / 运行中」标记（远控 Web 页专用，见 ChatHeaderProps）。 */
+  sessionStatus?: SessionListStatus;
 }
 
 export const SessionListPopup: React.FC<SessionListPopupProps> = ({
@@ -32,6 +35,7 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
   variant = "dropdown",
   showProject = false,
   title = "历史对话",
+  sessionStatus,
 }) => {
   const [query, setQuery] = useState("");
   // Keyboard selection index into the filtered list; 0 = first item.
@@ -132,6 +136,7 @@ export const SessionListPopup: React.FC<SessionListPopupProps> = ({
           highlightQuery={query}
           selectedIndex={selectedIndex}
           showProject={showProject}
+          sessionStatus={sessionStatus}
         />
       </div>
     </>

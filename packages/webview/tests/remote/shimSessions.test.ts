@@ -400,7 +400,7 @@ describe("remote page shim", () => {
     });
   });
 
-  test("drops another session's frames but never another session's approval", async () => {
+  test("drops another session's frames, its approval card included", async () => {
     const { page } = await openPage();
     const before = page.posted.length;
 
@@ -421,19 +421,133 @@ describe("remote page shim", () => {
       message: { id: "mine-1" },
     });
 
-    // Approvals are process-wide (the reply is routed by requestId, not by
-    // session) and are the one thing the user must not miss — usually waiting in
-    // the conversation they are *not* looking at.
+    // An approval in another conversation is a fact — but its *card* is not
+    // deliverable: the card says the tool and its input, never which conversation
+    // asked, so answering it here answers in someone else's context (the
+    // 2026-10-15 report) and can even hide this conversation's own card behind
+    // it. The wait surfaces on the session list instead.
     page.socket.receive({
       method: "permissionRequest",
-      params: { requestId: "r1", context: { toolName: "Bash" } },
+      params: { requestId: "r1", context: { toolName: "AskUserQuestion" } },
       sessionId: "s-old",
+    });
+    expect(
+      page.posted.filter((message) => message.command === "showConfirmation"),
+    ).toHaveLength(0);
+    expect(lastPosted(page)).toMatchObject({
+      command: "updateSessionStatus",
+      waiting: ["s-old"],
+      running: [],
+    });
+
+    // The same frame for the conversation on screen is still a card, and it is
+    // named as belonging to this one: 「待确认」 on the list covers the rest.
+    page.socket.receive({
+      method: "permissionRequest",
+      params: { requestId: "r2", context: { toolName: "Bash" } },
+      sessionId: "s-new",
     });
     expect(lastPosted(page)).toMatchObject({
       command: "showConfirmation",
-      confirmationId: "r1",
+      confirmationId: "r2",
       toolName: "Bash",
     });
+  });
+
+  test("a snapshot keeps another conversation's approval out of the card queue", async () => {
+    const { page } = await openPage();
+
+    // The registry reports every session's requests, and this is the path a cold
+    // start takes — the one the user reported seeing another conversation's
+    // `AskUserQuestion` on. Only the requests owned by the session on screen
+    // become cards; the others become the list's 「待确认」 marker.
+    const next = await reconnect(page.socket);
+    await answerRereads(next, [
+      { ...QUESTION_PENDING, sessionId: "s-old" },
+      { ...BASH_PENDING, sessionId: "s-new" },
+    ]);
+
+    expect(
+      page.posted.filter((message) => message.command === "showConfirmation"),
+    ).toEqual([
+      expect.objectContaining({ confirmationId: "req-bash", toolName: "Bash" }),
+    ]);
+
+    // Both owners reach the list, the one whose card was dropped included: that
+    // marker is the whole reason the card could be dropped safely.
+    expect(
+      page.posted.filter(
+        (message) => message.command === "updateSessionStatus",
+      ),
+    ).toContainEqual(expect.objectContaining({ waiting: ["s-old", "s-new"] }));
+  });
+
+  test("the session list hears who is waiting and who is running", async () => {
+    const { page } = await openPage();
+    const markers = () =>
+      page.posted.filter(
+        (message) => message.command === "updateSessionStatus",
+      ) as Array<{ waiting: string[]; running: string[] }>;
+
+    // The snapshot carries the pair with the list it describes (one read, one
+    // paint): s-new is generating in the registry, nothing is waiting.
+    page.api.postMessage({ command: "restoreSession", sessionId: "s-old" });
+    await flush();
+    await page.answer("listDaemonSessions", {
+      sessions: [
+        { sessionId: "s-old", workingDirectory: "/tmp/other" },
+        { sessionId: "s-new", workingDirectory: "/repo", isLoading: true },
+      ],
+    });
+    await page.answer("getSessionInfo", { permissionMode: "default" });
+    await page.answer("getMessages", { messages: [SEED] });
+    await page.answer("listPendingPermissions", { requests: [] });
+    expect(lastPosted(page)).toMatchObject({
+      command: "setInitialState",
+      sessionStatus: { waiting: [], running: ["s-new"] },
+    });
+
+    // A turn starting in the conversation on screen moves its own marker, without
+    // waiting for the next registry read — and the current session is marked too
+    // (the desktop sidebar's one deliberate exception: 「我正在看的这条还在不在
+    // 跑」 is exactly what a list of conversations has to answer).
+    page.socket.receive({
+      method: "loadingChange",
+      params: { loading: true },
+      sessionId: "s-old",
+    });
+    await flush();
+    expect(markers()[markers().length - 1]).toMatchObject({
+      running: ["s-new", "s-old"],
+    });
+
+    page.socket.receive({
+      method: "loadingChange",
+      params: { loading: false },
+      sessionId: "s-old",
+    });
+    await flush();
+    expect(markers()[markers().length - 1]).toMatchObject({
+      running: ["s-new"],
+    });
+  });
+
+  test("a reconnect re-reads both markers, not only the one with a notification", async () => {
+    const { page } = await openPage();
+
+    // 「待确认」 has no transition to catch (the request asked while the link was
+    // down) and 「运行中」 is a *state* the registry holds — both come from the two
+    // reads every re-alignment already makes, so neither adds an RPC.
+    const next = await reconnect(page.socket);
+    await answerRereads(next, [{ ...QUESTION_PENDING, sessionId: "s-old" }]);
+
+    expect(
+      page.posted.filter(
+        (message) => message.command === "updateSessionStatus",
+      ),
+    ).toContainEqual(
+      expect.objectContaining({ waiting: ["s-old"], running: [] }),
+    );
   });
 
   test("the picker switches the page's own view without touching the computer", async () => {
@@ -618,13 +732,17 @@ describe("remote page shim", () => {
     });
 
     // The other direction still comes from the transition: once the page is
-    // listening, `loadingChange` is the cheapest and most current signal.
+    // listening, `loadingChange` is the cheapest and most current signal. (The
+    // marker broadcast rides along with it, hence the filter rather than
+    // `lastPosted` — see 「the session list hears who is waiting…」.)
     page.socket.receive({
       method: "loadingChange",
       params: { loading: false },
       sessionId: "s-old",
     });
-    expect(lastPosted(page)).toEqual({ command: "endStreaming" });
+    expect(
+      page.posted.filter((message) => message.command === "endStreaming"),
+    ).toHaveLength(1);
   });
 
   test("a reconnect re-reads the busy state a message delta cannot carry", async () => {

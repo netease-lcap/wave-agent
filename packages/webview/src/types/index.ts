@@ -738,6 +738,13 @@ export interface ChatHeaderProps {
   currentSession?: SessionMetadata;
   onSessionSelect: (sessionId: string) => void;
   sessionsLoading: boolean;
+  /**
+   * 会话列表的「待确认 / 运行中」标记。只有远控 Web 页会传（它没有侧栏，会话列表
+   * 是唯一能标记状态的地方）；其余四端传 undefined，列表照旧只渲染标题与时间。
+   * 见 spec remote-control.md「待确认只在它自己的对话里弹，对话状态在会话列表标
+   * 出来」。
+   */
+  sessionStatus?: SessionListStatus;
   onOpenSettings: () => void;
   onOpenEnterpriseConsole: () => void;
   onOpenHelpDocs: () => void;
@@ -837,6 +844,14 @@ export interface ChatState {
   currentSession?: SessionMetadata;
   sessionsLoading: boolean;
   pendingConfirmations: ConfirmationRequest[];
+  /**
+   * 会话列表的状态标记（远控 Web 页是唯一消费者；其余宿主各有自己的会话行呈现）。
+   * 每次重新对齐（冷启动 / 切会话 / 重连 / 重挂 / 回前台）都按当前值重读——它与
+   * `pendingConfirmations` 是同一条口径下的两件事：**弹哪张卡是会话级的**（只弹
+   * 当前这条会话的），**标记是进程级的**（每条对话一行，见 spec remote-control.md
+   * 「待确认只在它自己的对话里弹，对话状态在会话列表标出来」）。
+   */
+  sessionStatus: SessionListStatus;
   queuedMessages: QueuedMessage[];
   // Auth state
   isAuthenticated: boolean;
@@ -902,6 +917,20 @@ export interface ConfirmationDecision {
   newPermissionRule?: string;
   newAdditionalDirectory?: string;
   message?: string;
+}
+
+/**
+ * 会话列表的状态标记（远控 Web 页专用，spec remote-control.md「待确认只在它
+ * 自己的对话里弹，对话状态在会话列表标出来」）：哪些对话在等确认、哪些正在生成。
+ * 两个 id 集合分别来自宿主的两次重读（`listPendingPermissions` /
+ * `listDaemonSessions`），不是每会话元数据上的字段——它们描述的是「进程级事实」，
+ * 而不是某条会话自己的属性。
+ */
+export interface SessionListStatus {
+  /** 有待确认请求的会话 id（含当前会话；标记是否渲染由列表按「当前不重复提醒」定）。 */
+  waiting: string[];
+  /** 正在生成的会话 id（含当前会话）。 */
+  running: string[];
 }
 
 export interface ConfirmationDialogProps {
@@ -1036,6 +1065,7 @@ export type ChatAction =
   | { type: "SET_COMPACTING"; payload: boolean }
   | { type: "INPUT_CLEARED" }
   | { type: "SET_SESSIONS"; payload: SessionMetadata[] }
+  | { type: "SET_SESSION_STATUS"; payload: SessionListStatus }
   | { type: "SET_CURRENT_SESSION"; payload: SessionMetadata | undefined }
   | {
       /** 会话自定义标题（乐观更新 + 失败回滚，spec session-management.md「会话
@@ -1092,6 +1122,10 @@ export type ChatAction =
         currentSession?: SessionMetadata;
         configurationData: ConfigurationData;
         pendingConfirmations: ConfirmationRequest[];
+        /** 会话列表的两类标记（冷启动快照里一起给全，见 `ChatState.sessionStatus`）。
+         *  缺席 = 该宿主没有这两组数据（或那份快照早于本字段），此时保留现值而不是
+         *  清成空集——宁可按上一份标记多标一会儿，也不给出一个比事实更安静的画面。 */
+        sessionStatus?: SessionListStatus;
         selection?: SelectionInfo;
         inputContent?: string;
         permissionMode?: PermissionMode;

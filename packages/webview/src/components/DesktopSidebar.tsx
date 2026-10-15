@@ -12,6 +12,7 @@ import {
   SplitIcon,
   LoadingRingIcon,
   SettingsPluginsIcon,
+  StatusDotIcon,
 } from "./HeaderIcons";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
@@ -64,25 +65,9 @@ const ActivityIcon: React.FC = () => (
 
 /** 侧栏会话行状态图标（Figma 13561:39969 icon 集 + 13656:5470 会话行规格）。
  *  状态从标题左侧移到行右端 24 槽：运行中=转圈 loading 环、已完成未读=绿点、
- *  等待确认=琥珀点；hover 时整槽被「⋯」更多按钮覆盖。 */
-
-/** 8px 状态点：green #16A34A = 已完成未读（打开后消失）、amber #E6A23C = 等待确认。 */
-const StatusDot: React.FC<{ color: string; label: string }> = ({
-  color,
-  label,
-}) => (
-  <svg
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    role="img"
-    aria-label={label}
-    style={{ display: "block" }}
-  >
-    <circle cx="12" cy="12" r="4" fill={color} />
-  </svg>
-);
+ *  等待确认=琥珀点；hover 时整槽被「⋯」更多按钮覆盖。状态点与远控页会话列表
+ *  共用 HeaderIcons.StatusDotIcon（green #16A34A = 已完成未读，打开后消失；
+ *  amber #E6A23C = 等待确认）。 */
 
 /** 运行中转圈 loading 环（13576:40802）：共享组件见 HeaderIcons.LoadingRingIcon，
  *  双色走 --loading-ring-*（dark 主题下的对比色见 DesktopApp.css）。 */
@@ -707,11 +692,11 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
             className={`desktop-session-status-slot desktop-session-status-slot--${status}`}
           >
             {status === "waiting" ? (
-              <StatusDot color="#E6A23C" label="等待确认" />
+              <StatusDotIcon color="#E6A23C" label="等待确认" />
             ) : status === "running" ? (
               <LoadingRingIcon />
             ) : (
-              <StatusDot color="#16A34A" label="有新完成" />
+              <StatusDotIcon color="#16A34A" label="有新完成" />
             )}
           </span>
         )}

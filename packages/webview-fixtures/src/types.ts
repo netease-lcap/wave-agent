@@ -256,6 +256,38 @@ export interface UpdateTasksMessage extends HostToWebviewMessageBase {
   isTaskListCollapsed?: boolean;
 }
 
+/**
+ * 会话列表的状态标记：哪些对话**在等用户确认**、哪些**正在生成**（spec
+ * remote-control.md「待确认只在它自己的对话里弹，对话状态在会话列表标出来」）。
+ *
+ * 两个 id 集合、而不是每会话一条元数据上的字段，因为它们来自两次不同的读且
+ * 覆盖面不同：`listPendingPermissions` 报告**全部**会话的待确认（正因如此才能
+ * 标记页面没在看的那条），`listDaemonSessions` 报告每条会话的忙闲。两者都是
+ * **状态**（每条重新对齐路径都重读），不是可监听的过渡——宿主推的
+ * `loadingChange` 只描述当前这条会话。
+ *
+ * 只有远控 Web 页（shim）发这条消息：它是唯一没有侧栏的宿主，会话列表就是它
+ * 唯一能标记状态的地方；其余四端各有自己的会话行呈现（桌面端侧栏、IDE 的会话
+ * 面板），不需要第二份实现。
+ */
+export interface UpdateSessionStatusMessage
+  extends HostToWebviewMessageBase,
+    SessionListStatus {
+  command: "updateSessionStatus";
+}
+
+/** 会话列表的两类标记（远控 Web 页专用）。两个集合都**含当前会话**：是否把当前
+ *  那条也标出来由列表自己定（「待确认」不标当前那条——它本来就弹着卡；「运行中」
+ *  含当前那条——「我正在看的这条还在不在跑」正是列表要回答的问题）。
+ *  同一对值既有广播（`updateSessionStatus`）也随快照下发（`setInitialState` 的
+ *  `sessionStatus`）：快照重建列表时搭车、不重建时靠广播。 */
+export interface SessionListStatus {
+  /** 有待确认请求的会话 id。 */
+  waiting: string[];
+  /** 正在生成的会话 id。 */
+  running: string[];
+}
+
 export interface UpdateBackgroundTasksMessage extends HostToWebviewMessageBase {
   command: "updateBackgroundTasks";
   tasks: BackgroundTaskSummary[];
@@ -513,6 +545,10 @@ export interface SetInitialStateMessage extends HostToWebviewMessageBase {
   permissionMode?: PermissionMode;
   attachedImages?: AttachedImage[];
   queuedMessages: QueuedMessage[];
+  /** 会话列表的两类标记（远控 Web 页专用，见 `SessionListStatus`）：与
+   *  `updateSessionStatus` 的同一对值，只是搭快照的便车一次上屏。其余宿主不携带
+   *  —— 缺席时 webview 保留自己手里的那一份（不清空）。 */
+  sessionStatus?: SessionListStatus;
   isAuthenticated: boolean;
   workdir?: string;
 }
@@ -1045,6 +1081,7 @@ export type HostToWebviewMessage =
   | OlderMessagesMessage
   | OlderMessagesErrorMessage
   | UpdateTasksMessage
+  | UpdateSessionStatusMessage
   | UpdateBackgroundTasksMessage
   | UpdateWorkflowRunsMessage
   | UpdateSelectionMessage
