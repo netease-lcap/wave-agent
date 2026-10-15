@@ -1,8 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
+import { readFileSync } from "node:fs";
 import type { TelemetryConfig } from "@/types/telemetry.js";
 
 // Mock globalLogger to suppress output
+vi.mock("@/services/authService.js", () => ({
+  AuthService: { getInstance: () => ({ getAuthUser: () => undefined }) },
+  getOrCreateAnonymousId: () => "anon-id-test",
+}));
+
 vi.mock("@/utils/globalLogger.js", () => ({
   logger: {
     debug: vi.fn(),
@@ -18,12 +24,17 @@ vi.mock("@/utils/globalLogger.js", () => ({
  * commands — `tests/telemetry/headersHelper.test.ts` covers the executor.
  */
 const spawnMock = vi.fn();
+const execFileSyncMock = vi.fn();
 vi.mock("node:child_process", async () => {
   const actual =
     await vi.importActual<typeof import("node:child_process")>(
       "node:child_process",
     );
-  return { ...actual, spawn: (...args: unknown[]) => spawnMock(...args) };
+  return {
+    ...actual,
+    spawn: (...args: unknown[]) => spawnMock(...args),
+    execFileSync: (...args: unknown[]) => execFileSyncMock(...args),
+  };
 });
 
 /** A fake shell child that writes `stdout` and exits 0. */
@@ -90,11 +101,25 @@ function setupMocks() {
   const mockConsoleMetricExporter = vi.fn();
   const mockConsoleLogRecordExporter = vi.fn();
 
+  /**
+   * Resource stubs must be chainable: the assembly merges the SDK default, the
+   * `OTEL_RESOURCE_ATTRIBUTES` detection and our own attributes, in that order,
+   * and every merge returns a resource again.
+   */
+  function resourceStub(attributes: Record<string, unknown> = {}) {
+    const stub = {
+      attributes,
+      merge: vi.fn(() => resourceStub(attributes)),
+    };
+    return stub;
+  }
+
+  const mockEnvResourceAttributes = { "department.name": "infra" };
   const mockResource = {
-    defaultResource: vi.fn().mockReturnValue({
-      merge: vi.fn().mockReturnValue({}),
-    }),
-    resourceFromAttributes: vi.fn().mockReturnValue({}),
+    defaultResource: vi.fn(() => resourceStub()),
+    resourceFromAttributes: vi.fn(() => resourceStub()),
+    detectResources: vi.fn(() => resourceStub(mockEnvResourceAttributes)),
+    envDetector: {},
   };
 
   vi.doMock("@opentelemetry/sdk-metrics", () => ({
@@ -173,6 +198,16 @@ function createdCounterNames(mock: ReturnType<typeof vi.fn>): unknown[] {
   return mock.mock.calls.map((call) => call[0]);
 }
 
+/** The recorded calls of one counter created on the mocked meter. */
+function counterCalls(
+  mock: ReturnType<typeof vi.fn>,
+  name: string,
+): unknown[][] {
+  const index = mock.mock.calls.findIndex((call) => call[0] === name);
+  return (mock.mock.results[index]!.value as { add: ReturnType<typeof vi.fn> })
+    .add.mock.calls;
+}
+
 describe("instrumentation", () => {
   let instrumentation: typeof import("@/telemetry/instrumentation.js");
   let mocks: ReturnType<typeof setupMocks>;
@@ -189,8 +224,12 @@ describe("instrumentation", () => {
     delete process.env.OTEL_ENABLED;
     delete process.env.OTEL_LOG_USER_PROMPTS;
     delete process.env.OTEL_LOG_TOOL_CONTENT;
+    delete process.env.OTEL_METRICS_INCLUDE_SESSION_ID;
+    delete process.env.OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES;
+    delete process.env.OTEL_METRICS_INCLUDE_REPOSITORY;
     delete process.env.OTEL_SHUTDOWN_TIMEOUT_MS;
     spawnMock.mockReset();
+    execFileSyncMock.mockReset();
     vi.resetModules();
     mocks = setupMocks();
     instrumentation = await import("@/telemetry/instrumentation.js");
@@ -813,6 +852,133 @@ describe("instrumentation", () => {
       // Metrics are off: no meter, so every record call stays a no-op.
       expect(mocks.mockMeterProvider).not.toHaveBeenCalled();
       expect(mocks.mockCreateCounter).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("standard attribute surface", () => {
+    const init = () =>
+      instrumentation.initializeTelemetry({
+        enabled: true,
+        metricsExporter: "console",
+      });
+
+    /** Record one session and read back the `wave.sessions` data point. */
+    async function recordAndReadPoint(): Promise<
+      [unknown, Record<string, unknown>]
+    > {
+      const metrics = await import("@/telemetry/metrics.js");
+      metrics.recordSession({ sessionId: "session-1", workdir: "/repo" });
+      return counterCalls(mocks.mockCreateCounter, "wave.sessions")[0] as [
+        unknown,
+        Record<string, unknown>,
+      ];
+    }
+
+    it("should keep service.version at the built version", async () => {
+      const manifest = JSON.parse(
+        readFileSync(new URL("../../package.json", import.meta.url), "utf-8"),
+      ) as { version: string };
+      // An npm script exports this; a packaged host does not — which is exactly
+      // the case that used to report `unknown` and split the fleet by version.
+      delete process.env.npm_package_version;
+
+      await init();
+
+      expect(mocks.mockResource.resourceFromAttributes).toHaveBeenCalledWith(
+        expect.objectContaining({
+          "service.name": "wave",
+          "service.version": manifest.version,
+        }),
+      );
+    });
+
+    it("should read OTEL_RESOURCE_ATTRIBUTES into the resource", async () => {
+      await init();
+
+      expect(mocks.mockResource.detectResources).toHaveBeenCalledWith({
+        detectors: [mocks.mockResource.envDetector],
+      });
+    });
+
+    it("should put the session and the resource attributes on a data point", async () => {
+      await init();
+
+      const [value, attributes] = await recordAndReadPoint();
+
+      expect(value).toBe(1);
+      expect(attributes).toMatchObject({
+        "user.id": "anon-id-test",
+        "session.id": "session-1",
+        "department.name": "infra",
+      });
+    });
+
+    it("should drop session.id when OTEL_METRICS_INCLUDE_SESSION_ID=0", async () => {
+      process.env.OTEL_METRICS_INCLUDE_SESSION_ID = "0";
+
+      await init();
+
+      const [, attributes] = await recordAndReadPoint();
+
+      expect(attributes).not.toHaveProperty("session.id");
+      expect(attributes).toMatchObject({ "department.name": "infra" });
+    });
+
+    it("should keep resource attributes out of data points when the switch is off", async () => {
+      process.env.OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES = "0";
+
+      await init();
+
+      const [, attributes] = await recordAndReadPoint();
+
+      expect(attributes).not.toHaveProperty("department.name");
+      // The resource keeps them regardless — only the data point projection is
+      // what the switch controls.
+      expect(mocks.mockResource.detectResources).toHaveBeenCalled();
+    });
+
+    it("should not touch git unless repository attributes are enabled", async () => {
+      await init();
+
+      await recordAndReadPoint();
+
+      expect(execFileSyncMock).not.toHaveBeenCalled();
+    });
+
+    it("should resolve vcs.repository.* when the switch is on", async () => {
+      process.env.OTEL_METRICS_INCLUDE_REPOSITORY = "1";
+      execFileSyncMock.mockReturnValue(
+        "git@github.com:netease-lcap/wave-agent.git\n",
+      );
+
+      await init();
+
+      const [, attributes] = await recordAndReadPoint();
+
+      expect(execFileSyncMock).toHaveBeenCalledWith(
+        "git",
+        ["remote", "get-url", "origin"],
+        expect.objectContaining({ cwd: "/repo" }),
+      );
+      expect(attributes).toMatchObject({
+        "vcs.repository.url.full": "git@github.com:netease-lcap/wave-agent.git",
+        "vcs.owner.name": "netease-lcap",
+        "vcs.repository.name": "wave-agent",
+        "vcs.provider.name": "github",
+      });
+    });
+
+    it("should resolve the repository once per working directory", async () => {
+      process.env.OTEL_METRICS_INCLUDE_REPOSITORY = "1";
+      execFileSyncMock.mockReturnValue("git@github.com:o/r.git\n");
+
+      await init();
+
+      const metrics = await import("@/telemetry/metrics.js");
+      metrics.recordSession({ sessionId: "s-1", workdir: "/repo" });
+      metrics.recordSession({ sessionId: "s-1", workdir: "/repo" });
+
+      expect(execFileSyncMock).toHaveBeenCalledTimes(1);
     });
   });
 

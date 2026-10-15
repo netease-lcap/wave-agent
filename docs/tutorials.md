@@ -363,6 +363,8 @@ CodeWave IDE 支持 OpenTelemetry 标准的遥测，企业可以把 Agent 侧数
 | Metrics | 请求计数 / 错误计数 / 请求耗时、按模型与类型拆分的 token 用量、会话数、编辑类工具的增删行数与经由工具创建的提交 / PR-MR 数 |
 | Logs    | `session_start` / `session_end` 等会话生命周期事件，以及工具权限决策、压缩等结构化事件                                     |
 
+指标与事件都带同一组**标准归属属性**：会话 id、账号 id 与（已认证时的）邮箱、终端类型；部署方还可以用 `OTEL_RESOURCE_ATTRIBUTES` 给自己的车队打团队 / 部门标签（例如 `department.name=infra`），该标签既进遥测资源也会投影到指标数据点上，按团队过滤在各类收集器里都成立。**仓库维度（`vcs.repository.*`）默认关闭**，需要按仓库归因时用 `OTEL_METRICS_INCLUDE_REPOSITORY=1` 打开（远端 URL 里的凭据会被剥离，本地路径不出现在遥测里）。
+
 导出器选择与完整配置项见[功能规格说明：OpenTelemetry 集成](/specs/enterprise/opentelemetry)。
 
 ### 4. 用量回调（SDK 集成） {#usage-callback}
@@ -379,6 +381,7 @@ CodeWave IDE 支持 OpenTelemetry 标准的遥测，企业可以把 Agent 侧数
 三点先说清楚：
 
 - **默认不采集提示内容**：遥测**默认不记录**用户提示文本与工具调用内容，只有显式开启 `OTEL_LOG_USER_PROMPTS=1` / `OTEL_LOG_TOOL_CONTENT=1` 时才会包含。默认配置下 `user_prompt` 事件不含提示原文。
+- **归属属性是身份、不是内容**：每条遥测记录带账号 id 与邮箱（已认证时）、会话 id、终端类型；未登录时用本机持久匿名 id（不含 PII）。仓库归属默认关闭、本地路径不出现；`session.id` 若不需要可从指标侧关掉（`OTEL_METRICS_INCLUDE_SESSION_ID=0`）。
 - **按团队聚合呈现，不做个人排行**：用量数据用于容量与成本规划、定位使用阻力，不做个人产出排名。
 - **管理员可统一下发配置**：管理员可通过服务端托管配置统一下发遥测参数（托管配置的 `env` 键按同名覆盖成员本机值），无需逐台机器配置。
 

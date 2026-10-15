@@ -14,13 +14,10 @@ import type {
 import { logger } from "../utils/globalLogger.js";
 import { createHeadersHelperProvider } from "./headersHelper.js";
 import { initMetrics, resetMetrics } from "./metrics.js";
+import { getServiceVersion } from "./attributes.js";
 
 import type { MeterProvider } from "@opentelemetry/sdk-metrics";
 import type { LoggerProvider } from "@opentelemetry/sdk-logs";
-import {
-  AuthService,
-  getOrCreateAnonymousId,
-} from "../services/authService.js";
 
 // Lazy-loaded OTEL modules — only imported when telemetry is initialized
 let sdkMetrics: typeof import("@opentelemetry/sdk-metrics") | undefined;
@@ -254,20 +251,21 @@ function buildExporterHeaders(
 }
 
 /**
- * Resolve PII gate flags from environment variables.
+ * Resolve a boolean switch: env var > settings config > default.
+ *
+ * Same precedence as the rest of the telemetry config, and the same env names
+ * Claude Code uses, so a fleet that already sets them for the collector keeps
+ * one configuration vocabulary.
  */
-function resolveLogUserPrompts(config?: Partial<TelemetryConfig>): boolean {
-  const envValue = process.env.OTEL_LOG_USER_PROMPTS;
+function resolveBooleanSwitch(
+  envVar: string,
+  configValue: boolean | undefined,
+  defaultValue: boolean,
+): boolean {
+  const envValue = process.env[envVar];
   if (envValue === "1" || envValue === "true") return true;
   if (envValue === "0" || envValue === "false") return false;
-  return config?.logUserPrompts ?? false;
-}
-
-function resolveLogToolContent(config?: Partial<TelemetryConfig>): boolean {
-  const envValue = process.env.OTEL_LOG_TOOL_CONTENT;
-  if (envValue === "1" || envValue === "true") return true;
-  if (envValue === "0" || envValue === "false") return false;
-  return config?.logToolContent ?? false;
+  return configValue ?? defaultValue;
 }
 
 /**
@@ -319,8 +317,31 @@ export function resolveTelemetryConfig(
     headers: resolveStaticHeaders(settingsConfig),
     headersHelper: settingsConfig?.headersHelper?.trim() || undefined,
     headersProvider: settingsConfig?.headersProvider,
-    logUserPrompts: resolveLogUserPrompts(settingsConfig),
-    logToolContent: resolveLogToolContent(settingsConfig),
+    logUserPrompts: resolveBooleanSwitch(
+      "OTEL_LOG_USER_PROMPTS",
+      settingsConfig?.logUserPrompts,
+      false,
+    ),
+    logToolContent: resolveBooleanSwitch(
+      "OTEL_LOG_TOOL_CONTENT",
+      settingsConfig?.logToolContent,
+      false,
+    ),
+    includeSessionId: resolveBooleanSwitch(
+      "OTEL_METRICS_INCLUDE_SESSION_ID",
+      settingsConfig?.includeSessionId,
+      true,
+    ),
+    includeResourceAttributes: resolveBooleanSwitch(
+      "OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES",
+      settingsConfig?.includeResourceAttributes,
+      true,
+    ),
+    includeRepository: resolveBooleanSwitch(
+      "OTEL_METRICS_INCLUDE_REPOSITORY",
+      settingsConfig?.includeRepository,
+      false,
+    ),
     shutdownTimeoutMs: resolveShutdownTimeoutMs(settingsConfig),
   };
 }
@@ -400,15 +421,25 @@ export async function initializeTelemetry(
 
     const { metricsExporter, logsExporter } = currentConfig;
 
-    // Build resource attributes (lightweight assembly: sdk-metrics + resources)
-    const resource = otelResources!.defaultResource().merge(
-      otelResources!.resourceFromAttributes({
-        "service.name": "wave",
-        "service.version": process.env.npm_package_version || "unknown",
-        "os.type": process.platform,
-        "host.arch": process.arch,
-      }),
-    );
+    // Build resource attributes (lightweight assembly: sdk-metrics + resources).
+    // `OTEL_RESOURCE_ATTRIBUTES` is the hook an enterprise uses to label its own
+    // fleet (department, team, cost centre), so the detected resource is part of
+    // the merge; ours come last and therefore win, keeping `service.name` at the
+    // value the collector contract expects.
+    const envResource = otelResources!.detectResources({
+      detectors: [otelResources!.envDetector],
+    });
+    const resource = otelResources!
+      .defaultResource()
+      .merge(envResource)
+      .merge(
+        otelResources!.resourceFromAttributes({
+          "service.name": "wave",
+          "service.version": getServiceVersion(),
+          "os.type": process.platform,
+          "host.arch": process.arch,
+        }),
+      );
 
     const metricReaders: import("@opentelemetry/sdk-metrics").MetricReader[] =
       [];
@@ -453,8 +484,18 @@ export async function initializeTelemetry(
         });
         api!.metrics.setGlobalMeterProvider(meterProvider);
         // Instruments are created on the meter and held by the metrics module;
-        // before this call every record function no-ops.
-        initMetrics(meterProvider.getMeter("wave"));
+        // before this call every record function no-ops. The attribute policy
+        // rides along: `session.id` is per-record (one process hosts several
+        // sessions), and the resource keys the deployment declared are projected
+        // onto the data points as well, so a collector that does not turn
+        // resource attributes into series labels still lets them filter by team.
+        initMetrics(meterProvider.getMeter("wave"), {
+          includeSessionId: currentConfig.includeSessionId,
+          includeRepository: currentConfig.includeRepository,
+          resourceAttributes: currentConfig.includeResourceAttributes
+            ? envResource.attributes
+            : {},
+        });
       }
 
       if (logProcessors.length > 0) {
@@ -586,29 +627,4 @@ export function getCurrentConfig(): TelemetryConfig | undefined {
  */
 export function isInitialized(): boolean {
   return initialized;
-}
-
-/**
- * Get telemetry attributes for the current session.
- *
- * Priority:
- * 1. SSO authenticated → server-provided user.id + user.email
- * 2. Not authenticated → persistent anonymous ID from ~/.wave/config.json
- */
-export function getTelemetryAttributes(): Record<string, string> {
-  try {
-    const user = AuthService.getInstance().getAuthUser();
-    if (user) {
-      const attrs: Record<string, string> = { "user.id": user.id };
-      if (user.email) {
-        attrs["user.email"] = user.email;
-      }
-      return attrs;
-    }
-  } catch {
-    // AuthService not available or not authenticated
-  }
-
-  // Fallback to anonymous ID
-  return { "user.id": getOrCreateAnonymousId() };
 }

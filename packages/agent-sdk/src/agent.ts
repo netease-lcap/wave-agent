@@ -780,14 +780,21 @@ export class Agent {
     // Log session_start event
     try {
       const modelConfig = this.getModelConfig();
+      const sessionContext = {
+        sessionId: this.messageManager.getSessionId(),
+        workdir: this.workdir,
+      };
       if (modelConfig.model) {
-        await logOTelEvent("session_start", {
-          sessionId: this.messageManager.getSessionId(),
-          model: modelConfig.model,
-          workdir: this.workdir,
-        }).catch(() => {}); // Non-blocking
+        await logOTelEvent(
+          "session_start",
+          {
+            model: modelConfig.model,
+            workdir: this.workdir,
+          },
+          sessionContext,
+        ).catch(() => {}); // Non-blocking
       }
-      recordSession();
+      recordSession(sessionContext);
     } catch {
       // Model not configured yet - will be available after SSO login
     }
@@ -1043,11 +1050,20 @@ export class Agent {
     // Log session_end event and flush telemetry. Only a flush: the providers are
     // process-scoped, and tearing them down here would silence the other agents
     // sharing this process (the daemon hosts every session at once).
-    await logOTelEvent("session_end", {
-      duration: String(Math.round((Date.now() - this.sessionStartTime) / 1000)),
-      totalTokens: String(this.messageManager.getLatestTotalTokens()),
-      exitReason: "destroy",
-    }).catch(() => {});
+    await logOTelEvent(
+      "session_end",
+      {
+        duration: String(
+          Math.round((Date.now() - this.sessionStartTime) / 1000),
+        ),
+        totalTokens: String(this.messageManager.getLatestTotalTokens()),
+        exitReason: "destroy",
+      },
+      {
+        sessionId: this.messageManager.getSessionId(),
+        workdir: this.workdir,
+      },
+    ).catch(() => {});
     await flushTelemetry();
 
     // Clear message queue callback first to prevent any late triggers from

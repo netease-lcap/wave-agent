@@ -1,6 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Meter } from "@opentelemetry/api";
 
+/**
+ * The standard attribute surface is stubbed: this file is about which
+ * attributes a data point gets, not about how the identity is resolved
+ * (`tests/telemetry/telemetryAttributes.test.ts` covers that).
+ */
+const { standardAttributes } = vi.hoisted(() => ({
+  standardAttributes: vi.fn(),
+}));
+
+vi.mock("@/telemetry/attributes.js", () => ({ standardAttributes }));
+
 type AddSpy = ReturnType<typeof vi.fn>;
 type RecordSpy = ReturnType<typeof vi.fn>;
 
@@ -40,6 +51,8 @@ describe("metrics", () => {
 
   beforeEach(async () => {
     vi.resetModules();
+    standardAttributes.mockReset();
+    standardAttributes.mockReturnValue({});
     metrics = await import("@/telemetry/metrics.js");
     fake = fakeMeter();
     metrics.initMetrics(fake.meter);
@@ -167,7 +180,7 @@ describe("metrics", () => {
     it("should count one started session", () => {
       metrics.recordSession();
 
-      expect(fake.counter("wave.sessions").add).toHaveBeenCalledWith(1);
+      expect(fake.counter("wave.sessions").add).toHaveBeenCalledWith(1, {});
     });
   });
 
@@ -208,14 +221,17 @@ describe("metrics", () => {
     it("should count the commit a tool call created", () => {
       metrics.recordToolActivity({ commits: true, pullRequests: false });
 
-      expect(fake.counter("wave.commits").add).toHaveBeenCalledWith(1);
+      expect(fake.counter("wave.commits").add).toHaveBeenCalledWith(1, {});
       expect(fake.counter("wave.pull_requests").add).not.toHaveBeenCalled();
     });
 
     it("should count a created pull request", () => {
       metrics.recordToolActivity({ commits: false, pullRequests: true });
 
-      expect(fake.counter("wave.pull_requests").add).toHaveBeenCalledWith(1);
+      expect(fake.counter("wave.pull_requests").add).toHaveBeenCalledWith(
+        1,
+        {},
+      );
       expect(fake.counter("wave.commits").add).not.toHaveBeenCalled();
     });
 
@@ -224,6 +240,105 @@ describe("metrics", () => {
 
       expect(fake.counter("wave.commits").add).not.toHaveBeenCalled();
       expect(fake.counter("wave.pull_requests").add).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("standard attributes", () => {
+    /** Re-init the module with a policy, the way initializeTelemetry does. */
+    function initWithPolicy(
+      policy: Partial<
+        Parameters<typeof metrics.initMetrics>[1] & Record<string, unknown>
+      >,
+    ) {
+      metrics.initMetrics(fake.meter, {
+        includeSessionId: false,
+        includeRepository: false,
+        resourceAttributes: {},
+        ...policy,
+      } as Parameters<typeof metrics.initMetrics>[1]);
+    }
+
+    it("should leave session.id off when the switch is off", () => {
+      initWithPolicy({ includeSessionId: false });
+
+      metrics.recordSession({ sessionId: "session-1", workdir: "/repo" });
+
+      expect(standardAttributes).toHaveBeenCalledWith({
+        sessionId: undefined,
+        workdir: "/repo",
+        includeRepository: false,
+      });
+    });
+
+    it("should put session.id on every data point when the switch is on", () => {
+      standardAttributes.mockReturnValue({ "session.id": "session-1" });
+      initWithPolicy({ includeSessionId: true });
+
+      metrics.recordApiRequest(
+        { model: "gemini-3-flash", durationMs: 12, success: true },
+        { sessionId: "session-1", workdir: "/repo" },
+      );
+      metrics.recordSession({ sessionId: "session-1", workdir: "/repo" });
+
+      expect(standardAttributes).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        workdir: "/repo",
+        includeRepository: false,
+      });
+      expect(fake.counter("wave.api.requests").add).toHaveBeenCalledWith(1, {
+        "session.id": "session-1",
+        model: "gemini-3-flash",
+      });
+      expect(fake.counter("wave.api.duration").record).toHaveBeenCalledWith(
+        12,
+        {
+          "session.id": "session-1",
+          model: "gemini-3-flash",
+        },
+      );
+      expect(fake.counter("wave.sessions").add).toHaveBeenCalledWith(1, {
+        "session.id": "session-1",
+      });
+    });
+
+    it("should project the deployment's resource attributes onto data points", () => {
+      initWithPolicy({
+        resourceAttributes: { "department.name": "infra" },
+      });
+
+      metrics.recordLinesChanged({ added: 3 });
+
+      // Projected even though the collector may not turn resource attributes
+      // into series labels — that is what the projection is for.
+      expect(fake.counter("wave.lines.changed").add).toHaveBeenCalledWith(3, {
+        "department.name": "infra",
+        direction: "added",
+      });
+    });
+
+    it("should let a data point's own attributes win over the projected ones", () => {
+      initWithPolicy({
+        resourceAttributes: { direction: "projected", team: "infra" },
+      });
+
+      metrics.recordLinesChanged({ removed: 1 });
+
+      expect(fake.counter("wave.lines.changed").add).toHaveBeenCalledWith(1, {
+        team: "infra",
+        direction: "removed",
+      });
+    });
+
+    it("should resolve no attributes at all once the instruments are retired", () => {
+      initWithPolicy({ includeSessionId: true });
+      metrics.resetMetrics();
+      standardAttributes.mockClear();
+
+      metrics.recordSession({ sessionId: "session-1", workdir: "/repo" });
+
+      // Nothing will read them, so telemetry that is off pays for no lookup.
+      expect(standardAttributes).not.toHaveBeenCalled();
+      expect(fake.counter("wave.sessions").add).not.toHaveBeenCalled();
     });
   });
 

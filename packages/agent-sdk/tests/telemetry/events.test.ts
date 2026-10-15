@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Mock the instrumentation module
 const mockIsInitialized = vi.fn();
 const mockGetCurrentConfig = vi.fn();
-const mockGetTelemetryAttributes = vi.fn().mockReturnValue({});
+const mockStandardAttributes = vi.fn().mockReturnValue({});
 const mockLogEmit = vi.fn();
 // Identity of the registered logger provider — `events.ts` re-resolves the
 // logger when it changes, because the retired provider's logger keeps dropping.
@@ -12,7 +12,12 @@ const mockLoggerProvider: { current: unknown } = { current: {} };
 vi.mock("@/telemetry/instrumentation.js", () => ({
   isInitialized: () => mockIsInitialized(),
   getCurrentConfig: () => mockGetCurrentConfig(),
-  getTelemetryAttributes: () => mockGetTelemetryAttributes(),
+}));
+
+// The standard attribute surface is stubbed: this file asserts which attributes
+// an event carries, not how identity or the repository are resolved.
+vi.mock("@/telemetry/attributes.js", () => ({
+  standardAttributes: (...args: unknown[]) => mockStandardAttributes(...args),
 }));
 
 vi.mock("@opentelemetry/api-logs", () => ({
@@ -31,7 +36,7 @@ describe("events", () => {
 
     mockIsInitialized.mockReturnValue(false);
     mockGetCurrentConfig.mockReturnValue(undefined);
-    mockGetTelemetryAttributes.mockReturnValue({});
+    mockStandardAttributes.mockReturnValue({});
     mockLogEmit.mockReset();
 
     events = await import("@/telemetry/events.js");
@@ -300,6 +305,71 @@ describe("events", () => {
         },
       });
     });
+
+    it("should attribute every event to the session it belongs to", async () => {
+      mockIsInitialized.mockReturnValue(true);
+      mockGetCurrentConfig.mockReturnValue({
+        logUserPrompts: false,
+        logToolContent: false,
+        includeRepository: true,
+      });
+
+      await events.logOTelEvent(
+        "compaction",
+        { model: "gpt-4" },
+        { sessionId: "session-1", workdir: "/repo" },
+      );
+
+      expect(mockStandardAttributes).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        workdir: "/repo",
+        includeRepository: true,
+      });
+    });
+
+    it("should merge the standard attributes into the emitted event", async () => {
+      mockIsInitialized.mockReturnValue(true);
+      mockGetCurrentConfig.mockReturnValue({
+        logUserPrompts: false,
+        logToolContent: false,
+      });
+      mockStandardAttributes.mockReturnValue({
+        "user.id": "u-1",
+        "session.id": "session-1",
+      });
+
+      await events.logOTelEvent(
+        "user_prompt",
+        { prompt_length: "12" },
+        { sessionId: "session-1" },
+      );
+
+      expect(mockLogEmit).toHaveBeenCalledWith({
+        body: "user_prompt",
+        attributes: {
+          "event.name": "user_prompt",
+          "user.id": "u-1",
+          "session.id": "session-1",
+          prompt_length: "12",
+        },
+      });
+    });
+
+    it("should not resolve repository attributes unless the switch is on", async () => {
+      mockIsInitialized.mockReturnValue(true);
+      mockGetCurrentConfig.mockReturnValue({
+        logUserPrompts: false,
+        logToolContent: false,
+      });
+
+      await events.logOTelEvent("session_end", {}, { sessionId: "session-1" });
+
+      expect(mockStandardAttributes).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        workdir: undefined,
+        includeRepository: undefined,
+      });
+    });
   });
 
   describe("logRequestContentEvents", () => {
@@ -459,7 +529,9 @@ describe("events with logger import failure", () => {
         logUserPrompts: false,
         logToolContent: false,
       }),
-      getTelemetryAttributes: () => ({}),
+    }));
+    vi.doMock("@/telemetry/attributes.js", () => ({
+      standardAttributes: () => ({}),
     }));
 
     vi.doMock("@opentelemetry/api-logs", () => {

@@ -22,7 +22,13 @@ vi.mock("@modelcontextprotocol/sdk/client/index.js");
 vi.mock("@modelcontextprotocol/sdk/client/stdio.js");
 vi.mock("fs");
 
-const context = { workdir: "/test/workdir" } as ToolContext;
+const context = {
+  sessionId: "session-1",
+  workdir: "/test/workdir",
+} as ToolContext;
+
+/** The standard-attribute context every record carries for this context. */
+const recordContext = { sessionId: "session-1", workdir: "/test/workdir" };
 
 /** A connected server exposing one tool, with the call result the test wants. */
 function build(toolName: string, callTool: ReturnType<typeof vi.fn>) {
@@ -63,10 +69,10 @@ describe("McpManager creation counters", () => {
       context,
     );
 
-    expect(recordToolActivity).toHaveBeenCalledWith({
-      commits: false,
-      pullRequests: true,
-    });
+    expect(recordToolActivity).toHaveBeenCalledWith(
+      { commits: false, pullRequests: true },
+      recordContext,
+    );
   });
 
   it("stays silent when the server call failed", async () => {
@@ -94,9 +100,9 @@ describe("McpManager creation counters", () => {
       context,
     );
 
-    expect(recordToolActivity).toHaveBeenCalledWith({
-      commits: false,
-      pullRequests: false,
-    });
+    expect(recordToolActivity).toHaveBeenCalledWith(
+      { commits: false, pullRequests: false },
+      recordContext,
+    );
   });
 });

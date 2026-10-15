@@ -596,6 +596,7 @@ export default {
             { text: "导出器", link: "/sdk#otel-exporters" },
             { text: "出站头", link: "/sdk#otel-headers" },
             { text: "指标", link: "/sdk#otel-metrics" },
+            { text: "归属属性", link: "/sdk#otel-attributes" },
             { text: "事件日志", link: "/sdk#otel-events" },
             { text: "PII 保护", link: "/sdk#otel-privacy" },
             { text: "可靠性保障", link: "/sdk#otel-reliability" },

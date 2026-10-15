@@ -1113,7 +1113,10 @@ export class McpManager {
             // A PR/MR created by an MCP tool scores here rather than in
             // `ToolManager`: this is the one funnel every MCP call goes through,
             // so a nested call from inside the Exec sandbox counts too.
-            recordToolActivity(detectMcpActivity(toolName));
+            recordToolActivity(detectMcpActivity(toolName), {
+              sessionId: context?.sessionId,
+              workdir: context?.workdir,
+            });
             return result;
           } catch (error) {
             await context?.hookManager?.executePostToolUseHooks(

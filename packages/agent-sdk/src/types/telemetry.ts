@@ -58,6 +58,26 @@ export interface TelemetryConfig {
   logUserPrompts: boolean;
   /** Include tool I/O in events */
   logToolContent: boolean;
+  /**
+   * Attach `session.id` to metric data points (default true). Events always
+   * carry it; this switch only controls the metrics side, hence the name —
+   * aligned with Claude Code's `OTEL_METRICS_INCLUDE_SESSION_ID`.
+   */
+  includeSessionId: boolean;
+  /**
+   * Project `OTEL_RESOURCE_ATTRIBUTES` onto metric data points (default true).
+   * The resource keeps them either way; the projection is what makes them
+   * filterable when a collector does not turn resource attributes into series
+   * labels. Env var `OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES`.
+   */
+  includeResourceAttributes: boolean;
+  /**
+   * Attach `vcs.repository.*` (owner / name / provider / url) to every record
+   * (default false). Off by default so telemetry never leaks internal
+   * repository coordinates unless the deployment asks for them. Env var
+   * `OTEL_METRICS_INCLUDE_REPOSITORY`.
+   */
+  includeRepository: boolean;
   /** Max flush time on exit (default 2000) */
   shutdownTimeoutMs: number;
 }

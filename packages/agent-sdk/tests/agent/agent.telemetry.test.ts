@@ -124,8 +124,14 @@ describe("Agent - Telemetry Initialization", () => {
     expect(sessionStartCall).toBeDefined();
     expect(sessionStartCall![1]).toEqual(
       expect.objectContaining({
-        sessionId: expect.any(String),
         model: expect.any(String),
+        workdir: "/tmp/test-telemetry-order",
+      }),
+    );
+    // The session is a standard attribute now, passed as the record context.
+    expect(sessionStartCall![2]).toEqual(
+      expect.objectContaining({
+        sessionId: expect.any(String),
         workdir: "/tmp/test-telemetry-order",
       }),
     );

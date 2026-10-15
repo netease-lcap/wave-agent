@@ -2042,6 +2042,9 @@ describe("AIManager", () => {
 
       expect(recordApiRequestMock).toHaveBeenCalledWith(
         expect.objectContaining({ model: "test-agent-model", success: false }),
+        // The request is attributed to the session it belongs to, so a
+        // multi-session process can tell one turn from another.
+        expect.objectContaining({ sessionId: expect.any(String) }),
       );
     });
   });
