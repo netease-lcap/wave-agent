@@ -564,6 +564,67 @@ describe("ConfigurationService", () => {
     });
   });
 
+  describe("resolveModelConfig — fastModel scalar", () => {
+    // `fastModel` is a settings.json hot-reload key next to `model`
+    // (spec core/agent-config.md 设置实时重载 scenario 4): the value has to
+    // survive the per-file projection and the merge, and then be read by
+    // resolveModelConfig ahead of the env fallback.
+    const withEnv = async (
+      fastModelEnv: string | undefined,
+      run: () => Promise<void>,
+    ) => {
+      const original = process.env.WAVE_FAST_MODEL;
+      delete process.env.WAVE_FAST_MODEL;
+      try {
+        if (fastModelEnv !== undefined) {
+          configService.setEnvironmentVars({ WAVE_FAST_MODEL: fastModelEnv });
+        }
+        await run();
+      } finally {
+        if (original !== undefined) process.env.WAVE_FAST_MODEL = original;
+        else delete process.env.WAVE_FAST_MODEL;
+      }
+    };
+
+    it("should resolve fastModel from settings.json", async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({ model: "main-model", fastModel: "settings-fast" }),
+      );
+
+      await withEnv(undefined, async () => {
+        await configService.loadMergedConfiguration(tempDir);
+        expect(configService.resolveModelConfig().fastModel).toBe(
+          "settings-fast",
+        );
+      });
+    });
+
+    it("should prefer the settings.json fastModel over WAVE_FAST_MODEL", async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({ fastModel: "settings-fast" }),
+      );
+
+      await withEnv("env-fast", async () => {
+        await configService.loadMergedConfiguration(tempDir);
+        expect(configService.resolveModelConfig().fastModel).toBe(
+          "settings-fast",
+        );
+      });
+    });
+
+    it("should fall back to WAVE_FAST_MODEL when settings.json has no fastModel", async () => {
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify({ model: "main-model" }));
+
+      await withEnv("env-fast", async () => {
+        await configService.loadMergedConfiguration(tempDir);
+        expect(configService.resolveModelConfig().fastModel).toBe("env-fast");
+      });
+    });
+  });
+
   describe("resolveModelConfig — fastModelOptions", () => {
     it("should set fastModelOptions from models[fastModel] options", async () => {
       const config = {

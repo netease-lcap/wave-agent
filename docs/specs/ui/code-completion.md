@@ -136,7 +136,7 @@ order: 235
 
 - **补全请求与对话共享同一 CLI 子进程，但不得共享队列。** 补全不经过 `aiManager` 的对话轮次（无工具、无 system prompt、无 hooks），也不走 `aiService.callAgent` 的全局 1 次/秒请求间隔；补全在 CLI 侧有独立的调用路径与自己的节流策略。
 - **模型配置真源在 CLI 侧。** 插件端不得自建第二份模型配置（插件端既有配置服务明确不负责模型选择）；补全模型与开关通过既有的设置读写链路（`updateConfig` / `getConfiguredModels` 等）落盘到 CLI 配置，插件端只做读写转发。补全请求本身走新增的 stdio RPC 方法 `getCompletion`（参数：`prefix` / `suffix` / `language` / `filePath`；响应：`{ text, model }`，`text` 为空串表示无建议），会话级调用，同一会话同一时刻只保留一个在途请求——新请求到达时旧请求被中止，因此迟到的响应不会渲染。
-- **补全开关在 SDK 侧生效。** 开关关闭时 `getCompletion` 在发起模型调用前直接返回空文本，不消耗一次模型请求。开关与补全模型读 settings.json 的 `completionModel` / `completionEnabled`，解析优先级为 `AgentOptions` > settings.json > 环境变量 `WAVE_COMPLETION_MODEL` > `fastModel`；未配置补全模型时回退快速模型，**不**回退对话主模型。快速模型当前由 `env.WAVE_FAST_MODEL` 提供，settings.json 顶层的 `fastModel` 键在现有实现中未被 `resolveModelConfig` 读取（历史行为，非本功能引入）。
+- **补全开关在 SDK 侧生效。** 开关关闭时 `getCompletion` 在发起模型调用前直接返回空文本，不消耗一次模型请求。开关与补全模型读 settings.json 的 `completionModel` / `completionEnabled`，解析优先级为 `AgentOptions` > settings.json > 环境变量 `WAVE_COMPLETION_MODEL` > `fastModel`；未配置补全模型时回退快速模型，**不**回退对话主模型；快速模型自身的取值链与 `model` 对称（`AgentOptions` > settings.json `fastModel` > `env.WAVE_FAST_MODEL`）。
 - **3 秒请求超时。** 宿主侧对单个补全请求设 3 秒上限，超时即按“无建议”处理并取消在途请求——超过这个时间的建议已无价值，且持续占用在途通道。
 - **补全通道不得把 agent 运行时拖进宿主包。** 宿主只能从 `wave-agent-sdk/host` 导入，且该入口的依赖闭包必须零第三方依赖、体积受限（`scripts/check-sdk-surface.mjs`）；补全的请求实现只能放在 CLI/SDK 侧，插件端拿不到也不得拿到底层模型客户端。
 - **上下文范围：** 请求内容默认包含光标前缀最多 150 行与光标后缀最多 30 行，并对前缀+后缀设总字符上限（默认 12000 字符），超出时从离光标最远处开始截断；首期不引入跨文件检索、不引入代码库向量索引。
