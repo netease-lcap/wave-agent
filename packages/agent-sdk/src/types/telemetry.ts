@@ -22,6 +22,14 @@ export type HeadersProvider = () => Promise<Record<string, string>>;
 export interface TelemetryConfig {
   /** Master switch for telemetry */
   enabled: boolean;
+  /**
+   * Whether the **first-party** channel is on — Wave's own intake, a second
+   * pipeline that is independent of the `endpoint` / exporter settings below.
+   * Resolved from `monitoring.telemetry.firstPartyEnabled`, falling back to
+   * `FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED`; `WAVE_DISABLE_TELEMETRY=1` forces
+   * it off. See `telemetry/firstParty.ts`.
+   */
+  firstPartyEnabled: boolean;
   /** Metric export target */
   metricsExporter?: ExporterTarget;
   /** Log export target */
