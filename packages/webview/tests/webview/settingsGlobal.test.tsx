@@ -1,5 +1,5 @@
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { afterEach, describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, within } from "./test-utils";
 import SettingsPage, {
   COMPLETION_MODEL_STALE_HINT,
@@ -833,5 +833,92 @@ describe("SettingsPage「代码补全 / 补全模型」两行（spec ui/code-com
     fireEvent.click(saveButton());
 
     expect(onSave).toHaveBeenCalledWith({ completionEnabled: true });
+  });
+});
+
+/**
+ * 补全两行只由**提供补全的宿主**渲染（spec ui/code-completion.md 边界情况
+ * 「补全设置行的宿主范围」）。桌面端没有代码编辑器、远端网页没有本地宿主，
+ * 那里的补全从不触发——摆一个开关等于承诺一个不会发生的功能。
+ *
+ * 这里锁的是「门禁按宿主**能力位**判定」：桌面端（`waveHostType === "desktop"`）
+ * 与远端网页（`waveRemotePage === true`）都拿不到这两行，默认的 IDE 宿主照常拿到。
+ * 三处用法（渲染、进视图拉候选、保存载荷）都各有一条断言，否则会出现
+ * 「看不见的行也在写键」。
+ */
+describe("SettingsPage 补全两行的宿主门禁（spec ui/code-completion.md 边界情况「补全设置行的宿主范围」）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    delete window.waveHostType;
+    delete window.waveRemotePage;
+  });
+
+  it("桌面端：两行都不渲染，同卡片其它行照常渲染", () => {
+    window.waveHostType = "desktop";
+    renderGlobalView({ configurationData: {} });
+
+    expect(screen.queryByLabelText("代码补全")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("补全模型")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("settings-select-completion-model"),
+    ).not.toBeInTheDocument();
+    // 门禁只摘这两行，不是整张卡片消失
+    expect(screen.getByLabelText("AI 回复语言")).toBeInTheDocument();
+  });
+
+  it("桌面端：进「全局设置」视图不去拉候选模型（不发起无消费者的 RPC）", () => {
+    window.waveHostType = "desktop";
+    const { onLoadConfiguredModels } = renderGlobalView({
+      configurationData: {},
+    });
+
+    expect(onLoadConfiguredModels).not.toHaveBeenCalled();
+
+    // 切换视图再回来也不拉：门禁与「进视图重读」是同一个 effect 内的两个条件
+    fireEvent.click(screen.getByRole("button", { name: "个性化" }));
+    fireEvent.click(screen.getByRole("button", { name: "全局设置" }));
+
+    expect(onLoadConfiguredModels).not.toHaveBeenCalled();
+  });
+
+  it("桌面端：保存载荷不含补全两键（文件里已有值也不回写）", () => {
+    window.waveHostType = "desktop";
+    const { onSave } = renderGlobalView({
+      configurationData: {
+        completionModel: "qwen2.5-coder",
+        completionEnabled: false,
+      },
+    });
+
+    fireEvent.click(saveButton());
+
+    // 前一条渲染门禁已让两个控件不存在、状态无从改动，这里是第三层：载荷侧也
+    // 不生成这两个键，防止将来有别的入口预填草稿后「看不见的行也在写键」。
+    expect(onSave).toHaveBeenCalledWith({});
+  });
+
+  it("远端网页宿主：同样不渲染两行、不拉候选", () => {
+    window.waveRemotePage = true;
+    const { onLoadConfiguredModels } = renderGlobalView({
+      configurationData: {},
+    });
+
+    expect(screen.queryByLabelText("代码补全")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("补全模型")).not.toBeInTheDocument();
+    expect(onLoadConfiguredModels).not.toHaveBeenCalled();
+  });
+
+  it("IDE 宿主（默认）：两行照常渲染并拉候选（正向对照）", () => {
+    const { onLoadConfiguredModels } = renderGlobalView({
+      configurationData: {},
+      configuredModels: ["qwen2.5-coder"],
+    });
+
+    expect(screen.getByLabelText("代码补全")).toBeInTheDocument();
+    expect(screen.getByLabelText("补全模型")).toBeInTheDocument();
+    expect(onLoadConfiguredModels).toHaveBeenCalledTimes(1);
   });
 });

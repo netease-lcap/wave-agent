@@ -52,7 +52,11 @@ import {
 import { SettingsSelect } from "./SettingsSelect";
 import "../styles/SettingsPage.css";
 import { useDesktopChrome } from "./DesktopChromeContext";
-import { isDesktopHost, isMacHiddenTitlebar } from "../utils/platform";
+import {
+  isDesktopHost,
+  isMacHiddenTitlebar,
+  isRemotePageHost,
+} from "../utils/platform";
 
 export interface SettingsPageProps {
   /** 当前配置（getConfiguration 已回），null 表示尚未加载 */
@@ -324,6 +328,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   // 补全开关（同样不做占位态：真实默认就是「开」，spec ui/code-completion.md 故事 5）。
   const [completionModel, setCompletionModel] = useState("");
   const [completionEnabled, setCompletionEnabled] = useState(true);
+  // 补全两行只在**提供补全的宿主**渲染（VS Code / JetBrains）：桌面端与远端网页
+  // 没有代码编辑器、补全从不触发，在那里摆一个开关等于承诺一个不会发生的功能
+  // （spec ui/code-completion.md 边界情况「补全设置行的宿主范围」）。本组件为四端
+  // 共用，门禁必须按宿主**能力位**判定，不得依赖「桌面端不渲染设置页」这类隐含
+  // 前提。三处用法都必须过这个判据——渲染、进视图拉候选、保存载荷——否则会出现
+  // 「看不见的行也在写键」。
+  const completionsSupported = !isDesktopHost() && !isRemotePageHost();
   // 主题偏好（仅桌面端有值）：选择即生效（onThemeChange 已即时上送 host），
   // 此处本地 state 保持选中态直到 host 广播 desktopThemeSource 回写。
   const [theme, setTheme] = useState<ThemeSource>(themeSource ?? "system");
@@ -417,13 +428,16 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
   // 进入「全局设置」视图时拉一次补全模型候选（与上面「项目设置」进视图重读同一
   // 模式：只有视图切换触发重读，宿主回包不构成触发源——否则 fetch→reply→fetch
-  // 死循环）。宿主未接该命令时不传回调，下拉退化为「只有当前值 + 未设置」。
+  // 死循环）。宿主未接该命令时不传回调，下拉退化为「只有当前值 + 未设置」；
+  // 不渲染补全两行的宿主（桌面端/远端网页）不拉——省一次无消费者的 RPC。
   const completionViewKeyRef = useRef<string>("");
   useEffect(() => {
     if (completionViewKeyRef.current === activeNav) return;
     completionViewKeyRef.current = activeNav;
-    if (activeNav === "global") onLoadConfiguredModels?.();
-  }, [activeNav, onLoadConfiguredModels]);
+    if (activeNav === "global" && completionsSupported) {
+      onLoadConfiguredModels?.();
+    }
+  }, [activeNav, onLoadConfiguredModels, completionsSupported]);
 
   // 缓存的项目设置仅当其标注的工作目录与当前工作目录一致时才可信：不一致说明
   // 缓存属于另一项目（或早于会话切换），在 host 回发当前项目数据前按未加载
@@ -511,16 +525,20 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     }
     // 补全模型（顶层键）：未设置态/未改动不写该键（「清空下拉」= 不改该键，载荷
     // 没有删键语义，spec agent-config 边界说明）；补全开关无占位态，比较基准是它
-    // **显示的初始值**（未设置时显示默认「开」）。
-    const completionModelPatch = changedString(
-      completionModel,
-      configurationData.completionModel,
-    );
-    if (completionModelPatch !== undefined) {
-      patch.completionModel = completionModelPatch;
-    }
-    if (completionEnabled !== (configurationData.completionEnabled ?? true)) {
-      patch.completionEnabled = completionEnabled;
+    // **显示的初始值**（未设置时显示默认「开」）。不渲染这两行的宿主不进载荷——
+    // 状态从未被动过、正常情况下也不会产生差异，但「看不见的控件不写键」应由判据
+    // 保证，而不是靠「它恰好没变」这条隐含前提。
+    if (completionsSupported) {
+      const completionModelPatch = changedString(
+        completionModel,
+        configurationData.completionModel,
+      );
+      if (completionModelPatch !== undefined) {
+        patch.completionModel = completionModelPatch;
+      }
+      if (completionEnabled !== (configurationData.completionEnabled ?? true)) {
+        patch.completionEnabled = completionEnabled;
+      }
     }
     onSave(patch);
   };
@@ -740,55 +758,66 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       补全的总闸（缺省为开、不做占位态），模型是补全专用模型（未设置时
                       跟随快速模型）。二者与上面的语言/上下文长度/服务端地址共用本卡片
                       的「保存」按钮与 diff 载荷——同一份用户偏好、同一份落点。
-                      候选清单与 `/model` 同源，进本视图时拉一次。 */}
-                  <div className="settings-row">
-                    <div className="settings-row-copy">
-                      <h3>代码补全</h3>
-                      <p>在编辑器里停顿后自动给出行内续写建议，按 Tab 采纳</p>
-                    </div>
-                    <div className="settings-control">
-                      <label className="settings-switch">
-                        <input
-                          type="checkbox"
-                          aria-label="代码补全"
-                          checked={completionEnabled}
-                          onChange={(e) =>
-                            setCompletionEnabled(e.target.checked)
-                          }
-                        />
-                        <span className="settings-switch-slider"></span>
-                      </label>
-                    </div>
-                  </div>
-                  <div className="settings-row">
-                    <div className="settings-row-copy">
-                      <h3>补全模型</h3>
-                      <p>行内补全使用的模型，建议选低延迟的补全专用模型</p>
-                      {envManaged("completionModel") && (
-                        <p className="settings-row-hint">{ENV_SOURCE_HINT}</p>
-                      )}
-                      {completionModelStale && (
-                        <p
-                          className="settings-row-hint"
-                          data-testid="completion-model-stale-hint"
-                        >
-                          {COMPLETION_MODEL_STALE_HINT}
-                        </p>
-                      )}
-                    </div>
-                    <div className="settings-control">
-                      {/* 未设置态：文件里没有 completionModel 键时用显式项表达（下拉
-                          没有 placeholder 语义），选中它 = 保持未设置、保存时不写该
-                          键；其文案里的「跟随快速模型」= SDK 解析链末尾的回落目标。 */}
-                      <SettingsSelect
-                        testId="settings-select-completion-model"
-                        label="补全模型"
-                        value={completionModel}
-                        options={completionModelOptions}
-                        onChange={setCompletionModel}
-                      />
-                    </div>
-                  </div>
+                      候选清单与 `/model` 同源，进本视图时拉一次。
+                      只在本宿主真的提供补全时才渲染（桌面端/远端网页没有编辑器，
+                      见上面的 completionsSupported 与 spec 边界情况「补全设置行的
+                      宿主范围」）——非补全宿主下这两行整体缺席，连行位置都不占。 */}
+                  {completionsSupported && (
+                    <>
+                      <div className="settings-row">
+                        <div className="settings-row-copy">
+                          <h3>代码补全</h3>
+                          <p>
+                            在编辑器里停顿后自动给出行内续写建议，按 Tab 采纳
+                          </p>
+                        </div>
+                        <div className="settings-control">
+                          <label className="settings-switch">
+                            <input
+                              type="checkbox"
+                              aria-label="代码补全"
+                              checked={completionEnabled}
+                              onChange={(e) =>
+                                setCompletionEnabled(e.target.checked)
+                              }
+                            />
+                            <span className="settings-switch-slider"></span>
+                          </label>
+                        </div>
+                      </div>
+                      <div className="settings-row">
+                        <div className="settings-row-copy">
+                          <h3>补全模型</h3>
+                          <p>行内补全使用的模型，建议选低延迟的补全专用模型</p>
+                          {envManaged("completionModel") && (
+                            <p className="settings-row-hint">
+                              {ENV_SOURCE_HINT}
+                            </p>
+                          )}
+                          {completionModelStale && (
+                            <p
+                              className="settings-row-hint"
+                              data-testid="completion-model-stale-hint"
+                            >
+                              {COMPLETION_MODEL_STALE_HINT}
+                            </p>
+                          )}
+                        </div>
+                        <div className="settings-control">
+                          {/* 未设置态：文件里没有 completionModel 键时用显式项表达（下拉
+                              没有 placeholder 语义），选中它 = 保持未设置、保存时不写该
+                              键；其文案里的「跟随快速模型」= SDK 解析链末尾的回落目标。 */}
+                          <SettingsSelect
+                            testId="settings-select-completion-model"
+                            label="补全模型"
+                            value={completionModel}
+                            options={completionModelOptions}
+                            onChange={setCompletionModel}
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="settings-actions">
                   <button
