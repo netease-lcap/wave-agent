@@ -4142,6 +4142,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // Remote Web page: 同口径隐藏这一对，改为单个「会话」入口。
         hideSessionButtons={isDesktop || isRemotePage}
         sessionSwitchButton={isRemotePage}
+        // 远控页专属：「切换电脑」入口，路由是页面 shim（REMOTE_PAGE_GATED）。
+        onSwitchMachine={
+          isRemotePage
+            ? () => vscode.postMessage({ command: "openMachinePicker" })
+            : undefined
+        }
         hideMoreButton={isDesktop}
         panelToggle={
           isDesktop

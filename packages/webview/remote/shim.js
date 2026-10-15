@@ -107,7 +107,13 @@
   };
 
   var RETRY_MS = 2000;
-  var MAX_ATTEMPTS = 5;
+  /**
+   * Backoff ceiling for the transient-close retry loop. The loop itself is
+   * unbounded — the page outlives the outage it is waiting out (a machine that
+   * switched remote control off and on, a relay restart), and a budget spent
+   * means a home-screen page that never comes back on its own.
+   */
+  var RETRY_MS_MAX = 30000;
   /** The relay closes an unauthenticated connection after this long. */
   var AUTH_TIMEOUT_CLOSE = 4003;
   /** Application-level keepalive; the relay answers each `ping` with a `pong`. */
@@ -147,6 +153,16 @@
   var EXPIRES_KEY = "expiresAt";
   var USER_KEY = "user";
   var REFRESH_PATH = "/api/auth/refresh";
+  /**
+   * The machine list, and where the last choice is remembered. Same-origin REST
+   * on the page's own deployment (the CSP carries `connect-src 'self'` for
+   * exactly this — and for the renewal just above, which predates it); the
+   * credential is the same enterprise JWT the handshake uses.
+   */
+  var HOSTS_PATH = "/api/relay/hosts";
+  var LAST_HOST_KEY = "wave_remote_last_host";
+  /** What the machine registered with (`process.platform`) → display label. */
+  var PLATFORM_LABELS = { darwin: "macOS", win32: "Windows", linux: "Linux" };
   /** How long one automatic login round-trip counts as "just happened" (ms). */
   var LOGIN_HOP_MS = 30000;
   var LOGIN_HOP_KEY = "wave_remote_login_hop";
@@ -163,6 +179,17 @@
 
   var socket = null;
   var attempts = 0;
+  /** The pending reconnect timer, and the delay the next one waits. */
+  var retryTimer = null;
+  var retryDelay = RETRY_MS;
+  /**
+   * Set by a machine switch: the view on screen still describes the previous
+   * machine, so the next `auth_ok` must re-pull a full snapshot. The app is
+   * already mounted by then (no second `webviewReady` will come), which is what
+   * makes pulling from `auth_ok` safe — on a cold start the first pull belongs
+   * to `webviewReady`, whose ordering guarantee the snapshot relies on.
+   */
+  var needsSnapshot = false;
   var openedOnce = false;
   /** The relay completed the handshake — nothing may be sent before that. */
   var authed = false;
@@ -225,18 +252,40 @@
 
   // ── Page → host plumbing ────────────────────────────────────────
 
-  function showStatus(text) {
+  /**
+   * The page's status surface. `actions` adds tappable buttons after the text —
+   * the two things this page can always do for itself while the link is down:
+   * retry now, or go pick another machine (spec「断线自愈」场景 4、「机器列表与
+   * 切换」场景 5). Without actions it is the plain banner it always was.
+   */
+  function showStatus(text, actions) {
     if (!banner) {
       banner = document.createElement("div");
       banner.id = "remote-status";
       banner.setAttribute(
         "style",
         "position:fixed;z-index:9999;left:0;right:0;top:0;padding:8px 12px;" +
+          "display:flex;align-items:center;flex-wrap:wrap;gap:8px;" +
           "font:13px/1.5 -apple-system,system-ui,sans-serif;background:#5a1d1d;color:#fff;",
       );
       document.body.appendChild(banner);
     }
-    banner.textContent = text;
+    banner.textContent = "";
+    var label = document.createElement("span");
+    label.textContent = text;
+    banner.appendChild(label);
+    for (var i = 0; i < (actions || []).length; i++) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.textContent = actions[i].label;
+      button.setAttribute(
+        "style",
+        "padding:2px 10px;font:inherit;color:#fff;background:rgba(255,255,255,0.14);" +
+          "border:1px solid rgba(255,255,255,0.4);border-radius:6px;cursor:pointer;",
+      );
+      button.onclick = actions[i].onClick;
+      banner.appendChild(button);
+    }
   }
 
   function clearStatus() {
@@ -244,6 +293,19 @@
       banner.remove();
       banner = null;
     }
+  }
+
+  /** The banner actions, built per call so the closures see fresh state. */
+  function reconnectAction() {
+    return { label: "重新连接", onClick: manualReconnect };
+  }
+
+  function switchHostAction() {
+    return { label: "换机器", onClick: openMachinePicker };
+  }
+
+  function retryHostsAction() {
+    return { label: "重试", onClick: chooseHost };
   }
 
   /** Deliver a host → page message exactly the way the IDE hosts do. */
@@ -483,7 +545,9 @@
       CONFIG.socketUrl = deriveSocketUrl(CONFIG.hostId);
       return connect();
     }
-    fail("地址里没有通道键（host=）：请打开电脑侧给出的那个页面地址。");
+    // No channel key in the address — the normal shape for the home-screen
+    // icon. The page picks the machine itself: the last choice, or the list.
+    chooseHost();
   }
 
   /**
@@ -510,6 +574,14 @@
       );
       return;
     }
+    // Already serving: a manual reconnect tap during a live session is a no-op.
+    // A handshake redone after a renewal still passes — its socket was refused,
+    // so `authed` is false by then.
+    if (authed && socket && socket.readyState === 1) return;
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
     authed = false;
     fatal = "";
     // `socket` is always the connection in use: a handshake redone after a
@@ -523,6 +595,8 @@
     ws.onopen = function () {
       if (ws !== socket) return;
       attempts = 0;
+      // Any open counts as success: the next drop starts from the fastest step.
+      retryDelay = RETRY_MS;
       clearStatus();
       // The handshake owns the first frame. On an unauthenticated connection
       // the relay parses *every* frame as `auth`, and a parse failure is a
@@ -558,32 +632,71 @@
       if (ws !== socket) return;
       authed = false;
       stopHeartbeat();
+      // Permanent refusals stop here and keep their reason on screen: retrying
+      // cannot change a revoked token, a wrong channel, or an old machine, and
+      // would only bury the explanation under activity (spec「断线自愈」场景 3).
       if (fatal) {
-        showStatus(fatal);
+        showStatus(fatal, [switchHostAction()]);
         return;
       }
       if (event.code === AUTH_TIMEOUT_CLOSE) {
         showStatus(
           "中继拒绝了这个连接（未授权）。请在电脑侧重新开启远程控制。",
+          [switchHostAction()],
         );
         return;
       }
-      if (attempts >= MAX_ATTEMPTS) {
-        showStatus("中继连接断开（" + event.code + "）— 已停止重试。");
-        return;
-      }
+      // Everything else is transient (4001 machine offline, network blip,
+      // relay restart) and the page outlives it: wait out the outage with an
+      // unbounded, capped backoff instead of a retry budget that runs dry
+      // while the machine is still off (spec「断线自愈」场景 1 / 2).
       attempts++;
+      var delay = retryDelay;
+      retryDelay = Math.min(retryDelay * 2, RETRY_MS_MAX);
       showStatus(
         event.code === 4001
-          ? "电脑侧不在线，正在重试…(第 " + attempts + " 次)"
-          : "正在重连…(第 " + attempts + " 次)",
+          ? "电脑侧不在线，等待上线…（第 " + attempts + " 次重试）"
+          : "连接断开（" +
+              event.code +
+              "），正在重连…（第 " +
+              attempts +
+              " 次）",
+        [reconnectAction(), switchHostAction()],
       );
-      setTimeout(connect, RETRY_MS);
+      scheduleRetry(delay);
     };
 
     ws.onerror = function () {
       // `close` follows and owns the retry/status decision.
     };
+  }
+
+  /**
+   * One pending reconnect at a time: a scheduled retry that a manual reconnect
+   * replaced must not fire afterwards and open a second socket behind the live
+   * one.
+   */
+  function scheduleRetry(delay) {
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = setTimeout(function () {
+      retryTimer = null;
+      connect();
+    }, delay);
+  }
+
+  /** The banner's 「重新连接」: forget the backoff and try this second. */
+  function manualReconnect() {
+    if (!CONFIG.socketUrl) return;
+    retryDelay = RETRY_MS;
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+    // A handshake is already on its way out; stacking another on top would
+    // abandon it for no gain.
+    if (socket && socket.readyState === 0) return;
+    clearStatus();
+    connect();
   }
 
   /** The relay's own frames: five kinds, none of which is an RPC call. */
@@ -611,6 +724,13 @@
           refreshSessionState();
         }
         connectedOnce = true;
+        if (needsSnapshot) {
+          // A machine switch just finished: the mounted app still shows the
+          // previous machine's view, and no `webviewReady` will come to replace
+          // it — this pull is that replacement (spec「机器列表与切换」场景 5).
+          needsSnapshot = false;
+          pullSnapshot();
+        }
         return;
       case "pong":
         return;
@@ -679,6 +799,289 @@
       default:
         return "中继拒绝了握手（" + (frame.error || "未知原因") + "）。";
     }
+  }
+
+  // ── Which machine ───────────────────────────────────────────────
+  //
+  // One page, one icon, every machine: the address no longer has to carry the
+  // channel key. When `?host=` is absent the page asks the relay's REST API for
+  // the account's machines and connects to the last one picked — or shows the
+  // list. A link that does carry `?host=` behaves exactly as before and never
+  // fetches the list (spec「机器列表与切换」场景 1).
+
+  function platformLabel(platform) {
+    return PLATFORM_LABELS[platform] || platform || "";
+  }
+
+  /** The account's machines, as the relay's REST API reports them. */
+  function fetchHosts() {
+    return fetch(HOSTS_PATH, {
+      headers: { Authorization: "Bearer " + credential },
+    }).then(function (response) {
+      if (response.status === 401) {
+        // A refusal here never reaches the handshake's own ladder
+        // (`auth_error` → renew → hop), so the same ladder runs for the REST
+        // call: one silent renewal, then the login page.
+        throw Object.assign(new Error("unauthorized"), { authRequired: true });
+      }
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response.json().then(function (body) {
+        var hosts = (body && body.hosts) || [];
+        var clean = [];
+        for (var i = 0; i < hosts.length; i++) {
+          if (hosts[i] && typeof hosts[i].id === "string" && hosts[i].id)
+            clean.push(hosts[i]);
+        }
+        return clean;
+      });
+    });
+  }
+
+  /** What both entry points do when the list will not come. */
+  function hostsFetchFailed(err) {
+    if (err && err.authRequired) {
+      renewSession().then(function (renewed) {
+        if (renewed) return chooseHost();
+        if (hopToLogin()) return;
+        fail("登录态无效：请在企业端重新登录后再打开这个页面。");
+      });
+      return;
+    }
+    showStatus("取不到机器列表：" + (err.message || err), [retryHostsAction()]);
+  }
+
+  /**
+   * Cold start with no channel key in the address. The remembered choice
+   * connects directly — the home-screen icon opens to the same machine it was
+   * last used with — unless that machine is no longer in the list, which is
+   * what the fetch is for: without it, an unbound channel would fail the
+   * handshake with nothing but a refusal to show (spec 场景 2 / 3).
+   */
+  function chooseHost() {
+    showStatus("正在读取机器列表…");
+    fetchHosts()
+      .then(function (hosts) {
+        var saved = readStored(LAST_HOST_KEY);
+        for (var i = 0; i < hosts.length; i++) {
+          if (hosts[i].id === saved) return adoptHost(hosts[i]);
+        }
+        showMachinePicker(hosts, false);
+      })
+      .catch(hostsFetchFailed);
+  }
+
+  /**
+   * The standing 「换机器」 entry (header button on this page, banner action
+   * while disconnected): always shows the list, even when a machine is already
+   * connected — the current connection stays up until one is chosen.
+   */
+  function openMachinePicker() {
+    if (document.getElementById("remote-machine-picker")) return;
+    showStatus("正在读取机器列表…");
+    fetchHosts()
+      .then(function (hosts) {
+        showMachinePicker(hosts, !!CONFIG.hostId);
+      })
+      .catch(hostsFetchFailed);
+  }
+
+  /**
+   * Commit a machine choice: remember it, write it into the address (the URL
+   * becomes shareable and refresh-stable again), and connect. Anything the
+   * previous machine left on screen is dropped first — a switch is a cold
+   * start that keeps the mounted app.
+   */
+  function adoptHost(host) {
+    writeStored(LAST_HOST_KEY, host.id);
+    var url = new URL(window.location.href);
+    url.searchParams.set("host", host.id);
+    // A `?session=` pin named a session on the *previous* machine; carrying it
+    // into the next one's address would pin a session that machine has never
+    // heard of (spec 场景 5).
+    url.searchParams.delete("session");
+    window.history.replaceState(null, "", url.toString());
+    CONFIG.hostId = host.id;
+    CONFIG.sessionId = "";
+    sessionId = "";
+    picked = false;
+    resetMachineView();
+    CONFIG.socketUrl = deriveSocketUrl(host.id);
+    connect();
+  }
+
+  /**
+   * The view is about to describe another machine: drop everything the old one
+   * left behind. Its in-flight requests can never be answered by the new
+   * machine, and a late frame from the old socket must not repaint the new
+   * view — so both the socket and every piece of per-machine state go.
+   */
+  function resetMachineView() {
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+    if (socket) {
+      var dead = socket;
+      socket = null;
+      dead.onopen = dead.onmessage = dead.onclose = dead.onerror = null;
+      try {
+        dead.close();
+      } catch {
+        // Closing a socket that never opened is fine.
+      }
+    }
+    stopHeartbeat();
+    authed = false;
+    fatal = "";
+    connectedOnce = false;
+    streaming = false;
+    messages = [];
+    sessions = [];
+    shownApprovals = {};
+    pending = {};
+    pullToken++;
+    // The mounted app (if the app has mounted) is showing the previous
+    // machine's view; the next `auth_ok` must replace it wholesale. On a cold
+    // start the app has not mounted yet and its `webviewReady` owns the first
+    // pull — pulling here would land before the reducer is live.
+    needsSnapshot = openedOnce;
+    removePicker();
+  }
+
+  function showMachinePicker(hosts, canCancel) {
+    removePicker();
+    var overlay = document.createElement("div");
+    overlay.id = "remote-machine-picker";
+    overlay.setAttribute(
+      "style",
+      "position:fixed;inset:0;z-index:10000;display:flex;align-items:center;" +
+        "justify-content:center;padding:16px;background:rgba(0,0,0,0.6);",
+    );
+    var panel = document.createElement("div");
+    panel.setAttribute(
+      "style",
+      "width:100%;max-width:360px;max-height:80vh;overflow:auto;" +
+        "background:var(--vscode-editor-background,#1f1f1f);" +
+        "color:var(--vscode-editor-foreground,#dddddd);" +
+        "border:1px solid var(--vscode-widget-border,#313131);" +
+        "border-radius:12px;padding:16px;",
+    );
+    var title = document.createElement("div");
+    title.textContent = "选择要连接的电脑";
+    title.setAttribute(
+      "style",
+      "font-size:17px;font-weight:600;margin-bottom:4px;",
+    );
+    panel.appendChild(title);
+    var subtitle = document.createElement("div");
+    subtitle.textContent = "同一账号下开启了远程控制的机器，选一台连上。";
+    subtitle.setAttribute(
+      "style",
+      "font-size:13px;opacity:0.7;margin-bottom:8px;",
+    );
+    panel.appendChild(subtitle);
+
+    if (!hosts.length) {
+      // An empty account is a state, not a blank screen: the page says what is
+      // missing and where to switch it on (spec 场景 4).
+      var empty = document.createElement("div");
+      empty.setAttribute("style", "padding:20px 0 12px;text-align:center;");
+      var emptyTitle = document.createElement("div");
+      emptyTitle.textContent = "还没有开启远程控制的电脑";
+      emptyTitle.setAttribute("style", "font-size:15px;margin-bottom:4px;");
+      empty.appendChild(emptyTitle);
+      var emptyHint = document.createElement("div");
+      emptyHint.textContent =
+        "在电脑侧运行 wave remote-control on，这里就会出现它。";
+      emptyHint.setAttribute("style", "font-size:13px;opacity:0.7;");
+      empty.appendChild(emptyHint);
+      panel.appendChild(empty);
+    }
+    for (var i = 0; i < hosts.length; i++)
+      panel.appendChild(machineRow(hosts[i]));
+
+    // The one thing this page cannot do for the reader is put itself on the
+    // home screen — and the wrong container silently cannot either
+    // (spec「PWA 主屏元信息」场景 4).
+    var guide = document.createElement("div");
+    guide.setAttribute(
+      "style",
+      "margin-top:12px;padding-top:12px;font-size:13px;line-height:1.6;opacity:0.65;" +
+        "border-top:1px solid var(--vscode-widget-border,#313131);",
+    );
+    guide.textContent =
+      "添加到主屏幕：请用相机扫码或在 Safari 中打开本页，再「添加到主屏幕」；" +
+      "控制中心的扫码器打开的容器加不了主屏。";
+    panel.appendChild(guide);
+
+    if (canCancel) {
+      var cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.textContent = "取消";
+      cancel.setAttribute(
+        "style",
+        "margin-top:12px;padding:6px 16px;font:inherit;color:inherit;" +
+          "background:none;border:1px solid var(--vscode-widget-border,#313131);" +
+          "border-radius:8px;cursor:pointer;",
+      );
+      cancel.onclick = removePicker;
+      panel.appendChild(cancel);
+    }
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+  }
+
+  /** One machine in the list: name, platform, and its online state. */
+  function machineRow(host) {
+    var row = document.createElement("button");
+    row.type = "button";
+    row.setAttribute(
+      "style",
+      "display:flex;align-items:center;justify-content:space-between;gap:12px;" +
+        "width:100%;padding:12px 4px;font:inherit;color:inherit;text-align:left;" +
+        "background:none;border:none;" +
+        "border-bottom:1px solid var(--vscode-widget-border,#313131);cursor:pointer;",
+    );
+    var name = document.createElement("span");
+    name.textContent = host.name || host.id;
+    name.setAttribute(
+      "style",
+      "font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;",
+    );
+    var meta = document.createElement("span");
+    meta.setAttribute(
+      "style",
+      "flex:none;font-size:13px;opacity:0.75;display:flex;align-items:center;gap:6px;",
+    );
+    var dot = document.createElement("span");
+    dot.setAttribute(
+      "style",
+      "width:8px;height:8px;border-radius:50%;flex:none;background:" +
+        (host.online
+          ? "#4caf50"
+          : "var(--vscode-descriptionForeground,#888888)") +
+        ";",
+    );
+    meta.appendChild(dot);
+    var label = document.createElement("span");
+    label.textContent = [
+      platformLabel(host.platform),
+      host.online ? "在线" : "离线",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    meta.appendChild(label);
+    row.appendChild(name);
+    row.appendChild(meta);
+    row.onclick = function () {
+      adoptHost(host);
+    };
+    return row;
+  }
+
+  function removePicker() {
+    var old = document.getElementById("remote-machine-picker");
+    if (old) old.remove();
   }
 
   function startHeartbeat() {
@@ -1516,6 +1919,12 @@
         });
         return;
 
+      case "openMachinePicker":
+        // This page's header chip: show the account's machines and switch if
+        // one is chosen. The current connection stays up until then.
+        openMachinePicker();
+        return;
+
       default:
         // Anything else the page renders may still expect a reply, so this is
         // loud rather than silent: the issue's rule is "explicitly unsupported
@@ -1546,11 +1955,19 @@
   function onResume() {
     if (document.visibilityState !== "visible") return;
     if (!connectedOnce) return;
-    if (!authed || !socket || socket.readyState !== 1) return;
-    resync();
-    refreshStreaming(true);
-    refreshPending(true);
-    refreshSessionState();
+    if (authed && socket && socket.readyState === 1) {
+      resync();
+      refreshStreaming(true);
+      refreshPending(true);
+      refreshSessionState();
+      return;
+    }
+    // Waiting in the backoff (or sitting between attempts): the phone coming
+    // back to hand is the best retry moment there is — try now, from the
+    // fastest step, instead of waiting out the tail of the current backoff
+    // (spec「断线自愈」场景 5). Permanent failures keep their reason on screen.
+    if (blocked || fatal) return;
+    manualReconnect();
   }
 
   document.addEventListener("visibilitychange", onResume);

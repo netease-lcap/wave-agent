@@ -70,6 +70,9 @@ function printEnableHint(message: string): void {
 async function printPageUrl(pageUrl: string): Promise<void> {
   console.log("");
   console.log(`Web 页：${pageUrl}`);
+  console.log(
+    "手机：用相机扫码或在 Safari 中打开，再「添加到主屏幕」（控制中心的扫码器打开的容器加不了主屏）。",
+  );
   try {
     console.log(
       await qrToString(pageUrl, {

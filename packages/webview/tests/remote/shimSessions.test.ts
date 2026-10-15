@@ -202,10 +202,17 @@ function answerOn(socket: FakeSocket, method: string, result: unknown) {
 /**
  * Drop the link the way a sleeping phone does, and let the page's retry open the
  * next one. Everything from here on goes over the returned socket.
+ *
+ * The retry backoff doubles per drop (2s → 4s → …, capped at 30s), so the wait
+ * is advanced adaptively — a test that reconnects twice still lands.
  */
 async function reconnect(current: FakeSocket) {
   current.onclose?.({ code: 1006 });
-  await vi.advanceTimersByTimeAsync(2000);
+  const before = FakeSocket.opened.length;
+  for (let waited = 0; waited < 31000; waited += 500) {
+    await vi.advanceTimersByTimeAsync(500);
+    if (FakeSocket.opened.length > before) break;
+  }
   const next = FakeSocket.opened[FakeSocket.opened.length - 1];
   next.open();
   next.receive({ type: "auth_ok" });
@@ -1087,6 +1094,45 @@ describe("remote page shim", () => {
     await flush();
 
     expect(shownMode(page)).toBe("bypassPermissions");
+  });
+
+  test("coming back to the foreground dials a waiting link at once", async () => {
+    const { page } = await openPage();
+    // No news is no element: the banner only exists while something is wrong.
+    expect(document.getElementById("remote-status")).toBeFalsy();
+
+    // The link drops the way a sleeping phone's does; the page schedules its
+    // first backoff step (2s out).
+    page.socket.onclose?.({ code: 4001 });
+    expect(document.getElementById("remote-status")?.textContent).toContain(
+      "等待上线",
+    );
+    const before = FakeSocket.opened.length;
+
+    // Half a second later the phone is back in hand: the dial must happen now,
+    // not when the armed step expires — a buried page burns no retries anyway,
+    // so the wait between "screen on" and "usable again" is pure dead time.
+    await vi.advanceTimersByTimeAsync(500);
+    expect(FakeSocket.opened.length).toBe(before);
+
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flush();
+    visibility.mockRestore();
+
+    expect(FakeSocket.opened.length).toBe(before + 1);
+    const next = FakeSocket.opened[FakeSocket.opened.length - 1];
+    next.open();
+    next.receive({ type: "auth_ok" });
+    await flush();
+    // And the link is whole again — the mode re-read is part of the same
+    // realignment every reconnect gets.
+    answerOn(next, "getMessages", { messages: [] });
+    answerOn(next, "listDaemonSessions", { sessions: SESSIONS });
+    await flush();
+    expect(document.getElementById("remote-status")).toBeFalsy();
   });
 
   test("coming back to the foreground re-reads the mode too", async () => {
