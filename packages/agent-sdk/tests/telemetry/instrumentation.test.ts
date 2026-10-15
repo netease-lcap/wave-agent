@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { EventEmitter } from "node:events";
+import type { TelemetryConfig } from "@/types/telemetry.js";
 
 // Mock globalLogger to suppress output
 vi.mock("@/utils/globalLogger.js", () => ({
@@ -42,28 +43,49 @@ function fakeHelperChild(stdout: string): EventEmitter {
   return child;
 }
 
+/** The six instrument names the metrics module creates on the meter. */
+const COUNTER_NAMES = [
+  "wave.api.requests",
+  "wave.api.errors",
+  "wave.tokens",
+  "wave.sessions",
+  "wave.lines.changed",
+];
+
 function setupMocks() {
-  const mockTracerShutdown = vi.fn().mockResolvedValue(undefined);
+  const mockMeterShutdown = vi.fn().mockResolvedValue(undefined);
   const mockLoggerShutdown = vi.fn().mockResolvedValue(undefined);
-  const mockTracerFlush = vi.fn().mockResolvedValue(undefined);
+  const mockMeterFlush = vi.fn().mockResolvedValue(undefined);
   const mockLoggerFlush = vi.fn().mockResolvedValue(undefined);
-  const mockBasicTracerProvider = vi.fn().mockImplementation(function () {
-    return { shutdown: mockTracerShutdown, forceFlush: mockTracerFlush };
+
+  const mockCreateCounter = vi.fn(() => ({ add: vi.fn() }));
+  const mockCreateHistogram = vi.fn(() => ({ record: vi.fn() }));
+  const mockGetMeter = vi.fn(() => ({
+    createCounter: mockCreateCounter,
+    createHistogram: mockCreateHistogram,
+  }));
+
+  const mockMeterProvider = vi.fn().mockImplementation(function () {
+    return {
+      shutdown: mockMeterShutdown,
+      forceFlush: mockMeterFlush,
+      getMeter: mockGetMeter,
+    };
   });
   const mockLoggerProvider = vi.fn().mockImplementation(function () {
     return { shutdown: mockLoggerShutdown, forceFlush: mockLoggerFlush };
   });
-  const mockBatchSpanProcessor = vi.fn();
+  const mockPeriodicExportingMetricReader = vi.fn();
   const mockBatchLogRecordProcessor = vi.fn();
-  const mockSetGlobalTracerProvider = vi.fn();
+  const mockSetGlobalMeterProvider = vi.fn();
   const mockSetGlobalLoggerProvider = vi.fn();
-  const mockTraceDisable = vi.fn();
+  const mockMetricsDisable = vi.fn();
   const mockLogsDisable = vi.fn();
   const mockDiagSetLogger = vi.fn();
 
-  const mockOTLPTraceExporter = vi.fn();
+  const mockOTLPMetricExporter = vi.fn();
   const mockOTLPLogExporter = vi.fn();
-  const mockConsoleSpanExporter = vi.fn();
+  const mockConsoleMetricExporter = vi.fn();
   const mockConsoleLogRecordExporter = vi.fn();
 
   const mockResource = {
@@ -73,18 +95,18 @@ function setupMocks() {
     resourceFromAttributes: vi.fn().mockReturnValue({}),
   };
 
-  vi.doMock("@opentelemetry/sdk-trace-base", () => ({
-    BasicTracerProvider: mockBasicTracerProvider,
-    BatchSpanProcessor: mockBatchSpanProcessor,
-    ConsoleSpanExporter: mockConsoleSpanExporter,
+  vi.doMock("@opentelemetry/sdk-metrics", () => ({
+    MeterProvider: mockMeterProvider,
+    PeriodicExportingMetricReader: mockPeriodicExportingMetricReader,
+    ConsoleMetricExporter: mockConsoleMetricExporter,
   }));
 
   vi.doMock("@opentelemetry/resources", () => mockResource);
 
   vi.doMock("@opentelemetry/api", () => ({
-    trace: {
-      setGlobalTracerProvider: mockSetGlobalTracerProvider,
-      disable: mockTraceDisable,
+    metrics: {
+      setGlobalMeterProvider: mockSetGlobalMeterProvider,
+      disable: mockMetricsDisable,
     },
     diag: { setLogger: mockDiagSetLogger },
     DiagLogLevel: { ERROR: 0 },
@@ -103,8 +125,8 @@ function setupMocks() {
     ConsoleLogRecordExporter: mockConsoleLogRecordExporter,
   }));
 
-  vi.doMock("@opentelemetry/exporter-trace-otlp-http", () => ({
-    OTLPTraceExporter: mockOTLPTraceExporter,
+  vi.doMock("@opentelemetry/exporter-metrics-otlp-http", () => ({
+    OTLPMetricExporter: mockOTLPMetricExporter,
   }));
 
   vi.doMock("@opentelemetry/exporter-logs-otlp-http", () => ({
@@ -112,22 +134,25 @@ function setupMocks() {
   }));
 
   return {
-    mockBasicTracerProvider,
+    mockMeterProvider,
     mockLoggerProvider,
-    mockBatchSpanProcessor,
+    mockPeriodicExportingMetricReader,
     mockBatchLogRecordProcessor,
-    mockTracerShutdown,
+    mockMeterShutdown,
     mockLoggerShutdown,
-    mockTracerFlush,
+    mockMeterFlush,
     mockLoggerFlush,
-    mockSetGlobalTracerProvider,
+    mockGetMeter,
+    mockCreateCounter,
+    mockCreateHistogram,
+    mockSetGlobalMeterProvider,
     mockSetGlobalLoggerProvider,
-    mockTraceDisable,
+    mockMetricsDisable,
     mockLogsDisable,
     mockDiagSetLogger,
-    mockOTLPTraceExporter,
+    mockOTLPMetricExporter,
     mockOTLPLogExporter,
-    mockConsoleSpanExporter,
+    mockConsoleMetricExporter,
     mockConsoleLogRecordExporter,
     mockResource,
   };
@@ -141,6 +166,11 @@ function exporterConfig(
   return mock.mock.calls[index]![0] as { url?: string; headers?: unknown };
 }
 
+/** The instrument names a mocked meter was asked to create (counters first). */
+function createdCounterNames(mock: ReturnType<typeof vi.fn>): unknown[] {
+  return mock.mock.calls.map((call) => call[0]);
+}
+
 describe("instrumentation", () => {
   let instrumentation: typeof import("@/telemetry/instrumentation.js");
   let mocks: ReturnType<typeof setupMocks>;
@@ -150,7 +180,6 @@ describe("instrumentation", () => {
     originalEnv = { ...process.env };
     // Strip OTEL env vars to prevent local shell config from poisoning tests
     delete process.env.OTEL_METRICS_EXPORTER;
-    delete process.env.OTEL_TRACES_EXPORTER;
     delete process.env.OTEL_LOGS_EXPORTER;
     delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
     delete process.env.OTEL_EXPORTER_OTLP_PROTOCOL;
@@ -158,7 +187,6 @@ describe("instrumentation", () => {
     delete process.env.OTEL_ENABLED;
     delete process.env.OTEL_LOG_USER_PROMPTS;
     delete process.env.OTEL_LOG_TOOL_CONTENT;
-    delete process.env.OTEL_SPAN_TTL_MS;
     delete process.env.OTEL_SHUTDOWN_TIMEOUT_MS;
     spawnMock.mockReset();
     vi.resetModules();
@@ -175,127 +203,105 @@ describe("instrumentation", () => {
     it("should return defaults when no config or env vars provided", () => {
       const config = instrumentation.resolveTelemetryConfig();
       expect(config.enabled).toBe(false);
+      expect(config.metricsExporter).toBeUndefined();
+      expect(config.logsExporter).toBeUndefined();
       expect(config.logUserPrompts).toBe(false);
       expect(config.logToolContent).toBe(false);
       expect(config.shutdownTimeoutMs).toBe(2000);
-      expect(config.spanTtlMs).toBe(1800000);
     });
 
     it("should read from settings config", () => {
       const config = instrumentation.resolveTelemetryConfig({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
         logsExporter: "otlp",
         endpoint: "http://localhost:4318",
         logUserPrompts: true,
-        spanTtlMs: 60000,
       });
       expect(config.enabled).toBe(true);
-      expect(config.tracesExporter).toBe("console");
+      expect(config.metricsExporter).toBe("console");
       expect(config.logsExporter).toBe("otlp");
       expect(config.endpoint).toBe("http://localhost:4318");
       expect(config.logUserPrompts).toBe(true);
-      expect(config.spanTtlMs).toBe(60000);
     });
 
     it("should let env vars take precedence over settings config", () => {
-      const originalEnv = { ...process.env };
-
-      process.env.OTEL_TRACES_EXPORTER = "otlp";
+      process.env.OTEL_METRICS_EXPORTER = "otlp";
       process.env.OTEL_ENABLED = "false";
       process.env.OTEL_LOG_USER_PROMPTS = "true";
-      process.env.OTEL_SPAN_TTL_MS = "90000";
 
       const config = instrumentation.resolveTelemetryConfig({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
         logUserPrompts: false,
-        spanTtlMs: 30000,
       });
 
       expect(config.enabled).toBe(false);
-      expect(config.tracesExporter).toBe("otlp");
+      expect(config.metricsExporter).toBe("otlp");
       expect(config.logUserPrompts).toBe(true);
-      expect(config.spanTtlMs).toBe(90000);
-
-      process.env = originalEnv;
     });
 
     it("should parse OTEL_EXPORTER_OTLP_HEADERS env var", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_EXPORTER_OTLP_HEADERS = "api-key=abc123,org-id=xyz";
 
       const config = instrumentation.resolveTelemetryConfig();
       expect(config.headers).toEqual({ "api-key": "abc123", "org-id": "xyz" });
-
-      process.env = originalEnv;
     });
 
     it("should parse OTEL_EXPORTER_OTLP_PROTOCOL env var", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_EXPORTER_OTLP_PROTOCOL = "http/json";
 
       const config = instrumentation.resolveTelemetryConfig();
       expect(config.protocol).toBe("http/json");
-
-      process.env = originalEnv;
     });
 
     it("should handle OTEL_ENABLED=false from env", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_ENABLED = "false";
 
       const config = instrumentation.resolveTelemetryConfig({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
       expect(config.enabled).toBe(false);
-
-      process.env = originalEnv;
     });
 
     it("should enable telemetry when exporters are configured", () => {
       const config = instrumentation.resolveTelemetryConfig({
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
       expect(config.enabled).toBe(true);
     });
 
-    it("should warn on unknown exporter env value", () => {
-      const originalEnv = { ...process.env };
-      process.env.OTEL_TRACES_EXPORTER = "unknown_exporter";
+    it("should warn on unknown exporter env value", async () => {
+      process.env.OTEL_METRICS_EXPORTER = "unknown_exporter";
 
       const config = instrumentation.resolveTelemetryConfig({
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
 
       // Falls through to config value since unknown is not console/otlp
-      expect(config.tracesExporter).toBe("console");
-
-      process.env = originalEnv;
+      expect(config.metricsExporter).toBe("console");
+      const { logger } = await import("@/utils/globalLogger.js");
+      expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+        expect.stringContaining("Unknown OTEL exporter"),
+      );
     });
 
-    it("should treat OTEL_TRACES_EXPORTER=none as unset (fall to config)", () => {
-      const originalEnv = { ...process.env };
-      process.env.OTEL_TRACES_EXPORTER = "none";
+    it("should treat OTEL_METRICS_EXPORTER=none as unset (fall to config)", () => {
+      process.env.OTEL_METRICS_EXPORTER = "none";
 
       const config = instrumentation.resolveTelemetryConfig({
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
 
-      expect(config.tracesExporter).toBe("console");
-
-      process.env = originalEnv;
+      expect(config.metricsExporter).toBe("console");
     });
 
     it("should use logs exporter from env var", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_LOGS_EXPORTER = "console";
 
       const config = instrumentation.resolveTelemetryConfig();
       expect(config.logsExporter).toBe("console");
-
-      process.env = originalEnv;
     });
 
     it("should enable telemetry when only logs exporter configured", () => {
@@ -305,16 +311,41 @@ describe("instrumentation", () => {
       expect(config.enabled).toBe(true);
     });
 
+    it("should ignore an exporter value from config that this version does not know", async () => {
+      // A settings.json left over from the JSONL/traces era must not be handed
+      // to the SDK as if it were usable.
+      const config = instrumentation.resolveTelemetryConfig({
+        metricsExporter: "jsonl",
+      } as unknown as Partial<TelemetryConfig>);
+
+      expect(config.metricsExporter).toBeUndefined();
+      const { logger } = await import("@/utils/globalLogger.js");
+      expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+        expect.stringContaining("Unknown OTEL exporter in config"),
+      );
+    });
+
+    it("should warn about legacy traces keys and drop them", async () => {
+      const config = instrumentation.resolveTelemetryConfig({
+        tracesExporter: "otlp",
+        spanTtlMs: 60000,
+      } as unknown as Partial<TelemetryConfig>);
+
+      expect("tracesExporter" in config).toBe(false);
+      expect(config.enabled).toBe(false);
+      const { logger } = await import("@/utils/globalLogger.js");
+      expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+        expect.stringContaining("no longer supported"),
+      );
+    });
+
     it("should use endpoint from env var over config", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_EXPORTER_OTLP_ENDPOINT = "http://env-endpoint:4318";
 
       const config = instrumentation.resolveTelemetryConfig({
         endpoint: "http://config-endpoint:4318",
       });
       expect(config.endpoint).toBe("http://env-endpoint:4318");
-
-      process.env = originalEnv;
     });
 
     it("should use protocol from config when env not set", () => {
@@ -325,7 +356,6 @@ describe("instrumentation", () => {
     });
 
     it("should parse headers with value containing equals sign", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_EXPORTER_OTLP_HEADERS = "auth=base64==,key=value";
 
       const config = instrumentation.resolveTelemetryConfig();
@@ -333,18 +363,13 @@ describe("instrumentation", () => {
         auth: "base64==",
         key: "value",
       });
-
-      process.env = originalEnv;
     });
 
     it("should return undefined headers when env has only malformed pairs", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_EXPORTER_OTLP_HEADERS = "=value,noequal";
 
       const config = instrumentation.resolveTelemetryConfig();
       expect(config.headers).toBeUndefined();
-
-      process.env = originalEnv;
     });
 
     it("should fall back to config headers when env not set", () => {
@@ -355,167 +380,92 @@ describe("instrumentation", () => {
     });
 
     it("should resolve logUserPrompts with env=1", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_LOG_USER_PROMPTS = "1";
 
       const config = instrumentation.resolveTelemetryConfig();
       expect(config.logUserPrompts).toBe(true);
-
-      process.env = originalEnv;
     });
 
     it("should resolve logUserPrompts with env=true", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_LOG_USER_PROMPTS = "true";
 
       const config = instrumentation.resolveTelemetryConfig();
       expect(config.logUserPrompts).toBe(true);
-
-      process.env = originalEnv;
     });
 
     it("should resolve logUserPrompts with env=0", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_LOG_USER_PROMPTS = "0";
 
       const config = instrumentation.resolveTelemetryConfig({
         logUserPrompts: true,
       });
       expect(config.logUserPrompts).toBe(false);
-
-      process.env = originalEnv;
     });
 
     it("should resolve logUserPrompts with env=false", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_LOG_USER_PROMPTS = "false";
 
       const config = instrumentation.resolveTelemetryConfig({
         logUserPrompts: true,
       });
       expect(config.logUserPrompts).toBe(false);
-
-      process.env = originalEnv;
     });
 
     it("should resolve logUserPrompts with invalid env (fall to config)", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_LOG_USER_PROMPTS = "invalid";
 
       const config = instrumentation.resolveTelemetryConfig({
         logUserPrompts: true,
       });
       expect(config.logUserPrompts).toBe(true);
-
-      process.env = originalEnv;
     });
 
     it("should resolve logToolContent with env=1", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_LOG_TOOL_CONTENT = "1";
 
       const config = instrumentation.resolveTelemetryConfig();
       expect(config.logToolContent).toBe(true);
-
-      process.env = originalEnv;
     });
 
     it("should resolve logToolContent with env=0", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_LOG_TOOL_CONTENT = "0";
 
       const config = instrumentation.resolveTelemetryConfig({
         logToolContent: true,
       });
       expect(config.logToolContent).toBe(false);
-
-      process.env = originalEnv;
     });
 
     it("should resolve logToolContent with invalid env (fall to config)", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_LOG_TOOL_CONTENT = "invalid";
 
       const config = instrumentation.resolveTelemetryConfig({
         logToolContent: true,
       });
       expect(config.logToolContent).toBe(true);
-
-      process.env = originalEnv;
-    });
-
-    it("should resolve spanTtlMs with valid env", () => {
-      const originalEnv = { ...process.env };
-      process.env.OTEL_SPAN_TTL_MS = "60000";
-
-      const config = instrumentation.resolveTelemetryConfig();
-      expect(config.spanTtlMs).toBe(60000);
-
-      process.env = originalEnv;
-    });
-
-    it("should resolve spanTtlMs with NaN env (fall to config)", () => {
-      const originalEnv = { ...process.env };
-      process.env.OTEL_SPAN_TTL_MS = "not-a-number";
-
-      const config = instrumentation.resolveTelemetryConfig({
-        spanTtlMs: 99999,
-      });
-      expect(config.spanTtlMs).toBe(99999);
-
-      process.env = originalEnv;
-    });
-
-    it("should resolve spanTtlMs with negative env (fall to default)", () => {
-      const originalEnv = { ...process.env };
-      process.env.OTEL_SPAN_TTL_MS = "-100";
-
-      const config = instrumentation.resolveTelemetryConfig();
-      expect(config.spanTtlMs).toBe(1800000);
-
-      process.env = originalEnv;
-    });
-
-    it("should resolve spanTtlMs with zero env (fall to default)", () => {
-      const originalEnv = { ...process.env };
-      process.env.OTEL_SPAN_TTL_MS = "0";
-
-      const config = instrumentation.resolveTelemetryConfig();
-      expect(config.spanTtlMs).toBe(1800000);
-
-      process.env = originalEnv;
     });
 
     it("should resolve shutdownTimeoutMs with valid env", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_SHUTDOWN_TIMEOUT_MS = "5000";
 
       const config = instrumentation.resolveTelemetryConfig();
       expect(config.shutdownTimeoutMs).toBe(5000);
-
-      process.env = originalEnv;
     });
 
     it("should resolve shutdownTimeoutMs with NaN env (fall to config)", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_SHUTDOWN_TIMEOUT_MS = "abc";
 
       const config = instrumentation.resolveTelemetryConfig({
         shutdownTimeoutMs: 9999,
       });
       expect(config.shutdownTimeoutMs).toBe(9999);
-
-      process.env = originalEnv;
     });
 
     it("should resolve shutdownTimeoutMs with negative env (fall to default)", () => {
-      const originalEnv = { ...process.env };
       process.env.OTEL_SHUTDOWN_TIMEOUT_MS = "-1";
 
       const config = instrumentation.resolveTelemetryConfig();
       expect(config.shutdownTimeoutMs).toBe(2000);
-
-      process.env = originalEnv;
     });
   });
 
@@ -525,11 +475,11 @@ describe("instrumentation", () => {
 
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "otlp",
+        metricsExporter: "otlp",
         endpoint: "http://localhost:4318",
       });
 
-      expect(exporterConfig(mocks.mockOTLPTraceExporter).headers).toEqual({
+      expect(exporterConfig(mocks.mockOTLPMetricExporter).headers).toEqual({
         "api-key": "abc",
       });
     });
@@ -537,14 +487,14 @@ describe("instrumentation", () => {
     it("should not read the helper unless it is configured", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "otlp",
+        metricsExporter: "otlp",
         logsExporter: "otlp",
         endpoint: "http://localhost:4318",
       });
 
       expect(spawnMock).not.toHaveBeenCalled();
       expect(
-        exporterConfig(mocks.mockOTLPTraceExporter).headers,
+        exporterConfig(mocks.mockOTLPMetricExporter).headers,
       ).toBeUndefined();
     });
 
@@ -558,13 +508,13 @@ describe("instrumentation", () => {
 
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "otlp",
+        metricsExporter: "otlp",
         logsExporter: "otlp",
         endpoint: "http://localhost:4318",
         headersProvider: provider,
       });
 
-      const headers = exporterConfig(mocks.mockOTLPTraceExporter)
+      const headers = exporterConfig(mocks.mockOTLPMetricExporter)
         .headers as () => Promise<Record<string, string>>;
       expect(typeof headers).toBe("function");
       await expect(headers()).resolves.toEqual({
@@ -581,25 +531,25 @@ describe("instrumentation", () => {
       expect(provider).toHaveBeenCalledTimes(2);
     });
 
-    it("should share one provider between the traces and logs exporters", async () => {
+    it("should share one provider between the metrics and logs exporters", async () => {
       const provider = vi
         .fn<() => Promise<Record<string, string>>>()
         .mockResolvedValue({ shared: "once" });
 
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "otlp",
+        metricsExporter: "otlp",
         logsExporter: "otlp",
         endpoint: "http://localhost:4318",
         headersProvider: provider,
       });
 
-      const traceHeaders = exporterConfig(mocks.mockOTLPTraceExporter)
+      const metricHeaders = exporterConfig(mocks.mockOTLPMetricExporter)
         .headers as () => Promise<Record<string, string>>;
       const logHeaders = exporterConfig(mocks.mockOTLPLogExporter)
         .headers as () => Promise<Record<string, string>>;
 
-      await expect(traceHeaders()).resolves.toEqual({ shared: "once" });
+      await expect(metricHeaders()).resolves.toEqual({ shared: "once" });
       await expect(logHeaders()).resolves.toEqual({ shared: "once" });
       expect(provider).toHaveBeenCalledTimes(2);
     });
@@ -611,19 +561,26 @@ describe("instrumentation", () => {
 
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "otlp",
+        metricsExporter: "otlp",
+        logsExporter: "otlp",
         endpoint: "http://localhost:4318",
         headersHelper: "  mint-token --env prod  ",
       });
 
-      const headers = exporterConfig(mocks.mockOTLPTraceExporter)
+      const metricHeaders = exporterConfig(mocks.mockOTLPMetricExporter)
         .headers as () => Promise<Record<string, string>>;
-      expect(typeof headers).toBe("function");
-      await expect(headers()).resolves.toEqual({
+      const logHeaders = exporterConfig(mocks.mockOTLPLogExporter)
+        .headers as () => Promise<Record<string, string>>;
+      expect(typeof metricHeaders).toBe("function");
+      await expect(metricHeaders()).resolves.toEqual({
+        "kubeinsight-client-token": "rotated",
+      });
+      // Shared with the second exporter rather than run twice.
+      await expect(logHeaders()).resolves.toEqual({
         "kubeinsight-client-token": "rotated",
       });
       expect(spawnMock).toHaveBeenCalledTimes(1);
-      // Trimmed before use, and shared with the second exporter rather than run twice.
+      // Trimmed before use
       expect((spawnMock.mock.calls[0]![1] as string[])[1]).toContain(
         "mint-token --env prod",
       );
@@ -636,13 +593,13 @@ describe("instrumentation", () => {
 
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "otlp",
+        metricsExporter: "otlp",
         endpoint: "http://localhost:4318",
         headersHelper: "mint-token",
         headersProvider: provider,
       });
 
-      const headers = exporterConfig(mocks.mockOTLPTraceExporter)
+      const headers = exporterConfig(mocks.mockOTLPMetricExporter)
         .headers as () => Promise<Record<string, string>>;
       await expect(headers()).resolves.toEqual({ from: "provider" });
       expect(spawnMock).not.toHaveBeenCalled();
@@ -667,7 +624,7 @@ describe("instrumentation", () => {
 
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "otlp",
+        metricsExporter: "otlp",
         endpoint: "http://localhost:4318",
         headersProvider: provider,
       });
@@ -675,11 +632,11 @@ describe("instrumentation", () => {
 
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "otlp",
+        metricsExporter: "otlp",
         endpoint: "http://localhost:4318",
       });
 
-      const config = exporterConfig(mocks.mockOTLPTraceExporter, 1);
+      const config = exporterConfig(mocks.mockOTLPMetricExporter, 1);
       expect(config.headers).toBeUndefined();
     });
   });
@@ -688,25 +645,25 @@ describe("instrumentation", () => {
     it("should be idempotent — skip on second call", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
 
-      expect(mocks.mockBasicTracerProvider).toHaveBeenCalledTimes(1);
-      expect(mocks.mockSetGlobalTracerProvider).toHaveBeenCalledTimes(1);
+      expect(mocks.mockMeterProvider).toHaveBeenCalledTimes(1);
+      expect(mocks.mockSetGlobalMeterProvider).toHaveBeenCalledTimes(1);
 
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
 
-      expect(mocks.mockBasicTracerProvider).toHaveBeenCalledTimes(1);
-      expect(mocks.mockSetGlobalTracerProvider).toHaveBeenCalledTimes(1);
+      expect(mocks.mockMeterProvider).toHaveBeenCalledTimes(1);
+      expect(mocks.mockSetGlobalMeterProvider).toHaveBeenCalledTimes(1);
     });
 
     it("should set isInitialized to true after successful init", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
       expect(instrumentation.isInitialized()).toBe(true);
     });
@@ -714,51 +671,56 @@ describe("instrumentation", () => {
     it("should set currentConfig after successful init", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
         endpoint: "http://localhost:4318",
       });
       const config = instrumentation.getCurrentConfig();
       expect(config).toBeDefined();
-      expect(config?.tracesExporter).toBe("console");
+      expect(config?.metricsExporter).toBe("console");
       expect(config?.endpoint).toBe("http://localhost:4318");
     });
 
     it("should not initialize when disabled", async () => {
       await instrumentation.initializeTelemetry({ enabled: false });
       expect(instrumentation.isInitialized()).toBe(false);
-      expect(mocks.mockBasicTracerProvider).not.toHaveBeenCalled();
+      expect(mocks.mockMeterProvider).not.toHaveBeenCalled();
     });
 
     it("should not initialize when no exporters configured", async () => {
       await instrumentation.initializeTelemetry({ enabled: true });
       expect(instrumentation.isInitialized()).toBe(false);
-      expect(mocks.mockBasicTracerProvider).not.toHaveBeenCalled();
+      expect(mocks.mockMeterProvider).not.toHaveBeenCalled();
     });
 
     it("should gracefully degrade on failure", async () => {
-      mocks.mockBasicTracerProvider.mockImplementationOnce(function () {
+      mocks.mockMeterProvider.mockImplementationOnce(function () {
         throw new Error("Network error");
       });
 
       await expect(
         instrumentation.initializeTelemetry({
           enabled: true,
-          tracesExporter: "console",
+          metricsExporter: "console",
         }),
       ).resolves.toBeUndefined();
 
       expect(instrumentation.isInitialized()).toBe(false);
     });
 
-    it("should initialize with OTLP traces exporter when endpoint provided", async () => {
+    it("should initialize with OTLP metrics exporter when endpoint provided", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "otlp",
+        metricsExporter: "otlp",
         endpoint: "http://localhost:4318",
       });
 
       expect(instrumentation.isInitialized()).toBe(true);
-      expect(mocks.mockBasicTracerProvider).toHaveBeenCalledTimes(1);
+      expect(mocks.mockMeterProvider).toHaveBeenCalledTimes(1);
+      expect(mocks.mockPeriodicExportingMetricReader).toHaveBeenCalledTimes(1);
+      // Signals travel to their own OTLP routes, appended to the base endpoint.
+      expect(exporterConfig(mocks.mockOTLPMetricExporter).url).toBe(
+        "http://localhost:4318/v1/metrics",
+      );
     });
 
     it("should initialize with OTLP logs exporter when endpoint provided", async () => {
@@ -771,29 +733,32 @@ describe("instrumentation", () => {
       expect(instrumentation.isInitialized()).toBe(true);
       expect(mocks.mockLoggerProvider).toHaveBeenCalledTimes(1);
       expect(mocks.mockBatchLogRecordProcessor).toHaveBeenCalledTimes(1);
+      expect(exporterConfig(mocks.mockOTLPLogExporter).url).toBe(
+        "http://localhost:4318/v1/logs",
+      );
     });
 
     it("should initialize with both OTLP exporters", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "otlp",
+        metricsExporter: "otlp",
         logsExporter: "otlp",
         endpoint: "http://localhost:4318",
       });
 
       expect(instrumentation.isInitialized()).toBe(true);
-      expect(mocks.mockBasicTracerProvider).toHaveBeenCalledTimes(1);
+      expect(mocks.mockMeterProvider).toHaveBeenCalledTimes(1);
       expect(mocks.mockLoggerProvider).toHaveBeenCalledTimes(1);
     });
 
-    it("should not initialize OTLP traces without endpoint", async () => {
+    it("should not initialize OTLP metrics without endpoint", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "otlp",
+        metricsExporter: "otlp",
       });
 
       // OTLP requires endpoint, so no SDK init should happen
-      expect(mocks.mockBasicTracerProvider).not.toHaveBeenCalled();
+      expect(mocks.mockMeterProvider).not.toHaveBeenCalled();
       expect(instrumentation.isInitialized()).toBe(false);
     });
 
@@ -807,26 +772,54 @@ describe("instrumentation", () => {
       expect(instrumentation.isInitialized()).toBe(false);
     });
 
-    it("should initialize with both JSONL exporters", async () => {
+    it("should initialize with both console exporters", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
         logsExporter: "console",
       });
 
       expect(instrumentation.isInitialized()).toBe(true);
-      expect(mocks.mockBasicTracerProvider).toHaveBeenCalledTimes(1);
+      expect(mocks.mockMeterProvider).toHaveBeenCalledTimes(1);
+      expect(mocks.mockConsoleMetricExporter).toHaveBeenCalledTimes(1);
       expect(mocks.mockLoggerProvider).toHaveBeenCalledTimes(1);
-      expect(mocks.mockBatchLogRecordProcessor).toHaveBeenCalledTimes(1);
+      expect(mocks.mockConsoleLogRecordExporter).toHaveBeenCalledTimes(1);
+    });
+
+    it("should create the metric instruments on the meter", async () => {
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        metricsExporter: "console",
+      });
+
+      expect(mocks.mockGetMeter).toHaveBeenCalledWith("wave");
+      expect(createdCounterNames(mocks.mockCreateCounter)).toEqual(
+        COUNTER_NAMES,
+      );
+      expect(mocks.mockCreateHistogram).toHaveBeenCalledWith(
+        "wave.api.duration",
+        { description: "LLM API request duration", unit: "ms" },
+      );
+    });
+
+    it("should not create instruments when only logs are exported", async () => {
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        logsExporter: "console",
+      });
+
+      // Metrics are off: no meter, so every record call stays a no-op.
+      expect(mocks.mockMeterProvider).not.toHaveBeenCalled();
+      expect(mocks.mockCreateCounter).not.toHaveBeenCalled();
     });
   });
 
   describe("shutdownTelemetry", () => {
     it("should be no-op if not initialized", async () => {
       await instrumentation.shutdownTelemetry();
-      expect(mocks.mockTracerShutdown).not.toHaveBeenCalled();
+      expect(mocks.mockMeterShutdown).not.toHaveBeenCalled();
       expect(mocks.mockLoggerShutdown).not.toHaveBeenCalled();
-      expect(mocks.mockTraceDisable).not.toHaveBeenCalled();
+      expect(mocks.mockMetricsDisable).not.toHaveBeenCalled();
     });
 
     it("should unregister the global providers", async () => {
@@ -834,68 +827,93 @@ describe("instrumentation", () => {
       // later initializeTelemetry() would keep delegating to this dead one.
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
         logsExporter: "console",
       });
 
       await instrumentation.shutdownTelemetry();
 
-      expect(mocks.mockTraceDisable).toHaveBeenCalledTimes(1);
+      expect(mocks.mockMetricsDisable).toHaveBeenCalledTimes(1);
       expect(mocks.mockLogsDisable).toHaveBeenCalledTimes(1);
     });
 
     it("should unregister only the providers that were registered", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
 
       await instrumentation.shutdownTelemetry();
 
-      expect(mocks.mockTraceDisable).toHaveBeenCalledTimes(1);
+      expect(mocks.mockMetricsDisable).toHaveBeenCalledTimes(1);
       expect(mocks.mockLogsDisable).not.toHaveBeenCalled();
     });
 
     it("should call SDK shutdown when initialized", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
       expect(instrumentation.isInitialized()).toBe(true);
 
       await instrumentation.shutdownTelemetry();
-      expect(mocks.mockTracerShutdown).toHaveBeenCalledTimes(1);
+      expect(mocks.mockMeterShutdown).toHaveBeenCalledTimes(1);
     });
 
     it("should reset initialized state after shutdown", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
       await instrumentation.shutdownTelemetry();
 
       expect(instrumentation.isInitialized()).toBe(false);
     });
 
+    it("should drop the instruments so later records are no-ops", async () => {
+      const adds: ReturnType<typeof vi.fn>[] = [];
+      mocks.mockCreateCounter.mockImplementation(() => {
+        const add = vi.fn();
+        adds.push(add);
+        return { add };
+      });
+
+      await instrumentation.initializeTelemetry({
+        enabled: true,
+        metricsExporter: "console",
+      });
+      const metrics = await import("@/telemetry/metrics.js");
+
+      metrics.recordSession();
+      expect(adds.some((add) => add.mock.calls.length > 0)).toBe(true);
+
+      await instrumentation.shutdownTelemetry();
+      for (const add of adds) add.mockClear();
+
+      // The provider is gone: recording must not reach the retired instruments.
+      expect(() => metrics.recordSession()).not.toThrow();
+      expect(adds.every((add) => add.mock.calls.length === 0)).toBe(true);
+    });
+
     it("should be no-op if called twice", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
       await instrumentation.shutdownTelemetry();
       await instrumentation.shutdownTelemetry();
 
-      expect(mocks.mockTracerShutdown).toHaveBeenCalledTimes(1);
+      expect(mocks.mockMeterShutdown).toHaveBeenCalledTimes(1);
     });
 
     it("should handle shutdown failure gracefully", async () => {
-      mocks.mockTracerShutdown.mockRejectedValueOnce(
+      mocks.mockMeterShutdown.mockRejectedValueOnce(
         new Error("Shutdown failed"),
       );
 
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
 
       // Should not throw despite shutdown failing
@@ -911,41 +929,41 @@ describe("instrumentation", () => {
   describe("flushTelemetry", () => {
     it("should be no-op if not initialized", async () => {
       await instrumentation.flushTelemetry();
-      expect(mocks.mockTracerFlush).not.toHaveBeenCalled();
+      expect(mocks.mockMeterFlush).not.toHaveBeenCalled();
       expect(mocks.mockLoggerFlush).not.toHaveBeenCalled();
     });
 
     it("should flush both providers without tearing them down", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
         logsExporter: "console",
       });
 
       await instrumentation.flushTelemetry();
 
-      expect(mocks.mockTracerFlush).toHaveBeenCalledTimes(1);
+      expect(mocks.mockMeterFlush).toHaveBeenCalledTimes(1);
       expect(mocks.mockLoggerFlush).toHaveBeenCalledTimes(1);
       // Process-scoped: the agent that just finished must not silence the
       // sessions still running in this process.
-      expect(mocks.mockTracerShutdown).not.toHaveBeenCalled();
-      expect(mocks.mockTraceDisable).not.toHaveBeenCalled();
+      expect(mocks.mockMeterShutdown).not.toHaveBeenCalled();
+      expect(mocks.mockMetricsDisable).not.toHaveBeenCalled();
       expect(instrumentation.isInitialized()).toBe(true);
     });
 
     it("should leave telemetry initialized afterwards", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
       await instrumentation.flushTelemetry();
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
 
       // Still the first provider — nothing was rebuilt, nothing was skipped.
-      expect(mocks.mockBasicTracerProvider).toHaveBeenCalledTimes(1);
+      expect(mocks.mockMeterProvider).toHaveBeenCalledTimes(1);
       expect(instrumentation.isInitialized()).toBe(true);
     });
   });
@@ -969,7 +987,7 @@ describe("instrumentation", () => {
     });
   });
 
-  describe("isInitialized / getCurrentConfig / getOTELApi", () => {
+  describe("isInitialized / getCurrentConfig", () => {
     it("isInitialized returns false before init", () => {
       expect(instrumentation.isInitialized()).toBe(false);
     });
@@ -978,14 +996,10 @@ describe("instrumentation", () => {
       expect(instrumentation.getCurrentConfig()).toBeUndefined();
     });
 
-    it("getOTELApi returns undefined before init", () => {
-      expect(instrumentation.getOTELApi()).toBeUndefined();
-    });
-
     it("isInitialized returns true after init", async () => {
       await instrumentation.initializeTelemetry({
         enabled: true,
-        tracesExporter: "console",
+        metricsExporter: "console",
       });
       expect(instrumentation.isInitialized()).toBe(true);
     });
@@ -1010,10 +1024,10 @@ describe("instrumentation", () => {
 
     it("keeps console exporters by default (interactive hosts)", () => {
       const config = instrumentation.resolveTelemetryConfig({
-        tracesExporter: "console",
+        metricsExporter: "console",
         logsExporter: "console",
       });
-      expect(config.tracesExporter).toBe("console");
+      expect(config.metricsExporter).toBe("console");
       expect(config.logsExporter).toBe("console");
       expect(config.enabled).toBe(true);
     });
@@ -1022,10 +1036,10 @@ describe("instrumentation", () => {
       instrumentation.setTelemetryStdoutProtected(true);
 
       const config = instrumentation.resolveTelemetryConfig({
-        tracesExporter: "console",
+        metricsExporter: "console",
         logsExporter: "console",
       });
-      expect(config.tracesExporter).toBeUndefined();
+      expect(config.metricsExporter).toBeUndefined();
       expect(config.logsExporter).toBeUndefined();
       expect(config.enabled).toBe(false);
     });
@@ -1034,11 +1048,11 @@ describe("instrumentation", () => {
       instrumentation.setTelemetryStdoutProtected(true);
 
       const config = instrumentation.resolveTelemetryConfig({
-        tracesExporter: "otlp",
+        metricsExporter: "otlp",
         logsExporter: "console",
         endpoint: "http://localhost:4318",
       });
-      expect(config.tracesExporter).toBe("otlp");
+      expect(config.metricsExporter).toBe("otlp");
       expect(config.logsExporter).toBeUndefined();
     });
   });

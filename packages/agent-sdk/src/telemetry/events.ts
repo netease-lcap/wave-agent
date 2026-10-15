@@ -6,6 +6,7 @@
  */
 
 import type { OTelEventName } from "../types/telemetry.js";
+import { createHash } from "node:crypto";
 import {
   isInitialized,
   getCurrentConfig,
@@ -68,4 +69,75 @@ export async function logOTelEvent(
       ...attributes,
     },
   });
+}
+
+// -- Request-content events (opt-in via OTEL_LOG_TOOL_CONTENT) --
+
+/** System prompt hashes already emitted — the full text is sent once per hash */
+const seenSystemPromptHashes = new Set<string>();
+/** Tool schema hashes already emitted — one event per tool per hash */
+const seenToolSchemaHashes = new Set<string>();
+
+/** SHA-256 of content, first 12 hex chars — the dedupe key for content events */
+function hashContent(content: string): string {
+  return createHash("sha256").update(content).digest("hex").substring(0, 12);
+}
+
+/**
+ * Emit the content-level request events: the full system prompt and each
+ * tool's schema, both deduped by hash so a long session sends each variant
+ * once instead of on every request. Gated by `OTEL_LOG_TOOL_CONTENT` — with
+ * the gate off this is a no-op, and the caller does not have to check.
+ */
+export async function logRequestContentEvents(input: {
+  systemPrompt?: string;
+  toolsSchema?: string;
+}): Promise<void> {
+  if (!isInitialized()) return;
+  const config = getCurrentConfig();
+  if (!config?.logToolContent) return;
+
+  if (input.systemPrompt) {
+    const hash = hashContent(input.systemPrompt);
+    if (!seenSystemPromptHashes.has(hash)) {
+      seenSystemPromptHashes.add(hash);
+      logOTelEvent("system_prompt", {
+        system_prompt_hash: hash,
+        system_prompt: input.systemPrompt,
+      }).catch(() => {});
+    }
+  }
+
+  if (input.toolsSchema) {
+    try {
+      const tools = JSON.parse(input.toolsSchema);
+      if (Array.isArray(tools)) {
+        for (const tool of tools) {
+          const name =
+            (tool as { function?: { name?: string } })?.function?.name ||
+            "unknown";
+          const hash = hashContent(JSON.stringify(tool));
+          if (seenToolSchemaHashes.has(hash)) continue;
+          seenToolSchemaHashes.add(hash);
+          logOTelEvent("tool_schema", {
+            tool_name: name,
+            tool_hash: hash,
+            tool_schema: JSON.stringify(tool),
+          }).catch(() => {});
+        }
+      }
+    } catch {
+      // toolsSchema is not valid JSON — skip
+    }
+  }
+}
+
+/**
+ * Forget which content variants were already sent. Called after compaction:
+ * the next request's context is a different shape, and re-reporting it is what
+ * the dedupe would otherwise suppress.
+ */
+export function resetContentEventState(): void {
+  seenSystemPromptHashes.clear();
+  seenToolSchemaHashes.clear();
 }

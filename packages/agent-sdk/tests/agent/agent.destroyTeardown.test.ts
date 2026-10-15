@@ -13,14 +13,13 @@ vi.mock("@/telemetry/instrumentation.js", () => ({
   initializeTelemetry: vi.fn().mockResolvedValue(undefined),
   flushTelemetry: vi.fn().mockResolvedValue(undefined),
   getCurrentConfig: vi.fn().mockReturnValue(undefined),
-  getOTELApi: vi.fn().mockReturnValue(undefined),
   isInitialized: vi.fn().mockReturnValue(false),
-  JsonlSpanExporter: class {},
-  JsonlLogExporter: class {},
 }));
 
 vi.mock("@/telemetry/events.js", () => ({
   logOTelEvent: vi.fn().mockResolvedValue(undefined),
+  logRequestContentEvents: vi.fn().mockResolvedValue(undefined),
+  resetContentEventState: vi.fn(),
 }));
 
 // Mock tool registry

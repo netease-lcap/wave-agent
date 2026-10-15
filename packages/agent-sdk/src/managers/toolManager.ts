@@ -59,7 +59,7 @@ import { logger } from "../utils/globalLogger.js";
 
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
 import type { SkillMetadata } from "../types/skills.js";
-import { startToolSpan, endToolSpan } from "../telemetry/sessionTracing.js";
+import { recordLinesChanged } from "../telemetry/metrics.js";
 
 export interface ToolManagerOptions {
   container: Container;
@@ -67,6 +67,24 @@ export interface ToolManagerOptions {
   tools?: string[];
   /** Custom tools to register alongside built-in tools */
   customTools?: ToolPlugin[];
+}
+
+/**
+ * Feed an edit tool's line delta into the `wave.lines.changed` counter.
+ *
+ * Editing tools report `linesAdded` / `linesRemoved` in `result.metadata`;
+ * every other tool carries no metadata and contributes nothing. A failed call
+ * changed no file, so nothing is recorded.
+ */
+function recordLinesChangedFromResult(result: ToolResult): void {
+  const metadata = result.metadata;
+  if (!result.success || !metadata) return;
+  const added = Number(metadata.linesAdded);
+  const removed = Number(metadata.linesRemoved);
+  recordLinesChanged({
+    added: Number.isFinite(added) ? added : undefined,
+    removed: Number.isFinite(removed) ? removed : undefined,
+  });
 }
 
 /**
@@ -322,10 +340,6 @@ class ToolManager {
       toolCallId: context.toolCallId,
     };
 
-    // OpenTelemetry: start tool span
-    startToolSpan(name, args);
-    const toolStartTime = Date.now();
-
     logger?.debug("Executing tool with enhanced context", {
       toolName: name,
       permissionMode,
@@ -343,19 +357,9 @@ class ToolManager {
           args,
           enhancedContext,
         );
-        endToolSpan({
-          success: result.success,
-          durationMs: Date.now() - toolStartTime,
-          output: result.content,
-        });
         return result;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        endToolSpan({
-          success: false,
-          error: message,
-          durationMs: Date.now() - toolStartTime,
-        });
         // A hook block is a refusal, not a tool failure: keep its wording in
         // the result so a flat call shows the model what a nested one sees.
         return error instanceof HookBlockedToolError
@@ -377,32 +381,18 @@ class ToolManager {
         enhancedContext,
       );
       if (blocked) {
-        endToolSpan({
-          success: false,
-          error: blocked,
-          durationMs: Date.now() - toolStartTime,
-        });
         return { success: false, content: blocked, error: blocked };
       }
 
       let result: ToolResult;
       try {
         result = await plugin.execute(args, enhancedContext);
-        endToolSpan({
-          success: result.success,
-          durationMs: Date.now() - toolStartTime,
-          output: result.content,
-        });
+        recordLinesChangedFromResult(result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         logger?.error("Tool execution failed", {
           toolName: name,
           error: message,
-        });
-        endToolSpan({
-          success: false,
-          error: message,
-          durationMs: Date.now() - toolStartTime,
         });
         result = { success: false, content: "", error: message };
       }
@@ -430,11 +420,6 @@ class ToolManager {
     }
 
     logger?.warn("Tool not found", { toolName: name });
-    endToolSpan({
-      success: false,
-      error: `Tool '${name}' not found`,
-      durationMs: Date.now() - toolStartTime,
-    });
     return {
       success: false,
       content: "",

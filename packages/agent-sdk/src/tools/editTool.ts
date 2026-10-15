@@ -318,6 +318,8 @@ Usage:
 
       logger.debug(`Edit tool: ${shortResult}`);
 
+      // Line delta for the `wave.lines.changed` metric: the replaced text's own
+      // line count, times the number of occurrences for a replace-all.
       return {
         success: true,
         content: staleRecovered
@@ -326,6 +328,10 @@ Usage:
         shortResult,
         filePath: resolvedPath,
         startLineNumber,
+        metadata: {
+          linesAdded: newString.split("\n").length * replacementCount,
+          linesRemoved: matchedOldString.split("\n").length * replacementCount,
+        },
       };
     } catch (error) {
       const errorMessage =

@@ -1363,16 +1363,17 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 
 #### OTEL\_\* 变量（OpenTelemetry）
 
-| 变量                          | 描述                              |
-| ----------------------------- | --------------------------------- |
-| `OTEL_ENABLED`                | 是否启用遥测（设为 `false` 禁用） |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP 导出端点                     |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | 导出协议（`grpc` / `http`）       |
-| `OTEL_EXPORTER_OTLP_HEADERS`  | 导出附加头（`k=v,k2=v2`）         |
-| `OTEL_LOG_USER_PROMPTS`       | 是否记录用户 Prompt               |
-| `OTEL_LOG_TOOL_CONTENT`       | 是否记录工具调用内容              |
-| `OTEL_SPAN_TTL_MS`            | Span 存活时间（毫秒）             |
-| `OTEL_SHUTDOWN_TIMEOUT_MS`    | 关闭超时时间（毫秒）              |
+| 变量                          | 描述                               |
+| ----------------------------- | ---------------------------------- |
+| `OTEL_ENABLED`                | 是否启用遥测（设为 `false` 禁用）  |
+| `OTEL_METRICS_EXPORTER`       | 指标导出目标（`console` / `otlp`） |
+| `OTEL_LOGS_EXPORTER`          | 日志导出目标（`console` / `otlp`） |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP 导出端点                      |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | 导出协议（`grpc` / `http`）        |
+| `OTEL_EXPORTER_OTLP_HEADERS`  | 导出附加头（`k=v,k2=v2`）          |
+| `OTEL_LOG_USER_PROMPTS`       | 是否记录用户 Prompt                |
+| `OTEL_LOG_TOOL_CONTENT`       | 是否记录工具调用内容               |
+| `OTEL_SHUTDOWN_TIMEOUT_MS`    | 关闭超时时间（毫秒）               |
 
 ### 工具权限 {#settings-permissions}
 
@@ -1517,13 +1518,15 @@ Tavily AI 驱动的搜索引擎 MCP 服务器，通过 `https://mcp.tavily.com/m
 
 ## 16. OpenTelemetry 遥测 {#opentelemetry-telemetry}
 
-Wave 支持 OpenTelemetry 可观测性标准，提供结构化的遥测数据（Traces、Logs），帮助开发者观察 Agent 行为、调试性能问题并分析会话模式。
+Wave 支持 OpenTelemetry 可观测性标准，提供结构化的遥测数据（Metrics、Logs），帮助开发者观察 Agent 行为、调试性能问题并分析会话模式。
+
+> 早期版本采集的 **Traces（span 链路）已移除**：上游 Claude Code 的 traces 仍处 beta，且链路数据对「成本 / 容量 / 错误率」这类车队级问题不如指标直接。配置里遗留的 `tracesExporter` / `spanTtlMs` 不再生效，加载时记一条告警（其余遥测设置照常生效）。
 
 ### 导出器 (Exporters) {#otel-exporters}
 
-Wave 支持为每种信号类型（Traces、Logs）配置不同的导出目标：
+Wave 支持为每种信号类型（Metrics、Logs）配置不同的导出目标：
 
-- **OTLP 导出器**：将遥测数据发送到标准 OTLP 收集器（如 Jaeger、Grafana Tempo、Honeycomb）。通过 `OTEL_EXPORTER_OTLP_ENDPOINT` 设置收集器地址。
+- **OTLP 导出器**：将遥测数据发送到标准 OTLP 收集器（Grafana、Datadog 等兼容后端均可）。通过 `OTEL_EXPORTER_OTLP_ENDPOINT` 设置收集器地址；端点即基址，指标发往 `<endpoint>/v1/metrics`、日志发往 `<endpoint>/v1/logs`。
 - **Console 导出器**：把遥测以可读形式直接打印到终端（对齐 Claude Code 的 `console` 导出器）。交互 TUI 下输出呈现在界面上方、不打碎界面；**只在交互模式生效**——`--stdio` / `--print` 宿主的 stdout 是协议/结果通道，console 导出器在那里会被自动剥除。旧 `jsonl` 文件导出器已移除，配置里遗留的 `"jsonl"` 值会被忽略并告警。
 
 **配置方式**：通过 `OTEL_*` 环境变量或 `settings.json`（以及服务端下发的托管配置）中的 `monitoring.telemetry` 字段配置，环境变量优先。
@@ -1533,7 +1536,7 @@ Wave 支持为每种信号类型（Traces、Logs）配置不同的导出目标�
   "monitoring": {
     "telemetry": {
       "enabled": true,
-      "tracesExporter": "otlp",
+      "metricsExporter": "otlp",
       "logsExporter": "otlp",
       "endpoint": "https://your-collector.example.com",
       "headers": { "Authorization": "Bearer ..." }
@@ -1561,7 +1564,7 @@ OTLP 出站头有两个来源，**动态头按 key 覆盖静态头**：
 {
   "monitoring": {
     "telemetry": {
-      "tracesExporter": "otlp",
+      "metricsExporter": "otlp",
       "logsExporter": "otlp",
       "endpoint": "https://your-collector.example.com",
       "headersHelper": "/usr/local/bin/get-otel-headers",
@@ -1575,19 +1578,22 @@ helper 命令跑在 shell 里（Windows 下是 Git Bash，与 hook 一致），s
 
 失败语义（非 0 退出 / 超时 / stdout 不是合法 JSON 对象）时**不丢批次、不影响 agent**：先沿用上一次成功取到的头，没有则只发静态头；失败按「失败种类变化」限流打警告。**stdout 就是凭据**，因此它不进日志、不进审计、不进 span 属性，失败告警里也只带失败种类与退出码。
 
-### Span 体系 {#otel-spans}
+### 指标 (Metrics) {#otel-metrics}
 
-Wave 创建三层 Span 结构，完整记录用户交互到工具执行的全链路：
+指标回答的是车队级问题——哪个模型在吃预算、用量是否在涨、错误率有没有变。命名稳定在 `wave.*` 下，归属属性刻意保持低基数：只有模型 id、token 类型与行数方向，**不含提示词、文件路径或任何内容级数据**。
 
-| Span 类型           | 说明                                     | 关键属性                                                                                                                                 |
-| ------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| **InteractionSpan** | 包裹一次完整的用户消息 -> Agent 响应周期 | `user_prompt`（可选）、`user_prompt_length`、`interaction.sequence`                                                                      |
-| **LLMRequestSpan**  | Interaction 的子 Span，表示单次 API 调用 | `model`、`input_tokens`、`output_tokens`、`cache_read_tokens`、`cache_creation_tokens`、`ttft_ms`、`ttlt_ms`、`success`、`has_tool_call` |
-| **ToolSpan**        | Interaction 的子 Span，表示单次工具执行  | `tool_name`、`tool_input`（可选）、`success`、`error`、`duration_ms`                                                                     |
+| 指标                 | 类型   | 说明                    | 归属属性                                                         |
+| -------------------- | ------ | ----------------------- | ---------------------------------------------------------------- |
+| `wave.api.requests`  | 计数   | LLM 请求数              | `model`                                                          |
+| `wave.api.errors`    | 计数   | 失败的 LLM 请求数       | `model`                                                          |
+| `wave.api.duration`  | 直方图 | LLM 请求耗时（单位 ms） | `model`                                                          |
+| `wave.tokens`        | 计数   | 消耗的 token 数         | `model` + `type`（input / output / cache_read / cache_creation） |
+| `wave.sessions`      | 计数   | 启动的 Agent 会话数     | —                                                                |
+| `wave.lines.changed` | 计数   | 编辑类工具增删的行数    | `direction`（added / removed）                                   |
 
-- **父子关系**：一个 InteractionSpan 包含多个 LLMRequestSpan（多轮递归时）和多个 ToolSpan（并行工具调用时）
-- **并行隔离**：使用 `AsyncLocalStorage` 确保并行工具执行时 Span 上下文不混淆
-- **资源属性**：包含 `service.name: 'wave'`、`service.version`、`os.type`、`host.arch`
+- **失败也计时**：一次请求失败仍计入 `wave.api.requests` 与 `wave.api.duration`（失败的请求同样占了墙钟时间），并额外计入 `wave.api.errors`。
+- **零值不上报**：编辑结果里为 0 或缺失的一侧不产生记录，纯新增与纯删除因此可区分。
+- **进程级累加**：指标按进程累加，不随单个会话结束而重置；压缩（compaction）后 token 继续累加在同一计数器上。
 
 ### 事件日志 (Event Logging) {#otel-events}
 
@@ -1613,5 +1619,5 @@ Wave 在关键会话生命周期节点记录结构化事件：
 
 - **优雅降级**：遥测初始化或导出失败时，Agent 正常运行不受影响，仅记录警告日志
 - **关闭刷新**：进程退出时自动刷新遥测数据，超时时间可配置（默认 2 秒）
-- **内存保护**：超过 30 分钟的活跃 Span 自动清理，防止长会话内存泄漏
+- **进程级采集**：导出器属于进程而非单个会话——长驻宿主（daemon、桌面端远程主机）里一个会话结束或刷新，其余会话的采集不受影响
 - **懒加载**：遥测模块懒加载，不增加启动延迟

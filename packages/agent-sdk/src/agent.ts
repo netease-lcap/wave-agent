@@ -57,6 +57,7 @@ import {
   flushTelemetry,
 } from "./telemetry/instrumentation.js";
 import { logOTelEvent } from "./telemetry/events.js";
+import { recordSession } from "./telemetry/metrics.js";
 import { remoteSettingsService } from "./services/remoteSettingsService.js";
 
 export class Agent {
@@ -767,8 +768,8 @@ export class Agent {
     // when the session started.
     this.permissionManager.captureBypassAuthorization();
 
-    // Initialize OpenTelemetry (awaited to ensure ALS context is ready before
-    // startInteractionSpan is called, preventing trace context fragmentation)
+    // Initialize OpenTelemetry (before the first event is logged, so the
+    // providers are in place when the session announces itself)
     const telemetryConfig = this.configurationService.resolveTelemetryConfig();
     try {
       await initializeTelemetry(telemetryConfig);
@@ -786,6 +787,7 @@ export class Agent {
           workdir: this.workdir,
         }).catch(() => {}); // Non-blocking
       }
+      recordSession();
     } catch {
       // Model not configured yet - will be available after SSO login
     }

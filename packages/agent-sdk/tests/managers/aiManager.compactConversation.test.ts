@@ -58,6 +58,8 @@ vi.mock("../../src/utils/convertMessagesForAPI.js", () => ({
 
 vi.mock("../../src/telemetry/events.js", () => ({
   logOTelEvent: vi.fn().mockResolvedValue(undefined),
+  logRequestContentEvents: vi.fn().mockResolvedValue(undefined),
+  resetContentEventState: vi.fn(),
 }));
 
 const toolCall = {

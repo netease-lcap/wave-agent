@@ -78,13 +78,11 @@ import { isLeanPromptEnabled } from "../services/leanPrompt.js";
 import type { MessageQueue } from "./messageQueue.js";
 import { logger } from "../utils/globalLogger.js";
 import {
-  startInteractionSpan,
-  endInteractionSpan,
-  startLLMRequestSpan,
-  endLLMRequestSpan,
-  resetTracingState,
-} from "../telemetry/sessionTracing.js";
-import { logOTelEvent } from "../telemetry/events.js";
+  logOTelEvent,
+  logRequestContentEvents,
+  resetContentEventState,
+} from "../telemetry/events.js";
+import { recordApiRequest } from "../telemetry/metrics.js";
 import type { BackgroundTask } from "../types/processes.js";
 
 /** Result of a fork-path agent loop (compaction or auto-memory extraction). */
@@ -817,8 +815,9 @@ export class AIManager {
 
       this.consecutiveCompactionFailures = 0;
 
-      // Reset incremental tracing state after compaction
-      resetTracingState();
+      // Reset content-event dedupe after compaction: the next request's
+      // context is a new shape and should be re-reported.
+      resetContentEventState();
 
       // 10. Log OTEL event
       logOTelEvent("compaction", {
@@ -1704,17 +1703,14 @@ ${question}`;
     outer: while (true) {
       let shouldRestart = false;
 
-      // OpenTelemetry: start interaction span for this turn (initial call only)
-      let turnSequence = 0;
+      // OpenTelemetry: log the user_prompt event for this turn (initial call only)
       if (turnOffset === 0) {
         const messages = this.messageManager.getMessages();
-        turnSequence = messages.filter((m) => m.role === "user").length;
         const lastUserMessage = [...messages]
           .reverse()
           .find((m) => m.role === "user");
         const userPromptText =
           lastUserMessage?.blocks.find((b) => b.type === "text")?.content || "";
-        startInteractionSpan(userPromptText, turnSequence);
 
         // Log user_prompt event
         logOTelEvent("user_prompt", {
@@ -1791,7 +1787,10 @@ ${question}`;
       let maxOutputTokensRecoveryCount = 0;
 
       inner: while (true) {
-        let llmSpan: import("@opentelemetry/api").Span | undefined;
+        // Set right before an API request goes out and cleared when it comes
+        // back, so the catch below can tell "the request failed" (record it)
+        // from "something else broke" (not an API call, nothing to record).
+        let llmRequestStartMs: number | undefined;
         try {
           // Save session in each iteration to ensure message persistence
           await this.messageManager.saveSession();
@@ -1974,34 +1973,33 @@ ${question}`;
             };
           }
 
-          llmSpan = startLLMRequestSpan(
-            model || this.getModelConfig().model || "",
-            {
-              context: "interaction",
-              systemPrompt:
-                typeof callAgentOptions.systemPrompt === "string"
-                  ? callAgentOptions.systemPrompt
-                  : undefined,
-              inputMessages: callAgentOptions.messages,
-              toolsSchema: callAgentOptions.tools
-                ? JSON.stringify(callAgentOptions.tools)
+          // Content-level events (opt-in): the system prompt and tool schemas,
+          // deduped by hash inside — a no-op unless OTEL_LOG_TOOL_CONTENT is on.
+          logRequestContentEvents({
+            systemPrompt:
+              typeof callAgentOptions.systemPrompt === "string"
+                ? callAgentOptions.systemPrompt
                 : undefined,
-            },
-          );
+            toolsSchema: callAgentOptions.tools
+              ? JSON.stringify(callAgentOptions.tools)
+              : undefined,
+          }).catch(() => {}); // Non-blocking
 
+          llmRequestStartMs = Date.now();
           const result = await aiService.callAgent(callAgentOptions);
 
-          // End LLM span with usage data
-          endLLMRequestSpan(llmSpan, {
+          // Record the request in the metric families: count/duration always,
+          // token kinds by model — the fleet-level view of cost and latency.
+          recordApiRequest({
             model: model || this.getModelConfig().model || "",
+            durationMs: Date.now() - llmRequestStartMs,
             success: true,
-            hasToolCall: !!(result.tool_calls && result.tool_calls.length > 0),
             inputTokens: result.usage?.prompt_tokens,
             outputTokens: result.usage?.completion_tokens,
             cacheReadTokens: result.usage?.cache_read_input_tokens,
             cacheCreationTokens: result.usage?.cache_creation_input_tokens,
-            modelOutput: result.content,
           });
+          llmRequestStartMs = undefined;
 
           if (result.stream_fallback && assistantMessageCreated) {
             // The streamed attempt died mid-body and the request was re-issued
@@ -2314,12 +2312,15 @@ ${question}`;
           // No tool calls (or stop conditions) → inner loop done
           break inner;
         } catch (error) {
-          // End LLM span with error
-          endLLMRequestSpan(llmSpan, {
-            model: model || this.getModelConfig().model || "",
-            success: false,
-            error: error instanceof Error ? error.message : String(error),
-          });
+          // Record a request that was in flight when it failed — it consumed
+          // wall clock and is exactly what the error rate is meant to capture.
+          if (llmRequestStartMs !== undefined) {
+            recordApiRequest({
+              model: model || this.getModelConfig().model || "",
+              durationMs: Date.now() - llmRequestStartMs,
+              success: false,
+            });
+          }
 
           // Log error event
           logOTelEvent("error", {
@@ -2350,9 +2351,6 @@ ${question}`;
       // Finally-equivalent (runs once per outer iteration):
       // Only execute cleanup and hooks for the initial call
       if (turnOffset === 0) {
-        // OpenTelemetry: end interaction span
-        endInteractionSpan();
-
         // Save session in each iteration to ensure message persistence
         await this.messageManager.saveSession();
 

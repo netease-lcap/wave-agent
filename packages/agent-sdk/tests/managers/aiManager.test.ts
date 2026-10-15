@@ -24,6 +24,25 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
   },
 }));
 
+const { recordApiRequestMock } = vi.hoisted(() => ({
+  recordApiRequestMock:
+    vi.fn<
+      (record: {
+        model: string;
+        durationMs: number;
+        success: boolean;
+        inputTokens?: number;
+        outputTokens?: number;
+        cacheReadTokens?: number;
+        cacheCreationTokens?: number;
+      }) => void
+    >(),
+}));
+
+vi.mock("../../src/telemetry/metrics.js", () => ({
+  recordApiRequest: recordApiRequestMock,
+}));
+
 // Mock node:fs
 vi.mock("node:fs", () => ({
   existsSync: vi.fn(),
@@ -1979,6 +1998,50 @@ describe("AIManager", () => {
 
       expect(systemPromptText()).not.toContain(
         "Use TaskCreate to plan and track work",
+      );
+    });
+  });
+
+  describe("AIManager API request metrics", () => {
+    beforeEach(() => {
+      recordApiRequestMock.mockClear();
+    });
+
+    it("records the request, its duration and the reported token usage", async () => {
+      vi.mocked(aiService.callAgent).mockResolvedValueOnce({
+        content: "ok",
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 20,
+          total_tokens: 120,
+          cache_read_input_tokens: 7,
+          cache_creation_input_tokens: 3,
+        },
+        tool_calls: [],
+      } as unknown as Awaited<ReturnType<typeof aiService.callAgent>>);
+
+      await aiManager.sendAIMessage();
+
+      expect(recordApiRequestMock).toHaveBeenCalledTimes(1);
+      const record = recordApiRequestMock.mock.calls[0]![0];
+      expect(record.model).toBe("test-agent-model");
+      expect(record.success).toBe(true);
+      expect(record.inputTokens).toBe(100);
+      expect(record.outputTokens).toBe(20);
+      expect(record.cacheReadTokens).toBe(7);
+      expect(record.cacheCreationTokens).toBe(3);
+      expect(record.durationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it("records a request that failed while in flight", async () => {
+      vi.mocked(aiService.callAgent).mockRejectedValueOnce(
+        new Error("gateway down"),
+      );
+
+      await aiManager.sendAIMessage();
+
+      expect(recordApiRequestMock).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "test-agent-model", success: false }),
       );
     });
   });

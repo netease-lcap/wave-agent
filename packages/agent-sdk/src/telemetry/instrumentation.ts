@@ -13,8 +13,9 @@ import type {
 } from "../types/telemetry.js";
 import { logger } from "../utils/globalLogger.js";
 import { createHeadersHelperProvider } from "./headersHelper.js";
+import { initMetrics, resetMetrics } from "./metrics.js";
 
-import type { BasicTracerProvider } from "@opentelemetry/sdk-trace-base";
+import type { MeterProvider } from "@opentelemetry/sdk-metrics";
 import type { LoggerProvider } from "@opentelemetry/sdk-logs";
 import {
   AuthService,
@@ -22,20 +23,20 @@ import {
 } from "../services/authService.js";
 
 // Lazy-loaded OTEL modules — only imported when telemetry is initialized
-let sdkTraceBase: typeof import("@opentelemetry/sdk-trace-base") | undefined;
+let sdkMetrics: typeof import("@opentelemetry/sdk-metrics") | undefined;
 let otelResources: typeof import("@opentelemetry/resources") | undefined;
 let api: typeof import("@opentelemetry/api") | undefined;
 let apiLogs: typeof import("@opentelemetry/api-logs") | undefined;
 let sdkLogs: typeof import("@opentelemetry/sdk-logs") | undefined;
-let exporterTraceOtlpHttp:
-  | typeof import("@opentelemetry/exporter-trace-otlp-http")
+let exporterMetricsOtlpHttp:
+  | typeof import("@opentelemetry/exporter-metrics-otlp-http")
   | undefined;
 let exporterLogsOtlpHttp:
   | typeof import("@opentelemetry/exporter-logs-otlp-http")
   | undefined;
 
-/** Internal trace provider instance */
-let tracerProvider: BasicTracerProvider | undefined;
+/** Internal metric provider instance */
+let meterProvider: MeterProvider | undefined;
 
 /** Internal log provider instance */
 let loggerProvider: LoggerProvider | undefined;
@@ -73,20 +74,20 @@ async function loadOTELModules(): Promise<void> {
   if (api) return; // Already loaded
 
   [
-    sdkTraceBase,
+    sdkMetrics,
     otelResources,
     api,
     apiLogs,
     sdkLogs,
-    exporterTraceOtlpHttp,
+    exporterMetricsOtlpHttp,
     exporterLogsOtlpHttp,
   ] = await Promise.all([
-    import("@opentelemetry/sdk-trace-base"),
+    import("@opentelemetry/sdk-metrics"),
     import("@opentelemetry/resources"),
     import("@opentelemetry/api"),
     import("@opentelemetry/api-logs"),
     import("@opentelemetry/sdk-logs"),
-    import("@opentelemetry/exporter-trace-otlp-http"),
+    import("@opentelemetry/exporter-metrics-otlp-http"),
     import("@opentelemetry/exporter-logs-otlp-http"),
   ]);
 
@@ -119,7 +120,7 @@ function installDiagLogger(otelApi: typeof import("@opentelemetry/api")): void {
  * Environment variable takes precedence over settings.json config.
  */
 function resolveExporter(
-  signal: "traces" | "logs",
+  signal: "metrics" | "logs",
   config?: Partial<TelemetryConfig>,
 ): ExporterTarget | undefined {
   const envVar = `OTEL_${signal.toUpperCase()}_EXPORTER`;
@@ -132,7 +133,20 @@ function resolveExporter(
   }
 
   const configKey = `${signal}Exporter` as keyof TelemetryConfig;
-  return config?.[configKey] as ExporterTarget | undefined;
+  const configValue = config?.[configKey] as unknown;
+  if (
+    configValue !== undefined &&
+    configValue !== "console" &&
+    configValue !== "otlp"
+  ) {
+    // A value this version does not know (an old `jsonl`, a typo) must not be
+    // passed through as if it were usable.
+    logger?.warn(
+      `Unknown OTEL exporter in config: ${String(configValue)}, ignoring`,
+    );
+    return undefined;
+  }
+  return configValue as ExporterTarget | undefined;
 }
 
 /**
@@ -257,18 +271,6 @@ function resolveLogToolContent(config?: Partial<TelemetryConfig>): boolean {
 }
 
 /**
- * Resolve span TTL from environment variable or config.
- */
-function resolveSpanTtlMs(config?: Partial<TelemetryConfig>): number {
-  const envValue = process.env.OTEL_SPAN_TTL_MS;
-  if (envValue) {
-    const parsed = parseInt(envValue, 10);
-    if (!isNaN(parsed) && parsed > 0) return parsed;
-  }
-  return config?.spanTtlMs ?? 1_800_000; // 30 minutes default
-}
-
-/**
  * Resolve shutdown timeout from environment variable or config.
  */
 function resolveShutdownTimeoutMs(config?: Partial<TelemetryConfig>): number {
@@ -287,8 +289,19 @@ function resolveShutdownTimeoutMs(config?: Partial<TelemetryConfig>): number {
 export function resolveTelemetryConfig(
   settingsConfig?: Partial<TelemetryConfig>,
 ): TelemetryConfig {
-  const tracesExporter = stripConsoleOnProtectedStdout(
-    resolveExporter("traces", settingsConfig),
+  // Legacy keys from earlier versions. Traces (and their knobs) no longer
+  // exist; a config still carrying them must not fail initialization, but it
+  // must not be dropped in silence either — a key that never takes effect is
+  // indistinguishable from one that never arrived.
+  const legacy = settingsConfig as Record<string, unknown> | undefined;
+  if (legacy?.tracesExporter !== undefined || legacy?.spanTtlMs !== undefined) {
+    logger?.warn(
+      "monitoring.telemetry.tracesExporter / spanTtlMs are no longer supported (trace collection was removed); ignoring them",
+    );
+  }
+
+  const metricsExporter = stripConsoleOnProtectedStdout(
+    resolveExporter("metrics", settingsConfig),
   );
   const logsExporter = stripConsoleOnProtectedStdout(
     resolveExporter("logs", settingsConfig),
@@ -298,8 +311,8 @@ export function resolveTelemetryConfig(
     enabled:
       process.env.OTEL_ENABLED === "false"
         ? false
-        : (settingsConfig?.enabled ?? !!(tracesExporter || logsExporter)),
-    tracesExporter,
+        : (settingsConfig?.enabled ?? !!(metricsExporter || logsExporter)),
+    metricsExporter,
     logsExporter,
     endpoint: resolveEndpoint(settingsConfig),
     protocol: resolveProtocol(settingsConfig),
@@ -309,28 +322,27 @@ export function resolveTelemetryConfig(
     logUserPrompts: resolveLogUserPrompts(settingsConfig),
     logToolContent: resolveLogToolContent(settingsConfig),
     shutdownTimeoutMs: resolveShutdownTimeoutMs(settingsConfig),
-    spanTtlMs: resolveSpanTtlMs(settingsConfig),
   };
 }
 
 /**
- * Create an OTLP trace exporter configured with endpoint, protocol, and headers.
+ * Create an OTLP metric exporter configured with endpoint, protocol, and headers.
  */
-function createOTLPTraceExporter(config: TelemetryConfig) {
+function createOTLPMetricExporter(config: TelemetryConfig) {
   const exporterConfig: {
     url?: string;
     headers?: Record<string, string> | HeadersProvider;
   } = {};
 
   if (config.endpoint) {
-    exporterConfig.url = `${config.endpoint}/v1/traces`;
+    exporterConfig.url = `${config.endpoint}/v1/metrics`;
   }
   const headers = buildExporterHeaders(config);
   if (headers) {
     exporterConfig.headers = headers;
   }
 
-  return new exporterTraceOtlpHttp!.OTLPTraceExporter(exporterConfig);
+  return new exporterMetricsOtlpHttp!.OTLPMetricExporter(exporterConfig);
 }
 
 /**
@@ -386,9 +398,9 @@ export async function initializeTelemetry(
       return;
     }
 
-    const { tracesExporter, logsExporter } = currentConfig;
+    const { metricsExporter, logsExporter } = currentConfig;
 
-    // Build resource attributes (lightweight assembly: sdk-trace-base + resources)
+    // Build resource attributes (lightweight assembly: sdk-metrics + resources)
     const resource = otelResources!.defaultResource().merge(
       otelResources!.resourceFromAttributes({
         "service.name": "wave",
@@ -398,20 +410,20 @@ export async function initializeTelemetry(
       }),
     );
 
-    const spanProcessors: import("@opentelemetry/sdk-trace-base").SpanProcessor[] =
+    const metricReaders: import("@opentelemetry/sdk-metrics").MetricReader[] =
       [];
 
-    if (tracesExporter === "otlp" && currentConfig.endpoint) {
-      spanProcessors.push(
-        new sdkTraceBase!.BatchSpanProcessor(
-          createOTLPTraceExporter(currentConfig),
-        ),
+    if (metricsExporter === "otlp" && currentConfig.endpoint) {
+      metricReaders.push(
+        new sdkMetrics!.PeriodicExportingMetricReader({
+          exporter: createOTLPMetricExporter(currentConfig),
+        }),
       );
-    } else if (tracesExporter === "console") {
-      spanProcessors.push(
-        new sdkTraceBase!.BatchSpanProcessor(
-          new sdkTraceBase!.ConsoleSpanExporter(),
-        ),
+    } else if (metricsExporter === "console") {
+      metricReaders.push(
+        new sdkMetrics!.PeriodicExportingMetricReader({
+          exporter: new sdkMetrics!.ConsoleMetricExporter(),
+        }),
       );
     }
 
@@ -433,13 +445,16 @@ export async function initializeTelemetry(
     }
 
     // Only initialize providers if at least one exporter is configured
-    if (spanProcessors.length > 0 || logProcessors.length > 0) {
-      if (spanProcessors.length > 0) {
-        tracerProvider = new sdkTraceBase!.BasicTracerProvider({
+    if (metricReaders.length > 0 || logProcessors.length > 0) {
+      if (metricReaders.length > 0) {
+        meterProvider = new sdkMetrics!.MeterProvider({
           resource,
-          spanProcessors,
+          readers: metricReaders,
         });
-        api!.trace.setGlobalTracerProvider(tracerProvider);
+        api!.metrics.setGlobalMeterProvider(meterProvider);
+        // Instruments are created on the meter and held by the metrics module;
+        // before this call every record function no-ops.
+        initMetrics(meterProvider.getMeter("wave"));
       }
 
       if (logProcessors.length > 0) {
@@ -453,7 +468,7 @@ export async function initializeTelemetry(
       initialized = true;
 
       logger?.info("OpenTelemetry initialized", {
-        tracesExporter,
+        metricsExporter,
         logsExporter,
         endpoint: currentConfig.endpoint,
       });
@@ -480,7 +495,7 @@ export async function initializeTelemetry(
  * process itself is done. Respects shutdownTimeoutMs config.
  */
 export async function flushTelemetry(): Promise<void> {
-  if (!tracerProvider && !loggerProvider) {
+  if (!meterProvider && !loggerProvider) {
     return;
   }
 
@@ -496,7 +511,7 @@ export async function flushTelemetry(): Promise<void> {
     });
 
     const flushes: Promise<void>[] = [];
-    if (tracerProvider) flushes.push(tracerProvider.forceFlush());
+    if (meterProvider) flushes.push(meterProvider.forceFlush());
     if (loggerProvider) flushes.push(loggerProvider.forceFlush());
 
     await Promise.race([Promise.all(flushes), timeoutPromise]);
@@ -514,14 +529,14 @@ export async function flushTelemetry(): Promise<void> {
  * Respects shutdownTimeoutMs config.
  *
  * The unregistration matters: `@opentelemetry/api` refuses to replace an
- * already-registered global provider — the second `setGlobalTracerProvider()`
+ * already-registered global provider — the second `setGlobalMeterProvider()`
  * returns `false` without touching the delegate — so leaving the providers
  * registered would make every later `initializeTelemetry()` in the same process
  * a silent no-op that keeps delegating to this shut-down provider (and
  * `initialized = true`, so nothing complains). Only `disable()` clears the slot.
  */
 export async function shutdownTelemetry(): Promise<void> {
-  if (!tracerProvider && !loggerProvider) {
+  if (!meterProvider && !loggerProvider) {
     return;
   }
 
@@ -537,7 +552,7 @@ export async function shutdownTelemetry(): Promise<void> {
     });
 
     const shutdowns: Promise<void>[] = [];
-    if (tracerProvider) shutdowns.push(tracerProvider.shutdown());
+    if (meterProvider) shutdowns.push(meterProvider.shutdown());
     if (loggerProvider) shutdowns.push(loggerProvider.shutdown());
 
     await Promise.race([Promise.all(shutdowns), timeoutPromise]);
@@ -548,22 +563,15 @@ export async function shutdownTelemetry(): Promise<void> {
     clearTimeout(timer);
     // Unregister only what this module registered — the global slots are
     // process-wide, and a host may have put its own provider there.
-    if (tracerProvider) api?.trace.disable();
+    if (meterProvider) api?.metrics.disable();
     if (loggerProvider) apiLogs?.logs.disable();
-    tracerProvider = undefined;
+    meterProvider = undefined;
     loggerProvider = undefined;
     initialized = false;
     currentConfig = undefined;
     headersProvider = undefined;
+    resetMetrics();
   }
-}
-
-/**
- * Get the OTEL API module (for creating tracers, meters, etc.).
- * Returns undefined if telemetry is not initialized.
- */
-export function getOTELApi(): typeof import("@opentelemetry/api") | undefined {
-  return api;
 }
 
 /**
