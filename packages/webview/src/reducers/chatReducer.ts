@@ -300,9 +300,16 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         selection: action.payload,
       };
     case "SET_QUEUED_MESSAGES":
+      // A queue arrives from another process, so "is it a list" is a runtime
+      // question the type cannot answer. Writing an undefined here reaches
+      // `QueuedMessageList`, throws on `.slice`, and takes the whole tree down
+      // (no error boundary); keeping the current queue is also the honest
+      // answer — a malformed update says nothing about the real queue.
       return {
         ...state,
-        queuedMessages: action.payload,
+        queuedMessages: Array.isArray(action.payload)
+          ? action.payload
+          : state.queuedMessages,
       };
     case "SET_EDITING_QUEUED_ID":
       return {

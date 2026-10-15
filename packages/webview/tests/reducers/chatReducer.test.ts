@@ -1359,4 +1359,36 @@ describe("chatReducer", () => {
       expect(newState).not.toHaveProperty("theme");
     });
   });
+
+  describe("SET_QUEUED_MESSAGES", () => {
+    it("replaces the queue when a list arrives", () => {
+      const state = {
+        ...initialState,
+        queuedMessages: [{ id: "q1", content: "补一条" }],
+      };
+      const next = [{ id: "q2", content: "换成这条" }];
+
+      const newState = chatReducer(state, {
+        type: "SET_QUEUED_MESSAGES",
+        payload: next,
+      });
+
+      expect(newState.queuedMessages).toBe(next);
+    });
+
+    it("keeps the current queue when the payload is not a list", () => {
+      // 队列从另一个进程来 ——「是不是数组」是类型答不了的问题。把它写成
+      // undefined 会一路传到 QueuedMessageList 的 `.slice`，抛错卸载整棵树
+      // （webview 里没有 error boundary），手机上看到的就是一片白屏。
+      const queued = [{ id: "q1", content: "补一条" }];
+      const state = { ...initialState, queuedMessages: queued };
+
+      const newState = chatReducer(state, {
+        type: "SET_QUEUED_MESSAGES",
+        payload: undefined,
+      } as never);
+
+      expect(newState.queuedMessages).toBe(queued);
+    });
+  });
 });
