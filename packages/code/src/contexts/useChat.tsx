@@ -5,7 +5,6 @@ import React, {
   useRef,
   useEffect,
   useState,
-  useMemo,
 } from "react";
 import { useInput, useStdout } from "ink";
 import { useAppConfig } from "./useAppConfig.js";
@@ -415,117 +414,6 @@ const applyToolBlockUpdate = (
   });
 };
 
-/**
- * Throttled updater for HEIGHT-SENSITIVE message-state updates only. The one
- * 500ms window-concat window now carries ONLY tool `running`-stage updates
- * (the `shortResult`/`result` chunks bash streams while executing) — the only
- * updates whose line count oscillates 1–N lines and causes layout flicker.
- * Text/reasoning deltas and structural updates bypass this window entirely
- * (applied via setMessages directly), so streaming keeps its per-delta
- * typewriter cadence. See docs/specs/core/stream-content-updates.md
- * (「CLI 消息状态按更新是否改变卡片高度分流渲染」+ 2026-10-15 会议).
- *
- * Semantics: leading edge applies immediately and opens a window; updates
- * arriving within the window are queued in arrival order (FIFO) and applied
- * at the trailing edge as ONE composed updater, so no update is lost and no
- * update is reordered. `flush` applies queued updates immediately (used by
- * tool `end`, which must land AFTER any pending running value so the final
- * result cannot be resurrected); `cancel` drops queued updates (used by
- * refreshMessages after pulling the authoritative snapshot — the queued
- * updates are already contained in it).
- *
- * `wait <= 0` disables the window entirely: every update applies immediately
- * (experimental escape hatch — WAVE_STREAM_THROTTLE_MS=0, see
- * resolveStreamThrottleMs). The timer is never armed and the queue stays
- * empty, so `flush`/`cancel` become safe no-ops.
- *
- * Cross-channel reordering (a non-throttled update landing before a queued
- * running update) is safe: every combination touches disjoint state
- * (different message/block/field), `end` flushes before applying, and a full
- * refresh cancels. A queued running update can also never land after its
- * message entered Ink's <Static>: pending implies the block's stage is still
- * "running" in state, which keeps the whole message in the dynamic zone (see
- * MessageList's runningMessageIndices). The one protocol-illegal case — a
- * streaming chunk for a tool block that is already running — is unreachable
- * (parameter streaming precedes execution) and would be overwritten by the
- * authoritative `end` anyway.
- */
-export function createThrottledUpdater<T>(
-  apply: (updater: (prev: T) => T) => void,
-  wait: number,
-): {
-  (updater: (prev: T) => T): void;
-  cancel: () => void;
-  flush: () => void;
-} {
-  let timer: NodeJS.Timeout | null = null;
-  let queued: Array<(prev: T) => T> = [];
-
-  const fire = () => {
-    if (queued.length === 0) return;
-    const batch = queued;
-    queued = [];
-    // Compose the whole batch into a single updater applied in FIFO order —
-    // one state commit per trailing edge, no update dropped, no reordering.
-    apply((prev) => batch.reduce((acc, upd) => upd(acc), prev));
-  };
-
-  const throttled = (updater: (prev: T) => T) => {
-    // Disabled mode (wait <= 0): apply immediately — no window, no queue.
-    // The timer below is never armed and the queue stays empty, so
-    // cancel/flush are safe no-ops.
-    if (wait <= 0) {
-      apply(updater);
-      return;
-    }
-    if (timer) {
-      queued.push(updater);
-      return;
-    }
-    // Leading edge: apply immediately, then open a window whose trailing
-    // edge only carries updates arriving within the window.
-    apply(updater);
-    timer = setTimeout(() => {
-      timer = null;
-      fire();
-    }, wait);
-  };
-
-  throttled.cancel = () => {
-    if (timer) {
-      clearTimeout(timer);
-      timer = null;
-    }
-    queued = [];
-  };
-
-  throttled.flush = () => {
-    if (timer) {
-      clearTimeout(timer);
-      timer = null;
-    }
-    fire();
-  };
-
-  return throttled;
-}
-
-export const DEFAULT_STREAM_THROTTLE_MS = 500;
-
-/**
- * Resolve the height-sensitive throttle window from WAVE_STREAM_THROTTLE_MS.
- * Unset/blank/non-numeric → the 500ms default; `<= 0` disables throttling
- * entirely (experimental escape hatch to observe fully-immediate rendering);
- * a positive value is used as-is. Read once when ChatProvider mounts —
- * process env does not change mid-run.
- */
-export function resolveStreamThrottleMs(raw: string | undefined): number {
-  const trimmed = raw?.trim();
-  if (!trimmed) return DEFAULT_STREAM_THROTTLE_MS;
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : DEFAULT_STREAM_THROTTLE_MS;
-}
-
 export const ChatProvider: React.FC<ChatProviderProps> = ({
   children,
   bypassPermissions,
@@ -556,34 +444,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [latestTotalTokens, setLatestTotalTokens] = useState(0);
   const [maxInputTokens, setMaxInputTokens] = useState(200000);
 
-  // Throttled entry for HEIGHT-SENSITIVE message-state updates — the 500ms
-  // window-concat window carries ONLY the tool `running` stage's
-  // `shortResult`/`result` updates (bash streams them per chunk; the short
-  // result line count oscillates 1–N lines → layout flicker). Everything else
-  // (content/reasoning deltas, tool start/streaming/end, structural updates)
-  // applies via setMessages directly: its height change is monotonic (text)
-  // or one-shot, so the window would only add latency, and Ink's built-in
-  // maxFps:30 already bounds terminal writes. WAVE_STREAM_THROTTLE_MS
-  // overrides the window (<= 0 disables throttling entirely — experimental
-  // escape hatch to observe fully-immediate rendering). See
-  // createThrottledUpdater + docs/specs/core/stream-content-updates.md
-  // (2026-10-15 会议).
-  const updateMessages = useMemo(
-    () =>
-      createThrottledUpdater<Message[]>(
-        (updater) => setMessages(updater),
-        resolveStreamThrottleMs(process.env.WAVE_STREAM_THROTTLE_MS),
-      ),
-    [],
-  );
+  // All message-state updates apply IMMEDIATELY via setMessages — no data-layer
+  // throttling (removed 2026-10-15 after observing fully-immediate rendering in
+  // a real terminal with no flicker: Ink's log-update only rewrites the dynamic
+  // zone tail and its built-in maxFps:30 coalesces short-result line-count
+  // oscillation). Arrival order = application order. See
+  // docs/specs/core/stream-content-updates.md (2026-10-15 会议).
 
   useEffect(() => {
     isExpandedRef.current = isExpanded;
-    if (isExpanded) {
-      // Cancel pending throttled updates so the frozen expanded view isn't overwritten
-      updateMessages.cancel();
-    }
-  }, [isExpanded, updateMessages]);
+  }, [isExpanded]);
 
   const [isLoading, setIsLoading] = useState(false);
   const [sessionId, setSessionId] = useState("");
@@ -731,19 +601,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       // Pull the full UI display stream (keeps pre-compaction history);
       // `agent.messages` would only expose the folded API context.
       const msgs = agentRef.current.displayMessages.map(snapshotMessage);
-      // Snapshot-safe: the full-list replacement makes the SDK state
-      // authoritative. Any update still queued inside the 500ms throttle
-      // window was applied to the SDK before this pull, so it is already
-      // contained in `msgs` — dropping it prevents the trailing-edge flush
-      // from re-appending the pre-refresh chunk on top of the snapshot
-      // (first-word duplication). Updates arriving after the pull start fresh
-      // windows and append on top of the snapshot. See
-      // docs/specs/core/stream-content-updates.md.
-      updateMessages.cancel();
+      // The snapshot makes the SDK state authoritative: with no throttle
+      // window there is nothing pending to cancel — every pre-pull update is
+      // already applied and contained in `msgs`, and post-pull deltas append
+      // on top of the snapshot. See docs/specs/core/stream-content-updates.md.
       setMessages(msgs);
       setLatestTotalTokens(extractLatestTotalTokens(msgs));
     }
-  }, [updateMessages]);
+  }, []);
 
   // Permission confirmation methods with queue support
   const showConfirmation = useCallback(
@@ -816,11 +681,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
       const callbacks: AgentCallbacks = {
         // ── Incremental message updates (no full-list pushes) ──────
-        // Split by "does this update change card height?" (spec 2026-10-15):
-        // tool `running` shortResult/result goes through the throttled
-        // `updateMessages` (line-count oscillation → flicker); everything
-        // else applies immediately via setMessages — its height change is
-        // monotonic (text/reasoning) or one-shot (structural/tool stages).
+        // Every update applies immediately via setMessages — no data-layer
+        // throttling (removed 2026-10-15, see docs/specs/core/stream-content-updates.md).
+        // Arrival order = application order; terminal write frequency is
+        // bounded by Ink's built-in maxFps:30.
         onUserMessageAdded: () => {
           if (isExpandedRef.current || !agentRef.current) return;
           const msgs = agentRef.current.messages;
@@ -868,17 +732,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         },
         onToolBlockUpdated: (params) => {
           if (isExpandedRef.current) return;
-          if (params.stage === "running") {
-            // Height-sensitive: shortResult/result stream per chunk and the
-            // short-result line count oscillates → coalesce in the 500ms
-            // window (≤1 render per window, stable card height).
-            updateMessages((prev) => applyToolBlockUpdate(prev, params));
-            return;
-          }
-          // start/streaming/end apply directly. `end` first flushes any
-          // queued running update so the authoritative final value lands
-          // last (a pending running value cannot resurrect after end).
-          if (params.stage === "end") updateMessages.flush();
+          // All stages (start/streaming/running/end) apply directly —
+          // `end` carries the authoritative final values.
           setMessages((prev) => applyToolBlockUpdate(prev, params));
         },
         onErrorBlockAdded: (error: string) => {
@@ -1101,7 +956,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       originalCwd,
       model,
       initialPermissionMode,
-      updateMessages,
       mcpServers,
     ],
   );
@@ -1159,7 +1013,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      updateMessages.cancel();
       if (agentRef.current) {
         try {
           // Display usage summary before cleanup
@@ -1173,7 +1026,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         agentRef.current.destroy();
       }
     };
-  }, [updateMessages]);
+  }, []);
 
   // Send message function (including judgment logic)
   const sendMessage = useCallback(
