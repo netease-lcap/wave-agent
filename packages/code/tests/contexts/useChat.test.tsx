@@ -59,6 +59,28 @@ vi.mock("../../src/utils/logger.js", () => ({
   },
 }));
 
+/**
+ * The remote-control sink is faked here (rather than left to the real factory,
+ * which reads the user's settings) so the outbound shape can be asserted: the
+ * streaming callbacks must reach the relay, because that is what puts this host
+ * on the same wire contract — and under the same merge window — as a daemon.
+ */
+const remote = vi.hoisted(() => ({
+  notifications: [] as Array<{ method: string; params: unknown }>,
+}));
+
+vi.mock("../../src/remote/remoteControlSink.js", () => ({
+  createRemoteControlSinkFactory: () => () => ({
+    sendNotification: (method: string, params: unknown) => {
+      remote.notifications.push({ method, params });
+    },
+    getSnapshot: () => ({ state: "off" }),
+    connect: () => {},
+    disconnect: () => {},
+    stop: () => {},
+  }),
+}));
+
 // Mock usageSummary
 vi.mock("../../src/utils/usageSummary.js", () => ({
   displayUsageSummary: vi.fn(),
@@ -282,6 +304,65 @@ describe("ChatProvider", () => {
       "Check this: Expanded content",
       undefined,
     );
+  });
+
+  it("mirrors the streaming callbacks onto the remote path", async () => {
+    renderWithProvider(() => {});
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    // Mount already signalled `messagesChange` / `loadingChange` /
+    // `permissionModeChange`; this test only owns the content-carrying family.
+    remote.notifications.length = 0;
+
+    const callbacks = vi.mocked(Agent.create).mock.calls[0][0].callbacks!;
+    callbacks.onAssistantContentUpdated!({
+      messageId: "m1",
+      chunk: "he",
+      stage: "streaming",
+    });
+    callbacks.onAssistantReasoningUpdated!({
+      messageId: "m1",
+      chunk: "th",
+      stage: "streaming",
+    });
+    callbacks.onToolBlockUpdated!({
+      messageId: "m1",
+      id: "t1",
+      stage: "streaming",
+      parametersChunk: '{"a"',
+      parameters: '{"a":1}',
+    });
+    callbacks.onErrorBlockAdded!("API Error: 500");
+
+    // The daemon puts these on the wire from its bridge; this host has to emit the
+    // same ones or the phone differs depending on which process serves it — the
+    // three deltas ride the 150ms window, and the error block is the one family a
+    // signal cannot recover, because it lands inside the last message and `since`
+    // is anchored on exactly that message (spec remote-control「前台 CLI 会话也能
+    // 被手机接管」场景 10 / 11).
+    expect(remote.notifications).toEqual([
+      {
+        method: "assistantContentUpdated",
+        params: { messageId: "m1", chunk: "he", stage: "streaming" },
+      },
+      {
+        method: "assistantReasoningUpdated",
+        params: { messageId: "m1", chunk: "th", stage: "streaming" },
+      },
+      {
+        method: "toolBlockUpdated",
+        params: {
+          messageId: "m1",
+          id: "t1",
+          stage: "streaming",
+          parametersChunk: '{"a"',
+        },
+      },
+      { method: "errorBlockAdded", params: { error: "API Error: 500" } },
+    ]);
   });
 
   it("handles sendMessage for bash commands", async () => {
