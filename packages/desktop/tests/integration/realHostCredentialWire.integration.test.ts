@@ -280,11 +280,14 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
 
   it("文件里没有这些键时：空载荷保存不新建键（不被钉住），生效值仍是 SDK 默认 zh-CN", async () => {
     // 回包是**生效视图**（本 PR 起回带 preferenceSources）：机器环境里若预设了
-    // WAVE_MAX_INPUT_TOKENS，「未设置态」的前提就不成立（生效值来自 env 而非
-    // 文件）。本用例要验的是「文件里没有键」这一形态，所以先把该层钉成未提供，
-    // 否则结果随开发者机器的环境变量漂移（CI 干净、本机可能已设）。
+    // WAVE_MAX_INPUT_TOKENS / WAVE_COMPLETION_MODEL，「未设置态」的前提就不成立
+    // （生效值/来源来自 env 而非文件，开发机上很常见）。本用例要验的是「文件里
+    // 没有键」这一形态，所以先把该层钉成未提供，否则结果随开发者机器的环境变量
+    // 漂移（CI 干净、本机可能已设）。
     const savedMaxInputTokens = process.env.WAVE_MAX_INPUT_TOKENS;
+    const savedCompletionModel = process.env.WAVE_COMPLETION_MODEL;
     delete process.env.WAVE_MAX_INPUT_TOKENS;
+    delete process.env.WAVE_COMPLETION_MODEL;
     try {
       await openProject(dirA);
       await ctx.turn("第一轮");
@@ -315,12 +318,16 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
       expect(shownData).not.toHaveProperty("contextLength");
       expect(shownData).not.toHaveProperty("autoMemoryEnabled");
       expect(shownData).not.toHaveProperty("autoMemoryFrequency");
+      // 来源层全列在 `preferenceSources` 里，**每个键恒有来源**（缺省 default）——
+      // 键集合 = UserPreferenceKey 全集，补全两键（`fe1e1da3` 起可配）也在内。
       expect(shownData.preferenceSources).toEqual({
         language: "default",
         contextLength: "default",
         autoMemoryEnabled: "default",
         autoMemoryFrequency: "default",
         serverUrl: "default",
+        completionModel: "default",
+        completionEnabled: "default",
       });
 
       // 「一个字都没改就点保存」在真机上就是空载荷（webview 的 diff 载荷语义）：
@@ -366,6 +373,11 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
         delete process.env.WAVE_MAX_INPUT_TOKENS;
       } else {
         process.env.WAVE_MAX_INPUT_TOKENS = savedMaxInputTokens;
+      }
+      if (savedCompletionModel === undefined) {
+        delete process.env.WAVE_COMPLETION_MODEL;
+      } else {
+        process.env.WAVE_COMPLETION_MODEL = savedCompletionModel;
       }
     }
   });
