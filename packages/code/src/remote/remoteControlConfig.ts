@@ -10,26 +10,27 @@
  *   that lives elsewhere is reachable through `WAVE_REMOTE_CONTROL_URL`, which
  *   is the **whole** subscribe URL (host id included), not an origin.
  * - **This machine's identity.** The channel is keyed by the machine
- *   (`/v1/hosts/ws/{hostId}/subscribe`) and **the relay assigns the id**: it is
- *   the row the relay inserts when a machine registers (`POST /api/relay/hosts`)
- *   and the credential returned with it (`rch_…`) is checked against that same
- *   row on every handshake. An id minted here would name a channel that does not
- *   exist — both ends get refused long before anything is forwarded.
+ *   (`/v1/hosts/ws/{hostId}/subscribe`) and the id is **derived here** from the
+ *   OS machine id plus the signed-in account (`hostIdentity.ts`), then sent along
+ *   with the registration: the relay reuses the row it already holds for that id,
+ *   or creates one with it. That is what keeps one machine to one row — and one
+ *   page URL — when a state file is lost.
  * - **The page a phone opens.** `<server>/remote/?host={hostId}`, assembled here
  *   because the process holding the channel key is the only one that knows both
  *   halves of it — and it is what the QR code encodes.
  *
  * Registration happens **once per machine**. The id and its token are long-lived
- * (90 days, revocable) and the endpoint is not idempotent — calling it again
- * leaves a second row behind that still connects. So the pair is kept in
- * `~/.wave/remote-control.json`, read on every boot and written only when a
- * machine registers for the first time.
+ * (90 days, revocable) and the pair is kept in `~/.wave/remote-control.json`,
+ * read on every boot and written only when a machine registers. A stored
+ * identity always wins over the derivation — it is reused as-is and never
+ * re-derived, so no machine moves to a new row when the derivation changes.
  */
 
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { authService, createAuthAwareFetch } from "wave-agent-sdk";
+import { deriveHostId } from "./hostIdentity.js";
 import { readNearestPackageJson } from "../utils/readPackageJson.js";
 
 /** Everything the relay connection needs, resolved fresh at connect time. */
@@ -168,6 +169,13 @@ export function describeRegistrationFailure(
 export async function registerRelayHost(options: {
   name: string;
   platform?: string;
+  /**
+   * The id derived from this machine's identity (`deriveHostId`). The relay reuses
+   * the row it already has for that id and mints one only when it has none — so a
+   * machine that lost its state file comes back as itself instead of leaving a
+   * second row behind. Omitted when the identity cannot be derived.
+   */
+  id?: string;
 }): Promise<RelayHostRegistration> {
   if (!authService.getSSOToken()) throw new Error(NOT_SIGNED_IN);
 
@@ -181,6 +189,7 @@ export async function registerRelayHost(options: {
         body: JSON.stringify({
           name: options.name,
           platform: options.platform ?? process.platform,
+          ...(options.id ? { id: options.id } : {}),
         }),
         signal: AbortSignal.timeout(REGISTER_TIMEOUT_MS),
       },
@@ -213,7 +222,9 @@ export async function registerRelayHost(options: {
 
 /**
  * This machine's relay identity: the stored one when there is one, otherwise a
- * fresh registration. Never registers twice for the same machine.
+ * fresh registration. Never registers twice for the same machine — and, with the
+ * derived id, no longer registers a second row for it either when the state file
+ * went missing.
  */
 export async function ensureRelayHostRegistration(
   name?: string,
@@ -226,7 +237,10 @@ export async function ensureRelayHostRegistration(
   }
 
   const label = name && name.trim().length > 0 ? name.trim() : os.hostname();
-  const registration = await registerRelayHost({ name: label });
+  const registration = await registerRelayHost({
+    name: label,
+    id: deriveHostId(),
+  });
   writeState({
     hostId: registration.hostId,
     hostToken: registration.hostToken,

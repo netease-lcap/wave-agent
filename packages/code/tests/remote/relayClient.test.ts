@@ -13,6 +13,8 @@ import {
   parseRelayFrame,
   type RelayEnvelope,
   RELAY_CLOSE_BACKPRESSURE,
+  RELAY_CLOSE_REPLACED,
+  RELAY_CLOSE_UNAVAILABLE,
   RELAY_MAX_ATTEMPTS,
   RELAY_MAX_BUFFERED_BYTES,
   RELAY_MAX_UNAVAILABLE_ATTEMPTS,
@@ -50,8 +52,8 @@ class FakeSocket implements RelaySocket {
     this.onmessage?.({ data });
   }
 
-  drop(code?: number): void {
-    this.onclose?.({ code });
+  drop(code?: number, reason?: string): void {
+    this.onclose?.({ code, reason });
   }
 
   frames(): Array<Record<string, unknown>> {
@@ -322,6 +324,27 @@ describe("RelayClient", () => {
     );
     vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS * 10);
     expect(sockets).toHaveLength(RELAY_MAX_UNAVAILABLE_ATTEMPTS + 1);
+  });
+
+  it("should step down for good when another process took the channel over", () => {
+    const client = createClient();
+    client.start();
+    sockets[0].open();
+    sockets[0].drop(RELAY_CLOSE_UNAVAILABLE, RELAY_CLOSE_REPLACED);
+
+    expect(onFatal).toHaveBeenCalledWith(
+      expect.stringContaining("took over remote control"),
+    );
+    expect(client.getState()).toBe("closed");
+
+    // No retry: retrying here is what made two processes replace each other
+    // every two seconds forever — each successful connect resets the budget, so
+    // neither side ever runs out of it.
+    vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS * 10);
+    expect(sockets).toHaveLength(1);
+
+    client.start();
+    expect(sockets).toHaveLength(1);
   });
 
   it("should treat 4003 as permanent: no retry, no reconnect on a later start", () => {
