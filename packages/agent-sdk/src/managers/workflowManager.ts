@@ -7,7 +7,6 @@ import { BackgroundTaskManager } from "./backgroundTaskManager.js";
 import { MessageQueue } from "./messageQueue.js";
 import { SubagentManager } from "./subagentManager.js";
 import { taskNotificationToXml } from "../utils/notificationXml.js";
-import { TASK_STOP_TOOL_NAME } from "../constants/tools.js";
 import { ConcurrencyLimiter } from "../workflow/concurrencyLimiter.js";
 import { TurnBudgetLedger } from "./turnBudgetLedger.js";
 import { ProgressReporter } from "../workflow/progressReporter.js";
@@ -23,11 +22,7 @@ import {
 } from "../workflow/scriptRuntime.js";
 import type { WorkflowRun } from "../workflow/types.js";
 import { RunStateStore } from "../workflow/runState.js";
-import {
-  WORKFLOW_AGENT_CALL_CAP,
-  WORKFLOW_SIZE_WARNING_AGENTS,
-  WORKFLOW_SIZE_WARNING_TOKENS,
-} from "../workflow/workflowErrors.js";
+import { isWorkflowRunOversized } from "../workflow/workflowErrors.js";
 import { logger } from "../utils/globalLogger.js";
 
 /**
@@ -253,7 +248,6 @@ export class WorkflowManager {
       totalTokens: 0,
       failures: [],
       resumeFromRunId: opts?.resumeFromRunId,
-      sizeWarningSent: false,
       logs: [],
     };
 
@@ -313,7 +307,7 @@ export class WorkflowManager {
       run.phases = progressReporter.getPhaseStates();
       run.totalAgents = progressReporter.totalAgents;
       run.totalTokens = progressReporter.totalTokens;
-      this.maybeWarnSize(run);
+      this.logSizeCrossing(run);
       this.backgroundTaskManager.notifyTasksChange();
     };
     progressReporter.onEvent(onProgress);
@@ -518,51 +512,22 @@ export class WorkflowManager {
   }
 
   /**
-   * One heads-up notification the first time a run crosses a size threshold —
-   * Claude Code's `CLAUDE_CODE_WORKFLOW_SIZE_WARNING_*` behaviour, which it
-   * surfaces as a marker in its workflow list; wave puts it in the model's
-   * context instead, so the model can act on it (stop the run, or say what the
-   * run is about to cost) without a human watching the list
-   * (spec「预算与规模硬上限」场景 7).
+   * Log the moment a run crosses a size threshold. Crossing marks the run as
+   * oversized in the workflow UI (spec「预算与规模硬上限」场景 7); the model is
+   * not told, so this log line is the only trace left for whoever debugs a run
+   * that got big.
    *
-   * Fires at most once per run (`run.sizeWarningSent`). The status is
-   * `"running"`: the run is alive, this is not a completion, and the block type
-   * carries non-terminal states precisely so a consumer never reads this as
-   * "the task is over".
+   * The `run.sizeWarning` assignment here is what makes it fire once (the field
+   * is sticky, and the counters only grow); the authoritative verdict for the
+   * snapshot is derived in `listRuns()`, which is also what covers a run read
+   * back from disk.
    */
-  private maybeWarnSize(run: WorkflowRun): void {
-    if (run.sizeWarningSent) return;
-    const tooManyAgents = run.totalAgents > WORKFLOW_SIZE_WARNING_AGENTS;
-    const tooManyTokens = run.totalTokens > WORKFLOW_SIZE_WARNING_TOKENS;
-    if (!tooManyAgents && !tooManyTokens) return;
+  private logSizeCrossing(run: WorkflowRun): void {
+    if (run.sizeWarning || !isWorkflowRunOversized(run)) return;
 
-    run.sizeWarningSent = true;
-
-    const tokenTarget = this.getTurnTokenTarget();
-    const hardCaps =
-      `${WORKFLOW_AGENT_CALL_CAP} agents per run` +
-      (tokenTarget === null
-        ? ""
-        : `, ${tokenTarget} output tokens for the turn`);
-    const warning =
-      `Dynamic workflow "${run.meta.name}" is large: ${run.totalAgents} agents started ` +
-      `and ${run.totalTokens} tokens spent so far (warning thresholds: ` +
-      `${WORKFLOW_SIZE_WARNING_AGENTS} agents / ${WORKFLOW_SIZE_WARNING_TOKENS} tokens). ` +
-      `Hard caps: ${hardCaps}. ` +
-      `Stop it if this is not what the user asked for: ${TASK_STOP_TOOL_NAME} with task_id "${run.runId}".`;
-
-    this.messageQueue.enqueueNotification(
-      taskNotificationToXml({
-        type: "task_notification",
-        taskId: run.runId,
-        taskType: "workflow",
-        status: "running",
-        summary: warning,
-      }),
-    );
-
+    run.sizeWarning = true;
     logger.warn(
-      `[Workflow] Run ${run.runId} crossed the size warning threshold: ${run.totalAgents} agents, ${run.totalTokens} tokens`,
+      `[Workflow] Run ${run.runId} crossed the size threshold: ${run.totalAgents} agents, ${run.totalTokens} tokens`,
     );
   }
 
@@ -769,7 +734,17 @@ export class WorkflowManager {
       this.notifyInterrupted(run);
     }
 
-    return Array.from(this.runs.values());
+    // The oversized marker is derived here, at the one boundary every UI
+    // surface reads (`getWorkflowRuns()`), rather than tracked as state: the
+    // verdict is a function of the counters, so a run read back from disk is
+    // marked exactly like a live one, and nothing has to be persisted
+    // (spec「预算与规模硬上限」场景 7).
+    const runs = Array.from(this.runs.values());
+    for (const run of runs) {
+      run.sizeWarning = isWorkflowRunOversized(run);
+    }
+
+    return runs;
   }
 
   /**

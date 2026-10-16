@@ -11,6 +11,10 @@
  */
 
 import React from "react";
+import {
+  WORKFLOW_SIZE_WARNING_AGENTS,
+  WORKFLOW_SIZE_WARNING_TOKENS,
+} from "wave-agent-sdk/constants";
 import type { SerializableWorkflowRun } from "../types";
 
 export const formatDuration = (ms: number): string => {
@@ -27,7 +31,10 @@ export const formatTime = (timestamp: number): string => {
 
 export const formatTokens = (tokens: number): string => {
   if (tokens < 1000) return `${tokens}`;
-  return `${(tokens / 1000).toFixed(1)}k`;
+  // Millions matter here: a run crosses the 1.5M size threshold already showing
+  // "1500.0k", and the oversized line names that threshold.
+  if (tokens < 1_000_000) return `${(tokens / 1000).toFixed(1)}k`;
+  return `${(tokens / 1_000_000).toFixed(1)}M`;
 };
 
 export const workflowStatusColor = (status: string): string => {
@@ -103,6 +110,30 @@ const WorkflowRunProgress: React.FC<{ run: SerializableWorkflowRun }> = ({
       >
         <span style={labelStyle}>Script:</span> {run.scriptPath}
       </div>
+      {/* Oversized marker (spec「预算与规模硬上限」场景 7): past the thresholds is
+          the human's cue to stop the run, and the model is never told, so the
+          line has to state the scale and the thresholds itself. It renders in
+          both panels that inspect a run (`/workflows` detail and `/tasks`
+          detail), and both show their own 停止 button while a run is running —
+          so the hint points at that button rather than at another panel. */}
+      {run.sizeWarning && (
+        <div
+          data-testid="workflow-oversized"
+          style={{
+            ...rowStyle,
+            color: "var(--vscode-editorWarning-foreground, #d18616)",
+          }}
+        >
+          <span role="img" aria-label="运行过大">
+            ⚠
+          </span>{" "}
+          运行过大：{run.totalAgents} agents / {formatTokens(run.totalTokens)}{" "}
+          tokens · 越过阈值 {WORKFLOW_SIZE_WARNING_AGENTS} agents /{" "}
+          {formatTokens(WORKFLOW_SIZE_WARNING_TOKENS)} tokens
+          {run.status === "running" && " · 运行中，可点「停止」按钮中止"}
+        </div>
+      )}
+
       {run.error && (
         <div style={{ ...rowStyle, color: "#f48771", wordBreak: "break-all" }}>
           <span style={labelStyle}>Error:</span> {run.error}
