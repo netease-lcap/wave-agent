@@ -104,6 +104,13 @@ export const defaultRelaySocketFactory: RelaySocketFactory = (url) => {
 export const RELAY_CLOSE_UNAVAILABLE = 4001; // transient — the host is not ready yet
 export const RELAY_CLOSE_UNAUTHORIZED = 4003; // permanent — do not come back
 export const RELAY_CLOSE_BACKPRESSURE = 4008; // we gave up on a stuck socket
+/**
+ * The `4001` reason the relay sends when another process on this machine dialled
+ * in and took the channel over (it keeps the original host running the same
+ * close code, so only the reason separates "I was replaced" from "this machine
+ * is not online" — and those two want opposite answers: step down, versus retry).
+ */
+export const RELAY_CLOSE_REPLACED = "replaced";
 
 /** Retry cadence. Flat 2s: the relay is a well-known host, not a flaky peer —
  * exponential backoff would only delay a laptop waking from sleep. */
@@ -379,13 +386,28 @@ export class RelayClient {
       if (this.socket !== socket) return;
       this.socket = undefined;
       this.stopPing();
-      this.handleClose(event?.code);
+      this.handleClose(event?.code, event?.reason);
     };
   }
 
-  private handleClose(code: number | undefined): void {
+  private handleClose(code: number | undefined, reason?: string): void {
     if (this.stopped) {
       this.state = "closed";
+      return;
+    }
+
+    if (code === RELAY_CLOSE_UNAVAILABLE && reason === RELAY_CLOSE_REPLACED) {
+      // Another process on this machine dialled in and the relay handed the
+      // channel over to it. Retrying would take the channel back, and then the
+      // other side would retry too: the two would replace each other every two
+      // seconds, forever — every successful connect resets the retry budget, so
+      // neither ever exceeds it. So this side steps down for good; dialling
+      // again from here is an explicit user action and takes the channel back.
+      this.stopped = true;
+      this.state = "closed";
+      this.options.onFatal?.(
+        "another wave process on this machine took over remote control",
+      );
       return;
     }
 

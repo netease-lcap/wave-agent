@@ -16,7 +16,10 @@ import {
 import { REMOTE_MAX_FRAME_BYTES } from "../../src/remote/frameBudget.js";
 import type { RemoteControlStatus } from "wave-agent-sdk";
 import {
+  RELAY_CLOSE_REPLACED,
+  RELAY_CLOSE_UNAVAILABLE,
   RELAY_PING_INTERVAL_MS,
+  RELAY_RETRY_DELAY_MS,
   type RelaySocket,
 } from "../../src/remote/relayClient.js";
 
@@ -236,6 +239,29 @@ describe("RemoteControlService", () => {
     expect(onStatusChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ state: "error" }),
     );
+  });
+
+  it("should step down when another entry takes the channel over, and dial again on the next connect", async () => {
+    const service = await connect(createBridgeStub());
+
+    socket.onclose?.({
+      code: RELAY_CLOSE_UNAVAILABLE,
+      reason: RELAY_CLOSE_REPLACED,
+    });
+
+    expect(service.getSnapshot()).toMatchObject({ state: "error" });
+    expect(service.getSnapshot().message).toContain("took over remote control");
+    // Nothing is scheduled: the process that took the channel over keeps it,
+    // instead of the two replacing each other every two seconds.
+    vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS * 10);
+    expect(service.getSnapshot()).toMatchObject({ state: "error" });
+
+    // Dialling again from this entry is an explicit user action, and takes the
+    // channel back (the relay hands it to whoever connected last).
+    service.connect();
+    await vi.waitFor(() => {
+      expect(socket.onopen).not.toBeNull();
+    });
   });
 
   it("should say why the relay refused, including a version floor", async () => {

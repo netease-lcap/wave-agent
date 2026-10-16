@@ -54,6 +54,14 @@ vi.mock("../../src/utils/readPackageJson.js", () => ({
   readNearestPackageJson: () => ({ name: "wave-code", version: "1.3.0" }),
 }));
 
+const identity = vi.hoisted(() => ({
+  deriveHostId: vi.fn<() => string | undefined>(),
+}));
+
+vi.mock("../../src/remote/hostIdentity.js", () => ({
+  deriveHostId: identity.deriveHostId,
+}));
+
 import {
   buildPageUrl,
   buildSubscribeUrl,
@@ -133,6 +141,7 @@ describe("remoteControlConfig", () => {
     vi.clearAllMocks();
     auth.getSSOToken.mockReturnValue("sso-token");
     auth.getServerUrl.mockReturnValue("https://codechat.example.com");
+    identity.deriveHostId.mockReturnValue("derived-machine-id");
     delete process.env.WAVE_REMOTE_CONTROL_URL;
   });
 
@@ -208,13 +217,14 @@ describe("remoteControlConfig", () => {
   });
 
   describe("ensureRelayHostRegistration", () => {
-    it("should take the identity the relay assigns and keep it", async () => {
+    it("should register with the derived id and keep what the relay hands back", async () => {
       stubFetch(REGISTERED);
 
       const registration = await ensureRelayHostRegistration("mac");
 
-      // The id is the relay's, not one minted here: a locally invented id names
-      // a channel with no row behind it, and both ends are refused on it.
+      // The id goes out with the request and the relay's answer is what is
+      // stored: the relay is still the one that decides which row this channel
+      // is (it reuses the derived one, or mints a new one when that id is taken).
       expect(registration.hostId).toBe("relay-assigned-id");
       expect(registration.hostToken).toBe("rch_secret");
       expect(calls).toHaveLength(1);
@@ -224,11 +234,27 @@ describe("remoteControlConfig", () => {
       expect(calls[0].body).toEqual({
         name: "mac",
         platform: process.platform,
+        id: "derived-machine-id",
       });
       expect(storedState()).toMatchObject({
         hostId: "relay-assigned-id",
         hostToken: "rch_secret",
         name: "mac",
+      });
+    });
+
+    it("should register without an id when this machine cannot be identified", async () => {
+      // No machine id / no account: the relay mints the id, exactly as it did
+      // before the derivation existed. The machine only loses the ability to
+      // come back to the same row after a lost state file.
+      identity.deriveHostId.mockReturnValue(undefined);
+      stubFetch(REGISTERED);
+
+      await ensureRelayHostRegistration();
+
+      expect(calls[0].body).toEqual({
+        name: "fake-host",
+        platform: process.platform,
       });
     });
 
@@ -244,8 +270,9 @@ describe("remoteControlConfig", () => {
         hostId: "stored-id",
         hostToken: "rch_stored",
       });
-      // The endpoint is not idempotent, so a second call would leave a second
-      // row behind — one that still connects.
+      // A stored identity wins over the derivation, so an existing row is never
+      // abandoned for a freshly derived id.
+      expect(identity.deriveHostId).not.toHaveBeenCalled();
       expect(calls).toHaveLength(0);
     });
 
