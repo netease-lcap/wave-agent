@@ -90,6 +90,7 @@ import {
   sliceMessageWindow,
   type MessageWindowResult,
 } from "../remote/messageWindow.js";
+import { percentOf, remoteWire } from "../remote/remoteNotifications.js";
 import { isUserCheckpointMessage } from "../utils/rewindCheckpoints.js";
 import { getWorkspaceDiff } from "../utils/workspaceDiff.js";
 import { installGitCredentialHelper } from "../utils/gitCredentialHelper.js";
@@ -808,7 +809,7 @@ export class AgentBridge {
     if (entry.agent.sessionId === restoreId) {
       this.emit(
         "messagesChange",
-        { messages: entry.agent.displayMessages },
+        remoteWire.messagesChangeSnapshot(entry.agent.displayMessages),
         entry.agent.sessionId,
       );
       // The re-attached client also missed the loading state that settled
@@ -864,9 +865,14 @@ export class AgentBridge {
    * usage to report; the host keeps the empty ring until the first push.
    */
   private emitContextUsage(agent: Agent): void {
-    const percent = this.contextUsagePercentOf(agent);
-    if (percent !== undefined) {
-      this.emit("contextUsage", { percent }, agent.sessionId);
+    const tokens = agent.latestTotalTokens;
+    const max = agent.getMaxInputTokens();
+    if (tokens > 0 && max > 0) {
+      this.emit(
+        "contextUsage",
+        remoteWire.contextUsage(tokens, max),
+        agent.sessionId,
+      );
     }
   }
 
@@ -881,7 +887,7 @@ export class AgentBridge {
     const tokens = agent.latestTotalTokens;
     const max = agent.getMaxInputTokens();
     if (tokens > 0 && max > 0) {
-      return Math.min(100, Math.round((tokens / max) * 100));
+      return percentOf(tokens, max);
     }
     return undefined;
   }
@@ -1913,7 +1919,7 @@ export class AgentBridge {
       });
       this.emit(
         "permissionRequest",
-        { requestId, context },
+        remoteWire.permissionRequest(requestId, context),
         ctx.registeredSessionId,
       );
     });
@@ -2528,22 +2534,14 @@ export class AgentBridge {
         // Wire carries only the delta; consumers accumulate (spec: 流式通知纯增量负载).
         this.emit(
           "assistantContentUpdated",
-          {
-            messageId: params.messageId,
-            chunk: params.chunk,
-            stage: params.stage,
-          },
+          remoteWire.assistantContentUpdated(params),
           ctx.registeredSessionId,
         );
       },
       onAssistantReasoningUpdated: (params) => {
         this.emit(
           "assistantReasoningUpdated",
-          {
-            messageId: params.messageId,
-            chunk: params.chunk,
-            stage: params.stage,
-          },
+          remoteWire.assistantReasoningUpdated(params),
           ctx.registeredSessionId,
         );
       },
@@ -2551,21 +2549,23 @@ export class AgentBridge {
         // Streaming stages carry only the parametersChunk delta; start/running
         // (one-time snapshots) and end (authoritative full value) keep
         // `parameters` (spec: 流式通知纯增量负载).
-        const { parameters, ...rest } = params;
-        void parameters;
-        const wireParams = params.stage === "streaming" ? rest : params;
-        this.emit("toolBlockUpdated", wireParams, ctx.registeredSessionId);
+        this.emit(
+          "toolBlockUpdated",
+          remoteWire.toolBlockUpdated(params),
+          ctx.registeredSessionId,
+        );
       },
       onErrorBlockAdded: (error: string) => {
-        this.emit("errorBlockAdded", { error }, ctx.registeredSessionId);
+        this.emit(
+          "errorBlockAdded",
+          remoteWire.errorBlockAdded(error),
+          ctx.registeredSessionId,
+        );
       },
       onLoadingChange: (loading: boolean) => {
         this.emit(
           "loadingChange",
-          {
-            loading,
-            latestTotalTokens: ctx.agent?.latestTotalTokens,
-          },
+          remoteWire.loadingChange(loading, ctx.agent?.latestTotalTokens),
           ctx.registeredSessionId,
         );
       },
@@ -2577,8 +2577,11 @@ export class AgentBridge {
         // aligned with the CLI, which reads the same callback (spec 场景 5/6).
         const max = ctx.agent?.getMaxInputTokens() ?? 0;
         if (max > 0) {
-          const percent = Math.min(100, Math.round((tokens / max) * 100));
-          this.emit("contextUsage", { percent }, ctx.registeredSessionId);
+          this.emit(
+            "contextUsage",
+            remoteWire.contextUsage(tokens, max),
+            ctx.registeredSessionId,
+          );
         }
       },
       onCommandRunningChange: (running: boolean) => {
@@ -2628,7 +2631,11 @@ export class AgentBridge {
         ctx.registeredSessionId = newSessionId;
       },
       onPermissionModeChange: (mode: PermissionMode) => {
-        this.emit("permissionModeChange", { mode }, ctx.registeredSessionId);
+        this.emit(
+          "permissionModeChange",
+          remoteWire.permissionModeChange(mode),
+          ctx.registeredSessionId,
+        );
       },
       onWorkdirChange: (newCwd: string) => {
         this.emit(

@@ -41,6 +41,8 @@ import { toString as qrToString } from "qrcode";
 import { logger } from "../utils/logger.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
 import { expandLongTextPlaceholders } from "../managers/inputHandlers.js";
+import { remoteNotifications } from "../remote/remoteNotifications.js";
+import type { RemoteNotify } from "../remote/remoteNotifications.js";
 import { readFile } from "node:fs/promises";
 
 import { BaseAppProps } from "../types.js";
@@ -593,6 +595,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const agentRef = useRef<Agent | null>(null);
 
+  /**
+   * The notifier the remote path's content-carrying frames go out through (see
+   * `remoteNotifications`). A ref because the agent callbacks are built in
+   * `initializeAgent` below, before this component has the hook that owns the
+   * connection.
+   */
+  const remoteNotifyRef = useRef<RemoteNotify | undefined>(undefined);
+
   // Full-list refresh — one-shot pull from the agent, used only for structural
   // changes (compact/clear/rewind/collapse/init). Streaming updates flow through
   // the incremental callbacks in initializeAgent below.
@@ -679,6 +689,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       const effectiveRestoreSessionId =
         restoreSessionIdOverride ?? restoreSessionId;
 
+      // The remote path's copy of the payload-carrying frames (see
+      // `remoteNotifications`: the streaming trio plus the error block), emitted
+      // *beside* the local state updates — never instead of them, and outside the
+      // `isExpanded` guards below, because the TUI's own view mode is not the
+      // phone's. Built only while a sink exists, so a process with remote control
+      // off allocates nothing per chunk.
+      const remoteNotify = remoteNotifyRef.current;
+      const remoteStream = remoteNotify
+        ? remoteNotifications(remoteNotify)
+        : undefined;
+
       const callbacks: AgentCallbacks = {
         // ── Incremental message updates (no full-list pushes) ──────
         // Every update applies immediately via setMessages — no data-layer
@@ -720,6 +741,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           setMessages((prev) => prev.filter((m) => m.id !== messageId));
         },
         onAssistantContentUpdated: (params) => {
+          remoteStream?.onAssistantContentUpdated(params);
           if (isExpandedRef.current) return;
           // Text delta: height grows monotonically → per-delta application.
           // No flush on end: this channel has no pending updates, and the
@@ -727,16 +749,19 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           setMessages((prev) => applyContentDelta(prev, params));
         },
         onAssistantReasoningUpdated: (params) => {
+          remoteStream?.onAssistantReasoningUpdated(params);
           if (isExpandedRef.current) return;
           setMessages((prev) => applyReasoningDelta(prev, params));
         },
         onToolBlockUpdated: (params) => {
+          remoteStream?.onToolBlockUpdated(params);
           if (isExpandedRef.current) return;
           // All stages (start/streaming/running/end) apply directly —
           // `end` carries the authoritative final values.
           setMessages((prev) => applyToolBlockUpdate(prev, params));
         },
         onErrorBlockAdded: (error: string) => {
+          remoteStream?.onErrorBlockAdded(error);
           if (isExpandedRef.current) return;
           // One-shot structural update — applied directly (errors must not be
           // delayed by the tool-running window).
@@ -1450,6 +1475,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     compact: (instructions) => compact(instructions),
     slashCommands: () => agentRef.current?.getSlashCommands() ?? [],
   });
+
+  // `initializeAgent` reads this ref when it runs, which is always in an effect
+  // — after this render. `notify` is stable (the hook builds it once, over a sink
+  // it creates once), so assigning it during render is enough to have it in place
+  // before anything can call the agent.
+  remoteNotifyRef.current = remoteControl.notify;
 
   /**
    * `/remote-control [on|off|status] [name]` — offer this terminal's session to

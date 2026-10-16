@@ -3,15 +3,20 @@
  *
  * The daemon serves its sessions by fanning notifications into a
  * `RemoteControlSink`; the CLI has no notification fan-out at all — every
- * surface it has is React state. So this hook is the fan-out: each piece of
- * state the phone renders is watched here and pushed under the same method
- * names a `--stdio` / daemon process would use, which is what lets the page
- * treat the two hosts identically.
+ * surface it has is React state. So this hook supplies that fan-out, under the
+ * same method names and payloads a `--stdio` / daemon process uses, which is what
+ * lets the page treat the two hosts identically — including the remote channel's
+ * 150 ms merge window, which only bites if the frames it merges are the same
+ * ones.
  *
- * Only the coarse signals are pushed (`messagesChange` as a content-free
- * signal, loading, permission mode, approvals). The page answers a signal by
- * pulling with `getMessages({ since })`, so no delta stream is needed to keep
- * it correct — the same bargain the daemon path makes for long sessions.
+ * Two halves, and both have to be the same shape as the bridge's:
+ *
+ * - the callbacks that carry content, which the front end hands over from its own
+ *   agent callbacks (`remoteNotifications` → `notify`);
+ * - the coarse state this hook watches itself (`messagesChange` as a content-free
+ *   structural signal, loading, permission mode, context usage, approvals). The
+ *   page answers a signal by pulling with `getMessages({ since })`, so no payload
+ *   ever rides the signal.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -30,6 +35,8 @@ import {
   RemoteControlCliHost,
   type RemoteControlCliSession,
 } from "../remote/remoteControlCliHost.js";
+import { percentOf, remoteWire } from "../remote/remoteNotifications.js";
+import type { RemoteNotify } from "../remote/remoteNotifications.js";
 import { createRemoteControlSinkFactory } from "../remote/remoteControlSink.js";
 import type { RemoteControlSink } from "../remote/remoteControlSink.js";
 
@@ -81,6 +88,14 @@ export interface RemoteControlApi {
   /** Dials out. `name` labels this machine on the phone. */
   connect: (name?: string) => void;
   disconnect: () => void;
+  /**
+   * Send one notification to the phone under the method name a server host
+   * (`AgentBridge`) would use for the same thing. The front end calls it from its
+   * content-carrying agent callbacks (see `remoteNotifications`) — that is what
+   * makes the two hosts' fan-out identical, and therefore what makes the remote
+   * channel's merge window apply to this host too.
+   */
+  notify: RemoteNotify;
 }
 
 /** The GUI dialog polls once a second for the same reason: there is no push. */
@@ -113,18 +128,38 @@ export function useRemoteControl(
   const sessionId = options.sessionId;
   const { messages, isLoading, permissionMode, latestTotalTokens } = options;
 
+  const notify = useCallback<RemoteNotify>(
+    (method, params) => {
+      sink?.sendNotification(method, params, latest.current.sessionId);
+    },
+    [sink],
+  );
+
+  // A structural notice, never a payload: the phone answers it by pulling the
+  // tail with `getMessages({ since })`, the same path a cold start takes and the
+  // only one that can carry a 13 MB list. What counts as "structurally changed"
+  // is `useStructureKey`'s business below.
+  const structureKey = useStructureKey(messages, sink !== undefined);
   useEffect(() => {
-    sink?.sendNotification("messagesChange", { messages }, sessionId);
-  }, [sink, messages, sessionId]);
+    sink?.sendNotification(
+      "messagesChange",
+      remoteWire.messagesChangeSignal(),
+      sessionId,
+    );
+  }, [sink, structureKey, sessionId]);
 
   useEffect(() => {
-    sink?.sendNotification("loadingChange", { loading: isLoading }, sessionId);
+    sink?.sendNotification(
+      "loadingChange",
+      remoteWire.loadingChange(isLoading),
+      sessionId,
+    );
   }, [sink, isLoading, sessionId]);
 
   useEffect(() => {
     sink?.sendNotification(
       "permissionModeChange",
-      { mode: permissionMode },
+      remoteWire.permissionModeChange(permissionMode),
       sessionId,
     );
   }, [sink, permissionMode, sessionId]);
@@ -133,7 +168,7 @@ export function useRemoteControl(
     if (!sink || !sessionId) return;
     sink.sendNotification(
       "contextUsage",
-      { percent: percentOf(latestTotalTokens, options.maxInputTokens) },
+      remoteWire.contextUsage(latestTotalTokens, options.maxInputTokens),
       sessionId,
     );
   }, [sink, sessionId, latestTotalTokens, options.maxInputTokens]);
@@ -150,7 +185,7 @@ export function useRemoteControl(
       announced.current.add(request.requestId);
       sink.sendNotification(
         "permissionRequest",
-        { requestId: request.requestId, context: request.context },
+        remoteWire.permissionRequest(request.requestId, request.context),
         sessionId,
       );
     }
@@ -203,12 +238,44 @@ export function useRemoteControl(
     getSnapshot,
     connect,
     disconnect,
+    notify,
   };
 }
 
-function percentOf(tokens: number, maxInputTokens: number): number {
-  if (!maxInputTokens || maxInputTokens <= 0) return 0;
-  return Math.min(100, Math.round((tokens / maxInputTokens) * 100));
+/**
+ * The id composition of the display list, in order — what "the list changed"
+ * means for the remote path — as a key that is stable while the composition is.
+ *
+ * Ids are stable across a streamed message's growth and across in-place edits of
+ * its blocks, so comparing this key is what separates a structural change (a
+ * message appeared, was discarded, or the list was truncated/replaced) from a
+ * delta landing in a message the phone already has. Anchored on the ids rather
+ * than on "the messages state changed" so no call site has to be trusted to
+ * remember to announce a structural change — watching `messages` instead is what
+ * turned every model chunk into a signal plus a phone round trip.
+ *
+ * This runs once per render, and a streamed reply renders once per chunk, so the
+ * two shortcuts are the point: with no sink there is nobody to signal, and an
+ * unchanged id list returns the previous key rather than building a new string.
+ *
+ * The trigger stops at the ids on purpose: `since` is an **exclusive** anchor, so
+ * a signal can only ever deliver entries appended after the phone's own last
+ * message — a change made *inside* that message needs a payload-carrying
+ * notification of its own (see `remoteNotifications`).
+ */
+function useStructureKey(messages: Message[], enabled: boolean): string {
+  const last = useRef<{ ids: string[]; key: string }>({ ids: [], key: "" });
+  if (!enabled) return "";
+  const previous = last.current;
+  if (
+    previous.ids.length === messages.length &&
+    messages.every((message, index) => message.id === previous.ids[index])
+  ) {
+    return previous.key;
+  }
+  const ids = messages.map((message) => message.id);
+  last.current = { ids, key: ids.join("\n") };
+  return last.current.key;
 }
 
 /** The single-session adapter the host is built on. */
