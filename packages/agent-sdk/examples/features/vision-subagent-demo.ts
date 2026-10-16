@@ -23,9 +23,9 @@
  * Requirements:
  *   - WAVE_VISION_MODEL must be set (settings.json env or environment) to a
  *     vision-capable model, otherwise the vision subagent is not registered.
- *   - The MAIN model (WAVE_MODEL / WAVE_FAST_MODEL) should NOT be
- *     vision-capable, so the delegation path is exercised. If it can see the
- *     image directly, the subagent is never invoked.
+ *   - The MAIN model — the agent's configured one (`WAVE_MODEL` or settings.json)
+ *     — should NOT be vision-capable, so the delegation path is exercised. If it
+ *     can see the image directly, the subagent is never invoked.
  *
  * Run: cd packages/agent-sdk && pnpm exec tsx examples/features/vision-subagent-demo.ts
  */
@@ -175,10 +175,9 @@ async function main() {
     console.log(`🖼️  Generated test image: ${imagePath}\n`);
 
     const agent = await Agent.create({
-      // Main model: keep it NON-vision so the delegation path is exercised.
-      // WAVE_FAST_MODEL (e.g. deepseek-v4-flash) is vision-less, while the
-      // vision subagent runs on WAVE_VISION_MODEL (e.g. qwen3.8-max).
-      model: process.env.WAVE_FAST_MODEL,
+      // No `model:` override — the configured main model must be vision-less so
+      // the delegation path is exercised; the vision subagent runs on
+      // WAVE_VISION_MODEL (e.g. qwen3.8-max).
       callbacks: {
         onToolBlockUpdated: (params) => {
           if (params.stage === "running") {

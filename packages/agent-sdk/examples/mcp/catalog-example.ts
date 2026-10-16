@@ -123,7 +123,6 @@ async function main(): Promise<void> {
         { name: CATALOG_SERVER, script: CATALOG_SCRIPT },
         { name: BULK_SERVER, script: BULK_SCRIPT },
       ],
-      model: process.env.WAVE_FAST_MODEL,
       callbacks: {
         onToolBlockUpdated: (params) => {
           if (params.stage !== "end") return;

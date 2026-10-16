@@ -157,7 +157,6 @@ async function demonstrateSuccessExitCodes(): Promise<void> {
     // Create Agent instance
     const agent = await Agent.create({
       workdir: hookDir,
-      model: process.env.WAVE_FAST_MODEL,
       logger: console,
       callbacks: {
         onAssistantContentUpdated: (params: { chunk: string }) => {

@@ -22,7 +22,6 @@ import type { WorkflowRun } from "../../src/workflow/types.js";
  * It also prints every main-agent tool call, so you can see whether the model
  * loaded the authoring skill or wrote the script from the description alone.
  *
- * Uses WAVE_FAST_MODEL for cheaper/faster testing if set.
  */
 
 /** The 3-file sample the workflow is asked to review. */
@@ -144,7 +143,6 @@ async function main(): Promise<void> {
   const notifications: string[] = [];
 
   const agent = await Agent.create({
-    model: process.env.WAVE_FAST_MODEL,
     workdir: tempDir,
     callbacks: {
       onAssistantContentUpdated: (params) => {

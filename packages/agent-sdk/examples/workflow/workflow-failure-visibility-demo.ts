@@ -22,7 +22,6 @@ import type { WorkflowRun } from "../../src/workflow/types.js";
  * It also records a failure of its OWN through `recordFailure()`, the script-side
  * counterpart of the pipeline()/parallel() lines (Claude Code exposes the same API).
  *
- * Uses WAVE_FAST_MODEL for cheaper/faster testing if set.
  */
 
 /** The script under test — plain JavaScript, exactly as the model would send it. */
@@ -141,7 +140,6 @@ async function main(): Promise<void> {
   const notifications: string[] = [];
 
   const agent = await Agent.create({
-    model: process.env.WAVE_FAST_MODEL,
     workdir: tempDir,
     callbacks: {
       onAssistantContentUpdated: (params) => {

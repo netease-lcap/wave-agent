@@ -15,7 +15,7 @@
  *
  * 运行：
  *   cd packages/agent-sdk
- *   WAVE_FAST_MODEL=<模型> pnpm exec tsx examples/permissions/session-extra-directory-demo.ts
+ *   pnpm exec tsx examples/permissions/session-extra-directory-demo.ts
  *
  * 退出码 0 = 全部断言通过，1 = 有断言未通过。
  */
@@ -161,7 +161,6 @@ function printDialog(ctx: ToolPermissionContext): void {
 
 const agent = await Agent.create({
   workdir,
-  model: process.env.WAVE_FAST_MODEL,
   permissionMode: "default",
   canUseTool: async (context) => {
     dialogs.push({ ctx: context });

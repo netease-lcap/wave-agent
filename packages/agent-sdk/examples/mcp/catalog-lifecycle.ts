@@ -38,7 +38,7 @@ import {
  *
  * Run from `packages/agent-sdk`:
  *
- *   WAVE_FAST_MODEL=<model> npx tsx examples/mcp/catalog-lifecycle.ts
+ *   npx tsx examples/mcp/catalog-lifecycle.ts
  */
 
 const BULK_SERVER = "bulk-demo";
@@ -183,7 +183,6 @@ async function main(): Promise<void> {
         { name: BULK_SERVER, script: BULK_SCRIPT },
         { name: SMALL_SERVER, script: SMALL_SCRIPT },
       ],
-      model: process.env.WAVE_FAST_MODEL,
       callbacks: {
         onToolBlockUpdated: (params) => {
           if (params.stage !== "end") return;

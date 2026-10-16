@@ -34,11 +34,11 @@ async function setupTest() {
   const agentsDir = path.join(tempDir, ".wave", "agents");
   await fs.mkdir(agentsDir, { recursive: true });
 
-  // Create a simple subagent configuration in markdown format with WAVE_FAST_MODEL
+  // Create a simple subagent configuration in markdown format
+  // (no `model:` field — the subagent runs on the agent's own model)
   const subagentContent = `---
 name: file-analyzer
 description: Analyzes files and provides summaries
-model: ${process.env.WAVE_FAST_MODEL}
 tools: [Read, Glob]
 ---
 

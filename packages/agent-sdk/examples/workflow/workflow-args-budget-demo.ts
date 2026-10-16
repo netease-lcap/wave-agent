@@ -18,7 +18,6 @@ import type { WorkflowRun } from "../../src/workflow/types.js";
  *     made every single-stage pipeline a no-op);
  *   - later stages receive the previous stage's return value, with no barrier.
  *
- * Uses WAVE_FAST_MODEL for cheaper/faster testing if set.
  */
 
 /** The script under test — plain JavaScript, exactly as the model would send it. */
@@ -143,7 +142,6 @@ async function main(): Promise<void> {
   };
 
   const agent = await Agent.create({
-    model: process.env.WAVE_FAST_MODEL,
     workdir: tempDir,
     callbacks: {
       onAssistantContentUpdated: (params) => {

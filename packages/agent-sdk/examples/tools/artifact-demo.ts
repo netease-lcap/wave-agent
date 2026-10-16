@@ -34,9 +34,6 @@ import {
 import type { Message, ToolBlock } from "../../src/types/messaging.js";
 import { ARTIFACT_TOOL_NAME } from "../../src/constants/tools.js";
 
-// Use WAVE_FAST_MODEL for cheaper and faster testing
-process.env.WAVE_MODEL = process.env.WAVE_FAST_MODEL;
-
 let tempDir: string;
 let agent: Agent;
 
@@ -232,7 +229,6 @@ const published = await artifactTool.execute(...);
   // 创建 Agent
   agent = await Agent.create({
     workdir: tempDir,
-    model: process.env.WAVE_FAST_MODEL,
     permissionMode: "bypassPermissions", // 示例自动运行，跳过确认弹窗
     callbacks: {
       onAssistantContentUpdated: (params: { chunk: string }) => {

@@ -13,7 +13,7 @@
  *
  * Run from `packages/agent-sdk`:
  *
- *   WAVE_FAST_MODEL=<model> npx tsx examples/tools/plan-mode-exec.ts
+ *   npx tsx examples/tools/plan-mode-exec.ts
  */
 
 import { Agent, type PermissionDecision } from "../../src/index.js";
@@ -72,7 +72,6 @@ async function main(): Promise<void> {
   try {
     agent = await Agent.create({
       permissionMode: "plan",
-      model: process.env.WAVE_FAST_MODEL,
       canUseTool: approveEverything,
       logger: {
         debug: () => {},

@@ -11,7 +11,6 @@ import { Agent } from "../../src/agent.js";
  * Creates a small sample project, then asks the agent to run a workflow
  * that explores it in parallel phases (scan → analyze → synthesize).
  *
- * Uses WAVE_FAST_MODEL for cheaper/faster testing if set.
  */
 
 // Set up a small sample project for the workflow to explore
@@ -63,7 +62,6 @@ async function main() {
   await createSampleProject(tempDir);
 
   const agent = await Agent.create({
-    model: process.env.WAVE_FAST_MODEL,
     workdir: tempDir,
     callbacks: {
       onAssistantContentUpdated: (params) => {

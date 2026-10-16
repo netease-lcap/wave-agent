@@ -27,7 +27,7 @@ export async function startDemo(options: {
   servers: DemoServer[];
   workdirPrefix: string;
   callbacks?: AgentCallbacks;
-  /** Pass `process.env.WAVE_FAST_MODEL` when the demo sends real turns. */
+  /** Optional model override; omit to use the configured default model. */
   model?: string;
 }): Promise<{ agent: Agent; workDir: string }> {
   const workDir = await fs.mkdtemp(

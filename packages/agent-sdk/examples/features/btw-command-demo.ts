@@ -5,10 +5,9 @@ import { Agent } from "../../src/agent.js";
  * without triggering tool executions or affecting the main conversation history.
  */
 async function main() {
-  // Initialize the agent with a cheap model for testing
+  // Initialize the agent (uses the configured default model)
   const agent = await Agent.create({
     workdir: process.cwd(),
-    model: process.env.WAVE_FAST_MODEL,
     permissionMode: "bypassPermissions", // Allow memory access to keep history clean
     callbacks: {
       onAssistantContentUpdated: (params) => {
