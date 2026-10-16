@@ -274,7 +274,10 @@ export interface RemoteControlServiceOptions {
    * this is also where the one registration call happens, which is why it is
    * async.
    */
-  resolveEndpoint: (options?: { name?: string }) => Promise<{
+  resolveEndpoint: (options?: {
+    name?: string;
+    refreshIdentity?: boolean;
+  }) => Promise<{
     endpoint?: RemoteControlEndpoint;
     pageUrl?: string;
     error?: string;
@@ -302,6 +305,17 @@ export class RemoteControlService implements RemoteControlController {
    * connection the user has already turned off.
    */
   private generation = 0;
+  /**
+   * The stale-identity self-heal already ran in this process.
+   *
+   * Re-registering mints a **new** token, and any other entry on this machine is
+   * still holding the old one — so an unbounded heal turns two processes into a
+   * loop of re-signing each other's credential away (the same shape as the `4001`
+   * takeover ping-pong). One attempt per process is what keeps it convergent:
+   * whoever healed last serves, the other stops. A second, different reason is
+   * an expiry 90 days out, which is not worth spending the budget on.
+   */
+  private identityRefreshUsed = false;
 
   constructor(
     private readonly bridge: RemoteControlHost,
@@ -320,17 +334,30 @@ export class RemoteControlService implements RemoteControlController {
    * Resolve the identity (registering this machine on first use), then dial.
    * Every await is followed by a generation check, so a `stop` that arrives
    * while the relay is being asked for a host id wins.
+   *
+   * `refreshIdentity` forces that registration to happen again, which is only
+   * ever set by the self-heal below.
    */
-  private async setup(generation: number): Promise<void> {
-    const resolved = await this.options.resolveEndpoint(
-      this.name !== undefined ? { name: this.name } : {},
-    );
+  private async setup(
+    generation: number,
+    options: { refreshIdentity?: boolean } = {},
+  ): Promise<void> {
+    const resolved = await this.options.resolveEndpoint({
+      ...(this.name !== undefined ? { name: this.name } : {}),
+      ...(options.refreshIdentity ? { refreshIdentity: true } : {}),
+    });
     if (generation !== this.generation) return;
 
     if (!resolved.endpoint) {
+      const reason = resolved.error ?? "Remote control is unavailable.";
       this.setStatus({
         state: "error",
-        message: resolved.error ?? "Remote control is unavailable.",
+        // Two layers, because the user has to act on both halves: the identity
+        // this machine stored is gone, *and* replacing it did not work. Saying
+        // only the latter would read like a flaky network.
+        message: options.refreshIdentity
+          ? `the relay no longer knows this machine, and registering it again failed: ${reason}`
+          : reason,
       });
       return;
     }
@@ -393,12 +420,44 @@ export class RemoteControlService implements RemoteControlController {
         this.emitStatus(true);
       },
       onFrame: (frame) => this.handleFrame(frame),
+      onStaleIdentity: (info) => {
+        if (generation !== this.generation) return;
+        this.refreshIdentity(info.error);
+      },
       onFatal: (message) => {
         if (generation !== this.generation) return;
         this.setStatus({ state: "error", message });
       },
     });
     this.client.start();
+  }
+
+  /**
+   * The relay refused the credential with a stale-identity reason — the stored
+   * row is gone (revoked, expired, or a file whose id and token never belonged
+   * together). Recover by registering again: the id is derived from the machine,
+   * so the relay reuses the same row and the page URL survives, and the fresh
+   * token then dials out. Without this the only way back was for the user to
+   * delete `~/.wave/remote-control.json` by hand, which nobody knows exists
+   * (2026-10-16: a revoked row left a Mac unable to reconnect at all).
+   *
+   * Attempted **once per process** — see `identityRefreshUsed`.
+   */
+  private refreshIdentity(error: string): void {
+    if (this.identityRefreshUsed) {
+      this.setStatus({
+        state: "error",
+        message: `the relay rejected this machine even after registering it again (4003): ${error}`,
+      });
+      return;
+    }
+    this.identityRefreshUsed = true;
+    const generation = ++this.generation;
+    this.setStatus({
+      state: "connecting",
+      message: "the relay no longer knows this machine: registering it again",
+    });
+    void this.setup(generation, { refreshIdentity: true });
   }
 
   stop(): void {

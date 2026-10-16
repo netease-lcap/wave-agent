@@ -462,6 +462,7 @@ describe("relay control frames", () => {
   let onPeerDisconnected: Mock<() => void>;
   let onResyncRequired: Mock<() => void>;
   let onFrame: Mock<(frame: RelayEnvelope) => void>;
+  let onStaleIdentity: Mock<(info: { error: string }) => void>;
   let onFatal: Mock<(reason: string) => void>;
 
   beforeEach(() => {
@@ -473,6 +474,7 @@ describe("relay control frames", () => {
     onPeerDisconnected = vi.fn<() => void>();
     onResyncRequired = vi.fn<() => void>();
     onFrame = vi.fn<(frame: RelayEnvelope) => void>();
+    onStaleIdentity = vi.fn<(info: { error: string }) => void>();
     onFatal = vi.fn<(reason: string) => void>();
   });
 
@@ -495,6 +497,7 @@ describe("relay control frames", () => {
       onPeerDisconnected,
       onResyncRequired,
       onFrame,
+      onStaleIdentity,
       onFatal,
     });
     client.start();
@@ -522,13 +525,51 @@ describe("relay control frames", () => {
   it("should say why 4003 happened, when the relay told us", () => {
     openClient();
     sockets[0].deliver(
-      JSON.stringify({ type: "auth_error", error: "invalid_host_token" }),
+      JSON.stringify({ type: "auth_error", error: "organization_mismatch" }),
     );
-    expect(onAuthError).toHaveBeenCalledWith({ error: "invalid_host_token" });
+    expect(onAuthError).toHaveBeenCalledWith({
+      error: "organization_mismatch",
+    });
 
     sockets[0].drop(4003);
     expect(onFatal).toHaveBeenCalledWith(
-      expect.stringContaining("invalid_host_token"),
+      expect.stringContaining("organization_mismatch"),
+    );
+  });
+
+  // The stored identity is replaceable (registering again reuses the same row),
+  // so this one 4003 is not the end of the road — the owner of the credential
+  // gets told instead of being left with a dead file to delete by hand.
+  it.each(["invalid_host_token", "unknown_host"])(
+    "should report a stale identity instead of giving up, on %s",
+    (error) => {
+      openClient();
+      sockets[0].deliver(JSON.stringify({ type: "auth_error", error }));
+
+      sockets[0].drop(4003);
+
+      expect(onStaleIdentity).toHaveBeenCalledWith({ error });
+      expect(onFatal).not.toHaveBeenCalled();
+      // Still no reconnect from here: dialling with the same dead token would
+      // only produce the same answer, so recovery belongs to the caller.
+      vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS * 10);
+      expect(sockets).toHaveLength(1);
+    },
+  );
+
+  it("should keep an unclassified 4003 fatal rather than heal it", () => {
+    openClient();
+    // Not a reason this client can act on: the relay refuses the account, not
+    // the stored identity — registering again would change nothing.
+    sockets[0].deliver(
+      JSON.stringify({ type: "auth_error", error: "unauthorized" }),
+    );
+
+    sockets[0].drop(4003);
+
+    expect(onStaleIdentity).not.toHaveBeenCalled();
+    expect(onFatal).toHaveBeenCalledWith(
+      expect.stringContaining("unauthorized"),
     );
   });
 

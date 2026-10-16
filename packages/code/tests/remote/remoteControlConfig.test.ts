@@ -288,6 +288,57 @@ describe("remoteControlConfig", () => {
       expect(storedState().hostId).toBe("relay-assigned-id");
     });
 
+    it("should register again when asked to refresh, keeping the stored label", async () => {
+      store.files.set(
+        STATE_PATH,
+        JSON.stringify({
+          hostId: "dead-id",
+          hostToken: "rch_dead",
+          name: "mac",
+        }),
+      );
+      stubFetch(REGISTERED);
+
+      const registration = await ensureRelayHostRegistration(undefined, {
+        refresh: true,
+      });
+
+      expect(registration).toEqual({
+        hostId: "relay-assigned-id",
+        hostToken: "rch_secret",
+      });
+      expect(calls).toHaveLength(1);
+      // A refresh is not a rename: the label survives even though nothing was
+      // passed in, so the machine does not reappear on the phone under a new name.
+      expect(calls[0].body).toMatchObject({ name: "mac" });
+      expect(storedState()).toMatchObject({
+        hostId: "relay-assigned-id",
+        hostToken: "rch_secret",
+        name: "mac",
+      });
+    });
+
+    it("should drop the dead identity before a refresh that fails", async () => {
+      // The registration that has to happen is refused (an expired sign-in is the
+      // usual cause). The stale pair must not survive it — keeping it would make
+      // the next attempt hand the same refused token over, which is the state the
+      // user can only escape by deleting the file by hand.
+      store.files.set(
+        STATE_PATH,
+        JSON.stringify({
+          hostId: "dead-id",
+          hostToken: "rch_dead",
+          name: "mac",
+        }),
+      );
+      stubFetch({ status: 401, body: { error: "Sign-in required" } });
+
+      await expect(
+        ensureRelayHostRegistration(undefined, { refresh: true }),
+      ).rejects.toThrow();
+      expect(storedState()).toEqual({ name: "mac" });
+    });
+
     it("should tell the two 403s apart", async () => {
       stubFetch({ status: 403, body: { error: "Enterprise access required" } });
       await expect(ensureRelayHostRegistration()).rejects.toThrow(
@@ -374,6 +425,31 @@ describe("remoteControlConfig", () => {
         "ws://127.0.0.1:3401/v1/hosts/ws/relay-assigned-id/subscribe",
       );
       expect(calls[0].url).toBe("http://127.0.0.1:3401/api/relay/hosts");
+    });
+
+    it("should register again on a refresh instead of dialing with the stored pair", async () => {
+      // The self-heal path: the relay refused the stored identity, so this call
+      // has to produce a *new* credential — reusing the stored one would dial
+      // into the same `4003` forever.
+      store.files.set(
+        STATE_PATH,
+        JSON.stringify({
+          hostId: "dead-id",
+          hostToken: "rch_dead",
+          name: "mac",
+        }),
+      );
+      stubFetch(REGISTERED);
+
+      const resolved = await resolveRemoteControlEndpoint({
+        refreshIdentity: true,
+      });
+
+      expect(calls).toHaveLength(1);
+      expect(resolved.endpoint?.hostToken).toBe("rch_secret");
+      expect(resolved.endpoint?.url).toBe(
+        "wss://codechat.example.com/v1/hosts/ws/relay-assigned-id/subscribe",
+      );
     });
 
     it("should report a server url it cannot parse", async () => {
