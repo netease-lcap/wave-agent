@@ -591,6 +591,7 @@ export default {
           text: "16. OpenTelemetry 遥测",
           collapsed: true,
           items: [
+            { text: "内置上报", link: "/sdk#otel-first-party" },
             { text: "导出器", link: "/sdk#otel-exporters" },
             { text: "出站头", link: "/sdk#otel-headers" },
             { text: "指标", link: "/sdk#otel-metrics" },

@@ -13,8 +13,11 @@
  * off, and (2) never borrows (1)'s endpoint — a customer that points Wave at
  * its own collector keeps getting first-party reporting, and vice versa.
  *
- * Turning (2) off is `WAVE_DISABLE_TELEMETRY=1`, which deliberately leaves (1)
- * alone (spec 场景 3).
+ * (2) is on by default: the server-side intake lives in `{serverUrl}/otel`, so
+ * a signed-in machine reports without anyone configuring anything. Turning it
+ * off has two doors — `WAVE_DISABLE_TELEMETRY=1` and an explicit
+ * `monitoring.telemetry.firstPartyEnabled: false` — and both deliberately
+ * leave (1) alone (spec 场景 3).
  */
 
 import type { HeadersProvider, TelemetryConfig } from "../types/telemetry.js";
@@ -22,14 +25,23 @@ import { logger } from "../utils/globalLogger.js";
 import { AuthService } from "../services/authService.js";
 
 /**
- * Default state of the first-party channel.
+ * Default state of the first-party channel: **on**.
  *
- * Deliberately `false` until the server-side intake exists in every
- * environment: the client half lands first, so switching the feature on is
- * exactly one constant (or one settings key). See the boundary case
- * 「如果服务端入口尚未就绪（客户端能力先发布）会怎样？」.
+ * This was `false` while the server-side intake did not exist in every
+ * environment. That precondition is gone — every environment accepts
+ * `{serverUrl}/otel/v1/{metrics,logs}` — and the console's engineering-metrics
+ * page has no data until the client is on by default, so the default is the
+ * feature.
+ *
+ * Turning it off has two doors, in precedence order:
+ *
+ * 1. `WAVE_DISABLE_TELEMETRY=1|true` — the operator's exit switch; it wins over
+ *    everything, config file included.
+ * 2. `monitoring.telemetry.firstPartyEnabled: false` — the explicit door, in
+ *    `settings.json` or pushed down by the server-managed config (an admin
+ *    turning the channel off for the whole fleet).
  */
-export const FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED = false;
+export const FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED = true;
 
 /** `WAVE_DISABLE_TELEMETRY=1|true` is the exit switch for this channel. */
 export function isFirstPartyTelemetryDisabledByEnv(): boolean {
@@ -40,11 +52,11 @@ export function isFirstPartyTelemetryDisabledByEnv(): boolean {
 /**
  * Whether the first-party channel is on.
  *
- * `monitoring.telemetry.firstPartyEnabled` in settings.json is the explicit
- * door (that is how a machine self-tests the channel before the default is
- * flipped); the constant is what it falls back to. The env switch wins over
- * both — an operator turning telemetry off must not be overruled by a config
- * file.
+ * On unless someone turns it off: `monitoring.telemetry.firstPartyEnabled` in
+ * settings.json (or in the server-managed config, which wins on a clash) is
+ * that door, and `FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED` is what an unset value
+ * falls back to. The env switch wins over both — an operator turning telemetry
+ * off must not be overruled by a config file.
  */
 export function resolveFirstPartyEnabled(
   config?: Partial<TelemetryConfig>,

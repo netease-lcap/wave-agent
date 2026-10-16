@@ -949,6 +949,29 @@ describe("instrumentation", () => {
     const FIRST_PARTY_METRICS =
       "https://codechat.codewave-test.163yun.com/otel/v1/metrics";
 
+    it("未显式配置时默认开启：已登录机器一项不配也初始化首方出口", async () => {
+      Object.assign(authState, SIGNED_IN);
+
+      await instrumentation.initializeTelemetry({});
+
+      expect(instrumentation.isInitialized()).toBe(true);
+      expect(exporterConfig(mocks.mockOTLPMetricExporter).url).toBe(
+        FIRST_PARTY_METRICS,
+      );
+      expect(exporterConfig(mocks.mockOTLPLogExporter).url).toBe(
+        "https://codechat.codewave-test.163yun.com/otel/v1/logs",
+      );
+    });
+
+    it("显式 firstPartyEnabled: false 时不开这条出口", async () => {
+      Object.assign(authState, SIGNED_IN);
+
+      await instrumentation.initializeTelemetry({ firstPartyEnabled: false });
+
+      expect(instrumentation.isInitialized()).toBe(false);
+      expect(mocks.mockMeterProvider).not.toHaveBeenCalled();
+    });
+
     it("首方打开、用户没配任何导出器时仍然初始化", async () => {
       Object.assign(authState, SIGNED_IN);
 
