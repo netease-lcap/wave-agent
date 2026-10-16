@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -46,6 +46,39 @@ describe("RunStateStore", () => {
       const parsed = JSON.parse(content);
       expect(parsed.runId).toBe("wf_test1");
       expect(parsed.status).toBe("completed");
+    });
+
+    it("never leaves a truncated file for a concurrent reader", async () => {
+      // Temp file + rename: the target is swapped whole, so a reader that
+      // arrives mid-write sees the previous complete value — never the empty
+      // file a plain writeFile leaves behind between its truncate and its
+      // write. That window is where a reader got `Unexpected end of JSON
+      // input` for run-state.json (Windows CI, on the notification path).
+      const before = createRun("wf_atomic", { result: "old".repeat(3000) });
+      await store.save(before);
+      const statePath = path.join(tempDir, "wf_atomic", "run-state.json");
+
+      const seenByReader: string[] = [];
+      const realRename = fs.promises.rename.bind(fs.promises);
+      const spy = vi
+        .spyOn(fs.promises, "rename")
+        .mockImplementation(async (from, to) => {
+          // What a concurrent reader observes at the moment of the swap.
+          seenByReader.push(fs.readFileSync(String(to), "utf-8"));
+          return realRename(from, to);
+        });
+      try {
+        await store.save({
+          ...before,
+          result: "new".repeat(3000),
+        });
+      } finally {
+        spy.mockRestore();
+      }
+
+      expect(JSON.parse(seenByReader[0]).result).toBe("old".repeat(3000));
+      const after = JSON.parse(await fs.promises.readFile(statePath, "utf-8"));
+      expect(after.result).toBe("new".repeat(3000));
     });
 
     it("omits completionPromise from serialization", async () => {
