@@ -160,6 +160,24 @@ const WorkflowManager: React.FC<
                 <span className="mcp-server-name">
                   {run.meta.name || run.meta.description}
                 </span>
+                {/* Oversized marker: the row is where a run is picked, so the
+                    "too big to leave running" signal belongs on it. The counts
+                    ride along because the meta line below is what a user reads
+                    to judge the size, and the detail carries the full sentence
+                    (spec「预算与规模硬上限」场景 7). */}
+                {run.sizeWarning && (
+                  <span
+                    data-testid="workflow-oversized-marker"
+                    role="img"
+                    aria-label="运行过大"
+                    style={{
+                      color: "var(--vscode-editorWarning-foreground, #d18616)",
+                      fontSize: "12px",
+                    }}
+                  >
+                    ⚠ 运行过大
+                  </span>
+                )}
               </div>
               <div
                 style={{

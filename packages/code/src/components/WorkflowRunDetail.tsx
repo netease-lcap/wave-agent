@@ -17,6 +17,10 @@ import React from "react";
 import { Box, Text } from "ink";
 import { getLastLines } from "wave-agent-sdk";
 import type { WorkflowRun } from "wave-agent-sdk";
+import {
+  WORKFLOW_SIZE_WARNING_AGENTS,
+  WORKFLOW_SIZE_WARNING_TOKENS,
+} from "wave-agent-sdk/constants";
 
 export const formatDuration = (ms: number): string => {
   if (ms < 1000) return `${ms}ms`;
@@ -32,7 +36,10 @@ export const formatTime = (timestamp: number): string => {
 
 export const formatTokens = (tokens: number): string => {
   if (tokens < 1000) return `${tokens}`;
-  return `${(tokens / 1000).toFixed(1)}k`;
+  // Millions matter here: a run crosses the 1.5M size threshold already showing
+  // "1500.0k", and the marker line names that threshold.
+  if (tokens < 1_000_000) return `${(tokens / 1000).toFixed(1)}k`;
+  return `${(tokens / 1_000_000).toFixed(1)}M`;
 };
 
 export const workflowStatusColor = (
@@ -105,6 +112,23 @@ const WorkflowRunDetail: React.FC<{ run: WorkflowRun }> = ({ run }) => {
             <Text color="blue">Tokens:</Text> {formatTokens(run.totalTokens)}
           </Text>
         </Box>
+        {/* Oversized marker (spec「预算与规模硬上限」场景 7): the run is bigger
+            than the thresholds, which is the human's cue to stop it — the model
+            is never told, so this line has to carry the scale and the
+            thresholds itself. Stopping stays with this panel's own affordance
+            (the footer's `k`), so the line only names it when the run is still
+            running and there is something to stop. */}
+        {run.sizeWarning && (
+          <Box>
+            <Text color="yellow">
+              ⚠ Large run: {run.totalAgents} agents /{" "}
+              {formatTokens(run.totalTokens)} tokens — over the{" "}
+              {WORKFLOW_SIZE_WARNING_AGENTS} agents /{" "}
+              {formatTokens(WORKFLOW_SIZE_WARNING_TOKENS)} tokens threshold.
+              {run.status === "running" && " Press k to stop it."}
+            </Text>
+          </Box>
+        )}
         <Box>
           <Text>
             <Text color="blue">Script:</Text> {run.scriptPath}

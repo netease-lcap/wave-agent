@@ -161,6 +161,87 @@ describe("Workflow manager dialog", () => {
     expect(dialog).not.toHaveTextContent("Script:");
   });
 
+  it("marks an oversized run in its row and spells out the scale in the detail", () => {
+    renderChatApp();
+    // 26 agents / 6.3M tokens — past both thresholds. The host derives
+    // `sizeWarning` when it hands the snapshot over, so the webview only renders.
+    openWorkflowsDialog([
+      makeRun({
+        runId: "wf_big24680",
+        meta: { name: "deep-research", description: "深调研" },
+        totalAgents: 26,
+        totalTokens: 6_300_000,
+        sizeWarning: true,
+      }),
+      makeRun({
+        runId: "wf_small13579",
+        meta: { name: "migrate-config", description: "迁移" },
+        totalAgents: 3,
+        totalTokens: 31000,
+      }),
+    ]);
+
+    // The row carries the marker so the size is visible while picking a run.
+    expect(screen.getAllByTestId("workflow-oversized-marker")).toHaveLength(1);
+    // Millions, not "6300.0k": the marker names the 1.5M threshold next to it.
+    expect(screen.getByTestId("workflow-manager")).toHaveTextContent(
+      "6.3M tokens",
+    );
+    // Detail is not on screen yet, so nothing there to assert by accident.
+    expect(screen.queryByTestId("workflow-oversized")).toBeNull();
+
+    fireEvent.click(screen.getByText("deep-research"));
+    const marker = screen.getByTestId("workflow-oversized");
+    expect(marker).toHaveTextContent("运行过大：26 agents / 6.3M tokens");
+    expect(marker).toHaveTextContent("越过阈值 25 agents / 1.5M tokens");
+    // The model is never told, so the line has to say what to do about it — via
+    // this dialog's own stop button, not by pointing at another panel.
+    expect(marker).toHaveTextContent("运行中，可点「停止」按钮中止");
+  });
+
+  it("drops the stop hint for an oversized run that already ended", () => {
+    renderChatApp();
+    openWorkflowsDialog([
+      makeRun({
+        status: "completed",
+        endTime: BASE + 60000,
+        totalAgents: 26,
+        totalTokens: 6_300_000,
+        sizeWarning: true,
+      }),
+    ]);
+
+    // Nothing left to stop, so the marker only reports the size.
+    const marker = screen.getByTestId("workflow-oversized");
+    expect(marker).toHaveTextContent("越过阈值 25 agents / 1.5M tokens");
+    expect(marker).not.toHaveTextContent("停止");
+  });
+
+  it("leaves a run at the threshold unmarked", () => {
+    renderChatApp();
+    // Exactly the thresholds (25 agents / 1.5M tokens) — "over", not "at".
+    openWorkflowsDialog([
+      makeRun({
+        runId: "wf_at12345",
+        meta: { name: "review-all", description: "全量审查" },
+        totalAgents: 25,
+        totalTokens: 1_500_000,
+      }),
+      makeRun({
+        runId: "wf_def67890",
+        meta: { name: "migrate-config", description: "迁移" },
+      }),
+    ]);
+
+    expect(screen.queryByTestId("workflow-oversized-marker")).toBeNull();
+
+    fireEvent.click(screen.getByText("review-all"));
+    expect(screen.getByTestId("workflow-manager")).toHaveTextContent(
+      "Description: 全量审查",
+    );
+    expect(screen.queryByTestId("workflow-oversized")).toBeNull();
+  });
+
   it("hides the phases and logs sections before either has content", () => {
     renderChatApp();
     openWorkflowsDialog([makeRun()]);

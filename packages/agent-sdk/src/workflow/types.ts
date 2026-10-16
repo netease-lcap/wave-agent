@@ -61,11 +61,13 @@ export interface WorkflowRun {
    */
   logs?: string[];
   /**
-   * Whether the one-shot size warning has already been injected for this run
-   * (spec「预算与规模硬上限」场景 7: warn once per run, never repeatedly). Not
-   * persisted state the UI reads — it only has to survive within the run.
+   * Whether this run has crossed either size threshold, i.e. whether the
+   * workflow UI should mark it as oversized (spec「预算与规模硬上限」场景 7).
+   * Derived from `totalAgents` / `totalTokens` when the run snapshot is handed
+   * to a UI (`listRuns()`), never persisted and never sent to the model — the
+   * marker is the human's cue to stop the run.
    */
-  sizeWarningSent?: boolean;
+  sizeWarning?: boolean;
   /** Index of the agent that caused the workflow to fail */
   failedAgentIndex?: number;
   /** Error message from the failed agent */

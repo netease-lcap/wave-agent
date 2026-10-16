@@ -1,31 +1,40 @@
 /**
- * Errors a workflow script can observe, plus the run-scale caps and warning
- * thresholds keyed to them.
+ * Errors a workflow script can observe, plus the run-scale cap and the size
+ * predicate keyed to it. The size thresholds themselves live in
+ * `constants/workflowLimits.ts`, because the workflow UI renders them.
  *
  * `name` is the contract: the pipeline()/parallel() bridges re-inspect a
  * rejected reason by name (a cross-realm `instanceof` is not guaranteed once the
  * script runs inside the sandbox), so both classes set it explicitly.
  */
 
+import {
+  WORKFLOW_SIZE_WARNING_AGENTS,
+  WORKFLOW_SIZE_WARNING_TOKENS,
+} from "../constants/workflowLimits.js";
+
 /** Claude Code's per-run `agent()` call cap (verbatim). */
 export const WORKFLOW_AGENT_CALL_CAP = 1000;
 
 /**
- * Size-warning thresholds: the run's agent count or token spend above which one
- * heads-up notification is injected, telling the model how big the run has
- * become and how to stop it (spec「预算与规模硬上限」场景 7).
+ * Whether a run has crossed either size threshold (`constants/workflowLimits`,
+ * where the numbers and their provenance live). Not the hard cap —
+ * `WORKFLOW_AGENT_CALL_CAP` and the turn's token budget stay the only things
+ * that actually stop a run; this only says whether the UI should mark it big.
  *
- * Values are Claude Code's 2.1.293 defaults, read out of the binary as the
- * fallbacks of `CLAUDE_CODE_WORKFLOW_SIZE_WARNING_AGENTS` (25) and
- * `CLAUDE_CODE_WORKFLOW_SIZE_WARNING_TOKENS` (1_500_000). Claude Code shows the
- * same thresholds as a marker in its workflow list UI; wave has no such list
- * surface inside the model's context, so the heads-up goes to the model.
- *
- * Not the hard cap — `WORKFLOW_AGENT_CALL_CAP` and the turn's token budget stay
- * the only things that actually stop a run; these two only warn well before it.
+ * A pure function of the snapshot's counters, so the marker needs no
+ * "already warned" flag and stays correct for a run read back from disk: the
+ * counters only grow, so the verdict is sticky on its own.
  */
-export const WORKFLOW_SIZE_WARNING_AGENTS = 25;
-export const WORKFLOW_SIZE_WARNING_TOKENS = 1_500_000;
+export function isWorkflowRunOversized(run: {
+  totalAgents: number;
+  totalTokens: number;
+}): boolean {
+  return (
+    run.totalAgents > WORKFLOW_SIZE_WARNING_AGENTS ||
+    run.totalTokens > WORKFLOW_SIZE_WARNING_TOKENS
+  );
+}
 
 /**
  * Thrown when a run has already made the maximum number of `agent()` calls.

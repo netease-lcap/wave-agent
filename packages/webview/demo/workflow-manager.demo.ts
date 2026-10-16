@@ -87,6 +87,11 @@ test.describe("Workflow Manager Demo", () => {
             totalTokens: 31000,
           },
           {
+            // The oversized case: a deep-research run is ~26 agents / 6.3M
+            // tokens, past the 25 agents / 1.5M thresholds — the row carries the
+            // ⚠ 运行过大 marker, and its detail names the thresholds and where to
+            // stop (spec「预算与规模硬上限」场景 7). A workflow this shape is
+            // exactly why the marker exists.
             runId: "run-failed00012345",
             meta: {
               name: "deep-research",
@@ -100,13 +105,28 @@ test.describe("Workflow Manager Demo", () => {
               {
                 title: "Search",
                 agentCount: 6,
-                tokens: 45300,
+                tokens: 1200000,
                 elapsed: 80000,
                 startTime: Date.now() - 900000,
               },
+              {
+                title: "Fetch",
+                agentCount: 15,
+                tokens: 3400000,
+                elapsed: 120000,
+                startTime: Date.now() - 820000,
+              },
+              {
+                title: "Verify",
+                agentCount: 5,
+                tokens: 1700000,
+                elapsed: 60000,
+                startTime: Date.now() - 700000,
+              },
             ],
-            totalAgents: 6,
-            totalTokens: 45300,
+            totalAgents: 26,
+            totalTokens: 6300000,
+            sizeWarning: true,
             error: "Agent #3 exceeded token budget and aborted",
             failures: [
               "pipeline[2] failed: 代理在预算耗尽前未返回结构化结果",

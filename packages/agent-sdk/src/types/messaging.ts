@@ -118,9 +118,11 @@ export interface TaskNotificationBlock {
   taskType: "shell" | "agent" | "workflow" | "hook";
   /**
    * `"running"` is the one non-terminal member: a task that is still alive can
-   * still notify about itself (a workflow crossing a size threshold), and a
-   * consumer must not read that as "this task is over". Every other value ends
-   * the task.
+   * still notify about itself, and a consumer must not read that as "this task
+   * is over". Every other value ends the task. (No producer sends it today —
+   * the workflow size warning that used to is UI-only now — but the channel
+   * keeps the member: a task that reports progress through a notification is a
+   * shape consumers have to handle, not a workflow-specific quirk.)
    */
   status: "running" | "completed" | "failed" | "killed" | "aborted";
   summary: string;

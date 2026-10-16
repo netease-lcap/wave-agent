@@ -1053,7 +1053,7 @@ return 1;`;
     const runScript = async (
       container: Container,
       agentCalls: number,
-    ): Promise<string> => {
+    ): Promise<{ manager: WorkflowManager; run: WorkflowRun }> => {
       const sizeManager = new WorkflowManager(container);
       // A phase is declared on purpose: this is the shape real scripts have,
       // and it is where per-phase token accounting lives.
@@ -1065,13 +1065,21 @@ return 1;`;
       const run = await sizeManager.createRun(script);
       await sizeManager.startRun(run.runId);
       await run.completionPromise;
-      return run.runId;
+      return { manager: sizeManager, run };
     };
 
-    const warningsIn = (xs: string[]): string[] =>
+    const runningNotificationsIn = (xs: string[]): string[] =>
       xs.filter((xml) => xml.includes("<status>running</status>"));
 
-    it("warns once per run when the agent count crosses the threshold", async () => {
+    /** The marker as a UI reads it — derived on the snapshot `listRuns()` hands out. */
+    const markedOversized = async (
+      manager: WorkflowManager,
+    ): Promise<boolean> => {
+      const runs = await manager.listRuns();
+      return runs[0].sizeWarning === true;
+    };
+
+    it("marks an oversized run on the snapshot and tells the model nothing", async () => {
       const tmpDir = await fs.promises.mkdtemp(
         path.join(os.tmpdir(), "wf-size-"),
       );
@@ -1080,21 +1088,20 @@ return 1;`;
           tmpDir,
           () => [],
         );
-        const runId = await runScript(container, 26);
+        const { manager } = await runScript(container, 26);
 
+        // The model is never told the run got big: a notification here turned
+        // "this run is large" into "ask the user whether to keep going" on every
+        // deep-research run, which is why none of them ever finished
+        // (场景 7 2026-10-16 口径变更 — the marker is the human's cue).
         const xmls = enqueueNotification.mock.calls.map(
           (call) => call[0] as string,
         );
-        const warnings = warningsIn(xmls);
-        // Once, not once per completed agent: the notification goes out at the
-        // crossing and never again (场景 7「每个运行最多预警一次」).
-        expect(warnings).toHaveLength(1);
-        expect(warnings[0]).toContain('Dynamic workflow "big-wf" is large');
-        expect(warnings[0]).toContain("26 agents started");
-        // The heads-up carries the hard cap and the stop handle — what the model
-        // needs to act on it, not just a number.
-        expect(warnings[0]).toContain("1000 agents per run");
-        expect(warnings[0]).toContain(runId);
+        expect(runningNotificationsIn(xmls)).toHaveLength(0);
+
+        // It rides on the snapshot `/workflows` reads instead.
+        expect(await markedOversized(manager)).toBe(true);
+
         // "running" is not an ending: the completion notification still arrives.
         expect(
           xmls.some((xml) => xml.includes("<status>completed</status>")),
@@ -1104,7 +1111,7 @@ return 1;`;
       }
     });
 
-    it("does not warn at or below the threshold", async () => {
+    it("leaves a run at or below the threshold unmarked", async () => {
       const tmpDir = await fs.promises.mkdtemp(
         path.join(os.tmpdir(), "wf-size-"),
       );
@@ -1113,19 +1120,20 @@ return 1;`;
           tmpDir,
           () => [],
         );
-        // Exactly 25: the warning is for crossing the line, not for reaching it.
-        await runScript(container, 25);
+        // Exactly 25: the marker is for crossing the line, not for reaching it.
+        const { manager } = await runScript(container, 25);
 
         const xmls = enqueueNotification.mock.calls.map(
           (call) => call[0] as string,
         );
-        expect(warningsIn(xmls)).toHaveLength(0);
+        expect(runningNotificationsIn(xmls)).toHaveLength(0);
+        expect(await markedOversized(manager)).toBe(false);
       } finally {
         await fs.promises.rm(tmpDir, { recursive: true, force: true });
       }
     });
 
-    it("warns on the token threshold even when the agent count is low", async () => {
+    it("marks on the token threshold even when the agent count is low", async () => {
       const tmpDir = await fs.promises.mkdtemp(
         path.join(os.tmpdir(), "wf-size-"),
       );
@@ -1140,15 +1148,15 @@ return 1;`;
             },
           ],
         );
-        await runScript(container, 1);
+        const { manager } = await runScript(container, 1);
 
+        // 1.6M tokens from a single agent: the token axis is independent of the
+        // agent-count axis.
+        expect(await markedOversized(manager)).toBe(true);
         const xmls = enqueueNotification.mock.calls.map(
           (call) => call[0] as string,
         );
-        const warnings = warningsIn(xmls);
-        expect(warnings).toHaveLength(1);
-        expect(warnings[0]).toContain("1600000 tokens spent so far");
-        expect(warnings[0]).toContain("1500000 tokens");
+        expect(runningNotificationsIn(xmls)).toHaveLength(0);
       } finally {
         await fs.promises.rm(tmpDir, { recursive: true, force: true });
       }

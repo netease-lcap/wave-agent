@@ -133,6 +133,77 @@ describe("WorkflowManager", () => {
     expect(frame).not.toContain("0 tokens");
   });
 
+  it("should mark an oversized run in the row and explain it in the detail", async () => {
+    // 26 agents / 6.3M tokens — over both thresholds. The row carries the compact
+    // marker; the detail spells out the scale and the thresholds, and names this
+    // panel's own stop key (spec「预算与规模硬上限」场景 7: the marker is the
+    // human's cue, the model is never told).
+    mockWorkflowRuns = [
+      {
+        ...mockRuns[0],
+        sizeWarning: true,
+        totalAgents: 26,
+        totalTokens: 6_300_000,
+      },
+    ];
+    const { lastFrame, stdin } = render(
+      <WorkflowManager onCancel={onCancel} />,
+    );
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("audit-wf");
+    });
+    expect(lastFrame()).toContain("⚠ Large");
+    // Millions, not "6300.0k": the marker names the 1.5M threshold right below it.
+    expect(lastFrame()).toContain("6.3M tokens");
+
+    stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Workflow Details");
+    });
+    // The detail copy is one sentence, and a narrow terminal wraps it — collapse
+    // whitespace so the assertion tests the wording, not the wrap point.
+    const frame = (lastFrame() ?? "").replace(/\s+/g, " ");
+    expect(frame).toContain("⚠ Large run: 26 agents / 6.3M tokens");
+    expect(frame).toContain("25 agents / 1.5M tokens threshold");
+    expect(frame).toContain("Press k to stop it");
+  });
+
+  it("should report an oversized finished run without a stop hint", async () => {
+    // A completed run is past the thresholds too, but there is nothing left to
+    // stop — so the marker names no key.
+    mockWorkflowRuns = [
+      {
+        ...mockRuns[1],
+        status: "completed",
+        sizeWarning: true,
+        totalAgents: 26,
+        totalTokens: 6_300_000,
+      },
+    ];
+    const { lastFrame, stdin } = render(
+      <WorkflowManager onCancel={onCancel} />,
+    );
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("done-wf");
+    });
+    stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Workflow Details");
+    });
+    const frame = (lastFrame() ?? "").replace(/\s+/g, " ");
+    expect(frame).toContain("⚠ Large run: 26 agents / 6.3M tokens");
+    expect(frame).not.toContain("Press k to stop it");
+  });
+
+  it("should not mark a run under the size thresholds", async () => {
+    mockWorkflowRuns = [...mockRuns];
+    const { lastFrame } = render(<WorkflowManager onCancel={onCancel} />);
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("failed-wf");
+    });
+    expect(lastFrame()).not.toContain("⚠ Large");
+  });
+
   it("should show the selected run's script path", async () => {
     mockWorkflowRuns = [...mockRuns];
     const { lastFrame } = render(<WorkflowManager onCancel={onCancel} />);

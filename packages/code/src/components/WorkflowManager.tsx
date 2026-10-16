@@ -183,6 +183,11 @@ export const WorkflowManager: React.FC<WorkflowManagerProps> = ({
                   {" "}
                   ({run.status})
                 </Text>
+                {/* Oversized marker: the row is where a run is picked, so the
+                    "too big to leave running" signal belongs on it (spec
+                    「预算与规模硬上限」场景 7). The counts are on the meta line
+                    right below, and the stop key is in the footer. */}
+                {run.sizeWarning && <Text color="yellow"> ⚠ Large</Text>}
               </Text>
               <Text
                 color={isSelected ? "black" : "gray"}
