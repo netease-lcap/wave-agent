@@ -291,7 +291,7 @@ AI 会把测试结果整理为结构化的测试报告（用例、步骤、结�
 
 ## 五、研发知识库：团队知识如何进入 AI {#knowledge-base}
 
-客户常问「你们的知识库是自带还是要接入其他平台」。这一节讲清团队知识进入 AI 工作上下文的三种载体、为什么是这个形态，以及我们的能力边界。
+客户常问「你们的知识库是自带还是要接入其他平台」。这一节讲清团队知识进入 AI 工作上下文的三种载体，以及为什么是这个形态。
 
 ### 1. 团队知识如何进入 AI 的工作上下文 {#knowledge-carriers}
 
@@ -311,13 +311,11 @@ AI 会把测试结果整理为结构化的测试报告（用例、步骤、结�
 
 ### 2. 为什么是这个形态 {#knowledge-rationale}
 
-Claude Code 官方明确说明它「在开发者本机运行，**不需要构建、维护代码库索引，也不上传到服务器**」（[来源](https://claude.com/resources/articles/how-claude-code-works-in-large-codebases-best-practices-and-where-to-start)），理由是上下文窗口是稀缺资源——「填满得很快，性能随之下降」，所以业界主流做法是**渐进式披露（progressive disclosure）**：启动只加载名字与描述，用到时才读全文（[来源](https://code.claude.com/docs/en/best-practices)）。官方对 Agent Skills 的定位是「**就像给新员工写一份入职指南**」（[来源](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)）；相比之下，官方也指出长期维护一份向量索引的麻烦在于「跟不上活跃研发团队的节奏，检索还会返回两周前就被改名的函数」。
+Claude Code 官方把上下文窗口形容为稀缺资源——「填满得很快，性能随之下降」，所以业界主流做法是**渐进式披露（progressive disclosure）**：启动只加载名字与描述，用到时才读全文（[来源](https://code.claude.com/docs/en/best-practices)）。官方对 Agent Skills 的定位是「**就像给新员工写一份入职指南**」（[来源](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)）。
 
-### 3. 能力边界：不对代码仓库建索引 {#knowledge-limits}
+### 3. 语料很大时：用 MCP 接知识平台 {#knowledge-large-corpus}
 
-**CodeWave IDE 不对代码仓库建向量索引**，也不把知识二次落库；团队知识来自客户自己的仓库、文档站与知识平台，由 AI 按需读取。如果语料大到塞不进上下文（官方给的经验判据：超过约 200,000 token / 约 500 页），或者需要跨库语义检索，推荐**用 MCP 接客户自己的知识平台**——Confluence / 语雀 / Notion 都有成熟 MCP server，装好即用（配置方式见[桌面版文档 - MCP](/desktop#_5-1-mcp)）。
-
-口径上注意不要说过头：这是「**编程 Agent 不对你的代码仓库建索引**」，而不是「业界都不做内置知识库」——其他 AI 产品里也有自带知识库检索的（如 claude.ai 的 Projects）。我们保证的是「能读到你的仓库与知识平台」，不是「替你另建一份索引」。
+如果语料大到塞不进上下文（官方给的经验判据：超过约 200,000 token / 约 500 页），或者需要跨库语义检索，推荐**用 MCP 接客户自己的知识平台**——Confluence / 语雀 / Notion 都有成熟 MCP server，装好即用（配置方式见[桌面版文档 - MCP](/desktop#_5-1-mcp)）。
 
 ---
 

@@ -126,8 +126,8 @@ export default {
               link: "/tutorials#knowledge-rationale",
             },
             {
-              text: "能力边界：不对代码仓库建索引",
-              link: "/tutorials#knowledge-limits",
+              text: "语料很大时：用 MCP 接知识平台",
+              link: "/tutorials#knowledge-large-corpus",
             },
           ],
         },
