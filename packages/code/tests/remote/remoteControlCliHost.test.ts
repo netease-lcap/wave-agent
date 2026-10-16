@@ -42,6 +42,7 @@ function makeSession(
     contextUsagePercent: () => 0,
     latestTotalTokens: () => 0,
     permissionMode: () => "default",
+    customTitle: () => undefined,
     availableTools: () => [],
     isLoading: () => false,
     hasRunningBackgroundWork: () => false,
@@ -155,6 +156,69 @@ test("listSessions still answers when the project directory cannot be read", asy
   )) as { sessions: SessionMetadata[] };
   expect(result.sessions).toHaveLength(1);
   expect(result.sessions[0].id).toBe("sess-1");
+});
+
+test("listDaemonSessions answers the one live session, without reading disk", async () => {
+  // The page's session list reads this method, not `listSessions`: its rows
+  // must be openable, and the in-memory registry is the only place "which
+  // sessions are alive here" is a fact. For this host the registry is the
+  // single session it holds (spec remote-control「边界情况」).
+  const session = makeSession({
+    displayMessages: () => [
+      message("m1", "user", "fix the flaky test"),
+      message("m2", "assistant", "on it"),
+    ],
+    customTitle: () => "登录页",
+    hasRunningBackgroundWork: () => true,
+    hasPendingMessages: () => true,
+    isLoading: () => true,
+  });
+
+  const result = (await new RemoteControlCliHost(session).handleRequest(
+    "listDaemonSessions",
+    {},
+  )) as { sessions: Array<Record<string, unknown>> };
+
+  expect(result.sessions).toEqual([
+    {
+      sessionId: "sess-1",
+      workingDirectory: "/work",
+      isLoading: true,
+      hasRunningBackgroundWork: true,
+      hasPendingMessages: true,
+      messageCount: 2,
+      customTitle: "登录页",
+      firstMessage: "fix the flaky test",
+      lastActiveAt: "2026-10-14T00:00:00.000Z",
+    },
+  ]);
+  expect(listSessionsMock).not.toHaveBeenCalled();
+});
+
+test("listDaemonSessions has nothing to list before the first turn", async () => {
+  const result = (await new RemoteControlCliHost(
+    makeSession({ sessionId: () => "" }),
+  ).handleRequest("listDaemonSessions", {})) as { sessions: unknown[] };
+
+  expect(result.sessions).toEqual([]);
+});
+
+test("listDaemonSessions omits the label fields it has no material for", async () => {
+  // Absent rather than empty: the page falls back to its own placeholder, and
+  // the row stays identical in shape to what the daemon reports.
+  const result = (await new RemoteControlCliHost(makeSession()).handleRequest(
+    "listDaemonSessions",
+    {},
+  )) as { sessions: Array<Record<string, unknown>> };
+
+  expect(result.sessions[0]).toEqual({
+    sessionId: "sess-1",
+    workingDirectory: "/work",
+    isLoading: false,
+    hasRunningBackgroundWork: false,
+    hasPendingMessages: false,
+    messageCount: 0,
+  });
 });
 
 test("getMessages answers the whole thread when no window is asked for", async () => {

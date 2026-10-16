@@ -12,9 +12,11 @@
  * Two consequences of "one session, and it is the one on screen", both
  * deliberate (docs/specs/ui/remote-control.md, 前台 CLI 故事):
  *
- * - `listSessions` answers with exactly this session. The phone's list is a
- *   navigation surface, and there is nothing else to navigate to — scanning
- *   disk for older conversations would offer rows that cannot be opened.
+ * - Both ways of asking for the session list (`listDaemonSessions`, which the
+ *   page reads, and `listSessions`) answer with exactly this session. The
+ *   phone's list is a navigation surface, and there is nothing else to navigate
+ *   to — scanning disk for older conversations would offer rows that cannot be
+ *   opened.
  * - The host dies with its process. Nothing here survives the TUI exiting, and
  *   that is the point: a session nobody holds cannot be served, only resumed
  *   (as a new session).
@@ -52,6 +54,8 @@ export interface RemoteControlCliSession {
   contextUsagePercent(): number;
   latestTotalTokens(): number;
   permissionMode(): PermissionMode;
+  /** User-set title (the one `/rename` sets); undefined when it has none. */
+  customTitle(): string | undefined;
   availableTools(): string[];
   isLoading(): boolean;
   hasRunningBackgroundWork(): boolean;
@@ -112,6 +116,8 @@ export class RemoteControlCliHost implements RemoteControlHost {
     switch (method) {
       case "listSessions":
         return this.listSessions();
+      case "listDaemonSessions":
+        return this.listDaemonSessions();
       case "getSessionInfo":
         return this.getSessionInfo();
       case "getMessages":
@@ -222,6 +228,7 @@ export class RemoteControlCliHost implements RemoteControlHost {
   private synthesizedMetadata(sessionId: string): SessionMetadata {
     const now = new Date();
     const firstMessage = firstUserText(this.session.displayMessages());
+    const customTitle = this.session.customTitle();
     return {
       id: sessionId,
       sessionType: "main",
@@ -229,7 +236,57 @@ export class RemoteControlCliHost implements RemoteControlHost {
       createdAt: now,
       lastActiveAt: now,
       latestTotalTokens: this.session.latestTotalTokens(),
+      ...(customTitle ? { customTitle } : {}),
       ...(firstMessage ? { firstMessage } : {}),
+    };
+  }
+
+  /**
+   * The session list the page actually reads. A daemon has a real registry of
+   * them (`AgentBridge.listDaemonSessions`); this host holds exactly one, so its
+   * registry is that one — same shape, one row, and no disk read (the page can
+   * only open sessions that are live in the serving process, and this is the
+   * only one that is; see 规格 remote-control「边界情况」).
+   *
+   * Not `listSessions`: that reads the transcripts and would answer with rows
+   * the page cannot open — including this machine's older, unloaded ones.
+   */
+  private listDaemonSessions(): {
+    sessions: Array<{
+      sessionId: string;
+      workingDirectory: string;
+      isLoading: boolean;
+      hasRunningBackgroundWork: boolean;
+      hasPendingMessages: boolean;
+      messageCount: number;
+      /** User-set title; wins over `firstMessage` in the UI. */
+      customTitle?: string;
+      /** First real user message — the label when no custom title is set. */
+      firstMessage?: string;
+      /** Last display message's timestamp: the session list's ordering key. */
+      lastActiveAt?: string;
+    }>;
+  } {
+    const sessionId = this.session.sessionId();
+    if (!sessionId) return { sessions: [] };
+    const messages = this.session.displayMessages();
+    const customTitle = this.session.customTitle();
+    const firstMessage = firstUserText(messages);
+    const lastActiveAt = messages[messages.length - 1]?.timestamp;
+    return {
+      sessions: [
+        {
+          sessionId,
+          workingDirectory: this.session.workdir(),
+          isLoading: this.session.isLoading(),
+          hasRunningBackgroundWork: this.session.hasRunningBackgroundWork(),
+          hasPendingMessages: this.session.hasPendingMessages(),
+          messageCount: messages.length,
+          ...(customTitle ? { customTitle } : {}),
+          ...(firstMessage ? { firstMessage } : {}),
+          ...(lastActiveAt ? { lastActiveAt } : {}),
+        },
+      ],
     };
   }
 

@@ -41,6 +41,11 @@ export interface UseRemoteControlOptions {
   permissionMode: PermissionMode;
   latestTotalTokens: number;
   maxInputTokens: number;
+  /**
+   * The title `/rename` sets, read live off the agent — the page's session list
+   * labels the row with it (and the page itself may be the one that renamed it).
+   */
+  customTitle: () => string | undefined;
   hasRunningBackgroundWork: boolean;
   hasPendingMessages: boolean;
   /**
@@ -221,6 +226,7 @@ function adapterOf(latest: {
       ),
     latestTotalTokens: () => latest.current.latestTotalTokens,
     permissionMode: () => latest.current.permissionMode,
+    customTitle: () => latest.current.customTitle(),
     availableTools: () => latest.current.availableTools(),
     isLoading: () => latest.current.isLoading,
     hasRunningBackgroundWork: () => latest.current.hasRunningBackgroundWork,
