@@ -161,6 +161,22 @@
    */
   var HOSTS_PATH = "/api/relay/hosts";
   var LAST_HOST_KEY = "wave_remote_last_host";
+  /**
+   * Web Push, same-origin REST again (spec「锁屏也能知道——会话等着我、或者
+   * 跑完了」): the relay owns the VAPID key and the subscription table, while the
+   * id it hands back is what a later revocation needs — so it is stored here
+   * under our own key rather than recomputed.
+   */
+  var VAPID_PATH = "/api/relay/push/public-key";
+  var SUBSCRIPTIONS_PATH = "/api/relay/push/subscriptions";
+  var PUSH_SUB_KEY = "wave_remote_push_sub";
+  /**
+   * The service worker's file name inside the page bundle. `build.mjs` fills
+   * this in (the file is content-hashed like every other asset, so the name
+   * cannot be a literal here); a page built without it simply fails to
+   * register the worker, which `registerServiceWorker` reports once.
+   */
+  var SERVICE_WORKER_PATH = "./__SW_FILE__";
   /** What the machine registered with (`process.platform`) → display label. */
   var PLATFORM_LABELS = { darwin: "macOS", win32: "Windows", linux: "Linux" };
   /** How long one automatic login round-trip counts as "just happened" (ms). */
@@ -555,6 +571,10 @@
 
   /** Resolve where to connect and what to say, then connect. */
   function boot() {
+    // Independent of the link and of the login state: the worker only needs to
+    // exist by the time the user opens the menu, and registering it costs
+    // nothing (no permission, no request).
+    registerServiceWorker();
     credential = readStored("token");
     // The ordinary case for a page that stays open, or is opened days later: a
     // token with nothing wrong with it goes straight out, no request spent on
@@ -2290,6 +2310,20 @@
         });
         return;
 
+      case "getPushState":
+        // The menu asks once on mount; every change answers with the same
+        // message, so the two ends cannot drift.
+        postPushState("");
+        return;
+
+      case "enablePushNotifications":
+        enablePush();
+        return;
+
+      case "disablePushNotifications":
+        disablePush();
+        return;
+
       case "openMachinePicker":
         // This page's header chip: show the account's machines and switch if
         // one is chosen. The current connection stays up until then.
@@ -2305,6 +2339,253 @@
           "Web 端未实现的命令（未回执，界面可能停在该动作上）：" + command,
         );
     }
+  }
+
+  // ── Web Push ────────────────────────────────────────────────────
+
+  /**
+   * Notifications, the page's only channel that works while nobody is looking
+   * (spec「锁屏也能知道——会话等着我、或者跑完了」).
+   *
+   * The service worker is the load-bearing half: the relay sends the push to the
+   * browser's push service, which wakes `sw.js` — not this page, which by then
+   * may be frozen or closed. So the split is: this file owns the subscription
+   * lifecycle (permission, VAPID key, register/revoke with the relay), and the
+   * worker owns the banner. The banner's one rule that belongs here is the
+   * worker's message back — a push that arrived while the page was visible is
+   * not announced, it is aligned onto (`onWorkerMessage`).
+   */
+
+  /** What this browser can do, and the one case where the answer is iOS-shaped. */
+  function pushEnvironment() {
+    var supportsWorker = !!(
+      navigator.serviceWorker && navigator.serviceWorker.register
+    );
+    return {
+      supportsWorker: supportsWorker,
+      supportsPush: supportsWorker && typeof window.PushManager === "function",
+      standalone:
+        window.navigator.standalone === true ||
+        !!(
+          window.matchMedia &&
+          window.matchMedia("(display-mode: standalone)").matches
+        ),
+      isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent || ""),
+    };
+  }
+
+  /** The subscription id we registered, or "" — what revoking it needs. */
+  function storedPushId() {
+    return readStored(PUSH_SUB_KEY);
+  }
+
+  /**
+   * The page's picture of the feature. `reason` explains a refusal in the
+   * vocabulary the menu renders (see MoreMenu): `needs-home-screen` is the iOS
+   * case — in a Safari tab `PushManager` does not exist at all (iOS 16.4+ only
+   * exposes it to a home-screen web app), so reporting "unsupported" there
+   * would be true of the tab and useless to the user.
+   */
+  function postPushState(reason) {
+    var env = pushEnvironment();
+    post({
+      command: "pushState",
+      supported: env.supportsPush,
+      subscribed: env.supportsPush && storedPushId() !== "",
+      needsHomeScreen: !env.supportsPush && env.isIOS && !env.standalone,
+      reason: reason || "",
+    });
+  }
+
+  /** Relay REST with this page's credential; a 401 leaves as `authRequired`. */
+  function relayRest(path, init) {
+    var options = init || {};
+    options.headers = Object.assign(
+      { Authorization: "Bearer " + credential },
+      options.headers || {},
+    );
+    return fetch(path, options).then(function (response) {
+      if (response.status === 401) {
+        // The machine list refuses the same way for the same reason: this call
+        // never passes through the handshake's own ladder, so its caller turns
+        // this into one silent renewal and then the login page.
+        throw Object.assign(new Error("unauthorized"), { authRequired: true });
+      }
+      if (!response.ok) throw new Error("HTTP " + response.status);
+      return response;
+    });
+  }
+
+  /** Run one relay call, spending a single silent renewal on a 401. */
+  function withRenewal(run) {
+    return run().catch(function (err) {
+      if (!err || !err.authRequired) throw err;
+      return renewSession().then(function (renewed) {
+        if (!renewed) throw err;
+        return run();
+      });
+    });
+  }
+
+  /** A VAPID key arrives base64url; `subscribe` wants the raw bytes. */
+  function urlBase64ToUint8Array(base64) {
+    var pad = (4 - (base64.length % 4)) % 4;
+    var normalized = (base64 + "====".slice(0, pad))
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    var raw = window.atob(normalized);
+    var bytes = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+    return bytes;
+  }
+
+  /** Have a worker at all. Silent — that part needs no permission. */
+  function registerServiceWorker() {
+    if (!pushEnvironment().supportsWorker) return;
+    var registered = navigator.serviceWorker.register(SERVICE_WORKER_PATH);
+    if (!registered || typeof registered.catch !== "function") return;
+    registered.catch(function (err) {
+      warnOnce(
+        "sw",
+        "Service Worker 注册失败：" + (err && err.message ? err.message : err),
+      );
+    });
+  }
+
+  /** Notifications on: permission → VAPID → subscribe → register with the relay. */
+  function enablePush() {
+    var env = pushEnvironment();
+    if (!env.supportsPush) {
+      postPushState(
+        env.isIOS && !env.standalone ? "needs-home-screen" : "unsupported",
+      );
+      return;
+    }
+    if (typeof window.Notification === "undefined") {
+      postPushState("unsupported");
+      return;
+    }
+    // The permission prompt has to come from this call, which the page makes
+    // from a user gesture — hence "开启通知" is a menu action, never an
+    // automatic one on load.
+    var asked = window.Notification.requestPermission();
+    if (!asked || typeof asked.then !== "function") {
+      // An old callback-only signature is not worth a second code path: the
+      // browsers that have PushManager also have the promise form.
+      postPushState("denied");
+      return;
+    }
+    asked
+      .then(function (permission) {
+        if (permission !== "granted") {
+          postPushState("denied");
+          return null;
+        }
+        return withRenewal(function () {
+          return relayRest(VAPID_PATH).then(function (response) {
+            return response.json();
+          });
+        })
+          .then(function (body) {
+            var key = body && body.publicKey;
+            if (!key) throw new Error("中继没有返回 VAPID 公钥");
+            return navigator.serviceWorker.ready.then(function (registration) {
+              return registration.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: urlBase64ToUint8Array(key),
+              });
+            });
+          })
+          .then(function (subscription) {
+            var json = subscription.toJSON();
+            return withRenewal(function () {
+              return relayRest(SUBSCRIPTIONS_PATH, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  endpoint: json.endpoint,
+                  keys: json.keys,
+                }),
+              }).then(function (response) {
+                return response.json();
+              });
+            }).then(function (created) {
+              // Registered: the id is the only handle on this subscription, so
+              // losing it means the relay keeps pushing to a browser that no
+              // longer listens — store it before reporting success.
+              writeStored(PUSH_SUB_KEY, (created && created.id) || "");
+              postPushState("");
+            });
+          });
+      })
+      .catch(function (err) {
+        warnOnce(
+          "push-enable",
+          "开启通知失败：" + (err && err.message ? err.message : err),
+        );
+        postPushState("failed");
+      });
+  }
+
+  /** Notifications off: revoke with the relay first, then drop the browser side. */
+  function disablePush() {
+    var id = storedPushId();
+    var revoke = id
+      ? withRenewal(function () {
+          return relayRest(SUBSCRIPTIONS_PATH + "/" + encodeURIComponent(id), {
+            method: "DELETE",
+          });
+        })
+      : Promise.resolve();
+
+    revoke
+      .then(function () {
+        writeStored(PUSH_SUB_KEY, "");
+        if (!navigator.serviceWorker || !navigator.serviceWorker.ready)
+          return null;
+        return navigator.serviceWorker.ready
+          .then(function (registration) {
+            return registration.pushManager.getSubscription();
+          })
+          .then(function (subscription) {
+            return subscription ? subscription.unsubscribe() : null;
+          })
+          .catch(function () {
+            // Best-effort: the relay has already forgotten the endpoint, and
+            // that is what actually stops the pushes. A browser-side leftover
+            // would be replaced by the next subscribe().
+            return null;
+          });
+      })
+      .then(function () {
+        postPushState("");
+      })
+      .catch(function (err) {
+        // The revocation did not land, so the subscription is still live at
+        // the relay. Keep the id and say so: pretending it is off would leave
+        // pushes arriving for a switch the user believes is off.
+        warnOnce(
+          "push-revoke",
+          "注销订阅失败：" + (err && err.message ? err.message : err),
+        );
+        postPushState("failed");
+      });
+  }
+
+  /**
+   * A push landed while the page was on screen. The worker deliberately shows
+   * no banner then (spec 场景 4); this is the page's half of that bargain —
+   * re-read the state so the confirmation card or the waiting marker is there
+   * without the user doing anything.
+   */
+  function onWorkerMessage(event) {
+    var data = event && event.data;
+    if (!data || data.type !== "wave-push") return;
+    onResume();
+  }
+
+  if (navigator.serviceWorker && navigator.serviceWorker.addEventListener) {
+    navigator.serviceWorker.addEventListener("message", onWorkerMessage);
   }
 
   // ── Coming back to the foreground ───────────────────────────────
