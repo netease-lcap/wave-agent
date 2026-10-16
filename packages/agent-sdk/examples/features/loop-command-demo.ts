@@ -18,7 +18,6 @@ async function main() {
   // 1. Create Agent instance
   const agent = await Agent.create({
     workdir: tempDir,
-    model: process.env.WAVE_FAST_MODEL, // Use a supported model
     callbacks: {
       onAssistantContentUpdated: (params) => {
         process.stdout.write(params.chunk);

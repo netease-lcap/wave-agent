@@ -2,9 +2,6 @@
 
 import { Agent, buildTool, type ToolResult } from "../../src/index.js";
 
-// Use a cheaper/faster model for testing
-process.env.WAVE_MODEL = process.env.WAVE_FAST_MODEL;
-
 // Define custom tools using buildTool()
 const weatherTool = buildTool({
   name: "GetWeather",

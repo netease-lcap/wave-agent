@@ -7,7 +7,6 @@ import { Agent } from "../../src/agent.js";
 async function main() {
   // 1. Create Agent instance
   const agent = await Agent.create({
-    model: process.env.WAVE_FAST_MODEL, // Use a fast model for testing
     callbacks: {
       onAssistantContentUpdated: (params) => {
         process.stdout.write(params.chunk);

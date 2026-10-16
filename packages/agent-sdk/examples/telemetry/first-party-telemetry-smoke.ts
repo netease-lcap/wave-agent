@@ -40,8 +40,8 @@ const SERVER_URL =
   process.env.WAVE_SERVER_URL ?? "https://codechat.codewave-test.163yun.com";
 const VERIFY = process.env.WAVE_SMOKE_VERIFY !== "0";
 const KEEP = process.env.WAVE_SMOKE_KEEP === "1";
-/** 有 fast model 就用它 —— 冒烟只需要真实往返，不需要最强模型。 */
-const MODEL = process.env.WAVE_FAST_MODEL ?? process.env.WAVE_MODEL;
+/** 显式给了 `WAVE_MODEL` 就用它，否则交给本机配置的默认模型。 */
+const MODEL = process.env.WAVE_MODEL;
 
 /** 流式文本的落点：callbacks 在 Agent.create 时就要给定，只能先放一个盒子。 */
 const transcript = { value: "" };

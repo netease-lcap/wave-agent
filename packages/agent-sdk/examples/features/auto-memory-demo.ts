@@ -21,7 +21,7 @@ import { pathEncoder } from "../../src/utils/pathEncoder.js";
  * 4. Polls the auto-memory directory until the fork extracts the keywords.
  *
  * Usage:
- *   WAVE_FAST_MODEL=<model> pnpm exec tsx examples/features/auto-memory-demo.ts
+ *   pnpm exec tsx examples/features/auto-memory-demo.ts
  */
 async function main() {
   const tempDir = await fs.mkdtemp(
@@ -37,7 +37,6 @@ async function main() {
 
     agent = await Agent.create({
       workdir: tempDir,
-      model: process.env.WAVE_FAST_MODEL,
       logger: {
         debug: (message: unknown, ...args: unknown[]) => {
           console.debug(`[DEBUG] ${message}`, ...args);

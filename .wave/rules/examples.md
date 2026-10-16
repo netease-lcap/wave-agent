@@ -2,11 +2,11 @@
 paths:
   - "packages/*/examples/**/*"
 ---
+
 - `packages/*/examples` directories contain real test ts or tsx files that are hard to mock:
   - need to create temporary directories
   - test by sending real messages using `agent.sendMessage`
   - run example like this: `cd packages/xxx && pnpm exec tsx examples/hi.ts`
-  - use `process.env.WAVE_FAST_MODEL` for cheaper and faster testing (pass as `model` in `Agent.create`)
   - always include a `finally` block that calls `await agent.destroy()` followed by `process.exit(0)` to ensure the process exits cleanly
   - never access private properties directly with `(agent as any)`
   - before running any example, always run type-check for `agent-sdk` to ensure types are valid: `cd packages/agent-sdk && pnpm run type-check`

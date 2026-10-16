@@ -47,7 +47,6 @@ This skill was invoked with arguments and executed bash commands.
     );
 
     agent = await Agent.create({
-      model: process.env.WAVE_FAST_MODEL, // Using a fast model as suggested
       workdir: tempDir,
       callbacks: {
         onAssistantContentUpdated: (params: { chunk: string }) => {

@@ -18,7 +18,6 @@ import type { WorkflowRun } from "../../src/workflow/types.js";
  *     subagent can fix it without spending a nudge;
  *   - the run finishes with no retry-cap failure.
  *
- * Uses WAVE_FAST_MODEL for cheaper/faster testing if set.
  */
 
 /** The script under test — plain JavaScript, exactly as the model would send it. */
@@ -171,7 +170,6 @@ async function main(): Promise<void> {
   };
 
   const agent = await Agent.create({
-    model: process.env.WAVE_FAST_MODEL,
     workdir: tempDir,
     callbacks: {
       onAssistantContentUpdated: (params) => {
