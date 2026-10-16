@@ -1426,6 +1426,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     permissionMode,
     latestTotalTokens,
     maxInputTokens,
+    // 手机侧会话列表的标题材料：`customTitle` 不走 React state（agent 自己存着，
+    // 重命名后即刻生效），所以按「取当前值」的函数递给门面。
+    customTitle: () => agentRef.current?.customTitle,
     hasRunningBackgroundWork: backgroundTasks.length > 0,
     hasPendingMessages: queuedMessages.length > 0,
     // 场景 26 的会话状态族：远控页按状态重读 `getSessionInfo`，这四个是它的
