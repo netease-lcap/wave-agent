@@ -1499,6 +1499,14 @@ Wave 支持 OpenTelemetry 可观测性标准，提供结构化的遥测数据（
 
 > 早期版本采集的 **Traces（span 链路）已移除**：上游 Claude Code 的 traces 仍处 beta，且链路数据对「成本 / 容量 / 错误率」这类车队级问题不如指标直接。配置里遗留的 `tracesExporter` / `spanTtlMs` 不再生效，加载时记一条告警（其余遥测设置照常生效）。
 
+### 内置上报（首方出口） {#otel-first-party}
+
+除下面这些自建导出器外，Wave 还有一条**独立的**首方管道：把 `wave.*` 指标与会话生命周期事件直报**部署方自己的** CodeWave 服务端，端点 `{登录服务端地址}/otel`（`WAVE_OTEL_URL` 可覆盖，便于指向本地 sink 联调），凭证复用当前登录的 SSO token，企业端运营平台的「研发效能」页面据此供数。
+
+- **默认开启**，不需要任何配置；两条管道互不顶替——配了自建 OTLP 不会关掉它，它也不占用你配的 `endpoint`。
+- **退出有两扇门**：`WAVE_DISABLE_TELEMETRY=1|true` 优先级最高（且只关这一条——自建导出器照常发送），或 `monitoring.telemetry.firstPartyEnabled: false`（写在 `~/.wave/settings.json`，或由管理员经服务端托管配置按整队下发）。
+- **未登录、或拿不到服务端地址时不产生任何流量**（不生成注定 401 的批次），导出失败走优雅失败，不阻塞会话。
+
 ### 导出器 (Exporters) {#otel-exporters}
 
 Wave 支持为每种信号类型（Metrics、Logs）配置不同的导出目标：

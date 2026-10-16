@@ -186,7 +186,7 @@ async function run(): Promise<number> {
       entrypoint: "cli",
       ...(MODEL ? { model: MODEL } : {}),
       telemetry: {
-        // 首方通道默认关闭（FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED = false），这里显式打开
+        // 首方通道现已默认开启；这里显式写上，让冒烟脚本不随默认值变化而变
         firstPartyEnabled: true,
         // vcs.repository.* 默认关闭，打开才能在 byRepository 里看到归属
         includeRepository: true,

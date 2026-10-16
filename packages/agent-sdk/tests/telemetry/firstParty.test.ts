@@ -42,16 +42,16 @@ afterEach(() => {
 });
 
 describe("resolveFirstPartyEnabled", () => {
-  it("没有配置时由代码常量决定，当前为关（服务端入口未就绪）", () => {
-    expect(FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED).toBe(false);
-    expect(resolveFirstPartyEnabled()).toBe(false);
+  it("没有配置时由代码常量决定，默认开启（服务端入口已在各环境就绪）", () => {
+    expect(FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED).toBe(true);
+    expect(resolveFirstPartyEnabled()).toBe(true);
   });
 
-  it("settings 里的 firstPartyEnabled 可以显式打开（本机自测路径）", () => {
+  it("配置里的 firstPartyEnabled: true 与默认一致（显式打开仍生效）", () => {
     expect(resolveFirstPartyEnabled({ firstPartyEnabled: true })).toBe(true);
   });
 
-  it("显式关闭同样生效", () => {
+  it("配置里的显式关闭生效（托管配置按整队关掉这条出口的路径）", () => {
     expect(resolveFirstPartyEnabled({ firstPartyEnabled: false })).toBe(false);
   });
 
@@ -59,6 +59,11 @@ describe("resolveFirstPartyEnabled", () => {
     process.env.WAVE_DISABLE_TELEMETRY = "1";
     expect(isFirstPartyTelemetryDisabledByEnv()).toBe(true);
     expect(resolveFirstPartyEnabled({ firstPartyEnabled: true })).toBe(false);
+  });
+
+  it("WAVE_DISABLE_TELEMETRY 也压过默认开启（无任何配置时）", () => {
+    process.env.WAVE_DISABLE_TELEMETRY = "1";
+    expect(resolveFirstPartyEnabled()).toBe(false);
   });
 
   it("退出开关认 true，不认其它取值", () => {
