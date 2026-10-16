@@ -1,6 +1,5 @@
 import { artifactSkill } from "./skills/artifact.js";
 import { code_reviewSkill } from "./skills/code-review.js";
-import { deep_researchSkill } from "./skills/deep-research.js";
 import { initSkill } from "./skills/init.js";
 import { loopSkill } from "./skills/loop.js";
 import { security_reviewSkill } from "./skills/security-review.js";
@@ -14,7 +13,6 @@ import { sddPlugin } from "./plugins.js";
 export const BUILTIN_CONTENT: Record<string, string> = {
   ...artifactSkill,
   ...code_reviewSkill,
-  ...deep_researchSkill,
   ...initSkill,
   ...loopSkill,
   ...security_reviewSkill,

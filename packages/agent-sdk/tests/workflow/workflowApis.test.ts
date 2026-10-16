@@ -707,7 +707,7 @@ describe("createWorkflowApis", () => {
         async (prev, item, index) => {
           // Claude Code pipeline() semantics: the first stage's prevResult is
           // the original item, so a single-stage pipeline that only reads
-          // prevResult still sees the item (deep-research relies on this).
+          // prevResult still sees the item.
           expect(prev).toBe(item);
           return (prev as number) * 10 + index;
         },
