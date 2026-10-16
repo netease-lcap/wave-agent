@@ -36,6 +36,15 @@ const DEFAULT_CONCURRENCY = () =>
 const MAX_FAILURES_IN_SUMMARY = 5;
 
 /**
+ * Script result chars carried in a completion notification. A research script
+ * returns findings + sources + stats — useful as-is, but a run whose agents each
+ * returned a long document could hand the model hundreds of KB it has to pay
+ * for. Past this the notification carries a prefix plus the path of the full
+ * result (spec「停止运行并如实上报失败」场景 9).
+ */
+const MAX_RESULT_CHARS_IN_SUMMARY = 8000;
+
+/**
  * Script-log retention on the run (`WorkflowRun.logs`): past
  * `WORKFLOW_LOG_TRIM_THRESHOLD` accumulated lines the oldest are dropped down to
  * `MAX_WORKFLOW_LOG_LINES`. Same order of magnitude as Claude Code's cap on its
@@ -52,6 +61,50 @@ function appendWorkflowLog(run: WorkflowRun, message: string): void {
   if (logs.length > WORKFLOW_LOG_TRIM_THRESHOLD) {
     logs.splice(0, logs.length - MAX_WORKFLOW_LOG_LINES);
   }
+}
+
+/**
+ * The script's `return` value, shaped for a completion notification.
+ *
+ * The value is arbitrary script output — a report object, or markup the script
+ * fetched from the web — and the notification is read back with `<tag>…</tag>`
+ * regexes, so a raw `<` that begins a tag can cut the block short (`</result>`)
+ * or forge a field that is read after it (a payload containing
+ * `<status>failed</status>` made a successful run parse as failed). Every raw
+ * tag opener is escaped; the payload stays readable, HTML entities included.
+ * Returns null when there is nothing worth sending, so the caller can leave the
+ * block out entirely.
+ *
+ * `sanitizeResult` already guaranteed the value is JSON-serializable at the
+ * script boundary, so stringify here cannot throw.
+ */
+function summarizeRunResult(
+  run: WorkflowRun,
+  journalPath: string | undefined,
+): string | null {
+  const value = run.result;
+  if (value === undefined || value === null) return null;
+
+  // Compact JSON on purpose: this text is billed as context, and the model reads
+  // the structure either way.
+  const serialized = typeof value === "string" ? value : JSON.stringify(value);
+  if (serialized === "" || serialized === "{}" || serialized === "[]") {
+    return null;
+  }
+
+  const escaped = serialized.replace(/<(?=[a-zA-Z/!?])/g, "&lt;");
+  if (escaped.length <= MAX_RESULT_CHARS_IN_SUMMARY) {
+    return escaped;
+  }
+
+  const statePath = path.join(
+    journalPath ? path.dirname(journalPath) : path.dirname(run.scriptPath),
+    "run-state.json",
+  );
+  return (
+    escaped.slice(0, MAX_RESULT_CHARS_IN_SUMMARY) +
+    `\n… [result truncated at ${MAX_RESULT_CHARS_IN_SUMMARY} chars — the full value is in ${statePath}]`
+  );
 }
 
 export class WorkflowManager {
@@ -430,6 +483,7 @@ export class WorkflowManager {
 
         // Enqueue completion notification
         const journalPath = journal.filePath;
+        const resultForModel = summarizeRunResult(run, journalPath);
         this.messageQueue.enqueueNotification(
           taskNotificationToXml({
             type: "task_notification",
@@ -438,6 +492,7 @@ export class WorkflowManager {
             status: "completed",
             summary: this.buildRunSummary(run, apis, "completed"),
             ...(journalPath && { outputFile: journalPath }),
+            ...(resultForModel && { result: resultForModel }),
           }),
         );
 

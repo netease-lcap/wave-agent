@@ -127,6 +127,10 @@ export interface TaskNotificationBlock {
   status: "running" | "completed" | "failed" | "killed" | "aborted";
   summary: string;
   outputFile?: string;
-  /** Full final response of the task (e.g. a fork subagent's result). */
+  /**
+   * The task's own result payload: a fork subagent's final response, or a
+   * workflow script's `return` value (JSON-serialized, truncated past
+   * `MAX_RESULT_CHARS_IN_SUMMARY` with a pointer to the full value).
+   */
   result?: string;
 }
