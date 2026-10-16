@@ -178,6 +178,33 @@ export class WorkflowManager {
     return path.dirname(this.runDirOf(run));
   }
 
+  /**
+   * Write a run's state and WAIT for it before the caller moves on.
+   *
+   * Both terminal paths call this before enqueueing the completion
+   * notification, because that notification tells the model where the full
+   * result lives (`… [result truncated at 8000 chars — the full value is in
+   * <run-state.json>]`) and a reader that reaches the file before the write
+   * lands reads a zero-byte file. Fire-and-forget here loses that race readily
+   * on Windows (the CI failure was `Unexpected end of JSON input` on exactly
+   * this read). Same reasoning as the interrupted-run sweep below.
+   *
+   * Swallows the error after logging: a failed state write must not turn a
+   * completed run into a failed one.
+   */
+  private async persistRunState(
+    runsDir: string,
+    run: WorkflowRun,
+  ): Promise<void> {
+    try {
+      await this.stateStoreFor(runsDir).save(run);
+    } catch (err) {
+      logger.warn(
+        `[Workflow] Failed to persist run state: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   private get backgroundTaskManager(): BackgroundTaskManager {
     return this.container.get<BackgroundTaskManager>("BackgroundTaskManager")!;
   }
@@ -308,11 +335,13 @@ export class WorkflowManager {
 
     // Persist run state — into the RUNS directory (the store appends the run id
     // itself), which is where `listRuns()` and the resume path look for it.
-    this.stateStore.save(run).catch((err) => {
-      logger.warn(
-        `[Workflow] Failed to persist run state: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
+    //
+    // Awaited, so every snapshot of this run reaches the file in the order it
+    // was taken. Fire-and-forget here means a slow first write can land AFTER
+    // the terminal snapshot and overwrite it — the run file then says "running,
+    // no result" forever (and on Windows this is the same race that surfaced as
+    // `Unexpected end of JSON input`: a reader reaching the file mid-write).
+    await this.persistRunState(this.runsDir, run);
 
     return run;
   }
@@ -462,10 +491,9 @@ export class WorkflowManager {
         run.totalTokens = progressReporter.totalTokens;
         run.failures = apis.getFailures();
 
-        // Persist final state
-        this.stateStoreFor(runsDir)
-          .save(run)
-          .catch(() => {});
+        // Persist final state — awaited, because the notification below sends
+        // the model to this file for the truncated-away tail of the result.
+        await this.persistRunState(runsDir, run);
 
         // Close journal
         await journal.close();
@@ -516,10 +544,10 @@ export class WorkflowManager {
         run.totalTokens = progressReporter.totalTokens;
         run.failures = apis.getFailures();
 
-        // Persist failure/abort state
-        this.stateStoreFor(runsDir)
-          .save(run)
-          .catch(() => {});
+        // Persist failure/abort state (awaited for the same reason as the
+        // completion path: the status a reader sees must not lag the
+        // notification that reports it).
+        await this.persistRunState(runsDir, run);
 
         await journal.close();
 

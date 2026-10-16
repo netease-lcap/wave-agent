@@ -1262,6 +1262,83 @@ describe("completion notification result block", () => {
     }
   });
 
+  it("has the state file on disk before the notification names it", async () => {
+    // The notification routes the model to run-state.json for the tail of a
+    // truncated result, so that write has to land before the notification is
+    // sent — a fire-and-forget save loses the race as soon as the disk lags
+    // (Windows CI read the file mid-write and died on `Unexpected end of JSON
+    // input`). The spy below is what a slow disk does; the delay is the point
+    // of the test, not a sleep waiting for something to happen.
+    const realWriteFile = fs.promises.writeFile.bind(fs.promises);
+    const slowDisk = vi
+      .spyOn(fs.promises, "writeFile")
+      .mockImplementation(async (file, data, opts) => {
+        // Matches the temp file too — the write only counts once it lands.
+        if (String(file).includes("run-state.json")) {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        return realWriteFile(file, data, opts);
+      });
+    try {
+      const { notification, statePath, cleanup } = await runScript(
+        `return "x".repeat(9000);`,
+      );
+      try {
+        expect(resultIn(notification)).toContain(statePath);
+        const state = JSON.parse(await fs.promises.readFile(statePath, "utf8"));
+        expect((state.result as string).length).toBe(9000);
+      } finally {
+        await cleanup();
+      }
+    } finally {
+      slowDisk.mockRestore();
+    }
+  });
+
+  it("leaves the terminal snapshot as the last one that lands", async () => {
+    // Every snapshot has to reach run-state.json in the order it was taken:
+    // `createRun` writes one before the script even starts, and if THAT write
+    // lands after the terminal one, the file ends up saying "running, no
+    // result" — the reader the notification sent there never finds the result
+    // (observed as this file's own `state.result` coming back undefined under
+    // load). A slow first write is how an un-awaited save loses its turn.
+    const realWriteFile = fs.promises.writeFile.bind(fs.promises);
+    const realRename = fs.promises.rename.bind(fs.promises);
+    const landed: string[] = [];
+    const swaps = vi
+      .spyOn(fs.promises, "rename")
+      .mockImplementation(async (from, to) => {
+        landed.push(fs.readFileSync(String(from), "utf-8"));
+        return realRename(from, to);
+      });
+    let firstStateWrite = true;
+    const slowDisk = vi
+      .spyOn(fs.promises, "writeFile")
+      .mockImplementation(async (file, data, opts) => {
+        if (String(file).includes("run-state.json") && firstStateWrite) {
+          firstStateWrite = false;
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
+        return realWriteFile(file, data, opts);
+      });
+    try {
+      const { statePath, cleanup } = await runScript(`return { n: 42 };`);
+      try {
+        const lastLanded = JSON.parse(landed[landed.length - 1]);
+        expect(lastLanded.result).toEqual({ n: 42 });
+        const onDisk = JSON.parse(
+          await fs.promises.readFile(statePath, "utf8"),
+        );
+        expect(onDisk.result).toEqual({ n: 42 });
+      } finally {
+        await cleanup();
+      }
+    } finally {
+      swaps.mockRestore();
+      slowDisk.mockRestore();
+    }
+  });
+
   it("omits the block when there is nothing to hand over", async () => {
     for (const body of ["", "return;", "return {};", 'return "";']) {
       const { notification, cleanup } = await runScript(body);

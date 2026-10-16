@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { atomicWriteFile } from "../utils/atomicWrite.js";
 import type { WorkflowRun } from "./types.js";
 
 /**
@@ -17,11 +18,12 @@ export class RunStateStore {
     // Omit non-serializable fields
     const { completionPromise, ...serializable } = run;
     void completionPromise;
-    await fs.promises.writeFile(
-      statePath,
-      JSON.stringify(serializable, null, 2),
-      "utf-8",
-    );
+    // Atomic (temp + rename): this file is rewritten while others read it — the
+    // recovery path (`load`), the /workflows view, and the model itself, which a
+    // completion notification points here for the full result. A plain
+    // writeFile empties the target before it fills it, and a reader in that
+    // window gets a zero-byte file that `JSON.parse` rejects.
+    await atomicWriteFile(statePath, JSON.stringify(serializable, null, 2));
   }
 
   /** Load a single run's state from disk */
