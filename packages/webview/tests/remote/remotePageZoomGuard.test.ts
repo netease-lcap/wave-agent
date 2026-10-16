@@ -17,10 +17,14 @@ import { describe, expect, it } from "vitest";
  *
  * Pinned here: the floor is keyed on the element (so a new control is covered
  * without anyone remembering), it stays scoped to the remote page, the viewport
- * keeps the full-bleed props the 100dvh/safe-area fix relies on, and the mobile
- * type tier rides on a touch-device media query — a PC browser opening the same
- * page keeps the designed density. The real check is still on device: focus an
- * input and `visualViewport.scale` stays 1.
+ * keeps the full-bleed props the 100dvh/safe-area fix relies on, and the floor
+ * rides the same touch-device media query as the mobile type tier — a PC browser
+ * opening the same page keeps the designed density, controls included. (Until
+ * 2026-10-16 the floor was unconditional "in case the query misses"; he opened
+ * the page on a PC, saw every input oversized against the 13px reading text, and
+ * the trigger — iOS's font *threshold* — turned out not to apply to Android at
+ * all, see the media query's comment.) The real check is still on device: focus
+ * an input and `visualViewport.scale` stays 1.
  */
 const HERE = dirname(fileURLToPath(import.meta.url));
 const WEBVIEW = resolve(HERE, "../..");
@@ -121,14 +125,31 @@ describe("remote page autozoom guard", () => {
     expect(floor!.body).toMatch(/font-size:\s*16px\s*!important/);
   });
 
-  it("applies the floor after the tier it shares specificity with", () => {
-    const floor = rules.findIndex((r) =>
+  it("rides in the same touch-device media query as the tier", () => {
+    // Source order cannot help here (a tier group wins on specificity whatever
+    // the order — see the test above), so the floor has to be *inside* the query
+    // to stay off the PC path. On a PC the reading text is 13px, and a 16px
+    // input beside it is what he reported on 2026-10-16.
+    const floor = rules.find((r) =>
       /input,\s*textarea,\s*select,\s*\[contenteditable\]/.test(r.sel),
     );
-    const media = rules.findIndex((r) => r.sel.startsWith("@media"));
-    expect(media).toBeGreaterThanOrEqual(0);
-    // Same specificity ⇒ source order decides, so the floor must still come last.
-    expect(floor).toBeGreaterThan(media);
+    expect(floor).toBeDefined();
+    expect(floor!.sel).toMatch(/^@media> /);
+  });
+
+  it("keeps text controls out of the unconditional path", () => {
+    // Anything outside the media query reaches PC browsers too. The autozoom it
+    // guards against is an iOS *font threshold* — Android's focus zoom is a
+    // viewport compensation and its text inflation only fires when the page is
+    // laid out wider than the device, so this page (width=device-width) owns
+    // neither. A control rule left here would be pure cost on the desktop side.
+    const unconditional = rules.filter((r) => !r.sel.startsWith("@media> "));
+    for (const { sel } of unconditional) {
+      expect(
+        sel,
+        `${sel} lifts a text control on every device, PC included`,
+      ).not.toMatch(/input|textarea|select|\[contenteditable/);
+    }
   });
 
   it("keeps text-control class names out of the tier groups", () => {

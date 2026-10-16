@@ -19,7 +19,8 @@ import type { Page } from "@playwright/test";
 
 // 手机档（`pointer: coarse` / `hover: none`）只在触控设备上生效，而这一页是五端里
 // 唯一「一种宿主对应两种设备」的页面 —— 必须用触控 context 才走得到档位组，也就才
-// 复现得出这个 bug。桌面 context 下档位组不参与级联，量出来永远是 16px（假绿）。
+// 复现得出这个 bug（档位组把某个控件的类名收进去 ⇒ 压过下限）。桌面 context 走的是
+// 另一半：档位组与下限都不生效，页面上只该剩组件自己的基线（下面那组用例）。
 test.use({
   viewport: { width: 390, height: 844 },
   hasTouch: true,
@@ -122,4 +123,54 @@ test("远控页手机档：弹窗打开时页面上每个文本控件都在 16px
       .map((c) => `${c.what}=${c.size}px`)
       .join(", ")}`,
   ).toEqual([]);
+});
+
+/**
+ * 另一半：鼠标 context。同一个判据不成立 ⇒ 16px 下限与手机档一起失效，页面上只该
+ * 剩组件自己的基线（设计稿密度）。2026-10-16 之前下限写在媒体查询之外、不判设备，
+ * PC 上每个输入框都是 16px，而同屏正文只有 13px —— 他打开页面时报「所有输入控件
+ * 都是 16px，看着有点大」。下面两条就是那次的守卫：把下限搬出媒体查询，两条都红。
+ */
+test.describe("远控页 PC 档（鼠标 context）", () => {
+  test.use({
+    viewport: { width: 1280, height: 900 },
+    hasTouch: false,
+    isMobile: false,
+    deviceScaleFactor: 1,
+    userAgent:
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  });
+
+  test("PC 档：文本控件回到组件自己的基线，不再被抬到 16px", async ({
+    webviewPage,
+  }) => {
+    await bootstrap(webviewPage);
+
+    await webviewPage.click('[data-testid="history-btn"]');
+    const search = webviewPage.locator(".session-list-search");
+    await expect(search).toBeVisible();
+
+    const box = (await controlSizes(webviewPage)).find((c) =>
+      c.what.startsWith("input.session-list-search"),
+    );
+    expect(box, "会话弹窗的搜索框没渲染出来").toBeDefined();
+    expect(
+      box!.size,
+      `PC 上不该出现 16px 下限（量到 ${box!.size}px）`,
+    ).toBeLessThan(16);
+  });
+
+  test("PC 档：正文保持设计稿密度（手机档同样不生效）", async ({
+    webviewPage,
+  }) => {
+    await bootstrap(webviewPage);
+
+    const bodySize = await webviewPage.evaluate(() =>
+      parseFloat(getComputedStyle(document.body).fontSize),
+    );
+    expect(
+      bodySize,
+      `PC 档正文不该被抬到手机档（量到 ${bodySize}px）`,
+    ).toBeLessThan(15);
+  });
 });
