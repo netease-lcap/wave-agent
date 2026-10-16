@@ -16,7 +16,7 @@
  * Wave does the same, and that is the point: the marker is the human's cue to
  * stop a run. It used to be a notification injected into the model's context
  * instead, which turned "this run is big" into "ask the user whether to keep
- * going" on *every* deep-research run — a complete one is ~58 agents, so it
+ * going" on every multi-phase research run — those are ~58 agents, so they
  * always crossed. Nobody could ever let one finish; see the spec's 2026-10-16
  * 口径变更.
  */

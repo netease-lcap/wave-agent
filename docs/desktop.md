@@ -702,7 +702,6 @@ model: fastModel
 在需求中直接指定技能名，或用 `/技能名` 直接触发，例如：
 
 - "用 docx 技能把这个文档转成带修订的版本"
-- "用 deep-research 调研这个方案的开源替代品"
 - 输入 `/loop 5m 检查服务状态` 触发循环技能
 
 ![技能调用](/screenshots/desktop-skill.webp)
@@ -734,15 +733,14 @@ description: 生成单文件 HTML 原型
 
 #### 3）内置 SKILL
 
-| 技能          | 用途                                                  |
-| ------------- | ----------------------------------------------------- |
-| artifact      | 将本地 HTML/Markdown 发布为可分享网页                 |
-| code-review   | 审查当前 diff，按力度找正确性 bug 与简化机会          |
-| deep-research | 深度调研：多路搜索 → 抓取来源 → 对抗性验证 → 引用报告 |
-| init          | 分析代码库并生成 AGENTS.md 指导后续 Agent             |
-| loop          | 定时循环执行指令（/loop 5m /foo）                     |
-| settings      | 管理 Wave 配置（settings.json、hooks、MCP、插件等）   |
-| simplify      | 审查并直接修复代码的复用/简化/效率问题（不找 bug）    |
+| 技能        | 用途                                                |
+| ----------- | --------------------------------------------------- |
+| artifact    | 将本地 HTML/Markdown 发布为可分享网页               |
+| code-review | 审查当前 diff，按力度找正确性 bug 与简化机会        |
+| init        | 分析代码库并生成 AGENTS.md 指导后续 Agent           |
+| loop        | 定时循环执行指令（/loop 5m /foo）                   |
+| settings    | 管理 Wave 配置（settings.json、hooks、MCP、插件等） |
+| simplify    | 审查并直接修复代码的复用/简化/效率问题（不找 bug）  |
 
 ### 2.10 记忆
 

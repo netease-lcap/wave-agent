@@ -580,8 +580,8 @@ export function createWorkflowApis(ctx: WorkflowApiContext): WorkflowApis {
         // Stage signature is (prevResult, originalItem, index) and the first
         // stage is seeded with the item itself, matching Claude Code's
         // pipeline(). Seeding with undefined made the very first stage of a
-        // single-stage pipeline (e.g. the built-in deep-research skill) a
-        // no-op: the callback received undefined and dropped the item.
+        // single-stage pipeline a no-op: the callback received undefined and
+        // dropped the item.
         let acc: unknown = item;
         for (const stage of stages) {
           // A null from the previous stage skips the remaining stages for this

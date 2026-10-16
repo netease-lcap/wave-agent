@@ -499,8 +499,8 @@ return 1;`;
 
       expect(run.status).toBe("completed");
       // `phase()` itself writes no log line: the phase list is the structured
-      // record of progress, so a script that only calls phase() (the
-      // deep-research skill does exactly this) has nothing here.
+      // record of progress, so a script whose phases never call log() has
+      // nothing here.
       expect(run.logs).toEqual([
         "phase() Scan 开始",
         "grep 测试日志：找到 2 个重试用例",
@@ -1093,7 +1093,7 @@ return 1;`;
 
         // The model is never told the run got big: a notification here turned
         // "this run is large" into "ask the user whether to keep going" on every
-        // deep-research run, which is why none of them ever finished
+        // multi-phase research run, which is why none of them ever finished
         // (场景 7 2026-10-16 口径变更 — the marker is the human's cue).
         const xmls = enqueueNotification.mock.calls.map(
           (call) => call[0] as string,
@@ -1168,9 +1168,9 @@ return 1;`;
 describe("completion notification result block", () => {
   /**
    * The script's `return` value is the whole point of a fan-out whose report is
-   * assembled inside the script (the built-in deep-research does exactly this),
-   * and the tool is launch-and-return: the notification is the only channel it
-   * can arrive on (spec「停止运行并如实上报失败」场景 9).
+   * assembled inside the script, and the tool is launch-and-return: the
+   * notification is the only channel it can arrive on
+   * (spec「停止运行并如实上报失败」场景 9).
    */
   const runScript = async (body: string) => {
     const tmpDir = await fs.promises.mkdtemp(

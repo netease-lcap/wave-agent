@@ -1195,29 +1195,6 @@ await agent.triggerWorktreeRemoveHook("/path/to/worktree");
 3. **可信度评分 (Confidence Scoring)** — 为发现的每个缺陷启动独立代理，对照 PR diff 和 `AGENTS.md` 给出 0-100 的置信度评分（0=几乎肯定是误报；100=绝对确定且会高频触发）。评分同时过滤历史遗留缺陷、类型系统/编译器能自动捕获的问题、非修改行的缺陷等干扰项。
 4. **结果交付** — 过滤低于阈值的分数。优先通过 GitHub CLI (`gh pr comment`) 或 GitLab CLI (`glab mr note`) 将审查意见以 **PR/MR 评论** 形式发表；若 CLI 不可用或无对应 PR/MR，则直接在对话中输出。
 
-### deep-research — 深度主题调研 {#skill-deep-research}
-
-全自动深度主题研究工作流，通过并行网页搜索、源文件抓取、对抗式论点校验与去重，最终生成带有引用的高可信度报告。
-
-- **名称**: `deep-research`
-- **使用方式**: 直接向 Agent 提问复杂调研需求，或明确要求深度研究
-- **特性**: 通过 Workflow 工具编排多阶段流水线。若用户问题不够具体，运行前会先询问 2-3 个澄清问题以锁定调研范围。
-
-#### 执行阶段
-
-1. **拆解 (Scope)** — 将研究问题分解为 5 个不同的搜索维度（如背景概述、技术细节、最新进展、反面观点、实际应用等）。
-2. **并行检索 (Search)** — 并行启动 5 个搜索代理，分别针对每个维度检索网络，提取关键发现与源 URL。
-3. **抓取分析 (Fetch)** — 汇总并去重所有 URL，取前 15 个顶级源并行抓取，使用 AI 提取可证伪的核心论点（falsifiable claims）并附带引用来源。
-4. **对抗性校验 (Verify)** — 对每个核心论点进行 3 票制对抗性校验。3 个独立 skeptical 代理专门寻找反驳证据，超过 2 票反驳的论点被剔除，其余判定为 Confirmed（确认）或 Contested（有争议）。
-5. **综合报告 (Synthesize)** — 合并语义重复的论点，按可信度排序，生成结构化深度报告：
-   - 执行摘要 (Executive summary)
-   - 按可信度排序且带引用的核心结论 (Key findings with citations)
-   - 争议结论与前置条件 (Contested findings with caveats)
-   - 不确定性区域 (Areas of uncertainty)
-   - 总结 (Conclusion)
-
-运行后可通过 `/workflows` 跟踪工作流进度。
-
 ### artifact — 发布可分享网页 {#skill-artifact}
 
 将本地 `.html`/`.md` 文件发布为**默认私有**的可分享网页，并返回可传播的 URL。

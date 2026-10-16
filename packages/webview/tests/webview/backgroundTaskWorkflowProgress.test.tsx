@@ -96,8 +96,8 @@ describe("Workflow progress in the task panel", () => {
   });
 
   it("renders progress for a run that never calls log()", () => {
-    // The `phase()`-only shape (the deep-research skill) used to leave the panel
-    // blank: phases are the progress, and they do not depend on script logs.
+    // The `phase()`-only shape used to leave the panel blank: phases are the
+    // progress, and they do not depend on script logs.
     renderChatApp();
     openWorkflowTaskDetail([makeRun({ logs: [] })]);
 
