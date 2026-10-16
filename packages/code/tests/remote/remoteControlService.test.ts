@@ -241,6 +241,77 @@ describe("RemoteControlService", () => {
     );
   });
 
+  it("should register again when the relay says the stored identity is gone", async () => {
+    const resolveEndpoint = vi.fn<ResolveFn>(async () => defaultResolve());
+    const service = await connect(createBridgeStub(), resolveEndpoint);
+
+    socket.deliver({ type: "auth_error", error: "invalid_host_token" });
+    socket.onclose?.({ code: 4003 });
+
+    // The stored pair is dead, so the machine asks for a new one instead of
+    // leaving the user with a file to delete by hand.
+    await vi.waitFor(() => {
+      expect(resolveEndpoint).toHaveBeenCalledTimes(2);
+    });
+    expect(resolveEndpoint).toHaveBeenLastCalledWith({
+      refreshIdentity: true,
+    });
+    expect(service.getSnapshot().state).toBe("connecting");
+    expect(service.getSnapshot().message).toBe(
+      "the relay no longer knows this machine: registering it again",
+    );
+
+    // And the fresh credential is what dials out.
+    socket.open();
+    socket.deliver({ type: "auth_ok", role: "host", hostId: "h1" });
+    expect(service.getSnapshot()).toEqual({ state: "online", url: URL });
+  });
+
+  it("should heal at most once per process", async () => {
+    const resolveEndpoint = vi.fn<ResolveFn>(async () => defaultResolve());
+    const service = await connect(createBridgeStub(), resolveEndpoint);
+
+    socket.deliver({ type: "auth_error", error: "invalid_host_token" });
+    socket.onclose?.({ code: 4003 });
+    await vi.waitFor(() => {
+      expect(resolveEndpoint).toHaveBeenCalledTimes(2);
+    });
+
+    // The healed connection goes stale too: re-registering mints a new token and
+    // the machine may legitimately have another entry holding the old one, so an
+    // unbounded heal would be two processes re-signing each other away forever.
+    socket.open();
+    socket.deliver({ type: "auth_ok", role: "host", hostId: "h1" });
+    socket.deliver({ type: "auth_error", error: "invalid_host_token" });
+    socket.onclose?.({ code: 4003 });
+
+    expect(resolveEndpoint).toHaveBeenCalledTimes(2);
+    expect(service.getSnapshot().state).toBe("error");
+    expect(service.getSnapshot().message).toContain(
+      "even after registering it again",
+    );
+  });
+
+  it("should say both halves when registering again fails", async () => {
+    const resolveEndpoint = vi.fn<ResolveFn>(async () => defaultResolve());
+    const service = await connect(createBridgeStub(), resolveEndpoint);
+
+    // The usual cause: a resident daemon outlives its sign-in, so the recovery
+    // registration is refused too.
+    resolveEndpoint.mockResolvedValue({
+      error: "the sign-in is missing or expired: … (run /login).",
+    });
+    socket.deliver({ type: "auth_error", error: "unknown_host" });
+    socket.onclose?.({ code: 4003 });
+
+    await vi.waitFor(() => {
+      expect(service.getSnapshot().state).toBe("error");
+    });
+    expect(service.getSnapshot().message).toBe(
+      "the relay no longer knows this machine, and registering it again failed: the sign-in is missing or expired: … (run /login).",
+    );
+  });
+
   it("should step down when another entry takes the channel over, and dial again on the next connect", async () => {
     const service = await connect(createBridgeStub());
 
