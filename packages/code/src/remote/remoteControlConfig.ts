@@ -225,18 +225,33 @@ export async function registerRelayHost(options: {
  * fresh registration. Never registers twice for the same machine — and, with the
  * derived id, no longer registers a second row for it either when the state file
  * went missing.
+ *
+ * `refresh` is the one exception, and it has one caller: the relay answered
+ * `4003` with a stale-identity reason, so the stored pair is known to be dead
+ * (revoked row / expired token / a file whose id and token never belonged
+ * together). Dropping it *before* registering is deliberate — if the
+ * registration then fails (an expired sign-in is the common case), the file must
+ * not keep pointing at an identity the relay has already refused, or the next
+ * attempt would hand the same dead token over and the user would be back to
+ * moving that file by hand.
  */
 export async function ensureRelayHostRegistration(
   name?: string,
+  options: { refresh?: boolean } = {},
 ): Promise<RelayHostRegistration> {
   const state = readState();
-  const storedId = asString(state.hostId);
-  const storedToken = asString(state.hostToken);
-  if (storedId && storedToken) {
-    return { hostId: storedId, hostToken: storedToken };
+  const storedName = asString(state.name);
+  if (!options.refresh) {
+    const storedId = asString(state.hostId);
+    const storedToken = asString(state.hostToken);
+    if (storedId && storedToken) {
+      return { hostId: storedId, hostToken: storedToken };
+    }
+  } else {
+    writeState(storedName ? { name: storedName } : {});
   }
 
-  const label = name && name.trim().length > 0 ? name.trim() : os.hostname();
+  const label = name?.trim() || storedName || os.hostname();
   const registration = await registerRelayHost({
     name: label,
     id: deriveHostId(),
@@ -294,6 +309,8 @@ export function buildPageUrl(hostId: string): string | undefined {
 export async function resolveRemoteControlEndpoint(
   options: {
     name?: string;
+    /** Register again instead of trusting the stored pair (see above). */
+    refreshIdentity?: boolean;
   } = {},
 ): Promise<{
   endpoint?: RemoteControlEndpoint;
@@ -302,7 +319,9 @@ export async function resolveRemoteControlEndpoint(
 }> {
   let registration: RelayHostRegistration;
   try {
-    registration = await ensureRelayHostRegistration(options.name);
+    registration = await ensureRelayHostRegistration(options.name, {
+      refresh: options.refreshIdentity,
+    });
   } catch (err) {
     return { error: err instanceof Error ? err.message : String(err) };
   }

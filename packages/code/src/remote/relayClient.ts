@@ -103,6 +103,8 @@ export const defaultRelaySocketFactory: RelaySocketFactory = (url) => {
 /** Close codes the relay uses to tell us how to react. */
 export const RELAY_CLOSE_UNAVAILABLE = 4001; // transient — the host is not ready yet
 export const RELAY_CLOSE_UNAUTHORIZED = 4003; // permanent — do not come back
+// (the one exception is a *stale stored identity*, which the credential's owner
+// can replace by registering again: see `RELAY_STALE_IDENTITY_ERRORS`)
 export const RELAY_CLOSE_BACKPRESSURE = 4008; // we gave up on a stuck socket
 /**
  * The `4001` reason the relay sends when another process on this machine dialled
@@ -111,6 +113,29 @@ export const RELAY_CLOSE_BACKPRESSURE = 4008; // we gave up on a stuck socket
  * is not online" — and those two want opposite answers: step down, versus retry).
  */
 export const RELAY_CLOSE_REPLACED = "replaced";
+
+/**
+ * The `auth_error` reasons that mean the **identity this machine stored** no
+ * longer exists on the relay: the row was revoked, the token aged out, or the
+ * local file holds an id/token pair that never belonged together. All of them
+ * are fixed the same way — register again, and the relay hands back the same row
+ * (the id is derived from the machine, so registration is idempotent) — which is
+ * exactly why they are separated from the rest of `4003`. The others
+ * (`host_version_unsupported`, `organization_mismatch`, `unauthorized`) are
+ * about *this build, this account, this organization*: registering again cannot
+ * change any of them, and treating them as stale would only hide the real
+ * reason behind a pointless round trip.
+ */
+export const RELAY_STALE_IDENTITY_ERRORS: readonly string[] = [
+  "invalid_host_token",
+  "unknown_host",
+];
+
+export function isStaleIdentityError(
+  error: string | undefined,
+): error is string {
+  return error !== undefined && RELAY_STALE_IDENTITY_ERRORS.includes(error);
+}
 
 /** Retry cadence. Flat 2s: the relay is a well-known host, not a flaky peer —
  * exponential backoff would only delay a laptop waking from sleep. */
@@ -169,6 +194,14 @@ export interface RelayClientOptions {
   onResyncRequired?: () => void;
   /** A frame from the relay (phone request or notification). */
   onFrame?: (frame: RelayEnvelope) => void;
+  /**
+   * `4003` whose reason says the stored identity is stale (see
+   * `RELAY_STALE_IDENTITY_ERRORS`). Reported **instead of** `onFatal` because it
+   * is not the end of the road: replacing the credential means an HTTP
+   * registration, which only the credential's owner can do — this class knows
+   * nothing about that. Nothing is retried from here either way.
+   */
+  onStaleIdentity?: (info: { error: string }) => void;
   /** The connection is gone for good — `4003`, or the retry budget ran out. */
   onFatal?: (reason: string) => void;
 }
@@ -414,6 +447,13 @@ export class RelayClient {
     if (code === RELAY_CLOSE_UNAUTHORIZED) {
       this.stopped = true;
       this.state = "closed";
+      const error = this.authError?.error;
+      if (isStaleIdentityError(error)) {
+        // No reconnect from here: the fix is a registration round trip, not a
+        // retry (dialling again with the same dead token can only repeat this).
+        this.options.onStaleIdentity?.({ error });
+        return;
+      }
       this.options.onFatal?.(
         this.authError
           ? `relay rejected the credential (4003): ${this.authError.error}`
