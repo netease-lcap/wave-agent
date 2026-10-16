@@ -20,8 +20,19 @@ dependencies {
             create(providers.gradleProperty("platformType"), providers.gradleProperty("platformVersion"))
         }
     }
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.9.0")
+    // kotlinx-coroutines is provided by the IDE at runtime (the platform bundles
+    // it in lib/util-8.jar) and must NOT be packaged into the plugin. Bundling it
+    // puts two copies on the classpath, and PluginClassLoader is child-first: the
+    // platform's `flow { }` creates a SafeCollector from its own jar, while the
+    // FlowCollector our lambda was compiled against comes from the plugin jar — so
+    // handing a suggestion to the platform died with
+    //   ClassCastException: SafeCollector cannot be cast to FlowCollector
+    // in WaveInlineCompletionProvider.getSuggestion, and ghost text never rendered
+    // (kotlinx-serialization is duplicated the same way but stays harmless: no
+    // serialization object crosses the plugin → platform call boundary).
+    // compileOnly keeps it on the compile classpath only, so the single platform
+    // copy wins at runtime. Only stable coroutines API is used here.
+    compileOnly("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     // Markdown → HTML for the plan-preview column of the chat editor tab (PlanPreviewBuilder).
     // GFM extensions (tables/strikethrough/task lists) match the webview's marked.js feature set.
