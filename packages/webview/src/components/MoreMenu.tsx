@@ -4,13 +4,25 @@ import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
 import { isRemotePageHost } from "../utils/platform";
 import {
+  BellIcon,
+  BellRingIcon,
   ExternalLinkIcon,
   FileTextIcon,
   HouseIcon,
   LogOutIcon,
   SettingsGearIcon,
 } from "./HeaderIcons";
+import type { PushNotificationControl } from "../types";
 import "../styles/MoreMenu.css";
+
+/** One roving item: what it says, what it does, how it is dressed. */
+interface MoreMenuEntry {
+  id: string;
+  run: () => void;
+  content: React.ReactNode;
+  className?: string;
+  separator?: boolean;
+}
 
 interface MoreMenuProps {
   onOpenSettings: () => void;
@@ -40,6 +52,73 @@ interface MoreMenuProps {
    * header trigger omits it and keeps the absolute header-anchored layout.
    */
   anchorRect?: DOMRect;
+  /**
+   * Remote Web page (the fifth host) only: the Web Push switch (spec
+   * ui/remote-control.md「锁屏也能知道」). The four local hosts pass nothing and
+   * the entry is not rendered — they have no browser subscription to hold.
+   */
+  pushNotifications?: PushNotificationControl;
+}
+
+/**
+ * The 通知 entry, in whichever shape the shim's four facts call for (spec
+ * 「锁屏也能知道」场景 6/7).
+ *
+ * The three "cannot do it" cases get a passive note rather than a disabled
+ * item, because they are not actions and the *reason* is the whole message:
+ * iOS in a Safari tab needs 「添加到主屏幕」 (16.4+ exposes PushManager only to a
+ * home-screen web app), an old browser simply cannot, and a refused permission
+ * is fixed in the browser's own settings, not here. They also must not take a
+ * roving slot — Enter on a line that does nothing is worse than no line.
+ *
+ * `reason: "failed"` is reported on the actionable side instead: the switch is
+ * in the state the user last saw, but the attempt to change it did not land, so
+ * the label says 重试 rather than quietly reading as "nothing happened" (场景 7
+ * — 拒绝授权与失败都不静默).
+ */
+function pushMenuShape(control: PushNotificationControl): {
+  entry?: MoreMenuEntry;
+  note?: string;
+} {
+  const { state } = control;
+  if (!state.supported) {
+    return {
+      note: state.needsHomeScreen
+        ? "添加到主屏幕后才能开启通知"
+        : "此浏览器不支持通知",
+    };
+  }
+  if (state.reason === "denied") {
+    return { note: "通知权限已被拒绝，请在浏览器设置里开启" };
+  }
+  if (state.subscribed) {
+    return {
+      entry: {
+        id: "more-menu-push-off",
+        run: control.onDisable,
+        content: (
+          <>
+            <BellRingIcon className="more-menu-item-icon" />
+            <span>
+              {state.reason === "failed" ? "重试关闭通知" : "关闭通知"}
+            </span>
+          </>
+        ),
+      },
+    };
+  }
+  return {
+    entry: {
+      id: "more-menu-push-on",
+      run: control.onEnable,
+      content: (
+        <>
+          <BellIcon className="more-menu-item-icon" />
+          <span>{state.reason === "failed" ? "重试开启通知" : "开启通知"}</span>
+        </>
+      ),
+    },
+  };
 }
 
 export const MoreMenu: React.FC<MoreMenuProps> = ({
@@ -53,6 +132,7 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   hostLabel,
   triggerRef,
   anchorRect,
+  pushNotifications,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   // Remote-control Web page: 设置 and 登录/退出登录 act on the host (a settings
@@ -73,18 +153,21 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   const handleHelpDocs = () => onOpenHelpDocs();
   const authLabelSuffix = hostLabel ? `（${hostLabel}）` : "";
 
+  // Web Push switch — remote page only. Only one of the two shapes renders:
+  // an actionable 通知 entry while the browser can hold a subscription, or a
+  // passive note when it cannot (see pushMenuShape for why that split).
+  const push =
+    remotePage && pushNotifications
+      ? pushMenuShape(pushNotifications)
+      : undefined;
+
   // Entry order matches focus order; the fourth slot is 登录/退出登录 by auth,
   // danger-styled and separated when it is 退出登录 (spec 场景 4). The remote
   // page drops the 设置 and auth slots, so `itemCount` is derived from the array
   // rather than the literal 4 it used to be — a hardcoded count would let the
   // arrow keys walk off the end of the list.
-  const entries: Array<{
-    id: string;
-    run: () => void;
-    content: React.ReactNode;
-    className?: string;
-    separator?: boolean;
-  }> = [
+  const entries: MoreMenuEntry[] = [
+    ...(push?.entry ? [push.entry] : []),
     ...(remotePage
       ? []
       : [
@@ -222,6 +305,17 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
           </div>
         </div>
       ))}
+      {push?.note && (
+        // Not an action and not focusable — the note only explains why there is
+        // no 通知 entry to press (see pushMenuShape).
+        <div
+          className="more-menu-note"
+          role="note"
+          data-testid="more-menu-push-note"
+        >
+          {push.note}
+        </div>
+      )}
     </div>
   );
 };

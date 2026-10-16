@@ -33,6 +33,11 @@ import type {
 } from "wave-agent-sdk/types";
 import type { SessionMetadata, SessionData } from "wave-agent-sdk/types";
 import type { ToolBlockUpdateCallbackParams } from "wave-agent-sdk/types";
+// Type-only, same as AccountCard's: the four PushState facts belong to the
+// host → webview contract (webview-fixtures is their definition) and are only
+// borrowed here to type ChatHeaderProps — no runtime import survives the
+// compile, and webview-fixtures sits in devDependencies.
+import type { PushState } from "wave-webview-fixtures";
 // Type-only: NavKey is defined in the SettingsPage component module; erased at
 // compile time so the type-level cycle (SettingsPage imports ConfigurationData
 // from here) never becomes a runtime import.
@@ -729,6 +734,24 @@ export interface PanelExpandProps {
   onToggle: () => void;
 }
 
+/**
+ * Web Push 通知开关（spec remote-control.md「锁屏也能知道——会话等着我、或者跑完了」）。
+ *
+ * 只有远控 Web 页会传：它是唯一跑在浏览器里、有 Service Worker 与通知权限的宿主，
+ * 开关的两端（浏览器订阅 + 中继登记）都由页面侧的 shim 持有。其余四端没有对应物，
+ * 缺省时更多菜单不渲染该入口。
+ *
+ * `state` 是页面**当前**的事实而不是乐观猜测——每次动作后 shim 都整组重发一次，
+ * 所以菜单文案永远跟着事实走（见 fixtures 的 `PushState`）。
+ */
+export interface PushNotificationControl {
+  state: PushState;
+  /** 用户点「开启通知」：申请权限 → 订阅 → 在中继登记。 */
+  onEnable: () => void;
+  /** 用户点「关闭通知」：先在中继注销，再退掉浏览器订阅。 */
+  onDisable: () => void;
+}
+
 export interface ChatHeaderProps {
   onNewSession: () => void;
   newSessionDisabled?: boolean;
@@ -769,6 +792,14 @@ export interface ChatHeaderProps {
    * 场景 5).
    */
   onSwitchMachine?: () => void;
+  /**
+   * Remote Web page (the fifth host) only: the Web Push notification switch
+   * (spec remote-control「锁屏也能知道」场景 6/7). Present ⇒ the more menu
+   * renders 通知 entry; absent (the four local hosts) ⇒ it does not. The page
+   * is the only host that can hold a browser subscription, so there is nothing
+   * for the others to switch.
+   */
+  pushNotifications?: PushNotificationControl;
   // Desktop host: the more button + menu live in DesktopSidebar instead.
   hideMoreButton?: boolean;
   /** Open the history popup without the header button — `/resume` routes

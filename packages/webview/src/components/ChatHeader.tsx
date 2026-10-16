@@ -32,6 +32,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   hideSessionButtons = false,
   sessionSwitchButton = false,
   onSwitchMachine,
+  pushNotifications,
   hideMoreButton = false,
   sessionListOpen = false,
   onSessionListClose,
@@ -297,6 +298,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           onLogin={onLogin}
           onLogout={onLogout}
           isAuthenticated={isAuthenticated}
+          pushNotifications={pushNotifications}
           onClose={() => setShowMoreMenu(false)}
           triggerRef={moreBtnRef}
         />

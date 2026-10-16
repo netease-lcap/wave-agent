@@ -52,7 +52,19 @@
  *   actually contains a diagram. The loader is `src/mermaid-lazy.ts`, wired in by
  *   `--lazy-mermaid=`; the hosts keep the eager bundle. So the page ships four
  *   files on the critical path (HTML, CSS, the bundle, the shim), one on demand
- *   (mermaid), and three for the home screen (manifest + two icons).
+ *   (mermaid), three for the home screen (manifest + two icons), and one more
+ *   fetched after boot on its own — the push service worker (see below).
+ * - `sw.js` is the page's service worker, and *only* that: Web Push needs a
+ *   worker to receive a notification while the page is closed, so the page
+ *   carries one — it does no caching, no offline shell, no fetch handling
+ *   (nothing about this page is meant to work offline). It is registered from
+ *   the shim after boot and knows nothing about the relay or the login, so a
+ *   phone that never enables notifications is unaffected. Two placeholders are
+ *   filled in at build time: `__ICON_FILE__` in the worker (the hashed icon the
+ *   notification shows) and `__SW_FILE__` in the shim (the worker's own hashed
+ *   name — a fixed `sw.js` would take the object store's long TTL and could
+ *   never be replaced). The scope comes from the script's own directory, which
+ *   is the page's, so no `Service-Worker-Allowed` header is needed.
  *
  * `--zip` additionally packs all of those into `dist/remote-page.zip` with
  * `index.html` at the archive root — the exact shape codechat's Ops upload route
@@ -124,6 +136,11 @@ const CSP = [
   // which is `'none'` here, so the manifest link needs its own line.
   "connect-src wss: 'self'",
   "manifest-src 'self'",
+  // The push service worker (`sw.js`). `worker-src` falls back to `script-src`
+  // when absent, which is already `'self'`, so this line spells out what the
+  // fallback would allow rather than widening anything — a service worker that
+  // the page cannot register is a silent, phone-only failure.
+  "worker-src 'self'",
 ].join("; ");
 
 /** `:root {}` → `:root[data-theme="dark|light"] {}` so both sets coexist. */
@@ -139,6 +156,20 @@ const rewriteThemeBase = (css, theme) =>
  */
 const hashedName = (base, text, ext = "js") =>
   `${base}.${createHash("sha256").update(text).digest("hex").slice(0, 10)}.${ext}`;
+
+/**
+ * A placeholder that survived substitution is the one build failure nobody would
+ * notice: the page loads and looks right, and only the notification icon (or the
+ * registered worker) is wrong. Nothing else can check it — the tests read the
+ * sources, not this script's output — so it fails the build here.
+ */
+function assertSubstituted(text, token) {
+  if (text.includes(token)) {
+    throw new Error(
+      `build.mjs: ${token} survived substitution — the replace missed an occurrence (use replaceAll)`,
+    );
+  }
+}
 
 /**
  * The chart library as its own file, so the page pays for it only when a diagram
@@ -197,13 +228,11 @@ function emit({ chatJs, chatCss, mermaid }) {
     readTheme("theme-base-light.css"),
     "light",
   );
-  const shim = fs.readFileSync(path.join(HERE, "shim.js"), "utf-8");
   // Both theme variable sets plus the bundle's stylesheet, in one hashed file —
   // see the header comment for why this is not an inline <style>.
   const pageCss = `${darkTheme}\n${lightTheme}\n${chatCss}\n`;
   const chatName = hashedName("chat", chatJs);
   const cssName = hashedName("chat", pageCss, "css");
-  const shimName = hashedName("shim", shim);
   // The home-screen icons (generated from the desktop app's icon by
   // `generate-icons.mjs`, committed under `remote/assets/`): one 180 file
   // serves as favicon and `apple-touch-icon` alike, the 512 backs the
@@ -215,6 +244,31 @@ function emit({ chatJs, chatCss, mermaid }) {
   const icon512 = fs.readFileSync(path.join(HERE, "assets", "icon-512.png"));
   const appleTouchName = hashedName("apple-touch-icon", appleTouch, "png");
   const icon512Name = hashedName("icon-512", icon512, "png");
+  /**
+   * The service worker (spec「锁屏也能知道」): a notification has to reach a
+   * phone whose page is closed, so the page ships a worker of its own. Two
+   * substitutions, both computed here rather than written into the sources —
+   * the worker needs the hashed icon name, and the shim needs the worker's own
+   * hashed name (it is what `registerServiceWorker` registers; a literal name
+   * could not survive the content hashing, and a fixed name would be cached
+   * for the object store's 30-day TTL and could never be replaced).
+   *
+   * Both use `replaceAll`, not `replace`: a single-shot `replace` substitutes
+   * the FIRST occurrence, so the moment either source mentions its placeholder
+   * in a comment, the mention silently wins and the file ships with the token
+   * still in it — a worker asking for an icon named `__ICON_FILE__`, a shim
+   * registering a worker named `__SW_FILE__`. The assertions below are what
+   * makes that loud instead of silent.
+   */
+  const swSource = fs.readFileSync(path.join(HERE, "sw.js"), "utf-8");
+  const swText = swSource.replaceAll("__ICON_FILE__", icon512Name);
+  const swName = hashedName("sw", swText);
+  const shim = fs
+    .readFileSync(path.join(HERE, "shim.js"), "utf-8")
+    .replaceAll("__SW_FILE__", swName);
+  const shimName = hashedName("shim", shim);
+  assertSubstituted(swText, "__ICON_FILE__");
+  assertSubstituted(shim, "__SW_FILE__");
   /**
    * The web app manifest. `start_url` is the page root **without** a query:
    * which machine to connect to is state the page manages (last choice, then
@@ -249,6 +303,7 @@ function emit({ chatJs, chatCss, mermaid }) {
   fs.writeFileSync(path.join(OUT, chatName), chatJs);
   fs.writeFileSync(path.join(OUT, cssName), pageCss);
   fs.writeFileSync(path.join(OUT, shimName), shim);
+  fs.writeFileSync(path.join(OUT, swName), swText);
   fs.writeFileSync(path.join(OUT, mermaid.name), mermaid.text);
   fs.writeFileSync(path.join(OUT, manifestName), manifest);
   fs.writeFileSync(path.join(OUT, appleTouchName), appleTouch);
@@ -299,6 +354,7 @@ function emit({ chatJs, chatCss, mermaid }) {
     cssName,
     chatName,
     shimName,
+    swName,
     mermaid.name,
     manifestName,
     appleTouchName,
@@ -326,6 +382,7 @@ function emit({ chatJs, chatCss, mermaid }) {
   );
   console.log(
     `  index.html ${kb("index.html")}  ${cssName} ${kb(cssName)}  ${chatName} ${kb(chatName)}  ${shimName} ${kb(shimName)}` +
+      `  ${swName} ${kb(swName)}` +
       (socketUrl ? `  socket ${socketUrl}` : "  socket: from ?ws="),
   );
   console.log(

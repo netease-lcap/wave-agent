@@ -241,6 +241,17 @@ function loadShim(options: {
     return null;
   };
 
+  /**
+   * The one browser surface the push half reads. This file's cases are about the
+   * login hop and the banner, so the page here has no service worker and no push
+   * manager: `pushEnvironment` has to read that as "this browser cannot", not
+   * crash. (The subscription flow itself is driven in `shimPush.test.ts`, which
+   * owns the Notification / PushManager / ServiceWorkerContainer stubs.)
+   */
+  const navigator = {
+    userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+  };
+
   const window = {
     location: {
       href: location.toString(),
@@ -266,6 +277,9 @@ function loadShim(options: {
     },
     localStorage: storage(local, options.storageBroken ?? false),
     sessionStorage: storage(session, false),
+    // A real `window.navigator === navigator`; the push half reads both ways
+    // (`window.navigator.standalone` for the iOS home-screen check).
+    navigator,
     // Host → page traffic lands here and nowhere else: the page's `message`
     // listener belongs to the webview app, not the shim, so recording what the
     // shim dispatches *is* observing what the page would receive. (The shim does
@@ -321,6 +335,7 @@ function loadShim(options: {
   const hostGlobals = {
     window,
     document,
+    navigator,
     // The shim logs the failure with the error as a second argument, the way
     // the console would render it; both halves belong in the line.
     console: {

@@ -295,6 +295,40 @@ export interface SessionListStatus {
   running: string[];
 }
 
+/**
+ * Web Push 通知开关在页面上的四个事实（spec remote-control.md「锁屏也能知道——
+ * 会话等着我、或者跑完了」）。
+ *
+ * 页面不做本地推断：能力位来自浏览器（有没有 Service Worker / `PushManager`），
+ * 订阅位来自页面自己记的订阅 id，两者都随每次动作重发一遍，于是菜单渲染的永远是
+ * **当前**事实而不是乐观猜测。`needsHomeScreen` 单独一档是因为 iOS 那种情况说
+ * 「不支持」既正确又没用：能力缺失的原因是页面还没被添加到主屏幕（iOS 16.4 起
+ * `PushManager` 只对主屏 web app 存在）。
+ */
+export interface PushState {
+  /** 这个浏览器能不能用 Web Push。 */
+  supported: boolean;
+  /** 已经在中继登记了订阅——也就是「开关是开的」。 */
+  subscribed: boolean;
+  /** iOS 普通标签页：`supported: false` 的原因是「还没添加到主屏幕」。 */
+  needsHomeScreen: boolean;
+  /** 上一次动作的结果，空串表示没有异常要报（`denied` / `failed` 是两种失败）。 */
+  reason: string;
+}
+
+/**
+ * 通知开关的状态（spec 同上）：只在三个时点发——页面挂载时问一次、用户开一次、
+ * 用户关一次——每次都把四个事实整组重发，所以两端不可能各记一半。
+ *
+ * 只有远控 Web 页会收到：它是唯一跑在浏览器里、有 Service Worker 与通知权限的
+ * 宿主。其余四端没有对应物，也不渲染那个菜单项。
+ */
+export interface UpdatePushStateMessage
+  extends HostToWebviewMessageBase,
+    PushState {
+  command: "pushState";
+}
+
 export interface UpdateBackgroundTasksMessage extends HostToWebviewMessageBase {
   command: "updateBackgroundTasks";
   tasks: BackgroundTaskSummary[];
@@ -1089,6 +1123,7 @@ export type HostToWebviewMessage =
   | OlderMessagesErrorMessage
   | UpdateTasksMessage
   | UpdateSessionStatusMessage
+  | UpdatePushStateMessage
   | UpdateBackgroundTasksMessage
   | UpdateWorkflowRunsMessage
   | UpdateSelectionMessage

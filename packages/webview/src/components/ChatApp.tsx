@@ -60,6 +60,7 @@ import type {
   FileViewState,
   PanelTab,
   PrefillDraftRequest,
+  PushNotificationControl,
   ThemeSource,
   ToolBlock,
   ToolBlockUpdateCallbackParams,
@@ -67,6 +68,10 @@ import type {
   UpdateToast,
 } from "../types";
 import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/constants";
+// Type-only, borrowed the same way types/index.ts does it: the four facts are
+// part of the host → webview contract (fixtures defines `PushState`), and the
+// import is erased so nothing runtime-bound survives.
+import type { PushState } from "wave-webview-fixtures";
 import { collectWriteEditBlocks, pathsMatch } from "../utils/fileAutoRefresh";
 import { toAbsoluteFilePath } from "../utils/messageUtils";
 import { isMacHiddenTitlebar, isRemotePageHost } from "../utils/platform";
@@ -1084,6 +1089,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         dispatch({
           type: "SET_SESSION_STATUS",
           payload: { waiting: message.waiting, running: message.running },
+        });
+        break;
+      // Web Push 开关的状态（远控 Web 页）：页面挂载时问一次，之后开 / 关各答一次，
+      // 每次都把四个事实整组发回来 —— 菜单照**当前事实**渲染，不做乐观猜测（spec
+      // remote-control.md「锁屏也能知道」场景 6/7）。
+      case "pushState":
+        if (!forThisPane(message)) break;
+        setPushState({
+          supported: message.supported,
+          subscribed: message.subscribed,
+          needsHomeScreen: message.needsHomeScreen,
+          reason: message.reason,
         });
         break;
       case "updateBackgroundTasks":
@@ -2732,6 +2749,29 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [state.isStreaming],
   );
 
+  // Web Push 通知开关（spec remote-control.md「锁屏也能知道」）：手机页是唯一跑在
+  // 浏览器里、能持有推送订阅的宿主，所以这段只有它有。页面侧 shim 才是两个事实的
+  // 持有者（浏览器能力位、中继登记的订阅 id），这里不问就不猜：挂载时问一次，之后
+  // 每次开 / 关都由 shim 把四个事实整组发回来（见 `pushState` 那条 case）。
+  const [pushState, setPushState] = useState<PushState | undefined>(undefined);
+  useEffect(() => {
+    if (!isRemotePage) return;
+    vscode.postMessage({ command: "getPushState" });
+  }, [isRemotePage, vscode]);
+  const pushNotifications = useMemo<PushNotificationControl | undefined>(
+    () =>
+      isRemotePage && pushState
+        ? {
+            state: pushState,
+            onEnable: () =>
+              vscode.postMessage({ command: "enablePushNotifications" }),
+            onDisable: () =>
+              vscode.postMessage({ command: "disablePushNotifications" }),
+          }
+        : undefined,
+    [isRemotePage, pushState, vscode],
+  );
+
   // 手机页是唯一「手上只有一页历史」的宿主：它按窗口拉消息，所以也是唯一能往上翻的
   // 宿主（见 MessageListProps.onLoadOlderMessages 与 spec remote-control.md「Web 页
   // 作为第五种宿主」场景 11）。三个本地宿主把整段记录一次灌进来，这里给 undefined，
@@ -4211,6 +4251,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             ? () => vscode.postMessage({ command: "openMachinePicker" })
             : undefined
         }
+        // 远控页专属：Web Push 通知开关，路由是页面 shim（REMOTE_PAGE_GATED）。
+        // 状态还没回来时给 undefined —— 菜单不渲染入口，而不是先画一个会自打脸的
+        // 「开启通知」。
+        pushNotifications={pushNotifications}
         hideMoreButton={isDesktop}
         panelToggle={
           isDesktop

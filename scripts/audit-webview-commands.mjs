@@ -137,6 +137,12 @@ const REMOTE_PAGE_GATED = new Set([
   "newSessionListDirs",
   "newSessionListBranches",
   "newSessionCreate",
+  // Web Push 通知开关（spec remote-control.md「锁屏也能知道」）：读状态 / 开启 /
+  // 关闭，shim 转中继 push/public-key 与 push/subscriptions 三个端点。只有手
+  // 机页有这套 UI（浏览器 Service Worker + 通知权限），三个本地宿主没有对应物。
+  "getPushState",
+  "enablePushNotifications",
+  "disablePushNotifications",
 ]);
 
 /** 第五个路由实例：手机页 shim 的 case 注册集合。 */
