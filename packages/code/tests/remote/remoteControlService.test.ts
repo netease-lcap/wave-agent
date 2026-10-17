@@ -346,27 +346,73 @@ describe("RemoteControlService", () => {
     expect(bridge.handleRequest).not.toHaveBeenCalled();
     expect(socket.frames().at(-1)).toMatchObject({ method: "error" });
 
-    // The nine chat methods + the three conversation-upkeep ones + the four
-    // new-session ones are the whole surface. Adding a method here is a
-    // deliberate widening, so this list is pinned rather than derived.
+    // The chat methods + conversation upkeep + new-session + the second batch
+    // (rewind / clear / model / queue / background work / file search / prompt
+    // history) are the whole surface. Adding a method here is a deliberate
+    // widening, so this list is pinned rather than derived.
     expect([...REMOTE_ALLOWED_METHODS].sort()).toEqual([
       "abortMessage",
+      "clearMessages",
       "compact",
       "createWorktree",
+      "deleteQueuedMessageById",
+      "getBackgroundTaskOutput",
+      "getConfiguredModels",
       "getMessages",
+      "getPromptHistory",
       "getSessionInfo",
       "getSlashCommands",
+      "getWorkflowRuns",
       "initialize",
       "listDaemonSessions",
       "listDirectories",
       "listGitBranches",
       "listPendingPermissions",
+      "listRewindCheckpoints",
       "listSessions",
       "permissionResponse",
       "renameSession",
+      "rewindToMessage",
+      "searchFiles",
+      "searchPromptHistory",
       "sendMessage",
+      "setModel",
       "setPermissionMode",
+      "stopBackgroundTask",
+      "stopWorkflowRun",
+      "updateQueuedMessage",
     ]);
+  });
+
+  it("should still refuse the panes the page has no surface for", async () => {
+    // The second batch stopped short of these on purpose: no diff / worktree /
+    // plan pane on the page, no delete-session entry, no editor to open a file
+    // in. A widening without a caller is pure exposure, so they stay refused.
+    const bridge = createBridgeStub();
+    await connect(bridge);
+
+    for (const method of [
+      "getWorkspaceDiff",
+      "getWorktreeChanges",
+      "getPlanFile",
+      "getFullMessageThread",
+      "removeWorktree",
+      "openFile",
+      "listAllSessions",
+      "restoreSession",
+    ]) {
+      socket.deliver({ id: 10, method, params: {} });
+    }
+
+    expect(bridge.handleRequest).not.toHaveBeenCalled();
+    const refusals = socket
+      .frames()
+      .filter((frame) => frame.method === "error")
+      .map((frame) => (frame.params as { message: string }).message);
+    expect(refusals).toHaveLength(8);
+    for (const method of ["getWorkspaceDiff", "removeWorktree"]) {
+      expect(refusals.some((message) => message.includes(method))).toBe(true);
+    }
   });
 
   it("should route initialize but strip every parameter outside the picked shape", async () => {

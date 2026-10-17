@@ -70,8 +70,39 @@ import type { RemoteControlEndpoint } from "./remoteControlConfig.js";
  * (`AgentBridge` for daemon sessions, `RemoteControlCliHost` for a foreground
  * CLI session). The page's slash-command menu reads `getSlashCommands`; the same
  * method is what makes 重命名 / 压缩 usable there instead of a request that comes
- * back unreachable. Anything the page cannot *carry* (settings, file paths,
- * rewind, background tasks) stays out, both here and in the UI.
+ * back unreachable.
+ *
+ * **Second batch (2026-10-17)** — rewind / clear / model / background tasks and
+ * workflows / queue surgery / file search / prompt history. The first batch's
+ * rule was "anything the page cannot *carry* stays out", and it lumped these in
+ * with settings and file paths under a single reason ("the host holds the data").
+ * Checked one by one, that reason only holds for the **interface** surfaces —
+ * a settings page, a plugin market, an editor, the on-disk session list. Every
+ * method below is already implemented on `AgentBridge`, so what was missing was
+ * one line here, one case in the shim, and one remote gate in the UI; keeping
+ * them out left the phone able to *read* but not to *act*. Two of them are worth
+ * spelling out because the page must warn before running them:
+ *
+ * - `rewindToMessage` is **the same operation the desktop runs**, not a
+ *   conversation-only truncation: `truncateHistory` → `reversionManager.revertTo`
+ *   restores this machine's workspace files from each message's `file_history`
+ *   snapshot. A mis-tap on a phone is therefore a file operation, which is why
+ *   the page confirms once before sending it.
+ * - `setModel` is **not** session-scoped: it writes the `model` key of the
+ *   user-level `~/.wave/settings.json` (falling back to this session only when
+ *   the write fails), so switching on the phone switches it for every session on
+ *   this machine. The page says so in its confirmation.
+ *
+ * Still out, and deliberately: settings / plugin market / login (`getUserSettings`,
+ * `updateUserSettings`, plugins, `login`, `logout`, …), anything that opens an
+ * editor (`openFile` is not even a bridge method), the on-disk session list
+ * (`listAllSessions` / `restoreSession`), the process-lifecycle calls
+ * (`shutdown` / `destroy` / `bang`), and the **read-only panes the page has no
+ * surface for** — `getWorkspaceDiff` / `getWorktreeChanges` / `getPlanFile` /
+ * `getFullMessageThread` (no diff / worktree / plan pane on the page; the plan
+ * body travels inside the `ExitPlanMode` approval card) and `removeWorktree`
+ * (the page has no delete-session entry — that is the desktop sidebar's action).
+ * Widening to a method with no caller would only enlarge the exposed surface.
  */
 export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   "listSessions",
@@ -93,7 +124,50 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   "listDirectories",
   "listGitBranches",
   "createWorktree",
+  // ── 第二批解禁（spec「页面能执行的那批宿主命令」）──
+  // 回滚：与桌面同语义（截断对话 + 按 file_history 快照还原本机工作区文件），
+  // 页面执行前有一次确认。
+  "rewindToMessage",
+  "listRewindCheckpoints",
+  // 清空：换绑新 sessionId（与 IDE 端「新建对话」同一条底层），页面确认一次。
+  "clearMessages",
+  // 模型：getConfiguredModels 只读；setModel 写用户级 ~/.wave/settings.json。
+  "getConfiguredModels",
+  "setModel",
+  // 排队消息三动作里的两条（「立即发送」= sendMessage{force} + 删这条）。
+  "updateQueuedMessage",
+  "deleteQueuedMessageById",
+  // 后台任务与工作流：读输出 / 停止（不毁文件，回执即可）。
+  // 注意这里没有 `backgroundCurrentTask`（把当前这轮转为后台）：页面上唯一的入口
+  // 是 Ctrl/Cmd+B，手机键盘没有这个键 —— 放行一个页面根本调不到的方法，只是把
+  // 暴露面放大，与本清单「跟页面能力一致」的判据相反。
+  "getBackgroundTaskOutput",
+  "stopBackgroundTask",
+  "getWorkflowRuns",
+  "stopWorkflowRun",
+  // `@` 文件建议与历史提示词：都只读，锚在信封 sessionId 的 workdir 上。
+  "searchFiles",
+  "getPromptHistory",
+  "searchPromptHistory",
 ]);
+
+/**
+ * The JSON-RPC code for "the channel would carry this, but **this host** has not
+ * implemented it".
+ *
+ * Three failures have to stay distinguishable on the page: `-32601` means the
+ * whitelist above refuses the method (the page should ask for a newer build),
+ * `-32602` means the parameters are wrong, and this one means the method is
+ * allowed but the host behind the channel does not serve it — a foreground CLI
+ * session serves its own conversation, not a whole registry. Collapsing them
+ * into `-32601` told the user to upgrade a machine that was already current,
+ * and returning nothing at all left the page stuck on the action.
+ *
+ * The page's shim mirrors this number (`packages/webview/remote/shim.js`); it is
+ * browser JS shipped verbatim and cannot import from this package, so the
+ * literal is duplicated there with a pointer back here.
+ */
+export const REMOTE_HOST_UNSUPPORTED = -32011;
 
 /**
  * The only `initialize` shape the remote channel may request: create a session
