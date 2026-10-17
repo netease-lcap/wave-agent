@@ -230,6 +230,7 @@ async function answerRereads(socket: FakeSocket, requests: Frame[] = []) {
     permissionMode: "default",
   });
   answerOn(socket, "listPendingPermissions", { requests });
+  answerOn(socket, "getWorkflowRuns", { runs: [] });
   await flush();
 }
 
@@ -267,6 +268,9 @@ async function openPage(
     ...(typeof contextUsagePercent === "number" ? { contextUsagePercent } : {}),
   });
   await page.answer("listPendingPermissions", { requests: [] });
+  // 工作流运行：没有变化推送源，所以每条对齐路径各读一次（`/workflows` 弹窗
+  // 的数据）。答空表即可——本轮用例不关心它，但不答会留下超时警告。
+  await page.answer("getWorkflowRuns", { runs: [] });
   return { page, pull };
 }
 

@@ -192,6 +192,29 @@
     login: "Web 端复用企业端登录态，不需要单独登录",
     logout: "Web 端退出请走企业端",
   };
+  /**
+   * "The channel would carry this method, but **this host** has not implemented
+   * it" — the machine-side constant is `REMOTE_HOST_UNSUPPORTED` in
+   * `packages/code/src/remote/remoteControlService.ts`. Duplicated as a literal
+   * because this file is browser JS shipped verbatim beside the bundle and
+   * imports nothing; the three failures it separates are `-32601` (the whitelist
+   * refuses the method — upgrade the machine), `-32602` (bad parameters) and
+   * this one (a foreground CLI session serves one conversation, so the method
+   * exists on the channel but not on that host).
+   */
+  var HOST_UNSUPPORTED = -32011;
+
+  /**
+   * How a failed request is shown. An unsupported method is worded as what it
+   * is (this computer cannot do that) rather than as a transport failure, which
+   * would send the user looking for a network problem.
+   */
+  function failureText(label, err) {
+    if (err && err.code === HOST_UNSUPPORTED) {
+      return label + "：这台电脑上的会话不支持这个操作（" + err.message + "）";
+    }
+    return label + "失败：" + ((err && err.message) || err);
+  }
 
   var socket = null;
   var attempts = 0;
@@ -1311,7 +1334,11 @@
    */
   function controlRequest(method, params, label) {
     request(method, params).catch(function (err) {
-      showStatus(label + "指令没有回执：" + (err.message || err));
+      showStatus(
+        err && err.code === HOST_UNSUPPORTED
+          ? label + "：这台电脑上的会话不支持这个操作"
+          : label + "指令没有回执：" + (err.message || err),
+      );
     });
   }
 
@@ -1329,7 +1356,13 @@
     delete pending[frame.id];
     var params = frame.params || {};
     if (frame.method === "error") {
-      entry.reject(new Error(params.message || "RPC 失败"));
+      // The code rides along: `HOST_UNSUPPORTED` has to stay distinguishable
+      // from a transport failure and from the whitelist's `-32601`, because the
+      // three mean different things to the user (this host cannot / upgrade the
+      // machine / something broke). `failureText` is where that split is read.
+      var err = new Error(params.message || "RPC 失败");
+      err.code = params.code;
+      entry.reject(err);
     } else {
       entry.resolve(params.result);
     }
@@ -1427,6 +1460,13 @@
         return;
       case "tasksChange":
         post({ command: "updateTasks", tasks: p.tasks });
+        return;
+      case "backgroundTasksChange":
+        // 后台任务（`/tasks` 弹窗的数据）：与 `tasksChange` 那条**待办清单**不是
+        // 一回事——那是 `TaskCreate`/`TaskUpdate` 的任务，这是 shell/subagent/
+        // workflow 的后台进程。桌面端与 IDE 宿主都用 `updateBackgroundTasks`
+        // 这条 webview 命令投递它，这里照抄同一个名字。
+        post({ command: "updateBackgroundTasks", tasks: p.tasks });
         return;
       case "queuedMessagesChange":
         // The webview message carries the queue under `queue` (same as the VSCE
@@ -1535,7 +1575,15 @@
           // fields — an older host — fall back to the neutral values; posting
           // `undefined` into the reducer is not an option.
           tasks: (state && state.tasks) || [],
-          backgroundTasks: [],
+          // 后台任务（`/tasks` 弹窗）与待办清单同族：以「读」为准的状态，所以
+          // 从 `getSessionInfo` 取当前值。没有它，手机在任务开跑之后才连上时
+          // 打开 `/tasks` 会看到空表——`backgroundTasksChange` 只在**变化**时推。
+          backgroundTasks: (state && state.backgroundTasks) || [],
+          // 工作流运行没有「变化就推」的通道（bridge 只为后台任务发
+          // `backgroundTasksChange`），所以它和 session-state 一样是**读**出来的。
+          // 首屏先给空列表，读回来再补 `updateWorkflowRuns`（见下方
+          // `refreshWorkflowRuns()`）——顺序由 post 顺序保证，`/workflows`
+          // 打开时数据已经在了。
           workflowRuns: [],
           // Read off the registry by `pickSession`, not assumed: a page that
           // arrives mid-turn must still offer the stop button — the phone has no
@@ -1564,6 +1612,8 @@
         });
         if (typeof usage === "number")
           post({ command: "contextUsage", percent: usage });
+        // After the snapshot, so `updateWorkflowRuns` can never land first.
+        refreshWorkflowRuns();
       })
       .catch(function (err) {
         if (blocked || token !== pullToken) return;
@@ -1814,6 +1864,8 @@
   function refreshSessionState() {
     var asked = sessionId;
     if (!asked) return Promise.resolve();
+    // 工作流运行与它同一次对齐（两条独立读，不值得为它们串成一条链）。
+    refreshWorkflowRuns();
     return request("getSessionInfo", {})
       .then(function (info) {
         // The request named the session it was asked for: a pick that moved on
@@ -1836,9 +1888,44 @@
           });
         if (info.queuedMessages)
           post({ command: "updateQueue", queue: info.queuedMessages });
+        // 后台任务同上：没有这条，手机在任务开跑之后才连上时打开 `/tasks` 会
+        // 一直看到「暂无后台任务」，直到下一次变化（`backgroundTasksChange` 只
+        // 报变化，页面到位之前就开跑的那批它照不到）。
+        if (info.backgroundTasks)
+          post({
+            command: "updateBackgroundTasks",
+            tasks: info.backgroundTasks,
+          });
       })
       .catch(function (err) {
         warnOnce("sessionState", "会话状态补读失败：" + err.message);
+      });
+  }
+
+  /**
+   * 工作流运行（`/workflows` 弹窗的数据）：
+   *
+   * 桌面端拿到它的方式是同一件事——后台任务通知或切会话时调
+   * `agent.getWorkflowRuns()`，再推 `updateWorkflowRuns`（`desktopHost.ts` 的
+   * `refreshWorkflowRuns`）。页面这边没有「运行时进度」这条推送源（bridge 只为
+   * 后台任务发 `backgroundTasksChange`），所以由对齐路径主动读一次：读到的是
+   * **当前事实**，弹窗打开时就有内容，而不是等下一次进度事件。
+   */
+  function refreshWorkflowRuns() {
+    var asked = sessionId;
+    if (!asked) return Promise.resolve();
+    return request("getWorkflowRuns", {})
+      .then(function (result) {
+        if (asked !== sessionId) return;
+        post({
+          command: "updateWorkflowRuns",
+          runs: (result && result.runs) || [],
+        });
+      })
+      .catch(function (err) {
+        // Best-effort, same as the desktop host: the cached runs stay as the last
+        // known state, and an unsupported host simply leaves the list empty.
+        warnOnce("workflowRuns", "工作流运行补读失败：" + err.message);
       });
   }
 
@@ -2014,6 +2101,78 @@
 
   // ── Page → host command handling ────────────────────────────────
 
+  /**
+   * `searchFiles` 的 `{path, type}` → webview 的 `FileItem`（与桌面端
+   * `findWorkspaceFiles` 同一套字段）。`path` 只在这页上当 React key 用：这一页
+   * 没有编辑器、也不发 `openFile`，真正被插进正文的是 `relativePath`
+   * （`[@file:<relativePath>]`）。拼接分隔符跟着 workdir 走——被控的那台机器
+   * 可能是 Windows。
+   */
+  function toFileSuggestions(files, filterText) {
+    var list = [];
+    var needle = (filterText || "").toLowerCase();
+    for (var i = 0; i < files.length; i++) {
+      var relativePath = String(files[i].path || "");
+      if (!relativePath) continue;
+      var trimmed = relativePath.replace(/[\\/]+$/, "");
+      var name = trimmed.split(/[\\/]/).pop() || trimmed;
+      var dot = name.lastIndexOf(".");
+      list.push({
+        path: joinWorkdir(relativePath),
+        relativePath: relativePath,
+        name: name,
+        extension: dot > 0 ? name.slice(dot + 1) : "",
+        icon: files[i].type === "directory" ? "codicon-folder" : "codicon-file",
+        isDirectory: files[i].type === "directory",
+      });
+    }
+    // 与桌面端 `findWorkspaceFiles` 同一个排序：名字以过滤词开头的排前面，
+    // 然后目录优先，最后按名字。同一份宿主数据在两端落成同一个顺序。
+    list.sort(function (a, b) {
+      var aHead = needle !== "" && a.name.toLowerCase().indexOf(needle) === 0;
+      var bHead = needle !== "" && b.name.toLowerCase().indexOf(needle) === 0;
+      if (aHead && !bHead) return -1;
+      if (!aHead && bHead) return 1;
+      if (a.isDirectory && !b.isDirectory) return -1;
+      if (!a.isDirectory && b.isDirectory) return 1;
+      return a.name.localeCompare(b.name);
+    });
+    return list;
+  }
+
+  /** 会话列表里那条会话的工作目录（条目上叫 `workdir`，见 `toSessionMetadata`）。 */
+  function joinWorkdir(relativePath) {
+    var entry = currentSession(sessions, sessionId);
+    var dir = entry && entry.workdir;
+    if (!dir) return relativePath;
+    var sep = dir.indexOf("\\") >= 0 ? "\\" : "/";
+    return dir.replace(/[\\/]+$/, "") + sep + relativePath;
+  }
+
+  /**
+   * 历史提示词：`requestHistory` / `searchHistory` → `getPromptHistory` /
+   * `searchPromptHistory`，回包一律是 `historyResponse {requestId, history}`。
+   * 这条此前是**死弹窗**：入口与请求都写好了，这里却没有 case，`default:` 只
+   * `warnOnce` 不回执 ⇒ 打开「历史提示词」永远停在加载中。
+   */
+  function readHistory(requestId, method, params) {
+    request(method, params)
+      .then(function (result) {
+        post({
+          command: "historyResponse",
+          requestId: requestId,
+          history: (result && result.history) || [],
+        });
+      })
+      .catch(function (err) {
+        post({
+          command: "historyError",
+          requestId: requestId,
+          error: failureText("读取历史提示词", err),
+        });
+      });
+  }
+
   function handleCommand(msg) {
     var command = msg.command;
 
@@ -2150,6 +2309,211 @@
           { customInstructions: msg.customInstructions },
           "压缩上下文",
         );
+        return;
+
+      // ── 第二批解禁（spec「页面能执行的那批宿主命令」）───────────────
+      // 这一组背后全是 `AgentBridge` 上早就实现的方法，缺的只是白名单一行 +
+      // 这里一个 case + 页面一道远端守卫。两条写操作（回滚、清空）与写用户级
+      // 设置的 `/model` 在页面侧各带一次确认，这里只负责发出去并如实回执。
+
+      case "listRewindCheckpoints":
+        request("listRewindCheckpoints", {})
+          .then(function (result) {
+            post({
+              command: "rewindCheckpoints",
+              checkpoints: (result && result.checkpoints) || [],
+            });
+          })
+          .catch(function (err) {
+            // 回空列表 + 一句原因：页面的 loading 只在这条回包上落定，不回就
+            // 会一直转在「正在读取回滚点」上。
+            showStatus(failureText("读取回滚点", err));
+            post({ command: "rewindCheckpoints", checkpoints: [] });
+          });
+        return;
+
+      case "rewindToMessage":
+        // 与桌面端同一条链路：截断对话 **+ 按 `file_history` 快照还原本机工作区
+        // 文件**。页面已在执行前确认过一次（文案写明会撤销电脑侧的文件改动），
+        // 所以这里只负责发出去并把结果如实回执——`ok` 是页面切自己那份列表的
+        // 唯一依据（回执不携带消息列表）。
+        request("rewindToMessage", { messageId: msg.messageId })
+          .then(function () {
+            post({
+              command: "rewindResult",
+              requestId: msg.requestId,
+              messageId: msg.messageId,
+              ok: true,
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "rewindResult",
+              requestId: msg.requestId,
+              messageId: msg.messageId,
+              ok: false,
+              error: String(err.message || err),
+            });
+            showStatus(failureText("回滚", err));
+          });
+        return;
+
+      case "clearChat":
+        // IDE 端与页面共用这一条（桌面端 `/clear` 整端移除、走不到这里）：宿主
+        // 换绑新 sessionId 并跑 Session hooks，页面执行前已确认过一次。成功不需要
+        // 回执——列表自己会从 `messagesChange` 信号重新拉出来。
+        controlRequest("clearMessages", {}, "清空对话");
+        return;
+
+      case "getConfiguredModels":
+        request("getConfiguredModels", {})
+          .then(function (result) {
+            post({
+              command: "configuredModels",
+              models: (result && result.models) || [],
+              currentModel: result && result.currentModel,
+            });
+          })
+          .catch(function (err) {
+            showStatus(failureText("读取模型列表", err));
+            post({ command: "configuredModels", models: [] });
+          });
+        return;
+
+      case "setModel":
+        // 写的是**用户级** `~/.wave/settings.json` 的 `model` 键——这台机器上
+        // 所有会话（以及此后新开的）都跟着换，所以页面先确认一次再发。成功不回
+        // 执：下一次 `getConfiguredModels` 会读到它，页面也已经在本地更新了。
+        request("setModel", { model: msg.model }).catch(function (err) {
+          showStatus(failureText("切换模型", err));
+        });
+        return;
+
+      case "updateQueuedMessage":
+        request("updateQueuedMessage", {
+          id: msg.id,
+          text: msg.text,
+          images: msg.images,
+        })
+          .then(function (result) {
+            // 页面已乐观改过队列；宿主说没这条（并发删掉了）就让它撤稿——与两个
+            // 本机宿主同一条 `updateQueuedMessageMissing`。
+            if (result && result.ok === false)
+              post({ command: "updateQueuedMessageMissing", id: msg.id });
+          })
+          .catch(function (err) {
+            post({ command: "updateQueuedMessageMissing", id: msg.id });
+            showStatus(failureText("修改排队消息", err));
+          });
+        return;
+
+      case "deleteQueuedMessageById":
+        // 「立即发送」的第二步也走这里：`sendMessage{force}` 把这条立刻发出去，
+        // 再删掉队列里的那条，否则它会再发一遍（与 IDE / 桌面同一套做法，没有
+        // 专门的宿主方法）。
+        request("deleteQueuedMessageById", { id: msg.id }).catch(
+          function (err) {
+            showStatus(failureText("删除排队消息", err));
+          },
+        );
+        return;
+
+      case "getBackgroundTaskOutput":
+        request("getBackgroundTaskOutput", { taskId: msg.taskId })
+          .then(function (result) {
+            // 宿主回的是信封 `{output}`，webview 读 `output` 本身。
+            post({
+              command: "backgroundTaskOutput",
+              taskId: msg.taskId,
+              output: (result && result.output) || null,
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "backgroundTaskOutput",
+              taskId: msg.taskId,
+              output: null,
+            });
+            // 轮询失败不刷屏（每秒一次），但「这个宿主不支持」要说成那件事，
+            // 不是「读取失败」。
+            warnOnce("taskOutput", failureText("读取后台任务输出", err));
+          });
+        return;
+
+      case "stopBackgroundTask":
+        request("stopBackgroundTask", { taskId: msg.taskId })
+          .then(function (result) {
+            post({
+              command: "backgroundTaskStopped",
+              taskId: msg.taskId,
+              success: !!(result && result.success),
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "backgroundTaskStopped",
+              taskId: msg.taskId,
+              success: false,
+            });
+            showStatus(failureText("停止后台任务", err));
+          });
+        return;
+
+      case "stopWorkflowRun":
+        request("stopWorkflowRun", { runId: msg.runId })
+          .then(function (result) {
+            post({
+              command: "workflowRunStopped",
+              runId: msg.runId,
+              success: !!(result && result.success),
+            });
+            // 停完立刻重读一次：被停下的那个不再产生进度事件，等推送是等不到的。
+            refreshWorkflowRuns();
+          })
+          .catch(function (err) {
+            post({
+              command: "workflowRunStopped",
+              runId: msg.runId,
+              success: false,
+            });
+            showStatus(failureText("停止工作流", err));
+          });
+        return;
+
+      case "requestFileSuggestions": {
+        // `@` 文件建议：`query` 就是 `@` 后面那段过滤文本，工作目录由宿主按信封
+        // `sessionId` 取（页面不猜目录）。条数与桌面端同一个 20。
+        var filter = typeof msg.filterText === "string" ? msg.filterText : "";
+        request("searchFiles", { query: filter, maxResults: 20 })
+          .then(function (result) {
+            post({
+              command: "fileSuggestionsResponse",
+              requestId: msg.requestId,
+              filterText: filter,
+              suggestions: toFileSuggestions(
+                (result && result.files) || [],
+                filter,
+              ),
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "fileSuggestionsError",
+              requestId: msg.requestId,
+              error: failureText("获取文件建议", err),
+            });
+          });
+        return;
+      }
+
+      case "requestHistory":
+        readHistory(msg.requestId, "getPromptHistory", {});
+        return;
+
+      case "searchHistory":
+        readHistory(msg.requestId, "searchPromptHistory", {
+          query: msg.query,
+        });
         return;
 
       case "renameSession":
@@ -2331,13 +2695,17 @@
         return;
 
       default:
-        // Anything else the page renders may still expect a reply, so this is
-        // loud rather than silent: the issue's rule is "explicitly unsupported
-        // or hidden", never a quiet grey screen.
+        // Not silent any more. A command with no case leaves the page stuck on
+        // whatever spinner that action started, with nothing on screen to say
+        // why — and the phone has no terminal to go look. So: the log line, plus
+        // one line on the page. (Commands the page answers locally live in
+        // `UNSUPPORTED_NO_REPLY` above; they never reach here.)
         warnOnce(
           "cmd:" + command,
-          "Web 端未实现的命令（未回执，界面可能停在该动作上）：" + command,
+          "Web 端未实现的命令（已回一句提示，界面不会停在那个动作上）：" +
+            command,
         );
+        showStatus("这个操作在 Web 端还没有接通：" + command);
     }
   }
 
