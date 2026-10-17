@@ -293,6 +293,14 @@ export interface SessionListStatus {
   waiting: string[];
   /** 正在生成的会话 id。 */
   running: string[];
+  /** 前台空闲、但还有后台任务在跑的会话 id（同一个注册表读出来的第三条事实：
+   *  「看起来静止、其实还在干活」不能显示成静止）。缺席 = 这个宿主/这版构建不说。 */
+  background?: string[];
+  /** 建在 linked worktree 里的会话 id。**只**用来决定删除确认卡说不说工作树那段
+   *  警告、按钮写「删除会话」还是「删除会话与工作树」——改动计数不在这里（那是按需
+   *  现读的，见 `sessionWorktreeChanges`）。缺席 = 宿主不说 = 页面按「不是 worktree」
+   *  处理，与旧宿主的行为一致。 */
+  worktrees?: string[];
 }
 
 /**
@@ -1111,6 +1119,36 @@ export interface PrefillPromptMessage extends HostToWebviewMessageBase {
   prompt: string;
 }
 
+/** Reply to `deleteSession`（远控 Web 页「会话」列表的行级删除）。
+ *
+ *  `worktreeRemoved` 是本条回复唯一的新事实：电脑侧定位不到那条会话的工作树时
+ *  **会话照样删掉**，只是工作树没跟着删——页面据此说「会话已删除，工作树没动」，
+ *  而不是把一次「删了一半」报成彻底失败（spec remote-control.md「手机端的会话列表
+ *  与删除」场景 8）。 */
+export interface SessionDeletedMessage extends HostToWebviewMessageBase {
+  command: "sessionDeleted";
+  requestId: string;
+  sessionId: string;
+  ok: boolean;
+  /** 只有当请求带了 `removeWorktree` 且真的删掉了目录时才是 true。 */
+  worktreeRemoved?: boolean;
+  error?: string;
+}
+
+/** Reply to `getSessionWorktreeChanges`：删除确认卡要说的话所需的两个计数。
+ *
+ *  `changes === null` 是**「读不到」**，不是「没有改动」——页面按「降级泛警告」
+ *  处理，绝不把它当成干净的 worktree 而静默删除（与桌面端同一份语义，见
+ *  `worktreeDeleteWarning`）。 */
+export interface SessionWorktreeChangesMessage
+  extends HostToWebviewMessageBase {
+  command: "sessionWorktreeChanges";
+  requestId: string;
+  sessionId: string;
+  changes: { files: number; commits: number } | null;
+  error?: string;
+}
+
 /** Reply to a requestHistory / searchHistory query that failed. */
 export interface HistoryErrorMessage extends HostToWebviewMessageBase {
   command: "historyError";
@@ -1206,6 +1244,8 @@ export type HostToWebviewMessage =
   | UploadErrorMessage
   | DesktopRemoteDirListMessage
   | DesktopWorktreeChangesMessage
+  | SessionDeletedMessage
+  | SessionWorktreeChangesMessage
   | PluginMarketFolderSelectedMessage
   | DesktopResumeSessionsMessage
   | RemoteControlResponseMessage;
@@ -1264,6 +1304,11 @@ type ReplyAttribution = {
   remoteControlResponse: "requestId";
   // 回滚：请求生成 id，回复原样带回（同一会话可反复回滚，晚到的旧回复即弃）。
   rewindResult: "requestId";
+  // 手机页会话列表的行级动作：删除 / 删除前读工作树改动。两笔都是「一次点击一笔
+  // 请求」，但同一行可以被反复操作（关掉确认卡再点一次、换一行再点），晚到的旧回复
+  // 必须按 requestId 丢弃，否则会替另一行收起卡片或贴上别人的改动数字。
+  sessionDeleted: "requestId";
+  sessionWorktreeChanges: "requestId";
 };
 
 // ---- 编译期断言：注册表中的每条响应命令，union 成员必须必填其归属键。 ----
@@ -1311,6 +1356,8 @@ export const replyAttributionLocked = {
   sessionRenamed: true,
   remoteControlResponse: true,
   rewindResult: true,
+  sessionDeleted: true,
+  sessionWorktreeChanges: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];
 };

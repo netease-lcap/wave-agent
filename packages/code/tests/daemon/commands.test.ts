@@ -84,6 +84,11 @@ execFileMock.mockImplementation(
 
 vi.mock("../../src/utils/worktree.js", () => ({
   createWorktree: vi.fn(),
+  // `listDaemonSessions` derives each row's worktree off the filesystem and the
+  // bridge's delete path asks for the same info: this suite's sessions are not
+  // worktrees, which is exactly what `undefined` says.
+  deriveWorktreeInfo: vi.fn(() => undefined),
+  getWorktreeChanges: vi.fn(),
   removeWorktree: vi.fn(),
 }));
 

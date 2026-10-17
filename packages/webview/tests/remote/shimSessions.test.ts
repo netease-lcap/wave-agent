@@ -1828,3 +1828,215 @@ describe("remote page shim", () => {
     expect(page.requests("getMessages")).toBe(pulls);
   });
 });
+
+/**
+ * 会话列表的行级动作（spec ui/remote-control.md「手机端的会话列表与删除」）：删除
+ * 与删除前的 worktree 计数。
+ *
+ * 两条都**按信封 `sessionId` 指向被操作的那一行**，而不是页面当前看着的那条——列表
+ * 上能点的是每一条会话，删除 / 查改动跟「我正在读哪条」无关。协议上不放行裸
+ * `removeWorktree` / `getWorktreeChanges`：手机能指名的只能是它列出来的会话，路径由
+ * 电脑侧自己从会话的 `createdWorkdir` 推导。
+ */
+describe("remote page session list actions", () => {
+  /** The session-list facts the registry read already carries (no extra RPC). */
+  test("rides the registry read for 后台任务 and worktree membership", async () => {
+    const { page } = await openPage();
+
+    // 同一份 `listDaemonSessions` 回复里的两个字段：`hasRunningBackgroundWork` 是
+    // 「前台空了但还在干活」、`worktree` 是「这条会话建在工作树里」。都不新增读路径。
+    page.api.postMessage({ command: "restoreSession", sessionId: "s-old" });
+    await flush();
+    await page.answer("listDaemonSessions", {
+      sessions: [
+        {
+          sessionId: "s-old",
+          workingDirectory: "/tmp/other",
+          hasRunningBackgroundWork: true,
+        },
+        {
+          sessionId: "s-new",
+          workingDirectory: "/repo",
+          worktree: {
+            path: "/repo/.wave/worktrees/feat",
+            branch: "wave/feat",
+            repoRoot: "/repo",
+            hookBased: false,
+          },
+        },
+      ],
+    });
+    await page.answer("getSessionInfo", { permissionMode: "default" });
+    await page.answer("getMessages", { messages: [SEED] });
+    await page.answer("listPendingPermissions", { requests: [] });
+
+    expect(lastPosted(page)).toMatchObject({
+      command: "setInitialState",
+      sessionStatus: {
+        waiting: [],
+        running: [],
+        background: ["s-old"],
+        worktrees: ["s-new"],
+      },
+    });
+  });
+
+  test("forwards a delete as destroy against that row, then re-reads the list", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "deleteSession",
+      sessionId: "s-old",
+      removeWorktree: false,
+      requestId: "del-1",
+    });
+    await flush();
+
+    const [frame] = page.socket.framesFor("destroy");
+    // 信封 sessionId 指向被删的那条（不是页面当前那条），参数只有一个可选开关。
+    expect(frame).toMatchObject({
+      method: "destroy",
+      sessionId: "s-old",
+      params: { removeWorktree: false },
+    });
+
+    // 先重读列表，再回执：页面拿到「已删除」时列表已经是删完的那份。
+    await page.answer("destroy", { worktreeRemoved: false });
+    await page.answer("listDaemonSessions", {
+      sessions: [SESSIONS[1]],
+    });
+
+    const commands = page.posted.map((message) => message.command);
+    expect(commands).toContain("updateSessions");
+    expect(
+      page.posted
+        .filter((message) => message.command === "updateSessions")
+        .pop(),
+    ).toMatchObject({ sessions: [expect.objectContaining({ id: "s-new" })] });
+    expect(lastPosted(page)).toMatchObject({
+      command: "sessionDeleted",
+      requestId: "del-1",
+      sessionId: "s-old",
+      ok: true,
+      worktreeRemoved: false,
+    });
+    // 删的不是当前这条：视图不动（不重拉消息、不换绑）。
+    expect(page.requests("getMessages")).toBe(1);
+  });
+
+  test("carries removeWorktree when the row was a worktree session", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "deleteSession",
+      sessionId: "s-new",
+      removeWorktree: true,
+      requestId: "del-2",
+    });
+    await flush();
+
+    expect(page.socket.framesFor("destroy")[0]).toMatchObject({
+      sessionId: "s-new",
+      params: { removeWorktree: true },
+    });
+  });
+
+  test("re-picks a live session after the current one is deleted, without navigating the page", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "deleteSession",
+      sessionId: "s-new",
+      removeWorktree: true,
+      requestId: "del-3",
+    });
+    await flush();
+    await page.answer("destroy", { worktreeRemoved: true });
+    await page.answer("listDaemonSessions", { sessions: [SESSIONS[0]] });
+    // 删掉的那条是当前这条：重挑一条活的并把视图重画（否则每次读都落到
+    // Session not found），但**页面仍停在列表上**——不替用户跳进去。
+    await page.answer("listDaemonSessions", { sessions: [SESSIONS[0]] });
+    await page.answer("getSessionInfo", {
+      sessionId: "s-old",
+      permissionMode: "default",
+    });
+    await page.answer("getMessages", { messages: [SEED] });
+    await page.answer("listPendingPermissions", { requests: [] });
+    await page.answer("getWorkflowRuns", { runs: [] });
+
+    expect(
+      page.posted.filter((message) => message.command === "sessionDeleted"),
+    ).toContainEqual(expect.objectContaining({ requestId: "del-3", ok: true }));
+    expect(
+      page.posted
+        .filter((message) => message.command === "setInitialState")
+        .pop(),
+    ).toMatchObject({ session: expect.objectContaining({ id: "s-old" }) });
+  });
+
+  test("says so when the machine refuses the delete", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "deleteSession",
+      sessionId: "s-old",
+      requestId: "del-4",
+    });
+    await flush();
+    await page.refuse("destroy", "Session not found");
+
+    expect(lastPosted(page)).toMatchObject({
+      command: "sessionDeleted",
+      requestId: "del-4",
+      sessionId: "s-old",
+      ok: false,
+      error: "Session not found",
+    });
+  });
+
+  test("reads a worktree's changes for the row, not a path the page names", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "getSessionWorktreeChanges",
+      sessionId: "s-new",
+      requestId: "wt-1",
+    });
+    await flush();
+
+    const [frame] = page.socket.framesFor("getSessionWorktreeChanges");
+    expect(frame).toMatchObject({
+      method: "getSessionWorktreeChanges",
+      sessionId: "s-new",
+    });
+    // 页面报不出路径：参数只有信封上的那条会话。
+    expect(frame.params).toEqual({});
+
+    await page.answer("getSessionWorktreeChanges", { files: 2, commits: 1 });
+    expect(lastPosted(page)).toMatchObject({
+      command: "sessionWorktreeChanges",
+      requestId: "wt-1",
+      sessionId: "s-new",
+      changes: { files: 2, commits: 1 },
+    });
+  });
+
+  test("a worktree it cannot inspect comes back as unknown, never as clean", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "getSessionWorktreeChanges",
+      sessionId: "s-new",
+      requestId: "wt-2",
+    });
+    await flush();
+    await page.answer("getSessionWorktreeChanges", null);
+
+    // `null` = 读不到：页面据此降级成泛警告，不许当成「没有改动」而静默删。
+    expect(lastPosted(page)).toMatchObject({
+      command: "sessionWorktreeChanges",
+      requestId: "wt-2",
+      changes: null,
+    });
+  });
+});

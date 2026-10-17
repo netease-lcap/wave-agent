@@ -785,6 +785,14 @@ export interface ChatHeaderProps {
    */
   sessionSwitchButton?: boolean;
   /**
+   * Remote Web page only: 顶栏「会话」按钮打开的是**整页列表**（
+   * `RemoteSessionListPage`），不再是借来的下拉（spec remote-control.md「手机端的
+   * 会话列表与删除」场景 1）。传了它，这个按钮就只调它、并且不再渲染
+   * `SessionListPopup`；不传（IDE / 桌面端）则一个字都不变——那边的「下拉」是指针
+   * 设备上的好形态，缺的是手机要的行级动作与触控热区，不是同一个问题的两种答案。
+   */
+  onOpenSessionPage?: () => void;
+  /**
    * Remote Web page (the fifth host) only: the standing 「切换电脑」 entry. One
    * home-screen icon serves every machine, so the page needs a way back to the
    * machine list from a live session; the command routes to the page shim (the
@@ -961,6 +969,13 @@ export interface SessionListStatus {
   waiting: string[];
   /** 正在生成的会话 id（含当前会话）。 */
   running: string[];
+  /** 前台空闲、但还有后台任务在跑的会话 id（同一份注册表读出来的，见「有后台任务
+   *  在跑」那条标记）。缺席 = 宿主不说。 */
+  background?: string[];
+  /** 建在 linked worktree 里的会话 id：删除确认卡据此说工作树那段警告、把按钮写成
+   *  「删除会话与工作树」。改动计数不在这里——那是按需现读的。缺席 = 宿主不说 = 按
+   *  「不是 worktree」处理（旧宿主的行为）。 */
+  worktrees?: string[];
 }
 
 export interface ConfirmationDialogProps {

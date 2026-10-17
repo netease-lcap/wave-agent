@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import {
   createWorktree,
+  deriveWorktreeInfo,
   getWorktreeChanges,
   listWorktrees,
   removeWorktree,
@@ -62,6 +63,10 @@ vi.mock("node:fs", () => ({
   mkdirSync: vi.fn(),
   readdirSync: vi.fn(),
   rmSync: vi.fn(),
+  // Synchronous reads `deriveWorktreeInfo` uses — it must never shell out to git
+  // (it runs once per session row on every list refresh).
+  statSync: vi.fn(),
+  readFileSync: vi.fn(),
   promises: {
     readFile: vi.fn(),
     writeFile: vi.fn(),
@@ -401,6 +406,95 @@ describe("worktree utils", () => {
         "WorktreeCreate hook failed: create.sh: boom",
       );
       expect(git.calls).toHaveLength(0);
+    });
+  });
+
+  describe("deriveWorktreeInfo", () => {
+    const WT = "/repo/.wave/worktrees/feat";
+    const GIT_DIR = "/repo/.git/worktrees/feat";
+
+    /** Lay out a linked worktree's metadata the way git writes it. */
+    function stubLinkedWorktree(
+      files: Record<string, string | undefined> = {},
+    ) {
+      const all: Record<string, string | undefined> = {
+        [`${WT}/.git`]: `gitdir: ${GIT_DIR}`,
+        [`${GIT_DIR}/HEAD`]: "ref: refs/heads/wave/feat",
+        [`${GIT_DIR}/commondir`]: "../..",
+        ...files,
+      };
+      vi.mocked(fs.statSync).mockImplementation(((p: string) => {
+        if (p === `${WT}/.git`) return { isFile: () => true };
+        throw enoent();
+      }) as unknown as typeof fs.statSync);
+      vi.mocked(fs.readFileSync).mockImplementation(((p: string) => {
+        const content = all[p];
+        if (content === undefined) throw enoent();
+        return content;
+      }) as unknown as typeof fs.readFileSync);
+    }
+
+    beforeEach(() => {
+      vi.mocked(hasWorktreeCreateHook).mockReturnValue(false);
+      vi.mocked(loadMergedWaveConfig).mockReturnValue({ hooks: undefined });
+    });
+
+    it("reads the worktree, its branch and the main repo root off the filesystem", () => {
+      stubLinkedWorktree({});
+
+      expect(deriveWorktreeInfo(WT)).toEqual({
+        path: WT,
+        branch: "wave/feat",
+        repoRoot: "/repo",
+        hookBased: false,
+      });
+      // No git process: this runs once per session row on every list refresh.
+      expect(git.calls).toHaveLength(0);
+    });
+
+    it("reports hookBased for a repository whose worktrees come from a hook", () => {
+      stubLinkedWorktree({});
+      vi.mocked(hasWorktreeCreateHook).mockReturnValue(true);
+
+      expect(deriveWorktreeInfo(WT)?.hookBased).toBe(true);
+    });
+
+    it("leaves the branch empty on a detached HEAD but still identifies the worktree", () => {
+      stubLinkedWorktree({ [`${GIT_DIR}/HEAD`]: "0123456789abcdef" });
+
+      // Same thing `git branch --show-current` says; removeWorktree then keeps
+      // any branch it cannot name.
+      expect(deriveWorktreeInfo(WT)).toMatchObject({
+        path: WT,
+        branch: "",
+        repoRoot: "/repo",
+      });
+    });
+
+    it("returns undefined for a main working tree (.git is a directory)", () => {
+      vi.mocked(fs.statSync).mockImplementation((() => ({
+        isFile: () => false,
+      })) as unknown as typeof fs.statSync);
+
+      expect(deriveWorktreeInfo("/repo")).toBeUndefined();
+    });
+
+    it("returns undefined when the directory is not a git checkout at all", () => {
+      vi.mocked(fs.statSync).mockImplementation((() => {
+        throw enoent();
+      }) as unknown as typeof fs.statSync);
+
+      expect(deriveWorktreeInfo("/tmp/scratch")).toBeUndefined();
+    });
+
+    it("returns undefined when the worktree metadata cannot be read", () => {
+      stubLinkedWorktree({ [`${GIT_DIR}/commondir`]: undefined });
+
+      expect(deriveWorktreeInfo(WT)).toBeUndefined();
+    });
+
+    it("returns undefined for an empty directory string", () => {
+      expect(deriveWorktreeInfo("")).toBeUndefined();
     });
   });
 

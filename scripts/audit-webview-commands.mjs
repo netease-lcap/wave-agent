@@ -143,6 +143,12 @@ const REMOTE_PAGE_GATED = new Set([
   "getPushState",
   "enablePushNotifications",
   "disablePushNotifications",
+  // 会话列表的行级动作（spec remote-control.md「手机端的会话列表与删除」）：删除
+  // 一条会话（shim 转 destroy，可选连带删工作树）、删除确认前按需读工作树改动。
+  // 桌面端有等价动作但走另一套命令（desktopDeleteSession 等），页面这边只有
+  // 手机页这一条链。
+  "deleteSession",
+  "getSessionWorktreeChanges",
 ]);
 
 /** 第五个路由实例：手机页 shim 的 case 注册集合。 */

@@ -26,6 +26,7 @@ import StatusDialog from "./StatusDialog";
 import BackgroundTaskManager from "./BackgroundTaskManager";
 import WorkflowManager from "./WorkflowManager";
 import RemoteNewSessionDialog from "./RemoteNewSessionDialog";
+import RemoteSessionListPage from "./RemoteSessionListPage";
 import WelcomeView from "./WelcomeView";
 import LoadingLogo from "./LoadingLogo";
 import { SidebarExpandIcon, CloseIcon } from "./HeaderIcons";
@@ -284,6 +285,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // on-disk session scan of the current conversation's host, which is what
   // makes CLI-created sessions reachable (they are not in the desktop index).
   const [resumePickerOpen, setResumePickerOpen] = useState(false);
+  // 远控页的「会话」整页列表（spec remote-control.md「手机端的会话列表与删除」）。
+  // 只有那一端会置 true——IDE / 桌面端的入口仍是各自的会话面（下拉 / 侧栏），
+  // 它们连这个开关都不会碰。
+  const [sessionPageOpen, setSessionPageOpen] = useState(false);
   const [resumeSessions, setResumeSessions] = useState<SessionMetadata[]>([]);
   const [resumeLoading, setResumeLoading] = useState(false);
   // One-shot scan correlation: a stale reply (host switched, /resume pressed
@@ -4197,6 +4202,26 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // stay visible in every layout, including the desktop split-view shell.
   const dialogs = (
     <>
+      {/* 远控页的「会话」整页列表（spec remote-control.md「手机端的会话列表与删除」）。
+          覆盖在对话之上而不是替换它：对话仍在挂载状态，输入草稿、滚动位置、正在
+          跑的那一轮都不因为「去看一眼列表」而丢。 */}
+      {isRemotePage && sessionPageOpen && (
+        <RemoteSessionListPage
+          sessions={state.sessions}
+          currentSession={state.currentSession}
+          sessionStatus={state.sessionStatus}
+          loading={state.sessionsLoading}
+          vscode={vscode}
+          // 点一行 = 切会话 + 自动回对话页（spec 场景 3）。切会话本身走
+          // `handleSessionSelect`，与原先下拉点一行完全同一套本地动作。
+          onSelect={(sessionId) => {
+            handleSessionSelect(sessionId);
+            setSessionPageOpen(false);
+          }}
+          onBack={() => setSessionPageOpen(false)}
+          onRename={renameSessionFromHeader}
+        />
+      )}
       {/* Desktop `/resume`: centered modal at the pane's root (the desktop chat
           header has no session buttons, and the pane root keeps it usable in
           split view). Its list spans every project on the current host. */}
@@ -4382,6 +4407,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // 重绑到远端建新会话（initialize，非 clearChat）。
         hideSessionButtons={isDesktop || isRemotePage}
         sessionSwitchButton={isRemotePage}
+        // 远控页专属：顶栏「会话」打开整页列表（不再是借来的下拉）。其余四端不传，
+        // 那一端仍是原来的弹窗/侧栏（spec remote-control.md「手机端的会话列表与
+        // 删除」场景 1）。
+        onOpenSessionPage={
+          isRemotePage ? () => setSessionPageOpen(true) : undefined
+        }
         // 远控页专属：「切换电脑」入口，路由是页面 shim（REMOTE_PAGE_GATED）。
         onSwitchMachine={
           isRemotePage
