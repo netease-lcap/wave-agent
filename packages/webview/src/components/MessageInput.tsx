@@ -1534,12 +1534,15 @@ export const MessageInput = forwardRef<
 
       const textBeforeCursor = pre.toString();
 
-      // `@` 文件提及只对能列出工作目录文件的宿主开放。远程控制 Web 页没有这条
-      // 宿主能力（spec ui/remote-control.md 场景 24），照旧「活跃」的话会发出一个
-      // 没人应答的 requestFileSuggestions，下拉永远停在「正在搜索文件…」。
-      const mentionState: AtMentionState = isRemotePageHost()
-        ? { isActive: false, filterText: "", startPos: 0, endPos: 0 }
-        : detectAtMention(textBeforeCursor, textBeforeCursor.length);
+      // `@` 文件提及：远控页现在也有宿主能力了（第二批解禁）——shim 把
+      // `requestFileSuggestions` 转成 `searchFiles`，工作目录由宿主按会话取。
+      // 这条门禁此前存在，是因为发出去没人应答、下拉永远停在「正在搜索文件…」；
+      // 有了回执，那条理由随之消失（spec ui/remote-control.md「页面能执行的那批
+      // 宿主命令」场景 7）。
+      const mentionState: AtMentionState = detectAtMention(
+        textBeforeCursor,
+        textBeforeCursor.length,
+      );
       const slashCommandState = detectSlashCommand(
         textBeforeCursor,
         textBeforeCursor.length,

@@ -7,7 +7,7 @@ import {
   QueueTrashIcon,
 } from "./HeaderIcons";
 import type { QueuedMessageListProps } from "../types";
-import { isDesktopHost, isRemotePageHost } from "../utils/platform";
+import { isDesktopHost } from "../utils/platform";
 import "../styles/QueuedMessageList.css";
 
 export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
@@ -26,7 +26,6 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
   // 这个按钮是做什么的）。仅桌面端参与（IDE 宿主不加按钮提示）。
   const [actionsHovered, setActionsHovered] = useState(false);
   const desktopHost = isDesktopHost();
-  const remotePage = isRemotePageHost();
   // 「hover 看全文」的气泡只在文字真被省略号截断时才需要（设计师 0917：字数少就不应该
   // 有气泡）。逐条量 text 的 scrollWidth > clientWidth，容器变宽/条目增删时重算。
   const textRefs = useRef(new Map<string, HTMLSpanElement>());
@@ -131,65 +130,64 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
               >
                 {fullText}
               </span>
-              {/* 队列的三个动作（编辑 / 立即发送 / 删除）都要宿主侧的队列手术，而
-                  远程控制 Web 页的白名单里没有这些方法（spec ui/remote-control.md
-                  场景 24）：本地乐观改了、宿主下次推队列又会推回来；「立即发送」更
-                  糟 —— 消息确实发出去了，队列里的那条还在，等于发两遍。所以页面上
-                  整组不渲染，队列退化成一张只读的待发清单。 */}
-              {!remotePage && (
-                <div
-                  className="queued-item-actions"
-                  onMouseEnter={
-                    desktopHost ? () => setActionsHovered(true) : undefined
-                  }
-                  onMouseLeave={
-                    desktopHost ? () => setActionsHovered(false) : undefined
-                  }
-                >
-                  {withActionTooltip(
-                    "编辑",
-                    <button
-                      className="queued-action-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (qm.id != null) onEdit(qm.id);
-                      }}
-                      aria-label="编辑"
-                      data-testid={`queued-edit-${id}`}
-                    >
-                      <QueueEditIcon />
-                    </button>,
-                  )}
-                  {withActionTooltip(
-                    "立即发送",
-                    <button
-                      className="queued-action-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (qm.id != null) onSend(qm.id);
-                      }}
-                      aria-label="立即发送"
-                      data-testid={`queued-send-${id}`}
-                    >
-                      <QueueSendIcon />
-                    </button>,
-                  )}
-                  {withActionTooltip(
-                    "删除",
-                    <button
-                      className="queued-action-button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (qm.id != null) onDelete(qm.id);
-                      }}
-                      aria-label="删除"
-                      data-testid={`queued-delete-${id}`}
-                    >
-                      <QueueTrashIcon />
-                    </button>,
-                  )}
-                </div>
-              )}
+              {/* 队列的三个动作（编辑 / 立即发送 / 删除）：远端现在也全都能用
+                  （第二批解禁）。宿主侧各有方法——编辑 `updateQueuedMessage`、删除
+                  `deleteQueuedMessageById`、立即发送是 `sendMessage{force}` + 删这条
+                  两步（没有专门的宿主方法，与 IDE / 桌面同形）——所以那道「远端整组
+                  不渲染」的守卫撤掉了（spec「页面能执行的那批宿主命令」场景 5）。
+                  远端不额外加确认：三个动作都只作用于这条还没发出去的消息。 */}
+              <div
+                className="queued-item-actions"
+                onMouseEnter={
+                  desktopHost ? () => setActionsHovered(true) : undefined
+                }
+                onMouseLeave={
+                  desktopHost ? () => setActionsHovered(false) : undefined
+                }
+              >
+                {withActionTooltip(
+                  "编辑",
+                  <button
+                    className="queued-action-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (qm.id != null) onEdit(qm.id);
+                    }}
+                    aria-label="编辑"
+                    data-testid={`queued-edit-${id}`}
+                  >
+                    <QueueEditIcon />
+                  </button>,
+                )}
+                {withActionTooltip(
+                  "立即发送",
+                  <button
+                    className="queued-action-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (qm.id != null) onSend(qm.id);
+                    }}
+                    aria-label="立即发送"
+                    data-testid={`queued-send-${id}`}
+                  >
+                    <QueueSendIcon />
+                  </button>,
+                )}
+                {withActionTooltip(
+                  "删除",
+                  <button
+                    className="queued-action-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (qm.id != null) onDelete(qm.id);
+                    }}
+                    aria-label="删除"
+                    data-testid={`queued-delete-${id}`}
+                  >
+                    <QueueTrashIcon />
+                  </button>,
+                )}
+              </div>
             </div>
           );
           // 只有被省略号截断的条目才包气泡；文字放得下的条目直接渲染行（unwrapped 不会
