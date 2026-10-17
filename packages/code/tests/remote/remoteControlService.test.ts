@@ -348,20 +348,24 @@ describe("RemoteControlService", () => {
 
     // The chat methods + conversation upkeep + new-session + the second batch
     // (rewind / clear / model / queue / background work / file search / prompt
-    // history) are the whole surface. Adding a method here is a deliberate
-    // widening, so this list is pinned rather than derived.
+    // history) + the third batch (the settings page's read/personalisation/
+    // project-settings trio) are the whole surface. Adding a method here is a
+    // deliberate widening, so this list is pinned rather than derived.
     expect([...REMOTE_ALLOWED_METHODS].sort()).toEqual([
       "abortMessage",
       "clearMessages",
       "compact",
       "createWorktree",
       "deleteQueuedMessageById",
+      "getAgentsContent",
       "getBackgroundTaskOutput",
       "getConfiguredModels",
       "getMessages",
+      "getProjectSettings",
       "getPromptHistory",
       "getSessionInfo",
       "getSlashCommands",
+      "getUserSettings",
       "getWorkflowRuns",
       "initialize",
       "listDaemonSessions",
@@ -376,11 +380,14 @@ describe("RemoteControlService", () => {
       "searchFiles",
       "searchPromptHistory",
       "sendMessage",
+      "setAgentsContent",
+      "setBuiltinPluginEnabled",
       "setModel",
       "setPermissionMode",
       "stopBackgroundTask",
       "stopWorkflowRun",
       "updateQueuedMessage",
+      "updateUserSettings",
     ]);
   });
 
