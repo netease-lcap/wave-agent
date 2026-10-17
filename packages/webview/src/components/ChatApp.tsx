@@ -25,7 +25,6 @@ import McpDialog from "./McpDialog";
 import StatusDialog from "./StatusDialog";
 import BackgroundTaskManager from "./BackgroundTaskManager";
 import WorkflowManager from "./WorkflowManager";
-import RemoteControlDialog from "./RemoteControlDialog";
 import RemoteNewSessionDialog from "./RemoteNewSessionDialog";
 import WelcomeView from "./WelcomeView";
 import LoadingLogo from "./LoadingLogo";
@@ -396,10 +395,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       : effectiveWorkdir;
   const isDesktop = host?.type === "desktop";
   // The remote-control Web page (spec remote-control「Web 页作为第五种宿主」):
-  // the shim sets `window.waveRemotePage` — the same flag RemoteControlDialog
-  // reads to skip drawing the QR it is itself the target of. That page hides the
-  // new/history buttons like the desktop does and gets one entry of its own: the
-  // sessions the serving process holds right now, which is all it can open.
+  // the shim sets `window.waveRemotePage` — the same flag the remote-control
+  // settings view reads to skip drawing the QR it is itself the target of. That
+  // page hides the new/history buttons like the desktop does and gets one entry
+  // of its own: the sessions the serving process holds right now, which is all
+  // it can open.
   //
   // It is also the host every guard in this file is about: rendering the IDE
   // branch buys it the IDE's UI, but not the IDE's capabilities (no editor, no
@@ -2367,10 +2367,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         return;
       }
       if (interceptHostLocalCommand && trimmedText === "/remote-control") {
-        // 手机接管本机会话（远端控制面）：弹窗自己问宿主/轮询状态，故这里只
-        // 负责唤起。桌面端与 IDE 端都放行 —— 各自的会话就在自己那个 stdio
-        // 子进程里，手机要在哪套会话上做审批，就得由那台进程去连 relay。
-        dispatch({ type: "SHOW_DIALOG", payload: { type: "remote" } });
+        // 手机接管本机会话（远端控制面）：不再弹窗，而是唤起设置页并选中
+        // 「远程控制」选项卡（2026-10-17 用户拍板，与 /agents → subagents、
+        // /skills → skills 同一条既有语义；对话框内容整块搬进了
+        // SettingsRemoteControlView）。桌面端与 IDE 端都放行 —— 各自的会话就在
+        // 自己那个 stdio 子进程里，手机要在哪套会话上做审批，就得由那台进程去连
+        // relay。远控网页本身不拦（`interceptHostLocalCommand`）：那一页就是二维码
+        // 指向的东西，在页面上给自己开一个「远程控制」入口是自我指涉。
+        handleOpenSettings("remoteControl");
         return;
       }
       if (interceptHostLocalCommand && trimmedText === "/agents") {
@@ -4232,9 +4236,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           vscode={vscode}
           onCancel={handleDialogClose}
         />
-      )}
-      {state.activeDialog === "remote" && (
-        <RemoteControlDialog onClose={handleDialogClose} vscode={vscode} />
       )}
       {state.activeDialog === "remoteNewSession" && (
         <RemoteNewSessionDialog

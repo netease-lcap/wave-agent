@@ -26,7 +26,13 @@
  * theme tokens; no Element Plus dependency is used.
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ConfigurationData,
   ThemeSource,
@@ -38,6 +44,7 @@ import SettingsSkillsView from "./SettingsSkillsView";
 import SettingsHooksView from "./SettingsHooksView";
 import SettingsMcpView from "./SettingsMcpView";
 import SettingsPluginView from "./SettingsPluginView";
+import SettingsRemoteControlView from "./SettingsRemoteControlView";
 import {
   SettingsBackIcon,
   SettingsGlobalIcon,
@@ -46,6 +53,7 @@ import {
   SettingsPersonalizationIcon,
   SettingsPluginsIcon,
   SettingsProjectIcon,
+  SettingsRemoteControlIcon,
   SettingsSkillsIcon,
   SettingsSubagentsIcon,
 } from "./HeaderIcons";
@@ -143,6 +151,7 @@ export interface SettingsPageProps {
 export type NavKey =
   | "global"
   | "personalization"
+  | "remoteControl"
   | "project"
   | "plugins"
   | "skills"
@@ -244,6 +253,16 @@ const NAV_GROUPS: NavGroup[] = [
         label: "个性化",
         icon: SettingsPersonalizationIcon,
       },
+      // 远程控制（2026-10-17 从独立弹层搬进来）：与 MCP 服务同理，它是这台机器
+      // 上的一项**能力**，不该自成一个弹窗；入口仍是 `/remote-control`，只是打开
+      // 设置页并选中这一项（spec ui/remote-control.md「`/remote-control` 打开设置
+      // 页的远程控制选项卡」）。放在「通用」组第三位：它改的是「这台机器能被谁
+      // 接管」，与全局设置同一层级，不隶属于某个项目。
+      {
+        key: "remoteControl",
+        label: "远程控制",
+        icon: SettingsRemoteControlIcon,
+      },
     ],
   },
   {
@@ -271,7 +290,9 @@ const NAV_GROUPS: NavGroup[] = [
  *  个性化 / 项目设置。插件市场、技能、子代理、钩子、MCP 五个视图要的是宿主的
  *  **界面**能力（目录树、配置文件路径、安装流程），页面上既不渲染、白名单也没放行
  *  它们的方法——整项缺席而不是渲染后置灰（spec ui/remote-control.md「Web 端也能改
- *  设置」场景 3）。 */
+ *  设置」场景 3）。「远程控制」同理不出现：那是一条**宿主本地**的斜杠命令（开关与
+ *  二维码都属于电脑侧），页面自己就是二维码指向的东西，在这里再给一个入口是自我
+ *  指涉（同一故事场景 1；`/remote-control` 在页面上仍按普通消息发出去）。 */
 const REMOTE_PAGE_NAV_KEYS: NavKey[] = ["global", "personalization", "project"];
 
 const navGroupsForCurrentHost = (): NavGroup[] => {
@@ -312,7 +333,27 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onLoadConfiguredModels,
   unsupportedReason,
 }) => {
-  const [activeNav, setActiveNav] = useState<NavKey>(initialNav ?? "global");
+  // 导航项先按宿主裁一次（见 navGroupsForCurrentHost），进页时的初始选中项也要
+  // 落在**这个宿主真有的**项上：`initialNav` 是外层按斜杠命令传下来的
+  // （`/remote-control` → remoteControl、`/mcp` → mcp …），而某些宿主没有那一项
+  // （远控网页没有远程控制，五块管理视图也不在），照传下去会渲染一个导航里根本
+  // 不存在的视图——页面上既没有它的高亮项，返回后也找不到它是从哪进来的。
+  // 宿主身份在页面寿命内不变（`waveHostType` / `waveRemotePage` 都是加载时定的），
+  // 所以这份清单只算一次。
+  const hostNavGroups = useMemo(() => navGroupsForCurrentHost(), []);
+  const visibleNavKeys = useMemo(
+    () => hostNavGroups.flatMap((group) => group.items.map((item) => item.key)),
+    [hostNavGroups],
+  );
+  const clampNav = useCallback(
+    (key: NavKey | undefined): NavKey =>
+      key && visibleNavKeys.includes(key) ? key : "global",
+    [visibleNavKeys],
+  );
+
+  const [activeNav, setActiveNav] = useState<NavKey>(() =>
+    clampNav(initialNav),
+  );
   // 宿主不支持读写设置（见 unsupportedReason 注释）：整页可编辑控件置灰。
   const hostUnsupported = Boolean(unsupportedReason);
 
@@ -323,10 +364,11 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
   // IDE 标签页场景：设置页常驻挂载，/agents、/skills 再次唤起时 host 通过
   // settingsState 下发新的 nav，此处同步选中项（desktop 每次打开会重挂载，
-  // 初始值已覆盖，本 effect 为幂等）。
+  // 初始值已覆盖，本 effect 为幂等）。同样按宿主夹一次：下发的可能是这个宿主
+  // 没有的那一项（见 clampNav 的说明）。
   useEffect(() => {
-    if (initialNav) setActiveNav(initialNav);
-  }, [initialNav]);
+    if (initialNav) setActiveNav(clampNav(initialNav));
+  }, [initialNav, clampNav]);
 
   // 用户偏好草稿（configurationData 回填后同步）。`""` = 未设置（settings.json
   // 里没有该键）——此时控件显示系统默认（占位符 /「未设置（默认：中文）」项），
@@ -633,7 +675,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           )}
           {backButton}
           <nav className="settings-navigation" aria-label="设置">
-            {navGroupsForCurrentHost().map((group) => (
+            {hostNavGroups.map((group) => (
               <div className="settings-nav-group" key={group.label}>
                 <h2>{group.label}</h2>
                 <div className="settings-nav-items">
@@ -1129,6 +1171,13 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           )}
 
           {activeNav === "plugins" && <SettingsPluginView vscode={vscode} />}
+
+          {/* 远程控制：视图自己拥有与宿主的对话（每秒轮询 + requestId 关联），
+              所以「挂载即轮询、切走即卸载」正好等于「只在激活时轮询」——各视图
+              都是按导航项条件渲染的，这里不需要额外的 active 判断。 */}
+          {activeNav === "remoteControl" && (
+            <SettingsRemoteControlView vscode={vscode} />
+          )}
 
           {activeNav === "subagents" && (
             <SettingsSubagentsView

@@ -503,6 +503,26 @@ export class MessageHandler {
         // 一项（script audit-webview-commands 会拦下这种漏注册）。
         await this.handleSettingsGetConfiguredModels();
         break;
+      case "remoteControl":
+        // 设置页「通用 → 远程控制」项（2026-10-17 从独立弹层搬进设置页）。
+        // 设置 tab 是**独立于任何会话**的（见本方法头注），但远程控制本身就是
+        // **进程级**的：`remoteControl*` 在 agentBridge 里由 daemon 的控制器应答、
+        // 不看 sessionId，而设置 tab 的 utilityClient 与聊天会话共用同一个
+        // `wave --stdio` 子进程（chatProvider 把 sharedClient 同时交给两者）。所以
+        // 这里直接问那个子进程即可，语义与聊天路由的 handleRemoteControl 一致；
+        // 回包照例发给设置面板本身。漏注册会让「开启/断开」点了没反应（
+        // script audit-webview-commands 会拦下）。
+        await this.handleSettingsRemoteControl(
+          msg.action as string,
+          msg.name as string | undefined,
+          msg.requestId as string,
+        );
+        break;
+      case "openExternal":
+        // 设置页里的「在浏览器打开」（远程控制的页面地址）——与聊天路由同一个
+        // 实现，只是入口在设置 tab 里。
+        await this.handleOpenExternal(msg.url as string);
+        break;
       // 插件市场（设置页「AI 与扩展 → 插件市场」视图）：命令与回包都走设置
       // 面板路由——插件市场只在设置页渲染（PluginDialog 已删除，/plugin 变为
       // 唤起设置页该选项卡），聊天路由不再注册这批命令。
@@ -1758,6 +1778,44 @@ export class MessageHandler {
               ? await agent.remoteControlDisconnect()
               : await agent.remoteControlStatus(),
       });
+    } catch (error) {
+      reply({ error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  /**
+   * 设置 tab 里的「远程控制」项：同一个问题的另一条路由。
+   *
+   * 与上面的 handleRemoteControl 问的是**同一个** `wave --stdio` 子进程，差别只在
+   * 两条：① 走 utilityClient 的 RPC 而不是某个会话的 agent——设置 tab 没有会话，
+   * 而 `remoteControl*` 在 bridge 里本来就是进程级的（不看 sessionId）；② 回包发给
+   * 设置面板（postSettingsMessage）而不是聊天 webview。失败同样如实回 error，
+   * 由设置页逐字显示（最常见的是子进程没开 `enableRemoteControl`）。
+   */
+  private async handleSettingsRemoteControl(
+    action: string,
+    name: string | undefined,
+    requestId: string,
+  ) {
+    const reply = (payload: {
+      snapshot?: RemoteControlSnapshot;
+      error?: string;
+    }) =>
+      this.context.postSettingsMessage({
+        command: "remoteControlResponse",
+        requestId,
+        ...payload,
+      });
+    try {
+      const snapshot = await this.utilityClient.request(
+        action === "connect"
+          ? "remoteControlConnect"
+          : action === "disconnect"
+            ? "remoteControlDisconnect"
+            : "remoteControlStatus",
+        name === undefined ? {} : { name },
+      );
+      reply({ snapshot: snapshot as RemoteControlSnapshot });
     } catch (error) {
       reply({ error: error instanceof Error ? error.message : String(error) });
     }
