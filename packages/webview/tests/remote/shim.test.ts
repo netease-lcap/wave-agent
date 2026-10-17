@@ -172,8 +172,8 @@ interface Harness {
   requests(): { id: number; method: string; params: Record<string, unknown> }[];
   /** Answer the request the shim sent most recently, the way the host does. */
   reply(result: unknown): void;
-  /** The error half of the same envelope. */
-  replyWithError(message: string): void;
+  /** The error half of the same envelope (`code` defaults to the internal one). */
+  replyWithError(message: string, code?: number): void;
 }
 
 function loadShim(options: {
@@ -452,8 +452,8 @@ function loadShim(options: {
     reply: (result) => {
       answer("result", { result });
     },
-    replyWithError: (message) => {
-      answer("error", { code: -32603, message });
+    replyWithError: (message, code = -32603) => {
+      answer("error", { code, message });
     },
   };
 }
@@ -844,6 +844,8 @@ describe("remote page shim — talking to the host", () => {
       "getSessionInfo",
       "getMessages",
       "listPendingPermissions",
+      // 工作流运行是「读」出来的（没有变化推送源），排在快照之后发出。
+      "getWorkflowRuns",
     ]);
     expect(
       page.requests().find((frame) => frame.method === "getMessages")?.params,
@@ -1428,5 +1430,303 @@ describe("remote page shim — healing after a disconnect", () => {
       ?.click();
     await flush();
     expect(page.element("remote-machine-picker")).toBeTruthy();
+  });
+});
+
+/**
+ * 第二批解禁：页面能发出的那批宿主命令（spec ui/remote-control.md「页面能执行的
+ * 那批宿主命令」）。
+ *
+ * 每条用例走的是同一条链路的中间段——页面 `post({command})` → shim 一个 case →
+ * 中继上的一个 JSON-RPC 方法 → 回执折回一条 webview 命令。两头（页面按钮 / 宿主
+ * 实现）各自有自己的用例，这里钉的是**中间这一段的接线**：方法名、入参、回执
+ * 命令名与字段。这些名字写错一个，页面上就是「点了没反应」。
+ */
+describe("remote page shim — the second batch", () => {
+  /** 页面视图里最近一条某命令的消息（回执按命令名认）。 */
+  const lastPost = (page: Harness, command: string) =>
+    [...page.posted]
+      .reverse()
+      .find(
+        (message) => (message as { command?: string }).command === command,
+      ) as Record<string, unknown> | undefined;
+
+  const lastRequest = (page: Harness) => {
+    const frames = page.requests();
+    return frames[frames.length - 1];
+  };
+
+  it("rewind: the request carries the message id, the reply is what authorizes the cut", async () => {
+    const page = await openPage();
+
+    page.post({
+      command: "rewindToMessage",
+      messageId: "m10",
+      requestId: "r1",
+    });
+    await flush();
+    expect(lastRequest(page)).toMatchObject({
+      method: "rewindToMessage",
+      params: { messageId: "m10" },
+    });
+
+    page.reply({ inputContent: "上一条输入" });
+    await flush();
+    // 回执不携带消息列表：页面自己按 messageId 截断，`ok` 是唯一依据。
+    expect(lastPost(page, "rewindResult")).toMatchObject({
+      requestId: "r1",
+      messageId: "m10",
+      ok: true,
+    });
+  });
+
+  it("rewind: a refused rewind says so and does not cut the list", async () => {
+    const page = await openPage();
+
+    page.post({
+      command: "rewindToMessage",
+      messageId: "m10",
+      requestId: "r2",
+    });
+    await flush();
+    page.replyWithError("boom");
+    await flush();
+
+    expect(lastPost(page, "rewindResult")).toMatchObject({
+      requestId: "r2",
+      ok: false,
+    });
+    expect(page.banner()).toContain("回滚失败");
+  });
+
+  it("rewind: checkpoints arrive as the list the popup renders (and empty on failure)", async () => {
+    const page = await openPage();
+
+    page.post({ command: "listRewindCheckpoints" });
+    await flush();
+    expect(lastRequest(page).method).toBe("listRewindCheckpoints");
+    page.reply({ checkpoints: [{ messageId: "m10", content: "改一下" }] });
+    await flush();
+    expect(lastPost(page, "rewindCheckpoints")).toMatchObject({
+      checkpoints: [{ messageId: "m10", content: "改一下" }],
+    });
+
+    // 失败也回一次：页面的 loading 只在这条回包上落定，不回就一直转在
+    // 「正在读取回滚点」上。
+    page.post({ command: "listRewindCheckpoints" });
+    await flush();
+    page.replyWithError("boom");
+    await flush();
+    expect(lastPost(page, "rewindCheckpoints")).toMatchObject({
+      checkpoints: [],
+    });
+  });
+
+  it("/clear is clearMessages, and a host that cannot says so", async () => {
+    const page = await openPage();
+
+    page.post({ command: "clearChat" });
+    await flush();
+    expect(lastRequest(page).method).toBe("clearMessages");
+
+    page.post({ command: "clearChat" });
+    await flush();
+    // -32011：通道放行、这个宿主没接（前台 CLI）。文案要说「这台电脑上的会话
+    // 不支持」，而不是「指令没有回执」——后者会让人去查网络。
+    page.replyWithError("Not implemented by a foreground CLI session", -32011);
+    await flush();
+    expect(page.banner()).toContain("这台电脑上的会话不支持这个操作");
+  });
+
+  it("/model: the list and the switch both go to the host", async () => {
+    const page = await openPage();
+
+    page.post({ command: "getConfiguredModels" });
+    await flush();
+    expect(lastRequest(page).method).toBe("getConfiguredModels");
+    page.reply({ models: ["claude-sonnet-4"], currentModel: "claude-opus-4" });
+    await flush();
+    expect(lastPost(page, "configuredModels")).toMatchObject({
+      models: ["claude-sonnet-4"],
+      currentModel: "claude-opus-4",
+    });
+
+    page.post({ command: "setModel", model: "claude-sonnet-4" });
+    await flush();
+    expect(lastRequest(page)).toMatchObject({
+      method: "setModel",
+      params: { model: "claude-sonnet-4" },
+    });
+  });
+
+  it("queue surgery: edit/delete are host methods, and a vanished row is reported", async () => {
+    const page = await openPage();
+
+    page.post({ command: "updateQueuedMessage", id: "q1", text: "改过的" });
+    await flush();
+    expect(lastRequest(page)).toMatchObject({
+      method: "updateQueuedMessage",
+      params: { id: "q1", text: "改过的" },
+    });
+    page.reply({ ok: false });
+    await flush();
+    expect(lastPost(page, "updateQueuedMessageMissing")).toMatchObject({
+      id: "q1",
+    });
+
+    page.post({ command: "deleteQueuedMessageById", id: "q1" });
+    await flush();
+    expect(lastRequest(page)).toMatchObject({
+      method: "deleteQueuedMessageById",
+      params: { id: "q1" },
+    });
+  });
+
+  it("background tasks: the change notification lands as updateBackgroundTasks", async () => {
+    const page = await openPage();
+    const tasks = [{ id: "task_1", type: "shell", status: "running" }];
+
+    page.socket().receive({
+      method: "backgroundTasksChange",
+      params: { tasks },
+      sessionId: "s1",
+    });
+    await flush();
+    expect(lastPost(page, "updateBackgroundTasks")).toMatchObject({ tasks });
+  });
+
+  it("background tasks: output and stop both answer the dialog", async () => {
+    const page = await openPage();
+
+    page.post({ command: "getBackgroundTaskOutput", taskId: "task_1" });
+    await flush();
+    expect(lastRequest(page)).toMatchObject({
+      method: "getBackgroundTaskOutput",
+      params: { taskId: "task_1" },
+    });
+    // 宿主回的是信封 `{output}`，webview 读 `output` 本身。
+    page.reply({ output: { stdout: "hi", status: "completed" } });
+    await flush();
+    expect(lastPost(page, "backgroundTaskOutput")).toMatchObject({
+      taskId: "task_1",
+      output: { stdout: "hi", status: "completed" },
+    });
+
+    page.post({ command: "stopBackgroundTask", taskId: "task_1" });
+    await flush();
+    page.reply({ success: true });
+    await flush();
+    expect(lastPost(page, "backgroundTaskStopped")).toMatchObject({
+      taskId: "task_1",
+      success: true,
+    });
+  });
+
+  it("workflows: runs are read (there is no push), and stopping re-reads", async () => {
+    const page = await openPage();
+
+    // 快照之后紧跟一条读：工作流运行没有「变化就推」的通道（bridge 只为后台任务
+    // 发 `backgroundTasksChange`），所以页面自己在每条对齐路径上读一次。
+    expect(lastRequest(page).method).toBe("getWorkflowRuns");
+    const runs = [{ runId: "run-1", status: "running" }];
+    page.reply({ runs });
+    await flush();
+    expect(lastPost(page, "updateWorkflowRuns")).toMatchObject({ runs });
+
+    page.post({ command: "stopWorkflowRun", runId: "run-1" });
+    await flush();
+    expect(lastRequest(page)).toMatchObject({
+      method: "stopWorkflowRun",
+      params: { runId: "run-1" },
+    });
+    page.reply({ success: true });
+    await flush();
+    expect(lastPost(page, "workflowRunStopped")).toMatchObject({
+      runId: "run-1",
+      success: true,
+    });
+    // 停完立刻重读：被停下的那个不再产生进度事件，等推送是等不到的。
+    expect(lastRequest(page).method).toBe("getWorkflowRuns");
+  });
+
+  it("@ suggestions: searchFiles anchored to the session workdir, mapped like the desktop", async () => {
+    const page = await openPage();
+
+    page.post({
+      command: "requestFileSuggestions",
+      filterText: "src",
+      requestId: "f1",
+    });
+    await flush();
+    // 20 条与桌面端同一个上限；`workdir` 不给——宿主按信封 sessionId 自己取。
+    expect(lastRequest(page)).toMatchObject({
+      method: "searchFiles",
+      params: { query: "src", maxResults: 20 },
+    });
+
+    page.reply({
+      files: [
+        { path: "src/b.ts", type: "file" },
+        { path: "src/", type: "directory" },
+        { path: "lib/src.ts", type: "file" },
+      ],
+    });
+    await flush();
+    const suggestions = lastPost(page, "fileSuggestionsResponse") as {
+      suggestions: Array<Record<string, unknown>>;
+    };
+    expect(suggestions).toMatchObject({ requestId: "f1", filterText: "src" });
+    // 名字以过滤词开头（按 basename 判）的排前面，然后目录优先——与桌面端
+    // findWorkspaceFiles 同一个顺序，所以 `src.ts` 在前、`b.ts` 在后；
+    // `path` 拼回绝对路径，`relativePath` 才是插进正文的那个。
+    expect(suggestions.suggestions.map((item) => item.relativePath)).toEqual([
+      "src/",
+      "lib/src.ts",
+      "src/b.ts",
+    ]);
+    expect(suggestions.suggestions[2]).toMatchObject({
+      path: "/tmp/src/b.ts",
+      name: "b.ts",
+      extension: "ts",
+      icon: "codicon-file",
+      isDirectory: false,
+    });
+  });
+
+  it("prompt history: both reads answer historyResponse under the caller's requestId", async () => {
+    const page = await openPage();
+
+    // 这条此前是死弹窗：入口与请求都写好了，shim 没有 case、`default:` 也只
+    // warnOnce ⇒ 点了永远停在加载中，连告警都没有。
+    page.post({ command: "requestHistory", requestId: "h1" });
+    await flush();
+    expect(lastRequest(page).method).toBe("getPromptHistory");
+    page.reply({ history: [{ prompt: "改一下登录" }] });
+    await flush();
+    expect(lastPost(page, "historyResponse")).toMatchObject({
+      requestId: "h1",
+      history: [{ prompt: "改一下登录" }],
+    });
+
+    page.post({ command: "searchHistory", query: "登录", requestId: "h2" });
+    await flush();
+    expect(lastRequest(page)).toMatchObject({
+      method: "searchPromptHistory",
+      params: { query: "登录" },
+    });
+    page.replyWithError("boom");
+    await flush();
+    expect(lastPost(page, "historyError")).toMatchObject({ requestId: "h2" });
+  });
+
+  it("an unmapped command says so on the page instead of going quiet", async () => {
+    const page = await openPage();
+
+    page.post({ command: "somethingNew" });
+    await flush();
+
+    // 兜底分支不再只写日志：不回执的后果是界面停在那个动作上，而手机没有终端
+    // 可以去看。
+    expect(page.banner()).toContain("这个操作在 Web 端还没有接通");
   });
 });
