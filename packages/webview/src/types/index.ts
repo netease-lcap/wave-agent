@@ -898,7 +898,6 @@ export interface ChatState {
     | "status"
     | "tasks"
     | "workflows"
-    | "remote"
     // 远控 Web 页顶栏「新建对话」重绑的弹窗（initialize 建新会话，非 clearChat）。
     | "remoteNewSession"
     | null;
@@ -1062,16 +1061,6 @@ export interface McpDialogProps {
  * Props for the status info dialog component
  */
 export interface StatusDialogProps {
-  onClose: () => void;
-}
-
-/**
- * Props for the remote-control dialog (`/remote-control`): the phone-as-second-
- * control-plane entry point. The dialog owns its own host conversation
- * (request/poll + requestId correlation), so it needs nothing but the host API
- * and a way to close.
- */
-export interface RemoteControlDialogProps {
   onClose: () => void;
 }
 

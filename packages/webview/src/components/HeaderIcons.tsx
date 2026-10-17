@@ -1196,6 +1196,52 @@ export const SettingsPersonalizationIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+/**
+ * 设置-远程控制（手机接管这台电脑）：手机 + 两道信号弧。
+ *
+ * 这一枚没有 Figma 源文件（同一族其余图标都由设计师导出），按该族的规格手绘：
+ * 16×16 视框、纯描边 1.4、颜色走 `currentColor`（所以深浅主题自动跟随），不填色。
+ * 语义取「那台电脑正对外广播、手机在这头」：弧线用同一个圆心（手机右缘中点）不同
+ * 半径，与 wifi 那类图标的读法一致，避免两条弧各画各的。
+ */
+export const SettingsRemoteControlIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+  >
+    <path
+      d="M3.4 1.8h3.2c.77 0 1.4.63 1.4 1.4v9.6c0 .77-.63 1.4-1.4 1.4H3.4c-.77 0-1.4-.63-1.4-1.4V3.2c0-.77.63-1.4 1.4-1.4Z"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M4.2 12h1.6"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+    />
+    <path
+      d="M11.2 4.1a5 5 0 0 1 0 7.8"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+    />
+    <path
+      d="M10.1 6.6a2.6 2.6 0 0 1 0 2.8"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
 /** 设置-项目设置（settings-project.svg）：文件夹 + 齿轮角 */
 export const SettingsProjectIcon: React.FC<IconProps> = ({
   className = "header-icon",

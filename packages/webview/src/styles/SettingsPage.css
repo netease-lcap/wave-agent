@@ -818,6 +818,32 @@
   margin: 0;
 }
 
+/* ---- 远程控制视图（2026-10-17 从独立弹层搬进来） ---- */
+
+/* Web 页地址：等宽 + 可断行。地址是 UUID 串，不断行会把整行卡片撑爆（手机上
+   尤其明显，单列布局里它必须能折成两三行）。 */
+.settings-remote-value {
+  font-family: var(--vscode-editor-font-family, monospace);
+  word-break: break-all;
+}
+
+/* 二维码：库自己的白底不动（深色主题下换成主题色 = 反相码，扫不出来，见组件
+   注释）。这里只负责居中与留白。 */
+.settings-remote-qr {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+/* 两条扫码说明：比正文小一档、次要色，压在二维码下方。 */
+.settings-remote-note {
+  margin: 0;
+  padding: 2px 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  line-height: 20px;
+}
+
 /* ---- Narrow panels / 手机视口 ---- */
 
 /* 远控网页是这一页唯一会跑在手机浏览器里的宿主，390px 一档必须真的能用（spec

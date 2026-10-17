@@ -11,6 +11,12 @@ vi.mock("vscode", () => ({
   commands: {
     executeCommand: vi.fn(),
   },
+  env: {
+    openExternal: vi.fn(),
+  },
+  Uri: {
+    parse: vi.fn((value: string) => ({ toString: () => value })),
+  },
 }));
 
 import * as vscode from "vscode";
@@ -948,6 +954,99 @@ describe("MessageHandler settings tab", () => {
       models: [],
       currentModel: undefined,
     });
+  });
+
+  // 远程控制（2026-10-17 从独立弹层搬进设置页）：设置 tab 没有会话，但
+  // `remoteControl*` 是进程级方法，而设置 tab 的 utilityClient 与聊天会话共用同一个
+  // `wave --stdio` 子进程 —— 所以「开启/断开/读状态」在设置 tab 里照样能问到，
+  // 回包发给设置面板本身（漏注册就是点了没反应）。
+  test("remoteControl from the settings tab asks the same process and replies to the settings panel", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    const snapshot = {
+      state: "online",
+      url: "https://relay.example/remote/?host=h1",
+    };
+    utilityClient.request.mockResolvedValueOnce(snapshot);
+
+    await handler.handleSettingsMessage({
+      command: "remoteControl",
+      action: "status",
+      requestId: "req-1",
+    });
+
+    expect(utilityClient.request).toHaveBeenCalledWith(
+      "remoteControlStatus",
+      {},
+    );
+    expect(context.postSettingsMessage).toHaveBeenCalledWith({
+      command: "remoteControlResponse",
+      requestId: "req-1",
+      snapshot,
+    });
+    expect(context.postMessage).not.toHaveBeenCalled();
+  });
+
+  test("the settings tab's connect / disconnect carry the machine label the same way the chat route does", async () => {
+    const session = createReadySession();
+    const { handler, utilityClient } = createReadyHandler(session);
+    utilityClient.request.mockResolvedValue({ state: "connecting" });
+
+    await handler.handleSettingsMessage({
+      command: "remoteControl",
+      action: "connect",
+      name: "我的笔记本",
+      requestId: "req-2",
+    });
+    await handler.handleSettingsMessage({
+      command: "remoteControl",
+      action: "disconnect",
+      requestId: "req-3",
+    });
+
+    expect(utilityClient.request).toHaveBeenNthCalledWith(
+      1,
+      "remoteControlConnect",
+      { name: "我的笔记本" },
+    );
+    expect(utilityClient.request).toHaveBeenNthCalledWith(
+      2,
+      "remoteControlDisconnect",
+      {},
+    );
+  });
+
+  test("a CLI without the capability reports its own sentence verbatim (no fake state)", async () => {
+    const session = createReadySession();
+    const { handler, context, utilityClient } = createReadyHandler(session);
+    const reason =
+      "Remote control is not enabled on this process (set enableRemoteControl: true).";
+    utilityClient.request.mockRejectedValueOnce(new Error(reason));
+
+    await handler.handleSettingsMessage({
+      command: "remoteControl",
+      action: "status",
+      requestId: "req-4",
+    });
+
+    expect(context.postSettingsMessage).toHaveBeenCalledWith({
+      command: "remoteControlResponse",
+      requestId: "req-4",
+      error: reason,
+    });
+  });
+
+  test("openExternal from the settings tab opens the page address in the browser", async () => {
+    const session = createReadySession();
+    const { handler } = createReadyHandler(session);
+    const url = "https://relay.example/remote/?host=h1";
+
+    await handler.handleSettingsMessage({ command: "openExternal", url });
+
+    expect(vscode.Uri.parse).toHaveBeenCalledWith(url);
+    const opened = vi.mocked(vscode.env.openExternal).mock
+      .calls[0][0] as unknown as { toString(): string };
+    expect(opened.toString()).toBe(url);
   });
 
   test("updateConfiguration saves user preferences and replies without recreating agents", async () => {

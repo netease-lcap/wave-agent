@@ -44,7 +44,7 @@
    * by `waveHostType` — the IDE hosts leave that unset as well — and exactly one
    * surface has to differ: the QR that brings a second device here. This page is
    * what that QR points at, so drawing it here would be circular
-   * (RemoteControlDialog skips it when this flag is set).
+   * (the settings page's remote-control view skips it when this flag is set).
    */
   window.waveRemotePage = true;
 

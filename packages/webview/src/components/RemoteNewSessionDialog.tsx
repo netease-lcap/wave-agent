@@ -9,7 +9,7 @@
  * 本弹窗只需关闭。
  *
  * 请求/回执全部 requestId 匹配（弹窗开着时用户可以反复换目录、换分支，只有
- * 最新一次请求的回执允许落进 UI —— RemoteControlDialog 同一纪律）。
+ * 最新一次请求的回执允许落进 UI —— 设置页的远程控制视图同一纪律）。
  *
  * 分支与 worktree 控件仅在所选目录是 git 仓库时出现：判据不是猜扩展名，而是
  * `listGitBranches` 的回执本身——成功（分支数组）才渲染，失败（非仓库/无 git）
@@ -152,7 +152,7 @@ const RemoteNewSessionDialog: React.FC<RemoteNewSessionDialogProps> = ({
   }, [workdir, creating, useWorktree, baseBranch, worktreeName, post]);
 
   // Escape closes only the dialog (capture phase, so MessageInput never sees
-  // it — RemoteControlDialog 同一处理).
+  // it — the settings page's remote-control view does the same).
   useEffect(() => {
     const handleEscapeKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
