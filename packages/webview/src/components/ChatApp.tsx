@@ -257,6 +257,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // that arrives late — or for a rewind already superseded — must not touch the
   // current list (same shape as useSessionRename's pending map).
   const pendingRewindsRef = useRef(new Map<string, string>());
+  // 远控页的两道「写操作」确认（第二批解禁，spec「页面能执行的那批宿主命令」）：
+  // `/clear` 会把电脑侧那条会话换绑成新的 sessionId（并跑 Session hooks），`/model`
+  // 写的是**用户级** `~/.wave/settings.json`——两者在手机上都不是「只影响这一页」的
+  // 动作，所以远端各问一次。IDE 端与桌面端不变：它们的 `/clear` 早就没有确认、
+  // `/model` 也没有（改动只在一处 UI，不动那两端的既有手感）。
+  const [pendingClearConfirm, setPendingClearConfirm] = useState(false);
+  const [pendingModelSwitch, setPendingModelSwitch] = useState<string | null>(
+    null,
+  );
   // /rewind popup: checkpoint list requested from the host on open.
   const [rewindPopupOpen, setRewindPopupOpen] = useState(false);
   const [rewindCheckpoints, setRewindCheckpoints] = useState<
@@ -2232,19 +2241,27 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       const trimmedText = text.trim();
       if (!trimmedText && (!images || images.length === 0)) return;
 
-      // 宿主本地的斜杠命令：远程控制 Web 页一律不拦（spec ui/remote-control.md
-      // 场景 24）。它们要么要一个只有宿主才有的界面（设置页 / 插件市场 / 回滚 /
-      // 模型选择 / 后台任务 / 工作流），要么本身就是宿主侧动作（/remote-control 在
-      // 控制页上是自我指涉）。页面不拦 = 不打开一个永远加载中的死弹窗；文本按普通
-      // 消息发给宿主 —— 与桌面端 /clear 的既有处置同源（「SDK 从未注册，发给模型
-      // 无害」）。服务端真能做的两条（/compact、/status）不受影响，照旧拦截。
+      // 宿主本地的斜杠命令：**剩下的**那些（设置页 / 插件市场 / 钩子 / 技能 /
+      // 子代理 / MCP / 计划 / btw / 远程控制自身）远程控制 Web 页一律不拦
+      // （spec ui/remote-control.md 场景 24）：它们背后要么是宿主的**界面**能力，
+      // 要么只有宿主侧才有意义，拦下来只会打开一个永远加载中的死弹窗；页面不拦 =
+      // 文本按普通消息发给宿主。服务端真能做的两条（/compact、/status）不受影响。
+      //
+      // 第二批解禁（2026-10-17）之后，`/clear` `/rewind` `/model` `/tasks`
+      // `/workflows` 不在这条守卫里了：宿主侧方法已在白名单里、shim 有回执，
+      // 页面这一侧也没有宿主 UI 依赖（弹窗都长在本组件里），所以远端照常拦截
+      // ——见下面各自的注释与 spec「页面能执行的那批宿主命令」。
       const interceptHostLocalCommand = !isRemotePage;
 
       // Intercept local slash commands — open dialogs instead of sending to agent
       // Desktop: /clear 已整端移除（2026-09-05 拍板），不再拦截 —— 手动敲 /clear
       // 作为普通消息发送（SDK 从未注册 clear，发给模型无害）；IDE 端保留拦截。
-      if (!isDesktop && interceptHostLocalCommand && trimmedText === "/clear") {
-        handleClearChat();
+      // 远控页现在也拦截（第二批解禁）：`clearMessages` 已在白名单里，但它是**写**
+      // 操作（换绑新 sessionId + 跑 Session hooks），所以页面上先确认一次再发
+      // ——见 `pendingClearConfirm` 与下面那个 ConfirmDialog。
+      if (!isDesktop && trimmedText === "/clear") {
+        if (isRemotePage) setPendingClearConfirm(true);
+        else handleClearChat();
         return;
       }
       if (trimmedText === "/compact" || trimmedText.startsWith("/compact ")) {
@@ -2297,14 +2314,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         dispatch({ type: "SHOW_DIALOG", payload: { type: "status" } });
         return;
       }
-      if (interceptHostLocalCommand && trimmedText === "/tasks") {
+      // `/tasks` 与 `/workflows`：数据由 shim 补齐（`backgroundTasksChange` /
+      // `getSessionInfo.backgroundTasks` 与 `getWorkflowRuns`），所以远端照旧拦截
+      // ——这两条是只读弹窗，不需要确认。
+      if (trimmedText === "/tasks") {
         dispatch({ type: "SHOW_DIALOG", payload: { type: "tasks" } });
         return;
       }
-      if (
-        interceptHostLocalCommand &&
-        (trimmedText === "/workflows" || trimmedText === "/workflows ")
-      ) {
+      if (trimmedText === "/workflows" || trimmedText === "/workflows ") {
         dispatch({ type: "SHOW_DIALOG", payload: { type: "workflows" } });
         return;
       }
@@ -2332,7 +2349,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         handleOpenSettings("hooks");
         return;
       }
-      if (interceptHostLocalCommand && trimmedText === "/rewind") {
+      // `/rewind`：检查点由宿主回（远端的 shim 转发 `listRewindCheckpoints`）。
+      // 选中一条之后与消息上的回滚按钮走**同一个**确认框（`pendingRewindId`）。
+      if (trimmedText === "/rewind") {
         if (stateRef.current.isStreaming) return;
         setRewindPopupOpen(true);
         setRewindCheckpointsLoading(true);
@@ -2340,7 +2359,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         return;
       }
       // /model is allowed mid-stream (spec scenario 8): no isStreaming guard.
-      if (interceptHostLocalCommand && trimmedText === "/model") {
+      // 远端多一道确认：`setModel` 写的是**用户级** `~/.wave/settings.json`，换的是
+      // 这台机器上所有会话的模型（见 `pendingModelSwitch` 那个 ConfirmDialog）。
+      if (trimmedText === "/model") {
         setModelPopupOpen(true);
         setModelLoading(true);
         postToHost({ command: "getConfiguredModels" });
@@ -2816,13 +2837,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   }, []);
 
   // /model popup: send the switch and close silently (no toast/system message).
+  // 远控页先落进 `pendingModelSwitch`：`setModel` 写的是用户级配置文件，换的是这台
+  // 机器上所有会话（以及此后新开的）的模型，值得在手机上问一次。
   const handleModelSelect = useCallback(
     (model: string) => {
-      postToHost({ command: "setModel", model });
       setModelPopupOpen(false);
+      if (isRemotePage) {
+        setPendingModelSwitch(model);
+        return;
+      }
+      postToHost({ command: "setModel", model });
       messageInputRef.current?.focus();
     },
-    [postToHost],
+    [isRemotePage, postToHost],
   );
 
   const handleModelPopupClose = useCallback(() => {
@@ -2871,6 +2898,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       setPreviewFullscreen(false);
     }
   }, [state.currentSession?.id]);
+
+  const handleClearConfirm = useCallback(() => {
+    setPendingClearConfirm(false);
+    handleClearChat();
+  }, [handleClearChat]);
+
+  const handleModelSwitchConfirm = useCallback(() => {
+    const model = pendingModelSwitch;
+    setPendingModelSwitch(null);
+    if (model) postToHost({ command: "setModel", model });
+    messageInputRef.current?.focus();
+  }, [pendingModelSwitch, postToHost]);
 
   const handleRewindConfirm = useCallback(() => {
     const messageId = pendingRewindId;
@@ -3811,9 +3850,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           isCompacting={state.isCompacting}
           compactionStream={compactionStream}
           vscode={vscode}
-          // 远程控制 Web 页没有回滚检查点（listRewindCheckpoints 不在远端白名单，
-          // spec ui/remote-control.md 场景 24）：不给处理器 ⇒ 回滚按钮不渲染。
-          onRewindToMessage={isRemotePage ? undefined : handleRewindToMessage}
+          // 远端也能回滚了（第二批解禁）：宿主侧就是桌面端那条链路
+          // （`truncateHistory` + `revertTo` 还原电脑侧工作区文件），页面上先确认
+          // 一次再发——文案由 `pendingRewindId` 那个 ConfirmDialog 按端切。
+          onRewindToMessage={handleRewindToMessage}
           onLoadOlderMessages={
             canLoadOlderMessages ? handleLoadOlderMessages : undefined
           }
@@ -4146,10 +4186,46 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       {pendingRewindId && (
         <ConfirmDialog
           title="确定要回滚到此消息吗？"
-          description="这将删除之后的所有消息并撤销相关的文件更改。"
+          // 远端的文案必须点明「电脑侧工作区」：这条路与桌面端完全同源
+          // （`truncateHistory` → `reversionManager.revertTo`），除了截断对话还会按
+          // 每条消息的 `file_history` 快照把**被控那台机器**上的文件还原——手机上
+          // 是一次误触代价最高的动作，不能只说「删除消息」。
+          description={
+            isRemotePage
+              ? "这将删除之后的所有消息，并把电脑侧工作区的文件恢复到回滚点的内容（回滚点之后对文件的改动会被撤销）。"
+              : "这将删除之后的所有消息并撤销相关的文件更改。"
+          }
           destructive
           onConfirm={handleRewindConfirm}
           onCancel={() => setPendingRewindId(null)}
+        />
+      )}
+      {pendingClearConfirm && (
+        <ConfirmDialog
+          title="确定要清空当前对话吗？"
+          // 忙的时候把话说明白并挡住确认：`handleClearChat` 自带那道原地守卫
+          // （streaming / 压缩中 / 有后台任务在跑），此时点「确定」会静默什么都不做
+          // —— 在手机上那就成了「按了没反应」。
+          description={
+            inPlaceBusy
+              ? "这台电脑上的会话正在生成或压缩（或有后台任务在跑），等它结束后再清空。"
+              : "清空后电脑侧这条会话会换绑成一条新会话（并触发会话钩子），当前对话的消息不会再出现在这里。"
+          }
+          confirmDisabled={inPlaceBusy}
+          destructive
+          onConfirm={handleClearConfirm}
+          onCancel={() => setPendingClearConfirm(false)}
+        />
+      )}
+      {pendingModelSwitch && (
+        <ConfirmDialog
+          title={`切换到 ${pendingModelSwitch}？`}
+          description="切换会写入这台电脑的用户级配置（~/.wave/settings.json），本机所有会话以及此后新开的会话都会使用这个模型。"
+          onConfirm={handleModelSwitchConfirm}
+          onCancel={() => {
+            setPendingModelSwitch(null);
+            messageInputRef.current?.focus();
+          }}
         />
       )}
       <ToastStack

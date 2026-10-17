@@ -1388,8 +1388,9 @@ export const Message: React.FC<MessageProps> = React.memo(
         data-role={message.role}
       >
         {message.blocks?.map((block, index) => renderBlock(block, index))}
-        {/* 回滚入口只在宿主给了处理器时才渲染：远程控制 Web 页没有回滚检查点
-            （spec ui/remote-control.md 场景 24），少一个「点了没反应」的按钮。 */}
+        {/* 回滚入口只在宿主给了处理器时才渲染。远控页也有处理器了（第二批解禁：
+            宿主侧就是桌面端那条「截断对话 + 还原电脑侧工作区文件」的链路），所以
+            这里不再区分端 —— 手机上的那次确认由 ChatApp 的对话框负责。 */}
         {onRewindToMessage && isRewindTargetMessage(message) && !isQueued && (
           <div className="message-actions">
             <Tooltip text="回滚到此消息" position="bottom">

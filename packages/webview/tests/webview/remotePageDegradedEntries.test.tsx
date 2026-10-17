@@ -292,9 +292,9 @@ describe("entries that can only fail on the page", () => {
     );
   });
 
-  it("renders the queued messages as a read-only list", () => {
+  it("offers the queue's three actions, each wired to a host method", () => {
     window.waveRemotePage = true;
-    renderChatApp();
+    const { vscode } = renderChatApp();
 
     act(() => {
       sendCommand("startStreaming");
@@ -306,14 +306,40 @@ describe("entries that can only fail on the page", () => {
     expect(screen.getByTestId("queued-item-q1")).toHaveTextContent(
       "排队中的消息",
     );
-    // The three actions all need host-side queue surgery the page has no method
-    // for — and 「立即发送」 in particular would send the message twice.
-    expect(screen.queryByTestId("queued-edit-q1")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("queued-send-q1")).not.toBeInTheDocument();
-    expect(screen.queryByTestId("queued-delete-q1")).not.toBeInTheDocument();
+
+    // 第二批解禁（spec「页面能执行的那批宿主命令」场景 5）：三个动作都留下来了，
+    // 背后各有宿主方法 —— 编辑/删除是队列手术，「立即发送」是
+    // `sendMessage{force}` + 删这条两步（没有专门的宿主方法，与 IDE / 桌面同形）。
+    vscode.postMessage.mockClear();
+    act(() => {
+      fireEvent.click(screen.getByTestId("queued-send-q1"));
+    });
+    const sent = postsOf(vscode);
+    expect(sent).toContainEqual(
+      expect.objectContaining({ command: "sendMessage", text: "排队中的消息" }),
+    );
+    expect(sent).toContainEqual({
+      command: "deleteQueuedMessageById",
+      id: "q1",
+    });
+
+    // 删除是乐观的（这一条立刻从列表里下去），所以放在最后。
+    act(() => {
+      sendCommand("updateQueue", {
+        queue: [{ id: "q2", content: "再排一条" }],
+      });
+    });
+    vscode.postMessage.mockClear();
+    act(() => {
+      fireEvent.click(screen.getByTestId("queued-delete-q2"));
+    });
+    expect(postsOf(vscode)).toContainEqual({
+      command: "deleteQueuedMessageById",
+      id: "q2",
+    });
   });
 
-  it("drops the rewind button from the messages", () => {
+  it("keeps the rewind button, behind a confirmation that names the file change", () => {
     window.waveRemotePage = true;
     renderChatApp();
 
@@ -323,16 +349,30 @@ describe("entries that can only fail on the page", () => {
       });
     });
 
-    expect(screen.queryByText("回滚到此消息")).not.toBeInTheDocument();
-    expect(document.querySelectorAll(".message-action-btn")).toHaveLength(0);
+    // 第二批解禁：回滚与桌面同语义（截断对话 + 按 `file_history` 快照还原**电脑
+    // 侧**工作区文件），所以按钮留下来，但手机上先问一次 —— 且文案必须点明文件。
+    const rewindButton = document.querySelector<HTMLElement>(
+      ".message-action-btn",
+    );
+    expect(rewindButton).not.toBeNull();
+
+    act(() => {
+      fireEvent.click(rewindButton as HTMLElement);
+    });
+    expect(screen.getByText("确定要回滚到此消息吗？")).toBeInTheDocument();
+    expect(
+      screen.getByText(/把电脑侧工作区的文件恢复到回滚点的内容/),
+    ).toBeInTheDocument();
   });
 
   it("sends every host-local slash command as an ordinary message", async () => {
     window.waveRemotePage = true;
     const { vscode } = renderChatApp();
 
+    // 第二批解禁之后仍然「只能失败」的那些：它们的背后是宿主的**界面**能力
+    // （设置页 / 插件 / 计划预览 / btw 面板），或者只有宿主侧才有意义（远程控制
+    // 自身）。/clear /rewind /model /tasks /workflows 已经解禁，见下一条用例。
     const hostLocal = [
-      "/clear",
       "/config",
       "/plugin",
       "/reload-plugins",
@@ -340,12 +380,8 @@ describe("entries that can only fail on the page", () => {
       "/agents",
       "/skills",
       "/hooks",
-      "/rewind",
-      "/model",
       "/btw 今天几号",
       "/plan",
-      "/tasks",
-      "/workflows",
       "/remote-control",
     ];
 
@@ -367,6 +403,59 @@ describe("entries that can only fail on the page", () => {
         posts.filter((p) => HOST_ONLY_COMMANDS.has(p.command as string)),
       ).toEqual([]);
     }
+  });
+
+  it("serves the five commands the second batch unblocked, instead of sending them as text", async () => {
+    window.waveRemotePage = true;
+    const { vscode } = renderChatApp();
+
+    // /rewind 先读检查点；选中之后的确认与消息按钮共用同一个对话框。
+    vscode.postMessage.mockClear();
+    await act(async () => {
+      await typeAndSend("/rewind");
+    });
+    expect(postsOf(vscode)).toContainEqual({
+      command: "listRewindCheckpoints",
+    });
+
+    vscode.postMessage.mockClear();
+    await act(async () => {
+      await typeAndSend("/model");
+    });
+    expect(postsOf(vscode)).toContainEqual({ command: "getConfiguredModels" });
+
+    vscode.postMessage.mockClear();
+    await act(async () => {
+      await typeAndSend("/tasks");
+    });
+    expect(screen.getByTestId("background-task-manager")).toBeInTheDocument();
+
+    act(() => {
+      sendCommand("hideDialog");
+    });
+    vscode.postMessage.mockClear();
+    await act(async () => {
+      await typeAndSend("/workflows");
+    });
+    expect(screen.getByTestId("workflow-manager")).toBeInTheDocument();
+
+    // /clear 是写操作（换绑 sessionId + 跑 Session hooks）：先弹一次确认，确认
+    // 之后才发 `clearChat`。
+    act(() => {
+      sendCommand("hideDialog");
+    });
+    vscode.postMessage.mockClear();
+    await act(async () => {
+      await typeAndSend("/clear");
+    });
+    expect(postsOf(vscode).filter((p) => p.command === "clearChat")).toEqual(
+      [],
+    );
+    expect(screen.getByText("确定要清空当前对话吗？")).toBeInTheDocument();
+    act(() => {
+      fireEvent.click(screen.getByText("确定"));
+    });
+    expect(postsOf(vscode)).toContainEqual({ command: "clearChat" });
   });
 
   it("keeps the two commands the machine can really serve", async () => {
