@@ -369,10 +369,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // host 按聚焦 pane 解析并回发的项目设置（workdir 归属键=聚焦 pane）当过期回复
   // 丢弃，开关恒显另一项目的旧快照（与 PR #2152 AGENTS.md 同族：webview 端
   // 「当前项目」身份取错）。pane 实例（有自己会话/新建会话）维持 effectiveWorkdir。
+  //
+  // 远控网页的「当前项目」= 页面正看着那条会话的目录（`currentSession.workdir`：
+  // shim 的 `setInitialState` 把 `listDaemonSessions` 的条目原样带过来）。页面没有
+  // `state.workdir`（那份快照不带），若不补这一条，设置页的项目级 AGENTS.md 与
+  // 「项目设置」都会拿着空目录去问 —— 而且 shim 回的 `projectSettings` 归属键是
+  // 真实目录，与空值比对不上，会被当成过期回包整条丢掉。
   const settingsWorkdir =
     paneId === undefined && host?.type === "desktop"
       ? (host?.workdir ?? host?.recentWorkdirs?.[0])
-      : effectiveWorkdir;
+      : isRemotePageHost()
+        ? (state.workdir ?? state.currentSession?.workdir)
+        : effectiveWorkdir;
   // The new-session pickers (workdir selector + worktree controls) show a
   // directory the USER chose, decoupled from the pane's session cwd: the
   // session cwd only wins when it is itself a user-chosen directory (it sits
@@ -409,6 +417,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // /skills → skills）。desktop 每次打开都会重挂载 SettingsPage，此值经
   // initialNav 传入；IDE 由 openSettings message 的 nav 走 host 下发。
   const [settingsNav, setSettingsNav] = useState<NavKey>("global");
+  // 宿主回了「这台机器上的会话不支持读写设置」（JSON-RPC -32011，前台 CLI 会话
+  // 只服务自己那条对话）时的原因文案。远端网页据此把可编辑视图置灰并给一句说明
+  // ——不是让用户对着能按的按钮反复按（spec ui/remote-control.md「Web 端也能改
+  // 设置」场景 6）。四条写路径（保存设置 / AGENTS.md / SDD 开关）都经 shim 的
+  // 同一个错误出口，所以这一个标记覆盖全部。
+  const [settingsUnsupported, setSettingsUnsupported] = useState<string | null>(
+    null,
+  );
   // 设置页「新建/编辑」预填的 AI 对话框提示词（desktop 关设置页后写入输入框；
   // 见 handlePrefillPrompt）。无 pane 单布局 targetPaneId 为空、由本实例 effect
   // 直接写本地输入框；pane 布局（FR-032）targetPaneId = 点击瞬间的 focused pane，
@@ -1674,6 +1690,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         if (!forThisPane(message)) break;
         dispatch({ type: "SET_CONFIGURATION_ERROR", payload: message.error });
         break;
+      case "settingsHostUnsupported":
+        // 远控页：这条会话所在宿主不提供设置读写（前台 CLI 会话）。设置页据此
+        // 置灰可编辑项并显示原因，而不是让保存按钮反复失败。
+        if (!forThisPane(message)) break;
+        setSettingsUnsupported(
+          typeof message.reason === "string" ? message.reason : "",
+        );
+        break;
       case "prefillPrompt":
         if (!forThisPane(message)) break;
         // IDE 设置页（settings-preview-entry）「新建/编辑」经 host 转发：
@@ -2054,7 +2078,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   const handleOpenSettings = useCallback(
     (nav?: NavKey) => {
-      if (isDesktop) {
+      // 远端网页（第五种宿主）与桌面端同形：设置页整页替换会话区，就地渲染。
+      // 它没有「宿主另开一个设置 tab」这条路（IDE 那条 `openSettings` 命令在这
+      // 页上不存在），所以请求发给宿主只会落进未实现分支。数据通道也不在这个
+      // 菜单的职责里：shim 把 `getConfiguration` 合成到 `getUserSettings` 上
+      // （spec ui/remote-control.md「Web 端也能改设置」）。
+      if (isDesktop || isRemotePage) {
         if (paneId !== undefined && onOpenSettingsFromPane) {
           // Pane layout (single or split, spec agent-config.md 场景 5): this
           // instance only renders its chat container — the full-page settings
@@ -2079,6 +2108,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         setUserAgentsContent(null);
         setProjectAgentsContent(null);
         setAgentsSaving(false);
+        // 「该宿主不支持」是上一次失败留下的判断，重开设置页重试一次再说。
+        setSettingsUnsupported(null);
         setSettingsOpen(true);
         if (nav) setSettingsNav(nav);
         vscode.postMessage({ command: "getConfiguration" });
@@ -2089,7 +2120,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // nav 随 openSettings 透传，host 经 settingsState 下发给设置页。
       vscode.postMessage({ command: "openSettings", ...(nav ? { nav } : {}) });
     },
-    [vscode, isDesktop, paneId, onOpenSettingsFromPane],
+    [vscode, isDesktop, isRemotePage, paneId, onOpenSettingsFromPane],
   );
 
   // Remote-control Web page: the host has no `openExternal` to route to (the page
@@ -2241,11 +2272,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       const trimmedText = text.trim();
       if (!trimmedText && (!images || images.length === 0)) return;
 
-      // 宿主本地的斜杠命令：**剩下的**那些（设置页 / 插件市场 / 钩子 / 技能 /
-      // 子代理 / MCP / 计划 / btw / 远程控制自身）远程控制 Web 页一律不拦
-      // （spec ui/remote-control.md 场景 24）：它们背后要么是宿主的**界面**能力，
-      // 要么只有宿主侧才有意义，拦下来只会打开一个永远加载中的死弹窗；页面不拦 =
+      // 宿主本地的斜杠命令：**剩下的**那些（插件市场 / 钩子 / 技能 / 子代理 /
+      // MCP / 计划 / btw / 远程控制自身）远程控制 Web 页一律不拦（spec
+      // ui/remote-control.md 场景 24）：它们背后要么是宿主的**界面**能力，要么
+      // 只有宿主侧才有意义，拦下来只会打开一个永远加载中的死弹窗；页面不拦 =
       // 文本按普通消息发给宿主。服务端真能做的两条（/compact、/status）不受影响。
+      //
+      // 第三批（2026-10-17）之后 `/config` 也不在这条守卫里了：设置页在页面上
+      // 真的能渲染、能读写（白名单放行 `getUserSettings` 那一组，shim 把它们合成
+      // 成桌面端那套 `configurationResponse` 回包），拦下来反而是倒退。
+      // `/plugin` `/mcp` `/agents` `/skills` `/hooks` 仍在这条守卫里——它们是
+      // **B 单**（四个管理视图 + 插件市场），本单不给入口。
       //
       // 第二批解禁（2026-10-17）之后，`/clear` `/rewind` `/model` `/tasks`
       // `/workflows` 不在这条守卫里了：宿主侧方法已在白名单里、shim 有回执，
@@ -2273,10 +2310,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         });
         return;
       }
-      if (interceptHostLocalCommand && trimmedText === "/config") {
+      if (trimmedText === "/config") {
         // 不再弹窗：与点击头部设置按钮一致，打开设置页「全局设置」选项卡
         // （2026-08-29 用户拍板，对齐 /agents → subagents、/skills → skills；
         // 见 SettingsPage 全局设置视图）。
+        //
+        // 远控网页也不再被 `interceptHostLocalCommand` 挡住（第三批解禁）：
+        // 这台手机上设置页真的能开、能读能改（spec ui/remote-control.md
+        // 「Web 端也能改设置」），拦下来把它当普通消息发出去反而是倒退。
         handleOpenSettings();
         return;
       }
@@ -4031,65 +4072,84 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     </>
   );
 
-  // Batch 2 settings full-page (desktop): rendered in place of chatContainer
-  // when settingsOpen. The board and settings are mutually exclusive (opening
-  // one closes the other, see handleToggleSessionBoard).
-  const settingsPage = isDesktop ? (
-    <SettingsPage
-      configurationData={state.configurationData ?? null}
-      serverUrl={serverUrl}
-      onSave={handleConfigurationSave}
-      themeSource={themeSource}
-      onThemeChange={(source) => {
-        // 乐观更新本实例选中态；host 持久化后回广播 desktopThemeSource（幂等）。
-        setThemeSource(source);
-        postToHost({ command: "setThemeSource", source });
-      }}
-      updateChannel={updateChannel}
-      onUpdateChannelChange={(channel) => {
-        // 乐观更新本实例选中态；host 持久化后回广播 desktopUpdateChannel（幂等）。
-        setUpdateChannel(channel);
-        postToHost({ command: "setUpdateChannel", channel });
-      }}
-      onClose={handleCloseSettings}
-      userAgentsContent={userAgentsContent}
-      projectAgentsContent={projectAgentsContent}
-      onLoadAgentsContent={(scope) =>
-        vscode.postMessage({
-          command: "getAgentsContent",
-          scope,
-          // desktop host 按聚焦 pane 自行解析项目目录（见 desktopHost
-          // handleGetAgentsContent），此处 workdir 仅作 IDE 宿主备用一致性字段——
-          // 用与归属守卫同一「当前项目」身份，避免往线上传 recents 头的旧路径。
-          workdir: scope === "project" ? settingsWorkdir : undefined,
-        })
-      }
-      onSaveAgentsContent={handleSaveAgentsContent}
-      agentsSaving={agentsSaving}
-      workdir={settingsWorkdir}
-      saving={state.configurationLoading}
-      initialNav={settingsNav}
-      vscode={vscode}
-      projectSettings={state.projectSettings}
-      projectSettingsWorkdir={state.projectSettingsWorkdir}
-      onLoadProjectSettings={() =>
-        postToHost({ command: "getProjectSettings" })
-      }
-      onToggleBuiltinPlugin={(pluginId, enabled) =>
-        postToHost({
-          command: "setBuiltinPluginEnabled",
-          pluginId,
-          enabled,
-          scope: "project",
-        })
-      }
-      onPrefillPrompt={handlePrefillPrompt}
-      configuredModels={configuredModels}
-      onLoadConfiguredModels={() =>
-        postToHost({ command: "getConfiguredModels" })
-      }
-    />
-  ) : null;
+  // Batch 2 settings full-page (desktop / remote Web page): rendered in place
+  // of chatContainer when settingsOpen. The board and settings are mutually
+  // exclusive (opening one closes the other, see handleToggleSessionBoard).
+  //
+  // 远端网页复用同一个组件、同一份视图（spec ui/remote-control.md「Web 端也能改
+  // 设置」），差别只在三处，且都是「宿主没有那个通道」而不是「换个版本」：
+  // - **不传 themeSource / updateChannel**：这两个是桌面端本地偏好（host 直连
+  //   configStore），传了会渲染「桌面端设置」区块，等于在手机上摆两个改本机
+  //   显示/更新通道的开关；
+  // - **不传 onThemeChange / onUpdateChannelChange**：同上；
+  // - 视图清单由 SettingsPage 自己按宿主裁（插件市场/技能/子代理/钩子/MCP
+  //   不在这台手机上，见 navGroupsForCurrentHost）。
+  const settingsPage =
+    isDesktop || isRemotePage ? (
+      <SettingsPage
+        configurationData={state.configurationData ?? null}
+        serverUrl={serverUrl}
+        onSave={handleConfigurationSave}
+        themeSource={isDesktop ? themeSource : undefined}
+        onThemeChange={
+          isDesktop
+            ? (source) => {
+                // 乐观更新本实例选中态；host 持久化后回广播 desktopThemeSource（幂等）。
+                setThemeSource(source);
+                postToHost({ command: "setThemeSource", source });
+              }
+            : undefined
+        }
+        updateChannel={isDesktop ? updateChannel : undefined}
+        onUpdateChannelChange={
+          isDesktop
+            ? (channel) => {
+                // 乐观更新本实例选中态；host 持久化后回广播 desktopUpdateChannel（幂等）。
+                setUpdateChannel(channel);
+                postToHost({ command: "setUpdateChannel", channel });
+              }
+            : undefined
+        }
+        onClose={handleCloseSettings}
+        unsupportedReason={settingsUnsupported ?? undefined}
+        userAgentsContent={userAgentsContent}
+        projectAgentsContent={projectAgentsContent}
+        onLoadAgentsContent={(scope) =>
+          vscode.postMessage({
+            command: "getAgentsContent",
+            scope,
+            // desktop host 按聚焦 pane 自行解析项目目录（见 desktopHost
+            // handleGetAgentsContent），此处 workdir 仅作 IDE 宿主备用一致性字段——
+            // 用与归属守卫同一「当前项目」身份，避免往线上传 recents 头的旧路径。
+            workdir: scope === "project" ? settingsWorkdir : undefined,
+          })
+        }
+        onSaveAgentsContent={handleSaveAgentsContent}
+        agentsSaving={agentsSaving}
+        workdir={settingsWorkdir}
+        saving={state.configurationLoading}
+        initialNav={settingsNav}
+        vscode={vscode}
+        projectSettings={state.projectSettings}
+        projectSettingsWorkdir={state.projectSettingsWorkdir}
+        onLoadProjectSettings={() =>
+          postToHost({ command: "getProjectSettings" })
+        }
+        onToggleBuiltinPlugin={(pluginId, enabled) =>
+          postToHost({
+            command: "setBuiltinPluginEnabled",
+            pluginId,
+            enabled,
+            scope: "project",
+          })
+        }
+        onPrefillPrompt={handlePrefillPrompt}
+        configuredModels={configuredModels}
+        onLoadConfiguredModels={() =>
+          postToHost({ command: "getConfiguredModels" })
+        }
+      />
+    ) : null;
 
   // Batch 2 session board (desktop): rendered in place of chatContainer when
   // sessionBoardOpen. Clicking a card restores that session — workdir resolved
@@ -4512,6 +4572,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     // bare loading placeholder — never the old non-split layout (spec
     // desktop-layout.md「启动即单个分屏」场景 3).
     return <div className="desktop-loading" data-testid="desktop-loading" />;
+  }
+
+  // 远端网页：设置页与会话区互斥，同桌面端形态（整页替换，返回回到会话）。
+  // 只在这一种宿主上生效 —— IDE 宿主的设置页是宿主另开的标签页，`settingsOpen`
+  // 在那里恒为 false（`handleOpenSettings` 走的是 `openSettings` 命令）。
+  if (isRemotePage && settingsOpen && settingsPage) {
+    return (
+      <>
+        {settingsPage}
+        {dialogs}
+      </>
+    );
   }
 
   return (

@@ -2173,6 +2173,144 @@
       });
   }
 
+  // ── Settings page ───────────────────────────────────────────────
+
+  /**
+   * The settings page is the third batch's subject (spec ui/remote-control.md
+   * 「Web 端也能改设置」). The page itself is the shared `SettingsPage`, which
+   * speaks the **desktop** host's vocabulary (`getConfiguration` →
+   * `configurationResponse`, `updateConfiguration`, `projectSettings`, …) — and
+   * this page has no Electron host behind it. So the whole channel is synthesized
+   * here out of bridge methods that already exist; **no new RPC, no new host
+   * contract**:
+   *
+   * | the page sends               | the machine is asked          | the page receives           |
+   * | ---------------------------- | ----------------------------- | --------------------------- |
+   * | `getConfiguration`           | `getUserSettings`             | `configurationResponse`     |
+   * | `updateConfiguration`        | `updateUserSettings`          | `configurationResponse`     |
+   * | `getAgentsContent`           | `getAgentsContent`            | `agentsContentResponse`     |
+   * | `setAgentsContent`           | `setAgentsContent`            | `agentsContentSaved`        |
+   * | `getProjectSettings`         | `getProjectSettings`          | `projectSettings`           |
+   * | `setBuiltinPluginEnabled`    | `setBuiltinPluginEnabled`     | `projectSettings`           |
+   *
+   * Two shapes are copied verbatim from the desktop host rather than invented,
+   * because the same React component renders both: `configurationData` (the
+   * effective user-preference view **plus `preferenceSources`**, which is how the
+   * page keeps its 「由组织配置管理」 grey-out) and `projectSettings` (the merged
+   * `enabledPlugins` map **plus the `workdir` attribution key**).
+   *
+   * `getConfiguredModels` needs nothing here: it is already mapped for `/model`,
+   * and the settings page's completion-model row is not rendered on this host at
+   * all (`completionsSupported` is false for the remote page — the page has no
+   * editor, so a completion setting would promise a feature that never fires).
+   */
+
+  /** Toast ids only have to be unique within a session; the stack de-dupes by id. */
+  var settingsToastSeq = 0;
+
+  /**
+   * A settings result, said on the page. The desktop hands this duty to the host
+   * (`showToast`), and the page never receives that command because the shim does
+   * not forward it — so the shim says it itself, in the same message shape the
+   * `ToastStack` already renders. A save must never look like nothing happened.
+   */
+  function settingsToast(message, type) {
+    post({
+      command: "showToast",
+      toast: {
+        id: "remote-settings-" + ++settingsToastSeq,
+        message: message,
+        type: type,
+      },
+    });
+  }
+
+  /**
+   * The current session's project root. `settingsWorkdir` on the page has the
+   * same value (it is `currentSession.workdir` there), so the `projectSettings`
+   * reply carries a real attribution key instead of none — the page drops a
+   * reply whose key does not match.
+   */
+  function settingsWorkdir() {
+    var entry = currentSession(sessions, sessionId);
+    return (entry && entry.workdir) || "";
+  }
+
+  /**
+   * The settings page's payload → the user-preference patch, **key for key** as
+   * the desktop host does it (`updateUserPreferences` in desktopHost.ts). Two
+   * rules ride along and must not be re-derived here:
+   *
+   * - **partial update**: a key the page did not send is a key that is not
+   *   written (the page expresses "unchanged / never set" by omitting it, and
+   *   filling in a default would turn "omitted" into a write — e.g. pinning a
+   *   `WAVE_MAX_INPUT_TOKENS` inherited from the environment to 200000);
+   * - **empty completion model = not provided**, otherwise clearing the dropdown
+   *   would be translated into writing an empty model name.
+   */
+  function userPreferencePatch(data) {
+    var patch = {};
+    if (!data) return patch;
+    if (data.language !== undefined) patch.language = data.language;
+    if (typeof data.contextLength === "number") {
+      patch.contextLength = data.contextLength;
+    }
+    if (data.autoMemoryEnabled !== undefined) {
+      patch.autoMemoryEnabled = data.autoMemoryEnabled;
+    }
+    if (typeof data.autoMemoryFrequency === "number") {
+      patch.autoMemoryFrequency = data.autoMemoryFrequency;
+    }
+    if (typeof data.serverUrl === "string") patch.serverUrl = data.serverUrl;
+    if (typeof data.completionModel === "string") {
+      var model = data.completionModel.trim();
+      if (model !== "") patch.completionModel = model;
+    }
+    if (data.completionEnabled !== undefined) {
+      patch.completionEnabled = data.completionEnabled;
+    }
+    return patch;
+  }
+
+  /**
+   * Re-read the effective view and hand it to the page. Used after a save so the
+   * page shows **what is in effect** (a key the org config overrides must still
+   * read as overridden), never an optimistic local guess.
+   */
+  function postConfiguration() {
+    return request("getUserSettings", {}).then(function (result) {
+      post({
+        command: "configurationResponse",
+        configurationData: result || {},
+      });
+    });
+  }
+
+  /**
+   * "The channel carries this, but **this** host does not serve it" — the JSON-RPC
+   * code is `REMOTE_HOST_UNSUPPORTED` on the machine side (a foreground CLI
+   * session serves one conversation, not a settings file). Told apart from a
+   * transport failure because the two mean different things: one is 「这台电脑上
+   * 的会话不支持」, the other is 「没连上」. The page greys its editable views out
+   * on the first one (`settingsHostUnsupported`) rather than letting the user
+   * keep pressing buttons that cannot work.
+   */
+  function settingsFailure(label, err) {
+    var unsupported = !!err && err.code === HOST_UNSUPPORTED;
+    var reason = (err && err.message) || String(err);
+    settingsToast(failureText(label, err), "error");
+    if (unsupported) {
+      post({
+        command: "settingsHostUnsupported",
+        reason:
+          "这台电脑上的会话不支持读写设置（" +
+          reason +
+          "）。换一台运行 daemon 的机器再试。",
+      });
+    }
+    return unsupported;
+  }
+
   function handleCommand(msg) {
     var command = msg.command;
 
@@ -2388,6 +2526,124 @@
           showStatus(failureText("切换模型", err));
         });
         return;
+
+      // ── 设置页（spec「Web 端也能改设置」）────────────────────────
+      // 读：生效值 + 每键来源层，形状与桌面端 `getConfiguration` 的回包逐字段一致
+      // （页面就是同一个 SettingsPage）。
+      case "getConfiguration":
+        postConfiguration().catch(function (err) {
+          settingsFailure("读取设置", err);
+          // 复位页面的「保存中」态：没有这句话，失败后保存按钮会一直灰着。
+          post({
+            command: "configurationError",
+            error: failureText("读取设置", err),
+          });
+        });
+        return;
+
+      case "updateConfiguration":
+        // 写：与桌面同一条用户偏好载荷、同一份逐键映射（不改键名、不补默认值）。
+        // 回包是**生效视图**而不是乐观值 —— 被组织配置管理的键保存后仍须显示那个
+        // 事实。仍然没有确认弹窗：桌面端也没有，保存按钮本身就是那个动作。
+        request(
+          "updateUserSettings",
+          userPreferencePatch(msg.configurationData),
+        )
+          .then(function () {
+            settingsToast("保存成功", "success");
+            return postConfiguration();
+          })
+          .catch(function (err) {
+            settingsFailure("保存设置", err);
+            post({
+              command: "configurationError",
+              error: failureText("保存设置", err),
+            });
+          });
+        return;
+
+      case "getAgentsContent":
+        request("getAgentsContent", {
+          scope: msg.scope,
+          // 项目级：带上「当前项目」的目录。缺省时机器侧回落到该会话的工作目录，
+          // 两条路指向同一个文件。信封的 sessionId 让机器侧还能走活会话的
+          // agent（记忆缓存失效才有地方挂）。
+          workdir: msg.scope === "project" ? settingsWorkdir() : undefined,
+        })
+          .then(function (result) {
+            post({
+              command: "agentsContentResponse",
+              scope: msg.scope,
+              content: (result && result.content) || "",
+            });
+          })
+          .catch(function (err) {
+            settingsFailure("读取 AGENTS.md", err);
+            // 与桌面端一致：读失败也回一份空内容，否则个性化视图的文本区会一直
+            // 停在「尚未加载」（null）并把保存按钮按掉。
+            post({
+              command: "agentsContentResponse",
+              scope: msg.scope,
+              content: "",
+            });
+          });
+        return;
+
+      case "setAgentsContent":
+        request("setAgentsContent", {
+          scope: msg.scope,
+          content: msg.content,
+          workdir: msg.scope === "project" ? settingsWorkdir() : undefined,
+        })
+          .then(function () {
+            settingsToast("保存成功", "success");
+          })
+          .catch(function (err) {
+            settingsFailure("保存 AGENTS.md", err);
+          })
+          .then(function () {
+            // 成功与失败都回一条：页面靠它复位 agentsSaving（否则文本区与保存
+            // 按钮一直灰着）。结果本身走上面的 toast。
+            post({ command: "agentsContentSaved" });
+          });
+        return;
+
+      case "getProjectSettings":
+      case "setBuiltinPluginEnabled": {
+        // 项目设置（SDD 开关）：读与写是同一对方法、同一个回包形状——写完之后
+        // 机器侧回的就是合并后的 enabledPlugins，页面据此刷新开关，不必再读一次。
+        var workdir = settingsWorkdir();
+        var call =
+          command === "getProjectSettings"
+            ? request("getProjectSettings", { workdir: workdir })
+            : request("setBuiltinPluginEnabled", {
+                pluginId: msg.pluginId,
+                enabled: msg.enabled,
+                scope: msg.scope || "project",
+                workdir: workdir,
+              });
+        call
+          .then(function (result) {
+            post({
+              command: "projectSettings",
+              enabledPlugins: (result && result.enabledPlugins) || {},
+              // 归属键：页面按「当前项目」比对，不一致即当作过期回包丢弃。
+              workdir: workdir,
+            });
+            if (command === "setBuiltinPluginEnabled") {
+              settingsToast("保存成功", "success");
+            }
+          })
+          .catch(function (err) {
+            settingsFailure(
+              command === "getProjectSettings"
+                ? "读取项目设置"
+                : "修改项目设置",
+              err,
+            );
+          });
+        return;
+      }
 
       case "updateQueuedMessage":
         request("updateQueuedMessage", {
