@@ -146,6 +146,7 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     isCompacting: false,
     isCommandRunning: false,
     queuedMessages: [],
+    getBackgroundTasks: vi.fn().mockReturnValue([]),
     ...overrides,
   };
   // displayMessages (full UI stream) tracks messages unless explicitly
@@ -1418,6 +1419,8 @@ test("getSessionInfo returns session info", async () => {
     isCompacting: false,
     isCommandRunning: false,
     queuedMessages: [],
+    // 后台任务也在这族里：`/tasks` 弹窗打开时读的是当前值，不是等下一次变化。
+    backgroundTasks: [],
   });
 });
 
@@ -1449,6 +1452,7 @@ test("getSessionInfo reports the creation workdir even after the agent's live wo
     isCompacting: false,
     isCommandRunning: false,
     queuedMessages: [],
+    backgroundTasks: [],
   });
 });
 
@@ -2713,6 +2717,7 @@ test("handleRequest with null params defaults to empty object", async () => {
     isCompacting: false,
     isCommandRunning: false,
     queuedMessages: [],
+    backgroundTasks: [],
   });
 });
 
@@ -2813,6 +2818,7 @@ test("initialize from-disk re-attach recovers the creation workdir from the tran
       isCompacting: false,
       isCommandRunning: false,
       queuedMessages: [],
+      backgroundTasks: [],
     });
   } finally {
     await rm(transcript, { force: true });

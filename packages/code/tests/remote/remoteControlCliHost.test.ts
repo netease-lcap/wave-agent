@@ -16,6 +16,7 @@ import {
   RemoteControlCliHost,
   type RemoteControlCliSession,
 } from "../../src/remote/remoteControlCliHost.js";
+import { REMOTE_HOST_UNSUPPORTED } from "../../src/remote/remoteControlService.js";
 
 const listSessionsMock = vi.mocked(listSessions);
 
@@ -51,6 +52,7 @@ function makeSession(
     isCompacting: () => false,
     isCommandRunning: () => false,
     queuedMessages: () => [],
+    backgroundTasks: () => [],
     pendingPermissions: () => [],
     sendMessage: vi.fn(),
     abort: vi.fn(),
@@ -394,13 +396,16 @@ test("a permissionResponse notification settles the matching request", () => {
   expect(session.respondPermission).toHaveBeenCalledTimes(1);
 });
 
-test("a method outside the white list fails loudly instead of answering nothing", async () => {
-  // The service's white list rejects these first, so reaching the host means the
-  // two lists drifted — a silent `undefined` would hide that.
+test("a whitelisted method this host does not implement says exactly that", async () => {
+  // 白名单是**通道级**的（daemon / GUI 子进程 / 前台 CLI 共用一份），宿主实现面
+  // 不同：`rewindToMessage` 能过白名单，这条前台会话却没接。答案必须与三种邻居
+  // 分得开——`-32601`（通道不放行，页面会跑去升级电脑）、`-32602`（参数错）、
+  // 静默不回（界面停在那个动作上）——所以是一个专门的码 + 带方法名的消息。
   const host = new RemoteControlCliHost(makeSession());
-  await expect(host.handleRequest("truncateHistory", {})).rejects.toMatchObject(
+  await expect(host.handleRequest("rewindToMessage", {})).rejects.toMatchObject(
     {
-      code: -32602,
+      code: REMOTE_HOST_UNSUPPORTED,
+      message: expect.stringContaining("rewindToMessage") as unknown as string,
     },
   );
 });

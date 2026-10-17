@@ -35,6 +35,7 @@ import type {
 } from "./types/index.js";
 import type { HookEvent, HookEventConfig } from "./types/hooks.js";
 import type { Task } from "./types/tasks.js";
+import type { BackgroundTask } from "./types/processes.js";
 import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
 import { LiveConfigManager } from "./managers/liveConfigManager.js";
 import { configValidator } from "./utils/configValidator.js";
@@ -649,6 +650,20 @@ export class Agent {
     exitCode?: number;
   } | null {
     return this.backgroundTaskManager.getOutput(id, filter);
+  }
+
+  /**
+   * Every background task this session holds right now — the same set
+   * `onBackgroundTasksChange` reports, read instead of pushed.
+   *
+   * The callback only fires on a *change*, so a reader that attached after the
+   * tasks started (the remote page, whose host may have been running for hours)
+   * would otherwise see an empty list on `/tasks` until the next task appeared or
+   * finished. Reading is the only way to learn what already exists; the hosts do
+   * it on their snapshot paths, exactly as they do for the todo list.
+   */
+  public getBackgroundTasks(): BackgroundTask[] {
+    return this.backgroundTaskManager.getAllTasks();
   }
 
   /** Stop background task */

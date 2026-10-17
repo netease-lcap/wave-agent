@@ -65,6 +65,7 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     isCompacting: false,
     isCommandRunning: false,
     queuedMessages: [],
+    getBackgroundTasks: vi.fn().mockReturnValue([]),
     ...overrides,
   };
   // displayMessages (full UI stream) tracks messages unless overridden.

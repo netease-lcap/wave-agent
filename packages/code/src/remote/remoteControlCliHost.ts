@@ -23,6 +23,7 @@
  */
 
 import type {
+  BackgroundTaskSummary,
   Message,
   PermissionDecision,
   PermissionMode,
@@ -39,7 +40,10 @@ import {
   type MessageWindow,
   type MessageWindowResult,
 } from "./messageWindow.js";
-import type { RemoteControlHost } from "./remoteControlService.js";
+import {
+  REMOTE_HOST_UNSUPPORTED,
+  type RemoteControlHost,
+} from "./remoteControlService.js";
 
 /**
  * What this host needs from the front end. Supplied by the chat hook, which
@@ -65,6 +69,12 @@ export interface RemoteControlCliSession {
   isCompacting(): boolean;
   isCommandRunning(): boolean;
   queuedMessages(): QueuedMessage[];
+  /**
+   * Background tasks (shell / subagent / workflow) as the TUI holds them. Same
+   * role as `tasks`: the page's `/tasks` dialog reads the current set on its
+   * alignment paths, because the change notification only reports changes.
+   */
+  backgroundTasks(): BackgroundTaskSummary[];
   /** Approvals waiting on the user right now (terminal or phone). */
   pendingPermissions(): Array<{
     requestId: string;
@@ -93,6 +103,23 @@ const INVALID_PARAMS = -32602;
 function invalidParams(message: string): Error {
   const err = new Error(message) as Error & { code?: number };
   err.code = INVALID_PARAMS;
+  return err;
+}
+
+/**
+ * "The channel carries this method, this host does not." The white list is
+ * channel-wide (a daemon, a GUI's `--stdio` child and this foreground session all
+ * read the same set), while the three hosts implement different amounts of it:
+ * `AgentBridge` serves a registry of conversations, this host serves the one on
+ * screen and is wired to a subset. Answering `-32601` here would tell the page the
+ * method is unavailable over remote control at all — i.e. "upgrade the machine" —
+ * when the truth is "this machine can, this session cannot".
+ */
+function hostUnsupported(method: string): Error {
+  const err = new Error(
+    `Not implemented by a foreground CLI session: ${method}`,
+  ) as Error & { code?: number };
+  err.code = REMOTE_HOST_UNSUPPORTED;
   return err;
 }
 
@@ -168,11 +195,12 @@ export class RemoteControlCliHost implements RemoteControlHost {
           })),
         };
       default:
-        // The service's white list already rejected anything else; reaching
-        // here means the two lists drifted apart, which must be loud.
-        throw invalidParams(
-          `Method not available for a CLI session: ${method}`,
-        );
+        // The white list already rejected everything outside it, so anything
+        // arriving here is a method the *channel* carries and this host does not
+        // (rewind, `clearMessages`, background tasks, `searchFiles`, … — see
+        // `REMOTE_HOST_UNSUPPORTED`). Said as exactly that, not as a bad
+        // parameter and not as silence: the page turns it into one visible line.
+        throw hostUnsupported(method);
     }
   }
 
@@ -300,6 +328,7 @@ export class RemoteControlCliHost implements RemoteControlHost {
     isCompacting: boolean;
     isCommandRunning: boolean;
     queuedMessages: QueuedMessage[];
+    backgroundTasks: BackgroundTaskSummary[];
   } {
     return {
       sessionId: this.session.sessionId(),
@@ -313,6 +342,7 @@ export class RemoteControlCliHost implements RemoteControlHost {
       isCompacting: this.session.isCompacting(),
       isCommandRunning: this.session.isCommandRunning(),
       queuedMessages: this.session.queuedMessages(),
+      backgroundTasks: this.session.backgroundTasks(),
     };
   }
 

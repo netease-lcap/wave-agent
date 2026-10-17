@@ -56,6 +56,7 @@ const baseOptions: Omit<UseRemoteControlOptions, "messages"> = {
   hasRunningBackgroundWork: false,
   hasPendingMessages: false,
   tasks: [],
+  backgroundTasks: [],
   isCompacting: false,
   isCommandRunning: false,
   queuedMessages: [],
