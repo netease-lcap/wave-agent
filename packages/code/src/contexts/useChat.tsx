@@ -1459,6 +1459,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     // 场景 26 的会话状态族：远控页按状态重读 `getSessionInfo`，这四个是它的
     // 当前值（回调本就把它们写进 state，这里原样递给门面即可）。
     tasks,
+    backgroundTasks,
     isCompacting,
     isCommandRunning,
     queuedMessages,

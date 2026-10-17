@@ -90,7 +90,11 @@ import {
   sliceMessageWindow,
   type MessageWindowResult,
 } from "../remote/messageWindow.js";
-import { percentOf, remoteWire } from "../remote/remoteNotifications.js";
+import {
+  percentOf,
+  remoteWire,
+  toBackgroundTaskSummaries,
+} from "../remote/remoteNotifications.js";
 import { isUserCheckpointMessage } from "../utils/rewindCheckpoints.js";
 import { getWorkspaceDiff } from "../utils/workspaceDiff.js";
 import { installGitCredentialHelper } from "../utils/gitCredentialHelper.js";
@@ -1181,6 +1185,7 @@ export class AgentBridge {
     isCompacting: boolean;
     isCommandRunning: boolean;
     queuedMessages: QueuedMessage[];
+    backgroundTasks: BackgroundTaskSummary[];
   }> {
     const entry = this.requireSessionForRead(sessionId);
     return {
@@ -1202,6 +1207,13 @@ export class AgentBridge {
       isCompacting: entry.agent.isCompacting,
       isCommandRunning: entry.agent.isCommandRunning,
       queuedMessages: entry.agent.queuedMessages,
+      // Background tasks join the family for the same reason the todo list is
+      // here: the phone's `/tasks` dialog opens on whatever the machine holds, and
+      // `backgroundTasksChange` only reports *changes* — a task that started
+      // before the page attached would otherwise be invisible until it finished.
+      backgroundTasks: toBackgroundTaskSummaries(
+        entry.agent.getBackgroundTasks(),
+      ),
     };
   }
 
@@ -2598,21 +2610,9 @@ export class AgentBridge {
         this.emit("tasksChange", { tasks }, ctx.registeredSessionId);
       },
       onBackgroundTasksChange: (tasks: BackgroundTask[]) => {
-        const summaries: BackgroundTaskSummary[] = tasks.map((t) => ({
-          id: t.id,
-          type: t.type,
-          status: t.status,
-          startTime: t.startTime,
-          endTime: t.endTime,
-          command: t.command,
-          description: t.description,
-          exitCode: t.exitCode,
-          runtime: t.runtime,
-          outputPath: t.outputPath,
-        }));
         this.emit(
           "backgroundTasksChange",
-          { tasks: summaries },
+          { tasks: toBackgroundTaskSummaries(tasks) },
           ctx.registeredSessionId,
         );
       },

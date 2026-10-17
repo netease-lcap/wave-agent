@@ -227,6 +227,7 @@ function createMockAgent(
     isCompacting: false,
     isCommandRunning: false,
     queuedMessages: [],
+    getBackgroundTasks: vi.fn().mockReturnValue([]),
     ...rest,
   };
   // displayMessages (full UI stream) tracks messages unless overridden.

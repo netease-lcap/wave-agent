@@ -21,6 +21,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
+  BackgroundTask,
   Message,
   PermissionDecision,
   PermissionMode,
@@ -35,7 +36,11 @@ import {
   RemoteControlCliHost,
   type RemoteControlCliSession,
 } from "../remote/remoteControlCliHost.js";
-import { percentOf, remoteWire } from "../remote/remoteNotifications.js";
+import {
+  percentOf,
+  remoteWire,
+  toBackgroundTaskSummaries,
+} from "../remote/remoteNotifications.js";
 import type { RemoteNotify } from "../remote/remoteNotifications.js";
 import { createRemoteControlSinkFactory } from "../remote/remoteControlSink.js";
 import type { RemoteControlSink } from "../remote/remoteControlSink.js";
@@ -62,6 +67,8 @@ export interface UseRemoteControlOptions {
    * replaced.
    */
   tasks: Task[];
+  /** Background tasks as the TUI holds them — read off `getSessionInfo`. */
+  backgroundTasks: BackgroundTask[];
   isCompacting: boolean;
   isCommandRunning: boolean;
   queuedMessages: QueuedMessage[];
@@ -299,6 +306,8 @@ function adapterOf(latest: {
     hasRunningBackgroundWork: () => latest.current.hasRunningBackgroundWork,
     hasPendingMessages: () => latest.current.hasPendingMessages,
     tasks: () => latest.current.tasks,
+    backgroundTasks: () =>
+      toBackgroundTaskSummaries(latest.current.backgroundTasks),
     isCompacting: () => latest.current.isCompacting,
     isCommandRunning: () => latest.current.isCommandRunning,
     queuedMessages: () => latest.current.queuedMessages,

@@ -21,6 +21,8 @@
 
 import type {
   AgentCallbacks,
+  BackgroundTask,
+  BackgroundTaskSummary,
   Message,
   PermissionMode,
   ToolBlockUpdateCallbackParams,
@@ -110,6 +112,35 @@ export const remoteWire = {
 
 /** The methods this table defines — the only ones a mirroring host may send. */
 export type RemoteMethod = keyof typeof remoteWire;
+
+/**
+ * A background task (shell / subagent / workflow) as it may travel: the
+ * serializable half of `BackgroundTask`.
+ *
+ * A shape, hence this table's business — the two hosts each own the *list* (the
+ * bridge reads it off the agent on every snapshot, the foreground TUI off its own
+ * state) and both have to describe a task the same way, or the `/tasks` dialog
+ * renders two different things depending on which process served the page. The
+ * fields dropped here are the reasons it exists: `process` (a `ChildProcess`) and
+ * `onStop` (a function) cannot go over a relay, and the full `stdout`/`stderr` are
+ * fetched per task instead (`getBackgroundTaskOutput`).
+ */
+export function toBackgroundTaskSummaries(
+  tasks: BackgroundTask[],
+): BackgroundTaskSummary[] {
+  return tasks.map((task) => ({
+    id: task.id,
+    type: task.type,
+    status: task.status,
+    startTime: task.startTime,
+    endTime: task.endTime,
+    command: task.command,
+    description: task.description,
+    exitCode: task.exitCode,
+    runtime: task.runtime,
+    outputPath: task.outputPath,
+  }));
+}
 
 /**
  * What `RemoteControlSink.sendNotification` expects of a frame, minus the
