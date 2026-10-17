@@ -1,13 +1,14 @@
 /**
- * The remote page has no sidebar: its 「会话」 popup is the only place that can
- * say 「谁在等我确认、谁还在跑」 (spec remote-control.md「待确认只在它自己的对话里
- * 弹，对话状态在会话列表标出来」). This pins the rendering rule that story states:
+ * The remote page has no sidebar: its 「会话」 list is the only place that can say
+ * 「谁在等我确认、谁还在跑、谁还有后台任务」 (spec remote-control.md「待确认只在它
+ * 自己的对话里弹，对话状态在会话列表标出来」+「手机端的会话列表与删除」场景 2).
+ * This pins the rendering rule those stories state:
  *
  * - 运行中 marks every generating session **including the one on screen**;
  * - 待确认 marks only the *other* ones — the current conversation already has its
  *   card in front of it, so repeating it in the list adds nothing;
- * - one marker per row, 待确认 > 运行中;
- * - and none of it exists for the four IDE/desktop hosts, which pass no status.
+ * - one marker per row, 待确认 > 运行中 > 有后台任务在跑;
+ * - and none of it exists when the host sends no status (an older machine).
  */
 import { afterEach, describe, expect, it } from "vitest";
 import {
@@ -41,8 +42,12 @@ const SESSIONS = [
   },
 ];
 
-/** Render the page on session-2, deliver the markers, open the 「会话」 popup. */
-function openPopup(status?: { waiting: string[]; running: string[] }) {
+/** Render the page on session-2, deliver the markers, open the 「会话」 page. */
+function openPage(status?: {
+  waiting: string[];
+  running: string[];
+  background?: string[];
+}) {
   window.waveRemotePage = true;
   renderChatApp();
   act(() => {
@@ -57,12 +62,12 @@ function openPopup(status?: { waiting: string[]; running: string[] }) {
   act(() => {
     fireEvent.click(screen.getByTestId("session-switch-btn"));
   });
-  return screen.getByTestId("session-list-popup");
+  return screen.getByTestId("remote-session-page");
 }
 
 /** The marker slot of one row, as the reader sees it. */
-function slot(popup: HTMLElement, sessionId: string) {
-  return within(popup).getByTestId(`session-list-status-${sessionId}`);
+function slot(page: HTMLElement, sessionId: string) {
+  return within(page).getByTestId(`remote-session-marker-${sessionId}`);
 }
 
 afterEach(() => {
@@ -71,7 +76,7 @@ afterEach(() => {
 
 describe("remote page session status markers", () => {
   it("marks the other conversation as waiting and the current one as running", () => {
-    const popup = openPopup({
+    const page = openPage({
       waiting: ["session-1", "session-2"],
       running: ["session-2"],
     });
@@ -80,18 +85,18 @@ describe("remote page session status markers", () => {
     // ring: its own wait is already a card on screen, so a second reminder in the
     // list carries no information.
     expect(
-      within(slot(popup, "session-1")).getByLabelText("等待确认"),
+      within(slot(page, "session-1")).getByLabelText("等待确认"),
     ).toBeInTheDocument();
     expect(
-      within(slot(popup, "session-2")).getByLabelText("正在运行"),
+      within(slot(page, "session-2")).getByLabelText("正在运行"),
     ).toBeInTheDocument();
     expect(
-      within(slot(popup, "session-2")).queryByLabelText("等待确认"),
+      within(slot(page, "session-2")).queryByLabelText("等待确认"),
     ).not.toBeInTheDocument();
   });
 
   it("shows one marker per row, 待确认 over 运行中", () => {
-    const popup = openPopup({
+    const page = openPage({
       waiting: ["session-1"],
       running: ["session-1"],
     });
@@ -99,35 +104,63 @@ describe("remote page session status markers", () => {
     // 「被审批卡住的对话不算在跑」— the desktop sidebar's priority, kept here so a
     // double-marked row cannot appear.
     expect(
-      within(slot(popup, "session-1")).getByLabelText("等待确认"),
+      within(slot(page, "session-1")).getByLabelText("等待确认"),
     ).toBeInTheDocument();
     expect(
-      within(slot(popup, "session-1")).queryByLabelText("正在运行"),
+      within(slot(page, "session-1")).queryByLabelText("正在运行"),
     ).not.toBeInTheDocument();
   });
 
   it("marks a background run without waiting on anything", () => {
-    const popup = openPopup({ waiting: [], running: ["session-1"] });
+    const page = openPage({ waiting: [], running: ["session-1"] });
 
     expect(
-      within(slot(popup, "session-1")).getByLabelText("正在运行"),
+      within(slot(page, "session-1")).getByLabelText("正在运行"),
     ).toBeInTheDocument();
   });
 
-  it("renders no marker slot at all when the host sends no status", () => {
-    const popup = openPopup();
+  it("marks a foreground-idle session that still owns a background task", () => {
+    // 「看起来静止、其实还在干活」—— 前台回合结束、后台任务还在跑，这是「它还在动」
+    // 的唯一信号，不能显示成静止（spec 场景 2）。
+    const page = openPage({
+      waiting: [],
+      running: [],
+      background: ["session-1"],
+    });
 
-    // The four IDE/desktop hosts share this list and must keep the row they had:
-    // no empty slot, no placeholder — the marker element is not rendered when
-    // there is nothing to mark.
     expect(
-      within(popup).queryByTestId("session-list-status-session-1"),
+      within(slot(page, "session-1")).getByLabelText("有后台任务在跑"),
+    ).toBeInTheDocument();
+  });
+
+  it("puts 运行中 above 有后台任务在跑 for the same row", () => {
+    const page = openPage({
+      waiting: [],
+      running: ["session-1"],
+      background: ["session-1"],
+    });
+
+    expect(
+      within(slot(page, "session-1")).getByLabelText("正在运行"),
+    ).toBeInTheDocument();
+    expect(
+      within(slot(page, "session-1")).queryByLabelText("有后台任务在跑"),
     ).not.toBeInTheDocument();
-    expect(within(popup).getByText("另一个项目的会话")).toBeInTheDocument();
+  });
+
+  it("renders no marker at all when the host sends no status", () => {
+    const page = openPage();
+
+    // An older machine answers `listDaemonSessions` without the marker facts:
+    // no empty slot, no placeholder — the element is not rendered.
+    expect(
+      within(page).queryByTestId("remote-session-marker-session-1"),
+    ).not.toBeInTheDocument();
+    expect(within(page).getByText("另一个项目的会话")).toBeInTheDocument();
   });
 
   it("follows a later marker broadcast without rebuilding the list", () => {
-    const popup = openPopup();
+    const page = openPage();
 
     act(() => {
       sendHostMessage(
@@ -136,7 +169,7 @@ describe("remote page session status markers", () => {
     });
 
     expect(
-      within(slot(popup, "session-1")).getByLabelText("等待确认"),
+      within(slot(page, "session-1")).getByLabelText("等待确认"),
     ).toBeInTheDocument();
   });
 });

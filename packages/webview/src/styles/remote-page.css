@@ -389,4 +389,60 @@
     font-size: 16px !important;
     line-height: 24px;
   }
+
+  /* ── 「会话」整页列表（spec remote-control.md「手机端的会话列表与删除」）────
+     这一页只在手机上出现（远控页专用入口），但字号仍走同一档，不另立一套：
+     行标题 = 阅读主体 15、第二行（项目 · 最近活跃）与警告 = 辅助 13、面板项与
+     顶栏标题 = 16。控件（搜索框、行内重命名）由上面那条 16px 下限统一管，这里
+     不再列——列了也只有 `!important` 决定结果。
+
+     「⋯」按钮 32→40 与顶栏那批同一条触控判据（场景 27）：它是这一页唯一的行级
+     动作入口，热区太小就等于「点了没反应」。行本身可点（整行切换会话），所以
+     只抬按钮、不抬行高——行高已经由两行字和 10px 内边距撑到 60 以上。 */
+  [data-remote-page] :is(.remote-session-row-title) {
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  [data-remote-page]
+    :is(
+      .remote-session-row-meta,
+      .remote-session-row-rename-error,
+      .remote-session-page-empty,
+      .remote-session-page-notice,
+      .remote-session-delete-warning,
+      .remote-session-delete-ack-text,
+      .remote-session-delete-error
+    ) {
+    font-size: 13px;
+  }
+
+  [data-remote-page]
+    :is(
+      .remote-session-page-title,
+      .remote-session-page-back,
+      .remote-session-sheet-item,
+      .remote-session-delete-ack-label
+    ) {
+    font-size: 16px;
+  }
+
+  [data-remote-page] .remote-session-row-more {
+    width: 40px;
+    height: 40px;
+  }
+
+  [data-remote-page] .remote-session-row-more .codicon {
+    font-size: 20px;
+  }
+
+  /* 顶栏与聊天顶栏同高（44→56，见上）：从对话页进出列表页时上下结构不跳。 */
+  [data-remote-page] .remote-session-page-header {
+    height: 56px;
+    padding: 0 12px;
+  }
+
+  [data-remote-page] .remote-session-page-back {
+    min-height: 40px;
+  }
 }

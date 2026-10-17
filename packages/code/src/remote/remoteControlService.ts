@@ -126,12 +126,24 @@ import type { RemoteControlEndpoint } from "./remoteControlConfig.js";
  * MCP managers, login (`login`, `logout`, …), anything that opens an editor
  * (`openFile` is not even a bridge method), the on-disk session list
  * (`listAllSessions` / `restoreSession`), the process-lifecycle calls
- * (`shutdown` / `destroy` / `bang`), and the **read-only panes the page has no
+ * (`shutdown` / `bang`), and the **read-only panes the page has no
  * surface for** — `getWorkspaceDiff` / `getWorktreeChanges` / `getPlanFile` /
  * `getFullMessageThread` (no diff / worktree / plan pane on the page; the plan
- * body travels inside the `ExitPlanMode` approval card) and `removeWorktree`
- * (the page has no delete-session entry — that is the desktop sidebar's action).
- * Widening to a method with no caller would only enlarge the exposed surface.
+ * body travels inside the `ExitPlanMode` approval card).
+ *
+ * **Session deletion (2026-10-17, fourth batch)** — the batch where the page
+ * gained the entry `removeWorktree` was being kept out for. Two of the three
+ * things involved are whitelisted, one is not, and the split is the whole design:
+ *
+ * - `destroy` (now with an optional `removeWorktree` param) is the write. It is
+ *   **session-keyed**: the daemon resolves the worktree from that session's own
+ *   creation directory, so the phone names a session, never a path.
+ * - `getSessionWorktreeChanges` is the read the delete confirmation needs — the
+ *   same counts the desktop dialog shows, resolved the same way.
+ * - `removeWorktree` / `getWorktreeChanges` stay **out**: they take `path` /
+ *   `branch` / `repoRoot` (or `path`) from the caller, i.e. they would let the
+ *   page name any directory on this machine to delete or to inspect. Being able
+ *   to delete a session it was handed is not the same capability.
  */
 export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   "listSessions",
@@ -188,6 +200,15 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   "setAgentsContent",
   "getProjectSettings",
   "setBuiltinPluginEnabled",
+  // ── 第四批：会话删除（spec「手机端的会话列表与删除」）──
+  // 写：`destroy` 带上可选 `removeWorktree`（默认 false）。工作树由 daemon 从该
+  // 会话的 createdWorkdir 定位、并在 agent.destroy() 之后删除，页面给不出路径。
+  // 读：确认卡片要的改动计数走会话作用域的那一条（路径同样由 daemon 推导）。
+  // 裸 `removeWorktree` / `getWorktreeChanges` **仍然不放行**：它们收调用方给的
+  // path，等于把「这台机器上的任意目录」开给远端——「能删一条被列出来的会话」与
+  // 「能指名任意路径」不是同一个能力。
+  "destroy",
+  "getSessionWorktreeChanges",
 ]);
 
 /**

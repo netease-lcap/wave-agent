@@ -31,6 +31,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   isAuthenticated,
   hideSessionButtons = false,
   sessionSwitchButton = false,
+  onOpenSessionPage,
   onSwitchMachine,
   pushNotifications,
   hideMoreButton = false,
@@ -205,7 +206,11 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           <Tooltip text="会话" position="bottom">
             <button
               className="header-button"
-              onClick={() => setShowSessionList((prev) => !prev)}
+              onClick={() =>
+                onOpenSessionPage
+                  ? onOpenSessionPage()
+                  : setShowSessionList((prev) => !prev)
+              }
               data-testid="session-switch-btn"
               aria-label="会话"
               aria-expanded={sessionListVisible}
@@ -275,7 +280,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         )}
         {headerActions}
       </div>
-      {sessionListVisible && (
+      {/* 远控页改成整页列表后，这个下拉在那一端不再渲染（`onOpenSessionPage`
+          一传就只走整页那条路）；IDE / 桌面端的入口与这份下拉一个字都没改
+          （spec remote-control.md「手机端的会话列表与删除」场景 1）。 */}
+      {sessionListVisible && !onOpenSessionPage && (
         <SessionListPopup
           sessions={sessions}
           currentSession={currentSession}

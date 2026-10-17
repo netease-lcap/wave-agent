@@ -81,6 +81,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join } from "node:path";
 import {
   createWorktree,
+  deriveWorktreeInfo,
   getWorktreeChanges,
   removeWorktree,
 } from "../utils/worktree.js";
@@ -273,7 +274,9 @@ export class AgentBridge {
       case "initialize":
         return this.initialize(p as unknown as InitializeParams);
       case "destroy":
-        return this.destroy(sessionId);
+        return this.destroy(sessionId, {
+          removeWorktree: p.removeWorktree === true,
+        });
       case "restoreSession":
         return this.restoreSession(p.sessionId as string, sessionId);
       case "listSessions":
@@ -609,6 +612,8 @@ export class AgentBridge {
         return this.getWorktreeChanges(
           p as unknown as { path?: string; baseBranch?: string },
         );
+      case "getSessionWorktreeChanges":
+        return this.getSessionWorktreeChanges(sessionId);
       case "removeWorktree":
         return this.removeWorktreeSession(
           p as unknown as {
@@ -754,7 +759,42 @@ export class AgentBridge {
     };
   }
 
-  private async destroy(sessionId?: string): Promise<null> {
+  /**
+   * Destroy one hosted session (idempotent: an unknown id is a no-op).
+   *
+   * `params.removeWorktree` (optional, default false) additionally removes the
+   * git worktree the session was **created** in — the intent the remote page
+   * sends when the user confirms 「删除会话与工作树」. Two rules make it safe to
+   * offer over the remote channel, where the caller must never be able to name a
+   * path:
+   *
+   * 1. The worktree is resolved here, from `entry.createdWorkdir` — the same
+   *    anchor `wave daemon destroy --remove-worktree` resolves from (and for the
+   *    same reason: an in-session `cd` must not move the target). Nothing in the
+   *    request is trusted as a path, which is why the raw `removeWorktree`
+   *    method stays off the remote whitelist.
+   * 2. It runs **after** `agent.destroy()` resolves. The agent's cwd is the
+   *    worktree path and destroy flushes the session file (resolving that path
+   *    via realpath); deleting the directory first makes the save fail ENOENT
+   *    and drops the trailing messages — the desktop host carries the identical
+   *    ordering note in `handleDeleteSession`.
+   *
+   * "Cannot resolve a worktree" is never a reason to fail the delete: the
+   * session is still destroyed and the reply says `worktreeRemoved: false`. That
+   * covers a plain (non-worktree) session, a worktree that is already gone, and
+   * a removal that threw — the caller only ever needs to know whether the
+   * directory is gone.
+   *
+   * The return shape grew from `null` to `{worktreeRemoved}`; callers that pass
+   * no params (the CLI's own `wave daemon destroy`) read nothing and are
+   * unaffected. The CLI's `--remove-worktree` keeps its own client-side path
+   * (getSessionInfo + removeWorktree + destroy) — deliberately unchanged.
+   */
+  private async destroy(
+    sessionId?: string,
+    params?: { removeWorktree?: boolean },
+  ): Promise<{ worktreeRemoved: boolean }> {
+    let createdWorkdir: string | undefined;
     if (sessionId) {
       const entry = this.sessions.get(sessionId);
       if (entry) {
@@ -781,10 +821,71 @@ export class AgentBridge {
         // half-destroyed agent listed (destroyAll() below clears the map first
         // for the same reason).
         this.sessions.delete(sessionId);
+        createdWorkdir = entry.createdWorkdir;
         await entry.agent.destroy();
       }
     }
-    return null;
+
+    let worktreeRemoved = false;
+    if (params?.removeWorktree === true && createdWorkdir) {
+      worktreeRemoved = await this.removeSessionWorktree(createdWorkdir);
+    }
+    return { worktreeRemoved };
+  }
+
+  /**
+   * Remove the linked worktree a session was created in. Returns whether the
+   * directory is actually gone (not whether we asked): `removeWorktree` is
+   * best-effort and leaves the directory behind when git and the fs fallback
+   * both fail, and for a hook-based worktree with no WorktreeRemove hook it
+   * deliberately leaves it in place. Never throws — the caller has already
+   * deleted the session.
+   */
+  private async removeSessionWorktree(sessionDir: string): Promise<boolean> {
+    const worktree = deriveWorktreeInfo(sessionDir);
+    if (!worktree) return false;
+    try {
+      await removeWorktree({
+        name: "",
+        path: worktree.path,
+        branch: worktree.branch,
+        repoRoot: worktree.repoRoot,
+        hasUncommittedChanges: false,
+        hasNewCommits: false,
+        isNew: false,
+        hookBased: worktree.hookBased,
+      });
+    } catch (e) {
+      logger.warn(
+        `removeSessionWorktree: failed to remove ${worktree.path}: ${(e as Error).message}`,
+      );
+      return false;
+    }
+    return !existsSync(worktree.path);
+  }
+
+  /**
+   * What deleting a session's worktree would throw away (uncommitted files and
+   * commits not on the base branch) — the counts the delete confirmation names
+   * on the remote page.
+   *
+   * Session-scoped on purpose: the path comes from the session's own
+   * `createdWorkdir`, never from the caller. The remote channel carries this
+   * instead of the path-taking `getWorktreeChanges`, for the same reason it
+   * carries `destroy {removeWorktree}` instead of `removeWorktree` — a phone may
+   * only name a session it was given, not an arbitrary directory on the machine.
+   *
+   * `null` means "could not inspect" (not a worktree, already deleted, git
+   * failed), which the page renders as the generic warning rather than as
+   * "clean".
+   */
+  private async getSessionWorktreeChanges(
+    sessionId?: string,
+  ): Promise<{ files: number; commits: number } | null> {
+    const entry = this.requireSessionForRead(sessionId);
+    const worktree = deriveWorktreeInfo(entry.createdWorkdir);
+    if (!worktree) return null;
+    return getWorktreeChanges(worktree.path);
   }
 
   /**
@@ -2001,6 +2102,21 @@ export class AgentBridge {
       firstMessage?: string;
       /** Last display message's timestamp: the session list's ordering key. */
       lastActiveAt?: string;
+      /**
+       * The linked git worktree this session was created in, when it was.
+       * Present only for worktree sessions — absent means "not a worktree, or
+       * cannot tell", and the remote page reads it as "deleting this session
+       * will not touch a worktree". Change counts are deliberately NOT here:
+       * they cost git calls per row, and the list is rebuilt on every reconnect
+       * / snapshot / page open. The page asks for them on demand instead, via
+       * `getSessionWorktreeChanges`.
+       */
+      worktree?: {
+        path: string;
+        branch: string;
+        repoRoot: string;
+        hookBased: boolean;
+      };
     }>;
   } {
     return {
@@ -2009,6 +2125,9 @@ export class AgentBridge {
         const customTitle = entry.agent.customTitle;
         const firstMessage = firstUserText(messages);
         const lastActiveAt = messages[messages.length - 1]?.timestamp;
+        // Derived from the creation workdir (not the live one) and fs-only —
+        // see `deriveWorktreeInfo` for why this must not shell out to git.
+        const worktree = deriveWorktreeInfo(entry.createdWorkdir);
         return {
           sessionId,
           workingDirectory: entry.createdWorkdir,
@@ -2019,6 +2138,7 @@ export class AgentBridge {
           ...(customTitle ? { customTitle } : {}),
           ...(firstMessage ? { firstMessage } : {}),
           ...(lastActiveAt ? { lastActiveAt } : {}),
+          ...(worktree ? { worktree } : {}),
         };
       }),
     };

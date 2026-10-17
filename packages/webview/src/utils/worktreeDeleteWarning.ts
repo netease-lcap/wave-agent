@@ -4,6 +4,13 @@
  * directory and its temporary branch and cannot be undone, so the dialog names
  * the uncommitted files and the unmerged commits before the user confirms
  * (spec desktop-sessions.md「删除 worktree 会话前提示将丢失的改动」).
+ *
+ * Two hosts say this, with **this one file** as the only source of the wording:
+ * the desktop sidebar's row menu and — since 2026-10-17 — the remote-control
+ * Web page's session list (spec ui/remote-control.md「手机端的会话列表与删除」
+ * 场景 7/13, whose carriers differ: 侧栏行菜单 + 居中确认框 vs 整页列表的行「⋯」
+ * + 底部动作面板 + 全屏确认卡片). `desktop-sessions.md` is therefore unchanged:
+ * the phone reuses its wording rather than restating it.
  */
 
 export interface WorktreeChanges {

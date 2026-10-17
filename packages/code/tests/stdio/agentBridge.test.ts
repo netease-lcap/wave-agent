@@ -21,6 +21,7 @@ import { execFileSync } from "node:child_process";
 import path from "node:path";
 import {
   createWorktree,
+  deriveWorktreeInfo,
   getWorktreeChanges,
   removeWorktree,
 } from "../../src/utils/worktree.js";
@@ -41,6 +42,7 @@ vi.mock("node:child_process", async (importOriginal) => {
 
 vi.mock("../../src/utils/worktree.js", () => ({
   createWorktree: vi.fn(),
+  deriveWorktreeInfo: vi.fn(),
   getWorktreeChanges: vi.fn(),
   removeWorktree: vi.fn(),
 }));
@@ -1795,9 +1797,13 @@ test("destroy destroys the agent", async () => {
 
   const result = await bridge.handleRequest("initialize", {});
   const sessionId = (result as { sessionId: string }).sessionId;
-  await bridge.handleRequest("destroy", {}, sessionId);
+  const reply = await bridge.handleRequest("destroy", {}, sessionId);
 
   expect(mockAgent.destroy).toHaveBeenCalled();
+  // `destroy` answers with an object now (see the worktree cases below); a call
+  // that asks for no worktree removal is otherwise exactly the call it was.
+  expect(reply).toEqual({ worktreeRemoved: false });
+  expect(removeWorktree).not.toHaveBeenCalled();
 });
 
 test("destroy with unknown sessionId is a no-op", async () => {
@@ -1808,7 +1814,193 @@ test("destroy with unknown sessionId is a no-op", async () => {
 
   const result = await bridge.handleRequest("destroy", {}, "unknown-session");
 
-  expect(result).toBeNull();
+  expect(result).toEqual({ worktreeRemoved: false });
+  expect(removeWorktree).not.toHaveBeenCalled();
+});
+
+// ── destroy --remove-worktree (remote page deletion) ──────────────
+
+const DERIVED_WORKTREE = {
+  path: "/repo/.wave/worktrees/login",
+  branch: "wave/login",
+  repoRoot: "/repo",
+  hookBased: false,
+};
+
+test("destroy removes the session's worktree, after the agent is destroyed", async () => {
+  const { bridge } = createBridge();
+  const order: string[] = [];
+  const mockAgent = createMockAgent({
+    destroy: vi.fn(async () => {
+      order.push("agent.destroy");
+    }),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+  // The worktree is derived from the creation workdir — the caller sends no path.
+  vi.mocked(deriveWorktreeInfo).mockReturnValue(DERIVED_WORKTREE);
+  // `removeWorktree` is best-effort; the reply reports the directory, not intent.
+  vi.mocked(existsSync).mockReturnValue(false);
+  vi.mocked(removeWorktree).mockImplementation(async () => {
+    order.push("removeWorktree");
+  });
+
+  const init = await bridge.handleRequest("initialize", {
+    workdir: DERIVED_WORKTREE.path,
+  });
+  const sessionId = (init as { sessionId: string }).sessionId;
+  const reply = await bridge.handleRequest(
+    "destroy",
+    { removeWorktree: true },
+    sessionId,
+  );
+
+  expect(deriveWorktreeInfo).toHaveBeenCalledWith(DERIVED_WORKTREE.path);
+  expect(removeWorktree).toHaveBeenCalledWith(
+    expect.objectContaining({
+      path: DERIVED_WORKTREE.path,
+      branch: DERIVED_WORKTREE.branch,
+      repoRoot: DERIVED_WORKTREE.repoRoot,
+      hookBased: false,
+    }),
+  );
+  // The ordering is the point: the agent's cwd is the worktree, and destroying
+  // it flushes the transcript through that path. Removing the directory first
+  // makes that save fail ENOENT and drops the trailing messages.
+  expect(order).toEqual(["agent.destroy", "removeWorktree"]);
+  expect(reply).toEqual({ worktreeRemoved: true });
+});
+
+test("destroy still destroys the session when no worktree can be located", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent();
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+  // Plain session (or a worktree the derivation cannot resolve).
+  vi.mocked(deriveWorktreeInfo).mockReturnValue(undefined);
+
+  const init = await bridge.handleRequest("initialize", { workdir: "/repo" });
+  const sessionId = (init as { sessionId: string }).sessionId;
+  const reply = await bridge.handleRequest(
+    "destroy",
+    { removeWorktree: true },
+    sessionId,
+  );
+
+  expect(mockAgent.destroy).toHaveBeenCalled();
+  expect(removeWorktree).not.toHaveBeenCalled();
+  // Not an error: the session is gone, the reply just says the directory stayed.
+  expect(reply).toEqual({ worktreeRemoved: false });
+});
+
+test("destroy reports worktreeRemoved: false when the directory survives removal", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+  vi.mocked(deriveWorktreeInfo).mockReturnValue(DERIVED_WORKTREE);
+  // removeWorktree is best-effort: a surviving directory (git + fs fallback both
+  // failed, or a hook-based worktree with no WorktreeRemove hook) must not be
+  // reported as removed.
+  vi.mocked(existsSync).mockReturnValue(true);
+
+  const init = await bridge.handleRequest("initialize", {
+    workdir: DERIVED_WORKTREE.path,
+  });
+  const sessionId = (init as { sessionId: string }).sessionId;
+  const reply = await bridge.handleRequest(
+    "destroy",
+    { removeWorktree: true },
+    sessionId,
+  );
+
+  expect(removeWorktree).toHaveBeenCalled();
+  expect(reply).toEqual({ worktreeRemoved: false });
+});
+
+test("getSessionWorktreeChanges counts the session's own worktree", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+  vi.mocked(deriveWorktreeInfo).mockReturnValue(DERIVED_WORKTREE);
+  vi.mocked(getWorktreeChanges).mockResolvedValue({ files: 2, commits: 1 });
+
+  const init = await bridge.handleRequest("initialize", {
+    workdir: DERIVED_WORKTREE.path,
+  });
+  const sessionId = (init as { sessionId: string }).sessionId;
+  const reply = await bridge.handleRequest(
+    "getSessionWorktreeChanges",
+    {},
+    sessionId,
+  );
+
+  // The path comes from the session, never from the request — the whole reason
+  // this method exists next to the path-taking getWorktreeChanges.
+  expect(deriveWorktreeInfo).toHaveBeenCalledWith(DERIVED_WORKTREE.path);
+  expect(getWorktreeChanges).toHaveBeenCalledWith(DERIVED_WORKTREE.path);
+  expect(reply).toEqual({ files: 2, commits: 1 });
+});
+
+test("getSessionWorktreeChanges answers null for a session with no worktree", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+  vi.mocked(deriveWorktreeInfo).mockReturnValue(undefined);
+
+  const init = await bridge.handleRequest("initialize", { workdir: "/repo" });
+  const sessionId = (init as { sessionId: string }).sessionId;
+  const reply = await bridge.handleRequest(
+    "getSessionWorktreeChanges",
+    {},
+    sessionId,
+  );
+
+  expect(getWorktreeChanges).not.toHaveBeenCalled();
+  expect(reply).toBeNull();
+});
+
+test("listDaemonSessions reports a worktree only for worktree sessions", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create)
+    .mockResolvedValueOnce(createMockAgent({ sessionId: "s-worktree" }))
+    .mockResolvedValueOnce(createMockAgent({ sessionId: "s-plain" }));
+  vi.mocked(deriveWorktreeInfo).mockImplementation((dir) =>
+    dir === "/repo/.wave/worktrees/login" ? DERIVED_WORKTREE : undefined,
+  );
+
+  await bridge.handleRequest("initialize", {
+    workdir: "/repo/.wave/worktrees/login",
+  });
+  await bridge.handleRequest("initialize", { workdir: "/repo" });
+
+  const reply = (await bridge.handleRequest("listDaemonSessions", {})) as {
+    sessions: Array<{ workingDirectory: string; worktree?: unknown }>;
+  };
+  const worktreeRow = reply.sessions.find(
+    (row) => row.workingDirectory === "/repo/.wave/worktrees/login",
+  );
+  const plainRow = reply.sessions.find(
+    (row) => row.workingDirectory === "/repo",
+  );
+
+  expect(worktreeRow?.worktree).toEqual(DERIVED_WORKTREE);
+  // Absent, not `null`/"false": an older page ignores it, and "not a worktree"
+  // must read as "deleting this session touches no worktree".
+  expect(plainRow && "worktree" in plainRow).toBe(false);
+});
+
+test("listDaemonSessions degrades to no worktree field when derivation fails", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+  // deriveWorktreeInfo swallows its own errors and returns undefined; a throw
+  // leaking out of it must still not take the whole list down.
+  vi.mocked(deriveWorktreeInfo).mockReturnValue(undefined);
+
+  await bridge.handleRequest("initialize", {
+    workdir: "/repo/.wave/worktrees/gone",
+  });
+  const reply = (await bridge.handleRequest("listDaemonSessions", {})) as {
+    sessions: Array<Record<string, unknown>>;
+  };
+
+  expect(reply.sessions).toHaveLength(1);
+  expect(reply.sessions[0].workingDirectory).toBe("/repo/.wave/worktrees/gone");
+  expect("worktree" in reply.sessions[0]).toBe(false);
 });
 
 // ── Error handling ───────────────────────────────────────────────
@@ -3125,7 +3317,8 @@ test("destroy without agent is a no-op", async () => {
   const { bridge } = createBridge();
   // Don't initialize — agent is undefined
   const result = await bridge.handleRequest("destroy", {});
-  expect(result).toBeNull();
+  expect(result).toEqual({ worktreeRemoved: false });
+  expect(removeWorktree).not.toHaveBeenCalled();
 });
 
 test("getPromptHistory delegates to PromptHistoryManager", async () => {

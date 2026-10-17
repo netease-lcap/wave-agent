@@ -408,6 +408,103 @@ export interface WorktreeChanges {
 }
 
 /**
+ * The linked worktree a directory sits in, derived from the filesystem only.
+ * Same field semantics as `createWorktree`'s result, so a caller can hand it
+ * straight to `removeWorktree`.
+ */
+export interface DerivedWorktree {
+  path: string;
+  branch: string;
+  repoRoot: string;
+  hookBased: boolean;
+}
+
+/**
+ * Work out whether `sessionDir` **is** a linked git worktree — and which one —
+ * without running git.
+ *
+ * Two callers need this and both need it cheap: `listDaemonSessions` embeds the
+ * answer in every session row (the remote page decides from it whether deleting
+ * a session also deletes a worktree), and `destroy --removeWorktree` needs the
+ * path/branch/repoRoot that `removeWorktree` takes. Shelling out per row is not
+ * an option — `listDaemonSessions` runs on every reconnect, snapshot and page
+ * open, and a synchronous git call in this process freezes every session it
+ * serves (see the note at the top of this file). So the whole derivation is
+ * plain fs reads:
+ *
+ * - `.git` a **directory** in `sessionDir` ⇒ it is the main working tree, not a
+ *   worktree ⇒ `undefined` (removing it would be removing the repository).
+ * - `.git` a **file** ⇒ a linked worktree; the file holds `gitdir: <path>`,
+ *   which is where that worktree's own HEAD lives.
+ * - branch = `<gitdir>/HEAD` (`ref: refs/heads/<name>`); a detached HEAD has no
+ *   branch, which returns `""` — the same thing `git branch --show-current`
+ *   says, and `removeWorktree` skips a branch it cannot name.
+ * - repoRoot = the main repository root, i.e. the directory *above* the common
+ *   git dir that `<gitdir>/commondir` points at (`<repoRoot>/.git`).
+ *
+ * `sessionDir` must be the worktree root itself (the directory a session was
+ * created in) — a subdirectory of a worktree has no `.git` of its own, and this
+ * returns `undefined` for it rather than guessing. Every failure path returns
+ * `undefined`: "not a worktree / cannot tell" is a legitimate answer and must
+ * never throw into a caller that is only decorating a list.
+ */
+export function deriveWorktreeInfo(
+  sessionDir: string,
+): DerivedWorktree | undefined {
+  try {
+    if (!sessionDir) return undefined;
+    const dir = path.resolve(sessionDir);
+    const gitEntry = path.join(dir, ".git");
+    if (!fs.statSync(gitEntry).isFile()) return undefined;
+
+    const prefix = "gitdir: ";
+    const content = fs.readFileSync(gitEntry, "utf8").trim();
+    if (!content.startsWith(prefix)) return undefined;
+    const gitDir = path.resolve(dir, content.substring(prefix.length).trim());
+
+    let branch = "";
+    try {
+      const head = fs.readFileSync(path.join(gitDir, "HEAD"), "utf8").trim();
+      const refPrefix = "ref: refs/heads/";
+      if (head.startsWith(refPrefix)) {
+        branch = head.substring(refPrefix.length);
+      }
+    } catch {
+      // Detached/unreadable HEAD: no branch to delete, the worktree is still
+      // identifiable.
+    }
+
+    let repoRoot = "";
+    try {
+      const common = fs
+        .readFileSync(path.join(gitDir, "commondir"), "utf8")
+        .trim();
+      const commonDir = path.resolve(gitDir, common);
+      repoRoot =
+        path.basename(commonDir) === ".git"
+          ? path.dirname(commonDir)
+          : commonDir;
+    } catch {
+      return undefined;
+    }
+    if (!repoRoot) return undefined;
+
+    // Hook-based worktrees are removed by the WorktreeRemove hook, never by
+    // `git worktree remove` — mirror createWorktree's own hookBased decision
+    // (same test `wave daemon destroy --remove-worktree` uses).
+    const config = loadMergedWaveConfig(repoRoot);
+    return {
+      path: dir,
+      branch,
+      repoRoot,
+      hookBased: hasWorktreeCreateHook(config?.hooks),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Count what deleting a worktree would throw away, so the caller can warn
  * before it happens. Both counts are best-effort: an unknown base branch (never
  * fetched, branch rewritten) only zeroes the commit count, and a worktree that

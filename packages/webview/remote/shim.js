@@ -287,6 +287,21 @@
   var waitingSessionIds = [];
   var runningSessionIds = [];
   /**
+   * 会话列表另外两条标记与一条删除前的判据，同样来自注册表那一次读
+   * （`listDaemonSessions`）：
+   *
+   * - `backgroundSessionIds`：前台这一轮结束了但还有后台任务在跑（`/tasks` 里那些），
+   *   「看起来空闲、其实还在干活」的会话不能显示成静止；
+   * - `worktreeSessionIds`：这条会话是建在一个 **linked worktree** 里的（宿主从
+   *   会话的 `createdWorkdir` 推出来的）。它决定删除确认卡说不说工作树那段话、按钮
+   *   写「删除会话」还是「删除会话与工作树」，所以必须来自这次列表读，而不是删除
+   *   那一刻再问一遍——问不到就等于静默删。
+   *
+   * 两个集合都随注册表重读重建（`loadSessions`），不是一个可以单独过期的缓存。
+   */
+  var backgroundSessionIds = [];
+  var worktreeSessionIds = [];
+  /**
    * The approvals this page is showing because this shim put the cards there —
    * the ids, not the cards.
    *
@@ -1294,12 +1309,24 @@
     for (var i = 0; i < queued.length; i++) socket.send(queued[i]);
   }
 
-  function request(method, params, withSession) {
+  /**
+   * @param withSession `false` for the session-less utilities (`listDirectories`
+   *   &c.), which must not be bound to whichever conversation the page happens
+   *   to be showing.
+   * @param forSession Address **another** session instead of the one on screen.
+   *   Only the row-level session actions use it: 删除 / 查 worktree 改动 name the
+   *   row the user acted on, which need not be the conversation in the pane (the
+   *   session list is exactly where you touch the others). Everything else means
+   *   「the conversation I am reading」, which the module-level `sessionId`
+   *   already is.
+   */
+  function request(method, params, withSession, forSession) {
     var id = nextId++;
     return new Promise(function (resolve, reject) {
       pending[id] = { resolve: resolve, reject: reject };
       var frame = { id: id, method: method, params: params || {} };
-      if (withSession !== false && sessionId) frame.sessionId = sessionId;
+      if (forSession) frame.sessionId = forSession;
+      else if (withSession !== false && sessionId) frame.sessionId = sessionId;
       send(frame);
       setTimeout(
         function () {
@@ -1604,7 +1631,12 @@
           // this one (spec 「待确认只在它自己的对话里弹，对话状态在会话列表标出来」);
           // the paths that do not rebuild the snapshot send them through
           // `updateSessionStatus` instead.
-          sessionStatus: { waiting: waitingSessionIds, running: runningIds() },
+          sessionStatus: {
+            waiting: waitingSessionIds,
+            running: runningIds(),
+            background: backgroundSessionIds,
+            worktrees: worktreeSessionIds,
+          },
           queuedMessages: (state && state.queuedMessages) || [],
           // The relay authenticated this page with the machine's own
           // credential; there is no separate phone login to satisfy.
@@ -1741,10 +1773,21 @@
       // the only place that state exists as a *state* (see `applyStreaming`), so
       // the 「运行中」 marker rides this read rather than adding one — which is
       // also why no extra RPC is needed for either marker (spec scenario 8).
+      // 「有后台任务在跑」 and 「这是不是一条 worktree 会话」 are two more facts off
+      // the same row for the same reason: they are per-session state the registry
+      // already carries, and asking again per row would mean a git call per row
+      // on every list refresh (the host's `worktree` field exists precisely so it
+      // does not have to).
       runningSessionIds = [];
+      backgroundSessionIds = [];
+      worktreeSessionIds = [];
       for (var i = 0; i < entries.length; i++) {
-        if (entries[i].isLoading === true && entries[i].sessionId)
-          runningSessionIds.push(entries[i].sessionId);
+        var entry = entries[i];
+        if (!entry.sessionId) continue;
+        if (entry.isLoading === true) runningSessionIds.push(entry.sessionId);
+        if (entry.hasRunningBackgroundWork === true)
+          backgroundSessionIds.push(entry.sessionId);
+        if (entry.worktree) worktreeSessionIds.push(entry.sessionId);
       }
       // Most recently active first: the list is a picker, and this is the only
       // ordering signal the page has (it cannot see the computer's screen).
@@ -2020,6 +2063,8 @@
       command: "updateSessionStatus",
       waiting: waitingSessionIds,
       running: runningIds(),
+      background: backgroundSessionIds,
+      worktrees: worktreeSessionIds,
     });
   }
 
@@ -2392,6 +2437,96 @@
         // live, so its tail and its pending approvals come through the same
         // `getMessages` + `listPendingPermissions` path a cold start uses.
         pullSnapshot();
+        return;
+      }
+
+      // ── 会话列表行级动作：删除（spec ui/remote-control.md「手机端的会话列表与
+      // 删除」）──
+      //
+      // 删除 = `destroy`（可选 `removeWorktree`）。**没有**放行裸 `removeWorktree`：
+      // 那是一个「删掉这个路径」的能力，而手机能做的是「删掉这条会话」，工作树是
+      // 这条会话的附带物，由电脑侧从会话自己的 `createdWorkdir` 推出来（白名单只有
+      // `destroy` / `getSessionWorktreeChanges`，见 `REMOTE_ALLOWED_METHODS`）。
+      //
+      // 三条回复约定：
+      // 1. 先重读列表再回执，页面拿到「已删除」时列表已经是删完的那份——不会先回执
+      //    再让用户看着一行还在的会话；
+      // 2. 删掉的如果是**正在看**的那条，重新挑一条活的并把视图重画（`pullSnapshot`
+      //    的第一拍会 `chooseSession`），但**不进页面**：读者仍停在会话列表上，
+      //    「已删除」横幅由页面自己显示。没有这一拍，返回对话页会停在一条已经不
+      //    存在的会话上，发什么都报「Session not found」；
+      // 3. 电脑侧定位不到工作树时**会话照删**，`worktreeRemoved: false` 只是把
+      //    「工作树没跟着删掉」这个事实告诉页面（spec 场景 8）。
+      case "deleteSession": {
+        var deletingId = msg.sessionId || sessionId;
+        request(
+          "destroy",
+          { removeWorktree: msg.removeWorktree === true },
+          undefined,
+          deletingId,
+        )
+          .then(function (result) {
+            var wasCurrent = deletingId === sessionId;
+            if (wasCurrent) {
+              // The conversation is about to stop existing: drop the window now so
+              // a re-pull cannot show the tail of a session that is already gone.
+              messages = [];
+            }
+            return loadSessions().then(function () {
+              post({ command: "updateSessions", sessions: sessions });
+              postSessionStatus();
+              post({
+                command: "sessionDeleted",
+                requestId: msg.requestId,
+                sessionId: deletingId,
+                ok: true,
+                worktreeRemoved: !!(result && result.worktreeRemoved),
+              });
+              if (wasCurrent) {
+                // Re-pick whatever is still live and repaint behind the list — the
+                // page stays where it is (spec 场景 11：不自动跳进别的会话).
+                sessionId = "";
+                picked = true;
+                pullSnapshot();
+              }
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "sessionDeleted",
+              requestId: msg.requestId,
+              sessionId: deletingId,
+              ok: false,
+              error: String(err.message || err),
+            });
+          });
+        return;
+      }
+
+      // 删除确认卡要说的那句话（「N 个未提交文件 / M 个未合并提交」）——**按需读**，
+      // 不在列表里逐行跑 git（那是每次重连、每个快照都要付的账，见宿主的
+      // `worktree` 字段注释）。宿主回 `null` = 「读不到」：页面按「降级泛警告」处理，
+      // 绝不当作「没有改动」而静默删除（spec 场景 7）。
+      case "getSessionWorktreeChanges": {
+        var askedId = msg.sessionId;
+        request("getSessionWorktreeChanges", {}, undefined, askedId)
+          .then(function (result) {
+            post({
+              command: "sessionWorktreeChanges",
+              requestId: msg.requestId,
+              sessionId: askedId,
+              changes: result || null,
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "sessionWorktreeChanges",
+              requestId: msg.requestId,
+              sessionId: askedId,
+              changes: null,
+              error: String(err.message || err),
+            });
+          });
         return;
       }
 

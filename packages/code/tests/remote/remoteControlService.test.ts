@@ -349,14 +349,17 @@ describe("RemoteControlService", () => {
     // The chat methods + conversation upkeep + new-session + the second batch
     // (rewind / clear / model / queue / background work / file search / prompt
     // history) + the third batch (the settings page's read/personalisation/
-    // project-settings trio) are the whole surface. Adding a method here is a
-    // deliberate widening, so this list is pinned rather than derived.
+    // project-settings trio) + session deletion (`destroy` with its optional
+    // worktree param, and the session-scoped change count the delete card
+    // needs) are the whole surface. Adding a method here is a deliberate
+    // widening, so this list is pinned rather than derived.
     expect([...REMOTE_ALLOWED_METHODS].sort()).toEqual([
       "abortMessage",
       "clearMessages",
       "compact",
       "createWorktree",
       "deleteQueuedMessageById",
+      "destroy",
       "getAgentsContent",
       "getBackgroundTaskOutput",
       "getConfiguredModels",
@@ -364,6 +367,7 @@ describe("RemoteControlService", () => {
       "getProjectSettings",
       "getPromptHistory",
       "getSessionInfo",
+      "getSessionWorktreeChanges",
       "getSlashCommands",
       "getUserSettings",
       "getWorkflowRuns",
@@ -393,8 +397,12 @@ describe("RemoteControlService", () => {
 
   it("should still refuse the panes the page has no surface for", async () => {
     // The second batch stopped short of these on purpose: no diff / worktree /
-    // plan pane on the page, no delete-session entry, no editor to open a file
-    // in. A widening without a caller is pure exposure, so they stay refused.
+    // plan pane on the page, no editor to open a file in. A widening without a
+    // caller is pure exposure, so they stay refused. `removeWorktree` /
+    // `getWorktreeChanges` are the third batch's version of the same rule: the
+    // page deletes through `destroy` (session-keyed) and counts through
+    // `getSessionWorktreeChanges`, so the two methods that take a caller-given
+    // path are still exactly what a phone must not have.
     const bridge = createBridgeStub();
     await connect(bridge);
 

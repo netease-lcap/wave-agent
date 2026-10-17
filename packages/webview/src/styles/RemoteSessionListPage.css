@@ -1,0 +1,265 @@
+/* 远控 Web 页的整页「会话」列表（spec ui/remote-control.md「手机端的会话列表与
+   删除」）。只有这一种宿主挂载本组件，所以这里只需要一套布局；字号档不在这里定——
+   那是 remote-page.css 的职责（第三档，按 `pointer: coarse` 判），本文件只给
+   PC 浏览器上的基线值（13/11/14，与共享列表同一族）。 */
+
+.remote-session-page {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--vscode-panel-background);
+  color: var(--vscode-editor-foreground);
+}
+
+/* 顶部「返回 + 标题」：与聊天顶栏同高（44 / 手机档 56，见 remote-page.css），
+   这样从对话页进列表页时上下结构不跳。 */
+.remote-session-page-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.2));
+}
+
+.remote-session-page-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  background: none;
+  border: none;
+  color: var(--vscode-foreground);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.remote-session-page-back:hover {
+  color: var(--vscode-focusBorder, #409eff);
+}
+
+.remote-session-page-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.remote-session-page-search {
+  margin: 8px 12px;
+  padding: 6px 10px;
+  flex-shrink: 0;
+  font-size: inherit;
+  border-radius: 6px;
+  color: var(--vscode-input-foreground);
+  background-color: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+}
+
+.remote-session-page-notice {
+  margin: 0 12px 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: #16a34a;
+  background-color: rgba(22, 163, 74, 0.12);
+}
+
+.remote-session-page-empty {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.remote-session-page-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 0 0 16px;
+  list-style: none;
+}
+
+.remote-session-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px 0 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.15));
+}
+
+.remote-session-row--current {
+  background-color: var(
+    --vscode-list-activeSelectionBackground,
+    rgba(64, 158, 255, 0.12)
+  );
+}
+
+/* 行本体是按钮（整行可点 = 切会话），「⋯」在它旁边另起一列，两者不嵌套。 */
+.remote-session-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 0;
+  background: none;
+  border: none;
+  text-align: left;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.remote-session-row-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.remote-session-row-marker {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.remote-session-row-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-session-row-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.remote-session-row-rename-error {
+  font-size: 11px;
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.remote-session-row-rename {
+  flex: 1;
+  min-width: 0;
+  margin: 8px 0;
+  padding: 6px 8px;
+  font-size: inherit;
+  color: var(--vscode-input-foreground);
+  background-color: var(--vscode-input-background);
+  border: 1px solid var(--vscode-focusBorder, #409eff);
+  border-radius: 6px;
+}
+
+.remote-session-row-more {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.remote-session-row-more:hover {
+  background-color: var(
+    --vscode-toolbar-hoverBackground,
+    rgba(128, 128, 128, 0.15)
+  );
+}
+
+/* ── 底部动作面板（action sheet）──────────────────────────────────────
+   点「⋯」升起的两个动作。不做左右滑删除、不做长按菜单：移动网页里横向滑动与
+   纵向滚动、系统返回手势互相打架，长按与选词冲突（spec 场景 4）。 */
+.remote-session-sheet-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+.remote-session-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 71;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background-color: var(
+    --vscode-editorWidget-background,
+    var(--vscode-panel-background)
+  );
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.24);
+}
+
+.remote-session-sheet-item {
+  padding: 14px 16px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.15));
+  font-size: 14px;
+  text-align: center;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.remote-session-sheet-item--danger {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.remote-session-sheet-item--cancel {
+  margin-top: 6px;
+  border-bottom: none;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* ── 删除确认卡片里多出来的两段（固定文案由 ConfirmDialog 的 description 承载，
+   这里只管 worktree 警告与「正在回答」的勾选）。 */
+.remote-session-delete-warning {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.remote-session-delete-ack {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.remote-session-delete-ack-text {
+  font-size: 12px;
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.remote-session-delete-ack-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.remote-session-delete-error {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--vscode-errorForeground, #f14c4c);
+}
