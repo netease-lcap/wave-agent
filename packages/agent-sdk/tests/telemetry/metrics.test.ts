@@ -83,6 +83,21 @@ describe("metrics", () => {
             unit: "{pull_request}",
           },
         ],
+        [
+          "wave.active_time",
+          {
+            description:
+              "Active time, by type: the user at the prompt, or the agent working",
+            unit: "s",
+          },
+        ],
+        [
+          "wave.code_edit_tool.decision",
+          {
+            description:
+              "Permission decisions on Edit and Write, accepted or rejected, by source",
+          },
+        ],
       ]);
     });
   });
@@ -182,6 +197,75 @@ describe("metrics", () => {
 
       expect(fake.counter("wave.commits").add).not.toHaveBeenCalled();
       expect(fake.counter("wave.pull_requests").add).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("recordActiveTime", () => {
+    it("should add the segment length under the active-time half", () => {
+      metrics.recordActiveTime(12.5, "cli");
+      metrics.recordActiveTime(2, "user");
+
+      expect(fake.counter("wave.active_time").add.mock.calls).toEqual([
+        [12.5, { type: "cli" }],
+        [2, { type: "user" }],
+      ]);
+    });
+
+    it("should skip empty and negative segments", () => {
+      metrics.recordActiveTime(0, "cli");
+      metrics.recordActiveTime(-1, "cli");
+
+      expect(fake.counter("wave.active_time").add).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("recordCodeEditDecision", () => {
+    it("should count an accepted edit with its source, tool and language", () => {
+      metrics.recordCodeEditDecision({
+        decision: "accept",
+        source: "user_temporary",
+        toolName: "Edit",
+        language: "typescript",
+      });
+
+      expect(
+        fake.counter("wave.code_edit_tool.decision").add,
+      ).toHaveBeenCalledWith(1, {
+        decision: "accept",
+        source: "user_temporary",
+        tool_name: "Edit",
+        language: "typescript",
+      });
+    });
+
+    it("should count a rejection the same way, without a language it cannot name", () => {
+      metrics.recordCodeEditDecision({
+        decision: "reject",
+        source: "user_reject",
+        toolName: "Write",
+      });
+
+      expect(
+        fake.counter("wave.code_edit_tool.decision").add,
+      ).toHaveBeenCalledWith(1, {
+        decision: "reject",
+        source: "user_reject",
+        tool_name: "Write",
+      });
+    });
+
+    it("should ignore tools that do not edit code", () => {
+      for (const toolName of ["Bash", "Read", "mcp__github__create_issue"]) {
+        metrics.recordCodeEditDecision({
+          decision: "accept",
+          source: "config",
+          toolName,
+        });
+      }
+
+      expect(
+        fake.counter("wave.code_edit_tool.decision").add,
+      ).not.toHaveBeenCalled();
     });
   });
 
@@ -357,6 +441,12 @@ describe("metrics", () => {
         fresh.recordSession();
         fresh.recordLinesChanged({ added: 1 });
         fresh.recordToolActivity({ commits: true, pullRequests: true });
+        fresh.recordActiveTime(1, "cli");
+        fresh.recordCodeEditDecision({
+          decision: "accept",
+          source: "config",
+          toolName: "Edit",
+        });
       }).not.toThrow();
     });
   });

@@ -39,6 +39,7 @@ const { recordTokenUsageMock } = vi.hoisted(() => ({
 
 vi.mock("../../src/telemetry/metrics.js", () => ({
   recordTokenUsage: recordTokenUsageMock,
+  recordActiveTime: vi.fn(),
 }));
 
 // Mock node:fs

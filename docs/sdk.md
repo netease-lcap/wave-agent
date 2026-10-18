@@ -1568,18 +1568,22 @@ helper 命令跑在 shell 里（Windows 下是 Git Bash，与 hook 一致），s
 
 指标回答的是车队级问题——哪个模型在吃预算、用量是否在涨、产出有多大。命名稳定在 `wave.*` 下，每个数据点在家族属性（模型 id、token 类型、行数方向）之外还会带上下面那套标准归属属性；属性面刻意保持低基数，**不含提示词、文件路径或任何内容级数据**。
 
-| 指标                 | 类型 | 说明                    | 归属属性                                                         |
-| -------------------- | ---- | ----------------------- | ---------------------------------------------------------------- |
-| `wave.tokens`        | 计数 | 消耗的 token 数         | `model` + `type`（input / output / cache_read / cache_creation） |
-| `wave.sessions`      | 计数 | 启动的 Agent 会话数     | —                                                                |
-| `wave.lines.changed` | 计数 | 编辑类工具增删的行数    | `direction`（added / removed）                                   |
-| `wave.commits`       | 计数 | 经由工具创建的提交数    | —                                                                |
-| `wave.pull_requests` | 计数 | 经由工具创建的 PR/MR 数 | —                                                                |
+| 指标                           | 类型 | 说明                    | 归属属性                                                                         |
+| ------------------------------ | ---- | ----------------------- | -------------------------------------------------------------------------------- |
+| `wave.tokens`                  | 计数 | 消耗的 token 数         | `model` + `type`（input / output / cache_read / cache_creation）                 |
+| `wave.sessions`                | 计数 | 启动的 Agent 会话数     | —                                                                                |
+| `wave.lines.changed`           | 计数 | 编辑类工具增删的行数    | `direction`（added / removed）                                                   |
+| `wave.commits`                 | 计数 | 经由工具创建的提交数    | —                                                                                |
+| `wave.pull_requests`           | 计数 | 经由工具创建的 PR/MR 数 | —                                                                                |
+| `wave.active_time`             | 计数 | 活跃时长（秒）          | `type`（user / cli）                                                             |
+| `wave.code_edit_tool.decision` | 计数 | 编辑类工具的权限决策数  | `decision`（accept / reject）+ `source` + `tool_name` + `language`（能推断出时） |
 
 - **失败不记用量**：一次请求失败时拿不到 usage，因此不产生 `wave.tokens`；失败本身走事件日志（`error` 事件），不在指标里重复计数。
 - **零值不上报**：编辑结果里为 0 或缺失的一侧不产生记录，纯新增与纯删除因此可区分。
 - **创建动作按调用判定**：`wave.commits` / `wave.pull_requests` 只看这次工具调用是否**成功创建**了提交 / PR——对齐 Claude Code 的 `commit.count` / `pull_request.count` 口径（不看是否被合并、不看后续改动）。判定不询问任何 Git 托管平台，因此私有化 GitLab 与 GitHub 同等成立；一次调用最多计一次，失败的调用不计。
 - **进程级累加**：指标按进程累加，不随单个会话结束而重置；压缩（compaction）后 token 继续累加在同一计数器上。
+- **活跃时长不是在线时长**：`wave.active_time` 每次只上报一段**已闭合的区间长度**（不是累计值、更不是进程存活时长），`type=cli` 只覆盖 agent 真正在跑的时间——模型调用与工具执行，弹窗等待用户批准的那段被排除；并行/嵌套的操作按墙钟只算一次。`type=user` 把相邻两次输入间隔**小于 5 秒**的那段算作在场，更长的间隔视为挂机不计。**按会话分桶**：长驻进程里的多个会话各记各的（同一进程并发跑两个会话时，两者之和会超过进程墙钟），属性带各自的 `session.id`。
+- **编辑类工具的决策只认 `Edit` / `Write`**：每次权限决策记一次（允许与拒绝都计，不是每次工具调用），`source` 取 `config`（配置规则、权限模式、worktree 安全、plan 文件范围）／`hook`（`PermissionRequest` hook 决定）／`user_permanent`（你选的持久化规则）／`user_temporary`（只对本会话生效的允许）／`user_abort`（弹窗被取消）／`user_reject`（明确拒绝）／`unknown`；`language` 由目标文件扩展名推导，推导不出时该属性不出现，文件路径本身从不上报。
 
 ### 归属属性 (Attributes) {#otel-attributes}
 

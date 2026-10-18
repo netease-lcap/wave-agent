@@ -2,8 +2,9 @@
  * OpenTelemetry Metrics
  *
  * The operational metric families (see docs/specs/enterprise/opentelemetry.md):
- * token usage, session count, lines changed and the creation actions (commits,
- * pull requests). Instruments are created once per initialized MeterProvider by
+ * token usage, session count, lines changed, the creation actions (commits,
+ * pull requests), active time and the edit-tool permission decisions.
+ * Instruments are created once per initialized MeterProvider by
  * `initMetrics()`; until then — and after `resetMetrics()` — every record call
  * is a no-op, so callers never have to check whether telemetry is on.
  *
@@ -17,6 +18,35 @@ import type { Attributes, Counter, Meter } from "@opentelemetry/api";
 import { standardAttributes } from "./attributes.js";
 import type { ToolActivity } from "./toolActivity.js";
 import type { HostEntrypoint } from "../constants/telemetry.js";
+import type { PermissionDecisionSource } from "../types/permissions.js";
+import { EDIT_TOOL_NAME, WRITE_TOOL_NAME } from "../constants/tools.js";
+
+/** Which side of the session the active time was spent on. */
+export type ActiveTimeType = "user" | "cli";
+
+/** One edit-tool permission decision, as recorded by the metrics family. */
+export interface CodeEditToolDecisionRecord {
+  /** Whether the tool was allowed to run */
+  decision: "accept" | "reject";
+  /** Where the decision came from */
+  source: PermissionDecisionSource;
+  /** `Edit` or `Write` */
+  toolName: string;
+  /** Language of the target file, when it can be named (see `language.ts`) */
+  language?: string;
+}
+
+/**
+ * Tools whose permission decisions are counted — Claude Code's
+ * `CODE_EDITING_TOOLS`. Wave has no notebook tool, so the set is Edit + Write;
+ * both funnel their decision through `PermissionManager.checkPermission`.
+ */
+const CODE_EDITING_TOOLS: readonly string[] = [EDIT_TOOL_NAME, WRITE_TOOL_NAME];
+
+/** Whether a tool's permission decision belongs to `wave.code_edit_tool.decision`. */
+export function isCodeEditingTool(toolName: string): boolean {
+  return CODE_EDITING_TOOLS.includes(toolName);
+}
 
 /** One LLM response's token usage, as recorded by the metrics family. */
 export interface TokenUsageRecord {
@@ -62,6 +92,8 @@ let sessions: Counter | undefined;
 let linesChanged: Counter | undefined;
 let commits: Counter | undefined;
 let pullRequests: Counter | undefined;
+let activeTime: Counter | undefined;
+let codeEditDecisions: Counter | undefined;
 
 /** Whether the instruments above are live (the policy only matters then). */
 let active = false;
@@ -104,6 +136,15 @@ export function initMetrics(
     description: "Pull requests or merge requests created through a tool",
     unit: "{pull_request}",
   });
+  activeTime = meter.createCounter("wave.active_time", {
+    description:
+      "Active time, by type: the user at the prompt, or the agent working",
+    unit: "s",
+  });
+  codeEditDecisions = meter.createCounter("wave.code_edit_tool.decision", {
+    description:
+      "Permission decisions on Edit and Write, accepted or rejected, by source",
+  });
 }
 
 /** Drop the instruments: telemetry was shut down, later records must no-op. */
@@ -113,6 +154,8 @@ export function resetMetrics(): void {
   linesChanged = undefined;
   commits = undefined;
   pullRequests = undefined;
+  activeTime = undefined;
+  codeEditDecisions = undefined;
   active = false;
 }
 
@@ -205,4 +248,48 @@ export function recordLinesChanged(
       direction: "removed",
     });
   }
+}
+
+/**
+ * Record a closed stretch of active time, in seconds.
+ *
+ * Each call carries a **length**, never a total or a "now minus something
+ * started long ago" value: the caller closes an interval when it ends, so a
+ * resident process (the daemon) does not turn this into uptime. Whether the
+ * values read as deltas or as a running total is decided by the reader's
+ * temporality, exactly like every other counter here.
+ */
+export function recordActiveTime(
+  seconds: number,
+  type: ActiveTimeType,
+  context?: RecordContext,
+): void {
+  if (!(seconds > 0)) return;
+  activeTime?.add(seconds, { ...attributesWithContext(context), type });
+}
+
+/**
+ * Record one permission decision on an edit tool.
+ *
+ * Called once per decision — not per tool call — and for the two code-editing
+ * tools only: a `Read` or `Bash` decision says nothing about how much friction
+ * editing has. A rejected decision counts the same as an accepted one; the two
+ * are told apart by the `decision` attribute.
+ */
+export function recordCodeEditDecision(
+  record: CodeEditToolDecisionRecord,
+  context?: RecordContext,
+): void {
+  if (!isCodeEditingTool(record.toolName)) return;
+
+  const attributes: Attributes = {
+    ...attributesWithContext(context),
+    decision: record.decision,
+    source: record.source,
+    tool_name: record.toolName,
+  };
+  if (record.language) {
+    attributes.language = record.language;
+  }
+  codeEditDecisions?.add(1, attributes);
 }

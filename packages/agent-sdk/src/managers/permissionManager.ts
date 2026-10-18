@@ -11,15 +11,25 @@ import os from "node:os";
 import { minimatch } from "minimatch";
 import type {
   PermissionDecision,
+  PermissionDecisionSource,
   ToolPermissionContext,
   PermissionCallback,
   PermissionMode,
 } from "../types/permissions.js";
 import {
+  OPERATION_CANCELLED_BY_USER,
   RESTRICTED_TOOLS,
   USER_INTERACTION_REQUIRED_TOOLS,
 } from "../types/permissions.js";
 import type { Logger } from "../types/index.js";
+import { entrypointOf } from "../telemetry/entrypoint.js";
+import { beginUserWait, endUserWait } from "../telemetry/activity.js";
+import {
+  recordCodeEditDecision,
+  type RecordContext,
+} from "../telemetry/metrics.js";
+import { languageFromPath } from "../telemetry/language.js";
+import type { MessageManager } from "./messageManager.js";
 import {
   splitBashCommand,
   stripEnvVars,
@@ -118,6 +128,28 @@ export function resolveAdditionalDirectory(
   return path.resolve(dir);
 }
 
+/**
+ * Where an answer that came back from the user originated.
+ *
+ * The host hands back a plain `PermissionDecision`, so the label is read from
+ * the shape of the answer: a rule to persist is the only "always" answer the
+ * prompt can give; dismissing the prompt has its own message.
+ */
+function userSourceOf(decision: PermissionDecision): PermissionDecisionSource {
+  if (decision.behavior === "allow") {
+    return decision.newPermissionRule ? "user_permanent" : "user_temporary";
+  }
+  return decision.message === OPERATION_CANCELLED_BY_USER
+    ? "user_abort"
+    : "user_reject";
+}
+
+/** A resolved decision plus where it came from — the latter telemetry-only. */
+interface PermissionResolution {
+  decision: PermissionDecision;
+  source: PermissionDecisionSource;
+}
+
 export interface PermissionManagerOptions {
   /** Configured permission mode from settings */
   configuredPermissionMode?: PermissionMode;
@@ -205,6 +237,20 @@ export class PermissionManager {
    */
   private getWorkdir(): string | undefined {
     return this.container.get<string>("Workdir");
+  }
+
+  /**
+   * Standard attribution of this session's records — the same shape the other
+   * managers build, resolved late because a container is wired up around this
+   * manager rather than before it.
+   */
+  private telemetryContext(): RecordContext {
+    const messageManager = this.container.get<MessageManager>("MessageManager");
+    return {
+      sessionId: messageManager?.getSessionId(),
+      workdir: this.workdir ?? this.getWorkdir(),
+      entrypoint: entrypointOf(this.container),
+    };
   }
 
   /**
@@ -562,10 +608,42 @@ export class PermissionManager {
   /**
    * Check if a tool execution requires permission and handle the authorization flow
    * Called by individual tools after validation/diff, before real operation
+   *
+   * This is the single point where a permission decision lands: every tool that
+   * asks for one comes through here, so it is also where the decision is
+   * counted (`wave.code_edit_tool.decision` — edit tools only, see
+   * `recordCodeEditDecision`).
    */
   async checkPermission(
     context: ToolPermissionContext,
   ): Promise<PermissionDecision> {
+    const { decision, source } = await this.resolvePermission(context);
+
+    recordCodeEditDecision(
+      {
+        decision: decision.behavior === "allow" ? "accept" : "reject",
+        source,
+        toolName: context.toolName,
+        language: languageFromPath(
+          typeof context.toolInput?.file_path === "string"
+            ? context.toolInput.file_path
+            : undefined,
+        ),
+      },
+      this.telemetryContext(),
+    );
+
+    return decision;
+  }
+
+  /**
+   * Resolve the decision itself, plus where it came from. Split from
+   * {@link checkPermission} so every path out carries its source and the
+   * recording happens exactly once.
+   */
+  private async resolvePermission(
+    context: ToolPermissionContext,
+  ): Promise<PermissionResolution> {
     // 0. Check instance-specific denied rules first - Deny always takes precedence
     for (const rule of this.instanceDeniedRules) {
       if (this.matchesRule(context, rule)) {
@@ -574,8 +652,11 @@ export class PermissionManager {
           rule,
         });
         return {
-          behavior: "deny",
-          message: `Access to tool '${context.toolName}' is explicitly denied by instance rule: ${rule}`,
+          decision: {
+            behavior: "deny",
+            message: `Access to tool '${context.toolName}' is explicitly denied by instance rule: ${rule}`,
+          },
+          source: "config",
         };
       }
     }
@@ -588,8 +669,11 @@ export class PermissionManager {
           rule,
         });
         return {
-          behavior: "deny",
-          message: `Access to tool '${context.toolName}' is explicitly denied by rule: ${rule}`,
+          decision: {
+            behavior: "deny",
+            message: `Access to tool '${context.toolName}' is explicitly denied by rule: ${rule}`,
+          },
+          source: "config",
         };
       }
     }
@@ -642,8 +726,11 @@ export class PermissionManager {
               workdir: effectiveWorkdir,
             });
             return {
-              behavior: "deny",
-              message: `Access denied: You are currently in a worktree session ("${effectiveWorktreeName}"). Modifying files in the main repository (outside the worktree) is not allowed. Please only modify files within the worktree directory: ${effectiveWorkdir}`,
+              decision: {
+                behavior: "deny",
+                message: `Access denied: You are currently in a worktree session ("${effectiveWorktreeName}"). Modifying files in the main repository (outside the worktree) is not allowed. Please only modify files within the worktree directory: ${effectiveWorkdir}`,
+              },
+              source: "config",
             };
           }
         } else if (isInsideMainRepo && !isInsideWorktree) {
@@ -655,8 +742,11 @@ export class PermissionManager {
             workdir: effectiveWorkdir,
           });
           return {
-            behavior: "deny",
-            message: `Access denied: You are currently in a worktree session ("${effectiveWorktreeName}"). Modifying files in the main repository (outside the worktree) is not allowed. Please only modify files within the worktree directory: ${effectiveWorkdir}`,
+            decision: {
+              behavior: "deny",
+              message: `Access denied: You are currently in a worktree session ("${effectiveWorktreeName}"). Modifying files in the main repository (outside the worktree) is not allowed. Please only modify files within the worktree directory: ${effectiveWorkdir}`,
+            },
+            source: "config",
           };
         }
       }
@@ -677,7 +767,7 @@ export class PermissionManager {
         USER_INTERACTION_REQUIRED_TOOLS as readonly string[]
       ).includes(context.toolName);
       if (!requiresUserInteraction) {
-        return { behavior: "allow" };
+        return { decision: { behavior: "allow" }, source: "config" };
       }
     }
 
@@ -705,7 +795,7 @@ export class PermissionManager {
             );
             // Fall through to normal permission check flow to trigger confirmation prompt
           } else {
-            return { behavior: "allow" };
+            return { decision: { behavior: "allow" }, source: "config" };
           }
         }
       }
@@ -736,7 +826,7 @@ export class PermissionManager {
                 });
 
                 if (allPathsSafe) {
-                  return { behavior: "allow" };
+                  return { decision: { behavior: "allow" }, source: "config" };
                 }
               }
             }
@@ -747,7 +837,10 @@ export class PermissionManager {
 
     // 1.2 Check if tool call is allowed by persistent or temporary rules
     if (this.isAllowedByRule(context)) {
-      return { behavior: "allow" };
+      // Which source the matching rule came from is not recoverable: the rules
+      // are matched as one union, and a chained command's leaves may each hit a
+      // different source. Reported as `config`, never guessed at.
+      return { decision: { behavior: "allow" }, source: "config" };
     }
 
     // 1.3 If plan mode, allow Read-only tools and Edit/Write for plan file
@@ -761,20 +854,23 @@ export class PermissionManager {
           const absolutePlanPath = path.resolve(this.planFilePath);
 
           if (absoluteTargetPath === absolutePlanPath) {
-            return { behavior: "allow" };
+            return { decision: { behavior: "allow" }, source: "config" };
           }
         }
 
         return {
-          behavior: "deny",
-          message: `In plan mode, you are only allowed to edit the designated plan file: ${this.planFilePath || "not set"}.`,
+          decision: {
+            behavior: "deny",
+            message: `In plan mode, you are only allowed to edit the designated plan file: ${this.planFilePath || "not set"}.`,
+          },
+          source: "config",
         };
       }
     }
 
     // 2. If not a restricted tool, always allow
     if (!this.isRestrictedTool(context.toolName)) {
-      return { behavior: "allow" };
+      return { decision: { behavior: "allow" }, source: "config" };
     }
 
     // 2.1 If dontAsk mode, auto-deny restricted tools that were not allowed by rules above
@@ -783,22 +879,33 @@ export class PermissionManager {
         toolName: context.toolName,
       });
       return {
-        behavior: "deny",
-        message: `Tool '${context.toolName}' was automatically denied because 'dontAsk' permission mode is active and no pre-approved rule matches this call.`,
+        decision: {
+          behavior: "deny",
+          message: `Tool '${context.toolName}' was automatically denied because 'dontAsk' permission mode is active and no pre-approved rule matches this call.`,
+        },
+        source: "config",
       };
     }
 
     // 3. If custom callback provided, call it and return result
     if (context.canUseToolCallback) {
+      // The confirmation dialog is the user's time, not the agent's: close the
+      // session's active-time interval while it is up, so a prompt answered
+      // half an hour later does not read as half an hour of work.
+      const telemetry = this.telemetryContext();
+      beginUserWait(telemetry);
       try {
-        const decision = await context.canUseToolCallback(context);
-        if (decision.behavior !== "allow") {
+        const answered = await context.canUseToolCallback(context);
+        if (answered.behavior !== "allow") {
           logger?.debug("Custom callback returned decision", {
             toolName: context.toolName,
-            decision,
+            decision: answered,
           });
         }
-        return decision;
+        // A `source` on the answer is telemetry plumbing (the PermissionRequest
+        // hook labels itself); it does not belong on the decision a tool sees.
+        const { source, ...decision } = answered;
+        return { decision, source: source ?? userSourceOf(decision) };
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
@@ -807,9 +914,14 @@ export class PermissionManager {
           error: errorMessage,
         });
         return {
-          behavior: "deny",
-          message: "Error in permission callback",
+          decision: {
+            behavior: "deny",
+            message: "Error in permission callback",
+          },
+          source: "unknown",
         };
+      } finally {
+        endUserWait(telemetry);
       }
     }
 
@@ -822,8 +934,11 @@ export class PermissionManager {
       },
     );
     return {
-      behavior: "deny",
-      message: `Tool '${context.toolName}' requires permission approval. No permission callback configured.`,
+      decision: {
+        behavior: "deny",
+        message: `Tool '${context.toolName}' requires permission approval. No permission callback configured.`,
+      },
+      source: "unknown",
     };
   }
 

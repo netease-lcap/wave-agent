@@ -309,6 +309,9 @@ export function setupAgentContainer(
                 message:
                   processResult.errorMessage ||
                   "Permission denied by hook execution",
+                // A hook decided, not the user: the prompt never appeared, so
+                // `checkPermission` must not read this as a rejection.
+                source: "hook" as const,
               };
             }
           }

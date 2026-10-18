@@ -14,6 +14,7 @@ import type {
 import { logger } from "../utils/globalLogger.js";
 import { createHeadersHelperProvider } from "./headersHelper.js";
 import { initMetrics, resetMetrics } from "./metrics.js";
+import { resetActivity } from "./activity.js";
 import {
   resolveFirstPartyChannel,
   resolveFirstPartyEnabled,
@@ -734,6 +735,9 @@ export async function shutdownTelemetry(): Promise<void> {
     currentConfig = undefined;
     headersProvider = undefined;
     resetMetrics();
+    // The activity tracker holds an open interval per session; nothing it could
+    // still record is wanted after shutdown.
+    resetActivity();
   }
 }
 

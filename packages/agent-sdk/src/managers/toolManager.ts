@@ -66,6 +66,7 @@ import {
 import type { RecordContext } from "../telemetry/metrics.js";
 import { entrypointOf } from "../telemetry/attributes.js";
 import { detectBashActivity } from "../telemetry/toolActivity.js";
+import { trackCliOperation } from "../telemetry/activity.js";
 
 export interface ToolManagerOptions {
   container: Container;
@@ -314,6 +315,25 @@ class ToolManager {
    * @returns Promise resolving to the tool execution result
    */
   async execute(
+    name: string,
+    args: Record<string, unknown>,
+    context: ToolContext,
+  ): Promise<ToolResult> {
+    // One tool execution is one CLI-active operation for its session. Nested
+    // and parallel calls collapse into a single interval — the set the activity
+    // tracker keeps is what makes concurrent work count once, not per call.
+    return trackCliOperation(
+      "tool",
+      recordContextOf(context, this.container),
+      () => this.executeTool(name, args, context),
+    );
+  }
+
+  /**
+   * The body of {@link execute}: resolve the effective permission mode and the
+   * per-session wiring, then run the tool.
+   */
+  private async executeTool(
     name: string,
     args: Record<string, unknown>,
     context: ToolContext,

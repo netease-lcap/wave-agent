@@ -26,6 +26,33 @@ export type PermissionMode =
   | "plan"
   | "dontAsk";
 
+/**
+ * Where a permission decision came from, for `wave.code_edit_tool.decision`'s
+ * `source` attribute (aligned with Claude Code's vocabulary).
+ *
+ * - `config` — the SDK decided on its own: deny rules, permission mode
+ *   (`bypassPermissions` / `acceptEdits` / `plan` / `dontAsk`), a stored or
+ *   session rule, the worktree safety check, or plan-file scope.
+ * - `hook` — a `PermissionRequest` hook decided.
+ * - `user_permanent` — the user answered the prompt and the answer persists
+ *   (a new rule is written to settings).
+ * - `user_temporary` — the user answered the prompt for this session only.
+ * - `user_abort` — the prompt was dismissed (`OPERATION_CANCELLED_BY_USER`).
+ * - `user_reject` — the user declined.
+ * - `unknown` — nothing left a usable trace (e.g. a callback that threw).
+ *
+ * The user-facing labels are inferred from the shape of the decision when the
+ * host does not say (see `checkPermission`); a hook labels itself.
+ */
+export type PermissionDecisionSource =
+  | "config"
+  | "hook"
+  | "user_permanent"
+  | "user_temporary"
+  | "user_abort"
+  | "user_reject"
+  | "unknown";
+
 /** Result of a permission check */
 export interface PermissionDecision {
   /** Whether to allow or deny the operation */
@@ -38,6 +65,13 @@ export interface PermissionDecision {
   newPermissionRule?: string;
   /** Signal to add a directory to this session's Safe Zone (not persisted) */
   newAdditionalDirectory?: string;
+  /**
+   * Where the decision came from (telemetry only, never surfaced to the user).
+   * Set by the SDK's own decision points — a `PermissionRequest` hook labels
+   * itself `hook` — and left undefined by hosts, which the SDK maps from the
+   * shape of the decision.
+   */
+  source?: PermissionDecisionSource;
 }
 
 /** Callback function for custom permission logic */

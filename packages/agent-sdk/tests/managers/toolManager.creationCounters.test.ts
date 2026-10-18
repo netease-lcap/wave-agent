@@ -10,14 +10,18 @@ import type { BackgroundTaskManager } from "@/managers/backgroundTaskManager.js"
 import type { IForegroundTaskManager } from "@/types/processes.js";
 import type { ILspManager } from "@/types/index.js";
 
-const { recordLinesChanged, recordToolActivity } = vi.hoisted(() => ({
-  recordLinesChanged: vi.fn(),
-  recordToolActivity: vi.fn(),
-}));
+const { recordLinesChanged, recordToolActivity, recordActiveTime } = vi.hoisted(
+  () => ({
+    recordLinesChanged: vi.fn(),
+    recordToolActivity: vi.fn(),
+    recordActiveTime: vi.fn(),
+  }),
+);
 
 vi.mock("@/telemetry/metrics.js", () => ({
   recordLinesChanged,
   recordToolActivity,
+  recordActiveTime,
 }));
 
 const baseContext = {

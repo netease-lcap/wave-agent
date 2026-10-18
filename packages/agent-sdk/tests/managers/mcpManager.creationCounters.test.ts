@@ -3,11 +3,15 @@ import { McpManager } from "../../src/managers/mcpManager.js";
 import { Container } from "../../src/utils/container.js";
 import type { ToolContext } from "../../src/tools/types.js";
 
-const { recordToolActivity } = vi.hoisted(() => ({
+const { recordToolActivity, recordActiveTime } = vi.hoisted(() => ({
   recordToolActivity: vi.fn(),
+  recordActiveTime: vi.fn(),
 }));
 
-vi.mock("../../src/telemetry/metrics.js", () => ({ recordToolActivity }));
+vi.mock("../../src/telemetry/metrics.js", () => ({
+  recordToolActivity,
+  recordActiveTime,
+}));
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
   logger: {

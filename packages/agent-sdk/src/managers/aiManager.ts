@@ -83,6 +83,7 @@ import {
   resetContentEventState,
 } from "../telemetry/events.js";
 import { recordTokenUsage } from "../telemetry/metrics.js";
+import { trackCliOperation } from "../telemetry/activity.js";
 import { entrypointOf } from "../telemetry/attributes.js";
 import type { HostEntrypoint } from "../constants/telemetry.js";
 import type { BackgroundTask } from "../types/processes.js";
@@ -2017,7 +2018,11 @@ ${question}`;
             this.telemetryContext,
           ).catch(() => {}); // Non-blocking
 
-          const result = await aiService.callAgent(callAgentOptions);
+          const result = await trackCliOperation(
+            "llm",
+            this.telemetryContext,
+            () => aiService.callAgent(callAgentOptions),
+          );
 
           // Record the token kinds this response consumed, by model — the
           // fleet-level view of cost.

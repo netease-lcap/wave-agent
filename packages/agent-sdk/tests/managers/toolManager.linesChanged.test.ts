@@ -16,6 +16,19 @@ const { recordLinesChanged } = vi.hoisted(() => ({
 
 vi.mock("@/telemetry/metrics.js", () => ({ recordLinesChanged }));
 
+/**
+ * The active-time tracker runs for real in production; here it is reduced to
+ * "which operation was declared" plus the call itself, so the assertion is
+ * about the wiring rather than about elapsed milliseconds.
+ */
+const { trackCliOperation } = vi.hoisted(() => ({
+  trackCliOperation: vi.fn(
+    (_kind: string, _context: unknown, run: () => unknown) => run(),
+  ),
+}));
+
+vi.mock("@/telemetry/activity.js", () => ({ trackCliOperation }));
+
 const baseContext = {
   sessionId: "session-1",
   workdir: "/repo/worktree",
@@ -90,6 +103,18 @@ describe("ToolManager line-delta metric", () => {
     await manager.execute("Edit", {}, baseContext);
 
     expect(recordLinesChanged).not.toHaveBeenCalled();
+  });
+
+  it("declares the execution as CLI-active time for its session", async () => {
+    const manager = buildManager({ success: true, content: "Edited" });
+
+    await manager.execute("Edit", {}, baseContext);
+
+    expect(trackCliOperation).toHaveBeenCalledWith(
+      "tool",
+      baseRecordContext,
+      expect.any(Function),
+    );
   });
 
   it("stays silent when the tool failed, even with a delta attached", async () => {
