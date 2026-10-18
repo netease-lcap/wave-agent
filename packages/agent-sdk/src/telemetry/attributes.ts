@@ -21,7 +21,6 @@ import {
   getOrCreateAnonymousId,
 } from "../services/authService.js";
 import type { HostEntrypoint } from "../constants/telemetry.js";
-import type { Container } from "../utils/container.js";
 
 /** What the caller knows about the record it is about to make. */
 export interface StandardAttributeContext {
@@ -68,16 +67,11 @@ export function getTerminalType(): string | undefined {
 }
 
 /**
- * The entrypoint a session declared when it was created, read from the agent's
- * DI container — where `setupContainer` stores it, already narrowed to the known
- * table (see `normalizeEntrypoint`).
- *
- * Behind an accessor because five managers read it while making records and the
- * container token is a bare string: one place to keep them from drifting.
+ * The entrypoint a session declared when it was created — re-exported from its
+ * own module so callers that need nothing else from this file (identity, the
+ * repository lookup) can import it without dragging that machinery along.
  */
-export function entrypointOf(container: Container): HostEntrypoint | undefined {
-  return container.get<HostEntrypoint>("Entrypoint");
-}
+export { entrypointOf } from "./entrypoint.js";
 
 let cachedServiceVersion: string | undefined;
 

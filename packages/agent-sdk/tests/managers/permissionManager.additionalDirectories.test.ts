@@ -13,7 +13,10 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
   },
 }));
 
-const HOME = "/home/tester";
+// Hoisted so the `node:os` mock below can reference it: `vi.mock` factories run
+// before the module body, and anything that reaches `utils/constants.ts` reads
+// `homedir()` while the imports are still resolving.
+const { HOME } = vi.hoisted(() => ({ HOME: "/home/tester" }));
 
 vi.mock("node:os", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:os")>();

@@ -78,6 +78,8 @@ const COUNTER_NAMES = [
   "wave.lines.changed",
   "wave.commits",
   "wave.pull_requests",
+  "wave.active_time",
+  "wave.code_edit_tool.decision",
 ];
 
 function setupMocks() {

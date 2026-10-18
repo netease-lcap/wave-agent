@@ -60,6 +60,11 @@ import {
 } from "./telemetry/instrumentation.js";
 import { logOTelEvent } from "./telemetry/events.js";
 import { recordSession } from "./telemetry/metrics.js";
+import type { RecordContext } from "./telemetry/metrics.js";
+import {
+  flushSessionActivity,
+  recordUserActivity,
+} from "./telemetry/activity.js";
 import { entrypointOf } from "./telemetry/attributes.js";
 import { remoteSettingsService } from "./services/remoteSettingsService.js";
 
@@ -316,6 +321,18 @@ export class Agent {
   // Public getter methods
   public get sessionId(): string {
     return this.messageManager.getSessionId();
+  }
+
+  /**
+   * Standard attribution of this session's telemetry records: which session,
+   * where, and (when the host declared one) which entrypoint created it.
+   */
+  private get telemetryContext(): RecordContext {
+    return {
+      sessionId: this.messageManager.getSessionId(),
+      workdir: this.workdir,
+      entrypoint: entrypointOf(this.container),
+    };
   }
 
   public get messages(): Message[] {
@@ -820,11 +837,7 @@ export class Agent {
     // Log session_start event
     try {
       const modelConfig = this.getModelConfig();
-      const sessionContext = {
-        sessionId: this.messageManager.getSessionId(),
-        workdir: this.workdir,
-        entrypoint: entrypointOf(this.container),
-      };
+      const sessionContext = this.telemetryContext;
       if (modelConfig.model) {
         await logOTelEvent(
           "session_start",
@@ -853,11 +866,19 @@ export class Agent {
     sessionId: string,
     options?: { workdir?: string },
   ): Promise<void> {
+    const previousSessionId = this.messageManager.getSessionId();
     await InteractionService.restoreSession(
       this.interactionContext(),
       sessionId,
       options,
     );
+
+    // The agent now points at another session: close whatever the previous one
+    // still had open and drop its bucket, so a long-lived agent that hops
+    // between sessions does not leave one per session behind.
+    if (previousSessionId && previousSessionId !== sessionId) {
+      flushSessionActivity(previousSessionId);
+    }
   }
 
   /**
@@ -1100,12 +1121,13 @@ export class Agent {
         totalTokens: String(this.messageManager.getLatestTotalTokens()),
         exitReason: "destroy",
       },
-      {
-        sessionId: this.messageManager.getSessionId(),
-        workdir: this.workdir,
-        entrypoint: entrypointOf(this.container),
-      },
+      this.telemetryContext,
     ).catch(() => {});
+
+    // Record whatever active time is still open for this session before its
+    // metrics are flushed, and drop its activity state so a resident daemon
+    // does not accumulate one bucket per session ever opened.
+    flushSessionActivity(this.messageManager.getSessionId());
     await flushTelemetry();
 
     // Clear message queue callback first to prevent any late triggers from
@@ -1264,6 +1286,12 @@ export class Agent {
     images?: Array<{ path: string; mimeType: string }>,
   ): Promise<void> {
     this.assertNotDestroyed();
+
+    // A message is the user's interaction with this session — the SDK-level
+    // equivalent of typing at the prompt. Recorded before the busy check so a
+    // queued message counts too; consecutive messages under five seconds apart
+    // are what `wave.active_time{type=user}` measures.
+    recordUserActivity(this.telemetryContext);
 
     // If the agent is busy, enqueue the message — unless it's an immediate
     // slash command (e.g., /clear, /compact) that should execute

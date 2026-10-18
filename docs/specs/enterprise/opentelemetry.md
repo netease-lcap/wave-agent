@@ -30,7 +30,7 @@ order: 30
 
 ### 用户故事：运营指标（对齐 Claude Code 的指标面，优先级：P1）
 
-作为把 Wave 接入企业度量平台的接入方，我希望有稳定命名的运营指标，覆盖成本（token 用量）与产出（代码行数、会话数、提交数与 PR/MR 数），以便直接填进既有看板做容量规划与成本分摊，而不是靠解析事件日志自行聚合。
+作为把 Wave 接入企业度量平台的接入方，我希望有稳定命名的运营指标，覆盖成本（token 用量）、产出（代码行数、会话数、提交数与 PR/MR 数）、活动量（活跃时长）与摩擦（编辑类工具的权限决策），以便直接填进既有看板做容量规划与成本分摊，而不是靠解析事件日志自行聚合。
 
 **为什么是这个优先级**：metrics 是 fleet 级问题的答案（哪个模型贵、用量是否回落、产出有多大），也是企业侧唯一能低成本长期保留的信号；事件日志适合审计、解析成本高。
 
@@ -41,10 +41,16 @@ order: 30
 - 用量类：`wave.tokens`（计数，按 `model` + `type`：input / output / cache_read / cache_creation）
 - 会话类：`wave.sessions`（计数）
 - 产出类：`wave.lines.changed`（计数，按 `direction`：added / removed，来源为编辑类工具的执行结果）、`wave.commits`（计数，来源为经由工具成功创建提交的动作）、`wave.pull_requests`（计数，PR 与 MR 合入同一计数，来源为经由 shell 命令或 MCP 工具成功发起创建 PR/MR 的动作）
+- 活动类：`wave.active_time`（计数，单位秒，按 `type`：user / cli，来源为已闭合的活跃区间长度）
+- 摩擦类：`wave.code_edit_tool.decision`（计数，按 `decision`：accept / reject，外加 `source`、`tool_name`、`language`，来源为编辑类工具的每次权限决策）
 
 其中 `wave.commits` / `wave.pull_requests` 对齐 Claude Code 的 `commit.count` / `pull_request.count` 口径：**只认「经由工具、且成功」的创建动作**，不看结果是否被合并、不依赖任何托管平台（私有化 GitLab 与 GitHub 同等成立），也不按托管平台或仓库拆分序列；标准归属属性按「统一的归属属性面」一节统一附带。
 
-指标面刻意不收请求次数、请求耗时与错误率：Claude Code 的指标集里没有这三项的对位（其指标覆盖会话数、代码行数、提交数、PR 数、成本、token 用量、编辑工具决策与活跃时长，同样不含请求侧计数），请求侧信息留在事件日志（`error` / `tool_decision` 等）里由审计侧消费——指标面只保留能跨客户横向对齐的家族，不为「多一个维度」把序列数撑开。
+`wave.active_time` 对位 Claude Code 的 `active_time.total`，但**口径按会话而不是按进程**：同一进程承载多个会话时（daemon、桌面端远程主机），每个会话各自一段区间、各自归属自己的 `session.id`，因此多会话并发时按会话求和会大于进程墙钟——这是刻意的，它回答「这个会话干了多久」，不回答「进程活了多久」。`type=cli` 只计 agent 实际在跑的区间（模型调用、工具执行），**弹窗等待用户决策与提问等待的时间被排除**；并行与嵌套操作按墙钟只计一次。`type=user` 只计相邻两次用户输入间隔**小于 5 秒**的那段，长间隔视为挂机不计——该口径与 Claude Code 一致。
+
+`wave.code_edit_tool.decision` 对位 Claude Code 的同名指标：只覆盖 `Edit` / `Write`（wave 没有 notebook 编辑工具），**每次权限决策记一次**（不是每次工具调用），被拒绝的决策同样计数。`source` 限定在 `config` / `hook` / `user_permanent` / `user_temporary` / `user_abort` / `user_reject` / `unknown` 七值内；`language` 由目标文件扩展名推导，推导不出时不带该属性，文件路径本身永不上报。`cost.usage` 不在这一组内：wave 的费用于服务端按计价规则计算，客户端自算会造出第二个口径。
+
+指标面刻意不收请求次数、请求耗时与错误率：Claude Code 的指标集里没有这三项的对位（其指标覆盖会话数、代码行数、提交数、PR 数、成本、token 用量、编辑工具决策与活跃时长，同样不含请求侧计数），请求侧信息留在事件日志（`error` / `tool_decision` 等）里由审计侧消费——指标面只保留能跨客户横向对齐的家族，不为「多一个维度」把序列数撑开。Claude Code 八族里唯一没有对位的是成本（`cost.usage`）：费用在服务端按计价规则算，客户端再算一份只会得到两个对不上的口径。
 
 指标名、单位与维度在两条通道上完全一致；**值的语义（temporality）与导出节奏按通道分别定义**——首方为 DELTA / 5 分钟，客户自建收集器为累计 / 60 秒，见「两条通道的聚合语义各按各的消费方定」。
 
@@ -60,6 +66,12 @@ order: 30
 8. **假设** 创建提交的命令执行失败（非 0 退出），**则** `wave.commits` 不递增；由脚本内部或非提交类命令（如 `git merge`）间接产生的提交也不计——口径与 Claude Code 一致，只认「经由工具、且成功」的建提交动作。
 9. **假设** OTEL 指标已启用，**当** agent 经由 shell 命令（如 `gh pr create`、`glab mr create`）或 MCP 的建 PR/MR 工具成功创建了一个 PR 或 MR 时，**则** `wave.pull_requests` 递增一次；创建失败的调用不计；PR 与 MR 不作区分，同一个计数。
 10. **假设** 这两个指标已启用，**则** 它们不带模型维度、也不因托管平台不同而分裂序列，并且不依赖任何 Git 托管平台的 API 或凭据——私有化 GitLab 与公有 GitHub 场景下行为一致；标准归属属性（会话与身份）按统一规则附带。
+11. **假设** OTEL 指标已启用，**当** agent 发起一次模型调用并在其中逐个执行工具时，**则** `wave.active_time{type=cli}` 只按**墙钟**记一段（并行与嵌套的工具执行、模型调用不叠加重计），每次上报的是这段已闭合区间**本身的长度**——既不是累计值，也不随进程存活时长增长。
+12. **假设** 用户连续两次输入消息，**当** 两次之间的间隔小于 5 秒时，**则** `wave.active_time{type=user}` 记下这段间隔；间隔达到 5 秒或更长时视为挂机，不记。
+13. **假设** 一次工具调用在权限弹窗上等待用户批准（或等待问答工具的回答），**当** 该轮结束时，**则** 等待的这段时间不计入 `wave.active_time{type=cli}`；同一段时间也不会以 `type=user` 重复计入。
+14. **假设** 同一进程里两个会话同时在跑 agent（daemon 承载多会话），**当** 两个会话各自结束时，**则** 各自按自己的会话归属记一段 `type=cli` 的活跃时长，两条数据点带各自的 `session.id`，互不串味；此时按会话求和可以大于进程墙钟时间——该指标回答的是会话活跃时长，不是进程在线时长。
+15. **假设** OTEL 指标已启用，**当** 用户对一次 `Edit` 调用做了权限决策时，**则** `wave.code_edit_tool.decision` 记一次，`decision` 为 `accept` 或 `reject`（被拒绝同样计数），并带上 `source`（`config` / `hook` / `user_permanent` / `user_temporary` / `user_abort` / `user_reject` / `unknown`）与 `tool_name`；能从目标文件路径推出语言时再带 `language`，推不出时不带该属性。
+16. **假设** 一次会话里发生 `Bash`、`Read` 与 MCP 工具的权限决策，**当** 记录指标时，**则** 这些工具**不**产生 `wave.code_edit_tool.decision`——该指标只覆盖编辑类工具（`Edit` / `Write`）。
 
 ---
 
