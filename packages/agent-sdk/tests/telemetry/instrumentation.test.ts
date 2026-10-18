@@ -71,10 +71,8 @@ function fakeHelperChild(stdout: string): EventEmitter {
   return child;
 }
 
-/** The eight instrument names the metrics module creates on the meter. */
+/** The five instrument names the metrics module creates on the meter. */
 const COUNTER_NAMES = [
-  "wave.api.requests",
-  "wave.api.errors",
   "wave.tokens",
   "wave.sessions",
   "wave.lines.changed",
@@ -954,10 +952,7 @@ describe("instrumentation", () => {
       expect(createdCounterNames(mocks.mockCreateCounter)).toEqual(
         COUNTER_NAMES,
       );
-      expect(mocks.mockCreateHistogram).toHaveBeenCalledWith(
-        "wave.api.duration",
-        { description: "LLM API request duration", unit: "ms" },
-      );
+      expect(mocks.mockCreateHistogram).not.toHaveBeenCalled();
     });
 
     it("should not create instruments when only logs are exported", async () => {

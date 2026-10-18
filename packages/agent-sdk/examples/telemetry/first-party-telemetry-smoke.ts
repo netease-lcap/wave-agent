@@ -148,7 +148,7 @@ async function apiGet<T>(path: string, token: string): Promise<T> {
   return (await res.json()) as T;
 }
 
-/** 两轮真实请求：纯问答产生 api.requests / tokens，写文件才产生 wave.lines.changed。 */
+/** 两轮真实请求：纯问答产生 wave.tokens，写文件才产生 wave.lines.changed。 */
 async function sendTurns(current: Agent): Promise<void> {
   const prompts = [
     "用一句中文回答：1+1 等于几？不要调用任何工具。",

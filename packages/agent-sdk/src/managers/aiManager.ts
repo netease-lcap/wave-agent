@@ -82,7 +82,7 @@ import {
   logRequestContentEvents,
   resetContentEventState,
 } from "../telemetry/events.js";
-import { recordApiRequest } from "../telemetry/metrics.js";
+import { recordTokenUsage } from "../telemetry/metrics.js";
 import { entrypointOf } from "../telemetry/attributes.js";
 import type { HostEntrypoint } from "../constants/telemetry.js";
 import type { BackgroundTask } from "../types/processes.js";
@@ -1820,10 +1820,6 @@ ${question}`;
       let maxOutputTokensRecoveryCount = 0;
 
       inner: while (true) {
-        // Set right before an API request goes out and cleared when it comes
-        // back, so the catch below can tell "the request failed" (record it)
-        // from "something else broke" (not an API call, nothing to record).
-        let llmRequestStartMs: number | undefined;
         try {
           // Save session in each iteration to ensure message persistence
           await this.messageManager.saveSession();
@@ -2021,16 +2017,13 @@ ${question}`;
             this.telemetryContext,
           ).catch(() => {}); // Non-blocking
 
-          llmRequestStartMs = Date.now();
           const result = await aiService.callAgent(callAgentOptions);
 
-          // Record the request in the metric families: count/duration always,
-          // token kinds by model — the fleet-level view of cost and latency.
-          recordApiRequest(
+          // Record the token kinds this response consumed, by model — the
+          // fleet-level view of cost.
+          recordTokenUsage(
             {
               model: model || this.getModelConfig().model || "",
-              durationMs: Date.now() - llmRequestStartMs,
-              success: true,
               inputTokens: result.usage?.prompt_tokens,
               outputTokens: result.usage?.completion_tokens,
               cacheReadTokens: result.usage?.cache_read_input_tokens,
@@ -2038,7 +2031,6 @@ ${question}`;
             },
             this.telemetryContext,
           );
-          llmRequestStartMs = undefined;
 
           if (result.stream_fallback && assistantMessageCreated) {
             // The streamed attempt died mid-body and the request was re-issued
@@ -2351,19 +2343,6 @@ ${question}`;
           // No tool calls (or stop conditions) → inner loop done
           break inner;
         } catch (error) {
-          // Record a request that was in flight when it failed — it consumed
-          // wall clock and is exactly what the error rate is meant to capture.
-          if (llmRequestStartMs !== undefined) {
-            recordApiRequest(
-              {
-                model: model || this.getModelConfig().model || "",
-                durationMs: Date.now() - llmRequestStartMs,
-                success: false,
-              },
-              this.telemetryContext,
-            );
-          }
-
           // Log error event
           logOTelEvent(
             "error",
