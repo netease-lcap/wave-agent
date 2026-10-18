@@ -9,10 +9,26 @@
  * - `handleClosed(reason)` marks the transport dead and rejects every pending
  *   request. Idempotent — safe to call from both dispose() and an exit/close
  *   event on the underlying transport.
+ *
+ * The public API is typed with the SDK's method unions (same ones `RpcClient`
+ * uses) rather than `string`, so every call site in the desktop is checked at
+ * compile time against the CLI's actual protocol: a typo or a method that only
+ * exists on the other side of the wire fails the build instead of dying at
+ * runtime as -32601. Both transports speak the same CLI protocol — stdio to a
+ * local `wave --stdio` child, the unix socket to a remote daemon — so one
+ * union covers both; there is no transport-specific method space to keep wide.
+ *
+ * The wire itself is still untrusted: `handleLine` reads `obj.method` as a
+ * plain string and looks it up in the handler map.
  */
 
 import { createInterface } from "readline";
 import type { Readable } from "stream";
+import type {
+  ClientNotificationMethod,
+  RequestMethod,
+  ServerNotificationMethod,
+} from "wave-agent-sdk/host";
 
 export type NotificationHandler = (params: unknown, sessionId?: string) => void;
 
@@ -68,7 +84,7 @@ export abstract class JsonRpcClient {
   }
 
   async request(
-    method: string,
+    method: RequestMethod,
     params?: unknown,
     sessionId?: string,
   ): Promise<unknown> {
@@ -88,14 +104,21 @@ export abstract class JsonRpcClient {
     });
   }
 
-  notify(method: string, params?: unknown, sessionId?: string): void {
+  notify(
+    method: ClientNotificationMethod,
+    params?: unknown,
+    sessionId?: string,
+  ): void {
     if (this.closed) return;
     const envelope: Record<string, unknown> = { method, params };
     if (sessionId) envelope.sessionId = sessionId;
     this.writeLine(JSON.stringify(envelope) + "\n");
   }
 
-  onNotification(method: string, handler: NotificationHandler): void {
+  onNotification(
+    method: ServerNotificationMethod,
+    handler: NotificationHandler,
+  ): void {
     let set = this.handlers.get(method);
     if (!set) {
       set = new Set();
@@ -104,7 +127,10 @@ export abstract class JsonRpcClient {
     set.add(handler);
   }
 
-  offNotification(method: string, handler: NotificationHandler): void {
+  offNotification(
+    method: ServerNotificationMethod,
+    handler: NotificationHandler,
+  ): void {
     this.handlers.get(method)?.delete(handler);
   }
 

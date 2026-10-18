@@ -95,6 +95,23 @@ import { parseVersion, compareVersions } from "./version";
 import { HOST_CHANNEL } from "./channels";
 import type { PanelKind } from "./menu";
 
+/**
+ * The mutations the settings page can trigger, spelled out here instead of
+ * taking the caller's `string`. These two helpers forward the method straight
+ * to the CLI (and key a toast off it), so the set is closed on this side too:
+ * the `request(method, …)` call inside each helper is what ties these aliases
+ * back to `RequestMethod`, and a typo at the call site is a compile error
+ * rather than an -32601 at runtime.
+ */
+type PluginMutationMethod =
+  | "installPlugin"
+  | "enablePlugin"
+  | "disablePlugin"
+  | "uninstallPlugin"
+  | "updatePlugin"
+  | "setPluginScope";
+type MarketplaceMutationMethod = "addMarketplace" | "removeMarketplace";
+
 interface PendingConfirmation {
   resolve: (decision: PermissionDecision) => void;
   /** Remote daemon requestId — used to dedup re-attached snapshots and to
@@ -6397,7 +6414,7 @@ export class DesktopHost {
    * 安装/卸载/更新/更换作用域之外的动作（启用/禁用）在文档口径外，不提示。
    */
   private showPluginMutationToast(
-    method: string,
+    method: PluginMutationMethod,
     params: Record<string, unknown>,
     plugins: PluginListRow[] | null,
   ): void {
@@ -6430,7 +6447,7 @@ export class DesktopHost {
   }
 
   private async handlePluginMutation(
-    method: string,
+    method: PluginMutationMethod,
     params: Record<string, unknown>,
   ): Promise<void> {
     try {
@@ -6613,7 +6630,7 @@ export class DesktopHost {
    * 移除用请求里的名字）。
    */
   private async handleMarketplaceMutation(
-    method: string,
+    method: MarketplaceMutationMethod,
     params: Record<string, unknown>,
   ): Promise<void> {
     try {

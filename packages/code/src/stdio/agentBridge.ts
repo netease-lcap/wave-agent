@@ -650,6 +650,8 @@ export class AgentBridge {
         // itself. Runtime behaviour is unchanged — `method` can still be an
         // arbitrary string once the transport boundary cast it.
         const _exhaustive: never = method;
+        // Kept referenced so the witness isn't an unused-variable lint error;
+        // it is never read at runtime.
         void _exhaustive;
         throw new RpcError(
           PROTOCOL_METHOD_NOT_FOUND,

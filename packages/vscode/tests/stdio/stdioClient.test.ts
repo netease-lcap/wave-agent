@@ -56,6 +56,21 @@ function createClient(
 // ── Import after mocks ─────────────────────────────────────────
 
 import { StdioClient } from "../../src/stdio/stdioClient";
+import type {
+  ClientNotificationMethod,
+  RequestMethod,
+  ServerNotificationMethod,
+} from "wave-agent-sdk/host";
+
+// The transport itself is method-agnostic — these tests drive it as a bare
+// JSON-RPC pipe and assert on the exact bytes, so most use synthetic method
+// names. `StdioClient` is typed with the protocol unions (that is the point:
+// a typo at a real call site is a compile error), so the synthetic names cross
+// that boundary right here: one cast per direction in this file, rather than a
+// cast at every call site.
+const wireMethod = (method: string) => method as RequestMethod;
+const wireNotify = (method: string) => method as ClientNotificationMethod;
+const wireNotification = (method: string) => method as ServerNotificationMethod;
 
 /** Await a promise that is expected to reject, returning the error. */
 async function expectReject(p: Promise<unknown>): Promise<Error> {
@@ -240,8 +255,8 @@ describe("StdioClient", () => {
   it("increments id for subsequent requests", async () => {
     const { client, proc, rl } = createClient();
 
-    const p1 = client.request("method1");
-    const p2 = client.request("method2");
+    const p1 = client.request(wireMethod("method1"));
+    const p2 = client.request(wireMethod("method2"));
 
     const sent1 = JSON.parse(proc.stdin.write.mock.calls[0][0]);
     const sent2 = JSON.parse(proc.stdin.write.mock.calls[1][0]);
@@ -258,7 +273,7 @@ describe("StdioClient", () => {
   it("rejects when server returns error", async () => {
     const { client, rl } = createClient();
 
-    const promise = client.request("failing");
+    const promise = client.request(wireMethod("failing"));
     rl.emit(
       "line",
       JSON.stringify({
@@ -275,7 +290,7 @@ describe("StdioClient", () => {
   it("supports params as undefined", async () => {
     const { client, proc, rl } = createClient();
 
-    const promise = client.request("noParams");
+    const promise = client.request(wireMethod("noParams"));
     const sent = JSON.parse(proc.stdin.write.mock.calls[0][0]);
     expect(sent).toEqual({ id: 1, method: "noParams", params: undefined });
 
@@ -328,7 +343,7 @@ describe("StdioClient", () => {
   it("notify with no params sends undefined params", () => {
     const { client, proc } = createClient();
 
-    client.notify("someNotification");
+    client.notify(wireNotify("someNotification"));
 
     const sent = JSON.parse(proc.stdin.write.mock.calls[0][0]);
     expect(sent.method).toBe("someNotification");
@@ -351,7 +366,7 @@ describe("StdioClient", () => {
   it("does not include sessionId in notify envelope when omitted", () => {
     const { client, proc } = createClient();
 
-    client.notify("someNotification");
+    client.notify(wireNotify("someNotification"));
 
     const sent = JSON.parse(proc.stdin.write.mock.calls[0][0]);
     expect(sent).not.toHaveProperty("sessionId");
@@ -452,7 +467,7 @@ describe("StdioClient", () => {
     const { client, rl } = createClient();
 
     const handler = vi.fn();
-    client.onNotification("test", handler);
+    client.onNotification(wireNotification("test"), handler);
 
     expect(() => {
       rl.emit("line", "this is not json");
@@ -495,7 +510,7 @@ describe("StdioClient", () => {
 
     client.dispose();
 
-    const error = await expectReject(client.request("test"));
+    const error = await expectReject(client.request(wireMethod("test")));
     expect(error).toBeInstanceOf(Error);
     expect(error.message).toBe(
       "连接已断开。wave 进程已退出，请重启编辑器或检查 CLI 安装。",
@@ -506,7 +521,7 @@ describe("StdioClient", () => {
     const { client, proc } = createClient();
 
     client.dispose();
-    client.notify("test");
+    client.notify(wireNotify("test"));
 
     expect(proc.stdin.write).not.toHaveBeenCalled();
   });
@@ -516,8 +531,8 @@ describe("StdioClient", () => {
   it("rejects all pending requests on process exit", async () => {
     const { client, proc } = createClient();
 
-    const p1 = expectReject(client.request("method1"));
-    const p2 = expectReject(client.request("method2"));
+    const p1 = expectReject(client.request(wireMethod("method1")));
+    const p2 = expectReject(client.request(wireMethod("method2")));
 
     proc.emit("exit", 1, null);
 
@@ -534,7 +549,7 @@ describe("StdioClient", () => {
 
     proc.emit("exit", 0, null);
 
-    const error = await expectReject(client.request("test"));
+    const error = await expectReject(client.request(wireMethod("test")));
     expect(error).toBeInstanceOf(Error);
     expect(error.message).toBe(
       "连接已断开。wave 进程已退出，请重启编辑器或检查 CLI 安装。",
@@ -576,7 +591,7 @@ describe("StdioClient", () => {
 
     proc.stderr.emit("data", Buffer.from("FATAL: cannot find module\n"));
 
-    const p = expectReject(client.request("method1"));
+    const p = expectReject(client.request(wireMethod("method1")));
     proc.emit("exit", 1, null);
 
     const err = await p;
@@ -617,7 +632,7 @@ describe("StdioClient", () => {
     ]);
     proc.stderr.emit("data", gbk);
 
-    const p = expectReject(client.request("method1"));
+    const p = expectReject(client.request(wireMethod("method1")));
     proc.emit("exit", 1, null);
 
     const err = await p;
