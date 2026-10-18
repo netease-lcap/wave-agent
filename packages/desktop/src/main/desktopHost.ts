@@ -1141,10 +1141,13 @@ export class DesktopHost {
     const paneIdOf = () => this.paneIdForAgent(agentRef);
 
     const callbacks: StdioAgentCallbacks = {
-      // NOTE: no full-list push here. The server no longer emits messagesChange,
-      // so every message callback below must mirror `agentRef.messages` itself —
-      // the desktop serves setInitialState straight from that cache on session /
-      // pane switches, with no pull. The only pull-based refreshes are restore
+      // NOTE: no full-list push here. `messagesChange` reaches this host only on
+      // the restoreSession re-attach branch, and it is a content-free signal —
+      // no `messages` field, not on the message stream's beat — so there is
+      // nothing in it to mirror. Every message callback below must maintain
+      // `agentRef.messages` itself — the desktop serves setInitialState straight
+      // from that cache on session / pane switches, with no pull. The only
+      // pull-based refreshes are restore
       // (getMessages) and the two fallbacks (a client without `requestId` on
       // rewind, and the compact fallback) via pullAndPushMessages;
       // webviewReady deliberately does NOT pull, it replays the cache through

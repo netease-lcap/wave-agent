@@ -563,6 +563,27 @@ class StdioAgent(
 
     suspend fun logout(): JsonElement =
         client.request("logout") ?: JsonObject(emptyMap())
+
+    /**
+     * Global (session-less) RPCs — user preferences.
+     *
+     * They live on the companion object rather than in the instance method table
+     * above because every method up there is reached through a live agent, while
+     * these two are deliberately independent of any session: the settings tab
+     * must read/write `~/.wave/settings.json` through the shared CLI process even
+     * when no chat session exists. They still belong here so the host never
+     * hand-writes a stdio RPC name — this file is the method table.
+     */
+    companion object {
+        /** Read user-level preferences (`~/.wave/settings.json`), effective values. */
+        suspend fun getUserSettings(client: StdioClient): JsonObject =
+            client.request("getUserSettings")?.jsonObject ?: JsonObject(emptyMap())
+
+        /** Write user-level preferences; the caller decides which keys may land. */
+        suspend fun updateUserSettings(client: StdioClient, patch: JsonObject) {
+            client.request("updateUserSettings", patch)
+        }
+    }
 }
 
 data class InitializeResult(

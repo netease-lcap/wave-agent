@@ -23,7 +23,6 @@ import type {
   AgentCallbacks,
   BackgroundTask,
   BackgroundTaskSummary,
-  Message,
   PermissionMode,
   ToolBlockUpdateCallbackParams,
   ToolPermissionContext,
@@ -101,12 +100,12 @@ export const remoteWire = {
   }),
 
   /**
-   * `messagesChange` has two shapes (spec「messagesChange 的两种形态」): the host
-   * snapshot, which the relay never sees because the remote path strips the list
-   * before sending (`RemoteControlService.sendNotification`), and the content-free
-   * signal the phone answers with `getMessages({ since })`.
+   * `messagesChange` has exactly one shape now — content-free, on **every** path
+   * (spec「messagesChange 只有一种形态」): the bridge's re-attach push, the
+   * foreground CLI's structural notice and the relay's fan-out all carry `{}`.
+   * The phone answers it with `getMessages({ since })`; no producer attaches the
+   * list.
    */
-  messagesChangeSnapshot: (messages: Message[]) => ({ messages }),
   messagesChangeSignal: () => ({}),
 } as const;
 

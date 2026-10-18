@@ -12,9 +12,11 @@ import readline from "readline";
 import type { Readable, Writable } from "stream";
 import { AgentBridge } from "./agentBridge.js";
 import {
+  type ClientNotificationMethod,
   type JsonRpcRequest,
   type JsonRpcResponse,
   type JsonRpcNotification,
+  type RequestMethod,
   PARSE_ERROR,
   INVALID_REQUEST,
   INTERNAL_ERROR,
@@ -123,8 +125,12 @@ export class JsonRpcConnection {
 
   private async handleRequest(msg: JsonRpcRequest): Promise<void> {
     try {
+      // The boundary and the only cast: JSON-RPC `method` is untrusted input.
+      // Anything outside the union still reaches the bridge and is answered by
+      // its `default:` branch with -32601 — the type stops at this line, and no
+      // runtime allow-list is duplicated here.
       const result = await this.bridge.handleRequest(
-        msg.method,
+        msg.method as RequestMethod,
         msg.params,
         msg.sessionId,
       );
@@ -141,7 +147,10 @@ export class JsonRpcConnection {
 
   private handleNotification(msg: JsonRpcNotification): void {
     try {
-      this.bridge.handleNotification(msg.method, msg.params);
+      this.bridge.handleNotification(
+        msg.method as ClientNotificationMethod,
+        msg.params,
+      );
     } catch (err) {
       // Notifications don't get responses, but we log to stderr
       process.stderr.write(

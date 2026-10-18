@@ -35,6 +35,7 @@ import type {
   SubagentConfiguration,
   SkillMetadata,
   RemoteControlSnapshot,
+  ServerNotificationMethod,
 } from "../types/index.js";
 import type { RpcClient } from "./rpcClient.js";
 import type { NotificationRouter } from "./notificationRouter.js";
@@ -677,7 +678,7 @@ export class StdioAgent {
 
   // ── Notification dispatch (called by NotificationRouter) ──────
 
-  handleNotification(method: string, params: unknown): void {
+  handleNotification(method: ServerNotificationMethod, params: unknown): void {
     switch (method) {
       case "userMessageAdded": {
         const p = params as { message: Message };

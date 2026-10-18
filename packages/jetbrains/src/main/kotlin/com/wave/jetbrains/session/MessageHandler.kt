@@ -9,6 +9,7 @@ import com.wave.jetbrains.WaveBackendService
 import com.wave.jetbrains.WavePanelHolder
 import com.wave.jetbrains.bridge.PlanPreviewBuilder
 import com.wave.jetbrains.ide.IdeService
+import com.wave.jetbrains.stdio.StdioAgent
 import com.wave.jetbrains.stdio.StdioClientException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -1299,7 +1300,7 @@ class MessageHandler(
      */
     private suspend fun readUserSettings(): JsonObject {
         val (client, _) = WaveBackendService.getInstance(project).ensureClient()
-        return client.request("getUserSettings")?.jsonObject ?: JsonObject(emptyMap())
+        return StdioAgent.getUserSettings(client)
     }
 
     /**
@@ -1325,7 +1326,7 @@ class MessageHandler(
             data["completionEnabled"]?.let { put("completionEnabled", it) }
         }
         val (client, _) = WaveBackendService.getInstance(project).ensureClient()
-        client.request("updateUserSettings", patch)
+        StdioAgent.updateUserSettings(client, patch)
     }
 
     private suspend fun handleWebviewReady(keepMessages: Boolean = false) {

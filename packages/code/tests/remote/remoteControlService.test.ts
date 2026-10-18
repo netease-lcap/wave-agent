@@ -547,11 +547,11 @@ describe("RemoteControlService", () => {
     ).not.toThrow();
   });
 
-  it("should turn the full-list snapshot into a content-free signal", async () => {
-    // The bridge's `messagesChange` carries every display message; forwarding it
-    // verbatim would put a 13 MB frame on the relay. The signal keeps the same
-    // method name and drops the payload — the page reads the two shapes apart
-    // (spec remote-control「messagesChange 的两种形态」).
+  it("should strip a payload from messagesChange and forward only the signal", async () => {
+    // Producers in this build already send `{}`, so this test guards the older
+    // producer shape: a build that still attaches the display list must not put
+    // a multi-MB frame on the relay, and the phone must keep seeing exactly one
+    // shape (spec remote-control「messagesChange 只有一种形态」).
     const service = await connect(createBridgeStub());
     socket.sent.length = 0;
 

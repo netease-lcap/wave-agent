@@ -16,6 +16,8 @@ import {
   readUserPreferenceView,
   updateUserPreferenceSettings,
   normalizeEntrypoint,
+  type ClientNotificationMethod,
+  type RequestMethod,
 } from "wave-agent-sdk";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -2011,9 +2013,12 @@ test("unknown method throws METHOD_NOT_FOUND", async () => {
 
   await bridge.handleRequest("initialize", {});
 
-  await expect(bridge.handleRequest("nonexistentMethod", {})).rejects.toThrow(
-    "Method not found: nonexistentMethod",
-  );
+  // The transport hands `method` over as an untrusted string; that is exactly
+  // what the connection layer casts, so the bridge must still answer -32601
+  // rather than trusting the type.
+  await expect(
+    bridge.handleRequest("nonexistentMethod" as unknown as RequestMethod, {}),
+  ).rejects.toThrow("Method not found: nonexistentMethod");
 });
 
 test("calling method before initialize throws INTERNAL_ERROR", async () => {
@@ -3037,7 +3042,7 @@ test("restoreSession to a live streaming session emits the current loading state
   });
 });
 
-test("restoreSession to the live session emits a messagesChange snapshot without replaying", async () => {
+test("restoreSession to the live session emits a content-free messagesChange signal without replaying", async () => {
   const { bridge, notifications } = createBridge();
   const mockAgent = createMockAgent({
     messages: [
@@ -3056,19 +3061,19 @@ test("restoreSession to the live session emits a messagesChange snapshot without
   await bridge.handleRequest("restoreSession", { sessionId }, sessionId);
 
   expect(mockAgent.restoreSession).not.toHaveBeenCalled();
+  // The signal, not a snapshot: the re-attached client pulls `getMessages`
+  // itself, so building a multi-MB list here would be pure cost. The absence of
+  // `messages` is the point of this assertion, not an incidental detail.
   expect(notifications).toContainEqual({
     method: "messagesChange",
-    params: {
-      messages: [
-        {
-          id: "msg-1",
-          role: "user",
-          blocks: [{ type: "text", content: "hello" }],
-        },
-      ],
-    },
+    params: {},
     sessionId,
   });
+  const messagesChange = notifications.filter(
+    (n) => n.method === "messagesChange",
+  );
+  expect(messagesChange).toHaveLength(1);
+  expect(messagesChange[0].params).not.toHaveProperty("messages");
 });
 
 test("restoreSession to the live session replays the current contextUsage so the re-attached client shows this session's usage", async () => {
@@ -3360,8 +3365,13 @@ test("updatePlugin delegates to PluginCore", async () => {
 
 test("handleNotification ignores unknown methods", () => {
   const { bridge } = createBridge();
+  // Same untrusted-input path as above: an unknown notification is dropped, not
+  // an error.
   // Should not throw
-  bridge.handleNotification("unknownMethod", {});
+  bridge.handleNotification(
+    "unknownMethod" as unknown as ClientNotificationMethod,
+    {},
+  );
 });
 
 test("handleNotification with unknown requestId does nothing", () => {

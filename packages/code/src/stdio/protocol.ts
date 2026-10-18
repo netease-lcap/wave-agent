@@ -44,142 +44,20 @@ export const METHOD_NOT_FOUND = -32601;
 export const INVALID_PARAMS = -32602;
 export const INTERNAL_ERROR = -32603;
 
-// ── Client → Server request methods ─────────────────────────────
-
-export type RequestMethod =
-  | "initialize"
-  | "destroy"
-  | "restoreSession"
-  | "listSessions"
-  | "listAllSessions"
-  | "renameSession"
-  | "getSessionInfo"
-  | "sendMessage"
-  | "bang"
-  | "askBtw"
-  | "abortMessage"
-  | "clearMessages"
-  | "rewindToMessage"
-  | "listRewindCheckpoints"
-  | "deleteQueuedMessage"
-  | "updateQueuedMessage"
-  | "deleteQueuedMessageById"
-  | "getMessages"
-  | "getFullMessageThread"
-  | "setPermissionMode"
-  | "getPermissionMode"
-  | "getPlanFile"
-  | "getMcpServers"
-  | "connectMcpServer"
-  | "disconnectMcpServer"
-  | "removeMcpServer"
-  | "getMcpConfigPaths"
-  | "getSlashCommands"
-  | "getSubagentConfigurations"
-  | "getSkillMetadata"
-  | "deleteSkill"
-  | "deleteSubagent"
-  | "getHooksByScope"
-  | "deleteHook"
-  | "searchFiles"
-  | "writeArtifactFile"
-  | "getPromptHistory"
-  | "searchPromptHistory"
-  | "updateConfig"
-  | "getConfiguredModels"
-  | "setModel"
-  // User preferences (global — read/write user-level ~/.wave/settings.json,
-  // 设置页保存路径，见 docs/specs/core/agent-config.md「设置实时重载」)
-  | "getUserSettings"
-  | "updateUserSettings"
-  // Permissions (daemon attach: re-surface pending approvals after reconnect)
-  | "listPendingPermissions"
-  // Daemon (global — list in-memory session registry, no session required)
-  | "listDaemonSessions"
-  // Remote control (daemon-level: the outbound relay connection that serves a
-  // paired phone). The bridge only routes these to the daemon's controller —
-  // see src/remote/remoteControlService.ts.
-  | "remoteControlStatus"
-  | "remoteControlConnect"
-  | "remoteControlDisconnect"
-  // Auth
-  | "getAuthStatus"
-  | "getAccountInfo"
-  | "login"
-  | "logout"
-  // Git (deep link: install the credential helper git calls for repositories
-  // cloned from the link)
-  | "installGitCredentialHelper"
-  // Memory files (user-level ~/.wave/AGENTS.md and project-level <workdir>/AGENTS.md)
-  | "getAgentsContent"
-  | "setAgentsContent"
-  // Plugins
-  | "listPlugins"
-  | "installPlugin"
-  | "uninstallPlugin"
-  | "enablePlugin"
-  | "disablePlugin"
-  | "updatePlugin"
-  | "setPluginScope"
-  | "reloadPlugins"
-  | "listMarketplaces"
-  | "addMarketplace"
-  | "removeMarketplace"
-  | "updateMarketplace"
-  | "compact"
-  | "getBackgroundTaskOutput"
-  | "stopBackgroundTask"
-  | "getWorkflowRuns"
-  | "stopWorkflowRun"
-  // Git / worktree (global — no session required)
-  | "listGitBranches"
-  | "createWorktree"
-  | "getWorktreeChanges"
-  | "removeWorktree"
-  // Filesystem (global — no session required): the new-session directory
-  // pickers. Host-agnostic like listGitBranches — whichever wave process
-  // receives it lists its own machine (desktop remote browser and the Web
-  // page share one implementation).
-  | "listDirectories"
-  // Read-only workspace diff for the desktop diff panel
-  | "getWorkspaceDiff"
-  // Inline (ghost-text) code completion for the editor plugins. Session-scoped:
-  // the model and the gateway credentials are resolved inside that session, and
-  // a new request supersedes the session's previous in-flight one.
-  | "getCompletion";
-
-// ── Client → Server notification methods ────────────────────────
-
-export type ClientNotificationMethod = "permissionResponse";
-
-// ── Server → Client notification methods ────────────────────────
-
-export type ServerNotificationMethod =
-  | "userMessageAdded"
-  | "assistantMessageAdded"
-  | "assistantMessageDiscarded"
-  | "assistantContentUpdated"
-  | "assistantReasoningUpdated"
-  | "toolBlockUpdated"
-  | "errorBlockAdded"
-  | "loadingChange"
-  | "commandRunningChange"
-  | "queuedMessagesChange"
-  | "tasksChange"
-  | "sessionIdChange"
-  | "permissionModeChange"
-  | "mcpServersChange"
-  | "workdirChange"
-  | "notificationMessageAdded"
-  | "permissionRequest"
-  | "authUrl"
-  | "compactBlockAdded"
-  | "compactionStateChange"
-  | "compactionContentUpdate"
-  | "planFileUpdated"
-  | "backgroundTasksChange"
-  | "btwContent"
-  | "contextUsage";
+// ── Method / notification lists ────────────────────────────────
+// Declared once, in the SDK (`src/types/stdioProtocol.ts`), because the RPC
+// client lives there too and both sides of the wire must read the same union.
+// Re-exported here so this package has one module to import from.
+//
+// The compiler — not a source-scanning test — is what keeps them honest: the
+// bridge's `default:` branch is `never`-checked, and `emit` / `RpcClient` are
+// typed with these unions, so a method added on one side without the other does
+// not build.
+export type {
+  ClientNotificationMethod,
+  RequestMethod,
+  ServerNotificationMethod,
+} from "wave-agent-sdk";
 
 // ── Helper: is this a request (has id)? ─────────────────────────
 

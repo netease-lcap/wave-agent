@@ -8,19 +8,32 @@
  * needs to know which transport backs it.
  */
 
+import type {
+  ClientNotificationMethod,
+  RequestMethod,
+  ServerNotificationMethod,
+} from "../types/stdioProtocol.js";
+
 export type NotificationHandler = (params: unknown, sessionId?: string) => void;
 
 export interface RpcClient {
   /** Send a request; resolves with the JSON-RPC result. */
   request(
-    method: string,
+    method: RequestMethod,
     params?: unknown,
     sessionId?: string,
   ): Promise<unknown>;
 
   /** Fire-and-forget JSON-RPC notification (no response expected). */
-  notify(method: string, params?: unknown, sessionId?: string): void;
+  notify(
+    method: ClientNotificationMethod,
+    params?: unknown,
+    sessionId?: string,
+  ): void;
 
   /** Subscribe to a server→client notification method. */
-  onNotification(method: string, handler: NotificationHandler): void;
+  onNotification(
+    method: ServerNotificationMethod,
+    handler: NotificationHandler,
+  ): void;
 }
