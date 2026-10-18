@@ -1566,20 +1566,17 @@ helper 命令跑在 shell 里（Windows 下是 Git Bash，与 hook 一致），s
 
 ### 指标 (Metrics) {#otel-metrics}
 
-指标回答的是车队级问题——哪个模型在吃预算、用量是否在涨、错误率有没有变。命名稳定在 `wave.*` 下，每个数据点在家族属性（模型 id、token 类型、行数方向）之外还会带上下面那套标准归属属性；属性面刻意保持低基数，**不含提示词、文件路径或任何内容级数据**。
+指标回答的是车队级问题——哪个模型在吃预算、用量是否在涨、产出有多大。命名稳定在 `wave.*` 下，每个数据点在家族属性（模型 id、token 类型、行数方向）之外还会带上下面那套标准归属属性；属性面刻意保持低基数，**不含提示词、文件路径或任何内容级数据**。
 
-| 指标                 | 类型   | 说明                    | 归属属性                                                         |
-| -------------------- | ------ | ----------------------- | ---------------------------------------------------------------- |
-| `wave.api.requests`  | 计数   | LLM 请求数              | `model`                                                          |
-| `wave.api.errors`    | 计数   | 失败的 LLM 请求数       | `model`                                                          |
-| `wave.api.duration`  | 直方图 | LLM 请求耗时（单位 ms） | `model`                                                          |
-| `wave.tokens`        | 计数   | 消耗的 token 数         | `model` + `type`（input / output / cache_read / cache_creation） |
-| `wave.sessions`      | 计数   | 启动的 Agent 会话数     | —                                                                |
-| `wave.lines.changed` | 计数   | 编辑类工具增删的行数    | `direction`（added / removed）                                   |
-| `wave.commits`       | 计数   | 经由工具创建的提交数    | —                                                                |
-| `wave.pull_requests` | 计数   | 经由工具创建的 PR/MR 数 | —                                                                |
+| 指标                 | 类型 | 说明                    | 归属属性                                                         |
+| -------------------- | ---- | ----------------------- | ---------------------------------------------------------------- |
+| `wave.tokens`        | 计数 | 消耗的 token 数         | `model` + `type`（input / output / cache_read / cache_creation） |
+| `wave.sessions`      | 计数 | 启动的 Agent 会话数     | —                                                                |
+| `wave.lines.changed` | 计数 | 编辑类工具增删的行数    | `direction`（added / removed）                                   |
+| `wave.commits`       | 计数 | 经由工具创建的提交数    | —                                                                |
+| `wave.pull_requests` | 计数 | 经由工具创建的 PR/MR 数 | —                                                                |
 
-- **失败也计时**：一次请求失败仍计入 `wave.api.requests` 与 `wave.api.duration`（失败的请求同样占了墙钟时间），并额外计入 `wave.api.errors`。
+- **失败不记用量**：一次请求失败时拿不到 usage，因此不产生 `wave.tokens`；失败本身走事件日志（`error` 事件），不在指标里重复计数。
 - **零值不上报**：编辑结果里为 0 或缺失的一侧不产生记录，纯新增与纯删除因此可区分。
 - **创建动作按调用判定**：`wave.commits` / `wave.pull_requests` 只看这次工具调用是否**成功创建**了提交 / PR——对齐 Claude Code 的 `commit.count` / `pull_request.count` 口径（不看是否被合并、不看后续改动）。判定不询问任何 Git 托管平台，因此私有化 GitLab 与 GitHub 同等成立；一次调用最多计一次，失败的调用不计。
 - **进程级累加**：指标按进程累加，不随单个会话结束而重置；压缩（compaction）后 token 继续累加在同一计数器上。

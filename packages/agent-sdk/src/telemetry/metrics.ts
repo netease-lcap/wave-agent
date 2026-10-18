@@ -2,8 +2,8 @@
  * OpenTelemetry Metrics
  *
  * The operational metric families (see docs/specs/enterprise/opentelemetry.md):
- * request counts / errors / duration, token usage, session count and lines
- * changed. Instruments are created once per initialized MeterProvider by
+ * token usage, session count, lines changed and the creation actions (commits,
+ * pull requests). Instruments are created once per initialized MeterProvider by
  * `initMetrics()`; until then — and after `resetMetrics()` — every record call
  * is a no-op, so callers never have to check whether telemetry is on.
  *
@@ -13,19 +13,15 @@
  * opt-in — the repository). No prompts, no file paths, no content of any kind.
  */
 
-import type { Attributes, Counter, Histogram, Meter } from "@opentelemetry/api";
+import type { Attributes, Counter, Meter } from "@opentelemetry/api";
 import { standardAttributes } from "./attributes.js";
 import type { ToolActivity } from "./toolActivity.js";
 import type { HostEntrypoint } from "../constants/telemetry.js";
 
-/** One LLM request's outcome, as recorded by the metrics family. */
-export interface ApiRequestRecord {
+/** One LLM response's token usage, as recorded by the metrics family. */
+export interface TokenUsageRecord {
   /** Model id the request went to (low-cardinality attribute) */
   model: string;
-  /** Wall-clock duration of the request in ms */
-  durationMs: number;
-  /** Whether the request completed without error */
-  success: boolean;
   inputTokens?: number;
   outputTokens?: number;
   cacheReadTokens?: number;
@@ -61,9 +57,6 @@ export interface MetricAttributePolicy {
   resourceAttributes: Attributes;
 }
 
-let apiRequests: Counter | undefined;
-let apiErrors: Counter | undefined;
-let apiDuration: Histogram | undefined;
 let tokens: Counter | undefined;
 let sessions: Counter | undefined;
 let linesChanged: Counter | undefined;
@@ -91,18 +84,6 @@ export function initMetrics(
 ): void {
   policy = attributePolicy ?? policy;
   active = true;
-  apiRequests = meter.createCounter("wave.api.requests", {
-    description: "LLM API requests",
-    unit: "{request}",
-  });
-  apiErrors = meter.createCounter("wave.api.errors", {
-    description: "Failed LLM API requests",
-    unit: "{request}",
-  });
-  apiDuration = meter.createHistogram("wave.api.duration", {
-    description: "LLM API request duration",
-    unit: "ms",
-  });
   tokens = meter.createCounter("wave.tokens", {
     description: "Tokens consumed, by model and kind",
     unit: "{token}",
@@ -127,9 +108,6 @@ export function initMetrics(
 
 /** Drop the instruments: telemetry was shut down, later records must no-op. */
 export function resetMetrics(): void {
-  apiRequests = undefined;
-  apiErrors = undefined;
-  apiDuration = undefined;
   tokens = undefined;
   sessions = undefined;
   linesChanged = undefined;
@@ -161,22 +139,14 @@ function attributesWithContext(context?: RecordContext): Attributes {
 }
 
 /**
- * Record one LLM request: count + duration always, error count on failure,
- * and the token kinds that came back. Called from both the success and the
- * failure path of the turn loop (a failed request still consumed wall clock).
+ * Record the token kinds one LLM response consumed, by model. Called from the
+ * success path only — a failed request brought back no usage to attribute.
  */
-export function recordApiRequest(
-  record: ApiRequestRecord,
+export function recordTokenUsage(
+  record: TokenUsageRecord,
   context?: RecordContext,
 ): void {
   const base = attributesWithContext(context);
-  const attributes = { ...base, model: record.model };
-  apiRequests?.add(1, attributes);
-  apiDuration?.record(record.durationMs, attributes);
-  if (!record.success) {
-    apiErrors?.add(1, attributes);
-  }
-
   const kinds: Array<[string, number | undefined]> = [
     ["input", record.inputTokens],
     ["output", record.outputTokens],

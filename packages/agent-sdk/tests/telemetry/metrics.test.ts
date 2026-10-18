@@ -13,35 +13,27 @@ const { standardAttributes } = vi.hoisted(() => ({
 vi.mock("@/telemetry/attributes.js", () => ({ standardAttributes }));
 
 type AddSpy = ReturnType<typeof vi.fn>;
-type RecordSpy = ReturnType<typeof vi.fn>;
 
 interface FakeInstrument {
   add: AddSpy;
-  record: RecordSpy;
 }
 
 /** A meter whose instruments are spies, keyed by metric name. */
 function fakeMeter() {
   const instruments = new Map<string, FakeInstrument>();
-  const make = (): FakeInstrument => ({ add: vi.fn(), record: vi.fn() });
+  const make = (): FakeInstrument => ({ add: vi.fn() });
 
   const createCounter = vi.fn((name: string) => {
     const instrument = make();
     instruments.set(name, instrument);
     return instrument;
   });
-  const createHistogram = vi.fn((name: string) => {
-    const instrument = make();
-    instruments.set(name, instrument);
-    return instrument;
-  });
 
   return {
-    meter: { createCounter, createHistogram } as unknown as Meter,
+    meter: { createCounter } as unknown as Meter,
     instruments,
     counter: (name: string) => instruments.get(name)!,
     createCounter,
-    createHistogram,
   };
 }
 
@@ -61,14 +53,6 @@ describe("metrics", () => {
   describe("initMetrics", () => {
     it("should create the documented metric families with their units", () => {
       expect(fake.createCounter.mock.calls).toEqual([
-        [
-          "wave.api.requests",
-          { description: "LLM API requests", unit: "{request}" },
-        ],
-        [
-          "wave.api.errors",
-          { description: "Failed LLM API requests", unit: "{request}" },
-        ],
         [
           "wave.tokens",
           {
@@ -100,53 +84,13 @@ describe("metrics", () => {
           },
         ],
       ]);
-      expect(fake.createHistogram.mock.calls).toEqual([
-        [
-          "wave.api.duration",
-          { description: "LLM API request duration", unit: "ms" },
-        ],
-      ]);
     });
   });
 
-  describe("recordApiRequest", () => {
-    it("should count the request and its duration on success", () => {
-      metrics.recordApiRequest({
-        model: "gemini-3-flash",
-        durationMs: 1234,
-        success: true,
-      });
-
-      expect(fake.counter("wave.api.requests").add).toHaveBeenCalledWith(1, {
-        model: "gemini-3-flash",
-      });
-      expect(fake.counter("wave.api.duration").record).toHaveBeenCalledWith(
-        1234,
-        { model: "gemini-3-flash" },
-      );
-      expect(fake.counter("wave.api.errors").add).not.toHaveBeenCalled();
-    });
-
-    it("should count a failure as an error as well", () => {
-      metrics.recordApiRequest({
-        model: "gemini-3-flash",
-        durationMs: 500,
-        success: false,
-      });
-
-      expect(fake.counter("wave.api.requests").add).toHaveBeenCalledTimes(1);
-      expect(fake.counter("wave.api.errors").add).toHaveBeenCalledWith(1, {
-        model: "gemini-3-flash",
-      });
-      // A failed request still consumed wall clock.
-      expect(fake.counter("wave.api.duration").record).toHaveBeenCalledTimes(1);
-    });
-
+  describe("recordTokenUsage", () => {
     it("should report every token kind that came back", () => {
-      metrics.recordApiRequest({
+      metrics.recordTokenUsage({
         model: "gemini-3-flash",
-        durationMs: 10,
-        success: true,
         inputTokens: 100,
         outputTokens: 20,
         cacheReadTokens: 900,
@@ -163,10 +107,8 @@ describe("metrics", () => {
     });
 
     it("should skip the token kinds the provider did not report", () => {
-      metrics.recordApiRequest({
+      metrics.recordTokenUsage({
         model: "gemini-3-flash",
-        durationMs: 10,
-        success: true,
         outputTokens: 20,
       });
 
@@ -276,8 +218,8 @@ describe("metrics", () => {
       standardAttributes.mockReturnValue({ "session.id": "session-1" });
       initWithPolicy({ includeSessionId: true });
 
-      metrics.recordApiRequest(
-        { model: "gemini-3-flash", durationMs: 12, success: true },
+      metrics.recordTokenUsage(
+        { model: "gemini-3-flash", inputTokens: 12 },
         { sessionId: "session-1", workdir: "/repo" },
       );
       metrics.recordSession({ sessionId: "session-1", workdir: "/repo" });
@@ -288,17 +230,11 @@ describe("metrics", () => {
         includeRepository: false,
         entrypoint: undefined,
       });
-      expect(fake.counter("wave.api.requests").add).toHaveBeenCalledWith(1, {
+      expect(fake.counter("wave.tokens").add).toHaveBeenCalledWith(12, {
         "session.id": "session-1",
         model: "gemini-3-flash",
+        type: "input",
       });
-      expect(fake.counter("wave.api.duration").record).toHaveBeenCalledWith(
-        12,
-        {
-          "session.id": "session-1",
-          model: "gemini-3-flash",
-        },
-      );
       expect(fake.counter("wave.sessions").add).toHaveBeenCalledWith(1, {
         "session.id": "session-1",
       });
@@ -417,7 +353,7 @@ describe("metrics", () => {
       const fresh = await import("@/telemetry/metrics.js");
 
       expect(() => {
-        fresh.recordApiRequest({ model: "m", durationMs: 1, success: false });
+        fresh.recordTokenUsage({ model: "m", outputTokens: 1 });
         fresh.recordSession();
         fresh.recordLinesChanged({ added: 1 });
         fresh.recordToolActivity({ commits: true, pullRequests: true });

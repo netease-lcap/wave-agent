@@ -24,13 +24,11 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
   },
 }));
 
-const { recordApiRequestMock } = vi.hoisted(() => ({
-  recordApiRequestMock:
+const { recordTokenUsageMock } = vi.hoisted(() => ({
+  recordTokenUsageMock:
     vi.fn<
       (record: {
         model: string;
-        durationMs: number;
-        success: boolean;
         inputTokens?: number;
         outputTokens?: number;
         cacheReadTokens?: number;
@@ -40,7 +38,7 @@ const { recordApiRequestMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("../../src/telemetry/metrics.js", () => ({
-  recordApiRequest: recordApiRequestMock,
+  recordTokenUsage: recordTokenUsageMock,
 }));
 
 // Mock node:fs
@@ -2002,12 +2000,12 @@ describe("AIManager", () => {
     });
   });
 
-  describe("AIManager API request metrics", () => {
+  describe("AIManager token usage metrics", () => {
     beforeEach(() => {
-      recordApiRequestMock.mockClear();
+      recordTokenUsageMock.mockClear();
     });
 
-    it("records the request, its duration and the reported token usage", async () => {
+    it("records the token usage the response reported", async () => {
       vi.mocked(aiService.callAgent).mockResolvedValueOnce({
         content: "ok",
         usage: {
@@ -2022,30 +2020,40 @@ describe("AIManager", () => {
 
       await aiManager.sendAIMessage();
 
-      expect(recordApiRequestMock).toHaveBeenCalledTimes(1);
-      const record = recordApiRequestMock.mock.calls[0]![0];
+      expect(recordTokenUsageMock).toHaveBeenCalledTimes(1);
+      const record = recordTokenUsageMock.mock.calls[0]![0];
       expect(record.model).toBe("test-agent-model");
-      expect(record.success).toBe(true);
       expect(record.inputTokens).toBe(100);
       expect(record.outputTokens).toBe(20);
       expect(record.cacheReadTokens).toBe(7);
       expect(record.cacheCreationTokens).toBe(3);
-      expect(record.durationMs).toBeGreaterThanOrEqual(0);
     });
 
-    it("records a request that failed while in flight", async () => {
+    it("attributes the token usage to the session it belongs to", async () => {
+      vi.mocked(aiService.callAgent).mockResolvedValueOnce({
+        content: "ok",
+        usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
+        tool_calls: [],
+      } as unknown as Awaited<ReturnType<typeof aiService.callAgent>>);
+
+      await aiManager.sendAIMessage();
+
+      expect(recordTokenUsageMock).toHaveBeenCalledWith(
+        expect.objectContaining({ model: "test-agent-model" }),
+        // A multi-session process can tell one turn from another.
+        expect.objectContaining({ sessionId: expect.any(String) }),
+      );
+    });
+
+    it("records nothing when the request failed", async () => {
       vi.mocked(aiService.callAgent).mockRejectedValueOnce(
         new Error("gateway down"),
       );
 
       await aiManager.sendAIMessage();
 
-      expect(recordApiRequestMock).toHaveBeenCalledWith(
-        expect.objectContaining({ model: "test-agent-model", success: false }),
-        // The request is attributed to the session it belongs to, so a
-        // multi-session process can tell one turn from another.
-        expect.objectContaining({ sessionId: expect.any(String) }),
-      );
+      // A failed request brought back no usage to attribute.
+      expect(recordTokenUsageMock).not.toHaveBeenCalled();
     });
   });
 });
