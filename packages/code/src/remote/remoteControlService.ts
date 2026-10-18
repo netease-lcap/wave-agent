@@ -10,10 +10,12 @@
  *
  * 1. **Coalescing.** Streamed deltas are merged over a short window
  *    (`NotificationCoalescer`); the local path keeps its per-chunk frames.
- * 2. **Structural pushes become signals.** `messagesChange` carries the whole
- *    display list (13 MB on a long session). Forwarding it would cancel the
- *    point of reading the tail: the phone answers the signal by pulling with
- *    `getMessages({ since })` — the same path a cold start takes.
+ * 2. **Structural pushes become signals.** `messagesChange` is content-free on
+ *    every path — the bridge's re-attach push and the foreground CLI's notice
+ *    both send `{}`. The phone answers it by pulling with
+ *    `getMessages({ since })` — the same path a cold start takes — and this
+ *    service still strips a payload from any build that attaches one, so the
+ *    wire has exactly one shape.
  * 3. **A status signal.** The relay cannot see inside the frames (that is the
  *    whole design), so it cannot know that somebody is waiting on an approval —
  *    which is the one state where pushing to a phone matters. The machine
@@ -501,12 +503,14 @@ export class RemoteControlService implements RemoteControlController {
     if (!this.client) return;
 
     if (method === "messagesChange") {
-      // Full-list snapshot. On a long session this is the largest frame the
-      // bridge can produce; the phone pulls what it actually needs instead.
-      // Same method name, no `messages` field: the two shapes of one
-      // notification are what the spec pins (「messagesChange 的两种形态」), and a
-      // phone that only ever saw the signal would otherwise have to treat the
-      // machine's newest build and an older one as two protocols.
+      // Signal only — and it stays that way for the phone no matter what the
+      // producing side did. Every producer in this build sends `{}` already (the
+      // bridge's re-attach push and the foreground CLI's structural notice), but
+      // an older machine may still attach the full list: dropping `params` here
+      // is what keeps the phone on one protocol instead of two
+      // (spec「messagesChange 只有一种形态」). Sending immediately rather than
+      // through the coalescer is the other half of this branch: a structural
+      // notice must not wait for the next delta window.
       this.send({ method: "messagesChange", sessionId });
       this.scheduleStatus();
       return;

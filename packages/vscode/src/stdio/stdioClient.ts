@@ -3,10 +3,22 @@
  *
  * Spawns `wave --stdio`, writes requests to stdin, reads responses and
  * notifications from stdout (one JSON object per line).
+ *
+ * The public API is typed with the SDK's method unions (same ones `RpcClient`
+ * uses) rather than `string`, so every call site in the extension is checked
+ * at compile time against the CLI's actual protocol: a typo or a method that
+ * only exists on the other side of the wire fails the build instead of dying
+ * at runtime as -32601. The wire itself stays untrusted — `handleLine` reads
+ * `obj.method` as a plain string and looks it up in the handler map.
  */
 
 import { type ChildProcess, spawn } from "child_process";
 import { createInterface } from "readline";
+import type {
+  ClientNotificationMethod,
+  RequestMethod,
+  ServerNotificationMethod,
+} from "wave-agent-sdk/host";
 import { hostLog } from "../hostLog";
 
 export type NotificationHandler = (params: unknown, sessionId?: string) => void;
@@ -123,7 +135,7 @@ export class StdioClient {
   // ── Public API ────────────────────────────────────────────────
 
   async request(
-    method: string,
+    method: RequestMethod,
     params?: unknown,
     sessionId?: string,
   ): Promise<unknown> {
@@ -143,7 +155,11 @@ export class StdioClient {
     });
   }
 
-  notify(method: string, params?: unknown, sessionId?: string): void {
+  notify(
+    method: ClientNotificationMethod,
+    params?: unknown,
+    sessionId?: string,
+  ): void {
     if (this.disposed) return;
     const envelope: Record<string, unknown> = { method, params };
     if (sessionId) envelope.sessionId = sessionId;
@@ -151,7 +167,10 @@ export class StdioClient {
     this.proc.stdin!.write(message);
   }
 
-  onNotification(method: string, handler: NotificationHandler): void {
+  onNotification(
+    method: ServerNotificationMethod,
+    handler: NotificationHandler,
+  ): void {
     let set = this.handlers.get(method);
     if (!set) {
       set = new Set();
@@ -160,7 +179,10 @@ export class StdioClient {
     set.add(handler);
   }
 
-  offNotification(method: string, handler: NotificationHandler): void {
+  offNotification(
+    method: ServerNotificationMethod,
+    handler: NotificationHandler,
+  ): void {
     this.handlers.get(method)?.delete(handler);
   }
 

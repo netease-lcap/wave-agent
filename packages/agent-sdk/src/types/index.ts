@@ -40,6 +40,7 @@ export * from "./telemetry.js";
 export * from "./auth.js";
 export * from "./workflow.js";
 export * from "./remoteControl.js";
+export * from "./stdioProtocol.js";
 
 // Types UI consumers (vsce, desktop webview) import via the `wave-agent-sdk/types`
 // entry; they live outside this barrel's domain files, so re-export them here

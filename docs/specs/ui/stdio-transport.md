@@ -191,7 +191,7 @@ order: 220
 
 **验收场景**：
 
-1. **假设** UI 需要完整消息列表（webviewReady、clearChat、restoreSession），**当**调用 `getMessages` 请求时，**则**StdioAgent 向 CLI 发起请求，将返回的 `Message[]` 更新到 `this.messages` 缓存。`messagesChange` 通知已从协议中移除，消息缓存不再由推送维护（压缩不走拉取——见「Webview 按需拉取全量消息」场景 7）。
+1. **假设** UI 需要完整消息列表（webviewReady、clearChat、restoreSession），**当**调用 `getMessages` 请求时，**则**StdioAgent 向 CLI 发起请求，将返回的 `Message[]` 更新到 `this.messages` 缓存。`messagesChange` 不再承载消息（它只剩 re-attach 时一条不含内容的结构信号，宿主收到后自己 `getMessages`），消息缓存不由推送维护（压缩不走拉取——见「Webview 按需拉取全量消息」场景 7）。
 2. **假设** CLI 推送 `tasksChange` 通知，**当**StdioAgent 处理该通知时，**则**更新 `this.tasks` 缓存并触发 `onTasksChange` 回调。
 3. **假设** CLI 推送 `permissionModeChange` 通知，**当**StdioAgent 处理该通知时，**则**更新 `this.permissionMode` 缓存并触发 `onPermissionModeChange` 回调。
 4. **假设** CLI 推送 `loadingChange` 通知，**当**StdioAgent 处理该通知时，**则**更新 `this.latestTotalTokens` 缓存并触发 `onLoadingChange` 回调。

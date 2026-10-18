@@ -14,6 +14,7 @@
  * 4. On `destroy`: `unregister(sessionId)` removes the agent
  */
 
+import type { ServerNotificationMethod } from "../types/stdioProtocol.js";
 import type { RpcClient } from "./rpcClient.js";
 
 type GlobalHandler = (params: unknown) => void;
@@ -22,7 +23,13 @@ type GlobalHandler = (params: unknown) => void;
 // dependency at runtime (StdioAgent imports NotificationRouter for its type).
 import type { StdioAgent } from "./stdioAgent.js";
 
-const ALL_NOTIFICATION_METHODS = [
+/**
+ * Subscribed methods, typed so a typo cannot reach `onNotification` — and so a
+ * method removed from the protocol shows up here as a compile error. It is a
+ * subset of the protocol on purpose: `messagesChange` is not subscribed (IDE
+ * hosts ignore it and pull `getMessages` themselves).
+ */
+const ALL_NOTIFICATION_METHODS: readonly ServerNotificationMethod[] = [
   "userMessageAdded",
   "assistantMessageAdded",
   "assistantMessageDiscarded",
@@ -82,11 +89,18 @@ export class NotificationRouter {
   }
 
   /** Register a global (non-session-scoped) notification handler. */
-  registerGlobal(method: string, handler: GlobalHandler): void {
+  registerGlobal(
+    method: ServerNotificationMethod,
+    handler: GlobalHandler,
+  ): void {
     this.globalHandlers.set(method, handler);
   }
 
-  private dispatch(method: string, params: unknown, sessionId?: string): void {
+  private dispatch(
+    method: ServerNotificationMethod,
+    params: unknown,
+    sessionId?: string,
+  ): void {
     if (sessionId) {
       const agent = this.sessions.get(sessionId);
       if (!agent) return; // early notification before register — drop (v1)

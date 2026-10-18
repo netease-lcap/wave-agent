@@ -133,9 +133,10 @@ describe("remoteNotifications", () => {
         toolInput: { command: "ls" },
       },
     });
-    // The two shapes of one method: the host snapshot the relay never sees (the
-    // remote path strips the list) and the content-free signal it forwards.
-    expect(remoteWire.messagesChangeSnapshot([])).toEqual({ messages: [] });
+    // One shape only: the content-free structural signal. There is no
+    // list-carrying variant left to test — the bridge and the CLI host both send
+    // this, and the relay strips a payload from any older build that still
+    // attaches one.
     expect(remoteWire.messagesChangeSignal()).toEqual({});
   });
 

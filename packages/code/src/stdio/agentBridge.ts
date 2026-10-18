@@ -62,7 +62,10 @@ import {
   normalizeEntrypoint,
 } from "wave-agent-sdk";
 import {
+  type ClientNotificationMethod,
   type JsonRpcError,
+  type RequestMethod,
+  type ServerNotificationMethod,
   INVALID_PARAMS as PROTOCOL_INVALID_PARAMS,
   INTERNAL_ERROR as PROTOCOL_INTERNAL_ERROR,
   METHOD_NOT_FOUND as PROTOCOL_METHOD_NOT_FOUND,
@@ -102,7 +105,7 @@ import { installGitCredentialHelper } from "../utils/gitCredentialHelper.js";
 import type { RemoteControlController } from "../remote/remoteControlService.js";
 
 export type NotificationEmitter = (
-  method: string,
+  method: ServerNotificationMethod,
   params: unknown,
   sessionId?: string,
 ) => void;
@@ -264,7 +267,7 @@ export class AgentBridge {
   // ── Public API ────────────────────────────────────────────────
 
   async handleRequest(
-    method: string,
+    method: RequestMethod,
     params: unknown,
     sessionId?: string,
   ): Promise<unknown> {
@@ -640,15 +643,25 @@ export class AgentBridge {
           sessionId,
         );
 
-      default:
+      default: {
+        // Type-level exhaustiveness, both directions: a union member without a
+        // `case` lands here as a non-`never` and fails to compile, and a `case`
+        // naming something outside the union fails to compile at the `case`
+        // itself. Runtime behaviour is unchanged — `method` can still be an
+        // arbitrary string once the transport boundary cast it.
+        const _exhaustive: never = method;
+        // Kept referenced so the witness isn't an unused-variable lint error;
+        // it is never read at runtime.
+        void _exhaustive;
         throw new RpcError(
           PROTOCOL_METHOD_NOT_FOUND,
           `Method not found: ${method}`,
         );
+      }
     }
   }
 
-  handleNotification(method: string, params: unknown): void {
+  handleNotification(method: ClientNotificationMethod, params: unknown): void {
     if (method === "permissionResponse") {
       const p = params as {
         requestId: string;
@@ -908,13 +921,23 @@ export class AgentBridge {
   ): Promise<null> {
     const entry = this.requireSessionForRead(sessionId);
     // Re-attach to a live session: the SDK restore would no-op (target is
-    // already current). Emit the current messages so the freshly attached
-    // client — whose router registered only after initialize returned and so
-    // missed any earlier notifications — gets a snapshot without replay.
+    // already current). Re-send the state the freshly attached client missed —
+    // its router registered only after initialize returned.
+    //
+    // `messagesChange` carries **no payload here, only the fact that the list
+    // changed**. Nobody ever read a full snapshot from it: the remote relay
+    // needs the emission to produce the phone's signal and then the phone pulls
+    // `getMessages({ since })` itself, while every IDE host ignores the method
+    // and calls `getMessages` after restore. So building one — a multi-MB list
+    // on a long session, serialized on a hot re-attach path — was pure cost, and
+    // this is why the bridge sends the signal shape instead.
+    //
+    // This is also the ONLY place the bridge emits `messagesChange`, and only on
+    // this re-attach branch — never as the message stream progresses.
     if (entry.agent.sessionId === restoreId) {
       this.emit(
         "messagesChange",
-        remoteWire.messagesChangeSnapshot(entry.agent.displayMessages),
+        remoteWire.messagesChangeSignal(),
         entry.agent.sessionId,
       );
       // The re-attached client also missed the loading state that settled
