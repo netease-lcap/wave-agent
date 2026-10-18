@@ -18,6 +18,12 @@
  * off has two doors — `WAVE_DISABLE_TELEMETRY=1` and an explicit
  * `monitoring.telemetry.firstPartyEnabled: false` — and both deliberately
  * leave (1) alone (spec 场景 3).
+ *
+ * The two also disagree on the metrics *dialect*, and must keep disagreeing:
+ * this channel reports DELTA over a 5-minute window (the intake stores the
+ * points and sums them later), while (1) keeps the OTLP default CUMULATIVE at
+ * 60 s (a customer's Prometheus-style store needs totals for `rate()` /
+ * `increase()`). See `createFirstPartyMetricExporter` in `instrumentation.ts`.
  */
 
 import type { HeadersProvider, TelemetryConfig } from "../types/telemetry.js";

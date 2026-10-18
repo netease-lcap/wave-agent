@@ -18,6 +18,7 @@ import {
   resolveFirstPartyChannel,
   resolveFirstPartyEnabled,
 } from "./firstParty.js";
+import type { FirstPartyChannel } from "./firstParty.js";
 import { getServiceVersion } from "./attributes.js";
 
 import type { MeterProvider } from "@opentelemetry/sdk-metrics";
@@ -364,6 +365,14 @@ export function resolveTelemetryConfig(
 
 /**
  * Create an OTLP metric exporter configured with endpoint, protocol, and headers.
+ *
+ * Deliberately passes **no** `temporalityPreference`, so the deployment's own
+ * collector keeps the OTLP default (cumulative) and honours
+ * `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE` if it sets one. A
+ * customer's time-series store computes `rate()` / `increase()` from a
+ * monotonically growing total; feeding it deltas breaks every counter panel
+ * built on top of it. The first-party channel is the opposite case and has its
+ * own constructor below — do not merge the two.
  */
 function createOTLPMetricExporter(config: TelemetryConfig) {
   const exporterConfig: {
@@ -380,6 +389,49 @@ function createOTLPMetricExporter(config: TelemetryConfig) {
   }
 
   return new exporterMetricsOtlpHttp!.OTLPMetricExporter(exporterConfig);
+}
+
+/**
+ * How often the first-party channel ships metrics.
+ *
+ * Five minutes rather than the OTLP default of 60 s, because this channel
+ * exists to be **stored and aggregated later**, not to be charted live: nothing
+ * on the console needs minute resolution, and a longer window cuts the number
+ * of payloads (and rows the intake has to write) by 5× for free. Claude Code
+ * lands on the same number for the same reason (`5 * 60 * 1000` at its
+ * first-party reader).
+ */
+const FIRST_PARTY_METRIC_EXPORT_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * Create the first-party metric exporter: same transport as the collector one,
+ * with the two settings that make the intake cheap to aggregate.
+ *
+ * **DELTA is not a tuning knob — DO NOT CHANGE THIS TO CUMULATIVE.** The
+ * first-party intake stores every point and the console sums them per time
+ * window long after the fact. Under cumulative semantics each point carries the
+ * process's whole history, so (a) every export re-sends every series the
+ * process has ever recorded, and (b) the only way to answer "how many requests
+ * yesterday" is to pull the raw points back and difference them in application
+ * memory — which is exactly what made the engineering-metrics dashboard take
+ * ~50 s. A delta point already *is* the answer for its interval, so the query
+ * is a `sum`.
+ *
+ * The preference is passed explicitly rather than left to
+ * `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE`: that env var is
+ * machine-wide and would otherwise decide this channel's semantics (it also
+ * governs the customer exporter, which must stay cumulative). An explicit
+ * preference wins over the env var, so a deployment that sets the env var for
+ * its own collector cannot silently turn the first-party channel back into
+ * cumulative.
+ */
+function createFirstPartyMetricExporter(channel: FirstPartyChannel) {
+  return new exporterMetricsOtlpHttp!.OTLPMetricExporter({
+    url: `${channel.endpoint}/v1/metrics`,
+    headers: channel.headers,
+    temporalityPreference:
+      exporterMetricsOtlpHttp!.AggregationTemporalityPreference.DELTA,
+  });
 }
 
 /**
@@ -450,6 +502,22 @@ export async function initializeTelemetry(
     // fleet (department, team, cost centre), so the detected resource is part of
     // the merge; ours come last and therefore win, keeping `service.name` at the
     // value the collector contract expects.
+    //
+    // `aggregation.temporality` (same key Claude Code's first-party exporter
+    // carries) tells the intake — and anyone reading a raw payload — which
+    // dialect these counters are in, without having to guess. It is stated only
+    // when the resource can be unambiguous: one resource serves every reader,
+    // so with a customer metric pipeline alongside, the very same resource ships
+    // with cumulative points as well; a marker there would be a claim about the
+    // wrong payload, so it is omitted rather than made wrong.
+    const customerMetricsConfigured =
+      (metricsExporter === "otlp" && !!currentConfig.endpoint) ||
+      metricsExporter === "console";
+    const temporalityAttributes =
+      firstParty && !customerMetricsConfigured
+        ? { "aggregation.temporality": "delta" }
+        : {};
+
     const envResource = otelResources!.detectResources({
       detectors: [otelResources!.envDetector],
     });
@@ -462,6 +530,7 @@ export async function initializeTelemetry(
           "service.version": getServiceVersion(),
           "os.type": process.platform,
           "host.arch": process.arch,
+          ...temporalityAttributes,
         }),
       );
 
@@ -504,13 +573,16 @@ export async function initializeTelemetry(
     // keeps receiving everything (spec 场景 2), and this one never borrows its
     // endpoint, so pointing Wave at a customer collector cannot misfile
     // first-party data.
+    //
+    // It is also the one place where the channel's *dialect* differs: DELTA and
+    // a 5-minute window, versus the collector's cumulative / 60 s. Both settings
+    // hang off this reader, and the interval is its own constant rather than a
+    // shared one, so tuning one channel can never move the other.
     if (firstParty) {
       metricReaders.push(
         new sdkMetrics!.PeriodicExportingMetricReader({
-          exporter: new exporterMetricsOtlpHttp!.OTLPMetricExporter({
-            url: `${firstParty.endpoint}/v1/metrics`,
-            headers: firstParty.headers,
-          }),
+          exporter: createFirstPartyMetricExporter(firstParty),
+          exportIntervalMillis: FIRST_PARTY_METRIC_EXPORT_INTERVAL_MS,
         }),
       );
       logProcessors.push(

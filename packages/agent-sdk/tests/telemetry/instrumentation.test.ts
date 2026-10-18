@@ -171,6 +171,12 @@ function setupMocks() {
 
   vi.doMock("@opentelemetry/exporter-metrics-otlp-http", () => ({
     OTLPMetricExporter: mockOTLPMetricExporter,
+    /**
+     * The first-party exporter names its temporality through this enum. The
+     * values are the ones the real package ships (`DELTA = 0`), so an assertion
+     * in this file reads like the real option does.
+     */
+    AggregationTemporalityPreference: { DELTA: 0, CUMULATIVE: 1, LOWMEMORY: 2 },
   }));
 
   vi.doMock("@opentelemetry/exporter-logs-otlp-http", () => ({
@@ -206,8 +212,33 @@ function setupMocks() {
 function exporterConfig(
   mock: ReturnType<typeof vi.fn>,
   index = 0,
-): { url?: string; headers?: unknown } {
-  return mock.mock.calls[index]![0] as { url?: string; headers?: unknown };
+): { url?: string; headers?: unknown; temporalityPreference?: unknown } {
+  return mock.mock.calls[index]![0] as {
+    url?: string;
+    headers?: unknown;
+    temporalityPreference?: unknown;
+  };
+}
+
+/** The options object a mocked metric reader was constructed with. */
+function readerConfig(
+  mock: ReturnType<typeof vi.fn>,
+  index = 0,
+): { exporter?: unknown; exportIntervalMillis?: number } {
+  return mock.mock.calls[index]![0] as {
+    exporter?: unknown;
+    exportIntervalMillis?: number;
+  };
+}
+
+/** The attributes our own `resourceFromAttributes()` call declared. */
+function ownResourceAttributes(mockResource: {
+  resourceFromAttributes: ReturnType<typeof vi.fn>;
+}): Record<string, unknown> {
+  return mockResource.resourceFromAttributes.mock.calls[0]![0] as Record<
+    string,
+    unknown
+  >;
 }
 
 /** The instrument names a mocked meter was asked to create (counters first). */
@@ -1050,6 +1081,75 @@ describe("instrumentation", () => {
       expect(exporterConfig(mocks.mockOTLPMetricExporter).url).toBe(
         "https://collector.example.com/v1/metrics",
       );
+    });
+
+    /**
+     * 两条通道的「方言」必须不同：首方 DELTA（服务端存点后按窗求和），客户
+     * CUMULATIVE（Prometheus 型时序库靠累计值算 rate()/increase()）。下面四条把
+     * 这个契约钉在装配层——改了这里就是改了契约，不是调参。
+     */
+    it("首方 exporter 显式 DELTA，客户 exporter 一个字段都不多给", async () => {
+      Object.assign(authState, SIGNED_IN);
+
+      await instrumentation.initializeTelemetry({
+        metricsExporter: "otlp",
+        endpoint: "https://collector.example.com",
+        firstPartyEnabled: true,
+      });
+
+      const customer = exporterConfig(mocks.mockOTLPMetricExporter, 0);
+      const firstParty = exporterConfig(mocks.mockOTLPMetricExporter, 1);
+
+      // 客户通道：连键都不能出现——一旦出现就说明有人把它也钉死成某一种语义了
+      expect("temporalityPreference" in customer).toBe(false);
+      // 首方通道：AggregationTemporalityPreference.DELTA === 0
+      expect(firstParty.temporalityPreference).toBe(0);
+    });
+
+    it("首方导出间隔 5 分钟，客户 reader 不传间隔（默认 60 秒）", async () => {
+      Object.assign(authState, SIGNED_IN);
+
+      await instrumentation.initializeTelemetry({
+        metricsExporter: "otlp",
+        endpoint: "https://collector.example.com",
+        firstPartyEnabled: true,
+      });
+
+      const customer = readerConfig(mocks.mockPeriodicExportingMetricReader, 0);
+      const firstParty = readerConfig(
+        mocks.mockPeriodicExportingMetricReader,
+        1,
+      );
+
+      // 客户侧不传 = 尊重 OTEL_METRIC_EXPORT_INTERVAL / SDK 默认 60s，行为不变
+      expect("exportIntervalMillis" in customer).toBe(false);
+      expect(firstParty.exportIntervalMillis).toBe(5 * 60 * 1000);
+    });
+
+    it("首方是唯一 metric 管道时，resource 带 aggregation.temporality=delta", async () => {
+      Object.assign(authState, SIGNED_IN);
+
+      await instrumentation.initializeTelemetry({ firstPartyEnabled: true });
+
+      expect(ownResourceAttributes(mocks.mockResource)).toMatchObject({
+        "service.name": "wave",
+        "aggregation.temporality": "delta",
+      });
+    });
+
+    it("客户 metric 管道同时在跑时不标 temporality（resource 由两条通道共用）", async () => {
+      Object.assign(authState, SIGNED_IN);
+
+      await instrumentation.initializeTelemetry({
+        metricsExporter: "otlp",
+        endpoint: "https://collector.example.com",
+        firstPartyEnabled: true,
+      });
+
+      const attributes = ownResourceAttributes(mocks.mockResource);
+      expect(attributes["service.name"]).toBe("wave");
+      // 同一个 resource 也跟着客户那条累计载荷出门，标 delta 就是自相矛盾
+      expect(attributes["aggregation.temporality"]).toBeUndefined();
     });
   });
 
