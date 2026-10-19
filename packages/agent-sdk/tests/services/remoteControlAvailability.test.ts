@@ -21,18 +21,18 @@ describe("remoteControlAvailability", () => {
     vi.clearAllMocks();
   });
 
-  it("should default to disabled — serving a session off-machine is opt-in", () => {
-    expect(REMOTE_CONTROL_DEFAULT_ENABLED).toBe(false);
+  it("should default to enabled — dialing stays explicit even though serving is on", () => {
+    expect(REMOTE_CONTROL_DEFAULT_ENABLED).toBe(true);
   });
 
-  it("should stay disabled with no workdir and no settings", () => {
-    expect(isRemoteControlEnabled(undefined)).toBe(false);
+  it("should be enabled with no workdir and no settings", () => {
+    expect(isRemoteControlEnabled(undefined)).toBe(true);
     expect(loadMergedWaveConfig).not.toHaveBeenCalled();
   });
 
-  it("should stay disabled when no config exists for the workdir", () => {
+  it("should stay enabled when no config exists for the workdir", () => {
     (loadMergedWaveConfig as Mock).mockReturnValue(null);
-    expect(isRemoteControlEnabled("/test/workdir")).toBe(false);
+    expect(isRemoteControlEnabled("/test/workdir")).toBe(true);
     expect(loadMergedWaveConfig).toHaveBeenCalledWith("/test/workdir");
   });
 

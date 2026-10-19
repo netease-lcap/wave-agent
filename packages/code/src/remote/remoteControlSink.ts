@@ -64,9 +64,10 @@ export interface RemoteControlSink
 export function createRemoteControlSinkFactory(
   workdir: string,
 ): ((host: RemoteControlHost) => RemoteControlSink) | undefined {
-  // Opt-in twice over: this switch says the machine *may* serve its sessions to
-  // a paired phone, and `wave remote-control on` / `/remote-control` is what
-  // actually dials out. The sink is therefore built but not connected.
+  // Two-step by design: this switch (on unless a settings file or a remote
+  // push turns it off) says the machine *may* serve its sessions to a paired
+  // phone, and `wave remote-control on` / `/remote-control` is what actually
+  // dials out. The sink is therefore built but not connected.
   if (!isRemoteControlEnabled(workdir)) {
     return undefined;
   }
