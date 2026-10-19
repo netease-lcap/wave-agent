@@ -5,6 +5,8 @@ import mediumZoom from "medium-zoom";
 
 import "./zoom.css";
 import "./gallery.css";
+import "./features.css";
+import "./phone-gallery.css";
 
 let zoom = null;
 

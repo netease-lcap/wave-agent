@@ -7,6 +7,7 @@ const nav = [
   { text: "教程&最佳实践", link: "/tutorials" },
   { text: "桌面端", link: "/desktop" },
   { text: "VSCode/JetBrains插件", link: "/vsce" },
+  { text: "Web 端", link: "/web" },
   { text: "CLI", link: "/cli" },
   { text: "SDK", link: "/sdk" },
   { text: "企业管控台", link: "/guide" },
@@ -41,8 +42,9 @@ export default {
           text: "产品概览",
           collapsed: false,
           items: [
-            { text: "产品矩阵：五种形态", link: "/#产品矩阵-五种形态" },
+            { text: "产品矩阵：六种形态", link: "/#产品矩阵-六种形态" },
             { text: "使用场景", link: "/#使用场景" },
+            { text: "产品特色", link: "/#产品特色" },
             { text: "与 Claude Code 的对比", link: "/#vs-claude-code" },
             { text: "支持的操作系统", link: "/#支持的操作系统" },
           ],
@@ -229,6 +231,33 @@ export default {
                 { text: "10. 插件系统", link: "/vsce#_10-插件系统" },
               ],
             },
+          ],
+        },
+      ],
+      "/web": [
+        {
+          text: "Web 端使用文档",
+          collapsed: false,
+          items: [
+            { text: "快速入门", link: "/web#快速入门" },
+            {
+              text: "手机上的界面",
+              collapsed: false,
+              items: [
+                {
+                  text: "会话列表",
+                  link: "/web#会话列表",
+                },
+                {
+                  text: "审批在手机上一样能批",
+                  link: "/web#审批在手机上一样能批",
+                },
+                { text: "设置页与更多菜单", link: "/web#设置页与更多菜单" },
+              ],
+            },
+            { text: "多台电脑", link: "/web#多台电脑" },
+            { text: "断线与恢复", link: "/web#断线与恢复" },
+            { text: "能力边界", link: "/web#能力边界" },
           ],
         },
       ],
