@@ -131,6 +131,8 @@ class WavePanelHolder(private val project: Project) {
     private fun openPlanTab(tabId: String, markdownHtml: String) {
         val file = planFiles.getOrPut(tabId) { WavePlanVirtualFile(tabId) }
         val open: () -> Unit = {
+            // Deprecated in 2026.3, deliberately kept — see `pluginVerification` in build.gradle.kts
+            // (the replacement changed its own signature in that same release).
             FileEditorManager.getInstance(project).openFile(file, true)
             planEditors[tabId]?.showPlan(markdownHtml)
             Unit
@@ -184,6 +186,7 @@ class WavePanelHolder(private val project: Project) {
     fun openSettings(nav: String? = null) {
         val open: () -> Unit = {
             val file = settingsFile ?: WaveSettingsVirtualFile().also { settingsFile = it }
+            // Deprecated in 2026.3, deliberately kept — same reason as openPlanTab above.
             FileEditorManager.getInstance(project).openFile(file, true)
             settingsEditor?.pushWorkdir(settingsWorkdir(), nav)
         }

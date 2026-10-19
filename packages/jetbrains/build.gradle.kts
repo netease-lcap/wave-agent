@@ -76,6 +76,16 @@ intellijPlatform {
         // four builds (IC 242 + 243 + 251 + 252). What that misses: API that only *becomes*
         // internal/deprecated in newer builds — `FileEditorManagerImpl.FORBID_PREVIEW_TAB` was
         // internal in 2024.2 but only deprecated once 2024.3 moved it to FileEditorManagerKeys.
+        //
+        // Accepted warning on the 263.x EAP verifier (2026-09): 3× deprecated
+        // `FileEditorManager.openFile(VirtualFile, boolean)`, whose ReplaceWith is
+        // `requestOpenFile`. Do NOT migrate while sinceBuild = 242: `requestOpenFile` returned
+        // `void` up to 2026.2 and only in 2026.3 became `CompletableFuture<FileEditorComposite>`
+        // (IJPL-207648), so the descriptor a 2024.2-compiled plugin emits
+        // — `openFile(VirtualFile)void` — does not exist on exactly the IDEs that carry the
+        // deprecation: NoSuchMethodError at runtime. The deprecated overload keeps its signature
+        // in 2026.3 (still present in master, unchanged), so it is the compatible choice until the
+        // baseline moves and the replacement is no longer `@ApiStatus.Experimental`.
         ides {
             current()
         }

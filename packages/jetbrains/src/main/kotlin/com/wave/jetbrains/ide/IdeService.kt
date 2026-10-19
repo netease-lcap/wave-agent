@@ -57,6 +57,10 @@ object IdeService {
                     showError(project, "打开文件失败: 文件不存在 $path")
                     return@invokeLater
                 }
+                // Deprecated in 2026.3, deliberately kept: its only replacement (requestOpenFile)
+                // returned void until 2026.3 and became CompletableFuture only then, so a
+                // 2024.2-compiled plugin calling it would hit NoSuchMethodError on newer IDEs.
+                // See `pluginVerification` in build.gradle.kts.
                 val editors = FileEditorManager.getInstance(project).openFile(file, true)
                 if (startLine != null) {
                     val textEditor = editors.filterIsInstance<TextEditor>().firstOrNull()
