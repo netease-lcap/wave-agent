@@ -3,9 +3,9 @@
  * 把 `pack:remote` 打出来的 remote-page.zip 传到 ops 的远端页上传接口。
  *
  * 上传契约（只有一条路由，没有删除/回滚接口）：
- *   POST {ops}/api/ops/remote-page/upload   multipart：zip（filename 带 .zip）+ version（可选）
+ *   POST {ops}/api/ops/remote-page/upload   multipart：zip（filename 带 .zip）
  *   鉴权 = POST {ops}/api/auth/login 换 JWT（Bearer），并带 ops 的亲和 cookie。
- *   成功 = 201 + fileKeys（= 产物文件数 + 1，多出来的是 version.txt）。
+ *   成功 = 201 + fileKeys（= 产物文件数）。
  *
  * 三环境来自 envs.mjs 的常量表、用 `--env` 选，不接受任意 host（打错域名**不会报错**，
  * 对象会静默写进另一个环境）；生产额外要求 `--confirm-prod`（用户明确说「传生产」才加）。
@@ -16,7 +16,7 @@
  *   node .wave/skills/ops-upload/upload-remote-page.mjs --env test
  *   node .wave/skills/ops-upload/upload-remote-page.mjs --env test --check        # 只预检，不写
  *   node .wave/skills/ops-upload/upload-remote-page.mjs --env prod --confirm-prod
- *   [--zip <path>] [--version <label>]
+ *   [--zip <path>]
  */
 
 import { execFileSync } from "node:child_process";
@@ -40,7 +40,6 @@ const USAGE = `用法：node upload-remote-page.mjs --env <test|drill|prod> [选
   --env <e>        目标环境（必填）：test / drill / prod
   --confirm-prod   传生产时必须显式加上（防止手滑）
   --zip <路径>     默认仓库内 packages/webview/remote/dist/remote-page.zip
-  --version <标签> 默认 \`<webview 版本>-<分支|main>.<sha8>\`；写入 codechat/remote/version.txt
   --check          只做预检（host 断言 / zip 形状 / 登录 / 亲和 cookie / 上传前状态），不发上传
   -h, --help       显示本帮助`;
 
@@ -65,9 +64,6 @@ for (let i = 0; i < argv.length; i++) {
       break;
     case "--zip":
       opts.zip = next();
-      break;
-    case "--version":
-      opts.version = next();
       break;
     case "--check":
       opts.check = true;
@@ -133,51 +129,28 @@ if (ageSec > 3600) {
   );
 }
 
-// ─── version 标签 ──────────────────────────────────────────────────────────
-function git(args) {
-  try {
-    return execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();
-  } catch {
-    return "";
-  }
-}
-
-function defaultVersion() {
-  const pkg = JSON.parse(
-    fs.readFileSync(path.join(ROOT, "packages/webview/package.json"), "utf8"),
-  ).version;
-  const branch = git(["rev-parse", "--abbrev-ref", "HEAD"]);
-  const slug =
-    !branch || branch === "HEAD" || branch === "main"
-      ? "main"
-      : branch
-          .split("/")
-          .pop()
-          .replace(/[^A-Za-z0-9._-]/g, "-");
-  const sha = git(["rev-parse", "--short=8", "HEAD"]) || "nogit";
-  return `${pkg}-${slug}.${sha}`.slice(0, 64);
-}
-
-const VERSION = opts.version ?? defaultVersion();
-if (!/^[A-Za-z0-9._-]{1,64}$/.test(VERSION)) {
-  die(`version 标签不合法（只允许 [A-Za-z0-9._-]，≤64）：${VERSION}`);
-}
-console.log(
-  `环境 ${opts.env}：上传面 ${env.ops} / 访问面 ${env.site}，version=${VERSION}`,
-);
-
-// ─── 上传前的公网状态（回滚账：记下这版之前线上是什么） ─────────────────────
+// ─── 上传前的公网状态（回滚账：记下这版之前线上是哪份构建） ─────────────────
+// version.txt 指针已下线，线上版本改从入口页自己带的 `wave-remote-config` 读：那是构建期
+// 注入的，比外挂标签更可信；顺手也验证了访问面域名是活的。
 try {
-  const before = await fetch(`${env.site}/remote/version.txt`, {
-    cache: "no-store",
-  });
-  const body =
-    before.status === 200 ? (await before.text()).trim().slice(0, 64) : "";
+  const before = await fetch(`${env.site}/remote/`, { cache: "no-store" });
+  let live = "";
+  if (before.status === 200) {
+    const html = await before.text();
+    const meta = html.match(/name="wave-remote-config" content='([^']*)'/);
+    if (meta) {
+      try {
+        live = JSON.parse(meta[1]).version || "";
+      } catch {
+        live = "";
+      }
+    }
+  }
   console.log(
-    `上传前 ${env.site}/remote/version.txt -> ${before.status} ${body}`,
+    `上传前 ${env.site}/remote/ -> ${before.status} 线上版本 ${live || "(读不到)"}`,
   );
 } catch (e) {
-  console.log(`上传前 version.txt 探测失败：${e.message}`);
+  console.log(`上传前访问面探测失败：${e.message}`);
 }
 
 // ─── 登录 + 亲和 cookie（凭证不说话） ──────────────────────────────────────
@@ -219,7 +192,6 @@ form.append(
   new Blob([buf], { type: "application/zip" }),
   "remote-page.zip",
 );
-form.append("version", VERSION);
 
 const res = await fetch(`${env.ops}/api/ops/remote-page/upload`, {
   method: "POST",
@@ -242,11 +214,10 @@ try {
 
 if (!res.ok) die(`上传失败：HTTP ${res.status}`);
 if (keys) {
-  // fileKeys = 产物文件数 + 1（version.txt）。
-  console.log(`fileKeys ${keys.length} 个（期望 = 文件数 + 1）：`);
+  console.log(`fileKeys ${keys.length} 个（期望 = 产物文件数）：`);
   for (const k of keys) console.log("  " + String(k).split("/").pop());
 }
 
 console.log(
-  `\n完成。手机端刷新即取新构建（入口 no-cache）；回滚账看上方「上传前 version.txt」。`,
+  `\n完成。手机端刷新即取新构建（入口 no-cache）；回滚账看上方「上传前 … 线上版本」。`,
 );
