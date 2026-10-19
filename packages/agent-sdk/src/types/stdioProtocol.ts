@@ -136,7 +136,11 @@ export type RequestMethod =
   // Inline (ghost-text) code completion for the editor plugins. Session-scoped:
   // the model and the gateway credentials are resolved inside that session, and
   // a new request supersedes the session's previous in-flight one.
-  | "getCompletion";
+  | "getCompletion"
+  // What the editor host saw happen to the last suggestion: `displayed` when it
+  // rendered the ghost text, `accepted` when the user took it. Only the host
+  // knows either fact — see `wave.completion.outcome` in the telemetry spec.
+  | "reportCompletionOutcome";
 
 // ── Client → Server notification methods ────────────────────────
 

@@ -98,6 +98,13 @@ describe("metrics", () => {
               "Permission decisions on Edit and Write, accepted or rejected, by source",
           },
         ],
+        [
+          "wave.completion.outcome",
+          {
+            description:
+              "Inline completion suggestions shown and accepted, by model and language",
+          },
+        ],
       ]);
     });
   });
@@ -262,6 +269,42 @@ describe("metrics", () => {
           toolName,
         });
       }
+
+      expect(
+        fake.counter("wave.code_edit_tool.decision").add,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("recordCompletionOutcome", () => {
+    it("should count a displayed suggestion with its model and language", () => {
+      metrics.recordCompletionOutcome({
+        outcome: "displayed",
+        model: "gpt-4o-mini",
+        language: "typescript",
+      });
+
+      expect(fake.counter("wave.completion.outcome").add).toHaveBeenCalledWith(
+        1,
+        {
+          outcome: "displayed",
+          model: "gpt-4o-mini",
+          language: "typescript",
+        },
+      );
+    });
+
+    it("should count an acceptance as its own point", () => {
+      metrics.recordCompletionOutcome({ outcome: "accepted", model: "m" });
+
+      expect(fake.counter("wave.completion.outcome").add).toHaveBeenCalledWith(
+        1,
+        { outcome: "accepted", model: "m" },
+      );
+    });
+
+    it("should leave the decision family untouched", () => {
+      metrics.recordCompletionOutcome({ outcome: "accepted" });
 
       expect(
         fake.counter("wave.code_edit_tool.decision").add,

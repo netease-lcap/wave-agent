@@ -59,8 +59,9 @@ import {
   flushTelemetry,
 } from "./telemetry/instrumentation.js";
 import { logOTelEvent } from "./telemetry/events.js";
-import { recordSession } from "./telemetry/metrics.js";
+import { recordCompletionOutcome, recordSession } from "./telemetry/metrics.js";
 import type { RecordContext } from "./telemetry/metrics.js";
+import { languageFromPath } from "./telemetry/language.js";
 import {
   flushSessionActivity,
   recordUserActivity,
@@ -105,6 +106,8 @@ export class Agent {
   private systemPrompt?: string; // Custom system prompt
   private stream: boolean; // Streaming mode flag
   private sessionStartTime: number = Date.now();
+  /** Model and language of the most recent completion, for `reportCompletionOutcome`. */
+  private lastCompletion: { model?: string; language?: string } | null = null;
 
   // Configuration options storage for dynamic resolution
   private options: AgentOptions;
@@ -205,11 +208,40 @@ export class Agent {
     filePath?: string;
     abortSignal?: AbortSignal;
   }): Promise<{ text: string; model: string }> {
-    return getCompletion({
+    const result = await getCompletion({
       gatewayConfig: this.getGatewayConfig(),
       modelConfig: this.getModelConfig(),
       ...params,
     });
+
+    // Kept for `reportCompletionOutcome`: the host reports only what it knows
+    // (shown / accepted), never the model or the language — those are the
+    // CLI's to derive, and a suggestion has at most one of each.
+    this.lastCompletion = {
+      model: result.model,
+      language: languageFromPath(params.filePath),
+    };
+
+    return result;
+  }
+
+  /**
+   * Record one event in the life of the most recent completion suggestion:
+   * `displayed` when the host rendered it, `accepted` when the user took it.
+   *
+   * The host is the only side that knows either fact (the CLI merely returned
+   * some text), so this arrives over RPC rather than being inferred here. With
+   * no suggestion yet — or on a host that has no acceptance signal at all —
+   * the call is a no-op, which is exactly the spec's "no half data" rule.
+   */
+  public reportCompletionOutcome(outcome: "displayed" | "accepted"): void {
+    const last = this.lastCompletion;
+    if (!last) return;
+
+    recordCompletionOutcome(
+      { outcome, model: last.model, language: last.language },
+      this.telemetryContext,
+    );
   }
 
   /**

@@ -4386,3 +4386,53 @@ test("getCompletion surfaces a model failure to the caller", async () => {
     bridge.handleRequest("getCompletion", {}, init.sessionId),
   ).rejects.toThrow("Failed to get code completion");
 });
+
+// ── reportCompletionOutcome ────────────────────────────────────
+
+test("reportCompletionOutcome forwards the outcome to the session's agent", async () => {
+  const { bridge } = createBridge();
+  const reportCompletionOutcome = vi.fn();
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ reportCompletionOutcome }),
+  );
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+
+  const result = await bridge.handleRequest(
+    "reportCompletionOutcome",
+    { outcome: "accepted" },
+    init.sessionId,
+  );
+
+  expect(result).toEqual({ ok: true });
+  expect(reportCompletionOutcome).toHaveBeenCalledWith("accepted");
+});
+
+test("reportCompletionOutcome requires a session", async () => {
+  const { bridge } = createBridge();
+
+  await expect(
+    bridge.handleRequest("reportCompletionOutcome", { outcome: "displayed" }),
+  ).rejects.toThrow(/sessionId is required/);
+});
+
+test("reportCompletionOutcome rejects an outcome outside the enum", async () => {
+  const { bridge } = createBridge();
+  const reportCompletionOutcome = vi.fn();
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ reportCompletionOutcome }),
+  );
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+
+  await expect(
+    bridge.handleRequest(
+      "reportCompletionOutcome",
+      { outcome: "clicked" },
+      init.sessionId,
+    ),
+  ).rejects.toThrow(/outcome/);
+  expect(reportCompletionOutcome).not.toHaveBeenCalled();
+});

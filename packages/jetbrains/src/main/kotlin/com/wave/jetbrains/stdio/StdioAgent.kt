@@ -1,6 +1,10 @@
 package com.wave.jetbrains.stdio
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -87,6 +91,9 @@ class StdioAgent(
         private set
     @Volatile var permissionMode: String? = null
         private set
+
+    /** Scope for fire-and-forget calls the UI must not await (completion telemetry). */
+    private val reportScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun handleNotification(method: String, params: JsonElement?) {
         when (method) {
@@ -349,6 +356,25 @@ class StdioAgent(
      */
     suspend fun getCompletion(params: JsonObject): JsonObject? =
         client.request("getCompletion", params, sessionId)?.jsonObject
+
+    /**
+     * One step of a completion suggestion's lifecycle ([outcome] = `displayed`
+     * | `accepted`) for `wave.completion.outcome`. The metrics spec puts the
+     * accept signal in the host's hands, and the editor must never wait on
+     * telemetry: fire-and-forget, failures swallowed
+     * (spec docs/specs/enterprise/opentelemetry.md「补全建议的采纳度量」).
+     */
+    fun reportCompletionOutcome(outcome: String) {
+        reportScope.launch {
+            runCatching {
+                client.request(
+                    "reportCompletionOutcome",
+                    buildJsonObject { put("outcome", outcome) },
+                    sessionId,
+                )
+            }
+        }
+    }
 
     suspend fun getMcpServers(): JsonElement =
         client.request("getMcpServers", sessionId = sessionId) ?: JsonObject(emptyMap())

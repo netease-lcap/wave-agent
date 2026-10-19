@@ -40,12 +40,14 @@ vi.mock("vscode", () => {
       },
     },
     languages: { registerInlineCompletionItemProvider: vi.fn() },
+    commands: { registerCommand: vi.fn() },
     // The provider only reads these two off the namespace object.
     Uri: { file: (fsPath: string) => ({ scheme: "file", fsPath }) },
   };
 });
 
 import {
+  ACCEPT_COMPLETION_COMMAND,
   WaveInlineCompletionProvider,
   registerInlineCompletion,
 } from "../../src/services/inlineCompletionProvider";
@@ -95,11 +97,17 @@ const token = {
   onCancellationRequested: () => ({ dispose: () => {} }),
 } as unknown as vscode.CancellationToken;
 
-function createProvider(suggestion: string | undefined = "42") {
+function createProvider(
+  suggestion: string | undefined = "42",
+  report: (outcome: "displayed" | "accepted") => void = () => {},
+) {
   const getCompletion = vi.fn().mockResolvedValue(suggestion);
-  const provider = new WaveInlineCompletionProvider({
-    getCompletion,
-  } as unknown as InlineCompletionService);
+  const provider = new WaveInlineCompletionProvider(
+    {
+      getCompletion,
+    } as unknown as InlineCompletionService,
+    report,
+  );
   return { provider, getCompletion };
 }
 
@@ -134,6 +142,38 @@ describe("WaveInlineCompletionProvider", () => {
       start: { line: 0, character: 10 },
       end: { line: 0, character: 10 },
     });
+  });
+
+  it("reports one displayed outcome when it renders a suggestion", async () => {
+    const document = createDocument();
+    windowMock.activeTextEditor = createEditor(document);
+    const report = vi.fn();
+    const { provider } = createProvider("42", report);
+
+    await callProvider(provider, document);
+
+    expect(report).toHaveBeenCalledTimes(1);
+    expect(report).toHaveBeenCalledWith("displayed");
+  });
+
+  it("reports nothing when there is no suggestion to render", async () => {
+    const document = createDocument();
+    windowMock.activeTextEditor = createEditor(document);
+    const report = vi.fn();
+    const { provider } = createProvider("", report);
+
+    await expect(callProvider(provider, document)).resolves.toBeUndefined();
+    expect(report).not.toHaveBeenCalled();
+  });
+
+  it("hangs the accept hook on the item", async () => {
+    const document = createDocument();
+    windowMock.activeTextEditor = createEditor(document);
+    const { provider } = createProvider("42");
+
+    const result = await callProvider(provider, document);
+
+    expect(result?.items[0]?.command?.command).toBe(ACCEPT_COMPLETION_COMMAND);
   });
 
   it("asks for no debounce when the user triggered it manually", async () => {
@@ -242,13 +282,22 @@ describe("registerInlineCompletion", () => {
     const register = vi.mocked(
       vscode.languages.registerInlineCompletionItemProvider,
     );
+    const registerCommand = vi.mocked(vscode.commands.registerCommand);
     const subscription = { dispose: vi.fn() };
+    const commandSubscription = { dispose: vi.fn() };
     register.mockReturnValue(subscription as unknown as vscode.Disposable);
+    registerCommand.mockReturnValue(
+      commandSubscription as unknown as vscode.Disposable,
+    );
     const context = { subscriptions: [] as unknown[] };
+    const reportCompletionOutcome = vi.fn();
 
     registerInlineCompletion(
       context as unknown as vscode.ExtensionContext,
-      { requestInlineCompletion: vi.fn() } as never,
+      {
+        requestInlineCompletion: vi.fn(),
+        reportCompletionOutcome,
+      } as never,
     );
 
     expect(register).toHaveBeenCalledWith(
@@ -256,5 +305,16 @@ describe("registerInlineCompletion", () => {
       expect.any(WaveInlineCompletionProvider),
     );
     expect(context.subscriptions).toContain(subscription);
+    expect(context.subscriptions).toContain(commandSubscription);
+
+    // The accept hook is a command: VS Code runs it when the user takes the
+    // suggestion, and it is the only acceptance signal we get.
+    const [command, handler] = registerCommand.mock.calls[0] as [
+      string,
+      () => void,
+    ];
+    expect(command).toBe(ACCEPT_COMPLETION_COMMAND);
+    handler();
+    expect(reportCompletionOutcome).toHaveBeenCalledWith("accepted");
   });
 });

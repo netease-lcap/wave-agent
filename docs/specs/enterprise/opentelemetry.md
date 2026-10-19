@@ -43,6 +43,7 @@ order: 30
 - 产出类：`wave.lines.changed`（计数，按 `direction`：added / removed，来源为编辑类工具的执行结果）、`wave.commits`（计数，来源为经由工具成功创建提交的动作）、`wave.pull_requests`（计数，PR 与 MR 合入同一计数，来源为经由 shell 命令或 MCP 工具成功发起创建 PR/MR 的动作）
 - 活动类：`wave.active_time`（计数，单位秒，按 `type`：user / cli，来源为已闭合的活跃区间长度）
 - 摩擦类：`wave.code_edit_tool.decision`（计数，按 `decision`：accept / reject，外加 `source`、`tool_name`、`language`，来源为编辑类工具的每次权限决策）
+- 采纳类：`wave.completion.outcome`（计数，按 `outcome`：displayed / accepted，外加 `model`、`language`，来源为编辑器宿主的补全建议生命周期，见「补全建议的采纳度量」）
 
 其中 `wave.commits` / `wave.pull_requests` 对齐 Claude Code 的 `commit.count` / `pull_request.count` 口径：**只认「经由工具、且成功」的创建动作**，不看结果是否被合并、不依赖任何托管平台（私有化 GitLab 与 GitHub 同等成立），也不按托管平台或仓库拆分序列；标准归属属性按「统一的归属属性面」一节统一附带。
 
@@ -50,7 +51,7 @@ order: 30
 
 `wave.code_edit_tool.decision` 对位 Claude Code 的同名指标：只覆盖 `Edit` / `Write`（wave 没有 notebook 编辑工具），**每次权限决策记一次**（不是每次工具调用），被拒绝的决策同样计数。`source` 限定在 `config` / `hook` / `user_permanent` / `user_temporary` / `user_abort` / `user_reject` / `unknown` 七值内；`language` 由目标文件扩展名推导，推导不出时不带该属性，文件路径本身永不上报。`cost.usage` 不在这一组内：wave 的费用于服务端按计价规则计算，客户端自算会造出第二个口径。
 
-指标面刻意不收请求次数、请求耗时与错误率：Claude Code 的指标集里没有这三项的对位（其指标覆盖会话数、代码行数、提交数、PR 数、成本、token 用量、编辑工具决策与活跃时长，同样不含请求侧计数），请求侧信息留在事件日志（`error` / `tool_decision` 等）里由审计侧消费——指标面只保留能跨客户横向对齐的家族，不为「多一个维度」把序列数撑开。Claude Code 八族里唯一没有对位的是成本（`cost.usage`）：费用在服务端按计价规则算，客户端再算一份只会得到两个对不上的口径。
+指标面刻意不收请求次数、请求耗时与错误率：Claude Code 的指标集里没有这三项的对位（其指标覆盖会话数、代码行数、提交数、PR 数、成本、token 用量、编辑工具决策与活跃时长，同样不含请求侧计数），请求侧信息留在事件日志（`error` / `tool_decision` 等）里由审计侧消费——指标面只保留能跨客户横向对齐的家族，不为「多一个维度」把序列数撑开。补全这一族同理：只收采纳，不收补全请求的次数、延迟与错误率（见「补全建议的采纳度量」）。Claude Code 八族里唯一没有对位的是成本（`cost.usage`）：费用在服务端按计价规则算，客户端再算一份只会得到两个对不上的口径。
 
 指标名、单位与维度在两条通道上完全一致；**值的语义（temporality）与导出节奏按通道分别定义**——首方为 DELTA / 5 分钟，客户自建收集器为累计 / 60 秒，见「两条通道的聚合语义各按各的消费方定」。
 
@@ -72,6 +73,41 @@ order: 30
 14. **假设** 同一进程里两个会话同时在跑 agent（daemon 承载多会话），**当** 两个会话各自结束时，**则** 各自按自己的会话归属记一段 `type=cli` 的活跃时长，两条数据点带各自的 `session.id`，互不串味；此时按会话求和可以大于进程墙钟时间——该指标回答的是会话活跃时长，不是进程在线时长。
 15. **假设** OTEL 指标已启用，**当** 用户对一次 `Edit` 调用做了权限决策时，**则** `wave.code_edit_tool.decision` 记一次，`decision` 为 `accept` 或 `reject`（被拒绝同样计数），并带上 `source`（`config` / `hook` / `user_permanent` / `user_temporary` / `user_abort` / `user_reject` / `unknown`）与 `tool_name`；能从目标文件路径推出语言时再带 `language`，推不出时不带该属性。
 16. **假设** 一次会话里发生 `Bash`、`Read` 与 MCP 工具的权限决策，**当** 记录指标时，**则** 这些工具**不**产生 `wave.code_edit_tool.decision`——该指标只覆盖编辑类工具（`Edit` / `Write`）。
+
+---
+
+### 用户故事：补全建议的采纳度量（对齐 Continue 的口径，优先级：P2）
+
+作为把 Wave 接入企业度量平台的接入方，我希望知道补全建议**展示了多少条、被采纳了多少条**，以便回答「行内补全到底有没有用、哪个模型真的被接受」，而不是只有对话侧的用量与产出。
+
+**为什么是这个优先级**：补全与对话是两条刻意解耦的链路（补全不经 `callAgent`、无工具、无 system prompt），现有指标族全部落在对话路径与工具执行上，因此补全一条数据都没有——这是结构性缺口，不是漏插桩。它排在运营指标之后，是因为采集点在**编辑器宿主**而不是 CLI：CLI 只知道「我返回过一段文本」，采纳发生在平台内部（用户按 Tab），必须由宿主侧取信号回传，而取信号的方式两端各按自己的平台 API（见下文口径）。
+
+**独立测试**：在任一端宿主（VS Code 或 JetBrains）里触发若干次补全并接受其中一部分，导出指标，验证 `wave.completion.outcome` 的 `displayed` 与 `accepted` 各自计数，且 `accepted ÷ displayed` 与手工计数一致；两端导出的属性集相同，可合并聚合。
+
+**指标族（API 契约）**：
+
+- `wave.completion.outcome`（计数，按 `outcome`：`displayed` / `accepted`，外加 `model`、`language`）
+  - `displayed`：宿主**真正渲染了幽灵文本**时记一次（返回了非空文本、且未被取消、未因光标漂移丢弃）
+  - `accepted`：用户接受该建议时记一次；同一条建议先 `displayed` 后 `accepted`，两个 outcome 各记一次
+  - 采纳率由消费侧派生（`accepted ÷ displayed`），客户端**不产出比值指标**——比值不可加，混进可加计数会让聚合口径失效
+
+**口径与边界**：
+
+- **只收采纳，不收请求侧**：补全不报请求次数、请求耗时与错误率，与上文「指标面刻意不收请求次数、请求耗时与错误率」是同一条边界。
+- **与 `wave.code_edit_tool.decision` 无关、不可相加**：两者是不同的事实——前者是**建议结局**（用户按了 Tab 接受这段文本），后者是**权限决策**（用户批准了这次 `Edit` / `Write` 动作）；分母也不同（展示过的建议数 vs 权限请求次数）。看板卡片各自独立，禁止合并成「总采纳率」；取值词形也刻意不同（`accept` / `reject` vs `displayed` / `accepted`），避免交叉误读。
+- **分母 = 展示数，不细分未采纳的原因**（口径来源：Continue 的 `core/autocomplete/util/AutocompleteLoggingService.ts`——每个建议记一条带 `accepted: boolean` 与展示时刻的事件，采纳率即 accepted / displayed）：不区分「用户继续输入而失效」与「返回但未渲染」——后者只有宿主能判定，猜错会把噪声写进口径，因此只记「展示了」「被接受了」这两个可确证的事实。它的维度侧不照搬：Continue 用文件扩展名与 `modelName` + `modelProvider`，我们沿用既有指标族的 `language` / `model` 取值域，以便与本仓其他指标横向聚合。
+- **两端宿主都上报，取信号的方式各按平台**：VS Code 用 `InlineCompletionItem.command`（接受时执行的钩子）；JetBrains 用平台的 `InlineCompletionProvider.insertHandler`——`afterInsertion()` 在建议被插入文档时回调，IC-2024.2 起可用（Continue 的 JetBrains 插件走的正是这条路径，不是 diff 反推）。`displayed` 两端都在「返回了一条非空建议」时记。若将来出现确实拿不到采纳信号的宿主，该端**整条不上报**（宁缺勿错）——只报 `displayed` 会让采纳率恒为 0，比没有数据更糟。
+- **不携带内容级数据**：不带文件路径、代码内容或光标位置。
+- `language` **复用 `wave.code_edit_tool.decision` 的同一套推导**（`telemetry/language.ts` 的 `languageFromPath()`：由文件扩展名得到小写语言名，如 `typescript` / `javascript` / `shell`，认不出时不带该属性），**不**直接取宿主的语言标识——VS Code 的 `document.languageId` 会给 `typescriptreact` 这类与既有族不同名的值；宿主回传时只带文件路径与建议标识，语言由 CLI 侧统一推导，路径本身永不上报。补全请求本来就带文件路径，因此这一层不新增协议负担。`model` 取该次请求**实际使用**的模型（未配置补全模型时回退到 fastModel，指标反映回退后的真实值）。
+
+**验收场景**：
+
+1. **假设** 补全已启用且导出器就绪，**当**宿主渲染了一条幽灵文本时，**则** `wave.completion.outcome{outcome=displayed}` 递增一次，并带 `model` 与 `language`。
+2. **假设** 用户接受了这条建议，**当**接受动作发生时，**则**同一建议再记一次 `{outcome=accepted}`；从未被接受则不产生 `accepted`。
+3. **假设** 用户继续输入导致建议失效（未接受），**当**该建议被顶掉时，**则**只有 `displayed` 一次、没有 `accepted`——不引入第三种 outcome，指标里也不记录失效原因。
+4. **假设** 宿主是 JetBrains，**当**用户接受了一条建议时，**则**平台经 `insertHandler` 回调，该端同样记一次 `{outcome=accepted}`，与 VS Code 的属性集完全一致（两端数据可合起来按同一口径聚合）。
+5. **假设** 一次 `Edit` 调用的权限决策发生，**当**记录指标时，**则**只有 `wave.code_edit_tool.decision` 递增，`wave.completion.outcome` 不变；两个比率在消费侧各自派生、互不相加。
+6. **假设** 这两条序列被导出，**则**数据点不带文件路径、代码内容或光标位置，只带低基数的 `model` / `language` 与标准归属属性。
 
 ---
 

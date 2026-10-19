@@ -642,6 +642,11 @@ export class AgentBridge {
           },
           sessionId,
         );
+      case "reportCompletionOutcome":
+        return this.reportCompletionOutcome(
+          p.outcome as "displayed" | "accepted",
+          sessionId,
+        );
 
       default: {
         // Type-level exhaustiveness, both directions: a union member without a
@@ -1830,6 +1835,27 @@ export class AgentBridge {
   private getPermissionMode(sessionId?: string): { mode: PermissionMode } {
     const entry = this.requireSessionForRead(sessionId);
     return { mode: entry.agent.getPermissionMode() };
+  }
+
+  /**
+   * Records what the editor host saw happen to the last suggestion —
+   * `displayed` when it rendered the ghost text, `accepted` when the user took
+   * it. The outcome is the only thing the host reports: the model and the
+   * language stay on this side, derived when the completion was produced.
+   */
+  private reportCompletionOutcome(
+    outcome: "displayed" | "accepted",
+    sessionId?: string,
+  ): { ok: true } {
+    const entry = this.requireSessionForRead(sessionId);
+    if (outcome !== "displayed" && outcome !== "accepted") {
+      throw new RpcError(
+        PROTOCOL_INTERNAL_ERROR,
+        "outcome must be 'displayed' or 'accepted'",
+      );
+    }
+    entry.agent.reportCompletionOutcome(outcome);
+    return { ok: true };
   }
 
   /**
