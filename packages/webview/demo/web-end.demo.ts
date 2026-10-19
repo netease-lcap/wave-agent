@@ -1,13 +1,9 @@
 import { test, expect } from "../e2e/utils/webviewTestHarness.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
-import {
-  screenshotWebp,
-  elementScreenshotWebp,
-} from "../e2e/utils/screenshot.js";
+import { screenshotWebp } from "../e2e/utils/screenshot.js";
 import {
   openSettings,
-  settingsHtml,
   simulateHostMessage,
 } from "../e2e/utils/settingsHarness.js";
 import fs from "node:fs";
@@ -280,31 +276,6 @@ test.describe("Web 端（远控页）手机截图", () => {
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/web-more-menu.webp",
-    );
-  });
-
-  test("设置页：手机单列只留三块", async ({ webviewPage }) => {
-    await webviewPage.setViewportSize(PHONE);
-    await webviewPage.setContent(
-      settingsHtml.replace(
-        "<body>",
-        `<body><script>window.waveRemotePage = true; document.documentElement.dataset.remotePage = "1";</script>`,
-      ),
-    );
-    await expect(webviewPage.locator(".settings-page")).toBeVisible();
-    await simulateHostMessage(webviewPage, {
-      command: "settingsState",
-      workdir: DIR_A,
-      nav: "global",
-    });
-    await simulateHostMessage(webviewPage, {
-      command: "configurationResponse",
-      configurationData: { language: "zh-CN", contextLength: 200 },
-    });
-    const view = webviewPage.locator(".settings-page");
-    await elementScreenshotWebp(
-      view,
-      "../../docs/public/screenshots/web-settings.webp",
     );
   });
 

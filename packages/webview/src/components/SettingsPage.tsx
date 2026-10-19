@@ -26,13 +26,7 @@
  * theme tokens; no Element Plus dependency is used.
  */
 
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ConfigurationData,
   ThemeSource,
@@ -138,14 +132,6 @@ export interface SettingsPageProps {
   /** 进入「全局设置」视图时向宿主拉取补全模型候选（幂等；宿主未注册该命令时
    *  不传本回调，下拉退化为「只有当前值」）。 */
   onLoadConfiguredModels?: () => void;
-  /**
-   * 「这台宿主不支持读写设置」的原因（目前只有远控网页会传：JSON-RPC -32011，
-   * 即会话所在进程是前台 CLI——它只服务自己那条对话，没有设置文件这条通道）。
-   * 传入即把可编辑控件整体置灰，并在内容区顶部常驻一句说明：**结构化地**说出
-   * 「该宿主不支持」，而不是让用户反复按一个必然失败的保存按钮，也不是把
-   * `-32601` 那种「去升级机器」的黑箱话术丢给用户（spec ui/remote-control.md
-   * 「Web 端也能改设置」场景 6）。未传（桌面端 / IDE 宿主）= 正常可编辑。 */
-  unsupportedReason?: string;
 }
 
 export type NavKey =
@@ -284,27 +270,14 @@ const NAV_GROUPS: NavGroup[] = [
 /** 当前宿主能看到的导航分组。桌面端把「插件市场」整项摘掉——它已有独立的整页视图
  *  （侧边栏「新对话」下方的入口，spec ecosystem/plugin.md 场景 1），设置页不再重复
  *  一个入口；IDE 宿主（VS Code / JetBrains）没有侧边栏整页，设置页这项是它们唯一的
- *  入口，必须保留。
- *
- *  远控网页（第五种宿主）只保留**能在这台手机上真的用起来**的三块：全局设置 /
- *  个性化 / 项目设置。插件市场、技能、子代理、钩子、MCP 五个视图要的是宿主的
- *  **界面**能力（目录树、配置文件路径、安装流程），页面上既不渲染、白名单也没放行
- *  它们的方法——整项缺席而不是渲染后置灰（spec ui/remote-control.md「Web 端也能改
- *  设置」场景 3）。「远程控制」同理不出现：那是一条**宿主本地**的斜杠命令（开关与
- *  二维码都属于电脑侧），页面自己就是二维码指向的东西，在这里再给一个入口是自我
- *  指涉（同一故事场景 1；`/remote-control` 在页面上仍按普通消息发出去）。 */
-const REMOTE_PAGE_NAV_KEYS: NavKey[] = ["global", "personalization", "project"];
-
-const navGroupsForCurrentHost = (): NavGroup[] => {
-  const remotePage = isRemotePageHost();
-  return NAV_GROUPS.map((group) => ({
+ *  入口，必须保留。 */
+const navGroupsForCurrentHost = (): NavGroup[] =>
+  NAV_GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => {
-      if (remotePage) return REMOTE_PAGE_NAV_KEYS.includes(item.key);
-      return !(item.key === "plugins" && isDesktopHost());
-    }),
+    items: group.items.filter(
+      (item) => !(item.key === "plugins" && isDesktopHost()),
+    ),
   })).filter((group) => group.items.length > 0);
-};
 
 const SettingsPage: React.FC<SettingsPageProps> = ({
   configurationData,
@@ -331,31 +304,8 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   onPrefillPrompt,
   configuredModels,
   onLoadConfiguredModels,
-  unsupportedReason,
 }) => {
-  // 导航项先按宿主裁一次（见 navGroupsForCurrentHost），进页时的初始选中项也要
-  // 落在**这个宿主真有的**项上：`initialNav` 是外层按斜杠命令传下来的
-  // （`/remote-control` → remoteControl、`/mcp` → mcp …），而某些宿主没有那一项
-  // （远控网页没有远程控制，五块管理视图也不在），照传下去会渲染一个导航里根本
-  // 不存在的视图——页面上既没有它的高亮项，返回后也找不到它是从哪进来的。
-  // 宿主身份在页面寿命内不变（`waveHostType` / `waveRemotePage` 都是加载时定的），
-  // 所以这份清单只算一次。
-  const hostNavGroups = useMemo(() => navGroupsForCurrentHost(), []);
-  const visibleNavKeys = useMemo(
-    () => hostNavGroups.flatMap((group) => group.items.map((item) => item.key)),
-    [hostNavGroups],
-  );
-  const clampNav = useCallback(
-    (key: NavKey | undefined): NavKey =>
-      key && visibleNavKeys.includes(key) ? key : "global",
-    [visibleNavKeys],
-  );
-
-  const [activeNav, setActiveNav] = useState<NavKey>(() =>
-    clampNav(initialNav),
-  );
-  // 宿主不支持读写设置（见 unsupportedReason 注释）：整页可编辑控件置灰。
-  const hostUnsupported = Boolean(unsupportedReason);
+  const [activeNav, setActiveNav] = useState<NavKey>(initialNav ?? "global");
 
   // macOS 全屏状态（仅 desktop 宿主有 Provider 供值；IDE 宿主无 Provider 读默认
   // false）——设置页占满整个 view 时由自身窗口行承接红绿灯让位，系统全屏
@@ -364,11 +314,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 
   // IDE 标签页场景：设置页常驻挂载，/agents、/skills 再次唤起时 host 通过
   // settingsState 下发新的 nav，此处同步选中项（desktop 每次打开会重挂载，
-  // 初始值已覆盖，本 effect 为幂等）。同样按宿主夹一次：下发的可能是这个宿主
-  // 没有的那一项（见 clampNav 的说明）。
+  // 初始值已覆盖，本 effect 为幂等）。
   useEffect(() => {
-    if (initialNav) setActiveNav(clampNav(initialNav));
-  }, [initialNav, clampNav]);
+    if (initialNav) setActiveNav(initialNav);
+  }, [initialNav]);
 
   // 用户偏好草稿（configurationData 回填后同步）。`""` = 未设置（settings.json
   // 里没有该键）——此时控件显示系统默认（占位符 /「未设置（默认：中文）」项），
@@ -675,7 +624,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
           )}
           {backButton}
           <nav className="settings-navigation" aria-label="设置">
-            {hostNavGroups.map((group) => (
+            {navGroupsForCurrentHost().map((group) => (
               <div className="settings-nav-group" key={group.label}>
                 <h2>{group.label}</h2>
                 <div className="settings-nav-items">
@@ -700,17 +649,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
         </aside>
 
         <main className="settings-content">
-          {/* 「该宿主不支持」常驻说明（见 unsupportedReason）：一句文案 + 可编辑
-              控件整体置灰，而不是让用户对着一个必然失败的保存按钮反复按。 */}
-          {unsupportedReason && (
-            <p
-              className="settings-host-unsupported"
-              data-testid="settings-host-unsupported"
-              role="status"
-            >
-              {unsupportedReason}
-            </p>
-          )}
           {activeNav === "global" && (
             <div className="settings-view">
               <header className="settings-page-header">
@@ -740,7 +678,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         testId="settings-select-language"
                         label="AI 回复语言"
                         value={language}
-                        disabled={orgManaged("language") || hostUnsupported}
+                        disabled={orgManaged("language")}
                         options={[
                           ...(language === ""
                             ? [{ value: "", label: UNSET_OPTION_LABEL }]
@@ -784,9 +722,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         step={16}
                         placeholder={CONTEXT_LENGTH_PLACEHOLDER}
                         value={contextLength}
-                        disabled={
-                          orgManaged("contextLength") || hostUnsupported
-                        }
+                        disabled={orgManaged("contextLength")}
                         onChange={(e) => setContextLength(e.target.value)}
                       />
                       <span>K</span>
@@ -823,7 +759,6 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         aria-label="服务端地址"
                         placeholder={SERVER_URL_PLACEHOLDER}
                         value={serverUrlDraft}
-                        disabled={hostUnsupported}
                         onChange={(e) => {
                           setServerUrlDraft(e.target.value);
                           setServerUrlInvalid(false);
@@ -901,7 +836,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                   <button
                     type="button"
                     className="settings-save-btn"
-                    disabled={!configurationData || saving || hostUnsupported}
+                    disabled={!configurationData || saving}
                     onClick={handleSaveGlobal}
                   >
                     保存
@@ -999,11 +934,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         type="checkbox"
                         aria-label="启用 SDD 插件"
                         checked={sddEnabled}
-                        disabled={
-                          pluginToggling ||
-                          !projectSettingsForWorkdir ||
-                          hostUnsupported
-                        }
+                        disabled={pluginToggling || !projectSettingsForWorkdir}
                         onChange={handleToggleSdd}
                       />
                       <span className="settings-switch-slider"></span>
@@ -1065,7 +996,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       value={
                         activeScope === "user" ? userContent : projectContent
                       }
-                      disabled={agentsSaving || hostUnsupported}
+                      disabled={agentsSaving}
                       onChange={(e) => {
                         if (activeScope === "user") {
                           setUserContent(e.target.value);
@@ -1078,11 +1009,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       <button
                         type="button"
                         className="settings-save-btn"
-                        disabled={
-                          !onSaveAgentsContent ||
-                          agentsSaving ||
-                          hostUnsupported
-                        }
+                        disabled={!onSaveAgentsContent || agentsSaving}
                         onClick={handleSaveAgents}
                       >
                         保存{activeScope === "project" ? "项目级" : "用户级"}
@@ -1114,9 +1041,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         type="checkbox"
                         aria-label="开启自动记忆"
                         checked={autoMemoryEnabled}
-                        disabled={
-                          orgManaged("autoMemoryEnabled") || hostUnsupported
-                        }
+                        disabled={orgManaged("autoMemoryEnabled")}
                         onChange={(e) => setAutoMemoryEnabled(e.target.checked)}
                       />
                       <span className="settings-switch-slider"></span>
@@ -1147,9 +1072,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                         max={100}
                         placeholder={AUTO_MEMORY_FREQUENCY_PLACEHOLDER}
                         value={autoMemoryFrequency}
-                        disabled={
-                          orgManaged("autoMemoryFrequency") || hostUnsupported
-                        }
+                        disabled={orgManaged("autoMemoryFrequency")}
                         onChange={(e) => setAutoMemoryFrequency(e.target.value)}
                       />
                       <span>轮</span>
@@ -1160,7 +1083,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                   <button
                     type="button"
                     className="settings-save-btn"
-                    disabled={!configurationData || saving || hostUnsupported}
+                    disabled={!configurationData || saving}
                     onClick={handleSaveMemory}
                   >
                     保存

@@ -95,38 +95,9 @@ import type { RemoteControlEndpoint } from "./remoteControlConfig.js";
  *   the write fails), so switching on the phone switches it for every session on
  *   this machine. The page says so in its confirmation.
  *
- * **Settings (2026-10-17, third batch)** — read the configuration, edit the
- * personalisation, and toggle the project's built-in plugin. This used to sit in
- * the paragraph below as one undifferentiated "the host holds the data" lump;
- * checked key by key, exactly three of the settings page's views are things a
- * phone can carry — 全局设置 / 个性化 / 项目设置. What the page cannot carry is
- * the **interface** around them: the plugin market, the MCP / skills / subagents
- * / hooks managers (all four need a folder tree, a file path or an install
- * flow), login, and the desktop-only 主题 / Beta 通道 blocks. Those stay
- * unrendered on the page and their methods stay out of this list. So:
- *
- * - `getUserSettings` / `updateUserSettings` — the user preference file, **effective
- *   value + per-key source layer**. The layer is why the page can keep the same
- *   "由组织配置管理" grey-out the desktop has: a key inherited from the org's
- *   remote config arrives already marked, no second read.
- * - `getAgentsContent` / `setAgentsContent` — the two AGENTS.md editors
- *   (user-level / project-level). Same RPC the desktop and IDE settings pages use.
- * - `getProjectSettings` / `setBuiltinPluginEnabled` — the 项目设置 view's one
- *   switch (SDD). **Project scope only** is reachable from the page's UI; the
- *   method's `scope` parameter is not narrowed here because the desktop uses the
- *   same call for the same single toggle.
- *
- * Deliberately **not** added with them: `updateConfig` (the session-level
- * `AgentOptions` overlay — the settings page stopped using it on 2026-09-10;
- * every key it saves is a user preference, so `updateUserSettings` is the whole
- * write path and adding `updateConfig` would expose a knob with no caller) and
- * `getConfiguredModels` (already allowed since the second batch — the page's
- * `/model` needs it; the settings page's completion-model dropdown does **not**
- * exist here, see below).
- *
- * Still out, and deliberately: the plugin market / skills / subagents / hooks /
- * MCP managers, login (`login`, `logout`, …), anything that opens an editor
- * (`openFile` is not even a bridge method), the on-disk session list
+ * Still out, and deliberately: settings / plugin market / login (`getUserSettings`,
+ * `updateUserSettings`, plugins, `login`, `logout`, …), anything that opens an
+ * editor (`openFile` is not even a bridge method), the on-disk session list
  * (`listAllSessions` / `restoreSession`), the process-lifecycle calls
  * (`shutdown` / `bang`), and the **read-only panes the page has no
  * surface for** — `getWorkspaceDiff` / `getWorktreeChanges` / `getPlanFile` /
@@ -192,16 +163,6 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   "searchFiles",
   "getPromptHistory",
   "searchPromptHistory",
-  // ── 第三批：设置页（spec ui/remote-control.md「Web 端也能改设置」）──
-  // 只有「读配置 + 个性化 + 项目设置」这三块页面：用户偏好（生效值 + 每键来源层）、
-  // 两份 AGENTS.md、项目内置插件开关。插件市场 / MCP / 技能 / 子代理 / 钩子 / 登录
-  // 那批要的是宿主的**界面**能力，页面不渲染、方法也不放行（见上面注释）。
-  "getUserSettings",
-  "updateUserSettings",
-  "getAgentsContent",
-  "setAgentsContent",
-  "getProjectSettings",
-  "setBuiltinPluginEnabled",
   // ── 第四批：会话删除（spec「手机端的会话列表与删除」）──
   // 写：`destroy` 带上可选 `removeWorktree`（默认 false）。工作树由 daemon 从该
   // 会话的 createdWorkdir 定位、并在 agent.destroy() 之后删除，页面给不出路径。

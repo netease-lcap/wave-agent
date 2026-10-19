@@ -302,18 +302,4 @@ describe("设置页 · 远程控制选项卡", () => {
     expect(sentActions(vscode)).toHaveLength(0);
     expect(screen.queryByTestId("remote-control-view")).toBeNull();
   });
-
-  it("clamps a forced selection on the phone page back to 全局设置", async () => {
-    // 外层把 `initialNav: "remoteControl"` 硬塞进来（例如页面版本比机器新）时也不能
-    // 渲染一个导航里没有的视图：进页先按宿主裁一次，落回第一项。
-    window.waveRemotePage = true;
-    const vscode = mountSettingsPage("remoteControl");
-
-    expect(screen.queryByTestId("remote-control-view")).toBeNull();
-    expect(
-      screen.getByRole("heading", { name: "全局设置" }),
-    ).toBeInTheDocument();
-    // 也没为它发出任何轮询。
-    expect(sentActions(vscode)).toHaveLength(0);
-  });
 });

@@ -252,7 +252,7 @@ export default {
                   text: "审批在手机上一样能批",
                   link: "/web#审批在手机上一样能批",
                 },
-                { text: "设置页与更多菜单", link: "/web#设置页与更多菜单" },
+                { text: "更多菜单", link: "/web#更多菜单" },
               ],
             },
             { text: "多台电脑", link: "/web#多台电脑" },

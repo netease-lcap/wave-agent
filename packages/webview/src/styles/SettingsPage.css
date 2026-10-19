@@ -260,27 +260,6 @@
   box-sizing: border-box;
 }
 
-/* 「该宿主不支持」常驻说明（远控网页里当前会话是前台 CLI 会话时的结构化答复）。
-   与 .settings-view 同宽同左右内边距，保证它和下面的卡片左右对齐；颜色走 VS Code
-   的错误前景/错误底 token，不用本页自己的强调色——这是一条错误事实，不是主题色。 */
-.settings-host-unsupported {
-  width: min(760px, 100%);
-  margin: 20px auto 0;
-  padding: 10px 12px;
-  box-sizing: border-box;
-  color: var(
-    --vscode-inputValidation-errorForeground,
-    var(--vscode-errorForeground, #f14c4c)
-  );
-  background: var(
-    --vscode-inputValidation-errorBackground,
-    rgba(255, 0, 0, 0.08)
-  );
-  border-radius: 8px;
-  font-size: 12px;
-  line-height: 20px;
-}
-
 .settings-page-header-text {
   min-width: 0;
 }
@@ -844,79 +823,16 @@
   line-height: 20px;
 }
 
-/* ---- Narrow panels / 手机视口 ---- */
+/* ---- Narrow panels ---- */
 
-/* 远控网页是这一页唯一会跑在手机浏览器里的宿主，390px 一档必须真的能用（spec
-   ui/remote-control.md「Web 端也能改设置」场景 4）：两列（240px 导航 + 内容）
-   在这个宽度下只剩不到 150px 给内容，什么控件都放不下。所以 ≤760px 换成**单列**：
-   返回按钮在最上，导航压成**一行可横向滚动的胶囊**（分组标题收起、所有导航项平铺
-   成一行，不再分段），内容在下并占满宽度；输入框 / 下拉 / 按钮一律占满一行。
-   平板一档（≈768px）落在断点上方，仍是桌面/IDE 的两列布局——本断点只服务手机。
-
-   规则全部写在断点内：760px 以上（桌面端、IDE 宿主、平板上打开远控页）的布局
-   一个像素都不变。 */
 @media (max-width: 760px) {
   .settings-layout {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-  }
-
-  /* 单列里左栏只承载「返回 + 一行导航」，分隔线从右侧换到底部，自己不再滚动 */
-  .settings-sidebar {
-    border-right: 0;
-    border-bottom: 1px solid var(--cc-settings-border);
-    overflow: visible;
-  }
-
-  .settings-back {
-    min-height: 44px;
-  }
-
-  /* 导航 = 一行横向滚动的 chips：纵向不留白、横向可滑（隐藏滚动条，靠内容自己
-     露出半截提示还能滑）。 */
-  .settings-navigation {
-    flex: 0 0 auto;
-    flex-direction: row;
-    gap: 8px;
-    padding: 0 12px 10px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    -webkit-overflow-scrolling: touch;
-    overscroll-behavior-x: contain;
-    scrollbar-width: none;
-  }
-
-  .settings-navigation::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* 分组在单列里不再分段：标题收起，各项平铺进同一行 */
-  .settings-nav-group {
-    display: contents;
-  }
-
-  .settings-nav-group h2 {
-    display: none;
-  }
-
-  .settings-nav-items {
-    flex-direction: row;
-    gap: 8px;
-  }
-
-  .settings-nav-item {
-    flex: 0 0 auto;
-    height: 36px;
-    padding: 0 12px;
-    white-space: nowrap;
-    border: 1px solid var(--cc-settings-border);
-    border-radius: 999px;
+    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
   }
 
   .settings-view {
     width: 100%;
-    padding: 20px 16px 48px;
-    gap: 20px;
+    padding-inline: 16px;
   }
 
   .settings-row {
@@ -929,28 +845,6 @@
   .settings-number-control {
     width: 100%;
     flex: none;
-  }
-
-  /* 输入 / 下拉 / 按钮占满一行：手机上点得到比对齐好看重要 */
-  .settings-select,
-  .settings-select-trigger {
-    width: 100%;
-    min-height: 40px;
-  }
-
-  .settings-number-input,
-  .settings-text-input {
-    width: 100%;
-    min-height: 40px;
-  }
-
-  .settings-actions {
-    flex-direction: column;
-  }
-
-  .settings-save-btn {
-    width: 100%;
-    height: 40px;
   }
 }
 
