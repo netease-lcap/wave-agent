@@ -625,6 +625,13 @@ export class Agent {
             status: block.status,
             summary: block.summary,
             outputFile: block.outputFile,
+            // Same fields as the turn-end drain in aiManager: this path is what
+            // an idle agent takes when a background task reports in, and a
+            // workflow's `result` is the whole point of its notification — the
+            // summary carries counts, not the value the script returned. Dropping
+            // it here left the model with a headline and no findings, so a caller
+            // that awaited a result had to fall back to reading the journal.
+            result: block.result,
           });
         }
       }

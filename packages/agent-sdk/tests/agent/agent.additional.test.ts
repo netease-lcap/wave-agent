@@ -3,6 +3,7 @@ import { Agent } from "@/agent.js";
 import * as sessionService from "@/services/session.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
 import * as fs from "fs/promises";
+import { taskNotificationToXml } from "@/utils/notificationXml.js";
 
 // Mock dependencies
 vi.mock("@/services/aiService", () => ({
@@ -159,6 +160,49 @@ describe("Agent additional coverage", () => {
       );
 
       // Clean up before the next test
+      await agent2.destroy();
+    });
+
+    it("should deliver a background task's result to the model, not just its summary", async () => {
+      // A workflow's notification is how the script's return value reaches the
+      // model: the summary carries counts (<usage>), the result carries the
+      // findings. The idle dispatch path dropped <result>, so a caller that
+      // awaited a value had to go read the journal instead.
+      const agent2 = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-coverage-result",
+      });
+
+      const messageQueue = (
+        agent2 as unknown as {
+          messageQueue: { enqueueNotification: (xml: string) => void };
+        }
+      ).messageQueue;
+
+      messageQueue.enqueueNotification(
+        taskNotificationToXml({
+          type: "task_notification",
+          taskId: "run-1",
+          taskType: "workflow",
+          status: "completed",
+          summary: 'Dynamic workflow "scan" completed',
+          result: '{"findings":[{"id":"F1"}]}',
+        }),
+      );
+
+      await vi.waitFor(
+        () => {
+          const blocks = agent2.messages
+            .flatMap((message) => message.blocks ?? [])
+            .filter((block) => block.type === "task_notification");
+          expect(blocks).toHaveLength(1);
+          expect((blocks[0] as unknown as { result?: string }).result).toBe(
+            '{"findings":[{"id":"F1"}]}',
+          );
+        },
+        { timeout: 5000 },
+      );
+
       await agent2.destroy();
     });
 
