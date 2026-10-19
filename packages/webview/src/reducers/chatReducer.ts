@@ -49,6 +49,9 @@ export const initialState: ChatState = {
   // Auth state
   isAuthenticated: false,
   initialized: false,
+  // 只有 SET_INITIAL_STATE 会置真（见 types/index.ts 的同名字段注释）——预填提示词
+  // 等它翻转后才写，避免写进「authStatus 已到、快照未到」的半就绪窗口被快照重置。
+  initialStateReceived: false,
   workdir: undefined,
 };
 
@@ -299,6 +302,8 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         sessionsLoading: false,
         configurationLoading: false,
         initialized: true,
+        // 权威快照落地（预填提示词的写入闸门，见 ChatState 注释）。
+        initialStateReceived: true,
         isAuthenticated:
           action.payload.isAuthenticated !== undefined
             ? action.payload.isAuthenticated

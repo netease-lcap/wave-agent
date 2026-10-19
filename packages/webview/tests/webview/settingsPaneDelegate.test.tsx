@@ -222,6 +222,21 @@ describe("desktop pane 布局：/plugin 落到插件市场整页", () => {
   });
 });
 
+/**
+ * 真宿主（desktopHost.pushInitialState / vscode / jetbrains handleWebviewReady）
+ * 在 webviewReady 之后的回放顺序：先 `authStatusResponse`（置 initialized、输入区
+ * 挂载），再 `setInitialState`（pane 快照：权威状态 + 宿主草稿，desktop 带 paneId）。
+ * 预填提示词必须等后者落地才写——在两条消息之间写入会被紧随其后的快照按
+ * inputContent 重置成空（见 settingsPrefillReadiness.test.tsx）。
+ */
+function replayHostSnapshot(paneId = "pane-1") {
+  sendHostMessage(fixtures.authStatusResponse());
+  sendHostMessage({
+    ...fixtures.setInitialState({ messages: [] }),
+    paneId,
+  } as never);
+}
+
 // spec docs/specs/ecosystem/mcp.md「新增/编辑 MCP」：设置页点「+ 新增 MCP 服务」后
 // 关闭设置页、把 /settings 提示词预填进 focused 对话输入框。Bug 3466212216530432
 // 根因：FR-032 pane 布局下设置页挂在 root 实例（paneId undefined）而输入框在各
@@ -269,9 +284,9 @@ describe("desktop pane 布局：设置页「新增/编辑」提示词预填进 f
     });
 
     // 设置页关闭 → pane 行重挂载（ChatApp 状态复位，输入框未就绪）。宿主收到
-    // webviewReady 后回放 snapshot——此处模拟：authStatusResponse 置 initialized，
-    // 输入框挂载后下行请求才真正 loadDraft（此前保持 pending 不清除）。
-    sendHostMessage(fixtures.authStatusResponse());
+    // webviewReady 后按 authStatusResponse → setInitialState 回放；预填等在后者之后
+    // 写入（此前保持 pending 不清除）。
+    replayHostSnapshot();
 
     await waitFor(() => {
       expect(paneInput("pane-1").textContent ?? "").toMatch(
@@ -300,9 +315,9 @@ describe("desktop pane 布局：设置页「新增/编辑」提示词预填进 f
     });
 
     // 关设置页后 pane-1 chatContainer 重挂载（ChatApp 状态复位，输入框未就绪）。
-    // 宿主收到 webviewReady 后回放 snapshot——此处模拟：authStatusResponse 置
-    // initialized，输入框挂载后下行请求才真正 loadDraft。
-    sendHostMessage(fixtures.authStatusResponse());
+    // 宿主收到 webviewReady 后按 authStatusResponse → setInitialState 回放，预填等
+    // 快照落地后才写入。
+    replayHostSnapshot();
 
     // 关设置页后 pane-1 chatContainer 重挂载 → 提示词写入 pane-1 输入框
     await waitFor(() => {
@@ -347,7 +362,7 @@ describe("desktop pane 布局：设置页「新增/编辑」提示词预填进 f
       });
 
       // 同新增用例：设置页关闭后 pane 行重挂载，回放 snapshot 输入框才就绪
-      sendHostMessage(fixtures.authStatusResponse());
+      replayHostSnapshot();
 
       // 提示词预填进 focused pane-1（编辑模板）；pane-2 不受影响
       await waitFor(() => {
@@ -421,9 +436,8 @@ describe("desktop pane 布局：设置页「新增/编辑」提示词预填进 f
       });
 
       // 同新增用例：设置页关闭后 pane-1 chatContainer 重挂载（ChatApp 状态复位，
-      // 输入框未就绪），回放 snapshot（authStatusResponse 置 initialized）输入框才
-      // 真正就绪、下行 prefill 才 loadDraft。
-      sendHostMessage(fixtures.authStatusResponse());
+      // 输入框未就绪），回放 snapshot 后输入框才真正就绪、下行 prefill 才 loadDraft。
+      replayHostSnapshot();
 
       await waitFor(() => {
         expect(paneInput("pane-1").textContent ?? "").toContain(

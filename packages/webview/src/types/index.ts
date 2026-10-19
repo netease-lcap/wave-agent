@@ -898,6 +898,13 @@ export interface ChatState {
   // backend. The welcome page is withheld until this is true so the login CTA
   // doesn't flash for logged-in users before setInitialState arrives.
   initialized: boolean;
+  // 本条视图的权威快照（setInitialState）是否已落地。`initialized` 会被
+  // authStatusResponse 提前置真（宿主 pushInitialState 先发认证再发快照），此后
+  // 到 setInitialState 之前是一个「输入区已挂载、状态还是空的」的窗口——预填提示词
+  // 在这个窗口里写进输入框，会被紧随其后的快照按 inputContent 重置成空（线上缺陷：
+  // 设置页「新增钩子」跳回会话首屏看不到预填文本，切走再切回才有）。所以只能拿
+  // 这个只在 SET_INITIAL_STATE 里翻转的标记当「输入框可安全写入」的判据。
+  initialStateReceived: boolean;
   // Agent working directory, used to render tool file paths as relative.
   workdir?: string;
   // Dialog state
