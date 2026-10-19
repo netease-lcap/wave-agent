@@ -1,7 +1,7 @@
 name: Publish Package
 
 # 发布按 tag 命名空间路由到独立构建线：
-#   v*                → npm 线（wave-agent-sdk / wave-code 发布到 npm + docs 资产 + GitHub Release 创建）
+#   v*                → npm 线（wave-agent-sdk / wave-code 发布到 npm + GitHub Release 创建）
 #   wave-desktop@*    → 桌面端安装器
 #   wave-vscode@*     → VS Code 扩展 .vsix
 #   wave-jetbrains@*  → JetBrains 插件 .zip
@@ -47,31 +47,10 @@ jobs:
       # `-r` 自动跳过 private 包，实际只发布 wave-agent-sdk 与 wave-code。
       - run: pnpm -r publish --no-git-checks --provenance --access public
 
-      # --- Docs (docs-<version>.tar.gz) ---
-      - name: Cache Playwright browsers
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            playwright-chromium-${{ runner.os }}-
-
-      - name: Install Playwright Chromium
-        run: pnpm -F wave-webview exec playwright install --with-deps chromium
-
-      - name: Generate screenshots
-        run: pnpm -F wave-webview run test:demo
-
-      - name: Build docs with base /docs/
-        run: npx vitepress build docs --base /docs/
-
-      # Version the archive like the other release assets (.vsix/.zip/.dmg/.exe);
-      # read from package.json (bumped by scripts/version.js) so it also works
-      # on workflow_dispatch, where GITHUB_REF_NAME is a branch, not a tag.
-      - name: Package docs archive
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          tar -czf "docs-${VERSION}.tar.gz" -C docs/.vitepress/dist .
+      # 文档站产物不在这里构建：运维平台要的 docs-<version>.tar.gz 由本地
+      # `pnpm run docs:pack` 出（与远控页的 `pack:remote` 同一条路子 —— 本地打包、
+      # 手工上传，.wave/skills/ops-upload 技能负责传）。GitHub Pages 的站点
+      # 另由 pages.yml 在 push main 时构建，与本 workflow 无关。
 
       # --- GitHub Release ---
       - name: Get previous tag
@@ -83,8 +62,6 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: |
-            docs-*.tar.gz
           draft: false
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
           generate_release_notes: true

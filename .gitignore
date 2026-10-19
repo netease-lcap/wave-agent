@@ -35,3 +35,4 @@ docs/.vitepress/cache/
 docs/.vitepress/.temp/
 docs/.vitepress/data/
 docs/public/screenshots/
+docs-*.tar.gz

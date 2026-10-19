@@ -115,6 +115,7 @@ source-level checks in `scripts/check-sdk-surface.mjs`.
 
 - **Preview**: `pnpm run docs:dev`
 - **Build**: `pnpm run docs:build` — this first runs Playwright demo tests to regenerate screenshots into `docs/public/screenshots/` (gitignored). A bare `vitepress build docs` fails on missing screenshot imports.
+- **Pack for the ops platform**: `pnpm run docs:pack` — builds with `--base /docs/` and writes `docs-<version>.tar.gz` in the repo root, which `.wave/skills/ops-upload` uploads (`--type docs`). Releases do **not** build the docs (`publish.yml` only publishes npm + creates the GitHub Release); GitHub Pages is built separately by `pages.yml`.
 
 ## 🧭 Webview Extension Conventions (`packages/webview`)
 
