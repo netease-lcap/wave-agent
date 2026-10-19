@@ -1,4 +1,5 @@
 import type { ToolContext, ToolPlugin, ToolResult } from "../tools/types.js";
+import { validateToolInput } from "../tools/inputValidation.js";
 import { bashTool } from "../tools/bashTool.js";
 import { taskStopTool } from "../tools/taskStopTool.js";
 import { editTool } from "../tools/editTool.js";
@@ -151,6 +152,12 @@ function recordBashActivity(
  */
 class ToolManager {
   private toolsRegistry = new Map<string, ToolPlugin>();
+  /**
+   * The plugin objects wave itself registered, by identity rather than by name:
+   * a custom tool that shadows a built-in name must not inherit its validation
+   * (`register()` replaces the registry entry, the object stays behind here).
+   */
+  private builtInTools = new WeakSet<ToolPlugin>();
   private tools?: string[];
   private customTools?: ToolPlugin[];
   private container: Container;
@@ -167,9 +174,17 @@ class ToolManager {
 
   /**
    * Register a new tool
+   *
+   * `options.builtIn` marks a tool whose `config.function.parameters` is wave's
+   * own contract, and whose calls are therefore checked against it (see
+   * `validateToolInput`). Custom tools registered by SDK users are not checked:
+   * their schema is theirs to enforce (spec `core/tool-input-validation.md`).
    */
-  public register(tool: ToolPlugin): void {
+  public register(tool: ToolPlugin, options?: { builtIn?: boolean }): void {
     this.toolsRegistry.set(tool.name, tool);
+    if (options?.builtIn === true) {
+      this.builtInTools.add(tool);
+    }
   }
 
   /**
@@ -238,7 +253,7 @@ class ToolManager {
 
     for (const tool of builtInTools) {
       if (this.shouldEnableTool(tool.name)) {
-        this.toolsRegistry.set(tool.name, tool);
+        this.register(tool, { builtIn: true });
       }
     }
 
@@ -449,6 +464,28 @@ class ToolManager {
     // call does.
     const plugin = this.toolsRegistry.get(name);
     if (plugin) {
+      // Arguments are checked against the schema the tool declares *before* the
+      // hooks and before the tool runs: a call whose parameters are wrong is
+      // neither a permission question nor something a hook should see. The
+      // failure is returned as an ordinary error result, so the model can read
+      // the reason and retry (spec `core/tool-input-validation.md`).
+      if (this.builtInTools.has(plugin)) {
+        const invalid = validateToolInput(
+          name,
+          plugin.config?.function?.parameters,
+          args,
+        );
+        if (invalid !== null) {
+          logger?.debug(
+            "Tool call rejected: arguments do not match the schema",
+            {
+              toolName: name,
+            },
+          );
+          return { success: false, content: invalid, error: invalid };
+        }
+      }
+
       const hookManager = enhancedContext.hookManager;
       const blocked = await hookManager?.executePreToolUseHooks(
         name,

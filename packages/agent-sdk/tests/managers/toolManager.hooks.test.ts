@@ -47,7 +47,15 @@ const POST_BLOCKED = {
   timedOut: false,
 };
 
-function build(options: { execute?: ToolPlugin["execute"] } = {}) {
+function build(
+  options: {
+    execute?: ToolPlugin["execute"];
+    /** Register the fake the way `initializeBuiltInTools` does (validation on). */
+    builtIn?: boolean;
+    /** The JSON Schema the fake declares for the model. */
+    parameters?: Record<string, unknown>;
+  } = {},
+) {
   const container = new Container();
   const execute =
     options.execute ??
@@ -89,14 +97,21 @@ function build(options: { execute?: ToolPlugin["execute"] } = {}) {
   container.register("HookManager", hookManager);
 
   const toolManager = new ToolManager({ container });
-  toolManager.register({
-    name: "FakeTool",
-    config: {
-      type: "function",
-      function: { name: "FakeTool", description: "", parameters: {} },
-    } as ToolPlugin["config"],
-    execute: execute as ToolPlugin["execute"],
-  });
+  toolManager.register(
+    {
+      name: "FakeTool",
+      config: {
+        type: "function",
+        function: {
+          name: "FakeTool",
+          description: "",
+          parameters: options.parameters ?? {},
+        },
+      } as ToolPlugin["config"],
+      execute: execute as ToolPlugin["execute"],
+    },
+    { builtIn: options.builtIn === true },
+  );
 
   hookManager.loadConfiguration({
     PreToolUse: [
@@ -236,5 +251,65 @@ describe("ToolManager MCP funnel keeps a hook block's wording", () => {
       content: "",
       error: "server gone",
     });
+  });
+});
+
+describe("ToolManager checks built-in arguments before running the tool", () => {
+  const SCHEMA = {
+    type: "object",
+    properties: { taskId: { type: "string" } },
+    required: ["taskId"],
+  };
+
+  it("refuses a call whose arguments do not match the declared schema", async () => {
+    const { toolManager, execute, context } = build({
+      builtIn: true,
+      parameters: SCHEMA,
+    });
+
+    const result = await toolManager.execute("FakeTool", { id: "2" }, context);
+
+    expect(result).toEqual({
+      success: false,
+      content: [
+        "FakeTool failed due to the following issues:",
+        "The required parameter `taskId` is missing",
+        "An unexpected parameter `id` was provided",
+      ].join("\n"),
+      error: [
+        "FakeTool failed due to the following issues:",
+        "The required parameter `taskId` is missing",
+        "An unexpected parameter `id` was provided",
+      ].join("\n"),
+    });
+    // The tool never ran, and no hook saw the call: a malformed argument list is
+    // neither an execution nor a permission question.
+    expect(execute).not.toHaveBeenCalled();
+    expect(mockExecuteCommand).not.toHaveBeenCalled();
+  });
+
+  it("runs a built-in whose arguments match the declaration", async () => {
+    const { toolManager, execute, context } = build({
+      builtIn: true,
+      parameters: SCHEMA,
+    });
+
+    const result = await toolManager.execute(
+      "FakeTool",
+      { taskId: "2" },
+      context,
+    );
+
+    expect(result).toEqual({ success: true, content: "done" });
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it("does not validate a custom tool, whose schema is not wave's contract", async () => {
+    const { toolManager, execute, context } = build({ parameters: SCHEMA });
+
+    const result = await toolManager.execute("FakeTool", { id: "2" }, context);
+
+    expect(result).toEqual({ success: true, content: "done" });
+    expect(execute).toHaveBeenCalledOnce();
   });
 });
