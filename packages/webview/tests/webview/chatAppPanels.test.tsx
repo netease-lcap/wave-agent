@@ -2491,3 +2491,161 @@ describe("desktop plan panel", () => {
     expect(lastPanelState(vscode)).toContain("plan");
   });
 });
+
+/**
+ * 面板评论 × 预览全屏：全屏期间 `.desktop-chat-main` 整块不渲染（<MessageInput>
+ * 跟着卸载），但面板里的评论入口照旧可点（guest 与 pane 工具条都在全屏里铺满）。
+ * 原来的 `messageInputRef.current?.appendText()` 在这个窗口里只会落空 —— 用户写完的
+ * 评论被静默吞掉，全屏也不会退出。现在的口径：先退全屏，等输入框重新挂载后再追加。
+ */
+describe("desktop panel comments while the preview is fullscreen", () => {
+  type MockWebview = Omit<
+    WebviewTagElement,
+    "send" | "loadURL" | "reload" | "reloadIgnoringCache" | "getURL"
+  > & {
+    send: ReturnType<typeof vi.fn>;
+    loadURL: ReturnType<typeof vi.fn>;
+    reload: ReturnType<typeof vi.fn>;
+    reloadIgnoringCache: ReturnType<typeof vi.fn>;
+    getURL: ReturnType<typeof vi.fn>;
+  };
+
+  /** Desktop root layout with one conversation and the preview pane opened. */
+  const openPreview = () => {
+    window.waveHostType = "desktop";
+    const vscode = createMockVscode();
+    render(<DesktopApp vscode={vscode} />);
+    sendCommand("desktopWorkdirState", {
+      workdir: "/work/a",
+      recentWorkdirs: ["/work/a"],
+    });
+    sendCommand("authStatusResponse", { isAuthenticated: true });
+    // 宿主 pushInitialState 的顺序：认证 → 权威快照，两帧都回放，跟线上一致。
+    sendCommand("setInitialState", {
+      messages: [],
+      isAuthenticated: true,
+      inputContent: "",
+    });
+    sendCommand("updateMessages", {
+      messages: [
+        MockDataGenerator.createAssistantMessage(
+          "原型在 [这里](http://localhost:5173/proto)",
+        ),
+      ],
+    });
+    fireEvent.click(screen.getByText("这里"));
+
+    const wv = screen
+      .getByTestId("preview-pane")
+      .querySelector("webview") as unknown as MockWebview;
+    wv.send = vi.fn();
+    wv.loadURL = vi.fn().mockResolvedValue(undefined);
+    wv.reload = vi.fn();
+    wv.reloadIgnoringCache = vi.fn();
+    wv.getURL = vi.fn(() => "http://localhost:5173/proto");
+    fireEvent(wv, new Event("dom-ready"));
+    fireEvent(
+      wv,
+      Object.assign(new Event("ipc-message"), {
+        channel: "wave-picker",
+        args: [{ type: "ready" }],
+      }),
+    );
+    return { vscode, wv };
+  };
+
+  const pickComment = (wv: MockWebview, comment: string, summary: string) =>
+    fireEvent(
+      wv,
+      Object.assign(new Event("ipc-message"), {
+        channel: "wave-picker",
+        args: [
+          {
+            type: "submit",
+            url: "http://localhost:5173/proto",
+            selector: `#app > div > ${summary}`,
+            summary,
+            text: "",
+            comment,
+          },
+        ],
+      }),
+    );
+
+  it("exits fullscreen and appends the picker comment to the chat input", () => {
+    const { wv } = openPreview();
+    const body = screen
+      .getByTestId("preview-pane")
+      .closest(".desktop-chat-body") as HTMLElement;
+
+    fireEvent.click(screen.getByTestId("panel-fullscreen"));
+    expect(body).toHaveClass("preview-fullscreen");
+    // 前提：全屏下对话栏（含输入框）确实不在 DOM 里。
+    expect(body.querySelector(".desktop-chat-main")).toBeNull();
+
+    // 全屏里 picker 仍可激活（工具条在 pane 自己身上）。
+    fireEvent.click(screen.getByTestId("preview-picker-toggle"));
+    expect(screen.getByTestId("preview-picker-toggle")).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    pickComment(wv, "这里改成主要按钮样式", "button.primary");
+
+    // 全屏自动退出，评论落在重新挂载的输入框里并聚焦。
+    expect(body).not.toHaveClass("preview-fullscreen");
+    const input = screen.getByTestId("message-input") as HTMLElement;
+    expect(input.textContent).toContain("这里改成主要按钮样式");
+    expect(document.activeElement).toBe(input);
+
+    // 追加语义：再点一个元素，前一条评论还在。
+    pickComment(wv, "订单号这一列再宽一点", "span.order-id");
+    expect(input.textContent).toContain("这里改成主要按钮样式");
+    expect(input.textContent).toContain("订单号这一列再宽一点");
+  });
+
+  it("exits fullscreen and appends a diff line comment taken while fullscreen", () => {
+    openPreview();
+    // 全屏按钮在页签条上，对任何激活的页签都在 ⇒ 全屏时切到差异页签，它同样铺满
+    // 内容区、行评论入口照旧可点，与预览元素评论同病。
+    fireEvent.click(screen.getByTestId("panel-tabs-add"));
+    fireEvent.click(screen.getByTestId("panel-toggle-item-diff"));
+    sendCommand("desktopWorkspaceDiff", {
+      result: {
+        kind: "ok",
+        files: [
+          {
+            path: "src/a.ts",
+            status: "modified",
+            additions: 1,
+            deletions: 0,
+            hunks: "@@ -1 +1 @@\n-a\n+b",
+            truncated: false,
+            binary: false,
+          },
+        ],
+      },
+    });
+
+    const body = screen
+      .getByTestId("preview-pane")
+      .closest(".desktop-chat-body") as HTMLElement;
+    fireEvent.click(screen.getByTestId("panel-fullscreen"));
+    expect(body).toHaveClass("preview-fullscreen");
+    // 切到差异页签：它同样在全屏的槽里显示，评论入口照旧可点。
+    fireEvent.click(screen.getByTestId("panel-tab-diff-1"));
+    expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
+    expect(body.querySelector(".desktop-chat-main")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("line-comment-add-1"));
+    fireEvent.change(screen.getByTestId("line-comment-input"), {
+      target: { value: "空行要跳过" },
+    });
+    fireEvent.click(screen.getByTestId("line-comment-submit"));
+
+    expect(body).not.toHaveClass("preview-fullscreen");
+    const input = screen.getByTestId("message-input") as HTMLElement;
+    expect(input.textContent).toContain("**代码评论**");
+    expect(input.textContent).toContain("空行要跳过");
+  });
+});
