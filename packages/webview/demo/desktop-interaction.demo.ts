@@ -164,6 +164,33 @@ test.describe("Desktop interaction refinements", () => {
       "../../docs/public/screenshots/desktop-preview-tabs.webp",
     );
 
+    // Widths of the chat body, the keep-alive guest box and the pane. Fullscreen
+    // must stretch EVERY link of that chain: a guest box left at the
+    // pre-fullscreen panelWidth renders the page in a narrow strip with dead
+    // space on the right (PM bug 3498214411376896). (<webview> itself is an
+    // inline unknown element in Chromium and reports no width — the pane is the
+    // right innermost layer to measure here.)
+    const readPreviewWidths = () =>
+      webviewPage.evaluate(() => {
+        const body = document.querySelector(
+          ".desktop-chat-body",
+        ) as HTMLElement;
+        const guest = document.querySelector(
+          '.preview-guest[data-parked="false"]',
+        ) as HTMLElement;
+        const pane = guest?.querySelector(
+          '[data-testid="preview-pane"]',
+        ) as HTMLElement;
+        return {
+          body: body.getBoundingClientRect().width,
+          guest: guest.getBoundingClientRect().width,
+          pane: pane.getBoundingClientRect().width,
+        };
+      });
+    const splitWidths = await readPreviewWidths();
+    expect(splitWidths.guest).toBeGreaterThan(0);
+    expect(splitWidths.guest).toBeLessThan(splitWidths.body * 0.9);
+
     // Fullscreen (spec 预览面板全屏): the pane fills the content area and the
     // conversation column is hidden; Esc restores the layout. Preview guests
     // live in the keep-alive layer (spec desktop-panels.md「preview guest 跨会话
@@ -176,11 +203,28 @@ test.describe("Desktop interaction refinements", () => {
         '.preview-guest[data-parked="false"] [data-testid="preview-pane"]',
       ),
     ).toBeVisible();
+    // The guest box is the sizing root of the preview: every layer below it is
+    // 100% of its parent, so a narrow guest is exactly the blank strip on the
+    // right. Poll for one layout frame in case the class flip lands late.
+    await expect
+      .poll(async () => {
+        const widths = await readPreviewWidths();
+        return Math.max(
+          Math.abs(widths.body - widths.guest),
+          Math.abs(widths.body - widths.pane),
+        );
+      })
+      .toBeLessThanOrEqual(2);
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-preview-fullscreen.webp",
     );
     await webviewPage.keyboard.press("Escape");
     await expect(webviewPage.locator(".desktop-chat-main")).toHaveCount(1);
+    // Exiting restores the split layout symmetrically: the guest box goes back
+    // to the same panel width it had before fullscreen.
+    await expect
+      .poll(async () => Math.round((await readPreviewWidths()).guest))
+      .toBe(Math.round(splitWidths.guest));
   });
 });
