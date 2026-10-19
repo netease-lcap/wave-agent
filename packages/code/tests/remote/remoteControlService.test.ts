@@ -264,20 +264,13 @@ describe("RemoteControlService", () => {
     });
   });
 
-  it("should say why the relay refused, including a version floor", async () => {
+  it("should say why the relay refused", async () => {
     const service = await connect(createBridgeStub());
 
-    socket.deliver({
-      type: "auth_error",
-      error: "host_version_unsupported",
-      minVersion: "9.9.9",
-    });
+    socket.deliver({ type: "auth_error", error: "unknown_host" });
 
     expect(service.getSnapshot()).toMatchObject({ state: "error" });
-    expect(service.getSnapshot().message).toContain("9.9.9");
-    // The advice has to be "upgrade", not "your token is bad" — the 4003 that
-    // follows cannot tell the two apart.
-    expect(service.getSnapshot().message).toContain("upgrade wave");
+    expect(service.getSnapshot().message).toContain("unknown_host");
   });
 
   it("should run its own keepalive as a control frame", async () => {

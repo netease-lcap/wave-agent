@@ -411,14 +411,10 @@ export class RemoteControlService implements RemoteControlController {
       },
       onAuthError: (info) => {
         // The close that follows carries the mechanics (4003 = do not retry);
-        // the frame is the only place the *reason* lives, and for a version
-        // floor the only place the required version lives.
+        // the frame is the only place the *reason* lives.
         this.setStatus({
           state: "error",
-          message:
-            info.error === "host_version_unsupported"
-              ? `the relay requires a newer wave on this machine${info.minVersion ? ` (minimum ${info.minVersion})` : ""}`
-              : `the relay refused this machine: ${info.error}`,
+          message: `the relay refused this machine: ${info.error}`,
         });
       },
       onPeerDisconnected: () => {

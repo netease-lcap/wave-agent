@@ -874,12 +874,6 @@
         return "这个通道不属于当前账号。";
       case "invalid_channel":
         return "地址里的通道键形状不对：请用电脑侧给出的页面地址打开。";
-      case "host_version_unsupported":
-        return (
-          "电脑侧 wave 版本过低（需要 ≥ " +
-          (frame.minVersion || "?") +
-          "），请升级电脑侧。"
-        );
       case "auth_timeout":
         return "握手超时：中继没有在时限内收到凭证。";
       case "relay_disabled":
