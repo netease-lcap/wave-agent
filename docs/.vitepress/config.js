@@ -32,6 +32,20 @@ export default {
   base: "/wave-agent/",
   title: "CodeWave IDE",
   description: "AI 辅助编程工具链 — SDK、CLI、VS Code 扩展与 JetBrains 插件",
+  // rollup 给虚拟模块生成的 chunk 名带 `@` 前缀（vite 本地搜索索引即
+  // `@localSearchIndexroot.<hash>.js`）。运维平台的文档包上传接口按
+  // `[A-Za-z0-9._\-/]` 校验包内路径，`@` 判成非法会让整包 400 拒收。
+  // 产物文件名只需 URL 安全，这里把非安全字符统一换成 `-`。
+  vite: {
+    build: {
+      rollupOptions: {
+        output: {
+          chunkFileNames: (chunkInfo) =>
+            `assets/chunks/${chunkInfo.name.replace(/[^A-Za-z0-9._-]/g, "-")}.[hash].js`,
+        },
+      },
+    },
+  },
   themeConfig: {
     nav,
     search: { provider: "local" },
