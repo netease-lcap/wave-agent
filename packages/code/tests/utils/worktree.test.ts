@@ -410,21 +410,25 @@ describe("worktree utils", () => {
   });
 
   describe("deriveWorktreeInfo", () => {
-    const WT = "/repo/.wave/worktrees/feat";
-    const GIT_DIR = "/repo/.git/worktrees/feat";
+    // deriveWorktreeInfo resolves every path it looks up, so the fixtures must
+    // be built with `path` too: on Windows "/repo/x" resolves to "D:\\repo\\x"
+    // and a hard-coded POSIX key would never match.
+    const REPO_ROOT = path.resolve("/repo");
+    const WT = path.resolve("/repo/.wave/worktrees/feat");
+    const GIT_DIR = path.resolve("/repo/.git/worktrees/feat");
 
     /** Lay out a linked worktree's metadata the way git writes it. */
     function stubLinkedWorktree(
       files: Record<string, string | undefined> = {},
     ) {
       const all: Record<string, string | undefined> = {
-        [`${WT}/.git`]: `gitdir: ${GIT_DIR}`,
-        [`${GIT_DIR}/HEAD`]: "ref: refs/heads/wave/feat",
-        [`${GIT_DIR}/commondir`]: "../..",
+        [path.join(WT, ".git")]: `gitdir: ${GIT_DIR}`,
+        [path.join(GIT_DIR, "HEAD")]: "ref: refs/heads/wave/feat",
+        [path.join(GIT_DIR, "commondir")]: "../..",
         ...files,
       };
       vi.mocked(fs.statSync).mockImplementation(((p: string) => {
-        if (p === `${WT}/.git`) return { isFile: () => true };
+        if (p === path.join(WT, ".git")) return { isFile: () => true };
         throw enoent();
       }) as unknown as typeof fs.statSync);
       vi.mocked(fs.readFileSync).mockImplementation(((p: string) => {
@@ -445,7 +449,7 @@ describe("worktree utils", () => {
       expect(deriveWorktreeInfo(WT)).toEqual({
         path: WT,
         branch: "wave/feat",
-        repoRoot: "/repo",
+        repoRoot: REPO_ROOT,
         hookBased: false,
       });
       // No git process: this runs once per session row on every list refresh.
@@ -460,14 +464,16 @@ describe("worktree utils", () => {
     });
 
     it("leaves the branch empty on a detached HEAD but still identifies the worktree", () => {
-      stubLinkedWorktree({ [`${GIT_DIR}/HEAD`]: "0123456789abcdef" });
+      stubLinkedWorktree({
+        [path.join(GIT_DIR, "HEAD")]: "0123456789abcdef",
+      });
 
       // Same thing `git branch --show-current` says; removeWorktree then keeps
       // any branch it cannot name.
       expect(deriveWorktreeInfo(WT)).toMatchObject({
         path: WT,
         branch: "",
-        repoRoot: "/repo",
+        repoRoot: REPO_ROOT,
       });
     });
 
@@ -476,7 +482,7 @@ describe("worktree utils", () => {
         isFile: () => false,
       })) as unknown as typeof fs.statSync);
 
-      expect(deriveWorktreeInfo("/repo")).toBeUndefined();
+      expect(deriveWorktreeInfo(REPO_ROOT)).toBeUndefined();
     });
 
     it("returns undefined when the directory is not a git checkout at all", () => {
@@ -488,7 +494,7 @@ describe("worktree utils", () => {
     });
 
     it("returns undefined when the worktree metadata cannot be read", () => {
-      stubLinkedWorktree({ [`${GIT_DIR}/commondir`]: undefined });
+      stubLinkedWorktree({ [path.join(GIT_DIR, "commondir")]: undefined });
 
       expect(deriveWorktreeInfo(WT)).toBeUndefined();
     });
