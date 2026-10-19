@@ -11,7 +11,7 @@
  * 零第三方依赖（Node 20+ 内置 fetch/FormData/Blob/fs）。
  *
  * 用法：
- *   node .wave/skills/desktop-upload/upload.mjs \
+ *   node .wave/skills/ops-upload/upload.mjs \
  *     --file /tmp/wave-desktop-1.2.6/CodeWave.IDE-1.2.6-arm64.dmg \
  *     --version 1.2.6 --platform mac-dmg --channel stable --type desktop
  *
@@ -22,8 +22,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-/** 默认生产环境。测试环境仅在用户当次明确点名时用 --base 覆盖（打错不报错、会静默写错环境） */
-const DEFAULT_BASE = "https://neteasecc.codewave.163.com";
+import { ENV_BASES } from "./envs.mjs";
+
+/** 三环境上传面共用 envs.mjs 那一张表；`--base` 只留作兜底/冒烟（例如指向临时环境）。 */
+const DEFAULT_BASE = ENV_BASES.prod;
 const DEFAULT_CREDENTIALS = path.join(os.homedir(), ".wave", "neteasecc.json");
 
 const TYPES = ["desktop", "docs"];
@@ -156,7 +158,8 @@ const USAGE = `用法：node upload.mjs --file <路径> [选项]
 
 其它：
   --type <desktop|docs>  上传类型（默认 desktop）
-  --base <URL>           运营平台地址（默认生产 ${DEFAULT_BASE}）
+  --env <环境>           目标环境：${Object.keys(ENV_BASES).join(" / ")}（默认 prod）
+  --base <URL>           直接指定平台地址（与 --env 二选一，兜底/冒烟用）
   --credentials <路径>   凭证文件（默认 ~/.wave/neteasecc.json）
   --dry-run              只做 init + 第一片，绝不调 complete（不写库、不留可见记录）
   -h, --help             显示本帮助`;
@@ -166,6 +169,7 @@ function parseArgs(argv) {
     type: "desktop",
     channel: "stable",
     base: DEFAULT_BASE,
+    baseGiven: false,
     credentials: DEFAULT_CREDENTIALS,
     dryRun: false,
   };
@@ -192,8 +196,12 @@ function parseArgs(argv) {
       case "--type":
         opts.type = next();
         break;
+      case "--env":
+        opts.env = next();
+        break;
       case "--base":
         opts.base = next();
+        opts.baseGiven = true;
         break;
       case "--credentials":
         opts.credentials = next();
@@ -219,6 +227,13 @@ function die(message) {
 
 function validate(opts) {
   if (!opts.file) die(`缺少 --file\n\n${USAGE}`);
+  if (opts.env !== undefined) {
+    if (!Object.hasOwn(ENV_BASES, opts.env)) {
+      die(`--env 只能是 ${Object.keys(ENV_BASES).join(" / ")}`);
+    }
+    if (opts.baseGiven) die("--env 与 --base 只能二选一");
+    opts.base = ENV_BASES[opts.env];
+  }
   if (!fs.existsSync(opts.file)) die(`文件不存在：${opts.file}`);
   const stat = fs.statSync(opts.file);
   if (!stat.isFile()) die(`不是普通文件：${opts.file}`);
@@ -346,7 +361,9 @@ async function main() {
   validate(opts);
 
   const credsPathShown = opts.credentials.replace(os.homedir(), "~");
-  console.log(`平台地址   ${opts.base}`);
+  console.log(
+    `平台地址   ${opts.base}${opts.env ? `（--env ${opts.env}）` : ""}`,
+  );
   console.log(
     `上传类型   ${opts.type}${opts.type === "desktop" ? ` / ${opts.platform} / ${opts.channel}` : ""}`,
   );
