@@ -1768,10 +1768,16 @@ body.is-panel-resizing webview {
   height: 100%;
 }
 
-/* 全屏：槽位 flex:1 铺满，可见 guest 跟着铺满（宽度由内联 width 决定，这里用
-   left 把它拉到同一左缘；全屏时 .preview-pane 的宽度覆盖规则同名段已在上面）。 */
+/* 全屏：槽位 flex:1 铺满，可见 guest 跟着铺满。
+
+   guest 的内联 width 是**分栏宽度**（ChatApp 的 panelWidth），全屏时它不再适用
+   ——只补 left 会让 guest 仍停在 420px 左右，pane / <webview>（两者都是 100%）
+   跟着渲染成左侧一条窄带、右侧留白（PM bug 3498214411376896）。所以这里必须
+   用 !important 覆盖内联 width，让 guest 自己先铺满常驻层；pane 的 100% 覆盖
+   规则见下方同名段。停靠 guest（data-parked="true"）刻意保留原宽度，不在此列。 */
 .desktop-chat-body.preview-fullscreen .preview-guest[data-parked="false"] {
   left: 0;
+  width: 100% !important;
 }
 .desktop-chat-body.preview-fullscreen
   .preview-guest[data-parked="false"]
