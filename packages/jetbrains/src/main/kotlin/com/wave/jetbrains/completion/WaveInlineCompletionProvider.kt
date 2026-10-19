@@ -7,7 +7,6 @@ import com.intellij.codeInsight.inline.completion.InlineCompletionRequest
 import com.intellij.codeInsight.inline.completion.elements.InlineCompletionGrayTextElement
 import com.intellij.codeInsight.inline.completion.suggestion.InlineCompletionSingleSuggestion
 import com.intellij.codeInsight.inline.completion.suggestion.InlineCompletionSuggestion
-import com.intellij.codeInsight.inline.completion.suggestion.invoke
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.wave.jetbrains.WavePanelHolder
 import kotlinx.coroutines.CancellationException
@@ -92,5 +91,5 @@ class WaveInlineCompletionProvider : InlineCompletionProvider {
 
     /** An empty suggestion list: the platform renders nothing for it. */
     private suspend fun noSuggestion(): InlineCompletionSuggestion =
-        InlineCompletionSuggestion {}
+        InlineCompletionSingleSuggestion.build {}
 }
