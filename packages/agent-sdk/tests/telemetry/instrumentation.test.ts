@@ -80,6 +80,7 @@ const COUNTER_NAMES = [
   "wave.pull_requests",
   "wave.active_time",
   "wave.code_edit_tool.decision",
+  "wave.completion.outcome",
 ];
 
 function setupMocks() {

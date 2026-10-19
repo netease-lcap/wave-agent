@@ -46,6 +46,11 @@
     },
     "commands": [
       {
+        "command": "wave.acceptInlineCompletion",
+        "title": "接受行内补全建议",
+        "category": "CodeWave IDE"
+      },
+      {
         "command": "wave-code.openChatSidebar",
         "title": "在侧边栏打开代码智聊",
         "category": "CodeWave IDE"

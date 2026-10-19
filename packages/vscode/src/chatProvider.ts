@@ -877,6 +877,24 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Reports what happened to the last inline suggestion: `displayed` when the
+   * editor rendered it, `accepted` when the user took it.
+   *
+   * Fire-and-forget on purpose: a lost report costs one data point, while
+   * awaiting it would put telemetry on the keystroke path. Like the request
+   * itself, this is best-effort — no session or a failed call is silent.
+   */
+  public reportCompletionOutcome(outcome: "displayed" | "accepted"): void {
+    const client = this.sharedClient;
+    const sessionId = this.completionSessionId();
+    if (!client || !sessionId) return;
+
+    void client
+      .request("reportCompletionOutcome", { outcome }, sessionId)
+      .catch(() => {});
+  }
+
+  /**
    * The session whose model configuration answers completion. The sidebar
    * session is the default chat; a tab/window session is used when the sidebar
    * has not created one yet (completion has no session of its own on purpose —

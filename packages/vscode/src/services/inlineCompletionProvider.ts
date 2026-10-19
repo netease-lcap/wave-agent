@@ -32,10 +32,21 @@ function isEditableCaret(
   return editor.selection.isEmpty;
 }
 
+/** Command VS Code runs when the user takes a suggestion — the accept hook. */
+export const ACCEPT_COMPLETION_COMMAND = "wave.acceptInlineCompletion";
+
+/** Reports what happened to a suggestion to the CLI (`wave.completion.outcome`). */
+export type CompletionOutcomeReporter = (
+  outcome: "displayed" | "accepted",
+) => void;
+
 export class WaveInlineCompletionProvider
   implements vscode.InlineCompletionItemProvider
 {
-  constructor(private readonly service: InlineCompletionService) {}
+  constructor(
+    private readonly service: InlineCompletionService,
+    private readonly report: CompletionOutcomeReporter = () => {},
+  ) {}
 
   async provideInlineCompletionItems(
     document: vscode.TextDocument,
@@ -71,12 +82,23 @@ export class WaveInlineCompletionProvider
       return undefined;
     }
 
-    return new vscode.InlineCompletionList([
-      new vscode.InlineCompletionItem(
-        text,
-        new vscode.Range(position, position),
-      ),
-    ]);
+    // About to render: this is the only side that knows a suggestion was
+    // actually shown, so it is also the only side that can report it.
+    const item = new vscode.InlineCompletionItem(
+      text,
+      new vscode.Range(position, position),
+    );
+    // The command is VS Code's accept hook; it runs when the user takes the
+    // suggestion. Not every path fires it (whole-line insert, Tab on an
+    // auto-trigger), which is why acceptance is measured as a share of what was
+    // shown rather than as an absolute count.
+    item.command = {
+      command: ACCEPT_COMPLETION_COMMAND,
+      title: "Wave: accept inline completion",
+    };
+    this.report("displayed");
+
+    return new vscode.InlineCompletionList([item]);
   }
 }
 
@@ -90,13 +112,20 @@ export function registerInlineCompletion(
   context: vscode.ExtensionContext,
   chatProvider: ChatProvider,
 ): void {
+  const report: CompletionOutcomeReporter = (outcome) =>
+    chatProvider.reportCompletionOutcome?.(outcome);
   const service = new InlineCompletionService((params) =>
     chatProvider.requestInlineCompletion(params),
   );
   context.subscriptions.push(
     vscode.languages.registerInlineCompletionItemProvider(
       { pattern: "**" },
-      new WaveInlineCompletionProvider(service),
+      new WaveInlineCompletionProvider(service, report),
+    ),
+    // The accept hook: VS Code runs this command when the user takes the item
+    // the provider handed it.
+    vscode.commands.registerCommand(ACCEPT_COMPLETION_COMMAND, () =>
+      report("accepted"),
     ),
   );
 }

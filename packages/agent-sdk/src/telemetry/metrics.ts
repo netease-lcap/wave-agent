@@ -48,6 +48,19 @@ export function isCodeEditingTool(toolName: string): boolean {
   return CODE_EDITING_TOOLS.includes(toolName);
 }
 
+/** One inline completion suggestion's life-cycle event. */
+export interface CompletionOutcomeRecord {
+  /**
+   * `displayed` when the host rendered the ghost text, `accepted` when the user
+   * took it. One suggestion produces at most one of each, in that order.
+   */
+  outcome: "displayed" | "accepted";
+  /** Model that answered the suggestion request (low-cardinality attribute) */
+  model?: string;
+  /** Language of the target file, when it can be named (see `language.ts`) */
+  language?: string;
+}
+
 /** One LLM response's token usage, as recorded by the metrics family. */
 export interface TokenUsageRecord {
   /** Model id the request went to (low-cardinality attribute) */
@@ -94,6 +107,7 @@ let commits: Counter | undefined;
 let pullRequests: Counter | undefined;
 let activeTime: Counter | undefined;
 let codeEditDecisions: Counter | undefined;
+let completionOutcomes: Counter | undefined;
 
 /** Whether the instruments above are live (the policy only matters then). */
 let active = false;
@@ -145,6 +159,10 @@ export function initMetrics(
     description:
       "Permission decisions on Edit and Write, accepted or rejected, by source",
   });
+  completionOutcomes = meter.createCounter("wave.completion.outcome", {
+    description:
+      "Inline completion suggestions shown and accepted, by model and language",
+  });
 }
 
 /** Drop the instruments: telemetry was shut down, later records must no-op. */
@@ -156,6 +174,7 @@ export function resetMetrics(): void {
   pullRequests = undefined;
   activeTime = undefined;
   codeEditDecisions = undefined;
+  completionOutcomes = undefined;
   active = false;
 }
 
@@ -292,4 +311,34 @@ export function recordCodeEditDecision(
     attributes.language = record.language;
   }
   codeEditDecisions?.add(1, attributes);
+}
+
+/**
+ * Record one event in an inline completion suggestion's life.
+ *
+ * `displayed` is what a host says when it actually rendered the ghost text;
+ * `accepted` is what it says when the user took it. The acceptance rate is
+ * derived by the consumer as `accepted ÷ displayed` — no ratio is reported
+ * here, because a ratio cannot be summed and would poison any aggregation that
+ * adds points of the same series.
+ *
+ * Deliberately disjoint from `wave.code_edit_tool.decision`: that one counts
+ * permission decisions on Edit/Write (a different fact, a different
+ * denominator). The two must never be added together.
+ */
+export function recordCompletionOutcome(
+  record: CompletionOutcomeRecord,
+  context?: RecordContext,
+): void {
+  const attributes: Attributes = {
+    ...attributesWithContext(context),
+    outcome: record.outcome,
+  };
+  if (record.model) {
+    attributes.model = record.model;
+  }
+  if (record.language) {
+    attributes.language = record.language;
+  }
+  completionOutcomes?.add(1, attributes);
 }
