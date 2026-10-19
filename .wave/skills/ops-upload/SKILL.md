@@ -223,10 +223,10 @@ node .wave/skills/ops-upload/upload-remote-page.mjs --env prod --confirm-prod
 
 - **`--env prod` 必须加 `--confirm-prod`**：打错环境不报错、对象静默写进别处，多一道闸。
 - **成功判据**：`201` + `fileKeys` 数量 = **产物文件数**（整包重传是幂等覆盖，重跑同一条命令安全）。
-- **不再有版本标签**（2026-10-19 下线）：上传接口只收 zip，不再写 `version.txt` —— 那个指针既不参与任何判定、也不跟内容绑定。想知道线上是哪份构建，看入口页自己带的 `wave-remote-config`（构建期注入，脚本上传前会打印）。
+- **不再有版本标签**（2026-10-19 下线）：上传接口只收 zip，不再写 `version.txt` —— 那个指针既不参与任何判定、也不跟内容绑定。想知道线上是哪份构建，看入口页自己带的 `wave-remote-config`（构建期注入的 `version` + 构建 sha，脚本上传前会打印）。
 - **没有删除接口**（只有 `POST /upload`）⇒ 回滚只能另打一份覆盖同名文件，或让 SRE 删 file-center 对象；**旧 hash 名永不清理**，别拿「旧名 404」当判据。
 - 换版留痕：`kubectl -n low-code logs deploy/codechat-ops | grep remote-page`。
-- **传完的判据就是 `201` + `fileKeys`**（本技能不再提供逐字节核验脚本）。想知道线上此刻是哪一版，一条 `curl …/remote/` 就够：`index.html` 里 `wave-remote-config` 的 `version`，外加它引用的 hash 名对不对得上本地 `dist/`。
+- **传完的判据就是 `201` + `fileKeys`**（本技能不再提供逐字节核验脚本）。想知道线上此刻是哪一版，一条 `curl …/remote/` 就够：`index.html` 里 `wave-remote-config` 的 `version` / `sha`（带 `-dirty` 表示打包时工作区有改动），外加它引用的 hash 名对不对得上本地 `dist/`。
 
 ### 收尾报告要素
 
@@ -288,4 +288,4 @@ node .wave/skills/ops-upload/upload.mjs \
 - **`downloadUrl` 的域名别写死**：域名与 URL 前缀是宿主/CDN 的部署细节（外部拥有，变了我们不会收到通知），**一律读接口字段**。2026-09-18 实测生产与测试两个环境当时的域名、甚至路径前缀就已经不同。
 - **平台不管理 IDE 插件**：说明文案"IDE 插件已迁移至官方插件市场，不再在此分发"，VS Code/JetBrains 发布走 `ide-plugin-publish` 技能。
 - **文档包由本技能的「二、文档站包」负责出包 + 上传**：CI 不再构建文档，`docs-<version>.tar.gz` 一律本地 `pnpm run docs:pack` 产出。
-- **远控页属托管类资源**：上传 201 只证明对象写进去了，页面上线要看「对象在不在」——本技能只给一条 `curl` 的办法（入口 `wave-remote-config` 的版本 + 入口引用的 hash 名），不再有逐字节核验脚本；「页面已更新」≠「机器侧已更新」——白名单在服务那个会话的进程里，旧机器只显示「…指令没有回执」。
+- **远控页属托管类资源**：上传 201 只证明对象写进去了，页面上线要看「对象在不在」——本技能只给一条 `curl` 的办法（入口 `wave-remote-config` 的 version/sha + 入口引用的 hash 名），不再有逐字节核验脚本；「页面已更新」≠「机器侧已更新」——白名单在服务那个会话的进程里，旧机器只显示「…指令没有回执」。

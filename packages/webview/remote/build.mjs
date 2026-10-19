@@ -106,13 +106,43 @@ const socketArg = argv.find((a) => a.startsWith("--socket="));
  */
 const socketUrl = socketArg ? socketArg.slice("--socket=".length) : "";
 /**
- * The page's own version, reported in the relay handshake. The relay reads that
- * field for the *host* role only (minimum-version floor), so here it is
- * informational — but it has to exist and sit at the frame's top level.
+ * The page's own version, reported in the relay handshake. It is informational
+ * only — no gate reads it (the relay's version floor is gone) — but it has to
+ * exist and sit at the frame's top level.
  */
 const pageVersion = JSON.parse(
   fs.readFileSync(path.join(WEBVIEW, "package.json"), "utf-8"),
 ).version;
+
+/**
+ * Which commit this page was cut from, stamped into the page so the deployed
+ * artifact answers "which build is live" on its own (`curl /remote/` and read
+ * the meta tag) — the upload-time label that used to do that job is gone, and
+ * it was never trustworthy: it was a string passed to the upload request, once
+ * observed pointing at a later commit than the bytes shipped with it.
+ *
+ * Suffixed `-dirty` when the page's own inputs are modified: HEAD alone would
+ * claim a commit the bytes did not come from. The check is scoped to the
+ * webview package (plus this `remote/` directory) so that editing something
+ * unrelated does not mark every build dirty — a flag that shows up all the time
+ * is a flag nobody reads.
+ *
+ * Empty when there is no git (tarball, shallow CI checkout): absent means "not
+ * known", which is honest; a placeholder would be mistaken for a real commit.
+ */
+const pageSha = (() => {
+  const git = (args) => {
+    try {
+      return execFileSync("git", args, { cwd: HERE, encoding: "utf-8" }).trim();
+    } catch {
+      return "";
+    }
+  };
+  const sha = git(["rev-parse", "--short=8", "HEAD"]);
+  if (!sha) return "";
+  const dirty = git(["status", "--porcelain", "--", ".", "../src"]);
+  return dirty ? `${sha}-dirty` : sha;
+})();
 
 /**
  * The dark theme's page background (`--vscode-editor-background`), the color
@@ -338,7 +368,7 @@ function emit({ chatJs, chatCss, mermaid }) {
        script-src 'self' copied from the desktop page blocks inline execution,
        so an inline window.WAVE_REMOTE = … is silently dropped — measured, not
        theorised. A meta tag also stays editable on the deployed artifact. -->
-  <meta name="wave-remote-config" content='${JSON.stringify({ socketUrl, version: pageVersion })}' />
+  <meta name="wave-remote-config" content='${JSON.stringify({ socketUrl, version: pageVersion, sha: pageSha })}' />
 </head>
 <body>
   <div id="root"></div>
