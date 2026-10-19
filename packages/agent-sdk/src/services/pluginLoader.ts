@@ -8,6 +8,7 @@ import {
   McpConfig,
   McpServerConfig,
   PartialHookConfiguration,
+  PluginWorkflow,
 } from "../types/index.js";
 import { scanCommandsDirectory } from "../utils/customCommands.js";
 import { parseSkillFile } from "../utils/skillParser.js";
@@ -16,6 +17,8 @@ import {
   type SubagentConfiguration,
 } from "../utils/subagentParser.js";
 import { logger } from "../utils/globalLogger.js";
+import { WORKFLOW_SCRIPT_EXTENSION } from "../workflow/workflowRegistry.js";
+import { parseScript, validateScript } from "../workflow/scriptRuntime.js";
 
 export class PluginLoader {
   /**
@@ -251,6 +254,64 @@ export class PluginLoader {
     }
 
     return agents;
+  }
+
+  /**
+   * Load workflow scripts from a plugin's `workflows/` directory.
+   *
+   * Only `*.js` is accepted (what Claude Code ships); each file goes through the
+   * same validation an inline script does — acorn parse, literal-only `meta` as
+   * the first statement. A file that fails validation is skipped on its own: it
+   * must not fail the plugin or the sibling workflows (spec workflow「调用插件携带
+   * 的工作流」场景 1).
+   *
+   * The invocation name is the file stem, not `meta.name` (场景 2).
+   *
+   * @param pluginPath Absolute path to the plugin directory
+   */
+  static async loadWorkflows(pluginPath: string): Promise<PluginWorkflow[]> {
+    const workflowsPath = path.join(pluginPath, "workflows");
+    const workflows: PluginWorkflow[] = [];
+
+    try {
+      const entries = await fs.readdir(workflowsPath, { withFileTypes: true });
+      for (const entry of entries) {
+        if (
+          !entry.isFile() ||
+          !entry.name.endsWith(WORKFLOW_SCRIPT_EXTENSION)
+        ) {
+          continue;
+        }
+        const scriptPath = path.join(workflowsPath, entry.name);
+        try {
+          const script = await fs.readFile(scriptPath, "utf-8");
+          const validation = validateScript(script);
+          if (!validation.valid) {
+            logger?.warn(
+              `Skipping plugin workflow ${scriptPath}: ${validation.errors.join("; ")}`,
+            );
+            continue;
+          }
+          const { meta } = parseScript(script);
+          workflows.push({
+            name: entry.name.slice(0, -WORKFLOW_SCRIPT_EXTENSION.length),
+            description: meta.description,
+            path: scriptPath,
+            meta,
+          });
+        } catch (error) {
+          logger?.warn(
+            `Skipping plugin workflow ${scriptPath}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+      }
+    } catch {
+      // workflows directory might not exist
+    }
+
+    return workflows;
   }
 
   /**

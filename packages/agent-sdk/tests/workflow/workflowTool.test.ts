@@ -132,7 +132,9 @@ describe("workflowTool", () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.error).toContain("Either 'script' or 'scriptPath'");
+    expect(result.error).toContain(
+      "Exactly one of 'script', 'scriptPath' or 'name'",
+    );
     expect(mockManager.createRun).not.toHaveBeenCalled();
   });
 

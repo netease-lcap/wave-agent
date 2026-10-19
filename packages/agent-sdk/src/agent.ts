@@ -723,6 +723,30 @@ export class Agent {
   }
 
   /**
+   * Save one of this session's run scripts into the script library, so later
+   * sessions (same project, or any project for the `user` scope) can call it
+   * with `Workflow({name})`. Saving is a human action only — the model has no
+   * save entry point (spec workflow「把脚本存进库并按名字复用」场景 2).
+   */
+  public async saveWorkflowScript(
+    runId: string,
+    options: {
+      name: string;
+      scope: import("./workflow/workflowRegistry.js").WorkflowLibraryScope;
+      overwrite?: boolean;
+    },
+  ): Promise<{ name: string; path: string }> {
+    if (!this.container.has("WorkflowManager")) {
+      throw new Error("Workflow manager not available");
+    }
+    return this.container
+      .get<
+        import("./managers/workflowManager.js").WorkflowManager
+      >("WorkflowManager")!
+      .saveWorkflowScript(runId, options);
+  }
+
+  /**
    * Static async factory method for creating Agent instances
    *
    * IMPORTANT: Keep this method's signature exactly the same as the constructor

@@ -7,6 +7,7 @@ import type { WorkflowRun } from "wave-agent-sdk";
 // Mock useChat with mutable state
 let mockWorkflowRuns: WorkflowRun[] = [];
 const mockStopWorkflowRun = vi.fn();
+const mockSaveWorkflowScript = vi.fn();
 
 vi.mock("../../src/contexts/useChat.js", () => ({
   useChat: () => ({
@@ -14,6 +15,7 @@ vi.mock("../../src/contexts/useChat.js", () => ({
       return mockWorkflowRuns;
     },
     stopWorkflowRun: mockStopWorkflowRun,
+    saveWorkflowScript: mockSaveWorkflowScript,
   }),
 }));
 
@@ -351,6 +353,93 @@ describe("WorkflowManager", () => {
     stdin.write("k");
     await vi.waitFor(() => {
       expect(mockStopWorkflowRun).toHaveBeenCalledWith("run-1");
+    });
+  });
+
+  it("saves a run's script by name and scope from the detail view", async () => {
+    mockSaveWorkflowScript.mockResolvedValue({
+      name: "done-wf",
+      path: "/proj/.wave/workflows/done-wf.js",
+    });
+    mockWorkflowRuns = [mockRuns[1]];
+    const { lastFrame, stdin } = render(
+      <WorkflowManager onCancel={onCancel} />,
+    );
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("done-wf");
+    });
+    stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Workflow Details");
+    });
+
+    stdin.write("s");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Save dynamic workflow");
+    });
+    // The name starts as the run's meta.name and the scope as project.
+    expect(lastFrame()).toContain("Name: done-wf");
+    expect(lastFrame()).toContain("Scope: project");
+
+    // Tab flips the scope; the name is typed onto the existing one.
+    stdin.write("\t");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Scope: user");
+    });
+
+    stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(mockSaveWorkflowScript).toHaveBeenCalledWith("run-2", {
+        name: "done-wf",
+        scope: "user",
+        overwrite: false,
+      });
+    });
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Saved");
+    });
+  });
+
+  it("turns a name conflict into an overwrite on the next Enter", async () => {
+    mockSaveWorkflowScript
+      .mockRejectedValueOnce(
+        new Error(
+          'Dynamic workflow "done-wf" already exists at /proj/.wave/workflows/done-wf.js. Use a different name or overwrite.',
+        ),
+      )
+      .mockResolvedValueOnce({
+        name: "done-wf",
+        path: "/proj/.wave/workflows/done-wf.js",
+      });
+    mockWorkflowRuns = [mockRuns[1]];
+    const { lastFrame, stdin } = render(
+      <WorkflowManager onCancel={onCancel} />,
+    );
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("done-wf");
+    });
+    stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Workflow Details");
+    });
+
+    stdin.write("s");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("Save dynamic workflow");
+    });
+    stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(lastFrame()).toContain("already exists");
+    });
+
+    // Second Enter retries as an overwrite instead of failing the same way.
+    stdin.write("\r");
+    await vi.waitFor(() => {
+      expect(mockSaveWorkflowScript).toHaveBeenLastCalledWith("run-2", {
+        name: "done-wf",
+        scope: "project",
+        overwrite: true,
+      });
     });
   });
 });

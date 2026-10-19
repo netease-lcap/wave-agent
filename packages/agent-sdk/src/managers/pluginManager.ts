@@ -20,6 +20,7 @@ import { ConfigurationService } from "../services/configurationService.js";
 import { Container } from "../utils/container.js";
 import { PermissionManager } from "./permissionManager.js";
 import { DEFAULT_PLUGIN_VERSION } from "../constants/plugins.js";
+import { WorkflowRegistry } from "../workflow/workflowRegistry.js";
 
 export interface PluginManagerOptions {
   workdir: string;
@@ -101,6 +102,10 @@ export class PluginManager {
 
   private get subagentManager(): SubagentManager | undefined {
     return this.container.get<SubagentManager>("SubagentManager");
+  }
+
+  private get workflowRegistry(): WorkflowRegistry | undefined {
+    return this.container.get<WorkflowRegistry>("WorkflowRegistry");
   }
 
   /**
@@ -268,6 +273,7 @@ export class PluginManager {
           manifest.mcpServers,
         ),
         hooksConfig: await PluginLoader.loadHooksConfig(absolutePath),
+        workflows: (await PluginLoader.loadWorkflows(absolutePath)) ?? [],
       };
 
       // Register components with managers
@@ -314,6 +320,13 @@ export class PluginManager {
 
       if (this.subagentManager && plugin.agents.length > 0) {
         this.subagentManager.registerPluginAgents(plugin.name, plugin.agents);
+      }
+
+      if (this.workflowRegistry && plugin.workflows.length > 0) {
+        this.workflowRegistry.registerPluginWorkflows(
+          plugin.name,
+          plugin.workflows,
+        );
       }
 
       this.plugins.set(manifest.name, plugin);
@@ -370,7 +383,7 @@ export class PluginManager {
   }
 
   /**
-   * Unload a single plugin: drop everything it contributed from the six
+   * Unload a single plugin: drop everything it contributed from the seven
    * capability registries, then forget it. Other plugins and the running
    * session are untouched.
    * @returns true if the plugin was loaded
@@ -381,11 +394,13 @@ export class PluginManager {
       return false;
     }
 
-    // Managers key their entries off the plugin name (commands/skills/agents)
-    // or the plugin root path (hooks/LSP/MCP), so each needs its own removal.
+    // Managers key their entries off the plugin name (commands/skills/agents/
+    // workflows) or the plugin root path (hooks/LSP/MCP), so each needs its own
+    // removal.
     this.slashCommandManager?.unregisterPluginCommands(plugin.name);
     this.skillManager?.unregisterPluginSkills(plugin.name);
     this.subagentManager?.unregisterPluginAgents(plugin.name);
+    this.workflowRegistry?.unregisterPluginWorkflows(plugin.name);
     this.hookManager?.unregisterPluginHooks(plugin.path);
     await this.lspManager?.unregisterServersForPlugin(plugin.path);
     this.mcpManager?.removeServersForPlugin(plugin.path);
