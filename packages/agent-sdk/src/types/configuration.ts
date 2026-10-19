@@ -86,9 +86,10 @@ export interface WaveConfiguration {
    * (REMOTE_CONTROL_DEFAULT_ENABLED).
    *
    * Judged by the host process (the CLI / daemon that owns the sessions), not
-   * by the agent: turning it on opens an outbound connection to a relay server
-   * and makes pending tool approvals reachable from off the machine, so it is
-   * off unless explicitly asked for.
+   * by the agent. Enabled only makes the process *able* to serve: the outbound
+   * connection to the relay — and hence making pending tool approvals reachable
+   * from off the machine — still needs an explicit `wave remote-control on` /
+   * GUI action, so the default is on while the exposure stays opt-in.
    */
   enableRemoteControl?: boolean;
   /**
