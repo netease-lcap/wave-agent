@@ -1684,8 +1684,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // IDE 设置页（settings-preview-entry）「新建/编辑」经 host 转发：
         // 关闭设置 tab 后向聊天 webview 下发预填提示词（spec：AI 对话框
         // 在当前会话继续，预填文本可编辑）。
+        //
+        // 不直接 loadDraft：这条命令可能早于本视图的权威快照到达（webview 刚
+        // 建/重挂载时输入框还没挂载，或已挂载但随后会被 setInitialState 重置），
+        // 直接写的可选链/快照重置都会把提示词静默丢掉。一律进 pending 队列，由
+        // 下方 effect 在「输入框就绪」后写入（与 desktop 的 prefillRequest 同一条
+        // 重放路径）。
         if (typeof message.prompt === "string") {
-          messageInputRef.current?.loadDraft(message.prompt);
+          setPendingPrefill({
+            prompt: message.prompt,
+            nonce: ++prefillNonceRef.current,
+          });
         }
         break;
       case "focusInput":
@@ -2187,13 +2196,28 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // root 单布局（无 pane）：chatContainer 重挂载完成后把待填提示词写入本地输入框
   // （编辑请求另把 openFile 经 openFileRef 打开到本实例的右侧文件面板）。pane
   // 布局的请求带 targetPaneId，改由 pane ChatApp 写回并回调清除，这里跳过。
+  //
+  // 就绪闸门：**权威快照落地**（state.initialStateReceived）且输入框真的挂载了。
+  // 只等「认证状态」不够——宿主 pushInitialState 先发 authStatusResponse（它就
+  // 把 initialized 置真、输入区挂载）再发 setInitialState，在两者之间写入的草案会
+  // 被紧接着的快照按 inputContent 重置成空（线上缺陷：桌面端「新增钩子」跳回会话
+  // 首屏看不到预填文本，切走再切回才有）。未就绪时保留 pending、等下一次渲染重跑，
+  // 绝不在这里清空请求。
   useEffect(() => {
     if (settingsOpen || pendingPrefill === null) return;
     if (pendingPrefill.targetPaneId !== undefined) return;
-    messageInputRef.current?.loadDraft(pendingPrefill.prompt);
+    if (!state.initialStateReceived || state.isRestoring) return;
+    const input = messageInputRef.current;
+    if (!input) return;
+    input.loadDraft(pendingPrefill.prompt);
     if (pendingPrefill.openFile) openFileRef.current(pendingPrefill.openFile);
     setPendingPrefill(null);
-  }, [settingsOpen, pendingPrefill]);
+  }, [
+    settingsOpen,
+    pendingPrefill,
+    state.initialStateReceived,
+    state.isRestoring,
+  ]);
 
   // DesktopShell 下行 prefillRequest 到 pane 后清除 root pending。pane ChatApp
   // 应用时回调（带 nonce）——nonce 不匹配则忽略（防旧回执清掉更新的请求）。
@@ -2647,11 +2671,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // targetPaneId），故此 effect 无跨 pane 竞态。若请求到达时输入框尚未挂载
   // （宿主 snapshot 未回放），pending 保持不下发、待 inputAreaMounted 翻转后
   // 本 effect 重跑补写。
+  //
+  // 闸门里必须有 `initialStateReceived`：pane 行重挂载后宿主先发 authStatusResponse
+  // （initialized 置真 ⇒ inputAreaMounted 就为 true），随后才发 setInitialState；
+  // 只等 inputAreaMounted 会在两条消息之间写入，写好的草案被快照按 inputContent
+  // 重置成空（线上缺陷：设置页「新增钩子」跳回会话首屏看不到预填文本）。
   const prefillRequestNonce = prefillRequest?.nonce;
+  const paneInitialStateReceived = state.initialStateReceived;
   useEffect(() => {
     if (paneId === undefined) return;
     if (!prefillRequest || prefillRequestNonce === undefined) return;
-    if (!inputAreaMounted) return;
+    if (!inputAreaMounted || !paneInitialStateReceived) return;
+    if (state.isRestoring) return;
     const input = messageInputRef.current;
     if (!input) return;
     input.loadDraft(prefillRequest.prompt);
@@ -2665,6 +2696,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     paneId,
     onPrefillApplied,
     inputAreaMounted,
+    paneInitialStateReceived,
+    state.isRestoring,
   ]);
 
   // Initialize webview and load sessions on component mount
