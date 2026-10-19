@@ -1,34 +1,55 @@
 #!/usr/bin/env node
 /**
- * 桌面端安装包 / 文档包 → CodeChat 运营平台「下载管理」分片直传脚本。
+ * 桌面端安装包 / 文档包 / 远控 Web 页 → CodeChat 运营平台的产物上传脚本。
  *
- * 为什么用脚本而不是浏览器：生产 codechat-ops 是多副本，分片会话存在服务端进程内存 +
- * 本 pod 的 os.tmpdir()，靠 ingress 的 cookie 亲和（`codechat-ops-route`）固定落到同一 pod。
- * 该 cookie 对**任何**请求都会下发，脚本自己收一次即可；而浏览器走 HTTP/2 复用单条连接，
- * 连接级抖动会一次性打死所有在飞请求（2026-09-20 生产实测 3/3 失败）。node fetch 是
- * HTTP/1.1、每片独立连接，同一套分片参数下 20 片 + 3 次 complete 全部一次成功。
+ * 三条产物线，一个脚本（`--type` 选）：
+ *   - 桌面端（`--type desktop`，默认）：`/api/ops/downloads/chunked/*` 的**分片直传**。
+ *     为什么用脚本而不是浏览器：生产 codechat-ops 是多副本，分片会话存在服务端进程内存 +
+ *     本 pod 的 os.tmpdir()，靠 ingress 的 cookie 亲和（`codechat-ops-route`）固定落到同一
+ *     pod。该 cookie 对**任何**请求都会下发，脚本自己收一次即可；而浏览器走 HTTP/2 复用单条
+ *     连接，连接级抖动会一次性打死所有在飞请求（2026-09-20 生产实测 3/3 失败）。node fetch
+ *     是 HTTP/1.1、每片独立连接，同一套分片参数下 20 片 + 3 次 complete 全部一次成功。
+ *   - 文档包（`--type docs`）：`/api/ops/docs/upload` 的**单次 multipart**（2026-10-19 起）。
+ *     文档包只有 1–3MB，服务端一次收包、解包、逐文件传 file-center（`codechat/docs/`），
+ *     不写下载项台账、也没有跨请求的会话状态 ⇒ 既不分片，也不需要亲和 cookie。
+ *   - 远控 Web 页（`--type remote`）：`/api/ops/remote-page/upload` 的**单次 multipart**
+ *     （字段 `zip`），落到 file-center `codechat/remote/`，企业端 `/remote/` 立即可见。
+ *     2026-10-19 前它是独立脚本 upload-remote-page.mjs，现并入本脚本统一出口：
+ *     同一份环境表、同一份凭证、同一套登录/重试/退出码。
  *
- * 零第三方依赖（Node 20+ 内置 fetch/FormData/Blob/fs）。
+ * 零第三方依赖（Node 20+ 内置 fetch/FormData/Blob/fs；远控页的包清单校验借用系统 unzip，
+ * 没有 unzip 时只跳过校验、不阻断上传）。
  *
  * 用法：
  *   node .wave/skills/ops-upload/upload.mjs \
  *     --file /tmp/wave-desktop-1.2.6/CodeWave.IDE-1.2.6-arm64.dmg \
  *     --version 1.2.6 --platform mac-dmg --channel stable --type desktop
+ *   node .wave/skills/ops-upload/upload.mjs --file docs-1.3.0.tar.gz --type docs
+ *   node .wave/skills/ops-upload/upload.mjs --type remote --env test
  *
  * 退出码：0 = 成功（含 --dry-run）；1 = 失败。
  */
 
+import { execFileSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { ENV_BASES } from "./envs.mjs";
+import { ENV_BASES, ENV_SITES } from "./envs.mjs";
+
+const ROOT = path.resolve(import.meta.dirname, "../../..");
 
 /** 三环境上传面共用 envs.mjs 那一张表；`--base` 只留作兜底/冒烟（例如指向临时环境）。 */
 const DEFAULT_BASE = ENV_BASES.prod;
 const DEFAULT_CREDENTIALS = path.join(os.homedir(), ".wave", "neteasecc.json");
+/** 远控页默认取 `pack:remote` 的产物 */
+const DEFAULT_REMOTE_ZIP = path.join(
+  ROOT,
+  "packages/webview/remote/dist/remote-page.zip",
+);
 
-const TYPES = ["desktop", "docs"];
+const TYPES = ["desktop", "docs", "remote", "plugin-market"];
 const PLATFORMS = ["mac-dmg", "mac-zip", "win-exe"];
 const CHANNELS = ["stable", "beta"];
 const REQUIRED_EXT = {
@@ -36,12 +57,31 @@ const REQUIRED_EXT = {
   "mac-zip": [".zip"],
   "win-exe": [".exe"],
   docs: [".tar.gz", ".zip"],
+  remote: [".zip"],
+  "plugin-market": [".zip"],
 };
 
 /** multipart 分片字段名（后端 multer `chunkUpload.single('chunk')`） */
 const CHUNK_FIELD = "chunk";
 /** 分片会话丢失的响应文案，来源 backend-ops/src/routes/downloads.ts */
 const SESSION_LOST_TEXT = "上传会话不存在或已过期";
+
+/** 文档包上传端点与 multipart 字段名，来源 backend-ops/src/routes/docs.ts（单次、不分片） */
+const DOCS_UPLOAD_PATH = "/api/ops/docs/upload";
+const DOCS_ARCHIVE_FIELD = "archive";
+
+/** 远控页上传端点与 multipart 字段名，来源 backend-ops/src/routes/remotePage.ts（单次） */
+const REMOTE_UPLOAD_PATH = "/api/ops/remote-page/upload";
+const REMOTE_ZIP_FIELD = "zip";
+
+/** 插件市场端点/字段/落地前缀，来源 backend-ops/src/routes/pluginMarket.ts（单次、内容寻址） */
+const PLUGIN_MARKET_UPLOAD_PATH = "/api/ops/plugin-market/upload";
+const PLUGIN_MARKET_ZIP_FIELD = "zip";
+const PLUGIN_MARKET_FILE_PREFIX = "codechat/wave-plugins-official";
+/** 收端准入：zip 根必须含这个文件条目 */
+const PLUGIN_MARKET_MANIFEST = ".wave-plugin/marketplace.json";
+/** 线上版本指针（企业端 ingress 精确 rewrite 到 latest.txt，返回纯文本 sha，no-cache） */
+const PLUGIN_MARKET_LATEST_PATH = "/wave-plugins-official/latest";
 
 /** 以下四个常量与前端 frontend-ops/src/views/Downloads.tsx 对齐 */
 const MAX_ATTEMPTS = 5;
@@ -143,10 +183,10 @@ async function withRetry(label, send, log) {
 
 // ─── 参数 ──────────────────────────────────────────────────────────────────
 
-const USAGE = `用法：node upload.mjs --file <路径> [选项]
+const USAGE = `用法：node upload.mjs --type <desktop|docs|remote|plugin-market> [选项]
 
 必需：
-  --file <路径>          要上传的本地文件（三件套或文档包）
+  --file <路径>          要上传的本地文件（远控页可省略，默认取 pack:remote 产物）
 
 桌面端（--type desktop，默认）：
   --version <X.Y.Z>      版本号（后端按它作 fileKey 与落库版本）
@@ -155,13 +195,32 @@ const USAGE = `用法：node upload.mjs --file <路径> [选项]
 
 文档包（--type docs）：
   不传 --version / --platform / --channel（文件名须 .tar.gz 或 .zip）
+  走 POST /api/ops/docs/upload 的单次 multipart（字段 archive），不进分片链路
+
+远控 Web 页（--type remote）：
+  不传 --version / --platform / --channel（文件名须 .zip，根层要有 index.html）
+  走 POST /api/ops/remote-page/upload 的单次 multipart（字段 zip）
+
+插件市场（--type plugin-market）：
+  不传 --version / --platform / --channel（文件名须 .zip）
+  上 wave-plugins-official 整树快照，zip 根须含 ${PLUGIN_MARKET_MANIFEST}
+  走 POST /api/ops/plugin-market/upload 的单次 multipart（字段 zip）；落成
+  ${PLUGIN_MARKET_FILE_PREFIX}/<sha256>.zip 并覆写 latest.txt
+
+  --confirm-prod         传生产时必须显式加上（防止手滑）
 
 其它：
-  --type <desktop|docs>  上传类型（默认 desktop）
+  --type <desktop|docs|remote|plugin-market>
+                         上传类型（默认 desktop）
   --env <环境>           目标环境：${Object.keys(ENV_BASES).join(" / ")}（默认 prod）
   --base <URL>           直接指定平台地址（与 --env 二选一，兜底/冒烟用）
   --credentials <路径>   凭证文件（默认 ~/.wave/neteasecc.json）
-  --dry-run              只做 init + 第一片，绝不调 complete（不写库、不留可见记录）
+  --dry-run              只做验证、绝不写入：
+                           桌面端 = init + 第一片，不调 complete；
+                           文档包 = 只登录（单次请求，没有「只传一片」的中间态）；
+                           远控页 = 预检（包形状 / 本次构建 / 线上版本），不发上传；
+                           插件市场 = 预检（manifest / 本地 sha / 线上 latest），不发上传
+  --check                同 --dry-run（远控页时代的旧名，保留兼容）
   -h, --help             显示本帮助`;
 
 function parseArgs(argv) {
@@ -207,7 +266,11 @@ function parseArgs(argv) {
         opts.credentials = next();
         break;
       case "--dry-run":
+      case "--check": // 远控页独立脚本时代的旧名，等价于 --dry-run
         opts.dryRun = true;
+        break;
+      case "--confirm-prod":
+        opts.confirmProd = true;
         break;
       case "-h":
       case "--help":
@@ -226,6 +289,9 @@ function die(message) {
 }
 
 function validate(opts) {
+  if (!TYPES.includes(opts.type)) die(`--type 只能是 ${TYPES.join(" / ")}`);
+  // 远控页默认取 pack:remote 的产物，不必每次手写 --file
+  if (!opts.file && opts.type === "remote") opts.file = DEFAULT_REMOTE_ZIP;
   if (!opts.file) die(`缺少 --file\n\n${USAGE}`);
   if (opts.env !== undefined) {
     if (!Object.hasOwn(ENV_BASES, opts.env)) {
@@ -234,14 +300,18 @@ function validate(opts) {
     if (opts.baseGiven) die("--env 与 --base 只能二选一");
     opts.base = ENV_BASES[opts.env];
   }
-  if (!fs.existsSync(opts.file)) die(`文件不存在：${opts.file}`);
+  if (!fs.existsSync(opts.file)) {
+    die(
+      opts.type === "remote" && opts.file === DEFAULT_REMOTE_ZIP
+        ? `远控页产物不存在：${opts.file}（先 pnpm -F wave-webview run pack:remote）`
+        : `文件不存在：${opts.file}`,
+    );
+  }
   const stat = fs.statSync(opts.file);
   if (!stat.isFile()) die(`不是普通文件：${opts.file}`);
   if (stat.size <= 0) die(`文件大小为 0：${opts.file}`);
-  if (!TYPES.includes(opts.type)) die(`--type 只能是 ${TYPES.join(" / ")}`);
 
   const name = path.basename(opts.file).toLowerCase();
-  const required = REQUIRED_EXT[opts.type === "docs" ? "docs" : opts.platform];
   if (opts.type === "desktop") {
     if (!opts.version) die("桌面端必须传 --version");
     if (!PLATFORMS.includes(opts.platform))
@@ -249,8 +319,21 @@ function validate(opts) {
     if (!CHANNELS.includes(opts.channel))
       die(`--channel 只能是 ${CHANNELS.join(" / ")}`);
   } else if (opts.platform || opts.version) {
-    die("--type docs 不接受 --platform / --version");
+    die(`--type ${opts.type} 不接受 --platform / --version`);
   }
+  // 托管类产物（远控页 / 插件市场）打错环境不报错、对象静默写进别处，且一传就对用户生效，
+  // 多一道闸（桌面端/文档包历史上没有这道，保持原样）
+  if (
+    ["remote", "plugin-market"].includes(opts.type) &&
+    opts.env === "prod" &&
+    !opts.confirmProd
+  ) {
+    die("传生产必须显式加 --confirm-prod（用户明确说「传生产」才加）");
+  }
+  const required =
+    opts.type === "desktop"
+      ? REQUIRED_EXT[opts.platform]
+      : REQUIRED_EXT[opts.type];
   if (required && !required.some((ext) => name.endsWith(ext))) {
     die(
       `文件扩展名与类型不符：${path.basename(opts.file)} 需要 ${required.join(" 或 ")}`,
@@ -339,6 +422,8 @@ async function acquireAffinityCookie(base) {
 
 function initBody(opts) {
   const body = {
+    // 2026-10-19 起后端不再读 type（分片链路只服务桌面端，多传会被忽略）；
+    // 留着是为了兼容还没升级的旧 pod。
     type: opts.type,
     fileName: opts.fileName,
     fileSize: opts.fileSize,
@@ -370,12 +455,423 @@ async function main() {
   console.log(`文件       ${opts.file}（${mb(opts.fileSize)}）`);
   if (opts.type === "desktop") console.log(`版本号     ${opts.version}`);
   console.log(`凭证       ${credsPathShown}`);
-  console.log(
-    `模式       ${opts.dryRun ? "DRY-RUN（只传第一片，绝不调 complete）" : "正式上传"}`,
-  );
+  console.log(`模式       ${describeMode(opts)}`);
   console.log();
 
   const creds = readCredentials(opts.credentials);
+  if (opts.type === "docs") return await uploadDocs(opts, creds);
+  if (opts.type === "remote") return await uploadRemotePage(opts, creds);
+  if (opts.type === "plugin-market")
+    return await uploadPluginMarket(opts, creds);
+  return await uploadDesktop(opts, creds);
+}
+
+/** `模式` 那行的文案：--dry-run 对四种产物的「不写」含义各不相同 */
+function describeMode(opts) {
+  if (!opts.dryRun) return "正式上传";
+  if (opts.type === "docs")
+    return "DRY-RUN（只登录，不发上传：文档包是单次请求）";
+  if (opts.type === "remote") {
+    return "DRY-RUN（预检：包形状 / 登录 / 上传前线上版本，不发上传）";
+  }
+  if (opts.type === "plugin-market") {
+    return "DRY-RUN（预检：manifest / 本地 sha / 线上 latest，不发上传）";
+  }
+  return "DRY-RUN（只传第一片，绝不调 complete）";
+}
+
+// ─── 文档包（单次 multipart） ──────────────────────────────────────────────
+
+/**
+ * 文档包上传：一个请求把整包交给 `/api/ops/docs/upload`，服务端解包后逐文件传 file-center。
+ *
+ * 与桌面端的两处关键差别：
+ *   - **不分片、不带亲和 cookie**：服务端没有跨请求的会话状态，请求落到哪个 pod 都一样。
+ *   - **不写下载项台账**：文档站永远只有「最新版」一个状态，传完**没有可回读的记录**
+ *     （`GET /api/ops/downloads` 里不再有 docs 行）——判据只有 201 与响应里的
+ *     `fileCount` / `fileKeys`，以及企业端 `/docs/` 上的对象。
+ *
+ * 失败可以直接重跑：服务端中途失败会回滚本次已传对象，整包重传本身是幂等覆盖。
+ */
+async function uploadDocs(opts, creds) {
+  const token = await login(opts.base, creds);
+  console.log("登录成功（token 不显示）");
+  console.log(
+    `端点       POST ${DOCS_UPLOAD_PATH}（单次 multipart，字段 ${DOCS_ARCHIVE_FIELD}）`,
+  );
+
+  if (opts.dryRun) {
+    console.log(
+      `\nDRY-RUN：文档包是单次 multipart 上传，请求发出即写对象（没有「只传一片」的中间态）⇒ 不发起上传。`,
+    );
+    console.log(
+      `准备好的请求：${opts.fileName}（${mb(opts.fileSize)}）→ ${DOCS_UPLOAD_PATH}`,
+    );
+    return 0;
+  }
+
+  const buffer = await fs.promises.readFile(opts.file);
+  const startedAt = Date.now();
+  try {
+    // 单次请求也复用同一套重试：无响应 / 5xx / 429 可重试，业务 4xx 直接失败。
+    const { status, json } = await withRetry(
+      "上传",
+      () => {
+        // 每次尝试重建请求体：FormData/Blob 不复用（与分片链路同一处理）
+        const form = new FormData();
+        form.append(DOCS_ARCHIVE_FIELD, new Blob([buffer]), opts.fileName);
+        return request(`${opts.base}${DOCS_UPLOAD_PATH}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        });
+      },
+      console.log,
+    );
+    console.log(
+      `上传 ${status}（${((Date.now() - startedAt) / 1000).toFixed(2)}s）`,
+    );
+    const fileCount = json?.fileCount ?? json?.fileKeys?.length ?? "?";
+    console.log(
+      `文件数     ${fileCount}；prefix ${json?.prefix ?? "(未返回)"}；入口 ${json?.entryFileKey ?? "(未返回)"}`,
+    );
+    console.log("\n完成。响应：");
+    console.log(JSON.stringify(json, null, 2));
+    console.log(
+      `\n文档站不入下载项台账 ⇒ 没有可回读的记录；核验看企业端 /docs/ 上的对象（见技能「二、文档站包」）。`,
+    );
+    return 0;
+  } catch (err) {
+    console.error(
+      `\n✗ 文档包上传失败：${err instanceof UploadError ? err.message : err?.stack || err}`,
+    );
+    console.error(
+      `  HTTP 状态：${err instanceof UploadError && err.status !== null ? err.status : "无响应（网络层失败）"}`,
+    );
+    if (err instanceof UploadError && err.status === 404) {
+      console.error(
+        `  提示：404 通常意味着该环境后端还没部署 /api/ops/docs/upload（2026-10-19 新增的端点），不是脚本或压缩包的问题。`,
+      );
+    }
+    console.error(
+      `  提示：服务端中途失败会回滚本次已传对象；重跑同一条命令即可（整包重传是幂等覆盖）。`,
+    );
+    return 1;
+  }
+}
+
+// ─── 远控 Web 页（单次 multipart） ──────────────────────────────────────────
+
+/** 包清单：收端要求根层有 `index.html`。拿不到 unzip 时返回 null（只跳过校验，不阻断）。 */
+function zipNames(file) {
+  try {
+    return execFileSync("unzip", ["-Z1", file], { encoding: "utf8" })
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+/** 读入口页里构建期注入的 `wave-remote-config`（`version` + 构建 `sha`），读不到返回 null */
+function readRemoteConfig(html) {
+  const meta = html.match(/name="wave-remote-config" content='([^']*)'/);
+  if (!meta) return null;
+  try {
+    return JSON.parse(meta[1]);
+  } catch {
+    return null;
+  }
+}
+
+/** 本地包这次的构建版本与 sha —— 报告里「传的是哪份构建」的硬证据 */
+function readLocalBuildInfo(file) {
+  try {
+    const html = execFileSync("unzip", ["-p", file, "index.html"], {
+      encoding: "utf8",
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    return readRemoteConfig(html);
+  } catch {
+    return null;
+  }
+}
+
+/** 线上此刻是哪份构建（回滚账）：入口 `no-cache`，读它自带的 version 即可 */
+async function probeRemoteLive(envName) {
+  const site = ENV_SITES[envName];
+  try {
+    const res = await fetch(`${site}/remote/`, { cache: "no-store" });
+    let live = "";
+    if (res.status === 200) {
+      const info = readRemoteConfig(await res.text());
+      live = info?.version || "";
+    }
+    console.log(
+      `线上构建   ${site}/remote/ -> ${res.status}，线上版本 ${live || "(读不到)"}`,
+    );
+  } catch (e) {
+    console.log(`线上构建   探测失败：${e.message}（不阻断上传）`);
+  }
+}
+
+/**
+ * 远控页上传：一个请求把 zip 交给 `/api/ops/remote-page/upload`（multipart 字段 `zip`），
+ * 服务端解包后逐文件传 file-center `codechat/remote/`（入口 `index.html` 最后写）。
+ *
+ * 与另外两条的差别（全部保留自 upload-remote-page.mjs，2026-10-19 并入本脚本）：
+ *   - **页面不发版**：传完企业端 `/remote/` 立即可见，后端不转发、不重建镜像；
+ *     但「页面已更新」≠「机器侧已更新」——服务端方法白名单在服务那个会话的进程里。
+ *   - **没有删除/回滚接口**：回滚只能另打一份覆盖同名文件；旧 hash 名永不清理。
+ *   - **`--env prod` 必须 `--confirm-prod`**：打错环境不报错，对象会静默写进别处。
+ *   - **成功判据 = 201 + fileKeys 数量 = 产物文件数**（不再有 version.txt 指针）。
+ */
+async function uploadRemotePage(opts, creds) {
+  // ── 预检 1：包形状（纯本地） ──
+  const names = zipNames(opts.file);
+  const ageSec = Math.round(
+    (Date.now() - fs.statSync(opts.file).mtimeMs) / 1000,
+  );
+  if (names) {
+    if (!names.includes("index.html"))
+      die("zip 根层没有 index.html（收端会拒）");
+    console.log(`包形状     ${names.length} 个文件，根层 index.html 存在`);
+  } else {
+    console.log(
+      "包形状     未装 unzip，跳过清单校验（收端仍要求根层 index.html）",
+    );
+  }
+  console.log(`打包时刻   ${ageSec}s 前`);
+  if (ageSec > 3600) {
+    console.log(
+      `⚠️ 这个包一小时以上没重新打过 —— dist 里常躺着旧构建，确认不是陈旧产物`,
+    );
+  }
+
+  // ── 预检 2：本次构建的 version / sha（构建期注入入口页） ──
+  const mine = readLocalBuildInfo(opts.file);
+  if (mine) {
+    console.log(
+      `本次构建   version ${mine.version || "?"} / sha ${mine.sha || "?"}`,
+    );
+  }
+
+  // ── 预检 3：线上此刻是哪份构建（回滚账） ──
+  if (opts.env) await probeRemoteLive(opts.env);
+  else console.log("线上构建   （--base 模式跳过访问面探测）");
+
+  // ── 登录 + 亲和 cookie（其余端点单请求无状态，这里沿用远控页一直以来的做法） ──
+  const token = await login(opts.base, creds);
+  console.log("登录成功（token 不显示）");
+  const cookie = await acquireAffinityCookie(opts.base);
+  console.log(
+    cookie
+      ? `亲和 cookie ${AFFINITY_COOKIE_NAME} 已获取（长度 ${cookie.length}，值不显示）`
+      : `⚠️ 未取到 ${AFFINITY_COOKIE_NAME} 亲和 cookie（多副本下请求可能被拒）`,
+  );
+
+  if (opts.dryRun) {
+    console.log("\nDRY-RUN：预检通过，未发起上传。");
+    return 0;
+  }
+
+  const buffer = await fs.promises.readFile(opts.file);
+  const headers = { Authorization: `Bearer ${token}` };
+  if (cookie) headers.Cookie = cookie;
+  const startedAt = Date.now();
+  try {
+    const { status, json } = await withRetry(
+      "上传",
+      () => {
+        const form = new FormData();
+        form.append(
+          REMOTE_ZIP_FIELD,
+          new Blob([buffer], { type: "application/zip" }),
+          opts.fileName,
+        );
+        return request(`${opts.base}${REMOTE_UPLOAD_PATH}`, {
+          method: "POST",
+          headers,
+          body: form,
+        });
+      },
+      console.log,
+    );
+    const keys = json?.fileKeys ?? json?.files ?? json?.keys ?? [];
+    console.log(
+      `上传 ${status}（${((Date.now() - startedAt) / 1000).toFixed(2)}s）；fileKeys ${keys.length} 个${
+        names ? `（包内 ${names.length} 个文件）` : ""
+      }`,
+    );
+    if (names && keys.length > 0 && keys.length !== names.length) {
+      console.log("⚠️ fileKeys 数量与包内文件数不一致，别直接当成成功");
+    }
+    if (keys.length > 0) {
+      for (const k of keys) console.log("  " + String(k).split("/").pop());
+    } else {
+      console.log(`响应体：${JSON.stringify(json).slice(0, 200)}`);
+    }
+    console.log(
+      `\n完成。手机端刷新即取新构建（入口 no-cache）；回滚账看上方「线上构建」。`,
+    );
+    return 0;
+  } catch (err) {
+    console.error(
+      `\n✗ 远控页上传失败：${err instanceof UploadError ? err.message : err?.stack || err}`,
+    );
+    console.error(
+      `  HTTP 状态：${err instanceof UploadError && err.status !== null ? err.status : "无响应（网络层失败）"}`,
+    );
+    console.error(
+      `  提示：整包重传是幂等覆盖，重跑同一条命令即可；回滚只能另打一份覆盖同名文件（没有删除接口）。`,
+    );
+    return 1;
+  }
+}
+
+// ─── wave 官方插件市场（单次 multipart，内容寻址） ─────────────────────────
+
+/** 线上指针：企业端 `/wave-plugins-official/latest` 返回纯文本 sha（no-cache） */
+async function probePluginMarketLatest(envName) {
+  const site = ENV_SITES[envName];
+  try {
+    const res = await fetch(`${site}${PLUGIN_MARKET_LATEST_PATH}`, {
+      cache: "no-store",
+    });
+    const text = (await res.text()).trim();
+    const ok = res.status === 200 && /^[a-f0-9]{64}$/.test(text);
+    console.log(
+      `线上指针   ${site}${PLUGIN_MARKET_LATEST_PATH} -> ${res.status}，当前 sha ${
+        ok ? text : `(读不到，原文 ${text.slice(0, 40) || "(空)"})`
+      }`,
+    );
+    return ok ? text : null;
+  } catch (e) {
+    console.log(`线上指针   探测失败：${e.message}（不阻断上传）`);
+    return null;
+  }
+}
+
+/**
+ * 插件市场上传：把 wave-plugins-official 的**整树快照 zip** 交给
+ * `/api/ops/plugin-market/upload`（multipart 字段 `zip`）。
+ *
+ * 与另外三条的差别：
+ *   - **内容寻址**：服务端按 zip 全文 sha256 落 `codechat/wave-plugins-official/<sha>.zip`，
+ *     再覆写 `latest.txt` 指向它 ⇒ 同内容重传幂等，「线上是哪份」只由那条指针决定。
+ *   - **收端先校验**：zip 根必须含 `.wave-plugin/marketplace.json`（轻校验，不展开内容）。
+ *   - **不写台账、没有删除/回滚接口**：回滚 = 拿旧 zip 重传一次（旧 sha 对象永不清理）。
+ *   - **`--env prod` 必须 `--confirm-prod`**：一传就对全体用户生效，且打错环境不报错。
+ */
+async function uploadPluginMarket(opts, creds) {
+  // ── 预检 1：包形状（收端准入条件，纯本地） ──
+  const names = zipNames(opts.file);
+  if (names) {
+    if (!names.includes(PLUGIN_MARKET_MANIFEST))
+      die(`zip 根目录缺少 ${PLUGIN_MARKET_MANIFEST}（服务端会拒）`);
+    console.log(
+      `包形状     ${names.length} 个文件，根层 ${PLUGIN_MARKET_MANIFEST} 存在`,
+    );
+  } else {
+    console.log(
+      `包形状     未装 unzip，跳过清单校验（收端仍要求根层 ${PLUGIN_MARKET_MANIFEST}）`,
+    );
+  }
+
+  // ── 预检 2：本地 sha（服务端的版本标识，也是落地 key） ──
+  const buffer = await fs.promises.readFile(opts.file);
+  const sha = crypto.createHash("sha256").update(buffer).digest("hex");
+  console.log(`本次 sha   ${sha}`);
+  console.log(
+    `落地       ${PLUGIN_MARKET_FILE_PREFIX}/${sha}.zip + 覆写 latest.txt`,
+  );
+
+  // ── 预检 3：线上指针（回滚账；同时能判断「内容有没有变」） ──
+  const live = opts.env ? await probePluginMarketLatest(opts.env) : null;
+  if (!opts.env) console.log("线上指针   （--base 模式跳过访问面探测）");
+  if (live && live === sha) {
+    console.log(
+      "内容对比   与线上 latest 完全一致（重传只会刷新指针，内容没变）",
+    );
+  }
+
+  const token = await login(opts.base, creds);
+  console.log("登录成功（token 不显示）");
+
+  if (opts.dryRun) {
+    console.log("\nDRY-RUN：预检通过，未发起上传。");
+    return 0;
+  }
+
+  const startedAt = Date.now();
+  try {
+    const { status, json } = await withRetry(
+      "上传",
+      () => {
+        const form = new FormData();
+        form.append(
+          PLUGIN_MARKET_ZIP_FIELD,
+          new Blob([buffer], { type: "application/zip" }),
+          opts.fileName,
+        );
+        return request(`${opts.base}${PLUGIN_MARKET_UPLOAD_PATH}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        });
+      },
+      console.log,
+    );
+    const serverSha = json?.sha;
+    console.log(
+      `上传 ${status}（${((Date.now() - startedAt) / 1000).toFixed(2)}s）；服务端 sha ${serverSha ?? "(未返回)"}`,
+    );
+    if (serverSha && serverSha !== sha) {
+      console.error(
+        `✗ 服务端算出的 sha 与本地不一致：本地 ${sha}，服务端 ${serverSha} —— 先别当成成功`,
+      );
+      return 1;
+    }
+    if (json?.publicUrl) console.log(`publicUrl  ${json.publicUrl}`);
+    if (json?.latestUrl) console.log(`latestUrl  ${json.latestUrl}`);
+
+    // 指针生效是「用户能拿到新版」的最后一环：no-cache 下应立刻可见，滞后多为 CDN 边缘
+    if (opts.env) {
+      const now = await probePluginMarketLatest(opts.env);
+      if (now && now !== sha) {
+        console.log(
+          `⚠️ 线上指针仍是 ${now} —— 多为 CDN 边缘滞后（1–2 分钟后再看），别立刻判定失败`,
+        );
+      }
+    }
+    console.log(
+      `\n完成。客户端下一轮检查 latest 即取到本次快照；回滚拿旧 zip 重传一次即可。`,
+    );
+    return 0;
+  } catch (err) {
+    console.error(
+      `\n✗ 插件市场上传失败：${err instanceof UploadError ? err.message : err?.stack || err}`,
+    );
+    console.error(
+      `  HTTP 状态：${err instanceof UploadError && err.status !== null ? err.status : "无响应（网络层失败）"}`,
+    );
+    if (err instanceof UploadError && err.status === 404) {
+      console.error(
+        `  提示：404 通常意味着该环境后端还没部署 ${PLUGIN_MARKET_UPLOAD_PATH}，不是压缩包的问题。`,
+      );
+    }
+    console.error(
+      `  提示：{sha}.zip 内容寻址、同包重传幂等；重跑同一条命令即可。`,
+    );
+    return 1;
+  }
+}
+
+// ─── 桌面端（分片直传） ────────────────────────────────────────────────────
+
+/** 桌面端安装包：init → 逐片 chunk → complete（分片会话靠亲和 cookie 固定到同一 pod）。 */
+async function uploadDesktop(opts, creds) {
   const cookie = await acquireAffinityCookie(opts.base);
   if (!cookie)
     die(
