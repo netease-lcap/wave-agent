@@ -1,0 +1,71 @@
+/* Phone screenshots for docs (web.md 远控 Web 页). The shots are 390×844
+   phone frames — 1-up on phones, 2-up everywhere else, with a rounded frame so
+   they read as phone screens rather than app windows. */
+.phone-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+  margin: 16px 0 28px;
+  align-items: start;
+}
+
+.phone-gallery figure {
+  margin: 0;
+}
+
+.phone-gallery img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 14px;
+  background: var(--vp-c-bg-soft);
+}
+
+.phone-gallery figcaption {
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+  margin-top: 8px;
+}
+
+@media (max-width: 640px) {
+  .phone-gallery {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+}
+
+/* 单张手机截图：与 2 列网格同样的框，但不并排（正文里插一张时居中显示）。 */
+.phone-gallery--single {
+  grid-template-columns: minmax(0, 320px);
+  justify-content: center;
+}
+
+@media (max-width: 640px) {
+  .phone-gallery--single {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 宽幅截图（桌面端界面）：占满正文栏 + 居中说明。 */
+.doc-figure {
+  margin: 16px 0 28px;
+}
+
+.doc-figure img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+}
+
+.doc-figure figcaption {
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+  margin-top: 8px;
+}
