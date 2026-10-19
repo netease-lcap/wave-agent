@@ -220,7 +220,7 @@ describe("file paths on the remote-control Web page", () => {
 });
 
 describe("entries that can only fail on the page", () => {
-  it("keeps 设置 and drops 登录/退出登录 from the more menu, keeping the two real links", () => {
+  it("drops 设置 and 登录/退出登录 from the more menu, keeping the two real links", () => {
     window.waveRemotePage = true;
     renderChatApp();
 
@@ -230,9 +230,7 @@ describe("entries that can only fail on the page", () => {
 
     expect(screen.getByTestId("more-menu-enterprise")).toBeInTheDocument();
     expect(screen.getByTestId("more-menu-help-docs")).toBeInTheDocument();
-    // 第三批解禁（spec「Web 端也能改设置」）：设置页在页面上真的能开、能读写，
-    // 所以这一项留下来。登录/退出登录仍不渲染——页面复用企业端登录态。
-    expect(screen.getByTestId("more-menu-settings")).toBeInTheDocument();
+    expect(screen.queryByTestId("more-menu-settings")).not.toBeInTheDocument();
     expect(screen.queryByTestId("more-menu-logout")).not.toBeInTheDocument();
     expect(screen.queryByTestId("more-menu-login")).not.toBeInTheDocument();
   });
@@ -249,24 +247,19 @@ describe("entries that can only fail on the page", () => {
     const items = Array.from(
       menu.querySelectorAll<HTMLElement>(".more-menu-item"),
     );
-    expect(items).toHaveLength(3);
+    expect(items).toHaveLength(2);
 
     act(() => {
       fireEvent.keyDown(items[0], { key: "ArrowDown" });
     });
     expect(items[1].tabIndex).toBe(0);
 
-    act(() => {
-      fireEvent.keyDown(items[1], { key: "ArrowDown" });
-    });
-    expect(items[2].tabIndex).toBe(0);
-
     // At the last entry the roving stops: with a stale item count it would move
     // to a slot that is not there, leaving the whole menu without a tab stop.
     act(() => {
-      fireEvent.keyDown(items[2], { key: "ArrowDown" });
+      fireEvent.keyDown(items[1], { key: "ArrowDown" });
     });
-    expect(items[2].tabIndex).toBe(0);
+    expect(items[1].tabIndex).toBe(0);
     expect(menu.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
   });
 
@@ -376,11 +369,11 @@ describe("entries that can only fail on the page", () => {
     window.waveRemotePage = true;
     const { vscode } = renderChatApp();
 
-    // 第三批解禁之后仍然「只能失败」的那些：它们的背后是宿主的**界面**能力
-    // （插件市场 / 钩子等管理视图 / 计划预览 / btw 面板），或者只有宿主侧才有
-    // 意义（远程控制自身）。`/config` 已解禁（设置页在页面上真的能开），
-    // `/clear` `/rewind` `/model` `/tasks` `/workflows` 见下一条用例。
+    // 第二批解禁之后仍然「只能失败」的那些：它们的背后是宿主的**界面**能力
+    // （设置页 / 插件 / 计划预览 / btw 面板），或者只有宿主侧才有意义（远程控制
+    // 自身）。/clear /rewind /model /tasks /workflows 已经解禁，见下一条用例。
     const hostLocal = [
+      "/config",
       "/plugin",
       "/reload-plugins",
       "/mcp",

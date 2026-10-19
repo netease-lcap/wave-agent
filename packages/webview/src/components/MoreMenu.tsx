@@ -135,12 +135,11 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   pushNotifications,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
-  // Remote-control Web page: 登录/退出登录 act on the host (a login flow this
-  // page does not have) — clicking them would do nothing at all, so they are not
-  // rendered. 设置 **is** rendered since the third batch (2026-10-17): the page
-  // now really serves the settings page (its 全局设置 / 个性化 / 项目设置 views,
-  // spec ui/remote-control.md「Web 端也能改设置」). 企业控制台 / 帮助文档 stay:
-  // they are just URLs, and the page's handler opens them in a browser tab.
+  // Remote-control Web page: 设置 and 登录/退出登录 act on the host (a settings
+  // tab webview, a login flow) and this page has neither — clicking them would
+  // do nothing at all, so they are not rendered. 企业控制台 / 帮助文档 stay: they
+  // are just URLs, and the page's handler opens them in a browser tab
+  // (spec ui/remote-control.md 场景 24).
   const remotePage = isRemotePageHost();
 
   // Roving keyboard model shared with the other custom dropdowns: Arrow keys
@@ -162,23 +161,27 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
       ? pushMenuShape(pushNotifications)
       : undefined;
 
-  // Entry order matches focus order; the auth slot is 登录/退出登录 by auth,
+  // Entry order matches focus order; the fourth slot is 登录/退出登录 by auth,
   // danger-styled and separated when it is 退出登录 (spec 场景 4). The remote
-  // page drops the auth slots, so `itemCount` is derived from the array rather
-  // than the literal 4 it used to be — a hardcoded count would let the arrow keys
-  // walk off the end of the list.
+  // page drops the 设置 and auth slots, so `itemCount` is derived from the array
+  // rather than the literal 4 it used to be — a hardcoded count would let the
+  // arrow keys walk off the end of the list.
   const entries: MoreMenuEntry[] = [
     ...(push?.entry ? [push.entry] : []),
-    {
-      id: "more-menu-settings",
-      run: handleSettings,
-      content: (
-        <>
-          <SettingsGearIcon className="more-menu-item-icon" />
-          <span>设置{authLabelSuffix}</span>
-        </>
-      ),
-    },
+    ...(remotePage
+      ? []
+      : [
+          {
+            id: "more-menu-settings",
+            run: handleSettings,
+            content: (
+              <>
+                <SettingsGearIcon className="more-menu-item-icon" />
+                <span>设置{authLabelSuffix}</span>
+              </>
+            ),
+          },
+        ]),
     {
       id: "more-menu-enterprise",
       className: "more-menu-item--between",
