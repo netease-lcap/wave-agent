@@ -2768,9 +2768,40 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // Desktop panel comments (preview element picks, diff-line comments) land in
   // this pane's input (not sent), so several can be batched and edited before
   // sending.
+  //
+  // 两条约束一起决定了「不能直接写」：
+  // 1. 预览全屏期间 `.desktop-chat-main` 整块不渲染（见下方 desktop-chat-body），
+  //    <MessageInput> 跟着卸载 ⇒ `messageInputRef.current` 恒为 null，原来的
+  //    `?.appendText()` 会把刚写完的评论静默吞掉。评论是用户手工攒的内容，先退出
+  //    全屏把它露出来（用户口径：评论 → 退出全屏 → 输入框里看到它）。
+  // 2. 退出全屏是 setState，输入框要等下一次提交才重新挂载 —— 同一个 tick 里
+  //    appendText 只会再落一次空。所以评论先入 pending 队列，由紧随其后的 effect
+  //    在「输入区已挂载」后再写入（与 #2496 预填提示词同一条「就绪后写入」路径）。
+  // 队列是**追加**语义（分隔符与 MessageInput.appendText 保持一致）：用户连点几个
+  // 元素攒评论，绝不能覆盖已经攒下的内容。
+  const [pendingCommentAppend, setPendingCommentAppend] = useState<
+    string | null
+  >(null);
   const handleAddComment = useCallback((text: string) => {
-    messageInputRef.current?.appendText(text);
+    setPreviewFullscreen(false);
+    setPendingCommentAppend((prev) => (prev ? `${prev}\n\n${text}` : text));
   }, []);
+
+  // 评论排队等输入框就绪。闸门只有「输入区已挂载 + 不在恢复态 + ref 拿得到」——
+  // 比预填提示词（#2496）那道闸门少一个 `initialStateReceived`，理由是这个窗口里
+  // 不存在「写入被快照重置」的风险：预填是**程序化**地在刚挂载的输入框里灌一个草稿，
+  // 会撞上 authStatusResponse 与 setInitialState 之间的半就绪窗口；而评论追加发生在
+  // 面板已经用起来的时段（快照早落地），写进去的文本同时经 updateInputContent 回到
+  // 宿主草稿，迟到的快照拿到的是同一份内容。把快照也当闸门反而有害：宿主没回放快照
+  // 的路径（老 demo / 无快照宿主）会让评论卡在队列里不发。
+  useEffect(() => {
+    if (pendingCommentAppend === null) return;
+    if (!inputAreaMounted || state.isRestoring) return;
+    const input = messageInputRef.current;
+    if (!input) return;
+    input.appendText(pendingCommentAppend);
+    setPendingCommentAppend(null);
+  }, [pendingCommentAppend, inputAreaMounted, state.isRestoring]);
 
   // Re-focus input when command finishes running (e.g., after bang execution)
   useEffect(() => {
