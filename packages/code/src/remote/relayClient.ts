@@ -61,7 +61,7 @@ export interface RelayCredential {
 /** The control frames the relay sends us. Not forwarded, not JSON-RPC. */
 export type RelayControlFrame =
   | { type: "auth_ok"; role?: string; hostId?: string }
-  | { type: "auth_error"; error: string; minVersion?: string }
+  | { type: "auth_error"; error: string }
   | { type: "peer_disconnected"; hostId?: string }
   | { type: "resync_required"; hostId?: string }
   | { type: "ping" }
@@ -157,9 +157,9 @@ export interface RelayClientOptions {
   onAuthenticated?: (info: { role?: string; hostId?: string }) => void;
   /**
    * `auth_error`. The relay closes with `4003` right after, so this only adds
-   * the *reason* — and, for `host_version_unsupported`, the floor to report.
+   * the *reason* — the close code cannot say why.
    */
-  onAuthError?: (info: { error: string; minVersion?: string }) => void;
+  onAuthError?: (info: { error: string }) => void;
   /** The other end of this channel is gone (the phone, or the machine). */
   onPeerDisconnected?: () => void;
   /**
@@ -182,7 +182,7 @@ export class RelayClient {
   private unavailableAttempts = 0;
   private stopped = false;
   /** Why the relay refused us, kept so the `4003` that follows can say more. */
-  private authError: { error: string; minVersion?: string } | undefined;
+  private authError: { error: string } | undefined;
   /**
    * `auth_ok` has arrived. Until it does the relay parses *every* frame as the
    * auth frame, and one it cannot parse closes the connection for good
@@ -501,23 +501,8 @@ export class RelayClient {
         });
         return;
       case "auth_error":
-        this.authError = {
-          error: frame.error,
-          ...(frame.minVersion !== undefined
-            ? { minVersion: frame.minVersion }
-            : {}),
-        };
+        this.authError = { error: frame.error };
         this.options.onAuthError?.(this.authError);
-        if (frame.error === "host_version_unsupported") {
-          // Retrying cannot change this build, and the `4003` that follows
-          // would report it as "bad credential" — the wrong advice. So the
-          // decision is taken here, where the floor is still on the wire.
-          this.fail(
-            `this wave build is older than the relay requires` +
-              `${frame.minVersion ? ` (minimum ${frame.minVersion})` : ""}` +
-              ` — upgrade wave on this machine`,
-          );
-        }
         return;
       case "peer_disconnected":
         this.options.onPeerDisconnected?.();
@@ -608,12 +593,9 @@ export function parseRelayControlFrame(
     case "auth_error": {
       const error = asString(frame.error);
       if (error === undefined) return undefined;
-      const minVersion = asString(frame.minVersion);
-      return {
-        type: "auth_error",
-        error,
-        ...(minVersion !== undefined ? { minVersion } : {}),
-      };
+      // Any `minVersion` an older relay still sends is dropped here: the
+      // version floor is no longer part of the contract.
+      return { type: "auth_error", error };
     }
     case "peer_disconnected":
       return {

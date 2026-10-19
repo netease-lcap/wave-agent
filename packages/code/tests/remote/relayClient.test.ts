@@ -65,7 +65,7 @@ describe("RelayClient", () => {
   let sockets: FakeSocket[];
   let onOpen: Mock<() => void>;
   let onAuthenticated: Mock<(info: { role?: string; hostId?: string }) => void>;
-  let onAuthError: Mock<(info: { error: string; minVersion?: string }) => void>;
+  let onAuthError: Mock<(info: { error: string }) => void>;
   let onPeerDisconnected: Mock<() => void>;
   let onResyncRequired: Mock<() => void>;
   let onFrame: Mock<(frame: RelayEnvelope) => void>;
@@ -77,8 +77,7 @@ describe("RelayClient", () => {
     onOpen = vi.fn<() => void>();
     onAuthenticated =
       vi.fn<(info: { role?: string; hostId?: string }) => void>();
-    onAuthError =
-      vi.fn<(info: { error: string; minVersion?: string }) => void>();
+    onAuthError = vi.fn<(info: { error: string }) => void>();
     onPeerDisconnected = vi.fn<() => void>();
     onResyncRequired = vi.fn<() => void>();
     onFrame = vi.fn<(frame: RelayEnvelope) => void>();
@@ -459,7 +458,7 @@ describe("RelayClient", () => {
 describe("relay control frames", () => {
   let sockets: FakeSocket[];
   let onAuthenticated: Mock<(info: { role?: string; hostId?: string }) => void>;
-  let onAuthError: Mock<(info: { error: string; minVersion?: string }) => void>;
+  let onAuthError: Mock<(info: { error: string }) => void>;
   let onPeerDisconnected: Mock<() => void>;
   let onResyncRequired: Mock<() => void>;
   let onFrame: Mock<(frame: RelayEnvelope) => void>;
@@ -470,8 +469,7 @@ describe("relay control frames", () => {
     sockets = [];
     onAuthenticated =
       vi.fn<(info: { role?: string; hostId?: string }) => void>();
-    onAuthError =
-      vi.fn<(info: { error: string; minVersion?: string }) => void>();
+    onAuthError = vi.fn<(info: { error: string }) => void>();
     onPeerDisconnected = vi.fn<() => void>();
     onResyncRequired = vi.fn<() => void>();
     onFrame = vi.fn<(frame: RelayEnvelope) => void>();
@@ -534,25 +532,6 @@ describe("relay control frames", () => {
     );
   });
 
-  it("should give up for good on a version floor it cannot meet", () => {
-    openClient();
-    sockets[0].deliver(
-      JSON.stringify({
-        type: "auth_error",
-        error: "host_version_unsupported",
-        minVersion: "9.9.9",
-      }),
-    );
-
-    expect(onFatal).toHaveBeenCalledWith(expect.stringContaining("9.9.9"));
-    // The advice is "upgrade", not "the credential is bad", so the close code
-    // that follows must not replace it — and no amount of retrying helps.
-    sockets[0].drop(4003);
-    expect(onFatal).toHaveBeenCalledTimes(1);
-    vi.advanceTimersByTime(RELAY_RETRY_DELAY_MS * 10);
-    expect(sockets).toHaveLength(1);
-  });
-
   it("should surface peer_disconnected and resync_required", () => {
     openClient();
     sockets[0].deliver(
@@ -605,17 +584,19 @@ describe("parseRelayControlFrame", () => {
     ).toEqual({ type: "auth_ok", role: "subscriber", hostId: "h1" });
     expect(
       parseRelayControlFrame(
+        JSON.stringify({ type: "auth_error", error: "unknown_host" }),
+      ),
+    ).toEqual({ type: "auth_error", error: "unknown_host" });
+    // A `minVersion` from an older relay is ignored: no version floor exists.
+    expect(
+      parseRelayControlFrame(
         JSON.stringify({
           type: "auth_error",
           error: "unknown_host",
           minVersion: "1.2.0",
         }),
       ),
-    ).toEqual({
-      type: "auth_error",
-      error: "unknown_host",
-      minVersion: "1.2.0",
-    });
+    ).toEqual({ type: "auth_error", error: "unknown_host" });
     expect(
       parseRelayControlFrame(JSON.stringify({ type: "peer_disconnected" })),
     ).toEqual({ type: "peer_disconnected" });
