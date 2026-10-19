@@ -158,7 +158,12 @@ async function callBuiltInTool(
   }
   const result = await toolManager.execute(name, args, context);
   if (!result.success) {
-    throw new Error(result.error || `${name} failed`);
+    // `error` is the field tools *should* fill, but not all of them do: the task
+    // tools report failure through `content` only (`TaskUpdate` missing `taskId`
+    // answers "Task #undefined not found" in `content`, with `error` undefined).
+    // Falling straight to `${name} failed` made the real reason unreachable from
+    // the script, leaving the caller nothing to branch on but a bare tool name.
+    throw new Error(result.error || result.content || `${name} failed`);
   }
   return { output: result.content, images: result.images };
 }

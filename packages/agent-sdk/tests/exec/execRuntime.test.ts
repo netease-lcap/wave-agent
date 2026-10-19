@@ -316,7 +316,7 @@ describe("runExecScript — built-in dispatch", () => {
     code: string,
     result:
       | { success: true; content: string; images?: Array<{ data: string }> }
-      | { success: false; error: string },
+      | { success: false; content?: string; error?: string },
   ) {
     const execute = vi.fn(async () => result);
     const { context } = contextWith();
@@ -376,6 +376,31 @@ describe("runExecScript — built-in dispatch", () => {
     expect(result.ok).toBe(true);
     expect(JSON.parse(result.value!)).toEqual({
       outcome: "Permission denied by user",
+    });
+  });
+
+  it("surfaces the failure reason even when a tool fills only content", async () => {
+    // The task tools are the odd ones out: they answer a failure through
+    // `content` and leave `error` undefined (a missing `taskId` yields
+    // "Task #undefined not found"). Falling back to a bare `${name} failed`
+    // hid that reason from the script, which left the caller — and the agent
+    // debugging the call — with nothing but the tool's name.
+    const { promise } = builtInRun(
+      `
+        try {
+          await tools.WebFetch({ url: "https://example.com" });
+          return { outcome: "resolved" };
+        } catch (error) {
+          return { outcome: error.message };
+        }
+      `,
+      { success: false, content: "Task #undefined not found" },
+    );
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(result.value!)).toEqual({
+      outcome: "Task #undefined not found",
     });
   });
 
