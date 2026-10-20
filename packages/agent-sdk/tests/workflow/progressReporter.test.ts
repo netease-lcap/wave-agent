@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { ProgressReporter } from "../../src/workflow/progressReporter.js";
 import type { WorkflowMeta } from "../../src/workflow/types.js";
 
@@ -81,5 +81,45 @@ describe("ProgressReporter", () => {
     const reporter = new ProgressReporter(testMeta);
     const summary = reporter.formatSummary();
     expect(summary).toContain("Initializing");
+  });
+
+  it("finalize settles the elapsed time of a phase whose agents were interrupted", () => {
+    // Only `agentCompleted` used to write `elapsed`, so a run stopped while its
+    // agents were in flight recorded the phase it was actually in as `0ms`.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-20T00:00:00Z"));
+      const reporter = new ProgressReporter(testMeta);
+      reporter.setPhase("Research");
+      reporter.agentStarted(); // still running when the run is stopped
+
+      vi.setSystemTime(new Date("2026-10-20T00:00:09Z"));
+      reporter.finalize();
+
+      const [phase] = reporter.getPhaseStates();
+      expect(phase.elapsed).toBe(9000);
+      expect(phase.tokens).toBe(0);
+      expect(reporter.totalAgents).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("entering the next phase settles the one it leaves", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-10-20T00:00:00Z"));
+      const reporter = new ProgressReporter(testMeta);
+      reporter.setPhase("Research");
+
+      vi.setSystemTime(new Date("2026-10-20T00:00:05Z"));
+      reporter.setPhase("Summarize");
+
+      const phases = reporter.getPhaseStates();
+      expect(phases[0].elapsed).toBe(5000);
+      expect(phases[1].elapsed).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

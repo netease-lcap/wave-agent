@@ -45,6 +45,7 @@ export class ProgressReporter {
   setPhase(title: string): void {
     // Emit phase_completed for the previous phase
     if (this.currentPhaseIndex >= 0) {
+      this.closeCurrentPhase();
       this.emit({
         type: "phase_completed",
         phaseIndex: this.currentPhaseIndex,
@@ -87,8 +88,7 @@ export class ProgressReporter {
     this.tokenCounter += tokens;
     if (this.currentPhaseIndex >= 0) {
       this.phases[this.currentPhaseIndex].tokens += tokens;
-      this.phases[this.currentPhaseIndex].elapsed =
-        Date.now() - this.phases[this.currentPhaseIndex].startTime;
+      this.closeCurrentPhase();
     }
     this.emit({
       type: "agent_completed",
@@ -103,6 +103,23 @@ export class ProgressReporter {
       phaseIndex: this.currentPhaseIndex,
       agentIndex,
     });
+  }
+
+  /**
+   * Settle the phase that is still open when the run ends early — a stop, an
+   * abort, or a script throwing mid-agent. `agentCompleted` is otherwise the
+   * only writer of `elapsed`, so a run stopped while its agents were in flight
+   * snapshotted the phase it was actually in as `0ms` (the phase's tokens stay
+   * at what finished agents reported: an interrupted agent never reports its
+   * spend, so there is nothing to add).
+   */
+  finalize(): void {
+    if (this.currentPhaseIndex >= 0) this.closeCurrentPhase();
+  }
+
+  private closeCurrentPhase(): void {
+    const phase = this.phases[this.currentPhaseIndex];
+    if (phase) phase.elapsed = Date.now() - phase.startTime;
   }
 
   formatSummary(): string {

@@ -340,6 +340,24 @@ function deleteTokenBefore(
  * when there is nothing to submit (empty text).
  */
 function submitInput(state: InputState): InputState | null {
+  const submitted = buildSubmitState(state);
+  if (!submitted) return null;
+  // A submit consumes the text, so the popups anchored to it have to go too.
+  // Enter reaches here instead of `SELECT_COMMAND` — which is what used to
+  // close the selector — so submitting `/workflows` left the popup painted
+  // above the panel the command had just opened.
+  return {
+    ...submitted,
+    showCommandSelector: false,
+    slashPosition: -1,
+    commandSearchQuery: "",
+    showFileSelector: false,
+    atPosition: -1,
+    fileSearchQuery: "",
+  };
+}
+
+function buildSubmitState(state: InputState): InputState | null {
   if (!state.inputText.trim()) {
     return null;
   }
@@ -761,6 +779,17 @@ export function inputReducer(
         inputText: "",
         cursorPosition: 0,
         historyIndex: -1,
+        // A cleared input leaves no `/` or `@` for a popup to anchor to, but
+        // this action used to reset only the text. Submitting `/workflows` goes
+        // through `handleSubmit` rather than `SELECT_COMMAND`, so the selector
+        // stayed up and painted a stale "Command Selector (filtering: …)" above
+        // the panel the command had just opened.
+        showCommandSelector: false,
+        slashPosition: -1,
+        commandSearchQuery: "",
+        showFileSelector: false,
+        atPosition: -1,
+        fileSearchQuery: "",
       };
     case "ADD_IMAGE_AND_INSERT_PLACEHOLDER": {
       const newImage: AttachedImage = {

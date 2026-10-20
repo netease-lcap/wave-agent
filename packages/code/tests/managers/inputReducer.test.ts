@@ -502,6 +502,41 @@ describe("inputReducer", () => {
     expect(state.cursorPosition).toBe(0);
   });
 
+  it("should close both selectors on CLEAR_INPUT", () => {
+    // Submitting `/workflows` runs through `handleSubmit`, not `SELECT_COMMAND`,
+    // so the command popup was left painted above the panel the command opened.
+    // A cleared input has no `/` or `@` for either popup to anchor to.
+    const withCommandSelector: InputState = {
+      ...initialState,
+      inputText: "/workflows",
+      cursorPosition: 10,
+      showCommandSelector: true,
+      slashPosition: 0,
+      commandSearchQuery: "workflows",
+    };
+    const clearedCommand = inputReducer(withCommandSelector, {
+      type: "CLEAR_INPUT",
+    });
+    expect(clearedCommand.showCommandSelector).toBe(false);
+    expect(clearedCommand.slashPosition).toBe(-1);
+    expect(clearedCommand.commandSearchQuery).toBe("");
+
+    const withFileSelector: InputState = {
+      ...initialState,
+      inputText: "@src/ap",
+      cursorPosition: 7,
+      showFileSelector: true,
+      atPosition: 0,
+      fileSearchQuery: "src/ap",
+    };
+    const clearedFile = inputReducer(withFileSelector, {
+      type: "CLEAR_INPUT",
+    });
+    expect(clearedFile.showFileSelector).toBe(false);
+    expect(clearedFile.atPosition).toBe(-1);
+    expect(clearedFile.fileSearchQuery).toBe("");
+  });
+
   it("should handle ADD_IMAGE_AND_INSERT_PLACEHOLDER", () => {
     const state = inputReducer(initialState, {
       type: "ADD_IMAGE_AND_INSERT_PLACEHOLDER",
@@ -785,6 +820,35 @@ describe("inputReducer", () => {
 
   describe("HANDLE_KEY", () => {
     const hasSlashCommand = (cmd: string) => cmd === "custom";
+
+    it("closes the command selector when a coalesced Enter submits an internal command", () => {
+      // `text\r` in one chunk (a fast paste, tmux `send-keys`, a slow SSH
+      // link) goes through `submitInput` instead of `SELECT_COMMAND`, which is
+      // what used to close the popup: `/workflows` left "Command Selector
+      // (filtering: workflows)" painted above the panel it had just opened.
+      const state: InputState = {
+        ...initialState,
+        showCommandSelector: true,
+        slashPosition: 0,
+        commandSearchQuery: "workflows",
+      };
+      const result = inputReducer(state, {
+        type: "HANDLE_KEY",
+        payload: {
+          input: "/workflows\r",
+          key: {} as unknown as Key,
+          hasSlashCommand,
+        },
+      });
+      expect(result.pendingEffect).toEqual({
+        type: "EXECUTE_COMMAND",
+        command: "workflows",
+        args: undefined,
+      });
+      expect(result.showCommandSelector).toBe(false);
+      expect(result.slashPosition).toBe(-1);
+      expect(result.commandSearchQuery).toBe("");
+    });
 
     it("should handle return to send message", () => {
       const state = { ...initialState, inputText: "hello" };
