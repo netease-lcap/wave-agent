@@ -53,6 +53,18 @@ const SESSIONS = [
     lastActiveAt: new Date("2026-10-14T08:30:00Z"),
     latestTotalTokens: 50,
   },
+  // 建在 worktree 里的会话：`workdir` 是工作树路径，`repoRoot` 是它挂靠的仓库
+  // （daemon 的 `listDaemonSessions` 按 createdWorkdir 推导后随行下发）。
+  {
+    id: "session-4",
+    sessionType: "main" as const,
+    workdir: "/repo/.wave/worktrees/spike",
+    repoRoot: "/repo",
+    firstMessage: "worktree 里的会话",
+    createdAt: new Date("2026-10-14T06:00:00Z"),
+    lastActiveAt: new Date("2026-10-14T07:30:00Z"),
+    latestTotalTokens: 10,
+  },
 ];
 
 function sentCommand(
@@ -106,6 +118,8 @@ describe("remote page new-session dialog", () => {
     const recents = screen.getByTestId("remote-new-session-recents");
     // /repo 出现两次，只列一次；顺序沿用会话列表的最近活跃序。条目是
     // desktop 同款两行式（basename + 父路径），完整路径在 title 上。
+    // 第四条会话建在 /repo 的 worktree 里，按 repoRoot 归并进 /repo——最近目录
+    // 只列仓库根，工作树路径不出现（桌面端最近目录同口径）。
     const items = within(recents).getAllByTestId(
       "remote-new-session-recent-item",
     );
@@ -114,7 +128,7 @@ describe("remote page new-session dialog", () => {
     expect(items[1]).toHaveAttribute("title", "/tmp/other");
   });
 
-  it("fetches branches when a recent dir is picked and shows worktree controls", () => {
+  it("fetches branches when a recent dir is picked and defaults to the current branch", () => {
     const { vscode } = renderRemotePage();
     openDialog(vscode);
 
@@ -130,31 +144,66 @@ describe("remote page new-session dialog", () => {
     expect(branchesReq.workdir).toBe("/repo");
     expect(branchesReq.requestId).toBeTruthy();
 
+    // 宿主 `listGitBranches` 的回执是一对 {branches, current}（桌面端
+    // `desktopGitBranches` 同一份），不是裸的分支名数组。
     act(() => {
       sendCommand("newSessionBranches", {
         requestId: branchesReq.requestId,
-        result: ["main", "dev"],
+        result: { branches: ["dev", "main"], current: "main" },
       });
     });
 
     const select = screen.getByTestId(
       "remote-new-session-branch-select",
     ) as HTMLSelectElement;
+    // 基准分支默认 = 该目录的当前分支（不是列表第一项）。
     expect(select.value).toBe("main");
 
-    // worktree off by default: create sends a plain initialize shape.
+    // 与桌面端新建会话页同一条默认：worktree 开关默认勾选，名称输入随之出现。
     expect(
-      screen.queryByTestId("remote-new-session-worktree-name"),
-    ).not.toBeInTheDocument();
+      screen.getByTestId("remote-new-session-worktree-check"),
+    ).toBeChecked();
+    expect(
+      screen.getByTestId("remote-new-session-worktree-name"),
+    ).toBeInTheDocument();
+
     act(() => {
       fireEvent.click(screen.getByTestId("remote-new-session-create"));
     });
     expect(sentCommand(vscode, "newSessionCreate")).toMatchObject({
       workdir: "/repo",
-      useWorktree: false,
-      baseBranch: undefined,
+      useWorktree: true,
+      baseBranch: "main",
       name: undefined,
     });
+  });
+
+  it("falls back to the first branch when the repo has no current branch", () => {
+    const { vscode } = renderRemotePage();
+    openDialog(vscode);
+    act(() => {
+      fireEvent.click(
+        within(screen.getByTestId("remote-new-session-recents")).getAllByTestId(
+          "remote-new-session-recent-item",
+        )[0],
+      );
+    });
+    const branchesReq = sentCommand(vscode, "newSessionListBranches");
+    act(() => {
+      sendCommand("newSessionBranches", {
+        requestId: branchesReq.requestId,
+        // detached HEAD：宿主回 current = null。
+        result: { branches: ["main", "dev"], current: null },
+      });
+    });
+
+    expect(
+      (
+        screen.getByTestId(
+          "remote-new-session-branch-select",
+        ) as HTMLSelectElement
+      ).value,
+    ).toBe("main");
   });
 
   it("creates a worktree session with the picked base branch and name", () => {
@@ -171,13 +220,11 @@ describe("remote page new-session dialog", () => {
     act(() => {
       sendCommand("newSessionBranches", {
         requestId: branchesReq.requestId,
-        result: ["main", "dev"],
+        result: { branches: ["main", "dev"], current: "main" },
       });
     });
 
-    act(() => {
-      fireEvent.click(screen.getByTestId("remote-new-session-worktree-check"));
-    });
+    // worktree 默认勾选，这里只需换分支 + 起名。
     fireEvent.change(screen.getByTestId("remote-new-session-worktree-name"), {
       target: { value: "spike" },
     });
@@ -193,6 +240,38 @@ describe("remote page new-session dialog", () => {
       useWorktree: true,
       baseBranch: "dev",
       name: "spike",
+    });
+  });
+
+  it("creates without a worktree when the toggle is switched off", () => {
+    const { vscode } = renderRemotePage();
+    openDialog(vscode);
+    act(() => {
+      fireEvent.click(
+        within(screen.getByTestId("remote-new-session-recents")).getAllByTestId(
+          "remote-new-session-recent-item",
+        )[0],
+      );
+    });
+    const branchesReq = sentCommand(vscode, "newSessionListBranches");
+    act(() => {
+      sendCommand("newSessionBranches", {
+        requestId: branchesReq.requestId,
+        result: { branches: ["main"], current: "main" },
+      });
+    });
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("remote-new-session-worktree-check"));
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId("remote-new-session-create"));
+    });
+    expect(sentCommand(vscode, "newSessionCreate")).toMatchObject({
+      workdir: "/repo",
+      useWorktree: false,
+      baseBranch: undefined,
+      name: undefined,
     });
   });
 
@@ -295,7 +374,7 @@ describe("remote page new-session dialog", () => {
     act(() => {
       sendCommand("newSessionBranches", {
         requestId: sentCommand(vscode, "newSessionListBranches").requestId,
-        result: ["main"],
+        result: { branches: ["main"], current: "main" },
       });
     });
     act(() => {
@@ -336,7 +415,7 @@ describe("remote page new-session dialog", () => {
     act(() => {
       sendCommand("newSessionBranches", {
         requestId: sentCommand(vscode, "newSessionListBranches").requestId,
-        result: ["main"],
+        result: { branches: ["main"], current: "main" },
       });
     });
     act(() => {

@@ -2005,10 +2005,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // 弹窗「最近目录」：当前进程跑过的会话按工作目录去重（sessions 列表本身按
   // 最近活跃排序，直接沿用其顺序）。没有会话/还没有目录时只留「浏览…」。
+  //
+  // 归并键是**主仓库根目录**：worktree 会话的 workdir 是它自己的工作树路径，
+  // 但选目录是为了「在这个仓库里再开一条会话」，把工作树当目录列出来既重复又
+  // 违反直觉（桌面端最近目录同口径：那里只收 activateWorkdir 记下的目录，新建
+  // worktree 不走它）。宿主已经给了这份事实（`listDaemonSessions` 每行按
+  // createdWorkdir 推导出的 `worktree.repoRoot`，fs-only、不跑 git），推导不出来
+  // 就按原目录列——不确定不等于可以猜。sessions 里的 workdir 本身不改写：`@`
+  // 文件提及拼绝对路径靠的是那条会话真实的 cwd。
   const remoteRecentDirs = useMemo(() => {
     const seen = new Set<string>();
     for (const s of state.sessions) {
-      if (s.workdir) seen.add(s.workdir);
+      const dir = s.repoRoot ?? s.workdir;
+      if (dir) seen.add(dir);
     }
     return [...seen];
   }, [state.sessions]);

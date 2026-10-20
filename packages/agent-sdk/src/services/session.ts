@@ -64,6 +64,15 @@ export interface SessionMetadata {
   customTitle?: string;
   /** Git branch at session creation time (from the metadata header). */
   branch?: string;
+  /**
+   * Main repository root, present only when `workdir` is a linked git worktree
+   * and the reporting host can tell (the daemon registry derives it from
+   * `createdWorkdir`; the on-disk listing does not look). `workdir` itself is
+   * never rewritten — it stays the session's real cwd — so this is the field a
+   * recents list groups by when it must offer repository roots rather than
+   * worktree paths. Absent means "not a worktree, or unknown".
+   */
+  repoRoot?: string;
 }
 
 /**

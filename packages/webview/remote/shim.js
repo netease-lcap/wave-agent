@@ -2083,12 +2083,24 @@
     sessionId = next ? next.id : "";
   }
 
-  /** Registry entry (`listDaemonSessions`) → what the shared list renders. */
+  /**
+   * Registry entry (`listDaemonSessions`) → what the shared list renders.
+   *
+   * `repoRoot` rides along with the same rule the rest of `entry.worktree`
+   * follows (see `worktreeSessionIds`): it is the registry's fs-derived answer
+   * for "which repository does this session's directory belong to", and it is
+   * what the new-session dialog's 最近目录 groups by so a worktree session
+   * offers the repository root instead of the worktree path. `workdir` stays
+   * the real cwd — `joinWorkdir` builds `@file` paths from it, so rewriting it
+   * would point those at the wrong directory. Absent = not a worktree, or the
+   * host could not tell; the dialog then lists the directory as-is.
+   */
   function toSessionMetadata(entry) {
     return {
       id: entry.sessionId,
       sessionType: "main",
       workdir: entry.workingDirectory,
+      repoRoot: entry.worktree && entry.worktree.repoRoot,
       customTitle: entry.customTitle,
       firstMessage: entry.firstMessage,
       lastActiveAt: entry.lastActiveAt,

@@ -12,8 +12,10 @@
  * 最新一次请求的回执允许落进 UI —— 设置页的远程控制视图同一纪律）。
  *
  * 分支与 worktree 控件仅在所选目录是 git 仓库时出现：判据不是猜扩展名，而是
- * `listGitBranches` 的回执本身——成功（分支数组）才渲染，失败（非仓库/无 git）
- * 静默不渲染，创建仍然可用。
+ * `listGitBranches` 的回执本身——回执是**一对 `{branches, current}`**（宿主
+ * `AgentBridge.listGitBranches` 的形状，与桌面端 `desktopGitBranches` 同一份），
+ * 拿到它才渲染，非仓库/无 git 时宿主回错 ⇒ 静默不渲染，创建仍然可用。默认值与
+ * 桌面端新建会话页一致：基准分支取 `current`，worktree 开关默认勾选。
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -31,7 +33,8 @@ export interface RemoteNewSessionDialogProps {
 
 interface BranchReply {
   requestId: string;
-  result: string[] | null;
+  /** `listGitBranches` 的回执：一对 {branches, current}，非仓库时宿主回错 ⇒ null。 */
+  result: { branches: string[]; current: string | null } | null;
   error?: string;
 }
 
@@ -89,7 +92,10 @@ const RemoteNewSessionDialog: React.FC<RemoteNewSessionDialogProps> = ({
       setError(null);
       setBranches(null);
       setBranchesLoading(true);
-      setUseWorktree(false);
+      // 与桌面端新建会话页同一条默认：worktree 开关**默认勾选**（桌面端在拿到
+      // 分支列表时 setWorktreeChecked(true)）。非仓库目录下控件不渲染，
+      // handleCreate 里的 `useWorktree && !!baseBranch` 也会把它挡掉。
+      setUseWorktree(true);
       setWorktreeName("");
       const requestId = `remote-new-session-${++requestSeqRef.current}`;
       branchesRequestRef.current = requestId;
@@ -108,9 +114,13 @@ const RemoteNewSessionDialog: React.FC<RemoteNewSessionDialogProps> = ({
       if (reply.requestId !== branchesRequestRef.current) return;
       branchesRequestRef.current = null;
       setBranchesLoading(false);
-      if (reply.result && reply.result.length >= 0) {
-        setBranches(reply.result);
-        setBaseBranch(reply.result[0] ?? "");
+      if (reply.result) {
+        const list = reply.result.branches ?? [];
+        setBranches(list);
+        // 基准分支默认 = 该目录的当前分支（桌面端新建会话页同一条默认：
+        // `gitBranches.current`）；没有当前分支（detached HEAD / 空仓库）时退到
+        // 列表第一项。
+        setBaseBranch(reply.result.current ?? list[0] ?? "");
       } else {
         // 非 git 仓库 / 分支读取失败：没有分支控件也能建会话。
         setBranches(null);
