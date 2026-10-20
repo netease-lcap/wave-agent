@@ -234,7 +234,9 @@ test.describe("Web 端（远控页）手机截图", () => {
     await injector.simulateExtensionMessage("newSessionBranches", {
       requestId: (branchRequest as { requestId?: string } | undefined)
         ?.requestId,
-      result: ["main", "fix/login-alignment"],
+      // 宿主 `listGitBranches` 的回执形状：一对 {branches, current}（与桌面端
+      // `desktopGitBranches` 同一份），不是裸的分支名数组。
+      result: { branches: ["main", "fix/login-alignment"], current: "main" },
     });
     await expect(
       webviewPage.getByTestId("remote-new-session-branch-select"),

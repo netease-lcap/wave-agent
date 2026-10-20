@@ -1879,6 +1879,18 @@ describe("remote page session list actions", () => {
         worktrees: ["s-new"],
       },
     });
+    // 同一份读里的 `worktree.repoRoot` 也随会话下发：新建会话弹窗的「最近目录」
+    // 按 `repoRoot ?? workdir` 归并，所以 worktree 会话在那里只出现它的仓库根，
+    // 而 `workdir` 仍是那条会话真实的 cwd（`@` 文件提及拼路径靠它）。
+    expect(lastPosted(page)).toMatchObject({
+      sessions: expect.arrayContaining([
+        expect.objectContaining({
+          id: "s-new",
+          workdir: "/repo",
+          repoRoot: "/repo",
+        }),
+      ]),
+    });
   });
 
   test("forwards a delete as destroy against that row, then re-reads the list", async () => {
