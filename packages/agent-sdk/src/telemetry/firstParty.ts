@@ -15,9 +15,9 @@
  *
  * (2) is on by default: the server-side intake lives in `{serverUrl}/otel`, so
  * a signed-in machine reports without anyone configuring anything. Turning it
- * off has two doors — `WAVE_DISABLE_TELEMETRY=1` and an explicit
- * `monitoring.telemetry.firstPartyEnabled: false` — and both deliberately
- * leave (1) alone (spec 场景 3).
+ * off means the telemetry master switch `DISABLE_TELEMETRY=1`, which stops (1)
+ * as well — there is no first-party-only door (spec 场景 3), matching Claude
+ * Code.
  *
  * The two also disagree on the metrics *dialect*, and must keep disagreeing:
  * this channel reports DELTA over a 5-minute window (the intake stores the
@@ -26,7 +26,7 @@
  * `increase()`). See `createFirstPartyMetricExporter` in `instrumentation.ts`.
  */
 
-import type { HeadersProvider, TelemetryConfig } from "../types/telemetry.js";
+import type { HeadersProvider } from "../types/telemetry.js";
 import { logger } from "../utils/globalLogger.js";
 import { AuthService } from "../services/authService.js";
 
@@ -39,36 +39,45 @@ import { AuthService } from "../services/authService.js";
  * page has no data until the client is on by default, so the default is the
  * feature.
  *
- * Turning it off has two doors, in precedence order:
- *
- * 1. `WAVE_DISABLE_TELEMETRY=1|true` — the operator's exit switch; it wins over
- *    everything, config file included.
- * 2. `monitoring.telemetry.firstPartyEnabled: false` — the explicit door, in
- *    `settings.json` or pushed down by the server-managed config (an admin
- *    turning the channel off for the whole fleet).
+ * Turning it off is the telemetry **master switch**, not a per-pipeline one:
+ * `DISABLE_TELEMETRY=1` (same name and meaning as Claude Code) stops this
+ * channel and the deployment's own exporters together. There is deliberately
+ * no "first-party only" door — Claude Code has no such switch either, and a
+ * deployment that wants to collect everything itself can point `serverUrl` at
+ * its own server (this channel's intake *is* the deployment's server).
  */
 export const FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED = true;
 
-/** `WAVE_DISABLE_TELEMETRY=1|true` is the exit switch for this channel. */
-export function isFirstPartyTelemetryDisabledByEnv(): boolean {
-  const value = process.env.WAVE_DISABLE_TELEMETRY?.trim().toLowerCase();
-  return value === "1" || value === "true";
+/** The environment view telemetry resolves against: settings `env` over OS env. */
+export type TelemetryEnv = Record<string, string | undefined>;
+
+function isTruthy(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "1" || normalized === "true";
 }
 
 /**
- * Whether the first-party channel is on.
+ * The master switch: `DISABLE_TELEMETRY=1` stops every telemetry pipeline
+ * (first-party intake and the deployment's own exporters alike).
+ */
+export function isTelemetryDisabledByEnv(
+  env: TelemetryEnv = process.env,
+): boolean {
+  return isTruthy(env.DISABLE_TELEMETRY);
+}
+
+/**
+ * Whether the first-party channel is on: on unless the master switch is set.
  *
- * On unless someone turns it off: `monitoring.telemetry.firstPartyEnabled` in
- * settings.json (or in the server-managed config, which wins on a clash) is
- * that door, and `FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED` is what an unset value
- * falls back to. The env switch wins over both — an operator turning telemetry
- * off must not be overruled by a config file.
+ * `FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED` is what an unset value falls back to;
+ * there is no config-file key of its own (aligned with Claude Code, whose
+ * first-party logging follows the same global privacy switch).
  */
 export function resolveFirstPartyEnabled(
-  config?: Partial<TelemetryConfig>,
+  env: TelemetryEnv = process.env,
 ): boolean {
-  if (isFirstPartyTelemetryDisabledByEnv()) return false;
-  return config?.firstPartyEnabled ?? FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED;
+  if (isTelemetryDisabledByEnv(env)) return false;
+  return FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED;
 }
 
 export interface FirstPartyChannel {
@@ -83,11 +92,13 @@ export interface FirstPartyChannel {
  *
  * Returns `undefined` when the machine is not signed in or has no server URL:
  * an unauthenticated client must not generate first-party traffic at all
- * (spec 场景 4) rather than export batches whose only possible outcome is a
+ * (spec 场景 5) rather than export batches whose only possible outcome is a
  * 401 and a retry storm.
  *
- * `WAVE_OTEL_URL` overrides the derived endpoint, which is what lets a machine
- * point the channel at a local sink without faking the server URL.
+ * The endpoint is always derived from the deployment's own server URL — there
+ * is no endpoint knob of its own. Sending first-party data somewhere else is
+ * what `OTEL_EXPORTER_OTLP_ENDPOINT` (the deployment's own pipeline) or a
+ * different `WAVE_SERVER_URL` is for.
  */
 export function resolveFirstPartyChannel(): FirstPartyChannel | undefined {
   let auth: AuthService;
@@ -106,8 +117,7 @@ export function resolveFirstPartyChannel(): FirstPartyChannel | undefined {
   const serverUrl = auth.getServerUrl?.();
   if (!serverUrl) return undefined;
 
-  const override = process.env.WAVE_OTEL_URL?.trim();
-  const endpoint = (override || `${serverUrl}/otel`).replace(/\/+$/, "");
+  const endpoint = `${serverUrl.replace(/\/+$/, "")}/otel`;
 
   return {
     endpoint,

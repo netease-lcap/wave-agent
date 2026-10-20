@@ -270,7 +270,7 @@ describe("instrumentation", () => {
     delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;
     delete process.env.OTEL_EXPORTER_OTLP_PROTOCOL;
     delete process.env.OTEL_EXPORTER_OTLP_HEADERS;
-    delete process.env.OTEL_ENABLED;
+    delete process.env.DISABLE_TELEMETRY;
     delete process.env.OTEL_LOG_USER_PROMPTS;
     delete process.env.OTEL_LOG_TOOL_CONTENT;
     delete process.env.OTEL_METRICS_INCLUDE_SESSION_ID;
@@ -278,8 +278,6 @@ describe("instrumentation", () => {
     delete process.env.OTEL_METRICS_INCLUDE_REPOSITORY;
     delete process.env.OTEL_METRICS_INCLUDE_ENTRYPOINT;
     delete process.env.OTEL_SHUTDOWN_TIMEOUT_MS;
-    delete process.env.WAVE_DISABLE_TELEMETRY;
-    delete process.env.WAVE_OTEL_URL;
     authState.token = undefined;
     authState.serverUrl = undefined;
     spawnMock.mockReset();
@@ -322,16 +320,14 @@ describe("instrumentation", () => {
 
     it("should let env vars take precedence over settings config", () => {
       process.env.OTEL_METRICS_EXPORTER = "otlp";
-      process.env.OTEL_ENABLED = "false";
       process.env.OTEL_LOG_USER_PROMPTS = "true";
 
       const config = instrumentation.resolveTelemetryConfig({
-        enabled: true,
         metricsExporter: "console",
         logUserPrompts: false,
       });
 
-      expect(config.enabled).toBe(false);
+      expect(config.enabled).toBe(true);
       expect(config.metricsExporter).toBe("otlp");
       expect(config.logUserPrompts).toBe(true);
     });
@@ -350,14 +346,18 @@ describe("instrumentation", () => {
       expect(config.protocol).toBe("http/json");
     });
 
-    it("should handle OTEL_ENABLED=false from env", () => {
-      process.env.OTEL_ENABLED = "false";
+    it("should stop every pipeline when the master switch is set", () => {
+      process.env.DISABLE_TELEMETRY = "1";
 
       const config = instrumentation.resolveTelemetryConfig({
         enabled: true,
         metricsExporter: "console",
+        logsExporter: "console",
       });
       expect(config.enabled).toBe(false);
+      expect(config.metricsExporter).toBeUndefined();
+      expect(config.logsExporter).toBeUndefined();
+      expect(config.firstPartyEnabled).toBe(false);
     });
 
     it("should enable telemetry when exporters are configured", () => {
@@ -992,10 +992,11 @@ describe("instrumentation", () => {
       );
     });
 
-    it("显式 firstPartyEnabled: false 时不开这条出口", async () => {
+    it("总闸 DISABLE_TELEMETRY=1 时连首方出口一起关", async () => {
       Object.assign(authState, SIGNED_IN);
+      process.env.DISABLE_TELEMETRY = "1";
 
-      await instrumentation.initializeTelemetry({ firstPartyEnabled: false });
+      await instrumentation.initializeTelemetry();
 
       expect(instrumentation.isInitialized()).toBe(false);
       expect(mocks.mockMeterProvider).not.toHaveBeenCalled();
@@ -1004,7 +1005,7 @@ describe("instrumentation", () => {
     it("首方打开、用户没配任何导出器时仍然初始化", async () => {
       Object.assign(authState, SIGNED_IN);
 
-      await instrumentation.initializeTelemetry({ firstPartyEnabled: true });
+      await instrumentation.initializeTelemetry();
 
       expect(instrumentation.isInitialized()).toBe(true);
       expect(exporterConfig(mocks.mockOTLPMetricExporter).url).toBe(
@@ -1022,7 +1023,6 @@ describe("instrumentation", () => {
         metricsExporter: "otlp",
         logsExporter: "otlp",
         endpoint: "https://collector.example.com",
-        firstPartyEnabled: true,
       });
 
       expect(mocks.mockPeriodicExportingMetricReader).toHaveBeenCalledTimes(2);
@@ -1038,7 +1038,7 @@ describe("instrumentation", () => {
     it("首方批次带 SSO token 作 Bearer 头", async () => {
       Object.assign(authState, SIGNED_IN);
 
-      await instrumentation.initializeTelemetry({ firstPartyEnabled: true });
+      await instrumentation.initializeTelemetry();
 
       const headers = exporterConfig(mocks.mockOTLPMetricExporter).headers;
       expect(typeof headers).toBe("function");
@@ -1050,35 +1050,33 @@ describe("instrumentation", () => {
     it("首方打开但机器未登录时不初始化（不产生只能 401 的流量）", async () => {
       authState.serverUrl = SIGNED_IN.serverUrl;
 
-      await instrumentation.initializeTelemetry({ firstPartyEnabled: true });
+      await instrumentation.initializeTelemetry();
 
       expect(instrumentation.isInitialized()).toBe(false);
       expect(mocks.mockMeterProvider).not.toHaveBeenCalled();
     });
 
-    it("WAVE_DISABLE_TELEMETRY 关掉首方出口", async () => {
+    it("旧名 WAVE_DISABLE_TELEMETRY 已下架，不再关任何出口", async () => {
       Object.assign(authState, SIGNED_IN);
       process.env.WAVE_DISABLE_TELEMETRY = "1";
 
-      await instrumentation.initializeTelemetry({ firstPartyEnabled: true });
+      await instrumentation.initializeTelemetry();
 
-      expect(instrumentation.isInitialized()).toBe(false);
+      expect(instrumentation.isInitialized()).toBe(true);
     });
 
-    it("退出开关只关首方，用户自配的 collector 照常收到", async () => {
+    it("总闸关掉全部出站：首方与用户自配的 collector 一起停", async () => {
       Object.assign(authState, SIGNED_IN);
-      process.env.WAVE_DISABLE_TELEMETRY = "1";
+      process.env.DISABLE_TELEMETRY = "1";
 
       await instrumentation.initializeTelemetry({
         metricsExporter: "otlp",
         endpoint: "https://collector.example.com",
-        firstPartyEnabled: true,
       });
 
-      expect(mocks.mockPeriodicExportingMetricReader).toHaveBeenCalledTimes(1);
-      expect(exporterConfig(mocks.mockOTLPMetricExporter).url).toBe(
-        "https://collector.example.com/v1/metrics",
-      );
+      expect(instrumentation.isInitialized()).toBe(false);
+      expect(mocks.mockPeriodicExportingMetricReader).not.toHaveBeenCalled();
+      expect(mocks.mockOTLPMetricExporter).not.toHaveBeenCalled();
     });
 
     /**
@@ -1092,7 +1090,6 @@ describe("instrumentation", () => {
       await instrumentation.initializeTelemetry({
         metricsExporter: "otlp",
         endpoint: "https://collector.example.com",
-        firstPartyEnabled: true,
       });
 
       const customer = exporterConfig(mocks.mockOTLPMetricExporter, 0);
@@ -1110,7 +1107,6 @@ describe("instrumentation", () => {
       await instrumentation.initializeTelemetry({
         metricsExporter: "otlp",
         endpoint: "https://collector.example.com",
-        firstPartyEnabled: true,
       });
 
       const customer = readerConfig(mocks.mockPeriodicExportingMetricReader, 0);
@@ -1127,7 +1123,7 @@ describe("instrumentation", () => {
     it("首方是唯一 metric 管道时，resource 带 aggregation.temporality=delta", async () => {
       Object.assign(authState, SIGNED_IN);
 
-      await instrumentation.initializeTelemetry({ firstPartyEnabled: true });
+      await instrumentation.initializeTelemetry();
 
       expect(ownResourceAttributes(mocks.mockResource)).toMatchObject({
         "service.name": "wave",
@@ -1141,7 +1137,6 @@ describe("instrumentation", () => {
       await instrumentation.initializeTelemetry({
         metricsExporter: "otlp",
         endpoint: "https://collector.example.com",
-        firstPartyEnabled: true,
       });
 
       const attributes = ownResourceAttributes(mocks.mockResource);

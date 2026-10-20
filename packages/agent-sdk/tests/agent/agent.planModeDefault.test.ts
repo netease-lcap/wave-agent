@@ -31,7 +31,7 @@ vi.mock("../../src/services/configurationService.js", () => {
         resolveMaxInputTokens: vi.fn().mockReturnValue(100000),
         getEnvironmentVars: vi.fn().mockReturnValue({}),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
-        resolveTelemetryConfig: vi.fn().mockReturnValue(undefined),
+        getTelemetrySettings: vi.fn().mockReturnValue({}),
       };
     }),
   };
@@ -135,7 +135,7 @@ describe("Agent Plan Mode Default", () => {
         resolveMaxInputTokens: vi.fn().mockReturnValue(100000),
         getEnvironmentVars: vi.fn().mockReturnValue({}),
         resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
-        resolveTelemetryConfig: vi.fn().mockReturnValue(undefined),
+        getTelemetrySettings: vi.fn().mockReturnValue({}),
       } as unknown as ConfigurationService;
     });
 

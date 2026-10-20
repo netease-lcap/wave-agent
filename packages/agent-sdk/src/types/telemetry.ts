@@ -25,11 +25,10 @@ export interface TelemetryConfig {
   /**
    * Whether the **first-party** channel is on (default `true`) — Wave's own
    * intake, a second pipeline that is independent of the `endpoint` / exporter
-   * settings below. Resolved from `monitoring.telemetry.firstPartyEnabled`
-   * (settings.json or the server-managed config), falling back to
-   * `FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED`; an explicit `false` turns it off,
-   * and `WAVE_DISABLE_TELEMETRY=1` forces it off regardless. See
-   * `telemetry/firstParty.ts`.
+   * fields below. There is no config key of its own: it follows the telemetry
+   * master switch (`DISABLE_TELEMETRY=1` turns it off together with the
+   * exporter pipeline), and `FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED` is what an
+   * unset switch falls back to. See `telemetry/firstParty.ts`.
    */
   firstPartyEnabled: boolean;
   /** Metric export target */

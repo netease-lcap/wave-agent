@@ -35,9 +35,12 @@ export const HEADERS_HELPER_TIMEOUT_MS = 30_000;
  */
 export const HEADERS_HELPER_REFRESH_MS = 1_740_000;
 
-/** Env override for the refresh interval (milliseconds). */
-export const HEADERS_HELPER_REFRESH_ENV =
-  "WAVE_OTEL_HEADERS_HELPER_DEBOUNCE_MS";
+/**
+ * Env override for the refresh interval (milliseconds). Aligned with Claude
+ * Code's name for the same knob, so one machine's telemetry vocabulary works
+ * for both tools.
+ */
+export const HEADERS_HELPER_REFRESH_ENV = "OTEL_HEADERS_DEBOUNCE_MS";
 
 /** Why a helper run produced no usable headers. */
 export type HeadersHelperFailureKind =

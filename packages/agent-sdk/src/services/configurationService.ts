@@ -52,6 +52,7 @@ import {
 import { createAuthAwareFetch } from "./authService.js";
 import { ensureWaveRuntimeFilesExcluded } from "../utils/gitUtils.js";
 import { atomicWriteFile } from "../utils/atomicWrite.js";
+import type { TelemetryInitSettings } from "../telemetry/instrumentation.js";
 
 /**
  * Validate a configuration object's structure and values. Module-level so it
@@ -261,21 +262,16 @@ export function validateConfigurationObject(
     }
   }
 
-  // Validate monitoring if present. A malformed `headersHelper` is only a
+  // Validate `otelHeadersHelper` if present. A malformed value is only a
   // warning: telemetry degrades to the static headers instead of the session
-  // failing to start over a monitoring setting.
-  if (config.monitoring !== undefined) {
-    if (typeof config.monitoring !== "object" || config.monitoring === null) {
-      result.isValid = false;
-      result.errors.push("monitoring configuration must be an object");
-    } else {
-      const headersHelper = config.monitoring.telemetry?.headersHelper;
-      if (headersHelper !== undefined && typeof headersHelper !== "string") {
-        result.warnings.push(
-          "monitoring.telemetry.headersHelper must be a command string; ignoring it",
-        );
-      }
-    }
+  // failing to start over a telemetry setting.
+  if (
+    config.otelHeadersHelper !== undefined &&
+    typeof config.otelHeadersHelper !== "string"
+  ) {
+    result.warnings.push(
+      "otelHeadersHelper must be a command string; ignoring it",
+    );
   }
 
   // Validate worktree if present
@@ -1068,18 +1064,26 @@ export class ConfigurationService {
   }
 
   /**
-   * Get the telemetry config from the loaded settings, merged with the
-   * per-agent `AgentOptions.telemetry` overrides (options win per key).
+   * Telemetry settings for `initializeTelemetry`: the session's effective
+   * environment (settings `env` over OS env, i.e. what a `settings.json` `env`
+   * block contributes), the top-level `otelHeadersHelper`, and the host-injected
+   * overrides (`AgentOptions.telemetry`, which lose to env per key).
+   *
+   * There is no structured telemetry block: every `OTEL_*` knob is an ordinary
+   * environment entry, so it goes through the same merge chain as the rest of
+   * the settings (docs/specs/enterprise/opentelemetry.md「遥测配置的载体」).
    */
-  resolveTelemetryConfig():
-    | Partial<import("../types/telemetry.js").TelemetryConfig>
-    | undefined {
-    const settingsTelemetry = this.liveConfiguration?.monitoring?.telemetry;
-    const optionTelemetry = this.options.telemetry;
-    if (!optionTelemetry) {
-      return settingsTelemetry;
-    }
-    return { ...settingsTelemetry, ...optionTelemetry };
+  getTelemetrySettings(): TelemetryInitSettings {
+    return {
+      ...this.options.telemetry,
+      env: this.getMergedEnv(),
+      // `otelHeadersHelper` is the settings-file name; `headersHelper` is the
+      // resolved-config name for the same command. The user's own file wins
+      // over a host-injected override only when it actually sets one.
+      headersHelper:
+        this.liveConfiguration?.otelHeadersHelper ??
+        this.options.telemetry?.headersHelper,
+    };
   }
 
   /**
@@ -1675,7 +1679,7 @@ export function loadWaveConfigFromFile(
           : undefined,
       models: config.models || undefined,
       marketplaces: config.marketplaces || undefined,
-      monitoring: config.monitoring || undefined,
+      otelHeadersHelper: config.otelHeadersHelper || undefined,
       worktree: config.worktree || undefined,
       enableArtifact:
         config.enableArtifact !== undefined ? config.enableArtifact : undefined,
@@ -1739,7 +1743,7 @@ export function loadMergedWaveConfig(
 
   // The first path is the user's own file; the other two live inside the
   // checked-out repository, i.e. their content can be changed by whoever
-  // controls the repo (see the `monitoring` merge below).
+  // controls the repo (see the `otelHeadersHelper` merge below).
   const layers: Array<{ config: WaveConfiguration; fromRepo: boolean }> = [];
   pathsToLoad.forEach((path, index) => {
     const config = loadWaveConfigFromFile(path);
@@ -1873,25 +1877,21 @@ export function loadMergedWaveConfig(
       Object.assign(mergedConfig.marketplaces, config.marketplaces);
     }
 
-    // Merge monitoring (last one wins per telemetry key)
-    if (config.monitoring) {
-      let telemetry = { ...config.monitoring.telemetry };
-      // `headersHelper` names a command that will be executed on this machine
-      // to mint OTLP credentials, so only the user's own file may set it — a
-      // checked-out repo must not be able to point it at something. Claude Code
-      // reaches the same place by ignoring project-layer credential helpers
-      // unless the project is explicitly trusted; Wave has no trust model, so
-      // the repo layer never counts. The server-managed layer is allowed
-      // (see mergeRemoteSettings).
-      if (fromRepo && telemetry.headersHelper !== undefined) {
-        delete telemetry.headersHelper;
+    // `otelHeadersHelper` names a command that will be executed on this machine
+    // to mint OTLP credentials, so only the user's own file may set it — a
+    // checked-out repo must not be able to point it at something. Claude Code
+    // reaches the same place by ignoring project-layer credential helpers
+    // unless the project is explicitly trusted; Wave has no trust model, so
+    // the repo layer never counts. The server-managed layer is allowed
+    // (see mergeRemoteSettings). Every other telemetry knob is an ordinary
+    // `env` entry and merges with the rest of the environment.
+    if (config.otelHeadersHelper !== undefined) {
+      if (fromRepo) {
         logger.warn(
-          "Ignoring monitoring.telemetry.headersHelper from a project settings file: the headers helper runs a command on this machine, so only ~/.wave/settings.json or the server-managed layer may set it",
+          "Ignoring otelHeadersHelper from a project settings file: the headers helper runs a command on this machine, so only ~/.wave/settings.json or the server-managed layer may set it",
         );
-      }
-      telemetry = { ...mergedConfig.monitoring?.telemetry, ...telemetry };
-      if (Object.keys(telemetry).length > 0) {
-        mergedConfig.monitoring = { ...mergedConfig.monitoring, telemetry };
+      } else {
+        mergedConfig.otelHeadersHelper = config.otelHeadersHelper;
       }
     }
 
@@ -1975,10 +1975,7 @@ export function loadMergedWaveConfig(
       mergedConfig.models && Object.keys(mergedConfig.models).length > 0
         ? mergedConfig.models
         : undefined,
-    monitoring:
-      mergedConfig.monitoring && Object.keys(mergedConfig.monitoring).length > 0
-        ? mergedConfig.monitoring
-        : undefined,
+    otelHeadersHelper: mergedConfig.otelHeadersHelper,
     worktree: mergedConfig.worktree,
     enableArtifact: mergedConfig.enableArtifact,
     enableExec: mergedConfig.enableExec,

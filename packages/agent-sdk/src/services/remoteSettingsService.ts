@@ -369,20 +369,13 @@ export function mergeRemoteSettings(
     result.enableRemoteControl = remote.enableRemoteControl;
   if (remote.nonDeferrableBuiltins !== undefined)
     result.nonDeferrableBuiltins = remote.nonDeferrableBuiltins;
-  // monitoring: merge per telemetry key (remote wins per key), like `env` and
-  // the plugin maps above — an admin pushing only an endpoint must not wipe the
-  // user's headers, and vice versa. The managed layer is also the *only* layer
-  // besides the user's own file allowed to set `telemetry.headersHelper`; the
-  // project layer is stripped in loadMergedWaveConfig.
-  if (remote.monitoring !== undefined) {
-    result.monitoring = {
-      ...localMerged.monitoring,
-      ...remote.monitoring,
-      telemetry: {
-        ...localMerged.monitoring?.telemetry,
-        ...remote.monitoring.telemetry,
-      },
-    };
+  // `otelHeadersHelper`: remote wins when set — the managed layer is one of the
+  // two layers allowed to name a command that runs on this machine (the user's
+  // own file is the other); the project layer is stripped in
+  // loadMergedWaveConfig. Every other telemetry knob travels through `env` and
+  // merges with the rest of the environment above.
+  if (remote.otelHeadersHelper !== undefined) {
+    result.otelHeadersHelper = remote.otelHeadersHelper;
   }
 
   return result;

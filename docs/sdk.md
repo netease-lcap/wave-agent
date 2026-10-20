@@ -1340,17 +1340,22 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 
 #### OTEL\_\* 变量（OpenTelemetry）
 
-| 变量                          | 描述                                             |
-| ----------------------------- | ------------------------------------------------ |
-| `OTEL_ENABLED`                | 是否启用遥测（设为 `false` 禁用）                |
-| `OTEL_METRICS_EXPORTER`       | 指标导出目标（`console` / `otlp` / `none` 关闭） |
-| `OTEL_LOGS_EXPORTER`          | 日志导出目标（`console` / `otlp` / `none` 关闭） |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | OTLP 导出端点                                    |
-| `OTEL_EXPORTER_OTLP_PROTOCOL` | 导出协议（`grpc` / `http`）                      |
-| `OTEL_EXPORTER_OTLP_HEADERS`  | 导出附加头（`k=v,k2=v2`）                        |
-| `OTEL_LOG_USER_PROMPTS`       | 是否记录用户 Prompt                              |
-| `OTEL_LOG_TOOL_CONTENT`       | 是否记录工具调用内容                             |
-| `OTEL_SHUTDOWN_TIMEOUT_MS`    | 关闭超时时间（毫秒）                             |
+| 变量                              | 描述                                               |
+| --------------------------------- | -------------------------------------------------- |
+| `DISABLE_TELEMETRY`               | 总闸：设为 `1` 关闭全部遥测出站（含首方上报）      |
+| `OTEL_METRICS_EXPORTER`           | 指标导出目标（`console` / `otlp` / `none` 关闭）   |
+| `OTEL_LOGS_EXPORTER`              | 日志导出目标（`console` / `otlp` / `none` 关闭）   |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`     | OTLP 导出端点                                      |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`     | 导出协议（`grpc` / `http`）                        |
+| `OTEL_EXPORTER_OTLP_HEADERS`      | 导出附加头（`k=v,k2=v2`）                          |
+| `OTEL_LOG_USER_PROMPTS`           | 是否记录用户 Prompt                                |
+| `OTEL_LOG_TOOL_CONTENT`           | 是否记录工具调用内容                               |
+| `OTEL_METRICS_INCLUDE_SESSION_ID` | 指标是否带 `session.id`（默认开）                  |
+| `OTEL_METRICS_INCLUDE_REPOSITORY` | 指标是否带 `vcs.repository.*`（默认关）            |
+| `OTEL_METRICS_INCLUDE_ENTRYPOINT` | 指标是否带 `app.entrypoint`（默认关）              |
+| `OTEL_RESOURCE_ATTRIBUTES`        | 遥测资源的自定义标签（如 `department.name=infra`） |
+| `OTEL_SHUTDOWN_TIMEOUT_MS`        | 关闭超时时间（毫秒）                               |
+| `OTEL_HEADERS_DEBOUNCE_MS`        | 出站头命令的刷新间隔（毫秒，默认 29 分钟）         |
 
 ### 工具权限 {#settings-permissions}
 
@@ -1501,10 +1506,10 @@ Wave 支持 OpenTelemetry 可观测性标准，提供结构化的遥测数据（
 
 ### 内置上报（首方出口） {#otel-first-party}
 
-除下面这些自建导出器外，Wave 还有一条**独立的**首方管道：把 `wave.*` 指标与会话生命周期事件直报**部署方自己的** CodeWave 服务端，端点 `{登录服务端地址}/otel`（`WAVE_OTEL_URL` 可覆盖，便于指向本地 sink 联调），凭证复用当前登录的 SSO token，企业端运营平台的「研发效能」页面据此供数。
+除下面这些自建导出器外，Wave 还有一条**独立的**首方管道：把 `wave.*` 指标与会话生命周期事件直报**部署方自己的** CodeWave 服务端，端点 `{登录服务端地址}/otel`，凭证复用当前登录的 SSO token，企业端运营平台的「研发效能」页面据此供数。
 
 - **默认开启**，不需要任何配置；两条管道互不顶替——配了自建 OTLP 不会关掉它，它也不占用你配的 `endpoint`。
-- **退出有两扇门**：`WAVE_DISABLE_TELEMETRY=1|true` 优先级最高（且只关这一条——自建导出器照常发送），或 `monitoring.telemetry.firstPartyEnabled: false`（写在 `~/.wave/settings.json`，或由管理员经服务端托管配置按整队下发）。
+- **关掉它用总闸**：`DISABLE_TELEMETRY=1` 同时停掉首方上报与自建导出器（与 Claude Code 同名同义）。只想停自建导出器时，把 `OTEL_METRICS_EXPORTER` / `OTEL_LOGS_EXPORTER` 设为 `none`。
 - **未登录、或拿不到服务端地址时不产生任何流量**（不生成注定 401 的批次），导出失败走优雅失败，不阻塞会话。
 
 ### 导出器 (Exporters) {#otel-exporters}
@@ -1515,52 +1520,46 @@ Wave 支持为每种信号类型（Metrics、Logs）配置不同的导出目标�
 - **`none`（显式关闭）**：某类信号的环境变量设为 `none` 时该类信号不导出，且**不**回退到 `settings.json` 里配的导出器——用来在一台已配好遥测的机器上单独关掉某一类信号；另一类信号不受影响，两类都关等于遥测不启用。
 - **Console 导出器**：把遥测以可读形式直接打印到终端（对齐 Claude Code 的 `console` 导出器）。交互 TUI 下输出呈现在界面上方、不打碎界面；**只在交互模式生效**——`--stdio` / `--print` 宿主的 stdout 是协议/结果通道，console 导出器在那里会被自动剥除。旧 `jsonl` 文件导出器已移除，配置里遗留的 `"jsonl"` 值会被忽略并告警。
 
-**配置方式**：通过 `OTEL_*` 环境变量或 `settings.json`（以及服务端下发的托管配置）中的 `monitoring.telemetry` 字段配置，环境变量优先。
+**配置方式**：`OTEL_*` 写在 `settings.json` 的 **`env` 块**里（或由服务端托管配置下发同一批键），也可以直接用操作系统环境变量；三者同时存在时按「托管配置 > 设置文件 `env` > OS 环境」取值。载体与 Claude Code 一致——它也是把 `OTEL_*` 放在 `env` 里。
 
 ```json
 {
-  "monitoring": {
-    "telemetry": {
-      "enabled": true,
-      "metricsExporter": "otlp",
-      "logsExporter": "otlp",
-      "endpoint": "https://your-collector.example.com",
-      "headers": { "Authorization": "Bearer ..." }
-    }
+  "env": {
+    "OTEL_METRICS_EXPORTER": "otlp",
+    "OTEL_LOGS_EXPORTER": "otlp",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "https://your-collector.example.com",
+    "OTEL_EXPORTER_OTLP_HEADERS": "Authorization=Bearer ..."
   }
 }
 ```
 
-> `monitoring.telemetry` 只从**用户级 `~/.wave/settings.json`**、项目 `.wave/settings.json` / `settings.local.json`（后两者的 `headersHelper` 除外，见下）与服务端托管配置读取。settings.json 里的 `env` 块**不**映射为 OS 环境变量（只有 `WAVE_SERVER_URL` 例外），因此把 `OTEL_*` 写进 `env` 是静默无效的——要么用真实环境变量，要么用 `monitoring.telemetry`。
+> 唯一不写在 `env` 里的是出站头命令 `otelHeadersHelper`（见下节）：它会在这台机器上执行命令，所以单独占一个顶层键，与 Claude Code 的位置一样。旧写法 `monitoring.telemetry` 已下架，该块不再被读取，其余配置照常生效。
 
 ### 出站头 (Headers) {#otel-headers}
 
 OTLP 出站头有两个来源，**动态头按 key 覆盖静态头**：
 
-| 来源                                     | 形态                                    | 何时读取                                                                                    |
-| ---------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `OTEL_EXPORTER_OTLP_HEADERS`             | `key1=value1,key2=value2`               | 进程启动                                                                                    |
-| `monitoring.telemetry.headers`           | `{ "key": "value" }`                    | 进程启动                                                                                    |
-| `monitoring.telemetry.headersHelper`     | 一条命令，stdout 是头部 JSON 对象       | 首次导出前 + 每次刷新间隔（默认 29 分钟，可用 `WAVE_OTEL_HEADERS_HELPER_DEBOUNCE_MS` 覆盖） |
-| `AgentOptions.telemetry.headersProvider` | `() => Promise<Record<string, string>>` | 同 helper（可选，优先级高于 helper）                                                        |
+| 来源                                      | 形态                                    | 何时读取                                                                        |
+| ----------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------------- |
+| `OTEL_EXPORTER_OTLP_HEADERS`              | `key1=value1,key2=value2`               | 进程启动                                                                        |
+| `otelHeadersHelper`（settings.json 顶层） | 一条命令，stdout 是头部 JSON 对象       | 首次导出前 + 每次刷新间隔（默认 29 分钟，可用 `OTEL_HEADERS_DEBOUNCE_MS` 覆盖） |
+| `AgentOptions.telemetry.headersProvider`  | `() => Promise<Record<string, string>>` | 同 helper（可选，优先级高于 helper）                                            |
 
-静态头适合固定凭据（如 `Authorization: Bearer <长期 token>`）；**`headersHelper` 适合按设备签发、可吊销、会轮换的凭据**——凭据本身不写进配置或分发包，改一次 token 不需要重新下发配置，也不需要重启长驻宿主（桌面端 / VS Code）里的会话。
+静态头适合固定凭据（如 `Authorization: Bearer <长期 token>`）；**`otelHeadersHelper` 适合按设备签发、可吊销、会轮换的凭据**——凭据本身不写进配置或分发包，改一次 token 不需要重新下发配置，也不需要重启长驻宿主（桌面端 / VS Code）里的会话。
 
 ```json
 {
-  "monitoring": {
-    "telemetry": {
-      "metricsExporter": "otlp",
-      "logsExporter": "otlp",
-      "endpoint": "https://your-collector.example.com",
-      "headersHelper": "/usr/local/bin/get-otel-headers",
-      "headers": { "x-application": "wave" }
-    }
-  }
+  "env": {
+    "OTEL_METRICS_EXPORTER": "otlp",
+    "OTEL_LOGS_EXPORTER": "otlp",
+    "OTEL_EXPORTER_OTLP_ENDPOINT": "https://your-collector.example.com",
+    "OTEL_EXPORTER_OTLP_HEADERS": "x-application=wave"
+  },
+  "otelHeadersHelper": "/usr/local/bin/get-otel-headers"
 }
 ```
 
-helper 命令跑在 shell 里（Windows 下是 Git Bash，与 hook 一致），stdin 为空、无参数，stdout 必须是 `{"header-name": "value"}`（值必须都是字符串，且对象非空）。它不需要任何权限确认——与 hook 一样属于「配置声明的执行者」；**但只有用户级 `~/.wave/settings.json` 与服务端托管配置能设置它**，项目里的 `.wave/settings.json` 会被忽略（只忽略这一个键，同块的其它遥测设置照常生效）并打一条警告：helper 是一台机器上会执行的命令，随仓库分发的配置不该能指定它。
+helper 命令跑在 shell 里（Windows 下是 Git Bash，与 hook 一致），stdin 为空、无参数，stdout 必须是 `{"header-name": "value"}`（值必须都是字符串，且对象非空）。它不需要任何权限确认——与 hook 一样属于「配置声明的执行者」；**但只有用户级 `~/.wave/settings.json` 与服务端托管配置能设置它**，项目里的 `.wave/settings.json` 会被忽略（只忽略这一个键，同文件 `env` 里的其它遥测键照常生效）并打一条警告：helper 是一台机器上会执行的命令，随仓库分发的配置不该能指定它。
 
 失败语义（非 0 退出 / 超时 / stdout 不是合法 JSON 对象）时**不丢批次、不影响 agent**：先沿用上一次成功取到的头，没有则只发静态头；失败按「失败种类变化」限流打警告。**stdout 就是凭据**，因此它不进日志、不进审计、不进 span 属性，失败告警里也只带失败种类与退出码。
 
@@ -1587,7 +1586,7 @@ helper 命令跑在 shell 里（Windows 下是 Git Bash，与 hook 一致），s
 
 ### 归属属性 (Attributes) {#otel-attributes}
 
-**每条指标数据点与每条事件**都带同一组标准属性，接入方据此按人、按会话、按团队切片，而不是只能看全局总量。开关名与 Claude Code 一致，同名键也可写在 `monitoring.telemetry` 下（camelCase：`includeSessionId` / `includeResourceAttributes` / `includeRepository` / `includeEntrypoint`）。
+**每条指标数据点与每条事件**都带同一组标准属性，接入方据此按人、按会话、按团队切片，而不是只能看全局总量。开关名与 Claude Code 一致，写进 `settings.json` 的 `env` 块即可。
 
 | 属性                                                                                       | 何时带上                   | 开关（默认）                                     |
 | ------------------------------------------------------------------------------------------ | -------------------------- | ------------------------------------------------ |

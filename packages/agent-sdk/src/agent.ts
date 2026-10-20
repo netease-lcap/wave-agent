@@ -890,9 +890,9 @@ export class Agent {
 
     // Initialize OpenTelemetry (before the first event is logged, so the
     // providers are in place when the session announces itself)
-    const telemetryConfig = this.configurationService.resolveTelemetryConfig();
+    const telemetrySettings = this.configurationService.getTelemetrySettings();
     try {
-      await initializeTelemetry(telemetryConfig);
+      await initializeTelemetry(telemetrySettings);
     } catch (error) {
       this.logger?.warn("Telemetry initialization failed:", error);
     }

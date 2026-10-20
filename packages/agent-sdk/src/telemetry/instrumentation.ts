@@ -16,10 +16,11 @@ import { createHeadersHelperProvider } from "./headersHelper.js";
 import { initMetrics, resetMetrics } from "./metrics.js";
 import { resetActivity } from "./activity.js";
 import {
+  isTelemetryDisabledByEnv,
   resolveFirstPartyChannel,
   resolveFirstPartyEnabled,
 } from "./firstParty.js";
-import type { FirstPartyChannel } from "./firstParty.js";
+import type { FirstPartyChannel, TelemetryEnv } from "./firstParty.js";
 import { getServiceVersion } from "./attributes.js";
 
 import type { MeterProvider } from "@opentelemetry/sdk-metrics";
@@ -119,20 +120,21 @@ function installDiagLogger(otelApi: typeof import("@opentelemetry/api")): void {
 }
 
 /**
- * Resolve the exporter target from environment variable or config.
- * Environment variable takes precedence over settings.json config.
+ * Resolve the exporter target from environment variable or host overrides.
+ * Environment variable takes precedence.
  */
 function resolveExporter(
   signal: "metrics" | "logs",
-  config?: Partial<TelemetryConfig>,
+  env: TelemetryEnv,
+  overrides?: Partial<TelemetryConfig>,
 ): ExporterTarget | undefined {
   const envVar = `OTEL_${signal.toUpperCase()}_EXPORTER`;
-  const envValue = process.env[envVar];
+  const envValue = env[envVar];
   if (envValue === "console" || envValue === "otlp") {
     return envValue;
   }
   // `none` is an explicit "do not export this signal", not an unknown value:
-  // it must win over the configured exporter instead of falling back to it.
+  // it must win over a host override instead of falling back to it.
   if (envValue === "none") {
     logger?.debug(`${envVar}=none: ${signal} export disabled`);
     return undefined;
@@ -142,7 +144,7 @@ function resolveExporter(
   }
 
   const configKey = `${signal}Exporter` as keyof TelemetryConfig;
-  const configValue = config?.[configKey] as unknown;
+  const configValue = overrides?.[configKey] as unknown;
   if (
     configValue !== undefined &&
     configValue !== "console" &&
@@ -175,35 +177,38 @@ function stripConsoleOnProtectedStdout(
 }
 
 /**
- * Resolve the OTLP endpoint from environment variable or config.
+ * Resolve the OTLP endpoint from environment variable or host overrides.
  */
 function resolveEndpoint(
-  config?: Partial<TelemetryConfig>,
+  env: TelemetryEnv,
+  overrides?: Partial<TelemetryConfig>,
 ): string | undefined {
-  return process.env.OTEL_EXPORTER_OTLP_ENDPOINT || config?.endpoint;
+  return env.OTEL_EXPORTER_OTLP_ENDPOINT || overrides?.endpoint;
 }
 
 /**
- * Resolve the OTLP protocol from environment variable or config.
+ * Resolve the OTLP protocol from environment variable or host overrides.
  */
 function resolveProtocol(
-  config?: Partial<TelemetryConfig>,
+  env: TelemetryEnv,
+  overrides?: Partial<TelemetryConfig>,
 ): OTLPProtocol | undefined {
-  const envProtocol = process.env.OTEL_EXPORTER_OTLP_PROTOCOL as
+  const envProtocol = env.OTEL_EXPORTER_OTLP_PROTOCOL as
     | OTLPProtocol
     | undefined;
   if (envProtocol) return envProtocol;
-  return config?.protocol;
+  return overrides?.protocol;
 }
 
 /**
- * Resolve the static OTLP headers from environment variable or config.
+ * Resolve the static OTLP headers from environment variable or host overrides.
  * Env var format: "key1=value1,key2=value2"
  */
 function resolveStaticHeaders(
-  config?: Partial<TelemetryConfig>,
+  env: TelemetryEnv,
+  overrides?: Partial<TelemetryConfig>,
 ): Record<string, string> | undefined {
-  const envHeaders = process.env.OTEL_EXPORTER_OTLP_HEADERS;
+  const envHeaders = env.OTEL_EXPORTER_OTLP_HEADERS;
   if (envHeaders) {
     const headers: Record<string, string> = {};
     for (const pair of envHeaders.split(",")) {
@@ -214,7 +219,7 @@ function resolveStaticHeaders(
     }
     return Object.keys(headers).length > 0 ? headers : undefined;
   }
-  return config?.headers;
+  return overrides?.headers;
 }
 
 /**
@@ -263,104 +268,137 @@ function buildExporterHeaders(
 }
 
 /**
- * Resolve a boolean switch: env var > settings config > default.
+ * Resolve a boolean switch: env var > host override > default.
  *
  * Same precedence as the rest of the telemetry config, and the same env names
  * Claude Code uses, so a fleet that already sets them for the collector keeps
  * one configuration vocabulary.
  */
 function resolveBooleanSwitch(
+  env: TelemetryEnv,
   envVar: string,
-  configValue: boolean | undefined,
+  overrideValue: boolean | undefined,
   defaultValue: boolean,
 ): boolean {
-  const envValue = process.env[envVar];
+  const envValue = env[envVar];
   if (envValue === "1" || envValue === "true") return true;
   if (envValue === "0" || envValue === "false") return false;
-  return configValue ?? defaultValue;
+  return overrideValue ?? defaultValue;
 }
 
 /**
- * Resolve shutdown timeout from environment variable or config.
+ * Resolve shutdown timeout from environment variable or host override.
  */
-function resolveShutdownTimeoutMs(config?: Partial<TelemetryConfig>): number {
-  const envValue = process.env.OTEL_SHUTDOWN_TIMEOUT_MS;
+function resolveShutdownTimeoutMs(
+  env: TelemetryEnv,
+  overrides?: Partial<TelemetryConfig>,
+): number {
+  const envValue = env.OTEL_SHUTDOWN_TIMEOUT_MS;
   if (envValue) {
     const parsed = parseInt(envValue, 10);
     if (!isNaN(parsed) && parsed > 0) return parsed;
   }
-  return config?.shutdownTimeoutMs ?? 2_000; // 2 seconds default
+  return overrides?.shutdownTimeoutMs ?? 2_000; // 2 seconds default
 }
 
 /**
- * Resolve the full TelemetryConfig from env vars + settings.json.
- * Env vars take precedence over settings.json.
+ * What `initializeTelemetry` resolves against.
+ *
+ * Telemetry configuration lives in the environment — `settings.json`'s `env`
+ * block, the server-managed layer, or the OS environment — with one structural
+ * exception, `headersHelper`, which arrives separately because it names a
+ * command rather than a variable (same split as Claude Code).
+ *
+ * The flat `TelemetryConfig` fields double as host-injected overrides (what
+ * `AgentOptions.telemetry` carries: an in-process `headersProvider`, chiefly).
+ * The environment wins per key over them.
+ */
+export type TelemetryInitSettings = Partial<TelemetryConfig> & {
+  /** Environment view to resolve against (settings `env` over OS env). */
+  env?: TelemetryEnv;
+};
+
+/**
+ * Resolve the full TelemetryConfig from the environment (plus host overrides).
+ *
+ * Env takes precedence over the flat override fields, which take precedence
+ * over defaults.
  */
 export function resolveTelemetryConfig(
-  settingsConfig?: Partial<TelemetryConfig>,
+  settings: TelemetryInitSettings = {},
 ): TelemetryConfig {
+  const env = settings.env ?? process.env;
+  const overrides: Partial<TelemetryConfig> = settings;
+
   // Legacy keys from earlier versions. Traces (and their knobs) no longer
   // exist; a config still carrying them must not fail initialization, but it
   // must not be dropped in silence either — a key that never takes effect is
   // indistinguishable from one that never arrived.
-  const legacy = settingsConfig as Record<string, unknown> | undefined;
+  const legacy = overrides as Record<string, unknown> | undefined;
   if (legacy?.tracesExporter !== undefined || legacy?.spanTtlMs !== undefined) {
     logger?.warn(
-      "monitoring.telemetry.tracesExporter / spanTtlMs are no longer supported (trace collection was removed); ignoring them",
+      "telemetry.tracesExporter / spanTtlMs are no longer supported (trace collection was removed); ignoring them",
     );
   }
 
-  const metricsExporter = stripConsoleOnProtectedStdout(
-    resolveExporter("metrics", settingsConfig),
-  );
-  const logsExporter = stripConsoleOnProtectedStdout(
-    resolveExporter("logs", settingsConfig),
-  );
+  // The master switch stops every pipeline, so the per-signal resolution below
+  // has nothing left to decide.
+  const masterOff = isTelemetryDisabledByEnv(env);
+  const metricsExporter = masterOff
+    ? undefined
+    : stripConsoleOnProtectedStdout(resolveExporter("metrics", env, overrides));
+  const logsExporter = masterOff
+    ? undefined
+    : stripConsoleOnProtectedStdout(resolveExporter("logs", env, overrides));
 
   return {
     enabled:
-      process.env.OTEL_ENABLED === "false"
-        ? false
-        : (settingsConfig?.enabled ?? !!(metricsExporter || logsExporter)),
-    firstPartyEnabled: resolveFirstPartyEnabled(settingsConfig),
+      !masterOff && (overrides?.enabled ?? !!(metricsExporter || logsExporter)),
+    firstPartyEnabled: resolveFirstPartyEnabled(env),
     metricsExporter,
     logsExporter,
-    endpoint: resolveEndpoint(settingsConfig),
-    protocol: resolveProtocol(settingsConfig),
-    headers: resolveStaticHeaders(settingsConfig),
-    headersHelper: settingsConfig?.headersHelper?.trim() || undefined,
-    headersProvider: settingsConfig?.headersProvider,
+    endpoint: resolveEndpoint(env, overrides),
+    protocol: resolveProtocol(env, overrides),
+    headers: resolveStaticHeaders(env, overrides),
+    headersHelper: overrides?.headersHelper?.trim() || undefined,
+    headersProvider: overrides?.headersProvider,
     logUserPrompts: resolveBooleanSwitch(
+      env,
       "OTEL_LOG_USER_PROMPTS",
-      settingsConfig?.logUserPrompts,
+      overrides?.logUserPrompts,
       false,
     ),
     logToolContent: resolveBooleanSwitch(
+      env,
       "OTEL_LOG_TOOL_CONTENT",
-      settingsConfig?.logToolContent,
+      overrides?.logToolContent,
       false,
     ),
     includeSessionId: resolveBooleanSwitch(
+      env,
       "OTEL_METRICS_INCLUDE_SESSION_ID",
-      settingsConfig?.includeSessionId,
+      overrides?.includeSessionId,
       true,
     ),
     includeResourceAttributes: resolveBooleanSwitch(
+      env,
       "OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES",
-      settingsConfig?.includeResourceAttributes,
+      overrides?.includeResourceAttributes,
       true,
     ),
     includeRepository: resolveBooleanSwitch(
+      env,
       "OTEL_METRICS_INCLUDE_REPOSITORY",
-      settingsConfig?.includeRepository,
+      overrides?.includeRepository,
       false,
     ),
     includeEntrypoint: resolveBooleanSwitch(
+      env,
       "OTEL_METRICS_INCLUDE_ENTRYPOINT",
-      settingsConfig?.includeEntrypoint,
+      overrides?.includeEntrypoint,
       false,
     ),
-    shutdownTimeoutMs: resolveShutdownTimeoutMs(settingsConfig),
+    shutdownTimeoutMs: resolveShutdownTimeoutMs(env, overrides),
   };
 }
 
@@ -462,7 +500,7 @@ function createOTLPLogExporter(config: TelemetryConfig) {
  * @param config - Optional TelemetryConfig. If not provided, resolved from env vars.
  */
 export async function initializeTelemetry(
-  config?: Partial<TelemetryConfig>,
+  settings?: TelemetryInitSettings,
 ): Promise<void> {
   if (initialized) {
     logger?.debug("Telemetry already initialized, skipping");
@@ -480,7 +518,7 @@ export async function initializeTelemetry(
   }
 
   try {
-    currentConfig = resolveTelemetryConfig(config);
+    currentConfig = resolveTelemetryConfig(settings);
     headersProvider = resolveHeadersProvider(currentConfig);
 
     // The two pipelines are independent, so neither decides for the other: a
