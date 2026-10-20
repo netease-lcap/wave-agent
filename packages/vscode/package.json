@@ -118,10 +118,12 @@
     "@types/vscode": "^1.95.0",
     "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.28.0",
+    "tree-sitter-wasms": "0.1.11",
     "typescript": "^7.0.2",
     "vitest": "^4.1.5",
     "wave-agent-sdk": "workspace:*",
     "wave-webview": "workspace:*",
-    "wave-webview-fixtures": "workspace:*"
+    "wave-webview-fixtures": "workspace:*",
+    "web-tree-sitter": "0.21.0"
   }
 }

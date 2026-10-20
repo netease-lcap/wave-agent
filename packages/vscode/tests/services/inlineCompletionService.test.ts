@@ -24,6 +24,7 @@ import {
   truncateSuggestion,
   type CompletionFetcher,
   type CompletionOptions,
+  type SnippetCollector,
 } from "../../src/services/inlineCompletionService";
 
 const FAST: CompletionOptions = {
@@ -32,6 +33,13 @@ const FAST: CompletionOptions = {
   minDebounceMs: 1,
   maxDebounceMs: 1,
 };
+
+/**
+ * Stand-in for the tree-sitter collector. These tests are about the request
+ * lifecycle, not about what the language service can answer, so they opt out of
+ * snippet collection entirely (`undefined` = this host cannot collect).
+ */
+const NO_SNIPPETS: SnippetCollector = async () => undefined;
 
 interface FakeDocument {
   uri: { toString: () => string; fsPath: string; scheme: string };
@@ -180,7 +188,7 @@ describe("InlineCompletionService", () => {
 
   beforeEach(() => {
     fetchMock = vi.fn<CompletionFetcher>().mockResolvedValue("42");
-    service = new InlineCompletionService(fetchMock, FAST);
+    service = new InlineCompletionService(fetchMock, FAST, NO_SNIPPETS);
     document = createDocument("const a = ;");
   });
 
@@ -200,6 +208,61 @@ describe("InlineCompletionService", () => {
       language: "typescript",
       filePath: "/repo/a.ts",
     });
+  });
+
+  it("forwards collected definition snippets with the request", async () => {
+    const snippets = [
+      {
+        path: "/repo/utils/format.ts",
+        text: "export function formatDate(date: Date) {}",
+      },
+    ];
+    const withSnippets = new InlineCompletionService(
+      fetchMock,
+      FAST,
+      async () => snippets,
+    );
+
+    await withSnippets.getCompletion(
+      asDocument(document),
+      at(0, 10),
+      asToken(new FakeToken()),
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ snippets }),
+    );
+  });
+
+  it("keeps an empty collection distinct from no collection at all", async () => {
+    const tried = new InlineCompletionService(fetchMock, FAST, async () => []);
+
+    await tried.getCompletion(
+      asDocument(document),
+      at(0, 10),
+      asToken(new FakeToken()),
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.objectContaining({ snippets: [] }),
+    );
+  });
+
+  it("still completes when snippet collection throws", async () => {
+    const failing = new InlineCompletionService(fetchMock, FAST, async () => {
+      throw new Error("no language service");
+    });
+
+    const result = await failing.getCompletion(
+      asDocument(document),
+      at(0, 10),
+      asToken(new FakeToken()),
+    );
+
+    expect(result).toBe("42");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.not.objectContaining({ snippets: expect.anything() }),
+    );
   });
 
   it("reuses the cached suggestion for the same context instead of re-asking", async () => {
@@ -238,6 +301,7 @@ describe("InlineCompletionService", () => {
     const stalled = new InlineCompletionService(
       vi.fn<CompletionFetcher>().mockReturnValue(new Promise(() => {})),
       { ...FAST, requestTimeoutMs: 5 },
+      NO_SNIPPETS,
     );
 
     const result = await stalled.getCompletion(
@@ -251,12 +315,16 @@ describe("InlineCompletionService", () => {
 
   it("does not ask at all when the editor moved on during the debounce", async () => {
     const token = new FakeToken();
-    const slowDebounce = new InlineCompletionService(fetchMock, {
-      ...FAST,
-      baseDebounceMs: 1000,
-      minDebounceMs: 1000,
-      maxDebounceMs: 1000,
-    });
+    const slowDebounce = new InlineCompletionService(
+      fetchMock,
+      {
+        ...FAST,
+        baseDebounceMs: 1000,
+        minDebounceMs: 1000,
+        maxDebounceMs: 1000,
+      },
+      NO_SNIPPETS,
+    );
 
     const pending = slowDebounce.getCompletion(
       asDocument(document),
@@ -289,12 +357,16 @@ describe("InlineCompletionService", () => {
   });
 
   it("throttles to the last response's latency", async () => {
-    const adaptive = new InlineCompletionService(fetchMock, {
-      ...COMPLETION_OPTIONS,
-      baseDebounceMs: 5,
-      minDebounceMs: 5,
-      maxDebounceMs: 50,
-    });
+    const adaptive = new InlineCompletionService(
+      fetchMock,
+      {
+        ...COMPLETION_OPTIONS,
+        baseDebounceMs: 5,
+        minDebounceMs: 5,
+        maxDebounceMs: 50,
+      },
+      NO_SNIPPETS,
+    );
     fetchMock.mockImplementation(async () => {
       await new Promise((resolve) => setTimeout(resolve, 40));
       return "42";
@@ -321,12 +393,16 @@ describe("InlineCompletionService", () => {
   });
 
   it("skips the debounce on a manual trigger", async () => {
-    const manual = new InlineCompletionService(fetchMock, {
-      ...FAST,
-      baseDebounceMs: 10000,
-      minDebounceMs: 10000,
-      maxDebounceMs: 10000,
-    });
+    const manual = new InlineCompletionService(
+      fetchMock,
+      {
+        ...FAST,
+        baseDebounceMs: 10000,
+        minDebounceMs: 10000,
+        maxDebounceMs: 10000,
+      },
+      NO_SNIPPETS,
+    );
 
     const result = await manual.getCompletion(
       asDocument(document),
@@ -363,10 +439,14 @@ describe("InlineCompletionService", () => {
   });
 
   it("evicts the oldest cache entry beyond the configured size", async () => {
-    const small = new InlineCompletionService(fetchMock, {
-      ...FAST,
-      cacheSize: 1,
-    });
+    const small = new InlineCompletionService(
+      fetchMock,
+      {
+        ...FAST,
+        cacheSize: 1,
+      },
+      NO_SNIPPETS,
+    );
 
     await small.getCompletion(
       asDocument(document),

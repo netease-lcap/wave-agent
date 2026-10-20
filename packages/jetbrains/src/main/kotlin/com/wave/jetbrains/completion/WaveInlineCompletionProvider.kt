@@ -14,6 +14,8 @@ import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.wave.jetbrains.WavePanelHolder
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
@@ -74,6 +76,12 @@ class WaveInlineCompletionProvider : InlineCompletionProvider {
         val vFile = FileDocumentManager.getInstance().getFile(document)
         val filePath = vFile?.path
         val language = request.file.language?.displayName ?: ""
+        val snippets = collectDefinitionSnippets(
+            project,
+            request.editor,
+            request.file,
+            request.startOffset,
+        ).orEmpty()
 
         val response = try {
             withTimeoutOrNull(CompletionOptions.REQUEST_TIMEOUT_MS) {
@@ -83,6 +91,21 @@ class WaveInlineCompletionProvider : InlineCompletionProvider {
                         put("suffix", context.suffix)
                         put("language", language)
                         if (filePath != null) put("filePath", filePath)
+                        if (snippets.isNotEmpty()) {
+                            put(
+                                "snippets",
+                                buildJsonArray {
+                                    snippets.forEach { snippet ->
+                                        add(
+                                            buildJsonObject {
+                                                put("path", snippet.path)
+                                                put("text", snippet.text)
+                                            },
+                                        )
+                                    }
+                                },
+                            )
+                        }
                     },
                 )
             }

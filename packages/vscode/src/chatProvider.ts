@@ -3,6 +3,7 @@ import type {
   SessionMetadata,
   ToolPermissionContext,
   PermissionDecision,
+  CompletionSnippet,
 } from "wave-agent-sdk/host";
 import {
   EDIT_TOOL_NAME,
@@ -853,6 +854,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     suffix: string;
     language: string;
     filePath: string;
+    snippets?: CompletionSnippet[];
   }): Promise<string | undefined> {
     await this.initPromise.catch(() => {});
     const client = this.sharedClient;
