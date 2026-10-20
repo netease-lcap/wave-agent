@@ -123,7 +123,6 @@ export interface InputManagerCallbacks {
   onReloadPlugins?: () => Promise<void>;
   onAddDir?: (args?: string) => Promise<void>;
   onRenameSession?: (args?: string) => Promise<void>;
-  onRemoteControlCommand?: (args?: string) => Promise<void>;
   onPlanCommand?: (args?: string) => Promise<void> | void;
   sessionId?: string;
   workdir?: string;
@@ -160,6 +159,7 @@ export interface InputState {
   showResumeSelector: boolean;
   showHelp: boolean;
   showStatusCommand: boolean;
+  showRemoteControl: boolean;
   showLoginCommand: boolean;
   showPluginManager: boolean;
   showModelSelector: boolean;
@@ -201,6 +201,7 @@ export const initialState: InputState = {
   showResumeSelector: false,
   showHelp: false,
   showStatusCommand: false,
+  showRemoteControl: false,
   showLoginCommand: false,
   showPluginManager: false,
   showModelSelector: false,
@@ -485,6 +486,7 @@ export type InputAction =
   | { type: "SET_SHOW_RESUME_SELECTOR"; payload: boolean }
   | { type: "SET_SHOW_HELP"; payload: boolean }
   | { type: "SET_SHOW_STATUS_COMMAND"; payload: boolean }
+  | { type: "SET_SHOW_REMOTE_CONTROL"; payload: boolean }
   | { type: "SET_SHOW_LOGIN_COMMAND"; payload: boolean }
   | { type: "SET_SHOW_PLUGIN_MANAGER"; payload: boolean }
   | { type: "SET_SHOW_MODEL_SELECTOR"; payload: boolean }
@@ -701,6 +703,12 @@ export function inputReducer(
       return {
         ...state,
         showStatusCommand: action.payload,
+        selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
+      };
+    case "SET_SHOW_REMOTE_CONTROL":
+      return {
+        ...state,
+        showRemoteControl: action.payload,
         selectorJustUsed: !action.payload ? true : state.selectorJustUsed,
       };
     case "SET_SHOW_LOGIN_COMMAND":
@@ -1103,6 +1111,7 @@ export function inputReducer(
             state.showResumeSelector ||
             state.showHelp ||
             state.showStatusCommand ||
+            state.showRemoteControl ||
             state.showLoginCommand ||
             state.showPluginManager ||
             state.showModelSelector ||

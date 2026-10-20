@@ -406,7 +406,7 @@ export const handleCommandSelect = (
         } else if (command === "rename") {
           await callbacks.onRenameSession?.();
         } else if (command === "remote-control") {
-          await callbacks.onRemoteControlCommand?.();
+          dispatch({ type: "SET_SHOW_REMOTE_CONTROL", payload: true });
         }
       }
     })();
@@ -763,6 +763,7 @@ export const handleInput = async (
         state.showResumeSelector ||
         state.showHelp ||
         state.showStatusCommand ||
+        state.showRemoteControl ||
         state.showPluginManager ||
         state.showModelSelector ||
         state.showWorkflowManager
@@ -788,6 +789,7 @@ export const handleInput = async (
     state.showResumeSelector ||
     state.showHelp ||
     state.showStatusCommand ||
+    state.showRemoteControl ||
     state.showPluginManager ||
     state.showModelSelector ||
     state.showWorkflowManager
@@ -799,6 +801,7 @@ export const handleInput = async (
       state.showResumeSelector ||
       state.showHelp ||
       state.showStatusCommand ||
+      state.showRemoteControl ||
       state.showPluginManager ||
       state.showModelSelector ||
       state.showWorkflowManager

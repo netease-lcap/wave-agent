@@ -1,14 +1,18 @@
 import { render } from "ink-testing-library";
 import React, { createRef } from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { useInputManager } from "../../src/hooks/useInputManager.js";
 import { HookTester, HookTesterRef } from "../helpers/HookTester.js";
 
 type InputManagerState = ReturnType<typeof useInputManager>;
 
+/**
+ * `/remote-control` opens the remote-control overlay and takes no arguments:
+ * the panel itself shows the state and the one action that is valid right now,
+ * so there is no `on` / `off` / `status` grammar to hand through.
+ * (spec: docs/specs/ui/remote-control.md, 前台 CLI 故事场景 13)
+ */
 describe("useInputManager /remote-control command", () => {
-  const onRemoteControlCommand = vi.fn();
-
   const setup = () => {
     const ref = createRef<HookTesterRef<unknown>>();
     render(
@@ -16,7 +20,6 @@ describe("useInputManager /remote-control command", () => {
         ref={ref}
         hook={() =>
           useInputManager({
-            onRemoteControlCommand,
             onHasSlashCommand: () => false,
           })
         }
@@ -26,25 +29,22 @@ describe("useInputManager /remote-control command", () => {
     return { getState };
   };
 
-  beforeEach(() => {
-    onRemoteControlCommand.mockClear();
-  });
-
-  it("should hand the subcommand through for /remote-control <args>", async () => {
+  it("should open the remote-control overlay for /remote-control <args>", async () => {
     const { getState } = setup();
     await vi.waitFor(() => {
       expect(getState()).toBeDefined();
     });
+    expect(getState().showRemoteControl).toBe(false);
 
     getState().handlePasteInput("/remote-control off");
     await getState().handleSubmit();
 
     await vi.waitFor(() => {
-      expect(onRemoteControlCommand).toHaveBeenCalledWith("off");
+      expect(getState().showRemoteControl).toBe(true);
     });
   });
 
-  it("should call onRemoteControlCommand with undefined when bare /remote-control is selected from the command selector", async () => {
+  it("should open the remote-control overlay when bare /remote-control is selected from the command selector", async () => {
     const { getState } = setup();
     await vi.waitFor(() => {
       expect(getState()).toBeDefined();
@@ -57,11 +57,11 @@ describe("useInputManager /remote-control command", () => {
     getState().handleCommandSelect("remote-control");
 
     await vi.waitFor(() => {
-      expect(onRemoteControlCommand).toHaveBeenCalledWith(undefined);
+      expect(getState().showRemoteControl).toBe(true);
     });
   });
 
-  it("should not route unknown commands to onRemoteControlCommand", async () => {
+  it("should not route unknown commands to the remote-control overlay", async () => {
     const onSendMessage = vi.fn();
     const ref = createRef<HookTesterRef<unknown>>();
     render(
@@ -69,7 +69,6 @@ describe("useInputManager /remote-control command", () => {
         ref={ref}
         hook={() =>
           useInputManager({
-            onRemoteControlCommand,
             onSendMessage,
             onHasSlashCommand: () => false,
           })
@@ -91,6 +90,6 @@ describe("useInputManager /remote-control command", () => {
         {},
       );
     });
-    expect(onRemoteControlCommand).not.toHaveBeenCalled();
+    expect(getState().showRemoteControl).toBe(false);
   });
 });

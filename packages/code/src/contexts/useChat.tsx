@@ -37,7 +37,6 @@ import {
   PLUGIN_CHANGE_PENDING_MESSAGE,
   PLUGIN_RELOADED_MESSAGE,
 } from "wave-agent-sdk";
-import { toString as qrToString } from "qrcode";
 import { logger } from "../utils/logger.js";
 import { displayUsageSummary } from "../utils/usageSummary.js";
 import { expandLongTextPlaceholders } from "../managers/inputHandlers.js";
@@ -46,54 +45,6 @@ import type { RemoteNotify } from "../remote/remoteNotifications.js";
 import { readFile } from "node:fs/promises";
 
 import { BaseAppProps } from "../types.js";
-
-/** How long `/remote-control` waits for the relay's registration round trip. */
-const REMOTE_PAGE_WAIT_MS = 5_000;
-const REMOTE_PAGE_POLL_MS = 250;
-
-/**
- * Wait for the page address. It is assembled from this machine's channel key
- * after the relay registers it (an HTTP call) — nothing is pushed down the
- * WebSocket — so the first snapshot may not carry it yet.
- */
-async function waitForRemotePageUrl(
-  api: RemoteControlApi,
-): Promise<string | undefined> {
-  const deadline = Date.now() + REMOTE_PAGE_WAIT_MS;
-  while (Date.now() < deadline) {
-    const snapshot = api.getSnapshot();
-    if (snapshot.pageUrl) return snapshot.pageUrl;
-    if (snapshot.state === "error") return undefined;
-    await new Promise((resolve) => setTimeout(resolve, REMOTE_PAGE_POLL_MS));
-  }
-  return api.getSnapshot().pageUrl;
-}
-
-/**
- * The result block a TUI session shows: the same address and the same QR that
- * `wave remote-control on` prints, because that pair is the whole contract with
- * the phone — the two entry points must not diverge on how it is rendered.
- */
-async function describeRemotePage(pageUrl: string): Promise<string> {
-  const lines = [
-    "Remote control is on — this terminal's session is now served to your phone.",
-    `Page: ${pageUrl}`,
-  ];
-  try {
-    lines.push(
-      "",
-      await qrToString(pageUrl, {
-        type: "utf8",
-        errorCorrectionLevel: "L",
-      }),
-    );
-  } catch {
-    // The address above already carries the contract; a missing QR is not worth
-    // failing the command over.
-  }
-  lines.push("", "Turn it off with /remote-control off");
-  return lines.join("\n");
-}
 
 // Main Chat Context
 export interface PlanViewData {
@@ -196,13 +147,6 @@ export interface ChatContextType {
    * session that only exists here.
    */
   remoteControl: RemoteControlApi;
-  /**
-   * `/remote-control [on|off|status] [name]` — the TUI-side switch for the hook
-   * above. Its CLI namesake talks to the daemon instead; the two are not
-   * interchangeable, because a session that lives in this process is reachable
-   * only from this process.
-   */
-  remoteControlCommand: (args?: string) => Promise<void>;
   // /plan overlay state + handler
   planView: PlanViewData | null;
   setPlanView: (view: PlanViewData | null) => void;
@@ -1500,87 +1444,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // before anything can call the agent.
   remoteNotifyRef.current = remoteControl.notify;
 
-  /**
-   * `/remote-control [on|off|status] [name]` — offer this terminal's session to
-   * a phone. It is deliberately *not* a front end for `wave remote-control`:
-   * that subcommand drives the daemon, and this session exists only in this
-   * process, so the daemon could not serve it (spec: remote-control.md,
-   * "前台 CLI 会话也能被手机接管").
-   */
-  const remoteControlCommand = useCallback(
-    async (args?: string) => {
-      const showResult = (content: string) => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-            role: "assistant",
-            timestamp: new Date().toISOString(),
-            blocks: [{ type: "text", content, stage: "end" }],
-          },
-        ]);
-      };
-
-      const parts = (args ?? "").trim().split(/\s+/).filter(Boolean);
-      const action = parts[0]?.toLowerCase() ?? "";
-      if (
-        action &&
-        action !== "on" &&
-        action !== "off" &&
-        action !== "status"
-      ) {
-        showResult("Usage: /remote-control [on|off|status] [name]");
-        return;
-      }
-
-      if (!remoteControl.enabled) {
-        showResult(
-          'Remote control is unavailable in this process. Set "enableRemoteControl": true in ~/.wave/settings.json (or .wave/settings.json in the project), then restart the CLI — a process that is already running keeps the settings it started with.',
-        );
-        return;
-      }
-
-      if (action === "off") {
-        remoteControl.disconnect();
-        showResult(
-          "Remote control is off — this terminal's session is no longer served.",
-        );
-        return;
-      }
-
-      const current = remoteControl.getSnapshot();
-      const serving =
-        current.state === "online" || current.state === "connecting";
-      // A bare `/remote-control` means "start serving" the first time and
-      // "what is it doing?" afterwards, so a second one cannot silently dial
-      // again and cannot hide an address the user still needs.
-      if (action === "status" || (!action && serving)) {
-        showResult(
-          current.pageUrl
-            ? await describeRemotePage(current.pageUrl)
-            : `Remote control status: ${current.state}${
-                current.message ? ` — ${current.message}` : ""
-              }`,
-        );
-        return;
-      }
-
-      remoteControl.connect(parts[1]);
-      const pageUrl = await waitForRemotePageUrl(remoteControl);
-      const after = remoteControl.getSnapshot();
-      if (!pageUrl) {
-        showResult(
-          after.state === "error"
-            ? `Remote control failed: ${after.message ?? "unknown error"}`
-            : "Connected to the relay, but no page address came back yet — run /remote-control status in a moment.",
-        );
-        return;
-      }
-      showResult(await describeRemotePage(pageUrl));
-    },
-    [remoteControl],
-  );
-
   const backgroundCurrentTask = useCallback(() => {
     agentRef.current?.backgroundCurrentTask();
   }, []);
@@ -1711,7 +1574,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     permissionMode,
     setPermissionMode,
     remoteControl,
-    remoteControlCommand,
     planView,
     setPlanView,
     handlePlanCommand,

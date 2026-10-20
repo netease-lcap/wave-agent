@@ -64,7 +64,6 @@ export const useInputManager = (
     onReloadPlugins,
     onAddDir,
     onRenameSession,
-    onRemoteControlCommand,
     onPlanCommand,
     isIdle: isIdleProp,
   } = callbacks;
@@ -292,7 +291,7 @@ export const useInputManager = (
               } else if (command === "rename") {
                 await onRenameSession?.(effect.args);
               } else if (command === "remote-control") {
-                await onRemoteControlCommand?.(effect.args);
+                dispatch({ type: "SET_SHOW_REMOTE_CONTROL", payload: true });
               } else if (command === "plan") {
                 await onPlanCommand?.(effect.args);
               }
@@ -326,7 +325,6 @@ export const useInputManager = (
     onReloadPlugins,
     onAddDir,
     onRenameSession,
-    onRemoteControlCommand,
     onPlanCommand,
   ]);
 
@@ -537,6 +535,10 @@ export const useInputManager = (
     dispatch({ type: "SET_SHOW_STATUS_COMMAND", payload: show });
   }, []);
 
+  const setShowRemoteControl = useCallback((show: boolean) => {
+    dispatch({ type: "SET_SHOW_REMOTE_CONTROL", payload: show });
+  }, []);
+
   const setShowLoginCommand = useCallback((show: boolean) => {
     dispatch({ type: "SET_SHOW_LOGIN_COMMAND", payload: show });
   }, []);
@@ -702,6 +704,7 @@ export const useInputManager = (
     showResumeSelector: state.showResumeSelector,
     showHelp: state.showHelp,
     showStatusCommand: state.showStatusCommand,
+    showRemoteControl: state.showRemoteControl,
     showLoginCommand: state.showLoginCommand,
     showPluginManager: state.showPluginManager,
     showModelSelector: state.showModelSelector,
@@ -750,6 +753,7 @@ export const useInputManager = (
     setShowRewindManager,
     setShowHelp,
     setShowStatusCommand,
+    setShowRemoteControl,
     setShowLoginCommand,
     setShowPluginManager,
     setShowModelSelector,
