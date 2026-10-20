@@ -385,16 +385,19 @@ export type ResolveOutcome =
   | { kind: "conflict"; live?: string; message?: string }
   | { kind: "error"; error: string; status?: number };
 
-/** Resolve or reopen a thread. `afterVersion` makes the server refuse stale edits. */
+/**
+ * Resolve or reopen a thread. `afterVersion` makes the server refuse stale edits;
+ * it is a positive integer (a string is rejected with 400 INVALID_AFTER_VERSION).
+ */
 export async function postResolve(
   slug: string,
   threadId: string,
-  body: { resolved: boolean; afterVersion?: string },
+  body: { resolved: boolean; afterVersion?: number },
   opts: { abortSignal?: AbortSignal } = {},
 ): Promise<ResolveOutcome> {
   const authFetch = createAuthAwareFetch(globalThis.fetch);
   const payload: Record<string, unknown> = { resolved: body.resolved };
-  if (body.afterVersion) payload.afterVersion = body.afterVersion;
+  if (body.afterVersion !== undefined) payload.afterVersion = body.afterVersion;
 
   let res: Response;
   try {

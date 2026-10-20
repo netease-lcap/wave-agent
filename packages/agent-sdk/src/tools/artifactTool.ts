@@ -186,6 +186,30 @@ function resolveSlug(raw: string): string | null {
   return fromUrl && isValidArtifactSlug(fromUrl) ? fromUrl : null;
 }
 
+/** The canonical page URL for a slug, on the server this session talks to. */
+function artifactPageUrl(slug: string): string {
+  return `${authService.getServerUrl()}/code/artifact/${encodeURIComponent(slug)}`;
+}
+
+/**
+ * Page versions are positive integers on the wire (`afterVersion` is checked with
+ * `typeof v === "number"` server-side, so `"3"` is a 400). Everything the client
+ * remembers internally is a string, and a model may still pass a numeric string,
+ * so both forms are accepted here and the caller sends a number.
+ */
+function toPageVersion(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return Number.isInteger(value) && value > 0 ? value : undefined;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!/^\d+$/.test(trimmed)) return undefined;
+    const parsed = Number(trimmed);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+  }
+  return undefined;
+}
+
 /**
  * Network locations are refused before any filesystem access: an upload must
  * read a local file, and a network path can be re-resolved to something else
@@ -411,14 +435,20 @@ async function readArtifact(
       error: `${ARTIFACT_TOOL_NAME}: missing required parameter "url" for a read`,
     };
   }
-  const slug = extractArtifactSlug(url);
+  // `url` takes the same two forms everywhere in this tool (page URL or bare
+  // slug): `comments` / asset actions already do, and a model that just read a
+  // slug off `list` should not have to go find the full URL.
+  const slug = resolveSlug(url);
   if (!slug) {
     return {
       success: false,
       content: "",
-      error: `${ARTIFACT_TOOL_NAME}: url must point to an artifact page ({host}/code/artifact/{slug})`,
+      error: `${ARTIFACT_TOOL_NAME}: url must be an artifact page URL ({host}/code/artifact/{slug}) or an artifact slug (got "${url}")`,
     };
   }
+  // Messages and approvals show a page URL; `readArtifactContent` has always
+  // reported URLs, so a bare slug is canonicalised rather than echoed back.
+  const pageUrl = extractArtifactSlug(url) ? url : artifactPageUrl(slug);
   const prompt = typeof args.prompt === "string" ? args.prompt.trim() : "";
 
   if (!authService.getSSOToken()) {
@@ -430,7 +460,7 @@ async function readArtifact(
   }
 
   const readResult = await readArtifactContent(slug, {
-    url,
+    url: pageUrl,
     abortSignal: context.abortSignal,
   });
   if (readResult.kind === "error") {
@@ -459,7 +489,7 @@ async function readArtifact(
         context.canUseToolCallback,
         {
           action: READ_ACTION,
-          url,
+          url: pageUrl,
           ...(prompt ? { prompt } : {}),
         },
         context.toolCallId,
@@ -476,10 +506,10 @@ async function readArtifact(
       }
       if (sessionId) markArtifactReadApproved(sessionId, slug);
     }
-    return summarizeArtifactAsReader(url, prompt, artifact, context);
+    return summarizeArtifactAsReader(pageUrl, prompt, artifact, context);
   }
 
-  const lines = [`Artifact: ${url}`];
+  const lines = [`Artifact: ${pageUrl}`];
   if (artifact.version) lines.push(`Version: ${artifact.version}`);
   if (artifact.sharingNotice) lines.push(artifact.sharingNotice);
   lines.push(WATCH_HINT);
@@ -1415,17 +1445,26 @@ async function resolveAction(
     return commentError(authError.replace(`${ARTIFACT_TOOL_NAME}: `, ""));
 
   const afterVersionRaw = args.after_version;
-  // "Pass the version you are working from" is advice to the model; when it
-  // does not, the version this session last saw is the same knowledge the
-  // publish conflict guard already uses.
-  const recorded =
-    context.sessionId && !afterVersionRaw
+  // `afterVersion` goes over the wire as a NUMBER (the server rejects "3" with
+  // 400 INVALID_AFTER_VERSION), so the parameter is validated here instead of
+  // being stringified and rejected a round trip later.
+  let afterVersion: number | undefined;
+  if (afterVersionRaw !== undefined && afterVersionRaw !== null) {
+    afterVersion = toPageVersion(afterVersionRaw);
+    if (afterVersion === undefined) {
+      return commentError(
+        `parameter "after_version" must be a positive integer (the page version number, e.g. 3) — got ${JSON.stringify(afterVersionRaw)}`,
+      );
+    }
+  } else {
+    // "Pass the version you are working from" is advice to the model; when it
+    // does not, the version this session last saw is the same knowledge the
+    // publish conflict guard already uses.
+    const recorded = context.sessionId
       ? getRecordedVersion(context.sessionId, slug)
       : undefined;
-  const afterVersion =
-    typeof afterVersionRaw === "string" || typeof afterVersionRaw === "number"
-      ? String(afterVersionRaw)
-      : recorded;
+    afterVersion = toPageVersion(recorded);
+  }
 
   const denied = await confirmCommentWrite(
     context,
@@ -1445,7 +1484,7 @@ async function resolveAction(
     threadId,
     {
       resolved: args.resolved,
-      ...(afterVersion ? { afterVersion } : {}),
+      ...(afterVersion !== undefined ? { afterVersion } : {}),
     },
     { abortSignal: context.abortSignal },
   );
@@ -1679,7 +1718,7 @@ export const artifactTool: ToolPlugin = {
           after_version: {
             type: "number",
             description:
-              'For "resolve": the artifact version you are resolving against. Pass the version you last read or published so the server can refuse a resolve based on a stale page. Defaults to the version this session last saw.',
+              'For "resolve": the artifact version you are resolving against, as a POSITIVE INTEGER (e.g. 3 — not "v3", not "3"). Pass the version you last read or published so the server can refuse a resolve based on a stale page. Omit it to use the version this session last saw.',
           },
         },
         required: [],

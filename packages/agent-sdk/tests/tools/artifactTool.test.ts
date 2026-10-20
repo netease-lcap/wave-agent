@@ -1069,7 +1069,22 @@ describe("artifactTool", () => {
         makeContext(),
       );
       expect(result.success).toBe(false);
-      expect(result.error).toContain("url must point to an artifact page");
+      expect(result.error).toContain("url must be an artifact page URL");
+    });
+
+    it("should accept a bare slug, like the other actions do", async () => {
+      stubArtifactRead(OWNER_META, OWNER_HTML);
+
+      const result = await artifactTool.execute(
+        { action: "read", url: "abc" },
+        makeAiContext(),
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("<!DOCTYPE html>");
+      // A bare slug is canonicalised so messages and approvals still show a URL.
+      expect(result.content).toContain(`Artifact: ${ARTIFACT_URL}`);
+      expect(getRecordedVersion(SESSION_ID, "abc")).toBe("v2");
     });
 
     it("should reject an unknown action", async () => {
