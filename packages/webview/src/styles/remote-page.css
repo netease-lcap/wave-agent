@@ -289,11 +289,12 @@
   }
 
   /* ── 图标按钮：点击热区、间距与字形一起放大（spec 场景 27）─────────────
-     页面上相邻图标最密、最容易被误触的两族——顶栏右侧（新建对话 / 会话 /
-     切换电脑 / 更多）与输入区左下角（「+」/「/」）——原先是按**鼠标指针**
-     定的：按钮 22×22、字形 16×16、间距 4px（中心距 26px）。手指的接触面
-     远大于指针热区，Apple HIG 的最小可点目标是 44pt、Material 是 48dp，
-     26px 的中心距在手机上必然误触。
+     页面上相邻图标最密、最容易被误触的几族——顶栏右侧（新建对话 / 会话 /
+     切换电脑 / 更多）、输入区左下角（「+」/「/」），以及审批 / 提问弹窗
+     右上角（折叠选项 / 关闭）——原先是按**鼠标指针**定的：按钮 22×22
+     （弹窗右上角那两枚 20×20）、字形 16×16、间距 4px（中心距 26px）。
+     手指的接触面远大于指针热区，Apple HIG 的最小可点目标是 44pt、Material
+     是 48dp，26px 的中心距在手机上必然误触。
 
      热区与间距**必须同时给足**：只把热区撑大而不动间距，相邻两个按钮的
      可点区域就会相贴甚至重叠，误触反而更容易发生——这正是用户报的现象
@@ -304,9 +305,11 @@
      关系，只是两个数各放大一档）；按钮长到 40 后，两个容器原本的固定
      高度（顶栏 44、输入区按钮行 40）已经装不下，所以高度也要一并抬。
 
-     范围只这两族：输入区右下角的权限档与发送按钮目标本就更大、也不与谁
-     紧挨着，不在此列。整屏约束（场景 14）仍须成立——长高的量不得把消息区
-     挤到「顶栏与输入区无法同屏」。 */
+     范围按「相邻图标成簇」划：输入区右下角的权限档与发送按钮目标本就
+     更大、也不与谁紧挨着，不在此列。整屏约束（场景 14）仍须成立——长高的
+     量不得把消息区挤到「顶栏与输入区无法同屏」。弹窗右上角那两枚另起
+     一段（它没有固定高度的轨道，要让位的是标题行），见下面
+     .confirmation-header-actions。 */
   [data-remote-page] .chat-header {
     height: 56px;
   }
@@ -351,6 +354,43 @@
   }
 
   [data-remote-page] .toolbar-icon-button .toolbar-icon {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* 提问 / 审批弹窗右上角那一族（折叠选项 + 关闭）：同一档 40×40 / 字形 20 /
+     间距 8。它跟上面两族不是同一套承载——这两枚是**绝对定位**在卡片右上角
+     （`.confirmation-header-actions`），下面没有固定高度的轨道可抬，所以
+     「装不下」表现为往下压住第一道内容。让位的对象因此是标题行：24→40px
+     最小高度，让 40px 的按钮仍落在标题行的高度里；标题再按按钮组的宽度
+     让出右侧位置（关闭键恒在 = 40+8；带折叠键时 40+8+40+8）。关闭键右缘
+     仍落在内容右缘（沿用 `right: 12px`，不另调）。
+
+     按钮盒之外的**比例不变**（按钮带内边距、字形居中）：20px 按钮里 16px
+     字形居中，40px 按钮里 20px 字形居中，两侧内衬各 10px。 */
+  [data-remote-page] .confirmation-header-top {
+    min-height: 40px;
+    padding-right: 48px;
+  }
+
+  [data-remote-page]
+    .confirmation-dialog:has(.confirmation-collapse-btn)
+    .confirmation-header-top {
+    padding-right: 96px;
+  }
+
+  [data-remote-page] .confirmation-header-actions {
+    gap: 8px;
+  }
+
+  [data-remote-page] .confirmation-collapse-btn,
+  [data-remote-page] .confirmation-close-btn {
+    width: 40px;
+    height: 40px;
+  }
+
+  [data-remote-page] .confirmation-collapse-chevron,
+  [data-remote-page] .confirmation-close-btn-icon {
     width: 20px;
     height: 20px;
   }
