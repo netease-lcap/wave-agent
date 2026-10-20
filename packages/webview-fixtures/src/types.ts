@@ -1011,6 +1011,14 @@ export interface SlashCommandsResponseMessage extends HostToWebviewMessageBase {
     /** Source tag of a skill-backed command (内置/用户/项目/插件). Skill rows
      *  only — plain/custom/plugin commands omit it. */
     skillSource?: "builtin" | "user" | "project" | "plugin";
+    /** 选中即执行：宿主自己处理的本地 UI 指令（打开弹窗/设置页/面板），选中后
+     *  把 `/名字` 发回宿主，而不是把命令名插进输入框等用户补参数。技能命令、
+     *  磁盘自定义命令、插件命令与需要补参数的 `/btw` 都不带它。
+     *
+     *  这条判据随命令一起下发——三个宿主各自维护自己的本地指令表，webview 不再
+     *  另存一份命令名名单（它们必然是两份，加命令时漏同步就让指令落进「插入文本」
+     *  分支）。 */
+    runOnSelect?: boolean;
   }>;
 }
 

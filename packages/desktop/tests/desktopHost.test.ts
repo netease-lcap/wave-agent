@@ -3923,6 +3923,49 @@ describe("misc commands", () => {
     expect(config?.skillSource).toBeUndefined();
   });
 
+  it("requestSlashCommands flags local commands runOnSelect, /btw excepted", async () => {
+    // webview 靠这条标记决定「发回宿主执行」还是「插入命令名等参数」——它不再
+    // 自带命令名名单，所以每条本地指令的标记必须由宿主给全。
+    const { host, sent } = await readyHost();
+    await host.handleWebviewMessage({
+      command: "requestSlashCommands",
+      filterText: "",
+    });
+
+    const resp = sent("slashCommandsResponse")[0];
+    const commands = resp.commands as Array<{
+      name: string;
+      runOnSelect?: boolean;
+      skillSource?: string;
+    }>;
+    // /btw 要让用户接着补问题，唯一不标的本地指令
+    expect(commands.find((c) => c.name === "btw")?.runOnSelect).toBeUndefined();
+    for (const name of [
+      "config",
+      "plugin",
+      "reload-plugins",
+      "mcp",
+      "status",
+      "remote-control",
+      "compact",
+      "tasks",
+      "workflows",
+      "agents",
+      "skills",
+      "hooks",
+      "rewind",
+      "model",
+      "resume",
+      "plan",
+    ]) {
+      expect(commands.find((c) => c.name === name)?.runOnSelect).toBe(true);
+    }
+    // SDK 命令一律不带（技能 / 自定义 / 插件命令都走插入文本）
+    expect(
+      commands.find((c) => c.name === "review")?.runOnSelect,
+    ).toBeUndefined();
+  });
+
   it("/plan outside plan mode switches to plan mode without sending a message", async () => {
     const { host, sent } = await readyHost();
     const agent = lastAgent();

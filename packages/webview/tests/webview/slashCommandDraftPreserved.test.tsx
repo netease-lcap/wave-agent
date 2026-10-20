@@ -61,7 +61,14 @@ async function openSlashPopup(text: string) {
 
   act(() => {
     sendCommand("slashCommandsResponse", {
-      commands: [{ id: "model", name: "model", description: "选择模型" }],
+      commands: [
+        {
+          id: "model",
+          name: "model",
+          description: "选择模型",
+          runOnSelect: true,
+        },
+      ],
     });
   });
 

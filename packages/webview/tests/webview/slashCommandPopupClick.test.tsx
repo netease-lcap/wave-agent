@@ -44,8 +44,18 @@ async function clickSlashItem(trigger: string, itemTestId: string) {
   act(() => {
     sendCommand("slashCommandsResponse", {
       commands: [
-        { id: "rewind", name: "rewind", description: "回滚到检查点" },
-        { id: "model", name: "model", description: "选择模型" },
+        {
+          id: "rewind",
+          name: "rewind",
+          description: "回滚到检查点",
+          runOnSelect: true,
+        },
+        {
+          id: "model",
+          name: "model",
+          description: "选择模型",
+          runOnSelect: true,
+        },
       ],
     });
   });

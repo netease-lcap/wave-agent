@@ -1,0 +1,4 @@
+- Webview 侧判断「这条斜杠命令是什么」时，判据一律取自宿主随数据下发的字段，不要在 webview 里另存一份宿主命令名名单
+  - 同一个坑已出现三次：弹窗分组（原 `SYSTEM_COMMANDS` 白名单，漏登记就让 /hooks、/plan、/resume 掉进「技能」）、选中行为（原 `localCommands` 名单，漏登记就把指令插成文本而不是执行）、以及每次给这两处补名字的「修法」
+  - 现在的判据：分组读 `skillSource`（有=技能，无=系统指令），选中行为读 `runOnSelect`（见 `webview-fixtures` 的 `SlashCommandsResponseMessage`，三个宿主各自给自己的本地指令打标）
+  - 新增宿主本地指令时只改宿主侧那份表：`desktopHost.ts` / `vscode messageHandler.ts` / `MessageHandler.kt`；webview 不需要同步任何东西

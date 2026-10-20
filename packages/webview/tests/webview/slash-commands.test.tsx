@@ -310,7 +310,14 @@ describe("Slash Commands", () => {
     );
 
     sendCommand("slashCommandsResponse", {
-      commands: [{ id: "plugin", name: "plugin", description: "插件管理" }],
+      commands: [
+        {
+          id: "plugin",
+          name: "plugin",
+          description: "插件市场",
+          runOnSelect: true,
+        },
+      ],
     });
 
     await waitFor(() => {
@@ -346,6 +353,53 @@ describe("Slash Commands", () => {
         screen.queryByTestId("slash-commands-popup"),
       ).not.toBeInTheDocument();
     });
+    expect(input.textContent).toBe("");
+  });
+
+  it("should execute a command flagged runOnSelect instead of inserting its name", async () => {
+    // 判据是宿主随命令下发的 `runOnSelect`，不是任何命令名名单：这里故意用一个
+    // 任何宿主/弹窗都不认识的名字，选中后仍应走「发回宿主」分支。
+    const { vscode } = renderChatApp();
+
+    const input = screen.getByTestId("message-input");
+    input.focus();
+
+    await typeInInput("/my-view");
+
+    await waitFor(
+      () => {
+        expect(vscode.postMessage).toHaveBeenCalledWith(
+          expect.objectContaining({ command: "requestSlashCommands" }),
+        );
+      },
+      { timeout: 3000 },
+    );
+
+    sendCommand("slashCommandsResponse", {
+      commands: [
+        {
+          id: "my-view",
+          name: "my-view",
+          description: "宿主自定义视图",
+          runOnSelect: true,
+        },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("slash-commands-popup")).toBeInTheDocument();
+    });
+
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+    });
+
+    await waitFor(() => {
+      expect(vscode.postMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ command: "sendMessage", text: "/my-view" }),
+      );
+    });
+    // 走的是「执行」分支：命令名不会被插回输入框等参数。
     expect(input.textContent).toBe("");
   });
 
