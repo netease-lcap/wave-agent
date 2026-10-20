@@ -1,4 +1,9 @@
 import * as vscode from "vscode";
+import type { CompletionSnippet } from "wave-agent-sdk/host";
+import {
+  collectDefinitionSnippets,
+  SNIPPET_OPTIONS,
+} from "./completionSnippets.js";
 
 /**
  * Tuning knobs for inline completion. Defaults come from
@@ -54,7 +59,18 @@ export type CompletionFetcher = (params: {
   suffix: string;
   language: string;
   filePath: string;
+  snippets?: CompletionSnippet[];
 }) => Promise<string | undefined>;
+
+/**
+ * Collects cross-file definition bodies for a cursor position. Injected so the
+ * caller's tests do not need a real language service (or wasm).
+ */
+export type SnippetCollector = (
+  document: vscode.TextDocument,
+  position: vscode.Position,
+  token: vscode.CancellationToken,
+) => Promise<CompletionSnippet[] | undefined>;
 
 interface CacheEntry {
   suggestion: string | undefined;
@@ -143,6 +159,11 @@ export class InlineCompletionService {
   constructor(
     private readonly fetch: CompletionFetcher,
     private readonly options: CompletionOptions = COMPLETION_OPTIONS,
+    private readonly collectSnippets: SnippetCollector = (
+      document,
+      position,
+      token,
+    ) => collectDefinitionSnippets(document, position, token, SNIPPET_OPTIONS),
   ) {}
 
   async getCompletion(
@@ -166,11 +187,22 @@ export class InlineCompletionService {
     }
 
     const started = Date.now();
+    // Collected before the request and bounded by its own budget: `undefined`
+    // means this host cannot collect for the language, `[]` means it tried and
+    // found nothing. Either way the completion still goes out.
+    const snippets = await this.collectSnippets(
+      document,
+      position,
+      token,
+    ).catch(() => undefined);
+    if (token.isCancellationRequested) return undefined;
+
     const text = await this.request(
       {
         ...context,
         language: document.languageId,
         filePath: document.uri.fsPath,
+        ...(snippets ? { snippets } : {}),
       },
       token,
     );
@@ -226,6 +258,7 @@ export class InlineCompletionService {
       suffix: string;
       language: string;
       filePath: string;
+      snippets?: CompletionSnippet[];
     },
     token: vscode.CancellationToken,
   ): Promise<string | undefined> {

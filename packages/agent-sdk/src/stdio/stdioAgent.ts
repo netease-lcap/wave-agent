@@ -36,6 +36,7 @@ import type {
   SkillMetadata,
   RemoteControlSnapshot,
   ServerNotificationMethod,
+  CompletionSnippet,
 } from "../types/index.js";
 import type { RpcClient } from "./rpcClient.js";
 import type { NotificationRouter } from "./notificationRouter.js";
@@ -409,6 +410,7 @@ export class StdioAgent {
     suffix: string;
     language?: string;
     filePath?: string;
+    snippets?: CompletionSnippet[];
   }): Promise<{ text: string; model: string }> {
     return (await this.client.request(
       "getCompletion",

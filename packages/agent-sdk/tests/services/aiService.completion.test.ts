@@ -224,6 +224,66 @@ describe("AI Service - inline completion", () => {
     expect(messages[1].content).toContain("console.log(answer);");
   });
 
+  it("places definition snippets before the cursor prefix", async () => {
+    mockCreateWith("const date = formatDate(new Date());");
+
+    await getCompletion({
+      gatewayConfig: TEST_GATEWAY_CONFIG,
+      modelConfig: TEST_MODEL_CONFIG,
+      prefix: "const date = ",
+      suffix: ";",
+      filePath: "/repo/a.ts",
+      snippets: [
+        {
+          path: "/repo/utils/format.ts",
+          text: "export function formatDate(d: Date): string {}",
+        },
+      ],
+    });
+
+    const content = mockCreate.mock.calls[0][0].messages[1].content as string;
+    // The extra context goes ahead of the file being completed, and carries a
+    // path header so the model can tell which file it is reading.
+    expect(content).toContain("// Path: /repo/utils/format.ts");
+    expect(content.indexOf("formatDate(d: Date)")).toBeLessThan(
+      content.indexOf("<code_before_cursor>"),
+    );
+  });
+
+  it("keeps the snippet order given by the host", async () => {
+    mockCreateWith("x");
+
+    await getCompletion({
+      gatewayConfig: TEST_GATEWAY_CONFIG,
+      modelConfig: TEST_MODEL_CONFIG,
+      prefix: "",
+      suffix: "",
+      snippets: [
+        { path: "/repo/low.ts", text: "low()" },
+        { path: "/repo/high.ts", text: "high()" },
+      ],
+    });
+
+    const content = mockCreate.mock.calls[0][0].messages[1].content as string;
+    // The host ranks most-relevant last, which is exactly prompt order.
+    expect(content.indexOf("low()")).toBeLessThan(content.indexOf("high()"));
+  });
+
+  it("omits the definitions block when the host sent no snippets", async () => {
+    mockCreateWith("x");
+
+    await getCompletion({
+      gatewayConfig: TEST_GATEWAY_CONFIG,
+      modelConfig: TEST_MODEL_CONFIG,
+      prefix: "const a = ",
+      suffix: ";",
+      snippets: [],
+    });
+
+    const content = mockCreate.mock.calls[0][0].messages[1].content as string;
+    expect(content).not.toContain("<code_definitions>");
+  });
+
   it("propagates the abort signal to the model call", async () => {
     const controller = new AbortController();
     mockCreate.mockImplementation(

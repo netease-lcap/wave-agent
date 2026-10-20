@@ -4257,6 +4257,69 @@ test("getCompletion forwards the cursor context to the session's agent", async (
   });
 });
 
+test("getCompletion forwards the host's definition snippets", async () => {
+  const { bridge } = createBridge();
+  const getCompletion = vi
+    .fn()
+    .mockResolvedValue({ text: "42", model: "fast-model" });
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent({ getCompletion }));
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+  const snippets = [
+    { path: "/repo/src/utils/format.ts", text: "export function format() {}" },
+  ];
+
+  await bridge.handleRequest(
+    "getCompletion",
+    { prefix: "const a = ", suffix: ";", snippets },
+    init.sessionId,
+  );
+
+  expect(getCompletion).toHaveBeenCalledWith(
+    expect.objectContaining({ snippets }),
+  );
+});
+
+test("getCompletion passes an empty snippet list through unchanged", async () => {
+  const { bridge } = createBridge();
+  const getCompletion = vi
+    .fn()
+    .mockResolvedValue({ text: "", model: "fast-model" });
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent({ getCompletion }));
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+
+  // `[]` means "the host tried and found nothing"; it is not the same as a
+  // host that cannot collect at all, which omits the field.
+  await bridge.handleRequest(
+    "getCompletion",
+    { prefix: "", suffix: "", snippets: [] },
+    init.sessionId,
+  );
+
+  expect(getCompletion).toHaveBeenCalledWith(
+    expect.objectContaining({ snippets: [] }),
+  );
+});
+
+test("getCompletion omits the snippets key when the host has no capability", async () => {
+  const { bridge } = createBridge();
+  const getCompletion = vi
+    .fn()
+    .mockResolvedValue({ text: "", model: "fast-model" });
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent({ getCompletion }));
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+
+  await bridge.handleRequest("getCompletion", {}, init.sessionId);
+
+  const forwarded = getCompletion.mock.calls[0][0] as Record<string, unknown>;
+  expect("snippets" in forwarded).toBe(false);
+});
+
 test("getCompletion defaults a missing prefix/suffix to an empty string", async () => {
   const { bridge } = createBridge();
   const getCompletion = vi

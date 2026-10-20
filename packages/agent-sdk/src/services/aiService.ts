@@ -9,7 +9,12 @@ import {
 import { OpenAIClient } from "../utils/openaiClient.js";
 import { logger } from "../utils/globalLogger.js";
 import { addOnceAbortListener } from "../utils/abortUtils.js";
-import type { GatewayConfig, ModelConfig, Usage } from "../types/index.js";
+import type {
+  CompletionSnippet,
+  GatewayConfig,
+  ModelConfig,
+  Usage,
+} from "../types/index.js";
 import { ConfigurationError, CONFIG_ERRORS } from "../types/index.js";
 import {
   transformMessagesForExplicitCache,
@@ -1030,6 +1035,13 @@ export interface CompletionOptions {
   language?: string;
   /** File path, so the model can tell a test file from a source file. */
   filePath?: string;
+  /**
+   * Cross-file definition bodies, most relevant **last** — they are emitted in
+   * this order, so the closest-to-cursor context ends up nearest the cursor.
+   * Absent means this host cannot collect them; empty means it tried and found
+   * nothing.
+   */
+  snippets?: CompletionSnippet[];
   abortSignal?: AbortSignal;
 }
 
@@ -1103,6 +1115,15 @@ export async function getCompletion(
         : undefined,
   ].filter((line): line is string => line !== undefined);
 
+  // Cross-file definition bodies go *before* the file prefix (spec: 额外片段
+  // 整体前置到光标前缀之前). Each gets a path header so the model can tell
+  // which file it is reading, and the block is only emitted when non-empty —
+  // an empty tag would just teach the model that the section is noise.
+  const snippetLines = (options.snippets ?? []).flatMap((snippet) => [
+    `// Path: ${snippet.path}`,
+    snippet.text,
+  ]);
+
   try {
     const response = await openai.chat.completions.create(
       {
@@ -1116,6 +1137,9 @@ export async function getCompletion(
             role: "user",
             content: [
               ...contextLines,
+              ...(snippetLines.length > 0
+                ? ["<code_definitions>", ...snippetLines, "</code_definitions>"]
+                : []),
               "<code_before_cursor>",
               prefix,
               "</code_before_cursor>",

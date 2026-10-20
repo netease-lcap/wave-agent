@@ -59,6 +59,7 @@ import {
   type SkillMetadata,
   type PluginReloadResult,
   type RemoteControlSnapshot,
+  type CompletionSnippet,
   normalizeEntrypoint,
 } from "wave-agent-sdk";
 import {
@@ -639,6 +640,7 @@ export class AgentBridge {
             suffix?: string;
             language?: string;
             filePath?: string;
+            snippets?: CompletionSnippet[];
           },
           sessionId,
         );
@@ -1191,6 +1193,7 @@ export class AgentBridge {
       suffix?: string;
       language?: string;
       filePath?: string;
+      snippets?: CompletionSnippet[];
     },
     sessionId?: string,
   ): Promise<{ text: string; model: string }> {
@@ -1209,6 +1212,10 @@ export class AgentBridge {
         suffix: params.suffix ?? "",
         ...(params.language ? { language: params.language } : {}),
         ...(params.filePath ? { filePath: params.filePath } : {}),
+        // `undefined` (host cannot collect snippets) and `[]` (tried, found
+        // nothing) stay distinguishable here and both mean "no snippets" to
+        // the model; only an absent field is left out of the call.
+        ...(params.snippets ? { snippets: params.snippets } : {}),
         abortSignal: controller.signal,
       });
     } finally {

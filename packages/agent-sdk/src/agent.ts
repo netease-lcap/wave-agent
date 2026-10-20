@@ -46,6 +46,7 @@ import path from "node:path";
 import { parseTaskNotificationXml } from "./utils/notificationXml.js";
 import { InitializationService } from "./services/initializationService.js";
 import { getCompletion } from "./services/aiService.js";
+import type { CompletionSnippet } from "./types/completion.js";
 import {
   InteractionService,
   type InteractionContext,
@@ -206,6 +207,7 @@ export class Agent {
     suffix: string;
     language?: string;
     filePath?: string;
+    snippets?: CompletionSnippet[];
     abortSignal?: AbortSignal;
   }): Promise<{ text: string; model: string }> {
     const result = await getCompletion({
