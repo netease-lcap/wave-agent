@@ -1,0 +1,1517 @@
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { SidebarExpandIcon } from "./HeaderIcons";
+import { Tooltip } from "./Tooltip";
+import { useHostMessage } from "../utils/useHostMessage";
+import type {
+  ArtifactCategory,
+  ArtifactGalleryItem,
+  ArtifactMemberCandidate,
+  ArtifactShareMode,
+  ArtifactVersionOption,
+} from "wave-webview-fixtures";
+import "../styles/ArtifactsPage.css";
+// 顶栏沿用看板那套壳类（`session-board-*`），与插件市场页同一段让位机制。
+import "../styles/SessionBoard.css";
+
+/**
+ * 创作集（Artifacts 画廊）整页 —— desktop 独有、账号级。
+ *
+ * 形态与「插件市场」同源：替换 pane 行、保留侧栏、自带返回。数据全部经宿主
+ * （主进程 → CLI 进程 RPC）取，webview 不直连网络；分类与归属写本机存储
+ * （`desktopArtifactCategories*`），按账号隔离。
+ *
+ * 规格：docs/specs/desktop/desktop-artifacts.md。
+ */
+
+/** 新建模板（需求文档 v1.19 第二节的七张卡片，逐字保留提示词）。 */
+const NEW_TEMPLATES: Array<{ id: string; name: string; prompt: string }> = [
+  {
+    id: "hifi",
+    name: "高保真原型",
+    prompt:
+      "帮我做一个高保真原型：产品是【一句话说明】，面向【目标用户】，需要覆盖【关键页面和主流程】，视觉风格参考【参考产品或风格】，页面之间可以点击走查。",
+  },
+  {
+    id: "game",
+    name: "网页小游戏",
+    prompt:
+      "帮我做一个网页小游戏：玩法是【核心玩法一句话】，操作方式是【键盘/鼠标/触屏】，难度【简单/中等/挑战】，美术风格【像素/扁平/手绘】，并记录本地最高分。",
+  },
+  {
+    id: "tool",
+    name: "效率工具",
+    prompt:
+      "帮我做一个效率工具：它帮我解决【要解决的问题】，输入是【输入内容】，输出是【期望结果】，希望包含【必备功能】，界面风格【简洁/活泼】。",
+  },
+  {
+    id: "landing",
+    name: "运营活动页",
+    prompt:
+      "帮我做一个运营活动落地页：活动是【活动主题】，面向【目标人群】，希望用户完成【核心动作】，需要包含【活动介绍/规则/奖品/参与入口】，主色是【主视觉色】。",
+  },
+  {
+    id: "doc",
+    name: "文档和模板",
+    prompt:
+      "帮我写一份【文档或模板】：主题是【主题】，读者是【读者与使用场景】，需要包含【章节或字段】，篇幅【一页/多节】，输出为【Markdown/表格】。",
+  },
+  {
+    id: "demo",
+    name: "演示与教学",
+    prompt:
+      "帮我做一份演示与教学页面：主题是【主题】，面向【听众】，分【几个】章节，每章包含讲解要点和示例，形式是【分步教程/交互讲解/幻灯片】。",
+  },
+  {
+    id: "scratch",
+    name: "从零开始",
+    prompt:
+      "我想做【一句话描述】，它要解决【要解决的问题】，给【谁】用，希望包含【必备功能或想要的样子】，风格偏【】。",
+  },
+];
+
+const CATEGORY_NAME_MAX = 20;
+/** 分类名不能与默认视图的分组同名（spec 场景 2 的保留名）。 */
+const RESERVED_CATEGORY_NAMES = ["我发布的", "共享给我的", "全部"];
+
+function nextRequestId(): string {
+  return `artifact-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** 时间列：服务端给 ISO 串，列表按本地 `YYYY-MM-DD HH:mm` 展示。 */
+function formatTime(raw: string | undefined): string {
+  if (!raw) return "—";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const monthDay = `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const clock = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  // 同一年不写年份：这一列在窄窗口里只有约 90px，带年份会被省略号吃掉。
+  return date.getFullYear() === new Date().getFullYear()
+    ? `${monthDay} ${clock}`
+    : `${date.getFullYear()}-${monthDay} ${clock}`;
+}
+
+function timeValue(raw: string | undefined): number {
+  if (!raw) return 0;
+  const t = new Date(raw).getTime();
+  return Number.isNaN(t) ? 0 : t;
+}
+
+/**
+ * 「分享给」列的文案（spec 场景 4）：
+ * - 自有行：仅自己 / 企业成员 / 团队成员 + 最多两位账号（余下省略，`title` 给全）
+ * - 共享行：`—`（范围由对方管理）
+ */
+function shareCell(item: ArtifactGalleryItem): { text: string; title: string } {
+  if (item.rel === "shared") return { text: "—", title: "" };
+  const mode = item.shareMode;
+  if (mode === undefined) return { text: "—", title: "未知" };
+  if (mode === "owner") return { text: "仅自己", title: "仅自己" };
+  if (mode === "org") return { text: "企业成员", title: "企业成员" };
+  const emails = item.sharedEmails ?? [];
+  if (emails.length === 0) return { text: "团队成员", title: "团队成员" };
+  const shown = emails.slice(0, 2).join("、");
+  const text =
+    emails.length > 2
+      ? `团队成员：${shown} 等 ${emails.length} 人`
+      : `团队成员：${shown}`;
+  return { text, title: emails.join("、") };
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Electron 里 file:// 页面的 clipboard API 偶发不可用，退回旧式选区复制。
+    try {
+      const area = document.createElement("textarea");
+      area.value = text;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      const ok = document.execCommand("copy");
+      document.body.removeChild(area);
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+export interface ArtifactsPageProps {
+  /** 返回当前会话（顶栏返回钮；与再次点击侧栏入口等价）。 */
+  onBack: () => void;
+  /** 侧栏已收起：顶栏补「展开侧栏」入口与分割线（看板同款）。 */
+  collapsed?: boolean;
+  onExpandSidebar?: () => void;
+  /** macOS 隐藏标题栏 + 侧栏收起 + 非全屏：顶栏最左端让出红绿灯区。 */
+  macTrafficSpacer?: boolean;
+  vscode?: { postMessage: (msg: unknown) => void };
+  /** artifact 分享链接的前缀（`${serverUrl}/code/artifact/{slug}`）。 */
+  serverUrl?: string;
+  onLogin?: () => void;
+  /** 选完模板：新建一条会话并把提示词预填进输入框（由宿主完成建会话）。 */
+  onNewFromTemplate: (prompt: string) => void;
+}
+
+type ArtifactsView = "default" | "custom";
+type DefaultTab = "mine" | "shared";
+
+interface ConfirmState {
+  kind: "revoke";
+  slug: string;
+  title: string;
+}
+
+interface CategoryDialogState {
+  kind: "create" | "rename" | "delete";
+  categoryId?: string;
+  name?: string;
+}
+
+export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
+  onBack,
+  collapsed = false,
+  onExpandSidebar,
+  macTrafficSpacer = false,
+  vscode,
+  serverUrl,
+  onLogin,
+  onNewFromTemplate,
+}) => {
+  const postMessage = useCallback(
+    (message: unknown) => vscode?.postMessage(message),
+    [vscode],
+  );
+
+  const [items, setItems] = useState<ArtifactGalleryItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [authRequired, setAuthRequired] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [view, setView] = useState<ArtifactsView>("default");
+  const [defaultTab, setDefaultTab] = useState<DefaultTab>("mine");
+  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchOpen, setBatchOpen] = useState(false);
+
+  const [categories, setCategories] = useState<ArtifactCategory[]>([]);
+  const [assignments, setAssignments] = useState<Record<string, string>>({});
+  const [categoryDialog, setCategoryDialog] =
+    useState<CategoryDialogState | null>(null);
+  const [categoryNameDraft, setCategoryNameDraft] = useState("");
+  const [categoryMoveTarget, setCategoryMoveTarget] = useState<string>("");
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+
+  const [shareSlug, setShareSlug] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmState | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const listRequestRef = useRef<string | null>(null);
+  const categoriesRequestRef = useRef<string | null>(null);
+  const categoriesSaveRequestRef = useRef<string | null>(null);
+  const revokeRequestRef = useRef<string | null>(null);
+  const revokeTargetRef = useRef<string | null>(null);
+  // useHostMessage 的处理器只在挂载时注册一次（经 latest ref 读最新闭包），
+  // 撤销回包要调用的 handleRevoked 在其后定义 —— 经 ref 取。
+  const handleRevokedRef = useRef<(slug: string) => void>(() => {});
+
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+  }, []);
+
+  useEffect(() => {
+    if (toast === null) return;
+    const timer = window.setTimeout(() => setToast(null), 2200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  const requestList = useCallback(
+    (isRefresh = false) => {
+      const requestId = nextRequestId();
+      listRequestRef.current = requestId;
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
+      setError(null);
+      postMessage({ command: "desktopArtifactsList", requestId });
+    },
+    [postMessage],
+  );
+
+  const requestCategories = useCallback(() => {
+    const requestId = nextRequestId();
+    categoriesRequestRef.current = requestId;
+    postMessage({ command: "desktopArtifactCategoriesGet", requestId });
+  }, [postMessage]);
+
+  useEffect(() => {
+    requestList();
+    requestCategories();
+  }, [requestList, requestCategories]);
+
+  const saveCategories = useCallback(
+    (
+      nextCategories: ArtifactCategory[],
+      nextAssignments: Record<string, string>,
+    ) => {
+      // 先局部生效（分类是本机数据，写失败也不影响这次编辑的可见性），失败
+      // 再以轻提示告知 —— 写的是 userData，失败意味着重启后这次编辑会丢。
+      setCategories(nextCategories);
+      setAssignments(nextAssignments);
+      const requestId = nextRequestId();
+      categoriesSaveRequestRef.current = requestId;
+      postMessage({
+        command: "desktopArtifactCategoriesSave",
+        requestId,
+        categories: nextCategories,
+        assignments: nextAssignments,
+      });
+    },
+    [postMessage],
+  );
+
+  useHostMessage((message) => {
+    const data = message as { command?: string; requestId?: string };
+    switch (data.command) {
+      case "desktopArtifactsList": {
+        if (data.requestId !== listRequestRef.current) return;
+        const payload = message as {
+          items?: ArtifactGalleryItem[];
+          error?: string;
+          authRequired?: boolean;
+        };
+        setLoading(false);
+        setRefreshing(false);
+        if (payload.authRequired) {
+          setAuthRequired(true);
+          setError(null);
+          return;
+        }
+        setAuthRequired(false);
+        if (payload.error) {
+          // 已渲染的数据不清空（spec 场景 7）：只给出错误与重试。
+          setError(payload.error);
+          return;
+        }
+        setError(null);
+        setItems(payload.items ?? []);
+        return;
+      }
+      case "desktopArtifactCategories": {
+        if (data.requestId !== categoriesRequestRef.current) return;
+        const payload = message as {
+          categories?: ArtifactCategory[];
+          assignments?: Record<string, string>;
+        };
+        setCategories(payload.categories ?? []);
+        setAssignments(payload.assignments ?? {});
+        return;
+      }
+      case "desktopArtifactCategoriesSaved": {
+        if (data.requestId !== categoriesSaveRequestRef.current) return;
+        categoriesSaveRequestRef.current = null;
+        const payload = message as { ok?: boolean; error?: string };
+        if (payload.ok === false) {
+          showToast(payload.error ?? "分类保存失败");
+        }
+        return;
+      }
+      case "desktopArtifactRevoke": {
+        if (data.requestId !== revokeRequestRef.current) return;
+        const payload = message as { ok?: boolean; error?: string };
+        const slug = revokeTargetRef.current;
+        revokeRequestRef.current = null;
+        revokeTargetRef.current = null;
+        if (payload.ok) {
+          if (slug) handleRevokedRef.current(slug);
+          showToast("已撤销发布");
+        } else {
+          showToast(payload.error ?? "撤销发布失败");
+        }
+        return;
+      }
+      default:
+        return;
+    }
+  });
+
+  // ── 派生数据 ────────────────────────────────────────────────────────────
+
+  const scopeItems = useMemo(() => {
+    const inScope = items.filter((item) => {
+      if (view === "default") return item.rel === defaultTab;
+      if (activeCategoryId === null) return true;
+      return assignments[item.slug] === activeCategoryId;
+    });
+    const keyword = search.trim().toLowerCase();
+    const filtered = keyword
+      ? inScope.filter((item) => item.title.toLowerCase().includes(keyword))
+      : inScope;
+    return [...filtered].sort((a, b) => {
+      const diff = timeValue(b.updatedAt) - timeValue(a.updatedAt);
+      if (diff !== 0) return diff;
+      return a.title.localeCompare(b.title);
+    });
+  }, [items, view, defaultTab, activeCategoryId, assignments, search]);
+
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const item of items) {
+      const cat = assignments[item.slug];
+      if (cat) counts[cat] = (counts[cat] ?? 0) + 1;
+    }
+    return counts;
+  }, [items, assignments]);
+
+  const emptyText =
+    view === "default"
+      ? defaultTab === "mine"
+        ? "还没有创作"
+        : "还没有人分享给你"
+      : activeCategoryId === null
+        ? "还没有创作"
+        : "这个分类下还没有文件";
+
+  // ── 行内动作 ────────────────────────────────────────────────────────────
+
+  const artifactUrl = useCallback(
+    (slug: string) =>
+      `${(serverUrl ?? "").replace(/\/$/, "")}/code/artifact/${slug}`,
+    [serverUrl],
+  );
+
+  const handleCopyLink = useCallback(
+    async (slug: string) => {
+      const ok = await copyText(artifactUrl(slug));
+      showToast(ok ? "链接已复制" : "复制失败，请手动复制");
+    },
+    [artifactUrl, showToast],
+  );
+
+  const handleOpenInBrowser = useCallback(
+    (slug: string) => {
+      postMessage({ command: "openExternal", url: artifactUrl(slug) });
+    },
+    [artifactUrl, postMessage],
+  );
+
+  const applyShareToRow = useCallback(
+    (slug: string, mode: ArtifactShareMode, emails: string[]) => {
+      setItems((prev) =>
+        prev.map((item) =>
+          item.slug === slug
+            ? {
+                ...item,
+                shareMode: mode,
+                sharedEmails: mode === "users" ? emails : undefined,
+              }
+            : item,
+        ),
+      );
+    },
+    [],
+  );
+
+  const handleRevoked = useCallback((slug: string) => {
+    setItems((prev) => prev.filter((item) => item.slug !== slug));
+    setSelected((prev) => {
+      if (!prev.has(slug)) return prev;
+      const next = new Set(prev);
+      next.delete(slug);
+      return next;
+    });
+  }, []);
+
+  handleRevokedRef.current = handleRevoked;
+
+  // ── 分类写动作 ──────────────────────────────────────────────────────────
+
+  const openCategoryDialog = useCallback((dialog: CategoryDialogState) => {
+    setCategoryError(null);
+    setCategoryNameDraft(dialog.name ?? "");
+    setCategoryMoveTarget("");
+    setCategoryDialog(dialog);
+  }, []);
+
+  const validateCategoryName = useCallback(
+    (name: string, excludeId?: string): string | null => {
+      const trimmed = name.trim();
+      if (!trimmed) return "请输入分类名称";
+      if (trimmed.length > CATEGORY_NAME_MAX)
+        return `分类名称最多 ${CATEGORY_NAME_MAX} 个字`;
+      if (RESERVED_CATEGORY_NAMES.includes(trimmed)) {
+        return "这是默认视图的分组名，请换一个";
+      }
+      if (categories.some((c) => c.id !== excludeId && c.name === trimmed)) {
+        return "分类名称不能重复";
+      }
+      return null;
+    },
+    [categories],
+  );
+
+  const handleCategorySubmit = useCallback(() => {
+    if (!categoryDialog) return;
+    if (categoryDialog.kind === "delete") {
+      const categoryId = categoryDialog.categoryId ?? "";
+      const affected = Object.entries(assignments).filter(
+        ([, value]) => value === categoryId,
+      );
+      const nextCategories = categories.filter((c) => c.id !== categoryId);
+      const nextAssignments = { ...assignments };
+      if (affected.length > 0) {
+        if (!categoryMoveTarget) {
+          setCategoryError("请选择要把这些文件移入的分类");
+          return;
+        }
+        for (const [slug] of affected) {
+          if (categoryMoveTarget === "__none__") delete nextAssignments[slug];
+          else nextAssignments[slug] = categoryMoveTarget;
+        }
+      }
+      saveCategories(nextCategories, nextAssignments);
+      if (activeCategoryId === categoryId) setActiveCategoryId(null);
+      setCategoryDialog(null);
+      showToast("分类已删除");
+      return;
+    }
+
+    const nameError = validateCategoryName(
+      categoryNameDraft,
+      categoryDialog.kind === "rename" ? categoryDialog.categoryId : undefined,
+    );
+    if (nameError) {
+      setCategoryError(nameError);
+      return;
+    }
+    const trimmed = categoryNameDraft.trim();
+    if (categoryDialog.kind === "create") {
+      // 新分类排在末尾并自动选中，列表随之切到该分类（此时为空态）。
+      const created = { id: `cat-${Date.now()}`, name: trimmed };
+      saveCategories([...categories, created], assignments);
+      setActiveCategoryId(created.id);
+      showToast("分类已创建");
+    } else {
+      saveCategories(
+        categories.map((c) =>
+          c.id === categoryDialog.categoryId ? { ...c, name: trimmed } : c,
+        ),
+        assignments,
+      );
+      showToast("分类已重命名");
+    }
+    setCategoryDialog(null);
+  }, [
+    categoryDialog,
+    categoryNameDraft,
+    categoryMoveTarget,
+    assignments,
+    categories,
+    activeCategoryId,
+    saveCategories,
+    showToast,
+    validateCategoryName,
+  ]);
+
+  const handleBatchAssign = useCallback(
+    (categoryId: string | null) => {
+      const nextAssignments = { ...assignments };
+      for (const slug of selected) {
+        if (categoryId === null) delete nextAssignments[slug];
+        else nextAssignments[slug] = categoryId;
+      }
+      saveCategories(categories, nextAssignments);
+      setSelected(new Set());
+      setBatchOpen(false);
+      showToast(categoryId === null ? "已移出分类" : "已归类");
+    },
+    [assignments, categories, selected, saveCategories, showToast],
+  );
+
+  // ── 渲染 ────────────────────────────────────────────────────────────────
+
+  const toggleSelection = (slug: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+  };
+
+  const allSelected =
+    scopeItems.length > 0 &&
+    scopeItems.every((item) => selected.has(item.slug));
+
+  return (
+    <div className="artifacts-page" data-testid="artifacts-page">
+      <div className="session-board-toolbar">
+        {macTrafficSpacer && (
+          <div
+            className="session-board-mac-traffic"
+            aria-hidden="true"
+            data-testid="artifacts-mac-traffic"
+          />
+        )}
+        {collapsed && (
+          <>
+            {onExpandSidebar && (
+              <Tooltip text="展开侧边栏" position="bottom">
+                <button
+                  type="button"
+                  className="session-board-icon-btn"
+                  onClick={onExpandSidebar}
+                  data-testid="artifacts-expand-sidebar"
+                  aria-label="展开侧边栏"
+                >
+                  <SidebarExpandIcon />
+                </button>
+              </Tooltip>
+            )}
+            <span className="session-board-toolbar-divider" />
+          </>
+        )}
+        <button
+          type="button"
+          className="session-board-back"
+          onClick={onBack}
+          title="返回当前会话"
+          data-testid="artifacts-back"
+        >
+          <span className="codicon codicon-arrow-left" aria-hidden="true" />
+          返回当前会话
+        </button>
+      </div>
+
+      <div className="artifacts-content">
+        <div className="artifacts-header">
+          <div className="artifacts-header-left">
+            <div className="artifacts-segment" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === "default"}
+                className={`artifacts-segment-btn${view === "default" ? " is-active" : ""}`}
+                onClick={() => {
+                  setView("default");
+                  setSelected(new Set());
+                }}
+                data-testid="artifacts-view-default"
+              >
+                默认视图
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={view === "custom"}
+                className={`artifacts-segment-btn${view === "custom" ? " is-active" : ""}`}
+                onClick={() => setView("custom")}
+                data-testid="artifacts-view-custom"
+              >
+                自定义视图
+              </button>
+            </div>
+            {view === "custom" && (
+              <button
+                type="button"
+                className="artifacts-link-btn"
+                onClick={() => openCategoryDialog({ kind: "create" })}
+                data-testid="artifacts-new-category"
+              >
+                新建分类
+              </button>
+            )}
+            <button
+              type="button"
+              className="artifacts-refresh-btn"
+              onClick={() => requestList(true)}
+              disabled={refreshing || loading}
+              data-testid="artifacts-refresh"
+            >
+              {refreshing ? "刷新中…" : "刷新"}
+            </button>
+          </div>
+          <div className="artifacts-header-right">
+            <input
+              className="artifacts-search"
+              placeholder="按文件名搜索"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              data-testid="artifacts-search"
+              aria-label="按文件名搜索"
+            />
+            <button
+              type="button"
+              className="artifacts-primary-btn"
+              onClick={() => setNewOpen(true)}
+              data-testid="artifacts-new"
+            >
+              新建
+            </button>
+          </div>
+        </div>
+
+        <div className="artifacts-body">
+          <aside className="artifacts-nav" data-testid="artifacts-nav">
+            {view === "default" ? (
+              <>
+                <button
+                  type="button"
+                  className={`artifacts-nav-item${defaultTab === "mine" ? " is-active" : ""}`}
+                  onClick={() => {
+                    setDefaultTab("mine");
+                    setSelected(new Set());
+                  }}
+                  data-testid="artifacts-tab-mine"
+                >
+                  我发布的
+                </button>
+                <button
+                  type="button"
+                  className={`artifacts-nav-item${defaultTab === "shared" ? " is-active" : ""}`}
+                  onClick={() => {
+                    setDefaultTab("shared");
+                    setSelected(new Set());
+                  }}
+                  data-testid="artifacts-tab-shared"
+                >
+                  共享给我的
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className={`artifacts-nav-item${activeCategoryId === null ? " is-active" : ""}`}
+                  onClick={() => {
+                    setActiveCategoryId(null);
+                    setSelected(new Set());
+                  }}
+                  data-testid="artifacts-category-all"
+                >
+                  全部
+                </button>
+                {categories.map((category) => (
+                  <div key={category.id} className="artifacts-nav-row">
+                    <button
+                      type="button"
+                      className={`artifacts-nav-item${activeCategoryId === category.id ? " is-active" : ""}`}
+                      onClick={() => {
+                        setActiveCategoryId(category.id);
+                        setSelected(new Set());
+                      }}
+                      data-testid={`artifacts-category-${category.id}`}
+                    >
+                      {category.name}
+                      <span className="artifacts-nav-count">
+                        {categoryCounts[category.id] ?? 0}
+                      </span>
+                    </button>
+                    <span className="artifacts-nav-actions">
+                      <button
+                        type="button"
+                        className="artifacts-icon-btn"
+                        title="重命名分类"
+                        aria-label={`重命名分类 ${category.name}`}
+                        onClick={() =>
+                          openCategoryDialog({
+                            kind: "rename",
+                            categoryId: category.id,
+                            name: category.name,
+                          })
+                        }
+                      >
+                        编辑
+                      </button>
+                      <button
+                        type="button"
+                        className="artifacts-icon-btn"
+                        title="删除分类"
+                        aria-label={`删除分类 ${category.name}`}
+                        onClick={() =>
+                          openCategoryDialog({
+                            kind: "delete",
+                            categoryId: category.id,
+                            name: category.name,
+                          })
+                        }
+                      >
+                        删除
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </>
+            )}
+          </aside>
+
+          <div className="artifacts-main">
+            {view === "custom" && selected.size > 0 && (
+              <div className="artifacts-batch" data-testid="artifacts-batch">
+                <span>已选 {selected.size} 项</span>
+                <div className="artifacts-batch-actions">
+                  <button
+                    type="button"
+                    className="artifacts-secondary-btn"
+                    onClick={() => setBatchOpen((prev) => !prev)}
+                    data-testid="artifacts-batch-assign"
+                  >
+                    归类到…
+                  </button>
+                  <button
+                    type="button"
+                    className="artifacts-link-btn"
+                    onClick={() => setSelected(new Set())}
+                  >
+                    取消选择
+                  </button>
+                  {batchOpen && (
+                    <div className="artifacts-menu" role="menu">
+                      {categories.map((category) => (
+                        <button
+                          key={category.id}
+                          type="button"
+                          role="menuitem"
+                          onClick={() => handleBatchAssign(category.id)}
+                          data-testid={`artifacts-batch-${category.id}`}
+                        >
+                          {category.name}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => handleBatchAssign(null)}
+                        data-testid="artifacts-batch-remove"
+                      >
+                        移出分类
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {authRequired ? (
+              <div className="artifacts-state" data-testid="artifacts-auth">
+                <p>请先登录后再查看创作集。</p>
+                {onLogin && (
+                  <button
+                    type="button"
+                    className="artifacts-primary-btn"
+                    onClick={onLogin}
+                  >
+                    去登录
+                  </button>
+                )}
+              </div>
+            ) : loading ? (
+              <div className="artifacts-state" data-testid="artifacts-loading">
+                加载中…
+              </div>
+            ) : error ? (
+              <div className="artifacts-state" data-testid="artifacts-error">
+                <p>{error}</p>
+                <button
+                  type="button"
+                  className="artifacts-secondary-btn"
+                  onClick={() => requestList(true)}
+                >
+                  重试
+                </button>
+              </div>
+            ) : scopeItems.length === 0 ? (
+              <div className="artifacts-state" data-testid="artifacts-empty">
+                {emptyText}
+              </div>
+            ) : (
+              <table className="artifacts-table" data-testid="artifacts-table">
+                <thead>
+                  <tr>
+                    {view === "custom" && (
+                      <th className="artifacts-col-check">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          aria-label="全选"
+                          data-testid="artifacts-select-all"
+                          onChange={(event) => {
+                            if (event.target.checked) {
+                              setSelected(
+                                new Set(scopeItems.map((item) => item.slug)),
+                              );
+                            } else {
+                              setSelected(new Set());
+                            }
+                          }}
+                        />
+                      </th>
+                    )}
+                    <th className="artifacts-col-name">文件名称</th>
+                    <th className="artifacts-col-owner">发布人</th>
+                    <th className="artifacts-col-time">最近发布时间</th>
+                    <th className="artifacts-col-share">分享给</th>
+                    <th className="artifacts-col-actions">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scopeItems.map((item) => {
+                    const share = shareCell(item);
+                    return (
+                      <tr
+                        key={item.slug}
+                        data-testid={`artifacts-row-${item.slug}`}
+                      >
+                        {view === "custom" && (
+                          <td className="artifacts-col-check">
+                            <input
+                              type="checkbox"
+                              checked={selected.has(item.slug)}
+                              aria-label={`选择 ${item.title}`}
+                              onChange={() => toggleSelection(item.slug)}
+                            />
+                          </td>
+                        )}
+                        <td className="artifacts-col-name">
+                          <button
+                            type="button"
+                            className="artifacts-file-btn"
+                            title={item.title}
+                            onClick={() => handleOpenInBrowser(item.slug)}
+                            data-testid={`artifacts-open-${item.slug}`}
+                          >
+                            <span
+                              className="codicon codicon-file-code"
+                              aria-hidden="true"
+                            />
+                            <span className="artifacts-file-name">
+                              {item.title}
+                            </span>
+                          </button>
+                        </td>
+                        <td className="artifacts-col-owner">
+                          <span title={item.ownerEmail ?? ""}>
+                            {item.ownerEmail ?? "—"}
+                          </span>
+                        </td>
+                        <td className="artifacts-col-time">
+                          {formatTime(item.updatedAt)}
+                        </td>
+                        <td className="artifacts-col-share">
+                          <span
+                            className="artifacts-share-text"
+                            title={share.title}
+                          >
+                            {share.text}
+                          </span>
+                        </td>
+                        <td className="artifacts-col-actions">
+                          <button
+                            type="button"
+                            className="artifacts-icon-btn"
+                            onClick={() => handleCopyLink(item.slug)}
+                            data-testid={`artifacts-copy-${item.slug}`}
+                          >
+                            复制链接
+                          </button>
+                          <button
+                            type="button"
+                            className="artifacts-icon-btn"
+                            onClick={() => handleOpenInBrowser(item.slug)}
+                            data-testid={`artifacts-browser-${item.slug}`}
+                          >
+                            在浏览器中打开
+                          </button>
+                          {item.rel === "mine" && (
+                            <button
+                              type="button"
+                              className="artifacts-icon-btn"
+                              onClick={() => setShareSlug(item.slug)}
+                              data-testid={`artifacts-share-${item.slug}`}
+                            >
+                              分享
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {shareSlug && (
+        <ShareDialog
+          slug={shareSlug}
+          postMessage={postMessage}
+          onClose={() => setShareSlug(null)}
+          onSaved={(mode, emails, message) => {
+            applyShareToRow(shareSlug, mode, emails);
+            showToast(message);
+            setShareSlug(null);
+          }}
+          onRevokeRequest={(title) => {
+            setShareSlug(null);
+            setConfirm({ kind: "revoke", slug: shareSlug, title });
+          }}
+        />
+      )}
+
+      {confirm && (
+        <Modal
+          title="撤销发布"
+          testid="artifacts-revoke-dialog"
+          onClose={() => setConfirm(null)}
+          footer={
+            <>
+              <button
+                type="button"
+                className="artifacts-secondary-btn"
+                onClick={() => setConfirm(null)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="artifacts-danger-btn"
+                onClick={() => {
+                  const requestId = nextRequestId();
+                  revokeRequestRef.current = requestId;
+                  revokeTargetRef.current = confirm.slug;
+                  postMessage({
+                    command: "desktopArtifactRevoke",
+                    requestId,
+                    slug: confirm.slug,
+                  });
+                  setConfirm(null);
+                }}
+                data-testid="artifacts-revoke-confirm"
+              >
+                撤销发布
+              </button>
+            </>
+          }
+        >
+          <p>
+            「{confirm.title}」撤销后将不再出现在创作集里，分享链接失效；
+            <strong>不会删除本地文件</strong>。
+          </p>
+        </Modal>
+      )}
+
+      {newOpen && (
+        <Modal
+          title="新建"
+          testid="artifacts-new-dialog"
+          onClose={() => setNewOpen(false)}
+          footer={null}
+        >
+          <p className="artifacts-hint">
+            选择你要创建的类型，跳转到对话页并预填提示词。
+          </p>
+          <div className="artifacts-template-grid">
+            {NEW_TEMPLATES.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                className="artifacts-template-card"
+                onClick={() => {
+                  setNewOpen(false);
+                  onNewFromTemplate(template.prompt);
+                }}
+                data-testid={`artifacts-template-${template.id}`}
+              >
+                <span className="artifacts-template-name">{template.name}</span>
+                <span className="artifacts-template-desc">
+                  {template.prompt}
+                </span>
+              </button>
+            ))}
+          </div>
+        </Modal>
+      )}
+
+      {categoryDialog && (
+        <Modal
+          title={
+            categoryDialog.kind === "create"
+              ? "新建分类"
+              : categoryDialog.kind === "rename"
+                ? "重命名分类"
+                : "删除分类"
+          }
+          testid="artifacts-category-dialog"
+          onClose={() => setCategoryDialog(null)}
+          footer={
+            <>
+              <button
+                type="button"
+                className="artifacts-secondary-btn"
+                onClick={() => setCategoryDialog(null)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className={
+                  categoryDialog.kind === "delete"
+                    ? "artifacts-danger-btn"
+                    : "artifacts-primary-btn"
+                }
+                onClick={handleCategorySubmit}
+                data-testid="artifacts-category-confirm"
+              >
+                {categoryDialog.kind === "delete" ? "删除" : "确定"}
+              </button>
+            </>
+          }
+        >
+          {categoryDialog.kind === "delete" ? (
+            <div className="artifacts-form">
+              <p>
+                {categoryDialog.name !== undefined
+                  ? `删除分类「${categoryDialog.name}」后不可恢复。`
+                  : "删除分类后不可恢复。"}
+              </p>
+              {(categoryCounts[categoryDialog.categoryId ?? ""] ?? 0) > 0 && (
+                <>
+                  <p>
+                    该分类下有{" "}
+                    {categoryCounts[categoryDialog.categoryId ?? ""] ?? 0}{" "}
+                    个文件，请先把它们移入另一个分类。
+                  </p>
+                  <label className="artifacts-field">
+                    <span>移入</span>
+                    <select
+                      value={categoryMoveTarget}
+                      onChange={(event) =>
+                        setCategoryMoveTarget(event.target.value)
+                      }
+                      data-testid="artifacts-category-move-target"
+                    >
+                      <option value="">请选择分类</option>
+                      {categories
+                        .filter((c) => c.id !== categoryDialog.categoryId)
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      <option value="__none__">移出分类（全部）</option>
+                    </select>
+                  </label>
+                </>
+              )}
+              {categoryError && (
+                <p className="artifacts-form-error">{categoryError}</p>
+              )}
+            </div>
+          ) : (
+            <div className="artifacts-form">
+              <label className="artifacts-field">
+                <span>名称</span>
+                <input
+                  value={categoryNameDraft}
+                  maxLength={CATEGORY_NAME_MAX + 10}
+                  autoFocus
+                  onChange={(event) => {
+                    setCategoryNameDraft(event.target.value);
+                    setCategoryError(null);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") handleCategorySubmit();
+                  }}
+                  data-testid="artifacts-category-name"
+                />
+              </label>
+              <p className="artifacts-hint">
+                最多 {CATEGORY_NAME_MAX} 个字，名称不能重复。
+              </p>
+              {categoryError && (
+                <p className="artifacts-form-error">{categoryError}</p>
+              )}
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {toast && (
+        <div
+          className="artifacts-toast"
+          role="status"
+          data-testid="artifacts-toast"
+        >
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── 分享弹层 ──────────────────────────────────────────────────────────────
+
+interface ShareDialogProps {
+  slug: string;
+  postMessage: (message: unknown) => void;
+  onClose: () => void;
+  onSaved: (mode: ArtifactShareMode, emails: string[], message: string) => void;
+  onRevokeRequest: (title: string) => void;
+}
+
+const ShareDialog: React.FC<ShareDialogProps> = ({
+  slug,
+  postMessage,
+  onClose,
+  onSaved,
+  onRevokeRequest,
+}) => {
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [title, setTitle] = useState("");
+  const [mode, setMode] = useState<ArtifactShareMode>("owner");
+  const [pinnedVersion, setPinnedVersion] = useState<string>("");
+  const [versions, setVersions] = useState<ArtifactVersionOption[]>([]);
+  const [selectedMembers, setSelectedMembers] = useState<
+    ArtifactMemberCandidate[]
+  >([]);
+  const [memberQuery, setMemberQuery] = useState("");
+  const [candidates, setCandidates] = useState<ArtifactMemberCandidate[]>([]);
+  const [memberError, setMemberError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const viewRequestRef = useRef<string | null>(null);
+  const memberRequestRef = useRef<string | null>(null);
+  const saveRequestRef = useRef<string | null>(null);
+
+  const requestMembers = useCallback(
+    (query: string) => {
+      const requestId = nextRequestId();
+      memberRequestRef.current = requestId;
+      setMemberError(null);
+      postMessage({
+        command: "desktopArtifactMembersSearch",
+        requestId,
+        search: query,
+      });
+    },
+    [postMessage],
+  );
+
+  useEffect(() => {
+    const requestId = nextRequestId();
+    viewRequestRef.current = requestId;
+    postMessage({ command: "desktopArtifactShareView", requestId, slug });
+  }, [postMessage, slug]);
+
+  useEffect(() => {
+    if (mode !== "users") return;
+    requestMembers(memberQuery);
+  }, [mode, memberQuery, requestMembers]);
+
+  useHostMessage((message) => {
+    const data = message as { command?: string; requestId?: string };
+    if (data.command === "desktopArtifactShareView") {
+      if (data.requestId !== viewRequestRef.current) return;
+      const payload = message as {
+        title?: string;
+        mode?: ArtifactShareMode;
+        pinnedVersion?: number | null;
+        sharedUsers?: ArtifactMemberCandidate[];
+        versions?: ArtifactVersionOption[];
+        error?: string;
+      };
+      setLoading(false);
+      if (payload.error) {
+        setLoadError(payload.error);
+        return;
+      }
+      setTitle(payload.title ?? slug);
+      setMode(payload.mode ?? "owner");
+      setPinnedVersion(
+        payload.pinnedVersion === null || payload.pinnedVersion === undefined
+          ? ""
+          : String(payload.pinnedVersion),
+      );
+      setVersions(payload.versions ?? []);
+      setSelectedMembers(payload.sharedUsers ?? []);
+      return;
+    }
+    if (data.command === "desktopArtifactMembersSearch") {
+      if (data.requestId !== memberRequestRef.current) return;
+      const payload = message as {
+        members?: ArtifactMemberCandidate[];
+        error?: string;
+      };
+      if (payload.error) {
+        setMemberError(payload.error);
+        return;
+      }
+      setMemberError(null);
+      setCandidates(payload.members ?? []);
+      return;
+    }
+    if (data.command === "desktopArtifactShareSave") {
+      if (data.requestId !== saveRequestRef.current) return;
+      const payload = message as {
+        mode?: ArtifactShareMode;
+        userIds?: string[];
+        pinnedVersion?: number | null;
+        error?: string;
+        notFound?: boolean;
+      };
+      setSaving(false);
+      if (payload.error) {
+        setSaveError(payload.notFound ? "该创作已被撤销" : payload.error);
+        return;
+      }
+      const emails = selectedMembers.map((m) => m.email);
+      onSaved(payload.mode ?? mode, emails, "分享设置已保存");
+      return;
+    }
+  });
+
+  const toggleMember = (member: ArtifactMemberCandidate) => {
+    setSelectedMembers((prev) =>
+      prev.some((m) => m.userId === member.userId)
+        ? prev.filter((m) => m.userId !== member.userId)
+        : [...prev, member],
+    );
+  };
+
+  const handleSave = () => {
+    if (mode === "users" && selectedMembers.length === 0) {
+      setSaveError("请至少选择 1 位用户");
+      return;
+    }
+    setSaveError(null);
+    setSaving(true);
+    const requestId = nextRequestId();
+    saveRequestRef.current = requestId;
+    postMessage({
+      command: "desktopArtifactShareSave",
+      requestId,
+      slug,
+      mode,
+      userIds:
+        mode === "users" ? selectedMembers.map((m) => m.userId) : undefined,
+      pinnedVersion: pinnedVersion === "" ? null : Number(pinnedVersion),
+    });
+  };
+
+  return (
+    <Modal
+      title="分享"
+      testid="artifacts-share-dialog"
+      onClose={onClose}
+      footer={
+        <>
+          <button
+            type="button"
+            className="artifacts-danger-link"
+            onClick={() => onRevokeRequest(title || slug)}
+            data-testid="artifacts-share-revoke"
+          >
+            撤销发布
+          </button>
+          <span className="artifacts-footer-spacer" />
+          <button
+            type="button"
+            className="artifacts-secondary-btn"
+            onClick={onClose}
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            className="artifacts-primary-btn"
+            onClick={handleSave}
+            disabled={saving || loading || !!loadError}
+            data-testid="artifacts-share-save"
+          >
+            {saving ? "保存中…" : "保存"}
+          </button>
+        </>
+      }
+    >
+      {loading ? (
+        <p>加载中…</p>
+      ) : loadError ? (
+        <p className="artifacts-form-error">{loadError}</p>
+      ) : (
+        <div className="artifacts-form">
+          <p className="artifacts-share-title" title={title}>
+            {title}
+          </p>
+          <fieldset className="artifacts-fieldset">
+            <legend>分享给</legend>
+            {(
+              [
+                ["owner", "仅自己"],
+                ["users", "指定用户"],
+                ["org", "企业成员"],
+              ] as Array<[ArtifactShareMode, string]>
+            ).map(([value, label]) => (
+              <label key={value} className="artifacts-radio">
+                <input
+                  type="radio"
+                  name="artifact-share-mode"
+                  checked={mode === value}
+                  onChange={() => setMode(value)}
+                  data-testid={`artifacts-share-mode-${value}`}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+          </fieldset>
+
+          {mode === "users" && (
+            <div
+              className="artifacts-member-picker"
+              data-testid="artifacts-member-picker"
+            >
+              {selectedMembers.length > 0 && (
+                <div className="artifacts-selected-members">
+                  {selectedMembers.map((member) => (
+                    <span key={member.userId} className="artifacts-chip">
+                      {member.email}
+                      <button
+                        type="button"
+                        aria-label={`取消选择 ${member.email}`}
+                        onClick={() => toggleMember(member)}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <input
+                className="artifacts-search"
+                placeholder="按邮箱搜索成员"
+                value={memberQuery}
+                onChange={(event) => setMemberQuery(event.target.value)}
+                data-testid="artifacts-member-search"
+                aria-label="按邮箱搜索成员"
+              />
+              {memberError ? (
+                <div className="artifacts-member-error">
+                  <span>{memberError}</span>
+                  <button
+                    type="button"
+                    className="artifacts-link-btn"
+                    onClick={() => requestMembers(memberQuery)}
+                  >
+                    重试
+                  </button>
+                </div>
+              ) : (
+                <ul className="artifacts-member-list">
+                  {candidates.length === 0 ? (
+                    <li className="artifacts-member-empty">没有匹配的成员</li>
+                  ) : (
+                    candidates.map((member) => {
+                      const checked = selectedMembers.some(
+                        (m) => m.userId === member.userId,
+                      );
+                      return (
+                        <li key={member.userId}>
+                          <label className="artifacts-member-row">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleMember(member)}
+                              data-testid={`artifacts-member-${member.userId}`}
+                            />
+                            <span>{member.email}</span>
+                          </label>
+                        </li>
+                      );
+                    })
+                  )}
+                </ul>
+              )}
+            </div>
+          )}
+
+          <label className="artifacts-field">
+            <span>查看者版本</span>
+            <select
+              value={pinnedVersion}
+              onChange={(event) => setPinnedVersion(event.target.value)}
+              data-testid="artifacts-share-version"
+            >
+              <option value="">最新版本</option>
+              {versions.map((version) => (
+                <option key={version.version} value={String(version.version)}>
+                  {`v${version.version}${version.label ? ` · ${version.label}` : ""}`}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {saveError && <p className="artifacts-form-error">{saveError}</p>}
+        </div>
+      )}
+    </Modal>
+  );
+};
+
+// ── 通用弹层 ──────────────────────────────────────────────────────────────
+
+interface ModalProps {
+  title: string;
+  testid: string;
+  children: React.ReactNode;
+  footer: React.ReactNode;
+  onClose: () => void;
+}
+
+const Modal: React.FC<ModalProps> = ({
+  title,
+  testid,
+  children,
+  footer,
+  onClose,
+}) => (
+  <div className="artifacts-modal-backdrop" onClick={onClose}>
+    <div
+      className="artifacts-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      data-testid={testid}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="artifacts-modal-header">
+        <span>{title}</span>
+        <button
+          type="button"
+          className="artifacts-modal-close"
+          aria-label="关闭"
+          onClick={onClose}
+        >
+          ×
+        </button>
+      </div>
+      <div className="artifacts-modal-body">{children}</div>
+      {footer && <div className="artifacts-modal-footer">{footer}</div>}
+    </div>
+  </div>
+);
+
+export default ArtifactsPage;

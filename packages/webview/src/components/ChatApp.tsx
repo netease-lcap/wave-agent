@@ -42,6 +42,7 @@ import { SessionBoard } from "./SessionBoard";
 import { SessionListPopup } from "./SessionListPopup";
 import type { SessionMetadata } from "wave-agent-sdk/types";
 import { PluginMarketPage } from "./PluginMarketPage";
+import { ArtifactsPage } from "./ArtifactsPage";
 import { DesktopWorkdirSelector } from "./DesktopWorkdirSelector";
 import { DesktopWorktreeControls } from "./DesktopWorktreeControls";
 import { PreviewPane } from "./PreviewPane";
@@ -72,7 +73,11 @@ import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/constants";
 // part of the host → webview contract (fixtures defines `PushState`), and the
 // import is erased so nothing runtime-bound survives.
 import type { PushState } from "wave-webview-fixtures";
-import { collectWriteEditBlocks, pathsMatch } from "../utils/fileAutoRefresh";
+import {
+  collectWriteEditBlocks,
+  GENERATED_DOC_EXT,
+  pathsMatch,
+} from "../utils/fileAutoRefresh";
 import { toAbsoluteFilePath } from "../utils/messageUtils";
 import { isMacHiddenTitlebar, isRemotePageHost } from "../utils/platform";
 import { chatReducer, initialState } from "../reducers/chatReducer";
@@ -432,6 +437,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 插件市场整页（spec ecosystem/plugin.md「插件市场」场景 1/2）：侧边栏入口打开的
   // 整页视图，同为「后开者优先」——与设置页、会话状态看板互斥。
   const [pluginMarketOpen, setPluginMarketOpen] = useState(false);
+  // 创作集整页（spec desktop/desktop-artifacts.md）：与插件市场同为账号级整页，
+  // 两者互斥（同一时刻只覆盖 pane 行一次）。
+  const [artifactsOpen, setArtifactsOpen] = useState(false);
   // 桌面端主题偏好（host 为真源）：**只**由未打标签的窗口级广播
   // desktopThemeSource 驱动（启动时 host 会随其它窗口级状态推一次）。曾经的
   // setInitialState.theme 副本已删除——那是 pane 作用域消息，而渲染设置页的是
@@ -790,7 +798,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     !settingsOpen && !sessionBoardOpen && !pluginMarketOpen,
   );
   rowsVisibleRef.current =
-    !settingsOpen && !sessionBoardOpen && !pluginMarketOpen;
+    !settingsOpen && !sessionBoardOpen && !pluginMarketOpen && !artifactsOpen;
 
   // Keep stateRef in sync with state
   useEffect(() => {
@@ -2261,6 +2269,33 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setPluginMarketOpen(false);
   }, []);
 
+  const handleToggleArtifacts = useCallback(() => {
+    setArtifactsOpen((prev) => !prev);
+    setSettingsOpen(false);
+    setSessionBoardOpen(false);
+    setPluginMarketOpen(false);
+  }, []);
+
+  const handleCloseArtifacts = useCallback(() => {
+    setArtifactsOpen(false);
+  }, []);
+
+  /**
+   * 创作集「新建 → 模板」：关掉页面、在宿主机上新建一条会话，由宿主在会话就绪
+   * 之后把模板提示词预填进输入框（`desktopArtifactsNewFromTemplate`）。建会话是
+   * 宿主动作（webview 拿不到新 paneId），所以这里只发一条命令。
+   */
+  const handleNewFromTemplate = useCallback(
+    (prompt: string) => {
+      setArtifactsOpen(false);
+      vscode?.postMessage({
+        command: "desktopArtifactsNewFromTemplate",
+        prompt,
+      });
+    },
+    [vscode],
+  );
+
   /** 打开（不切换）插件市场整页——供 pane 委派路径调用：pane 实例本身不渲染整页，
    *  且整页覆盖 pane 行后输入框已不可达，故「打开」与「切换」在用户层面是同一个
    *  动作。 */
@@ -3499,6 +3534,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             handlePreviewHtmlFile(path);
           }
         }
+        // 新生成的文件直接给出查看面（spec desktop/desktop-artifacts.md
+        // 「对话中的生成文件卡片」场景 1）：页面开预览面板、文档开文件面板。
+        // 只在面板里还没有同类查看面时自动打开 —— 否则一轮里每写一个文件
+        // 都会抢一次面板，把用户手上正在看的东西挤掉。
+        const generated =
+          toAbsoluteFilePath(ref.targetPath, workdir) ?? ref.targetPath;
+        if (isHtmlPath(generated)) {
+          if (previewFilePaths.length === 0) handlePreviewHtmlFile(generated);
+        } else if (
+          GENERATED_DOC_EXT.test(generated) &&
+          tabsRef.current.length === 0
+        ) {
+          handleOpenFile(generated);
+        }
       }
       stages.set(key, ref.stage);
     }
@@ -3761,6 +3810,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     url: string;
     width: number;
     originalUrl?: string;
+    /** 本地 HTML 文件预览的源路径（「发布」按钮只在这条路径上出现）。 */
+    filePath?: string;
     onRetry?: () => void;
     onAddComment?: (text: string) => void;
     onTitleChange: (title: string) => void;
@@ -3841,6 +3892,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         url: tab.previewUrl ?? "",
         width: opts.width,
         originalUrl: opts.originalUrl,
+        filePath: tab.previewFilePath,
         onRetry: opts.onRetry,
         // 停靠的 guest 收不到用户操作（面板不可见），评论也没有归属会话可落：
         // 一律不接（场景 5）。
@@ -4211,6 +4263,21 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     />
   ) : null;
 
+  // 创作集整页（desktop，spec desktop/desktop-artifacts.md）：侧边栏保留，只替换
+  // pane 行（同看板/插件市场）。账号级数据由宿主经 CLI 进程 RPC 取，分类写本机。
+  const artifacts = isDesktop ? (
+    <ArtifactsPage
+      onBack={handleCloseArtifacts}
+      collapsed={sidebarCollapsed}
+      onExpandSidebar={() => setSidebarCollapsed(false)}
+      macTrafficSpacer={macTrafficSpacer}
+      vscode={vscode}
+      serverUrl={serverUrl}
+      onLogin={handleLogin}
+      onNewFromTemplate={handleNewFromTemplate}
+    />
+  ) : null;
+
   // Dialogs render at the component root — not inside chatContainer — so they
   // stay visible in every layout, including the desktop split-view shell.
   const dialogs = (
@@ -4479,6 +4546,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                     // 只随该组的「重置」代号重挂载（重新加载 guest）。
                     key={entry.epoch}
                     url={entry.url}
+                    filePath={entry.filePath}
                     originalUrl={entry.originalUrl}
                     onRetry={entry.onRetry}
                     vscode={vscode}
@@ -4596,6 +4664,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             pluginMarketActive={pluginMarketOpen}
             onTogglePluginMarket={handleTogglePluginMarket}
             onOpenPluginMarket={handleOpenPluginMarket}
+            artifactsOpen={artifactsOpen}
+            onCloseArtifacts={handleCloseArtifacts}
+            artifacts={artifacts}
+            artifactsActive={artifactsOpen}
+            onToggleArtifacts={handleToggleArtifacts}
             prefillRequest={pendingPrefill}
             onPrefillApplied={handlePrefillApplied}
           />

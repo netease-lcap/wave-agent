@@ -1083,6 +1083,139 @@ export interface DesktopWorktreeChangesMessage
   changes: { files: number; commits: number } | null;
 }
 
+/**
+ * 创作集（Artifacts 画廊）：账号级数据，桌面端独有。
+ *
+ * 归属键一律 `requestId`（页面可反复刷新、分享弹层可反复开关、成员检索按输入
+ * 连续查询），晚到的旧回复按 requestId 丢弃。
+ */
+export type ArtifactShareMode = "owner" | "users" | "org";
+
+export interface ArtifactGalleryItem {
+  slug: string;
+  title: string;
+  rel: "mine" | "shared";
+  updatedAt?: string;
+  favicon?: string;
+  /** 发布者账号；`rel = shared` 时是分享者。服务端未返回时缺省。 */
+  ownerEmail?: string;
+  /** 分享范围；`rel = shared` 的行由对方管理，通常缺省。 */
+  shareMode?: ArtifactShareMode;
+  /** 指定成员账号（`shareMode = users` 时才有）。 */
+  sharedEmails?: string[];
+}
+
+export interface ArtifactMemberCandidate {
+  userId: string;
+  email: string;
+}
+
+export interface ArtifactVersionOption {
+  version: number;
+  label?: string | null;
+  title?: string | null;
+}
+
+/** 创作集列表回复（`desktopArtifactsList`）。 */
+export interface DesktopArtifactsListMessage extends HostToWebviewMessageBase {
+  command: "desktopArtifactsList";
+  requestId: string;
+  items?: ArtifactGalleryItem[];
+  error?: string;
+  /** 401/403：页面渲染「请先登录」，不得当成空列表。 */
+  authRequired?: boolean;
+}
+
+/** 单个创作的分享状态回显（`desktopArtifactShareView`）。 */
+export interface DesktopArtifactShareViewMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopArtifactShareView";
+  requestId: string;
+  slug: string;
+  mode?: ArtifactShareMode;
+  pinnedVersion?: number | null;
+  sharedUsers?: ArtifactMemberCandidate[];
+  versions?: ArtifactVersionOption[];
+  error?: string;
+  authRequired?: boolean;
+  notFound?: boolean;
+}
+
+/** 保存分享范围的结果（`desktopArtifactShareSave`）。 */
+export interface DesktopArtifactShareSaveMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopArtifactShareSave";
+  requestId: string;
+  slug: string;
+  mode?: ArtifactShareMode;
+  userIds?: string[];
+  pinnedVersion?: number | null;
+  error?: string;
+  authRequired?: boolean;
+  notFound?: boolean;
+}
+
+/** 成员检索结果（`desktopArtifactMembersSearch`），供分享弹层勾选。 */
+export interface DesktopArtifactMembersMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopArtifactMembersSearch";
+  requestId: string;
+  members?: ArtifactMemberCandidate[];
+  error?: string;
+  authRequired?: boolean;
+}
+
+/** 撤销发布结果（`desktopArtifactRevoke`）。 */
+export interface DesktopArtifactRevokeMessage extends HostToWebviewMessageBase {
+  command: "desktopArtifactRevoke";
+  requestId: string;
+  slug: string;
+  ok?: boolean;
+  error?: string;
+  authRequired?: boolean;
+  notFound?: boolean;
+}
+
+/** 预览面板「发布」的结果（`desktopArtifactPublish`）。 */
+export interface DesktopArtifactPublishMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopArtifactPublish";
+  requestId: string;
+  ok?: boolean;
+  url?: string;
+  slug?: string;
+  error?: string;
+  authRequired?: boolean;
+  /** 版本冲突（409）：提示「存在更新版本」并给出强制覆盖选项。 */
+  conflict?: boolean;
+}
+
+/** 一个自定义分类（本机存储，按账号隔离）。 */
+export interface ArtifactCategory {
+  id: string;
+  name: string;
+}
+
+/** 分类与本机归属读取结果（`desktopArtifactCategoriesGet`）。 */
+export interface DesktopArtifactCategoriesMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopArtifactCategories";
+  requestId: string;
+  categories: ArtifactCategory[];
+  /** slug → 分类 id（一个文件最多一个分类）。 */
+  assignments: Record<string, string>;
+  error?: string;
+}
+
+/** 分类归属写入结果（`desktopArtifactCategoriesSave`）。 */
+export interface DesktopArtifactCategoriesSavedMessage
+  extends HostToWebviewMessageBase {
+  command: "desktopArtifactCategoriesSaved";
+  requestId: string;
+  ok: boolean;
+  error?: string;
+}
+
 // ---- Contract gaps (commands hosts really send / the webview really
 // consumes, previously missing from the union). Registered so the fixtures
 // package stays the single authoritative contract (先例坑：新 host→webview
@@ -1256,7 +1389,15 @@ export type HostToWebviewMessage =
   | SessionWorktreeChangesMessage
   | PluginMarketFolderSelectedMessage
   | DesktopResumeSessionsMessage
-  | RemoteControlResponseMessage;
+  | RemoteControlResponseMessage
+  | DesktopArtifactsListMessage
+  | DesktopArtifactShareViewMessage
+  | DesktopArtifactShareSaveMessage
+  | DesktopArtifactMembersMessage
+  | DesktopArtifactRevokeMessage
+  | DesktopArtifactPublishMessage
+  | DesktopArtifactCategoriesMessage
+  | DesktopArtifactCategoriesSavedMessage;
 
 /**
  * Reply-to 消息归属键注册表（契约锁，见文件头部「归属契约」）。
@@ -1317,6 +1458,16 @@ type ReplyAttribution = {
   // 必须按 requestId 丢弃，否则会替另一行收起卡片或贴上别人的改动数字。
   sessionDeleted: "requestId";
   sessionWorktreeChanges: "requestId";
+  // 创作集：页面可反复刷新、弹层可反复开关、成员检索按输入连续查询，晚到的旧回复
+  // 一律按 requestId 丢弃。
+  desktopArtifactsList: "requestId";
+  desktopArtifactShareView: "requestId";
+  desktopArtifactShareSave: "requestId";
+  desktopArtifactMembersSearch: "requestId";
+  desktopArtifactRevoke: "requestId";
+  desktopArtifactPublish: "requestId";
+  desktopArtifactCategories: "requestId";
+  desktopArtifactCategoriesSaved: "requestId";
 };
 
 // ---- 编译期断言：注册表中的每条响应命令，union 成员必须必填其归属键。 ----
@@ -1366,6 +1517,14 @@ export const replyAttributionLocked = {
   rewindResult: true,
   sessionDeleted: true,
   sessionWorktreeChanges: true,
+  desktopArtifactsList: true,
+  desktopArtifactShareView: true,
+  desktopArtifactShareSave: true,
+  desktopArtifactMembersSearch: true,
+  desktopArtifactRevoke: true,
+  desktopArtifactPublish: true,
+  desktopArtifactCategories: true,
+  desktopArtifactCategoriesSaved: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];
 };
