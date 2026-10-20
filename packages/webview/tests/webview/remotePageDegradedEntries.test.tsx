@@ -370,8 +370,8 @@ describe("entries that can only fail on the page", () => {
     const { vscode } = renderChatApp();
 
     // 第二批解禁之后仍然「只能失败」的那些：它们的背后是宿主的**界面**能力
-    // （设置页 / 插件 / 计划预览 / btw 面板），或者只有宿主侧才有意义（远程控制
-    // 自身）。/clear /rewind /model /tasks /workflows 已经解禁，见下一条用例。
+    // （设置页 / 插件 / 计划预览），或者只有宿主侧才有意义（远程控制自身）。
+    // /clear /rewind /model /tasks /workflows 与 /btw 已经解禁，见下面两条用例。
     const hostLocal = [
       "/config",
       "/plugin",
@@ -380,7 +380,6 @@ describe("entries that can only fail on the page", () => {
       "/agents",
       "/skills",
       "/hooks",
-      "/btw 今天几号",
       "/plan",
       "/remote-control",
     ];
@@ -403,6 +402,43 @@ describe("entries that can only fail on the page", () => {
         posts.filter((p) => HOST_ONLY_COMMANDS.has(p.command as string)),
       ).toEqual([]);
     }
+  });
+
+  it("serves /btw as a side question instead of sending it as text", async () => {
+    window.waveRemotePage = true;
+    const { vscode } = renderChatApp();
+
+    await act(async () => {
+      await typeAndSend("/btw 今天几号");
+    });
+
+    // 一条 `askBtw` 出去，一条 `sendMessage` 都不发（spec「Web 页也能用 /btw
+    // 旁路提问」场景 1）：这条问答既不进对话历史，也不该让模型把它当正文回答。
+    expect(postsOf(vscode).filter((p) => p.command === "sendMessage")).toEqual(
+      [],
+    );
+    expect(postsOf(vscode)).toContainEqual({
+      command: "askBtw",
+      question: "今天几号",
+    });
+
+    // 面板与宿主无关，照常挂在输入区上方。
+    expect(screen.getByTestId("btw-panel")).toBeInTheDocument();
+  });
+
+  it("shows the usage line for a bare /btw and asks the machine nothing", async () => {
+    window.waveRemotePage = true;
+    const { vscode } = renderChatApp();
+
+    await act(async () => {
+      await typeAndSend("/btw");
+    });
+
+    expect(postsOf(vscode).filter((p) => p.command === "askBtw")).toEqual([]);
+    expect(postsOf(vscode).filter((p) => p.command === "sendMessage")).toEqual(
+      [],
+    );
+    expect(screen.getByText(/用法：\/btw/)).toBeInTheDocument();
   });
 
   it("serves the five commands the second batch unblocked, instead of sending them as text", async () => {

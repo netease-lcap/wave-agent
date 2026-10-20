@@ -729,6 +729,26 @@ describe("StdioAgent", () => {
     expect(result).toEqual(commands);
   });
 
+  it("sends the asking surface so the machine can append that entry's own commands", async () => {
+    const { agent, client } = createAgent();
+    client.request.mockResolvedValue({
+      sessionId: "session-123",
+      workingDirectory: "/w",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+    await agent.initialize({ workdir: "/w" });
+    client.request.mockResolvedValue({ commands: [] });
+
+    await agent.getSlashCommands("remote-page");
+
+    expect(client.request).toHaveBeenCalledWith(
+      "getSlashCommands",
+      { surface: "remote-page" },
+      "session-123",
+    );
+  });
+
   // ── getSubagentConfigurations / getSkillMetadata ─────────────
 
   it("unwraps skill metadata from result with sessionId", async () => {

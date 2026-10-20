@@ -30,7 +30,8 @@ import type {
   PermissionDecision,
   ToolPermissionContext,
   ToolBlockUpdateCallbackParams,
-  SlashCommand,
+  SlashCommandInfo,
+  HostSurface,
   McpServerConfig,
   SubagentConfiguration,
   SkillMetadata,
@@ -613,12 +614,18 @@ export class StdioAgent {
 
   // ── Commands ──────────────────────────────────────────────────
 
-  async getSlashCommands(): Promise<SlashCommand[]> {
+  /**
+   * The slash-command popup's rows. Pass `surface` (which front end is asking)
+   * to also get that host's local commands — the machine keeps the one table
+   * and filters it per request (spec ui/slash-commands.md 「弹窗里的宿主命令只有
+   * 一份表」). Omitting it returns the agent's own commands only.
+   */
+  async getSlashCommands(surface?: HostSurface): Promise<SlashCommandInfo[]> {
     const result = (await this.client.request(
       "getSlashCommands",
-      undefined,
+      surface ? { surface } : undefined,
       this.sessionId,
-    )) as { commands: SlashCommand[] };
+    )) as { commands: SlashCommandInfo[] };
     return result.commands;
   }
 

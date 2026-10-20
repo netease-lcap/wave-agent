@@ -118,6 +118,22 @@ describe("ChatSession · 配置不经 CLI 参数覆盖层下发", () => {
     expect(params).toEqual({});
   });
 
+  it("getSlashCommands 带上 vscode 入口标识（弹窗的宿主命令由服务端按入口过滤）", async () => {
+    const client = fakeClient();
+    const session = new ChatSession("sidebar", undefined, callbacks());
+
+    await session.initialize(
+      undefined,
+      client as unknown as StdioClient,
+      fakeRouter() as unknown as NotificationRouter,
+    );
+    await session.getSlashCommands();
+
+    expect(paramsFor(client.request, "getSlashCommands")).toEqual({
+      surface: "vscode",
+    });
+  });
+
   it("initialize 声明 vscode 入口标识（遥测的 app.entrypoint）", async () => {
     const client = fakeClient();
     const session = new ChatSession("sidebar", undefined, callbacks());

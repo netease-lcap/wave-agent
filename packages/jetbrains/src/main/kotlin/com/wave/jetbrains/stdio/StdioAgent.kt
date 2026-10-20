@@ -306,7 +306,16 @@ class StdioAgent(
         client.request("deleteQueuedMessageById", buildJsonObject { put("id", id) }, sessionId)
     }
 
-    suspend fun getSlashCommands(): JsonElement? = client.request("getSlashCommands", sessionId = sessionId)
+    /**
+     * The popup's commands. `surface` tells the server which front end is asking
+     * so it can append that host's local commands — the machine keeps the one
+     * table (spec ui/slash-commands.md「弹窗里的宿主命令只有一份表」).
+     */
+    suspend fun getSlashCommands(surface: String): JsonElement? = client.request(
+        "getSlashCommands",
+        buildJsonObject { put("surface", surface) },
+        sessionId,
+    )
 
     suspend fun getSubagentConfigurations(): JsonElement? =
         client.request("getSubagentConfigurations", sessionId = sessionId)

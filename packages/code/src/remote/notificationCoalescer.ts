@@ -44,12 +44,13 @@ interface MergeSpec {
 /**
  * Decide whether a notification is a pure delta that may be merged.
  *
- * Only the three streaming callbacks qualify, and only in their streaming
- * stage: their payloads are documented as deltas ("consumers accumulate"), and
+ * Only the streaming callbacks qualify, and only in their streaming stage:
+ * their payloads are documented as deltas ("consumers accumulate"), and
  * `messageOperations.ts` accumulates `parametersChunk` by plain concatenation —
  * the same operation this class performs. A `start` / `running` / `end` frame
  * is a one-time snapshot (or the authoritative full value) and must not be
- * merged with anything.
+ * merged with anything. `btwContent` (the `/btw` answer stream) is the fourth:
+ * one field, no stages, a delta every time.
  */
 function mergeSpec(method: string, params: unknown): MergeSpec | undefined {
   if (typeof params !== "object" || params === null) return undefined;
@@ -75,6 +76,23 @@ function mergeSpec(method: string, params: unknown): MergeSpec | undefined {
     return {
       field: "parametersChunk",
       key: `t\u0000${p.messageId}\u0000${p.id}`,
+    };
+  }
+
+  // `/btw` side question (`btwContent`, spec ui/remote-control.md「Web 页也能用
+  // /btw 旁路提问」场景 4). Same family as the three above: `content` is a pure
+  // delta the panel accumulates, so the merged frame carries exactly the bytes
+  // the individual ones would. The key carries the question **and** the channel
+  // (`content` / `thinking`) — the panel drops thinking once content starts, so
+  // merging the two together would resurrect text it had already discarded, and
+  // two questions in flight must never interleave.
+  if (method === "btwContent") {
+    if (typeof p.content !== "string" || typeof p.question !== "string") {
+      return undefined;
+    }
+    return {
+      field: "content",
+      key: `b\u0000${p.question}\u0000${typeof p.type === "string" ? p.type : ""}`,
     };
   }
 

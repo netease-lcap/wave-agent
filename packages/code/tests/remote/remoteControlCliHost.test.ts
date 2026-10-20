@@ -366,17 +366,30 @@ test("getSlashCommands narrows the SDK command to what the page renders", async 
   });
   const host = new RemoteControlCliHost(session);
 
-  await expect(host.handleRequest("getSlashCommands", {})).resolves.toEqual({
-    commands: [
-      {
-        id: "review",
-        name: "review",
-        description: "技能：代码评审",
-        skillSource: "user",
-      },
-      { id: "ship", name: "ship", description: "自定义命令" },
-    ],
-  });
+  const result = (await host.handleRequest("getSlashCommands", {})) as {
+    commands: { id: string; skillSource?: string }[];
+  };
+
+  // SDK 那半在前、远控页那批在后 —— 与 daemon 路径回的是同一份形状。
+  expect(result.commands.slice(0, 2)).toEqual([
+    {
+      id: "review",
+      name: "review",
+      description: "技能：代码评审",
+      skillSource: "user",
+    },
+    { id: "ship", name: "ship", description: "自定义命令" },
+  ]);
+  expect(result.commands.slice(2).map((command) => command.id)).toEqual([
+    "status",
+    "clear",
+    "compact",
+    "tasks",
+    "workflows",
+    "rewind",
+    "model",
+    "btw",
+  ]);
 });
 
 test("a permissionResponse notification settles the matching request", () => {
@@ -408,6 +421,16 @@ test("a whitelisted method this host does not implement says exactly that", asyn
       message: expect.stringContaining("rewindToMessage") as unknown as string,
     },
   );
+});
+
+test("/btw is not served by a foreground CLI session yet", async () => {
+  // 白名单已放行 `askBtw`（页面能承载），但这个宿主只接了会话内那批 —— 与
+  // `rewindToMessage` 同一条口径：页面据此说「这台电脑上的会话还不支持附带
+  // 提问」，而不是停在加载中。
+  const host = new RemoteControlCliHost(makeSession());
+  await expect(
+    host.handleRequest("askBtw", { question: "今天几号" }),
+  ).rejects.toMatchObject({ code: REMOTE_HOST_UNSUPPORTED });
 });
 
 test("getSessionInfo answers the session-state family the page re-reads", async () => {

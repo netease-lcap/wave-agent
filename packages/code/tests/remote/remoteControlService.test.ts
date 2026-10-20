@@ -412,12 +412,14 @@ describe("RemoteControlService", () => {
 
     // The chat methods + conversation upkeep + new-session + the second batch
     // (rewind / clear / model / queue / background work / file search / prompt
-    // history) + session deletion (`destroy` with its optional worktree param,
+    // history) + `/btw` (a one-round side question: same session, no editor, no
+    // filesystem) + session deletion (`destroy` with its optional worktree param,
     // and the session-scoped change count the delete card needs) are the whole
     // surface. Adding a method here is a deliberate
     // widening, so this list is pinned rather than derived.
     expect([...REMOTE_ALLOWED_METHODS].sort()).toEqual([
       "abortMessage",
+      "askBtw",
       "clearMessages",
       "compact",
       "createWorktree",

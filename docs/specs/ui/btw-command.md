@@ -1,17 +1,18 @@
 ---
 name: "BTW 命令"
-description: "`/btw` 旁路提问：绕过主消息队列、单轮且不执行工具、复用主对话 prompt 前缀，CLI overlay 与 Webview 面板两入口"
+description: "`/btw` 旁路提问：绕过主消息队列、单轮且不执行工具、复用主对话 prompt 前缀，CLI overlay 与 Webview 面板两入口（含远控 Web 页）"
 order: 170
 ---
 
 # 功能规格说明：BTW 命令
 
 **创建日期**：2026-04-15
-**更新日期**：2026-08-18
+**更新日期**：2026-10-20
 
-> 本规格同时覆盖 CLI（packages/code）与 Webview 三端（VS Code / JetBrains / Desktop）。
+> 本规格同时覆盖 CLI（packages/code）与 Webview 四入口（VS Code / JetBrains / Desktop，以及手机上的远控 Web 页）。
 > CLI 端交互（overlay、↑/↓ 滚动、Space/Enter/Esc 关闭）见下方用户故事一、二；
 > Webview 端交互（BTW 面板、斜杠命令弹窗插入、点击/Esc 关闭、加载状态展示）见用户故事『Webview 端附带提问』。
+> 远控 Web 页的**语义与 Panel 交互与其余三端完全一致**，差别只在传输（经中继到 `AgentBridge` 的 `askBtw`，白名单与流式通知的承载见 `ui/remote-control.md` 的「Web 页也能用 `/btw` 旁路提问」故事）。
 
 ## 用户场景与测试 _（必填）_
 
@@ -80,6 +81,7 @@ order: 170
 12. **假设**附带问题不会被添加到主聊天历史或用户输入历史中。
 13. **假设**主对话恰好在响应中（assistant 消息未结束）时提出 `/btw`，**则** btw 请求剔除该进行中的消息，从上一轮完成的请求前缀继续。
 14. **假设** BTW 面板打开（加载中或已回答），**当**用户切换到另一对话（会话）时，**则** BTW 面板自动关闭，新对话不显示旧对话的附带问题；若切换发生在加载中，旧请求的迟到回复同样被丢弃，不显示于界面。
+15. **假设**用户在**远控 Web 页**（手机浏览器打开的 `/remote/`）输入 `/btw <question>`，**则** 上述 1–14 条全部照旧成立（同一个 `askBtw` fork 路径、同一个 `BtwPanel`、不污染历史、Esc 只关面板），即页面**不**把 `/btw` 当普通消息发出去；差别只在传输：请求经中继到宿主进程的 `askBtw`，流式尾部来自宿主的 `btwContent` 通知。当页面连的是**前台 CLI 会话**（该宿主尚未接 `/btw`）时，面板显示一句「该宿主不支持」的可见文案，不停在加载中。承载与白名单见 `ui/remote-control.md` 的「Web 页也能用 `/btw` 旁路提问」故事。
 
 ---
 

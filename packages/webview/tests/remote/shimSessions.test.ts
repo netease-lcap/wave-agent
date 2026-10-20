@@ -711,6 +711,86 @@ describe("remote page shim", () => {
     expect(page.requests("abortMessage")).toBe(1);
   });
 
+  test("serves /btw as a side question and routes its stream back to the panel", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({ command: "askBtw", question: "今天几号" });
+    await flush();
+
+    // 一条 RPC，带当前会话 —— 页面这一侧不再把它当普通消息发出去
+    //（spec ui/remote-control.md「Web 页也能用 /btw 旁路提问」场景 1/2）。
+    expect(page.socket.framesFor("askBtw")).toEqual([
+      {
+        id: expect.any(Number),
+        method: "askBtw",
+        params: { question: "今天几号" },
+        sessionId: "s-new",
+      },
+    ]);
+    expect(page.requests("sendMessage")).toBe(0);
+
+    // 流式尾部：宿主的 `btwContent` 带 question，页面的面板靠它判归属——少了
+    // 这个字段，切会话后迟到的增量会画进新问题的面板里。
+    page.socket.receive({
+      method: "btwContent",
+      params: { question: "今天几号", content: "10 月 20", type: "content" },
+      sessionId: "s-new",
+    });
+    expect(lastPosted(page)).toEqual({
+      command: "btwStream",
+      question: "今天几号",
+      type: "content",
+      content: "10 月 20",
+    });
+
+    await page.answer("askBtw", "**10 月 20 日**");
+    expect(lastPosted(page)).toEqual({
+      command: "btwResponse",
+      question: "今天几号",
+      answer: "**10 月 20 日**",
+    });
+  });
+
+  test("a /btw the machine cannot run ends on screen instead of loading forever", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({ command: "askBtw", question: "今天几号" });
+    await flush();
+
+    // 前台 CLI 会话（`RemoteControlCliHost`）还没接这个方法：它回的是
+    // `REMOTE_HOST_UNSUPPORTED`（-32011），与「通道不放行」(-32601) 是两回事，
+    // 页面据此说「这台电脑上的会话还不支持」，而不是停在加载中。
+    const frame = page.socket.framesFor("askBtw")[0];
+    page.socket.receive({
+      id: frame.id,
+      method: "error",
+      params: {
+        code: -32011,
+        message: "Not implemented by a foreground CLI session: askBtw",
+      },
+    });
+    await flush();
+
+    expect(lastPosted(page)).toEqual({
+      command: "btwError",
+      question: "今天几号",
+      error: "这台电脑上的会话还不支持附带提问",
+    });
+  });
+
+  test("keeps waiting on /btw past the 20s request budget", async () => {
+    const { page } = await openPage();
+    page.api.postMessage({ command: "askBtw", question: "今天几号" });
+    await flush();
+
+    // 回执只在整轮答完之后才发（与 sendMessage / compact 同族），所以它按回合级
+    // 超时算：20s 一到就报超时，每次稍慢一点的旁路提问都会变成一条假的失败。
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(
+      page.posted.filter((message) => message.command === "btwError"),
+    ).toHaveLength(0);
+  });
+
   test("switching into a session that is already generating shows its stop button", async () => {
     const { page } = await openPage();
     expect(
@@ -1073,9 +1153,14 @@ describe("remote page shim", () => {
 
     page.api.postMessage({ command: "requestSlashCommands" });
     await flush();
-    await page.answer("getSlashCommands", {
+    const frame = await page.answer("getSlashCommands", {
       commands: [{ id: "c1", name: "/review", description: "复盘这次改动" }],
     });
+
+    // `surface` 是这台机器拼清单的依据：同一个进程也可能同时服务电脑上的会话区，
+    // 由它决定这台入口该多出哪几条（spec ui/slash-commands.md「弹窗里的宿主命令
+    // 只有一份表」）。页面上能用的那批因此不再靠手打才知道存在。
+    expect(frame.params).toEqual({ surface: "remote-page" });
 
     // Narrowed objects only — the SDK's own command objects carry handlers,
     // which have no business travelling over the relay.

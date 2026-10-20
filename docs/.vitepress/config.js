@@ -267,6 +267,8 @@ export default {
                   link: "/web#审批在手机上一样能批",
                 },
                 { text: "更多菜单", link: "/web#更多菜单" },
+                { text: "顺口问一句（/btw）", link: "/web#顺口问一句-btw" },
+                { text: "快捷指令弹窗", link: "/web#快捷指令弹窗" },
               ],
             },
             { text: "多台电脑", link: "/web#多台电脑" },

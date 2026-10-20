@@ -35,6 +35,10 @@ import type {
 } from "wave-agent-sdk";
 import { listSessions } from "wave-agent-sdk";
 import {
+  hostSlashCommandsFor,
+  toSlashCommandInfo,
+} from "../stdio/hostSlashCommands.js";
+import {
   InvalidMessageWindowError,
   sliceMessageWindow,
   type MessageWindow,
@@ -184,15 +188,14 @@ export class RemoteControlCliHost implements RemoteControlHost {
           // Narrowed to what the page renders, like the desktop host does: the
           // SDK's SlashCommand carries a `handler` function, which has no
           // business travelling over a relay (and would be dropped silently,
-          // leaving the frame's shape to chance).
-          commands: this.session.slashCommands().map((command) => ({
-            id: command.id,
-            name: command.name,
-            description: command.description,
-            ...(command.skillSource
-              ? { skillSource: command.skillSource }
-              : {}),
-          })),
+          // leaving the frame's shape to chance). The host-local half comes
+          // from the one table, filtered for this entry (spec
+          // ui/slash-commands.md「弹窗里的宿主命令只有一份表」) — the same bytes
+          // the daemon returns, so the phone sees one list either way.
+          commands: [
+            ...this.session.slashCommands().map(toSlashCommandInfo),
+            ...hostSlashCommandsFor("remote-page"),
+          ],
         };
       default:
         // The white list already rejected everything outside it, so anything
