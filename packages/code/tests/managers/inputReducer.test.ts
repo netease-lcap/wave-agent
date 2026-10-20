@@ -29,6 +29,7 @@ describe("inputReducer", () => {
       showMcpManager: false,
       showAgentsManager: false,
       showPluginManager: false,
+      showRemoteControl: false,
       showRewindManager: false,
       showResumeSelector: false,
       showWorkflowManager: false,

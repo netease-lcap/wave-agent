@@ -13,6 +13,7 @@ import { RewindCommand } from "./RewindCommand.js";
 import { ResumeCommand } from "./ResumeCommand.js";
 import { HelpView } from "./HelpView.js";
 import { StatusCommand } from "./StatusCommand.js";
+import { RemoteControlView } from "./RemoteControlView.js";
 import { LoginCommand } from "./LoginCommand.js";
 import { PluginManagerShell } from "./PluginManagerShell.js";
 import { ModelSelector } from "./ModelSelector.js";
@@ -98,7 +99,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     compact,
     addDir,
     renameSession,
-    remoteControlCommand,
     currentModel,
     configuredModels,
     setModel,
@@ -162,6 +162,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     showResumeSelector,
     showHelp,
     showStatusCommand,
+    showRemoteControl,
     showLoginCommand,
     showPluginManager,
     showModelSelector,
@@ -175,6 +176,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setShowResumeSelector,
     setShowHelp,
     setShowStatusCommand,
+    setShowRemoteControl,
     setShowLoginCommand,
     setShowPluginManager,
     setShowModelSelector,
@@ -202,7 +204,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     onReloadPlugins: reloadPlugins,
     onAddDir: addDir,
     onRenameSession: renameSession,
-    onRemoteControlCommand: remoteControlCommand,
     onHasSlashCommand: hasSlashCommand,
     onAbortMessage: abortMessage,
     onBackgroundCurrentTask: backgroundCurrentTask,
@@ -252,7 +253,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
       showAgentsManager ||
       showWorkflowManager ||
       showSkillsManager ||
-      showHooksManager
+      showHooksManager ||
+      showRemoteControl
     ) {
       return;
     }
@@ -410,6 +412,10 @@ export const InputBox: React.FC<InputBoxProps> = ({
         <StatusCommand onCancel={() => setShowStatusCommand(false)} />
       )}
 
+      {showRemoteControl && (
+        <RemoteControlView onCancel={() => setShowRemoteControl(false)} />
+      )}
+
       {showLoginCommand && (
         <LoginCommand onCancel={() => setShowLoginCommand(false)} />
       )}
@@ -455,7 +461,8 @@ export const InputBox: React.FC<InputBoxProps> = ({
             showLoginCommand ||
             showPluginManager ||
             showModelSelector ||
-            showWorkflowManager || (
+            showWorkflowManager ||
+            showRemoteControl || (
               <Box flexDirection="column">
                 {escClearPending && (
                   <Text color="gray">Press Esc again to clear input</Text>
