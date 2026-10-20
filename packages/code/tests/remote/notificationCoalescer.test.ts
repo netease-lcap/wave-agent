@@ -141,6 +141,62 @@ describe("NotificationCoalescer", () => {
     ).toBe('{"b"');
   });
 
+  it("should merge /btw content chunks of one question into one frame", () => {
+    // `/btw` 的答案流与主对话同族：`content` 是纯增量（面板按 `answer + content`
+    // 累加），所以合并窗口对它同样成立——不合并的话一次旁路提问在手机上产生的
+    // 帧数就与一整轮主对话相当。
+    const c = createCoalescer();
+    for (const content of ["2026", " 年", "10 月"]) {
+      c.push(
+        "btwContent",
+        { question: "今天几号", content, type: "content" },
+        "s1",
+      );
+    }
+    vi.advanceTimersByTime(REMOTE_FRAME_WINDOW_MS);
+
+    expect(written).toHaveLength(1);
+    expect(written[0]).toHaveLength(1);
+    expect(written[0][0].params).toEqual({
+      question: "今天几号",
+      type: "content",
+      content: "2026 年10 月",
+    });
+  });
+
+  it("should keep /btw thinking and content apart, and two questions apart", () => {
+    const c = createCoalescer();
+    c.push(
+      "btwContent",
+      { question: "q1", content: "想", type: "thinking" },
+      "s1",
+    );
+    c.push(
+      "btwContent",
+      { question: "q1", content: "答", type: "content" },
+      "s1",
+    );
+    c.push(
+      "btwContent",
+      { question: "q2", content: "二", type: "content" },
+      "s1",
+    );
+    // 面板在 content 开始后丢弃 thinking，两者若合成一帧就等于把丢弃掉的文本
+    // 重新写回去；两个问题合成一帧则会让旧问题的答案画进新面板。
+    c.push(
+      "btwContent",
+      { question: "q1", content: "复", type: "thinking" },
+      "s1",
+    );
+    vi.advanceTimersByTime(REMOTE_FRAME_WINDOW_MS);
+
+    expect(written[0].map((frame) => frame.params)).toEqual([
+      { question: "q1", type: "thinking", content: "想复" },
+      { question: "q1", type: "content", content: "答" },
+      { question: "q2", type: "content", content: "二" },
+    ]);
+  });
+
   it("should not merge a non-streaming stage", () => {
     const c = createCoalescer();
     c.push(

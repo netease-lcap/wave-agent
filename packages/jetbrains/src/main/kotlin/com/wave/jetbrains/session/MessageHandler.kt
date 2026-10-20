@@ -1425,41 +1425,16 @@ class MessageHandler(
 
     private suspend fun handleSlashCommands(filterText: String) {
         val agent = session.agent
-        val sdkCommands: List<JsonObject> = try {
-            val res = agent?.getSlashCommands()?.jsonObject
-            val cmds = res?.get("commands")?.jsonArray
-            cmds?.map { it.jsonObject } ?: emptyList()
+        // 宿主本地命令不在这里维护：服务端有一张按入口过滤的表，`jetbrains` 就是
+        // 本入口的标识（spec ui/slash-commands.md「弹窗里的宿主命令只有一份表」）。
+        // Kotlin 侧因此不再有 localCommand 名单——它读的是同一份 JSON。
+        val all: List<JsonObject> = try {
+            val res = agent?.getSlashCommands("jetbrains")?.jsonObject
+            res?.get("commands")?.jsonArray?.map { it.jsonObject } ?: emptyList()
         } catch (e: StdioClientException) {
             LOG.warn("getSlashCommands failed: ${e.message}")
             emptyList()
         }
-        // Local UI commands (mirror VSCE's). name is always the english id — webview
-        // branches on the `runOnSelect` flag attached below to decide between executing
-        // the command (send `/name` back to the host) and inserting its name into the
-        // input; it keeps no command-name list of its own.
-        // `runOnSelect = true` = 选中即执行（打开弹窗/设置页/面板）；`/btw` 例外——它要让
-        // 用户接着补问题，所以标 false。
-        val local = listOf(
-            localCommand("config", "打开配置设置"),
-            localCommand("plugin", "打开插件市场"),
-            localCommand("mcp", "打开 MCP 服务器管理"),
-            localCommand("status", "查看当前状态"),
-            localCommand("remote-control", "远程控制（用手机接管本机会话）"),
-            localCommand("tasks", "查看后台任务"),
-            localCommand("workflows", "查看工作流运行"),
-            localCommand("agents", "查看可用 agents"),
-            localCommand("skills", "查看可用技能"),
-            localCommand("hooks", "查看已配置钩子"),
-            localCommand("clear", "清除对话历史并重置会话"),
-            localCommand("compact", "手动压缩对话历史"),
-            localCommand("reload-plugins", "就地重载插件（不重启对话）"),
-            localCommand("rewind", "回滚到之前的用户消息"),
-            localCommand("model", "切换 AI 模型"),
-            localCommand("resume", "恢复历史对话"),
-            localCommand("btw", "旁路提问（不进入聊天记录）", runOnSelect = false),
-            localCommand("plan", "启用规划模式或查看当前方案"),
-        )
-        val all = sdkCommands + local
         // VSCE messageHandler.ts:618-624: filter by id/name (case-insensitive includes)
         val filtered = if (filterText.trim().isNotEmpty()) {
             val f = filterText.lowercase()
@@ -1508,16 +1483,5 @@ class MessageHandler(
         } catch (e: StdioClientException) {
             LOG.warn("/plan failed: ${e.message}", e)
         }
-    }
-
-    private fun localCommand(
-        id: String,
-        description: String,
-        runOnSelect: Boolean = true,
-    ): JsonObject = buildJsonObject {
-        put("id", id)
-        put("name", id)
-        put("description", description)
-        if (runOnSelect) put("runOnSelect", true)
     }
 }

@@ -392,6 +392,10 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     getMcpServers = vi.fn(async () => []);
     connectMcpServer = vi.fn(async () => true);
     disconnectMcpServer = vi.fn(async () => true);
+    // 弹窗那批命令由服务端组装：SDK 那一半 + 本入口（`surface: "desktop"`）的
+    // 宿主本地命令，后者来自 packages/code 的一张表（由
+    // `hostSlashCommands.test.ts` 钉住每条归属哪个入口）。这里只要几行代表性
+    // 数据，够验宿主「照原样转发」即可。
     getSlashCommands = vi.fn(async () => [
       {
         id: "review",
@@ -399,6 +403,31 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
         description: "Code review",
         skillSource: "builtin",
       },
+      {
+        id: "remote-control",
+        name: "remote-control",
+        description: "远程控制（用手机接管本机会话）",
+        runOnSelect: true,
+      },
+      {
+        id: "plan",
+        name: "plan",
+        description: "启用规划模式或查看当前方案",
+        runOnSelect: true,
+      },
+      {
+        id: "model",
+        name: "model",
+        description: "切换 AI 模型",
+        runOnSelect: true,
+      },
+      {
+        id: "status",
+        name: "status",
+        description: "查看当前状态",
+        runOnSelect: true,
+      },
+      { id: "btw", name: "btw", description: "旁路提问（不进入聊天记录）" },
     ]);
     getSkillMetadata = vi.fn(async () => [
       {
@@ -3881,19 +3910,21 @@ describe("misc commands", () => {
     expect(lastAgent().compact).toHaveBeenCalledWith("keep it short");
   });
 
-  it("requestSlashCommands merges SDK and local commands", async () => {
+  it("requestSlashCommands asks the machine for the desktop set", async () => {
+    // 宿主不再自持本地命令表：它只把入口标识带上去，由服务端拼 SDK 那半与本入口
+    // 那半（spec ui/slash-commands.md「弹窗里的宿主命令只有一份表」）。
     const { host, sent } = await readyHost();
     await host.handleWebviewMessage({
       command: "requestSlashCommands",
       filterText: "",
     });
 
+    expect(lastAgent().getSlashCommands).toHaveBeenCalledWith("desktop");
+
     const resp = sent("slashCommandsResponse")[0];
     const names = (resp.commands as Array<{ name: string }>).map((c) => c.name);
     expect(names).toContain("review");
-    expect(names).toContain("config");
-    // Desktop /clear removed (2026-09-05): the popup must not list clear.
-    expect(names).not.toContain("clear");
+    expect(names).toContain("remote-control");
   });
 
   it("requestSlashCommands filters by text", async () => {
@@ -3957,24 +3988,7 @@ describe("misc commands", () => {
     }>;
     // /btw 要让用户接着补问题，唯一不标的本地指令
     expect(commands.find((c) => c.name === "btw")?.runOnSelect).toBeUndefined();
-    for (const name of [
-      "config",
-      "plugin",
-      "reload-plugins",
-      "mcp",
-      "status",
-      "remote-control",
-      "compact",
-      "tasks",
-      "workflows",
-      "agents",
-      "skills",
-      "hooks",
-      "rewind",
-      "model",
-      "resume",
-      "plan",
-    ]) {
+    for (const name of ["status", "remote-control", "model", "plan"]) {
       expect(commands.find((c) => c.name === name)?.runOnSelect).toBe(true);
     }
     // SDK 命令一律不带（技能 / 自定义 / 插件命令都走插入文本）

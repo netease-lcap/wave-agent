@@ -163,6 +163,11 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   "searchFiles",
   "getPromptHistory",
   "searchPromptHistory",
+  // `/btw` 旁路提问（spec「Web 页也能用 /btw 旁路提问」）：单轮 fork、不执行工具、
+  // 不进对话历史 —— 它作用于当前会话、既不需要编辑器也不需要文件系统，与第二批
+  // 那条「页面能不能承载」同一条判据。**只放行请求**：流式增量是宿主推的
+  // `btwContent` 通知，走既有的通知扇出，白名单管不到也不需要管。
+  "askBtw",
   // ── 第四批：会话删除（spec「手机端的会话列表与删除」）──
   // 写：`destroy` 带上可选 `removeWorktree`（默认 false）。工作树由 daemon 从该
   // 会话的 createdWorkdir 定位、并在 agent.destroy() 之后删除，页面给不出路径。

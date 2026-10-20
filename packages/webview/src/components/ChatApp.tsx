@@ -2315,7 +2315,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       if (!trimmedText && (!images || images.length === 0)) return;
 
       // 宿主本地的斜杠命令：**剩下的**那些（设置页 / 插件市场 / 钩子 / 技能 /
-      // 子代理 / MCP / 计划 / btw / 远程控制自身）远程控制 Web 页一律不拦
+      // 子代理 / MCP / 计划 / 远程控制自身）远程控制 Web 页一律不拦
       // （spec ui/remote-control.md 场景 24）：它们背后要么是宿主的**界面**能力，
       // 要么只有宿主侧才有意义，拦下来只会打开一个永远加载中的死弹窗；页面不拦 =
       // 文本按普通消息发给宿主。服务端真能做的两条（/compact、/status）不受影响。
@@ -2324,6 +2324,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // `/workflows` 不在这条守卫里了：宿主侧方法已在白名单里、shim 有回执，
       // 页面这一侧也没有宿主 UI 依赖（弹窗都长在本组件里），所以远端照常拦截
       // ——见下面各自的注释与 spec「页面能执行的那批宿主命令」。
+      //
+      // `/btw` 同样在守卫之外（spec「Web 页也能用 /btw 旁路提问」）：它的面板长在
+      // 本组件的输入区上方，不在宿主界面里，所以那条「宿主界面能力」的判据对它是
+      // 例外——远端照常拦截，否则这句 `/btw 问题` 会作为正文进主对话、还能触发工具。
       const interceptHostLocalCommand = !isRemotePage;
 
       // Intercept local slash commands — open dialogs instead of sending to agent
@@ -2462,10 +2466,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         return;
       }
       // /btw side question — answered out-of-band via askBtw, never enters the chat.
-      if (
-        interceptHostLocalCommand &&
-        (trimmedText === "/btw" || trimmedText.startsWith("/btw "))
-      ) {
+      // Not behind `interceptHostLocalCommand`: the panel is this component's own UI,
+      // so the remote page serves it too (route: shim → bridge `askBtw`).
+      if (trimmedText === "/btw" || trimmedText.startsWith("/btw ")) {
         const question = trimmedText.slice("/btw".length).trim();
         if (!question) {
           // Code span keeps `<your question>` from being parsed as an HTML tag.

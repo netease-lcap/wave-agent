@@ -133,7 +133,7 @@
    */
   var REQUEST_TIMEOUT_MS = 20000;
   var TURN_TIMEOUT_MS = 300000;
-  var TURN_METHODS = { sendMessage: true, compact: true };
+  var TURN_METHODS = { sendMessage: true, compact: true, askBtw: true };
   /**
    * The enterprise login page, and the parameter it reads to know where to send
    * the user back to. Same-origin coupling like the `token` key below: this page
@@ -1512,6 +1512,18 @@
       case "planFileUpdated":
         post({ command: "planFileUpdated", content: p.content });
         return;
+      case "btwContent":
+        // `/btw` 的流式增量（spec「Web 页也能用 /btw 旁路提问」场景 3）。宿主的
+        // 通知叫 `btwContent`、字段是 `{question, content, type}`；页面这一侧沿用
+        // IDE / 桌面端那条 `btwStream`（字段名一致），面板按 `question` 判归属 ——
+        // 少了 question，切会话后迟到的增量会画进新问题的面板里。
+        post({
+          command: "btwStream",
+          question: typeof p.question === "string" ? p.question : "",
+          type: p.type,
+          content: p.content,
+        });
+        return;
       case "permissionRequest":
         // The whole reason this page exists: an approval that arrived while the
         // user was away has to be answerable from the phone — but only in the
@@ -2452,6 +2464,36 @@
         );
         return;
 
+      // `/btw` 旁路提问（spec ui/remote-control.md「Web 页也能用 /btw 旁路提问」）。
+      // 与 compact 不同，它**有**回执而且回执就是答案本身，所以不能走
+      // controlRequest（那一条只报失败）：整段答案在这里落地成 `btwResponse`，
+      // 流式尾部另走 `btwContent` 通知（见 deliver）。question 原样回给页面——
+      // 面板靠它判定「这块内容属于我还开着的那个问题」。
+      case "askBtw": {
+        var btwQuestion = typeof msg.question === "string" ? msg.question : "";
+        request("askBtw", { question: btwQuestion })
+          .then(function (result) {
+            post({
+              command: "btwResponse",
+              question: btwQuestion,
+              answer: typeof result === "string" ? result : "",
+            });
+          })
+          .catch(function (err) {
+            // 宿主侧没接这个方法时说清「这台电脑上的会话不支持」，其余按传输
+            // 失败说；两种情况面板都会显示出来，不停在加载中。
+            post({
+              command: "btwError",
+              question: btwQuestion,
+              error:
+                err && err.code === HOST_UNSUPPORTED
+                  ? "这台电脑上的会话还不支持附带提问"
+                  : "附带提问失败：" + ((err && err.message) || err),
+            });
+          });
+        return;
+      }
+
       // ── 第二批解禁（spec「页面能执行的那批宿主命令」）───────────────
       // 这一组背后全是 `AgentBridge` 上早就实现的方法，缺的只是白名单一行 +
       // 这里一个 case + 页面一道远端守卫。两条写操作（回滚、清空）与写用户级
@@ -2690,7 +2732,9 @@
         return;
 
       case "requestSlashCommands":
-        request("getSlashCommands", {})
+        // `surface`: 服务端据此把远控页能用的宿主本地命令一并下发（同一张表，
+        // spec ui/slash-commands.md「弹窗里的宿主命令只有一份表」）。
+        request("getSlashCommands", { surface: "remote-page" })
           .then(function (result) {
             post({
               command: "slashCommandsResponse",

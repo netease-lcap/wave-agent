@@ -1532,9 +1532,16 @@ test("disconnectMcpServer calls agent.disconnectMcpServer", async () => {
   expect(r).toEqual({ success: true });
 });
 
-test("getSlashCommands returns command list", async () => {
+test("getSlashCommands returns the agent's own commands without a surface", async () => {
   const { bridge } = createBridge();
-  const commands = [{ name: "/help", description: "Show help" }];
+  const commands = [
+    {
+      id: "help",
+      name: "help",
+      description: "Show help",
+      handler: () => {},
+    },
+  ];
   vi.mocked(Agent.create).mockResolvedValue(
     createMockAgent({ getSlashCommands: vi.fn().mockReturnValue(commands) }),
   );
@@ -1543,7 +1550,71 @@ test("getSlashCommands returns command list", async () => {
   const sessionId = (result as { sessionId: string }).sessionId;
   const r = await bridge.handleRequest("getSlashCommands", {}, sessionId);
 
-  expect(r).toEqual({ commands });
+  // 不带 `surface` ⇒ 与引入 surface 之前一样：只有 SDK 那一半，`handler` 过不了线。
+  expect(r).toEqual({
+    commands: [{ id: "help", name: "help", description: "Show help" }],
+  });
+});
+
+test("getSlashCommands appends the host-local table of the asking surface", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({
+      getSlashCommands: vi.fn().mockReturnValue([
+        {
+          id: "review",
+          name: "review",
+          description: "技能：代码评审",
+          skillSource: "user",
+          handler: () => {},
+        },
+      ]),
+    }),
+  );
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+
+  const desktop = (await bridge.handleRequest(
+    "getSlashCommands",
+    { surface: "desktop" },
+    sessionId,
+  )) as { commands: { id: string }[] };
+  const page = (await bridge.handleRequest(
+    "getSlashCommands",
+    { surface: "remote-page" },
+    sessionId,
+  )) as { commands: { id: string }[] };
+
+  // SDK 那半在前、本入口的那批在后（排序由服务端决定，客户端按原样渲染）。
+  expect(desktop.commands[0]).toEqual({
+    id: "review",
+    name: "review",
+    description: "技能：代码评审",
+    skillSource: "user",
+  });
+  expect(desktop.commands.map((command) => command.id)).toContain("config");
+  expect(desktop.commands.map((command) => command.id)).not.toContain("clear");
+  // 同一个进程同时服务会话区与手机：过滤是**按请求**的，两次答案不同。
+  expect(page.commands.map((command) => command.id)).not.toContain("config");
+  expect(page.commands.map((command) => command.id)).toContain("btw");
+});
+
+test("getSlashCommands ignores an unknown surface instead of guessing", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ getSlashCommands: vi.fn().mockReturnValue([]) }),
+  );
+
+  const result = await bridge.handleRequest("initialize", {});
+  const sessionId = (result as { sessionId: string }).sessionId;
+  const r = await bridge.handleRequest(
+    "getSlashCommands",
+    { surface: "cli" },
+    sessionId,
+  );
+
+  expect(r).toEqual({ commands: [] });
 });
 
 test("getSkillMetadata returns skill metadata", async () => {

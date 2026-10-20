@@ -42,7 +42,36 @@ function createMockSession(): ChatSession {
     compact: vi.fn(),
     clearChat: vi.fn(),
     restoreSession: vi.fn(),
-    getSlashCommands: vi.fn().mockResolvedValue([]),
+    // 弹窗那批命令由服务端组装（SDK 那半 + 本入口的宿主本地那半），
+    // `ChatSession.getSlashCommands` 只负责带上 `surface: "vscode"`；
+    // 表本身在 packages/code，由 `hostSlashCommands.test.ts` 钉住。
+    getSlashCommands: vi.fn().mockResolvedValue([
+      {
+        id: "status",
+        name: "status",
+        description: "查看当前状态",
+        runOnSelect: true,
+      },
+      {
+        id: "compact",
+        name: "compact",
+        description: "手动压缩对话历史",
+        runOnSelect: true,
+      },
+      {
+        id: "clear",
+        name: "clear",
+        description: "清除对话历史并重置会话",
+        runOnSelect: true,
+      },
+      {
+        id: "remote-control",
+        name: "remote-control",
+        description: "远程控制（用手机接管本机会话）",
+        runOnSelect: true,
+      },
+      { id: "btw", name: "btw", description: "旁路提问（不进入聊天记录）" },
+    ]),
     getMessages: vi.fn().mockResolvedValue([]),
     askBtw: vi.fn(),
     backgroundTasks: [],
@@ -496,7 +525,7 @@ describe("MessageHandler MCP handlers", () => {
     expect(session.compact).toHaveBeenCalledWith(undefined);
   });
 
-  test("slashCommandsRequest includes compact in localCommands", async () => {
+  test("slashCommandsRequest forwards what the session returns", async () => {
     const session = createMockSession();
 
     const { handler, context } = createHandler(session);
@@ -566,7 +595,7 @@ describe("MessageHandler MCP handlers", () => {
     expect(posted.error).toContain("agent not initialized");
   });
 
-  test("slashCommandsRequest includes btw in localCommands", async () => {
+  test("slashCommandsRequest includes btw", async () => {
     const session = createMockSession();
 
     const { handler, context } = createHandler(session);
@@ -596,6 +625,12 @@ describe("MessageHandler MCP handlers", () => {
         description: "Code review skill",
         skillSource: "project",
       },
+      {
+        id: "status",
+        name: "status",
+        description: "查看当前状态",
+        runOnSelect: true,
+      },
     ]);
 
     const { handler, context } = createHandler(session);
@@ -618,8 +653,8 @@ describe("MessageHandler MCP handlers", () => {
     const skill = posted.commands.find((c) => c.id === "code-review");
     expect(skill?.skillSource).toBe("project");
     // Local/system commands never carry a source tag.
-    const config = posted.commands.find((c) => c.id === "config");
-    expect(config?.skillSource).toBeUndefined();
+    const status = posted.commands.find((c) => c.id === "status");
+    expect(status?.skillSource).toBeUndefined();
   });
 
   test("slashCommandsRequest flags local commands runOnSelect, /btw excepted", async () => {
@@ -643,25 +678,7 @@ describe("MessageHandler MCP handlers", () => {
     expect(
       posted.commands.find((c) => c.id === "btw")?.runOnSelect,
     ).toBeUndefined();
-    for (const id of [
-      "config",
-      "plugin",
-      "reload-plugins",
-      "mcp",
-      "status",
-      "remote-control",
-      "clear",
-      "compact",
-      "tasks",
-      "workflows",
-      "agents",
-      "skills",
-      "hooks",
-      "rewind",
-      "model",
-      "resume",
-      "plan",
-    ]) {
+    for (const id of ["status", "compact", "clear"]) {
       expect(posted.commands.find((c) => c.id === id)?.runOnSelect).toBe(true);
     }
   });

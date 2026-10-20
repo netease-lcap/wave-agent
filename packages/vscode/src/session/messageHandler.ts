@@ -2251,118 +2251,9 @@ export class MessageHandler {
   ) {
     const session = this.context.getChatSession(viewType || "tab", windowId);
     try {
-      const sdkCommands = await session.getSlashCommands();
-
-      // Local UI slash commands (not in SDK, intercepted in webview)
-      // `runOnSelect` = 选中即执行（打开弹窗/设置页/面板）；`/btw` 不标，它要让
-      // 用户接着补问题。webview 以此为判据，不再自带命令名名单。
-      const localCommands = [
-        {
-          id: "config",
-          name: "config",
-          description: "打开配置设置",
-          runOnSelect: true,
-        },
-        {
-          id: "plugin",
-          name: "plugin",
-          description: "打开插件市场",
-          runOnSelect: true,
-        },
-        {
-          id: "reload-plugins",
-          name: "reload-plugins",
-          description: "就地重载插件（不重启对话）",
-          runOnSelect: true,
-        },
-        {
-          id: "mcp",
-          name: "mcp",
-          description: "打开 MCP 服务器管理",
-          runOnSelect: true,
-        },
-        {
-          id: "status",
-          name: "status",
-          description: "查看当前状态",
-          runOnSelect: true,
-        },
-        {
-          id: "remote-control",
-          name: "remote-control",
-          description: "远程控制（用手机接管本机会话）",
-          runOnSelect: true,
-        },
-        {
-          id: "clear",
-          name: "clear",
-          description: "清除对话历史并重置会话",
-          runOnSelect: true,
-        },
-        {
-          id: "compact",
-          name: "compact",
-          description: "手动压缩对话历史",
-          runOnSelect: true,
-        },
-        {
-          id: "tasks",
-          name: "tasks",
-          description: "查看后台任务",
-          runOnSelect: true,
-        },
-        {
-          id: "workflows",
-          name: "workflows",
-          description: "查看工作流运行",
-          runOnSelect: true,
-        },
-        {
-          id: "agents",
-          name: "agents",
-          description: "查看可用 agents",
-          runOnSelect: true,
-        },
-        {
-          id: "skills",
-          name: "skills",
-          description: "查看可用技能",
-          runOnSelect: true,
-        },
-        {
-          id: "hooks",
-          name: "hooks",
-          description: "查看已配置钩子",
-          runOnSelect: true,
-        },
-        {
-          id: "rewind",
-          name: "rewind",
-          description: "回退到之前的用户消息",
-          runOnSelect: true,
-        },
-        {
-          id: "model",
-          name: "model",
-          description: "切换 AI 模型",
-          runOnSelect: true,
-        },
-        {
-          id: "resume",
-          name: "resume",
-          description: "恢复历史对话",
-          runOnSelect: true,
-        },
-        { id: "btw", name: "btw", description: "旁路提问（不进入聊天记录）" },
-        {
-          id: "plan",
-          name: "plan",
-          description: "启用规划模式或查看当前方案",
-          runOnSelect: true,
-        },
-      ];
-
-      const allCommands = [...sdkCommands, ...localCommands];
+      // 宿主本地命令不在这里维护：服务端有一张按入口过滤的表，`vscode` 就是
+      // 本入口的标识（spec ui/slash-commands.md「弹窗里的宿主命令只有一份表」）。
+      const allCommands = await session.getSlashCommands();
 
       let filteredCommands = allCommands;
       if (filterText && filterText.trim().length > 0) {
@@ -2378,13 +2269,9 @@ export class MessageHandler {
         name: command.name,
         description: command.description,
         // Keep the skill source tag (技能命令 → popup 来源标签), if any.
-        ...("skillSource" in command && command.skillSource
-          ? { skillSource: command.skillSource }
-          : {}),
-        // 本地指令 → 选中即执行（webview 不再自带命令名名单）。
-        ...("runOnSelect" in command && command.runOnSelect
-          ? { runOnSelect: true }
-          : {}),
+        ...(command.skillSource ? { skillSource: command.skillSource } : {}),
+        // 宿主本地命令的选中即执行也由服务端下发（同一个字段）。
+        ...(command.runOnSelect ? { runOnSelect: true } : {}),
       }));
       this.context.postMessage(
         {

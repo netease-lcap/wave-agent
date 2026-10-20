@@ -422,7 +422,9 @@ export class ChatSession {
 
   public async getSlashCommands() {
     if (this.agent) {
-      return await this.agent.getSlashCommands();
+      // `vscode`: 让服务端把本入口的宿主本地命令一起下发（spec
+      // ui/slash-commands.md「弹窗里的宿主命令只有一份表」）。
+      return await this.agent.getSlashCommands("vscode");
     }
     return [];
   }

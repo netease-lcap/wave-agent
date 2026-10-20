@@ -46,7 +46,8 @@ import {
   AuthService,
   PluginCore,
   validateWorktreeRemovalPath,
-  type SlashCommand,
+  type HostSurface,
+  type SlashCommandInfo,
   loadUserConfigEnv,
   loadWaveConfigFromFile,
   getUserConfigPaths,
@@ -111,6 +112,11 @@ import { isUserCheckpointMessage } from "../utils/rewindCheckpoints.js";
 import { getWorkspaceDiff } from "../utils/workspaceDiff.js";
 import { installGitCredentialHelper } from "../utils/gitCredentialHelper.js";
 import type { RemoteControlController } from "../remote/remoteControlService.js";
+import {
+  hostSlashCommandsFor,
+  parseHostSurface,
+  toSlashCommandInfo,
+} from "./hostSlashCommands.js";
 
 export type NotificationEmitter = (
   method: ServerNotificationMethod,
@@ -418,7 +424,7 @@ export class AgentBridge {
 
       // ── Commands ──
       case "getSlashCommands":
-        return this.getSlashCommands(sessionId);
+        return this.getSlashCommands(sessionId, parseHostSurface(p.surface));
       case "getSubagentConfigurations":
         return this.getSubagentConfigurations(sessionId);
       case "getSkillMetadata":
@@ -1976,9 +1982,28 @@ export class AgentBridge {
 
   // ── Commands ──────────────────────────────────────────────────
 
-  private getSlashCommands(sessionId?: string): { commands: SlashCommand[] } {
+  /**
+   * The popup's rows: the agent's own commands (skills / custom / plugin) plus
+   * the host-local table for the front end that asked.
+   *
+   * `surface` is optional on purpose: a client that predates the field asks
+   * without it and gets exactly what it got before (the SDK half), instead of
+   * being handed rows it has no handling for. Unknown values are dropped the
+   * same way by `parseHostSurface`.
+   */
+  private getSlashCommands(
+    sessionId?: string,
+    surface?: HostSurface,
+  ): { commands: SlashCommandInfo[] } {
     const entry = this.requireSessionForRead(sessionId);
-    return { commands: entry.agent.getSlashCommands() };
+    const agentCommands = entry.agent
+      .getSlashCommands()
+      .map((command) => toSlashCommandInfo(command));
+    return {
+      commands: surface
+        ? [...agentCommands, ...hostSlashCommandsFor(surface)]
+        : agentCommands,
+    };
   }
 
   private getSubagentConfigurations(sessionId?: string): {
