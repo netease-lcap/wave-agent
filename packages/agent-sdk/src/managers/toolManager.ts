@@ -400,6 +400,11 @@ class ToolManager {
             "CronManager",
           )
         : undefined,
+      pageWatchManager: this.container.has("PageWatchManager")
+        ? this.container.get<import("./pageWatchManager.js").PageWatchManager>(
+            "PageWatchManager",
+          )
+        : undefined,
       aiManager: this.container.has("AIManager")
         ? this.container.get<import("./aiManager.js").AIManager>("AIManager")
         : undefined,

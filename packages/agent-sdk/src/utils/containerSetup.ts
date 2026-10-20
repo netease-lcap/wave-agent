@@ -18,6 +18,7 @@ import { SlashCommandManager } from "../managers/slashCommandManager.js";
 import { PluginManager } from "../managers/pluginManager.js";
 import { BashModeManager } from "../managers/bashModeManager.js";
 import { CronManager } from "../managers/cronManager.js";
+import { PageWatchManager } from "../managers/pageWatchManager.js";
 import { WorkflowManager } from "../managers/workflowManager.js";
 import { WorkflowRegistry } from "../workflow/workflowRegistry.js";
 import { MemoryRuleManager } from "../managers/MemoryRuleManager.js";
@@ -497,6 +498,12 @@ export function setupAgentContainer(
   const cronManager = new CronManager(container, messageManager.getSessionId());
   container.register("CronManager", cronManager);
   cronManager.start();
+
+  // Artifact comment watching: one manager per agent, so its streams (and the
+  // cursors they keep) die with the session instead of accumulating in a
+  // process-wide registry.
+  const pageWatchManager = new PageWatchManager(container);
+  container.register("PageWatchManager", pageWatchManager);
 
   const workflowManager = new WorkflowManager(container);
   container.register("WorkflowManager", workflowManager);

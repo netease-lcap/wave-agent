@@ -7,6 +7,7 @@ import { McpManager } from "./managers/mcpManager.js";
 import { LspManager } from "./managers/lspManager.js";
 import { BashModeManager } from "./managers/bashModeManager.js";
 import { CronManager } from "./managers/cronManager.js";
+import { PageWatchManager } from "./managers/pageWatchManager.js";
 import { BackgroundTaskManager } from "./managers/backgroundTaskManager.js";
 import { MessageQueue, type QueuedMessage } from "./managers/messageQueue.js";
 import { SlashCommandManager } from "./managers/slashCommandManager.js";
@@ -44,6 +45,7 @@ import { TaskManager } from "./services/taskManager.js";
 import type { WorktreeSession } from "./utils/worktreeSession.js";
 import path from "node:path";
 import { parseTaskNotificationXml } from "./utils/notificationXml.js";
+import { parsePageCommentEventXml } from "./utils/pageCommentEventXml.js";
 import { InitializationService } from "./services/initializationService.js";
 import { getCompletion } from "./services/aiService.js";
 import {
@@ -86,6 +88,7 @@ export class Agent {
   private pluginManager: PluginManager; // Add plugin manager instance
   private skillManager: SkillManager; // Add skill manager instance
   private cronManager: CronManager; // Add cron manager instance
+  private pageWatchManager: PageWatchManager; // Artifact comment stream watcher (per-agent)
   private hookManager: HookManager; // Add hooks manager instance
   private reversionManager: ReversionManager;
   private messageQueue: MessageQueue; // Unified queue for messages, bang commands, and notifications
@@ -318,6 +321,7 @@ export class Agent {
     this.pluginManager = this.container.get("PluginManager")!;
     this.bashModeManager = this.container.get("BashModeManager")!;
     this.cronManager = this.container.get("CronManager")!;
+    this.pageWatchManager = this.container.get("PageWatchManager")!;
     this.messageQueue = this.container.get("MessageQueue")!;
     this.asyncWorkRegistry = this.container.get("AsyncWorkRegistry")!;
 
@@ -665,6 +669,14 @@ export class Agent {
             // that awaited a result had to fall back to reading the journal.
             result: block.result,
           });
+          continue;
+        }
+        // A page-comment wake-up is not a task: it has no taskId and no
+        // terminal state, and it repeats for as long as the page is watched.
+        // It reaches the model as hidden user text (the same shape hooks use
+        // for injected context) so it can read the threads itself.
+        if (parsePageCommentEventXml(xml)) {
+          this.messageManager.addUserMessage({ content: xml, isMeta: true });
         }
       }
       await this.aiManager.sendAIMessage({ recursionDepth: 0 });
@@ -1225,6 +1237,9 @@ export class Agent {
     this.abortBashCommand();
     this.abortSlashCommand();
     this.cronManager.stop();
+    // Abort every comment stream: the streams hold process handles, and the
+    // server treats a closed connection as the unsubscribe.
+    this.pageWatchManager.stop();
     // Cleanup background task manager
     this.backgroundTaskManager.cleanup();
     // Cleanup MCP connections
