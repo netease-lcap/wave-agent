@@ -1786,3 +1786,67 @@ export const BellRingIcon: React.FC<IconProps> = ({
     <path d="M4 2C2.8 3.7 2 5.7 2 8" />
   </svg>
 );
+
+/** 侧栏「创作集」入口（spec desktop/desktop-artifacts.md）：2×2 卡片网格，与
+ *  插件市场的齿轮、活动的折线区分开。 */
+export const ArtifactsIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.4}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <rect x="2.2" y="2.2" width="5.1" height="5.1" rx="1.2" />
+    <rect x="8.7" y="2.2" width="5.1" height="5.1" rx="1.2" />
+    <rect x="2.2" y="8.7" width="5.1" height="5.1" rx="1.2" />
+    <rect x="8.7" y="8.7" width="5.1" height="5.1" rx="1.2" />
+  </svg>
+);
+
+/** 生成文件卡片：HTML/代码类文件（lucide file-code，24 viewBox stroke 2）。 */
+export const FileCodeIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
+    <path d="M14 2v5a1 1 0 0 0 1 1h5" />
+    <path d="m10 13-2 2 2 2" />
+    <path d="m14 17 2-2-2-2" />
+  </svg>
+);
+
+/** 生成文件卡片菜单：打开所在文件夹（lucide folder，24 viewBox stroke 2）。 */
+export const FolderIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+  </svg>
+);

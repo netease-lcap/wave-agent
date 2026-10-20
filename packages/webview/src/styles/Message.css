@@ -978,3 +978,123 @@ button.reasoning-header {
 .markdown-content > *:last-child {
   margin-bottom: 0;
 }
+
+/* ---- 生成文件卡片（spec desktop/desktop-artifacts.md「对话中的生成文件卡片」）
+   = 图标块 + 文件名/副信息 + 右侧下拉按钮（菜单：打开文件 / 在浏览器中打开 /
+   打开文件所在文件夹）。原型 .fc 的尺寸按桌面端既有字号收小一档。 ---- */
+.generated-file-card {
+  position: relative;
+  margin-top: 6px;
+  max-width: 560px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 10px;
+  background: var(--vscode-editor-background);
+}
+
+.generated-file-card-icon {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-foreground);
+}
+
+.generated-file-card-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.generated-file-card-name {
+  font-size: 13px;
+  color: var(--vscode-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.generated-file-card-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.generated-file-card-actions {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.generated-file-card-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.generated-file-card-toggle:hover {
+  border-color: var(--vscode-focusBorder);
+  color: var(--vscode-textLink-foreground, #48a0c7);
+}
+
+/* ChevronDownIcon 的 viewBox 是 24（尺寸写在 svg 属性上），这里收到 12px。 */
+.generated-file-card-chevron {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+}
+
+.generated-file-card-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 5;
+  min-width: 176px;
+  padding: 4px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 8px;
+  background: var(
+    --vscode-editorWidget-background,
+    var(--vscode-editor-background)
+  );
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.generated-file-card-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.generated-file-card-item:hover {
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-textLink-foreground, #48a0c7);
+}

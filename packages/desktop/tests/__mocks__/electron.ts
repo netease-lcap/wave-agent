@@ -26,6 +26,7 @@ export const dialog = {
 export const shell = {
   openExternal: vi.fn(async () => undefined),
   openPath: vi.fn(async () => ""),
+  showItemInFolder: vi.fn(),
 };
 
 export const ipcMain = {

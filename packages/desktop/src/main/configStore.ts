@@ -95,6 +95,19 @@ export interface SessionIndexEntry {
   };
 }
 
+/**
+ * 创作集分类的本机存储（一个账号一份）。
+ *
+ * 分类是**本机数据**而不是服务端模型（spec desktop-artifacts.md「非功能需求 /
+ * 写动作的口径」）：换机器看不到自己的分类，但也不需要服务端改动。`assignments`
+ * 是 slug → 分类 id，一个文件最多一个分类；分类被删后残留的 slug 记录无害
+ * （渲染时按「分类不存在即不显示」处理）。
+ */
+export interface ArtifactCategoryRecord {
+  categories: Array<{ id: string; name: string }>;
+  assignments: Record<string, string>;
+}
+
 interface StoreData {
   configuration: DesktopConfigData;
   /** App appearance preference: follow the OS, or force light/dark. Defaults to "system". */
@@ -104,6 +117,13 @@ interface StoreData {
   /** Disk form: WorkdirRef, or legacy plain strings migrated to {host:'local', path} on load. */
   recentWorkdirs: Array<string | WorkdirRef>;
   sessions: SessionIndexEntry[];
+  /** 创作集分类：按账号（邮箱）隔离命名空间。 */
+  artifactCategories?: Record<string, ArtifactCategoryRecord>;
+  /** 本地文件 → 它上一次发布出来的 artifact（预览面板「发布」用）。 */
+  artifactPublishes?: Record<
+    string,
+    { url: string; slug: string; version: number }
+  >;
 }
 
 const MAX_RECENT_WORKDIRS = 10;
@@ -154,6 +174,12 @@ export class ConfigStore {
                     : s.lastActiveAt,
               }))
           : [],
+        // 分类是本机数据：读不出来就按空集合处理，不影响其它字段。
+        artifactCategories:
+          parsed.artifactCategories &&
+          typeof parsed.artifactCategories === "object"
+            ? parsed.artifactCategories
+            : {},
       };
     } catch {
       // Missing or corrupt file — start fresh (loadWaveConfigFromFile precedent).
@@ -163,6 +189,7 @@ export class ConfigStore {
         updateChannel: "stable",
         recentWorkdirs: [],
         sessions: [],
+        artifactCategories: {},
       };
     }
   }
@@ -210,6 +237,54 @@ export class ConfigStore {
   /** Persist the appearance preference (desktop host applies it to nativeTheme). */
   setThemeSource(source: ThemeSource): void {
     this.data.theme = source;
+    this.save();
+  }
+
+  /**
+   * 创作集分类（本机存储，按账号隔离）。账号取自当前登录用户邮箱；未登录时
+   * 读不到列表、也就不会写分类，这里的 fallback 只保证类型安全。
+   */
+  getArtifactCategories(account: string): ArtifactCategoryRecord {
+    const record = this.data.artifactCategories?.[account];
+    return {
+      categories: Array.isArray(record?.categories)
+        ? record.categories.filter(
+            (c) => typeof c?.id === "string" && typeof c?.name === "string",
+          )
+        : [],
+      assignments:
+        record?.assignments && typeof record.assignments === "object"
+          ? { ...record.assignments }
+          : {},
+    };
+  }
+
+  setArtifactCategories(account: string, record: ArtifactCategoryRecord): void {
+    this.data.artifactCategories = {
+      ...(this.data.artifactCategories ?? {}),
+      [account]: record,
+    };
+    this.save();
+  }
+
+  /**
+   * 本地文件上一次发布出来的 artifact（预览面板「发布」用）：同一个文件再次
+   * 发布应当更新同一条创作（新版本），而不是每次新建（spec 场景 3）。
+   */
+  getArtifactPublish(
+    filePath: string,
+  ): { url: string; slug: string; version: number } | undefined {
+    return this.data.artifactPublishes?.[filePath];
+  }
+
+  setArtifactPublish(
+    filePath: string,
+    published: { url: string; slug: string; version: number },
+  ): void {
+    this.data.artifactPublishes = {
+      ...(this.data.artifactPublishes ?? {}),
+      [filePath]: published,
+    };
     this.save();
   }
 

@@ -39,6 +39,7 @@ import type {
   PluginReloadResult,
   StdioAgentCallbacks,
   RemoteControlSnapshot,
+  RequestMethod,
 } from "wave-agent-sdk/host";
 import {
   EDIT_TOOL_NAME,
@@ -60,6 +61,7 @@ import {
 } from "./stdio/binaryResolver";
 import {
   ConfigStore,
+  type ArtifactCategoryRecord,
   type DesktopConfigData,
   type SessionIndexEntry,
   type ThemeSource,
@@ -79,6 +81,8 @@ import type {
   UpdateToast,
   AccountBillingInfo,
   AccountApiQuotaInfo,
+  ArtifactGalleryItem,
+  ArtifactShareMode,
 } from "wave-webview-fixtures";
 import { execFile, type ChildProcess } from "child_process";
 import { promisify } from "util";
@@ -206,6 +210,21 @@ interface ReconnectTarget {
   workdir: string;
   host: string;
   entry?: SessionIndexEntry;
+}
+
+/** `artifactShareView` 回包里分享弹层要用的字段（其余字段宿主不关心）。 */
+interface ArtifactShareViewPayload {
+  slug: string;
+  version: number;
+  title: string;
+  mode: ArtifactShareMode;
+  pinnedVersion: number | null;
+  sharedUsers: Array<{ userId: string; email: string }>;
+  versions: Array<{
+    version: number;
+    label?: string | null;
+    title?: string | null;
+  }>;
 }
 
 /**
@@ -1134,6 +1153,51 @@ export class DesktopHost {
   /** Utility (non-session-scoped) client for a host — auth, plugins, git RPCs. */
   private utilityClientFor(host: string): JsonRpcClient {
     return this.clientFor(host).client;
+  }
+
+  /**
+   * 创作集的一套账号级 RPC 调用：把「CLI 侧返回 `{ ok: false }`」与「RPC 本身
+   * 抛错」收敛成同一个结果形状，命令分支只负责把它翻译成一条 host→webview
+   * 消息。`authRequired` / `notFound` 原样透传 —— 页面据此渲染「请先登录」与
+   * 「该创作已被撤销」，而不是冒充空列表。
+   */
+  private async requestArtifact<T>(
+    method: RequestMethod,
+    params?: Record<string, unknown>,
+  ): Promise<
+    | { ok: true; data: T }
+    | {
+        ok: false;
+        error: string;
+        authRequired?: boolean;
+        notFound?: boolean;
+        conflict?: boolean;
+      }
+  > {
+    try {
+      return (await this.utilityClientFor(this.currentHost).request(
+        method,
+        params,
+      )) as
+        | { ok: true; data: T }
+        | {
+            ok: false;
+            error: string;
+            authRequired?: boolean;
+            notFound?: boolean;
+            conflict?: boolean;
+          };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /** 创作集分类按账号隔离（spec：本机数据、按账号命名空间）。 */
+  private artifactAccountKey(): string {
+    return this.accountCache.get(this.currentHost)?.user?.email ?? "local";
   }
 
   // ------------------------------------------------------------------
@@ -3832,6 +3896,242 @@ export class DesktopHost {
         break;
       }
 
+      // ── 创作集（Artifacts 画廊，desktop 独有整页）──
+      // 账号级数据一律经 utility client 走 RPC：HTTP 与 token 只在 CLI 进程
+      // （spec desktop-artifacts.md「数据来源单一」）。分类是本机数据，写
+      // configStore，按账号隔离。
+      case "desktopArtifactsList": {
+        const result = await this.requestArtifact<{
+          rows: ArtifactGalleryItem[];
+        }>("artifactGalleryList");
+        this.postMessage(
+          result.ok
+            ? {
+                command: "desktopArtifactsList",
+                requestId: msg.requestId,
+                items: result.data.rows,
+              }
+            : {
+                command: "desktopArtifactsList",
+                requestId: msg.requestId,
+                error: result.error,
+                authRequired: result.authRequired,
+              },
+        );
+        break;
+      }
+
+      case "desktopArtifactShareView": {
+        const slug = msg.slug as string;
+        const result = await this.requestArtifact<ArtifactShareViewPayload>(
+          "artifactShareView",
+          { slug },
+        );
+        this.postMessage(
+          result.ok
+            ? {
+                command: "desktopArtifactShareView",
+                requestId: msg.requestId,
+                slug,
+                mode: result.data.mode,
+                pinnedVersion: result.data.pinnedVersion,
+                sharedUsers: result.data.sharedUsers,
+                versions: result.data.versions,
+              }
+            : {
+                command: "desktopArtifactShareView",
+                requestId: msg.requestId,
+                slug,
+                error: result.error,
+                authRequired: result.authRequired,
+                notFound: result.notFound,
+              },
+        );
+        break;
+      }
+
+      case "desktopArtifactShareSave": {
+        const slug = msg.slug as string;
+        const mode = msg.mode as ArtifactShareMode;
+        const result = await this.requestArtifact<{ userIds: string[] }>(
+          "artifactShareSave",
+          {
+            slug,
+            mode,
+            userIds: msg.userIds as string[] | undefined,
+            pinnedVersion: msg.pinnedVersion as number | null | undefined,
+          },
+        );
+        this.postMessage(
+          result.ok
+            ? {
+                command: "desktopArtifactShareSave",
+                requestId: msg.requestId,
+                slug,
+                mode,
+                userIds: result.data.userIds,
+                pinnedVersion: msg.pinnedVersion as number | null | undefined,
+              }
+            : {
+                command: "desktopArtifactShareSave",
+                requestId: msg.requestId,
+                slug,
+                error: result.error,
+                authRequired: result.authRequired,
+                notFound: result.notFound,
+              },
+        );
+        break;
+      }
+
+      case "desktopArtifactMembersSearch": {
+        const result = await this.requestArtifact<{
+          members: Array<{ userId: string; email: string }>;
+        }>("artifactMembersSearch", {
+          search: msg.search as string | undefined,
+          limit: msg.limit as number | undefined,
+        });
+        this.postMessage(
+          result.ok
+            ? {
+                command: "desktopArtifactMembersSearch",
+                requestId: msg.requestId,
+                members: result.data.members,
+              }
+            : {
+                command: "desktopArtifactMembersSearch",
+                requestId: msg.requestId,
+                error: result.error,
+                authRequired: result.authRequired,
+              },
+        );
+        break;
+      }
+
+      case "desktopArtifactRevoke": {
+        const slug = msg.slug as string;
+        const result = await this.requestArtifact<Record<string, never>>(
+          "artifactRevoke",
+          { slug },
+        );
+        this.postMessage(
+          result.ok
+            ? {
+                command: "desktopArtifactRevoke",
+                requestId: msg.requestId,
+                slug,
+                ok: true,
+              }
+            : {
+                command: "desktopArtifactRevoke",
+                requestId: msg.requestId,
+                slug,
+                error: result.error,
+                authRequired: result.authRequired,
+                notFound: result.notFound,
+              },
+        );
+        break;
+      }
+
+      case "desktopArtifactPublish": {
+        const filePath = msg.filePath as string;
+        // 同一个本地文件再次发布 → 更新同一条创作（带上一次的 url 与版本做
+        // 基线；服务端 409 时回 conflict，由弹层给「强制覆盖」）。
+        const prior = this.configStore.getArtifactPublish(filePath);
+        const result = await this.requestArtifact<{
+          url: string;
+          slug: string;
+          version: number;
+        }>("artifactPublish", {
+          filePath,
+          title: msg.title as string | undefined,
+          url: prior?.url,
+          baseVersion: prior?.version,
+          force: msg.force as boolean | undefined,
+        });
+        if (result.ok)
+          this.configStore.setArtifactPublish(filePath, result.data);
+        this.postMessage(
+          result.ok
+            ? {
+                command: "desktopArtifactPublish",
+                requestId: msg.requestId,
+                ok: true,
+                url: result.data.url,
+                slug: result.data.slug,
+              }
+            : {
+                command: "desktopArtifactPublish",
+                requestId: msg.requestId,
+                error: result.error,
+                authRequired: result.authRequired,
+                conflict: result.conflict,
+              },
+        );
+        break;
+      }
+
+      // 创作集「新建 → 模板」：先按「新对话」的同一套逻辑建会话，再把模板提示词
+      // 预填进该 pane 的输入框。建会话是宿主动作（webview 拿不到新 paneId），
+      // 所以这一步必须在主进程做；prefillPrompt 是既有的预填命令，走同一份
+      // pending 重放路径，不会被随后的快照重置丢掉。
+      case "desktopArtifactsNewFromTemplate": {
+        const prompt = msg.prompt as string;
+        const pid = this.focusedPaneId;
+        await this.handleNewSession(pid);
+        if (prompt) {
+          this.postMessage({ command: "prefillPrompt", paneId: pid, prompt });
+        }
+        break;
+      }
+
+      case "desktopArtifactCategoriesGet": {
+        try {
+          const record = this.configStore.getArtifactCategories(
+            this.artifactAccountKey(),
+          );
+          this.postMessage({
+            command: "desktopArtifactCategories",
+            requestId: msg.requestId,
+            categories: record.categories,
+            assignments: record.assignments,
+          });
+        } catch (error) {
+          this.postMessage({
+            command: "desktopArtifactCategories",
+            requestId: msg.requestId,
+            categories: [],
+            assignments: {},
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        break;
+      }
+
+      case "desktopArtifactCategoriesSave": {
+        try {
+          this.configStore.setArtifactCategories(this.artifactAccountKey(), {
+            categories:
+              (msg.categories as ArtifactCategoryRecord["categories"]) ?? [],
+            assignments: (msg.assignments as Record<string, string>) ?? {},
+          });
+          this.postMessage({
+            command: "desktopArtifactCategoriesSaved",
+            requestId: msg.requestId,
+            ok: true,
+          });
+        } catch (error) {
+          this.postMessage({
+            command: "desktopArtifactCategoriesSaved",
+            requestId: msg.requestId,
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+        break;
+      }
+
       case "desktopOpenPane":
         await this.handleOpenPane(
           msg.workdir as string,
@@ -4437,6 +4737,12 @@ export class DesktopHost {
       // Local sessions only: leave the panel and open in the OS default app.
       case "desktopOpenFileExternal":
         await this.handleOpenPath(msg.path as string);
+        break;
+
+      // 生成文件卡片的「打开文件所在文件夹」（spec desktop/desktop-artifacts.md
+      // 「对话中的生成文件卡片」）：在系统文件管理器里选中该文件。
+      case "desktopRevealInFolder":
+        await this.handleRevealInFolder(pid, msg.path as string);
         break;
 
       case "openExternal": {
@@ -6895,6 +7201,34 @@ export class DesktopHost {
         error: `文件上传处理失败: ${error}`,
         ...(paneId !== undefined ? { paneId } : {}),
       });
+    }
+  }
+
+  /**
+   * 在系统文件管理器里定位文件（生成文件卡片的「打开文件所在文件夹」）。
+   * 远程主机上没有本地路径可定位：按该操作原有的失败口径给一条系统提示，
+   * 不静默吞掉（spec desktop/desktop-artifacts.md 场景 5）。
+   */
+  private async handleRevealInFolder(
+    paneId: string,
+    filePath: string,
+  ): Promise<void> {
+    if (!filePath) return;
+    if (this.hostForPane(paneId) !== LOCAL_HOST) {
+      this.pushSystemMessage("打开文件所在文件夹失败: 该会话运行在远程主机上");
+      return;
+    }
+    const stat = await fs.promises.stat(filePath).catch(() => null);
+    if (!stat) {
+      this.pushSystemMessage(
+        `打开文件所在文件夹失败: 文件不存在（${filePath}）`,
+      );
+      return;
+    }
+    try {
+      shell.showItemInFolder(filePath);
+    } catch (error) {
+      this.pushSystemMessage(`打开文件所在文件夹失败: ${error}`);
     }
   }
 

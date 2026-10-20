@@ -12,6 +12,7 @@ import {
   SplitIcon,
   LoadingRingIcon,
   SettingsPluginsIcon,
+  ArtifactsIcon,
   StatusDotIcon,
 } from "./HeaderIcons";
 import { useRovingMenu } from "../utils/useRovingMenu";
@@ -239,6 +240,10 @@ export interface DesktopSidebarProps {
    *  的入口，开关语义同「活动」按钮——未打开则打开，已打开则关闭。 */
   pluginMarketActive?: boolean;
   onTogglePluginMarket?: () => void;
+  /** 创作集整页（spec desktop/desktop-artifacts.md）：「插件市场」下方的入口，
+   *  开关语义同前两者——未打开则打开，已打开则关闭。 */
+  artifactsActive?: boolean;
+  onToggleArtifacts?: () => void;
 }
 
 const dirName = (workdir: string): string =>
@@ -285,6 +290,8 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   onToggleSessionBoard,
   pluginMarketActive = false,
   onTogglePluginMarket,
+  artifactsActive = false,
+  onToggleArtifacts,
 }) => {
   // 窗口级 chrome 状态（收起/全屏）单一权威在 DesktopChromeContext —— 任何渲染
   // 路径（root 单布局 / DesktopShell）的侧边栏都同源读取，不再 props 下行。
@@ -920,6 +927,18 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         >
           <SettingsPluginsIcon className="" />
           <span>插件市场</span>
+        </button>
+      )}
+      {onToggleArtifacts && (
+        <button
+          className={`desktop-sidebar-new-chat${artifactsActive ? " is-active" : ""}`}
+          onClick={onToggleArtifacts}
+          data-testid="desktop-artifacts"
+          aria-label="创作集"
+          aria-pressed={artifactsActive}
+        >
+          <ArtifactsIcon className="" />
+          <span>创作集</span>
         </button>
       )}
       <div

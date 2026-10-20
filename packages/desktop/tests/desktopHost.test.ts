@@ -17,6 +17,9 @@ const h = vi.hoisted(() => ({
   dirPaths: new Set<string>(),
   agentInstances: [] as Array<Record<string, unknown>>,
   clientRequests: [] as Array<{ method: string; params: unknown }>,
+  // 创作集 RPC 回包（`artifact*`）：键是方法名，值是 CLI 侧那份 `{ok,...}`
+  // 信封。没登记的按「未打桩」失败返回。
+  artifactResponses: new Map<string, unknown>(),
   authUrlHandler: null as ((params: unknown) => void) | null,
   // Shared RPC implementation for the local StdioClient mock and the remote
   // daemon client returned by the connectRemoteDaemon mock — both must answer
@@ -93,6 +96,19 @@ const h = vi.hoisted(() => ({
         return h.worktreeChangesResult;
       case "listPendingPermissions":
         return { requests: h.pendingPermissionRequests };
+      // 创作集：宿主只转发，CLI 进程里那份 `{ ok, data | error }` 信封原样回。
+      case "artifactGalleryList":
+      case "artifactShareView":
+      case "artifactShareSave":
+      case "artifactRevoke":
+      case "artifactMembersSearch":
+      case "artifactPublish":
+        return (
+          h.artifactResponses.get(method) ?? {
+            ok: false,
+            error: `${method} not stubbed`,
+          }
+        );
       default:
         return {};
     }
@@ -676,6 +692,7 @@ beforeEach(() => {
   h.agentCounter = 0;
   h.closedHandlers.length = 0;
   h.pendingPermissionRequests = [];
+  h.artifactResponses.clear();
   htmlPreviewMock.acquire.mockClear();
   htmlPreviewMock.release.mockClear();
   htmlPreviewMock.dispose.mockClear();
@@ -10940,6 +10957,36 @@ describe("file panel", () => {
       ),
     ).toBe(true);
   });
+
+  // 生成文件卡片的「打开文件所在文件夹」（spec desktop/desktop-artifacts.md
+  // 「对话中的生成文件卡片」场景 2）：在系统文件管理器里选中该文件。
+  it("desktopRevealInFolder reveals the file in the OS file manager", async () => {
+    const { host } = await readyHost();
+    h.existingPaths.add("/work/a/index.html");
+
+    await host.handleWebviewMessage({
+      command: "desktopRevealInFolder",
+      path: "/work/a/index.html",
+    });
+
+    expect(shell.showItemInFolder).toHaveBeenCalledWith("/work/a/index.html");
+  });
+
+  it("desktopRevealInFolder reports a missing file instead of silently doing nothing", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopRevealInFolder",
+      path: "/work/a/gone.html",
+    });
+
+    expect(shell.showItemInFolder).not.toHaveBeenCalled();
+    expect(
+      sent("appendMessage").some((m) =>
+        JSON.stringify(m).includes("打开文件所在文件夹失败"),
+      ),
+    ).toBe(true);
+  });
 });
 
 // spec: docs/specs/desktop/desktop-preview.md「本地 HTML 文件预览」— the host
@@ -11922,5 +11969,262 @@ describe("remoteControl（/remote-control 弹窗）", () => {
         .at(-1)
         ?.commands.find((c) => c.id === "remote-control"),
     ).toMatchObject({ name: "remote-control" });
+  });
+});
+
+// spec: docs/specs/desktop/desktop-artifacts.md「数据来源单一」「写动作的口径」——
+// 创作集的账号级数据由主进程经 stdio RPC 交给 CLI 进程（HTTP 与登录 token 只在
+// 那边），宿主只转发结果；分类是本机数据，写 configStore 并按账号隔离。
+describe("创作集（desktop-artifacts）", () => {
+  it("列表：把 CLI 返回的行原样下发给页面", async () => {
+    const { host, sent } = await readyHost();
+    h.artifactResponses.set("artifactGalleryList", {
+      ok: true,
+      data: { rows: [{ slug: "a", title: "页面 A", rel: "mine" }] },
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopArtifactsList",
+      requestId: "list-1",
+    });
+
+    expect(h.clientRequests.at(-1)).toMatchObject({
+      method: "artifactGalleryList",
+    });
+    expect(sent("desktopArtifactsList").at(-1)).toMatchObject({
+      requestId: "list-1",
+      items: [{ slug: "a", title: "页面 A", rel: "mine" }],
+    });
+  });
+
+  it("列表鉴权失败 → authRequired（不伪装成空列表）", async () => {
+    const { host, sent } = await readyHost();
+    h.artifactResponses.set("artifactGalleryList", {
+      ok: false,
+      error: "authentication failed (HTTP 401)",
+      authRequired: true,
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopArtifactsList",
+      requestId: "list-2",
+    });
+
+    const reply = sent("desktopArtifactsList").at(-1);
+    expect(reply).toMatchObject({ requestId: "list-2", authRequired: true });
+    expect(reply?.items).toBeUndefined();
+  });
+
+  it("分享回显与保存：slug 与范围原样过 RPC", async () => {
+    const { host, sent } = await readyHost();
+    h.artifactResponses.set("artifactShareView", {
+      ok: true,
+      data: {
+        mode: "users",
+        pinnedVersion: 2,
+        sharedUsers: [{ userId: "u1", email: "x@corp.com" }],
+        versions: [{ version: 2 }, { version: 1 }],
+      },
+    });
+    h.artifactResponses.set("artifactShareSave", {
+      ok: true,
+      data: { userIds: ["u1", "u2"] },
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopArtifactShareView",
+      requestId: "view-1",
+      slug: "a",
+    });
+    expect(sent("desktopArtifactShareView").at(-1)).toMatchObject({
+      requestId: "view-1",
+      slug: "a",
+      mode: "users",
+      pinnedVersion: 2,
+      sharedUsers: [{ userId: "u1", email: "x@corp.com" }],
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopArtifactShareSave",
+      requestId: "save-1",
+      slug: "a",
+      mode: "users",
+      userIds: ["u1", "u2"],
+      pinnedVersion: 2,
+    });
+    expect(h.clientRequests.at(-1)).toMatchObject({
+      method: "artifactShareSave",
+      params: {
+        slug: "a",
+        mode: "users",
+        userIds: ["u1", "u2"],
+        pinnedVersion: 2,
+      },
+    });
+    expect(sent("desktopArtifactShareSave").at(-1)).toMatchObject({
+      requestId: "save-1",
+      slug: "a",
+      userIds: ["u1", "u2"],
+    });
+  });
+
+  it("成员检索与撤销：失败原因原样下发", async () => {
+    const { host, sent } = await readyHost();
+    h.artifactResponses.set("artifactMembersSearch", {
+      ok: true,
+      data: { members: [{ userId: "u1", email: "x@corp.com" }] },
+    });
+    h.artifactResponses.set("artifactRevoke", {
+      ok: false,
+      error: "not found",
+      notFound: true,
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopArtifactMembersSearch",
+      requestId: "m-1",
+      search: "x",
+      limit: 20,
+    });
+    expect(sent("desktopArtifactMembersSearch").at(-1)).toMatchObject({
+      requestId: "m-1",
+      members: [{ userId: "u1", email: "x@corp.com" }],
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopArtifactRevoke",
+      requestId: "rv-1",
+      slug: "a",
+    });
+    expect(sent("desktopArtifactRevoke").at(-1)).toMatchObject({
+      requestId: "rv-1",
+      slug: "a",
+      notFound: true,
+    });
+  });
+
+  it("发布：同一文件再次发布带上一次的 url 与版本，成功后写回发布记录", async () => {
+    const { host, store, sent } = await readyHost();
+    h.files.set("/work/a/index.html", "<h1>hi</h1>");
+    h.artifactResponses.set("artifactPublish", {
+      ok: true,
+      data: {
+        url: "https://codechat.test/code/artifact/abc",
+        slug: "abc",
+        version: 1,
+      },
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopArtifactPublish",
+      requestId: "pub-1",
+      filePath: "/work/a/index.html",
+      title: "index.html",
+    });
+
+    expect(h.clientRequests.at(-1)).toMatchObject({
+      method: "artifactPublish",
+      params: { filePath: "/work/a/index.html", title: "index.html" },
+    });
+    expect(sent("desktopArtifactPublish").at(-1)).toMatchObject({
+      requestId: "pub-1",
+      ok: true,
+      slug: "abc",
+    });
+    expect(store.getArtifactPublish("/work/a/index.html")).toMatchObject({
+      slug: "abc",
+      version: 1,
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopArtifactPublish",
+      requestId: "pub-2",
+      filePath: "/work/a/index.html",
+    });
+    expect(h.clientRequests.at(-1)).toMatchObject({
+      params: {
+        url: "https://codechat.test/code/artifact/abc",
+        baseVersion: 1,
+      },
+    });
+  });
+
+  it("发布冲突回 conflict，未登录回 authRequired（页面据此给强制覆盖 / 先登录）", async () => {
+    const { host, sent } = await readyHost();
+    h.files.set("/work/a/index.html", "<h1/>");
+    h.artifactResponses.set("artifactPublish", {
+      ok: false,
+      error: "a newer version exists",
+      conflict: true,
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopArtifactPublish",
+      requestId: "pub-3",
+      filePath: "/work/a/index.html",
+    });
+    expect(sent("desktopArtifactPublish").at(-1)).toMatchObject({
+      requestId: "pub-3",
+      conflict: true,
+      error: "a newer version exists",
+    });
+
+    h.artifactResponses.set("artifactPublish", {
+      ok: false,
+      error: "authentication failed (HTTP 401)",
+      authRequired: true,
+    });
+    await host.handleWebviewMessage({
+      command: "desktopArtifactPublish",
+      requestId: "pub-4",
+      filePath: "/work/a/index.html",
+    });
+    expect(sent("desktopArtifactPublish").at(-1)).toMatchObject({
+      requestId: "pub-4",
+      authRequired: true,
+    });
+  });
+
+  it("分类存取走本机 userData，读写同一个命名空间", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopArtifactCategoriesSave",
+      requestId: "cat-1",
+      categories: [{ id: "cat-1", name: "运营" }],
+      assignments: { a: "cat-1" },
+    });
+    expect(sent("desktopArtifactCategoriesSaved").at(-1)).toMatchObject({
+      requestId: "cat-1",
+      ok: true,
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopArtifactCategoriesGet",
+      requestId: "cat-2",
+    });
+    expect(sent("desktopArtifactCategories").at(-1)).toMatchObject({
+      requestId: "cat-2",
+      categories: [{ id: "cat-1", name: "运营" }],
+      assignments: { a: "cat-1" },
+    });
+    // 分类不产生任何网络/RPC 请求
+    expect(h.clientRequests.some((r) => r.method.startsWith("artifact"))).toBe(
+      false,
+    );
+  });
+
+  it("模板新建：建会话后把提示词预填进该分屏", async () => {
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopArtifactsNewFromTemplate",
+      prompt: "帮我做一个网页小游戏：玩法是【】",
+    });
+
+    expect(sent("prefillPrompt").at(-1)).toMatchObject({
+      paneId: "pane-1",
+      prompt: "帮我做一个网页小游戏：玩法是【】",
+    });
   });
 });

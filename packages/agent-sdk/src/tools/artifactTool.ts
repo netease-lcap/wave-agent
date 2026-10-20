@@ -1197,6 +1197,9 @@ export const artifactTool: ToolPlugin = {
         "artifacts shared by someone else come back as an isolated summary steered by the optional `prompt`. " +
         `\`action: "list"\` enumerates the artifacts this account can reach (\`scope\`: "mine" by default, "shared", or "all"), ` +
         "so you can find a page when you do not have its URL. " +
+        "In Chinese this product calls the collection of published artifacts 「创作集」, so a request to 「新建创作集」 means publish a new " +
+        "artifact (omit `url`), 「更新创作集」 means redeploy an existing one (pass its `url`), and a question about what is in the 创作集 " +
+        'means `action: "list"` — never publish just because the word appears. ' +
         `Asset actions all take the artifact as \`url\`: \`action: "upload_asset"\` (+ \`file_path\`) stores a local file and returns an ` +
         "id the page references as `_blob/{id}`; " +
         `\`action: "list_assets"\` lists what is stored (with quota usage, and a cursor in \`after\` for the next page); ` +

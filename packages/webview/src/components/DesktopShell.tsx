@@ -72,6 +72,13 @@ interface DesktopShellProps {
   /** 打开（不切换）插件市场整页——透传给 pane 实例供 `/plugin` 委派（spec
    *  ecosystem/plugin.md 场景 4）。 */
   onOpenPluginMarket?: () => void;
+  /** 创作集整页（spec desktop/desktop-artifacts.md）：与插件市场同为「替换 pane
+   *  行、保留侧栏」的账号级整页，两者互斥。 */
+  artifactsOpen?: boolean;
+  onCloseArtifacts?: () => void;
+  artifacts?: React.ReactNode;
+  artifactsActive?: boolean;
+  onToggleArtifacts?: () => void;
   /**
    * root 设置页「新建/编辑」预填提示词请求（FR-032：root 不挂 MessageInput）。
    * 仅 targetPaneId 匹配的 pane-scoped ChatApp 收到（settings 关闭、pane 行
@@ -125,6 +132,11 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   onTogglePluginMarket,
   onOpenPluginMarket,
   onClosePluginMarket,
+  artifactsOpen = false,
+  onCloseArtifacts,
+  artifacts,
+  artifactsActive = false,
+  onToggleArtifacts,
   prefillRequest = null,
   onPrefillApplied,
 }) => {
@@ -701,8 +713,11 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   // A-018 / 场景 2）：选中另一条对话、Cmd 点击在新分屏打开、新建对话——都先退出
   // 整页再动作。用户点完看到的是对话本身；插件视图也不会留在锚点已经变了的旧
   // 列表上（列表快照与写操作必须同一个锚点）。
-  const closePluginMarketThen = (action: () => void) => {
+  // 创作集同理：整页是账号级快照，换对话/新开分屏前先退出，回来再重新打开
+  // （列表与写动作必须同一个锚点）。
+  const closeFullPagesThen = (action: () => void) => {
     onClosePluginMarket?.();
+    onCloseArtifacts?.();
     action();
   };
 
@@ -710,12 +725,12 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     <div className="desktop-layout" data-testid="desktop-shell">
       <DesktopSidebar
         onNewSession={() =>
-          closePluginMarketThen(() =>
+          closeFullPagesThen(() =>
             vscode.postMessage({ command: "newSession" }),
           )
         }
         onNewSessionInPane={() =>
-          closePluginMarketThen(() =>
+          closeFullPagesThen(() =>
             vscode.postMessage({ command: "desktopNewSessionInPane" }),
           )
         }
@@ -733,10 +748,10 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         currentSessionId={focusedSessionId}
         visibleSessionIds={visibleSessionIds}
         onSelectSession={(workdir, sessionId) =>
-          closePluginMarketThen(() => host.onSelectSession(workdir, sessionId))
+          closeFullPagesThen(() => host.onSelectSession(workdir, sessionId))
         }
         onOpenPane={(workdir, sessionId) =>
-          closePluginMarketThen(() => handleOpenPane(workdir, sessionId))
+          closeFullPagesThen(() => handleOpenPane(workdir, sessionId))
         }
         onDeleteSession={host.onDeleteSession}
         onRenameSession={host.onRenameSession}
@@ -745,6 +760,8 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         onToggleSessionBoard={onToggleSessionBoard}
         pluginMarketActive={pluginMarketActive}
         onTogglePluginMarket={onTogglePluginMarket}
+        artifactsActive={artifactsActive}
+        onToggleArtifacts={onToggleArtifacts}
       />
       <div
         className="desktop-pane-rows"
@@ -753,131 +770,135 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
       >
         {pluginMarketOpen && pluginMarket
           ? pluginMarket
-          : sessionBoardOpen && sessionBoard
-            ? sessionBoard
-            : paneRows.map((rowPanes, rowIdx) => (
-                <React.Fragment key={rowIdx}>
-                  {rowIdx > 0 && (
-                    <div
-                      className={`desktop-row-separator${rowSeparatorActive ? " desktop-row-separator--active" : ""}`}
-                      onMouseDown={handleRowSeparatorMouseDown}
-                      data-testid="desktop-row-separator"
-                    />
-                  )}
-                  <div
-                    ref={(el) => {
-                      rowRefs.current[rowIdx] = el;
-                    }}
-                    className="desktop-pane-row"
-                    style={rowStyle(rowIdx)}
-                    data-testid={
-                      rowIdx === 0
-                        ? "desktop-pane-row"
-                        : `desktop-pane-row-${rowIdx}`
-                    }
-                    onDragOver={(e) => handleSessionDragOver(e, rowIdx)}
-                    onDrop={(e) => handleSessionDrop(e, rowIdx)}
-                    onDragLeave={(e) => handleRowDragLeave(e, rowIdx)}
-                  >
-                    {rowPanes.map((pane, index) => {
-                      const paneStyle: React.CSSProperties = {
-                        minWidth: MIN_PANE_WIDTH,
-                      };
-                      if (
-                        resizePreview &&
-                        resizePreview.row === rowIdx &&
-                        resizePreview.widths[index] != null
-                      ) {
-                        // Live preview while a separator drags (pixel widths).
-                        paneStyle.flex = `0 0 ${resizePreview.widths[index]}px`;
-                      } else if (pane.width != null) {
-                        // flex-shrink:1 lets panes absorb the few px of overflow that
-                        // otherwise accumulates from each pane's border-right (content-
-                        // box, not counted in the % basis) plus the separators' net
-                        // width — and triggers an overflow-x scrollbar by ~5px even
-                        // when every pane is far above MIN_PANE_WIDTH. Grow stays 0
-                        // (sizes are authoritative ratios); shrink bottoms out at the
-                        // min-width above.
-                        paneStyle.flex = `0 1 ${pane.width * 100}%`;
-                      }
-                      return (
-                        <React.Fragment key={pane.paneId}>
-                          {index > 0 && (
-                            <div
-                              className={`desktop-pane-separator${activeSeparator?.row === rowIdx && activeSeparator.index === index - 1 ? " desktop-pane-separator--active" : ""}`}
-                              onMouseDown={(e) =>
-                                handleSeparatorMouseDown(e, rowIdx, index - 1)
-                              }
-                              onDragOver={(e) =>
-                                handleSeparatorDragOver(e, rowIdx, index)
-                              }
-                              onDrop={(e) => handlePaneDrop(e, rowIdx)}
-                              data-testid={
-                                rowIdx === 0
-                                  ? `desktop-pane-separator-${index - 1}`
-                                  : `desktop-pane-separator-${rowIdx}-${index - 1}`
-                              }
-                            />
-                          )}
-                          <div
-                            ref={(el) => {
-                              if (el) paneNodes.current.set(pane.paneId, el);
-                              else paneNodes.current.delete(pane.paneId);
-                            }}
-                            className={`desktop-pane${pane.paneId === focusedPaneId ? " desktop-pane--focused" : ""}`}
-                            // Marks the pane header as a reorder handle (grab
-                            // cursor, CSS side) — only once a second pane exists.
-                            data-draggable={
-                              panes.length > 1 ? "true" : undefined
-                            }
-                            style={paneStyle}
-                            onMouseDown={() => handleFocusPane(pane.paneId)}
-                            onDragOver={(e) =>
-                              handlePaneDragOver(e, rowIdx, index)
-                            }
-                            onDrop={(e) => handlePaneDrop(e, rowIdx)}
-                            data-testid={`desktop-pane-${pane.paneId}`}
-                          >
-                            <ChatApp
-                              vscode={vscode}
-                              host={host}
-                              paneId={pane.paneId}
-                              firstPane={rowIdx === 0 && index === 0}
-                              onOpenSettingsFromPane={onOpenSettings}
-                              onOpenPluginMarketFromPane={onOpenPluginMarket}
-                              prefillRequest={
-                                prefillRequest?.targetPaneId === pane.paneId
-                                  ? prefillRequest
-                                  : null
-                              }
-                              onPrefillApplied={onPrefillApplied}
-                              headerActions={
-                                panes.length > 1 ? (
-                                  <button
-                                    className="desktop-pane-close"
-                                    title="关闭分屏"
-                                    onClick={() => handleClosePane(pane.paneId)}
-                                    data-testid={`desktop-pane-close-${pane.paneId}`}
-                                  >
-                                    <ConversationCloseIcon />
-                                  </button>
-                                ) : undefined
-                              }
-                            />
-                          </div>
-                        </React.Fragment>
-                      );
-                    })}
-                    {dropIndicator && dropIndicator.row === rowIdx && (
+          : artifactsOpen && artifacts
+            ? artifacts
+            : sessionBoardOpen && sessionBoard
+              ? sessionBoard
+              : paneRows.map((rowPanes, rowIdx) => (
+                  <React.Fragment key={rowIdx}>
+                    {rowIdx > 0 && (
                       <div
-                        className="desktop-pane-drop-indicator"
-                        style={{ left: dropIndicator.x }}
-                        data-testid="desktop-pane-drop-indicator"
+                        className={`desktop-row-separator${rowSeparatorActive ? " desktop-row-separator--active" : ""}`}
+                        onMouseDown={handleRowSeparatorMouseDown}
+                        data-testid="desktop-row-separator"
                       />
                     )}
-                  </div>
-                </React.Fragment>
-              ))}
+                    <div
+                      ref={(el) => {
+                        rowRefs.current[rowIdx] = el;
+                      }}
+                      className="desktop-pane-row"
+                      style={rowStyle(rowIdx)}
+                      data-testid={
+                        rowIdx === 0
+                          ? "desktop-pane-row"
+                          : `desktop-pane-row-${rowIdx}`
+                      }
+                      onDragOver={(e) => handleSessionDragOver(e, rowIdx)}
+                      onDrop={(e) => handleSessionDrop(e, rowIdx)}
+                      onDragLeave={(e) => handleRowDragLeave(e, rowIdx)}
+                    >
+                      {rowPanes.map((pane, index) => {
+                        const paneStyle: React.CSSProperties = {
+                          minWidth: MIN_PANE_WIDTH,
+                        };
+                        if (
+                          resizePreview &&
+                          resizePreview.row === rowIdx &&
+                          resizePreview.widths[index] != null
+                        ) {
+                          // Live preview while a separator drags (pixel widths).
+                          paneStyle.flex = `0 0 ${resizePreview.widths[index]}px`;
+                        } else if (pane.width != null) {
+                          // flex-shrink:1 lets panes absorb the few px of overflow that
+                          // otherwise accumulates from each pane's border-right (content-
+                          // box, not counted in the % basis) plus the separators' net
+                          // width — and triggers an overflow-x scrollbar by ~5px even
+                          // when every pane is far above MIN_PANE_WIDTH. Grow stays 0
+                          // (sizes are authoritative ratios); shrink bottoms out at the
+                          // min-width above.
+                          paneStyle.flex = `0 1 ${pane.width * 100}%`;
+                        }
+                        return (
+                          <React.Fragment key={pane.paneId}>
+                            {index > 0 && (
+                              <div
+                                className={`desktop-pane-separator${activeSeparator?.row === rowIdx && activeSeparator.index === index - 1 ? " desktop-pane-separator--active" : ""}`}
+                                onMouseDown={(e) =>
+                                  handleSeparatorMouseDown(e, rowIdx, index - 1)
+                                }
+                                onDragOver={(e) =>
+                                  handleSeparatorDragOver(e, rowIdx, index)
+                                }
+                                onDrop={(e) => handlePaneDrop(e, rowIdx)}
+                                data-testid={
+                                  rowIdx === 0
+                                    ? `desktop-pane-separator-${index - 1}`
+                                    : `desktop-pane-separator-${rowIdx}-${index - 1}`
+                                }
+                              />
+                            )}
+                            <div
+                              ref={(el) => {
+                                if (el) paneNodes.current.set(pane.paneId, el);
+                                else paneNodes.current.delete(pane.paneId);
+                              }}
+                              className={`desktop-pane${pane.paneId === focusedPaneId ? " desktop-pane--focused" : ""}`}
+                              // Marks the pane header as a reorder handle (grab
+                              // cursor, CSS side) — only once a second pane exists.
+                              data-draggable={
+                                panes.length > 1 ? "true" : undefined
+                              }
+                              style={paneStyle}
+                              onMouseDown={() => handleFocusPane(pane.paneId)}
+                              onDragOver={(e) =>
+                                handlePaneDragOver(e, rowIdx, index)
+                              }
+                              onDrop={(e) => handlePaneDrop(e, rowIdx)}
+                              data-testid={`desktop-pane-${pane.paneId}`}
+                            >
+                              <ChatApp
+                                vscode={vscode}
+                                host={host}
+                                paneId={pane.paneId}
+                                firstPane={rowIdx === 0 && index === 0}
+                                onOpenSettingsFromPane={onOpenSettings}
+                                onOpenPluginMarketFromPane={onOpenPluginMarket}
+                                prefillRequest={
+                                  prefillRequest?.targetPaneId === pane.paneId
+                                    ? prefillRequest
+                                    : null
+                                }
+                                onPrefillApplied={onPrefillApplied}
+                                headerActions={
+                                  panes.length > 1 ? (
+                                    <button
+                                      className="desktop-pane-close"
+                                      title="关闭分屏"
+                                      onClick={() =>
+                                        handleClosePane(pane.paneId)
+                                      }
+                                      data-testid={`desktop-pane-close-${pane.paneId}`}
+                                    >
+                                      <ConversationCloseIcon />
+                                    </button>
+                                  ) : undefined
+                                }
+                              />
+                            </div>
+                          </React.Fragment>
+                        );
+                      })}
+                      {dropIndicator && dropIndicator.row === rowIdx && (
+                        <div
+                          className="desktop-pane-drop-indicator"
+                          style={{ left: dropIndicator.x }}
+                          data-testid="desktop-pane-drop-indicator"
+                        />
+                      )}
+                    </div>
+                  </React.Fragment>
+                ))}
         {dropZone && (
           <div
             className={`desktop-pane-dropzone desktop-pane-dropzone--${dropZone}`}

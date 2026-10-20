@@ -86,6 +86,14 @@ export type RequestMethod =
   | "logout"
   // Git (deep link: install the credential helper git calls)
   | "installGitCredentialHelper"
+  // 创作集（Artifacts 画廊）：账号级读写面，global — 无 session 也可调用。
+  // 桌面端整页用它拿列表 / 分享状态，并写分享、撤销发布、检索成员、发布预览文件。
+  | "artifactGalleryList"
+  | "artifactShareView"
+  | "artifactShareSave"
+  | "artifactRevoke"
+  | "artifactMembersSearch"
+  | "artifactPublish"
   // Memory files (user-level ~/.wave/AGENTS.md and project-level <workdir>/AGENTS.md)
   | "getAgentsContent"
   | "setAgentsContent"

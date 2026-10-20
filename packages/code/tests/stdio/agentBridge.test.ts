@@ -16,6 +16,7 @@ import {
   readUserPreferenceView,
   updateUserPreferenceSettings,
   normalizeEntrypoint,
+  publishArtifactHtml,
   type ClientNotificationMethod,
   type RequestMethod,
 } from "wave-agent-sdk";
@@ -4435,4 +4436,62 @@ test("reportCompletionOutcome rejects an outcome outside the enum", async () => 
     ),
   ).rejects.toThrow(/outcome/);
   expect(reportCompletionOutcome).not.toHaveBeenCalled();
+});
+
+// spec: docs/specs/desktop/desktop-artifacts.md「预览窗口发布为 artifact」——
+// 预览面板的「发布」按钮经桌面端转发到这条 RPC：CLI 进程读盘、带上既有 url /
+// 版本基线，再交给 SDK 的发布实现（HTTP 与 token 只在 CLI 这边）。
+test("artifactPublish 读盘后交给 publishArtifactHtml，标题默认取文件名", async () => {
+  // os.tmpdir 在本文件里被打桩（其他用例按需改它的返回值），这里要真的落一个
+  // 文件给 readFile 读，故取未打桩的真实实现。
+  const realOs = await vi.importActual<typeof import("node:os")>("node:os");
+  const filePath = path.join(
+    realOs.tmpdir(),
+    `wave-artifact-${process.pid}.html`,
+  );
+  await writeFile(filePath, "<h1>hi</h1>", "utf8");
+  try {
+    const { bridge } = createBridge();
+    vi.mocked(publishArtifactHtml).mockResolvedValue({
+      ok: true,
+      data: { url: "https://s/code/artifact/abc", slug: "abc", version: 2 },
+    });
+
+    const result = await bridge.handleRequest("artifactPublish", {
+      filePath,
+      url: "https://s/code/artifact/abc",
+      baseVersion: 1,
+    });
+
+    expect(vi.mocked(publishArtifactHtml)).toHaveBeenCalledWith({
+      html: "<h1>hi</h1>",
+      title: path.basename(filePath),
+      url: "https://s/code/artifact/abc",
+      baseVersion: 1,
+      force: undefined,
+    });
+    expect(result).toEqual({
+      ok: true,
+      data: { url: "https://s/code/artifact/abc", slug: "abc", version: 2 },
+    });
+  } finally {
+    await rm(filePath, { force: true });
+  }
+});
+
+test("artifactPublish 读不到文件时给可操作错误，不调用发布", async () => {
+  const { bridge } = createBridge();
+  const realOs = await vi.importActual<typeof import("node:os")>("node:os");
+  const missing = path.join(
+    realOs.tmpdir(),
+    `wave-artifact-missing-${process.pid}.html`,
+  );
+
+  const result = await bridge.handleRequest("artifactPublish", {
+    filePath: missing,
+  });
+
+  expect(vi.mocked(publishArtifactHtml)).not.toHaveBeenCalled();
+  expect(result).toMatchObject({ ok: false });
+  expect((result as { error: string }).error).toContain("读取文件失败");
 });
