@@ -667,6 +667,67 @@ export class PermissionManager {
   }
 
   /**
+   * Hand one request to the host's user-facing callback (the CLI dialog, the
+   * phone, an SDK host) and turn its answer into a resolution. The single exit
+   * for every path that has to reach a person — an automatic allow here would
+   * strand the caller with an answer nobody gave.
+   */
+  private async askUserForPermission(
+    context: ToolPermissionContext,
+  ): Promise<PermissionResolution> {
+    if (!context.canUseToolCallback) {
+      logger?.warn(
+        "No permission callback provided for restricted tool in default mode",
+        {
+          toolName: context.toolName,
+        },
+      );
+      return {
+        decision: {
+          behavior: "deny",
+          message: `Tool '${context.toolName}' requires permission approval. No permission callback configured.`,
+        },
+        source: "unknown",
+      };
+    }
+
+    // The confirmation dialog is the user's time, not the agent's: close the
+    // session's active-time interval while it is up, so a prompt answered
+    // half an hour later does not read as half an hour of work.
+    const telemetry = this.telemetryContext();
+    beginUserWait(telemetry);
+    try {
+      const answered = await context.canUseToolCallback(context);
+      if (answered.behavior !== "allow") {
+        logger?.debug("Custom callback returned decision", {
+          toolName: context.toolName,
+          decision: answered,
+        });
+      }
+      // A `source` on the answer is telemetry plumbing (the PermissionRequest
+      // hook labels itself); it does not belong on the decision a tool sees.
+      const { source, ...decision } = answered;
+      return { decision, source: source ?? userSourceOf(decision) };
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      logger?.error("Error in permission callback", {
+        toolName: context.toolName,
+        error: errorMessage,
+      });
+      return {
+        decision: {
+          behavior: "deny",
+          message: "Error in permission callback",
+        },
+        source: "unknown",
+      };
+    } finally {
+      endUserWait(telemetry);
+    }
+  }
+
+  /**
    * Resolve the decision itself, plus where it came from. Split from
    * {@link checkPermission} so every path out carries its source and the
    * recording happens exactly once.
@@ -706,6 +767,22 @@ export class PermissionManager {
           source: "config",
         };
       }
+    }
+
+    // 1. Tools whose whole point is the user's answer go straight to the person.
+    // This is Claude Code's step 1e (`permissions.ts`: "Tool requires user
+    // interaction even in bypass mode") and it sits *before* every automatic
+    // allow below, not only before `bypassPermissions`: a skill's
+    // `allowed-tools` almost always lists `AskUserQuestion`, and letting that
+    // rule approve it returned `{}` — an empty answer nobody gave — while
+    // `ExitPlanMode` would leave plan mode without the user's approval.
+    // Deny rules above still win, exactly as in CC (1d precedes 1e).
+    if (
+      (USER_INTERACTION_REQUIRED_TOOLS as readonly string[]).includes(
+        context.toolName,
+      )
+    ) {
+      return this.askUserForPermission(context);
     }
 
     // Check worktree safety for Write and Edit tools — unconditional safety
@@ -784,21 +861,13 @@ export class PermissionManager {
 
     // If bypassPermissions mode — or plan mode in a session that was authorized
     // to bypass at creation time — always allow.
-    // Exception: tools that require user interaction (AskUserQuestion and
-    // ExitPlanMode) must still prompt, matching Claude Code's
-    // requiresUserInteraction behavior (its step 1e returns the tool's ask
-    // result before the bypass step).
-    // Worktree safety check above runs unconditionally, so bypass never skips it.
+    // Worktree safety check above runs unconditionally, so bypass never skips it;
+    // tools that require user interaction never reach here (step 1 above).
     const bypassesPermissionChecks =
       context.permissionMode === "bypassPermissions" ||
       (context.permissionMode === "plan" && this.getBypassAuthorization());
     if (bypassesPermissionChecks) {
-      const requiresUserInteraction = (
-        USER_INTERACTION_REQUIRED_TOOLS as readonly string[]
-      ).includes(context.toolName);
-      if (!requiresUserInteraction) {
-        return { decision: { behavior: "allow" }, source: "config" };
-      }
+      return { decision: { behavior: "allow" }, source: "config" };
     }
 
     // If acceptEdits mode, allow Edit, Write, and mkdir in safe zone
@@ -917,59 +986,9 @@ export class PermissionManager {
       };
     }
 
-    // 3. If custom callback provided, call it and return result
-    if (context.canUseToolCallback) {
-      // The confirmation dialog is the user's time, not the agent's: close the
-      // session's active-time interval while it is up, so a prompt answered
-      // half an hour later does not read as half an hour of work.
-      const telemetry = this.telemetryContext();
-      beginUserWait(telemetry);
-      try {
-        const answered = await context.canUseToolCallback(context);
-        if (answered.behavior !== "allow") {
-          logger?.debug("Custom callback returned decision", {
-            toolName: context.toolName,
-            decision: answered,
-          });
-        }
-        // A `source` on the answer is telemetry plumbing (the PermissionRequest
-        // hook labels itself); it does not belong on the decision a tool sees.
-        const { source, ...decision } = answered;
-        return { decision, source: source ?? userSourceOf(decision) };
-      } catch (error) {
-        const errorMessage =
-          error instanceof Error ? error.message : String(error);
-        logger?.error("Error in permission callback", {
-          toolName: context.toolName,
-          error: errorMessage,
-        });
-        return {
-          decision: {
-            behavior: "deny",
-            message: "Error in permission callback",
-          },
-          source: "unknown",
-        };
-      } finally {
-        endUserWait(telemetry);
-      }
-    }
-
-    // 4. For default mode on restricted tools without callback, integrate with CLI confirmation
-    // Note: CLI confirmation integration will be implemented in Phase 2
-    logger?.warn(
-      "No permission callback provided for restricted tool in default mode",
-      {
-        toolName: context.toolName,
-      },
-    );
-    return {
-      decision: {
-        behavior: "deny",
-        message: `Tool '${context.toolName}' requires permission approval. No permission callback configured.`,
-      },
-      source: "unknown",
-    };
+    // 3. Ask the host's user-facing callback (the one place a person can answer;
+    // it also carries the no-callback deny for headless callers).
+    return this.askUserForPermission(context);
   }
 
   /**
