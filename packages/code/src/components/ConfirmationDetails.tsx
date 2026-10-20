@@ -36,25 +36,37 @@ const getActionDescription = (
       return "Enter plan mode for complex task planning";
     case ASK_USER_QUESTION_TOOL_NAME:
       return "Answer questions to clarify intent";
-    case ARTIFACT_TOOL_NAME:
-      switch (toolInput.action) {
+    case ARTIFACT_TOOL_NAME: {
+      // `action` omitted means publish, so the publish wording must not be the
+      // switch's fallback: a comment or asset action added later would then be
+      // announced as "Publish file:".
+      const action = toolInput.action ?? "publish";
+      const target = toolInput.url || toolInput.file_path || "unknown artifact";
+      switch (action) {
         case "list":
           return `List artifacts (scope: ${toolInput.scope || "mine"})`;
         case "upload_asset":
           return `Upload asset: ${toolInput.file_path || "unknown file"}`;
         case "list_assets":
-          return `List assets of artifact: ${toolInput.url || "unknown artifact"}`;
+          return `List assets of artifact: ${target}`;
         case "read_asset":
           return `Read asset: ${toolInput.asset_id || "unknown asset"}`;
         case "delete_asset":
           return `Delete asset: ${toolInput.asset_id || "unknown asset"}`;
         case "copy_from":
-          return `Copy assets into artifact: ${toolInput.url || "unknown artifact"}`;
+          return `Copy assets into artifact: ${target}`;
         case "read":
-          return `Read artifact: ${toolInput.url || "unknown artifact"}`;
-        default:
+          return `Read artifact: ${target}`;
+        case "reply":
+          return `Reply to comment thread ${toolInput.thread_id || "unknown thread"} on: ${target}`;
+        case "resolve":
+          return `${toolInput.resolved === false ? "Reopen" : "Resolve"} comment thread ${toolInput.thread_id || "unknown thread"} on: ${target}`;
+        case "publish":
           return `Publish file: ${toolInput.file_path || "unknown file"}`;
+        default:
+          return `Artifact action "${String(action)}" on: ${target}`;
       }
+    }
     default:
       return "Execute operation";
   }

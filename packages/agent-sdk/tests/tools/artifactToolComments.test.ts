@@ -479,3 +479,130 @@ describe("Artifact watch / unwatch actions", () => {
     expect(result.error).toContain("not available in this session");
   });
 });
+
+function makePermissionManager(behavior: "allow" | "deny" = "allow") {
+  const permissionContext: Record<string, unknown> = {};
+  return {
+    permissionContext,
+    manager: {
+      createContext: vi.fn().mockReturnValue(permissionContext),
+      checkPermission: vi
+        .fn()
+        .mockResolvedValue(
+          behavior === "allow"
+            ? { behavior: "allow" as const }
+            : { behavior: "deny" as const, message: "No way" },
+        ),
+    },
+  };
+}
+
+describe("Artifact comment writes ask the user once per page", () => {
+  function stubCommentEndpoints() {
+    return stubFetch([
+      {
+        match: (url) => url.includes(`/comments/${SLUG}/`),
+        respond: () =>
+          jsonResponse(201, {
+            replied: true,
+            threadId: "c1",
+            commentId: "r1",
+            status: "resolved",
+          }),
+      },
+    ]);
+  }
+
+  it("confirms the first reply, then lets later comment writes through", async () => {
+    stubCommentEndpoints();
+    const { manager, permissionContext } = makePermissionManager();
+    const context = makeContext({ permissionManager: manager as never });
+
+    const reply = await TOOL.execute(
+      { action: "reply", url: ARTIFACT_URL, thread_id: "c1", text: "已修复" },
+      context,
+    );
+    expect(reply.success).toBe(true);
+    expect(manager.checkPermission).toHaveBeenCalledTimes(1);
+    // The dialog shows what is being written, and no standing rule is offered:
+    // a persistent rule would authorise comment writes to every later artifact.
+    expect(manager.createContext.mock.calls[0][3]).toMatchObject({
+      action: "reply",
+      thread_id: "c1",
+      text: "已修复",
+    });
+    expect(permissionContext.hidePersistentOption).toBe(true);
+    expect(String(permissionContext.warning)).toContain("公开回帖");
+
+    // Same artifact, both actions: one approval covers the pair.
+    const resolve = await TOOL.execute(
+      { action: "resolve", url: ARTIFACT_URL, thread_id: "c1", resolved: true },
+      context,
+    );
+    expect(resolve.success).toBe(true);
+    const secondReply = await TOOL.execute(
+      { action: "reply", url: ARTIFACT_URL, thread_id: "c2", text: "再看下" },
+      context,
+    );
+    expect(secondReply.success).toBe(true);
+    expect(manager.checkPermission).toHaveBeenCalledTimes(1);
+  });
+
+  it("confirms again for a different artifact", async () => {
+    stubCommentEndpoints();
+    const { manager } = makePermissionManager();
+    const context = makeContext({ permissionManager: manager as never });
+
+    await TOOL.execute(
+      { action: "reply", url: ARTIFACT_URL, thread_id: "c1", text: "已修复" },
+      context,
+    );
+    await TOOL.execute(
+      {
+        action: "reply",
+        url: `${SERVER_URL}/code/artifact/other`,
+        thread_id: "c1",
+        text: "已修复",
+      },
+      context,
+    );
+    expect(manager.checkPermission).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops at a denial without touching the server", async () => {
+    const fetchMock = stubCommentEndpoints();
+    const { manager } = makePermissionManager("deny");
+
+    const reply = await TOOL.execute(
+      { action: "reply", url: ARTIFACT_URL, thread_id: "c1", text: "已修复" },
+      makeContext({ permissionManager: manager as never }),
+    );
+    expect(reply.success).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const resolve = await TOOL.execute(
+      { action: "resolve", url: ARTIFACT_URL, thread_id: "c1", resolved: true },
+      makeContext({ permissionManager: manager as never }),
+    );
+    expect(resolve.success).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not gate reads", async () => {
+    stubFetch([
+      {
+        match: () => true,
+        respond: () =>
+          jsonResponse(200, { comments: [commentRow()], unresolvedCount: 0 }),
+      },
+    ]);
+    const { manager } = makePermissionManager();
+
+    const result = await TOOL.execute(
+      { action: "comments", url: ARTIFACT_URL },
+      makeContext({ permissionManager: manager as never }),
+    );
+    expect(result.success).toBe(true);
+    expect(manager.checkPermission).not.toHaveBeenCalled();
+  });
+});

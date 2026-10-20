@@ -27,7 +27,7 @@ order: 35
 >   与 CC 的一处刻意差异：CC 解析 `/agent-list` 响应时把 `content_type` / `created_at` 截到 **40 字符**（超出则整行 safeParse 失败、静默丢行）；codechat 上传侧放宽到 100（DB 列宽），于是 `.docx` 这类长 MIME 在 CC 里会掉行。**wave 不设 40 字符上限**（以服务端口径为准），避免静默丢行。
 >   分享状态文案对齐（2026-09-29，issue #2278 差距清单中唯一「数据面已具备、只差提示词」的一条）：`read` / WebFetch 与 `publish` 的工具结果中，把探测到的 **分享范围**（`perm.mode` = `owner`/`users`/`org`）与 **当前会话对该 artifact 的角色**（`role` = `owner`/`reader`）**以文案形式告知模型**，并照 CC 2.1.278 的口径以固定句收尾：**「你不能改分享，改分享在网页的 Share 菜单里」**；未分享（`owner`）时同时说明**别人打不开**，读者视角（`reader`）说明**本会话不能发布到它**。对齐基准 `@anthropic-ai/claude-code@2.1.284`（#2278 的调研基于 2.1.278）。**只读口径不变**：不新增任何写分享的 action/参数（CC 也没有，服务端 `POST /api/frame/{slug}/share` 仅拥有者可用，模型侧无入口看起来是有意设计）。**不做** CC 的「受众变宽提醒」（`{owner:0, users:1, agent_scoped:1, org:2, public:3}` 等级表）：wave 没有任何改分享的入口 ⇒ 受众不会因本工具的动作变宽，该提醒无触发场景；CC 的 `public`（Anyone with the link）与 `agent_scoped`（属于 agent 而非人）两种 mode 在 codechat 也无对应物，文案只覆盖 `owner`/`users`/`org` + 缺省（`perm` 缺失时**不渲染分享行**，不臆断为私有）。
 
-> 页内评论接入（2026-10-20）：服务端（codechat 第二期 + 第三期）已上线评论读 / 回帖 / 解决与**评论事件流**，本轮一次性接入 5 个 action + 1 个常驻监听管理器 + 1 处叫醒通道。契约要点：读 `GET /api/frame/comments/{slug}?cursor=`（固定 500/页，`cursor` 原样回传、不自行解析）；回帖 `POST .../{threadId}?via=agent`（`text` ≤ **4096 UTF-8 字节**，不是字符数）；解决 `POST .../{threadId}/resolve?via=agent`（body 必须显式 `resolved` 布尔，`afterVersion` 不一致回 409 `VERSION_STALE`）；事件流 `GET .../stream`（SSE，**连接即订阅**，服务端不存订阅态）。
+> 页内评论接入（2026-10-20）：服务端（codechat 第二期 + 第三期）已上线评论读 / 回帖 / 解决与**评论事件流**，本轮一次性接入 5 个 action + 1 个常驻监听管理器 + 1 处叫醒通道。契约要点：读 `GET /api/frame/comments/{slug}?cursor=`（固定 500/页，`cursor` 原样回传、不自行解析；响应**恒带** `cursor` = 本次最后一行返回行的位置，空页时回显请求游标）；回帖 `POST .../{threadId}?via=agent`（`text` ≤ **4096 UTF-8 字节**，不是字符数）；解决 `POST .../{threadId}/resolve?via=agent`（body 必须显式 `resolved` 布尔，`afterVersion` 不一致回 409 `VERSION_STALE`）；事件流 `GET .../stream`（SSE，**连接即订阅**，服务端不存订阅态）。
 > 三条服务端算好、客户端**不得重算**的判据：`awaitingAgentReply`（该不该回的唯一判据，已考虑"线程里有没有 agent 回复"）、`unresolvedCount`（恒按全量算的徽章）、`head`（最新一行的 `(updated_at, id)`，编码成**与读接口同一个不透明游标**，只做**字符串相等比较**，不解析、不排序——重连/跨副本/服务端重启因此都自愈）。
 > 已拍板：① **`watch` 只由显式 `action:"watch"` 触发**，不做 publish 后自动订阅（自动订阅会撞服务端 8 条流上限，且用户没要求时后台常驻连接是意外行为）；`publish`/`read` 成功时给模型一句"想在被评论时被叫醒就用 `action:"watch"`"的提示。② **叫醒事件用独立 tag `<page-comment-event>`**，不塞进 `<task-notification>`：后者语义是"后台任务**终态** + taskId + outputFile"，评论事件没有任务、没有终态、会反复发生，塞进去会让 `task-type`/`status` 词表说谎，且两个消费点都要处理一个假 taskId。事件走同一条 notification 队列（`MessageQueue.enqueueNotification`），但落成 `role:"user"` + `isMeta:true` 的隐藏消息（UI 不显示、模型可见、随 jsonl 持久化；与 hook 注入上下文同一条路径）。
 > 范围外（点名防止以后漏）：自动回帖 / autoreact、`watch-token` 与会话武装（arming）状态机、服务端存订阅态、Web Push 叫醒、agent 建评论 / 删评论（新建必须由人带选区完成）、轮询兜底（SSE + `head` 自愈已覆盖断线）。
@@ -271,6 +271,8 @@ order: 35
 15. **假设** model 想新建一条线程，**当** 检查工具 schema 时，**则** 不存在这样的 action / 参数：新建必须由人带选区在页面上完成，工具只能在既有线程里回帖。
 16. **假设** 未登录（无 SSO token），**当** 调用任一评论动作时，**则** 返回鉴权错误并提示先 `/login`。
 17. **假设** `enableArtifact` 未开启，**当** 会话初始化时，**则** 工具整体不注册，评论动作同样不可用（与 publish/read/asset 同一 gate）。
+18. **假设** model 首次对某个 artifact 调用 `reply` 或 `resolve`，**当** 工具执行时，**则** 先走权限确认（与资源写动作同构：`hidePersistentOption`，确认框里带上要回帖的正文 / 要关闭的线程），**同一 artifact 同一会话只确认一次，`reply` 与 `resolve` 共用这一把锁**；被拒绝时返回拒绝结果、不发起任何请求。
+19. **假设** 用户拒绝过一次回帖，**当** 模型继续尝试时，**则** 工具描述明确要求**不重试**、把线程留给用户（拒绝是人的决定，不是要换参数绕过的错误）。
 
 ### 用户故事：页面有评论变化时自动叫醒会话（`watch` / `unwatch` + 事件流，优先级：P1）
 
@@ -324,8 +326,9 @@ order: 35
 - **资源请求超时与重试**：上传/复制等写请求超时 30s（大文件 90s）；超时或传输中断时提示「可能已成功，最多重试一次」（upload 重复只多占配额、delete 与 copy 可用 `list_assets` 复核）。
 - **二进制处理**：`read_asset` 按 `content_type` 分流——文本类可内联，二进制落盘为文件（不经 UTF-8 文本通道）；落盘沿用现有的工具结果临时文件生命周期。
 - **资源写入粒度**：`upload_asset`/`delete_asset`/`copy_from` 是外发/破坏性动作，走权限确认（首次对某 artifact 确认一次、本会话后续自动允许）；`list_assets`/`read_asset` 是只读动作，免确认。
+- **评论写入粒度**：`reply`/`resolve` 与资源写动作同构——首次对某 artifact 确认一次、本会话后续自动允许，**两者共用同一把锁**（都在写这个页面的评论状态）；仍隐藏常驻规则（常驻会把"允许回这一个页面"放大成"允许回所有页面"）。叫醒后的回帖同样要过这道确认：确认框挂着期间会话保持在忙态（人和模型都没法继续），这是"写动作问人"的应有语义；无人值守场景靠已有的权限模式（`bypassPermissions`）放行，不为评论单独开开关。`comments`/`watch`/`unwatch` 只读或纯本地，免确认。
 - **评论判据单一来源**：`awaitingAgentReply`（该不该回）与 `unresolvedCount`（徽章）只取服务端字段，客户端不自己拼条件（服务端已考虑"线程里有没有 agent 回复"）；`head` 只做**字符串相等比较**，不解析、不排序。
-- **游标口径**：`cursor` 是服务端下发的不透明串，原样回传，不解析、不拼接；增量读不报删除（硬删无墓碑），删除只能靠事件流的 `deleted` 或全量重读。
+- **游标口径**：`cursor` 是服务端下发的不透明串，原样回传，不解析、不拼接；增量读不报删除（硬删无墓碑），删除只能靠事件流的 `deleted` 或全量重读。**响应恒带 `cursor`**（本次最后一行返回行的位置；空页时原样回显请求里的 cursor、请求没带游标且空页时为 `null`），所以监听侧推进位置直接用响应里的 `cursor`；只有老服务端不给该字段时才回退到 `nextCursor` → 最后一行自带 cursor → 读前快照的 `head`。
 - **`via=agent` 恒带**：回帖 / 解决请求都带 `?via=agent`（自报标记，不是凭证：不放大权限，只决定 `author_kind=agent` 与 60/min 的限流桶），否则会被当成人的回复，去重与"等待 agent 回复"判定都会错。
 - **叫醒事件承载**：叫醒走 `MessageQueue.enqueueNotification`，落成 `role:"user"` + `isMeta:true` 的隐藏消息；**不复用 `<task-notification>`**（词表诚实：那组 `task-type`/`status` 表达的是"后台任务终态 + taskId"），**不用 `sendMessage`**（用户输入语义会让消息凭空出现在会话里）。
 - **叫醒粒度与节流**：同一 slug **30s 窗口合并**为一次读 + 一次叫醒（服务端只保证事件即时推送，不管注入频率）；多 slug 各成一条事件，在多条待处理通知同一轮里被一起处理。

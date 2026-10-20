@@ -4,7 +4,10 @@
  * Server contract (codechat 第二期, live): the thread list is a single flat
  * page of rows — thread roots and their replies together, one level deep — and
  * an optional opaque `cursor` turns the same endpoint into an incremental read.
- * The cursor is server-generated and must be passed back verbatim.
+ * The cursor is server-generated and must be passed back verbatim. Every page
+ * also comes back with the server's own `cursor` for the position it ended at
+ * (echoed unchanged when the page is empty), so an incremental caller never has
+ * to guess where it got to.
  *
  * Two server-computed facts drive everything the client says:
  * - `awaitingAgentReply` is the ONLY judgement of "should the agent answer"
@@ -65,7 +68,11 @@ export interface CommentPage {
   unresolvedCount: number;
   /** Present only when the server truncated the page. */
   nextCursor?: string;
-  /** Cursor that points at the end of this page, when one can be derived. */
+  /**
+   * Cursor for the end of this page, for a caller that keeps its own (the
+   * watch stream). Taken from the server's per-response `cursor`; the older
+   * truncation pointer / last row are only fallbacks for servers that omit it.
+   */
   tailCursor?: string;
   truncated: boolean;
 }
@@ -269,12 +276,18 @@ export async function fetchComments(
   }
 
   const nextCursor = str(data.nextCursor).trim() || undefined;
-  // Where this read ends, for a caller that keeps a cursor of its own: the
-  // server's truncation pointer wins, then the last row's own cursor. A page
-  // the server did not truncate has no pointer at all — the caller falls back
-  // to the stream's `head` (see PageWatchManager).
+  // Where this read ends, for a caller that keeps a cursor of its own. The
+  // server sends `cursor` on every response — the position of the last row it
+  // returned, echoed back unchanged when the page is empty — so an incremental
+  // caller can advance without guessing. Servers that predate that field only
+  // sent a pointer when truncating, hence the two fallbacks behind it; a caller
+  // with neither ends on the stream's `head` (see PageWatchManager).
+  const dataCursor = str(data.cursor).trim() || undefined;
   const tailCursor =
-    nextCursor ?? comments[comments.length - 1]?.cursor ?? undefined;
+    dataCursor ??
+    nextCursor ??
+    comments[comments.length - 1]?.cursor ??
+    undefined;
 
   return {
     kind: "ok",

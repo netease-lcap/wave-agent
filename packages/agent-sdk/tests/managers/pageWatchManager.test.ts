@@ -271,6 +271,46 @@ describe("PageWatchManager", () => {
     manager.stop();
   });
 
+  it("advances to the cursor the read response carries, not the stream head", async () => {
+    const harness = new Harness();
+    harness.install();
+    harness.pages = [
+      {
+        comments: [awaitingRow("t1", "t1", { cursor: "cur-a" })],
+        unresolvedCount: 1,
+        cursor: "cur-a",
+      },
+    ];
+    const { manager, enqueue } = setUp();
+
+    await manager.watch(SLUG, ARTIFACT_URL);
+    harness.streams[0].push("hello", { slug: SLUG, head: "h1" });
+    await vi.waitFor(() => expect(manager.listWatched()[0]?.cursor).toBe("h1"));
+
+    harness.streams[0].push("change", {
+      slug: SLUG,
+      head: "h9",
+      kind: "created",
+      threadId: "t1",
+    });
+    await vi.waitFor(() => expect(wakeEvents(enqueue)).toHaveLength(1));
+    // `head` jumped to h9, but the read only covered up to cur-a: jumping to the
+    // head would swallow whatever sits between cur-a and h9.
+    await vi.waitFor(() =>
+      expect(manager.listWatched()[0]?.cursor).toBe("cur-a"),
+    );
+
+    harness.streams[0].push("change", {
+      slug: SLUG,
+      head: "h10",
+      kind: "created",
+      threadId: "t1",
+    });
+    await vi.waitFor(() => expect(harness.readCalls).toHaveLength(2));
+    expect(harness.readCalls[1].cursor).toBe("cur-a");
+    manager.stop();
+  });
+
   it("does not wake for a change that only carries the agent's own reply", async () => {
     const harness = new Harness();
     harness.install();

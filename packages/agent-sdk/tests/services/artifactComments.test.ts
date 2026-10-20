@@ -113,7 +113,27 @@ describe("fetchComments", () => {
     );
   });
 
-  it("derives a tail cursor from nextCursor, else from the last row", async () => {
+  it("takes the tail cursor from the server's own end-of-page cursor", async () => {
+    stubFetch(() =>
+      jsonResponse(200, {
+        comments: [commentRow({ cursor: "row-1" })],
+        unresolvedCount: 1,
+        cursor: "srv-1",
+      }),
+    );
+    const page = await fetchComments("abc");
+    expect(page.kind === "ok" && page.value.tailCursor).toBe("srv-1");
+  });
+
+  it("keeps the cursor in place when the server echoes it for an empty page", async () => {
+    stubFetch(() =>
+      jsonResponse(200, { comments: [], unresolvedCount: 0, cursor: "prev" }),
+    );
+    const page = await fetchComments("abc", "prev");
+    expect(page.kind === "ok" && page.value.tailCursor).toBe("prev");
+  });
+
+  it("falls back to nextCursor, else to the last row, on a server without cursor", async () => {
     stubFetch(() =>
       jsonResponse(200, {
         comments: [commentRow()],

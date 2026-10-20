@@ -511,9 +511,11 @@ export class PageWatchManager {
         return { ok: false, awaiting: [] as ArtifactComment[] };
       }
       const page = outcome.value;
-      // The server's own pointer wins; otherwise the head we saw before the
-      // read is at-or-before everything this read covered, so it is a safe
-      // cursor (at worst it re-reads a row).
+      // The server's own end-of-page cursor wins (it is present on every
+      // response, echoed unchanged for an empty page, so this normally moves
+      // only as far as the rows just read). Without it — an older server — the
+      // head we saw before the read is at-or-before everything this read
+      // covered, so it is a safe cursor (at worst it re-reads a row).
       entry.cursor = page.tailCursor ?? before ?? entry.cursor;
       return {
         ok: true,
