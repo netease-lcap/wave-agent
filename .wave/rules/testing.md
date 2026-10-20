@@ -2,12 +2,13 @@
 paths:
   - "packages/*/tests/**/*"
 ---
+
 - `packages/*/tests` directories contain test files that are easy to mock, can run locally and on CI/CD
   - Testing framework is vitest
   - Run test use `cd packages/xxx && pnpm test test_file`
   - Use HookTester to test hooks
   - Use `vi.waitFor` to wait for UI changes in Ink components
-  - Use `as unknown as` `Awaited<>` `ReturnType<>` `typeof` to simplify type check, for example: 
+  - Use `as unknown as` `Awaited<>` `ReturnType<>` `typeof` to simplify type check, for example:
     - `vi.mocked(fs.readdir).mockResolvedValueOnce(initialFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>);`
     - `vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);`
   - When using `mockImplementation`, function arguments don't require explicit type annotations as TypeScript can infer them from context
@@ -15,4 +16,9 @@ paths:
   - Mock stdout and stderr to suppress output during testing and restore mocks after tests
   - Avoid unnecessary `setTimeout` or `sleep` in tests to keep them fast; prefer awaiting promises or using `vi.waitFor` if needed
   - Note: `logger` in `packages/code` appends to log files instead of printing to stdout/stderr to avoid interfering with the Ink UI. Do not use `logger` to debug in tests. Use temporary `console.log` to debug and remove them after.
+- Path expectations MUST be cross-platform: the `check-windows` job runs the full unit suite on a real Windows runner but only on `push: main` + `workflow_dispatch` (it does NOT gate PRs), so path breakage is found after merge (#2488, #2505)
+  - Build expected values and mock keys with `path.join` / `path.resolve`, never hardcode `/` — POSIX literals turn into `\` (or gain a drive letter) on Windows
+  - Resolve a fixture base first, then derive with `path.join`: `const WORKDIR = path.resolve("/fake/project")` → `path.join(WORKDIR, ".wave", "x.js")`
+  - High-risk spots: concatenated paths inside `toEqual`, paths used as Map/Set keys, verbatim matching of error messages containing paths, `toContain("/.wave/...")`, `toHaveBeenCalledWith(path, ...)`
+  - Compute paths with the same function the implementation uses (implementation uses `path.join` → expectation uses `path.join` too); never hand-write separators in tests
 - While writing tests about `Agent`, always use `await Agent.create` instead of `new Agent`
