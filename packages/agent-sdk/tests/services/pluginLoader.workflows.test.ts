@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "fs/promises";
+import * as path from "path";
 import { PluginLoader } from "../../src/services/pluginLoader.js";
 
 vi.mock("fs/promises", () => ({
@@ -10,6 +11,13 @@ vi.mock("fs/promises", () => ({
 
 const VALID = `export const meta = { name: "scan", description: "Scan a repo" };\nreturn 1;`;
 const INVALID = `export const meta = { name: "scan" };\nreturn 1;`;
+
+/**
+ * Resolved fixture path: `loadWorkflows` builds child paths with `path.join`, so
+ * the expectation has to be produced by the same function — on Windows that
+ * means backslashes plus a drive letter, never the POSIX literal.
+ */
+const PLUGIN_PATH = path.resolve("/plugins/demo");
 
 function dirent(name: string, isFile: boolean) {
   return { name, isFile: () => isFile };
@@ -28,13 +36,13 @@ describe("PluginLoader.loadWorkflows", () => {
     ] as unknown as Awaited<ReturnType<typeof fs.readdir>>);
     vi.mocked(fs.readFile).mockResolvedValue(VALID);
 
-    const workflows = await PluginLoader.loadWorkflows("/plugins/demo");
+    const workflows = await PluginLoader.loadWorkflows(PLUGIN_PATH);
 
     expect(workflows).toEqual([
       {
         name: "scan",
         description: "Scan a repo",
-        path: "/plugins/demo/workflows/scan.js",
+        path: path.join(PLUGIN_PATH, "workflows", "scan.js"),
         meta: { name: "scan", description: "Scan a repo" },
       },
     ]);
@@ -51,7 +59,7 @@ describe("PluginLoader.loadWorkflows", () => {
       String(filePath).endsWith("broken.js") ? INVALID : VALID,
     );
 
-    const workflows = await PluginLoader.loadWorkflows("/plugins/demo");
+    const workflows = await PluginLoader.loadWorkflows(PLUGIN_PATH);
 
     expect(workflows.map((workflow) => workflow.name)).toEqual(["scan"]);
   });
@@ -61,8 +69,6 @@ describe("PluginLoader.loadWorkflows", () => {
       Object.assign(new Error("ENOENT"), { code: "ENOENT" }),
     );
 
-    await expect(PluginLoader.loadWorkflows("/plugins/demo")).resolves.toEqual(
-      [],
-    );
+    await expect(PluginLoader.loadWorkflows(PLUGIN_PATH)).resolves.toEqual([]);
   });
 });

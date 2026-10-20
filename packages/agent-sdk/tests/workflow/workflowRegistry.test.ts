@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import * as path from "path";
 
 const homeDir = vi.hoisted(() => ({ value: "/fake/home" }));
 
@@ -35,7 +36,15 @@ import {
 } from "../../src/workflow/workflowRegistry.js";
 
 const SCRIPT = `export const meta = { name: "saved", description: "A saved workflow" };\nreturn 1;`;
-const WORKDIR = "/fake/project";
+/**
+ * Resolved fixture paths: the registry builds library paths with `path.join`, so
+ * the fake-filesystem keys have to be produced the same way. A POSIX literal
+ * would only match on macOS/Linux — on Windows the lookup key carries
+ * backslashes and a drive letter.
+ */
+const WORKDIR = path.resolve("/fake/project");
+const HOME_DIR = path.resolve("/fake/home");
+homeDir.value = HOME_DIR;
 
 /** Put a script into one library scope of the fake filesystem. */
 function addLibraryScript(
@@ -43,11 +52,12 @@ function addLibraryScript(
   name: string,
   script = SCRIPT,
 ): string {
-  const dir =
-    scope === "project"
-      ? `${WORKDIR}/.wave/workflows`
-      : `${homeDir.value}/.wave/workflows`;
-  const file = `${dir}/${name}.js`;
+  const dir = path.join(
+    scope === "project" ? WORKDIR : HOME_DIR,
+    ".wave",
+    "workflows",
+  );
+  const file = path.join(dir, `${name}.js`);
   fakeFs.files.set(file, script);
   fakeFs.dirs.set(dir, [...(fakeFs.dirs.get(dir) ?? []), `${name}.js`]);
   return file;
