@@ -31,23 +31,6 @@ interface SlashCommandsPopupProps {
   position: { top: number; left: number };
 }
 
-const PLUGIN_COMMAND = "plugin";
-const SYSTEM_COMMANDS = [
-  "config",
-  "mcp",
-  "status",
-  "remote-control",
-  "tasks",
-  "workflows",
-  "agents",
-  "skills",
-  "clear",
-  "compact",
-  "rewind",
-  "model",
-  "btw",
-];
-
 interface CommandGroup {
   title: string;
   commands: SlashCommand[];
@@ -56,25 +39,32 @@ interface CommandGroup {
 // Split the flat command list into fixed-order visual groups. The concatenated
 // group order is the single source of truth for both rendering and keyboard
 // navigation, so the highlighted item always matches its visual position.
+//
+// 分组判据只有一条：命令是否由技能注册（`skillSource` 有无）。带它就是技能命令，
+// 其余（宿主本地指令、磁盘自定义命令、插件命令）一律算系统指令。
+//
+// 这里刻意**不**维护命令名名单。曾经有一份 `SYSTEM_COMMANDS` 白名单，宿主每加一条
+// 本地指令（/hooks、/plan、/resume、/reload-plugins …）都要同步过来，漏一次就让系统
+// 指令掉进「技能」分组——同一处已补过两次名单（/subtask、/plan）。判据回到数据本身
+// 之后，宿主的本地指令表怎么长都不需要动 webview。
+//
+// 也不再给 `/plugin` 单列「插件管理」分组：插件市场已是独立整页入口，弹窗里不再
+// 额外高亮它。
 export const groupSlashCommands = (
   commands: SlashCommand[],
 ): CommandGroup[] => {
-  const pluginCommands: SlashCommand[] = [];
   const systemCommands: SlashCommand[] = [];
   const skillCommands: SlashCommand[] = [];
 
   commands.forEach((command) => {
-    if (command.name === PLUGIN_COMMAND) {
-      pluginCommands.push(command);
-    } else if (SYSTEM_COMMANDS.includes(command.name)) {
-      systemCommands.push(command);
-    } else {
+    if (command.skillSource) {
       skillCommands.push(command);
+    } else {
+      systemCommands.push(command);
     }
   });
 
   return [
-    { title: "插件管理", commands: pluginCommands },
     { title: "系统指令", commands: systemCommands },
     { title: "技能", commands: skillCommands },
   ];
