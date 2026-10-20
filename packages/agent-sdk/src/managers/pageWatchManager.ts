@@ -36,6 +36,9 @@ export const WATCH_BACKOFF_DELAYS_MS = [1_000, 2_000, 5_000, 15_000, 30_000];
 /** Server cap on concurrent streams per account. */
 export const MAX_CONCURRENT_STREAMS = 8;
 
+/** Cap on full-list pages drained by one incremental read (>500 rows/page). */
+export const MAX_INCREMENT_PAGES = 5;
+
 export type WatchStatus = "connecting" | "watching" | "backoff" | "stopped";
 
 export type WatchOutcome =
@@ -65,6 +68,14 @@ interface WatchEntry {
   wakeTimer: NodeJS.Timeout | null;
   /** Coalesces overlapping reads triggered by frames on the same stream. */
   reading: Promise<{ ok: boolean; awaiting: ArtifactComment[] }> | null;
+  /**
+   * Threads that were awaiting a reply when their change frame arrived, keyed
+   * by thread id so a burst counts once per thread. The wake-up is built from
+   * this, not from a read at the end of the window: a `heartbeat` in between
+   * also reads (sync, never wake) and would advance the cursor past the event
+   * being merged, leaving the wake with nothing to report.
+   */
+  pendingAwaiting: Map<string, ArtifactComment>;
   /** Settles the promise returned by `watch()`; cleared once it has fired. */
   opened?: (outcome: WatchOutcome) => void;
 }
@@ -170,6 +181,7 @@ export class PageWatchManager {
       abort: null,
       retryTimer: null,
       wakeTimer: null,
+      pendingAwaiting: new Map(),
       reading: null,
     };
     this.entries.set(slug, entry);
@@ -399,6 +411,7 @@ export class PageWatchManager {
       clearTimeout(entry.wakeTimer);
       entry.wakeTimer = null;
     }
+    entry.pendingAwaiting.clear();
     this.resolveOpened(entry, {
       kind: "error",
       error: "watching stopped before the connection was established",
@@ -429,7 +442,7 @@ export class PageWatchManager {
         if (entry.cursor === null) {
           entry.cursor = head;
         } else if (head && head !== entry.cursor) {
-          this.scheduleWake(entry);
+          this.noteChange(entry);
         }
         break;
       }
@@ -439,7 +452,7 @@ export class PageWatchManager {
           // A delete needs no reply; reading anyway keeps the cursor moving.
           void this.readIncrement(entry);
         } else {
-          this.scheduleWake(entry);
+          this.noteChange(entry);
         }
         break;
       }
@@ -459,9 +472,27 @@ export class PageWatchManager {
   }
 
   /**
-   * Merge every change on this page into one wake-up per window. A burst of
-   * comments then costs one turn, and the read that produces the counts happens
-   * once for the whole burst.
+   * A change frame: read right away (so the rows are recorded before any
+   * heartbeat-driven sync read can move the cursor past them) and arm the merge
+   * window that decides when the session is actually woken.
+   */
+  private noteChange(entry: WatchEntry): void {
+    this.scheduleWake(entry);
+    void this.recordAwaiting(entry);
+  }
+
+  /** Read past the cursor and remember which threads are waiting on a reply. */
+  private async recordAwaiting(entry: WatchEntry): Promise<void> {
+    const result = await this.readIncrement(entry);
+    if (!result.ok || this.isDead(entry)) return;
+    for (const comment of result.awaiting) {
+      entry.pendingAwaiting.set(comment.threadId, comment);
+    }
+  }
+
+  /**
+   * Merge every change on this page into one wake-up per window: a burst of
+   * comments costs one turn.
    */
   private scheduleWake(entry: WatchEntry): void {
     if (entry.wakeTimer) return;
@@ -474,16 +505,23 @@ export class PageWatchManager {
 
   private async wake(entry: WatchEntry): Promise<void> {
     if (this.isDead(entry)) return;
+    // One last read catches anything that landed after the event-time read
+    // (and anything that read failed to deliver).
     const result = await this.readIncrement(entry);
     if (this.isDead(entry)) return;
-    if (!result.ok) {
+    if (!result.ok && entry.pendingAwaiting.size === 0) {
       // Cannot tell how many threads are waiting — but staying silent while a
       // person is waiting for an answer is worse than one unnecessary read.
       this.enqueueWake(entry, []);
       return;
     }
-    if (result.awaiting.length === 0) return;
-    this.enqueueWake(entry, result.awaiting);
+    for (const comment of result.ok ? result.awaiting : []) {
+      entry.pendingAwaiting.set(comment.threadId, comment);
+    }
+    const awaiting = [...entry.pendingAwaiting.values()];
+    entry.pendingAwaiting.clear();
+    if (awaiting.length === 0) return;
+    this.enqueueWake(entry, awaiting);
   }
 
   /** Read everything past `entry.cursor`; returns the rows awaiting a reply. */
@@ -498,29 +536,50 @@ export class PageWatchManager {
       // flight, and jumping the cursor to a row this read never returned would
       // silently swallow the wake-up for it.
       const before = entry.head;
-      const outcome = await fetchComments(
-        entry.slug,
-        entry.cursor ?? undefined,
-        { abortSignal: entry.abort?.signal },
-      );
-      if (outcome.kind === "error") {
-        logger?.warn("Artifact comment read after stream event failed", {
-          slug: entry.slug,
-          error: outcome.error,
+      const awaiting: ArtifactComment[] = [];
+      // A truncated page carries `nextCursor` (the full-list axis) and no
+      // incremental cursor, so page through it before taking a position: the
+      // alternative — committing `nextCursor` as the incremental position —
+      // is exactly the axis mix the server's two-state contract forbids.
+      let pageCursor = entry.cursor ?? undefined;
+      let committed: string | undefined;
+      let stillTruncated = false;
+      for (let page = 0; page < MAX_INCREMENT_PAGES; page++) {
+        const outcome = await fetchComments(entry.slug, pageCursor, {
+          abortSignal: entry.abort?.signal,
         });
-        return { ok: false, awaiting: [] as ArtifactComment[] };
+        if (outcome.kind === "error") {
+          logger?.warn("Artifact comment read after stream event failed", {
+            slug: entry.slug,
+            error: outcome.error,
+          });
+          return { ok: false, awaiting: [] as ArtifactComment[] };
+        }
+        const result = outcome.value;
+        for (const comment of result.comments) {
+          if (comment.awaitingAgentReply) awaiting.push(comment);
+        }
+        if (result.truncated && result.nextCursor) {
+          pageCursor = result.nextCursor;
+          stillTruncated = true;
+          continue;
+        }
+        stillTruncated = false;
+        committed = result.tailCursor;
+        break;
       }
-      const page = outcome.value;
-      // The server's own end-of-page cursor wins (it is present on every
-      // response, echoed unchanged for an empty page, so this normally moves
-      // only as far as the rows just read). Without it — an older server — the
-      // head we saw before the read is at-or-before everything this read
-      // covered, so it is a safe cursor (at worst it re-reads a row).
-      entry.cursor = page.tailCursor ?? before ?? entry.cursor;
-      return {
-        ok: true,
-        awaiting: page.comments.filter((comment) => comment.awaitingAgentReply),
-      };
+      if (committed) {
+        entry.cursor = committed;
+      } else if (!stillTruncated) {
+        // No incremental cursor came back (an older server): the head we saw
+        // before the read is at-or-before everything this read covered, so the
+        // worst case is re-reading a row, never skipping one.
+        entry.cursor = before ?? entry.cursor;
+      }
+      // Still truncated after the bound: leave the position untouched and let
+      // the next event page again from here — advancing on a `nextCursor` would
+      // mix the full-list axis into the incremental one.
+      return { ok: true, awaiting };
     })();
     entry.reading = run;
     try {

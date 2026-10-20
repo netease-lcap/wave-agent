@@ -21,6 +21,7 @@ import { authService } from "../../src/services/authService.js";
 import { Container } from "../../src/utils/container.js";
 import { MessageQueue } from "../../src/managers/messageQueue.js";
 import {
+  MAX_INCREMENT_PAGES,
   PageWatchManager,
   parseSseFrames,
 } from "../../src/managers/pageWatchManager.js";
@@ -219,7 +220,7 @@ describe("PageWatchManager", () => {
     manager.stop();
   });
 
-  it("merges a burst of changes into one read and one wake-up", async () => {
+  it("merges a burst of changes into one wake-up", async () => {
     const harness = new Harness();
     harness.install();
     harness.pages = [
@@ -254,8 +255,10 @@ describe("PageWatchManager", () => {
     });
 
     await vi.waitFor(() => expect(wakeEvents(enqueue)).toHaveLength(1));
-    expect(harness.readCalls).toHaveLength(1);
-    // The read is incremental from the cursor we had, not a full re-list.
+    // Events read as they arrive (coalesced), so the burst costs at most one
+    // read per frame plus the window's catch-up — never one read per wake-up.
+    expect(harness.readCalls.length).toBeLessThanOrEqual(4);
+    // Every read is incremental from the cursor we had, not a full re-list.
     expect(harness.readCalls[0].cursor).toBe("h1");
     expect(wakeEvents(enqueue)[0]).toEqual({
       url: ARTIFACT_URL,
@@ -268,6 +271,89 @@ describe("PageWatchManager", () => {
     const xml = String(enqueue.mock.calls[0][0]);
     expect(xml).not.toContain("comment t1");
     expect(xml).toContain('action "comments"');
+    manager.stop();
+  });
+
+  it("pages through a truncated read before taking an incremental position", async () => {
+    const harness = new Harness();
+    harness.install();
+    harness.pages = [
+      // Full-list axis: paged by nextCursor, no incremental cursor.
+      {
+        comments: [awaitingRow("t1")],
+        unresolvedCount: 1,
+        nextCursor: "page-2",
+        truncated: true,
+      },
+      {
+        comments: [awaitingRow("t2")],
+        unresolvedCount: 2,
+        cursor: "inc-end",
+      },
+    ];
+    const { manager, enqueue } = setUp();
+
+    await manager.watch(SLUG, ARTIFACT_URL);
+    harness.streams[0].push("hello", { slug: SLUG, head: "h1" });
+    await vi.waitFor(() => expect(manager.listWatched()[0]?.cursor).toBe("h1"));
+
+    harness.streams[0].push("change", {
+      slug: SLUG,
+      head: "h9",
+      kind: "created",
+      threadId: "t1",
+    });
+
+    await vi.waitFor(() => expect(wakeEvents(enqueue)).toHaveLength(1));
+    // Rows from every page are reported, and the position only moves once an
+    // untruncated page hands back the incremental cursor.
+    await vi.waitFor(() =>
+      expect(wakeEvents(enqueue)[0].threadIds).toEqual(["t1", "t2"]),
+    );
+    expect(harness.readCalls.slice(0, 2).map((call) => call.cursor)).toEqual([
+      "h1",
+      "page-2",
+    ]);
+    await vi.waitFor(() =>
+      expect(manager.listWatched()[0]?.cursor).toBe("inc-end"),
+    );
+    manager.stop();
+  });
+
+  it("stays put rather than skipping when the paging bound runs out", async () => {
+    const harness = new Harness();
+    harness.install();
+    // Always truncated: the bound stops the drain without a position to take.
+    harness.pages = [
+      {
+        comments: [awaitingRow("t1")],
+        unresolvedCount: 1,
+        nextCursor: "page-2",
+        truncated: true,
+      },
+    ];
+    const { manager, enqueue } = setUp();
+
+    await manager.watch(SLUG, ARTIFACT_URL);
+    harness.streams[0].push("hello", { slug: SLUG, head: "h1" });
+    await vi.waitFor(() => expect(manager.listWatched()[0]?.cursor).toBe("h1"));
+
+    harness.streams[0].push("change", {
+      slug: SLUG,
+      head: "h9",
+      kind: "created",
+      threadId: "t1",
+    });
+
+    await vi.waitFor(() =>
+      expect(harness.readCalls.length).toBeGreaterThanOrEqual(
+        MAX_INCREMENT_PAGES,
+      ),
+    );
+    expect(wakeEvents(enqueue)).toHaveLength(1);
+    // `page-2` is a full-list cursor; storing it as the incremental position
+    // would make the next read skip everything between it and the head.
+    expect(manager.listWatched()[0]?.cursor).toBe("h1");
     manager.stop();
   });
 
@@ -311,6 +397,42 @@ describe("PageWatchManager", () => {
     manager.stop();
   });
 
+  it("still wakes when a heartbeat reads the event away before the window ends", async () => {
+    // The live failure this guards: a change arrives, its wake is merged into a
+    // 30s window, and a heartbeat 15s later syncs the cursor past it — so the
+    // read at the end of the window finds nothing and the wake is lost.
+    const harness = new Harness();
+    harness.install();
+    harness.pages = [
+      {
+        comments: [awaitingRow("t1")],
+        unresolvedCount: 1,
+        cursor: "c1",
+      },
+      { comments: [], unresolvedCount: 0, cursor: "c1" },
+    ];
+    const { manager, enqueue } = setUp({ wakeWindowMs: 40 });
+
+    await manager.watch(SLUG, ARTIFACT_URL);
+    harness.streams[0].push("hello", { slug: SLUG, head: "h1" });
+    await vi.waitFor(() => expect(manager.listWatched()[0]?.cursor).toBe("h1"));
+
+    harness.streams[0].push("change", {
+      slug: SLUG,
+      head: "h2",
+      kind: "created",
+      threadId: "t1",
+    });
+    // The event-time read has recorded t1 by the time the heartbeat syncs.
+    await vi.waitFor(() => expect(manager.listWatched()[0]?.cursor).toBe("c1"));
+    harness.streams[0].push("heartbeat", { slug: SLUG, head: "h3" });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    await vi.waitFor(() => expect(wakeEvents(enqueue)).toHaveLength(1));
+    expect(wakeEvents(enqueue)[0].threadIds).toEqual(["t1"]);
+    manager.stop();
+  });
+
   it("does not wake for a change that only carries the agent's own reply", async () => {
     const harness = new Harness();
     harness.install();
@@ -336,7 +458,7 @@ describe("PageWatchManager", () => {
       threadId: "t1",
     });
 
-    await vi.waitFor(() => expect(harness.readCalls.length).toBe(1));
+    await vi.waitFor(() => expect(harness.readCalls.length).toBeGreaterThan(0));
     expect(wakeEvents(enqueue)).toHaveLength(0);
     manager.stop();
   });

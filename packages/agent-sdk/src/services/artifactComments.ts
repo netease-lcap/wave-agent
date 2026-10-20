@@ -4,10 +4,10 @@
  * Server contract (codechat 第二期, live): the thread list is a single flat
  * page of rows — thread roots and their replies together, one level deep — and
  * an optional opaque `cursor` turns the same endpoint into an incremental read.
- * The cursor is server-generated and must be passed back verbatim. Every page
- * also comes back with the server's own `cursor` for the position it ended at
- * (echoed unchanged when the page is empty), so an incremental caller never has
- * to guess where it got to.
+ * The cursor is server-generated and must be passed back verbatim. Which axis a
+ * `?cursor=` means is decided by the server: an untruncated page comes back with
+ * the incremental `cursor` (updated-at, equal to the stream's `head`), a
+ * truncated one with `nextCursor` (created-at, full-list paging) — never both.
  *
  * Two server-computed facts drive everything the client says:
  * - `awaitingAgentReply` is the ONLY judgement of "should the agent answer"
@@ -69,9 +69,11 @@ export interface CommentPage {
   /** Present only when the server truncated the page. */
   nextCursor?: string;
   /**
-   * Cursor for the end of this page, for a caller that keeps its own (the
-   * watch stream). Taken from the server's per-response `cursor`; the older
-   * truncation pointer / last row are only fallbacks for servers that omit it.
+   * Incremental position for the end of this read — the server's `cursor`
+   * (updated-at axis, equal to the stream's `head`). Absent on a truncated
+   * page, because there `nextCursor` continues the *other* axis; a caller that
+   * keeps a position must page with `nextCursor` until it reaches an
+   * untruncated page.
    */
   tailCursor?: string;
   truncated: boolean;
@@ -276,18 +278,16 @@ export async function fetchComments(
   }
 
   const nextCursor = str(data.nextCursor).trim() || undefined;
-  // Where this read ends, for a caller that keeps a cursor of its own. The
-  // server sends `cursor` on every response — the position of the last row it
-  // returned, echoed back unchanged when the page is empty — so an incremental
-  // caller can advance without guessing. Servers that predate that field only
-  // sent a pointer when truncating, hence the two fallbacks behind it; a caller
-  // with neither ends on the stream's `head` (see PageWatchManager).
-  const dataCursor = str(data.cursor).trim() || undefined;
-  const tailCursor =
-    dataCursor ??
-    nextCursor ??
-    comments[comments.length - 1]?.cursor ??
-    undefined;
+  // The two cursors are on different axes and are mutually exclusive:
+  // `nextCursor` (created-at axis, only when `truncated`) pages through the
+  // full list, while `cursor` (updated-at axis, only on an untruncated page,
+  // always equal to the stream's `head`) is the incremental position. Handing
+  // `nextCursor` to an incremental caller would silently skip rows, so the
+  // tail is the incremental cursor and nothing else. An older server sent
+  // neither consistently; the caller then falls back to the head it saw before
+  // the read (see PageWatchManager — at worst it re-reads a row, never loses
+  // one).
+  const tailCursor = str(data.cursor).trim() || undefined;
 
   return {
     kind: "ok",

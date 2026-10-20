@@ -133,32 +133,32 @@ describe("fetchComments", () => {
     expect(page.kind === "ok" && page.value.tailCursor).toBe("prev");
   });
 
-  it("falls back to nextCursor, else to the last row, on a server without cursor", async () => {
+  it("never hands the full-list paging cursor back as an incremental position", async () => {
+    // The two cursors are on different axes (created-at vs updated-at): a
+    // truncated page's `nextCursor` must NOT become a tail position, or the
+    // next incremental read silently skips everything the server filtered out.
     stubFetch(() =>
       jsonResponse(200, {
-        comments: [commentRow()],
+        comments: [commentRow({ cursor: "row-1" })],
         unresolvedCount: 1,
         nextCursor: "next-1",
         truncated: true,
       }),
     );
-    const truncated = await fetchComments("abc");
-    expect(truncated.kind === "ok" && truncated.value.tailCursor).toBe(
-      "next-1",
-    );
-    expect(truncated.kind === "ok" && truncated.value.nextCursor).toBe(
-      "next-1",
-    );
+    const page = await fetchComments("abc");
+    expect(page.kind === "ok" && page.value.nextCursor).toBe("next-1");
+    expect(page.kind === "ok" && page.value.tailCursor).toBeUndefined();
+  });
 
+  it("leaves the tail undefined on a server that sends no cursor at all", async () => {
     stubFetch(() =>
       jsonResponse(200, {
-        comments: [commentRow({ cursor: "row-1" })],
+        comments: [commentRow()],
         unresolvedCount: 1,
       }),
     );
-    const plain = await fetchComments("abc");
-    expect(plain.kind === "ok" && plain.value.tailCursor).toBe("row-1");
-    expect(plain.kind === "ok" && plain.value.nextCursor).toBeUndefined();
+    const page = await fetchComments("abc");
+    expect(page.kind === "ok" && page.value.tailCursor).toBeUndefined();
   });
 
   it("reports a 403 with the login hint", async () => {
