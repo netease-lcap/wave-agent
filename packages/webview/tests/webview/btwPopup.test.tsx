@@ -361,9 +361,8 @@ describe("/btw Popup", () => {
       fireEvent.keyDown(input, { key: "Enter" });
     });
 
-    // btw groups under 系统指令 with config; order = [config, btw]? No —
-    // popup order follows groupSlashCommands: plugin, system (in listed
-    // order), skills. Just assert the prefix text was inserted.
+    // btw and config both group under 系统指令 and keep the backend order
+    // (btw 先于 config)，所以 Enter 选中的就是 btw。这里只断言前缀被插入。
     await waitFor(() => {
       expect(input.textContent).toBe("/btw ");
     });

@@ -40,58 +40,52 @@ function getGroup(title: string): HTMLElement {
 }
 
 describe("SlashCommandsPopup grouping", () => {
-  it("renders all three group titles and assigns commands to the correct group", () => {
+  it("renders both group titles and assigns commands by skillSource", () => {
     const commands: Command[] = [
-      { id: "plugin", name: "plugin", description: "插件管理" },
+      { id: "plugin", name: "plugin", description: "插件市场" },
       { id: "config", name: "config", description: "配置" },
-      { id: "mcp", name: "mcp", description: "MCP" },
-      { id: "status", name: "status", description: "状态" },
-      { id: "clear", name: "clear", description: "清空" },
-      { id: "compact", name: "compact", description: "压缩" },
-      { id: "settings", name: "settings", description: "设置技能" },
-      { id: "loop", name: "loop", description: "循环技能" },
-      { id: "deepwiki:ask", name: "deepwiki:ask", description: "DeepWiki" },
+      {
+        id: "settings",
+        name: "settings",
+        description: "设置技能",
+        skillSource: "builtin",
+      },
+      {
+        id: "deepwiki:ask",
+        name: "deepwiki:ask",
+        description: "DeepWiki",
+        skillSource: "plugin",
+      },
     ];
 
     renderPopup(commands);
 
-    // All three group titles are present.
-    expect(
-      screen.getByText("插件管理", { selector: ".slash-group-title" }),
-    ).toBeInTheDocument();
+    // 只有两个分组：系统指令在前、技能在后。
     expect(
       screen.getByText("系统指令", { selector: ".slash-group-title" }),
     ).toBeInTheDocument();
     expect(
       screen.getByText("技能", { selector: ".slash-group-title" }),
     ).toBeInTheDocument();
-
-    // plugin -> 插件管理
-    const pluginGroup = getGroup("插件管理");
+    // 插件市场已是独立入口，弹窗不再单列「插件管理」分组。
     expect(
-      within(pluginGroup).getByTestId("slash-command-plugin"),
-    ).toBeInTheDocument();
-    expect(
-      within(pluginGroup).queryByTestId("slash-command-config"),
+      screen.queryByText("插件管理", { selector: ".slash-group-title" }),
     ).not.toBeInTheDocument();
 
-    // config/mcp/status/clear/compact -> 系统指令
+    // 无 skillSource → 系统指令
     const systemGroup = getGroup("系统指令");
-    for (const id of ["config", "mcp", "status", "clear", "compact"]) {
+    for (const id of ["plugin", "config"]) {
       expect(
         within(systemGroup).getByTestId(`slash-command-${id}`),
       ).toBeInTheDocument();
     }
     expect(
-      within(systemGroup).queryByTestId("slash-command-plugin"),
-    ).not.toBeInTheDocument();
-    expect(
       within(systemGroup).queryByTestId("slash-command-settings"),
     ).not.toBeInTheDocument();
 
-    // everything else -> 技能
+    // 带 skillSource → 技能
     const skillGroup = getGroup("技能");
-    for (const id of ["settings", "loop", "deepwiki:ask"]) {
+    for (const id of ["settings", "deepwiki:ask"]) {
       expect(
         within(skillGroup).getByTestId(`slash-command-${id}`),
       ).toBeInTheDocument();
@@ -101,12 +95,49 @@ describe("SlashCommandsPopup grouping", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("groups host-local commands as system commands without any name whitelist", () => {
+    // 宿主本地指令表（desktop / VSCE / JB 各自维护）加一条新命令时，弹窗这边不需要
+    // 同步任何名单；曾经的 `SYSTEM_COMMANDS` 白名单漏登记就让它们掉进「技能」分组
+    // （/hooks、/plan、/resume、/reload-plugins 都踩过）。
+    const commands: Command[] = [
+      { id: "hooks", name: "hooks", description: "钩子" },
+      { id: "plan", name: "plan", description: "规划模式" },
+      { id: "resume", name: "resume", description: "恢复对话" },
+      { id: "reload-plugins", name: "reload-plugins", description: "重载插件" },
+      // 插件命令（`插件名:` 前缀）与磁盘自定义命令同样不是技能
+      { id: "deepwiki:ask", name: "deepwiki:ask", description: "DeepWiki" },
+      { id: "project-info", name: "project-info", description: "自定义命令" },
+    ];
+
+    renderPopup(commands);
+
+    const systemGroup = getGroup("系统指令");
+    for (const id of [
+      "hooks",
+      "plan",
+      "resume",
+      "reload-plugins",
+      "deepwiki:ask",
+      "project-info",
+    ]) {
+      expect(
+        within(systemGroup).getByTestId(`slash-command-${id}`),
+      ).toBeInTheDocument();
+    }
+    expect(
+      screen.queryByText("技能", { selector: ".slash-group-title" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("groups /remote-control with the system commands, not with skills", () => {
-    // 它是 webview 本地拦截、打开弹窗的指令（同 status/tasks/workflows）；
-    // 漏登记会掉进「技能」分组，用户在下拉里会去技能里找一个不存在的技能。
     renderPopup([
       { id: "remote-control", name: "remote-control", description: "远程控制" },
-      { id: "deepwiki:ask", name: "deepwiki:ask", description: "DeepWiki" },
+      {
+        id: "deepwiki:ask",
+        name: "deepwiki:ask",
+        description: "DeepWiki",
+        skillSource: "plugin",
+      },
     ]);
 
     expect(
@@ -117,11 +148,16 @@ describe("SlashCommandsPopup grouping", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("renders groups in a fixed order: 插件管理 -> 系统指令 -> 技能", () => {
+  it("renders groups in a fixed order: 系统指令 -> 技能", () => {
     const commands: Command[] = [
-      { id: "settings", name: "settings", description: "设置技能" },
+      {
+        id: "settings",
+        name: "settings",
+        description: "设置技能",
+        skillSource: "user",
+      },
       { id: "config", name: "config", description: "配置" },
-      { id: "plugin", name: "plugin", description: "插件管理" },
+      { id: "plugin", name: "plugin", description: "插件市场" },
     ];
 
     const { container } = renderPopup(commands);
@@ -129,21 +165,22 @@ describe("SlashCommandsPopup grouping", () => {
     const titles = Array.from(
       container.querySelectorAll(".slash-group-title"),
     ).map((el) => el.textContent);
-    expect(titles).toEqual(["插件管理", "系统指令", "技能"]);
+    expect(titles).toEqual(["系统指令", "技能"]);
   });
 
-  it("does not render empty group titles when only SDK/skill commands are present", () => {
+  it("does not render empty group titles when only skill commands are present", () => {
     const commands: Command[] = [
-      { id: "settings", name: "settings", description: "设置技能" },
-      { id: "loop", name: "loop", description: "循环技能" },
-      { id: "deepwiki:ask", name: "deepwiki:ask", description: "DeepWiki" },
+      {
+        id: "settings",
+        name: "settings",
+        description: "",
+        skillSource: "builtin",
+      },
+      { id: "loop", name: "loop", description: "", skillSource: "user" },
     ];
 
     renderPopup(commands);
 
-    expect(
-      screen.queryByText("插件管理", { selector: ".slash-group-title" }),
-    ).not.toBeInTheDocument();
     expect(
       screen.queryByText("系统指令", { selector: ".slash-group-title" }),
     ).not.toBeInTheDocument();
@@ -153,33 +190,43 @@ describe("SlashCommandsPopup grouping", () => {
   });
 
   it("selectedIndex follows display (grouped) order, not the raw backend array order", () => {
-    // Backend array is NOT in group order: a skill sits at raw index 0.
-    // Display order is: 0 plugin(插件管理), 1 config(系统指令), 2 code-review(技能),
-    //                   3 loop(技能). selectedIndex must index into THAT order.
+    // Backend array is NOT in group order: skills sit at raw index 0 and 3.
+    // Display order is: 0 config(系统指令), 1 plugin(系统指令),
+    //                   2 code-review(技能), 3 loop(技能).
     const commands: Command[] = [
-      { id: "code-review", name: "code-review", description: "代码审查" },
+      {
+        id: "code-review",
+        name: "code-review",
+        description: "代码审查",
+        skillSource: "builtin",
+      },
       { id: "config", name: "config", description: "配置" },
-      { id: "plugin", name: "plugin", description: "插件管理" },
-      { id: "loop", name: "loop", description: "循环技能" },
+      { id: "plugin", name: "plugin", description: "插件市场" },
+      { id: "loop", name: "loop", description: "", skillSource: "user" },
     ];
 
-    // selectedIndex 0 = first display item = plugin (插件管理), NOT code-review.
+    // selectedIndex 0 = first display item = config (系统指令), NOT code-review.
     renderPopup(commands, 0);
-    expect(screen.getByTestId("slash-command-plugin")).toHaveClass("selected");
+    expect(screen.getByTestId("slash-command-config")).toHaveClass("selected");
     expect(screen.getByTestId("slash-command-code-review")).not.toHaveClass(
       "selected",
     );
   });
 
   it("applies .selected to the item at the flat selectedIndex, including across groups", () => {
-    // Flat order: 0 plugin(插件管理), 1 config(系统指令), 2 mcp(系统指令),
+    // Flat order: 0 plugin(系统指令), 1 config(系统指令), 2 mcp(系统指令),
     //             3 settings(技能), 4 loop(技能)
     const commands: Command[] = [
-      { id: "plugin", name: "plugin", description: "插件管理" },
+      { id: "plugin", name: "plugin", description: "插件市场" },
       { id: "config", name: "config", description: "配置" },
       { id: "mcp", name: "mcp", description: "MCP" },
-      { id: "settings", name: "settings", description: "设置技能" },
-      { id: "loop", name: "loop", description: "循环技能" },
+      {
+        id: "settings",
+        name: "settings",
+        description: "",
+        skillSource: "builtin",
+      },
+      { id: "loop", name: "loop", description: "", skillSource: "user" },
     ];
 
     const { container } = renderPopup(commands, 3);
@@ -192,9 +239,14 @@ describe("SlashCommandsPopup grouping", () => {
 
   it("marks the correct item when selectedIndex points into the first group", () => {
     const commands: Command[] = [
-      { id: "plugin", name: "plugin", description: "插件管理" },
+      { id: "plugin", name: "plugin", description: "插件市场" },
       { id: "config", name: "config", description: "配置" },
-      { id: "settings", name: "settings", description: "设置技能" },
+      {
+        id: "settings",
+        name: "settings",
+        description: "",
+        skillSource: "builtin",
+      },
     ];
 
     renderPopup(commands, 0);
@@ -291,17 +343,22 @@ describe("SlashCommandsPopup grouping", () => {
 });
 
 describe("orderSlashCommands", () => {
-  it("reorders a raw backend list into 插件管理 -> 系统指令 -> 技能 display order", () => {
+  it("reorders a raw backend list into 系统指令 -> 技能 display order", () => {
     const commands: Command[] = [
-      { id: "code-review", name: "code-review", description: "代码审查" },
+      {
+        id: "code-review",
+        name: "code-review",
+        description: "代码审查",
+        skillSource: "builtin",
+      },
       { id: "config", name: "config", description: "配置" },
-      { id: "plugin", name: "plugin", description: "插件管理" },
-      { id: "loop", name: "loop", description: "循环技能" },
+      { id: "plugin", name: "plugin", description: "插件市场" },
+      { id: "loop", name: "loop", description: "", skillSource: "user" },
     ];
 
     expect(orderSlashCommands(commands).map((c) => c.id)).toEqual([
-      "plugin",
       "config",
+      "plugin",
       "code-review",
       "loop",
     ]);
