@@ -574,6 +574,7 @@ export class WorkflowManager {
         run.status = "completed";
         run.endTime = Date.now();
         run.result = result;
+        progressReporter.finalize();
         run.phases = progressReporter.getPhaseStates();
         run.totalAgents = progressReporter.totalAgents;
         run.totalTokens = progressReporter.totalTokens;
@@ -627,6 +628,7 @@ export class WorkflowManager {
           }
           run.endTime = Date.now();
         }
+        progressReporter.finalize();
         run.phases = progressReporter.getPhaseStates();
         run.totalAgents = progressReporter.totalAgents;
         run.totalTokens = progressReporter.totalTokens;
