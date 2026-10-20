@@ -1,15 +1,8 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { SlashCommand } from "../types";
 import { useClickOutside } from "../utils/useClickOutside";
 import { Tooltip } from "./Tooltip";
 import "../styles/SlashCommandsPopup.css";
-
-export interface SlashCommand {
-  id: string;
-  name: string;
-  description: string;
-  /** Source of a skill-backed command（内置/用户/项目/插件）；仅技能命令携带 */
-  skillSource?: "builtin" | "user" | "project" | "plugin";
-}
 
 /** skillSource → 标签文案（与设置页技能来源 Tab 语义一致） */
 export const SKILL_SOURCE_LABELS: Record<

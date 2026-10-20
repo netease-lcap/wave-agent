@@ -80,6 +80,10 @@ export interface SlashCommand {
   /** Source of a skill-backed command（内置/用户/项目/插件）。仅技能命令由 host
    *  下发该字段，弹窗据此渲染来源标签；系统/插件/自定义命令无此字段。 */
   skillSource?: "builtin" | "user" | "project" | "plugin";
+  /** 选中即执行：宿主自己处理的本地 UI 指令（打开弹窗/设置页/面板），选中后把
+   *  `/名字` 发回宿主；不带则把命令名插到输入框里等用户补参数。由 host 随命令下发，
+   *  webview 不维护命令名名单（见 webview-fixtures 的 SlashCommandsResponseMessage）。 */
+  runOnSelect?: boolean;
 }
 
 // File mention types for @ file suggestion feature

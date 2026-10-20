@@ -1169,31 +1169,12 @@ export const MessageInput = forwardRef<
     (command: SlashCommand) => {
       if (!textareaRef.current) return;
 
-      // Local commands (config/plugin/mcp/status/clear) just open a dialog; their
-      // behavior does not depend on the cursor position. Handle them first so a
-      // mouse click on the popup works even when the browser selection is no
-      // longer inside the input's text node (which made getSelection()-based
-      // logic below silently no-op on click).
-      const localCommands = [
-        "config",
-        "plugin",
-        "reload-plugins",
-        "mcp",
-        "status",
-        "remote-control",
-        "tasks",
-        "workflows",
-        "agents",
-        "skills",
-        "hooks",
-        "clear",
-        "compact",
-        "rewind",
-        "model",
-        "plan",
-        "resume",
-      ];
-      if (localCommands.includes(command.name)) {
+      // 宿主本地 UI 指令（打开弹窗/设置页/面板）选中即执行，行为与光标位置无关，
+      // 所以先处理它们：即使浏览器把选区塌在 contenteditable div 上（nodeType 1），
+      // 鼠标点击也能生效。判据取自宿主下发的 `runOnSelect`，这里不再维护命令名
+      // 名单——三个宿主各有自己的本地指令表，webview 抄一份必然漂移，漏同步的命令
+      // 会掉进下面的「插入文本」分支。
+      if (command.runOnSelect) {
         // 本地指令不能把 '/' 前的草稿整条清掉（历史 bug：无条件 innerHTML=""
         // 静默丢弃草稿）。与下方技能指令分支一致：仅删除 [startPos, endPos)
         // 的指令 token，保留其余文本，并把剩余文本上报宿主会话记忆。

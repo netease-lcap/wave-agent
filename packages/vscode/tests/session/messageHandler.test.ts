@@ -622,6 +622,50 @@ describe("MessageHandler MCP handlers", () => {
     expect(config?.skillSource).toBeUndefined();
   });
 
+  test("slashCommandsRequest flags local commands runOnSelect, /btw excepted", async () => {
+    // webview 靠这条标记决定「发回宿主执行」还是「插入命令名等参数」——它不再
+    // 自带命令名名单，所以每条本地指令的标记必须由宿主给全。
+    const session = createMockSession();
+
+    const { handler, context } = createHandler(session);
+    await handler.handleMessage(
+      { command: "requestSlashCommands", filterText: "" },
+      "tab",
+    );
+
+    const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0][0] as {
+      command: string;
+      commands: Array<{ id: string; runOnSelect?: boolean }>;
+    };
+    expect(posted.command).toBe("slashCommandsResponse");
+    // /btw 要让用户接着补问题，唯一不标的本地指令
+    expect(
+      posted.commands.find((c) => c.id === "btw")?.runOnSelect,
+    ).toBeUndefined();
+    for (const id of [
+      "config",
+      "plugin",
+      "reload-plugins",
+      "mcp",
+      "status",
+      "remote-control",
+      "clear",
+      "compact",
+      "tasks",
+      "workflows",
+      "agents",
+      "skills",
+      "hooks",
+      "rewind",
+      "model",
+      "resume",
+      "plan",
+    ]) {
+      expect(posted.commands.find((c) => c.id === id)?.runOnSelect).toBe(true);
+    }
+  });
+
   // Toggling a project-level builtin plugin (e.g. sdd@builtin) persists the
   // toggle and only notifies: the change takes effect on the next
   // /reload-plugins, never by recreating agents (spec plugin「插件变更的就地重载」).
