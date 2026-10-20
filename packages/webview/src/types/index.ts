@@ -895,6 +895,13 @@ export interface ChatState {
    * 「待确认只在它自己的对话里弹，对话状态在会话列表标出来」）。
    */
   sessionStatus: SessionListStatus;
+  /**
+   * 这台机器上最近打开过的工作目录（远控 Web 页「新建会话」弹窗用；其余宿主
+   * 不读它）。来自宿主的 `getRecentWorkdirs`（`~/.wave/recent-workdirs.json`），
+   * MRU 顺序——**跟机器走**，不是页面自己记的：会话全删光之后，它是新建会话时
+   * 唯一还记得旧目录的来源（spec core/recent-workdirs.md）。
+   */
+  recentWorkdirs: string[];
   queuedMessages: QueuedMessage[];
   // Auth state
   isAuthenticated: boolean;
@@ -1122,6 +1129,7 @@ export type ChatAction =
   | { type: "INPUT_CLEARED" }
   | { type: "SET_SESSIONS"; payload: SessionMetadata[] }
   | { type: "SET_SESSION_STATUS"; payload: SessionListStatus }
+  | { type: "SET_RECENT_WORKDIRS"; payload: string[] }
   | { type: "SET_CURRENT_SESSION"; payload: SessionMetadata | undefined }
   | {
       /** 会话自定义标题（乐观更新 + 失败回滚，spec session-management.md「会话

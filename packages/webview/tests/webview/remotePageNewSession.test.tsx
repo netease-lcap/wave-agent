@@ -128,6 +128,86 @@ describe("remote page new-session dialog", () => {
     expect(items[1]).toHaveAttribute("title", "/tmp/other");
   });
 
+  it("asks the machine for its recent workdirs and appends them after the live ones", () => {
+    const { vscode } = renderRemotePage();
+    openDialog(vscode);
+
+    // 会话列表只是「活会话碰过的目录」的投影；机器侧那份（spec
+    // core/recent-workdirs.md）才是持久的，且没有会话也照样有内容。开弹窗
+    // 就问一次，且这条请求不挂 sessionId（机器没有会话时也得答）。
+    const request = sentLastCommand(vscode, "getRecentWorkdirs");
+    expect(request.requestId).toEqual(expect.any(String));
+    expect(request.sessionId).toBeUndefined();
+
+    act(() => {
+      sendCommand("recentWorkdirsResponse", {
+        requestId: request.requestId,
+        dirs: ["/tmp/other", "/archive/old"],
+      });
+    });
+
+    // /tmp/other 与活会话推出来的重复，只算一次且留在原位；机器独有的目录
+    // 按机器给的顺序排在其后。
+    const items = within(
+      screen.getByTestId("remote-new-session-recents"),
+    ).getAllByTestId("remote-new-session-recent-item");
+    expect(items.map((item) => item.getAttribute("title"))).toEqual([
+      "/repo",
+      "/tmp/other",
+      "/archive/old",
+    ]);
+  });
+
+  it("drops a recent-workdirs reply that belongs to an earlier request", () => {
+    const { vscode } = renderRemotePage();
+    openDialog(vscode);
+
+    act(() => {
+      sendCommand("recentWorkdirsResponse", {
+        requestId: "not-the-one-asked",
+        dirs: ["/stale"],
+      });
+    });
+
+    const items = within(
+      screen.getByTestId("remote-new-session-recents"),
+    ).getAllByTestId("remote-new-session-recent-item");
+    expect(items.map((item) => item.getAttribute("title"))).toEqual([
+      "/repo",
+      "/tmp/other",
+    ]);
+    // 顺手确认这条回执确实没被当成「没问过也一样」的广播吞掉——它带了
+    // requestId，就该按 requestId 认领。
+    expect(sentLastCommand(vscode, "getRecentWorkdirs").requestId).not.toBe(
+      "not-the-one-asked",
+    );
+  });
+
+  it("lists the machine's workdirs even after every session is gone", () => {
+    const { vscode } = renderRemotePage();
+    // 会话一条不剩：列表推不出任何目录，弹窗只剩机器那份。
+    act(() => {
+      sendCommand("updateSessions", { sessions: [] });
+    });
+    openDialog(vscode);
+
+    const request = sentLastCommand(vscode, "getRecentWorkdirs");
+    act(() => {
+      sendCommand("recentWorkdirsResponse", {
+        requestId: request.requestId,
+        dirs: ["/archive/old", "/gone/repo"],
+      });
+    });
+
+    const items = within(
+      screen.getByTestId("remote-new-session-recents"),
+    ).getAllByTestId("remote-new-session-recent-item");
+    expect(items.map((item) => item.getAttribute("title"))).toEqual([
+      "/archive/old",
+      "/gone/repo",
+    ]);
+  });
+
   it("fetches branches when a recent dir is picked and defaults to the current branch", () => {
     const { vscode } = renderRemotePage();
     openDialog(vscode);

@@ -1764,6 +1764,64 @@ describe("remote page shim", () => {
     });
   });
 
+  test("lists this machine's recent workdirs on request, without a session", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({ command: "getRecentWorkdirs", requestId: "rw-1" });
+    await flush();
+
+    const frame = page.socket.framesFor("getRecentWorkdirs")[0];
+    // 机器级读：不能绑在页面正在看的那条会话上（会话全删光时它照样要能问）。
+    expect(frame.sessionId).toBeUndefined();
+
+    await page.answer("getRecentWorkdirs", { dirs: ["/repo", "/tmp/other"] });
+    expect(lastPosted(page)).toEqual({
+      command: "recentWorkdirsResponse",
+      requestId: "rw-1",
+      dirs: ["/repo", "/tmp/other"],
+    });
+  });
+
+  test("answers an empty list when the machine is too old to have one", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({ command: "getRecentWorkdirs", requestId: "rw-2" });
+    await flush();
+    await page.refuse(
+      "getRecentWorkdirs",
+      "Method not available over remote control",
+    );
+
+    // 旧版电脑：页面只按活会话派生的那些列，而不是把「没有这项能力」显示成错。
+    expect(lastPosted(page)).toMatchObject({
+      command: "recentWorkdirsResponse",
+      requestId: "rw-2",
+      dirs: [],
+    });
+  });
+
+  test("remembers the picked directory when a session is created", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "newSessionCreate",
+      workdir: "/new/repo",
+      requestId: "mk-3",
+    });
+    await flush();
+    await page.answer("initialize", {
+      sessionId: "s-created",
+      workingDirectory: "/new/repo",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+    await flush();
+
+    const frame = page.socket.framesFor("rememberRecentWorkdir")[0];
+    expect(frame).toMatchObject({ params: { workdir: "/new/repo" } });
+    expect(frame.sessionId).toBeUndefined();
+  });
+
   test("creating a session points the page's own view at the new one", async () => {
     const { page } = await openPage();
 
@@ -2069,6 +2127,47 @@ describe("remote page session list actions", () => {
         .filter((message) => message.command === "setInitialState")
         .pop(),
     ).toMatchObject({ session: expect.objectContaining({ id: "s-old" }) });
+  });
+
+  test("empties the page quietly when the last conversation is deleted", async () => {
+    const { page } = await openPage();
+
+    // 先删掉不是当前的那条，再删当前这条：机器上一条会话都不剩。
+    page.api.postMessage({
+      command: "deleteSession",
+      sessionId: "s-old",
+      requestId: "del-5",
+    });
+    await flush();
+    await page.answer("destroy", { worktreeRemoved: false });
+    await page.answer("listDaemonSessions", { sessions: [SESSIONS[1]] });
+
+    const readsBefore = page.requests("getMessages");
+    page.api.postMessage({
+      command: "deleteSession",
+      sessionId: "s-new",
+      requestId: "del-6",
+    });
+    await flush();
+    await page.answer("destroy", { worktreeRemoved: false });
+    // 删完后的重读（`deleteSession` 自己那次）与重挑快照的读（`pickSession`）。
+    await page.answer("listDaemonSessions", { sessions: [] });
+    await page.answer("listDaemonSessions", { sessions: [] });
+
+    // 没有会话可读时不能再去问 `getMessages`：机器会以「Session ID is required」
+    // 拒掉，红色横幅就压在「电脑侧还没有正在跑的会话。」上面，看上去像删除出错。
+    expect(page.requests("getMessages")).toBe(readsBefore);
+
+    await page.answer("listPendingPermissions", { requests: [] });
+    expect(document.getElementById("remote-status")?.textContent).toBe(
+      "电脑侧还没有正在跑的会话。",
+    );
+    // 视图仍要重画成空的那一份（消息清空、当前会话为空）。
+    expect(
+      page.posted
+        .filter((message) => message.command === "setInitialState")
+        .pop(),
+    ).toMatchObject({ messages: [], currentSession: undefined });
   });
 
   test("says so when the machine refuses the delete", async () => {

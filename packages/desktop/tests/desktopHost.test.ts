@@ -109,6 +109,12 @@ const h = vi.hoisted(() => ({
             error: `${method} not stubbed`,
           }
         );
+      // 机器侧最近目录（spec core/recent-workdirs.md）。默认 `{}` 就是旧版机器的
+      // 观感：方法不存在，桌面端保留本地缓存那份而不是清空列表。
+      case "getRecentWorkdirs":
+        return h.machineRecentWorkdirs ? { dirs: h.machineRecentWorkdirs } : {};
+      case "rememberRecentWorkdir":
+        return null;
       default:
         return {};
     }
@@ -163,6 +169,9 @@ const h = vi.hoisted(() => ({
   // could not inspect the worktree.
   worktreeChangesResult: null as null | { files: number; commits: number },
   worktreeChangesError: null as Error | null,
+  // 机器自己的最近打开目录（`~/.wave/recent-workdirs.json`）。null = 旧版机器：
+  // `getRecentWorkdirs` 回 `{}`，桌面端据此保留本地缓存那份。
+  machineRecentWorkdirs: null as string[] | null,
   // When set, agent.initialize awaits this promise (simulates the multi-second
   // stdio startup so a real webview re-fires webviewReady while the new pane's
   // agent is still mid-spawn and not yet bound to the pane).
@@ -717,6 +726,7 @@ beforeEach(() => {
   h.removeWorktreeError = null;
   h.worktreeChangesResult = null;
   h.worktreeChangesError = null;
+  h.machineRecentWorkdirs = null;
   h.initializeGate = null;
   h.agentCounter = 0;
   h.closedHandlers.length = 0;
@@ -9513,6 +9523,71 @@ describe("SSH remote hosts", () => {
       host: "prod",
       hosts: ["prod"],
       recentWorkdirs: ["/remote/repo"],
+    });
+  });
+
+  it("desktopSelectHost re-pushes the machine's own recent workdirs after the local cache", async () => {
+    // spec core/recent-workdirs.md：本地缓存（configStore，按 host 分组）先发——
+    // 它同步可得，也是旧版机器唯一的来源；机器那份读到后补推一次，桌面端与远控
+    // Web 页从此共用同一份列表。
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    h.machineRecentWorkdirs = ["/machine/alpha", "/machine/beta"];
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: "prod", path: "/remote/repo" });
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+
+    await vi.waitFor(() => {
+      expect(sent("desktopWorkdirState").at(-1)?.recentWorkdirs).toEqual([
+        "/machine/alpha",
+        "/machine/beta",
+      ]);
+    });
+    // 先发的那一份仍是本地缓存，不是被机器列表提前顶替。
+    expect(sent("desktopWorkdirState")[0]?.recentWorkdirs).toEqual([
+      "/remote/repo",
+    ]);
+  });
+
+  it("desktopSelectHost keeps the local cache when the machine has no getRecentWorkdirs", async () => {
+    // 旧版电脑：方法不存在，宿主拿到的是 `{}`。此时**不能**把列表清空——本地缓存
+    // 那份是唯一的回退。
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: "prod", path: "/remote/repo" });
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+
+    await vi.waitFor(() => {
+      expect(
+        h.clientRequests.some((r) => r.method === "getRecentWorkdirs"),
+      ).toBe(true);
+    });
+    expect(
+      sent("desktopWorkdirState").every(
+        (state) =>
+          JSON.stringify(state.recentWorkdirs) ===
+          JSON.stringify(["/remote/repo"]),
+      ),
+    ).toBe(true);
+  });
+
+  it("writing a picked workdir records it on the machine that owns it", async () => {
+    // 谁让用户选目录谁写（spec core/recent-workdirs.md）：远控 Web 页在 shim 里
+    // 写，桌面端在这里写——两边落到同一台机器的同一份文件。
+    await readyHost(); // 选 /work/a（本地）
+
+    await vi.waitFor(() => {
+      expect(h.clientRequests).toContainEqual({
+        method: "rememberRecentWorkdir",
+        params: { workdir: "/work/a" },
+      });
     });
   });
 

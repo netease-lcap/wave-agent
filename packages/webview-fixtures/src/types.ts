@@ -1290,6 +1290,19 @@ export interface SessionWorktreeChangesMessage
   error?: string;
 }
 
+/** Reply to `getRecentWorkdirs`（远控 Web 页「新建会话」弹窗的最近目录）。
+ *
+ * 这份列表**跟着机器走**（`~/.wave/recent-workdirs.json`），不是页面自己记的：
+ * 会话被删光之后它是唯一还记得旧目录的来源（spec core/recent-workdirs.md）。
+ * 同一份数据桌面端按主机各读各的，两端因此看到同一个列表。 */
+export interface RecentWorkdirsMessage extends HostToWebviewMessageBase {
+  command: "recentWorkdirsResponse";
+  requestId: string;
+  dirs: string[];
+  /** 读失败（旧版电脑没有这个方法 / 通道拒绝）：`dirs` 按空表处理。 */
+  error?: string;
+}
+
 /** Reply to a requestHistory / searchHistory query that failed. */
 export interface HistoryErrorMessage extends HostToWebviewMessageBase {
   command: "historyError";
@@ -1381,6 +1394,7 @@ export type HostToWebviewMessage =
   | FileSuggestionsErrorMessage
   | SlashCommandsResponseMessage
   | SlashCommandsErrorMessage
+  | RecentWorkdirsMessage
   | UploadSuccessMessage
   | UploadErrorMessage
   | DesktopRemoteDirListMessage
@@ -1468,6 +1482,9 @@ type ReplyAttribution = {
   desktopArtifactPublish: "requestId";
   desktopArtifactCategories: "requestId";
   desktopArtifactCategoriesSaved: "requestId";
+  // 远控页「新建会话」的最近目录：弹窗每打开一次问一次，晚到的旧回复不得盖掉
+  // 新的一次（列表本身很短，这里只要求归属键在）。
+  recentWorkdirsResponse: "requestId";
 };
 
 // ---- 编译期断言：注册表中的每条响应命令，union 成员必须必填其归属键。 ----
@@ -1525,6 +1542,7 @@ export const replyAttributionLocked = {
   desktopArtifactPublish: true,
   desktopArtifactCategories: true,
   desktopArtifactCategoriesSaved: true,
+  recentWorkdirsResponse: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];
 };

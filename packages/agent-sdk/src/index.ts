@@ -32,6 +32,12 @@ export * from "./utils/tokenCalculation.js";
 export * from "./utils/gitUtils.js";
 export * from "./utils/nameGenerator.js";
 export * from "./utils/pathEncoder.js";
+export {
+  MAX_RECENT_WORKDIRS,
+  readRecentWorkdirs,
+  rememberRecentWorkdir,
+  recentWorkdirsPath,
+} from "./utils/recentWorkdirs.js";
 export { ensureRuntimeDeps } from "./utils/runtimeDeps.js";
 export type { RuntimeDepsResult } from "./utils/runtimeDeps.js";
 export * from "./utils/worktreeSession.js";

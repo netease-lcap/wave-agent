@@ -177,6 +177,13 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   // 「能指名任意路径」不是同一个能力。
   "destroy",
   "getSessionWorktreeChanges",
+  // ── 第五批：最近打开的工作目录（spec core/recent-workdirs.md）──
+  // 读：`getRecentWorkdirs` 回这台机器自己的 MRU 列表（`~/.wave/recent-workdirs.json`）。
+  // 写：`rememberRecentWorkdir` 只在新建会话成功后由页面调用一次，参数是那次
+  // 创建用的目录——它不会删改已有条目，也换不来「在任意目录跑 agent」之外
+  // 的任何东西（那个能力本来就在 `initialize` 里）。
+  "getRecentWorkdirs",
+  "rememberRecentWorkdir",
 ]);
 
 /**

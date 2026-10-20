@@ -1006,13 +1006,65 @@ export class DesktopHost {
 
   private sendWorkdirState(): void {
     const host = this.currentHost;
+    // 本地缓存那份先发：它是同步可得的，且是旧版机器（没有 `getRecentWorkdirs`）
+    // 唯一的来源。机器侧那份读到后紧跟着补一次，晚到的旧主机结果即弃（spec
+    // core/recent-workdirs.md）。
+    this.pushWorkdirState(
+      host,
+      this.configStore.getRecentWorkdirsForHost(host),
+    );
+    void this.readRecentWorkdirsFromHost(host).then((dirs) => {
+      if (!dirs) return;
+      if (this.currentHost !== host) return;
+      this.pushWorkdirState(host, dirs);
+    });
+  }
+
+  private pushWorkdirState(host: string, recentWorkdirs: string[]): void {
     this.postMessage({
       command: "desktopWorkdirState",
       workdir: this.workdir,
       host,
       hosts: parseSshConfigHosts(),
-      recentWorkdirs: this.configStore.getRecentWorkdirsForHost(host),
+      recentWorkdirs,
     });
+  }
+
+  /**
+   * 这台机器自己的最近打开目录（`~/.wave/recent-workdirs.json`，与远控 Web 页
+   * 共用同一份）。问不到就返回 `undefined` —— 调用方保留本地缓存那份，而不是
+   * 把列表清空（旧版机器没有这个方法）。
+   */
+  private async readRecentWorkdirsFromHost(
+    host: string,
+  ): Promise<string[] | undefined> {
+    try {
+      await this.ensureClientFor(host);
+      const result = (await this.utilityClientFor(host).request(
+        "getRecentWorkdirs",
+        {},
+      )) as { dirs?: unknown } | null;
+      const dirs = result?.dirs;
+      if (!Array.isArray(dirs)) return undefined;
+      return dirs.filter((dir): dir is string => typeof dir === "string");
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** 把用户选定的目录记到**那台机器**上；失败静默（记不住不影响开会话）。 */
+  private async rememberWorkdirOnHost(
+    host: string,
+    dir: string,
+  ): Promise<void> {
+    try {
+      await this.ensureClientFor(host);
+      await this.utilityClientFor(host).request("rememberRecentWorkdir", {
+        workdir: dir,
+      });
+    } catch {
+      // 旧版机器没有这个方法；本地缓存那份仍然记着（见 activateWorkdir）。
+    }
   }
 
   // ------------------------------------------------------------------
@@ -2549,7 +2601,10 @@ export class DesktopHost {
     const host = opts.host ?? LOCAL_HOST;
     const paneId = opts.paneId ?? this.focusedPaneId;
     this.workdir = dir;
+    // 两份都记：本地这份是旧版机器（没有 `getRecentWorkdirs`）的回退，机器那份
+    // 才是桌面端与远控 Web 页共用的真相（spec core/recent-workdirs.md）。
     this.configStore.addRecentWorkdir({ host, path: dir });
+    void this.rememberWorkdirOnHost(host, dir);
 
     try {
       const agent = await this.spawnAgent({ host, workdir: dir });

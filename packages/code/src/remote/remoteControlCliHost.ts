@@ -33,7 +33,11 @@ import type {
   Task,
   ToolPermissionContext,
 } from "wave-agent-sdk";
-import { listSessions } from "wave-agent-sdk";
+import {
+  listSessions,
+  readRecentWorkdirs,
+  rememberRecentWorkdir,
+} from "wave-agent-sdk";
 import {
   hostSlashCommandsFor,
   toSlashCommandInfo,
@@ -153,6 +157,14 @@ export class RemoteControlCliHost implements RemoteControlHost {
         return this.getSessionInfo();
       case "getMessages":
         return this.getMessages(p);
+      // 最近打开的工作目录是本机的事实，与「这条前台会话」无关：同一个文件
+      // AgentBridge 也在读（spec core/recent-workdirs.md）。不实现的话，页面
+      // 会落到「这台电脑上的会话不支持这个操作」——白名单放行 ≠ 宿主实现。
+      case "getRecentWorkdirs":
+        return { dirs: readRecentWorkdirs() };
+      case "rememberRecentWorkdir":
+        rememberRecentWorkdir(typeof p.workdir === "string" ? p.workdir : "");
+        return null;
       case "listPendingPermissions":
         return this.listPendingPermissions();
       case "sendMessage":

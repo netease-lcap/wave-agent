@@ -30,6 +30,9 @@ export const initialState: ChatState = {
   // 会话列表的状态标记（远控 Web 页）：读不到任何状态时不标任何对话——空集是
   // 「没有对话在等 / 没有对话在跑」，与 undefined 区分开（后者是宿主没给）。
   sessionStatus: { waiting: [], running: [] },
+  // 机器侧最近打开的工作目录（远控 Web 页「新建会话」）：会话全删光之后它是
+  // 唯一还记得旧目录的来源，与活会话派生的目录合并后进弹窗。
+  recentWorkdirs: [],
   queuedMessages: [],
   // Dialog state
   activeDialog: null,
@@ -146,6 +149,11 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         ...state,
         sessionStatus: action.payload,
+      };
+    case "SET_RECENT_WORKDIRS":
+      return {
+        ...state,
+        recentWorkdirs: action.payload,
       };
     case "SET_CURRENT_SESSION": {
       const session = action.payload;
