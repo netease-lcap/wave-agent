@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "fs";
+import * as path from "path";
 import { Container } from "../../src/utils/container.js";
 import { WorkflowManager } from "../../src/managers/workflowManager.js";
 import { WorkflowRegistry } from "../../src/workflow/workflowRegistry.js";
@@ -23,7 +24,15 @@ vi.mock("fs", () => {
 });
 
 const SCRIPT = `export const meta = { name: "saved", description: "Saved" };\nreturn 1;`;
-const WORKDIR = "/home/user/project";
+/**
+ * Resolved fixture paths: the registry builds library paths with `path.join`, so
+ * every expectation has to be produced the same way — the POSIX literal only
+ * matches on macOS/Linux, never on Windows (backslashes + drive letter).
+ */
+const WORKDIR = path.resolve("/home/user/project");
+const PROJECT_SCRIPT = (name: string) =>
+  path.join(WORKDIR, ".wave", "workflows", `${name}.js`);
+const USER_LIBRARY_TAIL = path.join(".wave", "workflows", "shared.js");
 
 function createRun(): WorkflowRun {
   return {
@@ -61,10 +70,10 @@ describe("WorkflowManager.saveWorkflowScript", () => {
 
     expect(saved).toEqual({
       name: "my-script",
-      path: `${WORKDIR}/.wave/workflows/my-script.js`,
+      path: PROJECT_SCRIPT("my-script"),
     });
     expect(fs.promises.writeFile).toHaveBeenCalledWith(
-      `${WORKDIR}/.wave/workflows/my-script.js`,
+      PROJECT_SCRIPT("my-script"),
       SCRIPT,
       { encoding: "utf-8", flag: "wx" },
     );
@@ -81,7 +90,7 @@ describe("WorkflowManager.saveWorkflowScript", () => {
         scope: "project",
       }),
     ).rejects.toThrow(
-      `Dynamic workflow "my-script" already exists at ${WORKDIR}/.wave/workflows/my-script.js. Use a different name or overwrite.`,
+      `Dynamic workflow "my-script" already exists at ${PROJECT_SCRIPT("my-script")}. Use a different name or overwrite.`,
     );
   });
 
@@ -93,7 +102,7 @@ describe("WorkflowManager.saveWorkflowScript", () => {
     });
 
     expect(fs.promises.writeFile).toHaveBeenCalledWith(
-      `${WORKDIR}/.wave/workflows/my-script.js`,
+      PROJECT_SCRIPT("my-script"),
       SCRIPT,
       { encoding: "utf-8", flag: "w" },
     );
@@ -107,7 +116,7 @@ describe("WorkflowManager.saveWorkflowScript", () => {
       scope: "user",
     });
 
-    expect(saved.path).toContain("/.wave/workflows/shared.js");
+    expect(saved.path).toContain(USER_LIBRARY_TAIL);
     // Atomic write: temp file first, then rename.
     expect(fs.promises.writeFile).toHaveBeenCalledTimes(1);
     expect(fs.promises.rename).toHaveBeenCalledTimes(1);
