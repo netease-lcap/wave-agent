@@ -89,7 +89,12 @@ function formatTime(raw: string | undefined): string {
   const date = new Date(raw);
   if (Number.isNaN(date.getTime())) return raw;
   const pad = (n: number) => String(n).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const monthDay = `${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  const clock = `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  // 同一年不写年份：这一列在窄窗口里只有约 90px，带年份会被省略号吃掉。
+  return date.getFullYear() === new Date().getFullYear()
+    ? `${monthDay} ${clock}`
+    : `${date.getFullYear()}-${monthDay} ${clock}`;
 }
 
 function timeValue(raw: string | undefined): number {

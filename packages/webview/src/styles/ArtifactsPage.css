@@ -71,7 +71,7 @@
 }
 
 .artifacts-nav {
-  flex: 0 0 200px;
+  flex: 0 0 172px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -145,7 +145,7 @@
 
 .artifacts-table th,
 .artifacts-table td {
-  padding: 9px 10px;
+  padding: 9px 8px;
   text-align: left;
   vertical-align: middle;
   border-bottom: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.16));
@@ -163,30 +163,42 @@
 }
 
 .artifacts-col-check {
-  width: 40px;
+  width: 36px;
 }
 
+/* 窗口窄到放不下五列时会横向滚动：把文件名称列钉在左侧、操作列钉在右侧，
+ * 两条锚点都不会被滚出视野（真机在 1280 宽窗口里看到过名称列被裁）。 */
 .artifacts-col-name {
-  width: auto;
-  min-width: 180px;
+  width: 27%;
+  min-width: 130px;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--vscode-editor-background, #ffffff);
 }
 
 .artifacts-col-owner {
-  width: 220px;
+  width: 21%;
 }
 
 .artifacts-col-time {
-  width: 170px;
+  width: 13%;
 }
 
 .artifacts-col-share {
-  width: 255px;
+  width: 13%;
 }
 
+/* 操作列三个文字按钮（复制链接 / 在浏览器中打开 / 分享）要在一行里放下，
+ * 否则整表超宽、文件名称列被挤到横向滚动条外面（真机截图发现的）。 */
 .artifacts-col-actions {
-  width: 300px;
+  width: 26%;
   text-align: right;
   white-space: nowrap;
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: var(--vscode-editor-background, #ffffff);
 }
 
 .artifacts-file-btn {
@@ -226,12 +238,12 @@
 }
 
 .artifacts-icon-btn {
-  padding: 3px 6px;
+  padding: 3px 4px;
   border: none;
   border-radius: 4px;
   background: transparent;
   color: inherit;
-  font-size: 12px;
+  font-size: 11px;
   cursor: pointer;
 }
 
