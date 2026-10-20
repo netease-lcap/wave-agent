@@ -27,7 +27,10 @@ vi.mock("../../src/utils/toolResultStorage.js", () => ({
 import { authService } from "../../src/services/authService.js";
 import { artifactTool } from "../../src/tools/artifactTool.js";
 import type { ToolContext } from "../../src/tools/types.js";
-import { clearArtifactSession } from "../../src/services/artifactSession.js";
+import {
+  clearArtifactSession,
+  recordVersion,
+} from "../../src/services/artifactSession.js";
 import type { PageWatchManager } from "../../src/managers/pageWatchManager.js";
 
 const SERVER_URL = "https://server.test";
@@ -426,7 +429,7 @@ describe("Artifact resolve action", () => {
     expect(body.resolved).toBe(true);
   });
 
-  it("forwards an explicit after_version", async () => {
+  it("forwards an explicit after_version as a number", async () => {
     const fetchMock = stubFetch([
       {
         match: () => true,
@@ -443,9 +446,79 @@ describe("Artifact resolve action", () => {
       },
       makeContext(),
     );
-    expect(
-      JSON.parse(fetchMock.mock.calls[0][1]!.body as string).afterVersion,
-    ).toBe("7");
+    // The server checks `typeof afterVersion === "number"`: the old stringified
+    // body got 400 INVALID_AFTER_VERSION on every real resolve.
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.afterVersion).toBe(7);
+    expect(typeof body.afterVersion).toBe("number");
+  });
+
+  it("sends the session's recorded version as a number", async () => {
+    recordVersion(SESSION_ID, SLUG, "3");
+    const fetchMock = stubFetch([
+      {
+        match: () => true,
+        respond: () => jsonResponse(200, { status: "resolved" }),
+      },
+    ]);
+
+    await TOOL.execute(
+      { action: "resolve", url: ARTIFACT_URL, thread_id: "c1", resolved: true },
+      makeContext(),
+    );
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.afterVersion).toBe(3);
+    expect(typeof body.afterVersion).toBe("number");
+  });
+
+  it("accepts a numeric string and still sends a number", async () => {
+    const fetchMock = stubFetch([
+      {
+        match: () => true,
+        respond: () => jsonResponse(200, { status: "resolved" }),
+      },
+    ]);
+
+    await TOOL.execute(
+      {
+        action: "resolve",
+        url: ARTIFACT_URL,
+        thread_id: "c1",
+        resolved: true,
+        after_version: "4",
+      },
+      makeContext(),
+    );
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1]!.body as string);
+    expect(body.afterVersion).toBe(4);
+    expect(typeof body.afterVersion).toBe("number");
+  });
+
+  it("rejects a non-positive-integer after_version before any request", async () => {
+    const fetchMock = stubFetch([
+      {
+        match: () => true,
+        respond: () => jsonResponse(200, { status: "resolved" }),
+      },
+    ]);
+
+    for (const bad of [0, -1, 1.5, "v3", ""]) {
+      const result = await TOOL.execute(
+        {
+          action: "resolve",
+          url: ARTIFACT_URL,
+          thread_id: "c1",
+          resolved: true,
+          after_version: bad,
+        },
+        makeContext(),
+      );
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("positive integer");
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("reports a reopen", async () => {

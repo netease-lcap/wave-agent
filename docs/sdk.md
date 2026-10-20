@@ -447,29 +447,29 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 - **自然语言触发（工具）**：模型可自动调用 `Artifact` 工具，工具描述覆盖「发布 / 分享 / 做成网页 / 给链接」等语义（含中文提示词），无需用户记忆特定命令。
 - **人工触发（内置技能 `/artifact`）**：输入 `/` 即可在命令选择器中看到，适合不熟悉提示词编写的用户。技能内容仅指示模型调用 `Artifact` 工具（参数经 `$ARGUMENTS` 透传），**不含任何发布逻辑**——发布 / 校验 / 权限确认 / 会话映射全部由工具完成。技能声明了 `disable-model-invocation: true`，模型不会自行调用该技能，两个通道互不干扰。
 
-| 参数                    | 类型     | 说明                                                                                                                 |
-| ----------------------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
-| `action`                | string   | `publish`（缺省值，发布/重新部署）、`read`（读取已发布页面）、`list`（列举）、资源五动作（见下）或评论五动作（见下） |
-| `file_path`             | string   | `publish` 时必需，待发布的 `.html` 或 `.md` 文件；`upload_asset` 时为待上传的本地文件                                |
-| `favicon`               | string   | 页面图标 emoji（如 `📄`）                                                                                            |
-| `url`                   | string   | artifact URL（也接受裸 slug）：发布时为待重新部署的 URL，读取与所有资源动作时为操作对象                              |
-| `label`                 | string   | 本次发布的短名（≤60 字符，如「Draft to legal」），只用于版本列表，不参与标题解析                                     |
-| `title`                 | string   | artifact 标题，仅 `.html` 生效（≤1000 字符）：页面自带 `<title>` 永远优先，缺标签时用文件名兜底                      |
-| `force`                 | boolean  | 冲突时跳过检查直接覆盖发布                                                                                           |
-| `prompt`                | string   | 读取**他人分享**的页面时的关注点（如「布局是怎样的」）；读自己的页面时忽略                                           |
-| `scope`                 | string   | `list` 的范围：`mine`（缺省）/ `shared` / `all`                                                                      |
-| `limit`                 | number   | `list` 的最大行数（缺省 25，上限 50）                                                                                |
-| `asset_id`              | string   | `read_asset` / `delete_asset` 的目标资源 id（32 位 hex，也接受 `_blob/{id}`）                                        |
-| `asset_ids`             | string[] | `copy_from` 的源资源 id 列表（1–10 个不重复，有序）                                                                  |
-| `after`                 | string   | `list_assets` 的续页游标，取自上次返回的 `next`                                                                      |
-| `from`                  | string   | `copy_from` 的**源 artifact**（slug 或页面 URL），资源被复制到 `url` 指向的目标                                      |
-| `cursor`                | string   | `comments` 的增量游标，取自上次返回的「More threads not listed」一行；省略 = 全量                                    |
-| `thread_id`             | string   | `reply` / `resolve` 的目标线程 id（`comments` 列出的 `[thread_id]`；也接受线程内任意评论 id）                        |
-| `text`                  | string   | `reply` 的纯文本回复，≤4096 UTF-8 字节（按字节算，不是字符数）                                                       |
-| `continues_reply_id`    | string   | `reply` 要回的那条评论 id（`↳ [id]`）；省略 = 目标是线程根，去重按这个目标算                                         |
-| `acknowledge_duplicate` | boolean  | `reply` 时**这条评论**已有 agent 回复仍要发（其实是要回别的评论时，正解是改 `continues_reply_id`）                   |
-| `resolved`              | boolean  | `resolve` 必填：`true` 关闭线程、`false` 重新打开                                                                    |
-| `after_version`         | number   | `resolve` 依据的页面版本；省略时用本会话记录的该页面版本（页面已发新版则服务端拒绝）                                 |
+| 参数                    | 类型     | 说明                                                                                                                               |
+| ----------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `action`                | string   | `publish`（缺省值，发布/重新部署）、`read`（读取已发布页面）、`list`（列举）、资源五动作（见下）或评论五动作（见下）               |
+| `file_path`             | string   | `publish` 时必需，待发布的 `.html` 或 `.md` 文件；`upload_asset` 时为待上传的本地文件                                              |
+| `favicon`               | string   | 页面图标 emoji（如 `📄`）                                                                                                          |
+| `url`                   | string   | artifact URL（也接受裸 slug）：发布时为待重新部署的 URL，读取与所有资源动作时为操作对象                                            |
+| `label`                 | string   | 本次发布的短名（≤60 字符，如「Draft to legal」），只用于版本列表，不参与标题解析                                                   |
+| `title`                 | string   | artifact 标题，仅 `.html` 生效（≤1000 字符）：页面自带 `<title>` 永远优先，缺标签时用文件名兜底                                    |
+| `force`                 | boolean  | 冲突时跳过检查直接覆盖发布                                                                                                         |
+| `prompt`                | string   | 读取**他人分享**的页面时的关注点（如「布局是怎样的」）；读自己的页面时忽略                                                         |
+| `scope`                 | string   | `list` 的范围：`mine`（缺省）/ `shared` / `all`                                                                                    |
+| `limit`                 | number   | `list` 的最大行数（缺省 25，上限 50）                                                                                              |
+| `asset_id`              | string   | `read_asset` / `delete_asset` 的目标资源 id（32 位 hex，也接受 `_blob/{id}`）                                                      |
+| `asset_ids`             | string[] | `copy_from` 的源资源 id 列表（1–10 个不重复，有序）                                                                                |
+| `after`                 | string   | `list_assets` 的续页游标，取自上次返回的 `next`                                                                                    |
+| `from`                  | string   | `copy_from` 的**源 artifact**（slug 或页面 URL），资源被复制到 `url` 指向的目标                                                    |
+| `cursor`                | string   | `comments` 的增量游标，取自上次返回的「More threads not listed」一行；省略 = 全量                                                  |
+| `thread_id`             | string   | `reply` / `resolve` 的目标线程 id（`comments` 列出的 `[thread_id]`；也接受线程内任意评论 id）                                      |
+| `text`                  | string   | `reply` 的纯文本回复，≤4096 UTF-8 字节（按字节算，不是字符数）                                                                     |
+| `continues_reply_id`    | string   | `reply` 要回的那条评论 id（`↳ [id]`）；省略 = 目标是线程根，去重按这个目标算                                                       |
+| `acknowledge_duplicate` | boolean  | `reply` 时**这条评论**已有 agent 回复仍要发（其实是要回别的评论时，正解是改 `continues_reply_id`）                                 |
+| `resolved`              | boolean  | `resolve` 必填：`true` 关闭线程、`false` 重新打开                                                                                  |
+| `after_version`         | number   | `resolve` 依据的页面版本，**正整数**（服务端按 number 校验，`"3"` 直接 400）；省略时用本会话记录的版本（页面已发新版则服务端拒绝） |
 
 要点：
 
@@ -478,7 +478,7 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 - 发布动作默认经用户确认（首次发布 / 已分享页面重新部署时），同会话内的重复发布自动允许
 - 并发与防冲突：服务端 409 或本地记录版本落后时拒绝发布（提示先 WebFetch 最新内容），除非带 `force: true`
 - 发布结果返回 `{ url, path, title, version }`，`url` 形如 `{host}/code/artifact/{slug}`；页面默认仅发布者可见
-- `action: "read"` 读取**自己拥有**的页面时返回原始 HTML（内联 CSS/JS 保留，可直接在其上继续改页面、查样式），内容超过 ~2KB 时落盘到临时文件并返回路径与预览；读取**他人分享**的页面时只返回隔离摘要（`prompt` 引导关注点），全文不进入对话上下文，且首次读取需用户确认、同会话内不再重复确认
+- `action: "read"` 读取**自己拥有**的页面时返回原始 HTML（内联 CSS/JS 保留，可直接在其上继续改页面、查样式），内容超过 ~2KB 时落盘到临时文件并返回路径与预览；读取**他人分享**的页面时只返回隔离摘要（`prompt` 引导关注点），全文不进入对话上下文，且首次读取需用户确认、同会话内不再重复确认；`url` 与其余动作同口径——**页面 URL 或裸 slug 都可以**，不必先 `list` 找完整 URL
 - 读取到的版本号会同步到会话记录，因此「读取最新版本后再重新部署」不会触发 stale 冲突保护；页面不存在（404）与无权限（403）返回不同错误
 - `action: "list"` 列举账号可访问的页面：服务端只提供固定一页（200 行、无 scope、无游标），**过滤与截断都在客户端**；结果按 `(mine)`/`(shared)` 分组，只有自己的行展示 favicon，被截断时提示提高 `limit` 或收窄 `scope`
 - 资源动作都以 `url` 定位目标 artifact：`upload_asset` 把本地文件以裸字节 + 按扩展名映射的 `Content-Type` 上传，返回可在页面里用 `_blob/{id}` 引用的 `asset_id`；`list_assets` 返回资源列表与配额用量（`files`/`bytes` 对 `max_files`/`max_bytes`），续页游标放在 `after`；`read_asset` 经 artifact 的短期 `assetToken` 读取（不携带会话 Bearer，文本类内联、二进制落盘为临时文件）；`delete_asset` 幂等（服务端返回 `{deleted:false}` 时如实呈现「已不存在」）；`copy_from` 从 `from` 复制 1–10 个不重复资源到目标，返回顺序与 `asset_ids` 一致，复制产生独立副本
