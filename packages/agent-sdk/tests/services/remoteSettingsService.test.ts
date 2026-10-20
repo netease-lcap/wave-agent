@@ -979,48 +979,34 @@ describe("remoteSettingsService", () => {
       expect(result.enableArtifact).toBe(false);
     });
 
-    it("merges monitoring.telemetry per key, managed wins on a clash", () => {
-      // An admin pushing only an endpoint must not wipe the user's headers, and
-      // the managed layer is one of the two layers allowed to set the headers
+    it("lets the managed layer win on otelHeadersHelper", () => {
+      // The managed layer is one of the two layers allowed to set the headers
       // helper (the other is the user's own file — the project layer is
-      // stripped in loadMergedWaveConfig).
+      // stripped in loadMergedWaveConfig). Ordinary telemetry knobs travel
+      // through `env` and merge with the rest of the environment.
       const local = {
-        monitoring: {
-          telemetry: {
-            endpoint: "http://local:4318",
-            headers: { "local-header": "1" },
-            headersHelper: "user-helper",
-          },
-        },
+        otelHeadersHelper: "user-helper",
+        env: { OTEL_EXPORTER_OTLP_ENDPOINT: "http://local:4318" },
       } as unknown as WaveConfiguration;
       const remote = {
-        monitoring: {
-          telemetry: {
-            endpoint: "http://managed:4318",
-            headersHelper: "managed-helper",
-          },
-        },
+        otelHeadersHelper: "managed-helper",
+        env: { OTEL_EXPORTER_OTLP_ENDPOINT: "http://managed:4318" },
       } as unknown as WaveConfiguration;
 
       const result = mergeRemoteSettings(local, remote);
-      expect(result.monitoring).toEqual({
-        telemetry: {
-          endpoint: "http://managed:4318",
-          headers: { "local-header": "1" },
-          headersHelper: "managed-helper",
-        },
-      });
+      expect(result.otelHeadersHelper).toBe("managed-helper");
+      expect(result.env?.OTEL_EXPORTER_OTLP_ENDPOINT).toBe(
+        "http://managed:4318",
+      );
     });
 
-    it("keeps local monitoring when remote doesn't define it", () => {
+    it("keeps the local helper when remote doesn't define one", () => {
       const local = {
-        monitoring: { telemetry: { headersHelper: "user-helper" } },
+        otelHeadersHelper: "user-helper",
       } as unknown as WaveConfiguration;
 
       const result = mergeRemoteSettings(local, {});
-      expect(result.monitoring).toEqual({
-        telemetry: { headersHelper: "user-helper" },
-      });
+      expect(result.otelHeadersHelper).toBe("user-helper");
     });
 
     it("handles both empty objects", () => {

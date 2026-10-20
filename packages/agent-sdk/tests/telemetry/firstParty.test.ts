@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED,
-  isFirstPartyTelemetryDisabledByEnv,
+  isTelemetryDisabledByEnv,
   resolveFirstPartyChannel,
   resolveFirstPartyEnabled,
 } from "@/telemetry/firstParty.js";
@@ -22,7 +22,7 @@ vi.mock("@/utils/globalLogger.js", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
-const ENV_KEYS = ["WAVE_DISABLE_TELEMETRY", "WAVE_OTEL_URL"];
+const ENV_KEYS = ["DISABLE_TELEMETRY"];
 const savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
@@ -42,35 +42,22 @@ afterEach(() => {
 });
 
 describe("resolveFirstPartyEnabled", () => {
-  it("没有配置时由代码常量决定，默认开启（服务端入口已在各环境就绪）", () => {
+  it("没有环境变量时由代码常量决定，默认开启（服务端入口已在各环境就绪）", () => {
     expect(FIRST_PARTY_TELEMETRY_DEFAULT_ENABLED).toBe(true);
     expect(resolveFirstPartyEnabled()).toBe(true);
   });
 
-  it("配置里的 firstPartyEnabled: true 与默认一致（显式打开仍生效）", () => {
-    expect(resolveFirstPartyEnabled({ firstPartyEnabled: true })).toBe(true);
-  });
-
-  it("配置里的显式关闭生效（托管配置按整队关掉这条出口的路径）", () => {
-    expect(resolveFirstPartyEnabled({ firstPartyEnabled: false })).toBe(false);
-  });
-
-  it("WAVE_DISABLE_TELEMETRY 压过配置里的显式打开", () => {
-    process.env.WAVE_DISABLE_TELEMETRY = "1";
-    expect(isFirstPartyTelemetryDisabledByEnv()).toBe(true);
-    expect(resolveFirstPartyEnabled({ firstPartyEnabled: true })).toBe(false);
-  });
-
-  it("WAVE_DISABLE_TELEMETRY 也压过默认开启（无任何配置时）", () => {
-    process.env.WAVE_DISABLE_TELEMETRY = "1";
+  it("DISABLE_TELEMETRY 是总闸：首方出口随之关闭（与 CC 同名同义）", () => {
+    process.env.DISABLE_TELEMETRY = "1";
+    expect(isTelemetryDisabledByEnv()).toBe(true);
     expect(resolveFirstPartyEnabled()).toBe(false);
   });
 
-  it("退出开关认 true，不认其它取值", () => {
-    process.env.WAVE_DISABLE_TELEMETRY = "true";
-    expect(resolveFirstPartyEnabled({ firstPartyEnabled: true })).toBe(false);
-    process.env.WAVE_DISABLE_TELEMETRY = "0";
-    expect(resolveFirstPartyEnabled({ firstPartyEnabled: true })).toBe(true);
+  it("总闸认 1 / true，不认其它取值", () => {
+    process.env.DISABLE_TELEMETRY = "true";
+    expect(resolveFirstPartyEnabled()).toBe(false);
+    process.env.DISABLE_TELEMETRY = "0";
+    expect(resolveFirstPartyEnabled()).toBe(true);
   });
 });
 
@@ -93,11 +80,12 @@ describe("resolveFirstPartyChannel", () => {
     );
   });
 
-  it("WAVE_OTEL_URL 覆盖推导出的地址，并去掉尾部斜杠", () => {
+  it("端点恒由服务端地址派生（去掉尾部斜杠），没有独立的 endpoint 旋钮", () => {
     authState.token = "sso-token";
-    authState.serverUrl = "https://codechat.codewave-test.163yun.com";
-    process.env.WAVE_OTEL_URL = "http://127.0.0.1:4318/";
-    expect(resolveFirstPartyChannel()?.endpoint).toBe("http://127.0.0.1:4318");
+    authState.serverUrl = "https://codechat.codewave-test.163yun.com/";
+    expect(resolveFirstPartyChannel()?.endpoint).toBe(
+      "https://codechat.codewave-test.163yun.com/otel",
+    );
   });
 
   it("headers 每次读取当前 token，续期后无需重启", async () => {

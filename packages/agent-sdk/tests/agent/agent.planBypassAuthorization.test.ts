@@ -26,7 +26,7 @@ function mockConfigurationService(defaultMode: string) {
       resolveMaxInputTokens: vi.fn().mockReturnValue(100000),
       getEnvironmentVars: vi.fn().mockReturnValue({}),
       resolveAutoMemoryEnabled: vi.fn().mockReturnValue(true),
-      resolveTelemetryConfig: vi.fn().mockReturnValue(undefined),
+      getTelemetrySettings: vi.fn().mockReturnValue({}),
     } as unknown as ConfigurationService;
   });
 }

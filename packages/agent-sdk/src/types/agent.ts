@@ -134,11 +134,11 @@ export interface AgentOptions {
    */
   hooks?: PartialHookConfiguration;
   /**
-   * Telemetry overrides for this agent, merged per key over
-   * `settings.json`'s `monitoring.telemetry` (options win). Mainly the
-   * in-process door for dynamic OTLP headers: a host that holds a rotating
-   * credential (a per-device token it refreshes itself) passes a
-   * `headersProvider`, which no JSON config could carry.
+   * Telemetry overrides for this agent. Mainly the in-process door for dynamic
+   * OTLP headers: a host that holds a rotating credential (a per-device token it
+   * refreshes itself) passes a `headersProvider`, which no JSON config could
+   * carry. The environment (`settings.json`'s `env` block, the managed layer, or
+   * the OS environment) wins per key over these.
    */
   telemetry?: Partial<TelemetryConfig>;
   /**

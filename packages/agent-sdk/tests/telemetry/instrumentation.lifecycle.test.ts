@@ -72,7 +72,7 @@ describe("telemetry lifecycle", () => {
 
   beforeEach(async () => {
     originalEnv = { ...process.env };
-    delete process.env.OTEL_ENABLED;
+    delete process.env.DISABLE_TELEMETRY;
     delete process.env.OTEL_METRICS_EXPORTER;
     delete process.env.OTEL_LOGS_EXPORTER;
     delete process.env.OTEL_EXPORTER_OTLP_ENDPOINT;

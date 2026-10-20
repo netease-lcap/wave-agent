@@ -10,7 +10,6 @@ import type { HookEvent, HookEventConfig } from "./hooks.js";
 import type { PermissionMode } from "./permissions.js";
 import type { ModelConfig } from "./config.js";
 import type { MarketplaceSource } from "./marketplace.js";
-import type { TelemetryConfig } from "./telemetry.js";
 
 export type Scope = "user" | "project" | "local";
 
@@ -67,10 +66,20 @@ export interface WaveConfiguration {
   completionEnabled?: boolean;
   /** Scoped marketplace declarations */
   marketplaces?: Record<string, MarketplaceConfig>;
-  /** OpenTelemetry monitoring configuration */
-  monitoring?: {
-    telemetry?: Partial<TelemetryConfig>;
-  };
+  /**
+   * Command whose stdout is a JSON object of OTLP export headers, re-run on a
+   * refresh interval so a rotating credential never has to be written into
+   * config or shipped in a build (aligned with Claude Code's `otelHeadersHelper`
+   * — same name, same top-level position).
+   *
+   * A top-level key rather than an `env` entry for the same reason Claude Code
+   * keeps it out of `env`: this one names a command that runs on this machine,
+   * so it must not travel with the ordinary telemetry variables. Only the user
+   * layer (`~/.wave/settings.json`) or the server-managed layer may set it — a
+   * checked-out repo must not be able to name a command that runs here (see
+   * `loadMergedWaveConfig`).
+   */
+  otelHeadersHelper?: string;
   /** Worktree configuration */
   worktree?: {
     /** Base ref for new worktrees: "fresh" (origin/<default-branch>, default) | "head" (local HEAD) */

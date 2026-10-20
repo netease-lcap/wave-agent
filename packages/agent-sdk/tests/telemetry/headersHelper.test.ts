@@ -182,7 +182,7 @@ describe("createHeadersHelperProvider", () => {
     const { createHeadersHelperProvider } = await loadModule();
     // Only the clock is faked, so no test waits for real time to pass.
     vi.useFakeTimers({ toFake: ["Date"] });
-    process.env.WAVE_OTEL_HEADERS_HELPER_DEBOUNCE_MS = "1000";
+    process.env.OTEL_HEADERS_DEBOUNCE_MS = "1000";
     try {
       respondWith({ stdout: '{"run":"1"}' });
       respondWith({ stdout: '{"run":"2"}' });
@@ -197,7 +197,7 @@ describe("createHeadersHelperProvider", () => {
 
       expect(spawnMock).toHaveBeenCalledTimes(2);
     } finally {
-      delete process.env.WAVE_OTEL_HEADERS_HELPER_DEBOUNCE_MS;
+      delete process.env.OTEL_HEADERS_DEBOUNCE_MS;
     }
   });
 
