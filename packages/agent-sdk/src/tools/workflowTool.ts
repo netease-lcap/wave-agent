@@ -78,6 +78,9 @@ const WORKFLOW_SCRIPT_ESSENTIALS = `Writing the script — the essentials:
 
 Scripts are plain JavaScript — no type annotations, no filesystem, no network, no \`import\`. The right move is often hybrid: scout inline first (list the files, scope the diff) to discover the work-list, then pipeline over it.`;
 
+/** Reuse-before-rewrite hint for the named entry point. Verbatim external contract — do not reword. */
+const WORKFLOW_NAMED_ENTRY_HINT = `Prefer reusing an existing script over rewriting it: pass \`name\` instead of \`script\` — a bare name from the script library, or \`<plugin>:<name>\` for a workflow a plugin ships.`;
+
 /** Pointer to the on-demand copy of the reference. */
 const WORKFLOW_AUTHORING_POINTER = `For the complete authoring reference — full hook signatures and \`opts\`, \`meta\` shape, \`args\`/\`budget\` semantics, resume rules, concurrency and scale caps, quality patterns and a runnable example — load the \`${WORKFLOW_AUTHORING_SKILL_NAME}\` skill before writing the script.`;
 
@@ -130,12 +133,17 @@ export const workflowTool: ToolPlugin = {
           script: {
             type: "string",
             description:
-              "Inline workflow script (JavaScript). Must start with 'export const meta = {name, description, phases}'. Pass the script inline — do not Write it to a file first. Every Workflow invocation automatically persists its script.",
+              "Inline workflow script (JavaScript). Must start with 'export const meta = {name, description, phases}'. Pass the script inline — do not Write it to a file first. Every Workflow invocation automatically persists its script. Pass exactly one of 'script', 'scriptPath' or 'name'.",
           },
           scriptPath: {
             type: "string",
             description:
-              "Path to a saved workflow script file. Use this to re-run or iterate on a previously saved script. One of 'script' or 'scriptPath' is required.",
+              "Path to a saved workflow script file. Use this to re-run or iterate on a previously saved script. Pass exactly one of 'script', 'scriptPath' or 'name'.",
+          },
+          name: {
+            type: "string",
+            description:
+              "Invocation name of an existing workflow script — a bare name from the script library, or '<plugin>:<name>' for one a plugin ships. Prefer this over rewriting a script that already exists. Pass exactly one of 'script', 'scriptPath' or 'name'.",
           },
           args: {
             description:
@@ -155,6 +163,7 @@ export const workflowTool: ToolPlugin = {
     [
       "Execute a workflow script that orchestrates multiple subagents deterministically. It runs in the background: the tool returns immediately with a task ID, and a <task-notification> arrives when the workflow completes.",
       OPT_IN_POLICY_LEAN,
+      WORKFLOW_NAMED_ENTRY_HINT,
       WORKFLOW_SCRIPT_ESSENTIALS,
       authoringReferenceSection(args),
     ].join("\n\n"),
@@ -164,6 +173,7 @@ export const workflowTool: ToolPlugin = {
       "Execute a workflow script that orchestrates multiple subagents deterministically. Workflows run in the background — this tool returns immediately with a task ID, and a <task-notification> arrives when the workflow completes. Use /workflows to watch live progress.",
       "A workflow structures work across many agents — to be comprehensive (decompose and cover in parallel), to be confident (independent perspectives and adversarial checks before committing), or to take on scale one context can't hold (migrations, audits, broad sweeps). The script is where you encode that structure: what fans out, what verifies, what synthesizes. Use this tool for multi-step orchestration where control flow should be deterministic (loops, conditionals, fan-out) rather than model-driven.",
       OPT_IN_POLICY_FULL,
+      WORKFLOW_NAMED_ENTRY_HINT,
       WORKFLOW_SCRIPT_ESSENTIALS,
       authoringReferenceSection(args),
     ].join("\n\n"),
@@ -184,8 +194,25 @@ export const workflowTool: ToolPlugin = {
 
     const script = args.script as string | undefined;
     const scriptPath = args.scriptPath as string | undefined;
+    const name = args.name as string | undefined;
     const workflowArgs = args.args;
     const resumeFromRunId = args.resumeFromRunId as string | undefined;
+
+    // Exactly one script source: inline, path, or name. Two at once is a caller
+    // mistake worth reporting — silently preferring one hides it (spec「把脚本存
+    // 进库并按名字复用」场景 7).
+    const sources = [script, scriptPath, name].filter(
+      (value): value is string => typeof value === "string" && value.length > 0,
+    );
+    if (sources.length > 1) {
+      return {
+        success: false,
+        content: "",
+        error:
+          "Pass exactly one of 'script', 'scriptPath' or 'name' — not more than one.",
+        shortResult: "Workflow execution failed",
+      };
+    }
 
     // Resolve script text
     let scriptText: string;
@@ -203,11 +230,41 @@ export const workflowTool: ToolPlugin = {
           shortResult: "Workflow script read failed",
         };
       }
+    } else if (name) {
+      const named = workflowManager.resolveNamedWorkflow(name);
+      if (!named) {
+        const available = workflowManager
+          .listNamedWorkflows()
+          .map((workflow) => workflow.name)
+          .sort();
+        return {
+          success: false,
+          content: "",
+          error:
+            `Workflow "${name}" not found. ` +
+            (available.length > 0
+              ? `Available: ${available.join(", ")}.`
+              : "No saved or plugin workflows are available."),
+          shortResult: "Workflow not found",
+        };
+      }
+      try {
+        const fs = await import("fs/promises");
+        scriptText = await fs.readFile(named.path, "utf-8");
+      } catch (error) {
+        return {
+          success: false,
+          content: "",
+          error: `Failed to read workflow "${name}" at ${named.path}: ${error instanceof Error ? error.message : String(error)}`,
+          shortResult: "Workflow script read failed",
+        };
+      }
     } else {
       return {
         success: false,
         content: "",
-        error: "Either 'script' or 'scriptPath' parameter is required",
+        error:
+          "Exactly one of 'script', 'scriptPath' or 'name' parameter is required",
         shortResult: "Workflow execution failed",
       };
     }
@@ -275,6 +332,11 @@ export const workflowTool: ToolPlugin = {
     const scriptPath = params.scriptPath;
     if (typeof scriptPath === "string" && scriptPath) {
       return sanitizeForSummary(path.basename(scriptPath));
+    }
+
+    const name = params.name;
+    if (typeof name === "string" && name) {
+      return sanitizeForSummary(name);
     }
 
     return "";

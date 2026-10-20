@@ -657,6 +657,13 @@ export class Agent {
             status: block.status,
             summary: block.summary,
             outputFile: block.outputFile,
+            // Same fields as the turn-end drain in aiManager: this path is what
+            // an idle agent takes when a background task reports in, and a
+            // workflow's `result` is the whole point of its notification — the
+            // summary carries counts, not the value the script returned. Dropping
+            // it here left the model with a headline and no findings, so a caller
+            // that awaited a result had to fall back to reading the journal.
+            result: block.result,
           });
         }
       }
@@ -752,6 +759,30 @@ export class Agent {
         import("./managers/workflowManager.js").WorkflowManager
       >("WorkflowManager")!
       .stopRun(runId);
+  }
+
+  /**
+   * Save one of this session's run scripts into the script library, so later
+   * sessions (same project, or any project for the `user` scope) can call it
+   * with `Workflow({name})`. Saving is a human action only — the model has no
+   * save entry point (spec workflow「把脚本存进库并按名字复用」场景 2).
+   */
+  public async saveWorkflowScript(
+    runId: string,
+    options: {
+      name: string;
+      scope: import("./workflow/workflowRegistry.js").WorkflowLibraryScope;
+      overwrite?: boolean;
+    },
+  ): Promise<{ name: string; path: string }> {
+    if (!this.container.has("WorkflowManager")) {
+      throw new Error("Workflow manager not available");
+    }
+    return this.container
+      .get<
+        import("./managers/workflowManager.js").WorkflowManager
+      >("WorkflowManager")!
+      .saveWorkflowScript(runId, options);
   }
 
   /**

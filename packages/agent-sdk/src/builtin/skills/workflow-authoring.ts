@@ -157,6 +157,24 @@ and therefore its cache — is reachable only from that session, so a run id fro
 another session or another working directory will not resume. Stop the prior run
 first (\`TaskStop\` with the run id) if it is still going.
 
+## Reusing a script instead of rewriting one
+
+\`Workflow({ name })\` runs an existing script: a bare name from the script
+library (\`<workdir>/.wave/workflows\` or \`~/.wave/workflows\`), or
+\`<plugin>:<name>\` for a workflow a plugin ships. It is mutually exclusive with
+\`script\` and \`scriptPath\` — pass exactly one of the three. Prefer this over
+rewriting a script that already exists; the error for an unknown name lists what
+is available.
+
+**Saving is the user's action, not yours.** A finished run is saved from the
+\`/workflows\` detail view (\`s\`: type a name, \`Tab\` switches project ⇄ user,
+\`Enter\` saves, and a repeat \`Enter\` overwrites after a name conflict). The
+saved file is that run's script verbatim. Do not write library files yourself —
+when a script is worth keeping, say so in one line and point at that key.
+
+A saved script is still an ordinary script: it is copied into the new run's
+directory and \`resumeFromRunId\` stays same-session only.
+
 ## Example — fan out, then adversarially verify
 
   export const meta = {

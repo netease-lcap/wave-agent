@@ -4,6 +4,7 @@ import { LspConfig } from "./lsp.js";
 import { McpConfig, McpServerConfig } from "./mcp.js";
 import { PartialHookConfiguration } from "./configuration.js";
 import { SubagentConfiguration } from "../utils/subagentParser.js";
+import { WorkflowMeta } from "../workflow/types.js";
 
 /**
  * Plugin manifest structure (.wave-plugin/plugin.json)
@@ -50,6 +51,21 @@ export interface PluginReloadResult {
 }
 
 /**
+ * A workflow script shipped by a plugin (`<pluginRoot>/workflows/<name>.js`).
+ *
+ * The invocation name is `<pluginName>:<name>`, where `<name>` is the file stem
+ * — not `meta.name`, which is display-only (spec workflow「调用插件携带的工作流」).
+ */
+export interface PluginWorkflow {
+  /** File stem of the script, e.g. `scan` for `workflows/scan.js`. */
+  name: string;
+  description: string;
+  /** Absolute path inside the installed plugin version directory. */
+  path: string;
+  meta: WorkflowMeta;
+}
+
+/**
  * Represents a loaded plugin in the system
  */
 export interface Plugin extends PluginManifest {
@@ -62,4 +78,5 @@ export interface Plugin extends PluginManifest {
   lspConfig?: LspConfig;
   mcpConfig?: McpConfig;
   hooksConfig?: PartialHookConfiguration;
+  workflows: PluginWorkflow[];
 }

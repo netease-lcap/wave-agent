@@ -19,6 +19,7 @@ import { PluginManager } from "../managers/pluginManager.js";
 import { BashModeManager } from "../managers/bashModeManager.js";
 import { CronManager } from "../managers/cronManager.js";
 import { WorkflowManager } from "../managers/workflowManager.js";
+import { WorkflowRegistry } from "../workflow/workflowRegistry.js";
 import { MemoryRuleManager } from "../managers/MemoryRuleManager.js";
 import { ReversionManager } from "../managers/reversionManager.js";
 import { SubagentManager } from "../managers/subagentManager.js";
@@ -480,6 +481,12 @@ export function setupAgentContainer(
   const slashCommandManager = new SlashCommandManager(container, { workdir });
   container.register("SlashCommandManager", slashCommandManager);
   slashCommandManager.initialize();
+
+  // Name → script resolution for `Workflow({name})`: plugin workflows and the
+  // on-disk library share this one registry (spec workflow「把脚本存进库并按名字
+  // 复用」/「调用插件携带的工作流」). Registered before PluginManager so plugin
+  // loads can register into it.
+  container.register("WorkflowRegistry", new WorkflowRegistry(workdir));
 
   const pluginManager = new PluginManager(container, { workdir });
   container.register("PluginManager", pluginManager);

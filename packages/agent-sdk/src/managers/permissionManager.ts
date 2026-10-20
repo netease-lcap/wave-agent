@@ -53,14 +53,44 @@ import {
 import { isPathInside } from "../utils/pathSafety.js";
 import { toWindowsPath } from "../utils/path.js";
 import {
+  AGENT_TOOL_NAME,
   BASH_TOOL_NAME,
   EDIT_TOOL_NAME,
   WRITE_TOOL_NAME,
   READ_TOOL_NAME,
+  WORKFLOW_TOOL_NAME,
 } from "../constants/tools.js";
 import { Container } from "../utils/container.js";
 import { ConfigurationService } from "../services/configurationService.js";
 import type { WorktreeSession } from "../utils/worktreeSession.js";
+
+/**
+ * Tools whose `Tool(<value>)` rule matches a single named argument instead of a
+ * command line or a path. Claude Code pre-authorizes calls this way — a
+ * `claude-security` plugin lists `Workflow(claude-security:scan)` in its
+ * `allowed-tools` — and wave previously matched only Bash and path tools, so
+ * every such rule failed silently (spec workflow「调用插件携带的工作流」场景 6).
+ * The keys are checked in order; the first non-empty string wins.
+ */
+const NAMED_ARGUMENT_RULES: Record<string, string[]> = {
+  [WORKFLOW_TOOL_NAME]: ["name"],
+  [AGENT_TOOL_NAME]: ["subagent_type"],
+};
+
+/**
+ * One rule may carry several names, comma-separated — the same plugin writes
+ * `Agent(claude-security:scan-inventory, claude-security:scan-researcher, …)` to
+ * pre-authorize seven subagents at once. Matching the whole pattern against a
+ * single value would match none of them (a comma is not a glob), so each entry
+ * is tried on its own. A single name is simply a list of one.
+ */
+function matchesNamedArgument(value: string, pattern: string): boolean {
+  return pattern
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .some((entry) => minimatch(value, entry, { dot: true }));
+}
 
 const DEFAULT_ALLOWED_RULES = [
   "Bash(git status*)",
@@ -1075,7 +1105,8 @@ export class PermissionManager {
     }
 
     // 2. Tool with pattern match (e.g., "Bash(rm *)", "Read(**/*.env)")
-    const match = rule.match(/^(\w+)\((.*)\)$/);
+    // The tool-name group accepts `:`/`.`/`-` so namespaced names stay matchable.
+    const match = rule.match(/^([\w.:-]+)\((.*)\)$/);
     if (!match) {
       return false;
     }
@@ -1143,6 +1174,20 @@ export class PermissionManager {
             return minimatch(relativePath, pattern, { dot: true });
           }
         }
+      }
+    }
+
+    // Handle named-argument rules (e.g., "Workflow(my-plugin:scan)", "Agent(Explore)")
+    const argumentKeys = NAMED_ARGUMENT_RULES[toolName];
+    if (argumentKeys) {
+      const value = argumentKeys
+        .map((key) => context.toolInput?.[key])
+        .find(
+          (candidate): candidate is string =>
+            typeof candidate === "string" && candidate.length > 0,
+        );
+      if (value !== undefined && matchesNamedArgument(value, pattern)) {
+        return true;
       }
     }
 

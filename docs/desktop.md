@@ -1123,7 +1123,7 @@ Artifact：把本地 HTML 或 Markdown 文件发布成一个可分享的网页�
 
 - 建一个 git 仓库，根目录放 `.wave-plugin/marketplace.json`（清单：插件名、描述、source 路径/远程 git URL）
 - 每个插件目录内有自己的 `.wave-plugin/plugin.json` 清单
-- 插件可打包技能（skills/）、命令（commands/）、钩子、MCP/LSP 服务器
+- 插件可打包技能（skills/）、命令（commands/）、钩子、MCP/LSP 服务器、工作流脚本（workflows/，按 `<插件名>:<脚本名>` 调用）
 - 在 settings 注册该市场，团队全员即可通过 `/plugin` 打开插件市场搜索安装
 
 ## 6. 设置

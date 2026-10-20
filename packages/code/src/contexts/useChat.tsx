@@ -163,6 +163,10 @@ export interface ChatContextType {
   // Workflow runs
   workflowRuns: WorkflowRun[];
   stopWorkflowRun: (runId: string) => void;
+  saveWorkflowScript: (
+    runId: string,
+    options: { name: string; scope: "project" | "user"; overwrite?: boolean },
+  ) => Promise<{ name: string; path: string }>;
   // Tasks
   tasks: Task[];
   getBackgroundTaskOutput: (taskId: string) => {
@@ -1351,6 +1355,19 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     agentRef.current?.stopWorkflowRun(runId);
   }, []);
 
+  const saveWorkflowScript = useCallback(
+    async (
+      runId: string,
+      options: { name: string; scope: "project" | "user"; overwrite?: boolean },
+    ) => {
+      if (!agentRef.current) {
+        throw new Error("Agent not available");
+      }
+      return agentRef.current.saveWorkflowScript(runId, options);
+    },
+    [],
+  );
+
   const hasSlashCommand = useCallback((commandId: string) => {
     if (!agentRef.current) return false;
     return agentRef.current.hasSlashCommand(commandId);
@@ -1682,6 +1699,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     backgroundTasks,
     workflowRuns,
     stopWorkflowRun,
+    saveWorkflowScript,
     tasks,
     getBackgroundTaskOutput,
     stopBackgroundTask,

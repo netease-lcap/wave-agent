@@ -79,6 +79,7 @@ describe("Agent Plugin Loading Integration", () => {
     vi.mocked(PluginLoader.loadLspConfig).mockResolvedValue(undefined);
     vi.mocked(PluginLoader.loadMcpConfig).mockResolvedValue(undefined);
     vi.mocked(PluginLoader.loadHooksConfig).mockResolvedValue(undefined);
+    vi.mocked(PluginLoader.loadWorkflows).mockResolvedValue([]);
 
     // Mock config paths
     vi.spyOn(configPaths, "getUserConfigPaths").mockReturnValue([

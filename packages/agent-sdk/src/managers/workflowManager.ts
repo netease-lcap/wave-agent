@@ -23,6 +23,13 @@ import {
 import type { WorkflowRun } from "../workflow/types.js";
 import { RunStateStore } from "../workflow/runState.js";
 import { isWorkflowRunOversized } from "../workflow/workflowErrors.js";
+import {
+  sanitizeWorkflowName,
+  WorkflowRegistry,
+  type NamedWorkflow,
+  type WorkflowLibraryScope,
+} from "../workflow/workflowRegistry.js";
+import { atomicWriteFile } from "../utils/atomicWrite.js";
 import { logger } from "../utils/globalLogger.js";
 
 /**
@@ -277,6 +284,87 @@ export class WorkflowManager {
       "workflows",
       messageManager.getSessionId(),
     );
+  }
+
+  private get workflowRegistry(): WorkflowRegistry | undefined {
+    return this.container.get<WorkflowRegistry>("WorkflowRegistry");
+  }
+
+  /**
+   * Resolve a `Workflow({name})` invocation to its script: `<plugin>:<name>`
+   * against the plugins loaded in this session, a bare name against the script
+   * library (`project` then `user`). `undefined` means "no such name".
+   */
+  resolveNamedWorkflow(name: string): NamedWorkflow | undefined {
+    return this.workflowRegistry?.resolve(name);
+  }
+
+  /** Every resolvable script name, for listings and "did you mean" text. */
+  listNamedWorkflows(): NamedWorkflow[] {
+    return this.workflowRegistry?.list() ?? [];
+  }
+
+  /**
+   * Save one of this session's run scripts into the script library.
+   *
+   * The saved file is the run's own `script.js` copy, byte for byte — no
+   * re-serialization and no `meta` rewriting (spec「把脚本存进库并按名字复用」
+   * 场景 2). `project` scope writes with `wx` so the existence check and the
+   * write are one syscall; `user` scope writes atomically behind the same
+   * precondition. Both report the same conflict message, verbatim from Claude
+   * Code (场景 4).
+   */
+  async saveWorkflowScript(
+    runId: string,
+    options: {
+      name: string;
+      scope: WorkflowLibraryScope;
+      overwrite?: boolean;
+    },
+  ): Promise<{ name: string; path: string }> {
+    const run = (await this.listRuns()).find(
+      (candidate) => candidate.runId === runId,
+    );
+    if (!run) {
+      throw new Error(`Cannot save: run ${runId} not found in this session`);
+    }
+
+    const registry = this.workflowRegistry;
+    if (!registry) {
+      throw new Error("Workflow registry not available");
+    }
+
+    const script = await fs.promises.readFile(run.scriptPath, "utf-8");
+    const name = sanitizeWorkflowName(options.name);
+    const target = registry.libraryPath(name, options.scope);
+    await fs.promises.mkdir(path.dirname(target), { recursive: true });
+
+    const conflict = () =>
+      new Error(
+        `Dynamic workflow "${name}" already exists at ${target}. Use a different name or overwrite.`,
+      );
+
+    if (options.scope === "project") {
+      try {
+        await fs.promises.writeFile(target, script, {
+          encoding: "utf-8",
+          flag: options.overwrite ? "w" : "wx",
+        });
+      } catch (error) {
+        if ((error as { code?: string }).code === "EEXIST") {
+          throw conflict();
+        }
+        throw error;
+      }
+    } else {
+      if (!options.overwrite && fs.existsSync(target)) {
+        throw conflict();
+      }
+      await atomicWriteFile(target, script);
+    }
+
+    logger.debug(`Saved workflow script "${name}" to ${target}`);
+    return { name, path: target };
   }
 
   /**
