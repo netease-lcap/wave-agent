@@ -139,6 +139,13 @@ export type RequestMethod =
   // pickers. Host-agnostic like listGitBranches — whichever wave process
   // receives it lists its own machine.
   | "listDirectories"
+  // Recently opened working directories (global — no session required):
+  // `~/.wave/recent-workdirs.json` on **this** machine. Read by the desktop app
+  // per host and by the remote-control page, so the two see one list; the write
+  // is the caller's "the user picked this directory" moment (spec
+  // core/recent-workdirs.md).
+  | "getRecentWorkdirs"
+  | "rememberRecentWorkdir"
   // Read-only workspace diff for the desktop diff panel
   | "getWorkspaceDiff"
   // Inline (ghost-text) code completion for the editor plugins. Session-scoped:

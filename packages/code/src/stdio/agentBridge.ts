@@ -37,6 +37,8 @@ import {
   isValidHookEvent,
   listSessions,
   listAllSessions,
+  readRecentWorkdirs,
+  rememberRecentWorkdir,
   setSessionCustomTitle,
   searchFiles,
   generateRandomName,
@@ -645,6 +647,14 @@ export class AgentBridge {
       // ── Filesystem / Git / worktree (global — no session required) ──
       case "listDirectories":
         return this.listDirectories(p.dir as string | undefined);
+      // ── 最近打开的工作目录（spec core/recent-workdirs.md）──
+      // 机器级、与会话无关：文件就在这台机器上，谁问就回谁的。桌面端按主机
+      // 各问一次，远控 Web 页问它连着的那个进程。
+      case "getRecentWorkdirs":
+        return { dirs: readRecentWorkdirs() };
+      case "rememberRecentWorkdir":
+        rememberRecentWorkdir(p.workdir as string);
+        return null;
       case "listGitBranches":
         return this.listGitBranches(p.workdir as string | undefined);
       case "createWorktree":

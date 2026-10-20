@@ -17,6 +17,8 @@ import {
   updateUserPreferenceSettings,
   normalizeEntrypoint,
   publishArtifactHtml,
+  readRecentWorkdirs,
+  rememberRecentWorkdir,
   type ClientNotificationMethod,
   type RequestMethod,
 } from "wave-agent-sdk";
@@ -3960,6 +3962,25 @@ test("listDirectories throws when dir is missing", async () => {
   await expect(bridge.handleRequest("listDirectories", {})).rejects.toThrow(
     "dir is required",
   );
+});
+
+// ── 最近打开的工作目录（spec core/recent-workdirs.md）────────────
+
+test("getRecentWorkdirs answers with this machine's list, no session needed", async () => {
+  vi.mocked(readRecentWorkdirs).mockReturnValue(["/a", "/b"]);
+  const { bridge } = createBridge();
+
+  await expect(bridge.handleRequest("getRecentWorkdirs", {})).resolves.toEqual({
+    dirs: ["/a", "/b"],
+  });
+});
+
+test("rememberRecentWorkdir records the directory the user picked", async () => {
+  const { bridge } = createBridge();
+
+  await bridge.handleRequest("rememberRecentWorkdir", { workdir: "/repo" });
+
+  expect(rememberRecentWorkdir).toHaveBeenCalledWith("/repo");
 });
 
 // ── getWorkspaceDiff ───────────────────────────────────────────

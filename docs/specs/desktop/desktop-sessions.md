@@ -381,3 +381,4 @@ order: 20
 - **桌面端会话改名的入口**：侧边栏会话行的行菜单，加上聊天面板头部标题就地编辑（头部是 VSCE / JB / desktop 共用的 webview 组件，三端一起获得，行为见 [ui/session-management.md](../ui/session-management.md)「会话重命名入口：CLI 与 IDE 插件」）；不提供全局快捷键（不照抄 Claude Code 的 `⌘/Ctrl+⌥+R`），不在会话看板卡片与 `/resume`（含头部「历史对话」）列表上提供改名入口。
 - **CLI 与插件端的入口分工**：CLI 走 `/rename` 命令 + 选择器内 `Ctrl+R`；插件端只有头部标题。三端共用同一份存储与显示优先级（见 [ui/session-management.md](../ui/session-management.md)）。
 - **AI 自动生成标题**：不做（无额外模型调用、无 `ai-title` 保留条目），没有自定义标题时继续用首条用户消息截断兜底。
+- **「最近打开」的数据来源（2026-10-21 起）**：这份列表由**该主机自己**持久化在 `~/.wave/recent-workdirs.json`，桌面端按当前主机读取——本机走 stdio 子进程、远端走该主机的 daemon，各自读自己机器上的那份（与远控 Web 页共用同一份，见 [core/recent-workdirs.md](../core/recent-workdirs.md)）。`wave-desktop.json` 里按主机分组的那份降为「该主机版本过旧、没有 `getRecentWorkdirs`」时的回退，并且在回退状态下仍随用户的选择继续更新（否则回退列表再也不长）。写入时机与既有契约不变（场景 9：只由用户主动选择目录更新，会话激活与 agent 工作目录变化都不写），本轮变的只是数据从哪来。

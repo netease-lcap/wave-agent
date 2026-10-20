@@ -137,6 +137,10 @@ const REMOTE_PAGE_GATED = new Set([
   "newSessionListDirs",
   "newSessionListBranches",
   "newSessionCreate",
+  // 机器侧最近打开的工作目录（spec core/recent-workdirs.md）：弹窗每打开一次
+  // 问一次，shim 转中继 getRecentWorkdirs。只有手机页需要它——桌面端的最近目录
+  // 走它自己的宿主链路，不经 webview→host 这条通道。
+  "getRecentWorkdirs",
   // Web Push 通知开关（spec remote-control.md「锁屏也能知道」）：读状态 / 开启 /
   // 关闭，shim 转中继 push/public-key 与 push/subscriptions 三个端点。只有手
   // 机页有这套 UI（浏览器 Service Worker + 通知权限），三个本地宿主没有对应物。

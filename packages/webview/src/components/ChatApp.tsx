@@ -787,6 +787,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     scrollToBottom: (behavior?: ScrollBehavior) => void;
   }>(null);
   const stateRef = useRef(state);
+  // 「最近目录」那条请求的 requestId：回执只认最后一次问出去的那条。远控页每开
+  // 一次弹窗问一次，两次点击挨得近时先后两条回执会乱序到达，陈旧的那条会把整份
+  // 列表覆盖回旧值（它是整份快照，不是增量）。
+  const recentWorkdirsRequestRef = useRef<string | undefined>(undefined);
   // The pane this instance renders; undefined = the root instance (sidebar +
   // shell). Ref mirror for use inside stable callbacks.
   const paneIdRef = useRef<string | undefined>(paneId);
@@ -1103,6 +1107,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             payload: message.isTaskListCollapsed,
           });
         }
+        break;
+      // 机器侧最近打开的工作目录（远控 Web 页「新建会话」）：每开一次弹窗问一次，
+      // 宿主回整份列表。它与会话列表无关——会话全删光之后仍然有内容，这正是它
+      // 存在的理由（spec core/recent-workdirs.md）。
+      case "recentWorkdirsResponse":
+        if (!forThisPane(message)) break;
+        if (message.requestId !== recentWorkdirsRequestRef.current) break;
+        dispatch({
+          type: "SET_RECENT_WORKDIRS",
+          payload: message.dirs,
+        });
         break;
       // 会话列表的两类标记（远控 Web 页）：远程 shim 在每次重读后整组重发，
       // 「待确认」与「运行中」一起给（见 SET_SESSION_STATUS）。
@@ -2009,15 +2024,29 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 那条会话照旧跑着（同故事场景 10）。
   const handleRemoteNewSession = useCallback(() => {
     dispatch({ type: "SHOW_DIALOG", payload: { type: "remoteNewSession" } });
-  }, [dispatch]);
+    // 最近目录跟着机器走（spec core/recent-workdirs.md）：每次开弹窗都问一次，
+    // 而不是把上次打开时的列表留在 reducer 里——期间电脑侧可能又用过别的目录。
+    // 读不到（旧版电脑 / 通道拒绝）就什么都不发生，弹窗仍列出活会话派生的那些。
+    const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    recentWorkdirsRequestRef.current = requestId;
+    postToHost({
+      command: "getRecentWorkdirs",
+      requestId,
+    });
+  }, [dispatch, postToHost]);
 
-  // 弹窗「最近目录」：当前进程跑过的会话按工作目录去重（sessions 列表本身按
-  // 最近活跃排序，直接沿用其顺序）。没有会话/还没有目录时只留「浏览…」。
+  // 弹窗「最近目录」：**两段合并**（spec core/recent-workdirs.md）。
+  //
+  // 前一段是当前进程跑过的会话按工作目录去重（sessions 列表本身按最近活跃
+  // 排序，直接沿用其顺序）；后一段是这台机器持久化的最近打开目录（宿主读
+  // `~/.wave/recent-workdirs.json`，与桌面端共用同一份）——会话全删光时前者为空，
+  // 后者正是「仍然记得上次用过哪个目录」的来源。没有会话、也读不到机器列表时
+  // （旧版电脑）只留「浏览…」。
   //
   // 归并键是**主仓库根目录**：worktree 会话的 workdir 是它自己的工作树路径，
   // 但选目录是为了「在这个仓库里再开一条会话」，把工作树当目录列出来既重复又
-  // 违反直觉（桌面端最近目录同口径：那里只收 activateWorkdir 记下的目录，新建
-  // worktree 不走它）。宿主已经给了这份事实（`listDaemonSessions` 每行按
+  // 违反直觉（桌面端最近目录同口径：worktree 会话只记仓库根，新建会话时也不
+  // 把工作树写进去）。宿主已经给了这份事实（`listDaemonSessions` 每行按
   // createdWorkdir 推导出的 `worktree.repoRoot`，fs-only、不跑 git），推导不出来
   // 就按原目录列——不确定不等于可以猜。sessions 里的 workdir 本身不改写：`@`
   // 文件提及拼绝对路径靠的是那条会话真实的 cwd。
@@ -2027,8 +2056,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       const dir = s.repoRoot ?? s.workdir;
       if (dir) seen.add(dir);
     }
+    for (const dir of state.recentWorkdirs) {
+      if (dir) seen.add(dir);
+    }
     return [...seen];
-  }, [state.sessions]);
+  }, [state.sessions, state.recentWorkdirs]);
 
   const handleToastDismiss = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));

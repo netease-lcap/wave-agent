@@ -1566,7 +1566,14 @@
         return request("getSessionInfo", {});
       })
       .then(function (info) {
-        if (token !== pullToken) return null;
+        // `pickSession` leaves `sessionId` empty when the machine holds no
+        // conversation at all — the state right after the last one is deleted.
+        // Both session reads are skipped then: the machine answers a session-less
+        // `getMessages` with 「Session ID is required」, which surfaced as a red
+        // banner on top of the honest 「电脑侧还没有正在跑的会话。」. Everything
+        // below this point is process-wide (the pending approvals, the workflow
+        // runs), so the empty snapshot still paints.
+        if (token !== pullToken || !sessionId) return null;
         state = info;
         return request("getMessages", { limit: CONFIG.firstPageLimit });
       })
@@ -2756,6 +2763,29 @@
       // (`withSession: false`), or creating a session from an empty view would
       // be refused before it starts and browsing would be tied to one.
 
+      // 除了活会话派生的那些，弹窗还要列这台机器最近打开过的目录（spec
+      // core/recent-workdirs.md）。**无会话也能问**——会话被删光时它仍然有内容，
+      // 那正是这份列表存在的理由。读不到（旧版电脑没有这个方法）就回空表：页面
+      // 只按活会话派生的那些列，不把一次「没有这项能力」显示成错误。
+      case "getRecentWorkdirs":
+        request("getRecentWorkdirs", {}, false)
+          .then(function (result) {
+            post({
+              command: "recentWorkdirsResponse",
+              requestId: msg.requestId,
+              dirs: (result && result.dirs) || [],
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "recentWorkdirsResponse",
+              requestId: msg.requestId,
+              dirs: [],
+              error: String(err.message || err),
+            });
+          });
+        return;
+
       case "newSessionListDirs":
         request("listDirectories", { dir: msg.dir }, false)
           .then(function (result) {
@@ -2832,6 +2862,15 @@
             picked = true;
             messages = [];
             pullSnapshot();
+            // 把用户选的那个目录记进机器侧的最近目录（spec
+            // core/recent-workdirs.md）：记的是 `msg.workdir`——worktree 时它是
+            // 仓库根，不是上面 `createParams.workdir` 里那个工作树路径。写失败
+            // 静默：记不住一个目录，不该让「新建成功」看起来像出错。
+            request(
+              "rememberRecentWorkdir",
+              { workdir: msg.workdir },
+              false,
+            ).catch(function () {});
             post({
               command: "newSessionCreated",
               requestId: msg.requestId,
