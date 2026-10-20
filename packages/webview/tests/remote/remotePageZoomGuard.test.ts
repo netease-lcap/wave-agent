@@ -209,13 +209,16 @@ describe("remote page autozoom guard", () => {
   });
 
   it("gives both icon-button clusters a finger-sized target on touch devices", () => {
-    // spec 场景 27. The two densest icon clusters on the page — the header's
-    // right side (new session / session / switch machine / more) and the
-    // composer's bottom left ("+" / "/") — were sized for a mouse pointer:
-    // 22×22 buttons, 16×16 glyphs, 4px apart (26px between centres). Touch
-    // needs 40×40 and 8px, and the two numbers have to move together: growing
-    // the hit box while leaving the gap alone makes the boxes touch or overlap,
-    // which makes mistaps *more* likely — exactly what he reported.
+    // spec 场景 27. The densest icon clusters on the page — the header's right
+    // side (new session / session / switch machine / more), the composer's
+    // bottom left ("+" / "/"), and the question dialog's top-right pair
+    // (collapse options / close) — were sized for a mouse pointer: 22×22
+    // buttons (20×20 in the dialog), 16×16 glyphs, 4px apart (26px between
+    // centres). Touch needs 40×40 and 8px, and the two numbers have to move
+    // together: growing the hit box while leaving the gap alone makes the boxes
+    // touch or overlap, which makes mistaps *more* likely — exactly what he
+    // reported twice (2026-10-15 for the header/composer, 2026-10-19 for the
+    // dialog pair, which the first pass had left out of scope).
     const media = rules.findIndex((r) => r.sel.startsWith("@media"));
     expect(media).toBeGreaterThanOrEqual(0);
     const inTier = (sel: string) => {
@@ -231,6 +234,7 @@ describe("remote page autozoom guard", () => {
     for (const button of [
       "[data-remote-page] .header-button",
       "[data-remote-page] .toolbar-icon-button",
+      "[data-remote-page] .confirmation-collapse-btn, [data-remote-page] .confirmation-close-btn",
     ]) {
       const size = Number(/width:\s*([\d.]+)px/.exec(inTier(button))?.[1]);
       expect(size, button).toBeGreaterThanOrEqual(40);
@@ -238,6 +242,7 @@ describe("remote page autozoom guard", () => {
     for (const glyph of [
       "[data-remote-page] .header-button .header-icon",
       "[data-remote-page] .toolbar-icon-button .toolbar-icon",
+      "[data-remote-page] .confirmation-collapse-chevron, [data-remote-page] .confirmation-close-btn-icon",
     ]) {
       const size = Number(/width:\s*([\d.]+)px/.exec(inTier(glyph))?.[1]);
       expect(size, glyph).toBeGreaterThanOrEqual(20);
@@ -245,10 +250,43 @@ describe("remote page autozoom guard", () => {
     for (const cluster of [
       "[data-remote-page] .header-buttons",
       "[data-remote-page] .context-actions",
+      "[data-remote-page] .confirmation-header-actions",
     ]) {
       const gap = Number(/gap:\s*([\d.]+)px/.exec(inTier(cluster))?.[1]);
       expect(gap, cluster).toBeGreaterThanOrEqual(8);
     }
+  });
+
+  it("makes room for the dialog pair instead of letting it cover the content", () => {
+    // The two clusters above live in fixed-height rails, so their rail grows with
+    // them (next test). The dialog pair is absolutely positioned in the card's
+    // top-right corner, so what has to give is the title row underneath: a 40px
+    // button does not fit the base 24px row, and the title has to stop short of
+    // the buttons instead of running under them. Both numbers are load-bearing —
+    // measured on the built page at 390×844 (touch), dropping them puts the
+    // buttons 16px past the row and over the first line of content.
+    const r = rules.find(
+      (x) => x.sel === "@media> [data-remote-page] .confirmation-header-top",
+    );
+    expect(
+      r,
+      "no title-row rule for the enlarged dialog buttons",
+    ).toBeDefined();
+    const minHeight = Number(/min-height:\s*([\d.]+)px/.exec(r!.body)?.[1]);
+    expect(minHeight).toBeGreaterThanOrEqual(40);
+    // Close-only dialogs (every confirmation except AskUserQuestion) carry one
+    // button; AskUserQuestion carries two and reserves the wider gap.
+    const base = Number(/padding-right:\s*([\d.]+)px/.exec(r!.body)?.[1]);
+    expect(base).toBeGreaterThanOrEqual(48);
+    const wide = rules.find((x) =>
+      x.sel.includes(":has(.confirmation-collapse-btn)"),
+    );
+    expect(
+      wide,
+      "AskUserQuestion must reserve room for both buttons",
+    ).toBeDefined();
+    const widePad = Number(/padding-right:\s*([\d.]+)px/.exec(wide!.body)?.[1]);
+    expect(widePad).toBeGreaterThan(base);
   });
 
   it("grows the two fixed-height rails that carry the enlarged buttons", () => {

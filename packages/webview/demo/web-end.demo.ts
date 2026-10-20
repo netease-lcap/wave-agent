@@ -9,6 +9,7 @@ import {
 import fs from "node:fs";
 import path from "node:path";
 import {
+  ASK_USER_QUESTION_TOOL_NAME,
   BASH_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
   type Message,
@@ -62,6 +63,14 @@ async function emulatePhoneViewport(page: Page): Promise<void> {
     height: PHONE.height,
     deviceScaleFactor: 2,
     mobile: true,
+  });
+  // `mobile: true` 只管视口尺寸与 UA 语义，**不会**让 `pointer` 变成 coarse：
+  // 手机档样式（`@media (pointer: coarse), (hover: none)`，见 remote-page.css）
+  // 的判据是输入能力，所以必须再把触控打开 —— 否则截出来的是 PC 密度那一档，
+  // 与真机打开这一页看到的两回事（真机上"图标按钮按手指给足"那条根本不生效）。
+  await cdp.send("Emulation.setTouchEmulationEnabled", {
+    enabled: true,
+    maxTouchPoints: 5,
   });
 }
 
@@ -183,6 +192,93 @@ test.describe("Web 端（远控页）手机截图", () => {
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/web-approval.webp",
+    );
+  });
+
+  test("提问弹窗：右上角两枚图标按手指给足（场景 27 第三族）", async ({
+    webviewPage,
+  }) => {
+    // 这两枚（折叠选项 / 关闭）绝对定位在卡片右上角，放大后会往下压住第一道
+    // 内容、往左压住标题——几何只能在真实浏览器里量，jsdom 不解析样式表。
+    // 数值口径见 remote-page.css 手机档与 spec 场景 27。
+    await emulateRemotePhone(webviewPage);
+    const injector = new MessageInjector(webviewPage);
+    await seedRemoteState(injector);
+    await injector.updateMessages(conversation);
+    await injector.simulateExtensionMessage("showConfirmation", {
+      confirmationId: "web-confirm-ask",
+      toolName: ASK_USER_QUESTION_TOOL_NAME,
+      confirmationType: "需要确认",
+      toolInput: {
+        questions: [
+          {
+            question: "登录页的断点定在哪一档？",
+            options: [
+              { label: "375", description: "按 iPhone SE 起" },
+              { label: "480", description: "覆盖主流小屏" },
+            ],
+            multiSelect: false,
+          },
+        ],
+      },
+    });
+    await expect(webviewPage.locator(".confirmation-dialog")).toBeVisible();
+    await expect(
+      webviewPage.getByTestId("confirmation-collapse-toggle"),
+    ).toBeVisible();
+
+    const geom = await webviewPage.evaluate(() => {
+      const box = (sel: string) => {
+        const el = document.querySelector(sel) as HTMLElement | null;
+        if (!el) return null;
+        const r = el.getBoundingClientRect();
+        return {
+          left: r.left,
+          top: r.top,
+          right: r.right,
+          bottom: r.bottom,
+          w: r.width,
+          h: r.height,
+        };
+      };
+      const glyph = (sel: string) =>
+        document.querySelector(sel)?.getBoundingClientRect().width ?? 0;
+      return {
+        collapse: box(".confirmation-collapse-btn"),
+        close: box(".confirmation-close-btn"),
+        title: box(".confirmation-title"),
+        row: box(".confirmation-header-top"),
+        next: box(".ask-user-questions") ?? box(".confirmation-command"),
+        chevronGlyph: glyph(".confirmation-collapse-chevron"),
+        closeGlyph: glyph(".confirmation-close-btn-icon"),
+        gap: getComputedStyle(
+          document.querySelector(".confirmation-header-actions")!,
+        ).gap,
+        scroll: document.documentElement.scrollHeight,
+        viewport: document.documentElement.clientHeight,
+      };
+    });
+
+    // 一枚按钮 40×40，字形 20，两枚之间 8。
+    expect([geom.collapse!.w, geom.collapse!.h]).toEqual([40, 40]);
+    expect([geom.close!.w, geom.close!.h]).toEqual([40, 40]);
+    expect(geom.chevronGlyph).toBe(20);
+    expect(geom.closeGlyph).toBe(20);
+    expect(geom.gap).toBe("8px");
+    // 两枚之间真的有 8px 空档（不是热区相贴）。
+    expect(geom.close!.left - geom.collapse!.right).toBe(8);
+    // 让位：标题行装得下按钮，标题本身不伸到按钮组底下。
+    expect(geom.row!.h).toBe(40);
+    expect(geom.title!.right).toBeLessThan(geom.collapse!.left);
+    // 不放大的竖向溢出：按钮组不越过标题行去压第一道内容。
+    expect(geom.collapse!.bottom).toBeLessThanOrEqual(geom.row!.bottom);
+    expect(geom.next!.top).toBeGreaterThanOrEqual(geom.row!.bottom);
+    // 场景 14 的整屏约束仍成立。
+    expect(geom.scroll).toBe(geom.viewport);
+
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/web-ask-question.webp",
     );
   });
 
