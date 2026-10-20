@@ -229,6 +229,46 @@ describe("formatCommentThreads", () => {
     );
   });
 
+  it("marks the awaiting comment itself, not only its thread", async () => {
+    // Second round in the same thread: the root was already answered, and a
+    // person replied again — the server flags r2 (not the thread root), and the
+    // reply has to target r2's id, so the render must name it.
+    stubFetch(() =>
+      jsonResponse(200, {
+        comments: [
+          commentRow({ awaitingAgentReply: false }),
+          commentRow({
+            id: "r1",
+            replyToCommentId: "c1",
+            authorKind: "agent",
+            continuesReplyId: "c1",
+            author: { uuid: "a1", fullName: "wave" },
+            text: "已修复",
+            awaitingAgentReply: false,
+          }),
+          commentRow({
+            id: "r2",
+            replyToCommentId: "c1",
+            continuesReplyId: "r1",
+            text: "按钮还是歪的",
+            awaitingAgentReply: true,
+          }),
+        ],
+        unresolvedCount: 1,
+      }),
+    );
+    const outcome = await fetchComments("abc");
+    if (outcome.kind !== "ok") throw new Error("expected ok");
+    const rendered = formatCommentThreads(outcome.value, { url: "u" });
+
+    const lines = rendered.content.split("\n");
+    expect(lines).toContain("  张三: 这里颜色不对");
+    const awaitingLine = lines.find((l) => l.startsWith("  ↳ [r2]"));
+    expect(awaitingLine).toContain("按钮还是歪的 ← AWAITING YOUR REPLY");
+    const answeredLine = lines.find((l) => l.startsWith("  ↳ [r1]"));
+    expect(answeredLine).not.toContain("AWAITING YOUR REPLY");
+  });
+
   it("renders the cursor line for a truncated page", async () => {
     stubFetch(() =>
       jsonResponse(200, {

@@ -459,6 +459,16 @@ function commentLine(comment: ArtifactComment): string {
 }
 
 /**
+ * The awaiting flag goes on the comment, not just the thread: the server decides
+ * `awaitingAgentReply` per comment and dedupes replies per target comment, so
+ * "answer THIS one" (and the id to pass as `continues_reply_id`) has to be
+ * readable off the line itself.
+ */
+function awaitingMark(comment: ArtifactComment): string {
+  return comment.awaitingAgentReply ? " ← AWAITING YOUR REPLY" : "";
+}
+
+/**
  * Render a comment page as compact text: one header block per thread root with
  * its replies indented under it, awaiting threads flagged, and the cursor for
  * "more to come" on the last line (the shape Claude Code uses for
@@ -514,7 +524,7 @@ export function formatCommentThreads(
         root?.isOwn ? "you started it" : "",
       ].filter(Boolean);
       lines.push("", `[${threadId}] ${flags.join(" · ")}`);
-      if (root) lines.push(`  ${commentLine(root)}`);
+      if (root) lines.push(`  ${commentLine(root)}${awaitingMark(root)}`);
       else
         lines.push(
           "  (thread root is not in this page — read the full list for its text)",
@@ -525,7 +535,7 @@ export function formatCommentThreads(
           ? ` (answering ${reply.continuesReplyId})`
           : "";
         lines.push(
-          `  ↳ [${reply.id}] ${who}${answering} ${commentLine(reply)}`,
+          `  ↳ [${reply.id}] ${who}${answering} ${commentLine(reply)}${awaitingMark(reply)}`,
         );
       }
     }

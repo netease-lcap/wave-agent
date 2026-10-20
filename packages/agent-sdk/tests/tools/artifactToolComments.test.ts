@@ -267,6 +267,106 @@ describe("Artifact reply action", () => {
     expect(result.content).toContain("acknowledge_duplicate");
   });
 
+  it("hands back the continues_reply_id self-fix when the root was the target", async () => {
+    // The duplicate check is per target comment; omitting continues_reply_id
+    // targets the root, so a second-round comment looks like "already answered".
+    // The receipt must name that as the likely mistake and the exact parameter.
+    stubFetch([
+      {
+        match: () => true,
+        respond: () =>
+          jsonResponse(200, {
+            replied: false,
+            alreadyAnswered: true,
+            threadId: "c1",
+            standingReplyId: "r9",
+          }),
+      },
+    ]);
+
+    const result = await TOOL.execute(
+      {
+        action: "reply",
+        url: ARTIFACT_URL,
+        thread_id: "c1",
+        text: "回答第二轮",
+      },
+      makeContext(),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("The thread root c1");
+    expect(result.content).toContain("per comment");
+    expect(result.content).toContain("AWAITING YOUR REPLY");
+    expect(result.content).toContain(
+      '"continues_reply_id" set to that comment\'s id',
+    );
+  });
+
+  it("does not suggest continues_reply_id when it was already given", async () => {
+    stubFetch([
+      {
+        match: () => true,
+        respond: () =>
+          jsonResponse(200, {
+            replied: false,
+            alreadyAnswered: true,
+            standingReplyId: "r9",
+          }),
+      },
+    ]);
+
+    const result = await TOOL.execute(
+      {
+        action: "reply",
+        url: ARTIFACT_URL,
+        thread_id: "c1",
+        text: "再回同一条",
+        continues_reply_id: "r8",
+      },
+      makeContext(),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("Comment r8 already has an agent reply");
+    expect(result.content).not.toContain("continues_reply_id");
+    expect(result.content).toContain("acknowledge_duplicate");
+  });
+
+  it("sends continues_reply_id for a second-round comment and posts it", async () => {
+    // The scenario the old wording got wrong: the root already has an agent
+    // reply, a person replied again, and answering THAT comment is a normal 201.
+    const fetchMock = stubFetch([
+      {
+        match: () => true,
+        respond: () =>
+          jsonResponse(201, {
+            replied: true,
+            threadId: "c1",
+            commentId: "r10",
+          }),
+      },
+    ]);
+
+    const result = await TOOL.execute(
+      {
+        action: "reply",
+        url: ARTIFACT_URL,
+        thread_id: "c1",
+        text: "按钮修好了",
+        continues_reply_id: "r2",
+      },
+      makeContext(),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("Replied to thread c1");
+    expect(JSON.parse(fetchMock.mock.calls[0][1]!.body as string)).toEqual({
+      text: "按钮修好了",
+      continuesReplyId: "r2",
+    });
+  });
+
   it("rejects text over 4096 UTF-8 bytes before any request", async () => {
     const fetchMock = stubFetch([
       { match: () => true, respond: () => jsonResponse(201, {}) },
