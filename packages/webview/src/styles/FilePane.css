@@ -164,6 +164,30 @@
   padding: 12px 16px;
 }
 
+/* Positioning context for markdown block comments: the button is absolutely
+   placed against this wrapper, so it follows the block while the panel scrolls
+   (the wrapper scrolls with the content, the offset does not change). The 16px
+   padding of `.file-pane-markdown` is what the button sits in, so it never
+   covers the text. The comment box is NOT absolutely placed — it is spliced
+   into the document after the block, so it pushes the following content down
+   instead of covering it. */
+.file-pane-markdown-wrap {
+  position: relative;
+}
+
+/* Markdown block comment button: same shape as the line buttons, but shown and
+   hidden by the React side (it only exists while a block is hovered), so the
+   line-button hover-reveal and its vertical centering are overridden here. */
+.md-block-comment-btn {
+  opacity: 1;
+  left: 1px;
+  transform: none;
+}
+
+/* Inline comment box for a markdown block (portal target in the document flow). */
+.md-block-comment-holder {
+  margin: 4px 0 8px;
+}
 .file-pane-markdown pre {
   max-width: 100%;
   overflow: auto;

@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { marked } from "marked";
 import DOMPurify from "dompurify";
+import { createPortal } from "react-dom";
 import hljs from "../utils/highlight";
 import type { FileItem, FileViewState, VsCodeApi } from "../types";
 import { formatCodeComment } from "../utils/codeComment";
@@ -188,14 +189,93 @@ fileMarkdownRenderer.code = (code: string, infostring: string | undefined) => {
   return `<pre><code class="hljs${language ? ` language-${language}` : ""}">${highlighted}</code></pre>`;
 };
 
+/**
+ * Class marked on every commentable block of a rendered markdown file. Only the
+ * file panel asks for it (via `annotateBlocks`); PlanPane and the message list
+ * keep the plain render, so nothing else gains hover targets.
+ */
+export const MD_COMMENT_BLOCK_CLASS = "md-comment-block";
+
+/**
+ * Block-level nodes a markdown comment can anchor to (spec
+ * `desktop-panels.md`「文件面板评论」场景 8): the outermost of these wins, so a
+ * paragraph inside a list item resolves to the list item and a heading inside a
+ * quote resolves to the quote. Containers (`ul` / `table` / `tbody` / `tr`) are
+ * deliberately left out — nobody points at "the list", they point at an item.
+ */
+const MD_COMMENT_BLOCK_SELECTOR = "p,h1,h2,h3,h4,h5,h6,blockquote,li,pre,td,th";
+
+/**
+ * Tag commentable blocks in the *sanitized* html. Sanitization has to come
+ * first: this is a pure DOM pass on already-clean markup (and DOMPurify would
+ * strip a `data-` anchor anyway, since data attributes are not allow-listed
+ * here). The class itself is allow-listed, so nothing new becomes injectable.
+ */
+const annotateMarkdownBlocks = (html: string): string => {
+  if (typeof DOMParser === "undefined") return html;
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  doc.body.querySelectorAll(MD_COMMENT_BLOCK_SELECTOR).forEach((el) => {
+    el.classList.add(MD_COMMENT_BLOCK_CLASS);
+  });
+  return doc.body.innerHTML;
+};
+
+/**
+ * Tags whose text has to be kept apart when a block's text becomes a quote —
+ * without this, two paragraphs inside one list item read as one run-on word.
+ * Inline elements (code, strong, a) are left alone so their text stays glued
+ * to the sentence around it.
+ */
+const BLOCK_LEVEL_TAGS = new Set([
+  "P",
+  "H1",
+  "H2",
+  "H3",
+  "H4",
+  "H5",
+  "H6",
+  "LI",
+  "UL",
+  "OL",
+  "PRE",
+  "BLOCKQUOTE",
+  "TD",
+  "TH",
+  "TR",
+  "TABLE",
+  "THEAD",
+  "TBODY",
+]);
+
+/** The text a markdown block contributes to the appended comment quote. */
+const blockQuoteText = (el: HTMLElement): string => {
+  const parts: string[] = [];
+  el.childNodes.forEach((node) => {
+    const text = node.textContent ?? "";
+    if (
+      node.nodeType === 1 &&
+      BLOCK_LEVEL_TAGS.has((node as HTMLElement).tagName)
+    ) {
+      parts.push(` ${text} `);
+    } else {
+      parts.push(text);
+    }
+  });
+  return parts.join("").replace(/\s+/g, " ").trim();
+};
+
 /** Shared markdown renderer (marked → hljs → DOMPurify). Reused by PlanPane. */
-export const renderFileMarkdown = (content: string): string => {
+export const renderFileMarkdown = (
+  content: string,
+  options?: { annotateBlocks?: boolean },
+): string => {
   const raw = marked.parse(content, {
     gfm: true,
     breaks: true,
     renderer: fileMarkdownRenderer,
   });
-  return sanitizeFileMarkdown(typeof raw === "string" ? raw : content);
+  const clean = sanitizeFileMarkdown(typeof raw === "string" ? raw : content);
+  return options?.annotateBlocks ? annotateMarkdownBlocks(clean) : clean;
 };
 
 const HIGHLIGHT_LINE_HEIGHT = 20;
@@ -454,22 +534,139 @@ export const FilePane: React.FC<FilePaneProps> = ({
   // Inline line comments — the same interaction as the diff pane: hovering a
   // line reveals a "+" button, clicking opens a box under that line, and the
   // submitted comment is appended to the chat input (never sent directly, and
-  // never kept in the panel). Only the code view can host them: a markdown file
-  // renders to HTML with no line numbers, and an image has no lines at all.
+  // never kept in the panel). Only the code view can host them by line: an
+  // image has no lines at all, and a markdown file has no line numbers once
+  // rendered (it gets block comments instead, below).
   const [commentLine, setCommentLine] = useState<number | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
+
+  // Markdown block comments (spec「文件面板评论」场景 8): same interaction and
+  // same append format as line comments, anchored to a rendered block. Nothing
+  // is persisted — the anchor only has to be valid at submit time, which is why
+  // this needs no source offsets and no re-anchoring. The box itself is a portal
+  // into a holder element spliced in after the block, so it pushes the document
+  // down instead of covering the block that follows.
+  const mdWrapRef = useRef<HTMLDivElement | null>(null);
+  const mdHolderRef = useRef<HTMLDivElement | null>(null);
+  const [mdHover, setMdHover] = useState<{
+    el: HTMLElement;
+    top: number;
+  } | null>(null);
+  const [mdComment, setMdComment] = useState<{
+    quote: string;
+    holder: HTMLDivElement;
+  } | null>(null);
+
+  const mdHtml = useMemo(
+    () =>
+      fileView?.content && markdown
+        ? renderFileMarkdown(fileView.content, {
+            annotateBlocks: Boolean(onAddComment),
+          })
+        : "",
+    [fileView?.content, markdown, onAddComment],
+  );
 
   const closeComment = useCallback(() => {
     setCommentLine(null);
     setCommentDraft("");
   }, []);
 
+  const closeMdComment = useCallback(() => {
+    // Detach the holder before React unmounts the portal into it: the element
+    // survives (only its tree position goes away), so the unmount is harmless.
+    mdHolderRef.current?.remove();
+    mdHolderRef.current = null;
+    setMdComment(null);
+    setCommentDraft("");
+  }, []);
+
+  // Unmount safety net — a pane torn down with the box open must not leave the
+  // holder (with its draft) sitting in the document.
+  useEffect(
+    () => () => {
+      mdHolderRef.current?.remove();
+      mdHolderRef.current = null;
+    },
+    [],
+  );
+
   // A different file — or a fresh read of the same one — invalidates both the
   // open box and its draft: the line it pointed at may no longer be there
-  // (spec「文件面板行评论」场景 5).
+  // (spec「文件面板行评论」场景 5). Same for the markdown block anchor.
   useEffect(() => {
     closeComment();
-  }, [fileView?.path, fileView?.content, closeComment]);
+    closeMdComment();
+    setMdHover(null);
+  }, [fileView?.path, fileView?.content, closeComment, closeMdComment]);
+
+  /**
+   * Track which block the pointer is over. The outermost commentable block
+   * wins — a paragraph inside a list item resolves to the list item, a heading
+   * inside a quote to the quote — and the button is positioned against the
+   * wrapper, so it stays glued to the block while the panel scrolls.
+   */
+  const handleMarkdownHover = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!onAddComment || mdComment) return;
+      const wrap = mdWrapRef.current;
+      const target = event.target as HTMLElement;
+      let block = target.closest?.(
+        `.${MD_COMMENT_BLOCK_CLASS}`,
+      ) as HTMLElement | null;
+      if (!wrap || !block) {
+        setMdHover((prev) => (prev ? null : prev));
+        return;
+      }
+      for (
+        let parent = block.parentElement;
+        parent;
+        parent = parent.parentElement
+      ) {
+        const outer = parent.closest(`.${MD_COMMENT_BLOCK_CLASS}`);
+        if (!outer) break;
+        block = outer as HTMLElement;
+      }
+      const top =
+        block.getBoundingClientRect().top - wrap.getBoundingClientRect().top;
+      setMdHover((prev) => (prev?.el === block ? prev : { el: block, top }));
+    },
+    [onAddComment, mdComment],
+  );
+
+  const openMdComment = useCallback(() => {
+    if (!mdHover) return;
+    const quote = blockQuoteText(mdHover.el);
+    // One holder at a time: a previous box (if any) is closed first.
+    mdHolderRef.current?.remove();
+    const holder = document.createElement("div");
+    holder.className = "md-block-comment-holder";
+    mdHover.el.insertAdjacentElement("afterend", holder);
+    mdHolderRef.current = holder;
+    setMdComment({ quote, holder });
+    setCommentDraft("");
+    setMdHover(null);
+  }, [mdHover]);
+
+  const submitMdComment = useCallback(() => {
+    const comment = commentDraft.trim();
+    if (!mdComment || !comment || !onAddComment || !fileView) return;
+    onAddComment(
+      formatCodeComment({
+        path: relativePath || fileView.path,
+        text: mdComment.quote,
+        comment,
+      }),
+    );
+    closeMdComment();
+  }, [
+    commentDraft,
+    mdComment,
+    onAddComment,
+    fileView,
+    relativePath,
+    closeMdComment,
+  ]);
 
   const submitComment = useCallback(() => {
     const comment = commentDraft.trim();
@@ -635,11 +832,43 @@ export const FilePane: React.FC<FilePaneProps> = ({
       )}
       {fileView?.content && !fileView.error && markdown && (
         <div
-          className="message-content markdown-content file-pane-markdown"
-          dangerouslySetInnerHTML={{
-            __html: renderFileMarkdown(fileView.content),
-          }}
-        />
+          className="file-pane-markdown-wrap"
+          ref={mdWrapRef}
+          onMouseOver={handleMarkdownHover}
+          onMouseLeave={() => setMdHover(null)}
+        >
+          <div
+            className="message-content markdown-content file-pane-markdown"
+            dangerouslySetInnerHTML={{ __html: mdHtml }}
+          />
+          {/* Revealed on hover of a block rather than by CSS: the button only
+              exists while a block is actually under the pointer, which is also
+              what keeps it off images (an image has no block to anchor to). */}
+          {mdHover && onAddComment && !mdComment && (
+            <button
+              className="line-comment-btn md-block-comment-btn"
+              style={{ top: mdHover.top }}
+              title="评论这段"
+              aria-label="评论这段"
+              data-testid="md-block-comment-add"
+              onClick={openMdComment}
+            >
+              <i className="codicon codicon-add" />
+            </button>
+          )}
+          {mdComment &&
+            createPortal(
+              <LineCommentBox
+                draft={commentDraft}
+                onDraftChange={setCommentDraft}
+                onSubmit={submitMdComment}
+                onCancel={closeMdComment}
+                tag={commentTag}
+                placeholder="评论这段…"
+              />,
+              mdComment.holder,
+            )}
+        </div>
       )}
       {fileView?.content && !fileView.error && !markdown && contentLines && (
         <div className="file-pane-code">

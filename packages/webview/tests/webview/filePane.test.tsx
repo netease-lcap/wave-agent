@@ -426,17 +426,90 @@ describe("FilePane", () => {
       expect(screen.queryByTestId("line-comment-box")).not.toBeInTheDocument();
     });
 
-    it("offers no comment button on markdown files", () => {
-      renderPane({
-        fileView: makeFileView({
-          path: "/work/a/README.md",
-          content: "# title\n",
-        }),
-        onAddComment: vi.fn(),
+    // Markdown has no line numbers once rendered, so the same interaction is
+    // anchored to a block instead (spec「文件面板评论」场景 8).
+    describe("markdown block comments", () => {
+      const mdView = (content: string) =>
+        makeFileView({ path: "/work/a/README.md", content });
+
+      it("offers no block button without a comment sink", () => {
+        const { container } = renderPane({ fileView: mdView("# 标题\n") });
+        fireEvent.mouseOver(container.querySelector(".file-pane-markdown h1")!);
+        expect(
+          screen.queryByTestId("md-block-comment-add"),
+        ).not.toBeInTheDocument();
       });
-      expect(
-        screen.queryByTestId("line-comment-add-1"),
-      ).not.toBeInTheDocument();
+
+      it("appends the comment with the path and the block text, no line number", () => {
+        const onAddComment = vi.fn();
+        const { container } = renderPane({
+          fileView: mdView("# 标题\n\n正文段落\n"),
+          workdir: "/work/a",
+          onAddComment,
+        });
+        // No line view at all: a markdown file renders to HTML.
+        expect(
+          screen.queryByTestId("line-comment-add-1"),
+        ).not.toBeInTheDocument();
+
+        fireEvent.mouseOver(container.querySelector(".file-pane-markdown h1")!);
+        fireEvent.click(screen.getByTestId("md-block-comment-add"));
+        expect(
+          screen
+            .getByTestId("line-comment-box")
+            .querySelector(".line-comment-box-tag"),
+        ).toHaveTextContent("README.md");
+        fireEvent.change(screen.getByTestId("line-comment-input"), {
+          target: { value: "这段要改" },
+        });
+        fireEvent.click(screen.getByTestId("line-comment-submit"));
+        expect(onAddComment).toHaveBeenCalledWith(
+          "**代码评论** · README.md\n「标题」\n\n这段要改",
+        );
+        // Submitted → box gone, nothing kept in the pane (same as line comments).
+        expect(
+          screen.queryByTestId("line-comment-box"),
+        ).not.toBeInTheDocument();
+      });
+
+      it("anchors a nested block to its outermost container", () => {
+        const onAddComment = vi.fn();
+        const { container } = renderPane({
+          fileView: mdView("- 第一段\n\n  第二段\n"),
+          workdir: "/work/a",
+          onAddComment,
+        });
+        const inner = container.querySelectorAll(".file-pane-markdown li p");
+        expect(inner).toHaveLength(2);
+        fireEvent.mouseOver(inner[1]);
+        fireEvent.click(screen.getByTestId("md-block-comment-add"));
+        fireEvent.change(screen.getByTestId("line-comment-input"), {
+          target: { value: "合并这两段" },
+        });
+        fireEvent.click(screen.getByTestId("line-comment-submit"));
+        // Both paragraphs belong to the hovered list item, not to the inner p.
+        expect(onAddComment).toHaveBeenCalledWith(
+          "**代码评论** · README.md\n「第一段 第二段」\n\n合并这两段",
+        );
+      });
+
+      it("discards the open block box when the panel switches files", () => {
+        const { container, rerenderWith } = renderPane({
+          fileView: mdView("# 标题\n"),
+          onAddComment: vi.fn(),
+        });
+        fireEvent.mouseOver(container.querySelector(".file-pane-markdown h1")!);
+        fireEvent.click(screen.getByTestId("md-block-comment-add"));
+        fireEvent.change(screen.getByTestId("line-comment-input"), {
+          target: { value: "半截草稿" },
+        });
+        rerenderWith(
+          makeFileView({ path: "/work/a/OTHER.md", content: "## 别的\n" }),
+        );
+        expect(
+          screen.queryByTestId("line-comment-box"),
+        ).not.toBeInTheDocument();
+      });
     });
 
     it("offers no comment button on images", () => {

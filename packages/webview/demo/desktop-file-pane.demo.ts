@@ -54,6 +54,26 @@ export function LoginPage() {
 }
 `;
 
+const MD_CONTENT = `# Wave Agent
+
+Wave 是一个面向研发全流程的 AI 编码助手，支持 CLI、VS Code、JetBrains 与桌面端。
+
+## 安装
+
+\`\`\`bash
+pnpm install
+pnpm build
+\`\`\`
+
+## 快速开始
+
+运行 \`pnpm wave\` 启动交互式终端界面。
+
+## 贡献
+
+欢迎提交 issue 与 pull request。
+`;
+
 test.describe("Desktop file pane screenshots", () => {
   test("read tool path opens the file panel", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
@@ -135,6 +155,43 @@ test.describe("Desktop file pane screenshots", () => {
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-file-comment-input.webp",
+    );
+
+    // ── Markdown block comment ─────────────────────────────────────────
+    // A rendered markdown file has no line numbers, so the same interaction
+    // anchors to a block instead (spec desktop-panels.md「文件面板评论」场景 8).
+    await injector.simulateExtensionMessage("desktopFileContent", {
+      fileView: {
+        path: `${DIR_A}/README.md`,
+        host: "local",
+        content: MD_CONTENT,
+        loading: false,
+      },
+    });
+    await expect(
+      webviewPage.locator(".file-pane-markdown h2").first(),
+    ).toBeVisible();
+
+    // The button only exists while a block is hovered, so hover first and click
+    // after — Playwright's auto-hover cannot reveal an element that is not in
+    // the DOM yet.
+    await webviewPage.locator(".file-pane-markdown h2").first().hover();
+    await webviewPage.getByTestId("md-block-comment-add").click();
+    await expect(webviewPage.getByTestId("line-comment-box")).toBeVisible();
+    await webviewPage
+      .getByTestId("line-comment-input")
+      .fill("安装这一节补一句：Node 版本要求 >= 22");
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-file-md-comment.webp",
+    );
+
+    // Same no-trace semantics as line comments: the quote is the block's text,
+    // there is no line number, and the box pushes the rest of the document down
+    // rather than covering it.
+    await webviewPage.getByTestId("line-comment-submit").click();
+    await expect(webviewPage.getByTestId("message-input")).toContainText(
+      "安装这一节补一句",
     );
   });
 });
