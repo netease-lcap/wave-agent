@@ -4,6 +4,7 @@ import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { supportsVision } from "../utils/modelCapabilities.js";
 import { persistToolImages } from "../utils/toolImagePersistence.js";
 import { parseTaskNotificationXml } from "../utils/notificationXml.js";
+import { parsePageCommentEventXml } from "../utils/pageCommentEventXml.js";
 import { estimateContextTokens } from "../utils/tokenCalculation.js";
 import { estimateTokens } from "../utils/tokenEstimate.js";
 import {
@@ -2454,6 +2455,17 @@ ${question}`;
                 summary: block.summary,
                 outputFile: block.outputFile,
                 result: block.result,
+              });
+              continue;
+            }
+            // Page-comment wake-ups ride the same queue but are not tasks (no
+            // taskId, no terminal state): they land as hidden user text so the
+            // model reads the threads itself. Same handling as the idle path
+            // in Agent.processQueuedMessage.
+            if (parsePageCommentEventXml(notification)) {
+              this.messageManager.addUserMessage({
+                content: notification,
+                isMeta: true,
               });
             }
           }

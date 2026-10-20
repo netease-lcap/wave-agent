@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Container } from "../../src/utils/container.js";
+import { pageCommentEventToXml } from "../../src/utils/pageCommentEventXml.js";
 import { AIManager } from "../../src/managers/aiManager.js";
 import { MessageQueue } from "../../src/managers/messageQueue.js";
 import type { MessageManager } from "../../src/managers/messageManager.js";
@@ -185,6 +186,34 @@ describe("AIManager notification drain isolation (FR-043/FR-044)", () => {
     // The sibling notification must remain in the parent queue, untouched.
     expect(drainSpy).not.toHaveBeenCalled();
     expect(parentQueue.hasNotifications()).toBe(true);
+  });
+
+  it("delivers a page-comment wake-up as a hidden user message", async () => {
+    // A comment event rides the notification queue but is not a background
+    // task: the turn-end drain must not hand it to addNotificationMessage
+    // (which would fake a taskId), it belongs on the meta-user-message path.
+    const { aiManager, parentQueue } = buildChildAIManager({
+      withLocalQueue: false,
+    });
+    parentQueue.drainNotifications();
+    const xml = pageCommentEventToXml({
+      url: "https://server.test/code/artifact/abc",
+      slug: "abc",
+      count: 1,
+      threadIds: ["t1"],
+    });
+    parentQueue.enqueueNotification(xml);
+
+    const messageManager = aiManager["container"].get<MessageManager>(
+      "MessageManager",
+    ) as unknown as { addUserMessage: ReturnType<typeof vi.fn> };
+
+    await aiManager.sendAIMessage();
+
+    expect(messageManager.addUserMessage).toHaveBeenCalledWith({
+      content: xml,
+      isMeta: true,
+    });
   });
 
   it("drains the parent queue via fallback when the subagent has no local MessageQueue (pre-fix harness)", async () => {

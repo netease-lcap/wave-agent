@@ -163,6 +163,12 @@ export interface ToolContext {
   skillManager?: import("../managers/skillManager.js").SkillManager;
   /** Cron manager instance for scheduling tasks */
   cronManager?: import("../managers/cronManager.js").CronManager;
+  /**
+   * Per-agent artifact comment watcher: keeps the SSE stream, the known cursor
+   * and the reconnect loop alive across tool calls (the server keeps no
+   * subscription state, so `watch` is a local action).
+   */
+  pageWatchManager?: import("../managers/pageWatchManager.js").PageWatchManager;
   /** AI manager instance for AI operations */
   aiManager?: import("../managers/aiManager.js").AIManager;
   /** AI service instance for AI operations */

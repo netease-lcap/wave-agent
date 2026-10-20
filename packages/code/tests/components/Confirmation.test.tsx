@@ -273,6 +273,53 @@ describe("Confirmation", () => {
       expect(frame).toContain("Delete asset: abc123");
       expect(frame).toContain(`Copy assets into artifact: ${url}`);
     });
+
+    it("should describe the comment actions and never fall back to publishing", async () => {
+      const url = "https://server.test/code/artifact/abc";
+      const { lastFrame } = render(
+        <>
+          <ConfirmationDetails
+            toolName="Artifact"
+            toolInput={{ action: "reply", url, thread_id: "t1", text: "ok" }}
+          />
+          <ConfirmationDetails
+            toolName="Artifact"
+            toolInput={{
+              action: "resolve",
+              url,
+              thread_id: "t1",
+              resolved: true,
+            }}
+          />
+          <ConfirmationDetails
+            toolName="Artifact"
+            toolInput={{
+              action: "resolve",
+              url,
+              thread_id: "t1",
+              resolved: false,
+            }}
+          />
+          <ConfirmationDetails
+            toolName="Artifact"
+            toolInput={{ action: "someFutureAction", url }}
+          />
+        </>,
+      );
+
+      await vi.waitFor(() => {
+        expect(stripAnsiColors(lastFrame() || "")).toContain(
+          `Reply to comment thread t1 on: ${url}`,
+        );
+      });
+
+      const frame = stripAnsiColors(lastFrame() || "");
+      expect(frame).toContain(`Reply to comment thread t1 on: ${url}`);
+      expect(frame).toContain(`Resolve comment thread t1 on: ${url}`);
+      expect(frame).toContain(`Reopen comment thread t1 on: ${url}`);
+      expect(frame).toContain(`Artifact action "someFutureAction" on: ${url}`);
+      expect(frame).not.toContain("Publish file:");
+    });
   });
 
   describe("User Interaction Tests", () => {

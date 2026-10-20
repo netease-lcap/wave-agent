@@ -110,7 +110,7 @@ describe("artifactTool list action", () => {
   });
 
   describe("config", () => {
-    it("declares all eight actions", () => {
+    it("declares every action, in one stable order", () => {
       const properties = artifactTool.config.function.parameters
         ?.properties as Record<string, { enum?: string[] }>;
       expect(properties.action.enum).toEqual([
@@ -122,6 +122,11 @@ describe("artifactTool list action", () => {
         "read_asset",
         "delete_asset",
         "copy_from",
+        "comments",
+        "reply",
+        "resolve",
+        "watch",
+        "unwatch",
       ]);
     });
 
@@ -154,6 +159,18 @@ describe("artifactTool list action", () => {
           asset_ids: ["a", "b"],
         }),
       ).toBe(`copy 2 asset(s) src → ${url}`);
+      expect(compact({ action: "comments", url })).toBe(`comments ${url}`);
+      expect(compact({ action: "reply", url, thread_id: "t1" })).toBe(
+        `reply t1 on ${url}`,
+      );
+      expect(
+        compact({ action: "resolve", url, thread_id: "t1", resolved: true }),
+      ).toBe(`resolve t1 on ${url}`);
+      expect(
+        compact({ action: "resolve", url, thread_id: "t1", resolved: false }),
+      ).toBe(`reopen t1 on ${url}`);
+      expect(compact({ action: "watch", url })).toBe(`watch ${url}`);
+      expect(compact({ action: "unwatch", url })).toBe(`unwatch ${url}`);
       expect(compact({ file_path: "a.md", url })).toBe(`a.md → ${url}`);
     });
   });
@@ -473,13 +490,13 @@ describe("artifactTool list action", () => {
       const fetchMock = stubFetchRoutes([]);
 
       const result = await artifactTool.execute(
-        { action: "watch" },
+        { action: "archive" },
         makeContext(),
       );
 
       expect(result.success).toBe(false);
       expect(result.error).toContain(
-        `${ARTIFACT_TOOL_NAME}: unknown action "watch"`,
+        `${ARTIFACT_TOOL_NAME}: unknown action "archive"`,
       );
       expect(fetchMock).not.toHaveBeenCalled();
     });

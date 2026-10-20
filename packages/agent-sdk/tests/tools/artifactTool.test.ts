@@ -163,6 +163,11 @@ describe("artifactTool", () => {
           "read_asset",
           "delete_asset",
           "copy_from",
+          "comments",
+          "reply",
+          "resolve",
+          "watch",
+          "unwatch",
         ]),
       );
       expect(properties.prompt).toBeDefined();
@@ -363,6 +368,9 @@ describe("artifactTool", () => {
       expect(result.content).toContain(
         "You cannot change sharing; that is done from the page's Share menu.",
       );
+      // Watching is opt-in (publish never auto-subscribes), so the result has
+      // to tell the model how to ask for comment notifications.
+      expect(result.content).toContain('use action "watch"');
       expect(result.shortResult).toBe(
         "Published doc.md → https://server.test/code/artifact/abc",
       );
@@ -1066,12 +1074,12 @@ describe("artifactTool", () => {
 
     it("should reject an unknown action", async () => {
       const result = await artifactTool.execute(
-        { action: "watch" },
+        { action: "archive" },
         makeContext(),
       );
       expect(result.success).toBe(false);
       expect(result.error).toContain(
-        `${ARTIFACT_TOOL_NAME}: unknown action "watch"`,
+        `${ARTIFACT_TOOL_NAME}: unknown action "archive"`,
       );
     });
 
