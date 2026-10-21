@@ -4,13 +4,16 @@ import { MessageInjector } from "./utils/messageInjector.js";
 
 /**
  * `/reload-plugins` 入口（真浏览器 + 真 bundle，桌面模式）——
- * spec ecosystem/plugin.md「插件变更的就地重载」场景 12–13：插件变更只产生一次
- * 中性提示、**不弹任何确认框**（「立即重启 / 稍后重启」整体废止），真正换装由用户
- * 敲 `/reload-plugins` 触发：该命令不进对话、不产生用户消息，只回一条
- * `reloadPlugins` 给宿主去就地换装。
+ * spec ecosystem/plugin.md「插件变更的就地重载」场景 12–13：插件变更不重建任何
+ * 会话（「立即重启 / 稍后重启」整体废止），真正换装由用户敲 `/reload-plugins`
+ * 触发：该命令不进对话、不产生用户消息，只回一条 `reloadPlugins` 给宿主去就地换装。
  *
- * 单测（tests/webview/reloadPlugins.test.tsx）已覆盖拦截逻辑；这里在真 bundle +
- * 真 DOM 上确认输入框被清空、回执报文正确，以及界面里不再有确认框。
+ * 「待应用」信号的呈现见「插件变更提示」（2026-09-23 需求九）：桌面端不再发顶部轻
+ * 提示，而是弹一个**强引导**确认框——点「立即重新加载」回发同一条 `reloadPlugins`
+ * 命令，点「稍后」则不重载。
+ *
+ * 单测（tests/webview/reloadPlugins.test.tsx）已覆盖这两条路径；这里在真 bundle +
+ * 真 DOM 上确认输入框被清空、回执报文正确、确认框确实出现并可用。
  */
 
 const WORKDIR = "/Users/dev/projects/wave-agent";
@@ -72,20 +75,34 @@ test.describe("/reload-plugins", () => {
     await expect(webviewPage.locator(".confirm-dialog")).toHaveCount(0);
   });
 
-  test("插件变更的待应用提示只呈现 toast，绝不弹确认框", async ({
+  test("插件变更落盘后弹强引导确认框，点「立即重新加载」回发 reloadPlugins", async ({
     webviewPage,
   }) => {
     const injector = await bootDesktop(webviewPage);
-    await injector.simulateExtensionMessage("showToast", {
-      toast: {
-        id: "toast-plugin-change",
-        message: "插件已变更。运行 /reload-plugins 使其生效。",
-      },
-    });
+    await injector.clearMessageLog();
+    await injector.simulateExtensionMessage("pluginChangePending");
 
+    const dialog = webviewPage.locator(".confirm-dialog");
+    await expect(dialog).toHaveCount(1);
+    await expect(
+      webviewPage.getByText("插件已变更，重新加载后生效"),
+    ).toBeVisible();
+    // 只弹框、不自动重载：用户不点就什么都不发生。
+    expect(await postedMessage(webviewPage, "reloadPlugins")).toBeUndefined();
+    // 顶部轻提示不再出现（它正是会被忽略的那个形态）。
     await expect(
       webviewPage.getByText("插件已变更。运行 /reload-plugins 使其生效。"),
-    ).toBeVisible();
-    await expect(webviewPage.locator(".confirm-dialog")).toHaveCount(0);
+    ).toHaveCount(0);
+
+    await webviewPage.getByTestId("confirm-dialog-confirm").click();
+    await expect
+      .poll(async () => {
+        const posted = (await postedMessage(webviewPage, "reloadPlugins")) as
+          | Record<string, unknown>
+          | undefined;
+        return posted?.command;
+      })
+      .toBe("reloadPlugins");
+    await expect(dialog).toHaveCount(0);
   });
 });

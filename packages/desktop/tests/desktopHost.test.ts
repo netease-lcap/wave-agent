@@ -641,6 +641,20 @@ function shownToasts(): Array<{
     );
 }
 
+/**
+ * 插件变更的强引导弹窗计数（`pluginChangePending`，spec plugin「插件变更提示」
+ * 2026-09-23 起：桌面端改弹确认框，不再发 toast）。
+ */
+function pendingPluginPrompts(): number {
+  const send = lastSend;
+  if (!send) return 0;
+  return send.mock.calls.filter(
+    ([channel, msg]) =>
+      channel === HOST_CHANNEL &&
+      (msg as { command?: string }).command === "pluginChangePending",
+  ).length;
+}
+
 /** Make one utility RPC method throw; returns a restore function for after the test. */
 function failRpc(method: string, message: string): () => void {
   const orig = h.handleClientRequest;
@@ -2869,10 +2883,9 @@ describe("user preference save path and rebuild timing", () => {
       scope: "user",
     });
 
-    // 变更落盘只产生一次「待应用」提示（spec plugin「插件变更提示」）。
-    expect(shownToasts().map((t) => t.message)).toContain(
-      "插件已变更。运行 /reload-plugins 使其生效。",
-    );
+    // 变更落盘只产生一次「待应用」信号 —— 一次强引导弹窗（spec plugin
+    // 「插件变更提示」），不是一句会被忽略的 toast。
+    expect(pendingPluginPrompts()).toBe(1);
     // 不重建任何会话：正在生成的回合不被打断、排队消息不清空。
     expect(pane1.updateConfig).not.toHaveBeenCalled();
     expect(pane2.updateConfig).not.toHaveBeenCalled();
@@ -4722,12 +4735,10 @@ describe("misc commands", () => {
         enabled: true,
         scope: "project",
       });
-      // 落盘 + 开关翻转回执完成后只给一次「待应用」提示，本次不重建任何会话
+      // 落盘 + 开关翻转回执完成后只给一次「待应用」信号，本次不重建任何会话
       // （spec plugin「插件变更的就地重载」场景 1）。
       expect(sent("projectSettings")).toHaveLength(1);
-      expect(shownToasts().map((t) => t.message)).toContain(
-        "插件已变更。运行 /reload-plugins 使其生效。",
-      );
+      expect(pendingPluginPrompts()).toBe(1);
       expect(agent.updateConfig).not.toHaveBeenCalled();
       expect(sent("desktopRebuildPrompt")).toHaveLength(0);
     } finally {
@@ -4870,10 +4881,8 @@ describe("misc commands", () => {
         restore();
       }
       expect(toastMessages()).toContain("「团队市场」已更新 3 个插件");
-      // 批量更新也是插件变更 ⇒ 追加一次「待应用」提示。
-      expect(toastMessages()).toContain(
-        "插件已变更。运行 /reload-plugins 使其生效。",
-      );
+      // 批量更新也是插件变更 ⇒ 追加一次「待应用」弹窗。
+      expect(pendingPluginPrompts()).toBe(1);
     });
 
     it("updateMarketplace with nothing to upgrade reports 已是最新", async () => {
@@ -4900,9 +4909,7 @@ describe("misc commands", () => {
         restore();
       }
       expect(toastMessages()).toContain("已安装「demo」（作用域：project）");
-      expect(toastMessages()).toContain(
-        "插件已变更。运行 /reload-plugins 使其生效。",
-      );
+      expect(pendingPluginPrompts()).toBe(1);
     });
 
     it("uninstallPlugin reports the plugin name taken from the plugin id", async () => {
@@ -4969,11 +4976,10 @@ describe("misc commands", () => {
         pluginId: "demo@团队市场",
         scope: "user",
       });
-      // 原型没给启用/禁用定义结果文案，但它是插件变更 ⇒ 每次变更各一次提示。
-      expect(toastMessages()).toEqual([
-        "插件已变更。运行 /reload-plugins 使其生效。",
-        "插件已变更。运行 /reload-plugins 使其生效。",
-      ]);
+      // 原型没给启用/禁用定义结果文案，但它是插件变更 ⇒ 每次变更各一次「待应用」
+      // 信号（两个信号都落到同一个弹窗上，webview 侧布尔态不叠加）。
+      expect(toastMessages()).toEqual([]);
+      expect(pendingPluginPrompts()).toBe(2);
     });
   });
 

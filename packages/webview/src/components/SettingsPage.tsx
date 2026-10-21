@@ -936,7 +936,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                   <div className="settings-row">
                     <div className="settings-row-copy">
                       <h3>SDD（规格驱动开发）</h3>
-                      <p>自动创建或更新功能规格说明，切换后自动生效</p>
+                      <p>自动创建或更新功能规格说明，切换后重新加载生效</p>
                     </div>
                     <label className="settings-switch">
                       <input

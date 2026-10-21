@@ -231,14 +231,9 @@ describe("real host · project settings follow the pane's project", () => {
     await ctx.waitFor("projectSettings", {
       predicate: (m) => m.paneId === pane2,
     });
-    // 插件落盘不重建任何会话：只出现一次「待应用」提示（spec plugin
-    //「插件变更的就地重载」场景 1）。
-    const pending = await ctx.waitFor("showToast", {
-      predicate: (m) =>
-        JSON.stringify(m.toast).includes(
-          "插件已变更。运行 /reload-plugins 使其生效。",
-        ),
-    });
+    // 插件落盘不重建任何会话：只出现一次「待应用」信号——桌面端是一次强引导
+    // 弹窗（spec plugin「插件变更提示」，2026-09-23 起不再发 toast）。
+    const pending = await ctx.waitFor("pluginChangePending");
     expect(pending).toBeTruthy();
     expect(ctx.paneSessionId("pane-1")).toBe(sessionsBefore[0]);
     expect(ctx.paneSessionId(pane2)).toBe(sessionsBefore[1]);
@@ -300,12 +295,7 @@ describe("real host · project settings follow the pane's project", () => {
     await ctx.waitFor("projectSettings", {
       predicate: (m) => m.paneId === pane2,
     });
-    await ctx.waitFor("showToast", {
-      predicate: (m) =>
-        JSON.stringify(m.toast).includes(
-          "插件已变更。运行 /reload-plugins 使其生效。",
-        ),
-    });
+    await ctx.waitFor("pluginChangePending");
 
     // 待应用信号没有任何「延迟重建」：两个 pane 的会话 id 原样保留。
     expect(ctx.paneSessionId("pane-1")).toBe(sessionsBefore[0]);

@@ -326,11 +326,11 @@ test.describe("Desktop batch 2 feature screenshots", () => {
   });
 
   /**
-   * spec ecosystem/plugin.md「插件变更的就地重载」场景 12：插件变更（安装/卸载/
-   * 启用/禁用/更新、内置 SDD 开关）落盘后**不重建会话、不弹确认框**，只出现一次
-   * 中性提示，告诉用户敲 `/reload-plugins` 就地应用。
+   * spec ecosystem/plugin.md「插件变更提示」（2026-09-23 需求九）：插件变更（安装/
+   * 卸载/启用/禁用/更新、内置 SDD 开关）落盘后**不重建会话**，桌面端弹一个强引导
+   * 确认框问「现在重新加载还是稍后」——顶部轻提示会被用户忽略，插件就一直不生效。
    */
-  test("settings: 插件变更待应用提示", async ({ webviewPage }) => {
+  test("settings: 插件变更强引导确认框", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 1000, height: 720 });
     await setupSinglePane(injector);
@@ -346,17 +346,17 @@ test.describe("Desktop batch 2 feature screenshots", () => {
       webviewPage.getByRole("heading", { name: "项目设置" }),
     ).toBeVisible();
 
-    await injector.simulateExtensionMessage("showToast", {
-      toast: {
-        id: "toast-plugin-change",
-        message: "插件已变更。运行 /reload-plugins 使其生效。",
-      },
-    });
+    // 插件变更落盘 → 强引导确认框（需求九 / spec「插件变更提示」：顶部轻提示会被
+    // 用户忽略）。重建确认框仍是整体废止的，这个框只问「重不重新加载」。
+    await injector.simulateExtensionMessage("pluginChangePending");
+    const dialog = webviewPage.locator(".confirm-dialog");
+    await expect(dialog).toHaveCount(1);
     await expect(
-      webviewPage.getByText("插件已变更。运行 /reload-plugins 使其生效。"),
+      webviewPage.getByText("插件已变更，重新加载后生效"),
     ).toBeVisible();
-    // 重建确认框已整体废止（spec「重建确认框已废止」）。
-    await expect(webviewPage.locator(".confirm-dialog")).toHaveCount(0);
+    await expect(webviewPage.getByTestId("confirm-dialog-confirm")).toHaveText(
+      "立即重新加载",
+    );
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-settings-plugin-change.webp",

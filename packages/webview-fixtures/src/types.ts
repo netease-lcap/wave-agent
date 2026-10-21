@@ -667,6 +667,19 @@ export interface ShowToastMessage extends HostToWebviewMessageBase {
   toast: UpdateToast;
 }
 
+/**
+ * 插件变更已落盘、尚未应用（spec ecosystem/plugin.md「插件变更提示」，
+ * 2026-09-23 起）：桌面端改由 webview 弹一个**强引导**确认框——顶部轻提示会被
+ * 用户忽略，插件装完不运行 `/reload-plugins` 就不生效。无载荷；用户点「立即
+ * 重新加载」后 webview 回发既有的 `reloadPlugins` 命令，宿主走与斜杠命令同一条
+ * 就地重载路径。
+ *
+ * 一次性事件，不是状态：不落任何持久标识，收到即弹（重复收到不叠加）。
+ */
+export interface PluginChangePendingMessage extends HostToWebviewMessageBase {
+  command: "pluginChangePending";
+}
+
 export interface DesktopTogglePanelMessage extends HostToWebviewMessageBase {
   command: "desktopTogglePanel";
   kind: DesktopPanelKind;
@@ -1367,6 +1380,7 @@ export type HostToWebviewMessage =
   | DesktopThemeSourceMessage
   | DesktopUpdateChannelMessage
   | ShowToastMessage
+  | PluginChangePendingMessage
   | DesktopTogglePanelMessage
   | ShowDialogMessage
   | ConfigurationUpdatedMessage

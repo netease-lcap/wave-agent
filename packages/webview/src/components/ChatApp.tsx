@@ -272,6 +272,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [pendingModelSwitch, setPendingModelSwitch] = useState<string | null>(
     null,
   );
+  // 插件变更待应用（spec ecosystem/plugin.md「插件变更提示」，2026-09-23 起）：
+  // 桌面端宿主把「落盘了但没生效」发成一条 `pluginChangePending`，这里弹一个**强
+  // 引导**确认框——原先只有顶部一句轻提示，用户会直接忽略，插件装完不运行
+  // `/reload-plugins` 就不生效。点「立即重新加载」回发既有的 `reloadPlugins`
+  // 命令（与斜杠命令同一条就地重载路径），结果提示由宿主发出。
+  const [pluginChangePending, setPluginChangePending] = useState(false);
   // /rewind popup: checkpoint list requested from the host on open.
   const [rewindPopupOpen, setRewindPopupOpen] = useState(false);
   const [rewindCheckpoints, setRewindCheckpoints] = useState<
@@ -1685,6 +1691,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           message.toast,
         ]);
         break;
+      case "pluginChangePending":
+        // 同上：窗口级事件，只有根实例弹一次（多分屏不叠加）。
+        if (myPane !== undefined) break;
+        setPluginChangePending(true);
+        break;
       case "desktopAccountInfo":
         // Sidebar account card — window-global like showToast (the sidebar
         // renders on the root instance only), so pane instances ignore it.
@@ -3082,6 +3093,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     messageInputRef.current?.focus();
   }, [pendingModelSwitch, postToHost]);
 
+  /** 插件变更强引导弹窗的确认：走既有 `reloadPlugins` 命令（与 `/reload-plugins`
+   *  同一条就地重载路径，不重建会话、不打断正在生成的回合）。 */
+  const handlePluginReloadConfirm = useCallback(() => {
+    setPluginChangePending(false);
+    postToHost({ command: "reloadPlugins" });
+  }, [postToHost]);
+
   const handleRewindConfirm = useCallback(() => {
     const messageId = pendingRewindId;
     setPendingRewindId(null);
@@ -4478,6 +4496,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             setPendingModelSwitch(null);
             messageInputRef.current?.focus();
           }}
+        />
+      )}
+      {pluginChangePending && (
+        <ConfirmDialog
+          title="插件已变更，重新加载后生效"
+          description="重新加载会把磁盘上最新的插件状态应用到当前对话，新插件的命令、技能与子代理随后即可使用；正在生成的回复不会被打断。"
+          confirmText="立即重新加载"
+          cancelText="稍后"
+          onConfirm={handlePluginReloadConfirm}
+          onCancel={() => setPluginChangePending(false)}
         />
       )}
       <ToastStack
