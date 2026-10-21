@@ -1,0 +1,248 @@
+/* 侧栏「搜索会话」框 + 筛选按钮与面板（spec desktop-sessions.md
+   「侧栏会话搜索与筛选」）。位置在「新对话」上方，与侧栏菜单条目同宽同缩进。 */
+.desktop-sidebar-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 12px 4px;
+}
+
+.desktop-sidebar-search-field {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-input-border, var(--vscode-widget-border));
+  border-radius: 6px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-descriptionForeground);
+}
+
+.desktop-sidebar-search-field:focus-within {
+  border-color: var(--vscode-focusBorder);
+}
+
+.desktop-sidebar-search-icon {
+  display: flex;
+  flex: none;
+}
+
+.desktop-sidebar-search-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.desktop-sidebar-search-input::placeholder {
+  color: var(
+    --vscode-input-placeholderForeground,
+    var(--vscode-descriptionForeground)
+  );
+}
+
+.desktop-sidebar-search-filter {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vscode-icon-foreground, var(--vscode-foreground));
+  cursor: pointer;
+}
+
+.desktop-sidebar-search-filter:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+/* 筛选生效期间按钮转为品牌红：提示「当前列表是筛过的」。 */
+.desktop-sidebar-search-filter.is-active {
+  color: var(--vscode-brand-primary, #c1292e);
+}
+
+/* 面板：右对齐挂在筛选按钮下方；侧栏本身 overflow:hidden，故用 fixed 逃逸由
+   JS 计算位置会更复杂 —— 这里用绝对定位 + 侧栏允许 hover 菜单逃逸的同一做法
+   （.desktop-session-menu 也是 fixed）。用 fixed 时跟随滚动会错位，故本面板
+   用 absolute 挂在搜索行上，父级 .desktop-sidebar-search 自身不裁切。 */
+.desktop-session-filter-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 1200;
+  width: 200px;
+  box-sizing: border-box;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--vscode-widget-border);
+  border-radius: 8px;
+  background: var(--vscode-menu-background, var(--vscode-panel-background));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.36);
+}
+
+.desktop-session-filter-title {
+  padding: 4px 6px 2px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--vscode-descriptionForeground);
+}
+
+.desktop-session-filter-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.desktop-session-filter-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.desktop-session-filter-opt:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+/* 勾选框：多选用方框画对勾，单选用圆点画实心点 —— 形状即「多选/单选」的线索。 */
+.desktop-session-filter-box {
+  position: relative;
+  flex: none;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  border: 1px solid var(--vscode-checkbox-border, var(--vscode-widget-border));
+  border-radius: 3px;
+  background: var(--vscode-checkbox-background, transparent);
+}
+
+.desktop-session-filter-box--dot {
+  border-radius: 50%;
+}
+
+.desktop-session-filter-opt.is-on .desktop-session-filter-box {
+  border-color: var(--vscode-brand-primary, #c1292e);
+  background: var(--vscode-brand-primary, #c1292e);
+}
+
+.desktop-session-filter-opt.is-on .desktop-session-filter-box::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0;
+  width: 3px;
+  height: 6px;
+  border: solid var(--vscode-button-foreground, #fff);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.desktop-session-filter-opt.is-on .desktop-session-filter-box--dot::after {
+  left: 3px;
+  top: 3px;
+  width: 4px;
+  height: 4px;
+  border: none;
+  border-radius: 50%;
+  background: var(--vscode-button-foreground, #fff);
+  transform: none;
+}
+
+.desktop-session-filter-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--vscode-widget-border);
+}
+
+.desktop-session-filter-btn {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 5px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.desktop-session-filter-btn--ghost {
+  border: 1px solid var(--vscode-widget-border);
+  background: transparent;
+  color: var(--vscode-foreground);
+}
+
+.desktop-session-filter-btn--ghost:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.desktop-session-filter-btn--primary {
+  border: 1px solid transparent;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+}
+
+.desktop-session-filter-btn--primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+/* 搜索/筛选后一个会话都没命中：就地提示，不再展示空分组。 */
+.desktop-session-no-match {
+  margin: 8px 12px 0;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+
+/* 桌面端：宽度/字号与侧栏菜单条目同档（28px 高、13px 字）。 */
+[data-host="desktop"] .desktop-sidebar-search-field,
+[data-host="desktop"] .desktop-sidebar-search-filter {
+  height: 30px;
+}
+
+[data-host="desktop"] .desktop-sidebar-search-input,
+[data-host="desktop"] .desktop-session-filter-opt,
+[data-host="desktop"] .desktop-session-no-match {
+  font-size: 13px;
+}
+
+[data-host="desktop"] .desktop-session-filter-pop {
+  width: 216px;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+[data-host="desktop"] .desktop-session-filter-opt {
+  height: 28px;
+}
+
+[data-host="desktop"] .desktop-session-filter-btn--primary {
+  background: var(--vscode-brand-primary, #c1292e);
+  color: #ffffff;
+}

@@ -182,6 +182,9 @@ export interface DesktopSessionEntry {
   sessionId: string;
   title: string;
   lastActiveAt: number;
+  /** 会话创建时间（毫秒）。侧边栏「创建日期」筛选按它分档；宿主恒下发（老索引
+   *  条目在宿主侧回填为 lastActiveAt），缺失时筛选回落 lastActiveAt。 */
+  createdAt?: number;
   /** True when this session lives in a worktree (delete also cleans up branch+dir). */
   hasWorktree: boolean;
   /** True while this session is generating — drives the per-session running dot (FR-031). */
