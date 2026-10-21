@@ -4,13 +4,13 @@ import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
-// Desktop 会话重命名截图（spec desktop-sessions.md「会话重命名（侧边栏行内
-// 编辑）」）：行菜单（并排打开 / 重命名 / 删除会话）与行内输入态。共享 webview
+// Desktop 会话重命名截图（spec desktop-sessions.md「会话重命名」）：行菜单
+// （并排打开 / 重命名 / 删除会话）与重命名弹窗（预填并全选原标题）。共享 webview
 // bundle 需先构建（node esbuild.config.mjs）。
 const DIR = "/Users/dev/projects/nebula-platform";
 
 test.describe("Desktop 会话重命名截图", () => {
-  test("侧边栏行菜单与行内改名", async ({ webviewPage }) => {
+  test("侧边栏行菜单与重命名弹窗", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 960, height: 640 });
 
@@ -66,11 +66,9 @@ test.describe("Desktop 会话重命名截图", () => {
       "../../docs/public/screenshots/desktop-session-rename-menu.webp",
     );
 
-    // 2. 行内输入态：标题位被输入框就地顶掉（预填并全选原标题）
+    // 2. 重命名弹窗：预填原标题并全选，名称校验提示在输入框下方
     await webviewPage.getByTestId("desktop-session-menu-rename").click();
-    const input = webviewPage.getByTestId(
-      "desktop-session-rename-input-s-rn-2",
-    );
+    const input = webviewPage.getByTestId("session-rename-input");
     await expect(input).toBeFocused();
     await input.fill("登录页单测：补齐边界用例");
     await screenshotWebp(
