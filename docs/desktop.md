@@ -37,6 +37,12 @@ _产品下载页面_
 
 ![远程目录浏览](/screenshots/desktop-remote-dir-browser.webp)
 
+连接远端主机后，右侧面板同样作用在远端机器上：终端面板跑的是远端 shell 的 PTY，差异面板读的是远端工作区的 git 状态，都不需要先把代码同步到本地。
+
+![远端终端面板](/screenshots/desktop-ssh-remote-terminal.webp)
+
+![远端差异面板](/screenshots/desktop-ssh-remote-diff.webp)
+
 #### 3）工作目录为git仓库
 
 当你选择的工作目录是 git 仓库、且处于新会话状态（消息列表为空）时，工作目录选择器旁会显示分支选择器与「worktree」勾选项，让你在基于所选分支创建的临时 worktree 中开会话，并行试验而不污染主工作区。
@@ -971,6 +977,10 @@ CodeWave IDE 随 SDK 内置了「规格驱动开发」（SDD）插件，帮助�
 
 ![预览全屏](/screenshots/desktop-preview-fullscreen.webp)
 
+预览面板全屏时对话列收起、页面占满内容区，元素拾取照常可用：全屏下提交一条元素评论，面板自动退出全屏、对话回来，评论已追加到输入框且输入框获得焦点，可以接着拾取下一个元素——多次拾取的评论按顺序累积在同一个输入框里，统一编辑后一起发送。
+
+![全屏拾取评论后回到对话](/screenshots/desktop-preview-comment-after-fullscreen.webp)
+
 ### 4.3 Artifacts产物分享
 
 Artifact：把本地 HTML 或 Markdown 文件发布成一个可分享的网页链接，一键生成、可更新、默认私有。
@@ -1192,6 +1202,8 @@ Artifact：把本地 HTML 或 Markdown 文件发布成一个可分享的网页�
 内置插件 SDD（规格驱动开发）开关——该视图的唯一交互控件：切换写回项目 `.wave/settings.json` 的 `enabledPlugins`（自动创建或更新功能规格说明）。插件变更（安装 / 卸载 / 启用 / 禁用 / 更新，含本开关）**不再需要重建对话**：变更落盘后桌面端提示「插件已变更。运行 /reload-plugins 使其生效。」，你在会话里输入 `/reload-plugins` 即可在同一对话内就地生效（不打断正在生成的回复）；未敲命令前，既有对话继续用旧配置，新建对话自动按新配置装载。详见 [4.1 SDD](#_4-1-sdd)。
 
 ![项目设置](/screenshots/desktop-settings-project.webp)
+
+![插件变更待应用提示](/screenshots/desktop-settings-plugin-change.webp)
 
 ### 6.5 技能、子代理、钩子与 MCP 服务
 

@@ -111,11 +111,6 @@ desktopTest.describe(
         await expect(overlay).toContainText(
           "worktree 目录与临时分支将一并删除",
         );
-
-        await screenshotWebp(
-          webviewPage,
-          "../../docs/public/screenshots/desktop-confirm-delete.webp",
-        );
       },
     );
   },
