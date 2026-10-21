@@ -1,0 +1,89 @@
+/* 空态页「快捷方式」区（提示词模板入口）：一级 12 个分类 ⇄ 二级返回胶囊 + 模板。
+   宽度与下方输入卡片同档（IDE 800 / 桌面 768，见 MessageInput.css 与
+   host-desktop.css 的 .input-wrapper max-width），所以两块的左右边线对齐。 */
+.quick-start {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0 16px;
+  display: flex;
+  justify-content: center;
+}
+
+.quick-start-row {
+  width: 100%;
+  max-width: 800px;
+  /* 一级恒为两行高：切到二级（子项更少）时下方输入卡片不位移。 */
+  min-height: 64px;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+[data-host="desktop"] .quick-start-row {
+  max-width: 768px;
+}
+
+.quick-start-cat,
+.quick-start-sub,
+.quick-start-back {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid var(--vscode-widget-border);
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.quick-start-cat:hover,
+.quick-start-sub:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+/* 二级子项：hover 用品牌红描边提示「点了会填进输入框」，与侧栏活动器同色。 */
+.quick-start-sub:hover {
+  border-color: var(--vscode-brand-primary, #c1292e);
+  color: var(--vscode-brand-primary, #c1292e);
+}
+
+/* 返回胶囊 = 当前分类本身（与侧栏选中行同一套选中底 + 加粗），不引入新主色。 */
+.quick-start-back {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 11px 0 8px;
+  border-color: var(--vscode-foreground);
+  opacity: 0.9;
+  font-weight: 600;
+}
+
+.quick-start-back:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.quick-start-back svg {
+  display: block;
+  flex: none;
+}
+
+/* 分类与其子分类之间的分隔竖线。 */
+.quick-start-divider {
+  width: 1px;
+  height: 14px;
+  align-self: center;
+  background: var(--vscode-widget-border);
+}
+
+/* 桌面端字号升一档（与输入卡 14px 同密度档），高度不变。 */
+[data-host="desktop"] .quick-start-cat,
+[data-host="desktop"] .quick-start-sub,
+[data-host="desktop"] .quick-start-back {
+  font-size: 13px;
+}
