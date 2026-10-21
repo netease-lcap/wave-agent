@@ -107,6 +107,7 @@
     "type-check": "tsc --noEmit --incremental && tsc -p tests --noEmit --incremental",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:e2e:completion": "node scripts/runInlineCompletionE2E.mjs",
     "test:unit": "vitest run",
     "test:unit:coverage": "vitest run --coverage",
     "preinstall:vsix": "pnpm run package",
@@ -114,10 +115,13 @@
     "push:tag": "git push origin $(git describe --tags --abbrev=0)"
   },
   "devDependencies": {
+    "@types/mocha": "^10.0.10",
     "@types/node": "^25.0.1",
     "@types/vscode": "^1.95.0",
+    "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.28.0",
+    "mocha": "^12.0.3",
     "tree-sitter-wasms": "0.1.11",
     "typescript": "^7.0.2",
     "vitest": "^4.1.5",

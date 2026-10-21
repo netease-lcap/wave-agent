@@ -84,15 +84,15 @@ tail -f packages/jetbrains/build/idea-sandbox/IC-2024.2/log/idea.log | grep -i w
 
 插件代码里用 `com.intellij.openapi.diagnostic.logger<T>()` 打日志，搜以下关键词：
 
-| 关键词 | 来源 | 含义 |
-|--------|------|------|
-| `[wave-stdio]` | `StdioClient.kt` | wave 进程的 stderr 输出 |
-| `wave stdio stdout stream closed` | `StdioClient.kt` | wave 进程退出 |
-| `Failed to parse stdio line` | `StdioClient.kt` | JSON-RPC 解析失败 |
-| `Failed to parse webview message` | `JcefBridge.kt` | webview→Kotlin 消息解析失败 |
-| `executeJavaScript failed` | `JcefBridge.kt` | Kotlin→webview 注入失败 |
-| `Failed to load wave webview` | `WavePanel.kt` | 资源提取或 HTML 加载失败 |
-| `Wave session error` | `WaveSession.kt` | Agent 回调报错 |
+| 关键词                            | 来源             | 含义                        |
+| --------------------------------- | ---------------- | --------------------------- |
+| `[wave-stdio]`                    | `StdioClient.kt` | wave 进程的 stderr 输出     |
+| `wave stdio stdout stream closed` | `StdioClient.kt` | wave 进程退出               |
+| `Failed to parse stdio line`      | `StdioClient.kt` | JSON-RPC 解析失败           |
+| `Failed to parse webview message` | `JcefBridge.kt`  | webview→Kotlin 消息解析失败 |
+| `executeJavaScript failed`        | `JcefBridge.kt`  | Kotlin→webview 注入失败     |
+| `Failed to load wave webview`     | `WavePanel.kt`   | 资源提取或 HTML 加载失败    |
+| `Wave session error`              | `WaveSession.kt` | Agent 回调报错              |
 
 ### 在 IDE 内查看日志
 
@@ -128,6 +128,7 @@ packages/jetbrains/build/idea-sandbox/IC-2024.2/config/options/wave.xml
 **根因**：`JBCefJSQuery` 注入的全局函数名是 `cefQuery_<hash>_<index>`，**不是** `cefQuery`。shim 不能直接调 `window.cefQuery`，否则报 `Uncaught TypeError: window.cefQuery_xxx is not a function`，消息全丢。
 
 **当前机制**（`JcefBridge.kt` + `vscode-shim.js`）：
+
 - `JcefBridge` 注册 `CefLoadHandlerAdapter`，在 `onLoadEnd` 时用 `jsQuery.inject("request")` 注入固定桥接函数 `window.__wavePostMessage`——它内部调用真正的 `cefQuery_<hash>_<index>`。
 - shim 的 `postMessage` 调 `__wavePostMessage`，并加 queue + 10ms poll（React mount 触发 `webviewReady` 可能早于 `onLoadEnd` 注入）。
 
@@ -175,17 +176,30 @@ cd ../jetbrains && ./gradlew runIde --no-daemon
 - [ ] 在输入框打字发消息，`idea.log` 出现 `[wave-stdio]` 相关日志（说明 stdio 链路通）
 - [ ] 关闭工具窗口，wave 子进程被清理（`ps aux | grep wave` 不应残留 `--stdio` 进程）
 
-## 8. 关键源码位置
+## 8. 真机 UI 测试（补全链路）
 
-| 文件 | 职责 |
-|------|------|
-| `src/main/kotlin/.../WavePanel.kt` | JCEF 浏览器 + 全链路接通入口 |
-| `src/main/kotlin/.../bridge/JcefBridge.kt` | JS↔Kotlin 双向消息桥 |
-| `src/main/kotlin/.../bridge/WebviewContentBuilder.kt` | 资源提取 + HTML 生成 |
-| `src/main/kotlin/.../session/WaveSession.kt` | stdio 连接 + 状态 + 节流 |
-| `src/main/kotlin/.../session/MessageHandler.kt` | webview 命令分发 |
-| `src/main/kotlin/.../session/PermissionFlow.kt` | 权限确认流程 |
-| `src/main/kotlin/.../stdio/StdioClient.kt` | JSON-RPC 传输层 |
-| `src/main/kotlin/.../stdio/StdioAgent.kt` | Agent 封装 + 通知映射 |
-| `src/main/kotlin/.../stdio/BinaryResolver.kt` | wave 二进制查找/安装 |
-| `src/main/resources/webview/vscode-shim.js` | acquireVsCodeApi + __waveReceive 垫片 |
+```bash
+pnpm jb:test:ui                            # 全部 integrationTest
+pnpm jb:test:ui -- --tests "*completion*"  # 只跑补全
+```
+
+用 JetBrains 官方 **Starter + Driver**（`intellijPlatformTesting.testIdeUi`）拉起一个真实 IDE、装好本插件再驱动它，覆盖单测与平台 fixture 看不到的部分：插件在真机里被加载、编辑器里真的画出 ghost text、以及跨文件定义片段（`CompletionSnippets.kt` 走真实 PSI）。
+
+- 需要：可用的模型配置（`~/.wave/settings.json`），以及一次屏幕会话（IDE 会真的弹窗）；不需要手动点鼠标——测试通过 Driver RPC 调平台 action 驱动，不依赖 macOS 的 Accessibility 权限（Robot 的键入事件在无该权限时会被静默丢弃，所以测试不用 Robot）。
+- 首次运行会下载 IDE（`out/perf-startup/tests/IC-<build>/`），之后热态约 1 分钟跑完。
+- 失败时日志在 `out/perf-startup/tests/IC-<build>/waveInlineCompletion/log/idea.log`（崩溃/断言失败还会带一张全屏截图）。
+
+## 9. 关键源码位置
+
+| 文件                                                  | 职责                                    |
+| ----------------------------------------------------- | --------------------------------------- |
+| `src/main/kotlin/.../WavePanel.kt`                    | JCEF 浏览器 + 全链路接通入口            |
+| `src/main/kotlin/.../bridge/JcefBridge.kt`            | JS↔Kotlin 双向消息桥                   |
+| `src/main/kotlin/.../bridge/WebviewContentBuilder.kt` | 资源提取 + HTML 生成                    |
+| `src/main/kotlin/.../session/WaveSession.kt`          | stdio 连接 + 状态 + 节流                |
+| `src/main/kotlin/.../session/MessageHandler.kt`       | webview 命令分发                        |
+| `src/main/kotlin/.../session/PermissionFlow.kt`       | 权限确认流程                            |
+| `src/main/kotlin/.../stdio/StdioClient.kt`            | JSON-RPC 传输层                         |
+| `src/main/kotlin/.../stdio/StdioAgent.kt`             | Agent 封装 + 通知映射                   |
+| `src/main/kotlin/.../stdio/BinaryResolver.kt`         | wave 二进制查找/安装                    |
+| `src/main/resources/webview/vscode-shim.js`           | acquireVsCodeApi + \_\_waveReceive 垫片 |

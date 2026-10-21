@@ -66,14 +66,15 @@ Always use `pnpm` as the package manager.
 
 Test layers, ordered fast→slow (the PR gate only runs unit + the demo screenshot job; the rest are post-merge):
 
-| Layer       | Where                                                      | Command                                                                                                                                                      |
-| ----------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Unit        | `*.test.ts` / `*.test.tsx`                                 | `pnpm -F <pkg> test:unit` — what PR CI gates                                                                                                                 |
-| Integration | `tests/integration/**`, `*.integration.test.ts`            | `pnpm run test:integration` (real git/spawn/fs, no LLM)                                                                                                      |
-| Webview e2e | `packages/webview/e2e/*.e2e.ts` (real Chromium)            | `pnpm -F wave-webview run test:e2e`                                                                                                                          |
-| Screenshots | `packages/webview/demo/*.demo.ts`                          | `pnpm -F wave-webview run test:demo` — **not a test layer**: drives the UI into position and captures docs screenshots; behaviour assertions belong in `e2e` |
-| Real-host   | `packages/desktop/tests/integration/*.integration.test.ts` | `pnpm -F wave-desktop run test:realhost` (real `DesktopHost` ↔ real `wave --stdio` child)                                                                   |
-| SDK surface | `scripts/check-sdk-surface.mjs`                            | `pnpm run check:sdk-surface` after `pnpm -F wave-agent-sdk build` (the PR-tier `sdk-surface` CI job)                                                         |
+| Layer       | Where                                                                   | Command                                                                                                                                                      |
+| ----------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Unit        | `*.test.ts` / `*.test.tsx`                                              | `pnpm -F <pkg> test:unit` — what PR CI gates                                                                                                                 |
+| Integration | `tests/integration/**`, `*.integration.test.ts`                         | `pnpm run test:integration` (real git/spawn/fs, no LLM)                                                                                                      |
+| Webview e2e | `packages/webview/e2e/*.e2e.ts` (real Chromium)                         | `pnpm -F wave-webview run test:e2e`                                                                                                                          |
+| Screenshots | `packages/webview/demo/*.demo.ts`                                       | `pnpm -F wave-webview run test:demo` — **not a test layer**: drives the UI into position and captures docs screenshots; behaviour assertions belong in `e2e` |
+| Real-host   | `packages/desktop/tests/integration/*.integration.test.ts`              | `pnpm -F wave-desktop run test:realhost` (real `DesktopHost` ↔ real `wave --stdio` child)                                                                   |
+| Real-IDE    | `packages/vscode/tests-e2e/`, `packages/jetbrains/src/integrationTest/` | `pnpm -F wave-vscode run test:e2e:completion` / `pnpm jb:test:ui` (real VS Code / real IDE via Starter+Driver, real model)                                   |
+| SDK surface | `scripts/check-sdk-surface.mjs`                                         | `pnpm run check:sdk-surface` after `pnpm -F wave-agent-sdk build` (the PR-tier `sdk-surface` CI job)                                                         |
 
 Everything above runs **inside the repo**, where `node_modules` is complete and
 `@vscode/ripgrep-<platform>` resolves. The host apps are what actually gets
@@ -83,6 +84,17 @@ green suite can still ship a host that dies on launch — v1.2.5 did exactly tha
 Nothing currently asserts the packaged artifact (the `host-bundle-load` job that
 inspected the dev-built bundles was rolled back); that side rests on the
 source-level checks in `scripts/check-sdk-surface.mjs`.
+
+The Real-IDE layer is the one exception to "everything runs inside the repo":
+it launches a real editor window, needs a usable model config in
+`~/.wave/settings.json`, and therefore stays local/manual (no CI). The VS Code
+suite drives the extension host (`editor.action.inlineSuggest.*`); the JetBrains
+suite drives a Starter-downloaded IDE over the Driver RPC and calls platform
+actions (`EditorTextEnd`, `CallInlineCompletionAction`,
+`InsertInlineCompletionAction`) instead of `java.awt.Robot`, because Robot input
+is silently dropped on macOS without Accessibility permission. Both suites assert
+on accepted document text — VS Code exposes no API to read a suggestion, and
+JetBrains only exposes ghost text as an opaque inlay.
 
 ### Linting
 

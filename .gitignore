@@ -24,6 +24,11 @@ vendor/
 *.vsix
 packages/vscode/webview/dist/
 packages/vscode/releases/
+# @vscode/test-electron cache (integration-test runs)
+packages/vscode/.vscode-test/
+# IDE Starter artifacts (JetBrains integrationTest runs)
+out/
+packages/jetbrains/allure-results/
 
 # Desktop app
 packages/desktop/dist/
