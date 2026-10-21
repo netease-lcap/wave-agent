@@ -12,6 +12,8 @@
  *
  * 运行：`cd packages/agent-sdk && pnpm exec tsx examples/features/bash-sandbox-demo.ts`
  * 只跑第一段：加 `--boundary-only`（不需要模型凭据）。
+ * 只跑第二段：加 `--agent-only` —— `sandbox-runtime` 的 `initialize()` 是进程级
+ * 幂等的，第一段先跑过之后第二段的配置不会生效，两段必须分进程看结论。
  *
  * 前置：macOS 自带 `sandbox-exec`；Linux 需要 `bwrap` + `socat`（有 `rg` 更好，
  * read-deny 的通配要靠它展开）；Windows 不支持——与 Claude Code 保持一致，命令
@@ -29,7 +31,7 @@
  * 之后改不动你的边界；本示例的临时目录里没有用户级配置，所以它能生效。
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -70,6 +72,36 @@ function printProbe(result: ProbeResult): void {
 }
 
 /**
+ * 在包装后的命令上跑一次 shell。
+ *
+ * 必须是异步的：沙箱的网络白名单靠 `sandbox-runtime` 在**本进程**里起的代理，
+ * `spawnSync` 会堵死事件循环，代理回不了包 —— 每条出网探针都会超时，看起来像
+ * 「白名单的放行方向不生效」。生产路径（Bash 工具）本来就是异步 spawn。
+ */
+function runWrapped(
+  wrapped: string,
+  options: { cwd: string; tempDir: string },
+): Promise<{ status: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(wrapped, {
+      shell: "/bin/bash",
+      cwd: options.cwd,
+      env: {
+        ...process.env,
+        TMPDIR: options.tempDir,
+        TMP: options.tempDir,
+        TEMP: options.tempDir,
+      },
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => (stdout += chunk));
+    child.stderr.on("data", (chunk) => (stderr += chunk));
+    child.on("close", (status) => resolve({ status, stdout, stderr }));
+  });
+}
+
+/**
  * 包装器自己还没跑起来就失败时的特征串。
  *
  * 容器 / CI 里常见「嵌套 user namespace 被限制」：`bwrap` 能起，但沙箱自带的
@@ -103,12 +135,7 @@ async function preflightSandbox(
   if (!wrapped) return { started: false, detail: "包装失败" };
 
   const tempDir = manager.prepareTempDir();
-  const result = spawnSync(wrapped, {
-    shell: "/bin/bash",
-    cwd: workdir,
-    encoding: "utf8",
-    env: { ...process.env, TMPDIR: tempDir, TMP: tempDir, TEMP: tempDir },
-  });
+  const result = await runWrapped(wrapped, { cwd: workdir, tempDir });
   manager.cleanup();
   if (result.status === 0) return { started: true, detail: "" };
   const firstLine = (result.stderr || result.stdout || "")
@@ -137,17 +164,12 @@ async function runInSandbox(
       console.log(`⚠️  包装失败，跳过「${probe.label}」`);
       continue;
     }
-    const result = spawnSync(wrapped, {
-      shell: "/bin/bash",
-      cwd: workdir,
-      encoding: "utf8",
-      env: { ...process.env, TMPDIR: tempDir, TMP: tempDir, TEMP: tempDir },
-    });
+    const result = await runWrapped(wrapped, { cwd: workdir, tempDir });
     printProbe({
       probe,
       exitCode: result.status,
       // 违规回注：生产路径里这段会被拼进工具结果，模型才知道是沙箱拦的。
-      output: manager.annotate(commandId, result.stderr ?? ""),
+      output: manager.annotate(commandId, result.stderr),
     });
     manager.cleanup();
   }
@@ -464,6 +486,11 @@ async function demoAgent(allowUnixSockets: boolean): Promise<void> {
 async function main(): Promise<void> {
   // `--boundary-only`：只跑第一段。没有模型凭据时用它，或者只想看边界时用它。
   const boundaryOnly = process.argv.includes("--boundary-only");
+  // `--agent-only`：只跑第二段。`sandbox-runtime` 的 `initialize()` 是进程级的
+  // 幂等调用 —— 第一段先跑过之后，第二段那套「工作目录可写」的配置不会被换上
+  // （代理也不会重启），于是第二段里连工作目录内的写都会被判掉。想验第二段的
+  // 真实结论就单独跑一遍。
+  const agentOnly = process.argv.includes("--agent-only");
   // `--allow-unix-sockets`：不装 seccomp 过滤器。有些内核上这个过滤器的辅助进程
   // 起不来（写不了 /proc/self/setgroups），整条沙箱就都跑不了；打开它沙箱照旧，
   // 只是不再拦 AF_UNIX 套接字。
@@ -471,14 +498,25 @@ async function main(): Promise<void> {
 
   console.log("🧪 Wave Agent SDK — Bash 沙箱示例\n");
 
-  console.log("=== 1. 边界实测（不需要模型） ===");
-  await demoBoundary(allowUnixSockets);
+  if (!agentOnly) {
+    console.log("=== 1. 边界实测（不需要模型） ===");
+    await demoBoundary(allowUnixSockets);
 
-  if (boundaryOnly) {
-    process.exit(0);
+    if (boundaryOnly) {
+      process.exit(0);
+    }
+
+    console.log(
+      "\n⚠️  第二段与第一段同进程：第一段已经初始化过 sandbox-runtime，" +
+        "这一段的配置不会替换它（含工作目录可写），",
+    );
+    console.log("   所以下面「inside.txt：没创建」不能当成边界结论。");
+    console.log(
+      "   想看真实结论：`… --agent-only`（单独起进程，跳过第一段）。\n",
+    );
   }
 
-  console.log("\n=== 2. Agent 落地（需要模型凭据） ===");
+  console.log("=== 2. Agent 落地（需要模型凭据） ===");
   await demoAgent(allowUnixSockets);
 
   process.exit(0);
