@@ -12,8 +12,7 @@
  *
  * 运行：`cd packages/agent-sdk && pnpm exec tsx examples/features/bash-sandbox-demo.ts`
  * 只跑第一段：加 `--boundary-only`（不需要模型凭据）。
- * 只跑第二段：加 `--agent-only` —— `sandbox-runtime` 的 `initialize()` 是进程级
- * 幂等的，第一段先跑过之后第二段的配置不会生效，两段必须分进程看结论。
+ * 只跑第二段：加 `--agent-only`（跳过边界实测，直接看沙箱内的 Bash 免确认）。
  *
  * 前置：macOS 自带 `sandbox-exec`；Linux 需要 `bwrap` + `socat`（有 `rg` 更好，
  * read-deny 的通配要靠它展开）；Windows 不支持——与 Claude Code 保持一致，命令
@@ -486,10 +485,9 @@ async function demoAgent(allowUnixSockets: boolean): Promise<void> {
 async function main(): Promise<void> {
   // `--boundary-only`：只跑第一段。没有模型凭据时用它，或者只想看边界时用它。
   const boundaryOnly = process.argv.includes("--boundary-only");
-  // `--agent-only`：只跑第二段。`sandbox-runtime` 的 `initialize()` 是进程级的
-  // 幂等调用 —— 第一段先跑过之后，第二段那套「工作目录可写」的配置不会被换上
-  // （代理也不会重启），于是第二段里连工作目录内的写都会被判掉。想验第二段的
-  // 真实结论就单独跑一遍。
+  // `--agent-only`：只跑第二段（跳过十二次边界探针，直接看「沙箱内的 Bash 免
+  // 确认」）。`sandbox-runtime` 的运行时配置是进程级的，但 `SandboxManager` 每条
+  // 命令都会把自己那份推上去（`updateConfig`），所以两段同进程连跑也是对的。
   const agentOnly = process.argv.includes("--agent-only");
   // `--allow-unix-sockets`：不装 seccomp 过滤器。有些内核上这个过滤器的辅助进程
   // 起不来（写不了 /proc/self/setgroups），整条沙箱就都跑不了；打开它沙箱照旧，
@@ -505,15 +503,6 @@ async function main(): Promise<void> {
     if (boundaryOnly) {
       process.exit(0);
     }
-
-    console.log(
-      "\n⚠️  第二段与第一段同进程：第一段已经初始化过 sandbox-runtime，" +
-        "这一段的配置不会替换它（含工作目录可写），",
-    );
-    console.log("   所以下面「inside.txt：没创建」不能当成边界结论。");
-    console.log(
-      "   想看真实结论：`… --agent-only`（单独起进程，跳过第一段）。\n",
-    );
   }
 
   console.log("=== 2. Agent 落地（需要模型凭据） ===");
