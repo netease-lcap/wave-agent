@@ -14,8 +14,9 @@ vi.mock("../../src/styles/DesktopApp.css", () => ({}));
 vi.mock("../../src/styles/SessionBoard.css", () => ({}));
 
 /**
- * 侧边栏行内重命名（spec desktop-sessions.md「会话重命名（侧边栏行内编辑）」
- * 场景 1–10）。会话树是宿主推送的快照，侧边栏行与会话看板卡片同源读取它。
+ * 会话重命名（spec desktop-sessions.md「会话重命名」）：入口是侧边栏会话行
+ * 「⋯」菜单里的重命名，打开居中模态（预填当前名称并全选），保存即改写该行。
+ * 会话树是宿主推送的快照，侧边栏行与会话看板卡片同源读取它。
  */
 const session = (sessionId: string, title: string) => ({
   sessionId,
@@ -49,13 +50,14 @@ const renameCalls = (vscode: { postMessage: ReturnType<typeof vi.fn> }) =>
     .map((c) => c[0] as Record<string, unknown>)
     .filter((m) => m.command === "renameSession");
 
-/** 从行菜单进入该会话的行内编辑态。 */
+/** 从行菜单进入重命名弹窗，返回预填后的输入框与保存按钮。 */
 function beginRename(sessionId: string) {
   fireEvent.click(screen.getByTestId(`desktop-session-more-${sessionId}`));
   fireEvent.click(screen.getByTestId("desktop-session-menu-rename"));
-  return screen.getByTestId(
-    `desktop-session-rename-input-${sessionId}`,
-  ) as HTMLInputElement;
+  return {
+    input: screen.getByTestId("session-rename-input") as HTMLInputElement,
+    save: screen.getByTestId("session-rename-save"),
+  };
 }
 
 function replyRenamed(
@@ -75,7 +77,7 @@ function replyRenamed(
   });
 }
 
-describe("会话重命名 · 侧边栏行内编辑", () => {
+describe("会话重命名", () => {
   it("行菜单三项，顺序为并排打开 / 重命名 / 删除会话，重命名不用危险配色", () => {
     renderReady();
 
@@ -89,39 +91,34 @@ describe("会话重命名 · 侧边栏行内编辑", () => {
       "重命名",
       "删除会话",
     ]);
-    // 危险配色只属于删除项（场景 1）。
+    // 危险配色只属于删除项。
     expect(items[1].className).not.toContain("--danger");
     expect(items[2].className).toContain("--danger");
   });
 
-  it("激活重命名：标题被行内输入框就地顶掉，自动聚焦且内容全选，列表不进入加载/骨架态", () => {
+  it("激活重命名：打开居中模态，预填当前名称、自动聚焦并全选，列表不进入加载/禁用态", () => {
     renderReady();
 
-    const input = beginRename("s1");
+    const { input } = beginRename("s1");
 
-    // 就地顶掉标题位（不是模态对话框）：该行的标题按钮消失、输入框出现。
-    expect(
-      screen.queryByTestId("desktop-session-main-s1"),
-    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("session-rename-dialog")).toBeInTheDocument();
+    expect(screen.getByText("重命名")).toBeInTheDocument();
     expect(input.value).toBe("hello a");
-    // 自动聚焦 + 全选（场景 2）。
     expect(document.activeElement).toBe(input);
     expect(input.selectionStart).toBe(0);
     expect(input.selectionEnd).toBe("hello a".length);
-    // 列表不进 loading/禁用/骨架态：其他行照旧可点（场景 2）。
+    // 列表照旧：其他行仍可见、仍可点（弹窗是覆盖层，不替换列表）。
     expect(screen.getByTestId("desktop-session-main-s2")).toBeInTheDocument();
     expect(screen.getByTestId("desktop-session-main-s2")).toBeEnabled();
   });
 
-  it("Enter 保存：行标题立即乐观更新，且只发一次 renameSession（Enter 紧跟的 blur 被闩锁挡住）", () => {
+  it("Enter 保存：行标题立即乐观更新，宿主确认后弹窗关闭，且只发一次 renameSession", async () => {
     const vscode = renderReady();
-    const input = beginRename("s1");
+    const { input } = beginRename("s1");
 
     act(() => {
       fireEvent.change(input, { target: { value: "改过的名字" } });
       fireEvent.keyDown(input, { key: "Enter" });
-      // 浏览器在保存后随即失焦：同一次 act 内派发，走的就是闩锁那条路径（场景 5）。
-      fireEvent.blur(input);
     });
 
     expect(screen.getByTestId("desktop-session-main-s1")).toHaveTextContent(
@@ -135,26 +132,34 @@ describe("会话重命名 · 侧边栏行内编辑", () => {
       title: "改过的名字",
     });
     expect(typeof calls[0].requestId).toBe("string");
+
+    // 宿主确认后才关弹窗（失败要留在弹窗里提示）。
+    replyRenamed(calls[0].requestId as string, true);
+    await waitFor(() =>
+      expect(screen.queryByTestId("session-rename-dialog")).toBeNull(),
+    );
   });
 
-  it("blur 保存（点击输入框之外）", () => {
+  it("点「保存」按钮同样生效", async () => {
     const vscode = renderReady();
-    const input = beginRename("s1");
+    const { input, save } = beginRename("s1");
 
     act(() => {
-      fireEvent.change(input, { target: { value: "blur 保存" } });
-      fireEvent.blur(input);
+      fireEvent.change(input, { target: { value: "按钮保存" } });
     });
+    fireEvent.click(save);
 
-    expect(screen.getByTestId("desktop-session-main-s1")).toHaveTextContent(
-      "blur 保存",
+    const calls = renameCalls(vscode);
+    expect(calls[0]).toMatchObject({ title: "按钮保存" });
+    replyRenamed(calls[0].requestId as string, true);
+    await waitFor(() =>
+      expect(screen.queryByTestId("session-rename-dialog")).toBeNull(),
     );
-    expect(renameCalls(vscode)[0]).toMatchObject({ title: "blur 保存" });
   });
 
-  it("Esc 回滚：退出编辑、标题不变、不发请求", () => {
+  it("Esc / 取消：关闭弹窗、标题不变、不发请求", () => {
     const vscode = renderReady();
-    const input = beginRename("s1");
+    const { input } = beginRename("s1");
 
     act(() => {
       fireEvent.change(input, { target: { value: "不要这个" } });
@@ -162,14 +167,22 @@ describe("会话重命名 · 侧边栏行内编辑", () => {
     });
 
     expect(renameCalls(vscode)).toHaveLength(0);
+    expect(screen.queryByTestId("session-rename-dialog")).toBeNull();
     expect(screen.getByTestId("desktop-session-main-s1")).toHaveTextContent(
       "hello a",
     );
+
+    // 重新打开走「取消」按钮这条路径。
+    beginRename("s1");
+    expect(screen.getByTestId("session-rename-dialog")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("session-rename-cancel"));
+    expect(screen.queryByTestId("session-rename-dialog")).toBeNull();
+    expect(renameCalls(vscode)).toHaveLength(0);
   });
 
-  it("trim 后为空什么都不做：不发请求、退出编辑、标题不变", () => {
+  it("名称称为空（仅空格）：不予保存并提示「会话名称不能为空」，弹窗保持打开", () => {
     const vscode = renderReady();
-    const input = beginRename("s1");
+    const { input } = beginRename("s1");
 
     act(() => {
       fireEvent.change(input, { target: { value: "   " } });
@@ -177,14 +190,25 @@ describe("会话重命名 · 侧边栏行内编辑", () => {
     });
 
     expect(renameCalls(vscode)).toHaveLength(0);
+    expect(screen.getByTestId("session-rename-error")).toHaveTextContent(
+      "会话名称不能为空",
+    );
+    // 弹窗没关：用户可以直接接着改。
+    expect(screen.getByTestId("session-rename-dialog")).toBeInTheDocument();
     expect(screen.getByTestId("desktop-session-main-s1")).toHaveTextContent(
       "hello a",
     );
+
+    // 重新输入即清掉校验提示。
+    act(() => {
+      fireEvent.change(input, { target: { value: "有名字了" } });
+    });
+    expect(screen.queryByTestId("session-rename-error")).toBeNull();
   });
 
   it("输入法组合中的 Enter 不算保存", () => {
     const vscode = renderReady();
-    const input = beginRename("s1");
+    const { input } = beginRename("s1");
 
     act(() => {
       fireEvent.change(input, { target: { value: "中文输入中" } });
@@ -192,15 +216,12 @@ describe("会话重命名 · 侧边栏行内编辑", () => {
     });
 
     expect(renameCalls(vscode)).toHaveLength(0);
-    // 仍是编辑态。
-    expect(
-      screen.getByTestId("desktop-session-rename-input-s1"),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("session-rename-dialog")).toBeInTheDocument();
   });
 
   it("输入框拦住按键冒泡：不触发行上的裸键/行菜单快捷键", () => {
     renderReady();
-    const input = beginRename("s1");
+    const { input } = beginRename("s1");
 
     const esc = new KeyboardEvent("keydown", {
       key: "Escape",
@@ -214,9 +235,9 @@ describe("会话重命名 · 侧边栏行内编辑", () => {
     expect(esc.defaultPrevented).toBe(true);
   });
 
-  it("保存失败：回滚原标题并给出可见的行内失败提示", async () => {
+  it("保存失败：回滚原标题，并在弹窗里给出宿主的失败原因", async () => {
     const vscode = renderReady();
-    const input = beginRename("s1");
+    const { input } = beginRename("s1");
 
     act(() => {
       fireEvent.change(input, { target: { value: "写盘失败" } });
@@ -224,48 +245,50 @@ describe("会话重命名 · 侧边栏行内编辑", () => {
     });
     replyRenamed(renameCalls(vscode)[0].requestId as string, false, "EACCES");
 
-    // 失败提示必须可见（不得只有静默回滚）——提示由 await 之后的状态更新渲染。
+    // 失败提示必须可见（不得只有静默回滚）。
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent("EACCES"),
     );
+    // 失败不关弹窗：用户能在原地重试。
+    expect(screen.getByTestId("session-rename-dialog")).toBeInTheDocument();
     expect(screen.getByTestId("desktop-session-main-s1")).toHaveTextContent(
       "hello a",
     );
   });
 
-  it("乐观更新同时落到会话看板卡片（场景 8）", () => {
+  it("乐观更新同时落到会话看板卡片", () => {
     const vscode = renderReady();
     // 侧边栏「活动」入口 → 看板与对话区互斥，侧边栏仍在。
     fireEvent.click(screen.getByTestId("desktop-sidebar-activity"));
     expect(screen.getByTestId("session-card-s1")).toBeInTheDocument();
 
-    const input = beginRename("s1");
+    const { input, save } = beginRename("s1");
     act(() => {
       fireEvent.change(input, { target: { value: "看板也变" } });
-      fireEvent.keyDown(input, { key: "Enter" });
     });
+    fireEvent.click(save);
 
     expect(screen.getByTestId("session-card-s1")).toHaveTextContent("看板也变");
     expect(renameCalls(vscode)).toHaveLength(1);
   });
 
-  it("两个会话同时改名：各自的回复按 requestId 配对，先失败的那个回滚自己的标题", async () => {
+  it("两个会话先后改名：各自的回复按 requestId 配对，先失败的那个回滚自己的标题", async () => {
     const vscode = renderReady();
 
     // 会话 s1 改名（回复尚未到达）。
-    let input = beginRename("s1");
+    let { input, save } = beginRename("s1");
     act(() => {
       fireEvent.change(input, { target: { value: "甲" } });
-      fireEvent.keyDown(input, { key: "Enter" });
     });
+    fireEvent.click(save);
     const first = renameCalls(vscode)[0];
 
     // 在 s1 仍在途时给 s2 改名。
-    input = beginRename("s2");
+    ({ input, save } = beginRename("s2"));
     act(() => {
       fireEvent.change(input, { target: { value: "乙" } });
-      fireEvent.keyDown(input, { key: "Enter" });
     });
+    fireEvent.click(save);
     const second = renameCalls(vscode)[1];
     expect(renameCalls(vscode)).toHaveLength(2);
 
@@ -275,7 +298,7 @@ describe("会话重命名 · 侧边栏行内编辑", () => {
       "乙",
     );
 
-    // s1 失败：必须回滚的是 s1（不能在途请求被后来的覆盖而吞掉这个回复）。
+    // s1 失败：必须回滚的是 s1（在途请求不得被后来的覆盖而吞掉这个回复）。
     replyRenamed(first.requestId as string, false, "EACCES", "s1");
     await waitFor(() =>
       expect(screen.getByTestId("desktop-session-main-s1")).toHaveTextContent(
@@ -289,11 +312,11 @@ describe("会话重命名 · 侧边栏行内编辑", () => {
 
   it("权威会话树刷新后清掉乐观覆盖（标题以宿主快照为准）", () => {
     const vscode = renderReady();
-    const input = beginRename("s1");
+    const { input, save } = beginRename("s1");
     act(() => {
       fireEvent.change(input, { target: { value: "暂定名字" } });
-      fireEvent.keyDown(input, { key: "Enter" });
     });
+    fireEvent.click(save);
     replyRenamed(renameCalls(vscode)[0].requestId as string, true);
 
     // 宿主随后推送带新标题的权威快照 → 覆盖表清空、展示以快照为准。
@@ -312,7 +335,7 @@ describe("会话重命名 · 侧边栏行内编辑", () => {
     );
   });
 
-  it("分屏头部标题随宿主推送的新标题更新（场景 8 的头部一半）", () => {
+  it("分屏头部标题随宿主推送的新标题更新", () => {
     renderReady();
     // 宿主把 s1 绑到唯一分屏并推送当前会话。
     sendCommand("desktopPanes", {
