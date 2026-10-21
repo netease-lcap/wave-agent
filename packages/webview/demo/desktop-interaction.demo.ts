@@ -190,8 +190,8 @@ test.describe("Desktop interaction refinements", () => {
     // 保活」) — the shown one carries data-parked="false", the parked ones are
     // invisible but still mounted.
     await webviewPage.getByTestId("panel-fullscreen").click();
-    // 对话列隐藏但仍挂载（草稿保留，spec desktop-preview.md 场景 7）。
-    await expect(webviewPage.locator(".desktop-chat-main")).toBeHidden();
+    // 对话列缩成底部居中的浮动对话框（需求八，spec desktop-preview.md 场景 8）。
+    await expect(webviewPage.locator(".desktop-chat-main")).toBeVisible();
     await expect(
       webviewPage.locator(
         '.preview-guest[data-parked="false"] [data-testid="preview-pane"]',

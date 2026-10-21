@@ -1905,11 +1905,117 @@ body.is-panel-resizing webview {
   width: 100% !important;
 }
 
-/* 全屏时对话列隐藏但**保持挂载**：整块不渲染会连坐卸载 <MessageInput>，退出全屏
-   重挂载只能按宿主快照回填，最后一段输入（还在防抖窗口里）与滚动位置一起丢
-   （spec desktop-preview.md 场景 7）。折叠面板槽位同理——能保持挂载就保持。 */
+/* 全屏时对话列**保持挂载**，但缩成底部居中的悬浮 AI 对话框（spec
+   desktop-preview.md 场景 7/8/9，需求八原型「全屏预览右下角的悬浮对话框」）：
+   它既是全屏下加标注的落点，也是全屏下发消息的入口——所以不能整块卸载（卸载会
+   连坐销毁 <MessageInput>，草稿与滚动位置一起丢，见场景 7），也不能另起一个输入
+   框实例（两份草稿互相打架）。消息列表、任务清单、消息队列区在全屏里不显示。 */
 .desktop-chat-body.preview-fullscreen .desktop-chat-main {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  width: 420px;
+  max-width: calc(100% - 48px);
+  height: auto;
+  /* 基础样式给的是 flex:1 / height:100%（对话列铺满），浮动盒要按内容收高。 */
+  flex: none;
+  /* 盖在 preview guest 常驻层（z-index 2）之上，点击落在输入卡上。 */
+  z-index: 20;
+}
+
+.desktop-chat-body.preview-fullscreen
+  .desktop-chat-main
+  > :not(.input-area-container) {
   display: none;
+}
+
+/* 浮动卡只留输入框本身：任务清单与消息队列是对话列的陪衬，浮在预览页上会挡内容
+   （spec 场景 8「任务清单与消息队列区不显示」）。保持挂载，只是不显示。 */
+.desktop-chat-body.preview-fullscreen .desktop-chat-main .task-list-inline,
+.desktop-chat-body.preview-fullscreen
+  .desktop-chat-main
+  .queued-message-list-container {
+  display: none;
+}
+
+/* 输入卡自己的两块底色（.input-area-container / .input-container 都是
+   panel.background）在浮动形态里要去掉，否则浮起来的是一个面板色方块。 */
+.desktop-chat-body.preview-fullscreen .desktop-chat-main .input-area-container,
+.desktop-chat-body.preview-fullscreen .desktop-chat-main .input-container {
+  padding: 0;
+  background: transparent;
+}
+
+/* 浮动时给输入卡一层投影（聚焦时的通用阴影见 MessageInput.css :focus-within）。 */
+.desktop-chat-body.preview-fullscreen .desktop-chat-main .input-content {
+  box-shadow: 0 10px 28px var(--vscode-widget-shadow, rgba(16, 24, 40, 0.16));
+}
+
+/* 这一轮还在跑：输入卡让位给「正在工作」药丸（同一位置、同一视觉节奏）。 */
+.desktop-chat-body.preview-fullscreen.preview-working .desktop-chat-main {
+  display: none;
+}
+
+.preview-floating-working {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 273px;
+  height: 59px;
+  padding: 0 26px;
+  background: var(
+    --vscode-editorWidget-background,
+    var(--vscode-panel-background)
+  );
+  border: 2px solid var(--vscode-widget-border, rgba(16, 24, 40, 0.12));
+  border-radius: 30px;
+  box-shadow: 0 8px 22px var(--vscode-widget-shadow, rgba(16, 24, 40, 0.07));
+  color: var(--vscode-descriptionForeground, #8a8d93);
+}
+
+.preview-floating-working-dots {
+  display: grid;
+  grid-template-columns: repeat(2, 6px);
+  gap: 3px;
+  flex: none;
+}
+
+.preview-floating-working-dots i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: previewWorkingPulse 1.1s ease-in-out infinite;
+}
+
+.preview-floating-working-dots i:nth-child(2) {
+  animation-delay: 0.14s;
+}
+.preview-floating-working-dots i:nth-child(3) {
+  animation-delay: 0.28s;
+}
+.preview-floating-working-dots i:nth-child(4) {
+  animation-delay: 0.42s;
+}
+
+@keyframes previewWorkingPulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.preview-floating-working-text {
+  font-size: 16px;
 }
 
 /* Tabbed panel slot (spec「面板 tab 化」): the single slot hosts the tab strip
