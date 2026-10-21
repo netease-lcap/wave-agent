@@ -31,6 +31,46 @@ async function submitCommand(command: string) {
 }
 
 describe("/reload-plugins", () => {
+  it("桌面端：插件变更落盘后弹强引导确认框，点「立即重新加载」才发 reloadPlugins", () => {
+    const { vscode } = renderDesktopChatApp();
+    vscode.postMessage.mockClear();
+
+    // 宿主报告「插件已变更、待应用」（spec ecosystem/plugin.md「插件变更提示」）：
+    // 不再是顶部一句会被忽略的轻提示，而是必须处理一次的确认框。
+    act(() => {
+      sendHostMessage({ command: "pluginChangePending" });
+    });
+    expect(screen.getByText("插件已变更，重新加载后生效")).toBeInTheDocument();
+    expect(
+      screen.getByText(/重新加载会把磁盘上最新的插件状态应用到当前对话/),
+    ).toBeInTheDocument();
+    // 只是弹框，还没有重载——用户没点之前什么都不做。
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "reloadPlugins" }),
+    );
+
+    // 「稍后」：关掉弹窗、不重载，之后仍可手动敲命令。
+    act(() => {
+      fireEvent.click(screen.getByTestId("confirm-dialog-cancel"));
+    });
+    expect(screen.queryByText("插件已变更，重新加载后生效")).toBeNull();
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "reloadPlugins" }),
+    );
+
+    // 再收到一次信号，点「立即重新加载」⇒ 走既有的 reloadPlugins 命令。
+    act(() => {
+      sendHostMessage({ command: "pluginChangePending" });
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId("confirm-dialog-confirm"));
+    });
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "reloadPlugins" }),
+    );
+    expect(screen.queryByText("插件已变更，重新加载后生效")).toBeNull();
+  });
+
   it("IDE 端：只发 reloadPlugins，不进对话", async () => {
     const { vscode } = renderChatApp();
     vscode.postMessage.mockClear();

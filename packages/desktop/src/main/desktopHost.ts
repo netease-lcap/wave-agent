@@ -49,7 +49,6 @@ import {
   EXIT_PLAN_MODE_TOOL_NAME,
   ENTER_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
-  PLUGIN_CHANGE_PENDING_MESSAGE,
   PLUGIN_RELOADED_MESSAGE,
   StdioAgent,
   NotificationRouter,
@@ -6290,11 +6289,16 @@ export class DesktopHost {
 
   /**
    * 插件变更（装卸 / 启用禁用 / 更新 / 换作用域 / 内置开关）落盘后：**不重建任何
-   * 会话、不弹重建确认框**，只给一句一次性中性提示告知需要重载
-   * （docs/specs/ecosystem/plugin.md「插件变更的就地重载」；重建路径已整体废弃）。
+   * 会话、不弹重建确认框**，只发一次「待应用」信号（docs/specs/ecosystem/plugin.md
+   * 「插件变更的就地重载」；重建路径已整体废弃）。
+   *
+   * 信号的呈现是 webview 里的**强引导**确认框，不是一句 toast：顶部轻提示会被忽略，
+   * 插件装完没人运行 `/reload-plugins`，插件就一直不生效（2026-09-23 需求）。用户在
+   * 框里点「立即重新加载」回发既有的 `reloadPlugins` 命令，走的就是 `/reload-plugins`
+   * 那条就地重载路径；点「稍后」则什么都不做（与改动前一样可以随时手动敲命令）。
    */
   private notifyPluginChange(): void {
-    this.showToast({ message: PLUGIN_CHANGE_PENDING_MESSAGE });
+    this.postMessage({ command: "pluginChangePending" });
   }
 
   /**
