@@ -267,6 +267,14 @@ export const MessageInput = forwardRef<
   const textareaRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef<string>("");
   const inputContentTimerRef = useRef<NodeJS.Timeout | null>(null);
+  // 还在 150ms 防抖窗口里、尚未上报宿主的那份草稿。卸载时必须补发：打开设置页 /
+  // 会话看板会把整个 pane 卸载，重挂载的输入框由宿主快照（setInitialState 的
+  // inputContent）回填——不补发，最后一段输入就永远到不了宿主，返回对话窗口时
+  // 输入框是空的（spec desktop-sessions.md「会话管理」场景 23）。
+  const pendingDraftRef = useRef<{
+    sessionId?: string;
+    content: string;
+  } | null>(null);
   const selectionChangeTimerRef = useRef<NodeJS.Timeout | null>(null);
   const lastSelectionChangePosRef = useRef<number>(0);
 
@@ -378,6 +386,12 @@ export const MessageInput = forwardRef<
   // with the (stale) inputContent prop the host last pushed.
   const messageRef = useRef(message);
   messageRef.current = message;
+  // 首次挂载时 prop 就已经带着草稿——欢迎页要等 `state.initialized` 才挂载输入框，
+  // 而 initialized 与 inputContent 是同一条 setInitialState 给的，所以「宿主回放
+  // 草稿」和「输入框挂载」发生在同一帧：此时 inputContentRef 的初值就等于 prop，
+  // 下面的值相等守卫会跳过首次播种，草稿留在宿主里、界面上却是空的（spec
+  // desktop-sessions.md「会话管理」场景 23）。
+  const initialSeedPendingRef = useRef(!!inputContent);
   useEffect(() => {
     const prevSession = prevSessionRef.current;
     const sessionChanged = prevSession !== sessionId;
@@ -391,6 +405,9 @@ export const MessageInput = forwardRef<
         clearTimeout(inputContentTimerRef.current);
         inputContentTimerRef.current = null;
       }
+      // 这一份已在下面按「旧 sessionId + 实时文本」补发，待发记录随之作废，
+      // 免得卸载时的补发把它重复报到新会话名下。
+      pendingDraftRef.current = null;
       const text = textareaRef.current?.innerText ?? messageRef.current;
       if (text) {
         vscode.postMessage({
@@ -402,8 +419,12 @@ export const MessageInput = forwardRef<
     }
     // Reset unconditionally on a session switch — the old and new drafts can
     // be equal, which the value-equality guard below can't distinguish.
+    // 首次挂载带着草稿那一次也照写（见 initialSeedPendingRef）。
+    const seedOnMount = initialSeedPendingRef.current;
+    initialSeedPendingRef.current = false;
     if (
       sessionChanged ||
+      seedOnMount ||
       (inputContent !== undefined && inputContent !== inputContentRef.current)
     ) {
       inputContentRef.current = inputContent ?? "";
@@ -1595,7 +1616,13 @@ export const MessageInput = forwardRef<
       if (inputContentTimerRef.current) {
         clearTimeout(inputContentTimerRef.current);
       }
+      const draft = target.innerText;
+      // 记下这份待发草稿，卸载时补发（见 pendingDraftRef 声明处）。定时器本身仍读
+      // 实时 DOM：选中历史搜索、追加评论、预填提示词这些「立即上报」的路径会直接
+      // 改写同一个节点，读实时值才不会用更旧的快照把它们盖回去。
+      pendingDraftRef.current = { sessionId: draftSession, content: draft };
       inputContentTimerRef.current = setTimeout(() => {
+        pendingDraftRef.current = null;
         vscode.postMessage({
           command: "updateInputContent",
           sessionId: draftSession,
@@ -1794,9 +1821,21 @@ export const MessageInput = forwardRef<
     };
   }, [handlePaste]);
 
-  // Cleanup timers on unmount
+  // Cleanup timers on unmount. A pending draft is **flushed, not dropped**：打开
+  // 设置页 / 点开会话看板 / 收起分屏都会卸载本 pane，重挂载的输入框只能靠宿主
+  // 快照（setInitialState 的 inputContent）回填，落在防抖窗口里的最后一段输入
+  // 不在这里补发就丢了（spec desktop-sessions.md「会话管理」场景 23）。
   useEffect(() => {
     return () => {
+      const pending = pendingDraftRef.current;
+      pendingDraftRef.current = null;
+      if (pending) {
+        vscode.postMessage({
+          command: "updateInputContent",
+          sessionId: pending.sessionId,
+          content: pending.content,
+        });
+      }
       if (inputContentTimerRef.current) {
         clearTimeout(inputContentTimerRef.current);
       }
@@ -1804,7 +1843,7 @@ export const MessageInput = forwardRef<
         clearTimeout(selectionChangeTimerRef.current);
       }
     };
-  }, []);
+  }, [vscode]);
 
   return (
     <div className="input-container" data-testid="input-container">

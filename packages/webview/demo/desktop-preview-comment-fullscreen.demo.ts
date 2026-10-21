@@ -8,11 +8,13 @@ import { screenshotWebp } from "../e2e/utils/screenshot.js";
  * Desktop preview fullscreen + element picker comment (real Chromium).
  *
  * 缺陷现象：预览面板全屏状态下用元素选择器提交评论，界面毫无反应 —— 评论静默丢失，
- * 也不退出全屏。根因见 ChatApp handleAddComment 的注释：全屏期间对话栏整块不渲染
- * （.desktop-chat-main 连 <MessageInput> 一起卸载），messageInputRef 恒 null，
+ * 也不退出全屏。根因见 ChatApp handleAddComment 的注释：当初全屏期间对话栏整块
+ * 不渲染（.desktop-chat-main 连 <MessageInput> 一起卸载），messageInputRef 恒 null，
  * `messageInputRef.current?.appendText(...)` 的可选链把评论吞了。
  *
  * 期望：提交后自动退出全屏，评论落进聊天输入框（追加而非替换）并聚焦。
+ * 注意：对话栏现在**保持挂载**、全屏时由 CSS 隐藏（草稿保留，spec desktop-preview.md
+ * 场景 7），所以「不在视野里」用 toBeHidden 断言，不再是 DOM 里没有。
  *
  * Chromium 里 <webview> 是惰性的未知元素，guest 侧的 IPC 由测试自己打桩：dispatch
  * 一个 wave-picker 的 submit ipc 事件，走真实的 PreviewPane → ChatApp → MessageInput
@@ -109,11 +111,11 @@ test.describe("Desktop preview fullscreen element comments", () => {
     await expect(webviewPage.getByTestId("preview-pane")).toBeVisible();
     await stubPreviewGuest(webviewPage);
 
-    // ── 1. Fullscreen: the conversation column unmounts ────────────
+    // ── 1. Fullscreen: the conversation column is hidden (still mounted) ──
     await webviewPage.getByTestId("panel-fullscreen").click();
     const chatBody = webviewPage.locator(".desktop-chat-body");
     await expect(chatBody).toHaveClass(/preview-fullscreen/);
-    await expect(webviewPage.locator(".desktop-chat-main")).toHaveCount(0);
+    await expect(webviewPage.locator(".desktop-chat-main")).toBeHidden();
 
     // The picker is still reachable in fullscreen (its toggle lives in the
     // pane's own toolbar, and the shown guest fills the content area).
@@ -127,7 +129,7 @@ test.describe("Desktop preview fullscreen element comments", () => {
 
     // Fullscreen exits on its own (no Esc) and the conversation comes back.
     await expect(chatBody).not.toHaveClass(/preview-fullscreen/);
-    await expect(webviewPage.locator(".desktop-chat-main")).toHaveCount(1);
+    await expect(webviewPage.locator(".desktop-chat-main")).toBeVisible();
     const input = webviewPage.getByTestId("message-input");
     await expect(input).toContainText("这里改成主要按钮样式");
     await expect(input).toBeFocused();

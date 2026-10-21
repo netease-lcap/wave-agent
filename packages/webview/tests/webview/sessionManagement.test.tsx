@@ -566,4 +566,28 @@ describe("input drafts per session (desktop-sessions.md 会话管理 scenario 11
       vi.useRealTimers();
     }
   });
+
+  it("unmounting the pane flushes a draft still inside the debounce window (场景 23)", async () => {
+    const { vscode, unmount } = renderChatApp();
+    act(() => {
+      sendHostMessage(
+        fixtures.setInitialState({ session: sessionA, messages: [] }),
+      );
+    });
+    const input = screen.getByTestId("message-input");
+
+    // 打完字立刻卸载（打开设置页 / 会话看板就是这个时序）：150ms 防抖还没到点。
+    await setInputText(input, "把重试次数改成 3 次");
+    vscode.postMessage.mockClear();
+    unmount();
+
+    // 不补发这一段，宿主 inputDrafts 里就没有它，重挂载的输入框只能回填空内容。
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "updateInputContent",
+        sessionId: "session-A",
+        content: "把重试次数改成 3 次",
+      }),
+    );
+  });
 });

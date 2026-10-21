@@ -11,6 +11,7 @@ import {
   sendHostMessage,
   renderChatApp,
   fireInput,
+  setInputText,
 } from "./test-utils";
 import { fixtures } from "wave-webview-fixtures";
 import { MockDataGenerator } from "../fixtures/mockData";
@@ -1301,10 +1302,11 @@ describe("session-level panel groups", () => {
     const previewPane = screen.getByTestId("preview-pane");
     const body = previewPane.closest(".desktop-chat-body") as HTMLElement;
 
-    // Fullscreen the s1 preview: the conversation column unmounts.
+    // Fullscreen the s1 preview: the conversation column is hidden (CSS) but
+    // stays mounted so the unsent draft survives (spec desktop-preview.md 场景 7).
     fireEvent.click(screen.getByTestId("panel-fullscreen"));
     expect(body).toHaveClass("preview-fullscreen");
-    expect(body.querySelector(".desktop-chat-main")).toBeNull();
+    expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
 
     // Switch to s2 (no panel group of its own). Fullscreen belongs to s1's
     // preview — it must not survive into s2, or the new conversation would be
@@ -1341,7 +1343,8 @@ describe("session-level panel groups", () => {
       .getByTestId("preview-pane")
       .closest(".desktop-chat-body") as HTMLElement;
     expect(body).toHaveClass("preview-fullscreen");
-    expect(body.querySelector(".desktop-chat-main")).toBeNull();
+    // 隐藏而非卸载（spec desktop-preview.md 场景 7）。
+    expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
 
     // Switch conversation: fullscreen must not survive into s2 — with no UI
     // left visible it could never be exited otherwise (PM bug
@@ -1351,6 +1354,25 @@ describe("session-level panel groups", () => {
     });
     expect(body).not.toHaveClass("preview-fullscreen");
     expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
+  });
+
+  it("entering and leaving preview fullscreen keeps the unsent draft (desktop-preview.md 场景 7)", async () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+    fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+    fireEvent.click(screen.getByTestId("panel-empty-item-preview"));
+
+    const input = screen.getByTestId("message-input");
+    await setInputText(input, "把重试次数改成 3 次");
+
+    // 进全屏：对话列只是隐藏，输入框实例不被卸载（卸载会连草稿一起丢）。
+    fireEvent.click(screen.getByTestId("panel-fullscreen"));
+    expect(input).toBeInTheDocument();
+
+    // 退出全屏：还是同一个输入框，草稿原样在。
+    fireEvent.click(screen.getByTestId("panel-fullscreen"));
+    expect(screen.getByTestId("message-input")).toBe(input);
+    expect(input.innerText).toBe("把重试次数改成 3 次");
   });
 });
 
@@ -2493,10 +2515,13 @@ describe("desktop plan panel", () => {
 });
 
 /**
- * 面板评论 × 预览全屏：全屏期间 `.desktop-chat-main` 整块不渲染（<MessageInput>
- * 跟着卸载），但面板里的评论入口照旧可点（guest 与 pane 工具条都在全屏里铺满）。
- * 原来的 `messageInputRef.current?.appendText()` 在这个窗口里只会落空 —— 用户写完的
- * 评论被静默吞掉，全屏也不会退出。现在的口径：先退全屏，等输入框重新挂载后再追加。
+ * 面板评论 × 预览全屏：全屏期间对话列只是隐藏（`.desktop-chat-main` 保持挂载，
+ * 见 spec desktop-preview.md 场景 7），面板里的评论入口照旧可点（guest 与 pane
+ * 工具条都在全屏里铺满）。
+ *
+ * 评论仍走「先退全屏、再追加」：appendText 是程序化写入，必须落在退全屏那一次
+ * 提交之后再执行（同一 tick 里写会撞上尚未生效的布局），且用户口径是「评论 →
+ * 退出全屏 → 在输入框里看到它」。队列是追加语义，连点几个元素不会互相覆盖。
  */
 describe("desktop panel comments while the preview is fullscreen", () => {
   type MockWebview = Omit<
@@ -2580,8 +2605,8 @@ describe("desktop panel comments while the preview is fullscreen", () => {
 
     fireEvent.click(screen.getByTestId("panel-fullscreen"));
     expect(body).toHaveClass("preview-fullscreen");
-    // 前提：全屏下对话栏（含输入框）确实不在 DOM 里。
-    expect(body.querySelector(".desktop-chat-main")).toBeNull();
+    // 前提：全屏下对话栏（含输入框）不显示，但仍挂载着。
+    expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
 
     // 全屏里 picker 仍可激活（工具条在 pane 自己身上）。
     fireEvent.click(screen.getByTestId("preview-picker-toggle"));
@@ -2635,7 +2660,7 @@ describe("desktop panel comments while the preview is fullscreen", () => {
     // 切到差异页签：它同样在全屏的槽里显示，评论入口照旧可点。
     fireEvent.click(screen.getByTestId("panel-tab-diff-1"));
     expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
-    expect(body.querySelector(".desktop-chat-main")).toBeNull();
+    expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
 
     fireEvent.click(screen.getByTestId("line-comment-add-1"));
     fireEvent.change(screen.getByTestId("line-comment-input"), {

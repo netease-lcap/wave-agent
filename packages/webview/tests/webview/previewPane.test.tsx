@@ -996,7 +996,10 @@ describe("PreviewPane integration (DesktopApp)", () => {
     // Enter fullscreen via the tab-bar button.
     fireEvent.click(screen.getByTestId("panel-fullscreen"));
     expect(body).toHaveClass("preview-fullscreen");
-    expect(body.querySelector(".desktop-chat-main")).toBeNull();
+    // 对话列保持挂载、由 CSS 隐藏（`.desktop-chat-main { display:none }`）：
+    // 卸载会连坐销毁 <MessageInput>，退出全屏时草稿与滚动位置随之丢失
+    // （spec desktop-preview.md 场景 7）。jsdom 不跑样式，这里只断言没被卸载。
+    expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
     expect(screen.getByTestId("preview-pane")).toBeInTheDocument();
     // The inactive diff tab stays mounted but hidden (content survives).
     expect(screen.getByTestId("diff-pane").parentElement).toHaveStyle({
@@ -1034,15 +1037,15 @@ describe("PreviewPane integration (DesktopApp)", () => {
     fireEvent.click(screen.getByText("这里"));
     expect(screen.getByTestId("preview-pane")).toBeInTheDocument();
 
-    // Fullscreen: the conversation column unmounts.
+    // Fullscreen: the conversation column is hidden by CSS but stays mounted.
     fireEvent.click(screen.getByTestId("panel-fullscreen"));
     const body = screen
       .getByTestId("preview-pane")
       .closest(".desktop-chat-body") as HTMLElement;
     expect(body).toHaveClass("preview-fullscreen");
-    expect(body.querySelector(".desktop-chat-main")).toBeNull();
+    expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
 
-    // Closing the only preview tab exits fullscreen and remounts the column.
+    // Closing the only preview tab exits fullscreen and shows the column again.
     fireEvent.click(screen.getByTestId("panel-tab-close-preview-1"));
     expect(body).not.toHaveClass("preview-fullscreen");
     expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
