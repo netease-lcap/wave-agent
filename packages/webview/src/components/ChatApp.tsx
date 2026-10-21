@@ -28,6 +28,7 @@ import WorkflowManager from "./WorkflowManager";
 import RemoteNewSessionDialog from "./RemoteNewSessionDialog";
 import RemoteSessionListPage from "./RemoteSessionListPage";
 import WelcomeView from "./WelcomeView";
+import QuickStartTemplates from "./QuickStartTemplates";
 import LoadingLogo from "./LoadingLogo";
 import { SidebarExpandIcon, CloseIcon } from "./HeaderIcons";
 import { useDesktopChrome } from "./DesktopChromeContext";
@@ -4031,6 +4032,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           workdir={state.workdir}
           onOpenPreview={openPreviewHandler}
           onOpenFile={handleOpenFile}
+        />
+      )}
+
+      {/* 空态「快捷方式」：12 个开发场景分类 → 该分类的模板，点模板整段填进
+          输入框（与设置页「新建/编辑」预填走同一个 loadDraft）。只在空态出现，
+          有对话历史后它是「第一次怎么开口」的入口，常驻只会挤掉消息区高度。 */}
+      {showWelcomeReady && (
+        <QuickStartTemplates
+          onApplyTemplate={(prompt) =>
+            messageInputRef.current?.loadDraft(prompt)
+          }
         />
       )}
 
