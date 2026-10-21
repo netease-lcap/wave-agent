@@ -75,6 +75,79 @@ pnpm build
 `;
 
 test.describe("Desktop file pane screenshots", () => {
+  test("closed file panel lists the conversation's files", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    await injector.simulateExtensionMessage("desktopWorkdirState", {
+      workdir: DIR_A,
+      recentWorkdirs: [DIR_A],
+    });
+    await injector.waitForChatAppReady();
+    await seedSidebarSessions(injector, DIR_A, [
+      { sessionId: "s-fp-1", title: "修复登录页样式对齐" },
+    ]);
+    await injector.simulateExtensionMessage("setInitialState", initialState);
+    // Three successful tool calls: the panel's list view is derived from them
+    // (spec desktop-file-panel.md「文件面板列出当前对话的文件」).
+    await injector.updateMessages([
+      MockDataGenerator.createUserMessage("帮我修复登录页的样式问题", "msg-u1"),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "我先看一下登录页组件的样式文件。",
+        "Read",
+        JSON.stringify({ file_path: "src/pages/login.tsx" }),
+        FILE_CONTENT,
+      ),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "顺便把说明补上。",
+        "Write",
+        JSON.stringify({ file_path: "README.md" }),
+        "File written",
+      ),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "订单页的表单校验也要改。",
+        "Edit",
+        JSON.stringify({ file_path: "src/pages/orders.tsx" }),
+        "File edited",
+      ),
+    ]);
+
+    // Open the (empty) file tab from the header toggle's empty state: with no
+    // file open, the panel shows this conversation's files instead of a blank.
+    await webviewPage.getByTestId("panel-toggle-btn").click();
+    await webviewPage.getByTestId("panel-empty-item-file").click();
+    const pane = webviewPage.getByTestId("file-pane");
+    await expect(
+      pane.getByTestId("file-pane-conversation-files"),
+    ).toBeVisible();
+    const rows = pane.getByTestId("file-pane-conversation-file-row");
+    await expect(rows).toHaveCount(3);
+    // Newest hit first.
+    await expect(rows.first()).toContainText("orders.tsx");
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-file-pane-conversation-files.webp",
+    );
+
+    // Clicking a row opens that file in the same tab (host replies below), and
+    // the toolbar offers a way back to the list.
+    await pane.getByText("README.md").click();
+    await injector.simulateExtensionMessage("desktopFileContent", {
+      fileView: {
+        path: `${DIR_A}/README.md`,
+        host: "local",
+        content: MD_CONTENT,
+        loading: false,
+      },
+    });
+    await expect(pane.locator(".file-pane-markdown h2").first()).toBeVisible();
+    await pane.getByTestId("file-pane-back-to-list").click();
+    await expect(
+      pane.getByTestId("file-pane-conversation-files"),
+    ).toBeVisible();
+  });
+
   test("read tool path opens the file panel", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 1280, height: 720 });

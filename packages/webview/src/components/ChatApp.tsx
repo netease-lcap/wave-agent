@@ -78,6 +78,7 @@ import {
   GENERATED_DOC_EXT,
   pathsMatch,
 } from "../utils/fileAutoRefresh";
+import { collectConversationFiles } from "../utils/conversationFiles";
 import { toAbsoluteFilePath } from "../utils/messageUtils";
 import { isMacHiddenTitlebar, isRemotePageHost } from "../utils/platform";
 import { chatReducer, initialState } from "../reducers/chatReducer";
@@ -403,6 +404,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         : (host?.recentWorkdirs?.[0] ?? host?.workdir)
       : effectiveWorkdir;
   const isDesktop = host?.type === "desktop";
+  // 文件面板列表态的数据（spec desktop-file-panel.md「文件面板列出当前对话的文
+  // 件」）：本对话读过/写过的文件，从消息流派生——宿主没有「本对话涉及的文件」
+  // 这条数据，派生也就顺带让它对远程会话与所有宿主都成立。IDE 宿主没有该面板，
+  // 跳过这道全景扫描（与 fileAutoRefresh 那道 effect 同一个开销量级）。
+  const conversationFiles = useMemo(
+    () =>
+      isDesktop
+        ? collectConversationFiles(state.messages, effectiveWorkdir)
+        : [],
+    [isDesktop, state.messages, effectiveWorkdir],
+  );
   // The remote-control Web page (spec remote-control「Web 页作为第五种宿主」):
   // the shim sets `window.waveRemotePage` — the same flag the remote-control
   // settings view reads to skip drawing the QR it is itself the target of. That
@@ -3454,6 +3466,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                   filePath: path,
                   startLine,
                   endLine,
+                  // 新打开的文件一律进入文件视图：这也是同一条 path 被再次点开
+                  // 时视图能从列表切回来的唯一开关。
+                  listMode: undefined,
                   fileView: t.fileView
                     ? {
                         ...t.fileView,
@@ -3503,6 +3518,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   useEffect(() => {
     openFileInPanelRef.current = openFileInPanel;
   }, [openFileInPanel]);
+
+  // 「返回文件列表」：只翻列表标志，文件内容仍留在 tab 上——这样正在飞行的
+  // desktopFileContent 回复（按 path 归到同一个 tab）落下来也不会把用户从列表
+  // 拽回文件视图；再次点开同一文件时 openFileInPanel 清掉该标志。
+  const handleFilePaneBackToList = useCallback(() => {
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.kind === "file" && t.fileView ? { ...t, listMode: true } : t,
+      ),
+    );
+  }, []);
 
   const handleOpenFile = useCallback(
     (path: string, startLine?: number, endLine?: number) => {
@@ -3809,6 +3835,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       return (
         <FilePane
           fileView={tab.fileView ?? null}
+          listMode={tab.listMode}
+          conversationFiles={conversationFiles}
+          onBackToList={handleFilePaneBackToList}
           onOpenExternal={handleOpenFileExternal}
           workdir={effectiveWorkdir}
           vscode={vscode}

@@ -699,6 +699,11 @@ export interface PanelTab {
   endLine?: number;
   /** file tab: view state (loading stub / filled by desktopFileContent). */
   fileView?: FileViewState;
+  /** file tab: showing the conversation file list while a file stays loaded
+   *  (spec desktop-file-panel.md「文件面板列出当前对话的文件」). Cleared as soon
+   *  as a file is opened — that is what makes re-opening the SAME file switch
+   *  the view back, which a derived 「fileView == null」 flag could not do. */
+  listMode?: boolean;
 }
 
 /**
