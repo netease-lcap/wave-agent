@@ -16,7 +16,7 @@ paths:
   - Mock stdout and stderr to suppress output during testing and restore mocks after tests
   - Avoid unnecessary `setTimeout` or `sleep` in tests to keep them fast; prefer awaiting promises or using `vi.waitFor` if needed
   - Note: `logger` in `packages/code` appends to log files instead of printing to stdout/stderr to avoid interfering with the Ink UI. Do not use `logger` to debug in tests. Use temporary `console.log` to debug and remove them after.
-- Path expectations MUST be cross-platform: the `check-windows` job runs the full unit suite on a real Windows runner but only on `push: main` + `workflow_dispatch` (it does NOT gate PRs), so path breakage is found after merge (#2488, #2505)
+- Path expectations MUST be cross-platform: the `check-windows` job runs the full unit suite on a real Windows runner and is a **required status check on every PR**, so path breakage fails the PR instead of main (#2488, #2505)
   - Build expected values and mock keys with `path.join` / `path.resolve`, never hardcode `/` — POSIX literals turn into `\` (or gain a drive letter) on Windows
   - Resolve a fixture base first, then derive with `path.join`: `const WORKDIR = path.resolve("/fake/project")` → `path.join(WORKDIR, ".wave", "x.js")`
   - High-risk spots: concatenated paths inside `toEqual`, paths used as Map/Set keys, verbatim matching of error messages containing paths, `toContain("/.wave/...")`, `toHaveBeenCalledWith(path, ...)`
