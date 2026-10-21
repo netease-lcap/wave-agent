@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -45,5 +47,11 @@ describe("imageFileCacheKey", () => {
     });
 
     expect(imageFileCacheKey("/tmp/gone.png")).toBe("/tmp/gone.png");
+  });
+
+  it("THROWAWAY: Windows-only failure probe (delete before merging)", () => {
+    // On Linux path.resolve("/fake/x") === "/fake/x" (green);
+    // on Windows it becomes "C:\\fake\\x", so the same assertion is red.
+    expect([path.resolve("/fake/x")]).toContain("/fake/x");
   });
 });
