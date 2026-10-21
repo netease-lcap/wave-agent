@@ -1,3 +1,4 @@
+import path from "node:path";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   SandboxManager,
@@ -30,7 +31,10 @@ vi.mock("../../src/utils/runtimeDeps.js", () => ({
   ensureRuntimeDeps: vi.fn(async () => ({ available: installProbe.available })),
 }));
 
-const WORKDIR = "/fake/project";
+// 工作目录会流经实现的 `canonicalizePath`（fs.realpath 逐层回溯到根，再按平台
+// 拼回），Windows 上 POSIX 字面量会落成 `D:\fake\...`；夹具与期望值都走
+// `path.resolve` 才与实现算出来的是同一个字符串。
+const WORKDIR = path.resolve("/fake/project");
 
 function createRuntime() {
   return {
@@ -311,6 +315,9 @@ describe("SandboxManager", () => {
  * 按自己那份配置」这条语义（Claude Code 用的是同一条 `updateConfig` 通路）。
  */
 describe("process-wide runtime configuration", () => {
+  const SESSION_A = path.resolve("/fake/session-a");
+  const SESSION_B = path.resolve("/fake/session-b");
+
   function lastPushedWorkdirs(
     runtime: ReturnType<typeof createRuntime>,
   ): string[] {
@@ -325,28 +332,28 @@ describe("process-wide runtime configuration", () => {
     const runtime = createRuntime();
     const first = createManager(
       { enabled: true },
-      { runtime, workdir: "/fake/session-a" },
+      { runtime, workdir: SESSION_A },
     );
     const second = createManager(
       { enabled: true },
-      { runtime, workdir: "/fake/session-b" },
+      { runtime, workdir: SESSION_B },
     );
 
     await first.manager.wrap("echo a", "/bin/bash", "a");
     await second.manager.wrap("echo b", "/bin/bash", "b");
 
-    expect(lastPushedWorkdirs(runtime)).toContain("/fake/session-b");
+    expect(lastPushedWorkdirs(runtime)).toContain(SESSION_B);
   });
 
   it("re-pushes on every command, not only when the session first initializes", async () => {
     const runtime = createRuntime();
     const first = createManager(
       { enabled: true },
-      { runtime, workdir: "/fake/session-a" },
+      { runtime, workdir: SESSION_A },
     );
     const second = createManager(
       { enabled: true },
-      { runtime, workdir: "/fake/session-b" },
+      { runtime, workdir: SESSION_B },
     );
 
     await first.manager.wrap("echo a1", "/bin/bash", "a1");
@@ -356,7 +363,7 @@ describe("process-wide runtime configuration", () => {
     // 第一条命令之后 first 已经「初始化过」，靠的就是每条命令前的指纹同步。
     await first.manager.wrap("echo a2", "/bin/bash", "a2");
 
-    expect(lastPushedWorkdirs(runtime)).toContain("/fake/session-a");
+    expect(lastPushedWorkdirs(runtime)).toContain(SESSION_A);
   });
 
   it("does not push a configuration that is already installed", async () => {
