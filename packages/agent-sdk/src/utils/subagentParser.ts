@@ -10,11 +10,19 @@ import {
 } from "./frontmatterYaml.js";
 import { getBuiltinSubagentsDir } from "./configPaths.js";
 
+/** Isolation mode a subagent can opt into. Only `worktree` is recognized. */
+export type SubagentIsolation = "worktree";
+
 export interface SubagentConfiguration {
   name: string;
   description: string;
   tools?: string[];
   model?: string;
+  /**
+   * `worktree` runs every invocation of this subagent in its own temporary git
+   * worktree instead of the parent session's working directory.
+   */
+  isolation?: SubagentIsolation;
   systemPrompt: string;
   filePath: string;
   scope: "project" | "user" | "builtin" | "plugin";
@@ -28,6 +36,7 @@ interface SubagentFrontmatter {
   description?: string;
   tools?: string[];
   model?: string;
+  isolation?: SubagentIsolation;
 }
 
 /**
@@ -70,6 +79,12 @@ function toSubagentFrontmatter(parsed: ParsedFrontmatter): SubagentFrontmatter {
   const tools = normalizeTools(parsed.tools);
   if (tools) {
     frontmatter.tools = tools;
+  }
+
+  // Only `worktree` is a recognized isolation mode. Any other value is ignored
+  // (not an error), matching Claude Code's handling of this field.
+  if (parsed.isolation === "worktree") {
+    frontmatter.isolation = "worktree";
   }
 
   return frontmatter;
@@ -170,6 +185,7 @@ function parseSubagentFile(
       description: frontmatter.description!,
       tools: frontmatter.tools,
       model: frontmatter.model,
+      isolation: frontmatter.isolation,
       systemPrompt,
       filePath,
       scope,

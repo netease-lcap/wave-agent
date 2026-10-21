@@ -695,3 +695,145 @@ describe("Agent Tool Background Execution", () => {
     expect(formatted).toBe("Explore: Find files");
   });
 });
+
+describe("Agent Tool worktree isolation", () => {
+  const isolationConfig: SubagentConfiguration = {
+    name: "general-purpose",
+    description: "General-purpose agent",
+    systemPrompt: "You are an agent...",
+    filePath: "<builtin:general-purpose>",
+    scope: "builtin",
+    priority: 3,
+  };
+
+  let isolationManager: SubagentManager;
+  const isolationContext: ToolContext = {
+    abortSignal: new AbortController().signal,
+    workdir: "/test/workdir",
+    taskManager: new TaskManager(new Container(), "test-session"),
+  };
+
+  const mockInstance = {
+    subagentId: "gp-isolation-id",
+    usedTools: [],
+    messageManager: {
+      getMessages: vi.fn(() => []),
+      getLatestTotalTokens: vi.fn(() => 0),
+    },
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    isolationManager = {
+      getConfigurations: vi.fn(() => [isolationConfig]),
+      findSubagent: vi.fn(),
+      createInstance: vi.fn(),
+      executeAgent: vi.fn(),
+      cleanupInstance: vi.fn(),
+    } as unknown as SubagentManager;
+    isolationContext.subagentManager = isolationManager;
+  });
+
+  it("requests worktree isolation when the call asks for it", async () => {
+    vi.mocked(isolationManager.findSubagent).mockResolvedValue(isolationConfig);
+    vi.mocked(isolationManager.createInstance).mockResolvedValue(
+      mockInstance as unknown as SubagentInstance,
+    );
+    vi.mocked(isolationManager.executeAgent).mockResolvedValue("done");
+
+    await agentTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+        isolation: "worktree",
+      },
+      isolationContext,
+    );
+
+    expect(isolationManager.createInstance).toHaveBeenCalledWith(
+      isolationConfig,
+      expect.objectContaining({ worktreeIsolation: true }),
+      undefined,
+      expect.any(Function),
+    );
+  });
+
+  it("isolates when the definition requires it, without a call parameter", async () => {
+    const isolatedConfig: SubagentConfiguration = {
+      ...isolationConfig,
+      isolation: "worktree",
+    };
+    vi.mocked(isolationManager.findSubagent).mockResolvedValue(isolatedConfig);
+    vi.mocked(isolationManager.createInstance).mockResolvedValue(
+      mockInstance as unknown as SubagentInstance,
+    );
+    vi.mocked(isolationManager.executeAgent).mockResolvedValue("done");
+
+    await agentTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+      },
+      isolationContext,
+    );
+
+    expect(isolationManager.createInstance).toHaveBeenCalledWith(
+      isolatedConfig,
+      expect.objectContaining({ worktreeIsolation: true }),
+      undefined,
+      expect.any(Function),
+    );
+  });
+
+  it("rejects an unknown isolation value before creating an instance", async () => {
+    const result = await agentTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+        isolation: "sandbox",
+      },
+      isolationContext,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('isolation parameter must be "worktree"');
+    expect(isolationManager.createInstance).not.toHaveBeenCalled();
+  });
+
+  it("appends the worktree report to a failed delegation", async () => {
+    const worktreeSummary =
+      "[worktree] ran in /test/wt on branch worktree-x: 1 changed file(s), 0 commit(s).";
+    vi.mocked(isolationManager.findSubagent).mockResolvedValue(isolationConfig);
+    vi.mocked(isolationManager.createInstance).mockResolvedValue({
+      ...mockInstance,
+      worktreeSummary,
+    } as unknown as SubagentInstance);
+    vi.mocked(isolationManager.executeAgent).mockRejectedValue(
+      new Error("boom"),
+    );
+
+    const result = await agentTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+        isolation: "worktree",
+      },
+      isolationContext,
+    );
+
+    expect(result.success).toBe(false);
+    expect(result.content).toContain(worktreeSummary);
+  });
+
+  it("lists definitions that require worktree isolation", () => {
+    const prompt = agentTool.prompt?.({
+      availableSubagents: [{ ...isolationConfig, isolation: "worktree" }],
+    });
+
+    expect(prompt).toContain("isolation: worktree");
+  });
+});

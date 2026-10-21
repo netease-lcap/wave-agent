@@ -9,6 +9,8 @@ import { MessageManager } from "./messageManager.js";
 import { ToolManager } from "./toolManager.js";
 import {
   AGENT_TOOL_NAME,
+  ENTER_WORKTREE_TOOL_NAME,
+  EXIT_WORKTREE_TOOL_NAME,
   TASK_CREATE_TOOL_NAME,
   TASK_GET_TOOL_NAME,
   TASK_LIST_TOOL_NAME,
@@ -31,6 +33,24 @@ import { AsyncWorkRegistry } from "../utils/asyncWorkRegistry.js";
 import type { PermissionManager } from "./permissionManager.js";
 import type { PermissionMode } from "../types/permissions.js";
 import { ConfigurationService } from "../services/configurationService.js";
+import {
+  countWorktreeChanges,
+  createWorktree,
+  generateWorktreeName,
+  getHeadCommit,
+  performPostCreationSetup,
+  removeWorktree,
+} from "../utils/worktreeUtils.js";
+import { getGitMainRepoRoot, resolveGitDir } from "../utils/gitUtils.js";
+import type { WorktreeSession } from "../utils/worktreeSession.js";
+import {
+  executeWorktreeCreateHook,
+  executeWorktreeRemoveHook,
+  hasWorktreeCreateHook,
+  hasWorktreeRemoveHook,
+  type WorktreeHookContext,
+} from "../services/worktreeHooks.js";
+import type { HookManager } from "./hookManager.js";
 
 export interface SubagentManagerCallbacks {
   // Granular subagent message callbacks (009-subagent)
@@ -72,6 +92,20 @@ export interface SubagentManagerCallbacks {
   ) => void;
 }
 
+/**
+ * Worktree a subagent runs in when worktree isolation is in effect
+ * (`isolation: worktree` in its definition or an explicit call parameter).
+ */
+export interface SubagentWorktreeState {
+  session: WorktreeSession;
+  /**
+   * HEAD of the worktree right after creation. Commit counting starts here —
+   * NOT at the parent session's HEAD, which can differ because
+   * `worktree.baseRef: fresh` branches from `origin/<default>`.
+   */
+  baselineHead?: string;
+}
+
 export interface SubagentInstance {
   subagentId: string;
   configuration: SubagentConfiguration;
@@ -95,6 +129,8 @@ export interface SubagentInstance {
   onUpdate?: () => void; // Optional callback for real-time updates
   model?: string; // Optional model override
   logStream?: fs.WriteStream; // Optional log stream for background tasks
+  worktree?: SubagentWorktreeState; // Set when the subagent runs in its own worktree
+  worktreeSummary?: string; // Worktree report appended to the final result
 }
 
 export interface SubagentManagerOptions {
@@ -106,6 +142,11 @@ export interface SubagentManagerOptions {
 
 export class SubagentManager {
   private instances = new Map<string, SubagentInstance>();
+  /**
+   * Worktree state keyed by subagent id, kept outside the instance so cleanup
+   * can still run after the instance is released (abort, stop, error paths).
+   */
+  private worktreeStates = new Map<string, SubagentWorktreeState>();
   private cachedConfigurations: SubagentConfiguration[] | null = null;
 
   private workdir: string;
@@ -361,6 +402,8 @@ export class SubagentManager {
       stream?: boolean;
       permissionModeOverride?: PermissionMode;
       maxTurns?: number;
+      /** Run this instance in its own temporary git worktree. */
+      worktreeIsolation?: boolean;
     },
     runInBackground?: boolean,
     onUpdate?: () => void,
@@ -395,147 +438,395 @@ export class SubagentManager {
     // consumers are truthiness-guarded, so resolving to `undefined` is safe.
     subagentContainer.register("ReversionManager", undefined);
 
-    // Register a modified AgentOptions without onLoadingChange to prevent subagent loading
-    // from affecting the parent agent's loading state
-    const parentOptions =
-      this.container.get<import("../types/agent.js").AgentOptions>(
-        "AgentOptions",
-      );
-    if (parentOptions) {
-      const subagentOptions: import("../types/agent.js").AgentOptions = {
-        ...parentOptions,
-        defaultHeaders: {
-          ...parentOptions.defaultHeaders,
-          ...parentOptions.subagentHeaders?.[parameters.subagent_type],
-        },
-        callbacks: {
-          ...parentOptions.callbacks,
-          onLoadingChange: undefined,
-        },
-      };
-      subagentContainer.register("AgentOptions", subagentOptions);
+    // Worktree isolation must be wired before any manager is constructed: the
+    // child container's "Workdir" slot is what AIManager resolves at run time,
+    // and PermissionManager snapshots it in its constructor.
+    let subagentWorkdir = this.workdir;
+    let worktreeState: SubagentWorktreeState | undefined;
+    if (parameters.worktreeIsolation) {
+      try {
+        worktreeState = await this.createSubagentWorktree();
+      } catch (error) {
+        throw new Error(
+          `Cannot run subagent in an isolated worktree: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      subagentWorkdir = worktreeState.session.worktreePath;
+      this.worktreeStates.set(subagentId, worktreeState);
+      subagentContainer.register("Workdir", subagentWorkdir);
+      // The child's own worktree state (not the parent session's) drives the
+      // worktree write guard and EnterWorktree's "already in a worktree" check.
+      subagentContainer.register("WorktreeSession", worktreeState.session);
     }
 
-    // Create isolated PermissionManager for the subagent
-    const { PermissionManager } = await import("./permissionManager.js");
-    const parentPermissionManager =
-      this.container.get<PermissionManager>("PermissionManager");
-    const subagentPermissionManager = new PermissionManager(subagentContainer, {
-      configuredPermissionMode:
-        parameters.permissionModeOverride ??
-        parentPermissionManager?.getConfiguredPermissionMode(),
-      // Inherit the parent session's bypass authorization: the subagent is
-      // created mid-session, so re-deriving it from its own mode would
-      // (wrongly) deny an authorized session's plan-mode subagent.
-      bypassAuthorization: parentPermissionManager?.getBypassAuthorization?.(),
-      allowedRules: parentPermissionManager?.getAllowedRules(),
-      deniedRules: parentPermissionManager?.getDeniedRules(),
-      instanceAllowedRules:
-        parentPermissionManager?.getInstanceAllowedRules?.(),
-      instanceDeniedRules: [
-        ...(parentPermissionManager?.getInstanceDeniedRules?.() || []),
-        AGENT_TOOL_NAME, // Always deny Agent tool in subagents to prevent recursion
-        // Deny Task tools in subagents — they share the parent's TaskManager
-        // and could mutate the main agent's task list
-        TASK_CREATE_TOOL_NAME,
-        TASK_GET_TOOL_NAME,
-        TASK_UPDATE_TOOL_NAME,
-        TASK_LIST_TOOL_NAME,
-      ],
-      additionalDirectories:
-        parentPermissionManager?.getAdditionalDirectories(),
-      instanceAdditionalDirectories:
-        parentPermissionManager?.getInstanceAdditionalDirectories?.(),
-      systemAdditionalDirectories:
-        parentPermissionManager?.getSystemAdditionalDirectories(),
-      planFilePath: parentPermissionManager?.getPlanFilePath(),
-    });
-    subagentContainer.register("PermissionManager", subagentPermissionManager);
+    try {
+      // Register a modified AgentOptions without onLoadingChange to prevent subagent loading
+      // from affecting the parent agent's loading state
+      const parentOptions =
+        this.container.get<import("../types/agent.js").AgentOptions>(
+          "AgentOptions",
+        );
+      if (parentOptions) {
+        const subagentOptions: import("../types/agent.js").AgentOptions = {
+          ...parentOptions,
+          defaultHeaders: {
+            ...parentOptions.defaultHeaders,
+            ...parentOptions.subagentHeaders?.[parameters.subagent_type],
+          },
+          callbacks: {
+            ...parentOptions.callbacks,
+            onLoadingChange: undefined,
+          },
+        };
+        subagentContainer.register("AgentOptions", subagentOptions);
+      }
 
-    // Register the permission mode override in the subagent container so it
-    // shadows the inherited parent value during tool execution
-    if (parameters.permissionModeOverride) {
+      // Create isolated PermissionManager for the subagent
+      const { PermissionManager } = await import("./permissionManager.js");
+      const parentPermissionManager =
+        this.container.get<PermissionManager>("PermissionManager");
+      const subagentPermissionManager = new PermissionManager(
+        subagentContainer,
+        {
+          configuredPermissionMode:
+            parameters.permissionModeOverride ??
+            parentPermissionManager?.getConfiguredPermissionMode(),
+          // Inherit the parent session's bypass authorization: the subagent is
+          // created mid-session, so re-deriving it from its own mode would
+          // (wrongly) deny an authorized session's plan-mode subagent.
+          bypassAuthorization:
+            parentPermissionManager?.getBypassAuthorization?.(),
+          allowedRules: parentPermissionManager?.getAllowedRules(),
+          deniedRules: parentPermissionManager?.getDeniedRules(),
+          instanceAllowedRules:
+            parentPermissionManager?.getInstanceAllowedRules?.(),
+          instanceDeniedRules: [
+            ...(parentPermissionManager?.getInstanceDeniedRules?.() || []),
+            AGENT_TOOL_NAME, // Always deny Agent tool in subagents to prevent recursion
+            // Deny Task tools in subagents — they share the parent's TaskManager
+            // and could mutate the main agent's task list
+            TASK_CREATE_TOOL_NAME,
+            TASK_GET_TOOL_NAME,
+            TASK_UPDATE_TOOL_NAME,
+            TASK_LIST_TOOL_NAME,
+            // An isolated subagent lives in a worktree owned by this manager: it
+            // must not leave or delete it mid-run (the parent handles cleanup).
+            ...(parameters.worktreeIsolation
+              ? [ENTER_WORKTREE_TOOL_NAME, EXIT_WORKTREE_TOOL_NAME]
+              : []),
+          ],
+          additionalDirectories:
+            parentPermissionManager?.getAdditionalDirectories(),
+          instanceAdditionalDirectories:
+            parentPermissionManager?.getInstanceAdditionalDirectories?.(),
+          systemAdditionalDirectories:
+            parentPermissionManager?.getSystemAdditionalDirectories(),
+          planFilePath: parentPermissionManager?.getPlanFilePath(),
+        },
+      );
       subagentContainer.register(
-        "PermissionMode",
-        parameters.permissionModeOverride,
+        "PermissionManager",
+        subagentPermissionManager,
+      );
+
+      // Register the permission mode override in the subagent container so it
+      // shadows the inherited parent value during tool execution
+      if (parameters.permissionModeOverride) {
+        subagentContainer.register(
+          "PermissionMode",
+          parameters.permissionModeOverride,
+        );
+      }
+
+      // Add temporary permission rules if provided
+      if (parameters.allowedTools) {
+        logger.debug(
+          `Adding ${parameters.allowedTools.length} temporary permission rules to subagent ${subagentId}`,
+          { rules: parameters.allowedTools },
+        );
+        subagentPermissionManager.addTemporaryRules(parameters.allowedTools);
+      }
+
+      // Create isolated MessageManager for the subagent
+      const subagentCallbacks = this.createSubagentCallbacks(subagentId);
+
+      const messageManager = new MessageManager(subagentContainer, {
+        callbacks: subagentCallbacks,
+        workdir: subagentWorkdir,
+        sessionType: "subagent",
+        subagentType: parameters.subagent_type,
+      });
+      subagentContainer.register("MessageManager", messageManager);
+
+      // Create isolated ToolManager for the subagent to ensure it uses the subagent's PermissionManager
+      const toolManager = new ToolManager({
+        container: subagentContainer,
+        tools: configuration.tools,
+      });
+      toolManager.initializeBuiltInTools();
+      subagentContainer.register("ToolManager", toolManager);
+
+      // Create isolated AIManager for the subagent
+      const aiManager = new AIManager(subagentContainer, {
+        workdir: subagentWorkdir,
+        systemPrompt: configuration.systemPrompt,
+        subagentType: parameters.subagent_type, // Pass subagent type for hook context
+        modelOverride: parameters.model || configuration.model, // Pass model override
+        stream: parameters.stream ?? this.stream, // Pass streaming mode flag
+        maxTurns: parameters.maxTurns, // Pass maxTurns limit
+        callbacks: {
+          onUsageAdded: this.onUsageAdded,
+        },
+      });
+      subagentContainer.register("AIManager", aiManager);
+
+      // Create isolated BackgroundTaskManager for the subagent/forked agent
+      const subagentBackgroundTaskManager = new BackgroundTaskManager(
+        subagentContainer,
+        {
+          workdir: subagentWorkdir,
+        },
+      );
+      subagentContainer.register(
+        "BackgroundTaskManager",
+        subagentBackgroundTaskManager,
+      );
+
+      const instance: SubagentInstance = {
+        subagentId,
+        configuration,
+        aiManager,
+        messageManager,
+        toolManager,
+        permissionManager: subagentPermissionManager,
+        backgroundTaskManager: subagentBackgroundTaskManager,
+        status: "initializing",
+        messages: [],
+        usedTools: [], // Initialize usedTools
+        subagentType: parameters.subagent_type, // Store the subagent type
+        description: parameters.description, // Store the AI-generated description
+        allowedTools: parameters.allowedTools, // Store optional permission rules
+        model: parameters.model, // Store optional model override
+        onUpdate,
+        worktree: worktreeState,
+      };
+
+      this.instances.set(subagentId, instance);
+
+      return instance;
+    } catch (error) {
+      // Roll back a worktree we created if the instance could not be built.
+      await this.finalizeWorktree(subagentId);
+      throw error;
+    }
+  }
+
+  /**
+   * Create the temporary worktree an isolated subagent runs in. Mirrors
+   * EnterWorktree: `WorktreeCreate` hook first (replace semantics, path from
+   * the hook's stdout), git otherwise.
+   */
+  private async createSubagentWorktree(): Promise<SubagentWorktreeState> {
+    const name = generateWorktreeName();
+    const hookConfiguration = this.hookManager?.getConfiguration();
+
+    if (hasWorktreeCreateHook(hookConfiguration)) {
+      const { worktreePath } = await executeWorktreeCreateHook(
+        name,
+        hookConfiguration,
+        this.worktreeHookContext(),
+      );
+      const session: WorktreeSession = {
+        originalCwd: this.workdir,
+        worktreePath,
+        worktreeBranch: "",
+        worktreeName: name,
+        isNew: true,
+        // Hook-based worktrees may live outside git; repoRoot is only used to
+        // scope the worktree write guard, so `getGitMainRepoRoot`'s non-repo
+        // fallback (the workdir itself) is exactly what we want here.
+        repoRoot: getGitMainRepoRoot(this.workdir),
+        hookBased: true,
+      };
+      return { session, baselineHead: this.readHead(worktreePath) };
+    }
+
+    // Checked through `resolveGitDir` (walking up from the workdir) rather than
+    // `getGitMainRepoRoot`, which never reports "not a repo" — it falls back to
+    // the cwd, so the delegation would fail later inside `git rev-parse` with an
+    // opaque "Command failed" instead of this actionable message.
+    if (!resolveGitDir(this.workdir)) {
+      throw new Error(
+        "not in a git repository and no WorktreeCreate hook is configured. Configure WorktreeCreate/WorktreeRemove hooks in settings.json to isolate subagents with another VCS.",
       );
     }
 
-    // Add temporary permission rules if provided
-    if (parameters.allowedTools) {
-      logger.debug(
-        `Adding ${parameters.allowedTools.length} temporary permission rules to subagent ${subagentId}`,
-        { rules: parameters.allowedTools },
-      );
-      subagentPermissionManager.addTemporaryRules(parameters.allowedTools);
+    const baseRef = this.container.has("ConfigurationService")
+      ? this.configurationService.resolveWorktreeBaseRef()
+      : undefined;
+    const worktreeInfo = createWorktree(
+      name,
+      getGitMainRepoRoot(this.workdir),
+      { baseRef },
+    );
+
+    if (worktreeInfo.isNew) {
+      try {
+        await performPostCreationSetup(
+          worktreeInfo.path,
+          worktreeInfo.repoRoot,
+        );
+      } catch (error) {
+        logger?.warn("Subagent worktree post-creation setup failed:", error);
+      }
     }
 
-    // Create isolated MessageManager for the subagent
-    const subagentCallbacks = this.createSubagentCallbacks(subagentId);
-
-    const messageManager = new MessageManager(subagentContainer, {
-      callbacks: subagentCallbacks,
-      workdir: this.workdir,
-      sessionType: "subagent",
-      subagentType: parameters.subagent_type,
-    });
-    subagentContainer.register("MessageManager", messageManager);
-
-    // Create isolated ToolManager for the subagent to ensure it uses the subagent's PermissionManager
-    const toolManager = new ToolManager({
-      container: subagentContainer,
-      tools: configuration.tools,
-    });
-    toolManager.initializeBuiltInTools();
-    subagentContainer.register("ToolManager", toolManager);
-
-    // Create isolated AIManager for the subagent
-    const aiManager = new AIManager(subagentContainer, {
-      workdir: this.workdir,
-      systemPrompt: configuration.systemPrompt,
-      subagentType: parameters.subagent_type, // Pass subagent type for hook context
-      modelOverride: parameters.model || configuration.model, // Pass model override
-      stream: parameters.stream ?? this.stream, // Pass streaming mode flag
-      maxTurns: parameters.maxTurns, // Pass maxTurns limit
-      callbacks: {
-        onUsageAdded: this.onUsageAdded,
-      },
-    });
-    subagentContainer.register("AIManager", aiManager);
-
-    // Create isolated BackgroundTaskManager for the subagent/forked agent
-    const subagentBackgroundTaskManager = new BackgroundTaskManager(
-      subagentContainer,
-      {
-        workdir: this.workdir,
-      },
-    );
-    subagentContainer.register(
-      "BackgroundTaskManager",
-      subagentBackgroundTaskManager,
-    );
-
-    const instance: SubagentInstance = {
-      subagentId,
-      configuration,
-      aiManager,
-      messageManager,
-      toolManager,
-      permissionManager: subagentPermissionManager,
-      backgroundTaskManager: subagentBackgroundTaskManager,
-      status: "initializing",
-      messages: [],
-      usedTools: [], // Initialize usedTools
-      subagentType: parameters.subagent_type, // Store the subagent type
-      description: parameters.description, // Store the AI-generated description
-      allowedTools: parameters.allowedTools, // Store optional permission rules
-      model: parameters.model, // Store optional model override
-      onUpdate,
+    const session: WorktreeSession = {
+      originalCwd: this.workdir,
+      worktreePath: worktreeInfo.path,
+      worktreeBranch: worktreeInfo.branch,
+      worktreeName: worktreeInfo.name,
+      isNew: worktreeInfo.isNew,
+      repoRoot: worktreeInfo.repoRoot,
+      originalHeadCommit: worktreeInfo.originalHeadCommit,
     };
+    return { session, baselineHead: this.readHead(worktreeInfo.path) };
+  }
 
-    this.instances.set(subagentId, instance);
+  private get hookManager(): HookManager | undefined {
+    return this.container.get<HookManager>("HookManager");
+  }
 
-    return instance;
+  /**
+   * Context handed to WorktreeCreate/WorktreeRemove hooks. `projectDir` stays
+   * the parent session's working directory, mirroring EnterWorktree.
+   */
+  private worktreeHookContext(): WorktreeHookContext {
+    const messageManager = this.container.has("MessageManager")
+      ? this.container.get<MessageManager>("MessageManager")
+      : undefined;
+    const env =
+      (this.container.has("ConfigurationService")
+        ? this.configurationService.getMergedEnv()
+        : undefined) ?? {};
+    return {
+      projectDir: this.workdir,
+      sessionId: messageManager?.getSessionId() ?? "",
+      transcriptPath: messageManager?.getTranscriptPath() ?? "",
+      env: Object.fromEntries(
+        Object.entries(env).filter(([, value]) => value !== undefined),
+      ) as Record<string, string>,
+    };
+  }
+
+  private readHead(dir: string): string | undefined {
+    try {
+      return getHeadCommit(dir);
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Settle the subagent's worktree: remove it when it has no changes, keep it
+   * otherwise. Idempotent — the state entry is claimed before any await, so
+   * overlapping completion/abort paths cannot double-clean. Returns the report
+   * appended to the subagent's result (undefined when there is no worktree).
+   */
+  private async finalizeWorktree(
+    subagentId: string,
+  ): Promise<string | undefined> {
+    const state = this.worktreeStates.get(subagentId);
+    if (!state) {
+      return undefined;
+    }
+    this.worktreeStates.delete(subagentId);
+
+    let summary: string;
+    try {
+      summary = await this.releaseSubagentWorktree(state);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger?.warn(
+        `Failed to finalize subagent worktree ${state.session.worktreePath}: ${message}`,
+      );
+      summary = `[worktree] ran in ${state.session.worktreePath}; cleanup failed (${message}) — inspect and remove it manually.`;
+    }
+
+    const instance = this.instances.get(subagentId);
+    if (instance) {
+      instance.worktreeSummary = summary;
+    }
+    return summary;
+  }
+
+  private async releaseSubagentWorktree(
+    state: SubagentWorktreeState,
+  ): Promise<string> {
+    const { session, baselineHead } = state;
+    const branchSuffix = session.worktreeBranch
+      ? ` on branch ${session.worktreeBranch}`
+      : "";
+    const changes = baselineHead
+      ? countWorktreeChanges(session.worktreePath, baselineHead)
+      : null;
+    const changesText = changes
+      ? `${changes.changedFiles} changed file(s), ${changes.commits} commit(s)`
+      : "change count unavailable";
+
+    // Reusing a pre-existing worktree means it may hold the user's own work:
+    // never delete it, just report what the subagent left behind.
+    if (!session.isNew) {
+      return `[worktree] ran in ${session.worktreePath}${branchSuffix} (${changesText}). This worktree already existed, so it was left in place.`;
+    }
+
+    if (!changes) {
+      // Typical hook-based case: the hook created a plain directory that is not
+      // a git worktree, so there is no HEAD to diff against. Deleting it on a
+      // guess could throw away the subagent's work, so keep it.
+      const reason = session.hookBased
+        ? "it is not a git worktree, so its changes could not be counted"
+        : "its changes could not be determined";
+      return `[worktree] ran in ${session.worktreePath}${branchSuffix}; ${reason}. It was left in place — inspect and remove it manually when done.`;
+    }
+
+    if (changes.changedFiles > 0 || changes.commits > 0) {
+      return `[worktree] ran in ${session.worktreePath}${branchSuffix}: ${changes.changedFiles} changed file(s), ${changes.commits} commit(s). It was left in place; those changes are NOT applied to the parent working directory — merge or cherry-pick from the branch when ready.`;
+    }
+
+    if (session.hookBased) {
+      const hookConfiguration = this.hookManager?.getConfiguration();
+      if (!hasWorktreeRemoveHook(hookConfiguration)) {
+        logger?.warn(
+          `No WorktreeRemove hook configured, hook-based subagent worktree left at: ${session.worktreePath}`,
+        );
+        return `[worktree] ran in ${session.worktreePath}; no changes, but no WorktreeRemove hook is configured, so the hook-based worktree was left in place.`;
+      }
+      await executeWorktreeRemoveHook(
+        session.worktreePath,
+        hookConfiguration,
+        this.worktreeHookContext(),
+      );
+      return `[worktree] ran in ${session.worktreePath}; no changes, so the worktree was cleaned up.`;
+    }
+
+    try {
+      removeWorktree({
+        name: session.worktreeName,
+        path: session.worktreePath,
+        branch: session.worktreeBranch,
+        repoRoot: session.repoRoot,
+        isNew: session.isNew,
+        originalHeadCommit: baselineHead,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger?.warn(
+        `Failed to remove subagent worktree ${session.worktreePath}: ${message}`,
+      );
+      return `[worktree] ran in ${session.worktreePath}${branchSuffix}; no changes, but removing the worktree failed (${message}) — remove it manually.`;
+    }
+    return `[worktree] ran in ${session.worktreePath}${branchSuffix}; no changes, so the worktree was removed.`;
   }
 
   /**
@@ -648,6 +939,8 @@ export class SubagentManager {
       return result;
     } catch (error) {
       this.updateInstanceStatus(instance.subagentId, "error");
+      // An abort before internalExecute started still leaves a worktree behind.
+      await this.finalizeWorktree(instance.subagentId);
       // Release on failure too so errored instances don't linger for the
       // session (the abort listener already releases on abort).
       this.releaseInstance(instance.subagentId);
@@ -757,6 +1050,13 @@ export class SubagentManager {
       );
       const response = textBlocks.map((block) => block.content).join("\n");
 
+      // Settle the worktree before the result leaves this method: its report is
+      // appended to the response and to the background completion notice.
+      const worktreeSummary = await this.finalizeWorktree(instance.subagentId);
+      const finalResponse = worktreeSummary
+        ? `${response}${response ? "\n\n" : ""}${worktreeSummary}`
+        : response;
+
       // Update status to completed and update parent
       this.updateInstanceStatus(instance.subagentId, "completed");
 
@@ -767,9 +1067,9 @@ export class SubagentManager {
       // If this was transitioned to background, update the background task
       if (instance.backgroundTaskId && backgroundTaskManager) {
         // Write final response and completion status to log before closing
-        if (instance.logStream && response) {
+        if (instance.logStream && finalResponse) {
           instance.logStream.write(
-            `[${new Date().toISOString()}] Final response:\n${response}\n`,
+            `[${new Date().toISOString()}] Final response:\n${finalResponse}\n`,
           );
         }
         instance.logStream?.write(
@@ -784,7 +1084,8 @@ export class SubagentManager {
           // semantics in BackgroundTaskManager.onExit.
           if (!wasAlreadyKilled) {
             task.status = "completed";
-            task.stdout = response || "Agent completed with no text response";
+            task.stdout =
+              finalResponse || "Agent completed with no text response";
           }
           task.endTime = Date.now();
           if (task.startTime) {
@@ -796,7 +1097,7 @@ export class SubagentManager {
               ? this.container.get<MessageQueue>("MessageQueue")
               : undefined;
             if (messageQueue) {
-              const summary = `Agent task "${instance.description}" completed`;
+              const summary = `Agent task "${instance.description}" completed${worktreeSummary ? `\n${worktreeSummary}` : ""}`;
               messageQueue.enqueueNotification(
                 `<task-notification>\n<task-id>${instance.backgroundTaskId}</task-id>\n<task-type>agent</task-type>\n<status>completed</status>\n<summary>${summary}</summary>\n</task-notification>`,
               );
@@ -810,8 +1111,11 @@ export class SubagentManager {
         }
       }
 
-      return response || "Agent completed with no text response";
+      return finalResponse || "Agent completed with no text response";
     } catch (error) {
+      // Settle the worktree even on failure so a clean one does not linger and
+      // a dirty one is reported to the caller.
+      const worktreeSummary = await this.finalizeWorktree(instance.subagentId);
       const backgroundTaskManager = this.container.has("BackgroundTaskManager")
         ? this.container.get<BackgroundTaskManager>("BackgroundTaskManager")
         : undefined;
@@ -848,7 +1152,7 @@ export class SubagentManager {
             if (messageQueue) {
               const errorMsg =
                 error instanceof Error ? error.message : String(error);
-              const summary = `Agent task "${instance.description}" failed: ${errorMsg}`;
+              const summary = `Agent task "${instance.description}" failed: ${errorMsg}${worktreeSummary ? `\n${worktreeSummary}` : ""}`;
               messageQueue.enqueueNotification(
                 `<task-notification>\n<task-id>${instance.backgroundTaskId}</task-id>\n<task-type>agent</task-type>\n<status>failed</status>\n<summary>${summary}</summary>\n</task-notification>`,
               );
@@ -858,6 +1162,10 @@ export class SubagentManager {
       }
       throw error;
     } finally {
+      // Safety net for throws that skip the explicit finalize calls above
+      // (e.g. "No response from subagent"). Idempotent: a settled worktree is
+      // already claimed, so this is a no-op on the normal paths.
+      await this.finalizeWorktree(instance.subagentId);
       // Clean up abort listeners to prevent memory leaks
       if (abortCleanup) {
         abortCleanup();

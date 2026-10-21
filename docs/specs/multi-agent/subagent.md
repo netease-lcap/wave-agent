@@ -1,6 +1,6 @@
 ---
 name: "子代理"
-description: "加载 `.wave/agents/` 子代理并经 `Agent` 工具委派，支持自动委托与上下文隔离"
+description: "加载 `.wave/agents/` 子代理并经 `Agent` 工具委派，支持自动委托、上下文隔离与 worktree 隔离"
 order: 10
 ---
 
@@ -95,6 +95,47 @@ order: 10
 
 ---
 
+### 用户故事：子代理 worktree 隔离（优先级：P1）
+
+作为开发者，我希望让子代理在它自己的 git worktree 中运行，以便多个子代理（或子代理与主会话）并行修改同一个仓库时不会互相踩文件、也不会污染主会话的工作区。
+
+**为什么是这个优先级**：并行委派是子代理最主要的用法，但当前所有子代理共享父会话的工作目录——两个子代理并行改同一批文件会互相覆盖，一个子代理跑构建或改配置也会直接影响主会话。对齐 Claude Code 的 `isolation: worktree`。
+
+**独立测试**：在 `.wave/agents/` 创建带 `isolation: worktree` 的子代理并派它改文件，验证写入落在 `.wave/worktrees/<name>` 且父工作目录零改动；完成后有改动时 worktree 被保留、结果里给出路径/分支/变更统计；再派一个只读任务，验证无改动时 worktree 与临时分支被自动删除。
+
+**验收场景**：
+
+1. **假设** 子代理定义文件的 frontmatter 含 `isolation: worktree`，**当** 主代理通过 `Agent` 工具委派它，**则** 该子代理的文件与命令工具（Read/Write/Edit/Bash/Grep/Glob、后台任务）都以新 worktree 目录为工作目录。
+2. **假设** 隔离子代理启动，**当** worktree 被创建，**则** 目录为 `<主仓库>/.wave/worktrees/<name>`、分支为 `worktree-<name>`、基线按 `worktree.baseRef`（`fresh` 默认基于 `origin/<默认分支>`，`head` 基于父会话当前 HEAD），与 CLI `-w` / `EnterWorktree` 同一套规则。
+3. **假设** 配置了 `WorktreeCreate` hook，**当** 隔离子代理启动，**则** 由 hook 创建（路径取第一个成功 hook 的 stdout）；未配置则走 git；新建 worktree 时复制 `.wave/settings.local.json` 与 `.worktreeinclude` 列出的文件。
+4. **假设** 隔离子代理在 worktree 内运行，**当** 它用 Write/Edit 修改父仓库（worktree 之外）的文件，**则** 被拒绝并返回 worktree 安全拦截消息（与父会话 worktree 同一条规则，`bypassPermissions` 下同样生效）。
+5. **假设** 子代理结束且本次新建的 worktree 内没有任何改动（0 个变更文件、0 个新提交），**当** 收尾执行，**则** worktree 目录与 `worktree-<name>` 分支被自动删除，结果中说明已清理。
+6. **假设** 子代理结束且 worktree 内有改动（未提交文件或新提交），**当** 收尾执行，**则** worktree 与分支被保留，结果中给出 worktree 路径、分支名、变更文件数与提交数，并说明这些改动**没有**应用到父工作目录。
+7. **假设** 子代理失败、被停止（`TaskStop` / 后台任务停止）或被清理，**当** 收尾执行，**则** 同样按「有改动保留、无改动删除」处理，且收尾失败不改变原有的成功/失败结果（只记日志）。
+8. **假设** 变更无法判定（`git status` / `rev-list` 执行失败），**当** 收尾执行，**则** 保留 worktree（fail-safe，不删），结果提示路径与无法判定。
+9. **假设** 隔离子代理运行中，**当** 它调用 `EnterWorktree` 或 `ExitWorktree`，**则** 工具被拒绝——worktree 生命周期由父级管理，子代理不得自行进出或删除。
+10. **假设** 父会话本身已在一个 worktree 中，**当** 派发隔离子代理，**则** 子代理 worktree 仍创建在主仓库的 `.wave/worktrees/` 下，默认基线为 `origin/<默认分支>`（与父会话 worktree 无嵌套关系）。
+11. **假设** 工作目录不是 git 仓库且未配置 `WorktreeCreate` hook，**当** 派发隔离子代理，**则** 委派失败并返回明确错误，**不得**静默退回父工作目录执行。
+
+---
+
+### 用户故事：按次指定 worktree 隔离（优先级：P2）
+
+作为用户，我希望在不改子代理定义文件的前提下，把某一次委派放进独立 worktree，以便临时并行跑几单改代码的任务。
+
+**为什么是这个优先级**：定义文件只能给「某个子代理」永久开启隔离；临时并行（例如一次派三个 general-purpose 改不同模块）如果每次都要先改定义文件就不实用。对齐 Claude Code「让 Claude 用 worktree 跑子代理」的动态路径。
+
+**独立测试**：对不带 `isolation` 的 general-purpose 子代理，主代理调用 `Agent` 时传 `isolation: "worktree"`，验证该次运行在独立 worktree 中、收尾规则与上一条故事一致；再不带该参数调用一次，验证仍跑在父工作目录。
+
+**验收场景**：
+
+1. **假设** 子代理定义没有 `isolation`，**当** `Agent` 调用带 `isolation: "worktree"`，**则** 该次运行使用独立 worktree，其余行为不变。
+2. **假设** 子代理定义含 `isolation: worktree`，**当** `Agent` 调用不带该参数，**则** 仍然隔离（定义是下限，调用参数不能关闭）。
+3. **假设** `Agent` 调用传入除 `"worktree"` 以外的 `isolation` 值，**则** 入参校验失败并返回错误，不启动子代理。
+4. **假设** 子代理以后台方式运行（`run_in_background`），**当** 它完成或被停止，**则** 隔离与收尾规则与前台一致，完成通知里包含 worktree 摘要。
+
+---
+
 ### 边界情况
 
 - 子代理配置文件的 YAML frontmatter 无效时会怎样？
@@ -105,6 +146,21 @@ order: 10
 - 系统如何处理存在但没有内容或缺少必需字段的子代理文件？
 - 用户请求的子代理存在但缺少访问所需工具的权限时会怎样？
 - 子代理尝试访问 Task 管理工具（TaskCreate/TaskGet/TaskUpdate/TaskList）时会怎样？→ 系统必须拒绝：这些工具不注册到子代理的 ToolManager，子代理无法调用，防止其修改主代理的共享任务列表。
+- 隔离子代理撞上已存在的同名 worktree 时会怎样？→ 复用该目录（`isNew: false`）、不执行 post-creation 文件复制，避免覆盖既有本地状态；复用的 worktree 不是本次创建的，收尾一律保留并在结果里报告变更统计。
+- 隔离子代理保留的 worktree 由谁清理？→ 本期不做定时清扫（Claude Code 的 `cleanupPeriodDays` 清扫不在范围内）。结果里给出路径与分支，由用户或后续会话用 `git worktree remove`（必要时加 `--force`）与 `git branch -D worktree-<name>` 手工清理。
+- hook-based worktree 收尾时没有配 `WorktreeRemove` hook 会怎样？→ 保留 worktree 并记 warning（沿用现有语义），结果里给出路径。
+- 子代理在 worktree 内 checkout 了别的分支会怎样？→ 收尾只删 `worktree-<name>`，其它分支与其提交保留（沿用现有语义）。
+- 子代理用 Bash `cd` 到主仓库改文件会怎样？→ 不在拦截范围（现有 worktree 安全拦截只覆盖 Write/Edit），与父会话 worktree 会话一致，属已知边界而非本次新增缺口。
+- 隔离子代理的指令文件（`AGENTS.md`、记忆规则）从哪来？→ 来自父会话（子容器解析到父级 `MemoryRuleManager`），不读取 worktree 内的版本，与 Claude Code「指令文件取自主对话」一致。
+
+## 子代理 Worktree 隔离（2026-02-27 添加）
+
+- **配置面**：定义文件 frontmatter 新增 `isolation`，唯一有效值 `"worktree"`（其它值忽略、不报错，与 Claude Code 一致）；`Agent` 工具新增可选 `isolation` 参数，仅能在定义未开启时「加开」，不能关闭定义里已开启的隔离。
+- **生效范围**：本轮只覆盖 `Agent` 工具派发的子代理（前台与后台）。Skill 的 `context: fork` 与 Workflow 的 `agent()` 暂不启用（Workflow 的结构化结果契约需要单独设计 worktree 摘要的承载位）。
+- **工作目录**：隔离子代理的 `MessageManager` / `AIManager` / `BackgroundTaskManager` 以及子容器的 `Workdir` 槽都指向 worktree 路径；子容器注册自己的 `WorktreeSession`（含 `originalCwd` = 父工作目录），使 worktree 安全拦截与 `EnterWorktree` 的「已在 worktree 中」判断都基于子代理自己的状态。
+- **变更判定基线**：以 worktree 创建后自身的 HEAD 为基线统计新提交，而不是父会话 HEAD——`fresh` 基线从 `origin/<默认分支>` 起，可能与父 HEAD 有前后差异，用父 HEAD 会把基线自带的历史误算成子代理的提交。
+- **收尾时机**：正常完成、失败、被 `TaskStop` / 后台任务停止、实例清理四条路径统一走同一个收尾函数；收尾是 best-effort，失败只记日志，不覆盖原有结果。
+- **不做的事**：不自动把 worktree 改动合并/应用到父工作目录（与 Claude Code 一致，只报告路径与统计）；不做定时清扫。
 
 ## 子代理生命周期（2025-01-10 添加）
 
