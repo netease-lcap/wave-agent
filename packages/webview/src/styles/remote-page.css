@@ -485,4 +485,23 @@
   [data-remote-page] .remote-session-page-back {
     min-height: 40px;
   }
+
+  /* ── 表格列宽按内容分配（桌面端 V-01 的同一套判据，见 host-desktop.css）────
+     滚动容器本身已在共用层（Message.css 的 `.md-table-scroll`），但「能不能滚」
+     只解决一半：列宽不分配时，浏览器把每个可断行的中文格压到最小内容宽（1 个字），
+     5 列短词表在 390 宽下就成了逐字竖排，滚过去看见的仍是竖排字（2026-10-21 实测
+     「已完成」「不再错位」都被竖着叠起来）。判据与桌面端同源、类名由 Message.tsx
+     的 tableCellClass 注入，这里只是把两条规则带到手机档：
+
+     ① 短 token（分类/状态/序号/日期…，无空白且 ≤12 字符）保持单行 —— 抬高该列的
+        最小内容宽，表格自然按内容分配，真的放不下时由滚动容器兜底；
+     ② 超长不可断 token（URL/路径/长英文串）用 break-word 只在放不下时断行，不用
+        anywhere（那会把最小内容宽降到 1 字符，长内容列会一直从别的列抽宽度）。 */
+  [data-remote-page] .markdown-content :is(th, td).md-cell-token {
+    white-space: nowrap;
+  }
+
+  [data-remote-page] .markdown-content :is(th, td).md-cell-long-token {
+    overflow-wrap: break-word;
+  }
 }

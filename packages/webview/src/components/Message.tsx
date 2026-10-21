@@ -368,10 +368,12 @@ const createMessageMarkdownRenderer = (
 ) => {
   const renderer = new marked.Renderer();
   renderer.listitem = renderTaskListitem;
-  // 表格包一层滚动容器（specs 走查 F-06 / conversation-typography.md TXT-06）：
-  // 宽表需在自身区域内横向滚动，而不是被对话列 .messages-column 的
-  // overflow-x:clip 静默裁切。包装 div 本身无内联样式，视觉由宿主样式控制（桌面端给
-  // .md-table-scroll 设 overflow-x:auto），故 IDE 宿主结构变化但外观不变。
+  // 表格包一层滚动容器（specs 走查 F-06 / message-rendering-system.md「表格展示
+  // 与滚动」）：宽表需在自身区域内横向滚动，而不是被对话列 .messages-column 的
+  // overflow-x:clip 静默裁切。包装 div 本身无内联样式：横向滚动写在共用层
+  // （Message.css 的 .md-table-scroll，四个 GUI 宿主同吃——远控 Web 页与 IDE 宿主
+  // 同样需要，桌面层此前是唯一给它的地方，见 2026-10-21 远控页 iOS 宽表不可滚的
+  // 修复），间距等观感仍由宿主样式控制，故 IDE 宿主结构变化但外观不变。
   // marked 9 的 renderer.table 签名是 (headerHtml, bodyHtml)，默认实现不使用
   // this，转调默认实现可保证 thead/tbody/对齐渲染逐字节一致。
   // tabindex（V-01 验收 4 / WCAG 2.1.1）：横向滚动是宽表的兜底路径，键盘用户

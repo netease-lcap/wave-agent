@@ -922,7 +922,23 @@ button.reasoning-header {
   height: auto;
 }
 
-/* Markdown Tables */
+/* Markdown Tables 的滚动容器：Message.tsx 的 renderer.table 把默认表格再包一层
+   .md-table-scroll，宽表由此在自身区域内横向滚动。
+   放在共用层（而不是某一宿主的密度层）是因为它兜的是「内容会不会丢」——对话列
+   `.messages-column` 是 `overflow-x: clip`，包裹层若不上 `overflow-x` 就等于把
+   溢出部分静默裁掉。此前这条只写在 `[data-host="desktop"]` 层，远控 Web 页与 IDE
+   宿主都拿不到：2026-10-21 实测远控页 iPhone 视口（390）下 543px 宽表落在 358px
+   容器里，右侧 185px 的列看不见也滚不到（页面本身也不横滚）。间距、焦点环这类
+   观感仍归各宿主自己的层（桌面端见 host-desktop.css 的 F-06 段）。 */
+.md-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  /* 横向滚动区域内的 iOS 字号自动放大（Safari 的 text autosizing 会把「比视口宽
+     的块」里的正文再抬一档，与远控页的 15/16px 档位打架）：钉成 100% = 只按
+     本页 CSS 取值，不额外放大。 */
+  -webkit-text-size-adjust: 100%;
+}
+
 .markdown-content table {
   border-collapse: collapse;
   width: 100%;
