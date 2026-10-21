@@ -19,7 +19,7 @@ tmux capture-pane -p -t probe                          # 读屏；回看历史�
 三个必踩的坑：
 
 1. **`send-keys '/cmd' Enter` 和「先发文本再发 Enter」不是同一条路径**——前者文本与 `\r` 同一 chunk，走 `inputReducer` 的 coalesced-Enter 分支。同一个缺陷可能一次复现一次不复现，先确认发送方式再改代码。
-2. **这样起只保证 `packages/code` 是源码，SDK 仍读 `packages/agent-sdk/dist`** ⇒ 先 `pnpm -F wave-agent-sdk build`，否则验的是旧 SDK。
+2. **这样起只保证 `packages/code` 是源码，SDK 仍读 `packages/agent-sdk/dist`** ⇒ 先 `pnpm -F wave-agent-sdk build`，否则验的是旧 SDK。只想验 SDK 源码本身、不关心 TUI，就别绕 CLI，直接写 example（`sdk.md`，那边 import 的是 `src/`，不用 build）。
 3. **Ink 下不要 `console.log`**（污染 TUI 且看不到）。临时在 reducer/handler 里 `appendFileSync("/tmp/x.log", …)` 打 action 流，定因后立刻删。
 
 权限弹窗用 `send-keys Up/Down + Enter` 选；要它安静跑完可切到 `Yes, and bypass permissions`（状态行显示 `bypassPermissions`）。tmux 本机没有时按 `environment.md` 的平台对照装。
