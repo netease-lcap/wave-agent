@@ -4,6 +4,7 @@
  * 这一层只做纯计算（读配置、拼路径、算默认值），不加载 sandbox-runtime、
  * 不碰进程，便于单测。真正的执行层在 `SandboxManager.ts`。
  */
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type {
@@ -55,6 +56,36 @@ const HOME_WRITE_DIRS = [
   "Library/pnpm",
 ];
 
+/**
+ * 归一到内核眼中的真实路径。
+ *
+ * macOS 上 `/var` 是 `/private/var` 的软链，而 Seatbelt 按真实路径匹配规则；
+ * `sandbox-runtime` 只把「原样拼写」的 `denyWrite` 塞进 profile（读 deny 会补
+ * 「原样 + realpath」两种拼写，写 deny 不会）。于是 `os.tmpdir()` 下的工作目录
+ * （`/var/folders/...`）里用相对路径写 `.wave/settings.json`，那条 deny 会静默
+ * 失效 —— 正好是「改配置 → 下一条命令逃出沙箱」这一条。统一在这里归一之后，
+ * 四种清单都不再依赖「用户给的拼写恰好是规范路径」。
+ *
+ * 还不存在的路径（例如尚未生成的 `settings.json`）只归一它已存在的上层：软链
+ * 只可能出现在目录上，最后一段原样拼回即可；通配符同理，只归一它的基目录。
+ */
+export function canonicalizePath(entry: string): string {
+  const tail: string[] = [];
+  let current = entry;
+  for (;;) {
+    try {
+      const real = fs.realpathSync(current);
+      return tail.length === 0 ? real : path.join(real, ...tail.reverse());
+    } catch {
+      const parent = path.dirname(current);
+      // 一路到根都解析不了（路径本身不合法）：原样返回，别把配置改坏。
+      if (parent === current) return entry;
+      tail.push(path.basename(current));
+      current = parent;
+    }
+  }
+}
+
 /** `~` 展开；相对路径按 `base` 解析；绝对路径原样。 */
 function expandPath(entry: string, base: string): string {
   if (entry === "~") return os.homedir();
@@ -86,33 +117,35 @@ function filesystemConfig(
   config: SandboxFilesystemConfiguration | undefined,
   additionalDirectories: string[],
 ): SandboxRuntimeConfig["filesystem"] {
-  const home = os.homedir();
+  // 派生路径（可写根、受保护的 settings 文件）都从归一后的工作目录算，否则会拼出
+  // 一半 `/var/...` 一半 `/private/var/...` 的清单，见 canonicalizePath。
+  const base = canonicalizePath(workdir);
   const allowWrite = [
-    workdir,
+    base,
     getSandboxTempDir(),
-    ...HOME_WRITE_DIRS.map((dir) => path.join(home, dir)),
+    ...HOME_WRITE_DIRS.map((dir) => path.join(os.homedir(), dir)),
   ];
   for (const entry of additionalDirectories) {
-    allowWrite.push(expandPath(entry, workdir));
+    allowWrite.push(expandPath(entry, base));
   }
   for (const entry of config?.allowWrite ?? []) {
-    allowWrite.push(expandPath(entry, workdir));
+    allowWrite.push(expandPath(entry, base));
   }
 
   const denyWrite = [
-    ...settingsFilesToProtect(workdir),
-    ...(config?.denyWrite ?? []).map((entry) => expandPath(entry, workdir)),
+    ...settingsFilesToProtect(base),
+    ...(config?.denyWrite ?? []).map((entry) => expandPath(entry, base)),
   ];
 
   return {
     denyRead: (config?.denyRead ?? []).map((entry) =>
-      expandPath(entry, workdir),
+      canonicalizePath(expandPath(entry, base)),
     ),
     allowRead: (config?.allowRead ?? []).map((entry) =>
-      expandPath(entry, workdir),
+      canonicalizePath(expandPath(entry, base)),
     ),
-    allowWrite: [...new Set(allowWrite)],
-    denyWrite: [...new Set(denyWrite)],
+    allowWrite: [...new Set(allowWrite.map(canonicalizePath))],
+    denyWrite: [...new Set(denyWrite.map(canonicalizePath))],
   };
 }
 
