@@ -15,6 +15,7 @@ function mockConfigurationService(defaultMode: string) {
       }),
       setOptions: vi.fn(),
       setTurnSnapshotSource: vi.fn(),
+      getCurrentConfiguration: vi.fn().mockReturnValue(null),
       resolveGatewayConfig: vi.fn().mockReturnValue({
         apiKey: "test-key",
         baseURL: "https://test.api",

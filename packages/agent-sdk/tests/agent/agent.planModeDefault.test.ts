@@ -20,6 +20,7 @@ vi.mock("../../src/services/configurationService.js", () => {
         }),
         setOptions: vi.fn(),
         setTurnSnapshotSource: vi.fn(),
+        getCurrentConfiguration: vi.fn().mockReturnValue(null),
         resolveGatewayConfig: vi.fn().mockReturnValue({
           apiKey: "test-key",
           baseURL: "https://test.api",
@@ -124,6 +125,7 @@ describe("Agent Plan Mode Default", () => {
         }),
         setOptions: vi.fn(),
         setTurnSnapshotSource: vi.fn(),
+        getCurrentConfiguration: vi.fn().mockReturnValue(null),
         resolveGatewayConfig: vi.fn().mockReturnValue({
           apiKey: "test-key",
           baseURL: "https://test.api",

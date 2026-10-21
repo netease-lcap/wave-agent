@@ -319,6 +319,87 @@ describe("ConfigurationService", () => {
     });
   });
 
+  describe("loadMergedWaveConfig — sandbox", () => {
+    /**
+     * `loadWaveConfigFromFile` rebuilds each file field by field (a whitelist),
+     * so a block that the merge handles but the projection forgets disappears
+     * without a word: every field reads as undefined and the sandbox silently
+     * never turns on. These tests go through the files on purpose — asserting
+     * on an in-memory object would pass with the projection still broken.
+     */
+    const mockFiles = (files: Record<string, unknown>) => {
+      mockExistsSync.mockImplementation((p) =>
+        Object.keys(files).some((file) => p.toString().includes(file)),
+      );
+      mockReadFileSync.mockImplementation((p) => {
+        const match = Object.keys(files).find((file) =>
+          p.toString().includes(file),
+        );
+        return match ? JSON.stringify(files[match]) : "";
+      });
+    };
+
+    // Computed per call: `userHome` / `tempDir` are assigned in the outer
+    // `beforeEach`, which has not run when this block is registered.
+    const settingsPaths = () => ({
+      user: path.join(userHome, ".wave", "settings.json"),
+      project: path.join(tempDir, ".wave", "settings.json"),
+      local: path.join(tempDir, ".wave", "settings.local.json"),
+    });
+
+    it("keeps the whole sandbox block through the per-file projection", () => {
+      const sandbox = {
+        enabled: true,
+        failIfUnavailable: true,
+        autoAllowBashIfSandboxed: true,
+        allowUnsandboxedCommands: false,
+        excludedCommands: ["docker *"],
+        ignoreViolations: { file: ["/tmp/**"] },
+        network: { allowedDomains: ["example.com"], deniedDomains: ["a.test"] },
+        filesystem: {
+          allowWrite: ["./scratch"],
+          denyWrite: ["./secrets"],
+          denyRead: ["~/.ssh"],
+          allowRead: ["/var/log"],
+        },
+      };
+      mockFiles({ [settingsPaths().local]: { sandbox } });
+
+      const result = loadMergedWaveConfig(tempDir);
+
+      expect(result?.sandbox).toEqual(sandbox);
+    });
+
+    it("takes the master switch from the user file over a repository", () => {
+      // A cloned repo must not be able to weaken the boundary the user set.
+      const paths = settingsPaths();
+      mockFiles({
+        [paths.user]: { sandbox: { enabled: true } },
+        [paths.project]: {
+          sandbox: { enabled: false, excludedCommands: ["docker *"] },
+        },
+      });
+
+      const result = loadMergedWaveConfig(tempDir);
+
+      expect(result?.sandbox?.enabled).toBe(true);
+      // The rest of the repository's block still applies.
+      expect(result?.sandbox?.excludedCommands).toEqual(["docker *"]);
+    });
+
+    it("lets a repository turn the sandbox on when the user said nothing", () => {
+      mockFiles({ [settingsPaths().project]: { sandbox: { enabled: true } } });
+
+      expect(loadMergedWaveConfig(tempDir)?.sandbox?.enabled).toBe(true);
+    });
+
+    it("keeps the user's explicit off switch", () => {
+      mockFiles({ [settingsPaths().user]: { sandbox: { enabled: false } } });
+
+      expect(loadMergedWaveConfig(tempDir)?.sandbox?.enabled).toBe(false);
+    });
+  });
+
   describe("validateConfiguration", () => {
     it("should validate a correct configuration", () => {
       const config = {

@@ -49,6 +49,20 @@ vi.mock("../../src/utils/ripgrep.js", async (importOriginal) => {
   return { ...actual, getRgPath: () => rgProbe.path };
 });
 
+/**
+ * Same rule again: `isSandboxRuntimeAvailable` is the probe the installer asks,
+ * `isSandboxRuntimeOnDisk` (the post-install verify) stays real so the check
+ * still reads the cli home it just unpacked. Defaults to absent — a host-copied
+ * CLI has no node_modules — which is the state the row exists for.
+ */
+const sandboxProbe = vi.hoisted(() => ({ available: false }));
+
+vi.mock("../../src/utils/sandboxRuntime.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../src/utils/sandboxRuntime.js")>();
+  return { ...actual, isSandboxRuntimeAvailable: () => sandboxProbe.available };
+});
+
 import {
   __resetRuntimeDepsForTesting,
   ensureRuntimeDeps,
@@ -334,6 +348,48 @@ function registryWithSharp(options?: {
 }
 
 const RG_RANGE = "^1.18.0";
+const SANDBOX_RUNTIME_RANGE = "^0.0.81";
+
+/**
+ * The Bash-sandbox closure: the runtime package plus the four JS dependencies
+ * its own package.json declares. It publishes no platform package — the binaries
+ * (macOS/Linux wrappers, the Windows helper) live in `vendor/`, so the installer
+ * has nothing to pick by platform key.
+ */
+function addSandboxRuntime(registry: ReturnType<typeof fakeRegistry>): void {
+  const dependencies: Record<string, string> = {
+    "@pondwader/socks5-server": "^1.0.10",
+    commander: "^12.1.0",
+    "node-forge": "^1.4.0",
+    zod: "^3.25.0",
+  };
+  registry.add("@anthropic-ai/sandbox-runtime", {
+    version: "0.0.81",
+    files: {
+      "package.json": JSON.stringify({
+        name: "@anthropic-ai/sandbox-runtime",
+        version: "0.0.81",
+        main: "dist/index.js",
+      }),
+      "dist/index.js": "module.exports = { SandboxManager: {} };",
+      "vendor/seccomp/x64/apply-seccomp": {
+        content: "seccomp-binary",
+        mode: 0o755,
+      },
+    },
+    dependencies,
+  });
+  for (const [name, range] of Object.entries(dependencies)) {
+    const version = range.replace(/^\^/, "");
+    registry.add(name, {
+      version,
+      files: {
+        "package.json": JSON.stringify({ name, version, main: "index.js" }),
+        "index.js": "module.exports = {};",
+      },
+    });
+  }
+}
 
 /**
  * The ripgrep closure: the wrapper plus this platform's binary package. The
@@ -408,11 +464,16 @@ beforeEach(() => {
   fs.rmSync(TEST_ROOT, { recursive: true, force: true });
   cliHome = path.join(TEST_ROOT, `home-${++cliHomeCounter}`);
   installDir = path.join(cliHome, "node_modules");
-  writeCliPackageJson({ sharp: SHARP_RANGE });
+  writeCliPackageJson({
+    sharp: SHARP_RANGE,
+    "@vscode/ripgrep": RG_RANGE,
+    "@anthropic-ai/sandbox-runtime": SANDBOX_RUNTIME_RANGE,
+  });
   __resetRuntimeDepsForTesting();
   probe.processor = undefined;
   probe.reset.mockClear();
   rgProbe.path = "/mock/rg";
+  sandboxProbe.available = false;
 });
 
 afterEach(() => {
@@ -579,6 +640,82 @@ describe("ensureRuntimeDeps", () => {
     expect(result).toEqual({ available: true });
     expect(registry.urls).toEqual([]);
     expect(fs.existsSync(installDir)).toBe(false);
+  });
+
+  it("leaves the sandbox runtime alone unless the caller asks for it", async () => {
+    // The sandbox row is opt-in per call: a CLI launch that never turns the
+    // sandbox on must not download its 12MB, and the memoised start-up result
+    // must not answer for the later call that does want it.
+    const registry = registryWithSharp();
+    addRipgrep(registry);
+    addSandboxRuntime(registry);
+    rgProbe.path = undefined; // a host copy starts with neither of the two
+    const options = {
+      moduleUrl: moduleUrl,
+      cliHome: cliHome,
+      fetchImpl: registry.fetchImpl,
+    };
+
+    const base = await ensureRuntimeDeps(options);
+
+    expect(base).toEqual({ available: true });
+    expect(
+      fs.existsSync(path.join(installDir, "@anthropic-ai", "sandbox-runtime")),
+    ).toBe(false);
+    expect(registry.urls.some((url) => url.includes("sandbox-runtime"))).toBe(
+      false,
+    );
+
+    // What the first batch installed now loads (in the test both are probes, so
+    // say so explicitly); the second batch is then only about the sandbox row.
+    probe.processor = (() => ({})) as unknown as SharpFactory;
+    rgProbe.path = "/mock/rg";
+    const withSandbox = await ensureRuntimeDeps({
+      ...options,
+      includeSandbox: true,
+    });
+
+    expect(withSandbox).toEqual({ available: true });
+    expect(
+      fs.existsSync(path.join(installDir, "@anthropic-ai", "sandbox-runtime")),
+    ).toBe(true);
+    // Its own JS dependencies come along; without them the dynamic import
+    // throws at load time in the process that just installed it.
+    expect(fs.existsSync(path.join(installDir, "commander"))).toBe(true);
+    expect(
+      JSON.parse(
+        fs.readFileSync(
+          path.join(installDir, ".wave-runtime-deps.json"),
+          "utf8",
+        ),
+      ),
+    ).toEqual({
+      sharp: SHARP_RANGE,
+      "@vscode/ripgrep": RG_RANGE,
+      "@anthropic-ai/sandbox-runtime": SANDBOX_RUNTIME_RANGE,
+    });
+  });
+
+  it("reports a sandbox request the cli home cannot satisfy", async () => {
+    // The user turned the sandbox on but the package cannot be fetched: the
+    // image codec and grep must still have been installed meanwhile, and the
+    // caller gets an actionable reason instead of an exception.
+    const registry = registryWithSharp();
+    addRipgrep(registry);
+    const options = {
+      moduleUrl: moduleUrl,
+      cliHome: cliHome,
+      fetchImpl: registry.fetchImpl,
+    };
+
+    const result = await ensureRuntimeDeps({
+      ...options,
+      includeSandbox: true,
+    });
+
+    expect(result.available).toBe(false);
+    expect(result.reason).toContain("@anthropic-ai/sandbox-runtime");
+    expect(fs.existsSync(path.join(installDir, "sharp"))).toBe(true);
   });
 
   it("refuses to install for a CLI that is not under the shared cli home", async () => {

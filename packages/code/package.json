@@ -41,6 +41,7 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "^0.0.81",
     "@vscode/ripgrep": "^1.18.0",
     "qrcode": "^1.5.4",
     "sharp": "^0.35.4"

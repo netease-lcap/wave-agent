@@ -83,6 +83,14 @@ export class LiveConfigManager {
     return this.container.get<MemoryService>("MemoryService");
   }
 
+  private get sandboxManager():
+    | import("../sandbox/SandboxManager.js").SandboxManager
+    | undefined {
+    return this.container.get<
+      import("../sandbox/SandboxManager.js").SandboxManager
+    >("SandboxManager");
+  }
+
   /**
    * Keep the auto-memory system safe zone in sync with the live auto-memory
    * toggle (core/agent-config.md scenario 6). Turning auto-memory off must
@@ -354,6 +362,11 @@ export class LiveConfigManager {
         );
         this.syncAutoMemorySafeZone();
       }
+
+      // Sandbox boundaries (writable paths, allowed domains) may have changed:
+      // push them to the running sandbox runtime so the next command is judge
+      // under the new rules instead of the ones captured at startup.
+      this.sandboxManager?.refresh();
 
       // Trigger reload callback. Awaited so fire-and-forget work spawned by the
       // callback (e.g. skill rediscovery) completes before the reload resolves —

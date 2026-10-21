@@ -94,6 +94,11 @@ export const bashTool: ToolPlugin = {
             type: "boolean",
             description: `Set to true to run this command in the background. Use ${READ_TOOL_NAME} to read the output later.`,
           },
+          dangerouslyDisableSandbox: {
+            type: "boolean",
+            description:
+              "Set to true to run this command outside the sandbox. Only use it when the user explicitly asks to bypass the sandbox, or when a command just failed with evidence of sandbox restrictions (e.g. 'Operation not permitted' on a path, or a network host that is not on the allow list).",
+          },
         },
         required: ["command"],
       },
@@ -176,6 +181,9 @@ The working directory persists between commands. Try to maintain your current wo
   ): Promise<ToolResult> => {
     const command = args.command as string;
     const runInBackground = args.run_in_background as boolean | undefined;
+    const dangerouslyDisableSandbox = args.dangerouslyDisableSandbox as
+      | boolean
+      | undefined;
     const description = args.description as string | undefined;
     // Set default timeout: BASH_DEFAULT_TIMEOUT_MS for foreground, no timeout for background
     // When run_in_background is explicitly set, cancel any timeout — the intent is to
@@ -225,6 +233,28 @@ The working directory persists between commands. Try to maintain your current wo
       };
     }
 
+    // Sandbox judgment — computed once and reused by both the permission gate
+    // (auto-allow only when the command really runs inside the boundary) and
+    // the spawn below. `decide()` also brings the runtime up, so a failure to
+    // initialize degrades here rather than mid-spawn.
+    const sandbox = context.sandboxManager;
+    const sandboxDecision = sandbox
+      ? await sandbox.decide(command, dangerouslyDisableSandbox)
+      : { sandboxed: false };
+    const sandboxed = sandboxDecision.sandboxed;
+
+    if (sandbox?.shouldFailCommand() && !sandboxed) {
+      return {
+        success: false,
+        content: "",
+        error: `Sandbox is required but unavailable: ${
+          sandboxDecision.reason ??
+          sandbox.getUnavailableReason() ??
+          "reason unknown"
+        }`,
+      };
+    }
+
     // Permission check after validation but before real operation
     if (context.permissionManager) {
       try {
@@ -238,6 +268,9 @@ The working directory persists between commands. Try to maintain your current wo
             run_in_background: runInBackground,
             timeout,
             workdir: context.workdir,
+            // Tells the permission gate that this exact call is inside the OS
+            // sandbox, which is what makes `autoAllowBashIfSandboxed` safe.
+            sandboxed,
           },
           context.toolCallId,
         );
@@ -260,6 +293,35 @@ The working directory persists between commands. Try to maintain your current wo
       }
     }
 
+    /**
+     * Wrap a command for the sandbox when the decision said so.
+     *
+     * Returns `null` when the wrapper could not be built. Callers fail the tool
+     * call instead of falling back to an unsandboxed run: the permission gate
+     * may already have auto-allowed this call *because* it was going to be
+     * sandboxed, so silently dropping the boundary would be the one outcome we
+     * must not produce here.
+     */
+    const sandboxWrap = async (
+      cmd: string,
+    ): Promise<{ command: string; env?: Record<string, string> } | null> => {
+      if (!sandboxed || !sandbox) return { command: cmd };
+      sandbox.prepareTempDir();
+      const wrapped = await sandbox.wrap(cmd, shellPath, context.toolCallId);
+      if (!wrapped) return null;
+      const tempDir = sandbox.getTempDir();
+      return {
+        command: wrapped,
+        env: { TMPDIR: tempDir, TMP: tempDir, TEMP: tempDir },
+      };
+    };
+    const sandboxStartError = (): ToolResult => ({
+      success: false,
+      content: "",
+      error:
+        "Failed to start the sandbox for this command; nothing was executed. Check the sandbox dependencies (macOS `sandbox-exec`; Linux `bwrap` + `socat` + ripgrep), or set `sandbox.enabled` to false to run without it.",
+    });
+
     if (runInBackground) {
       // Background execution
       const backgroundTaskManager = context?.backgroundTaskManager;
@@ -271,10 +333,25 @@ The working directory persists between commands. Try to maintain your current wo
         };
       }
 
+      let backgroundCommand = command;
+      let backgroundOptions:
+        | { env?: Record<string, string>; onExit?: () => void }
+        | undefined;
+      if (sandboxed && sandbox) {
+        const prepared = await sandboxWrap(command);
+        if (!prepared) return sandboxStartError();
+        backgroundCommand = prepared.command;
+        backgroundOptions = {
+          env: prepared.env,
+          onExit: () => sandbox.cleanup(),
+        };
+      }
+
       const { id: taskId } = backgroundTaskManager.startShell(
-        command,
+        backgroundCommand,
         undefined,
         context.workdir,
+        backgroundOptions,
       );
       const task = backgroundTaskManager.getTask(taskId);
       const outputPath = task?.outputPath;
@@ -289,16 +366,29 @@ The working directory persists between commands. Try to maintain your current wo
       };
     }
 
-    // Foreground execution (original behavior)
+    // Foreground execution (original behavior). The unsandboxed path stays
+    // synchronous up to `spawn`: an `await` here would push process startup
+    // behind a microtask, which callers (and tests driving fake timers) act on.
+    let foregroundCommand = command;
+    let foregroundEnv: Record<string, string> | undefined;
+    if (sandboxed && sandbox) {
+      const prepared = await sandboxWrap(command);
+      if (!prepared) return sandboxStartError();
+      foregroundCommand = prepared.command;
+      foregroundEnv = prepared.env;
+    }
+
     return new Promise((resolve) => {
-      // Create a temporary file to store the CWD
+      // Create a temporary file to store the CWD. Inside the sandbox it must
+      // live in the sandbox-writable temp dir, otherwise the wrapper cannot
+      // write it and `cd` would stop being tracked.
       const tempCwdFile = path.join(
-        os.tmpdir(),
+        sandboxed && sandbox ? sandbox.getTempDir() : os.tmpdir(),
         `wave_cwd_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.tmp`,
       );
       const tempCwdFileForBash = toPosixPath(tempCwdFile);
       const wrappedCommand = wrapCommandForCwdTracking(
-        command,
+        foregroundCommand,
         tempCwdFileForBash,
       );
 
@@ -310,6 +400,7 @@ The working directory persists between commands. Try to maintain your current wo
         env: {
           ...process.env,
           ...context.sessionEnv,
+          ...foregroundEnv,
         },
       });
 
@@ -497,6 +588,7 @@ The working directory persists between commands. Try to maintain your current wo
           }
 
           cleanupTempFile();
+          if (sandboxed && sandbox) sandbox.cleanup();
 
           const processedOutput = processToolResult(
             outputBuffer + (errorBuffer ? "\n" + errorBuffer : ""),
@@ -653,8 +745,19 @@ The working directory persists between commands. Try to maintain your current wo
         // character split across the last chunk).
         if (stdoutDecoder) outputBuffer += stdoutDecoder.flush();
         if (stderrDecoder) errorBuffer += stderrDecoder.flush();
-        const combinedOutput =
+        let combinedOutput =
           outputBuffer + (errorBuffer ? "\n" + errorBuffer : "");
+
+        // Sandbox: surface what got blocked (the model cannot tell a boundary
+        // rejection from a broken command otherwise), then let the runtime
+        // clean up whatever the wrapper left on the host.
+        if (sandboxed && sandbox) {
+          combinedOutput = sandbox.annotate(
+            context.toolCallId ?? command,
+            combinedOutput,
+          );
+          sandbox.cleanup();
+        }
 
         // Prepend CWD change message to output if present
         const finalOutput =
@@ -716,6 +819,7 @@ The working directory persists between commands. Try to maintain your current wo
             clearTimeout(timeoutHandle);
           }
           cleanupTempFile();
+          if (sandboxed && sandbox) sandbox.cleanup();
           resolve({
             success: false,
             content: "",
