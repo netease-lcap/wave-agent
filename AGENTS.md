@@ -85,17 +85,6 @@ Nothing currently asserts the packaged artifact (the `host-bundle-load` job that
 inspected the dev-built bundles was rolled back); that side rests on the
 source-level checks in `scripts/check-sdk-surface.mjs`.
 
-The Real-IDE layer is the one exception to "everything runs inside the repo":
-it launches a real editor window, needs a usable model config in
-`~/.wave/settings.json`, and therefore stays local/manual (no CI). The VS Code
-suite drives the extension host (`editor.action.inlineSuggest.*`); the JetBrains
-suite drives a Starter-downloaded IDE over the Driver RPC and calls platform
-actions (`EditorTextEnd`, `CallInlineCompletionAction`,
-`InsertInlineCompletionAction`) instead of `java.awt.Robot`, because Robot input
-is silently dropped on macOS without Accessibility permission. Both suites assert
-on accepted document text — VS Code exposes no API to read a suggestion, and
-JetBrains only exposes ghost text as an opaque inlay.
-
 ### Linting
 
 - **Lint all**: `pnpm lint`
