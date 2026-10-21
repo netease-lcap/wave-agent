@@ -1,12 +1,28 @@
 name: CI (Windows)
 
-# Non-blocking Windows compatibility check.
-# Runs after PRs merge to main (push), like the docs deploy workflow — it does
-# NOT gate PRs, so Windows runner minutes are only spent on merged changes that
-# touch platform-specific code paths (subprocess spawning, fs, .cmd/.exe
-# resolution). workflow_dispatch remains for manual runs from the Actions tab.
-# NOT a required check: configure in repo Settings → Branches → main
-# protection rule to keep only the Linux `check` job as required.
+# Windows compatibility check — a REQUIRED merge gate for main.
+# `check-windows` is listed in the repo ruleset "pr protection"
+# (Settings → Rules → Rulesets, id 9205973) alongside the Linux `check` jobs, so
+# a red run here blocks the merge. Windows runner minutes are free for this
+# public repo; queue time, not billing, is the cost of running it on every PR.
+#
+# Triggers:
+#   - pull_request → main: the gating run. Deliberately NOT path-filtered, see
+#     the note below.
+#   - push → main: post-merge backstop, path-filtered (subprocess spawning, fs,
+#     .cmd/.exe resolution), i.e. only for merged changes that touch the
+#     platform-specific code paths. A push run never gates anything.
+#   - workflow_dispatch: manual runs from the Actions tab. Also the way to
+#     backfill the check onto a PR whose head commit predates this gate — such
+#     a PR has no `check-windows` run and therefore stays pending forever.
+#
+# Why `pull_request` must NOT carry a `paths` filter:
+# a workflow-level `paths` filter does not just skip jobs — it skips the whole
+# workflow, so no check run is created for that head sha. For a required
+# context, "no check run" is indistinguishable from "still running": the PR sits
+# in "Expected — waiting for status to be reported" and can never merge. Paying
+# one extra Windows run on a doc-only PR is much cheaper than a PR that is stuck
+# shut. (The `push` trigger keeps its filter; it gates nothing.)
 #
 # This is the only job that runs the desktop package on Windows: its unit suite
 # (Linux runs the same suite in `check-extras`) plus the real-host suite (Linux
@@ -16,6 +32,8 @@ name: CI (Windows)
 # complementary rather than duplicates.
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
     paths:
