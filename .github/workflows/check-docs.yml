@@ -4,16 +4,20 @@ on:
   pull_request:
     paths:
       - "docs/**"
+      - "packages/webview/demo/**"
       - ".github/workflows/check-docs.yml"
       - "scripts/check-docs-links.mjs"
+      - "scripts/check-docs-screenshots.mjs"
       - "scripts/check-sidebar-anchors.mjs"
   push:
     branches:
       - main
     paths:
       - "docs/**"
+      - "packages/webview/demo/**"
       - ".github/workflows/check-docs.yml"
       - "scripts/check-docs-links.mjs"
+      - "scripts/check-docs-screenshots.mjs"
       - "scripts/check-sidebar-anchors.mjs"
 
 jobs:
@@ -61,6 +65,9 @@ jobs:
 
       - name: Check docs links
         run: node scripts/check-docs-links.mjs
+
+      - name: Check docs screenshots
+        run: node scripts/check-docs-screenshots.mjs --strict
 
       - name: Check sidebar anchors
         run: node scripts/check-sidebar-anchors.mjs

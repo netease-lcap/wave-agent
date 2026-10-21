@@ -7,10 +7,11 @@ import { screenshotWebp } from "../e2e/utils/screenshot.js";
 /**
  * Desktop interaction refinements (spec desktop-layout.md 侧边栏收起/展开 +
  * desktop-file-panel.md 文件拖拽上传 + desktop-panels.md「右侧面板 · 一级 Tab 栏
- * 与实例语义」): screenshots for the collapsible sidebar, file drag-and-drop
- * upload overlay, and the multi-instance preview tabs (outer tab model). The
- * shared webview bundle must be rebuilt first (node esbuild.config.mjs) or
- * these shots capture the old UI.
+ * 与实例语义」): screenshots for the multi-instance preview tabs (outer tab model),
+ * plus behavior assertions for the collapsible sidebar and the file drag-and-drop
+ * upload overlay (those two have no docs screenshot; the overlay is also covered
+ * by `e2e/desktop-drag-upload.e2e.ts`). The shared webview bundle must be rebuilt
+ * first (node esbuild.config.mjs) or these shots capture the old UI.
  */
 const DIR_A = "/Users/dev/projects/wave-agent";
 
@@ -69,10 +70,6 @@ test.describe("Desktop interaction refinements", () => {
     await expect(
       webviewPage.getByTestId("desktop-sidebar-expand"),
     ).toBeVisible();
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-sidebar-collapsed.webp",
-    );
 
     // Expand restores the sidebar.
     await webviewPage.getByTestId("desktop-sidebar-expand").click();
@@ -103,10 +100,6 @@ test.describe("Desktop interaction refinements", () => {
     await expect(webviewPage.getByTestId("chat-drag-overlay")).toBeVisible();
     await expect(webviewPage.getByTestId("chat-drag-overlay")).toContainText(
       "释放以上传文件",
-    );
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-drag-upload.webp",
     );
   });
 

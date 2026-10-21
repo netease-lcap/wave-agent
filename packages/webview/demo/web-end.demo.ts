@@ -275,11 +275,6 @@ test.describe("Web 端（远控页）手机截图", () => {
     expect(geom.next!.top).toBeGreaterThanOrEqual(geom.row!.bottom);
     // 场景 14 的整屏约束仍成立。
     expect(geom.scroll).toBe(geom.viewport);
-
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/web-ask-question.webp",
-    );
   });
 
   test("计划审批：计划正文内联在对话框里", async ({ webviewPage }) => {
