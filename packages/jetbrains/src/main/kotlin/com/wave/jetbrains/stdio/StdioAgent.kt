@@ -190,7 +190,11 @@ class StdioAgent(
             ?: throw StdioClientException("initialize returned null")
         sessionId = res["sessionId"]?.jsonPrimitive?.content
         workingDirectory = res["workingDirectory"]?.jsonPrimitive?.content
-        sessionCwd = res["workingDirectory"]?.jsonPrimitive?.content
+        // The reply's own root wins: re-attaching a session that is still live
+        // elsewhere reports its current (possibly cd-drifted) cwd as
+        // `workingDirectory`, and only `sessionCwd` says which project it is.
+        sessionCwd = res["sessionCwd"]?.jsonPrimitive?.content
+            ?: res["workingDirectory"]?.jsonPrimitive?.content
         permissionMode = res["permissionMode"]?.jsonPrimitive?.content
         res["latestTotalTokens"]?.jsonPrimitive?.intOrNull?.let { latestTotalTokens = it }
         // A fresh session has no usage yet; don't let a previous session's

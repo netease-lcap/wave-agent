@@ -688,6 +688,8 @@ export class AgentBridge {
   private async initialize(params: InitializeParams): Promise<{
     sessionId: string;
     workingDirectory: string;
+    sessionCwd: string;
+    repoRoot?: string;
     permissionMode: PermissionMode;
     latestTotalTokens: number;
   }> {
@@ -697,12 +699,7 @@ export class AgentBridge {
     if (params.restoreSessionId) {
       const live = this.sessions.get(params.restoreSessionId);
       if (live) {
-        return {
-          sessionId: live.agent.sessionId,
-          workingDirectory: live.agent.workingDirectory,
-          permissionMode: live.agent.getPermissionMode(),
-          latestTotalTokens: live.agent.latestTotalTokens,
-        };
+        return this.initializeReply(live.agent, live.createdWorkdir);
       }
     }
 
@@ -771,9 +768,43 @@ export class AgentBridge {
       createdWorkdir,
     });
 
+    return this.initializeReply(agent, createdWorkdir);
+  }
+
+  /**
+   * The `initialize` reply.
+   *
+   * The current cwd and the session root travel as two separate facts on
+   * purpose. A re-attached session may have bash-`cd`'d away from where it was
+   * created, so `agent.workingDirectory` answers "where is it now" while
+   * `createdWorkdir` answers "which project does this conversation belong to".
+   * Hosts key durable things (sidebar grouping, project-scoped config, `@file`
+   * scope) off the latter — the desktop used to derive both from
+   * `workingDirectory` and moved a resumed conversation into a subdirectory
+   * group.
+   *
+   * `repoRoot` closes the worktree case: a session created inside a linked git
+   * worktree belongs to the repo it was forked from. It is derived the same way
+   * `listDaemonSessions` derives each row's `worktree`, i.e. from the
+   * filesystem, without shelling out to git.
+   */
+  private initializeReply(
+    agent: Agent,
+    sessionCwd: string,
+  ): {
+    sessionId: string;
+    workingDirectory: string;
+    sessionCwd: string;
+    repoRoot?: string;
+    permissionMode: PermissionMode;
+    latestTotalTokens: number;
+  } {
+    const worktree = deriveWorktreeInfo(sessionCwd);
     return {
       sessionId: agent.sessionId,
       workingDirectory: agent.workingDirectory,
+      sessionCwd,
+      ...(worktree ? { repoRoot: worktree.repoRoot } : {}),
       permissionMode: agent.getPermissionMode(),
       latestTotalTokens: agent.latestTotalTokens,
     };

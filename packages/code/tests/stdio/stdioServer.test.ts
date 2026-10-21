@@ -122,6 +122,8 @@ test("initialize request returns response with sessionId", async () => {
   expect(response.result).toEqual({
     sessionId: "test-session-id",
     workingDirectory: "/test/workdir",
+    // Session root travels separately from the (possibly drifted) live cwd.
+    sessionCwd: "/test",
     permissionMode: "default",
     latestTotalTokens: 0,
   });

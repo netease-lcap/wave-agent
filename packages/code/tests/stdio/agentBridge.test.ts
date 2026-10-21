@@ -116,6 +116,10 @@ import type {
 
 // ── Helpers ──────────────────────────────────────────────────────
 
+/** A fake repository root; sub-paths are derived with `path.join` so the
+ *  session-root vs drifted-cwd assertions hold on Windows too. */
+const REPO_ROOT = path.resolve("/fake/repo");
+
 function createMockAgent(overrides: Record<string, unknown> = {}) {
   const messages: Message[] = [];
   const agent = {
@@ -205,6 +209,9 @@ test("initialize creates Agent with correct options and returns session info", a
   expect(result).toEqual({
     sessionId: "test-session-id",
     workingDirectory: "/test/workdir",
+    // The session root travels as its own field, even when it currently equals
+    // the live cwd (a fresh session has not had the chance to drift yet).
+    sessionCwd: "/test/workdir",
     permissionMode: "default",
     latestTotalTokens: 100,
   });
@@ -217,6 +224,73 @@ test("initialize creates Agent with correct options and returns session info", a
   expect(options.permissionMode).toBe("acceptEdits");
   expect(options.callbacks).toBeDefined();
   expect(options.canUseTool).toBeDefined();
+});
+
+test("initialize reports the session root separately from the live cwd (re-attach)", async () => {
+  const { bridge } = createBridge();
+  const mockAgent = createMockAgent({
+    sessionId: "live-1",
+    workingDirectory: path.join(REPO_ROOT, "packages", "code"),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  // First initialize creates the session at the repo root.
+  await bridge.handleRequest("initialize", { workdir: REPO_ROOT });
+
+  // The session then bash-cd'd into a subdirectory: only the current cwd moved.
+  const again = (await bridge.handleRequest("initialize", {
+    workdir: REPO_ROOT,
+    restoreSessionId: "live-1",
+  })) as {
+    workingDirectory: string;
+    sessionCwd: string;
+  };
+
+  // Re-attach reuses the live agent (no second Agent.create) and reports both
+  // facts: where it is now, and the root it was created in. Hosts key the
+  // sidebar group / project config off sessionCwd — deriving those from the
+  // drifted cwd is what moved a resumed conversation into a subdirectory group.
+  expect(Agent.create).toHaveBeenCalledTimes(1);
+  expect(again.workingDirectory).toBe(path.join(REPO_ROOT, "packages", "code"));
+  expect(again.sessionCwd).toBe(REPO_ROOT);
+});
+
+test("initialize reports the repo root for a session created in a linked worktree", async () => {
+  const { bridge } = createBridge();
+  const worktreePath = path.join(REPO_ROOT, ".wave", "worktrees", "feat");
+  vi.mocked(deriveWorktreeInfo).mockReturnValueOnce({
+    path: worktreePath,
+    branch: "wave-worktree-feat",
+    repoRoot: REPO_ROOT,
+    hookBased: false,
+  });
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ workingDirectory: worktreePath }),
+  );
+
+  const result = (await bridge.handleRequest("initialize", {
+    workdir: worktreePath,
+  })) as { sessionCwd: string; repoRoot?: string };
+
+  // A worktree conversation belongs to the repo it was forked from; the CLI
+  // derives it from the session root so a host without an index entry (a
+  // session picked off disk via /resume) can still group it correctly.
+  expect(deriveWorktreeInfo).toHaveBeenCalledWith(worktreePath);
+  expect(result.sessionCwd).toBe(worktreePath);
+  expect(result.repoRoot).toBe(REPO_ROOT);
+});
+
+test("initialize omits the repo root when the session root is not a worktree", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ workingDirectory: REPO_ROOT }),
+  );
+
+  const result = (await bridge.handleRequest("initialize", {
+    workdir: REPO_ROOT,
+  })) as Record<string, unknown>;
+
+  expect("repoRoot" in result).toBe(false);
 });
 
 test("initialize passes pluginDirs as PluginConfig[]", async () => {
@@ -2952,6 +3026,7 @@ test("initialize with restoreSessionId reuses a live session instead of creating
   expect(second).toEqual({
     sessionId,
     workingDirectory: "/test/workdir",
+    sessionCwd: "/test/workdir",
     permissionMode: "default",
     latestTotalTokens: 100,
   });
@@ -2971,6 +3046,7 @@ test("initialize with an unknown restoreSessionId creates a new agent", async ()
   expect(result).toEqual({
     sessionId: "test-session-id",
     workingDirectory: "/test/workdir",
+    sessionCwd: "/test/workdir",
     permissionMode: "default",
     latestTotalTokens: 100,
   });

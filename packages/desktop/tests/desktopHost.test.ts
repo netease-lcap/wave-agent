@@ -151,6 +151,11 @@ const h = vi.hoisted(() => ({
   // stdio startup so a real webview re-fires webviewReady while the new pane's
   // agent is still mid-spawn and not yet bound to the pane).
   initializeGate: null as Promise<void> | null,
+  // The `repoRoot` the CLI's initialize reply carries for the next spawned
+  // agent (set when the session root is a linked git worktree). The real
+  // StdioAgent takes it from the reply; the mock has no JSON-RPC, so it reads
+  // it from here instead.
+  sessionRepoRootReply: undefined as string | undefined,
   // Multi-agent pool: each StdioAgent instance gets a unique sessionId so the
   // host's agents Map keys don't collapse (FR-031).
   agentCounter: 0,
@@ -274,6 +279,7 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     sessionId: string | undefined;
     workingDirectory: string | undefined;
     sessionCwd: string | undefined;
+    sessionRepoRoot: string | undefined;
     latestTotalTokens = 0;
     messages: unknown[] = [];
     tasks: unknown[] = [];
@@ -289,12 +295,14 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
       this: {
         workingDirectory?: string;
         sessionCwd?: string;
+        sessionRepoRoot?: string;
         sessionId?: string;
       },
       params: { workdir?: string },
     ) {
       this.workingDirectory = params.workdir;
       this.sessionCwd = params.workdir;
+      this.sessionRepoRoot = h.sessionRepoRootReply;
       this.sessionId = `sess-${++h.agentCounter}`;
       if (h.initializeGate) await h.initializeGate;
     });
@@ -673,6 +681,7 @@ beforeEach(() => {
   h.worktreeChangesResult = null;
   h.worktreeChangesError = null;
   h.initializeGate = null;
+  h.sessionRepoRootReply = undefined;
   h.agentCounter = 0;
   h.closedHandlers.length = 0;
   h.pendingPermissionRequests = [];
@@ -5730,6 +5739,75 @@ describe("/resume disk sessions", () => {
         .getSessionIndex()
         .find((e) => e.sessionId === "cli-1");
       expect(entry?.workdir).toBe("/other/project");
+    });
+  });
+
+  it("resumes an indexed session at its own cwd, never at the group's repo root", async () => {
+    const { host, store } = await readyHost();
+    // Indexed worktree session: the sidebar group is the repo root while the
+    // session itself lives in the worktree. The index entry is what this app
+    // has been maintaining, so it wins over whatever workdir a caller passes.
+    store.upsertSession({
+      sessionId: "wt-1",
+      title: "Worktree session",
+      host: "local",
+      workdir: "/repo",
+      cwd: "/repo/.wave/worktrees/feat",
+      createdAt: 1000,
+      lastActiveAt: 2000,
+      worktree: {
+        path: "/repo/.wave/worktrees/feat",
+        branch: "wave-worktree-feat",
+        baseBranch: "main",
+        repoRoot: "/repo",
+      },
+    });
+    h.existingPaths.add("/repo");
+    h.existingPaths.add("/repo/.wave/worktrees/feat");
+
+    await host.handleWebviewMessage({
+      command: "desktopResumeSession",
+      sessionId: "wt-1",
+      workdir: "/repo",
+    });
+
+    await vi.waitFor(() => {
+      // Spawned at the entry's own cwd (the worktree), not at the workdir the
+      // caller passed — otherwise the resumed conversation would land in the
+      // repo root even though its transcript lives in the worktree.
+      expect(lastAgent().initialize).toHaveBeenCalledWith(
+        expect.objectContaining({ workdir: "/repo/.wave/worktrees/feat" }),
+      );
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith("wt-1");
+    });
+  });
+
+  it("groups a resumed worktree session under its repo root (no index entry)", async () => {
+    const { host, store, sent } = await readyHost();
+    const worktreePath = "/repo/.wave/worktrees/feat";
+    h.existingPaths.add(worktreePath);
+    // The CLI derives the repo root from the session root; the desktop has no
+    // entry for a session it never created, so this is its only source.
+    h.sessionRepoRootReply = "/repo";
+
+    await host.handleWebviewMessage({
+      command: "desktopResumeSession",
+      sessionId: "cli-wt-1",
+      workdir: worktreePath,
+    });
+
+    await vi.waitFor(() => {
+      expect(lastAgent().restoreSession).toHaveBeenCalledWith("cli-wt-1");
+      const entry = store
+        .getSessionIndex()
+        .find((e) => e.sessionId === "cli-wt-1");
+      // Sidebar group = repo root (what a new worktree conversation shows),
+      // while the session still runs inside the worktree itself.
+      expect(entry?.workdir).toBe("/repo");
+      expect(entry?.cwd).toBe(worktreePath);
+      expect(sent("desktopSessionTree").at(-1)?.groups).toEqual([
+        expect.objectContaining({ workdir: "/repo" }),
+      ]);
     });
   });
 

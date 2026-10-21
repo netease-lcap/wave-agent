@@ -147,6 +147,8 @@ test("initialize request over the socket returns the session response", async ()
     result: {
       sessionId: "test-session-id",
       workingDirectory: "/test/workdir",
+      // Session root travels separately from the (possibly drifted) live cwd.
+      sessionCwd: "/test",
       permissionMode: "default",
       latestTotalTokens: 0,
     },

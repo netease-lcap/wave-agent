@@ -71,7 +71,27 @@ export interface InitializeParams {
 
 export interface InitializeResult {
   sessionId: string;
+  /**
+   * Where the session is *now*. A re-attached session that bash-`cd`'d inside a
+   * turn reports the drifted directory here — correct for "the directory the
+   * user is looking at", wrong for anything that means "this conversation's
+   * project".
+   */
   workingDirectory: string;
+  /**
+   * The session's stable root: the cwd it was created in (the worktree path for
+   * a worktree session). Set on every reply; hosts must prefer it over
+   * `workingDirectory` whenever the value keys something durable (session
+   * grouping, project-scoped config, `@file` scope) — see StdioAgent.sessionCwd.
+   */
+  sessionCwd?: string;
+  /**
+   * The main repository root, present only when `sessionCwd` is itself a linked
+   * git worktree — the same derivation `listDaemonSessions` reports per row. A
+   * worktree conversation belongs to the repo it was forked from, so this wins
+   * over `sessionCwd` as a grouping key.
+   */
+  repoRoot?: string;
   permissionMode: PermissionMode;
   latestTotalTokens: number;
 }
@@ -164,8 +184,20 @@ export class StdioAgent {
    * `workingDirectory` it is never overwritten by the workdirChange
    * notification (bash cd), so @file search and the /status workdir stay
    * anchored to the project root.
+   *
+   * Re-attaching a session that is still running elsewhere (a daemon session
+   * left behind by another client or an earlier window) is the case the
+   * distinction exists for: the process there may have `cd`'d away long ago, so
+   * the reply carries the root separately instead of reusing its live cwd.
    */
   public sessionCwd: string | undefined;
+  /**
+   * The main repository root when `sessionCwd` is a linked git worktree, else
+   * undefined. Grouping a worktree conversation under the repo it was forked
+   * from must not depend on the host having an index entry for it — a session
+   * picked off disk (`/resume`) has none.
+   */
+  public sessionRepoRoot: string | undefined;
   public latestTotalTokens = 0;
   /**
    * Context-usage percentage reported with the most recent getMessages pull.
@@ -205,7 +237,11 @@ export class StdioAgent {
     )) as InitializeResult;
     this.sessionId = result.sessionId;
     this.workingDirectory = result.workingDirectory;
-    this.sessionCwd = result.workingDirectory;
+    // The reply's own root wins: a re-attached live session reports its current
+    // (possibly cd-drifted) cwd as `workingDirectory`, and only `sessionCwd`
+    // can say which project the conversation belongs to.
+    this.sessionCwd = result.sessionCwd ?? result.workingDirectory;
+    this.sessionRepoRoot = result.repoRoot;
     this.permissionMode = result.permissionMode;
     this.latestTotalTokens = result.latestTotalTokens;
     // A fresh session has no usage yet; don't let a previous session's
