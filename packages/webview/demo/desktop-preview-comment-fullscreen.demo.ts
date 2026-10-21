@@ -7,14 +7,13 @@ import { screenshotWebp } from "../e2e/utils/screenshot.js";
 /**
  * Desktop preview fullscreen + element picker comment (real Chromium).
  *
- * 缺陷现象：预览面板全屏状态下用元素选择器提交评论，界面毫无反应 —— 评论静默丢失，
- * 也不退出全屏。根因见 ChatApp handleAddComment 的注释：当初全屏期间对话栏整块
- * 不渲染（.desktop-chat-main 连 <MessageInput> 一起卸载），messageInputRef 恒 null，
- * `messageInputRef.current?.appendText(...)` 的可选链把评论吞了。
+ * 需求八（2026-09-16）：全屏里也要能看到对话。全屏状态下对话列缩成底部居中的浮动
+ * 对话框（spec desktop-preview.md 场景 8），元素选择器提交的评论直接追加进这个对话框；
+ * 发送后对话框换成「正在工作」加载态（场景 9），本轮结束恢复空白输入框。
  *
- * 期望：提交后自动退出全屏，评论落进聊天输入框（追加而非替换）并聚焦。
- * 注意：对话栏现在**保持挂载**、全屏时由 CSS 隐藏（草稿保留，spec desktop-preview.md
- * 场景 7），所以「不在视野里」用 toBeHidden 断言，不再是 DOM 里没有。
+ * 历史上的缺陷（已由浮动对话框取代）：全屏期间对话栏整块不渲染 → <MessageInput> 连同
+ * messageInputRef 一起卸载，`messageInputRef.current?.appendText(...)` 的可选链把评论
+ * 静默吞掉；当时的修法是「提交后自动退出全屏」。
  *
  * Chromium 里 <webview> 是惰性的未知元素，guest 侧的 IPC 由测试自己打桩：dispatch
  * 一个 wave-picker 的 submit ipc 事件，走真实的 PreviewPane → ChatApp → MessageInput
@@ -83,7 +82,7 @@ async function submitPickerComment(
 }
 
 test.describe("Desktop preview fullscreen element comments", () => {
-  test("a picker comment submitted in fullscreen exits fullscreen and lands in the chat input", async ({
+  test("a picker comment lands in the fullscreen floating dialog, and sending shows the working state", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
@@ -111,11 +110,14 @@ test.describe("Desktop preview fullscreen element comments", () => {
     await expect(webviewPage.getByTestId("preview-pane")).toBeVisible();
     await stubPreviewGuest(webviewPage);
 
-    // ── 1. Fullscreen: the conversation column is hidden (still mounted) ──
+    // ── 1. Fullscreen: the conversation column becomes the floating dialog ──
     await webviewPage.getByTestId("panel-fullscreen").click();
     const chatBody = webviewPage.locator(".desktop-chat-body");
     await expect(chatBody).toHaveClass(/preview-fullscreen/);
-    await expect(webviewPage.locator(".desktop-chat-main")).toBeHidden();
+    const floating = webviewPage.locator(".desktop-chat-main");
+    await expect(floating).toBeVisible();
+    const input = webviewPage.getByTestId("message-input");
+    await expect(input).toBeVisible();
 
     // The picker is still reachable in fullscreen (its toggle lives in the
     // pane's own toolbar, and the shown guest fills the content area).
@@ -124,23 +126,38 @@ test.describe("Desktop preview fullscreen element comments", () => {
       /active/,
     );
 
-    // ── 2. Submit an element comment while fullscreen ──────────────
+    // ── 2. Submit an element comment while fullscreen: no exit, it lands in
+    //       the floating dialog and takes focus (场景 6 修订) ────────────
     await submitPickerComment(webviewPage, "这里改成主要按钮样式", "button");
-
-    // Fullscreen exits on its own (no Esc) and the conversation comes back.
-    await expect(chatBody).not.toHaveClass(/preview-fullscreen/);
-    await expect(webviewPage.locator(".desktop-chat-main")).toBeVisible();
-    const input = webviewPage.getByTestId("message-input");
+    await expect(chatBody).toHaveClass(/preview-fullscreen/);
     await expect(input).toContainText("这里改成主要按钮样式");
     await expect(input).toBeFocused();
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-preview-comment-floating-dialog.webp",
+    );
 
     // ── 3. A second pick appends to the first (batch, not replace) ─
     await submitPickerComment(webviewPage, "订单号这一列再宽一点", "span");
     await expect(input).toContainText("这里改成主要按钮样式");
     await expect(input).toContainText("订单号这一列再宽一点");
+
+    // ── 4. Sending swaps the dialog for the "working" state until the turn
+    //       ends, which restores an empty input (场景 9) ────────────────
+    await webviewPage.getByTestId("send-btn").click();
+    await injector.startStreaming();
+    const working = webviewPage.getByTestId("preview-floating-working");
+    await expect(working).toBeVisible();
+    await expect(working).toContainText("正在工作");
+    await expect(input).toBeHidden();
     await screenshotWebp(
       webviewPage,
-      "../../docs/public/screenshots/desktop-preview-comment-after-fullscreen.webp",
+      "../../docs/public/screenshots/desktop-preview-floating-working.webp",
     );
+
+    await injector.endStreaming();
+    await expect(working).toHaveCount(0);
+    await expect(input).toBeVisible();
+    await expect(input).toHaveText("");
   });
 });

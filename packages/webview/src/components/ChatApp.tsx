@@ -746,6 +746,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // user toggles back (button or Esc). Per-pane: each ChatApp owns its panes.
   // Generalized to the tabbed panel slot (any active panel can go fullscreen).
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
+  // 「这一轮还在跑」：全屏里的浮动对话框据此在「输入卡」与「正在工作」之间切换
+  // （spec desktop-preview.md 场景 9）。生成与斜杠命令都算——用户从浮动框发出的
+  // 两者都必须看得见「已经发出去了」。
+  const turnRunning = state.isStreaming || state.isCommandRunning;
   const chatContainerRef = useRef<HTMLDivElement>(null);
   // The shared panel slot; its left-edge drag handle (rendered once on the slot,
   // see .panel-slot-drag-handle) anchors on this element's fixed right edge.
@@ -2857,21 +2861,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // this pane's input (not sent), so several can be batched and edited before
   // sending.
   //
-  // 两条约束一起决定了「不能直接写」：
-  // 1. 预览全屏期间 `.desktop-chat-main` 整块不渲染（见下方 desktop-chat-body），
-  //    <MessageInput> 跟着卸载 ⇒ `messageInputRef.current` 恒为 null，原来的
-  //    `?.appendText()` 会把刚写完的评论静默吞掉。评论是用户手工攒的内容，先退出
-  //    全屏把它露出来（用户口径：评论 → 退出全屏 → 输入框里看到它）。
-  // 2. 退出全屏是 setState，输入框要等下一次提交才重新挂载 —— 同一个 tick 里
-  //    appendText 只会再落一次空。所以评论先入 pending 队列，由紧随其后的 effect
-  //    在「输入区已挂载」后再写入（与 #2496 预填提示词同一条「就绪后写入」路径）。
+  // 2026-09-16 需求八起，预览全屏里这块输入框以**浮动对话框**形态留在视野内
+  // （见下方 desktop-chat-body 的 preview-fullscreen 分支），所以评论不再需要先
+  // 退出全屏才能被看到：在全屏里点元素加评论，标注就直接出现在右下角的对话框里。
+  //
+  // 仍然入队而不是同一个 tick 里直接 appendText：输入区可能还没挂载（欢迎页等
+  // snapshot 落地的半就绪窗口），同一个 tick 写会落空。队列由紧随其后的 effect 在
+  // 「输入区已挂载」后再写入（与 #2496 预填提示词同一条「就绪后写入」路径）。
   // 队列是**追加**语义（分隔符与 MessageInput.appendText 保持一致）：用户连点几个
   // 元素攒评论，绝不能覆盖已经攒下的内容。
   const [pendingCommentAppend, setPendingCommentAppend] = useState<
     string | null
   >(null);
   const handleAddComment = useCallback((text: string) => {
-    setPreviewFullscreen(false);
     setPendingCommentAppend((prev) => (prev ? `${prev}\n\n${text}` : text));
   }, []);
 
@@ -4605,14 +4607,38 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         <div
           className={`desktop-chat-body${
             previewFullscreen ? " preview-fullscreen" : ""
-          }`}
+          }${previewFullscreen && turnRunning ? " preview-working" : ""}`}
         >
-          {/* 全屏时对话列**保持挂载**、靠 CSS 隐藏（见 DesktopApp.css 的
-              preview-fullscreen 规则）：整块不渲染会连坐卸载 <MessageInput>，
-              退出全屏重挂载只能按 state.inputContent（上次宿主快照）回填，最后
-              一段输入随之丢失，滚动位置也归零（spec desktop-preview.md 场景 7：
-              进出全屏不丢草稿）。折叠面板槽位是同一纪律：能保持挂载就保持。 */}
+          {/* 全屏时对话列**保持挂载**，靠 CSS 缩成底部居中的浮动对话框（见
+              DesktopApp.css 的 preview-fullscreen 规则）：整块不渲染会连坐卸载
+              <MessageInput>，退出全屏重挂载只能按 state.inputContent（上次宿主快照）
+              回填，最后一段输入随之丢失，滚动位置也归零（spec desktop-preview.md
+              场景 7）；而自 2026-09-16 需求八起，全屏里这个浮动对话框就是标注与
+              发消息的落点（场景 6/8/9），更不能是另一个输入框实例。消息列表与
+              任务/队列区在全屏里由 CSS 隐藏。 */}
           <div className="desktop-chat-main">{chatBodyContent}</div>
+          {/* 本轮运行中（生成 / 斜杠命令）：输入卡让位给「正在工作」药丸，落在
+              浮动对话框同一位置——全屏里也能看出「标注已经发出去、agent 正在执行」
+              （spec desktop-preview.md 场景 9）。 */}
+          {previewFullscreen && turnRunning && (
+            <div
+              className="preview-floating-working"
+              role="status"
+              aria-live="polite"
+              data-testid="preview-floating-working"
+            >
+              <span
+                className="preview-floating-working-dots"
+                aria-hidden="true"
+              >
+                <i />
+                <i />
+                <i />
+                <i />
+              </span>
+              <span className="preview-floating-working-text">正在工作</span>
+            </div>
+          )}
           {/* preview guest 常驻层：guest 的 DOM 归属与会话/槽位无关，这是「切会
               话不销毁预览」的机制基础。可见态用 CSS 盖在面板 body 的位置上，停
               靠态保留自身尺寸但不显示；槽位里对应的位置只留占位（renderPanelSlot）。 */}

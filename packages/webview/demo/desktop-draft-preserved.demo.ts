@@ -118,9 +118,8 @@ test.describe("Desktop 输入草稿跨视图切换保留", () => {
     await webviewPage.getByTestId("panel-toggle-btn").click();
     await webviewPage.getByTestId("panel-empty-item-preview").click();
     await webviewPage.getByTestId("panel-fullscreen").click();
-    // 对话列只是隐藏（CSS），仍是同一个输入框实例——所以草稿一定还在。
-    await expect(webviewPage.locator(".desktop-chat-main")).toBeHidden();
-    await expect(webviewPage.getByTestId("message-input")).toHaveCount(1);
+    // 全屏下对话框缩成浮动卡片、仍是同一个输入框实例——所以草稿一定还在。
+    await expect(webviewPage.getByTestId("message-input")).toBeVisible();
     await expect(webviewPage.getByTestId("message-input")).toHaveText(DRAFT);
     await webviewPage.getByTestId("panel-fullscreen").click();
     const afterFullscreen = webviewPage.getByTestId("message-input");

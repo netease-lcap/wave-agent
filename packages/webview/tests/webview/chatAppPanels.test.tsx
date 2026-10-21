@@ -2597,7 +2597,7 @@ describe("desktop panel comments while the preview is fullscreen", () => {
       }),
     );
 
-  it("exits fullscreen and appends the picker comment to the chat input", () => {
+  it("appends the picker comment to the floating dialog without leaving fullscreen", () => {
     const { wv } = openPreview();
     const body = screen
       .getByTestId("preview-pane")
@@ -2605,8 +2605,9 @@ describe("desktop panel comments while the preview is fullscreen", () => {
 
     fireEvent.click(screen.getByTestId("panel-fullscreen"));
     expect(body).toHaveClass("preview-fullscreen");
-    // 前提：全屏下对话栏（含输入框）不显示，但仍挂载着。
+    // 前提：全屏下对话栏是浮动对话框——挂载着、且就是本 pane 那一个输入框。
     expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
+    const input = screen.getByTestId("message-input") as HTMLElement;
 
     // 全屏里 picker 仍可激活（工具条在 pane 自己身上）。
     fireEvent.click(screen.getByTestId("preview-picker-toggle"));
@@ -2617,9 +2618,10 @@ describe("desktop panel comments while the preview is fullscreen", () => {
 
     pickComment(wv, "这里改成主要按钮样式", "button.primary");
 
-    // 全屏自动退出，评论落在重新挂载的输入框里并聚焦。
-    expect(body).not.toHaveClass("preview-fullscreen");
-    const input = screen.getByTestId("message-input") as HTMLElement;
+    // 留在全屏（需求八：标注后用户要能直接看到对话是否已发送/在跑），
+    // 评论落进浮动对话框并聚焦。
+    expect(body).toHaveClass("preview-fullscreen");
+    expect(screen.getByTestId("message-input")).toBe(input);
     expect(input.textContent).toContain("这里改成主要按钮样式");
     expect(document.activeElement).toBe(input);
 
@@ -2629,7 +2631,39 @@ describe("desktop panel comments while the preview is fullscreen", () => {
     expect(input.textContent).toContain("订单号这一列再宽一点");
   });
 
-  it("exits fullscreen and appends a diff line comment taken while fullscreen", () => {
+  it("shows the working state in fullscreen while the turn runs, then restores the input", () => {
+    const { vscode } = openPreview();
+    fireEvent.click(screen.getByTestId("panel-fullscreen"));
+    expect(screen.getByTestId("message-input")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("preview-floating-working"),
+    ).not.toBeInTheDocument();
+
+    // 从浮动对话框发出消息：本轮运行中，输入卡让位给「正在工作」。
+    const input = screen.getByTestId("message-input") as HTMLElement;
+    input.innerText = "把主按钮改成蓝色";
+    fireEvent.input(input);
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "sendMessage" }),
+    );
+    // 流式态由宿主事件驱动（webview 不乐观置位）：宿主开跑后才换成「正在工作」。
+    act(() => {
+      sendCommand("startStreaming");
+    });
+    expect(screen.getByTestId("preview-floating-working")).toBeInTheDocument();
+
+    // 本轮结束：药丸消失、浮动对话框回到空白输入框。
+    act(() => {
+      sendCommand("endStreaming");
+    });
+    expect(
+      screen.queryByTestId("preview-floating-working"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("message-input")).toBeInTheDocument();
+  });
+
+  it("appends a diff line comment taken while fullscreen into the floating dialog", () => {
     openPreview();
     // 全屏按钮在页签条上，对任何激活的页签都在 ⇒ 全屏时切到差异页签，它同样铺满
     // 内容区、行评论入口照旧可点，与预览元素评论同病。
@@ -2668,7 +2702,8 @@ describe("desktop panel comments while the preview is fullscreen", () => {
     });
     fireEvent.click(screen.getByTestId("line-comment-submit"));
 
-    expect(body).not.toHaveClass("preview-fullscreen");
+    // 留在全屏，评论落进浮动对话框（需求八）。
+    expect(body).toHaveClass("preview-fullscreen");
     const input = screen.getByTestId("message-input") as HTMLElement;
     expect(input.textContent).toContain("**代码评论**");
     expect(input.textContent).toContain("空行要跳过");
