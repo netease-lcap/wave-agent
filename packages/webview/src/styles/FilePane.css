@@ -91,6 +91,71 @@
   font-size: 14px;
 }
 
+/* 列表态（spec desktop-file-panel.md「文件面板列出当前对话的文件」）：面板
+   没打开任何文件时，正文改为「本对话读/写过的文件」清单，一行一个、点击即开。
+   只有文件——创作集是 URL 而非文件，不进这张表（它没有所属文件夹，也给不出
+   「在浏览器中打开 / 打开所在文件夹」之外的文件语义）。 */
+.file-pane-conversation-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 10px 14px;
+}
+
+.file-pane-conversation-files-caption {
+  padding: 0 2px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #8b9099);
+}
+
+.file-pane-conversation-file-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.file-pane-conversation-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--vscode-foreground);
+  font-size: 13px;
+  text-align: left;
+}
+
+.file-pane-conversation-file-row + .file-pane-conversation-file-row {
+  border-top: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.16));
+}
+
+.file-pane-conversation-file-row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.file-pane-conversation-file-row:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #4596f6);
+  outline-offset: -1px;
+}
+
+.file-pane-conversation-file-icon {
+  flex: none;
+  color: var(--vscode-descriptionForeground, #8b9099);
+}
+
+.file-pane-conversation-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Code view: one row per line; the gutter is sticky so long lines scroll
    horizontally under it. The whole body is the scroll container. */
 .file-pane-code {

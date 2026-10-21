@@ -11,11 +11,13 @@ import { createPortal } from "react-dom";
 import hljs from "../utils/highlight";
 import type { FileItem, FileViewState, VsCodeApi } from "../types";
 import { formatCodeComment } from "../utils/codeComment";
+import type { ConversationFileEntry } from "../utils/conversationFiles";
 import { toRelativePath } from "../utils/messageUtils";
 import { useClickOutside } from "../utils/useClickOutside";
 import { useHostMessage } from "../utils/useHostMessage";
+import { ConversationFileList } from "./ConversationFileList";
 import { FileSuggestionDropdown } from "./FileSuggestionDropdown";
-import { OpenBrowserIcon, SearchIcon } from "./HeaderIcons";
+import { OpenBrowserIcon, SearchIcon, SettingsBackIcon } from "./HeaderIcons";
 import { LineCommentBox } from "./LineCommentBox";
 import { PanelKindIcon } from "./PanelKindIcon";
 import { PanePlaceholder, PaneShell } from "./PaneShell";
@@ -281,7 +283,7 @@ export const renderFileMarkdown = (
 const HIGHLIGHT_LINE_HEIGHT = 20;
 
 export interface FilePaneProps {
-  /** Panel content; null renders the "open a file" placeholder. */
+  /** Panel content; null renders the conversation file list (or the placeholder). */
   fileView: FileViewState | null;
   width: number;
   /** Local sessions only: open the file in the OS default app. */
@@ -293,6 +295,15 @@ export interface FilePaneProps {
   /** Open a file in the panel (same flow as clicking a message file path). */
   onOpenFileInPanel?: (path: string) => void;
   /**
+   * The files this conversation read or wrote, newest first. Shown as the
+   * panel's list view while no file is open; empty → the empty placeholder.
+   */
+  conversationFiles?: ConversationFileEntry[];
+  /** Leave the open file and go back to the conversation file list. */
+  onBackToList?: () => void;
+  /** The tab is currently showing the list even though it has a file loaded. */
+  listMode?: boolean;
+  /**
    * Receives a formatted line comment; appended to the chat input. Absent →
    * the code view renders no comment buttons at all.
    */
@@ -300,7 +311,8 @@ export interface FilePaneProps {
 }
 
 /**
- * Desktop file panel: a read-only viewer for file paths clicked in messages.
+ * Desktop file panel: a read-only viewer for file paths clicked in messages,
+ * plus a list view of the files this conversation touched.
  * Local files are read by the host straight from disk; remote files arrive via
  * ssh as base64/text. Renders markdown, syntax-highlights code, keeps long
  * lines scrolling horizontally with a fixed line-number gutter, and jumps to
@@ -313,6 +325,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   workdir,
   vscode,
   onOpenFileInPanel,
+  conversationFiles,
+  onBackToList,
+  listMode,
   onAddComment,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -530,6 +545,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
   );
   const isLocal = fileView?.host === "local";
   const markdown = fileView?.content ? isMarkdownPath(fileView.path) : false;
+  // The list view only exists when the conversation has files to list; with
+  // none, no file open still means the empty placeholder (spec 场景 1). A file
+  // can stay loaded while the list is shown — 「返回文件列表」 keeps `fileView`
+  // so a host reply still in flight lands on the same tab instead of yanking
+  // the user back into the file.
+  const hasConversationFiles = (conversationFiles?.length ?? 0) > 0;
+  const showList = hasConversationFiles && (!fileView || listMode);
+  const showFile = !!fileView && !showList;
 
   // Inline line comments — the same interaction as the diff pane: hovering a
   // line reveals a "+" button, clicking opens a box under that line, and the
@@ -700,7 +723,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
       toolbarRef={toolbarRef}
       toolbar={
         <>
-          {fileView ? (
+          {showFile && hasConversationFiles && onBackToList && (
+            <Tooltip text="返回文件列表" position="bottom">
+              <button
+                className="preview-pane-button"
+                aria-label="返回文件列表"
+                data-testid="file-pane-back-to-list"
+                onClick={onBackToList}
+              >
+                <SettingsBackIcon className="preview-pane-icon" />
+              </button>
+            </Tooltip>
+          )}
+          {showFile && fileView ? (
             <>
               <span className="file-pane-host">
                 {isLocal ? "本地" : fileView.host}
@@ -719,7 +754,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               - 「在默认应用中打开」：原 `title`/气泡文案一致，`aria-label` 同文案。
               - 搜索触发器：气泡文案跟随状态（原 `title` 就是动态的），
                 而 `aria-label` 保持稳定的「搜索文件」（改的是开关，名字不该跟着翻）。 */}
-          {fileView && isLocal && onOpenExternal && (
+          {showFile && fileView && isLocal && onOpenExternal && (
             <Tooltip text="在默认应用中打开" position="bottom">
               <button
                 className="preview-pane-button"
@@ -797,7 +832,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
       bodyClassName="preview-pane-body file-pane-body"
       bodyRef={scrollRef}
     >
-      {!fileView && (
+      {showList && (
+        <ConversationFileList
+          files={conversationFiles ?? []}
+          onOpenFile={(path) => onOpenFileInPanel?.(path)}
+        />
+      )}
+      {!showList && !fileView && (
         <PanePlaceholder className="file-pane-placeholder-empty">
           {/* Figma 文件面板空态：图标在上 24px、文案在下（评论 2026-09）。 */}
           <PanelKindIcon
@@ -808,124 +849,137 @@ export const FilePane: React.FC<FilePaneProps> = ({
           <span>点击消息中的文件路径，在此查看文件内容</span>
         </PanePlaceholder>
       )}
-      {fileView?.error && (
-        <div className="file-pane-status">
-          <i className="codicon codicon-error file-pane-status-icon" />
-          <span>{fileView.error}</span>
-        </div>
-      )}
-      {fileView &&
-        !fileView.error &&
-        !fileView.content &&
-        !fileView.imageBase64 && (
-          <PanePlaceholder>
-            <i className="codicon codicon-loading codicon-modifier-spin" />
-            <span>正在读取文件…</span>
-          </PanePlaceholder>
-        )}
-      {fileView?.imageBase64 && !fileView.error && (
-        <img
-          className="file-pane-image"
-          src={fileView.imageBase64}
-          alt={relativePath || fileView.path}
-        />
-      )}
-      {fileView?.content && !fileView.error && markdown && (
-        <div
-          className="file-pane-markdown-wrap"
-          ref={mdWrapRef}
-          onMouseOver={handleMarkdownHover}
-          onMouseLeave={() => setMdHover(null)}
-        >
-          <div
-            className="message-content markdown-content file-pane-markdown"
-            dangerouslySetInnerHTML={{ __html: mdHtml }}
-          />
-          {/* Revealed on hover of a block rather than by CSS: the button only
-              exists while a block is actually under the pointer, which is also
-              what keeps it off images (an image has no block to anchor to). */}
-          {mdHover && onAddComment && !mdComment && (
-            <button
-              className="line-comment-btn md-block-comment-btn"
-              style={{ top: mdHover.top }}
-              title="评论这段"
-              aria-label="评论这段"
-              data-testid="md-block-comment-add"
-              onClick={openMdComment}
-            >
-              <i className="codicon codicon-add" />
-            </button>
-          )}
-          {mdComment &&
-            createPortal(
-              <LineCommentBox
-                draft={commentDraft}
-                onDraftChange={setCommentDraft}
-                onSubmit={submitMdComment}
-                onCancel={closeMdComment}
-                tag={commentTag}
-                placeholder="评论这段…"
-              />,
-              mdComment.holder,
-            )}
-        </div>
-      )}
-      {fileView?.content && !fileView.error && !markdown && contentLines && (
-        <div className="file-pane-code">
-          {fileView.truncated && fileView.totalLines !== undefined && (
-            <div className="file-pane-truncated-hint">
-              文件共 {fileView.totalLines} 行，仅显示前 {contentLines.length} 行
+      {/* 文件正文整组在列表态下不渲染：状态、图片、Markdown、代码行各自都靠
+          `fileView` 判空，列表态却是「有 fileView 但在看列表」（见 showList 注释）。 */}
+      {!showList && (
+        <>
+          {fileView?.error && (
+            <div className="file-pane-status">
+              <i className="codicon codicon-error file-pane-status-icon" />
+              <span>{fileView.error}</span>
             </div>
           )}
-          {contentLines.map((line, i) => {
-            const lineNo = i + 1;
-            const active =
-              fileView.startLine !== undefined &&
-              lineNo >= fileView.startLine &&
-              (fileView.endLine === undefined || lineNo <= fileView.endLine);
-            return (
-              <React.Fragment key={i}>
-                <div
-                  className={`file-pane-line${active ? " file-pane-line--active" : ""}`}
+          {fileView &&
+            !fileView.error &&
+            !fileView.content &&
+            !fileView.imageBase64 && (
+              <PanePlaceholder>
+                <i className="codicon codicon-loading codicon-modifier-spin" />
+                <span>正在读取文件…</span>
+              </PanePlaceholder>
+            )}
+          {fileView?.imageBase64 && !fileView.error && (
+            <img
+              className="file-pane-image"
+              src={fileView.imageBase64}
+              alt={relativePath || fileView.path}
+            />
+          )}
+          {fileView?.content && !fileView.error && markdown && (
+            <div
+              className="file-pane-markdown-wrap"
+              ref={mdWrapRef}
+              onMouseOver={handleMarkdownHover}
+              onMouseLeave={() => setMdHover(null)}
+            >
+              <div
+                className="message-content markdown-content file-pane-markdown"
+                dangerouslySetInnerHTML={{ __html: mdHtml }}
+              />
+              {/* Revealed on hover of a block rather than by CSS: the button only
+              exists while a block is actually under the pointer, which is also
+              what keeps it off images (an image has no block to anchor to). */}
+              {mdHover && onAddComment && !mdComment && (
+                <button
+                  className="line-comment-btn md-block-comment-btn"
+                  style={{ top: mdHover.top }}
+                  title="评论这段"
+                  aria-label="评论这段"
+                  data-testid="md-block-comment-add"
+                  onClick={openMdComment}
                 >
-                  <span className="file-pane-line-no">
-                    {onAddComment && (
-                      <button
-                        className="line-comment-btn"
-                        title="评论这行"
-                        aria-label={`评论 ${commentTag} 第 ${lineNo} 行`}
-                        data-testid={`line-comment-add-${lineNo}`}
-                        onClick={() => {
-                          setCommentLine(lineNo);
-                          setCommentDraft("");
-                        }}
-                      >
-                        <i className="codicon codicon-add" />
-                      </button>
-                    )}
-                    {lineNo}
-                  </span>
-                  <span
-                    className="file-pane-line-code"
-                    dangerouslySetInnerHTML={{ __html: line.html }}
-                  />
-                </div>
-                {commentLine === lineNo && (
+                  <i className="codicon codicon-add" />
+                </button>
+              )}
+              {mdComment &&
+                createPortal(
                   <LineCommentBox
                     draft={commentDraft}
                     onDraftChange={setCommentDraft}
-                    onSubmit={submitComment}
-                    onCancel={closeComment}
+                    onSubmit={submitMdComment}
+                    onCancel={closeMdComment}
                     tag={commentTag}
-                  />
+                    placeholder="评论这段…"
+                  />,
+                  mdComment.holder,
                 )}
-              </React.Fragment>
-            );
-          })}
-          {fileView.truncated && fileView.totalLines === undefined && (
-            <div className="file-pane-truncated-hint">文件较大，内容已截断</div>
+            </div>
           )}
-        </div>
+          {fileView?.content &&
+            !fileView.error &&
+            !markdown &&
+            contentLines && (
+              <div className="file-pane-code">
+                {fileView.truncated && fileView.totalLines !== undefined && (
+                  <div className="file-pane-truncated-hint">
+                    文件共 {fileView.totalLines} 行，仅显示前{" "}
+                    {contentLines.length} 行
+                  </div>
+                )}
+                {contentLines.map((line, i) => {
+                  const lineNo = i + 1;
+                  const active =
+                    fileView.startLine !== undefined &&
+                    lineNo >= fileView.startLine &&
+                    (fileView.endLine === undefined ||
+                      lineNo <= fileView.endLine);
+                  return (
+                    <React.Fragment key={i}>
+                      <div
+                        className={`file-pane-line${active ? " file-pane-line--active" : ""}`}
+                      >
+                        <span className="file-pane-line-no">
+                          {onAddComment && (
+                            <button
+                              className="line-comment-btn"
+                              title="评论这行"
+                              aria-label={`评论 ${commentTag} 第 ${lineNo} 行`}
+                              data-testid={`line-comment-add-${lineNo}`}
+                              onClick={() => {
+                                setCommentLine(lineNo);
+                                setCommentDraft("");
+                              }}
+                            >
+                              <i className="codicon codicon-add" />
+                            </button>
+                          )}
+                          {lineNo}
+                        </span>
+                        <span
+                          className="file-pane-line-code"
+                          dangerouslySetInnerHTML={{ __html: line.html }}
+                        />
+                      </div>
+                      {commentLine === lineNo && (
+                        <LineCommentBox
+                          draft={commentDraft}
+                          onDraftChange={setCommentDraft}
+                          onSubmit={submitComment}
+                          onCancel={closeComment}
+                          tag={commentTag}
+                        />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+                {fileView.truncated && fileView.totalLines === undefined && (
+                  <div className="file-pane-truncated-hint">
+                    文件较大，内容已截断
+                  </div>
+                )}
+              </div>
+            )}
+        </>
       )}
     </PaneShell>
   );
