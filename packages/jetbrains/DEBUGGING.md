@@ -176,20 +176,7 @@ cd ../jetbrains && ./gradlew runIde --no-daemon
 - [ ] 在输入框打字发消息，`idea.log` 出现 `[wave-stdio]` 相关日志（说明 stdio 链路通）
 - [ ] 关闭工具窗口，wave 子进程被清理（`ps aux | grep wave` 不应残留 `--stdio` 进程）
 
-## 8. 真机 UI 测试（补全链路）
-
-```bash
-pnpm jb:test:ui                            # 全部 integrationTest
-pnpm jb:test:ui -- --tests "*completion*"  # 只跑补全
-```
-
-用 JetBrains 官方 **Starter + Driver**（`intellijPlatformTesting.testIdeUi`）拉起一个真实 IDE、装好本插件再驱动它，覆盖单测与平台 fixture 看不到的部分：插件在真机里被加载、编辑器里真的画出 ghost text、以及跨文件定义片段（`CompletionSnippets.kt` 走真实 PSI）。
-
-- 需要：可用的模型配置（`~/.wave/settings.json`），以及一次屏幕会话（IDE 会真的弹窗）；不需要手动点鼠标——测试通过 Driver RPC 调平台 action 驱动，不依赖 macOS 的 Accessibility 权限（Robot 的键入事件在无该权限时会被静默丢弃，所以测试不用 Robot）。
-- 首次运行会下载 IDE（`out/perf-startup/tests/IC-<build>/`），之后热态约 1 分钟跑完。
-- 失败时日志在 `out/perf-startup/tests/IC-<build>/waveInlineCompletion/log/idea.log`（崩溃/断言失败还会带一张全屏截图）。
-
-## 9. 关键源码位置
+## 8. 关键源码位置
 
 | 文件                                                  | 职责                                    |
 | ----------------------------------------------------- | --------------------------------------- |
