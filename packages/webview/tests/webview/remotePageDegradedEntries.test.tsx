@@ -370,8 +370,8 @@ describe("entries that can only fail on the page", () => {
     const { vscode } = renderChatApp();
 
     // 第二批解禁之后仍然「只能失败」的那些：它们的背后是宿主的**界面**能力
-    // （设置页 / 插件 / 计划预览），或者只有宿主侧才有意义（远程控制自身）。
-    // /clear /rewind /model /tasks /workflows 与 /btw 已经解禁，见下面两条用例。
+    // （设置页 / 插件 / 计划预览 / btw 面板），或者只有宿主侧才有意义（远程控制
+    // 自身）。/clear /rewind /tasks /workflows 与 /btw 已经解禁，见下面几条用例。
     const hostLocal = [
       "/config",
       "/plugin",
@@ -441,7 +441,7 @@ describe("entries that can only fail on the page", () => {
     expect(screen.getByText(/用法：\/btw/)).toBeInTheDocument();
   });
 
-  it("serves the five commands the second batch unblocked, instead of sending them as text", async () => {
+  it("serves the four commands the second batch unblocked, instead of sending them as text", async () => {
     window.waveRemotePage = true;
     const { vscode } = renderChatApp();
 
@@ -453,12 +453,6 @@ describe("entries that can only fail on the page", () => {
     expect(postsOf(vscode)).toContainEqual({
       command: "listRewindCheckpoints",
     });
-
-    vscode.postMessage.mockClear();
-    await act(async () => {
-      await typeAndSend("/model");
-    });
-    expect(postsOf(vscode)).toContainEqual({ command: "getConfiguredModels" });
 
     vscode.postMessage.mockClear();
     await act(async () => {

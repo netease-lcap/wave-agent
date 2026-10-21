@@ -387,7 +387,6 @@ test("getSlashCommands narrows the SDK command to what the page renders", async 
     "tasks",
     "workflows",
     "rewind",
-    "model",
     "btw",
   ]);
 });

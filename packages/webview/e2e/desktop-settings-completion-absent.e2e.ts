@@ -13,7 +13,9 @@ import { MessageInjector } from "./utils/messageInjector.js";
  * SettingsPage），因此门禁一旦漏掉桌面端，用户会在一个没有代码编辑器、永远不会
  * 触发补全的应用里看到一个补全开关——「承诺一个不会发生的功能」。单测
  * （settingsGlobal.test.tsx）用 `window.waveHostType` 覆盖了判定分支，本用例守住
- * 真 bundle + 真桌面宿主标记下的实际呈现与「不发起无消费者的 getConfiguredModels」。
+ * 真 bundle + 真桌面宿主标记下的实际呈现。（原先这里还断言桌面端不发起
+ * `getConfiguredModels`；底栏模型选择器上线后对话面板自己会拉这份清单，那条
+ * 断言随之失效。）
  */
 
 const WORKDIR = "/Users/dev/projects/wave-agent";
@@ -60,16 +62,6 @@ async function openGlobalSettings(page: Page) {
   ).toBeVisible();
 }
 
-function postedCommands(page: Page): Promise<string[]> {
-  return page.evaluate(() =>
-    (
-      (
-        window as unknown as { getTestMessages?: () => unknown[] }
-      ).getTestMessages?.() ?? []
-    ).map((m) => (m as { command?: string }).command ?? ""),
-  );
-}
-
 test.describe("桌面端设置页不含补全两行（宿主能力门禁）", () => {
   test("「全局设置」渲染语言与桌面端设置区块，但不渲染代码补全/补全模型", async ({
     webviewPage,
@@ -114,20 +106,5 @@ test.describe("桌面端设置页不含补全两行（宿主能力门禁）", ()
     await expect(
       webviewPage.locator('select[aria-label="补全模型"]'),
     ).toHaveCount(0);
-  });
-
-  test("桌面端进「全局设置」不发起 getConfiguredModels（无消费者的 RPC）", async ({
-    webviewPage,
-  }) => {
-    const injector = await bootDesktop(webviewPage, { language: "zh-CN" });
-    await openGlobalSettings(webviewPage);
-    await injector.simulateExtensionMessage("configurationResponse", {
-      configurationData: { language: "zh-CN" },
-    });
-
-    // 补全候选清单与 `/model` 同源；桌面端没有补全，这一拉没有任何消费者
-    expect(await postedCommands(webviewPage)).not.toContain(
-      "getConfiguredModels",
-    );
   });
 });

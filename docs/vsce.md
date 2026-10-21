@@ -71,7 +71,7 @@ CodeWave IDE 是一款集成在 VS Code 与 JetBrains IDE（WebStorm、IntelliJ 
 
 <figure><img src="/screenshots/spec-slash-commands.webp" alt="指令系统" /><figcaption>指令系统</figcaption></figure>
 
-<figure><img src="/screenshots/spec-model-popup.webp" alt="模型选择菜单" /><figcaption>模型选择菜单</figcaption></figure>
+<figure><img src="/screenshots/spec-model-picker.webp" alt="输入卡片底栏的模型选择器" /><figcaption>输入卡片底栏的模型选择器</figcaption></figure>
 
 <figure><img src="/screenshots/spec-file-suggestions.webp" alt="文件建议下拉列表" /><figcaption>文件建议下拉列表</figcaption></figure>
 

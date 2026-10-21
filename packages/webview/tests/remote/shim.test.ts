@@ -1538,16 +1538,19 @@ describe("remote page shim — the second batch", () => {
     expect(page.banner()).toContain("这台电脑上的会话不支持这个操作");
   });
 
-  it("/model: the list and the switch both go to the host", async () => {
+  it("模型清单与切换都转发给宿主", async () => {
     const page = await openPage();
 
     page.post({ command: "getConfiguredModels" });
     await flush();
     expect(lastRequest(page).method).toBe("getConfiguredModels");
-    page.reply({ models: ["claude-sonnet-4"], currentModel: "claude-opus-4" });
+    page.reply({
+      models: [{ name: "claude-sonnet-4", supportsVision: true }],
+      currentModel: "claude-opus-4",
+    });
     await flush();
     expect(lastPost(page, "configuredModels")).toMatchObject({
-      models: ["claude-sonnet-4"],
+      models: [{ name: "claude-sonnet-4", supportsVision: true }],
       currentModel: "claude-opus-4",
     });
 

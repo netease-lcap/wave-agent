@@ -269,7 +269,7 @@ class MessageHandler(
                     // 用户偏好（语言 / 上下文长度 / 自动记忆开关与频率）写用户级
                     // `~/.wave/settings.json`（经 CLI 进程），由 SDK 实时重载在**下一轮
                     // 对话**生效——保存不重建会话（spec agent-config「设置实时重载」/
-                    // 「配置变更不再需要重建会话」场景 1–2）。模型经 `/model` 命令
+                    // 「配置变更不再需要重建会话」场景 1–2）。模型经底栏模型选择器
                     // 走宿主 RPC、服务地址随 authStatusResponse 下发，都不落宿主存储。
                     writeUserSettings(data)
                     // 设置页保存结果经宿主通知提示（spec「设置页反馈语义」）
@@ -1210,7 +1210,7 @@ class MessageHandler(
      * Mirrors VSCE updateAllSessionsConfig(): rebuild every live agent so auth changes
      * (login/logout) take effect. Plugin changes no longer go through this path — they
      * wait for /reload-plugins (spec「插件变更的就地重载」). No session-level overrides
-     * are sent — 模型经 `/model` RPC、用户偏好经用户级 settings.json 实时重载（spec
+     * are sent — 模型经 `setModel` RPC、用户偏好经用户级 settings.json 实时重载（spec
      *「分层职责」）。
      */
     private suspend fun reloadAgentConfig() {
@@ -1266,7 +1266,7 @@ class MessageHandler(
      * 标明每个键的来源层，设置页据此把被组织配置覆盖的键显示为「生效值 + 置灰」。
      * 读取失败降级为空。
      *
-     * **对话模型**选择不在回包里（经 `/model` 命令走宿主 RPC）；补全模型
+     * **对话模型**选择不在回包里（经底栏模型选择器走宿主 RPC）；补全模型
      * （顶层 `completionModel`）是配置文件里的用户偏好键，故在回包里（见
      * spec ui/code-completion.md 故事 4）。服务端地址的用户偏好
      * （`env.WAVE_SERVER_URL`）属于回包；宿主的 `authStatusResponse.serverUrl`
@@ -1306,7 +1306,7 @@ class MessageHandler(
     /**
      * 写用户级偏好（settings.json）——只取用户偏好键，扩展本地键不落该文件
      * （spec agent-config 边界说明「用户偏好的落点」）。补全模型/开关是配置文件
-     * 里的用户偏好键，故在白名单内；**对话模型**不在（那是 `/model` 命令写顶层
+     * 里的用户偏好键，故在白名单内；**对话模型**不在（那是模型选择器写顶层
      * `model` 的路径）。
      */
     private suspend fun writeUserSettings(data: JsonObject) {

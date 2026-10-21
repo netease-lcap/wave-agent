@@ -1,0 +1,202 @@
+/* 输入卡片底栏左侧的模型选择器（spec ui/model-command.md「输入卡片底栏切换
+   模型」）。底栏结构：+ / / 图标按钮 → 本控件 → spacer → 右侧控件，所以
+   触发按钮走图标按钮同档的尺寸与色板，菜单向上展开（与权限模式下拉一致，
+   避免被 JCEF 视口底部裁掉）。 */
+
+.model-picker-container {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.model-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  padding: 4px 6px;
+  background-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.model-picker-trigger:hover,
+.model-picker-trigger:focus {
+  background-color: var(--vscode-toolbar-hoverBackground);
+  color: var(--vscode-foreground);
+  border-color: var(--vscode-focusBorder);
+}
+
+.model-picker-trigger:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.model-picker-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-picker-caret {
+  flex: 0 0 auto;
+  opacity: 0.8;
+}
+
+/* 向上展开：与 .permission-mode-menu 同因（原生 select 在 JCEF 会被裁）。 */
+.model-picker-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin: 0 0 4px;
+  padding: 2px 0;
+  list-style: none;
+  min-width: 180px;
+  max-width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--vscode-dropdown-background);
+  color: var(--vscode-dropdown-foreground);
+  border: 1px solid var(--vscode-dropdown-border);
+  border-radius: 4px;
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+  z-index: 10000;
+  font-size: 12px;
+}
+
+.model-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  color: var(--vscode-dropdown-foreground);
+}
+
+.model-picker-item:hover {
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+.model-picker-item.selected {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground);
+}
+
+.model-picker-item-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 「视觉」标识：能读图的模型才有（判据由宿主下发，见 ConfiguredModel）。 */
+.model-picker-vision {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border-radius: 8px;
+  font-size: 11px;
+  line-height: 16px;
+  background: var(--vscode-badge-background, rgba(72, 160, 199, 0.15));
+  color: var(--vscode-badge-foreground, var(--vscode-textLink-foreground));
+}
+
+.model-picker-check {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+/* ── 桌面端 ─────────────────────────────────────────────────────── */
+
+[data-host="desktop"] .model-picker-trigger {
+  max-width: 220px;
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: var(--cc-radius-md, 8px);
+  font-size: 14px;
+  color: #565a60;
+}
+
+[data-host="desktop"] .model-picker-trigger:hover {
+  background: #eef0f3;
+  color: #1f2329;
+  border-color: transparent;
+}
+
+/* 点击后按钮仍持 focus：与权限模式按钮一致，不常驻 hover 底色。 */
+[data-host="desktop"] .model-picker-trigger:focus {
+  background: transparent;
+  border-color: transparent;
+}
+
+[data-host="desktop"] .model-picker-menu {
+  padding: 8px;
+  min-width: 200px;
+  max-width: 340px;
+  background: #ffffff;
+  color: #565a60;
+  border: 1px solid #ebeef5;
+  border-radius: 12px;
+  box-shadow: 0 0 12px rgb(0 0 0 / 12%);
+  font-size: 14px;
+}
+
+[data-host="desktop"] .model-picker-item {
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+}
+
+[data-host="desktop"] .model-picker-item:hover {
+  background: #eef0f3;
+  color: #1f2329;
+}
+
+[data-host="desktop"] .model-picker-item.selected {
+  background: #eef0f3;
+  color: #1f2329;
+}
+
+[data-host="desktop"] .model-picker-vision {
+  color: var(--vscode-brand-primary, #c1292e);
+  background: rgba(193, 41, 46, 0.08);
+  line-height: 18px;
+}
+
+[data-host="desktop"][data-theme="dark"] .model-picker-trigger {
+  color: #9a9ea5;
+}
+
+[data-host="desktop"][data-theme="dark"] .model-picker-trigger:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+[data-host="desktop"][data-theme="dark"] .model-picker-trigger:focus {
+  background: transparent;
+}
+
+[data-host="desktop"][data-theme="dark"] .model-picker-menu {
+  background: var(--cc-bg-overlay);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #9a9ea5;
+  box-shadow: 0 0 12px rgb(0 0 0 / 40%);
+}
+
+[data-host="desktop"][data-theme="dark"] .model-picker-item:hover,
+[data-host="desktop"][data-theme="dark"] .model-picker-item.selected {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+[data-host="desktop"][data-theme="dark"] .model-picker-vision {
+  color: #f0a6a8;
+  background: rgba(240, 166, 168, 0.14);
+}

@@ -118,7 +118,7 @@ export interface WaveConfiguration {
   autoMemoryEnabled?: boolean;
   /** Frequency of auto-memory extraction turns */
   autoMemoryFrequency?: number;
-  /** Persisted model selection (from /model command) */
+  /** Persisted model selection (written by the model picker's `setModel`) */
   model?: string;
   /**
    * Model used for lightweight tasks (subagent summaries, WebFetch content

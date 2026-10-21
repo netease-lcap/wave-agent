@@ -37,6 +37,7 @@ import {
   ModelConfig,
   PermissionMode,
   AgentOptions,
+  type ConfiguredModel,
 } from "../types/index.js";
 import {
   DEFAULT_WAVE_MAX_INPUT_TOKENS,
@@ -53,6 +54,7 @@ import {
 import { createAuthAwareFetch } from "./authService.js";
 import { ensureWaveRuntimeFilesExcluded } from "../utils/gitUtils.js";
 import { atomicWriteFile } from "../utils/atomicWrite.js";
+import { supportsVision } from "../utils/modelCapabilities.js";
 import type { TelemetryInitSettings } from "../telemetry/instrumentation.js";
 
 /**
@@ -1045,9 +1047,12 @@ export class ConfigurationService {
   }
 
   /**
-   * Get all configured models from settings.json and environment
+   * Get all configured models from settings.json and environment, with the
+   * capability the picker needs to label them (vision). `supportsVision` is
+   * resolved per model through the same declarative `capabilities` field the
+   * agent itself reads, so the badge cannot drift from runtime behavior.
    */
-  getConfiguredModels(): string[] {
+  getConfiguredModels(): ConfiguredModel[] {
     const models = new Set<string>();
 
     // Add current model from options or environment (settings snapshot > OS env)
@@ -1070,7 +1075,12 @@ export class ConfigurationService {
       });
     }
 
-    return Array.from(models);
+    return Array.from(models).map((name) => ({
+      name,
+      supportsVision: supportsVision(
+        this.liveConfiguration?.models?.[name]?.capabilities,
+      ),
+    }));
   }
 
   /**

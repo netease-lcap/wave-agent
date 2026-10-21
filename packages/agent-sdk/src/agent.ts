@@ -21,6 +21,7 @@ import {
   CustomSlashCommand,
   ILspManager,
   AgentOptions,
+  ConfiguredModel,
 } from "./types/index.js";
 import type {
   Message,
@@ -190,9 +191,9 @@ export class Agent {
 
   /**
    * Get all configured models from settings.json and defaults
-   * @returns Array of model IDs
+   * @returns Model ids with the capability flags the model picker renders
    */
-  public getConfiguredModels(): string[] {
+  public getConfiguredModels(): ConfiguredModel[] {
     return this.configurationService.getConfiguredModels();
   }
 

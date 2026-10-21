@@ -138,7 +138,7 @@ export interface AttachedImage {
 /**
  * 设置页配置载荷：**只有用户偏好键**（落 `~/.wave/settings.json`）。
  *
- * 模型选择（`model` / `fastModel`）不属于这里——它经 `/model` 命令走
+ * 模型选择（`model` / `fastModel`）不属于这里——它经底栏模型选择器走
  * `getConfiguredModels` / `setModel`。服务端地址虽为 SDK 既有状态，但其用户偏好
  * 落点（`env.WAVE_SERVER_URL`）可从设置页编辑，故 `serverUrl` 属于这里；宿主的
  * `authStatusResponse.serverUrl` 仍单独下发（由 CLI 的 `getAuthStatus` 解析）。
@@ -155,7 +155,7 @@ export interface ConfigurationData {
   serverUrl?: string;
   /**
    * 行内补全使用的模型（settings.json 顶层 `completionModel`）。未设置时回退快速
-   * 模型（spec ui/code-completion.md 故事 4）；候选清单与 `/model` 同源。
+   * 模型（spec ui/code-completion.md 故事 4）；候选清单与对话模型同源。
    */
   completionModel?: string;
   /** 是否启用行内补全（settings.json 顶层 `completionEnabled`，缺省为开）。 */
@@ -1224,10 +1224,22 @@ export interface DesktopArtifactCategoriesSavedMessage
 // package stays the single authoritative contract (先例坑：新 host→webview
 // 消息必须先进 webview-fixtures). ----
 
+/**
+ * One selectable model. `supportsVision` is resolved by the agent from the
+ * model's declarative `capabilities` (opt-out: unset means supported), so the
+ * picker only renders the badge — it never re-derives capability rules.
+ */
+export interface ConfiguredModel {
+  /** Model id, same shape as the `model` key / `models` map key in settings.json. */
+  name: string;
+  /** Whether the model can read images. */
+  supportsVision: boolean;
+}
+
 /** Reply to getConfiguredModels — the model picker's candidate list. */
 export interface ConfiguredModelsMessage extends HostToWebviewMessageBase {
   command: "configuredModels";
-  models: string[];
+  models: ConfiguredModel[];
   currentModel?: string;
 }
 

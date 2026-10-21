@@ -50,6 +50,7 @@ import {
   validateWorktreeRemovalPath,
   type HostSurface,
   type SlashCommandInfo,
+  type ConfiguredModel,
   loadUserConfigEnv,
   loadWaveConfigFromFile,
   getUserConfigPaths,
@@ -1543,7 +1544,7 @@ export class AgentBridge {
   }
 
   private getConfiguredModels(sessionId?: string): {
-    models: string[];
+    models: ConfiguredModel[];
     currentModel: string | undefined;
   } {
     const entry = this.requireSessionForRead(sessionId);

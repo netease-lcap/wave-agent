@@ -42,10 +42,13 @@ test.describe("设置页「代码补全 / 补全模型」（真 settings bundle�
     // ① 设置页自己向宿主请求候选清单（入口不接的话下拉永远没有候选项）
     await waitForSentCommand(webviewPage, "getConfiguredModels");
 
-    // host 回包（与 `/model` 同源的模型集合；不含已失效的 removed-model）
+    // host 回包（与对话模型同源的模型集合；不含已失效的 removed-model）
     await simulateHostMessage(webviewPage, {
       command: "configuredModels",
-      models: ["qwen2.5-coder", "gemini-3-flash"],
+      models: [
+        { name: "qwen2.5-coder", supportsVision: false },
+        { name: "gemini-3-flash", supportsVision: true },
+      ],
     });
 
     // ② 失效值必须原样显示（不得静默回落到第一项），并给出可读提示
@@ -68,7 +71,10 @@ test.describe("设置页「代码补全 / 补全模型」（真 settings bundle�
     await waitForSentCommand(webviewPage, "getConfiguredModels");
     await simulateHostMessage(webviewPage, {
       command: "configuredModels",
-      models: ["qwen2.5-coder", "gemini-3-flash"],
+      models: [
+        { name: "qwen2.5-coder", supportsVision: false },
+        { name: "gemini-3-flash", supportsVision: true },
+      ],
     });
 
     await completionSelect(webviewPage).selectOption("qwen2.5-coder");

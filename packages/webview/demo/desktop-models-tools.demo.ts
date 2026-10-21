@@ -52,26 +52,30 @@ async function setup(injector: MessageInjector, messages: unknown[] = []) {
 }
 
 test.describe("Desktop 模型/上下文/代码理解 screenshots", () => {
-  test("2.2 2) /model 切换模型", async ({ webviewPage }) => {
+  test("2.2 2) 底栏切换模型", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 960, height: 640 });
     await setup(injector);
 
-    await webviewPage.focus('[data-testid="message-input"]');
-    await webviewPage.keyboard.type("/model");
-    await webviewPage.keyboard.press("Enter");
+    // 底栏选择器挂载即拉清单（spec ui/model-selection.md「输入卡片底栏切换模型」）。
     await injector.waitForMessage("getConfiguredModels");
     await injector.simulateExtensionMessage("configuredModels", {
-      models: ["deepseek-v4-flash", "glm-5.2", "kimi-k3", "qwen3.8-max"],
+      models: [
+        { name: "deepseek-v4-flash", supportsVision: false },
+        { name: "glm-5.2", supportsVision: false },
+        { name: "kimi-k3", supportsVision: true },
+        { name: "qwen3.8-max", supportsVision: true },
+      ],
       currentModel: "deepseek-v4-flash",
     });
-    await webviewPage.waitForSelector(".model-popup-item", {
+    await webviewPage.getByTestId("model-picker-trigger").click();
+    await webviewPage.waitForSelector(".model-picker-item", {
       state: "visible",
     });
-    await expect(webviewPage.locator(".model-popup-item")).toHaveCount(4);
+    await expect(webviewPage.locator(".model-picker-item")).toHaveCount(4);
     await screenshotWebp(
       webviewPage,
-      "../../docs/public/screenshots/desktop-model-popup.webp",
+      "../../docs/public/screenshots/desktop-model-picker.webp",
     );
   });
 
