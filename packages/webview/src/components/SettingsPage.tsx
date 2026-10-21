@@ -59,6 +59,7 @@ import {
   isMacHiddenTitlebar,
   isRemotePageHost,
 } from "../utils/platform";
+import { useLatestRef } from "../utils/useLatestRef";
 
 export interface SettingsPageProps {
   /** 当前配置（getConfiguration 已回），null 表示尚未加载 */
@@ -406,18 +407,26 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     if (projectAgentsContent !== null) setProjectContent(projectAgentsContent);
   }, [projectAgentsContent]);
 
+  // 下面三个「进视图就拉一次」的 effect 都经 ref 读回调：父组件（ChatApp）传的
+  // 是每次渲染新建的内联箭头，把它列进依赖会让「已发出请求、宿主还没回包」的
+  // 窗口里每重渲染一次就再发一次请求（#2533 的偶发重复 getAgentsContent）。
+  // 依赖里放的是这几个稳定的 ref，而不是它们当前指向的回调。
+  const loadAgentsContentRef = useLatestRef(onLoadAgentsContent);
+  const loadProjectSettingsRef = useLatestRef(onLoadProjectSettings);
+  const loadConfiguredModelsRef = useLatestRef(onLoadConfiguredModels);
+
   // 初次进入或切换 tab 时，对应内容尚未加载则请求加载
   useEffect(() => {
     if (activeScope === "user") {
-      if (userAgentsContent === null) onLoadAgentsContent("user");
+      if (userAgentsContent === null) loadAgentsContentRef.current("user");
     } else if (projectAgentsContent === null) {
-      onLoadAgentsContent("project");
+      loadAgentsContentRef.current("project");
     }
   }, [
     activeScope,
     userAgentsContent,
     projectAgentsContent,
-    onLoadAgentsContent,
+    loadAgentsContentRef,
   ]);
 
   // 进入「项目设置」视图时按当前活动项目的工作目录重新加载项目级
@@ -434,10 +443,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   useEffect(() => {
     if (projectViewKeyRef.current === projectViewKey) return;
     projectViewKeyRef.current = projectViewKey;
-    if (activeNav === "project" && onLoadProjectSettings) {
-      onLoadProjectSettings();
+    if (activeNav === "project") {
+      loadProjectSettingsRef.current?.();
     }
-  }, [projectViewKey, activeNav, workdir, onLoadProjectSettings]);
+  }, [projectViewKey, activeNav, workdir, loadProjectSettingsRef]);
 
   // 进入「全局设置」视图时拉一次补全模型候选（与上面「项目设置」进视图重读同一
   // 模式：只有视图切换触发重读，宿主回包不构成触发源——否则 fetch→reply→fetch
@@ -448,9 +457,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     if (completionViewKeyRef.current === activeNav) return;
     completionViewKeyRef.current = activeNav;
     if (activeNav === "global" && completionsSupported) {
-      onLoadConfiguredModels?.();
+      loadConfiguredModelsRef.current?.();
     }
-  }, [activeNav, onLoadConfiguredModels, completionsSupported]);
+  }, [activeNav, completionsSupported, loadConfiguredModelsRef]);
 
   // 缓存的项目设置仅当其标注的工作目录与当前工作目录一致时才可信：不一致说明
   // 缓存属于另一项目（或早于会话切换），在 host 回发当前项目数据前按未加载
