@@ -932,6 +932,29 @@ describe("readTool", () => {
       );
     });
 
+    it("reports the rule trigger as an absolute path", async () => {
+      const triggerFileRead = vi.fn();
+      const triggerNestedMemory = vi.fn();
+
+      await readTool.execute(
+        { file_path: "subdir/nested.txt" },
+        {
+          ...testContext,
+          messageManager: {
+            triggerFileRead,
+            triggerNestedMemory,
+          } as unknown as MessageManager,
+        },
+      );
+
+      // Rule matching resolves the path against the rule's own base (and may
+      // need to map a worktree), so it must never receive a session-relative
+      // path that already baked in the wrong base.
+      expect(triggerFileRead).toHaveBeenCalledWith(
+        "/test/workdir/subdir/nested.txt",
+      );
+    });
+
     it("does not trigger when the read itself fails", async () => {
       const triggerNestedMemory = vi.fn();
 

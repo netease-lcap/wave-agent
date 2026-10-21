@@ -159,6 +159,14 @@ export class MemoryRuleManager {
 
       const relativeId = path.relative(rulesRoot, filePath);
       rule.id = relativeId;
+      // `paths` are resolved against the project root that owns the rules
+      // directory, not against wherever the shell happens to be (a bash `cd`
+      // must not move what a rule covers). User rules have no project root of
+      // their own, so they reuse the session directory.
+      rule.baseDir =
+        source === "project"
+          ? path.dirname(path.dirname(rulesRoot))
+          : this.workdir;
       registry[rule.id] = rule;
       logger.debug(`Loaded memory rule: ${relativeId} from ${filePath}`);
     } catch (error) {

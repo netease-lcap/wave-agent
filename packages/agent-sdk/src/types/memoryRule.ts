@@ -28,4 +28,11 @@ export interface MemoryRule {
   source: "project" | "user";
   /** Absolute path to the file on disk */
   filePath: string;
+  /**
+   * Directory that `metadata.paths` patterns are resolved against: the project
+   * root that owns the rules directory (project rules), or the session's
+   * original working directory (user rules). Absent on rules built by callers
+   * that never had a directory context.
+   */
+  baseDir?: string;
 }

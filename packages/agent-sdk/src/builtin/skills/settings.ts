@@ -575,7 +575,7 @@ paths:
 #### How Memory Rules are Loaded
 
 - Wave recursively discovers all \`.md\` files in \`.wave/rules/\` and \`~/.wave/rules/\`.
-- **Path-specific activation**: If a rule has a \`paths\` field, it is only included in the agent's context when a file being read or modified matches the glob patterns.
+- **Path-specific activation**: If a rule has a \`paths\` field, it is only included in the agent's context when a file being read or modified matches the glob patterns. Patterns are resolved relative to the project root that owns the rules directory (\`~/.wave/rules\` rules use the current project), so a \`cd\` in a shell command does not change what a rule covers, and files read from a worktree match through its checkout.
 - **Unconditional rules**: Rules without a \`paths\` field are always active.
 - **Priority**: Project-level rules take priority over user-level rules if there is a conflict.
 

@@ -359,19 +359,23 @@ export class MessageManager {
   /**
    * Record a file path read via the Read tool, to be matched against
    * conditional memory rules before the next AI call.
+   *
+   * Stored absolute: the match base belongs to the rule (its own project root)
+   * and the path may live in a linked worktree, so relativizing here against
+   * the session workdir would bake in the wrong base and lose the worktree
+   * mapping. `MemoryRuleService` relativizes against the rule's base.
    */
   public triggerFileRead(filePath: string): void {
-    const normalizedPath = isAbsolute(filePath)
-      ? relative(this.workdir, filePath)
-      : filePath;
-    this.pendingFileReadTriggers.add(normalizedPath);
+    this.pendingFileReadTriggers.add(
+      isAbsolute(filePath) ? filePath : resolve(this.workdir, filePath),
+    );
   }
 
   /**
    * Record an absolute path whose read may pull in a nested memory file
-   * (`AGENTS.md` in one of its ancestor directories). Separate from
-   * `triggerFileRead`: rule matching needs workdir-relative paths, the nested
-   * walk needs absolute ones.
+   * (`AGENTS.md` in one of its ancestor directories). Same coordinate space as
+   * `triggerFileRead` (absolute), but a separate set: this one is consumed by
+   * the nested walk, which needs the file's ancestor chain.
    */
   public triggerNestedMemory(filePath: string): void {
     this.pendingNestedMemoryTriggers.add(

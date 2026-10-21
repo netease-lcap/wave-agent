@@ -215,8 +215,11 @@ Usage:
       };
     }
 
-    // Trigger conditional rule loading for this file
-    context.messageManager?.triggerFileRead(filePath);
+    // Trigger conditional rule loading for this file. Resolved like the read
+    // itself so rule matching never depends on a relative path's base.
+    context.messageManager?.triggerFileRead(
+      resolvePath(filePath, context.workdir),
+    );
 
     // Check for binary document formats
     if (isBinaryDocument(filePath)) {

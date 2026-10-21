@@ -112,8 +112,10 @@ describe("MessageManager context injection and file reads", () => {
     const rules = messageManager.processTriggeredRules();
     expect(rules).toHaveLength(1);
     expect(rules[0].content).toBe("Conditional rule");
+    // Triggers stay absolute: the match base belongs to the rule, and the
+    // path may sit in a linked worktree that only the matching layer can map.
     expect(mockMemoryRuleManager.getActiveRulesSplit).toHaveBeenCalledWith([
-      "src/index.ts",
+      path.resolve(workdir, "src/index.ts"),
     ]);
   });
 

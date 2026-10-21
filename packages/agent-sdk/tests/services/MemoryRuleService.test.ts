@@ -1,10 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
 import { MemoryRuleService } from "../../src/services/MemoryRuleService.js";
 import * as fs from "fs";
+import * as nodeFs from "node:fs";
+import * as path from "node:path";
 
 vi.mock("fs", () => ({
   readFileSync: vi.fn(),
 }));
+
+// Only the worktree probe is stubbed; everything else keeps the real builtin so
+// the logger and other importers behave normally.
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, statSync: vi.fn(), readFileSync: vi.fn() };
+});
 
 describe("MemoryRuleService", () => {
   const service = new MemoryRuleService();
@@ -141,6 +150,83 @@ invalid yaml
       const relativePath = "src/index.ts";
 
       expect(service.isRuleActive(rule, [relativePath], workdir)).toBe(true);
+    });
+
+    it("resolves patterns against the rule's own base, not the session workdir", () => {
+      // A bash `cd` moves the session workdir; the rule still covers its project.
+      const baseDir = path.resolve("/repo");
+      const rule = {
+        metadata: { paths: ["src/**/*.ts"] },
+        baseDir,
+      } as unknown as import("../../src/types/memoryRule.js").MemoryRule;
+
+      expect(
+        service.isRuleActive(rule, [path.join(baseDir, "src", "a.ts")], "/tmp"),
+      ).toBe(true);
+    });
+
+    it("does not activate for a file outside the base, even with a ** pattern", () => {
+      const baseDir = path.resolve("/repo");
+      const rule = {
+        metadata: { paths: ["**/*.ts"] },
+        baseDir,
+      } as unknown as import("../../src/types/memoryRule.js").MemoryRule;
+
+      expect(
+        service.isRuleActive(
+          rule,
+          [path.join(path.resolve("/other"), "a.ts")],
+          baseDir,
+        ),
+      ).toBe(false);
+    });
+
+    it("matches files read from a linked worktree through the checkout mapping", () => {
+      const baseDir = path.resolve("/repo");
+      const worktree = path.join(baseDir, ".wave", "worktrees", "wt");
+      const worktreeGitfile = path.join(worktree, ".git");
+      const checkoutGitDir = path.join(baseDir, ".git", "worktrees", "wt");
+
+      vi.mocked(nodeFs.statSync).mockImplementation((p) => {
+        if (String(p) === worktreeGitfile) {
+          return {
+            isFile: () => true,
+          } as unknown as ReturnType<typeof fs.statSync>;
+        }
+        throw Object.assign(new Error(`ENOENT: ${String(p)}`), {
+          code: "ENOENT",
+        });
+      });
+      vi.mocked(nodeFs.readFileSync).mockImplementation((p) => {
+        if (String(p) === worktreeGitfile) return `gitdir: ${checkoutGitDir}\n`;
+        throw Object.assign(new Error(`ENOENT: ${String(p)}`), {
+          code: "ENOENT",
+        });
+      });
+
+      const rule = {
+        metadata: { paths: ["src/**/*.ts"] },
+        baseDir,
+      } as unknown as import("../../src/types/memoryRule.js").MemoryRule;
+
+      expect(
+        service.isRuleActive(
+          rule,
+          [path.join(worktree, "src", "a.ts")],
+          baseDir,
+        ),
+      ).toBe(true);
+    });
+
+    it("ignores an unusable pattern instead of throwing", () => {
+      const rule = {
+        metadata: { paths: ["src/**/*.ts", "!(unclosed"] },
+        baseDir: path.resolve("/repo"),
+      } as unknown as import("../../src/types/memoryRule.js").MemoryRule;
+
+      expect(() =>
+        service.isRuleActive(rule, ["src/a.ts"], path.resolve("/repo")),
+      ).not.toThrow();
     });
   });
 });
