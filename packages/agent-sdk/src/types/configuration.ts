@@ -18,6 +18,77 @@ export interface MarketplaceConfig {
 }
 
 /**
+ * 沙箱的网络白名单（对齐 Claude Code 的 `sandbox.network`）。
+ *
+ * 沙箱内的命令默认不能出网：允许域名走宿主上的 HTTP/SOCKS5 代理裁决，
+ * 清空代理环境变量直连也出不去（Linux 靠独立网络命名空间、macOS 靠
+ * Seatbelt 只放通代理端口）。
+ */
+export interface SandboxNetworkConfiguration {
+  /** 允许访问的域名（后缀匹配，如 `api.github.com`）。空 = 全部拒绝。 */
+  allowedDomains?: string[];
+  /** 显式拒绝的域名，优先级高于允许列表。 */
+  deniedDomains?: string[];
+  /** macOS 专用：允许连的 Unix socket 路径。Linux 上无法按路径过滤而被忽略。 */
+  allowUnixSockets?: string[];
+  /** 允许所有 Unix socket（两端都生效，等于关掉这层限制）。 */
+  allowAllUnixSockets?: boolean;
+  /** 允许绑定/连接本地端口（本地服务器的场景）。 */
+  allowLocalBinding?: boolean;
+}
+
+/**
+ * 沙箱的文件系统规则（对齐 Claude Code 的 `sandbox.filesystem`）。
+ *
+ * 写是「默认全拒、只放 allowWrite」，读是「默认全放、按 denyRead 收窄」，
+ * `allowRead` 在 `denyRead` 区域内重新开口。路径支持 `~`，相对路径按 settings
+ * 文件所在目录解析。
+ */
+export interface SandboxFilesystemConfiguration {
+  /** 额外允许写的工作区外路径（工作区与临时目录始终可写，不必列出）。 */
+  allowWrite?: string[];
+  /** 在可写范围内再拒绝的路径。 */
+  denyWrite?: string[];
+  /** 拒绝读取的路径（如 `~/.ssh`）。 */
+  denyRead?: string[];
+  /** 在 `denyRead` 区域内重新允许读取的路径。 */
+  allowRead?: string[];
+}
+
+/**
+ * Bash 命令的 OS 级沙箱配置（`settings.json` 顶层 `sandbox` 段）。
+ *
+ * 字段命名与 Claude Code 对齐，便于用户迁移既有配置；未配置时行为与没有沙箱
+ * 完全一致（总开关默认关）。仅 macOS 与 Linux（含 WSL2）生效，Windows 上
+ * 判定为不支持——与 Claude Code 保持一致。
+ */
+export interface SandboxConfiguration {
+  /** 总开关。缺省 false：不沙箱、零行为差异。 */
+  enabled?: boolean;
+  /**
+   * 沙箱不可用（平台不支持、依赖缺失）时是否让命令直接失败。
+   * 缺省 false：降级为不沙箱执行并给出警告。
+   */
+  failIfUnavailable?: boolean;
+  /**
+   * 沙箱内的 Bash 是否跳过用户确认。缺省 false：沙箱只加边界，不改变弹窗行为。
+   * 打开后仍尊重显式的拒绝规则（整条命令与每个子命令）。
+   */
+  autoAllowBashIfSandboxed?: boolean;
+  /**
+   * 是否允许模型通过 `dangerouslyDisableSandbox` 请求不沙箱执行。
+   * 缺省 true；设为 false 时该参数被完全忽略，命令必须沙箱执行。
+   */
+  allowUnsandboxedCommands?: boolean;
+  /** 不做沙箱的命令模式（如 `npm run test:*`），按 `&&` 拆开的子命令逐个匹配。 */
+  excludedCommands?: string[];
+  network?: SandboxNetworkConfiguration;
+  filesystem?: SandboxFilesystemConfiguration;
+  /** 按命令模式忽略的违规（不写进工具结果）。 */
+  ignoreViolations?: Record<string, string[]>;
+}
+
+/**
  * Root configuration structure for all Wave Agent settings including hooks and environment variables
  */
 export interface WaveConfiguration {
@@ -127,6 +198,13 @@ export interface WaveConfiguration {
    * Default: 30. 0 disables cleanup entirely.
    */
   cleanupPeriodDays?: number;
+  /**
+   * OS 级 Bash 沙箱（文件系统 + 网络）。未配置时与没有沙箱完全一致。
+   *
+   * 判定可用性只取决于平台与本地依赖（macOS `sandbox-exec` / Linux
+   * `bwrap`+`socat`+`rg`），Windows 恒为不支持。
+   */
+  sandbox?: SandboxConfiguration;
 }
 
 /**

@@ -192,6 +192,12 @@ export interface ToolContext {
   readFileState?: ReadFileState;
   /** Hook manager instance for executing hooks */
   hookManager?: import("../managers/hookManager.js").HookManager;
+  /**
+   * OS-level sandbox for Bash (filesystem + network isolation). Absent in
+   * contexts that have no agent container (bare tool invocations); Bash then
+   * runs unsandboxed exactly as before.
+   */
+  sandboxManager?: import("../sandbox/SandboxManager.js").SandboxManager;
   /** Callback to notify when the current working directory changes */
   onCwdChange?: (newCwd: string) => void;
   /** Original working directory (before any cd changes) for CWD reset */

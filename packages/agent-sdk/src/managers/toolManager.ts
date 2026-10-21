@@ -423,6 +423,11 @@ class ToolManager {
             "WorkflowManager",
           )
         : undefined,
+      sandboxManager: this.container.has("SandboxManager")
+        ? this.container.get<
+            import("../sandbox/SandboxManager.js").SandboxManager
+          >("SandboxManager")
+        : undefined,
       sessionEnv: this.container.has("ConfigurationService")
         ? this.container
             .get<

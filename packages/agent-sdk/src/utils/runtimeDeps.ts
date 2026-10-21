@@ -3,11 +3,15 @@
  *
  * ## Why this exists
  *
- * Two dependencies live here: `sharp` (the image codec behind outbound image
- * resizing, ~19MB unpacked) and `@vscode/ripgrep` (the search binary behind the
- * Grep tool, ~5MB with its platform package). Both are too big to ship in every
- * host bundle and useless to users who never send an image or run a search. Two
- * of the three ways of getting the CLI can simply use npm:
+ * Three dependencies live here: `sharp` (the image codec behind outbound image
+ * resizing, ~19MB unpacked), `@vscode/ripgrep` (the search binary behind the
+ * Grep tool, ~5MB with its platform package) and `@anthropic-ai/sandbox-runtime`
+ * (the Bash sandbox, ~12MB of vendored binaries). All three are too big to ship
+ * in every host bundle and useless to users who never send an image, run a
+ * search or enable the sandbox. The first two are installed on every launch; the
+ * sandbox row is opt-in per call (`includeSandbox`) so it is only fetched once
+ * the user has actually turned the sandbox on. Two of the three ways of getting
+ * the CLI can simply use npm:
  *
  * | how the CLI was installed | where the dependencies come from | what this does |
  * | --- | --- | --- |
@@ -32,6 +36,10 @@
  *                                    rpath `$ORIGIN/../../sharp-libvips-<key>/lib`
  *   @vscode/ripgrep/                 the wrapper (ESM, no dependencies of its own)
  *   @vscode/ripgrep-<platform>-<arch>/  holds bin/rg, published with the exec bit
+ *   @anthropic-ai/sandbox-runtime/    only when the sandbox was turned on; keyed
+ *                                    by version, its vendor/ carries the platform
+ *                                    binaries (macOS/Linux/Windows)
+ *   <sandbox-runtime deps>           socks5-server, commander, node-forge, zod
  *   .wave-runtime-deps.json          <- marker, written last: present means this
  *                                       batch completed
  * ```
@@ -68,6 +76,12 @@ import {
 } from "./imageProcessor.js";
 import { extractNpmTarball } from "./npmTarball.js";
 import { getRgPath, resetRipgrep, resolveRipgrep } from "./ripgrep.js";
+import {
+  SANDBOX_RUNTIME_PACKAGE,
+  isSandboxRuntimeAvailable,
+  isSandboxRuntimeOnDisk,
+  resetSandboxRuntime,
+} from "./sandboxRuntime.js";
 
 /** npm registry mirror for China users (same choice as the ripgrep download). */
 export const RUNTIME_DEPS_REGISTRY = "https://registry.npmmirror.com";
@@ -176,6 +190,37 @@ const ripgrepDependency: RuntimeDependency = {
   loadsFrom: (requireBase) =>
     resolveRipgrep(requireFnFor(requireBase)) !== undefined,
   onInstalled: () => resetRipgrep(),
+};
+
+/**
+ * Bash 沙箱运行时行。
+ *
+ * `@anthropic-ai/sandbox-runtime` 是 12MB 的 vendor 负载（其中 7.3MB 是 Windows
+ * 后端，而我们在 Windows 上根本不用它），宿主 bundle 装不下，宿主副本的 CLI
+ * 也没有 node_modules。所以它走同一条按需下载路径，但**默认不参与批次**：
+ * 只有真的启用沙箱的调用方（`SandboxManager`、会话启动时读到 `sandbox.enabled`
+ * 的预取）传 `includeSandbox` 才会装上，没开沙箱的人既不付下载也不拖慢启动。
+ *
+ * 它没有平台子包（二进制在 vendor/ 里，平台判定在运行时做），所以
+ * `platformPackages` 为空、平台键也不算 libc 家族。
+ */
+const sandboxRuntimeDependency: RuntimeDependency = {
+  name: SANDBOX_RUNTIME_PACKAGE,
+  sharedPackages(entry) {
+    // 四个 JS 依赖来自它自己的 ranges，它加/减一个依赖不需要改这里。
+    return [
+      { name: SANDBOX_RUNTIME_PACKAGE, range: entry.version },
+      ...Object.entries(entry.dependencies ?? {}).map(([name, range]) => ({
+        name,
+        range,
+      })),
+    ];
+  },
+  platformPackages: () => [],
+  libcAwarePlatformKey: false,
+  isAvailable: () => isSandboxRuntimeAvailable(),
+  loadsFrom: (requireBase) => isSandboxRuntimeOnDisk(requireFnFor(requireBase)),
+  onInstalled: () => resetSandboxRuntime(),
 };
 
 const RUNTIME_DEPENDENCIES: RuntimeDependency[] = [
@@ -439,53 +484,73 @@ function readMarker(installDir: string): Record<string, string> {
   }
 }
 
-let inFlight: Promise<RuntimeDepsResult> | undefined;
-let settled: RuntimeDepsResult | undefined;
+export interface RuntimeDepsOptions {
+  moduleUrl?: string;
+  fetchImpl?: typeof fetch;
+  cliHome?: string;
+  /**
+   * Include the Bash-sandbox runtime (`@anthropic-ai/sandbox-runtime`) in this
+   * batch. Off by default and off for every CLI start-up call: only the caller
+   * that is about to sandbox something asks for it, so a user who never enables
+   * the sandbox never pays its 12MB.
+   */
+  includeSandbox?: boolean;
+}
+
+const inFlight = new Map<string, Promise<RuntimeDepsResult>>();
+const settled = new Map<string, RuntimeDepsResult>();
 
 /**
  * Make sure the runtime dependencies are installed. Never throws: the long-lived
  * CLI entry points await it before serving, so a first pasted image (or a first
  * search) cannot race a download — the same reason the hosts used to block on
  * ripgrep before spawning the CLI. A failed install is reported once and only
- * degrades images and grep.
+ * degrades images, grep and (when it was requested) the Bash sandbox.
  *
  * The outcome is memoised for the process lifetime, failures included — one
- * attempt per launch, so a broken network does not retry on every image.
+ * attempt per launch, so a broken network does not retry on every image. The
+ * sandbox batch is memoised separately from the always-on batch: a start-up call
+ * that did not want the sandbox must not answer for the later call that does.
  */
-export function ensureRuntimeDeps(options?: {
-  moduleUrl?: string;
-  fetchImpl?: typeof fetch;
-  cliHome?: string;
-}): Promise<RuntimeDepsResult> {
-  if (settled) return Promise.resolve(settled);
-  if (!inFlight) {
-    inFlight = runInstall(options).then(
+export function ensureRuntimeDeps(
+  options?: RuntimeDepsOptions,
+): Promise<RuntimeDepsResult> {
+  const dependencies = options?.includeSandbox
+    ? [...RUNTIME_DEPENDENCIES, sandboxRuntimeDependency]
+    : RUNTIME_DEPENDENCIES;
+  const key = options?.includeSandbox ? "with-sandbox" : "base";
+  const done = settled.get(key);
+  if (done) return Promise.resolve(done);
+  let pending = inFlight.get(key);
+  if (!pending) {
+    pending = runInstall(options, dependencies).then(
       (result) => {
-        settled = result;
+        settled.set(key, result);
         return result;
       },
       (error: unknown) => {
-        settled = {
+        const result: RuntimeDepsResult = {
           available: false,
           reason: error instanceof Error ? error.message : String(error),
         };
-        return settled;
+        settled.set(key, result);
+        return result;
       },
     );
+    inFlight.set(key, pending);
   }
-  return inFlight;
+  return pending;
 }
 
-async function runInstall(options?: {
-  moduleUrl?: string;
-  fetchImpl?: typeof fetch;
-  cliHome?: string;
-}): Promise<RuntimeDepsResult> {
+async function runInstall(
+  options: RuntimeDepsOptions | undefined,
+  dependencies: RuntimeDependency[],
+): Promise<RuntimeDepsResult> {
   const fetchImpl = options?.fetchImpl ?? fetch;
   const moduleUrl = options?.moduleUrl ?? import.meta.url;
   const cliHome = options?.cliHome ?? defaultCliHome();
 
-  if (RUNTIME_DEPENDENCIES.every((dependency) => dependency.isAvailable())) {
+  if (dependencies.every((dependency) => dependency.isAvailable())) {
     return { available: true };
   }
 
@@ -501,7 +566,7 @@ async function runInstall(options?: {
   // One dependency failing must not skip the others: they degrade independently
   // (a broken image codec has nothing to do with grep).
   const failures: string[] = [];
-  for (const dependency of RUNTIME_DEPENDENCIES) {
+  for (const dependency of dependencies) {
     if (dependency.isAvailable()) continue;
     try {
       const entry = findEntryPackageJson(
@@ -580,8 +645,8 @@ function fail(failures: string[], reason: string): void {
   failures.push(reason);
 }
 
-/** Forget the memoised outcome, and the settled result (tests). */
+/** Forget the memoised outcome, and the settled results (tests). */
 export function __resetRuntimeDepsForTesting(): void {
-  inFlight = undefined;
-  settled = undefined;
+  inFlight.clear();
+  settled.clear();
 }

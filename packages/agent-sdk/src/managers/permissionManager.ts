@@ -859,6 +859,21 @@ export class PermissionManager {
       }
     }
 
+    // Sandboxed Bash skips the prompt: the OS boundary is the control, so the
+    // person no longer has to be the control. Two conditions keep this honest —
+    // the Bash tool reports `sandboxed: true` only after the runtime actually
+    // came up for *this* command (not merely "sandbox.enabled is set"), and the
+    // deny rules at step 0 have already won. Plan mode keeps asking: a sandboxed
+    // command can still write inside the worktree, which plan mode forbids.
+    if (
+      context.toolName === BASH_TOOL_NAME &&
+      context.permissionMode !== "plan" &&
+      context.toolInput?.sandboxed === true &&
+      this.isSandboxAutoAllowEnabled()
+    ) {
+      return { decision: { behavior: "allow" }, source: "config" };
+    }
+
     // If bypassPermissions mode — or plan mode in a session that was authorized
     // to bypass at creation time — always allow.
     // Worktree safety check above runs unconditionally, so bypass never skips it;
@@ -989,6 +1004,20 @@ export class PermissionManager {
     // 3. Ask the host's user-facing callback (the one place a person can answer;
     // it also carries the no-callback deny for headless callers).
     return this.askUserForPermission(context);
+  }
+
+  /**
+   * `sandbox.autoAllowBashIfSandboxed`, read live so a settings edit lands
+   * without restarting the agent.
+   */
+  private isSandboxAutoAllowEnabled(): boolean {
+    const configurationService = this.container.get<ConfigurationService>(
+      "ConfigurationService",
+    );
+    return (
+      configurationService?.getCurrentConfiguration()?.sandbox
+        ?.autoAllowBashIfSandboxed === true
+    );
   }
 
   /**

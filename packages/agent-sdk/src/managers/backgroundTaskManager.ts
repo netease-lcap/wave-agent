@@ -78,6 +78,7 @@ export class BackgroundTaskManager {
     command: string,
     timeout?: number,
     cwd?: string,
+    options?: { env?: Record<string, string>; onExit?: () => void },
   ): { id: string; child: ChildProcess; detach: () => void } {
     const id = this.generateId();
     const startTime = Date.now();
@@ -90,8 +91,20 @@ export class BackgroundTaskManager {
       env: {
         ...process.env,
         ...this.sessionEnv,
+        ...options?.env,
       },
     });
+
+    if (options?.onExit) {
+      const onExit = options.onExit;
+      child.once("exit", () => {
+        try {
+          onExit();
+        } catch {
+          // Cleanup is best-effort; a failure here must not disturb task state.
+        }
+      });
+    }
 
     // Create log file
     const logPath = path.join(os.tmpdir(), `wave-task-${id}.log`);

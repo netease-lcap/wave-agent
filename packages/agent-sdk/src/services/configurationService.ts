@@ -16,6 +16,7 @@ import type {
   ValidationResult,
   ConfigurationPaths,
   WaveConfiguration,
+  SandboxConfiguration,
   Scope,
   MarketplaceConfig,
 } from "../types/configuration.js";
@@ -346,6 +347,15 @@ export class ConfigurationService {
   private get liveConfiguration(): WaveConfiguration | null {
     const snapshot = this.turnSnapshotSource?.();
     return snapshot ? snapshot.configuration : this.currentConfiguration;
+  }
+
+  /**
+   * The configuration in force right now, for consumers that are not
+   * configuration lookups themselves (the sandbox reads `sandbox.*` from it on
+   * every Bash call, including after a hot reload).
+   */
+  getCurrentConfiguration(): WaveConfiguration | null {
+    return this.liveConfiguration;
   }
 
   /** Environment snapshot the current turn reads from. */
@@ -1696,6 +1706,10 @@ export function loadWaveConfigFromFile(
             (name): name is string => typeof name === "string",
           )
         : undefined,
+      // The Bash sandbox block. Keep this list in sync with the merge below:
+      // this object is a whitelist, so a field missing here is silently dropped
+      // on load no matter what the merge does with it.
+      sandbox: config.sandbox || undefined,
     };
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -1758,6 +1772,10 @@ export function loadMergedWaveConfig(
 
   // Merge all configurations in order
   const mergedConfig: WaveConfiguration = {};
+
+  // Set once the user's own file states the sandbox master switch. From then on
+  // no repository layer may change it (see the sandbox merge below).
+  let enabledFromUserFile = false;
 
   for (const { config, fromRepo } of layers) {
     // Merge hooks
@@ -1927,6 +1945,52 @@ export function loadMergedWaveConfig(
       mergedConfig.nonDeferrableBuiltins = config.nonDeferrableBuiltins;
     }
 
+    // Merge sandbox. Per-key last-wins, with one exception: once the user's own
+    // file states the master switch, a checked-out repo (or anything an attacker
+    // can commit) may not flip it — a repository must not be able to turn the
+    // user's sandbox off. Turning it *on* from a repo is allowed when the user
+    // said nothing: that direction only adds a boundary, and warning about it
+    // would fire on every load for repos that ship a sandbox config.
+    if (config.sandbox) {
+      const merged: SandboxConfiguration = { ...(mergedConfig.sandbox ?? {}) };
+      const { sandbox } = config;
+      if (sandbox.enabled !== undefined) {
+        if (fromRepo && enabledFromUserFile) {
+          logger.warn(
+            "Ignoring sandbox.enabled from a project settings file: only ~/.wave/settings.json (or the server-managed layer) may turn the Bash sandbox on or off",
+          );
+        } else {
+          merged.enabled = sandbox.enabled;
+          if (!fromRepo) enabledFromUserFile = true;
+        }
+      }
+      if (sandbox.failIfUnavailable !== undefined) {
+        merged.failIfUnavailable = sandbox.failIfUnavailable;
+      }
+      if (sandbox.autoAllowBashIfSandboxed !== undefined) {
+        merged.autoAllowBashIfSandboxed = sandbox.autoAllowBashIfSandboxed;
+      }
+      if (sandbox.allowUnsandboxedCommands !== undefined) {
+        merged.allowUnsandboxedCommands = sandbox.allowUnsandboxedCommands;
+      }
+      if (sandbox.excludedCommands !== undefined) {
+        merged.excludedCommands = sandbox.excludedCommands;
+      }
+      if (sandbox.ignoreViolations !== undefined) {
+        merged.ignoreViolations = sandbox.ignoreViolations;
+      }
+      if (sandbox.network !== undefined) {
+        merged.network = { ...(merged.network ?? {}), ...sandbox.network };
+      }
+      if (sandbox.filesystem !== undefined) {
+        merged.filesystem = {
+          ...(merged.filesystem ?? {}),
+          ...sandbox.filesystem,
+        };
+      }
+      mergedConfig.sandbox = merged;
+    }
+
     // Merge models
     if (config.models) {
       if (!mergedConfig.models) mergedConfig.models = {};
@@ -1982,6 +2046,7 @@ export function loadMergedWaveConfig(
     enableRemoteControl: mergedConfig.enableRemoteControl,
     leanPrompt: mergedConfig.leanPrompt,
     nonDeferrableBuiltins: mergedConfig.nonDeferrableBuiltins,
+    sandbox: mergedConfig.sandbox,
   };
 }
 

@@ -26,6 +26,9 @@ import { ReversionManager } from "../managers/reversionManager.js";
 import { SubagentManager } from "../managers/subagentManager.js";
 import { LiveConfigManager } from "../managers/liveConfigManager.js";
 import { ConfigurationService } from "../services/configurationService.js";
+import { SandboxManager } from "../sandbox/SandboxManager.js";
+import { getRgPath } from "./ripgrep.js";
+import { ensureRuntimeDeps } from "./runtimeDeps.js";
 import { ReversionService } from "../services/reversionService.js";
 import { cleanupMetaOnlySessions } from "../services/session.js";
 import { runSessionCleanupInBackground } from "./sessionCleanup.js";
@@ -132,6 +135,25 @@ export function setupAgentContainer(
   const foregroundTaskManager = new ForegroundTaskManager(container);
   container.register("ForegroundTaskManager", foregroundTaskManager);
   container.register("ConfigurationService", configurationService);
+
+  // OS-level sandbox for Bash. Reads the live merged configuration on every
+  // judgment (so hot reload lands without extra plumbing) and loads
+  // sandbox-runtime lazily — see `src/sandbox/SandboxManager.ts`.
+  const sandboxManager = new SandboxManager({
+    getConfiguration: () => configurationService.getCurrentConfiguration(),
+    workdir,
+    getRgPath: () => getRgPath(),
+  });
+  container.register("SandboxManager", sandboxManager);
+
+  // 沙箱运行时包（12MB vendor）不进宿主 bundle，宿主副本的 CLI 也没有
+  // node_modules，只能按需下载。启用沙箱时在会话建立阶段就预取，别让第一条
+  // 沙箱命令干等下载；没启用的人连这一步都不会触发，也不产生任何警告。
+  if (
+    configurationService.getCurrentConfiguration()?.sandbox?.enabled === true
+  ) {
+    void ensureRuntimeDeps({ includeSandbox: true });
+  }
 
   const memoryService = new MemoryService(container);
   container.register("MemoryService", memoryService);
