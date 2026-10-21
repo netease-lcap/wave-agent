@@ -1259,6 +1259,7 @@ You are a specialized subagent for a specific task. Your goal is to:
 - \`description\`: (Required) Explains the subagent's expertise and when to use it.
 - \`tools\`: (Optional) List of tools the subagent can use.
 - \`model\`: (Optional) Overrides the default model for this subagent. The special values \`fastModel\` and \`visionModel\` resolve to the \`WAVE_FAST_MODEL\` / \`WAVE_VISION_MODEL\` env vars respectively. Built-in subagents declaring \`model: visionModel\` (e.g. the built-in \`vision\` agent) are only registered when \`WAVE_VISION_MODEL\` is set; for user-defined subagents the value simply resolves to the configured vision model.
+- \`isolation\`: (Optional) Set to \`worktree\` to run every invocation of this subagent in its own temporary git worktree inside \`.wave/worktrees/\`, so parallel subagents do not touch the same checkout. A worktree with changes is kept after the run and its path, branch and change counts are reported; a clean one is removed. The \`Agent\` tool's \`isolation: "worktree"\` parameter applies the same isolation to a single call.
 
 ## Subagent Locations
 

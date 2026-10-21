@@ -65,6 +65,12 @@ export const agentTool: ToolPlugin = {
             description:
               "Set to true to run this command in the background. Use Read to read the output later.",
           },
+          isolation: {
+            type: "string",
+            enum: ["worktree"],
+            description:
+              'Set to "worktree" to run this agent in its own temporary git worktree instead of the current working directory. Use it when several agents will edit files in parallel. Changes stay in the worktree: the result reports its path, branch and change counts; nothing is applied to the parent working directory.',
+          },
         },
         required: ["description", "prompt", "subagent_type"],
       },
@@ -79,7 +85,9 @@ export const agentTool: ToolPlugin = {
               config.tools && config.tools.length > 0
                 ? ` (Tools: ${config.tools.join(", ")})`
                 : " (Tools: *)";
-            return `- ${config.name}: ${config.description}${toolsStr}`;
+            const isolationStr =
+              config.isolation === "worktree" ? " (isolation: worktree)" : "";
+            return `- ${config.name}: ${config.description}${toolsStr}${isolationStr}`;
           })
           .join("\n")
       : "";
@@ -94,6 +102,7 @@ You must specify a subagent_type from the list above, choosing the one whose des
 - For broad codebase exploration that is not a needle query for a specific file, class, or function, use the ${AGENT_TOOL_NAME} tool with subagent_type=${EXPLORE_SUBAGENT_TYPE} instead of running search commands directly.
 - Prefer this tool over direct search commands for open-ended exploration that would fill your context with raw output.
 - Use \`run_in_background\` for work you can do in parallel; you are notified when it completes — do not sleep, poll, or guess at what it found.
+- Use \`isolation: "worktree"\` when several agents will edit files in parallel: each agent then runs in its own temporary git worktree and reports that worktree's path, branch and change counts instead of touching the parent working directory.
 - Avoid duplicating work a subagent is already doing.`;
   },
   prompt: (args?: { availableSubagents?: SubagentConfiguration[] }) => {
@@ -106,8 +115,10 @@ You must specify a subagent_type from the list above, choosing the one whose des
             } else {
               toolsStr = " (Tools: *)";
             }
+            const isolationStr =
+              config.isolation === "worktree" ? " (isolation: worktree)" : "";
 
-            return `- ${config.name}: ${config.description}${toolsStr}`;
+            return `- ${config.name}: ${config.description}${toolsStr}${isolationStr}`;
           })
           .join("\n")
       : "";
@@ -125,6 +136,7 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
 - You should proactively use the ${AGENT_TOOL_NAME} tool with specialized agents when the task at hand matches the agent's description.
 - VERY IMPORTANT: When exploring the codebase to gather context or to answer a question that is not a needle query for a specific file/class/function, it is CRITICAL that you use the ${AGENT_TOOL_NAME} tool with subagent_type=${EXPLORE_SUBAGENT_TYPE} instead of running search commands directly.
 - You can optionally run agents in the background using the run_in_background parameter. When an agent runs in the background, you will be automatically notified when it completes — do NOT sleep, poll, or proactively check on its progress. Continue with other work or respond to the user instead.
+- **Parallel edits**: pass \`isolation: "worktree"\` to run an agent in its own temporary git worktree. Use it when several agents will edit files in parallel (or when an agent's build/edit work must not touch the current checkout). A worktree with changes is kept after the agent finishes and its path, branch and change counts are reported in the result — nothing is applied to the parent working directory automatically.
 - **Foreground vs background**: Use foreground (default) when you need the agent's results before you can proceed — e.g., research agents whose findings inform your next steps. Use background when you have genuinely independent work to do in parallel.
 - **Don't peek.** The tool result includes an output file path — do not Read or tail it unless the user explicitly asks for a progress check. You get a completion notification; trust it. Reading the transcript mid-flight pulls the agent's tool noise into your context, which defeats the point of backgrounding.
 - **Don't race.** After launching, you know nothing about what the agent found. Never fabricate or predict agent results in any format — not as prose, summary, or structured output. The notification arrives as a user-role message in a later turn; it is never something you write yourself. If the user asks a follow-up before the notification lands, tell them the agent is still running — give status, not a guess.`;
@@ -149,6 +161,7 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
     const prompt = args.prompt as string;
     const subagent_type = args.subagent_type as string;
     const run_in_background = args.run_in_background as boolean;
+    const isolationArg = args.isolation;
 
     if (!description || typeof description !== "string") {
       return {
@@ -177,6 +190,15 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
       };
     }
 
+    if (isolationArg !== undefined && isolationArg !== "worktree") {
+      return {
+        success: false,
+        content: "",
+        error: 'isolation parameter must be "worktree" when provided',
+        shortResult: "Agent delegation failed",
+      };
+    }
+
     try {
       // Subagent selection logic with explicit name matching only
       const configuration = await subagentManager.findSubagent(subagent_type);
@@ -196,6 +218,11 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
 
       let isBackgrounded = false;
 
+      // The definition is a lower bound: a per-call request can add worktree
+      // isolation, never turn off isolation the definition already requires.
+      const worktreeIsolation =
+        configuration.isolation === "worktree" || isolationArg === "worktree";
+
       // Create subagent instance and execute agent
       const instance = await subagentManager.createInstance(
         configuration,
@@ -203,6 +230,7 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
           description,
           prompt,
           subagent_type,
+          worktreeIsolation,
         },
         run_in_background,
         () => {
@@ -357,9 +385,14 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
               }
 
               const errorMsg = `Agent delegation failed: ${error instanceof Error ? error.message : String(error)}`;
+              // A worktree-isolated run reports its worktree even when it
+              // failed, so the caller knows whether files were left behind.
+              const contentWithWorktree = instance.worktreeSummary
+                ? `${content || errorMsg}\n\n${instance.worktreeSummary}`
+                : content || errorMsg;
               resolve({
                 success: false,
-                content: content || errorMsg,
+                content: contentWithWorktree,
                 error: errorMsg,
                 shortResult: "Delegation error",
               });

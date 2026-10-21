@@ -294,3 +294,4 @@ order: 90
 - WorktreeCreate hook 的 JSON 输入包含官方公共字段（`session_id`、`transcript_path`、`cwd`、`hook_event_name`）与 `name`（worktree 名）。
 - 删除后台会话（stdio RPC）的 git-based worktree 前会校验路径：拒绝符号链接或解析后位于 repo root 之外的路径；hook-based worktree 跳过该校验（hook 拥有路径，repoRoot 为兜底值）。
 - 手动删除当前 worktree 目录不触发 WorktreeRemove hook（与 Claude Code 一致）；会话通过 cwd 失效检测 + 自动回退到主仓库 + 一次性工具提示恢复，回退时清除已失效的 worktree 会话状态。
+- 子代理的 worktree 隔离（`isolation: worktree` / `Agent` 工具参数，见 [子代理](subagent.md)）复用本节同一套创建与删除语义：hook 优先、git 兜底、复制 `settings.local.json` 与 `.worktreeinclude`、只删 `worktree-<name>`；区别只在「无改动自动删、有改动保留并回报」，不做 CLI 退出对话框与定时清扫。
