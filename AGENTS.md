@@ -64,16 +64,16 @@ Always use `pnpm` as the package manager.
   - **Caution**: for `agent-sdk` and `code`, `pnpm test` includes `tests/integration/` + `*.integration.test.ts` files that hit real external dependencies (git/spawn/hook/filesystem — no real LLM calls; AI paths are mocked). Use `test:unit` to skip them.
 - **Testing Framework**: Vitest.
 
-Test layers, ordered fast→slow (the PR gate only runs unit + demo; the rest are post-merge):
+Test layers, ordered fast→slow (the PR gate only runs unit + the demo screenshot job; the rest are post-merge):
 
-| Layer            | Where                                                      | Command                                                                                              |
-| ---------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Unit             | `*.test.ts` / `*.test.tsx`                                 | `pnpm -F <pkg> test:unit` — what PR CI gates                                                         |
-| Integration      | `tests/integration/**`, `*.integration.test.ts`            | `pnpm run test:integration` (real git/spawn/fs, no LLM)                                              |
-| Webview e2e      | `packages/webview/e2e/*.e2e.ts` (real Chromium)            | `pnpm -F wave-webview run test:e2e`                                                                  |
-| Demo/screenshots | `packages/webview/demo/*.demo.ts`                          | `pnpm -F wave-webview run test:demo` (also regenerates docs screenshots)                             |
-| Real-host        | `packages/desktop/tests/integration/*.integration.test.ts` | `pnpm -F wave-desktop run test:realhost` (real `DesktopHost` ↔ real `wave --stdio` child)           |
-| SDK surface      | `scripts/check-sdk-surface.mjs`                            | `pnpm run check:sdk-surface` after `pnpm -F wave-agent-sdk build` (the PR-tier `sdk-surface` CI job) |
+| Layer       | Where                                                      | Command                                                                                                                                                      |
+| ----------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Unit        | `*.test.ts` / `*.test.tsx`                                 | `pnpm -F <pkg> test:unit` — what PR CI gates                                                                                                                 |
+| Integration | `tests/integration/**`, `*.integration.test.ts`            | `pnpm run test:integration` (real git/spawn/fs, no LLM)                                                                                                      |
+| Webview e2e | `packages/webview/e2e/*.e2e.ts` (real Chromium)            | `pnpm -F wave-webview run test:e2e`                                                                                                                          |
+| Screenshots | `packages/webview/demo/*.demo.ts`                          | `pnpm -F wave-webview run test:demo` — **not a test layer**: drives the UI into position and captures docs screenshots; behaviour assertions belong in `e2e` |
+| Real-host   | `packages/desktop/tests/integration/*.integration.test.ts` | `pnpm -F wave-desktop run test:realhost` (real `DesktopHost` ↔ real `wave --stdio` child)                                                                   |
+| SDK surface | `scripts/check-sdk-surface.mjs`                            | `pnpm run check:sdk-surface` after `pnpm -F wave-agent-sdk build` (the PR-tier `sdk-surface` CI job)                                                         |
 
 Everything above runs **inside the repo**, where `node_modules` is complete and
 `@vscode/ripgrep-<platform>` resolves. The host apps are what actually gets
@@ -154,7 +154,7 @@ Known legacy hotspots (duplication not yet deduplicated — check **both** copie
 
 - **Unit tests**: Vitest in `tests/` — `pnpm -F wave-vscode test`
 - **E2E tests**: real-browser Playwright tests in `packages/webview/e2e/` (`.e2e.ts`, requires Chromium) — `pnpm -F wave-webview run test:e2e`
-- **Demo/screenshot tests**: screenshot-only Playwright tests in `packages/webview/demo/` (`.demo.ts`); `pnpm -F wave-webview run test:demo` runs the `demo` project and regenerates the gitignored screenshots under `docs/public/screenshots/` (the `e2e` project has its own `test:e2e`)
+- **Screenshot generation** (`packages/webview/demo/*.demo.ts`): these are **not tests** — they drive the real UI into the state a docs image needs and capture it into `docs/public/screenshots/` (gitignored) via `pnpm -F wave-webview run test:demo`. A green demo run proves "the screenshots were produced", nothing about behaviour: **every behaviour assertion belongs in `e2e/*.e2e.ts`** (real Chromium, `pnpm -F wave-webview run test:e2e`). When adding a regression case, write it in `e2e`; leave `demo` alone unless the change also alters a screenshot.
 
 ## 🖥 CLI (`packages/code`)
 

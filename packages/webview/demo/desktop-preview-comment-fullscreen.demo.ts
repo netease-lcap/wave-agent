@@ -5,6 +5,10 @@ import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
 /**
+ * Screenshot generation only — 本文件只负责把界面推到要拍的状态并截图，不承担回归。
+ * 行为断言在 e2e/desktop-preview-floating-dialog.e2e.ts（浮卡 + 评论落点 + 工作态）
+ * 与 e2e/desktop-draft-preserved.e2e.ts（进出全屏草稿与焦点）。改行为去改那边。
+ *
  * Desktop preview fullscreen + element picker comment (real Chromium).
  *
  * 需求八（2026-09-16）：全屏里也要能看到对话。全屏状态下对话列缩成底部居中的浮动

@@ -1,15 +1,14 @@
 import type { Page } from "@playwright/test";
-import { test, expect } from "../e2e/utils/desktopTestHarness.js";
-import { seedSidebarSessions } from "./sidebarSeed.js";
-import { MessageInjector } from "../e2e/utils/messageInjector.js";
+import { test, expect } from "./utils/desktopTestHarness.js";
+import { MessageInjector } from "./utils/messageInjector.js";
 
 /**
  * Desktop 输入草稿跨视图切换保留（spec desktop-sessions.md「会话管理」场景 23 +
  * desktop-preview.md「预览面板全屏」场景 7）：进设置页 / 看会话看板 / 进预览全屏
  * 再回来，未发送的输入内容必须还在。
  *
- * 一定要在真 Chromium 里跑：全屏那一条的关键是「对话列隐藏但没被卸载」，jsdom
- * 不跑样式也拿不到可见性，只有真浏览器能验证。
+ * 在真 Chromium 里跑（e2e，不是 demo）：全屏那一条的关键是「对话列缩成浮动卡片、
+ * 输入框仍挂在同一处」，jsdom 不跑样式也拿不到可见性，只有真浏览器能验证。
  *
  * 宿主那一半（webviewReady → setInitialState 按下发的 inputContent 回填草稿）由本
  * 用例手动模拟：从页面发出的 updateInputContent 里取草稿，再按快照回灌。
@@ -59,9 +58,6 @@ async function setup(injector: MessageInjector, page: Page) {
     recentWorkdirs: [DIR],
   });
   await injector.waitForChatAppReady();
-  await seedSidebarSessions(injector, DIR, [
-    { sessionId: SESSION.id, title: SESSION.firstMessage },
-  ]);
   // 空会话（欢迎页）+ 一条未发送的草稿：草稿最常见的落点就是这种还没开聊的会话。
   await injector.simulateExtensionMessage("setInitialState", {
     messages: [],

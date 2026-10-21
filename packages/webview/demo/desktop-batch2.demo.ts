@@ -6,6 +6,10 @@ import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
 /**
+ * Screenshot generation only — 本文件只负责把界面推到要拍的状态并截图，不承担回归。
+ * 行为断言在 e2e/（插件变更强引导框 → desktop-reload-plugins.e2e.ts；设置页/看板
+ * 各自对应的 e2e 文件）。改行为去改那边。
+ *
  * Batch 2 desktop features (spec desktop-account-and-settings.md 设置页面/上下文
  * 用量/账户卡片 + desktop-sessions.md 会话状态看板): screenshots for the
  * settings full-page (全局设置 / 个性化), session status board, context
