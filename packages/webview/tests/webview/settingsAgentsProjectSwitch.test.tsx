@@ -147,4 +147,53 @@ describe("desktop 设置页「个性化」项目级 AGENTS.md 随项目切换刷
       ).toBe("# 版本 B");
     });
   });
+
+  /**
+   * 根因 3（等回包期间重复请求，见 #2533）：加载 effect 曾把父组件传的内联回调
+   * 列进依赖，ChatApp 每次重渲染都会换一个回调引用 ⇒ effect 重跑；此时内容仍是
+   * null（回包没到）、守卫成立，于是再发一次 getAgentsContent。全量并发下命中
+   * 偶发失败。
+   *
+   * 这里用确定性机制复现：进入「项目级」tab 后、回包之前，推一条与这段数据无关
+   * 的窗口级广播（切更新通道）逼 ChatApp 重渲染，断言请求次数不变。
+   */
+  it("等回包期间 ChatApp 重渲染不会再发一次请求", async () => {
+    const mockVscode = createMockVscode();
+    render(
+      <ChatApp
+        vscode={mockVscode as unknown as VsCodeApi}
+        host={desktopHost()}
+      />,
+    );
+    sendHostMessage(fixtures.authStatusResponse());
+    sendHostMessage(fixtures.setInitialState());
+
+    await openSettings();
+    await openProjectTab();
+    expect(projectRequests(mockVscode)).toHaveLength(1);
+
+    // 与 AGENTS.md 无关的状态变更：ChatApp 状态变了 ⇒ 整棵树重渲染，父组件传给
+    // SettingsPage 的内联回调也换了引用。
+    act(() => {
+      sendHostMessage({ command: "desktopUpdateChannel", channel: "beta" });
+    });
+
+    expect(projectRequests(mockVscode)).toHaveLength(1);
+
+    // 回包到达后照常回填，且没有因重渲染多发的请求。
+    act(() => {
+      sendHostMessage({
+        command: "agentsContentResponse",
+        scope: "project",
+        content: "# 版本 A",
+      });
+    });
+    await waitFor(() => {
+      expect(
+        (screen.getByLabelText("项目级 AGENTS.md 内容") as HTMLTextAreaElement)
+          .value,
+      ).toBe("# 版本 A");
+    });
+    expect(projectRequests(mockVscode)).toHaveLength(1);
+  });
 });
