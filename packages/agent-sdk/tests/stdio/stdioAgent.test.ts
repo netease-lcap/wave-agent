@@ -132,6 +132,44 @@ describe("StdioAgent", () => {
     expect(registerSpy).toHaveBeenCalledWith("session-123", agent);
   });
 
+  it("keeps the reply's session root apart from the live cwd (re-attached session)", async () => {
+    const { agent, client } = createAgent();
+
+    // A re-attach of a session that bash-`cd`'d away: the CLI answers with the
+    // drifted cwd plus the root the session was created in.
+    client.request.mockResolvedValue({
+      sessionId: "session-123",
+      workingDirectory: "/workspace/packages/code",
+      sessionCwd: "/workspace",
+      repoRoot: "/workspace",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+
+    await agent.initialize({ workdir: "/workspace", restoreSessionId: "s-1" });
+
+    // "Where is it now" vs "which project does it belong to" must not collapse
+    // into one field: hosts key the sidebar group / project config off the root.
+    expect(agent.workingDirectory).toBe("/workspace/packages/code");
+    expect(agent.sessionCwd).toBe("/workspace");
+    expect(agent.sessionRepoRoot).toBe("/workspace");
+  });
+
+  it("falls back to the live cwd when the reply has no session root (older CLI)", async () => {
+    const { agent, client } = createAgent();
+    client.request.mockResolvedValue({
+      sessionId: "session-123",
+      workingDirectory: "/workspace",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+
+    await agent.initialize({ workdir: "/workspace" });
+
+    expect(agent.sessionCwd).toBe("/workspace");
+    expect(agent.sessionRepoRoot).toBeUndefined();
+  });
+
   // ── destroy ────────────────────────────────────────────────
 
   it("sends destroy request with sessionId, unregisters router, does NOT dispose client", async () => {

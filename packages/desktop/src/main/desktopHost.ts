@@ -3068,12 +3068,16 @@ export class DesktopHost {
       this.agentWorktreeInfo.get(agent) ?? existing?.worktree;
     // Worktree sessions group under the original repo root (workdir) while the
     // agent's actual working directory (cwd) stays the worktree path (FR-024).
+    // `sessionRepoRoot` covers the sessions this app has no worktree record for
+    // — a `/resume` pick off disk (CLI-created worktree session) or a re-attach
+    // of a live one: the CLI derives it from the session root, so the group is
+    // the repo root instead of a worktree path.
     this.configStore.upsertSession({
       sessionId,
       host: this.hostForAgent(agent),
       // An established title wins; a re-registration must never wipe it.
       title: title || existing?.title || "",
-      workdir: worktreeInfo?.repoRoot ?? cwd,
+      workdir: worktreeInfo?.repoRoot ?? agent.sessionRepoRoot ?? cwd,
       cwd,
       // First registration pins the creation time; re-registrations keep it so
       // sidebar order only changes when a session is created or deleted.
@@ -5599,7 +5603,14 @@ export class DesktopHost {
     // An indexed session's own host is authoritative; a session picked off disk
     // (`/resume`) has no entry and brings its host from the requesting pane.
     const host = entry?.host ?? hostOverride ?? LOCAL_HOST;
-    const targetDir = entry?.worktree ? entry.cwd : workdir;
+    // Where to spawn. An index entry knows the session's real cwd (the worktree
+    // path for a worktree session), so it wins over the `workdir` the caller
+    // passed: a `/resume` pick carries the session's own metadata off disk,
+    // while the index is what this app has been maintaining. `workdir` remains
+    // the answer for a session it has never seen (CLI / another client) and for
+    // entries persisted before `cwd` existed.
+    const targetDir =
+      entry?.cwd ?? entry?.worktree?.path ?? entry?.workdir ?? workdir;
 
     // A live agent activates with zero network round trips — checked before
     // the optimistic switch, so clicking a session that is already running
