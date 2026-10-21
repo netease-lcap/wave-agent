@@ -282,12 +282,15 @@ export const MessageList = forwardRef<
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const prevMessagesLengthRef = useRef(messages.length);
-  // 尾锚定判据用的「上一条尾巴」。列表从此不再只从尾部增长：手机上「上拉翻更早」
-  // 会往**前面**接一整页（长度也变长），而重连补差、rewind 又会截短它。所以「长度
-  // 变长了就是来了新消息」不再成立（会把手翻出来的历史当成新消息、把视口拽到底），
-  // 判据换成「尾巴这条消息 id 变了」——尾部追加才改尾巴，prepend 不改。
-  const prevTailIdRef = useRef(messages[messages.length - 1]?.id);
+  // 尾锚定判据用的「上一条尾巴」与「上一个长度」，两者都取**可见列表**（见下面的
+  // visibleMessages 与 effect 里的注释），初值只在本轮 effect 首跑前有效——首跑一定
+  // 会重写它们。
+  const prevVisibleLengthRef = useRef(0);
+  // 列表不再只从尾部增长：手机上「上拉翻更早」会往**前面**接一整页（长度也变长），
+  // 而重连补差、rewind 又会截短它。所以「长度变长了就是来了新消息」不再成立（会把
+  // 手翻出来的历史当成新消息、把视口拽到底），判据换成「尾巴这条消息 id 变了」——
+  // 尾部追加才改尾巴，prepend 不改。
+  const prevTailIdRef = useRef<string | undefined>(undefined);
   const prevQueuedLengthRef = useRef(queuedMessages?.length || 0);
   // True until the first effect run after mount. MessageList only renders once
   // messages exist (empty state shows LoadingLogo/WelcomeView), so the first run
@@ -835,20 +838,34 @@ export const MessageList = forwardRef<
     // the judgement has to look at the tail's identity, not at the length, because
     // a prepended page also makes this list longer (and a rewind makes it
     // shorter) without any new message existing at the end.
-    const isInitialLoad = isFirstEffectRef.current && messages.length > 0;
+    //
+    // The tail is the tail of the VISIBLE list, not of `messages`. Injected meta
+    // user messages (task reminder, triggered `.wave/rules` rule, hook
+    // additionalContext, changed-files notice, plan mode reminder — `isMeta: true`,
+    // appended by the SDK between model requests, hidden from the list) also land
+    // at the end of the raw array, and the tail's ROLE is what arms the one reason
+    // allowed to lift the opt-out. Reading the raw tail, a mid-turn injection
+    // looks exactly like the user having just sent a message: following was
+    // re-armed behind an invisible change and the reader in the history was pinned
+    // to the bottom — for the rest of the turn, since every later chunk then
+    // follows. Judged on the visible list, an injection is not a tail change at
+    // all and falls through to `content`, which cannot move a parked reader.
+    const visibleTail = visibleMessages[visibleMessages.length - 1];
+    const isInitialLoad =
+      isFirstEffectRef.current && visibleMessages.length > 0;
     isFirstEffectRef.current = false;
-    const tailId = messages[messages.length - 1]?.id;
+    const tailId = visibleTail?.id;
     const isNewMessage =
       (tailId !== prevTailIdRef.current &&
-        messages.length >= prevMessagesLengthRef.current) ||
+        visibleMessages.length >= prevVisibleLengthRef.current) ||
       (queuedMessages?.length || 0) > prevQueuedLengthRef.current;
-    prevMessagesLengthRef.current = messages.length;
+    prevVisibleLengthRef.current = visibleMessages.length;
     prevTailIdRef.current = tailId;
     prevQueuedLengthRef.current = queuedMessages?.length || 0;
     const reason: FollowReason = isInitialLoad
       ? "initial"
       : isNewMessage
-        ? messages[messages.length - 1]?.role === "user"
+        ? visibleTail?.role === "user"
           ? "user-sent"
           : "new-message"
         : "content";
@@ -1116,6 +1133,9 @@ export const MessageList = forwardRef<
     };
   }, [
     messages,
+    // Derived from `messages`, listed because the tail/reason judgement now reads
+    // the VISIBLE list (see the comment there).
+    visibleMessages,
     queuedMessages,
     isStreaming,
     scrollToBottom,

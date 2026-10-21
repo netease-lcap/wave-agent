@@ -23,6 +23,20 @@ const assistantMsg = (content: string, id: string) => ({
 });
 
 /**
+ * An injected (`isMeta: true`) user message: the task reminder, a triggered
+ * `.wave/rules` rule, hook additionalContext, the changed-files notice, a plan
+ * mode reminder. The SDK appends these at the TAIL between model requests, and
+ * the list hides them — the reader sees nothing happen.
+ */
+const metaUserMsg = (content: string, id: string) => ({
+  id,
+  role: "user" as const,
+  isMeta: true,
+  timestamp: "2025-01-01T00:00:00.000Z",
+  blocks: [{ type: "text", content }],
+});
+
+/**
  * jsdom does not do layout, so scrollTop/clientHeight/scrollHeight are all 0.
  * Fake the geometry by redefining those properties on the container, then
  * dispatch a scroll event so MessageList's scroll handler records the position.
@@ -389,6 +403,80 @@ describe("auto-scroll follow during streaming", () => {
     scrollTo.mockClear();
     pushChunk();
 
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The counterpart: a message the user actually sends still re-arms following.
+   * Both angles are needed because they are the same judgement — "is the tail a
+   * user message?" — read on the same list; the meta case below must not be able
+   * to pass by making that judgement unreachable.
+   */
+  it("re-arms following when the user really sends a message", async () => {
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
+    await renderStreamingAtBottom();
+
+    fireEvent.wheel(screen.getByTestId("messages-container"), { deltaY: -120 });
+    setGeometryAndScroll(1480, 2000);
+    scrollTo.mockClear();
+
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          userMsg("问题", "u1"),
+          assistantMsg("正在回答", "a1"),
+          userMsg("新问题", "u2"),
+        ],
+      });
+    });
+
+    expect(scrollTo).toHaveBeenCalled();
+  });
+
+  /**
+   * The tail-role test that decides "the user just sent a message" — the ONE
+   * reason allowed to lift the opt-out — reads the tail of the RAW list, where
+   * injected meta user messages also live. Every model request appends some
+   * (task reminder, triggered rule, hook context, changed-files notice, plan
+   * mode reminder), so mid-turn, while the reader is in the history, the tail
+   * becomes a `role: "user"` message the reader cannot even see: following was
+   * silently re-armed and the viewport pinned — the intermittent "reading
+   * history, suddenly yanked to the bottom" with no gesture behind it.
+   */
+  it("does not re-arm following when an injected meta user message lands at the tail", async () => {
+    const scrollTo = vi.fn();
+    window.Element.prototype.scrollTo = scrollTo;
+    await renderStreamingAtBottom();
+
+    // The reader wheels up mid-stream: following is suspended.
+    fireEvent.wheel(screen.getByTestId("messages-container"), { deltaY: -120 });
+    setGeometryAndScroll(1480, 2000);
+    scrollTo.mockClear();
+
+    // The agent's next request appends an invisible meta user message.
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          userMsg("问题", "u1"),
+          assistantMsg("正在回答……更多内容追加", "a1"),
+          metaUserMsg("<system-reminder>tasks 提醒</system-reminder>", "meta1"),
+        ],
+      });
+    });
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    // … and following must stay off for the rest of the turn, not just for the
+    // one update: with the opt-out lifted, every later chunk chases the reader.
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          userMsg("问题", "u1"),
+          assistantMsg("正在回答……更多内容追加……", "a1"),
+          metaUserMsg("<system-reminder>tasks 提醒</system-reminder>", "meta1"),
+        ],
+      });
+    });
     expect(scrollTo).not.toHaveBeenCalled();
   });
 });
