@@ -4,6 +4,8 @@
  * 这里测的是**文件契约**：MRU 顺序、去重口径、上限、坏文件的兜底，以及「写不
  * 进去也不打扰调用方」。文件位置由 `homedir()` 决定，所以 home 与 fs 都换成桩。
  */
+import { join, resolve } from "node:path";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const reads: string[] = [];
@@ -11,8 +13,16 @@ const writes: Array<{ path: string; data: string }> = [];
 let readShouldThrow = false;
 let writeShouldThrow = false;
 
+/**
+ * The fixture home is resolved through `path` so the stub hands the production
+ * code the same shape of absolute path the real `homedir()` does: on Windows
+ * `resolve("/mock/home")` is `C:\mock\home`, and `join()` then yields `\`
+ * separators — hardcoding "/mock/home" here only matches on POSIX.
+ */
+const HOME = resolve("/mock/home");
+
 vi.mock("node:os", () => ({
-  homedir: () => "/mock/home",
+  homedir: () => HOME,
 }));
 
 vi.mock("node:fs", () => ({
@@ -103,7 +113,7 @@ describe("rememberRecentWorkdir", () => {
     store([]);
     rememberRecentWorkdir("/repo");
     expect(writes[writes.length - 1].path).toBe(
-      "/mock/home/.wave/recent-workdirs.json",
+      join(HOME, ".wave", "recent-workdirs.json"),
     );
   });
 
