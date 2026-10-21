@@ -126,6 +126,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
   sessionBoard,
   sessionBoardActive = false,
   onToggleSessionBoard,
+  onCloseSessionBoard,
   pluginMarketOpen = false,
   pluginMarket,
   pluginMarketActive = false,
@@ -709,15 +710,18 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     );
   }
 
-  // 侧边栏里任何「换对话」的动作都会换掉插件市场的锚点（spec ecosystem/plugin
-  // A-018 / 场景 2）：选中另一条对话、Cmd 点击在新分屏打开、新建对话——都先退出
-  // 整页再动作。用户点完看到的是对话本身；插件视图也不会留在锚点已经变了的旧
-  // 列表上（列表快照与写操作必须同一个锚点）。
-  // 创作集同理：整页是账号级快照，换对话/新开分屏前先退出，回来再重新打开
-  // （列表与写动作必须同一个锚点）。
-  const closeFullPagesThen = (action: () => void) => {
+  // 侧边栏里任何「换对话」的动作都发生在被整页视图替换掉的 pane rows 上，所以
+  // 先退出整页再动作，用户点完看到的就是那条对话本身：
+  // - 插件市场要退出（spec ecosystem/plugin A-018 / 场景 2）：它的锚点被换掉了，
+  //   列表快照与写操作必须同一个锚点；
+  // - 创作集同理：整页是账号级快照，换对话/新开分屏前先退出，回来再重新打开；
+  // - 会话状态看板要退出（spec desktop-sessions.md「会话状态面板打开时左侧会话仍
+  //   可点击」）：看板是「看各会话进展」的整页，左侧会话列表正是回到某个会话的
+  //   入口，点了却停在看板上等于白点。
+  const closeWholePagesThen = (action: () => void) => {
     onClosePluginMarket?.();
     onCloseArtifacts?.();
+    onCloseSessionBoard?.();
     action();
   };
 
@@ -725,12 +729,12 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     <div className="desktop-layout" data-testid="desktop-shell">
       <DesktopSidebar
         onNewSession={() =>
-          closeFullPagesThen(() =>
+          closeWholePagesThen(() =>
             vscode.postMessage({ command: "newSession" }),
           )
         }
         onNewSessionInPane={() =>
-          closeFullPagesThen(() =>
+          closeWholePagesThen(() =>
             vscode.postMessage({ command: "desktopNewSessionInPane" }),
           )
         }
@@ -748,10 +752,10 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
         currentSessionId={focusedSessionId}
         visibleSessionIds={visibleSessionIds}
         onSelectSession={(workdir, sessionId) =>
-          closeFullPagesThen(() => host.onSelectSession(workdir, sessionId))
+          closeWholePagesThen(() => host.onSelectSession(workdir, sessionId))
         }
         onOpenPane={(workdir, sessionId) =>
-          closeFullPagesThen(() => handleOpenPane(workdir, sessionId))
+          closeWholePagesThen(() => handleOpenPane(workdir, sessionId))
         }
         onDeleteSession={host.onDeleteSession}
         onRenameSession={host.onRenameSession}

@@ -249,6 +249,14 @@ test.describe("Desktop batch 2 feature screenshots", () => {
       webviewPage,
       "../../docs/public/screenshots/desktop-session-board.webp",
     );
+
+    // 看板是「整页」但左侧会话列表仍是回到某个会话的入口（spec
+    // desktop-sessions.md「会话状态面板打开时左侧会话仍可点击」）：点一条会话
+    // 即退出看板、进入那条会话，不必先关看板。真实浏览器里也要成立——看板若被
+    // 做成整窗遮罩就会点不到，这里点一次验证。
+    await webviewPage.getByTestId("desktop-session-main-s-done").click();
+    await expect(webviewPage.getByTestId("session-board")).toHaveCount(0);
+    await expect(webviewPage.getByTestId("chat-container")).toBeVisible();
   });
 
   /**
