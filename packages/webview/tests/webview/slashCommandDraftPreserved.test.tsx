@@ -10,7 +10,7 @@ import {
 } from "./test-utils";
 
 /**
- * 回归测试：从快捷指令弹窗选中「本地指令」（config/mcp/status/rewind/model…
+ * 回归测试：从快捷指令弹窗选中「本地指令」（config/mcp/status/rewind…
  * 打开对话框或设置页、不依赖光标位置的指令）时，不得把 '/' 前的输入框草稿
  * 整条清空。
  *
@@ -63,9 +63,9 @@ async function openSlashPopup(text: string) {
     sendCommand("slashCommandsResponse", {
       commands: [
         {
-          id: "model",
-          name: "model",
-          description: "选择模型",
+          id: "rewind",
+          name: "rewind",
+          description: "回滚到检查点",
           runOnSelect: true,
         },
       ],
@@ -86,25 +86,25 @@ describe("本地快捷指令选中不丢 '/' 前草稿（回归）", () => {
     vi.clearAllMocks();
   });
 
-  it("草稿 + 空格 + /model：Enter 选中后草稿保留、指令照常发出、剩余文本上报宿主", async () => {
+  it("草稿 + 空格 + /rewind：Enter 选中后草稿保留、指令照常发出、剩余文本上报宿主", async () => {
     const draft = "帮我分析这个报错";
-    const { vscode, input } = await openSlashPopup(`${draft} /model`);
+    const { vscode, input } = await openSlashPopup(`${draft} /rewind`);
 
-    // 弹窗打开时按 Enter → 选中本地指令 /model
+    // 弹窗打开时按 Enter → 选中本地指令 /rewind
     await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" });
     });
 
-    // 1) 本地指令照常执行（打开模型选择弹层，而非把含草稿的文本发给 agent）
+    // 1) 本地指令照常执行（打开回滚弹层，而非把含草稿的文本发给 agent）
     expect(vscode.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ command: "getConfiguredModels" }),
+      expect.objectContaining({ command: "listRewindCheckpoints" }),
     );
     expect(vscode.postMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({ command: "sendMessage" }),
     );
-    expect(screen.getByTestId("model-popup")).toBeInTheDocument();
+    expect(screen.getByTestId("rewind-popup")).toBeInTheDocument();
 
-    // 2) 输入框只剩 '/' 前的草稿（/model token 被删除）
+    // 2) 输入框只剩 '/' 前的草稿（/rewind token 被删除）
     expect(input.textContent).toBe(`${draft} `);
 
     // 3) updateInputContent 上报剩余草稿而非空串 → 宿主会话记忆/切会话恢复不丢
@@ -116,15 +116,15 @@ describe("本地快捷指令选中不丢 '/' 前草稿（回归）", () => {
     );
   });
 
-  it("空框只输 /model：Enter 选中后输入框清空，行为与修复前一致", async () => {
-    const { vscode, input } = await openSlashPopup("/model");
+  it("空框只输 /rewind：Enter 选中后输入框清空，行为与修复前一致", async () => {
+    const { vscode, input } = await openSlashPopup("/rewind");
 
     await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" });
     });
 
     expect(vscode.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ command: "getConfiguredModels" }),
+      expect.objectContaining({ command: "listRewindCheckpoints" }),
     );
     expect(input.textContent).toBe("");
     expect(vscode.postMessage).toHaveBeenCalledWith(

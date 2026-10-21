@@ -257,7 +257,7 @@ export class ChatSession {
         // 会话由本窗口的 `wave --stdio` 子进程承载 → 遥测里的 app.entrypoint
         // （docs/specs/enterprise/opentelemetry.md「宿主入口标识」）。
         entrypoint: "vscode",
-        // 模型不进覆盖层：由 `/model` 命令经 `getConfiguredModels` / `setModel`
+        // 模型不进覆盖层：由底栏模型选择器经 `getConfiguredModels` / `setModel`
         // RPC 管理。用户偏好（language / autoMemory*）也不经此下发——它们落在
         // 用户级 ~/.wave/settings.json 并由 SDK 实时重载生效（spec agent-config
         // 「设置实时重载」；覆盖层会永久遮蔽 settings.json 的实时值）。
@@ -391,7 +391,7 @@ export class ChatSession {
 
   /**
    * 重建 agent（保留会话）——插件启停 / 登录登出后让新配置生效的必需步骤。
-   * 模型不从覆盖层下发（由 `/model` 命令经 setModel RPC 管理），用户偏好走
+   * 模型不从覆盖层下发（由底栏模型选择器经 setModel RPC 管理），用户偏好走
    * settings.json 实时重载，故载荷为空。
    */
   public async updateConfig() {

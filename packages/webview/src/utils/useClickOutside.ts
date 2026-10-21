@@ -18,7 +18,7 @@ export interface UseClickOutsideOptions {
  * 监听 document 上的 mousedown，实现"点击弹层外部关闭"。
  *
  * 监听器延迟一帧（setTimeout 0）再注册：当弹层由同一次 mousedown 触发挂载
- * 时（例如鼠标点击快捷指令列表项打开 /rewind、/model 弹层），那次 mousedown
+ * 时（例如鼠标点击快捷指令列表项打开 /rewind、/btw 弹层），那次 mousedown
  * 仍在冒泡到 document。若挂载 effect 同步注册监听器，事件会命中它而 target
  * 又在弹层之外，弹层便会被自己的打开点击立即关闭——键盘选中回车没有 mousedown
  * 所以正常。延迟注册让打开弹层的那次点击先冒泡结束。这是 DOM 事件机制下的

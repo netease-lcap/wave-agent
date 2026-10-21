@@ -1430,7 +1430,7 @@ describe("ConfigurationService", () => {
 
     it("should get configured models including current", () => {
       configService.setEnvironmentVars({ WAVE_MODEL: "env-model" });
-      const models = configService.getConfiguredModels();
+      const models = configService.getConfiguredModels().map((m) => m.name);
       expect(models).not.toContain("gemini-3-flash");
       expect(models).toContain("env-model");
     });
@@ -1446,7 +1446,7 @@ describe("ConfigurationService", () => {
       mockReadFileSync.mockReturnValue(JSON.stringify(config));
 
       await configService.loadMergedConfiguration(tempDir);
-      const models = configService.getConfiguredModels();
+      const models = configService.getConfiguredModels().map((m) => m.name);
 
       expect(models).toContain("model-a");
       expect(models).toContain("model-b");
@@ -1462,11 +1462,36 @@ describe("ConfigurationService", () => {
       delete process.env.WAVE_MODEL;
       try {
         await configService.loadMergedConfiguration(tempDir);
-        const models = configService.getConfiguredModels();
+        const models = configService.getConfiguredModels().map((m) => m.name);
         expect(models).toContain("persisted-model");
       } finally {
         if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
       }
+    });
+
+    it("should label each model with its declared vision capability", async () => {
+      // 视觉是 opt-out 语义（未声明 = 支持），选择器的「视觉」标识直接用它，
+      // 不另立一套判据。capabilities 只在 models[<name>] 下生效。
+      const config = {
+        models: {
+          "vision-on": {},
+          "vision-off": { capabilities: { vision: false } },
+        },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      await configService.loadMergedConfiguration(tempDir);
+      const models = configService.getConfiguredModels();
+
+      expect(models).toContainEqual({
+        name: "vision-on",
+        supportsVision: true,
+      });
+      expect(models).toContainEqual({
+        name: "vision-off",
+        supportsVision: false,
+      });
     });
   });
 

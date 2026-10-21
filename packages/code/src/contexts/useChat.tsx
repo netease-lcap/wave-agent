@@ -788,8 +788,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         onModelChange: (model) => {
           setCurrentModelState(model);
         },
+        // CLI 的选择器只要名字，能力标识是 webview 输入卡片的事。
         onConfiguredModelsChange: (models) => {
-          setConfiguredModels(models);
+          setConfiguredModels(models.map((m) => m.name));
         },
         onLoadingChange: (loading) => {
           setIsLoading(loading);
@@ -880,7 +881,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setPermissionModeState(agent.getPermissionMode());
         setWorkingDirectory(agent.workingDirectory);
         setCurrentModelState(agent.getModelConfig().model || "");
-        setConfiguredModels(agent.getConfiguredModels());
+        setConfiguredModels(agent.getConfiguredModels().map((m) => m.name));
         setMaxInputTokens(agent.getMaxInputTokens());
 
         // Get initial MCP servers state
@@ -1488,7 +1489,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     if (!agentRef.current) {
       return [];
     }
-    return agentRef.current.getConfiguredModels();
+    return agentRef.current.getConfiguredModels().map((m) => m.name);
   }, []);
 
   const setModel = useCallback((model: string) => {

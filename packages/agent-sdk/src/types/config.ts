@@ -23,6 +23,21 @@ export interface ModelCapabilities {
   promptCaching?: boolean;
 }
 
+/**
+ * One entry of the selectable model list (`Agent.getConfiguredModels`).
+ *
+ * `supportsVision` mirrors what the agent actually does with image input for
+ * that model — resolved from `models[<name>].capabilities.vision`, which is
+ * opt-out (unset means supported), so hosts render the picker's badge from this
+ * field instead of re-deriving capability rules on their own.
+ */
+export interface ConfiguredModel {
+  /** Model id, same shape as the `model` key / `models` map key in settings.json. */
+  name: string;
+  /** Whether the model can read images (see `supportsVision`). */
+  supportsVision: boolean;
+}
+
 export interface ModelConfig {
   model?: string;
   fastModel?: string;

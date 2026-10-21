@@ -37,7 +37,7 @@ import type { ToolBlockUpdateCallbackParams } from "wave-agent-sdk/types";
 // host → webview contract (webview-fixtures is their definition) and are only
 // borrowed here to type ChatHeaderProps — no runtime import survives the
 // compile, and webview-fixtures sits in devDependencies.
-import type { PushState } from "wave-webview-fixtures";
+import type { ConfiguredModel, PushState } from "wave-webview-fixtures";
 // Type-only: NavKey is defined in the SettingsPage component module; erased at
 // compile time so the type-level cycle (SettingsPage imports ConfigurationData
 // from here) never becomes a runtime import.
@@ -604,13 +604,21 @@ export interface MessageInputProps {
    */
   sessionId?: string;
   permissionMode?: PermissionMode;
+  /**
+   * 底栏左侧模型选择器的候选清单（宿主下发；空 = 不渲染选择器）。
+   * 能力标识随条目一起来（`ConfiguredModel.supportsVision`），webview 不自己
+   * 推断——见 user memory「判据一律取自宿主下发字段」。
+   */
+  models?: ConfiguredModel[];
+  /** 当前会话使用的模型（选择器回显这一项）。 */
+  currentModel?: string;
+  /** 选择器选中某模型（宿主负责落盘与生效）。 */
+  onSelectModel?: (model: string) => void;
   initialAttachedImages?: AttachedImage[];
   /** Optional slot rendered at the top-left of the input box (desktop workdir selector). */
   workdirSelector?: React.ReactNode;
   /** Optional /rewind popup rendered above the input box, anchored to .input-wrapper. */
   rewindPopup?: React.ReactNode;
-  /** Optional /model popup rendered above the input box, anchored to .input-wrapper. */
-  modelPopup?: React.ReactNode;
   /** Optional /btw side-question panel rendered above the input box, anchored to .input-wrapper. */
   btwPopup?: React.ReactNode;
   /** Disable the whole input area (e.g. desktop host without a workdir, or an
@@ -1009,9 +1017,9 @@ export interface ConfirmationDialogProps {
 
 /**
  * 用户偏好配置（设置页载荷）。**只含落 `~/.wave/settings.json` 的偏好键**：
- * **对话模型**经 `/model` 命令走宿主 RPC，不在这个信封里；补全模型
+ * **对话模型**经底栏模型选择器走宿主 RPC，不在这个信封里；补全模型
  * （`completionModel`）是配置文件里的用户偏好键，故在这个信封里——它的候选清单
- * 才复用 `/model` 的 `getConfiguredModels`（spec ui/code-completion.md 故事 4）。
+ * 才复用对话模型的 `getConfiguredModels`（spec ui/code-completion.md 故事 4）。
  */
 export interface ConfigurationData {
   /** Preferred language for agent communication */

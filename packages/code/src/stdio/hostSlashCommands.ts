@@ -141,12 +141,9 @@ export const HOST_SLASH_COMMANDS: readonly HostSlashCommandSpec[] = [
     runOnSelect: true,
     surfaces: ALL,
   },
-  {
-    id: "model",
-    description: "切换 AI 模型",
-    runOnSelect: true,
-    surfaces: ALL,
-  },
+  // `/model` 不在这里：模型入口自 2026-10-21 起是输入卡片底栏的选择器（见 spec
+  // ui/model-selection.md），桌面 / IDE / 远控页都不再有这条命令；CLI 的 TUI 没有
+  // 底栏，因此 `/model` 只留在它自己的命令表里（packages/code 的 AVAILABLE_COMMANDS）。
   {
     id: "resume",
     description: "恢复历史对话",

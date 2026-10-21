@@ -9,7 +9,7 @@ import { LOCAL_HOST } from "./sshHosts";
 
 /**
  * 桌面本地存储的键。**只剩服务地址**：用户偏好都不落这里——
- * **对话模型**经 `/model` 命令走宿主 RPC（`getConfiguredModels` / `setModel`），
+ * **对话模型**经底栏模型选择器走宿主 RPC（`getConfiguredModels` / `setModel`），
  * 用户偏好（语言 / 上下文长度 / 自动记忆 / **补全模型与补全开关**）的唯一落点是
  * 用户级 `~/.wave/settings.json`——补全模型虽与模型相关，但它是配置文件里的一
  * 个用户偏好键（顶层 `completionModel`，spec ui/code-completion.md 故事 4），
@@ -39,7 +39,7 @@ export interface DesktopConfigData {
   autoMemoryFrequency?: number;
   /**
    * 用户偏好：行内补全使用的模型（settings.json 顶层 `completionModel`，未设置时
-   * 回退快速模型）。**对话模型**不在本载荷里（那是 `/model` 命令的会话级 RPC），
+   * 回退快速模型）。**对话模型**不在本载荷里（那是模型选择器的会话级 RPC），
    * 补全模型是配置文件里的一个用户偏好键（spec ui/code-completion.md 故事 4）。
    */
   completionModel?: string;

@@ -36,6 +36,7 @@ import type {
   SubagentConfiguration,
   SkillMetadata,
   RemoteControlSnapshot,
+  ConfiguredModel,
   ServerNotificationMethod,
   CompletionSnippet,
 } from "../types/index.js";
@@ -422,14 +423,14 @@ export class StdioAgent {
   }
 
   async getConfiguredModels(): Promise<{
-    models: string[];
+    models: ConfiguredModel[];
     currentModel: string | undefined;
   }> {
     return (await this.client.request(
       "getConfiguredModels",
       undefined,
       this.sessionId,
-    )) as { models: string[]; currentModel: string | undefined };
+    )) as { models: ConfiguredModel[]; currentModel: string | undefined };
   }
 
   async setModel(model: string): Promise<void> {

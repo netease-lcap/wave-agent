@@ -9,6 +9,7 @@ import type {
   PluginConfig,
   BackgroundTask,
   McpServerConfig,
+  ConfiguredModel,
 } from "./index.js";
 import type { MessageManagerCallbacks } from "../managers/messageManager.js";
 import type { BackgroundTaskManagerCallbacks } from "../managers/backgroundTaskManager.js";
@@ -167,7 +168,7 @@ export interface AgentCallbacks
   ) => void;
   onBackgroundCurrentTask?: () => void;
   onModelChange?: (model: string) => void;
-  onConfiguredModelsChange?: (models: string[]) => void;
+  onConfiguredModelsChange?: (models: ConfiguredModel[]) => void;
   onLoadingChange?: (loading: boolean) => void;
   onCommandRunningChange?: (running: boolean) => void;
   onWorkdirChange?: (newCwd: string) => void;

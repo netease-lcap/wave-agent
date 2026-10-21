@@ -433,9 +433,9 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
         runOnSelect: true,
       },
       {
-        id: "model",
-        name: "model",
-        description: "切换 AI 模型",
+        id: "rewind",
+        name: "rewind",
+        description: "回退到之前的用户消息",
         runOnSelect: true,
       },
       {
@@ -3950,12 +3950,12 @@ describe("misc commands", () => {
     const { host, sent } = await readyHost();
     await host.handleWebviewMessage({
       command: "requestSlashCommands",
-      filterText: "mode",
+      filterText: "rewind",
     });
 
     const resp = sent("slashCommandsResponse")[0];
     const names = (resp.commands as Array<{ name: string }>).map((c) => c.name);
-    expect(names).toEqual(["model"]);
+    expect(names).toEqual(["rewind"]);
   });
 
   it("requestSlashCommands includes plan in the merged list", async () => {
@@ -4007,7 +4007,7 @@ describe("misc commands", () => {
     }>;
     // /btw 要让用户接着补问题，唯一不标的本地指令
     expect(commands.find((c) => c.name === "btw")?.runOnSelect).toBeUndefined();
-    for (const name of ["status", "remote-control", "model", "plan"]) {
+    for (const name of ["status", "remote-control", "plan"]) {
       expect(commands.find((c) => c.name === name)?.runOnSelect).toBe(true);
     }
     // SDK 命令一律不带（技能 / 自定义 / 插件命令都走插入文本）

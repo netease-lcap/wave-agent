@@ -40,6 +40,7 @@ import type {
   StdioAgentCallbacks,
   RemoteControlSnapshot,
   RequestMethod,
+  ConfiguredModel,
 } from "wave-agent-sdk/host";
 import {
   EDIT_TOOL_NAME,
@@ -5965,7 +5966,7 @@ export class DesktopHost {
   private async handleGetConfiguredModels(paneId?: string): Promise<void> {
     const pid = paneId ?? this.focusedPaneId;
     const agent = this.agentForPane(pid);
-    let models: string[] = [];
+    let models: ConfiguredModel[] = [];
     let currentModel: string | undefined;
     try {
       if (agent) {
@@ -6087,7 +6088,7 @@ export class DesktopHost {
    * settings.json，会永久遮蔽实时值），因此**不重建任何会话**：回执与界面刷新
    * 在落盘后立即给出，流式输出、排队消息、待确认权限都不受影响。无差异保存同样
    * 只落盘回执。用户偏好**不写入** `wave-desktop.json`；反过来设置页也不会送来
-   * 本地存储的键（模型选择经 `/model` RPC、服务地址经 getAuthStatus 写入）。
+   * 本地存储的键（模型选择经 `setModel` RPC、服务地址经 getAuthStatus 写入）。
    *
    * 载荷是**部分更新**：设置页只带用户真正改动过的字段（未设置 / 没改的键不
    * 出现），未提供的键一律保持文件中现值（见 `updateUserPreferences`）。
@@ -6128,7 +6129,7 @@ export class DesktopHost {
   /** 桌面本地配置 + 最近一次读到的用户偏好（同步，供 getStatus 回包）。 */
   private cachedConfigurationData(): DesktopConfigData {
     // 配置回包只承载**用户偏好**（落 ~/.wave/settings.json）。本地存储里的
-    // model / fastModel / serverUrl 不进回包：模型经 `/model` RPC 管理，服务
+    // model / fastModel / serverUrl 不进回包：模型经 `setModel` RPC 管理，服务
     // 地址由 authStatusResponse 下发（webview 侧没有这两个的设置入口）。
     return { ...(this.userPreferencesByHost.get(this.currentHost) ?? {}) };
   }
@@ -6184,7 +6185,7 @@ export class DesktopHost {
     }
     // 补全模型 / 开关（顶层 `completionModel` / `completionEnabled`，spec
     // ui/code-completion.md 故事 4–5）：与对话模型不同，它们是**配置文件里的用户
-    // 偏好键**，故走本载荷（对话模型经 `/model` 的 setModel 会话级 RPC）。空串
+    // 偏好键**，故走本载荷（对话模型经底栏模型选择器的 setModel 会话级 RPC）。空串
     // 视作未提供，否则「清空下拉」会被翻译成写一个空模型名。
     if (typeof configData.completionModel === "string") {
       const model = configData.completionModel.trim();
@@ -6245,7 +6246,7 @@ export class DesktopHost {
   }
 
   private async recreateAgentsForConfig(): Promise<void> {
-    // 桌面不再下发任何会话级配置：应用级设置（模型经 `/model` 命令 / 用户偏好经
+    // 桌面不再下发任何会话级配置：应用级设置（模型经底栏模型选择器 / 用户偏好经
     // 用户级 settings.json + 实时重载）各有独立通路（spec「分层职责」）。这里只做
     // 重建，让 agent 重新走一遍初始化（如登录后换 SSO 配置）。
     for (const [oldSid, agent] of [...this.agents]) {

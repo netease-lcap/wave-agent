@@ -25,6 +25,7 @@ import type {
 import { FileSuggestionDropdown } from "./FileSuggestionDropdown";
 import { SlashCommandsPopup, orderSlashCommands } from "./SlashCommandsPopup";
 import { HistorySearchPopup } from "./HistorySearchPopup";
+import { ModelPicker } from "./ModelPicker";
 import {
   PlusIcon,
   SlashBoxIcon,
@@ -161,7 +162,9 @@ export const MessageInput = forwardRef<
     initialAttachedImages,
     workdirSelector,
     rewindPopup,
-    modelPopup,
+    models,
+    currentModel,
+    onSelectModel,
     btwPopup,
     disabled,
     placeholder,
@@ -1882,6 +1885,17 @@ export const MessageInput = forwardRef<
               </button>
             </div>
 
+            {/* 模型选择器：底栏左侧，紧跟 + / / 之后（spec ui/model-selection.md
+                「输入卡片底栏切换模型」）。候选清单由宿主下发，空清单时不渲染。 */}
+            {models && models.length > 0 && onSelectModel && (
+              <ModelPicker
+                models={models}
+                currentModel={currentModel}
+                disabled={disabled}
+                onSelect={onSelectModel}
+              />
+            )}
+
             {/* Left side - Permission Mode Select (custom dropdown, expands upward) */}
             <div className="button-spacer" />
 
@@ -2069,9 +2083,6 @@ export const MessageInput = forwardRef<
 
         {/* /rewind 检查点弹窗，与历史记录弹窗共用 .input-wrapper 定位上下文 */}
         {rewindPopup}
-
-        {/* /model 模型选择弹窗，与 rewind 弹窗共用 .input-wrapper 定位上下文 */}
-        {modelPopup}
 
         {/* /btw 旁路提问面板，锚定 .input-wrapper 顶部 */}
         {btwPopup}

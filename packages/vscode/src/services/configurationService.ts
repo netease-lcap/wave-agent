@@ -18,7 +18,7 @@ export interface ConfigurationData {
   serverUrl?: string;
   /**
    * 行内补全使用的模型（settings.json 顶层 `completionModel`，未设置时回退快速
-   * 模型）；候选清单与 `/model` 同源（经 `getConfiguredModels` 拉取）。
+   * 模型）；候选清单与对话模型同源（经 `getConfiguredModels` 拉取）。
    */
   completionModel?: string;
   /** 是否启用行内补全（settings.json 顶层 `completionEnabled`，缺省为开）。 */
@@ -35,7 +35,7 @@ export interface ConfigurationData {
  * 设置页配置载荷：**只有用户偏好**（AI 回复语言 / 上下文长度 / 自动记忆开关与
  * 频率 / 服务端地址 / 补全模型与补全开关），落点唯一为用户级 `~/.wave/settings.json`。
  *
- * **对话模型**选择不属于这里：它经 `/model` 命令走 `getConfiguredModels` /
+ * **对话模型**选择不属于这里：它经底栏模型选择器走 `getConfiguredModels` /
  * `setModel`（会话级 RPC）。补全模型是**配置文件里的一个用户偏好键**（顶层
  * `completionModel`，见 spec ui/code-completion.md 故事 4），故走本载荷——它的
  * 候选清单才复用 `getConfiguredModels`。

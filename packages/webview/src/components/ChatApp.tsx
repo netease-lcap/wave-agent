@@ -18,7 +18,6 @@ import { ConfirmationDialog } from "./ConfirmationDialog";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { RewindPopup } from "./RewindPopup";
 import type { RewindCheckpoint } from "./RewindPopup";
-import { ModelPopup } from "./ModelPopup";
 import { ToastStack } from "./ToastStack";
 import { BtwPanel } from "./BtwPanel";
 import McpDialog from "./McpDialog";
@@ -73,7 +72,7 @@ import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/constants";
 // Type-only, borrowed the same way types/index.ts does it: the four facts are
 // part of the host → webview contract (fixtures defines `PushState`), and the
 // import is erased so nothing runtime-bound survives.
-import type { PushState } from "wave-webview-fixtures";
+import type { ConfiguredModel, PushState } from "wave-webview-fixtures";
 import {
   collectWriteEditBlocks,
   GENERATED_DOC_EXT,
@@ -264,10 +263,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // current list (same shape as useSessionRename's pending map).
   const pendingRewindsRef = useRef(new Map<string, string>());
   // 远控页的两道「写操作」确认（第二批解禁，spec「页面能执行的那批宿主命令」）：
-  // `/clear` 会把电脑侧那条会话换绑成新的 sessionId（并跑 Session hooks），`/model`
-  // 写的是**用户级** `~/.wave/settings.json`——两者在手机上都不是「只影响这一页」的
-  // 动作，所以远端各问一次。IDE 端与桌面端不变：它们的 `/clear` 早就没有确认、
-  // `/model` 也没有（改动只在一处 UI，不动那两端的既有手感）。
+  // `/clear` 会把电脑侧那条会话换绑成新的 sessionId（并跑 Session hooks），底栏
+  // 切换模型（`setModel`）写的是**用户级** `~/.wave/settings.json`——两者在手机上
+  // 都不是「只影响这一页」的动作，所以远端各问一次。IDE 端与桌面端不变：它们的
+  // `/clear` 早就没有确认、切换模型也没有（改动只在一处 UI，不动那两端的既有手感）。
   const [pendingClearConfirm, setPendingClearConfirm] = useState(false);
   const [pendingModelSwitch, setPendingModelSwitch] = useState<string | null>(
     null,
@@ -279,13 +278,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   >([]);
   const [rewindCheckpointsLoading, setRewindCheckpointsLoading] =
     useState(false);
-  // /model popup: configured models requested from the host on open.
-  const [modelPopupOpen, setModelPopupOpen] = useState(false);
-  const [configuredModels, setConfiguredModels] = useState<string[]>([]);
+  // 模型选择器（spec ui/model-selection.md「输入卡片底栏切换模型」）：会话一变就
+  // 向宿主拉一次清单 + 当前模型（宿主从 settings/env 解析链给出，本地不写死），
+  // 底栏按钮才有东西可显示。
+  const [configuredModels, setConfiguredModels] = useState<ConfiguredModel[]>(
+    [],
+  );
   const [currentModel, setCurrentModel] = useState<string | undefined>(
     undefined,
   );
-  const [modelLoading, setModelLoading] = useState(false);
+  // 设置页「补全模型」下拉只要名字（它的候选与对话模型同源）。
+  const configuredModelNames = useMemo(
+    () => configuredModels.map((m) => m.name),
+    [configuredModels],
+  );
   // /resume picker. IDE hosts reuse the header popup and its list
   // (state.sessions); the desktop opens a centered modal fed by the host's
   // on-disk session scan of the current conversation's host, which is what
@@ -1375,7 +1381,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         if (!forThisPane(message)) break;
         setConfiguredModels(message.models || []);
         setCurrentModel(message.currentModel);
-        setModelLoading(false);
         break;
       case "btwStream":
         if (!forThisPane(message)) break;
@@ -2353,8 +2358,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // 要么只有宿主侧才有意义，拦下来只会打开一个永远加载中的死弹窗；页面不拦 =
       // 文本按普通消息发给宿主。服务端真能做的两条（/compact、/status）不受影响。
       //
-      // 第二批解禁（2026-10-17）之后，`/clear` `/rewind` `/model` `/tasks`
-      // `/workflows` 不在这条守卫里了：宿主侧方法已在白名单里、shim 有回执，
+      // 第二批解禁（2026-10-17）之后，`/clear` `/rewind` `/tasks` `/workflows`
+      // 不在这条守卫里了：宿主侧方法已在白名单里、shim 有回执，
       // 页面这一侧也没有宿主 UI 依赖（弹窗都长在本组件里），所以远端照常拦截
       // ——见下面各自的注释与 spec「页面能执行的那批宿主命令」。
       //
@@ -2470,15 +2475,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         setRewindPopupOpen(true);
         setRewindCheckpointsLoading(true);
         postToHost({ command: "listRewindCheckpoints" });
-        return;
-      }
-      // /model is allowed mid-stream (spec scenario 8): no isStreaming guard.
-      // 远端多一道确认：`setModel` 写的是**用户级** `~/.wave/settings.json`，换的是
-      // 这台机器上所有会话的模型（见 `pendingModelSwitch` 那个 ConfirmDialog）。
-      if (trimmedText === "/model") {
-        setModelPopupOpen(true);
-        setModelLoading(true);
-        postToHost({ command: "getConfiguredModels" });
         return;
       }
       if (trimmedText === "/resume") {
@@ -2989,26 +2985,22 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     messageInputRef.current?.focus();
   }, []);
 
-  // /model popup: send the switch and close silently (no toast/system message).
-  // 远控页先落进 `pendingModelSwitch`：`setModel` 写的是用户级配置文件，换的是这台
-  // 机器上所有会话（以及此后新开的）的模型，值得在手机上问一次。
+  // 底栏选中一个模型：即时回显新模型名（不等宿主回执——setModel 在会话内是同步
+  // 生效的），再让宿主落盘。远控页先落进 `pendingModelSwitch`：`setModel` 写的是
+  // 用户级配置文件，换的是这台机器上所有会话（以及此后新开的）的模型，值得在手机
+  // 上问一次（spec ui/remote-control.md）。
   const handleModelSelect = useCallback(
     (model: string) => {
-      setModelPopupOpen(false);
       if (isRemotePage) {
         setPendingModelSwitch(model);
         return;
       }
+      setCurrentModel(model);
       postToHost({ command: "setModel", model });
       messageInputRef.current?.focus();
     },
     [isRemotePage, postToHost],
   );
-
-  const handleModelPopupClose = useCallback(() => {
-    setModelPopupOpen(false);
-    messageInputRef.current?.focus();
-  }, []);
 
   // Close the /btw panel. While a request is in flight, clearing btwActiveRef
   // makes the late reply a no-op (scenario 7: closing during loading drops it).
@@ -3052,6 +3044,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     }
   }, [state.currentSession?.id]);
 
+  // 模型清单与当前模型由宿主解析（settings.json / env 链），底栏要随时显示，所以
+  // 挂载时拉一次、会话一换再拉一次（每个会话的 agent 可以带自己的 `--model`）。
+  // 远端页也拉（shim 已转发 `getConfiguredModels`），否则手机上的选择器没有候选。
+  // 宿主没有 agent 时回空清单 → 选择器自己隐藏；首个会话建好后再拉就有值了。
+  const modelSessionId = state.currentSession?.id;
+  useEffect(() => {
+    postToHost({ command: "getConfiguredModels" });
+  }, [modelSessionId, postToHost]);
+
   const handleClearConfirm = useCallback(() => {
     setPendingClearConfirm(false);
     handleClearChat();
@@ -3060,7 +3061,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const handleModelSwitchConfirm = useCallback(() => {
     const model = pendingModelSwitch;
     setPendingModelSwitch(null);
-    if (model) postToHost({ command: "setModel", model });
+    if (model) {
+      setCurrentModel(model);
+      postToHost({ command: "setModel", model });
+    }
     messageInputRef.current?.focus();
   }, [pendingModelSwitch, postToHost]);
 
@@ -4103,6 +4107,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
               inputContent={state.inputContent}
               sessionId={state.currentSession?.id}
               permissionMode={state.permissionMode}
+              models={configuredModels}
+              currentModel={currentModel}
+              onSelectModel={handleModelSelect}
               initialAttachedImages={state.attachedImages}
               paneId={paneId}
               contextUsage={contextUsage}
@@ -4171,16 +4178,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                   checkpoints={rewindCheckpoints}
                   onSelect={handleRewindCheckpointSelect}
                   onClose={handleRewindPopupClose}
-                />
-              }
-              modelPopup={
-                <ModelPopup
-                  isVisible={modelPopupOpen}
-                  isLoading={modelLoading}
-                  models={configuredModels}
-                  currentModel={currentModel}
-                  onSelect={handleModelSelect}
-                  onClose={handleModelPopupClose}
                 />
               }
               btwPopup={
@@ -4265,7 +4262,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         })
       }
       onPrefillPrompt={handlePrefillPrompt}
-      configuredModels={configuredModels}
+      configuredModels={configuredModelNames}
       onLoadConfiguredModels={() =>
         postToHost({ command: "getConfiguredModels" })
       }

@@ -25,13 +25,13 @@ function idsForAllSurfaces(): string[] {
   return HOST_SLASH_COMMANDS.map((command) => command.id);
 }
 
-test("每个入口拿到的正是它那份表：桌面 17 / VS Code 18 / JB 17 / 远控页 8", () => {
+test("每个入口拿到的正是它那份表：桌面 16 / VS Code 17 / JB 16 / 远控页 7", () => {
   // 数字是**能力盘点**，不是排版偏好：改动这张表就要连带确认对应入口真的能执行
   // 新加的那条（见下面的对齐用例），否则就是把一条点了没反应的行塞给用户。
-  expect(idsFor("desktop")).toHaveLength(17);
-  expect(idsFor("vscode")).toHaveLength(18);
-  expect(idsFor("jetbrains")).toHaveLength(17);
-  expect(idsFor("remote-page")).toHaveLength(8);
+  expect(idsFor("desktop")).toHaveLength(16);
+  expect(idsFor("vscode")).toHaveLength(17);
+  expect(idsFor("jetbrains")).toHaveLength(16);
+  expect(idsFor("remote-page")).toHaveLength(7);
 });
 
 test("各入口的差异只有既有拍板的三条", () => {
@@ -55,7 +55,7 @@ test("各入口的差异只有既有拍板的三条", () => {
   expect(jetbrains).toEqual(vscode.filter((id) => id !== "config"));
 });
 
-test("远控页只拿页面上真能执行的那 8 条，界面类的一条都不给", () => {
+test("远控页只拿页面上真能执行的那 7 条，界面类的一条都不给", () => {
   expect(idsFor("remote-page")).toEqual([
     "status",
     "clear",
@@ -63,7 +63,6 @@ test("远控页只拿页面上真能执行的那 8 条，界面类的一条都�
     "tasks",
     "workflows",
     "rewind",
-    "model",
     "btw",
   ]);
   // 设置页 / 插件市场 / 计划预览 / 远程控制自身 / 磁盘历史会话：页面上没有承载
@@ -84,7 +83,7 @@ test("远控页只拿页面上真能执行的那 8 条，界面类的一条都�
   }
 });
 
-test("远控页那 8 条对应的远端方法都在白名单里", () => {
+test("远控页那 7 条对应的远端方法都在白名单里", () => {
   // 「弹窗里有 ⇒ 点了真的有效」。页面上的命令最终都落成远端 RPC，白名单是那道
   // 唯一的门；把两者钉在一起，才不会出现「点了回 -32601，提示去升级机器版本」。
   const remoteMethods: Record<string, string[]> = {
@@ -94,7 +93,6 @@ test("远控页那 8 条对应的远端方法都在白名单里", () => {
     compact: ["compact"],
     workflows: ["getWorkflowRuns"],
     rewind: ["listRewindCheckpoints", "rewindToMessage"],
-    model: ["getConfiguredModels", "setModel"],
     btw: ["askBtw"],
     clear: ["clearMessages"],
   };

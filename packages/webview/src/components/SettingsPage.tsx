@@ -125,7 +125,7 @@ export interface SettingsPageProps {
    *  prefillPrompt + openFile RPC 给 host（host 用 IDE 自身编辑器打开）。 */
   onPrefillPrompt?: (prompt: string, openFile?: string) => void;
   /**
-   * 「补全模型」下拉的候选清单（与 `/model` 同源，经宿主 `getConfiguredModels`
+   * 「补全模型」下拉的候选清单（与对话模型同源，经宿主 `getConfiguredModels`
    * 拉取）。未传入 / 尚未回包 = 空数组：下拉只显示当前值（含未设置态），不误报
    * 「当前值不在列表里」（spec ui/code-completion.md 故事 4 场景 2/4）。
    */
@@ -780,7 +780,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       补全的总闸（缺省为开、不做占位态），模型是补全专用模型（未设置时
                       跟随快速模型）。二者与上面的语言/上下文长度/服务端地址共用本卡片
                       的「保存」按钮与 diff 载荷——同一份用户偏好、同一份落点。
-                      候选清单与 `/model` 同源，进本视图时拉一次。
+                      候选清单与对话模型同源，进本视图时拉一次。
                       只在本宿主真的提供补全时才渲染（桌面端/远端网页没有编辑器，
                       见上面的 completionsSupported 与 spec 边界情况「补全设置行的
                       宿主范围」）——非补全宿主下这两行整体缺席，连行位置都不占。 */}

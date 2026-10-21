@@ -60,7 +60,7 @@ function SettingsPreview() {
   const [projectSettingsWorkdir, setProjectSettingsWorkdir] = useState<
     string | undefined
   >(undefined);
-  // 补全模型下拉的候选清单（与 `/model` 同源，经宿主的 `getConfiguredModels`
+  // 补全模型下拉的候选清单（与对话模型同源，经宿主的 `getConfiguredModels`
   // 会话级 RPC —— 本设置 webview 是独立外壳，chat 的那条回包到不了这里，故
   // 由本页自己发请求；宿主未接该命令时保持空数组 = 下拉只显示当前值与未设置态）。
   const [configuredModels, setConfiguredModels] = useState<string[]>([]);
@@ -116,8 +116,11 @@ function SettingsPreview() {
         setAgentsSaving(false);
         break;
       case "configuredModels":
+        // 补全模型下拉只要名字（清单条目 = {name, supportsVision}）。
         setConfiguredModels(
-          Array.isArray(msg.models) ? (msg.models as string[]) : [],
+          Array.isArray(msg.models)
+            ? (msg.models as Array<{ name: string }>).map((m) => m.name)
+            : [],
         );
         break;
       case "projectSettings":

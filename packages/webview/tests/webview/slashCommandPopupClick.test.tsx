@@ -10,7 +10,7 @@ import {
 } from "./test-utils";
 
 /**
- * 回归测试：鼠标点击快捷指令弹窗中的 /rewind、/model 项，二级弹层必须打开
+ * 回归测试：鼠标点击快捷指令弹窗中的 /rewind、/btw 项，二级弹层必须打开
  * 且不被打开它的那一次 mousedown 立即关闭。
  *
  * 历史 bug：弹层在 mount 时同步向 document 注册 click-outside mousedown
@@ -51,9 +51,9 @@ async function clickSlashItem(trigger: string, itemTestId: string) {
           runOnSelect: true,
         },
         {
-          id: "model",
-          name: "model",
-          description: "选择模型",
+          id: "btw",
+          name: "btw",
+          description: "旁路提问",
           runOnSelect: true,
         },
       ],
@@ -91,17 +91,15 @@ describe("鼠标点击快捷指令打开二级弹层（回归）", () => {
     expect(screen.getByTestId("rewind-popup")).toBeInTheDocument();
   });
 
-  it("/model：点击列表项后弹层打开，且不被同一次 mousedown 关闭", async () => {
-    const vscode = await clickSlashItem("/model", "slash-command-model");
+  it("/btw：点击列表项后弹层打开，且不被同一次 mousedown 关闭", async () => {
+    await clickSlashItem("/btw", "slash-command-btw");
 
-    await waitFor(
-      () => {
-        expect(vscode.postMessage).toHaveBeenCalledWith(
-          expect.objectContaining({ command: "getConfiguredModels" }),
-        );
-      },
-      { timeout: 3000 },
+    // 空问题只回用法提示，不打扰宿主：面板给出用法即可。
+    await waitFor(() => {
+      expect(screen.getByTestId("btw-panel")).toBeInTheDocument();
+    });
+    expect(screen.getByTestId("btw-panel-answer").textContent).toContain(
+      "用法：/btw",
     );
-    expect(screen.getByTestId("model-popup")).toBeInTheDocument();
   });
 });
