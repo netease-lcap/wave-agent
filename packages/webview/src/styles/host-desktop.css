@@ -1203,11 +1203,11 @@
    `overflow-x: clip`；该横向裁切原先挂在同时充当滚动容器的
    `.messages-container` 上）会静默裁掉溢出（实测 882px 宽表落在 760px 列内）。
    表格渲染时已包一层 .md-table-scroll（Message.tsx renderer.table），
-   这里让它承担横向滚动，画布本身不产生横向滚动。 */
+   **横向滚动本身已收进共用层**（Message.css 的 `.md-table-scroll`：远控 Web 页与
+   IDE 宿主同样要它，否则表格被裁掉且滚不到）；这里只留桌面端的间距，画布本身
+   不产生横向滚动。 */
 [data-host="desktop"] .md-table-scroll {
-  max-width: 100%;
   margin: 12px 0;
-  overflow-x: auto;
 }
 [data-host="desktop"] .md-table-scroll > table {
   margin: 0;

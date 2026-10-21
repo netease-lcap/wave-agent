@@ -437,6 +437,79 @@ test.describe("Web 端（远控页）手机截图", () => {
     );
   });
 
+  test("宽表：在表格区域内横向滚动，短词不被压成竖排", async ({
+    webviewPage,
+  }) => {
+    // 回归：横向滚动原先只写在 `[data-host="desktop"]` 层，远控页（`data-host` 是
+    // ide 档）拿不到 → 宽表被 `.messages-column` 的 `overflow-x: clip` 静默裁掉，
+    // 右侧列既看不见也滚不到（2026-10-21 用户报「iOS 上 table 没法横向滚动」）。
+    // 同时列宽分配（短 token 单行 / 长 token 断行）也只在桌面层，手机档没有它时
+    // 每个中文格被压到 1 字宽，滚过去看见的是逐字竖排 —— 两半一起量。
+    // 这条只能在真浏览器里量：jsdom 不解析样式表、更没有横向滚动。
+    await emulateRemotePhone(webviewPage);
+    const injector = new MessageInjector(webviewPage);
+    await seedRemoteState(injector);
+    const wideTable = [
+      "改动清单：",
+      "",
+      "| 模块 | 文件 | 状态 | 负责人 | 说明 |",
+      "| --- | --- | --- | --- | --- |",
+      "| 登录表单 | packages/webview/src/components/LoginForm.tsx | 已完成 | 张三 | 断点改成单列后按钮不再错位 |",
+      "| 订单状态机 | packages/agent-sdk/src/services/orderStateMachine.ts | 进行中 | 李四 | 抽成独立模块并补测试 |",
+    ].join("\n");
+    await injector.updateMessages([
+      MockDataGenerator.createUserMessage("给我看下改动清单", "msg-web-tbl-u"),
+      MockDataGenerator.createAssistantMessage(wideTable, "msg-web-tbl-a"),
+    ]);
+
+    const scroll = await webviewPage.evaluate(() => {
+      const wrap = document.querySelector(
+        ".md-table-scroll",
+      ) as HTMLElement | null;
+      if (!wrap) return null;
+      const lastCell = wrap.querySelector("th:last-child") as HTMLElement;
+      const before = getComputedStyle(wrap).overflowX;
+      // 短 token 格（md-cell-token，如「已完成」「张三」）必须保持单行：直接数文字
+      // 行框数量——被压成竖排时一个 3 字词会拆成 3 个行框。
+      const tokenLines = Array.from(
+        wrap.querySelectorAll("td.md-cell-token"),
+      ).map((cell) => {
+        const range = document.createRange();
+        range.selectNodeContents(cell);
+        return { text: cell.textContent, lines: range.getClientRects().length };
+      });
+      wrap.scrollLeft = wrap.scrollWidth;
+      const wrapBox = wrap.getBoundingClientRect();
+      return {
+        overflowX: before,
+        clientWidth: wrap.clientWidth,
+        scrollWidth: wrap.scrollWidth,
+        maxScrollLeft: wrap.scrollLeft,
+        // 滚到最右：末列表头右缘落在滚动容器内（不再被裁）
+        lastCellRight: lastCell.getBoundingClientRect().right,
+        wrapRight: wrapBox.right,
+        pageHorizontalScroll:
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+        tokenLines,
+      };
+    });
+
+    expect(scroll).not.toBeNull();
+    // 真有横向溢出（否则这条用例是空跑）。
+    expect(scroll!.scrollWidth).toBeGreaterThan(scroll!.clientWidth);
+    // 承接溢出的就是表格自己的滚动容器。
+    expect(scroll!.overflowX).toBe("auto");
+    expect(scroll!.maxScrollLeft).toBeGreaterThan(0);
+    // 滚到底时末列完整可见（留 1px 亚像素余量）。
+    expect(scroll!.lastCellRight).toBeLessThanOrEqual(scroll!.wrapRight + 1);
+    // 页面本身不因此横向滚动。
+    expect(scroll!.pageHorizontalScroll).toBe(0);
+    // 短 token 格不被挤成逐字竖排：每格只占一行。
+    expect(scroll!.tokenLines.length).toBeGreaterThan(0);
+    expect(scroll!.tokenLines.filter((c) => c.lines !== 1)).toEqual([]);
+  });
+
   test("电脑侧开启：页面地址与二维码", async ({ webviewPage }) => {
     // 入口在**电脑**上：桌面端 / IDE 插件的设置页「远程控制」项。手机页自己
     // 不画这个二维码（它本身就是二维码指向的那一端）。
