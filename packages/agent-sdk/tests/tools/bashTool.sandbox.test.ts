@@ -109,9 +109,12 @@ describe("bashTool — sandbox wiring", () => {
     expect(sandboxManager.wrap).not.toHaveBeenCalled();
     const [command, spawnOptions] = mockSpawn.mock.calls[0]!;
     expect(String(command)).not.toContain("SANDBOX(");
+    // 不能断言 `undefined`：macOS 的父进程环境里本来就有 TMPDIR。这里要的是
+    // 「没被指到沙箱临时目录」。
     expect(
-      (spawnOptions as unknown as { env: Record<string, string> }).env.TMPDIR,
-    ).toBeUndefined();
+      (spawnOptions as unknown as { env: Record<string, string | undefined> })
+        .env.TMPDIR,
+    ).not.toBe(SANDBOX_TMPDIR);
     expect(sandboxManager.annotate).not.toHaveBeenCalled();
   });
 
