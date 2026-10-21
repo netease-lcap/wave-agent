@@ -64,7 +64,7 @@ Always use `pnpm` as the package manager.
   - **Caution**: for `agent-sdk` and `code`, `pnpm test` includes `tests/integration/` + `*.integration.test.ts` files that hit real external dependencies (git/spawn/hook/filesystem — no real LLM calls; AI paths are mocked). Use `test:unit` to skip them.
 - **Testing Framework**: Vitest.
 
-Test layers, ordered fast→slow (the PR gate runs unit + demo on Linux, plus the Windows `check-windows` job — its desktop unit suite and real-host suite; the remaining integration / e2e / real-host layers are post-merge):
+Test layers, ordered fast→slow (the PR gate only runs unit + demo; the rest are post-merge):
 
 | Layer            | Where                                                      | Command                                                                                              |
 | ---------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |

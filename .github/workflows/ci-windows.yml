@@ -1,28 +1,27 @@
 name: CI (Windows)
 
-# Windows compatibility check — a REQUIRED merge gate for main.
-# `check-windows` is listed in the repo ruleset "pr protection"
-# (Settings → Rules → Rulesets, id 9205973) alongside the Linux `check` jobs, so
-# a red run here blocks the merge. Windows runner minutes are free for this
-# public repo; queue time, not billing, is the cost of running it on every PR.
+# Windows compatibility check — non-blocking, post-merge only.
+# Runs after changes merge to main (path-filtered) plus on manual dispatch; it is
+# NOT a required status check and does NOT gate PRs. Windows path/spawn breakage
+# is therefore caught right after merge, not before it — an accepted tradeoff.
 #
 # Triggers:
-#   - pull_request → main: the gating run. Deliberately NOT path-filtered, see
-#     the note below.
-#   - push → main: post-merge backstop, path-filtered (subprocess spawning, fs,
-#     .cmd/.exe resolution), i.e. only for merged changes that touch the
-#     platform-specific code paths. A push run never gates anything.
-#   - workflow_dispatch: manual runs from the Actions tab. Also the way to
-#     backfill the check onto a PR whose head commit predates this gate — such
-#     a PR has no `check-windows` run and therefore stays pending forever.
+#   - push → main: path-filtered (subprocess spawning, fs, .cmd/.exe resolution),
+#     i.e. only for merged changes that touch the platform-specific code paths.
+#   - workflow_dispatch: manual runs from the Actions tab.
 #
-# Why `pull_request` must NOT carry a `paths` filter:
-# a workflow-level `paths` filter does not just skip jobs — it skips the whole
-# workflow, so no check run is created for that head sha. For a required
-# context, "no check run" is indistinguishable from "still running": the PR sits
-# in "Expected — waiting for status to be reported" and can never merge. Paying
-# one extra Windows run on a doc-only PR is much cheaper than a PR that is stuck
-# shut. (The `push` trigger keeps its filter; it gates nothing.)
+# History: #2538 briefly made this a required PR gate (ruleset "pr protection",
+# id 9205973, carried `check-windows` alongside the Linux `check` jobs). It was
+# reverted because a single run takes ~6m25s and every PR paid that latency for
+# coverage that only matters on Windows; PR latency stays with the Linux jobs.
+#
+# If the PR gate is ever restored, its `pull_request` trigger must NOT carry a
+# `paths` filter: a workflow-level `paths` filter does not just skip jobs — it
+# skips the whole workflow, so no check run is created for that head sha. For a
+# required context, "no check run" is indistinguishable from "still running": the
+# PR sits in "Expected — waiting for status to be reported" and can never merge.
+# Paying one extra Windows run on a doc-only PR is much cheaper than a PR that is
+# stuck shut. (The `push` trigger keeps its filter; it gates nothing.)
 #
 # This is the only job that runs the desktop package on Windows: its unit suite
 # (Linux runs the same suite in `check-extras`) plus the real-host suite (Linux
@@ -32,8 +31,6 @@ name: CI (Windows)
 # complementary rather than duplicates.
 
 on:
-  pull_request:
-    branches: [main]
   push:
     branches: [main]
     paths:
