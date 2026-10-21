@@ -125,8 +125,11 @@ Usage:
       };
     }
 
-    // Trigger conditional rule loading for this file
-    context.messageManager?.triggerFileRead(filePath);
+    // Trigger conditional rule loading for this file. Resolved like the edit
+    // itself so rule matching never depends on a relative path's base.
+    context.messageManager?.triggerFileRead(
+      resolvePath(filePath, context.workdir),
+    );
 
     const resolvedPath = resolvePath(filePath, context.workdir);
 

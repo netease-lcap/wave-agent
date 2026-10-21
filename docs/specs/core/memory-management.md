@@ -245,6 +245,7 @@ order: 100
 4. **假设**嵌套目录链上存在多个 `AGENTS.md`，**则**必须按「由远到近」（项目根方向 → 文件所在目录）的顺序注入，且不得只注入最内层的那一个；项目根自身的 `AGENTS.md` 不作为嵌套注入（它已作为项目记忆常驻）
 5. **假设**读取的文件不在项目根之下（如用户级记忆目录、additionalDirectories 中的外部仓库），**则**不得触发任何嵌套注入
 6. **假设**同一目录下 `AGENTS.md` 与 `CLAUDE.md` 同时存在，**则**只注入 `AGENTS.md`
+7. **假设**会话经 EnterWorktree 进入 worktree（会话 workdir 仍是 checkout）后读取 `<worktree>/packages/a/src/x.ts`，**则**按 checkout↔worktree 映射沿目录链查找，并注入 worktree 侧的 `AGENTS.md`（worktree 有自己的副本时读它，而不是 checkout 的那份）
 
 ---
 
@@ -277,6 +278,9 @@ order: 100
 2. **假设**相同的记忆规则，**当**Wave 编辑 `src/ui/Button.tsx` 时，**则**记忆规则不应该活跃
 3. **假设**没有 `paths` 字段的记忆规则，**当**Wave 编辑任何文件时，**则**记忆规则应该始终活跃。无条件规则应与 AGENTS.md 一起出现在消息数组开头作为 `<system-reminder>`
 4. **假设**记忆规则的 frontmatter 用 YAML 块标量或缩进续行写多行值（如 `paths: >-` 后跟缩进路径、或 `paths:` 后跟块列表），**当**Wave 加载规则时，**则** `paths`／`priority` 等字段必须解析成折叠／保留后的真实值（不含 `>`、`|`、`-` 这类指示符），续行**不得**被解析成独立的 frontmatter 键
+5. **假设**规则位于 `<项目根>/.wave/rules/`，**当**Bash 命令里 `cd` 到别处之后读／改文件，**则** `paths` 的解析基准仍是该规则所在的项目根（`~/.wave/rules/` 下的用户规则以会话工作目录为基准），不随 shell 的当前目录变化
+6. **假设**会话在 linked worktree 中读取 `<worktree>/packages/a/src/x.ts`，而规则来自其 checkout 的 `.wave/rules/`（会话 workdir 仍是 checkout），**则**按 checkout↔worktree 路径映射匹配 —— `src/**`、`packages/a/**` 这类前缀模式必须照常命中，不得因为相对路径带出 `.wave/worktrees/<name>/` 前缀而失配
+7. **假设**读取的文件无法相对基准表达（在基准之外，或处在与基准无关的 worktree 中），**则**该条 `paths` 规则不激活；判定必须显式（相对化失败即不命中），不得依赖 glob 恰好不匹配 `../…` 而静默失配
 
 ---
 

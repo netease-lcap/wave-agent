@@ -1,6 +1,11 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isPathInside } from "./pathSafety.js";
+import {
+  findWorktreeMapping,
+  toCheckoutPath,
+  toWorktreePath,
+} from "./worktreePaths.js";
 
 export interface NestedMemoryFile {
   path: string;
@@ -37,9 +42,19 @@ export async function findNestedMemoryFiles(
   loadedPaths: Set<string>,
 ): Promise<NestedMemoryFile[]> {
   const root = path.resolve(workdir);
+  // A file read from a linked worktree is walked in checkout coordinates (the
+  // directories above it only exist as one tree), then each directory is
+  // mapped back into the worktree so the worktree's own copy is what gets
+  // injected. Without this a mid-session EnterWorktree silently disabled
+  // nested memory: nothing sat inside `workdir` any more.
+  const mapping = findWorktreeMapping(path.resolve(filePath), root);
+  const walkPath =
+    mapping === null
+      ? path.resolve(filePath)
+      : toCheckoutPath(filePath, mapping);
   const directories: string[] = [];
 
-  let current = path.dirname(path.resolve(filePath));
+  let current = path.dirname(walkPath);
   while (current !== root && isPathInside(current, root)) {
     directories.push(current);
     const parent = path.dirname(current);
@@ -51,7 +66,9 @@ export async function findNestedMemoryFiles(
 
   const memories: NestedMemoryFile[] = [];
 
-  for (const directory of directories) {
+  for (const walkDir of directories) {
+    const directory =
+      mapping === null ? walkDir : toWorktreePath(walkDir, mapping);
     for (const filename of NESTED_MEMORY_FILENAMES) {
       const candidate = path.join(directory, filename);
       // One memory file per directory: a directory whose AGENTS.md was already

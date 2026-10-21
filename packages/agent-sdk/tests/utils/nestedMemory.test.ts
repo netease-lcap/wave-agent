@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import fsPromises from "node:fs/promises";
+import * as nodeFs from "node:fs";
 import * as path from "node:path";
 import { findNestedMemoryFiles } from "@/utils/nestedMemory.js";
+import { resetWorktreePathCache } from "@/utils/worktreePaths.js";
 
 vi.mock("node:fs/promises");
+
+// Passthrough except for the two probes the worktree mapping uses.
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  return { ...actual, statSync: vi.fn(), readFileSync: vi.fn() };
+});
 
 // The walk resolves its inputs with `path.resolve`, which on Windows prepends
 // the cwd's drive letter (`/repo` -> `C:\repo`). Fixture paths must go through
@@ -31,6 +39,7 @@ function mockFiles(files: Record<string, string>) {
 describe("findNestedMemoryFiles", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    resetWorktreePathCache();
   });
 
   it("collects ancestor memory files outermost first, skipping the project root", async () => {
@@ -168,6 +177,48 @@ describe("findNestedMemoryFiles", () => {
 
     expect(memories).toEqual([
       { path: at("a/AGENTS.md"), content: "a memory" },
+    ]);
+  });
+
+  it("finds memory files when the read happens in a linked worktree of the project", async () => {
+    // A session that entered a worktree mid-flight keeps the checkout as its
+    // workdir; walking the worktree path in checkout coordinates (then mapping
+    // each directory back) is what keeps nested memory alive there.
+    const worktree = path.join(WORKDIR, ".wave", "worktrees", "wt");
+    const worktreeGitfile = path.join(worktree, ".git");
+    vi.mocked(nodeFs.statSync).mockImplementation((p) => {
+      if (String(p) === worktreeGitfile) {
+        return {
+          isFile: () => true,
+        } as unknown as ReturnType<typeof nodeFs.statSync>;
+      }
+      throw Object.assign(new Error(`ENOENT: ${String(p)}`), {
+        code: "ENOENT",
+      });
+    });
+    vi.mocked(nodeFs.readFileSync).mockImplementation((p) => {
+      if (String(p) === worktreeGitfile) {
+        return `gitdir: ${path.join(WORKDIR, ".git", "worktrees", "wt")}\n`;
+      }
+      throw Object.assign(new Error(`ENOENT: ${String(p)}`), {
+        code: "ENOENT",
+      });
+    });
+    mockFiles({
+      [path.join(worktree, "packages", "AGENTS.md")]: "worktree package memory",
+    });
+
+    const memories = await findNestedMemoryFiles(
+      path.join(worktree, "packages", "foo", "a.ts"),
+      WORKDIR,
+      new Set(),
+    );
+
+    expect(memories).toEqual([
+      {
+        path: path.join(worktree, "packages", "AGENTS.md"),
+        content: "worktree package memory",
+      },
     ]);
   });
 });

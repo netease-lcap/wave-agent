@@ -73,8 +73,11 @@ When to use: creating a new file, or fully replacing one you've already ${READ_T
       };
     }
 
-    // Trigger conditional rule loading for this file
-    context.messageManager?.triggerFileRead(filePath);
+    // Trigger conditional rule loading for this file. Resolved like the write
+    // itself so rule matching never depends on a relative path's base.
+    context.messageManager?.triggerFileRead(
+      resolvePath(filePath, context.workdir),
+    );
 
     try {
       const resolvedPath = resolvePath(filePath, context.workdir);

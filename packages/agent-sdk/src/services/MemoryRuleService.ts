@@ -1,7 +1,37 @@
-import { minimatch } from "minimatch";
-import * as path from "node:path";
-import { parseFrontmatter } from "../utils/markdownParser.js";
+import { Minimatch } from "minimatch";
 import type { MemoryRule, MemoryRuleMetadata } from "../types/memoryRule.js";
+import { parseFrontmatter } from "../utils/markdownParser.js";
+import { relativizeTriggerPath } from "../utils/worktreePaths.js";
+import { logger } from "../utils/globalLogger.js";
+
+/**
+ * Compiled `paths` patterns, keyed by the pattern text. Rule matching runs once
+ * per read file per rule, so recompiling the same globs every time is the hot
+ * path; invalid patterns are cached as `null` and warned about once.
+ */
+const matcherCache = new Map<string, Minimatch | null>();
+const warnedPatterns = new Set<string>();
+
+function getMatcher(pattern: string): Minimatch | null {
+  const cached = matcherCache.get(pattern);
+  if (cached !== undefined) return cached;
+
+  let matcher: Minimatch | null = null;
+  try {
+    matcher = new Minimatch(pattern, { dot: true });
+  } catch (error) {
+    if (!warnedPatterns.has(pattern)) {
+      warnedPatterns.add(pattern);
+      logger.warn(
+        `Ignoring unusable paths pattern "${pattern}" in a memory rule: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+  matcherCache.set(pattern, matcher);
+  return matcher;
+}
 
 export class MemoryRuleService {
   /**
@@ -44,7 +74,13 @@ export class MemoryRuleService {
   }
 
   /**
-   * Determines if a rule matches any of the given file paths using minimatch.
+   * Determines if a rule matches any of the given file paths.
+   *
+   * Patterns are resolved against the rule's own base directory (`baseDir`,
+   * stamped by MemoryRuleManager) rather than the session workdir, so a bash
+   * `cd` never shifts what a rule covers. Files that cannot be expressed
+   * relative to that base — outside it, or in a linked worktree (mapped back to
+   * its checkout first) — do not activate the rule.
    */
   isRuleActive(
     rule: MemoryRule,
@@ -55,16 +91,20 @@ export class MemoryRuleService {
       return true;
     }
 
-    return filesInContext.some((filePath) => {
-      // Normalize path relative to workdir if it's an absolute path
-      let normalizedPath = filePath;
-      if (workdir && path.isAbsolute(filePath)) {
-        normalizedPath = path.relative(workdir, filePath);
-      }
+    const baseDir = rule.baseDir ?? workdir;
+    const patterns = rule.metadata.paths;
 
-      return rule.metadata.paths!.some((pattern) => {
-        const isMatch = minimatch(normalizedPath, pattern, { dot: true });
-        return isMatch;
+    return filesInContext.some((filePath) => {
+      const normalizedPath =
+        baseDir === undefined
+          ? filePath
+          : relativizeTriggerPath(filePath, baseDir);
+      if (normalizedPath === null) return false;
+
+      return patterns.some((pattern) => {
+        const matcher = getMatcher(pattern);
+        if (matcher === null) return false;
+        return matcher.match(normalizedPath);
       });
     });
   }
