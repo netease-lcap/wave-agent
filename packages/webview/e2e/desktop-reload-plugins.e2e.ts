@@ -105,4 +105,33 @@ test.describe("/reload-plugins", () => {
       .toBe("reloadPlugins");
     await expect(dialog).toHaveCount(0);
   });
+
+  test("点「稍后」只关掉弹窗、不重载；之后仍可手动敲命令补上", async ({
+    webviewPage,
+  }) => {
+    const injector = await bootDesktop(webviewPage);
+    await injector.clearMessageLog();
+    await injector.simulateExtensionMessage("pluginChangePending");
+    const dialog = webviewPage.locator(".confirm-dialog");
+    await expect(dialog).toHaveCount(1);
+
+    await webviewPage.getByTestId("confirm-dialog-cancel").click();
+    await expect(dialog).toHaveCount(0);
+    // 「稍后」不产生任何重载请求。
+    expect(await postedMessage(webviewPage, "reloadPlugins")).toBe(undefined);
+
+    // 手动敲 /reload-plugins 仍照常可用（与改动前同一入口）。
+    const input = webviewPage.getByTestId("message-input");
+    await input.click();
+    await webviewPage.keyboard.type("/reload-plugins");
+    await webviewPage.keyboard.press("Enter");
+    await expect
+      .poll(async () => {
+        const posted = (await postedMessage(webviewPage, "reloadPlugins")) as
+          | Record<string, unknown>
+          | undefined;
+        return posted?.command;
+      })
+      .toBe("reloadPlugins");
+  });
 });
