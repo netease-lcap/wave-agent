@@ -126,6 +126,20 @@ export function commandMatchesExcludedPattern(
   });
 }
 
+/**
+ * 已经装进运行时的配置指纹（键是运行时模块本身）。
+ *
+ * `sandbox-runtime` 的 `initialize()` 是**进程级且幂等**的（第二次直接 return），
+ * 所以同一进程里第二个 `SandboxManager`（另一个会话 / Agent，各自的工作目录不
+ * 同）的边界原本不会生效 —— 后起会话静默沿用先起会话的配置。运行时的
+ * `updateConfig()` 才是换边界的那条通路（Claude Code 的 sandbox-adapter 也只用
+ * 它，不重启代理与 CA），这里按指纹决定要不要推一次。
+ *
+ * 键用运行时模块对象：`resetSandboxRuntime()` 之后重新 `import()` 拿到的是同一个
+ * 模块实例（Node 的模块缓存），指纹跟着它；测试注入的 fake 模块则各自独立。
+ */
+const installedConfigFingerprints = new WeakMap<SandboxRuntimeModule, string>();
+
 export class SandboxManager {
   private readonly deps: SandboxManagerDeps;
   private initialized = false;
@@ -265,6 +279,45 @@ export class SandboxManager {
   }
 
   /**
+   * 把「这一份」配置推到运行时上。
+   *
+   * `initialize()` 是进程级的（第一次真正建代理 / CA，之后是空操作），
+   * `updateConfig()` 才是同进程里换边界的手段。所以初始化时两步都做：先
+   * `initialize`（进程里的第一次才有效），再 `updateConfig` 把配置钉成我们这份
+   * —— 不能靠「`initialize` 刚才是空操作还是真跑了」来判断，那取决于谁先来。
+   */
+  private async installConfig(runtime: SandboxRuntimeModule): Promise<boolean> {
+    const config = this.buildConfig();
+    if (!config) return false;
+    await runtime.SandboxManager.initialize(config);
+    runtime.SandboxManager.updateConfig(config);
+    installedConfigFingerprints.set(runtime, JSON.stringify(config));
+    return true;
+  }
+
+  /**
+   * 每条沙箱命令前对一次指纹：同进程里可能有多个 Agent（各自工作目录不同），
+   * 边界必须跟着**当前**这条命令的调用方走。只按「本实例初始化过」判断会让后
+   * 跑的命令用上别人的边界。
+   */
+  private syncRuntimeConfig(runtime: SandboxRuntimeModule): void {
+    const config = this.buildConfig();
+    if (!config) return;
+    const fingerprint = JSON.stringify(config);
+    if (installedConfigFingerprints.get(runtime) === fingerprint) return;
+    try {
+      runtime.SandboxManager.updateConfig(config);
+      installedConfigFingerprints.set(runtime, fingerprint);
+    } catch (error) {
+      logger.warn(
+        `[sandbox] failed to update the runtime configuration: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  /**
    * 初始化运行时（幂等）。失败不抛：沙箱类能力按「降级 + 一次警告」处理，
    * 与 `failIfUnavailable` 的硬失败区分开。
    */
@@ -275,12 +328,9 @@ export class SandboxManager {
     this.initializing = (async () => {
       const runtime = await this.loadRuntimeWithInstall();
       if (!runtime) return false;
-      const config = this.buildConfig();
-      if (!config) return false;
       try {
-        await runtime.SandboxManager.initialize(config);
-        this.initialized = true;
-        return true;
+        this.initialized = await this.installConfig(runtime);
+        return this.initialized;
       } catch (error) {
         this.warnOnce(
           "init-failed",
@@ -349,6 +399,9 @@ export class SandboxManager {
     if (!(await this.ensureInitialized())) return null;
     const runtime = this.runtime;
     if (!runtime) return null;
+    // 同进程里另一个 Agent 可能刚刚换过边界（运行时配置是进程级的），这条命令
+    // 必须按**本会话**的配置跑。
+    this.syncRuntimeConfig(runtime);
     try {
       return await runtime.SandboxManager.wrapWithSandbox(
         command,
@@ -402,6 +455,7 @@ export class SandboxManager {
     if (!config) return;
     try {
       this.runtime.SandboxManager.updateConfig(config);
+      installedConfigFingerprints.set(this.runtime, JSON.stringify(config));
     } catch (error) {
       logger.warn(
         `[sandbox] failed to update configuration: ${

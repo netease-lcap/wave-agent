@@ -55,6 +55,7 @@ function createManager(
   options: {
     platform?: NodeJS.Platform;
     runtime?: ReturnType<typeof createRuntime> | null;
+    workdir?: string;
   } = {},
 ) {
   const runtime =
@@ -62,7 +63,7 @@ function createManager(
   const configuration: WaveConfiguration = sandbox ? { sandbox } : {};
   const manager = new SandboxManager({
     getConfiguration: () => configuration,
-    workdir: WORKDIR,
+    workdir: options.workdir ?? WORKDIR,
     platform: options.platform ?? "darwin",
     loadRuntime: async () => runtime as never,
   });
@@ -300,5 +301,72 @@ describe("SandboxManager", () => {
     expect(logger.warn).toHaveBeenCalledWith(
       expect.stringContaining("could not be downloaded"),
     );
+  });
+});
+
+/**
+ * `sandbox-runtime` 的配置是**进程级**的（`initialize()` 之后幂等），而每个
+ * Agent 的 `SandboxManager` 带着自己的工作目录 —— 一进程多会话（daemon /
+ * stdio 桥）时，后起会话原本会静默沿用先起会话的边界。这里钉住「每条命令都
+ * 按自己那份配置」这条语义（Claude Code 用的是同一条 `updateConfig` 通路）。
+ */
+describe("process-wide runtime configuration", () => {
+  function lastPushedWorkdirs(
+    runtime: ReturnType<typeof createRuntime>,
+  ): string[] {
+    const calls = runtime.SandboxManager.updateConfig.mock.calls;
+    const config = calls.at(-1)?.[0] as
+      | { filesystem: { allowWrite: string[] } }
+      | undefined;
+    return config?.filesystem.allowWrite ?? [];
+  }
+
+  it("pushes this session's boundary when another session initialized the runtime first", async () => {
+    const runtime = createRuntime();
+    const first = createManager(
+      { enabled: true },
+      { runtime, workdir: "/fake/session-a" },
+    );
+    const second = createManager(
+      { enabled: true },
+      { runtime, workdir: "/fake/session-b" },
+    );
+
+    await first.manager.wrap("echo a", "/bin/bash", "a");
+    await second.manager.wrap("echo b", "/bin/bash", "b");
+
+    expect(lastPushedWorkdirs(runtime)).toContain("/fake/session-b");
+  });
+
+  it("re-pushes on every command, not only when the session first initializes", async () => {
+    const runtime = createRuntime();
+    const first = createManager(
+      { enabled: true },
+      { runtime, workdir: "/fake/session-a" },
+    );
+    const second = createManager(
+      { enabled: true },
+      { runtime, workdir: "/fake/session-b" },
+    );
+
+    await first.manager.wrap("echo a1", "/bin/bash", "a1");
+    await second.manager.wrap("echo b1", "/bin/bash", "b1");
+    runtime.SandboxManager.updateConfig.mockClear();
+
+    // 第一条命令之后 first 已经「初始化过」，靠的就是每条命令前的指纹同步。
+    await first.manager.wrap("echo a2", "/bin/bash", "a2");
+
+    expect(lastPushedWorkdirs(runtime)).toContain("/fake/session-a");
+  });
+
+  it("does not push a configuration that is already installed", async () => {
+    const runtime = createRuntime();
+    const { manager } = createManager({ enabled: true }, { runtime });
+
+    await manager.wrap("echo a", "/bin/bash", "a");
+    runtime.SandboxManager.updateConfig.mockClear();
+    await manager.wrap("echo b", "/bin/bash", "b");
+
+    expect(runtime.SandboxManager.updateConfig).not.toHaveBeenCalled();
   });
 });
