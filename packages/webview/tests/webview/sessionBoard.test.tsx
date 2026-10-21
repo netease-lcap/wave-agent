@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
-import { createMockVscode, sendCommand } from "./test-utils";
+import { createMockVscode, sendCommand, setInputText } from "./test-utils";
 
 vi.mock("../../src/styles/DesktopApp.css", () => ({}));
 vi.mock("../../src/styles/SessionBoard.css", () => ({}));
@@ -137,6 +137,40 @@ describe("会话状态看板（活动）", () => {
     expect(screen.getByTestId("desktop-sidebar-activity")).not.toHaveAttribute(
       "aria-pressed",
       "true",
+    );
+  });
+
+  it("打开看板再返回对话窗口，未发出的输入草稿不丢（spec 场景 23）", async () => {
+    const vscode = renderReady([
+      {
+        host: "local",
+        workdir: "/work/a",
+        sessions: [session("s1", "chat one")],
+      },
+    ]);
+    sendCommand("authStatusResponse", { isAuthenticated: true });
+    const input = screen.getByTestId("message-input");
+    await setInputText(input, "把重试次数改成 3 次");
+
+    // 点开看板：对话区整块被看板顶替 ⇒ 输入框卸载，而此刻 150ms 防抖还没到点。
+    fireEvent.click(screen.getByTestId("desktop-sidebar-activity"));
+    expect(screen.queryByTestId("message-input")).not.toBeInTheDocument();
+
+    // 卸载必须把待发草稿补给宿主（宿主 inputDrafts 才是重挂载时的回填源）
+    const draft = vscode.postMessage.mock.calls
+      .map(([m]) => m as { command?: string; content?: string })
+      .filter((m) => m.command === "updateInputContent")
+      .pop()?.content;
+    expect(draft).toBe("把重试次数改成 3 次");
+
+    // 返回当前会话：输入框重挂载，桌面宿主按 webviewReady 回放快照（inputContent
+    // 取自 inputDrafts）。真实回放由宿主完成，jsdom 里手动补这一步。
+    fireEvent.click(screen.getByRole("button", { name: "返回当前会话" }));
+    act(() => {
+      sendCommand("setInitialState", { messages: [], inputContent: draft });
+    });
+    expect(screen.getByTestId("message-input").innerText).toBe(
+      "把重试次数改成 3 次",
     );
   });
 });

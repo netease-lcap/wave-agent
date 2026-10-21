@@ -3769,6 +3769,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isDesktop, previewFullscreen]);
 
+  // 退出全屏把焦点还给输入框。全屏期间对话列只是 display:none（保持挂载以留住
+  // 草稿），浏览器会把隐藏的 contenteditable 上的焦点收走；不还焦点，用户退出
+  // 全屏后必须先点一下输入框才能继续打字。改动前靠「对话列重挂载 + 自动聚焦」
+  // 顺带解决，现在保持挂载就得显式还。
+  const wasPreviewFullscreenRef = useRef(false);
+  useEffect(() => {
+    const was = wasPreviewFullscreenRef.current;
+    wasPreviewFullscreenRef.current = previewFullscreen;
+    if (was && !previewFullscreen) messageInputRef.current?.focus();
+  }, [previewFullscreen]);
+
   const renderPanelSlot = (tab: PanelTab) => {
     const { id, kind } = tab;
     const isActive = activeTabId === id;
@@ -4596,9 +4607,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             previewFullscreen ? " preview-fullscreen" : ""
           }`}
         >
-          {!previewFullscreen && (
-            <div className="desktop-chat-main">{chatBodyContent}</div>
-          )}
+          {/* 全屏时对话列**保持挂载**、靠 CSS 隐藏（见 DesktopApp.css 的
+              preview-fullscreen 规则）：整块不渲染会连坐卸载 <MessageInput>，
+              退出全屏重挂载只能按 state.inputContent（上次宿主快照）回填，最后
+              一段输入随之丢失，滚动位置也归零（spec desktop-preview.md 场景 7：
+              进出全屏不丢草稿）。折叠面板槽位是同一纪律：能保持挂载就保持。 */}
+          <div className="desktop-chat-main">{chatBodyContent}</div>
           {/* preview guest 常驻层：guest 的 DOM 归属与会话/槽位无关，这是「切会
               话不销毁预览」的机制基础。可见态用 CSS 盖在面板 body 的位置上，停
               靠态保留自身尺寸但不显示；槽位里对应的位置只留占位（renderPanelSlot）。 */}

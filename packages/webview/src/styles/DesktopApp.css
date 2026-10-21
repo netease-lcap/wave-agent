@@ -1905,6 +1905,13 @@ body.is-panel-resizing webview {
   width: 100% !important;
 }
 
+/* 全屏时对话列隐藏但**保持挂载**：整块不渲染会连坐卸载 <MessageInput>，退出全屏
+   重挂载只能按宿主快照回填，最后一段输入（还在防抖窗口里）与滚动位置一起丢
+   （spec desktop-preview.md 场景 7）。折叠面板槽位同理——能保持挂载就保持。 */
+.desktop-chat-body.preview-fullscreen .desktop-chat-main {
+  display: none;
+}
+
 /* Tabbed panel slot (spec「面板 tab 化」): the single slot hosts the tab strip
    (DesktopPanelTabs) above the active panel body. Inline width from ChatApp
    drives the slot; fullscreen (below) widens it via flex.

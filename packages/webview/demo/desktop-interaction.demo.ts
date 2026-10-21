@@ -190,7 +190,8 @@ test.describe("Desktop interaction refinements", () => {
     // 保活」) — the shown one carries data-parked="false", the parked ones are
     // invisible but still mounted.
     await webviewPage.getByTestId("panel-fullscreen").click();
-    await expect(webviewPage.locator(".desktop-chat-main")).toHaveCount(0);
+    // 对话列隐藏但仍挂载（草稿保留，spec desktop-preview.md 场景 7）。
+    await expect(webviewPage.locator(".desktop-chat-main")).toBeHidden();
     await expect(
       webviewPage.locator(
         '.preview-guest[data-parked="false"] [data-testid="preview-pane"]',
@@ -213,7 +214,7 @@ test.describe("Desktop interaction refinements", () => {
       "../../docs/public/screenshots/desktop-preview-fullscreen.webp",
     );
     await webviewPage.keyboard.press("Escape");
-    await expect(webviewPage.locator(".desktop-chat-main")).toHaveCount(1);
+    await expect(webviewPage.locator(".desktop-chat-main")).toBeVisible();
     // Exiting restores the split layout symmetrically: the guest box goes back
     // to the same panel width it had before fullscreen.
     await expect
