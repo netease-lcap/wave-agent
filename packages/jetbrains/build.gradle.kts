@@ -1,3 +1,5 @@
+import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+
 plugins {
     id("org.jetbrains.intellij.platform")
     kotlin("jvm")
@@ -7,8 +9,35 @@ plugins {
 group = providers.gradleProperty("pluginGroup").get()
 version = providers.gradleProperty("pluginVersion").get()
 
+// Real-IDE integration tests (Starter + Driver). Separate source set on purpose:
+// these launch a full IDE, need a screen (macOS Accessibility permission for
+// java.awt.Robot) and take minutes — never part of `pnpm jb:test`.
+sourceSets {
+    create("integrationTest") {
+        compileClasspath += sourceSets.main.get().output
+        runtimeClasspath += sourceSets.main.get().output
+    }
+}
+
+val integrationTestImplementation by configurations.getting {
+    extendsFrom(configurations.testImplementation.get())
+}
+
 dependencies {
     intellijPlatform {
+        // Starter (IDE lifecycle) + Driver (UI/JMX interaction) for the
+        // integrationTest source set; see docs link in the task below.
+        testFramework(
+            TestFrameworkType.Starter,
+            configurationName = "integrationTestImplementation",
+        )
+
+        // Real platform test fixture (BasePlatformTestCase). It loads the plugin's
+        // extension declarations under the IDE's own classloader — precisely what
+        // the JVM-only tests cannot see. See
+        // WaveInlineCompletionProviderRegistrationTest.
+        testFramework(TestFrameworkType.Platform)
+
         // Local-IDE override for development: pass -PlocalIdePath=<dir> to use a
         // locally installed/unpacked IDE instead of downloading the platform
         // distribution (useful when JetBrains repos are unreachable). CI and
@@ -43,6 +72,16 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(platform("org.junit:junit-bom:5.10.2"))
     testImplementation("org.junit.jupiter:junit-jupiter")
+    // Platform fixtures (BasePlatformTestCase) are JUnit 3 tests — they extend
+    // junit.framework.TestCase, so junit:junit is a compile-time need, and the
+    // vintage engine is what lets `useJUnitPlatform()` run them next to the
+    // Jupiter ones.
+    testImplementation("junit:junit:4.13.2")
+    testRuntimeOnly("org.junit.vintage:junit-vintage-engine")
+
+    // Required by Starter itself (DI + coroutines), see the Integration Tests tutorial.
+    integrationTestImplementation("org.kodein.di:kodein-di-jvm:7.20.2")
+    integrationTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.10.1")
 }
 
 kotlin {
@@ -51,6 +90,35 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+// Real-IDE integration test (`pnpm jb:test:ui`): launches IntelliJ with the
+// built plugin installed, so completion can be exercised against the actual
+// editor, extension point registry and plugin classloader.
+//
+// Requirements: a screen and — on macOS — Accessibility permission for the IDE
+// (System Settings → Privacy & Security → Accessibility), because the Driver
+// types through java.awt.Robot. Slow (IDE start ≈ 1 min), never part of jb:test.
+val integrationTest by intellijPlatformTesting.testIdeUi.registering {
+    task {
+        dependsOn(tasks.named("prepareSandbox"))
+        val integrationTestSourceSet = sourceSets.getByName("integrationTest")
+        testClassesDirs = integrationTestSourceSet.output.classesDirs
+        classpath = integrationTestSourceSet.runtimeClasspath
+        useJUnitPlatform()
+        // Resolved at configuration time: the configuration cache cannot
+        // serialize a reference to the prepareSandbox task inside doFirst.
+        systemProperty(
+            "path.to.build.plugin",
+            layout.projectDirectory
+                .dir(
+                    ".intellijPlatform/sandbox/wave-jetbrains/" +
+                        "IC-${providers.gradleProperty("platformVersion").get()}" +
+                        "/plugins/wave-jetbrains",
+                )
+                .asFile.absolutePath,
+        )
+    }
 }
 
 intellijPlatform {

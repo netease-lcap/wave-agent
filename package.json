@@ -37,6 +37,7 @@
     "jb:build": "pnpm -F wave-webview build && node packages/jetbrains/scripts/gradle.mjs buildPlugin --no-daemon",
     "jb:package": "node packages/jetbrains/scripts/gradle.mjs buildPlugin --no-daemon",
     "jb:test": "node packages/jetbrains/scripts/gradle.mjs test --no-daemon",
+    "jb:test:ui": "node packages/jetbrains/scripts/gradle.mjs integrationTest --no-daemon",
     "desktop:run": "pnpm -F wave-webview build && pnpm -F wave-desktop run run",
     "desktop:build": "pnpm -F wave-webview build && pnpm -F wave-desktop run compile",
     "desktop:package": "pnpm -F wave-webview build && pnpm -F wave-desktop run dist",
