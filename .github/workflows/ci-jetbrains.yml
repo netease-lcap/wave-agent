@@ -6,8 +6,9 @@ name: CI (JetBrains)
 # logic has no test coverage.
 
 on:
-  # Post-merge only (aligned with ci.yml's integration job and ci-windows.yml):
-  # not gating PRs; runs after merge to main or manually via workflow_dispatch.
+  # Post-merge only (aligned with ci.yml's integration job; ci-windows.yml is
+  # the one Windows/JVM-adjacent job that DOES gate PRs): not gating PRs; runs
+  # after merge to main or manually via workflow_dispatch.
   # dorny/paths-filter below skips all steps for non-JetBrains changes.
   push:
     branches: [main]
