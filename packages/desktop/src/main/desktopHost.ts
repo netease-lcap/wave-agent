@@ -3031,6 +3031,9 @@ export class DesktopHost {
           sessionId: s.sessionId,
           title: s.title,
           lastActiveAt: s.lastActiveAt,
+          // 侧栏「创建日期」筛选按创建时间分档（不是最后活跃时间）。老索引条目
+          // 在 configStore 读取时已回填为 lastActiveAt（见 backfillCreatedAt）。
+          createdAt: s.createdAt,
           hasWorktree: !!s.worktree,
           running: agent?.isStreaming ?? false,
           waitingConfirmation: agent

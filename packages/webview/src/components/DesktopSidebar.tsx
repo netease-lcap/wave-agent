@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect, RefObject } from "react";
+import React, { useState, useRef, useEffect, useMemo, RefObject } from "react";
 import { Tooltip } from "./Tooltip";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SessionRenameDialog } from "./SessionRenameDialog";
+import { SidebarSessionSearch } from "./SidebarSessionSearch";
 import { AccountCard, type AccountCardAccount } from "./AccountCard";
 import { CodewaveLogo } from "./CodewaveLogo";
 import {
@@ -24,6 +25,12 @@ import {
   WORKTREE_DELETE_CHECKING,
 } from "../utils/worktreeDeleteWarning";
 import { isMacHiddenTitlebar } from "../utils/platform";
+import {
+  EMPTY_SESSION_FILTER,
+  filterSessionTree,
+  isSessionFilterActive,
+  type SessionFilterState,
+} from "../utils/sessionFilter";
 import { useDesktopChrome } from "./DesktopChromeContext";
 import type {
   DesktopSessionGroup,
@@ -348,6 +355,20 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     sessionId: string;
     title: string;
   } | null>(null);
+
+  // 侧栏会话搜索与筛选（spec desktop-sessions.md「侧栏会话搜索与筛选」）：
+  // 关键词即时过滤，筛选条件点「确定」后落到 filter 上；两者取交集。
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sessionFilter, setSessionFilter] =
+    useState<SessionFilterState>(EMPTY_SESSION_FILTER);
+  const visibleSessionTree = useMemo(
+    () => filterSessionTree(sessionTree, searchQuery, sessionFilter),
+    [sessionTree, searchQuery, sessionFilter],
+  );
+  // 只在「搜/筛过」时才提示无命中：不做任何过滤时树里本来就没有会话，那不是
+  // 「没找到匹配」。
+  const sessionListFiltered =
+    searchQuery.trim() !== "" || isSessionFilterActive(sessionFilter);
 
   const beginRename = (sessionId: string) => {
     const session = sessionTree
@@ -794,6 +815,12 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
           {!renderWindowRow && collapseButton}
         </div>
       </div>
+      <SidebarSessionSearch
+        query={searchQuery}
+        onQueryChange={setSearchQuery}
+        filter={sessionFilter}
+        onApplyFilter={setSessionFilter}
+      />
       <Tooltip
         text={
           isMacPlatform()
@@ -856,7 +883,15 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         className="desktop-session-tree"
         data-testid="desktop-session-tree"
       >
-        {sessionTree.map((group) => {
+        {visibleSessionTree.length === 0 && sessionListFiltered && (
+          <div
+            className="desktop-session-no-match"
+            data-testid="desktop-session-no-match"
+          >
+            未找到匹配的对话
+          </div>
+        )}
+        {visibleSessionTree.map((group) => {
           const expanded = isExpanded(group);
           return (
             <div
