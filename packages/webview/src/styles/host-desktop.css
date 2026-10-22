@@ -5022,7 +5022,9 @@
 ) {
   box-sizing: border-box;
   position: relative;
-  width: 560px;
+  /* 宽度走变量：默认 560，单字段的「重命名分类」在下面把它收到 440。
+     用变量而不是再写一条 width，是为了不去跟这条 (0,5,0) 特异性的规则抢优先级。 */
+  width: var(--cc-artifacts-form-dialog-width, 560px);
   max-width: calc(100vw - 32px);
   padding: 24px;
   background: var(--cc-bg-modal, var(--vscode-editorWidget-background, #ffffff));
@@ -5030,6 +5032,19 @@
   border-radius: var(--cc-radius-lg, 12px);
   box-shadow: var(--cc-shadow-overlay, 0 12px 36px rgb(31 35 41 / 16%));
   color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+/* 单字段的分类弹窗（新建 / 重命名）：只有一颗输入框 + 一行提示，560 宽显得空；收到 compact 档的
+   440（1022 评论：「重命名弹窗尺寸太大了」→「新建分类弹窗也改」）。其余（r12 / 24 内衬 / 标题 16 /
+   控件 32 / 页脚 24）仍走上面表单档。两者共用同一个 `data-testid="artifacts-category-dialog"`，
+   且 DOM 逐字相同，只能靠 `aria-label`（= 弹窗标题文案）区分 —— 若标题文案改了，这条选择器要
+   跟着改，否则宽度会静默回到 560。 */
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [aria-label="重命名分类"],
+    [aria-label="新建分类"]
+  ) {
+  --cc-artifacts-form-dialog-width: 440px;
 }
 
 /* 头部：去分隔线与 14/18 内衬，标题升到 16/24/600；右侧让出 28px 给关闭控件 */
