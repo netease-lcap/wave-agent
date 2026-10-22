@@ -1273,7 +1273,7 @@ const subagent = agent.getSubagentInstance("explore");
 - **工具**: `[Read]`
 - **模型**: `WAVE_VISION_MODEL` 环境变量指定的视觉模型（frontmatter `model: visionModel` 解析）
 
-**启用方式**：设置 `WAVE_VISION_MODEL` 环境变量（如 `qwen-vl-max`）后，内置 `vision` 子代理自动注册；未设置时该子代理不加载。与 `fastModel` 机制对称，详见 [环境变量](#settings-env)。主模型支持视觉时图片仍直接发送，不受该变量影响。
+**启用方式**：设置 `WAVE_VISION_MODEL` 环境变量（如 `qwen-vl-max`）**且**主模型显式声明不支持图像识别（`models[<主模型>].capabilities: { "vision": false }`）时，内置 `vision` 子代理才可用；两个条件缺一个都不注册。判定沿用 `capabilities.vision` 的 opt-out 语义 —— 主模型没声明该能力位时按「能看图」处理，因此内置 `vision` 不会出现（图片直接以图像块发给主模型）。这道门在每轮请求读取子代理列表时判定，会话中换模型会立即跟随；列表里没有的也不能按名字点名调用。与 `fastModel` 机制对称，详见 [环境变量](#settings-env)。
 
 ## 14. Settings Skill {#settings-skill}
 
@@ -1332,21 +1332,21 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 
 #### WAVE\_\* 变量
 
-| 变量                         | 描述                                                                             |
-| ---------------------------- | -------------------------------------------------------------------------------- |
-| `WAVE_MODEL`                 | 默认 AI 模型                                                                     |
-| `WAVE_FAST_MODEL`            | 快速模型（用于子代理、摘要等轻量场景）                                           |
-| `WAVE_VISION_MODEL`          | 视觉模型（用于内置 `vision` 子代理的图像识别；设置后该子代理注册，未设置则禁用） |
-| `WAVE_API_KEY`               | API Key                                                                          |
-| `WAVE_BASE_URL`              | API Base URL                                                                     |
-| `WAVE_SERVER_URL`            | Wave AI 服务端地址（用于 SSO）                                                   |
-| `WAVE_CUSTOM_HEADERS`        | 自定义请求头（JSON 格式）                                                        |
-| `WAVE_MAX_INPUT_TOKENS`      | 最大输入 Token 数                                                                |
-| `WAVE_MAX_OUTPUT_TOKENS`     | 最大输出 Token 数                                                                |
-| `WAVE_DISABLE_AUTO_MEMORY`   | 禁用自动记忆                                                                     |
-| `WAVE_AUTO_MEMORY_FREQUENCY` | 自动记忆触发频率                                                                 |
-| `WAVE_PLUGIN_GIT_TIMEOUT_MS` | 插件 Git 操作超时（毫秒）                                                        |
-| `WAVE_TASK_LIST_ID`          | 显式指定会话的任务列表 ID（默认取会话 ID）                                       |
+| 变量                         | 描述                                                                                                          |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `WAVE_MODEL`                 | 默认 AI 模型                                                                                                  |
+| `WAVE_FAST_MODEL`            | 快速模型（用于子代理、摘要等轻量场景）                                                                        |
+| `WAVE_VISION_MODEL`          | 视觉模型（用于内置 `vision` 子代理的图像识别；设置后仍需主模型声明 `"vision": false` 才会启用，未设置则禁用） |
+| `WAVE_API_KEY`               | API Key                                                                                                       |
+| `WAVE_BASE_URL`              | API Base URL                                                                                                  |
+| `WAVE_SERVER_URL`            | Wave AI 服务端地址（用于 SSO）                                                                                |
+| `WAVE_CUSTOM_HEADERS`        | 自定义请求头（JSON 格式）                                                                                     |
+| `WAVE_MAX_INPUT_TOKENS`      | 最大输入 Token 数                                                                                             |
+| `WAVE_MAX_OUTPUT_TOKENS`     | 最大输出 Token 数                                                                                             |
+| `WAVE_DISABLE_AUTO_MEMORY`   | 禁用自动记忆                                                                                                  |
+| `WAVE_AUTO_MEMORY_FREQUENCY` | 自动记忆触发频率                                                                                              |
+| `WAVE_PLUGIN_GIT_TIMEOUT_MS` | 插件 Git 操作超时（毫秒）                                                                                     |
+| `WAVE_TASK_LIST_ID`          | 显式指定会话的任务列表 ID（默认取会话 ID）                                                                    |
 
 #### OTEL\_\* 变量（OpenTelemetry）
 
@@ -1417,7 +1417,7 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 在 `models` 字段中通过 `capabilities` 声明式配置每个模型的能力，支持以下字段：
 
 - `promptCaching`：是否支持 Prompt Cache（提示词缓存）。设为 `true` 时，SDK 会在消息内容中插入 `ephemeral` 缓存标记来复用上下文，降低 API 调用成本。默认 `false`。
-- `vision`：是否支持图像识别（视觉）。设为 `false` 时，SDK 会在发送前自动剥离图像并用文本占位符替换。默认 `true`。
+- `vision`：是否支持图像识别（视觉）。设为 `false` 时，SDK 会在发送前自动剥离图像并用文本占位符替换；若同时设置了 `WAVE_VISION_MODEL`，内置 `vision` 子代理随之可用，该模型可把图像识别委托出去。默认 `true`（不声明即视为能看图，此时内置 `vision` 子代理不注册）。
 
 ```json
 {

@@ -28,7 +28,7 @@ Wave uses several environment variables to control its core functionality. Varia
 | \`WAVE_CUSTOM_HEADERS\` | Custom HTTP headers for the AI gateway. Newline-separated \`Key: Value\` pairs (e.g., \`"X-Foo: bar\\nAuthorization: Bearer xxx"\`). | - |
 | \`WAVE_MODEL\` | The primary AI model to use for the agent. | \`gemini-3-flash\` |
 | \`WAVE_FAST_MODEL\` | The fast AI model to use for quick tasks. | \`gemini-2.5-flash\` |
-| \`WAVE_VISION_MODEL\` | Vision-capable model used by the built-in \`vision\` subagent for image recognition. When set, the built-in \`vision\` subagent is registered (its frontmatter \`model: visionModel\` resolves to this value); when unset, the subagent is not loaded. Useful when the main model is fast but non-vision (e.g. DeepSeek). | - (not registered) |
+| \`WAVE_VISION_MODEL\` | Vision-capable model used by the built-in \`vision\` subagent for image recognition. The built-in \`vision\` subagent is available only when this is set **and** the main model declares \`models[<model>].capabilities.vision: false\`; otherwise it is not registered (and cannot be spawned by name). Useful when the main model is fast but non-vision (e.g. DeepSeek). | - (not registered) |
 | \`WAVE_MAX_INPUT_TOKENS\` | Maximum number of input tokens allowed. Overridden per-model by \`models[<model>].maxInputTokens\`. | \`200000\` |
 | \`WAVE_MAX_OUTPUT_TOKENS\` | Maximum number of output tokens allowed. | \`32000\` |
 | \`WAVE_DISABLE_AUTO_MEMORY\` | Set to \`1\` or \`true\` to disable the auto-memory feature. | \`false\` |
@@ -658,7 +658,7 @@ Resolution priority: constructor > \`options\` > \`models[<model>].maxInputToken
 
 Wave needs to know whether a model supports certain features. Instead of guessing from the model name, you declare these explicitly via the \`capabilities\` field. Note that \`capabilities\` is set at the top level of the model configuration, **not** inside the \`options\` field — \`options\` is reserved for generation parameters only.
 
-- \`vision\` (default: \`true\`): Whether the model can accept image inputs. When \`false\`, images are stripped and replaced with text placeholders.
+- \`vision\` (default: \`true\`): Whether the model can accept image inputs. When \`false\`, images are stripped and replaced with text placeholders — and, if \`WAVE_VISION_MODEL\` is set, the built-in \`vision\` subagent becomes available so this model can delegate image recognition.
 - \`promptCaching\` (default: \`false\`): Whether the model supports ephemeral prompt caching (e.g., Anthropic's \`cache_control\` markers). When \`true\`, Wave injects cache markers on the system prompt and last user message.
 
 \`\`\`json
@@ -725,7 +725,7 @@ Set the model for the main conversation and the fast model used by lightweight t
 }
 \`\`\`
 
-\`WAVE_VISION_MODEL\` names a vision-capable model for the built-in \`vision\` subagent. Setting it registers the subagent, whose frontmatter \`model: visionModel\` resolves to this value — so a fast non-vision main model can delegate image recognition. Leave it unset to disable the built-in \`vision\` subagent.
+\`WAVE_VISION_MODEL\` names a vision-capable model for the built-in \`vision\` subagent, whose frontmatter \`model: visionModel\` resolves to this value — so a fast non-vision main model can delegate image recognition. It is a fallback, so the subagent is available only when the main model declares it cannot see images (\`models[<main model>].capabilities.vision: false\`); with a vision-capable main model it is not registered. Leave the variable unset to disable it entirely.
 
 ## Live Reload
 
@@ -1258,7 +1258,7 @@ You are a specialized subagent for a specific task. Your goal is to:
 - \`name\`: (Required) Unique identifier.
 - \`description\`: (Required) Explains the subagent's expertise and when to use it.
 - \`tools\`: (Optional) List of tools the subagent can use.
-- \`model\`: (Optional) Overrides the default model for this subagent. The special values \`fastModel\` and \`visionModel\` resolve to the \`WAVE_FAST_MODEL\` / \`WAVE_VISION_MODEL\` env vars respectively. Built-in subagents declaring \`model: visionModel\` (e.g. the built-in \`vision\` agent) are only registered when \`WAVE_VISION_MODEL\` is set; for user-defined subagents the value simply resolves to the configured vision model.
+- \`model\`: (Optional) Overrides the default model for this subagent. The special values \`fastModel\` and \`visionModel\` resolve to the \`WAVE_FAST_MODEL\` / \`WAVE_VISION_MODEL\` env vars respectively. The built-in subagent declaring \`model: visionModel\` (the built-in \`vision\` agent) is available only when \`WAVE_VISION_MODEL\` is set **and** the main model declares \`capabilities.vision: false\`; a user-defined subagent with \`model: visionModel\` is your explicit choice and stays registered either way, with the value simply resolving to the configured vision model.
 - \`isolation\`: (Optional) Set to \`worktree\` to run every invocation of this subagent in its own temporary git worktree inside \`.wave/worktrees/\`, so parallel subagents do not touch the same checkout. A worktree with changes is kept after the run and its path, branch and change counts are reported; a clean one is removed. The \`Agent\` tool's \`isolation: "worktree"\` parameter applies the same isolation to a single call.
 
 ## Subagent Locations
