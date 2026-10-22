@@ -1,12 +1,12 @@
-import React, { useReducer, useEffect, useRef } from "react";
-import { Box, Text, useInput } from "ink";
+import React, { useReducer, useEffect } from "react";
+import { Box, Text, useInput, usePaste } from "ink";
+import type { Key } from "ink";
 import { usePluginManagerContext } from "../contexts/PluginManagerContext.js";
 import {
   marketplaceAddFormReducer,
   SCOPES,
   type MarketplaceAddFormState,
 } from "../reducers/marketplaceAddFormReducer.js";
-import { createBracketedPasteDetector } from "../utils/bracketedPaste.js";
 
 export const MarketplaceAddForm: React.FC = () => {
   const { state: ctxState, actions } = usePluginManagerContext();
@@ -33,27 +33,23 @@ export const MarketplaceAddForm: React.FC = () => {
     dispatch({ type: "CLEAR_PENDING_ACTION" });
   }, [state.pendingAction, actions]);
 
-  const pasteDetectorRef = useRef(createBracketedPasteDetector());
-
-  useInput((input, key) => {
-    const result = pasteDetectorRef.current.process(input);
-    if (result.kind === "consume") {
-      // Content of an in-flight bracketed paste: hold it, never submit.
-      return;
-    }
-    let cleanInput: string;
-    if (result.kind === "paste") {
-      cleanInput = (result.leadingInput ?? "") + result.text;
-    } else {
-      cleanInput = result.input;
-    }
-
+  const dispatchKey = (input: string, key: Key) => {
     dispatch({
       type: "HANDLE_KEY",
       key,
-      input: cleanInput,
+      input,
       isLoading: ctxState.isLoading,
     });
+  };
+
+  useInput((input, key) => {
+    dispatchKey(input, key);
+  });
+
+  // A pasted source arrives here as one string with no key flags, so it fills
+  // the field without stepping the form or submitting it.
+  usePaste((text) => {
+    dispatchKey(text, {} as Key);
   });
 
   const { source, scopeIndex, step } = state;
