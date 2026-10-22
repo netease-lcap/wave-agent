@@ -91,9 +91,9 @@ function Consumer() {
   return <Text>{`count:${messages.length}`}</Text>;
 }
 
-function renderProvider() {
+function renderProvider(onClearOutput?: () => void) {
   return render(
-    <ChatProvider workdir="/tmp">
+    <ChatProvider workdir="/tmp" onClearOutput={onClearOutput}>
       <Consumer />
     </ChatProvider>,
   );
@@ -118,16 +118,34 @@ describe("ChatProvider clear/compact/rewind force remount", () => {
     cleanup();
   });
 
-  it("clearMessages refreshes the list then forces a remount (screen clear)", async () => {
-    const tree = renderProvider();
+  it("clearMessages remounts through ink's clear, keeping the scrollback", async () => {
+    const onClearOutput = vi.fn();
+    const tree = renderProvider(onClearOutput);
     await waitForAgentInit();
     const writeSpy = vi.spyOn(tree.stdout, "write");
 
     await captured!.clearMessages();
 
     expect(mockAgent.clearMessages).toHaveBeenCalled();
-    // The escape sequence must be written even if a throttled remount
-    // happened moments before (bypasses requestRemount's 1s throttle).
+    // /clear must not erase the terminal scrollback: the previous conversation
+    // stays scrollable above the fresh one, so no hard-clear escape is written.
+    expect(onClearOutput).toHaveBeenCalledTimes(1);
+    expect(writeSpy).not.toHaveBeenCalledWith(
+      SCREEN_CLEAR_ESCAPE,
+      expect.any(Function),
+    );
+    await vi.waitFor(() => expect(captured!.messages.length).toBe(0));
+  });
+
+  it("clearMessages falls back to the hard clear when the host injects no clear()", async () => {
+    const tree = renderProvider();
+    await waitForAgentInit();
+    const writeSpy = vi.spyOn(tree.stdout, "write");
+
+    await captured!.clearMessages();
+
+    // Without an injected clear() the remount would duplicate the old output,
+    // so the screen (and scrollback) has to be erased.
     expect(writeSpy).toHaveBeenCalledWith(
       SCREEN_CLEAR_ESCAPE,
       expect.any(Function),
@@ -166,14 +184,14 @@ describe("ChatProvider clear/compact/rewind force remount", () => {
   });
 
   it("consecutive clearMessages both force a remount (throttle bypass)", async () => {
-    const tree = renderProvider();
+    const onClearOutput = vi.fn();
+    renderProvider(onClearOutput);
     await waitForAgentInit();
-    const writeSpy = vi.spyOn(tree.stdout, "write");
 
     await captured!.clearMessages();
     await captured!.clearMessages();
 
     expect(mockAgent.clearMessages).toHaveBeenCalledTimes(2);
-    expect(writeSpy).toHaveBeenCalledTimes(2);
+    expect(onClearOutput).toHaveBeenCalledTimes(2);
   });
 });

@@ -181,7 +181,7 @@ export interface ChatContextType {
   backgroundCurrentTask: () => void;
   // Remount functionality
   remountKey: number;
-  forceRemount: () => void;
+  forceRemount: (options?: { preserveScrollback?: boolean }) => void;
   // Rewind functionality
   handleRewindSelect: (index: number) => Promise<void>;
   getFullMessageThread: () => Promise<{
@@ -379,6 +379,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   version,
   model,
   mcpServers,
+  onClearOutput,
 }) => {
   const { restoreSessionId, continueLastSession } = useAppConfig();
   const { stdout } = useStdout();
@@ -529,14 +530,29 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // Remount state
   const [remountKey, setRemountKey] = useState(0);
 
-  // Full terminal clear + remount so Ink's append-only <Static> re-renders.
-  // Used on structural actions (/clear, /compact, rewind, ctrl-o) where stale
-  // Static output must not linger on screen.
-  const forceRemount = useCallback(() => {
-    stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H", () => {
-      setRemountKey((prev) => prev + 1);
-    });
-  }, [stdout]);
+  // Remount so Ink's append-only <Static> re-renders from scratch. Used on
+  // structural actions (/clear, session switch, rewind, ctrl-o) where the
+  // already-written Static output no longer matches the message list.
+  //
+  // The re-render duplicates whatever is still on screen, so the default erases
+  // the screen *and* the terminal scrollback. `/clear` passes
+  // `preserveScrollback`: it only wants a fresh conversation, and keeping the
+  // old one scrollable above is the point of the command.
+  const forceRemount = useCallback(
+    (options?: { preserveScrollback?: boolean }) => {
+      const remount = () => setRemountKey((prev) => prev + 1);
+      if (options?.preserveScrollback && onClearOutput) {
+        // ink's own clear erases just the frame it drew, leaving scrollback
+        // intact — and resets the row bookkeeping a hand-written escape
+        // sequence cannot reach.
+        onClearOutput();
+        remount();
+        return;
+      }
+      stdout?.write("\u001b[2J\u001b[3J\u001b[0;0H", remount);
+    },
+    [onClearOutput, stdout],
+  );
 
   // Status metadata state
   const [workingDirectory, setWorkingDirectory] = useState("");
@@ -1064,7 +1080,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const clearMessages = useCallback(async () => {
     await agentRef.current?.clearMessages();
     refreshMessages();
-    forceRemount();
+    forceRemount({ preserveScrollback: true });
   }, [refreshMessages, forceRemount]);
 
   const compact = useCallback(

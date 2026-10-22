@@ -18,4 +18,11 @@ export interface BaseAppProps {
   model?: string;
   /** Optional MCP server configs to pass to Agent.create() */
   mcpServers?: Record<string, McpServerConfig>;
+  /**
+   * Erases what ink has drawn without touching the terminal scrollback (ink's
+   * `instance.clear()`, injected by the CLI entry where the ink instance lives).
+   * Actions that must leave the previous conversation scrollable above — `/clear`
+   * — use it instead of a hard erase.
+   */
+  onClearOutput?: () => void;
 }

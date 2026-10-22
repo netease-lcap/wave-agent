@@ -47,7 +47,7 @@ export async function startCli(options: CliOptions): Promise<void> {
   };
 
   // Render the application
-  const { unmount, waitUntilExit } = render(
+  const { clear, unmount, waitUntilExit } = render(
     <App
       restoreSessionId={restoreSessionId}
       continueLastSession={continueLastSession}
@@ -64,6 +64,9 @@ export async function startCli(options: CliOptions): Promise<void> {
       version={version}
       model={model}
       mcpServers={mcpServers}
+      // Late-bound: the hook is created before `render()` returns the instance
+      // whose `clear()` it calls.
+      onClearOutput={() => clear()}
       onExit={handleExit}
     />,
     { exitOnCtrlC: false },
