@@ -109,6 +109,41 @@ describe("ToolDisplay", () => {
     expect(frame).toContain("line 6");
   });
 
+  // Regression (CLI, ink 7 → 8): a collapsed shortResult line containing tabs
+  // (`gh run view --log` rows are tab-separated) overflowed the viewport and the
+  // terminal wrapped it onto extra rows, pushing the truncation ellipsis to a row
+  // of its own. Ink measured a tab as ~0 columns while the terminal expands it to
+  // the next 8-column tab stop. Ink 8 expands tabs before measuring, so layout and
+  // the terminal agree; this test guards against a downgrade or a regression.
+  it("keeps a tab-separated multi-line shortResult within the frame width", () => {
+    const visualWidth = (line: string) => {
+      let width = 0;
+      for (const char of line) {
+        width += char === "\t" ? 8 - (width % 8) : 1;
+      }
+      return width;
+    };
+
+    const longBlock = {
+      ...mockBlock,
+      shortResult: [
+        "build-desktop (macos-15)\tBuild desktop installers (macOS)\t2026-10-13T09:16:49.8277970Z" +
+          " ".repeat(120),
+        "176M\t/Users/liuyiqi/github/continue",
+        "... +2261 lines",
+      ].join("\n"),
+    };
+    const { lastFrame } = render(
+      <ToolDisplay block={longBlock} isExpanded={false} />,
+    );
+    const frame = lastFrame()!;
+    expect(Math.max(...frame.split("\n").map(visualWidth))).toBeLessThanOrEqual(
+      100,
+    );
+    expect(frame).toContain("176M");
+    expect(frame).toContain("... +2261 lines");
+  });
+
   describe("getToolStatusColor", () => {
     it("renders gray while a tool call is starting or streaming (regression: was red)", () => {
       // success may be false/undefined on in-flight blocks; outcome is unknown

@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Box, Text, useStdout } from "ink";
+import { Box, Text } from "ink";
 import { Renderer, marked, type Tokens } from "marked";
 import chalk from "chalk";
 import { highlightToAnsi } from "../utils/highlightUtils.js";
@@ -155,8 +155,12 @@ export const renderMarkdownToAnsi = (
 
 // Markdown component using custom ANSI renderer
 export const Markdown = React.memo(({ children }: MarkdownProps) => {
-  const { stdout } = useStdout();
-  const columns = stdout?.columns ?? 80;
+  // Read the width without subscribing: one <Markdown> is mounted per text
+  // block (including frozen <Static> ones), and ink's `useWindowSize()` adds a
+  // `resize` listener per instance — enough of them trips Node's
+  // MaxListenersExceededWarning on stdout. Table widths only need to be right
+  // for the frame being rendered, exactly as with ink 7's `stdout.columns`.
+  const columns = process.stdout.columns || 80;
   const ansiContent = useMemo(
     () => renderMarkdownToAnsi(children, columns),
     [children, columns],
