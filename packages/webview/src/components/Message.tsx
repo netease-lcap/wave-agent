@@ -1409,7 +1409,9 @@ export const Message: React.FC<MessageProps> = React.memo(
                       );
                     } else if (part.type === "ide-context" && part.ideContext) {
                       const info = ideContextProviderInfo(part.ideContext);
-                      const title = info?.blockTitle ?? part.ideContext;
+                      // 弹窗标题用英文名，不用块标题：块标题（「终端输出」）
+                      // 是正文首行，两者同名会让弹窗里同一个词出现两次。
+                      const title = info?.label ?? part.ideContext;
                       return (
                         <ContextTag
                           key={pIndex}

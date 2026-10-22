@@ -87,6 +87,12 @@ const label = ▍ // ← 建议直接给出 formatPrice(total)
 
 <figure><img src="/screenshots/spec-file-suggestions.webp" alt="文件建议下拉列表" /><figcaption>文件建议下拉列表</figcaption></figure>
 
+<figure><img src="/screenshots/ide-context-suggestions.webp" alt="输入 @ 时的 Terminal / Problems 条目" /><figcaption>输入 @ 时的 Terminal / Problems 条目</figcaption></figure>
+
+<figure><img src="/screenshots/ide-context-tags.webp" alt="用户消息里的 Terminal / Problems 标签" /><figcaption>用户消息里的 Terminal / Problems 标签</figcaption></figure>
+
+<figure><img src="/screenshots/ide-context-preview.webp" alt="点开标签查看终端输出全文" /><figcaption>点开标签查看终端输出全文</figcaption></figure>
+
 <figure><img src="/screenshots/spec-inline-mentions.webp" alt="输入框中的内联标签" /><figcaption>输入框中的内联标签</figcaption></figure>
 
 <figure><img src="/screenshots/spec-image-preview.webp" alt="图片全屏预览模态框" /><figcaption>图片全屏预览模态框</figcaption></figure>

@@ -7,7 +7,7 @@ import type { FileItem } from "../types";
 import { isDesktopHost, isRemotePageHost } from "./platform";
 
 /**
- * IDE 上下文提及（`@终端` / `@问题`，spec `ui/ide-context-mentions.md`）。
+ * IDE 上下文提及（`@Terminal` / `@Problems`，spec `ui/ide-context-mentions.md`）。
  *
  * 数据只有 IDE 宿主能读，格式只有这一份：
  * - 宿主侧：实现 `requestIdeContext`，返回 {@link IdeContextResult}（原始文本 /
@@ -28,18 +28,23 @@ export interface IdeContextProviderInfo {
   icon: string;
 }
 
-/** 下拉里的固定条目。新增一类上下文只改这里 + 两个宿主的读取实现。 */
+/**
+ * 下拉里的固定条目。新增一类上下文只改这里 + 两个宿主的读取实现。
+ *
+ * `label` 是 `@` 后面那个词，保持英文——与 Cursor 的 `@Terminals`、TRAE 的
+ * `#Problems` 同一形制（中文只出现在描述与正文里，不出现在提及标记上）。
+ */
 export const IDE_CONTEXT_PROVIDERS: readonly IdeContextProviderInfo[] = [
   {
     id: "terminal",
-    label: "终端",
+    label: "Terminal",
     description: "当前终端最后一条命令的输出",
     blockTitle: "终端输出",
     icon: "codicon-terminal",
   },
   {
     id: "problems",
-    label: "问题",
+    label: "Problems",
     description: "当前文件的问题（错误与警告）",
     blockTitle: "当前文件的问题",
     icon: "codicon-warning",
@@ -87,6 +92,10 @@ export const findIdeContextMentions = (
  * 下拉里的固定条目，按已输入的过滤文本本地筛选——不请求宿主，输入 `@` 立即出现
  * （宿主读取发生在发送时）。路径写成 `ide:<id>`，供选中分支识别，不会与真实
  * 文件路径混淆。
+ *
+ * 匹配范围是「英文名 / 中文描述 / id」三者：`@` 后面展示英文名（见
+ * {@link IDE_CONTEXT_PROVIDERS}），但中文界面里的用户仍会打「终端」「问题」，
+ * 描述文案正好承担这层匹配，不需要单独维护一份别名表。
  */
 export const buildIdeContextSuggestions = (filterText: string): FileItem[] => {
   if (!isIdeContextAvailable()) return [];
@@ -95,6 +104,7 @@ export const buildIdeContextSuggestions = (filterText: string): FileItem[] => {
     (provider) =>
       !filter ||
       provider.label.toLowerCase().includes(filter) ||
+      provider.description.toLowerCase().includes(filter) ||
       provider.id.includes(filter),
   ).map((provider) => ({
     path: `ide:${provider.id}`,

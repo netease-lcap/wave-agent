@@ -124,19 +124,19 @@ describe("IDE 上下文提及", () => {
     vi.clearAllMocks();
   });
 
-  it("下拉里「终端」「问题」排在文件建议之前，选中后插入标记标签", async () => {
+  it("下拉里 Terminal / Problems 排在文件建议之前，选中后插入标记标签", async () => {
     const { vscode } = renderChatApp();
     await openMentionDropdown(vscode);
 
-    expect(dropdownTitles().slice(0, 2)).toEqual(["终端", "问题"]);
+    expect(dropdownTitles().slice(0, 2)).toEqual(["Terminal", "Problems"]);
     expect(dropdownTitles()).toContain("main.ts");
 
-    await selectSuggestion("终端");
+    await selectSuggestion("Terminal");
 
     const tag = document.querySelector(
       '[data-testid="message-input"] [data-ide-context="terminal"]',
     )!;
-    expect(tag).toHaveTextContent("终端");
+    expect(tag).toHaveTextContent("Terminal");
     // 正文里的载体是 `data-ide-context`（`convertToMarkdown` 据此写出裸标记），
     // 内容此刻还不存在，发送时才向宿主取。
     expect(tag.getAttribute("data-ide-context")).toBe("terminal");
@@ -146,7 +146,7 @@ describe("IDE 上下文提及", () => {
   it("发送时向宿主请求内容，回复后拼进消息正文", async () => {
     const { vscode } = renderChatApp();
     await openMentionDropdown(vscode);
-    await selectSuggestion("终端");
+    await selectSuggestion("Terminal");
 
     act(() => {
       fireEvent.click(screen.getByTestId("send-btn"));
@@ -184,7 +184,7 @@ describe("IDE 上下文提及", () => {
   it("宿主读到空/不可用时把说明写进正文，消息照常发出", async () => {
     const { vscode } = renderChatApp();
     await openMentionDropdown(vscode);
-    await selectSuggestion("问题");
+    await selectSuggestion("Problems");
 
     act(() => {
       fireEvent.click(screen.getByTestId("send-btn"));
@@ -239,7 +239,7 @@ describe("IDE 上下文提及", () => {
       expect(element).toBeInTheDocument();
       return element as HTMLElement;
     });
-    expect(chip).toHaveTextContent("终端");
+    expect(chip).toHaveTextContent("Terminal");
     // 标签内部不是展开的正文：内容只在弹窗里出现。
     expect(chip).not.toHaveTextContent("pnpm build");
     expect(document.querySelector('[role="dialog"]')).toBeNull();
@@ -253,6 +253,10 @@ describe("IDE 上下文提及", () => {
       expect(element).toBeInTheDocument();
       return element;
     });
+    // 弹窗标题是英文名，正文首行仍是块标题——两者同名会让同一个词出现两次。
+    expect(
+      dialog.querySelector(".ide-context-preview-title"),
+    ).toHaveTextContent("Terminal");
     expect(dialog).toHaveTextContent("终端输出");
     expect(dialog).toHaveTextContent("$ pnpm build");
 
@@ -290,8 +294,8 @@ describe("IDE 上下文提及", () => {
       await waitFor(() => {
         expect(dropdownTitles()).toContain("main.ts");
       });
-      expect(dropdownTitles()).not.toContain("终端");
-      expect(dropdownTitles()).not.toContain("问题");
+      expect(dropdownTitles()).not.toContain("Terminal");
+      expect(dropdownTitles()).not.toContain("Problems");
     } finally {
       delete win.waveHostType;
     }

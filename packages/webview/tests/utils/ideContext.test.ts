@@ -29,13 +29,23 @@ describe("IDE 上下文：下拉固定条目", () => {
       "problems",
     ]);
     expect(items[0].path).toBe("ide:terminal");
+    // `@` 后面那个词是英文（与 Cursor 的 `@Terminals`、TRAE 的 `#Problems`
+    // 同形制）；中文只落在条目下方的描述里。
+    expect(items.map((item) => item.name)).toEqual(["Terminal", "Problems"]);
   });
 
-  it("按已输入的过滤文本本地筛选（中文标签与英文 id 都能命中）", () => {
+  it("按已输入的过滤文本本地筛选（英文名、中文描述与 id 都能命中）", () => {
     setHost({});
     expect(
-      buildIdeContextSuggestions("终").map((item) => item.ideContext),
+      buildIdeContextSuggestions("Term").map((item) => item.ideContext),
     ).toEqual(["terminal"]);
+    // 中文界面里的用户仍会打中文，命中来自描述文案，不是单独的别名表。
+    expect(
+      buildIdeContextSuggestions("终端").map((item) => item.ideContext),
+    ).toEqual(["terminal"]);
+    expect(
+      buildIdeContextSuggestions("问题").map((item) => item.ideContext),
+    ).toEqual(["problems"]);
     expect(
       buildIdeContextSuggestions("prob").map((item) => item.ideContext),
     ).toEqual(["problems"]);
