@@ -71,19 +71,26 @@ order: 95
 
 ### 用户故事：renderer 内存曲线（优先级：P2）
 
-作为维护者，我希望应用持续记录渲染进程的内存占用，以便判断黑屏是否是「base64 图片 + 全量消息历史」把 renderer 堆撑爆，而不是继续靠猜。
+作为维护者，我希望应用持续记录渲染进程的内存占用**并同时记录它承载的消息量**，以便判断黑屏是否是「会话历史把 renderer 堆撑爆」——而不是只有一堆 MB 数字对不上因果。
 
-**为什么是这个优先级**：单一快照无法证实也无法排除内存压力；只有曲线能回答「崩溃前内存是否一路攀升」。
+**为什么是这个优先级**：单一快照无法证实也无法排除内存压力；只有曲线能回答「崩溃前内存是否一路攀升」。而 MB 数字单独看没有因果——必须和「这个 pane 有多少条消息、多少个 block」一起看，才能看出「堆涨的时候条数是不是也在涨」。
 
-**独立测试**：假时钟驱动内存采样器，验证启动即采一次、之后每 `60000ms` 一次，只取 `type === "Tab"` 的进程，KB 换算为 MB（保留一位小数），窗口销毁后定时器被清除。
+**独立测试**：假时钟驱动内存采样器，验证启动即采一次、之后每 `60000ms` 一次，只取 `type === "Tab"` 的进程，KB 换算为 MB（保留一位小数），窗口销毁后定时器被清除；用假消息列表验证条数与 block 总数的换算；在真实 host 上验证只统计「界面上有 pane 在显示」的会话。
 
 **验收场景**：
 
 1. **假设**主窗口已创建，**当**开始记录内存，**则**必须立即读一次 `app.getAppMetrics()`，之后每 `60000ms` 读一次。
 2. **假设** `getAppMetrics()` 返回多条记录，**当**写日志，**则**只取 `type === "Tab"`（渲染进程）的条目，一行一个进程，含 `pid`、`workingSet`、`peak`，单位 MB（Electron 原始单位为 KB）。
-3. **假设**尚无渲染进程条目（窗口尚未加载），**当**采样，**则**不写空日志。
-4. **假设**窗口关闭，**当**渲染进程随之消失，**则**必须清除定时器，不得继续对一个不存在的进程采样。
-5. **假设** `getAppMetrics()` 抛错，**当**采样，**则**记一条 WARN，下一轮继续（不得让一次失败停掉整条曲线）。
+3. **假设**界面上有 pane 绑定了会话，**当**写这条内存日志，**则**每个渲染进程行必须同时带该窗口所有 pane 的消息总数与 block 总数（`messages=<n> blocks=<n>`），并另起一行按 pane 给出明细：`pane=`、`session=`、`messages=`、`blocks=` 与该会话最新上下文用量 `tokens=`（压缩只折叠 API 上下文，`tokens` 平稳而条数/block 数持续上涨即「展示流无界」的判据）。
+4. **假设**尚无 pane 绑定会话，**当**采样，**则**只写内存行、不写计数（不得写 `messages=0` 冒充「没有消息」）。
+5. **假设**尚无渲染进程条目（窗口尚未加载），**当**采样，**则**不写空日志。
+6. **假设**窗口关闭，**当**渲染进程随之消失，**则**必须清除定时器，不得继续对一个不存在的进程采样。
+7. **假设** `getAppMetrics()` 抛错，**当**采样，**则**记一条 WARN，下一轮继续（不得让一次失败停掉整条曲线）。
+8. **假设**消息量统计抛错，**当**采样，**则**仍写出内存行并记一条 WARN——内存读数不得因为计数失败而丢失。
+9. **假设**某个会话的 agent 已不被任何 pane 显示（后台会话），**当**统计消息量，**则**不得计入：它的消息从未推给渲染进程，计进去会让曲线与 renderer 堆脱钩。
+10. **假设**崩溃发生，**当**写崩溃日志，**则** `lastMemory` 必须沿用同一份采样结果（含计数），使崩溃那一刻的内存与消息量同时可见。
+
+> **本条只做可观测。** 用户访谈（很少截图 ⇒ 排除 base64 图片；单个对话用了约 6 周、一直在压缩）＋ 代码核查指向：压缩只折叠发给模型的上下文（`this.messages`），UI 展示流 `displayMessages` 永保留全量历史，而桌面端 `setInitialState` 把整份列表原样推给渲染进程、没有切片 ⇒ 嫌疑人是「消息条数 + tool 输出全文」。**是否裁剪展示流 / 给 webview 加窗口是行为变更，需要产品拍板，属独立议题**，不在本规格范围内（见「非目标」）。
 
 ---
 
@@ -144,6 +151,7 @@ order: 95
 - **上传崩溃报告 / 接入崩溃平台**：无后端、隐私未拍板；转储只留在本地，由用户通过「导出日志」带出。
 - **zip 格式**：不引入 zip 依赖；`.tar.gz` 在 macOS Finder 与 Windows 10+ 右键解压均可直接打开。
 - **该 native 崩溃（`cppgc` 写屏障）本身的修复**：本规格只提供自愈入口与取证能力，根因另案分析（需要收集到转储与内存曲线之后再定位）。
+- **裁剪会话展示流 / 给 webview 加消息窗口**：内存曲线指向「展示流无界」这一嫌疑，但裁剪 `displayMessages`、给 `setInitialState` 加分页或给 webview 加虚拟窗口都是**行为变更**（会影响用户看到的历史、压缩语义、恢复与搜索），需要产品拍板，属后续独立议题。本规格只落地计数，不动任何裁剪行为。
 - **修改 webview / CLI / agent-sdk 行为**：全部改动限于 `packages/desktop` 主进程。
 
 ## 取证日志格式（用于事后阅读 `desktop.log`）
@@ -151,12 +159,15 @@ order: 95
 ```text
 [2026-10-22T07:41:02.113Z] [INFO] [desktop] crash evidence dirs dumps=/Users/x/Library/Application Support/CodeWave IDE/Crashpad logs=/Users/x/.wave/logs
 [2026-10-22T07:41:02.114Z] [WARN] [desktop] previous run left a crash dump id=3a1b… date=2026-10-20T04:11:31.000Z dir=/Users/x/Library/Application Support/CodeWave IDE/Crashpad
-[2026-10-22T07:42:00.001Z] [INFO] renderer memory pid=41337 workingSet=812.4MB peak=1204.9MB
+[2026-10-22T07:42:00.001Z] [INFO] renderer memory pid=41337 workingSet=812.4MB peak=1204.9MB messages=1842 blocks=9310
+session messages pane=pane-1 session=3f2a… messages=1842 blocks=9310 tokens=152000
 [2026-10-22T09:14:07.532Z] [WARN] [desktop] renderer unresponsive url=file:///…/webview/index.html
 [2026-10-22T09:14:22.538Z] [WARN] renderer unresponsive: JS stack samples (every 1000ms, up to 15000ms) window=main url=file:///…/webview/index.html
 <9> at renderMessageList (chat.js:191:22)
     at commitHookEffectListMount (chat.js:42:11)
 <5> at markMessageDirty (chat.js:301:7)
 Total Samples: 14
-[2026-10-22T09:14:24.010Z] [ERROR] [desktop] renderer process gone reason=crashed exitCode=133 url=file:///…/webview/index.html lastMemory=renderer memory pid=41337 workingSet=2981.2MB peak=3022.8MB
+[2026-10-22T09:14:24.010Z] [ERROR] [desktop] renderer process gone reason=crashed exitCode=133 url=file:///…/webview/index.html lastMemory=renderer memory pid=41337 workingSet=2981.2MB peak=3022.8MB messages=1842 blocks=9310; session messages pane=pane-1 session=3f2a… messages=1842 blocks=9310 tokens=152000
 ```
+
+读法：`tokens`（API 上下文，压缩后会回落）与 `messages`/`blocks`（展示流，只增不减）并排看——前者平稳而后者持续上涨，就是「压缩折叠了上下文、但渲染进程扛着全量展示流」的证据；两者一起涨则说明上下文本身也在膨胀。

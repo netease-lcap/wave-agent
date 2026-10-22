@@ -434,7 +434,12 @@ function createWindow(): void {
   // streams that only make sense together: a memory curve every minute, and JS
   // stack samples during a freeze. Neither reloads anything — recovery is the
   // user's choice in the dialog (see crashRecovery.ts).
-  const memorySampler = createMemorySampler();
+  const memorySampler = createMemorySampler({
+    // Message volume rides along so the curve can answer "is the heap driven by
+    // conversation length?" (6-week sessions keep the UI display stream, and
+    // compaction only folds the API context).
+    getMessageStats: () => host?.getMessageStats() ?? [],
+  });
   memorySampler.start();
   attachCrashRecovery(win, { lastMemory: () => memorySampler.lastLine() });
 

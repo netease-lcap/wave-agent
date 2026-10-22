@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { app } from "electron";
+import type { Message } from "wave-agent-sdk/types";
 import {
   createMemorySampler,
+  countMessageStats,
+  formatMemoryBlock,
   kbToMb,
   rendererMemoryFromMetrics,
   MEMORY_SAMPLE_INTERVAL_MS,
+  type SessionMessageStat,
 } from "../src/main/memorySampler.js";
 
 const processMetric = (
@@ -18,6 +22,24 @@ const processMetric = (
     pid,
     memory: { workingSetSize, peakWorkingSetSize },
   }) as unknown as Electron.ProcessMetric;
+
+const message = (id: string, blocks: number): Message =>
+  ({
+    id,
+    role: "assistant",
+    timestamp: "2026-10-22T00:00:00.000Z",
+    blocks: Array.from({ length: blocks }, () => ({
+      type: "text",
+      content: "x",
+    })),
+  }) as unknown as Message;
+
+const paneStat = (
+  paneId: string,
+  messages: number,
+  blocks: number,
+  extra: Partial<SessionMessageStat> = {},
+): SessionMessageStat => ({ paneId, messages, blocks, ...extra });
 
 describe("memorySampler", () => {
   beforeEach(() => {
@@ -122,5 +144,69 @@ describe("memorySampler", () => {
     // The timer chain survives a failed reading.
     expect(getMetrics).toHaveBeenCalledTimes(2);
     sampler.stop();
+  });
+
+  it("counts messages and every block inside them", () => {
+    // A single assistant turn can carry dozens of blocks (one per tool call +
+    // its full output) — the block total is the sharper growth signal.
+    expect(
+      countMessageStats([
+        message("m1", 12),
+        message("m2", 3),
+        message("m3", 0),
+      ]),
+    ).toEqual({ messages: 3, blocks: 15 });
+    expect(countMessageStats([])).toEqual({ messages: 0, blocks: 0 });
+  });
+
+  it("carries the message volume on the memory line", () => {
+    const log = { block: vi.fn(), warn: vi.fn() };
+    const sampler = createMemorySampler({
+      log,
+      getMetrics: () => [processMetric("Tab", 111, 1024 * 2048, 1024 * 4096)],
+      getMessageStats: () => [
+        paneStat("pane-1", 1842, 9310, { sessionId: "s1", tokens: 152000 }),
+        paneStat("pane-2", 500, 2800, { sessionId: "s2", tokens: 98000 }),
+      ],
+    });
+
+    sampler.start();
+    sampler.stop();
+
+    expect(log.block.mock.calls[0][1]).toEqual([
+      "renderer memory pid=111 workingSet=2048MB peak=4096MB messages=2342 blocks=12110",
+      "session messages pane=pane-1 session=s1 messages=1842 blocks=9310 tokens=152000",
+      "session messages pane=pane-2 session=s2 messages=500 blocks=2800 tokens=98000",
+    ]);
+    // The crash log's lastMemory must carry the same correlation.
+    expect(sampler.lastLine()).toContain("messages=2342 blocks=12110");
+  });
+
+  it("omits counts when no pane is bound yet", () => {
+    expect(
+      formatMemoryBlock([{ pid: 1, workingSetMb: 10, peakWorkingSetMb: 20 }]),
+    ).toEqual(["renderer memory pid=1 workingSet=10MB peak=20MB"]);
+  });
+
+  it("still logs the memory reading when the volume getter throws", () => {
+    const log = { block: vi.fn(), warn: vi.fn() };
+    const sampler = createMemorySampler({
+      log,
+      getMetrics: () => [processMetric("Tab", 111, 1024, 1024)],
+      getMessageStats: () => {
+        throw new Error("host disposed");
+      },
+    });
+
+    sampler.start();
+    sampler.stop();
+
+    expect(log.warn).toHaveBeenCalledWith(
+      "[desktop] message volume sample failed:",
+      expect.any(Error),
+    );
+    expect(log.block.mock.calls[0][1]).toEqual([
+      "renderer memory pid=111 workingSet=1MB peak=1MB",
+    ]);
   });
 });
