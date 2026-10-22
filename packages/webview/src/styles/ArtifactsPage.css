@@ -51,26 +51,49 @@
   min-width: 0;
 }
 
+/* 视图切换分段器（默认视图 / 自定义视图）：设计师 2026-10-22 评论「参考（插件筛选）
+   这个 tab 样式，选项宽度也保持一致，按照宽的来」→ 整组照 .settings-plugin-filters
+   的配方（静态轨道 = --cc-fill + 3px 内衬 + r8；段高 26 = 32 轨道；激活段 =
+   --cc-bg-segment-active 面 + --cc-text-segment-active 字 + 600 字重；hover 只提字色、
+   不再给填充面；去掉原来的投影）。
+   选项等宽：两个标签里「自定义视图」是宽者（5 个全角字），段宽钉成 5em + 左右内衬
+   12×2 = 94px，两段逐值相同（汉字在全角字号下 1em 一格，实测 13px 时 5×13 + 28 = 93
+   与渲染值一致，故 14px 下为 94）。 */
 .artifacts-segment {
   display: inline-flex;
-  padding: 2px;
+  align-items: center;
+  gap: 3px;
+  height: 32px;
+  padding: 3px;
+  box-sizing: border-box;
   border-radius: 8px;
-  background: rgba(127, 127, 127, 0.12);
+  background: var(--cc-fill, var(--vscode-toolbar-hoverBackground));
 }
 
 .artifacts-segment-btn {
-  padding: 5px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  min-width: calc(5em + 24px);
+  padding: 0 12px;
   border: none;
   border-radius: 6px;
   background: transparent;
-  color: inherit;
-  font-size: 13px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
 }
 
+.artifacts-segment-btn:hover {
+  /* 与 .settings-plugin-chip 同口径：轨道上只提文字色，不叠第二层填充面 */
+  color: var(--vscode-foreground);
+}
+
 .artifacts-segment-btn.is-active {
-  background: var(--vscode-editor-background, #ffffff);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  color: var(--cc-text-segment-active, var(--vscode-button-foreground));
+  background: var(--cc-bg-segment-active, var(--vscode-button-background));
   font-weight: 600;
 }
 
