@@ -61,6 +61,26 @@ function hasWorktreeHook(
 }
 
 /**
+ * Thrown when no `WorktreeCreate` hook produced a worktree path.
+ *
+ * Carries each failed hook's own output next to the aggregated message, because
+ * the message is `<command>: <output>` — and a command may itself contain ": ",
+ * so a caller cannot recover the hook's diagnosis by splitting the message. The
+ * tool surfaces `outputs` as its one-line `error`; the aggregated message stays
+ * the authoritative full text.
+ */
+export class WorktreeCreateHookError extends Error {
+  constructor(
+    message: string,
+    /** Failed hooks' stderr (or stdout), in hook order. Empty strings dropped. */
+    readonly outputs: string[],
+  ) {
+    super(message);
+    this.name = "WorktreeCreateHookError";
+  }
+}
+
+/**
  * Execute WorktreeCreate hooks and return the worktree path from hook stdout.
  *
  * The first successful hook (exit code 0) with non-empty stdout provides the
@@ -87,11 +107,15 @@ export async function executeWorktreeCreateHook(
   );
 
   if (!successful) {
-    const failedOutputs = results
-      .filter((r) => !r.success)
-      .map((r) => `${r.command}: ${r.stderr || r.stdout || "no output"}`);
-    throw new Error(
+    const failed = results.filter((r) => !r.success);
+    const failedOutputs = failed.map(
+      (r) => `${r.command}: ${r.stderr || r.stdout || "no output"}`,
+    );
+    throw new WorktreeCreateHookError(
       `WorktreeCreate hook failed: ${failedOutputs.join("; ") || "no successful output"}`,
+      failed
+        .map((r) => (r.stderr || r.stdout || "").trim())
+        .filter((output) => output.length > 0),
     );
   }
 

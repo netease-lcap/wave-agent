@@ -124,7 +124,11 @@ describe("exitWorktreeTool", () => {
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe("Worktree has uncommitted changes");
+      // `error` is the one line a collapsed block shows, so it carries both what
+      // is at stake and the way out.
+      expect(result.error).toBe(
+        "Worktree has 3 uncommitted files and 2 commits — retry with discard_changes: true",
+      );
       expect(result.content).toContain("3 uncommitted files");
       expect(result.content).toContain("2 commits");
     });
@@ -138,7 +142,9 @@ describe("exitWorktreeTool", () => {
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe("Could not verify worktree state");
+      expect(result.error).toBe(
+        "Could not verify worktree state — retry with discard_changes: true",
+      );
     });
 
     it("should proceed with removal when discard_changes is true", async () => {
@@ -272,7 +278,9 @@ describe("exitWorktreeTool", () => {
         );
 
         expect(result.success).toBe(false);
-        expect(result.error).toBe("Worktree has uncommitted changes");
+        expect(result.error).toBe(
+          "Worktree has 2 uncommitted files — retry with discard_changes: true",
+        );
         expect(worktreeHooks.executeWorktreeRemoveHook).not.toHaveBeenCalled();
       });
 
@@ -285,7 +293,9 @@ describe("exitWorktreeTool", () => {
         );
 
         expect(result.success).toBe(false);
-        expect(result.error).toBe("Could not verify worktree state");
+        expect(result.error).toBe(
+          "Could not verify worktree state — retry with discard_changes: true",
+        );
         expect(worktreeHooks.executeWorktreeRemoveHook).not.toHaveBeenCalled();
       });
     });

@@ -114,26 +114,37 @@ export const exitWorktreeTool: ToolPlugin = {
         return {
           success: false,
           content: `Could not verify worktree state at ${session.worktreePath}. Refusing to remove without explicit confirmation. Re-invoke with discard_changes: true to proceed — or use action: "keep" to preserve the worktree.`,
-          error: "Could not verify worktree state",
+          // The collapsed block shows this line and nothing else, so it has to
+          // name the way out: the bare tag left the model and the user without
+          // `discard_changes`, and the only visible alternative was "give up and
+          // keep the worktree".
+          error:
+            "Could not verify worktree state — retry with discard_changes: true",
         };
       }
       const { changedFiles, commits } = summary;
       if (changedFiles > 0 || commits > 0) {
-        const parts: string[] = [];
+        const counts: string[] = [];
         if (changedFiles > 0) {
-          parts.push(
+          counts.push(
             `${changedFiles} uncommitted ${changedFiles === 1 ? "file" : "files"}`,
           );
         }
         if (commits > 0) {
-          parts.push(
-            `${commits} ${commits === 1 ? "commit" : "commits"} on ${session.worktreeBranch ?? "the worktree branch"}`,
-          );
+          counts.push(`${commits} ${commits === 1 ? "commit" : "commits"}`);
         }
+        const branchSuffix =
+          commits > 0
+            ? ` on ${session.worktreeBranch ?? "the worktree branch"}`
+            : "";
         return {
           success: false,
-          content: `Worktree has ${parts.join(" and ")}. Removing will discard this work permanently. Confirm with the user, then re-invoke with discard_changes: true — or use action: "keep" to preserve the worktree.`,
-          error: "Worktree has uncommitted changes",
+          content: `Worktree has ${counts.join(" and ")}${branchSuffix}. Removing will discard this work permanently. Confirm with the user, then re-invoke with discard_changes: true — or use action: "keep" to preserve the worktree.`,
+          // Same reason as the unverifiable case above, plus what is at stake:
+          // the one visible line says what would be lost and how to proceed. The
+          // branch name stays in `content` — it is already on screen elsewhere
+          // and would push this single line past readable width.
+          error: `Worktree has ${counts.join(" and ")} — retry with discard_changes: true`,
         };
       }
     }

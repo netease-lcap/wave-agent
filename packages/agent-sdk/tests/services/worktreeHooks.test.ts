@@ -5,6 +5,7 @@ import {
   hasWorktreeRemoveHook,
   executeWorktreeCreateHook,
   executeWorktreeRemoveHook,
+  WorktreeCreateHookError,
 } from "@/services/worktreeHooks.js";
 import { executeCommand } from "@/services/hook.js";
 import { getGitMainRepoRoot } from "@/utils/gitUtils.js";
@@ -137,13 +138,19 @@ describe("worktreeHooks", () => {
         result({ success: false, stderr: "boom" }),
       );
 
-      await expect(
-        executeWorktreeCreateHook(
-          "feature",
-          createConfig(["hook-a"]),
-          baseContext,
-        ),
-      ).rejects.toThrow("WorktreeCreate hook failed: hook-a: boom");
+      const error = await executeWorktreeCreateHook(
+        "feature",
+        createConfig(["hook-a"]),
+        baseContext,
+      ).catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(WorktreeCreateHookError);
+      expect((error as Error).message).toBe(
+        "WorktreeCreate hook failed: hook-a: boom",
+      );
+      // The hook's own output rides along so the tool can show the diagnosis
+      // without re-splitting `<command>: <output>` (a command may contain ": ").
+      expect((error as WorktreeCreateHookError).outputs).toEqual(["boom"]);
     });
 
     it("blocks creation when hooks succeed but emit no stdout", async () => {

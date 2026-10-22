@@ -17,7 +17,43 @@ import { logger } from "../utils/globalLogger.js";
 import {
   executeWorktreeCreateHook,
   hasWorktreeCreateHook,
+  WorktreeCreateHookError,
 } from "../services/worktreeHooks.js";
+
+/**
+ * One-line diagnosis of a failed `WorktreeCreate` hook, for the tool's `error`
+ * field — the only line a collapsed tool block shows in every host.
+ *
+ * Two things keep a naive cut from being useful:
+ *
+ * - The aggregated message leads with `<command>: `, which is already implied
+ *   (this is the worktree tool) and eats the single line's width.
+ * - A hook's stderr usually puts interpreter noise before the line that says
+ *   what went wrong: `node:internal/modules/cjs/loader:1215`, `throw err;`,
+ *   `^`, then `Error: Cannot find module '/…/worktree-create.mjs'`.
+ *
+ * So the hook's own output is preferred over the message, the first line that
+ * reads like an error wins (falling back to the first non-empty line), and the
+ * result is clipped to a single line's worth: this field must never make the
+ * collapsed block grow.
+ */
+function hookDiagnosis(error: unknown, maxLength = 80): string {
+  const output =
+    error instanceof WorktreeCreateHookError
+      ? error.outputs.join("\n")
+      : error instanceof Error
+        ? error.message.trim()
+        : "";
+  const lines = output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const diagnosis = lines.find((line) => /error/i.test(line)) ?? lines[0];
+  if (!diagnosis) return "WorktreeCreate hook failed";
+  return diagnosis.length <= maxLength
+    ? diagnosis
+    : `${diagnosis.slice(0, maxLength - 1)}…`;
+}
 
 export const ENTER_WORKTREE_TOOL_PROMPT = `Use this tool ONLY when the user explicitly asks to work in a worktree. This tool creates an isolated git worktree and switches the current session into it.
 
@@ -152,7 +188,7 @@ export const enterWorktreeTool: ToolPlugin = {
         return {
           success: false,
           content: `Failed to create worktree: ${(error as Error).message}`,
-          error: "WorktreeCreate hook failed",
+          error: hookDiagnosis(error),
         };
       }
     }
