@@ -33,6 +33,7 @@ import { AsyncWorkRegistry } from "../utils/asyncWorkRegistry.js";
 import type { PermissionManager } from "./permissionManager.js";
 import type { PermissionMode } from "../types/permissions.js";
 import { ConfigurationService } from "../services/configurationService.js";
+import { supportsVision } from "../utils/modelCapabilities.js";
 import {
   countWorktreeChanges,
   createWorktree,
@@ -311,13 +312,71 @@ export class SubagentManager {
         "SubagentManager not initialized. Call loadConfigurations() first.",
       );
     }
-    return this.cachedConfigurations;
+    const mainModelReadsImages = this.mainModelSupportsVision();
+    return this.cachedConfigurations.filter(
+      (config) => !this.isRedundantVisionFallback(config, mainModelReadsImages),
+    );
+  }
+
+  /**
+   * Whether the session's main model reads images itself. Declarative and
+   * opt-out — the same `capabilities.vision` the image conversion path reads, so
+   * undeclared means "sees images directly".
+   *
+   * Resolved live rather than cached on purpose: the model can be switched
+   * mid-session (`Agent.setModel`) or hot-reloaded from settings, and the
+   * builtin vision subagent's availability has to follow the model actually in
+   * use, not the one current when the configurations were scanned.
+   */
+  private mainModelSupportsVision(): boolean {
+    const configurationService = this.container.get<ConfigurationService>(
+      "ConfigurationService",
+    );
+    return supportsVision(
+      configurationService?.resolveModelConfig?.(undefined, undefined)
+        ?.capabilities,
+    );
+  }
+
+  /**
+   * The builtin `vision` subagent (`model: visionModel`, see
+   * `builtin/subagents.ts`) exists only as a fallback for a main model that
+   * cannot read images. When the main model can, that entry goes away: it would
+   * add a pointless delegation target to every turn's tool description and
+   * invite a needless round-trip.
+   *
+   * Scoped to `builtin` on purpose — a user-written subagent that names a vision
+   * model is an explicit choice and is never dropped.
+   */
+  private isRedundantVisionFallback(
+    config: SubagentConfiguration,
+    mainModelReadsImages: boolean,
+  ): boolean {
+    return (
+      config.scope === "builtin" &&
+      config.model === "visionModel" &&
+      mainModelReadsImages
+    );
   }
 
   /**
    * Find subagent by exact name match
    */
   async findSubagent(name: string) {
+    const configuration = await this.resolveSubagent(name);
+    if (!configuration) return configuration;
+    // Same gate as the list: a subagent that is not offered must not be
+    // spawnable by name either, or "not enabled" would be a lie — the builtin
+    // definition file is always on disk.
+    return this.isRedundantVisionFallback(
+      configuration,
+      this.mainModelSupportsVision(),
+    )
+      ? null
+      : configuration;
+  }
+
+  private async resolveSubagent(name: string) {
     // Check cached configurations first (includes plugin agents)
     if (this.cachedConfigurations !== null) {
       const cached = this.cachedConfigurations.find(

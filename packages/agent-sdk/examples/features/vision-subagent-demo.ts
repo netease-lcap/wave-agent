@@ -24,8 +24,11 @@
  *   - WAVE_VISION_MODEL must be set (settings.json env or environment) to a
  *     vision-capable model, otherwise the vision subagent is not registered.
  *   - The MAIN model — the agent's configured one (`WAVE_MODEL` or settings.json)
- *     — should NOT be vision-capable, so the delegation path is exercised. If it
- *     can see the image directly, the subagent is never invoked.
+ *     — must DECLARE that it cannot see images:
+ *     `"models": { "<main model>": { "capabilities": { "vision": false } } }`.
+ *     The builtin `vision` subagent exists only as a fallback for such a model;
+ *     an undeclared model counts as vision-capable and the subagent is not
+ *     offered. The demo checks this up front and tells you which side is off.
  *
  * Run: cd packages/agent-sdk && pnpm exec tsx examples/features/vision-subagent-demo.ts
  */
@@ -175,9 +178,10 @@ async function main() {
     console.log(`🖼️  Generated test image: ${imagePath}\n`);
 
     const agent = await Agent.create({
-      // No `model:` override — the configured main model must be vision-less so
-      // the delegation path is exercised; the vision subagent runs on
-      // WAVE_VISION_MODEL (e.g. qwen3.8-max).
+      // No `model:` override — the configured main model must be declared
+      // vision-less (`capabilities.vision: false`) so the delegation path is
+      // exercised; the vision subagent runs on WAVE_VISION_MODEL (e.g.
+      // qwen3.8-max).
       callbacks: {
         onToolBlockUpdated: (params) => {
           if (params.stage === "running") {
@@ -219,6 +223,23 @@ async function main() {
     });
 
     try {
+      // 0. The vision subagent is a fallback: it is only registered when
+      //    WAVE_VISION_MODEL is set AND the main model declares
+      //    capabilities.vision: false. Say which side is off instead of running
+      //    a delegateless conversation.
+      const visionAvailable = agent
+        .getSubagentConfigurations()
+        .some((config) => config.name === "vision");
+      if (!visionAvailable) {
+        console.error(
+          "❌ The builtin `vision` subagent is not available in this session.\n" +
+            "   Both are required:\n" +
+            "     • WAVE_VISION_MODEL set to a vision-capable model\n" +
+            '     • the main model declaring "capabilities": { "vision": false } in settings.json\'s `models`',
+        );
+        process.exit(1);
+      }
+
       console.log("💬 Sending image to the main agent (non-vision model)...\n");
 
       // 2. Share the image the same way a user pastes one: as a file path.
