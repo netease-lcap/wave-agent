@@ -70,7 +70,6 @@ import {
   saveArtifactShare,
   revokeArtifact,
   searchArtifactMembers,
-  publishArtifactHtml,
   type ArtifactShareMode,
 } from "wave-agent-sdk";
 import {
@@ -500,14 +499,6 @@ export class AgentBridge {
           (p.search as string | undefined) ?? "",
           p.limit as number | undefined,
         );
-      case "artifactPublish":
-        return this.publishArtifactFile({
-          filePath: p.filePath as string,
-          title: p.title as string | undefined,
-          url: p.url as string | undefined,
-          baseVersion: p.baseVersion as number | undefined,
-          force: p.force as boolean | undefined,
-        });
 
       // ── Memory files (settings UI — user-level ~/.wave/AGENTS.md and
       //    project-level <workdir>/AGENTS.md) ──
@@ -2414,51 +2405,6 @@ export class AgentBridge {
       billing?: unknown;
       apiQuota?: { limit: number | null; used: number } | null;
     };
-  }
-
-  /**
-   * 预览面板的「发布」：把磁盘上的文件内容发布成 artifact。
-   *
-   * 只做两件事——读文件、交给 SDK 的发布函数；文件读取失败与超限在这里
-   * 就地变成可展示的错误（`ok: false`），不抛给 JSON-RPC 层。
-   */
-  private async publishArtifactFile(input: {
-    filePath: string;
-    title?: string;
-    url?: string;
-    baseVersion?: number;
-    force?: boolean;
-  }): Promise<
-    | { ok: true; data: { url: string; slug: string; version: number } }
-    | {
-        ok: false;
-        error: string;
-        authRequired?: boolean;
-        conflict?: boolean;
-      }
-  > {
-    const { filePath } = input;
-    if (!filePath) return { ok: false, error: "文件路径为空" };
-    let html: string;
-    try {
-      const stat = await readFile(filePath);
-      if (stat.byteLength > 16 * 1024 * 1024) {
-        return { ok: false, error: "文件超过 16MB，无法发布" };
-      }
-      html = stat.toString("utf-8");
-    } catch (error) {
-      return {
-        ok: false,
-        error: `读取文件失败：${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
-    return publishArtifactHtml({
-      html,
-      title: input.title ?? basename(filePath),
-      url: input.url,
-      baseVersion: input.baseVersion,
-      force: input.force,
-    });
   }
 
   private async login(

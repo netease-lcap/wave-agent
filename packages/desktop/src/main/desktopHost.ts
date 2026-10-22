@@ -1223,7 +1223,6 @@ export class DesktopHost {
         error: string;
         authRequired?: boolean;
         notFound?: boolean;
-        conflict?: boolean;
       }
   > {
     try {
@@ -1237,7 +1236,6 @@ export class DesktopHost {
             error: string;
             authRequired?: boolean;
             notFound?: boolean;
-            conflict?: boolean;
           };
     } catch (error) {
       return {
@@ -4091,44 +4089,6 @@ export class DesktopHost {
                 error: result.error,
                 authRequired: result.authRequired,
                 notFound: result.notFound,
-              },
-        );
-        break;
-      }
-
-      case "desktopArtifactPublish": {
-        const filePath = msg.filePath as string;
-        // 同一个本地文件再次发布 → 更新同一条创作（带上一次的 url 与版本做
-        // 基线；服务端 409 时回 conflict，由弹层给「强制覆盖」）。
-        const prior = this.configStore.getArtifactPublish(filePath);
-        const result = await this.requestArtifact<{
-          url: string;
-          slug: string;
-          version: number;
-        }>("artifactPublish", {
-          filePath,
-          title: msg.title as string | undefined,
-          url: prior?.url,
-          baseVersion: prior?.version,
-          force: msg.force as boolean | undefined,
-        });
-        if (result.ok)
-          this.configStore.setArtifactPublish(filePath, result.data);
-        this.postMessage(
-          result.ok
-            ? {
-                command: "desktopArtifactPublish",
-                requestId: msg.requestId,
-                ok: true,
-                url: result.data.url,
-                slug: result.data.slug,
-              }
-            : {
-                command: "desktopArtifactPublish",
-                requestId: msg.requestId,
-                error: result.error,
-                authRequired: result.authRequired,
-                conflict: result.conflict,
               },
         );
         break;

@@ -9,7 +9,6 @@ import { PanelKindIcon } from "./PanelKindIcon";
 import { PaneShell } from "./PaneShell";
 import { Tooltip } from "./Tooltip";
 import { readRootCssVar } from "../utils/cssVars";
-import { useHostMessage } from "../utils/useHostMessage";
 
 /**
  * Desktop-only preview pane: renders localhost dev servers in a sandboxed
@@ -183,12 +182,6 @@ export interface PreviewPaneProps {
    * `visibility:hidden` 隐藏，焦点落在隐藏输入框上会把用户的输入框顶掉）。
    */
   parked?: boolean;
-  /**
-   * 这份预览来自一个本地 HTML 文件时的源路径（preview tab 的
-   * `previewFilePath`）。只有它存在时工具条才出现「发布」——localhost dev
-   * server 页面拿不到可发布的内容（spec desktop/desktop-artifacts.md 场景 6）。
-   */
-  filePath?: string;
 }
 
 export const PreviewPane: React.FC<PreviewPaneProps> = ({
@@ -201,7 +194,6 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
   onTitleChange,
   onNavigate,
   parked = false,
-  filePath,
 }) => {
   // URL the address bar shows — "" while empty (blank pane awaiting an
   // address); follows in-guest navigation via did-navigate.
@@ -595,64 +587,6 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
     vscode.postMessage({ command: "openExternal", url: currentUrlRef.current });
   };
 
-  // ── 发布为 artifact（spec desktop/desktop-artifacts.md「预览窗口发布」）──
-  // 只有本地 HTML 文件预览能发布：localhost dev server 页面拿不到可发布的内容。
-  const publishable =
-    typeof filePath === "string" && /\.html?$/i.test(filePath) && !parked;
-  const [publishOpen, setPublishOpen] = useState(false);
-  const [publishing, setPublishing] = useState(false);
-  const [publishError, setPublishError] = useState<string | null>(null);
-  const [publishConflict, setPublishConflict] = useState(false);
-  const [publishResult, setPublishResult] = useState<{
-    url: string;
-    slug: string;
-  } | null>(null);
-  const publishRequestRef = useRef<string | null>(null);
-
-  const requestPublish = useCallback(
-    (force: boolean) => {
-      if (!filePath) return;
-      const requestId = `artifact-pub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      publishRequestRef.current = requestId;
-      setPublishing(true);
-      setPublishError(null);
-      setPublishConflict(false);
-      vscode.postMessage({
-        command: "desktopArtifactPublish",
-        requestId,
-        filePath,
-        title: filePath.split(/[\\/]/).pop(),
-        force,
-      });
-    },
-    [filePath, vscode],
-  );
-
-  useHostMessage((message) => {
-    const data = message as {
-      command?: string;
-      requestId?: string;
-      ok?: boolean;
-      url?: string;
-      slug?: string;
-      error?: string;
-      authRequired?: boolean;
-      conflict?: boolean;
-    };
-    if (data.command !== "desktopArtifactPublish") return;
-    if (data.requestId !== publishRequestRef.current) return;
-    setPublishing(false);
-    if (data.ok && data.url && data.slug) {
-      setPublishResult({ url: data.url, slug: data.slug });
-      setPublishOpen(false);
-      return;
-    }
-    setPublishError(
-      data.authRequired ? "请先登录后再发布" : (data.error ?? "发布失败"),
-    );
-    setPublishConflict(data.conflict === true);
-  });
-
   // The pane's own element: the fit pass and the ResizeObserver below measure
   // its real width (the controlled `width` prop misses CSS-only changes such as
   // preview fullscreen / a hidden tab stack coming back).
@@ -725,20 +659,6 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
               <OpenBrowserIcon className="preview-pane-icon" />
             </button>
           </Tooltip>
-          {publishable && (
-            <button
-              type="button"
-              className="preview-pane-publish-btn"
-              onClick={() => {
-                setPublishError(null);
-                setPublishConflict(false);
-                setPublishOpen(true);
-              }}
-              data-testid="preview-publish"
-            >
-              发布
-            </button>
-          )}
         </>
       }
       betweenToolbarAndBody={
@@ -781,90 +701,6 @@ export const PreviewPane: React.FC<PreviewPaneProps> = ({
             }}
           >
             重试
-          </button>
-        </div>
-      )}
-      {publishOpen && (
-        <div
-          className="preview-publish-backdrop"
-          onClick={() => !publishing && setPublishOpen(false)}
-        >
-          <div
-            className="preview-publish-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label="发布为 Artifact"
-            data-testid="preview-publish-dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="preview-publish-title">发布为 Artifact</div>
-            <p>发布后会在创作集列表中展示，并生成可分享的链接。</p>
-            {publishError && (
-              <div
-                className="preview-publish-error"
-                data-testid="preview-publish-error"
-              >
-                <span>{publishError}</span>
-                {publishConflict && (
-                  <button
-                    type="button"
-                    className="preview-pane-button"
-                    onClick={() => requestPublish(true)}
-                    data-testid="preview-publish-force"
-                  >
-                    强制覆盖
-                  </button>
-                )}
-              </div>
-            )}
-            <div className="preview-publish-actions">
-              <button
-                type="button"
-                className="preview-pane-button"
-                onClick={() => setPublishOpen(false)}
-                disabled={publishing}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                className="preview-pane-publish-btn"
-                onClick={() => requestPublish(false)}
-                disabled={publishing}
-                data-testid="preview-publish-confirm"
-              >
-                {publishing ? "发布中…" : "发布"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {publishResult && (
-        <div
-          className="preview-publish-toast"
-          role="status"
-          data-testid="preview-publish-toast"
-        >
-          <span>已发布</span>
-          <button
-            type="button"
-            className="preview-pane-button"
-            onClick={() => {
-              vscode.postMessage({
-                command: "openExternal",
-                url: publishResult.url,
-              });
-            }}
-          >
-            打开
-          </button>
-          <button
-            type="button"
-            className="preview-pane-button"
-            onClick={() => setPublishResult(null)}
-            aria-label="关闭"
-          >
-            ×
           </button>
         </div>
       )}
