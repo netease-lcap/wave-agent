@@ -88,13 +88,15 @@ describe("File Upload Feature", () => {
       });
     });
 
-    // Wait for suggestions to render
+    // Wait for suggestions to render。固定条目（@终端/@问题）另算一类，
+    // 这里只看文件建议这一侧。
+    const fileItems = () =>
+      document.querySelectorAll(".suggestion-item:not([data-ide-context])");
     await waitFor(() => {
-      const items = document.querySelectorAll(".suggestion-item");
-      expect(items.length).toBe(1);
+      expect(fileItems().length).toBe(1);
     });
 
-    const suggestionItems = document.querySelectorAll(".suggestion-item");
+    const suggestionItems = fileItems();
     // Only the returned suggestion should render, no extra upload option.
     expect(suggestionItems.length).toBe(1);
 

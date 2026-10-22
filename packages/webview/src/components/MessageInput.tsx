@@ -5,9 +5,21 @@ import React, {
   useRef,
   useImperativeHandle,
   forwardRef,
+  useMemo,
   KeyboardEvent,
 } from "react";
 import { convertToMarkdown } from "../utils/messageUtils";
+import {
+  assembleIdeContextBlocks,
+  buildIdeContextSuggestions,
+  findIdeContextMentions,
+  ideContextMarker,
+  ideContextProviderInfo,
+} from "../utils/ideContext";
+import type {
+  IdeContextProvider,
+  IdeContextResult,
+} from "wave-webview-fixtures";
 import { validateImageFile } from "../utils/imageValidation";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { isRemotePageHost } from "../utils/platform";
@@ -37,6 +49,9 @@ import {
   PermModePlanIcon,
 } from "./HeaderIcons";
 import "../styles/MessageInput.css";
+
+/** 发送时取 IDE 上下文的等待上限：超时按「不可用」写一行说明并照常发送。 */
+const IDE_CONTEXT_TIMEOUT_MS = 3000;
 import "../styles/HistorySearchPopup.css";
 
 // Compress-context props. MessageInputProps lives in ../types (host
@@ -245,6 +260,28 @@ export const MessageInput = forwardRef<
   const [slashCommands, setSlashCommands] = useState<SlashCommand[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedSlashIndex, setSelectedSlashIndex] = useState(0);
+
+  // 发送时取 IDE 上下文内容的在途请求：reply 按 requestId 关联，超时兜底。
+  const ideContextRequestRef = useRef<{
+    requestId: string;
+    resolve: (results: IdeContextResult[]) => void;
+    timer: ReturnType<typeof setTimeout>;
+  } | null>(null);
+
+  // IDE 上下文固定条目（@终端 / @问题）排在文件建议之前：条目由 webview 本地
+  // 生成、按已输入的过滤文本筛选（宿主的真实读取发生在发送时，见 handleSend）。
+  // 宿主没有 IDE 数据源（桌面端 / 远控页）时 buildIdeContextSuggestions 返回空。
+  const ideSuggestions = useMemo(
+    () =>
+      atMention.isActive
+        ? buildIdeContextSuggestions(atMention.filterText)
+        : [],
+    [atMention.isActive, atMention.filterText],
+  );
+  const allSuggestions = useMemo(
+    () => [...ideSuggestions, ...suggestions],
+    [ideSuggestions, suggestions],
+  );
   const [dropdownPosition, setDropdownPosition] = useState({
     top: 0,
     left: 0,
@@ -904,6 +941,17 @@ export const MessageInput = forwardRef<
 
   // Listen for file suggestions response from extension
   useHostMessage((data) => {
+    if (data.command === "ideContextResponse") {
+      // 发送前那一笔 IDE 上下文读取的回执：requestId 对上才消费（晚到的旧回复
+      // 即弃），清掉超时定时器并放行发送。
+      const pending = ideContextRequestRef.current;
+      if (pending && data.requestId === pending.requestId) {
+        clearTimeout(pending.timer);
+        ideContextRequestRef.current = null;
+        pending.resolve(Array.isArray(data.results) ? data.results : []);
+      }
+      return;
+    }
     if (data.command === "fileSuggestionsResponse") {
       // Only process if this is the latest request
       if (data.requestId === requestIdRef.current) {
@@ -1078,38 +1126,57 @@ export const MessageInput = forwardRef<
       const tagSpan = document.createElement("span");
       tagSpan.className = "context-tag-container"; // Wrapper for React component
       tagSpan.contentEditable = "false";
-      tagSpan.setAttribute("data-path", file.relativePath);
-      tagSpan.setAttribute("data-name", file.name);
-      tagSpan.setAttribute(
-        "data-is-image",
-        String(
-          !file.isDirectory &&
-            /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name),
-        ),
-      );
-      tagSpan.innerText = `[@file:${file.relativePath}]`;
 
-      // Render the React component into the span
-      const isImage =
-        !file.isDirectory && /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name);
-      const root = ReactDOM.createRoot(tagSpan);
-      root.render(
-        <ContextTag
-          name={file.name}
-          path={file.relativePath}
-          isImage={isImage}
-          onClick={
-            isImage
-              ? () => {
-                  vscode.postMessage({
-                    command: "previewImage",
-                    path: file.path,
-                  });
-                }
-              : undefined
-          }
-        />,
-      );
+      // IDE 上下文条目（@终端 / @问题）：不是文件引用，标签只留一个标记，内容
+      // 在发送那一刻才向宿主取（spec ui/ide-context-mentions.md）。
+      const ideProvider = file.ideContext;
+      const ideInfo = ideProvider
+        ? ideContextProviderInfo(ideProvider)
+        : undefined;
+      if (ideProvider && ideInfo) {
+        tagSpan.setAttribute("data-ide-context", ideProvider);
+        tagSpan.setAttribute("data-path", `ide:${ideProvider}`);
+        tagSpan.setAttribute("data-name", ideInfo.label);
+        tagSpan.setAttribute("data-is-image", "false");
+        tagSpan.innerText = ideContextMarker(ideProvider);
+        ReactDOM.createRoot(tagSpan).render(
+          <ContextTag name={ideInfo.label} path={`ide:${ideProvider}`} />,
+        );
+      } else {
+        tagSpan.setAttribute("data-path", file.relativePath);
+        tagSpan.setAttribute("data-name", file.name);
+        tagSpan.setAttribute(
+          "data-is-image",
+          String(
+            !file.isDirectory &&
+              /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name),
+          ),
+        );
+        tagSpan.innerText = `[@file:${file.relativePath}]`;
+
+        // Render the React component into the span
+        const isImage =
+          !file.isDirectory &&
+          /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name);
+        const root = ReactDOM.createRoot(tagSpan);
+        root.render(
+          <ContextTag
+            name={file.name}
+            path={file.relativePath}
+            isImage={isImage}
+            onClick={
+              isImage
+                ? () => {
+                    vscode.postMessage({
+                      command: "previewImage",
+                      path: file.path,
+                    });
+                  }
+                : undefined
+            }
+          />,
+        );
+      }
 
       // Locate the '@' + filter text to replace. Prefer the live DOM selection
       // when it still points into the input's text node (keyboard Enter): the
@@ -1269,6 +1336,37 @@ export const MessageInput = forwardRef<
     [closeSlashCommandPopup, onSendMessage, vscode, slashCommand, sessionId],
   );
 
+  /**
+   * 向宿主取 IDE 上下文内容（@终端 / @问题）。一次性查询：requestId 原样带回，
+   * 不匹配的回复即弃；超时按「不可用」返回，消息照常发出——读不到 IDE 不该让
+   * 用户点发送后卡住（spec 边界情况「读数据有延迟」）。
+   */
+  const requestIdeContextContent = useCallback(
+    (providers: IdeContextProvider[]): Promise<IdeContextResult[]> =>
+      new Promise((resolve) => {
+        const requestId = `ide-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`;
+        const timer = setTimeout(() => {
+          ideContextRequestRef.current = null;
+          resolve(
+            providers.map((provider) => ({
+              provider,
+              ok: false,
+              reason: "读取超时（IDE 未响应）",
+            })),
+          );
+        }, IDE_CONTEXT_TIMEOUT_MS);
+        ideContextRequestRef.current = { requestId, resolve, timer };
+        vscode.postMessage({
+          command: "requestIdeContext",
+          requestId,
+          providers,
+        });
+      }),
+    [vscode],
+  );
+
   const handleSend = useCallback(() => {
     if (disabled) return;
     if (!textareaRef.current) return;
@@ -1285,27 +1383,46 @@ export const MessageInput = forwardRef<
         mediaType: img.mimeType,
       }));
 
-      if (editingQueuedId) {
-        // Editing a queued message: update the queue entry instead of sending to AI
-        onSubmitQueuedEdit?.(
-          editingQueuedId,
-          markdown,
-          images.length > 0 ? images : undefined,
-        );
-      } else {
-        onSendMessage(markdown, images.length > 0 ? images : undefined);
+      const dispatch = (text: string) => {
+        if (editingQueuedId) {
+          // Editing a queued message: update the queue entry instead of sending to AI
+          onSubmitQueuedEdit?.(
+            editingQueuedId,
+            text,
+            images.length > 0 ? images : undefined,
+          );
+        } else {
+          onSendMessage(text, images.length > 0 ? images : undefined);
+        }
+      };
+
+      const clearInput = () => {
+        if (!textareaRef.current) return;
+        textareaRef.current.innerHTML = "";
+        setMessage("");
+        // Clear persisted input content
+        vscode.postMessage({
+          command: "updateInputContent",
+          content: "",
+        });
+        setAttachedImages([]);
+        closeDropdown();
+      };
+
+      const ideMentions = findIdeContextMentions(markdown);
+      if (ideMentions.length === 0) {
+        dispatch(markdown);
+        clearInput();
+        return;
       }
 
-      // Clear contenteditable
-      textareaRef.current.innerHTML = "";
-      setMessage("");
-      // Clear persisted input content
-      vscode.postMessage({
-        command: "updateInputContent",
-        content: "",
+      // IDE 上下文（@终端 / @问题）：内容在**发送这一刻**取一次，取到后拼进正
+      // 文再发（spec ui/ide-context-mentions.md）。输入框先清空——等待宿主这
+      // 一小段时间里用户接着打字，不会被随后那次清空抹掉；正文快照已经取好。
+      clearInput();
+      void requestIdeContextContent(ideMentions).then((results) => {
+        dispatch(assembleIdeContextBlocks(markdown, results));
       });
-      setAttachedImages([]);
-      closeDropdown();
     }
   }, [
     disabled,
@@ -1315,6 +1432,7 @@ export const MessageInput = forwardRef<
     vscode,
     editingQueuedId,
     onSubmitQueuedEdit,
+    requestIdeContextContent,
   ]);
 
   // Open the history-search popup. Shared by the in-DOM Ctrl/Cmd+R handler and the
@@ -1439,8 +1557,8 @@ export const MessageInput = forwardRef<
       }
 
       // Handle dropdown navigation
-      if (atMention.isActive && suggestions.length > 0) {
-        const maxIndex = suggestions.length - 1;
+      if (atMention.isActive && allSuggestions.length > 0) {
+        const maxIndex = allSuggestions.length - 1;
 
         switch (event.key) {
           case "ArrowUp":
@@ -1453,8 +1571,8 @@ export const MessageInput = forwardRef<
             return;
           case "Enter":
             event.preventDefault();
-            if (suggestions[selectedIndex]) {
-              handleFileSelect(suggestions[selectedIndex]);
+            if (allSuggestions[selectedIndex]) {
+              handleFileSelect(allSuggestions[selectedIndex]);
             }
             return;
           case "Escape":
@@ -1487,7 +1605,7 @@ export const MessageInput = forwardRef<
       handleSlashCommandSelect,
       closeSlashCommandPopup,
       atMention.isActive,
-      suggestions,
+      allSuggestions,
       selectedIndex,
       handleFileSelect,
       closeDropdown,
@@ -2086,11 +2204,11 @@ export const MessageInput = forwardRef<
 
         {/* File Suggestion Dropdown */}
         <FileSuggestionDropdown
-          suggestions={suggestions}
+          suggestions={allSuggestions}
           isVisible={
             !!(
               atMention.isActive &&
-              (suggestions.length > 0 || isLoadingSuggestions)
+              (allSuggestions.length > 0 || isLoadingSuggestions)
             )
           }
           selectedIndex={selectedIndex}

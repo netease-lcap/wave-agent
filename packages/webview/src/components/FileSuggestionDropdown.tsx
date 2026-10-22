@@ -104,6 +104,9 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
         <div
           key={file.path}
           className={`suggestion-item ${index === selectedIndex ? "selected" : ""}`}
+          // 固定条目（@终端 / @问题）带来源标记：它们不是文件建议，筛选文本不参与
+          // 高亮，也让调用方/测试能把两类条目分开认（见 spec ui/ide-context-mentions.md）。
+          data-ide-context={file.ideContext}
           onClick={() => onSelect(file)}
           onMouseEnter={() => {
             // Optional: Update selected index on hover

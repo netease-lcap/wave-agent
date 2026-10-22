@@ -4850,6 +4850,26 @@ export class DesktopHost {
         break;
 
       // -- file suggestions / uploads ---------------------------------------------------
+      // IDE 上下文（@终端 / @问题）只在 IDE 插件宿主成立：桌面端有 PTY 面板但
+      // 不接入本期能力（spec ui/ide-context-mentions.md 非目标）。注册只为四路由
+      // 齐备（webview 命令审计），回包一律按「不可用」——正常流程下 webview 不会
+      // 发出这条命令（桌面端的 @ 下拉里没有这两个条目）。
+      case "requestIdeContext": {
+        const providers = Array.isArray(msg.providers)
+          ? (msg.providers as string[])
+          : [];
+        this.postMessage({
+          command: "ideContextResponse",
+          requestId: msg.requestId as string,
+          results: providers.map((provider) => ({
+            provider,
+            ok: false,
+            reason: "桌面端不提供 IDE 上下文",
+          })),
+        });
+        break;
+      }
+
       case "requestFileSuggestions":
         await this.handleFileSuggestions(
           msg.filterText as string,

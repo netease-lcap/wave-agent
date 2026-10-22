@@ -1,5 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { ContextTag } from "./ContextTag";
+import { IdeContextPreview } from "./IdeContextPreview";
+import { ideContextProviderInfo } from "../utils/ideContext";
 import {
   parseMentions,
   toAbsoluteFilePath,
@@ -686,6 +688,13 @@ export const Message: React.FC<MessageProps> = React.memo(
     // createMessageMarkdownRenderer），工具块头的路径与 Write 预览的「打开预览」
     // 也不给点击。路径文本本身照旧显示。
     const canOpenFile = !isRemotePageHost();
+
+    // 用户消息里 @终端 / @问题 标签点开后的全文弹窗（一次只显示一个，与图片
+    // 预览同语义）。内容来自消息正文本身，不重新读 IDE。
+    const [idePreview, setIdePreview] = useState<{
+      title: string;
+      content: string;
+    } | null>(null);
 
     const getMessageClassName = () => {
       const classes = ["message"];
@@ -1398,6 +1407,19 @@ export const Message: React.FC<MessageProps> = React.memo(
                           onClick={onClick}
                         />
                       );
+                    } else if (part.type === "ide-context" && part.ideContext) {
+                      const info = ideContextProviderInfo(part.ideContext);
+                      const title = info?.blockTitle ?? part.ideContext;
+                      return (
+                        <ContextTag
+                          key={pIndex}
+                          name={info?.label ?? part.ideContext}
+                          path={`ide:${part.ideContext}`}
+                          onClick={() =>
+                            setIdePreview({ title, content: part.content })
+                          }
+                        />
+                      );
                     } else if (part.type === "selection") {
                       const displayName = `${part.fileName}#${part.startLine}-${part.endLine}`;
                       const filePath = part.path || part.fileName || "";
@@ -1488,6 +1510,13 @@ export const Message: React.FC<MessageProps> = React.memo(
         data-role={message.role}
       >
         {message.blocks?.map((block, index) => renderBlock(block, index))}
+        {idePreview && (
+          <IdeContextPreview
+            title={idePreview.title}
+            content={idePreview.content}
+            onClose={() => setIdePreview(null)}
+          />
+        )}
         {/* 回滚入口只在宿主给了处理器时才渲染。远控页也有处理器了（第二批解禁：
             宿主侧就是桌面端那条「截断对话 + 还原电脑侧工作区文件」的链路），所以
             这里不再区分端 —— 手机上的那次确认由 ChatApp 的对话框负责。 */}

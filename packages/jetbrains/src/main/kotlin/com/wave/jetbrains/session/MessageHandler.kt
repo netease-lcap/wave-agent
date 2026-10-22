@@ -8,6 +8,7 @@ import com.intellij.openapi.project.Project
 import com.wave.jetbrains.WaveBackendService
 import com.wave.jetbrains.WavePanelHolder
 import com.wave.jetbrains.bridge.PlanPreviewBuilder
+import com.wave.jetbrains.ide.IdeContextReader
 import com.wave.jetbrains.ide.IdeService
 import com.wave.jetbrains.stdio.StdioAgent
 import com.wave.jetbrains.stdio.StdioClientException
@@ -411,6 +412,36 @@ class MessageHandler(
 
             // ── File suggestions ───────────────────────────────────────
             // VSCE :61/:463 → fileSuggestionsResponse { suggestions, filterText, requestId }
+            // ── IDE 上下文（@终端 / @问题）──────────────────────────
+            // VSCE messageHandler requestIdeContext → ideContextResponse。
+            // 内容在发送那一刻取一次，webview 拼进用户消息正文（spec
+            // ui/ide-context-mentions.md）：读不到也回包（ok=false + reason），
+            // 消息照常发出。
+            "requestIdeContext" -> {
+                val requestId = msg["requestId"]?.jsonPrimitive?.content ?: ""
+                val providers = msg["providers"]?.jsonArray
+                    ?.mapNotNull { it.jsonPrimitive.contentOrNull }
+                    ?: emptyList()
+                val results = try {
+                    IdeContextReader(project).read(providers)
+                } catch (e: Exception) {
+                    LOG.warn("requestIdeContext failed: ${e.message}", e)
+                    JsonArray(
+                        providers.map { provider ->
+                            buildJsonObject {
+                                put("provider", provider)
+                                put("ok", false)
+                                put("reason", "读取失败：${e.message ?: e.javaClass.simpleName}")
+                            }
+                        },
+                    )
+                }
+                postMessage("ideContextResponse", buildJsonObject {
+                    put("requestId", requestId)
+                    put("results", results)
+                })
+            }
+
             "requestFileSuggestions" -> {
                 val filterText = msg["filterText"]?.jsonPrimitive?.content ?: ""
                 val requestId = msg["requestId"]?.jsonPrimitive?.content ?: ""

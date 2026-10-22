@@ -5,6 +5,8 @@
  * providing type safety and better development experience.
  */
 
+// IDE 上下文提及的类别（webview-fixtures 是宿主↔webview 契约的单一来源）
+import type { IdeContextProvider } from "wave-webview-fixtures";
 // Import message structures and session types from wave-agent-sdk
 import type {
   Message,
@@ -104,6 +106,12 @@ export interface FileItem {
   icon: string;
   /** Flag to distinguish files vs directories */
   isDirectory: boolean;
+  /**
+   * 非文件条目：IDE 上下文（@终端 / @问题）。有值时 `path` 是 `ide:<id>`
+   * 这类占位值，选中后插入上下文标签而不是文件引用（spec
+   * `ui/ide-context-mentions.md`）。条目本身由 webview 本地生成，宿主不下发。
+   */
+  ideContext?: IdeContextProvider;
 }
 
 /**

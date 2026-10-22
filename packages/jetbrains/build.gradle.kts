@@ -25,6 +25,11 @@ val integrationTestImplementation by configurations.getting {
 
 dependencies {
     intellijPlatform {
+        // 终端插件：@terminal 读的是 Shell 终端 widget 的文本缓冲
+        // （IdeContextReader，spec ui/ide-context-mentions.md）。Terminal 在所有
+        // JetBrains IDE 里都随平台分发，因此是硬依赖。
+        bundledPlugin("org.jetbrains.plugins.terminal")
+
         // Starter (IDE lifecycle) + Driver (UI/JMX interaction) for the
         // integrationTest source set; see docs link in the task below.
         testFramework(

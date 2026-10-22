@@ -1070,6 +1070,52 @@ export interface FileSuggestionsErrorMessage extends HostToWebviewMessageBase {
   error: unknown;
 }
 
+// ---- IDE 上下文提及（@terminal / @problems，spec ui/ide-context-mentions.md）----
+//
+// 只在 IDE 插件宿主（VS Code / JetBrains）成立：webview 在发送那一刻向宿主取
+// 一次内容，把结果拼进用户消息正文，之后历史重放不再访问 IDE。宿主只负责「读
+// 数据」（两端 IDE API 本就不同），标题、排序、上限、转义清理都在共享 webview
+// 里做——同一套格式逻辑不写两遍（TS + Kotlin）。
+
+/** webview 能 @ 出来的 IDE 上下文类别。 */
+export type IdeContextProvider = "terminal" | "problems";
+
+/** 一条诊断。宿主只报 ERROR/WARNING 级，行/列按 1 起算。 */
+export interface IdeContextProblem {
+  /** 1 起的行号 */
+  line: number;
+  /** 1 起的列号 */
+  column: number;
+  severity: "error" | "warning" | "info" | "hint";
+  message: string;
+  /** 诊断来源（tsc / eslint …），可缺 */
+  source?: string;
+}
+
+/** 单个类别的读取结果。ok=false 时 `reason` 是给用户看的可读原因
+ *  （没有活动终端 / 没有活动编辑器 / 内部 API 不可用），webview 据此在消息
+ *  里写一行说明——失败不中断发送，也不弹窗。 */
+export interface IdeContextResult {
+  provider: IdeContextProvider;
+  ok: boolean;
+  /** terminal：活动终端最后一条命令及其输出（原始文本，未清理转义） */
+  terminalText?: string;
+  /** problems：该文件的诊断条目（webview 负责排序、截断、格式化） */
+  problems?: IdeContextProblem[];
+  /** problems：诊断所属文件（仓库相对路径优先） */
+  filePath?: string;
+  /** ok=false 时的可读原因 */
+  reason?: string;
+}
+
+/** Reply to `requestIdeContext`. 归属键 requestId：一次发送一笔请求，超时或
+ *  用户连发时晚到的旧回复即弃（fileSuggestionsResponse 同款范例）。 */
+export interface IdeContextResponseMessage extends HostToWebviewMessageBase {
+  command: "ideContextResponse";
+  requestId: string;
+  results: IdeContextResult[];
+}
+
 export interface SlashCommandsResponseMessage extends HostToWebviewMessageBase {
   command: "slashCommandsResponse";
   commands: Array<{
@@ -1460,6 +1506,7 @@ export type HostToWebviewMessage =
   | PrefillPromptMessage
   | FileSuggestionsResponseMessage
   | FileSuggestionsErrorMessage
+  | IdeContextResponseMessage
   | SlashCommandsResponseMessage
   | SlashCommandsErrorMessage
   | RecentWorkdirsMessage
@@ -1528,6 +1575,9 @@ type ReplyAttribution = {
   // 晚到的旧列表即弃）。
   desktopResumeSessions: "requestId";
   fileSuggestionsResponse: "requestId";
+  // 发送前取 IDE 上下文内容（@terminal / @problems）：一次发送一笔请求，超时或
+  // 连发时晚到的旧回复按 requestId 丢弃。
+  ideContextResponse: "requestId";
   // 会话重命名：请求生成 id，回复原样带回（同一会话可反复改名；晚到的旧回复
   // 已被乐观更新消费，必须按 requestId 丢弃）。
   sessionRenamed: "requestId";
@@ -1599,6 +1649,7 @@ export const replyAttributionLocked = {
   pluginMarketFolderSelected: true,
   desktopResumeSessions: true,
   fileSuggestionsResponse: true,
+  ideContextResponse: true,
   sessionRenamed: true,
   remoteControlResponse: true,
   rewindResult: true,

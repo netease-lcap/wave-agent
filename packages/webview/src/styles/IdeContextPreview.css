@@ -1,0 +1,80 @@
+/* IDE 上下文标签的全文弹窗（spec ui/ide-context-mentions.md）。
+   底子沿用图片预览那类全屏遮罩（.image-preview-modal，见 MessageInput.css），
+   区别是内容为可选中复制的文本，且面板本身有标题栏。 */
+
+.ide-context-preview-overlay {
+  position: fixed;
+  inset: 0;
+  /* 与图片预览同档：高度取可视区（dvh），iOS Safari 上不用 100vh 才能不被
+     工具栏顶出可视区。 */
+  height: 100dvh;
+  background-color: rgba(0, 0, 0, 0.85);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 10002;
+  cursor: zoom-out;
+}
+
+.ide-context-preview {
+  width: min(760px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--vscode-editor-background, #1e1e1e);
+  color: var(--vscode-editor-foreground, #d4d4d4);
+  border: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.16));
+  border-radius: 8px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+  cursor: default;
+  outline: none;
+}
+
+.ide-context-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.16));
+}
+
+.ide-context-preview-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ide-context-preview-close {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.ide-context-preview-close:hover {
+  background-color: var(
+    --vscode-toolbar-hoverBackground,
+    rgba(255, 255, 255, 0.1)
+  );
+}
+
+.ide-context-preview-body {
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  font-family: var(--vscode-editor-font-family, Menlo, Monaco, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* 弹窗内是本条消息的全文：长输出靠面板自身滚动，不撑破视口。 */
+  user-select: text;
+}

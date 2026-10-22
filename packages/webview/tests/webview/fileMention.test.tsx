@@ -107,8 +107,11 @@ describe("File Mention Feature (@)", () => {
       expect(dropdown).toBeInTheDocument();
     });
 
-    // Check for suggestion items
-    const suggestionItems = document.querySelectorAll(".suggestion-item");
+    // Check for suggestion items — excluding the fixed IDE entries (@终端/@问题),
+    // which sit ahead of file suggestions in an IDE host.
+    const suggestionItems = document.querySelectorAll(
+      ".suggestion-item:not([data-ide-context])",
+    );
     // Expect to see only the suggestions we injected (1 folder + 2 files) = 3.
     // The upload option is no longer shown in the @ mention dropdown.
     expect(suggestionItems.length).toBe(3);
@@ -210,7 +213,9 @@ describe("File Mention Feature (@)", () => {
     });
     expect(screen.queryByText("stale.ts")).toBeNull();
     expect(
-      document.querySelectorAll(".suggestion-item:not(.suggestion-empty)"),
+      document.querySelectorAll(
+        ".suggestion-item:not(.suggestion-empty):not([data-ide-context])",
+      ),
     ).toHaveLength(0);
 
     // The fresh reply renders normally.
@@ -234,9 +239,9 @@ describe("File Mention Feature (@)", () => {
         document.querySelector(".file-suggestion-dropdown"),
       ).toBeInTheDocument();
     });
-    expect(document.querySelector(".suggestion-item")).toHaveTextContent(
-      "MessageInput.tsx",
-    );
+    expect(
+      document.querySelector(".suggestion-item:not([data-ide-context])"),
+    ).toHaveTextContent("MessageInput.tsx");
   });
 
   it("should insert the file tag on mouse click even when selection is on the popup item", async () => {

@@ -8,6 +8,8 @@
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
+    <!-- @terminal 读 Shell 终端 widget 的文本缓冲（spec ui/ide-context-mentions.md） -->
+    <depends>org.jetbrains.plugins.terminal</depends>
     <!--
       JCEF 自 2026.2 起从平台核心拆分为独立 bundled 插件（IJPL-246446）。
       - 2026.2+：声明该依赖后 JBCefBrowser 才对插件类加载器可见；
