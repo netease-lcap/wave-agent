@@ -21,7 +21,6 @@
  */
 
 import { app } from "electron";
-import type { Message } from "wave-agent-sdk/types";
 import { hostLog, type HostLogLevel } from "./hostLog";
 
 export const MEMORY_SAMPLE_INTERVAL_MS = 60_000;
@@ -52,6 +51,15 @@ export type SessionMessageStat = {
 };
 
 export type MessageStats = { messages: number; blocks: number };
+
+/**
+ * The minimum a message must expose to be counted. Deliberately structural:
+ * the desktop package may only import `wave-agent-sdk/host`, and a counter needs
+ * nothing beyond "how many, and how many blocks each" — so a real
+ * `wave-agent-sdk` `Message` fits without dragging the SDK's bulk into this
+ * file's imports.
+ */
+export type CountableMessage = { blocks?: readonly unknown[] };
 
 export type MemorySampler = {
   start: () => void;
@@ -87,7 +95,9 @@ export function rendererMemoryFromMetrics(
  * are read defensively: the list is a JSON-RPC mirror, and a missing array must
  * not take the whole sample down.
  */
-export function countMessageStats(messages: readonly Message[]): MessageStats {
+export function countMessageStats(
+  messages: readonly CountableMessage[],
+): MessageStats {
   let blocks = 0;
   for (const message of messages) {
     blocks += Array.isArray(message.blocks) ? message.blocks.length : 0;
