@@ -4564,3 +4564,758 @@
   outline: 2px solid var(--cc-color-danger);
   outline-offset: 0;
 }
+
+/* ── 创作集左侧导航（aside.artifacts-nav）对齐侧栏会话行 ────────────────────
+   1022 预览评论：点 `aside.artifacts-nav`（「我发布的 / 共享给我的」），说「这里参考
+   `ul.desktop-session-items`（会话行）这里的圆角、hover选中状态、字体字号等」。
+   参照件 = `.desktop-session-item`（DesktopApp.css:343 + 本文件 751-784 的桌面档）：
+   r8 / 14px·lh22 / 选中不靠字重（400）/ hover #eef0f3（深 8% 白）/
+   选中 #ebedf0（深 12% 白）/ 选中项 hover 仍保持选中底。
+   创作集页当前 6px / 13px / 选中加粗 600 / hover 与选中都用 `rgba(127,127,127,.1|.16)`
+   （主题无关的灰），两套并存 —— 本轮把它们并到会话行那一套。
+
+   本轮（第 1 轮）只改四项（圆角 / hover / 选中 / 字号字重）：
+   - 盒高随字号一起收敛：原 padding 7px + 13px 字 = 32.5px 行高；改成 lh22 + padding 4px
+     = **30px**，与会话行逐值相同（否则 14px 字配 7px 内衬会鼓到 36px，比原来还高）。
+   第 2 轮她又逐条点名补齐三项残留（「内衬也跟会话行」「角标也按 12px」「文字色也按会话行」）：
+   - 文案左内衬 10 → **16px**（会话行文字墨迹左缘 = 行左 + 16，实测 x28）；
+   - 数量角标 11 → **12px**（skill「Desktop UI metadata has a 12px floor」也是这个下限）；
+   - 文字色改成会话行的值：浅 #1F2329（= --cc-text-primary）/ 深 **#E6E6E6**
+     （⚠️ 深色刻意写字面量：#E6E6E6 是 `.desktop-session-item` 自己的取值，
+     token --cc-text-primary 深色是 #E5E7E8，差 1~3/255；她要「按会话行」⇒ 取会话行的字面量）。
+   仍未动：行间距 2px（本来就与会话列表相同）、导航列宽 172px、hover 才出现的两个小按钮。
+   放在 host-desktop.css 而不是 ArtifactsPage.css：本页只在桌面端渲染，作用域写
+   `[data-host="desktop"]` 同样安全；另因该文件正被并行窗口改动，避免同文件冲突。 */
+[data-host="desktop"] .artifacts-nav-item {
+  padding: 4px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+}
+
+/* 文字色跟会话行（浅 #1F2329 / 深 #E6E6E6）。base 是 `color: inherit`（继承到页面
+   注入的 #202020 / #E5E7E8），差一档。 */
+[data-host="desktop"][data-theme="light"] .artifacts-nav-item {
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .artifacts-nav-item {
+  color: #e6e6e6;
+}
+
+/* 数量角标：11px → 12px（桌面端 12px 下限；仍保持它自己的 descriptionForeground 色，
+   计数字号与正文 14px 拉开一档）。 */
+[data-host="desktop"] .artifacts-nav-count {
+  font-size: 12px;
+}
+
+/* 选中态不再加粗（与会话行同口径：`.desktop-session-item--current .desktop-session-title`
+   在 0916 第 2 轮已定 regular）。base 的 600 靠这条同权重更高的选择器压掉。 */
+[data-host="desktop"] .artifacts-nav-item.is-active {
+  font-weight: 400;
+}
+
+[data-host="desktop"][data-theme="light"] .artifacts-nav-item:hover {
+  background: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .artifacts-nav-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-host="desktop"][data-theme="light"] .artifacts-nav-item.is-active {
+  background: #ebedf0;
+}
+[data-host="desktop"][data-theme="dark"] .artifacts-nav-item.is-active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* 选中项 hover 保持选中底（不回落 hover 色），与会话行一致 */
+[data-host="desktop"][data-theme="light"] .artifacts-nav-item.is-active:hover {
+  background: #ebedf0;
+}
+[data-host="desktop"][data-theme="dark"] .artifacts-nav-item.is-active:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* ═══ 1022 评论（点 `div.artifacts-modal-header`「删除分类×」）：
+   「这个删除弹窗用 skill 中删除弹窗的统一样式」═══
+   契约出处 = codechat-desktop-skill `references/common-components.md:73-85`
+   「Compact confirmation dialog visual variant」，与 1014 已落地的
+   `ConfirmDialog.css` 桌面端同一条规格（那边是共享组件，这里是创作集页自带的
+   `ArtifactsPage` 内联 Modal，故需要另写一份）。
+   逐条落地：440px + max-width calc(100vw - 32px) · r12 · 24px 内衬 ·
+   `--cc-bg-modal` / 1px `--cc-border` / `--cc-shadow-overlay` ·
+   标题 16/24/600、描述 14/22/400、二者 8px · 右上角官方关闭矢量（20×20 盒 r8，
+   与 pane 头部 / toast / 确认弹层同族）· 页脚前 24px、按钮间 8px ·
+   按钮 32px 高 / r8 / 14-22 / 500 / 12px 内衬、宽度按内容 ·
+   取消 = 透明底 + 1px `--cc-border-light` 描边 ·
+   删除 = soft-danger（`--cc-color-danger-soft` 底 + `--cc-color-danger` 字，
+   hover/active 只转字色，不加红色描边）· 省略分隔线两条（头部下、页脚上）·
+   仅 [data-host="desktop"]，IDE / 插件宿主保持 base 原样。
+
+   作用域 = 「确认键是危险键的两个弹窗」，靠确认键的 testid + class 圈定：
+   - 删除分类：`artifacts-category-confirm` + `.artifacts-danger-btn`；
+   - 撤销发布：`artifacts-revoke-confirm` + `.artifacts-danger-btn`（1022 追加评论：
+     「撤销发布弹窗参考删除弹窗的样式」）。
+   新建/重命名分类虽有同名 `artifacts-category-confirm` 但走 `.artifacts-primary-btn`，
+   不在这条 `:is()` 里 —— 那三个弹窗走上面那条表单弹窗档。 */
+
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  ) {
+  box-sizing: border-box;
+  position: relative;
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  padding: 24px;
+  background: var(--cc-bg-modal, var(--vscode-editorWidget-background, #ffffff));
+  border: 1px solid var(--cc-border, var(--vscode-panel-border, #dcdfe6));
+  border-radius: var(--cc-radius-lg, 12px);
+  box-shadow: var(--cc-shadow-overlay, 0 12px 36px rgb(31 35 41 / 16%));
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+/* 头部：去掉分隔线与原 14/18 内衬，标题升到 16/24/600；
+   右侧让出 28px 给关闭控件（契约 :80「reserve room for the close control」） */
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-header {
+  position: static;
+  padding: 0 28px 0 0;
+  border-bottom: none;
+  font-size: var(--cc-font-size-lg, 16px);
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+/* 描述：8px 接在标题下（body 的 padding-top 承担，不用 margin 以免叠加） */
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-body {
+  padding: 8px 0 0;
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+  color: var(--cc-text-regular, var(--vscode-descriptionForeground));
+}
+
+/* `<p>` 的 UA 外边距 1em（14px）会把上面两个间距各啃掉一段：标题↔描述会变成
+   22（8 + 14）、描述↔页脚会变成 14（14 + 0）。清零后才是契约的 8 / 24。 */
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-body
+  p {
+  margin: 0;
+}
+
+/* 页脚里那颗独立的破坏性动作（分享 →「撤销发布」）：契约 :70「one height, label size and
+   radius across the row」—— 改前是 12px 纯文本，比同排 32 高的按钮小两档，基线也错开。
+   1022 追加评论：「这个可以用删除按钮，就是带浅色红色背景的」⇒ 从「透明底 + 产品红文字」
+   换成与确认弹窗危险键同一档的 soft-danger（浅 #FEF2F2/#DC2626、深 #332021/#FC4E52），
+   尺寸按 :83 走 32 高 / r8 / 14-22 / 500 / 横向内衬 12；hover/active 只转字色，不加红描边。 */
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-modal-footer .artifacts-danger-link {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: var(--cc-radius-md, 8px);
+  background: var(--cc-color-danger-soft, #fef2f2);
+  color: var(--cc-color-danger, #dc2626);
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-modal-footer .artifacts-danger-link:hover {
+  background: var(--cc-color-danger-soft, #fef2f2);
+  color: var(--cc-color-danger-hover, #b91c1c);
+}
+
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-modal-footer .artifacts-danger-link:active {
+  background: var(--cc-color-danger-soft, #fef2f2);
+  color: var(--cc-color-danger-active, #991b1b);
+}
+
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-modal-footer .artifacts-danger-link:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
+}
+
+/* 右上角关闭控件：20×20 盒 + r8 + 1 级图标色，盒内仍是 24 的官方矢量
+   （1014 同款：24 图标在 20 盒里靠 flex 居中溢出，不能让它被压小） */
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-close {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--cc-radius-md, 8px);
+  background: transparent;
+  color: var(--cc-text-regular);
+  /* 隐掉原来的「×」文本字形（font-size:0 不渲染文字、但 color 仍供 currentColor） */
+  font-size: 0;
+  line-height: 0;
+  cursor: pointer;
+}
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-close::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  background-color: currentColor;
+  /* 官方关闭矢量 = ConversationCloseIcon（Figma 关闭 13440:12465），
+     fill 换 %23000 交给 mask 上色 */
+  -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M16.2474 7.76379C16.5098 8.02615 16.5096 8.45148 16.2474 8.71396L12.9448 12.0166L16.2363 15.3082C16.4985 15.5706 16.4987 15.996 16.2363 16.2583C15.9739 16.5207 15.5486 16.5205 15.2861 16.2583L11.9946 12.9668L8.71427 16.2471C8.45179 16.5093 8.02647 16.5095 7.7641 16.2471C7.50173 15.9848 7.50191 15.5594 7.7641 15.2969L11.0444 12.0166L7.74179 8.714C7.47962 8.45151 7.47943 8.02619 7.74179 7.76382C8.00416 7.50147 8.42949 7.50166 8.69197 7.76382L11.9946 11.0665L15.2973 7.76379C15.5597 7.50164 15.9851 7.50143 16.2474 7.76379Z' fill='%23000'/></svg>")
+    center / 24px 24px no-repeat;
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M16.2474 7.76379C16.5098 8.02615 16.5096 8.45148 16.2474 8.71396L12.9448 12.0166L16.2363 15.3082C16.4985 15.5706 16.4987 15.996 16.2363 16.2583C15.9739 16.5207 15.5486 16.5205 15.2861 16.2583L11.9946 12.9668L8.71427 16.2471C8.45179 16.5093 8.02647 16.5095 7.7641 16.2471C7.50173 15.9848 7.50191 15.5594 7.7641 15.2969L11.0444 12.0166L7.74179 8.714C7.47962 8.45151 7.47943 8.02619 7.74179 7.76382C8.00416 7.50147 8.42949 7.50166 8.69197 7.76382L11.9946 11.0665L15.2973 7.76379C15.5597 7.50164 15.9851 7.50143 16.2474 7.76379Z' fill='%23000'/></svg>")
+    center / 24px 24px no-repeat;
+}
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-close:hover {
+  background-color: var(--cc-fill-hover, #eef0f3);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"][data-theme="dark"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-close:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-close:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
+}
+
+/* 页脚：24px 接在描述下（= 契约的容器 gap）、8px 按钮间隔、去掉上分隔线 */
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-footer {
+  padding: 24px 0 0;
+  border-top: none;
+  gap: 8px;
+}
+
+/* 按钮：32 高 / r8 / 14-22 / 500 / 12px 横向内衬 / 宽度按内容 */
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-footer
+  .artifacts-secondary-btn,
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-footer
+  .artifacts-danger-btn {
+  height: 32px;
+  min-width: 0;
+  padding: 0 12px;
+  border-radius: var(--cc-radius-md, 8px);
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+  font-weight: 500;
+}
+
+/* 取消 = 次级描边档（透明底 + border-light + 1 级字色），与 1014 完全同族 */
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-footer
+  .artifacts-secondary-btn {
+  background: transparent;
+  border: 1px solid var(--cc-border-light, #e4e7ed);
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-footer
+  .artifacts-secondary-btn:not(:disabled):hover {
+  background: var(--cc-fill-hover, #eef0f3);
+}
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-footer
+  .artifacts-secondary-btn:not(:disabled):active {
+  background: var(--cc-fill-pressed, #e7e9ed);
+}
+[data-host="desktop"][data-theme="dark"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-footer
+  .artifacts-secondary-btn:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+[data-host="desktop"][data-theme="dark"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-footer
+  .artifacts-secondary-btn:not(:disabled):active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* 删除 = soft-danger（契约 :83-84）：软底 + 危险红字，hover/active 只转字色，
+   不加装饰性红描边；焦点环走中性焦点色以与红字可区分 */
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-footer
+  .artifacts-danger-btn {
+  background: var(--cc-color-danger-soft, #fef2f2);
+  border: none;
+  color: var(--cc-color-danger, #dc2626);
+}
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-footer
+  .artifacts-danger-btn:not(:disabled):hover {
+  background: var(--cc-color-danger-soft, #fef2f2);
+  color: var(--cc-color-danger-hover, #b91c1c);
+}
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-footer
+  .artifacts-danger-btn:not(:disabled):active {
+  background: var(--cc-color-danger-soft, #fef2f2);
+  color: var(--cc-color-danger-active, #991b1b);
+}
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-footer
+  .artifacts-danger-btn:focus-visible,
+[data-host="desktop"]
+  .artifacts-modal:is(
+    :has([data-testid="artifacts-category-confirm"].artifacts-danger-btn),
+    :has([data-testid="artifacts-revoke-confirm"].artifacts-danger-btn)
+  )
+  .artifacts-modal-footer
+  .artifacts-secondary-btn:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
+}
+
+/* ═══ 1022 评论（点 `div.artifacts-modal-header`「新建×」）：
+   「参考 skill 中最新推送的弹窗规范，优化弹窗样式」
+   后续追加两条评论授权：「新建分类弹窗、分享弹窗也按这个规范」═══
+   契约出处 = codechat-desktop-skill `references/common-components.md:90-103`
+   「Form dialog visual variant（optional mode switch）」，2026-10-22 由她本人接受并推送的那一版
+   （PR #7 / `b7fc2c5`）。它与「Compact confirmation dialog」（:74-88，删除分类弹窗已落地）是**两个档**：
+   表单档 560 宽 / 12-20 辅助文案，且明确「adds no button, file-picker, dashed-border treatment」。
+
+   作用域 = 三个表单弹窗共用一条 `:is()`：新建（`artifacts-new-dialog`）、分享（`artifacts-share-dialog`）、
+   新建/重命名分类（`artifacts-category-dialog` 且确认键是 `.artifacts-primary-btn`）。
+   第四个「删除分类分类弹窗」虽然也挂在 `artifacts-category-dialog` 上，但确认键是 `.artifacts-danger-btn`，
+   由上一条 `:has()` 圈走、走 compact confirmation 档，这里的 `:has(.artifacts-primary-btn)` 不含它。
+
+   逐条落地（`:` 后为契约行号）：
+   - 壳：560 + `max-width: calc(100vw - 32px)` · 24 内衬 · r12 `--cc-radius-lg` ·
+     `--cc-bg-modal` / 1px `--cc-border` / `--cc-shadow-overlay`（:94-95）；
+   - 标题 16/24/600 `--cc-text-primary`，右侧留 28px 给关闭控件，去下分隔线（:96）；
+   - 标题行 → 第一块内容 20px（:96）；
+   - 字段标签 14/22/400 `--cc-text-regular`，标签→控件 8px；单行控件 32 高 / r8（:97-98，控件本身上轮已落）；
+   - 字段组之间 16px（:99）；辅助文案 12/20/400 `--cc-text-secondary`，距其描述的控件 8px（:100）；
+   - 页脚前 24px、右对齐、8px 间隔（:101），复用既有按钮档、不新增样式；
+   - 无页脚的弹窗（新建）不加页脚（:101「does not require a footer where none is needed」）。
+   顺手按同一条契约的排版下限修越档字号：卡片名 13 → 14、卡片描述 11 → 12、
+   分享标题 13 → 14、单选/成员行 13 → 14、``legend`` 12 → 14（契约无 13px UI 层、12px 是元信息下限）。
+   仅 `[data-host="desktop"]`；IDE / 插件宿主保持 base 原样（本页本来也只在桌面端挂载）。 */
+
+/* 壳 */
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) {
+  box-sizing: border-box;
+  position: relative;
+  /* 宽度走变量：默认 560，单字段的「重命名分类」在下面把它收到 440。
+     用变量而不是再写一条 width，是为了不去跟这条 (0,5,0) 特异性的规则抢优先级。 */
+  width: var(--cc-artifacts-form-dialog-width, 560px);
+  max-width: calc(100vw - 32px);
+  padding: 24px;
+  background: var(--cc-bg-modal, var(--vscode-editorWidget-background, #ffffff));
+  border: 1px solid var(--cc-border, var(--vscode-panel-border, #dcdfe6));
+  border-radius: var(--cc-radius-lg, 12px);
+  box-shadow: var(--cc-shadow-overlay, 0 12px 36px rgb(31 35 41 / 16%));
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+/* 单字段的分类弹窗（新建 / 重命名）：只有一颗输入框 + 一行提示，560 宽显得空；收到 compact 档的
+   440（1022 评论：「重命名弹窗尺寸太大了」→「新建分类弹窗也改」）。其余（r12 / 24 内衬 / 标题 16 /
+   控件 32 / 页脚 24）仍走上面表单档。两者共用同一个 `data-testid="artifacts-category-dialog"`，
+   且 DOM 逐字相同，只能靠 `aria-label`（= 弹窗标题文案）区分 —— 若标题文案改了，这条选择器要
+   跟着改，否则宽度会静默回到 560。 */
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [aria-label="重命名分类"],
+    [aria-label="新建分类"]
+  ) {
+  --cc-artifacts-form-dialog-width: 440px;
+}
+
+/* 头部：去分隔线与 14/18 内衬，标题升到 16/24/600；右侧让出 28px 给关闭控件 */
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-modal-header {
+  padding: 0 28px 0 0;
+  border-bottom: none;
+  font-size: var(--cc-font-size-lg, 16px);
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+/* 主体：内衬交给壳的 24，标题行下 20px 才是第一块内容 */
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-modal-body {
+  padding: 20px 0 0;
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+}
+
+/* `<p>` 的 UA 外边距（1em）会把 20 / 8 两个间距啃掉（删除分类那一轮踩过） */
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-modal-body p {
+  margin: 0;
+}
+
+/* 字段标签：12/descriptionForeground + 6px → 14/22 `--cc-text-regular` + 8px */
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-field {
+  gap: 8px;
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+  color: var(--cc-text-regular, var(--vscode-foreground));
+}
+
+/* 字段组之间 16px（:99）；分享弹窗的「分享给」一组到成员选择器同值 */
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-form {
+  gap: 16px;
+}
+
+/* 辅助文案：12/20/400 次级色；紧跟控件时落在 8px（§100），不相邻时保持 0 */
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-hint {
+  font-size: var(--cc-font-size-sm, 12px);
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--cc-text-secondary, var(--vscode-descriptionForeground));
+}
+
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-field + .artifacts-hint,
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-fieldset + .artifacts-hint {
+  margin-top: -8px; /* 组间距 16 − 8 = 契约要求的 8 */
+}
+
+/* 新建：文案 → 模板网格 8px */
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-template-grid {
+  margin-top: 8px;
+}
+
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-template-name {
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+}
+
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-template-desc {
+  font-size: var(--cc-font-size-sm, 12px);
+  line-height: 20px;
+  color: var(--cc-text-secondary, var(--vscode-descriptionForeground));
+}
+
+/* 分享：正文标题 13 → 14/22/600；「分享给」图例按字段标签口径 12 → 14/22/400 + 8px；
+   单选与成员行 13 → 14/22（契约无 13px UI 层） */
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-share-title {
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+  font-weight: 600;
+}
+
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-fieldset legend {
+  padding: 0 0 8px;
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+  font-weight: 400;
+  color: var(--cc-text-regular, var(--vscode-foreground));
+}
+
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-radio {
+  gap: 8px;
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+}
+
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-member-row {
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+}
+
+/* 页脚：24px 接在内容下、去掉上分隔线、8px 间隔（按钮档位沿用既有，不新增样式） */
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-modal-footer {
+  padding: 24px 0 0;
+  border-top: none;
+  gap: 8px;
+}
+
+/* 右上角关闭控件：20×20 盒 + r8 + 1 级图标色，盒内仍是 24 的官方矢量
+   （1014 同款：24 图标在 20 盒里靠 flex 居中溢出，不能让它被压小） */
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-modal-close {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--cc-radius-md, 8px);
+  background: transparent;
+  color: var(--cc-text-regular);
+  /* 隐掉原来的「×」文本字形（font-size:0 不渲染文字、但 color 仍供 currentColor） */
+  font-size: 0;
+  line-height: 0;
+  cursor: pointer;
+}
+
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-modal-close::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  background-color: currentColor;
+  /* 官方关闭矢量 = ConversationCloseIcon（Figma 关闭 13440:12465），fill 换 %23000 交给 mask 上色 */
+  -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M16.2474 7.76379C16.5098 8.02615 16.5096 8.45148 16.2474 8.71396L12.9448 12.0166L16.2363 15.3082C16.4985 15.5706 16.4987 15.996 16.2363 16.2583C15.9739 16.5207 15.5486 16.5205 15.2861 16.2583L11.9946 12.9668L8.71427 16.2471C8.45179 16.5093 8.02647 16.5095 7.7641 16.2471C7.50173 15.9848 7.50191 15.5594 7.7641 15.2969L11.0444 12.0166L7.74179 8.714C7.47962 8.45151 7.47943 8.02619 7.74179 7.76382C8.00416 7.50147 8.42949 7.50166 8.69197 7.76382L11.9946 11.0665L15.2973 7.76379C15.5597 7.50164 15.9851 7.50143 16.2474 7.76379Z' fill='%23000'/></svg>")
+    center / 24px 24px no-repeat;
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M16.2474 7.76379C16.5098 8.02615 16.5096 8.45148 16.2474 8.71396L12.9448 12.0166L16.2363 15.3082C16.4985 15.5706 16.4987 15.996 16.2363 16.2583C15.9739 16.5207 15.5486 16.5205 15.2861 16.2583L11.9946 12.9668L8.71427 16.2471C8.45179 16.5093 8.02647 16.5095 7.7641 16.2471C7.50173 15.9848 7.50191 15.5594 7.7641 15.2969L11.0444 12.0166L7.74179 8.714C7.47962 8.45151 7.47943 8.02619 7.74179 7.76382C8.00416 7.50147 8.42949 7.50166 8.69197 7.76382L11.9946 11.0665L15.2973 7.76379C15.5597 7.50164 15.9851 7.50143 16.2474 7.76379Z' fill='%23000'/></svg>")
+    center / 24px 24px no-repeat;
+}
+
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-modal-close:hover {
+  background-color: var(--cc-fill-hover, #eef0f3);
+  color: var(--cc-text-primary);
+}
+
+[data-host="desktop"][data-theme="dark"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-modal-close:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
+) .artifacts-modal-close:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
+}

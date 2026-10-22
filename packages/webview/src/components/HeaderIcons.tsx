@@ -217,7 +217,14 @@ export const SendArrowIcon: React.FC<IconProps> = ({
 export const PermCaretIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
-  <svg width={8} height={5} viewBox="0 0 8 5" fill="none" className={className}>
+  <svg
+    width={8}
+    height={5}
+    viewBox="0 0 8 5"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
     <path
       d="M3.99977 1.48341L1.1474 4.33577C0.88492 4.59824 0.459358 4.59825 0.196873 4.33577C-0.06562 4.07329 -0.0656245 3.64771 0.196863 3.38523L3.28674 0.295345C3.68053 -0.098449 4.319 -0.0984486 4.71279 0.295346L7.80267 3.38523C8.06515 3.64772 8.06515 4.07329 7.80266 4.33577C7.54017 4.59825 7.11461 4.59824 6.85213 4.33576L3.99977 1.48341Z"
       fill="currentColor"

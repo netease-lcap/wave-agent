@@ -121,19 +121,37 @@
   font-size: 14px;
 }
 
+/* 字重 500：契约 :83「All footer buttons retain the standard 32px height,
+   14px/22px medium 500 labels」+ :70「one height, label size and radius across the
+   row」—— 页脚是一整行一个口径，只改主键会让「取消」比主操作还重，故同行同落
+   （2026-10-22 她「按规范来」）。base 的 600 属 IDE 档，不动。 */
 [data-host="desktop"] .session-rename-btn {
   height: 32px;
   border-radius: 8px;
   font-size: 14px;
+  font-weight: 500;
 }
 
+/* 1022 评论：设计师点 `div.session-rename-actions`「取消 保存」——
+   「参考 skill 的内容，检查下这个弹窗按钮，不应该有红色按钮的出现」。
+   依据 references/common-components.md:23「Keep red for semantic danger and restrained
+   branding, not routine primary actions」+ :85「The confirmation action's color tier
+   follows the caller-declared operation category」：重命名是**普通确认**（非破坏），
+   故保存键回到普通填充主按钮档（--cc-action-primary / -hover / -active），与
+   1014 确认弹窗的非破坏档同源同值。此前桌面端覆写成 --vscode-brand-primary 品牌红。
+   color 必须显式给：浅色档未桥接 --vscode-button-foreground（只有 dark 块桥了）。 */
 [data-host="desktop"] .session-rename-btn--primary {
   border-color: transparent;
-  background: var(--vscode-brand-primary, #c1292e);
-  color: #ffffff;
+  background: var(--cc-action-primary, #1f2329);
+  color: var(--cc-action-primary-text, #ffffff);
 }
 
 [data-host="desktop"] .session-rename-btn--primary:hover {
-  background: var(--vscode-brand-primary, #c1292e);
-  filter: brightness(0.92);
+  background: var(--cc-action-primary-hover, #34383f);
+}
+
+/* 浅色档未定义 --cc-action-primary-active（同 0915 第十处）→ fallback 取 skill
+   浅色档字面量 #111318；深色档有该 token，自动生效。 */
+[data-host="desktop"] .session-rename-btn--primary:active {
+  background: var(--cc-action-primary-active, #111318);
 }

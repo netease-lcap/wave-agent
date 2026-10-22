@@ -14,7 +14,7 @@ const initialState = {
 
 // 桌面端消息列与输入卡宽度关系（第 24 轮后以设计师 Figma 规范为准）：
 //   - 对话列 .messages-column 保持既有 cap 800px 居中（base 产品形态，
-//     desktop-density-restore 记录：虚拟列表行 inset 联动，列宽不单独改）；
+//     设计师走查结论：虚拟列表行 inset 联动，列宽不单独改）；
 //   - 输入卡 .input-wrapper cap 768px 居中（Figma「Form - 发送消息」768 =
 //     Container 800 − pad 16×2，host-desktop.css [data-host=desktop] 覆盖）；
 //   - 两列各自居中 → 水平中心对齐，对话列每侧比输入卡宽 16px。

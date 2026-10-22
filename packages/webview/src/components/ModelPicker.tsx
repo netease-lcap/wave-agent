@@ -1,6 +1,8 @@
 import React, { useCallback, useRef } from "react";
 import type { ConfiguredModel } from "wave-webview-fixtures";
 import { useRovingMenu } from "../utils/useRovingMenu";
+import { PermCaretIcon } from "./HeaderIcons";
+import { isDesktopHost } from "../utils/platform";
 import "../styles/ModelPicker.css";
 
 export interface ModelPickerProps {
@@ -12,6 +14,7 @@ export interface ModelPickerProps {
   onSelect: (model: string) => void;
 }
 
+/** IDE 宿主沿用的细描边 chevron（与改动前逐字一致；桌面端改用共享的 PermCaretIcon）。 */
 const ChevronIcon: React.FC = () => (
   <svg
     className="model-picker-caret"
@@ -114,7 +117,11 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         <span className="model-picker-name" title={label}>
           {label}
         </span>
-        <ChevronIcon />
+        {isDesktopHost() ? (
+          <PermCaretIcon className="model-picker-caret" />
+        ) : (
+          <ChevronIcon />
+        )}
       </button>
       {open && (
         <ul
