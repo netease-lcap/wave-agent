@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useReducer } from "react";
-import { Box, Text, useInput, useStdout } from "ink";
+import { Box, Text, useInput, useWindowSize } from "ink";
 import type { SubagentConfiguration } from "wave-agent-sdk";
 import { Markdown } from "./Markdown.js";
 import {
@@ -47,7 +47,7 @@ export const AgentsManager: React.FC<AgentsManagerProps> = ({
   agentDefinitions,
 }) => {
   const [state, dispatch] = useReducer(agentsManagerReducer, initialState);
-  const { stdout } = useStdout();
+  const { rows } = useWindowSize();
 
   // Handle pending effects
   useEffect(() => {
@@ -107,7 +107,7 @@ export const AgentsManager: React.FC<AgentsManagerProps> = ({
   // Window slice: center the selected item within the visible area, clamping
   // to the terminal's available rows (reusable pattern from
   // BackgroundTaskManager).
-  const availableRows = stdout?.rows ?? 24;
+  const availableRows = rows || 24;
   const maxVisible = Math.max(3, Math.min(15, availableRows - 12));
   const selectedFlatIndex = entries.findIndex(
     (e) => e.selectableIndex === state.selectedIndex,

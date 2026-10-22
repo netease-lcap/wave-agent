@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useReducer } from "react";
-import { Box, Text, useInput, useStdout } from "ink";
+import { Box, Text, useInput, useWindowSize } from "ink";
 import {
   HOOK_EVENT_SUMMARIES,
   type HookEvent,
@@ -60,7 +60,7 @@ export const HooksManager: React.FC<HooksManagerProps> = ({
   hooks,
 }) => {
   const [state, dispatch] = useReducer(hooksManagerReducer, initialState);
-  const { stdout } = useStdout();
+  const { rows } = useWindowSize();
 
   // Handle pending effects
   useEffect(() => {
@@ -125,7 +125,7 @@ export const HooksManager: React.FC<HooksManagerProps> = ({
   // Window slice: center the selected item within the visible area, clamping
   // to the terminal's available rows (reusable pattern from
   // AgentsManager/SkillsManager).
-  const availableRows = stdout?.rows ?? 24;
+  const availableRows = rows || 24;
   const maxVisible = Math.max(3, Math.min(15, availableRows - 12));
   const selectedFlatIndex = entries.findIndex(
     (e) => e.selectableIndex === state.selectedIndex,

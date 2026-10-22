@@ -8,7 +8,7 @@ import {
 } from "../../src/components/TaskList.js";
 import { useTasks } from "../../src/hooks/useTasks.js";
 import { ChatContextType, useChat } from "../../src/contexts/useChat.js";
-import { useStdout } from "ink";
+import { useWindowSize } from "ink";
 import type { Task } from "wave-agent-sdk";
 
 vi.mock("../../src/hooks/useTasks.js", () => ({
@@ -23,7 +23,7 @@ vi.mock("ink", async () => {
   const actual = await vi.importActual("ink");
   return {
     ...actual,
-    useStdout: vi.fn(() => ({ stdout: { rows: 24 } })),
+    useWindowSize: vi.fn(() => ({ columns: 80, rows: 24 })),
   };
 });
 
@@ -186,9 +186,7 @@ describe("TaskList", () => {
   });
 
   it("should limit displayed tasks based on terminal height", () => {
-    vi.mocked(useStdout).mockReturnValue({
-      stdout: { rows: 16 },
-    } as unknown as ReturnType<typeof useStdout>);
+    vi.mocked(useWindowSize).mockReturnValue({ columns: 80, rows: 16 });
 
     const mockTasks: Task[] = Array.from({ length: 8 }, (_, i) =>
       makeTask({
@@ -211,9 +209,7 @@ describe("TaskList", () => {
   });
 
   it("should show nothing when terminal rows <= 10", () => {
-    vi.mocked(useStdout).mockReturnValue({
-      stdout: { rows: 10 },
-    } as unknown as ReturnType<typeof useStdout>);
+    vi.mocked(useWindowSize).mockReturnValue({ columns: 80, rows: 10 });
 
     const mockTasks: Task[] = [
       makeTask({ id: "1", subject: "Task 1", status: "pending" }),
@@ -231,9 +227,7 @@ describe("TaskList", () => {
 
   it("should show summary line for hidden tasks", () => {
     // Use rows=16 → displayLimit=3 to force truncation with mixed statuses
-    vi.mocked(useStdout).mockReturnValue({
-      stdout: { rows: 16 },
-    } as unknown as ReturnType<typeof useStdout>);
+    vi.mocked(useWindowSize).mockReturnValue({ columns: 80, rows: 16 });
 
     const mockTasks: Task[] = [
       makeTask({ id: "1", subject: "Working", status: "in_progress" }),
