@@ -137,12 +137,7 @@ export const ConfirmationDetails: React.FC<ConfirmationDetailsProps> = ({
     ? highlightToAnsi(JSON.stringify(toolInput, null, 2), "json")
         .split("\n")
         .map((line, index) => (
-          <Box
-            key={`json-${index}`}
-            paddingLeft={2}
-            borderLeft
-            borderColor="cyan"
-          >
+          <Box key={`json-${index}`} paddingLeft={2}>
             <Text>{line || " "}</Text>
           </Box>
         ))

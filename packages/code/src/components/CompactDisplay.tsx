@@ -26,12 +26,7 @@ export const CompactDisplay: React.FC<CompactDisplayProps> = ({ block }) => {
 
       {content && (
         <Box marginTop={1} flexDirection="column">
-          <Box
-            paddingLeft={2}
-            borderLeft
-            borderColor="gray"
-            flexDirection="column"
-          >
+          <Box paddingLeft={2} flexDirection="column">
             <Text color="white">{displayContent}</Text>
           </Box>
         </Box>

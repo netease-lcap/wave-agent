@@ -91,12 +91,7 @@ export const ToolDisplay: React.FC<ToolDisplayProps> = ({
 
       {/* Display shortResult in collapsed state */}
       {!isExpanded && shortResult && !error && (
-        <Box
-          paddingLeft={2}
-          borderLeft
-          borderColor="gray"
-          flexDirection="column"
-        >
+        <Box paddingLeft={2} flexDirection="column">
           {shortResult.split("\n").map((line, index) => (
             <Text key={index} color="gray" wrap="truncate-end">
               {line}
@@ -107,12 +102,7 @@ export const ToolDisplay: React.FC<ToolDisplayProps> = ({
 
       {/* Display complete parameters in expanded state */}
       {isExpanded && parameters && (
-        <Box
-          paddingLeft={2}
-          borderLeft
-          borderColor="gray"
-          flexDirection="column"
-        >
+        <Box paddingLeft={2} flexDirection="column">
           <Text color="cyan" bold>
             Parameters:
           </Text>
@@ -123,12 +113,7 @@ export const ToolDisplay: React.FC<ToolDisplayProps> = ({
       {/* Display complete result in expanded state */}
       {isExpanded && result && (
         <Box flexDirection="column">
-          <Box
-            paddingLeft={2}
-            borderLeft
-            borderColor="green"
-            flexDirection="column"
-          >
+          <Box paddingLeft={2} flexDirection="column">
             <Text color="cyan" bold>
               Result:
             </Text>
