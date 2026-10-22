@@ -4048,6 +4048,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     );
   })();
 
+  // 空态「快捷方式」区块：只在空态（尚无消息且初始状态就绪）出现，点了把整段
+  // 模板填进输入框（与设置页「新建/编辑」预填走同一个 loadDraft）。桌面端与 IDE
+  // 的位置不同（见 chatBodyContent 里两处渲染点），这里只构造一次避免两份 props。
+  const quickStartBlock = showWelcomeReady ? (
+    <QuickStartTemplates
+      onApplyTemplate={(prompt) => messageInputRef.current?.loadDraft(prompt)}
+    />
+  ) : null;
+
   const chatBodyContent = state.isRestoring ? (
     // Desktop restore in progress: the pane already switched to the target
     // session — show the sweep animation over the message + input area until
@@ -4096,16 +4105,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         />
       )}
 
-      {/* 空态「快捷方式」：12 个开发场景分类 → 该分类的模板，点模板整段填进
-          输入框（与设置页「新建/编辑」预填走同一个 loadDraft）。只在空态出现，
-          有对话历史后它是「第一次怎么开口」的入口，常驻只会挤掉消息区高度。 */}
-      {showWelcomeReady && (
-        <QuickStartTemplates
-          onApplyTemplate={(prompt) =>
-            messageInputRef.current?.loadDraft(prompt)
-          }
-        />
-      )}
+      {/* IDE 宿主的「快捷方式」仍在输入卡上方（与桌面端分叉排布，原因见下方
+          桌面端那处的注释）。 */}
+      {!isDesktop && quickStartBlock}
 
       {/* 扫光加载动画期间（初始状态尚未就绪且无消息）不展示输入区域，
           只让 LoadingLogo 单独占据主体；就绪后由欢迎页/消息列表带出输入框。 */}
@@ -4263,6 +4265,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           )}
         </div>
       ) : null}
+
+      {/* 空态「快捷方式」：12 个开发场景分类 → 该分类的模板，点模板整段填进
+          输入框（与设置页「新建/编辑」预填走同一个 loadDraft）。只在空态出现，
+          有对话历史后它是「第一次怎么开口」的入口，常驻只会挤掉消息区高度。
+          位置只在**桌面端**挪到输入卡下方（设计师 1022 评论「这块放在输入框
+          下面间距先不改」）；IDE 宿主仍在输入卡上方（原地不动）。两处留白都由
+          父级 flex 的 gap 提供，未额外加 margin/padding。 */}
+      {isDesktop && quickStartBlock}
     </>
   );
 

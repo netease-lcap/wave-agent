@@ -9116,3 +9116,75 @@ CSS 在 `ModelPicker.css` 桌面段：
 `packages/webview` 的 `tsc --noEmit` 通过。
 
 **状态**：本单在**工作区未提交**，等她说推送。
+
+---
+
+## 2026-10-22 · 空态「快捷方式」挪到输入卡下方（仅桌面端）
+
+她（预览评论，指 `div.quick-start-row`「项目初始化 功能开发 代码调试与优化 …」）：
+「这块放在输入框下面间距先不改」；随后补一句「刚才的改动仅桌面端生效」。
+
+### ① 改前 / 改后
+
+| 项                 | 改前                                  | 改后                                  |
+| ------------------ | ------------------------------------- | ------------------------------------- |
+| 桌面端 DOM 顺序    | logo → **快捷方式** → 输入卡 → 状态行 | logo → 输入卡 → 状态行 → **快捷方式** |
+| 快捷方式块 y       | 337 → 401                             | **563 → 627**                         |
+| 输入卡 y           | 457 → 611                             | **353 → 507**                         |
+| 卡片 ↔ 胶囊行间距 | 56px（内衬 16 + gap 40）              | **56px**（同一个 gap，镜像对称）      |
+| 整组高度 / 居中 y  | 354 / 273                             | 354 / 273（欢迎页整体居中位置不变）   |
+| 胶囊几何           | 91×28 · 13px · r14 · 行盒 64          | 逐值不变                              |
+| IDE 宿主           | logo → 快捷方式 → 输入卡（gap 44）    | 同左（按 `isDesktop` 分叉，未变）     |
+
+「间距先不改」是字面成立的：改前的 56px 来自输入卡**上**内衬 16 + 父级 flex `gap: 40px`，
+改后来自**下**内衬 16 + 同一个 gap —— 这一档留白本来就镜像对称，换序后自然等值，无需补偿。
+
+### ② 代码
+
+只动 `ChatApp.tsx`：把区块抽成一个常量（守卫与 `loadDraft` 回填只写一份），按宿主二选一渲染。
+
+```tsx
+const quickStartBlock = showWelcomeReady ? (
+  <QuickStartTemplates
+    onApplyTemplate={(prompt) => messageInputRef.current?.loadDraft(prompt)}
+  />
+) : null;
+...
+{!isDesktop && quickStartBlock}   {/* IDE：输入卡之前（原位） */}
+{showWelcomeReady || !showWelcome ? (<div className="input-area-container">…</div>) : null}
+{isDesktop && quickStartBlock}    {/* 桌面端：输入卡之后（新位置） */}
+```
+
+CSS 一行未改（`QuickStartTemplates.css` 只同步了两处「下方输入卡片」的注释措辞）。
+
+### ③ 认知 / 坑
+
+1. **纯顺序对调 ≠ 需要补间距**：两块留白若各自挂在「容器内衬 + 同一 gap」上，互换后是等值的；
+   先量改前改后的间距再决定要不要加 margin，否则会把 56px 加成 96px。
+2. **整组居中会把位移「吃掉」**：欢迎页按 `.desktop-chat-body` 居中，组内互换后组高不变 ⇒
+   logo / 输入卡 / 胶囊行三者的绝对 y 都变了，但相对关系与整组位置没变 —— 报告里要两套数都给。
+3. **「仅桌面端」要按宿主分叉，不能用 CSS `order`**：`order` 会让 DOM 顺序与视觉顺序不一致，
+   键盘 tab 顺序、读屏朗读顺序都会跟视觉相反；抽常量 + 两个渲染点既保住单一 props 来源，也不动无障碍顺序。
+4. **IDE 反证要造用例**：`mock/tmp-host-ide-1022.ts`（原有的宿主反证用例）没有初始化数据，进不了欢迎页；
+   本轮加了 `tmp-quickstart-ide-1022.ts`（`host: "ide"` + `setInitialState({})`）才量到 IDE 的
+   `[WelcomeView, quick-start, input-area-container]` 顺序与 44px gap。
+
+### ④ 残留（未授权，等点名）
+
+| 项                  | 现状                               | 触发语                    |
+| ------------------- | ---------------------------------- | ------------------------- |
+| 卡片 ↔ 胶囊间距    | 56px（内衬 16 + gap 40），本轮未调 | 「间距再紧一点 / 松一点」 |
+| IDE 宿主位置        | 仍在输入卡上方                     | 「IDE 也挪到下面」        |
+| 胶囊尺寸            | 28px 高 / r14 / 13px，未动         | 「胶囊再大一号」          |
+| 二级态（返回+模板） | 行盒口径未动                       | 「二级态也一起」          |
+
+取证：探针 `走查/_tools/1022/probe-quickstart-below-input-1022.mjs`（`before|after`，before 侧真回退
+`ChatApp.tsx` 到 `HEAD` 后重采）· 素材 `走查/1022-快捷方式位置/{before,after}`（含 `measure.json`、
+IDE 反证图 `ide-host/`）；报告 `走查/1022-快捷方式位置报告/index.html`（1 条 pair，浅深各一对，
+1280/640 两个宽度均无横向溢出、axe 浅深 **0/0**、pageerror 0）。
+
+`ChatApp.tsx` md5 `9100ba8c717e1cc2c92cbc35762405ce`（HEAD 版 `3ef92689d97d3f6cfd2d752dfb3d7275`）、
+`QuickStartTemplates.tsx` md5 `063a08ed02ee469b590f2c747503a0db`、`QuickStartTemplates.css` md5
+`399621b70a9fe44609f68087bf2ed427`；`packages/webview` 的 `tsc --noEmit` 通过。
+
+**状态**：本单已按她「推送」提交并推送（分支 `feat/1022-ui-polish-r2`）。

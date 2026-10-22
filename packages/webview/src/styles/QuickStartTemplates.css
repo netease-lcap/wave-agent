@@ -1,5 +1,5 @@
 /* 空态页「快捷方式」区（提示词模板入口）：一级 12 个分类 ⇄ 二级返回胶囊 + 模板。
-   宽度与下方输入卡片同档（IDE 800 / 桌面 768，见 MessageInput.css 与
+   宽度与上方输入卡片同档（IDE 800 / 桌面 768，见 MessageInput.css 与
    host-desktop.css 的 .input-wrapper max-width），所以两块的左右边线对齐。 */
 .quick-start {
   width: 100%;
@@ -12,7 +12,7 @@
 .quick-start-row {
   width: 100%;
   max-width: 800px;
-  /* 一级恒为两行高：切到二级（子项更少）时下方输入卡片不位移。 */
+  /* 一级恒为两行高：切到二级（子项更少）时整行高度不变，页面不位移。 */
   min-height: 64px;
   display: flex;
   flex-wrap: wrap;
