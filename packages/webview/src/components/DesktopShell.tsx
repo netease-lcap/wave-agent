@@ -18,6 +18,7 @@ import type {
   VsCodeApi,
 } from "../types";
 import type { NavKey } from "./SettingsPage";
+import { withDraftGuard } from "../utils/fileDraftGuard";
 import "../styles/DesktopApp.css";
 
 const MIN_PANE_WIDTH = 360;
@@ -729,13 +730,17 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     <div className="desktop-layout" data-testid="desktop-shell">
       <DesktopSidebar
         onNewSession={() =>
+          // 新建会话会把当前分屏的面板（含未保存草稿）换掉：先问（spec
+          // desktop-file-panel.md「文件面板内编辑与保存」场景 6）。
           closeWholePagesThen(() =>
-            vscode.postMessage({ command: "newSession" }),
+            withDraftGuard(() => vscode.postMessage({ command: "newSession" })),
           )
         }
         onNewSessionInPane={() =>
           closeWholePagesThen(() =>
-            vscode.postMessage({ command: "desktopNewSessionInPane" }),
+            withDraftGuard(() =>
+              vscode.postMessage({ command: "desktopNewSessionInPane" }),
+            ),
           )
         }
         isStreaming={false}

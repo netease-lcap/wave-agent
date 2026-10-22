@@ -30,7 +30,13 @@ const CSP = [
   "connect-src 'none'",
 ].join("; ");
 
-for (const file of ["chat.js", "chat.css", "terminal.js", "terminal.css"]) {
+for (const file of [
+  "chat.js",
+  "chat.css",
+  "terminal.js",
+  "terminal.css",
+  "editor.js",
+]) {
   if (!fs.existsSync(path.join(webviewDist, file))) {
     console.error(
       `[syncWebview] Missing ${file} in ${webviewDist}. Run \`pnpm -F wave-webview build\` first.`,
@@ -56,6 +62,12 @@ fs.copyFileSync(
 fs.copyFileSync(
   path.join(webviewDist, "terminal.js"),
   path.join(outDir, "terminal.js"),
+);
+// Desktop-only code editor chunk — lazy-injected by the file panel's edit mode
+// the same way (same-origin <script>).
+fs.copyFileSync(
+  path.join(webviewDist, "editor.js"),
+  path.join(outDir, "editor.js"),
 );
 
 // Rewrite each theme-base `:root { ... }` block to only apply when <html> carries

@@ -732,6 +732,23 @@ export interface FileViewState {
   totalLines?: number;
   /** Base64 data URL for remote images, inlined in the panel. */
   imageBase64?: string;
+  /** sha256 of the file's full bytes — the token a save sends back so the host
+   *  can refuse to overwrite a file that changed underneath the draft. Absent ⇒
+   *  the panel never read the whole file, so it can't be edited. */
+  contentHash?: string;
+  /** Host-decided editability (local session + inside the workdir + complete
+   *  text content). The webview must not re-derive this: what counts as
+   *  writable is the host's call, not a rule duplicated in the UI. */
+  editable?: boolean;
+  /** In-panel draft; `undefined` ⇒ the read-only viewer is showing. */
+  draft?: string;
+  /** A save request is in flight (toolbar buttons disabled). */
+  saving?: boolean;
+  /** The disk copy changed while the draft was open (agent write/edit, or an
+   *  external editor). The draft stays; the user chooses overwrite or reload. */
+  diskChanged?: boolean;
+  /** Last save failure (draft kept, editable again after retry). */
+  saveError?: string;
 }
 
 /** Header panel-toggle control: which panels are checked + toggle callback. */

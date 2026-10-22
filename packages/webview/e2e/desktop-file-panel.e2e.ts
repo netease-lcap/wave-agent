@@ -308,4 +308,97 @@ test.describe("Desktop file panel", () => {
     });
     await expect(webviewPage.locator(".file-pane-code")).toBeVisible();
   });
+
+  // spec desktop-file-panel.md「文件面板内编辑与保存」场景 1–3：编辑按钮只在
+  // 「整份文件 + 工作目录内」出现；点进去是真的 CodeMirror chunk（editor.js，
+  // 由 harness 按 dist 目录按需伺服），Mod+S 发出一次带 hash 的保存请求。
+  test("edit mode mounts the CodeMirror chunk and saves with the read hash", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    const codePath = `${DIR_A}/src/components/Login.tsx`;
+    await setupReadMessage(injector, codePath);
+    await openFileFromMessage(webviewPage, injector);
+
+    const content = "export const alpha = 1;\n";
+    await injector.simulateExtensionMessage("desktopFileContent", {
+      fileView: {
+        path: codePath,
+        host: "local",
+        loading: false,
+        content,
+        contentHash: "hash-1",
+        editable: true,
+        truncated: false,
+        totalLines: 1,
+      },
+    });
+    await expect(webviewPage.locator(".file-pane-code")).toBeVisible();
+
+    await webviewPage.getByTestId("file-pane-edit").click();
+
+    // 真 chunk：CodeMirror 的内容区 + 行号 gutter，且草稿就是文件内容。
+    const editor = webviewPage.locator(".file-pane-editor .cm-content");
+    await expect(editor).toBeVisible();
+    await expect(webviewPage.locator(".cm-lineNumbers")).toBeVisible();
+    await expect(editor).toContainText("alpha = 1");
+
+    await editor.click();
+    await webviewPage.keyboard.press("ControlOrMeta+a");
+    await webviewPage.keyboard.type("export const beta = 2;");
+    await webviewPage.keyboard.press("ControlOrMeta+s");
+
+    await injector.waitForMessage("desktopSaveFile");
+    const sent = await injector.getMessagesSentToExtension();
+    const save = sent.filter((m) => m.command === "desktopSaveFile").pop() as {
+      path?: string;
+      content?: string;
+      contentHash?: string;
+      requestId?: string;
+    };
+    expect(save.path).toBe(codePath);
+    expect(save.content).toBe("export const beta = 2;");
+    // 乐观并发校验的基底就是面板读到那份内容的 hash。
+    expect(save.contentHash).toBe("hash-1");
+    expect(save.requestId).toBeTruthy();
+
+    // 宿主回 saved → 退出编辑态、回到只读视图，并提示已保存。
+    await injector.simulateExtensionMessage("desktopFileSaveResult", {
+      paneId: "pane-1",
+      requestId: save.requestId,
+      status: "saved",
+      contentHash: "hash-2",
+    });
+    await expect(webviewPage.locator(".cm-content")).toHaveCount(0);
+    await expect(webviewPage.locator(".file-pane-code")).toBeVisible();
+    await expect(webviewPage.getByText("已保存")).toBeVisible();
+  });
+
+  // 场景 2：截断的文件不给编辑入口——写回半份内容会把文件毁掉。
+  test("a truncated file offers no edit affordance", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    const logPath = `${DIR_A}/logs/big.log`;
+    await setupReadMessage(injector, logPath);
+    await openFileFromMessage(webviewPage, injector);
+
+    await injector.simulateExtensionMessage("desktopFileContent", {
+      fileView: {
+        path: logPath,
+        host: "local",
+        loading: false,
+        content: "line 1\nline 2\n",
+        truncated: true,
+        totalLines: 2001,
+      },
+    });
+
+    await expect(
+      webviewPage.locator(".file-pane-truncated-hint"),
+    ).toBeVisible();
+    await expect(webviewPage.getByTestId("file-pane-edit")).toHaveCount(0);
+  });
 });

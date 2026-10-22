@@ -13,6 +13,7 @@ import {
 } from "../utils/previewGuestKeep";
 import { DesktopChromeProvider } from "./DesktopChromeContext";
 import { useHostMessage } from "../utils/useHostMessage";
+import { withDraftGuard } from "../utils/fileDraftGuard";
 import { useSessionRename } from "../utils/useSessionRename";
 import {
   VsCodeApi,
@@ -97,12 +98,22 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
   }, [vscode]);
 
   const handleSelectWorkdir = useCallback(() => {
-    vscode.postMessage({ command: "desktopSelectWorkdir" });
+    // 换工作目录会把各分屏的面板连同草稿一起换掉（spec desktop-file-panel.md
+    // 「文件面板内编辑与保存」场景 6）：有未保存修改就先问。
+    withDraftGuard(() =>
+      vscode.postMessage({ command: "desktopSelectWorkdir" }),
+    );
   }, [vscode]);
 
   const handleSelectRecentWorkdir = useCallback(
     (path: string, host?: string) => {
-      vscode.postMessage({ command: "desktopSelectRecentWorkdir", path, host });
+      withDraftGuard(() =>
+        vscode.postMessage({
+          command: "desktopSelectRecentWorkdir",
+          path,
+          host,
+        }),
+      );
     },
     [vscode],
   );
@@ -149,18 +160,22 @@ export const DesktopApp: React.FC<DesktopAppProps> = ({ vscode }) => {
 
   const handleSelectSession = useCallback(
     (workdir: string, sessionId: string) => {
-      vscode.postMessage({
-        command: "desktopSelectSession",
-        workdir,
-        sessionId,
-      });
+      withDraftGuard(() =>
+        vscode.postMessage({
+          command: "desktopSelectSession",
+          workdir,
+          sessionId,
+        }),
+      );
     },
     [vscode],
   );
 
   const handleDeleteSession = useCallback(
     (sessionId: string) => {
-      vscode.postMessage({ command: "desktopDeleteSession", sessionId });
+      withDraftGuard(() =>
+        vscode.postMessage({ command: "desktopDeleteSession", sessionId }),
+      );
     },
     [vscode],
   );

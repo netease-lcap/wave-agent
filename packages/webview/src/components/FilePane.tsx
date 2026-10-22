@@ -16,8 +16,14 @@ import { toRelativePath } from "../utils/messageUtils";
 import { useClickOutside } from "../utils/useClickOutside";
 import { useHostMessage } from "../utils/useHostMessage";
 import { ConversationFileList } from "./ConversationFileList";
+import { FileEditor } from "./fileEditor/FileEditor";
 import { FileSuggestionDropdown } from "./FileSuggestionDropdown";
-import { OpenBrowserIcon, SearchIcon, SettingsBackIcon } from "./HeaderIcons";
+import {
+  OpenBrowserIcon,
+  QueueEditIcon,
+  SearchIcon,
+  SettingsBackIcon,
+} from "./HeaderIcons";
 import { LineCommentBox } from "./LineCommentBox";
 import { PanelKindIcon } from "./PanelKindIcon";
 import { PanePlaceholder, PaneShell } from "./PaneShell";
@@ -308,6 +314,19 @@ export interface FilePaneProps {
    * the code view renders no comment buttons at all.
    */
   onAddComment?: (text: string) => void;
+
+  // ---- 面板内编辑（spec desktop-file-panel.md「文件面板内编辑与保存」）--------
+  // 全部由桌面端 ChatApp 接线；缺省即面板只读（IDE 宿主根本没有这个面板）。
+  /** 进入编辑态：宿主在 `fileView.editable` 里说这个文件可以改。 */
+  onStartEdit?: () => void;
+  /** 起草稿；编辑器是受控之外的（CodeMirror 自己持有文本），这里只镜像到宿主态。 */
+  onDraftChange?: (value: string) => void;
+  /** 保存草稿。`content` 是编辑器此刻的全文，避免差一次状态提交。 */
+  onSaveDraft?: (content: string) => void;
+  /** 退出编辑态（有未保存修改时，宿主负责先弹确认）。 */
+  onCancelEdit?: () => void;
+  /** 磁盘已被改动后用户选择「重新加载」：丢弃草稿并重读。 */
+  onReloadDraft?: () => void;
 }
 
 /**
@@ -329,6 +348,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onBackToList,
   listMode,
   onAddComment,
+  onStartEdit,
+  onDraftChange,
+  onSaveDraft,
+  onCancelEdit,
+  onReloadDraft,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -554,6 +578,42 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const showList = hasConversationFiles && (!fileView || listMode);
   const showFile = !!fileView && !showList;
 
+  // ---- 面板内编辑（spec「文件面板内编辑与保存」）------------------------------
+  // 编辑入口只认宿主给的 `fileView.editable`：里面已经包含了「本地会话 + 路径在
+  // 工作目录内 + 读到的是完整文本」，可写性由宿主一处判定，webview 不重新推导一
+  // 份规则（否则远端会话、截断文件迟早各漏一处）。`draft !== undefined` 就是
+  // 「处于编辑态」：草稿放在 tab 态里而不是组件内部，切一级 tab 再切回来仍在。
+  const editing = fileView?.draft !== undefined;
+  const canEdit =
+    !!onStartEdit &&
+    !!fileView &&
+    fileView.editable === true &&
+    !fileView.error &&
+    !fileView.truncated &&
+    !fileView.imageBase64 &&
+    !!fileView.content;
+
+  // 编辑器不受控（文本由 CodeMirror 持有），保存读的是这里的镜像而不是 React
+  // state：onChange 与点击保存/按 Cmd+S 是两次事件，走 state 会有一段「慢一次提
+  // 交」的窗口，快手指令下会把旧内容写回磁盘。
+  const draftRef = useRef("");
+  useEffect(() => {
+    draftRef.current = fileView?.draft ?? "";
+  }, [fileView?.draft]);
+
+  const handleEditorChange = useCallback(
+    (value: string) => {
+      draftRef.current = value;
+      onDraftChange?.(value);
+    },
+    [onDraftChange],
+  );
+
+  // 工具条的「保存」与编辑器内的 Cmd/Ctrl+S 是同一条路径。
+  const handleEditorSave = useCallback(() => {
+    onSaveDraft?.(draftRef.current);
+  }, [onSaveDraft]);
+
   // Inline line comments — the same interaction as the diff pane: hovering a
   // line reveals a "+" button, clicking opens a box under that line, and the
   // submitted comment is appended to the chat input (never sent directly, and
@@ -766,6 +826,43 @@ export const FilePane: React.FC<FilePaneProps> = ({
               </button>
             </Tooltip>
           )}
+          {/* 编辑入口是**显式动作**：只有宿主说可写时才出现，且点击正文不会进入
+              编辑（场景 3）——避免浏览时误触把面板变成草稿态。进入后工具条右端换
+              成「取消 / 保存」，编辑态不再显示编辑按钮。 */}
+          {showFile && canEdit && !editing && (
+            <Tooltip text="编辑" position="bottom">
+              <button
+                type="button"
+                className="preview-pane-button"
+                aria-label="编辑"
+                data-testid="file-pane-edit"
+                onClick={onStartEdit}
+              >
+                <QueueEditIcon className="preview-pane-icon" />
+              </button>
+            </Tooltip>
+          )}
+          {showFile && editing && (
+            <>
+              <button
+                type="button"
+                className="file-pane-edit-action"
+                data-testid="file-pane-edit-cancel"
+                onClick={onCancelEdit}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="file-pane-edit-action file-pane-edit-action--primary"
+                data-testid="file-pane-edit-save"
+                disabled={fileView?.saving}
+                onClick={handleEditorSave}
+              >
+                {fileView?.saving ? "保存中…" : "保存"}
+              </button>
+            </>
+          )}
           {vscode && (
             <Tooltip
               text={searchOpen ? "收起文件搜索" : "搜索文件"}
@@ -829,7 +926,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           </div>
         )
       }
-      bodyClassName="preview-pane-body file-pane-body"
+      bodyClassName={`preview-pane-body file-pane-body${editing ? " file-pane-body--editing" : ""}`}
       bodyRef={scrollRef}
     >
       {showList && (
@@ -875,7 +972,60 @@ export const FilePane: React.FC<FilePaneProps> = ({
               alt={relativePath || fileView.path}
             />
           )}
-          {fileView?.content && !fileView.error && markdown && (
+          {/* 编辑态：正文换成 CodeMirror（markdown 也是源文本编辑，保存后回到渲染
+              态）。正文整块替换掉，行评论 / 块评论入口随之消失（场景 12）——评论
+              锚定的是只读正文的行区间，草稿里的行号随时在变。 */}
+          {fileView && editing && !fileView.error && (
+            <div className="file-pane-editor-wrap">
+              {fileView.diskChanged && (
+                <div
+                  className="file-pane-banner"
+                  data-testid="file-pane-disk-changed"
+                >
+                  <i className="codicon codicon-warning file-pane-banner-icon" />
+                  <span className="file-pane-banner-text">
+                    文件已在磁盘上更新，保存将覆盖磁盘上的改动
+                  </span>
+                  {/* 「覆盖」按回包里的磁盘哈希再写一次（与工具条保存同一条
+                      路径）；「重新加载」丢弃草稿重读。 */}
+                  <button
+                    type="button"
+                    className="file-pane-banner-action"
+                    data-testid="file-pane-overwrite"
+                    onClick={handleEditorSave}
+                  >
+                    覆盖
+                  </button>
+                  <button
+                    type="button"
+                    className="file-pane-banner-action"
+                    data-testid="file-pane-reload"
+                    onClick={onReloadDraft}
+                  >
+                    重新加载
+                  </button>
+                </div>
+              )}
+              {fileView.saveError && (
+                <div
+                  className="file-pane-banner file-pane-banner--error"
+                  data-testid="file-pane-save-error"
+                >
+                  <i className="codicon codicon-error file-pane-banner-icon" />
+                  <span className="file-pane-banner-text">
+                    {fileView.saveError}
+                  </span>
+                </div>
+              )}
+              <FileEditor
+                path={fileView.path}
+                initialValue={fileView.draft ?? ""}
+                onChange={handleEditorChange}
+                onSave={handleEditorSave}
+              />
+            </div>
+          )}
+          {fileView?.content && !fileView.error && markdown && !editing && (
             <div
               className="file-pane-markdown-wrap"
               ref={mdWrapRef}
@@ -918,6 +1068,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
           {fileView?.content &&
             !fileView.error &&
             !markdown &&
+            !editing &&
             contentLines && (
               <div className="file-pane-code">
                 {fileView.truncated && fileView.totalLines !== undefined && (

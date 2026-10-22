@@ -93,6 +93,31 @@ export interface FileViewState {
   truncated?: boolean;
   totalLines?: number;
   imageBase64?: string;
+  /**
+   * sha256 of the file's full bytes, present only when the panel holds the whole
+   * text (no truncation, not an image/binary) — the optimistic-concurrency token
+   * a save sends back. Absent ⇒ the file can't be edited in the panel.
+   */
+  contentHash?: string;
+  /**
+   * Host-decided: this file may be edited in the panel. Local session, path
+   * inside the session workdir, complete text content. The webview never
+   * derives this itself (a remote session or an out-of-workdir file is
+   * read-only no matter what the webview can see).
+   */
+  editable?: boolean;
+  /** Draft while the panel's edit mode is open. `undefined` ⇒ read-only view. */
+  draft?: string;
+  /** A `desktopSaveFile` request is in flight. */
+  saving?: boolean;
+  /**
+   * The disk copy changed while a draft was open (agent write/edit succeeded, or
+   * the user saved from an external editor). The draft is untouched; saving will
+   * be refused by the host and needs an explicit overwrite.
+   */
+  diskChanged?: boolean;
+  /** Last save failure, shown inside the panel (draft is kept). */
+  saveError?: string;
 }
 
 export interface QueuedMessage {
@@ -393,6 +418,20 @@ export interface DesktopForwardPortResultMessage
 export interface DesktopFileContentMessage extends HostToWebviewMessageBase {
   command: "desktopFileContent";
   fileView: FileViewState;
+}
+
+/** Reply to `desktopSaveFile` — the file panel's save result (desktop only).
+ *  `conflict` means the disk copy no longer matches the hash the panel read, so
+ *  nothing was written: the user must choose overwrite or reload. */
+export interface DesktopFileSaveResultMessage extends HostToWebviewMessageBase {
+  command: "desktopFileSaveResult";
+  requestId: string;
+  status: "saved" | "conflict" | "denied" | "error";
+  /** Human-readable reason for denied/error/conflict, shown in the panel. */
+  message?: string;
+  /** New hash of the file on disk (on success), or the current disk hash when
+   *  the save was refused as a conflict. */
+  contentHash?: string;
 }
 
 /** Reply to desktopPreviewFile — the loopback URL re-hosting the .html file
@@ -1339,6 +1378,7 @@ export type HostToWebviewMessage =
   | DesktopWorktreeCreatedMessage
   | DesktopForwardPortResultMessage
   | DesktopFileContentMessage
+  | DesktopFileSaveResultMessage
   | DesktopPreviewFileResultMessage
   | UpdateQueueMessage
   | UpdateQueuedMessageMissingMessage
@@ -1463,6 +1503,9 @@ type ReplyAttribution = {
   // 本地 HTML 预览：请求生成 id，回复原样带回（webview 比对 requestId 弃旧
   // 回复；失败回复触发文件面板回退）。
   desktopPreviewFileResult: "requestId";
+  // 文件面板保存：一次编辑可重试多次（覆盖保存 / 失败重试），晚到的旧结果必须按
+  // requestId 丢弃，否则会把上一次失败的横幅贴回已经存好的文件。
+  desktopFileSaveResult: "requestId";
   desktopRemoteDirList: "requestId";
   // 删除确认：请求生成 id，回复原样带回（同一会话可反复开关对话框）。
   desktopWorktreeChanges: "requestId";
@@ -1537,6 +1580,7 @@ export const replyAttributionLocked = {
   olderMessages: true,
   olderMessagesError: true,
   desktopPreviewFileResult: true,
+  desktopFileSaveResult: true,
   desktopRemoteDirList: true,
   desktopWorktreeChanges: true,
   pluginMarketFolderSelected: true,

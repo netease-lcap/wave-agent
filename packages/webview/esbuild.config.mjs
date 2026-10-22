@@ -78,6 +78,16 @@ const terminalConfig = {
   outfile: out("terminal.js"),
 };
 
+// Desktop-only code editor chunk (CodeMirror 6). Exposes `window.WaveEditor`
+// and is lazy-injected by the file panel's edit mode; VSCE/JetBrains sync
+// targets filter it out so CodeMirror never enters plugin artifacts.
+const editorConfig = {
+  ...frontendConfig,
+  entryPoints: ["src/editor-entry.ts"],
+  globalName: "WaveEditor",
+  outfile: out("editor.js"),
+};
+
 // VS Code plan-preview chunk (claudePlanPreview equivalent): a tiny standalone
 // bundle loaded by the plan-preview WebviewPanel the extension opens beside the
 // chat panel on ExitPlanMode. It has no global; the panel HTML links chat.css
@@ -101,12 +111,14 @@ const settingsConfig = {
 async function main() {
   const ctx = await esbuild.context(frontendConfig);
   const terminalCtx = await esbuild.context(terminalConfig);
+  const editorCtx = await esbuild.context(editorConfig);
   const planPreviewCtx = await esbuild.context(planPreviewConfig);
   const settingsCtx = await esbuild.context(settingsConfig);
   if (watch) {
     console.log("[watch] frontend build started");
     await ctx.watch();
     await terminalCtx.watch();
+    await editorCtx.watch();
     await planPreviewCtx.watch();
     await settingsCtx.watch();
   } else {
@@ -115,6 +127,8 @@ async function main() {
     await ctx.dispose();
     await terminalCtx.rebuild();
     await terminalCtx.dispose();
+    await editorCtx.rebuild();
+    await editorCtx.dispose();
     await planPreviewCtx.rebuild();
     await planPreviewCtx.dispose();
     await settingsCtx.rebuild();

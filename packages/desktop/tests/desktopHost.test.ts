@@ -15,6 +15,11 @@ const h = vi.hoisted(() => ({
   existingPaths: new Set<string>(),
   // Paths that exist but are directories (file panel local reads).
   dirPaths: new Set<string>(),
+  // realpath overrides: a path that is a symlink to somewhere else (the file
+  // panel's workdir containment check resolves both ends).
+  realpaths: new Map<string, string>(),
+  // When set, fs.promises.writeFile rejects — the file panel's save failure path.
+  writeFileError: null as Error | null,
   agentInstances: [] as Array<Record<string, unknown>>,
   clientRequests: [] as Array<{ method: string; params: unknown }>,
   // 创作集 RPC 回包（`artifact*`）：键是方法名，值是 CLI 侧那份 `{ok,...}`
@@ -219,6 +224,7 @@ vi.mock("fs", () => ({
   promises: {
     mkdir: vi.fn(async () => undefined),
     writeFile: vi.fn(async (p: string, data: string | Buffer) => {
+      if (h.writeFileError) throw h.writeFileError;
       h.files.set(p, data);
     }),
     readFile: vi.fn(async (p: string) => {
@@ -243,7 +249,38 @@ vi.mock("fs", () => ({
       return {
         isDirectory: () => h.dirPaths.has(p),
         isFile: () => !h.dirPaths.has(p),
+        mode: 0o644,
       } as unknown as Awaited<ReturnType<typeof import("fs").promises.stat>>;
+    }),
+    // Symlink resolution for the file panel's workdir containment check. The
+    // mock has no inode table, so unknown paths resolve to themselves and
+    // `h.realpaths` supplies the cases where a path leads somewhere else.
+    realpath: vi.fn(async (p: string) => {
+      if (!h.existingPaths.has(p) && !h.files.has(p) && !h.dirPaths.has(p)) {
+        const err = new Error(
+          `ENOENT: no such file or directory, realpath '${p}'`,
+        ) as NodeJS.ErrnoException;
+        err.code = "ENOENT";
+        throw err;
+      }
+      return h.realpaths.get(p) ?? p;
+    }),
+    chmod: vi.fn(async () => undefined),
+    unlink: vi.fn(async (p: string) => {
+      h.files.delete(p);
+      h.existingPaths.delete(p);
+    }),
+    rename: vi.fn(async (from: string, to: string) => {
+      const data = h.files.get(from);
+      if (data === undefined) {
+        const err = new Error(
+          `ENOENT: no such file or directory, rename '${from}'`,
+        ) as NodeJS.ErrnoException;
+        err.code = "ENOENT";
+        throw err;
+      }
+      h.files.set(to, data);
+      h.files.delete(from);
     }),
     open: vi.fn(async (p: string) => ({
       read: vi.fn(
@@ -728,6 +765,8 @@ beforeEach(() => {
   h.files.clear();
   h.existingPaths.clear();
   h.dirPaths.clear();
+  h.realpaths.clear();
+  h.writeFileError = null;
   h.agentInstances.length = 0;
   h.clientRequests.length = 0;
   h.authStatusResults.length = 0;
@@ -10880,6 +10919,12 @@ describe("file panel", () => {
           totalLines: 2,
           startLine: 2,
           endLine: 2,
+          // 整份文件读到 + 路径在会话工作目录内 → 面板内可编辑（保存要用这个
+          // hash 做乐观并发校验）。
+          contentHash: createHash("sha256")
+            .update("const x = 1;\nconst y = 2;\n")
+            .digest("hex"),
+          editable: true,
         },
       },
     ]);
@@ -11158,6 +11203,258 @@ describe("file panel", () => {
         JSON.stringify(m).includes("打开文件所在文件夹失败"),
       ),
     ).toBe(true);
+  });
+
+  // ---- 面板内编辑与保存（spec desktop-file-panel.md「文件面板内编辑与保存」）----
+  // 路径与相邻用例一样用原样字符串：mock 的 key 就是消息里的 path，宿主内部
+  // 的 realpath / path.resolve 只用于两端比较，不参与 key 匹配。
+
+  const sha = (text: string | Buffer) =>
+    createHash("sha256").update(text).digest("hex");
+
+  const saveFile = (
+    host: Awaited<ReturnType<typeof readyHost>>["host"],
+    msg: Record<string, unknown>,
+  ) =>
+    host.handleWebviewMessage({
+      command: "desktopSaveFile",
+      requestId: "save-1",
+      ...msg,
+    } as Parameters<typeof host.handleWebviewMessage>[0]);
+
+  it("desktopSaveFile writes the draft atomically and replies with the new hash", async () => {
+    const { host, sent } = await readyHost();
+    seedLocalFile("/work/a/src.ts", "alpha one");
+
+    await saveFile(host, {
+      path: "/work/a/src.ts",
+      content: "alpha two",
+      contentHash: sha("alpha one"),
+    });
+
+    expect(sent("desktopFileSaveResult")).toEqual([
+      {
+        command: "desktopFileSaveResult",
+        paneId: "pane-1",
+        requestId: "save-1",
+        status: "saved",
+        contentHash: sha("alpha two"),
+      },
+    ]);
+    expect(h.files.get("/work/a/src.ts")).toBe("alpha two");
+    // 同目录临时文件已经 rename 掉，不留在磁盘上。
+    expect([...h.files.keys()].some((p) => p.includes("wave-save"))).toBe(
+      false,
+    );
+  });
+
+  it("desktopSaveFile refuses a panel that has no hash for the file", async () => {
+    const { host, sent } = await readyHost();
+    seedLocalFile("/work/a/big.log", "alpha");
+
+    await saveFile(host, {
+      path: "/work/a/big.log",
+      content: "beta",
+      contentHash: undefined,
+    });
+
+    expect(sent("desktopFileSaveResult")).toEqual([
+      {
+        command: "desktopFileSaveResult",
+        paneId: "pane-1",
+        requestId: "save-1",
+        status: "denied",
+        message: "该文件不支持在面板内编辑",
+      },
+    ]);
+    expect(h.files.get("/work/a/big.log")).toBe("alpha");
+  });
+
+  it("desktopSaveFile refuses a remote pane (remote panels stay read-only)", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+
+    await saveFile(host, {
+      path: "/remote/src.ts",
+      content: "beta",
+      contentHash: sha("alpha"),
+    });
+
+    expect(sent("desktopFileSaveResult")).toEqual([
+      {
+        command: "desktopFileSaveResult",
+        paneId: "pane-1",
+        requestId: "save-1",
+        status: "denied",
+        message: "远端会话的文件不能在面板内保存",
+      },
+    ]);
+  });
+
+  it("desktopSaveFile refuses a path outside the session workdir", async () => {
+    const { host, sent } = await readyHost();
+    seedLocalFile("/etc/passwd", "alpha");
+
+    await saveFile(host, {
+      path: "/etc/passwd",
+      content: "beta",
+      contentHash: sha("alpha"),
+    });
+
+    expect(sent("desktopFileSaveResult")).toEqual([
+      {
+        command: "desktopFileSaveResult",
+        paneId: "pane-1",
+        requestId: "save-1",
+        status: "denied",
+        message: "该文件在会话工作目录之外，不能保存",
+      },
+    ]);
+    expect(h.files.get("/etc/passwd")).toBe("alpha");
+  });
+
+  it("a symlink inside the workdir is neither editable nor writable", async () => {
+    const { host, sent } = await readyHost();
+    // workdir 里放一个指向外部的软链：两端 realpath 一比就露馅。
+    seedLocalFile("/work/a/link.ts", "alpha");
+    seedLocalFile("/tmp/evil.ts", "alpha");
+    h.realpaths.set("/work/a/link.ts", "/tmp/evil.ts");
+
+    await host.handleWebviewMessage({
+      command: "openFile",
+      path: "/work/a/link.ts",
+    });
+
+    expect(
+      (
+        sent("desktopFileContent").at(-1) as {
+          fileView: Record<string, unknown>;
+        }
+      ).fileView,
+    ).toMatchObject({ editable: false });
+
+    await saveFile(host, {
+      path: "/work/a/link.ts",
+      content: "beta",
+      contentHash: sha("alpha"),
+    });
+
+    expect(sent("desktopFileSaveResult").at(-1)).toMatchObject({
+      status: "denied",
+      message: "该文件在会话工作目录之外，不能保存",
+    });
+    expect(h.files.get("/tmp/evil.ts")).toBe("alpha");
+  });
+
+  it("desktopSaveFile reports a disappeared file as a conflict", async () => {
+    const { host, sent } = await readyHost();
+
+    await saveFile(host, {
+      path: "/work/a/gone.ts",
+      content: "beta",
+      contentHash: sha("alpha"),
+    });
+
+    expect(sent("desktopFileSaveResult")).toEqual([
+      {
+        command: "desktopFileSaveResult",
+        paneId: "pane-1",
+        requestId: "save-1",
+        status: "conflict",
+        message: "文件已被删除，无法保存",
+      },
+    ]);
+  });
+
+  it("desktopSaveFile refuses to overwrite a disk copy that moved on", async () => {
+    const { host, sent } = await readyHost();
+    // 面板读到的是 "alpha one"，磁盘已经是 agent 改过的 "alpha two"。
+    seedLocalFile("/work/a/src.ts", "alpha two");
+
+    await saveFile(host, {
+      path: "/work/a/src.ts",
+      content: "alpha mine",
+      contentHash: sha("alpha one"),
+    });
+
+    expect(sent("desktopFileSaveResult")).toEqual([
+      {
+        command: "desktopFileSaveResult",
+        paneId: "pane-1",
+        requestId: "save-1",
+        status: "conflict",
+        message: "文件已在磁盘上更新",
+        // 冲突时回磁盘上的 hash：webview 拿它当「覆盖」的基底。
+        contentHash: sha("alpha two"),
+      },
+    ]);
+    expect(h.files.get("/work/a/src.ts")).toBe("alpha two");
+  });
+
+  it("desktopSaveFile surfaces a write failure and leaves no temp file behind", async () => {
+    const { host, sent } = await readyHost();
+    seedLocalFile("/work/a/src.ts", "alpha one");
+    h.writeFileError = Object.assign(new Error("EACCES: permission denied"), {
+      code: "EACCES",
+    });
+
+    await saveFile(host, {
+      path: "/work/a/src.ts",
+      content: "alpha two",
+      contentHash: sha("alpha one"),
+    });
+
+    expect(sent("desktopFileSaveResult")).toEqual([
+      {
+        command: "desktopFileSaveResult",
+        paneId: "pane-1",
+        requestId: "save-1",
+        status: "error",
+        message: "保存失败：没有写入权限",
+      },
+    ]);
+    expect(h.files.get("/work/a/src.ts")).toBe("alpha one");
+    expect([...h.files.keys()].some((p) => p.includes("wave-save"))).toBe(
+      false,
+    );
+  });
+
+  it("openFile marks a file outside the workdir as read-only", async () => {
+    const { host, sent } = await readyHost();
+    seedLocalFile("/tmp/notes.txt", "alpha");
+
+    await host.handleWebviewMessage({
+      command: "openFile",
+      path: "/tmp/notes.txt",
+    });
+
+    expect(
+      (
+        sent("desktopFileContent").at(-1) as {
+          fileView: Record<string, unknown>;
+        }
+      ).fileView,
+    ).toMatchObject({ editable: false });
+  });
+
+  it("openFile marks a truncated file as read-only (no write-back of a partial read)", async () => {
+    const { host, sent } = await readyHost();
+    seedLocalFile("/work/a/huge.txt", "x".repeat(REMOTE_FILE_MAX_BYTES + 5));
+
+    await host.handleWebviewMessage({
+      command: "openFile",
+      path: "/work/a/huge.txt",
+    });
+
+    const fv = (
+      sent("desktopFileContent").at(-1) as { fileView: Record<string, unknown> }
+    ).fileView;
+    expect(fv).toMatchObject({ truncated: true, editable: false });
+    expect(fv.contentHash).toBeUndefined();
   });
 });
 

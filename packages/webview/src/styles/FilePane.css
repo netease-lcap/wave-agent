@@ -349,3 +349,109 @@
 .file-pane .hljs-strong {
   font-weight: bold;
 }
+
+/* ---- 面板内编辑（spec desktop-file-panel.md「文件面板内编辑与保存」）----
+   工具条的「取消 / 保存」是文字按钮：同族气泡图标按钮只有 24×24，两个汉字塞不
+   进去；配色沿用工具条按钮的透明底 + hover 高亮，主按钮用 accent。 */
+.file-pane-edit-action {
+  flex-shrink: 0;
+  height: 22px;
+  padding: 0 8px;
+  margin-left: 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.file-pane-edit-action:hover:not(:disabled) {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.file-pane-edit-action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.file-pane-edit-action--primary {
+  background: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+}
+
+.file-pane-edit-action--primary:hover:not(:disabled) {
+  background: var(--vscode-button-hoverBackground, #1177bb);
+}
+
+/* 编辑态的正文：编辑器自己滚（CodeMirror 的 .cm-scroller），所以面板 body 不再
+   兼作滚动容器，否则会出现两条滚动条。 */
+.file-pane-body--editing {
+  overflow: hidden;
+}
+
+.file-pane-editor-wrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.file-pane-editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.file-pane-editor-host {
+  flex: 1;
+  min-height: 0;
+}
+
+/* 磁盘已变更 / 保存失败的横幅：压在编辑器上方，不遮挡正文。 */
+.file-pane-banner {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--vscode-inputValidation-warningForeground, #cca700);
+  background: var(--vscode-inputValidation-warningBackground, #352a05);
+  border-bottom: 1px solid var(--vscode-inputValidation-warningBorder, #5c4a06);
+}
+
+.file-pane-banner--error {
+  color: var(--vscode-inputValidation-errorForeground, #f14c4c);
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  border-bottom-color: var(--vscode-inputValidation-errorBorder, #be1100);
+}
+
+.file-pane-banner-icon {
+  flex: none;
+  font-size: 12px;
+}
+
+.file-pane-banner-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.file-pane-banner-action {
+  flex-shrink: 0;
+  height: 20px;
+  padding: 0 8px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.file-pane-banner-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+}

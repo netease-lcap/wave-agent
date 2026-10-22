@@ -54,17 +54,20 @@ function rewriteThemeBase(): Plugin {
 }
 
 /**
- * 终端懒加载 chunk（src/terminal-entry.ts → dist/terminal.js）只在桌面构建
- * 产出；原型 dev 环境没有该文件，ChatApp 空闲预加载会 404（控制台红字）。
- * 返回空 JS 消除 404（window.WaveTerminal 保持 undefined，prefetch 的
- * onload 走既有「未导出」reject 分支，不影响功能）。
+ * 只在桌面构建产出的懒加载 chunk —— 终端（src/terminal-entry.ts →
+ * dist/terminal.js）与文件面板编辑器（src/editor-entry.ts → dist/editor.js）。
+ * 原型 dev 环境没有这两个文件：ChatApp 空闲预加载终端、点开文件面板的编辑态
+ * 都会 404（控制台红字）。返回空 JS 消除 404（window.WaveTerminal /
+ * window.WaveEditor 保持 undefined，加载方走既有「未导出 / 加载失败」分支，
+ * 面板显示「编辑器加载失败」而不再是网络错误）。
  */
-function stubTerminalChunk(): Plugin {
+function stubDesktopChunks(): Plugin {
+  const stubs = new Set(["/terminal.js", "/editor.js"]);
   return {
-    name: "wave-preview-terminal-stub",
+    name: "wave-preview-desktop-chunk-stub",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (req.url === "/terminal.js") {
+        if (req.url && stubs.has(req.url)) {
           res.setHeader("Content-Type", "application/javascript");
           res.end("");
           return;
@@ -85,7 +88,7 @@ export default defineConfig(({ command }) => {
     plugins: [
       react(),
       rewriteThemeBase(),
-      stubTerminalChunk(),
+      stubDesktopChunks(),
       viteSingleFile(),
     ],
     resolve: {
