@@ -22,7 +22,6 @@ import { authService } from "../../src/services/authService.js";
 import {
   fetchArtifactGalleryList,
   fetchArtifactShareView,
-  publishArtifactHtml,
   revokeArtifact,
   saveArtifactShare,
   searchArtifactMembers,
@@ -279,73 +278,5 @@ describe("searchArtifactMembers", () => {
     expect(fetchMock.mock.calls[0][0]).toBe(
       `${SERVER_URL}/api/enterprise/members/search?limit=20`,
     );
-  });
-});
-
-describe("publishArtifactHtml", () => {
-  it("posts the content and returns url / slug / version", async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse(201, {
-        url: "https://server.test/code/artifact/abc",
-        slug: "abc",
-        version: 2,
-      }),
-    );
-
-    const result = await publishArtifactHtml({
-      html: "<h1>hi</h1>",
-      title: "index.html",
-      url: "https://server.test/code/artifact/abc",
-      baseVersion: 1,
-    });
-
-    expect(lastCall()[0]).toBe(`${SERVER_URL}/api/frame/deploy/direct`);
-    expect(lastBody()).toEqual({
-      content: "<h1>hi</h1>",
-      favicon: "📄",
-      title: "index.html",
-      url: "https://server.test/code/artifact/abc",
-      baseVersion: 1,
-    });
-    expect(result).toEqual({
-      ok: true,
-      data: {
-        url: "https://server.test/code/artifact/abc",
-        slug: "abc",
-        version: 2,
-      },
-    });
-  });
-
-  it("maps 409 to conflict so the preview can offer 强制覆盖", async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse(409, { message: "a newer version exists" }),
-    );
-
-    const result = await publishArtifactHtml({ html: "<h1/>", baseVersion: 1 });
-
-    expect(result).toEqual({
-      ok: false,
-      error: "a newer version exists",
-      conflict: true,
-    });
-  });
-
-  it("sends force when retrying an overwrite", async () => {
-    fetchMock.mockResolvedValue(
-      jsonResponse(201, { url: "u", slug: "s", version: 3 }),
-    );
-
-    await publishArtifactHtml({ html: "<h1/>", baseVersion: 1, force: true });
-
-    expect(lastBody()).toMatchObject({ force: true, baseVersion: 1 });
-  });
-
-  it("rejects a success reply without url/slug", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(201, { version: 1 }));
-
-    const result = await publishArtifactHtml({ html: "<h1/>" });
-
-    expect(result.ok).toBe(false);
   });
 });

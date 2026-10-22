@@ -371,6 +371,16 @@ describe("PreviewPane", () => {
     expect(wv.loadURL).toHaveBeenCalledWith("http://localhost:3000/other");
   });
 
+  it("工具条没有「发布」入口（发布只经 Artifact 工具，spec 非目标）", () => {
+    const { wv } = renderPane();
+    fireDomReady(wv);
+
+    expect(screen.queryByTestId("preview-publish")).not.toBeInTheDocument();
+    for (const button of screen.getAllByRole("button")) {
+      expect(button).not.toHaveTextContent("发布");
+    }
+  });
+
   it("picker submit appends a formatted comment via onAddComment and keeps the picker active", () => {
     const { vscode, wv, onAddComment } = renderPane();
     fireDomReady(wv);

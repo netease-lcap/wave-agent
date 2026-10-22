@@ -119,11 +119,6 @@ interface StoreData {
   sessions: SessionIndexEntry[];
   /** 创作集分类：按账号（邮箱）隔离命名空间。 */
   artifactCategories?: Record<string, ArtifactCategoryRecord>;
-  /** 本地文件 → 它上一次发布出来的 artifact（预览面板「发布」用）。 */
-  artifactPublishes?: Record<
-    string,
-    { url: string; slug: string; version: number }
-  >;
 }
 
 const MAX_RECENT_WORKDIRS = 10;
@@ -263,27 +258,6 @@ export class ConfigStore {
     this.data.artifactCategories = {
       ...(this.data.artifactCategories ?? {}),
       [account]: record,
-    };
-    this.save();
-  }
-
-  /**
-   * 本地文件上一次发布出来的 artifact（预览面板「发布」用）：同一个文件再次
-   * 发布应当更新同一条创作（新版本），而不是每次新建（spec 场景 3）。
-   */
-  getArtifactPublish(
-    filePath: string,
-  ): { url: string; slug: string; version: number } | undefined {
-    return this.data.artifactPublishes?.[filePath];
-  }
-
-  setArtifactPublish(
-    filePath: string,
-    published: { url: string; slug: string; version: number },
-  ): void {
-    this.data.artifactPublishes = {
-      ...(this.data.artifactPublishes ?? {}),
-      [filePath]: published,
     };
     this.save();
   }

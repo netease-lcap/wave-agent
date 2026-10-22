@@ -102,7 +102,6 @@ const h = vi.hoisted(() => ({
       case "artifactShareSave":
       case "artifactRevoke":
       case "artifactMembersSearch":
-      case "artifactPublish":
         return (
           h.artifactResponses.get(method) ?? {
             ok: false,
@@ -12273,88 +12272,6 @@ describe("创作集（desktop-artifacts）", () => {
       requestId: "rv-1",
       slug: "a",
       notFound: true,
-    });
-  });
-
-  it("发布：同一文件再次发布带上一次的 url 与版本，成功后写回发布记录", async () => {
-    const { host, store, sent } = await readyHost();
-    h.files.set("/work/a/index.html", "<h1>hi</h1>");
-    h.artifactResponses.set("artifactPublish", {
-      ok: true,
-      data: {
-        url: "https://codechat.test/code/artifact/abc",
-        slug: "abc",
-        version: 1,
-      },
-    });
-
-    await host.handleWebviewMessage({
-      command: "desktopArtifactPublish",
-      requestId: "pub-1",
-      filePath: "/work/a/index.html",
-      title: "index.html",
-    });
-
-    expect(h.clientRequests.at(-1)).toMatchObject({
-      method: "artifactPublish",
-      params: { filePath: "/work/a/index.html", title: "index.html" },
-    });
-    expect(sent("desktopArtifactPublish").at(-1)).toMatchObject({
-      requestId: "pub-1",
-      ok: true,
-      slug: "abc",
-    });
-    expect(store.getArtifactPublish("/work/a/index.html")).toMatchObject({
-      slug: "abc",
-      version: 1,
-    });
-
-    await host.handleWebviewMessage({
-      command: "desktopArtifactPublish",
-      requestId: "pub-2",
-      filePath: "/work/a/index.html",
-    });
-    expect(h.clientRequests.at(-1)).toMatchObject({
-      params: {
-        url: "https://codechat.test/code/artifact/abc",
-        baseVersion: 1,
-      },
-    });
-  });
-
-  it("发布冲突回 conflict，未登录回 authRequired（页面据此给强制覆盖 / 先登录）", async () => {
-    const { host, sent } = await readyHost();
-    h.files.set("/work/a/index.html", "<h1/>");
-    h.artifactResponses.set("artifactPublish", {
-      ok: false,
-      error: "a newer version exists",
-      conflict: true,
-    });
-
-    await host.handleWebviewMessage({
-      command: "desktopArtifactPublish",
-      requestId: "pub-3",
-      filePath: "/work/a/index.html",
-    });
-    expect(sent("desktopArtifactPublish").at(-1)).toMatchObject({
-      requestId: "pub-3",
-      conflict: true,
-      error: "a newer version exists",
-    });
-
-    h.artifactResponses.set("artifactPublish", {
-      ok: false,
-      error: "authentication failed (HTTP 401)",
-      authRequired: true,
-    });
-    await host.handleWebviewMessage({
-      command: "desktopArtifactPublish",
-      requestId: "pub-4",
-      filePath: "/work/a/index.html",
-    });
-    expect(sent("desktopArtifactPublish").at(-1)).toMatchObject({
-      requestId: "pub-4",
-      authRequired: true,
     });
   });
 

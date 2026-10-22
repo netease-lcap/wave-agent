@@ -66,8 +66,6 @@ export type ArtifactGalleryResult<T> =
       error: string;
       authRequired?: boolean;
       notFound?: boolean;
-      /** 版本冲突（409）：发布时带 `force` 可覆盖。 */
-      conflict?: boolean;
     };
 
 function isShareMode(value: unknown): value is ArtifactShareMode {
@@ -140,7 +138,7 @@ async function request(
         : typeof data409.error === "string"
           ? data409.error
           : "the artifact has been updated by someone else";
-    return { ok: false, error: message409, conflict: true };
+    return { ok: false, error: message409 };
   }
 
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -321,49 +319,4 @@ export async function searchArtifactMembers(
     })
     .filter((m): m is ArtifactMember => m !== null);
   return { ok: true, data: { members } };
-}
-
-/** 发布结果：成功给出可分享的链接与 slug。 */
-export interface ArtifactPublishResult {
-  url: string;
-  slug: string;
-  version: number;
-}
-
-/**
- * 把一份 HTML 发布成 artifact（预览窗口的「发布」按钮走这条路）。
- *
- * 与 `Artifact` 工具的 `publish` 同一条服务端接口与同一种载荷；没有 PreToolUse
- * 权限闸（用户在预览面板上主动点的按钮）。`url` / `baseVersion` 由宿主从上一次
- * 发布记录里带下来——同一个本地文件重复发布应当更新同一条创作（新版本），
- * 而不是每次新建（spec 场景 3）；服务端版本冲突（409）作为可操作错误返回。
- */
-export async function publishArtifactHtml(input: {
-  html: string;
-  title?: string;
-  favicon?: string;
-  url?: string;
-  baseVersion?: number;
-  force?: boolean;
-}): Promise<ArtifactGalleryResult<ArtifactPublishResult>> {
-  const body: Record<string, unknown> = {
-    content: input.html,
-    favicon: input.favicon ?? "📄",
-  };
-  if (input.title) body.title = input.title;
-  if (input.url) body.url = input.url;
-  if (input.baseVersion !== undefined) body.baseVersion = input.baseVersion;
-  if (input.force) body.force = true;
-  const result = await request("/api/frame/deploy/direct", {
-    method: "POST",
-    body,
-  });
-  if (!result.ok) return result;
-  const data = result.data as Record<string, unknown>;
-  const url = typeof data.url === "string" ? data.url : "";
-  const slug = typeof data.slug === "string" ? data.slug : "";
-  if (!url || !slug) {
-    return { ok: false, error: "malformed response: url/slug" };
-  }
-  return { ok: true, data: { url, slug, version: Number(data.version) || 1 } };
 }

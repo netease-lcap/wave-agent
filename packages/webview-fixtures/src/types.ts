@@ -1192,20 +1192,6 @@ export interface DesktopArtifactRevokeMessage extends HostToWebviewMessageBase {
   notFound?: boolean;
 }
 
-/** 预览面板「发布」的结果（`desktopArtifactPublish`）。 */
-export interface DesktopArtifactPublishMessage
-  extends HostToWebviewMessageBase {
-  command: "desktopArtifactPublish";
-  requestId: string;
-  ok?: boolean;
-  url?: string;
-  slug?: string;
-  error?: string;
-  authRequired?: boolean;
-  /** 版本冲突（409）：提示「存在更新版本」并给出强制覆盖选项。 */
-  conflict?: boolean;
-}
-
 /** 一个自定义分类（本机存储，按账号隔离）。 */
 export interface ArtifactCategory {
   id: string;
@@ -1438,7 +1424,6 @@ export type HostToWebviewMessage =
   | DesktopArtifactShareSaveMessage
   | DesktopArtifactMembersMessage
   | DesktopArtifactRevokeMessage
-  | DesktopArtifactPublishMessage
   | DesktopArtifactCategoriesMessage
   | DesktopArtifactCategoriesSavedMessage;
 
@@ -1508,7 +1493,6 @@ type ReplyAttribution = {
   desktopArtifactShareSave: "requestId";
   desktopArtifactMembersSearch: "requestId";
   desktopArtifactRevoke: "requestId";
-  desktopArtifactPublish: "requestId";
   desktopArtifactCategories: "requestId";
   desktopArtifactCategoriesSaved: "requestId";
   // 远控页「新建会话」的最近目录：弹窗每打开一次问一次，晚到的旧回复不得盖掉
@@ -1568,7 +1552,6 @@ export const replyAttributionLocked = {
   desktopArtifactShareSave: true,
   desktopArtifactMembersSearch: true,
   desktopArtifactRevoke: true,
-  desktopArtifactPublish: true,
   desktopArtifactCategories: true,
   desktopArtifactCategoriesSaved: true,
   recentWorkdirsResponse: true,

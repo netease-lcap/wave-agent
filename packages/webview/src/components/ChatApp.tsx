@@ -3910,8 +3910,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     url: string;
     width: number;
     originalUrl?: string;
-    /** 本地 HTML 文件预览的源路径（「发布」按钮只在这条路径上出现）。 */
-    filePath?: string;
     onRetry?: () => void;
     onAddComment?: (text: string) => void;
     onTitleChange: (title: string) => void;
@@ -3992,7 +3990,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         url: tab.previewUrl ?? "",
         width: opts.width,
         originalUrl: opts.originalUrl,
-        filePath: tab.previewFilePath,
         onRetry: opts.onRetry,
         // 停靠的 guest 收不到用户操作（面板不可见），评论也没有归属会话可落：
         // 一律不接（场景 5）。
@@ -4687,7 +4684,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                     // 只随该组的「重置」代号重挂载（重新加载 guest）。
                     key={entry.epoch}
                     url={entry.url}
-                    filePath={entry.filePath}
                     originalUrl={entry.originalUrl}
                     onRetry={entry.onRetry}
                     vscode={vscode}

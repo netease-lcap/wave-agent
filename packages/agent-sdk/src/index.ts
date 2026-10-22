@@ -90,14 +90,13 @@ export type { ToolPlugin, ToolResult, ToolContext } from "./tools/types.js";
 export { setTelemetryStdoutProtected } from "./telemetry/instrumentation.js";
 
 // 创作集（Artifacts 画廊）：桌面端整页的账号级读写面（列表 / 分享 / 撤销 /
-// 成员检索 / 预览发布）。宿主不直连网络，经 stdio RPC 调这几个函数。
+// 成员检索）。宿主不直连网络，经 stdio RPC 调这几个函数。
 export {
   fetchArtifactGalleryList,
   fetchArtifactShareView,
   saveArtifactShare,
   revokeArtifact,
   searchArtifactMembers,
-  publishArtifactHtml,
   ARTIFACT_SHARE_MODES,
 } from "./services/artifactGallery.js";
 export type {
@@ -106,5 +105,4 @@ export type {
   ArtifactMember,
   ArtifactShareMode,
   ArtifactGalleryResult,
-  ArtifactPublishResult,
 } from "./services/artifactGallery.js";
