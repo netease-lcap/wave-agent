@@ -121,10 +121,15 @@
   font-size: 14px;
 }
 
+/* 字重 500：契约 :83「All footer buttons retain the standard 32px height,
+   14px/22px medium 500 labels」+ :70「one height, label size and radius across the
+   row」—— 页脚是一整行一个口径，只改主键会让「取消」比主操作还重，故同行同落
+   （2026-10-22 她「按规范来」）。base 的 600 属 IDE 档，不动。 */
 [data-host="desktop"] .session-rename-btn {
   height: 32px;
   border-radius: 8px;
   font-size: 14px;
+  font-weight: 500;
 }
 
 /* 1022 评论：设计师点 `div.session-rename-actions`「取消 保存」——

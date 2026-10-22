@@ -8216,7 +8216,7 @@ mock 只发过一次 `setInitialState`。已补 `webviewReady` 回放 responder�
    不会拉平。两个固定中文标签的可靠做法是「宽者字符数 × 字号 + 内衬」(`min-width: calc(5em + 24px)`）。
 3. 整组加宽会推动右侧邻居：「刷新」+20px 是预期连带，交付时要点明，别当成回归。
 
-## 1022 评论（会话重命名弹窗「保存」键：品牌红 → 普通填充主按钮档）
+## 1022 评论（会话重命名弹窗「保存」键：品牌红 → 普通填充主按钮档 + 页脚字重 600 → 500）
 
 设计师 2026-10-22 预览评论（点 `div.session-rename-actions`「取消 保存」）：
 
@@ -8244,14 +8244,22 @@ mock 只发过一次 `setInitialState`。已补 `webviewReady` 回放 responder�
   fallback 取 skill 浅色档字面量 `#111318`（同 0915 第十处、1014 的写法）。
 - base（IDE 档）四条规则逐字节未动 ⇒ VS Code / JetBrains 不受影响。
 
+**页脚字重 600 → 500**（同日「按规范来」）：`common-components.md:83`「All footer buttons retain the standard
+32px height, 14px/22px **medium 500** labels」+ `:70`「one height, label size and radius **across the row**」
+—— 规范的对象是页脚整行，故「取消」「保存」一起落 500（只改主键会让取消比主操作还重）。
+全角汉字 2×14 的步进与字重无关 ⇒ 文本盒仍 28px、按钮仍由 `min-width: 64px` 决定，零位移；
+页脚 336×112 @2x 的差异像素浅 820 / 深 811（2.2%），最大通道差 85 / 79，全部落在笔画上。
+
 ### ③ 实测（1440×960，浅深两档，DPR 2，`pageerror 0`）
 
 - 保存键 / 取消键 `64×32`、弹窗 `440×169` @(500,395.5) —— 改前改后**逐值相同**，零位移。
-- 取消键本轮未改，作同屏对照：透明底 + 1px `#E4E7ED`（深 `#34393C`）描边、字 `#202020`（深 `#E5E7E8`）、r8、14px·600。
-- 取证：`CC02/走查/_tools/1022/probe-rename-btn-1022.mjs` → `CC02/走查/1022-重命名弹窗按钮/`（`measure.json` + `dlg-*` / `foot-*` / `hover-*` / `press-*`）；
-  报告 `CC02/走查/1022-rename-btn-report/index.html`（skill v1.1 母版，自检 axe 浅深 0/0）。
+- 取消键底色/描边/字色未改，作同屏对照：透明底 + 1px `#E4E7ED`（深 `#34393C`）描边、字 `#202020`（深 `#E5E7E8`）、r8、14px·500。
+- 取证：`CC02/走查/_tools/1022/probe-rename-btn-1022.mjs`（含 `:hover`/`:active` 状态自检 + 重试）与
+  `probe-rename-weight-1022.mjs`（字重单变量：两次都跑改后配色，只注入 `font-weight: 600` 作改前）
+  → `CC02/走查/1022-重命名弹窗按钮/`（`measure.json` / `w-measure.json` + `dlg-*` / `foot-*` / `hover-*` / `press-*` / `w-*`）；
+  报告 `CC02/走查/1022-rename-btn-report/index.html`（skill v1.1 母版，F-01 颜色 / F-02 字重，自检 axe 浅深 0/0）。
 
 ### ④ 残留（未授权，等点名）
 
 1. 取消键没有 pressed 档（契约建议 `--cc-fill-pressed`）。
-2. 保存键 `font-weight: 600`，而 1014 确认弹窗落地的是 500（同一弹窗族内的字重分歧）。
+2. 页脚标签行高 18px，契约 `:83` 写 22px —— 按钮是 inline-flex 垂直居中，行高不参与排版（实测零视觉差），未动。
