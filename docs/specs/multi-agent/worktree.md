@@ -161,6 +161,24 @@ order: 90
 
 ---
 
+### 用户故事：Worktree 工具失败时一行说清（优先级：P2）
+
+作为使用 worktree 的开发者，当 `EnterWorktree` / `ExitWorktree` 失败时，我希望那两个块折叠着的那一行就把「hook 到底报了什么错」「我下一步该带什么参数重试」讲清楚，而不必展开才能知道，也不必读两句重复的话。
+
+**为什么是这个优先级**：失败态的折叠行由 `error` 单独承担（CLI `ToolDisplay` 与 webview 工具块都无条件渲染 `error`，且在给定 `error` 时不再显示 `shortResult` / `result`），而 `content` 里的完整诊断只在展开后可见。`WorktreeCreate` hook 失败时，用户与 AI 都只看到一句 `WorktreeCreate hook failed`，hook 脚本自己的报错被埋掉；`ExitWorktree` 因无法验证状态而拒绝时也只有一句状态标签，看不到 `discard_changes: true` 这个逃生门。它只改失败文案、不改任何执行语义，故为 P2。
+
+**独立测试**：构造 hook 失败（stderr 多行报错 / 无输出）与 `ExitWorktree` 的两种拒绝（无法验证、存在未提交改动），断言返回的 `error` 文案；再在 CLI 与 webview 里渲染该失败块，确认折叠态只有这一行、没有第二条摘要。
+
+**验收场景**：
+
+1. **假设** `WorktreeCreate` hook 全部失败，**当** `EnterWorktree` 返回失败，**则** `error` 取 hook 自身输出里的诊断行 —— 首个形如错误的行（如 `Error: Cannot find module '…'`），没有则取首个非空行；**不带** `WorktreeCreate hook failed` 标签与命令前缀（两者都吃掉这一行的宽度且无新增信息）；单行超长时截断到约 80 字符并保留行首的原因措辞；hook 无任何输出时回退为 `WorktreeCreate hook failed`。
+2. **假设** `ExitWorktree` 因无法验证 worktree 状态而拒绝，**当** 返回失败，**则** `error` 指出下一步可执行的动作（`Could not verify worktree state — retry with discard_changes: true`），而不是只给一句状态标签。
+3. **假设** `ExitWorktree` 因存在未提交改动或提交而拒绝，**当** 返回失败，**则** `error` 同时给出「有什么」（未提交文件数 / 提交数）与「下一步」（`discard_changes: true`）；分支名不进这一行（`content` 里保留）。
+4. **假设**失败原因本身已足够明确（如 `Already in a worktree session`、`Not in a git repository`、`Invalid worktree name: …`），**当** 返回失败，**则** `error` 保持原样，不额外堆砌建议。
+5. **假设**任一宿主渲染上述失败块（CLI 折叠态 / webview 工具块），**当** 渲染，**则**折叠态只有 `error` 这一行，不额外引入 `shortResult` 或第二条摘要 —— 同一件事不打印两遍。
+
+---
+
 ### 用户故事：WorktreeCreate Hook 接管 Worktree 创建（优先级：P2）
 
 作为在非 git 或自定义 VCS 环境中使用 Wave 的开发者，我希望配置 `WorktreeCreate` hook 后由 hook 脚本创建 worktree（wave 不再自行执行 `git worktree add`），以便 worktree 创建与外部资源初始化（如 MySQL schema、Redis 实例、docker compose 项目）在同一脚本中完成。

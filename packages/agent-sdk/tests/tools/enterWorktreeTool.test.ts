@@ -285,7 +285,87 @@ describe("enterWorktreeTool", () => {
       );
     });
 
-    it("should return failure when the WorktreeCreate hook fails", async () => {
+    it("should surface the hook's own output as the error line", async () => {
+      vi.mocked(worktreeHooks.executeWorktreeCreateHook).mockRejectedValue(
+        new worktreeHooks.WorktreeCreateHookError(
+          "WorktreeCreate hook failed: create.sh: boom",
+          ["boom"],
+        ),
+      );
+
+      const result = await enterWorktreeTool.execute(
+        { name: "feature" },
+        contextWithHookManager(),
+      );
+
+      expect(result.success).toBe(false);
+      // `error` is the only line a collapsed tool block shows in every host, so
+      // it carries what the hook itself said instead of the bare
+      // "WorktreeCreate hook failed" tag that read the same for every cause.
+      expect(result.error).toBe("boom");
+      expect(result.content).toContain(
+        "WorktreeCreate hook failed: create.sh: boom",
+      );
+      expect(mockSetWorkdir).not.toHaveBeenCalled();
+      expect(mockSetWorktreeSession).not.toHaveBeenCalled();
+    });
+
+    it("should pull the reason out of multi-line hook output", async () => {
+      // Real shape of a hook that died inside `node`: loader noise first, the
+      // line that says what happened after it.
+      const stderr = [
+        "node:internal/modules/cjs/loader:1215",
+        "  throw err;",
+        "  ^",
+        "",
+        "Error: Cannot find module '/repo/.wave/hooks/worktree-create.mjs'",
+        "    at Module._resolveFilename (node:internal/modules/cjs/loader:1077:15)",
+      ].join("\n");
+      vi.mocked(worktreeHooks.executeWorktreeCreateHook).mockRejectedValue(
+        new worktreeHooks.WorktreeCreateHookError(
+          `WorktreeCreate hook failed: node worktree-create.mjs: ${stderr}`,
+          [stderr],
+        ),
+      );
+
+      const result = await enterWorktreeTool.execute(
+        { name: "feature" },
+        contextWithHookManager(),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe(
+        "Error: Cannot find module '/repo/.wave/hooks/worktree-create.mjs'",
+      );
+      // The full output stays available in the expandable content.
+      expect(result.content).toContain("at Module._resolveFilename");
+    });
+
+    it("should clip a long diagnosis to one line", async () => {
+      const longPath =
+        "/Users/someone/github/wave-agent/.wave/hooks/worktree-create.mjs";
+      vi.mocked(worktreeHooks.executeWorktreeCreateHook).mockRejectedValue(
+        new worktreeHooks.WorktreeCreateHookError(
+          "WorktreeCreate hook failed: node worktree-create.mjs: boom",
+          [`Error: Cannot find module '${longPath}'`],
+        ),
+      );
+
+      const result = await enterWorktreeTool.execute(
+        { name: "feature" },
+        contextWithHookManager(),
+      );
+
+      expect(result.success).toBe(false);
+      const error = result.error ?? "";
+      expect(error).toHaveLength(80);
+      expect(error).not.toContain("\n");
+      // Clipped from the tail: the reason words come first, so they survive.
+      expect(error).toContain("Error: Cannot find module");
+      expect(error.endsWith("…")).toBe(true);
+    });
+
+    it("should fall back to the thrown message for a plain error", async () => {
       vi.mocked(worktreeHooks.executeWorktreeCreateHook).mockRejectedValue(
         new Error("WorktreeCreate hook failed: create.sh: boom"),
       );
@@ -296,12 +376,21 @@ describe("enterWorktreeTool", () => {
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe("WorktreeCreate hook failed");
-      expect(result.content).toContain(
-        "WorktreeCreate hook failed: create.sh: boom",
+      expect(result.error).toBe("WorktreeCreate hook failed: create.sh: boom");
+    });
+
+    it("should fall back to the bare tag when the hook throws an empty message", async () => {
+      vi.mocked(worktreeHooks.executeWorktreeCreateHook).mockRejectedValue(
+        new Error(""),
       );
-      expect(mockSetWorkdir).not.toHaveBeenCalled();
-      expect(mockSetWorktreeSession).not.toHaveBeenCalled();
+
+      const result = await enterWorktreeTool.execute(
+        { name: "feature" },
+        contextWithHookManager(),
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("WorktreeCreate hook failed");
     });
 
     it("should fall back to git when no WorktreeCreate hook is configured", async () => {
