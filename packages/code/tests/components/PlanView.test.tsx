@@ -64,7 +64,11 @@ describe("PlanView", () => {
     const { stdin, lastFrame } = render(
       <PlanView content={bigPlan} maxHeight={10} onCancel={onCancel} />,
     );
-    await sleep(30);
+    // The content height is measured one render after mount (ink's
+    // useBoxMetrics), so wait for the overflow indicator before scrolling.
+    await vi.waitFor(() => {
+      expect(stripAnsiColors(lastFrame() || "")).toContain("↓ 25 more");
+    });
 
     stdin.write("\u001B[6~"); // PgDn
     await sleep(30);
@@ -82,7 +86,11 @@ describe("PlanView", () => {
     const { stdin, lastFrame } = render(
       <PlanView content={bigPlan} maxHeight={10} onCancel={onCancel} />,
     );
-    await sleep(30);
+    // The content height is measured one render after mount (ink's
+    // useBoxMetrics), so wait for the overflow indicator before scrolling.
+    await vi.waitFor(() => {
+      expect(stripAnsiColors(lastFrame() || "")).toContain("↓ 25 more");
+    });
 
     for (let i = 0; i < 6; i++) {
       stdin.write("\u001B[6~"); // PgDn
@@ -101,7 +109,11 @@ describe("PlanView", () => {
     const { stdin, lastFrame } = render(
       <PlanView content={bigPlan} maxHeight={10} onCancel={onCancel} />,
     );
-    await sleep(30);
+    // The content height is measured one render after mount (ink's
+    // useBoxMetrics), so wait for the overflow indicator before scrolling.
+    await vi.waitFor(() => {
+      expect(stripAnsiColors(lastFrame() || "")).toContain("↓ 25 more");
+    });
 
     stdin.write("\u0004"); // Ctrl+d
     await sleep(30);

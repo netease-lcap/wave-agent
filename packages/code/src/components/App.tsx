@@ -102,6 +102,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
   version,
   model,
   mcpServers,
+  onClearOutput,
   onExit,
 }) => {
   // Handle Ctrl-C for non-worktree sessions (immediate exit)
@@ -131,6 +132,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
         version={version}
         model={model}
         mcpServers={mcpServers}
+        onClearOutput={onClearOutput}
       >
         <ChatWithExitPrompt worktreeSession={worktreeSession} onExit={onExit} />
       </ChatProvider>
@@ -152,6 +154,7 @@ const AppWithProviders: React.FC<AppWithProvidersProps> = ({
       version={version}
       model={model}
       mcpServers={mcpServers}
+      onClearOutput={onClearOutput}
     >
       <ChatInterface />
     </ChatProvider>
@@ -174,6 +177,7 @@ export const App: React.FC<AppProps> = ({
   version,
   model,
   mcpServers,
+  onClearOutput,
   onExit,
 }) => {
   return (
@@ -195,6 +199,7 @@ export const App: React.FC<AppProps> = ({
         version={version}
         model={model}
         mcpServers={mcpServers}
+        onClearOutput={onClearOutput}
         onExit={onExit}
       />
     </AppProvider>
