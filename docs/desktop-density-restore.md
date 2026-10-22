@@ -8215,3 +8215,43 @@ mock 只发过一次 `setInitialState`。已补 `webviewReady` 回放 responder�
 2. **分段器等宽不能用 `flex:1` 直接得到**：容器宽度由内容决定时 `1fr` 在固有尺寸阶段按各自 max-content 解析，
    不会拉平。两个固定中文标签的可靠做法是「宽者字符数 × 字号 + 内衬」(`min-width: calc(5em + 24px)`）。
 3. 整组加宽会推动右侧邻居：「刷新」+20px 是预期连带，交付时要点明，别当成回归。
+
+## 1022 评论（会话重命名弹窗「保存」键：品牌红 → 普通填充主按钮档）
+
+设计师 2026-10-22 预览评论（点 `div.session-rename-actions`「取消 保存」）：
+
+> 参考 skill 的内容，检查下这个弹窗按钮，不应该有红色按钮的出现。
+
+### ① 依据（skill 契约原文）
+
+- `references/common-components.md:23`：**Keep red for semantic danger and restrained branding, not routine primary actions.**
+- `:85`：**The confirmation action's color tier follows the caller-declared operation category, not the presence of a
+  dialog or keywords in its label.** 普通确认用 `--cc-action-primary` + `--cc-action-primary-text`，
+  hover `--cc-action-primary-hover`，pressed `--cc-action-primary-active`；破坏性确认才走 soft-danger 变体。
+- 重命名 = **普通确认**（非破坏、可重复、无不可逆后果）⇒ 不该用品牌红。与 1014 确认弹窗的非破坏档同源同值。
+
+### ② 改动（`SessionRenameDialog.css`，只动 `[data-host="desktop"]` 段）
+
+| 状态    | 改前                                  | 改后（浅 / 深）                                                  |
+| ------- | ------------------------------------- | ---------------------------------------------------------------- |
+| rest    | `#C1292E` 底 + `#FFFFFF` 字（5.79:1） | `#1F2329` / `#FFFFFF` → 15.78:1；`#E0E3E5` / `#191C1E` → 13.28:1 |
+| hover   | 同底色 + `filter: brightness(0.92)`   | `#34383F` → 11.77:1；`#F0F2F3` → 15.25:1（**删掉滤镜**）         |
+| pressed | 无此档（与 hover 同值）               | `#111318` → 18.58:1；`#C7CCCF` → 10.57:1                         |
+
+- `color` 必须显式给：浅色档 `host-desktop.css` **没有**桥接 `--vscode-button-foreground`（只有深色档桥了），
+  沿用 base 的 `var(--vscode-button-foreground)` 会取到宿主注入值。
+- `:active` 写在 `:hover` 之后：两者同为 (0,3,0)，靠顺序胜出；浅色档无 `--cc-action-primary-active`，
+  fallback 取 skill 浅色档字面量 `#111318`（同 0915 第十处、1014 的写法）。
+- base（IDE 档）四条规则逐字节未动 ⇒ VS Code / JetBrains 不受影响。
+
+### ③ 实测（1440×960，浅深两档，DPR 2，`pageerror 0`）
+
+- 保存键 / 取消键 `64×32`、弹窗 `440×169` @(500,395.5) —— 改前改后**逐值相同**，零位移。
+- 取消键本轮未改，作同屏对照：透明底 + 1px `#E4E7ED`（深 `#34393C`）描边、字 `#202020`（深 `#E5E7E8`）、r8、14px·600。
+- 取证：`CC02/走查/_tools/1022/probe-rename-btn-1022.mjs` → `CC02/走查/1022-重命名弹窗按钮/`（`measure.json` + `dlg-*` / `foot-*` / `hover-*` / `press-*`）；
+  报告 `CC02/走查/1022-rename-btn-report/index.html`（skill v1.1 母版，自检 axe 浅深 0/0）。
+
+### ④ 残留（未授权，等点名）
+
+1. 取消键没有 pressed 档（契约建议 `--cc-fill-pressed`）。
+2. 保存键 `font-weight: 600`，而 1014 确认弹窗落地的是 500（同一弹窗族内的字重分歧）。
