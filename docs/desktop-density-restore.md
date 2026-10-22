@@ -8069,3 +8069,80 @@ type-check` 通过。
 0 破图、**axe 浅深 0/0**、640 窄屏无横溢、复制回退可用（1265 字）。用例 `tmp-settings-data-1009`（mock 目录
 gitignore、不进推送集）。探针覆盖率：两档主题 ×（静止 / hover 未选中 / hover 选中 / hover 禁用 / 反证 ide /
 安装弹窗静止 + hover），`pageerror 0`。
+
+## 1022 评论（侧栏「创作集」入口间距 16 → 2px + 创作集页「返回当前会话」位置外溢 16px）
+
+设计师 2026-10-22 两条预览评论（mock 用例 `desktop-full`，8899 预览）：
+
+1. `button.desktop-sidebar-new-chat.is-active`「创作集」——「创作集选项位置距离插件市场过远，参考新对话到插件市场的间距」；
+2. `button.session-board-back`「返回当前会话」——「位置不对，参考以下」/「参考这个」。**两次贴的是同一个选择器**
+   （`#root > div:nth-of-type(1) > div:nth-of-type(2) > div > div:nth-of-type(1) > button`），参照物无法从评论里解出；
+   追问后她裁定：指**创作集页**那颗，基准 = **与插件市场 / 看板同值 268**。
+
+### ① 侧栏入口间距：插件市场 → 创作集 16 → 2px
+
+- 0921 那条规则只匹配「tooltip 包裹层 + 紧随按钮」（新对话 → 插件市场）；创作集是插件市场之后的**兄弟**，
+  仍吃到 base `.desktop-sidebar-new-chat { margin: 12px 0 4px }` 的上边距 12 → 实得 4 + 12 = 16px。
+- 新规则把兄弟选择器一并纳入（`host-desktop.css`，紧接 0921 块）：
+
+  ```css
+  [data-host="desktop"]
+    .desktop-sidebar-new-chat-tooltip
+    + .desktop-sidebar-new-chat,
+  [data-host="desktop"] .desktop-sidebar-new-chat + .desktop-sidebar-new-chat {
+    margin-top: -2px;
+  }
+  ```
+
+- 只改这两个入口之间的关系：新对话 → 插件市场 2px（0921 已定）、插件市场 → 创作集 2px、创作集 → 会话树 4px 不变；
+  三个入口盒高 30 / r8 逐值不变。
+
+### ② 创作集页返回键：252 → 268（与另两页逐值一致）
+
+- 三个整页共用 `.session-board-back`（会话看板 / 插件市场 / 创作集），实测**只有创作集错位**：
+  共享顶栏 `.session-board-toolbar` 用 `margin: 0 -16px` 抵消「看板 / 插件市场」容器的 16px 左右内衬，
+  而 `.artifacts-page` **没有左右内衬**（内容列自用 `.artifacts-content` 的 `16px 24px 20px`）
+  ⇒ 顶栏连同底边线一起被推出去 16px。
+- 改动（`ArtifactsPage.css`，桌面端作用域，一条规则）：
+
+  ```css
+  [data-host="desktop"] .artifacts-page .session-board-toolbar {
+    margin-left: 0;
+    margin-right: 0;
+  }
+  ```
+
+### ③ 实测（headed Chromium / 2x，浅深两档，`pageerror 0`）
+
+| 量                          | 插件市场       | 会话看板       | 创作集 改前            | 创作集 改后        |
+| --------------------------- | -------------- | -------------- | ---------------------- | ------------------ |
+| 顶栏盒 `x / w`              | 260/1180       | 260/1180       | **244/1212**           | **260/1180**       |
+| 返回键 `x / y / w×h`        | 268/6.5/124×30 | 268/6.5/124×30 | **252**/6.5/124×30     | **268**/6.5/124×30 |
+| 内容区 `x/y/w/h`            | —              | —              | 260/44/1180/856        | 逐值不变           |
+| 表头 `x/y/w/h`              | —              | —              | 284/60/1132/32         | 逐值不变           |
+| 表格行 rect / `scrollWidth` | —              | —              | —                      | 逐值不变（1180）   |
+| 收起侧栏：展开钮 / 返回键   | 8 / 49         | 8 / 49         | **-8**（被裁 8px）/ 33 | **8 / 49**         |
+
+- 顶栏宽度与左右缘收回页面内后，底边线（`border-bottom`）也不再外溢；内容区/表头/行**零位移**。
+
+### ④ 可复用认知
+
+1. **同一个类跨页复用 ⇒ 「位置不对」先做三页对照再动 CSS**：`.session-board-back` 一票三页，
+   只量被评论那一页看不出「谁对谁错」，横向对照才定位到唯一错位的那页。
+2. **共享顶栏的负 margin 依赖容器内衬**：`margin: 0 -16px` 是「抵消父容器 16px 内衬」的写法，
+   换到没有内衬的容器就等于把顶栏推出边界；容器内衬不同（24px 内容列）时应让顶栏 `margin: 0`，而不是给容器补 16px
+   （补 16px 会把内容列从 24 顶成 40）。
+3. **负 margin 溢出在收起态会变成「裁切」**：展开态只是视觉错位，侧栏收起后顶栏占满窗口，
+   同一处溢出直接把「展开侧边栏」按钮推到 `x=-8`（真丢 8px 可点区）。
+
+### ⑤ 残留（她已裁定，不再改）
+
+- 创作集返回键图标左缘 276、内容列 284，两者差 8px —— 「与插件市场 / 看板同值 268」的必然结果，
+  她已在追问中选定该基准。
+- 本条不改 `.artifacts-content` 的 24px 内衬（不在点名范围内）。
+
+### ⑥ 备注：预览缺口（非产品改动，仅 mock）
+
+预览里点「返回当前会话」后对话区曾一片空白：pane 重挂载时真实宿主按 `paneId` 回放快照，
+mock 只发过一次 `setInitialState`。已补 `webviewReady` 回放 responder（`prototype/mockShared.ts`
+`webviewReadyReplay()` + `mock/desktop-full.ts` 接线）；mock 目录 gitignore，不进推送集。

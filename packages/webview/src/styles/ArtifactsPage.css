@@ -14,6 +14,17 @@
   color: var(--vscode-foreground, #202328);
 }
 
+/* 顶栏通栏在本页要单独收口：共享的 `.session-board-toolbar` 用 `margin: 0 -16px`
+   抵消「看板 / 插件市场」容器的 16px 左右 padding，而 `.artifacts-page` 没有左右
+   padding（内容列自用 `.artifacts-content` 的 24px 内衬）→ 负 margin 会把顶栏连同
+   「返回当前会话」顶出页面左缘 16px（实测顶栏 x=244/w=1212、返回键 x=252；看板与
+   插件市场为 x=260/w=1180、x=268）。桌面端把左右负 margin 收回 0，返回键落到 268，
+   与另两页逐值一致。 */
+[data-host="desktop"] .artifacts-page .session-board-toolbar {
+  margin-left: 0;
+  margin-right: 0;
+}
+
 .artifacts-content {
   display: flex;
   flex-direction: column;
