@@ -8479,3 +8479,66 @@ axe 浅深 0/0、640 窄屏无横溢。
 | 角标颜色                                                     | 仍是 descriptionForeground 灰 | 「角标颜色也按会话行」     |
 
 本轮纯 CSS 值改动，无业务单测覆盖。
+
+## 2026-10-22 · 创作集删除分类弹窗按 skill「compact confirmation」重做（1022 预览评论）
+
+**触发**：她点 `div.artifacts-modal-header`「删除分类×」→「这个删除弹窗用 skill 中删除弹窗的统一样式」。
+契约出处 = `codechat-desktop-skill/references/common-components.md:73-85`（Compact confirmation dialog
+visual variant，即 2026-10-14 已落到共享组件 `ConfirmDialog` 的同一份规格）。
+
+**落点**：只改 `packages/webview/src/styles/host-desktop.css`（末尾 +264 行，含逐条中文注释）。
+`ArtifactsPage.tsx` / `ArtifactsPage.css` 一行未动 —— 当时那两个文件正被并行的「⋯」菜单那单改写
+（+171/−30 与 +68），改同文件会互相覆盖；因此**关闭图标也用 CSS 换形**，不碰 JSX。
+
+**作用域**：三个分类弹窗共用一个内联 `Modal`，仅靠 `.artifacts-modal` 会误伤表单类弹窗。删除态的确认键
+同时带 `data-testid="artifacts-category-confirm"` 与 `.artifacts-danger-btn`（新建/重命名虽有同名 testid
+但走 `.artifacts-primary-btn`；撤销发布走 `artifacts-revoke-confirm`），故选择器为
+`[data-host="desktop"] .artifacts-modal:has([data-testid="artifacts-category-confirm"].artifacts-danger-btn)`。
+
+### ① 落地的规格（浅色 / 深色同结构）
+
+| 项       | 改前                                             | 改后                                                                                                                                                                                     |
+| -------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 整卡     | 560×182.5 · r10 · 内衬 0 · #FAFAFD · 无边框      | **440×160 · r12 · 24px 内衬** · `--cc-bg-modal`（#FFFFFF / #181A1B）· 1px `--cc-border`（#DCDFE6 / #414649）                                                                             |
+| 阴影     | `0 18px 48px .28`                                | `--cc-shadow-overlay`（`0 12px 36px rgb(31 35 41/16%)` / `0 16px 38px 40% 黑`）                                                                                                          |
+| 标题     | 14px / normal / 600，`--vscode-foreground`       | **16px / 24px / 600**，`--cc-text-primary`                                                                                                                                               |
+| 描述     | 13px / normal / #202020（深 #E5E7E8）            | **14px / 22px / 400**，`--cc-text-regular`（#565A60 / #C4C7C9）                                                                                                                          |
+| 间距     | 标题↔描述 44px、描述↔按钮 42px                 | **8px / 24px**                                                                                                                                                                           |
+| 分隔线   | 头部下 1px + 页脚上 1px                          | **两条都去掉**                                                                                                                                                                           |
+| 按钮     | 取消 / 删除均 62×32（等宽）· 内衬 4·16           | **取消 54 / 删除 52（宽度按内容）· 内衬 0·12** · 高度 32 / r8 / 14-22 / 500                                                                                                              |
+| 删除键   | #D93025 实红 + 白字，hover 不变                  | **soft-danger**：底 `--cc-color-danger-soft`（#FEF2F2 / #332021）+ 字 `--cc-color-danger`（#DC2626 / #FC4E52），hover/active 只转字色（#B91C1C / #FD7175 → #991B1B / #FD9597），无红描边 |
+| 取消键   | 透明底 + `--cc-border-light` 描边                | 同值保持；深色 hover #303436 → 8% 白（对齐 1014）                                                                                                                                        |
+| 关闭控件 | 18px 的「×」文本 · 22.5×20 · 无圆角 · hover 无底 | **20×20 盒 + r8** + 官方关闭矢量 24×24（`ConversationCloseIcon`，Figma 13440:12465）· hover #EEF0F3 / 8% 白                                                                              |
+| 焦点环   | `auto 1px rgb(0,95,204)` · offset 0              | **2px `--cc-border-focus` + offset 2**（浅 #1F2329 / 深 #A0A5A8）                                                                                                                        |
+
+### ② 可复用认知 / 坑
+
+1. **`<p>` 的 UA 外边距会啃间距**：`.artifacts-form p` 没有清零外边距（1em = 14px），只加
+   `body{padding-top:8}` 与 `footer{padding-top:24}` 时实测是 **22 / 14**。必须补作用域内的
+   `p { margin: 0 }`；**只清删除弹窗作用域**，动共享 `.artifacts-form` 会连带新建/重命名弹窗。
+2. **`×` 文本换官方矢量可以纯 CSS 做**：`font-size: 0` 隐掉字形（`color` 仍留给 `currentColor`）+
+   `::before` 用 `mask` 铺 path。零 TSX 改动，但以后若 JSX 换成图标组件，这段 mask 要一起删。
+3. **用 `:has()` 而不是新加类**：新增类名要改 TSX（并行窗口风险）；`:has()` 靠「删除态才有的
+   testid + 危险类」这对特征圈定，实测重命名分类弹窗仍是 560 / r10 / 头部 14·18 / 页脚 12·18。
+4. **反证要真切宿主**：把 `documentElement.dataset.host` 改成 `ide` 后再量同一弹窗 —— 560 / r10 /
+   内衬 0 / 头部 14·18（1px 底线）/ 正文 16·18 13px / 页脚 12·18（1px 上线）/ 关闭 22.5×20 r0 18px
+   无 mask / 按钮 62 等宽 #D93025，逐值等于 base ⇒ 全部规则都只在桌面端生效。
+5. **焦点环取证不能程序 `focus()` 按钮**：那样不命中 `:focus-visible`。先 `focus()` 落「取消」再按一次
+   Tab，让「删除」经键盘导航获得焦点。
+6. **窄控件素材要横向并排**：40 CSS 宽的关闭控件做纵向叠放时，图注按图宽折行，会拉成上千像素高
+   （1022 第一轮撞过同样的坑）。横向并排后图注仍有 ≥240 CSS 宽可读。
+
+### ③ 残留（未授权，等点名）
+
+| 项                                      | 现状                                       | 触发语                  |
+| --------------------------------------- | ------------------------------------------ | ----------------------- |
+| 撤销发布弹窗（`.artifacts-danger-btn`） | 仍是 560 / r10 / 实红键                    | 「撤销发布也一起」      |
+| 新建 / 重命名分类（表单类）             | 仍是旧表单样式（契约明确不套紧凑档）       | 「分类表单也用这套」    |
+| 删除态里「移入」一行                    | 标签 12px + 控件 32 高（上一轮设置页口径） | 「移入也并成正文」      |
+| 关闭控件盒 20×20                        | 图标 24 溢出居中                           | 「关闭图标调大一点」    |
+| 深色「取消」hover 8% 白                 | 原 `#303436`，与 1014 同口径（差 ≈2/255）  | 「深色 hover 回 token」 |
+
+取证：探针 `走查/_tools/1022/probe-artifacts-delete-dialog-1022.mjs`（`PHASE=before|after`，用例
+`tmp-artifacts-1021-list`）、素材 `build-artifacts-delete-dialog-assets-1022.py`；报告
+`走查/1022-删除分类弹窗报告/index.html`（5 条对比，axe 0/0、640px 无横向溢出、pageerror 0）。
+改前 md5 `069de845…`（= HEAD）、改后 `38202544…`。

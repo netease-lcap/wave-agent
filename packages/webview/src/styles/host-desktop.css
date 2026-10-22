@@ -4636,3 +4636,267 @@
 [data-host="desktop"][data-theme="dark"] .artifacts-nav-item.is-active:hover {
   background: rgba(255, 255, 255, 0.12);
 }
+
+/* ═══ 1022 评论（点 `div.artifacts-modal-header`「删除分类×」）：
+   「这个删除弹窗用 skill 中删除弹窗的统一样式」═══
+   契约出处 = codechat-desktop-skill `references/common-components.md:73-85`
+   「Compact confirmation dialog visual variant」，与 1014 已落地的
+   `ConfirmDialog.css` 桌面端同一条规格（那边是共享组件，这里是创作集页自带的
+   `ArtifactsPage` 内联 Modal，故需要另写一份）。
+   逐条落地：440px + max-width calc(100vw - 32px) · r12 · 24px 内衬 ·
+   `--cc-bg-modal` / 1px `--cc-border` / `--cc-shadow-overlay` ·
+   标题 16/24/600、描述 14/22/400、二者 8px · 右上角官方关闭矢量（20×20 盒 r8，
+   与 pane 头部 / toast / 确认弹层同族）· 页脚前 24px、按钮间 8px ·
+   按钮 32px 高 / r8 / 14-22 / 500 / 12px 内衬、宽度按内容 ·
+   取消 = 透明底 + 1px `--cc-border-light` 描边 ·
+   删除 = soft-danger（`--cc-color-danger-soft` 底 + `--cc-color-danger` 字，
+   hover/active 只转字色，不加红色描边）· 省略分隔线两条（头部下、页脚上）·
+   仅 [data-host="desktop"]，IDE / 插件宿主保持 base 原样。
+   作用域 = 只圈「删除分类」这一个弹窗：它的确认键同时带
+   `data-testid="artifacts-category-confirm"` 与 `.artifacts-danger-btn`
+   （新建/重命名分类虽有同名 testid 但走 `.artifacts-primary-btn`；
+   撤销发布走 `artifacts-revoke-confirm`）——故 form 类弹窗与撤销发布弹窗零影响。 */
+
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  ) {
+  box-sizing: border-box;
+  position: relative;
+  width: 440px;
+  max-width: calc(100vw - 32px);
+  padding: 24px;
+  background: var(--cc-bg-modal, var(--vscode-editorWidget-background, #ffffff));
+  border: 1px solid var(--cc-border, var(--vscode-panel-border, #dcdfe6));
+  border-radius: var(--cc-radius-lg, 12px);
+  box-shadow: var(--cc-shadow-overlay, 0 12px 36px rgb(31 35 41 / 16%));
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+/* 头部：去掉分隔线与原 14/18 内衬，标题升到 16/24/600；
+   右侧让出 28px 给关闭控件（契约 :80「reserve room for the close control」） */
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-header {
+  position: static;
+  padding: 0 28px 0 0;
+  border-bottom: none;
+  font-size: var(--cc-font-size-lg, 16px);
+  line-height: 24px;
+  font-weight: 600;
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+/* 描述：8px 接在标题下（body 的 padding-top 承担，不用 margin 以免叠加） */
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-body {
+  padding: 8px 0 0;
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+  color: var(--cc-text-regular, var(--vscode-descriptionForeground));
+}
+
+/* `<p>` 的 UA 外边距 1em（14px）会把上面两个间距各啃掉一段：标题↔描述会变成
+   22（8 + 14）、描述↔页脚会变成 14（14 + 0）。清零后才是契约的 8 / 24。 */
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-body
+  p {
+  margin: 0;
+}
+
+/* 右上角关闭控件：20×20 盒 + r8 + 1 级图标色，盒内仍是 24 的官方矢量
+   （1014 同款：24 图标在 20 盒里靠 flex 居中溢出，不能让它被压小） */
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-close {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: var(--cc-radius-md, 8px);
+  background: transparent;
+  color: var(--cc-text-regular);
+  /* 隐掉原来的「×」文本字形（font-size:0 不渲染文字、但 color 仍供 currentColor） */
+  font-size: 0;
+  line-height: 0;
+  cursor: pointer;
+}
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-close::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  background-color: currentColor;
+  /* 官方关闭矢量 = ConversationCloseIcon（Figma 关闭 13440:12465），
+     fill 换 %23000 交给 mask 上色 */
+  -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M16.2474 7.76379C16.5098 8.02615 16.5096 8.45148 16.2474 8.71396L12.9448 12.0166L16.2363 15.3082C16.4985 15.5706 16.4987 15.996 16.2363 16.2583C15.9739 16.5207 15.5486 16.5205 15.2861 16.2583L11.9946 12.9668L8.71427 16.2471C8.45179 16.5093 8.02647 16.5095 7.7641 16.2471C7.50173 15.9848 7.50191 15.5594 7.7641 15.2969L11.0444 12.0166L7.74179 8.714C7.47962 8.45151 7.47943 8.02619 7.74179 7.76382C8.00416 7.50147 8.42949 7.50166 8.69197 7.76382L11.9946 11.0665L15.2973 7.76379C15.5597 7.50164 15.9851 7.50143 16.2474 7.76379Z' fill='%23000'/></svg>")
+    center / 24px 24px no-repeat;
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'><path d='M16.2474 7.76379C16.5098 8.02615 16.5096 8.45148 16.2474 8.71396L12.9448 12.0166L16.2363 15.3082C16.4985 15.5706 16.4987 15.996 16.2363 16.2583C15.9739 16.5207 15.5486 16.5205 15.2861 16.2583L11.9946 12.9668L8.71427 16.2471C8.45179 16.5093 8.02647 16.5095 7.7641 16.2471C7.50173 15.9848 7.50191 15.5594 7.7641 15.2969L11.0444 12.0166L7.74179 8.714C7.47962 8.45151 7.47943 8.02619 7.74179 7.76382C8.00416 7.50147 8.42949 7.50166 8.69197 7.76382L11.9946 11.0665L15.2973 7.76379C15.5597 7.50164 15.9851 7.50143 16.2474 7.76379Z' fill='%23000'/></svg>")
+    center / 24px 24px no-repeat;
+}
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-close:hover {
+  background-color: var(--cc-fill-hover, #eef0f3);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"][data-theme="dark"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-close:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-close:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
+}
+
+/* 页脚：24px 接在描述下（= 契约的容器 gap）、8px 按钮间隔、去掉上分隔线 */
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-footer {
+  padding: 24px 0 0;
+  border-top: none;
+  gap: 8px;
+}
+
+/* 按钮：32 高 / r8 / 14-22 / 500 / 12px 横向内衬 / 宽度按内容 */
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-footer
+  .artifacts-secondary-btn,
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-footer
+  .artifacts-danger-btn {
+  height: 32px;
+  min-width: 0;
+  padding: 0 12px;
+  border-radius: var(--cc-radius-md, 8px);
+  font-size: var(--cc-font-size-md, 14px);
+  line-height: 22px;
+  font-weight: 500;
+}
+
+/* 取消 = 次级描边档（透明底 + border-light + 1 级字色），与 1014 完全同族 */
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-footer
+  .artifacts-secondary-btn {
+  background: transparent;
+  border: 1px solid var(--cc-border-light, #e4e7ed);
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-footer
+  .artifacts-secondary-btn:not(:disabled):hover {
+  background: var(--cc-fill-hover, #eef0f3);
+}
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-footer
+  .artifacts-secondary-btn:not(:disabled):active {
+  background: var(--cc-fill-pressed, #e7e9ed);
+}
+[data-host="desktop"][data-theme="dark"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-footer
+  .artifacts-secondary-btn:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+[data-host="desktop"][data-theme="dark"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-footer
+  .artifacts-secondary-btn:not(:disabled):active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* 删除 = soft-danger（契约 :83-84）：软底 + 危险红字，hover/active 只转字色，
+   不加装饰性红描边；焦点环走中性焦点色以与红字可区分 */
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-footer
+  .artifacts-danger-btn {
+  background: var(--cc-color-danger-soft, #fef2f2);
+  border: none;
+  color: var(--cc-color-danger, #dc2626);
+}
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-footer
+  .artifacts-danger-btn:not(:disabled):hover {
+  background: var(--cc-color-danger-soft, #fef2f2);
+  color: var(--cc-color-danger-hover, #b91c1c);
+}
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-footer
+  .artifacts-danger-btn:not(:disabled):active {
+  background: var(--cc-color-danger-soft, #fef2f2);
+  color: var(--cc-color-danger-active, #991b1b);
+}
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-footer
+  .artifacts-danger-btn:focus-visible,
+[data-host="desktop"]
+  .artifacts-modal:has(
+    [data-testid="artifacts-category-confirm"].artifacts-danger-btn
+  )
+  .artifacts-modal-footer
+  .artifacts-secondary-btn:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #2f5edb);
+  outline-offset: 2px;
+}
