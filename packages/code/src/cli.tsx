@@ -69,7 +69,15 @@ export async function startCli(options: CliOptions): Promise<void> {
       onClearOutput={() => clear()}
       onExit={handleExit}
     />,
-    { exitOnCtrlC: false },
+    {
+      exitOnCtrlC: false,
+      // Redraw only the lines that changed instead of rewriting the whole
+      // frame. Measured in a real terminal (tmux, 100x30) while a Bash command
+      // streamed 60 lines: 71 KB -> 20 KB written, 733 -> 78 cursor moves, same
+      // output on screen. ink falls back to whole-line updates for lines
+      // carrying controls it cannot diff around.
+      incrementalRendering: true,
+    },
   );
 
   // Wait for the app to finish unmounting
