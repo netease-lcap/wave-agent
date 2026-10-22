@@ -46,7 +46,14 @@ import { createRemoteControlSinkFactory } from "../remote/remoteControlSink.js";
 import type { RemoteControlSink } from "../remote/remoteControlSink.js";
 
 export interface UseRemoteControlOptions {
+  /** Where the shell is *now* — follows a Bash `cd`; the page's `@file` joins use it. */
   workdir: string;
+  /**
+   * Where the session was opened (the agent's `sessionWorkdir`): the directory
+   * the page's session row keys on. Read through a function because the agent
+   * outlives individual renders and does not exist yet on the first one.
+   */
+  sessionCwd: () => string;
   sessionId: string;
   messages: Message[];
   isLoading: boolean;
@@ -292,6 +299,7 @@ function adapterOf(latest: {
   return {
     sessionId: () => latest.current.sessionId,
     workdir: () => latest.current.workdir,
+    sessionCwd: () => latest.current.sessionCwd(),
     displayMessages: () => latest.current.messages,
     contextUsagePercent: () =>
       percentOf(

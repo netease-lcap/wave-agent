@@ -34,10 +34,10 @@ function createManager(
   originalWorkdir: string = "/repo",
 ): AIManager {
   const container = new Container();
-  container.register("Workdir", workdir);
+  container.register("CurrentWorkdir", workdir);
   container.register<WorktreeSession | null>("WorktreeSession", null);
   // Real scenario: the Agent is created in the main repo; EnterWorktree only
-  // changes the container "Workdir" to the worktree path, originalWorkdir
+  // changes the container "CurrentWorkdir" to the worktree path, originalWorkdir
   // stays at the main repo root.
   return new AIManager(container, { workdir: originalWorkdir });
 }
@@ -52,14 +52,14 @@ describe("AIManager workdir auto-recovery (manual worktree removal)", () => {
     const manager = createManager("/repo/.wave/worktrees/feat-a");
     existsSyncMock.mockImplementation((p) => p === "/repo");
 
-    expect(manager.getWorkdir()).toBe("/repo");
+    expect(manager.getCurrentWorkdir()).toBe("/repo");
   });
 
   it("consumeCwdRecovery returns the notice exactly once", () => {
     const manager = createManager("/repo/.wave/worktrees/feat-a");
     existsSyncMock.mockImplementation((p) => p === "/repo");
 
-    manager.getWorkdir();
+    manager.getCurrentWorkdir();
     expect(manager.consumeCwdRecovery()).toEqual({
       from: "/repo/.wave/worktrees/feat-a",
       to: "/repo",
@@ -69,31 +69,31 @@ describe("AIManager workdir auto-recovery (manual worktree removal)", () => {
 
   it("clears the stale worktree session when the removed dir is the session's worktree", () => {
     const container = new Container();
-    container.register("Workdir", "/repo/.wave/worktrees/feat-a");
+    container.register("CurrentWorkdir", "/repo/.wave/worktrees/feat-a");
     container.register("WorktreeSession", worktreeSession);
     const manager = new AIManager(container, { workdir: "/repo" });
     existsSyncMock.mockImplementation((p) => p === "/repo");
 
-    manager.getWorkdir();
-    expect(manager.getWorkdir()).toBe("/repo");
+    manager.getCurrentWorkdir();
+    expect(manager.getCurrentWorkdir()).toBe("/repo");
     expect(manager.getWorktreeSession()).toBeNull();
   });
 
   it("keeps the worktree session when the missing dir is not the session's worktree", () => {
     const container = new Container();
-    container.register("Workdir", "/repo/.wave/worktrees/other");
+    container.register("CurrentWorkdir", "/repo/.wave/worktrees/other");
     container.register("WorktreeSession", worktreeSession);
     const manager = new AIManager(container, { workdir: "/repo" });
     existsSyncMock.mockImplementation((p) => p === "/repo");
 
-    manager.getWorkdir();
+    manager.getCurrentWorkdir();
     expect(manager.getWorktreeSession()).toEqual(worktreeSession);
   });
 
   it("keeps the stale value when the original workdir is also missing", () => {
     const manager = createManager("/repo/.wave/worktrees/feat-a");
 
-    expect(manager.getWorkdir()).toBe("/repo/.wave/worktrees/feat-a");
+    expect(manager.getCurrentWorkdir()).toBe("/repo/.wave/worktrees/feat-a");
     expect(manager.consumeCwdRecovery()).toBeNull();
   });
 
@@ -101,7 +101,7 @@ describe("AIManager workdir auto-recovery (manual worktree removal)", () => {
     const manager = createManager("/repo/.wave/worktrees/feat-a");
     existsSyncMock.mockReturnValue(true);
 
-    expect(manager.getWorkdir()).toBe("/repo/.wave/worktrees/feat-a");
+    expect(manager.getCurrentWorkdir()).toBe("/repo/.wave/worktrees/feat-a");
     expect(manager.consumeCwdRecovery()).toBeNull();
   });
 
@@ -111,8 +111,8 @@ describe("AIManager workdir auto-recovery (manual worktree removal)", () => {
     const calls: string[] = [];
     manager.setOnCwdChange((cwd) => calls.push(cwd));
 
-    expect(manager.getWorkdir()).toBe("/repo");
-    expect(manager.getWorkdir()).toBe("/repo");
+    expect(manager.getCurrentWorkdir()).toBe("/repo");
+    expect(manager.getCurrentWorkdir()).toBe("/repo");
 
     // Host notified once (first call recovered; later calls short-circuit).
     expect(calls).toEqual(["/repo"]);
@@ -122,7 +122,7 @@ describe("AIManager workdir auto-recovery (manual worktree removal)", () => {
     const manager = createManager("/repo/.wave/worktrees/feat-a");
     existsSyncMock.mockImplementation((p) => p === "/repo");
 
-    expect(() => manager.getWorkdir()).not.toThrow();
-    expect(manager.getWorkdir()).toBe("/repo");
+    expect(() => manager.getCurrentWorkdir()).not.toThrow();
+    expect(manager.getCurrentWorkdir()).toBe("/repo");
   });
 });

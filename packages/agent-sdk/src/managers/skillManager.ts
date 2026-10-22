@@ -615,7 +615,7 @@ export class SkillManager extends EventEmitter {
     const { commands } = parseBashCommands(content);
     if (commands.length > 0) {
       const currentWorkdir =
-        this.container.get<string>("Workdir") ?? this.workdir;
+        this.container.get<string>("CurrentWorkdir") ?? this.workdir;
       const results = await executeBashCommands(
         commands,
         currentWorkdir,

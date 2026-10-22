@@ -59,7 +59,7 @@ describe("Subagent Permission Sync", () => {
 
     // Register parent PermissionManager BEFORE initializing SubagentManager
     // so the hook can wrap its methods
-    container.register("Workdir", "/tmp/test");
+    container.register("CurrentWorkdir", "/tmp/test");
     parentPermissionManager = new PermissionManager(container);
     container.register("PermissionManager", parentPermissionManager);
 

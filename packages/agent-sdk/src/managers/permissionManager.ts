@@ -250,7 +250,7 @@ export class PermissionManager {
     this.planFilePath = options.planFilePath;
     this._logger = options.logger;
     // Read workdir first so relative additional directories resolve against it.
-    this.workdir = this.container.get<string>("Workdir");
+    this.workdir = this.container.get<string>("CurrentWorkdir");
     this.worktreeName = this.container.get<string | undefined>("WorktreeName");
     this.mainRepoRoot = this.container.get<string | undefined>("MainRepoRoot");
     this.updateAdditionalDirectories(options.additionalDirectories || []);
@@ -265,20 +265,25 @@ export class PermissionManager {
   /**
    * Resolve the working directory from the DI container
    */
-  private getWorkdir(): string | undefined {
-    return this.container.get<string>("Workdir");
+  private getCurrentWorkdir(): string | undefined {
+    return this.container.get<string>("CurrentWorkdir");
   }
 
   /**
    * Standard attribution of this session's records — the same shape the other
    * managers build, resolved late because a container is wired up around this
-   * manager rather than before it.
+   * manager rather than before it. The directory is the session's starting one
+   * (`SessionWorkdir`), not the shell-following `CurrentWorkdir`, so a `cd` cannot
+   * file these records under another repository.
    */
   private telemetryContext(): RecordContext {
     const messageManager = this.container.get<MessageManager>("MessageManager");
     return {
       sessionId: messageManager?.getSessionId(),
-      workdir: this.workdir ?? this.getWorkdir(),
+      workdir:
+        this.container.get<string>("SessionWorkdir") ??
+        this.workdir ??
+        this.getCurrentWorkdir(),
       entrypoint: entrypointOf(this.container),
     };
   }
@@ -1207,7 +1212,7 @@ export class PermissionManager {
         }
 
         // If direct match fails, try matching relative path if targetPath is absolute and pattern is relative
-        const currentWorkdir = this.getWorkdir();
+        const currentWorkdir = this.getCurrentWorkdir();
         if (
           path.isAbsolute(targetPath) &&
           !path.isAbsolute(pattern) &&

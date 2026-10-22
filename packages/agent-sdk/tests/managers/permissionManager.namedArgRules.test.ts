@@ -14,7 +14,7 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 
 function createManager(): PermissionManager {
   const container = new Container();
-  container.register("Workdir", "/home/user/project");
+  container.register("CurrentWorkdir", "/home/user/project");
   return new PermissionManager(container);
 }
 

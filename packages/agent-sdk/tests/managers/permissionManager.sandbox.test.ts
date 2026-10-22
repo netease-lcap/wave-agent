@@ -23,7 +23,7 @@ function createManager(options: {
   withConfiguration?: boolean;
 }): PermissionManager {
   const container = new Container();
-  container.register("Workdir", WORKDIR);
+  container.register("CurrentWorkdir", WORKDIR);
   if (options.withConfiguration !== false) {
     const configurationService = {
       getCurrentConfiguration: () => ({
@@ -107,7 +107,7 @@ describe("PermissionManager — sandboxed Bash auto-allow", () => {
 
   it("keeps explicit deny rules winning over the sandbox", async () => {
     const container = new Container();
-    container.register("Workdir", WORKDIR);
+    container.register("CurrentWorkdir", WORKDIR);
     container.register("ConfigurationService", {
       getCurrentConfiguration: () => ({
         sandbox: { autoAllowBashIfSandboxed: true },

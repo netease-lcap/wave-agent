@@ -168,7 +168,15 @@ export function repositoryAttributesFromRemote(
   };
 }
 
-/** One `git remote get-url origin` per workdir, success or failure. */
+/**
+ * One `git remote get-url origin` per workdir, success or failure.
+ *
+ * Callers pass the directory the session was opened in (`SessionWorkdir`), not
+ * the shell's current one: `git` inside a subdirectory resolves to the same
+ * repository, but a shell that `cd`-ed into another checkout — or out of git
+ * entirely — would otherwise re-file the session under a different repository,
+ * or drop the attributes for part of its lifetime.
+ */
 const repositoryCache = new Map<string, Attributes | undefined>();
 
 /** The `vcs.repository.*` attributes of a session's working directory, if any. */

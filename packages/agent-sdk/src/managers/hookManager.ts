@@ -393,7 +393,10 @@ export class HookManager {
         },
         {
           sessionId: context.sessionId,
-          workdir: context.workdir,
+          // The session's starting directory, not the shell-following one a
+          // tool context carries (see `SessionWorkdir` in containerSetup).
+          workdir:
+            this.container.get<string>("SessionWorkdir") ?? context.workdir,
           entrypoint: entrypointOf(this.container),
         },
       ).catch(() => {}); // Non-blocking

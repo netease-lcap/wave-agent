@@ -27,7 +27,7 @@ vi.mock("node:os", async (importOriginal) => {
 function createContainer(workdir?: string): Container {
   const c = new Container();
   if (workdir) {
-    c.register("Workdir", workdir);
+    c.register("CurrentWorkdir", workdir);
   }
   return c;
 }
@@ -197,7 +197,7 @@ describe("PermissionManager - instance additional directories", () => {
       });
 
       // Simulate cd to subdirectory
-      container.register("Workdir", "/a/frontend");
+      container.register("CurrentWorkdir", "/a/frontend");
 
       const context: ToolPermissionContext = {
         toolName: "Write",

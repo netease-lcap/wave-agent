@@ -214,7 +214,7 @@ class WavePanelHolder(private val project: Project) {
     /** Workdir the settings 个性化 view targets: the chat session's root, else the project. */
     private fun settingsWorkdir(): String {
         val agent = panel?.session?.agent
-        return agent?.sessionCwd ?: agent?.workingDirectory ?: project.basePath ?: System.getProperty("user.dir")
+        return agent?.sessionCwd ?: agent?.currentWorkdir ?: project.basePath ?: System.getProperty("user.dir")
     }
 
     companion object {

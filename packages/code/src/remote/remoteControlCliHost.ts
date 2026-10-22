@@ -61,7 +61,10 @@ import {
 export interface RemoteControlCliSession {
   /** Empty until the first turn mints one — there is nothing to serve yet. */
   sessionId(): string;
+  /** Where the shell is now (drifts on `cd`) — used for live directory reads. */
   workdir(): string;
+  /** Where the session was opened; the row the page groups by. */
+  sessionCwd(): string;
   displayMessages(): Message[];
   contextUsagePercent(): number;
   latestTotalTokens(): number;
@@ -297,7 +300,7 @@ export class RemoteControlCliHost implements RemoteControlHost {
   private listDaemonSessions(): {
     sessions: Array<{
       sessionId: string;
-      workingDirectory: string;
+      sessionCwd: string;
       isLoading: boolean;
       hasRunningBackgroundWork: boolean;
       hasPendingMessages: boolean;
@@ -320,7 +323,7 @@ export class RemoteControlCliHost implements RemoteControlHost {
       sessions: [
         {
           sessionId,
-          workingDirectory: this.session.workdir(),
+          sessionCwd: this.session.sessionCwd(),
           isLoading: this.session.isLoading(),
           hasRunningBackgroundWork: this.session.hasRunningBackgroundWork(),
           hasPendingMessages: this.session.hasPendingMessages(),
@@ -335,7 +338,7 @@ export class RemoteControlCliHost implements RemoteControlHost {
 
   private getSessionInfo(): {
     sessionId: string;
-    workingDirectory: string;
+    sessionCwd: string;
     latestTotalTokens: number;
     permissionMode: PermissionMode;
     availableTools: string[];
@@ -347,7 +350,7 @@ export class RemoteControlCliHost implements RemoteControlHost {
   } {
     return {
       sessionId: this.session.sessionId(),
-      workingDirectory: this.session.workdir(),
+      sessionCwd: this.session.sessionCwd(),
       latestTotalTokens: this.session.latestTotalTokens(),
       permissionMode: this.session.permissionMode(),
       availableTools: this.session.availableTools(),

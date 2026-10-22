@@ -40,7 +40,7 @@ function makeMessage(id: string, content: string): Message {
 function createMockAgent() {
   const agent = {
     sessionId: "test-session-id",
-    workingDirectory: "/tmp",
+    currentWorkdir: "/tmp",
     messages: [makeMessage("m1", "hello"), makeMessage("m2", "world")],
     // Full UI stream follows the context in this mock (the compaction/rewind
     // callbacks here replace the whole list rather than splitting streams).

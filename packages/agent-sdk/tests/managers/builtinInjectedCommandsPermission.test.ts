@@ -34,7 +34,7 @@ describe("built-in skills: injected commands pass their own allowed-tools", () =
   beforeEach(() => {
     vi.clearAllMocks();
     const container = new Container();
-    container.register("Workdir", WORKDIR);
+    container.register("CurrentWorkdir", WORKDIR);
     permissionManager = new PermissionManager(container);
   });
 

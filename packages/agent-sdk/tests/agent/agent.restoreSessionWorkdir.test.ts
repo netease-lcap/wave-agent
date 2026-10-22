@@ -95,7 +95,7 @@ describe("Agent.restoreSession - target workdir", () => {
     await agent.restoreSession(targetSessionId, { workdir: targetWorkdir });
 
     expect(load).toHaveBeenCalledWith(targetSessionId, targetWorkdir);
-    expect(agent.workingDirectory).toBe(targetWorkdir);
+    expect(agent.currentWorkdir).toBe(targetWorkdir);
     expect(agent.sessionId).toBe(targetSessionId);
     expect(dirname(agent.sessionFilePath)).toBe(
       join("/mock/session/dir", pathEncoder.encodeSync(targetWorkdir)),
@@ -119,7 +119,7 @@ describe("Agent.restoreSession - target workdir", () => {
       agent.restoreSession(randomUUID(), { workdir: targetWorkdir }),
     ).rejects.toThrow();
 
-    expect(agent.workingDirectory).toBe(currentWorkdir);
+    expect(agent.currentWorkdir).toBe(currentWorkdir);
     expect(agent.sessionId).toBe(currentSessionId);
     expect(onWorkdirChange).not.toHaveBeenCalled();
 
@@ -134,7 +134,7 @@ describe("Agent.restoreSession - target workdir", () => {
     await agent.restoreSession(targetSessionId);
 
     expect(load).toHaveBeenCalledWith(targetSessionId, currentWorkdir);
-    expect(agent.workingDirectory).toBe(currentWorkdir);
+    expect(agent.currentWorkdir).toBe(currentWorkdir);
 
     await agent.destroy();
   });

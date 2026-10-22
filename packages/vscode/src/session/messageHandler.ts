@@ -2016,7 +2016,7 @@ export class MessageHandler {
         session: {
           id: agent.sessionId,
           sessionType: "main",
-          workdir: agent.sessionCwd ?? agent.workingDirectory,
+          workdir: agent.sessionCwd ?? agent.currentWorkdir,
           lastActiveAt: new Date(),
           latestTotalTokens: agent.latestTotalTokens,
           customTitle: trimmed,
@@ -2292,7 +2292,7 @@ export class MessageHandler {
             ? {
                 id: session.sessionId,
                 sessionType: "main",
-                workdir: session.agent.workingDirectory,
+                workdir: session.agent.currentWorkdir,
                 lastActiveAt: new Date(),
                 latestTotalTokens: session.agent.latestTotalTokens,
               }
@@ -2302,7 +2302,7 @@ export class MessageHandler {
         permissionMode: session.agent?.getPermissionMode(),
         queuedMessages: session.messageQueue,
         isAuthenticated,
-        workdir: session.agent?.workingDirectory,
+        workdir: session.agent?.currentWorkdir,
       },
       viewType,
       windowId,
@@ -2628,7 +2628,7 @@ export class MessageHandler {
         // Session root (initialize-time cwd), not the subdir the agent
         // bash-cd'd into — matches where @file search is anchored.
         workdir:
-          session.agent?.sessionCwd || session.agent?.workingDirectory || "",
+          session.agent?.sessionCwd || session.agent?.currentWorkdir || "",
         configurationData: config,
       },
       viewType,

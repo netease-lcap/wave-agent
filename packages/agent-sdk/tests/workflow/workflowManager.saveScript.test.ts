@@ -53,7 +53,7 @@ describe("WorkflowManager.saveWorkflowScript", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     const container = new Container();
-    container.register("Workdir", WORKDIR);
+    container.register("CurrentWorkdir", WORKDIR);
     container.register("WorkflowRegistry", new WorkflowRegistry(WORKDIR));
     manager = new WorkflowManager(container);
     vi.spyOn(manager, "listRuns").mockResolvedValue([createRun()]);

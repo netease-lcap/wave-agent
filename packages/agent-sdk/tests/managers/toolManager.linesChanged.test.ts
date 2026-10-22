@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { resolve } from "node:path";
 import { ToolManager } from "@/managers/toolManager.js";
 import { Container } from "@/utils/container.js";
 import type { ToolContext, ToolPlugin, ToolResult } from "@/tools/types.js";
@@ -39,8 +40,14 @@ const baseContext = {
 const baseRecordContext = { sessionId: "session-1", workdir: "/repo/worktree" };
 
 /** A manager with one tool that returns whatever result the test hands it. */
-function buildManager(result: ToolResult): ToolManager {
+function buildManager(
+  result: ToolResult,
+  sessionWorkdir?: string,
+): ToolManager {
   const container = new Container();
+  if (sessionWorkdir !== undefined) {
+    container.register("SessionWorkdir", sessionWorkdir);
+  }
   container.register("McpManager", {
     isMcpTool: () => false,
   } as unknown as McpManager);
@@ -128,5 +135,38 @@ describe("ToolManager line-delta metric", () => {
     await manager.execute("Edit", {}, baseContext);
 
     expect(recordLinesChanged).not.toHaveBeenCalled();
+  });
+
+  it("files its records under the session's starting directory, not a drifted shell cwd", async () => {
+    const sessionWorkdir = resolve("/fake/session-start");
+    const driftedWorkdir = resolve("/fake/after-cd");
+    const manager = buildManager(
+      {
+        success: true,
+        content: "Edited",
+        metadata: { linesAdded: 1, linesRemoved: 0 },
+      },
+      sessionWorkdir,
+    );
+
+    // What a `cd` in Bash leaves behind: the tool context follows the shell.
+    await manager.execute(
+      "Edit",
+      {},
+      {
+        ...baseContext,
+        workdir: driftedWorkdir,
+      },
+    );
+
+    expect(recordLinesChanged).toHaveBeenCalledWith(
+      { added: 1, removed: 0 },
+      expect.objectContaining({ workdir: sessionWorkdir }),
+    );
+    expect(trackCliOperation).toHaveBeenCalledWith(
+      "tool",
+      expect.objectContaining({ workdir: sessionWorkdir }),
+      expect.any(Function),
+    );
   });
 });

@@ -28,7 +28,7 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 function createContainer(workdir?: string): Container {
   const c = new Container();
   if (workdir) {
-    c.register("Workdir", workdir);
+    c.register("CurrentWorkdir", workdir);
   }
   return c;
 }
@@ -2859,13 +2859,13 @@ describe("PermissionManager", () => {
 
       // Child container should resolve Workdir from parent
       const childContainer = parentContainer.createChild();
-      expect(childContainer.get<string>("Workdir")).toBe("/a");
+      expect(childContainer.get<string>("CurrentWorkdir")).toBe("/a");
 
       // Parent updates Workdir to /b
-      parentContainer.register("Workdir", "/b");
+      parentContainer.register("CurrentWorkdir", "/b");
 
       // Child container should resolve Workdir=/b
-      expect(childContainer.get<string>("Workdir")).toBe("/b");
+      expect(childContainer.get<string>("CurrentWorkdir")).toBe("/b");
     });
   });
 

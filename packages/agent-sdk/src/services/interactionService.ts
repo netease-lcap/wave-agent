@@ -161,7 +161,7 @@ export class InteractionService {
     // the current one — otherwise the switch writes a second copy of the same
     // session into the current project directory.
     const targetWorkdir =
-      restoreOptions?.workdir ?? messageManager.getWorkdir();
+      restoreOptions?.workdir ?? messageManager.getCurrentWorkdir();
 
     // 1. Validation
     if (!sessionId || sessionId === messageManager.getSessionId()) {
@@ -206,7 +206,7 @@ export class InteractionService {
     // 5. Move this session to the target directory. Only after the target
     //    transcript has loaded successfully, so a failed restore leaves the
     //    current session (and its directory) untouched.
-    if (targetWorkdir !== messageManager.getWorkdir()) {
+    if (targetWorkdir !== messageManager.getCurrentWorkdir()) {
       await switchWorkdir(targetWorkdir);
     }
 

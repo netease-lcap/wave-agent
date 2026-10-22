@@ -338,7 +338,7 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
 
   StdioAgent: class {
     sessionId: string | undefined;
-    workingDirectory: string | undefined;
+    currentWorkdir: string | undefined;
     sessionCwd: string | undefined;
     sessionRepoRoot: string | undefined;
     latestTotalTokens = 0;
@@ -354,14 +354,14 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
 
     initialize = vi.fn(async function (
       this: {
-        workingDirectory?: string;
+        currentWorkdir?: string;
         sessionCwd?: string;
         sessionRepoRoot?: string;
         sessionId?: string;
       },
       params: { workdir?: string },
     ) {
-      this.workingDirectory = params.workdir;
+      this.currentWorkdir = params.workdir;
       this.sessionCwd = params.workdir;
       this.sessionRepoRoot = h.sessionRepoRootReply;
       this.sessionId = `sess-${++h.agentCounter}`;
@@ -974,7 +974,7 @@ describe("file suggestions", () => {
     await vi.waitFor(() => {
       expect(h.agentInstances).toHaveLength(1);
     });
-    expect(lastAgent().workingDirectory).toBe("/work/a");
+    expect(lastAgent().currentWorkdir).toBe("/work/a");
   });
 
   it("stays anchored to the session root after bash cd drifts the working directory", async () => {
@@ -998,8 +998,8 @@ describe("file suggestions", () => {
     }>;
 
     // The agent ran `cd src` — the CLI broadcast workdirChange, drifting the
-    // agent's workingDirectory.
-    first.workingDirectory = "/work/a/src";
+    // agent's currentWorkdir.
+    first.currentWorkdir = "/work/a/src";
     first.callbacks.onWorkdirChange("/work/a/src");
 
     // Switching back to the drifted pane re-anchors host workdir to the
@@ -1451,7 +1451,7 @@ describe("fresh launch auto new-session", () => {
     // Equivalent to one automatic 新对话 click: a fresh agent is spawned and
     // bound to the pane at recents[0], workdir is pushed, input gets focus.
     expect(h.agentInstances).toHaveLength(1);
-    expect(lastAgent().workingDirectory).toBe("/work/a");
+    expect(lastAgent().currentWorkdir).toBe("/work/a");
     expect(sent("desktopPanes").at(-1)?.panes[0].sessionId).toBe(
       lastAgent().sessionId,
     );
@@ -2811,10 +2811,10 @@ describe("configuration and status", () => {
   it("getStatus keeps the session root workdir after bash cd drifts the working directory", async () => {
     const { host, sent } = await readyHost();
     // The agent ran `cd src` — the CLI broadcast workdirChange, which drifts
-    // the agent's workingDirectory. The /status popup must still report the
+    // the agent's currentWorkdir. The /status popup must still report the
     // session root, not the subdir the agent cd'd into.
     const agent = lastAgent();
-    agent.workingDirectory = "/work/a/src";
+    agent.currentWorkdir = "/work/a/src";
     agent.callbacks.onWorkdirChange("/work/a/src");
 
     await host.handleWebviewMessage({ command: "getStatus" });
@@ -4697,7 +4697,7 @@ describe("misc commands", () => {
 
   it("getAgentsContent project scope reads the focused pane session's workdir, not the webview-sent path", async () => {
     const { host, sent } = await readyHost();
-    // readyHost binds pane-1 to a session whose agent workingDirectory is /work/a.
+    // readyHost binds pane-1 to a session whose agent currentWorkdir is /work/a.
     const orig = h.handleClientRequest;
     const seen: Array<{ method: string; params: unknown }> = [];
     h.handleClientRequest = (method, params) => {
@@ -5309,7 +5309,7 @@ describe("session tree", () => {
     // has no index entries; the sidebar tree itself still derives groups from
     // the desktop session index, so /work/only-recent must not appear as a group.
     expect(h.agentInstances).toHaveLength(1);
-    expect(lastAgent().workingDirectory).toBe("/work/only-recent");
+    expect(lastAgent().currentWorkdir).toBe("/work/only-recent");
   });
 
   it("shows every session in a group, not a capped subset", async () => {
@@ -8945,7 +8945,7 @@ describe("desktopNewSessionInPane (new session side-by-side)", () => {
     // The original pane keeps its agent; the new pane gets a fresh empty one.
     expect(h.agentInstances).toHaveLength(spawned + 1);
     expect(lastAgent()).not.toBe(original);
-    expect(lastAgent().workingDirectory).toBe("/work/a");
+    expect(lastAgent().currentWorkdir).toBe("/work/a");
     expect(lastAgent().messages).toEqual([]);
   });
 
@@ -10575,8 +10575,8 @@ describe("SSH remote hosts", () => {
         .find((e) => e.sessionId === remoteAgent.sessionId),
     ).toBeUndefined();
     // The agent ran `cd src` — the CLI broadcast workdirChange, drifting its
-    // workingDirectory while sessionCwd stays the initialize-time root.
-    remoteAgent.workingDirectory = "/remote/repo/src";
+    // currentWorkdir while sessionCwd stays the initialize-time root.
+    remoteAgent.currentWorkdir = "/remote/repo/src";
     remoteAgent.callbacks.onWorkdirChange("/remote/repo/src");
     expect(remoteAgent.sessionCwd).toBe("/remote/repo");
 
@@ -11974,7 +11974,7 @@ describe("renameSession", () => {
   async function readyWithLiveSession(workdir = "/work/a") {
     const ctx = await readyHost();
     const agent = lastAgent();
-    agent.workingDirectory = workdir;
+    agent.currentWorkdir = workdir;
     fireSessionId(agent, "s1");
     ctx.store.upsertSession(entry("s1", workdir));
     return { ...ctx, agent };
@@ -12123,14 +12123,14 @@ describe("renameSession", () => {
   });
 
   // Regression: a session that ran `cd <subdir>` drifts the agent's
-  // workingDirectory (the CLI broadcasts workdirChange). Re-registering it on
+  // currentWorkdir (the CLI broadcasts workdirChange). Re-registering it on
   // rename must keep the sidebar group anchored to the session root, or the
   // renamed conversation "promotes" itself into a new subdir-named group.
   it("keeps the sidebar group when a bash cd drifted the working directory before the rename", async () => {
     const { host, store, sent, agent } = await readyWithLiveSession();
     // The agent ran `cd src` — mirror what the real StdioAgent does on
     // workdirChange: overwrite the field, then fire the notification.
-    agent.workingDirectory = "/work/a/src";
+    agent.currentWorkdir = "/work/a/src";
     agent.callbacks.onWorkdirChange("/work/a/src");
 
     await host.handleWebviewMessage({
@@ -12178,7 +12178,7 @@ describe("renameSession", () => {
     });
     // The agent now live on 'prod' — cd inside the remote session drifts its cwd.
     const agent = lastAgent();
-    agent.workingDirectory = "/work/a/src";
+    agent.currentWorkdir = "/work/a/src";
     agent.callbacks.onWorkdirChange("/work/a/src");
 
     await host.handleWebviewMessage({
@@ -12216,14 +12216,14 @@ describe("renameSession", () => {
     };
     // Register the worktree session the way spawnAgent does: the agent starts
     // at the worktree path and the host maps it to its worktree info.
-    agent.workingDirectory = "/work/wt-1";
+    agent.currentWorkdir = "/work/wt-1";
     agent.sessionCwd = "/work/wt-1";
     fireSessionId(agent, "s1");
     store.upsertSession(
       entry("s1", "/work/a", { cwd: "/work/wt-1", worktree }),
     );
     // cd inside the worktree drifts the agent's cwd.
-    agent.workingDirectory = "/work/wt-1/src";
+    agent.currentWorkdir = "/work/wt-1/src";
     agent.callbacks.onWorkdirChange("/work/wt-1/src");
 
     await host.handleWebviewMessage({
@@ -12245,21 +12245,21 @@ describe("renameSession", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 项目根口径：会话稳定根（`sessionCwd`）vs 被 bash cd 漂移的 `workingDirectory`
+// 项目根口径：会话稳定根（`sessionCwd`）vs 被 bash cd 漂移的 `currentWorkdir`
 //
 // 判据：**用户正在看的目录**（文件面板 / 差异 / 终端）用
-// `workingDirectory` / `this.workdir`；**会话所属的项目**（项目级配置、
+// `currentWorkdir` / `this.workdir`；**会话所属的项目**（项目级配置、
 // 会话元信息）用 initialize 时的 cwd（`sessionCwd`）。会话内 bash `cd` 只漂移
 // 前者——锚错会让项目级设置读写到嵌套子目录、让会话元信息把子目录当成项目。
 // ---------------------------------------------------------------------------
 
-describe("项目根口径（sessionCwd vs 漂移的 workingDirectory）", () => {
+describe("项目根口径（sessionCwd vs 漂移的 currentWorkdir）", () => {
   /** 让分屏的会话「跑过一次 cd」：像真 StdioAgent 那样先覆盖字段、再发通知。 */
   function driftAgentTo(
     agent: ReturnType<typeof lastAgent>,
     dir: string,
   ): void {
-    agent.workingDirectory = dir;
+    agent.currentWorkdir = dir;
     agent.callbacks.onWorkdirChange(dir);
   }
 

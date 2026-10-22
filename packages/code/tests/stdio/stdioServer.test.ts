@@ -32,7 +32,7 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
   const messages: Message[] = [];
   const agent = {
     sessionId: "test-session-id",
-    workingDirectory: "/test/workdir",
+    currentWorkdir: "/test/workdir",
     latestTotalTokens: 0,
     getMaxInputTokens: vi.fn().mockReturnValue(200000),
     messages,
@@ -121,7 +121,7 @@ test("initialize request returns response with sessionId", async () => {
   expect(response.id).toBe(1);
   expect(response.result).toEqual({
     sessionId: "test-session-id",
-    workingDirectory: "/test/workdir",
+    currentWorkdir: "/test/workdir",
     // Session root travels separately from the (possibly drifted) live cwd.
     sessionCwd: "/test",
     permissionMode: "default",

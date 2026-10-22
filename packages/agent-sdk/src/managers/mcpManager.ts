@@ -1116,7 +1116,11 @@ export class McpManager {
             // so a nested call from inside the Exec sandbox counts too.
             recordToolActivity(detectMcpActivity(toolName), {
               sessionId: context?.sessionId,
-              workdir: context?.workdir,
+              // The session's starting directory, not the shell-following one a
+              // tool context carries (see `SessionWorkdir` in containerSetup).
+              workdir:
+                this.container.get<string>("SessionWorkdir") ??
+                context?.workdir,
               entrypoint: entrypointOf(this.container),
             });
             return result;

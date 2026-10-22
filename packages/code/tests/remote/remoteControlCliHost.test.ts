@@ -39,6 +39,7 @@ function makeSession(
   return {
     sessionId: () => "sess-1",
     workdir: () => "/work",
+    sessionCwd: () => "/work",
     displayMessages: () => [],
     contextUsagePercent: () => 0,
     latestTotalTokens: () => 0,
@@ -184,7 +185,7 @@ test("listDaemonSessions answers the one live session, without reading disk", as
   expect(result.sessions).toEqual([
     {
       sessionId: "sess-1",
-      workingDirectory: "/work",
+      sessionCwd: "/work",
       isLoading: true,
       hasRunningBackgroundWork: true,
       hasPendingMessages: true,
@@ -215,7 +216,7 @@ test("listDaemonSessions omits the label fields it has no material for", async (
 
   expect(result.sessions[0]).toEqual({
     sessionId: "sess-1",
-    workingDirectory: "/work",
+    sessionCwd: "/work",
     isLoading: false,
     hasRunningBackgroundWork: false,
     hasPendingMessages: false,

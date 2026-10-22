@@ -816,11 +816,9 @@ async function openPage(): Promise<Harness> {
   page.post({ command: "webviewReady" });
   await flush();
   // The live-session registry's own field names (`sessionId` /
-  // `workingDirectory`), which the page maps onto what the shared list renders.
+  // `sessionCwd`), which the page maps onto what the shared list renders.
   page.reply({
-    sessions: [
-      { sessionId: "s1", workingDirectory: "/tmp", customTitle: "会话一" },
-    ],
+    sessions: [{ sessionId: "s1", sessionCwd: "/tmp", customTitle: "会话一" }],
   });
   await flush();
   // The snapshot path's own session-state read (`getSessionInfo`, scenario 26):

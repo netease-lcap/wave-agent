@@ -51,8 +51,8 @@ describe("enterWorktreeTool", () => {
       workdir: "/test/workdir",
       taskManager: new TaskManager(new Container(), "test-session"),
       aiManager: {
-        setWorkdir: mockSetWorkdir,
-        getWorkdir: () => "/test/workdir",
+        setCurrentWorkdir: mockSetWorkdir,
+        getCurrentWorkdir: () => "/test/workdir",
         getOriginalWorkdir: () => "/test/workdir",
         getWorktreeSession: mockGetWorktreeSession,
         setWorktreeSession: mockSetWorktreeSession,
@@ -500,8 +500,8 @@ describe("enterWorktreeTool", () => {
     const contextNoBaseRef: ToolContext = {
       ...mockContext,
       aiManager: {
-        setWorkdir: mockSetWorkdir,
-        getWorkdir: () => "/test/workdir",
+        setCurrentWorkdir: mockSetWorkdir,
+        getCurrentWorkdir: () => "/test/workdir",
         getWorktreeSession: mockGetWorktreeSession,
         setWorktreeSession: mockSetWorktreeSession,
       } as never,

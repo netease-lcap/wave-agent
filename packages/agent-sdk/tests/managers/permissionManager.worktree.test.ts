@@ -21,7 +21,7 @@ describe("PermissionManager Worktree Safety", () => {
 
   function createWorktreeContainer(): Container {
     const c = new Container();
-    c.register("Workdir", workdir);
+    c.register("CurrentWorkdir", workdir);
     c.register("WorktreeName", worktreeName);
     c.register("MainRepoRoot", mainRepoRoot);
     // No active EnterWorktree session (CLI -w uses container slots instead)
@@ -127,7 +127,7 @@ describe("PermissionManager Worktree Safety", () => {
 
   it("should not auto-deny if not in a worktree session", async () => {
     const container = new Container();
-    container.register("Workdir", mainRepoRoot);
+    container.register("CurrentWorkdir", mainRepoRoot);
     const manager = new PermissionManager(container);
     const context: ToolPermissionContext = {
       toolName: "Write",
@@ -187,7 +187,7 @@ describe("PermissionManager Worktree Safety", () => {
 
   it("should allow Write outside worktree in bypassPermissions mode when not in a worktree session", async () => {
     const container = new Container();
-    container.register("Workdir", mainRepoRoot);
+    container.register("CurrentWorkdir", mainRepoRoot);
     const manager = new PermissionManager(container);
     const context: ToolPermissionContext = {
       toolName: "Write",
@@ -238,7 +238,7 @@ describe("PermissionManager Worktree Safety — EnterWorktree mid-session", () =
     // Container has no WorktreeName/MainRepoRoot — simulates EnterWorktree mid-session,
     // where the worktree session is stored in the per-agent container slot.
     const container = new Container();
-    container.register("Workdir", worktreePath);
+    container.register("CurrentWorkdir", worktreePath);
     container.register("WorktreeSession", midSession);
     const manager = new PermissionManager(container);
     const context: ToolPermissionContext = {
@@ -257,7 +257,7 @@ describe("PermissionManager Worktree Safety — EnterWorktree mid-session", () =
 
   it("should allow Write inside worktree via container session", async () => {
     const container = new Container();
-    container.register("Workdir", worktreePath);
+    container.register("CurrentWorkdir", worktreePath);
     container.register("WorktreeSession", midSession);
     const manager = new PermissionManager(container);
     const context: ToolPermissionContext = {
@@ -272,7 +272,7 @@ describe("PermissionManager Worktree Safety — EnterWorktree mid-session", () =
 
   it("should not auto-deny after container session is cleared", async () => {
     const container = new Container();
-    container.register("Workdir", mainRepoRoot);
+    container.register("CurrentWorkdir", mainRepoRoot);
     container.register("WorktreeSession", null);
     const manager = new PermissionManager(container);
     const context: ToolPermissionContext = {

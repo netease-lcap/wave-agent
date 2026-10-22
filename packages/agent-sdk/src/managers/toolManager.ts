@@ -83,6 +83,11 @@ export interface ToolManagerOptions {
  * through, so both the flat and the nested (Exec sandbox) path have it; the
  * entrypoint comes from the container instead — it is a property of the session,
  * not of the call, and the context is rebuilt per call.
+ *
+ * The directory likewise comes from the container's `SessionWorkdir`, not from
+ * `context.workdir`: the context carries the directory the tools run in, which
+ * follows the shell after a `cd`, while the repository a record is filed under
+ * must stay the one the session was opened in.
  */
 function recordContextOf(
   context: {
@@ -93,7 +98,7 @@ function recordContextOf(
 ): RecordContext {
   return {
     sessionId: context.sessionId,
-    workdir: context.workdir,
+    workdir: container.get<string>("SessionWorkdir") ?? context.workdir,
     entrypoint: entrypointOf(container),
   };
 }
@@ -240,14 +245,14 @@ class ToolManager {
 
     // Artifact is a feature-gated tool: on by default for a logged-in account,
     // opt-in via enableArtifact: true for anyone else, opt-out via false.
-    if (isArtifactEnabled(this.container.get<string>("Workdir"))) {
+    if (isArtifactEnabled(this.container.get<string>("CurrentWorkdir"))) {
       builtInTools.push(artifactTool);
     }
 
     // Exec is on by default; enableExec: false turns it off. Registration is
     // decoupled from declaration: getToolsConfig() declares it only while the
     // deferral table yields a non-empty pool, which depends on the runtime tool set.
-    if (isExecEnabled(this.container.get<string>("Workdir"))) {
+    if (isExecEnabled(this.container.get<string>("CurrentWorkdir"))) {
       builtInTools.push(execTool);
     }
 
@@ -638,7 +643,7 @@ class ToolManager {
   public getExecPool(): ExecPoolEntry[] {
     return buildExecPool(
       this.deferralCandidates(),
-      getNonDeferrableBuiltins(this.container.get<string>("Workdir")),
+      getNonDeferrableBuiltins(this.container.get<string>("CurrentWorkdir")),
     );
   }
 

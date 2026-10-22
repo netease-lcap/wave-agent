@@ -61,7 +61,7 @@ describe("wave.code_edit_tool.decision", () => {
 
   function buildManager(options: { workdir?: string } = {}) {
     const container = new Container();
-    container.register("Workdir", options.workdir ?? "/repo");
+    container.register("CurrentWorkdir", options.workdir ?? "/repo");
     container.register("MessageManager", {
       getSessionId: () => SESSION_ID,
     });

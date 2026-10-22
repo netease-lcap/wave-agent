@@ -126,7 +126,7 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
   const messages: Message[] = [];
   const agent = {
     sessionId: "test-session-id",
-    workingDirectory: "/test/workdir",
+    currentWorkdir: "/test/workdir",
     latestTotalTokens: 100,
     getMaxInputTokens: vi.fn().mockReturnValue(200000),
     messages,
@@ -210,7 +210,7 @@ test("initialize creates Agent with correct options and returns session info", a
 
   expect(result).toEqual({
     sessionId: "test-session-id",
-    workingDirectory: "/test/workdir",
+    currentWorkdir: "/test/workdir",
     // The session root travels as its own field, even when it currently equals
     // the live cwd (a fresh session has not had the chance to drift yet).
     sessionCwd: "/test/workdir",
@@ -232,7 +232,7 @@ test("initialize reports the session root separately from the live cwd (re-attac
   const { bridge } = createBridge();
   const mockAgent = createMockAgent({
     sessionId: "live-1",
-    workingDirectory: path.join(REPO_ROOT, "packages", "code"),
+    currentWorkdir: path.join(REPO_ROOT, "packages", "code"),
   });
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
@@ -244,7 +244,7 @@ test("initialize reports the session root separately from the live cwd (re-attac
     workdir: REPO_ROOT,
     restoreSessionId: "live-1",
   })) as {
-    workingDirectory: string;
+    currentWorkdir: string;
     sessionCwd: string;
   };
 
@@ -253,7 +253,7 @@ test("initialize reports the session root separately from the live cwd (re-attac
   // sidebar group / project config off sessionCwd — deriving those from the
   // drifted cwd is what moved a resumed conversation into a subdirectory group.
   expect(Agent.create).toHaveBeenCalledTimes(1);
-  expect(again.workingDirectory).toBe(path.join(REPO_ROOT, "packages", "code"));
+  expect(again.currentWorkdir).toBe(path.join(REPO_ROOT, "packages", "code"));
   expect(again.sessionCwd).toBe(REPO_ROOT);
 });
 
@@ -267,7 +267,7 @@ test("initialize reports the repo root for a session created in a linked worktre
     hookBased: false,
   });
   vi.mocked(Agent.create).mockResolvedValue(
-    createMockAgent({ workingDirectory: worktreePath }),
+    createMockAgent({ currentWorkdir: worktreePath }),
   );
 
   const result = (await bridge.handleRequest("initialize", {
@@ -285,7 +285,7 @@ test("initialize reports the repo root for a session created in a linked worktre
 test("initialize omits the repo root when the session root is not a worktree", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(
-    createMockAgent({ workingDirectory: REPO_ROOT }),
+    createMockAgent({ currentWorkdir: REPO_ROOT }),
   );
 
   const result = (await bridge.handleRequest("initialize", {
@@ -1309,7 +1309,7 @@ test("listDaemonSessions labels live sessions for the remote page's list", async
   expect(result.sessions).toHaveLength(1);
   expect(result.sessions[0]).toMatchObject({
     sessionId: "test-session-id",
-    workingDirectory: "/test/workdir",
+    sessionCwd: "/test/workdir",
     customTitle: "登录页",
     firstMessage: "修一下登录页的报错",
     // The ordering key is the *last* display message, so a running session sorts
@@ -1490,7 +1490,7 @@ test("getSessionInfo returns session info", async () => {
 
   expect(r).toEqual({
     sessionId: "test-session-id",
-    workingDirectory: "/test/workdir",
+    sessionCwd: "/test/workdir",
     latestTotalTokens: 100,
     permissionMode: "default",
     availableTools: ["Bash", "Read", "Write"],
@@ -1516,7 +1516,7 @@ test("getSessionInfo reports the creation workdir even after the agent's live wo
   const sessionId = (initResult as { sessionId: string }).sessionId;
 
   // Drift the live working directory (as an in-session `cd` would)
-  (mockAgent as unknown as { workingDirectory: string }).workingDirectory =
+  (mockAgent as unknown as { currentWorkdir: string }).currentWorkdir =
     "/repo/main";
 
   const r = await bridge.handleRequest("getSessionInfo", {}, sessionId);
@@ -1524,7 +1524,7 @@ test("getSessionInfo reports the creation workdir even after the agent's live wo
   // destroy --remove-worktree still resolves the session's own worktree.
   expect(r).toEqual({
     sessionId: "test-session-id",
-    workingDirectory: "/repo/main/.wave/worktrees/feature-x",
+    sessionCwd: "/repo/main/.wave/worktrees/feature-x",
     latestTotalTokens: 100,
     permissionMode: "default",
     availableTools: ["Bash", "Read", "Write"],
@@ -2118,14 +2118,12 @@ test("listDaemonSessions reports a worktree only for worktree sessions", async (
   await bridge.handleRequest("initialize", { workdir: "/repo" });
 
   const reply = (await bridge.handleRequest("listDaemonSessions", {})) as {
-    sessions: Array<{ workingDirectory: string; worktree?: unknown }>;
+    sessions: Array<{ sessionCwd: string; worktree?: unknown }>;
   };
   const worktreeRow = reply.sessions.find(
-    (row) => row.workingDirectory === "/repo/.wave/worktrees/login",
+    (row) => row.sessionCwd === "/repo/.wave/worktrees/login",
   );
-  const plainRow = reply.sessions.find(
-    (row) => row.workingDirectory === "/repo",
-  );
+  const plainRow = reply.sessions.find((row) => row.sessionCwd === "/repo");
 
   expect(worktreeRow?.worktree).toEqual(DERIVED_WORKTREE);
   // Absent, not `null`/"false": an older page ignores it, and "not a worktree"
@@ -2148,7 +2146,7 @@ test("listDaemonSessions degrades to no worktree field when derivation fails", a
   };
 
   expect(reply.sessions).toHaveLength(1);
-  expect(reply.sessions[0].workingDirectory).toBe("/repo/.wave/worktrees/gone");
+  expect(reply.sessions[0].sessionCwd).toBe("/repo/.wave/worktrees/gone");
   expect("worktree" in reply.sessions[0]).toBe(false);
 });
 
@@ -2238,7 +2236,7 @@ test("searchFiles uses workdir param when provided", async () => {
   });
 });
 
-test("searchFiles falls back to agent workingDirectory", async () => {
+test("searchFiles falls back to agent currentWorkdir", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
   const result = await bridge.handleRequest("initialize", {});
@@ -3053,7 +3051,7 @@ test("handleRequest with null params defaults to empty object", async () => {
   const result = await bridge.handleRequest("getSessionInfo", null, sessionId);
   expect(result).toEqual({
     sessionId: "test-session-id",
-    workingDirectory: "/test/workdir",
+    sessionCwd: "/test/workdir",
     latestTotalTokens: 100,
     permissionMode: "default",
     availableTools: ["Bash", "Read", "Write"],
@@ -3098,7 +3096,7 @@ test("initialize with restoreSessionId reuses a live session instead of creating
   expect(vi.mocked(Agent.create)).toHaveBeenCalledTimes(1);
   expect(second).toEqual({
     sessionId,
-    workingDirectory: "/test/workdir",
+    currentWorkdir: "/test/workdir",
     sessionCwd: "/test/workdir",
     permissionMode: "default",
     latestTotalTokens: 100,
@@ -3118,7 +3116,7 @@ test("initialize with an unknown restoreSessionId creates a new agent", async ()
   expect(vi.mocked(Agent.create)).toHaveBeenCalledTimes(1);
   expect(result).toEqual({
     sessionId: "test-session-id",
-    workingDirectory: "/test/workdir",
+    currentWorkdir: "/test/workdir",
     sessionCwd: "/test/workdir",
     permissionMode: "default",
     latestTotalTokens: 100,
@@ -3152,11 +3150,11 @@ test("initialize from-disk re-attach recovers the creation workdir from the tran
     expect(vi.mocked(Agent.create)).toHaveBeenCalledTimes(1);
 
     const r = await bridge.handleRequest("getSessionInfo", {}, sessionId);
-    // workingDirectory = creation workdir from the transcript header, not the
-    // client cwd passed on re-attach.
+    // sessionCwd = creation workdir from the transcript header, not the client
+    // cwd passed on re-attach.
     expect(r).toEqual({
       sessionId: "test-session-id",
-      workingDirectory: "/repo/main/.wave/worktrees/feature-x",
+      sessionCwd: "/repo/main/.wave/worktrees/feature-x",
       latestTotalTokens: 100,
       permissionMode: "default",
       availableTools: ["Bash", "Read", "Write"],
@@ -3657,7 +3655,7 @@ test("PluginCore is cached for same workdir", async () => {
   expect(PluginCore).toHaveBeenCalledTimes(1);
 });
 
-test("PluginCore uses agent workingDirectory when no workdir provided", async () => {
+test("PluginCore uses agent sessionCwd when no workdir provided", async () => {
   const { bridge } = createBridge();
   const listPlugins = vi
     .fn()
@@ -3671,7 +3669,7 @@ test("PluginCore uses agent workingDirectory when no workdir provided", async ()
   const sessionId = (result as { sessionId: string }).sessionId;
   await bridge.handleRequest("listPlugins", {}, sessionId);
 
-  // PluginCore should be constructed with agent's workingDirectory
+  // PluginCore should be constructed with agent's currentWorkdir
   expect(PluginCore).toHaveBeenCalledWith("/test/workdir");
 });
 

@@ -243,14 +243,14 @@ describe("Agent - Global Logger Integration", () => {
       // Step 3: Use global logger from utility code (simulated)
       globalLogger.info("Agent initialized successfully");
       globalLogger.debug("Configuration loaded", {
-        workdir: agent.workingDirectory,
+        workdir: agent.currentWorkdir,
       });
 
       // Step 4: Verify logging occurred
       expectLoggerCall(mockLogger1, "info", ["Agent initialized successfully"]);
       expectLoggerCall(mockLogger1, "debug", [
         "Configuration loaded",
-        { workdir: agent.workingDirectory },
+        { workdir: agent.currentWorkdir },
       ]);
 
       // Step 5: Agent operations that might trigger internal logging
@@ -416,7 +416,7 @@ describe("Agent - Global Logger Integration", () => {
       expect(agent.messages).toEqual([]);
       expect(isLoggerConfigured()).toBe(true);
 
-      expect(agent.workingDirectory).toBeDefined();
+      expect(agent.currentWorkdir).toBeDefined();
       expect(isLoggerConfigured()).toBe(true);
 
       // After destruction, global logger should still be set
@@ -685,7 +685,7 @@ describe("Agent - Global Logger Integration", () => {
 
         // Use the global logger like a utility function would
         globalLogger.debug("Utility function called via Agent context", {
-          workdir: agent.workingDirectory,
+          workdir: agent.currentWorkdir,
           operation: "test",
         });
 
@@ -693,7 +693,7 @@ describe("Agent - Global Logger Integration", () => {
         expect(mockLogger1.debug).toHaveBeenCalledWith(
           "Utility function called via Agent context",
           {
-            workdir: agent.workingDirectory,
+            workdir: agent.currentWorkdir,
             operation: "test",
           },
         );
@@ -771,7 +771,7 @@ describe("Agent - Global Logger Integration", () => {
         expect(agent.messages).toEqual([]);
         globalLogger.info("Messages accessed");
 
-        expect(agent.workingDirectory).toBeDefined();
+        expect(agent.currentWorkdir).toBeDefined();
         globalLogger.info("Working directory accessed");
 
         // Verify all messages used the same logger

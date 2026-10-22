@@ -528,12 +528,12 @@ export class DesktopHost {
    * A session's *project* directory: the stable root captured at CLI
    * initialize time (`sessionCwd`; the worktree path for a worktree session).
    * Session metadata pushed to the webview describes the conversation, so it
-   * must carry this and not `workingDirectory` — that one drifts into a
+   * must carry this and not `agent.currentWorkdir` — that one drifts into a
    * subdirectory as soon as the agent bash-`cd`s, which would make the pushed
    * metadata claim a nested directory as the conversation's project.
    */
   private sessionRootOf(agent: StdioAgent): string | undefined {
-    return agent.sessionCwd ?? agent.workingDirectory;
+    return agent.sessionCwd ?? agent.currentWorkdir;
   }
 
   /**
@@ -542,11 +542,11 @@ export class DesktopHost {
    * the focused workdir before any session is bound.
    *
    * Project-scoped configuration (AGENTS.md / project settings / hooks / MCP)
-   * must resolve against this, never against `workingDirectory`: a bash `cd`
+   * must resolve against this, never against `currentWorkdir`: a bash `cd`
    * inside the session drifts that field into a subdirectory, so the settings
    * panel would read and write a nested directory's config instead of the
    * project's. "The directory the user is looking at" (file/diff/terminal
-   * panels) is the opposite case and keeps using `workingDirectory` /
+   * panels) is the opposite case and keeps using `currentWorkdir` /
    * `this.workdir`.
    */
   private projectRootForPane(paneId?: string): string | undefined {
@@ -1865,7 +1865,7 @@ export class DesktopHost {
     this.pendingRestores.delete(paneId);
     this.bindAgentToPane(paneId, agent);
     this.hostState.set(paneId, this.hostForAgent(agent));
-    const dir = agent.workingDirectory;
+    const dir = agent.currentWorkdir;
     if (dir && dir !== this.workdir) {
       // this.workdir follows the focused pane's real cwd (used by the file
       // list / diff / terminal panels). It is NOT the source for new-session
@@ -1936,7 +1936,7 @@ export class DesktopHost {
     if (!this.panes.some((p) => p.paneId === paneId)) return;
     if (this.focusedPaneId === paneId) return;
     this.focusedPaneId = paneId;
-    const dir = this.activeAgent?.workingDirectory;
+    const dir = this.activeAgent?.currentWorkdir;
     if (dir) this.workdir = dir;
     // Always push: switching panes may also switch the pane's host, and the
     // workdir picker must reflect the newly focused pane's recents.
@@ -2292,7 +2292,7 @@ export class DesktopHost {
     if (this.focusedPaneId === paneId) {
       const neighbor = this.panes[Math.min(idx, this.panes.length - 1)];
       this.focusedPaneId = neighbor.paneId;
-      const dir = neighbor.agent?.workingDirectory;
+      const dir = neighbor.agent?.currentWorkdir;
       if (dir) this.workdir = dir;
       this.sendWorkdirState();
       this.postMessage({ command: "focusInput", paneId: neighbor.paneId });
@@ -2565,10 +2565,10 @@ export class DesktopHost {
         sessionId: agent.sessionId,
         // Reconnect spawns a fresh agent rooted at this workdir, so it must be
         // the session's stable root — same convention as registerSessionInIndex
-        // (`sessionCwd`): `workingDirectory` drifts into the subdirectory the
+        // (`sessionCwd`): `currentWorkdir` drifts into the subdirectory the
         // agent bash-cd'd into, and a reconnect would then come back rooted
         // there instead of at the project root.
-        workdir: entry?.cwd ?? agent.sessionCwd ?? agent.workingDirectory ?? "",
+        workdir: entry?.cwd ?? agent.sessionCwd ?? agent.currentWorkdir ?? "",
         host,
         entry,
       });
@@ -3105,7 +3105,7 @@ export class DesktopHost {
       permissionMode: current?.getPermissionMode(),
       queuedMessages: current?.queuedMessages ?? [],
       isAuthenticated: this.lastIsAuthenticated,
-      workdir: current?.workingDirectory,
+      workdir: current?.currentWorkdir,
     });
   }
 
@@ -3181,11 +3181,11 @@ export class DesktopHost {
     title = "",
   ): void {
     // Anchor to the session's stable root (initialize-time cwd), not
-    // `workingDirectory` — the CLI broadcasts workdirChange when the agent
+    // `currentWorkdir` — the CLI broadcasts workdirChange when the agent
     // bash-cd's into a subdir, and that transient cwd must never become the
     // (host, workdir) group key, or the conversation "promotes" itself into a
     // new subdir-named sidebar group on the next re-registration (rename).
-    const cwd = agent.sessionCwd ?? agent.workingDirectory;
+    const cwd = agent.sessionCwd ?? agent.currentWorkdir;
     if (!cwd || !this.configStore) return;
     const existing = this.configStore
       .getSessionIndex()
@@ -3322,11 +3322,11 @@ export class DesktopHost {
     const agent = this.agents.get(this.agentKey(host, sessionId));
     // 会话文件所在项目目录：worktree 会话的文件在 worktree 路径（cwd）下，不是
     // 仓库根（workdir）；尚未登记的会话用绑定 agent 的稳定根（同 registerSessionInIndex
-    // —— bash cd 会把 workingDirectory 漂移到子目录，绝不能用它定位会话文件）。
+    // —— bash cd 会把 currentWorkdir 漂移到子目录，绝不能用它定位会话文件）。
     const workdir =
       entry?.cwd ??
       agent?.sessionCwd ??
-      agent?.workingDirectory ??
+      agent?.currentWorkdir ??
       entry?.workdir;
     if (!workdir) {
       reply(false, "找不到该会话的工作目录");
@@ -3981,7 +3981,7 @@ export class DesktopHost {
       case "desktopGetWorkspaceDiff": {
         const paneAgent = this.agentForPane(pid);
         const host = this.hostForAgent(paneAgent);
-        const cwd = paneAgent?.workingDirectory ?? this.workdir;
+        const cwd = paneAgent?.currentWorkdir ?? this.workdir;
         const commit = msg.commit as string | undefined;
         // Viewing range: "uncommitted" measures against HEAD, anything else
         // (or absent) keeps the fork-point base.
@@ -4020,7 +4020,7 @@ export class DesktopHost {
       // -- terminal panel ---------------------------------------------------
       case "desktopTerminalCreate": {
         const paneAgent = this.agentForPane(pid);
-        const cwd = paneAgent?.workingDirectory ?? this.workdir;
+        const cwd = paneAgent?.currentWorkdir ?? this.workdir;
         if (!cwd) {
           this.postMessage({
             command: "desktopTerminalExit",
@@ -4381,7 +4381,7 @@ export class DesktopHost {
           // searches, not the agent's transient cwd.
           workdir:
             paneAgent?.sessionCwd ??
-            paneAgent?.workingDirectory ??
+            paneAgent?.currentWorkdir ??
             this.workdir ??
             "",
           configurationData: this.cachedConfigurationData(),
@@ -7573,12 +7573,12 @@ export class DesktopHost {
    * The directory the file panel treats as the session's workdir — what
    * "inside the workdir" means for in-panel editing (spec
    * desktop-file-panel.md「文件面板内编辑与保存」 scenario 1/2). This is the
-   * directory the user is looking at (`workingDirectory`, which follows a bash
+   * directory the user is looking at (`currentWorkdir`, which follows a bash
    * `cd`), not `projectRootForPane`'s stable project root.
    */
-  private workingDirectoryForPane(paneId?: string): string | undefined {
+  private currentWorkdirForPane(paneId?: string): string | undefined {
     const agent = this.agentForPane(paneId);
-    return (agent ? agent.workingDirectory : undefined) ?? this.workdir;
+    return (agent ? agent.currentWorkdir : undefined) ?? this.workdir;
   }
 
   /** Local read: image → base64; text → first 2MB / 2000 lines, NUL-detected. */
@@ -7660,7 +7660,7 @@ export class DesktopHost {
     paneId: string,
     filePath: string,
   ): Promise<boolean> {
-    const workdir = this.workingDirectoryForPane(paneId);
+    const workdir = this.currentWorkdirForPane(paneId);
     if (!workdir) return false;
     const realWorkdir = await fs.promises
       .realpath(workdir)
@@ -7705,7 +7705,7 @@ export class DesktopHost {
       reply("denied", { message: "远端会话的文件不能在面板内保存" });
       return;
     }
-    const workdir = this.workingDirectoryForPane(paneId);
+    const workdir = this.currentWorkdirForPane(paneId);
     if (!workdir) {
       reply("denied", { message: "当前会话没有工作目录，无法保存文件" });
       return;

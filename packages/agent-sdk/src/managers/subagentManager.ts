@@ -498,7 +498,7 @@ export class SubagentManager {
     subagentContainer.register("ReversionManager", undefined);
 
     // Worktree isolation must be wired before any manager is constructed: the
-    // child container's "Workdir" slot is what AIManager resolves at run time,
+    // child container's "CurrentWorkdir" slot is what AIManager resolves at run time,
     // and PermissionManager snapshots it in its constructor.
     let subagentWorkdir = this.workdir;
     let worktreeState: SubagentWorktreeState | undefined;
@@ -512,7 +512,7 @@ export class SubagentManager {
       }
       subagentWorkdir = worktreeState.session.worktreePath;
       this.worktreeStates.set(subagentId, worktreeState);
-      subagentContainer.register("Workdir", subagentWorkdir);
+      subagentContainer.register("CurrentWorkdir", subagentWorkdir);
       // The child's own worktree state (not the parent session's) drives the
       // worktree write guard and EnterWorktree's "already in a worktree" check.
       subagentContainer.register("WorktreeSession", worktreeState.session);

@@ -190,7 +190,7 @@ function createMockAgent(
   let isLoading = Boolean(initialLoading);
   const agent = {
     sessionId: "test-session-id",
-    workingDirectory: "/test/workdir",
+    currentWorkdir: "/test/workdir",
     latestTotalTokens: 0,
     getMaxInputTokens: vi.fn().mockReturnValue(200000),
     messages,
@@ -427,13 +427,13 @@ test("list: empty daemon prints No sessions and exits 0 (idle exit is not an err
 test("list: prints a padded table of hosted sessions (in-memory registry)", async () => {
   const busy = createMockAgent({
     sessionId: "session-busy",
-    workingDirectory: "/repo/a",
+    currentWorkdir: "/repo/a",
     isLoading: true,
   });
   busy.messages.push(userMsg("u1", "你好"));
   const idle = createMockAgent({
     sessionId: "session-idle",
-    workingDirectory: "/repo/b",
+    currentWorkdir: "/repo/b",
   });
   idle.messages.push(userMsg("u2", "x"), assistantMsg("a2", "y"));
   const agents = [busy, idle];
@@ -1444,7 +1444,7 @@ test("wait: a session being reconfigured (updateConfig) keeps waiting instead of
       sessions: [
         {
           sessionId: "session-x",
-          workingDirectory: "/test/workdir",
+          sessionCwd: "/test/workdir",
           isLoading: true,
           // The two background flags mirror the (already aborted) outgoing agent
           // as-is; `isLoading: true` is what keeps this session out of the idle
@@ -2703,7 +2703,7 @@ test("destroy: --remove-worktree anchors on the recorded creation workdir, not t
   gitTopLevel = "/repo/main/.wave/worktrees/feature-x";
   gitBranch = "feature-x";
   vi.mocked(Agent.create).mockResolvedValue(
-    createMockAgent({ workingDirectory: "/repo/main" }),
+    createMockAgent({ currentWorkdir: "/repo/main" }),
   );
   const client = connectClient(socketPath);
   await client.send({

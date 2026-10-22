@@ -200,7 +200,7 @@ export class AIManager {
   private modelOverride?: string;
   private _onCwdChange?: (newCwd: string) => void; // Store callback for CWD changes
   private originalWorkdir: string;
-  /** Pending cwd-recovery notice (set when getWorkdir() auto-recovers), consumed by tools */
+  /** Pending cwd-recovery notice (set when getCurrentWorkdir() auto-recovers), consumed by tools */
   private pendingCwdRecovery: { from: string; to: string } | null = null;
   private consecutiveCompactionFailures: number = 0;
   private readonly maxTurns?: number;
@@ -370,7 +370,7 @@ export class AIManager {
   /**
    * What the telemetry layer needs to attribute a record to this turn: the
    * session it belongs to (it can change mid-flight — `/clear` mints a new id),
-   * the session's working directory (only read when repository attributes are
+   * the session's starting directory (only read when repository attributes are
    * enabled) and the entrypoint its creator declared (only read when the
    * entrypoint switch is on).
    */
@@ -381,13 +381,15 @@ export class AIManager {
   } {
     return {
       sessionId: this.messageManager.getSessionId(),
-      workdir: this.originalWorkdir,
+      workdir:
+        this.container.get<string>("SessionWorkdir") ?? this.originalWorkdir,
       entrypoint: entrypointOf(this.container),
     };
   }
 
-  public getWorkdir(): string {
-    const workdir = this.container.get<string>("Workdir") ?? process.cwd();
+  public getCurrentWorkdir(): string {
+    const workdir =
+      this.container.get<string>("CurrentWorkdir") ?? process.cwd();
     if (existsSync(workdir)) {
       return workdir;
     }
@@ -421,7 +423,7 @@ export class AIManager {
       `Working directory ${workdir} no longer exists; recovered session workdir to ${this.originalWorkdir}`,
     );
 
-    this.container.register("Workdir", this.originalWorkdir);
+    this.container.register("CurrentWorkdir", this.originalWorkdir);
     this._onCwdChange?.(this.originalWorkdir);
     return this.originalWorkdir;
   }
@@ -450,8 +452,8 @@ export class AIManager {
    * notified of worktree switches. Unlike bash `cd`, this does NOT run CwdChanged
    * hooks (worktree has its own WorktreeCreate/WorktreeRemove hooks).
    */
-  public setWorkdir(newWorkdir: string): void {
-    this.container.register("Workdir", newWorkdir);
+  public setCurrentWorkdir(newWorkdir: string): void {
+    this.container.register("CurrentWorkdir", newWorkdir);
     this._onCwdChange?.(newWorkdir);
   }
 
@@ -491,7 +493,7 @@ export class AIManager {
     return this.toolManager.getToolsConfig({
       availableSubagents,
       availableSkills,
-      workdir: this.getWorkdir(),
+      workdir: this.getCurrentWorkdir(),
       isSubagent: !!this.subagentType,
     });
   }
@@ -630,7 +632,7 @@ export class AIManager {
         .find((plugin) => plugin.name === toolName);
       if (toolPlugin?.formatCompactParams) {
         const context: ToolContext = {
-          workdir: this.getWorkdir(),
+          workdir: this.getCurrentWorkdir(),
           originalWorkdir: this.originalWorkdir,
           taskManager: this.taskManager,
         };
@@ -852,7 +854,9 @@ export class AIManager {
         },
         {
           sessionId: sessionIdAtStart,
-          workdir: this.originalWorkdir,
+          workdir:
+            this.container.get<string>("SessionWorkdir") ??
+            this.originalWorkdir,
           entrypoint: entrypointOf(this.container),
         },
       ).catch(() => {});
@@ -931,16 +935,16 @@ export class AIManager {
 
     if (this.getAutoMemoryEnabled()) {
       const directory = this.memoryService.getAutoMemoryDirectory(
-        this.getWorkdir(),
+        this.getCurrentWorkdir(),
       );
       const content = await this.memoryService.getAutoMemoryContent(
-        this.getWorkdir(),
+        this.getCurrentWorkdir(),
       );
       autoMemoryOptions = { directory, content };
     }
 
     return buildSystemPrompt(this.systemPrompt, reachableToolPlugins, {
-      workdir: this.getWorkdir(),
+      workdir: this.getCurrentWorkdir(),
       originalWorkdir: this.getOriginalWorkdir(),
       language: this.getLanguage(),
       isSubagent: !!this.subagentType,
@@ -948,7 +952,7 @@ export class AIManager {
       additionalWorkingDirectories:
         this.permissionManager?.getEffectiveAdditionalDirectories?.() ?? [],
       autoMemory: autoMemoryOptions,
-      leanPrompt: isLeanPromptEnabled(this.getWorkdir()),
+      leanPrompt: isLeanPromptEnabled(this.getCurrentWorkdir()),
     });
   }
 
@@ -1074,7 +1078,7 @@ export class AIManager {
     const modelConfig = this.getModelConfig();
     const gatewayConfig = this.getGatewayConfig();
     const sessionId = this.messageManager.getSessionId();
-    const workdir = this.getWorkdir();
+    const workdir = this.getCurrentWorkdir();
 
     const forkMessages: ChatCompletionMessageParam[] = [...historyMessages];
 
@@ -1360,7 +1364,7 @@ export class AIManager {
     const modelConfig = this.getModelConfig();
     const gatewayConfig = this.getGatewayConfig();
     const sessionId = this.messageManager.getSessionId();
-    const workdir = this.getWorkdir();
+    const workdir = this.getCurrentWorkdir();
 
     const rawMessages = this.messageManager.getMessages();
 
@@ -1914,7 +1918,7 @@ ${question}`;
             messages: recentMessages,
             sessionId: this.messageManager.getSessionId(),
             abortSignal: abortController.signal,
-            workdir: this.getWorkdir(), // Pass working directory
+            workdir: this.getCurrentWorkdir(), // Pass working directory
             tools: toolsConfig, // Pass filtered tool configuration
             model: model, // Use passed model
             systemPrompt: mainSystemPrompt, // Pass custom system prompt
@@ -2547,11 +2551,11 @@ ${question}`;
 
       const context: ExtendedHookExecutionContext = {
         event: hookName,
-        projectDir: this.getWorkdir(),
+        projectDir: this.getCurrentWorkdir(),
         timestamp: new Date(),
         sessionId: this.messageManager.getSessionId(),
         transcriptPath: this.messageManager.getTranscriptPath(),
-        cwd: this.getWorkdir(),
+        cwd: this.getCurrentWorkdir(),
         subagentType: this.subagentType, // Include subagent type in hook context
         backgroundTasks, // Stop-only: running background tasks snapshot
         sessionCrons, // Stop-only: session cron jobs snapshot
@@ -2606,7 +2610,7 @@ ${question}`;
         if (autoMemoryService) {
           // Trigger extraction, but don't block the return.
           // onTurnEnd itself returns quickly after forking.
-          autoMemoryService.onTurnEnd(this.getWorkdir()).catch((err) => {
+          autoMemoryService.onTurnEnd(this.getCurrentWorkdir()).catch((err) => {
             logger?.error("Auto-memory extraction trigger failed:", err);
           });
         }
@@ -2710,7 +2714,7 @@ ${question}`;
       const context: ToolContext = {
         abortSignal: toolAbortController.signal,
         backgroundTaskManager: this.backgroundTaskManager,
-        workdir: this.getWorkdir(),
+        workdir: this.getCurrentWorkdir(),
         originalWorkdir: this.originalWorkdir,
         messageId: this.messageManager.getMessages().slice(-1)[0]?.id,
         sessionId: this.messageManager.getSessionId(),
@@ -2736,8 +2740,8 @@ ${question}`;
           });
         },
         onCwdChange: async (newCwd: string) => {
-          const oldCwd = this.getWorkdir();
-          this.container.register("Workdir", newCwd);
+          const oldCwd = this.getCurrentWorkdir();
+          this.container.register("CurrentWorkdir", newCwd);
           this._onCwdChange?.(newCwd);
           if (this.hookManager) {
             const sessionId = this.messageManager.getSessionId();

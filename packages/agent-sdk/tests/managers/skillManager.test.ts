@@ -1029,7 +1029,7 @@ describe("SkillManager", () => {
       vi.mocked(skillManager.loadSkill).mockResolvedValue(mockSkill);
 
       // Simulate EnterWorktree: update the container's Workdir after construction
-      container.register("Workdir", "/new/worktree/path");
+      container.register("CurrentWorkdir", "/new/worktree/path");
 
       await skillManager.executeSkill({ skill_name: "bash-skill" });
 

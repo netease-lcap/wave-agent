@@ -260,7 +260,7 @@ describe("real daemon · re-attach reports the session root", () => {
     // Same live agent (no duplicate writer on one transcript)…
     expect(resumed.sessionId).toBe(sessionId);
     // …the drifted cwd is still reported as "where the user is now"…
-    expect(resumed.workingDirectory).toBe(real(SUB));
+    expect(resumed.currentWorkdir).toBe(real(SUB));
     // …but the project root the host groups by is the creation dir.
     expect(resumed.sessionCwd).toBe(real(REPO));
     // Not a worktree, so no repo root to fold into.

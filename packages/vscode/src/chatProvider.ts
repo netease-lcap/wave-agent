@@ -789,7 +789,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           session: {
             id: sessionId,
             sessionType: "main",
-            workdir: session.agent.workingDirectory,
+            workdir: session.agent.currentWorkdir,
             lastActiveAt: new Date(),
             latestTotalTokens: session.agent.latestTotalTokens,
           } as SessionMetadata,
@@ -926,7 +926,7 @@ export class ChatProvider implements vscode.WebviewViewProvider {
     // session root so project AGENTS.md edits still target a real project.
     return (
       this.sidebarSession.agent?.sessionCwd ||
-      this.sidebarSession.agent?.workingDirectory
+      this.sidebarSession.agent?.currentWorkdir
     );
   }
 

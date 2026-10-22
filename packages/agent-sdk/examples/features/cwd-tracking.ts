@@ -76,21 +76,19 @@ async function setupTest() {
     },
   });
 
-  console.log(
-    `\n🤖 Agent created, initial workdir: ${agent.workingDirectory}\n`,
-  );
+  console.log(`\n🤖 Agent created, initial workdir: ${agent.currentWorkdir}\n`);
 }
 
 async function runTests() {
   console.log(`\n=== Test 1: cd command changes workdir ===`);
-  console.log(`Current workdir: ${agent.workingDirectory}`);
+  console.log(`Current workdir: ${agent.currentWorkdir}`);
 
   await agent.sendMessage(
     "Run the command: cd src. Just execute it, no other commands.",
   );
 
-  console.log(`After cd src, workdir: ${agent.workingDirectory}`);
-  const endsWithSrc = agent.workingDirectory.endsWith("src");
+  console.log(`After cd src, workdir: ${agent.currentWorkdir}`);
+  const endsWithSrc = agent.currentWorkdir.endsWith("src");
   console.log(
     `✅ Test 1 ${endsWithSrc ? "PASSED" : "FAILED"}: workdir ${endsWithSrc ? "changed to src" : "did NOT change to src"}\n`,
   );
@@ -117,22 +115,22 @@ async function runTests() {
   );
 
   console.log(`\n=== Test 3: Failed cd does NOT change workdir ===`);
-  const prevWorkdir = agent.workingDirectory;
+  const prevWorkdir = agent.currentWorkdir;
   await agent.sendMessage(
     "Run the command: cd nonexistent-directory-that-does-not-exist. Just execute it.",
   );
-  const stillSame = agent.workingDirectory === prevWorkdir;
-  console.log(`After failed cd, workdir: ${agent.workingDirectory}`);
+  const stillSame = agent.currentWorkdir === prevWorkdir;
+  console.log(`After failed cd, workdir: ${agent.currentWorkdir}`);
   console.log(
     `✅ Test 3 ${stillSame ? "PASSED" : "FAILED"}: workdir ${stillSame ? "did NOT change" : "changed unexpectedly"}\n`,
   );
 
   console.log(`\n=== Test 4: Background cd does NOT change workdir ===`);
-  const bgWorkdirBefore = agent.workingDirectory;
+  const bgWorkdirBefore = agent.currentWorkdir;
   await agent.sendMessage(
     'Run "cd src" in the background using run_in_background=true.',
   );
-  const bgWorkdirAfter = agent.workingDirectory;
+  const bgWorkdirAfter = agent.currentWorkdir;
   const bgUnchanged = bgWorkdirBefore === bgWorkdirAfter;
   console.log(
     `✅ Test 4 ${bgUnchanged ? "PASSED" : "FAILED"}: background cd ${bgUnchanged ? "did NOT change workdir" : "changed workdir unexpectedly"}\n`,

@@ -16,7 +16,7 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
 function createContainer(workdir?: string): Container {
   const c = new Container();
   if (workdir) {
-    c.register("Workdir", workdir);
+    c.register("CurrentWorkdir", workdir);
   }
   return c;
 }
@@ -33,7 +33,7 @@ describe("PermissionManager - Safe Zone anchored to original workdir", () => {
       const manager = new PermissionManager(container);
 
       // Simulate cd to subdirectory
-      container.register("Workdir", "/a/frontend");
+      container.register("CurrentWorkdir", "/a/frontend");
 
       // File in original workdir should still be safe
       const context: ToolPermissionContext = {
@@ -51,7 +51,7 @@ describe("PermissionManager - Safe Zone anchored to original workdir", () => {
       const manager = new PermissionManager(container);
 
       // Simulate cd to subdirectory
-      container.register("Workdir", "/a/frontend");
+      container.register("CurrentWorkdir", "/a/frontend");
 
       // File in sibling directory should still be safe
       const context: ToolPermissionContext = {
@@ -69,7 +69,7 @@ describe("PermissionManager - Safe Zone anchored to original workdir", () => {
       const manager = new PermissionManager(container);
 
       // Simulate cd to subdirectory
-      container.register("Workdir", "/a/frontend");
+      container.register("CurrentWorkdir", "/a/frontend");
 
       // File outside original workdir should be denied (falls back to manual confirmation)
       const context: ToolPermissionContext = {
@@ -101,7 +101,7 @@ describe("PermissionManager - Safe Zone anchored to original workdir", () => {
       );
 
       // Change workdir
-      container.register("Workdir", "/a/frontend");
+      container.register("CurrentWorkdir", "/a/frontend");
 
       // Update additional directories - should still resolve against /a
       manager.updateAdditionalDirectories(["./shared"]);
@@ -117,7 +117,7 @@ describe("PermissionManager - Safe Zone anchored to original workdir", () => {
       manager.updateAdditionalDirectories(["./shared"]);
 
       // Change workdir
-      container.register("Workdir", "/a/frontend");
+      container.register("CurrentWorkdir", "/a/frontend");
 
       // File in additional directory should still be safe
       const context: ToolPermissionContext = {
@@ -139,7 +139,7 @@ describe("PermissionManager - Safe Zone anchored to original workdir", () => {
       manager.addSystemAdditionalDirectory("./system-config");
 
       // Change workdir
-      container.register("Workdir", "/a/frontend");
+      container.register("CurrentWorkdir", "/a/frontend");
 
       manager.addSystemAdditionalDirectory("./system-data");
 

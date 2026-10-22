@@ -79,7 +79,7 @@ describe("InitializationService", () => {
         getTranscriptPath: vi.fn(),
         setMessages: vi.fn(),
         rebuildUsageFromMessages: vi.fn(),
-        getWorkdir: vi.fn().mockReturnValue("/test/workdir"),
+        getCurrentWorkdir: vi.fn().mockReturnValue("/test/workdir"),
         addUserMessage: mockAddUserMessage,
       } as unknown as InitializationContext["messageManager"],
       memoryRuleManager: {

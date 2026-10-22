@@ -113,7 +113,7 @@ function createReadySession(): ChatSession {
         path: "/tmp/plan.md",
         content: "# 当前方案",
       })),
-      workingDirectory: "/tmp",
+      currentWorkdir: "/tmp",
       latestTotalTokens: 0,
     },
     pendingConfirmations: new Map(),
@@ -395,16 +395,16 @@ describe("MessageHandler MCP handlers", () => {
   });
 
   // Regression: agent `cd` broadcasts workdirChange which drifts
-  // workingDirectory; the /status popup must keep showing the session root
+  // currentWorkdir; the /status popup must keep showing the session root
   // (initialize-time cwd), matching where @file search is anchored.
   test("getStatus reports the session root workdir, not the agent cd drift", async () => {
     const session = createReadySession();
     const agent = session.agent as {
       sessionCwd?: string;
-      workingDirectory?: string;
+      currentWorkdir?: string;
     };
     agent.sessionCwd = "/tmp";
-    agent.workingDirectory = "/tmp/src";
+    agent.currentWorkdir = "/tmp/src";
     const { handler, context } = createReadyHandler(session);
 
     await handler.handleMessage({ command: "getStatus" }, "tab");
