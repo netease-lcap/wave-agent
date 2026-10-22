@@ -8409,3 +8409,73 @@ mock 只发过一次 `setInitialState`。已补 `webviewReady` 回放 responder�
 - 报告：`走查/1022-artifacts-form-report/index.html`（4 条 F-01…F-04），母版 `build_repair_report.py` 生成 +
   `verify-repair-report.mjs` 自检：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
 - 本轮纯 CSS，无业务单测覆盖。
+
+## 2026-10-22 · 创作集左侧导航按侧栏会话行重做（1022 预览评论）
+
+**触发**：她点 `aside.artifacts-nav`（「我发布的 / 共享给我的」）说「这里参考」，再点
+`ul.desktop-session-items`（侧栏会话行）说「这里的圆角、hover选中状态、字体字号等」；
+第 2 轮又把三条残留逐条点名补上：**「内衬也跟会话行」「角标也按 12px」「文字色也按会话行」**。
+
+**落点**：`packages/webview/src/styles/host-desktop.css` 末尾一段（+72 行），全部带
+`[data-host="desktop"]` 前缀，颜色档再叠 `[data-theme]`。没写进 `ArtifactsPage.css`：
+该文件当轮正被「新建按钮 + 表单控件」那笔改动占着（工作区未提交 diff），避免同文件互相覆盖；
+`.artifacts-nav-item` 的桌面档本来也归 host-desktop.css 管。
+
+### ① 参照件与落地值
+
+参照件 = `.desktop-session-item`（`DesktopApp.css:343` + host-desktop.css 的桌面档）。
+
+| 项           | 改前                                                    | 改后（= 会话行）                                  |
+| ------------ | ------------------------------------------------------- | ------------------------------------------------- |
+| 圆角         | 6px                                                     | **8px**                                           |
+| 字号 / 行高  | 13px / normal                                           | **14px / 22px**                                   |
+| 选中字重     | 600                                                     | **400**                                           |
+| 行盒高       | 32.5px                                                  | **30px**                                          |
+| 内衬         | 7·10（文字墨迹距行左 10）                               | **4·16（墨迹 16，角标右缘也 16）**                |
+| 数量角标     | 11px                                                    | **12px**                                          |
+| 文字色       | 继承（浅 #202020 / 深 #E5E7E8）                         | **浅 #1F2329 / 深 #E6E6E6**                       |
+| hover 底     | `rgba(127,127,127,.10)`（浅合成 #F2F2F2 / 深 35,36,37） | **#EEF0F3**（238,240,243）/ 深 8% 白（42,44,45）  |
+| 选中底       | `rgba(127,127,127,.16)`（浅合成 #EAEAEA / 深 41,42,43） | **#EBEDF0**（235,237,240）/ 深 12% 白（52,54,55） |
+| 选中项 hover | 回落到另一档灰                                          | **保持选中底**                                    |
+
+改前 md5 `91d1e9b998fdb59cc7b79800f61aaa95`（= HEAD）→ 改后
+`069de8457719a3b8cf24545321897252`。
+
+### ② 三条实现要点
+
+1. **盒高要跟着字号收**：字号 13→14 且行高定 22 后，若保留原来的 7px 纵向内衬，行盒会从
+   32.5 涨到 **36px**（比改前还高、也高过参照件的 30）；改成 `padding: 4px …` 正好 **30px**。
+2. **选中不加粗要抬特异性**：base `.artifacts-nav-item.is-active { font-weight: 600 }` 是
+   (0,2,1)，桌面那条得写成 `[data-host="desktop"] .artifacts-nav-item.is-active`（0,3,1）才压得住。
+3. **深色字色取会话行的字面量**：`.desktop-session-item` 深色是 `#E6E6E6`，而 token
+   `--cc-text-primary` 深色是 `#E5E7E8`（差 1~3/255）。她要「按会话行」⇒ 取字面量。
+
+### ③ 取证与坑
+
+- 采集：`CC02/走查/_tools/1022/probe-artifacts-nav-shots-1022.mjs`
+  （`PHASE=before|after`，用例 `tmp-artifacts-1021-list`，先点 `[data-testid="desktop-artifacts"]` 进页；
+  默认视图取三态，再点 `[data-testid="artifacts-view-custom"]` 取「分类」视图 —— 只有那一屏有数量角标）
+  → `走查/1022-创作集导航/{before,after}/{theme}-{rest,hover,hover-active,custom}.png` + `metrics.json`。
+- 「改前」= 把 host-desktop.css **真回退到 HEAD 版**再采（不是注入模拟），采完按 md5 还原。
+- **hover 自检**：每次 hover 截图前 `matches(':hover')` 断言；本轮有一次两个主题都返回 false
+  （窗口被遮挡），重跑即 true —— 有这条自检才没有把静止态当 hover 交付。
+- 素材口径：模板按 `img.width = naturalWidth / declaredDpr` 显示 ⇒ 声明 dpr = 图内 px / CSS px。
+  窄裁切 + 大 dpr 会把图注挤成几十行（定式：裁 118 CSS 宽 → 最近邻 ×2 → 声明 dpr 2 ⇒ 报告内 3×，
+  图注仍是 13 CSS px）；三态图的每张要按 `6 + 行1 + 2 + 行2 + 6` 裁掉底部空白，标签要短。
+- **备份要分轮命名**：`/tmp/keep-host-desktop-1022nav-after.css` 是第 1 轮的 after，第 2 轮拿它
+  还原会覆盖第 2 轮编辑（md5 从 `069de845` 退回 `9dbef307`）；现改为 `…-r2-after.css` 并存两份。
+
+报告：`走查/1022-创作集导航报告/index.html`（第 1 轮，F-01…F-03）、
+`走查/1022-创作集导航报告-r2/index.html`（第 2 轮，F-01…F-05）。
+母版 `build_repair_report.py` 生成 + `verify-repair-report.mjs` 自检：图片加载 true、错误 0、
+axe 浅深 0/0、640 窄屏无横溢。
+
+### ④ 残留（按严格范围未动）
+
+| 残留                                                         | 现状                          | 触发语                     |
+| ------------------------------------------------------------ | ----------------------------- | -------------------------- |
+| 导航列宽 / 右侧滚动条内衬                                    | 172px / 4px                   | 「列宽也按会话栏」         |
+| hover 才出现的「编辑 / 删除」两按钮（`.artifacts-icon-btn`） | 尺寸与颜色未动                | 「分类行的操作按钮也一起」 |
+| 角标颜色                                                     | 仍是 descriptionForeground 灰 | 「角标颜色也按会话行」     |
+
+本轮纯 CSS 值改动，无业务单测覆盖。

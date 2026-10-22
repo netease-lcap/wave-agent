@@ -4564,3 +4564,75 @@
   outline: 2px solid var(--cc-color-danger);
   outline-offset: 0;
 }
+
+/* ── 创作集左侧导航（aside.artifacts-nav）对齐侧栏会话行 ────────────────────
+   1022 预览评论：点 `aside.artifacts-nav`（「我发布的 / 共享给我的」），说「这里参考
+   `ul.desktop-session-items`（会话行）这里的圆角、hover选中状态、字体字号等」。
+   参照件 = `.desktop-session-item`（DesktopApp.css:343 + 本文件 751-784 的桌面档）：
+   r8 / 14px·lh22 / 选中不靠字重（400）/ hover #eef0f3（深 8% 白）/
+   选中 #ebedf0（深 12% 白）/ 选中项 hover 仍保持选中底。
+   创作集页当前 6px / 13px / 选中加粗 600 / hover 与选中都用 `rgba(127,127,127,.1|.16)`
+   （主题无关的灰），两套并存 —— 本轮把它们并到会话行那一套。
+
+   本轮（第 1 轮）只改四项（圆角 / hover / 选中 / 字号字重）：
+   - 盒高随字号一起收敛：原 padding 7px + 13px 字 = 32.5px 行高；改成 lh22 + padding 4px
+     = **30px**，与会话行逐值相同（否则 14px 字配 7px 内衬会鼓到 36px，比原来还高）。
+   第 2 轮她又逐条点名补齐三项残留（「内衬也跟会话行」「角标也按 12px」「文字色也按会话行」）：
+   - 文案左内衬 10 → **16px**（会话行文字墨迹左缘 = 行左 + 16，实测 x28）；
+   - 数量角标 11 → **12px**（skill「Desktop UI metadata has a 12px floor」也是这个下限）；
+   - 文字色改成会话行的值：浅 #1F2329（= --cc-text-primary）/ 深 **#E6E6E6**
+     （⚠️ 深色刻意写字面量：#E6E6E6 是 `.desktop-session-item` 自己的取值，
+     token --cc-text-primary 深色是 #E5E7E8，差 1~3/255；她要「按会话行」⇒ 取会话行的字面量）。
+   仍未动：行间距 2px（本来就与会话列表相同）、导航列宽 172px、hover 才出现的两个小按钮。
+   放在 host-desktop.css 而不是 ArtifactsPage.css：本页只在桌面端渲染，作用域写
+   `[data-host="desktop"]` 同样安全；另因该文件正被并行窗口改动，避免同文件冲突。 */
+[data-host="desktop"] .artifacts-nav-item {
+  padding: 4px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+}
+
+/* 文字色跟会话行（浅 #1F2329 / 深 #E6E6E6）。base 是 `color: inherit`（继承到页面
+   注入的 #202020 / #E5E7E8），差一档。 */
+[data-host="desktop"][data-theme="light"] .artifacts-nav-item {
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .artifacts-nav-item {
+  color: #e6e6e6;
+}
+
+/* 数量角标：11px → 12px（桌面端 12px 下限；仍保持它自己的 descriptionForeground 色，
+   计数字号与正文 14px 拉开一档）。 */
+[data-host="desktop"] .artifacts-nav-count {
+  font-size: 12px;
+}
+
+/* 选中态不再加粗（与会话行同口径：`.desktop-session-item--current .desktop-session-title`
+   在 0916 第 2 轮已定 regular）。base 的 600 靠这条同权重更高的选择器压掉。 */
+[data-host="desktop"] .artifacts-nav-item.is-active {
+  font-weight: 400;
+}
+
+[data-host="desktop"][data-theme="light"] .artifacts-nav-item:hover {
+  background: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .artifacts-nav-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-host="desktop"][data-theme="light"] .artifacts-nav-item.is-active {
+  background: #ebedf0;
+}
+[data-host="desktop"][data-theme="dark"] .artifacts-nav-item.is-active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* 选中项 hover 保持选中底（不回落 hover 色），与会话行一致 */
+[data-host="desktop"][data-theme="light"] .artifacts-nav-item.is-active:hover {
+  background: #ebedf0;
+}
+[data-host="desktop"][data-theme="dark"] .artifacts-nav-item.is-active:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
