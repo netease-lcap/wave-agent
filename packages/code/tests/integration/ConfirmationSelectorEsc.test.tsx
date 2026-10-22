@@ -181,17 +181,32 @@ describe("ConfirmationSelector Esc Integration", () => {
   };
 
   /**
-   * Get the ConfirmationSelector's useInput handler.
-   * ChatProvider registers one handler (Ctrl+O).
-   * ConfirmationSelector registers a second handler (handles Esc, arrows, Enter, etc).
-   * We want the ConfirmationSelector handler since that's where the Esc->onCancel flow lives.
+   * Press Esc on ConfirmationSelector, calling its useInput handler directly.
+   *
+   * Registration order cannot identify it: ink skips its interactive paths under
+   * CI (is-in-ci), so the tree re-renders a different number of times and the
+   * mock records 5 or 6 handlers — "the last one" is then some other component's
+   * handler and the Esc flow never runs (the test used to hang until timeout).
+   * Pick it by the branch it owns instead: both ChatProvider and
+   * ConfirmationSelector cancel on Esc, but only the selector's handler reacts to
+   * a bare Esc (the provider one is keyed on ctrl+o and checks escape later), so
+   * "Esc and no ctrl" selects exactly the selector's.
    */
-  function getConfirmationSelectorInputHandler() {
-    const useInputMock = vi.mocked(useInput);
-    const handlers = useInputMock.mock.calls;
-    // The last registered handler should be from ConfirmationSelector
-    if (handlers.length === 0) return undefined;
-    return handlers[handlers.length - 1][0];
+  function pressEscapeOnConfirmationSelector() {
+    const selectorHandlers = vi
+      .mocked(useInput)
+      .mock.calls.map(([handler]) => handler)
+      .filter((handler) => {
+        const source = handler.toString();
+        return source.includes("key.escape") && !source.includes("key.ctrl");
+      });
+
+    // Exactly one handler must match: zero means the Esc branch moved, two means
+    // the lookup is no longer able to tell them apart.
+    expect(selectorHandlers).toHaveLength(1);
+    selectorHandlers[0]("", {
+      escape: true,
+    } as Parameters<(typeof selectorHandlers)[0]>[1]);
   }
 
   it("Esc on ConfirmationSelector should cancel but NOT call abortMessage", async () => {
@@ -220,9 +235,7 @@ describe("ConfirmationSelector Esc Integration", () => {
       expect(stripAnsiColors(lastFrame() || "")).toContain("> Yes, proceed");
     });
 
-    // Simulate Esc via ConfirmationSelector's useInput handler
-    const handler = getConfirmationSelectorInputHandler()!;
-    handler!("", { escape: true } as Parameters<typeof handler>[1]);
+    pressEscapeOnConfirmationSelector();
 
     // Catch the rejection to avoid unhandled promise rejection warnings
     await decisionPromise!.catch(() => {
@@ -261,8 +274,7 @@ describe("ConfirmationSelector Esc Integration", () => {
       );
     });
 
-    const handler = getConfirmationSelectorInputHandler()!;
-    handler!("", { escape: true } as Parameters<typeof handler>[1]);
+    pressEscapeOnConfirmationSelector();
 
     await decisionPromise!.catch(() => {
       // Expected: the promise rejects when confirmation is cancelled
