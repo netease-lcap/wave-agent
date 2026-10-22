@@ -373,6 +373,10 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   const categoriesSaveRequestRef = useRef<string | null>(null);
   const revokeRequestRef = useRef<string | null>(null);
   const revokeTargetRef = useRef<string | null>(null);
+  // 登录态（null = 还没收到过）。只用来识别「未登录 → 已登录 / 已登录 → 未登录」
+  // 这两个翻转：列表与分类都是账号级数据，翻转时必须重取，否则页面会一直停在
+  // 打开那一刻的结果上（PM 缺陷 3500345467492608）。
+  const authAuthedRef = useRef<boolean | null>(null);
   // useHostMessage 的处理器只在挂载时注册一次（经 latest ref 读最新闭包），
   // 撤销回包要调用的 handleRevoked 在其后定义 —— 经 ref 取。
   const handleRevokedRef = useRef<(slug: string) => void>(() => {});
@@ -488,6 +492,37 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
           showToast("已撤销发布");
         } else {
           showToast(payload.error ?? "撤销发布失败");
+        }
+        return;
+      }
+      // 登录成功：列表与分类都按账号存，立刻重取一次。用户从空态里的「去登录」
+      // 回来后必须直接看到自己的创作集，而不是继续停在「请先登录后再查看创作集」
+      // （PM 缺陷 3500345467492608）。`loginResponse` 是确定性信号；这里同时把
+      // 登录态 ref 置为 true，下面 desktopAccountInfo 那一支就不会再取一遍。
+      case "loginResponse": {
+        if ((message as { success?: boolean }).success) {
+          authAuthedRef.current = true;
+          requestList();
+          requestCategories();
+        }
+        return;
+      }
+      // 登录态翻转（换账号 / 登出 / token 失效）：窗口级广播，无 paneId。
+      case "desktopAccountInfo": {
+        const authed = Boolean(
+          (message as { isAuthenticated?: boolean }).isAuthenticated,
+        );
+        const was = authAuthedRef.current;
+        authAuthedRef.current = authed;
+        if (authed && was === false) {
+          requestList();
+          requestCategories();
+          return;
+        }
+        if (!authed && was === true) {
+          // 登出或换账号：先清掉上一个账号的数据，别让它留在页面上。
+          setItems([]);
+          setAuthRequired(true);
         }
         return;
       }
