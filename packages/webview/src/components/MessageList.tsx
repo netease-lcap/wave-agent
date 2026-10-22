@@ -286,7 +286,7 @@ export const MessageList = forwardRef<
   // visibleMessages 与 effect 里的注释），初值只在本轮 effect 首跑前有效——首跑一定
   // 会重写它们。
   const prevVisibleLengthRef = useRef(0);
-  // 列表不再只从尾部增长：手机上「上拉翻更早」会往**前面**接一整页（长度也变长），
+  // 列表不再只从尾部增长：上拉「翻更早」会往**前面**接一整页（长度也变长），
   // 而重连补差、rewind 又会截短它。所以「长度变长了就是来了新消息」不再成立（会把
   // 手翻出来的历史当成新消息、把视口拽到底），判据换成「尾巴这条消息 id 变了」——
   // 尾部追加才改尾巴，prepend 不改。
@@ -552,7 +552,8 @@ export const MessageList = forwardRef<
   );
 
   // Ask the host for the page before the message the reader is sitting on
-  // (phone page only — see MessageListProps.onLoadOlderMessages). Every caller is
+  // (only hosts that page pass onLoadOlderMessages — see MessageListProps). Every
+  // caller is
   // a real upward gesture, so a programmatic scroll, a resize compensation or a
   // browser clamp can never be mistaken for "the user pulled up at the top": they
   // either go through the gesture gate in handleScroll or do not reach here at
@@ -608,6 +609,32 @@ export const MessageList = forwardRef<
       behavior: "auto",
     });
   }, [messages, loadingOlder, virtualizer]);
+
+  // A first page that does not overflow its pane has no gesture to offer: with
+  // `scrollTop` pinned at 0 no 'scroll' event ever fires, so the reader sits on
+  // a one-page list that HAS more history and can never ask for it (the wheel /
+  // touch / key handlers all bail at "nothing left to scroll"). opencode meets
+  // the same problem with a `fill()` that keeps paging until the container
+  // overflows or the history runs out, and this is that: same trigger — the
+  // scroll surface is not taller than the viewport — same exit — the host says
+  // there is no more, or a page is in flight. Each round trip re-enters with the
+  // fresh list, so the chain stops the moment one page fills the pane.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    if (!onLoadOlderMessages || loadingOlder || historyExhausted) return;
+    // 还没参与布局（面板未显示 / 刚挂载的那一帧）：`scrollHeight === 0` 不是
+    // 「一页没撑满」，是「还没有布局」。下一轮（列表变化 / 翻页落地）再看。
+    if (container.scrollHeight === 0) return;
+    if (container.scrollHeight > container.clientHeight + 1) return;
+    requestOlderMessages();
+  }, [
+    messages,
+    loadingOlder,
+    historyExhausted,
+    onLoadOlderMessages,
+    requestOlderMessages,
+  ]);
 
   // Per-message timeline run data. A run is a maximal sequence of consecutive
   // assistant messages (the virtualized analogue of the old .assistant-group

@@ -129,7 +129,6 @@ const DESKTOP_GATED_NON_PREFIX = new Set([
  * 的（见 packages/webview/src/types/index.ts 的 window.waveRemotePage 注释）。
  */
 const REMOTE_PAGE_GATED = new Set([
-  "loadOlderMessages", // ChatApp.handleLoadOlderMessages：上拉翻更早（spec remote-control.md 场景 11）
   "openMachinePicker", // ChatHeader「切换电脑」：顶栏换机器入口（spec remote-control.md「机器列表与切换」场景 5）
   // 新会话命令族（RemoteNewSessionDialog，spec remote-control.md「Web 端也能
   // 发起新会话」）：目录列表 / 分支列表 / 创建，shim 转中继 listDirectories /
@@ -166,6 +165,18 @@ const REMOTE_PAGE_SHIM = join(ROOT, "packages/webview/remote/shim.js");
  * ChatApp 双角色、host 层拦截等），逐一显式修正。
  */
 const SPECIFIC_REQUIREMENTS = {
+  // 上拉翻更早（ChatApp.handleLoadOlderMessages）：**四个宿主都要答**。三个本地
+  // 宿主自 2026-10 起首屏只推一页、按窗口取回更早的历史（spec desktop-chat
+  // 「首屏只进一页」），手机页的 shim 本来就是这条链的原始实现（spec
+  // remote-control.md 场景 11）。推导规则只会给它 vscode_chat + jetbrains +
+  // desktop 或只有 remote_page 二者之一，所以在这里显式列全——漏掉任何一面都是
+  // 「点上去没反应」的静默失败。
+  loadOlderMessages: {
+    vscode_chat: true,
+    jetbrains: true,
+    desktop: true,
+    remote_page: true,
+  },
   // settings tab（settings-preview-entry bundle）专用，仅 IDE 宿主有该外壳：
   // desktop 全页设置不用 postMessage 关自己/预填（内部 state/prop 直达）。
   closeSettings: { vscode_settings: true, jetbrains: true },

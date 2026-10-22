@@ -50,8 +50,10 @@ import {
   ENTER_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
   PLUGIN_RELOADED_MESSAGE,
+  MESSAGE_HISTORY_PAGE_SIZE,
   StdioAgent,
   NotificationRouter,
+  tailMessagePage,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "./stdio/stdioClient";
 import type { JsonRpcClient } from "./stdio/jsonRpcClient";
@@ -1038,6 +1040,64 @@ export class DesktopHost {
    * is re-checked after the RPC — the agent may have been rebound while the
    * request was in flight.
    */
+  /**
+   * 回答一次「翻更早」：把 `before` 之前的一页取回给这个 pane。
+   *
+   * `requestId` 原样回传——页面用它丢弃晚到的旧页（读者停在顶部会连续翻好几页）。
+   * 失败不静默：页面收到 `olderMessagesError` 才停下转圈并保留阅读位置；没有绑定
+   * 的会话同样走失败路径，而不是回一个空页（那会被页面读成「已经到底」）。
+   */
+  private async handleLoadOlderMessages(
+    before: string | undefined,
+    requestId: number,
+    paneId: string,
+  ): Promise<void> {
+    const agent = this.agentForPane(paneId);
+    if (!agent || !before) {
+      this.postMessage({
+        command: "olderMessagesError",
+        paneId,
+        requestId,
+        error: !agent ? "当前分屏没有绑定会话" : "缺少翻页锚点",
+      });
+      return;
+    }
+    try {
+      const page = await agent.getMessages({
+        before,
+        limit: MESSAGE_HISTORY_PAGE_SIZE,
+      });
+      // 整个 RPC 期间分屏可能已经换到别的会话：那一页属于上一个会话，prepend 进
+      // 新会话的列表是把两段历史缝在一起。
+      if (this.agentForPane(paneId) !== agent) {
+        this.postMessage({
+          command: "olderMessagesError",
+          paneId,
+          requestId,
+          error: "会话已切换",
+        });
+        return;
+      }
+      this.postMessage({
+        command: "olderMessages",
+        paneId,
+        requestId,
+        messages: page.messages,
+        // 老版本 CLI 不认识窗口（会把整份列表原样答回来且不带 hasMore）：
+        // 按「没有更早的了」处理，否则页面会拿同一个锚点无限重问。
+        hasMore: page.hasMore === true,
+      });
+    } catch (error) {
+      console.warn("[DesktopHost] getMessages(page) failed:", error);
+      this.postMessage({
+        command: "olderMessagesError",
+        paneId,
+        requestId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   private async pullAndPushMessages(
     agent: StdioAgent,
     paneId: string,
@@ -1048,10 +1108,14 @@ export class DesktopHost {
       console.warn("[DesktopHost] getMessages failed:", error);
     }
     if (this.agentForPane(paneId) === agent) {
+      // 这份「整表替换」也是一个窗口：首屏只进一页的宿主不能借这条兜底路径把
+      // 整份历史重新灌回渲染进程（原因见 constants/messageWindow.ts）。
+      const page = tailMessagePage(agent.messages);
       this.postMessage({
         command: "updateMessages",
         paneId,
-        messages: agent.messages,
+        messages: page.messages,
+        hasMore: page.hasMore,
       });
     }
   }
@@ -2974,6 +3038,12 @@ export class DesktopHost {
         outsideSafeZoneDirectory: p.outsideSafeZoneDirectory,
       }));
 
+    // 首屏只推一页（spec ui/message-rendering-system.md「首屏只进一页」）。宿主缓存 `agent.messages`
+    // 必须仍是全量——翻更早、回滚、搜索都读它——但推给渲染进程的只有最近
+    // `MESSAGE_FIRST_PAGE_SIZE` 条：一个连续用了几周的会话，整份列表在渲染进程里
+    // 就是 V8 堆上的几十万个对象加 base64 图片（原因见 constants/messageWindow.ts）。
+    const page = tailMessagePage(current?.messages ?? []);
+
     this.postMessage({
       command: "setInitialState",
       paneId,
@@ -2981,8 +3051,13 @@ export class DesktopHost {
       // rule the webview applies to its own copy, so the list is left out of the
       // payload instead of being re-sent in full — the flag tells the webview to
       // keep what it has. Every other caller must send the real list.
-      messages: opts?.keepMessages ? [] : (current?.messages ?? []),
-      ...(opts?.keepMessages ? { keepMessages: true } : {}),
+      messages: opts?.keepMessages ? [] : page.messages,
+      ...(opts?.keepMessages
+        ? { keepMessages: true }
+        : { historyExhausted: !page.hasMore }),
+      // 本宿主答得了 `loadOlderMessages`（见下面的 case），页面据此装上滑分页。
+      // 能力位而不是常量：页面是远端加载的，老宿主不该收到一条它不认识的命令。
+      supportsMessagePaging: true,
       tasks: current?.tasks ?? [],
       backgroundTasks: current?.backgroundTasks ?? [],
       workflowRuns: this.workflowRuns.get(paneId) ?? [],
@@ -3773,6 +3848,17 @@ export class DesktopHost {
 
       case "listRewindCheckpoints":
         await this.handleListRewindCheckpoints(pid);
+        break;
+
+      // 上滑翻更早（spec ui/message-rendering-system.md「首屏只进一页」场景 3）：页面把列表最上面
+      // 那条的 id 当**排他**上锚点发过来，宿主按历史页大小取回它之前的一页。
+      // 取的是宿主那份全量缓存（渲染进程手里只有首屏那一页），读完不回写缓存。
+      case "loadOlderMessages":
+        await this.handleLoadOlderMessages(
+          msg.before as string | undefined,
+          msg.requestId as number,
+          pid,
+        );
         break;
 
       case "getConfiguredModels":

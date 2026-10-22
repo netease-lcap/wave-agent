@@ -13,6 +13,7 @@ import type {
 } from "wave-agent-sdk/host";
 import { StdioClient } from "../stdio/stdioClient";
 import {
+  MESSAGE_HISTORY_PAGE_SIZE,
   StdioAgent,
   type InitializeParams,
   type StdioAgentCallbacks,
@@ -450,6 +451,27 @@ export class ChatSession {
     }
     this.messages = await this.agent.getMessages();
     return this.messages;
+  }
+
+  /**
+   * 取 `before` 之前的一页（上滑「翻更早」）。**不写 `this.messages` 缓存**：
+   * 那份必须是全量——首屏窗口、`/rewind`、会话切换都从它取数，让它变成「最后一页」
+   * 等于把宿主手里那段历史丢掉。
+   *
+   * 没有 agent（会话还没初始化 / 已经销毁）返回 undefined，由调用方回一条错误：
+   * 回空页会被页面读成「已经到底」，从此再也不翻。
+   */
+  public async getOlderMessages(
+    before: string,
+  ): Promise<{ messages: Message[]; hasMore: boolean } | undefined> {
+    if (!this.agent) return undefined;
+    const page = await this.agent.getMessages({
+      before,
+      limit: MESSAGE_HISTORY_PAGE_SIZE,
+    });
+    // 老版本 CLI 不认识窗口参数（会把整份列表原样答回来且不带 hasMore）：
+    // 按「没有更早的了」处理，否则页面会拿同一个锚点无限重问。
+    return { messages: page.messages, hasMore: page.hasMore === true };
   }
 
   private throttledStreamingContentUpdate(

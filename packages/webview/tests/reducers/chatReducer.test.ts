@@ -786,6 +786,27 @@ describe("chatReducer", () => {
 
       expect(newState.historyExhausted).toBe(false);
     });
+
+    it("should take the exhausted flag from the window the host replaced the list with", () => {
+      // 三端首屏只推一页：整表替换过来的也是一个窗口，`hasMore:false` 才是「这
+      // 就是开头」。反过来（有更早的）必须为 false，否则页面一上来就显示「没有更
+      // 早的消息」并且再也不去拉。
+      const state = { ...initialState, historyExhausted: true };
+
+      const windowed = chatReducer(state, {
+        type: "SET_MESSAGES",
+        payload: [message("m1"), message("m2")],
+        hasMore: true,
+      });
+      expect(windowed.historyExhausted).toBe(false);
+
+      const whole = chatReducer(state, {
+        type: "SET_MESSAGES",
+        payload: [message("m1")],
+        hasMore: false,
+      });
+      expect(whole.historyExhausted).toBe(true);
+    });
   });
 
   describe("APPEND_ERROR_BLOCK", () => {
@@ -1243,6 +1264,61 @@ describe("chatReducer", () => {
       });
 
       expect(newState.currentSession?.firstMessage).toBe("原始标题");
+    });
+
+    it("SET_INITIAL_STATE takes historyExhausted and the paging capability from the host", () => {
+      // 首屏只推一页：宿主同时说清「前面还有没有」和「我答不答得了翻更早」。
+      // 两个都必须来自快照 —— 页面自己猜不出来，猜错的代价分别是「永远显示没有
+      // 更早」和「向一个不认这条命令的宿主反复要」。
+      const windowed = chatReducer(initialState, {
+        type: "SET_INITIAL_STATE",
+        payload: {
+          messages: [{ id: "m1", role: "user", timestamp: "0", blocks: [] }],
+          sessions: [],
+          configurationData: {},
+          pendingConfirmations: [],
+          isStreaming: false,
+          historyExhausted: false,
+          supportsMessagePaging: true,
+        },
+      });
+      expect(windowed.historyExhausted).toBe(false);
+      expect(windowed.supportsMessagePaging).toBe(true);
+
+      // 老宿主（不认分页）：不带任何一个字段 ⇒ 关掉分页，且不声称「已到底」。
+      const legacy = chatReducer(windowed, {
+        type: "SET_INITIAL_STATE",
+        payload: {
+          messages: [{ id: "m1", role: "user", timestamp: "0", blocks: [] }],
+          sessions: [],
+          configurationData: {},
+          pendingConfirmations: [],
+          isStreaming: false,
+        },
+      });
+      expect(legacy.supportsMessagePaging).toBe(false);
+      expect(legacy.historyExhausted).toBe(false);
+    });
+
+    it("SET_INITIAL_STATE keeps historyExhausted on the rewind snapshot that carries no list", () => {
+      // keepMessages（rewind）：列表是 webview 自己切的，宿主这次没有窗口可判，
+      // 沿用现值。把它重置成 false 会让页面在已经翻到开头后再问一次。
+      const state = chatReducer(
+        { ...initialState, historyExhausted: true },
+        {
+          type: "SET_INITIAL_STATE",
+          payload: {
+            messages: [],
+            keepMessages: true,
+            sessions: [],
+            configurationData: {},
+            pendingConfirmations: [],
+            isStreaming: false,
+          },
+        },
+      );
+
+      expect(state.historyExhausted).toBe(true);
     });
 
     it("SET_INITIAL_STATE clears a stale isCompacting so a session switch does not leak the compaction hint", () => {

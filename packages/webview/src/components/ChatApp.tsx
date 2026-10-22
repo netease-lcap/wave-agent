@@ -1148,7 +1148,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     switch (message.command) {
       case "updateMessages":
         if (!forThisPane(message)) break;
-        dispatch({ type: "SET_MESSAGES", payload: message.messages });
+        // 三端首屏只推一页，所以这份「整表替换」也是一个窗口：`hasMore` 决定
+        // 「没有更早的消息」提示的初值（老宿主不带 ⇒ 当成从头开始）。
+        dispatch({
+          type: "SET_MESSAGES",
+          payload: message.messages,
+          hasMore: message.hasMore,
+        });
         break;
       case "olderMessages":
         if (!forThisPane(message)) break;
@@ -1750,6 +1756,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             // reducer would take the empty list at face value and blank the
             // conversation.
             keepMessages: message.keepMessages,
+            // 首屏只推一页（spec ui/message-rendering-system.md「首屏只进一页」）：这份快照是一个
+            // 窗口，所以「前面还有没有」与「宿主答不答得了翻更早」都必须跟着转发
+            // ——丢在这里的后果分别是「永远显示没有更早」和「向不认这条命令的老
+            // 宿主反复要」。
+            historyExhausted: message.historyExhausted,
+            supportsMessagePaging: message.supportsMessagePaging,
             tasks: message.tasks,
             isStreaming: message.isStreaming,
             isCommandRunning: message.isCommandRunning,
@@ -3125,12 +3137,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [isRemotePage, pushState, vscode],
   );
 
-  // 手机页是唯一「手上只有一页历史」的宿主：它按窗口拉消息，所以也是唯一能往上翻的
-  // 宿主（见 MessageListProps.onLoadOlderMessages 与 spec remote-control.md「Web 页
-  // 作为第五种宿主」场景 11）。三个本地宿主把整段记录一次灌进来，这里给 undefined，
-  // 那条上拉请求就永远发不出去 —— 门禁与「二维码」同一套能力位（waveHostType 在 IDE
-  // 宿主也是空的，认不得它们）。
-  const canLoadOlderMessages = isRemotePage;
+  // 宿主会不会答「翻更早」。判据是**宿主自己说的能力位**，不是一个关于宿主种类的
+  // 猜测：三个本地宿主（桌面端 / VS Code / JB）现在都只推一页、并按窗口取回更早
+  // 的历史，但**页面是远端加载的**——手机页的宿主可能落后于页面版本，硬编码 true
+  // 就会让老宿主收到一条它不认识的命令（静默失败）。老宿主不推
+  // `supportsMessagePaging`，于是这里恒为 false，上拉请求根本发不出去。
+  //
+  // 手机页不走这个字段：它的 shim 就是分页那条链（spec remote-control.md 场景 11），
+  // 与「二维码」同一套能力位（waveHostType 在 IDE 宿主也是空的，认不得它们）。
+  const canLoadOlderMessages = isRemotePage || state.supportsMessagePaging;
   const loadOlderRequestRef = useRef(0);
   const [loadingOlder, setLoadingOlder] = useState(false);
 
