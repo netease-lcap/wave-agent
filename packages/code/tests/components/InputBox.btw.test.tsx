@@ -129,6 +129,39 @@ describe("InputBox /btw", () => {
     });
   });
 
+  it("should still dismiss a long (scrolling) answer with Escape", async () => {
+    const longAnswer = Array.from(
+      { length: 80 },
+      (_, i) => `answer line ${i}`,
+    ).join("\n");
+    mockAskBtw.mockResolvedValue(longAnswer);
+
+    const { stdin, lastFrame } = render(<InputBox />);
+
+    stdin.write("/btw why is the sky blue?");
+    await vi.waitFor(() =>
+      expect(stripAnsiColors(lastFrame() || "")).toContain(
+        "/btw why is the sky blue?",
+      ),
+    );
+    stdin.write("\r");
+
+    // The answer overflows the viewport, so the footer advertises scrolling.
+    await vi.waitFor(() => {
+      const output = stripAnsiColors(lastFrame() || "");
+      expect(output).toContain("answer line 0");
+      expect(output).toContain("↑/↓ to scroll · Esc to dismiss");
+    });
+
+    stdin.write("\u001b");
+    await vi.waitFor(() => {
+      const output = stripAnsiColors(lastFrame() || "");
+      expect(output).not.toContain("answer line 0");
+      expect(output).not.toContain("Esc to dismiss");
+      expect(output).toContain(INPUT_PLACEHOLDER_TEXT_PREFIX);
+    });
+  });
+
   it("should hide the input row while the bare /btw usage shows and restore it on Escape", async () => {
     const { stdin, lastFrame } = render(<InputBox />);
 
