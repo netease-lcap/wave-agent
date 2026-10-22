@@ -79,6 +79,12 @@ import {
   pathsMatch,
 } from "../utils/fileAutoRefresh";
 import { collectConversationFiles } from "../utils/conversationFiles";
+import {
+  askDiscardUnsavedDraft,
+  isFileViewDirty,
+  registerDraftSource,
+  setDiscardAsker,
+} from "../utils/fileDraftGuard";
 import { toAbsoluteFilePath } from "../utils/messageUtils";
 import { isMacHiddenTitlebar, isRemotePageHost } from "../utils/platform";
 import { chatReducer, initialState } from "../reducers/chatReducer";
@@ -258,6 +264,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     useDesktopChrome();
   // Message id awaiting rewind confirmation; non-null shows the ConfirmDialog.
   const [pendingRewindId, setPendingRewindId] = useState<string | null>(null);
+  // 「放弃未保存的修改？」（spec desktop-file-panel.md「文件面板内编辑与保存」场景
+  // 5/6）：对话框只由窗口根的实例渲染（与 showToast 同一条口径，多分屏不叠层），
+  // 但发起方既可能是某个 pane（取消编辑、换文件、关 tab），也可能是窗口 chrome
+  // （换会话 / 换工作目录）。两端通过 utils/fileDraftGuard 的 asker 接头，答案回
+  // 到同一个 Promise。
+  const draftDiscardResolversRef = useRef<Array<(ok: boolean) => void>>([]);
+  const [draftDiscardOpen, setDraftDiscardOpen] = useState(false);
   // In-flight rewind requests, keyed by requestId. The host answers with a
   // `rewindResult` (no payload) and the webview cuts its own list, so a reply
   // that arrives late — or for a rewind already superseded — must not touch the
@@ -665,6 +678,35 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
+  // 文件面板的未保存草稿（spec desktop-file-panel.md「文件面板内编辑与保存」）：
+  // 判定与丢弃都落在 tab 态上，声明在这里是因为「离开」的守卫散落在关闭 tab、
+  // 打开另一个文件、换会话等既有回调里，它们都在调用时读最新的 tabsRef。
+  const isTabDirty = useCallback(
+    (tabId: string) =>
+      isFileViewDirty(tabsRef.current.find((t) => t.id === tabId)?.fileView),
+    [],
+  );
+  const hasDirtyDraft = useCallback(
+    () => tabsRef.current.some((t) => isFileViewDirty(t.fileView)),
+    [],
+  );
+  const discardAllDrafts = useCallback(() => {
+    setTabs((prev) =>
+      prev.map((t) => {
+        if (!t.fileView || !isFileViewDirty(t.fileView)) return t;
+        return {
+          ...t,
+          fileView: {
+            ...t.fileView,
+            draft: undefined,
+            saving: undefined,
+            saveError: undefined,
+            diskChanged: undefined,
+          },
+        };
+      }),
+    );
+  }, []);
   // 当前 state（tabs/宽度/激活 tab…）属于哪个会话组。它必须是被 swap effect 与
   // setTabs 一起切换的 state，而不是 groupKey 或 groupKeyRef：`groupKey` 一到就
   // 是新会话的，`groupKeyRef.current` 在 swap effect 里即刻改写；两者都会在
@@ -1304,16 +1346,101 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           const fv = message.fileView as FileViewState;
           setTabs((prev) =>
             prev.some((t) => t.kind === "file" && t.filePath === fv.path)
-              ? prev.map((t) =>
-                  t.kind === "file" && t.filePath === fv.path
-                    ? { ...t, fileView: fv }
-                    : t,
-                )
+              ? prev.map((t) => {
+                  if (t.kind !== "file" || t.filePath !== fv.path) return t;
+                  // 草稿在身时这份重读不回填（spec desktop-file-panel.md「文件面板
+                  // 内编辑与保存」场景 8）：自动刷新、再次点开同一路径都会走到这里，
+                  // 直接替换就把用户没保存的修改吞了。只把「磁盘变了」告诉面板，
+                  // 由用户选「覆盖」还是「重新加载」；内容没变则什么都不做。
+                  if (t.fileView?.draft !== undefined) {
+                    if (fv.error || fv.content === t.fileView.content) return t;
+                    return {
+                      ...t,
+                      fileView: { ...t.fileView, diskChanged: true },
+                    };
+                  }
+                  return { ...t, fileView: fv };
+                })
               : prev.map((t) =>
                   t.id === activeTabIdRef.current && t.kind === "file"
                     ? { ...t, filePath: fv.path, fileView: fv }
                     : t,
                 ),
+          );
+        }
+        break;
+      case "desktopFileSaveResult":
+        // 面板内保存的回包（spec desktop-file-panel.md「文件面板内编辑与保存」场
+        // 景 4/7/10）。按 requestId 归到发起保存的那个 tab：回包落地时用户可能
+        // 已经取消编辑，甚至已经换了文件——状态一律以 tab 此刻的样子为准。
+        if (!forThisPane(message)) break;
+        {
+          const tabId = fileSaveRequestsRef.current.get(message.requestId);
+          if (!tabId) break;
+          fileSaveRequestsRef.current.delete(message.requestId);
+          if (message.status === "saved") {
+            setTabs((prev) =>
+              prev.map((t) => {
+                if (t.id !== tabId || t.kind !== "file" || !t.fileView)
+                  return t;
+                const fileView = t.fileView;
+                return {
+                  ...t,
+                  fileView: {
+                    ...fileView,
+                    // 保存成功 = 磁盘此刻就是草稿内容：只读正文换成草稿那份、
+                    // 并发校验的基准换成回包里的哈希，编辑态退出。
+                    content: fileView.draft ?? fileView.content,
+                    contentHash: message.contentHash ?? fileView.contentHash,
+                    draft: undefined,
+                    saving: undefined,
+                    saveError: undefined,
+                    diskChanged: undefined,
+                  },
+                };
+              }),
+            );
+            // 轻量反馈（本 pane 自己的 toast 栈）。连存两次（保存 → 冲突 →
+            // 覆盖）只留一条「已保存」，不叠成一摞同样的痕。
+            setToasts((prev) => [
+              ...prev.filter((t) => t.message !== "已保存"),
+              {
+                id: `file-saved-${Date.now()}`,
+                message: "已保存",
+                type: "success",
+              },
+            ]);
+            break;
+          }
+          setTabs((prev) =>
+            prev.map((t) => {
+              if (t.id !== tabId || t.kind !== "file" || !t.fileView) return t;
+              const fileView = t.fileView;
+              if (message.status === "conflict") {
+                // 磁盘被改过：草稿原样留着、不退出编辑态，回包里的磁盘哈希落到
+                // contentHash 上——用户点「覆盖」就是按它再写一次；点「重新加载」
+                // 则丢弃草稿重读。
+                return {
+                  ...t,
+                  fileView: {
+                    ...fileView,
+                    saving: undefined,
+                    saveError: undefined,
+                    diskChanged: true,
+                    contentHash: message.contentHash ?? fileView.contentHash,
+                  },
+                };
+              }
+              // denied / error：草稿完整保留、仍在编辑态，用户可重试或取消。
+              return {
+                ...t,
+                fileView: {
+                  ...fileView,
+                  saving: undefined,
+                  saveError: message.message ?? "保存失败，请重试",
+                },
+              };
+            }),
           );
         }
         break;
@@ -2820,16 +2947,29 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // remote-control.md「Web 页作为第五种宿主」场景 10）。
       if (inPlaceGuard) return;
 
-      // 清空当前任务列表：避免恢复期间残留旧会话的任务，
-      // 并让新会话任务从空状态进入（若全部已完成则直接保持隐藏）
-      dispatch({ type: "SET_TASKS", payload: [] });
+      const restore = () => {
+        // 清空当前任务列表：避免恢复期间残留旧会话的任务，
+        // 并让新会话任务从空状态进入（若全部已完成则直接保持隐藏）
+        dispatch({ type: "SET_TASKS", payload: [] });
 
-      postToHost({
-        command: "restoreSession",
-        sessionId,
+        postToHost({
+          command: "restoreSession",
+          sessionId,
+        });
+      };
+      // 换会话会把 tabs 整份换掉，带草稿的 file tab 随之离开视野：先问（spec
+      // desktop-file-panel.md「文件面板内编辑与保存」场景 6）。
+      if (!hasDirtyDraft()) {
+        restore();
+        return;
+      }
+      void askDiscardUnsavedDraft().then((discard) => {
+        if (!discard) return;
+        discardAllDrafts();
+        restore();
       });
     },
-    [inPlaceGuard, postToHost],
+    [inPlaceGuard, postToHost, hasDirtyDraft, discardAllDrafts],
   );
 
   const handleInputCleared = useCallback(() => {
@@ -2852,13 +2992,31 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }
       const session = resumeSessions.find((s) => s.id === sessionId);
       if (!session?.workdir) return;
-      postToHost({
-        command: "desktopResumeSession",
-        sessionId,
-        workdir: session.workdir,
+      const resume = () =>
+        postToHost({
+          command: "desktopResumeSession",
+          sessionId,
+          workdir: session.workdir,
+        });
+      // 桌面端的 `/resume` 是宿主侧换会话（同 handleSessionSelect 的离开语义）。
+      if (!hasDirtyDraft()) {
+        resume();
+        return;
+      }
+      void askDiscardUnsavedDraft().then((discard) => {
+        if (!discard) return;
+        discardAllDrafts();
+        resume();
       });
     },
-    [isDesktop, resumeSessions, handleSessionSelect, postToHost],
+    [
+      isDesktop,
+      resumeSessions,
+      handleSessionSelect,
+      postToHost,
+      hasDirtyDraft,
+      discardAllDrafts,
+    ],
   );
 
   const handleResumeClose = useCallback(() => {
@@ -3312,27 +3470,44 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       const idx = tabs.findIndex((t) => t.id === tabId);
       if (idx === -1) return;
       const closed = tabs[idx];
-      const next = tabs.filter((t) => t.id !== tabId);
-      setTabs(next);
-      if (activeTabIdRef.current === tabId) {
-        setActiveTabId(next.length ? next[Math.max(0, idx - 1)].id : null);
-      }
-      // Closing a local-.html preview tab releases the pane's re-hosting
-      // server reference; with the last reference the host tears the server
-      // down (spec desktop-preview.md「本地 HTML 文件预览」 scenario 8). The
-      // release is keyed by the tab's file path — other tabs previewing other
-      // files (even on the same served root) keep their server alive.
-      if (closed.kind === "preview" && closed.previewFilePath) {
-        pendingPreviewFallbackRef.current.delete(closed.id);
-        postToHost({
-          command: "desktopPreviewFileRelease",
-          path: closed.previewFilePath,
+      const doClose = () => {
+        // Re-read: the confirm dialog can be answered a tick later, and the
+        // tab list may have moved on meanwhile.
+        const current = tabsRef.current;
+        const at = current.findIndex((t) => t.id === tabId);
+        if (at === -1) return;
+        const removed = current[at];
+        const next = current.filter((t) => t.id !== tabId);
+        setTabs(next);
+        if (activeTabIdRef.current === tabId) {
+          setActiveTabId(next.length ? next[Math.max(0, at - 1)].id : null);
+        }
+        // Closing a local-.html preview tab releases the pane's re-hosting
+        // server reference; with the last reference the host tears the server
+        // down (spec desktop-preview.md「本地 HTML 文件预览」 scenario 8). The
+        // release is keyed by the tab's file path — other tabs previewing other
+        // files (even on the same served root) keep their server alive.
+        if (removed.kind === "preview" && removed.previewFilePath) {
+          pendingPreviewFallbackRef.current.delete(removed.id);
+          postToHost({
+            command: "desktopPreviewFileRelease",
+            path: removed.previewFilePath,
+          });
+        }
+        if (removed.kind === "preview" || next.length === 0) {
+          setPreviewFullscreen(false);
+        }
+        if (next.length === 0) setPanelExpanded(false);
+      };
+      // 关掉带草稿的 file tab 等于丢弃草稿：先问（spec desktop-file-panel.md
+      // 「文件面板内编辑与保存」场景 6）。
+      if (isFileViewDirty(closed.fileView)) {
+        void askDiscardUnsavedDraft().then((discard) => {
+          if (discard) doClose();
         });
+        return;
       }
-      if (closed.kind === "preview" || next.length === 0) {
-        setPreviewFullscreen(false);
-      }
-      if (next.length === 0) setPanelExpanded(false);
+      doClose();
     },
     [postToHost],
   );
@@ -3366,31 +3541,45 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     (kind: DesktopPanelKind) => {
       if (panelDisabledRef.current.includes(kind)) return;
       if (tabsRef.current.some((t) => t.kind === kind)) {
-        const closing = tabsRef.current.filter((t) => t.kind === kind);
-        const next = tabsRef.current.filter((t) => t.kind !== kind);
-        setTabs(next);
-        const active = activeTabIdRef.current;
-        if (active && !next.some((t) => t.id === active)) {
-          setActiveTabId(next.length ? next[next.length - 1].id : null);
-        }
-        if (kind === "preview" || next.length === 0) {
-          setPreviewFullscreen(false);
-        }
-        // Same release as handleCloseTab when the menu closes every preview
-        // tab of the kind (including local-.html preview tabs) — one release
-        // per closed file-previewing tab, keyed by its path.
-        if (kind === "preview") {
-          for (const t of closing) {
-            if (t.kind === "preview" && t.previewFilePath) {
-              pendingPreviewFallbackRef.current.delete(t.id);
-              postToHost({
-                command: "desktopPreviewFileRelease",
-                path: t.previewFilePath,
-              });
+        const doClose = () => {
+          const closing = tabsRef.current.filter((t) => t.kind === kind);
+          const next = tabsRef.current.filter((t) => t.kind !== kind);
+          setTabs(next);
+          const active = activeTabIdRef.current;
+          if (active && !next.some((t) => t.id === active)) {
+            setActiveTabId(next.length ? next[next.length - 1].id : null);
+          }
+          if (kind === "preview" || next.length === 0) {
+            setPreviewFullscreen(false);
+          }
+          // Same release as handleCloseTab when the menu closes every preview
+          // tab of the kind (including local-.html preview tabs) — one release
+          // per closed file-previewing tab, keyed by its path.
+          if (kind === "preview") {
+            for (const t of closing) {
+              if (t.kind === "preview" && t.previewFilePath) {
+                pendingPreviewFallbackRef.current.delete(t.id);
+                postToHost({
+                  command: "desktopPreviewFileRelease",
+                  path: t.previewFilePath,
+                });
+              }
             }
           }
+          if (next.length === 0) setPanelExpanded(false);
+        };
+        // 取消勾选「文件」会关掉所有 file tab，等于丢弃其中的草稿：先问（spec
+        // desktop-file-panel.md「文件面板内编辑与保存」场景 6）。
+        if (
+          kind === "file" &&
+          tabsRef.current.some((t) => isFileViewDirty(t.fileView))
+        ) {
+          void askDiscardUnsavedDraft().then((discard) => {
+            if (discard) doClose();
+          });
+          return;
         }
-        if (next.length === 0) setPanelExpanded(false);
+        doClose();
       } else {
         tryOpenPanel(kind);
       }
@@ -3550,20 +3739,225 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     );
   }, []);
 
+  // ---- 文件面板内编辑（spec desktop-file-panel.md「文件面板内编辑与保存」）------
+  // 草稿落在 tab 的 `fileView.draft` 里，而不是面板组件的内部 state：一级 tab 切
+  // 换时面板只是 display:none（组件仍活着），但换会话会把整份 tabs 换掉——草稿跟
+  // 着 tab 走才谈得上「切回来还在」，也才能被「离开前统一确认」看见。
+  const fileSaveRequestsRef = useRef<Map<string, string>>(new Map());
+  const fileSaveSeqRef = useRef(0);
+
+  // 登记给窗口级导航（换会话 / 换工作目录 / 新建 / 删除）做守卫：那些动作的入口
+  // 在 DesktopApp / DesktopShell，拿不到本 pane 的 tabs。
+  useEffect(
+    () =>
+      registerDraftSource({
+        hasDirty: hasDirtyDraft,
+        discard: discardAllDrafts,
+      }),
+    [hasDirtyDraft, discardAllDrafts],
+  );
+
+  // 「放弃未保存的修改？」只由窗口根实例渲染（与 showToast 同一条口径：多分屏不
+  // 叠层）。pane 实例发起时也走同一个 asker，答案回同一个 Promise。
+  useEffect(() => {
+    if (myPane !== undefined) return;
+    setDiscardAsker(
+      () =>
+        new Promise<boolean>((resolve) => {
+          draftDiscardResolversRef.current.push(resolve);
+          setDraftDiscardOpen(true);
+        }),
+    );
+    return () => setDiscardAsker(null);
+  }, [myPane]);
+
+  const settleDraftDiscard = useCallback((discard: boolean) => {
+    setDraftDiscardOpen(false);
+    const resolvers = draftDiscardResolversRef.current;
+    draftDiscardResolversRef.current = [];
+    for (const resolve of resolvers) resolve(discard);
+  }, []);
+
+  /** 退出编辑态：草稿丢弃，正文回到已读到的 `content`。 */
+  const exitFileEdit = useCallback((tabId: string) => {
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === tabId && t.kind === "file" && t.fileView
+          ? {
+              ...t,
+              fileView: {
+                ...t.fileView,
+                draft: undefined,
+                saving: undefined,
+                saveError: undefined,
+                diskChanged: undefined,
+              },
+            }
+          : t,
+      ),
+    );
+  }, []);
+
+  const handleFileStartEdit = useCallback((tabId: string) => {
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === tabId && t.kind === "file" && t.fileView
+          ? {
+              ...t,
+              fileView: {
+                ...t.fileView,
+                draft: t.fileView.content ?? "",
+                saveError: undefined,
+                diskChanged: undefined,
+              },
+            }
+          : t,
+      ),
+    );
+  }, []);
+
+  const handleFileDraftChange = useCallback((tabId: string, value: string) => {
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === tabId && t.kind === "file" && t.fileView?.draft !== undefined
+          ? { ...t, fileView: { ...t.fileView, draft: value } }
+          : t,
+      ),
+    );
+  }, []);
+
+  const handleFileCancelEdit = useCallback(
+    (tabId: string) => {
+      if (!isTabDirty(tabId)) {
+        exitFileEdit(tabId);
+        return;
+      }
+      void askDiscardUnsavedDraft().then((discard) => {
+        if (discard) exitFileEdit(tabId);
+      });
+    },
+    [exitFileEdit, isTabDirty],
+  );
+
+  const handleFileSave = useCallback(
+    (tabId: string, content: string) => {
+      const tab = tabsRef.current.find((t) => t.id === tabId);
+      const fileView = tab?.kind === "file" ? tab.fileView : undefined;
+      if (!fileView || fileView.draft === undefined || fileView.saving) return;
+      // 与读到的内容一致 = 没做修改：不写盘，直接退出编辑态（场景 4）。磁盘期间
+      // 变过的话顺手重读一次，让正文回到磁盘内容。
+      if (content === fileView.content) {
+        if (fileView.diskChanged) openFileInPanelRef.current(fileView.path);
+        exitFileEdit(tabId);
+        return;
+      }
+      // 没有哈希就没有乐观并发校验的基准，不能写（可写性由宿主判定，这里只是兜底）。
+      if (!fileView.contentHash) return;
+      const requestId = `${Date.now()}-${++fileSaveSeqRef.current}`;
+      fileSaveRequestsRef.current.set(requestId, tabId);
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === tabId && t.kind === "file" && t.fileView
+            ? {
+                ...t,
+                fileView: {
+                  ...t.fileView,
+                  // 以编辑器此刻的全文为准（onChange 与保存是两次事件）。
+                  draft: content,
+                  saving: true,
+                  saveError: undefined,
+                },
+              }
+            : t,
+        ),
+      );
+      postToHost({
+        command: "desktopSaveFile",
+        path: fileView.path,
+        content,
+        contentHash: fileView.contentHash,
+        requestId,
+      });
+    },
+    [exitFileEdit, postToHost],
+  );
+
+  /** 「重新加载」：丢弃草稿并按既有 openFile 链路重读磁盘（场景 7）。 */
+  const handleFileReload = useCallback(
+    (tabId: string) => {
+      const tab = tabsRef.current.find((t) => t.id === tabId);
+      const fileView = tab?.kind === "file" ? tab.fileView : undefined;
+      if (!fileView) return;
+      exitFileEdit(tabId);
+      openFileInPanelRef.current(fileView.path);
+    },
+    [exitFileEdit],
+  );
+
+  /**
+   * 自动刷新（spec「文件面板自动刷新」）落在带草稿的 tab 上时的替代动作：不重读
+   * （重读会把还没保存的修改吞掉），只把「磁盘变了」告诉面板，由用户选覆盖还是
+   * 重新加载（场景 8）。
+   */
+  const handleFileAutoRefresh = useCallback((path: string) => {
+    const tab = tabsRef.current.find(
+      (t) => t.kind === "file" && t.filePath === path,
+    );
+    if (!tab || !tab.fileView) return;
+    if (tab.fileView.draft === undefined) {
+      openFileInPanelRef.current(path);
+      return;
+    }
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === tab.id && t.fileView
+          ? { ...t, fileView: { ...t.fileView, diskChanged: true } }
+          : t,
+      ),
+    );
+  }, []);
+
   const handleOpenFile = useCallback(
     (path: string, startLine?: number, endLine?: number) => {
       if (!path) return;
-      if (!isDesktop) {
-        vscode.postMessage({ command: "openFile", path, startLine, endLine });
+      const run = () => {
+        if (!isDesktop) {
+          vscode.postMessage({ command: "openFile", path, startLine, endLine });
+          return;
+        }
+        if (isHtmlPath(path)) {
+          handlePreviewHtmlFile(path);
+          return;
+        }
+        openFileInPanel(path, startLine, endLine);
+      };
+      // 编辑中在面板里打开另一个文件 = 换掉同一个 file tab，草稿随之作废，所以
+      // 先问一句（spec 场景 6）。要打开的就是正在编辑的那个文件时不问：那种情况
+      // 草稿不会被丢（openFileInPanel 保留 fileView，重读回包也按草稿优先处理）。
+      const sameFileBeingEdited = tabsRef.current.some(
+        (t) =>
+          t.kind === "file" &&
+          t.fileView?.draft !== undefined &&
+          t.filePath === path,
+      );
+      if (!isDesktop || sameFileBeingEdited || !hasDirtyDraft()) {
+        run();
         return;
       }
-      if (isHtmlPath(path)) {
-        handlePreviewHtmlFile(path);
-        return;
-      }
-      openFileInPanel(path, startLine, endLine);
+      void askDiscardUnsavedDraft().then((discard) => {
+        if (!discard) return;
+        discardAllDrafts();
+        run();
+      });
     },
-    [isDesktop, vscode, handlePreviewHtmlFile, openFileInPanel],
+    [
+      isDesktop,
+      vscode,
+      handlePreviewHtmlFile,
+      openFileInPanel,
+      hasDirtyDraft,
+      discardAllDrafts,
+    ],
   );
 
   // prefill 应用 effect（位于本 useCallback 定义之前）经 ref 调用最新
@@ -3608,10 +4002,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         continue;
       }
       if (prev !== "end" && completed && ref.targetPath) {
-        // Re-read every open file tab the block touched.
+        // Re-read every open file tab the block touched. A tab with an unsaved
+        // draft is not re-read — that would swallow the user's edits (spec
+        // desktop-file-panel.md「文件面板内编辑与保存」场景 8); it only gets the
+        // 「磁盘变了」marker instead.
         for (const path of filePaths) {
           if (pathsMatch(ref.targetPath, path, workdir)) {
-            handleOpenFile(path);
+            handleFileAutoRefresh(path);
           }
         }
         // Reload every preview tab previewing that .html file.
@@ -3637,7 +4034,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }
       stages.set(key, ref.stage);
     }
-  }, [state.messages, isDesktop, handleOpenFile, handlePreviewHtmlFile]);
+  }, [
+    state.messages,
+    isDesktop,
+    handleFileAutoRefresh,
+    handleOpenFile,
+    handlePreviewHtmlFile,
+  ]);
 
   // Local sessions only: leave the panel and open the file in the OS default
   // app (remote hosts have no local file — the button is hidden).
@@ -3874,6 +4277,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           vscode={vscode}
           onOpenFileInPanel={(path) => handleOpenFile(path)}
           onAddComment={handleAddComment}
+          onStartEdit={() => handleFileStartEdit(id)}
+          onDraftChange={(value) => handleFileDraftChange(id, value)}
+          onSaveDraft={(content) => handleFileSave(id, content)}
+          onCancelEdit={() => handleFileCancelEdit(id)}
+          onReloadDraft={() => handleFileReload(id)}
           {...common}
         />
       );
@@ -4503,6 +4911,20 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           cancelText="稍后"
           onConfirm={handlePluginReloadConfirm}
           onCancel={() => setPluginChangePending(false)}
+        />
+      )}
+      {/* 文件面板的未保存草稿（spec desktop-file-panel.md「文件面板内编辑与保存」
+          场景 5/6）：「继续编辑」= 什么都不变，草稿原样留着；「放弃」才让发起方
+          继续执行那个离开动作。 */}
+      {draftDiscardOpen && (
+        <ConfirmDialog
+          title="放弃未保存的修改？"
+          description="这个文件在面板里有还没保存的修改，继续操作会丢弃它们。"
+          confirmText="放弃"
+          cancelText="继续编辑"
+          destructive
+          onConfirm={() => settleDraftDiscard(true)}
+          onCancel={() => settleDraftDiscard(false)}
         />
       )}
       <ToastStack

@@ -170,6 +170,27 @@ function formatGitError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+/** True when `child` is `parent` itself or lives under it. Both paths must
+ *  already be absolute and resolved (no symlinks left to follow). */
+export function isPathInside(child: string, parent: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+/** Node fs errors read as "EACCES: permission denied, open '…'" — keep the
+ *  human part, drop the syscall path (the panel already shows the path). */
+function errorMessage(error: unknown): string {
+  if (error && typeof error === "object" && "code" in error) {
+    const { code, message } = error as NodeJS.ErrnoException;
+    if (code === "EACCES" || code === "EPERM") return "没有写入权限";
+    if (code === "EROFS") return "文件所在磁盘为只读";
+    if (code === "ENOSPC") return "磁盘空间不足";
+    if (code === "EISDIR") return "目标是一个目录";
+    if (message) return message;
+  }
+  return error instanceof Error ? error.message : String(error);
+}
+
 interface Pane {
   paneId: string;
   agent: StdioAgent | null;
@@ -4738,6 +4759,18 @@ export class DesktopHost {
         await this.handleFilePanelOpen(pid, msg.path as string);
         break;
 
+      // Save a draft from the file panel's edit mode (desktop only; the panel is
+      // a desktop-only surface, so this command has no IDE router counterpart).
+      case "desktopSaveFile":
+        await this.handleFilePanelSave(
+          pid,
+          msg.path as string,
+          msg.content as string,
+          msg.contentHash as string,
+          msg.requestId as string,
+        );
+        break;
+
       // Local .html paths clicked in messages preview instead of opening as
       // source (spec: desktop-preview.md「本地 HTML 文件预览」). Reply carries
       // the loopback URL to load, or an error → the webview falls back to the
@@ -7319,7 +7352,7 @@ export class DesktopHost {
     try {
       const fileView =
         host === LOCAL_HOST
-          ? await this.readLocalFileForPanel(filePath)
+          ? await this.readLocalFileForPanel(paneId, filePath)
           : await this.readRemoteFileForPanel(host, filePath);
       this.postMessage({
         command: "desktopFileContent",
@@ -7419,8 +7452,21 @@ export class DesktopHost {
     }
   }
 
+  /**
+   * The directory the file panel treats as the session's workdir — what
+   * "inside the workdir" means for in-panel editing (spec
+   * desktop-file-panel.md「文件面板内编辑与保存」 scenario 1/2). This is the
+   * directory the user is looking at (`workingDirectory`, which follows a bash
+   * `cd`), not `projectRootForPane`'s stable project root.
+   */
+  private workingDirectoryForPane(paneId?: string): string | undefined {
+    const agent = this.agentForPane(paneId);
+    return (agent ? agent.workingDirectory : undefined) ?? this.workdir;
+  }
+
   /** Local read: image → base64; text → first 2MB / 2000 lines, NUL-detected. */
   private async readLocalFileForPanel(
+    paneId: string,
     filePath: string,
   ): Promise<Record<string, unknown>> {
     const stat = await fs.promises.stat(filePath).catch(() => null);
@@ -7460,19 +7506,158 @@ export class DesktopHost {
       .toString("utf8");
     const allLines = rawContent.split("\n");
     const tooManyLines = allLines.length > REMOTE_FILE_MAX_LINES;
+    const truncated = bytesRead > REMOTE_FILE_MAX_BYTES || tooManyLines;
+    // Editable in the panel only when the panel holds the WHOLE file *and* the
+    // path sits inside the session workdir — writing back a truncated read
+    // would destroy the rest of the file (spec desktop-file-panel.md
+    // 「文件面板内编辑与保存」 scenario 1/2).
+    const wholeFile = !truncated && bytesRead > 0;
+    const contentHash = wholeFile
+      ? createHash("sha256").update(buf.subarray(0, bytesRead)).digest("hex")
+      : undefined;
+    const editable =
+      contentHash !== undefined &&
+      (await this.isInsidePaneWorkdir(paneId, filePath));
     return {
       path: filePath,
       host: LOCAL_HOST,
       content: tooManyLines
         ? allLines.slice(0, REMOTE_FILE_MAX_LINES).join("\n")
         : rawContent,
-      truncated: bytesRead > REMOTE_FILE_MAX_BYTES || tooManyLines,
+      truncated,
       // Total line count is exact only when the whole file was read (≤ cap).
       totalLines:
         bytesRead <= REMOTE_FILE_MAX_BYTES
           ? allLines.length - (rawContent.endsWith("\n") ? 1 : 0)
           : undefined,
+      contentHash,
+      editable,
     };
+  }
+
+  /** Path containment check for in-panel writes: the resolved path (symlinks
+   *  followed, same as the save side) must live under the pane's workdir. Both
+   *  ends compare realpaths so a symlink inside the workdir pointing elsewhere
+   *  never gets an edit affordance it cannot use. */
+  private async isInsidePaneWorkdir(
+    paneId: string,
+    filePath: string,
+  ): Promise<boolean> {
+    const workdir = this.workingDirectoryForPane(paneId);
+    if (!workdir) return false;
+    const realWorkdir = await fs.promises
+      .realpath(workdir)
+      .catch(() => path.resolve(workdir));
+    const realTarget = await fs.promises.realpath(filePath).catch(() => null);
+    return realTarget !== null && isPathInside(realTarget, realWorkdir);
+  }
+
+  /**
+   * Save a file-panel draft (spec desktop-file-panel.md「文件面板内编辑与保存」).
+   *
+   * Local sessions only — a remote session's panel stays read-only, so a save
+   * arriving from there is a stale UI, not an error the user caused. The write
+   * is guarded by the session workdir and by the sha256 the panel read: if the
+   * disk copy moved on (agent write/edit, external save), nothing is written and
+   * the user gets to choose overwrite vs reload.
+   */
+  private async handleFilePanelSave(
+    paneId: string,
+    filePath: string,
+    content: string,
+    contentHash: string,
+    requestId: string,
+  ): Promise<void> {
+    const reply = (
+      status: "saved" | "conflict" | "denied" | "error",
+      extra: { message?: string; contentHash?: string } = {},
+    ) =>
+      this.postMessage({
+        command: "desktopFileSaveResult",
+        paneId,
+        requestId,
+        status,
+        ...extra,
+      });
+
+    if (!filePath || contentHash === undefined) {
+      reply("denied", { message: "该文件不支持在面板内编辑" });
+      return;
+    }
+    if (this.hostForPane(paneId) !== LOCAL_HOST) {
+      reply("denied", { message: "远端会话的文件不能在面板内保存" });
+      return;
+    }
+    const workdir = this.workingDirectoryForPane(paneId);
+    if (!workdir) {
+      reply("denied", { message: "当前会话没有工作目录，无法保存文件" });
+      return;
+    }
+    if (Buffer.byteLength(content, "utf8") > REMOTE_FILE_MAX_BYTES) {
+      reply("error", { message: "文件内容超过 2MB，无法在面板内保存" });
+      return;
+    }
+
+    // realpath on both sides: a symlink inside the workdir must not become a
+    // write path to somewhere else.
+    const realWorkdir = await fs.promises
+      .realpath(workdir)
+      .catch(() => path.resolve(workdir));
+    const target = await fs.promises.realpath(filePath).catch(() => null);
+    if (!target) {
+      reply("conflict", { message: "文件已被删除，无法保存" });
+      return;
+    }
+    if (!isPathInside(target, realWorkdir)) {
+      reply("denied", { message: "该文件在会话工作目录之外，不能保存" });
+      return;
+    }
+
+    let current: Buffer;
+    try {
+      current = await fs.promises.readFile(target);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      reply(code === "ENOENT" ? "conflict" : "error", {
+        message:
+          code === "ENOENT"
+            ? "文件已被删除，无法保存"
+            : `读取文件失败：${errorMessage(error)}`,
+      });
+      return;
+    }
+    const diskHash = createHash("sha256").update(current).digest("hex");
+    if (diskHash !== contentHash) {
+      reply("conflict", {
+        message: "文件已在磁盘上更新",
+        contentHash: diskHash,
+      });
+      return;
+    }
+
+    try {
+      const mode = (await fs.promises.stat(target)).mode;
+      // Same-directory temp + rename: a crash mid-write can't leave a torn file.
+      const tmp = path.join(
+        path.dirname(target),
+        `.${path.basename(target)}.wave-save-${process.pid}-${Date.now()}`,
+      );
+      try {
+        await fs.promises.writeFile(tmp, content, { encoding: "utf8" });
+        await fs.promises.chmod(tmp, mode).catch(() => {});
+        await fs.promises.rename(tmp, target);
+      } catch (error) {
+        await fs.promises.unlink(tmp).catch(() => {});
+        throw error;
+      }
+      reply("saved", {
+        contentHash: createHash("sha256")
+          .update(Buffer.from(content, "utf8"))
+          .digest("hex"),
+      });
+    } catch (error) {
+      reply("error", { message: `保存失败：${errorMessage(error)}` });
+    }
   }
 
   /** Remote read via ssh; results mirror the local shape (base64 for images). */
@@ -7495,6 +7680,8 @@ export class DesktopHost {
       ),
       truncated: result.truncated,
       totalLines: result.totalLines,
+      // Writes never cross the SSH bridge: remote panels are read-only.
+      editable: false,
     };
   }
 

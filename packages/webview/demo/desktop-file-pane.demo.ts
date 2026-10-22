@@ -267,4 +267,55 @@ test.describe("Desktop file pane screenshots", () => {
       "安装这一节补一句",
     );
   });
+
+  // spec desktop-file-panel.md「文件面板内编辑与保存」场景 1：本地工作目录内的
+  // 完整文件点「编辑」进入编辑态，正文换成带行号的 CodeMirror（desktop-only
+  // editor.js chunk），工具条右端换成「取消」「保存」。
+  test("edit mode in the file panel", async ({ webviewPage }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    await injector.simulateExtensionMessage("desktopWorkdirState", {
+      workdir: DIR_A,
+      recentWorkdirs: [DIR_A],
+    });
+    await injector.waitForChatAppReady();
+    await seedSidebarSessions(injector, DIR_A, [
+      { sessionId: "s-fp-1", title: "修复登录页样式对齐" },
+    ]);
+    await injector.simulateExtensionMessage("setInitialState", initialState);
+    await injector.updateMessages([
+      MockDataGenerator.createUserMessage("帮我修复登录页的样式问题", "msg-u1"),
+      MockDataGenerator.createAssistantMessageWithTool(
+        "我先看一下登录页组件的样式文件，找出对齐问题的原因。",
+        "Read",
+        JSON.stringify({ file_path: FILE_PATH }),
+        FILE_CONTENT,
+      ),
+    ]);
+
+    await webviewPage.getByRole("button", { name: FILE_PATH }).click();
+    await expect(webviewPage.getByTestId("file-pane")).toBeVisible();
+    await injector.simulateExtensionMessage("desktopFileContent", {
+      fileView: {
+        path: FILE_PATH,
+        host: "local",
+        content: FILE_CONTENT,
+        contentHash: "demo-hash",
+        editable: true,
+        truncated: false,
+        loading: false,
+      },
+    });
+
+    await webviewPage.getByTestId("file-pane-edit").click();
+    await expect(
+      webviewPage.locator(".file-pane-editor .cm-content"),
+    ).toBeVisible();
+    await expect(webviewPage.getByTestId("file-pane-edit-save")).toBeVisible();
+
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-file-pane-edit.webp",
+    );
+  });
 });

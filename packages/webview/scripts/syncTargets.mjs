@@ -32,11 +32,12 @@ if (!fs.existsSync(distDir)) {
 }
 
 // VS Code extension: copy the whole dist (bundle + sourcemaps) EXCEPT the
-// desktop-only terminal chunk (xterm must never ship in plugin artifacts).
+// desktop-only chunks (xterm for the terminal panel, CodeMirror for the file
+// panel's edit mode — neither may ship in plugin artifacts).
 fs.mkdirSync(vsceDest, { recursive: true });
 const distFiles = fs
   .readdirSync(distDir)
-  .filter((file) => !/^terminal\./.test(file));
+  .filter((file) => !/^terminal\./.test(file) && !/^editor\./.test(file));
 for (const file of distFiles) {
   fs.copyFileSync(path.join(distDir, file), path.join(vsceDest, file));
 }

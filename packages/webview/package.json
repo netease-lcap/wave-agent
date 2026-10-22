@@ -53,6 +53,13 @@
     "wave-webview-fixtures": "workspace:*"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/language": "^6.13.1",
+    "@codemirror/legacy-modes": "^6.5.5",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.15",
+    "@lezer/highlight": "^1.2.5",
     "@tanstack/react-virtual": "^3.14.10",
     "@vscode/codicons": "^0.0.43",
     "@xterm/addon-fit": "^0.11.0",
