@@ -764,6 +764,14 @@ async function publishArtifact(
       success: true,
       content: lines.join("\n"),
       shortResult: `Published ${filePath} → ${deploy.url}`,
+      // Hosts render this as a card with a single 「在浏览器中打开」 action: an
+      // artifact has only a URL, so there is no local file to open (PM
+      // 3500358560332032). Every key is optional on the host side.
+      metadata: {
+        artifactUrl: deploy.url,
+        artifactTitle: deploy.title || label || path.basename(filePath),
+        artifactVersion: String(deploy.version),
+      },
     };
   }
 

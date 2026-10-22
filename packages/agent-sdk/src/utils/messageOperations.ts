@@ -55,6 +55,8 @@ export interface UpdateToolBlockParams {
    * `ToolBlock.nestedToolCalls`).
    */
   nestedToolCalls?: string[];
+  /** Structured extras from `ToolResult.metadata` (host-side rendering only). */
+  metadata?: Record<string, unknown>;
   timestamp?: number;
 }
 
@@ -298,6 +300,7 @@ export const updateToolBlockInMessage = ({
   backgroundedByUser,
   assistantAutoBackgrounded,
   nestedToolCalls,
+  metadata,
 }: UpdateToolBlockParams): { messages: Message[]; messageId?: string } => {
   const newMessages = [...messages];
 
@@ -336,6 +339,7 @@ export const updateToolBlockInMessage = ({
             toolBlock.assistantAutoBackgrounded = assistantAutoBackgrounded;
           if (nestedToolCalls !== undefined)
             toolBlock.nestedToolCalls = nestedToolCalls;
+          if (metadata !== undefined) toolBlock.metadata = metadata;
         }
       }
     }
@@ -376,6 +380,7 @@ export const updateToolBlockInMessage = ({
             toolBlock.assistantAutoBackgrounded = assistantAutoBackgrounded;
           if (nestedToolCalls !== undefined)
             toolBlock.nestedToolCalls = nestedToolCalls;
+          if (metadata !== undefined) toolBlock.metadata = metadata;
         }
         const foundMessageId = newMessages[i].id;
         return { messages: newMessages, messageId: foundMessageId };
@@ -401,6 +406,7 @@ export const updateToolBlockInMessage = ({
           backgroundedByUser: backgroundedByUser,
           assistantAutoBackgrounded: assistantAutoBackgrounded,
           nestedToolCalls: nestedToolCalls,
+          metadata: metadata,
         });
         const foundMessageId = newMessages[i].id;
         return { messages: newMessages, messageId: foundMessageId };

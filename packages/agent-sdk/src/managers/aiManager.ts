@@ -2806,6 +2806,7 @@ ${question}`;
         backgroundedByUser: toolResult.backgroundedByUser,
         assistantAutoBackgrounded: toolResult.assistantAutoBackgrounded,
         nestedToolCalls: toolResult.nestedToolCalls,
+        metadata: toolResult.metadata,
         startLineNumber: toolResult.startLineNumber,
         images: toolImages,
         timestamp: Date.now(),

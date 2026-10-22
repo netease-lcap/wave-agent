@@ -52,6 +52,14 @@ export interface ToolBlock {
   id?: string;
   name?: string;
   /**
+   * Structured extras a tool attached to its result (`ToolResult.metadata`),
+   * carried through to the hosts so they can render a richer block than the
+   * plain text result. Hosts must treat every key as optional and fall back to
+   * the text rendering when it is absent or malformed — the CLI ignores it
+   * entirely.
+   */
+  metadata?: Record<string, unknown>;
+  /**
    * Tool execution stage:
    * - 'start': Tool call initiated (from AI service streaming)
    * - 'streaming': Tool parameters being streamed (from AI service)

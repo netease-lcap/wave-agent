@@ -374,6 +374,13 @@ describe("artifactTool", () => {
       expect(result.shortResult).toBe(
         "Published doc.md → https://server.test/code/artifact/abc",
       );
+      // Hosts render the publish as a card from this metadata: URL for the
+      // 「在浏览器中打开」 action, title/version for the two text lines.
+      expect(result.metadata).toEqual({
+        artifactUrl: "https://server.test/code/artifact/abc",
+        artifactTitle: "Doc",
+        artifactVersion: "v1",
+      });
 
       const [deployUrl, init] = fetchMock.mock.calls[0];
       expect(deployUrl).toBe(`${SERVER_URL}/api/frame/deploy/direct`);

@@ -31,6 +31,7 @@ import {
   WRITE_TOOL_NAME,
   EDIT_TOOL_NAME,
   READ_TOOL_NAME,
+  ARTIFACT_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
 } from "wave-agent-sdk/constants";
@@ -49,6 +50,7 @@ import { ReasoningBlockView } from "./ReasoningBlockView";
 import { CompactBlockView } from "./CompactBlockView";
 import { WriteToolPreview } from "./WriteToolPreview";
 import { GeneratedFileCard } from "./GeneratedFileCard";
+import { ArtifactCard } from "./ArtifactCard";
 import { FileToolHeader } from "./FileToolHeader";
 import { getStageColor, getToolStatusColor } from "../utils/statusColors";
 import { isDesktopHost, isRemotePageHost } from "../utils/platform";
@@ -1075,6 +1077,40 @@ export const Message: React.FC<MessageProps> = React.memo(
             {errorContent}
           </div>
         );
+      }
+
+      // Artifact 工具（发布到创作集）：发布成功后渲染成一张卡片，卡片上只有
+      // 「在浏览器中打开」——artifact 只有 URL，本地没有可打开的文件，所以不做
+      // 生成文件卡片那套「打开文件 / 打开所在文件夹」（PM 3500358560332032）。
+      // 其余 action（list / read / asset / 评论）与非发布结果落回下面的通用渲染。
+      if (toolBlock.name === ARTIFACT_TOOL_NAME) {
+        const meta = toolBlock.metadata as Record<string, unknown> | undefined;
+        const artifactUrl =
+          typeof meta?.artifactUrl === "string" ? meta.artifactUrl : "";
+        if (artifactUrl && toolBlock.stage !== "streaming" && !errorContent) {
+          const artifactTitle =
+            typeof meta?.artifactTitle === "string" && meta.artifactTitle
+              ? meta.artifactTitle
+              : artifactUrl;
+          const version =
+            typeof meta?.artifactVersion === "string" && meta.artifactVersion
+              ? `已发布 · v${meta.artifactVersion}`
+              : "已发布";
+          return (
+            <div key={index} className="tool-container">
+              <ArtifactCard
+                title={artifactTitle}
+                subtitle={version}
+                onOpenInBrowser={() =>
+                  props.vscode?.postMessage({
+                    command: "openExternal",
+                    url: artifactUrl,
+                  })
+                }
+              />
+            </div>
+          );
+        }
       }
 
       // For AskUserQuestion tools, show the user's answers
