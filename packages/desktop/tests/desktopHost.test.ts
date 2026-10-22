@@ -12760,8 +12760,9 @@ describe("创作集（desktop-artifacts）", () => {
     );
   });
 
-  it("模板新建：建会话后把提示词预填进该分屏", async () => {
+  it("模板新建：只把提示词预填进当前会话，不新开会话", async () => {
     const { host, sent } = await readyHost();
+    const agentsBefore = h.agentInstances.length;
 
     await host.handleWebviewMessage({
       command: "desktopArtifactsNewFromTemplate",
@@ -12772,6 +12773,9 @@ describe("创作集（desktop-artifacts）", () => {
       paneId: "pane-1",
       prompt: "帮我做一个网页小游戏：玩法是【】",
     });
+    // 不再 spawn 新 agent —— 原实现先建会话再预填，提示词要等 agent 初始化
+    // 2-3s 才出现，而且总是落到新对话（PM 3500350535448832 / 3500351963339008）。
+    expect(h.agentInstances.length).toBe(agentsBefore);
   });
 });
 

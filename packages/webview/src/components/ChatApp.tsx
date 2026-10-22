@@ -2485,9 +2485,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   }, []);
 
   /**
-   * 创作集「新建 → 模板」：关掉页面、在宿主机上新建一条会话，由宿主在会话就绪
-   * 之后把模板提示词预填进输入框（`desktopArtifactsNewFromTemplate`）。建会话是
-   * 宿主动作（webview 拿不到新 paneId），所以这里只发一条命令。
+   * 创作集「新建 → 模板」：关掉页面，把模板提示词预填进**当前选中会话**的输入框
+   * （`desktopArtifactsNewFromTemplate` 由宿主下发 prefillPrompt，不新建会话——
+   * 建会话会让提示词等 agent spawn 2-3s 且总是落到新对话，见 PM 3500350535448832 /
+   * 3500351963339008）。
    */
   const handleNewFromTemplate = useCallback(
     (prompt: string) => {

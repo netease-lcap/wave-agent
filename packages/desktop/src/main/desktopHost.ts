@@ -4232,16 +4232,19 @@ export class DesktopHost {
         break;
       }
 
-      // 创作集「新建 → 模板」：先按「新对话」的同一套逻辑建会话，再把模板提示词
-      // 预填进该 pane 的输入框。建会话是宿主动作（webview 拿不到新 paneId），
-      // 所以这一步必须在主进程做；prefillPrompt 是既有的预填命令，走同一份
-      // pending 重放路径，不会被随后的快照重置丢掉。
+      // 创作集「新建 → 模板」：把模板提示词预填进**当前选中会话**的输入框。
+      // 这里刻意不建会话——原实现先 `await handleNewSession()` 再 prefill，代价是
+      // ①提示词要等新 agent spawn 完（2-3s）才出现（PM 3500350535448832）；
+      // ②提示词总是落到新对话，而不是用户左侧选中的那个会话（3500351963339008）。
+      // prefillPrompt 走 webview 侧的 pending 重放路径，输入框就绪后写入。
       case "desktopArtifactsNewFromTemplate": {
         const prompt = msg.prompt as string;
-        const pid = this.focusedPaneId;
-        await this.handleNewSession(pid);
         if (prompt) {
-          this.postMessage({ command: "prefillPrompt", paneId: pid, prompt });
+          this.postMessage({
+            command: "prefillPrompt",
+            paneId: this.focusedPaneId,
+            prompt,
+          });
         }
         break;
       }
