@@ -6,7 +6,14 @@
  * happens inside DesktopHost via the shared StdioClient.
  */
 
-import { app, BrowserWindow, ipcMain, nativeImage, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  nativeImage,
+  session,
+  shell,
+} from "electron";
 import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
@@ -16,6 +23,10 @@ import { ConfigStore } from "./configStore";
 import { DesktopHost } from "./desktopHost";
 import { isLocalhostUrl } from "./isLocalhostUrl";
 import { DEEP_LINK_SCHEME, findDeepLink } from "./deepLink";
+import { startLocalCrashReporter } from "./crashReporter";
+import { attachCrashRecovery } from "./crashRecovery";
+import { createMemorySampler } from "./memorySampler";
+import { JS_CALL_STACKS_DOCUMENT_POLICY } from "./unresponsiveSampler";
 import {
   attachContextMenu,
   attachDesktopShortcutKeys,
@@ -221,6 +232,13 @@ const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
+  // Must be after the dev userData override above (crashDumps derives from it)
+  // and before `whenReady` — Crashpad has to be up before the first renderer
+  // spawns, or a launch-time renderer crash leaves no dump. Not in the doomed
+  // second-instance process, which quits immediately. Local minidumps only,
+  // no upload (crashReporter.ts).
+  startLocalCrashReporter();
+
   /**
    * Links that arrive before the host exists. macOS delivers `open-url` before
    * the window is ready and a cold-start link rides in on argv; both would
@@ -267,6 +285,23 @@ if (!gotLock) {
 
   void app.whenReady().then(() => {
     registerDeepLinkProtocol();
+
+    // `collectJavaScriptCallStack()` (the freeze sampler) refuses to hand out
+    // stacks unless the document opted in via Document-Policy, and the webview
+    // is loaded from file:// where no server can set a header. This session
+    // hook is the only place to add it — verified against Electron 43: the
+    // collector then returns a real stack for a frozen renderer.
+    session.defaultSession.webRequest.onHeadersReceived(
+      { urls: ["file://*/*"] },
+      (details, callback) => {
+        callback({
+          responseHeaders: {
+            ...details.responseHeaders,
+            "Document-Policy": [JS_CALL_STACKS_DOCUMENT_POLICY],
+          },
+        });
+      },
+    );
 
     // Dev launches the bare Electron binary, whose default atom icon shows in
     // the Dock — swap in the brand icon (packaged apps get it from the icns).
@@ -394,6 +429,15 @@ function createWindow(): void {
   const win = mainWindow;
   win.on("enter-full-screen", () => host?.notifyFullScreen(win.isFullScreen()));
   win.on("leave-full-screen", () => host?.notifyFullScreen(win.isFullScreen()));
+
+  // Crash/freeze forensics (spec「桌面端渲染进程崩溃与卡死恢复」). Two evidence
+  // streams that only make sense together: a memory curve every minute, and JS
+  // stack samples during a freeze. Neither reloads anything — recovery is the
+  // user's choice in the dialog (see crashRecovery.ts).
+  const memorySampler = createMemorySampler();
+  memorySampler.start();
+  attachCrashRecovery(win, { lastMemory: () => memorySampler.lastLine() });
+
   attachDesktopShortcutKeys(mainWindow.webContents, menuActions);
   // Right-click: 复制图片 on an image (file panel preview, message image), and on
   // text the native macOS 查词 + 复制/全选 (+ 剪切/粘贴 in the input box) menu.
@@ -470,6 +514,8 @@ function createWindow(): void {
   });
 
   mainWindow.on("closed", () => {
+    // The renderer it was measuring is gone; the 60s timer must not outlive it.
+    memorySampler.stop();
     mainWindow = null;
   });
 

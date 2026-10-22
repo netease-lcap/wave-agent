@@ -9,6 +9,17 @@ export const app = {
   on: vi.fn(),
   whenReady: vi.fn(() => Promise.resolve()),
   quit: vi.fn(),
+  // Crash recovery relaunches via app.exit (never app.quit — see
+  // crashRecovery.ts), so tests assert on these two.
+  relaunch: vi.fn(),
+  exit: vi.fn(),
+  /** Renderer memory curve source; tests seed Tab/Browser entries. */
+  getAppMetrics: vi.fn((): Electron.ProcessMetric[] => []),
+};
+
+export const crashReporter = {
+  start: vi.fn(),
+  getLastCrashReport: vi.fn((): Electron.CrashReport | null => null),
 };
 
 export const dialog = {
