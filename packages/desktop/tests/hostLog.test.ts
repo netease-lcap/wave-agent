@@ -36,6 +36,28 @@ describe("hostLog", () => {
     );
   });
 
+  it("should write a multi-line block with one header line", () => {
+    hostLog.block("WARN", [
+      "renderer unresponsive: JS stack samples",
+      "<2> at spin (chat.js:1:2)",
+      "Total Samples: 2",
+    ]);
+
+    const text = fs.appendFileSync.mock.calls[0][1] as string;
+
+    // Header is timestamped/leveled; the payload keeps its own line breaks so a
+    // stack block stays readable (unlike the single-line helpers, which flatten).
+    expect(text).toMatch(
+      /^\[.*\] \[WARN\] renderer unresponsive: JS stack samples\n<2> at spin \(chat\.js:1:2\)\nTotal Samples: 2\n$/,
+    );
+  });
+
+  it("should not write an empty block", () => {
+    hostLog.block("WARN", []);
+
+    expect(fs.appendFileSync).not.toHaveBeenCalled();
+  });
+
   it("should keep the cause chain of an error nested in a payload", () => {
     const cause = Object.assign(new Error("self-signed certificate"), {
       code: "SELF_SIGNED_CERT_IN_CHAIN",
