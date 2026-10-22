@@ -12615,3 +12615,81 @@ describe("创作集（desktop-artifacts）", () => {
     });
   });
 });
+
+describe("getMessageStats（renderer 内存曲线的消息量）", () => {
+  it("reports the volume the bound pane is holding", async () => {
+    const { host } = await readyHost();
+    const agent = lastAgent();
+    // The renderer receives exactly this list through setInitialState, so its
+    // length is what must show up next to the MB number.
+    agent.messages = [
+      { id: "u1", role: "user", blocks: [{ type: "text", content: "hi" }] },
+      {
+        id: "a1",
+        role: "assistant",
+        blocks: [
+          { type: "text", content: "a" },
+          { type: "tool_use", toolName: "Bash", toolInput: {} },
+          { type: "tool_result", content: "full output" },
+        ],
+      },
+    ];
+    agent.latestTotalTokens = 152000;
+    fireSessionId(agent, "sess-1");
+
+    expect(host.getMessageStats()).toEqual([
+      {
+        paneId: "pane-1",
+        sessionId: "sess-1",
+        messages: 2,
+        blocks: 4,
+        tokens: 152000,
+      },
+    ]);
+  });
+
+  it("leaves out agents no pane displays", async () => {
+    const { host, sent } = await readyHost();
+    const first = lastAgent();
+    // A real conversation keeps the agent in the pool after its pane closes.
+    first.messages = [
+      { id: "m1", role: "user", blocks: [{ type: "text", content: "a" }] },
+    ];
+    fireSessionId(first, "sess-a");
+    await host.handleWebviewMessage({ command: "desktopNewSessionInPane" });
+    const second = lastAgent();
+    second.messages = [
+      { id: "m2", role: "user", blocks: [] },
+      { id: "m3", role: "assistant", blocks: [{ type: "text", content: "b" }] },
+    ];
+    second.latestTotalTokens = 40000;
+    fireSessionId(second, "sess-b");
+
+    const layout = () =>
+      sent("desktopPanes").at(-1)!.panes as Array<{ paneId: string }>;
+    const [paneA, paneB] = layout();
+    await host.handleWebviewMessage({
+      command: "desktopClosePane",
+      paneId: paneA.paneId,
+    });
+    expect(first.destroy).not.toHaveBeenCalled();
+
+    // The background agent's messages never reach the renderer, so they must not
+    // inflate the curve's counts.
+    expect(host.getMessageStats()).toEqual([
+      {
+        paneId: paneB.paneId,
+        sessionId: "sess-b",
+        messages: 2,
+        blocks: 1,
+        tokens: 40000,
+      },
+    ]);
+  });
+
+  it("reports nothing before a pane has an agent", async () => {
+    const { host } = createHost();
+
+    expect(host.getMessageStats()).toEqual([]);
+  });
+});

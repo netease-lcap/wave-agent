@@ -86,6 +86,7 @@ import type {
 } from "wave-webview-fixtures";
 import { execFile, type ChildProcess } from "child_process";
 import { promisify } from "util";
+import { countMessageStats, type SessionMessageStat } from "./memorySampler";
 import {
   parseCloneDeepLink,
   repoDirectoryName,
@@ -720,6 +721,36 @@ export class DesktopHost {
    */
   getInitialEffectiveTheme(): "light" | "dark" {
     return this.getCurrentEffectiveTheme();
+  }
+
+  /**
+   * Conversation volume each pane is holding, sampled onto the renderer memory
+   * curve (memorySampler.ts).
+   *
+   * Read from the host's agent cache on purpose: `agentRef.messages` is exactly
+   * the list `pushPaneSessionState` hands the renderer as `setInitialState`
+   * (`current.messages`, no slicing), and the host mirrors every later
+   * append/edit into the same array — so its length is what the webview's
+   * `state.messages` holds, without needing a new webview→host report.
+   *
+   * Unbound (background) agents are left out: their messages never reach the
+   * renderer, and this curve is about the renderer's heap.
+   */
+  getMessageStats(): SessionMessageStat[] {
+    const stats: SessionMessageStat[] = [];
+    for (const pane of this.panes) {
+      const agent = pane.agent;
+      if (!agent) continue;
+      const { messages, blocks } = countMessageStats(agent.messages);
+      stats.push({
+        paneId: pane.paneId,
+        sessionId: agent.sessionId,
+        messages,
+        blocks,
+        tokens: agent.latestTotalTokens,
+      });
+    }
+    return stats;
   }
 
   /** Graceful shutdown for app quit (FR-015): destroy every live agent. */

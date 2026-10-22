@@ -1,12 +1,19 @@
 /**
- * Periodic renderer-memory reading from `app.getAppMetrics()`.
+ * Periodic renderer-memory reading from `app.getAppMetrics()`, correlated with
+ * how much conversation the renderer is holding.
  *
- * Why: the black-screen incident *might* be the V8 heap giving up under
- * "base64 images + the full message history" (the crash stack is a GC
- * write-barrier stall). We cannot prove or exclude that from a single snapshot —
- * what we need is a curve: does the renderer's working set climb for hours
- * before the crash? One line every minute is cheap and gives the next incident
- * a before/after.
+ * Why: the black-screen incident *might* be the V8 heap giving up under the
+ * full message history (the crash stack is a GC write-barrier stall). A single
+ * snapshot cannot prove or exclude that — what we need is a curve: does the
+ * renderer's working set climb for hours before the crash?
+ *
+ * A MB number alone does not name a cause, so every reading carries the
+ * message volume next to it: 6-week-old conversations keep growing the UI
+ * display stream (`displayMessages`) while compaction only folds the API
+ * context (`messages`), and the desktop pushes that whole list to the renderer
+ * through `setInitialState` with no slicing. Memory rising *with* message count
+ * is evidence for that candidate; memory flat while messages grow is evidence
+ * against it.
  *
  * Units: Electron reports `workingSetSize` / `peakWorkingSetSize` in **KB**;
  * the log prints MB because that is the number a human compares to the
@@ -28,6 +35,31 @@ export type RendererMemory = {
   workingSetMb: number;
   peakWorkingSetMb: number;
 };
+
+/**
+ * Conversation volume a pane is holding in the renderer. `tokens` is the CLI's
+ * latest context usage for that session: the API context folds on compaction,
+ * so `tokens` staying bounded while `messages`/`blocks` climb is exactly the
+ * "display stream unbounded" signature.
+ */
+export type SessionMessageStat = {
+  paneId: string;
+  sessionId?: string;
+  messages: number;
+  blocks: number;
+  tokens?: number;
+};
+
+export type MessageStats = { messages: number; blocks: number };
+
+/**
+ * The minimum a message must expose to be counted. Deliberately structural:
+ * the desktop package may only import `wave-agent-sdk/host`, and a counter needs
+ * nothing beyond "how many, and how many blocks each" — so a real
+ * `wave-agent-sdk` `Message` fits without dragging the SDK's bulk into this
+ * file's imports.
+ */
+export type CountableMessage = { blocks?: readonly unknown[] };
 
 export type MemorySampler = {
   start: () => void;
@@ -57,8 +89,61 @@ export function rendererMemoryFromMetrics(
     }));
 }
 
+/**
+ * One assistant turn can carry dozens of blocks (text + every tool call/output
+ * in full), so the block total is the sharper growth signal of the two. Blocks
+ * are read defensively: the list is a JSON-RPC mirror, and a missing array must
+ * not take the whole sample down.
+ */
+export function countMessageStats(
+  messages: readonly CountableMessage[],
+): MessageStats {
+  let blocks = 0;
+  for (const message of messages) {
+    blocks += Array.isArray(message.blocks) ? message.blocks.length : 0;
+  }
+  return { messages: messages.length, blocks };
+}
+
 export function formatMemoryLine(sample: RendererMemory): string {
   return `renderer memory pid=${sample.pid} workingSet=${sample.workingSetMb}MB peak=${sample.peakWorkingSetMb}MB`;
+}
+
+export function formatSessionLine(stat: SessionMessageStat): string {
+  return [
+    "session messages",
+    `pane=${stat.paneId}`,
+    ...(stat.sessionId ? [`session=${stat.sessionId}`] : []),
+    `messages=${stat.messages}`,
+    `blocks=${stat.blocks}`,
+    ...(stat.tokens === undefined ? [] : [`tokens=${stat.tokens}`]),
+  ].join(" ");
+}
+
+/**
+ * One log entry per sample: memory lines carry the pane totals (= what a single
+ * "is the heap driven by conversation length?" read needs), then one line per
+ * pane attributes the volume when several panes are open.
+ */
+export function formatMemoryBlock(
+  samples: readonly RendererMemory[],
+  stats: readonly SessionMessageStat[] = [],
+): string[] {
+  const totals = stats.reduce(
+    (sum, stat) => ({
+      messages: sum.messages + stat.messages,
+      blocks: sum.blocks + stat.blocks,
+    }),
+    { messages: 0, blocks: 0 },
+  );
+  return [
+    ...samples.map((sample) =>
+      stats.length === 0
+        ? formatMemoryLine(sample)
+        : `${formatMemoryLine(sample)} messages=${totals.messages} blocks=${totals.blocks}`,
+    ),
+    ...stats.map(formatSessionLine),
+  ];
 }
 
 export function createMemorySampler(
@@ -66,12 +151,19 @@ export function createMemorySampler(
     intervalMs?: number;
     log?: MemoryLog;
     getMetrics?: () => readonly Electron.ProcessMetric[];
+    /**
+     * Message volume per pane, owned by the desktop host (it holds the agent
+     * cache the renderer was seeded from). Kept as an injected getter so this
+     * module stays free of host/agent wiring and is testable with plain data.
+     */
+    getMessageStats?: () => readonly SessionMessageStat[];
   } = {},
 ): MemorySampler {
   const {
     intervalMs = MEMORY_SAMPLE_INTERVAL_MS,
     log = hostLog,
     getMetrics = () => app.getAppMetrics(),
+    getMessageStats = () => [],
   } = options;
 
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -88,8 +180,16 @@ export function createMemorySampler(
     // Before the window's renderer exists there is no Tab entry — say nothing
     // rather than logging an empty reading every minute.
     if (samples.length === 0) return;
-    log.block("INFO", samples.map(formatMemoryLine));
-    last = samples.map(formatMemoryLine).join("; ");
+    let stats: readonly SessionMessageStat[] = [];
+    try {
+      stats = getMessageStats();
+    } catch (error) {
+      // A memory reading without counts still beats no reading at all.
+      log.warn("[desktop] message volume sample failed:", error);
+    }
+    const lines = formatMemoryBlock(samples, stats);
+    log.block("INFO", lines);
+    last = lines.join("; ");
   };
 
   return {
