@@ -30,8 +30,8 @@ export interface UseLineScrollOptions {
  * indicator flags so callers can render "N more" lines, and `canScroll` (the
  * content overflows the viewport).
  *
- * The handlers are active only while the content overflows: a viewport with
- * nothing to scroll must not swallow keys the surrounding UI still needs.
+ * The handlers act only while the content overflows: a viewport with nothing to
+ * scroll must not react to keys the surrounding UI still owns.
  *
  * Scroll position starts at the top on mount; callers that display a new
  * content set either remount this hook (e.g. an overlay component keyed by
@@ -58,35 +58,41 @@ export function useLineScroll({
     setScrollOffset(0);
   }, [resetKey]);
 
-  useInput(
-    (input, key) => {
-      if (key.pageUp) {
-        setScrollOffset((offset) => Math.max(0, offset - visibleCount));
+  useInput((input, key) => {
+    // Nothing to scroll: leave every key to the surrounding UI instead of
+    // acting on it. The check lives inside the handler rather than in
+    // `useInput`'s `isActive`: the row count is measured one commit after the
+    // mount frame, and a handler subscribed only once the overflow is known
+    // would drop the keypresses that arrive in between (which is exactly when a
+    // user, seeing the content clipped, starts pressing PgDn/↓).
+    if (!canScroll) {
+      return;
+    }
+    if (key.pageUp) {
+      setScrollOffset((offset) => Math.max(0, offset - visibleCount));
+    }
+    if (key.pageDown) {
+      setScrollOffset((offset) => Math.min(maxScroll, offset + visibleCount));
+    }
+    // Ctrl+u/Ctrl+d scroll half a page — fallback for keyboards without
+    // PgUp/PgDn (aligned with Claude Code's modal pager keys).
+    if (key.ctrl && input === "u") {
+      setScrollOffset((offset) => Math.max(0, offset - halfPage));
+    }
+    if (key.ctrl && input === "d") {
+      setScrollOffset((offset) => Math.min(maxScroll, offset + halfPage));
+    }
+    if (lineStep) {
+      // ↑/↓ scroll the viewport line by line; Ctrl+P/Ctrl+N are the same
+      // keys for terminals that swallow the arrows.
+      if (key.upArrow || (key.ctrl && input === "p")) {
+        setScrollOffset((offset) => Math.max(0, offset - lineStep));
       }
-      if (key.pageDown) {
-        setScrollOffset((offset) => Math.min(maxScroll, offset + visibleCount));
+      if (key.downArrow || (key.ctrl && input === "n")) {
+        setScrollOffset((offset) => Math.min(maxScroll, offset + lineStep));
       }
-      // Ctrl+u/Ctrl+d scroll half a page — fallback for keyboards without
-      // PgUp/PgDn (aligned with Claude Code's modal pager keys).
-      if (key.ctrl && input === "u") {
-        setScrollOffset((offset) => Math.max(0, offset - halfPage));
-      }
-      if (key.ctrl && input === "d") {
-        setScrollOffset((offset) => Math.min(maxScroll, offset + halfPage));
-      }
-      if (lineStep) {
-        // ↑/↓ scroll the viewport line by line; Ctrl+P/Ctrl+N are the same
-        // keys for terminals that swallow the arrows.
-        if (key.upArrow || (key.ctrl && input === "p")) {
-          setScrollOffset((offset) => Math.max(0, offset - lineStep));
-        }
-        if (key.downArrow || (key.ctrl && input === "n")) {
-          setScrollOffset((offset) => Math.min(maxScroll, offset + lineStep));
-        }
-      }
-    },
-    { isActive: canScroll },
-  );
+    }
+  });
 
   const clampedOffset = Math.min(scrollOffset, maxScroll);
   return {
