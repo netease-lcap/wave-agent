@@ -226,6 +226,17 @@
   height: 30px;
 }
 
+/* 1022 评论：「搜索框左侧到左边距离是20px、筛选图标到右边边框距离应该是12px，看起来会齐一些」。
+   侧栏根 `.desktop-sidebar` 已有左右 12px 内衬 ⇒ 行内只需左补 8px、右补 0：
+   - 搜索框（带边框的盒）左缘 = 12 + 8 = 20px —— 与「新对话」的 ＋ 图标列（x=20）对齐；
+   - 筛选按钮右缘 = 12 + 0 = 247px ⇒ 距侧栏右边框线（x=259）12px，与分组头 / 会话行 /
+     账户卡收起按钮的右缘（都是 247）齐。
+   改前是左右各 24px（搜索框左缘 x24、筛选按钮右缘 x235，距边框线 24px），
+   整行比其它行窄、右侧空出一截。 */
+[data-host="desktop"] .desktop-sidebar-search {
+  margin: 8px 0 4px 8px;
+}
+
 [data-host="desktop"] .desktop-sidebar-search-input,
 [data-host="desktop"] .desktop-session-filter-opt,
 [data-host="desktop"] .desktop-session-no-match {
