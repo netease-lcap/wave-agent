@@ -11,25 +11,13 @@
  * Described in docs/specs/ui/remote-control.md (§5 白名单与增量拉取).
  */
 
-import type { Message } from "wave-agent-sdk";
+import type {
+  Message,
+  MessageWindow,
+  MessageWindowResult,
+} from "wave-agent-sdk";
 
-export interface MessageWindow {
-  /** Exclusive upper anchor: return the page ending just before this id. */
-  before?: string;
-  /** Exclusive lower anchor: return what arrived after this id. */
-  since?: string;
-  limit?: number;
-}
-
-export interface MessageWindowResult {
-  messages: Message[];
-  /** Older messages exist before the returned page. */
-  hasMore?: boolean;
-  /** The `since` anchor is gone — rebuild from the tail. */
-  reset?: boolean;
-  /** Total display messages held for the session. */
-  total?: number;
-}
+export type { MessageWindow, MessageWindowResult };
 
 /** A malformed window. Hosts translate this into their own RPC error type. */
 export class InvalidMessageWindowError extends Error {}

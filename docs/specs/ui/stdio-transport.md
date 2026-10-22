@@ -205,15 +205,15 @@ order: 220
 
 作为 webview UI 层，我希望完整消息列表只在主动请求时获取（webviewReady、clearChat、restoreSession），而不是订阅持续的 `messagesChange` 全量推送，以便流式更新保持纯增量，长会话不因每次 chunk 全量序列化而下发。
 
-**为什么是这个优先级**：移除 `onMessagesChange` 后，stdio 通道上的消息数据流必须是"增量通知 + 按需拉取"：流式期间只流动消息/块粒度的增量通知（bash 模式命令以 user 消息 + bash tool block 承载，经 `userMessageAdded`/`toolBlockUpdated` 增量定位），全量列表仅作为对 webview 主动请求（`getMessages`）或初始化（`webviewReady` → `setInitialState`）的响应下发。这是消息流式化架构在传输层的核心诉求。
+**为什么是这个优先级**：移除 `onMessagesChange` 后，stdio 通道上的消息数据流必须是"增量通知 + 按需拉取"：流式期间只流动消息/块粒度的增量通知（bash 模式命令以 user 消息 + bash tool block 承载，经 `userMessageAdded`/`toolBlockUpdated` 增量定位），全量列表仅作为对 webview 主动请求（`getMessages`）或初始化（`webviewReady` → `setInitialState`）的响应下发（且初始化与重建都只下发尾页一页，更早的由分页取回）。这是消息流式化架构在传输层的核心诉求。
 
 **独立测试**：打开插件聊天面板发送一条触发流式的消息，在 CLI 侧记录 stdout：流式期间仅出现 `assistantMessageAdded`/`assistantContentUpdated` 等增量通知，无 `messagesChange` 或等价的全量推送；面板初始化后出现一次 `getMessages` 请求，执行 rewind 后**不出现** `getMessages`——宿主只回一条不带消息载荷的 `rewindResult`，两端各自按锚点截断本地列表；执行 compact 后**不出现** `getMessages`，只出现一条带 `message` 的 `compactBlockAdded`，端上表现为把该条消息 `appendMessage` 进消息列表；bash 模式命令（`!ls`）期间仅出现携带 `messageId` 的 `userMessageAdded`/`toolBlockUpdated` 增量通知。
 
 **验收场景**：
 
-1. **假设**插件 webview 首次加载，**当**发送 `webviewReady` 时，**则**宿主调用 `getMessages` 拉取完整消息列表，并在 `setInitialState` 响应中下发
+1. **假设**插件 webview 首次加载，**当**发送 `webviewReady` 时，**则**宿主调用 `getMessages` 拉取消息列表、但**只把最近一页**（首屏默认 20 条，见 [message-rendering-system.md](message-rendering-system.md)「首屏只进一页——消息分页」）放进 `setInitialState` 下发，并同时带上「还有没有更早的消息」与「本宿主支持分页」两个事实；更早的消息由页面在用户上翻时经 `loadOlderMessages`（`before` + 页大小）取回，宿主侧的完整缓存不受影响
 2. **假设**助手正在流式响应，**当**CLI 产生新 chunk 时，**则**webview 仅收到增量通知（`userMessageAdded`/`assistantMessageAdded`/`assistantContentUpdated`/`toolBlockUpdated` 等）并就地更新对应消息块，全程无全量列表下发
-3. **假设**用户执行 clearChat / restoreSession，**当**操作完成时，**则**webview（或宿主代表 webview）主动发起 `getMessages` 请求，以返回的全量列表重建消息区
+3. **假设**用户执行 clearChat / restoreSession，**当**操作完成时，**则**webview（或宿主代表 webview）主动发起 `getMessages` 请求，以返回的列表重建消息区——下发的仍是**尾页一页**，不是整份列表（否则分页只在冷启动成立，这两条路径会把渲染进程重新撑满）
 4. **假设** bash 模式命令（`!ls`）执行，**当**宿主转发增量通知时，**则**webview 经 `userMessageAdded` 创建 user 消息、`toolBlockUpdated` 就地更新 bash tool block（含实时输出），无需拉取全量列表
 5. **假设** CLI 侧移除 `messagesChange` 通知，**当**StdioAgent 收到流式增量通知时，**则**不再通过任何全量消息推送更新缓存；`this.messages` 仅在 `getMessages` 响应或显式初始化时更新
 6. **假设** 流式正文中途断连、宿主降级为非流式重发（见 core/ai-error-handling.md），**当** 需要丢弃已渲染的半截助手消息时，**则** CLI 推送定向删除通知 `assistantMessageDiscarded`（负载 `{messageId}`），消费端按 id 就地移除该条消息与缓存中的同 id 条目，全程无全量列表下发

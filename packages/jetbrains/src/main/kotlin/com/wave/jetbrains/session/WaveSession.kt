@@ -448,10 +448,32 @@ class WaveSession(
         }
     }
 
-    /** Pull the full message list and push it to the webview as the "response" (updateMessages). */
+    /**
+     * Pull the full message list and push it to the webview as the "response"
+     * (updateMessages). The push is a **window**: the cache stays whole, the
+     * webview gets the last [MESSAGE_FIRST_PAGE_SIZE] rows plus whether more
+     * exist before them (spec desktop-chat「首屏只进一页」).
+     */
     suspend fun pullAndPushMessages() {
         refreshMessages()
-        postMessage("updateMessages", buildJsonObject { put("messages", messages ?: JsonArray(emptyList())) })
+        val (page, hasMore) = MessagePaging.tailPage(messages)
+        postMessage("updateMessages", buildJsonObject {
+            put("messages", page)
+            put("hasMore", hasMore)
+        })
+    }
+
+    /**
+     * 上滑「翻更早」：取 [before]（列表最上面那条的 id，**排他**上锚点）之前的一页。
+     *
+     * **不写 [messages] 缓存**——那次是按窗口的只读查询，把它写进缓存等于把宿主
+     * 手里那段历史整段丢掉。没有 agent 时返回 null，由调用方回一条错误：回空页
+     * 会被页面读成「已经到底」，从此不再翻。
+     */
+    suspend fun getOlderMessages(before: String): Pair<JsonArray, Boolean>? {
+        val agent = agent ?: return null
+        val res = agent.getMessages(before = before, limit = MessagePaging.HISTORY_PAGE_SIZE)
+        return MessagePaging.pageOf(res)
     }
 
     /**

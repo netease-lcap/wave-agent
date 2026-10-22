@@ -252,18 +252,25 @@ export interface HostToWebviewMessageBase {
 export interface UpdateMessagesMessage extends HostToWebviewMessageBase {
   command: "updateMessages";
   messages: Message[];
+  /**
+   * 这份列表之前还有没有更早的消息。三端首屏只推一页（spec ui/message-rendering-system.md「首屏
+   * 只进一页」），所以「整表替换」过来的也是一个窗口；缺席 = 老宿主推的是整条
+   * 会话，开头就在这份列表里。
+   */
+  hasMore?: boolean;
 }
 
 /**
  * Reply to `loadOlderMessages` (spec remote-control.md「Web 页作为第五种宿主」场景
- * 11): the page pulled itself to the top of a window it only ever had the tail of,
- * so the host answers with the page **before** that anchor — exclusive of it,
- * chronological — for the webview to prepend.
+ * 11、spec ui/message-rendering-system.md「首屏只进一页」场景 3): the page pulled itself to the top
+ * of a window it only ever had the tail of, so the host answers with the page
+ * **before** that anchor — exclusive of it, chronological — for the webview to
+ * prepend.
  *
- * The phone page is the only sender (`window.waveRemotePage`): the three local
- * hosts hand the webview the whole transcript, so there is nothing older to ask
- * for. `hasMore: false` is "this was the beginning": the page says so and stops
- * asking, rather than turning a pull-up into nothing at all.
+ * 四个面都会问：三个本地宿主自 2026-10 起也只推一页（`supportsMessagePaging`），
+ * 手机页的 shim 是这条链的原始实现。`requestId` 必须原样回传 —— 页面用它丢弃
+ * 晚到的旧页。`hasMore: false` 是「这就是开头」：页面据此提示并停止再请求，而不
+ * 是把一次上拉变成什么都没发生。
  */
 export interface OlderMessagesMessage extends HostToWebviewMessageBase {
   command: "olderMessages";
@@ -611,6 +618,12 @@ export interface SetInitialStateMessage extends HostToWebviewMessageBase {
    *  切会话 / 新建会话 / 恢复完成**不得**使用 —— 那些场景 webview 的列表本来
    *  就不对，必须靠 `messages` 覆盖。 */
   keepMessages?: boolean;
+  /** 这份快照里的 `messages` 之前还有没有更早的。三端首屏只推一页，所以初值是
+   *  宿主算的（`total > messages.length`），不是页面猜的。缺席 = 老宿主。 */
+  historyExhausted?: boolean;
+  /** 宿主答不答得了 `loadOlderMessages`。能力位而不是常量：页面是远端加载的，
+   *  老宿主不该收到一条它不认识的命令。缺席 = 不能。 */
+  supportsMessagePaging?: boolean;
   tasks: Task[];
   backgroundTasks: BackgroundTaskSummary[];
   workflowRuns: SerializableWorkflowRun[];

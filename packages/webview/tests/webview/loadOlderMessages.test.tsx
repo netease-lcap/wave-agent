@@ -9,11 +9,15 @@ import {
 } from "./test-utils";
 
 /**
- * Pulling the list further up is the phone page's own gesture: the local hosts
- * (IDE, desktop) already hold every message, so nothing there may ever ask for
- * an earlier page. The pull is only reachable from real input — handleScroll
- * runs it past the gesture gate — so these tests drive a gesture rather than
- * calling anything.
+ * Pulling the list further up is how a reader reaches history the host did not
+ * ship on the first screen. Since 2026-10 every host pushes one page only
+ * (spec ui/message-rendering-system.md「首屏只进一页」), so the pull is a normal gesture on all
+ * four surfaces — but it is gated on the host SAYING it can answer
+ * (`supportsMessagePaging`), because the page is loaded remotely and an older
+ * host must not receive a command it does not know.
+ *
+ * The pull is only reachable from real input — handleScroll runs it past the
+ * gesture gate — so these tests drive a gesture rather than calling anything.
  */
 
 const assistant = (id: string, content: string) => ({
@@ -57,10 +61,22 @@ const loadOlderRequests = (postMessage: PostMessage) =>
     )
     .filter((message) => message.command === "loadOlderMessages");
 
-async function openList() {
+async function openList(opts?: { declarePaging?: boolean }) {
   const { vscode } = renderChatApp();
   act(() => {
-    sendCommand("updateMessages", { messages: twelveMessages });
+    if (opts?.declarePaging) {
+      // The three local hosts' first screen: a window plus the capability bit
+      // (spec ui/message-rendering-system.md「首屏只进一页」).
+      sendCommand("setInitialState", {
+        messages: twelveMessages,
+        historyExhausted: false,
+        supportsMessagePaging: true,
+        sessions: [],
+        isStreaming: false,
+      });
+    } else {
+      sendCommand("updateMessages", { messages: twelveMessages });
+    }
   });
   await waitFor(() => {
     expect(screen.getByText("第 0 条")).toBeInTheDocument();
@@ -204,13 +220,61 @@ describe("pulling up for older messages", () => {
     }
   });
 
-  it("never asks on a local host — there is no host to ask", async () => {
+  it("never asks a host that does not declare the capability", async () => {
     const postMessage = await openList();
     await pullUpToTheTop();
 
-    // The pull-up ran; the command is gated on the page being the phone page
-    // (window.waveRemotePage), not on waveHostType, which the IDE hosts also
-    // leave unset.
+    // 老宿主：不认识 `loadOlderMessages`，也不推 `supportsMessagePaging`。门禁必须
+    // 是宿主说的能力位，不是「页面猜宿主的种类」—— 猜错就是把一条它不认识的命令
+    // 发过去，静默失败。
     expect(loadOlderRequests(postMessage)).toHaveLength(0);
+  });
+
+  it("asks a local host that declares the paging capability", async () => {
+    const postMessage = await openList({ declarePaging: true });
+    await pullUpToTheTop();
+
+    // 三端首屏只推一页，所以「翻更早」在桌面端 / IDE 上也是常规手势。
+    expect(loadOlderRequests(postMessage)[0]).toMatchObject({ before: "m0" });
+  });
+
+  it("pulls the next page by itself when the first page does not fill the pane", async () => {
+    // A window narrower than the viewport offers no scroll gesture at all: scrollTop
+    // stays 0, no 'scroll' event ever fires, and the reader can never reach the
+    // history above. The list has to keep paging until it overflows (or the host
+    // says there is nothing more) — the same fix opencode makes with `fill()`.
+    const postMessage = await openList({ declarePaging: true });
+    // jsdom does no layout, and the fill deliberately skips a container that has
+    // not been laid out (`scrollHeight === 0`), so the geometry has to be brought
+    // in explicitly: 300px of content inside a 400px pane.
+    fakeGeometry(0, 300, 400);
+
+    // Any window that re-enters with the pane still not full re-runs the check
+    // (a fresh array is a fresh window — the reducer replaces the list by
+    // reference, and the re-check rides on that change).
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [...twelveMessages],
+        hasMore: true,
+      });
+    });
+
+    await waitFor(() => {
+      expect(loadOlderRequests(postMessage)).toHaveLength(1);
+    });
+
+    // ... and it stops as soon as the host reports the beginning of history.
+    const { requestId } = loadOlderRequests(postMessage)[0] ?? {};
+    replyWith(requestId as number, [], false);
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [...twelveMessages],
+        hasMore: false,
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("history-start-hint")).toBeInTheDocument();
+    });
+    expect(loadOlderRequests(postMessage)).toHaveLength(1);
   });
 });

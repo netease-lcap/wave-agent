@@ -2384,3 +2384,121 @@ describe("remoteControl（/remote-control 弹窗）", () => {
     ).toMatchObject({ name: "remote-control" });
   });
 });
+
+// ---------------------------------------------------------------------------
+// 消息分页（spec ui/message-rendering-system.md「首屏只进一页」）
+//
+// 首屏只推一页，历史按窗口拉。宿主的 `session.messages` 缓存仍是全量（翻更早、
+// 回滚、会话切换都读它），推给 webview 的永远只有一页。
+// ---------------------------------------------------------------------------
+
+describe("MessageHandler message paging", () => {
+  const thread = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `m${String(i)}`,
+      role: "user" as const,
+      blocks: [{ type: "text", content: `第 ${String(i)} 条` }],
+    }));
+
+  function pagedSession(messages: unknown[] = []) {
+    const session = createReadySession();
+    (session as unknown as { messages: unknown[] }).messages = messages;
+    (
+      session as unknown as { getOlderMessages: ReturnType<typeof vi.fn> }
+    ).getOlderMessages = vi
+      .fn()
+      .mockResolvedValue({ messages: thread(2), hasMore: true });
+    return session;
+  }
+
+  test("loadOlderMessages answers with the page before the anchor and echoes requestId", async () => {
+    const session = pagedSession();
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage(
+      { command: "loadOlderMessages", before: "m20", requestId: 9 },
+      "tab",
+    );
+
+    const sessionMock = session as unknown as {
+      getOlderMessages: ReturnType<typeof vi.fn>;
+    };
+    expect(sessionMock.getOlderMessages).toHaveBeenCalledWith("m20");
+    const reply = sentPosts(context)("olderMessages")[0];
+    // requestId 原样回传：页面用它丢弃晚到的旧页。
+    expect(reply?.requestId).toBe(9);
+    expect(reply?.hasMore).toBe(true);
+    expect(reply?.messages).toHaveLength(2);
+  });
+
+  test("loadOlderMessages reports an error (never an empty page) when the session has no agent", async () => {
+    const session = pagedSession();
+    (
+      session as unknown as { getOlderMessages: ReturnType<typeof vi.fn> }
+    ).getOlderMessages = vi.fn().mockResolvedValue(undefined);
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage(
+      { command: "loadOlderMessages", before: "m20", requestId: 4 },
+      "tab",
+    );
+
+    // 空页会被页面读成「已经到底」，从此不再翻。
+    expect(sentPosts(context)("olderMessages")).toHaveLength(0);
+    expect(sentPosts(context)("olderMessagesError")[0]).toMatchObject({
+      requestId: 4,
+    });
+  });
+
+  test("loadOlderMessages drops a page that belongs to a session switched away from", async () => {
+    const session = pagedSession();
+    const sessionMock = session as unknown as {
+      getOlderMessages: ReturnType<typeof vi.fn>;
+      sessionId?: string;
+    };
+    sessionMock.sessionId = "s1";
+    // The switch happens while the RPC is in flight: the same ChatSession object
+    // is re-pointed at another conversation (restore / clear / new).
+    sessionMock.getOlderMessages = vi.fn().mockImplementation(async () => {
+      sessionMock.sessionId = "s2";
+      return { messages: thread(2), hasMore: true };
+    });
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage(
+      { command: "loadOlderMessages", before: "m20", requestId: 5 },
+      "tab",
+    );
+
+    expect(sentPosts(context)("olderMessages")).toHaveLength(0);
+    expect(sentPosts(context)("olderMessagesError")[0]).toMatchObject({
+      requestId: 5,
+    });
+  });
+
+  test("webviewReady pushes one page and says whether more history exists", async () => {
+    const session = pagedSession(thread(45));
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage({ command: "webviewReady" }, "tab");
+
+    const state = sentPosts(context)("setInitialState")[0];
+    const pushed = (state?.messages ?? []) as Array<{ id: string }>;
+    expect(pushed).toHaveLength(20);
+    // 推的是尾巴：读者打开会话先看到最近的对话。
+    expect(pushed[0]?.id).toBe("m25");
+    expect(state?.historyExhausted).toBe(false);
+    expect(state?.supportsMessagePaging).toBe(true);
+  });
+
+  test("webviewReady marks the history exhausted when the whole thread fits one page", async () => {
+    const session = pagedSession(thread(20));
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage({ command: "webviewReady" }, "tab");
+
+    const state = sentPosts(context)("setInitialState")[0];
+    expect(state?.messages).toHaveLength(20);
+    expect(state?.historyExhausted).toBe(true);
+  });
+});

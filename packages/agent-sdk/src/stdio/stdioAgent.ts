@@ -39,6 +39,8 @@ import type {
   ConfiguredModel,
   ServerNotificationMethod,
   CompletionSnippet,
+  MessageWindow,
+  MessageWindowResult,
 } from "../types/index.js";
 import type { RpcClient } from "./rpcClient.js";
 import type { NotificationRouter } from "./notificationRouter.js";
@@ -401,12 +403,31 @@ export class StdioAgent {
     )) as { messages: Message[]; sessionIds: string[] };
   }
 
-  async getMessages(): Promise<Message[]> {
+  /**
+   * 全量刷新：把这条会话的整份展示流拉进缓存（`this.messages`），并返回它。
+   *
+   * 缓存必须是**全量**——三端的首屏窗口（`tailMessagePage`）、翻更早、回滚都从
+   * 它取数。所以带窗口的那次重载（下面这个 overload）不写缓存：一次「翻更早」
+   * 把缓存改成某一页，等于把宿主手里那份历史整段丢掉。
+   */
+  async getMessages(): Promise<Message[]>;
+  /**
+   * 按窗口拉一页（翻更早 / 重连补差）。**不碰 `this.messages` 缓存**，也不回写
+   * `contextUsagePercent`——它是一次只读查询，不是一次刷新。
+   *
+   * 老版本 CLI（不认识窗口参数）会把整份列表原样答回来且不带 `hasMore`，调用方
+   * 按「没有更早的了」处理（见 `MessageWindowResult.hasMore` 注释）。
+   */
+  async getMessages(window: MessageWindow): Promise<MessageWindowResult>;
+  async getMessages(
+    window?: MessageWindow,
+  ): Promise<Message[] | MessageWindowResult> {
     const result = (await this.client.request(
       "getMessages",
-      undefined,
+      window,
       this.sessionId,
-    )) as { messages: Message[]; contextUsagePercent?: number };
+    )) as MessageWindowResult & { contextUsagePercent?: number };
+    if (window) return result;
     this.messages = result.messages;
     this.contextUsagePercent = result.contextUsagePercent;
     return result.messages;
