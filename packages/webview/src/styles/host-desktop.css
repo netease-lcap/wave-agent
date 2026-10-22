@@ -1504,10 +1504,17 @@
    共用的（新对话行下边距 4 + 插件市场行上边距 12），实得行距 16px；会话树同款
    行距是 2px（DesktopApp.css `.desktop-session-items` gap:2px）→ 插件市场入口用
    -2px 抵消自己的 12px 上边距，落到 2px。只改这两个入口之间的关系：新对话行到
-   品牌行的 12px、插件市场行到会话树的 4px 均不变（行高 30 / r8 也不动）。 */
+   品牌行的 12px、插件市场行到会话树的 4px 均不变（行高 30 / r8 也不动）。
+
+   设计师 2026-10-22 评论（「创作集」入口）：「创作集选项位置距离插件市场过远，
+   参考新对话到插件市场的间距」—— 0921 那条只认「新对话的 tooltip 包裹层 +
+   紧邻按钮」，创作集是**插件市场之后的兄弟**，没吃到 -2px，实得 16px（4 + 12）。
+   这里把「紧邻的下一个固定入口」一并纳入：插件市场 → 创作集也落到 2px，与
+   新对话 → 插件市场同值；创作集 → 会话树仍是 4px，行高 30 / r8 不动。 */
 [data-host="desktop"]
   .desktop-sidebar-new-chat-tooltip
-  + .desktop-sidebar-new-chat {
+  + .desktop-sidebar-new-chat,
+[data-host="desktop"] .desktop-sidebar-new-chat + .desktop-sidebar-new-chat {
   margin-top: -2px;
 }
 
