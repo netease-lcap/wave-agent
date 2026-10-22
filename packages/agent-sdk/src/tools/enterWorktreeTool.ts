@@ -112,6 +112,10 @@ export const enterWorktreeTool: ToolPlugin = {
           hookConfiguration,
           {
             projectDir: context.workdir,
+            // The session root the hook anchors its own paths to. context.workdir
+            // follows the model's `cd`, so it is not a safe anchor here.
+            sessionRoot:
+              context.aiManager?.getOriginalWorkdir() ?? context.workdir,
             sessionId: context.sessionId ?? "",
             transcriptPath: context.messageManager?.getTranscriptPath?.() ?? "",
             env: Object.fromEntries(

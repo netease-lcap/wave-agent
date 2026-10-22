@@ -7,6 +7,7 @@
  */
 
 import { spawn, type ChildProcess } from "child_process";
+import { existsSync } from "node:fs";
 import {
   type HookExecutionContext,
   type HookExecutionResult,
@@ -135,6 +136,21 @@ async function buildHookJsonInput(
 }
 
 /**
+ * First directory that actually exists, so a hook never spawns into a path
+ * that is gone (spawn() reports that as an async ENOENT error event rather
+ * than throwing, which surfaces as "the hook failed" with no useful output).
+ */
+function firstExistingDir(...candidates: (string | undefined)[]): string {
+  for (const candidate of candidates) {
+    if (candidate && existsSync(candidate)) {
+      return candidate;
+    }
+  }
+  // Callers always pass process.cwd() last, so this is unreachable in practice.
+  return process.cwd();
+}
+
+/**
  * Execute a single hook command
  */
 export async function executeCommand(
@@ -214,15 +230,28 @@ export async function executeCommand(
       finalCommand = command;
     }
 
+    // Hook scripts run in projectDir (the session's current workdir), matching
+    // Claude Code. Two guards: a cwd that no longer exists (a removed worktree
+    // the session has not recovered from yet) falls back to the stable session
+    // root, and ultimately to the process cwd.
+    const spawnCwd = firstExistingDir(
+      context.projectDir,
+      context.sessionRoot,
+      process.cwd(),
+    );
+
     const childProcess: ChildProcess = spawn(shell, [shellFlag, finalCommand], {
       stdio: ["pipe", "pipe", "pipe"],
-      cwd: context.projectDir,
+      cwd: spawnCwd,
       env: {
         ...process.env, // Environment variables from process.env
         ...("env" in context ? context.env || {} : {}), // Additional environment variables from configuration (if ExtendedHookExecutionContext)
         HOOK_EVENT: context.event,
         HOOK_TOOL_NAME: context.toolName || "",
-        WAVE_PROJECT_DIR: context.projectDir,
+        // The stable session root, not the (drifting) spawn cwd: hook commands
+        // must be able to reference their own paths regardless of where the
+        // model last ran `cd`.
+        WAVE_PROJECT_DIR: context.sessionRoot ?? context.projectDir,
       },
     });
 

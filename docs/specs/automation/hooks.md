@@ -311,6 +311,23 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 
 ---
 
+### 用户故事：hook 的 cwd 与 `$WAVE_PROJECT_DIR` 锚点（优先级：P2）
+
+作为 hook 作者，我希望 hook 进程的工作目录与 `$WAVE_PROJECT_DIR` 的语义是钉死的，以便我写 `"$WAVE_PROJECT_DIR"/.wave/hooks/x.sh` 这种命令时，无论模型在会话里 `cd` 到哪都能跑通。
+
+**为什么是这个优先级**：`$WAVE_PROJECT_DIR` 是 hook 唯一能拿到的路径锚点。它一旦跟着 bash `cd` 漂移，所有按它写的 hook 命令都会在模型 `cd` 之后集体失效，而且失败形态是「hook 报错但看不出原因」——相对路径解析到错误目录、或 spawn 到一个已被删除的目录。对齐 Claude Code：它的 `CLAUDE_PROJECT_DIR` 取「启动时的 project root」，明确不随 worktree 与 `cd` 变化。
+
+**独立测试**：会话里先 `cd packages/code` 再触发一个打印 `pwd` 与 `$WAVE_PROJECT_DIR` 的 hook，断言 `$WAVE_PROJECT_DIR` 仍是会话根、spawn cwd 是当前 workdir；再把会话 workdir 指向一个已删除的目录，断言 hook 仍能启动而不是报 ENOENT。
+
+**验收场景**：
+
+1. **假设** 模型在 shell 里 `cd` 到仓库子目录（会话 workdir 随之更新），**当** 工具事件 hook 执行时，**则** hook 进程的 cwd 是该子目录，而 `$WAVE_PROJECT_DIR` 仍是会话创建时的工作目录。
+2. **假设** 会话已经 EnterWorktree 进入 worktree，**当** 任何 hook 执行时，**则** `$WAVE_PROJECT_DIR` 仍是会话创建时的工作目录，不切换到 worktree 路径（对齐 `CLAUDE_PROJECT_DIR`）。
+3. **假设** 会话 workdir 已被删除（例如手动删掉了 worktree 目录），**当** hook 执行时，**则** 进程在 `$WAVE_PROJECT_DIR` 下启动而不是 spawn 失败。
+4. **假设** 调用方没有提供会话根（如 CLI 启动期创建 worktree），**当** hook 执行时，**则** `$WAVE_PROJECT_DIR` 回落到 hook 的 spawn 目录，行为与改动前一致。
+
+---
+
 ### 用户故事：编程式 Hook 配置（优先级：P2）
 
 作为 SDK 用户，我希望通过 `Agent.create({ hooks })` 以编程方式注入 hook 配置，以便配置运行时决定的 hook，而无需访问私有成员或仅依赖静态配置文件。

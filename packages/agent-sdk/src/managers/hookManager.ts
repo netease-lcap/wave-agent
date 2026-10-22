@@ -526,6 +526,10 @@ export class HookManager {
     return {
       event,
       projectDir: workdir,
+      // Tool hooks run in the current workdir (which drifts when the model
+      // `cd`s), but $WAVE_PROJECT_DIR must stay anchored to the session root,
+      // otherwise every hook command written against it breaks after a `cd`.
+      sessionRoot: this.workdir,
       timestamp: new Date(),
       toolName,
       sessionId: context.sessionId ?? context.messageManager?.getSessionId(),

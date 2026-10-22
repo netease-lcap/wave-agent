@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import path from "node:path";
 import {
   hasWorktreeCreateHook,
   hasWorktreeRemoveHook,
@@ -6,6 +7,7 @@ import {
   executeWorktreeRemoveHook,
 } from "@/services/worktreeHooks.js";
 import { executeCommand } from "@/services/hook.js";
+import { getGitMainRepoRoot } from "@/utils/gitUtils.js";
 import { clearGlobalLogger, setGlobalLogger } from "@/utils/globalLogger.js";
 import type { HookExecutionResult } from "@/types/hooks.js";
 
@@ -14,6 +16,17 @@ vi.mock("@/services/hook.js", async (importOriginal) => {
   return {
     ...actual,
     executeCommand: vi.fn(),
+  };
+});
+
+// Identity by default (as if the caller were outside a repo) so the existing
+// passthrough expectations keep their literal paths; the cwd-anchor test below
+// overrides the return value to simulate "cwd is a subdirectory of the repo".
+vi.mock("@/utils/gitUtils.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/utils/gitUtils.js")>();
+  return {
+    ...actual,
+    getGitMainRepoRoot: vi.fn((cwd: string) => cwd),
   };
 });
 
@@ -166,6 +179,46 @@ describe("worktreeHooks", () => {
         env: { FOO: "bar" },
         name: "feature",
       });
+    });
+
+    it("runs the hook from the git main repo root when the session cwd drifted", async () => {
+      vi.mocked(executeCommand).mockResolvedValue(
+        result({ stdout: "/repo/.wave/worktrees/feature" }),
+      );
+      const repoRoot = path.resolve("/repo");
+      const driftedCwd = path.join(repoRoot, "packages", "code");
+      vi.mocked(getGitMainRepoRoot).mockReturnValue(repoRoot);
+
+      await executeWorktreeCreateHook("feature", createConfig(["hook-a"]), {
+        ...baseContext,
+        projectDir: driftedCwd,
+        sessionRoot: repoRoot,
+      });
+
+      const [, context] = vi.mocked(executeCommand).mock.calls[0];
+      expect(context).toMatchObject({
+        // The hook runs at the repo root, so a relative command path resolves.
+        projectDir: repoRoot,
+        sessionRoot: repoRoot,
+        // The JSON payload still reports the real session workdir.
+        cwd: driftedCwd,
+      });
+    });
+
+    it("defaults sessionRoot to the repo root when the caller omits it", async () => {
+      vi.mocked(executeCommand).mockResolvedValue(
+        result({ stdout: "/repo/.wave/worktrees/feature" }),
+      );
+      const repoRoot = path.resolve("/repo");
+      vi.mocked(getGitMainRepoRoot).mockReturnValue(repoRoot);
+
+      await executeWorktreeCreateHook("feature", createConfig(["hook-a"]), {
+        ...baseContext,
+        projectDir: path.join(repoRoot, "packages"),
+      });
+
+      const [, context] = vi.mocked(executeCommand).mock.calls[0];
+      expect(context).toMatchObject({ sessionRoot: repoRoot });
     });
 
     it("substitutes plugin root and injects plugin env for plugin hooks", async () => {
