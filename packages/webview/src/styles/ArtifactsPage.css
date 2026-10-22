@@ -294,32 +294,80 @@
   padding: 3px 4px;
 }
 
+/* 1022 评论（点 `div.artifacts-header-right`「新建」）：「表单和按钮参考以下」——
+   参照件 = 设置页 `button.settings-save-btn`「保存」与 `button.settings-select-trigger`「中文」。
+   本页只在桌面端渲染（ChatApp.tsx `const artifacts = isDesktop ? … : null`），故直接写 base，
+   IDE / VS Code 宿主没有这个页面，连带风险为零。
+   按钮档对齐 `SettingsPage.css` 的 `.settings-save-btn`（32 高 / 4·16 内衬 / r8 /
+   14px·500 / --vscode-button-* 桥接，桌面端 = --cc-action-primary 家族）；
+   三颗一起改是因为契约 common-components.md:70「one height, label size and radius
+   across the row」——页脚同行不能只胖一颗。 */
 .artifacts-primary-btn,
 .artifacts-secondary-btn,
 .artifacts-danger-btn {
-  padding: 5px 14px;
-  border-radius: 6px;
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 4px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
   cursor: pointer;
   border: 1px solid transparent;
 }
 
 .artifacts-primary-btn {
+  /* 参照件 `.settings-save-btn` 是 `border: 0`（盒宽 = 文案 + 32 内衬，实测 60×32）；
+     主键同款去掉描边，盒宽才与参照逐值相同。次级/危险键另有 1px 描边。 */
+  border: none;
   background: var(--vscode-button-background, #1a73e8);
-  color: var(--vscode-button-foreground, #ffffff);
+  /* 前景显式走语义角色：浅色档没有桥接 --vscode-button-foreground
+     （只有深色档桥了），沿用 base 会取宿主注入值。 */
+  color: var(--cc-action-primary-text, var(--vscode-button-foreground, #ffffff));
+}
+
+.artifacts-primary-btn:hover:not(:disabled) {
+  background: var(--vscode-button-hoverBackground);
+}
+
+/* 按压档：与 `.settings-save-btn:active` 同值（浅色档无 --cc-action-primary-active，
+   fallback 取 skill 浅色档字面量 #111318，见 0915 第十处 / 1014）。 */
+.artifacts-primary-btn:active:not(:disabled) {
+  background: var(--cc-action-primary-active, #111318);
 }
 
 .artifacts-primary-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
+/* 次级键 = 1014 确认弹窗「取消」的描边档（透明底 + 1px border-light + 1 级字色，
+   hover --cc-fill-hover / pressed --cc-fill-pressed）。改前的描边已是
+   --vscode-panel-border（桌面端 = --cc-border-light），故只补状态与盒参数。 */
 .artifacts-secondary-btn {
   background: transparent;
   border-color: var(--vscode-panel-border, rgba(127, 127, 127, 0.35));
-  color: inherit;
+  color: var(--cc-text-primary, inherit);
 }
 
+.artifacts-secondary-btn:hover:not(:disabled) {
+  background: var(--cc-fill-hover, var(--vscode-list-hoverBackground));
+}
+
+.artifacts-secondary-btn:active:not(:disabled) {
+  background: var(--cc-fill-pressed, var(--cc-fill-hover));
+}
+
+.artifacts-secondary-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 危险键本轮的**只改盒**（同族行口径），颜色维持 #d93025 —— 危险红要不要统一到
+   skill 的 soft-danger 档未授权，见交付说明的残留项。 */
 .artifacts-danger-btn {
   background: #d93025;
   color: #ffffff;
@@ -335,14 +383,29 @@
   cursor: pointer;
 }
 
+/* 1022 追加评论（她：「先改搜索框，按照表单的规范改」）：与 `.artifacts-field input`
+   同一套表单参数 —— 32 高 / r8 / 14px / 4·8 内衬 / `--vscode-input-*` 一组 token，
+   并补 focus（`--vscode-focusBorder`），与表单输入框同口径。
+   同一个 class 也用在分享弹窗的成员选择器里（那处宽度由 `.artifacts-member-picker`
+   放宽到 100%，不受这里的固定宽度影响），故一并同变。
+   ★`width` 从 220 改写为 242：`box-sizing` 转 border-box 后若不改写，盒宽会从
+   242 掉到 220、整行左侧右移 22px；242 就是改前的**渲染盒宽**（= 220 内容 +
+   20 内衬 + 2 边框），横向零位移。 */
 .artifacts-search {
-  width: 220px;
-  padding: 6px 10px;
-  border-radius: 6px;
+  box-sizing: border-box;
+  width: 242px;
+  height: 32px;
+  padding: 4px 8px;
+  border-radius: 8px;
   border: 1px solid var(--vscode-input-border, rgba(127, 127, 127, 0.35));
   background: var(--vscode-input-background, transparent);
-  color: inherit;
-  font-size: 13px;
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font-size: 14px;
+}
+
+.artifacts-search:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder);
 }
 
 .artifacts-state {
@@ -490,14 +553,58 @@
   color: var(--vscode-descriptionForeground, #6c6e73);
 }
 
+/* 1022 评论：表单控件对齐设置页的 `.settings-select-trigger`（32 高 / 4·8 内衬 /
+   r8 / 14px / `--vscode-input-*` 一组 token）。改前是 6·10 内衬 / r6 / 13px，且
+   `color: inherit` 会吃到标签的 descriptionForeground（浅色 #606060），比参照件
+   （input-foreground 1 级 #202020）弱一档 —— 这里显式取 input 前景。
+   下拉另把原生外观换成设置页那条自绘三角（同一条官方矢量：墨迹 8×4.5、距内缘 8px，
+   写法见 SettingsPage.css 的 `.settings-control:has(> .settings-select)::after`）。 */
 .artifacts-field input,
 .artifacts-field select {
-  padding: 6px 10px;
-  border-radius: 6px;
+  height: 32px;
+  box-sizing: border-box;
+  padding: 4px 8px;
+  border-radius: 8px;
   border: 1px solid var(--vscode-input-border, rgba(127, 127, 127, 0.35));
   background: var(--vscode-input-background, transparent);
-  color: inherit;
-  font-size: 13px;
+  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  font-size: 14px;
+}
+
+.artifacts-field input:focus,
+.artifacts-field select:focus {
+  outline: none;
+  border-color: var(--vscode-focusBorder);
+}
+
+.artifacts-field:has(> select) {
+  position: relative;
+}
+
+.artifacts-field select {
+  -webkit-appearance: none;
+  appearance: none;
+  padding-right: 24px; /* 8 内衬 + 8 三角 + 8 间隔（与设置页同） */
+}
+
+.artifacts-field:has(> select)::after {
+  content: "";
+  position: absolute;
+  /* ★ 不能像设置页那样用 top:50% —— 那边的包含块只装 select，这里的 label 还含
+     `<span>` 标签行（16.5 + gap 6），top:50% 会落在整个 label 的中线、比 select
+     中心高 11px。select 是本 label 的最后一个子项且高恒 32 ⇒ 其中心 = 盒底 − 16。 */
+  bottom: 16px;
+  /* 标签是边框盒包含块 ⇒ 9px = 1px 边框 + 内缘 8px（与 settings-control 同口径） */
+  right: 9px;
+  width: 8px;
+  height: 4.5px;
+  transform: translateY(50%);
+  background: var(--vscode-input-foreground, var(--vscode-foreground));
+  -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><g transform='translate(0,16) scale(1,-1)'><path d='M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z' fill='%23000'/></g></svg>")
+    center / 16px 16px no-repeat;
+  mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><g transform='translate(0,16) scale(1,-1)'><path d='M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z' fill='%23000'/></g></svg>")
+    center / 16px 16px no-repeat;
+  pointer-events: none;
 }
 
 .artifacts-fieldset {

@@ -8332,3 +8332,80 @@ mock 只发过一次 `setInitialState`。已补 `webviewReady` 回放 responder�
 「改前」= `git show HEAD:packages/webview/src/styles/SidebarSessionSearch.css` 真回退后重新采集
 （md5 `beb1e321a5b6f60a5ec1cdb704d185d2`），改后 `f3614c90be288ae469573c3f5499aebb`，两侧都核过。
 本轮纯 CSS 值改动，无业务单测覆盖。
+
+## 2026-10-22 · 创作集「新建」按钮 + 表单控件按设置页口径重做（1022 预览评论）
+
+**触发**：她三条预览评论 —— `div.artifacts-header-right`「新建」→「表单和按钮参考以下」；
+`button.settings-select-trigger`「中文」→「这里」；`button.settings-save-btn`「保存」→「这里」。
+即：**创作集页的按钮与表单控件，向设置页那两个参照件看齐**。
+
+**落点**：`packages/webview/src/styles/ArtifactsPage.css`（唯一改动文件，+103 / −11）。
+创作集页只在桌面端渲染（`ChatApp.tsx`：`const artifacts = isDesktop ? <ArtifactsPage/> : null`）
+⇒ 直接写 base 段，IDE 档不可能出现本页。
+
+### ① 参照件（同用例实测，`走查/1022-创作集表单按钮/measure.json`）
+
+| 参照件                                   | 盒    | 圆角 | 字            | 内衬     | 边框                  | 颜色                                 |
+| ---------------------------------------- | ----- | ---- | ------------- | -------- | --------------------- | ------------------------------------ |
+| `button.settings-save-btn`「保存」       | 60×32 | 8px  | 14px/22px·500 | 4·16     | **none**              | 浅 #1F2329+#FFF / 深 #E0E3E5+#191C1E |
+| `button.settings-select-trigger`「中文」 | 高 32 | 8px  | 14px          | 4·24·4·8 | 1px #DCDFE6 / #414649 | 字 浅 #202020 / 深 #E5E7E8；自绘三角 |
+
+### ② 落地的四项
+
+| 对象                            | 改前                                                                     | 改后                                                                                                                    |
+| ------------------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| 主键「新建 / 确定 / 分享·保存」 | 56×30.5 · r6 · 13px·400 · pad 5·14 · 1px 透明边框 · hover/pressed 无反馈 | **60×32 · r8 · 14px/22px·500 · pad 4·16 · 无边框** · hover #34383F / #F0F2F3 · pressed #111318 / #C7CCCF                |
+| 次级键「取消」                  | 56×30.5 · r6 · 13px·400 · 三态同值                                       | **62×32 · r8 · 14px/22px·500** · hover #EEF0F3 / #303436 · pressed #E7E9ED / #393E41（透明底 + 1px 描边不变）           |
+| 表单 `input`                    | 524×29.5 · r6 · 13px · pad 6·10 · 字 #606060 / #A0A5A8                   | **524×32 · r8 · 14px · pad 4·8** · 字 `--vscode-input-foreground` = #202020 / #E5E7E8（对比度 6.29→16.29 / 5.23→10.49） |
+| 表单 `select`                   | 524×31 · r6 · 13px · 原生箭头                                            | **524×32 · r8 · 14px · pad 4·24·4·8** · `appearance:none` + 自绘 8×4.5 官方 chevron，右缘距容器 9px                     |
+
+### ③ 可复用认知 / 坑
+
+1. **`select` 的三角锚点不能照抄设置页**：设置页用 `top:50%`（label 只有控件本身），
+   创作集的 label 还含一行 `<span>`（16.5 + gap 6）⇒ `top:50%` 会以整块 label 居中、三角高 11px。
+   改为 `bottom:16px; transform: translateY(50%)`（select 是最后一个子项且高恒 32 ⇒ 中心 = 盒底 − 16），
+   实测与参照件垂直偏差 0.0px。
+2. **主键要删掉那层 1px 透明边框**：参照件是 `border:none`，保留透明边框会让盒宽 60 → 62。
+3. **浅色档没有 `--cc-action-primary-active`**：pressed 必须写 fallback 字面量 `#111318`（同 0915 第十处 / 1014）。
+4. **浅色档的 `host-desktop.css` 没桥接 `--vscode-button-foreground`**（只有深色块桥了）⇒ 桌面主键的
+   `color` 要显式取 `--cc-action-primary-text`，否则拿到宿主注入值。
+5. **输入框带 `autoFocus`**：采集静止态前先 `document.activeElement.blur()`，否则 focus 边框混进来。
+6. **`mouse.down()` + `mouse.up()` 落在按钮上＝一次真实点击**：测 pressed 态必须先 `mouse.move` 移开再 `up`，
+   否则会打开弹窗挡住后续步骤（本轮一次性踩到：分享弹窗超时 / 分类弹窗选择器为 null）。
+
+### ④ 残留（按严格范围未动，等她点名）
+
+| 残留                                                                  | 现状                                                                      | 触发语                       |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------- | ---------------------------- |
+| 弹窗外壳 `.artifacts-modal`                                           | 560 宽 / r10 / 头部 49 / 正文 13px（1014 确认弹窗是 440 / r12 / 24 内衬） | 「弹窗外壳也按规范」         |
+| 危险红 `.artifacts-danger-btn` / `.artifacts-danger-link`「撤销发布」 | 仍 `#d93025`（她 2026-10-13 裁「红暂时不动」）                            | 「危险红统一到 soft-danger」 |
+| 「新建」弹窗的模板卡片                                                | 未动                                                                      | —                            |
+
+### ⑤ 追加评论「先改搜索框，按照表单的规范改」
+
+同行 `input.artifacts-search`「按文件名搜索」落到表单输入框同一套参数：**242×32 · r8 · 14px ·
+内衬 4·8 · `--vscode-input-*`**，并补 `focus`（`outline:none` + `var(--vscode-focusBorder)`）。
+改前 242×29.5 · r6 · 13px、内衬 6·10，与升级后的 32 高「新建」差 1.25px、基线错开约 1px；
+改后两件同高 32、同 y=60、同基线。**横向零位移**：`box-sizing` 转 `border-box` 后把 `width`
+从 220 改写成改前的渲染盒宽 242（220 + 20 内衬 + 2 边框），盒宽与 x 都不变。文字色
+`#202020` / `#E5E7E8` 本来就等于输入前景（改前 `color: inherit`），这轮只是写成显式 token，无色差。
+
+同一个 class 也用在分享弹窗「选择成员」的搜索框（宽度由 `.artifacts-member-picker` 放宽到 100%），
+一并同变；要收窄回头部那一处需另加作用域。
+
+单变量取证：`after`（按钮已改、搜索框未改）vs `after-search`（都改完）两张 header 逐像素相减 ——
+差异 6252（浅）/ 6579（深）px，**搜索框外扩 4px 盒外 0 px、按钮区域 0 px**。
+
+报告 `走查/1022-artifacts-form-report-r2/index.html`（F-01…F-05，含 F-05 搜索框）：
+图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
+
+### ⑥ 证据
+
+- 采集：`CC02/走查/_tools/1022/capture-artifacts-form-1022.mjs <after|before|after2>`
+  → `走查/1022-创作集表单按钮/<phase>/{header,dialog,newdlg,select,sharefooter}-<theme>.png` + `measure-<phase>.json`（pageerror 0）
+- 「改前」= 真回退采：备份 md5 `883b73667a4519227a9138a7372b439b` → `git checkout --` → 采 → `cp` 还原 → 同 md5 校验
+  → 再采 `after2` 与 `after` 逐像素比：10 张里 **8 张 0 差异**；`newdlg-*` 163/174 px 差异全落在 x1134–1147 / y8–315
+  的弹窗右缘投影带（未进报告，属另一层合成抖动）。
+- 报告：`走查/1022-artifacts-form-report/index.html`（4 条 F-01…F-04），母版 `build_repair_report.py` 生成 +
+  `verify-repair-report.mjs` 自检：图片加载 true、错误 0、axe 浅深 0/0、640 窄屏无横溢。
+- 本轮纯 CSS，无业务单测覆盖。
