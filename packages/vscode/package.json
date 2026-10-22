@@ -108,6 +108,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e:completion": "node scripts/runInlineCompletionE2E.mjs",
+    "test:e2e:ide-context": "node scripts/runIdeContextE2E.mjs",
     "test:unit": "vitest run",
     "test:unit:coverage": "vitest run --coverage",
     "preinstall:vsix": "pnpm run package",

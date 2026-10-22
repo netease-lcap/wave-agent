@@ -7,6 +7,8 @@ import {
 import { FileService } from "../services/fileService";
 import { SessionService } from "../services/sessionService";
 import { PluginService } from "../services/pluginService";
+import { IdeContextService } from "../services/ideContextService";
+import type { IdeContextProvider } from "wave-webview-fixtures";
 import type { StdioClient } from "../stdio/stdioClient";
 import type {
   Scope,
@@ -74,6 +76,9 @@ export class MessageHandler {
   private pluginService: PluginService;
   private utilityClient: StdioClient;
   private context: MessageHandlerContext;
+  /** IDE 上下文（@终端 / @问题）读取：只在 IDE 宿主成立，见 spec
+   *  ui/ide-context-mentions.md。 */
+  private ideContextService = new IdeContextService();
 
   constructor(
     configService: ConfigurationService,
@@ -153,6 +158,14 @@ export class MessageHandler {
         await this.renameSession(
           msg.sessionId as string,
           msg.title as string,
+          msg.requestId as string,
+          viewType,
+          windowId,
+        );
+        break;
+      case "requestIdeContext":
+        await this.handleIdeContextRequest(
+          Array.isArray(msg.providers) ? (msg.providers as string[]) : [],
           msg.requestId as string,
           viewType,
           windowId,
@@ -475,6 +488,15 @@ export class MessageHandler {
   public async handleSettingsMessage(message: unknown) {
     const msg = message as Record<string, unknown>;
     switch (msg.command as string) {
+      case "requestIdeContext":
+        // 设置页没有输入框、也不会 @ IDE 上下文；注册只为命令审计要求的四路由
+        // 齐备，回包按「不支持」处理（spec ui/ide-context-mentions.md 平台边界）。
+        this.context.postSettingsMessage({
+          command: "ideContextResponse",
+          requestId: msg.requestId,
+          results: [],
+        });
+        break;
       case "getConfiguration":
         await this.handleSettingsGetConfiguration();
         break;
@@ -2059,6 +2081,34 @@ export class MessageHandler {
         windowId,
       );
     }
+  }
+
+  /** 读 IDE 上下文（@终端 / @问题）。读取失败按「不可用」回包，绝不抛给 webview。 */
+  private async handleIdeContextRequest(
+    providers: string[],
+    requestId: string,
+    viewType?: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ) {
+    const supported = providers.filter(
+      (provider): provider is IdeContextProvider =>
+        provider === "terminal" || provider === "problems",
+    );
+    let results;
+    try {
+      results = await this.ideContextService.read(supported);
+    } catch (error) {
+      results = supported.map((provider) => ({
+        provider,
+        ok: false,
+        reason: `读取失败：${error instanceof Error ? error.message : String(error)}`,
+      }));
+    }
+    this.context.postMessage(
+      { command: "ideContextResponse", requestId, results },
+      viewType,
+      windowId,
+    );
   }
 
   private async handleUploadFilesToArtifacts(

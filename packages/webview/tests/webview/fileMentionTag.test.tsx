@@ -77,6 +77,34 @@ function sendSuggestionsResponse(
   });
 }
 
+/**
+ * Helper: select the dropdown item whose visible text contains `label`.
+ *
+ * The `@` dropdown lists the fixed IDE entries (@终端 / @问题) ahead of file
+ * suggestions, so the wanted file is not always at index 0 — walk down to it
+ * with the same keys a user presses.
+ */
+function selectSuggestionByLabel(label: string) {
+  const items = Array.from(
+    document.querySelectorAll(".file-suggestion-dropdown .suggestion-item"),
+  );
+  const index = items.findIndex((item) =>
+    (item.textContent || "").includes(label),
+  );
+  if (index < 0) {
+    throw new Error(`suggestion "${label}" not found`);
+  }
+  const input = screen.getByTestId("message-input");
+  for (let i = 0; i < index; i++) {
+    act(() => {
+      fireEvent.keyDown(input, { key: "ArrowDown", code: "ArrowDown" });
+    });
+  }
+  act(() => {
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+  });
+}
+
 describe("File Mention Tag Insertion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -121,11 +149,8 @@ describe("File Mention Tag Insertion", () => {
       expect(items.length).toBeGreaterThan(0);
     });
 
-    // Press Enter to select the suggestion
-    const input = screen.getByTestId("message-input");
-    act(() => {
-      fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
-    });
+    // Select the (only) file suggestion — the fixed IDE entries come first.
+    selectSuggestionByLabel("MessageInput.tsx");
 
     // Check if the tag is inserted into the contenteditable area
     await waitFor(() => {
@@ -142,7 +167,7 @@ describe("File Mention Tag Insertion", () => {
     expect(tag).toHaveTextContent(/@/);
 
     // Check if a space was inserted after the tag
-    const innerText = input.textContent || "";
+    const innerText = screen.getByTestId("message-input").textContent || "";
     expect(innerText).toContain("MessageInput.tsx");
     expect(innerText).toMatch(/\s$/);
   });
@@ -178,11 +203,8 @@ describe("File Mention Tag Insertion", () => {
       expect(items.length).toBeGreaterThan(0);
     });
 
-    // Press Enter to select
-    const input = screen.getByTestId("message-input");
-    act(() => {
-      fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
-    });
+    // Select the image suggestion — the fixed IDE entries come first.
+    selectSuggestionByLabel("test.png");
 
     // Check if image tag is inserted
     await waitFor(() => {

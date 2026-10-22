@@ -1,4 +1,6 @@
+import type { IdeContextProvider } from "wave-webview-fixtures";
 import { AttachedImage } from "../types";
+import { ideContextMarker } from "./ideContext";
 
 /**
  * 将 contenteditable 的内容转换为 Markdown 格式，并提取图片。
@@ -30,9 +32,14 @@ export const convertToMarkdown = (
         const isImage = element.getAttribute("data-is-image") === "true";
         const isSelection =
           element.getAttribute("data-is-selection") === "true";
+        const ideContext = element.getAttribute("data-ide-context");
         const imageUrl = element.getAttribute("data-image-url");
 
-        if (isImage && imageUrl) {
+        if (ideContext === "terminal" || ideContext === "problems") {
+          // IDE 上下文标签：正文里先留一个标记，发送时由
+          // `assembleIdeContextBlocks` 就地展开成「标记 + 内容 + 结束标记」。
+          markdown += ideContextMarker(ideContext);
+        } else if (isImage && imageUrl) {
           const placeholder = `[image${images.length + 1}]`;
           markdown += placeholder;
           images.push({
@@ -89,13 +96,15 @@ export const convertToMarkdown = (
 };
 
 /**
- * 解析 Markdown 中的标签语法 [@file:path], [Selection: fileName#start-end] 和 [imageN]
+ * 解析 Markdown 中的标签语法 [@file:path], [Selection: fileName#start-end],
+ * [imageN]，以及发送时已展开的 IDE 上下文块
+ * `[@ide:terminal]` … `[/@ide]`（spec ui/ide-context-mentions.md）。
  */
 export const parseMentions = (
   text: string,
   attachedImages?: Array<{ data: string; filename?: string }>,
 ): Array<{
-  type: "text" | "mention" | "selection";
+  type: "text" | "mention" | "selection" | "ide-context";
   content: string;
   path?: string;
   isImage?: boolean;
@@ -103,9 +112,10 @@ export const parseMentions = (
   startLine?: string;
   endLine?: string;
   imageData?: string;
+  ideContext?: IdeContextProvider;
 }> => {
   const parts: Array<{
-    type: "text" | "mention" | "selection";
+    type: "text" | "mention" | "selection" | "ide-context";
     content: string;
     path?: string;
     isImage?: boolean;
@@ -113,10 +123,13 @@ export const parseMentions = (
     startLine?: string;
     endLine?: string;
     imageData?: string;
+    ideContext?: IdeContextProvider;
   }> = [];
   // Updated regex to handle [Selection: path|fileName#start-end] or [Selection: fileName#start-end]
+  // IDE 上下文块（`[@ide:<类别>]` … `[/@ide]`，见 utils/ideContext）放在最后一个
+  // 分支：前六个捕获组的位置保持不变。
   const regex =
-    /\[@file:(.*?)\]|\[Selection: (?:(.*?)\|)?(.*?)#(\d+)-(\d+)\]|\[image(\d+)\]/g;
+    /\[@file:(.*?)\]|\[Selection: (?:(.*?)\|)?(.*?)#(\d+)-(\d+)\]|\[image(\d+)\]|\[@ide:(terminal|problems)\]([\s\S]*?)\[\/@ide\]/g;
   let lastIndex = 0;
   let match;
 
@@ -144,6 +157,13 @@ export const parseMentions = (
         path: displayName,
         isImage: true,
         imageData: attachedImage?.data,
+      });
+    } else if (match[7]) {
+      // IDE 上下文块：content 是块内全文（用户气泡里只渲染标签，点开看全文）
+      parts.push({
+        type: "ide-context",
+        content: match[8] ?? "",
+        ideContext: match[7] as IdeContextProvider,
       });
     } else if (match[3]) {
       // Selection
