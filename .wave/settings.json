@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .wave/hooks/worktree-create.mjs"
+            "command": "node \"$WAVE_PROJECT_DIR/.wave/hooks/worktree-create.mjs\""
           }
         ]
       }
@@ -46,7 +46,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .wave/hooks/worktree-remove.mjs"
+            "command": "node \"$WAVE_PROJECT_DIR/.wave/hooks/worktree-remove.mjs\""
           }
         ]
       }

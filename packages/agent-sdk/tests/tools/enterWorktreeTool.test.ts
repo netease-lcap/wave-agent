@@ -53,6 +53,7 @@ describe("enterWorktreeTool", () => {
       aiManager: {
         setWorkdir: mockSetWorkdir,
         getWorkdir: () => "/test/workdir",
+        getOriginalWorkdir: () => "/test/workdir",
         getWorktreeSession: mockGetWorktreeSession,
         setWorktreeSession: mockSetWorktreeSession,
         getWorktreeBaseRef: mockGetWorktreeBaseRef,
@@ -229,6 +230,25 @@ describe("enterWorktreeTool", () => {
           sessionId: "test-session-id",
           transcriptPath: "/test/transcript.jsonl",
         }),
+      );
+    });
+
+    it("should anchor the hook to the session root, not the drifted workdir", async () => {
+      const driftedContext: ToolContext = {
+        ...contextWithHookManager(),
+        workdir: "/test/workdir/packages/code",
+        aiManager: {
+          ...(contextWithHookManager().aiManager as object),
+          getOriginalWorkdir: () => "/test/workdir",
+        } as never,
+      };
+
+      await enterWorktreeTool.execute({ name: "feature" }, driftedContext);
+
+      expect(worktreeHooks.executeWorktreeCreateHook).toHaveBeenCalledWith(
+        "feature",
+        expect.anything(),
+        expect.objectContaining({ sessionRoot: "/test/workdir" }),
       );
     });
 

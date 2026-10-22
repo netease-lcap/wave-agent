@@ -45,6 +45,7 @@ describe("exitWorktreeTool", () => {
       aiManager: {
         setWorkdir: mockSetWorkdir,
         getWorkdir: () => "/repo/.wave/worktrees/test",
+        getOriginalWorkdir: () => "/repo",
         getWorktreeSession: mockGetWorktreeSession,
         setWorktreeSession: mockSetWorktreeSession,
       } as never,

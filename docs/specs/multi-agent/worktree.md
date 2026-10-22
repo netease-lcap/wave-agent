@@ -178,6 +178,7 @@ order: 90
 5. **假设** 我不在 git 仓库中但配置了 `WorktreeCreate` hook，**当** 通过 EnterWorktree 工具创建时，**则** 创建成功（不再要求 git 仓库），worktree 路径来自 hook stdout。
 6. **假设** hook-based worktree 创建成功，**当** 会话启动或切换时，**则** 跳过 git worktree 的 post-creation setup（`settings.local.json` / `.worktreeinclude` 复制与 git hooks 配置），初始化由 hook 脚本自行负责（对齐 Claude Code）。
 7. **假设** hook-based worktree 的路径本身就是 git worktree（hook 脚本内部执行了 `git worktree add`），**当** 会话期间使用 git 相关功能时，**则** 正常工作（路径即真实 git worktree，wave 不会重复创建）。
+8. **假设** 会话工作目录已漂到仓库子目录或仓库之外（模型在 shell 里 `cd` 所致），**当** `WorktreeCreate` / `WorktreeRemove` hook 执行时，**则** hook 进程以 git 主仓库根为 cwd 运行（不在 git 仓库内时保持调用方给定的目录，供自定义 VCS 使用），`$WAVE_PROJECT_DIR` 为会话根，因此 hook 命令即使写相对路径也能解析；会话 workdir 已被删除时 hook 在会话根启动而非 spawn 失败。
 
 ---
 

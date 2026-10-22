@@ -22,11 +22,17 @@ import type {
 } from "../types/hooks.js";
 import { executeCommand } from "./hook.js";
 import { logger } from "../utils/globalLogger.js";
+import { getGitMainRepoRoot } from "../utils/gitUtils.js";
 
 /** Minimal context required to run worktree hooks standalone. */
 export interface WorktreeHookContext {
-  /** Absolute project directory (also the hook cwd / $WAVE_PROJECT_DIR) */
+  /**
+   * The session's current workdir. Worktree hooks do not run here: they run at
+   * the git main repo root derived from it (see runWorktreeHooks).
+   */
   projectDir: string;
+  /** Stable session root, injected as `$WAVE_PROJECT_DIR`. Defaults to the repo root. */
+  sessionRoot?: string;
   sessionId?: string;
   transcriptPath?: string;
   /** Additional environment variables for the hook process */
@@ -143,12 +149,24 @@ async function runWorktreeHooks(
   context: WorktreeHookContext,
   extra: { name?: string; worktreePath?: string },
 ): Promise<HookExecutionResult[]> {
+  // Worktree hooks always run from the git main repo root. projectDir is the
+  // session's current workdir, which drifts as soon as the model runs `cd`
+  // (into a subdirectory, or out of the repo entirely) — a hook command written
+  // as a relative path would then resolve against the wrong directory and die
+  // before the script even starts. Outside a repo getGitMainRepoRoot returns
+  // its input unchanged, so custom-VCS hooks keep running where the caller
+  // pointed them.
+  const hookDir = getGitMainRepoRoot(context.projectDir);
+
   const baseContext: ExtendedHookExecutionContext = {
     event,
-    projectDir: context.projectDir,
+    projectDir: hookDir,
+    sessionRoot: context.sessionRoot ?? hookDir,
     timestamp: new Date(),
     sessionId: context.sessionId,
     transcriptPath: context.transcriptPath,
+    // The JSON payload's `cwd` stays the real session workdir (Claude Code
+    // reports getCwd() there too), not the directory the hook runs in.
     cwd: context.projectDir,
     env: context.env,
     ...extra,

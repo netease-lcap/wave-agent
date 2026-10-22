@@ -74,7 +74,21 @@ export interface HookEventConfig {
 export interface HookExecutionContext {
   event: HookEvent;
   toolName?: string; // Present for PreToolUse/PostToolUse events
-  projectDir: string; // Absolute path for $WAVE_PROJECT_DIR
+  /**
+   * Directory the hook process is spawned in. Follows the session's *current*
+   * workdir, which drifts whenever the model runs `cd` in the shell (and moves
+   * again on EnterWorktree) — so a hook command written as a relative path is
+   * only reliable when this happens to be the project root.
+   */
+  projectDir: string;
+  /**
+   * Stable session root: the workdir this session was created with. Never
+   * follows mid-session `cd` or worktree switches, and is injected as
+   * `$WAVE_PROJECT_DIR` — the anchor hook scripts should use for their own
+   * paths. Defaults to `projectDir` when omitted (aligned with Claude Code's
+   * CLAUDE_PROJECT_DIR).
+   */
+  sessionRoot?: string;
   timestamp: Date;
   name?: string; // Worktree name (WorktreeCreate only, stdin JSON field `name`)
   worktreePath?: string; // Present for WorktreeRemove
@@ -298,6 +312,6 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
 
 // Environment variables injected into hook processes
 export interface HookEnvironment {
-  WAVE_PROJECT_DIR: string; // Absolute path to project root
+  WAVE_PROJECT_DIR: string; // Stable session root (see HookExecutionContext.sessionRoot)
   [key: string]: string; // Inherit all parent process environment variables
 }

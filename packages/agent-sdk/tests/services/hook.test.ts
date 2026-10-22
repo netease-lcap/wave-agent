@@ -16,6 +16,8 @@ import {
 } from "vitest";
 import { spawn } from "child_process";
 import { EventEmitter } from "events";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import {
   executeCommand,
@@ -329,6 +331,34 @@ describe("Hook Services", () => {
       expect(spawnEnv!.WAVE_PROJECT_DIR).toBe("/test/project");
     });
 
+    it("should anchor WAVE_PROJECT_DIR to sessionRoot, not the drifting cwd", async () => {
+      const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
+      let spawnEnv: NodeJS.ProcessEnv | undefined;
+
+      mockSpawn.mockImplementation((command, args, options) => {
+        spawnEnv = options?.env;
+        return mockProcess;
+      });
+
+      // A tool hook after `cd packages/code`: it runs there, but the anchor for
+      // hook-authored paths must stay at the session root.
+      const sessionRoot = path.resolve("/fake/session-root");
+      const resultPromise = executeCommand("echo hi", {
+        ...mockContext,
+        projectDir: path.join(sessionRoot, "packages", "code"),
+        sessionRoot,
+      });
+
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+
+      await resultPromise;
+
+      expect(spawnEnv!.WAVE_PROJECT_DIR).toBe(sessionRoot);
+    });
+
     it("should handle context without tool name", async () => {
       const mockProcess = new MockChildProcess();
       mockProcess.stdin = new MockStdin();
@@ -351,6 +381,51 @@ describe("Hook Services", () => {
       const result = await resultPromise;
 
       expect(result.success).toBe(true);
+    });
+  });
+
+  describe("spawn cwd", () => {
+    const existingDir = tmpdir();
+    const missingDir = path.join(existingDir, "wave-hook-cwd-does-not-exist");
+
+    async function spawnCwdFor(context: HookExecutionContext) {
+      const mockProcess = new MockChildProcess();
+      mockProcess.stdin = new MockStdin();
+      let spawnCwd: string | undefined;
+      mockSpawn.mockImplementation((command, args, options) => {
+        spawnCwd = options?.cwd as string;
+        return mockProcess;
+      });
+
+      const resultPromise = executeCommand("echo hi", context);
+      setImmediate(() => {
+        mockProcess.emit("close", 0);
+      });
+      await resultPromise;
+      return spawnCwd;
+    }
+
+    it("spawns in projectDir when it exists", async () => {
+      expect(
+        await spawnCwdFor({
+          ...mockContext,
+          projectDir: existingDir,
+          sessionRoot: process.cwd(),
+        }),
+      ).toBe(existingDir);
+    });
+
+    it("falls back to sessionRoot when projectDir is gone", async () => {
+      // The common case: the session's workdir was a worktree that has been
+      // removed, so spawning there would emit an async ENOENT instead of
+      // running the hook at all.
+      expect(
+        await spawnCwdFor({
+          ...mockContext,
+          projectDir: missingDir,
+          sessionRoot: existingDir,
+        }),
+      ).toBe(existingDir);
     });
   });
 

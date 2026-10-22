@@ -180,6 +180,7 @@ export const exitWorktreeTool: ToolPlugin = {
         configuration,
         {
           projectDir: originalCwd,
+          sessionRoot: context.aiManager?.getOriginalWorkdir() ?? originalCwd,
           sessionId: context.sessionId ?? "",
           transcriptPath: context.messageManager?.getTranscriptPath?.() ?? "",
           env: Object.fromEntries(
