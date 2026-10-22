@@ -135,6 +135,22 @@
   border-color: transparent;
 }
 
+/* 右侧三角与工作目录触发器（.desktop-workdir-caret）完全同源：同一个 PermCaretIcon、
+   同一个方向约定 —— 源路径朝上，收起时 rotate(180deg) 归位成「箭头朝下 ⌄」，展开时还原朝上 ⌃，
+   过渡 0.15s ease。图标同源后不再需要「反号」的写法，两处 transform 值逐字相同。
+   同时把 base 的 opacity 0.8 提到 1：否则同一图标仍是两种深浅。 */
+[data-host="desktop"] .model-picker-caret {
+  opacity: 1;
+  transform: rotate(180deg);
+  transition: transform 0.15s ease;
+}
+
+[data-host="desktop"]
+  .model-picker-trigger[aria-expanded="true"]
+  .model-picker-caret {
+  transform: none;
+}
+
 [data-host="desktop"] .model-picker-menu {
   padding: 8px;
   min-width: 200px;

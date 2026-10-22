@@ -9043,3 +9043,76 @@ width: var(--cc-artifacts-form-dialog-width, 560px);
 （1 条对比，axe 浅深 0/0、640px 无横向溢出、pageerror 0）。`host-desktop.css` md5 `1cf6b76972a6ee9193c690c75aef0430`。
 
 **状态**：本单 + 上一单（重命名）都在**工作区未提交**，等她说推送。
+
+---
+
+## 2026-10-22 · 模型选择器右侧三角：换成同一个图标并按同一套方向翻转
+
+她（预览评论，指 `button.model-picker-trigger`「glm-5.2」）：「右侧三角的交互和〔`div.desktop-workdir-trigger`「CC02」〕这里保持一致」，
+看过之后补一句：「三角的图标也用同一个」。
+
+### ① 改前 / 改后
+
+| 项          | 改前                                          | 改后                                                                                                      |
+| ----------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| 图标        | 组件内自带 `ChevronIcon`：8×5、**1.2px 描边** | **共享 `PermCaretIcon`**：8×5、Figma composer-chevron 实心，`path@d` 与 `.desktop-workdir-caret` 逐字相同 |
+| 收起态      | 朝下 ⌄，`transform: none`                     | 朝下 ⌄，`transform: rotate(180deg)`（视觉方向不变）                                                       |
+| 展开态      | **`none`（朝下，点开菜单没有反馈）**          | **`none`（朝上 ⌃）**                                                                                      |
+| 过渡        | `all`（0s，无过渡）                           | `transform 0.15s ease`                                                                                    |
+| 不透明度    | 0.8                                           | **1**（否则同一图标仍是两种深浅）                                                                         |
+| 尺寸 / 位置 | 8×5、右侧内衬 9                               | 不变                                                                                                      |
+
+图标同源后，两处 transform 值**逐字相同**（收起 180° / 展开 none），不再需要「反号」写法。
+
+### ② 代码
+
+`ModelPicker.tsx` 按宿主分流，保住「今天的改动只在桌面端」：
+
+```tsx
+{
+  isDesktopHost() ? (
+    <PermCaretIcon className="model-picker-caret" />
+  ) : (
+    <ChevronIcon /> // IDE 宿主：原来的描边 chevron，逐字未改
+  );
+}
+```
+
+`HeaderIcons.tsx` 给 `PermCaretIcon` 补了 `aria-hidden="true"`（纯装饰，四处引用一致，无视觉影响）。
+CSS 在 `ModelPicker.css` 桌面段：
+
+```css
+[data-host="desktop"] .model-picker-caret {
+  opacity: 1;
+  transform: rotate(180deg);
+  transition: transform 0.15s ease;
+}
+[data-host="desktop"]
+  .model-picker-trigger[aria-expanded="true"]
+  .model-picker-caret {
+  transform: none;
+}
+```
+
+### ③ 认知 / 坑
+
+1. **「交互一致」和「图标也用同一个」是两步**：先对齐翻转动作（CSS），再换图标（TSX）。换了图标之后
+   两处的 transform 才可能写成同值 —— 因为方向约定由源路径方向决定，源不同就必须反号。
+2. **换共享图标会波及所有宿主**：`PermCaretIcon` 是组件级引入，若直接替换，IDE 宿主也会换成新箭头，
+   而 IDE 没有桌面端那套 rotation 规则 ⇒ 收起态会变成朝上。所以按 `isDesktopHost()` 分流，IDE 仍用原组件。
+3. **只加旋转不加过渡 = 突跳**：参照实现带 `0.15s ease`，两者要一起对齐。
+4. **判据要落在 svg 上**：`trigger.querySelector("svg")` 会先命中 16×16 的图标，三角要按 class 取。
+
+### ④ 残留（未授权，等点名）
+
+| 项              | 现状                                       | 触发语             |
+| --------------- | ------------------------------------------ | ------------------ |
+| 三角到右缘距离  | 模型 9px、目录 6px（两个触发器的内衬不同） | 「三角右缘也对齐」 |
+| 三角在 IDE 宿主 | 仍是原描边 chevron（本轮刻意不动）         | 「IDE 的三角也换」 |
+
+取证：探针 `走查/_tools/1022/probe-caret-consistency-1022.mjs`（`after|before`）；
+报告 `走查/1022-三角交互报告/index.html`（2 条：展开态 / 收起态，axe 浅深 0/0、640px 无横向溢出、pageerror 0）。
+`ModelPicker.css` md5 `704861b76af42e0966aad79be679d8f6`、`HeaderIcons.tsx` md5 `4b5eb2dfb4897d5c0811d7b001b32530`、`ModelPicker.tsx` md5 `2afeaa75b468673a367df5c734e05c7d`；
+`packages/webview` 的 `tsc --noEmit` 通过。
+
+**状态**：本单在**工作区未提交**，等她说推送。
