@@ -385,7 +385,7 @@ export const DiffDisplay = ({
 
   return (
     <Box flexDirection="column">
-      <Box paddingLeft={2} borderLeft borderColor="cyan" flexDirection="column">
+      <Box paddingLeft={2} flexDirection="column">
         <Box flexDirection="column">{diffLines}</Box>
       </Box>
     </Box>
