@@ -88,7 +88,9 @@ function append(level: HostLogLevel, ...args: unknown[]): void {
  */
 function appendBlock(level: HostLogLevel, lines: string[]): void {
   if (lines.length === 0) return;
-  write(level, `${prefix(level)}${lines[0]}\n${lines.slice(1).join("\n")}\n`);
+  // One write, one trailing newline: a single-line block (a memory reading) must
+  // not leave a blank line behind, which an extra `\n` for the empty tail would.
+  write(level, `${prefix(level)}${lines.join("\n")}\n`);
 }
 
 export const hostLog = {

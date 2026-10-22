@@ -52,6 +52,18 @@ describe("hostLog", () => {
     );
   });
 
+  it("should not leave a blank line after a single-line block", () => {
+    // Renderer memory readings are one-line blocks; a stray trailing newline
+    // put an empty line between every reading in desktop.log.
+    hostLog.block("INFO", ["renderer memory pid=1 workingSet=1MB peak=2MB"]);
+
+    const text = fs.appendFileSync.mock.calls[0][1] as string;
+
+    expect(text).toMatch(
+      /^\[.*\] \[INFO\] renderer memory pid=1 workingSet=1MB peak=2MB\n$/,
+    );
+  });
+
   it("should not write an empty block", () => {
     hostLog.block("WARN", []);
 
