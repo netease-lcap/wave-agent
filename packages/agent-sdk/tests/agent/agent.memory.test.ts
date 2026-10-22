@@ -379,7 +379,7 @@ describe("Agent Memory Functionality", () => {
         expect(typeof (await agent.getCombinedMemory())).toBe("string");
 
         // Agent should be fully functional despite memory loading failures
-        expect(agent.workingDirectory).toBe(`${mockTempDir}-${i}`);
+        expect(agent.currentWorkdir).toBe(`${mockTempDir}-${i}`);
         expect(agent.sessionId).toBeDefined();
 
         await agent.destroy();

@@ -107,7 +107,13 @@ export class Agent {
   /** Unregister module-level listeners registered during container setup; invoked at the end of destroy(). */
   private teardown: () => void = () => {};
   private configurationService: ConfigurationService; // Add configuration service
-  private workdir: string; // Working directory
+  /**
+   * The directory tools run in *right now* — it moves: a `cd` in Bash, and
+   * EnterWorktree, both rewrite it (the container's `CurrentWorkdir` mirrors
+   * it). Never use it as a session identity; that is `SessionWorkdir` (see
+   * containerSetup).
+   */
+  private workdir: string;
   private systemPrompt?: string; // Custom system prompt
   private stream: boolean; // Streaming mode flag
   private sessionStartTime: number = Date.now();
@@ -331,7 +337,7 @@ export class Agent {
     // Wire up CWD change callback from AIManager to sync Agent's workdir
     this.aiManager.setOnCwdChange((newCwd) => {
       this.workdir = newCwd;
-      this.container.register("Workdir", newCwd);
+      this.container.register("CurrentWorkdir", newCwd);
       this.options.callbacks?.onWorkdirChange?.(newCwd);
     });
 
@@ -365,11 +371,16 @@ export class Agent {
   /**
    * Standard attribution of this session's telemetry records: which session,
    * where, and (when the host declared one) which entrypoint created it.
+   *
+   * `workdir` is the session's starting directory, not `this.workdir`: the
+   * latter follows the shell (`cd` in Bash, EnterWorktree), and the repository
+   * a session is filed under must not change because a command moved the
+   * shell.
    */
   private get telemetryContext(): RecordContext {
     return {
       sessionId: this.messageManager.getSessionId(),
-      workdir: this.workdir,
+      workdir: this.container.get<string>("SessionWorkdir") ?? this.workdir,
       entrypoint: entrypointOf(this.container),
     };
   }
@@ -408,18 +419,37 @@ export class Agent {
     return this.messageManager.getCustomTitle();
   }
 
-  /** Get working directory */
-  public get workingDirectory(): string {
+  /**
+   * Where the session's tools run *right now* — it moves: a `cd` in Bash (via
+   * `onWorkdirChange`) and EnterWorktree both rewrite it. Never use it as a
+   * session identity; that is the container's `SessionWorkdir` (see
+   * containerSetup).
+   */
+  public get currentWorkdir(): string {
     return this.workdir;
   }
 
   /**
-   * Set the working directory
+   * Where the session was opened — the directory that answers "which project
+   * does this conversation belong to". Unlike `currentWorkdir` it does not
+   * follow a Bash `cd`; it only changes when a *different* session is restored
+   * into this agent (`switchSessionWorkdir`).
+   */
+  public get sessionWorkdir(): string {
+    return this.container.get<string>("SessionWorkdir") ?? this.workdir;
+  }
+
+  /**
+   * Move the shell's working directory (EnterWorktree / ExitWorktree, or a
+   * host re-pointing the session). Deliberately does not touch
+   * `SessionWorkdir`: the repository a session belongs to does not change
+   * because a command moved the shell.
+   *
    * @param newCwd - The new working directory
    */
-  public setWorkdir(newCwd: string): void {
+  public setCurrentWorkdir(newCwd: string): void {
     this.workdir = newCwd;
-    this.container.register("Workdir", newCwd);
+    this.container.register("CurrentWorkdir", newCwd);
     this.options.callbacks?.onWorkdirChange?.(newCwd);
   }
 
@@ -1008,8 +1038,12 @@ export class Agent {
    * resolved relative to the workdir.
    */
   private async switchSessionWorkdir(workdir: string): Promise<void> {
-    this.setWorkdir(workdir);
-    this.messageManager.setWorkdir(workdir);
+    this.setCurrentWorkdir(workdir);
+    // Restoring a session is a session switch, not the shell moving: the id
+    // changes with it, so the telemetry identity follows too (a `cd` in Bash
+    // and EnterWorktree leave this alone).
+    this.container.register("SessionWorkdir", workdir);
+    this.messageManager.setCurrentWorkdir(workdir);
     await this.memoryRuleManager.setWorkdir(workdir);
   }
 

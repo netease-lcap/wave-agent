@@ -101,7 +101,22 @@ export function setupAgentContainer(
   const callbacks = options.callbacks || {};
   const container = new Container();
   container.register("AgentOptions", options);
-  container.register("Workdir", workdir);
+  // Two directory tokens, and the difference is deliberate:
+  //
+  // - `CurrentWorkdir` MOVES. A `cd` in Bash re-registers it, EnterWorktree
+  //   swaps in a worktree path, and the cwd-recovery path rewrites it. It is
+  //   what tools should run in and what project rules load from.
+  // - `SessionWorkdir` NEVER moves (except when a whole different session is
+  //   restored into this agent). It answers "which directory was this session
+  //   opened in", so anything that must stay stable for the session's lifetime
+  //   — telemetry repository identity, audit anchors — reads this one.
+  //
+  // Reaching for `CurrentWorkdir` when you meant "the session's directory" is
+  // how the telemetry `vcs.repository.*` attributes ended up following the
+  // shell (fixed 2026-10-22). If the value is an identity, it is
+  // `SessionWorkdir`.
+  container.register("CurrentWorkdir", workdir);
+  container.register("SessionWorkdir", workdir);
   // Normalised here rather than at each record site: the entrypoint is declared
   // once by the session's creator (the CLI, a host over stdio, the remote-control
   // channel), and every manager reads the same container key. A value outside

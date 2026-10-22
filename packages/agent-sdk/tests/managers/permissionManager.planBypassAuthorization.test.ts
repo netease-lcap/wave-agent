@@ -24,7 +24,7 @@ function createManager(
   sessionMode?: PermissionMode,
 ): PermissionManager {
   const container = new Container();
-  container.register("Workdir", workdir);
+  container.register("CurrentWorkdir", workdir);
   if (sessionMode) {
     container.register("PermissionMode", sessionMode);
   }
@@ -64,7 +64,7 @@ describe("PermissionManager plan-mode bypass authorization", () => {
 
     it("does not grant the authorization when the session switches to bypassPermissions later", () => {
       const container = new Container();
-      container.register("Workdir", workdir);
+      container.register("CurrentWorkdir", workdir);
       container.register("PermissionMode", "plan");
       const manager = new PermissionManager(container, { planFilePath });
       manager.captureBypassAuthorization();
@@ -209,7 +209,10 @@ describe("PermissionManager plan-mode bypass authorization", () => {
 
     it("still denies editing the main repository from a worktree session", async () => {
       const container = new Container();
-      container.register("Workdir", "/home/user/project/worktrees/feat-1");
+      container.register(
+        "CurrentWorkdir",
+        "/home/user/project/worktrees/feat-1",
+      );
       container.register("WorktreeName", "feat-1");
       container.register("MainRepoRoot", workdir);
       container.register("WorktreeSession", null);

@@ -218,7 +218,7 @@ export class MessageManager {
    * it, so they must move together with it: otherwise the next append would
    * create a second copy of the same session file under the old project dir.
    */
-  public setWorkdir(workdir: string): void {
+  public setCurrentWorkdir(workdir: string): void {
     if (this.workdir === workdir) {
       return;
     }
@@ -227,7 +227,7 @@ export class MessageManager {
     this.transcriptPath = this.computeTranscriptPath();
   }
 
-  public getWorkdir(): string {
+  public getCurrentWorkdir(): string {
     return this.workdir;
   }
 

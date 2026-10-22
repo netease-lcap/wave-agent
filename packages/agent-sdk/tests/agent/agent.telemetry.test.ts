@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { Agent } from "@/agent.js";
 import type { HostEntrypoint } from "@/constants/telemetry.js";
 import { createMockToolManager } from "../helpers/mockFactories.js";
@@ -181,5 +183,36 @@ describe("Agent - Telemetry Initialization", () => {
       (c: unknown[]) => c[0] === "session_start",
     );
     expect(sessionStartCall![2].entrypoint).toBeUndefined();
+  });
+
+  it("files session_end under the starting directory after the shell moved", async () => {
+    initTelemetryMock.mockResolvedValue(undefined);
+    logOTelEventMock.mockResolvedValue(undefined);
+
+    const startDir = resolve(tmpdir(), "wave-telemetry-drift-start");
+    const driftedDir = resolve(tmpdir(), "wave-telemetry-drift-after-cd");
+    const agent = await Agent.create({
+      apiKey: "test-key",
+      workdir: startDir,
+      callbacks: {
+        onLoadingChange: vi.fn(),
+      },
+    });
+
+    // What a `cd` in Bash does to the session's tool directory (and what
+    // EnterWorktree does explicitly): the shell moves, the session's identity
+    // does not. The repository attributes are resolved from the identity, so a
+    // drifted directory would file the same session under another repository —
+    // or under none.
+    agent.setCurrentWorkdir(driftedDir);
+    await agent.destroy();
+
+    const sessionEndCall = logOTelEventMock.mock.calls.find(
+      (c: unknown[]) => c[0] === "session_end",
+    );
+    expect(sessionEndCall).toBeDefined();
+    expect(sessionEndCall![2]).toEqual(
+      expect.objectContaining({ workdir: startDir }),
+    );
   });
 });

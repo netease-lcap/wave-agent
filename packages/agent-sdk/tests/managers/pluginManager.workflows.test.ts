@@ -11,7 +11,7 @@ describe("PluginManager workflows registration", () => {
 
   beforeEach(() => {
     container = new Container();
-    container.register("Workdir", "/test/workdir");
+    container.register("CurrentWorkdir", "/test/workdir");
     registry = new WorkflowRegistry("/test/workdir");
     container.register("WorkflowRegistry", registry);
 

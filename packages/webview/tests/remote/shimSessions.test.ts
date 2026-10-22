@@ -32,12 +32,12 @@ type Frame = Record<string, unknown>;
 const SESSIONS = [
   {
     sessionId: "s-old",
-    workingDirectory: "/tmp/other",
+    sessionCwd: "/tmp/other",
     lastActiveAt: "2026-10-14T09:00:00.000Z",
   },
   {
     sessionId: "s-new",
-    workingDirectory: "/repo",
+    sessionCwd: "/repo",
     customTitle: "登录页",
     lastActiveAt: "2026-10-14T10:00:00.000Z",
   },
@@ -499,8 +499,8 @@ describe("remote page shim", () => {
     await flush();
     await page.answer("listDaemonSessions", {
       sessions: [
-        { sessionId: "s-old", workingDirectory: "/tmp/other" },
-        { sessionId: "s-new", workingDirectory: "/repo", isLoading: true },
+        { sessionId: "s-old", sessionCwd: "/tmp/other" },
+        { sessionId: "s-new", sessionCwd: "/repo", isLoading: true },
       ],
     });
     await page.answer("getSessionInfo", { permissionMode: "default" });
@@ -1811,7 +1811,7 @@ describe("remote page shim", () => {
     await flush();
     await page.answer("initialize", {
       sessionId: "s-created",
-      workingDirectory: "/new/repo",
+      currentWorkdir: "/new/repo",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -1841,7 +1841,7 @@ describe("remote page shim", () => {
 
     await page.answer("initialize", {
       sessionId: "s-created",
-      workingDirectory: "/new/repo",
+      currentWorkdir: "/new/repo",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -1853,7 +1853,7 @@ describe("remote page shim", () => {
     await page.answer("listDaemonSessions", {
       sessions: [
         ...SESSIONS,
-        { sessionId: "s-created", workingDirectory: "/new/repo" },
+        { sessionId: "s-created", sessionCwd: "/new/repo" },
       ],
     });
     // The snapshot chain reads in order: registry → getSessionInfo →
@@ -1879,7 +1879,7 @@ describe("remote page shim", () => {
     ).toMatchObject({
       requestId: "mk-1",
       sessionId: "s-created",
-      workingDirectory: "/new/repo",
+      currentWorkdir: "/new/repo",
       worktreeName: undefined,
     });
   });
@@ -1918,7 +1918,7 @@ describe("remote page shim", () => {
 
     await page.answer("initialize", {
       sessionId: "s-wt",
-      workingDirectory: "/repo/.wave/worktrees/warm-bear",
+      currentWorkdir: "/repo/.wave/worktrees/warm-bear",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -1928,7 +1928,7 @@ describe("remote page shim", () => {
         ...SESSIONS,
         {
           sessionId: "s-wt",
-          workingDirectory: "/repo/.wave/worktrees/warm-bear",
+          sessionCwd: "/repo/.wave/worktrees/warm-bear",
         },
       ],
     });
@@ -1994,12 +1994,12 @@ describe("remote page session list actions", () => {
       sessions: [
         {
           sessionId: "s-old",
-          workingDirectory: "/tmp/other",
+          sessionCwd: "/tmp/other",
           hasRunningBackgroundWork: true,
         },
         {
           sessionId: "s-new",
-          workingDirectory: "/repo",
+          sessionCwd: "/repo",
           worktree: {
             path: "/repo/.wave/worktrees/feat",
             branch: "wave/feat",

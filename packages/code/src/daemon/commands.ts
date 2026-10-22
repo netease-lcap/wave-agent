@@ -135,7 +135,7 @@ function fail(message: string): never {
 
 interface DaemonSessionEntry {
   sessionId: string;
-  workingDirectory: string;
+  sessionCwd: string;
   isLoading: boolean;
   /**
    * The other two halves of the idle predicate `wait` / `status` share with
@@ -232,7 +232,7 @@ async function attachSession(
      */
     onInitialized?: (sessionId: string) => void;
   } = {},
-): Promise<{ sessionId: string; workingDirectory: string }> {
+): Promise<{ sessionId: string; currentWorkdir: string }> {
   const init = (await client.request("initialize", {
     workdir: process.cwd(),
     restoreSessionId: sessionId,
@@ -240,7 +240,7 @@ async function attachSession(
     // re-hosting client is the CLI, and the session file carries no record of
     // its original creator (see the entrypoint story in the telemetry spec).
     entrypoint: "cli",
-  })) as { sessionId: string; workingDirectory: string };
+  })) as { sessionId: string; currentWorkdir: string };
   const initId = init.sessionId;
   options.onInitialized?.(initId);
   try {
@@ -398,7 +398,7 @@ export async function daemonListCommand(socketPath: string): Promise<void> {
         // owns running background work.
         status: isIdleSession(s) ? "idle" : "generating",
         messageCount: String(s.messageCount),
-        workingDirectory: s.workingDirectory,
+        sessionCwd: s.sessionCwd,
       }));
       const width = (key: keyof (typeof rows)[number]) =>
         Math.max(...rows.map((r) => r[key].length), key.length);
@@ -409,7 +409,7 @@ export async function daemonListCommand(socketPath: string): Promise<void> {
       );
       for (const r of rows) {
         console.log(
-          `${pad(r.sessionId, width("sessionId"))}  ${pad(r.status, width("status"))}  ${pad(r.messageCount, width("messageCount"))}  ${r.workingDirectory}`,
+          `${pad(r.sessionId, width("sessionId"))}  ${pad(r.status, width("status"))}  ${pad(r.messageCount, width("messageCount"))}  ${r.sessionCwd}`,
         );
       }
     } else {
@@ -532,7 +532,7 @@ function parseAskUserQuestionAnswer(
 
 interface SessionSnapshot {
   sessionId: string;
-  workingDirectory: string;
+  currentWorkdir: string;
   /** `idle` / `generating` / `waiting for approval`. */
   status: string;
   pending: PendingPermission[];
@@ -552,7 +552,7 @@ interface SessionSnapshot {
  */
 function renderSessionSnapshot(snapshot: SessionSnapshot): void {
   console.log(`Session: ${snapshot.sessionId}`);
-  console.log(`Working directory: ${snapshot.workingDirectory}`);
+  console.log(`Working directory: ${snapshot.currentWorkdir}`);
   console.log(`Status: ${snapshot.status}`);
 
   if (snapshot.pending.length > 0) {
@@ -657,7 +657,7 @@ export async function daemonStatusCommand(
           : "idle";
     renderSessionSnapshot({
       sessionId: initId,
-      workingDirectory: init.workingDirectory,
+      currentWorkdir: init.currentWorkdir,
       status,
       pending,
       messages: messages.messages,
@@ -875,7 +875,7 @@ export async function daemonWaitCommand(
       };
       renderSessionSnapshot({
         sessionId: watch.id,
-        workingDirectory: init.workingDirectory,
+        currentWorkdir: init.currentWorkdir,
         status,
         pending,
         messages: result.messages ?? [],
@@ -1284,7 +1284,7 @@ function runGit(cwd: string, args: string[]): Promise<string> {
 }
 
 /**
- * Resolve the worktree hosting `workingDirectory` for removal, mirroring the
+ * Resolve the worktree hosting `sessionCwd` for removal, mirroring the
  * values protocol createWorktree returns: worktree path via
  * `git rev-parse --show-toplevel`, branch via `git branch --show-current`, and
  * repoRoot = the MAIN repo root (first entry of `git worktree list` — where
@@ -1293,7 +1293,7 @@ function runGit(cwd: string, args: string[]): Promise<string> {
  * check would pass trivially while removeWorktree's fs.rmSync fallback could
  * delete the whole repository.
  */
-async function resolveWorktreeForRemoval(workingDirectory: string): Promise<{
+async function resolveWorktreeForRemoval(sessionCwd: string): Promise<{
   path: string;
   branch: string;
   repoRoot: string;
@@ -1303,17 +1303,17 @@ async function resolveWorktreeForRemoval(workingDirectory: string): Promise<{
   let branch: string;
   try {
     const [toplevel, current] = await Promise.all([
-      runGit(workingDirectory, ["rev-parse", "--show-toplevel"]),
-      runGit(workingDirectory, ["branch", "--show-current"]),
+      runGit(sessionCwd, ["rev-parse", "--show-toplevel"]),
+      runGit(sessionCwd, ["branch", "--show-current"]),
     ]);
     worktreePath = toplevel;
     branch = current;
   } catch {
     throw new Error(
-      `Cannot remove worktree: ${workingDirectory} is not inside a git repository`,
+      `Cannot remove worktree: ${sessionCwd} is not inside a git repository`,
     );
   }
-  const repoRoot = getGitMainRepoRoot(workingDirectory);
+  const repoRoot = getGitMainRepoRoot(sessionCwd);
   if (path.resolve(worktreePath) === path.resolve(repoRoot)) {
     throw new Error(
       `Refusing to remove the main working tree: ${repoRoot} (not a linked worktree)`,
@@ -1333,7 +1333,7 @@ async function resolveWorktreeForRemoval(workingDirectory: string): Promise<{
  * abort there is no attach step: destroy is a pure registry operation keyed by
  * the envelope sessionId, so unknown sessions succeed without touching disk.
  * With --remove-worktree the session's git worktree is resolved from its
- * workingDirectory (getSessionInfo) and removed via protocol removeWorktree
+ * sessionCwd (getSessionInfo) and removed via protocol removeWorktree
  * first, then the session is destroyed.
  */
 export async function daemonDestroyCommand(
@@ -1349,8 +1349,8 @@ export async function daemonDestroyCommand(
         "getSessionInfo",
         undefined,
         sessionId,
-      )) as { workingDirectory: string };
-      const wt = await resolveWorktreeForRemoval(info.workingDirectory);
+      )) as { sessionCwd: string };
+      const wt = await resolveWorktreeForRemoval(info.sessionCwd);
       await client.request("removeWorktree", {
         path: wt.path,
         branch: wt.branch,

@@ -47,7 +47,7 @@ function fakeClient() {
       if (method === "initialize") {
         return {
           sessionId: "sess-1",
-          workingDirectory: "/test-workspace",
+          currentWorkdir: "/test-workspace",
           permissionMode: "default",
           latestTotalTokens: 0,
         };
@@ -217,7 +217,7 @@ describe("ChatSession · 压缩摘要块走增量通道", () => {
       if (method === "initialize") {
         return {
           sessionId: "sess-1",
-          workingDirectory: "/test-workspace",
+          currentWorkdir: "/test-workspace",
           permissionMode: "default",
           latestTotalTokens: 0,
         };

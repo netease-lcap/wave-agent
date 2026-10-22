@@ -31,7 +31,7 @@ vi.mock("wave-agent-sdk", async () => {
         isLoading: false,
         isCommandRunning: false,
         isCompacting: false,
-        workingDirectory: process.cwd(),
+        currentWorkdir: process.cwd(),
         getPermissionMode: vi.fn().mockReturnValue("default"),
         getModelConfig: vi.fn().mockReturnValue({ model: "test-model" }),
         getConfiguredModels: vi.fn().mockReturnValue(["test-model"]),

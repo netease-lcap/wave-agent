@@ -357,7 +357,7 @@ class WaveSession(
     override fun onSessionIdChange(sessionId: String) {
         this.sessionId = sessionId
         // VSCE chatProvider.ts:438-449: push full session metadata, then refresh the session list.
-        val workdir = agent?.workingDirectory ?: project.basePath ?: ""
+        val workdir = agent?.currentWorkdir ?: project.basePath ?: ""
         postMessage("updateCurrentSession", buildJsonObject {
             put("session", buildJsonObject {
                 put("id", sessionId)
@@ -376,7 +376,7 @@ class WaveSession(
      * the SDK already sorts by lastActiveAt descending and excludes subagent files).
      */
     fun refreshSessions() {
-        val workdir = agent?.workingDirectory ?: project.basePath ?: return
+        val workdir = agent?.currentWorkdir ?: project.basePath ?: return
         scope.launch {
             val list: List<JsonElement> = try {
                 val res = agent?.listSessions(workdir)?.jsonObject

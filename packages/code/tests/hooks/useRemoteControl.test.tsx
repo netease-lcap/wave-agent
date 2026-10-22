@@ -47,6 +47,7 @@ function message(id: string, content: string): Message {
 
 const baseOptions: Omit<UseRemoteControlOptions, "messages"> = {
   workdir: "/repo",
+  sessionCwd: () => "/repo",
   sessionId: "s1",
   isLoading: false,
   permissionMode: "default",

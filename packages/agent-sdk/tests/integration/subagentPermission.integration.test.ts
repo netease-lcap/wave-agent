@@ -46,7 +46,7 @@ describe("Subagent Permission Integration", () => {
       resolveLanguage: () => undefined,
     });
 
-    container.register("Workdir", "/tmp/test");
+    container.register("CurrentWorkdir", "/tmp/test");
 
     subagentManager = new SubagentManager(container, {
       workdir: "/tmp/test",

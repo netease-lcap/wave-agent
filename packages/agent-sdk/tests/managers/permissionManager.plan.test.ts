@@ -9,7 +9,7 @@ describe("PermissionManager Plan Mode", () => {
 
   beforeEach(() => {
     container = new Container();
-    container.register("Workdir", "/home/user/project");
+    container.register("CurrentWorkdir", "/home/user/project");
     permissionManager = new PermissionManager(container, {
       planFilePath,
     });

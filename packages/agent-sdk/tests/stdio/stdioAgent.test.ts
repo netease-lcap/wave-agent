@@ -107,7 +107,7 @@ describe("StdioAgent", () => {
 
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/workspace",
+      currentWorkdir: "/workspace",
       permissionMode: "default",
       latestTotalTokens: 500,
     });
@@ -121,12 +121,12 @@ describe("StdioAgent", () => {
     });
     expect(result).toEqual({
       sessionId: "session-123",
-      workingDirectory: "/workspace",
+      currentWorkdir: "/workspace",
       permissionMode: "default",
       latestTotalTokens: 500,
     });
     expect(agent.sessionId).toBe("session-123");
-    expect(agent.workingDirectory).toBe("/workspace");
+    expect(agent.currentWorkdir).toBe("/workspace");
     expect(agent.permissionMode).toBe("default");
     expect(agent.latestTotalTokens).toBe(500);
     expect(registerSpy).toHaveBeenCalledWith("session-123", agent);
@@ -139,7 +139,7 @@ describe("StdioAgent", () => {
     // drifted cwd plus the root the session was created in.
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/workspace/packages/code",
+      currentWorkdir: "/workspace/packages/code",
       sessionCwd: "/workspace",
       repoRoot: "/workspace",
       permissionMode: "default",
@@ -150,7 +150,7 @@ describe("StdioAgent", () => {
 
     // "Where is it now" vs "which project does it belong to" must not collapse
     // into one field: hosts key the sidebar group / project config off the root.
-    expect(agent.workingDirectory).toBe("/workspace/packages/code");
+    expect(agent.currentWorkdir).toBe("/workspace/packages/code");
     expect(agent.sessionCwd).toBe("/workspace");
     expect(agent.sessionRepoRoot).toBe("/workspace");
   });
@@ -159,7 +159,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/workspace",
+      currentWorkdir: "/workspace",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -176,7 +176,7 @@ describe("StdioAgent", () => {
     const { agent, client, router } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -200,7 +200,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -218,7 +218,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -243,7 +243,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -269,7 +269,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -291,7 +291,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -313,7 +313,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -335,7 +335,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -355,7 +355,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -377,7 +377,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -400,7 +400,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -423,7 +423,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -445,7 +445,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -474,7 +474,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -501,7 +501,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -528,7 +528,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -550,7 +550,7 @@ describe("StdioAgent", () => {
     const { agent, client, router } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "old-session",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -577,7 +577,7 @@ describe("StdioAgent", () => {
     const { agent, client, router } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "same-session",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -599,7 +599,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -621,7 +621,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -654,7 +654,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -683,7 +683,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -705,7 +705,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -726,7 +726,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -749,7 +749,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -771,7 +771,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -793,7 +793,7 @@ describe("StdioAgent", () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({
       sessionId: "session-123",
-      workingDirectory: "/w",
+      currentWorkdir: "/w",
       permissionMode: "default",
       latestTotalTokens: 0,
     });
@@ -1128,7 +1128,7 @@ describe("StdioAgent", () => {
     expect(onMcpServersChange).toHaveBeenCalledWith(servers);
   });
 
-  it("workdirChange updates cached workingDirectory and calls callback", () => {
+  it("workdirChange updates cached currentWorkdir and calls callback", () => {
     const onWorkdirChange = vi.fn();
     const { agent } = createAgent({ onWorkdirChange });
 
@@ -1136,7 +1136,7 @@ describe("StdioAgent", () => {
       workdir: "/repo/.wave/worktrees/feat-a",
     });
 
-    expect(agent.workingDirectory).toBe("/repo/.wave/worktrees/feat-a");
+    expect(agent.currentWorkdir).toBe("/repo/.wave/worktrees/feat-a");
     expect(onWorkdirChange).toHaveBeenCalledWith(
       "/repo/.wave/worktrees/feat-a",
     );

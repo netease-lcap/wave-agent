@@ -21,7 +21,7 @@ describe("PermissionManager - acceptEdits mode", () => {
       const autoAcceptedTools = ["Edit", "Write"];
       const workdir = "/home/user/project";
       const container = new Container();
-      container.register("Workdir", workdir);
+      container.register("CurrentWorkdir", workdir);
       const manager = new PermissionManager(container);
 
       for (const toolName of autoAcceptedTools) {

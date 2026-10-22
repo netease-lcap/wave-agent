@@ -2118,7 +2118,7 @@
     return {
       id: entry.sessionId,
       sessionType: "main",
-      workdir: entry.workingDirectory,
+      workdir: entry.sessionCwd,
       repoRoot: entry.worktree && entry.worktree.repoRoot,
       customTitle: entry.customTitle,
       firstMessage: entry.firstMessage,
@@ -2875,7 +2875,7 @@
               command: "newSessionCreated",
               requestId: msg.requestId,
               sessionId: result.sessionId,
-              workingDirectory: result.workingDirectory,
+              currentWorkdir: result.currentWorkdir,
               worktreeName: worktreeName,
             });
           })

@@ -70,11 +70,15 @@ class StdioAgent(
 ) {
     @Volatile var sessionId: String? = null
         private set
-    @Volatile var workingDirectory: String? = null
+    /**
+     * Where the shell is *now* — it moves: the workdirChange notification (bash
+     * cd) rewrites it. Never use it as a session identity; that is [sessionCwd].
+     */
+    @Volatile var currentWorkdir: String? = null
         private set
     /**
      * Initialize-time cwd — the session's stable root. Unlike
-     * [workingDirectory] it is never overwritten by the workdirChange
+     * [currentWorkdir] it is never overwritten by the workdirChange
      * notification (bash cd), so @file search and the /status workdir stay
      * anchored to the project root.
      */
@@ -147,7 +151,7 @@ class StdioAgent(
             "mcpServersChange" -> callbacks.onMcpServersChange(params?.jsonObject?.get("servers"))
             "workdirChange" -> {
                 val workdir = params?.jsonObject?.get("workdir")?.jsonPrimitive?.content ?: ""
-                workingDirectory = workdir
+                currentWorkdir = workdir
                 callbacks.onWorkdirChange(workdir)
             }
             "permissionRequest" -> {
@@ -189,12 +193,12 @@ class StdioAgent(
         val res = client.request("initialize", params)?.jsonObject
             ?: throw StdioClientException("initialize returned null")
         sessionId = res["sessionId"]?.jsonPrimitive?.content
-        workingDirectory = res["workingDirectory"]?.jsonPrimitive?.content
+        currentWorkdir = res["currentWorkdir"]?.jsonPrimitive?.content
         // The reply's own root wins: re-attaching a session that is still live
         // elsewhere reports its current (possibly cd-drifted) cwd as
-        // `workingDirectory`, and only `sessionCwd` says which project it is.
+        // `currentWorkdir`, and only `sessionCwd` says which project it is.
         sessionCwd = res["sessionCwd"]?.jsonPrimitive?.content
-            ?: res["workingDirectory"]?.jsonPrimitive?.content
+            ?: res["currentWorkdir"]?.jsonPrimitive?.content
         permissionMode = res["permissionMode"]?.jsonPrimitive?.content
         res["latestTotalTokens"]?.jsonPrimitive?.intOrNull?.let { latestTotalTokens = it }
         // A fresh session has no usage yet; don't let a previous session's
@@ -203,7 +207,7 @@ class StdioAgent(
         sessionId?.let { router.register(it, this) }
         return InitializeResult(
             sessionId = sessionId,
-            workingDirectory = workingDirectory,
+            currentWorkdir = currentWorkdir,
             permissionMode = permissionMode,
             latestTotalTokens = latestTotalTokens,
         )
@@ -272,12 +276,12 @@ class StdioAgent(
     /**
      * 会话自定义标题（spec ui/session-management.md「会话自定义标题（重命名）」）：
      * 标题作为保留条目追加进会话自己的 JSONL 文件。工作目录用 [sessionCwd]（会话
-     * 稳定根）——它不是被 bash cd 漂移过的 [workingDirectory]，会话文件在它下面。
+     * 稳定根）——它不是被 bash cd 漂移过的 [currentWorkdir]，会话文件在它下面。
      */
     suspend fun renameSession(title: String) {
         client.request("renameSession", buildJsonObject {
             put("sessionId", sessionId)
-            put("workdir", sessionCwd ?: workingDirectory)
+            put("workdir", sessionCwd ?: currentWorkdir)
             put("title", title)
         }, sessionId)
     }
@@ -627,7 +631,7 @@ class StdioAgent(
 
 data class InitializeResult(
     val sessionId: String?,
-    val workingDirectory: String?,
+    val currentWorkdir: String?,
     val permissionMode: String?,
     val latestTotalTokens: Int,
 )

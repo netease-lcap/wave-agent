@@ -247,7 +247,7 @@ class MessageHandler(
                     put("session", buildJsonObject {
                         put("id", agent.sessionId)
                         put("sessionType", "main")
-                        put("workdir", agent.sessionCwd ?: agent.workingDirectory ?: "")
+                        put("workdir", agent.sessionCwd ?: agent.currentWorkdir ?: "")
                         put("lastActiveAt", java.time.Instant.now().toString())
                         put("latestTotalTokens", agent.latestTotalTokens)
                         put("customTitle", trimmed)
@@ -1218,7 +1218,7 @@ class MessageHandler(
     }
 
     private fun currentWorkdir(): String =
-        session.agent?.sessionCwd ?: session.agent?.workingDirectory ?: project.basePath ?: System.getProperty("user.dir")
+        session.agent?.sessionCwd ?: session.agent?.currentWorkdir ?: project.basePath ?: System.getProperty("user.dir")
 
     private fun pluginVersion(): String {
         // Read the <version> tag from our own META-INF/plugin.xml: the IntelliJ
@@ -1388,7 +1388,7 @@ class MessageHandler(
                 put("session", buildJsonObject {
                     put("id", sid)
                     put("sessionType", "main")
-                    put("workdir", agent.workingDirectory ?: "")
+                    put("workdir", agent.currentWorkdir ?: "")
                     put("lastActiveAt", java.time.Instant.now().toString())
                     put("latestTotalTokens", agent.latestTotalTokens ?: 0)
                 })

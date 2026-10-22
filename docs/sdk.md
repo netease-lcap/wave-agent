@@ -141,22 +141,23 @@ await agent.destroy();
 
 ### Agent 属性 {#agent-properties}
 
-| 属性                       | 类型              | 说明                 |
-| -------------------------- | ----------------- | -------------------- |
-| `sessionId`                | `string`          | 当前会话 ID          |
-| `messages`                 | `Message[]`       | 当前会话消息列表     |
-| `usages`                   | `Usage[]`         | Token 使用记录       |
-| `sessionFilePath`          | `string`          | 会话文件路径         |
-| `latestTotalTokens`        | `number`          | 最近一次总 Token 数  |
-| `workingDirectory`         | `string`          | 当前工作目录         |
-| `projectMemory`            | `string`          | 项目级记忆内容       |
-| `userMemory`               | `string`          | 用户级记忆内容       |
-| `isLoading`                | `boolean`         | 是否正在处理请求     |
-| `isCompacting`             | `boolean`         | 是否正在压缩         |
-| `isCommandRunning`         | `boolean`         | 是否有命令正在执行   |
-| `queuedMessages`           | `QueuedMessage[]` | 消息队列             |
-| `taskListId`               | `string`          | 任务列表 ID          |
-| `hasRunningBackgroundWork` | `boolean`         | 是否有后台任务运行中 |
+| 属性                       | 类型              | 说明                         |
+| -------------------------- | ----------------- | ---------------------------- |
+| `sessionId`                | `string`          | 当前会话 ID                  |
+| `messages`                 | `Message[]`       | 当前会话消息列表             |
+| `usages`                   | `Usage[]`         | Token 使用记录               |
+| `sessionFilePath`          | `string`          | 会话文件路径                 |
+| `latestTotalTokens`        | `number`          | 最近一次总 Token 数          |
+| `currentWorkdir`           | `string`          | 当前工作目录（随 `cd` 漂移） |
+| `sessionWorkdir`           | `string`          | 会话创建时的工作目录         |
+| `projectMemory`            | `string`          | 项目级记忆内容               |
+| `userMemory`               | `string`          | 用户级记忆内容               |
+| `isLoading`                | `boolean`         | 是否正在处理请求             |
+| `isCompacting`             | `boolean`         | 是否正在压缩                 |
+| `isCommandRunning`         | `boolean`         | 是否有命令正在执行           |
+| `queuedMessages`           | `QueuedMessage[]` | 消息队列                     |
+| `taskListId`               | `string`          | 任务列表 ID                  |
+| `hasRunningBackgroundWork` | `boolean`         | 是否有后台任务运行中         |
 
 ### Agent 常用方法 {#agent-methods}
 

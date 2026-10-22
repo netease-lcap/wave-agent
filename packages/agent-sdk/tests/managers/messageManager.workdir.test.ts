@@ -49,9 +49,9 @@ describe("MessageManager.setWorkdir", () => {
       ),
     );
 
-    manager.setWorkdir(otherWorkdir);
+    manager.setCurrentWorkdir(otherWorkdir);
 
-    expect(manager.getWorkdir()).toBe(otherWorkdir);
+    expect(manager.getCurrentWorkdir()).toBe(otherWorkdir);
     expect(manager.getSessionId()).toBe(sessionId);
     expect(manager.getTranscriptPath()).toBe(
       join(
@@ -64,7 +64,7 @@ describe("MessageManager.setWorkdir", () => {
 
   it("persists subsequent messages against the new workdir", async () => {
     const manager = createManager(initialWorkdir);
-    manager.setWorkdir(otherWorkdir);
+    manager.setCurrentWorkdir(otherWorkdir);
 
     manager.addUserMessage({ content: "hello" });
     await manager.saveSession();
@@ -87,7 +87,7 @@ describe("MessageManager.setWorkdir", () => {
     const manager = createManager(initialWorkdir);
     const before = manager.getTranscriptPath();
 
-    manager.setWorkdir(initialWorkdir);
+    manager.setCurrentWorkdir(initialWorkdir);
 
     expect(manager.getTranscriptPath()).toBe(before);
   });
@@ -104,7 +104,7 @@ describe("MessageManager.setWorkdir", () => {
     );
     expect(dirname(manager.getTranscriptPath())).toBe(manager.getProjectDir());
 
-    manager.setWorkdir(otherWorkdir);
+    manager.setCurrentWorkdir(otherWorkdir);
     expect(manager.getProjectDir()).toBe(
       join(manager.getSessionDir(), pathEncoder.encodeSync(otherWorkdir)),
     );

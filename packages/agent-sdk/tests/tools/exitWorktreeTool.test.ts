@@ -43,8 +43,8 @@ describe("exitWorktreeTool", () => {
       workdir: "/repo/.wave/worktrees/test",
       taskManager: new TaskManager(new Container(), "test-session"),
       aiManager: {
-        setWorkdir: mockSetWorkdir,
-        getWorkdir: () => "/repo/.wave/worktrees/test",
+        setCurrentWorkdir: mockSetWorkdir,
+        getCurrentWorkdir: () => "/repo/.wave/worktrees/test",
         getOriginalWorkdir: () => "/repo",
         getWorktreeSession: mockGetWorktreeSession,
         setWorktreeSession: mockSetWorktreeSession,

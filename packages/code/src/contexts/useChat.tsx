@@ -895,7 +895,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         setIsCommandRunning(agent.isCommandRunning);
         setIsCompacting(agent.isCompacting);
         setPermissionModeState(agent.getPermissionMode());
-        setWorkingDirectory(agent.workingDirectory);
+        setWorkingDirectory(agent.currentWorkdir);
         setCurrentModelState(agent.getModelConfig().model || "");
         setConfiguredModels(agent.getConfiguredModels().map((m) => m.name));
         setMaxInputTokens(agent.getMaxInputTokens());
@@ -1214,7 +1214,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       }
 
       setSessionId(agent.sessionId);
-      setWorkingDirectory(agent.workingDirectory);
+      setWorkingDirectory(agent.currentWorkdir);
       setIsLoading(agent.isLoading);
       refreshMessages();
       forceRemount();
@@ -1423,6 +1423,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // what keeps this the whole of the integration.
   const remoteControl = useRemoteControl({
     workdir: workdir ?? process.cwd(),
+    // 会话身份取 agent 的会话起点（不随 bash `cd` 漂移），不是上面那个会动的 workdir。
+    sessionCwd: () =>
+      agentRef.current?.sessionWorkdir ?? workdir ?? process.cwd(),
     sessionId,
     messages,
     isLoading,

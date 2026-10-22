@@ -77,13 +77,13 @@ export interface InitializeResult {
    * Where the session is *now*. A re-attached session that bash-`cd`'d inside a
    * turn reports the drifted directory here — correct for "the directory the
    * user is looking at", wrong for anything that means "this conversation's
-   * project".
+   * project" (use `sessionCwd` for that).
    */
-  workingDirectory: string;
+  currentWorkdir: string;
   /**
    * The session's stable root: the cwd it was created in (the worktree path for
    * a worktree session). Set on every reply; hosts must prefer it over
-   * `workingDirectory` whenever the value keys something durable (session
+   * `currentWorkdir` whenever the value keys something durable (session
    * grouping, project-scoped config, `@file` scope) — see StdioAgent.sessionCwd.
    */
   sessionCwd?: string;
@@ -180,10 +180,10 @@ export interface StdioAgentCallbacks {
 export class StdioAgent {
   // ── Cached state (synchronous access) ──
   public sessionId: string | undefined;
-  public workingDirectory: string | undefined;
+  public currentWorkdir: string | undefined;
   /**
    * Initialize-time cwd — the session's stable root. Unlike
-   * `workingDirectory` it is never overwritten by the workdirChange
+   * `currentWorkdir` it is never overwritten by the workdirChange
    * notification (bash cd), so @file search and the /status workdir stay
    * anchored to the project root.
    *
@@ -238,11 +238,11 @@ export class StdioAgent {
       params,
     )) as InitializeResult;
     this.sessionId = result.sessionId;
-    this.workingDirectory = result.workingDirectory;
+    this.currentWorkdir = result.currentWorkdir;
     // The reply's own root wins: a re-attached live session reports its current
-    // (possibly cd-drifted) cwd as `workingDirectory`, and only `sessionCwd`
+    // (possibly cd-drifted) cwd as `currentWorkdir`, and only `sessionCwd`
     // can say which project the conversation belongs to.
-    this.sessionCwd = result.sessionCwd ?? result.workingDirectory;
+    this.sessionCwd = result.sessionCwd ?? result.currentWorkdir;
     this.sessionRepoRoot = result.repoRoot;
     this.permissionMode = result.permissionMode;
     this.latestTotalTokens = result.latestTotalTokens;
@@ -282,7 +282,7 @@ export class StdioAgent {
         sessionId: this.sessionId,
         // The session file lives under the session root; a cwd drifted by `cd`
         // inside a turn must not address it (see sessionCwd).
-        workdir: this.sessionCwd ?? this.workingDirectory,
+        workdir: this.sessionCwd ?? this.currentWorkdir,
         title,
       },
       this.sessionId,
@@ -855,7 +855,7 @@ export class StdioAgent {
       }
       case "workdirChange": {
         const p = params as { workdir: string };
-        this.workingDirectory = p.workdir;
+        this.currentWorkdir = p.workdir;
         this.callbacks.onWorkdirChange?.(p.workdir);
         break;
       }

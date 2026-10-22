@@ -268,7 +268,7 @@ describe("SubagentManager - Session Functionality", () => {
       await handleSessionRestoration(
         "01234567-89ab-6cde-f012-3456789abcde",
         false,
-        instance.messageManager.getWorkdir(),
+        instance.messageManager.getCurrentWorkdir(),
       );
 
       // Verify that handleSessionRestoration was called with the correct parameters

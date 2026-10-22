@@ -157,7 +157,7 @@ export const exitWorktreeTool: ToolPlugin = {
       const aiManager = context.aiManager;
       if (aiManager) {
         aiManager.setWorktreeSession(null);
-        aiManager.setWorkdir(originalCwd);
+        aiManager.setCurrentWorkdir(originalCwd);
       }
 
       return {
@@ -218,7 +218,7 @@ export const exitWorktreeTool: ToolPlugin = {
     const aiManager = context.aiManager;
     if (aiManager) {
       aiManager.setWorktreeSession(null);
-      aiManager.setWorkdir(originalCwd);
+      aiManager.setCurrentWorkdir(originalCwd);
     }
 
     const discardParts: string[] = [];

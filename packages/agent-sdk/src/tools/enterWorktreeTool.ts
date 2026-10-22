@@ -177,7 +177,7 @@ export const enterWorktreeTool: ToolPlugin = {
         const aiManager = context.aiManager;
         if (aiManager) {
           aiManager.setWorktreeSession(hookBasedSession);
-          aiManager.setWorkdir(worktreePath);
+          aiManager.setCurrentWorkdir(worktreePath);
         }
 
         return {
@@ -237,7 +237,7 @@ export const enterWorktreeTool: ToolPlugin = {
     const aiManager = context.aiManager;
     if (aiManager) {
       aiManager.setWorktreeSession(session);
-      aiManager.setWorkdir(worktreeInfo.path);
+      aiManager.setCurrentWorkdir(worktreeInfo.path);
     }
 
     const branchInfo = worktreeInfo.branch

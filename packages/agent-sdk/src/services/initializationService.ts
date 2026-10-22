@@ -308,7 +308,7 @@ export class InitializationService {
       const sessionToRestore = await handleSessionRestoration(
         options?.restoreSessionId,
         options?.continueLastSession,
-        messageManager.getWorkdir(),
+        messageManager.getCurrentWorkdir(),
       );
       // Rebuild usage array from restored messages
       messageManager.rebuildUsageFromMessages(sessionToRestore?.messages || []);

@@ -195,7 +195,7 @@ interface SessionEntry {
   storedConfig: Partial<InitializeParams>;
   /**
    * The workdir the session was CREATED in — an immutable identity, unlike the
-   * live `agent.workingDirectory`, which drifts as the session `cd`s (bash tool
+   * live `agent.currentWorkdir`, which drifts as the session `cd`s (bash tool
    * / worktree switches). Hosted-session consumers (destroy --remove-worktree's
    * worktree resolution, list) read this instead of the live value so a session
    * that moved out of its worktree into the main repo is still cleaned up at
@@ -732,7 +732,7 @@ export class AgentBridge {
 
   private async initialize(params: InitializeParams): Promise<{
     sessionId: string;
-    workingDirectory: string;
+    currentWorkdir: string;
     sessionCwd: string;
     repoRoot?: string;
     permissionMode: PermissionMode;
@@ -800,9 +800,9 @@ export class AgentBridge {
       createdWorkdir =
         (await readTranscriptWorkdir(agent.sessionFilePath)) ??
         params.workdir ??
-        agent.workingDirectory;
+        agent.currentWorkdir;
     } else {
-      createdWorkdir = params.workdir ?? agent.workingDirectory;
+      createdWorkdir = params.workdir ?? agent.currentWorkdir;
     }
 
     this.sessions.set(agent.sessionId, {
@@ -821,12 +821,12 @@ export class AgentBridge {
    *
    * The current cwd and the session root travel as two separate facts on
    * purpose. A re-attached session may have bash-`cd`'d away from where it was
-   * created, so `agent.workingDirectory` answers "where is it now" while
+   * created, so `agent.currentWorkdir` answers "where is it now" while
    * `createdWorkdir` answers "which project does this conversation belong to".
    * Hosts key durable things (sidebar grouping, project-scoped config, `@file`
-   * scope) off the latter — the desktop used to derive both from
-   * `workingDirectory` and moved a resumed conversation into a subdirectory
-   * group.
+   * scope) off the latter — the desktop used to derive both from one
+   * `workingDirectory` field and moved a resumed conversation into a
+   * subdirectory group.
    *
    * `repoRoot` closes the worktree case: a session created inside a linked git
    * worktree belongs to the repo it was forked from. It is derived the same way
@@ -838,7 +838,7 @@ export class AgentBridge {
     sessionCwd: string,
   ): {
     sessionId: string;
-    workingDirectory: string;
+    currentWorkdir: string;
     sessionCwd: string;
     repoRoot?: string;
     permissionMode: PermissionMode;
@@ -847,7 +847,7 @@ export class AgentBridge {
     const worktree = deriveWorktreeInfo(sessionCwd);
     return {
       sessionId: agent.sessionId,
-      workingDirectory: agent.workingDirectory,
+      currentWorkdir: agent.currentWorkdir,
       sessionCwd,
       ...(worktree ? { repoRoot: worktree.repoRoot } : {}),
       permissionMode: agent.getPermissionMode(),
@@ -1389,7 +1389,7 @@ export class AgentBridge {
 
   private async getSessionInfo(sessionId?: string): Promise<{
     sessionId: string;
-    workingDirectory: string;
+    sessionCwd: string;
     latestTotalTokens: number;
     permissionMode: PermissionMode;
     availableTools: string[];
@@ -1402,10 +1402,10 @@ export class AgentBridge {
     const entry = this.requireSessionForRead(sessionId);
     return {
       sessionId: entry.agent.sessionId,
-      // The recorded creation workdir, not the live agent.workingDirectory:
+      // The recorded creation workdir, not the live agent.currentWorkdir:
       // destroy --remove-worktree resolves the session's worktree from this
       // value, and it must not drift when the session cd'd out of the worktree.
-      workingDirectory: entry.createdWorkdir,
+      sessionCwd: entry.createdWorkdir,
       latestTotalTokens: entry.agent.latestTotalTokens,
       permissionMode: entry.agent.getPermissionMode(),
       availableTools: entry.agent.getAvailableToolNames(),
@@ -1616,7 +1616,7 @@ export class AgentBridge {
         params.text,
         entry.agent.sessionId,
         {},
-        entry.agent.workingDirectory,
+        entry.agent.currentWorkdir,
       );
     } catch {
       // Best-effort; don't block message sending on history save failure
@@ -2242,7 +2242,7 @@ export class AgentBridge {
   private listDaemonSessions(): {
     sessions: Array<{
       sessionId: string;
-      workingDirectory: string;
+      sessionCwd: string;
       isLoading: boolean;
       hasRunningBackgroundWork: boolean;
       hasPendingMessages: boolean;
@@ -2281,7 +2281,7 @@ export class AgentBridge {
         const worktree = deriveWorktreeInfo(entry.createdWorkdir);
         return {
           sessionId,
-          workingDirectory: entry.createdWorkdir,
+          sessionCwd: entry.createdWorkdir,
           isLoading: entry.transitioning === true || entry.agent.isLoading,
           hasRunningBackgroundWork: entry.agent.hasRunningBackgroundWork,
           hasPendingMessages: entry.agent.hasPendingMessages,
@@ -2448,7 +2448,7 @@ export class AgentBridge {
       return { content: await readTextFileSafe(path), path };
     }
     const resolvedWorkdir =
-      workdir || (agent?.workingDirectory as string | undefined);
+      workdir || (agent?.currentWorkdir as string | undefined);
     if (!resolvedWorkdir) {
       throw new RpcError(
         PROTOCOL_INVALID_PARAMS,
@@ -2487,7 +2487,7 @@ export class AgentBridge {
       return { ok: true };
     }
     const resolvedWorkdir =
-      workdir || (agent?.workingDirectory as string | undefined);
+      workdir || (agent?.currentWorkdir as string | undefined);
     if (!resolvedWorkdir) {
       throw new RpcError(
         PROTOCOL_INVALID_PARAMS,
@@ -3019,7 +3019,7 @@ export class AgentBridge {
 
   private getSessionWorkdir(sessionId?: string): string | undefined {
     if (!sessionId) return undefined;
-    return this.sessions.get(sessionId)?.agent.workingDirectory;
+    return this.sessions.get(sessionId)?.agent.currentWorkdir;
   }
 }
 

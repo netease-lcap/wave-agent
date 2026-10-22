@@ -44,7 +44,8 @@ export class CronManager {
     if (this.interval) return;
 
     // Load durable tasks from file (best-effort, resilient to mocked fs in tests)
-    const workdir = this.container.get<string>("Workdir") ?? process.cwd();
+    const workdir =
+      this.container.get<string>("CurrentWorkdir") ?? process.cwd();
     let durableTasks: Awaited<ReturnType<typeof readCronTasks>> = [];
     try {
       durableTasks = readCronTasks(workdir) ?? [];
@@ -176,7 +177,8 @@ export class CronManager {
       this.cleanupSchedulerLock();
       this.cleanupSchedulerLock = null;
     }
-    const workdir = this.container.get<string>("Workdir") ?? process.cwd();
+    const workdir =
+      this.container.get<string>("CurrentWorkdir") ?? process.cwd();
     if (this.isOwner) {
       releaseSchedulerLock({ dir: workdir, sessionId: this.sessionId }).catch(
         () => {
@@ -222,7 +224,8 @@ export class CronManager {
     // Persist durable jobs to file
     if (job.durable) {
       try {
-        const workdir = this.container.get<string>("Workdir") ?? process.cwd();
+        const workdir =
+          this.container.get<string>("CurrentWorkdir") ?? process.cwd();
         addCronTask(newJob, workdir);
         this.ensureLock(workdir);
       } catch (e) {
@@ -243,7 +246,8 @@ export class CronManager {
     // Remove durable jobs from file
     if (deleted && job?.durable) {
       try {
-        const workdir = this.container.get<string>("Workdir") ?? process.cwd();
+        const workdir =
+          this.container.get<string>("CurrentWorkdir") ?? process.cwd();
         removeCronTasks([id], workdir);
       } catch (e) {
         logger?.warn(
@@ -299,7 +303,8 @@ export class CronManager {
     const now = Date.now();
     const aiManager = this.aiManager;
     const messageManager = this.messageManager;
-    const workdir = this.container.get<string>("Workdir") ?? process.cwd();
+    const workdir =
+      this.container.get<string>("CurrentWorkdir") ?? process.cwd();
 
     for (const [id, job] of this.jobs.entries()) {
       // Expiration: Recurring jobs MUST auto-expire after 7 days

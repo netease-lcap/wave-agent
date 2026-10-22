@@ -181,7 +181,7 @@ describe("AIManager - fork read-state isolation", () => {
     });
     container.register("TaskManager", { syncWithSession: vi.fn() });
     container.register("MergedEnv", { PATH: "/usr/bin" });
-    container.register("Workdir", "/test/workdir");
+    container.register("CurrentWorkdir", "/test/workdir");
     container.register("ConfigurationService", {
       resolveGatewayConfig: vi.fn().mockReturnValue(mockGatewayConfig),
       resolveModelConfig: vi.fn().mockReturnValue(mockModelConfig),
