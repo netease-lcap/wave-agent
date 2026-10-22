@@ -6807,7 +6807,25 @@ export class DesktopHost {
     await this.updateAgentConfig();
   }
 
-  private async handleLogin(): Promise<void> {
+  /**
+   * 登录进行中（点了「登录」到授权回到本地回调之前）。登录要把人送去外部浏览器，
+   * 这段时间按钮一直可点：重复点击会各起一套本地回调 server + 浏览器标签，并且
+   * 各触发一次 `afterLogin` → 对该 host 上**每个会话**做一轮 `destroy()` +
+   * `Agent.create()`（重建是串行的，见 updateAgentConfig）。会话多时「切换账号
+   * 登录几次之后就越来越慢」正是这条路径（PM 3500343150983424）。
+   */
+  private loginInFlight: Promise<void> | null = null;
+
+  private handleLogin(): Promise<void> {
+    if (!this.loginInFlight) {
+      this.loginInFlight = this.runLogin().finally(() => {
+        this.loginInFlight = null;
+      });
+    }
+    return this.loginInFlight;
+  }
+
+  private async runLogin(): Promise<void> {
     const host = this.currentHost;
     try {
       const result = (await this.utilityClientFor(host).request("login")) as {
