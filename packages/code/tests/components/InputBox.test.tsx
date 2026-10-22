@@ -112,6 +112,26 @@ describe("InputBox Smoke Tests", () => {
       );
     });
 
+    it("should insert a bracketed paste instead of submitting on its trailing newline", async () => {
+      const { stdin, lastFrame } = render(<InputBox />);
+
+      // Bracketed paste (DECSET 2004) wraps the pasted text in these markers.
+      // The trailing newline belongs to the paste rather than being an Enter
+      // press, so the text must stay in the input (a submit would clear it).
+      stdin.write("\u001b[200~line 1\r\nline 2\r\n\u001b[201~");
+
+      await vi.waitFor(() => {
+        const output = stripAnsiColors(lastFrame() || "");
+        expect(output).toContain("line 1");
+        expect(output).toContain("line 2");
+      });
+
+      const output = stripAnsiColors(lastFrame() || "");
+      expect(output).not.toContain("[200~");
+      expect(output).not.toContain("[201~");
+      expect(output).toContain("line 2");
+    });
+
     it("should show clear hint on first Esc and clear input on second Esc when idle", async () => {
       const { stdin, lastFrame } = render(<InputBox />);
 

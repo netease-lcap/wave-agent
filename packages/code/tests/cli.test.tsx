@@ -116,36 +116,6 @@ describe("startCli", () => {
     stdoutSpy.mockRestore();
   });
 
-  it("enables and disables bracketed paste when stdout is a TTY", async () => {
-    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
-      throw new Error("process.exit called");
-    });
-    const consoleErrorSpy = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-    const stdoutWriteSpy = vi
-      .spyOn(process.stdout, "write")
-      .mockImplementation(() => true);
-
-    Object.defineProperty(process.stdout, "isTTY", {
-      value: true,
-      configurable: true,
-    });
-
-    await expect(startCli({})).rejects.toThrow("process.exit called");
-
-    expect(stdoutWriteSpy).toHaveBeenCalledWith("\x1b[?2004h");
-    expect(stdoutWriteSpy).toHaveBeenCalledWith("\x1b[?2004l");
-
-    Object.defineProperty(process.stdout, "isTTY", {
-      value: false,
-      configurable: true,
-    });
-    stdoutWriteSpy.mockRestore();
-    consoleErrorSpy.mockRestore();
-    exitSpy.mockRestore();
-  });
-
   it("exits cleanly without removing a worktree by default", async () => {
     const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
       throw new Error("process.exit called");

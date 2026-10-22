@@ -1,9 +1,8 @@
 import React, { useRef, useState } from "react";
-import { Box, Text, useInput } from "ink";
+import { Box, Text, useInput, usePaste } from "ink";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { authService } from "wave-agent-sdk";
-import { createBracketedPasteDetector } from "../utils/bracketedPaste.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -32,12 +31,6 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
 
   const isLoadingRef = useRef(isLoading);
   isLoadingRef.current = isLoading;
-
-  // Detects and strips bracketed paste markers (\x1b[200~ ... \x1b[201~)
-  // that terminals wrap pasted text in. Unlike the main InputBox pipeline,
-  // this overlay's token input goes through raw ink useInput, which only
-  // strips ONE leading ESC, leaving the markers (e.g. "[200~") in the input.
-  const pasteDetectorRef = useRef(createBracketedPasteDetector());
 
   // Resolve/reject refs for the token promise
   const tokenResolveRef = useRef<((token: string) => void) | null>(null);
@@ -78,34 +71,23 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
       setTokenInput((prev) => prev.slice(0, -1));
       return;
     }
-    // Regular character input (single or pasted multi-char). Run through the
-    // bracketed paste detector: a pasted token arrives wrapped in
-    // \x1b[200~ ... \x1b[201~ markers (possibly split across chunks), which
-    // must be stripped instead of being appended to the token.
+    // Regular character input (single keypress). A pasted token arrives on
+    // ink's paste channel instead (see usePaste below).
     if (input && !key.ctrl && !key.meta && !key.return && input.length > 0) {
-      const result = pasteDetectorRef.current.process(input);
+      setTokenInput((prev) => prev + input);
+    }
+  });
 
-      if (result.kind === "consume") {
-        // In-flight bracketed paste content: hold it; the final chunk
-        // delivers the complete text.
-        return;
-      }
-
-      if (result.kind === "paste") {
-        // Tokens never contain carriage returns — drop \r (CRLF terminals
-        // send \r, not \n, in pasted text).
-        const leading = result.leadingInput?.replace(/\r/g, "");
-        if (leading) {
-          setTokenInput((prev) => prev + leading);
-        }
-        const text = result.text.replace(/\r/g, "");
-        if (text) {
-          setTokenInput((prev) => prev + text);
-        }
-        return;
-      }
-
-      setTokenInput((prev) => prev + result.input);
+  // A pasted token arrives as one string here, so its content is appended
+  // verbatim instead of being read as keystrokes. Tokens never contain carriage
+  // returns — CRLF terminals send \r inside pasted text.
+  usePaste((text) => {
+    if (!isLoadingRef.current) {
+      return;
+    }
+    const token = text.replace(/\r/g, "");
+    if (token) {
+      setTokenInput((prev) => prev + token);
     }
   });
 
@@ -125,7 +107,6 @@ export const LoginCommand: React.FC<LoginCommandProps> = ({ onCancel }) => {
     setError("");
     setAuthUrl("");
     setTokenInput("");
-    pasteDetectorRef.current.reset();
     setMessage("Starting authentication...");
 
     // Promise that resolves when user presses Enter with token input

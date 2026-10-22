@@ -7,7 +7,6 @@ import {
   ESC_DOUBLE_PRESS_TIMEOUT_MS,
   btwOverlayActiveRef,
 } from "../managers/inputReducer.js";
-import { createBracketedPasteDetector } from "../utils/bracketedPaste.js";
 import {
   searchFiles as searchFilesUtil,
   PermissionMode,
@@ -20,11 +19,6 @@ export const useInputManager = (
   callbacks: Partial<InputManagerCallbacks> = {},
 ) => {
   const [state, dispatch] = useReducer(inputReducer, initialState);
-
-  // Detects bracketed paste (DECSET 2004) markers so pasted text is inserted
-  // without triggering submit — a pasted trailing \r must not be treated as
-  // Enter (see utils/bracketedPaste.ts).
-  const pasteDetectorRef = useRef(createBracketedPasteDetector());
 
   // Abort plumbing for the /btw side question: ABORT_BTW (set when the overlay
   // is dismissed while loading) aborts the in-flight onAskBtw call; the
@@ -634,44 +628,27 @@ export const useInputManager = (
     dispatch({ type: "CLEAR_LONG_TEXT_MAP" });
   }, []);
 
+  // Pasted text is insert-only. ink delivers a bracketed paste as one string on
+  // its own channel (`usePaste`), so a trailing newline inside it can never be
+  // mistaken for Enter — going through HANDLE_KEY would submit instead, because
+  // its coalesced-Enter branch fires on any chunk ending with a single \r.
+  const insertPastedText = useCallback((text: string) => {
+    if (text === "") {
+      return;
+    }
+    // \r → \n normalizes CRLF terminals to the newline the input uses.
+    dispatch({
+      type: "INSERT_TEXT_WITH_PLACEHOLDER",
+      payload: text.replace(/\r/g, "\n"),
+    });
+  }, []);
+
   const handleInput = useCallback(
     async (input: string, key: Key) => {
-      const result = pasteDetectorRef.current.process(input);
-
-      if (result.kind === "consume") {
-        // Content of an in-flight bracketed paste (or an empty paste):
-        // hold it, never submit or insert prematurely.
-        return true;
-      }
-
-      if (result.kind === "paste") {
-        if (result.leadingInput) {
-          dispatch({
-            type: "HANDLE_KEY",
-            payload: {
-              input: result.leadingInput,
-              key,
-              hasSlashCommand: (cmd) => !!onHasSlashCommand?.(cmd),
-              hasQueuedMessages: hasQueuedMessagesProp ?? false,
-              isIdle: isIdleProp ?? false,
-            },
-          });
-        }
-        if (result.text !== "") {
-          // Insert-only: \r → \n normalizes CRLF terminals, matching the
-          // canonical paste path (inputHandlers.handlePasteInput).
-          dispatch({
-            type: "INSERT_TEXT_WITH_PLACEHOLDER",
-            payload: result.text.replace(/\r/g, "\n"),
-          });
-        }
-        return true;
-      }
-
       dispatch({
         type: "HANDLE_KEY",
         payload: {
-          input: result.input,
+          input,
           key,
           hasSlashCommand: (cmd) => !!onHasSlashCommand?.(cmd),
           hasQueuedMessages: hasQueuedMessagesProp ?? false,
@@ -772,6 +749,7 @@ export const useInputManager = (
 
     // Paste and text handling
     handlePasteInput,
+    insertPastedText,
     handleSubmit,
     expandLongTextPlaceholders,
     clearLongTextMap,

@@ -1,5 +1,6 @@
-import React, { useEffect, useReducer, useRef } from "react";
-import { Box, Text, useInput } from "ink";
+import React, { useEffect, useReducer } from "react";
+import { Box, Text, useInput, usePaste } from "ink";
+import type { Key } from "ink";
 import type {
   PermissionDecision,
   PermissionMode,
@@ -15,7 +16,6 @@ import {
 } from "wave-agent-sdk";
 import { confirmationReducer } from "../reducers/confirmationReducer.js";
 import { questionReducer } from "../reducers/questionReducer.js";
-import { createBracketedPasteDetector } from "../utils/bracketedPaste.js";
 
 const getHeaderColor = (header: string) => {
   const colors = ["red", "green", "blue", "magenta", "cyan"] as const;
@@ -124,46 +124,41 @@ export const ConfirmationSelector: React.FC<ConfirmationSelectorProps> = ({
     outsideSafeZoneDirectory ?? "",
   )}/ this session`;
 
-  const pasteDetectorRef = useRef(createBracketedPasteDetector());
+  const dispatchInput = (input: string, key: Key) => {
+    if (toolName === ASK_USER_QUESTION_TOOL_NAME) {
+      questionDispatch({
+        type: "HANDLE_KEY",
+        input,
+        key,
+        questions,
+      });
+      return;
+    }
+    dispatch({
+      type: "HANDLE_KEY",
+      input,
+      key,
+      toolName,
+      toolInput,
+      suggestedPrefix,
+      hidePersistentOption,
+      outsideSafeZoneDirectory,
+      permissionMode,
+    });
+  };
 
   useInput((input, key) => {
     if (key.escape) {
       onCancel();
       return;
     }
+    dispatchInput(input, key);
+  });
 
-    const result = pasteDetectorRef.current.process(input);
-    if (result.kind === "consume") {
-      // Content of an in-flight bracketed paste: hold it, never submit.
-      return;
-    }
-    let cleanInput: string;
-    if (result.kind === "paste") {
-      cleanInput = (result.leadingInput ?? "") + result.text;
-    } else {
-      cleanInput = result.input;
-    }
-
-    if (toolName === ASK_USER_QUESTION_TOOL_NAME) {
-      questionDispatch({
-        type: "HANDLE_KEY",
-        input: cleanInput,
-        key,
-        questions,
-      });
-    } else {
-      dispatch({
-        type: "HANDLE_KEY",
-        input: cleanInput,
-        key,
-        toolName,
-        toolInput,
-        suggestedPrefix,
-        hidePersistentOption,
-        outsideSafeZoneDirectory,
-        permissionMode,
-      });
-    }
+  // A pasted string arrives here as one chunk with no key flags, so it can fill
+  // an answer/instruction field but never confirm the decision itself.
+  usePaste((text) => {
+    dispatchInput(text, {} as Key);
   });
 
   const placeholderText = "Type here to tell Wave what to change";

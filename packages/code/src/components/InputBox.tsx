@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useCallback } from "react";
 import { Box, Text } from "ink";
-import { useInput } from "ink";
+import { useInput, usePaste } from "ink";
 import { FileSelector } from "./FileSelector.js";
 import { CommandSelector } from "./CommandSelector.js";
 import { HistorySearch } from "./HistorySearch.js";
@@ -192,6 +192,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     escClearPending,
     // Main handler
     handleInput,
+    insertPastedText,
     // Manager ready state
     isManagerReady,
     // Direct state setters
@@ -234,13 +235,11 @@ export const InputBox: React.FC<InputBoxProps> = ({
     setPermissionMode(chatPermissionMode);
   }, [chatPermissionMode, setPermissionMode]);
 
-  // Use the InputManager's unified input handler
-  useInput(async (input, key) => {
-    // These views have their own useInput handlers that handle escape and navigation.
-    // If they are active, we should skip InputBox's global input handling to avoid
-    // duplicate dispatches or state update conflicts.
-    if (
-      planView ||
+  // These views have their own useInput handlers that handle escape and
+  // navigation. While one is open it owns the keyboard: InputBox must skip its
+  // own handling to avoid duplicate dispatches or state update conflicts.
+  const overlayOwnsKeyboard = Boolean(
+    planView ||
       showRewindManager ||
       showResumeSelector ||
       showHelp ||
@@ -254,12 +253,30 @@ export const InputBox: React.FC<InputBoxProps> = ({
       showWorkflowManager ||
       showSkillsManager ||
       showHooksManager ||
-      showRemoteControl
-    ) {
+      showRemoteControl,
+  );
+
+  // Use the InputManager's unified input handler
+  useInput(async (input, key) => {
+    if (overlayOwnsKeyboard) {
       return;
     }
     await handleInput(input, key);
   });
+
+  // ink enables bracketed paste mode (DECSET 2004) while this hook is active and
+  // delivers the whole paste as one string here instead of through useInput, so
+  // its newlines are inserted rather than submitted. Deactivating it while an
+  // overlay owns the keyboard hands pasted text back to ink's `useInput`
+  // fallback, where the overlay's own handler sees it — text-entry overlays
+  // (login token, plugin source form, confirmation answer) additionally keep a
+  // `usePaste` of their own, which gets the empty-key chunk directly.
+  usePaste(
+    (text) => {
+      insertPastedText(text);
+    },
+    { isActive: !overlayOwnsKeyboard },
+  );
 
   const handleRewindCancel = () => {
     if (setShowRewindManager) {
