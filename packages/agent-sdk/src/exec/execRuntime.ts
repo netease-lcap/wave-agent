@@ -136,6 +136,32 @@ async function callMcpTool(
 }
 
 /**
+ * Build the rejection message for a failed built-in call.
+ *
+ * `error` and `content` answer different questions, so neither may be dropped:
+ * `error` is the short tag the model can recognise at a glance, while `content`
+ * is the actionable half — the parameter to retry with, the reason a tool
+ * refused. Keeping only `error` left the caller without the fix-up instructions
+ * it needs to correct itself.
+ *
+ * Either field may be absent: the task tools report through `content` alone
+ * (`TaskUpdate` missing `taskId` answers "Task #undefined not found" in
+ * `content`, with `error` undefined), and many tools put the same string in both
+ * (`toolManager` answers an invalid input with `{ content: invalid, error:
+ * invalid }`), so duplicates are collapsed instead of printed twice.
+ */
+function failureMessage(
+  name: string,
+  result: { error?: string; content?: string },
+): string {
+  const parts = [result.error, result.content]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part));
+  const unique = [...new Set(parts)];
+  return unique.length > 0 ? unique.join("\n") : `${name} failed`;
+}
+
+/**
  * Dispatch a built-in call through `ToolManager.execute`, which is the built-ins'
  * equivalent funnel: each built-in runs its own `checkPermission` inside
  * `execute()`, and this entry point is what supplies the enhanced context (permission
@@ -158,12 +184,7 @@ async function callBuiltInTool(
   }
   const result = await toolManager.execute(name, args, context);
   if (!result.success) {
-    // `error` is the field tools *should* fill, but not all of them do: the task
-    // tools report failure through `content` only (`TaskUpdate` missing `taskId`
-    // answers "Task #undefined not found" in `content`, with `error` undefined).
-    // Falling straight to `${name} failed` made the real reason unreachable from
-    // the script, leaving the caller nothing to branch on but a bare tool name.
-    throw new Error(result.error || result.content || `${name} failed`);
+    throw new Error(failureMessage(name, result));
   }
   return { output: result.content, images: result.images };
 }

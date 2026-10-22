@@ -404,6 +404,67 @@ describe("runExecScript — built-in dispatch", () => {
     });
   });
 
+  it("carries both the error tag and the actionable content, error first", async () => {
+    // The incident this guards: `ExitWorktree({ action: "remove" })` refused
+    // because it could not verify the worktree state. `error` held the short tag
+    // and `content` held the way forward (`discard_changes: true`), so taking
+    // `error` alone left the agent unable to retry and it had to fall back to
+    // `keep` plus a hand-run hook. Both halves have to reach the script.
+    const refusal =
+      'Refusing to remove without explicit confirmation. Re-invoke with discard_changes: true to proceed — or use action: "keep" to preserve the worktree.';
+    const { promise } = builtInRun(
+      `
+        try {
+          await tools.WebFetch({ url: "https://example.com" });
+          return { outcome: "resolved" };
+        } catch (error) {
+          return { outcome: error.message };
+        }
+      `,
+      {
+        success: false,
+        error: "Could not verify worktree state",
+        content: refusal,
+      },
+    );
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    const { outcome } = JSON.parse(result.value!);
+    expect(outcome).toBe(`Could not verify worktree state\n${refusal}`);
+    expect(outcome).toContain("discard_changes: true");
+    expect(outcome).toContain(
+      "Refusing to remove without explicit confirmation.",
+    );
+  });
+
+  it("prints a message a tool repeats in error and content exactly once", async () => {
+    // Plenty of tools fill both fields with the same string; joining them
+    // verbatim would make the model read the same sentence twice and wonder
+    // whether two separate things failed.
+    const { promise } = builtInRun(
+      `
+        try {
+          await tools.WebFetch({ url: "https://example.com" });
+          return { outcome: "resolved" };
+        } catch (error) {
+          return { outcome: error.message };
+        }
+      `,
+      {
+        success: false,
+        error: "Permission denied by user",
+        content: "Permission denied by user",
+      },
+    );
+
+    const result = await promise;
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(result.value!)).toEqual({
+      outcome: "Permission denied by user",
+    });
+  });
+
   it("propagates images from a built-in call", async () => {
     const { promise } = builtInRun(`return await tools.WebFetch({});`, {
       success: true,
