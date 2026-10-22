@@ -41,5 +41,3 @@ docs/.vitepress/.temp/
 docs/.vitepress/data/
 docs/public/screenshots/
 docs-*.tar.gz
-# 桌面端走查台账：设计侧本地维护，不入库（历史可由 git log 回溯）
-docs/desktop-density-restore.md
