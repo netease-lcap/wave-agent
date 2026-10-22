@@ -8480,6 +8480,60 @@ axe 浅深 0/0、640 窄屏无横溢。
 
 本轮纯 CSS 值改动，无业务单测覆盖。
 
+## 2026-10-22 · 创作集分类行「编辑 / 删除」改「⋯」+ 下拉菜单（1022 预览评论）
+
+**触发**：她点 `button.artifacts-nav-item`「待整理 0」说「这里编辑和删除的交互参考」，
+再点 `li.desktop-session-item` 说「参考这里，也是用三个点的图标，下拉中是重命名和删除，
+hover 后数字显示在三个点图标前面」。
+
+**落点**：`packages/webview/src/components/ArtifactsPage.tsx`（新增 `CategoryItemMenu` +
+nav 行的「⋯」）+ `packages/webview/src/styles/ArtifactsPage.css`（`.artifacts-nav-more` 与新让位规则）。
+
+### ① 改前 → 改后
+
+| 项           | 改前                                                                          | 改后（= 会话行参照件）                                                                                                                                                            |
+| ------------ | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 行内动作     | 行**外** 62×21 槽：两颗 11px 文字按钮「编辑」30×21 @x394、「删除」30×21 @x426 | 行**内** 24×24「⋯」@(424,141)，右缘距行右 8px                                                                                                                                     |
+| 显示方式     | `display:none` → hover `inline-flex`（键盘不可达）                            | `opacity 0` + `pointer-events none` → 行 hover / `:focus-visible` / `aria-expanded=true` 淡入（可 Tab 到）                                                                        |
+| hover 时角标 | x369.3（被 62px 槽推左 64px，hover 底只盖住收缩后的行）                       | x413.3（右缘 420），停在三点左缘 424 前 4px，hover 底覆盖整行 172×30                                                                                                              |
+| 动作入口     | 两个直点按钮                                                                  | 下拉菜单：「重命名」（铅笔）/「删除」（垃圾桶 + 危险色），148×74 @r12，项 130×28 / 14px                                                                                           |
+| 菜单实现     | —                                                                             | **复用会话行 `.desktop-session-menu` 那套 DOM 与类名**（`SessionItemMenu` 的同一算法：fixed、`top = anchor.bottom + 4`、右对齐并夹在视口内、`useRovingMenu` + `useClickOutside`） |
+| 静止态       | 行 172×30 / r8 / 内衬 4·16 / 角标 x433.3                                      | **逐值不变**（三点此时不可见）                                                                                                                                                    |
+
+### ② 可复用认知
+
+1. **「照抄交互」= 复用 DOM 类名，别重写样式**：菜单直接挂 `.desktop-session-menu` /
+   `-item` / `-item--danger`，两处宽度、圆角、内衬、图标、危险色自动逐值相同，也不会漂。
+   代价是依赖 `DesktopApp.css` 在桌面端已被引入（本页只在桌面端渲染，成立）。
+2. **让位用内衬，不用 `display`**：`padding-right: 16 → 36px`（三点占 32 + 4 间隔），
+   配 `transition: padding-right .12s`；再用 `:has(.artifacts-nav-more[aria-expanded="true"])`
+   把「菜单开着但指针移开」这一态也钉住，角标不会弹回。
+3. **`tabIndex` 不能盲抄**：会话行那颗是 `-1`，因为它有 ←/→ 漫游入口；创作集导航没有那套，
+   照抄就会让键盘用户完全打不开菜单 → 这里保留 Tab 可达（旧的两颗文字按钮是
+   `display:none`，本来也不可达，所以不是回退）。
+4. **hover 截图要等过渡**：`matches(':hover')` 只保证命中，背景色 0.12s 过渡没走完就截，
+   会拍到「还没变色的行」（本轮第一遍 after/after2 因此假报 19k 像素差异，补齐 320ms 后 0 差异）。
+
+### ③ 残留 / 待裁决
+
+- 删除项红色沿用会话行的 `--vscode-errorForeground`（浅 #DC2626 / 深 #FC4E52），
+  与 1014 收口的 soft-danger 不是同一档 → 触发语「删除项也用 soft-danger」。
+- 菜单项文案写「删除」（她原话「重命名和删除」）；若要「删除分类」说一声。
+- 「⋯」的 Tab 可达性（见 ②-3）——要严格照抄会话行（`-1`）也可回退。
+
+### ④ 证据
+
+- 采集：`CC02/走查/_tools/1022/probe-artifacts-navmenu-1022.mjs <after|before|after2>`
+  → `走查/1022-创作集分类菜单/<phase>/{rest,hover,aside-hover,menu,menu-hover,rename-dialog,ref-session-menu}-<theme>.png` + `measure-<phase>.json`（pageerror 0）
+- 「改前」= 真回退 `ArtifactsPage.tsx`（md5 `4ee09906907fd72d59186c505039c85b`）+ `ArtifactsPage.css`
+  （md5 `6dd944ba825eee65dddb20d72a925913`），采后原样还原并核 md5；after vs after2 逐像素
+  **14 张全部 0 差异**。
+- 报告 `走查/1022-artifacts-navmenu-report/index.html`（F-01 行内动作 / F-02 菜单）：
+  母版 `build_repair_report.py` 生成 + `verify-repair-report.mjs` 自检 —— 图片加载 true、
+  错误 0、axe 浅深 0/0、640 窄屏无横溢。
+- 交互实测：Escape 关闭 ✓（两档）、重命名弹窗预填分类名「原型」✓、删除确认弹窗 ✓。
+- 本轮纯样式 + 组件内交互，无业务单测覆盖；已跑 `pnpm -F wave-webview type-check`（tsc 四工程项目全过）。
+
 ## 2026-10-22 · 创作集删除分类弹窗按 skill「compact confirmation」重做（1022 预览评论）
 
 **触发**：她点 `div.artifacts-modal-header`「删除分类×」→「这个删除弹窗用 skill 中删除弹窗的统一样式」。
@@ -8542,3 +8596,88 @@ visual variant，即 2026-10-14 已落到共享组件 `ConfirmDialog` 的同一�
 `tmp-artifacts-1021-list`）、素材 `build-artifacts-delete-dialog-assets-1022.py`；报告
 `走查/1022-删除分类弹窗报告/index.html`（5 条对比，axe 0/0、640px 无横向溢出、pageerror 0）。
 改前 md5 `069de845…`（= HEAD）、改后 `38202544…`。
+
+## 2026-10-22 · 今日全部样式改动收进桌面端作用域（她：「希望今天的样式修改都是桌面端的」）
+
+### ① 做了什么
+
+`packages/webview/src/styles/ArtifactsPage.css` 里**今天动过的 26 条规则**（段控 4 条、分类行/「⋯」家族
+8 条、按钮三件套及其 hover/active/disabled 11 条、搜索框 2 条、表单 input/select 及 focus/箭头 7 条）
+统一加 `[data-host="desktop"]` 前缀，文件内现有 **36 处** `[data-host="desktop"]`。
+只改选择器、**没动任何一条声明**（`git diff` 里成对的新旧行剥掉前缀后逐字相同）。
+
+没有跟着加前缀的两类（有意为之）：
+
+- 今天**没碰**的既有基础规则（`.artifacts-nav-item`、`.artifacts-nav-row .artifacts-nav-item`、
+  `.artifacts-danger-btn` 的颜色等）：改了会把 IDE 侧的 base 一起带偏，超出「今天的改动」范围。
+- 创作集整页本来就只在桌面端挂载（`ChatApp.tsx:412 isDesktop` → `:4369 artifacts = isDesktop ? <ArtifactsPage/> : null`），
+  所以这些规则在 IDE 上根本不会命中；加前缀是为了让「今天的改动只在桌面端生效」这件事在代码里显式成立，
+  不依赖调用点的隐式前提。
+
+### ② 怎么证明「加前缀 = 零视觉变化」
+
+单靠「改前 vs 改后」截图比对不成立 —— 加前缀前那次采集已经被覆盖，而两次采集之间的文字抗锯齿抖动
+（同一位置同字形 ±1px 灰阶）会假报差异。改用**计算样式全量快照 A/B**：
+
+1. A 快照：当前工作区文件（带前缀）→ 全页 `body *` 每个元素、每个 computed 长属性（跳过
+   `animation*` / `transition*`）+ 盒 rect + `:hover` 命中，逐状态落 JSON；
+2. **真回退**：把 CSS 里的 `[data-host="desktop"] ` 字面删掉写回文件（≠ HEAD，是「加前缀之前」的写法），
+   等 vite 热更新 → `page.reload()` → B 快照；
+3. 按 `tag|class|rect` 作 key 对齐（**不能按下标对齐** —— 侧栏 tooltip 插拔会让后面所有下标漂移，
+   从而把无关元素报成差异），逐个属性比字符串；
+4. `finally` 里把原文件写回，`md5` 复原。
+
+实测（`走查/1022-创作集分类菜单/scope-neutrality/{A.json,B.json,diff.json}`）：
+
+| 状态           | 元素数 | 差异元素 |
+| -------------- | ------ | -------- |
+| light / 静止   | 415    | 0        |
+| light / hover  | 415    | 0        |
+| light / 菜单开 | 429    | 0        |
+| dark / 静止    | 429    | 0        |
+| dark / hover   | 429    | 0        |
+| dark / 菜单开  | 429    | 0        |
+
+**合计 0 处差异**（含 rect、颜色、字号字重、圆角、内衬、opacity、outline、`pointer-events`）。
+CSS md5 前后同为 `b9a984ee687c45da1e542add87c0088a`。
+
+### ③ 认知 / 坑
+
+1. **「前缀改了会不会改变层叠顺序」要单独想一遍**：`[data-host="desktop"] .x` 是 (0,2,0)，会把原来 (0,1,0)
+   的规则提到 (0,2,0)，可能压过后面的同权重规则。逐条核过：唯一候选是文件末尾
+   `.artifacts-member-picker .artifacts-search { width: 100% }`（(0,2,0)、位置更后），实测分享弹窗里的
+   搜索框仍是 100% 宽，未被拉起。
+2. **A/B 快照必须把指针位置钉死**：`page.mouse.move(1380, 950)`（内容区右下死点）作为静止/菜单态的
+   固定停车位、hover 态停在「行内左侧 x+20」—— 否则侧栏 tooltip 会在一侧展开、一侧不展开，
+   DOM 多一层 `tooltip-box`，按下标比对全是假差异。
+3. **菜单项会自动接管焦点**（roving menu），一侧 `:focus-visible` 出 outline、一侧没有 → 采样前统一
+   `document.activeElement.blur()`。
+4. **IDE 反证**（`走查/1022-创作集分类菜单/host-scope/host-ide.png`）：把宿主切成 `ide` 后创作集入口
+   0 个节点（`desktop-artifacts` / `artifacts-nav-more` 均 0），桌面端 1 / 3 —— 与「整页仅桌面端」一致。
+
+探针：`走查/_tools/1022/probe-scope-neutrality-1022.mjs`（自带「删前缀 → 热更新 → 重采 → 写回」，
+跑完必须核 md5）。宿主反证：`probe-host-scope-navmenu-1022.mjs` + `prototype/mock/tmp-host-ide-1022.ts`。
+
+### ④ 已推送批次的覆盖核对（她：「已推送的作用域也统一为桌面端」）
+
+本分支已推的 5 笔里，改过样式的有 4 笔；逐笔核过它们改到的每条选择器，现在是否都带桌面端前缀：
+
+| 已推提交                    | 改到的文件                           | 规则                                         | 现在是否桌面端作用域 |
+| --------------------------- | ------------------------------------ | -------------------------------------------- | -------------------- |
+| `5eec7363` 入口间距/返回位  | ArtifactsPage.css + host-desktop.css | `.artifacts-page .session-board-toolbar`     | ✅ 提交时即带前缀    |
+| `b0136136` 分段器等宽       | ArtifactsPage.css                    | `.artifacts-segment*` 4 条                   | ✅ 本轮补上          |
+| `6906e7f5` 按钮/表单/搜索框 | ArtifactsPage.css                    | 三件套全状态 11 条 + 搜索框 2 条 + 表单 7 条 | ✅ 本轮补上          |
+| `ecf68251` 左侧导航         | host-desktop.css                     | `.artifacts-nav-*` 全部                      | ✅ 提交时即带前缀    |
+| `40a10db9` 删除分类弹窗     | host-desktop.css                     | `.artifacts-form:has(...)` 族                | ✅ 提交时即带前缀    |
+
+核对手段：`git diff <base> HEAD` 的**新增选择器行**只有 12 条，全部落在上表；再用脚本遍历整份
+`ArtifactsPage.css` 的 95 条规则，确认**没有「选择器组里只给第一个带前缀」的半作用域漏洞**
+（分组规则要么整组带前缀、要么整组不带）。
+
+**刻意没动的 67 条**（`.artifacts-page` / `.artifacts-table` / `.artifacts-modal*` / `.artifacts-form` 等
+上游 feature 的基础样式，来自 `d2241140` 而非任何一轮样式评论）：不是不能加，是**现在加会翻车** ——
+`ArtifactsPage.css` 由 `ArtifactsPage.tsx` 动态 import，实测它是第 34 张样式表、而 `host-desktop.css`
+是第 0 张（先加载）。base 的 `.artifacts-nav-item`（7px 10px / 13px）一旦从 (0,1,0) 提到 (0,2,0)，
+就和 host-desktop.css 的 `[data-host="desktop"] .artifacts-nav-item`（4px 16px / 14px）**同权重**，
+后加载者胜 ⇒ 导航项会退回 base 的 7·10 内衬和 13px。`.artifacts-nav-count`、`.artifacts-nav-item.is-active`
+同理。真要收，得同步把 host-desktop.css 那几条提到 (0,3,0)，属于另一笔改动。

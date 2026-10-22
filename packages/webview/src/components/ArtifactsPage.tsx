@@ -5,9 +5,16 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { SidebarExpandIcon } from "./HeaderIcons";
+import {
+  MoreIcon,
+  QueueEditIcon,
+  QueueTrashIcon,
+  SidebarExpandIcon,
+} from "./HeaderIcons";
 import { Tooltip } from "./Tooltip";
 import { useHostMessage } from "../utils/useHostMessage";
+import { useRovingMenu } from "../utils/useRovingMenu";
+import { useClickOutside } from "../utils/useClickOutside";
 import type {
   ArtifactCategory,
   ArtifactGalleryItem,
@@ -177,6 +184,81 @@ interface CategoryDialogState {
   name?: string;
 }
 
+/** 分类行的「更多」菜单打开状态：哪一行 + 触发按钮的位置（fixed 定位用）。 */
+interface CategoryMenuState {
+  categoryId: string;
+  rect: DOMRect;
+}
+
+/**
+ * 分类行的「⋯」菜单（重命名 / 删除）。
+ *
+ * 1022 评论（点 `button.artifacts-nav-item`「待整理 0」）：「编辑和删除的交互参考」
+ * 侧栏会话行（`li.desktop-session-item`）——所以这里**复用会话行菜单的 DOM 与类名**
+ * （`.desktop-session-menu` / `-item` / `-item--danger`），几何、配色、键盘漫游与
+ * 会话行逐值相同；`fixed` 定位同样是为了逃出容器的 `overflow` 裁剪。
+ * `DesktopApp.css` 在桌面端恒被 `DesktopApp`/`DesktopSidebar` 引入，本页只在桌面端
+ * 渲染，故这些类名不会缺席。
+ */
+const CategoryItemMenu: React.FC<{
+  anchorRect: DOMRect;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+  onRename: () => void;
+  onDelete: () => void;
+  onClose: () => void;
+}> = ({ anchorRect, triggerRef, onRename, onDelete, onClose }) => {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const { getItemProps } = useRovingMenu(menuRef, {
+    itemSelector: ".desktop-session-menu-item",
+    itemCount: 2,
+    triggerRef,
+    closeOnActivate: true,
+    onRequestClose: onClose,
+    onActivate: (i) => (i === 0 ? onRename() : onDelete()),
+  });
+  useClickOutside({ refs: [menuRef], onClickOutside: onClose });
+
+  // 与会话行菜单同宽同位置规则：右对齐触发按钮，并夹在视口内。
+  const menuWidth = 148;
+  const left = Math.max(
+    8,
+    Math.min(anchorRect.right - menuWidth, window.innerWidth - menuWidth - 8),
+  );
+  return (
+    <div
+      ref={menuRef}
+      className="desktop-session-menu"
+      role="menu"
+      style={{
+        position: "fixed",
+        top: anchorRect.bottom + 4,
+        left,
+        width: menuWidth,
+      }}
+      data-testid="artifacts-category-menu"
+    >
+      <div
+        className="desktop-session-menu-item"
+        role="menuitem"
+        {...getItemProps(0)}
+        data-testid="artifacts-category-menu-rename"
+      >
+        <QueueEditIcon className="desktop-session-menu-icon" />
+        <span>重命名</span>
+      </div>
+      <div
+        className="desktop-session-menu-item desktop-session-menu-item--danger"
+        role="menuitem"
+        {...getItemProps(1)}
+        data-testid="artifacts-category-menu-delete"
+      >
+        <QueueTrashIcon className="desktop-session-menu-icon" />
+        <span>删除</span>
+      </div>
+    </div>
+  );
+};
+
 export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   onBack,
   collapsed = false,
@@ -212,6 +294,23 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   const [categoryNameDraft, setCategoryNameDraft] = useState("");
   const [categoryMoveTarget, setCategoryMoveTarget] = useState<string>("");
   const [categoryError, setCategoryError] = useState<string | null>(null);
+  // 分类行「⋯」菜单：哪一行开着 + 触发按钮 rect（fixed 定位）。
+  const [categoryMenu, setCategoryMenu] = useState<CategoryMenuState | null>(
+    null,
+  );
+  // 每行「⋯」的 ref 锚点（按 id 缓存同一对象，供菜单关闭后把焦点还回去）——
+  // 与会话行的 `moreBtnAnchorsRef` 同款，避免每帧新建 ref 对象。
+  const categoryMoreAnchorsRef = useRef(
+    new Map<string, { current: HTMLButtonElement | null }>(),
+  );
+  const getCategoryMoreRef = (categoryId: string) => {
+    let anchor = categoryMoreAnchorsRef.current.get(categoryId);
+    if (!anchor) {
+      anchor = { current: null };
+      categoryMoreAnchorsRef.current.set(categoryId, anchor);
+    }
+    return anchor;
+  };
 
   const [shareSlug, setShareSlug] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
@@ -718,38 +817,60 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                         {categoryCounts[category.id] ?? 0}
                       </span>
                     </button>
-                    <span className="artifacts-nav-actions">
-                      <button
-                        type="button"
-                        className="artifacts-icon-btn"
-                        title="重命名分类"
-                        aria-label={`重命名分类 ${category.name}`}
-                        onClick={() =>
+                    {/* 1022 评论：「编辑和删除的交互参考」侧栏会话行 ——
+                        两个文字按钮换成一颗「⋯」（`.desktop-session-more-btn`
+                        同款 24×24、行右 8px、hover 淡入），动作收进下拉菜单。 */}
+                    <button
+                      type="button"
+                      ref={getCategoryMoreRef(category.id)}
+                      className="artifacts-nav-more"
+                      title="更多操作"
+                      aria-label={`分类「${category.name}」更多操作`}
+                      aria-haspopup="menu"
+                      aria-expanded={
+                        categoryMenu?.categoryId === category.id || undefined
+                      }
+                      // 会话行靠 ←/→ 从行本身进入这个按钮（那里有漫游焦点管理）；
+                      // 创作集导航没有那套漫游 ⇒ 保留 Tab 可达，否则键盘用户
+                      // 完全打不开菜单（旧的两颗文字按钮是 display:none，同样不可达，
+                      // 这里顺带补上）。
+                      tabIndex={0}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setCategoryMenu((prev) =>
+                          prev?.categoryId === category.id
+                            ? null
+                            : { categoryId: category.id, rect },
+                        );
+                      }}
+                      data-testid={`artifacts-category-more-${category.id}`}
+                    >
+                      <MoreIcon className="artifacts-nav-more-icon" />
+                    </button>
+                    {categoryMenu?.categoryId === category.id && (
+                      <CategoryItemMenu
+                        anchorRect={categoryMenu.rect}
+                        triggerRef={getCategoryMoreRef(category.id)}
+                        onRename={() => {
+                          setCategoryMenu(null);
                           openCategoryDialog({
                             kind: "rename",
                             categoryId: category.id,
                             name: category.name,
-                          })
-                        }
-                      >
-                        编辑
-                      </button>
-                      <button
-                        type="button"
-                        className="artifacts-icon-btn"
-                        title="删除分类"
-                        aria-label={`删除分类 ${category.name}`}
-                        onClick={() =>
+                          });
+                        }}
+                        onDelete={() => {
+                          setCategoryMenu(null);
                           openCategoryDialog({
                             kind: "delete",
                             categoryId: category.id,
                             name: category.name,
-                          })
-                        }
-                      >
-                        删除
-                      </button>
-                    </span>
+                          });
+                        }}
+                        onClose={() => setCategoryMenu(null)}
+                      />
+                    )}
                   </div>
                 ))}
               </>

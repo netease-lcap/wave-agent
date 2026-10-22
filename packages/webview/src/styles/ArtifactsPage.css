@@ -59,7 +59,7 @@
    选项等宽：两个标签里「自定义视图」是宽者（5 个全角字），段宽钉成 5em + 左右内衬
    12×2 = 94px，两段逐值相同（汉字在全角字号下 1em 一格，实测 13px 时 5×13 + 28 = 93
    与渲染值一致，故 14px 下为 94）。 */
-.artifacts-segment {
+[data-host="desktop"] .artifacts-segment {
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -70,7 +70,7 @@
   background: var(--cc-fill, var(--vscode-toolbar-hoverBackground));
 }
 
-.artifacts-segment-btn {
+[data-host="desktop"] .artifacts-segment-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -86,12 +86,12 @@
   cursor: pointer;
 }
 
-.artifacts-segment-btn:hover {
+[data-host="desktop"] .artifacts-segment-btn:hover {
   /* 与 .settings-plugin-chip 同口径：轨道上只提文字色，不叠第二层填充面 */
   color: var(--vscode-foreground);
 }
 
-.artifacts-segment-btn.is-active {
+[data-host="desktop"] .artifacts-segment-btn.is-active {
   color: var(--cc-text-segment-active, var(--vscode-button-foreground));
   background: var(--cc-bg-segment-active, var(--vscode-button-background));
   font-weight: 600;
@@ -137,7 +137,8 @@
   font-weight: 600;
 }
 
-.artifacts-nav-row {
+[data-host="desktop"] .artifacts-nav-row {
+  position: relative; /* 「⋯」按行右 8px 绝对定位（会话行同款） */
   display: flex;
   align-items: center;
   gap: 2px;
@@ -148,13 +149,70 @@
   min-width: 0;
 }
 
-.artifacts-nav-actions {
-  display: none;
-  gap: 2px;
+/* 1022 评论（点 `button.artifacts-nav-item`「待整理 0」「这里编辑和删除的交互参考」）：
+   原来 hover 才现身的两颗文字按钮（编辑 / 删除）换成一颗「⋯」+ 下拉菜单，
+   几何逐值抄侧栏会话行的 `.desktop-session-more-btn`：24×24、贴行右 8px、r6、
+   常态 opacity 0 / pointer-events none（不是 display:none —— 保持可聚焦），
+   行 hover 或按钮自身 :focus-visible 时淡入。
+   菜单本体复用会话行的 `.desktop-session-menu` 类（见 CategoryItemMenu 注释）。 */
+[data-host="desktop"] .artifacts-nav-more {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: #565a60;
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  transition:
+    opacity 0.12s ease,
+    background-color 0.12s ease;
+  z-index: 1;
 }
 
-.artifacts-nav-row:hover .artifacts-nav-actions {
-  display: inline-flex;
+[data-host="desktop"] .artifacts-nav-row:hover .artifacts-nav-more,
+[data-host="desktop"] .artifacts-nav-more:focus-visible,
+[data-host="desktop"] .artifacts-nav-more[aria-expanded="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 按钮自身 hover = 黑 8% 圆角底（会话行 `.desktop-session-more-btn:hover` 同值） */
+[data-host="desktop"] .artifacts-nav-more:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more {
+  color: #9a9ea5;
+}
+
+html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* 「hover 后数字显示在三个点图标前面」：三点按钮占行右 8..32，数量角标因此
+   要让到它左侧 —— 右内衬 16 → 36（= 32 + 4 间隔）。只在 hover 或菜单打开时让位，
+   静止态角标仍在原右缘，不改变未交互时的排版。 */
+[data-host="desktop"] .artifacts-nav-row:hover .artifacts-nav-item,
+[data-host="desktop"]
+  .artifacts-nav-row:has(.artifacts-nav-more[aria-expanded="true"])
+  .artifacts-nav-item {
+  padding-right: 36px;
+}
+
+[data-host="desktop"] .artifacts-nav-item {
+  transition: padding-right 0.12s ease;
 }
 
 .artifacts-nav-count {
@@ -302,9 +360,9 @@
    14px·500 / --vscode-button-* 桥接，桌面端 = --cc-action-primary 家族）；
    三颗一起改是因为契约 common-components.md:70「one height, label size and radius
    across the row」——页脚同行不能只胖一颗。 */
-.artifacts-primary-btn,
-.artifacts-secondary-btn,
-.artifacts-danger-btn {
+[data-host="desktop"] .artifacts-primary-btn,
+[data-host="desktop"] .artifacts-secondary-btn,
+[data-host="desktop"] .artifacts-danger-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -319,7 +377,7 @@
   border: 1px solid transparent;
 }
 
-.artifacts-primary-btn {
+[data-host="desktop"] .artifacts-primary-btn {
   /* 参照件 `.settings-save-btn` 是 `border: 0`（盒宽 = 文案 + 32 内衬，实测 60×32）；
      主键同款去掉描边，盒宽才与参照逐值相同。次级/危险键另有 1px 描边。 */
   border: none;
@@ -329,17 +387,17 @@
   color: var(--cc-action-primary-text, var(--vscode-button-foreground, #ffffff));
 }
 
-.artifacts-primary-btn:hover:not(:disabled) {
+[data-host="desktop"] .artifacts-primary-btn:hover:not(:disabled) {
   background: var(--vscode-button-hoverBackground);
 }
 
 /* 按压档：与 `.settings-save-btn:active` 同值（浅色档无 --cc-action-primary-active，
    fallback 取 skill 浅色档字面量 #111318，见 0915 第十处 / 1014）。 */
-.artifacts-primary-btn:active:not(:disabled) {
+[data-host="desktop"] .artifacts-primary-btn:active:not(:disabled) {
   background: var(--cc-action-primary-active, #111318);
 }
 
-.artifacts-primary-btn:disabled {
+[data-host="desktop"] .artifacts-primary-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -347,21 +405,21 @@
 /* 次级键 = 1014 确认弹窗「取消」的描边档（透明底 + 1px border-light + 1 级字色，
    hover --cc-fill-hover / pressed --cc-fill-pressed）。改前的描边已是
    --vscode-panel-border（桌面端 = --cc-border-light），故只补状态与盒参数。 */
-.artifacts-secondary-btn {
+[data-host="desktop"] .artifacts-secondary-btn {
   background: transparent;
   border-color: var(--vscode-panel-border, rgba(127, 127, 127, 0.35));
   color: var(--cc-text-primary, inherit);
 }
 
-.artifacts-secondary-btn:hover:not(:disabled) {
+[data-host="desktop"] .artifacts-secondary-btn:hover:not(:disabled) {
   background: var(--cc-fill-hover, var(--vscode-list-hoverBackground));
 }
 
-.artifacts-secondary-btn:active:not(:disabled) {
+[data-host="desktop"] .artifacts-secondary-btn:active:not(:disabled) {
   background: var(--cc-fill-pressed, var(--cc-fill-hover));
 }
 
-.artifacts-secondary-btn:disabled {
+[data-host="desktop"] .artifacts-secondary-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -391,7 +449,7 @@
    ★`width` 从 220 改写为 242：`box-sizing` 转 border-box 后若不改写，盒宽会从
    242 掉到 220、整行左侧右移 22px；242 就是改前的**渲染盒宽**（= 220 内容 +
    20 内衬 + 2 边框），横向零位移。 */
-.artifacts-search {
+[data-host="desktop"] .artifacts-search {
   box-sizing: border-box;
   width: 242px;
   height: 32px;
@@ -403,7 +461,7 @@
   font-size: 14px;
 }
 
-.artifacts-search:focus {
+[data-host="desktop"] .artifacts-search:focus {
   outline: none;
   border-color: var(--vscode-focusBorder);
 }
@@ -559,8 +617,8 @@
    （input-foreground 1 级 #202020）弱一档 —— 这里显式取 input 前景。
    下拉另把原生外观换成设置页那条自绘三角（同一条官方矢量：墨迹 8×4.5、距内缘 8px，
    写法见 SettingsPage.css 的 `.settings-control:has(> .settings-select)::after`）。 */
-.artifacts-field input,
-.artifacts-field select {
+[data-host="desktop"] .artifacts-field input,
+[data-host="desktop"] .artifacts-field select {
   height: 32px;
   box-sizing: border-box;
   padding: 4px 8px;
@@ -571,23 +629,23 @@
   font-size: 14px;
 }
 
-.artifacts-field input:focus,
-.artifacts-field select:focus {
+[data-host="desktop"] .artifacts-field input:focus,
+[data-host="desktop"] .artifacts-field select:focus {
   outline: none;
   border-color: var(--vscode-focusBorder);
 }
 
-.artifacts-field:has(> select) {
+[data-host="desktop"] .artifacts-field:has(> select) {
   position: relative;
 }
 
-.artifacts-field select {
+[data-host="desktop"] .artifacts-field select {
   -webkit-appearance: none;
   appearance: none;
   padding-right: 24px; /* 8 内衬 + 8 三角 + 8 间隔（与设置页同） */
 }
 
-.artifacts-field:has(> select)::after {
+[data-host="desktop"] .artifacts-field:has(> select)::after {
   content: "";
   position: absolute;
   /* ★ 不能像设置页那样用 top:50% —— 那边的包含块只装 select，这里的 label 还含
