@@ -153,6 +153,57 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
+/**
+ * 搜索框 + 清除按钮（PM 缺陷 3500400967563520「搜索框内没有清除按钮」）。
+ *
+ * 列表搜索与分享弹层的成员搜索都走这一个形态：有内容时右侧出现 ×，点击清空
+ * 并把焦点交还输入框（清空后再输入不用重新点一次框）。
+ */
+const SearchField: React.FC<{
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  testId: string;
+  clearTestId: string;
+}> = ({ value, onChange, placeholder, testId, clearTestId }) => {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  return (
+    <span className="artifacts-search-field">
+      <input
+        ref={inputRef}
+        className="artifacts-search"
+        placeholder={placeholder}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        data-testid={testId}
+        aria-label={placeholder}
+      />
+      {value !== "" && (
+        <button
+          type="button"
+          className="artifacts-search-clear"
+          data-testid={clearTestId}
+          aria-label="清除搜索"
+          onClick={() => {
+            onChange("");
+            inputRef.current?.focus();
+          }}
+        >
+          <svg width={12} height={12} viewBox="0 0 12 12" aria-hidden="true">
+            <path
+              d="M2.6 2.6 L9.4 9.4 M9.4 2.6 L2.6 9.4"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              fill="none"
+            />
+          </svg>
+        </button>
+      )}
+    </span>
+  );
+};
+
 export interface ArtifactsPageProps {
   /** 返回当前会话（顶栏返回钮；与再次点击侧栏入口等价）。 */
   onBack: () => void;
@@ -742,13 +793,12 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
             </button>
           </div>
           <div className="artifacts-header-right">
-            <input
-              className="artifacts-search"
-              placeholder="按文件名搜索"
+            <SearchField
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              data-testid="artifacts-search"
-              aria-label="按文件名搜索"
+              onChange={setSearch}
+              placeholder="按文件名搜索"
+              testId="artifacts-search"
+              clearTestId="artifacts-search-clear"
             />
             <button
               type="button"
@@ -1521,13 +1571,12 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
                   ))}
                 </div>
               )}
-              <input
-                className="artifacts-search"
-                placeholder="按邮箱搜索成员"
+              <SearchField
                 value={memberQuery}
-                onChange={(event) => setMemberQuery(event.target.value)}
-                data-testid="artifacts-member-search"
-                aria-label="按邮箱搜索成员"
+                onChange={setMemberQuery}
+                placeholder="按邮箱搜索成员"
+                testId="artifacts-member-search"
+                clearTestId="artifacts-member-search-clear"
               />
               {memberError ? (
                 <div className="artifacts-member-error">

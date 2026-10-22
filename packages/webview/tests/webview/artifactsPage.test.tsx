@@ -252,6 +252,35 @@ describe("创作集 · 列表", () => {
     expect(screen.getByTestId("artifacts-row-a")).toBeInTheDocument();
     expect(screen.queryByTestId("artifacts-row-b")).not.toBeInTheDocument();
   });
+
+  it("搜索框有内容时出现清除按钮，点击后清空并恢复全量（3500400967563520）", () => {
+    const harness = renderPage();
+    answerList(harness, [
+      mine("a", "Pricing Page", { shareMode: "owner" }),
+      mine("b", "报表", { shareMode: "owner" }),
+    ]);
+
+    // 空搜索时不渲染清除按钮。
+    expect(
+      screen.queryByTestId("artifacts-search-clear"),
+    ).not.toBeInTheDocument();
+
+    const input = screen.getByTestId("artifacts-search");
+    fireEvent.change(input, { target: { value: "pricing" } });
+    expect(screen.queryByTestId("artifacts-row-b")).not.toBeInTheDocument();
+
+    const clear = screen.getByTestId("artifacts-search-clear");
+    fireEvent.click(clear);
+
+    expect(input).toHaveValue("");
+    expect(screen.getByTestId("artifacts-row-a")).toBeInTheDocument();
+    expect(screen.getByTestId("artifacts-row-b")).toBeInTheDocument();
+    // 清空后清除按钮自身消失，焦点交还输入框。
+    expect(
+      screen.queryByTestId("artifacts-search-clear"),
+    ).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(input);
+  });
 });
 
 describe("创作集 · 分类", () => {
