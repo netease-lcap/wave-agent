@@ -68,6 +68,32 @@
   background: var(--vscode-list-hoverBackground);
 }
 
+/* 桌面端交互态：hover / 按下都**不用品牌红**，走「交互底 + 文字提亮」这一套
+   （设计师 1022 评论：「这里 hover 和点击不要红色，应该是亮白，这里相关的
+   内容都只改桌面端」）。取值全部是桌面既有语义 token：
+   · hover 面 `--cc-fill-hover`（浅 #eef0f3 / 深 #303436）
+   · 按下 `--cc-fill-pressed`（浅 #e7e9ed / 深 #393e41）
+   · 文字 `--cc-text-primary`（浅 #1f2329 / 深 #e5e7e8 —— 深色档就是那颗「亮白」）
+   三类胶囊（分类 / 模板 / 返回）同一条口径；base 的品牌红 hover 保留给 IDE 宿主。 */
+[data-host="desktop"] .quick-start-cat:hover,
+[data-host="desktop"] .quick-start-sub:hover,
+[data-host="desktop"] .quick-start-back:hover {
+  background: var(--cc-fill-hover, var(--vscode-list-hoverBackground));
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
+/* 二级项在 base 里是「红描边 + 红字」，桌面端把边框收回中性档（与分类胶囊一致）。 */
+[data-host="desktop"] .quick-start-sub:hover {
+  border-color: var(--vscode-widget-border);
+}
+
+[data-host="desktop"] .quick-start-cat:active,
+[data-host="desktop"] .quick-start-sub:active,
+[data-host="desktop"] .quick-start-back:active {
+  background: var(--cc-fill-pressed, var(--vscode-list-activeSelectionBackground));
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+
 .quick-start-back svg {
   display: block;
   flex: none;
@@ -81,9 +107,29 @@
   background: var(--vscode-widget-border);
 }
 
-/* 桌面端字号升一档（与输入卡 14px 同密度档），高度不变。 */
+/* 桌面端三项尺寸全部对齐同一灰条里的「本地 / CC02」触发器（`desktop-host-trigger`，
+   实测 32px 高 / r8 / 14px）：
+   · 字号与字重 ——「这里字号都是14px，默认不加粗」（改前 13px / 500）；
+   · 圆角 ——「不要椭圆型，圆角参考这里」（改前 14px = 28/2，正圆胶囊）；
+   · 高度 ——「选项高度也参考」（改前 28px）。
+   内衬仍是 `0 12px`，未跟触发器那套 `2px 6px`。 */
 [data-host="desktop"] .quick-start-cat,
 [data-host="desktop"] .quick-start-sub,
 [data-host="desktop"] .quick-start-back {
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 400;
+  border-radius: 8px;
+  height: 32px;
+}
+
+/* 两行高随之从 64 → 72（2×32 + gap 8）：保住「切到二级时整行高度不变」那条不变量，
+   否则一级两行 72 / 二级一行 64 会让下方内容跳 8px。 */
+[data-host="desktop"] .quick-start-row {
+  min-height: 72px;
+}
+
+/* 「返回胶囊」= 当前分类，属于选中态（与侧栏选中行同语义），仍用 600；
+   「默认不加粗」只针对一级未选中项，见上。 */
+[data-host="desktop"] .quick-start-back {
+  font-weight: 600;
 }

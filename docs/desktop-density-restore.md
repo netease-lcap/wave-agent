@@ -9188,3 +9188,213 @@ IDE 反证图 `ide-host/`）；报告 `走查/1022-快捷方式位置报告/inde
 `399621b70a9fe44609f68087bf2ed427`；`packages/webview` 的 `tsc --noEmit` 通过。
 
 **状态**：本单已按她「推送」提交并推送（分支 `feat/1022-ui-polish-r2`）。
+
+---
+
+## 2026-10-22 · 空态「快捷方式」胶囊：字号 14 / 默认不加粗 + 圆角 14 → 8
+
+她（预览评论两条）：① 指 `div.quick-start-row`「项目初始化 功能开发 …」——「这里字号都是14px，默认不加粗」；
+② 指同一行的 `div.desktop-host-trigger`「本地」——「不要椭圆型，圆角参考这里」。
+
+### ① 改前 / 改后
+
+| 项              | 改前                         | 改后                                        |
+| --------------- | ---------------------------- | ------------------------------------------- |
+| 字号 / 字重     | 13px / **500**               | **14px / 400**                              |
+| 圆角            | **14px（= 28/2，正圆胶囊）** | **8px**（= `.desktop-host-trigger` 实测值） |
+| 高度 / 内衬     | 28px / `0 12px`              | 不变                                        |
+| 12 个胶囊总宽   | 992.9px                      | 1044.5px（+51.6）                           |
+| 首行 / 次行个数 | 8 / 4                        | 7 / 5                                       |
+| 行盒 / 整块位置 | 64px · 563–627               | 逐值不变（页面无位移）                      |
+| 二级态返回胶囊  | 13 / 600 / r14               | 14 / **600** / r8（选中态仍加粗）           |
+| IDE 宿主        | 12 / 500 / r14               | 不变（桌面作用域外）                        |
+
+### ② 判据：为什么「圆角参考这里」指的是 8px
+
+全页扫一遍「圆角 ≥ 高度/2」的元素，只有快捷方式胶囊命中（r14 @ 28px 高 = 正好半圆）；
+`本地` / `CC02` 两颗触发器实测 `border-radius: 8px`、32px 高 —— 不是椭圆。
+所以「不要椭圆型，圆角参考这里」= 胶囊别做成跑道形、取「本地」那档 8px；② 的评论锚点是**参照物**，不是被改对象。
+
+### ③ 代码
+
+`QuickStartTemplates.css` 桌面段（base 档 12/500/r14 一字未动）：
+
+```css
+[data-host="desktop"] .quick-start-cat,
+[data-host="desktop"] .quick-start-sub,
+[data-host="desktop"] .quick-start-back {
+  font-size: 14px;
+  font-weight: 400;
+  border-radius: 8px;
+}
+/* 返回胶囊 = 当前分类（选中态），仍 600 */
+[data-host="desktop"] .quick-start-back {
+  font-weight: 600;
+}
+```
+
+### ④ 认知 / 坑
+
+1. **「椭圆」的判据是 `radius == height/2`**：只报 `border-radius: 14px` 看不出是胶囊，必须连同盒高一起判；
+   反过来「参考这个圆角」也要先量参照物（8px），否则会把 14 → 14 白改一遍。
+2. **字号升一档会改换行**：13 → 14 让 12 个胶囊总宽 +51.6px，首行 8 → 7 个；本轮靠「行盒固定两行 64px」
+   吸收掉，所以整块位置没动 —— 若将来再加字/加内衬，第三行会让行盒变 100px，那时才需要处理。
+3. **`-back` 要单独写回 600**：三条选择器共用一条规则时，`font-weight: 400` 会把「返回 = 当前分类」的
+   选中语义一起抹平，必须单列一条恢复。
+
+### ⑤ 残留（未授权，等点名）
+
+| 项                     | 现状                    | 触发语                        |
+| ---------------------- | ----------------------- | ----------------------------- |
+| 返回胶囊字重           | 仍 600（选中态）        | 「返回那个也不要加粗」        |
+| 胶囊高度 / 内衬 / 间距 | 28px / 12px / 8px，未动 | 「再高/矮一点」「间距松一点」 |
+| 二级态模板 hover       | 仍品牌红 `#c1292e` 描边 | 「hover 也别用红」            |
+| IDE 宿主               | 仍 12 / 500 / r14       | 「IDE 也一起改」              |
+
+取证：探针 `走查/_tools/1022/probe-quickstart-chip-style-1022.mjs`（浅深 2×，`before|after`）+
+`probe-quickstart-chip-radius-4x-1022.mjs`（单胶囊 4× 圆角细节，按胶囊实测盒自动裁切）；
+素材 `走查/1022-快捷方式字号圆角/{before,after}`（含 `measure.json`）；
+报告 `走查/1022-快捷方式字号圆角报告/index.html`（2 条 pair；1280/640 无横向溢出、axe 浅深 **0/0**、pageerror 0）。
+`QuickStartTemplates.css` md5 `0911f2aa117763c57467beca3974bc3e`（HEAD 版 `399621b70a9fe44609f68087bf2ed427`）；
+`tsc --noEmit` 通过。
+
+**状态**：本单在**工作区未提交**，等她说推送。
+
+---
+
+## 2026-10-22 · 空态「快捷方式」胶囊高度也跟「本地」触发器：28 → 32px
+
+她（预览评论第三条，锚点仍是 `div.desktop-host-trigger`「本地」）：「选项高度也参考」。
+→ 字号 14 / 400、圆角 8px 之后，高度也取参照物的 32px。
+
+### ① 改前 / 改后
+
+| 项                   | 改前                 | 改后                             |
+| -------------------- | -------------------- | -------------------------------- |
+| 胶囊高度             | 28px                 | **32px**（= 触发器实测）         |
+| 参照物「本地」触发器 | 32 / r8 / 14 / 400   | 胶囊四项全部同值                 |
+| 行盒（一级两行）     | 64px（2×28 + gap 8） | **72px**（2×32 + gap 8）         |
+| 行盒（二级单行）     | 64px（min-height）   | **72px**（min-height 同步）      |
+| 整组高度 / 位置      | 354 · y 273          | **362 · y 269**（居中 ⇒ 上移 4） |
+| 输入卡 y             | 353 → 507            | **349 → 503**                    |
+| 胶囊行 y             | 563 → 627            | **559 → 631**                    |
+| 卡片 ↔ 胶囊行间距   | 56px                 | 56px（未变）                     |
+| IDE 宿主             | 12 / 500 / r14 / 28  | 不变                             |
+
+### ② 代码
+
+```css
+[data-host="desktop"] .quick-start-cat,
+[data-host="desktop"] .quick-start-sub,
+[data-host="desktop"] .quick-start-back {
+  font-size: 14px;
+  font-weight: 400;
+  border-radius: 8px;
+  height: 32px;
+}
+/* 两行高从 64 → 72：保住「切层级不位移」那条不变量 */
+[data-host="desktop"] .quick-start-row {
+  min-height: 72px;
+}
+```
+
+### ③ 认知 / 坑
+
+1. **`min-height` 必须跟着改**：一级两行 72、二级一行 32，min-height 若留在 64，切层级时行盒会在
+   72 ↔ 64 之间跳 8px —— 这条不变量是 `min-height` 承担的，不是内容撑出来的。
+2. **整组居中的连带位移要主动报**：+8px 的高度不是「往下长 8」，而是因为欢迎页整组垂直居中 ⇒
+   整组上移 4px（输入卡 353 → 349）。两张图对照时这个 4px 是整体平移，不是胶囊错位。
+3. **改前图要只回退这一条**：本轮「改前」= 只把 `height: 32px` / `min-height: 72px` 两条去掉，
+   其余 14/400/r8 保留 —— 否则前后图会同时差字号、圆角、高度三个变量，看不清是哪个在动。
+   同理，上一轮报告的「改后」图（28px 态）在加高后要重拍一次，否则报告里的数对不上图。
+
+### ④ 残留（未授权，等点名）
+
+| 项               | 现状                           | 触发语                 |
+| ---------------- | ------------------------------ | ---------------------- |
+| 横向内衬         | `0 12px`（触发器是 `2px 6px`） | 「内衬也参考」         |
+| 胶囊间距         | 8px                            | 「间距也参考」         |
+| 返回胶囊字重     | 600（选中态）                  | 「返回那个也不要加粗」 |
+| 二级态模板 hover | 品牌红描边                     | 「hover 也别用红」     |
+| IDE 宿主         | 12 / 500 / r14 / 28            | 「IDE 也一起改」       |
+
+取证：探针 `走查/_tools/1022/probe-quickstart-chip-height-1022.mjs`（`before|after`，改前只回退高度两条）；
+素材 `走查/1022-快捷方式高度/{before,after}`（含 `measure.json`、二级态图）；
+报告 `走查/1022-快捷方式高度报告/index.html`（1280/640 无横向溢出、axe 浅深 **0/0**、pageerror 0）。
+`QuickStartTemplates.css` md5 `0867b4bb9bb8a8374d8c6d9254b81334`；`tsc --noEmit` 通过。
+
+**状态**：本单在**工作区未提交**，等她说推送。
+
+---
+
+## 2026-10-22 · 空态「快捷方式」二级项 hover / 按下：去掉品牌红，改「交互底 + 文字提亮」
+
+她（预览评论，指 `button.quick-start-sub`「创建项目配置文件」）：
+「这里hover和点击不要红色，应该是亮白，这里相关的内容都只改桌面端」。
+
+### ① 改前 / 改后（逐值实测）
+
+| 状态                    | 改前                                           | 改后                                                                   |
+| ----------------------- | ---------------------------------------------- | ---------------------------------------------------------------------- |
+| hover 文字              | `#c1292e` 品牌红                               | **`#1f2329` 浅 / `#e5e7e8` 深**（`--cc-text-primary`，深色即「亮白」） |
+| hover 描边              | `#c1292e` 品牌红                               | **`#e4e7ed` / `#34393c`**（`--vscode-widget-border`，与静止态同值）    |
+| hover 底色              | `#eef0f3` / `#303436`                          | 同值（本就等于 `--cc-fill-hover`）                                     |
+| 按下底色                | 与 hover 完全相同                              | **`#e7e9ed` / `#393e41`**（`--cc-fill-pressed`，深一档）               |
+| 按下文字 / 描边         | 红                                             | 同 hover（提亮 / 中性）                                                |
+| 同组（一级分类 / 返回） | 本来无红，底走 `--vscode-list-hoverBackground` | 统一成 `--cc-fill-hover` + 提亮文字                                    |
+| IDE 宿主                | `#c1292e` 红字红边                             | **不变**（本轮全在 `[data-host="desktop"]`）                           |
+
+三态层级：透明 → hover 面（`--cc-fill-hover`）→ 按下（`--cc-fill-pressed`）。
+
+### ② 代码
+
+base 的品牌红规则**不删**，桌面段在后面叠三条（选择器多一个属性选择器 ⇒ 特异性更高）：
+
+```css
+[data-host="desktop"] .quick-start-cat:hover,
+[data-host="desktop"] .quick-start-sub:hover,
+[data-host="desktop"] .quick-start-back:hover {
+  background: var(--cc-fill-hover, var(--vscode-list-hoverBackground));
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+[data-host="desktop"] .quick-start-sub:hover {
+  border-color: var(--vscode-widget-border); /* 盖掉 base 的红描边 */
+}
+[data-host="desktop"] .quick-start-cat:active,
+[data-host="desktop"] .quick-start-sub:active,
+[data-host="desktop"] .quick-start-back:active {
+  background: var(
+    --cc-fill-pressed,
+    var(--vscode-list-activeSelectionBackground)
+  );
+  color: var(--cc-text-primary, var(--vscode-foreground));
+}
+```
+
+### ③ 认知 / 坑
+
+1. **「只改桌面端」= 叠加而不是改写 base**：base 那条红 hover 保留，桌面段用更高特异性覆盖 ——
+   这样 IDE 宿主零变化（实测 IDE 二级项 hover 仍是 `#c1292e`）。若直接改 base，IDE 也会跟着变。
+2. **按下态原来根本不存在**：没有 `:active` 规则时，按住 = hover（红色），看起来像没反馈。
+   加 `--cc-fill-pressed` 后才有「按住」的第三档。
+3. **「亮白」不要造新色**：深色档提亮到 `--cc-text-primary`（`#e5e7e8`）就够，本仓契约没有纯白
+   文字角色；真需要更白要单独裁决。
+4. **取证要断言伪类真的命中**：hover / 按下必须 `el.matches(":hover")` / `matches(":active")` 为真再读
+   computed，否则会拿到静止态的值当成「没变色」。
+
+### ④ 残留（未授权，等点名）
+
+| 项             | 现状                       | 触发语               |
+| -------------- | -------------------------- | -------------------- |
+| 键盘 focus 环  | 未单独处理（走浏览器默认） | 「键盘聚焦也改」     |
+| IDE 的红 hover | 保留                       | 「IDE 那个红也去掉」 |
+| hover 强度     | 只有一档底 + 提亮文字      | 「hover 再亮一点」   |
+| 按下反馈       | 只有底深一档               | 「按下再明显一点」   |
+
+取证：探针 `走查/_tools/1022/probe-quickstart-sub-interaction-1022.mjs`（`before|after`，`light|dark` ×
+静止 / hover / 按下 + IDE 反证；`before` 只回退本轮新增的桌面交互块）；
+素材 `走查/1022-快捷方式交互态/{before,after}`（含 `measure.json`）；
+报告 `走查/1022-快捷方式交互态报告/index.html`（2 条 pair；1280/640 无横向溢出、axe 浅深 **0/0**、pageerror 0）。
+`tsc --noEmit` 通过。
+
+**状态**：本单在**工作区未提交**，等她说推送。
