@@ -117,7 +117,7 @@ describe("创作集整页（侧边栏入口）", () => {
     expect(listCalls()).toBe(1);
   });
 
-  it("选模板 → 请求宿主「新建会话并预填提示词」", () => {
+  it("选模板 → 请求宿主把提示词预填进当前会话", () => {
     const vscode = renderReady();
     fireEvent.click(screen.getByTestId("desktop-artifacts"));
     fireEvent.click(screen.getByTestId("artifacts-new"));
@@ -129,7 +129,7 @@ describe("创作集整页（侧边栏入口）", () => {
         prompt: expect.stringContaining("帮我做一个网页小游戏"),
       }),
     );
-    // 选完模板回到会话视图（新会话由宿主建好后到来）
+    // 选完模板回到会话视图；提示词由宿主预填进当前会话的输入框（不新开会话）。
     expect(screen.queryByTestId("artifacts-page")).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-container")).toBeInTheDocument();
   });

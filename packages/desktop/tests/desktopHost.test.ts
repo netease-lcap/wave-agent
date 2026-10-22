@@ -3740,6 +3740,38 @@ describe("account card (desktopAccountInfo)", () => {
     restore();
   });
 
+  it("登录进行中再点「登录」不会起第二轮授权（PM 3500343150983424）", async () => {
+    const orig = h.handleClientRequest;
+    let loginCalls = 0;
+    let releaseLogin: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      releaseLogin = resolve;
+    });
+    h.handleClientRequest = async (m: string, params?: unknown) => {
+      if (m === "login") {
+        loginCalls += 1;
+        await gate;
+        return { user: { id: "u1", email: "a@b.com" } };
+      }
+      if (m === "getAccountInfo") return { billing: null, apiQuota: null };
+      return orig(m, params);
+    };
+    const { host, sent } = await readyHost();
+
+    // 授权还没回到本地回调时又点了一次：第二次不应再起一套登录流程
+    // （新的回调 server + 又一次全量 agent 重建）。
+    const first = host.handleWebviewMessage({ command: "login" });
+    const second = host.handleWebviewMessage({ command: "login" });
+    await vi.waitFor(() => expect(loginCalls).toBe(1));
+
+    releaseLogin();
+    await Promise.all([first, second]);
+
+    expect(loginCalls).toBe(1);
+    expect(sent("loginResponse")).toHaveLength(1);
+    h.handleClientRequest = orig;
+  });
+
   it("clears the account card on logout", async () => {
     const restore = stubAccountRpc(
       { id: "u1", email: "bob@example.com" },
@@ -12760,8 +12792,9 @@ describe("创作集（desktop-artifacts）", () => {
     );
   });
 
-  it("模板新建：建会话后把提示词预填进该分屏", async () => {
+  it("模板新建：只把提示词预填进当前会话，不新开会话", async () => {
     const { host, sent } = await readyHost();
+    const agentsBefore = h.agentInstances.length;
 
     await host.handleWebviewMessage({
       command: "desktopArtifactsNewFromTemplate",
@@ -12772,6 +12805,9 @@ describe("创作集（desktop-artifacts）", () => {
       paneId: "pane-1",
       prompt: "帮我做一个网页小游戏：玩法是【】",
     });
+    // 不再 spawn 新 agent —— 原实现先建会话再预填，提示词要等 agent 初始化
+    // 2-3s 才出现，而且总是落到新对话（PM 3500350535448832 / 3500351963339008）。
+    expect(h.agentInstances.length).toBe(agentsBefore);
   });
 });
 

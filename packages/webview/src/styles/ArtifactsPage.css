@@ -466,6 +466,40 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   border-color: var(--vscode-focusBorder);
 }
 
+/* 搜索框 + 清除按钮（PM 缺陷 3500400967563520）。× 绝对定位在输入框右端，
+   输入框留出 26px 右内衬免得文字压到按钮上。 */
+.artifacts-search-field {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.artifacts-search-field .artifacts-search {
+  padding-right: 26px;
+}
+
+.artifacts-search-clear {
+  position: absolute;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, #8c8f94);
+  cursor: pointer;
+}
+
+.artifacts-search-clear:hover {
+  color: inherit;
+  background: rgba(127, 127, 127, 0.18);
+}
+
 .artifacts-state {
   display: flex;
   flex-direction: column;
@@ -716,6 +750,10 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
 }
 
 .artifacts-member-picker .artifacts-search {
+  width: 100%;
+}
+
+.artifacts-member-picker .artifacts-search-field {
   width: 100%;
 }
 

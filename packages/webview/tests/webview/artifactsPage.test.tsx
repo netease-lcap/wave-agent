@@ -204,6 +204,56 @@ describe("创作集 · 列表", () => {
     expect(screen.queryByTestId("artifacts-empty")).not.toBeInTheDocument();
   });
 
+  it("未登录空态里登录成功后自动重取列表与分类（3500345467492608）", () => {
+    const harness = renderPage();
+    const req = [...harness.sent()]
+      .reverse()
+      .find((m) => m.command === "desktopArtifactsList");
+    harness.reply({
+      command: "desktopArtifactsList",
+      requestId: req?.requestId,
+      authRequired: true,
+    });
+    // 先让页面知道「此刻是未登录」——宿主登录成功前会推一次 false。
+    harness.reply({ command: "desktopAccountInfo", isAuthenticated: false });
+    expect(screen.getByTestId("artifacts-auth")).toBeInTheDocument();
+
+    const before = harness.sent().length;
+    harness.reply({ command: "loginResponse", success: true });
+
+    // 登录成功 → 重新要一次列表与分类。
+    expect(harness.sent().length).toBeGreaterThan(before);
+    expect(lastSent(harness, "desktopArtifactsList")).toBeDefined();
+    expect(lastSent(harness, "desktopArtifactCategoriesGet")).toBeDefined();
+
+    // 回包后空态消失，列表按新账号渲染。
+    answerList(harness, [mine("a", "登录后可见", { shareMode: "owner" })]);
+    expect(screen.queryByTestId("artifacts-auth")).not.toBeInTheDocument();
+    expect(screen.getByTestId("artifacts-row-a")).toBeInTheDocument();
+  });
+
+  it("登录态从窗口级广播翻到已登录也会重取一次（不依赖 loginResponse）", () => {
+    const harness = renderPage();
+    const req = [...harness.sent()]
+      .reverse()
+      .find((m) => m.command === "desktopArtifactsList");
+    harness.reply({
+      command: "desktopArtifactsList",
+      requestId: req?.requestId,
+      authRequired: true,
+    });
+    harness.reply({ command: "desktopAccountInfo", isAuthenticated: false });
+
+    const before = harness.sent().length;
+    harness.reply({ command: "desktopAccountInfo", isAuthenticated: true });
+    expect(harness.sent().length).toBeGreaterThan(before);
+
+    // 同一状态再推一次不重复请求。
+    const after = harness.sent().length;
+    harness.reply({ command: "desktopAccountInfo", isAuthenticated: true });
+    expect(harness.sent().length).toBe(after);
+  });
+
   it("403 → 普通错误提示，不弹登录入口", () => {
     const harness = renderPage();
     const req = [...harness.sent()]
@@ -251,6 +301,35 @@ describe("创作集 · 列表", () => {
 
     expect(screen.getByTestId("artifacts-row-a")).toBeInTheDocument();
     expect(screen.queryByTestId("artifacts-row-b")).not.toBeInTheDocument();
+  });
+
+  it("搜索框有内容时出现清除按钮，点击后清空并恢复全量（3500400967563520）", () => {
+    const harness = renderPage();
+    answerList(harness, [
+      mine("a", "Pricing Page", { shareMode: "owner" }),
+      mine("b", "报表", { shareMode: "owner" }),
+    ]);
+
+    // 空搜索时不渲染清除按钮。
+    expect(
+      screen.queryByTestId("artifacts-search-clear"),
+    ).not.toBeInTheDocument();
+
+    const input = screen.getByTestId("artifacts-search");
+    fireEvent.change(input, { target: { value: "pricing" } });
+    expect(screen.queryByTestId("artifacts-row-b")).not.toBeInTheDocument();
+
+    const clear = screen.getByTestId("artifacts-search-clear");
+    fireEvent.click(clear);
+
+    expect(input).toHaveValue("");
+    expect(screen.getByTestId("artifacts-row-a")).toBeInTheDocument();
+    expect(screen.getByTestId("artifacts-row-b")).toBeInTheDocument();
+    // 清空后清除按钮自身消失，焦点交还输入框。
+    expect(
+      screen.queryByTestId("artifacts-search-clear"),
+    ).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(input);
   });
 });
 
