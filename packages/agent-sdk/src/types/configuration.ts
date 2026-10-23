@@ -161,6 +161,16 @@ export interface WaveConfiguration {
   /** Whether the Exec tool is enabled. Unset follows the code default constant (EXEC_DEFAULT_ENABLED). */
   enableExec?: boolean;
   /**
+   * Whether the three enterprise knowledge-base tools (`kb_search` /
+   * `kb_get_doc` / `kb_suggest`) are registered. Unset follows the code default
+   * constant (KNOWLEDGE_BASE_TOOLS_DEFAULT_ENABLED = off).
+   *
+   * Off by default because they widen what every conversation can see: any
+   * document the enterprise has ingested can be pulled into the model's context.
+   * A non-boolean value reads as "off" (see knowledgeBaseAvailability.ts).
+   */
+  enableKnowledgeBase?: boolean;
+  /**
    * Whether this machine may serve its sessions to a paired phone over the
    * remote-control relay. Unset follows the code default constant
    * (REMOTE_CONTROL_DEFAULT_ENABLED).

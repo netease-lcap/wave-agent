@@ -1,5 +1,6 @@
 import { Container } from "./container.js";
 import { normalizeEntrypoint } from "../constants/telemetry.js";
+import { featureGatedKnowledgeBaseTools } from "../tools/knowledgeBase/index.js";
 import { ForegroundTaskManager } from "../managers/foregroundTaskManager.js";
 import { BackgroundTaskManager } from "../managers/backgroundTaskManager.js";
 import { MessageQueue } from "../managers/messageQueue.js";
@@ -398,7 +399,18 @@ export function setupAgentContainer(
   const toolManager = new ToolManager({
     container,
     tools: options.tools,
-    customTools: options.customTools,
+    customTools: [
+      ...(options.customTools ?? []),
+      // Enterprise knowledge base: three retrieval function tools that answer
+      // from the documents this user's enterprise ingested. They ride
+      // `customTools` (not MCP — an MCP tool keeps neither `formatCompactParams`
+      // nor `shortResult`, so the query and the hit count would never reach the
+      // CLI / webview / IM render surfaces) and are attached only when
+      // `enableKnowledgeBase` says so. `workdir` is the directory this session
+      // was opened in, so a later `cd` cannot change which settings file decides;
+      // the verdict is taken once, at setup — a change applies to the next session.
+      ...featureGatedKnowledgeBaseTools(workdir),
+    ],
   });
   container.register("ToolManager", toolManager);
 
