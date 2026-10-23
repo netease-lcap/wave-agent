@@ -1125,20 +1125,24 @@ class MessageHandler(
     // ── Rewind: webview already confirmed → rewind → rewindResult + setInitialState(keepMessages) + focusInput + scrollToBottom ──
     //
     // 截断不回传列表：这里按与 webview 相同的规则切掉缓存（保留 messageId 最后一次
-    // 出现之前的内容），回发 rewindResult 让 webview 对自己的副本做同样的事，随后
-    // 的快照带 keepMessages（列表因此不在这条路径上重传）。没带 requestId 的旧
-    // webview / 远程页退回全量推送。
+    // 出现之前的内容；锚点不在这一页里就重拉一页），回发 rewindResult 让 webview 对
+    // 自己的副本做同样的事，随后的快照带 keepMessages（列表因此不在这条路径上重
+    // 传）。没带 requestId 的旧 webview / 远程页退回整页推送。
     private suspend fun handleRewindToMessage(messageId: String, requestId: String?) {
         try {
             val inputContent = session.agent?.rewindToMessage(messageId) ?: ""
             session.inputContent = inputContent
             if (requestId != null) {
-                val list = session.messages as? JsonArray
-                if (list != null) {
-                    val index = list.indexOfLast { m ->
-                        ((m as? JsonObject)?.get("id") as? JsonPrimitive)?.contentOrNull == messageId
-                    }
-                    if (index >= 0) session.messages = JsonArray(list.take(index))
+                val list = session.messages as? JsonArray ?: JsonArray(emptyList())
+                val index = list.indexOfLast { m ->
+                    ((m as? JsonObject)?.get("id") as? JsonPrimitive)?.contentOrNull == messageId
+                }
+                if (index >= 0) {
+                    session.messages = JsonArray(list.take(index))
+                } else {
+                    // 回滚锚点不在常驻窗口里（宿主只留一页）：就地截断没有可截的那
+                    // 段，重拉一页。重拉不重传——webview 仍用它自己切好的那份。
+                    session.refreshMessages()
                 }
                 postMessage("rewindResult", buildJsonObject {
                     put("requestId", requestId)
@@ -1404,7 +1408,7 @@ class MessageHandler(
         // sessionIdChange to trigger listSessions, but a freshly-created session
         // may not emit that notification, so refresh explicitly here.
         session.refreshSessions()
-        // Pull the full message list on demand (mirrors VSCE messageHandler.ts
+        // Pull the message page on demand (mirrors VSCE messageHandler.ts
         // handleWebviewReady → session.getMessages()). The server no longer pushes
         // full snapshots; the host pulls and delivers them via setInitialState.
         // keepMessages（仅 rewind）跳过这次拉取：调用方已按同一条规则切过缓存、
@@ -1431,11 +1435,11 @@ class MessageHandler(
         } catch (e: StdioClientException) {
             LOG.warn("getAuthStatus on webviewReady failed: ${e.message}")
         }
-        // 首屏只推一页（spec desktop-chat「首屏只进一页」）：宿主缓存
-        // `session.messages` 必须仍是全量——翻更早、回滚、会话切换都读它——但推给
-        // webview 的只有最近 MESSAGE_FIRST_PAGE_SIZE 条（原因见 SDK 的
-        // constants/messageWindow.ts）。
-        val (firstPage, hasMore) = MessagePaging.tailPage(session.messages)
+        // 缓存本身就是一页（[WaveSession.refreshMessages] 只拉窗口），这里原样推。
+        // keepMessages（仅 rewind）跳过这次拉取与推送：webview 手里那份是它自己按
+        // 同一条规则切好的，重拉重传正是这条路径要省掉的。
+        val firstPage = session.messages as? JsonArray ?: JsonArray(emptyList())
+        val hasMore = session.hasMoreMessages
         postMessage("setInitialState", buildJsonObject {
             // keepMessages（仅 rewind）：列表不入载荷，由 webview 保留自己切好的那份。
             put(

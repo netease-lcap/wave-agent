@@ -7,6 +7,8 @@ vi.mock("wave-agent-sdk", () => ({
 import { listSessions } from "wave-agent-sdk";
 import type {
   Message,
+  MessageWindow,
+  MessageWindowResult,
   QueuedMessage,
   SessionMetadata,
   Task,
@@ -40,7 +42,9 @@ function makeSession(
     sessionId: () => "sess-1",
     workdir: () => "/work",
     sessionCwd: () => "/work",
-    displayMessages: () => [],
+    messagePage: async () => ({ messages: [], hasMore: false }),
+    displayThread: async () => [],
+    threadSummary: () => ({ messageCount: 0 }),
     contextUsagePercent: () => 0,
     latestTotalTokens: () => 0,
     permissionMode: () => "default",
@@ -132,7 +136,11 @@ test("listSessions synthesizes the row for a session not yet on disk", async () 
   listSessionsMock.mockResolvedValue([]);
 
   const session = makeSession({
-    displayMessages: () => [message("m1", "user", "  fix the flaky test  ")],
+    threadSummary: () => ({
+      messageCount: 1,
+      firstUserText: "fix the flaky test",
+      lastActiveAt: "2026-10-14T00:00:00.000Z",
+    }),
     latestTotalTokens: () => 42,
   });
   const result = (await new RemoteControlCliHost(session).handleRequest(
@@ -167,10 +175,11 @@ test("listDaemonSessions answers the one live session, without reading disk", as
   // sessions are alive here" is a fact. For this host the registry is the
   // single session it holds (spec remote-control「边界情况」).
   const session = makeSession({
-    displayMessages: () => [
-      message("m1", "user", "fix the flaky test"),
-      message("m2", "assistant", "on it"),
-    ],
+    threadSummary: () => ({
+      messageCount: 2,
+      firstUserText: "fix the flaky test",
+      lastActiveAt: "2026-10-14T00:00:00.000Z",
+    }),
     customTitle: () => "登录页",
     hasRunningBackgroundWork: () => true,
     hasPendingMessages: () => true,
@@ -231,7 +240,7 @@ test("getMessages answers the whole thread when no window is asked for", async (
   ];
   const host = new RemoteControlCliHost(
     makeSession({
-      displayMessages: () => messages,
+      displayThread: async () => messages,
       contextUsagePercent: () => 12,
     }),
   );
@@ -248,16 +257,22 @@ test("getMessages shares the daemon's window semantics", async () => {
     message("m2", "assistant", "b"),
     message("m3", "user", "c"),
   ];
-  const host = new RemoteControlCliHost(
-    makeSession({ displayMessages: () => messages }),
-  );
+  // The paging itself lives in the SDK now (it reads the transcript), so this
+  // host is pinned to *passing the window through* and to the answer shape the
+  // daemon produces — not to re-deriving pages from a host-side list.
+  const messagePage = async (
+    window: MessageWindow,
+  ): Promise<MessageWindowResult> =>
+    window.since === "m1"
+      ? { messages: [messages[1], messages[2]], hasMore: false }
+      : { messages: [], reset: true };
+  const host = new RemoteControlCliHost(makeSession({ messagePage }));
 
   await expect(
     host.handleRequest("getMessages", { since: "m1" }),
   ).resolves.toEqual({
     messages: [messages[1], messages[2]],
     hasMore: false,
-    total: 3,
     contextUsagePercent: 0,
   });
   // A vanished anchor asks for a rebuild rather than an ever-missing page.
@@ -266,14 +281,15 @@ test("getMessages shares the daemon's window semantics", async () => {
   ).resolves.toEqual({
     messages: [],
     reset: true,
-    total: 3,
     contextUsagePercent: 0,
   });
 });
 
 test("getMessages rejects a malformed limit as invalid params", async () => {
   const host = new RemoteControlCliHost(
-    makeSession({ displayMessages: () => [message("m1", "user", "a")] }),
+    makeSession({
+      messagePage: async () => ({ messages: [], hasMore: false }),
+    }),
   );
 
   await expect(

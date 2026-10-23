@@ -444,19 +444,27 @@ export class ChatSession {
     return [];
   }
 
-  /** Pull the authoritative message list from the server (updates cache). */
+  /**
+   * Pull the first page into the cache. The cache is that page, not the whole
+   * thread — older pages are answered by `getOlderMessages` and never kept.
+   */
   public async getMessages(): Promise<Message[]> {
     if (!this.agent) {
       return this.messages;
     }
-    this.messages = await this.agent.getMessages();
+    this.messages = await this.agent.refreshMessages();
     return this.messages;
+  }
+
+  /** Whether the cached page has older messages before it. */
+  public get hasMoreMessages(): boolean {
+    return this.agent?.hasMoreMessages === true;
   }
 
   /**
    * 取 `before` 之前的一页（上滑「翻更早」）。**不写 `this.messages` 缓存**：
-   * 那份必须是全量——首屏窗口、`/rewind`、会话切换都从它取数，让它变成「最后一页」
-   * 等于把宿主手里那段历史丢掉。
+   * 那份只是首屏那一页，翻出来的页只经手不回存——存了等于把宿主持有量重新
+   * 变回「用户翻到哪就涨到哪」。
    *
    * 没有 agent（会话还没初始化 / 已经销毁）返回 undefined，由调用方回一条错误：
    * 回空页会被页面读成「已经到底」，从此再也不翻。
@@ -603,6 +611,10 @@ export class ChatSession {
     if (index !== -1) {
       this.messages = this.messages.slice(0, index);
       this.agent.messages = this.messages;
+    } else {
+      // The anchor predates the cached page (the cache is one page now):
+      // nothing to cut, re-pull the tail that the rewind just rewrote.
+      await this.getMessages();
     }
   }
 

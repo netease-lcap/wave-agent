@@ -53,7 +53,6 @@ import {
   MESSAGE_HISTORY_PAGE_SIZE,
   StdioAgent,
   NotificationRouter,
-  tailMessagePage,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "./stdio/stdioClient";
 import type { JsonRpcClient } from "./stdio/jsonRpcClient";
@@ -1103,19 +1102,18 @@ export class DesktopHost {
     paneId: string,
   ): Promise<void> {
     try {
-      await agent.getMessages();
+      await agent.refreshMessages();
     } catch (error) {
-      console.warn("[DesktopHost] getMessages failed:", error);
+      console.warn("[DesktopHost] refreshMessages failed:", error);
     }
     if (this.agentForPane(paneId) === agent) {
-      // 这份「整表替换」也是一个窗口：首屏只进一页的宿主不能借这条兜底路径把
-      // 整份历史重新灌回渲染进程（原因见 constants/messageWindow.ts）。
-      const page = tailMessagePage(agent.messages);
+      // 「整表替换」发的是缓存本身——它现在就是一页（更早的页从转录读、谁也不留），
+      // 首屏只进一页的约束由 SDK 的窗口保证。
       this.postMessage({
         command: "updateMessages",
         paneId,
-        messages: page.messages,
-        hasMore: page.hasMore,
+        messages: agent.messages,
+        hasMore: agent.hasMoreMessages,
       });
     }
   }
@@ -2399,12 +2397,12 @@ export class DesktopHost {
         return true;
       }
       // Restore is a bare RPC — the daemon does not deliver the transcript, so
-      // pull it into the cache. Without this, a re-attached session (remote or
-      // local) opens with an empty list and its agent looks "blank".
+      // pull the first page into the cache. Without this, a re-attached session
+      // (remote or local) opens with an empty list and its agent looks "blank".
       try {
-        await agent.getMessages();
+        await agent.refreshMessages();
       } catch (error) {
-        console.warn("[DesktopHost] getMessages failed:", error);
+        console.warn("[DesktopHost] refreshMessages failed:", error);
       }
       // The getMessages await above is past the last token check, and
       // handleDeleteSession cancels a restore of a deleted session by removing
@@ -3038,11 +3036,13 @@ export class DesktopHost {
         outsideSafeZoneDirectory: p.outsideSafeZoneDirectory,
       }));
 
-    // 首屏只推一页（spec ui/message-rendering-system.md「首屏只进一页」）。宿主缓存 `agent.messages`
-    // 必须仍是全量——翻更早、回滚、搜索都读它——但推给渲染进程的只有最近
-    // `MESSAGE_FIRST_PAGE_SIZE` 条：一个连续用了几周的会话，整份列表在渲染进程里
-    // 就是 V8 堆上的几十万个对象加 base64 图片（原因见 constants/messageWindow.ts）。
-    const page = tailMessagePage(current?.messages ?? []);
+    // 首屏只推一页（spec ui/message-rendering-system.md「首屏只进一页」）。宿主缓存
+    // `agent.messages` 现在本身就是那一页（更早的页从转录读、谁也不留），所以整份
+    // 推过去即可；「还有更早的」这个事实只能由 SDK 的窗口回包给，缓存长度答不了。
+    const page = {
+      messages: current?.messages ?? [],
+      hasMore: current?.hasMoreMessages === true,
+    };
 
     this.postMessage({
       command: "setInitialState",
@@ -3229,10 +3229,12 @@ export class DesktopHost {
       .getSessionIndex()
       .find((e) => e.sessionId === sessionId);
     if (existing?.title) return;
+    // The cache is one page now, so the thread's first user message is not in
+    // it — the SDK tracks it separately.
     this.registerSessionInIndex(
       agent,
       sessionId,
-      sessionTitleFromMessages(agent.messages),
+      sessionTitleFrom(agent.threadSummary?.firstUserText),
     );
     this.refreshSessionTree();
   }
@@ -6174,6 +6176,10 @@ export class DesktopHost {
         const index = agent.messages.map((m) => m.id).lastIndexOf(messageId);
         if (index !== -1) {
           agent.messages = agent.messages.slice(0, index);
+        } else {
+          // The anchor is older than the cached page (the cache is one page
+          // now): nothing to cut here, re-pull the tail the rewind rewrote.
+          await agent.refreshMessages();
         }
         this.postMessage({
           command: "rewindResult",
@@ -8037,16 +8043,10 @@ export class DesktopHost {
   }
 }
 
-/** First real user message text, trimmed to 30 chars (mirrors the webview header rule). */
-function sessionTitleFromMessages(messages: Message[]): string {
-  for (const message of messages) {
-    if (message.role !== "user" || message.isMeta) continue;
-    const text = (message.blocks ?? [])
-      .filter((b) => b.type === "text" || b.type === "compact")
-      .map((b) => b.content || "")
-      .join("")
-      .trim();
-    if (text) return text.length > 30 ? text.substring(0, 30) + "..." : text;
-  }
-  return "";
+/** Trimmed to 30 chars (mirrors the webview header rule). */
+function sessionTitleFrom(firstUserText: string | undefined): string {
+  if (!firstUserText) return "";
+  return firstUserText.length > 30
+    ? firstUserText.substring(0, 30) + "..."
+    : firstUserText;
 }

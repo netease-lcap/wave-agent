@@ -342,7 +342,13 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     sessionCwd: string | undefined;
     sessionRepoRoot: string | undefined;
     latestTotalTokens = 0;
+    /** 宿主缓存：一页（`refreshMessages` 写的），不是整条会话。 */
     messages: unknown[] = [];
+    /** 那一页之前还有没有更早的（由同一次回包带回）。 */
+    hasMoreMessages = false;
+    threadSummary:
+      | { messageCount: number; firstUserText?: string }
+      | undefined = undefined;
     tasks: unknown[] = [];
     backgroundTasks: unknown[] = [];
     queuedMessages: unknown[] = [];
@@ -410,6 +416,10 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     }) {
       return { messages: this.messages ?? [], sessionIds: [] };
     });
+    // Mirrors StdioAgent: a windowed read is a **read-only** page over the
+    // daemon's thread (a restored session lives daemon-side until a refresh),
+    // and it never touches the cache — paging a page back must not evict the
+    // page the host is showing.
     getMessages = vi.fn(async function (
       this: {
         daemonMessages?: unknown[];
@@ -417,26 +427,53 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
       },
       window?: { before?: string; limit?: number },
     ) {
-      // Mirrors StdioAgent.getMessages: without a window it pulls the daemon's
-      // authoritative list into the cache (a restored session's history lives
-      // daemon-side until this pull). With one it is a read-only page — the
-      // cache keeps the whole thread, which is what setInitialState pages from.
-      if (window) {
-        const all = (this.messages ?? []) as Array<{ id?: string }>;
-        const end =
-          window.before === undefined
-            ? all.length
-            : all.map((m) => m.id).lastIndexOf(window.before);
-        const start =
-          window.limit === undefined ? 0 : Math.max(0, end - window.limit);
-        return {
-          messages: end === -1 ? [] : all.slice(start, end),
-          hasMore: end !== -1 && start > 0,
-          total: all.length,
-        };
+      const all = (this.daemonMessages ?? this.messages ?? []) as Array<{
+        id?: string;
+      }>;
+      if (!window) {
+        return { messages: all, hasMore: false };
       }
-      this.messages = this.daemonMessages ?? this.messages ?? [];
-      return this.messages;
+      const end =
+        window.before === undefined
+          ? all.length
+          : all.map((m) => m.id).lastIndexOf(window.before);
+      const start =
+        window.limit === undefined ? 0 : Math.max(0, end - window.limit);
+      return {
+        messages: end === -1 ? [] : all.slice(start, end),
+        hasMore: end !== -1 && start > 0,
+      };
+    });
+    // Mirrors StdioAgent.refreshMessages: the one path that writes the cache,
+    // and it writes exactly one page.
+    refreshMessages = vi.fn(async function (
+      this: {
+        daemonMessages?: unknown[];
+        messages?: unknown[];
+        hasMoreMessages: boolean;
+        threadSummary: { messageCount: number } | undefined;
+      },
+      limit = 20,
+    ) {
+      const all = (this.daemonMessages ?? this.messages ?? []) as Array<{
+        id?: string;
+      }>;
+      const page =
+        limit > 0 && all.length > limit ? all.slice(all.length - limit) : all;
+      this.messages = page;
+      this.hasMoreMessages = page.length < all.length;
+      // 条数与首条用户正文由 SDK 的计数器给出（窗口里可能已经没有那条了）。
+      const firstUser = all.find(
+        (m) => (m as { role?: string }).role === "user",
+      ) as { blocks?: Array<{ type?: string; content?: string }> } | undefined;
+      const firstText = firstUser?.blocks?.find(
+        (b) => b.type === "text",
+      )?.content;
+      this.threadSummary = {
+        messageCount: all.length,
+        ...(firstText ? { firstUserText: firstText } : {}),
+      };
+      return page;
     });
     listRewindCheckpoints = vi.fn(async () => ({
       checkpoints: [{ id: "u1", content: "hello" }],
@@ -1310,10 +1347,12 @@ describe("message paging", () => {
       blocks: [{ type: "text", content: `第 ${String(i)} 条` }],
     }));
 
-  it("pushes one page on the first screen and keeps the host cache whole", async () => {
+  it("pushes the page the daemon hands back, and only that page", async () => {
     const { host, sent } = await readyHost();
     const agent = lastAgent();
-    agent.messages = thread(45);
+    // 整条会话在守护进程 / 转录那边；宿主缓存是那次拉取拿回来的一页。
+    agent.messages = thread(45).slice(25);
+    agent.hasMoreMessages = true;
 
     await host.handleWebviewMessage({ command: "webviewReady" });
 
@@ -1326,16 +1365,19 @@ describe("message paging", () => {
         .slice(25)
         .map((m) => m.id),
     );
-    // 「前面还有」的正确初值 —— 由宿主的窗口算出，不是页面猜的。
+    // 「前面还有」的正确初值 —— 由窗口回包给出，不是页面猜的。
     expect(state?.historyExhausted).toBe(false);
     expect(state?.supportsMessagePaging).toBe(true);
-    // 缓存必须是全量：翻更早 / 回滚都读它。
-    expect(agent.messages).toHaveLength(45);
+    // 宿主缓存也只有这一页：更早的不在任何人手里，翻更早时按窗口去读。
+    expect(agent.messages).toHaveLength(20);
+    expect(agent.hasMoreMessages).toBe(true);
   });
 
   it("marks the history exhausted when the whole thread fits in one page", async () => {
     const { host, sent } = await readyHost();
-    lastAgent().messages = thread(20);
+    const agent = lastAgent();
+    agent.messages = thread(20);
+    agent.hasMoreMessages = false;
 
     await host.handleWebviewMessage({ command: "webviewReady" });
 
@@ -1645,7 +1687,7 @@ describe("agent notifications", () => {
     expect(sent("updateMessages")).toHaveLength(0);
   });
 
-  it("restoreSession pulls the transcript via getMessages (re-attach regression)", async () => {
+  it("restoreSession pulls the transcript via refreshMessages (re-attach regression)", async () => {
     const { host } = await readyHost();
 
     await host.handleWebviewMessage({
@@ -1656,7 +1698,7 @@ describe("agent notifications", () => {
     // The daemon emits no transcript on restore — the host must pull it, or a
     // re-attached session (remote or local) opens with an empty message list.
     await vi.waitFor(() => {
-      expect(lastAgent().getMessages).toHaveBeenCalled();
+      expect(lastAgent().refreshMessages).toHaveBeenCalled();
     });
   });
 
@@ -1902,6 +1944,8 @@ describe("agent notifications", () => {
       blocks: [{ type: "text", content: longText }],
     };
     agent.messages = [userMsg];
+    // 标题兜底读的是 SDK 的计数器：缓存只剩一页，那条首条消息已经不在里面。
+    agent.threadSummary = { messageCount: 1, firstUserText: longText };
     agent.callbacks.onUserMessageAdded(userMsg);
 
     const tree = sent("desktopSessionTree").at(-1);
@@ -1946,6 +1990,10 @@ describe("agent notifications", () => {
       blocks: [{ type: "text", content: "帮我重构登录模块" }],
     };
     agent.messages = [userMsg];
+    agent.threadSummary = {
+      messageCount: 1,
+      firstUserText: "帮我重构登录模块",
+    };
     agent.callbacks.onUserMessageAdded(userMsg);
 
     // Compaction truncates the agent's message list to the compact boundary,
@@ -1984,7 +2032,7 @@ describe("agent notifications", () => {
     expect(agent.messages).toContainEqual(compactMsg);
     // No full-list pull/push: compaction is a pure append on the display stream.
     expect(sent("updateMessages")).toHaveLength(updateMessagesBefore);
-    expect(agent.getMessages).not.toHaveBeenCalled();
+    expect(agent.refreshMessages).not.toHaveBeenCalled();
   });
 
   it("compaction without a message on the wire falls back to the full pull", async () => {
@@ -1998,7 +2046,7 @@ describe("agent notifications", () => {
     await vi.waitFor(() => {
       expect(sent("updateMessages")).toHaveLength(updateMessagesBefore + 1);
     });
-    expect(agent.getMessages).toHaveBeenCalled();
+    expect(agent.refreshMessages).toHaveBeenCalled();
   });
 
   // Regression (9cea65ea): the messagesChange full-snapshot push was replaced by
@@ -9508,8 +9556,8 @@ describe("input drafts per session (desktop-sessions.md scenario 11/12)", () => 
     ).toEqual(["u1", "a1", "u2", "u3"]);
     // The snapshot that follows keeps the webview's own list out of the wire.
     expect(lastState(sent)).toMatchObject({ keepMessages: true, messages: [] });
-    // Nothing pulled the full list back — that is the cost this removes.
-    expect(agent.getMessages).not.toHaveBeenCalled();
+    // Nothing re-pulled the list — that is the cost this removes.
+    expect(agent.refreshMessages).not.toHaveBeenCalled();
   });
 
   it("rewindResult reports failure when the rewind throws", async () => {

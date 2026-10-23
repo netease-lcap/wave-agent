@@ -48,6 +48,9 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     getFullMessageThread: vi
       .fn()
       .mockResolvedValue({ messages, sessionIds: ["test-session-id"] }),
+    getDisplayThread: vi.fn(async () => messages),
+    getMessagePage: vi.fn(async () => ({ messages: [], hasMore: false })),
+    getThreadSummary: vi.fn(() => ({ messageCount: messages.length })),
     getPermissionMode: vi.fn().mockReturnValue("default"),
     setPermissionMode: vi.fn(),
     getPlanFilePath: vi.fn().mockReturnValue(undefined),
@@ -554,7 +557,11 @@ test("handleRequest extracts msg.sessionId and passes to bridge.handleRequest", 
   const msgs = await waitForMessages(3);
   const okResp = msgs[2] as { id: number; result: unknown };
   expect(okResp.id).toBe(3);
-  expect(okResp.result).toEqual({ messages: [] });
+  // 会话列表的条数随回包一起下来（宿主缓存只剩一页，自己数不出来）。
+  expect(okResp.result).toEqual({
+    messages: [],
+    threadSummary: { messageCount: 0 },
+  });
 
   server.stop();
 });

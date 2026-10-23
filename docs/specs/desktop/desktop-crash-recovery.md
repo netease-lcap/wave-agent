@@ -90,7 +90,7 @@ order: 95
 9. **假设**某个会话的 agent 已不被任何 pane 显示（后台会话），**当**统计消息量，**则**不得计入：它的消息从未推给渲染进程，计进去会让曲线与 renderer 堆脱钩。
 10. **假设**崩溃发生，**当**写崩溃日志，**则** `lastMemory` 必须沿用同一份采样结果（含计数），使崩溃那一刻的内存与消息量同时可见。
 
-> **本条只做可观测。** 用户访谈（很少截图 ⇒ 排除 base64 图片；单个对话用了约 6 周、一直在压缩）＋ 代码核查指向：压缩只折叠发给模型的上下文（`this.messages`），UI 展示流 `displayMessages` 永保留全量历史，而桌面端 `setInitialState` 把整份列表原样推给渲染进程、没有切片 ⇒ 嫌疑人是「消息条数 + tool 输出全文」。**是否裁剪展示流 / 给 webview 加窗口是行为变更，需要产品拍板，属独立议题**，不在本规格范围内（见「非目标」）。
+> **本条只做可观测。** 用户访谈（很少截图 ⇒ 排除 base64 图片；单个对话用了约 6 周、一直在压缩）＋ 代码核查指向：压缩只折叠发给模型的上下文（`this.messages`），UI 展示流 `displayMessages` 永保留全量历史，而桌面端 `setInitialState` 把整份列表原样推给渲染进程、没有切片 ⇒ 嫌疑人是「消息条数 + tool 输出全文」。**是否裁剪展示流 / 给 webview 加窗口是行为变更，需要产品拍板，属独立议题**，不在本规格范围内（见「非目标」）。该议题已另立并落地（`ui/message-rendering-system.md`「续页从转录读、两端不再常驻全量」）：展示流只留常驻窗口、更早的页从转录读，因此上面的读法在新版本里口径要跟着换（见本条最后一行）。
 
 ---
 
@@ -170,4 +170,4 @@ Total Samples: 14
 [2026-10-22T09:14:24.010Z] [ERROR] [desktop] renderer process gone reason=crashed exitCode=133 url=file:///…/webview/index.html lastMemory=renderer memory pid=41337 workingSet=2981.2MB peak=3022.8MB messages=1842 blocks=9310; session messages pane=pane-1 session=3f2a… messages=1842 blocks=9310 tokens=152000
 ```
 
-读法：`tokens`（API 上下文，压缩后会回落）与 `messages`/`blocks`（展示流，只增不减）并排看——前者平稳而后者持续上涨，就是「压缩折叠了上下文、但渲染进程扛着全量展示流」的证据；两者一起涨则说明上下文本身也在膨胀。
+读法：`tokens`（API 上下文，压缩后会回落）与 `messages`/`blocks`（展示流）并排看——展示流被裁成常驻窗口之前它是只增不减的，前者平稳而后者持续上涨就是「压缩折叠了上下文、但渲染进程扛着全量展示流」的证据；两者一起涨则说明上下文本身也在膨胀。裁成窗口之后 `messages` 会停在一个上界附近，此时它再涨说明的是「用户又往上翻了页」，与内存压力解耦，要看的换成 `renderer memory` 那一项。

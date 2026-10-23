@@ -2386,10 +2386,10 @@ describe("remoteControl（/remote-control 弹窗）", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 消息分页（spec ui/message-rendering-system.md「首屏只进一页」）
+// 消息分页（spec ui/message-rendering-system.md「续页从转录读、两端不再常驻全量」）
 //
-// 首屏只推一页，历史按窗口拉。宿主的 `session.messages` 缓存仍是全量（翻更早、
-// 回滚、会话切换都读它），推给 webview 的永远只有一页。
+// 宿主缓存本身就是一页（`refreshMessages` 只拉窗口，更早的页按窗口从转录读），
+// 推给 webview 的就是这份缓存 + 它带回的 `hasMoreMessages`。
 // ---------------------------------------------------------------------------
 
 describe("MessageHandler message paging", () => {
@@ -2400,9 +2400,11 @@ describe("MessageHandler message paging", () => {
       blocks: [{ type: "text", content: `第 ${String(i)} 条` }],
     }));
 
-  function pagedSession(messages: unknown[] = []) {
+  function pagedSession(messages: unknown[] = [], hasMore = false) {
     const session = createReadySession();
     (session as unknown as { messages: unknown[] }).messages = messages;
+    (session as unknown as { hasMoreMessages: boolean }).hasMoreMessages =
+      hasMore;
     (
       session as unknown as { getOlderMessages: ReturnType<typeof vi.fn> }
     ).getOlderMessages = vi
@@ -2477,7 +2479,8 @@ describe("MessageHandler message paging", () => {
   });
 
   test("webviewReady pushes one page and says whether more history exists", async () => {
-    const session = pagedSession(thread(45));
+    // 缓存是那次拉取拿回来的一页（尾巴），不是整条会话。
+    const session = pagedSession(thread(45).slice(25), true);
     const { handler, context } = createReadyHandler(session);
 
     await handler.handleMessage({ command: "webviewReady" }, "tab");

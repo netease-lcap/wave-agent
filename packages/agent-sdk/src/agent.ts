@@ -36,6 +36,10 @@ import type {
   PluginReloadResult,
 } from "./types/index.js";
 import type { HookEvent, HookEventConfig } from "./types/hooks.js";
+import type {
+  MessageWindow,
+  MessageWindowResult,
+} from "./types/messageWindow.js";
 import type { Task } from "./types/tasks.js";
 import type { BackgroundTask } from "./types/processes.js";
 import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
@@ -1597,6 +1601,35 @@ export class Agent {
     sessionIds: string[];
   }> {
     return this.messageManager.getFullMessageThread();
+  }
+
+  /**
+   * One page of the display thread (`before` / `since` / `limit`), read from
+   * the transcript when it reaches past the resident window. Nothing new
+   * stays in memory afterwards — this is how hosts page a long conversation
+   * without holding it.
+   */
+  public async getMessagePage(
+    window: MessageWindow,
+  ): Promise<MessageWindowResult> {
+    return this.messageManager.getMessagePage(window);
+  }
+
+  /**
+   * The whole display thread in one shot, read from the transcript. Nothing
+   * is cached: callers that need full semantics use the return value.
+   */
+  public async getDisplayThread(): Promise<Message[]> {
+    return this.messageManager.getDisplayThread();
+  }
+
+  /** Totals for the session list (the display window is only a tail now). */
+  public getThreadSummary(): {
+    messageCount: number;
+    firstUserText?: string;
+    lastActiveAt?: string;
+  } {
+    return this.messageManager.getThreadSummary();
   }
 
   /**

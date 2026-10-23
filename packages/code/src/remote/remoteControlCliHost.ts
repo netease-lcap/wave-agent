@@ -44,7 +44,7 @@ import {
 } from "../stdio/hostSlashCommands.js";
 import {
   InvalidMessageWindowError,
-  sliceMessageWindow,
+  normalizeMessageWindow,
   type MessageWindow,
   type MessageWindowResult,
 } from "./messageWindow.js";
@@ -65,7 +65,16 @@ export interface RemoteControlCliSession {
   workdir(): string;
   /** Where the session was opened; the row the page groups by. */
   sessionCwd(): string;
-  displayMessages(): Message[];
+  /** One page of the display thread, from the transcript when it reaches back. */
+  messagePage(window: MessageWindow): Promise<MessageWindowResult>;
+  /** The whole thread, read once (nothing cached; the window stays a window). */
+  displayThread(): Promise<Message[]>;
+  /** Thread totals the session list needs (the window cannot answer them). */
+  threadSummary(): {
+    messageCount: number;
+    firstUserText?: string;
+    lastActiveAt?: string;
+  };
   contextUsagePercent(): number;
   latestTotalTokens(): number;
   permissionMode(): PermissionMode;
@@ -132,18 +141,6 @@ function hostUnsupported(method: string): Error {
   ) as Error & { code?: number };
   err.code = REMOTE_HOST_UNSUPPORTED;
   return err;
-}
-
-function firstUserText(messages: Message[]): string | undefined {
-  const user = messages.find((message) => message.role === "user");
-  if (!user) return undefined;
-  for (const block of user.blocks) {
-    if (block.type === "text" && typeof block.content === "string") {
-      const text = block.content.trim();
-      if (text) return text;
-    }
-  }
-  return undefined;
 }
 
 export class RemoteControlCliHost implements RemoteControlHost {
@@ -273,7 +270,7 @@ export class RemoteControlCliHost implements RemoteControlHost {
 
   private synthesizedMetadata(sessionId: string): SessionMetadata {
     const now = new Date();
-    const firstMessage = firstUserText(this.session.displayMessages());
+    const firstMessage = this.session.threadSummary().firstUserText;
     const customTitle = this.session.customTitle();
     return {
       id: sessionId,
@@ -315,10 +312,10 @@ export class RemoteControlCliHost implements RemoteControlHost {
   } {
     const sessionId = this.session.sessionId();
     if (!sessionId) return { sessions: [] };
-    const messages = this.session.displayMessages();
     const customTitle = this.session.customTitle();
-    const firstMessage = firstUserText(messages);
-    const lastActiveAt = messages[messages.length - 1]?.timestamp;
+    const summary = this.session.threadSummary();
+    const firstMessage = summary.firstUserText;
+    const lastActiveAt = summary.lastActiveAt;
     return {
       sessions: [
         {
@@ -327,7 +324,7 @@ export class RemoteControlCliHost implements RemoteControlHost {
           isLoading: this.session.isLoading(),
           hasRunningBackgroundWork: this.session.hasRunningBackgroundWork(),
           hasPendingMessages: this.session.hasPendingMessages(),
-          messageCount: messages.length,
+          messageCount: summary.messageCount,
           ...(customTitle ? { customTitle } : {}),
           ...(firstMessage ? { firstMessage } : {}),
           ...(lastActiveAt ? { lastActiveAt } : {}),
@@ -364,30 +361,39 @@ export class RemoteControlCliHost implements RemoteControlHost {
     };
   }
 
-  private getMessages(p: Record<string, unknown>): {
+  private async getMessages(p: Record<string, unknown>): Promise<{
     messages: Message[];
     contextUsagePercent: number;
     hasMore?: boolean;
     reset?: boolean;
-    total?: number;
-  } {
-    const all = this.session.displayMessages();
+  }> {
     const contextUsagePercent = this.session.contextUsagePercent();
     const window: MessageWindow = {};
     if (typeof p.before === "string") window.before = p.before;
     if (typeof p.since === "string") window.since = p.since;
     if (p.limit !== undefined) window.limit = Number(p.limit);
 
-    let sliced: MessageWindowResult | undefined;
+    let normalized: MessageWindow | undefined;
     try {
-      sliced = sliceMessageWindow(all, window);
+      normalized = normalizeMessageWindow(window);
     } catch (err) {
       if (err instanceof InvalidMessageWindowError)
         throw invalidParams(err.message);
       throw err;
     }
-    if (!sliced) return { messages: all, contextUsagePercent };
-    return { ...sliced, contextUsagePercent };
+    // No window = the whole thread, read once from the transcript (spec
+    // ui/message-rendering-system.md「不带窗口 = 全量」). Pages come from
+    // there too; the front end keeps only a resident window.
+    if (!normalized) {
+      return {
+        messages: await this.session.displayThread(),
+        contextUsagePercent,
+      };
+    }
+    return {
+      ...(await this.session.messagePage(normalized)),
+      contextUsagePercent,
+    };
   }
 
   private listPendingPermissions(): {

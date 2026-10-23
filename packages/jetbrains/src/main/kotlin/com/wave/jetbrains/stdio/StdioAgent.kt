@@ -255,25 +255,23 @@ class StdioAgent(
         client.request("remoteControlDisconnect", sessionId = sessionId)
 
     /**
-     * `getMessages` RPC。不带参数 = 全量刷新（宿主缓存必须全量：首屏窗口、翻更
-     * 早、回滚都从它取数）；带 [before] / [limit] = 按窗口取一页（上滑翻更早）。
+     * `getMessages` RPC。带 [before] / [limit] = 按窗口取一页（首屏刷新 / 上滑翻更
+     * 早）；不带参数 = 整条会话（只有真需要全量的调用方用它，例如导出）。
      *
-     * 窗口那次是**只读查询**：不回写 [contextUsagePercent]——那是全量刷新那份回包
-     * 的语义，翻一页不该顺手改掉用量环。
+     * 任何一次回包都刷新 [contextUsagePercent]：那个值在每份回包里都是当下的真
+     * 值，与这次读的是整条还是一页无关。宿主回放它靠的是最后一次读到的数，不是
+     * 「哪一类读法」。
      */
     suspend fun getMessages(before: String? = null, limit: Int? = null): JsonElement {
-        val windowed = before != null || limit != null
-        val params = if (windowed) buildJsonObject {
+        val params = if (before != null || limit != null) buildJsonObject {
             if (before != null) put("before", before)
             if (limit != null) put("limit", limit)
         } else null
         val res = client.request("getMessages", params, sessionId) ?: JsonObject(emptyMap())
-        if (!windowed) {
-            // Hosts replay this on webviewReady (see MessageHandler.handleWebviewReady);
-            // null when the session has no usage yet, so the ring stays empty.
-            contextUsagePercent =
-                res.jsonObject["contextUsagePercent"]?.jsonPrimitive?.doubleOrNull
-        }
+        // Hosts replay this on webviewReady (see MessageHandler.handleWebviewReady);
+        // null when the session has no usage yet, so the ring stays empty.
+        contextUsagePercent =
+            res.jsonObject["contextUsagePercent"]?.jsonPrimitive?.doubleOrNull
         return res
     }
 

@@ -28,6 +28,8 @@ vi.mock("wave-agent-sdk", async () => {
         sessionId: "test-session-id",
         messages: [],
         displayMessages: [],
+        // 整条展示流现在由 SDK 读转录给出（缓存只剩一页）。
+        getDisplayThread: vi.fn(async () => []),
         isLoading: false,
         isCommandRunning: false,
         isCompacting: false,

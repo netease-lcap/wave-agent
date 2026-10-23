@@ -23,6 +23,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   BackgroundTask,
   Message,
+  MessageWindow,
+  MessageWindowResult,
   PermissionDecision,
   PermissionMode,
   QueuedMessage,
@@ -92,6 +94,16 @@ export interface UseRemoteControlOptions {
   compact: (customInstructions?: string) => void | Promise<void>;
   /** Slash commands the page may offer (SDK commands: skills / custom). */
   slashCommands: () => SlashCommand[];
+  /** One page of the display thread — read from the transcript when it reaches back. */
+  messagePage: (window: MessageWindow) => Promise<MessageWindowResult>;
+  /** The whole thread in one shot (no window asked for); nothing is cached. */
+  displayThread: () => Promise<Message[]>;
+  /** Thread totals for the session list (the resident window cannot answer). */
+  threadSummary: () => {
+    messageCount: number;
+    firstUserText?: string;
+    lastActiveAt?: string;
+  };
 }
 
 export interface RemoteControlApi {
@@ -300,7 +312,9 @@ function adapterOf(latest: {
     sessionId: () => latest.current.sessionId,
     workdir: () => latest.current.workdir,
     sessionCwd: () => latest.current.sessionCwd(),
-    displayMessages: () => latest.current.messages,
+    messagePage: (window) => latest.current.messagePage(window),
+    displayThread: () => latest.current.displayThread(),
+    threadSummary: () => latest.current.threadSummary(),
     contextUsagePercent: () =>
       percentOf(
         latest.current.latestTotalTokens,

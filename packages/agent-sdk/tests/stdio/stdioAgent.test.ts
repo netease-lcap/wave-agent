@@ -815,45 +815,84 @@ describe("StdioAgent", () => {
 
   // ── handleNotification (called by NotificationRouter) ──────
 
-  it("getMessages pulls the full message list and caches it", async () => {
+  // 宿主缓存现在是一页（spec ui/message-rendering-system.md「续页从转录读、两端不
+  // 再常驻全量」）：只有 refreshMessages 写它，任何一次按窗口的读都不写——否则翻
+  // 一页就会把宿主手里那一屏挤掉。
+  it("refreshMessages pulls one page and is the only path that writes the cache", async () => {
+    const { agent, client } = createAgent();
+    const messages: Message[] = [
+      { id: "m1", role: "user", timestamp: "", blocks: [] },
+    ];
+    client.request.mockResolvedValue({
+      messages,
+      hasMore: true,
+      threadSummary: { messageCount: 42, firstUserText: "hi" },
+      contextUsagePercent: 25,
+    });
+
+    const result = await agent.refreshMessages();
+
+    expect(client.request).toHaveBeenCalledWith(
+      "getMessages",
+      { limit: 20 },
+      undefined,
+    );
+    expect(result).toEqual(messages);
+    expect(agent.messages).toEqual(messages);
+    expect(agent.hasMoreMessages).toBe(true);
+    // 会话列表的条数与标题兜底只能随这一份回包下发：缓存只剩一页，宿主自己数不
+    // 出来。
+    expect(agent.threadSummary).toEqual({
+      messageCount: 42,
+      firstUserText: "hi",
+    });
+    // 宿主在 webviewReady 回放它；某个窗口重建的页面错过了推送。
+    expect(agent.contextUsagePercent).toBe(25);
+  });
+
+  it("refreshMessages clears a stale context-usage percentage when the response omits it", async () => {
+    const { agent, client } = createAgent();
+    client.request.mockResolvedValue({ messages: [], contextUsagePercent: 25 });
+    await agent.refreshMessages();
+
+    client.request.mockResolvedValue({ messages: [] });
+    await agent.refreshMessages();
+
+    expect(agent.contextUsagePercent).toBeUndefined();
+  });
+
+  it("getMessages asks for a window and leaves the cache alone", async () => {
+    const { agent, client } = createAgent();
+    const cached: Message[] = [
+      { id: "cached", role: "user", timestamp: "", blocks: [] },
+    ];
+    agent.messages = cached;
+    const page = {
+      messages: [{ id: "older", role: "user", timestamp: "", blocks: [] }],
+      hasMore: false,
+    };
+    client.request.mockResolvedValue(page);
+
+    const result = await agent.getMessages({ before: "cached", limit: 200 });
+
+    expect(client.request).toHaveBeenCalledWith(
+      "getMessages",
+      { before: "cached", limit: 200 },
+      undefined,
+    );
+    expect(result).toEqual(page);
+    expect(agent.messages).toBe(cached);
+  });
+
+  it("getMessages without a window answers the whole thread and still caches nothing", async () => {
     const { agent, client } = createAgent();
     const messages: Message[] = [
       { id: "m1", role: "user", timestamp: "", blocks: [] },
     ];
     client.request.mockResolvedValue({ messages });
 
-    const result = await agent.getMessages();
-
-    expect(client.request).toHaveBeenCalledWith(
-      "getMessages",
-      undefined,
-      undefined,
-    );
-    expect(agent.messages).toEqual(messages);
-    expect(result).toEqual(messages);
-  });
-
-  // The host pulls the message list on webviewReady; a webview that was
-  // re-created in the meantime missed the change-driven contextUsage
-  // notification, so the percentage rides along with the pull.
-  it("getMessages caches the context-usage percentage for the host to replay", async () => {
-    const { agent, client } = createAgent();
-    client.request.mockResolvedValue({ messages: [], contextUsagePercent: 25 });
-
-    await agent.getMessages();
-
-    expect(agent.contextUsagePercent).toBe(25);
-  });
-
-  it("getMessages clears a stale context-usage percentage when the response omits it", async () => {
-    const { agent, client } = createAgent();
-    client.request.mockResolvedValue({ messages: [], contextUsagePercent: 25 });
-    await agent.getMessages();
-
-    client.request.mockResolvedValue({ messages: [] });
-    await agent.getMessages();
-
-    expect(agent.contextUsagePercent).toBeUndefined();
+    await expect(agent.getMessages()).resolves.toEqual(messages);
+    expect(agent.messages).toEqual([]);
   });
 
   it("userMessageAdded forwards message to callback", () => {

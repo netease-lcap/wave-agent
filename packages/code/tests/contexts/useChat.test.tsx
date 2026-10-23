@@ -95,6 +95,10 @@ describe("ChatProvider", () => {
     get displayMessages() {
       return this.messages;
     },
+    // 整条展示流现在由 SDK 从转录读（缓存只剩一页），CLI 首屏/刷新走这条。
+    getDisplayThread: vi.fn(async function (this: { messages: unknown[] }) {
+      return this.messages;
+    }),
     isLoading: false,
     latestTotalTokens: 0,
     isCommandRunning: false,

@@ -1,9 +1,6 @@
 package com.wave.jetbrains.session
 
 import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
@@ -15,12 +12,11 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * 首屏窗口与「翻更早」回包的算术（spec ui/message-rendering-system.md「首屏只进一页」）。
+ * 「翻更早」回包的算术（spec ui/message-rendering-system.md「续页从转录读、两端不再
+ * 常驻全量」）。
  *
- * 首屏只推一页是内存约束而不是 UI 口味：宿主的缓存必须全量（翻更早、回滚、会话
- * 切换都读它），推给渲染进程的永远只有一页。这里钉住的就是「推哪一页」与「前面
- * 还有没有」——两者任何一个错了，渲染进程要么又拿到整条会话，要么永远显示「没有
- * 更早的消息」。
+ * 宿主不再自己从全量缓存里切窗口——那一页由 SDK 读转录给出，Kotlin 侧只剩「怎么读
+ * 回包」。读错的后果很具体：`hasMore` 认成 false，页面就永远显示「没有更早的消息」。
  */
 class MessagePagingTest {
 
@@ -30,33 +26,6 @@ class MessagePagingTest {
 
     private fun JsonArray.ids(): List<String> =
         map { element -> element.jsonObject["id"]!!.jsonPrimitive.content }
-
-    @Test
-    fun `keeps the whole list when it fits in one page`() {
-        val (page, hasMore) = MessagePaging.tailPage(thread(20))
-        assertEquals(20, page.size)
-        // 「这就是开头」：页面据此提示并停止再请求。
-        assertFalse(hasMore)
-    }
-
-    @Test
-    fun `pushes the tail of a long session and says more exists`() {
-        val (page, hasMore) = MessagePaging.tailPage(thread(45))
-        assertEquals(20, page.size)
-        // 尾巴：读者打开会话先看到最近的对话，而不是几周前的第一条。
-        assertEquals(
-            (25 until 45).map { "m$it" },
-            page.ids(),
-        )
-        assertTrue(hasMore)
-    }
-
-    @Test
-    fun `treats a missing or malformed list as empty`() {
-        assertEquals(0, MessagePaging.tailPage(null).first.size)
-        assertEquals(0, MessagePaging.tailPage(JsonNull).first.size)
-        assertFalse(MessagePaging.tailPage(null).second)
-    }
 
     @Test
     fun `reads a windowed reply`() {
@@ -79,5 +48,6 @@ class MessagePagingTest {
         assertEquals(2, page.size)
         assertFalse(hasMore)
         assertFalse(MessagePaging.pageOf(null).second)
+        assertEquals(0, MessagePaging.pageOf(null).first.size)
     }
 }

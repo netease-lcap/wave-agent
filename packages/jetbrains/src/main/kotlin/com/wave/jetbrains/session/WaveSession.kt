@@ -58,7 +58,18 @@ class WaveSession(
 
     @Volatile var agent: StdioAgent? = null
         private set
+    /**
+     * 宿主手里这份**常驻窗口**：最近 [MessagePaging.FIRST_PAGE_SIZE] 条，不是全量。
+     *
+     * 全量在会话转录里（SDK 侧 append-only 的 JSONL）：翻更早按窗口读盘，回滚由
+     * SDK 自己改盘，两边都不再从这个字段取全量——三个宿主按同一条口径收缩，理由
+     * 见 SDK 的 `constants/messageWindow.ts`。写过它的只有 [refreshMessages]（整页
+     * 替换）、[onCompactBlockAdded]（追加一条）、以及回滚后的就地截断。
+     */
     @Volatile var messages: JsonElement? = null
+    /** [messages] 之前还有没有更早的（由 [refreshMessages] 从回包带回）。 */
+    @Volatile var hasMoreMessages = false
+        private set
     @Volatile var tasks: JsonElement? = null
         private set
     @Volatile var backgroundTasks: JsonElement? = null
@@ -431,35 +442,37 @@ class WaveSession(
     // ── Message list: one-shot pull ───────────────────────────────
 
     /**
-     * Pull the full message list via the `getMessages` RPC into the [messages] cache.
-     * The webview no longer subscribes to a full-snapshot push; hosts pull on demand
-     * after webviewReady / rewind / clearChat / restoreSession (spec pull model,
-     * mirrors VSCE chatSession.getMessages). Compaction is not a pull: the display
-     * stream only gains the summary block, appended incrementally in
-     * [onCompactBlockAdded]. The cache field [messages] is otherwise maintained
-     * exclusively from these pulls.
+     * 拉**一页**最近的消息进 [messages] 缓存，并记下前面还有没有更早的。
+     *
+     * 拉的是窗口而不是整条会话：一个连续用了几周的会话，整份列表在宿主里就是几
+     * 十万个 JSON 对象加上内联的 base64 图片，而宿主只拿它来推首屏那一屏。整条
+     * 会话由 SDK 按窗口从转录读（翻更早、回滚各自走自己的路径）。
+     *
+     * webview 不再订阅全量快照推送：宿主在 webviewReady / rewind / clearChat /
+     * restoreSession 之后按需拉，镜像 VSCE chatSession.getMessages。压缩不算拉取：
+     * 展示流只多了一个摘要块，由 [onCompactBlockAdded] 增量追加。
      */
     suspend fun refreshMessages() {
+        val agent = agent ?: return
         try {
-            val list = agent?.getMessages()?.jsonObject?.get("messages")
-            if (list != null) messages = list
+            val res = agent.getMessages(limit = MessagePaging.FIRST_PAGE_SIZE)
+            val (page, hasMore) = MessagePaging.pageOf(res)
+            messages = page
+            hasMoreMessages = hasMore
         } catch (e: StdioClientException) {
             LOG.warn("getMessages failed: ${e.message}")
         }
     }
 
     /**
-     * Pull the full message list and push it to the webview as the "response"
-     * (updateMessages). The push is a **window**: the cache stays whole, the
-     * webview gets the last [MESSAGE_FIRST_PAGE_SIZE] rows plus whether more
-     * exist before them (spec desktop-chat「首屏只进一页」).
+     * 拉一页并推给 webview 作为「响应」（updateMessages）：推的就是缓存那一页，
+     * 加上前面还有没有更早的（spec desktop-chat「首屏只进一页」）。
      */
     suspend fun pullAndPushMessages() {
         refreshMessages()
-        val (page, hasMore) = MessagePaging.tailPage(messages)
         postMessage("updateMessages", buildJsonObject {
-            put("messages", page)
-            put("hasMore", hasMore)
+            put("messages", messages as? JsonArray ?: JsonArray(emptyList()))
+            put("hasMore", hasMoreMessages)
         })
     }
 

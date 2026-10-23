@@ -20,7 +20,6 @@ import type {
 import {
   PLUGIN_CHANGE_PENDING_MESSAGE,
   PLUGIN_RELOADED_MESSAGE,
-  tailMessagePage,
 } from "wave-agent-sdk/host";
 
 /**
@@ -1921,7 +1920,13 @@ export class MessageHandler {
       await session.clearChat();
       // No full-snapshot push from the server — deliver the (now empty)
       // list so the webview actually clears.
-      const page = tailMessagePage(session.messages);
+      // The cache is the page (older ones are fetched on demand and never
+      // kept), so what it holds is what the webview gets; "more above" can
+      // only come from the SDK window that filled it.
+      const page = {
+        messages: session.messages,
+        hasMore: session.hasMoreMessages,
+      };
       this.context.postMessage(
         {
           command: "updateMessages",
@@ -1970,7 +1975,13 @@ export class MessageHandler {
       // so the webview re-renders instead of keeping the welcome page. It is a
       // window too: a restored long session must not land in the webview whole
       // (spec ui/message-rendering-system.md「首屏只进一页」).
-      const page = tailMessagePage(session.messages);
+      // The cache is the page (older ones are fetched on demand and never
+      // kept), so what it holds is what the webview gets; "more above" can
+      // only come from the SDK window that filled it.
+      const page = {
+        messages: session.messages,
+        hasMore: session.hasMoreMessages,
+      };
       this.context.postMessage(
         {
           command: "updateMessages",
@@ -2315,10 +2326,13 @@ export class MessageHandler {
       outsideSafeZoneDirectory: pending.outsideSafeZoneDirectory,
     }));
 
-    // 首屏只推一页（spec ui/message-rendering-system.md「首屏只进一页」）：宿主缓存 `session.messages`
-    // 必须仍是全量——翻更早、回滚、会话切换都读它——但推给 webview 的只有最近
-    // `MESSAGE_FIRST_PAGE_SIZE` 条（原因见 constants/messageWindow.ts）。
-    const page = tailMessagePage(session.messages);
+    // 首屏只推一页（spec ui/message-rendering-system.md「首屏只进一页」）：宿主缓存
+    // 本身就是那一页（更早的从转录读、只经手不留存），「还有更早的」只能由填缓存
+    // 的那次窗口回包给。
+    const page = {
+      messages: session.messages,
+      hasMore: session.hasMoreMessages,
+    };
     this.context.postMessage(
       {
         command: "setInitialState",

@@ -218,6 +218,23 @@ function createMockAgent(
     getFullMessageThread: vi
       .fn()
       .mockResolvedValue({ messages, sessionIds: ["test-session-id"] }),
+    getDisplayThread: vi.fn(async () => messages),
+    getMessagePage: vi.fn(async () => ({ messages: [], hasMore: false })),
+    // 会话列表要的条数 / 首条正文 / 最近时间：缓存只剩一页，这些由 SDK 的计数器
+    // 给出，不从 `messages` 数。
+    getThreadSummary: vi.fn(() => {
+      const first = messages.find((m) => m.role === "user");
+      const text = first?.blocks.find((b) => b.type === "text");
+      return {
+        messageCount: messages.length,
+        ...(text && "content" in text && text.content
+          ? { firstUserText: text.content }
+          : {}),
+        ...(messages.length > 0
+          ? { lastActiveAt: messages[messages.length - 1].timestamp }
+          : {}),
+      };
+    }),
     getPermissionMode: vi.fn().mockReturnValue("default"),
     setPermissionMode: vi.fn(),
     getMcpServers: vi.fn().mockReturnValue([]),

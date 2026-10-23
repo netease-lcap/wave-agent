@@ -22,6 +22,17 @@ export interface MessageWindowResult {
   hasMore?: boolean;
   /** `since` 锚点已经不在了：整份重取尾页。 */
   reset?: boolean;
-  /** 这条会话的展示流总条数。 */
-  total?: number;
+}
+
+/**
+ * 线程总量。宿主缓存只留一页之后，它的长度已答不了「这条会话有多少条消息」，
+ * 首条用户消息（会话标题的兜底）也不在窗口里了，所以这两个值由 SDK 的计数器给。
+ * 随 `getMessages` 回包一起下发（不单独开一条 RPC）。
+ */
+export interface MessageThreadSummary {
+  messageCount: number;
+  /** 首条非 meta 用户消息的正文；会话没有自定义标题时拿它当标题。 */
+  firstUserText?: string;
+  /** 最新一条展示消息的时间戳：会话列表的排序键。 */
+  lastActiveAt?: string;
 }
