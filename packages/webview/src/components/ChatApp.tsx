@@ -2450,10 +2450,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // board when closed and closes it when already open (spec 场景 7); the
   // board's 返回当前会话 also closes it (spec 场景 6). Settings and board are
   // mutually exclusive — opening the board closes settings.
+  //
+  // 2026-10-23 评论（点 `button.desktop-sidebar-new-chat.is-active`「创作集」）：
+  // 「创作集选中后，还能同时选中插件市场是不对的」——侧栏三个整页入口（活动 /
+  // 插件市场 / 创作集）必须互斥（后开者优先）：只开一个、侧栏也只亮一个。
   const handleToggleSessionBoard = useCallback(() => {
     setSessionBoardOpen((prev) => !prev);
     setSettingsOpen(false);
     setPluginMarketOpen(false);
+    setArtifactsOpen(false);
   }, []);
 
   const handleCloseSessionBoard = useCallback(() => {
@@ -2461,12 +2466,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   }, []);
 
   // 插件市场整页（desktop，spec ecosystem/plugin.md「插件市场」场景 1/2）：侧边栏
-  // 入口是开关——未打开则打开，已打开则关闭；与设置页、会话状态看板互斥（后开者
-  // 优先）。返回当前会话与再次点击入口同效（场景 2）。
+  // 入口是开关——未打开则打开，已打开则关闭；与设置页、会话状态看板、创作集互斥
+  // （后开者优先）。返回当前会话与再次点击入口同效（场景 2）。
   const handleTogglePluginMarket = useCallback(() => {
     setPluginMarketOpen((prev) => !prev);
     setSettingsOpen(false);
     setSessionBoardOpen(false);
+    setArtifactsOpen(false);
   }, []);
 
   const handleClosePluginMarket = useCallback(() => {
@@ -2508,6 +2514,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setPluginMarketOpen(true);
     setSettingsOpen(false);
     setSessionBoardOpen(false);
+    setArtifactsOpen(false);
   }, []);
 
   const handleSendMessage = useCallback(
@@ -2575,6 +2582,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           setPluginMarketOpen(true);
           setSettingsOpen(false);
           setSessionBoardOpen(false);
+          // 侧栏三个整页入口互斥：/plugin 打开插件市场时也要收起创作集，
+          // 否则会同时亮两个入口（2026-10-23 评论）。
+          setArtifactsOpen(false);
           return;
         }
         handleOpenSettings("plugins");
