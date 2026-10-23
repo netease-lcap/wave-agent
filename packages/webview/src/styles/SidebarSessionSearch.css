@@ -238,22 +238,218 @@
 }
 
 [data-host="desktop"] .desktop-sidebar-search-input,
-[data-host="desktop"] .desktop-session-filter-opt,
 [data-host="desktop"] .desktop-session-no-match {
   font-size: 13px;
 }
 
+/* ── 筛选弹层（1022 评论：「读取 skill，优化这个下拉菜单样式」）────────────
+   依据：
+   - design-system.md「Menus」：容器 = 白面板 + 1px --cc-border-lighter + 12px 圆角 +
+     --cc-shadow-popover + 8px 内衬、标准宽 200；条目（桌面端单行）= 28 高 / 0 8 内衬 /
+     14-22 / --cc-text-regular / 400；hover = --cc-fill-hover + --cc-text-primary；
+     分组间用 1px 细边分隔、分隔线两侧留间距；触发器→面板 4px、无箭头。
+   - common-components.md「Desktop Radio and Checkbox」：可见框 16×16，未选中 1px
+     --cc-text-secondary 描边，选中 = 实底 --cc-action-primary + --cc-action-primary-text
+     标记（单点 Light 6 / Dark 7，勾 Light 1.7 / Dark 2.1），方框外圆角约 4。
+   - common-components.md「Buttons」：标准动作 32 高 / 14-22 / 500 / r8 / 0 12；常规主行动
+     走 action-primary（红只留给语义危险与克制的品牌），次级描边走 border-light。
+   改前：216×295 / r10 / 10 内衬 / 深色 #1F1F1F 面板 / 条目 13px·r5·0 6 内衬 /
+   勾选框 12×12 品牌红 / 按钮 24 高 12px600 r5 品牌红。 */
 [data-host="desktop"] .desktop-session-filter-pop {
-  width: 216px;
-  border-radius: 10px;
-  padding: 10px;
+  /* 宽度对齐 `div.more-menu`（1023 评论②：弹窗宽度参考这里）。实测账户卡
+     「设置/企业/控制台/帮助文档/退出登录」那层是 235（= 账户卡宽，组件里
+     `Math.max(anchorWidth, 216)`），两档同值。 */
+  width: 235px;
+  padding: 8px;
+  border: 1px solid var(--cc-border-lighter, #ebeef5);
+  border-radius: var(--cc-radius-lg, 12px);
+  background: var(--cc-bg-overlay, #ffffff);
+  box-shadow: var(--cc-shadow-popover, 0 0 12px rgb(0 0 0 / 12%));
+}
+
+/* 触发器 → 面板 4px（契约共享下拉间距） */
+[data-host="desktop"] .desktop-session-filter-pop {
+  top: calc(100% + 4px);
+}
+
+/* 分组标签：菜单/侧栏分组名保留自己的排版档（不套条目 14px），落在 12/20 元信息档 */
+[data-host="desktop"] .desktop-session-filter-title {
+  padding: 4px 8px 2px;
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 400;
+  color: var(--cc-text-secondary, #6c7076);
 }
 
 [data-host="desktop"] .desktop-session-filter-opt {
   height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+  color: var(--cc-text-regular, #565a60);
+}
+
+[data-host="desktop"] .desktop-session-filter-opt:hover {
+  background: var(--cc-fill-hover, #eef0f3);
+  color: var(--cc-text-primary, #1f2329);
+}
+
+/* 勾选框 / 单选点：16 盒、1px 次级描边；选中为实底 + action-primary-text 标记 */
+[data-host="desktop"] .desktop-session-filter-box {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--cc-text-secondary, #6c7076);
+  border-radius: 4px;
+  background: transparent;
+}
+
+/* 单选仍是圆环（形状即「多选/单选」的线索）：桌面规则的方角会盖掉 base 的 50%，
+   这里按同权重补回，避免单选组被画成方框 */
+[data-host="desktop"] .desktop-session-filter-box--dot {
+  border-radius: 50%;
+}
+
+[data-host="desktop"] .desktop-session-filter-opt.is-on .desktop-session-filter-box {
+  border-color: var(--cc-action-primary, #1f2329);
+  background: var(--cc-action-primary, #1f2329);
+}
+
+/* 深色档未选中描边用 4 级占位色（契约：Light 次级文字 / Dark 占位色） */
+[data-host="desktop"][data-theme="dark"] .desktop-session-filter-box {
+  border-color: var(--cc-text-placeholder, #858b8f);
+}
+
+/* 对勾：契约路径 M4 8 L6.75 10.75 L12 5.5、圆头端点（strokeLinecap: round）。
+   这里把折线拆成两段圆头小棒（::before 短边 / ::after 长边），
+   长度 = 线段长 + 描边宽（圆头各外扩半个描边），圆心落在两段中点上；
+   坐标以 16 盒的 padding box（14×14、内移 1px）为原点。Light 描边 1.7。 */
+[data-host="desktop"] .desktop-session-filter-opt.is-on .desktop-session-filter-box::before,
+[data-host="desktop"] .desktop-session-filter-opt.is-on .desktop-session-filter-box::after {
+  content: "";
+  position: absolute;
+  height: 1.7px;
+  border: none;
+  border-radius: 1.7px;
+  background: var(--cc-action-primary-text, #ffffff);
+}
+
+/* 短边 (4,8)→(6.75,10.75)：长 3.89 → 5.59，中点 (4.375, 8.375) */
+[data-host="desktop"] .desktop-session-filter-opt.is-on .desktop-session-filter-box::before {
+  width: 5.59px;
+  left: 1.58px;
+  top: 7.53px;
+  transform: rotate(45deg);
+}
+
+/* 长边 (6.75,10.75)→(12,5.5)：长 7.42 → 9.12，中点 (8.375, 7.125) */
+[data-host="desktop"] .desktop-session-filter-opt.is-on .desktop-session-filter-box::after {
+  width: 9.12px;
+  left: 3.81px;
+  top: 6.28px;
+  transform: rotate(-45deg);
+}
+
+/* 深色档描边 2.1：长度各 +0.4、粗细 +0.4，重心不变 */
+[data-host="desktop"][data-theme="dark"]
+  .desktop-session-filter-opt.is-on
+  .desktop-session-filter-box::before,
+[data-host="desktop"][data-theme="dark"]
+  .desktop-session-filter-opt.is-on
+  .desktop-session-filter-box::after {
+  height: 2.1px;
+  border-radius: 2.1px;
+}
+
+[data-host="desktop"][data-theme="dark"]
+  .desktop-session-filter-opt.is-on
+  .desktop-session-filter-box::before {
+  width: 5.99px;
+  left: 1.38px;
+  top: 7.33px;
+}
+
+[data-host="desktop"][data-theme="dark"]
+  .desktop-session-filter-opt.is-on
+  .desktop-session-filter-box::after {
+  width: 9.52px;
+  left: 3.61px;
+  top: 6.08px;
+}
+
+/* 单选点：Light 6 / Dark 7，居中 */
+[data-host="desktop"] .desktop-session-filter-opt.is-on .desktop-session-filter-box--dot::after {
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border: none;
+  border-radius: 50%;
+  background: var(--cc-action-primary-text, #ffffff);
+  transform: translate(-50%, -50%);
+}
+
+[data-host="desktop"][data-theme="dark"]
+  .desktop-session-filter-opt.is-on
+  .desktop-session-filter-box--dot::after {
+  /* 深色对勾那条规则多一个属性选择器（0,5,0），会把圆点的 left/top/圆角一起盖掉：
+     这里把居中三件套显式写回，否则深色圆点偏到对勾的位置上（1023 评论①「圈是歪的」） */
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+/* 单选不出对勾的短边 */
+[data-host="desktop"] .desktop-session-filter-opt.is-on .desktop-session-filter-box--dot::before {
+  content: none;
+}
+
+/* 页脚：1px 细边分隔 + 两侧留间距，动作 8px 间隔 */
+[data-host="desktop"] .desktop-session-filter-actions {
+  gap: 8px;
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--cc-border-lighter, #ebeef5);
+}
+
+[data-host="desktop"] .desktop-session-filter-btn {
+  /* 1023 评论②「确定和重置按钮可以小一号」→ 契约 compact 档 28 高，仍 14px 标签、两颗同时降 */
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--cc-radius-md, 8px);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+}
+
+[data-host="desktop"] .desktop-session-filter-btn--ghost {
+  border: 1px solid var(--cc-border-light, #e4e7ed);
+  background: transparent;
+  color: var(--cc-text-primary, #1f2329);
+}
+
+[data-host="desktop"] .desktop-session-filter-btn--ghost:hover {
+  background: var(--cc-fill-hover, #eef0f3);
+}
+
+[data-host="desktop"] .desktop-session-filter-btn--ghost:active {
+  background: var(--cc-fill-pressed, #e7e9ed);
 }
 
 [data-host="desktop"] .desktop-session-filter-btn--primary {
-  background: var(--vscode-brand-primary, #c1292e);
-  color: #ffffff;
+  border: 1px solid transparent;
+  background: var(--cc-action-primary, #1f2329);
+  color: var(--cc-action-primary-text, #ffffff);
+}
+
+[data-host="desktop"] .desktop-session-filter-btn--primary:hover {
+  background: var(--cc-action-primary-hover, #34383f);
+}
+
+/* 浅色档没有 --cc-action-primary-active，按 0915 约定回落 #111318 */
+[data-host="desktop"] .desktop-session-filter-btn--primary:active {
+  background: var(--cc-action-primary-active, #111318);
 }
