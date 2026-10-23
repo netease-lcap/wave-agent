@@ -583,7 +583,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // Bumped when a re-acquire returns the SAME forwarded URL — the [url] effect
   // in PreviewPane would otherwise early-return and skip the forced reload a
   // retry after a guest load failure needs. Remounting restarts the webview.
-  const [previewEpoch, setPreviewEpoch] = useState(0);
+  // 代号本身按会话组各存一份（见 guestEpochRef）；这个 state 只是「某组代号变了，
+  // 需要重渲染」的信号，值不参与任何 React key。
+  const [, setPreviewEpochTick] = useState(0);
   // preview guest 跨会话保活（spec desktop-panels.md「右侧面板 · preview guest
   // 跨会话保活」）：切走的会话组登记在窗口级台账（utils/previewGuestKeep.ts）里，
   // 它的 preview guest 继续挂在常驻层（见 previewGuestEntries /
@@ -600,9 +602,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 首次出现时分配序号，之后永远按序号渲染。
   const guestOrderRef = useRef<Map<string, number>>(new Map());
   const guestSeqRef = useRef(0);
-  // 每个会话组最后一次的 remount 代号：`previewEpoch` 是全局 state，只随当前
-  // 显示的组推进。停靠组必须记住自己的代号——否则当前组代号一变，停靠组的
-  // React key 跟着变，切回来时 guest 被重新挂载（保活失效）。
+  // 每个会话组最后一次的 remount 代号（`guestEpochRef`）：只在该组自己的 guest
+  // 需要重新加载时推进（本地 .html 同 URL 重新获取、远端转发重试）。停靠组必须
+  // 记住自己的代号——否则当前组代号一变，停靠组的 React key 跟着变，切回来时
+  // guest 被重新挂载（保活失效）。同理反向也不能污染：代号若只是一组全局计数，
+  // A 组重试后切到 B 组，B 的 key 会从 0 抬到 1，保活中的 B 组 guest 被无谓重建。
   const guestEpochRef = useRef<Map<string, number>>(new Map());
   // Local .html preview (spec desktop-preview.md「本地 HTML 文件预览」):
   // in-flight desktopPreviewFile requests keyed by requestId, plus the source
@@ -717,6 +721,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // React 于是把 <webview> 摘掉重建，保活前功尽弃。无 pane 的单栏布局没有会话
   // 键，用 "root" 占位（那里「切换会话」不重挂载 ChatApp，guest 一直在显示态）。
   const stateGuestGroup = stateGroupKey ?? groupKey ?? "root";
+  // 重置「当前 state 所属会话组」的 preview guest（重挂载 = 真重新加载）。代号按组
+  // 存，所以别的组（停靠保活中的 guest）不受影响；这也让「切回来还是同一个
+  // <webview>」与「本组重试后真的重载」两件事同时成立。
+  const bumpPreviewEpoch = useCallback(() => {
+    guestEpochRef.current.set(
+      stateGuestGroup,
+      (guestEpochRef.current.get(stateGuestGroup) ?? 0) + 1,
+    );
+    setPreviewEpochTick((n) => n + 1);
+  }, [stateGuestGroup]);
   // Desktop panel expand/collapse (spec desktop-panels.md「右侧面板 · 展开/折叠、
   // 空间守卫与欢迎页共存」): the header button
   // toggles whether the panel slot is visible. Collapsing only HIDES the slot —
@@ -1327,7 +1341,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
                 // Same URL as before (re-acquire after a guest load failure):
                 // remount so the webview actually reloads instead of the [url]
                 // effect early-returning on an unchanged prop.
-                if (message.url === prevUrl) setPreviewEpoch((e) => e + 1);
+                if (message.url === prevUrl) bumpPreviewEpoch();
               }
             } else if (tabId) {
               // A reply for a session this pane is NOT bound to only touches
@@ -1477,7 +1491,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             } else if (tab.previewUrl === message.url) {
               // Re-acquire returned the same URL: bump the epoch so the
               // PreviewPane remounts and actually reloads.
-              setPreviewEpoch((e) => e + 1);
+              bumpPreviewEpoch();
             }
           } else {
             // Preview refused (missing/oversized/unpreviewable): drop the
@@ -4305,7 +4319,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     key: string;
     group: string;
     tabId: string;
-    /** PreviewPane 的 React key：只随该组的「重置」代号变（换掉即重挂载重载）。 */
+    /** PreviewPane 的 React key：只随该组自己的「重置」代号变（换掉即重挂载重载）。 */
     epoch: number;
     url: string;
     width: number;
@@ -4317,8 +4331,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     /** 停靠：保活但不显示（非激活一级 tab / 面板折叠 / 已切走的会话）。 */
     parked: boolean;
   };
-
-  guestEpochRef.current.set(stateGuestGroup, previewEpoch);
 
   /** 停靠组的事件回落：它的 tab 状态不在本组 state 里（state 已是新会话的），
    *  写回 sessionUi 快照——切回来时由 swap effect 按快照重播种，于是 [url]
@@ -4384,9 +4396,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         key: `${group}#${tab.id}`,
         group,
         tabId: tab.id,
-        epoch: opts.live
-          ? previewEpoch
-          : (guestEpochRef.current.get(group) ?? 0),
+        // 代号一律取「这个条目所属组自己的」——显示态与停靠态必须同源，否则
+        // 停留在某个显示态的组会因为别的组重试而被改名重挂。
+        epoch: guestEpochRef.current.get(group) ?? 0,
         url: tab.previewUrl ?? "",
         width: opts.width,
         originalUrl: opts.originalUrl,

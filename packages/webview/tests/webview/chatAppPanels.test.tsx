@@ -64,6 +64,30 @@ const activePane = (testId: string) =>
     );
   });
 
+/** 点开消息里的本地路径链接（.html 会开 preview tab 并向宿主请求 URL）。 */
+function clickPathLink(path: string) {
+  const link = screen
+    .getAllByText(path, { exact: false })
+    .find((el) => el.closest("a.file-path-link")) as HTMLElement | undefined;
+  expect(link).toBeDefined();
+  fireEvent.click(link!);
+}
+
+/** Local .html preview requests the webview posts for the host to re-host. */
+const previewRequests = (vscode: ReturnType<typeof createMockVscode>) =>
+  vscode.postMessage.mock.calls
+    .map(([msg]) => msg as Record<string, unknown>)
+    .filter((m) => m.command === "desktopPreviewFile");
+
+/** Reply to a desktopPreviewFile request with a URL. */
+function replyPreviewUrl(requestId: string, url: string) {
+  sendHostMessage({
+    command: "desktopPreviewFileResult",
+    requestId,
+    url,
+  } as never);
+}
+
 beforeEach(() => {
   // The panel-group cache is module-level — isolate tests from each other.
   prunePanelGroupCache(new Set());
@@ -1233,6 +1257,62 @@ describe("session-level panel groups", () => {
     // s1 从会话树里消失（被删）：它的面板快照与保活 guest 一起清掉。
     pushTree(["s2"]);
     expect(screen.queryByTestId("preview-guest")).not.toBeInTheDocument();
+  });
+
+  /**
+   * 重置代号（guestEpochRef）语义是「每个会话组自己的 remount 代数」：本组重试只该
+   * 重挂本组的 guest。若代号退化成一组全局计数，A 组重试后切到 B 组，B 的 key 会从
+   * 0 抬到 1，保活中的 B 组 <webview> 被无谓重建（白屏重载）。
+   */
+  it("a preview retry in one group leaves another group's kept-alive guest untouched", () => {
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop({ workdir: "/work/a" });
+    pushTree(["s1", "s2"]);
+
+    // s2 先开一个自己的 preview guest（地址栏输入；src 就是它的身份）。
+    pushPanes("s2");
+    openPanel("preview");
+    const s2Input = activePane("preview-address-input") as HTMLInputElement;
+    fireEvent.change(s2Input, { target: { value: "localhost:9002/" } });
+    fireEvent.keyDown(s2Input, { key: "Enter" });
+    const s2Guest = activePane("preview-pane")?.querySelector("webview");
+    expect(s2Guest?.getAttribute("src")).toBe("http://localhost:9002/");
+
+    // 换到 s1，用本地 .html 开一个 preview tab。
+    pushPanes("s1");
+    sendHostMessage(
+      fixtures.updateMessages([
+        MockDataGenerator.createAssistantMessage(
+          "页面在 `/work/a/report.html`",
+        ),
+      ]),
+    );
+    clickPathLink("/work/a/report.html");
+    act(() =>
+      replyPreviewUrl(
+        previewRequests(vscode)[0].requestId as string,
+        "http://127.0.0.1:45000/report.html",
+      ),
+    );
+    const s1Guest = activePane("preview-pane")?.querySelector("webview");
+    expect(s1Guest?.getAttribute("src")).toBe(
+      "http://127.0.0.1:45000/report.html",
+    );
+
+    // 再点同一个文件、宿主回同一个 URL = 该组的「重试」：本组必须真重挂载。
+    clickPathLink("/work/a/report.html");
+    act(() =>
+      replyPreviewUrl(
+        previewRequests(vscode)[1].requestId as string,
+        "http://127.0.0.1:45000/report.html",
+      ),
+    );
+    const s1Retried = activePane("preview-pane")?.querySelector("webview");
+    expect(s1Retried).not.toBe(s1Guest);
+
+    // 切回 s2：它这一代没变，必须还是同一个 <webview>（不被 s1 的重试牵连）。
+    pushPanes("s2");
+    expect(activePane("preview-pane")?.querySelector("webview")).toBe(s2Guest);
   });
 
   it("a parked guest cannot append picker comments to any conversation (spec 场景 5)", () => {
