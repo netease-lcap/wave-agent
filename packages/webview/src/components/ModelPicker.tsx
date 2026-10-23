@@ -1,7 +1,8 @@
 import React, { useCallback, useRef } from "react";
 import type { ConfiguredModel } from "wave-webview-fixtures";
 import { useRovingMenu } from "../utils/useRovingMenu";
-import { PermCaretIcon } from "./HeaderIcons";
+import { ModelBrainIcon, PermCaretIcon } from "./HeaderIcons";
+import { Tooltip } from "./Tooltip";
 import { isDesktopHost } from "../utils/platform";
 import "../styles/ModelPicker.css";
 
@@ -11,6 +12,12 @@ export interface ModelPickerProps {
   /** 当前会话使用的模型；清单还没回来时为空。 */
   currentModel?: string;
   disabled?: boolean;
+  /**
+   * 底栏空间不足时的「图标档」（1023 评论：参考 codex，模型与权限都只显示图标）。
+   * 只由 MessageInput 的底栏量宽决定；为真时按钮收成 32×32 的大脑图标，
+   * 模型名与漏斗尖都藏起来，点击行为不变（仍向上展开同一个列表）。
+   */
+  compact?: boolean;
   onSelect: (model: string) => void;
 }
 
@@ -66,6 +73,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   models,
   currentModel,
   disabled,
+  compact = false,
   onSelect,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -98,31 +106,47 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   // 没有可选模型（清单未回 / 宿主没配）时按钮不渲染：底栏不留一个点不开的空控件。
   if (models.length === 0) return null;
 
+  const triggerButton = (
+    <button
+      type="button"
+      ref={triggerRef}
+      className="model-picker-trigger"
+      data-testid="model-picker-trigger"
+      aria-label={label ? `模型：${label}` : "模型"}
+      aria-haspopup="listbox"
+      aria-expanded={open}
+      disabled={disabled}
+      onClick={() => {
+        if (open) menu.closeMenu();
+        else openMenu();
+      }}
+    >
+      {/* 图标档的大脑图标：文字档下 display:none（不占位），
+          由底栏的 `.is-compact` 切换显示（见 host-desktop.css）。 */}
+      {isDesktopHost() && <ModelBrainIcon className="model-picker-icon" />}
+      <span className="model-picker-name" title={label}>
+        {label}
+      </span>
+      {isDesktopHost() ? (
+        <PermCaretIcon className="model-picker-caret" />
+      ) : (
+        <ChevronIcon />
+      )}
+    </button>
+  );
+
   return (
     <div className="model-picker-container" ref={menuRef}>
-      <button
-        type="button"
-        ref={triggerRef}
-        className="model-picker-trigger"
-        data-testid="model-picker-trigger"
-        aria-label={label ? `模型：${label}` : "模型"}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        disabled={disabled}
-        onClick={() => {
-          if (open) menu.closeMenu();
-          else openMenu();
-        }}
-      >
-        <span className="model-picker-name" title={label}>
-          {label}
-        </span>
-        {isDesktopHost() ? (
-          <PermCaretIcon className="model-picker-caret" />
-        ) : (
-          <ChevronIcon />
-        )}
-      </button>
+      {/* 图标档只有一颗大脑，含义不是不言自明的 → 补可见气泡（icon.md：
+          「Icon-only buttons require an accessible name and a visible tooltip」）。
+          文字档不包，避免给常规态多套一层（保持零位移）。 */}
+      {compact ? (
+        <Tooltip text={`切换模型 · ${label}`} position="top">
+          {triggerButton}
+        </Tooltip>
+      ) : (
+        triggerButton
+      )}
       {open && (
         <ul
           className="model-picker-menu"

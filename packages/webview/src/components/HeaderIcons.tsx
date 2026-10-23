@@ -213,6 +213,42 @@ export const SendArrowIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+// 模型选择器的「图标档」图标（1023 评论：「模型可以用类似大脑那种图标」）。
+// 形状取 Lucide `brain`（24 网格、原生 stroke 2），按 icon.md 的笔画补偿法塞进
+// 16px 盒：`viewBox 0 0 16 16` + `scale(2/3)` + `strokeWidth 2.1`
+// （渲染笔画 = 2.1 × 2/3 = 1.4，与同面 Figma 直出图标同档；直接塞 24 网格会让
+// 1.4 被等比缩成 0.933，看上去偏淡）。只在底栏「空间不足 → 图标档」时显示。
+export const ModelBrainIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
+    <g
+      transform="scale(0.6666667)"
+      stroke="currentColor"
+      strokeWidth="2.1"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+      <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+      <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4" />
+      <path d="M17.599 6.5a3 3 0 0 0 .399-1.375" />
+      <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5" />
+      <path d="M3.477 10.896a4 4 0 0 1 .585-.396" />
+      <path d="M19.938 10.5a4 4 0 0 1 .585.396" />
+      <path d="M6 18a4 4 0 0 1-1.967-.516" />
+      <path d="M19.967 17.484A4 4 0 0 1 18 18" />
+    </g>
+  </svg>
+);
+
 // 权限/灰条下拉 chevron — Figma composer-chevron（8×5 细箭头）。
 export const PermCaretIcon: React.FC<IconProps> = ({
   className = "header-icon",

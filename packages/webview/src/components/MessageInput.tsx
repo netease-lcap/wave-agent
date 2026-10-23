@@ -22,7 +22,7 @@ import type {
 } from "wave-webview-fixtures";
 import { validateImageFile } from "../utils/imageValidation";
 import { useRovingMenu } from "../utils/useRovingMenu";
-import { isRemotePageHost } from "../utils/platform";
+import { isDesktopHost, isRemotePageHost } from "../utils/platform";
 import { useHostMessage } from "../utils/useHostMessage";
 import { ContextTag } from "./ContextTag";
 import { Tooltip } from "./Tooltip";
@@ -204,6 +204,67 @@ export const MessageInput = forwardRef<
       ? `上下文已使用 ${contextUsagePct}%`
       : "";
   const ringCircumference = 2 * Math.PI * 8;
+
+  // ── 底栏「空间不足 → 图标档」（1023 评论：参考 codex，模型和权限都只显示图标）──
+  // 纯 CSS 判断不了「放不放得下」：文字档的自然宽度随模型名 / 权限文案 / 上下文档位
+  // 变化（同宽卡片下换一个长模型名就可能放不下），固定断点会在界面上「跳档」。
+  // 所以按实际内容量一次，两条判据取或：①「文字档下有没有被压扁」——模型选择器是底栏
+  // 里唯一可收缩的一档，一挤就先被压到比自己的文字还窄（此时文字会压到相邻控件上）；
+  // ②「整行内容量是否超出可用宽度」——临时挂 `.is-measuring`（子项不许收缩）读自然宽度。
+  // `.is-compact` 直接写在 DOM 类上（不经过 React 渲染，避免状态与量宽互相打架），
+  // state 只用来决定要不要给图标档挂气泡。量宽在 rAF 里做、同一帧读+写，
+  // 浏览器不会把中间的「文字档」画出来。
+  const buttonsRowRef = useRef<HTMLDivElement>(null);
+  const [compactRow, setCompactRow] = useState(false);
+  useEffect(() => {
+    const row = buttonsRowRef.current;
+    if (!row || !isDesktopHost()) return;
+    let raf = 0;
+    const decide = () => {
+      row.classList.remove("is-compact");
+      // ① 文字档下这个控件已经被压得比自己的内容还窄 = 已经挤到相邻控件上了
+      const pinched = [
+        [".model-picker-container", ".model-picker-trigger"],
+        [".permission-mode-container", ".permission-mode-select"],
+      ].some(([cont, inner]) => {
+        const c = row.querySelector<HTMLElement>(cont);
+        const t = row.querySelector<HTMLElement>(inner);
+        if (!c || !t) return false;
+        return (
+          t.getBoundingClientRect().width >
+          c.getBoundingClientRect().width + 0.5
+        );
+      });
+      // ② 整行在文字档下的自然宽度 vs 可用宽度（1px 容差：亚像素取整，别为 0.4px 反复跳档）
+      row.classList.add("is-measuring");
+      const needed = row.scrollWidth;
+      row.classList.remove("is-measuring");
+      const next = pinched || needed > row.clientWidth + 1;
+      row.classList.toggle("is-compact", next);
+      setCompactRow((prev) => (prev === next ? prev : next));
+    };
+    const schedule = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(decide);
+    };
+    schedule();
+    const ro = new ResizeObserver(schedule);
+    ro.observe(row);
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+    // 这几项决定底栏里出现哪些控件 / 文案有多宽；换会话、切权限、用量变化都要重量
+  }, [
+    models,
+    currentModel,
+    permissionMode,
+    contextUsagePct,
+    showContextUsage,
+    workdirSelector,
+    isStreaming,
+    compactRow,
+  ]);
 
   // Permission mode custom dropdown (roving-tabindex listbox shared with
   // the "+" menu via useRovingMenu; Escape returns to the trigger, Tab
@@ -1963,6 +2024,33 @@ export const MessageInput = forwardRef<
     };
   }, [vscode]);
 
+  // 权限模式按钮：图标档（`.is-compact`）里只剩左边的模式图标，文案靠
+  // `.permission-mode-label` 藏掉（裸文本节点 CSS 藏不掉，所以文案单独成 span）。
+  const permTriggerButton = (
+    <button
+      type="button"
+      ref={permMenuButtonRef}
+      className={`permission-mode-select mode-${permissionMode || "default"}`}
+      aria-label="权限模式"
+      aria-haspopup="listbox"
+      aria-expanded={permMenuOpen}
+      disabled={disabled}
+      onClick={() => {
+        if (permMenu.open) {
+          permMenu.closeMenu();
+        } else {
+          openPermissionModeMenu();
+        }
+      }}
+    >
+      {permissionModeIcon(permissionMode)}
+      <span className="permission-mode-label">
+        {permissionModeLabel(permissionMode)}
+      </span>
+      <PermCaretIcon className="permission-mode-caret" />
+    </button>
+  );
+
   return (
     <div className="input-container" data-testid="input-container">
       <div className="input-wrapper">
@@ -1989,7 +2077,7 @@ export const MessageInput = forwardRef<
           />
 
           {/* Buttons row */}
-          <div className="input-buttons-row">
+          <div className="input-buttons-row" ref={buttonsRowRef}>
             {/* Context actions ("+" add menu + "/" slash command), 4px gap per design */}
             <div className="context-actions">
               {/* "+" add menu (custom dropdown, expands upward) */}
@@ -2049,6 +2137,7 @@ export const MessageInput = forwardRef<
                 models={models}
                 currentModel={currentModel}
                 disabled={disabled}
+                compact={compactRow}
                 onSelect={onSelectModel}
               />
             )}
@@ -2121,26 +2210,17 @@ export const MessageInput = forwardRef<
             )}
 
             <div className="permission-mode-container" ref={permMenuRef}>
-              <button
-                type="button"
-                ref={permMenuButtonRef}
-                className={`permission-mode-select mode-${permissionMode || "default"}`}
-                aria-label="权限模式"
-                aria-haspopup="listbox"
-                aria-expanded={permMenuOpen}
-                disabled={disabled}
-                onClick={() => {
-                  if (permMenu.open) {
-                    permMenu.closeMenu();
-                  } else {
-                    openPermissionModeMenu();
-                  }
-                }}
-              >
-                {permissionModeIcon(permissionMode)}
-                {permissionModeLabel(permissionMode)}
-                <PermCaretIcon className="permission-mode-caret" />
-              </button>
+              {/* 图标档只剩盾牌，含义不直观 → 挂可见气泡；文字档不包（保持零位移） */}
+              {compactRow ? (
+                <Tooltip
+                  text={`权限：${permissionModeLabel(permissionMode)}`}
+                  position="top"
+                >
+                  {permTriggerButton}
+                </Tooltip>
+              ) : (
+                permTriggerButton
+              )}
               {permMenuOpen && (
                 <ul className="permission-mode-menu" role="listbox">
                   {PERMISSION_MODES.map((m, i) => (
