@@ -8,9 +8,8 @@
  * Date`, corrupts the token scan, or surfaces in the conversation.
  *
  * Lives in its own dependency-free module because the writer
- * (`jsonlHandler.ts`), the whole-file reader (`session.ts`) and the paged
- * reader (`utils/transcriptPage.ts`) all need it, and the session tests mock
- * `jsonlHandler` wholesale.
+ * (`jsonlHandler.ts`) and the whole-file reader (`session.ts`) both need it,
+ * and the session tests mock `jsonlHandler` wholesale.
  *
  * Add a new file-level entry type here when adding one.
  */
