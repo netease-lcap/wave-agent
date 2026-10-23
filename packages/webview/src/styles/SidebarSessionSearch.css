@@ -220,7 +220,7 @@
   color: var(--vscode-descriptionForeground);
 }
 
-/* 桌面端：宽度/字号与侧栏菜单条目同档（28px 高、13px 字）。 */
+/* 桌面端：行高与侧栏条目同档（30px 高；字级见下方 1023 条，14px 与侧栏行对齐）。 */
 [data-host="desktop"] .desktop-sidebar-search-field,
 [data-host="desktop"] .desktop-sidebar-search-filter {
   height: 30px;
@@ -237,9 +237,57 @@
   margin: 8px 0 4px 8px;
 }
 
-[data-host="desktop"] .desktop-sidebar-search-input,
+/* 1023 评论（她走查时看占位字号）：「里面的占位字号是不是小了一点」。
+   实测：侧栏内导航行 / 会话行 / 分组名 / 设置页字段全是 14px，只有搜索框是 13px。
+   13px 写于「侧栏条目还是 13px」的时期，1022 那轮把侧栏行统一到 14/22 后这条漏改，
+   于是字段比紧挨着的会话行小一档。这里只把**输入框**（及随之的占位符）补到 14px：
+   30 高盒 + 28 内高的输入区装得下 14px 单行，盒尺寸不变（155×28，逐值相同）。 */
+[data-host="desktop"] .desktop-sidebar-search-input {
+  font-size: 14px;
+}
+
+/* 相邻的「无匹配」提示仍是 13px —— 与契约 12/14 的字级都不符（13 没有 UI 层级），
+   但它不在她这次圈定的范围里，留作残留待点名。 */
 [data-host="desktop"] .desktop-session-no-match {
   font-size: 13px;
+}
+
+/* ── 侧栏「搜索会话」字段：按 skill 表单字段契约重做配色与状态 ──────────────
+   1023 评论（她点名 `div.desktop-sidebar-search-field`）：「可以继续优化这里的表单样式」。
+   依据 references/common-components.md §Input fields：
+     · 「Desktop form field colors and focus」（2026-10-23 用户确认）：底 / 默认描边 /
+       hover 描边 / focus 描边 / 输入值 / 占位 / 停用面·字·边 的浅深两档表；
+     · 同节 0923 已定：桌面文本字段圆角 = --cc-radius-md 8px（本文件原为 base 的 6px）。
+   取值来自 `--cc-field-*`（host-desktop.css 的共享字段映射），本文件不再写死颜色。
+   改前实测：浅色描边 #DCDFE6 / 焦点 #1F2329（近黑）/ 输入值 #202020 / 占位 #999999 / r6；
+   深色底 #313131 / 描边 #414649 / 占位 #858B8F；hover 无任何反馈。
+   只改配色、状态与圆角 —— 30 高、0 8 内衬、13px 字号是侧栏已确立的档位，契约要求保留。 */
+[data-host="desktop"] .desktop-sidebar-search-field {
+  border-color: var(--cc-field-border);
+  border-radius: var(--cc-radius-md, 8px);
+  background: var(--cc-field-bg);
+  /* 盒色同时供左侧搜索图标取色：装饰图标走次级文字，不占「placeholder only」那一档 */
+  color: var(--cc-text-secondary, #6c7076);
+}
+
+/* hover 只换描边、不动底色（契约明写）。`:not(:focus-within)` 让聚焦优先，
+   否则「鼠标压在已聚焦的框上」会掉回 hover 色。 */
+[data-host="desktop"] .desktop-sidebar-search-field:hover:not(:focus-within) {
+  border-color: var(--cc-field-border-hover);
+}
+
+/* 聚焦：就地 1px 变色（与既有边对齐），不外扩环、不位移 */
+[data-host="desktop"] .desktop-sidebar-search-field:focus-within {
+  border-color: var(--cc-field-border-focus);
+}
+
+[data-host="desktop"] .desktop-sidebar-search-input {
+  color: var(--cc-field-text);
+}
+
+[data-host="desktop"] .desktop-sidebar-search-input::placeholder {
+  color: var(--cc-field-placeholder);
+  opacity: 1;
 }
 
 /* ── 筛选弹层（1022 评论：「读取 skill，优化这个下拉菜单样式」）────────────
