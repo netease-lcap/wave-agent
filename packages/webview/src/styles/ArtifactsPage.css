@@ -753,26 +753,110 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   pointer-events: none;
 }
 
+/* 分享弹层「分享给」单选组。设计师 2026-10-23 预览评论：「这里的 radio 样式和
+   间距也修改」⇒ 按 skill `references/common-components.md` §Choice controls
+   「Desktop Radio and Checkbox」（2026-10-23 用户确认版）重做：
+     可见盒 16×16 / 未选中 1px 圆形环（浅 --cc-text-secondary #6C7076，
+     深 --cc-text-placeholder #858B8F）/ 选中实心 --cc-action-primary +
+     --cc-action-primary-text 圆点（浅 6px、深 7px，与环同心）。
+   该节明确「Ordinary inline form choices may reuse the indicator geometry/colors,
+   but do not automatically inherit the card padding, border, radius or opacity
+   treatment」—— 故这里只借用指示器几何与颜色，不加卡片内衬/描边/圆角，也不做
+   「hover 加深描边」（那条只属于 choice card）；键盘 focus-visible 出 2px
+   outline + 2px offset，颜色取选中指示器色。
+   间距：指示器↔文字 8px（契约）、选项之间 16px（契约未规定 inline 组横向间距，
+   取 8px 节奏的两倍）、选项行与组标题 8px。文案 13 → 14/22（契约无 13px 层级）。 */
 .artifacts-fieldset {
   display: flex;
-  gap: 18px;
+  gap: 16px;
   padding: 0;
   border: none;
   margin: 0;
 }
 
 .artifacts-fieldset legend {
-  padding: 0 0 6px;
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground, #6c6e73);
+  padding: 0 0 8px;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+  color: var(--cc-text-regular, #565a60);
 }
 
 .artifacts-radio {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 13px;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--cc-text-primary, #1f2329);
   cursor: pointer;
+}
+
+/* 原生 input 视觉隐藏但保留语义与键盘可达（不用 display:none，那会丢掉焦点）。
+   16×16 透明层正压在指示器上：鼠标命中它就是命中控件本身，自动化点 testid 也
+   不会被指示器「拦截」，而 label 的其余区域照常可点。 */
+.artifacts-radio input {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  transform: translateY(-50%);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.artifacts-radio-indicator {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--cc-text-secondary, #6c7076);
+  border-radius: 50%;
+  background: transparent;
+}
+
+.artifacts-radio-indicator::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--cc-action-primary-text, #ffffff);
+  opacity: 0;
+}
+
+.artifacts-radio input:checked + .artifacts-radio-indicator {
+  border-color: var(--cc-action-primary, #1f2329);
+  background: var(--cc-action-primary, #1f2329);
+}
+
+.artifacts-radio input:checked + .artifacts-radio-indicator::after {
+  opacity: 1;
+}
+
+.artifacts-radio input:focus-visible + .artifacts-radio-indicator {
+  outline: 2px solid var(--cc-action-primary, #1f2329);
+  outline-offset: 2px;
+}
+
+/* 深色档：未选中环取 placeholder 一档；选中圆点 7px（契约 Light 6 / Dark 7） */
+:root[data-theme="dark"] .artifacts-radio-indicator {
+  border-color: var(--cc-text-placeholder, #858b8f);
+}
+
+:root[data-theme="dark"]
+  .artifacts-radio
+  input:checked
+  + .artifacts-radio-indicator::after {
+  width: 7px;
+  height: 7px;
 }
 
 .artifacts-form-error {
@@ -844,13 +928,89 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   overflow-y: auto;
 }
 
+/* 成员多选行。设计师 2026-10-23 预览评论：这里（.artifacts-member-picker）的
+   checkbox「样式也优化一下」⇒ 与「分享给」那组 radio 同一套契约（skill
+   `references/common-components.md` §Choice controls「Desktop Radio and Checkbox」）：
+     可见盒 16×16 / 未选中 1px 圆角方框（外圆角约 4px，对应矢量 rx 3.5）/
+     选中实心 --cc-action-primary + --cc-action-primary-text 对勾
+     （Light stroke 1.7 / Dark 2.1，圆头圆角）；未选中描边浅 --cc-text-secondary
+     #6C7076、深 --cc-text-placeholder #858B8F；键盘 focus-visible 出 2px
+     outline + 2px offset，取选中指示器色。
+   行本身只做最小改动：字号 13 → 14/22（契约无 13px UI 层，与同弹窗其它控件一致），
+   内衬与行距不变；原生 input 视觉隐藏后作为命中层压在指示器上。 */
 .artifacts-member-row {
+  --artifacts-member-row-pad-x: 4px;
+  position: relative;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 4px;
-  font-size: 13px;
+  padding: 6px var(--artifacts-member-row-pad-x);
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--cc-text-primary, #1f2329);
   cursor: pointer;
+}
+
+.artifacts-member-row input {
+  position: absolute;
+  top: 50%;
+  left: var(--artifacts-member-row-pad-x);
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  transform: translateY(-50%);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.artifacts-checkbox-indicator {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--cc-text-secondary, #6c7076);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--cc-action-primary-text, #ffffff);
+}
+
+.artifacts-checkbox-indicator svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  opacity: 0;
+}
+
+.artifacts-checkbox-indicator svg path {
+  stroke-width: 1.7;
+}
+
+.artifacts-member-row input:checked + .artifacts-checkbox-indicator {
+  border-color: var(--cc-action-primary, #1f2329);
+  background: var(--cc-action-primary, #1f2329);
+}
+
+.artifacts-member-row input:checked + .artifacts-checkbox-indicator svg {
+  opacity: 1;
+}
+
+.artifacts-member-row input:focus-visible + .artifacts-checkbox-indicator {
+  outline: 2px solid var(--cc-action-primary, #1f2329);
+  outline-offset: 2px;
+}
+
+/* 深色档：未选中描边取 placeholder 一档；对勾加粗到 2.1（契约 Light 1.7 / Dark 2.1） */
+:root[data-theme="dark"] .artifacts-checkbox-indicator {
+  border-color: var(--cc-text-placeholder, #858b8f);
+}
+
+:root[data-theme="dark"] .artifacts-checkbox-indicator svg path {
+  stroke-width: 2.1;
 }
 
 .artifacts-member-empty,
@@ -902,15 +1062,67 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   overflow: hidden;
 }
 
+/* 页面内轻提示（链接已复制 / 分类保存 / 撤销发布…）。
+   设计师 2026-10-23 预览评论：点 `div.artifacts-toast`「链接已复制」——
+   「复制链接成功的提示应该出现在顶部用绿色的成功提示」。
+   改前：右下角固定（right/bottom 24）、深色半透明底 rgba(32,35,40,.92) + 白字、
+   r8 / 8×14 内衬 / 12px 常规字 / 重阴影 0 8px 24px 24%。
+   改后按 skill `references/design-system.md` §Desktop toast（2026-09-09 批准版）
+   对齐全局 `.toast-stack--top` 那条皮肤，逐项：
+     位置 = 顶部 `top: 12px`、水平居中于**本页主区**（组件用 layout effect 量
+       `.artifacts-page` 中心写内联 left，CSS 的 50% 是回退）；
+     pill = r10 / 内衬 9×12（本提示无关闭键，右侧不收 8）/ 14px / 1.45 /
+       轻阴影 0 2px 8px rgb(0 0 0 / 6%) / 描边 color-mix(currentColor 20%)；
+     语义 = success 走 --cc-color-success(+soft)、error 走 --cc-color-danger(+soft)；
+       颜色**不单独承载语义**——组件前置 16px 描边圆图标（勾 / ×）；
+     动效 = 从 -12px 垂直落下 + 淡入 0.18s（transform 用 translate(-50%, …)，
+       因为 X 的一半位移负责水平居中，不能再被动画覆盖掉）；
+     层级 = 2100，高过模态遮罩（弹窗里的「分类保存失败」也要压在遮罩上）。
+   本页是 desktop 独占（ChatApp 里 `isDesktop ? <ArtifactsPage/> : null`），
+   故直接改 base 类，不需要 `[data-host]` 前缀。 */
 .artifacts-toast {
   position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: 90;
-  padding: 8px 14px;
-  border-radius: 8px;
-  background: rgba(32, 35, 40, 0.92);
-  color: #ffffff;
-  font-size: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  top: 12px;
+  left: 50%;
+  z-index: 2100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  max-width: min(460px, calc(100vw - 24px));
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 6%);
+  transform: translateX(-50%);
+  animation: artifacts-toast-drop-in 0.18s ease-out;
+}
+
+.artifacts-toast--success {
+  color: var(--cc-color-success, #16a34a);
+  background: var(--cc-color-success-soft, #f0fdf4);
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+}
+
+.artifacts-toast--error {
+  color: var(--cc-color-danger, #dc2626);
+  background: var(--cc-color-danger-soft, #fef2f2);
+  border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+}
+
+.artifacts-toast-message {
+  min-width: 0;
+}
+
+@keyframes artifacts-toast-drop-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
 }

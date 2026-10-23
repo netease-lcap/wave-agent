@@ -13,6 +13,7 @@ import {
   SidebarExpandIcon,
 } from "./HeaderIcons";
 import { Tooltip } from "./Tooltip";
+import { ToastGlyph } from "./ToastStack";
 import { useHostMessage } from "../utils/useHostMessage";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
@@ -578,7 +579,19 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   const [shareSlug, setShareSlug] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const [newOpen, setNewOpen] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  // 页面内轻提示（复制链接 / 分类保存 / 撤销发布…）。设计师 2026-10-23 预览评论：
+  // 「复制链接成功的提示应该出现在顶部用绿色的成功提示」⇒ 位置改顶部居中、
+  // 成功走 --cc-color-success(+soft)、失败走 danger，并按 skill「不得只靠颜色」
+  // 前置 16px 语义图标（与全局 `.toast-stack--top` 同一枚矢量）。
+  const [toast, setToast] = useState<{
+    message: string;
+    type: "success" | "error";
+  } | null>(null);
+  // toast 水平居中于**本页**（= 右侧主区）而不是视口：桌面侧栏 260px 固定，
+  // 视口中心会比主区中心左 130px（实测主区 x=260 / w=1180 ⇒ 中心 850）。
+  // 量不到时回退 CSS 的 left:50%（视口中心）。
+  const [toastCenterX, setToastCenterX] = useState<number | null>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
 
   const listRequestRef = useRef<string | null>(null);
   const categoriesRequestRef = useRef<string | null>(null);
@@ -593,9 +606,25 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   // 撤销回包要调用的 handleRevoked 在其后定义 —— 经 ref 取。
   const handleRevokedRef = useRef<(slug: string) => void>(() => {});
 
-  const showToast = useCallback((message: string) => {
-    setToast(message);
-  }, []);
+  const showToast = useCallback(
+    (message: string, type: "success" | "error" = "success") => {
+      setToast({ message, type });
+    },
+    [],
+  );
+
+  // 定位：toast 出现时量一次本页中心（layout effect ⇒ 在首次绘制前落定，
+  // 不会先闪在视口中心）。
+  useLayoutEffect(() => {
+    if (!toast) {
+      setToastCenterX(null);
+      return;
+    }
+    const el = pageRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setToastCenterX(Math.round(rect.left + rect.width / 2));
+  }, [toast]);
 
   useEffect(() => {
     if (toast === null) return;
@@ -689,7 +718,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
         categoriesSaveRequestRef.current = null;
         const payload = message as { ok?: boolean; error?: string };
         if (payload.ok === false) {
-          showToast(payload.error ?? "分类保存失败");
+          showToast(payload.error ?? "分类保存失败", "error");
         }
         return;
       }
@@ -703,7 +732,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
           if (slug) handleRevokedRef.current(slug);
           showToast("已撤销发布");
         } else {
-          showToast(payload.error ?? "撤销发布失败");
+          showToast(payload.error ?? "撤销发布失败", "error");
         }
         return;
       }
@@ -791,7 +820,10 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   const handleCopyLink = useCallback(
     async (slug: string) => {
       const ok = await copyText(artifactUrl(slug));
-      showToast(ok ? "链接已复制" : "复制失败，请手动复制");
+      showToast(
+        ok ? "链接已复制" : "复制失败，请手动复制",
+        ok ? "success" : "error",
+      );
     },
     [artifactUrl, showToast],
   );
@@ -952,7 +984,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
     scopeItems.every((item) => selected.has(item.slug));
 
   return (
-    <div className="artifacts-page" data-testid="artifacts-page">
+    <div className="artifacts-page" data-testid="artifacts-page" ref={pageRef}>
       <div className="session-board-toolbar">
         {macTrafficSpacer && (
           <div
@@ -1551,11 +1583,13 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
 
       {toast && (
         <div
-          className="artifacts-toast"
+          className={`artifacts-toast artifacts-toast--${toast.type}`}
           role="status"
           data-testid="artifacts-toast"
+          style={toastCenterX !== null ? { left: toastCenterX } : undefined}
         >
-          {toast}
+          <ToastGlyph kind={toast.type} />
+          <span className="artifacts-toast-message">{toast.message}</span>
         </div>
       )}
     </div>
@@ -1748,6 +1782,11 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
         </>
       }
     >
+      {/* 设计师 2026-10-23 预览评论：这组 radio「样式和间距也修改」⇒
+                改为自绘指示器（原生 input 视觉隐藏、保留语义与键盘），规格取
+                skill `references/common-components.md` §Choice controls
+                「Desktop Radio and Checkbox」（16×16 环 / 选中实心 + 圆点）；
+                inline 组只复用指示器几何与颜色，不带卡片内衬/描边/圆角。 */}
       {loading ? (
         <p>加载中…</p>
       ) : loadError ? (
@@ -1774,7 +1813,11 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
                   onChange={() => setMode(value)}
                   data-testid={`artifacts-share-mode-${value}`}
                 />
-                <span>{label}</span>
+                <span
+                  className="artifacts-radio-indicator"
+                  aria-hidden="true"
+                />
+                <span className="artifacts-radio-text">{label}</span>
               </label>
             ))}
           </fieldset>
@@ -1836,7 +1879,28 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
                               onChange={() => toggleMember(member)}
                               data-testid={`artifacts-member-${member.userId}`}
                             />
-                            <span>{member.email}</span>
+                            {/* 设计师 2026-10-23 预览评论：成员多选框「样式也优化
+                                一下」⇒ 按 skill `references/common-components.md`
+                                §Choice controls「Desktop Radio and Checkbox」改成
+                                16×16 自绘方框（1px 圆角方框 / 选中实心 + 对勾，
+                                对勾 Light 1.7 / Dark 2.1 圆头），与上面那组 radio
+                                同一套语言；原生 input 保留语义与键盘。 */}
+                            <span
+                              className="artifacts-checkbox-indicator"
+                              aria-hidden="true"
+                            >
+                              <svg viewBox="0 0 16 16" fill="none">
+                                <path
+                                  d="M4 8 L6.75 10.75 L12 5.5"
+                                  stroke="currentColor"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                            </span>
+                            <span className="artifacts-checkbox-text">
+                              {member.email}
+                            </span>
                           </label>
                         </li>
                       );
