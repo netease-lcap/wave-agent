@@ -1842,7 +1842,10 @@ export class AgentBridge {
     const threadSummary = entry.agent.getThreadSummary();
     if (!normalized) {
       return {
-        messages: [...entry.agent.messages],
+        // `Agent.messages` already hands back a copy, so this reply is a
+        // single-pass view for the host that asked once — do not copy again
+        // (a long session makes this O(n) per call).
+        messages: entry.agent.messages,
         contextUsagePercent,
         threadSummary,
       };
