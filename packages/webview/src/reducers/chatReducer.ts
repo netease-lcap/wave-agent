@@ -236,9 +236,9 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         projectSettingsWorkdir: action.payload.workdir,
       };
     case "SET_INITIAL_STATE": {
-      // rewind 路径带 keepMessages：宿主已按同一条规则切过自己的缓存，这份快照
-      // 只为更新其余字段，列表必须保留 webview 切好的那份 —— 否则整份列表会被
-      // 重传覆盖，本地切等于白做。
+      // keepMessages = 这次没有列表可给（宿主恢复还在路上 / 现取失败）。这份快照
+      // 只为更新其余字段，列表必须保留 webview 手里那份 —— 换成空列表会把「暂时
+      // 给不出」显示成「这条会话没了」。
       const messages = action.payload.keepMessages
         ? state.messages
         : action.payload.messages;

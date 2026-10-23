@@ -2267,7 +2267,12 @@ describe("DesktopApp", () => {
     });
 
     function renderWithPanes(
-      panes: Array<{ paneId: string; sessionId?: string; width?: number }>,
+      panes: Array<{
+        paneId: string;
+        sessionId?: string;
+        width?: number;
+        hasContent?: boolean;
+      }>,
       focusedPaneId: string | null,
     ) {
       const result = renderDesktopApp();
@@ -3316,6 +3321,43 @@ describe("DesktopApp", () => {
 
       expect(panes[0]).not.toHaveTextContent("hello pane two");
       expect(panes[1]).toHaveTextContent("hello pane two");
+    });
+
+    it("sends in the same session when the list is empty but the session already has content", async () => {
+      // `/rewind` back to the first message (or `/clear`) empties the list while
+      // the session keeps running. The host flags that with `hasContent`, so the
+      // send must NOT be treated as a new session (which would create a worktree
+      // and add a second sidebar entry) — spec desktop-sessions.md「基于分支的
+      // worktree 隔离会话」验收场景 9.
+      const { vscode } = renderWithPanes(
+        [{ paneId: "pane-0", sessionId: "s1", hasContent: true }],
+        "pane-0",
+      );
+      sendCommand("desktopGitBranches", {
+        workdir: "/work/a",
+        result: { branches: ["main", "dev"], current: "main" },
+      });
+      // The new-session pickers (host/workdir/worktree) must stay hidden too:
+      // this is not a new session, however empty the list is.
+      expect(
+        screen.queryByTestId("desktop-worktree-controls"),
+      ).not.toBeInTheDocument();
+      vscode.postMessage.mockClear();
+
+      const input = screen.getByTestId("message-input");
+      input.textContent = "继续这条会话";
+      await fireInput(input, { inputType: "insertText" });
+      fireEvent.click(screen.getByTestId("send-btn"));
+
+      const sent = vscode.postMessage.mock.calls.map((c) => c[0]);
+      expect(
+        sent.find(
+          (m: Record<string, unknown>) => m.command === "desktopCreateWorktree",
+        ),
+      ).toBeUndefined();
+      expect(
+        sent.find((m: Record<string, unknown>) => m.command === "sendMessage"),
+      ).toMatchObject({ paneId: "pane-0", text: "继续这条会话" });
     });
 
     it("tags outgoing sendMessage with the paneId of the pane it was sent from", async () => {

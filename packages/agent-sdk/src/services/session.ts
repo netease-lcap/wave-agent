@@ -957,14 +957,33 @@ export async function cleanupEmptyProjectDirectories(): Promise<void> {
 }
 
 /**
+ * Completion marker for the one-time meta-only sweep. Once it exists, no further
+ * sweep runs on this machine (see `cleanupMetaOnlySessions`).
+ */
+export const META_ONLY_SWEEP_MARKER = join(
+  homedir(),
+  ".wave",
+  ".meta-only-sweep-done",
+);
+
+/**
  * Clean up "ghost" session files that contain only meta messages
  * (isMeta: true) — e.g. sessions where a SessionStart hook injected a
  * system-reminder but no real user/assistant message was ever sent.
  *
  * Such sessions are no longer created thanks to lazy materialization in
- * saveSession(); this one-time sweep removes files that predate that change
+ * saveSession(); this **one-time** sweep removes files that predate that change
  * so they stop showing up as "0 tokens / No content" entries in the resume
- * list.
+ * list. It writes `META_ONLY_SWEEP_MARKER` on the first run and returns 0 on
+ * every run after it.
+ *
+ * Being one-time is not an optimization, it is what keeps it from eating real
+ * sessions: a session that legitimately has no messages any more — `/rewind`
+ * back to the first user message leaves the file holding just the metadata
+ * header plus the SessionStart reminder — is indistinguishable from an old
+ * ghost. Sweeping on every agent init deleted exactly that file while the
+ * desktop sidebar kept listing it (spec ui/session-management.md「会话延迟物化」
+ * 验收场景 6).
  *
  * @returns Promise that resolves to the number of files deleted
  */
@@ -972,6 +991,15 @@ export async function cleanupMetaOnlySessions(): Promise<number> {
   // Do not perform cleanup operations in test environment
   if (process.env.NODE_ENV === "test") {
     return 0;
+  }
+
+  // Already swept on this machine — a later meta-only file is not a legacy
+  // ghost (see the doc comment).
+  try {
+    await fs.access(META_ONLY_SWEEP_MARKER);
+    return 0;
+  } catch {
+    // No marker yet: this is the first run, sweep below.
   }
 
   let deletedCount = 0;
@@ -1019,6 +1047,25 @@ export async function cleanupMetaOnlySessions(): Promise<number> {
     }
   } catch {
     // Ignore errors if base directory doesn't exist or can't be accessed
+  }
+
+  // Written even when nothing was deleted: the point is "this machine has been
+  // swept", and a half-scanned retry would re-open the door to deleting real
+  // empty sessions later.
+  try {
+    await fs.mkdir(join(homedir(), ".wave"), { recursive: true });
+  } catch {
+    // ~/.wave essentially always exists; if it cannot be created the write
+    // below reports the real error.
+  }
+  try {
+    await fs.writeFile(
+      META_ONLY_SWEEP_MARKER,
+      new Date().toISOString(),
+      "utf8",
+    );
+  } catch (error) {
+    logger.warn("Failed to write the meta-only sweep marker:", error);
   }
 
   return deletedCount;

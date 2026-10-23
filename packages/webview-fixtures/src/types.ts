@@ -200,6 +200,13 @@ export interface DesktopPaneInfo {
   host: string;
   width: number;
   row: number;
+  /**
+   * 这条会话有没有产生过任何消息（宿主口径：正在流式、收到过消息事件、或已在会话
+   * 索引里）。渲染端只靠「列表是否为空」分不开「新会话」和「已被 `/rewind` 打回
+   * 第一条 / `/clear` 的老会话」，所以由宿主下发：false/缺省 = 还没开始。
+   * 见 `desktop/desktop-sessions.md`「基于分支的 worktree 隔离会话」验收场景 1/9。
+   */
+  hasContent?: boolean;
 }
 
 /** A session in the desktop sidebar tree, derived from the session index (FR-024). */

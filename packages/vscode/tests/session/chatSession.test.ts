@@ -152,10 +152,11 @@ describe("ChatSession · 配置不经 CLI 参数覆盖层下发", () => {
 
 /**
  * 回归（压缩摘要块在 VS Code 插件上不显示）：压缩对 UI 显示流是纯追加 —— 旧的
- * 「压缩后只 getMessages 刷新缓存」既不推给 webview 也不追加缓存，摘要在下一次
+ * 「压缩后只 getMessages」既不推给 webview 也不追加显示，摘要在下一次
  * webviewReady 之前一直缺失。现在压缩摘要块随 `compactBlockAdded` 携带完整
- * Message，宿主追加进缓存并转发给 webview 层（spec core/message-compact.md
- * 「压缩后旧消息在 UI 保留渲染」、ui/stdio-transport.md 场景 7）。
+ * Message，宿主原样转发给 webview 层（spec core/message-compact.md
+ * 「压缩后旧消息在 UI 保留渲染」、ui/stdio-transport.md 场景 7，
+ * ui/message-rendering-system.md「宿主不保留消息内容」场景 2 —— 宿主不留、不合并）。
  */
 describe("ChatSession · 压缩摘要块走增量通道", () => {
   const compactMessage = {
@@ -180,7 +181,7 @@ describe("ChatSession · 压缩摘要块走增量通道", () => {
     request: ReturnType<typeof fakeClient>["request"],
   ) => request.mock.calls.filter(([method]) => method === "getMessages").length;
 
-  it("compactBlockAdded 追加进缓存并转发，且不发起 getMessages 全量拉取", async () => {
+  it("compactBlockAdded 原样转发，不发起 getMessages，也不在会话上留字段", async () => {
     const { client, cbs, session } = await initializedSession();
 
     session.agent!.handleNotification("compactBlockAdded", {
@@ -189,8 +190,9 @@ describe("ChatSession · 压缩摘要块走增量通道", () => {
     });
 
     expect(cbs.onCompactBlockAdded).toHaveBeenCalledWith(compactMessage);
-    expect(session.messages).toContainEqual(compactMessage);
     expect(getMessagesCalls(client.request)).toBe(0);
+    // 宿主对消息内容零状态：会话上不该再有任何装消息的字段（spec 场景 9）。
+    expect(session).not.toHaveProperty("messages");
   });
 
   it("旧 CLI 只发 content 时回落为 getMessages 拉取", async () => {
@@ -206,11 +208,10 @@ describe("ChatSession · 压缩摘要块走增量通道", () => {
     expect(cbs.onCompactBlockAdded).not.toHaveBeenCalled();
   });
 
-  // 回落的另一半：只刷缓存不推 webview 的话，摘要在下一次 webviewReady 之前一直不
+  // 回落的另一半：只拉不推 webview 的话，摘要在下一次 webviewReady 之前一直不
   // 显示 —— 与上面修掉的缺陷同形，只是触发前提收窄到「CLI 比插件旧」。desktop 与
-  // JetBrains 的同一回落点都是「拉取 + 推送」（pullAndPushMessages），这里是三端里
-  // 唯一只写不推的一处。
-  it("旧 CLI 回落：拉取后把全量列表推给 webview，而不是只刷缓存", async () => {
+  // JetBrains 的同一回落点都是「拉取 + 推送」（pullAndPushMessages）。
+  it("旧 CLI 回落：拉取后把全量列表推给 webview，而不是只拉不发", async () => {
     const client = fakeClient();
     const pulledMessages = [compactMessage];
     client.request.mockImplementation(async (method: string) => {
@@ -240,28 +241,30 @@ describe("ChatSession · 压缩摘要块走增量通道", () => {
     await vi.waitFor(() => {
       expect(cbs.onMessagesReplaced).toHaveBeenCalledWith(pulledMessages);
     });
-    // The cache was re-pulled too — the push is an addition, not a replacement.
-    expect(session.messages).toContainEqual(compactMessage);
+    // 推出去的那份不被宿主留下：回包用完即弃（spec 场景 9）。
+    expect(session).not.toHaveProperty("messages");
     expect(cbs.onCompactBlockAdded).not.toHaveBeenCalled();
   });
 });
 
 /**
- * 一条会话在宿主进程里只有一份数组（spec ui/message-rendering-system.md
- * 「宿主只留下被 pane 显示的会话副本」场景 9）：`getMessages` 走只读查询，SDK
- * 客户端那份缓存一次都不写 —— 写了就是两份，而其中一份（客户端那份）此后没人
- * 更新，切回来看到的是过期列表。
+ * 宿主对消息内容零状态（spec ui/message-rendering-system.md「宿主不保留消息内容，
+ * 用的时候现取」场景 9）：一次 pull 的回包就是这次调用的全部产出 —— `ChatSession`
+ * 上不再有 `messages` 字段，数组在调用方手里活一次；`/rewind` 的边界也不靠本地
+ * 数组定位锚点，截断完成后一律重拉（场景 6）。
  */
-describe("ChatSession · 首屏只留一份数组", () => {
-  const list = (count: number) =>
-    Array.from({ length: count }, (_, i) => ({
-      id: `m${String(i)}`,
+describe("ChatSession · 取消息不留字段", () => {
+  const list = (ids: string[]) =>
+    ids.map((id) => ({
+      id,
       role: "user" as const,
-      blocks: [{ type: "text", content: `第 ${String(i)} 条` }],
+      blocks: [{ type: "text", content: `消息 ${id}` }],
     }));
 
-  const sessionWith = async (getMessagesReply: unknown) => {
+  /** `getMessages` 按顺序回放 replies（回滚后那次重拉拿到的就是第二份）。 */
+  const sessionWith = async (replies: unknown[]) => {
     const client = fakeClient();
+    let pulls = 0;
     client.request.mockImplementation(async (method: string) => {
       if (method === "initialize") {
         return {
@@ -271,7 +274,9 @@ describe("ChatSession · 首屏只留一份数组", () => {
           latestTotalTokens: 0,
         };
       }
-      if (method === "getMessages") return getMessagesReply;
+      if (method === "getMessages") {
+        return replies[Math.min(pulls++, replies.length - 1)];
+      }
       return {};
     });
     const session = new ChatSession("sidebar", undefined, callbacks());
@@ -280,38 +285,53 @@ describe("ChatSession · 首屏只留一份数组", () => {
       client as unknown as StdioClient,
       fakeRouter() as unknown as NotificationRouter,
     );
-    return { client, session };
+    return { client, session, pulls: () => pulls };
   };
 
-  it("首屏取整份列表，用量由宿主持有", async () => {
-    const messages = list(20);
-    const { client, session } = await sessionWith({
-      messages,
-      contextUsagePercent: 42,
-    });
+  it("首屏列表就是这次 getMessages 的回包，会话上不留任何消息字段", async () => {
+    const messages = list(["m0", "m1", "m2"]);
+    const { client, session } = await sessionWith([
+      { messages, contextUsagePercent: 42 },
+    ]);
 
-    await session.getMessages();
+    const pulled = await session.getMessages();
 
-    // 不分页：没有任何窗口参数（条数 / 上锚点）跟着请求走。
-    expect(paramsFor(client.request, "getMessages")).toEqual({});
-    expect(session.messages).toHaveLength(20);
+    // 不分页：不跟任何窗口参数（条数 / 上锚点）走，无参重载就是整份列表。
+    expect(paramsFor(client.request, "getMessages")).toBeUndefined();
+    expect(pulled.map((m) => m.id)).toEqual(["m0", "m1", "m2"]);
+    // 用量是**状态**，宿主可以留着（webview 重建后要补环）。
     expect(session.contextUsagePercent).toBe(42);
-    // SDK 客户端那份缓存一次都没被写。
-    expect(session.agent!.messages).toEqual([]);
-    expect(session.agent!.contextUsagePercent).toBeUndefined();
+    // 消息内容零状态：字段已删，回包用完即弃。
+    expect(session).not.toHaveProperty("messages");
   });
 
-  it("回滚到列表内的锚点只切本地那一份，不再往 SDK 缓存写回", async () => {
-    const messages = list(3);
-    const { session } = await sessionWith({ messages });
-    await session.getMessages();
+  it("回滚之后列表来自重拉结果，不在本地找锚点截断", async () => {
+    const before = list(["a", "b", "c"]);
+    // 回滚改写了 CLI 的转录，重拉回来的是另一份 —— 若宿主按锚点截断本地数组，
+    // 这里只会得到 ["a"]。
+    const afterRewind = list(["x", "y"]);
+    const { client, session, pulls } = await sessionWith([
+      { messages: before },
+      { messages: afterRewind },
+    ]);
+    // 首屏那次 pull（宿主不存它）。
+    expect((await session.getMessages()).map((m) => m.id)).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
     const rewind = vi.fn().mockResolvedValue({ inputContent: "rewound draft" });
     (session.agent as unknown as { rewindToMessage: unknown }).rewindToMessage =
       rewind;
 
-    await session.rewindToMessage("m1");
+    const rewound = await session.rewindToMessage("b");
 
-    expect(session.messages.map((m) => m.id)).toEqual(["m0"]);
-    expect(session.agent!.messages).toEqual([]);
+    expect(rewind).toHaveBeenCalledWith("b");
+    expect(session.inputContent).toBe("rewound draft");
+    expect(rewound.map((m) => m.id)).toEqual(["x", "y"]);
+    // 首屏 + 回滚后各一次：边界来自重拉，不是本地数组。
+    expect(pulls()).toBe(2);
+    expect(paramsFor(client.request, "getMessages")).toBeUndefined();
+    expect(session).not.toHaveProperty("messages");
   });
 });

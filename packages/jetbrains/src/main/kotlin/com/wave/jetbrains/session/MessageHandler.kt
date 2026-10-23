@@ -1086,38 +1086,30 @@ class MessageHandler(
         }
     }
 
-    // ── Rewind: webview already confirmed → rewind → rewindResult + setInitialState(keepMessages) + focusInput + scrollToBottom ──
+    // ── Rewind: webview already confirmed → rewind → re-pull → rewindResult + setInitialState + focusInput + scrollToBottom ──
     //
-    // 截断不回传列表：这里按与 webview 相同的规则切掉缓存（保留 messageId 最后一次
-    // 出现之前的内容；锚点不在缓存里就重拉整份），回发 rewindResult 让 webview 对
-    // 自己的副本做同样的事，随后的快照带 keepMessages（列表因此不在这条路径上重
-    // 传）。没带 requestId 的旧 webview / 远程页退回整份推送。
+    // 边界在 CLI 那边：宿主没有数组可截断，也不去定位锚点（spec
+    // ui/message-rendering-system.md「宿主不保留消息内容，用的时候现取」场景 6）。
+    // 回滚完成后无条件重拉整份，回包原样放进随后那次快照推给界面 —— 界面显示的条数
+    // 因此与 SDK 一致。rewindResult 只是回执（webview 会据此先切自己那份，随后的
+    // 快照以重拉结果为准）；没带 requestId 的旧 webview / 远程页少了这条回执，列表
+    // 照样推。
     private suspend fun handleRewindToMessage(messageId: String, requestId: String?) {
         try {
             val inputContent = session.agent?.rewindToMessage(messageId) ?: ""
             session.inputContent = inputContent
+            // 重拉一次整份：回包就是新的边界，用完即弃（只搭下面那次快照的便车）。
+            val messages = session.fetchMessages()
             if (requestId != null) {
-                val list = session.messages as? JsonArray ?: JsonArray(emptyList())
-                val index = list.indexOfLast { m ->
-                    ((m as? JsonObject)?.get("id") as? JsonPrimitive)?.contentOrNull == messageId
-                }
-                if (index >= 0) {
-                    session.messages = JsonArray(list.take(index))
-                } else {
-                    // 回滚锚点不在缓存里（例如老 CLI 的回包没带它）：就地截断没有可截的
-                    // 那段，重拉整份。重拉不重传——webview 仍用它自己切好的那份。
-                    session.refreshMessages()
-                }
                 postMessage("rewindResult", buildJsonObject {
                     put("requestId", requestId)
                     put("messageId", messageId)
                     put("ok", true)
                 })
-                handleWebviewReady(keepMessages = true)
-            } else {
-                // VSCE calls handleWebviewReady to re-push full state.
-                handleWebviewReady()
             }
+            // VSCE calls handleWebviewReady to re-push full state with the list it
+            // just re-pulled; the pull is not repeated inside.
+            handleWebviewReady(pulledMessages = messages)
             postMessage("focusInput", JsonObject(emptyMap()))
             postMessage("scrollToBottom", JsonObject(emptyMap()))
         } catch (e: StdioClientException) {
@@ -1364,7 +1356,15 @@ class MessageHandler(
         StdioAgent.updateUserSettings(client, patch)
     }
 
-    private suspend fun handleWebviewReady(keepMessages: Boolean = false) {
+    /**
+     * 首屏 / 切会话 / 恢复 / 回滚之后那次整份快照。
+     *
+     * `pulledMessages` 是调用方**刚刚**取到的那一份（`/rewind` 里已经重拉过），此时
+     * 不再多打一次 RPC；其余调用方都由这里自己现取一次。两种情况下列表都只是这次快照
+     * 的载荷：宿主不写字段、不留引用（spec ui/message-rendering-system.md「宿主不保留
+     * 消息内容，用的时候现取」场景 1）。
+     */
+    private suspend fun handleWebviewReady(pulledMessages: JsonArray? = null) {
         if (session.agent == null) {
             WaveBackendService.getInstance(project).initializeSession(session, null)
         }
@@ -1372,14 +1372,10 @@ class MessageHandler(
         // sessionIdChange to trigger listSessions, but a freshly-created session
         // may not emit that notification, so refresh explicitly here.
         session.refreshSessions()
-        // Pull the message list on demand (mirrors VSCE messageHandler.ts
-        // handleWebviewReady → session.getMessages()). The server no longer pushes
-        // full snapshots; the host pulls and delivers them via setInitialState.
-        // keepMessages（仅 rewind）跳过这次拉取：调用方已按同一条规则切过缓存、
-        // webview 手里那份也是它自己切的 —— 重拉重传正是这条路径要省掉的开销。
-        if (!keepMessages) {
-            session.refreshMessages()
-        }
+        // 整份列表现取（镜像 VSCE messageHandler.ts handleWebviewReady →
+        // session.getMessages()）：服务端不再推全量快照，宿主现取一次、回包直接进
+        // setInitialState。null = 这次取不到（/rewind 的重拉失败，或这里的 RPC 失败）。
+        val messages = pulledMessages ?: session.fetchMessages()
         // Refresh serverUrl + isAuthenticated from auth status before sending initial state.
         // Mirrors VSCE messageHandler.ts:622-633: without isAuthenticated the webview's
         // WelcomeView wrongly shows the login CTA to already-logged-in users (it never
@@ -1399,17 +1395,12 @@ class MessageHandler(
         } catch (e: StdioClientException) {
             LOG.warn("getAuthStatus on webviewReady failed: ${e.message}")
         }
-        // 缓存就是整份列表（= 压缩后的上下文，[WaveSession.refreshMessages] 不分页），
-        // 这里原样推。keepMessages（仅 rewind）跳过这次拉取与推送：webview 手里那份是
-        // 它自己按同一条规则切好的，重拉重传正是这条路径要省掉的。
-        val wholeList = session.messages as? JsonArray ?: JsonArray(emptyList())
         postMessage("setInitialState", buildJsonObject {
-            // keepMessages（仅 rewind）：列表不入载荷，由 webview 保留自己切好的那份。
-            put(
-                "messages",
-                if (keepMessages) JsonArray(emptyList()) else wholeList,
-            )
-            if (keepMessages) put("keepMessages", true)
+            // 列表就是上面那次现取的回包（= 压缩后的上下文，[WaveSession.fetchMessages]
+            // 不分页）。取不到时不拿空列表冒充「这条会话没了」：keepMessages 让界面
+            // 保留手里那份。
+            put("messages", messages ?: JsonArray(emptyList()))
+            if (messages == null) put("keepMessages", true)
             put("tasks", session.tasks ?: JsonArray(emptyList()))
             put("backgroundTasks", session.backgroundTasks ?: JsonArray(emptyList()))
             put("workflowRuns", session.workflowRuns ?: JsonArray(emptyList()))
@@ -1454,9 +1445,11 @@ class MessageHandler(
         // Replay the session's context-usage percentage (mirrors VSCE
         // handleWebviewReady): a webview re-created long after the last token
         // change receives no contextUsage notification — and it clears the ring
-        // on every session switch — leaving it empty until the next turn. The
-        // value comes from the refreshMessages pull above; must follow
-        // setInitialState so it is attributed to the incoming session.
+        // on every session switch — leaving it empty until the next turn. It is
+        // an agent-side *state* refreshed by the pull above (`getMessages` 回包
+        // 里的 contextUsagePercent，不是消息内容), so it survives the pull whose
+        // list we just dropped; must follow setInitialState so it is attributed to
+        // the incoming session.
         session.agent?.contextUsagePercent?.let { percent ->
             postMessage("contextUsage", buildJsonObject { put("percent", percent) })
         }

@@ -117,7 +117,6 @@ function createReadySession(): ChatSession {
       latestTotalTokens: 0,
     },
     pendingConfirmations: new Map(),
-    messages: [],
     tasks: [],
     backgroundTasks: [],
     workflowRuns: [],
@@ -377,6 +376,61 @@ describe("MessageHandler MCP handlers", () => {
     expect(sentPosts(context)("contextUsage")).toHaveLength(0);
   });
 
+  // 首屏 / 切会话 / 窗口重载：宿主 pull 一次，把回包直接放进快照，之后不留引用
+  // （spec ui/message-rendering-system.md「宿主不保留消息内容，用的时候现取」
+  // 场景 1 / 9）。
+  test("webviewReady 的首屏列表就是这一次 getMessages 的回包", async () => {
+    const pulled = [
+      { id: "m1", role: "user", content: "hello" },
+      { id: "m2", role: "assistant", content: "hi" },
+    ];
+    const session = createReadySession();
+    (session.getMessages as ReturnType<typeof vi.fn>).mockResolvedValue(pulled);
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage({ command: "webviewReady" }, "tab");
+
+    // 一次 pull，回包即快照载荷。
+    expect(session.getMessages).toHaveBeenCalledTimes(1);
+    const states = sentPosts(context)("setInitialState");
+    expect(states.length).toBeGreaterThanOrEqual(1);
+    const posted = states[states.length - 1];
+    expect(posted.messages).toEqual(pulled);
+    // 不是「这次没有列表可给」：这条路径上界面必须拿回包覆盖自己那份。
+    expect(posted.keepMessages).toBeUndefined();
+    // 宿主不留字段（会话上的消息数组已删）。
+    expect(session).not.toHaveProperty("messages");
+  });
+
+  // `/rewind`：截断由 CLI 完成，`session.rewindToMessage` 随后重拉整份并交回列表，
+  // 宿主把它原样放进快照 —— 不再拿本地数组定位锚点截断，也不再让界面自己算
+  // （spec ui/message-rendering-system.md 场景 6）。
+  test("rewindToMessage 推给界面的是重拉后的整份列表", async () => {
+    const rewound = [{ id: "m1", role: "user", content: "kept" }];
+    const session = createReadySession();
+    const rewind = vi.fn().mockResolvedValue(rewound);
+    (session as unknown as { rewindToMessage: unknown }).rewindToMessage =
+      rewind;
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage(
+      { command: "rewindToMessage", messageId: "m2", requestId: "r1" },
+      "tab",
+    );
+
+    expect(rewind).toHaveBeenCalledWith("m2");
+    // 回执先到，列表随后随快照重推。
+    const results = sentPosts(context)("rewindResult");
+    expect(results).toHaveLength(1);
+    expect(results[0]).toMatchObject({ messageId: "m2", ok: true });
+    const states = sentPosts(context)("setInitialState");
+    expect(states.length).toBeGreaterThanOrEqual(1);
+    expect(states[states.length - 1].messages).toEqual(rewound);
+    expect(states[states.length - 1].keepMessages).toBeUndefined();
+    // 列表来自重拉（rewindToMessage 自己那次），handler 不再多拉一次。
+    expect(session.getMessages).not.toHaveBeenCalled();
+  });
+
   // Regression: /status showed empty version in VSCE because handleGetStatus
   // looked up the extension by a wrong, hardcoded id ('wave-code.wave-vsce-chat')
   // instead of the real id ('wave-code.wave-vsce'), so getExtension() returned
@@ -422,13 +476,15 @@ describe("MessageHandler MCP handlers", () => {
   // restoring a history session must deliver the pulled list to the webview via
   // updateMessages, otherwise state.messages stays empty and the webview keeps
   // showing the welcome page after selecting a session in the sidebar.
+  // The list comes back from `session.restoreSession` itself (the pull it makes
+  // right after the restore) — the host stores nothing on the way
+  // (spec ui/message-rendering-system.md「宿主不保留消息内容」场景 1).
   test("restoreSession posts updateMessages with the restored messages", async () => {
     const restoredMessages = [{ id: "m1", role: "user", content: "hello" }];
     const session = createMockSession();
     (session.restoreSession as ReturnType<typeof vi.fn>).mockResolvedValue(
-      undefined,
+      restoredMessages,
     );
-    session.messages = restoredMessages as unknown as ChatSession["messages"];
 
     const { handler, context } = createHandler(session);
     await handler.handleMessage(
@@ -443,14 +499,12 @@ describe("MessageHandler MCP handlers", () => {
     expect(posted.messages).toEqual(restoredMessages);
   });
 
-  // Same regression class: /clear pulls the (now empty) list into the cache
-  // but never pushes it, so the webview would keep showing the old messages.
+  // Same regression class: /clear pulls the (now empty) list but never pushes
+  // it, so the webview would keep showing the old messages. The list posted is
+  // the pull's reply, handed through without being stored.
   test("clearChat posts updateMessages with the cleared message list", async () => {
     const session = createMockSession();
-    (session.clearChat as ReturnType<typeof vi.fn>).mockResolvedValue(
-      undefined,
-    );
-    session.messages = [];
+    (session.clearChat as ReturnType<typeof vi.fn>).mockResolvedValue([]);
 
     const { handler, context } = createHandler(session);
     await handler.handleMessage({ command: "clearChat" }, "tab");

@@ -437,13 +437,9 @@ function createWindow(): void {
   const memorySampler = createMemorySampler({
     // Message volume rides along so the curve can answer "is the heap driven by
     // conversation length?" (6-week sessions keep the UI display stream, and
-    // compaction only folds the API context).
+    // compaction only folds the API context). The count comes from the renderer,
+    // which is the only place that stream now exists.
     getMessageStats: () => host?.getMessageStats() ?? [],
-    // ...and, separately, what the off-screen conversations still hold: their
-    // copies are dropped when no pane displays them, so this is the number that
-    // shows the pool staying flat while the user browses conversations.
-    getOffscreenVolume: () =>
-      host?.getOffscreenVolume() ?? { sessions: 0, messages: 0, blocks: 0 },
   });
   memorySampler.start();
   attachCrashRecovery(win, { lastMemory: () => memorySampler.lastLine() });

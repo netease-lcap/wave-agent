@@ -58,7 +58,7 @@ export interface ChatSessionCallbacks {
   onToolBlockUpdate?: (params: ToolBlockUpdateCallbackParams) => void;
   onErrorBlockAdded?: (error: string) => void;
   /** The compact summary block the server appended to its display stream; the
-   * host appends it to the webview list instead of re-pushing the whole list. */
+   * host forwards it so the webview appends it — the host itself keeps nothing. */
   onCompactBlockAdded?: (message: Message) => void;
   /** Full-list push — only used by the compact fallback below (an old CLI whose
    * notification carries no `message`, so the list had to be re-pulled). */
@@ -72,15 +72,12 @@ export interface ChatSessionCallbacks {
 
 export class ChatSession {
   public agent: StdioAgent | undefined;
-  /** 整份列表（= 压缩后的上下文）：逐条追加，不分页、不往回翻。 */
-  public messages: Message[] = [];
   /**
-   * 上下文用量百分比，随列表一起取回。
+   * 上下文用量百分比，随 `getMessages` 回包刷新。
    *
-   * 宿主自己存：`getMessages` 走的是只读查询，不写 SDK 客户端的那份缓存
-   * （spec ui/message-rendering-system.md「宿主只留下被 pane 显示的会话副本」
-   * 场景 9 —— 一条会话在宿主进程里只有一份数组，且必须是仍在更新的那份，也就是
-   * 这里）。
+   * 这是**状态**不是消息内容（spec ui/message-rendering-system.md「宿主不保留
+   * 消息内容，用的时候现取」判据：宿主只记 state，不记消息本身），webview 重建
+   * 之后要靠它把用量环补回来。
    */
   public contextUsagePercent: number | undefined;
   public tasks: Task[] = [];
@@ -152,18 +149,17 @@ export class ChatSession {
       const agentCallbacks: StdioAgentCallbacks = {
         onCompactBlockAdded: (content: string, message?: Message) => {
           // Compaction only folds the API context; the display stream just gained
-          // the summary block, so append it like any other new message — no
-          // full-list push to the webview.
+          // the summary block, so forward it like any other new message — the
+          // host keeps nothing (spec ui/message-rendering-system.md「宿主不保留
+          // 消息内容」场景 2).
           if (message) {
-            this.messages = [...this.messages, message];
             this.callbacks.onCompactBlockAdded?.(message);
             return;
           }
           // Older CLI without the field on the wire: the summary is already in
-          // the server's display stream, so re-pull the cache AND push the list.
-          // Refreshing the cache alone would leave the webview showing a list
-          // without the summary until its next webviewReady — i.e. the very bug
-          // the append path above fixes, just with a narrower trigger.
+          // the server's display stream, so re-pull the list and push it. The
+          // reply is used and dropped — no cache is refreshed, because there is
+          // no cache to refresh.
           void this.getMessages().then((messages) => {
             this.callbacks.onMessagesReplaced?.(messages);
           });
@@ -364,13 +360,16 @@ export class ChatSession {
     }
   }
 
-  public async clearChat() {
+  /** 原地清空；返回清空后的整份列表（回包），宿主不存它。 */
+  public async clearChat(): Promise<Message[]> {
+    let messages: Message[] = [];
     if (this.agent) {
       this.inputContent = "";
       await this.agent.clearMessages();
-      await this.getMessages();
+      messages = await this.getMessages();
     }
     await this.clearQueue();
+    return messages;
   }
 
   public async compact(customInstructions?: string) {
@@ -388,15 +387,19 @@ export class ChatSession {
     }
   }
 
-  public async restoreSession(sessionId: string) {
+  /** 恢复历史会话；返回恢复后的整份列表（回包），宿主不存它。 */
+  public async restoreSession(sessionId: string): Promise<Message[]> {
+    let messages: Message[] = [];
     if (this.agent) {
       this.inputContent = "";
       await this.agent.restoreSession(sessionId);
-      // Pull the restored messages so the webview can re-render (no more
-      // full-snapshot push; the webview pulls on demand).
-      await this.getMessages();
+      // Pull the restored list so the caller can hand it straight to the
+      // webview — the reply is used once and dropped (spec ui/
+      // message-rendering-system.md「宿主不保留消息内容」场景 1).
+      messages = await this.getMessages();
     }
     await this.clearQueue();
+    return messages;
   }
 
   /**
@@ -454,28 +457,23 @@ export class ChatSession {
   }
 
   /**
-   * Pull the whole list (= the compacted context) into the cache.
+   * 一次性取整份列表（= 最近一次压缩 + 它之后的消息）。
    *
-   * One-shot read, not `refreshMessages()`: the latter also writes the SDK
-   * client's own `messages` / `contextUsagePercent`, which would make this host
-   * hold the same list twice — and the second copy would be the one nobody
-   * keeps updating. Everything this host needs from the reply (the list, the
-   * usage ring) is stored here instead.
+   * 回包就是这次调用的全部产出：宿主把它交给界面后**不写任何字段、不留引用**
+   * （spec ui/message-rendering-system.md「宿主不保留消息内容，用的时候现取」
+   * 场景 9 —— VS Code 每个聊天面板都不留当前会话的数组，SDK 客户端那次 pull
+   * 的数组用完即弃）。
    *
-   * The empty window is what makes the usage number reachable: the
-   * no-argument overload answers with the bare array, while any request
-   * parameters (even none of them) come back as the full
-   * `MessageWindowResult`, which carries `contextUsagePercent` for the same
-   * whole list.
+   * 只顺带记下用量百分比：SDK 在无参取数时刷新 `agent.contextUsagePercent`，
+   * 那是**状态**（webview 重建后要把用量环补回来），不是消息内容。
    */
   public async getMessages(): Promise<Message[]> {
     if (!this.agent) {
-      return this.messages;
+      return [];
     }
-    const result = await this.agent.getMessages({});
-    this.messages = result.messages;
-    this.contextUsagePercent = result.contextUsagePercent;
-    return this.messages;
+    const messages = await this.agent.getMessages();
+    this.contextUsagePercent = this.agent.contextUsagePercent;
+    return messages;
   }
 
   private throttledStreamingContentUpdate(
@@ -592,25 +590,19 @@ export class ChatSession {
     }
   }
 
-  public async rewindToMessage(messageId: string) {
+  /**
+   * `/rewind`：截断由 CLI 完成，边界不在宿主手里（宿主没有数组可截断，也不去
+   * 定位锚点），完成后无条件重拉整份列表并把它交回调用方推送 —— spec
+   * ui/message-rendering-system.md「宿主不保留消息内容」场景 6。
+   */
+  public async rewindToMessage(messageId: string): Promise<Message[]> {
     if (!this.agent) {
       throw new Error("智能体未初始化");
     }
 
     const { inputContent } = await this.agent.rewindToMessage(messageId);
     this.inputContent = inputContent;
-
-    // Truncation carries no payload anymore: cut the cached list with the same
-    // rule the webview applies to its own copy (keep everything before the
-    // LAST occurrence of the anchor) instead of pulling the whole list back.
-    const index = this.messages.map((m) => m.id).lastIndexOf(messageId);
-    if (index !== -1) {
-      this.messages = this.messages.slice(0, index);
-    } else {
-      // The anchor is not in the list anymore (compaction cut it away):
-      // nothing to cut, re-pull the list that the rewind just rewrote.
-      await this.getMessages();
-    }
+    return await this.getMessages();
   }
 
   public async askBtw(question: string): Promise<string> {
@@ -639,7 +631,6 @@ export class ChatSession {
       this.agent = undefined;
     }
 
-    this.messages = [];
     this.contextUsagePercent = undefined;
     this.tasks = [];
     this.inputContent = "";

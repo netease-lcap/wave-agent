@@ -130,6 +130,28 @@ const AUTO_CHAT_ROW_RATIO = 0.4;
  */
 export const BRANCH_LIST_LOADING_DELAY_MS = 300;
 
+/**
+ * Coalescing window for `desktopReportMessageStats` — the renderer telling the
+ * desktop host how much conversation it is holding for the memory curve
+ * (memorySampler.ts samples once a minute). Streaming changes the list on every
+ * delta, so the window folds those bursts into one report carrying the latest
+ * count.
+ */
+const MESSAGE_STATS_REPORT_INTERVAL_MS = 5000;
+
+/**
+ * 新会话状态：列表里没有可见消息（隐藏的 meta 消息不计）**且**宿主没说过这条
+ * 会话已经产生过消息。空列表只是必要条件——`/rewind` 回到第一条、`/clear` 都会
+ * 把已有会话的列表清空，那两处仍然不是新会话（发送要续在原会话里，目录/host/
+ * worktree 三组选择器也要收起）。`hasContent` 缺失（老宿主不下发）退回旧判据。
+ */
+const isNewSessionState = (
+  hasContent: boolean | undefined,
+  messages: ReadonlyArray<{ role?: unknown; isMeta?: boolean }>,
+): boolean =>
+  hasContent !== true &&
+  !messages.some((m) => !(m.role === "user" && m.isMeta));
+
 /** Panel width for a never-dragged slot in a `containerW`-wide row. */
 const autoPanelWidth = (containerW: number): number => {
   const conversation = Math.max(
@@ -567,8 +589,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const boundSessionId = paneId
     ? host?.panes?.find((p) => p.paneId === paneId)?.sessionId
     : undefined;
+  // Host-authoritative "has this pane's session ever produced a message"
+  // (`desktopPanes` carries it). It is the only thing that separates a brand-new
+  // session from an old one whose list happens to be empty — a `/rewind` back to
+  // the first message or a `/clear` empties the list but leaves a running
+  // session, and sending there must continue in that session (see the worktree
+  // branch in handleSendMessage). undefined = an older host did not send it.
+  const paneHasContent = paneId
+    ? host?.panes?.find((p) => p.paneId === paneId)?.hasContent
+    : undefined;
   const groupKey = paneId ? (boundSessionId ?? `new:${paneId}`) : undefined;
   const groupKeyRef = useRef(groupKey);
+  const paneHasContentRef = useRef(paneHasContent);
   // Set when the user sends a message from this pane's new-session state. The
   // new-session bucket migrates to the session id only when that message binds
   // one — a sidebar switch to an existing session must not inherit the bucket.
@@ -901,6 +933,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   useEffect(() => {
     effectiveHostRef.current = effectiveHost;
   }, [effectiveHost]);
+
+  useEffect(() => {
+    paneHasContentRef.current = paneHasContent;
+  }, [paneHasContent]);
 
   useEffect(() => {
     planContentRef.current = planContent;
@@ -2694,10 +2730,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // process switches into it and forwards this message.
       if (paneId && groupKeyRef.current?.startsWith("new:"))
         sentFromNewSessionRef.current = true;
+      // 判据见 isNewSessionState：`/rewind` 回到第一条、`/clear` 之后列表也是空
+      // 的，但那条会话已经在跑（有 sessionId、在侧边栏、可能已有 worktree），
+      // 此时发送必须走普通发送、在同一会话里继续，不得按新会话规则建 worktree。
       if (
         host?.type === "desktop" &&
-        !stateRef.current.messages.some(
-          (m) => !(m.role === "user" && m.isMeta),
+        isNewSessionState(
+          paneHasContentRef.current,
+          stateRef.current.messages,
         ) &&
         worktreeChecked &&
         effectiveWorkdirRef.current &&
@@ -4132,6 +4172,50 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     });
   }, [tabs, isDesktop, postToHost]);
 
+  // 桌面端：把自己手里这份消息列表的规模报给宿主（内存曲线用）。宿主对消息内容
+  // 零状态（spec ui/message-rendering-system.md「宿主不保留消息内容，用的时候
+  // 现取」场景 8），没有数组可数，而这条曲线本来就是关于渲染进程的堆——所以
+  // 「这条会话占了多少条 / 多少块」只有屏幕这一份能给。
+  //
+  // 节流：流式期间列表变化很密，但采样是每分钟一次，按固定窗口把期间的多次变化
+  // 合并成一条上报（窗口结束时读最新值，不是窗口开始时的快照）。
+  const messageStatsRef = useRef<{ messages: number; blocks: number }>({
+    messages: 0,
+    blocks: 0,
+  });
+  const messageStatsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!isDesktop) return;
+    messageStatsRef.current = {
+      messages: state.messages.length,
+      blocks: state.messages.reduce(
+        (sum, message) => sum + (message.blocks?.length ?? 0),
+        0,
+      ),
+    };
+    if (messageStatsTimerRef.current) return;
+    messageStatsTimerRef.current = setTimeout(() => {
+      messageStatsTimerRef.current = null;
+      postToHost({
+        command: "desktopReportMessageStats",
+        ...messageStatsRef.current,
+      });
+    }, MESSAGE_STATS_REPORT_INTERVAL_MS);
+  }, [state.messages, isDesktop, postToHost]);
+  // 卸载时清掉定时器：分屏关掉后宿主那份读数由它自己删（bindAgentToPane /
+  // handleClosePane），这里只需保证没有定时器在组件消失后还去 postMessage。
+  useEffect(
+    () => () => {
+      if (messageStatsTimerRef.current) {
+        clearTimeout(messageStatsTimerRef.current);
+        messageStatsTimerRef.current = null;
+      }
+    },
+    [],
+  );
+
   // Esc exits preview fullscreen (spec 场景 2). Registered only while
   // fullscreen is active; pane-level dialogs handle their own Esc first
   // (document capture + stopPropagation), so they close without exiting.
@@ -4529,7 +4613,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
               disabled={inputDisabled}
               placeholder={inputDisabledReason}
               workdirSelector={
-                host?.type === "desktop" && !hasVisibleMessages ? (
+                host?.type === "desktop" &&
+                isNewSessionState(paneHasContent, state.messages) ? (
                   <>
                     <DesktopHostSelector
                       host={effectiveHost}

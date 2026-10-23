@@ -16,6 +16,7 @@ import type {
   PermissionDecision,
   RemoteControlSnapshot,
   ConfiguredModel,
+  Message,
 } from "wave-agent-sdk/host";
 import {
   PLUGIN_CHANGE_PENDING_MESSAGE,
@@ -1394,11 +1395,12 @@ export class MessageHandler {
   }
 
   /**
-   * `/rewind`：截断后**不回传列表**。`session.rewindToMessage` 已按与 webview 相同
-   * 的规则切掉缓存，这里回发 `rewindResult` 让 webview 对自己的副本做同样的事，
-   * 随后那次快照带 `keepMessages`（列表因此不在这条路径上重传）。
+   * `/rewind`：截断由 CLI 完成，`session.rewindToMessage` 随后重拉整份列表并把
+   * 回包交回来，宿主把它原样放进快照推给界面 —— 宿主不定位锚点、不截断、不留
+   * 引用（spec ui/message-rendering-system.md「宿主不保留消息内容」场景 6）。
    *
-   * 没带 `requestId`（旧 webview / 远程页）时退回全量推送。
+   * 旧 webview / 远程页不带 `requestId`，因此只是少了那条 `rewindResult` 回执，
+   * 列表照样推。
    */
   private async handleRewindToMessage(
     messageId: string,
@@ -1409,7 +1411,7 @@ export class MessageHandler {
     // The webview already showed the confirmation dialog — execute directly.
     const session = this.context.getChatSession(viewType || "tab", windowId);
     try {
-      await session.rewindToMessage(messageId);
+      const messages = await session.rewindToMessage(messageId);
       if (requestId) {
         this.context.postMessage(
           {
@@ -1421,13 +1423,8 @@ export class MessageHandler {
           viewType,
           windowId,
         );
-        await this.handleWebviewReady(viewType, windowId, {
-          keepMessages: true,
-        });
-      } else {
-        // Notify frontend to update state (including inputContent)
-        await this.handleWebviewReady(viewType, windowId);
       }
+      await this.handleWebviewReady(viewType, windowId, { messages });
       this.context.postMessage({ command: "focusInput" }, viewType, windowId);
       this.context.postMessage(
         { command: "scrollToBottom" },
@@ -1860,13 +1857,14 @@ export class MessageHandler {
     )
       return;
     try {
-      await session.clearChat();
-      // No full-snapshot push from the server — deliver the (now empty)
-      // list so the webview actually clears.
+      // `session.clearChat()` 已经把清空后的列表取回来了：回包原样交给界面，
+      // 宿主不存（spec ui/message-rendering-system.md「宿主不保留消息内容」场景
+      // 9）。清空后它就是一张空表，界面拿到才会真的清屏。
+      const messages = await session.clearChat();
       this.context.postMessage(
         {
           command: "updateMessages",
-          messages: session.messages,
+          messages,
         },
         viewType,
         windowId,
@@ -1905,13 +1903,14 @@ export class MessageHandler {
     )
       return;
     try {
-      await session.restoreSession(sessionId);
-      // No full-snapshot push from the server — deliver the restored list
-      // so the webview re-renders instead of keeping the welcome page.
+      // `session.restoreSession()` 已经把恢复后的列表取回来了：回包直接推给
+      // 界面，否则它只会停在欢迎页。宿主不在中间留任何一份（spec
+      // ui/message-rendering-system.md「宿主不保留消息内容」场景 1）。
+      const messages = await session.restoreSession(sessionId);
       this.context.postMessage(
         {
           command: "updateMessages",
-          messages: session.messages,
+          messages,
         },
         viewType,
         windowId,
@@ -2193,25 +2192,25 @@ export class MessageHandler {
     }
   }
 
+  /**
+   * 首屏/切会话/窗口重载的整份快照。
+   *
+   * `opts.messages` 是调用方**刚刚**取到的那一份（`/rewind` 里
+   * `session.rewindToMessage` 已经重拉过），此时不再多打一次 RPC；其余调用方都由
+   * 这里自己 pull 一次。两种情况下列表都只是「这次快照的载荷」：宿主不留字段、不
+   * 留引用（spec ui/message-rendering-system.md「宿主不保留消息内容，用的时候现取」
+   * 场景 1 / 9）。
+   */
   private async handleWebviewReady(
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
-    opts?: { keepMessages?: boolean },
+    opts?: { messages?: Message[] },
   ): Promise<void> {
     const session = this.context.getChatSession(viewType || "tab", windowId);
     if (!session.agent) {
       await this.context.initializeAgent(viewType || "tab", windowId);
     }
-    // No full-snapshot push anymore — the webview pulls the message list on
-    // demand (webviewReady / restore / rewind / clear / compact).
-    //
-    // `keepMessages` (rewind only) skips BOTH the pull and the list in the
-    // payload: the caller already cut the cached list with the same rule the
-    // webview applies to its copy, so re-reading and re-sending it is exactly
-    // the cost this path exists to avoid. Every other caller must send it.
-    if (!opts?.keepMessages) {
-      await session.getMessages();
-    }
+    const messages = opts?.messages ?? (await session.getMessages());
     const configurationData = await this.configService.loadConfiguration();
     const sessions = await this.sessionService.getSessionsList();
     let isAuthenticated = false;
@@ -2252,12 +2251,11 @@ export class MessageHandler {
     }));
 
     // 首屏就是整份列表（spec ui/message-rendering-system.md「首屏就是整份列表，
-    // 不分页」）：宿主缓存里那份就是全部，列表从最近一次压缩开始。
+    // 不分页」）：这次 pull 的回包就是全部，列表从最近一次压缩开始。
     this.context.postMessage(
       {
         command: "setInitialState",
-        messages: opts?.keepMessages ? [] : session.messages,
-        ...(opts?.keepMessages ? { keepMessages: true } : {}),
+        messages,
         tasks: session.tasks,
         backgroundTasks: session.backgroundTasks,
         workflowRuns: session.workflowRuns,
@@ -2290,9 +2288,9 @@ export class MessageHandler {
     // re-created (window reload) runs webviewReady long after the last token
     // change, so no contextUsage notification is in flight — and the webview
     // clears the ring on every session switch — leaving it empty until a new
-    // turn. The session refreshed the value on the getMessages pull above;
-    // post it after setInitialState so it is attributed to the incoming session
-    // (same ordering as the desktop replay).
+    // turn. The session refreshed the value on the pull above (its own, or the
+    // one `/rewind` already made); post it after setInitialState so it is
+    // attributed to the incoming session (same ordering as the desktop replay).
     const contextUsagePercent = session.contextUsagePercent;
     if (contextUsagePercent !== undefined) {
       this.context.postMessage(
