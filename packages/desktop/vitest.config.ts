@@ -11,6 +11,7 @@ export default defineConfig({
     globals: true,
     reporter: "dot",
     environment: "node",
+    setupFiles: ["./tests/setup.ts"],
     include: ["tests/**/*.test.ts"],
     // Real-host integration tests spawn the real `wave --stdio` CLI and a local
     // model server — they run in their own config/job (vitest.integration.config.ts,
