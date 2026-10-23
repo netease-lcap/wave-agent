@@ -4,7 +4,8 @@ import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
-// Remote SSH demo: screenshots for docs/desktop.md 「SSH 远程主机」. Everything
+// Remote SSH demo: screenshots for docs/desktop.md 「SSH 远程主机」 and
+// docs/tutorials.md 「云端编程」. Everything
 // is mocked — the desktop host bridge (`desktopWorkdirState` with a remote
 // host, `desktopTerminalData`, `desktopWorkspaceDiff`) — no real SSH host.
 const REMOTE_HOST = "dev-server";
@@ -313,6 +314,35 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-remote-dir-browser.webp",
+    );
+  });
+
+  // docs/tutorials.md「云端编程」：远端会话的两种后台状态。桌面端退出后这两种
+  // 状态都留在远端 daemon 里，重新连上该主机时侧边栏直接标出来——分组标题挂
+  // 远端主机名，组内运行中标转圈、等待确认标琥珀点（spec desktop-sessions.md
+  // 「SSH 远程后台会话」场景 6）。
+  test("remote background sessions carry running / waiting badges", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    await setupRemoteSession(injector, REMOTE_HOST);
+
+    const group = webviewPage.getByTestId(
+      `desktop-session-group-${REMOTE_HOST}:${REMOTE_WORKDIR}`,
+    );
+    await expect(group).toBeVisible();
+    await expect(group.getByText(REMOTE_HOST, { exact: true })).toBeVisible();
+    await expect(
+      webviewPage.locator(".desktop-session-status-slot--running"),
+    ).toHaveCount(1);
+    await expect(
+      webviewPage.locator(".desktop-session-status-slot--waiting"),
+    ).toHaveCount(1);
+
+    await screenshotWebp(
+      webviewPage,
+      "../../docs/public/screenshots/desktop-ssh-background-sessions.webp",
     );
   });
 });

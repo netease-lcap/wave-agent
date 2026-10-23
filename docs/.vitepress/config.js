@@ -129,7 +129,20 @@ export default {
           ],
         },
         {
-          text: "五、研发知识库：团队知识如何进入 AI",
+          text: "五、云端编程：远程主机上的后台会话",
+          link: "/tutorials#cloud-programming",
+          collapsed: false,
+          items: [
+            { text: "连接远程主机", link: "/tutorials#cloud-connect" },
+            {
+              text: "关掉桌面端，任务继续跑",
+              link: "/tutorials#cloud-background",
+            },
+            { text: "边界", link: "/tutorials#cloud-limits" },
+          ],
+        },
+        {
+          text: "六、研发知识库：团队知识如何进入 AI",
           link: "/tutorials#knowledge-base",
           collapsed: false,
           items: [
@@ -148,7 +161,7 @@ export default {
           ],
         },
         {
-          text: "六、研发效能度量与治理",
+          text: "七、研发效能度量与治理",
           link: "/tutorials#metrics-governance",
           collapsed: false,
           items: [
@@ -164,7 +177,7 @@ export default {
           ],
         },
         {
-          text: "七、代码安全",
+          text: "八、代码安全",
           link: "/tutorials#code-security",
           collapsed: false,
           items: [
