@@ -567,13 +567,9 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   margin-bottom: 10px;
   border-radius: 8px;
   background: rgba(127, 127, 127, 0.12);
-  /* 1023 评论：批量操作条统一 14px（「已选 N 项」原 12px）。条内两颗键各自另有
-     字号 —— 「归类到…」走 .artifacts-secondary-btn 已是 14/500，只有「取消选择」
-     这颗 .artifacts-link-btn 是 12px，故只在这一条作用域内补 14。 */
-  font-size: 14px;
-}
-
-.artifacts-batch .artifacts-link-btn {
+  /* 1023 评论：批量操作条统一 14px（「已选 N 项」原 12px）。条内两颗键在 1023
+     后续评论里改成主/次键（归类到… = 填充主键，取消选择 = 线型次键），两者本身
+     都是 14/500、32 高、r8，条内不再需要单独补字号。 */
   font-size: 14px;
 }
 

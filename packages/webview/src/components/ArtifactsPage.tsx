@@ -1210,10 +1210,16 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
             {view === "custom" && selected.size > 0 && (
               <div className="artifacts-batch" data-testid="artifacts-batch">
                 <span>已选 {selected.size} 项</span>
+                {/* 1023 评论（点 `div.artifacts-batch-actions`「归类到… 取消选择」）：
+                    「这里一个用填充按钮，一个用线型按钮，不要出现这种蓝色按钮」
+                    ⇒ 归类到… = 填充主键（action-primary + action-primary-text），
+                    取消选择 = 线型次键（透明底 + border-light + text-primary，
+                    hover fill-hover）；原来那颗蓝色文字链（--vscode-textLink-foreground
+                    浅 #0069CC / 深 #4DAAFC）去掉，本页不再有蓝色按钮。 */}
                 <div className="artifacts-batch-actions">
                   <button
                     type="button"
-                    className="artifacts-secondary-btn"
+                    className="artifacts-primary-btn"
                     onClick={() => setBatchOpen((prev) => !prev)}
                     data-testid="artifacts-batch-assign"
                   >
@@ -1221,7 +1227,7 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                   </button>
                   <button
                     type="button"
-                    className="artifacts-link-btn"
+                    className="artifacts-secondary-btn"
                     onClick={() => setSelected(new Set())}
                   >
                     取消选择
