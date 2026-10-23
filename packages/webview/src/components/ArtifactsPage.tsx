@@ -207,6 +207,29 @@ const SearchField: React.FC<{
   );
 };
 
+/**
+ * 16×16 勾选指示器（contract：skill `references/common-components.md`
+ * §Choice controls「Desktop Radio and Checkbox」）。原生 input 留在 DOM 里负责
+ * 语义与键盘，视觉由这一个 span 画：方框几何/描边色在 `.artifacts-checkbox-indicator`
+ * 里，选中态与焦点态按各自父级（成员行 / 表格多选格）各写一条。
+ *
+ * 设计师 2026-10-23「创作集表格的批量多选可以开始改」——表格的全选与行选从原生
+ * 控件换成这一套，矢量只有这一份（勾的路径 M4 8 L6.75 10.75 L12 5.5，线宽
+ * Light 1.7 / Dark 2.1 由 CSS 给）。
+ */
+const CheckIndicator: React.FC = () => (
+  <span className="artifacts-checkbox-indicator" aria-hidden="true">
+    <svg viewBox="0 0 16 16" fill="none">
+      <path
+        d="M4 8 L6.75 10.75 L12 5.5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  </span>
+);
+
 export interface ArtifactsPageProps {
   /** 返回当前会话（顶栏返回钮；与再次点击侧栏入口等价）。 */
   onBack: () => void;
@@ -1297,21 +1320,24 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                   <tr>
                     {view === "custom" && (
                       <th className="artifacts-col-check">
-                        <input
-                          type="checkbox"
-                          checked={allSelected}
-                          aria-label="全选"
-                          data-testid="artifacts-select-all"
-                          onChange={(event) => {
-                            if (event.target.checked) {
-                              setSelected(
-                                new Set(scopeItems.map((item) => item.slug)),
-                              );
-                            } else {
-                              setSelected(new Set());
-                            }
-                          }}
-                        />
+                        <label className="artifacts-table-check">
+                          <input
+                            type="checkbox"
+                            checked={allSelected}
+                            aria-label="全选"
+                            data-testid="artifacts-select-all"
+                            onChange={(event) => {
+                              if (event.target.checked) {
+                                setSelected(
+                                  new Set(scopeItems.map((item) => item.slug)),
+                                );
+                              } else {
+                                setSelected(new Set());
+                              }
+                            }}
+                          />
+                          <CheckIndicator />
+                        </label>
                       </th>
                     )}
                     <th className="artifacts-col-name">文件名称</th>
@@ -1331,12 +1357,15 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                       >
                         {view === "custom" && (
                           <td className="artifacts-col-check">
-                            <input
-                              type="checkbox"
-                              checked={selected.has(item.slug)}
-                              aria-label={`选择 ${item.title}`}
-                              onChange={() => toggleSelection(item.slug)}
-                            />
+                            <label className="artifacts-table-check">
+                              <input
+                                type="checkbox"
+                                checked={selected.has(item.slug)}
+                                aria-label={`选择 ${item.title}`}
+                                onChange={() => toggleSelection(item.slug)}
+                              />
+                              <CheckIndicator />
+                            </label>
                           </td>
                         )}
                         <td className="artifacts-col-name">
@@ -1891,19 +1920,7 @@ const ShareDialog: React.FC<ShareDialogProps> = ({
                                 16×16 自绘方框（1px 圆角方框 / 选中实心 + 对勾，
                                 对勾 Light 1.7 / Dark 2.1 圆头），与上面那组 radio
                                 同一套语言；原生 input 保留语义与键盘。 */}
-                            <span
-                              className="artifacts-checkbox-indicator"
-                              aria-hidden="true"
-                            >
-                              <svg viewBox="0 0 16 16" fill="none">
-                                <path
-                                  d="M4 8 L6.75 10.75 L12 5.5"
-                                  stroke="currentColor"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                />
-                              </svg>
-                            </span>
+                            <CheckIndicator />
                             <span className="artifacts-checkbox-text">
                               {member.email}
                             </span>

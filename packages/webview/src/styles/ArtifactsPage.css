@@ -266,6 +266,10 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
 
 .artifacts-col-check {
   width: 36px;
+  /* 勾选框的键盘焦点环是「2px outline + 2px offset」，比 16px 的盒子外扩 4px；
+     td 默认 overflow: hidden 会把环在地格内边处切掉。这一格只有控件、没有
+     文字需要省略，放出去不影响别处。 */
+  overflow: visible;
 }
 
 /* 窗口窄到放不下五列时会横向滚动：把文件名称列钉在左侧、操作列钉在右侧，
@@ -1007,6 +1011,56 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
 
 :root[data-theme="dark"] .artifacts-checkbox-indicator svg path {
   stroke-width: 2.1;
+}
+
+/* 表格多选列（「自定义」视图的全选 + 行选）。设计师 2026-10-23：「创作集表格的
+   批量多选可以开始改」⇒ 与上面的成员多选同一套契约（skill
+   `references/common-components.md` §Choice controls「Desktop Radio and Checkbox」），
+   只是这一格没有文字，label 里只装指示器：
+     可见盒 16×16 / 圆角 4px / 未选中 1px 描边（浅 --cc-text-secondary #6C7076、
+     深 --cc-text-placeholder #858B8F）/ 选中实心 --cc-action-primary + 勾
+     （勾色 --cc-action-primary-text，线宽 Light 1.7 / Dark 2.1）/ 键盘
+     focus-visible 出 2px outline + 2px offset。
+   位置：原生控件原先是 `margin: 3px 3px 3px 4px`，盒左缘落在「格内衬 8 + 4 = 12px」；
+   这里沿用同一个 4px 左边距，盒子**左缘逐像素不动**。改前 13×13 → 改后 16×16，
+   所以右缘与上下缘各外扩 1.5px；列宽（36px 内容）与行高（45px）不变。 */
+.artifacts-table-check {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 4px;
+  cursor: pointer;
+}
+
+/* 原生 input 视觉隐藏成 16×16 透明命中层，压在指示器上：鼠标/自动化点它即命中
+   控件，label 语义与空格键切换都不变。 */
+.artifacts-table-check input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.artifacts-table-check input:checked + .artifacts-checkbox-indicator {
+  border-color: var(--cc-action-primary, #1f2329);
+  background: var(--cc-action-primary, #1f2329);
+}
+
+.artifacts-table-check input:checked + .artifacts-checkbox-indicator svg {
+  opacity: 1;
+}
+
+.artifacts-table-check input:focus-visible + .artifacts-checkbox-indicator {
+  outline: 2px solid var(--cc-action-primary, #1f2329);
+  outline-offset: 2px;
 }
 
 .artifacts-member-empty,
