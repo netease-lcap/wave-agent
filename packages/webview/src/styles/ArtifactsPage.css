@@ -31,12 +31,20 @@
   margin-right: 0;
 }
 
+/* 设计师 2026-10-23 预览评论：点 `span.session-board-title`「会话状态」= 参照物，
+   点 `div.artifacts-content`=「创作集的左边距可以和活动页保持一致」。
+   实测（1440×900、dpr2）：两个整页的根都起于 x=260；活动页 `.session-board` 用
+   `padding: 0 16px 16px`，标题行 / 列区 / 卡片左缘都是 276；本页此前左内衬 24px，
+   内容列（表头、表格、分类侧栏）左缘落到 284 —— 比活动页多 8px。
+   故左内衬 24 → 16，内容左缘 284 → 276，与活动页逐值一致；顶栏「返回当前会话」
+   两侧本就同为 x=268，不动。
+   右侧没点名，仍是 24px（内容右缘 1416，活动页为 1424）。 */
 .artifacts-content {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
-  padding: 16px 24px 20px;
+  padding: 16px 24px 20px 16px;
   gap: 14px;
   overflow: hidden;
 }
