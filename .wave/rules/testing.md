@@ -7,7 +7,8 @@ paths:
   - Testing framework is vitest
   - Run test use `cd packages/xxx && pnpm test test_file`
   - Use HookTester to test hooks
-  - Use `vi.waitFor` to wait for UI changes in Ink components
+  - Ink components render through the in-repo harness `packages/code/tests/helpers/inkHarness.ts` (`render` / `cleanup`, a drop-in for the retired `ink-testing-library`); after a key press, a `rerender` or a synchronous callback use `await settle()`, which flushes until the output stops changing — no polling and no `sleep`
+  - Reserve `vi.waitFor` for changes an **async** source still owes you (a promise, a timer, a socket), not for frames. It polls every 50ms by default and that interval is hard-coded in vitest, so `packages/code` and `packages/desktop` wrap it to 5ms in their `tests/setup.ts` (~35% / ~52% faster suites, 2026-10-23). Don't lower it further: the remaining cost is `sleep()` and rendering, not polling
   - Use `as unknown as` `Awaited<>` `ReturnType<>` `typeof` to simplify type check, for example:
     - `vi.mocked(fs.readdir).mockResolvedValueOnce(initialFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>);`
     - `vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);`
@@ -15,6 +16,7 @@ paths:
   - MUST not write `mkdtemp` in test, use mocking instead
   - Mock stdout and stderr to suppress output during testing and restore mocks after tests
   - Avoid unnecessary `setTimeout` or `sleep` in tests to keep them fast; prefer awaiting promises or using `vi.waitFor` if needed
+  - A loop of press → `sleep` → press pays for one full frame render per keystroke (~120ms on the Windows runner vs ~12ms locally), so it can spend vitest's default 5s `testTimeout` on rendering alone — the btw scroll cases timed out on `main` this way (2026-10-23). Write the repeated keys in one go and `vi.waitFor` the settled frame; derive the press count from the component's own constants instead of a magic number
   - Note: `logger` in `packages/code` appends to log files instead of printing to stdout/stderr to avoid interfering with the Ink UI. Do not use `logger` to debug in tests. Use temporary `console.log` to debug and remove them after.
 - Path expectations MUST be cross-platform: the `check-windows` job runs the full unit suite on a real Windows runner but only on `push: main` + `workflow_dispatch` (it does NOT gate PRs), so path breakage is found after merge (#2488, #2505)
   - Build expected values and mock keys with `path.join` / `path.resolve`, never hardcode `/` — POSIX literals turn into `\` (or gain a drive letter) on Windows

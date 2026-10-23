@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { describe, it, expect } from "vitest";
 import { MarketplaceList } from "../../src/components/MarketplaceList.js";
 import { KnownMarketplace } from "wave-agent-sdk";

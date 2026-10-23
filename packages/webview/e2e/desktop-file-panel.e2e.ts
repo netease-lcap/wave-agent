@@ -222,6 +222,54 @@ test.describe("Desktop file panel", () => {
     ).toBeVisible();
   });
 
+  // spec desktop-panels.md「文件面板评论」场景 8：块评论按钮长在块左缘之外的
+  // 空隙里，鼠标从块走到按钮要跨过一段「底下没有任何块」的 padding。那段路必须
+  // 保住锚点，否则按钮在指针到达前就卸载了——真实鼠标永远点不到它。
+  test("markdown block comment button survives the pointer moving onto it", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    const mdPath = `${DIR_A}/README.md`;
+    await setupReadMessage(injector, mdPath);
+    await openFileFromMessage(webviewPage, injector);
+    await injector.simulateExtensionMessage("desktopFileContent", {
+      fileView: {
+        path: mdPath,
+        host: "local",
+        loading: false,
+        content: "# 标题\n\n正文段落，用来放一条评论。\n",
+      },
+    });
+
+    const paragraph = webviewPage.locator(".file-pane-markdown p").first();
+    await paragraph.hover();
+    const button = webviewPage.getByTestId("md-block-comment-add");
+    await expect(button).toBeVisible();
+
+    // Real mouse path, in steps: leave the text, cross the gutter, land on the
+    // button. The bug showed up as "element was detached from the DOM" here.
+    const box = await button.boundingBox();
+    expect(box).not.toBeNull();
+    await webviewPage.mouse.move(
+      box!.x + box!.width / 2,
+      box!.y + box!.height / 2,
+      { steps: 10 },
+    );
+    await expect(button).toBeVisible();
+
+    await button.click();
+    await expect(webviewPage.getByTestId("line-comment-box")).toBeVisible();
+    await webviewPage
+      .getByTestId("line-comment-input")
+      .fill("这段补一句为什么");
+    await webviewPage.getByTestId("line-comment-submit").click();
+    // The quote is the hovered block's rendered text, no line number.
+    await expect(webviewPage.getByTestId("message-input")).toContainText(
+      "正文段落，用来放一条评论",
+    );
+  });
+
   test("search bar finds and opens a file in the panel", async ({
     webviewPage,
   }) => {

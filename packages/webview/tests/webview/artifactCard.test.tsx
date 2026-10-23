@@ -80,10 +80,7 @@ describe("artifact 卡片", () => {
     expect(screen.getByTestId("artifact-card")).toBeInTheDocument();
     expect(screen.getByText("运营活动原型")).toBeInTheDocument();
     expect(screen.getByText("已发布 · v3")).toBeInTheDocument();
-    // 没有生成文件卡片那套三项菜单。
-    expect(
-      screen.queryByTestId("generated-file-card-menu"),
-    ).not.toBeInTheDocument();
+    // 只有一个动作：没有下拉菜单。
     expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
   });
 

@@ -4934,12 +4934,6 @@ export class DesktopHost {
         await this.handleOpenPath(msg.path as string);
         break;
 
-      // 生成文件卡片的「打开文件所在文件夹」（spec desktop/desktop-artifacts.md
-      // 「对话中的生成文件卡片」）：在系统文件管理器里选中该文件。
-      case "desktopRevealInFolder":
-        await this.handleRevealInFolder(pid, msg.path as string);
-        break;
-
       case "openExternal": {
         const url = msg.url as string;
         if (url && /^(https?|mailto):/.test(url)) {
@@ -7426,34 +7420,6 @@ export class DesktopHost {
         error: `文件上传处理失败: ${error}`,
         ...(paneId !== undefined ? { paneId } : {}),
       });
-    }
-  }
-
-  /**
-   * 在系统文件管理器里定位文件（生成文件卡片的「打开文件所在文件夹」）。
-   * 远程主机上没有本地路径可定位：按该操作原有的失败口径给一条系统提示，
-   * 不静默吞掉（spec desktop/desktop-artifacts.md 场景 5）。
-   */
-  private async handleRevealInFolder(
-    paneId: string,
-    filePath: string,
-  ): Promise<void> {
-    if (!filePath) return;
-    if (this.hostForPane(paneId) !== LOCAL_HOST) {
-      this.pushSystemMessage("打开文件所在文件夹失败: 该会话运行在远程主机上");
-      return;
-    }
-    const stat = await fs.promises.stat(filePath).catch(() => null);
-    if (!stat) {
-      this.pushSystemMessage(
-        `打开文件所在文件夹失败: 文件不存在（${filePath}）`,
-      );
-      return;
-    }
-    try {
-      shell.showItemInFolder(filePath);
-    } catch (error) {
-      this.pushSystemMessage(`打开文件所在文件夹失败: ${error}`);
     }
   }
 

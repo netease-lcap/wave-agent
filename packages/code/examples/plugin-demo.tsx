@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "ink-testing-library";
+import { render } from "../tests/helpers/inkHarness.js";
 import { App } from "../src/components/App.js";
 import * as fs from "fs/promises";
 import * as path from "path";
@@ -55,7 +55,11 @@ This command was loaded from a local plugin!
     // 2. Render the App with the plugin directory
     // We use bypassPermissions to simplify the demo
     const { lastFrame, unmount } = render(
-      <App pluginDirs={[pluginDir]} bypassPermissions={true} onExit={() => {}} />,
+      <App
+        pluginDirs={[pluginDir]}
+        bypassPermissions={true}
+        onExit={() => {}}
+      />,
     );
 
     // Give it a moment to initialize the agent and load plugins

@@ -407,4 +407,52 @@ describe("ChatApp desktop file-panel auto refresh", () => {
     });
     expect(openFilePosts(vscode)).toHaveLength(0);
   });
+
+  it("never auto-opens a panel for a generated file (spec 场景 1、2)", () => {
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop({ workdir: "/work/a" });
+    // Panel slot starts collapsed with no tab; a finished Write of a page file
+    // used to open the preview pane here, and a doc used to open the file pane.
+    // Both are gone: writing never touches the panel.
+    sendHostMessage(
+      fixtures.setInitialState({
+        messages: [
+          messageWithTool("m1", {
+            id: "t1",
+            name: WRITE_TOOL_NAME,
+            stage: "streaming",
+            parameters: toolParams("/work/a/index.html"),
+          }),
+        ],
+        workdir: "/work/a",
+      }),
+    );
+    expect(
+      screen.getByTestId("panel-toggle-btn").getAttribute("aria-expanded"),
+    ).toBe("false");
+
+    for (const [messageId, blockId, path, name] of [
+      ["m1", "t1", "/work/a/index.html", WRITE_TOOL_NAME],
+      ["m2", "t2", "/work/a/report.md", WRITE_TOOL_NAME],
+      ["m3", "t3", "/work/a/slides.pptx", EDIT_TOOL_NAME],
+    ]) {
+      sendCommand("updateToolBlock", {
+        params: {
+          messageId,
+          id: blockId,
+          name,
+          stage: "end",
+          success: true,
+          parameters: toolParams(path),
+        },
+      });
+    }
+
+    expect(openFilePosts(vscode)).toHaveLength(0);
+    expect(
+      screen.getByTestId("panel-toggle-btn").getAttribute("aria-expanded"),
+    ).toBe("false");
+    expect(screen.queryByTestId("file-pane")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("preview-pane-empty")).not.toBeInTheDocument();
+  });
 });

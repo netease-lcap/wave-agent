@@ -1,5 +1,5 @@
 import React from "react";
-import { render, cleanup } from "ink-testing-library";
+import { render, cleanup } from "../helpers/inkHarness.js";
 import { Text } from "ink";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ChatProvider, useChat } from "../../src/contexts/useChat.js";

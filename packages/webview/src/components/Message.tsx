@@ -51,7 +51,6 @@ import { MermaidRenderer } from "./MermaidRenderer";
 import { ReasoningBlockView } from "./ReasoningBlockView";
 import { CompactBlockView } from "./CompactBlockView";
 import { WriteToolPreview } from "./WriteToolPreview";
-import { GeneratedFileCard } from "./GeneratedFileCard";
 import { ArtifactCard } from "./ArtifactCard";
 import { FileToolHeader } from "./FileToolHeader";
 import { getStageColor, getToolStatusColor } from "../utils/statusColors";
@@ -105,30 +104,6 @@ marked.use({
 // Windows 盘符路径的转义保护（缘起见 utils/filePathLinks.ts 的注释）：扩展必须注册
 // 在全局 marked 上——本文件的 parse 只传局部 renderer，扩展走 defaults.extensions。
 marked.use({ extensions: [windowsPathInlineExtension] });
-
-/**
- * 哪些写出的文件换成「生成文件卡片」（spec desktop/desktop-artifacts.md
- * 「对话中的生成文件卡片」）：只有页面文件（html/htm）—— 它们的渲染结果在右侧
- * 预览面板里，对话里给卡片（打开文件 / 在浏览器中打开 / 所在文件夹）比给一份
- * HTML 源码更有用。文档（md/doc/xlsx…）与源码保留原来的写入内容预览：内容本身
- * 就是用户要看的东西，文档另由文件面板打开（ChatApp 的自动打开规则）。
- */
-const GENERATED_FILE_CARD_EXT = /\.html?$/i;
-
-/** Write 工具的 file_path（流式期间参数 JSON 不完整，解析失败按无路径处理）。 */
-const parseWriteFilePath = (toolBlock: ToolBlock): string => {
-  if (!toolBlock.parameters) return "";
-  try {
-    const params = JSON.parse(toolBlock.parameters);
-    return typeof params.file_path === "string" ? params.file_path : "";
-  } catch {
-    return "";
-  }
-};
-
-/** 路径的 basename，posix/win32 分隔符都认（浏览器侧没有 node path）。 */
-const fileNameOf = (filePath: string): string =>
-  filePath.split(/[\\/]/).pop() || filePath;
 
 // 行内代码（反引号）中的裸 http(s) URL 提升为可点击链接：仅当剥离首尾
 // 常见标点后整个内容是一个无空白的 URL 时才提升；多 URL、markdown 链接
@@ -955,43 +930,6 @@ export const Message: React.FC<MessageProps> = React.memo(
         if (toolBlock.stage === "streaming") {
           return toolHeader;
         }
-        // 生成出的页面/文档换成文件卡片（spec desktop/desktop-artifacts.md
-        // 「对话中的生成文件卡片」）：卡片提供打开文件 / 在浏览器中打开 /
-        // 打开所在文件夹三条查看路径，比原文预览更贴合「产物」的用法。其它
-        // 源码文件保留原有的写入内容预览。卡片只在 desktop 渲染 —— 它的
-        // 另两条动作是桌面端独有命令。
-        const writtenPath = parseWriteFilePath(toolBlock);
-        if (
-          isDesktopHost() &&
-          canOpenFile &&
-          !errorContent &&
-          writtenPath &&
-          GENERATED_FILE_CARD_EXT.test(writtenPath)
-        ) {
-          const absolute =
-            toAbsoluteFilePath(writtenPath, workdir) ?? writtenPath;
-          return (
-            <div key={index} className="tool-container">
-              <GeneratedFileCard
-                fileName={fileNameOf(absolute)}
-                subtitle={toRelativePath(absolute, workdir) || absolute}
-                onOpenFile={() => openFile(absolute)}
-                onOpenExternal={() =>
-                  props.vscode.postMessage({
-                    command: "desktopOpenFileExternal",
-                    path: absolute,
-                  })
-                }
-                onRevealInFolder={() =>
-                  props.vscode.postMessage({
-                    command: "desktopRevealInFolder",
-                    path: absolute,
-                  })
-                }
-              />
-            </div>
-          );
-        }
         return (
           <div key={index} className="tool-container">
             {!errorContent && (
@@ -1089,8 +1027,7 @@ export const Message: React.FC<MessageProps> = React.memo(
       }
 
       // Artifact 工具（发布到创作集）：发布成功后渲染成一张卡片，卡片上只有
-      // 「在浏览器中打开」——artifact 只有 URL，本地没有可打开的文件，所以不做
-      // 生成文件卡片那套「打开文件 / 打开所在文件夹」（PM 3500358560332032）。
+      // 「在浏览器中打开」——artifact 是服务端的 URL，本机没有对应文件。
       // 其余 action（list / read / asset / 评论）与非发布结果落回下面的通用渲染。
       if (toolBlock.name === ARTIFACT_TOOL_NAME) {
         const meta = toolBlock.metadata as Record<string, unknown> | undefined;

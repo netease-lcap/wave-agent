@@ -1,5 +1,5 @@
 import React from "react";
-import { cleanup, render } from "ink-testing-library";
+import { cleanup, render } from "../helpers/inkHarness.js";
 import { afterEach, describe, it, expect } from "vitest";
 import {
   useLineScroll,

@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "ink-testing-library";
+import { render } from "../tests/helpers/inkHarness.js";
 import { App } from "../src/components/App.js";
 import { stripAnsiColors } from "wave-agent-sdk";
 import { INPUT_PLACEHOLDER_TEXT_PREFIX } from "../src/components/InputBox.js";

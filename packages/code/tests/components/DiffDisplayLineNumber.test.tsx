@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { describe, it, expect } from "vitest";
 import { DiffDisplay } from "../../src/components/DiffDisplay.js";
 import { WRITE_TOOL_NAME, EDIT_TOOL_NAME } from "wave-agent-sdk";

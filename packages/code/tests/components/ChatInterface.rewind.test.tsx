@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { ChatInterface } from "../../src/components/ChatInterface.js";
 import {
   ChatContextType,

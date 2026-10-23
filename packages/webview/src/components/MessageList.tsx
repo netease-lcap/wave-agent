@@ -81,11 +81,37 @@ const BOTTOM_FOLLOW_THRESHOLD_PX = 10;
 // reason — it is a decision boundary, not a grace margin.
 const OLDER_MESSAGES_TRIGGER_PX = 24;
 
+// 找不到吸顶锚点时最多自动往前取几页。锚点缺失的成因是「窗口从一轮对话中间开始」，
+// 一轮超过两页就已经很长了，再往前还没有真实用户消息，就意味着这段历史本来就没有
+// 可挂的锚点（会话首条是系统注入的、整段都是工具阶段……）——此时吸顶为 `null` 才是
+// 正确结果，继续拉只是空转。有上限才有收敛保证：宿主永远说「还有更早」、内容里
+// 永远没有用户消息时，这里停手（spec「首屏只进一页」场景 5）。取 3：够覆盖「一页
+// 中间 + 再往前一页仍是工具阶段」这种真实形状，又不至于把一屏之外的历史都翻进来。
+const AUTO_ANCHOR_MAX_PAGES = 3;
+
 // Is the viewport at the real bottom? One definition, used both to decide
 // whether following may continue and to re-engage it from the scroll handler.
 const atBottom = (container: HTMLElement) =>
   container.scrollTop + container.clientHeight >=
   container.scrollHeight - BOTTOM_FOLLOW_THRESHOLD_PX;
+
+/**
+ * The text this row contributes to the sticky bar — empty when it cannot be an
+ * anchor at all: assistant rows, injected `isMeta` user rows (reminders, rules,
+ * hook context) and user rows with no text block (task notifications).
+ * computeSticky scrolls up past those to the nearest real question, and the
+ * auto-page below pulls the window back until one exists — one definition, so
+ * "this page has an anchor" and "this row can be the anchor" can never drift
+ * apart (two copies of this condition IS how the sticky bar disappeared).
+ */
+const stickyAnchorText = (message: MessageType) => {
+  if (message.role !== "user" || message.isMeta) return "";
+  return (message.blocks ?? [])
+    .filter((b) => b.type === "text")
+    .map((b) => b.content || "")
+    .join(" ")
+    .trim();
+};
 
 /**
  * Why the viewport is being asked to move. The reason is the answer to "may
@@ -362,11 +388,12 @@ export const MessageList = forwardRef<
     seen: MessageType[];
   } | null>(null);
 
-  // 视口是否停在历史最开头。只给「没有更早的消息」那条提示用；和 sticky 一样在
-  // computeSticky 里算，并用同样的「比对 ref、没变就不 setState」避免在流式热路径
-  // 上产生无谓更新。
-  const [atHistoryStart, setAtHistoryStart] = useState(false);
-  const atHistoryStartRef = useRef(false);
+  // 窗口头为哪条消息已经自动补过一页（「这一页没有吸顶锚点」那条规则）。同一页头上
+  // 只问一次：宿主回错误时 `loadingOlder` 会落回 false 让 effect 再跑一遍，不认这个
+  // 头就是一秒几十次地重打宿主。宿主真的取回一页时窗口头必然前移，自动补页继续。
+  const autoAnchorRequestBeforeRef = useRef<string | null>(null);
+  // 连续自动补了几页还没看到锚点（见 AUTO_ANCHOR_MAX_PAGES）。看到锚点就归零。
+  const autoAnchorPagesRef = useRef(0);
 
   // The most-recent user message that has scrolled above the viewport top; pinned
   // at the top of the list as a context hint (设计稿 2236-3792).
@@ -558,26 +585,38 @@ export const MessageList = forwardRef<
   // browser clamp can never be mistaken for "the user pulled up at the top": they
   // either go through the gesture gate in handleScroll or do not reach here at
   // all.
-  const requestOlderMessages = useCallback(() => {
-    if (!onLoadOlderMessages || loadingOlder || historyExhausted) return;
-    const container = containerRef.current;
-    if (!container || container.scrollTop > OLDER_MESSAGES_TRIGGER_PX) return;
-    const at = virtualizer.getVirtualItemForOffset(container.scrollTop);
-    const rows = visibleMessagesRef.current;
-    const anchor = at ? rows[at.index] : rows[0];
-    if (!anchor?.id) return;
-    // Measured from the row's own top edge, so restoring it puts that row back
-    // under the reader at the same distance — the pixel offset within the row
-    // matters as much as the row itself (a long message is usually what the
-    // reader is halfway through).
-    const offset = at ? Math.max(0, container.scrollTop - at.start) : 0;
-    pendingOlderAnchorRef.current = {
-      id: anchor.id,
-      offset,
-      seen: rows,
-    };
-    onLoadOlderMessages(anchor.id);
-  }, [onLoadOlderMessages, loadingOlder, historyExhausted, virtualizer]);
+  const requestOlderMessages = useCallback(
+    (allowAwayFromTop = false) => {
+      if (!onLoadOlderMessages || loadingOlder || historyExhausted) return;
+      const container = containerRef.current;
+      if (!container) return;
+      // 手势入口只认「读者已经在顶上」：离开顶部的那一下就不是「上翻取更早」，是
+      // 别的什么被当成了手势。列表自己发起的补页（`allowAwayFromTop`）例外——那次
+      // 读者常常正停在底部，本来就离顶部很远。
+      if (!allowAwayFromTop && container.scrollTop > OLDER_MESSAGES_TRIGGER_PX)
+        return;
+      const at = virtualizer.getVirtualItemForOffset(container.scrollTop);
+      const rows = visibleMessagesRef.current;
+      // 取页的界分两种：
+      // - 手势（读者上翻）：读者正看着的那一行——他要的就是它上面那段；
+      // - 列表自己补页：**窗口头**。目的只是把窗口往前接一段；按视口位置取会把已经
+      //   加载过的这段再要一遍，窗口头没动 → 下一页还是同一个界，白跑一趟（还会被
+      //   窗口头去重挡住，原地不动）。
+      const before = allowAwayFromTop ? rows[0] : at ? rows[at.index] : rows[0];
+      // 还原位置用的锚点永远是读者正看着的那一行，离视口顶多少像素也算进去：长消息
+      // 读到一半时，行内偏移和行本身一样要紧。
+      const viewer = at ? rows[at.index] : rows[0];
+      if (!before?.id || !viewer?.id) return;
+      const offset = at ? Math.max(0, container.scrollTop - at.start) : 0;
+      pendingOlderAnchorRef.current = {
+        id: viewer.id,
+        offset,
+        seen: rows,
+      };
+      onLoadOlderMessages(before.id);
+    },
+    [onLoadOlderMessages, loadingOlder, historyExhausted, virtualizer],
+  );
 
   // Put the reader back on that message once the older page has landed. The
   // restore has to happen in the same commit as the prepend (layout, not passive)
@@ -626,10 +665,37 @@ export const MessageList = forwardRef<
     // 还没参与布局（面板未显示 / 刚挂载的那一帧）：`scrollHeight === 0` 不是
     // 「一页没撑满」，是「还没有布局」。下一轮（列表变化 / 翻页落地）再看。
     if (container.scrollHeight === 0) return;
+    // 这一页里一条能挂吸顶条的用户消息都没有 = 窗口从一轮对话的中间开始了。一轮
+    // 任务产生的消息数可以超过一页（工具阶段一条条往上加），注入的 isMeta 用户
+    // 消息也占原始列表的位置，于是用户自己那条落在窗口之外；吸顶条找不到锚点就
+    // 整条不渲染，读者再也看不到「这段回答在回答我哪句话」，得自己上翻一页才回来。
+    // 与「一页没撑满」同族的自愈：继续往前取页，直到出现一条用户消息或到历史起点
+    // （spec ui/message-rendering-system.md「首屏只进一页」场景 5）。
+    // 判据不取「视口是否停在顶部」（撑不满一屏时恒为真），也不止取「一页是否撑满」
+    // （撑满时同样可能缺锚点——那正是这个缺陷的样子）。
+    if (!visibleMessages.some(stickyAnchorText)) {
+      const head = visibleMessages[0].id;
+      // 停手条件：这一页头已经问过（宿主回错 / 请求被作废都不重打）、或者连续
+      // AUTO_ANCHOR_MAX_PAGES 页都还没有锚点（这段历史本来就没有可挂的用户消息）。
+      // 两个条件任一成立就安静停下——吸顶为 null 是正确结果，不是待修的缺失。
+      if (
+        head &&
+        autoAnchorRequestBeforeRef.current !== head &&
+        autoAnchorPagesRef.current < AUTO_ANCHOR_MAX_PAGES
+      ) {
+        autoAnchorRequestBeforeRef.current = head;
+        autoAnchorPagesRef.current += 1;
+        requestOlderMessages(true);
+      }
+      return;
+    }
+    // 有锚点了：下一轮若又缺（换会话 / 换窗口），重新从头计数。
+    autoAnchorPagesRef.current = 0;
     if (container.scrollHeight > container.clientHeight + 1) return;
     requestOlderMessages();
   }, [
     messages,
+    visibleMessages,
     loadingOlder,
     historyExhausted,
     onLoadOlderMessages,
@@ -703,13 +769,6 @@ export const MessageList = forwardRef<
       return;
     }
     const scrollTop = container.scrollTop;
-    // Only the "no older messages" line reads this, and only when the host has
-    // said that this is the beginning of the history.
-    const atStart = scrollTop <= OLDER_MESSAGES_TRIGGER_PX;
-    if (atStart !== atHistoryStartRef.current) {
-      atHistoryStartRef.current = atStart;
-      setAtHistoryStart(atStart);
-    }
     // The DOM only holds the visible window, so the sticky candidate is
     // derived from the data + the virtualizer's offset table. The candidate is
     // the last user message whose top edge sits above the viewport top, i.e.
@@ -728,11 +787,7 @@ export const MessageList = forwardRef<
         // Skip text-less user messages (task notifications): they cannot
         // render a sticky label, so keep scanning upward for an earlier
         // text-bearing user message instead of clearing the bar.
-        const text = (row.blocks ?? [])
-          .filter((b) => b.type === "text")
-          .map((b) => b.content || "")
-          .join(" ")
-          .trim();
+        const text = stickyAnchorText(row);
         if (text) {
           candidate = idx;
           candidateText = text;
@@ -1235,16 +1290,6 @@ export const MessageList = forwardRef<
               <div className="sticky-user-content">{stickyMessage.text}</div>
             </div>
             <div className="sticky-user-scrim" />
-          </div>
-        )}
-        {historyExhausted && atHistoryStart && (
-          // Height-0 sticky box (see MessageList.css): the reader pulled up and
-          // there is nothing before this, so say so instead of letting the pull
-          // die silently. Shown only while the viewport is at the start — that is
-          // where they asked from, and a line parked at the top of the list would
-          // just cover the messages of a reader who is somewhere else entirely.
-          <div className="history-start-hint">
-            <span data-testid="history-start-hint">没有更早的消息</span>
           </div>
         )}
         <>

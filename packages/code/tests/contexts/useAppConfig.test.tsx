@@ -1,4 +1,4 @@
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import React from "react";
 import { describe, it, expect } from "vitest";
 import { AppProvider, useAppConfig } from "../../src/contexts/useAppConfig.js";

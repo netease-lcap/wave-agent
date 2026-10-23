@@ -35,13 +35,6 @@ export const extractToolTargetPath = (b: ToolBlock): string | undefined => {
   }
 };
 
-/**
- * 生成产物里「文档类」的扩展名（spec desktop/desktop-artifacts.md「对话中的
- * 生成文件卡片」场景 1）：应用内不能在预览面板渲染的文档，桌面端直接开文件
- * 面板查看。页面文件（`.html`/`.htm`）不在这里 —— 它们走预览面板。
- */
-export const GENERATED_DOC_EXT = /\.(md|markdown|docx?|xlsx?|pptx?|pdf)$/i;
-
 /** All Write/Edit tool blocks across the given messages (any stage). */
 export const collectWriteEditBlocks = (
   messages: Message[],

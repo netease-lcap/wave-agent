@@ -87,7 +87,16 @@ const NEW_TEMPLATES: Array<{ id: string; name: string; prompt: string }> = [
   },
 ];
 
+/**
+ * 模板提示词统一追加的收尾口径（spec desktop/desktop-artifacts.md「模板新建直达
+ * 对话页」场景 3）：先本地出稿、我看过并改到满意，最后才问是否发布为
+ * 创作（artifact）——七张卡共用一句，避免逐条散写后口径漂移。
+ */
+const PUBLISH_AFTER_REVIEW =
+  "先在本地做好，等我看过并改到满意，最后再问我要不要发布为创作（artifact）。";
+
 const CATEGORY_NAME_MAX = 20;
+
 /** 分类名不能与默认视图的分组同名（spec 场景 2 的保留名）。 */
 const RESERVED_CATEGORY_NAMES = ["我发布的", "共享给我的", "全部"];
 
@@ -1533,7 +1542,9 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                 className="artifacts-template-card"
                 onClick={() => {
                   setNewOpen(false);
-                  onNewFromTemplate(template.prompt);
+                  onNewFromTemplate(
+                    `${template.prompt}${PUBLISH_AFTER_REVIEW}`,
+                  );
                 }}
                 data-testid={`artifacts-template-${template.id}`}
               >
