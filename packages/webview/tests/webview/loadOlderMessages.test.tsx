@@ -201,6 +201,23 @@ describe("pulling up for older messages", () => {
     }
   });
 
+  it("keeps a page the session already owned when it lands", async () => {
+    // 回包按「发起时是哪条会话」判归属：这条会话自己的请求照常落地（首屏那次
+    // setInitialState 带会话 + 消息，列表可能当场自己补页——spec 场景 5）。
+    const postMessage = await openList({ declarePaging: true });
+    act(() => {
+      sendCommand("updateCurrentSession", {
+        session: { id: "s2", firstMessage: "刚绑定" },
+      });
+    });
+    await pullUpToTheTop();
+    const { requestId } = loadOlderRequests(postMessage)[0] ?? {};
+
+    replyWith(requestId as number, [assistant("m-2", "更早的一条")], true);
+
+    expect(screen.getByText("更早的一条")).toBeInTheDocument();
+  });
+
   it("drops a page that only lands after the reader switched sessions", async () => {
     window.waveRemotePage = true;
     try {

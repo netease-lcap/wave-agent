@@ -1162,6 +1162,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // 同一份列表 —— 晚到的旧页必须丢弃，否则会把上一页 prepend 到已经翻走的
         // 位置上。
         if (message.requestId !== loadOlderRequestRef.current) break;
+        if (loadOlderSessionIdRef.current !== currentSessionIdRef.current)
+          break;
         setLoadingOlder(false);
         dispatch({
           type: "PREPEND_MESSAGES",
@@ -1171,6 +1173,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       case "olderMessagesError":
         if (!forThisPane(message)) break;
         if (message.requestId !== loadOlderRequestRef.current) break;
+        if (loadOlderSessionIdRef.current !== currentSessionIdRef.current)
+          break;
         // 失败就是失败：位置不动，也不回落成「重拉尾页」（spec 场景 12 —— 那是冷启动
         // 与补差路径的动作，用在这里会把读者看到的位置整段换掉）。
         setLoadingOlder(false);
@@ -3153,6 +3157,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const handleLoadOlderMessages = useCallback(
     (before: string) => {
       if (!canLoadOlderMessages) return;
+      loadOlderSessionIdRef.current = currentSessionIdRef.current;
       setLoadingOlder(true);
       postToHost({
         command: "loadOlderMessages",
@@ -3163,11 +3168,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [canLoadOlderMessages, postToHost],
   );
 
-  // 翻更早是一次会话内的动作：切会话时作废在途请求，否则它的回包会把上一个会话的
-  // 消息 prepend 进新会话的列表。和 btw 面板同一套「本地 state 要自己按会话重置」
-  // 的理由（desktop 的 pane 不随会话重挂）。
+  // 翻更早是一次会话内的动作：切会话时在途请求就作废了，否则它的回包会把上一个会话
+  // 的消息 prepend 进新会话的列表。判据是「回包与发起时是不是同一条会话」——比在切
+  // 会话时递增一个请求号更准：首屏那次 setInitialState 同时带会话与消息，列表在同一
+  // 提交里挂上，并可能当场自己发起一次补页（spec ui/message-rendering-system.md「首屏
+  // 只进一页」场景 5：窗口里没有吸顶条锚点）。子组件的 effect 先于这里跑，递增请求号
+  // 会把这次刚发出的请求一并作废——回包丢弃、`loadingOlder` 停在 true，这条会话再也
+  // 翻不动页；而它恰恰是这条会话自己的请求。
+  const currentSessionIdRef = useRef<string | undefined>(undefined);
+  currentSessionIdRef.current = state.currentSession?.id;
+  // 发起请求时是哪条会话（回包按它判归属）。
+  const loadOlderSessionIdRef = useRef<string | undefined>(undefined);
   useEffect(() => {
-    loadOlderRequestRef.current += 1;
     setLoadingOlder(false);
   }, [state.currentSession?.id]);
 
