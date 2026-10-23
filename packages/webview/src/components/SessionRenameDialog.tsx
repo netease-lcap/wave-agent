@@ -67,41 +67,49 @@ export const SessionRenameDialog: React.FC<SessionRenameDialogProps> = ({
         data-testid="session-rename-dialog"
       >
         <div className="session-rename-title">重命名</div>
-        <input
-          ref={inputRef}
-          className="session-rename-input"
-          data-testid="session-rename-input"
-          value={draft}
-          aria-label="会话名称"
-          aria-invalid={error ? true : undefined}
-          onChange={(e) => {
-            setDraft(e.target.value);
-            // 重新输入即清掉上一次的校验提示。
-            if (error) setError(null);
-          }}
-          onKeyDown={(e) => {
-            // 焦点在输入框内：按键不外泄给侧栏的行级快捷键。
-            e.stopPropagation();
-            // 组合输入中的 Enter 是「上屏」，不是保存。
-            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-            if (e.key === "Enter") {
-              e.preventDefault();
-              void submit();
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              onCancel();
-            }
-          }}
-        />
-        {error && (
-          <div
-            className="session-rename-error"
-            role="alert"
-            data-testid="session-rename-error"
-          >
-            {error}
-          </div>
-        )}
+        {/* 1023 评论（她：「报错的间距远了点」+ 参考
+            `form-colors-review` 页里「校验错误」那一组的间距）⇒ 输入框与它下面那行
+            错误提示合成一组，组内 4px、组与标题/页脚仍是弹层的 14px 节奏。
+            改前错误行直接挂在弹层 flex 列里 ⇒ 与字段之间整整 14px，看起来像两条
+            不相干的元素；参考件里字段底到说明行盒顶是 4.5px（12/20 行高，
+            本弹窗错误行是 12/16 ⇒ 实际墨迹间距 5px，与参考件差 0.5px）。 */}
+        <div className="session-rename-field">
+          <input
+            ref={inputRef}
+            className="session-rename-input"
+            data-testid="session-rename-input"
+            value={draft}
+            aria-label="会话名称"
+            aria-invalid={error ? true : undefined}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              // 重新输入即清掉上一次的校验提示。
+              if (error) setError(null);
+            }}
+            onKeyDown={(e) => {
+              // 焦点在输入框内：按键不外泄给侧栏的行级快捷键。
+              e.stopPropagation();
+              // 组合输入中的 Enter 是「上屏」，不是保存。
+              if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+              if (e.key === "Enter") {
+                e.preventDefault();
+                void submit();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                onCancel();
+              }
+            }}
+          />
+          {error && (
+            <div
+              className="session-rename-error"
+              role="alert"
+              data-testid="session-rename-error"
+            >
+              {error}
+            </div>
+          )}
+        </div>
         <div className="session-rename-actions">
           <button
             type="button"
