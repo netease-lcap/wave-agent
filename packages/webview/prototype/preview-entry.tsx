@@ -32,6 +32,14 @@ import "@vscode/codicons/dist/codicon.css";
 import "../theme/theme-base-light.css";
 import "../theme/theme-base-dark.css";
 import type { MockCase, MockHelpers } from "./types";
+import {
+  CASE_STORAGE_KEY,
+  NoCaseNotice,
+  SelectionBadges,
+  caseKeysFromModules,
+  resolveInitialCase,
+  type CaseSelection,
+} from "./caseSelection";
 
 // ── mock 用例（prototype/mock/*.ts，gitignore；修改自动热更新）──────────
 const mockModules = import.meta.glob<{ default: MockCase }>("./mock/*.ts", {
@@ -78,21 +86,21 @@ const writeSession = (k: string, v: string) => {
 
 // ── 初始用例（模块顶层，render 前确定；responders 先于子树挂载注册）──
 // 默认加载「桌面端-新对话」用例，避免打开原型预览看到无限扫光 loading
-// （ChatApp 无任何宿主消息时停留在 showWelcome）。dev 下记住上次选择；
-// 若存储的用例文件已不存在（mock/ 是 gitignore 的本地目录），回退到默认。
+// （ChatApp 无任何宿主消息时停留在 showWelcome）。dev 下记住上次选择。
+//
+// 记住的 key 必须校验仍然存在：mock/ 是 gitignore 的本地目录，文件随时会被删/改名。
+// 而 sessionStorage 按 origin+会话隔离——分享出去的 artifact、以及被宿主当成全新
+// 页面加载的 guest（desktop 预览面板）都读不到上次的选择，每次都要重走回退链。
+// 回退由 resolveInitialCase 统一决定，并把「兜底选中 / 上次失效 / 一个都没有」
+// 变成工具条与正文能看见的状态，而不是静默留一片黑（见 caseSelection.tsx）。
 const getCase = (key: string) =>
   key ? mockModules[`./mock/${key}.ts`]?.default : undefined;
-const mockKeys = Object.keys(mockModules);
-const defaultKey = mockKeys.includes("./mock/desktop-new-chat.ts")
-  ? "desktop-new-chat"
-  : (mockKeys[0]?.slice("./mock/".length, -3) ?? "");
-const initialKey = (() => {
-  const candidate = readSession("wave-preview-case");
-  return candidate !== null && mockModules[`./mock/${candidate}.ts`]
-    ? candidate
-    : defaultKey;
-})();
-mockWin.__waveMockResponders = getCase(initialKey)?.responders || {};
+const mockKeys = caseKeysFromModules(mockModules);
+const initialSelection = resolveInitialCase(
+  mockKeys,
+  readSession(CASE_STORAGE_KEY),
+);
+mockWin.__waveMockResponders = getCase(initialSelection.key)?.responders || {};
 
 // ── 错误边界：用例渲染崩溃时保住工具条（还能切走）──────────────────
 class PreviewBoundary extends React.Component<
@@ -125,13 +133,18 @@ class PreviewBoundary extends React.Component<
 const vscode = window.acquireVsCodeApi();
 
 function AppShell() {
-  const [activeKey, setActiveKey] = useState(initialKey);
+  const [activeKey, setActiveKey] = useState(initialSelection.key);
+  // 这次选择的由来（兜底选中 / 上次的用例已失效 / 未找到可用用例）。首屏由
+  // resolveInitialCase 决定，之后随用户的显式选择清空——工具条据此给出提示，
+  // 免得到排查时把兜底选中的用例误当成用户自己选的。
+  const [selection, setSelection] = useState<CaseSelection>(initialSelection);
   const activeCase = getCase(activeKey);
 
   const selectCase = (key: string) => {
-    writeSession("wave-preview-case", key); // dev 记忆；沙箱静默降级
+    writeSession(CASE_STORAGE_KEY, key); // dev 记忆；沙箱静默降级
     mockWin.__waveMockResponders = getCase(key)?.responders || {}; // 预注册，先于新子树挂载
     setActiveKey(key);
+    setSelection({ key, fallback: false, staleSelection: false });
   };
 
   useEffect(() => {
@@ -172,13 +185,21 @@ function AppShell() {
   return (
     <>
       <PreviewBoundary key={activeKey}>
-        {host === "desktop" ? (
+        {/* 一个用例都没加载到（mock/ 目录空）时给一个带说明的空态：留在应用外壳
+            里就是「没有任何宿主消息」的空白页，深色主题下看起来就是黑屏。 */}
+        {mockKeys.length === 0 ? (
+          <NoCaseNotice />
+        ) : host === "desktop" ? (
           <DesktopApp vscode={vscode} />
         ) : (
           <ChatApp vscode={vscode} />
         )}
       </PreviewBoundary>
-      <PreviewBar activeKey={activeKey} onSelectCase={selectCase} />
+      <PreviewBar
+        activeKey={activeKey}
+        selection={selection}
+        onSelectCase={selectCase}
+      />
     </>
   );
 }
@@ -188,9 +209,11 @@ const BAR_POS_KEY = "wave-preview-bar-pos";
 
 function PreviewBar({
   activeKey,
+  selection,
   onSelectCase,
 }: {
   activeKey: string;
+  selection: CaseSelection;
   onSelectCase: (key: string) => void;
 }) {
   const [theme, setTheme] = useState(() =>
@@ -324,6 +347,7 @@ function PreviewBar({
           </option>
         ))}
       </select>
+      <SelectionBadges selection={selection} />
       <button
         type="button"
         onClick={switchTheme}
