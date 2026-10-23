@@ -237,7 +237,9 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
 .artifacts-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  /* 设计师 1023 预览评论「表格中的字号也应该都是 14px」：表头与单元格正文同档。
+     表格里另有两条各自的字号（文件名按钮、操作列文字按钮），一并上到 14。 */
+  font-size: 14px;
   table-layout: fixed;
 }
 
@@ -310,7 +312,7 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   border: none;
   background: transparent;
   color: inherit;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
   text-align: left;
 }
@@ -343,7 +345,9 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   border-radius: 4px;
   background: transparent;
   color: inherit;
-  font-size: 11px;
+  /* 原本 11px（比正文小两档）。1023 评论要求表格内统一 14px ⇒ 与单元格正文同档；
+     1440 下默认视图占 222/240px、勾选视图占 222/227px，仍单行放得下。 */
+  font-size: 14px;
   cursor: pointer;
 }
 
@@ -516,7 +520,8 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   gap: 10px;
   padding: 60px 16px;
   color: var(--vscode-descriptionForeground, #8c8f94);
-  font-size: 13px;
+  /* 1023 评论：表格外的空态文案也统一 14px（原 13px，与表格同一条「都改 14」）。 */
+  font-size: 14px;
 }
 
 .artifacts-batch {
@@ -528,7 +533,14 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   margin-bottom: 10px;
   border-radius: 8px;
   background: rgba(127, 127, 127, 0.12);
-  font-size: 12px;
+  /* 1023 评论：批量操作条统一 14px（「已选 N 项」原 12px）。条内两颗键各自另有
+     字号 —— 「归类到…」走 .artifacts-secondary-btn 已是 14/500，只有「取消选择」
+     这颗 .artifacts-link-btn 是 12px，故只在这一条作用域内补 14。 */
+  font-size: 14px;
+}
+
+.artifacts-batch .artifacts-link-btn {
+  font-size: 14px;
 }
 
 .artifacts-batch-actions {
