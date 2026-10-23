@@ -24,3 +24,6 @@ export const EXIT_WORKTREE_TOOL_NAME = "ExitWorktree";
 export const WORKFLOW_TOOL_NAME = "Workflow";
 export const ARTIFACT_TOOL_NAME = "Artifact";
 export const EXEC_TOOL_NAME = "Exec";
+export const KB_SEARCH_TOOL_NAME = "kb_search";
+export const KB_GET_DOC_TOOL_NAME = "kb_get_doc";
+export const KB_SUGGEST_TOOL_NAME = "kb_suggest";
