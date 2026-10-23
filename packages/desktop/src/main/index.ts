@@ -439,6 +439,11 @@ function createWindow(): void {
     // conversation length?" (6-week sessions keep the UI display stream, and
     // compaction only folds the API context).
     getMessageStats: () => host?.getMessageStats() ?? [],
+    // ...and, separately, what the off-screen conversations still hold: their
+    // copies are dropped when no pane displays them, so this is the number that
+    // shows the pool staying flat while the user browses conversations.
+    getOffscreenVolume: () =>
+      host?.getOffscreenVolume() ?? { sessions: 0, messages: 0, blocks: 0 },
   });
   memorySampler.start();
   attachCrashRecovery(win, { lastMemory: () => memorySampler.lastLine() });
