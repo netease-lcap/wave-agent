@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render as originalRender } from "ink-testing-library";
+import { render as originalRender } from "../helpers/inkHarness.js";
 import { InputBox } from "../../src/components/InputBox.js";
 import { stripAnsiColors } from "wave-agent-sdk";
 import type { PlanViewData } from "../../src/contexts/useChat.js";

@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { describe, it, expect, vi } from "vitest";
 import { Box, Text } from "ink";
 import { ReasoningDisplay } from "../../src/components/ReasoningDisplay.js";

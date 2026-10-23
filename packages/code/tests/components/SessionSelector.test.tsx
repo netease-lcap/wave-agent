@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { describe, it, expect, vi } from "vitest";
 import { SessionSelector } from "../../src/components/SessionSelector.js";
 import { pressKey } from "../helpers/pressKey.js";

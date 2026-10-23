@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { PlanView } from "../../src/components/PlanView.js";
 import { stripAnsiColors } from "wave-agent-sdk";
 

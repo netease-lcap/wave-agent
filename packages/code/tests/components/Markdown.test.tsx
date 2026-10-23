@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { describe, it, expect, beforeAll, vi, afterAll } from "vitest";
 import { Markdown } from "../../src/components/Markdown.js";
 import chalk from "chalk";

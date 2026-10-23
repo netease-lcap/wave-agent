@@ -7,8 +7,8 @@ paths:
   - Testing framework is vitest
   - Run test use `cd packages/xxx && pnpm test test_file`
   - Use HookTester to test hooks
-  - Use `vi.waitFor` to wait for UI changes in Ink components
-  - `vi.waitFor` polls every 50ms by default (hard-coded in vitest, no config knob) and Ink components settle within a frame or two, so `packages/code` and `packages/desktop` wrap it in `tests/setup.ts` to poll every 5ms — that alone cut their unit suites by ~35% and ~52% (2026-10-23). Don't add a bare `sleep()` where `vi.waitFor` would do, and don't lower the interval further: the remaining cost is `sleep()` and rendering, not polling
+  - Ink components render through the in-repo harness `packages/code/tests/helpers/inkHarness.ts` (`render` / `cleanup`, a drop-in for the retired `ink-testing-library`); after a key press, a `rerender` or a synchronous callback use `await settle()`, which flushes until the output stops changing — no polling and no `sleep`
+  - Reserve `vi.waitFor` for changes an **async** source still owes you (a promise, a timer, a socket), not for frames. It polls every 50ms by default and that interval is hard-coded in vitest, so `packages/code` and `packages/desktop` wrap it to 5ms in their `tests/setup.ts` (~35% / ~52% faster suites, 2026-10-23). Don't lower it further: the remaining cost is `sleep()` and rendering, not polling
   - Use `as unknown as` `Awaited<>` `ReturnType<>` `typeof` to simplify type check, for example:
     - `vi.mocked(fs.readdir).mockResolvedValueOnce(initialFiles as unknown as Awaited<ReturnType<typeof fs.readdir>>);`
     - `vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);`

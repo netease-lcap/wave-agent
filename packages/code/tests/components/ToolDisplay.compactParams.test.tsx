@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { ToolDisplay } from "../../src/components/ToolDisplay.js";
 import type { ToolBlock } from "wave-agent-sdk";
 

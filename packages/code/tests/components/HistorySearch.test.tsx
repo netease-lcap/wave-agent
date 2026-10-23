@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { HistorySearch } from "../../src/components/HistorySearch.js";
 import { PromptHistoryManager, stripAnsiColors } from "wave-agent-sdk";

@@ -8,7 +8,7 @@ import {
   afterEach,
   type Mock,
 } from "vitest";
-import { render as originalRender } from "ink-testing-library";
+import { render as originalRender } from "../helpers/inkHarness.js";
 
 let unmounts: Array<() => void> = [];
 const render = (tree: React.ReactElement) => {
