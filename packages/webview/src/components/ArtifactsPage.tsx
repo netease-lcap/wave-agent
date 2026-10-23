@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -15,6 +16,7 @@ import { Tooltip } from "./Tooltip";
 import { useHostMessage } from "../utils/useHostMessage";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
+import { createPortal } from "react-dom";
 import type {
   ArtifactCategory,
   ArtifactGalleryItem,
@@ -307,6 +309,216 @@ const CategoryItemMenu: React.FC<{
         <span>删除</span>
       </div>
     </div>
+  );
+};
+
+/** 操作列收起后弹出的菜单：复用会话行皮肤（`.desktop-session-menu*`），
+ * 与同页分类行菜单逐值同宽同位，`fixed` 定位避开表格的 `overflow` 裁剪。 */
+const RowActionsMenu: React.FC<{
+  anchorRect: DOMRect;
+  triggerRef: React.RefObject<HTMLButtonElement | null>;
+  items: Array<{ key: string; label: string; testId: string; run: () => void }>;
+  testId: string;
+  onClose: () => void;
+}> = ({ anchorRect, triggerRef, items, testId, onClose }) => {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const { getItemProps } = useRovingMenu(menuRef, {
+    itemSelector: ".desktop-session-menu-item",
+    itemCount: items.length,
+    triggerRef,
+    closeOnActivate: true,
+    onRequestClose: onClose,
+    onActivate: (i) => items[i]?.run(),
+  });
+  useClickOutside({ refs: [menuRef], onClickOutside: onClose });
+
+  // 操作列贴着表格右缘：菜单与「⋯」左对齐向下展开（右对齐会往左压住「分享给」列），
+  // 再按视口夹一次，保证不越界。
+  const menuWidth = 148;
+  const left = Math.max(
+    8,
+    Math.min(anchorRect.left, window.innerWidth - menuWidth - 8),
+  );
+  // 必须挂到 body：操作列是 `position: sticky` + `z-index: 1` 的单元格，
+  // 菜单若留在单元格内部，会被后面几行同样带背景的 sticky 单元格盖住
+  // （浅色档实测只露出白框、文字全被压掉）。
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="desktop-session-menu"
+      role="menu"
+      style={{
+        position: "fixed",
+        top: anchorRect.bottom + 4,
+        left,
+        width: menuWidth,
+      }}
+      data-testid={testId}
+    >
+      {items.map((item, index) => (
+        <div
+          key={item.key}
+          className="desktop-session-menu-item"
+          role="menuitem"
+          {...getItemProps(index)}
+          data-testid={item.testId}
+        >
+          <span>{item.label}</span>
+        </div>
+      ))}
+    </div>,
+    document.body,
+  );
+};
+
+/** 量宽镜像用的固定文案（= 操作列可能出现的最长组合）。 */
+const MEASURE_LABELS = ["复制链接", "在浏览器中打开", "分享"];
+
+/**
+ * 表格操作列：宽窗口里三颗文字按钮并排；列放不下时收成一颗「⋯」，
+ * 点开后把同样的动作放进下拉菜单（1023 评论：「在操作不能完整显示时，
+ * 希望展示三个点的图标，然后点开后下拉显示全部的操作」）。
+ *
+ * 判定不写阈值常量：单元格里放一段 `width: max-content` + `visibility: hidden`
+ * 的同字号镜像（`aria-hidden`，用 span 而非 button ⇒ 不进焦点链），拿它的
+ * `offsetWidth` 与单元格内容盒宽度比 —— 这正是浏览器会不会挤掉一颗的判据，
+ * 字号、缩放、列宽怎么变都跟着走。窗口尺寸变化由 `ResizeObserver` 触发重算。
+ */
+const RowActions: React.FC<{
+  slug: string;
+  onCopy: () => void;
+  onOpen: () => void;
+  onShare?: () => void;
+}> = ({ slug, onCopy, onOpen, onShare }) => {
+  const cellRef = useRef<HTMLTableCellElement>(null);
+  const measureRef = useRef<HTMLSpanElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [compact, setCompact] = useState(false);
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+
+  const actions = useMemo(
+    () => [
+      {
+        key: "copy",
+        label: "复制链接",
+        testId: `artifacts-copy-${slug}`,
+        run: onCopy,
+      },
+      {
+        key: "open",
+        label: "在浏览器中打开",
+        testId: `artifacts-browser-${slug}`,
+        run: onOpen,
+      },
+      ...(onShare
+        ? [
+            {
+              key: "share",
+              label: "分享",
+              testId: `artifacts-share-${slug}`,
+              run: onShare,
+            },
+          ]
+        : []),
+    ],
+    [slug, onCopy, onOpen, onShare],
+  );
+
+  useLayoutEffect(() => {
+    const cell = cellRef.current;
+    const measure = measureRef.current;
+    if (!cell || !measure) return;
+    const check = () => {
+      // 没有布局的环境（jsdom 单测：clientWidth 恒 0）不做判定 —— 按「放得下」
+      // 渲染原样三颗按钮，测试与无布局场景都不会平白把动作藏进菜单。
+      if (!cell.clientWidth) {
+        setCompact(false);
+        return;
+      }
+      const cs = getComputedStyle(cell);
+      const available =
+        cell.clientWidth -
+        parseFloat(cs.paddingLeft || "0") -
+        parseFloat(cs.paddingRight || "0");
+      setCompact(measure.offsetWidth > available + 0.5);
+    };
+    check();
+    // 首帧可能早于样式表/字体落地（那时镜像宽 0 ⇒ 误判成「放得下」）：补一帧、
+    // 等字体就绪、并同时观察镜像本身，任一时刻量到真实宽度都会重判一次。
+    const raf = requestAnimationFrame(check);
+    document.fonts?.ready.then(check).catch(() => {});
+    const observer =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(check);
+    observer?.observe(cell);
+    observer?.observe(measure);
+    window.addEventListener("resize", check);
+    return () => {
+      cancelAnimationFrame(raf);
+      observer?.disconnect();
+      window.removeEventListener("resize", check);
+    };
+  }, [actions.length]);
+
+  return (
+    <td className="artifacts-col-actions" ref={cellRef}>
+      {/* 量宽镜像：与按钮同字号同内衬，`aria-hidden` 且不是 button ⇒ 不参与键盘。
+          固定按「三颗都在」量（含只在我发布的出现的「分享」）——同一列的所有行共用
+          一个列宽，按最长那行判定，整列要么全并排、要么全收成「⋯」，不会一行三颗、
+          另一行三点。 */}
+      <span
+        ref={measureRef}
+        className="artifacts-actions-measure"
+        aria-hidden="true"
+      >
+        {MEASURE_LABELS.map((label) => (
+          <span key={label} className="artifacts-icon-btn">
+            {label}
+          </span>
+        ))}
+      </span>
+      {compact ? (
+        <>
+          <button
+            type="button"
+            ref={triggerRef}
+            className="artifacts-actions-more"
+            title="更多操作"
+            aria-label="更多操作"
+            aria-haspopup="menu"
+            aria-expanded={anchor ? true : undefined}
+            onClick={(event) => {
+              event.stopPropagation();
+              const rect = event.currentTarget.getBoundingClientRect();
+              setAnchor((prev) => (prev ? null : rect));
+            }}
+            data-testid={`artifacts-more-${slug}`}
+          >
+            <MoreIcon className="artifacts-actions-more-icon" />
+          </button>
+          {anchor && (
+            <RowActionsMenu
+              anchorRect={anchor}
+              triggerRef={triggerRef}
+              items={actions}
+              testId={`artifacts-actions-menu-${slug}`}
+              onClose={() => setAnchor(null)}
+            />
+          )}
+        </>
+      ) : (
+        actions.map((action) => (
+          <button
+            key={action.key}
+            type="button"
+            className="artifacts-icon-btn"
+            onClick={action.run}
+            data-testid={action.testId}
+          >
+            {action.label}
+          </button>
+        ))
+      )}
+    </td>
   );
 };
 
@@ -1122,34 +1334,16 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                             {share.text}
                           </span>
                         </td>
-                        <td className="artifacts-col-actions">
-                          <button
-                            type="button"
-                            className="artifacts-icon-btn"
-                            onClick={() => handleCopyLink(item.slug)}
-                            data-testid={`artifacts-copy-${item.slug}`}
-                          >
-                            复制链接
-                          </button>
-                          <button
-                            type="button"
-                            className="artifacts-icon-btn"
-                            onClick={() => handleOpenInBrowser(item.slug)}
-                            data-testid={`artifacts-browser-${item.slug}`}
-                          >
-                            在浏览器中打开
-                          </button>
-                          {item.rel === "mine" && (
-                            <button
-                              type="button"
-                              className="artifacts-icon-btn"
-                              onClick={() => setShareSlug(item.slug)}
-                              data-testid={`artifacts-share-${item.slug}`}
-                            >
-                              分享
-                            </button>
-                          )}
-                        </td>
+                        <RowActions
+                          slug={item.slug}
+                          onCopy={() => handleCopyLink(item.slug)}
+                          onOpen={() => handleOpenInBrowser(item.slug)}
+                          onShare={
+                            item.rel === "mine"
+                              ? () => setShareSlug(item.slug)
+                              : undefined
+                          }
+                        />
                       </tr>
                     );
                   })}

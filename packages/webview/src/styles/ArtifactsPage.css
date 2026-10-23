@@ -355,6 +355,40 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   background: rgba(127, 127, 127, 0.16);
 }
 
+/* 1023 评论（点 `td.artifacts-col-actions`「复制链接 / 在浏览器中打开 / 分享」）：
+   「在操作不能完整显示时，希望展示三个点的图标，然后点开后下拉显示全部的操作」。
+   宽窗口三颗文字照旧并排；列放不下时换成这颗 24×24 的「⋯」（几何同同页分类行的
+   `.artifacts-nav-more`），动作进下拉菜单。判定交给组件：`.artifacts-actions-measure`
+   是与按钮同字号同内衬的不可见镜像，`offsetWidth` = 三颗按钮的自然宽度，
+   与单元格内容盒宽度比出「会不会被挤掉」。 */
+.artifacts-actions-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: max-content;
+  white-space: nowrap;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.artifacts-actions-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.artifacts-actions-more:hover {
+  background: rgba(127, 127, 127, 0.16);
+}
+
 .artifacts-link-btn {
   border: none;
   background: transparent;
