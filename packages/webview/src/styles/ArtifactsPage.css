@@ -714,28 +714,54 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   color: var(--vscode-descriptionForeground, #6c6e73);
 }
 
-/* 1022 评论：表单控件对齐设置页的 `.settings-select-trigger`（32 高 / 4·8 内衬 /
-   r8 / 14px / `--vscode-input-*` 一组 token）。改前是 6·10 内衬 / r6 / 13px，且
-   `color: inherit` 会吃到标签的 descriptionForeground（浅色 #606060），比参照件
-   （input-foreground 1 级 #202020）弱一档 —— 这里显式取 input 前景。
-   下拉另把原生外观换成设置页那条自绘三角（同一条官方矢量：墨迹 8×4.5、距内缘 8px，
-   写法见 SettingsPage.css 的 `.settings-control:has(> .settings-select)::after`）。 */
+/* 1023 评论（她：「label.artifacts-field「查看者版本…」这里表单也更新样式」）：
+   这个 label 族在创作集里有三处，全用同一个 `.artifacts-field` ⇒ 一处改、三处同变：
+     ① 分享弹层「查看者版本」select ② 分类重命名/新建弹层「名称」input
+     ③ 分类删除弹层「移入」select
+   取值改走 skill「Desktop form field colors and focus」的**共享字段映射**
+   `--cc-field-*`（host-desktop.css 根级声明，与设置页、侧栏搜索、页头搜索同一份），
+   不再读宿主注入的 `--vscode-input-*`：
+     · 默认底 --cc-field-bg / 默认描边 --cc-field-border
+     · hover 只改描边 → --cc-field-border-hover（不换底）
+     · 聚焦（select 展开时仍是这一档）→ --cc-field-border-focus，1px 就地变色、无外扩环、零位移
+     · 输入值 / 已选项 → --cc-field-text（= 1 级字色）
+   自绘三角的墨色跟着文字走（--cc-field-text），与设置页原生 select 那条同口径：
+   仍是官方矢量、墨迹 8×4.5、距内缘 8px，形状与位置不动。
+   几何一律不动：32 高 / 4·8 内衬（select 右内衬 24 = 8+8+8）/ r8 / 14px。
+   ★标签文字（label > span）不在本轮范围：host-desktop.css 里另有一条把这几个弹层的
+   `.artifacts-field` 定成 14/22 + `--cc-text-regular`（浅 #565A60 / 深 #C4C7C9），
+   实测改前改后逐值相同，本轮没动。 */
 [data-host="desktop"] .artifacts-field input,
 [data-host="desktop"] .artifacts-field select {
   height: 32px;
   box-sizing: border-box;
   padding: 4px 8px;
   border-radius: 8px;
-  border: 1px solid var(--vscode-input-border, rgba(127, 127, 127, 0.35));
-  background: var(--vscode-input-background, transparent);
-  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  border: 1px solid var(--cc-field-border, rgba(127, 127, 127, 0.35));
+  background: var(--cc-field-bg, var(--vscode-input-background, transparent));
+  color: var(--cc-field-text, var(--vscode-input-foreground, var(--vscode-foreground)));
   font-size: 14px;
+}
+
+[data-host="desktop"] .artifacts-field input:hover:not(:focus),
+[data-host="desktop"] .artifacts-field select:hover:not(:focus) {
+  border-color: var(--cc-field-border-hover, var(--cc-field-border));
 }
 
 [data-host="desktop"] .artifacts-field input:focus,
 [data-host="desktop"] .artifacts-field select:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder);
+  border-color: var(--cc-field-border-focus, var(--vscode-focusBorder));
+}
+
+/* 错误态描边（1023 评论：她「改创作集『重命名分类』」）：契约 :56「Error borders and
+   explanatory text retain their danger semantics」—— 输入框带 aria-invalid 时描边取
+   危险红，并显式带上 :hover / :focus 两个组合，否则上面那条 `:hover:not(:focus)`
+   (0,4,1) 会把 (0,3,1) 的红色盖掉（会话重命名弹窗那轮踩过同一个坑）。 */
+[data-host="desktop"] .artifacts-field input[aria-invalid="true"],
+[data-host="desktop"] .artifacts-field input[aria-invalid="true"]:hover,
+[data-host="desktop"] .artifacts-field input[aria-invalid="true"]:focus {
+  border-color: var(--cc-color-danger, var(--vscode-errorForeground, #d93025));
 }
 
 [data-host="desktop"] .artifacts-field:has(> select) {
@@ -760,7 +786,7 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   width: 8px;
   height: 4.5px;
   transform: translateY(50%);
-  background: var(--vscode-input-foreground, var(--vscode-foreground));
+  background: var(--cc-field-text, var(--vscode-input-foreground, var(--vscode-foreground)));
   -webkit-mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><g transform='translate(0,16) scale(1,-1)'><path d='M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z' fill='%23000'/></g></svg>")
     center / 16px 16px no-repeat;
   mask: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'><g transform='translate(0,16) scale(1,-1)'><path d='M7.99977 7.22354L5.17108 10.0522C4.91078 10.3125 4.48875 10.3125 4.22844 10.0522C3.96813 9.79192 3.96812 9.36988 4.22843 9.10957L7.29266 6.04533C7.68318 5.65481 8.31635 5.65481 8.70687 6.04534L11.7711 9.10957C12.0314 9.36988 12.0314 9.79192 11.7711 10.0522C11.5108 10.3125 11.0888 10.3125 10.8285 10.0522L7.99977 7.22354Z' fill='%23000'/></g></svg>")
