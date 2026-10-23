@@ -499,29 +499,45 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   cursor: pointer;
 }
 
-/* 1022 追加评论（她：「先改搜索框，按照表单的规范改」）：与 `.artifacts-field input`
-   同一套表单参数 —— 32 高 / r8 / 14px / 4·8 内衬 / `--vscode-input-*` 一组 token，
-   并补 focus（`--vscode-focusBorder`），与表单输入框同口径。
-   同一个 class 也用在分享弹窗的成员选择器里（那处宽度由 `.artifacts-member-picker`
-   放宽到 100%，不受这里的固定宽度影响），故一并同变。
-   ★`width` 从 220 改写为 242：`box-sizing` 转 border-box 后若不改写，盒宽会从
-   242 掉到 220、整行左侧右移 22px；242 就是改前的**渲染盒宽**（= 220 内容 +
-   20 内衬 + 2 边框），横向零位移。 */
+/* 1023 评论（她：「这的表单样式也优化一下」）：改走 skill「Desktop form field
+   colors and focus」那份**共享字段映射**（`host-desktop.css` 里根级声明的
+   `--cc-field-*`，与设置页、侧栏搜索框同一份），不再读宿主注入的
+   `--vscode-input-*`（那组没有 hover 档，且浅色描边 #DCDFE6 比契约浅一档、
+   字色是宿主 #202020）。
+   规则口径：
+     · 默认底 --cc-field-bg / 默认描边 --cc-field-border
+     · hover 只改描边 → --cc-field-border-hover（不换底）
+     · 聚焦（含输入中）描边 → --cc-field-border-focus，仍是 1px、无外扩光环、零位移
+     · 已输入文字 → --cc-field-text（= 1 级字色）
+     · 占位符只允许 --cc-field-placeholder 且 opacity 必须 1（禁再叠透明度）
+   几何一律不动：242×32 / r8 / 4·8 内衬（右内衬由 `.artifacts-search-field` 补到 26）
+   / 14px。★`width` 242 是 1022 那轮从 220 改写来的：`box-sizing` 转 border-box
+   后若不改写，盒宽会从 242 掉到 220、整行左侧右移 22px。
+   同一个 class 也用在分享弹窗的成员选择器里，一处改动两处同变（族级）。 */
 [data-host="desktop"] .artifacts-search {
   box-sizing: border-box;
   width: 242px;
   height: 32px;
   padding: 4px 8px;
   border-radius: 8px;
-  border: 1px solid var(--vscode-input-border, rgba(127, 127, 127, 0.35));
-  background: var(--vscode-input-background, transparent);
-  color: var(--vscode-input-foreground, var(--vscode-foreground));
+  border: 1px solid var(--cc-field-border, rgba(127, 127, 127, 0.35));
+  background: var(--cc-field-bg, var(--vscode-input-background, transparent));
+  color: var(--cc-field-text, var(--vscode-input-foreground, var(--vscode-foreground)));
   font-size: 14px;
+}
+
+[data-host="desktop"] .artifacts-search:hover:not(:focus) {
+  border-color: var(--cc-field-border-hover, var(--cc-field-border));
 }
 
 [data-host="desktop"] .artifacts-search:focus {
   outline: none;
-  border-color: var(--vscode-focusBorder);
+  border-color: var(--cc-field-border-focus, var(--vscode-focusBorder));
+}
+
+[data-host="desktop"] .artifacts-search::placeholder {
+  color: var(--cc-field-placeholder, var(--vscode-input-placeholderForeground));
+  opacity: 1;
 }
 
 /* 搜索框 + 清除按钮（PM 缺陷 3500400967563520）。× 绝对定位在输入框右端，
