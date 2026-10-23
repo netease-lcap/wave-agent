@@ -133,3 +133,19 @@
 [data-host="desktop"] .quick-start-back {
   font-weight: 600;
 }
+
+/* 未选中胶囊的默认字色（1023 评论：「默认态的字体颜色参考」+ 点
+   span.permission-mode-label「这里」）。改前这一族取宿主注入的 --vscode-foreground
+   —— 桌面端浅色实测 #202020、深色 #E5E7E8，等于默认就压在 1 级上：深色档里
+   hover 反而没有任何提亮（默认已经是最亮），浅色档默认比 hover 的 #1F2329 还「黑」。
+   现在默认走 2 级，取值与同屏的权限文案 / 模型名逐值相同（浅 #565A60 / 深 #9A9EA5），
+   hover 与按下仍由上面那两条提到 1 级（--cc-text-primary）。返回胶囊属于选中态，
+   不在这一族里。`:not(:hover):not(:active)` 是为了不与上面两条交互态抢特异性。 */
+[data-host="desktop"] .quick-start-cat:not(:hover):not(:active),
+[data-host="desktop"] .quick-start-sub:not(:hover):not(:active) {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="dark"] .quick-start-cat:not(:hover):not(:active),
+[data-host="desktop"][data-theme="dark"] .quick-start-sub:not(:hover):not(:active) {
+  color: #9a9ea5;
+}
