@@ -562,6 +562,24 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   font-size: 14px;
 }
 
+/* 空态加图标（2026-10-23 评论：「文案上面加个创作集的图标」，并指定参考计划面板
+   空态）。参照物 `div.desktop-panel-placeholder.plan-pane-placeholder-empty` 的配方是
+   「图标在上、文案在下、竖排居中、图标 24px、两者间距 12px」，这里照抄同一份：
+   图标取侧栏「创作集」入口那一枚（ArtifactsIcon，16 画板、stroke 1.4，缩放到 24px
+   时线宽不变——与 PanelKindIcon 在 24px 下同为 1.4 一致），颜色由 currentColor
+   继承空态的次级字色，深色档自动跟着走。
+   只有「空数据」这一态加图标：登录引导 / 加载中 / 出错重试仍是纯文案（各有按钮，
+   加图标会与按钮抢层级）。 */
+.artifacts-state--empty {
+  gap: 12px;
+}
+
+.artifacts-empty-icon {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+}
+
 .artifacts-batch {
   display: flex;
   align-items: center;

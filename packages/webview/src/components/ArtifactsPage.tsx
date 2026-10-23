@@ -7,6 +7,7 @@ import React, {
   useState,
 } from "react";
 import {
+  ArtifactsIcon,
   MoreIcon,
   QueueEditIcon,
   QueueTrashIcon,
@@ -1334,8 +1335,18 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                 </button>
               </div>
             ) : scopeItems.length === 0 ? (
-              <div className="artifacts-state" data-testid="artifacts-empty">
-                {emptyText}
+              <div
+                className="artifacts-state artifacts-state--empty"
+                data-testid="artifacts-empty"
+              >
+                {/* 设计师 2026-10-23 预览评论（点 div.artifacts-state「还没有创作」）：
+                    「文案上面加个创作集的图标」，并指定「参考」计划面板空态
+                    （div.desktop-panel-placeholder.plan-pane-placeholder-empty）——
+                    即图标在上、文案在下、竖排居中，图标 24px、与文案 12px。
+                    图标复用侧栏「创作集」入口那一枚（ArtifactsIcon，16 画板、
+                    stroke 1.4），颜色随空态的次级字色（currentColor 继承）。 */}
+                <ArtifactsIcon className="artifacts-empty-icon" />
+                <span>{emptyText}</span>
               </div>
             ) : (
               <table className="artifacts-table" data-testid="artifacts-table">
