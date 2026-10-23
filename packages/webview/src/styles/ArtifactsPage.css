@@ -376,9 +376,16 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
 }
 
 .artifacts-icon-btn {
-  padding: 3px 4px;
+  /* 1023 评论（她点 `td.artifacts-col-actions` 的三颗动作：「操作这里不要用按钮的
+     形式」）：原来靠左右 4px 内衬 + r4 + hover 灰底 `rgba(127,127,127,.16)` 拼成
+     胶囊按钮，鼠标一进该列就是一颗灰块。改成纯文字链接形态 —— 左右内衬归零、无
+     圆角、无底色，静止态颜色仍随单元格正文。
+     上下各留 3px：盒高仍 26px、字形位置与改前逐像素一致，点击热区不塌。
+     三颗文字宽 56 + 98 + 28 = 182，加两条 12px 间隔 = 206，与改前（含 8px 内衬）
+     逐值相同 ⇒ 列宽占用不变，折叠阈值也不变。 */
+  padding: 3px 0;
   border: none;
-  border-radius: 4px;
+  border-radius: 0;
   background: transparent;
   color: inherit;
   /* 原本 11px（比正文小两档）。1023 评论要求表格内统一 14px ⇒ 与单元格正文同档；
@@ -387,8 +394,20 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   cursor: pointer;
 }
 
-.artifacts-icon-btn:hover {
-  background: rgba(127, 127, 127, 0.16);
+/* 三颗之间：JSX 相邻元素之间没有空白文本节点，去掉左右内衬后文字会粘连 ⇒ 用
+   12px 外边距还原分组。`.artifacts-actions-measure` 里的同名 span 是兄弟节点，
+   自动吃到同一条 ⇒ 折叠判定用的自然宽度与真实按钮始终一致。 */
+.artifacts-icon-btn + .artifacts-icon-btn {
+  margin-left: 12px;
+}
+
+/* hover / 键盘聚焦：只加下划线，字色保持单元格正文（她 2026-10-23 二轮：「不要变蓝，
+   现在的文本加下划线就好」）。下划线参数与正文链接一致（offset 2px / 1px 粗）。 */
+.artifacts-icon-btn:hover,
+.artifacts-icon-btn:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
 }
 
 /* 1023 评论（点 `td.artifacts-col-actions`「复制链接 / 在浏览器中打开 / 分享」）：
