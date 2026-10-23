@@ -255,6 +255,27 @@ const BLOCK_LEVEL_TAGS = new Set([
   "TBODY",
 ]);
 
+/**
+ * Whether a pointer that resolved to *no* block still belongs to the anchored
+ * one. The comment button sits in the padding left of every block
+ * (`.file-pane-markdown`'s 16px), so the pointer has to cross a strip with no
+ * block under it — and then land on the button itself — before it can be
+ * clicked. Reading that strip as "no hover" unmounted the button mid-move,
+ * which made it physically unclickable. The check is the block's own row, so the
+ * anchor still drops as soon as the pointer leaves the block vertically.
+ */
+const gutterKeepsMarkdownAnchor = (
+  block: HTMLElement,
+  pointer: { clientX: number; clientY: number },
+): boolean => {
+  const rect = block.getBoundingClientRect();
+  return (
+    pointer.clientY >= rect.top &&
+    pointer.clientY <= rect.bottom &&
+    pointer.clientX <= rect.left
+  );
+};
+
 /** The text a markdown block contributes to the appended comment quote. */
 const blockQuoteText = (el: HTMLElement): string => {
   const parts: string[] = [];
@@ -698,7 +719,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
         `.${MD_COMMENT_BLOCK_CLASS}`,
       ) as HTMLElement | null;
       if (!wrap || !block) {
-        setMdHover((prev) => (prev ? null : prev));
+        setMdHover((prev) =>
+          prev && gutterKeepsMarkdownAnchor(prev.el, event) ? prev : null,
+        );
         return;
       }
       for (
