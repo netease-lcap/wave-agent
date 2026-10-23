@@ -142,7 +142,11 @@ export default {
           ],
         },
         {
-          text: "六、研发知识库：团队知识如何进入 AI",
+          text: "六、接入本地模型",
+          link: "/tutorials#local-model",
+        },
+        {
+          text: "七、研发知识库：团队知识如何进入 AI",
           link: "/tutorials#knowledge-base",
           collapsed: false,
           items: [
@@ -161,7 +165,7 @@ export default {
           ],
         },
         {
-          text: "七、研发效能度量与治理",
+          text: "八、研发效能度量与治理",
           link: "/tutorials#metrics-governance",
           collapsed: false,
           items: [
@@ -177,7 +181,7 @@ export default {
           ],
         },
         {
-          text: "八、代码安全",
+          text: "九、代码安全",
           link: "/tutorials#code-security",
           collapsed: false,
           items: [

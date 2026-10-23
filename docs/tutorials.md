@@ -60,7 +60,7 @@ CodeWave IDE 的能力主要来自**内置**（开箱即用，无需安装）与
 
 ### 5. 文档与知识沉淀
 
-代码之外，文档质量同样决定团队效率。下面这些工具负责把成果沉淀成文档；至于「AI 怎么读到团队已有的知识」，见[第六部分：研发知识库](#knowledge-base)。
+代码之外，文档质量同样决定团队效率。下面这些工具负责把成果沉淀成文档；至于「AI 怎么读到团队已有的知识」，见[第七部分：研发知识库](#knowledge-base)。
 
 - **deep-wiki**（插件市场）——AI 驱动的 Wiki 生成器，支持 Mermaid 图表、源码引用、入职指南与 llms.txt 生成，内置 3 个子代理（wiki-architect / wiki-researcher / wiki-writer）。
   - 场景：为新仓库快速搭建团队 Wiki、维护架构文档。
@@ -316,7 +316,43 @@ _侧边栏中该主机的会话：运行中显示转圈、等待确认显示琥�
 
 ---
 
-## 六、研发知识库：团队知识如何进入 AI {#knowledge-base}
+## 六、接入本地模型 {#local-model}
+
+默认模型请求走 CodeWave 服务端网关。把网关地址、密钥与模型名换成自建的 OpenAI 兼容端点（vLLM、Ollama、私有网关等，需提供 `/v1/chat/completions`），就接入了本地模型。配置写在用户级 `~/.wave/settings.json`：
+
+```json
+{
+  "env": {
+    "WAVE_BASE_URL": "https://gw.customer.com/v1",
+    "WAVE_API_KEY": "sk-xxxxxxxxxxxxxxxx",
+    "WAVE_MODEL": "qwen3.8-max",
+    "WAVE_FAST_MODEL": "qwen3.5-flash",
+    "WAVE_VISION_MODEL": "qwen3.8-max",
+    "WAVE_MAX_INPUT_TOKENS": "200000"
+  },
+  "models": {
+    "qwen3.8-max": {
+      "capabilities": { "vision": true, "promptCaching": true }
+    },
+    "qwen3.5-flash": { "capabilities": { "vision": false } }
+  }
+}
+```
+
+> ⚠️ **直接接入本地模型会丢失大量服务端能力**：artifact 发布与评论、遥测与「研发效能」看板、远程控制（手机 / Web 端接管）、企业管控台、托管配置下发等都依赖 CodeWave 服务端与登录态，换成自建端点后这些能力没有数据或直接不可用；并且登录状态下请求固定走服务端网关（`{服务端}/api/v1`），自建端点不生效，用本地模型需先退出登录。确实需要接入本地模型时，**建议私有化采购部署服务端**——模型可以自建，服务端能力保留。
+
+字段说明：
+
+- `WAVE_BASE_URL` 填到 `/v1` 这一层；本地服务不校验密钥时也要给 `WAVE_API_KEY` 一个非空值，否则客户端直接报 `Missing credentials`。
+- `WAVE_MODEL` / `WAVE_FAST_MODEL` / `WAVE_VISION_MODEL`：主模型、轻量任务（子代理摘要、网页取内容等）用的快模型、内置 vision 子代理用的读图模型（后者仅在主模型声明 `vision: false` 时才注册）。
+- `WAVE_MAX_INPUT_TOKENS` 按模型上下文窗口设；需要逐模型不同就写 `models[<模型名>].maxInputTokens`，压缩阈值与用量显示都按它算。
+- `models[<模型名>].capabilities`：`vision`（能否读图，默认 `true`）、`promptCaching`（是否注入 Anthropic 风格的 `cache_control` 缓存标记，默认 `false`，端点不支持就别开）；生成参数（`temperature`、`max_tokens` 等）写在同级的 `options` 里。
+
+改完下一轮对话即生效，无需重启。
+
+---
+
+## 七、研发知识库：团队知识如何进入 AI {#knowledge-base}
 
 客户常问「你们的知识库是自带还是要接入其他平台」。这一节讲清团队知识进入 AI 工作上下文的三种载体，以及为什么是这个形态。
 
@@ -346,7 +382,7 @@ Claude Code 官方把上下文窗口形容为稀缺资源——「填满得很�
 
 ---
 
-## 七、研发效能度量与治理 {#metrics-governance}
+## 八、研发效能度量与治理 {#metrics-governance}
 
 客户在采购前几乎一定会问两件事：**用了之后我怎么知道谁在用、花了多少、交付有没有变好**，以及**会不会把我们的代码和提问拿到别处**。这一节把度量的口径、可用的数据通道与治理边界一次讲清。
 
@@ -439,7 +475,7 @@ CodeWave IDE 的遥测走 OpenTelemetry 标准，客户端侧有**三条互不�
 
 ---
 
-## 八、代码安全 {#code-security}
+## 九、代码安全 {#code-security}
 
 客户问得最多的是「你们在代码安全上能做什么」，以及「跟静态扫描、依赖扫描是什么关系」。这一节讲清三层按时机分工的自动能力、一条开箱即用的分支审查，以及我们不承担什么。
 
