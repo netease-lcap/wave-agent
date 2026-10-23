@@ -540,19 +540,6 @@ export interface MessageListProps {
   compactionStream?: string;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
-  /**
-   * 列表被上拉到顶时请求**更早的一页**（宿主按 `before` 取回，见 spec
-   * remote-control.md「Web 页作为第五种宿主」场景 11、spec ui/message-rendering-system.md「首屏
-   * 只进一页」）。传了它才装上滑分页：宿主必须自己说得出「还有更早的」
-   * （`ChatState.supportsMessagePaging`），只推了一页的宿主才配得上这个回调。
-   *
-   * `before` 是列表最上面那条可见消息的 id——宿主侧是**排他**上锚点。
-   */
-  onLoadOlderMessages?: (before: string) => void;
-  /** 上一次「翻更早」还在路上：期间不再重复请求。 */
-  loadingOlder?: boolean;
-  /** 宿主已经说过没有更早的消息：显示提示并停止请求。 */
-  historyExhausted?: boolean;
   workdir?: string;
   /** Desktop host only: open a localhost URL in the preview pane. */
   onOpenPreview?: (url: string) => void;
@@ -903,24 +890,6 @@ export interface QueuedMessageListProps {
 // Chat state management
 export interface ChatState {
   messages: Message[];
-  /**
-   * 已经翻到这段历史的开头（宿主回的 `hasMore: false`）。首屏只进一页，所以三端
-   * 与手机页都会变成 true：它同时是「显示『没有更早的消息』」与「不再发请求」的
-   * 判据（spec remote-control.md 场景 11、spec ui/message-rendering-system.md「首屏只进一页」）。
-   *
-   * 老宿主（不认分页）不推窗口，`SET_MESSAGES` 不带 `hasMore` —— 那时它是 false，
-   * 但 `supportsMessagePaging` 也是 false，所以页面根本不会去翻。
-   */
-  historyExhausted: boolean;
-  /**
-   * 宿主会不会答「翻更早」（`loadOlderMessages`）。能力位而不是常量：**页面是远端
-   * 加载的**，手机页的宿主版本可能落后于页面版本，硬编码 true 会让老宿主收到一条
-   * 它不认识的命令（静默失败）。老宿主不带这个字段 ⇒ false ⇒ 页面不装分页。
-   *
-   * 手机页（`isRemotePage`）不走这个字段：它的 shim 就是分页那条链的原始实现，
-   * 见 ChatApp 里 `canLoadOlderMessages` 的取值。
-   */
-  supportsMessagePaging: boolean;
   tasks: Task[];
   backgroundTasks: BackgroundTaskSummary[];
   workflowRuns: SerializableWorkflowRun[];
@@ -1160,25 +1129,7 @@ export interface WorkflowManagerProps {
 }
 
 export type ChatAction =
-  | {
-      type: "SET_MESSAGES";
-      payload: Message[];
-      /**
-       * 宿主随这份列表说的「前面还有没有更早的」。三端首屏只推一页，所以这个
-       * 字段是**常规**的而不是例外；老宿主不带 ⇒ undefined ⇒ 不判为到底。
-       */
-      hasMore?: boolean;
-    }
-  /**
-   * 上滑翻更早（spec remote-control.md「Web 页作为第五种宿主」场景 11、
-   * spec ui/message-rendering-system.md「首屏只进一页」）：把宿主取回的**更早**一段接到列表前面。
-   * 与 SET_MESSAGES 分开是因为两者的语义相反——整表替换会丢掉列表头部，prepend
-   * 只加头部；`hasMore: false` 记下「已经到底」，页面据此提示并停止再请求。
-   */
-  | {
-      type: "PREPEND_MESSAGES";
-      payload: { messages: Message[]; hasMore: boolean };
-    }
+  | { type: "SET_MESSAGES"; payload: Message[] }
   | { type: "SET_TASKS"; payload: Task[] }
   | { type: "SET_BACKGROUND_TASKS"; payload: BackgroundTaskSummary[] }
   | { type: "SET_WORKFLOW_RUNS"; payload: SerializableWorkflowRun[] }
@@ -1238,16 +1189,6 @@ export type ChatAction =
          *  字段、保留 webview 手里刚切好的列表（省掉整份列表的重传）。切会话 /
          *  新建会话必须为假 —— 那些场景 webview 的列表本来就不对。 */
         keepMessages?: boolean;
-        /**
-         * 这份列表之前还有没有更早的消息（宿主按 `total > messages.length` 算）。
-         * 与 `SET_MESSAGES.hasMore` 同一口径：老宿主不带 ⇒ undefined ⇒ 不判为
-         * 到底，但那边 `supportsMessagePaging` 同样缺席，页面不会去翻。
-         */
-        historyExhausted?: boolean;
-        /**
-         * 宿主能不能答「翻更早」。缺省 = 不能（老宿主 / 页面版本超前于宿主）。
-         */
-        supportsMessagePaging?: boolean;
         tasks?: Task[];
         isStreaming: boolean;
         isCommandRunning?: boolean;

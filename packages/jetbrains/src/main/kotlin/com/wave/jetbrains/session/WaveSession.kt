@@ -23,7 +23,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -59,17 +58,13 @@ class WaveSession(
     @Volatile var agent: StdioAgent? = null
         private set
     /**
-     * 宿主手里这份**常驻窗口**：最近 [MessagePaging.FIRST_PAGE_SIZE] 条，不是全量。
+     * 宿主手里这份**整份列表（= 压缩后的上下文）**：不分页，首屏推的就是它。
      *
-     * 全量在会话转录里（SDK 侧 append-only 的 JSONL）：翻更早按窗口读盘，回滚由
-     * SDK 自己改盘，两边都不再从这个字段取全量——三个宿主按同一条口径收缩，理由
-     * 见 SDK 的 `constants/messageWindow.ts`。写过它的只有 [refreshMessages]（整页
-     * 替换）、[onCompactBlockAdded]（追加一条）、以及回滚后的就地截断。
+     * 列表本身从最近一次压缩开始，跨压缩边界不再回溯（spec ui/message-rendering-system.md
+     * 「首屏就是整份列表，不分页」）。写过它的只有 [refreshMessages]（整份替换）、
+     * [onCompactBlockAdded]（追加一条）、以及回滚后的就地截断。
      */
     @Volatile var messages: JsonElement? = null
-    /** [messages] 之前还有没有更早的（由 [refreshMessages] 从回包带回）。 */
-    @Volatile var hasMoreMessages = false
-        private set
     @Volatile var tasks: JsonElement? = null
         private set
     @Volatile var backgroundTasks: JsonElement? = null
@@ -442,11 +437,7 @@ class WaveSession(
     // ── Message list: one-shot pull ───────────────────────────────
 
     /**
-     * 拉**一页**最近的消息进 [messages] 缓存，并记下前面还有没有更早的。
-     *
-     * 拉的是窗口而不是整份列表：一个连续用了几周的会话，整份列表在宿主里就是几
-     * 十万个 JSON 对象加上内联的 base64 图片，而宿主只拿它来推首屏那一屏。列表
-     * 本身从最近一次压缩开始，更早的页由 SDK 对同一份内存列表切片给出。
+     * 拉**整份列表**进 [messages] 缓存（= 压缩后的上下文，不分页）。
      *
      * webview 不再订阅全量快照推送：宿主在 webviewReady / rewind / clearChat /
      * restoreSession 之后按需拉，镜像 VSCE chatSession.getMessages。压缩不算拉取：
@@ -455,38 +446,21 @@ class WaveSession(
     suspend fun refreshMessages() {
         val agent = agent ?: return
         try {
-            val res = agent.getMessages(limit = MessagePaging.FIRST_PAGE_SIZE)
-            val (page, hasMore) = MessagePaging.pageOf(res)
-            messages = page
-            hasMoreMessages = hasMore
+            val res = agent.getMessages() as? JsonObject
+            messages = res?.get("messages") as? JsonArray ?: JsonArray(emptyList())
         } catch (e: StdioClientException) {
             LOG.warn("getMessages failed: ${e.message}")
         }
     }
 
     /**
-     * 拉一页并推给 webview 作为「响应」（updateMessages）：推的就是缓存那一页，
-     * 加上前面还有没有更早的（spec desktop-chat「首屏只进一页」）。
+     * 拉整份列表并推给 webview 作为「响应」（updateMessages）。
      */
     suspend fun pullAndPushMessages() {
         refreshMessages()
         postMessage("updateMessages", buildJsonObject {
             put("messages", messages as? JsonArray ?: JsonArray(emptyList()))
-            put("hasMore", hasMoreMessages)
         })
-    }
-
-    /**
-     * 上滑「翻更早」：取 [before]（列表最上面那条的 id，**排他**上锚点）之前的一页。
-     *
-     * **不写 [messages] 缓存**——那次是按窗口的只读查询，把它写进缓存等于把宿主
-     * 手里那段历史整段丢掉。没有 agent 时返回 null，由调用方回一条错误：回空页
-     * 会被页面读成「已经到底」，从此不再翻。
-     */
-    suspend fun getOlderMessages(before: String): Pair<JsonArray, Boolean>? {
-        val agent = agent ?: return null
-        val res = agent.getMessages(before = before, limit = MessagePaging.HISTORY_PAGE_SIZE)
-        return MessagePaging.pageOf(res)
     }
 
     /**

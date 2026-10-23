@@ -2,13 +2,14 @@ import { describe, it, expect } from "vitest";
 import type { Message } from "../../src/types/messaging.js";
 import {
   messageBytes,
-  takePageFromMemory,
+  takeTailFromMemory,
 } from "../../src/utils/messageWindow.js";
 
 /**
- * 两端的窗口都只留一页，所以「从内存里切一页」的算术成了公共路径：常驻窗口
- * （`displayMessages`）与宿主缓存都靠它回答首屏 / 翻更早。算术错一位的后果很具体
- * ——页面要么少一行、要么把同一行推两遍、要么在锚点上来回死循环。
+ * 三端列表不分页（规格 ui/message-rendering-system.md「首屏就是整份列表，不分页」），
+ * 只有远控页从尾部切一段：那边隔着一层中继，单帧超预算会被静默丢弃，所以既要条数
+ * 上限也要字节上限。算术错一位的后果很具体——手机上要么少几十条，要么收到一个
+ * 中继根本发不出去的超大帧。
  */
 
 const msg = (id: string, content = id): Message =>
@@ -24,47 +25,31 @@ const thread = (n: number): Message[] =>
 
 const ids = (messages: Message[]): string[] => messages.map((m) => m.id ?? "");
 
-describe("takePageFromMemory", () => {
-  it("returns the newest rows when everything fits", () => {
-    const page = takePageFromMemory(thread(5), 20);
-    expect(ids(page.messages)).toEqual(ids(thread(5)));
-    // 「这就是开头」：调用方据此停止再请求。
-    expect(page.more).toBe(false);
+describe("takeTailFromMemory", () => {
+  it("returns everything when it all fits under the limit", () => {
+    expect(ids(takeTailFromMemory(thread(5), 100))).toEqual(ids(thread(5)));
   });
 
-  it("returns at most `limit` rows and says more are left", () => {
-    const page = takePageFromMemory(thread(30), 20);
-    expect(ids(page.messages)).toEqual(
-      Array.from({ length: 20 }, (_, i) => `m${i + 10}`),
+  it("returns the newest `limit` rows", () => {
+    expect(ids(takeTailFromMemory(thread(250), 100))).toEqual(
+      Array.from({ length: 100 }, (_, i) => `m${i + 150}`),
     );
-    expect(page.more).toBe(true);
   });
 
-  it("ends before the given index, excluding it", () => {
-    // 翻更早的形状：`end` 是锚点的下标，锚点本身已经在读者手里了。
-    const page = takePageFromMemory(thread(10), 3, undefined, 7);
-    expect(ids(page.messages)).toEqual(["m4", "m5", "m6"]);
-    expect(page.more).toBe(true);
-  });
-
-  it("stops at the byte budget", () => {
+  it("stops at the byte budget, newest first", () => {
     const heavy = msg("big", "x".repeat(4096));
     const list = [msg("m0"), heavy, msg("m1")];
-    const page = takePageFromMemory(list, 20, 512);
-    expect(ids(page.messages)).toEqual(["m1"]);
-    expect(page.more).toBe(true);
+    expect(ids(takeTailFromMemory(list, 20, 512))).toEqual(["m1"]);
   });
 
   it("always keeps one message, even when it alone blows the budget", () => {
-    // 一条就超预算时也必须返回它：返回空页会让调用方拿同一个锚点反复重问，永远
-    // 翻不动。
-    const page = takePageFromMemory([msg("big", "x".repeat(4096))], 20, 1);
-    expect(ids(page.messages)).toEqual(["big"]);
-    expect(page.more).toBe(false);
+    // 一条就超预算时也必须返回它：返回空列表会让手机拿到一个永远是空的列表。
+    const big = msg("big", "x".repeat(4096));
+    expect(ids(takeTailFromMemory([big], 20, 1))).toEqual(["big"]);
   });
 
-  it("answers an empty page for an empty list", () => {
-    expect(takePageFromMemory([], 20)).toEqual({ messages: [], more: false });
+  it("answers an empty list for an empty list", () => {
+    expect(takeTailFromMemory([], 20)).toEqual([]);
   });
 });
 

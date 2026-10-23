@@ -1597,9 +1597,10 @@ export class Agent {
   }
 
   /**
-   * One page of the list (`before` / `since` / `limit`), sliced in memory.
-   * The list starts at the last compaction, so the earliest entry of it is the
-   * earliest the UI can reach — there is nothing older to read back.
+   * Answer a `getMessages` request: the whole list, or (`since` / `limit`) the
+   * part a caller asked for, sliced in memory. The list starts at the last
+   * compaction, so its earliest entry is the earliest the UI can reach —
+   * there is nothing older to read back.
    */
   public getMessagePage(window: MessageWindow): MessageWindowResult {
     return this.messageManager.getMessagePage(window);

@@ -71,7 +71,6 @@ import {
   revokeArtifact,
   searchArtifactMembers,
   type ArtifactShareMode,
-  type MessageThreadSummary,
 } from "wave-agent-sdk";
 import {
   type ClientNotificationMethod,
@@ -388,7 +387,6 @@ export class AgentBridge {
         return this.deleteQueuedMessageById(p.id as string, sessionId);
       case "getMessages":
         return this.getMessages(sessionId, {
-          before: p.before as string | undefined,
           since: p.since as string | undefined,
           limit: p.limit as number | undefined,
         });
@@ -1784,29 +1782,23 @@ export class AgentBridge {
   /**
    * Read a session's display messages.
    *
-   * With no window this returns the whole thread, read once from the
-   * transcript and cached nowhere (spec ui/message-rendering-system.md「不带窗口
-   * = 全量」). The window is the normal path for every client that keeps only
-   * a page:
+   * With no parameters this returns the whole list the agent holds, read once
+   * and cached nowhere (spec ui/message-rendering-system.md「首屏就是整份列表，
+   * 不分页」). Two parameters narrow it, both for the remote page:
    *
-   * - `limit`  — page size.
-   * - `before` — the page that ends immediately before the given message id
-   *              (paging *backwards* into history).
-   * - `since`  — everything appended after the given message id (catching up
-   *              after a reconnect).
+   * - `limit` — the newest `limit` messages (that page's frame budget).
+   * - `since` — everything appended after the given message id (catching up
+   *             after a reconnect).
    *
-   * Pages come from the transcript (`Agent.getMessagePage`), not from a
-   * host-side full copy: holding that copy is what pinned every conversation's
-   * base64 images in memory for the life of the process.
+   * The list starts at the last compaction, so its earliest entry is the
+   * earliest any UI can reach; there is nothing older to read back.
    *
    * `since` is a position, not a version number: message ids are stable, so a
    * caller can name its last known message without the list carrying a
    * sequence number. The one failure that matters is the anchor having been
    * truncated away (rewind / clear) — there is no seq/version in the store that
    * could detect it otherwise — and that comes back as `reset: true` so the
-   * caller re-pulls the tail instead of guessing. Falling more than a page
-   * behind answers the same way: a gap-free catch-up is impossible, and a page
-   * with a hole in it is worse than a rebuild.
+   * caller re-pulls instead of guessing.
    *
    * Ids can repeat (old transcripts re-appended the preserved rounds at each
    * compact point), so anchors are resolved to their **last** occurrence:
@@ -1815,12 +1807,7 @@ export class AgentBridge {
   private async getMessages(
     sessionId?: string,
     window?: MessageWindow,
-  ): Promise<
-    MessageWindowResult & {
-      contextUsagePercent?: number;
-      threadSummary?: MessageThreadSummary;
-    }
-  > {
+  ): Promise<MessageWindowResult> {
     const entry = this.requireSessionForRead(sessionId);
     const contextUsagePercent = this.contextUsagePercentOf(entry.agent);
 

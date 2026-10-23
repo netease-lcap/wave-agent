@@ -243,4 +243,33 @@ describe("sticky user message", () => {
       );
     });
   });
+
+  it("renders no bar at all when the list holds no user message", async () => {
+    // 压缩点可以落在一轮对话的中间（会话首条是注入的系统消息时更是如此）：
+    // 这份列表里没有任何能挂的锚点。此时吸顶条整条不渲染，也不留一行「没有更早」
+    // 之类的占位——读者看到的就是一段没有问题的回答。
+    const assistantMsg = (content: string, id: string) => ({
+      id,
+      role: "assistant" as const,
+      timestamp: "2025-01-01T00:00:00.000Z",
+      blocks: [{ type: "text", content }],
+    });
+    renderChatApp();
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          assistantMsg("工具阶段 0", "a0"),
+          assistantMsg("工具阶段 1", "a1"),
+          assistantMsg("工具阶段 2", "a2"),
+        ],
+      });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("messages-container")).toBeInTheDocument(),
+    );
+
+    fakeGeometryAndScroll(1300);
+    expect(screen.queryByTestId("sticky-user-message")).toBeNull();
+    expect(document.querySelector(".sticky-user-wrapper")).toBeNull();
+  });
 });

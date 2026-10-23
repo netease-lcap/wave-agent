@@ -93,12 +93,12 @@
      * process — the list has no other rule for what the page may open. */
     sessionId: query.get("session") || PAGE_CONFIG.sessionId || "",
     /**
-     * First screen: the tail only — never the whole thread (13 MB on a long
-     * one). 100 messages is ≈0.57 MB at the measured 5.7 KB/message, and that
-     * is the point: the relay's per-subscriber buffer is 1 MiB, and a frame
-     * over it is dropped **without an error** — the phone would then ask for
-     * the same page again, forever. The machine trims any page that comes back
-     * over budget too, so this number is an economy rather than the guarantee.
+     * 首屏尾段：只取最近这一段，不取整条线程（长会话能到 13 MB）。**没有更早可
+     * 翻**——拉到顶就是这条会话在手机上的起点，页面不发请求、也不提示。
+     *
+     * 为什么是 100：按实测 5.7 KB/条，100 条约 0.57 MB，而中继的每订阅者缓冲是
+     * 1 MiB，超出的帧**被静默丢弃**（不报错）。机器侧对超预算的回包还会从最早一条
+     * 开始丢，所以这个数是一个经济性取值，真正的保证在机器侧。
      */
     firstPageLimit:
       Number(query.get("limit")) > 0
@@ -251,7 +251,7 @@
   var pending = {};
   var outbox = [];
   var warned = {};
-  /** Everything the page has seen for the current session — the window it keeps. */
+  /** 这一页看过的当前会话内容：首屏尾段，之后只靠 `since` 增量往后补。 */
   var messages = [];
   /** The serving process's live sessions, as the shared session list renders them. */
   var sessions = [];
@@ -1368,7 +1368,7 @@
    * params:{result}}`, or `method:"error"` with `params:{code,message}` — not as
    * a bare `{result}`. Reading `frame.result` resolved every request to
    * `undefined`: `listSessions` fell through to "电脑侧还没有会话。", an empty
-   * `getMessages` page looked like the beginning of the conversation, and no
+   * `getMessages` reply looked like a conversation with no messages, and no
    * reply ever rejected.
    */
   function settle(frame) {
@@ -1547,7 +1547,7 @@
 
   // ── Snapshot / reconciliation (§5 of the issue) ──────────────────
 
-  /** First screen: the tail of one session, plus whatever is awaiting approval. */
+  /** 首屏：一条会话的尾段（最近 `firstPageLimit` 条），加上此刻等着审批的卡。 */
   function pullSnapshot() {
     // Nothing to ask: `boot` already put the reason on screen (not logged in,
     // no channel key, handshake refused).
@@ -1663,48 +1663,6 @@
       .catch(function (err) {
         if (blocked || token !== pullToken) return;
         showStatus("拉取会话失败：" + err.message);
-      });
-  }
-
-  /**
-   * Scroll-up paging: the page the reader pulled the list up to the top of. The
-   * host's `before` is an EXCLUSIVE anchor and `hasMore` says whether anything is
-   * older still — false is "this was the beginning", which the page shows and
-   * stops asking after. A failure moves nothing and does not fall back to a tail
-   * re-pull: that path replaces the very position the reader is holding on to
-   * (spec「Web 页作为第五种宿主」场景 12).
-   */
-  function loadOlder(before, requestId) {
-    if (!sessionId || !before) {
-      post({
-        command: "olderMessages",
-        requestId: requestId,
-        messages: [],
-        hasMore: false,
-      });
-      return;
-    }
-    request("getMessages", { before: before, limit: CONFIG.firstPageLimit })
-      .then(function (result) {
-        var earlier = (result && result.messages) || [];
-        // This array is the page's window: `resync` anchors its `since` on the
-        // last entry of it. Older messages join the front, exactly as they do in
-        // the webview's own list.
-        if (earlier.length) messages = earlier.concat(messages);
-        post({
-          command: "olderMessages",
-          requestId: requestId,
-          messages: earlier,
-          hasMore: !!(result && result.hasMore),
-        });
-      })
-      .catch(function (err) {
-        warnOnce("older", "翻更早失败：" + err.message);
-        post({
-          command: "olderMessagesError",
-          requestId: requestId,
-          error: String(err.message || err),
-        });
       });
   }
 
@@ -2419,10 +2377,6 @@
 
       case "abortMessage":
         controlRequest("abortMessage", {}, "暂停");
-        return;
-
-      case "loadOlderMessages":
-        loadOlder(msg.before, msg.requestId);
         return;
 
       case "confirmationResponse": {

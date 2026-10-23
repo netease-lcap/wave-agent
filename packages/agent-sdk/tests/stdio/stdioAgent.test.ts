@@ -815,17 +815,15 @@ describe("StdioAgent", () => {
 
   // ── handleNotification (called by NotificationRouter) ──────
 
-  // 宿主缓存现在是一页（spec ui/message-rendering-system.md「续页从转录读、两端不
-  // 再常驻全量」）：只有 refreshMessages 写它，任何一次按窗口的读都不写——否则翻
-  // 一页就会把宿主手里那一屏挤掉。
-  it("refreshMessages pulls one page and is the only path that writes the cache", async () => {
+  // 宿主缓存就是整份列表（spec ui/message-rendering-system.md「首屏就是整份列表，
+  // 不分页」）：只有 refreshMessages 写它，带参数的读是一次性查询、不写缓存。
+  it("refreshMessages pulls the whole list and is the only path that writes the cache", async () => {
     const { agent, client } = createAgent();
     const messages: Message[] = [
       { id: "m1", role: "user", timestamp: "", blocks: [] },
     ];
     client.request.mockResolvedValue({
       messages,
-      hasMore: true,
       threadSummary: { messageCount: 42, firstUserText: "hi" },
       contextUsagePercent: 25,
     });
@@ -834,14 +832,13 @@ describe("StdioAgent", () => {
 
     expect(client.request).toHaveBeenCalledWith(
       "getMessages",
-      { limit: 20 },
+      undefined,
       undefined,
     );
     expect(result).toEqual(messages);
     expect(agent.messages).toEqual(messages);
-    expect(agent.hasMoreMessages).toBe(true);
-    // 会话列表的条数与标题兜底只能随这一份回包下发：缓存只剩一页，宿主自己数不
-    // 出来。
+    // 会话列表的条数与标题兜底只能随这一份回包下发：列表从压缩点开始，宿主自己数
+    // 不出来。
     expect(agent.threadSummary).toEqual({
       messageCount: 42,
       firstUserText: "hi",
@@ -861,7 +858,7 @@ describe("StdioAgent", () => {
     expect(agent.contextUsagePercent).toBeUndefined();
   });
 
-  it("getMessages asks for a window and leaves the cache alone", async () => {
+  it("getMessages with parameters is a read-only query", async () => {
     const { agent, client } = createAgent();
     const cached: Message[] = [
       { id: "cached", role: "user", timestamp: "", blocks: [] },
@@ -869,22 +866,21 @@ describe("StdioAgent", () => {
     agent.messages = cached;
     const page = {
       messages: [{ id: "older", role: "user", timestamp: "", blocks: [] }],
-      hasMore: false,
     };
     client.request.mockResolvedValue(page);
 
-    const result = await agent.getMessages({ before: "cached", limit: 200 });
+    const result = await agent.getMessages({ limit: 100 });
 
     expect(client.request).toHaveBeenCalledWith(
       "getMessages",
-      { before: "cached", limit: 200 },
+      { limit: 100 },
       undefined,
     );
     expect(result).toEqual(page);
     expect(agent.messages).toBe(cached);
   });
 
-  it("getMessages without a window answers the whole thread and still caches nothing", async () => {
+  it("getMessages with no arguments answers the whole list and still caches nothing", async () => {
     const { agent, client } = createAgent();
     const messages: Message[] = [
       { id: "m1", role: "user", timestamp: "", blocks: [] },

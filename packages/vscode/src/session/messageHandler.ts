@@ -114,17 +114,6 @@ export class MessageHandler {
       case "clearChat":
         await this.clearChat(viewType, windowId);
         break;
-      // 上滑翻更早（spec ui/message-rendering-system.md「首屏只进一页」场景 3）：`before` 是列表
-      // 最上面那条的 id，宿主侧的**排他**上锚点。取的是宿主那份全量缓存（webview
-      // 手里只有首屏那一页），读完不回写缓存。
-      case "loadOlderMessages":
-        await this.handleLoadOlderMessages(
-          msg.before as string | undefined,
-          msg.requestId as number,
-          viewType,
-          windowId,
-        );
-        break;
       case "compact":
         await this.compactChat(
           msg.customInstructions as string | undefined,
@@ -1855,52 +1844,6 @@ export class MessageHandler {
     }
   }
 
-  /**
-   * 回答一次「翻更早」：把 `before` 之前的一页取回给这个 webview。
-   *
-   * `requestId` 原样回传——页面用它丢弃晚到的旧页（读者停在顶部会连续翻好几页）。
-   * 失败不静默：页面收到 `olderMessagesError` 才停下转圈并保留阅读位置。没有 agent
-   * 的会话、以及在 RPC 期间换了会话的那一次，同样走失败路径——回一个空页会被页面
-   * 读成「已经到底」。
-   */
-  private async handleLoadOlderMessages(
-    before: string | undefined,
-    requestId: number,
-    viewType?: "sidebar" | "tab" | "window",
-    windowId?: string,
-  ): Promise<void> {
-    const session = this.context.getChatSession(viewType || "tab", windowId);
-    const fail = (error: string) =>
-      this.context.postMessage(
-        { command: "olderMessagesError", requestId, error },
-        viewType,
-        windowId,
-      );
-    if (!before) return fail("缺少翻页锚点");
-    const sessionIdAtRequest = session.sessionId;
-    try {
-      const page = await session.getOlderMessages(before);
-      if (!page) return fail("当前会话尚未就绪");
-      // 会话在同一支 ChatSession 上原地替换（restore / clear / 新建），所以判据是
-      // sessionId 而不是对象同一性：回包属于上一个会话，prepend 进新会话的列表
-      // 等于把两段历史缝在一起。
-      if (session.sessionId !== sessionIdAtRequest) return fail("会话已切换");
-      this.context.postMessage(
-        {
-          command: "olderMessages",
-          requestId,
-          messages: page.messages,
-          hasMore: page.hasMore,
-        },
-        viewType,
-        windowId,
-      );
-    } catch (error) {
-      console.error("翻更早失败:", error);
-      fail(error instanceof Error ? error.message : String(error));
-    }
-  }
-
   private async clearChat(
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
@@ -1920,18 +1863,10 @@ export class MessageHandler {
       await session.clearChat();
       // No full-snapshot push from the server — deliver the (now empty)
       // list so the webview actually clears.
-      // The cache is the page (older ones are fetched on demand and never
-      // kept), so what it holds is what the webview gets; "more above" can
-      // only come from the SDK window that filled it.
-      const page = {
-        messages: session.messages,
-        hasMore: session.hasMoreMessages,
-      };
       this.context.postMessage(
         {
           command: "updateMessages",
-          messages: page.messages,
-          hasMore: page.hasMore,
+          messages: session.messages,
         },
         viewType,
         windowId,
@@ -1972,21 +1907,11 @@ export class MessageHandler {
     try {
       await session.restoreSession(sessionId);
       // No full-snapshot push from the server — deliver the restored list
-      // so the webview re-renders instead of keeping the welcome page. It is a
-      // window too: a restored long session must not land in the webview whole
-      // (spec ui/message-rendering-system.md「首屏只进一页」).
-      // The cache is the page (older ones are fetched on demand and never
-      // kept), so what it holds is what the webview gets; "more above" can
-      // only come from the SDK window that filled it.
-      const page = {
-        messages: session.messages,
-        hasMore: session.hasMoreMessages,
-      };
+      // so the webview re-renders instead of keeping the welcome page.
       this.context.postMessage(
         {
           command: "updateMessages",
-          messages: page.messages,
-          hasMore: page.hasMore,
+          messages: session.messages,
         },
         viewType,
         windowId,
@@ -2326,24 +2251,13 @@ export class MessageHandler {
       outsideSafeZoneDirectory: pending.outsideSafeZoneDirectory,
     }));
 
-    // 首屏只推一页（spec ui/message-rendering-system.md「首屏只进一页」）：宿主缓存
-    // 本身就是那一页（更早的页只在用户上翻时经一次窗口查询过手、不留存），
-    // 「还有更早的」只能由填缓存的那次窗口回包给。列表从最近一次压缩开始。
-    const page = {
-      messages: session.messages,
-      hasMore: session.hasMoreMessages,
-    };
+    // 首屏就是整份列表（spec ui/message-rendering-system.md「首屏就是整份列表，
+    // 不分页」）：宿主缓存里那份就是全部，列表从最近一次压缩开始。
     this.context.postMessage(
       {
         command: "setInitialState",
-        messages: opts?.keepMessages ? [] : page.messages,
-        ...(opts?.keepMessages
-          ? { keepMessages: true }
-          : { historyExhausted: !page.hasMore }),
-        // 本宿主答得了 `loadOlderMessages`（见上面的 case），webview 据此装上滑
-        // 分页。能力位而不是常量：页面是远端加载的，老宿主不该收到一条它不认识的
-        // 命令。
-        supportsMessagePaging: true,
+        messages: opts?.keepMessages ? [] : session.messages,
+        ...(opts?.keepMessages ? { keepMessages: true } : {}),
         tasks: session.tasks,
         backgroundTasks: session.backgroundTasks,
         workflowRuns: session.workflowRuns,

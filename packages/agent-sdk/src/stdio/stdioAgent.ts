@@ -46,7 +46,6 @@ import type {
 import type { RpcClient } from "./rpcClient.js";
 import type { NotificationRouter } from "./notificationRouter.js";
 import type { HostEntrypoint } from "../constants/telemetry.js";
-import { MESSAGE_FIRST_PAGE_SIZE } from "../constants/messageWindow.js";
 
 // ── Params / Results ─────────────────────────────────────────────
 
@@ -213,15 +212,12 @@ export class StdioAgent {
   public contextUsagePercent: number | undefined;
   public permissionMode: PermissionMode | undefined;
   /**
-   * The page this host keeps — the first screen, not the whole list (see
-   * `refreshMessages`). Hosts push it to the renderer and mirror every later
-   * append/edit into it; older pages are fetched on demand and never cached
-   * here. The list itself starts at the last compaction, so paging back stops
-   * there.
+   * The list this host keeps (see `refreshMessages`). Hosts push it to the
+   * renderer and mirror every later append/edit into it. It starts at the last
+   * compaction, so it is bounded by one context window rather than by how long
+   * the session has been running.
    */
   public messages: Message[] = [];
-  /** Whether the last `refreshMessages()` window had older messages before it. */
-  public hasMoreMessages = false;
   /**
    * Totals for the thread behind this window (message count, first user body,
    * newest timestamp), refreshed together with the window — the window itself
@@ -423,20 +419,14 @@ export class StdioAgent {
   /**
    * 整份列表读一次。**不写 `this.messages` 缓存**。
    *
-   * 老契约是「拉全量并写缓存」，于是每个宿主进程都为每条会话常驻一份完整历史
-   * （含 Read / MCP 工具图片的 base64）。现在缓存只留一页：缓存由
-   * `refreshMessages()` 维护，这个是给「确实需要整份列表」的调用方的一次性查询
-   * （导出、老宿主的兼容路径），返回值用完就散。列表从最近一次压缩开始，
-   * 所以它也不是「跨压缩边界的全史」。
+   * 一次性查询：缓存由 `refreshMessages()` 维护，这个给「读一眼就走」的调用方
+   * （导出）。列表从最近一次压缩开始，所以它也不是「跨压缩边界的全史」。
    */
   async getMessages(): Promise<Message[]>;
   /**
-   * 按窗口拉一页（翻更早 / 重连补差 / 首屏）。**不写 `this.messages` 缓存**，
-   * 也不回写 `contextUsagePercent`——它是一次只读查询。要刷新缓存用
-   * `refreshMessages()`。
-   *
-   * 老版本 CLI（不认识窗口参数）会把整份列表原样答回来且不带 `hasMore`，调用方
-   * 按「没有更早的了」处理（见 `MessageWindowResult.hasMore` 注释）。
+   * 带参数取数（`since` 重连补差 / `limit` 从尾部切一段）。**不写
+   * `this.messages` 缓存**，也不回写 `contextUsagePercent`——它是一次只读查询。
+   * 要刷新缓存用 `refreshMessages()`。
    */
   async getMessages(window: MessageWindow): Promise<MessageWindowResult>;
   async getMessages(
@@ -452,20 +442,16 @@ export class StdioAgent {
   }
 
   /**
-   * 把最近一页拉进 `this.messages`（首屏 / 恢复会话 / 清空后的重建）——唯一会
-   * 写这份缓存的读路径。更早的页不进来：翻更早由 `getMessages({before})` 直答
-   * 给调用方，宿主不留。
+   * 把整份列表拉进 `this.messages`（首屏 / 恢复会话 / 清空后的重建 / 副本被丢弃
+   * 后切回）——唯一会写这份缓存的读路径。
    */
-  async refreshMessages(
-    limit: number = MESSAGE_FIRST_PAGE_SIZE,
-  ): Promise<Message[]> {
+  async refreshMessages(): Promise<Message[]> {
     const result = (await this.client.request(
       "getMessages",
-      { limit },
+      undefined,
       this.sessionId,
     )) as MessageWindowResult;
     this.messages = result.messages;
-    this.hasMoreMessages = result.hasMore === true;
     if (result.threadSummary) {
       this.threadSummary = result.threadSummary;
     }

@@ -43,11 +43,8 @@ import {
   type NestedMemoryFile,
 } from "../utils/nestedMemory.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
-import {
-  MESSAGE_HISTORY_PAGE_SIZE,
-  MESSAGE_PAGE_MAX_BYTES,
-} from "../constants/messageWindow.js";
-import { takePageFromMemory } from "../utils/messageWindow.js";
+import { MESSAGE_SLICE_MAX_BYTES } from "../constants/messageWindow.js";
+import { takeTailFromMemory } from "../utils/messageWindow.js";
 import type {
   MessageWindow,
   MessageWindowResult,
@@ -1178,30 +1175,30 @@ export class MessageManager {
   }
 
   /**
-   * One page of the list (first screen / paging back / reconnect catch-up).
+   * Answer a `getMessages` request: the whole list, or — for the remote page —
+   * the tail `limit` and/or everything appended after `since`.
    *
-   * Pure arithmetic on the in-memory list — there is nothing older to fetch:
-   * the list starts at the last compaction, so the earliest entry of this
-   * array is the earliest entry the UI can reach (spec
-   * ui/message-rendering-system.md「列表就是压缩后的上下文」).
+   * Pure arithmetic on the in-memory list. There is nothing older to fetch:
+   * the list starts at the last compaction, so its earliest entry is the
+   * earliest the UI can reach (spec ui/message-rendering-system.md「列表就是
+   * 压缩后的上下文」).
    */
   public getMessagePage(window: MessageWindow): MessageWindowResult {
-    const limit = window.limit ?? MESSAGE_HISTORY_PAGE_SIZE;
     const list = this.messages;
 
     if (window.since) {
       const at = lastIndexById(list, window.since);
       // Anchor gone (compaction / rewind / another session): ask the caller to
-      // re-pull the tail instead of answering with an empty page, which would
-      // read as "nothing newer".
-      if (at === -1) return { messages: [], hasMore: false, reset: true };
-      return { messages: list.slice(at + 1), hasMore: false };
+      // re-pull instead of answering with an empty list, which would read as
+      // "nothing newer".
+      if (at === -1) return { messages: [], reset: true };
+      return { messages: list.slice(at + 1) };
     }
 
-    const at = window.before ? lastIndexById(list, window.before) : list.length;
-    if (at === -1) return { messages: [], hasMore: false, reset: true };
-    const page = takePageFromMemory(list, limit, MESSAGE_PAGE_MAX_BYTES, at);
-    return { messages: page.messages, hasMore: page.more };
+    if (window.limit === undefined) return { messages: [...list] };
+    return {
+      messages: takeTailFromMemory(list, window.limit, MESSAGE_SLICE_MAX_BYTES),
+    };
   }
 
   /**

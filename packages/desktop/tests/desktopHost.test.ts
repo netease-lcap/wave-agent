@@ -343,7 +343,7 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     sessionRepoRoot: string | undefined;
     latestTotalTokens = 0;
     /**
-     * 宿主缓存：一页（`refreshMessages` 写的），不是整条会话。
+     * 宿主缓存：整份列表（`refreshMessages` 写的）。
      *
      * 写非空列表时同时记进 `daemonMessages`：真会话的显示流活在 CLI 一侧，
      * 宿主丢掉自己那份副本不会让它消失，切回来重拉还得拉得到东西。空列表是
@@ -360,8 +360,6 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     }
     /** CLI 侧的显示流（`getMessages` / `refreshMessages` 的取数源）。 */
     daemonMessages: unknown[] | undefined = undefined;
-    /** 那一页之前还有没有更早的（由同一次回包带回）。 */
-    hasMoreMessages = false;
     threadSummary:
       | { messageCount: number; firstUserText?: string }
       | undefined = undefined;
@@ -432,53 +430,28 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     }) {
       return { messages: this.messages ?? [], sessionIds: [] };
     });
-    // Mirrors StdioAgent: a windowed read is a **read-only** page over the
+    // Mirrors StdioAgent: a windowed read is a **read-only** read over the
     // daemon's thread (a restored session lives daemon-side until a refresh),
-    // and it never touches the cache — paging a page back must not evict the
-    // page the host is showing.
-    getMessages = vi.fn(async function (
-      this: {
-        daemonMessages?: unknown[];
-        messages?: unknown[];
-      },
-      window?: { before?: string; limit?: number },
-    ) {
-      const all = (this.daemonMessages ?? this.messages ?? []) as Array<{
-        id?: string;
-      }>;
-      if (!window) {
-        return { messages: all, hasMore: false };
-      }
-      const end =
-        window.before === undefined
-          ? all.length
-          : all.map((m) => m.id).lastIndexOf(window.before);
-      const start =
-        window.limit === undefined ? 0 : Math.max(0, end - window.limit);
-      return {
-        messages: end === -1 ? [] : all.slice(start, end),
-        hasMore: end !== -1 && start > 0,
-      };
+    // and it never touches the cache.
+    getMessages = vi.fn(async function (this: {
+      daemonMessages?: unknown[];
+      messages?: unknown[];
+    }) {
+      return { messages: this.daemonMessages ?? this.messages ?? [] };
     });
     // Mirrors StdioAgent.refreshMessages: the one path that writes the cache,
-    // and it writes exactly one page.
-    refreshMessages = vi.fn(async function (
-      this: {
-        daemonMessages?: unknown[];
-        messages?: unknown[];
-        hasMoreMessages: boolean;
-        threadSummary: { messageCount: number } | undefined;
-      },
-      limit = 20,
-    ) {
+    // and it writes the whole list.
+    refreshMessages = vi.fn(async function (this: {
+      daemonMessages?: unknown[];
+      messages?: unknown[];
+      threadSummary: { messageCount: number } | undefined;
+    }) {
       const all = (this.daemonMessages ?? this.messages ?? []) as Array<{
         id?: string;
       }>;
-      const page =
-        limit > 0 && all.length > limit ? all.slice(all.length - limit) : all;
-      this.messages = page;
-      this.hasMoreMessages = page.length < all.length;
-      // 条数与首条用户正文由 SDK 的计数器给出（窗口里可能已经没有那条了）。
+      this.messages = all;
+      // 条数与首条用户正文由 SDK 的计数器给出（列表从最近一次压缩开始，
+      // 里面可能已经没有那条了）。
       const firstUser = all.find(
         (m) => (m as { role?: string }).role === "user",
       ) as { blocks?: Array<{ type?: string; content?: string }> } | undefined;
@@ -489,7 +462,7 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
         messageCount: all.length,
         ...(firstText ? { firstUserText: firstText } : {}),
       };
-      return page;
+      return all;
     });
     listRewindCheckpoints = vi.fn(async () => ({
       checkpoints: [{ id: "u1", content: "hello" }],
@@ -1343,152 +1316,6 @@ describe("webviewReady / setInitialState", () => {
         JSON.stringify(m).includes("正在升级 wave-code"),
       ),
     ).toHaveLength(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// message paging (spec ui/message-rendering-system.md「首屏只进一页」)
-//
-// 首屏只推一页 + 按窗口取回更早的历史。宿主的 `agent.messages` 缓存仍是全量
-// （翻更早、回滚、搜索都读它），推给渲染进程的永远只有一页 —— 一个连续用了几周
-// 的会话，整份列表在渲染进程里就是 V8 堆上的几十万个对象，最后以 native GC 崩溃
-// 收场。
-// ---------------------------------------------------------------------------
-
-describe("message paging", () => {
-  const thread = (n: number) =>
-    Array.from({ length: n }, (_, i) => ({
-      id: `m${String(i)}`,
-      role: "user" as const,
-      blocks: [{ type: "text", content: `第 ${String(i)} 条` }],
-    }));
-
-  it("pushes the page the daemon hands back, and only that page", async () => {
-    const { host, sent } = await readyHost();
-    const agent = lastAgent();
-    // 整条会话在守护进程 / 转录那边；宿主缓存是那次拉取拿回来的一页。
-    agent.messages = thread(45).slice(25);
-    agent.hasMoreMessages = true;
-
-    await host.handleWebviewMessage({ command: "webviewReady" });
-
-    const state = sent("setInitialState").at(-1);
-    const pushed = (state?.messages ?? []) as Array<{ id: string }>;
-    expect(pushed).toHaveLength(20);
-    // 推的是**尾巴**：读者打开会话先看到最近的对话。
-    expect(pushed.map((m) => m.id)).toEqual(
-      thread(45)
-        .slice(25)
-        .map((m) => m.id),
-    );
-    // 「前面还有」的正确初值 —— 由窗口回包给出，不是页面猜的。
-    expect(state?.historyExhausted).toBe(false);
-    expect(state?.supportsMessagePaging).toBe(true);
-    // 宿主缓存也只有这一页：更早的不在任何人手里，翻更早时按窗口去读。
-    expect(agent.messages).toHaveLength(20);
-    expect(agent.hasMoreMessages).toBe(true);
-  });
-
-  it("marks the history exhausted when the whole thread fits in one page", async () => {
-    const { host, sent } = await readyHost();
-    const agent = lastAgent();
-    agent.messages = thread(20);
-    agent.hasMoreMessages = false;
-
-    await host.handleWebviewMessage({ command: "webviewReady" });
-
-    const state = sent("setInitialState").at(-1);
-    expect(state?.messages).toHaveLength(20);
-    expect(state?.historyExhausted).toBe(true);
-  });
-
-  it("answers loadOlderMessages with the page before the anchor and echoes requestId", async () => {
-    const { host, sent } = await readyHost();
-    const agent = lastAgent();
-    agent.messages = thread(45);
-
-    await host.handleWebviewMessage({
-      command: "loadOlderMessages",
-      before: "m25",
-      requestId: 7,
-      paneId: host.focusedPaneId,
-    });
-    await vi.waitFor(() => {
-      expect(sent("olderMessages")).toHaveLength(1);
-    });
-
-    const reply = sent("olderMessages")[0] as unknown as {
-      requestId: number;
-      messages: Array<{ id: string }>;
-      hasMore: boolean;
-    };
-    // requestId 原样回传：页面用它丢弃晚到的旧页。
-    expect(reply.requestId).toBe(7);
-    // `before` 是排他上锚点，取回它之前的一页，且按 200 条切。
-    expect(reply.messages.map((m) => m.id)).toEqual(
-      thread(45)
-        .slice(0, 25)
-        .map((m) => m.id),
-    );
-    expect(reply.hasMore).toBe(false);
-    // 取一页是只读查询：缓存不能被它换成「最后那页」。
-    expect(agent.messages).toHaveLength(45);
-  });
-
-  it("reports an error (never an empty page) when no session is bound", async () => {
-    const { host, sent } = await createHost();
-
-    await host.handleWebviewMessage({
-      command: "loadOlderMessages",
-      before: "m0",
-      requestId: 3,
-    });
-    await vi.waitFor(() => {
-      expect(sent("olderMessagesError")).toHaveLength(1);
-    });
-
-    // 空页会被页面读成「已经到底」，从此不再翻。
-    expect(sent("olderMessages")).toHaveLength(0);
-    expect(sent("olderMessagesError")[0]).toMatchObject({ requestId: 3 });
-  });
-
-  it("drops a page whose session was replaced while the RPC was in flight", async () => {
-    const { host, sent } = await readyHost();
-    const agent = lastAgent();
-    agent.messages = thread(45);
-    const paneId = host.focusedPaneId;
-
-    // Hold the RPC open so the pane can be re-bound underneath it.
-    let release = () => {};
-    const inFlight = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const original = agent.getMessages.getMockImplementation();
-    agent.getMessages.mockImplementation((async (window?: {
-      before?: string;
-      limit?: number;
-    }) => {
-      await inFlight;
-      return original?.call(agent, window);
-    }) as never);
-
-    const pending = host.handleWebviewMessage({
-      command: "loadOlderMessages",
-      before: "m25",
-      requestId: 11,
-      paneId,
-    });
-    // 分屏在回包落地前换了会话：这一页属于上一个会话，prepend 进新会话的列表
-    // 就是把两段历史缝在一起。
-    await host.handleWebviewMessage({ command: "newSession", paneId });
-    release();
-    await pending;
-
-    await vi.waitFor(() => {
-      expect(sent("olderMessagesError")).toHaveLength(1);
-    });
-    expect(sent("olderMessages")).toHaveLength(0);
-    expect(sent("olderMessagesError")[0]).toMatchObject({ requestId: 11 });
   });
 });
 
@@ -12991,7 +12818,7 @@ describe("宿主只为被 pane 显示的会话留消息副本", () => {
     expect(agent.messages).toHaveLength(4);
   });
 
-  it("切回来先重拉一页再推快照，不是把空列表当历史", async () => {
+  it("切回来先重拉整份列表再推快照，不是把空列表当历史", async () => {
     const { host, sent } = await readyHost();
     const agent = seedConversation("sess-1", 30);
     await host.handleWebviewMessage({ command: "newSession" });
@@ -13009,10 +12836,12 @@ describe("宿主只为被 pane 显示的会话留消息副本", () => {
       expect(sent("setInitialState").length).toBeGreaterThan(before);
     });
     expect(agent.refreshMessages).toHaveBeenCalledTimes(1);
+    // refreshMessages 不收参数：重拉的就是整份列表（= 压缩后的上下文）。
+    expect(agent.refreshMessages).toHaveBeenCalledWith();
     const state = sent("setInitialState").at(-1)!;
-    // 重拉的就是「一页」，和首次绑定同一条规则；「还有更早」也只能由这次回包答。
-    expect(state.messages).toHaveLength(20);
-    expect(state.historyExhausted).toBe(false);
+    expect(state.messages.map((m) => m.id)).toEqual(
+      Array.from({ length: 30 }, (_, i) => `sess-1-m${String(i)}`),
+    );
   });
 
   it("副本被丢过的会话再绑定，不会被当成空脚手架销毁", async () => {

@@ -826,7 +826,7 @@ async function openPage(): Promise<Harness> {
   // session in the envelope.
   page.reply({ sessionId: "s1", permissionMode: "default" });
   await flush();
-  page.reply({ messages: [{ id: "m10" }, { id: "m11" }], hasMore: true });
+  page.reply({ messages: [{ id: "m10" }, { id: "m11" }] });
   await flush();
   page.reply({ requests: [] });
   await flush();
@@ -944,90 +944,6 @@ describe("remote page shim — talking to the host", () => {
     expect(decisions).toEqual([
       { requestId: "req-1", decision: { behavior: "allow" } },
       { requestId: "req-2", decision: { behavior: "deny" } },
-    ]);
-  });
-});
-
-describe("remote page shim — pulling the list further up", () => {
-  it("asks for the page above the anchor, at the first screen's page size", async () => {
-    const page = await openPage();
-
-    page.post({ command: "loadOlderMessages", before: "m10", requestId: 7 });
-    await flush();
-
-    // `before` is exclusive: the host returns what is older than m10, so the
-    // message the reader is holding is never re-sent.
-    const asked = page
-      .requests()
-      .filter((frame) => frame.method === "getMessages");
-    expect(asked[asked.length - 1]).toMatchObject({
-      method: "getMessages",
-      params: { before: "m10", limit: 100 },
-      sessionId: "s1",
-    });
-
-    page.reply({ messages: [{ id: "m8" }, { id: "m9" }], hasMore: true });
-    await flush();
-
-    expect(page.posted[1]).toEqual({
-      command: "olderMessages",
-      requestId: 7,
-      messages: [{ id: "m8" }, { id: "m9" }],
-      hasMore: true,
-    });
-  });
-
-  it("carries the end-of-history flag through, so the page can stop asking", async () => {
-    const page = await openPage();
-
-    page.post({ command: "loadOlderMessages", before: "m10", requestId: 8 });
-    await flush();
-    page.reply({ messages: [{ id: "m1" }], hasMore: false });
-    await flush();
-
-    expect(page.posted[1]).toEqual({
-      command: "olderMessages",
-      requestId: 8,
-      messages: [{ id: "m1" }],
-      hasMore: false,
-    });
-  });
-
-  it("reports a failed page and leaves the reader where they were", async () => {
-    const page = await openPage();
-    const before = page.requests().length;
-
-    page.post({ command: "loadOlderMessages", before: "m10", requestId: 9 });
-    await flush();
-    page.replyWithError(
-      "getMessages: the answer is larger than the frame budget",
-    );
-    await flush();
-
-    expect(page.posted[1]).toEqual({
-      command: "olderMessagesError",
-      requestId: 9,
-      error: "getMessages: the answer is larger than the frame budget",
-    });
-    expect(page.warns).toContain(
-      "[wave-remote] 翻更早失败：getMessages: the answer is larger than the frame budget",
-    );
-    // No tail re-pull: that would replace the very position being held on to.
-    expect(page.requests().length).toBe(before + 1);
-  });
-
-  it("answers an empty page itself when the page has no session yet", async () => {
-    const page = loadShim({ token: "jwt" });
-    page.socket().onopen?.();
-    page.socket().receive({ type: "auth_ok" });
-
-    page.post({ command: "loadOlderMessages", before: "m1", requestId: 10 });
-    await flush();
-
-    // Nothing to ask: no session means there is no anchor to page from.
-    expect(page.requests()).toEqual([]);
-    expect(page.posted).toEqual([
-      { command: "olderMessages", requestId: 10, messages: [], hasMore: false },
     ]);
   });
 });

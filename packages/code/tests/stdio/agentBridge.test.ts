@@ -1092,32 +1092,26 @@ async function bridgeWithMessages(count: number) {
 
 type MessageWindowResult = {
   messages: Message[];
-  hasMore?: boolean;
   reset?: boolean;
 };
 
-test("getMessages hands the window to the SDK unchanged", async () => {
+test("getMessages hands the parameters to the SDK unchanged", async () => {
   const { bridge, sessionId, mockAgent } = await bridgeWithMessages(10);
   vi.mocked(mockAgent.getMessagePage).mockReturnValue({
     messages: windowedMessages(3),
-    hasMore: true,
   });
 
   const r = (await bridge.handleRequest(
     "getMessages",
-    { before: "m9", since: undefined, limit: 3 },
+    { since: undefined, limit: 3 },
     sessionId,
   )) as MessageWindowResult;
 
-  expect(mockAgent.getMessagePage).toHaveBeenCalledWith({
-    before: "m9",
-    limit: 3,
-  });
+  expect(mockAgent.getMessagePage).toHaveBeenCalledWith({ limit: 3 });
   expect(r.messages).toHaveLength(3);
-  expect(r.hasMore).toBe(true);
 });
 
-test("getMessages without a window answers the agent's own list", async () => {
+test("getMessages without parameters answers the agent's own list", async () => {
   const { bridge, sessionId, mockAgent } = await bridgeWithMessages(10);
 
   const r = (await bridge.handleRequest(

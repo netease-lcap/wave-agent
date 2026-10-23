@@ -13,8 +13,6 @@ import type {
 } from "wave-agent-sdk/host";
 import { StdioClient } from "../stdio/stdioClient";
 import {
-  MESSAGE_FIRST_PAGE_SIZE,
-  MESSAGE_HISTORY_PAGE_SIZE,
   StdioAgent,
   type InitializeParams,
   type StdioAgentCallbacks,
@@ -74,17 +72,15 @@ export interface ChatSessionCallbacks {
 
 export class ChatSession {
   public agent: StdioAgent | undefined;
-  /** 首屏那一页（逐条追加，翻更早的页只经手不入这份）。 */
+  /** 整份列表（= 压缩后的上下文）：逐条追加，不分页、不往回翻。 */
   public messages: Message[] = [];
-  /** 那一页之前还有没有更早的 —— 与列表同一次回包带回，宿主持有。 */
-  public hasMoreMessages = false;
   /**
-   * 上下文用量百分比，随首屏那一页一起取回。
+   * 上下文用量百分比，随列表一起取回。
    *
-   * 宿主自己存：`getMessages` 走的是只读的窗口查询，不写 SDK 客户端的那份
-   * 缓存（spec ui/message-rendering-system.md「宿主只留下被 pane 显示的会话
-   * 副本」场景 9 —— 一条会话在宿主进程里只有一份数组，且必须是仍在更新的
-   * 那份，也就是这里）。
+   * 宿主自己存：`getMessages` 走的是只读查询，不写 SDK 客户端的那份缓存
+   * （spec ui/message-rendering-system.md「宿主只留下被 pane 显示的会话副本」
+   * 场景 9 —— 一条会话在宿主进程里只有一份数组，且必须是仍在更新的那份，也就是
+   * 这里）。
    */
   public contextUsagePercent: number | undefined;
   public tasks: Task[] = [];
@@ -458,47 +454,28 @@ export class ChatSession {
   }
 
   /**
-   * Pull the first page into the cache. The cache is that page, not the whole
-   * thread — older pages are answered by `getOlderMessages` and never kept.
+   * Pull the whole list (= the compacted context) into the cache.
    *
-   * One-shot window query, not `refreshMessages()`: the latter also writes the
-   * SDK client's own `messages`/`hasMoreMessages`/`contextUsagePercent`, which
-   * would make this host hold the same page twice — and the second copy would
-   * be the one nobody keeps updating. Everything this host needs from the reply
-   * (the page, "还有更早", the usage ring) is stored here instead.
+   * One-shot read, not `refreshMessages()`: the latter also writes the SDK
+   * client's own `messages` / `contextUsagePercent`, which would make this host
+   * hold the same list twice — and the second copy would be the one nobody
+   * keeps updating. Everything this host needs from the reply (the list, the
+   * usage ring) is stored here instead.
+   *
+   * The empty window is what makes the usage number reachable: the
+   * no-argument overload answers with the bare array, while any request
+   * parameters (even none of them) come back as the full
+   * `MessageWindowResult`, which carries `contextUsagePercent` for the same
+   * whole list.
    */
   public async getMessages(): Promise<Message[]> {
     if (!this.agent) {
       return this.messages;
     }
-    const page = await this.agent.getMessages({
-      limit: MESSAGE_FIRST_PAGE_SIZE,
-    });
-    this.messages = page.messages;
-    this.hasMoreMessages = page.hasMore === true;
-    this.contextUsagePercent = page.contextUsagePercent;
+    const result = await this.agent.getMessages({});
+    this.messages = result.messages;
+    this.contextUsagePercent = result.contextUsagePercent;
     return this.messages;
-  }
-
-  /**
-   * 取 `before` 之前的一页（上滑「翻更早」）。**不写 `this.messages` 缓存**：
-   * 那份只是首屏那一页，翻出来的页只经手不回存——存了等于把宿主持有量重新
-   * 变回「用户翻到哪就涨到哪」。
-   *
-   * 没有 agent（会话还没初始化 / 已经销毁）返回 undefined，由调用方回一条错误：
-   * 回空页会被页面读成「已经到底」，从此再也不翻。
-   */
-  public async getOlderMessages(
-    before: string,
-  ): Promise<{ messages: Message[]; hasMore: boolean } | undefined> {
-    if (!this.agent) return undefined;
-    const page = await this.agent.getMessages({
-      before,
-      limit: MESSAGE_HISTORY_PAGE_SIZE,
-    });
-    // 老版本 CLI 不认识窗口参数（会把整份列表原样答回来且不带 hasMore）：
-    // 按「没有更早的了」处理，否则页面会拿同一个锚点无限重问。
-    return { messages: page.messages, hasMore: page.hasMore === true };
   }
 
   private throttledStreamingContentUpdate(
@@ -630,8 +607,8 @@ export class ChatSession {
     if (index !== -1) {
       this.messages = this.messages.slice(0, index);
     } else {
-      // The anchor predates the cached page (the cache is one page now):
-      // nothing to cut, re-pull the tail that the rewind just rewrote.
+      // The anchor is not in the list anymore (compaction cut it away):
+      // nothing to cut, re-pull the list that the rewind just rewrote.
       await this.getMessages();
     }
   }
@@ -663,7 +640,6 @@ export class ChatSession {
     }
 
     this.messages = [];
-    this.hasMoreMessages = false;
     this.contextUsagePercent = undefined;
     this.tasks = [];
     this.inputContent = "";

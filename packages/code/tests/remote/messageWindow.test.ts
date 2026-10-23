@@ -14,21 +14,20 @@ import {
  */
 
 describe("normalizeMessageWindow", () => {
-  it("answers undefined when no window was asked for", () => {
-    // 老宿主 / 老调用方走这条路径：没有窗口参数就是「全量」，不能被悄悄截成
-    // 一页 —— 那是调用方察觉不到的失败。
+  it("answers undefined when nothing was asked for", () => {
+    // 三个本机宿主走这条路径：没有参数就是整份列表，不能被悄悄截成一段 ——
+    // 那是调用方察觉不到的失败。
     expect(normalizeMessageWindow(undefined)).toBeUndefined();
     expect(normalizeMessageWindow({})).toBeUndefined();
   });
 
-  it("passes a window through untouched", () => {
-    expect(normalizeMessageWindow({ before: "m3", limit: 20 })).toEqual({
-      before: "m3",
-      limit: 20,
-    });
-    // No `limit`: the SDK fills in its page size, so anchoring alone still
-    // yields a bounded page rather than everything on one side of the anchor.
+  it("passes the parameters through untouched", () => {
+    expect(normalizeMessageWindow({ limit: 100 })).toEqual({ limit: 100 });
     expect(normalizeMessageWindow({ since: "m3" })).toEqual({ since: "m3" });
+    expect(normalizeMessageWindow({ since: "m3", limit: 100 })).toEqual({
+      since: "m3",
+      limit: 100,
+    });
   });
 
   it.each([0, -1, 1.5, Number.NaN])(

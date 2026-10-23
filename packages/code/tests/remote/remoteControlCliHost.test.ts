@@ -42,7 +42,7 @@ function makeSession(
     sessionId: () => "sess-1",
     workdir: () => "/work",
     sessionCwd: () => "/work",
-    messagePage: async () => ({ messages: [], hasMore: false }),
+    messagePage: async () => ({ messages: [] }),
     currentThread: async () => [],
     threadSummary: () => ({ messageCount: 0 }),
     contextUsagePercent: () => 0,
@@ -257,14 +257,14 @@ test("getMessages shares the daemon's window semantics", async () => {
     message("m2", "assistant", "b"),
     message("m3", "user", "c"),
   ];
-  // The paging itself lives in the SDK now (it reads the transcript), so this
-  // host is pinned to *passing the window through* and to the answer shape the
-  // daemon produces — not to re-deriving pages from a host-side list.
+  // The slicing itself lives in the SDK, so this host is pinned to *passing the
+  // parameters through* and to the answer shape the daemon produces — not to
+  // re-deriving anything from a host-side list.
   const messagePage = async (
     window: MessageWindow,
   ): Promise<MessageWindowResult> =>
     window.since === "m1"
-      ? { messages: [messages[1], messages[2]], hasMore: false }
+      ? { messages: [messages[1], messages[2]] }
       : { messages: [], reset: true };
   const host = new RemoteControlCliHost(makeSession({ messagePage }));
 
@@ -272,7 +272,6 @@ test("getMessages shares the daemon's window semantics", async () => {
     host.handleRequest("getMessages", { since: "m1" }),
   ).resolves.toEqual({
     messages: [messages[1], messages[2]],
-    hasMore: false,
     contextUsagePercent: 0,
   });
   // A vanished anchor asks for a rebuild rather than an ever-missing page.
@@ -288,7 +287,7 @@ test("getMessages shares the daemon's window semantics", async () => {
 test("getMessages rejects a malformed limit as invalid params", async () => {
   const host = new RemoteControlCliHost(
     makeSession({
-      messagePage: async () => ({ messages: [], hasMore: false }),
+      messagePage: async () => ({ messages: [] }),
     }),
   );
 

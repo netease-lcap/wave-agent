@@ -364,12 +364,10 @@ export class RemoteControlCliHost implements RemoteControlHost {
   private async getMessages(p: Record<string, unknown>): Promise<{
     messages: Message[];
     contextUsagePercent: number;
-    hasMore?: boolean;
     reset?: boolean;
   }> {
     const contextUsagePercent = this.session.contextUsagePercent();
     const window: MessageWindow = {};
-    if (typeof p.before === "string") window.before = p.before;
     if (typeof p.since === "string") window.since = p.since;
     if (p.limit !== undefined) window.limit = Number(p.limit);
 
@@ -381,9 +379,9 @@ export class RemoteControlCliHost implements RemoteControlHost {
         throw invalidParams(err.message);
       throw err;
     }
-    // No window = the whole list the agent holds (spec
-    // ui/message-rendering-system.md「不带窗口 = 当前列表」). Pages are slices
-    // of the same list.
+    // No parameters = the whole list the agent holds (spec
+    // ui/message-rendering-system.md「首屏就是整份列表」). A `limit` is a tail
+    // slice of the same list, for the phone's frame budget.
     if (!normalized) {
       return {
         messages: await this.session.currentThread(),

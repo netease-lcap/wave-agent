@@ -612,10 +612,9 @@ export class RemoteControlService implements RemoteControlController {
    *
    * A read answer is the one frame whose size follows the session (a page of
    * the message list), so it is the one frame that gets trimmed instead of
-   * dropped. `getMessages` answers are pageable and the phone asked for the
-   * tail, so an over-budget page is cut to the **newest** messages that fit and
-   * flagged `hasMore` — the phone keeps a usable page instead of nothing, and
-   * walking further back is a smaller `limit` away. Every other over-budget
+   * dropped. A `getMessages` answer can be cut and the phone asked for the
+   * tail, so an over-budget one is cut to the **newest** messages that fit — the
+   * phone keeps a usable list instead of nothing. Every other over-budget
    * answer is an explicit error: truncating a `getSessionInfo` or a
    * `listSessions` would hand the phone a well-formed lie about which sessions
    * exist, and there is no "newer part" of such an answer to prefer.
@@ -643,9 +642,8 @@ export class RemoteControlService implements RemoteControlController {
         (count) =>
           frameBytes(pageFrame(replyId, page, count)) <= REMOTE_MAX_FRAME_BYTES,
       );
-      // Not even one message fits: pageable or not, there is nothing to send
-      // that the phone could render, and an empty page claiming `hasMore` would
-      // only make it ask again forever.
+      // Not even one message fits: there is nothing to send that the phone
+      // could render, and an empty list would only make it re-ask forever.
       if (kept > 0) {
         this.send(pageFrame(replyId, page, kept));
         return;
@@ -784,18 +782,18 @@ function describeRpcError(err: unknown): { code: number; message: string } {
   return { code: Number.isFinite(code) ? code : -32603, message };
 }
 
-/** A `getMessages` answer: the one read shape that can be cut into a page. */
+/** A `getMessages` answer: the one read shape that can be cut. */
 interface MessagePage {
   messages: unknown[];
-  /** Whatever else the host put in the answer (`hasMore` / `reset` / `total`). */
+  /** Whatever else the host put in the answer (`reset` / `contextUsagePercent`). */
   rest: Record<string, unknown>;
 }
 
 /**
- * Recognise a pageable answer by its shape rather than by the method that
+ * Recognise a cuttable answer by its shape rather than by the method that
  * produced it: `getMessages` is the only method that returns `messages` today,
- * and matching on the shape means a future paged read is covered without a
- * second list of method names to keep in sync.
+ * and matching on the shape means a future read is covered without a second
+ * list of method names to keep in sync.
  */
 function asMessagePage(result: unknown): MessagePage | undefined {
   if (typeof result !== "object" || result === null) return undefined;
@@ -818,9 +816,6 @@ function pageFrame(
       result: {
         ...page.rest,
         messages: page.messages.slice(-count),
-        // The page is by definition no longer the whole answer, and the phone
-        // reads this flag to decide whether asking again is worth anything.
-        hasMore: true,
       },
     },
   };
