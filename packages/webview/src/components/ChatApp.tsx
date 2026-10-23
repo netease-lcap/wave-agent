@@ -73,11 +73,7 @@ import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/constants";
 // part of the host → webview contract (fixtures defines `PushState`), and the
 // import is erased so nothing runtime-bound survives.
 import type { ConfiguredModel, PushState } from "wave-webview-fixtures";
-import {
-  collectWriteEditBlocks,
-  GENERATED_DOC_EXT,
-  pathsMatch,
-} from "../utils/fileAutoRefresh";
+import { collectWriteEditBlocks, pathsMatch } from "../utils/fileAutoRefresh";
 import { collectConversationFiles } from "../utils/conversationFiles";
 import {
   askDiscardUnsavedDraft,
@@ -4033,30 +4029,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             handlePreviewHtmlFile(path);
           }
         }
-        // 新生成的文件直接给出查看面（spec desktop/desktop-artifacts.md
-        // 「对话中的生成文件卡片」场景 1）：页面开预览面板、文档开文件面板。
-        // 只在面板里还没有同类查看面时自动打开 —— 否则一轮里每写一个文件
-        // 都会抢一次面板，把用户手上正在看的东西挤掉。
-        const generated =
-          toAbsoluteFilePath(ref.targetPath, workdir) ?? ref.targetPath;
-        if (isHtmlPath(generated)) {
-          if (previewFilePaths.length === 0) handlePreviewHtmlFile(generated);
-        } else if (
-          GENERATED_DOC_EXT.test(generated) &&
-          tabsRef.current.length === 0
-        ) {
-          handleOpenFile(generated);
-        }
       }
       stages.set(key, ref.stage);
     }
-  }, [
-    state.messages,
-    isDesktop,
-    handleFileAutoRefresh,
-    handleOpenFile,
-    handlePreviewHtmlFile,
-  ]);
+  }, [state.messages, isDesktop, handleFileAutoRefresh, handlePreviewHtmlFile]);
 
   // Local sessions only: leave the panel and open the file in the OS default
   // app (remote hosts have no local file — the button is hidden).

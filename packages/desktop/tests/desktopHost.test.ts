@@ -11366,36 +11366,6 @@ describe("file panel", () => {
     ).toBe(true);
   });
 
-  // 生成文件卡片的「打开文件所在文件夹」（spec desktop/desktop-artifacts.md
-  // 「对话中的生成文件卡片」场景 2）：在系统文件管理器里选中该文件。
-  it("desktopRevealInFolder reveals the file in the OS file manager", async () => {
-    const { host } = await readyHost();
-    h.existingPaths.add("/work/a/index.html");
-
-    await host.handleWebviewMessage({
-      command: "desktopRevealInFolder",
-      path: "/work/a/index.html",
-    });
-
-    expect(shell.showItemInFolder).toHaveBeenCalledWith("/work/a/index.html");
-  });
-
-  it("desktopRevealInFolder reports a missing file instead of silently doing nothing", async () => {
-    const { host, sent } = await readyHost();
-
-    await host.handleWebviewMessage({
-      command: "desktopRevealInFolder",
-      path: "/work/a/gone.html",
-    });
-
-    expect(shell.showItemInFolder).not.toHaveBeenCalled();
-    expect(
-      sent("appendMessage").some((m) =>
-        JSON.stringify(m).includes("打开文件所在文件夹失败"),
-      ),
-    ).toBe(true);
-  });
-
   // ---- 面板内编辑与保存（spec desktop-file-panel.md「文件面板内编辑与保存」）----
   // 路径与相邻用例一样用原样字符串：mock 的 key 就是消息里的 path，宿主内部
   // 的 realpath / path.resolve 只用于两端比较，不参与 key 匹配。

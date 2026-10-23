@@ -93,8 +93,7 @@
 
 /* 列表态（spec desktop-file-panel.md「文件面板列出当前对话的文件」）：面板
    没打开任何文件时，正文改为「本对话读/写过的文件」清单，一行一个、点击即开。
-   只有文件——创作集是 URL 而非文件，不进这张表（它没有所属文件夹，也给不出
-   「在浏览器中打开 / 打开所在文件夹」之外的文件语义）。 */
+   只有文件——创作集是 URL 而非文件，不进这张表。 */
 .file-pane-conversation-files {
   display: flex;
   flex-direction: column;
