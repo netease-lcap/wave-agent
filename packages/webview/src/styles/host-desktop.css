@@ -5695,6 +5695,16 @@
   outline: none;
 }
 
+/* 1023 评论：「下拉展开三角翻转」。展开时把三角绕自身中心转 180° —— 与 0923 那轮
+   两颗展开态 chevron 同一手法：同一条官方矢量整体旋转，描边逐像素不变，只是朝上。
+   伪元素盒 8×4.5、`transform-origin` 默认就是盒心，故直接叠 rotate 即可；
+   translateY(-50%) 必须保留（它负责垂直居中），旋转写在后面才不会丢掉居中。
+   只作用于桌面自绘触发器：原生 `select.settings-select`（IDE 宿主）的系统弹层无法
+   在 CSS 里感知展开，那一处保持原样。 */
+[data-host="desktop"] .settings-select-trigger[aria-expanded="true"]::after {
+  transform: translateY(-50%) rotate(180deg);
+}
+
 /* 占位符：独立占位色 + 显式 opacity 1（避免浏览器再压一层） */
 [data-host="desktop"] .settings-page
   :is(
