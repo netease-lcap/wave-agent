@@ -185,9 +185,10 @@ describe("real host · session lifecycle", () => {
       predicate: (m) => (m.session as { id?: string }).id === longId,
     });
 
-    const list = restored.messages as Array<{ id: string }>;
-    // 整份列表：11 轮共 22 条显示消息，一条不少地进了首屏。
-    expect(list).toHaveLength(22);
+    const list = restored.messages as Array<{ id: string; isMeta?: boolean }>;
+    // 整份列表：11 轮共 22 条显示消息，一条不少地进了首屏。列表本身也带着
+    // 会话里的 isMeta 行（工具目录公告、启动钩子），它们在渲染前被过滤掉。
+    expect(list.filter((m) => !m.isMeta)).toHaveLength(22);
     // 没有缺口、没有重复：从会话开头一直到最近一轮。
     expect(new Set(list.map((m) => m.id)).size).toBe(list.length);
     const serialized = JSON.stringify(list);
