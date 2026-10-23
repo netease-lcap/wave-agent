@@ -584,37 +584,10 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   gap: 8px;
 }
 
-.artifacts-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
-  z-index: 20;
-  min-width: 160px;
-  max-height: 240px;
-  overflow-y: auto;
-  padding: 4px;
-  border-radius: 8px;
-  border: 1px solid var(--vscode-panel-border, rgba(127, 127, 127, 0.3));
-  background: var(--vscode-editorWidget-background, #ffffff);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.16);
-}
-
-.artifacts-menu button {
-  display: block;
-  width: 100%;
-  padding: 6px 10px;
-  border: none;
-  border-radius: 4px;
-  background: transparent;
-  color: inherit;
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.artifacts-menu button:hover {
-  background: rgba(127, 127, 127, 0.14);
-}
+/* 批量条的「归类到…」下拉不再用页内自写的 `.artifacts-menu`（r8 / pad 4 / 12px 项 /
+   右对齐），改成与分类行、操作列共用的 `.desktop-session-menu`（契约 §Menus：
+   r12 / pad 8 / shadow-popover / 项 28px·14px·400·r6 / hover fill-hover），
+   定位与键盘行为复用 `RowActionsMenu`。原三条 `.artifacts-menu*` 规则随之下线。 */
 
 /* ── 弹层 ─────────────────────────────────────────────────────────────── */
 

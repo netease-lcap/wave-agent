@@ -344,7 +344,9 @@ const RowActionsMenu: React.FC<{
   items: Array<{ key: string; label: string; testId: string; run: () => void }>;
   testId: string;
   onClose: () => void;
-}> = ({ anchorRect, triggerRef, items, testId, onClose }) => {
+  /** 面板宽：表格操作列 148（短动作），契约标准面板菜单 200。 */
+  width?: number;
+}> = ({ anchorRect, triggerRef, items, testId, onClose, width = 148 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   const { getItemProps } = useRovingMenu(menuRef, {
     itemSelector: ".desktop-session-menu-item",
@@ -358,7 +360,7 @@ const RowActionsMenu: React.FC<{
 
   // 操作列贴着表格右缘：菜单与「⋯」左对齐向下展开（右对齐会往左压住「分享给」列），
   // 再按视口夹一次，保证不越界。
-  const menuWidth = 148;
+  const menuWidth = width;
   const left = Math.max(
     8,
     Math.min(anchorRect.left, window.innerWidth - menuWidth - 8),
@@ -572,7 +574,9 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
   const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [batchOpen, setBatchOpen] = useState(false);
+  // 「归类到…」下拉：null = 收起；非 null = 触发键的 rect（菜单左缘据此对齐按钮左缘）。
+  const [batchAnchor, setBatchAnchor] = useState<DOMRect | null>(null);
+  const batchTriggerRef = useRef<HTMLButtonElement>(null);
 
   const [categories, setCategories] = useState<ArtifactCategory[]>([]);
   const [assignments, setAssignments] = useState<Record<string, string>>({});
@@ -985,10 +989,29 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
       }
       saveCategories(categories, nextAssignments);
       setSelected(new Set());
-      setBatchOpen(false);
+      setBatchAnchor(null);
       showToast(categoryId === null ? "已移出分类" : "已归类");
     },
     [assignments, categories, selected, saveCategories, showToast],
+  );
+
+  /** 批量条下拉的选项：各分类 + 「移出分类」（沿用原 testid，走查脚本不用改）。 */
+  const batchMenuItems = useMemo(
+    () => [
+      ...categories.map((category) => ({
+        key: category.id,
+        label: category.name,
+        testId: `artifacts-batch-${category.id}`,
+        run: () => handleBatchAssign(category.id),
+      })),
+      {
+        key: "remove",
+        label: "移出分类",
+        testId: "artifacts-batch-remove",
+        run: () => handleBatchAssign(null),
+      },
+    ],
+    [categories, handleBatchAssign],
   );
 
   // ── 渲染 ────────────────────────────────────────────────────────────────
@@ -1242,8 +1265,14 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                 <div className="artifacts-batch-actions">
                   <button
                     type="button"
+                    ref={batchTriggerRef}
                     className="artifacts-primary-btn"
-                    onClick={() => setBatchOpen((prev) => !prev)}
+                    onClick={(event) => {
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      setBatchAnchor((prev) => (prev ? null : rect));
+                    }}
+                    aria-haspopup="menu"
+                    aria-expanded={batchAnchor ? true : undefined}
                     data-testid="artifacts-batch-assign"
                   >
                     归类到…
@@ -1255,28 +1284,22 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                   >
                     取消选择
                   </button>
-                  {batchOpen && (
-                    <div className="artifacts-menu" role="menu">
-                      {categories.map((category) => (
-                        <button
-                          key={category.id}
-                          type="button"
-                          role="menuitem"
-                          onClick={() => handleBatchAssign(category.id)}
-                          data-testid={`artifacts-batch-${category.id}`}
-                        >
-                          {category.name}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        role="menuitem"
-                        onClick={() => handleBatchAssign(null)}
-                        data-testid="artifacts-batch-remove"
-                      >
-                        移出分类
-                      </button>
-                    </div>
+                  {/* 1023 评论（点 `div.artifacts-menu`）：「这里下拉要符合规范，且左侧
+                      要和按钮对齐」⇒ 换掉本页自写的 `.artifacts-menu`（r8 / pad 4 /
+                      12px 项 / 右对齐），改用与同页分类行、操作列共用的那一份
+                      `.desktop-session-menu` 皮肤（契约 §Menus：r12 / pad 8 /
+                      `--cc-shadow-popover` / 项 28px·14px·400·r6，hover fill-hover），
+                      并复用同一套定位：左缘对齐触发键、按视口夹边、Esc / 点外关闭。
+                      宽度取契约的标准面板宽 200。 */}
+                  {batchAnchor && (
+                    <RowActionsMenu
+                      anchorRect={batchAnchor}
+                      triggerRef={batchTriggerRef}
+                      items={batchMenuItems}
+                      testId="artifacts-batch-menu"
+                      width={200}
+                      onClose={() => setBatchAnchor(null)}
+                    />
                   )}
                 </div>
               </div>
