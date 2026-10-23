@@ -39,12 +39,46 @@ function formatPage(value: unknown): string {
     : "";
 }
 
+/** Comparison form: NFKC (full-width → half-width) plus case folding. */
+function normalizeForCompare(value: string): string {
+  return value.normalize("NFKC").trim().toLowerCase();
+}
+
 /**
- * Where a chunk came from: `员工手册 · 假期制度 > 婚假（第 3 页）`.
+ * The "where this chunk came from" parts, never repeating the document name.
  *
- * The section path is dropped rather than printed as a dangling separator when
- * the parser found no headings (a docx without heading styles parses to a flat
- * list — the server then sends an empty `sectionPath`).
+ * The parser builds `sectionPath` out of the document's heading levels, and the
+ * first heading of a real document IS its title — so a hit for 员工手册 arrives
+ * as `title=员工手册`, `sectionPath=员工手册 > 假期制度 > 婚假`. Prepending the
+ * title would print the document name twice (`员工手册 · 员工手册 > 假期制度`),
+ * so a first level that matches the title replaces the title entirely and the
+ * path keeps its own hierarchy. Any other shape keeps `title · sectionPath`.
+ *
+ * The level comparison is NFKC- and case-insensitive: the two values come from
+ * different places in the ingestion pipeline (the file name vs. the parsed
+ * heading), so full-width characters or casing can legitimately differ.
+ */
+function locationParts(title: string, sectionPath: string): string[] {
+  const levels = sectionPath
+    .split(">")
+    .map((level) => level.trim())
+    .filter(Boolean);
+  // No usable heading structure: the title is all we know.
+  if (levels.length === 0) return [title];
+  if (normalizeForCompare(levels[0]) === normalizeForCompare(title)) {
+    return [levels.join(" > ")];
+  }
+  return [title, levels.join(" > ")];
+}
+
+/**
+ * Where a chunk came from: `员工手册 > 假期制度 > 婚假（第 3 页）`, or
+ * `员工手册 · 假期制度 > 婚假（第 3 页）` when the section path does not already
+ * start with the document title (see `locationParts`).
+ *
+ * A `sectionPath` that carries no heading at all — a docx without heading styles
+ * parses to a flat list and the server then sends an empty `sectionPath` — leaves
+ * the title alone rather than trailing a dangling separator.
  */
 export function formatLocation(parts: {
   title?: unknown;
@@ -53,8 +87,7 @@ export function formatLocation(parts: {
 }): string {
   const title = readText(parts.title, UNTITLED_DOC);
   const section = readText(parts.sectionPath);
-  const page = formatPage(parts.page);
-  return section ? `${title} · ${section}${page}` : `${title}${page}`;
+  return `${locationParts(title, section).join(" · ")}${formatPage(parts.page)}`;
 }
 
 /**
@@ -86,13 +119,17 @@ export function countDocuments(hits: KbHit[]): number {
   return new Set(keys.filter(Boolean)).size || hits.length;
 }
 
-/** `<title> · <sectionPath> · 132 字` — one line for a collapsed tool row. */
+/**
+ * `<title> · <sectionPath> · 132 字` — one line for a collapsed tool row, with
+ * the same document-name de-duplication `formatLocation` applies (`员工手册 >
+ * 假期制度 > 婚假 · 77 字` when the path already starts with the title).
+ */
 export function formatDocSummary(doc: KbDoc, body: string): string {
   return [
-    readText(doc.title, UNTITLED_DOC),
-    readText(doc.sectionPath),
+    ...locationParts(
+      readText(doc.title, UNTITLED_DOC),
+      readText(doc.sectionPath),
+    ),
     `${body.length} 字`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  ].join(" · ");
 }

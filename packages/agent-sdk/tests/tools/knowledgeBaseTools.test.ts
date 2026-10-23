@@ -171,6 +171,87 @@ describe("kb_search", () => {
     expect(result.metadata?.citations).toEqual(hits);
   });
 
+  describe("location", () => {
+    it("does not print the document name twice when sectionPath starts with it", async () => {
+      // The parser's first heading level IS the document title, so a real reply
+      // looks like title=员工手册, sectionPath=员工手册 > 假期制度 > 婚假.
+      const hits = [
+        hit({ sectionPath: "员工手册 > 假期制度 > 婚假" }),
+        hit({
+          chunkId: "chunk-2",
+          sectionPath: "员工手册 > 假期制度 > 陪产假",
+          page: 4,
+        }),
+      ];
+      stubReply("/api/kb/search", 200, { query: "婚假", count: 2, hits });
+
+      const result = await kbSearchTool.execute(
+        { query: "婚假" },
+        makeContext(),
+      );
+
+      expect(result.content).toContain(
+        "[1] 员工手册 > 假期制度 > 婚假（第 3 页）  chunk_id=chunk-1",
+      );
+      expect(result.content).toContain(
+        "[2] 员工手册 > 假期制度 > 陪产假（第 4 页）",
+      );
+      expect(result.content).not.toContain("员工手册 · 员工手册");
+      // The document name still appears exactly once per location line.
+      expect(result.content.match(/员工手册/g)).toHaveLength(2);
+    });
+
+    it("keeps title · sectionPath when the path does not carry the title", async () => {
+      stubReply("/api/kb/search", 200, {
+        hits: [hit({ sectionPath: "假期制度 > 婚假" })],
+      });
+
+      const result = await kbSearchTool.execute(
+        { query: "婚假" },
+        makeContext(),
+      );
+
+      expect(result.content).toContain(
+        "[1] 员工手册 · 假期制度 > 婚假（第 3 页）  chunk_id=chunk-1",
+      );
+    });
+
+    it("ignores case, width and padding when matching the title", async () => {
+      stubReply("/api/kb/search", 200, {
+        hits: [
+          hit({
+            title: "Employee Handbook",
+            sectionPath: "ｅｍｐｌｏｙｅｅ handbook > Leave > Marriage",
+          }),
+        ],
+      });
+
+      const result = await kbSearchTool.execute(
+        { query: "marriage leave" },
+        makeContext(),
+      );
+
+      // The path's own spelling survives; only the duplicated title is dropped.
+      expect(result.content).toContain(
+        "[1] ｅｍｐｌｏｙｅｅ handbook > Leave > Marriage（第 3 页）",
+      );
+      expect(result.content).not.toContain("Employee Handbook ·");
+    });
+
+    it("renders the title alone when sectionPath is empty", async () => {
+      stubReply("/api/kb/search", 200, {
+        hits: [hit({ sectionPath: "", page: undefined })],
+      });
+
+      const result = await kbSearchTool.execute(
+        { query: "婚假" },
+        makeContext(),
+      );
+
+      expect(result.content).toContain("[1] 员工手册  chunk_id=chunk-1");
+    });
+  });
+
   it("clamps top_k to the server's ceiling instead of round-tripping", async () => {
     const fetchMock = stubReply("/api/kb/search", 200, { hits: [] });
 
@@ -285,6 +366,54 @@ describe("kb_get_doc", () => {
     expect(result.shortResult).toBe(
       `员工手册 · 假期制度 > 婚假 · ${doc.content.length} 字`,
     );
+  });
+
+  it("does not repeat the document name in the header or the summary", async () => {
+    // Real reply shape: the first heading level is the document title.
+    stubReply("/api/kb/doc/chunk-1", 200, {
+      ...doc,
+      sectionPath: "员工手册 > 假期制度 > 婚假",
+    });
+
+    const result = await kbGetDocTool.execute(
+      { chunk_id: "chunk-1" },
+      makeContext(),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content.split("\n")[0]).toBe(
+      "员工手册 > 假期制度 > 婚假（第 3 页）",
+    );
+    expect(result.shortResult).toBe(
+      `员工手册 > 假期制度 > 婚假 · ${doc.content.length} 字`,
+    );
+    expect(result.content).not.toContain("员工手册 · 员工手册");
+    expect(result.shortResult).not.toContain("员工手册 · 员工手册");
+  });
+
+  it("keeps title · section when the path does not carry the title", async () => {
+    stubReply("/api/kb/doc/chunk-1", 200, doc);
+
+    const result = await kbGetDocTool.execute(
+      { chunk_id: "chunk-1" },
+      makeContext(),
+    );
+
+    expect(result.shortResult).toBe(
+      `员工手册 · 假期制度 > 婚假 · ${doc.content.length} 字`,
+    );
+  });
+
+  it("summarises an empty sectionPath as just the title", async () => {
+    stubReply("/api/kb/doc/chunk-1", 200, { ...doc, sectionPath: "" });
+
+    const result = await kbGetDocTool.execute(
+      { chunk_id: "chunk-1" },
+      makeContext(),
+    );
+
+    expect(result.shortResult).toBe(`员工手册 · ${doc.content.length} 字`);
+    expect(result.content.split("\n")[0]).toBe("员工手册（第 3 页）");
   });
 
   it("falls back to an untitled summary when the server sends no title", async () => {
