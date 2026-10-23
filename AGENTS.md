@@ -64,17 +64,17 @@ Always use `pnpm` as the package manager.
   - **Caution**: for `agent-sdk` and `code`, `pnpm test` includes `tests/integration/` + `*.integration.test.ts` files that hit real external dependencies (git/spawn/hook/filesystem — no real LLM calls; AI paths are mocked). Use `test:unit` to skip them.
 - **Testing Framework**: Vitest.
 
-Test layers, ordered fast→slow (the PR gate only runs unit + the demo screenshot job; the rest are post-merge):
+Test layers, ordered fast→slow (the PR gate runs unit tests only; the rest are post-merge — the screenshot/demo row is not a gate anywhere, it executes solely as part of the docs-site deploy in `pages.yml`):
 
-| Layer       | Where                                                                   | Command                                                                                                                                                      |
-| ----------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Unit        | `*.test.ts` / `*.test.tsx`                                              | `pnpm -F <pkg> test:unit` — what PR CI gates                                                                                                                 |
-| Integration | `tests/integration/**`, `*.integration.test.ts`                         | `pnpm run test:integration` (real git/spawn/fs, no LLM)                                                                                                      |
-| Webview e2e | `packages/webview/e2e/*.e2e.ts` (real Chromium)                         | `pnpm -F wave-webview run test:e2e`                                                                                                                          |
-| Screenshots | `packages/webview/demo/*.demo.ts`                                       | `pnpm -F wave-webview run test:demo` — **not a test layer**: drives the UI into position and captures docs screenshots; behaviour assertions belong in `e2e` |
-| Real-host   | `packages/desktop/tests/integration/*.integration.test.ts`              | `pnpm -F wave-desktop run test:realhost` (real `DesktopHost` ↔ real `wave --stdio` child)                                                                   |
-| Real-IDE    | `packages/vscode/tests-e2e/`, `packages/jetbrains/src/integrationTest/` | `pnpm -F wave-vscode run test:e2e:completion` / `pnpm jb:test:ui` (real VS Code / real IDE via Starter+Driver, real model)                                   |
-| SDK surface | `scripts/check-sdk-surface.mjs`                                         | `pnpm run check:sdk-surface` after `pnpm -F wave-agent-sdk build` (the PR-tier `sdk-surface` CI job)                                                         |
+| Layer       | Where                                                                   | Command                                                                                                                                                                                                                               |
+| ----------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit        | `*.test.ts` / `*.test.tsx`                                              | `pnpm -F <pkg> test:unit` — what PR CI gates                                                                                                                                                                                          |
+| Integration | `tests/integration/**`, `*.integration.test.ts`                         | `pnpm run test:integration` (real git/spawn/fs, no LLM)                                                                                                                                                                               |
+| Webview e2e | `packages/webview/e2e/*.e2e.ts` (real Chromium)                         | `pnpm -F wave-webview run test:e2e`                                                                                                                                                                                                   |
+| Screenshots | `packages/webview/demo/*.demo.ts`                                       | `pnpm -F wave-webview run test:demo` — **not a test layer**: drives the UI into position and captures docs screenshots; behaviour assertions belong in `e2e`. CI runs it only inside the docs deploy (`pages.yml`), never as a PR job |
+| Real-host   | `packages/desktop/tests/integration/*.integration.test.ts`              | `pnpm -F wave-desktop run test:realhost` (real `DesktopHost` ↔ real `wave --stdio` child)                                                                                                                                            |
+| Real-IDE    | `packages/vscode/tests-e2e/`, `packages/jetbrains/src/integrationTest/` | `pnpm -F wave-vscode run test:e2e:completion` / `pnpm jb:test:ui` (real VS Code / real IDE via Starter+Driver, real model)                                                                                                            |
+| SDK surface | `scripts/check-sdk-surface.mjs`                                         | `pnpm run check:sdk-surface` after `pnpm -F wave-agent-sdk build` (the PR-tier `sdk-surface` CI job)                                                                                                                                  |
 
 Everything above runs **inside the repo**, where `node_modules` is complete and
 `@vscode/ripgrep-<platform>` resolves. The host apps are what actually gets
@@ -115,7 +115,7 @@ source-level checks in `scripts/check-sdk-surface.mjs`.
 ### Docs Site
 
 - **Preview**: `pnpm run docs:dev`
-- **Build**: `pnpm run docs:build` — this first runs Playwright demo tests to regenerate screenshots into `docs/public/screenshots/` (gitignored). A bare `vitepress build docs` fails on missing screenshot imports.
+- **Build**: `pnpm run docs:build` — this first runs Playwright demo tests to regenerate screenshots into `docs/public/screenshots/` (gitignored). A bare `vitepress build docs` fails on missing screenshot imports. This deploy is the only CI place the demo suites run; `pages.yml` also triggers on `packages/webview/src/**`, so a UI change redeploys the site on merge and a broken demo surfaces there.
 - **Pack for the ops platform**: `pnpm run docs:pack` — builds with `--base /docs/` and writes `docs-<version>.tar.gz` in the repo root, which `.wave/skills/ops-upload` uploads (`--type docs`). Releases do **not** build the docs (`publish.yml` only publishes npm + creates the GitHub Release); GitHub Pages is built separately by `pages.yml`.
 
 ## 🧭 Webview Extension Conventions (`packages/webview`)
@@ -155,7 +155,7 @@ Known legacy hotspots (duplication not yet deduplicated — check **both** copie
 
 - **Unit tests**: Vitest in `tests/` — `pnpm -F wave-vscode test`
 - **E2E tests**: real-browser Playwright tests in `packages/webview/e2e/` (`.e2e.ts`, requires Chromium) — `pnpm -F wave-webview run test:e2e`
-- **Screenshot generation** (`packages/webview/demo/*.demo.ts`): these are **not tests** — they drive the real UI into the state a docs image needs and capture it into `docs/public/screenshots/` (gitignored) via `pnpm -F wave-webview run test:demo`. A green demo run proves "the screenshots were produced", nothing about behaviour: **every behaviour assertion belongs in `e2e/*.e2e.ts`** (real Chromium, `pnpm -F wave-webview run test:e2e`). When adding a regression case, write it in `e2e`; leave `demo` alone unless the change also alters a screenshot.
+- **Screenshot generation** (`packages/webview/demo/*.demo.ts`): these are **not tests** — they drive the real UI into the state a docs image needs and capture it into `docs/public/screenshots/` (gitignored) via `pnpm -F wave-webview run test:demo`. A green demo run proves "the screenshots were produced", nothing about behaviour: **every behaviour assertion belongs in `e2e/*.e2e.ts`** (real Chromium, `pnpm -F wave-webview run test:e2e`). When adding a regression case, write it in `e2e`; leave `demo` alone unless the change also alters a screenshot. CI runs the demos only inside the docs deploy (`pages.yml`), never on pull requests.
 
 ## 🖥 CLI (`packages/code`)
 
