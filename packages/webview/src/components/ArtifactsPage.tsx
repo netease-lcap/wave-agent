@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import {
   ArtifactsIcon,
+  FileCodeIcon,
   MoreIcon,
   QueueEditIcon,
   QueueTrashIcon,
@@ -1410,9 +1411,9 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                             onClick={() => handleOpenInBrowser(item.slug)}
                             data-testid={`artifacts-open-${item.slug}`}
                           >
-                            <span
-                              className="codicon codicon-file-code"
-                              aria-hidden="true"
+                            <FileCodeIcon
+                              className="artifacts-file-icon"
+                              aria-hidden
                             />
                             <span className="artifacts-file-name">
                               {item.title}
@@ -1636,7 +1637,9 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                     autoFocus
                     aria-invalid={categoryError ? true : undefined}
                     aria-describedby={
-                      categoryError ? "artifacts-category-name-error" : undefined
+                      categoryError
+                        ? "artifacts-category-name-error"
+                        : undefined
                     }
                     onChange={(event) => {
                       setCategoryNameDraft(event.target.value);

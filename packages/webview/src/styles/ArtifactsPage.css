@@ -333,6 +333,30 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   text-decoration: underline;
 }
 
+/* 首列文件图标（设计师 2026-10-23：「图标样式、线条粗细参考下 skill 和其他图标优化一下」）。
+   改前是 codicon 字体字形 `codicon-file-code`：颜色吃宿主的 --vscode-icon-foreground
+   （浅 #606060 / 深 #CCCCCC），比同一行的文件名（--vscode-foreground 浅 #202020 /
+   深 #E5E7E8）浅一档；字形本身按 16 画板画的，实渲线宽约 1px，和桌面端图标族
+   （Figma 导出、描边 1.4）不成一档。
+   按 icon 契约「同一含义复用既有产品图标组件」换成对话流「生成文件卡片」同一枚
+   FileCodeIcon（lucide file-code，24 画板 / stroke 2，几何路径一字不动）：
+   · 24 画板缩到 16px 时线宽会跟着缩到 2 × 16/24 = 1.33px，故按 1.5 倍补偿到
+     2.1 → 实渲 1.4px，与侧栏 / 工具条那批 1.4 的图标同档；
+   · 盒子仍是 16×16、间距仍是 gap 8px ⇒ 文件名左缘与行高不动。
+
+   颜色（同日评论二：「颜色可以用这里未激活的颜色」，参照物 = 侧栏「插件市场」入口的
+   未激活图标 = 桌面的「未激活图标灰」族，浅 #565A60 / 深 #9A9EA5）：不跟文件名同级
+   （那会是 #202020 / #E5E7E8，偏重），取次级灰；深浅两档逐值同参照物。 */
+.artifacts-file-icon {
+  flex: 0 0 auto;
+  stroke-width: 2.1;
+  color: #565a60;
+}
+
+html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
+  color: #9a9ea5;
+}
+
 .artifacts-file-name {
   overflow: hidden;
   text-overflow: ellipsis;

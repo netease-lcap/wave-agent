@@ -1853,10 +1853,12 @@ export const ArtifactsIcon: React.FC<IconProps> = ({
   </svg>
 );
 
-/** 生成文件卡片：HTML/代码类文件（lucide file-code，24 viewBox stroke 2）。 */
-export const FileCodeIcon: React.FC<IconProps> = ({
-  className = "header-icon",
-}) => (
+/** 生成文件卡片：HTML/代码类文件（lucide file-code，24 viewBox stroke 2）。
+ *  `aria-hidden` 按需传：纯装饰处（表格里紧挨文件名的图标）传 true，免得到读屏里多一个
+ *  无名的「图片」节点；卡片里不传，行为与原先一致。 */
+export const FileCodeIcon: React.FC<
+  IconProps & { "aria-hidden"?: boolean }
+> = ({ className = "header-icon", "aria-hidden": ariaHidden }) => (
   <svg
     width={16}
     height={16}
@@ -1867,6 +1869,7 @@ export const FileCodeIcon: React.FC<IconProps> = ({
     strokeLinecap="round"
     strokeLinejoin="round"
     className={className}
+    aria-hidden={ariaHidden}
   >
     <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
     <path d="M14 2v5a1 1 0 0 0 1 1h5" />
