@@ -4450,6 +4450,11 @@
    取值同源：`--cc-settings-border` = `--vscode-panel-border` = `--cc-border-light`，与参考件
    的 `--vscode-widget-border` 在桌面端是同一条 token（实测渲染色 `#e4e7ed` / `#34393c` 逐值相同）。
 
+   ⚠️ 2026-10-23 起本节三条规则已被下方「1023 评论：作用域单选卡按 skill 契约重做」
+   整段替换（本段只留演进记录）：静止描边 `--cc-settings-border` → `--cc-border`、
+   hover → #A8ADB4 / #626A6F、选中不再有 `--cc-fill-pressed` 填充面、
+   禁用 opacity .6 → .5。上面这段「四态取值」的描述属 1009 当轮口径，实际生效值见下一节。
+
    写法：`background` / `border-color` 只覆盖取值，**`border-width: 1px` 不重声明** ⇒ 盒几何
    零位移（描边本来占位）；两条 `:not(...)` 是必需的，否则本块 (0,4,0) 会盖掉 base 的
    `.settings-scope-option.is-selected` (0,2,0) 与 `:disabled`（(0,2,0)），把选中/禁用一起抹平。
@@ -4457,21 +4462,166 @@
    那条 —— 与加载顺序无关。
    反证（IDE 档不受影响）：同一页面把 `documentElement.dataset.host` 切成 `ide`，本块整段失配，
    逐值回到 base（填充面 `#f0f2f5` / 描边透明 / `cursor: default` / hover 描边 `#e4e7ed`）。 */
-[data-host="desktop"] .settings-scope-option:not(:disabled):not(.is-selected) {
+/* ═══ 1023 评论：作用域单选卡按 skill「Desktop Radio and Checkbox / Choice card」
+   契约重做（仅桌面端）════════════════════════════════════════════════════════
+   设计师 2026-10-23：「设置页 checkboxes 也修改」——追问两轮后点名
+   「插件市场『安装作用域』单选卡」（`button.settings-scope-option`，本身是 radio）。
+   契约 `references/common-components.md` §Choice controls（2026-10-23 用户确认版）
+   对这张卡的要求，逐条落到下面几段（base 一字未动 ⇒ IDE / JetBrains 保持宿主口径）：
+
+     指示器 16×16：未选中 1px 圆环，浅 `--cc-text-secondary` #6C7076 /
+       深 `--cc-text-placeholder` #858B8F；选中 = 实心 `--cc-action-primary` 面
+       （浅 #1F2329 / 深 #E0E3E5）+ `--cc-action-primary-text` 圆点
+       （直径 浅 6px / 深 7px）。“Solid selected surface, not the earlier hollow
+       checked treatment”。
+     卡片：r12（`--cc-radius-lg`）/ 内衬 8×12 / 卡间 8px / 1px `--cc-border`；
+       默认与选中**同为透明底 + 同一条描边**（选中只换指示器，不加底色、不加强
+       标题字重、不改描述色）；hover 只加深描边（浅 #A8ADB4 / 深 #626A6F），
+       选中-hover 同一条。
+     文本：标题 14/22 · 500 `--cc-text-primary`；描述 12/20 · 400
+       `--cc-text-secondary`；标题与描述之间 0 额外间距。
+     焦点：键盘 focus-visible 用 2px outline + 2px offset（取选中指示色
+       `--cc-action-primary`），鼠标点击不出框 —— 见本节末尾。
+     禁用：整卡 50% opacity + `not-allowed`，指示器状态保留，hover 描边不生效。
+
+   取值来源与 1023 对话流那批（本节上方 `.option-item` 块）同一套 token；
+   与 1009 那轮的差异只在「静止描边 `--cc-settings-border` → `--cc-border`、
+   hover `--cc-border` → #A8ADB4 / #626A6F、选中态不再有填充面」——旧值的理由
+   是当时还没有单选卡契约，现以契约值为准。 */
+
+[data-host="desktop"] .settings-scope-option:not(:disabled) {
   background: transparent;
-  border-color: var(--cc-settings-border);
+  border-color: var(--cc-border, #dcdfe6);
 }
 
-[data-host="desktop"]
-  .settings-scope-option:not(:disabled):not(.is-selected):hover {
-  border-color: var(--cc-border);
+[data-host="desktop"][data-theme="light"]
+  .settings-scope-option:not(:disabled):hover {
+  background: transparent;
+  border-color: #a8adb4;
+}
+
+[data-host="desktop"][data-theme="dark"]
+  .settings-scope-option:not(:disabled):hover {
+  background: transparent;
+  border-color: #626a6f;
 }
 
 [data-host="desktop"] .settings-scope-option:disabled,
 [data-host="desktop"] .settings-scope-option:disabled:hover {
   background: transparent;
-  border-color: var(--cc-settings-border);
+  border-color: var(--cc-border, #dcdfe6);
+  opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* 卡片几何：r12 / 内衬 8×12 / 卡间 8px（base：r8 / 14×16 / 12px） */
+[data-host="desktop"] .settings-scope-list {
+  gap: 8px;
+}
+
+[data-host="desktop"] .settings-scope-option {
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--cc-radius-lg, 12px);
+}
+
+/* 文本：标题 14/22 · 500；标题后的 `（user）` 12/20 · 500；描述 12/20 · 400。
+   「Selection changes only the indicator」⇒ 选中态不换字色（base 的
+   `.is-selected … { color: --cc-text-regular }` 两条被这里压掉）。 */
+[data-host="desktop"] .settings-scope-option-body {
+  gap: 0;
+}
+
+[data-host="desktop"] .settings-scope-option-title {
+  color: var(--cc-text-primary, #1f2329);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+[data-host="desktop"] .settings-scope-option-title em {
+  color: var(--cc-text-secondary, #6c7076);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+[data-host="desktop"] .settings-scope-option-desc,
+[data-host="desktop"]
+  .settings-scope-option.is-selected
+  .settings-scope-option-desc {
+  color: var(--cc-text-secondary, #6c7076);
+}
+[data-host="desktop"]
+  .settings-scope-option.is-selected
+  .settings-scope-option-title
+  em {
+  color: var(--cc-text-secondary, #6c7076);
+}
+
+[data-host="desktop"] .settings-scope-option-project,
+[data-host="desktop"] .settings-scope-option-project-path,
+[data-host="desktop"]
+  .settings-scope-option.is-selected
+  .settings-scope-option-project {
+  color: var(--cc-text-secondary, #6c7076);
+}
+
+[data-host="desktop"] .settings-scope-option-project-name,
+[data-host="desktop"]
+  .settings-scope-option.is-selected
+  .settings-scope-option-project-name {
+  color: var(--cc-text-primary, #1f2329);
+}
+
+/* 单选指示 16×16：1px 圆环（base 1.5px + `--cc-settings-border`）。
+   `margin-top: 3px` = 与标题 22px 行盒居中对齐（(22 − 16) / 2），契约要求
+   「Align the indicator with the first 22px title line box」。 */
+[data-host="desktop"] .settings-scope-radio {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  border-width: 1px;
+  border-color: var(--cc-text-secondary, #6c7076);
+  background: transparent;
+}
+
+[data-host="desktop"][data-theme="dark"] .settings-scope-radio {
+  border-color: var(--cc-text-placeholder, #858b8f);
+}
+
+/* 选中：实心 action-primary 面（不再走 focusBorder 空心环）+ action-primary-text 圆点。
+   圆点直径 浅 6px / 深 7px = 契约表。 */
+[data-host="desktop"] .settings-scope-option.is-selected .settings-scope-radio {
+  border-color: var(--cc-action-primary, #1f2329);
+  background: var(--cc-action-primary, #1f2329);
+}
+
+[data-host="desktop"]
+  .settings-scope-option.is-selected
+  .settings-scope-radio::after {
+  width: 6px;
+  height: 6px;
+  background: var(--cc-action-primary-text, #ffffff);
+}
+
+[data-host="desktop"][data-theme="dark"]
+  .settings-scope-option.is-selected
+  .settings-scope-radio::after {
+  width: 7px;
+  height: 7px;
+}
+
+/* 键盘焦点：契约「2px outline with 2px offset，using the selected indicator color」。
+   base 在 `.settings-page / .plugin-market-page .settings-scope-option:focus-visible`
+   （(0,3,0)）里写的是 `outline: none` + 边框变色；这里 (0,4,0) 压过它，
+   并把边框还原成卡片描边（焦点只画外圈，不改卡片边界）。 */
+[data-host="desktop"]
+  .settings-scope-option:not(:disabled):focus-visible {
+  outline: 2px solid var(--cc-action-primary, #1f2329);
+  outline-offset: 2px;
+  border-color: var(--cc-border, #dcdfe6);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
