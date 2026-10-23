@@ -128,6 +128,10 @@ async function processImageFile(
         {
           data: base64Data,
           mediaType: mimeType,
+          // The original already lives on disk: point at it instead of letting
+          // the ingest budget (utils/toolImageIngest.ts) persist a second copy,
+          // and so a shrunk image still has a path back to the full-size file.
+          path: actualFilePath,
         },
       ],
       metadata: {

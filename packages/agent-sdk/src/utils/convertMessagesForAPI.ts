@@ -150,8 +150,13 @@ export async function convertMessagesForAPI(
                       detail: "auto",
                     },
                   });
-                  if (plan.note) {
-                    contentParts.push({ type: "text", text: plan.note });
+                  // Images shrunk on the way into the list carry their note on
+                  // the block (utils/toolImageIngest.ts). This pass sees an
+                  // in-budget image and returns no note of its own, so keep the
+                  // ingest-time one — the model still needs the mapping back.
+                  const note = plan.note ?? image.note;
+                  if (note) {
+                    contentParts.push({ type: "text", text: note });
                   }
                 }
 

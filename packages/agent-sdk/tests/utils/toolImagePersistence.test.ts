@@ -100,6 +100,18 @@ describe("toolImagePersistence", () => {
     expect(result[0].path).toMatch(/\.png$/);
   });
 
+  it("should leave an image that already has a path alone", () => {
+    // A Read of a local image already lives on disk: copying it would duplicate
+    // bytes that are already there, and the source path is the better reference.
+    const sourcePath = path.join("work", "screenshot.png");
+    const result = persistToolImages([
+      { data: "aGVsbG8=", mediaType: "image/png", path: sourcePath },
+    ]);
+
+    expect(result[0].path).toBe(sourcePath);
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+  });
+
   it("should persist multiple images with distinct paths", () => {
     const result = persistToolImages([
       { data: "YQ==", mediaType: "image/png" },

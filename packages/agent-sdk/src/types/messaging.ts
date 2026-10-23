@@ -47,7 +47,13 @@ export interface ToolBlock {
     // Add image data support
     data: string; // Base64 encoded image data
     mediaType?: string; // Media type of the image
-    path?: string; // Persisted temp file path (MCP images under a non-vision model)
+    path?: string; // Local file the image can be reopened from (source file, or the persisted original)
+    /**
+     * "original WxH, displayed at …" note added when the image was shrunk on the
+     * way into the list (utils/toolImageIngest.ts). Emitted ahead of the image
+     * in the request so the model can map coordinates back to the original.
+     */
+    note?: string;
   }>;
   id?: string;
   name?: string;

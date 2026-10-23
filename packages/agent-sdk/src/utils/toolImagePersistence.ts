@@ -32,19 +32,22 @@ const MIME_TO_EXT: Record<string, string> = {
 export interface PersistedToolImage {
   data: string; // Base64 encoded image data
   mediaType?: string; // Media type of the image
-  path?: string; // Temp file path, set when the image was persisted
+  path?: string; // File the image lives in (temp copy, or the source file it came from)
 }
 
 /**
  * Persist base64 images to temp files under /tmp/wave-mcp-images/.
  * Uses the OS tmpdir for simplicity and automatic OS cleanup (same convention
- * as /tmp/wave-tool-results/). Returns each image unchanged (no path) when the
+ * as /tmp/wave-tool-results/). Images that already point at a file (a Read of a
+ * local image) are handed back untouched — copying those would duplicate bytes
+ * that are already on disk. Returns each image unchanged (no path) when the
  * write fails, so the caller degrades to the placeholder-only behavior.
  */
 export function persistToolImages(
-  images: Array<{ data: string; mediaType?: string }>,
+  images: Array<{ data: string; mediaType?: string; path?: string }>,
 ): PersistedToolImage[] {
   return images.map((image) => {
+    if (image.path) return image;
     try {
       fs.mkdirSync(MCP_IMAGES_DIR, { recursive: true });
       // Strip a data: URL prefix if present (MCP spec carries raw base64, but

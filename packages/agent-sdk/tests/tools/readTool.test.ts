@@ -409,6 +409,10 @@ describe("readTool", () => {
       expect(result.images).toHaveLength(1);
       expect(result.images![0].data).toBe(mockBase64Data);
       expect(result.images![0].mediaType).toBe("image/png");
+      // The original already lives on disk: the source path travels with the
+      // image so a shrunk copy (utils/toolImageIngest.ts) can still be traced
+      // back to the full-size file.
+      expect(result.images![0].path).toBe(pngPath);
       expect(result.shortResult).toContain("Image processed");
     });
 
