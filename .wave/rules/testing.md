@@ -15,6 +15,7 @@ paths:
   - MUST not write `mkdtemp` in test, use mocking instead
   - Mock stdout and stderr to suppress output during testing and restore mocks after tests
   - Avoid unnecessary `setTimeout` or `sleep` in tests to keep them fast; prefer awaiting promises or using `vi.waitFor` if needed
+  - A loop of press → `sleep` → press pays for one full frame render per keystroke (~120ms on the Windows runner vs ~12ms locally), so it can spend vitest's default 5s `testTimeout` on rendering alone — the btw scroll cases timed out on `main` this way (2026-10-23). Write the repeated keys in one go and `vi.waitFor` the settled frame; derive the press count from the component's own constants instead of a magic number
   - Note: `logger` in `packages/code` appends to log files instead of printing to stdout/stderr to avoid interfering with the Ink UI. Do not use `logger` to debug in tests. Use temporary `console.log` to debug and remove them after.
 - Path expectations MUST be cross-platform: the `check-windows` job runs the full unit suite on a real Windows runner but only on `push: main` + `workflow_dispatch` (it does NOT gate PRs), so path breakage is found after merge (#2488, #2505)
   - Build expected values and mock keys with `path.join` / `path.resolve`, never hardcode `/` — POSIX literals turn into `\` (or gain a drive letter) on Windows
