@@ -5613,3 +5613,124 @@
   outline: 2px solid var(--cc-border-focus, #2f5edb);
   outline-offset: 2px;
 }
+
+/* ═══ 1023 表单字段色彩 / 焦点（桌面端字段族）═══
+   契约：`codechat-desktop-skill` main（PR #8，2026-10-23 用户确认版）
+     · references/common-components.md §Input fields →「Desktop form field colors and focus」
+     · 同节「Desktop select trigger and menu composition」
+   她是分两步点名的：先「读最新推送的 skill 优化表单样式，先优化设置页的看看效果」，
+   再对着 `div.desktop-sidebar-search-field` 说「可以继续优化这里的表单样式」。
+   所以这里只提供**共享的字段映射**（契约原话：Use a shared desktop form-field mapping），
+   具体落到哪一族字段由各族自己的选择器决定 —— 当前两族：
+     ① 设置页行内字段（`.settings-page` 下的文本 / 数字 / 多行 / 桌面自绘下拉触发器）
+     ② 侧栏「搜索会话」字段（`.desktop-sidebar-search-field`，写在 SidebarSessionSearch.css）
+   不动的面：插件市场页（`.plugin-market-page`）、对话输入区、各类弹窗里的表单、
+   原生 `select.settings-select`（IDE 宿主专属）、IDE / VS Code / JB 宿主（base 段零改动）。
+   做法：契约要求「未命中的值就地作用域化、不要改全局 placeholder / border / fill 角色」，
+   因此这些值只新增 `--cc-field-*` 命名空间，不覆盖任何既有 token。
+   几何沿用各族已确立的档位（设置页 32 高；侧栏 30 高），只改配色、状态与 0923 已定的 r8。 */
+
+[data-host="desktop"] {
+  --cc-field-bg: #ffffff;
+  --cc-field-border: #c5c9ce;
+  --cc-field-border-hover: #6c7076;
+  --cc-field-border-focus: #565a60;
+  --cc-field-text: var(--cc-text-primary, #1f2329);
+  --cc-field-placeholder: #979ca2;
+  --cc-field-bg-disabled: #f7f8fa;
+  --cc-field-text-disabled: #a8abb2;
+  --cc-field-border-disabled: #e4e7ed;
+}
+
+[data-host="desktop"][data-theme="dark"] {
+  --cc-field-bg: #1b1d1e;
+  --cc-field-border: #414649;
+  --cc-field-border-hover: #858b8f;
+  --cc-field-border-focus: #a0a5a8;
+  --cc-field-text: var(--cc-text-primary, #e5e7e8);
+  --cc-field-placeholder: #6e757a;
+  --cc-field-bg-disabled: #181a1b;
+  --cc-field-text-disabled: #62686b;
+  --cc-field-border-disabled: #34393c;
+}
+
+/* 静止：底 / 边 / 字三件套。输入值用一级字色，
+   与「占位色只属于占位符」的分工配套（契约明确不允许实际值吃占位色） */
+[data-host="desktop"] .settings-page
+  :is(
+    .settings-text-input,
+    .settings-number-input,
+    .settings-textarea,
+    .settings-select-trigger
+  ) {
+  background: var(--cc-field-bg);
+  border-color: var(--cc-field-border);
+  color: var(--cc-field-text);
+}
+
+/* hover：只换描边、不动底色（契约原句 hover changes only border color） */
+[data-host="desktop"] .settings-page
+  :is(
+    .settings-text-input,
+    .settings-number-input,
+    .settings-textarea,
+    .settings-select-trigger
+  ):hover:not(:disabled) {
+  border-color: var(--cc-field-border-hover);
+}
+
+/* focus：1px 边框就地变色（对齐原边，不外加环、不位移）；
+   下拉展开时同样保留这条边 —— 即便焦点已经移进选项（契约的 expanded 要求） */
+[data-host="desktop"] .settings-page
+  :is(
+    .settings-text-input,
+    .settings-number-input,
+    .settings-textarea,
+    .settings-select-trigger
+  ):focus:not(:disabled),
+[data-host="desktop"]
+  .settings-page
+  .settings-select-trigger[aria-expanded="true"]:not(:disabled) {
+  border-color: var(--cc-field-border-focus);
+  outline: none;
+}
+
+/* 占位符：独立占位色 + 显式 opacity 1（避免浏览器再压一层） */
+[data-host="desktop"] .settings-page
+  :is(
+    .settings-text-input,
+    .settings-number-input,
+    .settings-textarea
+  )::placeholder {
+  color: var(--cc-field-placeholder);
+  opacity: 1;
+}
+
+/* 停用：专用「面 / 字 / 边」三色，取代原来的整块 opacity .6（契约：
+   不要把整组字段压暗，标签与说明各自保持自己的层级） */
+[data-host="desktop"] .settings-page
+  :is(
+    .settings-text-input,
+    .settings-number-input,
+    .settings-textarea,
+    .settings-select-trigger
+  ):disabled {
+  background: var(--cc-field-bg-disabled);
+  border-color: var(--cc-field-border-disabled);
+  color: var(--cc-field-text-disabled);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+/* 停用下拉的三角跟着字色走（三角不在 select 内，不会自动追随） */
+[data-host="desktop"]
+  .settings-page
+  .settings-select-trigger:disabled::after {
+  background: var(--cc-field-text-disabled);
+  opacity: 1;
+}
+
+/* 行内说明文字：契约要求 supporting description = text-secondary 12/20 */
+[data-host="desktop"] .settings-page .settings-row-copy .settings-row-hint {
+  color: var(--cc-text-secondary, #6c7076);
+}
