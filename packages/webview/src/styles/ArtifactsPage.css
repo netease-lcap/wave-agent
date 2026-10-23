@@ -10,7 +10,13 @@
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
-  background: var(--vscode-editor-background, #ffffff);
+  /* 与插件市场同底（设计师 1023 预览评论，点 `div.artifacts-content` 与
+     `div.session-board-toolbar`「背景色和插件市场保持一致」）：整页视图占的正是
+     `.chat-container` 的位置，插件市场根面画的是 --vscode-panel-background。
+     此前本页画 editor-background —— 深色档两者不同（node 侧 #1f1f1f vs #191a1b，
+     宿主注入档实测 #181A1B vs #111314），于是整页连同顶栏、内容区都比侧栏/新对话
+     亮一档，看着像套了一层。普通档浅色亦不同（#ffffff vs #fafafd）。 */
+  background: var(--vscode-panel-background, #ffffff);
   color: var(--vscode-foreground, #202328);
 }
 
@@ -246,12 +252,14 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   white-space: nowrap;
 }
 
+/* 吸顶/钉列的单元格必须画根面同色（见 `.artifacts-page` 注释）：否则根面改了、
+   sticky 面没改，横向/纵向滚动时表头与名称列会露出亮一档的条带。 */
 .artifacts-table th {
   font-weight: 500;
   color: var(--vscode-descriptionForeground, #6c6e73);
   position: sticky;
   top: 0;
-  background: var(--vscode-editor-background, #ffffff);
+  background: var(--vscode-panel-background, #ffffff);
 }
 
 .artifacts-col-check {
@@ -266,7 +274,7 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   position: sticky;
   left: 0;
   z-index: 1;
-  background: var(--vscode-editor-background, #ffffff);
+  background: var(--vscode-panel-background, #ffffff);
 }
 
 .artifacts-col-owner {
@@ -290,7 +298,7 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
   position: sticky;
   right: 0;
   z-index: 1;
-  background: var(--vscode-editor-background, #ffffff);
+  background: var(--vscode-panel-background, #ffffff);
 }
 
 .artifacts-file-btn {
