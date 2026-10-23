@@ -129,6 +129,15 @@ describe("创作集整页（侧边栏入口）", () => {
         prompt: expect.stringContaining("帮我做一个网页小游戏"),
       }),
     );
+    // 模板正文后面固定带发布节奏收尾（spec「模板新建直达对话页」场景 3）。
+    const sent = vscode.postMessage.mock.calls.find(
+      ([msg]) => msg.command === "desktopArtifactsNewFromTemplate",
+    )?.[0] as { prompt: string };
+    expect(
+      sent.prompt.endsWith(
+        "先在本地做好，等我看过并改到满意，最后再问我要不要发布为创作（artifact）。",
+      ),
+    ).toBe(true);
     // 选完模板回到会话视图；提示词由宿主预填进当前会话的输入框（不新开会话）。
     expect(screen.queryByTestId("artifacts-page")).not.toBeInTheDocument();
     expect(screen.getByTestId("chat-container")).toBeInTheDocument();
