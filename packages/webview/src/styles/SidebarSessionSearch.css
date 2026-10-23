@@ -252,6 +252,35 @@
   font-size: 13px;
 }
 
+/* ── 筛选按钮（搜索框右侧）：r8 / 正方形 / 选中态带底 ───────────────────────
+   1023 评论：「侧栏相邻筛选按钮应该改成 r8，正方形，选中态参考，带有背景色」，
+   并点了 `button.desktop-sidebar-more-btn`「这里」= 参考侧栏品牌行「活动」按钮的选中态
+   （DesktopApp.css:159 / :166 —— 品牌红图标 + 浅色 #FFEBE8 淡红底，深色改成 18% 品牌红薄涂）。
+   改前实测：28×30（高宽不等）、r6、选中态只有图标转品牌红、**底色仍是透明**；
+   参考件是 24×24 / r8 / #FFEBE8（深色 color-mix 18%）/ 图标 #C1292E。
+   本轮：宽补到 30 → 与 30 高的搜索框成正方（行高对齐，上下双边贴齐）；圆角走
+   `--cc-radius-md` 与参考件同档；选中态补上与参考件逐值相同的底色。
+   图标墨迹 14×14、hover 底（浅 #EEF0F3 / 深 8% 白）都不动。 */
+[data-host="desktop"] .desktop-sidebar-search-filter {
+  width: 30px;
+  border-radius: var(--cc-radius-md, 8px);
+}
+
+/* 选中 = 参考 `.desktop-sidebar-more-btn.is-active`：图标转品牌红（base 已有），底色补上 */
+[data-host="desktop"] .desktop-sidebar-search-filter.is-active {
+  background-color: #ffebe8;
+}
+
+[data-host="desktop"][data-theme="dark"]
+  .desktop-sidebar-search-filter.is-active {
+  /* 深色档照参考件用同一配方：品牌红 18% 薄涂，不用固定浅红（会发亮） */
+  background-color: color-mix(
+    in srgb,
+    var(--vscode-brand-primary, #c1292e) 18%,
+    transparent
+  );
+}
+
 /* ── 侧栏「搜索会话」字段：按 skill 表单字段契约重做配色与状态 ──────────────
    1023 评论（她点名 `div.desktop-sidebar-search-field`）：「可以继续优化这里的表单样式」。
    依据 references/common-components.md §Input fields：
