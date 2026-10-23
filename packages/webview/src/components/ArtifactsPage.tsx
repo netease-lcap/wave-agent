@@ -1623,27 +1623,45 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
             </div>
           ) : (
             <div className="artifacts-form">
-              <label className="artifacts-field">
-                <span>名称</span>
-                <input
-                  value={categoryNameDraft}
-                  maxLength={CATEGORY_NAME_MAX + 10}
-                  autoFocus
-                  onChange={(event) => {
-                    setCategoryNameDraft(event.target.value);
-                    setCategoryError(null);
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") handleCategorySubmit();
-                  }}
-                  data-testid="artifacts-category-name"
-                />
-              </label>
-              <p className="artifacts-hint">
-                最多 {CATEGORY_NAME_MAX} 个字，名称不能重复。
-              </p>
-              {categoryError && (
-                <p className="artifacts-form-error">{categoryError}</p>
+              {/* 1023 评论（她：「改创作集『重命名分类』」）：字段 + 错误行合成一组，
+                  组内 4px、与说明行的 8px 拉开层级；错误出现时把它顶掉（同一位置只留
+                  一条说明，不叠成「说明 + 错误」两行）。契约 :56 要求错误描边与文案
+                  同为危险语义 ⇒ 输入框带 aria-invalid，描边走 --cc-color-danger。 */}
+              <div className="artifacts-field-stack">
+                <label className="artifacts-field">
+                  <span>名称</span>
+                  <input
+                    value={categoryNameDraft}
+                    maxLength={CATEGORY_NAME_MAX + 10}
+                    autoFocus
+                    aria-invalid={categoryError ? true : undefined}
+                    aria-describedby={
+                      categoryError ? "artifacts-category-name-error" : undefined
+                    }
+                    onChange={(event) => {
+                      setCategoryNameDraft(event.target.value);
+                      setCategoryError(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") handleCategorySubmit();
+                    }}
+                    data-testid="artifacts-category-name"
+                  />
+                </label>
+                {categoryError && (
+                  <p
+                    className="artifacts-form-error"
+                    id="artifacts-category-name-error"
+                    role="alert"
+                  >
+                    {categoryError}
+                  </p>
+                )}
+              </div>
+              {!categoryError && (
+                <p className="artifacts-hint">
+                  最多 {CATEGORY_NAME_MAX} 个字，名称不能重复。
+                </p>
               )}
             </div>
           )}

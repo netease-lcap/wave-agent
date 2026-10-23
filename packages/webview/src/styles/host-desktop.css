@@ -5433,6 +5433,13 @@
   [data-testid="artifacts-category-dialog"]:has(
     [data-testid="artifacts-category-confirm"].artifacts-primary-btn
   )
+) .artifacts-field-stack + .artifacts-hint,
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
 ) .artifacts-fieldset + .artifacts-hint {
   margin-top: -8px; /* 组间距 16 − 8 = 契约要求的 8 */
 }

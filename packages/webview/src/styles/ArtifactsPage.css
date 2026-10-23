@@ -901,13 +901,31 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-nav-more:hover {
 }
 
 .artifacts-form-error {
-  color: #d93025;
+  /* 1023 评论（她：「改创作集『重命名分类』」）：原来写死 #d93025（浅色档的红），
+     深色弹层 #181A1B 上只有 3.66:1。改走桌面端危险色 token —— 浅 #DC2626 / 深
+     #FC4E52，与错误描边、弹窗里的危险按钮同源同值。 */
+  color: var(--cc-color-danger, var(--vscode-errorForeground, #d93025));
   font-size: 12px;
 }
 
 .artifacts-hint {
   font-size: 12px;
   color: var(--vscode-descriptionForeground, #8c8f94);
+}
+
+/* 字段 + 错误行一组（1023 评论：她「改创作集『重命名分类』」）：组内 4px，与说明行的
+   8px / 弹层 12px 拉开层级；错误出现时说明行被顶掉，同一位置只留一条 12px 说明。
+   量法与会话重命名弹窗同口径：字段底 → 错误行盒顶 4px（墨迹 5px）。 */
+.artifacts-field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 错误行与它顶掉的那条说明同一行高（12/20），换上去不跳版；只限本弹层的这个组，
+   其它地方的 `.artifacts-form-error`（分享弹层保存失败 / 列表加载失败）保持原样。 */
+.artifacts-field-stack .artifacts-form-error {
+  line-height: 20px;
 }
 
 .artifacts-share-title {
