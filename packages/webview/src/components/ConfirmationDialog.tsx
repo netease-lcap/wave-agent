@@ -95,21 +95,78 @@ function lastPathSegment(dirPath: string): string {
 }
 
 /**
+ * Desktop indicator per the 2026-10-23 skill contract
+ * (`references/common-components.md` §Choice controls → Desktop Radio and
+ * Checkbox): 16×16 box, solid `--cc-action-primary` selected surface with an
+ * `--cc-action-primary-text` mark, unselected outline 1px
+ * `--cc-text-secondary` (dark: `--cc-text-placeholder`), checkbox outer radius
+ * ≈4px (path `rx 3.5`) and a mark thickness that differs by theme (check 1.7 /
+ * 2.1). Colors and thickness live in host-desktop.css so both themes resolve at
+ * paint time instead of re-rendering on a theme switch.
+ */
+const DesktopOptionIndicator: React.FC<{
+  multiSelect: boolean;
+  checked: boolean;
+}> = ({ multiSelect, checked }) => (
+  <svg
+    className="option-indicator-icon"
+    width="16"
+    height="16"
+    viewBox="0 0 16 16"
+    fill="none"
+    aria-hidden="true"
+  >
+    {multiSelect ? (
+      <>
+        <rect
+          className={checked ? "choice-surface" : "choice-outline"}
+          x="0.5"
+          y="0.5"
+          width="15"
+          height="15"
+          rx="3.5"
+        />
+        {checked && (
+          <path
+            className="choice-mark"
+            d="M4 8L6.75 10.75L12 5.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        )}
+      </>
+    ) : (
+      <>
+        <circle
+          className={checked ? "choice-surface" : "choice-outline"}
+          cx="8"
+          cy="8"
+          r="7.5"
+        />
+        {checked && <circle className="choice-dot" cx="8" cy="8" r="3" />}
+      </>
+    )}
+  </svg>
+);
+
+/**
  * Radio / Checkbox indicator that matches the Figma design (16×16).
  * - Radio unchecked: hollow ring; checked: accent ring + center dot.
- * - Checkbox (desktop only): hollow rounded square; checked: accent border +
- *   check mark — the two shapes share one visual language, so the checkbox no
- *   longer carries a `checkbox-background` fill (it read as disabled).
- *   IDE hosts keep the original filled square: the 2026-09-22 decision that
- *   produced the hollow variant is scoped to the desktop surface.
+ * - Checkbox (IDE hosts only): filled square + check mark; the 2026-09-22
+ *   hollow variant stayed scoped to the desktop surface. Desktop now follows
+ *   the 2026-10-23 contract above.
  * Colors use VS Code theme variables so it adapts to light/dark themes.
  */
 const OptionIndicator: React.FC<{ multiSelect: boolean; checked: boolean }> = ({
   multiSelect,
   checked,
 }) => {
+  if (isDesktopHost()) {
+    return (
+      <DesktopOptionIndicator multiSelect={multiSelect} checked={checked} />
+    );
+  }
   if (multiSelect) {
-    const desktop = isDesktopHost();
     return (
       <svg
         className="option-indicator-icon"
@@ -125,21 +182,13 @@ const OptionIndicator: React.FC<{ multiSelect: boolean; checked: boolean }> = ({
           width="15"
           height="15"
           rx="2.5"
-          fill={desktop ? "none" : "var(--vscode-checkbox-background)"}
-          stroke={
-            desktop && checked
-              ? "var(--vscode-focusBorder)"
-              : "var(--vscode-checkbox-border)"
-          }
+          fill="var(--vscode-checkbox-background)"
+          stroke="var(--vscode-checkbox-border)"
         />
         {checked && (
           <path
             d="M4.25 8.1L6.35 9.55L11.25 4.35"
-            stroke={
-              desktop
-                ? "var(--vscode-focusBorder)"
-                : "var(--vscode-checkbox-foreground)"
-            }
+            stroke="var(--vscode-checkbox-foreground)"
             strokeWidth="1.7"
             strokeLinecap="round"
             strokeLinejoin="round"

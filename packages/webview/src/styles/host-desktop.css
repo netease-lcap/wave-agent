@@ -2594,9 +2594,14 @@
 [data-host="desktop"] .option-item:focus {
   outline: none;
 }
+/* 1023 skill 契约（`common-components.md` §Question-option card composition）：
+   键盘焦点是**独立的 2px 环 + 2px 外扩**、色取选中指示器色（action-primary），
+   不再把自身描边染成焦点色（那是旧口径，会和 hover/选中描边抢同一支笔）。
+   鼠标点击（`:focus` 而不是 `:focus-visible`）不出现这个框 —— 上面那条 outline:none
+   已覆盖；卡片本身仍保留 pointer 光标。 */
 [data-host="desktop"] .option-item:focus-visible {
-  outline: none;
-  border-color: var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
+  outline: 2px solid var(--cc-action-primary, var(--vscode-focusBorder, #1f2329));
+  outline-offset: 2px;
 }
 [data-host="desktop"] .other-text-input:focus,
 [data-host="desktop"] .feedback-textarea:focus {
@@ -3504,6 +3509,94 @@
 [data-host="desktop"] .other-text-input {
   font-size: 14px;
   line-height: 22px;
+}
+
+/* ═══ 1023 skill 契约：桌面端选择控件 + 问题选项卡（`div.options-list`）════════
+   skill `codechat-desktop-skill` @ `docs/choice-controls-1023`
+   （`references/common-components.md` §Choice controls → Desktop Radio and
+   Checkbox / Question-option card composition，2026-10-23 用户确认版）。
+
+   指示器几何（TSX 侧见 `ConfirmationDialog.tsx` 的 `DesktopOptionIndicator`）：
+     未选中  = 1px 描边；单选 r=7.5 圆环 / 多选外圆角 ≈4px（矢量 rx 3.5）
+     选中    = 实心 --cc-action-primary 面 + --cc-action-primary-text 标记
+               （单选圆点 Light 6px / Dark 7px；多选对勾 Light 1.7 / Dark 2.1）
+   卡片：16px 指示器 + **8px** 间距；标题 14/22 · 500；描述 12/20 · 400，
+   与标题同左缘（16+8=24）、与标题之间**不加额外间距**；r12 / 内衬 8×12 /
+   卡间 8px / 1px --cc-border。默认与选中**同为透明底 + 同一条描边**，
+   选中只换指示器；hover 只加深描边（浅 #A8ADB4 / 深 #626A6F），选中态同理。
+   这些都是桌面档取值：IDE 由宿主控制，base 规则逐字不动（早期 0922 的
+   focusBorder 空心方框属旧口径，已被本契约取代）。 */
+
+/* 未选中描边：浅 --cc-text-secondary #6C7076 / 深 --cc-text-placeholder #858B8F */
+[data-host="desktop"] .option-indicator-icon .choice-outline {
+  stroke: var(--cc-text-secondary, #6c7076);
+}
+[data-host="desktop"][data-theme="dark"]
+  .option-indicator-icon
+  .choice-outline {
+  stroke: var(--cc-text-placeholder, #858b8f);
+}
+
+/* 选中面 + 标记：实心面 = action-primary，标记 = action-primary-text */
+[data-host="desktop"] .option-indicator-icon .choice-surface {
+  fill: var(--cc-action-primary, #1f2329);
+  stroke: var(--cc-action-primary, #1f2329);
+}
+[data-host="desktop"] .option-indicator-icon .choice-dot {
+  fill: var(--cc-action-primary-text, #ffffff);
+}
+[data-host="desktop"] .option-indicator-icon .choice-mark {
+  fill: none;
+  stroke: var(--cc-action-primary-text, #ffffff);
+  stroke-width: 1.7;
+}
+/* 深色档：对勾加粗到 2.1、圆点直径 6→7（半径 3→3.5） */
+[data-host="desktop"][data-theme="dark"] .option-indicator-icon .choice-mark {
+  stroke-width: 2.1;
+}
+[data-host="desktop"][data-theme="dark"] .option-indicator-icon .choice-dot {
+  r: 3.5px;
+}
+
+/* 卡片几何：r12、标题↔描述 0 额外间距、指示器↔标题 8px */
+[data-host="desktop"] .option-item {
+  gap: 0;
+  border-radius: 12px;
+  border-color: var(--cc-border, #dcdfe6);
+  background-color: transparent;
+}
+[data-host="desktop"] .option-row {
+  gap: 8px;
+}
+/* 描述与标题同左缘（16 指示器 + 8 间距），且不因选中变字色 */
+[data-host="desktop"] .option-description {
+  padding-left: 24px;
+  color: var(--cc-text-secondary, #6c7076);
+}[data-host="desktop"] .option-item.selected .option-description {
+  color: var(--cc-text-secondary, #6c7076);
+}
+
+/* 标题 = text-primary（契约口径）。浅色档宿主注入的 --vscode-foreground 是
+   #202020，与 --cc-text-primary #1F2329 不是同一值；选中项沿用同色，
+   不因选中加深（契约「selection changes only the indicator」）。 */
+[data-host="desktop"] .option-label,
+[data-host="desktop"] .option-item.selected .option-label {
+  color: var(--cc-text-primary, #1f2329);
+}
+
+/* 选中：只换指示器 —— 透明底 + 与默认同一条描边（不加强、不填充） */
+[data-host="desktop"] .option-item.selected {
+  background-color: transparent;
+  border-color: var(--cc-border, #dcdfe6);
+}
+
+/* hover / 选中-hover：底保持透明，只把卡片描边加深一档 */
+[data-host="desktop"][data-theme="light"]
+  .option-item:not(:disabled):hover {
+  border-color: #a8adb4;
+}
+[data-host="desktop"][data-theme="dark"] .option-item:not(:disabled):hover {
+  border-color: #626a6f;
 }
 
 /* 会话内 AskUserQuestion 已答摘要（tool 消息 result 区 Q&A 行）同偏小
