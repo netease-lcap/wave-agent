@@ -163,14 +163,16 @@ describe("pulling up for older messages", () => {
       // may never be read as "a new message came in" and re-pin: that would yank
       // the reader off the very row they pulled up to read.
       expect(container.scrollTop).toBeLessThan(2000 - 400);
-      // Pulling again is allowed: there is still more above.
+      // Pulling again is allowed: there is still more above. The list renders no
+      // "beginning of history" line at any point (spec
+      // ui/message-rendering-system.md 场景 3).
       expect(screen.queryByTestId("history-start-hint")).toBeNull();
     } finally {
       delete window.waveRemotePage;
     }
   });
 
-  it("stops asking and says so once the host reports the beginning of history", async () => {
+  it("stops asking once the host reports the beginning of history", async () => {
     window.waveRemotePage = true;
     try {
       const postMessage = await openList();
@@ -179,9 +181,14 @@ describe("pulling up for older messages", () => {
 
       replyWith(requestId as number, [], false);
 
+      // Reaching the beginning is a silent boundary: nothing is rendered at the
+      // top, not even a hint — a line parked there would land on top of the first
+      // message of a list too short to scroll (spec
+      // ui/message-rendering-system.md 场景 3).
       await waitFor(() => {
-        expect(screen.getByTestId("history-start-hint")).toBeInTheDocument();
+        expect(loadOlderRequests(postMessage)).toHaveLength(1);
       });
+      expect(screen.queryByTestId("history-start-hint")).toBeNull();
 
       // A further pull at the top asks nothing: the host has already said there
       // is nothing before this.
@@ -272,9 +279,12 @@ describe("pulling up for older messages", () => {
         hasMore: false,
       });
     });
-    await waitFor(() => {
-      expect(screen.getByTestId("history-start-hint")).toBeInTheDocument();
-    });
+    // Nothing appears in the DOM once the host says this is the beginning: the
+    // hint was removed on purpose (this list is too short to scroll, so a line
+    // parked at the top would sit on the first message). Flush the effects and
+    // assert it stays at one request.
+    await act(async () => {});
     expect(loadOlderRequests(postMessage)).toHaveLength(1);
+    expect(screen.queryByTestId("history-start-hint")).toBeNull();
   });
 });

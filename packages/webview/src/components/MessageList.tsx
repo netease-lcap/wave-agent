@@ -362,12 +362,6 @@ export const MessageList = forwardRef<
     seen: MessageType[];
   } | null>(null);
 
-  // 视口是否停在历史最开头。只给「没有更早的消息」那条提示用；和 sticky 一样在
-  // computeSticky 里算，并用同样的「比对 ref、没变就不 setState」避免在流式热路径
-  // 上产生无谓更新。
-  const [atHistoryStart, setAtHistoryStart] = useState(false);
-  const atHistoryStartRef = useRef(false);
-
   // The most-recent user message that has scrolled above the viewport top; pinned
   // at the top of the list as a context hint (设计稿 2236-3792).
   const [stickyMessage, setStickyMessage] = useState<{
@@ -703,13 +697,6 @@ export const MessageList = forwardRef<
       return;
     }
     const scrollTop = container.scrollTop;
-    // Only the "no older messages" line reads this, and only when the host has
-    // said that this is the beginning of the history.
-    const atStart = scrollTop <= OLDER_MESSAGES_TRIGGER_PX;
-    if (atStart !== atHistoryStartRef.current) {
-      atHistoryStartRef.current = atStart;
-      setAtHistoryStart(atStart);
-    }
     // The DOM only holds the visible window, so the sticky candidate is
     // derived from the data + the virtualizer's offset table. The candidate is
     // the last user message whose top edge sits above the viewport top, i.e.
@@ -1235,16 +1222,6 @@ export const MessageList = forwardRef<
               <div className="sticky-user-content">{stickyMessage.text}</div>
             </div>
             <div className="sticky-user-scrim" />
-          </div>
-        )}
-        {historyExhausted && atHistoryStart && (
-          // Height-0 sticky box (see MessageList.css): the reader pulled up and
-          // there is nothing before this, so say so instead of letting the pull
-          // die silently. Shown only while the viewport is at the start — that is
-          // where they asked from, and a line parked at the top of the list would
-          // just cover the messages of a reader who is somewhere else entirely.
-          <div className="history-start-hint">
-            <span data-testid="history-start-hint">没有更早的消息</span>
           </div>
         )}
         <>
