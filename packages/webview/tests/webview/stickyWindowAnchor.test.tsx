@@ -204,6 +204,135 @@ describe("sticky anchor across the first page", () => {
     });
   });
 
+  it("keeps paging while page after page has no user message", async () => {
+    // 连续两页都还是工具阶段：第二页取回后依然没有锚点，得接着往前取。
+    const postMessage = await openMidTurnWindow();
+    fakeGeometry(0, 2000, 400);
+    reenterWithSameWindow();
+    await waitFor(() => {
+      expect(loadOlderRequests(postMessage)).toHaveLength(1);
+    });
+
+    const first = loadOlderRequests(postMessage)[0] ?? {};
+    replyWith(
+      first.requestId as number,
+      Array.from({ length: 20 }, (_, i) =>
+        assistant(`b${String(i)}`, `更早的工具阶段 ${String(i)}`),
+      ),
+      true,
+    );
+
+    await waitFor(() => {
+      expect(loadOlderRequests(postMessage)).toHaveLength(2);
+    });
+    // 第二页以新的窗口头为界（第一页的第一条），不是把第一页重发一次。
+    expect(loadOlderRequests(postMessage)[1]).toMatchObject({ before: "b0" });
+
+    // 第三页带来用户消息，链停在这里，吸顶条拿到锚点。
+    const second = loadOlderRequests(postMessage)[1] ?? {};
+    replyWith(second.requestId as number, anchorPage, true);
+    const container = fakeGeometry(1300, 3300, 400);
+    act(() => {
+      fireEvent.scroll(container);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
+        "我写给 AI 的最新一条消息",
+      );
+    });
+    await act(async () => {});
+    expect(loadOlderRequests(postMessage)).toHaveLength(2);
+  });
+
+  it("stops after the page cap even when the host still has more", async () => {
+    // 收敛保证：宿主一直说「还有更早的」、而这段历史里根本没有真实用户消息（会话
+    // 首条是系统注入的、整段都是工具阶段）时，不能无限往前拉——拉满上限就安静停下，
+    // 吸顶为 null 是正确结果。
+    const postMessage = await openMidTurnWindow();
+    fakeGeometry(0, 2000, 400);
+    reenterWithSameWindow();
+
+    for (let page = 0; page < 6; page++) {
+      await waitFor(() => {
+        expect(loadOlderRequests(postMessage).length).toBeGreaterThan(0);
+      });
+      const requests = loadOlderRequests(postMessage);
+      const last = requests[requests.length - 1] ?? {};
+      if (!last.requestId) break;
+      replyWith(
+        last.requestId as number,
+        Array.from({ length: 20 }, (_, i) =>
+          assistant(
+            `p${String(page)}-${String(i)}`,
+            `工具阶段 ${String(page)}.${String(i)}`,
+          ),
+        ),
+        true,
+      );
+      await act(async () => {});
+    }
+
+    // 上限就是 3 页（AUTO_ANCHOR_MAX_PAGES）：之后的回包一个个都还是「没有用户
+    // 消息 + 还有更早」，也不会再发请求。
+    await act(async () => {});
+    expect(loadOlderRequests(postMessage)).toHaveLength(3);
+    expect(screen.queryByTestId("sticky-user-message")).toBeNull();
+  });
+
+  it("stops quietly when the host reaches the beginning of history", async () => {
+    // 一路取到历史起点仍没有用户消息：宿主说「没了」之后一次都不能再发。
+    const postMessage = await openMidTurnWindow();
+    fakeGeometry(0, 2000, 400);
+    reenterWithSameWindow();
+    await waitFor(() => {
+      expect(loadOlderRequests(postMessage)).toHaveLength(1);
+    });
+
+    const { requestId } = loadOlderRequests(postMessage)[0] ?? {};
+    replyWith(requestId as number, [], false);
+    await act(async () => {});
+
+    expect(loadOlderRequests(postMessage)).toHaveLength(1);
+    expect(screen.queryByTestId("sticky-user-message")).toBeNull();
+    expect(screen.queryByTestId("history-start-hint")).toBeNull();
+  });
+
+  it("pins the newest real user message after the page brings several", async () => {
+    // 补进来的这一页可能同时含好几轮用户消息：吸顶只能钉**最新**那条，钉成上一轮
+    // 的问题会让读者以为自己在看别处的对话。
+    const postMessage = await openMidTurnWindow();
+    fakeGeometry(0, 2000, 400);
+    reenterWithSameWindow();
+    await waitFor(() => {
+      expect(loadOlderRequests(postMessage)).toHaveLength(1);
+    });
+
+    const { requestId } = loadOlderRequests(postMessage)[0] ?? {};
+    replyWith(
+      requestId as number,
+      [
+        user("u-old", "上一轮的问题"),
+        assistant("a-old", "上一轮的回答"),
+        user("u-new", "这一轮的问题"),
+        assistant("a-new", "这一轮的回答的开头…"),
+      ],
+      true,
+    );
+
+    // 滚到这一轮回答的中段：更早那条与这一条都在折线之上，候选必须是最新的那条
+    // （行高 600：u-old 10..610、a-old 610..1210、u-new 1210..1810、a-new 1810..2410）。
+    const container = fakeGeometry(1900, 2600, 400);
+    act(() => {
+      fireEvent.scroll(container);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("sticky-user-message")).toHaveTextContent(
+        "这一轮的问题",
+      );
+    });
+  });
+
   it("leaves a single-turn window alone", async () => {
     // 只有一轮：用户那条就在窗口里，没有理由再往前取页，也不能在顶上多挂一条
     // 重复的「我写的消息」。
