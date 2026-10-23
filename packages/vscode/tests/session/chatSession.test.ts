@@ -245,3 +245,76 @@ describe("ChatSession · 压缩摘要块走增量通道", () => {
     expect(cbs.onCompactBlockAdded).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * 一条会话在宿主进程里只有一份数组（spec ui/message-rendering-system.md
+ * 「宿主只留下被 pane 显示的会话副本」场景 9）：`getMessages` 走只读的窗口查询，
+ * SDK 客户端那份缓存一次都不写 —— 写了就是两份，而其中一份（客户端那份）此后
+ * 没人更新，切回来看到的是过期列表。
+ */
+describe("ChatSession · 首屏只留一份数组", () => {
+  const page = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `m${String(i)}`,
+      role: "user" as const,
+      blocks: [{ type: "text", content: `第 ${String(i)} 条` }],
+    }));
+
+  const sessionWith = async (getMessagesReply: unknown) => {
+    const client = fakeClient();
+    client.request.mockImplementation(async (method: string) => {
+      if (method === "initialize") {
+        return {
+          sessionId: "sess-1",
+          currentWorkdir: "/test-workspace",
+          permissionMode: "default",
+          latestTotalTokens: 0,
+        };
+      }
+      if (method === "getMessages") return getMessagesReply;
+      return {};
+    });
+    const session = new ChatSession("sidebar", undefined, callbacks());
+    await session.initialize(
+      undefined,
+      client as unknown as StdioClient,
+      fakeRouter() as unknown as NotificationRouter,
+    );
+    return { client, session };
+  };
+
+  it("拉首屏用带窗口的查询，用量与「还有更早」由宿主持有", async () => {
+    const messages = page(20);
+    const { client, session } = await sessionWith({
+      messages,
+      hasMore: true,
+      contextUsagePercent: 42,
+    });
+
+    await session.getMessages();
+
+    // 窗口参数在线：拉的是「一页」，不是整份线程。
+    expect(paramsFor(client.request, "getMessages")).toEqual({ limit: 20 });
+    expect(session.messages).toHaveLength(20);
+    expect(session.hasMoreMessages).toBe(true);
+    expect(session.contextUsagePercent).toBe(42);
+    // SDK 客户端那份缓存一次都没被写。
+    expect(session.agent!.messages).toEqual([]);
+    expect(session.agent!.hasMoreMessages).toBe(false);
+    expect(session.agent!.contextUsagePercent).toBeUndefined();
+  });
+
+  it("回滚到窗口内的锚点只切本地那一份，不再往 SDK 缓存写回", async () => {
+    const messages = page(3);
+    const { session } = await sessionWith({ messages, hasMore: false });
+    await session.getMessages();
+    const rewind = vi.fn().mockResolvedValue({ inputContent: "rewound draft" });
+    (session.agent as unknown as { rewindToMessage: unknown }).rewindToMessage =
+      rewind;
+
+    await session.rewindToMessage("m1");
+
+    expect(session.messages.map((m) => m.id)).toEqual(["m0"]);
+    expect(session.agent!.messages).toEqual([]);
+  });
+});

@@ -446,7 +446,7 @@ export class StdioAgent {
       "getMessages",
       window,
       this.sessionId,
-    )) as MessageWindowResult & { contextUsagePercent?: number };
+    )) as MessageWindowResult;
     if (window) return result;
     return result.messages;
   }
@@ -463,10 +463,7 @@ export class StdioAgent {
       "getMessages",
       { limit },
       this.sessionId,
-    )) as MessageWindowResult & {
-      contextUsagePercent?: number;
-      threadSummary?: MessageThreadSummary;
-    };
+    )) as MessageWindowResult;
     this.messages = result.messages;
     this.hasMoreMessages = result.hasMore === true;
     if (result.threadSummary) {

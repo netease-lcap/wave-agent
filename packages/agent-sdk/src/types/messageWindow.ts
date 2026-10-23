@@ -22,6 +22,13 @@ export interface MessageWindowResult {
   hasMore?: boolean;
   /** `since` 锚点已经不在了：整份重取尾页。 */
   reset?: boolean;
+  /**
+   * 该会话的上下文用量百分比。随每次取页一起回：宿主的窗口查询是只读的（不写
+   * SDK 客户端那份缓存），用量要由宿主自己存，就必须搭在同一份回包上送过来。
+   */
+  contextUsagePercent?: number;
+  /** 线程总量（见 `MessageThreadSummary`）。 */
+  threadSummary?: MessageThreadSummary;
 }
 
 /**

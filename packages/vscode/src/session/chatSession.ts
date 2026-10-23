@@ -13,6 +13,7 @@ import type {
 } from "wave-agent-sdk/host";
 import { StdioClient } from "../stdio/stdioClient";
 import {
+  MESSAGE_FIRST_PAGE_SIZE,
   MESSAGE_HISTORY_PAGE_SIZE,
   StdioAgent,
   type InitializeParams,
@@ -73,7 +74,19 @@ export interface ChatSessionCallbacks {
 
 export class ChatSession {
   public agent: StdioAgent | undefined;
+  /** 首屏那一页（逐条追加，翻更早的页只经手不入这份）。 */
   public messages: Message[] = [];
+  /** 那一页之前还有没有更早的 —— 与列表同一次回包带回，宿主持有。 */
+  public hasMoreMessages = false;
+  /**
+   * 上下文用量百分比，随首屏那一页一起取回。
+   *
+   * 宿主自己存：`getMessages` 走的是只读的窗口查询，不写 SDK 客户端的那份
+   * 缓存（spec ui/message-rendering-system.md「宿主只留下被 pane 显示的会话
+   * 副本」场景 9 —— 一条会话在宿主进程里只有一份数组，且必须是仍在更新的
+   * 那份，也就是这里）。
+   */
+  public contextUsagePercent: number | undefined;
   public tasks: Task[] = [];
   public backgroundTasks: BackgroundTaskSummary[] = [];
   public workflowRuns: SerializableWorkflowRun[] = [];
@@ -447,18 +460,24 @@ export class ChatSession {
   /**
    * Pull the first page into the cache. The cache is that page, not the whole
    * thread — older pages are answered by `getOlderMessages` and never kept.
+   *
+   * One-shot window query, not `refreshMessages()`: the latter also writes the
+   * SDK client's own `messages`/`hasMoreMessages`/`contextUsagePercent`, which
+   * would make this host hold the same page twice — and the second copy would
+   * be the one nobody keeps updating. Everything this host needs from the reply
+   * (the page, "还有更早", the usage ring) is stored here instead.
    */
   public async getMessages(): Promise<Message[]> {
     if (!this.agent) {
       return this.messages;
     }
-    this.messages = await this.agent.refreshMessages();
+    const page = await this.agent.getMessages({
+      limit: MESSAGE_FIRST_PAGE_SIZE,
+    });
+    this.messages = page.messages;
+    this.hasMoreMessages = page.hasMore === true;
+    this.contextUsagePercent = page.contextUsagePercent;
     return this.messages;
-  }
-
-  /** Whether the cached page has older messages before it. */
-  public get hasMoreMessages(): boolean {
-    return this.agent?.hasMoreMessages === true;
   }
 
   /**
@@ -610,7 +629,6 @@ export class ChatSession {
     const index = this.messages.map((m) => m.id).lastIndexOf(messageId);
     if (index !== -1) {
       this.messages = this.messages.slice(0, index);
-      this.agent.messages = this.messages;
     } else {
       // The anchor predates the cached page (the cache is one page now):
       // nothing to cut, re-pull the tail that the rewind just rewrote.
@@ -645,6 +663,8 @@ export class ChatSession {
     }
 
     this.messages = [];
+    this.hasMoreMessages = false;
+    this.contextUsagePercent = undefined;
     this.tasks = [];
     this.inputContent = "";
     this.sessionId = undefined;

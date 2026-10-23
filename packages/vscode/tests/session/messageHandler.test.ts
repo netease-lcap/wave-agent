@@ -342,12 +342,13 @@ describe("MessageHandler MCP handlers", () => {
   // A re-created webview (window reload; the webview view itself has no
   // retainContextWhenHidden) re-runs webviewReady long after the session's
   // last token change, so no contextUsage notification is on its way. The
-  // host replays the percentage the agent cached on the getMessages pull the
+  // host replays the percentage the session stored on the getMessages pull the
   // ready handler just made, otherwise the ring stays empty until a new turn.
   test("webviewReady replays the session's context-usage percentage", async () => {
     const session = createReadySession();
-    (session.agent as { contextUsagePercent?: number }).contextUsagePercent =
-      25;
+    (
+      session as unknown as { contextUsagePercent?: number }
+    ).contextUsagePercent = 25;
     const { handler, context } = createReadyHandler(session);
 
     await handler.handleMessage({ command: "webviewReady" }, "tab");
