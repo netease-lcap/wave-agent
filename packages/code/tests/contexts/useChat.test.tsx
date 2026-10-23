@@ -6,7 +6,7 @@ import {
   useChat,
   ChatContextType,
 } from "../../src/contexts/useChat.js";
-import { Agent, BackgroundShell, Task } from "wave-agent-sdk";
+import { Agent, BackgroundShell, Message, Task } from "wave-agent-sdk";
 import { AppProvider } from "../../src/contexts/useAppConfig.js";
 import { useInput } from "ink";
 
@@ -89,15 +89,19 @@ vi.mock("../../src/utils/usageSummary.js", () => ({
 describe("ChatProvider", () => {
   const mockAgent = {
     sessionId: "test-session",
-    messages: [],
-    // Full UI stream follows the context in this mock (tests only exercise
-    // the non-compaction path where the two are identical).
+    messages: [] as Message[],
+    /**
+     * 展示流与 API 上下文不一致的场合（压缩之后）由它给出；缺省两者相同。
+     * CLI 的列表读 `messages`，远端页面的「整条线程」读展示流。
+     */
+    displayStream: undefined as Message[] | undefined,
     get displayMessages() {
-      return this.messages;
+      return this.displayStream ?? this.messages;
     },
-    // 整条展示流现在由 SDK 从转录读（缓存只剩一页），CLI 首屏/刷新走这条。
-    getDisplayThread: vi.fn(async function (this: { messages: unknown[] }) {
-      return this.messages;
+    getDisplayThread: vi.fn(async function (this: {
+      displayMessages: unknown[];
+    }) {
+      return this.displayMessages;
     }),
     isLoading: false,
     latestTotalTokens: 0,
@@ -144,6 +148,7 @@ describe("ChatProvider", () => {
     // them (Object.assign, session switches) and the initial pull at mount
     // reads the current values.
     mockAgent.messages = [];
+    mockAgent.displayStream = undefined;
     mockAgent.sessionId = "test-session";
     vi.mocked(Agent.create).mockResolvedValue(mockAgent as unknown as Agent);
   });
@@ -1378,6 +1383,174 @@ describe("ChatProvider", () => {
     await vi.waitFor(() => {
       expect(lastValue?.queuedMessages).toHaveLength(0);
       expect(mockAgent.abortMessage).toHaveBeenCalled();
+    });
+  });
+
+  it("mounts with the post-compaction list, not the pre-compaction history", async () => {
+    // spec ui/message-rendering-system.md「CLI 消息列表只加载压缩之后」：屏幕只渲染
+    // 最近几十条、清屏重放也只放这些条数，所以压缩前的历史在 CLI 没有读者——它只
+    // 是把图片 base64 挂在堆上。API 上下文（压缩摘要 + 压缩保留的轮次）就是这份
+    // 列表；展示流里那份全历史不该被读进来。
+    const history = Array.from({ length: 40 }, (_, i) => ({
+      id: `old-${i}`,
+      role: "user" as const,
+      blocks: [
+        { type: "text" as const, content: `old ${i}`, stage: "end" as const },
+      ],
+      timestamp: new Date().toISOString(),
+    }));
+    const compactSummary = {
+      id: "compact-1",
+      role: "assistant" as const,
+      blocks: [{ type: "compact" as const, content: "summary of 40 rounds" }],
+      timestamp: new Date().toISOString(),
+    };
+    const keptRound = {
+      id: "kept-1",
+      role: "user" as const,
+      blocks: [
+        { type: "text" as const, content: "kept", stage: "end" as const },
+      ],
+      timestamp: new Date().toISOString(),
+    };
+    mockAgent.messages = [compactSummary, keptRound];
+    mockAgent.displayStream = [...history, compactSummary, keptRound];
+
+    let lastValue: ChatContextType | undefined;
+    renderWithProvider((val) => {
+      lastValue = val;
+    });
+
+    await vi.waitFor(() => {
+      expect(lastValue?.messages.map((m) => m.id)).toEqual([
+        "compact-1",
+        "kept-1",
+      ]);
+    });
+    // 列表不是从展示流（转录）读出来的
+    expect(mockAgent.getDisplayThread).not.toHaveBeenCalled();
+  });
+
+  it("refreshes to the post-compaction list and never reads history back", async () => {
+    const compactSummary = {
+      id: "compact-1",
+      role: "assistant" as const,
+      blocks: [{ type: "compact" as const, content: "summary" }],
+      timestamp: new Date().toISOString(),
+    };
+    const keptRound = {
+      id: "kept-1",
+      role: "user" as const,
+      blocks: [
+        { type: "text" as const, content: "kept", stage: "end" as const },
+      ],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, {
+      compact: vi.fn().mockResolvedValue(undefined),
+    });
+
+    let lastValue: ChatContextType | undefined;
+    renderWithProvider((val) => {
+      lastValue = val;
+    });
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    // 压缩发生：上下文折叠成摘要 + 保留轮次，展示流仍留着压缩前的历史。
+    mockAgent.messages = [compactSummary, keptRound];
+    mockAgent.displayStream = [
+      {
+        id: "old-1",
+        role: "user" as const,
+        blocks: [
+          { type: "text" as const, content: "old", stage: "end" as const },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+      compactSummary,
+      keptRound,
+    ];
+    mockAgent.getDisplayThread.mockClear();
+
+    await lastValue?.compact();
+
+    await vi.waitFor(() => {
+      expect(lastValue?.messages.map((m) => m.id)).toEqual([
+        "compact-1",
+        "kept-1",
+      ]);
+    });
+    expect(mockAgent.getDisplayThread).not.toHaveBeenCalled();
+  });
+
+  it("collapses the list when an automatic compaction finishes", async () => {
+    // 自动压缩不走 `/compact` 那条刷新路径，靠压缩状态回落时收一次；否则这一轮
+    // 之后列表仍挂着压缩前的全量（spec 同上）。
+    const old = {
+      id: "old-1",
+      role: "user" as const,
+      blocks: [
+        { type: "text" as const, content: "old", stage: "end" as const },
+      ],
+      timestamp: new Date().toISOString(),
+    };
+    const compactSummary = {
+      id: "compact-1",
+      role: "assistant" as const,
+      blocks: [{ type: "compact" as const, content: "summary" }],
+      timestamp: new Date().toISOString(),
+    };
+    mockAgent.messages = [old];
+
+    let lastValue: ChatContextType | undefined;
+    renderWithProvider((val) => {
+      lastValue = val;
+    });
+    await vi.waitFor(() => {
+      expect(lastValue?.messages.map((m) => m.id)).toEqual(["old-1"]);
+    });
+
+    const callbacks = vi.mocked(Agent.create).mock.calls[0][0].callbacks!;
+    callbacks.onCompactionStateChange!(true);
+    mockAgent.messages = [compactSummary];
+    mockAgent.displayStream = [old, compactSummary];
+    callbacks.onCompactionStateChange!(false);
+
+    await vi.waitFor(() => {
+      expect(lastValue?.messages.map((m) => m.id)).toEqual(["compact-1"]);
+    });
+  });
+
+  it("keeps the whole thread for a session that was never compacted", async () => {
+    const msgs = [
+      {
+        id: "m-1",
+        role: "user" as const,
+        blocks: [
+          { type: "text" as const, content: "hi", stage: "end" as const },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+      {
+        id: "m-2",
+        role: "assistant" as const,
+        blocks: [
+          { type: "text" as const, content: "hello", stage: "end" as const },
+        ],
+        timestamp: new Date().toISOString(),
+      },
+    ];
+    mockAgent.messages = msgs;
+
+    let lastValue: ChatContextType | undefined;
+    renderWithProvider((val) => {
+      lastValue = val;
+    });
+
+    await vi.waitFor(() => {
+      expect(lastValue?.messages.map((m) => m.id)).toEqual(["m-1", "m-2"]);
     });
   });
 

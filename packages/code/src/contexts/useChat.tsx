@@ -5,7 +5,6 @@ import React, {
   useRef,
   useEffect,
   useState,
-  type SetStateAction,
 } from "react";
 import { useInput, useStdout } from "ink";
 import { useAppConfig } from "./useAppConfig.js";
@@ -392,18 +391,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   const [isTaskListVisible, setIsTaskListVisible] = useState(true);
   const [isBtwActive, setIsBtwActive] = useState(false);
 
-  const [messages, setMessagesState] = useState<Message[]>([]);
-  /**
-   * 单调递增的「消息 state 改过几次」。整条展示流要从转录读回来（一个 await），
-   * 而读回来的那份是整份替换：在这期间有任何一次本地更新（流式增量、UI-only 的
-   * 提示消息）落进 state，这份快照就已经比手上那份旧了，替换会把它们抹掉。刷新
-   * 前记下它、兑现时比一比，变了就放弃这次替换。
-   */
-  const messagesEpochRef = useRef(0);
-  const setMessages = useCallback((update: SetStateAction<Message[]>) => {
-    messagesEpochRef.current += 1;
-    setMessagesState(update);
-  }, []);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [latestTotalTokens, setLatestTotalTokens] = useState(0);
   const [maxInputTokens, setMaxInputTokens] = useState(200000);
 
@@ -579,32 +567,25 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
    */
   const remoteNotifyRef = useRef<RemoteNotify | undefined>(undefined);
 
-  // Full-list refresh — one-shot pull from the agent, used only for structural
-  // changes (compact/clear/rewind/collapse/init). Streaming updates flow through
-  // the incremental callbacks in initializeAgent below.
+  // Full-list refresh — used only for structural changes (compact/clear/rewind/
+  // collapse/init). Streaming updates flow through the incremental callbacks in
+  // initializeAgent below.
   const refreshMessages = useCallback(() => {
     const agent = agentRef.current;
     if (!isExpandedRef.current && agent) {
-      // Pull the whole display stream (keeps pre-compaction history);
-      // `agent.messages` would only expose the folded API context. The SDK
-      // keeps just a resident window now, so the thread is read back from the
-      // transcript here — once, for this pull, cached nowhere.
-      const epoch = messagesEpochRef.current;
-      void agent.getDisplayThread().then((thread) => {
-        if (agentRef.current !== agent) return;
-        // 读盘期间有新东西落进 state（增量、UI-only 提示）：这份快照已经比手上
-        // 那份旧，整份替换会把它们抹掉。
-        if (messagesEpochRef.current !== epoch) return;
-        const msgs = thread.map(snapshotMessage);
-        // The snapshot makes the SDK state authoritative: with no throttle
-        // window there is nothing pending to cancel — every pre-pull update is
-        // already applied and contained in `msgs`, and post-pull deltas append
-        // on top of the snapshot. See docs/specs/core/stream-content-updates.md.
-        setMessages(msgs);
-        setLatestTotalTokens(extractLatestTotalTokens(msgs));
-      });
+      // `agent.messages` 是「最近一次压缩 + 其后消息」：CLI 屏幕只渲染最近几十
+      // 条、清屏重放也只放这些条数，压缩前的历史在这里没有任何读者，留着只是把
+      // 图片 base64 挂在堆上（spec ui/message-rendering-system.md「CLI 消息列表
+      // 只加载压缩之后」）。从未压缩过的会话这里就是整条线程。
+      const msgs = agent.messages.map(snapshotMessage);
+      // The snapshot makes the SDK state authoritative: with no throttle
+      // window there is nothing pending to cancel — every pre-pull update is
+      // already applied and contained in `msgs`, and post-pull deltas append
+      // on top of the snapshot. See docs/specs/core/stream-content-updates.md.
+      setMessages(msgs);
+      setLatestTotalTokens(extractLatestTotalTokens(msgs));
     }
-  }, [setMessages]);
+  }, []);
 
   // Permission confirmation methods with queue support
   const showConfirmation = useCallback(
@@ -793,6 +774,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           setIsCompacting(isCompactingState);
           if (!isCompactingState) {
             setCompactionStream("");
+            // 压缩结束 = 上下文已经折叠成「摘要 + 保留轮次」：列表要跟着收缩，
+            // 否则这一轮之后仍挂着压缩前的全量（自动压缩不走 `/compact` 那条
+            // refresh 路径）。见 spec ui/message-rendering-system.md「CLI 消息
+            // 列表只加载压缩之后」。
+            refreshMessages();
           }
         },
         onCompactionContentUpdate: (content) => {
@@ -907,11 +893,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           agent.setWorktreeSession(session);
         }
 
-        // Get initial state — every synchronous read first, then the message
-        // list (it is the only one that has to wait for the transcript). Doing
-        // them in one tick keeps a notification arriving mid-init from being
-        // overwritten by a stale read.
+        // Get initial state — all synchronous reads, so a notification arriving
+        // mid-init cannot be overwritten by a stale read. The list is
+        // `agent.messages` (the API context): after compaction that is the
+        // summary plus the rounds the compaction kept, which is exactly what
+        // the CLI shows (spec ui/message-rendering-system.md「CLI 消息列表只加载
+        // 压缩之后」); a never-compacted session is the whole thread.
         setSessionId(agent.sessionId);
+        setMessages(agent.messages.map(snapshotMessage));
         setLatestTotalTokens(extractLatestTotalTokens(agent.messages));
         setIsLoading(agent.isLoading);
         setIsCommandRunning(agent.isCommandRunning);
@@ -938,20 +927,6 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         // Get initial skill metadata
         const initialSkills = agent.getSkillMetadata?.() || [];
         setSkills(initialSkills);
-
-        // The display thread last: it is the one read that waits on the
-        // transcript. Snapshot the SDK messages (never hold live references;
-        // see snapshotMessage); a restored session shows pre-compaction history
-        // too, and the SDK itself only keeps a resident window.
-        //
-        // 读盘有个空档：这期间新落进来的消息不在那份快照里，整份替换会把它们抹
-        // 掉（增量回调已经把新消息放进 state 了）。epoch 变了就保留增量那份，历史
-        // 留到下一次结构性刷新再补。
-        const epoch = messagesEpochRef.current;
-        const thread = await agent.getDisplayThread();
-        if (agentRef.current === agent && messagesEpochRef.current === epoch) {
-          setMessages(thread.map(snapshotMessage));
-        }
 
         // Get initial hooks (user/project from settings.json, plugin from
         // the hook manager's plugin-registered set) — snapshot for /hooks.
@@ -985,7 +960,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       model,
       initialPermissionMode,
       mcpServers,
-      setMessages,
+      refreshMessages,
     ],
   );
 
@@ -1131,94 +1106,88 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // /add-dir: add a directory to the session Safe Zone (session-level, with
   // optional --remember persistence). Bare command shows usage + current list.
-  const addDir = useCallback(
-    async (args?: string) => {
-      const agent = agentRef.current;
-      if (!agent) return;
+  const addDir = useCallback(async (args?: string) => {
+    const agent = agentRef.current;
+    if (!agent) return;
 
-      // Show the result as a UI-only assistant text message (same display path
-      // as error blocks; not persisted to session history).
-      const showResult = (content: string) => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-            role: "assistant",
-            timestamp: new Date().toISOString(),
-            blocks: [{ type: "text", content, stage: "end" }],
-          },
-        ]);
-      };
+    // Show the result as a UI-only assistant text message (same display path
+    // as error blocks; not persisted to session history).
+    const showResult = (content: string) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+          role: "assistant",
+          timestamp: new Date().toISOString(),
+          blocks: [{ type: "text", content, stage: "end" }],
+        },
+      ]);
+    };
 
-      const rawArgs = (args ?? "").trim();
-      if (!rawArgs) {
-        const dirs = agent.getAdditionalDirectories();
-        const list =
-          dirs.length > 0
-            ? dirs.map((dir) => `  - ${dir}`).join("\n")
-            : "  (none)";
-        showResult(
-          `Usage: /add-dir <path> [--remember]\n\nAdditional working directories:\n${list}`,
-        );
-        return;
-      }
-
-      const remember = rawArgs.includes("--remember");
-      const dir = rawArgs.replace("--remember", "").trim();
-      if (!dir) {
-        showResult("Usage: /add-dir <path> [--remember]");
-        return;
-      }
-
-      await agent.addAdditionalDirectory(dir, { remember });
+    const rawArgs = (args ?? "").trim();
+    if (!rawArgs) {
+      const dirs = agent.getAdditionalDirectories();
+      const list =
+        dirs.length > 0
+          ? dirs.map((dir) => `  - ${dir}`).join("\n")
+          : "  (none)";
       showResult(
-        `Added ${dir} to the session Safe Zone${remember ? " (remembered)" : ""}.`,
+        `Usage: /add-dir <path> [--remember]\n\nAdditional working directories:\n${list}`,
       );
-    },
-    [setMessages],
-  );
+      return;
+    }
+
+    const remember = rawArgs.includes("--remember");
+    const dir = rawArgs.replace("--remember", "").trim();
+    if (!dir) {
+      showResult("Usage: /add-dir <path> [--remember]");
+      return;
+    }
+
+    await agent.addAdditionalDirectory(dir, { remember });
+    showResult(
+      `Added ${dir} to the session Safe Zone${remember ? " (remembered)" : ""}.`,
+    );
+  }, []);
 
   // /rename: set the current conversation's custom title. The title is stored
   // as a reserved `custom-title` entry appended to the session's own JSONL
   // file, so `wave -r` and every GUI host read the same value. A blank title
   // only prints the usage hint — no AI-generated titles (spec:
   // session-management.md "不做 AI 自动标题").
-  const renameSession = useCallback(
-    async (args?: string) => {
-      const agent = agentRef.current;
-      if (!agent) return;
+  const renameSession = useCallback(async (args?: string) => {
+    const agent = agentRef.current;
+    if (!agent) return;
 
-      const title = (args ?? "").trim();
-      const showResult = (content: string) => {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-            role: "assistant",
-            timestamp: new Date().toISOString(),
-            blocks: [{ type: "text", content, stage: "end" }],
-          },
-        ]);
-      };
+    const title = (args ?? "").trim();
+    const showResult = (content: string) => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+          role: "assistant",
+          timestamp: new Date().toISOString(),
+          blocks: [{ type: "text", content, stage: "end" }],
+        },
+      ]);
+    };
 
-      if (!title) {
-        showResult("Usage: /rename <title>");
-        return;
-      }
+    if (!title) {
+      showResult("Usage: /rename <title>");
+      return;
+    }
 
-      try {
-        await agent.renameSession(title);
-        showResult(`Conversation renamed to "${title}".`);
-      } catch (error) {
-        showResult(
-          `Failed to rename conversation: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    },
-    [setMessages],
-  );
+    try {
+      await agent.renameSession(title);
+      showResult(`Conversation renamed to "${title}".`);
+    } catch (error) {
+      showResult(
+        `Failed to rename conversation: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }, []);
 
   // /resume: switch to another conversation without leaving the process. The
   // session id and its on-disk project directory move together, so the next
@@ -1262,7 +1231,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       refreshMessages();
       forceRemount();
     },
-    [forceRemount, refreshMessages, setMessages],
+    [forceRemount, refreshMessages],
   );
 
   // Unified interrupt method, interrupt both AI messages and command execution
