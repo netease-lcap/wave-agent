@@ -1,40 +1,36 @@
 /**
- * Message-window slicing, shared by every host that answers `getMessages`.
+ * `getMessages` parameter validation, shared by every host that answers it.
  *
  * Two callers need this and must agree byte for byte: the daemon / stdio
  * bridge (multi-session registry) and the interactive CLI front end (one
  * session in React state). The phone's reconciliation rules — `since` is an
- * anchor, a vanished anchor means "re-pull the tail", ids can repeat so the
- * anchor resolves to its **last** occurrence — are a property of the wire
+ * anchor, a vanished anchor means "re-pull the whole list", ids can repeat so
+ * the anchor resolves to its **last** occurrence — are a property of the wire
  * contract, not of either host, so the arithmetic lives here once.
+ *
+ * The list itself lives in the SDK: it starts at the last compaction, and the
+ * remote page takes a `limit`-sized tail of it because of the relay's frame
+ * budget. What is left here is the one rule a misreading caller cannot notice
+ * on its own — a malformed parameter must fail instead of silently widening
+ * into a full read.
  *
  * Described in docs/specs/ui/remote-control.md (§5 白名单与增量拉取).
  */
 
-import type {
-  Message,
-  MessageWindow,
-  MessageWindowResult,
-} from "wave-agent-sdk";
+import type { MessageWindow } from "wave-agent-sdk";
 
-export type { MessageWindow, MessageWindowResult };
+export type { MessageWindow, MessageWindowResult } from "wave-agent-sdk";
 
 /** A malformed window. Hosts translate this into their own RPC error type. */
 export class InvalidMessageWindowError extends Error {}
 
 /**
- * Slice `all` by `window`. Returns `undefined` when no window was asked for —
- * the caller then answers with the whole list, untouched.
- *
- * The validations are here rather than in either caller because silently
- * widening the read is the one failure mode a caller cannot notice: it asked
- * for a bounded page and got the thread back.
+ * Validate `window` and hand it on. Returns `undefined` when nothing was asked
+ * for — the caller then answers with the whole list, read once.
  */
-export function sliceMessageWindow(
-  all: Message[],
+export function normalizeMessageWindow(
   window?: MessageWindow,
-): MessageWindowResult | undefined {
-  const before = window?.before;
+): MessageWindow | undefined {
   const since = window?.since;
   const rawLimit = window?.limit;
   if (rawLimit !== undefined && (!Number.isInteger(rawLimit) || rawLimit < 1)) {
@@ -42,44 +38,9 @@ export function sliceMessageWindow(
       `getMessages limit must be a positive integer, got ${String(rawLimit)}`,
     );
   }
-  const limit = rawLimit;
-
-  if (before === undefined && since === undefined && limit === undefined) {
-    return undefined;
-  }
-
-  const lastIndexOfId = (id: string): number => {
-    for (let i = all.length - 1; i >= 0; i--) {
-      if (all[i].id === id) return i;
-    }
-    return -1;
-  };
-
-  if (since !== undefined) {
-    const at = lastIndexOfId(since);
-    if (at === -1) {
-      return { messages: [], reset: true, total: all.length };
-    }
-    const later = all.slice(at + 1);
-    return {
-      messages: limit === undefined ? later : later.slice(-limit),
-      hasMore: false,
-      total: all.length,
-    };
-  }
-
-  // Backward paging; without `before` this is a tail read (`limit` only).
-  const end = before === undefined ? all.length : lastIndexOfId(before);
-  if (end === -1) {
-    // The anchor is gone. Older history may have been truncated along with it,
-    // so answer with an empty page: the caller stops paging rather than looping
-    // on an anchor that will never resolve.
-    return { messages: [], hasMore: false, total: all.length };
-  }
-  const start = limit === undefined ? 0 : Math.max(0, end - limit);
+  if (since === undefined && rawLimit === undefined) return undefined;
   return {
-    messages: all.slice(start, end),
-    hasMore: start > 0,
-    total: all.length,
+    ...(since !== undefined ? { since } : {}),
+    ...(rawLimit !== undefined ? { limit: rawLimit } : {}),
   };
 }

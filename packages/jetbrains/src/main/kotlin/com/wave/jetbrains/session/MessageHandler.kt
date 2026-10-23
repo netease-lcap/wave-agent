@@ -110,42 +110,6 @@ class MessageHandler(
                 session.pullAndPushMessages()
                 postMessage("updateQueue", buildJsonObject { put("queue", JsonArray(emptyList())) })
             }
-            // 上滑翻更早（spec desktop-chat「首屏只进一页」场景 3）：`before` 是
-            // 列表最上面那条的 id，宿主侧的**排他**上锚点。requestId 原样回传
-            // （页面用它丢弃晚到的旧页），所以这里不解析成数字，直接把它那份
-            // JsonElement 塞回去。失败不静默——页面收到 olderMessagesError 才停
-            // 下转圈并保留阅读位置；回一个空页会被读成「已经到底」。
-            "loadOlderMessages" -> {
-                val before = msg["before"]?.jsonPrimitive?.contentOrNull
-                val requestId = msg["requestId"] ?: JsonNull
-                val sessionIdAtRequest = session.sessionId
-                fun fail(error: String) = postMessage("olderMessagesError", buildJsonObject {
-                    put("requestId", requestId)
-                    put("error", error)
-                })
-                if (before == null) {
-                    fail("缺少翻页锚点")
-                } else {
-                    try {
-                        val page = session.getOlderMessages(before)
-                        // 会话在同一支 WaveSession 上原地替换（restore / clear /
-                        // 新建），所以判据是 sessionId：回包属于上一个会话，
-                        // prepend 进新会话的列表等于把两段历史缝在一起。
-                        when {
-                            page == null -> fail("当前会话尚未就绪")
-                            session.sessionId != sessionIdAtRequest -> fail("会话已切换")
-                            else -> postMessage("olderMessages", buildJsonObject {
-                                put("requestId", requestId)
-                                put("messages", page.first)
-                                put("hasMore", page.second)
-                            })
-                        }
-                    } catch (e: StdioClientException) {
-                        LOG.warn("getMessages(page) failed: ${e.message}")
-                        fail(e.message ?: "取更早的消息失败")
-                    }
-                }
-            }
             "compact" -> {
                 val customInstructions = msg["customInstructions"]?.jsonPrimitive?.content
                 session.agent?.compact(customInstructions)
@@ -1125,20 +1089,24 @@ class MessageHandler(
     // ── Rewind: webview already confirmed → rewind → rewindResult + setInitialState(keepMessages) + focusInput + scrollToBottom ──
     //
     // 截断不回传列表：这里按与 webview 相同的规则切掉缓存（保留 messageId 最后一次
-    // 出现之前的内容），回发 rewindResult 让 webview 对自己的副本做同样的事，随后
-    // 的快照带 keepMessages（列表因此不在这条路径上重传）。没带 requestId 的旧
-    // webview / 远程页退回全量推送。
+    // 出现之前的内容；锚点不在缓存里就重拉整份），回发 rewindResult 让 webview 对
+    // 自己的副本做同样的事，随后的快照带 keepMessages（列表因此不在这条路径上重
+    // 传）。没带 requestId 的旧 webview / 远程页退回整份推送。
     private suspend fun handleRewindToMessage(messageId: String, requestId: String?) {
         try {
             val inputContent = session.agent?.rewindToMessage(messageId) ?: ""
             session.inputContent = inputContent
             if (requestId != null) {
-                val list = session.messages as? JsonArray
-                if (list != null) {
-                    val index = list.indexOfLast { m ->
-                        ((m as? JsonObject)?.get("id") as? JsonPrimitive)?.contentOrNull == messageId
-                    }
-                    if (index >= 0) session.messages = JsonArray(list.take(index))
+                val list = session.messages as? JsonArray ?: JsonArray(emptyList())
+                val index = list.indexOfLast { m ->
+                    ((m as? JsonObject)?.get("id") as? JsonPrimitive)?.contentOrNull == messageId
+                }
+                if (index >= 0) {
+                    session.messages = JsonArray(list.take(index))
+                } else {
+                    // 回滚锚点不在缓存里（例如老 CLI 的回包没带它）：就地截断没有可截的
+                    // 那段，重拉整份。重拉不重传——webview 仍用它自己切好的那份。
+                    session.refreshMessages()
                 }
                 postMessage("rewindResult", buildJsonObject {
                     put("requestId", requestId)
@@ -1404,7 +1372,7 @@ class MessageHandler(
         // sessionIdChange to trigger listSessions, but a freshly-created session
         // may not emit that notification, so refresh explicitly here.
         session.refreshSessions()
-        // Pull the full message list on demand (mirrors VSCE messageHandler.ts
+        // Pull the message list on demand (mirrors VSCE messageHandler.ts
         // handleWebviewReady → session.getMessages()). The server no longer pushes
         // full snapshots; the host pulls and delivers them via setInitialState.
         // keepMessages（仅 rewind）跳过这次拉取：调用方已按同一条规则切过缓存、
@@ -1431,22 +1399,17 @@ class MessageHandler(
         } catch (e: StdioClientException) {
             LOG.warn("getAuthStatus on webviewReady failed: ${e.message}")
         }
-        // 首屏只推一页（spec desktop-chat「首屏只进一页」）：宿主缓存
-        // `session.messages` 必须仍是全量——翻更早、回滚、会话切换都读它——但推给
-        // webview 的只有最近 MESSAGE_FIRST_PAGE_SIZE 条（原因见 SDK 的
-        // constants/messageWindow.ts）。
-        val (firstPage, hasMore) = MessagePaging.tailPage(session.messages)
+        // 缓存就是整份列表（= 压缩后的上下文，[WaveSession.refreshMessages] 不分页），
+        // 这里原样推。keepMessages（仅 rewind）跳过这次拉取与推送：webview 手里那份是
+        // 它自己按同一条规则切好的，重拉重传正是这条路径要省掉的。
+        val wholeList = session.messages as? JsonArray ?: JsonArray(emptyList())
         postMessage("setInitialState", buildJsonObject {
             // keepMessages（仅 rewind）：列表不入载荷，由 webview 保留自己切好的那份。
             put(
                 "messages",
-                if (keepMessages) JsonArray(emptyList()) else firstPage,
+                if (keepMessages) JsonArray(emptyList()) else wholeList,
             )
-            if (keepMessages) put("keepMessages", true) else put("historyExhausted", !hasMore)
-            // 本宿主答得了 `loadOlderMessages`（见 dispatch），webview 据此装上滑
-            // 分页。能力位而不是常量：页面是远端加载的，老宿主不该收到一条它不认识
-            // 的命令。
-            put("supportsMessagePaging", true)
+            if (keepMessages) put("keepMessages", true)
             put("tasks", session.tasks ?: JsonArray(emptyList()))
             put("backgroundTasks", session.backgroundTasks ?: JsonArray(emptyList()))
             put("workflowRuns", session.workflowRuns ?: JsonArray(emptyList()))

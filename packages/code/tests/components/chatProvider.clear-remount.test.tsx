@@ -42,11 +42,6 @@ function createMockAgent() {
     sessionId: "test-session-id",
     currentWorkdir: "/tmp",
     messages: [makeMessage("m1", "hello"), makeMessage("m2", "world")],
-    // Full UI stream follows the context in this mock (the compaction/rewind
-    // callbacks here replace the whole list rather than splitting streams).
-    get displayMessages() {
-      return agent.messages;
-    },
     isLoading: false,
     isCommandRunning: false,
     isCompacting: false,

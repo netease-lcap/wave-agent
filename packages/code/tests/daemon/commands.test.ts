@@ -194,7 +194,6 @@ function createMockAgent(
     latestTotalTokens: 0,
     getMaxInputTokens: vi.fn().mockReturnValue(200000),
     messages,
-    displayMessages: messages,
     get isLoading(): boolean {
       return isLoading;
     },
@@ -218,6 +217,22 @@ function createMockAgent(
     getFullMessageThread: vi
       .fn()
       .mockResolvedValue({ messages, sessionIds: ["test-session-id"] }),
+    getMessagePage: vi.fn(() => ({ messages: [], hasMore: false })),
+    // 会话列表要的条数 / 首条正文 / 最近时间：列表从最近一次压缩开始，这些由 SDK
+    // 的计数器给出，不从 `messages` 数。
+    getThreadSummary: vi.fn(() => {
+      const first = messages.find((m) => m.role === "user");
+      const text = first?.blocks.find((b) => b.type === "text");
+      return {
+        messageCount: messages.length,
+        ...(text && "content" in text && text.content
+          ? { firstUserText: text.content }
+          : {}),
+        ...(messages.length > 0
+          ? { lastActiveAt: messages[messages.length - 1].timestamp }
+          : {}),
+      };
+    }),
     getPermissionMode: vi.fn().mockReturnValue("default"),
     setPermissionMode: vi.fn(),
     getMcpServers: vi.fn().mockReturnValue([]),
@@ -235,10 +250,6 @@ function createMockAgent(
     getBackgroundTasks: vi.fn().mockReturnValue([]),
     ...rest,
   };
-  // displayMessages (full UI stream) tracks messages unless overridden.
-  if (!("displayMessages" in overrides)) {
-    agent.displayMessages = agent.messages;
-  }
   return agent as unknown as import("wave-agent-sdk").Agent;
 }
 

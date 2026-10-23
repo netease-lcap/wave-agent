@@ -50,10 +50,8 @@ import {
   ENTER_PLAN_MODE_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
   PLUGIN_RELOADED_MESSAGE,
-  MESSAGE_HISTORY_PAGE_SIZE,
   StdioAgent,
   NotificationRouter,
-  tailMessagePage,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "./stdio/stdioClient";
 import type { JsonRpcClient } from "./stdio/jsonRpcClient";
@@ -88,7 +86,11 @@ import type {
 } from "wave-webview-fixtures";
 import { execFile, type ChildProcess } from "child_process";
 import { promisify } from "util";
-import { countMessageStats, type SessionMessageStat } from "./memorySampler";
+import {
+  countMessageStats,
+  type OffscreenVolume,
+  type SessionMessageStat,
+} from "./memorySampler";
 import {
   parseCloneDeepLink,
   repoDirectoryName,
@@ -324,6 +326,21 @@ export class DesktopHost {
   private agents = new Map<string, StdioAgent>();
   /** Side table: agent → host (local or an ssh config host name). */
   private agentHosts = new Map<StdioAgent, string>();
+  /**
+   * Agents whose message copy this host has thrown away because no pane was
+   * displaying them (spec ui/message-rendering-system.md「宿主只留下被 pane
+   * 显示的会话副本」)。
+   *
+   * The copy — `agent.messages` — exists only to serve a pane: the setInitialState
+   * snapshot, the incremental pushes, and rewind truncation. A background
+   * conversation nobody displays has no consumer for it, and keeping it was
+   * exactly what made the host grow with the number of conversations the user
+   * had opened. Membership means "the list is empty because it was dropped, not
+   * because the session is", so it also keeps `isBlankAgent` from mistaking the
+   * session for new-session scaffolding; `pushPaneSessionState` re-pulls the
+   * whole list and clears the mark when a pane binds it again.
+   */
+  private droppedMessageCopies = new WeakSet<StdioAgent>();
   /**
    * Last context-usage percent each agent reported, cached regardless of pane
    * binding. The restore/attach-time replay typically arrives while the agent
@@ -755,6 +772,31 @@ export class DesktopHost {
     return stats;
   }
 
+  /**
+   * Volume held by conversations no pane displays, reported next to the
+   * renderer curve (memorySampler.ts).
+   *
+   * The counterpart of `getMessageStats`: those copies only exist while a pane
+   * needs them (spec ui/message-rendering-system.md「宿主只留下被 pane 显示的
+   * 会话副本」), so this reading is what proves the pool is no longer growing
+   * with the number of conversations the user browsed. Deliberately NOT folded
+   * into the per-pane totals — it never reaches the renderer.
+   */
+  getOffscreenVolume(): OffscreenVolume {
+    const bound = new Set(this.panes.map((p) => p.agent));
+    let sessions = 0;
+    let messages = 0;
+    let blocks = 0;
+    for (const agent of this.agents.values()) {
+      if (bound.has(agent)) continue;
+      sessions += 1;
+      const counted = countMessageStats(agent.messages);
+      messages += counted.messages;
+      blocks += counted.blocks;
+    }
+    return { sessions, messages, blocks };
+  }
+
   /** Graceful shutdown for app quit (FR-015): destroy every live agent. */
   async dispose(): Promise<void> {
     nativeTheme.off("updated", this.onNativeThemeUpdated);
@@ -1019,7 +1061,7 @@ export class DesktopHost {
       timestamp: new Date().toISOString(),
     } as unknown as Message;
     if (agent) {
-      agent.messages = [...agent.messages, message];
+      this.appendToMessageCopy(agent, message);
     }
     this.postMessage({
       command: "appendMessage",
@@ -1029,7 +1071,7 @@ export class DesktopHost {
   }
 
   /**
-   * Pull the authoritative message list (getMessages RPC) into the agent's
+   * Pull the authoritative message list (refreshMessages RPC) into the agent's
    * cache and push it to the pane's webview as updateMessages.
    *
    * Both remaining callers are fallbacks: an `/rewind` from a client that sent
@@ -1040,82 +1082,22 @@ export class DesktopHost {
    * is re-checked after the RPC — the agent may have been rebound while the
    * request was in flight.
    */
-  /**
-   * 回答一次「翻更早」：把 `before` 之前的一页取回给这个 pane。
-   *
-   * `requestId` 原样回传——页面用它丢弃晚到的旧页（读者停在顶部会连续翻好几页）。
-   * 失败不静默：页面收到 `olderMessagesError` 才停下转圈并保留阅读位置；没有绑定
-   * 的会话同样走失败路径，而不是回一个空页（那会被页面读成「已经到底」）。
-   */
-  private async handleLoadOlderMessages(
-    before: string | undefined,
-    requestId: number,
-    paneId: string,
-  ): Promise<void> {
-    const agent = this.agentForPane(paneId);
-    if (!agent || !before) {
-      this.postMessage({
-        command: "olderMessagesError",
-        paneId,
-        requestId,
-        error: !agent ? "当前分屏没有绑定会话" : "缺少翻页锚点",
-      });
-      return;
-    }
-    try {
-      const page = await agent.getMessages({
-        before,
-        limit: MESSAGE_HISTORY_PAGE_SIZE,
-      });
-      // 整个 RPC 期间分屏可能已经换到别的会话：那一页属于上一个会话，prepend 进
-      // 新会话的列表是把两段历史缝在一起。
-      if (this.agentForPane(paneId) !== agent) {
-        this.postMessage({
-          command: "olderMessagesError",
-          paneId,
-          requestId,
-          error: "会话已切换",
-        });
-        return;
-      }
-      this.postMessage({
-        command: "olderMessages",
-        paneId,
-        requestId,
-        messages: page.messages,
-        // 老版本 CLI 不认识窗口（会把整份列表原样答回来且不带 hasMore）：
-        // 按「没有更早的了」处理，否则页面会拿同一个锚点无限重问。
-        hasMore: page.hasMore === true,
-      });
-    } catch (error) {
-      console.warn("[DesktopHost] getMessages(page) failed:", error);
-      this.postMessage({
-        command: "olderMessagesError",
-        paneId,
-        requestId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
   private async pullAndPushMessages(
     agent: StdioAgent,
     paneId: string,
   ): Promise<void> {
     try {
-      await agent.getMessages();
+      await agent.refreshMessages();
     } catch (error) {
-      console.warn("[DesktopHost] getMessages failed:", error);
+      console.warn("[DesktopHost] refreshMessages failed:", error);
     }
     if (this.agentForPane(paneId) === agent) {
-      // 这份「整表替换」也是一个窗口：首屏只进一页的宿主不能借这条兜底路径把
-      // 整份历史重新灌回渲染进程（原因见 constants/messageWindow.ts）。
-      const page = tailMessagePage(agent.messages);
+      // 「整表替换」发的是缓存本身 —— 它现在就是整份列表（spec
+      // ui/message-rendering-system.md「首屏就是整份列表，不分页」）。
       this.postMessage({
         command: "updateMessages",
         paneId,
-        messages: page.messages,
-        hasMore: page.hasMore,
+        messages: agent.messages,
       });
     }
   }
@@ -1395,7 +1377,7 @@ export class DesktopHost {
       // `agentRef.messages` itself — the desktop serves setInitialState straight
       // from that cache on session / pane switches, with no pull. The only
       // pull-based refreshes are restore
-      // (getMessages) and the two fallbacks (a client without `requestId` on
+      // (refreshMessages) and the two fallbacks (a client without `requestId` on
       // rewind, and the compact fallback) via pullAndPushMessages;
       // webviewReady deliberately does NOT pull, it replays the cache through
       // pushInitialState → pushPaneSessionState (setInitialState). Full-list
@@ -1408,7 +1390,7 @@ export class DesktopHost {
         // pulling and replacing the whole list. Hosts too old to carry the
         // message fall back to the pull.
         if (message) {
-          agentRef.messages = [...agentRef.messages, message];
+          this.appendToMessageCopy(agentRef, message);
           if (paneId)
             this.postMessage({ command: "appendMessage", paneId, message });
           return;
@@ -1444,14 +1426,14 @@ export class DesktopHost {
       onUserMessageAdded: (message: Message) => {
         // Keep the cache mirroring the server (no messagesChange snapshot
         // arrives anymore) — feeds FR-024 title + idle checks.
-        agentRef.messages = [...agentRef.messages, message];
+        this.appendToMessageCopy(agentRef, message);
         const paneId = paneIdOf();
         if (paneId)
           this.postMessage({ command: "appendMessage", paneId, message });
         this.ensureSessionRegistered(agentRef);
       },
       onAssistantMessageAdded: (message: Message) => {
-        agentRef.messages = [...agentRef.messages, message];
+        this.appendToMessageCopy(agentRef, message);
         const paneId = paneIdOf();
         if (paneId)
           this.postMessage({ command: "appendMessage", paneId, message });
@@ -1741,7 +1723,7 @@ export class DesktopHost {
         // missing it would place a later error block differently from the
         // webview once setInitialState re-renders from the cache.
         const message = params.message;
-        if (message) agentRef.messages = [...agentRef.messages, message];
+        if (message) this.appendToMessageCopy(agentRef, message);
         const paneId = paneIdOf();
         if (paneId && message) {
           this.postMessage({
@@ -1816,9 +1798,18 @@ export class DesktopHost {
    * A message-less, non-streaming agent is new-session scaffolding: no session
    * index entry, so the sidebar can never bring it back. Such agents must be
    * destroyed when their pane releases them, or the pool accumulates orphans.
+   *
+   * An agent whose copy was dropped for being off-screen is NOT scaffolding —
+   * its empty list is an artifact of this host, not of the session
+   * (`droppedMessageCopies`). Treating the two the same would delete a live
+   * conversation on the next rebind.
    */
   private isBlankAgent(agent: StdioAgent): boolean {
-    return agent.messages.length === 0 && !agent.isStreaming;
+    return (
+      agent.messages.length === 0 &&
+      !agent.isStreaming &&
+      !this.droppedMessageCopies.has(agent)
+    );
   }
 
   /** Bind an agent to a pane (replacing whatever it showed) and focus the pane. */
@@ -1852,7 +1843,47 @@ export class DesktopHost {
     // would otherwise leak it in the pool until the app quits.
     if (outgoing && outgoing !== agent && this.isBlankAgent(outgoing)) {
       void this.discardAgent(outgoing);
+    } else {
+      // A real conversation that no pane displays any more keeps running in the
+      // background, but its message copy has no reader left — drop it (spec
+      // ui/message-rendering-system.md「宿主只留下被 pane 显示的会话副本」).
+      this.dropMessageCopyIfUnbound(outgoing);
     }
+  }
+
+  /**
+   * Throw away the host's copy of a conversation's messages once no pane
+   * displays it. The conversation itself is untouched: it keeps streaming,
+   * answering confirmations and running background tasks in its CLI process —
+   * this only drops the mirror that the snapshot/incremental pushes feed from,
+   * and marks the agent so nothing rebuilds a half list from an empty start.
+   *
+   * Judged by reference (`pane.agent === agent`), not by the event that
+   * triggered it: one agent can be bound to several panes at once (the same
+   * conversation open twice), and dropping the list because ONE of them switched
+   * away would blank the other.
+   */
+  private dropMessageCopyIfUnbound(agent: StdioAgent | null | undefined): void {
+    if (!agent || this.isBlankAgent(agent)) return;
+    if (this.panes.some((p) => p.agent === agent)) return;
+    if (this.droppedMessageCopies.has(agent)) return;
+    agent.messages = [];
+    this.droppedMessageCopies.add(agent);
+  }
+
+  /**
+   * Append one message to the host's copy of a conversation — the list
+   * `setInitialState` is served from, maintained one message at a time (no
+   * `messagesChange` snapshot arrives any more).
+   *
+   * A dropped copy stays empty on purpose: appending to it would rebuild a list
+   * that begins nowhere, and the pane that later displays this conversation
+   * would get that truncated list as its history. The next bind re-pulls the
+   * whole list instead (see `pushPaneSessionState`).
+   */
+  private appendToMessageCopy(agent: StdioAgent, message: Message): void {
+    if (this.droppedMessageCopies.has(agent)) return;
+    agent.messages = [...agent.messages, message];
   }
 
   /** Point a pane at an agent: sync workdir context, refresh sidebar, push its state. */
@@ -2280,9 +2311,12 @@ export class DesktopHost {
     // discards the half-spawned agent.
     this.pendingRestores.delete(paneId);
     // A blank agent has no session to keep running in the background — destroy
-    // it instead of leaving it orphaned in the pool.
+    // it instead of leaving it orphaned in the pool. A real conversation keeps
+    // running, but with no pane left to display it its message copy goes.
     if (closedAgent && this.isBlankAgent(closedAgent)) {
       void this.discardAgent(closedAgent);
+    } else {
+      this.dropMessageCopyIfUnbound(closedAgent);
     }
     // The closed pane's width returns to its row-mates proportionally; an
     // untouched equal-split row (no explicit widths) stays equal-split.
@@ -2399,14 +2433,14 @@ export class DesktopHost {
         return true;
       }
       // Restore is a bare RPC — the daemon does not deliver the transcript, so
-      // pull it into the cache. Without this, a re-attached session (remote or
-      // local) opens with an empty list and its agent looks "blank".
+      // pull the whole list into the cache. Without this, a re-attached session
+      // (remote or local) opens with an empty list and its agent looks "blank".
       try {
-        await agent.getMessages();
+        await agent.refreshMessages();
       } catch (error) {
-        console.warn("[DesktopHost] getMessages failed:", error);
+        console.warn("[DesktopHost] refreshMessages failed:", error);
       }
-      // The getMessages await above is past the last token check, and
+      // The refreshMessages await above is past the last token check, and
       // handleDeleteSession cancels a restore of a deleted session by removing
       // its pendingRestores entry — so re-check here, otherwise the restore
       // would re-register a conversation the user deleted mid-flight (spec
@@ -3012,6 +3046,19 @@ export class DesktopHost {
     opts?: { keepMessages?: boolean },
   ): Promise<void> {
     const agent = this.agentForPane(paneId);
+    // This conversation was off-screen and its message copy was dropped — pull
+    // the whole list back before the snapshot is built. On failure the mark
+    // stays, so the next push tries again instead of shipping an empty history
+    // as if the session had just started (spec ui/message-rendering-system.md
+    // 「宿主只留下被 pane 显示的会话副本」场景 5).
+    if (agent && this.droppedMessageCopies.has(agent)) {
+      try {
+        await agent.refreshMessages();
+        this.droppedMessageCopies.delete(agent);
+      } catch (error) {
+        console.warn("[DesktopHost] refreshMessages after drop failed:", error);
+      }
+    }
     // Workflow runs refresh in the background — a live remote session's RPC
     // round trip (SSH hop) must not delay the session switch. The cache shows
     // immediately; refreshWorkflowRuns supersedes it when the response lands.
@@ -3038,12 +3085,9 @@ export class DesktopHost {
         outsideSafeZoneDirectory: p.outsideSafeZoneDirectory,
       }));
 
-    // 首屏只推一页（spec ui/message-rendering-system.md「首屏只进一页」）。宿主缓存 `agent.messages`
-    // 必须仍是全量——翻更早、回滚、搜索都读它——但推给渲染进程的只有最近
-    // `MESSAGE_FIRST_PAGE_SIZE` 条：一个连续用了几周的会话，整份列表在渲染进程里
-    // 就是 V8 堆上的几十万个对象加 base64 图片（原因见 constants/messageWindow.ts）。
-    const page = tailMessagePage(current?.messages ?? []);
-
+    // 首屏就是整份列表（spec ui/message-rendering-system.md「首屏就是整份列表，
+    // 不分页」）：宿主缓存 `agent.messages` 就是推给渲染进程的全部内容。列表从最近
+    // 一次压缩开始，所以它的尽头是压缩点。
     this.postMessage({
       command: "setInitialState",
       paneId,
@@ -3051,13 +3095,8 @@ export class DesktopHost {
       // rule the webview applies to its own copy, so the list is left out of the
       // payload instead of being re-sent in full — the flag tells the webview to
       // keep what it has. Every other caller must send the real list.
-      messages: opts?.keepMessages ? [] : page.messages,
-      ...(opts?.keepMessages
-        ? { keepMessages: true }
-        : { historyExhausted: !page.hasMore }),
-      // 本宿主答得了 `loadOlderMessages`（见下面的 case），页面据此装上滑分页。
-      // 能力位而不是常量：页面是远端加载的，老宿主不该收到一条它不认识的命令。
-      supportsMessagePaging: true,
+      messages: opts?.keepMessages ? [] : (current?.messages ?? []),
+      ...(opts?.keepMessages ? { keepMessages: true } : {}),
       tasks: current?.tasks ?? [],
       backgroundTasks: current?.backgroundTasks ?? [],
       workflowRuns: this.workflowRuns.get(paneId) ?? [],
@@ -3229,10 +3268,12 @@ export class DesktopHost {
       .getSessionIndex()
       .find((e) => e.sessionId === sessionId);
     if (existing?.title) return;
+    // The list starts at the last compaction, so the thread's first user message
+    // is not in it — the SDK tracks it separately.
     this.registerSessionInIndex(
       agent,
       sessionId,
-      sessionTitleFromMessages(agent.messages),
+      sessionTitleFrom(agent.threadSummary?.firstUserText),
     );
     this.refreshSessionTree();
   }
@@ -3848,17 +3889,6 @@ export class DesktopHost {
 
       case "listRewindCheckpoints":
         await this.handleListRewindCheckpoints(pid);
-        break;
-
-      // 上滑翻更早（spec ui/message-rendering-system.md「首屏只进一页」场景 3）：页面把列表最上面
-      // 那条的 id 当**排他**上锚点发过来，宿主按历史页大小取回它之前的一页。
-      // 取的是宿主那份全量缓存（渲染进程手里只有首屏那一页），读完不回写缓存。
-      case "loadOlderMessages":
-        await this.handleLoadOlderMessages(
-          msg.before as string | undefined,
-          msg.requestId as number,
-          pid,
-        );
         break;
 
       case "getConfiguredModels":
@@ -6174,6 +6204,11 @@ export class DesktopHost {
         const index = agent.messages.map((m) => m.id).lastIndexOf(messageId);
         if (index !== -1) {
           agent.messages = agent.messages.slice(0, index);
+        } else {
+          // The anchor is older than the cached list (the cache starts at the
+          // last compaction): nothing to cut here, re-pull the whole list the
+          // rewind rewrote.
+          await agent.refreshMessages();
         }
         this.postMessage({
           command: "rewindResult",
@@ -8037,16 +8072,10 @@ export class DesktopHost {
   }
 }
 
-/** First real user message text, trimmed to 30 chars (mirrors the webview header rule). */
-function sessionTitleFromMessages(messages: Message[]): string {
-  for (const message of messages) {
-    if (message.role !== "user" || message.isMeta) continue;
-    const text = (message.blocks ?? [])
-      .filter((b) => b.type === "text" || b.type === "compact")
-      .map((b) => b.content || "")
-      .join("")
-      .trim();
-    if (text) return text.length > 30 ? text.substring(0, 30) + "..." : text;
-  }
-  return "";
+/** Trimmed to 30 chars (mirrors the webview header rule). */
+function sessionTitleFrom(firstUserText: string | undefined): string {
+  if (!firstUserText) return "";
+  return firstUserText.length > 30
+    ? firstUserText.substring(0, 30) + "..."
+    : firstUserText;
 }

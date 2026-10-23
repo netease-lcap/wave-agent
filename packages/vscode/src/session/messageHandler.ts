@@ -20,7 +20,6 @@ import type {
 import {
   PLUGIN_CHANGE_PENDING_MESSAGE,
   PLUGIN_RELOADED_MESSAGE,
-  tailMessagePage,
 } from "wave-agent-sdk/host";
 
 /**
@@ -114,17 +113,6 @@ export class MessageHandler {
         break;
       case "clearChat":
         await this.clearChat(viewType, windowId);
-        break;
-      // 上滑翻更早（spec ui/message-rendering-system.md「首屏只进一页」场景 3）：`before` 是列表
-      // 最上面那条的 id，宿主侧的**排他**上锚点。取的是宿主那份全量缓存（webview
-      // 手里只有首屏那一页），读完不回写缓存。
-      case "loadOlderMessages":
-        await this.handleLoadOlderMessages(
-          msg.before as string | undefined,
-          msg.requestId as number,
-          viewType,
-          windowId,
-        );
         break;
       case "compact":
         await this.compactChat(
@@ -1856,52 +1844,6 @@ export class MessageHandler {
     }
   }
 
-  /**
-   * 回答一次「翻更早」：把 `before` 之前的一页取回给这个 webview。
-   *
-   * `requestId` 原样回传——页面用它丢弃晚到的旧页（读者停在顶部会连续翻好几页）。
-   * 失败不静默：页面收到 `olderMessagesError` 才停下转圈并保留阅读位置。没有 agent
-   * 的会话、以及在 RPC 期间换了会话的那一次，同样走失败路径——回一个空页会被页面
-   * 读成「已经到底」。
-   */
-  private async handleLoadOlderMessages(
-    before: string | undefined,
-    requestId: number,
-    viewType?: "sidebar" | "tab" | "window",
-    windowId?: string,
-  ): Promise<void> {
-    const session = this.context.getChatSession(viewType || "tab", windowId);
-    const fail = (error: string) =>
-      this.context.postMessage(
-        { command: "olderMessagesError", requestId, error },
-        viewType,
-        windowId,
-      );
-    if (!before) return fail("缺少翻页锚点");
-    const sessionIdAtRequest = session.sessionId;
-    try {
-      const page = await session.getOlderMessages(before);
-      if (!page) return fail("当前会话尚未就绪");
-      // 会话在同一支 ChatSession 上原地替换（restore / clear / 新建），所以判据是
-      // sessionId 而不是对象同一性：回包属于上一个会话，prepend 进新会话的列表
-      // 等于把两段历史缝在一起。
-      if (session.sessionId !== sessionIdAtRequest) return fail("会话已切换");
-      this.context.postMessage(
-        {
-          command: "olderMessages",
-          requestId,
-          messages: page.messages,
-          hasMore: page.hasMore,
-        },
-        viewType,
-        windowId,
-      );
-    } catch (error) {
-      console.error("翻更早失败:", error);
-      fail(error instanceof Error ? error.message : String(error));
-    }
-  }
-
   private async clearChat(
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
@@ -1921,12 +1863,10 @@ export class MessageHandler {
       await session.clearChat();
       // No full-snapshot push from the server — deliver the (now empty)
       // list so the webview actually clears.
-      const page = tailMessagePage(session.messages);
       this.context.postMessage(
         {
           command: "updateMessages",
-          messages: page.messages,
-          hasMore: page.hasMore,
+          messages: session.messages,
         },
         viewType,
         windowId,
@@ -1967,15 +1907,11 @@ export class MessageHandler {
     try {
       await session.restoreSession(sessionId);
       // No full-snapshot push from the server — deliver the restored list
-      // so the webview re-renders instead of keeping the welcome page. It is a
-      // window too: a restored long session must not land in the webview whole
-      // (spec ui/message-rendering-system.md「首屏只进一页」).
-      const page = tailMessagePage(session.messages);
+      // so the webview re-renders instead of keeping the welcome page.
       this.context.postMessage(
         {
           command: "updateMessages",
-          messages: page.messages,
-          hasMore: page.hasMore,
+          messages: session.messages,
         },
         viewType,
         windowId,
@@ -2315,21 +2251,13 @@ export class MessageHandler {
       outsideSafeZoneDirectory: pending.outsideSafeZoneDirectory,
     }));
 
-    // 首屏只推一页（spec ui/message-rendering-system.md「首屏只进一页」）：宿主缓存 `session.messages`
-    // 必须仍是全量——翻更早、回滚、会话切换都读它——但推给 webview 的只有最近
-    // `MESSAGE_FIRST_PAGE_SIZE` 条（原因见 constants/messageWindow.ts）。
-    const page = tailMessagePage(session.messages);
+    // 首屏就是整份列表（spec ui/message-rendering-system.md「首屏就是整份列表，
+    // 不分页」）：宿主缓存里那份就是全部，列表从最近一次压缩开始。
     this.context.postMessage(
       {
         command: "setInitialState",
-        messages: opts?.keepMessages ? [] : page.messages,
-        ...(opts?.keepMessages
-          ? { keepMessages: true }
-          : { historyExhausted: !page.hasMore }),
-        // 本宿主答得了 `loadOlderMessages`（见上面的 case），webview 据此装上滑
-        // 分页。能力位而不是常量：页面是远端加载的，老宿主不该收到一条它不认识的
-        // 命令。
-        supportsMessagePaging: true,
+        messages: opts?.keepMessages ? [] : session.messages,
+        ...(opts?.keepMessages ? { keepMessages: true } : {}),
         tasks: session.tasks,
         backgroundTasks: session.backgroundTasks,
         workflowRuns: session.workflowRuns,
@@ -2362,10 +2290,10 @@ export class MessageHandler {
     // re-created (window reload) runs webviewReady long after the last token
     // change, so no contextUsage notification is in flight — and the webview
     // clears the ring on every session switch — leaving it empty until a new
-    // turn. The agent refreshed the value on the getMessages pull above; post
-    // it after setInitialState so it is attributed to the incoming session
+    // turn. The session refreshed the value on the getMessages pull above;
+    // post it after setInitialState so it is attributed to the incoming session
     // (same ordering as the desktop replay).
-    const contextUsagePercent = session.agent?.contextUsagePercent;
+    const contextUsagePercent = session.contextUsagePercent;
     if (contextUsagePercent !== undefined) {
       this.context.postMessage(
         { command: "contextUsage", percent: contextUsagePercent },

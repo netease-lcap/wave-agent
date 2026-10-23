@@ -1448,6 +1448,7 @@ describe("convertMessagesForAPI oversized images", () => {
   async function convertToolImage(
     base64: string,
     mediaType = "image/png",
+    note?: string,
   ): Promise<ChatCompletionMessageParam[]> {
     const messages: Message[] = [
       {
@@ -1458,7 +1459,7 @@ describe("convertMessagesForAPI oversized images", () => {
             type: "tool",
             parameters: '{"action": "screenshot"}',
             result: "Screenshot captured successfully",
-            images: [{ data: base64, mediaType }],
+            images: [{ data: base64, mediaType, ...(note ? { note } : {}) }],
             id: "tool-oversized",
             name: "screenshot_tool",
             stage: "end",
@@ -1556,5 +1557,25 @@ describe("convertMessagesForAPI oversized images", () => {
     expect(imagePart?.image_url?.url).toBe(resized);
     expect(noteText(content)).toContain("original 3000x2000");
     expect(noteText(content)).toContain("displayed at 2000x1333");
+  });
+
+  it("keeps the note attached when the image was already shrunk on ingest", async () => {
+    // The ingest budget (utils/toolImageIngest.ts) shrank this image before it
+    // entered the list and left the mapping note on the block. This pass sees an
+    // in-budget image and resizes nothing, so the note must come from the block
+    // — otherwise the model loses the coordinates back to the original.
+    const note =
+      "[Image: original 4000x3000, displayed at 2000x1500. Multiply coordinates by 2.00 to map to the original image.]";
+    const inBudget = pngDataUrl(2000, 1500);
+    const apiMessages = await convertToolImage(
+      payloadOf(inBudget),
+      "image/png",
+      note,
+    );
+
+    const userMessage = apiMessages.find((message) => message.role === "user");
+    const parts = userMessage?.content as ContentPart[];
+    expect(partOf(parts, "image_url")?.image_url?.url).toBe(inBudget);
+    expect(noteText(parts)).toContain(note);
   });
 });

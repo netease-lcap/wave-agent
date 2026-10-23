@@ -815,45 +815,80 @@ describe("StdioAgent", () => {
 
   // ── handleNotification (called by NotificationRouter) ──────
 
-  it("getMessages pulls the full message list and caches it", async () => {
+  // 宿主缓存就是整份列表（spec ui/message-rendering-system.md「首屏就是整份列表，
+  // 不分页」）：只有 refreshMessages 写它，带参数的读是一次性查询、不写缓存。
+  it("refreshMessages pulls the whole list and is the only path that writes the cache", async () => {
     const { agent, client } = createAgent();
     const messages: Message[] = [
       { id: "m1", role: "user", timestamp: "", blocks: [] },
     ];
-    client.request.mockResolvedValue({ messages });
+    client.request.mockResolvedValue({
+      messages,
+      threadSummary: { messageCount: 42, firstUserText: "hi" },
+      contextUsagePercent: 25,
+    });
 
-    const result = await agent.getMessages();
+    const result = await agent.refreshMessages();
 
     expect(client.request).toHaveBeenCalledWith(
       "getMessages",
       undefined,
       undefined,
     );
-    expect(agent.messages).toEqual(messages);
     expect(result).toEqual(messages);
-  });
-
-  // The host pulls the message list on webviewReady; a webview that was
-  // re-created in the meantime missed the change-driven contextUsage
-  // notification, so the percentage rides along with the pull.
-  it("getMessages caches the context-usage percentage for the host to replay", async () => {
-    const { agent, client } = createAgent();
-    client.request.mockResolvedValue({ messages: [], contextUsagePercent: 25 });
-
-    await agent.getMessages();
-
+    expect(agent.messages).toEqual(messages);
+    // 会话列表的条数与标题兜底只能随这一份回包下发：列表从压缩点开始，宿主自己数
+    // 不出来。
+    expect(agent.threadSummary).toEqual({
+      messageCount: 42,
+      firstUserText: "hi",
+    });
+    // 宿主在 webviewReady 回放它；某个窗口重建的页面错过了推送。
     expect(agent.contextUsagePercent).toBe(25);
   });
 
-  it("getMessages clears a stale context-usage percentage when the response omits it", async () => {
+  it("refreshMessages clears a stale context-usage percentage when the response omits it", async () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({ messages: [], contextUsagePercent: 25 });
-    await agent.getMessages();
+    await agent.refreshMessages();
 
     client.request.mockResolvedValue({ messages: [] });
-    await agent.getMessages();
+    await agent.refreshMessages();
 
     expect(agent.contextUsagePercent).toBeUndefined();
+  });
+
+  it("getMessages with parameters is a read-only query", async () => {
+    const { agent, client } = createAgent();
+    const cached: Message[] = [
+      { id: "cached", role: "user", timestamp: "", blocks: [] },
+    ];
+    agent.messages = cached;
+    const page = {
+      messages: [{ id: "older", role: "user", timestamp: "", blocks: [] }],
+    };
+    client.request.mockResolvedValue(page);
+
+    const result = await agent.getMessages({ limit: 100 });
+
+    expect(client.request).toHaveBeenCalledWith(
+      "getMessages",
+      { limit: 100 },
+      undefined,
+    );
+    expect(result).toEqual(page);
+    expect(agent.messages).toBe(cached);
+  });
+
+  it("getMessages with no arguments answers the whole list and still caches nothing", async () => {
+    const { agent, client } = createAgent();
+    const messages: Message[] = [
+      { id: "m1", role: "user", timestamp: "", blocks: [] },
+    ];
+    client.request.mockResolvedValue({ messages });
+
+    await expect(agent.getMessages()).resolves.toEqual(messages);
+    expect(agent.messages).toEqual([]);
   });
 
   it("userMessageAdded forwards message to callback", () => {

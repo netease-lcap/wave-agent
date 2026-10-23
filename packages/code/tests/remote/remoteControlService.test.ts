@@ -928,7 +928,6 @@ describe("RemoteControlService", () => {
       params: {
         result: {
           messages: Array<{ id: string }>;
-          hasMore?: boolean;
           total?: number;
         };
       };
@@ -941,8 +940,6 @@ describe("RemoteControlService", () => {
     expect(kept.length).toBeLessThan(all.length);
     expect(kept.at(-1)?.id).toBe("m39");
     expect(kept[0]?.id).toBe(`m${String(all.length - kept.length)}`);
-    // `hasMore` is what turns the trim into an instruction to walk further back.
-    expect(frame.params.result.hasMore).toBe(true);
     expect(frame.params.result.total).toBe(all.length);
     // The trim is against the frame as it goes on the wire, envelope included.
     expect(
@@ -1014,7 +1011,7 @@ describe("RemoteControlService", () => {
       expect(socket.frames().at(-1)?.method).toBe("error");
     });
 
-    // An empty page claiming `hasMore` would only make the phone ask forever.
+    // An empty list would only make the phone ask again forever.
     expect(socket.frames().at(-1)).toMatchObject({
       id: 12,
       method: "error",

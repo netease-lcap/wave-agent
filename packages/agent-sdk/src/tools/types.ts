@@ -118,6 +118,7 @@ export interface ToolResult {
   images?: Array<{
     data: string; // base64 encoded image data
     mediaType?: string; // Image media type, such as "image/png"
+    path?: string; // Local file the image came from, when the tool has one (e.g. Read)
   }>;
   // ID of the background task if the command is running in the background
   backgroundTaskId?: string;

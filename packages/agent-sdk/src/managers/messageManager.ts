@@ -43,6 +43,12 @@ import {
   type NestedMemoryFile,
 } from "../utils/nestedMemory.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
+import { MESSAGE_SLICE_MAX_BYTES } from "../constants/messageWindow.js";
+import { takeTailFromMemory } from "../utils/messageWindow.js";
+import type {
+  MessageWindow,
+  MessageWindowResult,
+} from "../types/messageWindow.js";
 
 import { Container } from "../utils/container.js";
 
@@ -83,9 +89,9 @@ export interface MessageManagerCallbacks {
   onErrorBlockAdded?: (error: string) => void;
   /**
    * Fires after compaction has written its state. `content` is the summary
-   * text; `message` is the whole compact message that was appended to
-   * `displayMessages` — hosts forward it to the webview through their
-   * incremental append channel instead of pulling the full list. It is
+   * text; `message` is the whole compact message — hosts append it to their
+   * own copy of the list and forward it to the webview through the incremental
+   * append channel, so compaction never replaces the table on screen. It is
    * optional so existing consumers keep working and a host that gets no
    * message falls back to a `getMessages` pull.
    */
@@ -122,19 +128,24 @@ export class MessageManager {
   // Private state properties
   private sessionId: string;
   private messages: Message[];
-  /** Full display message stream for the UI. Mirrors `messages` (context) on
-   * every normal change; the two diverge only around compaction, where
-   * `messages` is replaced by [compact, ...last API rounds] for the API
-   * context while `displayMessages` keeps the full history and appends the
-   * compact block (aligned with Claude Code desktop/VS Code: compaction
-   * folds the API context but leaves the UI transcript intact). */
-  private displayMessages: Message[] = [];
   private latestTotalTokens: number;
   private workdir: string;
   private encodedWorkdir: string; // Cached encoded workdir
   private callbacks: MessageManagerCallbacks;
   private transcriptPath: string; // Cached transcript path
   private savedMessageCount: number; // Track how many messages have been saved to prevent duplication
+  /**
+   * How many messages the thread has in total — not how many the list holds.
+   * After a compaction the list is only [summary, ...kept rounds], so its
+   * length can no longer answer "how long is this conversation".
+   */
+  private threadMessageCount = 0;
+  /**
+   * Body of the thread's first user message; the session list falls back to it
+   * when the session has no custom title. Captured as messages stream in
+   * (that message is long gone from the list by then).
+   */
+  private firstUserText?: string;
   private pendingFileReadTriggers: Set<string> = new Set(); // File paths read via Read tool, awaiting rule matching
   private loadedRuleIds: Set<string> = new Set(); // IDs of conditional rules already injected as meta messages
   private pendingNestedMemoryTriggers: Set<string> = new Set(); // Absolute paths read since the last nested-memory scan
@@ -197,11 +208,6 @@ export class MessageManager {
 
   public getMessages(): Message[] {
     return [...this.messages];
-  }
-
-  /** Full UI display message stream (includes pre-compaction history). */
-  public getDisplayMessages(): Message[] {
-    return [...this.displayMessages];
   }
 
   public getUsages(): Usage[] {
@@ -421,41 +427,35 @@ export class MessageManager {
     );
   }
 
+  /**
+   * Replace the list.
+   *
+   * `countLifetime: false` is for the three paths that hand the list its
+   * contents wholesale — session restore, compaction and rewind. They set the
+   * thread's lifetime totals themselves (restore from the whole transcript,
+   * compaction as "everything that was already counted, plus the summary
+   * block"), so counting the fold's own survivors again would inflate them.
+   */
   public setMessages(
     messages: Message[],
-    opts?: { keepDisplay?: boolean },
+    opts?: { countLifetime?: boolean },
   ): void {
     const oldLength = this.messages.length;
     this.messages = [...messages];
-    // The UI display stream follows the context by default. Compaction /
-    // session restore / rewind pass keepDisplay and manage displayMessages
-    // explicitly (the display stream must keep the full pre-compaction
-    // history while the context folds at the last compact boundary).
-    if (!opts?.keepDisplay) {
-      if (messages.length === 0) {
-        // Clear path — nothing to merge.
-        this.displayMessages = [...messages];
-      } else {
-        // Routine changes (new messages, tool block updates) still touch the
-        // display stream, but after compaction the display holds the full
-        // pre-compaction history while the context is folded. Merge by id so
-        // new messages append to the display stream and updated messages
-        // replace their display copy without dropping that history.
-        const byId = new Map(messages.map((m) => [m.id, m]));
-        const merged = this.displayMessages.map((m) => byId.get(m.id) ?? m);
-        const known = new Set(this.displayMessages.map((m) => m.id));
-        for (const m of messages) {
-          if (!known.has(m.id)) {
-            merged.push(m);
-          }
-        }
-        this.displayMessages = merged;
+    const added = messages.slice(oldLength);
+
+    // The list is the context: after a compaction it is [summary, ...kept
+    // rounds], and that is exactly what the UI shows. The thread's lifetime
+    // totals are counted on the way in, because the moment a compaction folds
+    // the list those messages are gone from it.
+    if (opts?.countLifetime !== false) {
+      for (const message of added) {
+        this.threadMessageCount += 1;
+        this.firstUserText ??= firstUserTextOf(message);
       }
     }
 
-    // Incrementally extract metadata from new messages
-    const newMessages = messages.slice(oldLength);
-    for (const message of newMessages) {
+    for (const message of added) {
       this.extractFileReadsFromMessage(message);
       this.extractSkillInvocationsFromMessage(message);
     }
@@ -560,6 +560,8 @@ export class MessageManager {
     this.setSessionId(newSessionId);
     this.setlatestTotalTokens(0);
     this.savedMessageCount = 0; // Reset saved message count
+    this.threadMessageCount = 0;
+    this.firstUserText = undefined;
     // The title belongs to the session that was just abandoned: the new
     // session id starts untitled until the user renames it.
     this.customTitle = undefined;
@@ -575,13 +577,14 @@ export class MessageManager {
   // Initialize state from session data
   public initializeFromSession(sessionData: SessionData): void {
     this.setSessionId(sessionData.id);
-    // The UI displays the full transcript (pre-compaction history included);
-    // the API context folds at the last compact boundary so the model only
-    // sees messages from the latest summary forward.
+    // List and context are the same thing: the conversation starts at the last
+    // compact boundary, so a resumed session shows [summary, ...kept rounds]
+    // and the transcript keeps the rest for features that need it.
     this.setMessages(sliceFromLastCompact(sessionData.messages), {
-      keepDisplay: true,
+      countLifetime: false,
     });
-    this.displayMessages = [...sessionData.messages];
+    this.threadMessageCount = sessionData.messages.length;
+    this.firstUserText = findFirstUserText(sessionData.messages);
     this.setlatestTotalTokens(sessionData.metadata.latestTotalTokens);
     // Recovered by the whole-file scan on load: from here on it is the
     // in-memory fallback that survives the title entry sliding out of the
@@ -674,9 +677,6 @@ export class MessageManager {
       return false;
     }
     this.messages.splice(index, 1);
-    this.displayMessages = this.displayMessages.filter(
-      (m) => m.id !== messageId,
-    );
     this.callbacks.onAssistantMessageDiscarded?.(messageId);
     return true;
   }
@@ -833,12 +833,13 @@ export class MessageManager {
     // lists sessions, so this is a flush point for the metadata entries.
     await this.reAppendSessionMetadata();
 
-    // Update in-memory state: the API context folds to [compact, ...last
-    // rounds], while the UI display stream keeps the full history and appends
-    // the compact block at the end.
-    this.setMessages(newMessages, { keepDisplay: true });
-    this.displayMessages = [...this.displayMessages, compactMessage];
+    // Update in-memory state: the list folds to [compact, ...last rounds].
+    // What the user is looking at does not change here — the hosts append the
+    // compact block to their own copy of the list (spec: 压缩不整表替换), so
+    // the fold only takes effect on the next reload.
+    this.setMessages(newMessages, { countLifetime: false });
     this.savedMessageCount = newMessages.length;
+    this.threadMessageCount += 1;
 
     // Trim recent file read cache so contents compacted away are released
     this.trimRecentFileReads();
@@ -1174,6 +1175,52 @@ export class MessageManager {
   }
 
   /**
+   * Answer a `getMessages` request: the whole list, or — for the remote page —
+   * the tail `limit` and/or everything appended after `since`.
+   *
+   * Pure arithmetic on the in-memory list. There is nothing older to fetch:
+   * the list starts at the last compaction, so its earliest entry is the
+   * earliest the UI can reach (spec ui/message-rendering-system.md「列表就是
+   * 压缩后的上下文」).
+   */
+  public getMessagePage(window: MessageWindow): MessageWindowResult {
+    const list = this.messages;
+
+    if (window.since) {
+      const at = lastIndexById(list, window.since);
+      // Anchor gone (compaction / rewind / another session): ask the caller to
+      // re-pull instead of answering with an empty list, which would read as
+      // "nothing newer".
+      if (at === -1) return { messages: [], reset: true };
+      return { messages: list.slice(at + 1) };
+    }
+
+    if (window.limit === undefined) return { messages: [...list] };
+    return {
+      messages: takeTailFromMemory(list, window.limit, MESSAGE_SLICE_MAX_BYTES),
+    };
+  }
+
+  /**
+   * What the session list needs: total message count, the first user body
+   * (title fallback) and the newest timestamp. The first two are counters —
+   * the list starts at the last compaction, so it cannot answer them.
+   */
+  public getThreadSummary(): {
+    messageCount: number;
+    firstUserText?: string;
+    lastActiveAt?: string;
+  } {
+    return {
+      messageCount: this.threadMessageCount,
+      ...(this.firstUserText ? { firstUserText: this.firstUserText } : {}),
+      ...(this.messages.length > 0
+        ? { lastActiveAt: this.messages[this.messages.length - 1].timestamp }
+        : {}),
+    };
+  }
+
+  /**
    * Truncate history to a specific index and revert file changes.
    * @param index - The index of the user message to truncate to.
    * @param reversionManager - Optional ReversionManager to handle file rollbacks.
@@ -1208,11 +1255,13 @@ export class MessageManager {
     // rewrite keeps the *first* messages, so the survivors after it are exactly
     // what pushes it away). Re-append it at EOF like the other flush points do.
     await this.reAppendSessionMetadata();
-    // The UI keeps the full truncated thread; the agent context folds at the
-    // last compact boundary so the agent only sees messages from the latest
-    // compact summary forward — matching the compact and resume behaviors.
-    this.setMessages(sliceFromLastCompact(newMessages), { keepDisplay: true });
-    this.displayMessages = newMessages;
+    // The rewritten file keeps everything up to the truncation point; the list
+    // still starts at the last compact boundary, matching compact and resume.
+    this.setMessages(sliceFromLastCompact(newMessages), {
+      countLifetime: false,
+    });
+    this.threadMessageCount = newMessages.length;
+    this.firstUserText = findFirstUserText(newMessages);
     // savedMessageCount tracks in-memory progress, so it must be the folded
     // length. Using the full disk count here would make saveSession's
     // slice(savedMessageCount) empty after a rewind past a compact boundary
@@ -1408,4 +1457,31 @@ export class MessageManager {
       }
     }
   }
+}
+
+/** 最后一份同 id 副本的下标（-1 = 不在列表里）。 */
+function lastIndexById(list: readonly Message[], id: string): number {
+  for (let i = list.length - 1; i >= 0; i--) {
+    if (list[i].id === id) return i;
+  }
+  return -1;
+}
+
+/** 首条非 meta 用户消息的正文；会话列表在没有自定义标题时拿它当标题。 */
+function firstUserTextOf(message: Message): string | undefined {
+  if (message.role !== "user" || message.isMeta) return undefined;
+  for (const block of message.blocks) {
+    if (block.type !== "text") continue;
+    const text = block.content.trim();
+    if (text) return text;
+  }
+  return undefined;
+}
+
+function findFirstUserText(messages: readonly Message[]): string | undefined {
+  for (const message of messages) {
+    const text = firstUserTextOf(message);
+    if (text) return text;
+  }
+  return undefined;
 }

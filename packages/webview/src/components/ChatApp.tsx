@@ -1158,36 +1158,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     switch (message.command) {
       case "updateMessages":
         if (!forThisPane(message)) break;
-        // 三端首屏只推一页，所以这份「整表替换」也是一个窗口：`hasMore` 决定
-        // 「没有更早的消息」提示的初值（老宿主不带 ⇒ 当成从头开始）。
-        dispatch({
-          type: "SET_MESSAGES",
-          payload: message.messages,
-          hasMore: message.hasMore,
-        });
-        break;
-      case "olderMessages":
-        if (!forThisPane(message)) break;
-        // requestId 归属：读者停在顶部会连续翻好几页，「翻更早」又与重连补差共用
-        // 同一份列表 —— 晚到的旧页必须丢弃，否则会把上一页 prepend 到已经翻走的
-        // 位置上。
-        if (message.requestId !== loadOlderRequestRef.current) break;
-        if (loadOlderSessionIdRef.current !== currentSessionIdRef.current)
-          break;
-        setLoadingOlder(false);
-        dispatch({
-          type: "PREPEND_MESSAGES",
-          payload: { messages: message.messages, hasMore: message.hasMore },
-        });
-        break;
-      case "olderMessagesError":
-        if (!forThisPane(message)) break;
-        if (message.requestId !== loadOlderRequestRef.current) break;
-        if (loadOlderSessionIdRef.current !== currentSessionIdRef.current)
-          break;
-        // 失败就是失败：位置不动，也不回落成「重拉尾页」（spec 场景 12 —— 那是冷启动
-        // 与补差路径的动作，用在这里会把读者看到的位置整段换掉）。
-        setLoadingOlder(false);
+        dispatch({ type: "SET_MESSAGES", payload: message.messages });
         break;
       case "updateTasks":
         if (!forThisPane(message)) break;
@@ -1770,12 +1741,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             // reducer would take the empty list at face value and blank the
             // conversation.
             keepMessages: message.keepMessages,
-            // 首屏只推一页（spec ui/message-rendering-system.md「首屏只进一页」）：这份快照是一个
-            // 窗口，所以「前面还有没有」与「宿主答不答得了翻更早」都必须跟着转发
-            // ——丢在这里的后果分别是「永远显示没有更早」和「向不认这条命令的老
-            // 宿主反复要」。
-            historyExhausted: message.historyExhausted,
-            supportsMessagePaging: message.supportsMessagePaging,
             tasks: message.tasks,
             isStreaming: message.isStreaming,
             isCommandRunning: message.isCommandRunning,
@@ -3162,47 +3127,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [isRemotePage, pushState, vscode],
   );
 
-  // 宿主会不会答「翻更早」。判据是**宿主自己说的能力位**，不是一个关于宿主种类的
-  // 猜测：三个本地宿主（桌面端 / VS Code / JB）现在都只推一页、并按窗口取回更早
-  // 的历史，但**页面是远端加载的**——手机页的宿主可能落后于页面版本，硬编码 true
-  // 就会让老宿主收到一条它不认识的命令（静默失败）。老宿主不推
-  // `supportsMessagePaging`，于是这里恒为 false，上拉请求根本发不出去。
-  //
-  // 手机页不走这个字段：它的 shim 就是分页那条链（spec remote-control.md 场景 11），
-  // 与「二维码」同一套能力位（waveHostType 在 IDE 宿主也是空的，认不得它们）。
-  const canLoadOlderMessages = isRemotePage || state.supportsMessagePaging;
-  const loadOlderRequestRef = useRef(0);
-  const [loadingOlder, setLoadingOlder] = useState(false);
-
-  const handleLoadOlderMessages = useCallback(
-    (before: string) => {
-      if (!canLoadOlderMessages) return;
-      loadOlderSessionIdRef.current = currentSessionIdRef.current;
-      setLoadingOlder(true);
-      postToHost({
-        command: "loadOlderMessages",
-        before,
-        requestId: ++loadOlderRequestRef.current,
-      });
-    },
-    [canLoadOlderMessages, postToHost],
-  );
-
-  // 翻更早是一次会话内的动作：切会话时在途请求就作废了，否则它的回包会把上一个会话
-  // 的消息 prepend 进新会话的列表。判据是「回包与发起时是不是同一条会话」——比在切
-  // 会话时递增一个请求号更准：首屏那次 setInitialState 同时带会话与消息，列表在同一
-  // 提交里挂上，并可能当场自己发起一次补页（spec ui/message-rendering-system.md「首屏
-  // 只进一页」场景 5：窗口里没有吸顶条锚点）。子组件的 effect 先于这里跑，递增请求号
-  // 会把这次刚发出的请求一并作废——回包丢弃、`loadingOlder` 停在 true，这条会话再也
-  // 翻不动页；而它恰恰是这条会话自己的请求。
-  const currentSessionIdRef = useRef<string | undefined>(undefined);
-  currentSessionIdRef.current = state.currentSession?.id;
-  // 发起请求时是哪条会话（回包按它判归属）。
-  const loadOlderSessionIdRef = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    setLoadingOlder(false);
-  }, [state.currentSession?.id]);
-
   // /rewind popup selection reuses the same ConfirmDialog flow as the
   // per-message rewind button.
   const handleRewindCheckpointSelect = useCallback((messageId: string) => {
@@ -4528,11 +4452,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           // （`truncateHistory` + `revertTo` 还原电脑侧工作区文件），页面上先确认
           // 一次再发——文案由 `pendingRewindId` 那个 ConfirmDialog 按端切。
           onRewindToMessage={handleRewindToMessage}
-          onLoadOlderMessages={
-            canLoadOlderMessages ? handleLoadOlderMessages : undefined
-          }
-          loadingOlder={loadingOlder}
-          historyExhausted={state.historyExhausted}
           workdir={state.workdir}
           onOpenPreview={openPreviewHandler}
           onOpenFile={handleOpenFile}

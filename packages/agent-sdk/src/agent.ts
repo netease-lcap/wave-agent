@@ -36,6 +36,10 @@ import type {
   PluginReloadResult,
 } from "./types/index.js";
 import type { HookEvent, HookEventConfig } from "./types/hooks.js";
+import type {
+  MessageWindow,
+  MessageWindowResult,
+} from "./types/messageWindow.js";
 import type { Task } from "./types/tasks.js";
 import type { BackgroundTask } from "./types/processes.js";
 import { MemoryRuleManager } from "./managers/MemoryRuleManager.js";
@@ -387,13 +391,6 @@ export class Agent {
 
   public get messages(): Message[] {
     return this.messageManager.getMessages();
-  }
-
-  /** Full UI display message stream (includes pre-compaction history).
-   * Consumed by hosts for the full-list message view (getMessages RPC,
-   * CLI structural refresh); the API context stays on `messages`. */
-  public get displayMessages(): Message[] {
-    return this.messageManager.getDisplayMessages();
   }
 
   public get usages(): Usage[] {
@@ -1597,6 +1594,25 @@ export class Agent {
     sessionIds: string[];
   }> {
     return this.messageManager.getFullMessageThread();
+  }
+
+  /**
+   * Answer a `getMessages` request: the whole list, or (`since` / `limit`) the
+   * part a caller asked for, sliced in memory. The list starts at the last
+   * compaction, so its earliest entry is the earliest the UI can reach —
+   * there is nothing older to read back.
+   */
+  public getMessagePage(window: MessageWindow): MessageWindowResult {
+    return this.messageManager.getMessagePage(window);
+  }
+
+  /** Totals for the session list (the list starts at the last compaction). */
+  public getThreadSummary(): {
+    messageCount: number;
+    firstUserText?: string;
+    lastActiveAt?: string;
+  } {
+    return this.messageManager.getThreadSummary();
   }
 
   /**

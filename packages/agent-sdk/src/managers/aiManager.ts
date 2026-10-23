@@ -3,6 +3,8 @@ import * as aiService from "../services/aiService.js";
 import { convertMessagesForAPI } from "../utils/convertMessagesForAPI.js";
 import { supportsVision } from "../utils/modelCapabilities.js";
 import { persistToolImages } from "../utils/toolImagePersistence.js";
+import { applyToolImageBudget } from "../utils/toolImageIngest.js";
+import type { ToolImage } from "../utils/toolImageIngest.js";
 import { parseTaskNotificationXml } from "../utils/notificationXml.js";
 import { parsePageCommentEventXml } from "../utils/pageCommentEventXml.js";
 import { estimateContextTokens } from "../utils/tokenCalculation.js";
@@ -2773,13 +2775,22 @@ ${question}`;
       // `[Image source: <path>]` metadata and the main model can delegate
       // recognition to the vision subagent. Vision-capable models keep the
       // inline base64 — no disk writes.
-      let toolImages = toolResult.images;
+      let toolImages: ToolImage[] | undefined = toolResult.images;
       if (
         toolImages &&
         toolImages.length > 0 &&
         !supportsVision(this.getModelConfig().capabilities)
       ) {
         toolImages = persistToolImages(toolImages);
+      }
+
+      // Budget the images *here* rather than only on the way out (spec
+      // ui/image-pasting.md「工具产图与 Read 图片在入口就降到预算内」): the block
+      // stores the shrunk bytes, so the request body, the host's message cache
+      // and the renderer all hold one small copy instead of the original
+      // base64. See utils/toolImageIngest.ts.
+      if (toolImages && toolImages.length > 0) {
+        toolImages = await applyToolImageBudget(toolImages);
       }
 
       // Build result content, adding truncation warning if JSON was recovered

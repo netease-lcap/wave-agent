@@ -70,6 +70,9 @@ const baseOptions: Omit<UseRemoteControlOptions, "messages"> = {
   renameSession: vi.fn(),
   compact: vi.fn(),
   slashCommands: () => [],
+  messagePage: async () => ({ messages: [], hasMore: false }),
+  currentThread: async () => [],
+  threadSummary: () => ({ messageCount: 0 }),
 };
 
 function Harness({

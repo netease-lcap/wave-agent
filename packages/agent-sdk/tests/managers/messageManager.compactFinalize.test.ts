@@ -156,7 +156,7 @@ describe("MessageManager - Compaction finalizes streaming blocks", () => {
     expect(appended[0].blocks[0]).toMatchObject({ content: "summarized" });
   });
 
-  it("compaction keeps the full pre-compaction history in the display stream", async () => {
+  it("compaction folds the list to the summary plus the kept rounds", async () => {
     const messageManager = createManager({});
     messageManager.addUserMessage({ content: "Q1" });
     messageManager.addAssistantMessage();
@@ -165,22 +165,18 @@ describe("MessageManager - Compaction finalizes streaming blocks", () => {
     messageManager.addAssistantMessage();
     messageManager.updateCurrentMessageContent("A2");
 
-    const displayBefore = messageManager.getDisplayMessages();
-    expect(displayBefore).toHaveLength(4);
+    expect(messageManager.getMessages()).toHaveLength(4);
 
     await messageManager.compactMessagesAndUpdateSession("summarized");
 
-    // API context folds to [compact, ...last API rounds]...
-    const context = messageManager.getMessages();
-    expect(context[0].blocks[0].type).toBe("compact");
-    expect(context).toHaveLength(5);
-
-    // ...while the display stream keeps the full history and appends the
-    // compact block at the end (never clearing the pre-compaction messages).
-    const display = messageManager.getDisplayMessages();
-    expect(display).toHaveLength(5);
-    expect(display[0].role).toBe("user");
-    expect(display[4].blocks[0].type).toBe("compact");
-    expect(display[4].blocks[0]).toMatchObject({ content: "summarized" });
+    // The list is the context: [compact, ...last API rounds]. The pre-
+    // compaction messages stay in the transcript and in the thread's totals,
+    // but they are no longer part of the list.
+    const list = messageManager.getMessages();
+    expect(list[0].blocks[0].type).toBe("compact");
+    expect(list[0].blocks[0]).toMatchObject({ content: "summarized" });
+    expect(list).toHaveLength(5);
+    // 4 original messages + the summary block, counted lifetime, not list.
+    expect(messageManager.getThreadSummary().messageCount).toBe(5);
   });
 });

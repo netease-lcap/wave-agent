@@ -161,16 +161,16 @@ describe("real host · session lifecycle", () => {
     expect(restoredMessages).not.toContain("第二条");
   });
 
-  it("opens a long session on one page and pages the rest back over the real RPC (§message paging)", async () => {
+  it("opens a long session on the whole list over the real RPC", async () => {
     await openProject(dirA);
-    // 11 real turns × (user + assistant) = 22 display messages: more than one
-    // first page, so opening the session again must NOT hand the renderer the
-    // whole thread (spec ui/message-rendering-system.md「首屏只进一页」).
+    // 11 real turns × (user + assistant) = 22 display messages. The list is not
+    // paged any more: opening the session again must hand the renderer the whole
+    // list (spec ui/message-rendering-system.md「首屏就是整份列表，不分页」).
     for (let i = 1; i <= 11; i++) await ctx.turn(`第 ${String(i)} 条`);
     const longId = ctx.paneSessionId() as string;
 
     // Switch away and back, so the pane is served by a fresh agent + a real
-    // `restoreSession` RPC (the window is built from that pull).
+    // `restoreSession` RPC (the list is built from that pull).
     await ctx.host.handleWebviewMessage({ command: "newSession" });
     await ctx.waitFor("setInitialState", {
       predicate: (m) => (m.session as { id?: string }).id !== longId,
@@ -185,43 +185,14 @@ describe("real host · session lifecycle", () => {
       predicate: (m) => (m.session as { id?: string }).id === longId,
     });
 
-    const firstPage = restored.messages as Array<{ id: string }>;
-    expect(firstPage).toHaveLength(20);
-    expect(restored.historyExhausted).toBe(false);
-    expect(restored.supportsMessagePaging).toBe(true);
-
-    // 翻更早：`before` 是窗口最上面那条，宿主侧排他上锚点。
-    ctx.clear();
-    await ctx.host.handleWebviewMessage({
-      command: "loadOlderMessages",
-      before: firstPage[0]?.id,
-      requestId: 42,
-    });
-    const older = await ctx.waitFor("olderMessages");
-
-    expect(older.requestId).toBe(42);
-    const earlier = older.messages as Array<{ id: string }>;
-    // 一页，而不是整条会话：窗口那一页的上面剩下的都在这里，且锚点本身不重发。
-    expect(earlier.length).toBeGreaterThan(0);
-    expect(earlier.length).toBeLessThan(20);
-    expect(earlier.map((m) => m.id)).not.toContain(firstPage[0]?.id);
-    expect(older.hasMore).toBe(false);
-
-    // 拼起来没有缺口、没有重复：再往上一页就是这个会话的开头。
-    const all = [...earlier, ...firstPage].map((m) => m.id);
-    expect(new Set(all).size).toBe(all.length);
-
-    ctx.clear();
-    await ctx.host.handleWebviewMessage({
-      command: "loadOlderMessages",
-      before: earlier[0]?.id,
-      requestId: 43,
-    });
-    const beginning = await ctx.waitFor("olderMessages");
-    expect(beginning.requestId).toBe(43);
-    // 「这就是开头」：页面据此显示提示并停止再请求。
-    expect(beginning.messages).toEqual([]);
-    expect(beginning.hasMore).toBe(false);
+    const list = restored.messages as Array<{ id: string }>;
+    // 整份列表：11 轮共 22 条显示消息，一条不少地进了首屏。
+    expect(list).toHaveLength(22);
+    // 没有缺口、没有重复：从会话开头一直到最近一轮。
+    expect(new Set(list.map((m) => m.id)).size).toBe(list.length);
+    const serialized = JSON.stringify(list);
+    expect(serialized).toContain("第 1 条");
+    expect(serialized).toContain("第 11 条");
   });
 
   it("recovers a session whose transcript tail was cut off by a kill (#2137)", async () => {

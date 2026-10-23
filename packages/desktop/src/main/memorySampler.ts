@@ -8,12 +8,12 @@
  * renderer's working set climb for hours before the crash?
  *
  * A MB number alone does not name a cause, so every reading carries the
- * message volume next to it: 6-week-old conversations keep growing the UI
- * display stream (`displayMessages`) while compaction only folds the API
- * context (`messages`), and the desktop pushes that whole list to the renderer
- * through `setInitialState` with no slicing. Memory rising *with* message count
- * is evidence for that candidate; memory flat while messages grow is evidence
- * against it.
+ * message volume next to it. Two things can make that count grow: the agent's
+ * own list grows until the next compaction folds it, and the renderer's copy
+ * only ever grows — compaction appends a summary block and never replaces the
+ * table on screen, so one long-running session accumulates messages there even
+ * after the fold. Memory rising *with* message count is evidence for that
+ * candidate; memory flat while messages grow is evidence against it.
  *
  * Units: Electron reports `workingSetSize` / `peakWorkingSetSize` in **KB**;
  * the log prints MB because that is the number a human compares to the
@@ -51,6 +51,19 @@ export type SessionMessageStat = {
 };
 
 export type MessageStats = { messages: number; blocks: number };
+
+/**
+ * Volume held by conversations no pane displays. Their message copies are
+ * exactly what the host drops when they go off-screen (spec
+ * ui/message-rendering-system.md「宿主只留下被 pane 显示的会话副本」), so this
+ * sits next to the renderer curve as the "残留还有多少" reading — it is NOT part
+ * of the renderer's heap and must never be added to the per-pane totals.
+ */
+export type OffscreenVolume = {
+  sessions: number;
+  messages: number;
+  blocks: number;
+};
 
 /**
  * The minimum a message must expose to be counted. Deliberately structural:
@@ -128,6 +141,7 @@ export function formatSessionLine(stat: SessionMessageStat): string {
 export function formatMemoryBlock(
   samples: readonly RendererMemory[],
   stats: readonly SessionMessageStat[] = [],
+  offscreen?: OffscreenVolume,
 ): string[] {
   const totals = stats.reduce(
     (sum, stat) => ({
@@ -136,11 +150,26 @@ export function formatMemoryBlock(
     }),
     { messages: 0, blocks: 0 },
   );
+  // Off-screen conversations are reported separately and only when there are
+  // some: they never reach the renderer, and folding them into the pane totals
+  // would make the curve answer "is the heap driven by conversation length?"
+  // with a number the heap never held.
+  const extra = [
+    ...(stats.length === 0
+      ? []
+      : [`messages=${totals.messages}`, `blocks=${totals.blocks}`]),
+    ...(offscreen && offscreen.sessions > 0
+      ? [
+          `offscreenSessions=${offscreen.sessions}`,
+          `offscreenMessages=${offscreen.messages}`,
+        ]
+      : []),
+  ];
   return [
     ...samples.map((sample) =>
-      stats.length === 0
+      extra.length === 0
         ? formatMemoryLine(sample)
-        : `${formatMemoryLine(sample)} messages=${totals.messages} blocks=${totals.blocks}`,
+        : `${formatMemoryLine(sample)} ${extra.join(" ")}`,
     ),
     ...stats.map(formatSessionLine),
   ];
@@ -157,6 +186,12 @@ export function createMemorySampler(
      * module stays free of host/agent wiring and is testable with plain data.
      */
     getMessageStats?: () => readonly SessionMessageStat[];
+    /**
+     * Volume held by conversations no pane displays (the copies the host drops
+     * when they leave the screen). Reported on the memory line, never merged
+     * into the per-pane totals.
+     */
+    getOffscreenVolume?: () => OffscreenVolume;
   } = {},
 ): MemorySampler {
   const {
@@ -164,6 +199,7 @@ export function createMemorySampler(
     log = hostLog,
     getMetrics = () => app.getAppMetrics(),
     getMessageStats = () => [],
+    getOffscreenVolume,
   } = options;
 
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -187,7 +223,13 @@ export function createMemorySampler(
       // A memory reading without counts still beats no reading at all.
       log.warn("[desktop] message volume sample failed:", error);
     }
-    const lines = formatMemoryBlock(samples, stats);
+    let offscreen: OffscreenVolume | undefined;
+    try {
+      offscreen = getOffscreenVolume?.();
+    } catch (error) {
+      log.warn("[desktop] off-screen volume sample failed:", error);
+    }
+    const lines = formatMemoryBlock(samples, stats, offscreen);
     log.block("INFO", lines);
     last = lines.join("; ");
   };

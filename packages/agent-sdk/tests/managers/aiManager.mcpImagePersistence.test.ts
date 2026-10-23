@@ -7,6 +7,7 @@ import type { ToolManager } from "../../src/managers/toolManager.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
 import * as aiService from "../../src/services/aiService.js";
 import { persistToolImages } from "../../src/utils/toolImagePersistence.js";
+import { planOutboundImage } from "../../src/utils/imageRewrite.js";
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
   logger: {
@@ -70,6 +71,15 @@ vi.mock("../../src/utils/toolImagePersistence.js", () => ({
       path: `/tmp/wave-mcp-images/mcp-image_1_abc123.png`,
     })),
   ),
+}));
+
+// The outbound planner is the single source of the budget verdict; by default it
+// passes everything through, so these tests only see what the ingest step does.
+vi.mock("../../src/utils/imageRewrite.js", () => ({
+  planOutboundImage: vi.fn(async ({ dataUrl }: { dataUrl: string }) => ({
+    kind: "send",
+    dataUrl,
+  })),
 }));
 
 const mockImages = [{ data: "aGVsbG8=", mediaType: "image/png" }];
@@ -261,5 +271,39 @@ describe("AIManager MCP image persistence", () => {
     await aiManager.sendAIMessage({ recursionDepth: 0 });
 
     expect(persistToolImages).not.toHaveBeenCalled();
+  });
+
+  it("should store the shrunk image, not the original, when it is over budget", async () => {
+    // Ingest-time budget (spec ui/image-pasting.md「工具产图与 Read 图片在入口就降
+    // 到预算内」): the block keeps the small copy so the request, the host cache
+    // and the renderer all hold the same bytes.
+    const note =
+      "[Image: original 4000x3000, displayed at 2000x1500. Multiply coordinates by 2.00 to map to the original image.]";
+    const shrunkDataUrl = `data:image/jpeg;base64,${Buffer.from("small").toString("base64")}`;
+    vi.mocked(planOutboundImage).mockResolvedValueOnce({
+      kind: "send",
+      dataUrl: shrunkDataUrl,
+      note,
+    });
+    const { aiManager, mockMessageManager } = createAIManager({
+      model: "test-agent-model",
+      fastModel: "test-fast-model",
+    });
+    triggerToolExecution();
+
+    await aiManager.sendAIMessage({ recursionDepth: 0 });
+
+    const updateCall = vi
+      .mocked(mockMessageManager.updateToolBlock)
+      .mock.calls.find((call) => call[0].stage === "end");
+    expect(updateCall![0].images).toEqual([
+      {
+        data: Buffer.from("small").toString("base64"),
+        mediaType: "image/jpeg",
+        // The full-size original keeps a home so nothing is lost.
+        path: "/tmp/wave-mcp-images/mcp-image_1_abc123.png",
+        note,
+      },
+    ]);
   });
 });

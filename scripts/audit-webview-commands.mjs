@@ -165,18 +165,6 @@ const REMOTE_PAGE_SHIM = join(ROOT, "packages/webview/remote/shim.js");
  * ChatApp 双角色、host 层拦截等），逐一显式修正。
  */
 const SPECIFIC_REQUIREMENTS = {
-  // 上拉翻更早（ChatApp.handleLoadOlderMessages）：**四个宿主都要答**。三个本地
-  // 宿主自 2026-10 起首屏只推一页、按窗口取回更早的历史（spec desktop-chat
-  // 「首屏只进一页」），手机页的 shim 本来就是这条链的原始实现（spec
-  // remote-control.md 场景 11）。推导规则只会给它 vscode_chat + jetbrains +
-  // desktop 或只有 remote_page 二者之一，所以在这里显式列全——漏掉任何一面都是
-  // 「点上去没反应」的静默失败。
-  loadOlderMessages: {
-    vscode_chat: true,
-    jetbrains: true,
-    desktop: true,
-    remote_page: true,
-  },
   // settings tab（settings-preview-entry bundle）专用，仅 IDE 宿主有该外壳：
   // desktop 全页设置不用 postMessage 关自己/预填（内部 state/prop 直达）。
   closeSettings: { vscode_settings: true, jetbrains: true },

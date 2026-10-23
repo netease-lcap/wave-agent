@@ -102,7 +102,8 @@ import {
 import { logger } from "../utils/logger.js";
 import {
   InvalidMessageWindowError,
-  sliceMessageWindow,
+  normalizeMessageWindow,
+  type MessageWindow,
   type MessageWindowResult,
 } from "../remote/messageWindow.js";
 import {
@@ -386,7 +387,6 @@ export class AgentBridge {
         return this.deleteQueuedMessageById(p.id as string, sessionId);
       case "getMessages":
         return this.getMessages(sessionId, {
-          before: p.before as string | undefined,
           since: p.since as string | undefined,
           limit: p.limit as number | undefined,
         });
@@ -1782,61 +1782,66 @@ export class AgentBridge {
   /**
    * Read a session's display messages.
    *
-   * With no window this returns the whole list — that is the contract every
-   * existing host relies on (VS Code / JetBrains / desktop call `getMessages`
-   * with no parameters and must keep seeing the full thread, byte for byte).
-   * The window exists for remote clients on a phone, which only ever want the
-   * tail of a long conversation and must not be handed 13 MB on every cold
-   * start:
+   * With no parameters this returns the whole list the agent holds, read once
+   * and cached nowhere (spec ui/message-rendering-system.md「首屏就是整份列表，
+   * 不分页」). Two parameters narrow it, both for the remote page:
    *
-   * - `limit`  — page size.
-   * - `before` — the page that ends immediately before the given message id
-   *              (paging *backwards* into history).
-   * - `since`  — everything appended after the given message id (catching up
-   *              after a reconnect).
+   * - `limit` — the newest `limit` messages (that page's frame budget).
+   * - `since` — everything appended after the given message id (catching up
+   *             after a reconnect).
+   *
+   * The list starts at the last compaction, so its earliest entry is the
+   * earliest any UI can reach; there is nothing older to read back.
    *
    * `since` is a position, not a version number: message ids are stable, so a
    * caller can name its last known message without the list carrying a
    * sequence number. The one failure that matters is the anchor having been
    * truncated away (rewind / clear) — there is no seq/version in the store that
    * could detect it otherwise — and that comes back as `reset: true` so the
-   * caller re-pulls the tail instead of guessing.
+   * caller re-pulls instead of guessing.
    *
-   * Ids can repeat in the display list (a compacted message is re-added), so
-   * anchors are resolved to their **last** occurrence: "after `since`" means
-   * after the newest copy the caller could have seen.
+   * Ids can repeat (old transcripts re-appended the preserved rounds at each
+   * compact point), so anchors are resolved to their **last** occurrence:
+   * "after `since`" means after the newest copy the caller could have seen.
    */
-  private getMessages(
+  private async getMessages(
     sessionId?: string,
-    window?: { before?: string; since?: string; limit?: number },
-  ): {
-    messages: Message[];
-    contextUsagePercent?: number;
-    /** Older messages exist before the returned page. */
-    hasMore?: boolean;
-    /** The `since` anchor is gone — rebuild from the tail. */
-    reset?: boolean;
-    /** Total display messages held for the session. */
-    total?: number;
-  } {
+    window?: MessageWindow,
+  ): Promise<MessageWindowResult> {
     const entry = this.requireSessionForRead(sessionId);
-    const all = entry.agent.displayMessages;
     const contextUsagePercent = this.contextUsagePercentOf(entry.agent);
 
-    // The slicing is shared with the CLI front end (`RemoteControlCliHost`): the
-    // phone's reconciliation rules belong to the wire contract, not to this
+    // The validation is shared with the CLI front end (`RemoteControlCliHost`):
+    // the phone's reconciliation rules belong to the wire contract, not to this
     // registry, and the two hosts must answer identically.
-    let sliced: MessageWindowResult | undefined;
+    let normalized: MessageWindow | undefined;
     try {
-      sliced = sliceMessageWindow(all, window);
+      normalized = normalizeMessageWindow(window);
     } catch (err) {
       if (err instanceof InvalidMessageWindowError) {
         throw new RpcError(PROTOCOL_INVALID_PARAMS, err.message);
       }
       throw err;
     }
-    if (!sliced) return { messages: all, contextUsagePercent };
-    return { ...sliced, contextUsagePercent };
+    // The totals ride along with the window: the list starts at the last
+    // compaction, so this reply is the only place a host can learn the
+    // thread's size and its first user message (the session-title fallback).
+    const threadSummary = entry.agent.getThreadSummary();
+    if (!normalized) {
+      return {
+        // `Agent.messages` already hands back a copy, so this reply is a
+        // single-pass view for the host that asked once — do not copy again
+        // (a long session makes this O(n) per call).
+        messages: entry.agent.messages,
+        contextUsagePercent,
+        threadSummary,
+      };
+    }
+    return {
+      ...entry.agent.getMessagePage(normalized),
+      contextUsagePercent,
+      threadSummary,
+    };
   }
 
   private async getFullMessageThread(sessionId?: string): Promise<{
@@ -2272,10 +2277,13 @@ export class AgentBridge {
   } {
     return {
       sessions: [...this.sessions.entries()].map(([sessionId, entry]) => {
-        const messages = entry.agent.displayMessages;
         const customTitle = entry.agent.customTitle;
-        const firstMessage = firstUserText(messages);
-        const lastActiveAt = messages[messages.length - 1]?.timestamp;
+        // Totals come from the agent's counters, not from `displayMessages`:
+        // that is only the resident tail now, so its length and its first
+        // message are no longer the thread's.
+        const summary = entry.agent.getThreadSummary();
+        const firstMessage = summary.firstUserText;
+        const lastActiveAt = summary.lastActiveAt;
         // Derived from the creation workdir (not the live one) and fs-only —
         // see `deriveWorktreeInfo` for why this must not shell out to git.
         const worktree = deriveWorktreeInfo(entry.createdWorkdir);
@@ -2285,7 +2293,7 @@ export class AgentBridge {
           isLoading: entry.transitioning === true || entry.agent.isLoading,
           hasRunningBackgroundWork: entry.agent.hasRunningBackgroundWork,
           hasPendingMessages: entry.agent.hasPendingMessages,
-          messageCount: messages.length,
+          messageCount: summary.messageCount,
           ...(customTitle ? { customTitle } : {}),
           ...(firstMessage ? { firstMessage } : {}),
           ...(lastActiveAt ? { lastActiveAt } : {}),
@@ -2923,7 +2931,7 @@ export class AgentBridge {
         // than once under the same task id (a workflow warns about its size
         // mid-run, then notifies again when it finishes), and this callback
         // fires for the message that was just appended — the newest one.
-        const matches = (ctx.agent?.displayMessages ?? []).filter(
+        const matches = (ctx.agent?.messages ?? []).filter(
           (m) =>
             m.role === "user" &&
             m.blocks.some(
@@ -3049,22 +3057,6 @@ function isSessionRecoveryError(error: unknown): boolean {
     message.includes("not found on disk") ||
     message.startsWith("Session not found:")
   );
-}
-
-/**
- * The label a session list shows when no custom title is set: the first real
- * user message. Same rule as the webview's `firstUserMessageText` — meta messages
- * (task notifications and other injected turns) are skipped, because they are not
- * what the user typed — so the phone labels a conversation the way the IDE hosts
- * do.
- */
-function firstUserText(messages: Message[]): string | undefined {
-  for (const message of messages) {
-    if (message.role !== "user" || message.isMeta) continue;
-    const text = getMessageContent(message).trim();
-    if (text) return text;
-  }
-  return undefined;
 }
 
 /** Read a text file, returning "" when it does not exist. */

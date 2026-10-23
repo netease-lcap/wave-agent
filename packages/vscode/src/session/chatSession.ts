@@ -13,7 +13,6 @@ import type {
 } from "wave-agent-sdk/host";
 import { StdioClient } from "../stdio/stdioClient";
 import {
-  MESSAGE_HISTORY_PAGE_SIZE,
   StdioAgent,
   type InitializeParams,
   type StdioAgentCallbacks,
@@ -73,7 +72,17 @@ export interface ChatSessionCallbacks {
 
 export class ChatSession {
   public agent: StdioAgent | undefined;
+  /** 整份列表（= 压缩后的上下文）：逐条追加，不分页、不往回翻。 */
   public messages: Message[] = [];
+  /**
+   * 上下文用量百分比，随列表一起取回。
+   *
+   * 宿主自己存：`getMessages` 走的是只读查询，不写 SDK 客户端的那份缓存
+   * （spec ui/message-rendering-system.md「宿主只留下被 pane 显示的会话副本」
+   * 场景 9 —— 一条会话在宿主进程里只有一份数组，且必须是仍在更新的那份，也就是
+   * 这里）。
+   */
+  public contextUsagePercent: number | undefined;
   public tasks: Task[] = [];
   public backgroundTasks: BackgroundTaskSummary[] = [];
   public workflowRuns: SerializableWorkflowRun[] = [];
@@ -444,34 +453,29 @@ export class ChatSession {
     return [];
   }
 
-  /** Pull the authoritative message list from the server (updates cache). */
+  /**
+   * Pull the whole list (= the compacted context) into the cache.
+   *
+   * One-shot read, not `refreshMessages()`: the latter also writes the SDK
+   * client's own `messages` / `contextUsagePercent`, which would make this host
+   * hold the same list twice — and the second copy would be the one nobody
+   * keeps updating. Everything this host needs from the reply (the list, the
+   * usage ring) is stored here instead.
+   *
+   * The empty window is what makes the usage number reachable: the
+   * no-argument overload answers with the bare array, while any request
+   * parameters (even none of them) come back as the full
+   * `MessageWindowResult`, which carries `contextUsagePercent` for the same
+   * whole list.
+   */
   public async getMessages(): Promise<Message[]> {
     if (!this.agent) {
       return this.messages;
     }
-    this.messages = await this.agent.getMessages();
+    const result = await this.agent.getMessages({});
+    this.messages = result.messages;
+    this.contextUsagePercent = result.contextUsagePercent;
     return this.messages;
-  }
-
-  /**
-   * 取 `before` 之前的一页（上滑「翻更早」）。**不写 `this.messages` 缓存**：
-   * 那份必须是全量——首屏窗口、`/rewind`、会话切换都从它取数，让它变成「最后一页」
-   * 等于把宿主手里那段历史丢掉。
-   *
-   * 没有 agent（会话还没初始化 / 已经销毁）返回 undefined，由调用方回一条错误：
-   * 回空页会被页面读成「已经到底」，从此再也不翻。
-   */
-  public async getOlderMessages(
-    before: string,
-  ): Promise<{ messages: Message[]; hasMore: boolean } | undefined> {
-    if (!this.agent) return undefined;
-    const page = await this.agent.getMessages({
-      before,
-      limit: MESSAGE_HISTORY_PAGE_SIZE,
-    });
-    // 老版本 CLI 不认识窗口参数（会把整份列表原样答回来且不带 hasMore）：
-    // 按「没有更早的了」处理，否则页面会拿同一个锚点无限重问。
-    return { messages: page.messages, hasMore: page.hasMore === true };
   }
 
   private throttledStreamingContentUpdate(
@@ -602,7 +606,10 @@ export class ChatSession {
     const index = this.messages.map((m) => m.id).lastIndexOf(messageId);
     if (index !== -1) {
       this.messages = this.messages.slice(0, index);
-      this.agent.messages = this.messages;
+    } else {
+      // The anchor is not in the list anymore (compaction cut it away):
+      // nothing to cut, re-pull the list that the rewind just rewrote.
+      await this.getMessages();
     }
   }
 
@@ -633,6 +640,7 @@ export class ChatSession {
     }
 
     this.messages = [];
+    this.contextUsagePercent = undefined;
     this.tasks = [];
     this.inputContent = "";
     this.sessionId = undefined;

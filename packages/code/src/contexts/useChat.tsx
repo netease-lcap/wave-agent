@@ -567,14 +567,17 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
    */
   const remoteNotifyRef = useRef<RemoteNotify | undefined>(undefined);
 
-  // Full-list refresh — one-shot pull from the agent, used only for structural
-  // changes (compact/clear/rewind/collapse/init). Streaming updates flow through
-  // the incremental callbacks in initializeAgent below.
+  // Full-list refresh — used only for structural changes (compact/clear/rewind/
+  // collapse/init). Streaming updates flow through the incremental callbacks in
+  // initializeAgent below.
   const refreshMessages = useCallback(() => {
-    if (!isExpandedRef.current && agentRef.current) {
-      // Pull the full UI display stream (keeps pre-compaction history);
-      // `agent.messages` would only expose the folded API context.
-      const msgs = agentRef.current.displayMessages.map(snapshotMessage);
+    const agent = agentRef.current;
+    if (!isExpandedRef.current && agent) {
+      // `agent.messages` 是「最近一次压缩 + 其后消息」：CLI 屏幕只渲染最近几十
+      // 条、清屏重放也只放这些条数，压缩前的历史在这里没有任何读者，留着只是把
+      // 图片 base64 挂在堆上（spec ui/message-rendering-system.md「CLI 消息列表
+      // 只加载压缩之后」）。从未压缩过的会话这里就是整条线程。
+      const msgs = agent.messages.map(snapshotMessage);
       // The snapshot makes the SDK state authoritative: with no throttle
       // window there is nothing pending to cancel — every pre-pull update is
       // already applied and contained in `msgs`, and post-pull deltas append
@@ -771,6 +774,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           setIsCompacting(isCompactingState);
           if (!isCompactingState) {
             setCompactionStream("");
+            // 压缩结束 = 上下文已经折叠成「摘要 + 保留轮次」：列表要跟着收缩，
+            // 否则这一轮之后仍挂着压缩前的全量（自动压缩不走 `/compact` 那条
+            // refresh 路径）。见 spec ui/message-rendering-system.md「CLI 消息
+            // 列表只加载压缩之后」。
+            refreshMessages();
           }
         },
         onCompactionContentUpdate: (content) => {
@@ -885,13 +893,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           agent.setWorktreeSession(session);
         }
 
-        // Get initial state — snapshot the SDK messages (never hold live
-        // references; see snapshotMessage). Uses the full display stream so a
-        // restored session shows pre-compaction history too.
+        // Get initial state — all synchronous reads, so a notification arriving
+        // mid-init cannot be overwritten by a stale read. The list is
+        // `agent.messages` (the API context): after compaction that is the
+        // summary plus the rounds the compaction kept, which is exactly what
+        // the CLI shows (spec ui/message-rendering-system.md「CLI 消息列表只加载
+        // 压缩之后」); a never-compacted session is the whole thread.
         setSessionId(agent.sessionId);
-        setMessages(agent.displayMessages.map(snapshotMessage));
-        setIsLoading(agent.isLoading);
+        setMessages(agent.messages.map(snapshotMessage));
         setLatestTotalTokens(extractLatestTotalTokens(agent.messages));
+        setIsLoading(agent.isLoading);
         setIsCommandRunning(agent.isCommandRunning);
         setIsCompacting(agent.isCompacting);
         setPermissionModeState(agent.getPermissionMode());
@@ -949,6 +960,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       model,
       initialPermissionMode,
       mcpServers,
+      refreshMessages,
     ],
   );
 
@@ -1456,6 +1468,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     renameSession: (title) => agentRef.current?.renameSession(title),
     compact: (instructions) => compact(instructions),
     slashCommands: () => agentRef.current?.getSlashCommands() ?? [],
+    // 手机页取首屏尾段 / 补差都读 agent 手上那份列表（压缩后的上下文），不去
+    // 转录里找压缩前的历史。
+    messagePage: (window) =>
+      Promise.resolve(
+        agentRef.current?.getMessagePage(window) ?? { messages: [] },
+      ),
+    currentThread: () =>
+      Promise.resolve([...(agentRef.current?.messages ?? [])]),
+    threadSummary: () =>
+      agentRef.current?.getThreadSummary() ?? { messageCount: 0 },
   });
 
   // `initializeAgent` reads this ref when it runs, which is always in an effect

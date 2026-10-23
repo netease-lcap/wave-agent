@@ -1,21 +1,33 @@
 import type { Message } from "../types/messaging.js";
-import { MESSAGE_FIRST_PAGE_SIZE } from "../constants/messageWindow.js";
+import { MESSAGE_SLICE_MAX_BYTES } from "../constants/messageWindow.js";
 
 /**
- * 宿主推给渲染进程的第一页：整份缓存里**最近** `limit` 条 + 是否还有更早的。
- *
- * 三个宿主（桌面端 / VS Code / JetBrains）的第一屏推送都走这条口径：宿主自己那份
- * 缓存必须是全量（翻更早、/rewind、搜索都要读它），但推给渲染进程的永远只有一页
- * —— 原因见 `constants/messageWindow.ts`。
- *
- * 不复制数组：`all` 没被裁时原样返回同一个引用，调用方可以拿它做同一性判断。
+ * 一条消息占的字节数。字节预算按它累计——条数挡不住图片，一条消息里的 base64
+ * 可以顶到 5 MiB，几十条纯文字和一条截图在内存上差三个数量级。
  */
-export function tailMessagePage(
-  all: Message[],
-  limit: number = MESSAGE_FIRST_PAGE_SIZE,
-): { messages: Message[]; hasMore: boolean } {
-  if (limit < 1 || all.length <= limit) {
-    return { messages: all, hasMore: false };
+export function messageBytes(message: Message): number {
+  return Buffer.byteLength(JSON.stringify(message), "utf8");
+}
+
+/**
+ * 从内存里的列表取末尾一段：最多 `limit` 条，收满条数或字节预算就停，**至少收
+ * 1 条**（单条就超预算时也得返回它，否则调用方永远拿不到东西）。
+ */
+export function takeTailFromMemory(
+  list: readonly Message[],
+  limit: number,
+  maxBytes: number = MESSAGE_SLICE_MAX_BYTES,
+): Message[] {
+  const messages: Message[] = [];
+  let bytes = 0;
+  for (let index = list.length - 1; index >= 0; index--) {
+    if (messages.length >= limit) break;
+    const candidate = list[index];
+    const size = messageBytes(candidate);
+    if (messages.length > 0 && bytes + size > maxBytes) break;
+    messages.push(candidate);
+    bytes += size;
   }
-  return { messages: all.slice(all.length - limit), hasMore: true };
+  messages.reverse();
+  return messages;
 }

@@ -11,9 +11,6 @@ import { pinSessionTitle } from "../utils/session";
 
 export const initialState: ChatState = {
   messages: [],
-  historyExhausted: false,
-  // 能力位默认关：认不得分页的宿主（老版本）不推这个字段，页面就不装分页。
-  supportsMessagePaging: false,
   tasks: [],
   backgroundTasks: [],
   workflowRuns: [],
@@ -66,30 +63,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         ...state,
         messages: action.payload,
-        // A replacement list is a new window: whatever the previous one knew
-        // about the beginning of the history no longer describes this one
-        // (session switch, a re-read, a structural truncation). The window the
-        // host just sent says whether there is more before it — `hasMore`
-        // absent means an old host that ships the whole thread, i.e. the
-        // beginning is right there.
-        historyExhausted: action.hasMore === false,
         currentSession: pinSessionTitle(state.currentSession, action.payload),
-      };
-    }
-    case "PREPEND_MESSAGES": {
-      const { messages, hasMore } = action.payload;
-      // The host's window is exclusive of the anchor the page sent, so a
-      // well-behaved page comes back with messages this list has never seen. The
-      // filter is for the case it does not: ids repeat in this list (a compacted
-      // message is added back), and the anchor resolves to its LAST occurrence
-      // host-side, so a page can legitimately include rows that are already here.
-      // Dropping them by id keeps the older-rows-first order without a duplicate.
-      const held = new Set(state.messages.map((m) => m.id));
-      const older = messages.filter((m) => !held.has(m.id));
-      return {
-        ...state,
-        messages: older.length ? [...older, ...state.messages] : state.messages,
-        historyExhausted: !hasMore,
       };
     }
     case "SET_TASKS":
@@ -271,15 +245,6 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         ...state,
         messages,
-        // rewind 那条快照没带列表：手上这份是 webview 自己切的，宿主对它没有
-        // 发言权，「到底了没有」沿用现值。其余快照按宿主给的窗口判定（三端首屏
-        // 只推一页，`historyExhausted` 由宿主的 `hasMore` 决定初值）。
-        historyExhausted: action.payload.keepMessages
-          ? state.historyExhausted
-          : (action.payload.historyExhausted ?? false),
-        // 能力位：老宿主不带 ⇒ 关掉。硬编码 true 会让只推了一页的页面向一个不认
-        // 这条命令的宿主反复要「更早」，而它那边是静默失败。
-        supportsMessagePaging: action.payload.supportsMessagePaging ?? false,
         tasks: action.payload.tasks || [],
         isTaskListCollapsed:
           action.payload.isTaskListCollapsed !== undefined

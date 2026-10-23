@@ -130,7 +130,6 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     latestTotalTokens: 100,
     getMaxInputTokens: vi.fn().mockReturnValue(200000),
     messages,
-    displayMessages: messages,
     destroy: vi.fn(),
     restoreSession: vi.fn(),
     sendMessage: vi.fn(),
@@ -142,6 +141,11 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     getFullMessageThread: vi
       .fn()
       .mockResolvedValue({ messages, sessionIds: ["test-session-id"] }),
+    // 分页在 SDK 里对着内存列表切片：这一层只被要求「窗口传下去、回包原样答回来」。
+    getMessagePage: vi.fn(() => ({ messages: [], hasMore: false })),
+    getThreadSummary: vi.fn(function (this: { messages?: Message[] }) {
+      return { messageCount: (this.messages ?? []).length };
+    }),
     compact: vi.fn().mockResolvedValue(undefined),
     getPermissionMode: vi.fn().mockReturnValue("default"),
     setPermissionMode: vi.fn(),
@@ -159,12 +163,6 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     getBackgroundTasks: vi.fn().mockReturnValue([]),
     ...overrides,
   };
-  // displayMessages (full UI stream) tracks messages unless explicitly
-  // overridden — mirrors the real Agent where both stay in sync except
-  // around compaction.
-  if (!("displayMessages" in overrides)) {
-    agent.displayMessages = agent.messages;
-  }
   return agent as unknown as Agent;
 }
 
@@ -1070,11 +1068,10 @@ test("getMessages omits contextUsagePercent when the session has no tokens yet",
 
 // ── getMessages: the optional window (remote clients) ────────────
 //
-// The window exists so a phone can cold-start on the tail of a long
-// conversation instead of the whole thread. Everything here is opt-in: the
-// tests above share the same session setup and never pass a parameter, which is
-// what pins the "no window ⇒ full list, unchanged" contract for the three
-// desktop-type hosts.
+// 窗口本身由 SDK 对着内存列表切片（翻页算术的用例在 `agent-sdk` 的
+// `messageManager.paging`）。这里只钉住这一层的契约：窗口原样传下去、没有窗口时
+// 答 agent 手上那份列表、非法窗口直接拒绝、以及会话列表要的两个总数随回包一起
+// 下发。
 
 function windowedMessages(count: number): Message[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -1090,154 +1087,52 @@ async function bridgeWithMessages(count: number) {
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
   const result = await bridge.handleRequest("initialize", {});
   const sessionId = (result as { sessionId: string }).sessionId;
-  return { bridge, sessionId };
+  return { bridge, sessionId, mockAgent };
 }
 
 type MessageWindowResult = {
   messages: Message[];
-  hasMore?: boolean;
   reset?: boolean;
-  total?: number;
 };
 
-test("getMessages with only a limit returns the tail page and reports more", async () => {
+test("getMessages hands the parameters to the SDK unchanged", async () => {
+  const { bridge, sessionId, mockAgent } = await bridgeWithMessages(10);
+  vi.mocked(mockAgent.getMessagePage).mockReturnValue({
+    messages: windowedMessages(3),
+  });
+
+  const r = (await bridge.handleRequest(
+    "getMessages",
+    { since: undefined, limit: 3 },
+    sessionId,
+  )) as MessageWindowResult;
+
+  expect(mockAgent.getMessagePage).toHaveBeenCalledWith({ limit: 3 });
+  expect(r.messages).toHaveLength(3);
+});
+
+test("getMessages without parameters answers the agent's own list", async () => {
+  const { bridge, sessionId, mockAgent } = await bridgeWithMessages(10);
+
+  const r = (await bridge.handleRequest(
+    "getMessages",
+    {},
+    sessionId,
+  )) as MessageWindowResult;
+
+  expect(mockAgent.getMessagePage).not.toHaveBeenCalled();
+  expect(r.messages).toHaveLength(10);
+});
+
+test("getMessages carries the thread totals the session list needs", async () => {
+  // 宿主缓存只剩一页，条数与标题兜底已经数不出来了：这份回包是它们唯一的来源。
   const { bridge, sessionId } = await bridgeWithMessages(10);
 
-  const r = (await bridge.handleRequest(
-    "getMessages",
-    { limit: 3 },
-    sessionId,
-  )) as MessageWindowResult;
+  const r = (await bridge.handleRequest("getMessages", {}, sessionId)) as {
+    threadSummary?: { messageCount: number };
+  };
 
-  expect(r.messages.map((m) => m.id)).toEqual(["m7", "m8", "m9"]);
-  expect(r.hasMore).toBe(true);
-  expect(r.total).toBe(10);
-});
-
-test("getMessages tail page reports no more once the list fits in one page", async () => {
-  const { bridge, sessionId } = await bridgeWithMessages(2);
-
-  const r = (await bridge.handleRequest(
-    "getMessages",
-    { limit: 5 },
-    sessionId,
-  )) as MessageWindowResult;
-
-  expect(r.messages.map((m) => m.id)).toEqual(["m0", "m1"]);
-  expect(r.hasMore).toBe(false);
-});
-
-test("getMessages pages backwards from a before anchor", async () => {
-  const { bridge, sessionId } = await bridgeWithMessages(10);
-
-  const page1 = (await bridge.handleRequest(
-    "getMessages",
-    { before: "m7", limit: 3 },
-    sessionId,
-  )) as MessageWindowResult;
-  expect(page1.messages.map((m) => m.id)).toEqual(["m4", "m5", "m6"]);
-  expect(page1.hasMore).toBe(true);
-
-  const page2 = (await bridge.handleRequest(
-    "getMessages",
-    { before: "m4", limit: 3 },
-    sessionId,
-  )) as MessageWindowResult;
-  expect(page2.messages.map((m) => m.id)).toEqual(["m1", "m2", "m3"]);
-  expect(page2.hasMore).toBe(true);
-
-  const page3 = (await bridge.handleRequest(
-    "getMessages",
-    { before: "m1", limit: 3 },
-    sessionId,
-  )) as MessageWindowResult;
-  expect(page3.messages.map((m) => m.id)).toEqual(["m0"]);
-  expect(page3.hasMore).toBe(false);
-});
-
-test("getMessages with a before anchor resolves the newest copy of a repeated id", async () => {
-  // A compacted message is re-added, so the display list can hold the same id
-  // twice; the caller's "where I am" is the newest copy it could have seen.
-  const repeated = [
-    { id: "a", role: "user", blocks: [] },
-    { id: "compact", role: "user", blocks: [] },
-    { id: "b", role: "assistant", blocks: [] },
-    { id: "compact", role: "user", blocks: [] },
-    { id: "c", role: "assistant", blocks: [] },
-  ] as unknown as Message[];
-  const { bridge } = createBridge();
-  vi.mocked(Agent.create).mockResolvedValue(
-    createMockAgent({ messages: repeated }),
-  );
-  const result = await bridge.handleRequest("initialize", {});
-  const sessionId = (result as { sessionId: string }).sessionId;
-
-  const r = (await bridge.handleRequest(
-    "getMessages",
-    { before: "compact" },
-    sessionId,
-  )) as MessageWindowResult;
-
-  expect(r.messages.map((m) => m.id)).toEqual(["a", "compact", "b"]);
-  expect(r.hasMore).toBe(false);
-});
-
-test("getMessages with a before anchor that is gone returns an empty page", async () => {
-  // The anchor was truncated (rewind / clear); older history may be gone with
-  // it, so the caller must stop paging rather than loop on a dead anchor.
-  const { bridge, sessionId } = await bridgeWithMessages(5);
-
-  const r = (await bridge.handleRequest(
-    "getMessages",
-    { before: "gone", limit: 3 },
-    sessionId,
-  )) as MessageWindowResult;
-
-  expect(r.messages).toEqual([]);
-  expect(r.hasMore).toBe(false);
-  expect(r.total).toBe(5);
-});
-
-test("getMessages with a since anchor returns only what came after it", async () => {
-  const { bridge, sessionId } = await bridgeWithMessages(10);
-
-  const r = (await bridge.handleRequest(
-    "getMessages",
-    { since: "m6" },
-    sessionId,
-  )) as MessageWindowResult;
-
-  expect(r.messages.map((m) => m.id)).toEqual(["m7", "m8", "m9"]);
-  expect(r.reset).toBeUndefined();
-});
-
-test("getMessages with a since anchor returns nothing when already caught up", async () => {
-  const { bridge, sessionId } = await bridgeWithMessages(10);
-
-  const r = (await bridge.handleRequest(
-    "getMessages",
-    { since: "m9" },
-    sessionId,
-  )) as MessageWindowResult;
-
-  expect(r.messages).toEqual([]);
-  expect(r.reset).toBeUndefined();
-});
-
-test("getMessages with an unknown since anchor asks the caller to reset", async () => {
-  // The only failure signal available: the store has no seq/version, so a
-  // missing anchor is how "your view can no longer be extended" is reported.
-  const { bridge, sessionId } = await bridgeWithMessages(10);
-
-  const r = (await bridge.handleRequest(
-    "getMessages",
-    { since: "truncated-away" },
-    sessionId,
-  )) as MessageWindowResult;
-
-  expect(r.messages).toEqual([]);
-  expect(r.reset).toBe(true);
-  expect(r.total).toBe(10);
+  expect(r.threadSummary?.messageCount).toBe(10);
 });
 
 test("getMessages rejects a non-positive limit instead of silently widening", async () => {
@@ -1298,7 +1193,16 @@ test("listDaemonSessions labels live sessions for the remote page's list", async
     },
   ] as Message[];
   vi.mocked(Agent.create).mockResolvedValue(
-    createMockAgent({ displayMessages, customTitle: "登录页" }),
+    createMockAgent({
+      displayMessages,
+      customTitle: "登录页",
+      // 宿主缓存只剩一页，条数与首条正文由 SDK 的计数器给出。
+      getThreadSummary: () => ({
+        messageCount: 3,
+        firstUserText: "修一下登录页的报错",
+        lastActiveAt: "2026-10-14T10:00:09.000Z",
+      }),
+    }),
   );
 
   await bridge.handleRequest("initialize", {});
