@@ -1822,6 +1822,36 @@ describe("agent notifications", () => {
     );
   });
 
+  it("a fresh session titles itself from its own list when the thread summary is unknown", async () => {
+    const { sent } = await readyHost();
+    const agent = lastAgent();
+    // 新会话没走过 restore、也没压缩过 ⇒ 这台宿主还没拉过 threadSummary（真机
+    // 上它只随 `refreshMessages` 的回包到达）。此时列表本身就是整条线程，标题
+    // 只能从它里面取——退回去读 `messages`，而不是空标题。
+    expect(agent.threadSummary).toBeUndefined();
+    const meta = {
+      id: "m1",
+      role: "user",
+      isMeta: true,
+      blocks: [{ type: "text", content: "<system-reminder>注入的规则" }],
+    };
+    const userMsg = {
+      id: "u1",
+      role: "user",
+      blocks: [{ type: "text", content: "你好" }],
+    };
+    agent.messages = [meta, userMsg];
+    agent.callbacks.onUserMessageAdded(userMsg);
+
+    const sessions = (
+      (sent("desktopSessionTree").at(-1)?.groups as Array<{
+        sessions: Array<{ sessionId: string; title: string }>;
+      }>) ?? []
+    ).flatMap((g) => g.sessions);
+    // 注入的 isMeta 行不能当标题。
+    expect(sessions.find((s) => s.sessionId === "sess-1")?.title).toBe("你好");
+  });
+
   it("setInitialState backfills session.firstMessage from the index after compaction truncated the messages", async () => {
     const { host, sent } = await readyHost();
     const agent = lastAgent();

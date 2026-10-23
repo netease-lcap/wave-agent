@@ -3269,11 +3269,16 @@ export class DesktopHost {
       .find((e) => e.sessionId === sessionId);
     if (existing?.title) return;
     // The list starts at the last compaction, so the thread's first user message
-    // is not in it — the SDK tracks it separately.
+    // is not in it — the SDK tracks it separately. A session that has neither
+    // been restored nor compacted yet cannot answer that (the summary only
+    // reaches this process on a `refreshMessages` pull), so fall back to the
+    // copy we are already holding: a brand-new session's list *is* its thread.
     this.registerSessionInIndex(
       agent,
       sessionId,
-      sessionTitleFrom(agent.threadSummary?.firstUserText),
+      sessionTitleFrom(
+        agent.threadSummary?.firstUserText ?? firstUserTextIn(agent.messages),
+      ),
     );
     this.refreshSessionTree();
   }
@@ -8078,4 +8083,23 @@ function sessionTitleFrom(firstUserText: string | undefined): string {
   return firstUserText.length > 30
     ? firstUserText.substring(0, 30) + "..."
     : firstUserText;
+}
+
+/**
+ * First text-bearing, non-meta user message in the list — the title source for
+ * a session whose thread summary is not known here yet (see
+ * `ensureSessionRegistered`). Meta rows (injected reminders, hook context) and
+ * text-less ones (task notifications) cannot label a conversation.
+ */
+function firstUserTextIn(messages: Message[]): string | undefined {
+  for (const message of messages) {
+    if (message.role !== "user" || message.isMeta) continue;
+    const text = (message.blocks ?? [])
+      .filter((block) => block.type === "text")
+      .map((block) => block.content || "")
+      .join(" ")
+      .trim();
+    if (text) return text;
+  }
+  return undefined;
 }
