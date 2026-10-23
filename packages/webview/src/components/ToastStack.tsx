@@ -10,8 +10,11 @@ import "../styles/ToastStack.css";
  * codex toast 的描边圆勾样式）。**无类型（中性）不渲染图标**——没有成功/失败
  * 语义时圆勾/叉都不合适，只出文字。图标仅 toast 使用，按 skill icon policy
  * 「单次用途 keep local」内嵌本组件。
+ *
+ * 2026-10-23 起导出给创作集页（`ArtifactsPage.tsx`）复用：那边的「链接已复制」
+ * 是页面内自渲染的轻提示，外观要与本栈一致，矢量不应存两份。
  */
-const ToastGlyph: React.FC<{ kind: ToastKind }> = ({ kind }) => (
+export const ToastGlyph: React.FC<{ kind: ToastKind }> = ({ kind }) => (
   <svg
     width={16}
     height={16}

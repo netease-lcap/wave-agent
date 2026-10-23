@@ -213,6 +213,42 @@ export const SendArrowIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+// 模型选择器的「图标档」图标（1023 评论：「模型可以用类似大脑那种图标」）。
+// 形状取 Lucide `brain`（24 网格、原生 stroke 2），按 icon.md 的笔画补偿法塞进
+// 16px 盒：`viewBox 0 0 16 16` + `scale(2/3)` + `strokeWidth 2.1`
+// （渲染笔画 = 2.1 × 2/3 = 1.4，与同面 Figma 直出图标同档；直接塞 24 网格会让
+// 1.4 被等比缩成 0.933，看上去偏淡）。只在底栏「空间不足 → 图标档」时显示。
+export const ModelBrainIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 16 16"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
+    <g
+      transform="scale(0.6666667)"
+      stroke="currentColor"
+      strokeWidth="2.1"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+      <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+      <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4" />
+      <path d="M17.599 6.5a3 3 0 0 0 .399-1.375" />
+      <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5" />
+      <path d="M3.477 10.896a4 4 0 0 1 .585-.396" />
+      <path d="M19.938 10.5a4 4 0 0 1 .585.396" />
+      <path d="M6 18a4 4 0 0 1-1.967-.516" />
+      <path d="M19.967 17.484A4 4 0 0 1 18 18" />
+    </g>
+  </svg>
+);
+
 // 权限/灰条下拉 chevron — Figma composer-chevron（8×5 细箭头）。
 export const PermCaretIcon: React.FC<IconProps> = ({
   className = "header-icon",
@@ -1814,5 +1850,30 @@ export const ArtifactsIcon: React.FC<IconProps> = ({
     <path d="M10.2683 13.5001H13.0683C13.5101 13.5001 13.8683 13.1419 13.8683 12.7001V9.9001C13.8683 9.45827 13.5101 9.1001 13.0683 9.1001L10.2683 9.10011C9.82643 9.10011 9.46826 9.45828 9.46826 9.90011L9.46826 12.7001C9.46826 13.1419 9.82643 13.5001 10.2683 13.5001Z" />
     <path d="M10.4905 5.44456L8.68317 2.47536C8.37148 1.96331 7.62815 1.96331 7.31646 2.47536L5.50909 5.44457C5.18458 5.97768 5.56833 6.66053 6.19245 6.66053L9.80719 6.66052C10.4313 6.66052 10.8151 5.97767 10.4905 5.44456Z" />
     <path d="M4.39912 13.7523C3.04473 13.7523 1.94678 12.6544 1.94678 11.3C1.94678 9.94562 3.04473 8.84767 4.39911 8.84766C5.75351 8.84766 6.85146 9.94561 6.85146 11.3C6.85146 12.6544 5.75351 13.7523 4.39912 13.7523Z" />
+  </svg>
+);
+
+/** 文件（HTML/代码类，lucide file-code，24 viewBox stroke 2）。
+ *  `aria-hidden` 按需传：纯装饰处（创作集表格里紧挨文件名的图标）传 true，免得到读屏里
+ *  多一个无名的「图片」节点。 */
+export const FileCodeIcon: React.FC<
+  IconProps & { "aria-hidden"?: boolean }
+> = ({ className = "header-icon", "aria-hidden": ariaHidden }) => (
+  <svg
+    width={16}
+    height={16}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={2}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    aria-hidden={ariaHidden}
+  >
+    <path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" />
+    <path d="M14 2v5a1 1 0 0 0 1 1h5" />
+    <path d="m10 13-2 2 2 2" />
+    <path d="m14 17 2-2-2-2" />
   </svg>
 );

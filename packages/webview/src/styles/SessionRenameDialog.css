@@ -50,6 +50,16 @@
   border-color: var(--vscode-focusBorder);
 }
 
+/* 输入框 + 它下面那行错误提示合成一组（1023 评论：报错间距太远）。
+   组内间距：base 12px = 弹层原有的 base 节奏，IDE 档逐像素不变；桌面端覆盖成 4px
+   （参考 `form-colors-review` 页「校验错误」那组：字段底到说明行盒顶 4.5px）。
+   组与标题 / 页脚的间距仍由 `.session-rename-dialog` 的 gap 统一给。 */
+.session-rename-field {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .session-rename-error {
   font-size: 12px;
   line-height: 16px;
@@ -115,10 +125,54 @@
   font-size: 15px;
 }
 
+/* 1023 评论（她：「`div.session-rename-dialog`「重命名 / 取消 / 保存」…… 这里的表单
+   也看下」）：输入框改走 skill「Desktop form field colors and focus」那份**共享字段
+   映射** `--cc-field-*`（host-desktop.css 根级声明，与设置页、侧栏搜索、创作集页头 /
+   弹层字段同一份），不再读宿主注入的 `--vscode-input-*`：
+     · 默认底 --cc-field-bg / 默认描边 --cc-field-border
+     · hover 只改描边 → --cc-field-border-hover（不换底）
+     · 聚焦描边 → --cc-field-border-focus，1px 就地变色、无外扩环、零位移
+     · 已输入文字 → --cc-field-text（= 1 级字色）
+   几何：**32 高 / r8 / 0·8 内衬 / 14px**。高度不再在桌面端另立档 —— 1023 评论「输入表单
+   高度应该是 32px」⇒ 直接沿用 base 的 32px（= 桌面端字段统一高度，与创作集页头搜索框、
+   弹层字段、设置页输入框同高），这里只改圆角 / 字号 / 配色三个值。
+   ★错误态是这轮补的契约缺口：原实现只在下面挂红字，输入框 `aria-invalid="true"`
+   时描边仍是焦点灰 —— 契约原文「Error borders and explanatory text retain their danger
+   semantics; combine error and focus deliberately rather than letting a generic focus
+   selector hide the error」。故补一条危险色描边，并让它同时盖过 hover / focus。 */
 [data-host="desktop"] .session-rename-input {
-  height: 38px;
   border-radius: 8px;
   font-size: 14px;
+  border-color: var(--cc-field-border, var(--vscode-input-border, var(--vscode-widget-border)));
+  background-color: var(--cc-field-bg, var(--vscode-input-background));
+  color: var(--cc-field-text, var(--vscode-input-foreground, var(--vscode-foreground)));
+}
+
+/* 组内 4px：参考件实测「字段底 → 说明行盒顶」4.5px（12/20 行高）；本弹窗错误行是
+   12/16，实际墨迹间距 5px，与参考件差 0.5px。改前这里是 14px（弹层 gap）。 */
+[data-host="desktop"] .session-rename-field {
+  gap: 4px;
+}
+
+[data-host="desktop"] .session-rename-input:hover:not(:focus) {
+  border-color: var(--cc-field-border-hover, var(--cc-field-border));
+}
+
+[data-host="desktop"] .session-rename-input:focus {
+  border-color: var(--cc-field-border-focus, var(--vscode-focusBorder));
+}
+
+/* 错误态：描边取产品危险红（桌面端 --vscode-errorForeground 已桥到 --cc-color-danger，
+   与弹窗里那行错误文字同源同值）。放在 hover / focus 之后，且显式带 :hover / :focus
+   两个组合 —— 否则 `:hover:not(:focus)` (0,4,0) 会把 (0,3,0) 的危险色盖掉
+   （设置页那轮踩过同类坑）。 */
+[data-host="desktop"] .session-rename-input[aria-invalid="true"] {
+  border-color: var(--cc-color-danger, var(--vscode-errorForeground));
+}
+
+[data-host="desktop"] .session-rename-input[aria-invalid="true"]:hover,
+[data-host="desktop"] .session-rename-input[aria-invalid="true"]:focus {
+  border-color: var(--cc-color-danger, var(--vscode-errorForeground));
 }
 
 /* 字重 500：契约 :83「All footer buttons retain the standard 32px height,

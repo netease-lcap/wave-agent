@@ -917,6 +917,57 @@
   padding: 0 12px;
 }
 
+/* ── 底栏「空间不足 → 图标档」（1023 评论）─────────────────────────
+   「这里最小时会有重叠的情况，可以参考 codex，在空间不足时，模型和权限都只
+     显示图标，点击图标进行切换，模型可以用类似大脑那种图标」
+   实测（1440×900 预览用例 tmp-model-picker-1021，卡片宽 328 时）：模型名被压成
+   0 宽、文字溢出压到上下文圆环上 —— 因为只有模型按钮可收缩（min-width: 0），
+   权限按钮固定 112、圆环 58、+ / / 68、发送 32 都不收缩。
+   判定由 MessageInput 量宽后写在行上的 `.is-compact` 触达（纯 CSS 判不了
+   「模型名多长时放不下」）。图标档：模型 → 大脑图标，权限 → 模式图标，
+   两者都是 32×32（与 + / / 图标按钮同档），点击行为不变。
+   `.is-measuring` 只在量宽那一帧存在（子项解除收缩），不会绘制到屏幕。 */
+[data-host="desktop"] .input-buttons-row.is-measuring > * {
+  flex-shrink: 0;
+}
+[data-host="desktop"] .model-picker-icon {
+  display: none;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+[data-host="desktop"] .input-buttons-row.is-compact .model-picker-icon {
+  display: block;
+}
+[data-host="desktop"] .input-buttons-row.is-compact .model-picker-name,
+[data-host="desktop"] .input-buttons-row.is-compact .model-picker-caret,
+[data-host="desktop"] .input-buttons-row.is-compact .permission-mode-label {
+  display: none;
+}
+[data-host="desktop"] .input-buttons-row.is-compact .model-picker-container,
+[data-host="desktop"] .input-buttons-row.is-compact .permission-mode-container {
+  flex: 0 0 auto;
+}
+[data-host="desktop"] .input-buttons-row.is-compact .model-picker-trigger {
+  width: 32px;
+  min-height: 32px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+[data-host="desktop"] .input-buttons-row.is-compact .permission-mode-select {
+  width: 32px;
+  gap: 0;
+}
+/* 图标档下权限菜单右对齐到按钮：菜单是 `left: 0` 从左边缘往右长的，图标档把权限按钮
+   推到行右半侧后，菜单会跑出窗口（620 宽实测右缘 683 > 视口 620）。右对齐后回到卡片内
+   （387…551）。模型菜单仍保持左对齐：它本来就靠左，右对齐会把菜单甩进左侧栏、被账户卡
+   盖住 —— 它的出界（620 时 4.9px）在改前就是这个位置，见报告残留。 */
+[data-host="desktop"] .input-buttons-row.is-compact .permission-mode-menu {
+  left: auto;
+  right: 0;
+}
+
 /* placeholder：Figma #8B8F95（base 用 input-placeholderForeground 偏暗）；
    深色取 placeholder token #858B8F（approved 文字梯度） */
 [data-host="desktop"][data-theme="light"] .content-editable-input:empty:before {
@@ -2543,9 +2594,14 @@
 [data-host="desktop"] .option-item:focus {
   outline: none;
 }
+/* 1023 skill 契约（`common-components.md` §Question-option card composition）：
+   键盘焦点是**独立的 2px 环 + 2px 外扩**、色取选中指示器色（action-primary），
+   不再把自身描边染成焦点色（那是旧口径，会和 hover/选中描边抢同一支笔）。
+   鼠标点击（`:focus` 而不是 `:focus-visible`）不出现这个框 —— 上面那条 outline:none
+   已覆盖；卡片本身仍保留 pointer 光标。 */
 [data-host="desktop"] .option-item:focus-visible {
-  outline: none;
-  border-color: var(--cc-border-focus, var(--vscode-focusBorder, #005fb8));
+  outline: 2px solid var(--cc-action-primary, var(--vscode-focusBorder, #1f2329));
+  outline-offset: 2px;
 }
 [data-host="desktop"] .other-text-input:focus,
 [data-host="desktop"] .feedback-textarea:focus {
@@ -3455,6 +3511,94 @@
   line-height: 22px;
 }
 
+/* ═══ 1023 skill 契约：桌面端选择控件 + 问题选项卡（`div.options-list`）════════
+   skill `codechat-desktop-skill` @ `docs/choice-controls-1023`
+   （`references/common-components.md` §Choice controls → Desktop Radio and
+   Checkbox / Question-option card composition，2026-10-23 用户确认版）。
+
+   指示器几何（TSX 侧见 `ConfirmationDialog.tsx` 的 `DesktopOptionIndicator`）：
+     未选中  = 1px 描边；单选 r=7.5 圆环 / 多选外圆角 ≈4px（矢量 rx 3.5）
+     选中    = 实心 --cc-action-primary 面 + --cc-action-primary-text 标记
+               （单选圆点 Light 6px / Dark 7px；多选对勾 Light 1.7 / Dark 2.1）
+   卡片：16px 指示器 + **8px** 间距；标题 14/22 · 500；描述 12/20 · 400，
+   与标题同左缘（16+8=24）、与标题之间**不加额外间距**；r12 / 内衬 8×12 /
+   卡间 8px / 1px --cc-border。默认与选中**同为透明底 + 同一条描边**，
+   选中只换指示器；hover 只加深描边（浅 #A8ADB4 / 深 #626A6F），选中态同理。
+   这些都是桌面档取值：IDE 由宿主控制，base 规则逐字不动（早期 0922 的
+   focusBorder 空心方框属旧口径，已被本契约取代）。 */
+
+/* 未选中描边：浅 --cc-text-secondary #6C7076 / 深 --cc-text-placeholder #858B8F */
+[data-host="desktop"] .option-indicator-icon .choice-outline {
+  stroke: var(--cc-text-secondary, #6c7076);
+}
+[data-host="desktop"][data-theme="dark"]
+  .option-indicator-icon
+  .choice-outline {
+  stroke: var(--cc-text-placeholder, #858b8f);
+}
+
+/* 选中面 + 标记：实心面 = action-primary，标记 = action-primary-text */
+[data-host="desktop"] .option-indicator-icon .choice-surface {
+  fill: var(--cc-action-primary, #1f2329);
+  stroke: var(--cc-action-primary, #1f2329);
+}
+[data-host="desktop"] .option-indicator-icon .choice-dot {
+  fill: var(--cc-action-primary-text, #ffffff);
+}
+[data-host="desktop"] .option-indicator-icon .choice-mark {
+  fill: none;
+  stroke: var(--cc-action-primary-text, #ffffff);
+  stroke-width: 1.7;
+}
+/* 深色档：对勾加粗到 2.1、圆点直径 6→7（半径 3→3.5） */
+[data-host="desktop"][data-theme="dark"] .option-indicator-icon .choice-mark {
+  stroke-width: 2.1;
+}
+[data-host="desktop"][data-theme="dark"] .option-indicator-icon .choice-dot {
+  r: 3.5px;
+}
+
+/* 卡片几何：r12、标题↔描述 0 额外间距、指示器↔标题 8px */
+[data-host="desktop"] .option-item {
+  gap: 0;
+  border-radius: 12px;
+  border-color: var(--cc-border, #dcdfe6);
+  background-color: transparent;
+}
+[data-host="desktop"] .option-row {
+  gap: 8px;
+}
+/* 描述与标题同左缘（16 指示器 + 8 间距），且不因选中变字色 */
+[data-host="desktop"] .option-description {
+  padding-left: 24px;
+  color: var(--cc-text-secondary, #6c7076);
+}[data-host="desktop"] .option-item.selected .option-description {
+  color: var(--cc-text-secondary, #6c7076);
+}
+
+/* 标题 = text-primary（契约口径）。浅色档宿主注入的 --vscode-foreground 是
+   #202020，与 --cc-text-primary #1F2329 不是同一值；选中项沿用同色，
+   不因选中加深（契约「selection changes only the indicator」）。 */
+[data-host="desktop"] .option-label,
+[data-host="desktop"] .option-item.selected .option-label {
+  color: var(--cc-text-primary, #1f2329);
+}
+
+/* 选中：只换指示器 —— 透明底 + 与默认同一条描边（不加强、不填充） */
+[data-host="desktop"] .option-item.selected {
+  background-color: transparent;
+  border-color: var(--cc-border, #dcdfe6);
+}
+
+/* hover / 选中-hover：底保持透明，只把卡片描边加深一档 */
+[data-host="desktop"][data-theme="light"]
+  .option-item:not(:disabled):hover {
+  border-color: #a8adb4;
+}
+[data-host="desktop"][data-theme="dark"] .option-item:not(:disabled):hover {
+  border-color: #626a6f;
+}
+
 /* 会话内 AskUserQuestion 已答摘要（tool 消息 result 区 Q&A 行）同偏小
    （12px/16）→ 题目 14px/500、答案 14px/400，行高 22，与桌面正文同档。 */
 [data-host="desktop"] .ask-user-result-q {
@@ -4306,6 +4450,11 @@
    取值同源：`--cc-settings-border` = `--vscode-panel-border` = `--cc-border-light`，与参考件
    的 `--vscode-widget-border` 在桌面端是同一条 token（实测渲染色 `#e4e7ed` / `#34393c` 逐值相同）。
 
+   ⚠️ 2026-10-23 起本节三条规则已被下方「1023 评论：作用域单选卡按 skill 契约重做」
+   整段替换（本段只留演进记录）：静止描边 `--cc-settings-border` → `--cc-border`、
+   hover → #A8ADB4 / #626A6F、选中不再有 `--cc-fill-pressed` 填充面、
+   禁用 opacity .6 → .5。上面这段「四态取值」的描述属 1009 当轮口径，实际生效值见下一节。
+
    写法：`background` / `border-color` 只覆盖取值，**`border-width: 1px` 不重声明** ⇒ 盒几何
    零位移（描边本来占位）；两条 `:not(...)` 是必需的，否则本块 (0,4,0) 会盖掉 base 的
    `.settings-scope-option.is-selected` (0,2,0) 与 `:disabled`（(0,2,0)），把选中/禁用一起抹平。
@@ -4313,21 +4462,166 @@
    那条 —— 与加载顺序无关。
    反证（IDE 档不受影响）：同一页面把 `documentElement.dataset.host` 切成 `ide`，本块整段失配，
    逐值回到 base（填充面 `#f0f2f5` / 描边透明 / `cursor: default` / hover 描边 `#e4e7ed`）。 */
-[data-host="desktop"] .settings-scope-option:not(:disabled):not(.is-selected) {
+/* ═══ 1023 评论：作用域单选卡按 skill「Desktop Radio and Checkbox / Choice card」
+   契约重做（仅桌面端）════════════════════════════════════════════════════════
+   设计师 2026-10-23：「设置页 checkboxes 也修改」——追问两轮后点名
+   「插件市场『安装作用域』单选卡」（`button.settings-scope-option`，本身是 radio）。
+   契约 `references/common-components.md` §Choice controls（2026-10-23 用户确认版）
+   对这张卡的要求，逐条落到下面几段（base 一字未动 ⇒ IDE / JetBrains 保持宿主口径）：
+
+     指示器 16×16：未选中 1px 圆环，浅 `--cc-text-secondary` #6C7076 /
+       深 `--cc-text-placeholder` #858B8F；选中 = 实心 `--cc-action-primary` 面
+       （浅 #1F2329 / 深 #E0E3E5）+ `--cc-action-primary-text` 圆点
+       （直径 浅 6px / 深 7px）。“Solid selected surface, not the earlier hollow
+       checked treatment”。
+     卡片：r12（`--cc-radius-lg`）/ 内衬 8×12 / 卡间 8px / 1px `--cc-border`；
+       默认与选中**同为透明底 + 同一条描边**（选中只换指示器，不加底色、不加强
+       标题字重、不改描述色）；hover 只加深描边（浅 #A8ADB4 / 深 #626A6F），
+       选中-hover 同一条。
+     文本：标题 14/22 · 500 `--cc-text-primary`；描述 12/20 · 400
+       `--cc-text-secondary`；标题与描述之间 0 额外间距。
+     焦点：键盘 focus-visible 用 2px outline + 2px offset（取选中指示色
+       `--cc-action-primary`），鼠标点击不出框 —— 见本节末尾。
+     禁用：整卡 50% opacity + `not-allowed`，指示器状态保留，hover 描边不生效。
+
+   取值来源与 1023 对话流那批（本节上方 `.option-item` 块）同一套 token；
+   与 1009 那轮的差异只在「静止描边 `--cc-settings-border` → `--cc-border`、
+   hover `--cc-border` → #A8ADB4 / #626A6F、选中态不再有填充面」——旧值的理由
+   是当时还没有单选卡契约，现以契约值为准。 */
+
+[data-host="desktop"] .settings-scope-option:not(:disabled) {
   background: transparent;
-  border-color: var(--cc-settings-border);
+  border-color: var(--cc-border, #dcdfe6);
 }
 
-[data-host="desktop"]
-  .settings-scope-option:not(:disabled):not(.is-selected):hover {
-  border-color: var(--cc-border);
+[data-host="desktop"][data-theme="light"]
+  .settings-scope-option:not(:disabled):hover {
+  background: transparent;
+  border-color: #a8adb4;
+}
+
+[data-host="desktop"][data-theme="dark"]
+  .settings-scope-option:not(:disabled):hover {
+  background: transparent;
+  border-color: #626a6f;
 }
 
 [data-host="desktop"] .settings-scope-option:disabled,
 [data-host="desktop"] .settings-scope-option:disabled:hover {
   background: transparent;
-  border-color: var(--cc-settings-border);
+  border-color: var(--cc-border, #dcdfe6);
+  opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* 卡片几何：r12 / 内衬 8×12 / 卡间 8px（base：r8 / 14×16 / 12px） */
+[data-host="desktop"] .settings-scope-list {
+  gap: 8px;
+}
+
+[data-host="desktop"] .settings-scope-option {
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--cc-radius-lg, 12px);
+}
+
+/* 文本：标题 14/22 · 500；标题后的 `（user）` 12/20 · 500；描述 12/20 · 400。
+   「Selection changes only the indicator」⇒ 选中态不换字色（base 的
+   `.is-selected … { color: --cc-text-regular }` 两条被这里压掉）。 */
+[data-host="desktop"] .settings-scope-option-body {
+  gap: 0;
+}
+
+[data-host="desktop"] .settings-scope-option-title {
+  color: var(--cc-text-primary, #1f2329);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 22px;
+}
+
+[data-host="desktop"] .settings-scope-option-title em {
+  color: var(--cc-text-secondary, #6c7076);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+[data-host="desktop"] .settings-scope-option-desc,
+[data-host="desktop"]
+  .settings-scope-option.is-selected
+  .settings-scope-option-desc {
+  color: var(--cc-text-secondary, #6c7076);
+}
+[data-host="desktop"]
+  .settings-scope-option.is-selected
+  .settings-scope-option-title
+  em {
+  color: var(--cc-text-secondary, #6c7076);
+}
+
+[data-host="desktop"] .settings-scope-option-project,
+[data-host="desktop"] .settings-scope-option-project-path,
+[data-host="desktop"]
+  .settings-scope-option.is-selected
+  .settings-scope-option-project {
+  color: var(--cc-text-secondary, #6c7076);
+}
+
+[data-host="desktop"] .settings-scope-option-project-name,
+[data-host="desktop"]
+  .settings-scope-option.is-selected
+  .settings-scope-option-project-name {
+  color: var(--cc-text-primary, #1f2329);
+}
+
+/* 单选指示 16×16：1px 圆环（base 1.5px + `--cc-settings-border`）。
+   `margin-top: 3px` = 与标题 22px 行盒居中对齐（(22 − 16) / 2），契约要求
+   「Align the indicator with the first 22px title line box」。 */
+[data-host="desktop"] .settings-scope-radio {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  border-width: 1px;
+  border-color: var(--cc-text-secondary, #6c7076);
+  background: transparent;
+}
+
+[data-host="desktop"][data-theme="dark"] .settings-scope-radio {
+  border-color: var(--cc-text-placeholder, #858b8f);
+}
+
+/* 选中：实心 action-primary 面（不再走 focusBorder 空心环）+ action-primary-text 圆点。
+   圆点直径 浅 6px / 深 7px = 契约表。 */
+[data-host="desktop"] .settings-scope-option.is-selected .settings-scope-radio {
+  border-color: var(--cc-action-primary, #1f2329);
+  background: var(--cc-action-primary, #1f2329);
+}
+
+[data-host="desktop"]
+  .settings-scope-option.is-selected
+  .settings-scope-radio::after {
+  width: 6px;
+  height: 6px;
+  background: var(--cc-action-primary-text, #ffffff);
+}
+
+[data-host="desktop"][data-theme="dark"]
+  .settings-scope-option.is-selected
+  .settings-scope-radio::after {
+  width: 7px;
+  height: 7px;
+}
+
+/* 键盘焦点：契约「2px outline with 2px offset，using the selected indicator color」。
+   base 在 `.settings-page / .plugin-market-page .settings-scope-option:focus-visible`
+   （(0,3,0)）里写的是 `outline: none` + 边框变色；这里 (0,4,0) 压过它，
+   并把边框还原成卡片描边（焦点只画外圈，不改卡片边界）。 */
+[data-host="desktop"]
+  .settings-scope-option:not(:disabled):focus-visible {
+  outline: 2px solid var(--cc-action-primary, #1f2329);
+  outline-offset: 2px;
+  border-color: var(--cc-border, #dcdfe6);
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -5139,6 +5433,13 @@
   [data-testid="artifacts-category-dialog"]:has(
     [data-testid="artifacts-category-confirm"].artifacts-primary-btn
   )
+) .artifacts-field-stack + .artifacts-hint,
+[data-host="desktop"] .artifacts-modal:is(
+  [data-testid="artifacts-new-dialog"],
+  [data-testid="artifacts-share-dialog"],
+  [data-testid="artifacts-category-dialog"]:has(
+    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  )
 ) .artifacts-fieldset + .artifacts-hint {
   margin-top: -8px; /* 组间距 16 − 8 = 契约要求的 8 */
 }
@@ -5318,4 +5619,135 @@
 ) .artifacts-modal-close:focus-visible {
   outline: 2px solid var(--cc-border-focus, #2f5edb);
   outline-offset: 2px;
+}
+
+/* ═══ 1023 表单字段色彩 / 焦点（桌面端字段族）═══
+   契约：`codechat-desktop-skill` main（PR #8，2026-10-23 用户确认版）
+     · references/common-components.md §Input fields →「Desktop form field colors and focus」
+     · 同节「Desktop select trigger and menu composition」
+   她是分两步点名的：先「读最新推送的 skill 优化表单样式，先优化设置页的看看效果」，
+   再对着 `div.desktop-sidebar-search-field` 说「可以继续优化这里的表单样式」。
+   所以这里只提供**共享的字段映射**（契约原话：Use a shared desktop form-field mapping），
+   具体落到哪一族字段由各族自己的选择器决定 —— 当前两族：
+     ① 设置页行内字段（`.settings-page` 下的文本 / 数字 / 多行 / 桌面自绘下拉触发器）
+     ② 侧栏「搜索会话」字段（`.desktop-sidebar-search-field`，写在 SidebarSessionSearch.css）
+   不动的面：插件市场页（`.plugin-market-page`）、对话输入区、各类弹窗里的表单、
+   原生 `select.settings-select`（IDE 宿主专属）、IDE / VS Code / JB 宿主（base 段零改动）。
+   做法：契约要求「未命中的值就地作用域化、不要改全局 placeholder / border / fill 角色」，
+   因此这些值只新增 `--cc-field-*` 命名空间，不覆盖任何既有 token。
+   几何沿用各族已确立的档位（设置页 32 高；侧栏 30 高），只改配色、状态与 0923 已定的 r8。 */
+
+[data-host="desktop"] {
+  --cc-field-bg: #ffffff;
+  --cc-field-border: #c5c9ce;
+  --cc-field-border-hover: #6c7076;
+  --cc-field-border-focus: #565a60;
+  --cc-field-text: var(--cc-text-primary, #1f2329);
+  --cc-field-placeholder: #979ca2;
+  --cc-field-bg-disabled: #f7f8fa;
+  --cc-field-text-disabled: #a8abb2;
+  --cc-field-border-disabled: #e4e7ed;
+}
+
+[data-host="desktop"][data-theme="dark"] {
+  --cc-field-bg: #1b1d1e;
+  --cc-field-border: #414649;
+  --cc-field-border-hover: #858b8f;
+  --cc-field-border-focus: #a0a5a8;
+  --cc-field-text: var(--cc-text-primary, #e5e7e8);
+  --cc-field-placeholder: #6e757a;
+  --cc-field-bg-disabled: #181a1b;
+  --cc-field-text-disabled: #62686b;
+  --cc-field-border-disabled: #34393c;
+}
+
+/* 静止：底 / 边 / 字三件套。输入值用一级字色，
+   与「占位色只属于占位符」的分工配套（契约明确不允许实际值吃占位色） */
+[data-host="desktop"] .settings-page
+  :is(
+    .settings-text-input,
+    .settings-number-input,
+    .settings-textarea,
+    .settings-select-trigger
+  ) {
+  background: var(--cc-field-bg);
+  border-color: var(--cc-field-border);
+  color: var(--cc-field-text);
+}
+
+/* hover：只换描边、不动底色（契约原句 hover changes only border color） */
+[data-host="desktop"] .settings-page
+  :is(
+    .settings-text-input,
+    .settings-number-input,
+    .settings-textarea,
+    .settings-select-trigger
+  ):hover:not(:disabled) {
+  border-color: var(--cc-field-border-hover);
+}
+
+/* focus：1px 边框就地变色（对齐原边，不外加环、不位移）；
+   下拉展开时同样保留这条边 —— 即便焦点已经移进选项（契约的 expanded 要求） */
+[data-host="desktop"] .settings-page
+  :is(
+    .settings-text-input,
+    .settings-number-input,
+    .settings-textarea,
+    .settings-select-trigger
+  ):focus:not(:disabled),
+[data-host="desktop"]
+  .settings-page
+  .settings-select-trigger[aria-expanded="true"]:not(:disabled) {
+  border-color: var(--cc-field-border-focus);
+  outline: none;
+}
+
+/* 1023 评论：「下拉展开三角翻转」。展开时把三角绕自身中心转 180° —— 与 0923 那轮
+   两颗展开态 chevron 同一手法：同一条官方矢量整体旋转，描边逐像素不变，只是朝上。
+   伪元素盒 8×4.5、`transform-origin` 默认就是盒心，故直接叠 rotate 即可；
+   translateY(-50%) 必须保留（它负责垂直居中），旋转写在后面才不会丢掉居中。
+   只作用于桌面自绘触发器：原生 `select.settings-select`（IDE 宿主）的系统弹层无法
+   在 CSS 里感知展开，那一处保持原样。 */
+[data-host="desktop"] .settings-select-trigger[aria-expanded="true"]::after {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+/* 占位符：独立占位色 + 显式 opacity 1（避免浏览器再压一层） */
+[data-host="desktop"] .settings-page
+  :is(
+    .settings-text-input,
+    .settings-number-input,
+    .settings-textarea
+  )::placeholder {
+  color: var(--cc-field-placeholder);
+  opacity: 1;
+}
+
+/* 停用：专用「面 / 字 / 边」三色，取代原来的整块 opacity .6（契约：
+   不要把整组字段压暗，标签与说明各自保持自己的层级） */
+[data-host="desktop"] .settings-page
+  :is(
+    .settings-text-input,
+    .settings-number-input,
+    .settings-textarea,
+    .settings-select-trigger
+  ):disabled {
+  background: var(--cc-field-bg-disabled);
+  border-color: var(--cc-field-border-disabled);
+  color: var(--cc-field-text-disabled);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+/* 停用下拉的三角跟着字色走（三角不在 select 内，不会自动追随） */
+[data-host="desktop"]
+  .settings-page
+  .settings-select-trigger:disabled::after {
+  background: var(--cc-field-text-disabled);
+  opacity: 1;
+}
+
+/* 行内说明文字：契约要求 supporting description = text-secondary 12/20 */
+[data-host="desktop"] .settings-page .settings-row-copy .settings-row-hint {
+  color: var(--cc-text-secondary, #6c7076);
 }
