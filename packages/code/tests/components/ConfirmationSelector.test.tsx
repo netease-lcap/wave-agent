@@ -8,7 +8,7 @@ import {
   afterEach,
   type Mock,
 } from "vitest";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { ConfirmationSelector } from "../../src/components/ConfirmationSelector.js";
 import { stripAnsiColors } from "wave-agent-sdk";
 import type { PermissionDecision } from "wave-agent-sdk";

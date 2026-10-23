@@ -1,4 +1,4 @@
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import React, { useEffect } from "react";
 import { describe, it, expect, vi } from "vitest";
 import { useTasks } from "../../src/hooks/useTasks.js";

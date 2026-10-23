@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { MessageList } from "../../src/components/MessageList.js";
 import { useTasks } from "../../src/hooks/useTasks.js";

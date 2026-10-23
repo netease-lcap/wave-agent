@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import { MarketplaceView } from "../../src/components/MarketplaceView.js";
 import { PluginManagerContext } from "../../src/contexts/PluginManagerContext.js";

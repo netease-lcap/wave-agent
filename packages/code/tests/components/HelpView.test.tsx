@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { HelpView } from "../../src/components/HelpView.js";
 import { stripAnsiColors, type SlashCommand } from "wave-agent-sdk";
 

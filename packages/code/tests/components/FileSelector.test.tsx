@@ -1,5 +1,5 @@
 import React from "react";
-import { render, cleanup } from "ink-testing-library";
+import { render, cleanup } from "../helpers/inkHarness.js";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { FileSelector, FileItem } from "../../src/components/FileSelector.js";
 

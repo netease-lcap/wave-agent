@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import {
   ConfirmationDetails,
   type ConfirmationDetailsProps,

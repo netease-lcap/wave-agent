@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import React from "react";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { ModelSelector } from "../../src/components/ModelSelector.js";
 
 describe("ModelSelector", () => {

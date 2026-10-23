@@ -1,5 +1,5 @@
 import React from "react";
-import { render as originalRender } from "ink-testing-library";
+import { render as originalRender } from "../helpers/inkHarness.js";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 let unmounts: Array<() => void> = [];

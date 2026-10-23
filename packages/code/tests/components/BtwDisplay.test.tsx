@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { describe, it, expect } from "vitest";
 import { BtwDisplay } from "../../src/components/BtwDisplay.js";
 import { BtwState } from "../../src/managers/inputReducer.js";

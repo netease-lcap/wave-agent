@@ -8,7 +8,7 @@ import {
   afterEach,
   type Mock,
 } from "vitest";
-import { render as originalRender } from "ink-testing-library";
+import { render as originalRender } from "../helpers/inkHarness.js";
 import {
   InputBox,
   INPUT_PLACEHOLDER_TEXT_PREFIX,

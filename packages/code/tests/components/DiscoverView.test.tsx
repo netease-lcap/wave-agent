@@ -1,5 +1,5 @@
 import React from "react";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import { DiscoverView } from "../../src/components/DiscoverView.js";
 import { PluginManagerContext } from "../../src/contexts/PluginManagerContext.js";

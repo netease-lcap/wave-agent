@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import { ConfirmationDetails } from "../../src/components/ConfirmationDetails.js";
 import { stripAnsiColors } from "wave-agent-sdk";
 import chalk from "chalk";

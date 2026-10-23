@@ -1,4 +1,4 @@
-import { render } from "ink-testing-library";
+import { render } from "../helpers/inkHarness.js";
 import React, { createRef } from "react";
 import { describe, it, expect, vi } from "vitest";
 import { useInputManager } from "../../src/hooks/useInputManager.js";
