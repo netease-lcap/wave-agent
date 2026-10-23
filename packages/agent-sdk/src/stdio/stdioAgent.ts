@@ -212,16 +212,9 @@ export class StdioAgent {
   public contextUsagePercent: number | undefined;
   public permissionMode: PermissionMode | undefined;
   /**
-   * The list this host keeps (see `refreshMessages`). Hosts push it to the
-   * renderer and mirror every later append/edit into it. It starts at the last
-   * compaction, so it is bounded by one context window rather than by how long
-   * the session has been running.
-   */
-  public messages: Message[] = [];
-  /**
-   * Totals for the thread behind this window (message count, first user body,
-   * newest timestamp), refreshed together with the window — the window itself
-   * cannot answer any of them.
+   * Totals for the thread behind this list (message count, first user body,
+   * newest timestamp), refreshed on every `getMessages()` pull — the pulled
+   * list itself cannot answer any of them, and it is discarded after the call.
    */
   public threadSummary: MessageThreadSummary | undefined;
   public queuedMessages: QueuedMessage[] = [];
@@ -417,16 +410,18 @@ export class StdioAgent {
   }
 
   /**
-   * 整份列表读一次。**不写 `this.messages` 缓存**。
+   * 取整份列表（= 最近一次压缩 + 它之后的消息）。**不留缓存**：这份数组只在
+   * 调用方手里活一次（宿主推给渲染进程、导出读完即走），这之后宿主对消息内容
+   * 零状态（spec ui/message-rendering-system.md「宿主不保留消息内容，用的时候
+   * 现取」）。
    *
-   * 一次性查询：缓存由 `refreshMessages()` 维护，这个给「读一眼就走」的调用方
-   * （导出）。列表从最近一次压缩开始，所以它也不是「跨压缩边界的全史」。
+   * 顺带刷新两项**状态**（不是消息内容，宿主可以留着）：`threadSummary`
+   * （标题与统计）与 `contextUsagePercent`（用量环）。
    */
   async getMessages(): Promise<Message[]>;
   /**
-   * 带参数取数（`since` 重连补差 / `limit` 从尾部切一段）。**不写
-   * `this.messages` 缓存**，也不回写 `contextUsagePercent`——它是一次只读查询。
-   * 要刷新缓存用 `refreshMessages()`。
+   * 带参数取数（`since` 重连补差 / `limit` 从尾部切一段）。只读查询：连上面那
+   * 两项状态也不回写。
    */
   async getMessages(window: MessageWindow): Promise<MessageWindowResult>;
   async getMessages(
@@ -438,20 +433,6 @@ export class StdioAgent {
       this.sessionId,
     )) as MessageWindowResult;
     if (window) return result;
-    return result.messages;
-  }
-
-  /**
-   * 把整份列表拉进 `this.messages`（首屏 / 恢复会话 / 清空后的重建 / 副本被丢弃
-   * 后切回）——唯一会写这份缓存的读路径。
-   */
-  async refreshMessages(): Promise<Message[]> {
-    const result = (await this.client.request(
-      "getMessages",
-      undefined,
-      this.sessionId,
-    )) as MessageWindowResult;
-    this.messages = result.messages;
     if (result.threadSummary) {
       this.threadSummary = result.threadSummary;
     }
@@ -788,10 +769,7 @@ export class StdioAgent {
       }
       case "assistantMessageDiscarded": {
         const p = params as { messageId: string };
-        // Keep the cached list consistent too — hosts read `messages` after
-        // pulls, and a stale half message there would come back into view.
         if (p.messageId) {
-          this.messages = this.messages.filter((m) => m.id !== p.messageId);
           this.callbacks.onAssistantMessageDiscarded?.(p.messageId);
         }
         break;

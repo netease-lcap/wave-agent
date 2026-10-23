@@ -343,22 +343,11 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     sessionRepoRoot: string | undefined;
     latestTotalTokens = 0;
     /**
-     * 宿主缓存：整份列表（`refreshMessages` 写的）。
-     *
-     * 写非空列表时同时记进 `daemonMessages`：真会话的显示流活在 CLI 一侧，
-     * 宿主丢掉自己那份副本不会让它消失，切回来重拉还得拉得到东西。空列表是
-     * 宿主的「丢弃副本」动作（spec ui/message-rendering-system.md「宿主只留下
-     * 被 pane 显示的会话副本」），不能把 CLI 那份一起抹掉。
+     * CLI 侧的显示流 —— `getMessages` 的取数源。宿主对消息内容零状态（spec
+     * ui/message-rendering-system.md「宿主不保留消息内容，用的时候现取」），
+     * 所以这个类上**没有** `messages` 字段：谁想读消息，只能调 `getMessages()`
+     * 现取，拿到的那份用完即弃。
      */
-    private cacheMessages: unknown[] = [];
-    get messages(): unknown[] {
-      return this.cacheMessages;
-    }
-    set messages(next: unknown[]) {
-      this.cacheMessages = next;
-      if (next.length > 0) this.daemonMessages = next;
-    }
-    /** CLI 侧的显示流（`getMessages` / `refreshMessages` 的取数源）。 */
     daemonMessages: unknown[] | undefined = undefined;
     threadSummary:
       | { messageCount: number; firstUserText?: string }
@@ -394,8 +383,8 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     ) {
       this.sessionId = sessionId;
       // Mirror the real StdioAgent: restore is a bare RPC — the daemon switches
-      // to the session and holds its history daemon-side. The desktop cache is
-      // NOT filled here; the host must pull it via getMessages().
+      // to the session and holds its history daemon-side. Nothing is loaded
+      // here; the host pulls it with getMessages() when it needs the list.
       this.daemonMessages = [
         {
           id: "restored-u1",
@@ -408,15 +397,13 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     sendMessage = vi.fn(async () => undefined);
     bang = vi.fn(async () => undefined);
     abortMessage = vi.fn(async () => undefined);
-    // Mirror the real flow: messages clear first, then a fresh sessionId fires
-    // through the sessionIdChange notification.
+    // Mirror the real flow: the session's content is gone, then a fresh
+    // sessionId fires through the sessionIdChange notification.
     clearMessages = vi.fn(async function (this: {
-      messages: unknown[];
       daemonMessages?: unknown[];
       sessionId?: string;
       callbacks: Record<string, (id: string) => void>;
     }) {
-      this.messages = [];
       this.daemonMessages = [];
       const newId = `sess-${++h.agentCounter}`;
       this.sessionId = newId;
@@ -426,35 +413,27 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     rewindToMessage = vi.fn(async () => ({ inputContent: "rewound draft" }));
     askBtw = vi.fn(async () => "**Sunny** weather");
     getFullMessageThread = vi.fn(async function (this: {
-      messages?: unknown[];
+      daemonMessages?: unknown[];
     }) {
-      return { messages: this.messages ?? [], sessionIds: [] };
+      return { messages: this.daemonMessages ?? [], sessionIds: [] };
     });
-    // Mirrors StdioAgent: a windowed read is a **read-only** read over the
-    // daemon's thread (a restored session lives daemon-side until a refresh),
-    // and it never touches the cache.
+    // Mirrors StdioAgent.getMessages() with no arguments: the whole list, and
+    // the two **state** side effects the host is allowed to keep (thread
+    // summary + context usage). No cache is written — the array is discarded.
     getMessages = vi.fn(async function (this: {
       daemonMessages?: unknown[];
-      messages?: unknown[];
+      threadSummary:
+        | { messageCount: number; firstUserText?: string }
+        | undefined;
     }) {
-      return { messages: this.daemonMessages ?? this.messages ?? [] };
-    });
-    // Mirrors StdioAgent.refreshMessages: the one path that writes the cache,
-    // and it writes the whole list.
-    refreshMessages = vi.fn(async function (this: {
-      daemonMessages?: unknown[];
-      messages?: unknown[];
-      threadSummary: { messageCount: number } | undefined;
-    }) {
-      const all = (this.daemonMessages ?? this.messages ?? []) as Array<{
+      const all = (this.daemonMessages ?? []) as Array<{
         id?: string;
+        role?: string;
+        blocks?: Array<{ type?: string; content?: string }>;
       }>;
-      this.messages = all;
-      // 条数与首条用户正文由 SDK 的计数器给出（列表从最近一次压缩开始，
-      // 里面可能已经没有那条了）。
-      const firstUser = all.find(
-        (m) => (m as { role?: string }).role === "user",
-      ) as { blocks?: Array<{ type?: string; content?: string }> } | undefined;
+      const firstUser = all.find((m) => m.role === "user") as
+        | { blocks?: Array<{ type?: string; content?: string }> }
+        | undefined;
       const firstText = firstUser?.blocks?.find(
         (b) => b.type === "text",
       )?.content;
@@ -789,6 +768,47 @@ function fireSessionId(agent: ReturnType<typeof lastAgent>, sessionId: string) {
   agent.callbacks.onSessionIdChange(sessionId);
 }
 
+let seededMessageCounter = 0;
+/**
+ * 让 agent 成为「一条有内容的会话」——用一个真实的用户消息事件表达。
+ *
+ * 宿主对消息内容零状态（spec ui/message-rendering-system.md「宿主不保留消息
+ * 内容，用的时候现取」）：它没有自己的数组可以塞，判据是「收到过消息事件」与
+ * 会话索引，所以造数据也只能造事件（CLI 侧那份 `daemonMessages` 跟着长，重拉
+ * 时才拉得到东西）。
+ */
+function fireUserMessage(
+  agent: ReturnType<typeof lastAgent>,
+  text = "你好",
+): {
+  id: string;
+  role: string;
+  blocks: Array<{ type: string; content: string }>;
+} {
+  const message = {
+    id: `u-${++seededMessageCounter}`,
+    role: "user",
+    blocks: [{ type: "text", content: text }],
+  };
+  agent.daemonMessages = [
+    ...((agent.daemonMessages as unknown[] | undefined) ?? []),
+    message,
+  ];
+  agent.callbacks.onUserMessageAdded(message);
+  return message;
+}
+
+/** Seed a live conversation: an id-change notification, then a real user turn. */
+function seedConversation(
+  agent: ReturnType<typeof lastAgent>,
+  sessionId: string,
+  text = "你好",
+) {
+  fireSessionId(agent, sessionId);
+  fireUserMessage(agent, text);
+  return agent;
+}
+
 async function readyHost(winWidth?: number, winHeight?: number) {
   const ctx = createHost(winWidth ?? 1280, winHeight ?? 800);
   // workdir is never persisted — pick it from recents like the real UI flow.
@@ -1006,8 +1026,7 @@ describe("file suggestions", () => {
   it("stays anchored to the session root after bash cd drifts the working directory", async () => {
     const { host, sent } = await readyHost();
     const first = lastAgent();
-    first.messages = [{ id: "m-1" }];
-    fireSessionId(first, "sess-1");
+    seedConversation(first, "sess-1");
     await host.handleWebviewMessage({
       command: "desktopOpenPane",
       workdir: "/work/a",
@@ -1349,6 +1368,28 @@ describe("fresh launch auto new-session", () => {
     expect(sent("focusInput").length).toBeGreaterThanOrEqual(1);
   });
 
+  it("flags a freshly spawned pane as having no content, then flips it on the first message", async () => {
+    // The renderer cannot tell "brand-new session" from "existing session whose
+    // transcript was emptied" (`/rewind` back to the first message, `/clear`) —
+    // both show an empty list. `hasContent` is the host's answer, and the
+    // webview gates the new-session worktree flow on it
+    // (spec desktop-sessions.md「基于分支的 worktree 隔离会话」场景 1/9).
+    const { host, store, sent } = createHost();
+    store.addRecentWorkdir({ host: "local", path: "/work/a" });
+    h.existingPaths.add("/work/a");
+
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+
+    expect(sent("desktopPanes").at(-1)?.panes[0].hasContent).toBe(false);
+
+    // The first message flips it; the host pushes panes so the renderer's
+    // copy cannot stay stale at the value from spawn time.
+    fireUserMessage(lastAgent(), "你好");
+
+    expect(sent("desktopPanes").at(-1)?.panes[0].hasContent).toBe(true);
+  });
+
   it("keeps the blank choose-a-directory welcome when there are no recents", async () => {
     const { host, sent } = createHost();
 
@@ -1530,7 +1571,7 @@ describe("agent notifications", () => {
     expect(sent("updateMessages")).toHaveLength(0);
   });
 
-  it("restoreSession pulls the transcript via refreshMessages (re-attach regression)", async () => {
+  it("restoreSession 的首屏列表来自一次 getMessages 现取（不是缓存残留）", async () => {
     const { host } = await readyHost();
 
     await host.handleWebviewMessage({
@@ -1538,25 +1579,25 @@ describe("agent notifications", () => {
       sessionId: "sess-x",
     });
 
-    // The daemon emits no transcript on restore — the host must pull it, or a
-    // re-attached session (remote or local) opens with an empty message list.
+    // The daemon emits no transcript on restore and this host keeps none —
+    // the list has to be pulled, or a re-attached session (remote or local)
+    // opens with an empty message list.
     await vi.waitFor(() => {
-      expect(lastAgent().refreshMessages).toHaveBeenCalled();
+      expect(lastAgent().getMessages).toHaveBeenCalled();
     });
   });
 
   it("onMessagesChange never pushes the full list — each message arrives once via appendMessage", async () => {
     const { sent } = await readyHost();
     const agent = lastAgent();
-    // Contract: the desktop does not subscribe to messagesChange at all (the
-    // agent keeps its own cache, fed by incremental appends below).
+    // Contract: the desktop does not subscribe to messagesChange at all —
+    // incremental notifications are forwarded, never turned into a snapshot.
     expect(agent.callbacks.onMessagesChange).toBeUndefined();
     const userMsg = {
       id: "u1",
       role: "user",
       blocks: [{ type: "text", content: "你好" }],
     };
-    agent.messages = [userMsg];
     agent.callbacks.onUserMessageAdded(userMsg);
 
     expect(sent("updateMessages")).toHaveLength(0);
@@ -1565,88 +1606,48 @@ describe("agent notifications", () => {
     ]);
   });
 
-  it("drops a discarded assistant message from both the cache and the pane's webview", async () => {
+  it("discarding a half assistant message only tells the pane — the host has no list to fix", async () => {
     const { sent } = await readyHost();
     const agent = lastAgent();
-    const userMsg = {
-      id: "u1",
-      role: "user",
-      blocks: [{ type: "text", content: "你好" }],
-    };
     const partialAssistant = {
       id: "a-partial",
       role: "assistant",
       blocks: [{ type: "text", content: "我先看看", stage: "streaming" }],
     };
-    agent.messages = [userMsg, partialAssistant];
     agent.callbacks.onAssistantMessageAdded(partialAssistant);
 
     agent.callbacks.onAssistantMessageDiscarded("a-partial");
 
-    // The cache must forget it too: a later setInitialState replays the cached
-    // list, which would otherwise resurrect the half message.
-    expect(agent.messages).toEqual([userMsg]);
+    // No mirror to keep consistent: the next pull simply will not contain the
+    // half message (spec「宿主不保留消息内容，用的时候现取」场景 2).
+    expect("messages" in agent).toBe(false);
     expect(sent("discardMessage")).toEqual([
       expect.objectContaining({ messageId: "a-partial" }),
     ]);
   });
 
-  it("mirrors an error block under the LATEST user message — new assistant message, not the stale one from a previous turn", async () => {
+  it("error blocks are forwarded as text — the renderer places the block with its own rule", async () => {
     const { sent } = await readyHost();
     const agent = lastAgent();
-    const userMsg = {
-      id: "u1",
-      role: "user",
-      blocks: [{ type: "text", content: "你好" }],
-    };
-    const assistantMsg = {
-      id: "a1",
-      role: "assistant",
-      blocks: [{ type: "text", content: "好的" }],
-    };
-    const latestUserMsg = {
-      id: "u2",
-      role: "user",
-      blocks: [{ type: "text", content: "帮我执行 X" }],
-    };
-    agent.messages = [userMsg, assistantMsg, latestUserMsg];
 
     agent.callbacks.onErrorBlockAdded("插件执行失败");
 
-    // The error belongs below the LATEST user message: appending to the
-    // previous turn's assistant would surface it above the newest message
-    // and accumulate there across repeated errors.
-    expect(agent.messages).toHaveLength(4);
-    const errorMessage = agent.messages[3] as {
-      role: string;
-      blocks: Array<{ type: string; content: string }>;
-    };
-    expect(errorMessage.role).toBe("assistant");
-    expect(errorMessage.blocks).toEqual([
-      { type: "error", content: "插件执行失败" },
-    ]);
-    // Previous turn's assistant message is left untouched.
-    expect((agent.messages[1] as { blocks: unknown[] }).blocks).toHaveLength(1);
+    // APPEND_ERROR_BLOCK (webview reducer) puts the block on the last message
+    // when it is an assistant one, otherwise on a new assistant message below
+    // the latest user message — the same rule the host used to apply to its own
+    // copy, and what VS Code / JetBrains have always relied on. The host sends
+    // the text only, and holds nothing.
     expect(sent("updateErrorBlock")).toEqual([
       expect.objectContaining({ error: "插件执行失败" }),
     ]);
+    expect(sent("appendMessage")).toHaveLength(0);
+    expect("messages" in agent).toBe(false);
   });
 
-  it("streaming content deltas are mirrored into the agent cache so a session switch shows the full assistant reply", async () => {
-    const { host, sent } = await readyHost();
+  it("流式增量原样转发，宿主不再合并（自己那份副本已经不存在）", async () => {
+    const { sent } = await readyHost();
     const agent = lastAgent();
-    const userMsg = {
-      id: "u1",
-      role: "user",
-      blocks: [{ type: "text", content: "你好" }],
-    };
-    agent.messages = [userMsg];
-    agent.callbacks.onUserMessageAdded(userMsg);
-    // The assistant message arrives empty — its content only exists as
-    // streaming deltas afterwards. The cache must accumulate them, otherwise a
-    // session switch (setInitialState) renders a blank reply.
     const assistantMsg = { id: "a1", role: "assistant", blocks: [] };
-    agent.messages = [...agent.messages, assistantMsg];
     agent.callbacks.onAssistantMessageAdded(assistantMsg);
     agent.callbacks.onAssistantContentUpdated({
       messageId: "a1",
@@ -1658,118 +1659,39 @@ describe("agent notifications", () => {
       chunk: " world",
       stage: "end",
     });
-
-    // Re-push pane state (what a session switch does) — the cached list must
-    // carry the full accumulated text, not the initial empty block.
-    await host.handleWebviewMessage({ command: "webviewReady" });
-    const messages = sent("setInitialState").at(-1)?.messages as Array<{
-      id: string;
-      blocks: Array<{ type: string; content: string; stage?: string }>;
-    }>;
-    expect(messages.find((m) => m.id === "a1")?.blocks).toEqual([
-      expect.objectContaining({
-        type: "text",
-        content: "Hello world",
-        stage: "end",
-      }),
-    ]);
-  });
-
-  it("reasoning deltas are mirrored into the agent cache too", async () => {
-    const { host, sent } = await readyHost();
-    const agent = lastAgent();
-    const userMsg = {
-      id: "u1",
-      role: "user",
-      blocks: [{ type: "text", content: "你好" }],
-    };
-    agent.messages = [userMsg];
-    agent.callbacks.onUserMessageAdded(userMsg);
-    const assistantMsg = { id: "a1", role: "assistant", blocks: [] };
-    agent.messages = [...agent.messages, assistantMsg];
-    agent.callbacks.onAssistantMessageAdded(assistantMsg);
     agent.callbacks.onAssistantReasoningUpdated({
       messageId: "a1",
       chunk: "思考中",
-      stage: "streaming",
-    });
-    agent.callbacks.onAssistantReasoningUpdated({
-      messageId: "a1",
-      chunk: "…",
       stage: "end",
     });
-    agent.callbacks.onAssistantContentUpdated({
-      messageId: "a1",
-      chunk: "结论",
-      stage: "end",
-    });
-
-    await host.handleWebviewMessage({ command: "webviewReady" });
-    const messages = sent("setInitialState").at(-1)?.messages as Array<{
-      id: string;
-      blocks: Array<{ type: string; content: string; stage?: string }>;
-    }>;
-    const blocks = messages.find((m) => m.id === "a1")?.blocks ?? [];
-    expect(blocks.find((b) => b.type === "reasoning")).toEqual(
-      expect.objectContaining({ content: "思考中…", stage: "end" }),
-    );
-    expect(blocks.find((b) => b.type === "text")).toEqual(
-      expect.objectContaining({ content: "结论", stage: "end" }),
-    );
-  });
-
-  it("tool block updates are mirrored into the agent cache", async () => {
-    const { host, sent } = await readyHost();
-    const agent = lastAgent();
-    const userMsg = {
-      id: "u1",
-      role: "user",
-      blocks: [{ type: "text", content: "你好" }],
-    };
-    agent.messages = [userMsg];
-    agent.callbacks.onUserMessageAdded(userMsg);
-    const assistantMsg = { id: "a1", role: "assistant", blocks: [] };
-    agent.messages = [...agent.messages, assistantMsg];
-    agent.callbacks.onAssistantMessageAdded(assistantMsg);
     agent.callbacks.onToolBlockUpdated({
       messageId: "a1",
       id: "tool-1",
       name: "read_file",
-      stage: "start",
-      parameters: '{"path":',
-      parametersChunk: '"/a.txt"}',
-    });
-    agent.callbacks.onToolBlockUpdated({
-      messageId: "a1",
-      id: "tool-1",
       stage: "end",
       result: "file content",
       success: true,
     });
 
-    await host.handleWebviewMessage({ command: "webviewReady" });
-    const messages = sent("setInitialState").at(-1)?.messages as Array<{
-      id: string;
-      blocks: Array<{
-        type: string;
-        id?: string;
-        name?: string;
-        stage?: string;
-        parameters?: string;
-        result?: string;
-        success?: boolean;
-      }>;
-    }>;
-    const toolBlock = messages
-      .find((m) => m.id === "a1")
-      ?.blocks.find((b) => b.type === "tool");
-    expect(toolBlock).toMatchObject({
-      id: "tool-1",
-      name: "read_file",
+    // 「宿主原样转发、自己不留不合并」(spec 场景 2)：每条增量都到了渲染进程，
+    // 内容由它自己的 reducer 累加；宿主这边没有任何数组被写过。
+    expect("messages" in agent).toBe(false);
+    expect(sent("updateStreamingContent").at(-1)).toMatchObject({
+      paneId: "pane-1",
+      messageId: "a1",
+      chunk: " world",
       stage: "end",
-      parameters: '{"path":"/a.txt"}',
+    });
+    expect(sent("updateStreamingReasoning").at(-1)).toMatchObject({
+      paneId: "pane-1",
+      messageId: "a1",
+      chunk: "思考中",
+      stage: "end",
+    });
+    expect(sent("updateToolBlock").at(-1)?.params).toMatchObject({
+      messageId: "a1",
+      id: "tool-1",
       result: "file content",
-      success: true,
     });
   });
 
@@ -1786,8 +1708,7 @@ describe("agent notifications", () => {
       role: "user",
       blocks: [{ type: "text", content: longText }],
     };
-    agent.messages = [userMsg];
-    // 标题兜底读的是 SDK 的计数器：缓存只剩一页，那条首条消息已经不在里面。
+    // 标题优先读 SDK 的计数器：列表只剩一页，那条首条消息已经不在里面了。
     agent.threadSummary = { messageCount: 1, firstUserText: longText };
     agent.callbacks.onUserMessageAdded(userMsg);
 
@@ -1810,7 +1731,6 @@ describe("agent notifications", () => {
       role: "user",
       blocks: [{ type: "text", content: "另一条消息" }],
     };
-    agent.messages = [userMsg, second];
     agent.callbacks.onUserMessageAdded(second);
     const sessionsAfter = (
       (sent("desktopSessionTree").at(-1)?.groups as Array<{
@@ -1822,13 +1742,13 @@ describe("agent notifications", () => {
     );
   });
 
-  it("a fresh session titles itself from its own list when the thread summary is unknown", async () => {
+  it("a fresh session titles itself from the message event when the thread summary is unknown", async () => {
     const { sent } = await readyHost();
     const agent = lastAgent();
-    // 新会话没走过 restore、也没压缩过 ⇒ 这台宿主还没拉过 threadSummary（真机
-    // 上它只随 `refreshMessages` 的回包到达）。此时列表本身就是整条线程，标题
-    // 只能从它里面取——退回去读 `messages`，而不是空标题。
-    expect(agent.threadSummary).toBeUndefined();
+    // 新会话没走过 restore、也没压缩过 ⇒ 还没有任何一次 pull 带回 firstUserText
+    // （真机上它只随 `getMessages` 的回包到达）。宿主手里没有数组可翻，标题的兜底
+    // 来源换成**触发登记的那条消息事件**（userMessageAdded 自带的 message）。
+    expect(agent.threadSummary?.firstUserText).toBeUndefined();
     const meta = {
       id: "m1",
       role: "user",
@@ -1840,7 +1760,8 @@ describe("agent notifications", () => {
       role: "user",
       blocks: [{ type: "text", content: "你好" }],
     };
-    agent.messages = [meta, userMsg];
+    // 注入的 isMeta 行先到：它不能当标题（登记时标题为空）。
+    agent.callbacks.onUserMessageAdded(meta);
     agent.callbacks.onUserMessageAdded(userMsg);
 
     const sessions = (
@@ -1862,21 +1783,20 @@ describe("agent notifications", () => {
       role: "user",
       blocks: [{ type: "text", content: "帮我重构登录模块" }],
     };
-    agent.messages = [userMsg];
     agent.threadSummary = {
       messageCount: 1,
       firstUserText: "帮我重构登录模块",
     };
     agent.callbacks.onUserMessageAdded(userMsg);
 
-    // Compaction truncates the agent's message list to the compact boundary,
-    // so a re-pushed pane state can no longer derive the title from messages.
+    // Compaction folds the display stream down to the compact boundary, so a
+    // re-pushed pane state can no longer derive the title from the list.
     const compactMsg = {
       id: "c1",
       role: "assistant",
       blocks: [{ type: "compact", content: "对话摘要" }],
     };
-    agent.messages = [];
+    agent.daemonMessages = [compactMsg];
     agent.callbacks.onCompactBlockAdded("对话摘要", compactMsg);
 
     await host.handleWebviewMessage({ command: "webviewReady" });
@@ -1891,6 +1811,8 @@ describe("agent notifications", () => {
     const { sent } = await readyHost();
     const agent = lastAgent();
     const updateMessagesBefore = sent("updateMessages").length;
+    // readyHost 已经为首屏拉过一次；清掉，下面断言的是这次回调自己的行为。
+    agent.getMessages.mockClear();
 
     const compactMsg = {
       id: "c1",
@@ -1901,11 +1823,12 @@ describe("agent notifications", () => {
 
     // The webview is told about the one new message ...
     expect(sent("appendMessage").at(-1)?.message).toMatchObject({ id: "c1" });
-    // ... and the host cache mirrors the server so a later setInitialState keeps it.
-    expect(agent.messages).toContainEqual(compactMsg);
-    // No full-list pull/push: compaction is a pure append on the display stream.
+    // ... and the host keeps nothing of it (spec「宿主不保留消息内容」场景 2).
+    expect("messages" in agent).toBe(false);
+    // No full-list pull/push: compaction is a pure append on the display stream
+    // (spec 场景「压缩完成时页面不被整表替换」).
     expect(sent("updateMessages")).toHaveLength(updateMessagesBefore);
-    expect(agent.refreshMessages).not.toHaveBeenCalled();
+    expect(agent.getMessages).not.toHaveBeenCalled();
   });
 
   it("compaction without a message on the wire falls back to the full pull", async () => {
@@ -1919,18 +1842,11 @@ describe("agent notifications", () => {
     await vi.waitFor(() => {
       expect(sent("updateMessages")).toHaveLength(updateMessagesBefore + 1);
     });
-    expect(agent.refreshMessages).toHaveBeenCalled();
+    expect(agent.getMessages).toHaveBeenCalled();
   });
 
-  // Regression (9cea65ea): the messagesChange full-snapshot push was replaced by
-  // per-callback cache mirrors, but onNotificationMessageAdded was left as a
-  // push-only callback. The notification itself is filtered out of the rendered
-  // stream (role user + isMeta, spec background-task-notification), yet it still
-  // moves the "last message" the error-block branch reads — a cache missing it
-  // places a later error block differently from the webview, which only shows up
-  // once setInitialState re-renders from the cache (session/pane switch, reload).
-  it("a notification message is mirrored into the cache as well as pushed", async () => {
-    const { host, sent } = await readyHost();
+  it("a notification message is forwarded to the pane and nothing else", async () => {
+    const { sent } = await readyHost();
     const agent = lastAgent();
 
     const notification = {
@@ -1955,74 +1871,37 @@ describe("agent notifications", () => {
       message: notification,
     });
 
-    // The webview is told about the new message ...
+    // The webview is told about the new message (it is filtered out of the
+    // rendered stream, but still moves the "last message" the error block
+    // attaches to) and the host keeps no copy (spec 场景 2).
     expect(sent("appendMessage").at(-1)?.message).toMatchObject({ id: "n1" });
-    // ... and the host cache mirrors the server, so a later setInitialState keeps it.
-    expect(agent.messages).toContainEqual(notification);
-
-    await host.handleWebviewMessage({ command: "webviewReady" });
-    expect(sent("setInitialState").at(-1)?.messages).toContainEqual(
-      notification,
-    );
+    expect("messages" in agent).toBe(false);
   });
 
-  it("a notification for a session no pane shows never rebuilds the dropped copy", async () => {
+  it("一条屏外会话收到过消息事件，就不会在关闭分屏时被当成空脚手架销毁", async () => {
     const { host, sent } = await readyHost();
     const agent = lastAgent();
-    // A real conversation, so closing its pane leaves the agent in the pool
-    // (only blank agents are destroyed) instead of destroying it.
-    agent.messages = [{ id: "m1", role: "user", blocks: [] }];
-    fireSessionId(agent, "sess-1");
+    // 真实场景：后台会话在屏外跑了一轮，通知已经转发过、列表却还没被拉过
+    // （宿主不留消息内容，所以「有没有内容」只能靠事件标记）。关闭分屏时它必须
+    // 留在池里继续跑，而不是被当成新建会话的脚手架销毁。
+    agent.callbacks.onUserMessageAdded({
+      id: "m1",
+      role: "user",
+      blocks: [{ type: "text", content: "后台还在跑" }],
+    });
     await host.handleWebviewMessage({ command: "desktopNewSessionInPane" });
     const layout = () =>
       sent("desktopPanes").at(-1)!.panes as Array<{ paneId: string }>;
     expect(layout()).toHaveLength(2);
+    agent.destroy.mockClear();
+
     await host.handleWebviewMessage({
       command: "desktopClosePane",
       paneId: layout()[0].paneId,
     });
+
     expect(layout()).toHaveLength(1);
     expect(agent.destroy).not.toHaveBeenCalled();
-    const appendsBefore = sent("appendMessage").length;
-
-    const notification = {
-      id: "n1",
-      role: "user",
-      isMeta: true,
-      blocks: [{ type: "task_notification", taskId: "t1" }],
-    };
-    agent.callbacks.onNotificationMessageAdded({
-      taskId: "t1",
-      taskType: "bash",
-      status: "completed",
-      summary: "后台任务完成",
-      message: notification,
-    });
-
-    // Nothing is pushed (the session is not displayed anywhere) ...
-    expect(sent("appendMessage")).toHaveLength(appendsBefore);
-    // ... and the host's copy stays empty: appending here would rebuild a list
-    // that begins nowhere, and the pane that shows this session again would get
-    // it as its history. Coming back re-pulls a page from the CLI instead (spec
-    // ui/message-rendering-system.md「宿主只留下被 pane 显示的会话副本」).
-    expect(agent.messages).toEqual([]);
-  });
-
-  it("a notification without a message on the wire leaves the cache untouched", async () => {
-    const { sent } = await readyHost();
-    const agent = lastAgent();
-    const messagesBefore = agent.messages.length;
-    const appendsBefore = sent("appendMessage").length;
-
-    agent.callbacks.onNotificationMessageAdded({
-      taskId: "t1",
-      taskType: "bash",
-      status: "completed",
-      summary: "后台任务完成",
-    });
-
-    expect(agent.messages).toHaveLength(messagesBefore);
-    expect(sent("appendMessage")).toHaveLength(appendsBefore);
   });
 
   it("restoring a historical session backfills its sidebar title from history (FR-024)", async () => {
@@ -2168,8 +2047,7 @@ describe("permission confirmations", () => {
     const { host, store, sent } = await readyHost();
     // Give the first agent a registered session entry (like seedSession).
     const agent1 = lastAgent();
-    agent1.messages = [{ id: "m-sess-1" }];
-    fireSessionId(agent1, "sess-1");
+    seedConversation(agent1, "sess-1");
     store.upsertSession({
       sessionId: "sess-1",
       title: "任务A",
@@ -2281,8 +2159,7 @@ describe("background session toasts", () => {
     title: string,
   ) {
     const agent = lastAgent();
-    agent.messages = [{ id: `m-${sessionId}` }];
-    fireSessionId(agent, sessionId);
+    seedConversation(agent, sessionId);
     store.upsertSession({
       sessionId,
       title,
@@ -3941,7 +3818,7 @@ describe("account card (desktopAccountInfo)", () => {
 describe("misc commands", () => {
   it("newSession spawns a fresh session without clearing the old one (FR-031)", async () => {
     const { host } = await readyHost();
-    lastAgent().messages = [{ id: "m1" }]; // make the active session non-empty
+    fireUserMessage(lastAgent()); // make the active session non-empty
     const oldAgent = lastAgent();
     const before = h.agentInstances.length;
 
@@ -3956,7 +3833,7 @@ describe("misc commands", () => {
   it("newSession destroys the spawned agent when another session claims the pane mid-spawn", async () => {
     const { host, sent } = await readyHost();
     const active = lastAgent();
-    active.messages = [{ id: "m1" }]; // the active session is non-empty, so newSession spawns
+    fireUserMessage(active); // the active session is non-empty, so newSession spawns
     let resolveInit!: () => void;
     h.initializeGate = new Promise<void>((r) => {
       resolveInit = r;
@@ -4008,7 +3885,7 @@ describe("misc commands", () => {
   it("newSession with no recent workdirs releases the pane to the blank state instead of dropping the click (scenario 10)", async () => {
     const { host, store, sent } = await readyHost();
     const realAgent = lastAgent();
-    realAgent.messages = [{ id: "m1" }]; // a real session — must stay re-selectable
+    fireUserMessage(realAgent); // a real session — must stay re-selectable
     store.removeRecentWorkdir({ host: "local", path: "/work/a" });
     const before = h.agentInstances.length;
 
@@ -4029,7 +3906,7 @@ describe("misc commands", () => {
 
   it("intercepts a message sent in the released blank pane with the workdir hint (scenario 10)", async () => {
     const { host, store, sent } = await readyHost();
-    lastAgent().messages = [{ id: "m1" }];
+    fireUserMessage(lastAgent());
     store.removeRecentWorkdir({ host: "local", path: "/work/a" });
     await host.handleWebviewMessage({ command: "newSession" });
 
@@ -4045,7 +3922,7 @@ describe("misc commands", () => {
   it("clearChat is a no-op after desktop /clear removal (2026-09-05)", async () => {
     const { host, send } = await readyHost();
     const agent = lastAgent();
-    agent.messages = [{ id: "m1" }];
+    fireUserMessage(agent);
     const before = h.agentInstances.length;
     const sendsBefore = send.mock.calls.length;
 
@@ -4055,7 +3932,8 @@ describe("misc commands", () => {
     // /clear nor sends clearChat, so the host must not clear messages, spawn a
     // new agent, or push anything in response.
     expect(agent.clearMessages).not.toHaveBeenCalled();
-    expect(agent.messages).toEqual([{ id: "m1" }]);
+    // The CLI's list is untouched (the host keeps none of its own to clear).
+    expect(agent.daemonMessages).toHaveLength(1);
     expect(h.agentInstances).toHaveLength(before);
     expect(send.mock.calls.length).toBe(sendsBefore);
   });
@@ -5333,8 +5211,10 @@ describe("session tree", () => {
 
     // The live agent re-registers the same session (sessionIdChange after
     // restore) — creation time must survive while activity time still bumps.
-    lastAgent().messages = [{ id: "m1" }];
-    lastAgent().callbacks.onSessionIdChange("sess-x");
+    // A message event marks it as a real conversation first; the id change then
+    // re-registers it in the index.
+    fireUserMessage(lastAgent());
+    fireSessionId(lastAgent(), "sess-x");
 
     const entry = store.getSessionIndex().find((e) => e.sessionId === "sess-x");
     expect(entry?.createdAt).toBe(1000);
@@ -5416,8 +5296,7 @@ describe("session tree", () => {
     // readyHost leaves the index empty -> no tree posts yet. Seed a session so
     // refreshSessionTree actually emits (an empty index is a no-op post). The
     // sessionIdChange registration only fires for sessions with content.
-    lastAgent().messages = [{ id: "m1" }];
-    lastAgent().callbacks.onSessionIdChange("sess-1");
+    seedConversation(lastAgent(), "sess-1");
     await vi.waitFor(() => {
       expect(sent("desktopSessionTree").length).toBeGreaterThanOrEqual(1);
     });
@@ -5435,8 +5314,7 @@ describe("session tree", () => {
     // readyHost leaves the index empty -> no tree posts yet.
     expect(sent("desktopSessionTree")).toHaveLength(0);
 
-    lastAgent().messages = [{ id: "m1" }];
-    lastAgent().callbacks.onSessionIdChange("sess-2");
+    seedConversation(lastAgent(), "sess-2");
 
     await vi.waitFor(() => {
       expect(sent("desktopSessionTree").length).toBe(1);
@@ -5485,11 +5363,7 @@ describe("session tree", () => {
   it("repro: 终止并删除唯一会话后再次新建对话立即生效（用户反馈「点不动」）", async () => {
     const { host, store } = await readyHost();
     const doomed = lastAgent();
-    doomed.messages = [
-      { id: "m1", role: "user", blocks: [{ type: "text", content: "hi" }] },
-    ];
-    doomed.callbacks.onUserMessageAdded(doomed.messages[0]);
-    fireSessionId(doomed, "live-1");
+    seedConversation(doomed, "live-1");
     doomed.isStreaming = true;
 
     // 终止（mock 的 abortMessage 不改变流式态，手动复位模拟真实行为）
@@ -6327,10 +6201,13 @@ describe("session switch shortcut (FR-038)", () => {
     expect(autoAgents).toBe(1);
 
     await ctx.host.activateAdjacentSession(1);
-
-    expect(ctx.store.getSessionIndex().some((e) => e.sessionId === "s2")).toBe(
-      false,
-    );
+    // 目录探测在遮罩后面异步跑（本地也是 existsSync 之后的一个微任务），断言要
+    // 等它落地，不能赌微任务顺序。
+    await vi.waitFor(() => {
+      expect(
+        ctx.store.getSessionIndex().some((e) => e.sessionId === "s2"),
+      ).toBe(false);
+    });
     expect(h.agentInstances).toHaveLength(autoAgents);
     expect(
       shownToasts().some((t) =>
@@ -6393,7 +6270,7 @@ describe("worktree flow", () => {
   it("desktopCreateWorktree destroys the empty agent it replaces instead of leaking it in the pool", async () => {
     const { host } = await readyHost();
     const replaced = lastAgent(); // the fresh empty agent bound to the pane
-    expect(replaced.messages).toHaveLength(0);
+    expect(await replaced.getMessages()).toEqual([]);
     h.worktreeResult = worktree;
     h.existingPaths.add(worktree.path);
 
@@ -6568,7 +6445,7 @@ describe("worktree flow", () => {
       command: "desktopCreateWorktree",
       workdir: "/work/a",
     });
-    lastAgent().messages = [{ id: "m1" }];
+    fireUserMessage(lastAgent());
 
     await host.handleWebviewMessage({ command: "newSession" });
 
@@ -6591,7 +6468,7 @@ describe("worktree flow", () => {
     // After the worktree session activates, host.workdir is the worktree path,
     // but recents[0] is still the repo root — a new pane must spawn at the repo
     // root, never at the worktree path.
-    lastAgent().messages = [{ id: "m1" }];
+    fireUserMessage(lastAgent());
 
     await host.handleWebviewMessage({ command: "desktopNewSessionInPane" });
 
@@ -6612,7 +6489,7 @@ describe("worktree flow", () => {
       workdir: "/work/a",
     });
     // After the worktree session activates, host.workdir follows it = the worktree path.
-    lastAgent().messages = [{ id: "m1" }];
+    fireUserMessage(lastAgent());
 
     // Real stdio startup takes seconds — gate the next spawn's initialize() so
     // the new pane stays empty (agent created but not yet bound) while the
@@ -6690,8 +6567,7 @@ describe("worktree flow", () => {
       command: "desktopCreateWorktree",
       workdir: "/work/a",
     });
-    lastAgent().messages = [{ id: "m1" }];
-    lastAgent().callbacks.onSessionIdChange("sess-wt");
+    seedConversation(lastAgent(), "sess-wt");
 
     const entry = store
       .getSessionIndex()
@@ -7053,8 +6929,7 @@ describe("worktree flow", () => {
       workdir: "/work/a",
       baseBranch: "main",
     });
-    lastAgent().messages = [{ id: "m1" }];
-    lastAgent().callbacks.onSessionIdChange("live-wt");
+    seedConversation(lastAgent(), "live-wt");
 
     await host.handleWebviewMessage({
       command: "desktopDeleteSession",
@@ -7091,8 +6966,7 @@ describe("worktree flow", () => {
       baseBranch: "main",
     });
     const wtAgent = lastAgent();
-    wtAgent.messages = [{ id: "m1" }];
-    wtAgent.callbacks.onSessionIdChange("live-wt");
+    seedConversation(wtAgent, "live-wt");
 
     // Gate the agent's destroy so the ordering is observable: removeWorktree
     // must not be requested until destroy resolves. This reproduces the race
@@ -7342,12 +7216,8 @@ describe("context usage across conversation switches", () => {
 
 describe("multi-session parallel (FR-031)", () => {
   /** Give the active agent content + register its session in the index. */
-  const seedActiveSession = (sessionId: string) => {
-    const agent = lastAgent();
-    agent.messages = [{ id: `m-${sessionId}` }];
-    fireSessionId(agent, sessionId);
-    return agent;
-  };
+  const seedActiveSession = (sessionId: string) =>
+    seedConversation(lastAgent(), sessionId);
 
   const treeSessions = (tree: Record<string, unknown> | undefined) =>
     (
@@ -7627,7 +7497,8 @@ describe("multi-session parallel (FR-031)", () => {
     agent1.daemonMessages = [{ id: "m-sess-1" }, { id: "bg-1" }];
     agent1.callbacks.onAssistantMessageAdded({ id: "bg-1" });
     expect(sent("appendMessage")).toHaveLength(appends);
-    expect(agent1.messages).toEqual([]);
+    // 宿主替它留着的只有「收到过消息」这一位状态，没有列表。
+    expect("messages" in agent1).toBe(false);
 
     await host.handleWebviewMessage({
       command: "desktopSelectSession",
@@ -7738,12 +7609,8 @@ describe("multi-session parallel (FR-031)", () => {
 });
 
 describe("split-view panes (FR-032~036)", () => {
-  const seedActiveSession = (sessionId: string) => {
-    const agent = lastAgent();
-    agent.messages = [{ id: `m-${sessionId}` }];
-    fireSessionId(agent, sessionId);
-    return agent;
-  };
+  const seedActiveSession = (sessionId: string) =>
+    seedConversation(lastAgent(), sessionId);
 
   const panePushes = (sent: ReturnType<typeof createHost>["sent"]) =>
     sent("desktopPanes").map(
@@ -8244,12 +8111,8 @@ describe("split-view panes (FR-032~036)", () => {
 });
 
 describe("pane rows (two-row layout)", () => {
-  const seedActiveSession = (sessionId: string) => {
-    const agent = lastAgent();
-    agent.messages = [{ id: `m-${sessionId}` }];
-    fireSessionId(agent, sessionId);
-    return agent;
-  };
+  const seedActiveSession = (sessionId: string) =>
+    seedConversation(lastAgent(), sessionId);
 
   const panePushes = (sent: ReturnType<typeof createHost>["sent"]) =>
     sent("desktopPanes").map(
@@ -8275,7 +8138,11 @@ describe("pane rows (two-row layout)", () => {
             blocks: Array<{ type: string; content: string }>;
           },
       )
-      .filter((msg) => msg.blocks?.[0]?.type === "text")
+      // 宿主自己插的提示一律是 assistant 文本行；造数据用的用户消息不能混进来
+      // （宿主不保留消息内容，测试里「会话有内容」也只能靠消息事件表达）。
+      .filter(
+        (msg) => msg.role === "assistant" && msg.blocks?.[0]?.type === "text",
+      )
       .at(-1);
 
   it("webviewReady pushes a single-row layout without rowHeights", async () => {
@@ -8333,6 +8200,7 @@ describe("pane rows (two-row layout)", () => {
     const { host, sent } = await readyHost(1280, 500);
     seedActiveSession("sess-1");
     const spawned = h.agentInstances.length;
+    const appends = sent("appendMessage").length;
 
     await host.handleWebviewMessage({
       command: "desktopOpenPane",
@@ -8349,7 +8217,7 @@ describe("pane rows (two-row layout)", () => {
     expect(
       shownToasts().some((t) => t.message === "窗口高度不足，无法拆分为两行"),
     ).toBe(true);
-    expect(sent("appendMessage")).toHaveLength(0);
+    expect(sent("appendMessage")).toHaveLength(appends);
   });
 
   it("desktopShowHint relays a webview hint to the global toast stack", async () => {
@@ -8440,6 +8308,7 @@ describe("pane rows (two-row layout)", () => {
     const { host, sent } = await readyHost(900, 500);
     seedActiveSession("sess-1");
     const spawned = h.agentInstances.length;
+    const appends = sent("appendMessage").length;
 
     await host.handleWebviewMessage({
       command: "desktopOpenPane",
@@ -8452,7 +8321,7 @@ describe("pane rows (two-row layout)", () => {
     expect(
       shownToasts().some((t) => t.message === "空间不足，无法添加更多分屏"),
     ).toBe(true);
-    expect(sent("appendMessage")).toHaveLength(0);
+    expect(sent("appendMessage")).toHaveLength(appends);
   });
 
   it("desktopOpenPane without a target row refuses with a hint when both rows are full", async () => {
@@ -8473,6 +8342,7 @@ describe("pane rows (two-row layout)", () => {
       paneId: sess1Pane.paneId,
     });
     const spawned = h.agentInstances.length;
+    const appends = sent("appendMessage").length;
 
     await host.handleWebviewMessage({
       command: "desktopOpenPane",
@@ -8485,7 +8355,7 @@ describe("pane rows (two-row layout)", () => {
     expect(
       shownToasts().some((t) => t.message === "窗口宽度不足，无法添加更多分屏"),
     ).toBe(true);
-    expect(sent("appendMessage")).toHaveLength(0);
+    expect(sent("appendMessage")).toHaveLength(appends);
   });
 
   it("desktopOpenPane with a named target row squeezes into a narrow row like a pane move", async () => {
@@ -8865,12 +8735,8 @@ describe("pane rows (two-row layout)", () => {
 });
 
 describe("desktopNewSessionInPane (new session side-by-side)", () => {
-  const seedActiveSession = (sessionId: string) => {
-    const agent = lastAgent();
-    agent.messages = [{ id: `m-${sessionId}` }];
-    fireSessionId(agent, sessionId);
-    return agent;
-  };
+  const seedActiveSession = (sessionId: string) =>
+    seedConversation(lastAgent(), sessionId);
 
   const panePushes = (sent: ReturnType<typeof createHost>["sent"]) =>
     sent("desktopPanes").map(
@@ -8904,7 +8770,8 @@ describe("desktopNewSessionInPane (new session side-by-side)", () => {
     expect(h.agentInstances).toHaveLength(spawned + 1);
     expect(lastAgent()).not.toBe(original);
     expect(lastAgent().currentWorkdir).toBe("/work/a");
-    expect(lastAgent().messages).toEqual([]);
+    // 新分屏拿到的是一个空会话（CLI 那边整份列表就是空的）。
+    expect(await lastAgent().getMessages()).toEqual([]);
   });
 
   it("focuses the sole empty pane instead of adding another one", async () => {
@@ -8992,13 +8859,14 @@ describe("desktopNewSessionInPane (new session side-by-side)", () => {
     expect(layout.panes.map((p) => p.row)).toEqual([0, 1]);
     expect(layout.rowHeights).toEqual([0.5, 0.5]);
     expect(layout.focusedPaneId).toBe(layout.panes[1].paneId);
-    expect(lastAgent().messages).toEqual([]);
+    expect(await lastAgent().getMessages()).toEqual([]);
   });
 
   it("refuses with a hint when the full single row cannot split", async () => {
     const { host, sent } = await readyHost(900, 500);
     seedActiveSession("sess-1");
     const spawned = h.agentInstances.length;
+    const appends = sent("appendMessage").length;
 
     await host.handleWebviewMessage({ command: "desktopNewSessionInPane" });
 
@@ -9007,7 +8875,7 @@ describe("desktopNewSessionInPane (new session side-by-side)", () => {
     expect(
       shownToasts().some((t) => t.message === "空间不足，无法添加更多分屏"),
     ).toBe(true);
-    expect(sent("appendMessage")).toHaveLength(0);
+    expect(sent("appendMessage")).toHaveLength(appends);
   });
 
   it("still opens a new pane while the current one is streaming", async () => {
@@ -9035,12 +8903,8 @@ describe("desktopNewSessionInPane (new session side-by-side)", () => {
 });
 
 describe("input focus on conversation switch", () => {
-  const seedActiveSession = (sessionId: string) => {
-    const agent = lastAgent();
-    agent.messages = [{ id: `m-${sessionId}` }];
-    fireSessionId(agent, sessionId);
-    return agent;
-  };
+  const seedActiveSession = (sessionId: string) =>
+    seedConversation(lastAgent(), sessionId);
 
   const panePushes = (sent: ReturnType<typeof createHost>["sent"]) =>
     sent("desktopPanes").map(
@@ -9230,12 +9094,8 @@ describe("input focus on conversation switch", () => {
 // ---------------------------------------------------------------------------
 
 describe("input drafts per session (desktop-sessions.md scenario 11/12)", () => {
-  const seedActiveSession = (sessionId: string) => {
-    const agent = lastAgent();
-    agent.messages = [{ id: `m-${sessionId}` }];
-    fireSessionId(agent, sessionId);
-    return agent;
-  };
+  const seedActiveSession = (sessionId: string) =>
+    seedConversation(lastAgent(), sessionId);
 
   const makeEntry = (
     sessionId: string,
@@ -9394,12 +9254,12 @@ describe("input drafts per session (desktop-sessions.md scenario 11/12)", () => 
     });
   });
 
-  it("rewindToMessage with a requestId replies instead of re-sending the list", async () => {
+  it("rewindToMessage with a requestId replies and then re-pulls the list", async () => {
     const { host, sent } = await readyHost();
     const agent = seedActiveSession("sess-A");
-    // Compaction can leave the same id twice; both ends cut at the LAST
-    // occurrence, which is what makes the two local truncations agree.
-    agent.messages = [
+    // Compaction can leave the same id twice; the CLI cuts at the LAST
+    // occurrence of the anchor.
+    agent.daemonMessages = [
       { id: "u1" },
       { id: "a1" },
       { id: "u2" },
@@ -9407,6 +9267,17 @@ describe("input drafts per session (desktop-sessions.md scenario 11/12)", () => 
       { id: "u2" },
       { id: "a3" },
     ];
+    // The rewind is the CLI's own truncation — mirror it daemon-side, so the
+    // snapshot below can only show the cut list by having gone and asked.
+    agent.rewindToMessage.mockImplementationOnce(async () => {
+      agent.daemonMessages = [
+        { id: "u1" },
+        { id: "a1" },
+        { id: "u2" },
+        { id: "u3" },
+      ];
+      return { inputContent: "rewound draft" };
+    });
     agent.getMessages.mockClear();
 
     await host.handleWebviewMessage({
@@ -9428,14 +9299,16 @@ describe("input drafts per session (desktop-sessions.md scenario 11/12)", () => 
       ok: true,
     });
     expect(reply.messages).toBeUndefined();
-    // The host cache was cut in place, at the last occurrence of the anchor.
+    // The snapshot that follows carries the post-rewind list, pulled fresh from
+    // the CLI (spec 场景 5: 宿主不自己截, 交给回执 + 重拉).
+    await vi.waitFor(() => {
+      expect(lastState(sent)?.messages).toHaveLength(4);
+    });
+    expect(agent.getMessages).toHaveBeenCalled();
     expect(
-      (lastAgent().messages as Array<{ id: string }>).map((m) => m.id),
+      (lastState(sent)!.messages as Array<{ id: string }>).map((m) => m.id),
     ).toEqual(["u1", "a1", "u2", "u3"]);
-    // The snapshot that follows keeps the webview's own list out of the wire.
-    expect(lastState(sent)).toMatchObject({ keepMessages: true, messages: [] });
-    // Nothing re-pulled the list — that is the cost this removes.
-    expect(agent.refreshMessages).not.toHaveBeenCalled();
+    expect(lastState(sent)).not.toMatchObject({ keepMessages: true });
   });
 
   it("rewindResult reports failure when the rewind throws", async () => {
@@ -9545,12 +9418,8 @@ describe("input drafts per session (desktop-sessions.md scenario 11/12)", () => 
 // ---------------------------------------------------------------------------
 
 describe("native menu actions", () => {
-  const seedActiveSession = (sessionId: string) => {
-    const agent = lastAgent();
-    agent.messages = [{ id: `m-${sessionId}` }];
-    fireSessionId(agent, sessionId);
-    return agent;
-  };
+  const seedActiveSession = (sessionId: string) =>
+    seedConversation(lastAgent(), sessionId);
 
   const panePushes = (sent: ReturnType<typeof createHost>["sent"]) =>
     sent("desktopPanes").map(
@@ -9684,10 +9553,7 @@ const seedSshConfig = (content: string) =>
 
 /** Give an agent content + fire its sessionId so it registers in the index. */
 function registerAgentInIndex(agent: ReturnType<typeof lastAgent>) {
-  agent.messages = [
-    { id: "m1", role: "user", blocks: [{ type: "text", content: "hi" }] },
-  ];
-  fireSessionId(agent, agent.sessionId as string);
+  seedConversation(agent, agent.sessionId as string, "hi");
 }
 
 /** Flatten the sidebar session tree into a sessionId → running-marker lookup. */
@@ -10167,7 +10033,7 @@ describe("SSH remote hosts", () => {
       path: "/repo",
     });
     const remoteAgent = lastAgent();
-    remoteAgent.messages = [{ id: "m1" }]; // the user chatted in the remote session, so it must survive
+    fireUserMessage(remoteAgent); // the user chatted in the remote session, so it must survive
 
     await host.handleWebviewMessage({
       command: "desktopSelectRecentWorkdir",
@@ -10502,15 +10368,16 @@ describe("SSH remote hosts", () => {
       expect(panes.panes[0].sessionId).toBe(sessionId);
       expect(panes.panes[0].host).toBe("prod");
     });
-    // The transcript was pulled into the re-attached agent (消息 catch-up:
-    // spec scenario 3 — messages produced while detached must be visible).
+    // The transcript is pulled into the re-attached pane (消息 catch-up: spec
+    // scenario 3 — messages produced while detached must be visible). The host
+    // keeps no copy of its own, so the proof is the snapshot the pane got.
     await vi.waitFor(() => {
-      expect(
-        reconnected.messages.some(
-          (m) => (m as { id?: string }).id === "restored-u1",
-        ),
-      ).toBe(true);
+      const pushed = sent("setInitialState").flatMap(
+        (m) => (m.messages as Array<{ id?: string }>) ?? [],
+      );
+      expect(pushed.some((m) => m.id === "restored-u1")).toBe(true);
     });
+    expect("messages" in reconnected).toBe(false);
   });
 
   it("auto-reconnect re-roots the session at its stable root, not the bash-cd'd subdir", async () => {
@@ -12708,25 +12575,30 @@ describe("创作集（desktop-artifacts）", () => {
 });
 
 describe("getMessageStats（renderer 内存曲线的消息量）", () => {
-  it("reports the volume the bound pane is holding", async () => {
+  /** 渲染进程节流上报的那一条 desktop 命令（webview 只在桌面端发）。 */
+  const reportStats = (
+    host: ReturnType<typeof createHost>["host"],
+    paneId: string,
+    messages: number,
+    blocks: number,
+  ) =>
+    host.handleWebviewMessage({
+      command: "desktopReportMessageStats",
+      paneId,
+      messages,
+      blocks,
+    });
+
+  it("读渲染进程上报的数量——宿主没有数组可数，所以没有上报就没有数字", async () => {
     const { host } = await readyHost();
     const agent = lastAgent();
-    // The renderer receives exactly this list through setInitialState, so its
-    // length is what must show up next to the MB number.
-    agent.messages = [
-      { id: "u1", role: "user", blocks: [{ type: "text", content: "hi" }] },
-      {
-        id: "a1",
-        role: "assistant",
-        blocks: [
-          { type: "text", content: "a" },
-          { type: "tool_use", toolName: "Bash", toolInput: {} },
-          { type: "tool_result", content: "full output" },
-        ],
-      },
-    ];
     agent.latestTotalTokens = 152000;
     fireSessionId(agent, "sess-1");
+
+    // 绑定着一条真实会话，但渲染进程还没报过：数量未知，不是 0。
+    expect(host.getMessageStats()).toEqual([]);
+
+    await reportStats(host, "pane-1", 2, 4);
 
     expect(host.getMessageStats()).toEqual([
       {
@@ -12739,34 +12611,28 @@ describe("getMessageStats（renderer 内存曲线的消息量）", () => {
     ]);
   });
 
-  it("leaves out agents no pane displays", async () => {
+  it("闭合的 pane 的上报值随即丢弃，不留在曲线里", async () => {
     const { host, sent } = await readyHost();
     const first = lastAgent();
-    // A real conversation keeps the agent in the pool after its pane closes.
-    first.messages = [
-      { id: "m1", role: "user", blocks: [{ type: "text", content: "a" }] },
-    ];
-    fireSessionId(first, "sess-a");
+    seedConversation(first, "sess-a");
     await host.handleWebviewMessage({ command: "desktopNewSessionInPane" });
     const second = lastAgent();
-    second.messages = [
-      { id: "m2", role: "user", blocks: [] },
-      { id: "m3", role: "assistant", blocks: [{ type: "text", content: "b" }] },
-    ];
+    seedConversation(second, "sess-b");
     second.latestTotalTokens = 40000;
-    fireSessionId(second, "sess-b");
 
     const layout = () =>
       sent("desktopPanes").at(-1)!.panes as Array<{ paneId: string }>;
     const [paneA, paneB] = layout();
+    await reportStats(host, paneA.paneId, 7, 11);
+    await reportStats(host, paneB.paneId, 2, 1);
+
     await host.handleWebviewMessage({
       command: "desktopClosePane",
       paneId: paneA.paneId,
     });
+    // A real conversation, so closing its pane only unbinds it.
     expect(first.destroy).not.toHaveBeenCalled();
 
-    // The background agent's messages never reach the renderer, so they must not
-    // inflate the curve's counts.
     expect(host.getMessageStats()).toEqual([
       {
         paneId: paneB.paneId,
@@ -12785,76 +12651,42 @@ describe("getMessageStats（renderer 内存曲线的消息量）", () => {
   });
 });
 
-describe("宿主只为被 pane 显示的会话留消息副本", () => {
+describe("宿主不保留消息内容，用的时候现取", () => {
   /**
-   * Bind a conversation to the active pane and give it a daemon-side history
-   * (`daemonMessages` is what the CLI actually holds; `messages` is the host
-   * mirror under test — the two are equal only until the mirror is dropped).
+   * 让 CLI 侧长出一条有 `count` 条消息的会话：`daemonMessages` 是 CLI 手里的
+   * 那份真列表（`getMessages` 的取数源），宿主编排里除了「收到过消息事件」的
+   * 标记一个字段都不留。
    */
-  /** Bind an already-live conversation to another pane (the pool-reuse branch). */
-  const bindSessionToPane = (
-    host: DesktopHost,
-    paneId: string,
-    workdir: string,
-    sessionId: string,
-  ) =>
-    (
-      host as unknown as {
-        bindSessionToPane: (
-          paneId: string,
-          workdir: string,
-          sessionId: string,
-        ) => Promise<void>;
-      }
-    ).bindSessionToPane(paneId, workdir, sessionId);
-
-  const seedConversation = (sessionId: string, count: number) => {
+  const growConversation = (sessionId: string, count: number) => {
     const agent = lastAgent();
-    agent.daemonMessages = Array.from({ length: count }, (_, i) => ({
+    const list = Array.from({ length: count }, (_, i) => ({
       id: `${sessionId}-m${i}`,
       role: i % 2 === 0 ? "user" : "assistant",
       blocks: [{ type: "text", content: `${sessionId}-${i}` }],
     }));
-    agent.messages = [...agent.daemonMessages];
+    agent.daemonMessages = list;
     fireSessionId(agent, sessionId);
+    // 一条真实的消息事件（CLI 已经把它算进上面那份列表里）——宿主只靠它知道
+    // 「这条会话有内容」，测试也照这条链路造数。
+    agent.callbacks.onUserMessageAdded(list[0]);
     return agent;
   };
 
-  it("切走的会话丢掉消息副本，会话本身留在池里继续跑", async () => {
-    const { host } = await readyHost();
-    const first = seedConversation("sess-1", 3);
+  const ids = (messages: unknown) =>
+    (messages as Array<{ id: string }>).map((m) => m.id);
 
-    await host.handleWebviewMessage({ command: "newSession" });
-
-    // 副本是宿主的镜像，不是会话：丢掉它不能让会话停摆，也不能把它从池里摘掉
-    // （否则侧边栏点不回来）。
-    expect(first.messages).toEqual([]);
-    expect(first.destroy).not.toHaveBeenCalled();
-  });
-
-  it("同一条会话并排显示在两个 pane 时，其中一个切走不清空另一份", async () => {
+  it("切走再切回的快照来自一次现取，不是宿主残留的副本", async () => {
     const { host, sent } = await readyHost();
-    const agent = seedConversation("sess-1", 4);
-    // 并排：先开一个空 pane，再让它绑定同一条会话——命中池即复用，同一份 agent
-    // 挂在两个 pane 上。侧边栏那条入口现在用「一个会话只在一个 pane 里」挡在
-    // 前面，所以这里直接走它背后的复用分支（`desktopOpenPane` 也走这一条）。
-    await host.handleWebviewMessage({ command: "desktopNewSessionInPane" });
-    const paneId = sent("desktopPanes").at(-1)!.panes.at(-1)!.paneId;
-    await bindSessionToPane(host, paneId, "/work/a", "sess-1");
-
+    const agent = growConversation("sess-1", 3);
+    // 切走：分屏换成新会话，sess-1 退回池里继续跑。
     await host.handleWebviewMessage({ command: "newSession" });
-
-    // 判据是「还被任何 pane 引用」，不是「是不是刚切走的那个 pane」。
-    expect(agent.messages).toHaveLength(4);
-  });
-
-  it("切回来先重拉整份列表再推快照，不是把空列表当历史", async () => {
-    const { host, sent } = await readyHost();
-    const agent = seedConversation("sess-1", 30);
-    await host.handleWebviewMessage({ command: "newSession" });
-    expect(agent.messages).toEqual([]);
-    agent.refreshMessages.mockClear();
-    const before = sent("setInitialState").length;
+    // 屏外这段时间里 CLI 那边长出了新消息（后台那一轮跑完了）。
+    (agent.daemonMessages as unknown[]).push({
+      id: "sess-1-late",
+      role: "user",
+      blocks: [{ type: "text", content: "后台那一轮" }],
+    });
+    agent.getMessages.mockClear();
 
     await host.handleWebviewMessage({
       command: "desktopSelectSession",
@@ -12863,74 +12695,85 @@ describe("宿主只为被 pane 显示的会话留消息副本", () => {
     });
 
     await vi.waitFor(() => {
-      expect(sent("setInitialState").length).toBeGreaterThan(before);
+      expect(agent.getMessages).toHaveBeenCalled();
     });
-    expect(agent.refreshMessages).toHaveBeenCalledTimes(1);
-    // refreshMessages 不收参数：重拉的就是整份列表（= 压缩后的上下文）。
-    expect(agent.refreshMessages).toHaveBeenCalledWith();
-    const state = sent("setInitialState").at(-1)!;
-    expect(state.messages.map((m) => m.id)).toEqual(
-      Array.from({ length: 30 }, (_, i) => `sess-1-m${String(i)}`),
-    );
-  });
-
-  it("副本被丢过的会话再绑定，不会被当成空脚手架销毁", async () => {
-    const { host } = await readyHost();
-    const agent = seedConversation("sess-1", 2);
-    await host.handleWebviewMessage({ command: "newSession" });
-    agent.destroy.mockClear();
-
-    await host.handleWebviewMessage({
-      command: "desktopSelectSession",
-      workdir: "/work/a",
-      sessionId: "sess-1",
-    });
+    // 快照里带着屏外期间新增的那条 —— 只有从 CLI 现取才拿得到它（宿主那份如果
+    // 还是切走时的旧副本，这里只会是 3 条）。
     await vi.waitFor(() => {
-      expect(agent.refreshMessages).toHaveBeenCalled();
+      expect(ids(sent("setInitialState").at(-1)!.messages)).toEqual([
+        "sess-1-m0",
+        "sess-1-m1",
+        "sess-1-m2",
+        "sess-1-late",
+      ]);
     });
-
-    // 「空副本」与「空会话」必须分开：混为一谈会在下一次绑定把会话删掉。
-    expect(agent.destroy).not.toHaveBeenCalled();
-    expect(agent.messages).toHaveLength(2);
+    // 每次切回都现取一次（没有可复用的缓存），且取的是整份列表。
+    expect(agent.getMessages).toHaveBeenCalledWith();
   });
 
-  it("屏外期间到达的消息不往副本里追加", async () => {
+  it("收到过消息事件但当前没有消息可数的会话，不会被当空脚手架销毁", async () => {
     const { host } = await readyHost();
-    const agent = seedConversation("sess-1", 2);
+    const live = lastAgent();
+    // 一条真实的消息事件（侧边栏索引里还没有它：sessionIdChange 带登记是另一
+    // 条路，这里只留事件标记），随后 CLI 的列表是空的（刚压缩完 / 宿主还没拉）。
+    live.callbacks.onUserMessageAdded({
+      id: "u1",
+      role: "user",
+      blocks: [{ type: "text", content: "hi" }],
+    });
+    live.daemonMessages = [];
+
+    // 让它真的拉一次，确认「此刻拉到的确实是空列表」——就地按列表长度判断空
+    // 脚手架的写法会在这里把活会话删掉。
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    expect(ids((await live.getMessages()) as unknown)).toEqual([]);
+
+    const before = h.agentInstances.length;
     await host.handleWebviewMessage({ command: "newSession" });
 
-    agent.callbacks.onUserMessageAdded({
+    expect(h.agentInstances).toHaveLength(before + 1);
+    expect(live.destroy).not.toHaveBeenCalled();
+  });
+
+  it("宿主侧没有任何消息数组可读", async () => {
+    const { host, sent } = await readyHost();
+    const agent = growConversation("sess-1", 2);
+    agent.getMessages.mockClear();
+
+    // 类型层面：`StdioAgent.messages` / `refreshMessages` 与宿主侧的
+    // `droppedMessageCopies` / `getOffscreenVolume` 都已删除；运行时它们也不该
+    // 存在（存在就说明有人又把副本加了回来）。
+    expect("messages" in agent).toBe(false);
+    expect("refreshMessages" in agent).toBe(false);
+    expect("droppedMessageCopies" in host).toBe(false);
+    expect("getOffscreenVolume" in host).toBe(false);
+
+    // 行为层面：推给渲染进程的那份列表来自一次 pull，宿主自己不持有 —— 同一个
+    // pane 上再推一次，仍要重新问 CLI 一遍。
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    expect(agent.getMessages.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(ids(sent("setInitialState").at(-1)!.messages)).toEqual([
+      "sess-1-m0",
+      "sess-1-m1",
+    ]);
+  });
+
+  it("屏外期间到达的消息只打标记、不推给任何 pane", async () => {
+    const { host, sent } = await readyHost();
+    const first = growConversation("sess-1", 2);
+    // 切走：分屏换成新会话，sess-1 成了没有分屏的屏外会话。
+    await host.handleWebviewMessage({ command: "newSession" });
+    const appendsBefore = sent("appendMessage").length;
+
+    first.callbacks.onUserMessageAdded({
       id: "u-late",
       role: "user",
       blocks: [{ type: "text", content: "后台还在跑" }],
     });
 
-    // 从空开始追加只会在切回来时推出一份「没有开头」的历史；重拉才是数据源。
-    expect(agent.messages).toEqual([]);
-  });
-
-  it("屏外会话的内存归到一项独立读数，不混进 pane 的统计", async () => {
-    const { host } = await readyHost();
-    seedConversation("sess-1", 2);
-    await host.handleWebviewMessage({ command: "newSession" });
-
-    // 池里留着这条会话，但它没有副本、也不进渲染进程。
-    expect(host.getOffscreenVolume()).toEqual({
-      sessions: 1,
-      messages: 0,
-      blocks: 0,
-    });
-    expect(host.getMessageStats().every((s) => s.sessionId !== "sess-1")).toBe(
-      true,
-    );
-
-    await host.handleWebviewMessage({
-      command: "desktopSelectSession",
-      workdir: "/work/a",
-      sessionId: "sess-1",
-    });
-    await vi.waitFor(() => {
-      expect(host.getOffscreenVolume().sessions).toBe(0);
-    });
+    // 这条会话不在任何 pane 里 —— 没有 appendMessage 可推（推了也没有接收者，
+    // 而且宿主手里没有列表可以拿它续写）。
+    expect(sent("appendMessage")).toHaveLength(appendsBefore);
   });
 });

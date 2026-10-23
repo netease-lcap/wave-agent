@@ -325,6 +325,12 @@ export interface DesktopPane {
   width?: number;
   /** Pane row: 0 = top (default when absent), 1 = bottom. */
   row?: 0 | 1;
+  /**
+   * 这条会话有没有产生过任何消息（宿主口径）。渲染端据此区分「新会话」与「被
+   * `/rewind` 打回第一条 / `/clear` 后列表为空的老会话」——后者不能再走新会话
+   * 规则。缺省（老宿主不下发）= 退回「列表空即新会话」的旧判据。
+   */
+  hasContent?: boolean;
 }
 
 /** Options for opening a session in a new pane. */
@@ -1185,9 +1191,10 @@ export type ChatAction =
       type: "SET_INITIAL_STATE";
       payload: {
         messages: Message[];
-        /** rewind 专用：宿主已按同一条规则切过自己的缓存，本次快照只更新其余
-         *  字段、保留 webview 手里刚切好的列表（省掉整份列表的重传）。切会话 /
-         *  新建会话必须为假 —— 那些场景 webview 的列表本来就不对。 */
+        /** 「这次没有列表可给」：宿主拉不到消息（恢复还在路上 / 现取失败），
+         *  这份快照只更新其余字段，保留 webview 手里那份列表（绝不推空列表 ——
+         *  那会被读成「这条会话没了」）。切会话 / 新建会话 / 恢复完成必须为假：
+         *  那些场景 webview 的列表本来就不对，必须靠 `messages` 覆盖。 */
         keepMessages?: boolean;
         tasks?: Task[];
         isStreaming: boolean;

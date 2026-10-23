@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { app } from "electron";
-import type { Message } from "wave-agent-sdk/types";
 import {
   createMemorySampler,
-  countMessageStats,
   formatMemoryBlock,
   kbToMb,
   rendererMemoryFromMetrics,
@@ -22,17 +20,6 @@ const processMetric = (
     pid,
     memory: { workingSetSize, peakWorkingSetSize },
   }) as unknown as Electron.ProcessMetric;
-
-const message = (id: string, blocks: number): Message =>
-  ({
-    id,
-    role: "assistant",
-    timestamp: "2026-10-22T00:00:00.000Z",
-    blocks: Array.from({ length: blocks }, () => ({
-      type: "text",
-      content: "x",
-    })),
-  }) as unknown as Message;
 
 const paneStat = (
   paneId: string,
@@ -146,19 +133,6 @@ describe("memorySampler", () => {
     sampler.stop();
   });
 
-  it("counts messages and every block inside them", () => {
-    // A single assistant turn can carry dozens of blocks (one per tool call +
-    // its full output) — the block total is the sharper growth signal.
-    expect(
-      countMessageStats([
-        message("m1", 12),
-        message("m2", 3),
-        message("m3", 0),
-      ]),
-    ).toEqual({ messages: 3, blocks: 15 });
-    expect(countMessageStats([])).toEqual({ messages: 0, blocks: 0 });
-  });
-
   it("carries the message volume on the memory line", () => {
     const log = { block: vi.fn(), warn: vi.fn() };
     const sampler = createMemorySampler({
@@ -186,56 +160,6 @@ describe("memorySampler", () => {
     expect(
       formatMemoryBlock([{ pid: 1, workingSetMb: 10, peakWorkingSetMb: 20 }]),
     ).toEqual(["renderer memory pid=1 workingSet=10MB peak=20MB"]);
-  });
-
-  it("reports off-screen conversations next to the pane totals, never inside them", () => {
-    // 屏外副本永远到不了渲染进程：并进 messages= 就会让曲线回答
-    // 「堆是不是随会话长度涨」时用一个堆里根本没有的数（spec
-    // ui/message-rendering-system.md「宿主只留下被 pane 显示的会话副本」）。
-    const lines = formatMemoryBlock(
-      [{ pid: 1, workingSetMb: 10, peakWorkingSetMb: 20 }],
-      [paneStat("pane-1", 20, 40)],
-      { sessions: 3, messages: 0, blocks: 0 },
-    );
-
-    expect(lines).toEqual([
-      "renderer memory pid=1 workingSet=10MB peak=20MB messages=20 blocks=40 offscreenSessions=3 offscreenMessages=0",
-      "session messages pane=pane-1 messages=20 blocks=40",
-    ]);
-  });
-
-  it("says nothing about off-screen conversations when there are none", () => {
-    expect(
-      formatMemoryBlock(
-        [{ pid: 1, workingSetMb: 10, peakWorkingSetMb: 20 }],
-        [paneStat("pane-1", 20, 40)],
-        { sessions: 0, messages: 0, blocks: 0 },
-      )[0],
-    ).toBe(
-      "renderer memory pid=1 workingSet=10MB peak=20MB messages=20 blocks=40",
-    );
-  });
-
-  it("still logs the memory reading when the off-screen getter throws", () => {
-    const log = { block: vi.fn(), warn: vi.fn() };
-    const sampler = createMemorySampler({
-      log,
-      getMetrics: () => [processMetric("Tab", 111, 1024, 1024)],
-      getOffscreenVolume: () => {
-        throw new Error("host disposed");
-      },
-    });
-
-    sampler.start();
-    sampler.stop();
-
-    expect(log.warn).toHaveBeenCalledWith(
-      "[desktop] off-screen volume sample failed:",
-      expect.any(Error),
-    );
-    expect(log.block.mock.calls[0][1]).toEqual([
-      "renderer memory pid=111 workingSet=1MB peak=1MB",
-    ]);
   });
 
   it("still logs the memory reading when the volume getter throws", () => {

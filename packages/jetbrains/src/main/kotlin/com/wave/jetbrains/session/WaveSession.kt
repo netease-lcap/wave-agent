@@ -46,6 +46,11 @@ data class PendingConfirmation(
 /**
  * Holds stdio connection + session state + throttling.
  * Mirrors packages/vscode/src/session/chatSession.ts.
+ *
+ * 宿主对**消息内容**零状态：这里有的只是状态（sessionId / workdir、流式与命令运行
+ * 中、待确认、任务、上下文用量），消息列表一律现取（[fetchMessages]），回包交出去
+ * 之后不留引用、不写字段（spec ui/message-rendering-system.md「宿主不保留消息内容，
+ * 用的时候现取」）。
  */
 class WaveSession(
     private val project: Project,
@@ -57,14 +62,6 @@ class WaveSession(
 
     @Volatile var agent: StdioAgent? = null
         private set
-    /**
-     * 宿主手里这份**整份列表（= 压缩后的上下文）**：不分页，首屏推的就是它。
-     *
-     * 列表本身从最近一次压缩开始，跨压缩边界不再回溯（spec ui/message-rendering-system.md
-     * 「首屏就是整份列表，不分页」）。写过它的只有 [refreshMessages]（整份替换）、
-     * [onCompactBlockAdded]（追加一条）、以及回滚后的就地截断。
-     */
-    @Volatile var messages: JsonElement? = null
     @Volatile var tasks: JsonElement? = null
         private set
     @Volatile var backgroundTasks: JsonElement? = null
@@ -161,10 +158,10 @@ class WaveSession(
             return
         }
         // Compaction only folds the API context; the display stream just gained the
-        // summary block, so append it like any other new message instead of pulling
-        // and replacing the whole list (spec: 压缩走增量通道).
-        val current = messages as? JsonArray ?: JsonArray(emptyList())
-        messages = JsonArray(current + compactMessage)
+        // summary block. Forward it like any other new message instead of pulling and
+        // replacing the whole list — the host appends nothing to anything, it keeps no
+        // message content at all (spec ui/message-rendering-system.md「宿主不保留消息
+        // 内容，用的时候现取」场景 2).
         postMessage("appendMessage", buildJsonObject { put("message", compactMessage) })
     }
 
@@ -434,33 +431,41 @@ class WaveSession(
         LOG.warn("Wave session error: $message")
     }
 
-    // ── Message list: one-shot pull ───────────────────────────────
+    // ── Message list: one-shot pull, nothing kept ─────────────────
 
     /**
-     * 拉**整份列表**进 [messages] 缓存（= 压缩后的上下文，不分页）。
+     * 现取**整份列表**（= 压缩后的上下文，不分页）：回包就是这次调用的全部产出，
+     * 宿主把它交给界面之后**不写字段、不留引用**（spec
+     * ui/message-rendering-system.md「宿主不保留消息内容，用的时候现取」判据：宿主
+     * 只记状态，不记消息本身）。
      *
-     * webview 不再订阅全量快照推送：宿主在 webviewReady / rewind / clearChat /
-     * restoreSession 之后按需拉，镜像 VSCE chatSession.getMessages。压缩不算拉取：
-     * 展示流只多了一个摘要块，由 [onCompactBlockAdded] 增量追加。
+     * 首屏 / 切会话 / 恢复、`/rewind`、clearChat 之后都按需现取；压缩不算取数——展示
+     * 流只多了一个摘要块，由 [onCompactBlockAdded] 增量转发。回包顺带刷新
+     * [StdioAgent.contextUsagePercent]（那是**状态**不是消息内容，webview 重建之后
+     * 靠它把用量环补回来）。
+     *
+     * @return 回包里的 messages；RPC 失败返回 null —— 调用方据此让界面保留手里那份，
+     * 不拿空列表把「暂时读不到」显示成「这条会话没了」。
      */
-    suspend fun refreshMessages() {
-        val agent = agent ?: return
-        try {
+    suspend fun fetchMessages(): JsonArray? {
+        val agent = agent ?: return null
+        return try {
             val res = agent.getMessages() as? JsonObject
-            messages = res?.get("messages") as? JsonArray ?: JsonArray(emptyList())
+            res?.get("messages") as? JsonArray ?: JsonArray(emptyList())
         } catch (e: StdioClientException) {
             LOG.warn("getMessages failed: ${e.message}")
+            null
         }
     }
 
     /**
-     * 拉整份列表并推给 webview 作为「响应」（updateMessages）。
+     * 现取整份列表并推给 webview 作为「响应」（updateMessages）。
+     *
+     * 取不到就不推：界面手里那份比一个凭空来的空列表更接近真相。
      */
     suspend fun pullAndPushMessages() {
-        refreshMessages()
-        postMessage("updateMessages", buildJsonObject {
-            put("messages", messages as? JsonArray ?: JsonArray(emptyList()))
-        })
+        val messages = fetchMessages() ?: return
+        postMessage("updateMessages", buildJsonObject { put("messages", messages) })
     }
 
     /**

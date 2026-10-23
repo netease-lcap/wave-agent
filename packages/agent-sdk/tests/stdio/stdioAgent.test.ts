@@ -815,9 +815,10 @@ describe("StdioAgent", () => {
 
   // ── handleNotification (called by NotificationRouter) ──────
 
-  // 宿主缓存就是整份列表（spec ui/message-rendering-system.md「首屏就是整份列表，
-  // 不分页」）：只有 refreshMessages 写它，带参数的读是一次性查询、不写缓存。
-  it("refreshMessages pulls the whole list and is the only path that writes the cache", async () => {
+  // 宿主对消息内容零状态（spec ui/message-rendering-system.md「宿主不保留消息内容，
+  // 用的时候现取」）：无参取数把整份列表交出去，自己只留两项状态——列表从压缩点
+  // 开始，条数与标题兜底只能随这份回包下发，宿主自己数不出来。
+  it("getMessages answers the whole list and keeps only the thread summary and usage", async () => {
     const { agent, client } = createAgent();
     const messages: Message[] = [
       { id: "m1", role: "user", timestamp: "", blocks: [] },
@@ -828,7 +829,7 @@ describe("StdioAgent", () => {
       contextUsagePercent: 25,
     });
 
-    const result = await agent.refreshMessages();
+    const result = await agent.getMessages();
 
     expect(client.request).toHaveBeenCalledWith(
       "getMessages",
@@ -836,9 +837,6 @@ describe("StdioAgent", () => {
       undefined,
     );
     expect(result).toEqual(messages);
-    expect(agent.messages).toEqual(messages);
-    // 会话列表的条数与标题兜底只能随这一份回包下发：列表从压缩点开始，宿主自己数
-    // 不出来。
     expect(agent.threadSummary).toEqual({
       messageCount: 42,
       firstUserText: "hi",
@@ -847,23 +845,21 @@ describe("StdioAgent", () => {
     expect(agent.contextUsagePercent).toBe(25);
   });
 
-  it("refreshMessages clears a stale context-usage percentage when the response omits it", async () => {
+  it("getMessages clears a stale context-usage percentage when the response omits it", async () => {
     const { agent, client } = createAgent();
     client.request.mockResolvedValue({ messages: [], contextUsagePercent: 25 });
-    await agent.refreshMessages();
+    await agent.getMessages();
 
     client.request.mockResolvedValue({ messages: [] });
-    await agent.refreshMessages();
+    await agent.getMessages();
 
     expect(agent.contextUsagePercent).toBeUndefined();
   });
 
   it("getMessages with parameters is a read-only query", async () => {
     const { agent, client } = createAgent();
-    const cached: Message[] = [
-      { id: "cached", role: "user", timestamp: "", blocks: [] },
-    ];
-    agent.messages = cached;
+    agent.threadSummary = { messageCount: 1, firstUserText: "kept" };
+    agent.contextUsagePercent = 10;
     const page = {
       messages: [{ id: "older", role: "user", timestamp: "", blocks: [] }],
     };
@@ -877,18 +873,12 @@ describe("StdioAgent", () => {
       undefined,
     );
     expect(result).toEqual(page);
-    expect(agent.messages).toBe(cached);
-  });
-
-  it("getMessages with no arguments answers the whole list and still caches nothing", async () => {
-    const { agent, client } = createAgent();
-    const messages: Message[] = [
-      { id: "m1", role: "user", timestamp: "", blocks: [] },
-    ];
-    client.request.mockResolvedValue({ messages });
-
-    await expect(agent.getMessages()).resolves.toEqual(messages);
-    expect(agent.messages).toEqual([]);
+    // 带参数的读连状态都不回写：它是一次只读查询。
+    expect(agent.threadSummary).toEqual({
+      messageCount: 1,
+      firstUserText: "kept",
+    });
+    expect(agent.contextUsagePercent).toBe(10);
   });
 
   it("userMessageAdded forwards message to callback", () => {
@@ -930,29 +920,14 @@ describe("StdioAgent", () => {
     expect(onAssistantMessageAdded).toHaveBeenCalledWith(message);
   });
 
-  it("assistantMessageDiscarded drops the cached message and forwards the id", () => {
+  it("assistantMessageDiscarded forwards the id (the host keeps no list to patch)", () => {
     const onAssistantMessageDiscarded = vi.fn();
     const { agent } = createAgent({ onAssistantMessageDiscarded });
-    const kept: Message = {
-      id: "u1",
-      role: "user",
-      timestamp: "",
-      blocks: [],
-    };
-    const partial: Message = {
-      id: "a-partial",
-      role: "assistant",
-      timestamp: "",
-      blocks: [],
-    };
-    // The cached list backs later getMessages pulls (it is only ever set from
-    // a pull) — a stale half message there would come back into view.
-    agent.messages = [kept, partial];
+
     agent.handleNotification("assistantMessageDiscarded", {
       messageId: "a-partial",
     });
 
-    expect(agent.messages).toEqual([kept]);
     expect(onAssistantMessageDiscarded).toHaveBeenCalledWith("a-partial");
   });
 

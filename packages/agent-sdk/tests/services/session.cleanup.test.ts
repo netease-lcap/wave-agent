@@ -3,6 +3,7 @@ import {
   cleanupEmptyProjectDirectories,
   cleanupMetaOnlySessions,
   ensureSessionDir,
+  META_ONLY_SWEEP_MARKER,
   SESSION_DIR,
 } from "../../src/services/session.js";
 import { promises as fs } from "fs";
@@ -78,6 +79,8 @@ describe("session service cleanup", () => {
     vi.clearAllMocks();
     // Reset NODE_ENV for each test if needed, but many functions check for "test"
     process.env.NODE_ENV = "development";
+    // Default: the one-time sweep has NOT run on this machine yet (no marker).
+    vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
   });
 
   describe("ensureSessionDir", () => {
@@ -239,6 +242,60 @@ describe("session service cleanup", () => {
 
       expect(deleted).toBe(0);
       expect(fs.unlink).not.toHaveBeenCalled();
+    });
+
+    it("should sweep only once per machine, then skip every later call", async () => {
+      // Earlier cases leave `mockResolvedValueOnce` entries queued (clearing
+      // calls does not clear them), so drop those queues first.
+      vi.mocked(fs.readdir).mockReset();
+      vi.mocked(fs.stat).mockReset();
+      vi.mocked(fs.mkdir).mockReset();
+      mockGetLastMessage.mockReset();
+      mockJsonlRead.mockReset();
+      vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
+      vi.mocked(fs.readdir)
+        .mockResolvedValueOnce(["project1"] as unknown as Awaited<
+          ReturnType<typeof fs.readdir>
+        >)
+        .mockResolvedValueOnce(["session1.jsonl"] as unknown as Awaited<
+          ReturnType<typeof fs.readdir>
+        >);
+      vi.mocked(fs.stat).mockResolvedValue({
+        isDirectory: () => true,
+      } as unknown as Awaited<ReturnType<typeof fs.stat>>);
+      mockGetLastMessage.mockResolvedValue(metaMessage);
+      mockJsonlRead.mockResolvedValue([metaMessage]);
+
+      expect(await cleanupMetaOnlySessions()).toBe(1);
+      // The marker is what makes the sweep one-time — written even though a
+      // file was deleted, so the next agent init does not scan again.
+      expect(fs.writeFile).toHaveBeenCalledWith(
+        META_ONLY_SWEEP_MARKER,
+        expect.any(String),
+        "utf8",
+      );
+
+      vi.clearAllMocks();
+      vi.mocked(fs.access).mockResolvedValue(undefined);
+
+      expect(await cleanupMetaOnlySessions()).toBe(0);
+      expect(fs.readdir).not.toHaveBeenCalled();
+      expect(fs.unlink).not.toHaveBeenCalled();
+    });
+
+    it("should write the marker even when nothing needed deleting", async () => {
+      vi.mocked(fs.readdir).mockReset();
+      vi.mocked(fs.access).mockRejectedValue(new Error("ENOENT"));
+      vi.mocked(fs.readdir).mockResolvedValue(
+        [] as unknown as Awaited<ReturnType<typeof fs.readdir>>,
+      );
+
+      expect(await cleanupMetaOnlySessions()).toBe(0);
+      expect(fs.writeFile).toHaveBeenCalledWith(
+        META_ONLY_SWEEP_MARKER,
+        expect.any(String),
+        "utf8",
+      );
     });
 
     it("should return 0 without touching disk in test environment", async () => {
