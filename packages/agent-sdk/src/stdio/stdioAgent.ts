@@ -213,10 +213,11 @@ export class StdioAgent {
   public contextUsagePercent: number | undefined;
   public permissionMode: PermissionMode | undefined;
   /**
-   * The resident tail of the display thread — one page, not the whole history
-   * (see `refreshMessages`). Hosts push it to the renderer and mirror every
-   * later append/edit into it; older pages are fetched on demand and never
-   * cached here.
+   * The page this host keeps — the first screen, not the whole list (see
+   * `refreshMessages`). Hosts push it to the renderer and mirror every later
+   * append/edit into it; older pages are fetched on demand and never cached
+   * here. The list itself starts at the last compaction, so paging back stops
+   * there.
    */
   public messages: Message[] = [];
   /** Whether the last `refreshMessages()` window had older messages before it. */
@@ -420,12 +421,13 @@ export class StdioAgent {
   }
 
   /**
-   * 整份展示流读一次。**不写 `this.messages` 缓存**。
+   * 整份列表读一次。**不写 `this.messages` 缓存**。
    *
    * 老契约是「拉全量并写缓存」，于是每个宿主进程都为每条会话常驻一份完整历史
    * （含 Read / MCP 工具图片的 base64）。现在缓存只留一页：缓存由
-   * `refreshMessages()` 维护，这个是给「确实需要全量语义」的调用方的一次性查询
-   * （回滚定位、导出、老宿主的兼容路径），返回值用完就散。
+   * `refreshMessages()` 维护，这个是给「确实需要整份列表」的调用方的一次性查询
+   * （导出、老宿主的兼容路径），返回值用完就散。列表从最近一次压缩开始，
+   * 所以它也不是「跨压缩边界的全史」。
    */
   async getMessages(): Promise<Message[]>;
   /**

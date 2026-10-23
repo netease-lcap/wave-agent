@@ -8,12 +8,12 @@
  * renderer's working set climb for hours before the crash?
  *
  * A MB number alone does not name a cause, so every reading carries the
- * message volume next to it: 6-week-old conversations keep growing the UI
- * display stream (`displayMessages`) while compaction only folds the API
- * context (`messages`), and the desktop pushes that whole list to the renderer
- * through `setInitialState` with no slicing. Memory rising *with* message count
- * is evidence for that candidate; memory flat while messages grow is evidence
- * against it.
+ * message volume next to it. Two things can make that count grow: the agent's
+ * own list grows until the next compaction folds it, and the renderer's copy
+ * only ever grows — compaction appends a summary block and never replaces the
+ * table on screen, so one long-running session accumulates messages there even
+ * after the fold. Memory rising *with* message count is evidence for that
+ * candidate; memory flat while messages grow is evidence against it.
  *
  * Units: Electron reports `workingSetSize` / `peakWorkingSetSize` in **KB**;
  * the log prints MB because that is the number a human compares to the

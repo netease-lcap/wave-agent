@@ -65,9 +65,7 @@ describe("BackgroundTaskManager", () => {
   const mockAgent = {
     sessionId: "test-session",
     messages: [],
-    displayMessages: [],
     // 整条展示流现在由 SDK 读转录给出（缓存只剩一页）。
-    getDisplayThread: vi.fn(async () => []),
     backgroundTasks: mockTasks,
     getBackgroundTaskOutput: vi.fn((id) => {
       const task = [

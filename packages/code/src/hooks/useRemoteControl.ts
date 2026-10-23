@@ -97,7 +97,7 @@ export interface UseRemoteControlOptions {
   /** One page of the display thread — read from the transcript when it reaches back. */
   messagePage: (window: MessageWindow) => Promise<MessageWindowResult>;
   /** The whole thread in one shot (no window asked for); nothing is cached. */
-  displayThread: () => Promise<Message[]>;
+  currentThread: () => Promise<Message[]>;
   /** Thread totals for the session list (the resident window cannot answer). */
   threadSummary: () => {
     messageCount: number;
@@ -313,7 +313,7 @@ function adapterOf(latest: {
     workdir: () => latest.current.workdir,
     sessionCwd: () => latest.current.sessionCwd(),
     messagePage: (window) => latest.current.messagePage(window),
-    displayThread: () => latest.current.displayThread(),
+    currentThread: () => latest.current.currentThread(),
     threadSummary: () => latest.current.threadSummary(),
     contextUsagePercent: () =>
       percentOf(

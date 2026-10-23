@@ -43,7 +43,7 @@ function makeSession(
     workdir: () => "/work",
     sessionCwd: () => "/work",
     messagePage: async () => ({ messages: [], hasMore: false }),
-    displayThread: async () => [],
+    currentThread: async () => [],
     threadSummary: () => ({ messageCount: 0 }),
     contextUsagePercent: () => 0,
     latestTotalTokens: () => 0,
@@ -240,7 +240,7 @@ test("getMessages answers the whole thread when no window is asked for", async (
   ];
   const host = new RemoteControlCliHost(
     makeSession({
-      displayThread: async () => messages,
+      currentThread: async () => messages,
       contextUsagePercent: () => 12,
     }),
   );

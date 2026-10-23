@@ -71,7 +71,7 @@ const baseOptions: Omit<UseRemoteControlOptions, "messages"> = {
   compact: vi.fn(),
   slashCommands: () => [],
   messagePage: async () => ({ messages: [], hasMore: false }),
-  displayThread: async () => [],
+  currentThread: async () => [],
   threadSummary: () => ({ messageCount: 0 }),
 };
 

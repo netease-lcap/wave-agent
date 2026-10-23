@@ -611,7 +611,7 @@ export class RemoteControlService implements RemoteControlController {
    * Answer a request, hammering the answer into the frame budget.
    *
    * A read answer is the one frame whose size follows the session (a page of
-   * `displayMessages`), so it is the one frame that gets trimmed instead of
+   * the message list), so it is the one frame that gets trimmed instead of
    * dropped. `getMessages` answers are pageable and the phone asked for the
    * tail, so an over-budget page is cut to the **newest** messages that fit and
    * flagged `hasMore` — the phone keeps a usable page instead of nothing, and

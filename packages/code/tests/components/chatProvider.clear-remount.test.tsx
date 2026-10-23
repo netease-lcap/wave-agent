@@ -42,14 +42,6 @@ function createMockAgent() {
     sessionId: "test-session-id",
     currentWorkdir: "/tmp",
     messages: [makeMessage("m1", "hello"), makeMessage("m2", "world")],
-    // Full UI stream follows the context in this mock (the compaction/rewind
-    // callbacks here replace the whole list rather than splitting streams).
-    get displayMessages() {
-      return agent.messages;
-    },
-    // 整条展示流由 SDK 从转录读（SDK 只留常驻窗口）；这一组用例的假 agent 里
-    // 两者同一份。
-    getDisplayThread: async () => agent.messages,
     isLoading: false,
     isCommandRunning: false,
     isCompacting: false,

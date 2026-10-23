@@ -1836,19 +1836,19 @@ export class AgentBridge {
       }
       throw err;
     }
-    // The totals ride along with the window: host caches are one page now, so
-    // this reply is the only place a host can learn the thread's size and its
-    // first user message (the session-title fallback).
+    // The totals ride along with the window: the list starts at the last
+    // compaction, so this reply is the only place a host can learn the
+    // thread's size and its first user message (the session-title fallback).
     const threadSummary = entry.agent.getThreadSummary();
     if (!normalized) {
       return {
-        messages: await entry.agent.getDisplayThread(),
+        messages: [...entry.agent.messages],
         contextUsagePercent,
         threadSummary,
       };
     }
     return {
-      ...(await entry.agent.getMessagePage(normalized)),
+      ...entry.agent.getMessagePage(normalized),
       contextUsagePercent,
       threadSummary,
     };
@@ -2941,7 +2941,7 @@ export class AgentBridge {
         // than once under the same task id (a workflow warns about its size
         // mid-run, then notifies again when it finishes), and this callback
         // fires for the message that was just appended — the newest one.
-        const matches = (ctx.agent?.displayMessages ?? []).filter(
+        const matches = (ctx.agent?.messages ?? []).filter(
           (m) =>
             m.role === "user" &&
             m.blocks.some(

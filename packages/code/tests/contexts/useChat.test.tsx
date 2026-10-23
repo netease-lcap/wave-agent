@@ -91,18 +91,10 @@ describe("ChatProvider", () => {
     sessionId: "test-session",
     messages: [] as Message[],
     /**
-     * 展示流与 API 上下文不一致的场合（压缩之后）由它给出；缺省两者相同。
-     * CLI 的列表读 `messages`，远端页面的「整条线程」读展示流。
+     * 压缩之后列表只剩「摘要 + 保留轮次」——就是 `messages` 本身。这个字段留着
+     * 只在用例里表达「压缩前的那条旧消息」不再出现。
      */
     displayStream: undefined as Message[] | undefined,
-    get displayMessages() {
-      return this.displayStream ?? this.messages;
-    },
-    getDisplayThread: vi.fn(async function (this: {
-      displayMessages: unknown[];
-    }) {
-      return this.displayMessages;
-    }),
     isLoading: false,
     latestTotalTokens: 0,
     isCommandRunning: false,
@@ -1427,8 +1419,6 @@ describe("ChatProvider", () => {
         "kept-1",
       ]);
     });
-    // 列表不是从展示流（转录）读出来的
-    expect(mockAgent.getDisplayThread).not.toHaveBeenCalled();
   });
 
   it("refreshes to the post-compaction list and never reads history back", async () => {
@@ -1472,8 +1462,6 @@ describe("ChatProvider", () => {
       compactSummary,
       keptRound,
     ];
-    mockAgent.getDisplayThread.mockClear();
-
     await lastValue?.compact();
 
     await vi.waitFor(() => {
@@ -1482,7 +1470,6 @@ describe("ChatProvider", () => {
         "kept-1",
       ]);
     });
-    expect(mockAgent.getDisplayThread).not.toHaveBeenCalled();
   });
 
   it("collapses the list when an automatic compaction finishes", async () => {

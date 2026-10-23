@@ -57,7 +57,6 @@ describe("TaskList Integration", () => {
     mockAgent = {
       sessionId: "test-session",
       messages: [],
-      displayMessages: [],
       isLoading: false,
       latestTotalTokens: 0,
       isCommandRunning: false,

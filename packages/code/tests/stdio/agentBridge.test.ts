@@ -130,7 +130,6 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     latestTotalTokens: 100,
     getMaxInputTokens: vi.fn().mockReturnValue(200000),
     messages,
-    displayMessages: messages,
     destroy: vi.fn(),
     restoreSession: vi.fn(),
     sendMessage: vi.fn(),
@@ -142,11 +141,8 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     getFullMessageThread: vi
       .fn()
       .mockResolvedValue({ messages, sessionIds: ["test-session-id"] }),
-    // 分页在 SDK 里读转录：这一层只被要求「窗口传下去、回包原样答回来」。
-    getDisplayThread: vi.fn(async function (this: { messages?: Message[] }) {
-      return this.messages ?? [];
-    }),
-    getMessagePage: vi.fn(async () => ({ messages: [], hasMore: false })),
+    // 分页在 SDK 里对着内存列表切片：这一层只被要求「窗口传下去、回包原样答回来」。
+    getMessagePage: vi.fn(() => ({ messages: [], hasMore: false })),
     getThreadSummary: vi.fn(function (this: { messages?: Message[] }) {
       return { messageCount: (this.messages ?? []).length };
     }),
@@ -167,12 +163,6 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     getBackgroundTasks: vi.fn().mockReturnValue([]),
     ...overrides,
   };
-  // displayMessages (full UI stream) tracks messages unless explicitly
-  // overridden — mirrors the real Agent where both stay in sync except
-  // around compaction.
-  if (!("displayMessages" in overrides)) {
-    agent.displayMessages = agent.messages;
-  }
   return agent as unknown as Agent;
 }
 
@@ -1078,10 +1068,10 @@ test("getMessages omits contextUsagePercent when the session has no tokens yet",
 
 // ── getMessages: the optional window (remote clients) ────────────
 //
-// 窗口本身由 SDK 读转录给出（翻页算术的用例在 `agent-sdk` 的
-// `messageManager.paging` / `transcriptPage`）。这里只钉住这一层的契约：窗口原样
-// 传下去、没有窗口时答整条会话、非法窗口直接拒绝、以及会话列表要的两个总数随回
-// 包一起下发。
+// 窗口本身由 SDK 对着内存列表切片（翻页算术的用例在 `agent-sdk` 的
+// `messageManager.paging`）。这里只钉住这一层的契约：窗口原样传下去、没有窗口时
+// 答 agent 手上那份列表、非法窗口直接拒绝、以及会话列表要的两个总数随回包一起
+// 下发。
 
 function windowedMessages(count: number): Message[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -1108,7 +1098,7 @@ type MessageWindowResult = {
 
 test("getMessages hands the window to the SDK unchanged", async () => {
   const { bridge, sessionId, mockAgent } = await bridgeWithMessages(10);
-  vi.mocked(mockAgent.getMessagePage).mockResolvedValue({
+  vi.mocked(mockAgent.getMessagePage).mockReturnValue({
     messages: windowedMessages(3),
     hasMore: true,
   });
@@ -1127,7 +1117,7 @@ test("getMessages hands the window to the SDK unchanged", async () => {
   expect(r.hasMore).toBe(true);
 });
 
-test("getMessages without a window answers the whole thread", async () => {
+test("getMessages without a window answers the agent's own list", async () => {
   const { bridge, sessionId, mockAgent } = await bridgeWithMessages(10);
 
   const r = (await bridge.handleRequest(
@@ -1136,7 +1126,6 @@ test("getMessages without a window answers the whole thread", async () => {
     sessionId,
   )) as MessageWindowResult;
 
-  expect(mockAgent.getDisplayThread).toHaveBeenCalled();
   expect(mockAgent.getMessagePage).not.toHaveBeenCalled();
   expect(r.messages).toHaveLength(10);
 });

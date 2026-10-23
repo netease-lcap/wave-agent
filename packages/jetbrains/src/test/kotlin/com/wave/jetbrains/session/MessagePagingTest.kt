@@ -12,11 +12,12 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * 「翻更早」回包的算术（spec ui/message-rendering-system.md「续页从转录读、两端不再
- * 常驻全量」）。
+ * 「翻更早」回包的算术（spec ui/message-rendering-system.md「列表就是压缩后的上下文，
+ * 跨压缩边界不再回溯」）。
  *
- * 宿主不再自己从全量缓存里切窗口——那一页由 SDK 读转录给出，Kotlin 侧只剩「怎么读
- * 回包」。读错的后果很具体：`hasMore` 认成 false，页面就永远显示「没有更早的消息」。
+ * 宿主不再自己从全量缓存里切窗口——那一页由 SDK 对内存列表切片给出，Kotlin 侧只剩
+ * 「怎么读回包」。读错的后果很具体：`hasMore` 认成 false，页面就永远显示「没有更早
+ * 的消息」。
  */
 class MessagePagingTest {
 

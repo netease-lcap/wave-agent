@@ -2327,8 +2327,8 @@ export class MessageHandler {
     }));
 
     // 首屏只推一页（spec ui/message-rendering-system.md「首屏只进一页」）：宿主缓存
-    // 本身就是那一页（更早的从转录读、只经手不留存），「还有更早的」只能由填缓存
-    // 的那次窗口回包给。
+    // 本身就是那一页（更早的页只在用户上翻时经一次窗口查询过手、不留存），
+    // 「还有更早的」只能由填缓存的那次窗口回包给。列表从最近一次压缩开始。
     const page = {
       messages: session.messages,
       hasMore: session.hasMoreMessages,

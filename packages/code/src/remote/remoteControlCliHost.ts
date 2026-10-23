@@ -65,10 +65,10 @@ export interface RemoteControlCliSession {
   workdir(): string;
   /** Where the session was opened; the row the page groups by. */
   sessionCwd(): string;
-  /** One page of the display thread, from the transcript when it reaches back. */
+  /** One page of the list, sliced in memory. */
   messagePage(window: MessageWindow): Promise<MessageWindowResult>;
-  /** The whole thread, read once (nothing cached; the window stays a window). */
-  displayThread(): Promise<Message[]>;
+  /** The whole list as the agent holds it (it starts at the last compaction). */
+  currentThread(): Promise<Message[]>;
   /** Thread totals the session list needs (the window cannot answer them). */
   threadSummary(): {
     messageCount: number;
@@ -381,12 +381,12 @@ export class RemoteControlCliHost implements RemoteControlHost {
         throw invalidParams(err.message);
       throw err;
     }
-    // No window = the whole thread, read once from the transcript (spec
-    // ui/message-rendering-system.md「不带窗口 = 全量」). Pages come from
-    // there too; the front end keeps only a resident window.
+    // No window = the whole list the agent holds (spec
+    // ui/message-rendering-system.md「不带窗口 = 当前列表」). Pages are slices
+    // of the same list.
     if (!normalized) {
       return {
-        messages: await this.session.displayThread(),
+        messages: await this.session.currentThread(),
         contextUsagePercent,
       };
     }

@@ -8,12 +8,11 @@
  * anchor resolves to its **last** occurrence — are a property of the wire
  * contract, not of either host, so the arithmetic lives here once.
  *
- * The paging itself moved to the SDK: pages come from the transcript
- * (`Agent.getMessagePage`) and never from a host-side full copy, because
- * holding that copy is exactly what pinned every conversation's base64
- * images in memory. What is left here is the one rule a misreading caller
- * cannot notice on its own — a malformed window must fail instead of
- * silently widening into a full read.
+ * The paging itself lives in the SDK: pages are slices of the list the agent
+ * holds (`Agent.getMessagePage`), and that list starts at the last compaction
+ * — nothing older is read back. What is left here is the one rule a
+ * misreading caller cannot notice on its own — a malformed window must fail
+ * instead of silently widening into a full read.
  *
  * Described in docs/specs/ui/remote-control.md (§5 白名单与增量拉取).
  */

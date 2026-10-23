@@ -1107,8 +1107,8 @@ export class DesktopHost {
       console.warn("[DesktopHost] refreshMessages failed:", error);
     }
     if (this.agentForPane(paneId) === agent) {
-      // 「整表替换」发的是缓存本身——它现在就是一页（更早的页从转录读、谁也不留），
-      // 首屏只进一页的约束由 SDK 的窗口保证。
+      // 「整表替换」发的是缓存本身——它现在就是一页（首屏只进一页的约束由 SDK
+      // 的窗口保证），更早的页只在用户上翻时经 `loadOlderMessages` 过一遍手。
       this.postMessage({
         command: "updateMessages",
         paneId,
@@ -3037,8 +3037,9 @@ export class DesktopHost {
       }));
 
     // 首屏只推一页（spec ui/message-rendering-system.md「首屏只进一页」）。宿主缓存
-    // `agent.messages` 现在本身就是那一页（更早的页从转录读、谁也不留），所以整份
-    // 推过去即可；「还有更早的」这个事实只能由 SDK 的窗口回包给，缓存长度答不了。
+    // `agent.messages` 现在本身就是那一页，所以整份推过去即可；「还有更早的」这个
+    // 事实只能由 SDK 的窗口回包给，缓存长度答不了。列表从最近一次压缩开始，
+    // 所以「更早」的尽头是压缩点。
     const page = {
       messages: current?.messages ?? [],
       hasMore: current?.hasMoreMessages === true,

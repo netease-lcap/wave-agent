@@ -46,9 +46,7 @@ import { READ_TOOL_NAME } from "../constants/tools.js";
 import {
   MESSAGE_HISTORY_PAGE_SIZE,
   MESSAGE_PAGE_MAX_BYTES,
-  MESSAGE_RESIDENT_SIZE,
 } from "../constants/messageWindow.js";
-import { readTranscriptPage } from "../utils/transcriptPage.js";
 import { takePageFromMemory } from "../utils/messageWindow.js";
 import type {
   MessageWindow,
@@ -94,9 +92,9 @@ export interface MessageManagerCallbacks {
   onErrorBlockAdded?: (error: string) => void;
   /**
    * Fires after compaction has written its state. `content` is the summary
-   * text; `message` is the whole compact message that was appended to
-   * `displayMessages` — hosts forward it to the webview through their
-   * incremental append channel instead of pulling the full list. It is
+   * text; `message` is the whole compact message — hosts append it to their
+   * own copy of the list and forward it to the webview through the incremental
+   * append channel, so compaction never replaces the table on screen. It is
    * optional so existing consumers keep working and a host that gets no
    * message falls back to a `getMessages` pull.
    */
@@ -133,21 +131,6 @@ export class MessageManager {
   // Private state properties
   private sessionId: string;
   private messages: Message[];
-  /** Full display message stream for the UI. Mirrors `messages` (context) on
-   * every normal change; the two diverge only around compaction, where
-   * `messages` is replaced by [compact, ...last API rounds] for the API
-   * context while `displayMessages` keeps the pre-compaction history and
-   * appends the compact block (aligned with Claude Code desktop/VS Code:
-   * compaction folds the API context but leaves the UI transcript intact).
-   *
-   * **Except it is capped**: only the newest `MESSAGE_RESIDENT_SIZE` messages
-   * live here (`trimResidentDisplay`). Everything older is in the transcript,
-   * which is the append-only source of truth — a six-week conversation keeps
-   * every message there, and holding them in memory is what used to pin the
-   * base64 images of every Read / MCP tool call. Readers that need the whole
-   * thread go through `getDisplayThread()` / `getMessagePage()`, both of which
-   * read the transcript and cache nothing. */
-  private displayMessages: Message[] = [];
   private latestTotalTokens: number;
   private workdir: string;
   private encodedWorkdir: string; // Cached encoded workdir
@@ -155,34 +138,15 @@ export class MessageManager {
   private transcriptPath: string; // Cached transcript path
   private savedMessageCount: number; // Track how many messages have been saved to prevent duplication
   /**
-   * How many entries of `messages` (the context stream) the display stream
-   * already reflects — a position, like `savedMessageCount`, not a lifetime
-   * count. Everything past it is the display's to append; everything before it
-   * is already there (or was deliberately released by the resident trim, which
-   * is why membership by id cannot answer this).
-   *
-   * Compaction / restore / rewind rebase it: they hand the display stream its
-   * contents directly and the context is folded, so every remaining context
-   * entry is already on screen.
-   */
-  private displayedContextCount = 0;
-  /**
-   * How many of the *resident* `displayMessages` are already in the transcript
-   * (an offset inside the window, not a lifetime count — `trimResidentDisplay`
-   * subtracts what it drops). The suffix past it is the un-flushed tail that
-   * only exists in memory, and paging has to merge it back in.
-   */
-  private persistedDisplayCount = 0;
-  /**
-   * How many messages the thread has in total — not the resident window's
-   * length. The session list shows it, and with the window capped the window
-   * length can no longer answer it.
+   * How many messages the thread has in total — not how many the list holds.
+   * After a compaction the list is only [summary, ...kept rounds], so its
+   * length can no longer answer "how long is this conversation".
    */
   private threadMessageCount = 0;
   /**
    * Body of the thread's first user message; the session list falls back to it
    * when the session has no custom title. Captured as messages stream in
-   * (that message is long gone from the resident window by then).
+   * (that message is long gone from the list by then).
    */
   private firstUserText?: string;
   private pendingFileReadTriggers: Set<string> = new Set(); // File paths read via Read tool, awaiting rule matching
@@ -247,38 +211,6 @@ export class MessageManager {
 
   public getMessages(): Message[] {
     return [...this.messages];
-  }
-
-  /** The resident tail of the UI display stream (older messages: transcript). */
-  public getDisplayMessages(): Message[] {
-    return [...this.displayMessages];
-  }
-
-  /**
-   * Cap the display stream at the resident window, keeping the newest entries.
-   *
-   * Called after every mutation of `displayMessages` rather than per append:
-   * the window is a memory bound, and an append that skips it would re-pin the
-   * messages the previous trim released.
-   */
-  private trimResidentDisplay(): void {
-    const excess = this.displayMessages.length - MESSAGE_RESIDENT_SIZE;
-    if (excess > 0) {
-      this.displayMessages = this.displayMessages.slice(excess);
-      this.persistedDisplayCount = Math.max(
-        0,
-        this.persistedDisplayCount - excess,
-      );
-    }
-    this.persistedDisplayCount = Math.min(
-      this.persistedDisplayCount,
-      this.displayMessages.length,
-    );
-  }
-
-  /** The resident messages that are not in the transcript yet (newest tail). */
-  private getPendingDisplayTail(): Message[] {
-    return this.displayMessages.slice(this.persistedDisplayCount);
   }
 
   public getUsages(): Usage[] {
@@ -415,7 +347,6 @@ export class MessageManager {
       this.sessionId = sessionId;
       // Reset saved message count for new session
       this.savedMessageCount = 0;
-      this.displayedContextCount = 0;
       // Recompute transcript path since session ID changed
       this.transcriptPath = this.computeTranscriptPath();
 
@@ -499,50 +430,35 @@ export class MessageManager {
     );
   }
 
+  /**
+   * Replace the list.
+   *
+   * `countLifetime: false` is for the three paths that hand the list its
+   * contents wholesale — session restore, compaction and rewind. They set the
+   * thread's lifetime totals themselves (restore from the whole transcript,
+   * compaction as "everything that was already counted, plus the summary
+   * block"), so counting the fold's own survivors again would inflate them.
+   */
   public setMessages(
     messages: Message[],
-    opts?: { keepDisplay?: boolean },
+    opts?: { countLifetime?: boolean },
   ): void {
     const oldLength = this.messages.length;
     this.messages = [...messages];
-    // The UI display stream follows the context by default. Compaction /
-    // session restore / rewind pass keepDisplay and manage displayMessages
-    // explicitly (the display stream must keep the full pre-compaction
-    // history while the context folds at the last compact boundary).
-    if (!opts?.keepDisplay) {
-      if (messages.length === 0) {
-        // Clear path — nothing to merge.
-        this.displayMessages = [...messages];
-        this.persistedDisplayCount = 0;
-        this.displayedContextCount = 0;
-      } else {
-        // Routine changes (new messages, tool block updates) still touch the
-        // display stream, but after compaction the display holds the
-        // pre-compaction history while the context is folded. Refresh the
-        // display's own copies by id, then append the context entries this
-        // stream has not seen yet.
-        //
-        // "Not seen yet" is a **position**, not a set: the window is capped, so
-        // a message the trim released is still in the context and would look
-        // new to a membership check — re-appending it every turn would undo the
-        // cap and inflate the thread count.
-        const byId = new Map(messages.map((m) => [m.id, m]));
-        const merged = this.displayMessages.map((m) => byId.get(m.id) ?? m);
-        const seen = Math.min(this.displayedContextCount, messages.length);
-        for (const m of messages.slice(seen)) {
-          merged.push(m);
-          this.threadMessageCount += 1;
-          this.firstUserText ??= firstUserTextOf(m);
-        }
-        this.displayedContextCount = messages.length;
-        this.displayMessages = merged;
-        this.trimResidentDisplay();
+    const added = messages.slice(oldLength);
+
+    // The list is the context: after a compaction it is [summary, ...kept
+    // rounds], and that is exactly what the UI shows. The thread's lifetime
+    // totals are counted on the way in, because the moment a compaction folds
+    // the list those messages are gone from it.
+    if (opts?.countLifetime !== false) {
+      for (const message of added) {
+        this.threadMessageCount += 1;
+        this.firstUserText ??= firstUserTextOf(message);
       }
     }
 
-    // Incrementally extract metadata from new messages
-    const newMessages = messages.slice(oldLength);
-    for (const message of newMessages) {
+    for (const message of added) {
       this.extractFileReadsFromMessage(message);
       this.extractSkillInvocationsFromMessage(message);
     }
@@ -597,10 +513,6 @@ export class MessageManager {
 
       // Update the saved message count
       this.savedMessageCount = this.messages.length;
-      // Everything in the display stream is now in the transcript too: the
-      // appended slice is the display tail in the same order, so the resident
-      // window needs no un-flushed overlay any more.
-      this.persistedDisplayCount = this.displayMessages.length;
     } catch (error) {
       logger?.error("Failed to save session:", error);
     }
@@ -668,18 +580,12 @@ export class MessageManager {
   // Initialize state from session data
   public initializeFromSession(sessionData: SessionData): void {
     this.setSessionId(sessionData.id);
-    // The UI displays the transcript (pre-compaction history included); the
-    // API context folds at the last compact boundary so the model only sees
-    // messages from the latest summary forward. Only the tail stays resident —
-    // the rest is read back from the transcript on demand.
+    // List and context are the same thing: the conversation starts at the last
+    // compact boundary, so a resumed session shows [summary, ...kept rounds]
+    // and the transcript keeps the rest for features that need it.
     this.setMessages(sliceFromLastCompact(sessionData.messages), {
-      keepDisplay: true,
+      countLifetime: false,
     });
-    this.displayMessages = [...sessionData.messages];
-    this.trimResidentDisplay();
-    // Everything loaded came from the transcript.
-    this.persistedDisplayCount = this.displayMessages.length;
-    this.displayedContextCount = this.messages.length;
     this.threadMessageCount = sessionData.messages.length;
     this.firstUserText = findFirstUserText(sessionData.messages);
     this.setlatestTotalTokens(sessionData.metadata.latestTotalTokens);
@@ -774,16 +680,6 @@ export class MessageManager {
       return false;
     }
     this.messages.splice(index, 1);
-    this.displayMessages = this.displayMessages.filter(
-      (m) => m.id !== messageId,
-    );
-    // The context just lost an entry: the position that says "these are on
-    // screen" has to follow it, or the next merge would treat the messages
-    // after it as new again.
-    this.displayedContextCount = Math.min(
-      this.displayedContextCount,
-      this.messages.length,
-    );
     this.callbacks.onAssistantMessageDiscarded?.(messageId);
     return true;
   }
@@ -940,18 +836,12 @@ export class MessageManager {
     // lists sessions, so this is a flush point for the metadata entries.
     await this.reAppendSessionMetadata();
 
-    // Update in-memory state: the API context folds to [compact, ...last
-    // rounds], while the UI display stream keeps the full history and appends
-    // the compact block at the end.
-    this.setMessages(newMessages, { keepDisplay: true });
-    this.displayMessages = [...this.displayMessages, compactMessage];
-    this.trimResidentDisplay();
+    // Update in-memory state: the list folds to [compact, ...last rounds].
+    // What the user is looking at does not change here — the hosts append the
+    // compact block to their own copy of the list (spec: 压缩不整表替换), so
+    // the fold only takes effect on the next reload.
+    this.setMessages(newMessages, { countLifetime: false });
     this.savedMessageCount = newMessages.length;
-    // The compact block was appended to the transcript just above.
-    this.persistedDisplayCount = this.displayMessages.length;
-    // The folded context is entirely on screen already (the compact block and
-    // the rounds it keeps were all displayed before compaction).
-    this.displayedContextCount = this.messages.length;
     this.threadMessageCount += 1;
 
     // Trim recent file read cache so contents compacted away are released
@@ -1288,108 +1178,36 @@ export class MessageManager {
   }
 
   /**
-   * One page of display messages (first screen / paging back / reconnect
-   * catch-up). **Writes nothing into memory** — older pages pass through to
-   * the caller and are never retained here.
+   * One page of the list (first screen / paging back / reconnect catch-up).
    *
-   * The resident window covers "the un-flushed tail + about a page", so:
-   *
-   * - anchor inside the window → slice it in memory, and when the window runs
-   *   out continue from the transcript using its first message as the anchor
-   *   (that one is on disk by definition);
-   * - anchor outside the window → read the whole page from the transcript;
-   * - no anchor → the un-flushed tail first (it is what the user is looking
-   *   at, and it exists nowhere else), remainder from the transcript.
+   * Pure arithmetic on the in-memory list — there is nothing older to fetch:
+   * the list starts at the last compaction, so the earliest entry of this
+   * array is the earliest entry the UI can reach (spec
+   * ui/message-rendering-system.md「列表就是压缩后的上下文」).
    */
-  public async getMessagePage(
-    window: MessageWindow,
-  ): Promise<MessageWindowResult> {
+  public getMessagePage(window: MessageWindow): MessageWindowResult {
     const limit = window.limit ?? MESSAGE_HISTORY_PAGE_SIZE;
-    const resident = this.displayMessages;
-    const persisted = Math.min(this.persistedDisplayCount, resident.length);
+    const list = this.messages;
 
     if (window.since) {
-      const at = lastIndexById(resident, window.since);
-      if (at !== -1) {
-        // Anchor is resident: everything newer is the window's own tail.
-        return { messages: resident.slice(at + 1), hasMore: false };
-      }
-      const page = await readTranscriptPage(this.transcriptPath, {
-        since: window.since,
-        limit,
-      });
-      const pending = this.getPendingDisplayTail();
-      if (page.reset || pending.length === 0) {
-        return page;
-      }
-      return {
-        messages: withPendingTail(page.messages, pending),
-        hasMore: false,
-      };
+      const at = lastIndexById(list, window.since);
+      // Anchor gone (compaction / rewind / another session): ask the caller to
+      // re-pull the tail instead of answering with an empty page, which would
+      // read as "nothing newer".
+      if (at === -1) return { messages: [], hasMore: false, reset: true };
+      return { messages: list.slice(at + 1), hasMore: false };
     }
 
-    if (window.before) {
-      const at = lastIndexById(resident, window.before);
-      if (at === -1) {
-        // Anchor is not resident, so it lives in the transcript (or nowhere).
-        return readTranscriptPage(this.transcriptPath, {
-          before: window.before,
-          limit,
-        });
-      }
-      const page = takePageFromMemory(
-        resident,
-        limit,
-        MESSAGE_PAGE_MAX_BYTES,
-        at,
-      );
-      if (page.more) {
-        return { messages: page.messages, hasMore: true };
-      }
-      if (persisted === 0) {
-        return { messages: page.messages, hasMore: false };
-      }
-      if (page.messages.length >= limit) {
-        // The window is used up but the transcript still has older messages.
-        return { messages: page.messages, hasMore: true };
-      }
-      const older = await readTranscriptPage(this.transcriptPath, {
-        before: resident[0].id,
-        limit: limit - page.messages.length,
-      });
-      return {
-        messages: [...older.messages, ...page.messages],
-        hasMore: older.hasMore === true,
-      };
-    }
-
-    // First screen (limit only): the un-flushed tail first, remainder from disk.
-    const pending = this.getPendingDisplayTail();
-    const page = takePageFromMemory(pending, limit);
-    if (page.more) {
-      return { messages: page.messages, hasMore: true };
-    }
-    if (persisted === 0) {
-      return { messages: page.messages, hasMore: false };
-    }
-    if (page.messages.length >= limit) {
-      return { messages: page.messages, hasMore: true };
-    }
-    const older = await readTranscriptPage(this.transcriptPath, {
-      before: resident[persisted - 1].id,
-      limit: limit - page.messages.length,
-    });
-    return {
-      messages: [...older.messages, ...page.messages],
-      hasMore: older.hasMore === true,
-    };
+    const at = window.before ? lastIndexById(list, window.before) : list.length;
+    if (at === -1) return { messages: [], hasMore: false, reset: true };
+    const page = takePageFromMemory(list, limit, MESSAGE_PAGE_MAX_BYTES, at);
+    return { messages: page.messages, hasMore: page.more };
   }
 
   /**
-   * What the session list needs, without holding the thread: total message
-   * count, the first user body (title fallback) and the newest timestamp.
-   * Kept as counters because the resident window can no longer answer either
-   * of the first two.
+   * What the session list needs: total message count, the first user body
+   * (title fallback) and the newest timestamp. The first two are counters —
+   * the list starts at the last compaction, so it cannot answer them.
    */
   public getThreadSummary(): {
     messageCount: number;
@@ -1399,49 +1217,10 @@ export class MessageManager {
     return {
       messageCount: this.threadMessageCount,
       ...(this.firstUserText ? { firstUserText: this.firstUserText } : {}),
-      ...(this.displayMessages.length > 0
-        ? {
-            lastActiveAt:
-              this.displayMessages[this.displayMessages.length - 1].timestamp,
-          }
+      ...(this.messages.length > 0
+        ? { lastActiveAt: this.messages[this.messages.length - 1].timestamp }
         : {}),
     };
-  }
-
-  /**
-   * The whole display thread, read from the transcript **once** and not
-   * cached. For callers that genuinely need every message (CLI static
-   * scrollback, session title, rewind positioning); the resident window is
-   * left untouched, so this cannot become a new long-lived copy.
-   */
-  public async getDisplayThread(): Promise<Message[]> {
-    const { messages: onDisk } = await this.getFullMessageThread();
-    const byId = new Map<string, Message>();
-    for (const message of this.displayMessages) {
-      if (message.id) byId.set(message.id, message);
-    }
-    const merged: Message[] = [];
-    const seen = new Set<string>();
-    for (const message of onDisk) {
-      if (message.id) {
-        // Transcripts written before the append-only fix repeat a message id
-        // at each compaction point; keep the first, like `loadSession`.
-        if (seen.has(message.id)) continue;
-        seen.add(message.id);
-        // The in-memory copy is newer (streaming updates land after the save).
-        merged.push(byId.get(message.id) ?? message);
-        continue;
-      }
-      merged.push(message);
-    }
-    for (const message of this.getPendingDisplayTail()) {
-      if (message.id) {
-        if (seen.has(message.id)) continue;
-        seen.add(message.id);
-      }
-      merged.push(message);
-    }
-    return merged;
   }
 
   /**
@@ -1479,15 +1258,11 @@ export class MessageManager {
     // rewrite keeps the *first* messages, so the survivors after it are exactly
     // what pushes it away). Re-append it at EOF like the other flush points do.
     await this.reAppendSessionMetadata();
-    // The UI keeps the full truncated thread; the agent context folds at the
-    // last compact boundary so the agent only sees messages from the latest
-    // compact summary forward — matching the compact and resume behaviors.
-    this.setMessages(sliceFromLastCompact(newMessages), { keepDisplay: true });
-    this.displayMessages = newMessages;
-    this.trimResidentDisplay();
-    // The rewrite above left exactly these messages on disk.
-    this.persistedDisplayCount = this.displayMessages.length;
-    this.displayedContextCount = this.messages.length;
+    // The rewritten file keeps everything up to the truncation point; the list
+    // still starts at the last compact boundary, matching compact and resume.
+    this.setMessages(sliceFromLastCompact(newMessages), {
+      countLifetime: false,
+    });
     this.threadMessageCount = newMessages.length;
     this.firstUserText = findFirstUserText(newMessages);
     // savedMessageCount tracks in-memory progress, so it must be the folded
@@ -1712,25 +1487,4 @@ function findFirstUserText(messages: readonly Message[]): string | undefined {
     if (text) return text;
   }
   return undefined;
-}
-
-/**
- * 把还没落盘的尾部接到从转录读出来的那一页后面。同 id 以内存那份为准——
- * 流式更新发生在写盘之后，盘上的副本可能是半截的。
- */
-function withPendingTail(fromDisk: Message[], pending: Message[]): Message[] {
-  const newer = new Map<string, Message>();
-  for (const message of pending) {
-    if (message.id) newer.set(message.id, message);
-  }
-  const known = new Set<string>();
-  const merged = fromDisk.map((message) => {
-    if (!message.id) return message;
-    known.add(message.id);
-    return newer.get(message.id) ?? message;
-  });
-  for (const message of pending) {
-    if (!message.id || !known.has(message.id)) merged.push(message);
-  }
-  return merged;
 }

@@ -393,13 +393,6 @@ export class Agent {
     return this.messageManager.getMessages();
   }
 
-  /** Full UI display message stream (includes pre-compaction history).
-   * Consumed by hosts for the full-list message view (getMessages RPC,
-   * CLI structural refresh); the API context stays on `messages`. */
-  public get displayMessages(): Message[] {
-    return this.messageManager.getDisplayMessages();
-  }
-
   public get usages(): Usage[] {
     return this.messageManager.getUsages();
   }
@@ -1604,26 +1597,15 @@ export class Agent {
   }
 
   /**
-   * One page of the display thread (`before` / `since` / `limit`), read from
-   * the transcript when it reaches past the resident window. Nothing new
-   * stays in memory afterwards — this is how hosts page a long conversation
-   * without holding it.
+   * One page of the list (`before` / `since` / `limit`), sliced in memory.
+   * The list starts at the last compaction, so the earliest entry of it is the
+   * earliest the UI can reach — there is nothing older to read back.
    */
-  public async getMessagePage(
-    window: MessageWindow,
-  ): Promise<MessageWindowResult> {
+  public getMessagePage(window: MessageWindow): MessageWindowResult {
     return this.messageManager.getMessagePage(window);
   }
 
-  /**
-   * The whole display thread in one shot, read from the transcript. Nothing
-   * is cached: callers that need full semantics use the return value.
-   */
-  public async getDisplayThread(): Promise<Message[]> {
-    return this.messageManager.getDisplayThread();
-  }
-
-  /** Totals for the session list (the display window is only a tail now). */
+  /** Totals for the session list (the list starts at the last compaction). */
   public getThreadSummary(): {
     messageCount: number;
     firstUserText?: string;
