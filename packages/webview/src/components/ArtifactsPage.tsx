@@ -89,11 +89,11 @@ const NEW_TEMPLATES: Array<{ id: string; name: string; prompt: string }> = [
 
 /**
  * 模板提示词统一追加的收尾口径（spec desktop/desktop-artifacts.md「模板新建直达
- * 对话页」场景 3）：先本地出稿、我看过并改到满意，最后才问是否发布为
- * 创作（artifact）——七张卡共用一句，避免逐条散写后口径漂移。
+ * 对话页」场景 3）：先本地出稿，之后每轮生成结束都在「继续调整」与「发布为
+ * 创作（artifact）」之间征求用户意见——七张卡共用一句，避免逐条散写后口径漂移。
  */
 const PUBLISH_AFTER_REVIEW =
-  "先在本地做好，等我看过并改到满意，最后再问我要不要发布为创作（artifact）。";
+  "先在本地做好；每次生成结束后，都给我「继续调整」和「发布为创作（artifact）」两个选项让我选：选「继续调整」就按我的意见改，选「发布为创作（artifact）」才发布，不要自己直接发布。";
 
 const CATEGORY_NAME_MAX = 20;
 

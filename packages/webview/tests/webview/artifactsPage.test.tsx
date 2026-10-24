@@ -417,10 +417,10 @@ describe("创作集 · 模板新建与撤销", () => {
     expect(harness.onNewFromTemplate.mock.calls[0][0]).toContain(
       "帮我做一个高保真原型",
     );
-    // 末尾固定带发布节奏收尾（spec「模板新建直达对话页」场景 3）：先本地出稿、
-    // 我看过并改到满意，最后才问是否发布。
+    // 末尾固定带发布节奏收尾（spec「模板新建直达对话页」场景 3）：先本地出稿，
+    // 之后每轮生成结束都在「继续调整」/「发布为创作（artifact）」之间征求用户意见。
     expect(harness.onNewFromTemplate.mock.calls[0][0]).toContain(
-      "最后再问我要不要发布为创作（artifact）",
+      "都给我「继续调整」和「发布为创作（artifact）」两个选项让我选",
     );
   });
 
