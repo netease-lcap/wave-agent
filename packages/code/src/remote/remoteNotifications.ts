@@ -27,6 +27,7 @@ import type {
   ToolBlockUpdateCallbackParams,
   ToolPermissionContext,
 } from "wave-agent-sdk";
+import { toolBlockUpdateForUi } from "../stdio/uiPayload.js";
 
 /**
  * A content delta exactly as the SDK callback hands it over — derived rather
@@ -73,10 +74,15 @@ export const remoteWire = {
    * `running` (one-time snapshots) and `end` (the authoritative full value) keep
    * `parameters`. The coalescer's merge rule is keyed on exactly this shape, so
    * this pick is what makes the 150 ms window behave the same in both hosts.
+   *
+   * `images` is cut on every stage: tool pictures are base64 that no UI renders
+   * (specs/ui/stdio-transport.md「工具图片的字节不下发 UI」), and one of them can
+   * be larger than a remote frame may be.
    */
   toolBlockUpdated: (params: ToolBlockUpdateCallbackParams) => {
-    if (params.stage !== "streaming") return params;
-    const { parameters, ...rest } = params;
+    const trimmed = toolBlockUpdateForUi(params);
+    if (trimmed.stage !== "streaming") return trimmed;
+    const { parameters, ...rest } = trimmed;
     void parameters;
     return rest;
   },
