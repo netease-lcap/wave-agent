@@ -1,6 +1,6 @@
 ---
 name: "Stdio 传输层"
-description: "宿主（IDE 插件/桌面端）驱动 `wave --stdio` 的 JSON-RPC 传输层：CLI 解析同步、多会话路由、消息拉取/增量通知与失败诊断"
+description: "宿主（IDE 插件/桌面端）驱动 `wave --stdio` 的 JSON-RPC 传输层：CLI 解析同步、多会话路由、消息拉取/增量通知与失败诊断，以及下发 UI 的载荷裁剪（工具图片字节不下发）"
 order: 220
 ---
 
@@ -241,6 +241,28 @@ order: 220
 
 ---
 
+### 用户故事：工具图片的字节不下发 UI（优先级：P1）
+
+作为 webview 与远控页，我希望 Read / MCP 工具读到的图片在跨进程下发时只留下「读到过图」这件事、不携带图片字节，以便消息下发与宿主侧缓存不随读图次数线性膨胀，同时模型上下文与磁盘转录保持完整。
+
+**为什么是这个优先级**：工具块是目前唯一能单条就上 MB 的消息载荷（一张 1 MB 的截图，base64 约 1.33 MB）。而 UI 从来不渲染它：webview 里读工具块图片的那条分支永远走不到（它只在渲染 user 消息文本时被调用，工具块只出现在 assistant 消息里），CLI 只显示「有 N 张图」。远控页的单帧字节预算更是被它直接顶破（见 [remote-control.md](remote-control.md) 的连接生命周期故事场景 12 与白名单故事的场景 8）。裁掉它没有界面损失。
+
+**独立测试**：让 Read 读一张 1 MB 的 PNG，在 CLI 侧记录 stdout：`toolBlockUpdated` 与 `getMessages` 的负载里检索不到该图的 base64；同一会话的下一次模型请求仍带完整图片。
+
+**验收场景**：
+
+1. **假设** Read 工具读到一张图片，**当** CLI 推送 `toolBlockUpdated`（`stage="end"`）时，**则** 该工具块不带 `images` 字段，其余字段（`name` / `parameters` / `result` / `shortResult` / `success` / `metadata`）原样下发
+2. **假设** MCP 工具返回图片，**当** 工具块结束时，**则** 同样不带 `images` 字段
+3. **假设** 宿主发起 `getMessages`（首屏、恢复、重连补差、远控页按 `limit` 取的尾段），**当** 返回消息列表时，**则** 列表里每个工具块都不带 `images` 字段
+4. **假设** 一条携带工具块的消息经其它通知下发（如 `compactBlockAdded` 的 `message`），**当** 下发时，**则** 同样不带 `images` 字段
+5. **假设** 用户自己粘贴 / 拖入图片，**当** user 消息下发时，**则** 不受影响：`image` 块仍带 data URL，webview 照常渲染缩略图与预览
+6. **假设** 下一轮请求要发给模型，**当** 组装请求体时，**则** 上下文里的图片字节完整——裁剪只发生在 CLI 进程向外（宿主 / 远控）的那一跳，SDK 的内存消息与出站组装都不变
+7. **假设** 会话被 compact / rewind / 恢复并回写转录，**当** 落盘时，**则** 磁盘上的转录仍完整（落盘由 SDK 负责，与下发裁剪无关）
+8. **假设** 手机端从远控页拉取会话，**当** 消息下发时，**则** 同样不带图片字节；含工具图的消息不再因此被单帧预算截短或退化成「有更新」信号
+9. **假设** 用户看 CLI 的 TUI，**当** 工具块渲染时，**则** 照旧显示「有图片」的标记（CLI 不经这条协议，不参与裁剪）
+
+---
+
 ### 用户故事：IDE 插件消息队列列表（优先级：P2）
 
 作为 IDE 插件用户，我希望在 AI 处理期间发送的消息以队列列表形式展示，可以查看、立即发送、删除或重新编辑排队消息，以便在 AI 忙碌时管理我的待处理输入。
@@ -281,3 +303,5 @@ order: 220
 - **消息队列列表无键盘召回**：IDE 插件输入框的方向上键不召回队列消息（与 CLI 不同），仅支持通过列表中的"编辑"按钮召回；这是刻意的平台产品差异。
 - **增量通知不携带累积值**：`assistantContentUpdated`/`assistantReasoningUpdated` 通知只携带 `chunk` 增量；`toolBlockUpdated` 在 `streaming` 阶段只携带 `parametersChunk`。任何依赖 `accumulated`/`parameters` 累积字段的旧消费端需改为本地累积或使用 `getMessages` 拉取全量。
 - **end 通知是全量权威值**：`toolBlockUpdated` 的 `stage="end"` 通知携带完整 `parameters` + `result`，消费端应以该值为准终结工具块，不能仅凭 streaming 阶段的拼接结果。
+- **工具图片的裁剪只到进程边界**：CLI 自己内存里的消息（`messages`）与转录文件仍持有完整图片字节，本规格不改变 SDK 的内存模型（见 [core/message-compact.md](../core/message-compact.md) 的压缩口径）。因此桌面端主进程的消息镜像也不再持有这些字节，但 CLI 子进程仍持有——两件事要分开算，别把本规格当成「工具图不进内存」的方案。
+- **「有没有图」不靠字节表达**：Read 的 `shortResult`（`Image processed (<mime>)`）与 MCP 的（`Tool returned N image(s).`）已经把这件事写在文本里，因此不下发 `images` 不会让 UI 丢掉「这里读过图」的信息。

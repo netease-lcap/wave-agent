@@ -4569,3 +4569,68 @@ test("reportCompletionOutcome rejects an outcome outside the enum", async () => 
   ).rejects.toThrow(/outcome/);
   expect(reportCompletionOutcome).not.toHaveBeenCalled();
 });
+
+// ── 工具图片的字节不下发 UI（specs/ui/stdio-transport.md）───────
+
+test("onToolBlockUpdated keeps tool image bytes off the wire", async () => {
+  const { bridge, notifications } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", {});
+  const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
+    .callbacks as AgentCallbacks;
+
+  callbacks.onToolBlockUpdated!({
+    messageId: "msg-1",
+    id: "tool-1",
+    name: "Read",
+    stage: "end",
+    result: "Image file processed: a.png",
+    shortResult: "Image processed (image/png)",
+    success: true,
+    images: [{ data: "aGVsbG8=", mediaType: "image/png" }],
+  });
+
+  const frame = notifications.find((n) => n.method === "toolBlockUpdated");
+  expect(frame?.params).not.toHaveProperty("images");
+  expect(frame?.params).toMatchObject({
+    id: "tool-1",
+    shortResult: "Image processed (image/png)",
+    result: "Image file processed: a.png",
+  });
+});
+
+test("getMessages keeps tool image bytes off the wire", async () => {
+  const { bridge } = createBridge();
+  const toolMessage = {
+    id: "msg-1",
+    role: "assistant",
+    blocks: [
+      { type: "text", content: "look" },
+      {
+        type: "tool",
+        id: "tool-1",
+        name: "Read",
+        stage: "end",
+        shortResult: "Image processed (image/png)",
+        images: [{ data: "aGVsbG8=", mediaType: "image/png" }],
+      },
+    ],
+  } as unknown as Message;
+  const mockAgent = createMockAgent({ messages: [toolMessage] });
+  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+  const r = (await bridge.handleRequest("getMessages", {}, init.sessionId)) as {
+    messages: Message[];
+  };
+
+  const block = r.messages[0].blocks[1];
+  expect(block).not.toHaveProperty("images");
+  // The authoritative copy stays with the agent: the next request still has to
+  // send those bytes to the model.
+  const kept = mockAgent.messages[0].blocks[1];
+  expect((kept as { images?: unknown[] }).images).toHaveLength(1);
+});

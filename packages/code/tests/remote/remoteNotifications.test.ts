@@ -95,6 +95,34 @@ describe("remoteNotifications", () => {
     }
   });
 
+  it("should never put tool image bytes on the wire", () => {
+    // The foreground CLI host mirrors this same builder, so the cut has to live
+    // here rather than in the bridge (specs/ui/stdio-transport.md
+    // 「工具图片的字节不下发 UI」).
+    const params = {
+      messageId: "m1",
+      id: "t1",
+      name: "Read",
+      stage: "end",
+      result: "Image file processed: a.png",
+      images: [{ data: "aGVsbG8=", mediaType: "image/png" }],
+    } as ToolBlockUpdateCallbackParams;
+
+    const frame = remoteWire.toolBlockUpdated(params) as Record<
+      string,
+      unknown
+    >;
+
+    expect("images" in frame).toBe(false);
+    expect(frame).toMatchObject({
+      messageId: "m1",
+      id: "t1",
+      name: "Read",
+      stage: "end",
+      result: "Image file processed: a.png",
+    });
+  });
+
   it("should send an error block as its own payload frame", () => {
     // The one message family a signal cannot recover: the block is appended
     // *inside* the last message, and the phone's `since` anchor is that message

@@ -42,6 +42,7 @@ import {
   hostSlashCommandsFor,
   toSlashCommandInfo,
 } from "../stdio/hostSlashCommands.js";
+import { messagesForUi } from "../stdio/uiPayload.js";
 import {
   InvalidMessageWindowError,
   normalizeMessageWindow,
@@ -382,14 +383,20 @@ export class RemoteControlCliHost implements RemoteControlHost {
     // No parameters = the whole list the agent holds (spec
     // ui/message-rendering-system.md「首屏就是整份列表」). A `limit` is a tail
     // slice of the same list, for the phone's frame budget.
+    //
+    // Both answers are trimmed: the phone renders no tool pictures, and its
+    // frame budget cannot carry one
+    // (specs/ui/stdio-transport.md「工具图片的字节不下发 UI」).
     if (!normalized) {
       return {
-        messages: await this.session.currentThread(),
+        messages: messagesForUi(await this.session.currentThread()),
         contextUsagePercent,
       };
     }
+    const page = await this.session.messagePage(normalized);
     return {
-      ...(await this.session.messagePage(normalized)),
+      ...page,
+      messages: messagesForUi(page.messages),
       contextUsagePercent,
     };
   }

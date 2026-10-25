@@ -120,6 +120,7 @@ import {
   parseHostSurface,
   toSlashCommandInfo,
 } from "./hostSlashCommands.js";
+import { messageForUi, messagesForUi } from "./uiPayload.js";
 
 export type NotificationEmitter = (
   method: ServerNotificationMethod,
@@ -1827,18 +1828,24 @@ export class AgentBridge {
     // compaction, so this reply is the only place a host can learn the
     // thread's size and its first user message (the session-title fallback).
     const threadSummary = entry.agent.getThreadSummary();
+    // Trimmed on the way out, never in the agent's own list: no UI renders tool
+    // pictures, and the agent has to keep them for the next request
+    // (specs/ui/stdio-transport.md「工具图片的字节不下发 UI」). The trim is
+    // copy-on-write, so a message with no picture keeps its identity.
     if (!normalized) {
       return {
         // `Agent.messages` already hands back a copy, so this reply is a
         // single-pass view for the host that asked once — do not copy again
         // (a long session makes this O(n) per call).
-        messages: entry.agent.messages,
+        messages: messagesForUi(entry.agent.messages),
         contextUsagePercent,
         threadSummary,
       };
     }
+    const page = entry.agent.getMessagePage(normalized);
     return {
-      ...entry.agent.getMessagePage(normalized),
+      ...page,
+      messages: messagesForUi(page.messages),
       contextUsagePercent,
       threadSummary,
     };
@@ -1849,7 +1856,8 @@ export class AgentBridge {
     sessionIds: string[];
   }> {
     const entry = this.requireSessionForRead(sessionId);
-    return entry.agent.getFullMessageThread();
+    const thread = await entry.agent.getFullMessageThread();
+    return { ...thread, messages: messagesForUi(thread.messages) };
   }
 
   private async compact(
@@ -2797,7 +2805,7 @@ export class AgentBridge {
         if (msg)
           this.emit(
             "userMessageAdded",
-            { message: msg },
+            { message: messageForUi(msg) },
             ctx.registeredSessionId,
           );
       },
@@ -2806,7 +2814,7 @@ export class AgentBridge {
         if (msg)
           this.emit(
             "assistantMessageAdded",
-            { message: msg },
+            { message: messageForUi(msg) },
             ctx.registeredSessionId,
           );
       },
@@ -2943,14 +2951,14 @@ export class AgentBridge {
         const msg = matches[matches.length - 1];
         this.emit(
           "notificationMessageAdded",
-          { ...params, message: msg },
+          { ...params, message: msg ? messageForUi(msg) : undefined },
           ctx.registeredSessionId,
         );
       },
       onCompactBlockAdded: (content: string, message?: Message) => {
         this.emit(
           "compactBlockAdded",
-          { content, message },
+          { content, message: message ? messageForUi(message) : undefined },
           ctx.registeredSessionId,
         );
       },
