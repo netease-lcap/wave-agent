@@ -64,6 +64,10 @@ import {
   type PluginReloadResult,
   type RemoteControlSnapshot,
   type CompletionSnippet,
+  type NextEditExcerpt,
+  type NextEditHistoryEntry,
+  type NextEditRegion,
+  type NextEditSuggestion,
   normalizeEntrypoint,
   fetchArtifactGalleryList,
   fetchArtifactShareView,
@@ -259,6 +263,14 @@ export class AgentBridge {
    * docs/specs/ui/code-completion.md: 同一时刻只允许一个补全请求在途).
    */
   private inFlightCompletions = new Map<string, AbortController>();
+  /**
+   * In-flight next-edit calls, same one-per-session rule and same reason as
+   * completions. It also participates in the cross-capability exclusion from
+   * `docs/specs/ui/next-edit-suggestion.md`: completion and next-edit never hold
+   * an in-flight request at the same time, so one of them cannot answer into a
+   * buffer the other has already rewritten.
+   */
+  private inFlightNextEdits = new Map<string, AbortController>();
   private emit: NotificationEmitter;
   private onShutdownRequest: (() => void) | undefined;
   private remoteControl:
@@ -693,6 +705,22 @@ export class AgentBridge {
       case "reportCompletionOutcome":
         return this.reportCompletionOutcome(
           p.outcome as "displayed" | "accepted",
+          sessionId,
+        );
+      case "reportNextEditOutcome":
+        return this.reportNextEditOutcome(
+          p.outcome as "displayed" | "accepted",
+          sessionId,
+        );
+      case "getNextEdit":
+        return this.getNextEdit(
+          p as unknown as {
+            edits?: NextEditHistoryEntry[];
+            region?: NextEditRegion;
+            excerpt?: NextEditExcerpt;
+            language?: string;
+            filePath?: string;
+          },
           sessionId,
         );
 
@@ -1278,8 +1306,10 @@ export class AgentBridge {
     const key = sessionId as string;
 
     // Supersede the session's previous request: its answer would land at a
-    // cursor position that no longer exists.
+    // cursor position that no longer exists. A next-edit suggestion in flight is
+    // dropped too — both rewrite the same buffer (spec ui/next-edit-suggestion.md).
     this.inFlightCompletions.get(key)?.abort();
+    this.inFlightNextEdits.get(key)?.abort();
     const controller = new AbortController();
     this.inFlightCompletions.set(key, controller);
 
@@ -1299,6 +1329,55 @@ export class AgentBridge {
       // Only clear our own slot — a newer request may already own it.
       if (this.inFlightCompletions.get(key) === controller) {
         this.inFlightCompletions.delete(key);
+      }
+    }
+  }
+
+  /**
+   * One next-edit suggestion for the editor plugins (spec
+   * ui/next-edit-suggestion.md).
+   *
+   * Session-scoped for the same reason as completion: the model, the switch and
+   * the credentials all live in that session. Read-only, so a suggestion still
+   * resolves while `updateConfig` rebuilds the session.
+   */
+  private async getNextEdit(
+    params: {
+      edits?: NextEditHistoryEntry[];
+      region?: NextEditRegion;
+      excerpt?: NextEditExcerpt;
+      language?: string;
+      filePath?: string;
+    },
+    sessionId?: string,
+  ): Promise<{ suggestion: NextEditSuggestion | null; model: string }> {
+    const entry = this.requireSessionForRead(sessionId);
+    const key = sessionId as string;
+
+    // A region and its excerpt are the whole basis of the answer; without them
+    // there is nothing to predict into, so this is a no-op rather than an error.
+    if (!params.region || !params.excerpt) {
+      return { suggestion: null, model: "" };
+    }
+
+    // Same exclusion as the completion path, from this side.
+    this.inFlightNextEdits.get(key)?.abort();
+    this.inFlightCompletions.get(key)?.abort();
+    const controller = new AbortController();
+    this.inFlightNextEdits.set(key, controller);
+
+    try {
+      return await entry.agent.getNextEdit({
+        edits: params.edits ?? [],
+        region: params.region,
+        excerpt: params.excerpt,
+        ...(params.language ? { language: params.language } : {}),
+        ...(params.filePath ? { filePath: params.filePath } : {}),
+        abortSignal: controller.signal,
+      });
+    } finally {
+      if (this.inFlightNextEdits.get(key) === controller) {
+        this.inFlightNextEdits.delete(key);
       }
     }
   }
@@ -1951,6 +2030,22 @@ export class AgentBridge {
       );
     }
     entry.agent.reportCompletionOutcome(outcome);
+    return { ok: true };
+  }
+
+  /** The next-edit twin: same validation, its own metric series in the SDK. */
+  private reportNextEditOutcome(
+    outcome: "displayed" | "accepted",
+    sessionId?: string,
+  ): { ok: true } {
+    const entry = this.requireSessionForRead(sessionId);
+    if (outcome !== "displayed" && outcome !== "accepted") {
+      throw new RpcError(
+        PROTOCOL_INTERNAL_ERROR,
+        "outcome must be 'displayed' or 'accepted'",
+      );
+    }
+    entry.agent.reportNextEditOutcome(outcome);
     return { ok: true };
   }
 

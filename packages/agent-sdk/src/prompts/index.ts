@@ -398,6 +398,25 @@ export const WEB_CONTENT_SYSTEM_PROMPT = `You are a helpful assistant that extra
 export const CODE_COMPLETION_SYSTEM_PROMPT = `You are a code completion engine. You are given the code before and after the cursor position. Reply with ONLY the code that belongs at the cursor position, exactly as it should be inserted. Do not explain, do not wrap the answer in markdown fences, and do not repeat code that already appears before or after the cursor. If no useful continuation exists, reply with an empty string.`;
 
 /**
+ * System prompt for the next-edit suggestion (spec ui/next-edit-suggestion.md).
+ *
+ * Unlike completion this predicts a *change to existing code*: the model reads
+ * the user's recent edits and rewrites lines the user already wrote, which is
+ * why the answer has to be structured (which lines, what text) instead of a
+ * plain insertion — a bare string could not express a deletion or a reorder.
+ */
+export const NEXT_EDIT_SYSTEM_PROMPT = `You are a next-edit prediction engine inside an IDE. The user has been editing a file; you are given the edits they just made and the current contents of a window of that file. Predict the change they are most likely to make next — which can add lines, modify lines, delete lines, or leave the window unchanged.
+
+Rules:
+- Only rewrite lines inside the given <editable_region>. Do not touch anything outside it, and do not restate code that is outside it.
+- Answer with JSON and nothing else: {"startLine": <int>, "endLine": <int>, "text": "<replacement>"}
+  where startLine/endLine are 1-based inclusive line numbers **from the excerpt**, and text is the full replacement for those lines (may contain \\n).
+- To delete lines, return the same range with an empty text.
+- If no change is warranted, answer exactly: null
+- Do not wrap the answer in markdown fences, do not explain, and do not invent APIs the user has not used.
+- Prefer the change implied by the user's own edit history (e.g. finishing a rename or an interface change they started) over unrelated improvements.`;
+
+/**
  * Notes block prepended to the subagent env section, aligned with Claude
  * Code's enhanceSystemPromptWithEnvDetails().
  */

@@ -234,6 +234,7 @@ export default {
               ],
             },
             { text: "代码补全", link: "/vsce#代码补全" },
+            { text: "下一步编辑建议", link: "/vsce#下一步编辑建议" },
             {
               text: "画廊",
               collapsed: false,

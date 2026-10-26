@@ -135,6 +135,12 @@ export interface WaveConfiguration {
   completionModel?: string;
   /** Whether inline code completion is enabled. Unset follows the default (enabled). */
   completionEnabled?: boolean;
+  /**
+   * Whether the next-edit suggestion is enabled (spec ui/next-edit-suggestion.md).
+   * Unset follows the default (**disabled**): it rewrites code the user already
+   * wrote, so it stays opt-in.
+   */
+  nextEditEnabled?: boolean;
   /** Scoped marketplace declarations */
   marketplaces?: Record<string, MarketplaceConfig>;
   /**
@@ -241,6 +247,12 @@ export interface UserPreferenceSettings {
   completionModel?: string;
   /** 是否启用行内补全（settings.json 顶层 `completionEnabled`，缺省为开）。 */
   completionEnabled?: boolean;
+  /**
+   * 是否启用下一步编辑建议（settings.json 顶层 `nextEditEnabled`，缺省为**关**）。
+   * 与补全不同，它会改写用户已经写下的代码，因此先关闭、由用户显式开启
+   * （spec ui/next-edit-suggestion.md 故事 6）。
+   */
+  nextEditEnabled?: boolean;
 }
 
 /** 用户偏好键（设置页控件）。 */

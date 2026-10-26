@@ -342,6 +342,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   // 补全开关（同样不做占位态：真实默认就是「开」，spec ui/code-completion.md 故事 5）。
   const [completionModel, setCompletionModel] = useState("");
   const [completionEnabled, setCompletionEnabled] = useState(true);
+  // 下一步编辑建议开关：缺省**关**（它会改写用户已写下的代码），与补全同一个宿主
+  // 能力位门禁（spec ui/next-edit-suggestion.md 故事 6）。
+  const [nextEditEnabled, setNextEditEnabled] = useState(false);
   // 补全两行只在**提供补全的宿主**渲染（VS Code / JetBrains）：桌面端与远端网页
   // 没有代码编辑器、补全从不触发，在那里摆一个开关等于承诺一个不会发生的功能
   // （spec ui/code-completion.md 边界情况「补全设置行的宿主范围」）。本组件为四端
@@ -386,6 +389,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     );
     setCompletionModel(configurationData.completionModel ?? "");
     setCompletionEnabled(configurationData.completionEnabled ?? true);
+    setNextEditEnabled(configurationData.nextEditEnabled ?? false);
   }, [configurationData]);
 
   // 窗口级广播 desktopThemeSource 同步主题选中态（启动时 host 推一次 + 用户切换时）
@@ -560,6 +564,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
       }
       if (completionEnabled !== (configurationData.completionEnabled ?? true)) {
         patch.completionEnabled = completionEnabled;
+      }
+      if (nextEditEnabled !== (configurationData.nextEditEnabled ?? false)) {
+        patch.nextEditEnabled = nextEditEnabled;
       }
     }
     onSave(patch);
@@ -801,6 +808,27 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                               checked={completionEnabled}
                               onChange={(e) =>
                                 setCompletionEnabled(e.target.checked)
+                              }
+                            />
+                            <span className="settings-switch-slider"></span>
+                          </label>
+                        </div>
+                      </div>
+                      <div className="settings-row">
+                        <div className="settings-row-copy">
+                          <h3>下一步编辑建议</h3>
+                          <p>
+                            依据你刚才的改动，预测下一处该改的代码，按 Tab 采纳
+                          </p>
+                        </div>
+                        <div className="settings-control">
+                          <label className="settings-switch">
+                            <input
+                              type="checkbox"
+                              aria-label="下一步编辑建议"
+                              checked={nextEditEnabled}
+                              onChange={(e) =>
+                                setNextEditEnabled(e.target.checked)
                               }
                             />
                             <span className="settings-switch-slider"></span>

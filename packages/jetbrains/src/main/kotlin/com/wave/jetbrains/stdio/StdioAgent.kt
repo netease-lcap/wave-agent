@@ -400,6 +400,30 @@ class StdioAgent(
         }
     }
 
+    /**
+     * 下一步编辑建议：模型看一段编辑轨迹 + 光标附近的窗口，回答「这几行改成什么」。
+     * Session-scoped 与补全同因（模型、开关、凭证都在这个会话里），同样由 CLI 端保证
+     * 与补全互斥（spec docs/specs/ui/next-edit-suggestion.md 故事 5）。
+     */
+    suspend fun getNextEdit(params: JsonObject): JsonObject? =
+        client.request("getNextEdit", params, sessionId)?.jsonObject
+
+    /**
+     * 建议生命周期的一个事件（`displayed` | `accepted`）→ `wave.next_edit.outcome`。
+     * 与补全分开计，且同样不阻塞界面（spec docs/specs/enterprise/opentelemetry.md）。
+     */
+    fun reportNextEditOutcome(outcome: String) {
+        reportScope.launch {
+            runCatching {
+                client.request(
+                    "reportNextEditOutcome",
+                    buildJsonObject { put("outcome", outcome) },
+                    sessionId,
+                )
+            }
+        }
+    }
+
     suspend fun getMcpServers(): JsonElement =
         client.request("getMcpServers", sessionId = sessionId) ?: JsonObject(emptyMap())
 

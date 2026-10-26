@@ -71,7 +71,7 @@ function fakeHelperChild(stdout: string): EventEmitter {
   return child;
 }
 
-/** The five instrument names the metrics module creates on the meter. */
+/** The instrument names the metrics module creates on the meter. */
 const COUNTER_NAMES = [
   "wave.tokens",
   "wave.sessions",
@@ -81,6 +81,7 @@ const COUNTER_NAMES = [
   "wave.active_time",
   "wave.code_edit_tool.decision",
   "wave.completion.outcome",
+  "wave.next_edit.outcome",
 ];
 
 function setupMocks() {

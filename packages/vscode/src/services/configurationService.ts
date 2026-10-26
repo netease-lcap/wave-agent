@@ -23,6 +23,8 @@ export interface ConfigurationData {
   completionModel?: string;
   /** 是否启用行内补全（settings.json 顶层 `completionEnabled`，缺省为开）。 */
   completionEnabled?: boolean;
+  /** 是否启用下一步编辑建议（顶层 `nextEditEnabled`，缺省为关）。 */
+  nextEditEnabled?: boolean;
   /**
    * 每个用户偏好键的来源层（`remote` / `user` / `env` / `default`）：回包带上
    * 它，设置页才能把被组织配置（Remote）覆盖的键显示为「生效值 + 置灰」而不是
@@ -123,5 +125,8 @@ function pickUserPreferences(
   }
   if (configData.completionEnabled !== undefined)
     patch.completionEnabled = configData.completionEnabled;
+  // 下一步编辑建议开关：与补全开关同一判据（只有显式布尔值才算改动）。
+  if (configData.nextEditEnabled !== undefined)
+    patch.nextEditEnabled = configData.nextEditEnabled;
   return patch;
 }

@@ -171,6 +171,8 @@ const userPreferences = {
   contextLength: 200,
   autoMemoryEnabled: true,
   autoMemoryFrequency: 1,
+  completionEnabled: true,
+  nextEditEnabled: true,
 };
 
 test.describe("设置页全局设置选项卡 Demo", () => {
@@ -186,6 +188,8 @@ test.describe("设置页全局设置选项卡 Demo", () => {
           contextLength: "user",
           autoMemoryEnabled: "user",
           autoMemoryFrequency: "user",
+          completionEnabled: "user",
+          nextEditEnabled: "user",
         },
       },
     });
@@ -195,6 +199,7 @@ test.describe("设置页全局设置选项卡 Demo", () => {
     ).toBeVisible();
     await expect(webviewPage.getByLabel("AI 回复语言")).toHaveValue("zh-CN");
     await expect(webviewPage.getByLabel("上下文长度")).toHaveValue("200");
+    await expect(webviewPage.getByLabel("下一步编辑建议")).toBeChecked();
 
     await elementScreenshotWebp(
       webviewPage.locator(".settings-section").filter({ hasText: "基础设置" }),
@@ -218,6 +223,8 @@ test.describe("设置页个性化选项卡 Demo", () => {
           contextLength: "user",
           autoMemoryEnabled: "user",
           autoMemoryFrequency: "user",
+          completionEnabled: "user",
+          nextEditEnabled: "user",
         },
       },
     });

@@ -130,4 +130,33 @@ test.describe("设置页「代码补全 / 补全模型」（真 settings bundle�
     // 「省略键 = 不改该键」：未设置态 + 开关没被拨动 → 空载荷（不把默认「开」钉进文件）
     expect(save?.configurationData).toEqual({});
   });
+
+  test("下一步编辑建议：缺省关闭，拨开后只提交 nextEditEnabled 一个键", async ({
+    webviewPage,
+  }) => {
+    await openSettings(webviewPage, { configurationData: {} });
+
+    const nextEditSwitch = webviewPage.locator(
+      'input[aria-label="下一步编辑建议"]',
+    );
+    // 与补全相反：它会改写用户已经写下的代码，所以默认关闭（spec
+    // ui/next-edit-suggestion.md 故事 6 场景 2）。
+    await expect(nextEditSwitch).not.toBeChecked();
+
+    await webviewPage
+      .locator('.settings-switch:has(input[aria-label="下一步编辑建议"])')
+      .click();
+    await webviewPage.getByRole("button", { name: "保存" }).click();
+
+    await expect
+      .poll(async () => {
+        const messages = await sentToHost<{
+          command?: string;
+          configurationData?: Record<string, unknown>;
+        }>(webviewPage);
+        return messages.find((m) => m.command === "updateConfiguration")
+          ?.configurationData;
+      })
+      .toEqual({ nextEditEnabled: true });
+  });
 });

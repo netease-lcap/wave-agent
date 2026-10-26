@@ -53,6 +53,12 @@ export interface AgentOptions {
   /** Per-session override for inline completion. See `completionModel`. */
   completionEnabled?: boolean;
   /**
+   * Per-session override for the next-edit suggestion
+   * (spec ui/next-edit-suggestion.md). Defaults to off; like completion this is
+   * normally set through user-level `~/.wave/settings.json`.
+   */
+  nextEditEnabled?: boolean;
+  /**
    * Preferred language for agent communication, injected verbatim into the
    * system prompt (`# Language\nAlways respond in <value>`). When unset, the
    * resolve chain falls back to `DEFAULT_LANGUAGE` (`zh-CN`).

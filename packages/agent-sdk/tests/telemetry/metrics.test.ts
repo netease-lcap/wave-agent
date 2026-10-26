@@ -105,6 +105,13 @@ describe("metrics", () => {
               "Inline completion suggestions shown and accepted, by model and language",
           },
         ],
+        [
+          "wave.next_edit.outcome",
+          {
+            description:
+              "Next edit suggestions shown and accepted, by model and language",
+          },
+        ],
       ]);
     });
   });

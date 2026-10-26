@@ -6212,6 +6212,11 @@ export class DesktopHost {
     if (configData.completionEnabled !== undefined) {
       patch.completionEnabled = configData.completionEnabled;
     }
+    // 下一步编辑建议开关（顶层 `nextEditEnabled`，缺省为关）。桌面端没有编辑器、
+    // 不渲染该设置行，但键本身照旧可写（命令行/手改 settings.json 同一落点）。
+    if (configData.nextEditEnabled !== undefined) {
+      patch.nextEditEnabled = configData.nextEditEnabled;
+    }
     const settings = (await this.utilityClientFor(host).request(
       "updateUserSettings",
       patch,

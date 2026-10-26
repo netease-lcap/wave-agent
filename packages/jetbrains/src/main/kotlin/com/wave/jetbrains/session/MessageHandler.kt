@@ -1317,6 +1317,9 @@ class MessageHandler(
             // 用户偏好键，故随本回包走。
             prefs["completionModel"]?.let { put("completionModel", it) }
             prefs["completionEnabled"]?.let { put("completionEnabled", it) }
+            // 下一步编辑建议开关（顶层 nextEditEnabled，缺省为关，spec
+            // ui/next-edit-suggestion.md 故事 6）。
+            prefs["nextEditEnabled"]?.let { put("nextEditEnabled", it) }
             prefs["preferenceSources"]?.let { put("preferenceSources", it) }
         }
     }
@@ -1351,6 +1354,7 @@ class MessageHandler(
                 ?.takeIf { it.isNotEmpty() }
                 ?.let { put("completionModel", it) }
             data["completionEnabled"]?.let { put("completionEnabled", it) }
+            data["nextEditEnabled"]?.let { put("nextEditEnabled", it) }
         }
         val (client, _) = WaveBackendService.getInstance(project).ensureClient()
         StdioAgent.updateUserSettings(client, patch)
