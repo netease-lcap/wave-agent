@@ -319,7 +319,7 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
       expect(shownData).not.toHaveProperty("autoMemoryEnabled");
       expect(shownData).not.toHaveProperty("autoMemoryFrequency");
       // 来源层全列在 `preferenceSources` 里，**每个键恒有来源**（缺省 default）——
-      // 键集合 = UserPreferenceKey 全集，补全两键（`fe1e1da3` 起可配）也在内。
+      // 键集合 = UserPreferenceKey 全集（补全、下一步编辑建议这些可配项都在内）。
       expect(shownData.preferenceSources).toEqual({
         language: "default",
         contextLength: "default",
@@ -328,6 +328,7 @@ describe("real host · 凭据链路下线后的真实 stdio 报文", () => {
         serverUrl: "default",
         completionModel: "default",
         completionEnabled: "default",
+        nextEditEnabled: "default",
       });
 
       // 「一个字都没改就点保存」在真机上就是空载荷（webview 的 diff 载荷语义）：
