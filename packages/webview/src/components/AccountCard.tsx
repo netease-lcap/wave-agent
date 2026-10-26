@@ -653,19 +653,27 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           </button>
         )}
         {hasUsage && (
-          <button
-            type="button"
-            className="account-card-collapse-btn"
-            aria-label={usageCollapsed ? "展开用量" : "收起用量"}
-            aria-expanded={!usageCollapsed}
-            data-testid="account-usage-collapse"
-            // 个人信息菜单打开时点显隐按钮只收起用量区、菜单保持打开（显隐与
-            // 菜单解耦）：阻断 mousedown 冒泡到 MoreMenu 的 click-outside。
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={() => setUsageCollapsed((v) => !v)}
+          // 1023 评论（她点 `button.account-card-collapse-btn`）：「这里也缺少 hover 提示」
+          // —— 与同卡 ⓘ 按钮、侧栏各图标按钮一致，补一颗桌面气泡；文案跟随按钮语义
+          // （`aria-label` 同为展开/收起用量），位置 top（卡片在最底部，气泡向上弹）。
+          <Tooltip
+            text={usageCollapsed ? "展开用量" : "收起用量"}
+            position="top"
           >
-            {usageCollapsed ? <QuotaIcon /> : <ChevronDownIcon />}
-          </button>
+            <button
+              type="button"
+              className="account-card-collapse-btn"
+              aria-label={usageCollapsed ? "展开用量" : "收起用量"}
+              aria-expanded={!usageCollapsed}
+              data-testid="account-usage-collapse"
+              // 个人信息菜单打开时点显隐按钮只收起用量区、菜单保持打开（显隐与
+              // 菜单解耦）：阻断 mousedown 冒泡到 MoreMenu 的 click-outside。
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={() => setUsageCollapsed((v) => !v)}
+            >
+              {usageCollapsed ? <QuotaIcon /> : <ChevronDownIcon />}
+            </button>
+          </Tooltip>
         )}
       </div>
       {showMenu && menuAnchor && (
