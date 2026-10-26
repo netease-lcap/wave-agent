@@ -922,3 +922,94 @@ describe("SettingsPage 补全两行的宿主门禁（spec ui/code-completion.md 
     expect(onLoadConfiguredModels).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * 企业知识库开关（spec core/agent-config.md「企业知识库开关」故事）：三端都渲染
+ * （知识库不是编辑器专属能力）、缺省关且不做未设置占位态、组织托管时置灰。
+ */
+describe("SettingsPage「企业知识库」行（顶层 enableKnowledgeBase，缺省关）", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    delete window.waveHostType;
+  });
+
+  function kbSwitch(): HTMLInputElement {
+    return screen.getByLabelText("企业知识库") as HTMLInputElement;
+  }
+
+  /** 定位控件所在的行（设置页行容器）。 */
+  function rowFor(headingName: string): HTMLElement {
+    const heading = screen.getByRole("heading", { name: headingName });
+    const row = heading.closest(".settings-row");
+    if (!row) throw new Error(`找不到行：${headingName}`);
+    return row as HTMLElement;
+  }
+
+  it("未设置该键时显示为关（真实默认就是关，不做未设置占位态）", () => {
+    renderGlobalView({ configurationData: {} });
+
+    expect(kbSwitch().checked).toBe(false);
+    expect(kbSwitch().disabled).toBe(false);
+  });
+
+  it("文件里已是开时回填为开", () => {
+    renderGlobalView({ configurationData: { enableKnowledgeBase: true } });
+
+    expect(kbSwitch().checked).toBe(true);
+  });
+
+  it("打开后保存 → 载荷只有该键", () => {
+    const { onSave } = renderGlobalView({ configurationData: {} });
+
+    fireEvent.click(kbSwitch());
+    fireEvent.click(saveButton());
+
+    expect(onSave).toHaveBeenCalledWith({ enableKnowledgeBase: true });
+  });
+
+  it("已开但没动过 → 载荷为空（无差异保存不写该键）", () => {
+    const { onSave } = renderGlobalView({
+      configurationData: { enableKnowledgeBase: true },
+    });
+
+    fireEvent.click(saveButton());
+
+    expect(onSave).toHaveBeenCalledWith({});
+  });
+
+  it("关掉 → 载荷写显式 false（不删键）", () => {
+    const { onSave } = renderGlobalView({
+      configurationData: { enableKnowledgeBase: true },
+    });
+
+    fireEvent.click(kbSwitch());
+    fireEvent.click(saveButton());
+
+    expect(onSave).toHaveBeenCalledWith({ enableKnowledgeBase: false });
+  });
+
+  it("组织托管（来源 remote）：显示生效值 + 置灰 + 「由组织配置管理」", () => {
+    renderGlobalView({
+      configurationData: {
+        enableKnowledgeBase: true,
+        preferenceSources: { enableKnowledgeBase: "remote" },
+      },
+    });
+
+    expect(kbSwitch().checked).toBe(true);
+    expect(kbSwitch().disabled).toBe(true);
+    expect(
+      within(rowFor("企业知识库")).getByText("由组织配置管理"),
+    ).toBeInTheDocument();
+  });
+
+  it("桌面端宿主同样渲染该行（知识库不是编辑器专属能力）", () => {
+    window.waveHostType = "desktop";
+    renderGlobalView({ configurationData: {} });
+
+    expect(kbSwitch()).toBeInTheDocument();
+  });
+});

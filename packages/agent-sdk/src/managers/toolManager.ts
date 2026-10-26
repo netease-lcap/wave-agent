@@ -14,6 +14,8 @@ import { webFetchTool } from "../tools/webFetchTool.js";
 import { artifactTool } from "../tools/artifactTool.js";
 import { execTool } from "../tools/execTool.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
+import { isKnowledgeBaseEnabled } from "../services/knowledgeBaseAvailability.js";
+import { knowledgeBaseTools } from "../tools/knowledgeBase/index.js";
 import {
   getNonDeferrableBuiltins,
   isExecEnabled,
@@ -256,6 +258,16 @@ class ToolManager {
       builtInTools.push(execTool);
     }
 
+    // Enterprise knowledge base: three retrieval function tools, present only
+    // when `enableKnowledgeBase` says so (off by default — they pull enterprise
+    // documents into every conversation's context). The directory is the
+    // container's `SessionWorkdir`, not `CurrentWorkdir`: which settings file
+    // decides is a property of the session's opening directory, so a `cd` must
+    // not move it.
+    if (isKnowledgeBaseEnabled(this.container.get<string>("SessionWorkdir"))) {
+      builtInTools.push(...knowledgeBaseTools);
+    }
+
     for (const tool of builtInTools) {
       if (this.shouldEnableTool(tool.name)) {
         this.register(tool, { builtIn: true });
@@ -273,7 +285,8 @@ class ToolManager {
   /**
    * Re-evaluate feature-gated built-in tools after a live configuration
    * reload. Currently gates the Artifact tool on settings.json
-   * `enableArtifact` and the Exec tool on `enableExec`. Safe to call multiple
+   * `enableArtifact`, the Exec tool on `enableExec`, and the three
+   * knowledge-base tools on `enableKnowledgeBase`. Safe to call multiple
    * times: gated tools are removed from the registry first, then
    * initializeBuiltInTools() re-registers them only if still enabled (so
    * toggling a flag off actually unregisters).
@@ -281,6 +294,9 @@ class ToolManager {
   public reloadFeatureGatedTools(): void {
     this.toolsRegistry.delete(artifactTool.name);
     this.toolsRegistry.delete(execTool.name);
+    for (const tool of knowledgeBaseTools) {
+      this.toolsRegistry.delete(tool.name);
+    }
     this.initializeBuiltInTools();
   }
 

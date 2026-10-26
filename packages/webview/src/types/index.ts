@@ -1067,6 +1067,12 @@ export interface ConfigurationData {
    */
   nextEditEnabled?: boolean;
   /**
+   * 是否启用企业知识库（settings.json 顶层 `enableKnowledgeBase`，缺省为**关**；
+   * 开启后 AI 可用三个检索工具回答本企业文档，spec core/agent-config.md
+   * 「企业知识库开关」）。
+   */
+  enableKnowledgeBase?: boolean;
+  /**
    * 每个用户偏好键的来源层：用户级 `~/.wave/settings.json` 是用户偏好的**落点**，
    * 但生效值可能来自更高层（`remote` = 企业下发的组织配置，`env` = 机器环境变量）。
    * 设置为 `remote` 的键，设置页显示生效值 + 置灰 + 「由组织配置管理」；`env` 与

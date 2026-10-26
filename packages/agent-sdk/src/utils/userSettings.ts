@@ -20,6 +20,10 @@
  * 解析链见 `ConfigurationService.resolveModelConfig`；补全模型另有
  * `env.WAVE_COMPLETION_MODEL` 逃生口），见 docs/specs/ui/code-completion.md 故事 4/5。
  *
+ * 企业知识库的开关 = 顶层 `enableKnowledgeBase`（缺省关，托管层可覆盖），
+ * 生效判定见 `services/knowledgeBaseAvailability.ts`，见
+ * docs/specs/core/agent-config.md「企业知识库开关」。
+ *
  * 写入是「读-改-写」：只覆盖这些键，其余顶层键与 `env` 下其它键原样保留。
  *
  * `readUserPreferenceView` 额外回答**当前生效值来自哪一层**：用户级文件是用户
@@ -176,6 +180,10 @@ function toSettings(data: Record<string, unknown>): UserPreferenceSettings {
   if (typeof data.nextEditEnabled === "boolean") {
     settings.nextEditEnabled = data.nextEditEnabled;
   }
+  // 企业知识库开关（顶层键，缺省为关；spec core/agent-config.md「企业知识库开关」）。
+  if (typeof data.enableKnowledgeBase === "boolean") {
+    settings.enableKnowledgeBase = data.enableKnowledgeBase;
+  }
   return settings;
 }
 
@@ -241,6 +249,7 @@ export function readUserPreferenceView(
     completionModel: "default",
     completionEnabled: "default",
     nextEditEnabled: "default",
+    enableKnowledgeBase: "default",
   };
 
   // language 没有 env 落点（`resolveLanguage` 只读合并后的顶层键）。
@@ -343,6 +352,17 @@ export function readUserPreferenceView(
     sources.nextEditEnabled = nextEditEnabled.source;
   }
 
+  // 企业知识库开关：托管层优先于用户级文件，与 `isKnowledgeBaseEnabled` 的判定
+  // 顺序一致（remote → 本地合并 → 默认关；该键没有 env 落点）。
+  const enableKnowledgeBase = selectPreference<boolean>([
+    ["remote", remote?.enableKnowledgeBase],
+    ["user", user.enableKnowledgeBase],
+  ]);
+  if (enableKnowledgeBase) {
+    values.enableKnowledgeBase = enableKnowledgeBase.value;
+    sources.enableKnowledgeBase = enableKnowledgeBase.source;
+  }
+
   return { values, sources };
 }
 
@@ -366,6 +386,7 @@ export async function updateUserPreferenceSettings(
   const serverUrl = nonEmptyString(patch.serverUrl);
   const hasCompletionEnabled = patch.completionEnabled !== undefined;
   const hasNextEditEnabled = patch.nextEditEnabled !== undefined;
+  const hasKnowledgeBase = patch.enableKnowledgeBase !== undefined;
   // 补全模型与 serverUrl 同一判据：空串 = 未提供（省略键 = 不改该键，UI 也没有
   // 删键语义），避免把「清空下拉」翻译成写一个空模型名。
   const completionModel = nonEmptyString(patch.completionModel);
@@ -377,6 +398,7 @@ export async function updateUserPreferenceSettings(
     serverUrl === undefined &&
     !hasCompletionEnabled &&
     !hasNextEditEnabled &&
+    !hasKnowledgeBase &&
     completionModel === undefined
   ) {
     return toSettings(data);
@@ -415,6 +437,9 @@ export async function updateUserPreferenceSettings(
   if (completionModel !== undefined) data.completionModel = completionModel;
   if (hasCompletionEnabled) data.completionEnabled = patch.completionEnabled;
   if (hasNextEditEnabled) data.nextEditEnabled = patch.nextEditEnabled;
+  // 企业知识库开关落顶层键（与 `enableArtifact` / `enableExec` 同一层，
+  // 设置页的「企业知识库」行，spec core/agent-config.md「企业知识库开关」）。
+  if (hasKnowledgeBase) data.enableKnowledgeBase = patch.enableKnowledgeBase;
 
   // 首次保存时 `~/.wave` 可能尚不存在（会话启动时文件不存在，场景 7），
   // 原子写需要同目录可写，先确保目录存在。

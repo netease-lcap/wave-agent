@@ -25,6 +25,8 @@ export interface ConfigurationData {
   completionEnabled?: boolean;
   /** 是否启用下一步编辑建议（顶层 `nextEditEnabled`，缺省为关）。 */
   nextEditEnabled?: boolean;
+  /** 是否启用企业知识库（顶层 `enableKnowledgeBase`，缺省为关）。 */
+  enableKnowledgeBase?: boolean;
   /**
    * 每个用户偏好键的来源层（`remote` / `user` / `env` / `default`）：回包带上
    * 它，设置页才能把被组织配置（Remote）覆盖的键显示为「生效值 + 置灰」而不是
@@ -128,5 +130,8 @@ function pickUserPreferences(
   // 下一步编辑建议开关：与补全开关同一判据（只有显式布尔值才算改动）。
   if (configData.nextEditEnabled !== undefined)
     patch.nextEditEnabled = configData.nextEditEnabled;
+  // 企业知识库开关：三端设置页都渲染该行（知识库不是编辑器专属能力）。
+  if (configData.enableKnowledgeBase !== undefined)
+    patch.enableKnowledgeBase = configData.enableKnowledgeBase;
   return patch;
 }

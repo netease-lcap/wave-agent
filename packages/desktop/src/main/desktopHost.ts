@@ -6217,6 +6217,11 @@ export class DesktopHost {
     if (configData.nextEditEnabled !== undefined) {
       patch.nextEditEnabled = configData.nextEditEnabled;
     }
+    // 企业知识库开关（顶层 `enableKnowledgeBase`，缺省为关）。三端设置页都渲染
+    // 该行（知识库不是编辑器专属能力），故桌面端同样会写入。
+    if (configData.enableKnowledgeBase !== undefined) {
+      patch.enableKnowledgeBase = configData.enableKnowledgeBase;
+    }
     const settings = (await this.utilityClientFor(host).request(
       "updateUserSettings",
       patch,
