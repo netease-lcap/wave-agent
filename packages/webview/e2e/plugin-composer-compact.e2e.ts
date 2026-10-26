@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./utils/webviewTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
 import { MockDataGenerator } from "./fixtures/mockData.js";
+import { expectPermissionMenuAligned } from "./utils/permissionMenu.js";
 
 /**
  * 插件端（VS Code / JetBrains，`[data-host="plugin"]` 那一档）底栏「空间不足 → 图标档」
@@ -228,6 +229,20 @@ test.describe("plugin composer: icon tier when the bottom row runs out of space"
     expect(permission.bg).toBe(plus.bg);
     expect(model.border).toBe("rgba(0, 0, 0, 0)");
     expect(permission.border).toBe("rgba(0, 0, 0, 0)");
+  });
+
+  /**
+   * 权限下拉菜单项：图标与文案必须落在同一条水平线上、中间留出间距。
+   * 菜单项写成普通 `<li>`（不声明 display）时两者按基线排 —— 图标底边压在文字基线
+   * 上、字形盒紧贴文字，插件端实测图标圆心比文字中心高 4px、间距 0（远控页 −5px）。
+   * 桌面端早就在 host-desktop.css 里声明了 flex/居中/8px，所以这条只有插件端与远控页
+   * 会破相；三端共用同一个断言（见 utils/permissionMenu.ts）。
+   */
+  test("the permission menu's icon and label sit on one line", async ({
+    webviewPage,
+  }) => {
+    await mountChat(webviewPage, 380);
+    await expectPermissionMenuAligned(webviewPage);
   });
 
   test("widening the sidebar brings the model name back automatically", async ({

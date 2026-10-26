@@ -369,7 +369,16 @@
   font-size: 12px;
 }
 
+/* 菜单项 = 图标 + 文案一行。**必须显式 flex + 居中**：不写 display 时 `<li>` 是
+   list-item，16/20px 的图标与 12/14px 的文案就按基线排，图标底边压在文字基线上、
+   圆心比文字中心高 5px（远控页 390 宽实测：图标中心 654 / 文字中心 659），看起来
+   「图标浮在文字上面」；gap 也没有，字形盒紧贴文字。桌面端一直是对的 —— 它自己在
+   host-desktop.css 声明了 `display:flex; align-items:center; gap:8px`，所以只有插件端
+   与远控页（走这条 base 规则）错位。gap 取 8px，与桌面下拉项、`.more-menu-item` 同档。 */
 .permission-mode-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 6px 12px;
   cursor: pointer;
   color: var(--vscode-dropdown-foreground);
