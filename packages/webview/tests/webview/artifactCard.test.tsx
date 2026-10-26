@@ -9,6 +9,9 @@ import type { Message as MessageType } from "wave-agent-sdk";
  * 对话里的 artifact 卡片（PM 3500358560332032）：Artifact 工具发布成功时，
  * 工具块渲染成一张卡片，卡片上只有「在浏览器中打开」——artifact 只有 URL，
  * 本地没有文件。其它 action（list / read / 评论）保持文本渲染。
+ *
+ * 形态与 Bash 一致：工具行（绿点 + 工具名 + 参数摘要）保留在卡片上方，
+ * 卡片作为这一块的内容挂在下面，而不是顶掉整行。
  */
 
 vi.mock("mermaid", () => ({
@@ -23,6 +26,7 @@ vi.mock("mermaid", () => ({
 interface BlockOptions {
   stage?: "streaming" | "end";
   metadata?: Record<string, unknown>;
+  compactParams?: string;
   shortResult?: string;
   error?: string;
 }
@@ -30,6 +34,7 @@ interface BlockOptions {
 const artifactMessage = ({
   stage = "end",
   metadata,
+  compactParams = "pages/index.html → https://codechat.test/code/artifact/abc",
   shortResult = "Published pages/index.html → https://codechat.test/code/artifact/abc",
   error,
 }: BlockOptions = {}): MessageType =>
@@ -49,6 +54,7 @@ const artifactMessage = ({
           action: "publish",
           file_path: "pages/index.html",
         }),
+        compactParams,
         shortResult,
         metadata,
       },
@@ -82,6 +88,23 @@ describe("artifact 卡片", () => {
     expect(screen.getByText("已发布 · v3")).toBeInTheDocument();
     // 只有一个动作：没有下拉菜单。
     expect(screen.queryByRole("menuitem")).not.toBeInTheDocument();
+  });
+
+  it("保留工具行（工具名 + 参数摘要），卡片挂在其下方", () => {
+    renderArtifact({ metadata: PUBLISHED_METADATA });
+
+    const header = document.querySelector(".tool-container > .tool-block");
+    const card = screen.getByTestId("artifact-card");
+
+    // 与 Bash 同一形态：头部一行 + 内容挂在下面，工具行不能被卡片顶掉。
+    expect(header).toBeInTheDocument();
+    expect(header).toHaveTextContent(ARTIFACT_TOOL_NAME);
+    expect(header?.querySelector(".compact-params")).toHaveTextContent(
+      "pages/index.html",
+    );
+    expect(
+      header!.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("点「在浏览器中打开」→ 发 openExternal，url 取 metadata", () => {
