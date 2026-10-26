@@ -35,13 +35,22 @@ CodeWave IDE 是一款集成在 VS Code 与 JetBrains IDE（WebStorm、IntelliJ 
 也就是说，你在 B 文件里就能用上 A 文件里那个你还没看过的函数。比如：
 
 ```ts
-// helper.ts
-export function formatPrice(cents: number): string { /* … */ }
+// helper.ts —— 第一个参数是个对象，字段名只有这里有
+export type Money = { cents: number; currency: string };
 
-// cart.ts —— 只有 import，没有定义
+export function formatPrice(money: Money, locale = "zh-CN"): string { /* … */ }
+
+// answer.ts —— 只有 import，没有定义，也不知道 Money 长什么样
 import { formatPrice } from "./helper";
-const label = ▍ // ← 建议直接给出 formatPrice(total)
+
+const amount = 1999;
+const currency = "CNY";
+const label = ▍ // ← 建议给出 formatPrice({ cents: amount, currency }, "zh-CN")
 ```
+
+实际效果——`answer.ts` 里既没有 `cents` 这个名字，也不知道第一个参数该传什么形状，补全（灰色部分，按 `Tab` 接受）直接把 `amount`、`currency` 组装成 `{ cents, currency }`，连第二个参数的默认值一起给全：
+
+![VS Code：在只 import、没有定义的文件里，补全按另一个文件的定义组装出了参数](/plugin-shots/completion-vscode-ghost-text.webp)
 
 补全默认跟随「快速模型」；你也可以在设置页「全局设置 → 基础设置」里单独指定补全专用模型、或用开关整体关掉补全（关闭后不再发起任何补全请求，也不消耗模型调用）：
 

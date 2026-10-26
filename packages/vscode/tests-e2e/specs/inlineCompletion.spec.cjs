@@ -9,6 +9,7 @@
 // .inlineSuggest.commit` is the only observable hook), so "accepted text
 // appeared after the caret" is the strongest black-box assertion available.
 const assert = require("node:assert");
+const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -17,22 +18,82 @@ const vscode = require("vscode");
 const EXTENSION_ID = "wave-codechat.wave-vscode";
 /** A shape every model finishes predictably, and an assertion anchor. */
 const SEED = "export function add(a: number, b: number): number {\n  ";
-/** The symbol the model can only know about through a cross-file snippet. */
-const IMPORTED_SYMBOL = "zetaOffsetOf";
+/** The symbol imported from the other file (also used to locate it for the definition call). */
+const IMPORTED_SYMBOL = "formatPrice";
+/**
+ * A name that exists **only** in `helper.ts`: the seed file never spells it, and
+ * neither does the import line. So a suggestion that contains it can only come
+ * from the collected definition snippet — which is what this test is about.
+ * Merely reusing `IMPORTED_SYMBOL` would prove nothing: it is already on screen.
+ */
+const CROSS_FILE_FIELD = "cents";
 const HELPER = [
-  "export function zetaOffsetOf(name: string): number {",
-  "  const weight = name.length * 7;",
-  "  return weight + 41;",
+  "export type Money = { cents: number; currency: string };",
+  "",
+  'export function formatPrice(money: Money, locale = "zh-CN"): string {',
+  "  return new Intl.NumberFormat(locale, {",
+  '    style: "currency",',
+  "    currency: money.currency,",
+  "  }).format(money.cents / 100);",
   "}",
   "",
 ].join("\n");
-const IMPORT_SEED = `import { ${IMPORTED_SYMBOL} } from "./helper";\n\nconst answer = `;
+/**
+ * The caret sits after `= `: there is no ready-made `Money`-shaped object in
+ * this file to pass along, so the model has to build the argument — and it can
+ * only know the argument is `{ cents, currency }` from the definition snippet.
+ */
+const IMPORT_SEED = `import { ${IMPORTED_SYMBOL} } from "./helper";\n\nconst amount = 1999;\nconst currency = "CNY";\nconst label = `;
 /** CLI spawn + first RPC round-trip (login PATH probe, session handshake). */
 const SESSION_READY_MS = 12000;
 /** The provider gives up after 3s; leave room for debounce + delivery. */
 const SUGGESTION_WINDOW_MS = 30000;
+/** Optional: capture the ghost text so a human can look at the real rendering. */
+const SHOT_DIR = process.env.WAVE_E2E_SHOT_DIR;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function takeShot(name) {
+  if (!SHOT_DIR) return;
+  try {
+    fs.mkdirSync(SHOT_DIR, { recursive: true });
+    execFileSync("import", ["-window", "root", path.join(SHOT_DIR, name)], {
+      timeout: 15000,
+    });
+    console.log(`[completion-e2e] screenshot: ${path.join(SHOT_DIR, name)}`);
+  } catch (error) {
+    console.log(`[completion-e2e] screenshot failed: ${error.message}`);
+  }
+}
+
+/**
+ * Ghost text has no API to wait on (see the header), so there is no "it is on
+ * screen now" signal to shoot against — the only way to find out is to look.
+ * Take a burst and let a human pick the frame that caught it. No-op unless
+ * `WAVE_E2E_SHOT_DIR` is set, so a normal run pays nothing.
+ */
+async function captureGhostTexts(prefix, count = 8, gapMs = 250) {
+  if (!SHOT_DIR) return;
+  for (let i = 0; i < count; i++) {
+    takeShot(`${prefix}-${i}.png`);
+    await sleep(gapMs);
+  }
+}
+
+/**
+ * The extension host's stdout is not forwarded to the runner's log, so a shot
+ * run is otherwise unobservable: drop a line next to the frames for whoever is
+ * picking them. No-op without `WAVE_E2E_SHOT_DIR`.
+ */
+function note(line) {
+  if (!SHOT_DIR) return;
+  try {
+    fs.mkdirSync(SHOT_DIR, { recursive: true });
+    fs.appendFileSync(path.join(SHOT_DIR, "notes.txt"), `${line}\n`);
+  } catch {
+    // Diagnostics must never turn into a test failure.
+  }
+}
 
 function caretAtEnd(document) {
   const line = document.lineCount - 1;
@@ -78,6 +139,40 @@ async function triggerAndAccept(document, before) {
     if (document.getText() !== before) return document.getText();
     await sleep(400);
   }
+  return document.getText();
+}
+
+/**
+ * `triggerAndAccept`, except the first round also shoots the ghost text — that
+ * is what the docs image needs. Only the first round: a burst takes seconds, and
+ * a suggestion can expire while it runs, which would turn the shot into a
+ * repeated miss. Every later round keeps the plain trigger/commit cadence.
+ */
+async function triggerShootAndAccept(document, before) {
+  const deadline = Date.now() + SUGGESTION_WINDOW_MS;
+  let shot = false;
+  let round = 0;
+  while (Date.now() < deadline) {
+    round++;
+    await vscode.commands.executeCommand(
+      "editor.action.inlineSuggest.trigger",
+      {
+        explicit: true,
+      },
+    );
+    if (shot) {
+      await sleep(800);
+    } else {
+      await captureGhostTexts("completion-ghost");
+      shot = true;
+    }
+    await commitSuggestion();
+    const changed = document.getText() !== before;
+    note(`round ${round}: ${changed ? "accepted" : "nothing to accept"}`);
+    if (changed) return document.getText();
+    await sleep(400);
+  }
+  note(`gave up after ${round} round(s)`);
   return document.getText();
 }
 
@@ -133,6 +228,25 @@ suite("Wave inline completion (real VS Code)", function () {
     );
     await extension.activate();
 
+    // Ghost text gets syntax colours by default, which makes a screenshot read as
+    // "this is already typed". Plain grey is what a suggestion should look like
+    // in the docs image; the assertions read the document, never pixels, so this
+    // changes nothing about what the suite proves.
+    if (SHOT_DIR) {
+      await vscode.workspace
+        .getConfiguration("editor")
+        .update(
+          "inlineSuggest.syntaxHighlightingEnabled",
+          false,
+          vscode.ConfigurationTarget.Global,
+        );
+      // The breadcrumb ends in the throwaway directory this suite creates
+      // (`wave-completion-e2e-XXXXXX`), which is noise in a docs image.
+      await vscode.workspace
+        .getConfiguration("breadcrumbs")
+        .update("enabled", false, vscode.ConfigurationTarget.Global);
+    }
+
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "wave-completion-e2e-"));
     const filePath = path.join(dir, "math.ts");
     fs.writeFileSync(filePath, SEED);
@@ -184,6 +298,10 @@ suite("Wave inline completion (real VS Code)", function () {
     const multiPath = path.join(dir, "answer.ts");
     fs.writeFileSync(multiPath, IMPORT_SEED);
 
+    // One tab only: the two earlier tests leave `math.ts` open, and a docs image
+    // should not have to explain a tab the reader never asked about.
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+
     const multiDocument = await vscode.workspace.openTextDocument(multiPath);
     const multiEditor = await vscode.window.showTextDocument(
       multiDocument,
@@ -212,21 +330,33 @@ suite("Wave inline completion (real VS Code)", function () {
     for (let attempt = 1; attempt <= 3; attempt++) {
       await resetTo(multiEditor, multiDocument, IMPORT_SEED);
       const before = multiDocument.getText();
-      after = await triggerAndAccept(multiDocument, before);
+      // The first pass also shoots the ghost text: it only exists on screen,
+      // there is no API to read it, so a screenshot is the only way to show it.
+      after =
+        attempt === 1
+          ? await triggerShootAndAccept(multiDocument, before)
+          : await triggerAndAccept(multiDocument, before);
       console.log(
         `[completion-e2e] cross-file attempt ${attempt}: ${JSON.stringify(after)}`,
       );
+      note(`attempt ${attempt} result:\n${after}`);
       assert.notStrictEqual(
         after,
         before,
         "no suggestion was accepted in time",
       );
-      if (after.includes(IMPORTED_SYMBOL)) break;
+      if (after.includes(CROSS_FILE_FIELD)) break;
     }
 
     assert.ok(
       after.includes(IMPORTED_SYMBOL),
-      `no suggestion used the imported definition — last answer: ${after}`,
+      `the suggestion did not call the imported symbol — last answer: ${after}`,
+    );
+    assert.ok(
+      after.includes(CROSS_FILE_FIELD),
+      "the suggestion called the imported symbol but never mentioned " +
+        `\`${CROSS_FILE_FIELD}\`, so its argument shape did not come from the ` +
+        `collected definition — last answer: ${after}`,
     );
   });
 });
