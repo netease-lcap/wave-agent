@@ -71,6 +71,13 @@ async function rowGeometry(page: Page) {
           : null,
       nameHidden: name ? getComputedStyle(name).display === "none" : null,
       iconShown: icon ? getComputedStyle(icon).display !== "none" : null,
+      // 图标档里这颗大脑与「+」「/」必须同色（spec 场景 7）：不显式给色时它靠
+      // `currentColor` 继承模型按钮的**文字**色，比图标按钮暗一档。
+      iconColor: icon ? getComputedStyle(icon).color : null,
+      toolbarIconColor: (() => {
+        const btn = row.querySelector(".toolbar-icon-button");
+        return btn ? getComputedStyle(btn).color : null;
+      })(),
       permLabelHidden: permLabel
         ? getComputedStyle(permLabel).display === "none"
         : null,
@@ -138,6 +145,9 @@ test.describe("plugin composer: icon tier when the bottom row runs out of space"
     expect(geo.permLabelHidden).toBe(true);
     // 插件端权限按钮自带的下拉箭头也要收掉：22px 里塞不下图标 + 箭头。
     expect(geo.permCaretHidden).toBe(true);
+    // 与「+」「/」同色（图标控件同一档亮度）：插件端模型按钮是文字控件、给的是
+    // 次级文字色，图标档下这颗大脑不能跟着它走。
+    expect(geo.iconColor).toBe(geo.toolbarIconColor);
     // 图标档必须让整行真的放得下：无重叠、无溢出。
     expect(geo.modelOnRing).toBe(0);
     expect(geo.overlaps).toEqual([]);
@@ -171,6 +181,53 @@ test.describe("plugin composer: icon tier when the bottom row runs out of space"
         .locator(".tooltip-box.visible")
         .filter({ hasText: "权限：跳过权限确认" }),
     ).toBeVisible();
+  });
+
+  test("the four icon buttons share one interaction surface", async ({
+    webviewPage,
+  }) => {
+    await mountChat(webviewPage, 380);
+
+    // 圆角与框：图标档里模型/权限必须跟「+」「/」同档圆角，且不再出现文字档那圈
+    // focusBorder 蓝框（spec 场景 8）。
+    const surfaces = await webviewPage.evaluate(() => {
+      const row = document.querySelector(".input-buttons-row") as HTMLElement;
+      const read = (el: Element | null) => {
+        if (!el) return null;
+        const cs = getComputedStyle(el);
+        return {
+          radius: cs.borderTopLeftRadius,
+          borderColor: cs.borderTopColor,
+        };
+      };
+      return {
+        plus: read(row.querySelector(".toolbar-icon-button")),
+        model: read(row.querySelector(".model-picker-trigger")),
+        permission: read(row.querySelector(".permission-mode-select")),
+      };
+    });
+    expect(surfaces.model!.radius).toBe(surfaces.plus!.radius);
+    expect(surfaces.permission!.radius).toBe(surfaces.plus!.radius);
+    expect(surfaces.model!.borderColor).toBe("rgba(0, 0, 0, 0)");
+    expect(surfaces.permission!.borderColor).toBe("rgba(0, 0, 0, 0)");
+
+    // hover 面：四个都只变底色，颜色值一致（文字档那套「底色 + 蓝框」在图标档里不再生效）。
+    const hoverStyle = async (selector: string, index = 0) => {
+      const loc = webviewPage.locator(selector).nth(index);
+      await loc.hover();
+      await webviewPage.waitForTimeout(250);
+      return loc.evaluate((el) => {
+        const cs = getComputedStyle(el);
+        return { bg: cs.backgroundColor, border: cs.borderTopColor };
+      });
+    };
+    const plus = await hoverStyle(".toolbar-icon-button", 0);
+    const model = await hoverStyle(".model-picker-trigger");
+    const permission = await hoverStyle(".permission-mode-select");
+    expect(model.bg).toBe(plus.bg);
+    expect(permission.bg).toBe(plus.bg);
+    expect(model.border).toBe("rgba(0, 0, 0, 0)");
+    expect(permission.border).toBe("rgba(0, 0, 0, 0)");
   });
 
   test("widening the sidebar brings the model name back automatically", async ({

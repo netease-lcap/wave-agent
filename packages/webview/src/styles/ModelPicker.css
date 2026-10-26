@@ -63,6 +63,13 @@
 }
 .input-buttons-row.is-compact .model-picker-icon {
   display: block;
+  /* 图标档下这颗大脑与「+」「/」是同一类控件（只有图标），必须同色：不显式指定时
+     它靠 `currentColor` 继承 `.model-picker-trigger` 的**文字**色
+     （`--vscode-descriptionForeground`），而那两个按钮用的是图标色
+     （`--vscode-icon-foreground`）—— 插件端/远控页会暗一档（实测 #9d9d9d vs
+     #cccccc），同一行里一眼看出两套亮度。桌面端自己把该变量定成 Figma 图标色
+     （#565a60 / 深色 #9a9ea5），与它本来给「+」「/」的值一致，故视觉不变。 */
+  color: var(--cc-composer-icon, var(--vscode-icon-foreground));
 }
 .input-buttons-row.is-compact .model-picker-name,
 .input-buttons-row.is-compact .model-picker-caret {
@@ -70,6 +77,30 @@
 }
 .input-buttons-row.is-compact .model-picker-container {
   flex: 0 0 auto;
+}
+/* 图标档的交互面：收成图标后，这一行是四个「只有一个图标」的按钮，默认态/hover/按下
+   必须同一套。文字档给模型与权限按钮的 hover/focus 是「底色 + 1px focusBorder 蓝框」
+   （`.model-picker-trigger:hover`、`.permission-mode-select:hover`），那套是给带文字的
+   下拉控件做「这是个可点的字段」提示的；收成 22×22 图标后还留着那个蓝框，就和左边的
+   「+」「/」不是一类东西了（后者 hover 只加底色、圆角 4px）。所以图标档：去掉框、
+   圆角与 hover 底色都跟图标按钮同源（`--cc-composer-icon-radius` /
+   `--cc-composer-icon-hover`，插件端与远控页回落到原本的 toolbar-hoverBackground，
+   桌面端取它自己的两套 Figma 值）。
+   只作用于 `.is-compact`：文字档的带框 hover 是既有设计，不动。 */
+.input-buttons-row.is-compact .model-picker-trigger,
+.input-buttons-row.is-compact .permission-mode-select {
+  border-color: transparent;
+  border-radius: var(--cc-composer-icon-radius, 4px);
+}
+.input-buttons-row.is-compact .model-picker-trigger:hover,
+.input-buttons-row.is-compact .model-picker-trigger:focus,
+.input-buttons-row.is-compact .permission-mode-select:hover,
+.input-buttons-row.is-compact .permission-mode-select:focus {
+  background-color: var(
+    --cc-composer-icon-hover,
+    var(--vscode-toolbar-hoverBackground)
+  );
+  border-color: transparent;
 }
 /* 图标档 · 插件端尺寸（22×22，与底栏的 `.toolbar-icon-button` 同档）。
    `plugin` = VS Code / JetBrains 插件端；产品名叫 CodeWave IDE，所以这一档不叫 ide。 */

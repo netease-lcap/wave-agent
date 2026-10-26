@@ -66,6 +66,11 @@ async function rowGeometry(page: Page) {
     const permCaret = row.querySelector(
       ".permission-mode-caret",
     ) as HTMLElement;
+    const readSurface = (el: Element | null) => {
+      if (!el) return null;
+      const cs = getComputedStyle(el);
+      return { radius: cs.borderTopLeftRadius, borderColor: cs.borderTopColor };
+    };
     return {
       host: document.documentElement.dataset.host,
       remotePage: document.documentElement.getAttribute("data-remote-page"),
@@ -78,6 +83,13 @@ async function rowGeometry(page: Page) {
       ring: box(row.querySelector(".compress-context-button")),
       nameHidden: name ? getComputedStyle(name).display === "none" : null,
       iconShown: icon ? getComputedStyle(icon).display !== "none" : null,
+      // 图标档里这颗大脑与「+」「/」必须同色（spec 场景 7）：不显式给色时它靠
+      // `currentColor` 继承模型按钮的**文字**色，比图标按钮暗一档。
+      iconColor: icon ? getComputedStyle(icon).color : null,
+      toolbarIconColor: (() => {
+        const btn = row.querySelector(".toolbar-icon-button");
+        return btn ? getComputedStyle(btn).color : null;
+      })(),
       permLabelHidden: permLabel
         ? getComputedStyle(permLabel).display === "none"
         : null,
@@ -90,6 +102,12 @@ async function rowGeometry(page: Page) {
         row.scrollWidth > row.clientWidth
           ? row.scrollWidth - row.clientWidth
           : 0,
+      // 交互面同档（spec 场景 8）：四个图标按钮的圆角一致，模型/权限不带 focusBorder 框。
+      plusSurface: readSurface(row.querySelector(".toolbar-icon-button")),
+      modelSurface: readSurface(row.querySelector(".model-picker-trigger")),
+      permissionSurface: readSurface(
+        row.querySelector(".permission-mode-select"),
+      ),
       overlaps,
     };
   });
@@ -150,6 +168,15 @@ test.describe("remote page (touch): icon tier when the bottom row runs out of sp
     expect(geo.overlaps).toEqual([]);
     expect(geo.rowScrollOverflow).toBe(0);
     expect(geo.rowHeight).toBe(48);
+    // 大脑与左边的「+」「/」同色（两者都是图标控件）：差异只可能是「整行都是图标色」，
+    // 不能是「模型那颗跟着模型按钮的文字色、比旁边暗一档」。
+    expect(geo.iconColor).toBe(geo.toolbarIconColor);
+    // 交互面同档：圆角一致、且不带文字档那圈 focusBorder 蓝框（触屏没有 hover，
+    // 但按下/聚焦时同样会显形，所以默认态就该是透明的）。
+    expect(geo.modelSurface!.radius).toBe(geo.plusSurface!.radius);
+    expect(geo.permissionSurface!.radius).toBe(geo.plusSurface!.radius);
+    expect(geo.modelSurface!.borderColor).toBe("rgba(0, 0, 0, 0)");
+    expect(geo.permissionSurface!.borderColor).toBe("rgba(0, 0, 0, 0)");
 
     // 点击行为与文字档完全一致：仍是同一个向上展开的列表。
     await webviewPage.getByTestId("model-picker-trigger").click();
