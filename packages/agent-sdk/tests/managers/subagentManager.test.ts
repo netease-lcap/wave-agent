@@ -75,6 +75,16 @@ vi.mock("../../src/managers/aiManager.js", () => {
   return { AIManager: MockAIManager };
 });
 
+// `deleteSubagent()` removes files through fs/promises. Mock it at the module
+// top level — a `vi.mock` nested in a `describe` is hoisted anyway, and vitest
+// warns that it would rather see it here.
+const { unlink } = vi.hoisted(() => ({ unlink: vi.fn() }));
+
+vi.mock("fs/promises", async () => {
+  const actual = await vi.importActual("fs/promises");
+  return { ...actual, unlink };
+});
+
 describe("SubagentManager background notification deduplication", () => {
   let container: Container;
   let messageQueue: MessageQueue;
@@ -486,13 +496,6 @@ describe("SubagentManager.cleanup()", () => {
 describe("SubagentManager.deleteSubagent()", () => {
   let container: Container;
   let subagentManager: SubagentManager;
-
-  const { unlink } = vi.hoisted(() => ({ unlink: vi.fn() }));
-
-  vi.mock("fs/promises", async () => {
-    const actual = await vi.importActual("fs/promises");
-    return { ...actual, unlink };
-  });
 
   beforeEach(() => {
     vi.clearAllMocks();

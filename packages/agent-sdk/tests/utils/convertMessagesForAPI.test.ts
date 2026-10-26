@@ -36,6 +36,14 @@ vi.mock("../../src/utils/imageProcessor.js", () => ({
   getImageProcessor: () => codec.processor,
 }));
 
+// Degrading to "no image codec available" also kicks a runtime-deps install
+// (see utils/imageRewrite.ts). That installer tries the real ~/.wave/cli batch
+// and logs a warning when this checkout is not a managed CLI — irrelevant here,
+// and covered by utils/imageRewrite.test.ts / utils/runtimeDeps.test.ts.
+vi.mock("../../src/utils/runtimeDeps.js", () => ({
+  ensureRuntimeDeps: vi.fn(),
+}));
+
 describe("convertMessagesForAPI", () => {
   it("should correctly convert user and assistant messages", async () => {
     const messages: Message[] = [

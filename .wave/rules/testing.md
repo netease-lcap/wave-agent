@@ -14,7 +14,11 @@ paths:
     - `vi.mocked(fs.stat).mockResolvedValue({ isFile: () => true } as unknown as Awaited<ReturnType<typeof fs.stat>>);`
   - When using `mockImplementation`, function arguments don't require explicit type annotations as TypeScript can infer them from context
   - MUST not write `mkdtemp` in test, use mocking instead
-  - Mock stdout and stderr to suppress output during testing and restore mocks after tests
+  - A green suite must also be quiet: `pnpm -F <pkg> test:unit` output carries no `stderr | <test>` block, no `Warning:`, no `DeprecationWarning`, no `[Wave] …` log — they bury the next real failure
+    - Spy the stream the code reports to (`console.error`, `process.stdout.write`) and `mockRestore()` it; when the diagnostic is part of the contract, assert on it instead of only muting it
+    - Fallback branches kick logging side effects (no image codec → `ensureRuntimeDeps()`, no ripgrep → install): `vi.mock` that module in the test walking the branch
+    - Mocks return what the caller indexes: `mockReturnValue([])` for a fixed-length `string[]` path list feeds `undefined` to `fs.existsSync` (`DEP0187`)
+    - `vi.mock` / `vi.hoisted` at module top level only
   - Avoid unnecessary `setTimeout` or `sleep` in tests to keep them fast; prefer awaiting promises or using `vi.waitFor` if needed
   - A loop of press → `sleep` → press pays for one full frame render per keystroke (~120ms on the Windows runner vs ~12ms locally), so it can spend vitest's default 5s `testTimeout` on rendering alone — the btw scroll cases timed out on `main` this way (2026-10-23). Write the repeated keys in one go and `vi.waitFor` the settled frame; derive the press count from the component's own constants instead of a magic number
   - Note: `logger` in `packages/code` appends to log files instead of printing to stdout/stderr to avoid interfering with the Ink UI. Do not use `logger` to debug in tests. Use temporary `console.log` to debug and remove them after.
