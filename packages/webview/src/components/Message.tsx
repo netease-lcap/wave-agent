@@ -1026,9 +1026,11 @@ export const Message: React.FC<MessageProps> = React.memo(
         );
       }
 
-      // Artifact 工具（发布到创作集）：发布成功后渲染成一张卡片，卡片上只有
-      // 「在浏览器中打开」——artifact 是服务端的 URL，本机没有对应文件。
-      // 其余 action（list / read / asset / 评论）与非发布结果落回下面的通用渲染。
+      // Artifact 工具（发布到创作集）：发布成功后把结果换成一张卡片，卡片上
+      // 只有「在浏览器中打开」——artifact 是服务端的 URL，本机没有对应文件。
+      // 形态与 Bash 相同：工具行（工具名 + 参数摘要）照常保留，卡片挂在下面；
+      // 只顶掉原始结果文本。其余 action（list / read / asset / 评论）与非发布
+      // 结果落回下面的通用渲染。
       if (toolBlock.name === ARTIFACT_TOOL_NAME) {
         const meta = toolBlock.metadata as Record<string, unknown> | undefined;
         const artifactUrl =
@@ -1044,6 +1046,7 @@ export const Message: React.FC<MessageProps> = React.memo(
               : "已发布";
           return (
             <div key={index} className="tool-container">
+              {toolHeader}
               <ArtifactCard
                 title={artifactTitle}
                 subtitle={version}
