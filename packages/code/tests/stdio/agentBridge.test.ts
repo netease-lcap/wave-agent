@@ -3455,7 +3455,9 @@ test("sendMessage with force aborts before sending", async () => {
     sessionId,
   );
 
-  expect(mockAgent.abortMessage).toHaveBeenCalled();
+  // "Send now" interrupts the running turn but must not clear the queue: the
+  // rest of the queued messages belong to the user and go out afterwards.
+  expect(mockAgent.abortMessage).toHaveBeenCalledWith({ keepQueue: true });
   expect(mockAgent.sendMessage).toHaveBeenCalledWith("hello", undefined);
 });
 

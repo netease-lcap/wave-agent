@@ -1211,8 +1211,16 @@ export class Agent {
     await this.messageManager.saveSession();
   }
 
-  /** Unified interrupt method, interrupts both AI messages and command execution */
-  public abortMessage(): void {
+  /**
+   * Unified interrupt method, interrupts both AI messages and command execution
+   *
+   * @param options.keepQueue - Keep the user's queued messages instead of
+   * clearing them. "Send now" uses this: it is an interrupt, not a Stop — the
+   * message the user picked goes out now, and everything else stays queued and
+   * is delivered in order afterwards.
+   */
+  public abortMessage(options?: { keepQueue?: boolean }): void {
+    const keepQueue = options?.keepQueue ?? false;
     // Guard: prevent tryDispatch (triggered by abortAIMessage → setIsLoading(false))
     // from dispatching preserved notifications as a new AI turn during the abort.
     this.isAborting = true;
@@ -1220,10 +1228,17 @@ export class Agent {
       // If a queued dispatch is in flight (e.g. a notification turn was being
       // processed), remember the abort so the .finally re-check won't start a
       // new dispatch with the preserved notifications right after aborting.
-      if (this.dispatchPromise) {
+      //
+      // A "send now" interrupt is the exception: it keeps the queue and the
+      // caller sends the picked message right away, so the queue still owes
+      // work and the `.finally` re-check must run once the picked turn ends —
+      // leaving the latch set there would swallow that re-check when the
+      // aborted dispatch happens to unwind after the new turn already ended,
+      // and the remaining messages would sit in the queue until the next event.
+      if (this.dispatchPromise && !keepQueue) {
         this.dispatchAborted = true;
       }
-      if (this.aiManager.isLoading || this.isCommandRunning) {
+      if (!keepQueue && (this.aiManager.isLoading || this.isCommandRunning)) {
         // Clear user-facing queue items first to prevent processQueuedMessage
         // from dequeuing when abortAIMessage triggers onLoadingChange(false).
         // Notifications are preserved so background task results aren't lost.

@@ -1687,9 +1687,6 @@ export class AgentBridge {
     sessionId?: string,
   ): Promise<null> {
     const entry = this.requireSession(sessionId);
-    if (params.force) {
-      entry.agent.abortMessage();
-    }
     // Save prompt to history (mirrors VSCE chatSession.ts:236-242)
     try {
       await PromptHistoryManager.addEntry(
@@ -1700,6 +1697,20 @@ export class AgentBridge {
       );
     } catch {
       // Best-effort; don't block message sending on history save failure
+    }
+    if (params.force) {
+      // "Send now" for one queued item: interrupt the running turn but keep the
+      // rest of the queue — the host removes the picked item separately, and
+      // everything it did not touch must still be delivered afterwards.
+      //
+      // The abort must be immediately followed by `sendMessage` with nothing
+      // awaited in between: the abort resets the loading flag, which is the gate
+      // a queued item waits behind, so any await here lets the *next* queued
+      // message start a turn first — the picked one would then be enqueued at
+      // the tail instead of going out now (realhost smoke: with the history
+      // write above the abort, a `deleteQueuedMessageById` landing in that gap
+      // started the remaining message immediately).
+      entry.agent.abortMessage({ keepQueue: true });
     }
     await entry.agent.sendMessage(
       params.text,
