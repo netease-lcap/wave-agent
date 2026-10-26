@@ -1,4 +1,4 @@
-import { test as base, expect, Page } from "@playwright/test";
+import { test as base, expect, Page, Request, Route } from "@playwright/test";
 import path from "path";
 import fs from "fs";
 
@@ -13,109 +13,96 @@ type DesktopTestContext = {
   webviewPage: Page;
 };
 
-export const test = base.extend<DesktopTestContext>({
-  webviewPage: async ({ page }, use) => {
-    page.on("pageerror", (error) => {
-      console.error("Page error:", error);
+const webviewDistPath = path.join(process.cwd(), "dist");
+const themeDir = path.join(process.cwd(), "theme");
+const codiconsCssPath = path.join(
+  process.cwd(),
+  "node_modules",
+  "@vscode",
+  "codicons",
+  "dist",
+  "codicon.css",
+);
+const codiconsTtfPath = path.join(
+  process.cwd(),
+  "node_modules",
+  "@vscode",
+  "codicons",
+  "dist",
+  "codicon.ttf",
+);
+
+// Same dual-theme inlining as packages/desktop/scripts/syncWebview.mjs:
+// both variable sets coexist, each scoped to <html data-theme="…">. The
+// static data-theme="dark" (mirroring the real index.html) makes the
+// [data-host="desktop"][data-theme="…"] rules in host-desktop.css actually
+// resolve — without it the designer light/dark pairs collapsed to the
+// unscoped light values and screenshots rendered white popups on dark UI.
+const rewriteThemeBase = (css: string, theme: string) =>
+  css.replace(/:root\s*\{/g, `:root[data-theme="${theme}"] {`);
+const readTheme = (file: string, theme: string) =>
+  fs.existsSync(path.join(themeDir, file))
+    ? rewriteThemeBase(
+        fs.readFileSync(path.join(themeDir, file), "utf8"),
+        theme,
+      )
+    : "";
+const vscodeStyles =
+  readTheme("theme-base-dark.css", "dark") +
+  readTheme("theme-base-light.css", "light");
+
+/** 打包产物与 codicons：vscode-webview:// 与 http origin 两种页面共用这一份服务。 */
+const serveWebviewAsset = async (route: Route, request: Request) => {
+  const filename = new URL(request.url()).pathname.substring(1);
+
+  if (filename === "codicons/codicon.css" && fs.existsSync(codiconsCssPath)) {
+    route.fulfill({
+      status: 200,
+      contentType: "text/css",
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: fs.readFileSync(codiconsCssPath),
     });
-
-    const webviewDistPath = path.join(process.cwd(), "dist");
-    const themeDir = path.join(process.cwd(), "theme");
-
-    // Same dual-theme inlining as packages/desktop/scripts/syncWebview.mjs:
-    // both variable sets coexist, each scoped to <html data-theme="…">. The
-    // static data-theme="dark" (mirroring the real index.html) makes the
-    // [data-host="desktop"][data-theme="…"] rules in host-desktop.css actually
-    // resolve — without it the designer light/dark pairs collapsed to the
-    // unscoped light values and screenshots rendered white popups on dark UI.
-    const rewriteThemeBase = (css: string, theme: string) =>
-      css.replace(/:root\s*\{/g, `:root[data-theme="${theme}"] {`);
-    const readTheme = (file: string, theme: string) =>
-      fs.existsSync(path.join(themeDir, file))
-        ? rewriteThemeBase(
-            fs.readFileSync(path.join(themeDir, file), "utf8"),
-            theme,
-          )
-        : "";
-    const vscodeStyles =
-      readTheme("theme-base-dark.css", "dark") +
-      readTheme("theme-base-light.css", "light");
-
-    const codiconsCssPath = path.join(
-      process.cwd(),
-      "node_modules",
-      "@vscode",
-      "codicons",
-      "dist",
-      "codicon.css",
-    );
-    const codiconsTtfPath = path.join(
-      process.cwd(),
-      "node_modules",
-      "@vscode",
-      "codicons",
-      "dist",
-      "codicon.ttf",
-    );
-
-    await page.route("vscode-webview://**", (route, request) => {
-      const url = new URL(request.url());
-      const pathname = url.pathname;
-      const filename = pathname.substring(1);
-
-      if (
-        filename === "codicons/codicon.css" &&
-        fs.existsSync(codiconsCssPath)
-      ) {
-        route.fulfill({
-          status: 200,
-          contentType: "text/css",
-          headers: { "Access-Control-Allow-Origin": "*" },
-          body: fs.readFileSync(codiconsCssPath),
-        });
-        return;
-      }
-      if (
-        filename === "codicons/codicon.ttf" &&
-        fs.existsSync(codiconsTtfPath)
-      ) {
-        route.fulfill({
-          status: 200,
-          contentType: "font/ttf",
-          headers: { "Access-Control-Allow-Origin": "*" },
-          body: fs.readFileSync(codiconsTtfPath),
-        });
-        return;
-      }
-
-      const filePath = path.join(webviewDistPath, filename);
-
-      if (fs.existsSync(filePath)) {
-        const content = fs.readFileSync(filePath);
-        const ext = path.extname(filename);
-
-        let contentType = "application/octet-stream";
-        if (ext === ".js") contentType = "application/javascript";
-        else if (ext === ".css") contentType = "text/css";
-        else if (ext === ".ttf") contentType = "font/ttf";
-        else if (ext === ".woff") contentType = "font/woff";
-        else if (ext === ".woff2") contentType = "font/woff2";
-
-        route.fulfill({
-          status: 200,
-          contentType,
-          headers: { "Access-Control-Allow-Origin": "*" },
-          body: content,
-        });
-      } else {
-        route.fulfill({
-          status: 404,
-          body: `File not found: ${filename}`,
-        });
-      }
+    return;
+  }
+  if (filename === "codicons/codicon.ttf" && fs.existsSync(codiconsTtfPath)) {
+    route.fulfill({
+      status: 200,
+      contentType: "font/ttf",
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: fs.readFileSync(codiconsTtfPath),
     });
+    return;
+  }
 
-    const testHtml = `
+  const filePath = path.join(webviewDistPath, filename);
+
+  if (fs.existsSync(filePath)) {
+    const content = fs.readFileSync(filePath);
+    const ext = path.extname(filename);
+
+    let contentType = "application/octet-stream";
+    if (ext === ".js") contentType = "application/javascript";
+    else if (ext === ".css") contentType = "text/css";
+    else if (ext === ".ttf") contentType = "font/ttf";
+    else if (ext === ".woff") contentType = "font/woff";
+    else if (ext === ".woff2") contentType = "font/woff2";
+
+    route.fulfill({
+      status: 200,
+      contentType,
+      headers: { "Access-Control-Allow-Origin": "*" },
+      body: content,
+    });
+  } else {
+    route.fulfill({
+      status: 404,
+      body: `File not found: ${filename}`,
+    });
+  }
+};
+
+/** 宿主看到的那份 HTML（mock 桥 + 打包产物）；换 `baseHref` 即可换 origin。 */
+const buildWebviewHtml = (baseHref: string): string => `
 <!DOCTYPE html>
 <html lang="zh-CN" data-theme="dark">
 <head>
@@ -124,10 +111,10 @@ export const test = base.extend<DesktopTestContext>({
     <title>Wave 代码智聊</title>
     <!-- Base resolves relative URLs (e.g. the terminal chunk's ./terminal.js)
          against the routed vscode-webview scheme so the harness serves them. -->
-    <base href="vscode-webview://mock-extension-id/">
-    <link rel="stylesheet" href="vscode-webview://mock-extension-id/codicons/codicon.css">
-    <link rel="stylesheet" href="vscode-webview://mock-extension-id/chat.css">
-    <link rel="stylesheet" href="vscode-webview://mock-extension-id/terminal.css">
+    <base href="${baseHref}">
+    <link rel="stylesheet" href="${baseHref}codicons/codicon.css">
+    <link rel="stylesheet" href="${baseHref}chat.css">
+    <link rel="stylesheet" href="${baseHref}terminal.css">
     <style>
         ${vscodeStyles}
 
@@ -150,28 +137,64 @@ export const test = base.extend<DesktopTestContext>({
     <script>
         ${mockDesktopApiJs}
     </script>
-    <script src="vscode-webview://mock-extension-id/chat.js"></script>
+    <script src="${baseHref}chat.js"></script>
 </body>
 </html>`;
 
-    await page.setContent(testHtml);
+/** 关掉页面错误静音的噪音：用例失败时 pageerror 会指出是页面自身崩了。 */
+const watchPageErrors = (page: Page) => {
+  page.on("pageerror", (error) => {
+    console.error("Page error:", error);
+  });
+};
 
-    // DesktopApp renders `desktop-loading` until the host pushes the first
-    // `desktopWorkdirState`; tests inject that themselves, so the harness
-    // only waits for the loading element (proves the bundle mounted).
-    await page.waitForSelector('[data-testid="desktop-loading"]', {
-      timeout: 3000,
-    });
+const waitForMounted = (page: Page) =>
+  // DesktopApp renders `desktop-loading` until the host pushes the first
+  // `desktopWorkdirState`; tests inject that themselves, so the harness
+  // only waits for the loading element (proves the bundle mounted).
+  page.waitForSelector('[data-testid="desktop-loading"]', {
+    timeout: 3000,
+  });
+
+export const test = base.extend<DesktopTestContext>({
+  webviewPage: async ({ page }, use) => {
+    watchPageErrors(page);
+    await page.route("vscode-webview://**", serveWebviewAsset);
+    await page.setContent(
+      buildWebviewHtml("vscode-webview://mock-extension-id/"),
+    );
+    await waitForMounted(page);
 
     await use(page);
   },
 });
 
 /**
- * Mock host bridge: same surface as the VS Code mock plus the desktop host
- * marker. The Electron preload script sets window.waveHostType before the
- * bundle runs; here we do it inline in the mock script.
+ * 在真实 http origin 下打开同一个 webview 包。
+ *
+ * `page.setContent`（上面那个 fixture）的文档跑在 about:blank 上，origin 是
+ * opaque 的 "null"，浏览器会直接拒掉 IndexedDB（`SecurityError`）。草稿图片这类
+ * 「按 origin 存本地数据」的用例因此必须落在真实 origin 上跑——桌面端真机是
+ * file://、插件端是各自的自定义 scheme，都能用 IndexedDB。
  */
+export async function openWebviewOnHttpOrigin(page: Page): Promise<void> {
+  const origin = "http://wave-e2e.test";
+  watchPageErrors(page);
+  await page.route(`${origin}/**`, async (route, request) => {
+    if (new URL(request.url()).pathname === "/") {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: buildWebviewHtml(`${origin}/`),
+      });
+      return;
+    }
+    await serveWebviewAsset(route, request);
+  });
+  await page.goto(`${origin}/`);
+  await waitForMounted(page);
+}
+
 const mockDesktopApiJs = `
     window.process = {
         env: {

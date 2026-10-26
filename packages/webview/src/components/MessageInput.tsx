@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import { convertToMarkdown, serializeInputDraft } from "../utils/messageUtils";
 import { renderDraftContent } from "../utils/inputDraft";
+import { clearDraftImages, draftImageScopeKey } from "../utils/draftImageStore";
 import {
   assembleIdeContextBlocks,
   buildIdeContextSuggestions,
@@ -189,6 +190,12 @@ export const MessageInput = forwardRef<
     showContextUsage,
   } = props;
   const [message, setMessage] = useState("");
+
+  // 草稿图片按会话存（新对话按 pane），与宿主给 `inputDrafts` 分键的口径一致。
+  const draftScopeKey = useMemo(
+    () => draftImageScopeKey(sessionId, paneId),
+    [sessionId, paneId],
+  );
 
   // Context-usage indicator: the ring fill and the trailing number both
   // reflect the current usage (rounded up per spec); hovering pops a
@@ -421,7 +428,7 @@ export const MessageInput = forwardRef<
       vscode.postMessage({
         command: "updateInputContent",
         sessionId,
-        content: serializeInputDraft(div),
+        content: serializeInputDraft(div, draftScopeKey),
       });
       div.focus();
       // Caret to the end so the user can keep typing seamlessly.
@@ -491,6 +498,11 @@ export const MessageInput = forwardRef<
   // with the (stale) inputContent prop the host last pushed.
   const messageRef = useRef(message);
   messageRef.current = message;
+  // 回填草稿里的图片要挂上「点开预览」，那个回调定义在下面（粘贴路径）：
+  // 用 ref 转一手，免得把它的声明拖到本 effect 前面来。
+  const handleImagePreviewRef = useRef<(url: string, name: string) => void>(
+    () => {},
+  );
   // 首次挂载时 prop 就已经带着草稿——欢迎页要等 `state.initialized` 才挂载输入框，
   // 而 initialized 与 inputContent 是同一条 setInitialState 给的，所以「宿主回放
   // 草稿」和「输入框挂载」发生在同一帧：此时 inputContentRef 的初值就等于 prop，
@@ -514,7 +526,9 @@ export const MessageInput = forwardRef<
       // 免得卸载时的补发把它重复报到新会话名下。
       pendingDraftRef.current = null;
       const div = textareaRef.current;
-      const text = div ? serializeInputDraft(div) : messageRef.current;
+      const text = div
+        ? serializeInputDraft(div, draftImageScopeKey(prevSession, paneId))
+        : messageRef.current;
       if (text) {
         vscode.postMessage({
           command: "updateInputContent",
@@ -536,13 +550,16 @@ export const MessageInput = forwardRef<
       inputContentRef.current = inputContent ?? "";
       setMessage(inputContent ?? "");
       if (textareaRef.current) {
-        // 草稿里带引用标记（`[@file:…]` / `[Selection: …]` / `[@ide:…]`）时必须
-        // 还原成标签——直接写 innerText 会把它们变成纯文本，引用随消息发出去时
-        // 就失效了（缺陷 3503216687855872）。
-        renderDraftContent(textareaRef.current, inputContent ?? "");
+        // 草稿里带引用标记（`[@file:…]` / `[Selection: …]` / `[@ide:…]` / 图片）
+        // 时必须还原成标签——直接写 innerText 会把它们变成纯文本，引用随消息
+        // 发出去时就失效了（缺陷 3503216687855872）。
+        renderDraftContent(textareaRef.current, inputContent ?? "", {
+          scopeKey: draftScopeKey,
+          onImageClick: (url, name) => handleImagePreviewRef.current(url, name),
+        });
       }
     }
-  }, [inputContent, sessionId, vscode]);
+  }, [inputContent, sessionId, paneId, vscode, draftScopeKey]);
 
   // Initialize attached images from initialAttachedImages prop
   useEffect(() => {
@@ -640,7 +657,7 @@ export const MessageInput = forwardRef<
 
       vscode.postMessage({
         command: "updateInputContent",
-        content: serializeInputDraft(textareaRef.current),
+        content: serializeInputDraft(textareaRef.current, draftScopeKey),
       });
 
       // Focus and move cursor to end of the body.
@@ -652,7 +669,7 @@ export const MessageInput = forwardRef<
       selection?.removeAllRanges();
       selection?.addRange(range);
     },
-    [vscode],
+    [vscode, draftScopeKey],
   );
 
   // Detect 指令 in text
@@ -1082,6 +1099,9 @@ export const MessageInput = forwardRef<
     modal.appendChild(closeBtn);
     document.body.appendChild(modal);
   }, []);
+  useEffect(() => {
+    handleImagePreviewRef.current = handleImagePreview;
+  }, [handleImagePreview]);
 
   // Read files as base64 and post them to the host for upload. The paneId is
   // tagged on the request so the host can echo it back on uploadSuccess and
@@ -1354,7 +1374,10 @@ export const MessageInput = forwardRef<
           range.setEnd(end.node, end.offset);
           range.deleteContents();
 
-          const remaining = serializeInputDraft(textareaRef.current);
+          const remaining = serializeInputDraft(
+            textareaRef.current,
+            draftScopeKey,
+          );
           setMessage(remaining);
           // 立即持久化剩余草稿：随后打开的对话框/设置页可能卸载本输入框，
           // 会取消 handleInput 里 150ms 防抖的保存。
@@ -1405,7 +1428,14 @@ export const MessageInput = forwardRef<
 
       closeSlashCommandPopup();
     },
-    [closeSlashCommandPopup, onSendMessage, vscode, slashCommand, sessionId],
+    [
+      closeSlashCommandPopup,
+      onSendMessage,
+      vscode,
+      slashCommand,
+      sessionId,
+      draftScopeKey,
+    ],
   );
 
   /**
@@ -1477,6 +1507,8 @@ export const MessageInput = forwardRef<
           command: "updateInputContent",
           content: "",
         });
+        // 图片已经随消息发出去了，本地存储里那份草稿图片不再需要。
+        void clearDraftImages(draftScopeKey);
         setAttachedImages([]);
         closeDropdown();
       };
@@ -1505,6 +1537,7 @@ export const MessageInput = forwardRef<
     editingQueuedId,
     onSubmitQueuedEdit,
     requestIdeContextContent,
+    draftScopeKey,
   ]);
 
   // Open the history-search popup. Shared by the in-DOM Ctrl/Cmd+R handler and the
@@ -1808,7 +1841,7 @@ export const MessageInput = forwardRef<
       }
       // 上报的草稿走与发送正文同一套序列化，保留引用标签（`[@file:…]` 等）；
       // 用 innerText 会只剩标签的可见文字，回填后引用就失效了。
-      const draft = serializeInputDraft(target);
+      const draft = serializeInputDraft(target, draftScopeKey);
       // 记下这份待发草稿，卸载时补发（见 pendingDraftRef 声明处）。定时器本身仍读
       // 实时 DOM：选中历史搜索、追加评论、预填提示词这些「立即上报」的路径会直接
       // 改写同一个节点，读实时值才不会用更旧的快照把它们盖回去。
@@ -1818,7 +1851,7 @@ export const MessageInput = forwardRef<
         vscode.postMessage({
           command: "updateInputContent",
           sessionId: draftSession,
-          content: serializeInputDraft(target),
+          content: serializeInputDraft(target, draftScopeKey),
         });
         inputContentTimerRef.current = null;
       }, 150);
@@ -1832,6 +1865,7 @@ export const MessageInput = forwardRef<
       editingQueuedId,
       onCancelQueuedEdit,
       sessionId,
+      draftScopeKey,
     ],
   );
 
