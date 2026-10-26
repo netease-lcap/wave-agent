@@ -23,6 +23,15 @@
             serviceImplementation="com.wave.jetbrains.WavePanelHolder"/>
         <projectService
             serviceImplementation="com.wave.jetbrains.WaveBackendService"/>
+        <!-- Next-edit suggestions (spec ui/next-edit-suggestion.md). Project-scoped
+             because it listens to every document of the project and owns the one
+             visible preview popup; it stays quiet until a chat session exists. -->
+        <projectService
+            serviceImplementation="com.wave.jetbrains.nextEdit.WaveNextEditService"/>
+        <!-- Project services are lazy: without this the service is never instantiated, its
+             document listener never registers, and no edit ever enters the trajectory. -->
+        <postStartupActivity
+            implementation="com.wave.jetbrains.nextEdit.NextEditStartupActivity"/>
         <!-- The single chat panel renders as the side-bar Wave tool window content (cannot be
              closed; its title comes from toolWindow.title). ExitPlanMode plans render in a
              separate editor-area tab (WavePlanFileEditorProvider serves WavePlanVirtualFile),
@@ -73,5 +82,15 @@
             <reference ref="com.wave.jetbrains.addSelectionToWave"/>
             <add-to-group group-id="EditorPopupMenu" anchor="last"/>
         </group>
+        <!-- Next-edit accept: the popup's own Tab binding only works while the popup holds
+             focus, so the same action is also a rebindable IDE action (Ctrl+Alt+Enter, as in
+             VS Code). It is a no-op when nothing is showing. -->
+        <action
+            id="com.wave.jetbrains.nextEdit.accept"
+            class="com.wave.jetbrains.nextEdit.AcceptNextEditAction"
+            text="CodeWave IDE: 接受下一步编辑建议"
+            description="Apply the next-edit suggestion currently shown">
+            <keyboard-shortcut keymap="$default" first-keystroke="ctrl alt ENTER"/>
+        </action>
     </actions>
 </idea-plugin>

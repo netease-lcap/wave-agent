@@ -1062,6 +1062,11 @@ export interface ConfigurationData {
   /** 是否启用行内补全（settings.json 顶层 `completionEnabled`，缺省为开）。 */
   completionEnabled?: boolean;
   /**
+   * 是否启用下一步编辑建议（settings.json 顶层 `nextEditEnabled`，缺省为**关**；
+   * 它会改写用户已写下的代码，故先关闭、由用户显式开启）。
+   */
+  nextEditEnabled?: boolean;
+  /**
    * 每个用户偏好键的来源层：用户级 `~/.wave/settings.json` 是用户偏好的**落点**，
    * 但生效值可能来自更高层（`remote` = 企业下发的组织配置，`env` = 机器环境变量）。
    * 设置为 `remote` 的键，设置页显示生效值 + 置灰 + 「由组织配置管理」；`env` 与

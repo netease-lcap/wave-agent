@@ -4,6 +4,11 @@
 //
 //   pnpm -F wave-vscode run test:e2e:completion            # uses `dist/` as built
 //   pnpm -F wave-vscode run test:e2e:completion -- --build # compiles first
+//   pnpm -F wave-vscode run test:e2e:next-edit            # next-edit suite
+//
+// --next-edit runs the next-edit spec instead of the completion spec: the two
+// need opposite project settings (next edit is off by default, and leaving it on
+// during the completion suite would let it take over those assertions).
 //
 // Notes:
 // - `--disable-extensions` keeps the user's installed extensions (and
@@ -64,11 +69,24 @@ const workspaceDir = mkdtempSync(path.join(tmpdir(), "wave-vscode-e2e-ws-"));
 mkdirSync(workspaceDir, { recursive: true });
 writeFileSync(path.join(workspaceDir, "README.md"), "# wave e2e workspace\n");
 
+// Next edit ships switched off, so its suite switches it on for this throwaway
+// workspace only — the project settings file the CLI already reads.
+if (args.has("--next-edit")) {
+  mkdirSync(path.join(workspaceDir, ".wave"), { recursive: true });
+  writeFileSync(
+    path.join(workspaceDir, ".wave", "settings.json"),
+    `${JSON.stringify({ nextEditEnabled: true }, null, 2)}\n`,
+  );
+}
+
 try {
   await runTests({
     vscodeExecutablePath: executable,
     extensionDevelopmentPath: pkgRoot,
     extensionTestsPath: path.join(pkgRoot, "tests-e2e", "index.cjs"),
+    extensionTestsEnv: {
+      WAVE_E2E_SPEC: args.has("--next-edit") ? "nextEdit" : "inlineCompletion",
+    },
     launchArgs: [
       workspaceDir,
       "--new-window",

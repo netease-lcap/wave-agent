@@ -155,6 +155,7 @@ describe("userSettings", () => {
           sources: {
             completionModel: "default",
             completionEnabled: "default",
+            nextEditEnabled: "default",
             language: "remote",
             contextLength: "default",
             autoMemoryEnabled: "default",
@@ -174,6 +175,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -200,6 +202,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "user",
           contextLength: "user",
           autoMemoryEnabled: "user",
@@ -217,6 +220,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "remote",
           autoMemoryEnabled: "default",
@@ -231,6 +235,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "user",
           autoMemoryEnabled: "default",
@@ -246,6 +251,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "env",
           autoMemoryEnabled: "default",
@@ -264,6 +270,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "remote",
@@ -285,6 +292,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "remote",
@@ -312,6 +320,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "user",
@@ -332,6 +341,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "user",
@@ -349,6 +359,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "env",
@@ -363,6 +374,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -381,6 +393,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -401,6 +414,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -415,6 +429,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -438,6 +453,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "remote",
           contextLength: "env",
           autoMemoryEnabled: "default",
@@ -459,6 +475,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -478,6 +495,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",
@@ -499,6 +517,7 @@ describe("userSettings", () => {
         sources: {
           completionModel: "default",
           completionEnabled: "default",
+          nextEditEnabled: "default",
           language: "default",
           contextLength: "default",
           autoMemoryEnabled: "default",

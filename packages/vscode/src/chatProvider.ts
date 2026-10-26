@@ -4,6 +4,10 @@ import type {
   ToolPermissionContext,
   PermissionDecision,
   CompletionSnippet,
+  NextEditExcerpt,
+  NextEditHistoryEntry,
+  NextEditRegion,
+  NextEditSuggestion,
 } from "wave-agent-sdk/host";
 import {
   EDIT_TOOL_NAME,
@@ -879,6 +883,41 @@ export class ChatProvider implements vscode.WebviewViewProvider {
   }
 
   /**
+   * Runs one next-edit suggestion for the editor (spec ui/next-edit-suggestion.md).
+   *
+   * Same session-scoped shape as completion: the model, the switch and the
+   * credentials live inside the CLI. `suggestion: null` means "no change
+   * suggested" — including when the capability is switched off, in which case
+   * the CLI answers without a model call.
+   */
+  public async requestNextEdit(params: {
+    edits: NextEditHistoryEntry[];
+    region: NextEditRegion;
+    excerpt: NextEditExcerpt;
+    language: string;
+    filePath: string;
+  }): Promise<{ suggestion: NextEditSuggestion | null } | undefined> {
+    await this.initPromise.catch(() => {});
+    const client = this.sharedClient;
+    const sessionId = this.completionSessionId();
+    if (!client || !sessionId) {
+      return undefined;
+    }
+
+    try {
+      const result = (await client.request(
+        "getNextEdit",
+        params,
+        sessionId,
+      )) as { suggestion?: NextEditSuggestion | null } | undefined;
+      return { suggestion: result?.suggestion ?? null };
+    } catch (error) {
+      hostLog.error("[Wave] Next edit request failed:", error);
+      return undefined;
+    }
+  }
+
+  /**
    * Reports what happened to the last inline suggestion: `displayed` when the
    * editor rendered it, `accepted` when the user took it.
    *
@@ -893,6 +932,21 @@ export class ChatProvider implements vscode.WebviewViewProvider {
 
     void client
       .request("reportCompletionOutcome", { outcome }, sessionId)
+      .catch(() => {});
+  }
+
+  /**
+   * The next-edit twin of `reportCompletionOutcome`. Kept separate all the way
+   * down to the metric so a rewrite never lands in completion's acceptance rate
+   * (spec ui/next-edit-suggestion.md 故事 7).
+   */
+  public reportNextEditOutcome(outcome: "displayed" | "accepted"): void {
+    const client = this.sharedClient;
+    const sessionId = this.completionSessionId();
+    if (!client || !sessionId) return;
+
+    void client
+      .request("reportNextEditOutcome", { outcome }, sessionId)
       .catch(() => {});
   }
 

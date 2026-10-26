@@ -235,6 +235,15 @@ export function validateConfigurationObject(
     result.errors.push("completionEnabled configuration must be a boolean");
   }
 
+  // Validate nextEditEnabled if present
+  if (
+    config.nextEditEnabled !== undefined &&
+    typeof config.nextEditEnabled !== "boolean"
+  ) {
+    result.isValid = false;
+    result.errors.push("nextEditEnabled configuration must be a boolean");
+  }
+
   // Validate cleanupPeriodDays if present
   if (
     config.cleanupPeriodDays !== undefined &&
@@ -759,6 +768,13 @@ export class ConfigurationService {
       this.options.completionEnabled ??
       this.liveConfiguration?.completionEnabled ??
       true;
+
+    // Next edit ships off: it rewrites code the user already wrote, so it is
+    // opt-in (spec ui/next-edit-suggestion.md story 6 scenario 2).
+    baseConfig.nextEditEnabled =
+      this.options.nextEditEnabled ??
+      this.liveConfiguration?.nextEditEnabled ??
+      false;
 
     // Resolve fast model generation params from models[fastModel].options.
     // Set on baseConfig before the modelSpecificConfig spread so it isn't overwritten.
@@ -1685,6 +1701,10 @@ export function loadWaveConfigFromFile(
         config.completionEnabled !== undefined
           ? config.completionEnabled
           : undefined,
+      nextEditEnabled:
+        config.nextEditEnabled !== undefined
+          ? config.nextEditEnabled
+          : undefined,
       autoMemoryEnabled:
         config.autoMemoryEnabled !== undefined
           ? config.autoMemoryEnabled
@@ -1887,6 +1907,9 @@ export function loadMergedWaveConfig(
     if (config.completionEnabled !== undefined) {
       mergedConfig.completionEnabled = config.completionEnabled;
     }
+    if (config.nextEditEnabled !== undefined) {
+      mergedConfig.nextEditEnabled = config.nextEditEnabled;
+    }
 
     // Merge autoMemoryEnabled (last one wins)
     if (config.autoMemoryEnabled !== undefined) {
@@ -2046,6 +2069,7 @@ export function loadMergedWaveConfig(
     fastModel: mergedConfig.fastModel,
     completionModel: mergedConfig.completionModel,
     completionEnabled: mergedConfig.completionEnabled,
+    nextEditEnabled: mergedConfig.nextEditEnabled,
     autoMemoryEnabled: mergedConfig.autoMemoryEnabled,
     autoMemoryFrequency: mergedConfig.autoMemoryFrequency,
     cleanupPeriodDays: mergedConfig.cleanupPeriodDays,

@@ -45,6 +45,8 @@ export interface DesktopConfigData {
   completionModel?: string;
   /** 用户偏好：是否启用行内补全（顶层 `completionEnabled`，缺省为开）。 */
   completionEnabled?: boolean;
+  /** 用户偏好：是否启用下一步编辑建议（顶层 `nextEditEnabled`，缺省为关）。 */
+  nextEditEnabled?: boolean;
   /**
    * 用户偏好每个键的**来源层**（`remote` / `user` / `env` / `default`）：回包
    * 里带上它，设置页才能把被组织配置（Remote）覆盖的键显示为「生效值 + 置灰」

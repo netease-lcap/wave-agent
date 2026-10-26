@@ -13,6 +13,10 @@ import type {
   CompletionSnippet,
   GatewayConfig,
   ModelConfig,
+  NextEditExcerpt,
+  NextEditHistoryEntry,
+  NextEditRegion,
+  NextEditSuggestion,
   Usage,
 } from "../types/index.js";
 import { ConfigurationError, CONFIG_ERRORS } from "../types/index.js";
@@ -30,6 +34,7 @@ import * as path from "path";
 
 import {
   CODE_COMPLETION_SYSTEM_PROMPT,
+  NEXT_EDIT_SYSTEM_PROMPT,
   WEB_CONTENT_SYSTEM_PROMPT,
   type SystemPromptBlock,
 } from "../prompts/index.js";
@@ -1165,6 +1170,217 @@ export async function getCompletion(
       throw new Error("Completion request was aborted");
     }
     logger.error("Failed to get code completion:", error);
+    throw error;
+  }
+}
+
+/** A next-edit answer is a rewritten window, not a token stream — keep it bounded. */
+const NEXT_EDIT_MAX_TOKENS = 1024;
+
+/** Per-edit cap for the trajectory block, so one huge edit cannot eat the prompt. */
+const NEXT_EDIT_MAX_EDIT_CHARS = 1200;
+
+export interface NextEditOptions {
+  gatewayConfig: GatewayConfig;
+  modelConfig: ModelConfig;
+  /** Past edits of the current file, oldest first. */
+  edits: NextEditHistoryEntry[];
+  /** The window the model may rewrite. */
+  region: NextEditRegion;
+  /** Wider context around the region, with absolute line numbers. */
+  excerpt: NextEditExcerpt;
+  language?: string;
+  filePath?: string;
+  abortSignal?: AbortSignal;
+}
+
+export interface NextEditResult {
+  /** `null` means "no change suggested" — distinct from an empty replacement, which deletes lines. */
+  suggestion: NextEditSuggestion | null;
+  model: string;
+}
+
+/** Renders one past edit as a unified-diff-ish block, trimmed to a budget. */
+function renderEditBlock(edit: NextEditHistoryEntry, index: number): string {
+  const trim = (text: string): string =>
+    text.length <= NEXT_EDIT_MAX_EDIT_CHARS
+      ? text
+      : `${text.slice(0, NEXT_EDIT_MAX_EDIT_CHARS)}\n… (truncated)`;
+  const removed = trim(edit.oldText)
+    .split("\n")
+    .map((line) => `- ${line}`);
+  const added = trim(edit.newText)
+    .split("\n")
+    .map((line) => `+ ${line}`);
+  return [`--- edit ${index + 1}`, ...removed, ...added].join("\n");
+}
+
+/** Numbers the excerpt so the model can name lines the way the host does. */
+function renderExcerpt(excerpt: NextEditExcerpt): string {
+  return excerpt.text
+    .split("\n")
+    .map((line, offset) => `${excerpt.startLine + offset} | ${line}`)
+    .join("\n");
+}
+
+/** Text currently occupying `[startLine, endLine]` (1-based, inclusive) of the excerpt. */
+function excerptSlice(
+  excerpt: NextEditExcerpt,
+  startLine: number,
+  endLine: number,
+): string | undefined {
+  const first = startLine - excerpt.startLine;
+  const last = endLine - excerpt.startLine;
+  const lines = excerpt.text.split("\n");
+  if (first < 0 || last >= lines.length) return undefined;
+  return lines.slice(first, last + 1).join("\n");
+}
+
+/**
+ * Turns the model's answer into a suggestion, or `null` when it is unusable.
+ *
+ * Everything the model can get wrong lands on the `null` side: prose instead of
+ * JSON, a range outside the region, a reversed range, or a "rewrite" that is
+ * byte-identical to what is already there (spec: 建议与原文相同则不渲染).
+ */
+export function parseNextEditAnswer(
+  raw: string,
+  region: NextEditRegion,
+  excerpt: NextEditExcerpt,
+): NextEditSuggestion | null {
+  const trimmed = raw.trim();
+  if (trimmed === "" || trimmed === "null") return null;
+
+  // Models wrap JSON in fences even when told not to; take the outermost object.
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start === -1 || end <= start) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== "object" || parsed === null) return null;
+
+  const { startLine, endLine, text } = parsed as {
+    startLine?: unknown;
+    endLine?: unknown;
+    text?: unknown;
+  };
+  if (typeof text !== "string") return null;
+  if (!Number.isInteger(startLine) || !Number.isInteger(endLine)) return null;
+  const from = startLine as number;
+  const to = endLine as number;
+
+  // The suggestion may narrow the region but never leave it: everything outside
+  // is context the user did not ask to change (spec: 区域外内容一字不动).
+  if (from < region.startLine || to > region.endLine || from > to) return null;
+
+  const replacement = text.replace(/\r\n/g, "\n");
+  const current = excerptSlice(excerpt, from, to);
+  if (current === undefined) return null;
+  if (current.trimEnd() === replacement.trimEnd()) return null;
+
+  return { startLine: from, endLine: to, text: replacement };
+}
+
+/**
+ * Next-edit suggestion — the sibling of `getCompletion` (spec
+ * ui/next-edit-suggestion.md). Same latency-critical, tool-less, non-conversational
+ * path, but the input is the user's edit trajectory and the answer may rewrite,
+ * move or delete lines instead of inserting at a caret.
+ *
+ * The model is the completion model: this capability ships without a dedicated
+ * fine-tuned checkpoint, so the answer is structured JSON parsed defensively —
+ * a chat model will sometimes answer with prose, and that must read as "no
+ * suggestion" rather than as an edit.
+ */
+export async function getNextEdit(
+  options: NextEditOptions,
+): Promise<NextEditResult> {
+  const { gatewayConfig, modelConfig, region, excerpt, abortSignal } = options;
+
+  // The switch lives here for the same reason as completion's: the CLI owns the
+  // configuration, and a disabled capability must not spend a model call.
+  const model =
+    modelConfig.completionModel || modelConfig.fastModel || modelConfig.model;
+  if (modelConfig.nextEditEnabled === false) {
+    return { suggestion: null, model: model ?? "" };
+  }
+  if (!model) {
+    throw new ConfigurationError(CONFIG_ERRORS.MISSING_MODEL, "model", {
+      constructor: undefined,
+      environment: process.env.WAVE_MODEL,
+    });
+  }
+
+  const openai = new OpenAIClient({
+    apiKey: gatewayConfig.apiKey,
+    baseURL: gatewayConfig.baseURL,
+    defaultHeaders: gatewayConfig.defaultHeaders,
+    fetchOptions: gatewayConfig.fetchOptions,
+    fetch: gatewayConfig.fetch,
+  });
+
+  const openaiModelConfig = getModelConfig(model, {
+    temperature: 0.1,
+    max_tokens: NEXT_EDIT_MAX_TOKENS,
+    ...(modelConfig.completionModelOptions || {}),
+  });
+
+  const header = [
+    options.filePath
+      ? `File: ${options.filePath}${options.language ? ` (${options.language})` : ""}`
+      : options.language
+        ? `Language: ${options.language}`
+        : undefined,
+  ].filter((line): line is string => line !== undefined);
+
+  const editBlocks =
+    options.edits.length > 0
+      ? options.edits.map(renderEditBlock)
+      : ["(the user has not edited this file yet)"];
+
+  const userContent = [
+    ...header,
+    "### User edits (oldest first)",
+    ...editBlocks,
+    "### File excerpt (line numbers are absolute; do not copy them into your answer)",
+    renderExcerpt(excerpt),
+    `### Editable region: lines ${region.startLine}-${region.endLine}`,
+  ].join("\n");
+
+  try {
+    const response = await openai.chat.completions.create(
+      {
+        ...openaiModelConfig,
+        messages: [
+          { role: "system", content: NEXT_EDIT_SYSTEM_PROMPT },
+          { role: "user", content: userContent },
+        ],
+      },
+      { signal: abortSignal },
+    );
+
+    const raw = response.choices[0]?.message?.content ?? "";
+    const suggestion = parseNextEditAnswer(raw, region, excerpt);
+    // Line numbers only: the answer's text is the user's own code, and the
+    // content question ("why did it say nothing") is answered by whether the
+    // parse produced a range at all.
+    logger.debug("Next edit suggestion", {
+      hasSuggestion: suggestion !== null,
+      startLine: suggestion?.startLine,
+      endLine: suggestion?.endLine,
+    });
+    return { suggestion, model };
+  } catch (error) {
+    if ((error as Error).name === "AbortError") {
+      logger.info("Next edit request was aborted");
+      throw new Error("Next edit request was aborted");
+    }
+    logger.error("Failed to get next edit suggestion:", error);
     throw error;
   }
 }

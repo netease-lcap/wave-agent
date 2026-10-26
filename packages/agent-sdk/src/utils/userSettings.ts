@@ -172,6 +172,10 @@ function toSettings(data: Record<string, unknown>): UserPreferenceSettings {
   if (typeof data.completionEnabled === "boolean") {
     settings.completionEnabled = data.completionEnabled;
   }
+  // 下一步编辑建议的开关同样落顶层键（缺省为关，故只有显式布尔值才算「设置过」）。
+  if (typeof data.nextEditEnabled === "boolean") {
+    settings.nextEditEnabled = data.nextEditEnabled;
+  }
   return settings;
 }
 
@@ -236,6 +240,7 @@ export function readUserPreferenceView(
     serverUrl: "default",
     completionModel: "default",
     completionEnabled: "default",
+    nextEditEnabled: "default",
   };
 
   // language 没有 env 落点（`resolveLanguage` 只读合并后的顶层键）。
@@ -329,6 +334,15 @@ export function readUserPreferenceView(
     sources.completionEnabled = completionEnabled.source;
   }
 
+  // 下一步编辑建议开关：与补全开关同一条链路（只归因 user，缺省为关）。
+  const nextEditEnabled = selectPreference<boolean>([
+    ["user", user.nextEditEnabled],
+  ]);
+  if (nextEditEnabled) {
+    values.nextEditEnabled = nextEditEnabled.value;
+    sources.nextEditEnabled = nextEditEnabled.source;
+  }
+
   return { values, sources };
 }
 
@@ -351,6 +365,7 @@ export async function updateUserPreferenceSettings(
   // 又按「未设置」展示 ⇒ 显示值与生效值分叉。省略键 = 不改该键。
   const serverUrl = nonEmptyString(patch.serverUrl);
   const hasCompletionEnabled = patch.completionEnabled !== undefined;
+  const hasNextEditEnabled = patch.nextEditEnabled !== undefined;
   // 补全模型与 serverUrl 同一判据：空串 = 未提供（省略键 = 不改该键，UI 也没有
   // 删键语义），避免把「清空下拉」翻译成写一个空模型名。
   const completionModel = nonEmptyString(patch.completionModel);
@@ -361,6 +376,7 @@ export async function updateUserPreferenceSettings(
     !hasFrequency &&
     serverUrl === undefined &&
     !hasCompletionEnabled &&
+    !hasNextEditEnabled &&
     completionModel === undefined
   ) {
     return toSettings(data);
@@ -398,6 +414,7 @@ export async function updateUserPreferenceSettings(
   // 补全模型 / 开关落顶层键（与 `model` 同层）。
   if (completionModel !== undefined) data.completionModel = completionModel;
   if (hasCompletionEnabled) data.completionEnabled = patch.completionEnabled;
+  if (hasNextEditEnabled) data.nextEditEnabled = patch.nextEditEnabled;
 
   // 首次保存时 `~/.wave` 可能尚不存在（会话启动时文件不存在，场景 7），
   // 原子写需要同目录可写，先确保目录存在。

@@ -52,8 +52,14 @@ import path from "node:path";
 import { parseTaskNotificationXml } from "./utils/notificationXml.js";
 import { parsePageCommentEventXml } from "./utils/pageCommentEventXml.js";
 import { InitializationService } from "./services/initializationService.js";
-import { getCompletion } from "./services/aiService.js";
-import type { CompletionSnippet } from "./types/completion.js";
+import { getCompletion, getNextEdit } from "./services/aiService.js";
+import type {
+  CompletionSnippet,
+  NextEditExcerpt,
+  NextEditHistoryEntry,
+  NextEditRegion,
+  NextEditSuggestion,
+} from "./types/completion.js";
 import {
   InteractionService,
   type InteractionContext,
@@ -67,7 +73,11 @@ import {
   flushTelemetry,
 } from "./telemetry/instrumentation.js";
 import { logOTelEvent } from "./telemetry/events.js";
-import { recordCompletionOutcome, recordSession } from "./telemetry/metrics.js";
+import {
+  recordCompletionOutcome,
+  recordNextEditOutcome,
+  recordSession,
+} from "./telemetry/metrics.js";
 import type { RecordContext } from "./telemetry/metrics.js";
 import { languageFromPath } from "./telemetry/language.js";
 import {
@@ -123,6 +133,8 @@ export class Agent {
   private sessionStartTime: number = Date.now();
   /** Model and language of the most recent completion, for `reportCompletionOutcome`. */
   private lastCompletion: { model?: string; language?: string } | null = null;
+  /** Same, for the most recent next-edit suggestion (`reportNextEditOutcome`). */
+  private lastNextEdit: { model?: string; language?: string } | null = null;
 
   // Configuration options storage for dynamic resolution
   private options: AgentOptions;
@@ -242,6 +254,40 @@ export class Agent {
   }
 
   /**
+   * Predict the user's next edit in the current file (spec
+   * ui/next-edit-suggestion.md).
+   *
+   * Sibling of `getCompletion` and deliberately built the same way: outside the
+   * conversation turn loop, no tools, no hooks, no share of the 1 QPS slot. The
+   * difference is the input — an edit trajectory plus a rewritable window — and
+   * the answer, which replaces lines rather than inserting at a caret.
+   */
+  public async getNextEdit(params: {
+    edits: NextEditHistoryEntry[];
+    region: NextEditRegion;
+    excerpt: NextEditExcerpt;
+    language?: string;
+    filePath?: string;
+    abortSignal?: AbortSignal;
+  }): Promise<{ suggestion: NextEditSuggestion | null; model: string }> {
+    const result = await getNextEdit({
+      gatewayConfig: this.getGatewayConfig(),
+      modelConfig: this.getModelConfig(),
+      ...params,
+    });
+
+    // Recorded even when the answer was "nothing to change": the host is the
+    // side that knows what it rendered, and the report carries no identity
+    // beyond "the most recent suggestion".
+    this.lastNextEdit = {
+      model: result.model,
+      language: languageFromPath(params.filePath),
+    };
+
+    return result;
+  }
+
+  /**
    * Record one event in the life of the most recent completion suggestion:
    * `displayed` when the host rendered it, `accepted` when the user took it.
    *
@@ -255,6 +301,22 @@ export class Agent {
     if (!last) return;
 
     recordCompletionOutcome(
+      { outcome, model: last.model, language: last.language },
+      this.telemetryContext,
+    );
+  }
+
+  /**
+   * The next-edit sibling of `reportCompletionOutcome`, into its own series
+   * (`wave.next_edit.outcome`): the two capabilities have different
+   * denominators, so their rates must never be mixed (spec
+   * ui/next-edit-suggestion.md 故事 7).
+   */
+  public reportNextEditOutcome(outcome: "displayed" | "accepted"): void {
+    const last = this.lastNextEdit;
+    if (!last) return;
+
+    recordNextEditOutcome(
       { outcome, model: last.model, language: last.language },
       this.telemetryContext,
     );

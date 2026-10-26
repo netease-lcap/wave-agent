@@ -2378,6 +2378,7 @@ test("getUserSettings 回包 = 生效值 + 每键来源层", async () => {
       serverUrl: "default",
       completionModel: "default",
       completionEnabled: "default",
+      nextEditEnabled: "default",
     },
   });
   const { bridge } = createBridge();
@@ -2397,6 +2398,7 @@ test("getUserSettings 回包 = 生效值 + 每键来源层", async () => {
       serverUrl: "default",
       completionModel: "default",
       completionEnabled: "default",
+      nextEditEnabled: "default",
     },
   });
 });
@@ -2420,6 +2422,7 @@ test("updateUserSettings writes the patch and returns the read-back values", asy
       serverUrl: "user",
       completionModel: "default",
       completionEnabled: "default",
+      nextEditEnabled: "default",
     },
   });
   const { bridge } = createBridge();
@@ -2448,6 +2451,7 @@ test("updateUserSettings writes the patch and returns the read-back values", asy
       serverUrl: "user",
       completionModel: "default",
       completionEnabled: "default",
+      nextEditEnabled: "default",
     },
   });
 });
@@ -2466,6 +2470,7 @@ test("updateUserSettings 写完后显式重载本进程内全部会话（不依�
       serverUrl: "default",
       completionModel: "default",
       completionEnabled: "default",
+      nextEditEnabled: "default",
     },
   });
   const { bridge } = createBridge();
@@ -2497,6 +2502,7 @@ test("空载荷（无差异保存）既不落盘也不重载", async () => {
       serverUrl: "default",
       completionModel: "default",
       completionEnabled: "default",
+      nextEditEnabled: "default",
     },
   });
   const { bridge } = createBridge();
@@ -4520,6 +4526,141 @@ test("getCompletion surfaces a model failure to the caller", async () => {
   ).rejects.toThrow("Failed to get code completion");
 });
 
+// ── getNextEdit ────────────────────────────────────────────────
+
+const NEXT_EDIT_REGION = { startLine: 3, endLine: 3, text: "  return id;" };
+const NEXT_EDIT_EXCERPT = {
+  startLine: 1,
+  text: "const a = 1;\nfunction f(id) {\n  return id;\n}",
+};
+
+test("getNextEdit forwards the trajectory and window to the session's agent", async () => {
+  const { bridge } = createBridge();
+  const getNextEdit = vi.fn().mockResolvedValue({
+    suggestion: { startLine: 3, endLine: 3, text: "  return userId;" },
+    model: "fast-model",
+  });
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent({ getNextEdit }));
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+  const edits = [{ oldText: "id", newText: "userId" }];
+
+  const result = await bridge.handleRequest(
+    "getNextEdit",
+    {
+      edits,
+      region: NEXT_EDIT_REGION,
+      excerpt: NEXT_EDIT_EXCERPT,
+      language: "typescript",
+      filePath: "/repo/src/index.ts",
+    },
+    init.sessionId,
+  );
+
+  expect(result).toEqual({
+    suggestion: { startLine: 3, endLine: 3, text: "  return userId;" },
+    model: "fast-model",
+  });
+  expect(getNextEdit).toHaveBeenCalledWith({
+    edits,
+    region: NEXT_EDIT_REGION,
+    excerpt: NEXT_EDIT_EXCERPT,
+    language: "typescript",
+    filePath: "/repo/src/index.ts",
+    abortSignal: expect.any(AbortSignal),
+  });
+});
+
+test("getNextEdit answers 'no suggestion' when the host sends no window", async () => {
+  const { bridge } = createBridge();
+  const getNextEdit = vi.fn();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent({ getNextEdit }));
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+
+  const result = await bridge.handleRequest("getNextEdit", {}, init.sessionId);
+
+  // Nothing to predict into — an empty answer rather than an error, so the
+  // editor simply falls back to completion.
+  expect(result).toEqual({ suggestion: null, model: "" });
+  expect(getNextEdit).not.toHaveBeenCalled();
+});
+
+test("getNextEdit defaults a missing trajectory to an empty one", async () => {
+  const { bridge } = createBridge();
+  const getNextEdit = vi.fn().mockResolvedValue({
+    suggestion: null,
+    model: "fast-model",
+  });
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent({ getNextEdit }));
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+
+  await bridge.handleRequest(
+    "getNextEdit",
+    { region: NEXT_EDIT_REGION, excerpt: NEXT_EDIT_EXCERPT },
+    init.sessionId,
+  );
+
+  expect(getNextEdit).toHaveBeenCalledWith(
+    expect.objectContaining({ edits: [] }),
+  );
+});
+
+test("getNextEdit and getCompletion never hold an in-flight request at once", async () => {
+  const { bridge } = createBridge();
+  const signals: { kind: string; signal: AbortSignal }[] = [];
+  const getCompletion = vi
+    .fn()
+    .mockImplementation((params: { abortSignal: AbortSignal }) => {
+      signals.push({ kind: "completion", signal: params.abortSignal });
+      return new Promise(() => {});
+    });
+  const getNextEdit = vi
+    .fn()
+    .mockImplementation((params: { abortSignal: AbortSignal }) => {
+      signals.push({ kind: "nextEdit", signal: params.abortSignal });
+      return Promise.resolve({ suggestion: null, model: "fast-model" });
+    });
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ getCompletion, getNextEdit }),
+  );
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+
+  void bridge.handleRequest(
+    "getCompletion",
+    { prefix: "a", suffix: "b" },
+    init.sessionId,
+  );
+  await bridge.handleRequest(
+    "getNextEdit",
+    { region: NEXT_EDIT_REGION, excerpt: NEXT_EDIT_EXCERPT },
+    init.sessionId,
+  );
+
+  // Spec ui/next-edit-suggestion.md 边界情况: both rewrite the same buffer, so
+  // the later request cancels the earlier one instead of running beside it.
+  expect(signals.map((entry) => entry.kind)).toEqual([
+    "completion",
+    "nextEdit",
+  ]);
+  expect(signals[0].signal.aborted).toBe(true);
+  expect(signals[1].signal.aborted).toBe(false);
+});
+
+test("getNextEdit requires a session", async () => {
+  const { bridge } = createBridge();
+
+  await expect(bridge.handleRequest("getNextEdit", {})).rejects.toThrow(
+    "sessionId is required for this request",
+  );
+});
+
 // ── reportCompletionOutcome ────────────────────────────────────
 
 test("reportCompletionOutcome forwards the outcome to the session's agent", async () => {
@@ -4568,6 +4709,56 @@ test("reportCompletionOutcome rejects an outcome outside the enum", async () => 
     ),
   ).rejects.toThrow(/outcome/);
   expect(reportCompletionOutcome).not.toHaveBeenCalled();
+});
+
+// ── reportNextEditOutcome ──────────────────────────────────────
+
+test("reportNextEditOutcome forwards the outcome to the session's agent", async () => {
+  const { bridge } = createBridge();
+  const reportNextEditOutcome = vi.fn();
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ reportNextEditOutcome }),
+  );
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+
+  const result = await bridge.handleRequest(
+    "reportNextEditOutcome",
+    { outcome: "displayed" },
+    init.sessionId,
+  );
+
+  expect(result).toEqual({ ok: true });
+  expect(reportNextEditOutcome).toHaveBeenCalledWith("displayed");
+});
+
+test("reportNextEditOutcome requires a session", async () => {
+  const { bridge } = createBridge();
+
+  await expect(
+    bridge.handleRequest("reportNextEditOutcome", { outcome: "accepted" }),
+  ).rejects.toThrow(/sessionId is required/);
+});
+
+test("reportNextEditOutcome rejects an outcome outside the enum", async () => {
+  const { bridge } = createBridge();
+  const reportNextEditOutcome = vi.fn();
+  vi.mocked(Agent.create).mockResolvedValue(
+    createMockAgent({ reportNextEditOutcome }),
+  );
+  const init = (await bridge.handleRequest("initialize", {})) as {
+    sessionId: string;
+  };
+
+  await expect(
+    bridge.handleRequest(
+      "reportNextEditOutcome",
+      { outcome: "clicked" },
+      init.sessionId,
+    ),
+  ).rejects.toThrow(/outcome/);
+  expect(reportNextEditOutcome).not.toHaveBeenCalled();
 });
 
 // ── 工具图片的字节不下发 UI（specs/ui/stdio-transport.md）───────

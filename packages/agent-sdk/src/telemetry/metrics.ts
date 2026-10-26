@@ -61,6 +61,9 @@ export interface CompletionOutcomeRecord {
   language?: string;
 }
 
+/** One next-edit suggestion's life-cycle event — same shape as completion's. */
+export type NextEditOutcomeRecord = CompletionOutcomeRecord;
+
 /** One LLM response's token usage, as recorded by the metrics family. */
 export interface TokenUsageRecord {
   /** Model id the request went to (low-cardinality attribute) */
@@ -108,6 +111,7 @@ let pullRequests: Counter | undefined;
 let activeTime: Counter | undefined;
 let codeEditDecisions: Counter | undefined;
 let completionOutcomes: Counter | undefined;
+let nextEditOutcomes: Counter | undefined;
 
 /** Whether the instruments above are live (the policy only matters then). */
 let active = false;
@@ -163,6 +167,13 @@ export function initMetrics(
     description:
       "Inline completion suggestions shown and accepted, by model and language",
   });
+  // A separate series on purpose: a next-edit suggestion replaces lines the user
+  // already wrote, so folding it into completion's rate would answer neither
+  // "is caret completion useful" nor "is the rewrite useful".
+  nextEditOutcomes = meter.createCounter("wave.next_edit.outcome", {
+    description:
+      "Next edit suggestions shown and accepted, by model and language",
+  });
 }
 
 /** Drop the instruments: telemetry was shut down, later records must no-op. */
@@ -175,6 +186,7 @@ export function resetMetrics(): void {
   activeTime = undefined;
   codeEditDecisions = undefined;
   completionOutcomes = undefined;
+  nextEditOutcomes = undefined;
   active = false;
 }
 
@@ -341,4 +353,30 @@ export function recordCompletionOutcome(
     attributes.language = record.language;
   }
   completionOutcomes?.add(1, attributes);
+}
+
+/**
+ * Record one event in a next-edit suggestion's life.
+ *
+ * Kept as its own series rather than a second dimension on
+ * `wave.completion.outcome`: the two capabilities have different denominators
+ * (a caret insertion the user asked for vs. a rewrite of lines they already
+ * wrote), so a shared rate would be meaningless. Same two outcomes, same
+ * low-cardinality attributes, same rule that no ratio is reported here.
+ */
+export function recordNextEditOutcome(
+  record: NextEditOutcomeRecord,
+  context?: RecordContext,
+): void {
+  const attributes: Attributes = {
+    ...attributesWithContext(context),
+    outcome: record.outcome,
+  };
+  if (record.model) {
+    attributes.model = record.model;
+  }
+  if (record.language) {
+    attributes.language = record.language;
+  }
+  nextEditOutcomes?.add(1, attributes);
 }

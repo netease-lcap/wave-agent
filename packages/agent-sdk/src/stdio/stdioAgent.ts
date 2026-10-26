@@ -39,6 +39,10 @@ import type {
   ConfiguredModel,
   ServerNotificationMethod,
   CompletionSnippet,
+  NextEditExcerpt,
+  NextEditHistoryEntry,
+  NextEditRegion,
+  NextEditSuggestion,
   MessageWindow,
   MessageWindowResult,
   MessageThreadSummary,
@@ -486,6 +490,25 @@ export class StdioAgent {
       params,
       this.sessionId,
     )) as { text: string; model: string };
+  }
+
+  /**
+   * Requests one next-edit suggestion for the editor's current window
+   * (spec ui/next-edit-suggestion.md). `suggestion: null` means "no change
+   * suggested"; a suggestion with an empty `text` means "delete those lines".
+   */
+  async getNextEdit(params: {
+    edits: NextEditHistoryEntry[];
+    region: NextEditRegion;
+    excerpt: NextEditExcerpt;
+    language?: string;
+    filePath?: string;
+  }): Promise<{ suggestion: NextEditSuggestion | null; model: string }> {
+    return (await this.client.request(
+      "getNextEdit",
+      params,
+      this.sessionId,
+    )) as { suggestion: NextEditSuggestion | null; model: string };
   }
 
   // ── Permissions ───────────────────────────────────────────────

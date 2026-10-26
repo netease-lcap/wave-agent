@@ -154,7 +154,16 @@ export type RequestMethod =
   // What the editor host saw happen to the last suggestion: `displayed` when it
   // rendered the ghost text, `accepted` when the user took it. Only the host
   // knows either fact — see `wave.completion.outcome` in the telemetry spec.
-  | "reportCompletionOutcome";
+  | "reportCompletionOutcome"
+  // What the host saw happen to the last next-edit suggestion. Its own method
+  // and its own metric (`wave.next_edit.outcome`): completion's rate counts
+  // caret insertions, a rewrite is a different capability.
+  | "reportNextEditOutcome"
+  // Next-edit suggestion for the editor plugins (spec ui/next-edit-suggestion.md).
+  // Same session-scoped, supersede-on-new-request shape as `getCompletion`, but
+  // the input is the user's edit trajectory plus a rewritable window of the
+  // file, and the answer replaces lines instead of being inserted at a caret.
+  | "getNextEdit";
 
 // ── Client → Server notification methods ────────────────────────
 

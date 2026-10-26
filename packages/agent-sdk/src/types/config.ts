@@ -73,4 +73,11 @@ export interface ModelConfig {
   completionModelOptions?: Record<string, unknown>;
   /** Whether inline code completion is enabled. Unset follows the default (enabled). */
   completionEnabled?: boolean;
+  /**
+   * Whether the next-edit suggestion is enabled. Unset follows the default
+   * (disabled): unlike completion it rewrites code the user already wrote, so it
+   * ships off until it has been exercised on real edits
+   * (spec ui/next-edit-suggestion.md story 6).
+   */
+  nextEditEnabled?: boolean;
 }
