@@ -4,6 +4,11 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.colors.EditorFontType
+import com.intellij.openapi.editor.markup.EffectType
+import com.intellij.openapi.editor.markup.HighlighterLayer
+import com.intellij.openapi.editor.markup.HighlighterTargetArea
+import com.intellij.openapi.editor.markup.RangeHighlighter
+import com.intellij.openapi.editor.markup.TextAttributes
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.ui.popup.JBPopup
 import com.intellij.openapi.ui.popup.JBPopupFactory
@@ -43,11 +48,15 @@ class NextEditPreview(
 ) {
     private var popup: JBPopup? = null
 
+    /** 编辑器里划掉「要删的行」的那条高亮器；浮层走了它就跟着走（spec 故事 1 场景 9）。 */
+    private var removals: RangeHighlighter? = null
+
     /** 浮层显示时文档的版本：接受前它变了，说明偏移已经失效，不写。 */
     private val stamp = editor.document.modificationStamp
 
     /** 弹到建议区间附近；`shown` 在浮层真正显示后回调（用于上报 displayed）。 */
     fun show(shown: () -> Unit) {
+        paintRemovals()
         val panel = buildPanel()
         val created = JBPopupFactory.getInstance()
             .createComponentPopupBuilder(panel, panel)
@@ -65,6 +74,47 @@ class NextEditPreview(
     fun hide() {
         popup?.cancel()
         popup = null
+        clearRemovals()
+    }
+
+    /**
+     * 把要替换掉的那几行在编辑器里划掉。
+     *
+     * 浮层里的 `-` 行只说明「改完长什么样」，不说明「改在哪」：建议位置可以和光标不同，
+     * 而浮层里的旧文本与编辑器里的文本常常只差几个字符，靠内容比对认位置不可靠（spec
+     * 故事 1 场景 8）。划在代码上之后，用户不必数行号也知道是哪几行要走。
+     *
+     * 区间止于下一行行首时会带上结尾换行符，直接划会让删除线视觉上延伸进下一行开头——
+     * 去掉它。VS Code 侧用的是 `lineRange`，同样不含换行，两端看起来才是一回事。
+     */
+    private fun paintRemovals() {
+        clearRemovals()
+        if (removedLines.isEmpty()) return
+        val document = editor.document
+        val last = strikeEnd(document.charsSequence, startOffset, endOffset) ?: return
+        val attributes = TextAttributes().apply {
+            effectType = EffectType.STRIKEOUT
+            effectColor = REMOVED_STRIKE
+            backgroundColor = JBColor(ColorHolder.removedLight, ColorHolder.removedDark)
+            foregroundColor = null
+        }
+        removals = editor.markupModel.addRangeHighlighter(
+            startOffset,
+            last,
+            HighlighterLayer.LAST + 1,
+            attributes,
+            HighlighterTargetArea.EXACT_RANGE,
+        ).also { highlighter ->
+            // 行首/行尾不留外溢的红色块，只划真正要走的字符范围。
+            highlighter.isGreedyToLeft = false
+            highlighter.isGreedyToRight = false
+        }
+    }
+
+    /** 只摘装饰，不碰文档——渲染与拒绝都不写（spec 边界「接受是唯一写入文档的动作」）。 */
+    private fun clearRemovals() {
+        removals?.let { editor.markupModel.removeHighlighter(it) }
+        removals = null
     }
 
     private fun buildPanel(): JComponent {
@@ -161,5 +211,8 @@ class NextEditPreview(
 
         /** 单行内容超过这个长度就截断显示。 */
         const val MAX_LINE_CHARS = 200
+
+        /** 删除线颜色：与浮层里被删行的字色同一个红，两处读起来是一件事。 */
+        val REMOVED_STRIKE = JBColor.RED.darker()
     }
 }

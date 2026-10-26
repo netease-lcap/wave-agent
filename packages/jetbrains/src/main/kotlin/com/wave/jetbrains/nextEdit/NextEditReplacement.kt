@@ -85,3 +85,20 @@ private fun splitLines(text: String): List<String> {
     // 结尾换行符产生的空串不是一行。
     return if (lines.size > 1 && lines.last().isEmpty()) lines.dropLast(1) else lines
 }
+
+/**
+ * 删除线在文档里划到哪为止（返回结束偏移，不含）。
+ *
+ * 建议的区间是整行级的，止于 `endLineExclusive` 那一行的行首，所以它**带着上一个被删行的
+ * 结尾换行符**。直接划上去会让删除线视觉上延伸进下一行的行首——那个换行符不属于「要删的
+ * 行」，去掉它。VS Code 侧用的是 `lineRange`（同样不含换行），两端看起来才是一回事。
+ *
+ * `null` 表示没有可划的东西：纯插入（区间为空），或者区间里只剩一个换行符。
+ *
+ * 纯函数：不碰 Document，测试直接喂字符串。
+ */
+internal fun strikeEnd(chars: CharSequence, startOffset: Int, endOffset: Int): Int? {
+    if (endOffset <= startOffset) return null
+    val last = if (chars[endOffset - 1] == '\n') endOffset - 1 else endOffset
+    return if (last <= startOffset) null else last
+}
