@@ -24,8 +24,12 @@ export interface MockCase {
   name: string;
   /** 工具条下拉框中显示的描述（可选） */
   description?: string;
-  /** 用例运行的宿主外壳："desktop" 渲染桌面端外壳（侧边栏/账户卡片），缺省为 IDE 聊天 */
-  host?: "desktop" | "ide";
+  /**
+   * 用例运行的宿主外壳："desktop" 渲染桌面端外壳（侧边栏/账户卡片），
+   * "plugin"（缺省）走插件端那一档（VS Code / JetBrains 共用）。
+   * 不用 "ide"：产品本身叫 CodeWave IDE，会与桌面端混淆。
+   */
+  host?: "desktop" | "plugin";
   /** 用例激活时按序发送的 host → webview 消息 */
   messages?: MockMessage[];
   /**

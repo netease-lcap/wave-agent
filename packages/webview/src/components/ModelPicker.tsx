@@ -14,8 +14,9 @@ export interface ModelPickerProps {
   disabled?: boolean;
   /**
    * 底栏空间不足时的「图标档」（1023 评论：参考 codex，模型与权限都只显示图标）。
-   * 只由 MessageInput 的底栏量宽决定；为真时按钮收成 32×32 的大脑图标，
-   * 模型名与漏斗尖都藏起来，点击行为不变（仍向上展开同一个列表）。
+   * 只由 MessageInput 的底栏量宽决定；为真时按钮收成一颗大脑图标（桌面端 32×32、
+   * 插件端 22×22，与各自底栏的图标按钮同档），模型名与下拉箭头都藏起来，
+   * 点击行为不变（仍向上展开同一个列表）。
    */
   compact?: boolean;
   onSelect: (model: string) => void;
@@ -122,8 +123,9 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
       }}
     >
       {/* 图标档的大脑图标：文字档下 display:none（不占位），
-          由底栏的 `.is-compact` 切换显示（见 host-desktop.css）。 */}
-      {isDesktopHost() && <ModelBrainIcon className="model-picker-icon" />}
+          由底栏的 `.is-compact` 切换显示（见 ModelPicker.css：桌面端 32×32、
+          插件端 22×22，与本宿主底栏的图标按钮同档）。 */}
+      <ModelBrainIcon className="model-picker-icon" />
       <span className="model-picker-name" title={label}>
         {label}
       </span>

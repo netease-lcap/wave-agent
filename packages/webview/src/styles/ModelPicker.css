@@ -50,6 +50,37 @@
   opacity: 0.8;
 }
 
+/* ── 图标档（底栏放不下时：模型与权限都只留图标，见 MessageInput 的量宽与
+   MessageInput.css 的 `.is-compact` 段落）─────────────────────────────
+   文字档下这颗大脑图标不占位；主体规则两个宿主相同，尺寸按宿主密度分档：
+   桌面端 32×32（host-desktop.css）、插件端 22×22（本文件下方 `[data-host="plugin"]`，
+   与底栏 `.toolbar-icon-button` 同档）。 */
+.model-picker-icon {
+  display: none;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.input-buttons-row.is-compact .model-picker-icon {
+  display: block;
+}
+.input-buttons-row.is-compact .model-picker-name,
+.input-buttons-row.is-compact .model-picker-caret {
+  display: none;
+}
+.input-buttons-row.is-compact .model-picker-container {
+  flex: 0 0 auto;
+}
+/* 图标档 · 插件端尺寸（22×22，与底栏的 `.toolbar-icon-button` 同档）。
+   `plugin` = VS Code / JetBrains 插件端；产品名叫 CodeWave IDE，所以这一档不叫 ide。 */
+[data-host="plugin"] .input-buttons-row.is-compact .model-picker-trigger {
+  width: 22px;
+  min-height: 22px;
+  padding: 0;
+  justify-content: center;
+  gap: 0;
+}
+
 /* 向上展开：与 .permission-mode-menu 同因（原生 select 在 JCEF 会被裁）。 */
 .model-picker-menu {
   position: absolute;

@@ -917,37 +917,13 @@
   padding: 0 12px;
 }
 
-/* ── 底栏「空间不足 → 图标档」（1023 评论）─────────────────────────
-   「这里最小时会有重叠的情况，可以参考 codex，在空间不足时，模型和权限都只
-     显示图标，点击图标进行切换，模型可以用类似大脑那种图标」
+/* ── 底栏「空间不足 → 图标档」的桌面档尺寸（机制见 MessageInput.css /
+   ModelPicker.css 的 `.is-compact` 段落：结构规则两个宿主共用，这里只有尺寸分档）──
    实测（1440×900 预览用例 tmp-model-picker-1021，卡片宽 328 时）：模型名被压成
    0 宽、文字溢出压到上下文圆环上 —— 因为只有模型按钮可收缩（min-width: 0），
    权限按钮固定 112、圆环 58、+ / / 68、发送 32 都不收缩。
-   判定由 MessageInput 量宽后写在行上的 `.is-compact` 触达（纯 CSS 判不了
-   「模型名多长时放不下」）。图标档：模型 → 大脑图标，权限 → 模式图标，
-   两者都是 32×32（与 + / / 图标按钮同档），点击行为不变。
-   `.is-measuring` 只在量宽那一帧存在（子项解除收缩），不会绘制到屏幕。 */
-[data-host="desktop"] .input-buttons-row.is-measuring > * {
-  flex-shrink: 0;
-}
-[data-host="desktop"] .model-picker-icon {
-  display: none;
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-[data-host="desktop"] .input-buttons-row.is-compact .model-picker-icon {
-  display: block;
-}
-[data-host="desktop"] .input-buttons-row.is-compact .model-picker-name,
-[data-host="desktop"] .input-buttons-row.is-compact .model-picker-caret,
-[data-host="desktop"] .input-buttons-row.is-compact .permission-mode-label {
-  display: none;
-}
-[data-host="desktop"] .input-buttons-row.is-compact .model-picker-container,
-[data-host="desktop"] .input-buttons-row.is-compact .permission-mode-container {
-  flex: 0 0 auto;
-}
+   桌面中密度档：模型 → 大脑图标，权限 → 模式图标，两者都是 32×32
+   （与 + / / 图标按钮同档），点击行为不变。插件端 22×22，见 ModelPicker.css。 */
 [data-host="desktop"] .input-buttons-row.is-compact .model-picker-trigger {
   width: 32px;
   min-height: 32px;
@@ -958,14 +934,6 @@
 [data-host="desktop"] .input-buttons-row.is-compact .permission-mode-select {
   width: 32px;
   gap: 0;
-}
-/* 图标档下权限菜单右对齐到按钮：菜单是 `left: 0` 从左边缘往右长的，图标档把权限按钮
-   推到行右半侧后，菜单会跑出窗口（620 宽实测右缘 683 > 视口 620）。右对齐后回到卡片内
-   （387…551）。模型菜单仍保持左对齐：它本来就靠左，右对齐会把菜单甩进左侧栏、被账户卡
-   盖住 —— 它的出界（620 时 4.9px）在改前就是这个位置，见报告残留。 */
-[data-host="desktop"] .input-buttons-row.is-compact .permission-mode-menu {
-  left: auto;
-  right: 0;
 }
 
 /* placeholder：Figma #8B8F95（base 用 input-placeholderForeground 偏暗）；
