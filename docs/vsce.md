@@ -61,6 +61,10 @@ const label = ▍ // ← 建议直接给出 formatPrice(total)
 - **不提示的情况**：最近 30 秒没有任何编辑；文件只读；光标处有选区或有多个光标；文件过大；本次启动还没打开过 Wave 聊天面板（模型与凭据来自会话）。
 - **隐私**：与补全同一条链路——只有上述编辑片段、光标附近的代码与文件路径会随请求发到你已配置的模型服务，不会上传整个文件或整个仓库。
 
+![VS Code：被改的行划掉旧文本、行尾预览新文本，光标所在行给出采纳提示](/plugin-shots/next-edit-vscode-inline.webp)
+
+![JetBrains：要改的那行直接在代码上划掉，浮层给出替换写法，Tab 接受、Esc 拒绝](/plugin-shots/next-edit-jetbrains-popup.webp)
+
 ## 画廊
 
 ### 1. 核心聊天体验
