@@ -385,7 +385,12 @@
   background: var(--vscode-list-activeSelectionBackground);
 }
 
-/* Toolbar icon buttons ("+" and "/") — 22px square, 16px icon */
+/* Toolbar icon buttons ("+" and "/") — 22px square, 16px icon.
+   图标色与圆角统一由 `--cc-composer-icon*` 决定：插件端/远控页不声明，回落到图标
+   token / 4px；桌面端自己声明成 Figma 图标色与 8px（host-desktop.css）。图标档的模型
+   与权限按钮也取这两个变量 —— 它们跟这两个按钮是同一类控件（只有图标），不能一个用
+   图标 token、另一个继承模型按钮的文字色，也不能一个 hover 只加底色、另一个还要冒出一
+   圈 focusBorder 蓝框（见 ModelPicker.css `.is-compact` 那段）。 */
 .toolbar-icon-button {
   width: 22px;
   height: 22px;
@@ -394,9 +399,9 @@
   align-items: center;
   justify-content: center;
   background-color: transparent;
-  color: var(--vscode-icon-foreground);
+  color: var(--cc-composer-icon, var(--vscode-icon-foreground));
   border: none;
-  border-radius: 4px;
+  border-radius: var(--cc-composer-icon-radius, 4px);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -408,7 +413,10 @@
 }
 
 .toolbar-icon-button:hover {
-  background-color: var(--vscode-toolbar-hoverBackground);
+  background-color: var(
+    --cc-composer-icon-hover,
+    var(--vscode-toolbar-hoverBackground)
+  );
 }
 
 /* "+" add menu — expands upward (bottom:100%) so it is not clipped at the bottom of

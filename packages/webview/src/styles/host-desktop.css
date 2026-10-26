@@ -312,21 +312,25 @@
 /* 工具行图标按钮：22px → 32px（codechat composer-icon-button 32×32），
    圆角 4px → 6px → 8px（设计师 0916 评论②：工具行内控件圆角统一 8px，
    与发送按钮同档；走 --cc-radius-md）；图标保持 16px；Figma 图标色 #565A60
-   （base 用 vscode icon-foreground 偏暗） */
+   （base 用 vscode icon-foreground 偏暗），hover 面 #F0F2F5（codechat
+   composer-icon-button 的 hover 值，与模型/权限按钮的 #EEF0F3 不同）。
+
+   这三项在这里只声明一次（`--cc-composer-icon*`），`.toolbar-icon-button` 与图标档的
+   模型/权限按钮共用（MessageInput.css / ModelPicker.css）：桌面端这一行本来就都是同一
+   档图标按钮（32×32 / 8px / #565A60 / 同一个 hover 面），声明一次就不会再出现
+   「一处改了另一处没改」。 */
+[data-host="desktop"] {
+  --cc-composer-icon: #565a60;
+  --cc-composer-icon-radius: var(--cc-radius-md, 8px);
+  --cc-composer-icon-hover: #f0f2f5;
+}
+[data-host="desktop"][data-theme="dark"] {
+  --cc-composer-icon: #9a9ea5;
+  --cc-composer-icon-hover: rgba(255, 255, 255, 0.08);
+}
 [data-host="desktop"] .toolbar-icon-button {
   width: 32px;
   height: 32px;
-  border-radius: var(--cc-radius-md, 8px);
-  color: #565a60;
-}
-[data-host="desktop"] .toolbar-icon-button:hover {
-  background: #f0f2f5;
-}
-[data-host="desktop"][data-theme="dark"] .toolbar-icon-button {
-  color: #9a9ea5;
-}
-[data-host="desktop"][data-theme="dark"] .toolbar-icon-button:hover {
-  background: rgba(255, 255, 255, 0.08);
 }
 
 /* 压缩上下文按钮：32px 高，整体 59×32（codechat 图形按钮）：

@@ -255,6 +255,19 @@ test.describe("Desktop preview fullscreen floating dialog", () => {
       const trigger = row.querySelector(".model-picker-trigger") as HTMLElement;
       const ring = row.querySelector(".compress-context-button") as HTMLElement;
       const name = row.querySelector(".model-picker-name") as HTMLElement;
+      const brain = row.querySelector(".model-picker-icon") as HTMLElement;
+      const plusBtn = row.querySelector(".toolbar-icon-button");
+      const permBtn = row.querySelector(
+        ".permission-mode-select",
+      ) as HTMLElement;
+      const readSurface = (el: Element | null) => {
+        if (!el) return null;
+        const cs = getComputedStyle(el);
+        return {
+          radius: cs.borderTopLeftRadius,
+          borderColor: cs.borderTopColor,
+        };
+      };
       const tb = trigger.getBoundingClientRect();
       const rb = ring.getBoundingClientRect();
       return {
@@ -265,6 +278,13 @@ test.describe("Desktop preview fullscreen floating dialog", () => {
             .width,
         ),
         nameHidden: getComputedStyle(name).display === "none",
+        // 图标档的大脑与「+」「/」同色（spec 场景 7）：桌面端两者都是 Figma 图标色。
+        iconColor: brain ? getComputedStyle(brain).color : null,
+        toolbarIconColor: plusBtn ? getComputedStyle(plusBtn).color : null,
+        // 交互面同档（spec 场景 8）：圆角一致、模型/权限不带 focusBorder 框。
+        plusSurface: readSurface(plusBtn),
+        modelSurface: readSurface(trigger),
+        permissionSurface: readSurface(permBtn),
         modelOnRing: Math.round(Math.max(0, tb.right - rb.left)),
         rowOverflow: row.scrollWidth - row.clientWidth,
       };
@@ -274,6 +294,11 @@ test.describe("Desktop preview fullscreen floating dialog", () => {
     expect(geo.triggerHeight).toBe(32);
     expect(geo.permissionWidth).toBe(32);
     expect(geo.nameHidden).toBe(true);
+    expect(geo.iconColor).toBe(geo.toolbarIconColor);
+    expect(geo.modelSurface!.radius).toBe(geo.plusSurface!.radius);
+    expect(geo.permissionSurface!.radius).toBe(geo.plusSurface!.radius);
+    expect(geo.modelSurface!.borderColor).toBe("rgba(0, 0, 0, 0)");
+    expect(geo.permissionSurface!.borderColor).toBe("rgba(0, 0, 0, 0)");
     expect(geo.modelOnRing).toBe(0);
     expect(geo.rowOverflow).toBe(0);
   });
