@@ -266,7 +266,7 @@ order: 280
 
 4. **假设** 用户在页面底栏的模型选择器里选中另一个模型，**则** 与 IDE / 桌面走同一套 UI 与 RPC（`getConfiguredModels` 拉列表、`setModel` 切换；页面不再有 `/model` 命令）。**确认文案必须说清作用范围**：`setModel` 落盘的是**用户级全局配置**（`~/.wave/settings.json` 的 `model` 键，写失败时退化为仅当前会话生效），不是这条会话的临时覆盖——在手机上换一次模型，**这台机器上所有会话、以及此后新开的会话**都会跟着换。因此远端切换前给一次确认；桌面 / IDE 不加。
 
-5. **假设** 队列里有待发消息，**则** 三个动作在页面上都可用了：**编辑**（纯本地，把内容装回输入框，提交时才发 `updateQueuedMessage {id, text, images}`，宿主回 `{ok}`，`ok === false` 时页面提示「这条已不存在」）、**删除**（`deleteQueuedMessageById {id}`）、**立即发送**（**没有专门的宿主方法**：就是 `sendMessage {force: true}` + `deleteQueuedMessageById` 两条既有方法，与 IDE / 桌面实现同形——先以 `force` 打断并立即发出这条，再把队列里那条删掉，否则它会再发一遍）。
+5. **假设** 队列里有待发消息，**则** 三个动作在页面上都可用了：**编辑**（纯本地，把内容装回输入框，提交时才发 `updateQueuedMessage {id, text, images}`，宿主回 `{ok}`，`ok === false` 时页面提示「这条已不存在」）、**删除**（`deleteQueuedMessageById {id}`）、**立即发送**（**没有专门的宿主方法**：就是 `sendMessage {force: true}` + `deleteQueuedMessageById` 两条既有方法，与 IDE / 桌面实现同形——先以 `force` 打断并立即发出这条，再把队列里那条删掉，否则它会再发一遍；`force` 只打断当前回合、**不清空队列**，其余排队消息保留并在该回合结束后按原顺序发出）。
 
 6. **假设** 用户在页面上敲 `/tasks` 或 `/workflows`，**则** 两个弹窗照常打开并**有真实内容**：任务列表来自会话状态（宿主通知 `backgroundTasksChange` → 页面 `updateBackgroundTasks`，冷启动 / 切会话 / 重连 / 重挂 / 回前台各重读一次 `getSessionInfo`——该回包为此扩一个 `backgroundTasks` 字段，与 `tasks` / `queuedMessages` 同族），工作流运行来自 `getWorkflowRuns`（同一批对齐路径各读一次，与桌面端 `refreshWorkflowRuns` 同源）；`getBackgroundTaskOutput` 按任务读取输出（运行中由弹窗按既有节奏轮询），`stopBackgroundTask` / `stopWorkflowRun` 停止并回执。**停止不要求二次确认**：它杀的是任务进程、不删文件也不动会话，回执（`backgroundTaskStopped` / `workflowRunStopped`）+ 列表随之更新就够。
 

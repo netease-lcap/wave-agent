@@ -620,6 +620,79 @@ describe("Agent - Abort Handling", () => {
       expect(messageQueue.getQueue()).toHaveLength(0);
     });
 
+    it("should keep queue when interrupting on behalf of send-now (keepQueue)", async () => {
+      const mockCallbacks = {
+        onLoadingChange: vi.fn(),
+        onQueuedMessagesChange: vi.fn(),
+      };
+
+      const testAgent = await Agent.create({
+        apiKey: "test-key",
+        workdir: "/tmp/test-abort-queue-keep",
+        callbacks: mockCallbacks,
+      });
+
+      activeTestAgent = testAgent;
+      const container = (testAgent as unknown as { container: Container })
+        .container;
+      container.register("ToolManager", mockToolManagerInstance);
+      container.register("McpManager", {
+        isMcpTool: vi.fn().mockReturnValue(false),
+        getMcpToolPlugins: vi.fn().mockReturnValue([]),
+        getMcpToolsConfig: vi.fn().mockReturnValue([]),
+      });
+      container.register("SubagentManager", {
+        getConfigurations: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("SkillManager", {
+        getAvailableSkills: vi.fn().mockReturnValue([]),
+        initialize: vi.fn().mockResolvedValue(undefined),
+      });
+      container.register("ConfigurationService", {
+        resolveGatewayConfig: () => testAgent.getGatewayConfig(),
+        resolveModelConfig: () => testAgent.getModelConfig(),
+        resolveMaxInputTokens: () => testAgent.getMaxInputTokens(),
+        resolveAutoMemoryEnabled: () => true,
+        resolveLanguage: () => testAgent.getLanguage(),
+        getEnvironmentVars: () =>
+          (
+            testAgent as unknown as {
+              configurationService: {
+                getEnvironmentVars: () => Record<string, string>;
+              };
+            }
+          ).configurationService.getEnvironmentVars(),
+      });
+
+      // Disconnect onMessageEnqueued to prevent auto-dequeue during test setup
+      const messageQueue = (
+        testAgent as unknown as {
+          messageQueue: import("@/managers/messageQueue.js").MessageQueue;
+        }
+      ).messageQueue;
+      messageQueue.onMessageEnqueued = undefined;
+
+      messageQueue.enqueue({ content: "queued msg 1" });
+      messageQueue.enqueue({ content: "queued msg 2" });
+      messageQueue.enqueueNotification("<task_notification/>");
+
+      const aiManager = (testAgent as unknown as { aiManager: AIManager })
+        .aiManager;
+      aiManager.setIsLoading(true);
+
+      // "Send now" for one item: the interrupt must not touch the queue
+      testAgent.abortMessage({ keepQueue: true });
+
+      // Everything the user did not pick is still queued, in order
+      expect(messageQueue.getQueue().map((m) => m.content)).toEqual([
+        "queued msg 1",
+        "queued msg 2",
+        "<task_notification/>",
+      ]);
+      expect(mockCallbacks.onQueuedMessagesChange).not.toHaveBeenCalledWith([]);
+    });
+
     it("should not dispatch queued notification during abort", async () => {
       const mockCallbacks = {
         onLoadingChange: vi.fn(),
