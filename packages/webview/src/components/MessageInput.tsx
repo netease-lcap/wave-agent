@@ -2082,26 +2082,33 @@ export const MessageInput = forwardRef<
             <div className="context-actions">
               {/* "+" add menu (custom dropdown, expands upward) */}
               <div className="plus-menu-container" ref={plusMenuRef}>
-                <button
-                  type="button"
-                  ref={plusMenuButtonRef}
-                  className="toolbar-icon-button"
-                  aria-label="添加"
-                  aria-haspopup="menu"
-                  aria-expanded={plusMenu.open}
-                  disabled={disabled}
-                  onClick={() => {
-                    if (plusMenu.open) {
-                      plusMenu.closeMenu();
-                    } else {
-                      // Focus moves to the first item so Enter/Space
-                      // activate and Escape returns to this button.
-                      plusMenu.openMenu();
-                    }
-                  }}
-                >
-                  <PlusIcon className="toolbar-icon" />
-                </button>
+                {/* 悬停提示（设计师 1026 评论：`button.toolbar-icon-button`
+                    「缺少hover提示的地方都补上」）：底栏这两颗纯图标按钮原先
+                    只有 aria-label，看不到可见提示。用既有 Tooltip（气泡向上，
+                    桌面端 4px 间距），包裹层是 inline-flex 且 flex-shrink 0，
+                    按钮盒与 4px 组内间距逐值不变。 */}
+                <Tooltip text="添加" position="top">
+                  <button
+                    type="button"
+                    ref={plusMenuButtonRef}
+                    className="toolbar-icon-button"
+                    aria-label="添加"
+                    aria-haspopup="menu"
+                    aria-expanded={plusMenu.open}
+                    disabled={disabled}
+                    onClick={() => {
+                      if (plusMenu.open) {
+                        plusMenu.closeMenu();
+                      } else {
+                        // Focus moves to the first item so Enter/Space
+                        // activate and Escape returns to this button.
+                        plusMenu.openMenu();
+                      }
+                    }}
+                  >
+                    <PlusIcon className="toolbar-icon" />
+                  </button>
+                </Tooltip>
                 {plusMenu.open && (
                   <ul className="plus-menu" role="menu">
                     {plusMenuItems.map((item, i) => (
@@ -2119,15 +2126,17 @@ export const MessageInput = forwardRef<
               </div>
 
               {/* "/" slash command button */}
-              <button
-                type="button"
-                className="toolbar-icon-button"
-                aria-label="快捷指令"
-                disabled={disabled}
-                onClick={handleSlashButtonClick}
-              >
-                <SlashBoxIcon className="toolbar-icon" />
-              </button>
+              <Tooltip text="快捷指令" position="top">
+                <button
+                  type="button"
+                  className="toolbar-icon-button"
+                  aria-label="快捷指令"
+                  disabled={disabled}
+                  onClick={handleSlashButtonClick}
+                >
+                  <SlashBoxIcon className="toolbar-icon" />
+                </button>
+              </Tooltip>
             </div>
 
             {/* 模型选择器：底栏左侧，紧跟 + / / 之后（spec ui/model-selection.md
