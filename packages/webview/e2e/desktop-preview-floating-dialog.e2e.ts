@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./utils/desktopTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
 import { MockDataGenerator } from "./fixtures/mockData.js";
+import { expectPermissionMenuAligned } from "./utils/permissionMenu.js";
 
 /**
  * 预览全屏里的浮动 AI 对话框（spec desktop-preview.md 场景 6 / 7 / 8 / 9）。
@@ -301,5 +302,39 @@ test.describe("Desktop preview fullscreen floating dialog", () => {
     expect(geo.permissionSurface!.borderColor).toBe("rgba(0, 0, 0, 0)");
     expect(geo.modelOnRing).toBe(0);
     expect(geo.rowOverflow).toBe(0);
+  });
+
+  /**
+   * 权限下拉菜单项：图标与文案同一水平线、中间留出间距。
+   *
+   * 桌面端这一档一直是好的（host-desktop.css 自己声明了 flex/居中/8px），这条用例是
+   * 回归守卫 —— 2026-10-26 修的缺陷只落在插件端与远控页（它们走 base 规则），三端共用
+   * 同一个断言，改 base 规则时不会把桌面端带坏。
+   */
+  test("the permission menu's icon and label sit on one line", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1440, height: 900 });
+    await injector.simulateExtensionMessage("desktopWorkdirState", {
+      workdir: DIR_A,
+      recentWorkdirs: [DIR_A],
+    });
+    await injector.waitForChatAppReady();
+    await injector.simulateExtensionMessage("setInitialState", {
+      ...initialState,
+      permissionMode: "bypassPermissions",
+    });
+    await injector.simulateExtensionMessage("configuredModels", {
+      models: [
+        {
+          name: "deepseek-flash",
+          provider: "deepseek",
+          model: "deepseek-flash",
+        },
+      ],
+      currentModel: "deepseek-flash",
+    });
+    await expectPermissionMenuAligned(webviewPage);
   });
 });

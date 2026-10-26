@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./utils/webviewTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
 import { MockDataGenerator } from "./fixtures/mockData.js";
+import { expectPermissionMenuAligned } from "./utils/permissionMenu.js";
 
 /**
  * 远控页（第五种宿主、手机档）底栏「空间不足 → 图标档」
@@ -202,6 +203,18 @@ test.describe("remote page (touch): icon tier when the bottom row runs out of sp
     await expect(
       webviewPage.locator(".permission-mode-item.selected"),
     ).toContainText("跳过权限确认");
+  });
+
+  /**
+   * 权限下拉菜单项：图标与文案同一水平线、中间留出间距（用户 2026-10-26 在手机上看到
+   * 「图标跟文本没有水平对齐」）。手机档的字形抬到 20px、文案 14px，基线排法的偏差比
+   * 插件端还大一档（实测图标圆心比文字中心高 5px、间距 0）。
+   */
+  test("the permission menu's icon and label sit on one line", async ({
+    webviewPage,
+  }) => {
+    await mountRemoteChat(webviewPage, 390);
+    await expectPermissionMenuAligned(webviewPage);
   });
 
   test("a wider phone/tablet brings the text tier back automatically", async ({
