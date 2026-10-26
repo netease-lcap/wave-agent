@@ -106,6 +106,12 @@ export const bashTool: ToolPlugin = {
   },
   leanPrompt: `Executes a bash command and returns its output. Each invocation runs in a fresh shell process starting from the project root, and the working directory persists between calls — prefer absolute paths over \`cd\`.
 
+- File search: Use ${GLOB_TOOL_NAME} (NOT find or ls)
+- Content search: Use ${GREP_TOOL_NAME} (NOT grep or rg)
+- Read files: Use ${READ_TOOL_NAME} (NOT cat/head/tail)
+- Edit files: Use ${EDIT_TOOL_NAME} (NOT sed/awk)
+- Write files: Use ${WRITE_TOOL_NAME} (NOT echo >/cat <<EOF)
+- Communication: Output text directly (NOT echo/printf)
 - IMPORTANT: This tool is for terminal operations like git, npm, docker, etc. Avoid running \`find\`, \`grep\`, \`cat\`, \`head\`, \`tail\`, \`sed\`, \`awk\`, or \`echo\` commands, unless explicitly instructed or after you have verified that a dedicated tool cannot accomplish your task. Instead, use the dedicated tool — it gives the user a much better experience.
 - \`timeout\` is in milliseconds: default ${BASH_DEFAULT_TIMEOUT_MS} (${BASH_DEFAULT_TIMEOUT_MS / 60000} minutes), max ${BASH_MAX_TIMEOUT_MS} (${BASH_MAX_TIMEOUT_MS / 60000} minutes).
 - \`run_in_background\` runs the command detached so you can keep working; you are notified when it finishes. No \`&\` needed.
@@ -392,9 +398,15 @@ The working directory persists between commands. Try to maintain your current wo
         tempCwdFileForBash,
       );
 
+      // fd0 is /dev/null, never a live pipe: nothing writes to the command's
+      // stdin, so a pipe would only ever deliver a hang. Commands that read
+      // stdin (a bare `cat`, `rg foo` with no path arg, an editor, a pager)
+      // would block until the tool timeout while looking like a slow search.
+      // With /dev/null they get EOF immediately — the same trade-off Claude
+      // Code makes by appending `< /dev/null` to every command.
       const child: ChildProcess = spawn(wrappedCommand, {
         shell: shellPath,
-        stdio: "pipe",
+        stdio: ["ignore", "pipe", "pipe"],
         detached: true,
         cwd: context.workdir,
         env: {

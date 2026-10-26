@@ -131,8 +131,34 @@ describe("bashTool", () => {
       expect(spawnCallArgs[0]).toContain("pwd -P");
       expect(spawnCallArgs[1]).toMatchObject({
         shell: resolveShellPath() || true,
-        stdio: "pipe",
+        stdio: ["ignore", "pipe", "pipe"],
         cwd: "/test/workdir",
+      });
+    });
+
+    it("never hands a live stdin to the command (fd0 is /dev/null)", async () => {
+      // A command that reads stdin (`cat`, `rg foo` with no path, a pager)
+      // blocks forever on a pipe nobody writes to, and the user sees a
+      // "slow" command rather than a hung one. fd0 must be /dev/null.
+      const mockProcess = {
+        pid: 1234,
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event, callback) => {
+          if (event === "exit") {
+            setTimeout(() => callback(0), 10);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      await bashTool.execute({ command: "rg pattern" }, context);
+
+      expect(mockSpawn.mock.calls[0][1]).toMatchObject({
+        stdio: ["ignore", "pipe", "pipe"],
       });
     });
 
