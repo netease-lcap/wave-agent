@@ -47,9 +47,16 @@ describe("Agent subagent accessors", () => {
     delete process.env.WAVE_MAX_INPUT_TOKENS;
     // Reset and setup loadMergedWaveConfig mock
     vi.mocked(loadMergedWaveConfig).mockReturnValue(null);
-    // Mock config paths to return empty arrays
-    vi.mocked(getUserConfigPaths).mockReturnValue([]);
-    vi.mocked(getProjectConfigPaths).mockReturnValue([]);
+    // Point the config loader at paths that cannot exist: no real
+    // settings.json is read, and the arrays keep their real length (an empty
+    // array would make loadMergedWaveConfig call existsSync(undefined)).
+    vi.mocked(getUserConfigPaths).mockReturnValue([
+      "/mock/home/.wave/settings.json",
+    ]);
+    vi.mocked(getProjectConfigPaths).mockReturnValue([
+      `${mockWorkdir}/.wave/settings.local.json`,
+      `${mockWorkdir}/.wave/settings.json`,
+    ]);
 
     process.env.WAVE_API_KEY = "test-token";
     process.env.WAVE_BASE_URL = "https://test.url";
