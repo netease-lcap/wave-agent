@@ -1,6 +1,15 @@
 import type { IdeContextProvider } from "wave-webview-fixtures";
 import { AttachedImage } from "../types";
 import { ideContextMarker } from "./ideContext";
+import { saveDraftImages, type DraftImageRecord } from "./draftImageStore";
+
+/** 图片标签上记的草稿图片 id；跨多次序列化保持不变，回填时靠它找回字节。 */
+const DRAFT_IMAGE_ID_ATTR = "data-draft-image-id";
+/** 图片标签的首次登记时间（淘汰最旧的用）。 */
+const DRAFT_IMAGE_CREATED_AT_ATTR = "data-draft-image-created-at";
+
+const createDraftImageId = (): string =>
+  `dimg-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
 /**
  * 将 contenteditable 的内容转换为 Markdown 格式，并提取图片。
@@ -10,6 +19,15 @@ import { ideContextMarker } from "./ideContext";
  */
 export const convertToMarkdown = (
   container: HTMLElement,
+): { markdown: string; images: AttachedImage[] } => {
+  const { markdown, images } = traverseInput(container);
+  return { markdown: markdown.trim(), images };
+};
+
+/** 未 trim 的序列化结果：草稿要原样保存用户敲下的尾部空格与空行。 */
+const traverseInput = (
+  container: HTMLElement,
+  draftScopeKey?: string,
 ): { markdown: string; images: AttachedImage[] } => {
   let markdown = "";
   const images: AttachedImage[] = [];
@@ -40,8 +58,14 @@ export const convertToMarkdown = (
           // `assembleIdeContextBlocks` 就地展开成「标记 + 内容 + 结束标记」。
           markdown += ideContextMarker(ideContext);
         } else if (isImage && imageUrl) {
-          const placeholder = `[image${images.length + 1}]`;
-          markdown += placeholder;
+          // 草稿模式：图片字节不进草稿字符串（每次按键都上报，塞 base64 会让
+          // 每次输入传 MB 级数据），只留一个指向本地存储的标记。
+          const draftImageId = draftScopeKey
+            ? element.getAttribute(DRAFT_IMAGE_ID_ATTR)
+            : null;
+          markdown += draftImageId
+            ? `[@image:${draftImageId}]`
+            : `[image${images.length + 1}]`;
           images.push({
             id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             data: imageUrl,
@@ -92,7 +116,72 @@ export const convertToMarkdown = (
   // We'll traverse the actual DOM nodes
   Array.from(container.childNodes).forEach(traverse);
 
-  return { markdown: markdown.trim(), images };
+  return { markdown, images };
+};
+
+/**
+ * 输入框草稿的序列化：走与发送正文同一套遍历，让引用标签
+ * （`[@file:path]` / `[Selection: …]` / IDE 上下文标记 / 图片）以标记形式落进
+ * 宿主的草稿字符串，而不是标签的可见文字（`@logo.png`）。
+ *
+ * 草稿只存活在宿主的 `inputDrafts`（一段不透明字符串），重挂载时由
+ * `renderDraftContent` 按标记还原成标签；用 `innerText` 上报会让引用退化成
+ * 纯文本、随消息发出去时不再是引用（缺陷 3503216687855872）。
+ *
+ * 与发送正文不同，这里不 trim：草稿要原样保留用户敲下的尾部空格与空行。
+ *
+ * 传入 `scopeKey` 时顺带把输入框里的粘贴图片登记进本地存储（图片字节太大，
+ * 不能进每次按键都上报的草稿字符串），标记写成 `[@image:<id>]`。
+ */
+export const serializeInputDraft = (
+  container: HTMLElement,
+  scopeKey?: string,
+): string => {
+  if (scopeKey) syncDraftImages(container, scopeKey);
+  return traverseInput(container, scopeKey).markdown;
+};
+
+/**
+ * 把输入框里当前的图片登记进本会话的本地存储，并给每张图一个稳定的 id。
+ *
+ * 只有带 `data-image-url` 的才是粘贴图片（图片块）；上传文件得到的图片引用
+ * 没有这个属性，仍走 `[@file:path]`，不在这里。
+ */
+const syncDraftImages = (container: HTMLElement, scopeKey: string): void => {
+  const records: DraftImageRecord[] = [];
+  const keepIds: string[] = [];
+
+  container
+    .querySelectorAll<HTMLElement>(
+      '.context-tag-container[data-is-image="true"]',
+    )
+    .forEach((chip) => {
+      const knownId = chip.getAttribute(DRAFT_IMAGE_ID_ATTR);
+      const dataUrl = chip.getAttribute("data-image-url");
+      // 回填出来的图片先有 id、字节过一会儿才从存储里取回：这一轮序列化不能
+      // 因为「暂时没有字节」就把它的记录删掉。
+      if (knownId) keepIds.push(knownId);
+      if (!dataUrl) return;
+
+      let id = knownId;
+      if (!id) {
+        id = createDraftImageId();
+        chip.setAttribute(DRAFT_IMAGE_ID_ATTR, id);
+        chip.setAttribute(DRAFT_IMAGE_CREATED_AT_ATTR, String(Date.now()));
+      }
+      records.push({
+        key: `${scopeKey}:${id}`,
+        scopeKey,
+        id,
+        dataUrl,
+        mimeType: dataUrl.slice(5).split(";")[0] || "image/png",
+        filename: chip.getAttribute("data-name") || "pasted-image.png",
+        createdAt:
+          Number(chip.getAttribute(DRAFT_IMAGE_CREATED_AT_ATTR)) || Date.now(),
+      });
+    });
+
+  void saveDraftImages(scopeKey, records, keepIds);
 };
 
 /**
