@@ -83,9 +83,11 @@ export class BackgroundTaskManager {
     const id = this.generateId();
     const startTime = Date.now();
 
+    // fd0 is /dev/null (see bashTool): a background command that reads stdin
+    // would otherwise sit there forever holding a pipe nobody writes to.
     const child = spawn(command, {
       shell: resolveShellPath() ?? true,
-      stdio: "pipe",
+      stdio: ["ignore", "pipe", "pipe"],
       detached: true,
       cwd: cwd ?? this.workdir,
       env: {
