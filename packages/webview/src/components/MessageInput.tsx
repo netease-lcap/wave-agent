@@ -22,7 +22,7 @@ import type {
 } from "wave-webview-fixtures";
 import { validateImageFile } from "../utils/imageValidation";
 import { useRovingMenu } from "../utils/useRovingMenu";
-import { isDesktopHost, isRemotePageHost } from "../utils/platform";
+import { isRemotePageHost } from "../utils/platform";
 import { useHostMessage } from "../utils/useHostMessage";
 import { ContextTag } from "./ContextTag";
 import { Tooltip } from "./Tooltip";
@@ -214,11 +214,17 @@ export const MessageInput = forwardRef<
   // `.is-compact` 直接写在 DOM 类上（不经过 React 渲染，避免状态与量宽互相打架），
   // state 只用来决定要不要给图标档挂气泡。量宽在 rAF 里做、同一帧读+写，
   // 浏览器不会把中间的「文字档」画出来。
+  //
+  // 桌面端与插件端（VS Code / JetBrains）同一套判据、同一套收法：桌面端的「预览全屏」
+  // 浮卡只有 420px、插件端的侧边栏默认 350–400px，两边都会挤到这条线上（PM
+  // 3503127847500032）。图标档的**尺寸**按宿主密度分档（桌面 32×32 / 插件 22×22），
+  // 见 ModelPicker.css 与 MessageInput.css。远控页（手机）是第三种密度档、另有一套
+  // 触摸尺寸，未纳入这套收法 —— 它在 `@media (pointer: coarse)` 下整体放大一档。
   const buttonsRowRef = useRef<HTMLDivElement>(null);
   const [compactRow, setCompactRow] = useState(false);
   useEffect(() => {
     const row = buttonsRowRef.current;
-    if (!row || !isDesktopHost()) return;
+    if (!row || isRemotePageHost()) return;
     let raf = 0;
     const decide = () => {
       row.classList.remove("is-compact");

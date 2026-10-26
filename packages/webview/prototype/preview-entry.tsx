@@ -168,11 +168,11 @@ function AppShell() {
   const host =
     activeCase?.host === "desktop"
       ? "desktop"
-      : activeCase?.host === "ide"
-        ? "ide"
+      : activeCase?.host === "plugin"
+        ? "plugin"
         : initialHostType === "desktop"
           ? "desktop"
-          : "ide";
+          : "plugin";
   // 同步宿主类型：真实 Electron preload 会设置 window.waveHostType，原型里
   // 桌面用例需手动注入，否则 Message 链接点击/拖拽等 desktop-gated 行为不生效。
   // data-host 同步置上（真机在 src/index.tsx）：host-desktop.css 的桌面语义层

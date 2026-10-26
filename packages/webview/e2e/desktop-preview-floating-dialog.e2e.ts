@@ -194,4 +194,87 @@ test.describe("Desktop preview fullscreen floating dialog", () => {
     await expect(input).toHaveText(draft);
     await expect(input).toBeFocused();
   });
+
+  /**
+   * 全屏浮卡只有 420px：底栏放不下「模型名 + 跳过权限确认 + 71% + / + / 发送」，
+   * 模型名会溢出压到上下文用量指示器上（PM 3503127847500032 的桌面同款；插件端见
+   * ide-composer-compact.e2e.ts）。这里守的是**桌面档尺寸**：收成图标后必须是
+   * 32×32（与 + / / 同档），不是插件端的 22×22。
+   */
+  test("全屏浮卡的底栏收成 32×32 图标档，模型名不压到上下文用量上", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1440, height: 900 });
+
+    await injector.simulateExtensionMessage("desktopWorkdirState", {
+      workdir: DIR_A,
+      recentWorkdirs: [DIR_A],
+    });
+    await injector.waitForChatAppReady();
+    await injector.simulateExtensionMessage("setInitialState", {
+      ...initialState,
+      permissionMode: "bypassPermissions",
+    });
+    await injector.simulateExtensionMessage("configuredModels", {
+      models: [
+        {
+          name: "deepseek-flash",
+          provider: "deepseek",
+          model: "deepseek-flash",
+        },
+      ],
+      currentModel: "deepseek-flash",
+    });
+    await injector.updateMessages([
+      MockDataGenerator.createUserMessage("做个原型", "msg-u1"),
+      MockDataGenerator.createAssistantMessage(
+        "点击 [http://localhost:5173](http://localhost:5173) 在右侧预览。",
+        "msg-a1",
+      ),
+    ]);
+    await injector.simulateExtensionMessage("contextUsage", { percent: 71 });
+
+    await webviewPage.locator('a[href="http://localhost:5173"]').click();
+    await expect(webviewPage.getByTestId("preview-pane")).toBeVisible();
+    await webviewPage.getByTestId("panel-fullscreen").click();
+    await expect(webviewPage.locator(".desktop-chat-body")).toHaveClass(
+      /preview-fullscreen/,
+    );
+    await webviewPage.waitForFunction(() => {
+      const row = document.querySelector(
+        ".desktop-chat-main .input-buttons-row",
+      );
+      return !!row && row.className.includes("is-compact");
+    });
+
+    const geo = await webviewPage.evaluate(() => {
+      const row = document.querySelector(
+        ".desktop-chat-main .input-buttons-row",
+      ) as HTMLElement;
+      const trigger = row.querySelector(".model-picker-trigger") as HTMLElement;
+      const ring = row.querySelector(".compress-context-button") as HTMLElement;
+      const name = row.querySelector(".model-picker-name") as HTMLElement;
+      const tb = trigger.getBoundingClientRect();
+      const rb = ring.getBoundingClientRect();
+      return {
+        triggerWidth: Math.round(tb.width),
+        triggerHeight: Math.round(tb.height),
+        permissionWidth: Math.round(
+          row.querySelector(".permission-mode-select")!.getBoundingClientRect()
+            .width,
+        ),
+        nameHidden: getComputedStyle(name).display === "none",
+        modelOnRing: Math.round(Math.max(0, tb.right - rb.left)),
+        rowOverflow: row.scrollWidth - row.clientWidth,
+      };
+    });
+
+    expect(geo.triggerWidth).toBe(32);
+    expect(geo.triggerHeight).toBe(32);
+    expect(geo.permissionWidth).toBe(32);
+    expect(geo.nameHidden).toBe(true);
+    expect(geo.modelOnRing).toBe(0);
+    expect(geo.rowOverflow).toBe(0);
+  });
 });

@@ -194,6 +194,46 @@
   padding: 0 12px;
 }
 
+/* ── 底栏「空间不足 → 图标档」（1023 评论）─────────────────────────────
+   「这里最小时会有重叠的情况，可以参考 codex，在空间不足时，模型和权限都只
+     显示图标，点击图标进行切换，模型可以用类似大脑那种图标」
+   判定由 MessageInput 按实际内容量宽后写在行上的 `.is-compact` 触达（纯 CSS 判不了
+   「模型名多长时放不下」）。这里只放**两个宿主都一样**的结构规则；图标档的尺寸按宿主
+   密度分档：桌面端 32×32（host-desktop.css）、插件端 22×22（本文件下方
+   `[data-host="plugin"]` 那组，与 + / / 的 `.toolbar-icon-button` 同档）。
+   `.is-measuring` 只在量宽那一帧存在（子项解除收缩），不会绘制到屏幕。 */
+.input-buttons-row.is-measuring > * {
+  flex-shrink: 0;
+}
+.input-buttons-row.is-compact .permission-mode-label {
+  display: none;
+}
+/* 插件端的权限按钮自带一个下拉箭头（桌面端不画，见 host-desktop.css）；图标档只剩
+   图标，箭头留在 22px 里会被挤出来，一并藏掉。 */
+.input-buttons-row.is-compact .permission-mode-caret {
+  display: none;
+}
+.input-buttons-row.is-compact .permission-mode-container {
+  flex: 0 0 auto;
+}
+/* 图标档下权限菜单右对齐到按钮：菜单是 `left: 0` 从左边缘往右长的，图标档把权限按钮
+   推到行右半侧后，菜单会跑出窗口（桌面 620 宽实测右缘 683 > 视口 620）。右对齐后回到
+   卡片内（387…551）。模型菜单仍保持左对齐：它本来就靠左，右对齐会把菜单甩进左侧栏、
+   被账户卡盖住 —— 它的出界（620 时 4.9px）在改前就是这个位置，见报告残留。 */
+.input-buttons-row.is-compact .permission-mode-menu {
+  left: auto;
+  right: 0;
+}
+
+/* 图标档 · 插件端尺寸（图标按钮 22×22，与 `.toolbar-icon-button` 同档）。
+   `plugin` = VS Code / JetBrains 插件端；产品名叫 CodeWave IDE，所以这一档不叫 ide。 */
+[data-host="plugin"] .input-buttons-row.is-compact .permission-mode-select {
+  width: 22px;
+  padding: 0;
+  gap: 0;
+  justify-content: center;
+}
+
 .button-spacer {
   flex: 1;
 }
