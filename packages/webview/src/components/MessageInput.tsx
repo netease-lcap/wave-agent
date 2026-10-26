@@ -8,7 +8,8 @@ import React, {
   useMemo,
   KeyboardEvent,
 } from "react";
-import { convertToMarkdown } from "../utils/messageUtils";
+import { convertToMarkdown, serializeInputDraft } from "../utils/messageUtils";
+import { renderDraftContent } from "../utils/inputDraft";
 import {
   assembleIdeContextBlocks,
   buildIdeContextSuggestions,
@@ -420,7 +421,7 @@ export const MessageInput = forwardRef<
       vscode.postMessage({
         command: "updateInputContent",
         sessionId,
-        content: mirror,
+        content: serializeInputDraft(div),
       });
       div.focus();
       // Caret to the end so the user can keep typing seamlessly.
@@ -512,7 +513,8 @@ export const MessageInput = forwardRef<
       // 这一份已在下面按「旧 sessionId + 实时文本」补发，待发记录随之作废，
       // 免得卸载时的补发把它重复报到新会话名下。
       pendingDraftRef.current = null;
-      const text = textareaRef.current?.innerText ?? messageRef.current;
+      const div = textareaRef.current;
+      const text = div ? serializeInputDraft(div) : messageRef.current;
       if (text) {
         vscode.postMessage({
           command: "updateInputContent",
@@ -534,7 +536,10 @@ export const MessageInput = forwardRef<
       inputContentRef.current = inputContent ?? "";
       setMessage(inputContent ?? "");
       if (textareaRef.current) {
-        textareaRef.current.innerText = inputContent ?? "";
+        // 草稿里带引用标记（`[@file:…]` / `[Selection: …]` / `[@ide:…]`）时必须
+        // 还原成标签——直接写 innerText 会把它们变成纯文本，引用随消息发出去时
+        // 就失效了（缺陷 3503216687855872）。
+        renderDraftContent(textareaRef.current, inputContent ?? "");
       }
     }
   }, [inputContent, sessionId, vscode]);
@@ -635,7 +640,7 @@ export const MessageInput = forwardRef<
 
       vscode.postMessage({
         command: "updateInputContent",
-        content: textareaRef.current.innerText,
+        content: serializeInputDraft(textareaRef.current),
       });
 
       // Focus and move cursor to end of the body.
@@ -1349,7 +1354,7 @@ export const MessageInput = forwardRef<
           range.setEnd(end.node, end.offset);
           range.deleteContents();
 
-          const remaining = textareaRef.current.innerText;
+          const remaining = serializeInputDraft(textareaRef.current);
           setMessage(remaining);
           // 立即持久化剩余草稿：随后打开的对话框/设置页可能卸载本输入框，
           // 会取消 handleInput 里 150ms 防抖的保存。
@@ -1801,7 +1806,9 @@ export const MessageInput = forwardRef<
       if (inputContentTimerRef.current) {
         clearTimeout(inputContentTimerRef.current);
       }
-      const draft = target.innerText;
+      // 上报的草稿走与发送正文同一套序列化，保留引用标签（`[@file:…]` 等）；
+      // 用 innerText 会只剩标签的可见文字，回填后引用就失效了。
+      const draft = serializeInputDraft(target);
       // 记下这份待发草稿，卸载时补发（见 pendingDraftRef 声明处）。定时器本身仍读
       // 实时 DOM：选中历史搜索、追加评论、预填提示词这些「立即上报」的路径会直接
       // 改写同一个节点，读实时值才不会用更旧的快照把它们盖回去。
@@ -1811,7 +1818,7 @@ export const MessageInput = forwardRef<
         vscode.postMessage({
           command: "updateInputContent",
           sessionId: draftSession,
-          content: target.innerText,
+          content: serializeInputDraft(target),
         });
         inputContentTimerRef.current = null;
       }, 150);

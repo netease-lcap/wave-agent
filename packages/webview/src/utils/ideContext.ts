@@ -71,7 +71,16 @@ export const ideContextMarker = (id: IdeContextProvider): string =>
 /** 块结束标记。与起始标记成对出现，`parseMentions` 据此切出内容。 */
 export const IDE_CONTEXT_BLOCK_END = "[/@ide]";
 
-const IDE_MARKER_PATTERN = /\[@ide:(terminal|problems)\]/g;
+const IDE_MARKER_SOURCE = "\\[@ide:(terminal|problems)\\]";
+
+/**
+ * 单个起始标记（不带内容块）。输入框草稿里存的就是它——标签的正文在发送时
+ * 才取，`renderDraftContent` 用它把草稿里的标记还原成标签。
+ *
+ * 带 `g`，只用于 `matchAll` / `match`（两者内部会克隆正则）；`split` 不要用它
+ * ——带捕获组会吃掉分隔符本身，`exec` 复用又会带 `lastIndex` 状态。
+ */
+export const IDE_MARKER_PATTERN = new RegExp(IDE_MARKER_SOURCE, "g");
 
 /**
  * 从正文里按出现顺序取出（去重）用户附加的类别。同一类附加两次只取一份内容

@@ -11,6 +11,14 @@ import { ideContextMarker } from "./ideContext";
 export const convertToMarkdown = (
   container: HTMLElement,
 ): { markdown: string; images: AttachedImage[] } => {
+  const { markdown, images } = traverseInput(container);
+  return { markdown: markdown.trim(), images };
+};
+
+/** 未 trim 的序列化结果：草稿要原样保存用户敲下的尾部空格与空行。 */
+const traverseInput = (
+  container: HTMLElement,
+): { markdown: string; images: AttachedImage[] } => {
   let markdown = "";
   const images: AttachedImage[] = [];
 
@@ -92,8 +100,22 @@ export const convertToMarkdown = (
   // We'll traverse the actual DOM nodes
   Array.from(container.childNodes).forEach(traverse);
 
-  return { markdown: markdown.trim(), images };
+  return { markdown, images };
 };
+
+/**
+ * 输入框草稿的序列化：走与发送正文同一套遍历，让引用标签
+ * （`[@file:path]` / `[Selection: …]` / IDE 上下文标记）以标记形式落进宿主的
+ * 草稿字符串，而不是标签的可见文字（`@logo.png`）。
+ *
+ * 草稿只存活在宿主的 `inputDrafts`（一段不透明字符串），重挂载时由
+ * `renderDraftContent` 按标记还原成标签；用 `innerText` 上报会让引用退化成
+ * 纯文本、随消息发出去时不再是引用（缺陷 3503216687855872）。
+ *
+ * 与发送正文不同，这里不 trim：草稿要原样保留用户敲下的尾部空格与空行。
+ */
+export const serializeInputDraft = (container: HTMLElement): string =>
+  traverseInput(container).markdown;
 
 /**
  * 解析 Markdown 中的标签语法 [@file:path], [Selection: fileName#start-end],

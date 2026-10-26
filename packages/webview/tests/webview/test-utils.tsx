@@ -160,17 +160,15 @@ export function sendHostMessage(message: HostToWebviewMessage) {
 }
 
 /**
- * Set text on a contenteditable message input, working around jsdom's lack of innerText support.
- * MessageInput reads `event.currentTarget.innerText` in its handleInput handler, but jsdom does
- * not implement the innerText getter/setter. We define it on the element, set textContent, then
- * fire the input event so the React handler picks up the value.
+ * Set text on a contenteditable message input, then fire the input event so the
+ * React handler picks up the value.
+ *
+ * `innerText` comes from the prototype polyfill in `tests/setup.ts` (mapped to
+ * `textContent`), so do **not** redefine it on the element: a per-element
+ * `innerText` pin keeps returning the old text after the DOM changes (e.g. the
+ * input settling on another session's draft), which hides real state.
  */
 export async function setInputText(element: HTMLElement, text: string) {
-  Object.defineProperty(element, "innerText", {
-    value: text,
-    configurable: true,
-    writable: true,
-  });
   element.textContent = text;
   await act(async () => {
     fireEvent.input(element, { data: text, inputType: "insertText" });

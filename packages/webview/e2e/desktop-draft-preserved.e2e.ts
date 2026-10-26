@@ -24,6 +24,8 @@ const SESSION = {
 };
 // 单行草稿：contenteditable 里不涉及 <br> 换行，断言只看文本。
 const DRAFT = "把下单接口的重试次数改成 3 次，并补一条超时用例";
+/** 上传文件的绝对路径（宿主回 uploadedFiles 时给的就是它）。 */
+const UPLOADED = `${DIR}/src/order.ts`;
 
 /** 宿主 inputDrafts 里这一版草稿（页面最后一次 updateInputContent 的内容）。 */
 async function lastDraft(injector: MessageInjector): Promise<string> {
@@ -123,5 +125,44 @@ test.describe("Desktop 输入草稿跨视图切换保留", () => {
     await expect(afterFullscreen).toHaveText(DRAFT);
     // 退出全屏把焦点还给输入框，用户可以接着打字。
     await expect(afterFullscreen).toBeFocused();
+  });
+
+  test("设置页往返后 @ 文件引用仍是引用标签、不退化成文本", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await setup(injector, webviewPage);
+
+    const input = webviewPage.getByTestId("message-input");
+    await input.click();
+    await webviewPage.keyboard.insertText("这个文件里写的是什么");
+
+    // 上传完成：宿主回 uploadedFiles，输入框插入引用标签（+ 菜单上传那条路径）
+    await injector.simulateExtensionMessage("uploadSuccess", {
+      uploadedFiles: [UPLOADED],
+    });
+    const chip = input.locator(
+      `.context-tag-container[data-path="${UPLOADED}"]`,
+    );
+    await expect(chip).toHaveCount(1);
+
+    // ── 设置页往返：输入框随对话区卸载，草稿只剩宿主那一份 ──────────────
+    await webviewPage.getByTestId("account-card-hotzone").click();
+    await webviewPage.getByTestId("more-menu-settings").click();
+    await expect(webviewPage.getByTestId("message-input")).toHaveCount(0);
+    // 草稿里必须是引用标记，而不是标签的可见文字（"@order.ts"）
+    const draft = await lastDraft(injector);
+    expect(draft).toContain(`[@file:${UPLOADED}]`);
+    expect(draft).toContain("这个文件里写的是什么");
+
+    await webviewPage.locator(".settings-back").click();
+    await replaySnapshot(injector, draft);
+    const restored = webviewPage.getByTestId("message-input");
+    await expect(
+      restored.locator(`.context-tag-container[data-path="${UPLOADED}"]`),
+    ).toHaveCount(1);
+    await expect(restored).toContainText("这个文件里写的是什么");
+    // 标记语法不得残留在正文里
+    await expect(restored).not.toContainText("[@file:");
   });
 });

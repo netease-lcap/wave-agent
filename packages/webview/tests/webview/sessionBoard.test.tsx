@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
+import path from "node:path";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { createMockVscode, sendCommand, setInputText } from "./test-utils";
@@ -172,5 +173,52 @@ describe("会话状态看板（活动）", () => {
     expect(screen.getByTestId("message-input").innerText).toBe(
       "把重试次数改成 3 次",
     );
+  });
+
+  it("打开看板再返回，输入框里的文件引用标签仍是引用、不退化成文本（spec 场景 23）", async () => {
+    const vscode = renderReady([
+      {
+        host: "local",
+        workdir: "/work/a",
+        sessions: [session("s1", "chat one")],
+      },
+    ]);
+    sendCommand("authStatusResponse", { isAuthenticated: true });
+    const uploadedPath = path.join("/work", "a", "assets", "logo.png");
+    const chipPaths = (el: HTMLElement) =>
+      Array.from(el.querySelectorAll(".context-tag-container")).map((tag) =>
+        tag.getAttribute("data-path"),
+      );
+    const input = screen.getByTestId("message-input");
+    await setInputText(input, "这个文件里写的是什么");
+
+    // 上传完成：宿主回 uploadedFiles，输入框插入引用标签（上传附件那条路径）
+    act(() => {
+      sendCommand("uploadSuccess", { uploadedFiles: [uploadedPath] });
+    });
+    expect(chipPaths(input)).toEqual([uploadedPath]);
+
+    // 点开看板：对话区整块被顶替 ⇒ 输入框卸载
+    fireEvent.click(screen.getByTestId("desktop-sidebar-activity"));
+    expect(screen.queryByTestId("message-input")).not.toBeInTheDocument();
+
+    // 补报给宿主的草稿必须带引用标记，而不是标签的可见文字（"@logo.png"）
+    const draft = vscode.postMessage.mock.calls
+      .map(([m]) => m as { command?: string; content?: string })
+      .filter((m) => m.command === "updateInputContent")
+      .pop()?.content;
+    expect(draft).toContain(`[@file:${uploadedPath}]`);
+    expect(draft).toContain("这个文件里写的是什么");
+
+    // 返回当前会话：宿主按 inputDrafts 回放快照（jsdom 里手动补这一步）
+    fireEvent.click(screen.getByRole("button", { name: "返回当前会话" }));
+    act(() => {
+      sendCommand("setInitialState", { messages: [], inputContent: draft });
+    });
+    const restored = screen.getByTestId("message-input");
+    expect(chipPaths(restored)).toEqual([uploadedPath]);
+    expect(restored.innerText).toContain("这个文件里写的是什么");
+    // 标记语法不得残留在正文里（否则发送时会重复带上这段假文本）
+    expect(restored.innerText).not.toContain("[@file:");
   });
 });
