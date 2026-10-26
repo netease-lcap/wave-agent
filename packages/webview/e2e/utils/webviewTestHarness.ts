@@ -36,10 +36,22 @@ type WebviewTestContext = {
 };
 
 /**
+ * Options: `remotePage` 让测试页带上远控页（第五种宿主）的标记 —— 与 `remote/shim.js`
+ * 在真实页面上做的一致：`window.waveRemotePage = true` + `<html data-remote-page="1">`，
+ * **都必须在应用启动前就位**。页面代码在首次渲染/首次量宽时就读这两个标记
+ * （`isRemotePageHost()` 决定要不要收紧底栏、`[data-remote-page]` 承载手机档样式），
+ * 启动后再补会漏掉第一次渲染 —— 远控页专属行为就测不到。
+ */
+type WebviewTestOptions = {
+  remotePage: boolean;
+};
+
+/**
  * Custom test fixture that loads the chat webview in isolation
  */
-export const test = base.extend<WebviewTestContext>({
-  webviewPage: async ({ page }, use) => {
+export const test = base.extend<WebviewTestContext & WebviewTestOptions>({
+  remotePage: [false, { option: true }],
+  webviewPage: async ({ page, remotePage }, use) => {
     // Enable error tracking
     page.on("pageerror", (error) => {
       console.error("Page error:", error);
@@ -142,7 +154,7 @@ export const test = base.extend<WebviewTestContext>({
     // Create a minimal HTML page that matches the React app structure
     const testHtml = `
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN"${remotePage ? ' data-remote-page="1"' : ""}>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -171,6 +183,7 @@ export const test = base.extend<WebviewTestContext>({
 <body>
     <div id="root"></div>
     <script>
+        ${remotePage ? "window.waveRemotePage = true;" : ""}
         ${mockVscodeApiJs}
     </script>
     <script src="vscode-webview://mock-extension-id/chat.js"></script>
