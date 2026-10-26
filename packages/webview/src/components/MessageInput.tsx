@@ -223,16 +223,16 @@ export const MessageInput = forwardRef<
   // state 只用来决定要不要给图标档挂气泡。量宽在 rAF 里做、同一帧读+写，
   // 浏览器不会把中间的「文字档」画出来。
   //
-  // 桌面端与插件端（VS Code / JetBrains）同一套判据、同一套收法：桌面端的「预览全屏」
-  // 浮卡只有 420px、插件端的侧边栏默认 350–400px，两边都会挤到这条线上（PM
-  // 3503127847500032）。图标档的**尺寸**按宿主密度分档（桌面 32×32 / 插件 22×22），
-  // 见 ModelPicker.css 与 MessageInput.css。远控页（手机）是第三种密度档、另有一套
-  // 触摸尺寸，未纳入这套收法 —— 它在 `@media (pointer: coarse)` 下整体放大一档。
+  // 桌面端、插件端（VS Code / JetBrains）与远控页共用同一套判据、同一套收法：桌面端的
+  // 「预览全屏」浮卡只有 420px、插件端的侧边栏默认 350–400px、手机上的远控页把按钮放大到
+  // 40×40 后一行也放不下两个文字档（PM 3503127847500032 / 远控页「修改前询问」折行），
+  // 三端都会挤到这条线上。图标档的**尺寸**按宿主密度分档（桌面 32×32 / 插件 22×22 /
+  // 远控页触控档 40×40），见 ModelPicker.css、MessageInput.css 与 remote-page.css。
   const buttonsRowRef = useRef<HTMLDivElement>(null);
   const [compactRow, setCompactRow] = useState(false);
   useEffect(() => {
     const row = buttonsRowRef.current;
-    if (!row || isRemotePageHost()) return;
+    if (!row) return;
     let raf = 0;
     const decide = () => {
       row.classList.remove("is-compact");

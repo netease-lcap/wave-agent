@@ -343,6 +343,36 @@
     padding: 0 4px;
   }
 
+  /* 底栏「空间不足 → 图标档」的手机档尺寸（判据与收法见 MessageInput 的量宽、
+     spec ui/model-selection.md「底栏放不下时模型与权限收成图标档」场景 2/6）。
+
+     手机档把「+」「/」放大到 40×40、正文抬到 15px 之后，390px 宽的一行里模型与权限
+     两个文字档必然放不下：模型名一长就把权限按钮压得比自己的文案还窄，「修改前询问」
+     折成两行冲出 48px 的轨道。收成图标后这一行只剩「图标 + 图标」，宽度绰绰有余。
+
+     尺寸取 40×40 与「+」「/」同档（场景 27 的触摸目标），字形 20px 跟着走；选择器带
+     两个属性（`[data-remote-page][data-host]`）是为了稳定压过插件档那组 22×22 ——
+     远控页的宿主标识本来就是 plugin，这组规则靠特异性和顺序都必须是赢的那一份。 */
+  [data-remote-page][data-host]
+    .input-buttons-row.is-compact
+    .model-picker-trigger,
+  [data-remote-page][data-host]
+    .input-buttons-row.is-compact
+    .permission-mode-select {
+    width: 40px;
+    min-height: 40px;
+    padding: 0;
+    gap: 0;
+    justify-content: center;
+  }
+
+  [data-remote-page][data-host]
+    .input-buttons-row.is-compact
+    :is(.model-picker-icon, .permission-mode-icon) {
+    width: 20px;
+    height: 20px;
+  }
+
   [data-remote-page] .context-actions {
     gap: 8px;
   }
