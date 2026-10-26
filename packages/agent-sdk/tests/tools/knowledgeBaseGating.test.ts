@@ -13,7 +13,7 @@ vi.mock("@/services/artifactAvailability.js", () => ({
   isArtifactEnabled: () => false,
 }));
 
-import { featureGatedKnowledgeBaseTools } from "@/tools/knowledgeBase/index.js";
+import { knowledgeBaseTools } from "@/tools/knowledgeBase/index.js";
 
 const KB_TOOL_NAMES = ["kb_search", "kb_get_doc", "kb_suggest"];
 
@@ -26,7 +26,7 @@ const mockMcpManager = {
   getMcpToolPlugins: vi.fn().mockReturnValue([]),
 } as unknown as McpManager;
 
-function createContainer(): Container {
+function createContainer(workdir = "/test/workdir"): Container {
   const container = new Container();
   container.register("PermissionManager", {
     isToolDenied: vi.fn().mockReturnValue(false),
@@ -38,17 +38,24 @@ function createContainer(): Container {
   container.register("ForegroundTaskManager", {});
   container.register("LspManager", {});
   container.register("McpManager", mockMcpManager);
+  // The gate reads the session's opening directory, never the `cd`-tracking one.
+  container.register("CurrentWorkdir", workdir);
+  container.register("SessionWorkdir", workdir);
   return container;
 }
 
-/** The agent's tool list for a session, with `customTools` assembled as containerSetup does. */
-function registeredToolNames(workdir: string): string[] {
-  const toolManager = new ToolManager({
-    container: createContainer(),
-    customTools: featureGatedKnowledgeBaseTools(workdir),
-  });
+/** A session's tool manager, with the tool set registered as containerSetup does. */
+function toolManagerFor(workdir: string): ToolManager {
+  const toolManager = new ToolManager({ container: createContainer(workdir) });
   toolManager.initializeBuiltInTools();
-  return toolManager.list().map((tool) => tool.name);
+  return toolManager;
+}
+
+function kbToolNames(toolManager: ToolManager): string[] {
+  return toolManager
+    .list()
+    .map((tool) => tool.name)
+    .filter((name) => name.startsWith("kb_"));
 }
 
 describe("knowledge base tool gating", () => {
@@ -58,30 +65,41 @@ describe("knowledge base tool gating", () => {
 
   it("registers no kb_* tool while enableKnowledgeBase is unset", () => {
     gate.enabled = false;
-    const names = registeredToolNames("/test/workdir");
-    expect(names.filter((name) => name.startsWith("kb_"))).toEqual([]);
+    const toolManager = toolManagerFor("/test/workdir");
+    expect(kbToolNames(toolManager)).toEqual([]);
     // The rest of the tool set is untouched by the closed gate.
+    const names = toolManager.list().map((tool) => tool.name);
     expect(names).toContain("Bash");
     expect(names).toContain("Read");
   });
 
   it("registers all three once enableKnowledgeBase is on", () => {
     gate.enabled = true;
-    const names = registeredToolNames("/test/workdir");
-    for (const name of KB_TOOL_NAMES) {
-      expect(names).toContain(name);
-    }
+    expect(kbToolNames(toolManagerFor("/test/workdir"))).toEqual(KB_TOOL_NAMES);
   });
 
-  it("returns the three tools in the order they are used", () => {
-    gate.enabled = true;
-    expect(
-      featureGatedKnowledgeBaseTools("/test/workdir").map((tool) => tool.name),
-    ).toEqual(KB_TOOL_NAMES);
+  it("declares the three tools in the order they are used", () => {
+    expect(knowledgeBaseTools.map((tool) => tool.name)).toEqual(KB_TOOL_NAMES);
   });
 
-  it("returns nothing to attach when the gate is closed", () => {
+  it("adds the tools on reload without a new session", () => {
     gate.enabled = false;
-    expect(featureGatedKnowledgeBaseTools("/test/workdir")).toEqual([]);
+    const toolManager = toolManagerFor("/test/workdir");
+    expect(kbToolNames(toolManager)).toEqual([]);
+
+    // The settings switch is saved: the live-config reload re-evaluates the gate.
+    gate.enabled = true;
+    toolManager.reloadFeatureGatedTools();
+    expect(kbToolNames(toolManager)).toEqual(KB_TOOL_NAMES);
+  });
+
+  it("removes the tools on reload once the switch is turned off", () => {
+    gate.enabled = true;
+    const toolManager = toolManagerFor("/test/workdir");
+    expect(kbToolNames(toolManager)).toEqual(KB_TOOL_NAMES);
+
+    gate.enabled = false;
+    toolManager.reloadFeatureGatedTools();
+    expect(kbToolNames(toolManager)).toEqual([]);
   });
 });

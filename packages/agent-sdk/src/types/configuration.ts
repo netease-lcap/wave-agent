@@ -253,6 +253,12 @@ export interface UserPreferenceSettings {
    * （spec ui/next-edit-suggestion.md 故事 6）。
    */
   nextEditEnabled?: boolean;
+  /**
+   * 是否启用企业知识库的三个检索工具（settings.json 顶层 `enableKnowledgeBase`，
+   * 缺省为**关**）。缺省关是因为它会把企业文档带进每次对话的上下文；托管配置
+   * 下发同名键时以托管层为准（spec core/agent-config.md「企业知识库开关」）。
+   */
+  enableKnowledgeBase?: boolean;
 }
 
 /** 用户偏好键（设置页控件）。 */

@@ -345,6 +345,9 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   // 下一步编辑建议开关：缺省**关**（它会改写用户已写下的代码），与补全同一个宿主
   // 能力位门禁（spec ui/next-edit-suggestion.md 故事 6）。
   const [nextEditEnabled, setNextEditEnabled] = useState(false);
+  // 企业知识库开关：缺省**关**（开启后企业文档会进入每次对话的上下文），不做
+  // 未设置占位态——真实默认就是关（spec core/agent-config.md「企业知识库开关」）。
+  const [enableKnowledgeBase, setEnableKnowledgeBase] = useState(false);
   // 补全两行只在**提供补全的宿主**渲染（VS Code / JetBrains）：桌面端与远端网页
   // 没有代码编辑器、补全从不触发，在那里摆一个开关等于承诺一个不会发生的功能
   // （spec ui/code-completion.md 边界情况「补全设置行的宿主范围」）。本组件为四端
@@ -390,6 +393,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
     setCompletionModel(configurationData.completionModel ?? "");
     setCompletionEnabled(configurationData.completionEnabled ?? true);
     setNextEditEnabled(configurationData.nextEditEnabled ?? false);
+    setEnableKnowledgeBase(configurationData.enableKnowledgeBase ?? false);
   }, [configurationData]);
 
   // 窗口级广播 desktopThemeSource 同步主题选中态（启动时 host 推一次 + 用户切换时）
@@ -568,6 +572,14 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
       if (nextEditEnabled !== (configurationData.nextEditEnabled ?? false)) {
         patch.nextEditEnabled = nextEditEnabled;
       }
+    }
+    // 企业知识库开关：与补全两行不同，它在三端都渲染（知识库不是编辑器专属
+    // 能力），所以不受上面的宿主门禁约束；比较基准同样是它**显示的初始值**
+    // （未设置时显示默认「关」），没拨动过就不写这个键。
+    if (
+      enableKnowledgeBase !== (configurationData.enableKnowledgeBase ?? false)
+    ) {
+      patch.enableKnowledgeBase = enableKnowledgeBase;
     }
     onSave(patch);
   };
@@ -868,6 +880,33 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                       </div>
                     </>
                   )}
+                  {/* 企业知识库开关（spec core/agent-config.md「企业知识库开关」故事）：
+                      默认关、不做未设置占位态（真实默认就是关，三态开关更难用）；
+                      组织托管时显示生效值并置灰。三端都渲染——它不是编辑器专属能力，
+                      与上面受 completionsSupported 门禁的补全行不同。 */}
+                  <div className="settings-row">
+                    <div className="settings-row-copy">
+                      <h3>企业知识库</h3>
+                      <p>让 AI 检索本企业上传的文档来回答问题</p>
+                      {orgManaged("enableKnowledgeBase") && (
+                        <p className="settings-row-hint">由组织配置管理</p>
+                      )}
+                    </div>
+                    <div className="settings-control">
+                      <label className="settings-switch">
+                        <input
+                          type="checkbox"
+                          aria-label="企业知识库"
+                          checked={enableKnowledgeBase}
+                          disabled={orgManaged("enableKnowledgeBase")}
+                          onChange={(e) =>
+                            setEnableKnowledgeBase(e.target.checked)
+                          }
+                        />
+                        <span className="settings-switch-slider"></span>
+                      </label>
+                    </div>
+                  </div>
                 </div>
                 <div className="settings-actions">
                   <button

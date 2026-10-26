@@ -1320,6 +1320,9 @@ class MessageHandler(
             // 下一步编辑建议开关（顶层 nextEditEnabled，缺省为关，spec
             // ui/next-edit-suggestion.md 故事 6）。
             prefs["nextEditEnabled"]?.let { put("nextEditEnabled", it) }
+            // 企业知识库开关（顶层 enableKnowledgeBase，缺省为关，spec
+            // core/agent-config.md「企业知识库开关」）。
+            prefs["enableKnowledgeBase"]?.let { put("enableKnowledgeBase", it) }
             prefs["preferenceSources"]?.let { put("preferenceSources", it) }
         }
     }
@@ -1355,6 +1358,7 @@ class MessageHandler(
                 ?.let { put("completionModel", it) }
             data["completionEnabled"]?.let { put("completionEnabled", it) }
             data["nextEditEnabled"]?.let { put("nextEditEnabled", it) }
+            data["enableKnowledgeBase"]?.let { put("enableKnowledgeBase", it) }
         }
         val (client, _) = WaveBackendService.getInstance(project).ensureClient()
         StdioAgent.updateUserSettings(client, patch)
