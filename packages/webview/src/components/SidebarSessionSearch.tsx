@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useClickOutside } from "../utils/useClickOutside";
+import { Tooltip } from "./Tooltip";
 import {
   SESSION_DATE_OPTIONS,
   SESSION_STATUS_OPTIONS,
@@ -124,19 +125,20 @@ export const SidebarSessionSearch: React.FC<SidebarSessionSearchProps> = ({
           }}
         />
       </div>
-      <button
-        type="button"
-        className={`desktop-sidebar-search-filter${filterActive ? " is-active" : ""}`}
-        data-testid="desktop-session-filter-btn"
-        aria-label="筛选"
-        title="筛选"
-        aria-haspopup="true"
-        aria-expanded={open}
-        aria-pressed={filterActive}
-        onClick={toggleOpen}
-      >
-        <FilterIcon />
-      </button>
+      <Tooltip text="筛选" position="bottom">
+        <button
+          type="button"
+          className={`desktop-sidebar-search-filter${filterActive ? " is-active" : ""}`}
+          data-testid="desktop-session-filter-btn"
+          aria-label="筛选"
+          aria-haspopup="true"
+          aria-expanded={open}
+          aria-pressed={filterActive}
+          onClick={toggleOpen}
+        >
+          <FilterIcon />
+        </button>
+      </Tooltip>
       {open && (
         <div
           className="desktop-session-filter-pop"
