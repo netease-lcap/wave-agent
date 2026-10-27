@@ -56,6 +56,7 @@ import type {
   BackgroundTaskSummary,
   ChatAppProps,
   ConfirmationDecision,
+  ConfirmationRequest,
   ConfigurationData,
   DesktopPanelKind,
   FileViewState,
@@ -1807,16 +1808,23 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           usageSessionRef.current = nextSessionId;
         }
         // Desktop plan panel: replayed pending confirmations (pane rebind to a
-        // session with confirmations in flight) also carry an ExitPlanMode
-        // plan. It is staged — not routed here — because a same-batch pane
-        // rebind re-seeds tabs from the incoming cache after this handler runs
-        // and would wipe an eagerly opened plan tab (see the routing effect).
+        // session whose ExitPlanMode fired while the conversation was in the
+        // background) carry the plan as well, so they need the same two-step
+        // treatment showConfirmation gives it: stage the text for the plan pane,
+        // and hand the reducer a copy WITHOUT it — otherwise a re-activated
+        // session shows the whole plan inside the dialog while the pane opens
+        // next to it (the dialog is meant to stay compact). Staged — not routed
+        // here — because a same-batch pane rebind re-seeds tabs from the
+        // incoming cache after this handler runs and would wipe an eagerly
+        // opened plan tab (see the routing effect).
         //
         // Skipped on the remote-control Web page: there the plan is rendered
         // inside the confirmation dialog itself, so staging it for the pane
         // system would open a second carrier for the same plan.
-        for (const c of message.pendingConfirmations ||
-          (message.pendingConfirmation ? [message.pendingConfirmation] : [])) {
+        const replayedConfirmations =
+          message.pendingConfirmations ||
+          (message.pendingConfirmation ? [message.pendingConfirmation] : []);
+        for (const c of replayedConfirmations) {
           if (
             !isRemotePage &&
             c.toolName === EXIT_PLAN_MODE_TOOL_NAME &&
@@ -1851,11 +1859,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             // configurationResponse（渲染设置页的 root 实例不消费带 paneId
             // 的快照）。窗口级数据（主题/更新通道）一律不进快照。
             configurationData: message.configurationData,
-            pendingConfirmations:
-              message.pendingConfirmations ||
-              (message.pendingConfirmation
-                ? [message.pendingConfirmation]
-                : []),
+            // 计划正文已由上面的 staging 路由进 plan 面板，落进 reducer 的这份
+            // 确认请求要剔掉它 —— 与 showConfirmation 同口径（远控 Web 页例外：
+            // 那里对话框是唯一载者）。
+            pendingConfirmations: replayedConfirmations.map(
+              (c: ConfirmationRequest): ConfirmationRequest =>
+                !isRemotePage && c.toolName === EXIT_PLAN_MODE_TOOL_NAME
+                  ? { ...c, planContent: undefined }
+                  : c,
+            ),
             selection: message.selection,
             inputContent: message.inputContent,
             permissionMode: message.permissionMode,

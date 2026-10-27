@@ -9,9 +9,11 @@
  * the plan is the only basis on which the user can approve it
  * (spec core/plan-mode.md 场景 13 / ui/remote-control.md 场景 22).
  *
- * The decision is made in one place (`ChatApp` `showConfirmation`), so these
- * tests pin the two ends of it: what the dialog ends up holding on the page, and
- * that it is unchanged everywhere else.
+ * The decision is made in one place (`ChatApp` `showConfirmation`) and applied
+ * again to replayed pending confirmations in `setInitialState` (a conversation
+ * whose ExitPlanMode fired while it was in the background), so these tests pin
+ * the two ends of it: what the dialog ends up holding on the page, and that it
+ * is unchanged everywhere else.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { act, renderChatApp, screen, sendCommand } from "./test-utils";
@@ -74,6 +76,31 @@ describe("the plan body on the remote-control Web page", () => {
     expect(
       screen.queryByTestId("plan-content-preview"),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps the dialog as the carrier for a replayed pending confirmation", () => {
+    // Cold start / reconnect replays the pending ExitPlanMode inside the
+    // session snapshot — the page still has no other carrier for the plan.
+    window.waveRemotePage = true;
+    renderChatApp();
+
+    act(() => {
+      sendCommand("setInitialState", {
+        messages: [],
+        pendingConfirmations: [
+          {
+            confirmationId: "conf_plan_1",
+            toolName: EXIT_PLAN_MODE_TOOL_NAME,
+            confirmationType: "计划待确认",
+            planContent: PLAN,
+          },
+        ],
+      });
+    });
+
+    const preview = screen.getByTestId("plan-content-preview");
+    expect(preview.querySelector("h2")).toHaveTextContent("重构方案");
+    expect(document.querySelector(".confirmation-dialog")).toBeInTheDocument();
   });
 
   it("gates on the tool, not on the presence of a plan body", () => {
