@@ -1,5 +1,6 @@
 import { test, expect } from "../e2e/utils/desktopTestHarness.js";
 import { seedSidebarSessions } from "./sidebarSeed.js";
+import { seedFileTree, type SeededTreeEntry } from "./fileTreeSeed.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
@@ -9,6 +10,27 @@ import { screenshotWebp } from "../e2e/utils/screenshot.js";
 // shared webview bundle must be rebuilt first (node esbuild.config.mjs).
 const DIR_A = "/Users/dev/projects/wave-agent";
 const FILE_PATH = `${DIR_A}/src/pages/login.tsx`;
+
+/** The workdir as the panel's directory tree lists it (root + the two levels the
+ *  opened files live in). Seeded because a demo has no host to answer the
+ *  listings the tree asks for — see demo/fileTreeSeed.ts. */
+const TREE: Record<string, SeededTreeEntry[]> = {
+  [DIR_A]: [
+    { name: "docs", type: "dir" },
+    { name: "src", type: "dir" },
+    { name: "package.json", type: "file" },
+    { name: "README.md", type: "file" },
+  ],
+  [`${DIR_A}/src`]: [
+    { name: "pages", type: "dir" },
+    { name: "main.tsx", type: "file" },
+  ],
+  [`${DIR_A}/src/pages`]: [
+    { name: "login.tsx", type: "file" },
+    { name: "orders.tsx", type: "file" },
+  ],
+  [`${DIR_A}/docs`]: [{ name: "desktop.md", type: "file" }],
+};
 
 const initialState = {
   messages: [],
@@ -125,17 +147,30 @@ test.describe("Desktop file pane screenshots", () => {
     await expect(rows).toHaveCount(3);
     // Newest hit first.
     await expect(rows.first()).toContainText("orders.tsx");
+    await seedFileTree(injector, TREE);
+    await expect(
+      pane.getByTestId("file-pane-tree").getByText("package.json"),
+    ).toBeVisible();
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-file-pane-conversation-files.webp",
     );
 
     // Clicking a row opens that file in the same tab (host replies below), and
-    // the toolbar offers a way back to the list.
-    await pane.getByText("README.md").click();
+    // the toolbar offers a way back to the list. Scoped to the list: the tree
+    // on the left lists a `README.md` of its own.
+    await pane
+      .getByTestId("file-pane-conversation-files")
+      .getByText("README.md")
+      .click();
+    // The reply is keyed by the path the panel asked for — the path the tool
+    // recorded (`README.md`), which is what the real host echoes back. A reply
+    // carrying some other spelling of the same file (`/Users/…/README.md`)
+    // matches nothing on the open-file strip and is dropped (spec
+    // desktop-file-panel.md「文件面板已打开文件的标签」).
     await injector.simulateExtensionMessage("desktopFileContent", {
       fileView: {
-        path: `${DIR_A}/README.md`,
+        path: "README.md",
         host: "local",
         content: MD_CONTENT,
         loading: false,
@@ -178,6 +213,14 @@ test.describe("Desktop file pane screenshots", () => {
         JSON.stringify({ file_path: FILE_PATH }),
         FILE_CONTENT,
       ),
+      // A second file the conversation touched: the markdown half of this test
+      // opens it the same way (tool path → panel) to comment a rendered block.
+      MockDataGenerator.createAssistantMessageWithTool(
+        "顺手把 README 的安装说明补上。",
+        "Write",
+        JSON.stringify({ file_path: "README.md" }),
+        "File written",
+      ),
     ]);
 
     // Click the read tool's file path → the file panel opens on the right.
@@ -196,19 +239,36 @@ test.describe("Desktop file pane screenshots", () => {
     await expect(
       webviewPage.getByTestId("file-pane").getByText("src/pages/login.tsx"),
     ).toBeVisible();
+    // The tree lists the file's own folders, expanded down to it (a file that
+    // opens inside the root expands its ancestors).
+    await seedFileTree(injector, TREE);
+    const tree = webviewPage.getByTestId("file-pane-tree");
+    await expect(tree.getByText("README.md")).toBeVisible();
+    await expect(tree.getByText("login.tsx")).toBeVisible();
 
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-file-pane.webp",
     );
+    // Collapse the directory tree for the comment screenshots below. The code
+    // column is as wide as the longest source line (`min-width: max-content`),
+    // so with the tree taking ~200px the column — and with it the comment box,
+    // which spans that column — runs past the panel's right edge: a real user
+    // gets there by scrolling the pane sideways, a still image cannot. Hiding
+    // the tree (a normal toolbar toggle) keeps the whole box, 取消/添加
+    // included, in frame. The tree itself is what the shot above shows.
+    await webviewPage.getByRole("button", { name: "隐藏文件树" }).click();
 
     // ── Inline line comment (same interaction as the diff pane) ──────
-    // The "+" button is revealed on hover (GitHub/GitLab style) and Playwright
-    // auto-hovers before clicking. Key on the aria-label: the testid only
-    // carries the line number, which is not unique across panes.
+    // Right click the line → 「添加评论」 (spec desktop-file-panel.md
+    // 「文件面板评论」). The entry is a gesture rather than a hover-revealed "+",
+    // which is what leaves the line-number column flush against the left edge.
+    // Line 12 is `      navigate("/dashboard");`; `file-pane-line-<n>` is the
+    // source line number, so it identifies the line on its own.
     await webviewPage
-      .getByRole("button", { name: "评论 src/pages/login.tsx 第 12 行" })
-      .click();
+      .getByTestId("file-pane-line-12")
+      .click({ button: "right" });
+    await webviewPage.getByTestId("code-comment-menu-add").click();
     await expect(webviewPage.getByTestId("line-comment-box")).toBeVisible();
     await webviewPage
       .getByTestId("line-comment-input")
@@ -233,9 +293,13 @@ test.describe("Desktop file pane screenshots", () => {
     // ── Markdown block comment ─────────────────────────────────────────
     // A rendered markdown file has no line numbers, so the same interaction
     // anchors to a block instead (spec desktop-panels.md「文件面板评论」场景 8).
+    // Open README.md the same way as the code file above — its tool path — and
+    // answer with the path the panel asked for (`README.md`, not the absolute
+    // one): a reply is matched to an open file by that path.
+    await webviewPage.getByRole("button", { name: "README.md" }).click();
     await injector.simulateExtensionMessage("desktopFileContent", {
       fileView: {
-        path: `${DIR_A}/README.md`,
+        path: "README.md",
         host: "local",
         content: MD_CONTENT,
         loading: false,
@@ -312,6 +376,7 @@ test.describe("Desktop file pane screenshots", () => {
       webviewPage.locator(".file-pane-editor .cm-content"),
     ).toBeVisible();
     await expect(webviewPage.getByTestId("file-pane-edit-save")).toBeVisible();
+    await seedFileTree(injector, TREE);
 
     await screenshotWebp(
       webviewPage,
