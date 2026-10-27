@@ -157,6 +157,8 @@ interface Harness {
   element(id: string): FakeElement | null;
   /** The status banner's action buttons, label plus what a tap runs. */
   bannerButtons(): { label: string; click: () => void }[];
+  /** The banner's close (×), or null when the line is not on screen. */
+  bannerClose(): { click: () => void } | null;
   /** Every timer the shim armed (backoff retries and RPC timeouts alike). */
   timers: { delay: number; cleared: boolean; run(): void }[];
   /** Fire the pending backoff timers by hand; RPC timeouts stay put. */
@@ -322,11 +324,25 @@ function loadShim(options: {
     getElementById: (id: string): FakeElement | null =>
       findById(bodyChildren, id),
     body: {
-      appendChild: (element: FakeElement) => {
-        bodyChildren.push(element);
+      // The status line goes in as the body's **first child** — it is a line in
+      // the page flow, above the app, so the header below it keeps every pixel.
+      // The machine picker mounts by appending. Both land in one list so
+      // `getElementById` keeps seeing the whole tree.
+      get firstChild(): FakeElement | null {
+        return bodyChildren.find((node) => !node.removed) ?? null;
+      },
+      insertBefore: (element: FakeElement, reference: FakeElement | null) => {
+        const index = reference ? bodyChildren.indexOf(reference) : -1;
+        if (index < 0) bodyChildren.push(element);
+        else bodyChildren.splice(index, 0, element);
         // The status banner is the element the shim names as such. The machine
         // picker is appended here too, and `banner()` has to keep reading the
         // status one while it is.
+        if (element.id === "remote-status") banner = element;
+        return element;
+      },
+      appendChild: (element: FakeElement) => {
+        bodyChildren.push(element);
         if (element.id === "remote-status") banner = element;
       },
     },
@@ -423,11 +439,22 @@ function loadShim(options: {
     banner: () => (banner && !banner.removed ? banner.textContent : ""),
     bannerButtons: () =>
       (banner && !banner.removed ? banner.children : [])
-        .filter((child) => child.onclick)
+        // The close is a button too, but it is not one of the status's actions —
+        // 「关闭」 and 「重新连接」 mean different things (`bannerClose()` drives it).
+        .filter(
+          (child) =>
+            child.onclick && child.getAttribute("aria-label") !== "关闭",
+        )
         .map((child) => ({
           label: child.textContent,
           click: () => child.onclick?.(),
         })),
+    bannerClose: () => {
+      const close = (banner && !banner.removed ? banner.children : []).find(
+        (child) => child.getAttribute("aria-label") === "关闭",
+      );
+      return close ? { click: () => close.onclick?.() } : null;
+    },
     element: (id) => document.getElementById(id),
     replaced,
     timers,

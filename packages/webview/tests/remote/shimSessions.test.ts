@@ -199,6 +199,13 @@ function answerOn(socket: FakeSocket, method: string, result: unknown) {
   });
 }
 
+/** The status line's close (×), or null when the line is not on screen. */
+function statusClose(): HTMLButtonElement | null {
+  return document.querySelector<HTMLButtonElement>(
+    '#remote-status button[aria-label="关闭"]',
+  );
+}
+
 /**
  * Drop the link the way a sleeping phone does, and let the page's retry open the
  * next one. Everything from here on goes over the returned socket.
@@ -1342,6 +1349,66 @@ describe("remote page shim", () => {
     expect(document.getElementById("remote-status")).toBeFalsy();
   });
 
+  test("closing the waiting line covers the whole outage, retry count and all", async () => {
+    const { page } = await openPage();
+
+    page.socket.onclose?.({ code: 4001 });
+    expect(
+      document.getElementById("remote-status-text")?.textContent,
+    ).toContain("第 1 次重试");
+
+    statusClose()?.click();
+    expect(document.getElementById("remote-status")).toBeFalsy();
+
+    // The next backoff step runs as usual — closing the line mutes its
+    // presentation, not the retrying — and it drops again with a different
+    // count in the words. 同一条状态已经关掉了：换成「第 2 次」不算新状态。
+    await vi.advanceTimersByTimeAsync(2000);
+    const next = FakeSocket.opened[FakeSocket.opened.length - 1];
+    next.onclose?.({ code: 4001 });
+    expect(document.getElementById("remote-status")).toBeFalsy();
+
+    // 反证「页面只是不再报状态」：退避仍在推进，下一条 socket 照样开出来。
+    const beforeRetry = FakeSocket.opened.length;
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(FakeSocket.opened.length).toBe(beforeRetry + 1);
+  });
+
+  test("an earlier close does not cover a different state", async () => {
+    const { page } = await openPage();
+
+    page.socket.onclose?.({ code: 4001 });
+    statusClose()?.click();
+    expect(document.getElementById("remote-status")).toBeFalsy();
+
+    // 永久拒绝是另一条状态，与「等待上线」分开呈现——关掉一条不等于把这一面
+    // 关掉。它同时是用户唯一能读到原因的地方。
+    page.socket.onclose?.({ code: 4003 });
+    expect(
+      document.getElementById("remote-status-text")?.textContent,
+    ).toContain("中继拒绝了这个连接");
+  });
+
+  test("the mute ends with the outage: the next drop is announced again", async () => {
+    const { page } = await openPage();
+
+    page.socket.onclose?.({ code: 4001 });
+    statusClose()?.click();
+
+    // 接回就是这条状态的出口（`onopen` 清掉状态面），于是下一次断开是一条新的
+    // 状态，照常出现——不是「关过一次就永远安静」。
+    const next = await reconnect(page.socket);
+    answerOn(next, "getMessages", { messages: [] });
+    answerOn(next, "listDaemonSessions", { sessions: SESSIONS });
+    await flush();
+    expect(document.getElementById("remote-status")).toBeFalsy();
+
+    next.onclose?.({ code: 4001 });
+    expect(
+      document.getElementById("remote-status-text")?.textContent,
+    ).toContain("等待上线");
+  });
+
   test("coming back to the foreground re-reads the mode too", async () => {
     const { page } = await openPage();
     expect(shownMode(page)).toBe("default");
@@ -2159,7 +2226,8 @@ describe("remote page session list actions", () => {
     expect(page.requests("getMessages")).toBe(readsBefore);
 
     await page.answer("listPendingPermissions", { requests: [] });
-    expect(document.getElementById("remote-status")?.textContent).toBe(
+    // 读文案里的那段文本，不读整行：这一行还带着动作与关闭（`×`）。
+    expect(document.getElementById("remote-status-text")?.textContent).toBe(
       "电脑侧还没有正在跑的会话。",
     );
     // 视图仍要重画成空的那一份（消息清空、当前会话为空）。

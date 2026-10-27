@@ -316,6 +316,19 @@
    */
   var shownApprovals = {};
   var banner = null;
+  /**
+   * Which state the banner is currently showing, and which states the user has
+   * closed.
+   *
+   * The mute is keyed by **state**, never by the text: 「等待上线」carries its
+   * retry count, so the words change on every backoff step. Keyed by text, a
+   * close would be undone two seconds later by the next attempt, which is
+   * exactly the 「关不掉的错误」 this surface was reported for. A state leaves the
+   * set when it is over (`clearStatus`) — i.e. when it comes back after that, it
+   * is a new occurrence and may show again.
+   */
+  var bannerKey = null;
+  var mutedStatusKeys = {};
 
   // ── Page → host plumbing ────────────────────────────────────────
 
@@ -326,11 +339,24 @@
    * to show yet). A progress line in the error colour reads as 「出事了」, which
    * is why the machine list moved its own two states off this banner entirely
    * (spec「机器列表与切换」场景 8).
+   *
+   * It is a **line in the page flow**, not a floating overlay: this surface
+   * reports *states*, and a state lasts (「等待上线」backs off indefinitely). A
+   * `position:fixed; top:0` banner sat on top of the whole header, so for as
+   * long as it was up the four header buttons could be neither seen nor
+   * tapped — including 「切换电脑」, the entry that exists precisely for the
+   * disconnected case. Being in the flow also means the body's
+   * `padding-top: env(safe-area-inset-top)` carries it (a `top:0` overlay
+   * bypasses that padding and paints under the status bar).
+   *
+   * The label may wrap; the buttons never do, so actions and the close stay
+   * visible on the first line however long the message is (spec
+   * 「状态只在一条流内状态条上播报」场景 4 / 9).
    */
   function bannerStyle(tone) {
     return (
-      "position:fixed;z-index:9999;left:0;right:0;top:0;padding:8px 12px;" +
-      "display:flex;align-items:center;flex-wrap:wrap;gap:8px;" +
+      "flex:0 0 auto;box-sizing:border-box;padding:8px 12px;" +
+      "display:flex;align-items:center;gap:8px;" +
       "font:13px/1.5 -apple-system,system-ui,sans-serif;color:#fff;" +
       "background:" +
       (tone === "progress" ? "#333333" : "#5a1d1d") +
@@ -338,45 +364,109 @@
     );
   }
 
+  function bannerLabelStyle() {
+    // `min-width:0` is what lets a flex item's text wrap instead of forcing the
+    // row wider than the screen.
+    return "flex:1 1 auto;min-width:0;overflow-wrap:anywhere;";
+  }
+
+  function bannerButtonStyle() {
+    return (
+      "flex:0 0 auto;padding:2px 10px;font:inherit;color:#fff;" +
+      "background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.4);" +
+      "border-radius:6px;cursor:pointer;"
+    );
+  }
+
+  function bannerCloseStyle() {
+    return (
+      "flex:0 0 auto;width:32px;height:32px;padding:0;font:18px/1 inherit;" +
+      "color:#fff;background:transparent;border:0;cursor:pointer;opacity:0.85;"
+    );
+  }
+
   /**
    * The page's status surface. `actions` adds tappable buttons after the text —
    * the two things this page can always do for itself while the link is down:
    * retry now, or go pick another machine (spec「断线自愈」场景 4、「机器列表与
-   * 切换」场景 5). Without actions it is the plain banner it always was.
+   * 切换」场景 5). Without actions it is the plain line it always was.
+   *
+   * `key` names the **state**, for the mute: the caller that reports a state
+   * whose words drift (`「等待上线…（第 N 次重试）」`) passes a stable key so a close
+   * survives the next retry. Everything else leaves it out and the text is the
+   * identity — those messages do not change while the state stands.
    *
    * Every call states its tone: the banner outlives a single message, so the one
    * that follows a refusal must be able to paint it neutral again.
    */
-  function showStatus(text, actions, tone) {
+  function showStatus(text, actions, tone, key) {
+    var statusKey = key || text;
+    if (mutedStatusKeys[statusKey]) {
+      // Closed by the user and the state has not ended: stay quiet. The element
+      // goes (if any) but the mute stays, so the next retry is quiet too.
+      removeBanner();
+      return;
+    }
     if (!banner) {
       banner = document.createElement("div");
       banner.id = "remote-status";
-      document.body.appendChild(banner);
+      banner.setAttribute("role", "status");
+      // First child of the body: above the app, inside the flow, so the header
+      // below it keeps every pixel it had.
+      document.body.insertBefore(banner, document.body.firstChild);
     }
+    bannerKey = statusKey;
     banner.setAttribute("style", bannerStyle(tone));
     banner.textContent = "";
     var label = document.createElement("span");
+    // Its own id: the line now carries actions and a close as well, so 「what
+    // does it say」 has to be addressable apart from 「what is in the row」.
+    label.id = "remote-status-text";
+    label.setAttribute("style", bannerLabelStyle());
     label.textContent = text;
     banner.appendChild(label);
     for (var i = 0; i < (actions || []).length; i++) {
       var button = document.createElement("button");
       button.type = "button";
       button.textContent = actions[i].label;
-      button.setAttribute(
-        "style",
-        "padding:2px 10px;font:inherit;color:#fff;background:rgba(255,255,255,0.14);" +
-          "border:1px solid rgba(255,255,255,0.4);border-radius:6px;cursor:pointer;",
-      );
+      button.setAttribute("style", bannerButtonStyle());
       button.onclick = actions[i].onClick;
       banner.appendChild(button);
     }
+    var close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "×";
+    close.setAttribute("aria-label", "关闭");
+    close.setAttribute("style", bannerCloseStyle());
+    close.onclick = muteStatus;
+    banner.appendChild(close);
   }
 
-  function clearStatus() {
+  /**
+   * 「看够了」: drop this line until the state itself ends. It is deliberately
+   * not a way to silence the *connection*: the backoff keeps retrying, the
+   * page keeps re-reading, and a reconnect repaints as usual — only this
+   * line's presentation is muted (spec 场景 5).
+   */
+  function muteStatus() {
+    if (bannerKey !== null) mutedStatusKeys[bannerKey] = true;
+    removeBanner();
+  }
+
+  function removeBanner() {
     if (banner) {
       banner.remove();
       banner = null;
     }
+  }
+
+  /**
+   * The state is over (connected, list read, session gone): the line goes, and
+   * so do the mutes — whatever comes back after this is a new occurrence.
+   */
+  function clearStatus() {
+    removeBanner();
+    mutedStatusKeys = {};
   }
 
   /** The banner actions, built per call so the closures see fresh state. */
@@ -750,6 +840,12 @@
               attempts +
               " 次）",
         [reconnectAction(), switchHostAction()],
+        // Error tone (the default); the key is the argument after it.
+        undefined,
+        // The words carry the retry count, so the mute has to be keyed to the
+        // state instead: one close covers the whole outage (spec「状态只在一条
+        // 流内状态条上播报」场景 6).
+        "reconnecting",
       );
       scheduleRetry(delay);
     };
