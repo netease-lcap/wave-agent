@@ -56,6 +56,7 @@ import { FileToolHeader } from "./FileToolHeader";
 import { getStageColor, getToolStatusColor } from "../utils/statusColors";
 import { isDesktopHost, isRemotePageHost } from "../utils/platform";
 import "../styles/Message.css";
+import "../styles/plugin-typography.css";
 
 // Configure marked for VS Code webview context
 const renderTaskListitem = (text: string, task: boolean, checked: boolean) => {
@@ -337,6 +338,126 @@ const applyTableColumnAlign = (tableHtml: string): string => {
       },
     );
   });
+};
+
+// Error payloads from the host are free-form strings (ErrorBlock.content).
+// R1-F3 / H-4 (2026-10-27): preserve the source order and only assign a
+// rendering role; never move a later explanation in front of the stack.
+//   · no raw/stack line anywhere  -> the whole payload is reading text;
+//   · raw line block              -> code role;
+//   · non-raw paragraph           -> reading role, in place;
+//   · hint/建议/提示 line         -> reading role, in place (label stripped
+//                                    exactly as before, but not reordered).
+// R1 closeout (2026-10-27): keep the original stack text (indentation, blank
+// lines and caret alignment) instead of re-paragraphing it. Plain "Error:" is
+// a raw prefix; a blank line does not end a stack when the next line is still
+// a frame / source / locator line. This is still a host-text compatibility
+// layer, not a language parser; structured summary/detail at the host boundary
+// remains the long-term fix.
+const RAW_ERROR_PREFIX =
+  /^\s*(?:APIError|(?:[A-Za-z_][\w.]*)?(?:Error|Exception):|E[A-Z0-9]+:|Traceback\b|at\s|Caused by:|During handling|Unhandled|FetchError|HTTP\s*\d{3}\b)/;
+const ERROR_HINT_LINE =
+  /^\s*(?:hint|建议|提示|说明|suggestion)\s*[:：]\s*(.+)$/i;
+
+type ErrorPart = {
+  role: "explain" | "stack";
+  text: string;
+};
+
+const hasRawErrorLine = (text: string) =>
+  text.split("\n").some((line) => RAW_ERROR_PREFIX.test(line));
+
+/** Remove blank edges only; keep leading spaces on the first real line. */
+const stripBlankEdges = (value: string): string => {
+  const lines = value.split("\n");
+  let start = 0;
+  let end = lines.length;
+  while (start < end && lines[start].trim() === "") start++;
+  while (end > start && lines[end - 1].trim() === "") end--;
+  return lines.slice(start, end).join("\n");
+};
+
+/** A blank line inside a Python traceback is still stack text when the next
+ * line is indented, a frame, or a caret/locator line. */
+const isStackContinuationLine = (line: string): boolean =>
+  /^[ \t]+\S/.test(line) ||
+  /^[ \t]*[\^~]+\s*$/.test(line) ||
+  /^[ \t]*(?:File\s+["']|at\s|Caused by:|During handling|Traceback\b)/.test(
+    line,
+  );
+
+const splitErrorContent = (content: string): ErrorPart[] => {
+  const text = stripBlankEdges(String(content || "").replace(/\r\n?/g, "\n"));
+  if (!text) return [];
+
+  // Pure reading text: no stack/log line at all. This is language-agnostic
+  // (English explanations were previously forced into the code role because
+  // the old heuristic required a CJK character).
+  if (!hasRawErrorLine(text)) {
+    return [{ role: "explain", text }];
+  }
+
+  const parts: ErrorPart[] = [];
+  let currentRole: ErrorPart["role"] | null = null;
+  let currentLines: string[] = [];
+  let pendingBlank = 0;
+
+  const flush = () => {
+    if (!currentRole || currentLines.length === 0) {
+      currentLines = [];
+      return;
+    }
+    const joined = currentLines.join("\n");
+    const cleaned =
+      currentRole === "stack"
+        ? stripBlankEdges(joined)
+        : stripBlankEdges(joined).trim();
+    if (cleaned) parts.push({ role: currentRole, text: cleaned });
+    currentLines = [];
+  };
+
+  const start = (role: ErrorPart["role"]) => {
+    flush();
+    currentRole = role;
+  };
+
+  for (const line of text.split("\n")) {
+    if (line.trim() === "") {
+      pendingBlank += 1;
+      continue;
+    }
+
+    const hint = line.match(ERROR_HINT_LINE);
+    if (hint) {
+      // A hint line is reading text; it ends a stack and keeps its source order.
+      flush();
+      pendingBlank = 0;
+      const hintText = (hint[1] || "").trim();
+      if (hintText) parts.push({ role: "explain", text: hintText });
+      currentRole = null;
+      continue;
+    }
+
+    const raw = RAW_ERROR_PREFIX.test(line);
+    const continuation: boolean =
+      currentRole === "stack" && isStackContinuationLine(line);
+    const role: ErrorPart["role"] = raw || continuation ? "stack" : "explain";
+
+    if (role !== currentRole) {
+      // Blank lines separate roles; they are not carried into the next role.
+      pendingBlank = 0;
+      start(role);
+    }
+
+    if (pendingBlank > 0 && currentLines.length > 0) {
+      for (let i = 0; i < pendingBlank; i++) currentLines.push("");
+    }
+    pendingBlank = 0;
+    currentLines.push(line);
+  }
+
+  flush();
+  return parts;
 };
 
 const createMessageMarkdownRenderer = (
@@ -1395,12 +1516,35 @@ export const Message: React.FC<MessageProps> = React.memo(
           dotColor = getStageColor(block.stage);
           break;
         }
-        case "error":
+        case "error": {
+          // R1-F2 (2026-10-27): D-04's split is approved for the plugin host
+          // only. Desktop keeps its pre-R1 single <pre>; remote Web keeps the
+          // same legacy DOM so the shared renderer doesn't change its layout.
+          if (isDesktopHost() || isRemotePageHost()) {
+            return (
+              <div key={index} className="message-content error">
+                <pre>{block.content || ""}</pre>
+              </div>
+            );
+          }
+          const parts = splitErrorContent(block.content || "");
+          if (parts.length === 0) return null;
           return (
             <div key={index} className="message-content error">
-              <pre>{block.content || ""}</pre>
+              {parts.map((part, partIndex) =>
+                part.role === "explain" ? (
+                  <p key={partIndex} className="error-explain">
+                    {part.text}
+                  </p>
+                ) : (
+                  <pre key={partIndex} className="error-stack">
+                    {part.text}
+                  </pre>
+                ),
+              )}
             </div>
           );
+        }
         case "tool": {
           const toolBlock = block as ToolBlock;
           rendered = renderToolBlock(toolBlock, index);

@@ -1,0 +1,615 @@
+/* Plugin controls — R2-A (2026-10-27)
+ *
+ * Scope is the IDE plugin only. The remote Web page shares data-host="plugin"
+ * but is explicitly excluded, and the desktop host has its own approved layer.
+ * Tokens are local (--ccp-*) so changing one role cannot silently move a
+ * component that belongs to a later R2 batch (fields / choice controls).
+ *
+ * Geometry / type:
+ *   · form action 32 / compact toolbar 28 / r8 / 13·20·500;
+ *   · host font size follows --vscode-font-size; line height = size + 7
+ *     (the R1 reading line, so host 16 is 16/23 — no silent 16/24 rule);
+ *   · min-height instead of fixed height so a larger host font can grow.
+ *   · icon slot 28 / visual 22 / glyph 16; close slot 28 / visual 20 / glyph 16.
+ *     Slots are real layout boxes; hover/pressed fills only the visual box.
+ */
+
+[data-host="plugin"]:not([data-remote-page]) {
+  --ccp-ui-size: var(--vscode-font-size, 13px);
+  --ccp-ui-line: calc(var(--ccp-ui-size) + 7px);
+
+  /* Primary is the one neutral candidate this batch keeps in normal themes.
+   * Everything that the host already exposes with the right semantics is read
+   * from --vscode-*; the hex values are only fallbacks for hosts/older themes
+   * that do not publish the key. */
+  --ccp-action-primary: #1f2329;
+  --ccp-action-primary-hover: #34383f;
+  --ccp-action-primary-active: #111318;
+  --ccp-action-primary-text: #ffffff;
+  --ccp-fill-hover: var(
+    --vscode-toolbar-hoverBackground,
+    var(--vscode-list-hoverBackground, #eef0f3)
+  );
+  --ccp-fill-pressed: var(
+    --vscode-toolbar-activeBackground,
+    var(--vscode-list-hoverBackground, #e7e9ed)
+  );
+  --ccp-focus-ring: var(--vscode-focusBorder, #1f2329);
+  --ccp-text: var(
+    --vscode-button-secondaryForeground,
+    var(--vscode-foreground, #202020)
+  );
+  --ccp-secondary-bg: var(--vscode-button-secondaryBackground, transparent);
+  --ccp-secondary-text: var(
+    --vscode-button-secondaryForeground,
+    var(--vscode-foreground, #202020)
+  );
+  --ccp-secondary-border: var(
+    --vscode-button-secondaryBorder,
+    var(--vscode-button-border, #e4e7ed)
+  );
+  --ccp-secondary-hover-bg: var(
+    --vscode-button-secondaryHoverBackground,
+    #f2f3f4
+  );
+  --ccp-secondary-active-bg: var(
+    --vscode-button-secondaryHoverBackground,
+    #e7e9ed
+  );
+
+  --ccp-danger-soft-bg: #fef2f2;
+  --ccp-danger-soft-text: #b91c1c;
+  --ccp-danger-soft-hover-bg: #fee2e2;
+  --ccp-danger-soft-hover-text: #991b1b;
+  --ccp-danger-soft-active-bg: #fecaca;
+  --ccp-danger-soft-active-text: #991b1b;
+  --ccp-danger-soft-border: transparent;
+
+  --ccp-disabled-bg: #e4e7ed;
+  --ccp-disabled-text: #8b8f95;
+  --ccp-disabled-border: #e4e7ed;
+}
+
+[data-host="plugin"]:not([data-remote-page])[data-theme="dark"],
+:root[data-host="plugin"]:not([data-remote-page]) body.vscode-dark {
+  --ccp-action-primary: #e0e3e5;
+  --ccp-action-primary-hover: #f0f2f3;
+  --ccp-action-primary-active: #c7cccf;
+  --ccp-action-primary-text: #191c1e;
+  --ccp-fill-hover: var(
+    --vscode-toolbar-hoverBackground,
+    var(--vscode-list-hoverBackground, #303436)
+  );
+  --ccp-fill-pressed: var(
+    --vscode-toolbar-activeBackground,
+    var(--vscode-list-hoverBackground, #393e41)
+  );
+  --ccp-focus-ring: var(--vscode-focusBorder, #a0a5a8);
+  --ccp-text: var(
+    --vscode-button-secondaryForeground,
+    var(--vscode-foreground, #cccccc)
+  );
+  --ccp-secondary-bg: var(--vscode-button-secondaryBackground, transparent);
+  --ccp-secondary-text: var(
+    --vscode-button-secondaryForeground,
+    var(--vscode-foreground, #cccccc)
+  );
+  --ccp-secondary-border: var(
+    --vscode-button-secondaryBorder,
+    var(--vscode-button-border, #34393c)
+  );
+  --ccp-secondary-hover-bg: var(
+    --vscode-button-secondaryHoverBackground,
+    #ffffff10
+  );
+  --ccp-secondary-active-bg: var(
+    --vscode-button-secondaryHoverBackground,
+    #ffffff18
+  );
+
+  --ccp-danger-soft-bg: #332021;
+  --ccp-danger-soft-text: #fd7175;
+  --ccp-danger-soft-hover-bg: #3d2426;
+  --ccp-danger-soft-hover-text: #fd9597;
+  --ccp-danger-soft-active-bg: #472b2d;
+  --ccp-danger-soft-active-text: #fd9597;
+  --ccp-danger-soft-border: transparent;
+
+  --ccp-disabled-bg: #393e41;
+  --ccp-disabled-text: #858b8f;
+  --ccp-disabled-border: #34393c;
+}
+
+/* High contrast is its own host adaptation. Do not inherit the normal
+ * light/dark fixed tokens: HC themes rely on contrastBorder / focusBorder and
+ * on the host's button surfaces to stay discernible. `--ccp-hc-fg` / `--ccp-hc-bg`
+ * only feed fallbacks when a host does not publish the matching key. */
+:root[data-host="plugin"]:not([data-remote-page])
+  body:is(.vscode-high-contrast, .vscode-high-contrast-light) {
+  --ccp-hc-border: var(--vscode-contrastBorder, var(--ccp-hc-fg));
+  --ccp-action-primary: var(--vscode-button-background, var(--ccp-hc-bg));
+  --ccp-action-primary-hover: var(
+    --vscode-button-hoverBackground,
+    var(--ccp-fill-hover)
+  );
+  --ccp-action-primary-active: var(
+    --vscode-button-hoverBackground,
+    var(--ccp-fill-pressed)
+  );
+  --ccp-action-primary-text: var(--vscode-button-foreground, var(--ccp-hc-fg));
+  --ccp-fill-hover: var(
+    --vscode-toolbar-hoverBackground,
+    var(--vscode-list-hoverBackground, transparent)
+  );
+  --ccp-fill-pressed: var(
+    --vscode-toolbar-activeBackground,
+    var(--vscode-list-hoverBackground, transparent)
+  );
+  --ccp-focus-ring: var(--vscode-focusBorder, var(--ccp-hc-fg));
+  --ccp-text: var(--vscode-foreground, var(--ccp-hc-fg));
+  --ccp-secondary-bg: var(--vscode-button-secondaryBackground, transparent);
+  --ccp-secondary-text: var(
+    --vscode-button-secondaryForeground,
+    var(--vscode-foreground, var(--ccp-hc-fg))
+  );
+  --ccp-secondary-border: var(--vscode-button-secondaryBorder, var(--ccp-hc-border));
+  --ccp-secondary-hover-bg: var(
+    --vscode-button-secondaryHoverBackground,
+    var(--ccp-fill-hover)
+  );
+  --ccp-secondary-active-bg: var(
+    --vscode-button-secondaryHoverBackground,
+    var(--ccp-fill-pressed)
+  );
+
+  --ccp-danger-soft-bg: var(
+    --vscode-inputValidation-errorBackground,
+    transparent
+  );
+  --ccp-danger-soft-text: var(--vscode-errorForeground, var(--ccp-hc-fg));
+  --ccp-danger-soft-hover-bg: var(
+    --vscode-inputValidation-errorBackground,
+    transparent
+  );
+  --ccp-danger-soft-hover-text: var(
+    --vscode-errorForeground,
+    var(--ccp-hc-fg)
+  );
+  --ccp-danger-soft-active-bg: var(
+    --vscode-inputValidation-errorBackground,
+    transparent
+  );
+  --ccp-danger-soft-active-text: var(
+    --vscode-errorForeground,
+    var(--ccp-hc-fg)
+  );
+  --ccp-danger-soft-border: var(--ccp-hc-border);
+
+  --ccp-disabled-bg: var(--vscode-editor-background, var(--ccp-hc-bg));
+  --ccp-disabled-text: var(--vscode-disabledForeground, var(--ccp-hc-fg));
+  --ccp-disabled-border: var(--ccp-hc-border);
+}
+
+:root[data-host="plugin"]:not([data-remote-page])
+  body.vscode-high-contrast {
+  --ccp-hc-fg: #ffffff;
+  --ccp-hc-bg: #000000;
+}
+
+:root[data-host="plugin"]:not([data-remote-page])
+  body.vscode-high-contrast-light {
+  --ccp-hc-fg: #000000;
+  --ccp-hc-bg: #ffffff;
+}
+
+/* HC buttons need a visible boundary even when the host's secondary surface
+ * is transparent. Focus uses focusBorder; ordinary borders use contrastBorder. */
+:root[data-host="plugin"]:not([data-remote-page])
+  body:is(.vscode-high-contrast, .vscode-high-contrast-light)
+  .settings-save-btn,
+:root[data-host="plugin"]:not([data-remote-page])
+  body:is(.vscode-high-contrast, .vscode-high-contrast-light)
+  .confirmation-btn-apply,
+:root[data-host="plugin"]:not([data-remote-page])
+  body:is(.vscode-high-contrast, .vscode-high-contrast-light)
+  .settings-plugin-act.is-primary,
+:root[data-host="plugin"]:not([data-remote-page])
+  body:is(.vscode-high-contrast, .vscode-high-contrast-light)
+  .confirm-dialog-btn-confirm,
+:root[data-host="plugin"]:not([data-remote-page])
+  body:is(.vscode-high-contrast, .vscode-high-contrast-light)
+  .confirmation-btn-auto,
+:root[data-host="plugin"]:not([data-remote-page])
+  body:is(.vscode-high-contrast, .vscode-high-contrast-light)
+  .confirmation-btn-reject,
+:root[data-host="plugin"]:not([data-remote-page])
+  body:is(.vscode-high-contrast, .vscode-high-contrast-light)
+  .confirmation-btn-secondary,
+:root[data-host="plugin"]:not([data-remote-page])
+  body:is(.vscode-high-contrast, .vscode-high-contrast-light)
+  .settings-row-btn,
+:root[data-host="plugin"]:not([data-remote-page])
+  body:is(.vscode-high-contrast, .vscode-high-contrast-light)
+  .confirm-dialog-btn-cancel {
+  border-color: var(--ccp-hc-border);
+}
+
+/* ── Text metrics / focus for every text button in this batch ─────────────── */
+[data-host="plugin"]:not([data-remote-page]) .settings-save-btn,
+[data-host="plugin"]:not([data-remote-page]) .settings-row-btn,
+[data-host="plugin"]:not([data-remote-page]) .settings-back,
+[data-host="plugin"]:not([data-remote-page]) .settings-plugin-act,
+[data-host="plugin"]:not([data-remote-page]) .confirmation-btn,
+[data-host="plugin"]:not([data-remote-page]) .confirm-dialog-btn {
+  box-sizing: border-box;
+  font-family: inherit;
+  font-size: var(--ccp-ui-size);
+  line-height: var(--ccp-ui-line);
+  font-weight: 500;
+}
+
+[data-host="plugin"]:not([data-remote-page]) .settings-save-btn:focus-visible,
+[data-host="plugin"]:not([data-remote-page]) .settings-row-btn:focus-visible,
+[data-host="plugin"]:not([data-remote-page]) .settings-back:focus-visible,
+[data-host="plugin"]:not([data-remote-page]) .settings-plugin-act:focus-visible,
+[data-host="plugin"]:not([data-remote-page]) .confirmation-btn:focus-visible,
+[data-host="plugin"]:not([data-remote-page]) .confirm-dialog-btn:focus-visible {
+  outline: 2px solid var(--ccp-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Base confirmation buttons use :focus (not :focus-visible); keep the ring for
+ * keyboard users only. `:focus:not(:focus-visible)` must stay one class more
+ * specific than this file's own `:focus-visible` ring, otherwise it clears the
+ * keyboard ring too (same specificity, later rule wins). */
+[data-host="plugin"]:not([data-remote-page]) .confirmation-btn:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Border-bearing buttons already have a focus rule in SettingsPage.css that
+ * recolours the border. The R2-A language is one neutral 2px ring; clear that
+ * recolour so focus does not read as a second, differently coloured border. */
+[data-host="plugin"]:not([data-remote-page])
+  .settings-row-btn:not(.settings-row-btn-danger):focus-visible {
+  border-color: var(--ccp-secondary-border);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .settings-row-btn-danger:focus-visible,
+[data-host="plugin"]:not([data-remote-page])
+  .settings-plugin-act.is-primary:focus-visible {
+  border-color: transparent;
+}
+
+/* ── Primary: settings save / confirmation apply / compact market action ──── */
+[data-host="plugin"]:not([data-remote-page]) .settings-save-btn,
+[data-host="plugin"]:not([data-remote-page]) .confirmation-btn-apply {
+  height: auto;
+  min-height: 32px;
+  padding: 4px 16px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--ccp-action-primary-text);
+  background: var(--ccp-action-primary);
+  cursor: pointer;
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .settings-save-btn:hover:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .confirmation-btn-apply:hover:not(:disabled) {
+  background: var(--ccp-action-primary-hover);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .settings-save-btn:active:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .confirmation-btn-apply:active:not(:disabled) {
+  background: var(--ccp-action-primary-active);
+}
+
+/* Plugin-market row action is a compact primary, not a form action. */
+[data-host="plugin"]:not([data-remote-page]) .settings-plugin-act.is-primary {
+  height: auto;
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--ccp-action-primary-text);
+  background: var(--ccp-action-primary);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .settings-plugin-act.is-primary:hover:not(:disabled) {
+  background: var(--ccp-action-primary-hover);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .settings-plugin-act.is-primary:active:not(:disabled) {
+  background: var(--ccp-action-primary-active);
+}
+
+/* ConfirmDialog is the compact confirmation surface (28), not the 32 form row. */
+[data-host="plugin"]:not([data-remote-page]) .confirm-dialog-btn-confirm {
+  height: auto;
+  min-height: 28px;
+  padding: 3px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--ccp-action-primary-text);
+  background: var(--ccp-action-primary);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .confirm-dialog-btn-confirm:hover:not(:disabled) {
+  background: var(--ccp-action-primary-hover);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .confirm-dialog-btn-confirm:active:not(:disabled) {
+  background: var(--ccp-action-primary-active);
+}
+
+/* ── Secondary: transparent + border; form row 32 / row tool 28 ───────────── */
+[data-host="plugin"]:not([data-remote-page]) .confirmation-btn-auto,
+[data-host="plugin"]:not([data-remote-page]) .confirmation-btn-reject,
+[data-host="plugin"]:not([data-remote-page]) .confirmation-btn-secondary {
+  height: auto;
+  min-height: 32px;
+  padding: 4px 16px;
+  border: 1px solid var(--ccp-secondary-border);
+  border-radius: 8px;
+  color: var(--ccp-secondary-text);
+  background: var(--ccp-secondary-bg);
+}
+
+[data-host="plugin"]:not([data-remote-page]) .settings-row-btn {
+  height: auto;
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 1px solid var(--ccp-secondary-border);
+  border-radius: 8px;
+  color: var(--ccp-secondary-text);
+  background: var(--ccp-secondary-bg);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .settings-modal-actions
+  .settings-row-btn {
+  min-height: 32px;
+  padding: 4px 16px;
+}
+
+[data-host="plugin"]:not([data-remote-page]) .confirm-dialog-btn-cancel {
+  height: auto;
+  min-height: 28px;
+  padding: 3px 12px;
+  border: 1px solid var(--ccp-secondary-border);
+  border-radius: 8px;
+  color: var(--ccp-secondary-text);
+  background: var(--ccp-secondary-bg);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .confirmation-btn-auto:hover:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .confirmation-btn-reject:hover:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .confirmation-btn-secondary:hover:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .settings-row-btn:hover:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .confirm-dialog-btn-cancel:hover:not(:disabled) {
+  background: var(--ccp-secondary-hover-bg);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .confirmation-btn-auto:active:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .confirmation-btn-reject:active:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .confirmation-btn-secondary:active:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .settings-row-btn:active:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .confirm-dialog-btn-cancel:active:not(:disabled) {
+  background: var(--ccp-secondary-active-bg);
+}
+
+/* ── Text buttons: settings back / confirmation feedback ─────────────────── */
+[data-host="plugin"]:not([data-remote-page]) .settings-back,
+[data-host="plugin"]:not([data-remote-page]) .confirmation-btn-feedback {
+  height: auto;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--ccp-text);
+  background: transparent;
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .settings-back:hover:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .confirmation-btn-feedback:hover:not(:disabled) {
+  background: var(--ccp-fill-hover);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .settings-back:active:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .confirmation-btn-feedback:active:not(:disabled) {
+  background: var(--ccp-fill-pressed);
+}
+
+/* ── Danger: soft danger candidate; HC supplies a contrast border ────────── */
+[data-host="plugin"]:not([data-remote-page]) .settings-row-btn-danger,
+[data-host="plugin"]:not([data-remote-page])
+  .confirm-dialog-btn-confirm.is-destructive {
+  border-color: var(--ccp-danger-soft-border);
+  color: var(--ccp-danger-soft-text);
+  background: var(--ccp-danger-soft-bg);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .settings-row-btn-danger:hover:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .confirm-dialog-btn-confirm.is-destructive:hover:not(:disabled) {
+  color: var(--ccp-danger-soft-hover-text);
+  background: var(--ccp-danger-soft-hover-bg);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .settings-row-btn-danger:active:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .confirm-dialog-btn-confirm.is-destructive:active:not(:disabled) {
+  color: var(--ccp-danger-soft-active-text);
+  background: var(--ccp-danger-soft-active-bg);
+}
+
+/* ── Disabled: dedicated surface, no whole-control opacity ───────────────── */
+[data-host="plugin"]:not([data-remote-page]) .settings-save-btn:disabled,
+[data-host="plugin"]:not([data-remote-page]) .settings-row-btn:disabled,
+[data-host="plugin"]:not([data-remote-page]) .settings-back:disabled,
+[data-host="plugin"]:not([data-remote-page]) .settings-plugin-act:disabled,
+[data-host="plugin"]:not([data-remote-page]) .confirmation-btn:disabled,
+[data-host="plugin"]:not([data-remote-page]) .confirm-dialog-btn:disabled {
+  opacity: 1;
+  color: var(--ccp-disabled-text);
+  background: var(--ccp-disabled-bg);
+  border-color: var(--ccp-disabled-border);
+  cursor: not-allowed;
+}
+
+/* ── Icon buttons: 28 layout slot / 22 visual / 16 glyph ─────────────────── */
+[data-host="plugin"]:not([data-remote-page]) .toolbar-icon-button {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+
+[data-host="plugin"]:not([data-remote-page]) .toolbar-icon-button::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 8px;
+  background: transparent;
+  transition: background-color 0.08s ease;
+  pointer-events: none;
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .toolbar-icon-button:hover:not(:disabled) {
+  background: transparent;
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .toolbar-icon-button:hover:not(:disabled)::before {
+  background: var(--ccp-fill-hover);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .toolbar-icon-button:active:not(:disabled)::before {
+  background: var(--ccp-fill-pressed);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .toolbar-icon-button
+  .toolbar-icon {
+  position: relative;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .toolbar-icon-button:focus-visible {
+  outline: 2px solid var(--ccp-focus-ring);
+  outline-offset: 2px;
+}
+
+[data-host="plugin"]:not([data-remote-page]) .toolbar-icon-button:disabled {
+  color: var(--ccp-disabled-text);
+  cursor: not-allowed;
+}
+
+/* ── Close controls: 28 layout slot / 20 visual / 16 glyph ───────────────── */
+[data-host="plugin"]:not([data-remote-page]) .settings-modal-close,
+[data-host="plugin"]:not([data-remote-page]) .confirmation-close-btn,
+[data-host="plugin"]:not([data-remote-page]) .toast-close {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+}
+
+[data-host="plugin"]:not([data-remote-page]) .settings-modal-close::before,
+[data-host="plugin"]:not([data-remote-page]) .confirmation-close-btn::before,
+[data-host="plugin"]:not([data-remote-page]) .toast-close::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 8px;
+  background: transparent;
+  transition: background-color 0.08s ease;
+  pointer-events: none;
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .settings-modal-close:hover:not(:disabled),
+[data-host="plugin"]:not([data-remote-page])
+  .confirmation-close-btn:hover:not(:disabled),
+[data-host="plugin"]:not([data-remote-page]) .toast-close:hover:not(:disabled) {
+  background: transparent;
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .settings-modal-close:hover:not(:disabled)::before,
+[data-host="plugin"]:not([data-remote-page])
+  .confirmation-close-btn:hover:not(:disabled)::before,
+[data-host="plugin"]:not([data-remote-page])
+  .toast-close:hover:not(:disabled)::before {
+  background: var(--ccp-fill-hover);
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .settings-modal-close:active:not(:disabled)::before,
+[data-host="plugin"]:not([data-remote-page])
+  .confirmation-close-btn:active:not(:disabled)::before,
+[data-host="plugin"]:not([data-remote-page])
+  .toast-close:active:not(:disabled)::before {
+  background: var(--ccp-fill-pressed);
+}
+
+[data-host="plugin"]:not([data-remote-page]) .settings-modal-close svg,
+[data-host="plugin"]:not([data-remote-page]) .confirmation-close-btn svg,
+[data-host="plugin"]:not([data-remote-page]) .toast-close svg,
+[data-host="plugin"]:not([data-remote-page]) .settings-modal-close .codicon,
+[data-host="plugin"]:not([data-remote-page]) .confirmation-close-btn .codicon,
+[data-host="plugin"]:not([data-remote-page]) .toast-close .codicon {
+  position: relative;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+[data-host="plugin"]:not([data-remote-page])
+  .settings-modal-close:focus-visible,
+[data-host="plugin"]:not([data-remote-page])
+  .confirmation-close-btn:focus-visible,
+[data-host="plugin"]:not([data-remote-page]) .toast-close:focus-visible {
+  outline: 2px solid var(--ccp-focus-ring);
+  outline-offset: 2px;
+}

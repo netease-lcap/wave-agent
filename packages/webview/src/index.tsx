@@ -6,6 +6,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import "./styles/globals.css";
 import "./styles/host-desktop.css";
 import "./styles/remote-page.css";
+import "./styles/plugin-controls.css";
 import "@vscode/codicons/dist/codicon.css";
 
 // window.acquireVsCodeApi / window.waveHostType are declared in types/index.ts.
