@@ -150,12 +150,12 @@ function startPage(search: string, handshake = true) {
       return frame;
     },
     /** Refuse the oldest unanswered request for `method`, as a machine would. */
-    async refuse(method: string, message: string) {
+    async refuse(method: string, message: string, code = -32603) {
       const frame = nextFrame(method);
       socket.receive({
         id: frame.id,
         method: "error",
-        params: { code: -32603, message },
+        params: { code, message },
       });
       await flush();
       return frame;
@@ -204,6 +204,14 @@ function statusClose(): HTMLButtonElement | null {
   return document.querySelector<HTMLButtonElement>(
     '#remote-status button[aria-label="关闭"]',
   );
+}
+
+/** One of the status line's actions, by its label. */
+function statusAction(label: string): HTMLButtonElement | null {
+  const buttons = Array.from(
+    document.querySelectorAll<HTMLButtonElement>("#remote-status button"),
+  );
+  return buttons.find((button) => button.textContent === label) ?? null;
 }
 
 /**
@@ -281,6 +289,37 @@ async function openPage(
   return { page, pull };
 }
 
+/**
+ * The page with a session picked and its messages in hand, but no snapshot: the
+ * chain died on its last read, so `setInitialState` never went out and the app
+ * has nothing on screen.
+ *
+ * This — not a page with an empty registry — is what tells the two alignment
+ * behaviours apart: a page with no session at all falls back to a full pull even
+ * down the delta path, so it would look right either way.
+ */
+async function openHalfway() {
+  const page = startPage("?host=h-1");
+  await flush();
+  page.api.postMessage({ command: "webviewReady" });
+  await flush();
+  answerOn(page.socket, "listDaemonSessions", { sessions: SESSIONS });
+  await flush();
+  answerOn(page.socket, "getSessionInfo", {
+    sessionId: "s-new",
+    permissionMode: "default",
+  });
+  await flush();
+  answerOn(page.socket, "getMessages", { messages: [SEED] });
+  await flush();
+  await page.refuse("listPendingPermissions", "电脑侧没有响应");
+
+  expect(
+    page.posted.some((message) => message.command === "setInitialState"),
+  ).toBe(false);
+  return page;
+}
+
 beforeEach(() => {
   FakeSocket.opened = [];
   messageListeners = [];
@@ -340,6 +379,233 @@ describe("remote page shim", () => {
     expect(document.getElementById("remote-status")?.textContent).toContain(
       "读不到电脑侧的会话列表",
     );
+  });
+
+  /**
+   * The first read failing is the one failure the page cannot wait out: with no
+   * list there is no session, so the page is blank until something asks again.
+   * `SNAPSHOT_RETRY_MS` is what asks, and these cases pin both halves — the
+   * steps it spends on its own, and the 「重试」 it leaves behind (spec
+   *「首屏读失败能自己恢复」场景 1–3 / 6).
+   */
+  test("a failed first read retries by itself, and the retry can land", async () => {
+    const page = startPage("?host=h-1");
+    await flush();
+    page.api.postMessage({ command: "webviewReady" });
+    await flush();
+
+    // A machine that is up but briefly not answering. Nothing worth asking the
+    // user about: the page spends the first step of the schedule instead.
+    await page.refuse("listDaemonSessions", "电脑侧没有响应");
+    await page.answer("listPendingPermissions", { requests: [] });
+    expect(page.requests("listDaemonSessions")).toBe(1);
+
+    await vi.advanceTimersByTimeAsync(2000);
+    await flush();
+    expect(page.requests("listDaemonSessions")).toBe(2);
+
+    answerOn(page.socket, "listDaemonSessions", { sessions: SESSIONS });
+    await flush();
+    answerOn(page.socket, "getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "default",
+    });
+    await flush();
+    answerOn(page.socket, "getMessages", { messages: [SEED] });
+    await flush();
+    answerOn(page.socket, "listPendingPermissions", { requests: [] });
+    await flush();
+    answerOn(page.socket, "getWorkflowRuns", { runs: [] });
+    await flush();
+
+    // The retry is not a partial one: the whole first screen comes up, session
+    // included, and the line goes away with the reason it gave.
+    const snapshots = page.posted.filter(
+      (message) => message.command === "setInitialState",
+    );
+    expect(snapshots[snapshots.length - 1]).toMatchObject({
+      session: { id: "s-new" },
+    });
+    expect(document.getElementById("remote-status")).toBeFalsy();
+
+    // And the page now counts as having a first screen: the next realignment is
+    // a delta on top of it (`since`), not another full pull.
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flush();
+    visibility.mockRestore();
+
+    const deltas = page.socket.framesFor("getMessages");
+    expect(deltas[deltas.length - 1]?.params).toMatchObject({ since: SEED.id });
+  });
+
+  test("three automatic steps, then the line keeps 「重试」 for the user", async () => {
+    const page = startPage("?host=h-1");
+    await flush();
+    page.api.postMessage({ command: "webviewReady" });
+    await flush();
+
+    await page.refuse("listDaemonSessions", "电脑侧没有响应");
+    await page.answer("listPendingPermissions", { requests: [] });
+
+    // 2s → 4s → 8s. Bounded on purpose: a machine that is up but never answers
+    // would otherwise have the phone repeat one failure for as long as the tab
+    // stays open.
+    for (const step of [2000, 4000, 8000]) {
+      const before = page.requests("listDaemonSessions");
+      await vi.advanceTimersByTimeAsync(step);
+      await flush();
+      expect(page.requests("listDaemonSessions")).toBe(before + 1);
+      await page.refuse("listDaemonSessions", "电脑侧没有响应");
+      await page.answer("listPendingPermissions", { requests: [] });
+    }
+
+    // Four asks in total: the first read and the three steps, nothing more.
+    expect(page.requests("listDaemonSessions")).toBe(4);
+    await vi.advanceTimersByTimeAsync(16000);
+    await flush();
+    expect(page.requests("listDaemonSessions")).toBe(4);
+
+    // The way out is on screen, and it is the user's to take.
+    expect(statusAction("重试")).not.toBeNull();
+    expect(
+      document.getElementById("remote-status-text")?.textContent,
+    ).toContain("读不到电脑侧的会话列表");
+
+    statusAction("重试")?.click();
+    await flush();
+    expect(page.requests("listDaemonSessions")).toBe(5);
+  });
+
+  test("a machine that refuses the method is not retried", async () => {
+    const page = startPage("?host=h-1");
+    await flush();
+    page.api.postMessage({ command: "webviewReady" });
+    await flush();
+
+    // `-32601` is the machine's own allowlist answering "no such method": the
+    // same answer every time, so a retry only buries the reason.
+    await page.refuse("listDaemonSessions", "Method not allowed", -32601);
+    await page.answer("listPendingPermissions", { requests: [] });
+
+    await vi.advanceTimersByTimeAsync(20000);
+    await flush();
+
+    expect(page.requests("listDaemonSessions")).toBe(1);
+    expect(statusAction("重试")).toBeNull();
+    expect(
+      document.getElementById("remote-status-text")?.textContent,
+    ).toContain("读不到电脑侧的会话列表");
+  });
+
+  test("a manual 「重试」 replaces the step that was waiting", async () => {
+    const page = startPage("?host=h-1");
+    await flush();
+    page.api.postMessage({ command: "webviewReady" });
+    await flush();
+
+    await page.refuse("listDaemonSessions", "电脑侧没有响应");
+    await page.answer("listPendingPermissions", { requests: [] });
+
+    statusAction("重试")?.click();
+    await flush();
+    expect(page.requests("listDaemonSessions")).toBe(2);
+
+    // The automatic step that was already waiting does not fire on top of it:
+    // one question at a time, and the press *was* the second step's try.
+    await vi.advanceTimersByTimeAsync(2000);
+    await flush();
+    expect(page.requests("listDaemonSessions")).toBe(2);
+  });
+
+  test("coming back to the foreground rebuilds a first screen that never landed", async () => {
+    const page = await openHalfway();
+
+    // jsdom reports its own `prerender`; a phone coming back is `visible`.
+    const visibility = vi
+      .spyOn(document, "visibilityState", "get")
+      .mockReturnValue("visible");
+    document.dispatchEvent(new Event("visibilitychange"));
+    await flush();
+    visibility.mockRestore();
+
+    // Not a delta: a delta extends a snapshot, and the app never got one, so the
+    // whole first screen is asked for again — the list included (spec 场景 4).
+    expect(page.requests("listDaemonSessions")).toBe(2);
+
+    answerOn(page.socket, "listDaemonSessions", { sessions: SESSIONS });
+    await flush();
+    answerOn(page.socket, "getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "default",
+    });
+    await flush();
+    answerOn(page.socket, "getMessages", { messages: [SEED] });
+    await flush();
+    answerOn(page.socket, "listPendingPermissions", { requests: [] });
+    await flush();
+    answerOn(page.socket, "getWorkflowRuns", { runs: [] });
+    await flush();
+
+    const snapshots = page.posted.filter(
+      (message) => message.command === "setInitialState",
+    );
+    expect(snapshots[snapshots.length - 1]).toMatchObject({
+      session: { id: "s-new" },
+    });
+  });
+
+  test("a re-mounted app rebuilds it too", async () => {
+    const page = await openHalfway();
+
+    // The app re-mounted, so its reducer is empty and so is this page's picture
+    // of it: the same rebuild as the other two alignment paths.
+    page.api.postMessage({ command: "webviewReady" });
+    await flush();
+    answerOn(page.socket, "listDaemonSessions", { sessions: SESSIONS });
+    await flush();
+    answerOn(page.socket, "getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "default",
+    });
+    await flush();
+    answerOn(page.socket, "getMessages", { messages: [SEED] });
+    await flush();
+    answerOn(page.socket, "listPendingPermissions", { requests: [] });
+    await flush();
+    answerOn(page.socket, "getWorkflowRuns", { runs: [] });
+    await flush();
+
+    // One, because this page never had a snapshot: a delta would have painted
+    // nothing at all.
+    expect(
+      page.posted.filter((message) => message.command === "setInitialState"),
+    ).toHaveLength(1);
+  });
+
+  test("a reconnect rebuilds it rather than sending a delta into nothing", async () => {
+    const page = await openHalfway();
+    const next = await reconnect(page.socket);
+
+    answerOn(next, "listDaemonSessions", { sessions: SESSIONS });
+    await flush();
+    answerOn(next, "getSessionInfo", {
+      sessionId: "s-new",
+      permissionMode: "default",
+    });
+    await flush();
+    answerOn(next, "getMessages", { messages: [SEED] });
+    await flush();
+    answerOn(next, "listPendingPermissions", { requests: [] });
+    await flush();
+    answerOn(next, "getWorkflowRuns", { runs: [] });
+    await flush();
+
+    expect(
+      page.posted.filter((message) => message.command === "setInitialState"),
+    ).toHaveLength(1);
   });
 
   test("says what is missing when the page has no enterprise login", async () => {

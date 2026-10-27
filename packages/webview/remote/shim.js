@@ -108,6 +108,17 @@
 
   var RETRY_MS = 2000;
   /**
+   * 首屏那一次读失败之后的重试节拍（毫秒），用完就停在状态条上由用户手动重试。
+   *
+   * Bounded on purpose, and much shorter than the connection's backoff: this is a
+   * **read**, not a link. A machine that can answer gets there within seconds; one
+   * that keeps not answering (the relay dropped the frame, the host is wedged) is
+   * not helped by a fourth attempt, and one that **refuses** the method outright
+   * (`-32601` — an older allowlist) never will be. So: three tries, then the
+   * 「重试」 action on the status line takes over. See `pickSession`.
+   */
+  var SNAPSHOT_RETRY_MS = [2000, 4000, 8000];
+  /**
    * Backoff ceiling for the transient-close retry loop. The loop itself is
    * unbounded — the page outlives the outage it is waiting out (a machine that
    * switched remote control off and on, a relay restart), and a budget spent
@@ -203,6 +214,14 @@
    * exists on the channel but not on that host).
    */
   var HOST_UNSUPPORTED = -32011;
+  /**
+   * JSON-RPC's own "no such method", which the remote allowlist answers when the
+   * machine predates the method. Distinct from `HOST_UNSUPPORTED` in what it
+   * means for the user (upgrade the machine vs. this session cannot) and in what
+   * it means for a retry: **neither** will ever change on its own, so neither is
+   * retried (see `pickSession`).
+   */
+  var METHOD_NOT_FOUND = -32601;
 
   /**
    * How a failed request is shown. An unsupported method is worded as what it
@@ -229,6 +248,18 @@
    * to `webviewReady`, whose ordering guarantee the snapshot relies on.
    */
   var needsSnapshot = false;
+  /**
+   * 首屏是否成功上屏过。`false` 期间页面没有「当前视图」可言——会话列表没读到，
+   * 就既不知道该显示哪条，也没有消息与待审批可对——所以这时每一条对齐路径
+   * （回前台 / 页面重挂 / 重连）都必须重跑整份快照，而不是增量补差
+   * （spec「首屏读失败能自己恢复」场景 4 / 5）。
+   *
+   * 只在**列表读成功**时置位，不能在整条链跑完时置位：链失败后照样会走到最后
+   * 一次 `setInitialState`（空会话），那是「画了一张空的首屏」，不是「读到了」。
+   */
+  var snapshotReady = false;
+  var snapshotRetryStep = 0;
+  var snapshotRetryTimer = null;
   var openedOnce = false;
   /** The relay completed the handshake — nothing may be sent before that. */
   var authed = false;
@@ -893,19 +924,26 @@
         // A reconnect only needs the delta; the first connection already has
         // its initial pull queued (or about to be asked for).
         if (connectedOnce) {
-          resync();
-          // …but a delta carries no state, and the turn the user came back to
-          // may be one that started while the connection was down — its
-          // `loadingChange` was never delivered. See `refreshStreaming`.
-          refreshStreaming();
-          // Same reason, and the cost of missing it is higher: an approval that
-          // asked while the link was down was dropped, and no amount of message
-          // delta brings it back. See `refreshPending`.
-          refreshPending();
-          // …and the session-state family (mode, todo list, compaction, command
-          // running, queue) was equally dropped mid-change, leaving the page on
-          // values the session no longer has. See `refreshSessionState`.
-          refreshSessionState();
+          if (snapshotPending()) {
+            // Deltas extend a snapshot the app does not have. Rebuild it, which
+            // is also what retries the read that failed (spec 场景 4).
+            needsSnapshot = false;
+            pullSnapshot();
+          } else {
+            resync();
+            // …but a delta carries no state, and the turn the user came back to
+            // may be one that started while the connection was down — its
+            // `loadingChange` was never delivered. See `refreshStreaming`.
+            refreshStreaming();
+            // Same reason, and the cost of missing it is higher: an approval that
+            // asked while the link was down was dropped, and no amount of message
+            // delta brings it back. See `refreshPending`.
+            refreshPending();
+            // …and the session-state family (mode, todo list, compaction, command
+            // running, queue) was equally dropped mid-change, leaving the page on
+            // values the session no longer has. See `refreshSessionState`.
+            refreshSessionState();
+          }
         }
         connectedOnce = true;
         if (needsSnapshot) {
@@ -1656,8 +1694,11 @@
     // defaults.
     var state = null;
     var usage;
+    /** 这一拍有没有读到会话列表——只有读到才算「首屏就绪」，见 `snapshotReady`。 */
+    var listOk = false;
     return pickSession()
-      .then(function () {
+      .then(function (ok) {
+        listOk = ok;
         if (token !== pullToken || !sessionId) return null;
         return request("getSessionInfo", {});
       })
@@ -1755,6 +1796,19 @@
           post({ command: "contextUsage", percent: usage });
         // After the snapshot, so `updateWorkflowRuns` can never land first.
         refreshWorkflowRuns();
+        // Only the list read counts as "the first screen is up": the chain below
+        // it runs on an empty registry too (`pickSession` answers `false`, the
+        // reads are skipped, and `setInitialState` still paints a blank page).
+        // Keying readiness on the whole chain would therefore call a page that
+        // never showed a session ready.
+        if (listOk) {
+          snapshotReady = true;
+          snapshotRetryStep = 0;
+          if (snapshotRetryTimer) {
+            clearTimeout(snapshotRetryTimer);
+            snapshotRetryTimer = null;
+          }
+        }
       })
       .catch(function (err) {
         if (blocked || token !== pullToken) return;
@@ -1820,15 +1874,70 @@
         // the snapshot (reconnect, remount, resume) use `refreshSessionState`.
         if (!sessionId) showStatus("电脑侧还没有正在跑的会话。");
         else clearStatus();
+        return true;
       })
       .catch(function (err) {
         // A refusal here is not cosmetic: with no list there is no session, so
-        // the page would otherwise sit there blank. The likeliest cause is a
-        // machine older than this page (the method is behind the machine's own
-        // remote allowlist), which the relay's version floor is meant to catch
-        // before this can happen.
-        showStatus("读不到电脑侧的会话列表：" + err.message);
+        // the page would otherwise sit there blank.
+        //
+        // Two ways out, and they are different kinds of failure. A machine that
+        // **refuses** the method (`-32601` — its remote allowlist predates it) or
+        // its session says 「不支持」 will answer the same thing forever, so
+        // retrying only buries the reason. Everything else (a dropped frame, a
+        // host that is briefly not answering, the 20s read budget running out)
+        // is usually momentary, so it gets `SNAPSHOT_RETRY_MS` — a bounded set
+        // of steps, after which the line keeps a 「重试」 action the user can
+        // press (spec「首屏读失败能自己恢复」场景 1–3 / 6).
+        var permanent =
+          err &&
+          (err.code === METHOD_NOT_FOUND || err.code === HOST_UNSUPPORTED);
+        showStatus(
+          "读不到电脑侧的会话列表：" + (err && err.message ? err.message : err),
+          permanent ? undefined : [snapshotRetryAction()],
+        );
+        if (!permanent) scheduleSnapshotRetry();
+        return false;
       });
+  }
+
+  /**
+   * One pending retry at a time: a manual 「重试」 replaces whatever step was
+   * waiting, so the page never asks the same question twice at once (spec 场景 6).
+   */
+  function scheduleSnapshotRetry() {
+    if (snapshotRetryStep >= SNAPSHOT_RETRY_MS.length) return;
+    var delay = SNAPSHOT_RETRY_MS[snapshotRetryStep++];
+    if (snapshotRetryTimer) clearTimeout(snapshotRetryTimer);
+    snapshotRetryTimer = setTimeout(function () {
+      snapshotRetryTimer = null;
+      pullSnapshot();
+    }, delay);
+  }
+
+  /** The status line's 「重试」: forget the automatic steps and go again now. */
+  function snapshotRetryAction() {
+    return {
+      label: "重试",
+      onClick: function () {
+        snapshotRetryStep = 0;
+        if (snapshotRetryTimer) {
+          clearTimeout(snapshotRetryTimer);
+          snapshotRetryTimer = null;
+        }
+        pullSnapshot();
+      },
+    };
+  }
+
+  /**
+   * Has the first screen ever been painted? The alignment paths (reconnect,
+   * remount, resume) send deltas, and a delta only means something on top of a
+   * snapshot. A page whose first read died before `setInitialState` — the list
+   * refused, or a later read in the chain threw — has no snapshot to extend, so
+   * those paths rebuild the whole thing instead (spec 场景 4).
+   */
+  function snapshotPending() {
+    return !snapshotReady;
   }
 
   /** Re-read the live session registry into `sessions`. */
@@ -2313,17 +2422,23 @@
         // The app has mounted and its message listener is live; only now is it
         // safe to answer, otherwise the snapshot lands before the reducer.
         if (openedOnce) {
-          resync();
-          // A re-mounted app reset its own reducer to idle, so the flag is
-          // re-stated even if this page believes it already said so.
-          refreshStreaming(true);
-          // …and its copy of the pending approvals went with it. This side keeps
-          // the same list, which is now a list of cards that are not on screen.
-          refreshPending(true);
-          // …as did the session-state family: the remounted reducer is back at
-          // its defaults while the session may be mid-compaction with a todo
-          // list and a queue. See `refreshSessionState`.
-          refreshSessionState();
+          if (snapshotPending()) {
+            // Same reasoning as the reconnect path: a re-mounted reducer and no
+            // snapshot behind it means the deltas have nothing to extend.
+            pullSnapshot();
+          } else {
+            resync();
+            // A re-mounted app reset its own reducer to idle, so the flag is
+            // re-stated even if this page believes it already said so.
+            refreshStreaming(true);
+            // …and its copy of the pending approvals went with it. This side keeps
+            // the same list, which is now a list of cards that are not on screen.
+            refreshPending(true);
+            // …as did the session-state family: the remounted reducer is back at
+            // its defaults while the session may be mid-compaction with a todo
+            // list and a queue. See `refreshSessionState`.
+            refreshSessionState();
+          }
         } else {
           openedOnce = true;
           pullSnapshot();
@@ -3250,6 +3365,12 @@
     if (document.visibilityState !== "visible") return;
     if (!connectedOnce) return;
     if (authed && socket && socket.readyState === 1) {
+      if (snapshotPending()) {
+        // The link is fine; the first screen is not. Same call as the other two
+        // alignment paths: rebuild rather than extend (spec 场景 4).
+        pullSnapshot();
+        return;
+      }
       resync();
       refreshStreaming(true);
       refreshPending(true);
