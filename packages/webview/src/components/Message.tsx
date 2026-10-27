@@ -348,12 +348,14 @@ const applyTableColumnAlign = (tableHtml: string): string => {
 //   · non-raw paragraph           -> reading role, in place;
 //   · hint/建议/提示 line         -> reading role, in place (label stripped
 //                                    exactly as before, but not reordered).
-// This uses the host's structural raw-prefix list only. It does not add
-// language-specific regexes, and it does not turn "the last Chinese paragraph"
-// into a rule. If the host later exposes structured summary/detail fields,
-// replace this fallback at the boundary instead of growing the regex list.
+// R1 closeout (2026-10-27): keep the original stack text (indentation, blank
+// lines and caret alignment) instead of re-paragraphing it. Plain "Error:" is
+// a raw prefix; a blank line does not end a stack when the next line is still
+// a frame / source / locator line. This is still a host-text compatibility
+// layer, not a language parser; structured summary/detail at the host boundary
+// remains the long-term fix.
 const RAW_ERROR_PREFIX =
-  /^\s*(?:APIError|(?:[A-Za-z]+Error)|E[A-Z0-9]+:|Traceback\b|at\s|Caused by:|During handling|Unhandled|FetchError|HTTP\s*\d{3}\b)/;
+  /^\s*(?:APIError|(?:[A-Za-z_][\w.]*)?(?:Error|Exception):|E[A-Z0-9]+:|Traceback\b|at\s|Caused by:|During handling|Unhandled|FetchError|HTTP\s*\d{3}\b)/;
 const ERROR_HINT_LINE =
   /^\s*(?:hint|建议|提示|说明|suggestion)\s*[:：]\s*(.+)$/i;
 
@@ -365,10 +367,27 @@ type ErrorPart = {
 const hasRawErrorLine = (text: string) =>
   text.split("\n").some((line) => RAW_ERROR_PREFIX.test(line));
 
+/** Remove blank edges only; keep leading spaces on the first real line. */
+const stripBlankEdges = (value: string): string => {
+  const lines = value.split("\n");
+  let start = 0;
+  let end = lines.length;
+  while (start < end && lines[start].trim() === "") start++;
+  while (end > start && lines[end - 1].trim() === "") end--;
+  return lines.slice(start, end).join("\n");
+};
+
+/** A blank line inside a Python traceback is still stack text when the next
+ * line is indented, a frame, or a caret/locator line. */
+const isStackContinuationLine = (line: string): boolean =>
+  /^[ \t]+\S/.test(line) ||
+  /^[ \t]*[\^~]+\s*$/.test(line) ||
+  /^[ \t]*(?:File\s+["']|at\s|Caused by:|During handling|Traceback\b)/.test(
+    line,
+  );
+
 const splitErrorContent = (content: string): ErrorPart[] => {
-  const text = String(content || "")
-    .replace(/\r\n?/g, "\n")
-    .trim();
+  const text = stripBlankEdges(String(content || "").replace(/\r\n?/g, "\n"));
   if (!text) return [];
 
   // Pure reading text: no stack/log line at all. This is language-agnostic
@@ -379,49 +398,65 @@ const splitErrorContent = (content: string): ErrorPart[] => {
   }
 
   const parts: ErrorPart[] = [];
-  const push = (role: ErrorPart["role"], value: string) => {
-    const trimmed = value.trim();
-    if (trimmed) parts.push({ role, text: trimmed });
+  let currentRole: ErrorPart["role"] | null = null;
+  let currentLines: string[] = [];
+  let pendingBlank = 0;
+
+  const flush = () => {
+    if (!currentRole || currentLines.length === 0) {
+      currentLines = [];
+      return;
+    }
+    const joined = currentLines.join("\n");
+    const cleaned =
+      currentRole === "stack"
+        ? stripBlankEdges(joined)
+        : stripBlankEdges(joined).trim();
+    if (cleaned) parts.push({ role: currentRole, text: cleaned });
+    currentLines = [];
   };
 
-  // Work paragraph by paragraph so blank lines remain boundaries. Inside a
-  // paragraph, a hint line can split a stack block without changing order.
-  const paragraphs = text
-    .split(/\n\s*\n/)
-    .map((part) => part.trim())
-    .filter(Boolean);
+  const start = (role: ErrorPart["role"]) => {
+    flush();
+    currentRole = role;
+  };
 
-  for (const paragraph of paragraphs) {
-    let chunk: string[] = [];
-
-    const flushChunk = () => {
-      if (chunk.length === 0) return;
-      const firstRaw = chunk.findIndex((line) => RAW_ERROR_PREFIX.test(line));
-      if (firstRaw < 0) {
-        push("explain", chunk.join("\n"));
-      } else {
-        // A readable lead-in such as "Request failed after 3 retries."
-        // stays explain; everything from the first raw line is stack.
-        if (firstRaw > 0) {
-          push("explain", chunk.slice(0, firstRaw).join("\n"));
-        }
-        push("stack", chunk.slice(firstRaw).join("\n"));
-      }
-      chunk = [];
-    };
-
-    for (const line of paragraph.split("\n")) {
-      const hint = line.match(ERROR_HINT_LINE);
-      if (!hint) {
-        chunk.push(line);
-        continue;
-      }
-      flushChunk();
-      push("explain", hint[1] || "");
+  for (const line of text.split("\n")) {
+    if (line.trim() === "") {
+      pendingBlank += 1;
+      continue;
     }
-    flushChunk();
+
+    const hint = line.match(ERROR_HINT_LINE);
+    if (hint) {
+      // A hint line is reading text; it ends a stack and keeps its source order.
+      flush();
+      pendingBlank = 0;
+      const hintText = (hint[1] || "").trim();
+      if (hintText) parts.push({ role: "explain", text: hintText });
+      currentRole = null;
+      continue;
+    }
+
+    const raw = RAW_ERROR_PREFIX.test(line);
+    const continuation: boolean =
+      currentRole === "stack" && isStackContinuationLine(line);
+    const role: ErrorPart["role"] = raw || continuation ? "stack" : "explain";
+
+    if (role !== currentRole) {
+      // Blank lines separate roles; they are not carried into the next role.
+      pendingBlank = 0;
+      start(role);
+    }
+
+    if (pendingBlank > 0 && currentLines.length > 0) {
+      for (let i = 0; i < pendingBlank; i++) currentLines.push("");
+    }
+    pendingBlank = 0;
+    currentLines.push(line);
   }
 
+  flush();
   return parts;
 };
 
