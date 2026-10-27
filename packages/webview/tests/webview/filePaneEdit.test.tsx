@@ -122,8 +122,9 @@ describe("FilePane 面板内编辑（spec desktop-file-panel.md）", () => {
     expect(screen.queryByTestId("file-pane-edit")).toBeNull();
     expect(screen.getByTestId("file-pane-edit-cancel")).toBeInTheDocument();
     expect(screen.getByTestId("file-pane-edit-save")).toBeInTheDocument();
-    // 只读正文整块被编辑器替换：行评论 / 块评论入口都不在了。
-    expect(screen.queryByTestId("line-comment-add-1")).toBeNull();
+    // 只读正文整块被编辑器替换：行评论 / 块评论入口都不在了（场景 12）。
+    expect(document.querySelector("[data-comment-unit]")).toBeNull();
+    expect(screen.queryByTestId("file-pane-comment")).toBeNull();
   });
 
   it("保存把编辑器此刻的全文交上去（不是慢一步的状态镜像）", () => {

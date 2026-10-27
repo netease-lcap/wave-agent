@@ -8,6 +8,12 @@ import {
 } from "@testing-library/react";
 import React from "react";
 import { SingleFilePane } from "./filePaneHarness";
+import {
+  clearSelection,
+  openCommentAt,
+  openCommentMenuAt,
+  selectLines,
+} from "./commentEntryHarness";
 import type { FileItem, FileViewState, VsCodeApi } from "../../src/types";
 
 function makeFileView(overrides: Partial<FileViewState> = {}): FileViewState {
@@ -353,22 +359,36 @@ describe("FilePane", () => {
 
   describe("line comments", () => {
     it("renders no comment affordance without a comment sink", () => {
-      renderPane({ fileView: makeFileView({ content: "a\nb\n" }) });
-      expect(
-        screen.queryByTestId("line-comment-add-1"),
-      ).not.toBeInTheDocument();
+      const { container } = renderPane({
+        fileView: makeFileView({ content: "a\nb\n" }),
+      });
+      // No commentable units and no toolbar fallback (spec 场景 9).
+      expect(container.querySelector("[data-comment-unit]")).toBeNull();
+      expect(screen.queryByTestId("file-pane-comment")).not.toBeInTheDocument();
     });
 
-    it("puts a comment button on every rendered line", () => {
+    it("gives every rendered line a comment entry, with no button in the gutter", () => {
       renderPane({
         fileView: makeFileView({ content: "a\nb\n" }),
         onAddComment: vi.fn(),
       });
-      expect(screen.getByTestId("line-comment-add-1")).toBeInTheDocument();
-      expect(screen.getByTestId("line-comment-add-2")).toBeInTheDocument();
-      expect(
-        screen.queryByTestId("line-comment-add-3"),
-      ).not.toBeInTheDocument();
+      expect(screen.getByTestId("file-pane-line-1")).toHaveAttribute(
+        "data-comment-unit",
+        "1",
+      );
+      expect(screen.getByTestId("file-pane-line-2")).toHaveAttribute(
+        "data-comment-unit",
+        "2",
+      );
+      expect(screen.queryByTestId("file-pane-line-3")).not.toBeInTheDocument();
+      // The old hover "+" is gone: the entries are the context menu and the
+      // selection chip (spec 场景 1/2).
+      expect(screen.queryByTestId("line-comment-add-1")).toBeNull();
+
+      openCommentMenuAt("file-pane-line-2");
+      expect(screen.getByTestId("code-comment-menu-add")).toHaveTextContent(
+        "添加评论",
+      );
     });
 
     it("appends the comment with path, line number and line content", () => {
@@ -378,7 +398,7 @@ describe("FilePane", () => {
         workdir: "/work/a",
         onAddComment,
       });
-      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      openCommentAt("file-pane-line-2");
       const box = screen.getByTestId("line-comment-box");
       expect(box.querySelector(".line-comment-box-tag")).toHaveTextContent(
         "src/app.ts",
@@ -401,13 +421,13 @@ describe("FilePane", () => {
         fileView: makeFileView({ content: "a\nb\n" }),
         onAddComment,
       });
-      fireEvent.click(screen.getByTestId("line-comment-add-1"));
+      openCommentAt("file-pane-line-1");
       const input = screen.getByTestId("line-comment-input");
       fireEvent.change(input, { target: { value: "first" } });
       fireEvent.keyDown(input, { key: "Enter" });
       expect(onAddComment).toHaveBeenCalledTimes(1);
 
-      fireEvent.click(screen.getByTestId("line-comment-add-1"));
+      openCommentAt("file-pane-line-1");
       fireEvent.change(screen.getByTestId("line-comment-input"), {
         target: { value: "dropped" },
       });
@@ -423,7 +443,7 @@ describe("FilePane", () => {
         fileView: makeFileView({ content: "a\nb\n" }),
         onAddComment: vi.fn(),
       });
-      fireEvent.click(screen.getByTestId("line-comment-add-1"));
+      openCommentAt("file-pane-line-1");
       fireEvent.change(screen.getByTestId("line-comment-input"), {
         target: { value: "半截草稿" },
       });
@@ -431,6 +451,82 @@ describe("FilePane", () => {
         makeFileView({ path: "/work/a/src/other.ts", content: "x\ny\n" }),
       );
       expect(screen.queryByTestId("line-comment-box")).not.toBeInTheDocument();
+    });
+
+    it("comments the selected lines as a range when the selection is used", () => {
+      const onAddComment = vi.fn();
+      renderPane({
+        fileView: makeFileView({
+          content: "const a = 1;\nconst b = 2;\nconst c = 3;\n",
+        }),
+        workdir: "/work/a",
+        onAddComment,
+      });
+      selectLines("file-pane-line-2", "file-pane-line-3");
+
+      const chip = screen.getByTestId("code-comment-chip");
+      expect(chip).toHaveAttribute("aria-label", "评论第 2–3 行");
+      fireEvent.click(chip);
+
+      // The box opens under the last commented line and says which range it is.
+      expect(screen.getByTestId("line-comment-input")).toHaveAttribute(
+        "placeholder",
+        "评论第 2–3 行…",
+      );
+      fireEvent.change(screen.getByTestId("line-comment-input"), {
+        target: { value: "这两行一起改" },
+      });
+      fireEvent.click(screen.getByTestId("line-comment-submit"));
+      expect(onAddComment).toHaveBeenCalledWith(
+        "**代码评论** · src/app.ts\n第 2–3 行「const b = 2; const c = 3;」\n\n这两行一起改",
+      );
+    });
+
+    it("drops the selection button once the selection is gone", () => {
+      renderPane({
+        fileView: makeFileView({ content: "a\nb\n" }),
+        onAddComment: vi.fn(),
+      });
+      selectLines("file-pane-line-1", "file-pane-line-2");
+      expect(screen.getByTestId("code-comment-chip")).toBeInTheDocument();
+      clearSelection("file-pane-line-2");
+      expect(screen.queryByTestId("code-comment-chip")).toBeNull();
+    });
+
+    it("keeps the native menu inside the comment box", () => {
+      renderPane({
+        fileView: makeFileView({ content: "a\nb\n" }),
+        onAddComment: vi.fn(),
+      });
+      openCommentAt("file-pane-line-1");
+      const input = screen.getByTestId("line-comment-input");
+      fireEvent.contextMenu(input);
+      // Copy/paste has to work in the textarea, so no 「添加评论」 menu here.
+      expect(screen.queryByTestId("code-comment-menu")).toBeNull();
+    });
+
+    it("has a toolbar button that comments the current line and explains when it cannot", () => {
+      const onAddComment = vi.fn();
+      renderPane({
+        fileView: makeFileView({ content: "a\nb\n" }),
+        workdir: "/work/a",
+        onAddComment,
+      });
+      const trigger = screen.getByTestId("file-pane-comment");
+      // Nothing has been pointed at yet (spec 场景 3).
+      expect(trigger).toBeDisabled();
+
+      // Clicking a line is enough to give the button a target.
+      fireEvent.mouseUp(screen.getByTestId("file-pane-line-2"));
+      expect(trigger).not.toBeDisabled();
+      fireEvent.click(trigger);
+      fireEvent.change(screen.getByTestId("line-comment-input"), {
+        target: { value: "这里" },
+      });
+      fireEvent.click(screen.getByTestId("line-comment-submit"));
+      expect(onAddComment).toHaveBeenCalledWith(
+        "**代码评论** · src/app.ts\n第 2 行「b」\n\n这里",
+      );
     });
 
     // Markdown has no line numbers once rendered, so the same interaction is
@@ -455,9 +551,7 @@ describe("FilePane", () => {
           onAddComment,
         });
         // No line view at all: a markdown file renders to HTML.
-        expect(
-          screen.queryByTestId("line-comment-add-1"),
-        ).not.toBeInTheDocument();
+        expect(container.querySelector("[data-comment-unit]")).toBeNull();
 
         fireEvent.mouseOver(container.querySelector(".file-pane-markdown h1")!);
         fireEvent.click(screen.getByTestId("md-block-comment-add"));
@@ -520,7 +614,7 @@ describe("FilePane", () => {
     });
 
     it("offers no comment button on images", () => {
-      renderPane({
+      const { container } = renderPane({
         fileView: makeFileView({
           path: "/work/a/logo.png",
           content: undefined,
@@ -528,9 +622,8 @@ describe("FilePane", () => {
         }),
         onAddComment: vi.fn(),
       });
-      expect(
-        screen.queryByTestId("line-comment-add-1"),
-      ).not.toBeInTheDocument();
+      expect(container.querySelector("[data-comment-unit]")).toBeNull();
+      expect(screen.queryByTestId("file-pane-comment")).not.toBeInTheDocument();
     });
   });
 

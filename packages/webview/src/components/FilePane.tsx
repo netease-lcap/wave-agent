@@ -10,11 +10,13 @@ import DOMPurify from "dompurify";
 import { createPortal } from "react-dom";
 import hljs from "../utils/highlight";
 import type { FileItem, FileViewState, OpenFileTab, VsCodeApi } from "../types";
-import { formatCodeComment } from "../utils/codeComment";
+import { commentLocationLabel, formatCodeComment } from "../utils/codeComment";
 import type { ConversationFileEntry } from "../utils/conversationFiles";
 import { toRelativePath } from "../utils/messageUtils";
+import { useCodeCommentEntry } from "../utils/useCodeCommentEntry";
 import { useHostMessage } from "../utils/useHostMessage";
 import { ancestorsWithin, isUnder } from "../utils/fileTreePaths";
+import { CodeCommentEntry } from "./CodeCommentEntry";
 import { ConversationFileList } from "./ConversationFileList";
 import { FileEditor } from "./fileEditor/FileEditor";
 import { FileTabStrip } from "./FileTabStrip";
@@ -1004,14 +1006,32 @@ export const FilePane: React.FC<FilePaneProps> = ({
     onSaveDraft?.(draftRef.current);
   }, [onSaveDraft]);
 
-  // Inline line comments — the same interaction as the diff pane: hovering a
-  // line reveals a "+" button, clicking opens a box under that line, and the
-  // submitted comment is appended to the chat input (never sent directly, and
-  // never kept in the panel). Only the code view can host them by line: an
-  // image has no lines at all, and a markdown file has no line numbers once
-  // rendered (it gets block comments instead, below).
-  const [commentLine, setCommentLine] = useState<number | null>(null);
+  // Inline line comments — the same entries as the diff pane: right-clicking a
+  // line (or selecting several, then clicking the button that follows the
+  // selection) opens a box under that line or range, and the submitted comment
+  // is appended to the chat input (never sent directly, never kept in the
+  // panel). Nothing is parked in the gutter, which is what lets the line numbers
+  // sit flush against the panel's left edge. Only the code view can host them by
+  // line: an image has no lines at all, and a markdown file has no line numbers
+  // once rendered (it gets block comments instead, below).
+  const [commentRange, setCommentRange] = useState<{
+    from: number;
+    to: number;
+  } | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
+  const {
+    containerRef: commentContainerRef,
+    containerProps: commentContainerProps,
+    menu: commentMenu,
+    chip: commentChip,
+    anchor: commentAnchor,
+    menuRef: commentMenuRef,
+    closeMenu: closeCommentMenu,
+    clearChip: clearCommentChip,
+  } = useCodeCommentEntry({
+    enabled:
+      Boolean(onAddComment) && !markdown && !editing && !!fileView?.content,
+  });
 
   // Markdown block comments (spec「文件面板评论」场景 8): same interaction and
   // same append format as line comments, anchored to a rendered block. Nothing
@@ -1041,9 +1061,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
   );
 
   const closeComment = useCallback(() => {
-    setCommentLine(null);
+    setCommentRange(null);
     setCommentDraft("");
   }, []);
+
+  const openComment = useCallback(
+    (target: { from: number; to: number }) => {
+      setCommentRange(target);
+      setCommentDraft("");
+      closeCommentMenu();
+      clearCommentChip();
+    },
+    [closeCommentMenu, clearCommentChip],
+  );
 
   const closeMdComment = useCallback(() => {
     // Detach the holder before React unmounts the portal into it: the element
@@ -1145,19 +1175,27 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const submitComment = useCallback(() => {
     const comment = commentDraft.trim();
-    if (commentLine === null || !comment || !onAddComment || !fileView) return;
+    if (!commentRange || !comment || !onAddComment || !fileView) return;
+    const { from, to } = commentRange;
     onAddComment(
       formatCodeComment({
         path: relativePath || fileView.path,
-        line: commentLine,
-        text: contentLines?.[commentLine - 1]?.text,
+        from,
+        to,
+        // A range contributes its own lines, joined so the quote stays one
+        // readable fragment (formatCodeComment clips it to 30 characters).
+        text: contentLines
+          ?.slice(from - 1, to)
+          .map((line) => line.text)
+          .join(" ")
+          .trim(),
         comment,
       }),
     );
     closeComment();
   }, [
     commentDraft,
-    commentLine,
+    commentRange,
     onAddComment,
     fileView,
     relativePath,
@@ -1166,6 +1204,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
   ]);
 
   const commentTag = relativePath || fileView?.path || "";
+  // One naming rule for the chip's label, the toolbar tooltip and the box's
+  // placeholder: 「评论第 12 行」 / 「评论第 12–15 行」.
+  const commentLabel = (target: { from: number; to: number }) =>
+    `评论${commentLocationLabel(target.from, target.to)}`;
 
   // Layout inputs: the tree column takes its width out of the body, the content
   // column gets the rest. `treeDragWidth` is the live drag value (0 = the user is
@@ -1306,6 +1348,39 @@ export const FilePane: React.FC<FilePaneProps> = ({
               </button>
             </Tooltip>
           )}
+          {/* 评论入口的兜底（spec「文件面板评论」场景 3）：入口改成右键/选中之后
+              一眼看不见，工具条上留一颗按钮——打在当前选区或最近点过的那一行上，
+              两者都没有时呈不可用并写明原因。 */}
+          {showFile &&
+            contentLines &&
+            !markdown &&
+            !editing &&
+            onAddComment && (
+              <Tooltip
+                text={
+                  commentAnchor
+                    ? commentLabel(commentAnchor)
+                    : "点击代码行后可在此评论"
+                }
+                position="bottom"
+              >
+                <button
+                  type="button"
+                  className="preview-pane-button"
+                  aria-label="评论"
+                  data-testid="file-pane-comment"
+                  disabled={!commentAnchor}
+                  onClick={() => {
+                    if (commentAnchor) openComment(commentAnchor);
+                  }}
+                >
+                  <i
+                    className="codicon codicon-comment preview-pane-icon"
+                    aria-hidden="true"
+                  />
+                </button>
+              </Tooltip>
+            )}
           {/* 复制路径：原来的复制按钮在工具条合并那次被删掉，规格场景仍有这条
               （spec desktop-file-panel.md 场景 8）。 */}
           {showFile && activeFile && (
@@ -1745,7 +1820,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   !markdown &&
                   !editing &&
                   contentLines && (
-                    <div className="file-pane-code">
+                    <div
+                      className="file-pane-code"
+                      ref={commentContainerRef}
+                      {...commentContainerProps}
+                    >
                       {fileView.truncated &&
                         fileView.totalLines !== undefined && (
                           <div className="file-pane-truncated-hint">
@@ -1764,22 +1843,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
                           <React.Fragment key={i}>
                             <div
                               className={`file-pane-line${active ? " file-pane-line--active" : ""}`}
+                              data-comment-unit={
+                                onAddComment ? lineNo : undefined
+                              }
+                              data-testid={`file-pane-line-${lineNo}`}
                             >
                               <span className="file-pane-line-no">
-                                {onAddComment && (
-                                  <button
-                                    className="line-comment-btn"
-                                    title="评论这行"
-                                    aria-label={`评论 ${commentTag} 第 ${lineNo} 行`}
-                                    data-testid={`line-comment-add-${lineNo}`}
-                                    onClick={() => {
-                                      setCommentLine(lineNo);
-                                      setCommentDraft("");
-                                    }}
-                                  >
-                                    <i className="codicon codicon-add" />
-                                  </button>
-                                )}
                                 {lineNo}
                               </span>
                               <span
@@ -1788,13 +1857,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
                                 dangerouslySetInnerHTML={{ __html: line.html }}
                               />
                             </div>
-                            {commentLine === lineNo && (
+                            {commentRange?.to === lineNo && (
                               <LineCommentBox
                                 draft={commentDraft}
                                 onDraftChange={setCommentDraft}
                                 onSubmit={submitComment}
                                 onCancel={closeComment}
                                 tag={commentTag}
+                                placeholder={`${commentLabel(commentRange)}…`}
                               />
                             )}
                           </React.Fragment>
@@ -1806,6 +1876,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
                             文件较大，内容已截断
                           </div>
                         )}
+                      <CodeCommentEntry
+                        chip={commentChip}
+                        menu={commentMenu}
+                        menuRef={commentMenuRef}
+                        labelOf={commentLabel}
+                        onOpen={openComment}
+                        onCloseMenu={closeCommentMenu}
+                      />
                     </div>
                   )}
               </>

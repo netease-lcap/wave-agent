@@ -1,10 +1,14 @@
-/* Line-comment UI shared by the diff pane and the file pane: the gutter button
-   that opens the box (LineCommentBox.tsx renders the box itself). Both panes
-   use the same markup, so only the host line element differs — `.diff-line`
-   vs `.file-pane-line`. Each host reserves a 16px gutter (the diff line via
-   padding-left, the file pane's sticky line-number cell via its own padding)
-   so the absolutely positioned button never covers code or line numbers. */
+/* Comment UI shared by the diff pane and the file pane: the box itself
+   (LineCommentBox.tsx), the entries that open it, and the markdown block button.
 
+   Neither code view parks a button in the gutter any more (spec「文件面板评论」
+   场景 1/2、「差异面板行评论」场景 1/2): the entries are a right-click menu and a
+   button that follows a text selection, so the line-number column can sit flush
+   against the left edge. `.line-comment-btn` survives for the markdown block
+   button only. */
+
+/* Markdown block button: revealed by hovering a rendered block (the file pane
+   decides when it exists at all — see `.md-block-comment-btn`). */
 .line-comment-btn {
   position: absolute;
   left: 0;
@@ -27,12 +31,6 @@
   z-index: 1;
 }
 
-/* Revealed by hovering the line that hosts it, in either pane. */
-.diff-line:hover .line-comment-btn,
-.file-pane-line:hover .line-comment-btn {
-  opacity: 1;
-}
-
 .line-comment-btn:hover {
   background: var(--vscode-textLink-foreground, #3794ff);
   color: var(--vscode-editor-background, #1e1e1e);
@@ -43,6 +41,68 @@
 .diff-line .line-comment-btn .codicon,
 .file-pane-line .line-comment-btn .codicon {
   font-size: 9px;
+}
+
+/* The button that follows a text selection. Placed just under the end of the
+   selection (the host view supplies the content coordinates), small enough not
+   to cover the text it refers to. */
+.code-comment-chip {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0 4px;
+  padding: 0;
+  border: 1px solid var(--vscode-textLink-foreground, #3794ff);
+  border-radius: 4px;
+  background: var(--vscode-editor-background, #1e1e1e);
+  color: var(--vscode-textLink-foreground, #3794ff);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.code-comment-chip:hover {
+  background: var(--vscode-textLink-foreground, #3794ff);
+  color: var(--vscode-editor-background, #1e1e1e);
+}
+
+.code-comment-chip .codicon {
+  font-size: 12px;
+}
+
+/* Right-click menu on a line. Same shape as the tab strip's menu so the two
+   read as one family. */
+.code-comment-menu {
+  position: absolute;
+  z-index: 20;
+  min-width: 120px;
+  padding: 4px;
+  border: 1px solid var(--vscode-dropdown-border, rgba(128, 128, 128, 0.4));
+  border-radius: 4px;
+  background: var(--vscode-dropdown-background, #252526);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
+}
+
+.code-comment-menu-item {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.code-comment-menu-item:hover {
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
 }
 
 /* Inline comment box rendered under the commented line. */

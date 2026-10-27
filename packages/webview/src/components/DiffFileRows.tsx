@@ -1,13 +1,21 @@
 import React, { useMemo } from "react";
+import { commentLocationLabel } from "../utils/codeComment";
 import { renderWordLevelDiff } from "../utils/diffHighlight";
 import { parseHunks, type DiffRow, type DiffRowSide } from "../utils/diffHunks";
+import {
+  useCodeCommentEntry,
+  type CodeCommentEntryState,
+} from "../utils/useCodeCommentEntry";
+import type { CommentUnitRange } from "../utils/commentUnits";
+import { CodeCommentEntry } from "./CodeCommentEntry";
 import type { WorkspaceDiffFile } from "./DiffPane";
 
 export type DiffViewMode = "unified" | "split";
 
 export interface DiffLineCommentTarget {
-  /** Raw hunk line index (also the id of the row's comment button). */
-  index: number;
+  /** Raw hunk line index range the comment is anchored to (from ≤ to). */
+  from: number;
+  to: number;
   prefix: string;
   text: string;
 }
@@ -17,8 +25,8 @@ export interface DiffFileRowsProps {
   viewMode: DiffViewMode;
   /** False above the per-file threshold: line-level colors only, no pair pairing. */
   wordHighlight: boolean;
-  /** Raw line index whose inline comment box is open, or null. */
-  commentIndex: number | null;
+  /** Raw line range whose inline comment box is open, or null. */
+  commentRange: CommentUnitRange | null;
   onComment: (target: DiffLineCommentTarget) => void;
   /** The inline comment box, rendered under the row it belongs to. */
   renderCommentBox: (index: number) => React.ReactNode;
@@ -28,36 +36,73 @@ export interface DiffFileRowsProps {
  * One file's hunks. Both views read the same parsed rows, so switching views
  * moves lines around without ever re-pairing them (the word-level highlights
  * would drift apart otherwise) and without a new request to the host.
+ *
+ * Comments are entered the way the file pane does it — right click on a line, or
+ * select several and use the button that follows the selection (spec「差异面板
+ * 行评论」场景 1/2). Every line carries `data-comment-unit` (its raw hunk index),
+ * which is all the shared entry hook needs to resolve a target; the row itself
+ * contributes the text and the `+`/`-` prefix the appended markdown quotes.
  */
 export const DiffFileRows: React.FC<DiffFileRowsProps> = ({
   file,
   viewMode,
   wordHighlight,
-  commentIndex,
+  commentRange,
   onComment,
   renderCommentBox,
 }) => {
   const rows = useMemo(() => parseHunks(file.hunks), [file.hunks]);
 
-  const commentButton = (
-    side: DiffRowSide,
-    prefix: string,
-    sideName: string,
-  ) => (
-    <button
-      className="line-comment-btn"
-      title="评论这行"
-      aria-label={
-        side.line === null
-          ? `评论 ${file.path}`
-          : `评论 ${file.path} 第 ${side.line} 行${sideName}`
-      }
-      data-testid={`line-comment-add-${side.index}`}
-      onClick={() => onComment({ index: side.index, prefix, text: side.text })}
-    >
-      <i className="codicon codicon-add" />
-    </button>
-  );
+  /** Prefix + text + line number behind every commentable raw line. */
+  const units = useMemo(() => {
+    const map = new Map<
+      number,
+      { prefix: string; text: string; line: number | null }
+    >();
+    for (const row of rows) {
+      // A context row has one raw line shared by both sides (`old.index` and
+      // `new.index` are the same number); pairs have two distinct ones.
+      if (row.old)
+        map.set(row.old.index, {
+          prefix: row.kind === "context" ? " " : "-",
+          text: row.old.text,
+          line: row.old.line,
+        });
+      if (row.new)
+        map.set(row.new.index, {
+          prefix: row.kind === "context" ? " " : "+",
+          text: row.new.text,
+          line: row.new.line,
+        });
+    }
+    return map;
+  }, [rows]);
+
+  const entry: CodeCommentEntryState = useCodeCommentEntry({ enabled: true });
+
+  const openComment = (range: CommentUnitRange) => {
+    const texts: string[] = [];
+    for (let index = range.from; index <= range.to; index++) {
+      const unit = units.get(index);
+      // Hunk headers and "no newline" markers are not units, so a range that
+      // spans them simply skips them in the quote.
+      if (unit) texts.push(unit.text);
+    }
+    onComment({
+      from: range.from,
+      to: range.to,
+      prefix: units.get(range.from)?.prefix ?? " ",
+      // No trim: the line's own indentation is part of what it says.
+      text: texts.join(" "),
+    });
+  };
+
+  const labelOf = (range: CommentUnitRange) => {
+    const from = units.get(range.from)?.line;
+    const to = units.get(range.to)?.line;
+    if (from === undefined || from === null) return "评论这行改动";
+    return `评论${commentLocationLabel(from, to ?? from)}`;
+  };
 
   /**
    * Content for both sides of a row. A pair is split ONCE here and the two
@@ -108,59 +153,43 @@ export const DiffFileRows: React.FC<DiffFileRowsProps> = ({
       prefix: string,
       cls: string,
       content: React.ReactNode,
-      sideName: string,
     ) => (
       <>
-        <div className={cls}>
+        <div
+          className={cls}
+          data-comment-unit={side.index}
+          data-testid={`diff-line-${side.index}`}
+        >
           <span className="diff-line-number">{side.line ?? ""}</span>
           <span className="diff-prefix">{prefix}</span>
           <span className="diff-content">{content}</span>
-          {commentButton(side, prefix, sideName)}
         </div>
-        {commentIndex === side.index && renderCommentBox(side.index)}
+        {commentRange?.to === side.index && renderCommentBox(side.index)}
       </>
     );
 
     if (row.kind === "context")
       return (
         <React.Fragment key={row.key}>
-          {line(row.new!, " ", "diff-line diff-line-context", parts.next, "")}
+          {line(row.new!, " ", "diff-line diff-line-context", parts.next)}
         </React.Fragment>
       );
     if (row.kind === "removed")
       return (
         <React.Fragment key={row.key}>
-          {line(
-            row.old!,
-            "-",
-            "diff-line diff-line-removed",
-            parts.old,
-            "（旧）",
-          )}
+          {line(row.old!, "-", "diff-line diff-line-removed", parts.old)}
         </React.Fragment>
       );
     if (row.kind === "added")
       return (
         <React.Fragment key={row.key}>
-          {line(
-            row.new!,
-            "+",
-            "diff-line diff-line-added",
-            parts.next,
-            "（新）",
-          )}
+          {line(row.new!, "+", "diff-line diff-line-added", parts.next)}
         </React.Fragment>
       );
     return (
       <React.Fragment key={row.key}>
-        {line(
-          row.old!,
-          "-",
-          "diff-line diff-line-removed",
-          parts.old,
-          "（旧）",
-        )}
-        {line(row.new!, "+", "diff-line diff-line-added", parts.next, "（新）")}
+        {line(row.old!, "-", "diff-line diff-line-removed", parts.old)}
+        {line(row.new!, "+", "diff-line diff-line-added", parts.next)}
       </React.Fragment>
     );
   };
@@ -185,14 +214,16 @@ export const DiffFileRows: React.FC<DiffFileRowsProps> = ({
       prefix: string,
       cls: string,
       content: React.ReactNode,
-      sideName: string,
     ) =>
       side ? (
-        <div className={cls}>
+        <div
+          className={cls}
+          data-comment-unit={side.index}
+          data-testid={`diff-line-${side.index}`}
+        >
           <span className="diff-line-number">{side.line ?? ""}</span>
           <span className="diff-prefix">{prefix}</span>
           <span className="diff-content">{content}</span>
-          {commentButton(side, prefix, sideName)}
         </div>
       ) : (
         // The missing half of an unpaired line: no content and no add/remove
@@ -201,23 +232,41 @@ export const DiffFileRows: React.FC<DiffFileRowsProps> = ({
       );
 
     const open =
-      commentIndex === row.old?.index
-        ? row.old!.index
-        : commentIndex === row.new?.index
-          ? row.new!.index
-          : null;
+      commentRange === null
+        ? null
+        : commentRange.to === row.old?.index
+          ? row.old!.index
+          : commentRange.to === row.new?.index
+            ? row.new!.index
+            : null;
 
     return (
       <div className="diff-split-row" key={row.key}>
-        {cell(row.old, "-", "diff-line diff-line-removed", parts.old, "（旧）")}
-        {cell(row.new, "+", "diff-line diff-line-added", parts.next, "（新）")}
+        {cell(row.old, "-", "diff-line diff-line-removed", parts.old)}
+        {cell(row.new, "+", "diff-line diff-line-added", parts.next)}
         {open !== null && renderCommentBox(open)}
       </div>
     );
   };
 
   const renderRow = viewMode === "split" ? renderSplitRow : renderUnifiedRow;
-  return <>{rows.map(renderRow)}</>;
+  return (
+    <div
+      className="diff-rows"
+      ref={entry.containerRef}
+      {...entry.containerProps}
+    >
+      {rows.map(renderRow)}
+      <CodeCommentEntry
+        chip={entry.chip}
+        menu={entry.menu}
+        menuRef={entry.menuRef}
+        labelOf={labelOf}
+        onOpen={openComment}
+        onCloseMenu={entry.closeMenu}
+      />
+    </div>
+  );
 };
 
 export default DiffFileRows;

@@ -114,8 +114,12 @@
 }
 
 /* Code view: one row per line; the gutter is sticky so long lines scroll
-   horizontally under it. The whole body is the scroll container. */
+   horizontally under it. The whole body is the scroll container. It is also the
+   positioning context for the comment entries (the button that follows a
+   selection, the right-click menu) — they are absolutely placed in content
+   coordinates, so they scroll with the text they belong to. */
 .file-pane-code {
+  position: relative;
   flex: 1;
   min-width: max-content;
   padding-bottom: 12px;
@@ -145,12 +149,14 @@
   position: sticky;
   left: 0;
   flex-shrink: 0;
-  /* The extra 16px on the left is the comment gutter: it holds the absolutely
-     positioned comment button (LineCommentBox.css) and, because the cell is
-     the sticky one, the button scrolls together with the number instead of
-     sliding under the code column. */
-  min-width: 68px;
-  padding: 0 10px 0 24px;
+  /* Three digits wide whatever the file's line count: a one-digit file and a
+     three-digit one then put the code column in the same place, so switching
+     files never shifts the text sideways. Nothing is reserved for a comment
+     button — the entries are the right-click menu and the selection chip
+     (spec「文件面板评论」场景 1/2), which is what lets the number sit this close
+     to the panel's left edge. */
+  min-width: calc(8px + 3ch + 8px);
+  padding: 0 8px;
   text-align: right;
   color: var(--vscode-editorLineNumber-foreground, #858585);
   background: var(--vscode-sideBar-background, var(--vscode-panel-background));

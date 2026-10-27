@@ -11,7 +11,11 @@ import {
   nextExpandedPath,
   totalChangedLines,
 } from "../utils/diffHunks";
-import { DiffFileRows, type DiffViewMode } from "./DiffFileRows";
+import {
+  DiffFileRows,
+  type DiffLineCommentTarget,
+  type DiffViewMode,
+} from "./DiffFileRows";
 import { DiffFileTree } from "./DiffFileTree";
 import { RefreshIcon } from "./HeaderIcons";
 import { LineCommentBox } from "./LineCommentBox";
@@ -171,18 +175,13 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   /** Range the last request asked for — see the selection-change effect below. */
   const requestedKeyRef = useRef(diffSelectionKey(selection));
 
-  // Inline diff-line comment box (GitHub/GitLab style): hovering a line shows a
-  // "+" button; clicking opens a comment box under that line whose contents
-  // are appended to the chat input (not sent) so several can be batched.
-  interface CommentTarget {
-    /** Raw hunk line index — also the id of the button that opened the box. */
-    index: number;
-    prefix: string;
-    text: string;
-  }
-  const [commentTarget, setCommentTarget] = useState<CommentTarget | null>(
-    null,
-  );
+  // Inline diff-line comment box: right-clicking a line (or selecting several
+  // and using the button that follows the selection) opens a box under that line
+  // or range; what it holds is appended to the chat input (not sent) so several
+  // can be batched. The entry lives in DiffFileRows — it is the same shared
+  // interaction the file pane uses (spec「差异面板行评论」场景 1/2).
+  const [commentTarget, setCommentTarget] =
+    useState<DiffLineCommentTarget | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
   const onAddCommentRef = useRef(onAddComment);
   onAddCommentRef.current = onAddComment;
@@ -399,14 +398,18 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
   const deletions = files.reduce((sum, file) => sum + file.deletions, 0);
 
   const renderCommentBox = (index: number) =>
-    commentTarget?.index === index ? (
+    commentTarget?.to === index ? (
       <LineCommentBox
         draft={commentDraft}
         onDraftChange={setCommentDraft}
         onSubmit={submitComment}
         onCancel={closeComment}
         tag={expandedPath ?? ""}
-        placeholder="评论这行改动…"
+        placeholder={
+          commentTarget.from === commentTarget.to
+            ? "评论这行改动…"
+            : `评论第 ${commentTarget.from}–${commentTarget.to} 行…`
+        }
       />
     ) : null;
 
@@ -457,7 +460,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
                 wordHighlight={
                   file.additions + file.deletions <= DIFF_WORD_HIGHLIGHT_LIMIT
                 }
-                commentIndex={commentTarget?.index ?? null}
+                commentRange={commentTarget}
                 onComment={setCommentTarget}
                 renderCommentBox={renderCommentBox}
               />
