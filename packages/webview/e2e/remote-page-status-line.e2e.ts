@@ -14,7 +14,9 @@ import type { Page } from "@playwright/test";
  * - 状态条与顶栏**矩形不相交**（浮层时代两者是重叠的：`position:fixed; top:0`）；
  * - 顶栏每颗按钮的**命中**落在按钮自己身上（`elementFromPoint`），而不只是「看起来
  *   还在」——浮层挡住点击时矩形照样算得出来；
- * - 它出现时页面**不长高**（状态条是流内的一行，从消息区里扣）。
+ * - 它出现时页面**不长高**（状态条是流内的一行，从消息区里扣）；
+ * - 这条线右侧关闭（×）的**热区是按手指给的**（40×40，spec 场景 10）：样式里写着
+ *   40px 不代表摆得下，热区也不能被挤出视口——两件事都只有真浏览器量得出来。
  *
  * shim 在这里走到状态条的方式是最短的那条：没有企业端登录态，而 `about:` 这种地址
  * 上也没有登录页可跳，于是它把原因画在状态条上（`fail()`）。这一段与「连不上」用的
@@ -89,6 +91,37 @@ const geometry = (page: Page) =>
     };
   });
 
+/**
+ * 关闭键在手指档的几何与命中。判据本身（`pointer: coarse` / `hover: none`）也一起
+ * 量回来：这条用例跑在 `hasTouch` 下，若媒体查询没匹配上，测的就是设计稿密度那一
+ * 档，断言会变成一句空话。
+ */
+const closeTarget = (page: Page) =>
+  page.evaluate(() => {
+    const close = document.querySelector<HTMLElement>(
+      '#remote-status button[aria-label="关闭"]',
+    );
+    if (!close) return null;
+    const r = close.getBoundingClientRect();
+    const at = document.elementFromPoint(
+      r.left + r.width / 2,
+      r.top + r.height / 2,
+    );
+    return {
+      coarse:
+        window.matchMedia("(pointer: coarse)").matches ||
+        window.matchMedia("(hover: none)").matches,
+      width: Math.round(r.width),
+      height: Math.round(r.height),
+      // 热区再大，被挤出视口或压在别的元素下面，手指也点不到。
+      hit: !!at && (at === close || close.contains(at)),
+      insideStatus:
+        r.top >=
+        (document.getElementById("remote-status")?.getBoundingClientRect()
+          .top ?? 0),
+    };
+  });
+
 test("状态条是流内一行：不盖顶栏、按钮仍可点、页面不长高", async ({
   webviewPage,
 }) => {
@@ -114,7 +147,16 @@ test("状态条是流内一行：不盖顶栏、按钮仍可点、页面不长�
   // 3. 页面没有因此长高：那一行是从消息区里扣掉的。
   expect(shown.scrollHeight).toBeLessThanOrEqual(shown.innerHeight);
 
-  // 4. 关掉之后它从流里消失，顶栏的几何回到原样。
+  // 4. 关闭（×）在手指档是 40×40 的触控目标（spec 场景 10）：此前是给鼠标定的
+  //    32×32，且字号落到了无效 `font` 简写的兜底上。
+  const close = await closeTarget(webviewPage);
+  expect(close?.coarse).toBe(true);
+  expect(close!.width).toBeGreaterThanOrEqual(40);
+  expect(close!.height).toBeGreaterThanOrEqual(40);
+  expect(close!.hit).toBe(true);
+  expect(close!.insideStatus).toBe(true);
+
+  // 5. 关掉之后它从流里消失，顶栏的几何回到原样。
   await webviewPage.locator('#remote-status button[aria-label="关闭"]').click();
   expect(await webviewPage.locator("#remote-status").count()).toBe(0);
   const closed = await geometry(webviewPage);

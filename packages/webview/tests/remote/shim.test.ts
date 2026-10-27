@@ -159,6 +159,12 @@ interface Harness {
   bannerButtons(): { label: string; click: () => void }[];
   /** The banner's close (×), or null when the line is not on screen. */
   bannerClose(): { click: () => void } | null;
+  /**
+   * The status line's inline styles — the line itself, its action buttons and
+   * the close. This harness has no layout, so the device tier's sizes can only
+   * be read back as the attributes the shim painted them with.
+   */
+  bannerStyles(): { line: string; actions: string[]; close: string };
   /** Every timer the shim armed (backoff retries and RPC timeouts alike). */
   timers: { delay: number; cleared: boolean; run(): void }[];
   /** Fire the pending backoff timers by hand; RPC timeouts stay put. */
@@ -195,6 +201,12 @@ function loadShim(options: {
   storageBroken?: boolean;
   /** Pretend a login round-trip just happened. */
   hoppedAt?: number;
+  /**
+   * The main pointer is a finger (`pointer: coarse` / `hover: none`). Left out
+   * the fake window has no `matchMedia` at all, which the shim reads as 「a
+   * mouse」 — the design-sheet density.
+   */
+  touch?: boolean;
 }): Harness {
   const location = new URL(options.url ?? ENTERPRISE_URL);
   const navigations: string[] = [];
@@ -295,6 +307,16 @@ function loadShim(options: {
     // through jsdom's real event target; nothing here fires either event, and
     // the shim only needs the registration itself to succeed.
     addEventListener: () => {},
+    // The phone tier's judgement (spec 场景 16 / 27). Only installed when a case
+    // asks for a finger: without it the shim sees no media-query surface, which
+    // it reads as a mouse — exactly what the other cases here assume.
+    ...(options.touch
+      ? {
+          matchMedia: (query: string) => ({
+            matches: query === "(pointer: coarse)" || query === "(hover: none)",
+          }),
+        }
+      : {}),
     // Installed by the shim itself, the way a real host installs it — hence the
     // placeholder rather than an implementation.
     acquireVsCodeApi: null as unknown as () => {
@@ -454,6 +476,23 @@ function loadShim(options: {
         (child) => child.getAttribute("aria-label") === "关闭",
       );
       return close ? { click: () => close.onclick?.() } : null;
+    },
+    bannerStyles: () => {
+      const children = banner && !banner.removed ? banner.children : [];
+      const style = (element?: FakeElement) =>
+        element?.getAttribute("style") ?? "";
+      return {
+        line: style(banner ?? undefined),
+        actions: children
+          .filter(
+            (child) =>
+              child.onclick && child.getAttribute("aria-label") !== "关闭",
+          )
+          .map(style),
+        close: style(
+          children.find((child) => child.getAttribute("aria-label") === "关闭"),
+        ),
+      };
     },
     element: (id) => document.getElementById(id),
     replaced,
@@ -1371,6 +1410,67 @@ describe("remote page shim — healing after a disconnect", () => {
       ?.click();
     await flush();
     expect(page.element("remote-machine-picker")).toBeTruthy();
+  });
+});
+
+/**
+ * 状态条在手指下的尺寸（spec「状态只在一条流内状态条上播报」场景 10）。
+ *
+ * 这一档只能在样式属性上断言：这个 harness 没有布局，量不出热区。真正的
+ * 40×40 由 `e2e/remote-page-status-line.e2e.ts` 在真 Chromium 里量。
+ */
+describe("remote page shim — 状态条按输入能力分档", () => {
+  /** 「等待上线」：一条带两个动作的横幅，正好把三处尺寸都摆出来。 */
+  async function waitingBanner(options: { touch?: boolean }) {
+    const page = loadShim({ token: "jwt", ...options });
+    await flush();
+    const socket = page.socket();
+    socket.readyState = 1;
+    socket.onopen?.();
+    socket.receive({ type: "auth_ok" });
+    await flush();
+    socket.onclose?.({ code: 4001 });
+    expect(page.banner()).toContain("等待上线");
+    return page;
+  }
+
+  it("手指下：关闭 40×40、字形 20，动作按钮同高，整条仍是一行 48", async () => {
+    const page = await waitingBanner({ touch: true });
+    const styles = page.bannerStyles();
+
+    expect(styles.close).toContain("width:40px;height:40px;font-size:20px");
+    // 一行里的两颗按钮同高，否则「一个正常一个坏掉」。
+    expect(styles.actions.length).toBeGreaterThan(0);
+    for (const action of styles.actions)
+      expect(action).toContain("min-height:40px");
+    // 条自身让出高度：4 + 40 + 4 = 48，不因为按钮长高变成 56。
+    expect(styles.line).toContain("padding:4px 12px");
+    // 文案不跟着抬：13px 就是这一页手机档的「辅助信息」档（`remote-page.css`），
+    // 抬到正文档的 15px 换不来可读性，只让一条三行文案高 18px。
+    expect(styles.line).toContain("font:13px/1.5");
+  });
+
+  it("鼠标下：保持设计稿密度（32×32 / 13px）", async () => {
+    const page = await waitingBanner({});
+    const styles = page.bannerStyles();
+
+    expect(styles.close).toContain("width:32px;height:32px");
+    expect(styles.line).toContain("padding:8px 12px");
+    expect(styles.line).toContain("font:13px/1.5");
+    for (const action of styles.actions)
+      expect(action).toContain("padding:2px 10px");
+  });
+
+  it("关闭键的字号是显式声明，不是会被整条丢掉的 font 简写", async () => {
+    // `font: 18px/1 inherit` 是无效 CSS（family 不能是 CSS-wide 关键字），
+    // 声明被整条丢弃后按钮落到 UA 默认的 13.33px —— 那正是「图标太小」的
+    // 一半原因（另一半是 32px 的热区）。
+    const page = await waitingBanner({ touch: true });
+    const close = page.bannerStyles().close;
+
+    expect(close).toContain("font-family:inherit");
+    expect(close).toContain("line-height:1");
+    expect(close).not.toContain("font:18px/1 inherit");
   });
 });
 
