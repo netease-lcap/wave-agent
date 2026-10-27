@@ -1480,6 +1480,16 @@ export const Message: React.FC<MessageProps> = React.memo(
           break;
         }
         case "error": {
+          // R1-F2 (2026-10-27): D-04's split is approved for the plugin host
+          // only. Desktop keeps its pre-R1 single <pre>; remote Web keeps the
+          // same legacy DOM so the shared renderer doesn't change its layout.
+          if (isDesktopHost() || isRemotePageHost()) {
+            return (
+              <div key={index} className="message-content error">
+                <pre>{block.content || ""}</pre>
+              </div>
+            );
+          }
           const { summary, detail } = splitErrorContent(block.content || "");
           return (
             <div key={index} className="message-content error">
