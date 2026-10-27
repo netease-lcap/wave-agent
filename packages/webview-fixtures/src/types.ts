@@ -87,6 +87,13 @@ export interface FileViewState {
   host: string;
   loading?: boolean;
   error?: string;
+  /**
+   * The read failed because the path is gone from disk (deleted or moved),
+   * which is a state rather than an error: the panel keeps the tab, marks it
+   * unavailable and offers to close it (spec desktop-file-panel.md 场景 13).
+   * Only set together with `error`.
+   */
+  missing?: boolean;
   content?: string;
   startLine?: number;
   endLine?: number;
@@ -217,6 +224,13 @@ export interface DesktopPaneInfo {
    * 见 `desktop/desktop-sessions.md`「基于分支的 worktree 隔离会话」验收场景 1/9。
    */
   hasContent?: boolean;
+  /**
+   * 这条会话的**稳定起点**目录（`sessionCwd`：会话在 CLI initialize 时捕获的
+   * cwd，worktree 会话就是那个 worktree）。文件面板目录树的根、树的过滤范围都用
+   * 它——bash 里 `cd` 只漂移 `updateWorkdir` 那条，用户眼前的树不该换根
+   * （见 `.wave/rules/workdir.md`）。缺省 = 旧宿主，渲染端回落 `state.workdir`。
+   */
+  sessionCwd?: string;
 }
 
 /** A session in the desktop sidebar tree, derived from the session index (FR-024). */
@@ -408,6 +422,39 @@ export interface DesktopForwardPortResultMessage
 export interface DesktopFileContentMessage extends HostToWebviewMessageBase {
   command: "desktopFileContent";
   fileView: FileViewState;
+}
+
+/** One row of a directory listing for the file panel's tree. */
+export interface FileTreeEntry {
+  /** Base name only — the panel joins it onto the directory it listed. */
+  name: string;
+  /** "dir" rows expand in place, "file" rows open in the panel. */
+  type: "dir" | "file";
+}
+
+/**
+ * Reply to `desktopListDirectory` — one level of the file panel's tree
+ * (spec desktop-file-panel.md「文件面板工作区目录树」scenario 3). The host sends
+ * the level it was asked for, nothing more: expansion is lazy, so the payload
+ * is always a single directory's direct children.
+ *
+ * Ordering, the junk deny-list (`.git`/`.DS_Store`/…), the dir-before-file sort
+ * and the per-level cap are all decided host-side; the webview renders
+ * `entries` as given and shows 「还有 total - entries.length 项未显示」 when
+ * `total` exceeds it.
+ */
+export interface DesktopDirEntriesMessage extends HostToWebviewMessageBase {
+  command: "desktopDirEntries";
+  /** The directory this level belongs to — the attribution key. The tree keys
+   *  results by path (not by request id): a reply always describes exactly one
+   *  directory, so a late one may fill that directory's cache but can never
+   *  land on another row. */
+  path: string;
+  entries?: FileTreeEntry[];
+  /** Entry count after junk filtering, before the per-level cap. */
+  total?: number;
+  /** Readable failure (missing / unreadable / outside the session root). */
+  error?: string;
 }
 
 /** Reply to `desktopSaveFile` — the file panel's save result (desktop only).
@@ -1412,6 +1459,7 @@ export type HostToWebviewMessage =
   | DesktopWorktreeCreatedMessage
   | DesktopForwardPortResultMessage
   | DesktopFileContentMessage
+  | DesktopDirEntriesMessage
   | DesktopFileSaveResultMessage
   | DesktopPreviewFileResultMessage
   | UpdateQueueMessage
@@ -1539,6 +1587,10 @@ type ReplyAttribution = {
   // 文件面板保存：一次编辑可重试多次（覆盖保存 / 失败重试），晚到的旧结果必须按
   // requestId 丢弃，否则会把上一次失败的横幅贴回已经存好的文件。
   desktopFileSaveResult: "requestId";
+  // 文件树列目录：归属键是**目录路径**而不是 requestId。同一层可以有多笔在途
+  // 请求（展开→折叠→再展开），回复永远只描述它那一个目录，晚到的最多把该目录
+  // 的缓存填上，落不到别的行；用 requestId 反而要求 UI 记住每一行的 id。
+  desktopDirEntries: "path";
   desktopRemoteDirList: "requestId";
   // 删除确认：请求生成 id，回复原样带回（同一会话可反复开关对话框）。
   desktopWorktreeChanges: "requestId";
@@ -1615,6 +1667,7 @@ export const replyAttributionLocked = {
   desktopForwardPortResult: true,
   desktopPreviewFileResult: true,
   desktopFileSaveResult: true,
+  desktopDirEntries: true,
   desktopRemoteDirList: true,
   desktopWorktreeChanges: true,
   pluginMarketFolderSelected: true,

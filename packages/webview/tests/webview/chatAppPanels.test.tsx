@@ -2776,7 +2776,8 @@ describe("desktop panel comments while the preview is fullscreen", () => {
     expect(screen.getByTestId("diff-pane")).toBeInTheDocument();
     expect(body.querySelector(".desktop-chat-main")).not.toBeNull();
 
-    fireEvent.click(screen.getByTestId("line-comment-add-1"));
+    fireEvent.contextMenu(screen.getByTestId("diff-line-1"));
+    fireEvent.click(screen.getByTestId("code-comment-menu-add"));
     fireEvent.change(screen.getByTestId("line-comment-input"), {
       target: { value: "空行要跳过" },
     });

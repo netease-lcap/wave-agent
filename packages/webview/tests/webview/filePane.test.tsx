@@ -7,7 +7,13 @@ import {
   waitFor,
 } from "@testing-library/react";
 import React from "react";
-import { FilePane } from "../../src/components/FilePane";
+import { SingleFilePane } from "./filePaneHarness";
+import {
+  clearSelection,
+  openCommentAt,
+  openCommentMenuAt,
+  selectLines,
+} from "./commentEntryHarness";
 import type { FileItem, FileViewState, VsCodeApi } from "../../src/types";
 
 function makeFileView(overrides: Partial<FileViewState> = {}): FileViewState {
@@ -105,6 +111,8 @@ function renderPane(
     vscode?: VsCodeApi;
     onOpenFileInPanel?: (path: string) => void;
     onAddComment?: (text: string) => void;
+    treeRoot?: string;
+    paneId?: string;
   } = {},
 ) {
   const fileView =
@@ -117,19 +125,19 @@ function renderPane(
     vscode: options.vscode,
     onOpenFileInPanel: options.onOpenFileInPanel,
     onAddComment: options.onAddComment,
+    treeRoot: options.treeRoot,
+    paneId: options.paneId,
   };
-  const result = render(<FilePane {...props} />);
+  const result = render(<SingleFilePane {...props} />);
   const rerenderWith = (next: FileViewState | null) =>
-    result.rerender(<FilePane {...props} fileView={next} />);
+    result.rerender(<SingleFilePane {...props} fileView={next} />);
   return { ...result, rerenderWith };
 }
 
 describe("FilePane", () => {
   it("shows the placeholder when no file is open", () => {
     renderPane({ fileView: null });
-    expect(
-      screen.getByText("点击消息中的文件路径，在此查看文件内容"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("打开的文件会显示在这里")).toBeInTheDocument();
     expect(screen.queryByTestId("file-open-external")).not.toBeInTheDocument();
   });
 
@@ -162,7 +170,10 @@ describe("FilePane", () => {
   it("trims over-long paths with a middle ellipsis, keeping the file name", () => {
     const long = `/repos/wave-agent/${"x".repeat(60)}/src/components/FilePane.tsx`;
     renderPane({ fileView: makeFileView({ path: long }) });
-    const el = screen.getByTitle(long);
+    // 路径现在也出现在文件标签的 title 上（多标签），这里要的是工具条那一份。
+    const el = screen
+      .getByTestId("file-pane")
+      .querySelector(".preview-pane-toolbar [title]")!;
     expect(el.textContent).not.toBe(long);
     expect(el.textContent).toContain("…");
     expect(el.textContent?.endsWith("FilePane.tsx")).toBe(true);
@@ -275,7 +286,9 @@ describe("FilePane", () => {
     const content =
       Array.from({ length: 60 }, (_, i) => `line ${i + 1}`).join("\n") + "\n";
     renderPane({ fileView: makeFileView({ content, startLine: 56 }) });
-    const body = document.querySelector(".file-pane-body") as HTMLElement;
+    // 内容区现在是标签带 / 查找条下面的那一层（.file-pane-scroll），它才是滚动
+    // 容器——标签带和查找条不该跟着正文滚走。
+    const body = document.querySelector(".file-pane-scroll") as HTMLElement;
     // (56 - 1) * 20 - 20 * 1.5 → the requested line lands ~1.5 lines from the top.
     expect(body.scrollTop).toBe(1070);
   });
@@ -346,22 +359,36 @@ describe("FilePane", () => {
 
   describe("line comments", () => {
     it("renders no comment affordance without a comment sink", () => {
-      renderPane({ fileView: makeFileView({ content: "a\nb\n" }) });
-      expect(
-        screen.queryByTestId("line-comment-add-1"),
-      ).not.toBeInTheDocument();
+      const { container } = renderPane({
+        fileView: makeFileView({ content: "a\nb\n" }),
+      });
+      // No commentable units and no toolbar fallback (spec 场景 9).
+      expect(container.querySelector("[data-comment-unit]")).toBeNull();
+      expect(screen.queryByTestId("file-pane-comment")).not.toBeInTheDocument();
     });
 
-    it("puts a comment button on every rendered line", () => {
+    it("gives every rendered line a comment entry, with no button in the gutter", () => {
       renderPane({
         fileView: makeFileView({ content: "a\nb\n" }),
         onAddComment: vi.fn(),
       });
-      expect(screen.getByTestId("line-comment-add-1")).toBeInTheDocument();
-      expect(screen.getByTestId("line-comment-add-2")).toBeInTheDocument();
-      expect(
-        screen.queryByTestId("line-comment-add-3"),
-      ).not.toBeInTheDocument();
+      expect(screen.getByTestId("file-pane-line-1")).toHaveAttribute(
+        "data-comment-unit",
+        "1",
+      );
+      expect(screen.getByTestId("file-pane-line-2")).toHaveAttribute(
+        "data-comment-unit",
+        "2",
+      );
+      expect(screen.queryByTestId("file-pane-line-3")).not.toBeInTheDocument();
+      // The old hover "+" is gone: the entries are the context menu and the
+      // selection chip (spec 场景 1/2).
+      expect(screen.queryByTestId("line-comment-add-1")).toBeNull();
+
+      openCommentMenuAt("file-pane-line-2");
+      expect(screen.getByTestId("code-comment-menu-add")).toHaveTextContent(
+        "添加评论",
+      );
     });
 
     it("appends the comment with path, line number and line content", () => {
@@ -371,7 +398,7 @@ describe("FilePane", () => {
         workdir: "/work/a",
         onAddComment,
       });
-      fireEvent.click(screen.getByTestId("line-comment-add-2"));
+      openCommentAt("file-pane-line-2");
       const box = screen.getByTestId("line-comment-box");
       expect(box.querySelector(".line-comment-box-tag")).toHaveTextContent(
         "src/app.ts",
@@ -394,13 +421,13 @@ describe("FilePane", () => {
         fileView: makeFileView({ content: "a\nb\n" }),
         onAddComment,
       });
-      fireEvent.click(screen.getByTestId("line-comment-add-1"));
+      openCommentAt("file-pane-line-1");
       const input = screen.getByTestId("line-comment-input");
       fireEvent.change(input, { target: { value: "first" } });
       fireEvent.keyDown(input, { key: "Enter" });
       expect(onAddComment).toHaveBeenCalledTimes(1);
 
-      fireEvent.click(screen.getByTestId("line-comment-add-1"));
+      openCommentAt("file-pane-line-1");
       fireEvent.change(screen.getByTestId("line-comment-input"), {
         target: { value: "dropped" },
       });
@@ -416,7 +443,7 @@ describe("FilePane", () => {
         fileView: makeFileView({ content: "a\nb\n" }),
         onAddComment: vi.fn(),
       });
-      fireEvent.click(screen.getByTestId("line-comment-add-1"));
+      openCommentAt("file-pane-line-1");
       fireEvent.change(screen.getByTestId("line-comment-input"), {
         target: { value: "半截草稿" },
       });
@@ -424,6 +451,82 @@ describe("FilePane", () => {
         makeFileView({ path: "/work/a/src/other.ts", content: "x\ny\n" }),
       );
       expect(screen.queryByTestId("line-comment-box")).not.toBeInTheDocument();
+    });
+
+    it("comments the selected lines as a range when the selection is used", () => {
+      const onAddComment = vi.fn();
+      renderPane({
+        fileView: makeFileView({
+          content: "const a = 1;\nconst b = 2;\nconst c = 3;\n",
+        }),
+        workdir: "/work/a",
+        onAddComment,
+      });
+      selectLines("file-pane-line-2", "file-pane-line-3");
+
+      const chip = screen.getByTestId("code-comment-chip");
+      expect(chip).toHaveAttribute("aria-label", "评论第 2–3 行");
+      fireEvent.click(chip);
+
+      // The box opens under the last commented line and says which range it is.
+      expect(screen.getByTestId("line-comment-input")).toHaveAttribute(
+        "placeholder",
+        "评论第 2–3 行…",
+      );
+      fireEvent.change(screen.getByTestId("line-comment-input"), {
+        target: { value: "这两行一起改" },
+      });
+      fireEvent.click(screen.getByTestId("line-comment-submit"));
+      expect(onAddComment).toHaveBeenCalledWith(
+        "**代码评论** · src/app.ts\n第 2–3 行「const b = 2; const c = 3;」\n\n这两行一起改",
+      );
+    });
+
+    it("drops the selection button once the selection is gone", () => {
+      renderPane({
+        fileView: makeFileView({ content: "a\nb\n" }),
+        onAddComment: vi.fn(),
+      });
+      selectLines("file-pane-line-1", "file-pane-line-2");
+      expect(screen.getByTestId("code-comment-chip")).toBeInTheDocument();
+      clearSelection("file-pane-line-2");
+      expect(screen.queryByTestId("code-comment-chip")).toBeNull();
+    });
+
+    it("keeps the native menu inside the comment box", () => {
+      renderPane({
+        fileView: makeFileView({ content: "a\nb\n" }),
+        onAddComment: vi.fn(),
+      });
+      openCommentAt("file-pane-line-1");
+      const input = screen.getByTestId("line-comment-input");
+      fireEvent.contextMenu(input);
+      // Copy/paste has to work in the textarea, so no 「添加评论」 menu here.
+      expect(screen.queryByTestId("code-comment-menu")).toBeNull();
+    });
+
+    it("has a toolbar button that comments the current line and explains when it cannot", () => {
+      const onAddComment = vi.fn();
+      renderPane({
+        fileView: makeFileView({ content: "a\nb\n" }),
+        workdir: "/work/a",
+        onAddComment,
+      });
+      const trigger = screen.getByTestId("file-pane-comment");
+      // Nothing has been pointed at yet (spec 场景 3).
+      expect(trigger).toBeDisabled();
+
+      // Clicking a line is enough to give the button a target.
+      fireEvent.mouseUp(screen.getByTestId("file-pane-line-2"));
+      expect(trigger).not.toBeDisabled();
+      fireEvent.click(trigger);
+      fireEvent.change(screen.getByTestId("line-comment-input"), {
+        target: { value: "这里" },
+      });
+      fireEvent.click(screen.getByTestId("line-comment-submit"));
+      expect(onAddComment).toHaveBeenCalledWith(
+        "**代码评论** · src/app.ts\n第 2 行「b」\n\n这里",
+      );
     });
 
     // Markdown has no line numbers once rendered, so the same interaction is
@@ -448,9 +551,7 @@ describe("FilePane", () => {
           onAddComment,
         });
         // No line view at all: a markdown file renders to HTML.
-        expect(
-          screen.queryByTestId("line-comment-add-1"),
-        ).not.toBeInTheDocument();
+        expect(container.querySelector("[data-comment-unit]")).toBeNull();
 
         fireEvent.mouseOver(container.querySelector(".file-pane-markdown h1")!);
         fireEvent.click(screen.getByTestId("md-block-comment-add"));
@@ -513,7 +614,7 @@ describe("FilePane", () => {
     });
 
     it("offers no comment button on images", () => {
-      renderPane({
+      const { container } = renderPane({
         fileView: makeFileView({
           path: "/work/a/logo.png",
           content: undefined,
@@ -521,215 +622,153 @@ describe("FilePane", () => {
         }),
         onAddComment: vi.fn(),
       });
-      expect(
-        screen.queryByTestId("line-comment-add-1"),
-      ).not.toBeInTheDocument();
+      expect(container.querySelector("[data-comment-unit]")).toBeNull();
+      expect(screen.queryByTestId("file-pane-comment")).not.toBeInTheDocument();
     });
   });
 
-  describe("FilePane search (toolbar trigger + popover)", () => {
-    /** Click the toolbar's search trigger and wait for the popover input. */
-    const openSearchPopup = async () => {
-      fireEvent.click(screen.getByTestId("file-pane-search-trigger"));
-      return await screen.findByTestId("file-pane-search-input");
-    };
+  describe("FilePane 目录树与过滤框（spec「文件面板工作区目录树」/「按名字查找」）", () => {
+    /** The panel with a workspace tree rooted at /work/a. */
+    // 默认不打开文件：打开的文件会把自己的祖先目录一起展开并读取（场景 6），
+    // 这里要观察的是「没人点过时只读一层」。
+    const renderTree = (options: Parameters<typeof renderPane>[0] = {}) =>
+      renderPane({
+        fileView: null,
+        vscode: makeVscode(),
+        treeRoot: "/work/a",
+        ...options,
+      });
 
-    it("hides the search trigger without a host bridge", () => {
-      renderPane({});
-      expect(
-        screen.queryByTestId("file-pane-search-trigger"),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByTestId("file-pane-search-popover"),
-      ).not.toBeInTheDocument();
-    });
-
-    it("opens a popover with the input focused when the trigger is clicked", async () => {
-      const vscode = makeVscode();
-      renderPane({ vscode });
-      const trigger = screen.getByTestId("file-pane-search-trigger");
-      expect(
-        screen.queryByTestId("file-pane-search-popover"),
-      ).not.toBeInTheDocument();
-
-      fireEvent.click(trigger);
-      const input = await screen.findByTestId("file-pane-search-input");
-      expect(
-        screen.getByTestId("file-pane-search-popover"),
-      ).toBeInTheDocument();
-      // 呼出时自动聚焦搜索框
-      expect(input).toHaveFocus();
-
-      // Clicking the trigger again toggles the popover closed.
-      fireEvent.click(screen.getByTestId("file-pane-search-trigger"));
-      expect(
-        screen.queryByTestId("file-pane-search-popover"),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByTestId("file-pane-search-input"),
-      ).not.toBeInTheDocument();
-    });
-
-    it("requests suggestions with an empty filter on focus", async () => {
-      const vscode = makeVscode();
-      renderPane({ vscode });
-      const input = await openSearchPopup();
-      fireEvent.focus(input);
-      await waitFor(() =>
-        expect(vscode.postMessage).toHaveBeenCalledWith(
-          expect.objectContaining({
-            command: "requestFileSuggestions",
-            filterText: "",
+    /** Answer the pending listDirectoryEntries request for one directory. */
+    const sendDirEntries = (
+      path: string,
+      entries: Array<{ name: string; type: "dir" | "file" }>,
+      total = entries.length,
+    ) =>
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            data: { command: "desktopDirEntries", path, entries, total },
           }),
-        ),
+        );
+      });
+
+    const requestedDirs = (vscode: ReturnType<typeof makeVscode>) =>
+      vscode.postMessage.mock.calls
+        .map((c) => c[0])
+        .filter((c) => c.command === "desktopListDirectory")
+        .map((c) => c.path as string);
+
+    it("只有拿到工作区根 + 宿主桥时才出现目录树", () => {
+      renderPane({}); // 没有 treeRoot / vscode
+      expect(screen.queryByTestId("file-pane-tree")).not.toBeInTheDocument();
+    });
+
+    it("打开面板只列根目录一层，展开子目录才请求下一层（场景 2）", async () => {
+      const vscode = makeVscode();
+      renderTree({ vscode });
+      await waitFor(() => expect(requestedDirs(vscode)).toEqual(["/work/a"]));
+
+      sendDirEntries("/work/a", [
+        { name: "src", type: "dir" },
+        { name: "README.md", type: "file" },
+      ]);
+      const rows = await screen.findAllByTestId("file-tree-row");
+      expect(rows.map((r) => r.getAttribute("aria-label"))).toEqual([
+        "折叠目录 a",
+        "展开目录 src",
+        "README.md",
+      ]);
+      // 只有根被读了一次，子目录还没读。
+      expect(requestedDirs(vscode)).toEqual(["/work/a"]);
+
+      fireEvent.click(screen.getByText("src"));
+      await waitFor(() =>
+        expect(requestedDirs(vscode)).toEqual(["/work/a", "/work/a/src"]),
       );
     });
 
-    it("debounces typing and applies only the matching response", async () => {
+    it("目录展开/折叠就地切换，文件行点击后交给打开流程（场景 4）", async () => {
       const vscode = makeVscode();
-      renderPane({ vscode });
-      const input = await openSearchPopup();
-      fireEvent.focus(input);
+      const onOpenFileInPanel = vi.fn();
+      renderTree({ vscode, onOpenFileInPanel });
+      await waitFor(() => expect(requestedDirs(vscode)).toEqual(["/work/a"]));
+      sendDirEntries("/work/a", [
+        { name: "src", type: "dir" },
+        { name: "README.md", type: "file" },
+      ]);
+      await screen.findAllByTestId("file-tree-row");
+
+      const srcRow = screen.getByText("src").closest("[role=treeitem]")!;
+      expect(srcRow).toHaveAttribute("aria-expanded", "false");
+      fireEvent.click(screen.getByText("src"));
+      expect(srcRow).toHaveAttribute("aria-expanded", "true");
+      fireEvent.click(screen.getByText("src"));
+      expect(srcRow).toHaveAttribute("aria-expanded", "false");
+
+      fireEvent.click(screen.getByText("README.md"));
+      expect(onOpenFileInPanel).toHaveBeenCalledWith("/work/a/README.md");
+    });
+
+    it("过滤框输入后改为结果列表，回车打开并把过滤清空（场景 1/3/4）", async () => {
+      const vscode = makeVscode();
+      const onOpenFileInPanel = vi.fn();
+      renderTree({ vscode, onOpenFileInPanel });
+      const input = screen.getByTestId("file-tree-filter");
       fireEvent.change(input, { target: { value: "app" } });
       const reqId = await waitForSearchRequest(vscode, "app");
-
-      // A stale response (from an older request) must not populate the dropdown.
-      sendSuggestionsResponse("stale-request-id", [
-        makeFileItem("Stale.tsx", "/work/a/src/Stale.tsx", "src/Stale.tsx"),
-      ]);
-      expect(screen.queryByText("Stale.tsx")).not.toBeInTheDocument();
-
       sendSuggestionsResponse(reqId, [
         makeFileItem("App.tsx", "/work/a/src/App.tsx", "src/App.tsx"),
       ]);
-      // The name is split by the highlight <span>; the path row is plain text.
-      expect(await screen.findByText("src/App.tsx")).toBeInTheDocument();
+
+      const results = await screen.findAllByTestId("file-tree-filter-result");
+      expect(results).toHaveLength(1);
+      fireEvent.keyDown(input, { key: "Enter" });
+      expect(onOpenFileInPanel).toHaveBeenCalledWith("/work/a/src/App.tsx");
+      // 打开后回到目录树（过滤清空）。
+      expect(screen.getByTestId("file-tree-rows")).toBeInTheDocument();
+      expect(screen.getByTestId("file-tree-filter")).toHaveValue("");
     });
 
-    it("opens the selected file via keyboard (ArrowDown + Enter)", async () => {
+    it("↑↓ 在选择结果之间移动（场景 4）", async () => {
       const vscode = makeVscode();
       const onOpenFileInPanel = vi.fn();
-      renderPane({ vscode, onOpenFileInPanel });
-      const input = await openSearchPopup();
-      fireEvent.focus(input);
-      const reqId = await waitForSearchRequest(vscode, "");
+      renderTree({ vscode, onOpenFileInPanel });
+      const input = screen.getByTestId("file-tree-filter");
+      fireEvent.change(input, { target: { value: "a" } });
+      const reqId = await waitForSearchRequest(vscode, "a");
       sendSuggestionsResponse(reqId, [
         makeFileItem("A.tsx", "/work/a/src/A.tsx", "src/A.tsx"),
         makeFileItem("B.tsx", "/work/a/src/B.tsx", "src/B.tsx"),
       ]);
-      await screen.findByText("A.tsx");
+      await screen.findAllByTestId("file-tree-filter-result");
 
       fireEvent.keyDown(input, { key: "ArrowDown" });
       fireEvent.keyDown(input, { key: "Enter" });
       expect(onOpenFileInPanel).toHaveBeenCalledWith("/work/a/src/B.tsx");
-      // Selecting a file closes the whole popover.
-      expect(
-        screen.queryByTestId("file-pane-search-popover"),
-      ).not.toBeInTheDocument();
     });
 
-    it("opens the file when a suggestion is clicked", async () => {
+    it("点击结果项等效于回车（场景 5）", async () => {
       const vscode = makeVscode();
       const onOpenFileInPanel = vi.fn();
-      renderPane({ vscode, onOpenFileInPanel });
-      const input = await openSearchPopup();
-      fireEvent.focus(input);
-      const reqId = await waitForSearchRequest(vscode, "");
+      renderTree({ vscode, onOpenFileInPanel });
+      const input = screen.getByTestId("file-tree-filter");
+      fireEvent.change(input, { target: { value: "app" } });
+      const reqId = await waitForSearchRequest(vscode, "app");
       sendSuggestionsResponse(reqId, [
         makeFileItem("App.tsx", "/work/a/src/App.tsx", "src/App.tsx"),
       ]);
-      const item = await screen.findByText("App.tsx");
-      fireEvent.click(item);
+      const [result] = await screen.findAllByTestId("file-tree-filter-result");
+      fireEvent.click(result);
       expect(onOpenFileInPanel).toHaveBeenCalledWith("/work/a/src/App.tsx");
-      expect(
-        screen.queryByTestId("file-pane-search-popover"),
-      ).not.toBeInTheDocument();
     });
 
-    it("re-opens a fresh search when opening the popover again after selecting", async () => {
+    it("目录建议不出现在结果里（只列文件，场景 2）", async () => {
       const vscode = makeVscode();
-      const onOpenFileInPanel = vi.fn();
-      renderPane({ vscode, onOpenFileInPanel });
-      const input = await openSearchPopup();
-      fireEvent.focus(input);
-      let reqId = await waitForSearchRequest(vscode, "");
-      sendSuggestionsResponse(reqId, [
-        makeFileItem("App.tsx", "/work/a/src/App.tsx", "src/App.tsx"),
-      ]);
-      await screen.findByText("App.tsx");
-
-      // Select the file; the popover closes entirely.
-      fireEvent.keyDown(input, { key: "Enter" });
-      expect(onOpenFileInPanel).toHaveBeenCalledWith("/work/a/src/App.tsx");
-      expect(
-        screen.queryByTestId("file-pane-search-popover"),
-      ).not.toBeInTheDocument();
-
-      // Open it again: the input comes back empty and searches afresh.
-      const reopenedInput = await openSearchPopup();
-      expect(reopenedInput).toHaveValue("");
-      fireEvent.focus(reopenedInput);
-      fireEvent.change(reopenedInput, { target: { value: "main" } });
-      reqId = await waitForSearchRequest(vscode, "main");
-      sendSuggestionsResponse(reqId, [
-        makeFileItem("main.ts", "/work/a/src/main.ts", "src/main.ts"),
-      ]);
-      expect(await screen.findByText("src/main.ts")).toBeInTheDocument();
-    });
-
-    it("closes the popover and clears the search on Escape", async () => {
-      const vscode = makeVscode();
-      renderPane({ vscode });
-      const input = await openSearchPopup();
-      fireEvent.focus(input);
-      const reqId = await waitForSearchRequest(vscode, "");
-      sendSuggestionsResponse(reqId, [
-        makeFileItem("App.tsx", "/work/a/src/App.tsx", "src/App.tsx"),
-      ]);
-      await screen.findByText("App.tsx");
-
-      fireEvent.keyDown(input, { key: "Escape" });
-      expect(
-        screen.queryByTestId("file-pane-search-popover"),
-      ).not.toBeInTheDocument();
-
-      // Re-opening starts from an empty filter (no stale App.tsx suggestions).
-      const reopened = await openSearchPopup();
-      fireEvent.focus(reopened);
-      expect(reopened).toHaveValue("");
-      expect(screen.queryByText("App.tsx")).not.toBeInTheDocument();
-    });
-
-    it("dismisses on a click outside the popover (but not inside it)", async () => {
-      const vscode = makeVscode();
-      renderPane({ vscode });
-      const input = await openSearchPopup();
-      fireEvent.focus(input);
-      const reqId = await waitForSearchRequest(vscode, "");
-      sendSuggestionsResponse(reqId, [
-        makeFileItem("App.tsx", "/work/a/src/App.tsx", "src/App.tsx"),
-      ]);
-      await screen.findByText("App.tsx");
-
-      // Clicking inside the popover (e.g. the input) keeps it open.
-      fireEvent.mouseDown(input);
-      expect(
-        screen.getByTestId("file-pane-search-popover"),
-      ).toBeInTheDocument();
-
-      // Clicking the file content (outside) dismisses it.
-      fireEvent.mouseDown(screen.getByTestId("file-pane"));
-      expect(
-        screen.queryByTestId("file-pane-search-popover"),
-      ).not.toBeInTheDocument();
-    });
-
-    it("filters directory suggestions out of the dropdown", async () => {
-      const vscode = makeVscode();
-      renderPane({ vscode });
-      const input = await openSearchPopup();
-      fireEvent.focus(input);
-      const reqId = await waitForSearchRequest(vscode, "");
+      renderTree({ vscode });
+      const input = screen.getByTestId("file-tree-filter");
+      fireEvent.change(input, { target: { value: "comp" } });
+      const reqId = await waitForSearchRequest(vscode, "comp");
       sendSuggestionsResponse(reqId, [
         makeFileItem(
           "components",
@@ -739,22 +778,78 @@ describe("FilePane", () => {
         ),
         makeFileItem("App.tsx", "/work/a/src/App.tsx", "src/App.tsx"),
       ]);
-      await screen.findByText("App.tsx");
-      expect(screen.queryByText("components")).not.toBeInTheDocument();
+      const results = await screen.findAllByTestId("file-tree-filter-result");
+      // 结果项显示「文件名 + 相对工作区根的目录」，目录建议不见了。
+      expect(results.map((r) => r.textContent)).toEqual(["App.tsx/src/"]);
     });
 
-    it("shows a loading state in flight and clears it on error", async () => {
+    it("无匹配显示「未找到匹配的文件」，过滤框仍可编辑（场景 7）", async () => {
       const vscode = makeVscode();
-      renderPane({ vscode });
-      const input = await openSearchPopup();
-      fireEvent.focus(input);
-      const reqId = await waitForSearchRequest(vscode, "");
-      expect(screen.getByText("正在搜索文件...")).toBeInTheDocument();
+      renderTree({ vscode });
+      const input = screen.getByTestId("file-tree-filter");
+      fireEvent.change(input, { target: { value: "zzz" } });
+      const reqId = await waitForSearchRequest(vscode, "zzz");
+      sendSuggestionsResponse(reqId, []);
+      expect(await screen.findByTestId("file-tree-no-match")).toHaveTextContent(
+        "未找到匹配的文件",
+      );
+      expect(screen.getByTestId("file-tree-filter")).toBeEnabled();
+    });
+
+    it("请求在飞时显示搜索中，出错时显示原因（场景 6）", async () => {
+      const vscode = makeVscode();
+      renderTree({ vscode });
+      const input = screen.getByTestId("file-tree-filter");
+      fireEvent.change(input, { target: { value: "app" } });
+      await waitForSearchRequest(vscode, "app");
+      expect(screen.getByText("正在搜索…")).toBeInTheDocument();
 
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const reqId = await waitForSearchRequest(vscode, "app");
       sendSuggestionsError(reqId);
-      expect(screen.queryByText("正在搜索文件...")).not.toBeInTheDocument();
+      await waitFor(() =>
+        expect(screen.queryByText("正在搜索…")).not.toBeInTheDocument(),
+      );
       errorSpy.mockRestore();
+    });
+
+    it("Esc 清空过滤、回到目录树", async () => {
+      const vscode = makeVscode();
+      renderTree({ vscode });
+      const input = screen.getByTestId("file-tree-filter");
+      fireEvent.change(input, { target: { value: "app" } });
+      const reqId = await waitForSearchRequest(vscode, "app");
+      sendSuggestionsResponse(reqId, [
+        makeFileItem("App.tsx", "/work/a/src/App.tsx", "src/App.tsx"),
+      ]);
+      await screen.findAllByTestId("file-tree-filter-result");
+
+      fireEvent.keyDown(input, { key: "Escape" });
+      expect(screen.getByTestId("file-tree-rows")).toBeInTheDocument();
+      expect(input).toHaveValue("");
+    });
+
+    it("每一层的读取失败可以点一下重试（场景 8）", async () => {
+      const vscode = makeVscode();
+      renderTree({ vscode });
+      await waitFor(() => expect(requestedDirs(vscode)).toEqual(["/work/a"]));
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            data: {
+              command: "desktopDirEntries",
+              path: "/work/a",
+              error: "目录不可读",
+            },
+          }),
+        );
+      });
+      const error = await screen.findByTestId("file-tree-error");
+      expect(error).toHaveTextContent("目录不可读");
+      fireEvent.click(error);
+      await waitFor(() =>
+        expect(requestedDirs(vscode)).toEqual(["/work/a", "/work/a"]),
+      );
     });
   });
 

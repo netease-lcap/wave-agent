@@ -59,6 +59,7 @@ import type {
   ConfigurationData,
   DesktopPanelKind,
   FileViewState,
+  OpenFileTab,
   PanelTab,
   PrefillDraftRequest,
   PushNotificationControl,
@@ -74,6 +75,13 @@ import { EXIT_PLAN_MODE_TOOL_NAME } from "wave-agent-sdk/constants";
 // import is erased so nothing runtime-bound survives.
 import type { ConfiguredModel, PushState } from "wave-webview-fixtures";
 import { collectWriteEditBlocks, pathsMatch } from "../utils/fileAutoRefresh";
+import {
+  activeFileOf,
+  allOpenFiles,
+  openFilesOf,
+  patchOpenFile,
+  patchOpenFileByPath,
+} from "../utils/fileTabs";
 import { collectConversationFiles } from "../utils/conversationFiles";
 import {
   askDiscardUnsavedDraft,
@@ -84,7 +92,11 @@ import {
 import { toAbsoluteFilePath } from "../utils/messageUtils";
 import { isMacHiddenTitlebar, isRemotePageHost } from "../utils/platform";
 import { chatReducer, initialState } from "../reducers/chatReducer";
-import { sessionUi, PANEL_DEFAULT_WIDTH } from "../utils/sessionUiStore";
+import {
+  sessionUi,
+  PANEL_DEFAULT_WIDTH,
+  FILE_TREE_DEFAULT_WIDTH,
+} from "../utils/sessionUiStore";
 import type {
   SessionUiState,
   RemoteForwardRef,
@@ -560,6 +572,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     : undefined;
   const effectiveHost = paneHost ?? host?.host ?? "local";
   const effectiveHostRef = useRef(effectiveHost);
+  // 文件面板目录树的根 = 会话的稳定起点（`.wave/rules/workdir.md`）：agent 在
+  // Bash 里 `cd` 只挪「相对路径基准」，不该让用户眼前的树换根，所以这里取
+  // `sessionCwd`（宿主在 desktopPanes 里下发的会话根），`currentWorkdir` 不参与。
+  const treeRootForPane =
+    (paneId
+      ? host?.panes?.find((p) => p.paneId === paneId)?.sessionCwd
+      : undefined) ?? effectiveWorkdir;
   // Branch info only "exists" when it was fetched FOR the currently displayed
   // workdir. During a workdir switch — and before the first reply for the new
   // directory lands — this is null, so the branch/worktree controls stay
@@ -664,6 +683,18 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     () =>
       (groupKey ? sessionUi.get(groupKey)?.diffTreeVisible : undefined) ?? true,
   );
+  // Desktop file panel: the workspace tree column's visibility and width, per
+  // session like everything else in the panel group (spec desktop-file-panel.md
+  // 「文件面板工作区目录树」). Restored on a session switch below.
+  const [fileTreeVisible, setFileTreeVisible] = useState<boolean>(
+    () =>
+      (groupKey ? sessionUi.get(groupKey)?.fileTreeVisible : undefined) ?? true,
+  );
+  const [fileTreeWidth, setFileTreeWidth] = useState<number>(
+    () =>
+      (groupKey ? sessionUi.get(groupKey)?.fileTreeWidth : undefined) ??
+      FILE_TREE_DEFAULT_WIDTH,
+  );
   const [diffSelection, setDiffSelection] = useState<DiffSelection>(
     () =>
       (groupKey ? sessionUi.get(groupKey)?.diffSelection : undefined) ?? {
@@ -713,28 +744,34 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 文件面板的未保存草稿（spec desktop-file-panel.md「文件面板内编辑与保存」）：
   // 判定与丢弃都落在 tab 态上，声明在这里是因为「离开」的守卫散落在关闭 tab、
   // 打开另一个文件、换会话等既有回调里，它们都在调用时读最新的 tabsRef。
-  const isTabDirty = useCallback(
-    (tabId: string) =>
-      isFileViewDirty(tabsRef.current.find((t) => t.id === tabId)?.fileView),
-    [],
-  );
+  // 草稿挂在每个已打开文件上（面板内多标签），所以「有没有未保存的修改」要扫
+  // 全部文件而不是只看激活的那个。
   const hasDirtyDraft = useCallback(
-    () => tabsRef.current.some((t) => isFileViewDirty(t.fileView)),
+    () =>
+      allOpenFiles(tabsRef.current).some((f) => isFileViewDirty(f.fileView)),
     [],
   );
   const discardAllDrafts = useCallback(() => {
     setTabs((prev) =>
       prev.map((t) => {
-        if (!t.fileView || !isFileViewDirty(t.fileView)) return t;
+        const files = openFilesOf(t);
+        if (!files.some((f) => isFileViewDirty(f.fileView))) return t;
         return {
           ...t,
-          fileView: {
-            ...t.fileView,
-            draft: undefined,
-            saving: undefined,
-            saveError: undefined,
-            diskChanged: undefined,
-          },
+          openFiles: files.map((f) =>
+            isFileViewDirty(f.fileView)
+              ? {
+                  ...f,
+                  fileView: {
+                    ...f.fileView!,
+                    draft: undefined,
+                    saving: undefined,
+                    saveError: undefined,
+                    diskChanged: undefined,
+                  },
+                }
+              : f,
+          ),
         };
       }),
     );
@@ -788,6 +825,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     terminal: 0,
     file: 0,
   });
+  // Per-open-file id source (f1, f2, …) for the file panel's own tab strip.
+  // Restored ids are absorbed into it in the same effect as the tab ids.
+  const openFileSeqRef = useRef(0);
   useEffect(() => {
     // Absorb every restored tab id into its kind's counter (initial mount and
     // each session switch — the key change runs this after the swap effect
@@ -801,6 +841,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           tabSeqRef.current[kind],
           Number(m[2]),
         );
+      }
+    }
+    for (const t of current) {
+      for (const f of openFilesOf(t)) {
+        const m = /^f(\d+)$/.exec(f.id);
+        if (m) {
+          openFileSeqRef.current = Math.max(
+            openFileSeqRef.current,
+            Number(m[1]),
+          );
+        }
       }
     }
     // Intentional: only run when the session group key changes — the swap
@@ -964,6 +1015,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       panelExpanded,
       planContent,
       diffTreeVisible,
+      fileTreeVisible,
+      fileTreeWidth,
       diffSelection,
       forward: currentForward,
       forwardError: previewForwardError,
@@ -979,6 +1032,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     panelExpanded,
     planContent,
     diffTreeVisible,
+    fileTreeVisible,
+    fileTreeWidth,
     diffSelection,
     currentForward,
     previewForwardError,
@@ -1037,6 +1092,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setActiveTabId(active);
     setPlanContent(group?.planContent ?? null);
     setDiffTreeVisible(group?.diffTreeVisible ?? true);
+    setFileTreeVisible(group?.fileTreeVisible ?? true);
+    setFileTreeWidth(group?.fileTreeWidth ?? FILE_TREE_DEFAULT_WIDTH);
     setDiffSelection(group?.diffSelection ?? { kind: "all" });
     // 切走的会话：它的 preview guest 不销毁，登记为停靠组保活（额度与 LRU 见
     // utils/previewGuestKeep.ts）。登记必须落在这一个提交里——晚一个提交，槽位
@@ -1365,68 +1422,79 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       case "desktopFileContent":
         // File panel content reply (file panel spec scenario 1/2). Routed by
         // paneId so a sibling pane's reply never overwrites this pane's view;
-        // within the pane it lands on the file tab showing the same path. When
-        // no tab shows that path yet (a blank tab opened from "＋" before the
-        // host resolved a path), the reply binds the ACTIVE file tab to it.
+        // within the pane it lands on the open file with the same path.
         if (!forThisPane(message)) break;
         {
           const fv = message.fileView as FileViewState;
+          // 面板内多标签（spec「文件面板已打开文件的标签」）后，path 是这条回包
+          // 的归属键：落到条上同路径的那个文件上。条上没有这个文件（标签被关
+          // 了、或回包飞在半路用户已关掉）就丢弃——旧模型里「绑到当前空白标签」
+          // 的兜底已经没有对应物。
           setTabs((prev) =>
-            prev.some((t) => t.kind === "file" && t.filePath === fv.path)
-              ? prev.map((t) => {
-                  if (t.kind !== "file" || t.filePath !== fv.path) return t;
-                  // 草稿在身时这份重读不回填（spec desktop-file-panel.md「文件面板
-                  // 内编辑与保存」场景 8）：自动刷新、再次点开同一路径都会走到这里，
-                  // 直接替换就把用户没保存的修改吞了。只把「磁盘变了」告诉面板，
-                  // 由用户选「覆盖」还是「重新加载」；内容没变则什么都不做。
-                  if (t.fileView?.draft !== undefined) {
-                    if (fv.error || fv.content === t.fileView.content) return t;
-                    return {
-                      ...t,
-                      fileView: { ...t.fileView, diskChanged: true },
-                    };
-                  }
-                  return { ...t, fileView: fv };
-                })
-              : prev.map((t) =>
-                  t.id === activeTabIdRef.current && t.kind === "file"
-                    ? { ...t, filePath: fv.path, fileView: fv }
-                    : t,
-                ),
+            prev.map((t) =>
+              patchOpenFileByPath(t, fv.path, (f) => {
+                // 「路径已不在」是状态不是错误（spec desktop-file-panel.md 场景
+                // 13）：标签保留、标为不可用并给出「关闭标签」，内容区显示
+                // 「文件已不存在」，不再退化成一条读失败横幅。内容留着（可能是
+                // 之前读到的那份），下次读成功时连同 `deleted` 一起清掉。
+                if (fv.missing) {
+                  return {
+                    ...f,
+                    deleted: true,
+                    fileView: {
+                      ...(f.fileView ?? fv),
+                      missing: true,
+                      error: undefined,
+                    },
+                  };
+                }
+                // 草稿在身时这份重读不回填（spec desktop-file-panel.md「文件面板
+                // 内编辑与保存」场景 8）：自动刷新、再次点开同一路径都会走到这里，
+                // 直接替换就把用户没保存的修改吞了。只把「磁盘变了」告诉面板，
+                // 由用户选「覆盖」还是「重新加载」；内容没变则什么都不做。
+                if (f.fileView?.draft !== undefined) {
+                  if (fv.error || fv.content === f.fileView.content) return f;
+                  return {
+                    ...f,
+                    fileView: { ...f.fileView, diskChanged: true },
+                  };
+                }
+                return { ...f, deleted: undefined, fileView: fv };
+              }),
+            ),
           );
         }
         break;
       case "desktopFileSaveResult":
         // 面板内保存的回包（spec desktop-file-panel.md「文件面板内编辑与保存」场
-        // 景 4/7/10）。按 requestId 归到发起保存的那个 tab：回包落地时用户可能
-        // 已经取消编辑，甚至已经换了文件——状态一律以 tab 此刻的样子为准。
+        // 景 4/7/10）。按 requestId 归到发起保存的那个文件（多标签下 tab 已不再
+        // 唯一对应一个文件）：回包落地时用户可能已经取消编辑，甚至已经切到别的
+        // 文件——状态一律以那个文件此刻的样子为准。
         if (!forThisPane(message)) break;
         {
-          const tabId = fileSaveRequestsRef.current.get(message.requestId);
-          if (!tabId) break;
+          const fileId = fileSaveRequestsRef.current.get(message.requestId);
+          if (!fileId) break;
           fileSaveRequestsRef.current.delete(message.requestId);
-          if (message.status === "saved") {
+          const patchSaving = (patch: (fv: FileViewState) => FileViewState) =>
             setTabs((prev) =>
-              prev.map((t) => {
-                if (t.id !== tabId || t.kind !== "file" || !t.fileView)
-                  return t;
-                const fileView = t.fileView;
-                return {
-                  ...t,
-                  fileView: {
-                    ...fileView,
-                    // 保存成功 = 磁盘此刻就是草稿内容：只读正文换成草稿那份、
-                    // 并发校验的基准换成回包里的哈希，编辑态退出。
-                    content: fileView.draft ?? fileView.content,
-                    contentHash: message.contentHash ?? fileView.contentHash,
-                    draft: undefined,
-                    saving: undefined,
-                    saveError: undefined,
-                    diskChanged: undefined,
-                  },
-                };
-              }),
+              prev.map((t) =>
+                patchOpenFile(t, fileId, (f) =>
+                  f.fileView ? { ...f, fileView: patch(f.fileView) } : f,
+                ),
+              ),
             );
+          if (message.status === "saved") {
+            patchSaving((fileView) => ({
+              ...fileView,
+              // 保存成功 = 磁盘此刻就是草稿内容：只读正文换成草稿那份、
+              // 并发校验的基准换成回包里的哈希，编辑态退出。
+              content: fileView.draft ?? fileView.content,
+              contentHash: message.contentHash ?? fileView.contentHash,
+              draft: undefined,
+              saving: undefined,
+              saveError: undefined,
+              diskChanged: undefined,
+            }));
             // 轻量反馈（本 pane 自己的 toast 栈）。连存两次（保存 → 冲突 →
             // 覆盖）只留一条「已保存」，不叠成一摞同样的痕。
             setToasts((prev) => [
@@ -1439,36 +1507,26 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             ]);
             break;
           }
-          setTabs((prev) =>
-            prev.map((t) => {
-              if (t.id !== tabId || t.kind !== "file" || !t.fileView) return t;
-              const fileView = t.fileView;
-              if (message.status === "conflict") {
-                // 磁盘被改过：草稿原样留着、不退出编辑态，回包里的磁盘哈希落到
-                // contentHash 上——用户点「覆盖」就是按它再写一次；点「重新加载」
-                // 则丢弃草稿重读。
-                return {
-                  ...t,
-                  fileView: {
-                    ...fileView,
-                    saving: undefined,
-                    saveError: undefined,
-                    diskChanged: true,
-                    contentHash: message.contentHash ?? fileView.contentHash,
-                  },
-                };
-              }
-              // denied / error：草稿完整保留、仍在编辑态，用户可重试或取消。
+          patchSaving((fileView) => {
+            if (message.status === "conflict") {
+              // 磁盘被改过：草稿原样留着、不退出编辑态，回包里的磁盘哈希落到
+              // contentHash 上——用户点「覆盖」就是按它再写一次；点「重新加载」
+              // 则丢弃草稿重读。
               return {
-                ...t,
-                fileView: {
-                  ...fileView,
-                  saving: undefined,
-                  saveError: message.message ?? "保存失败，请重试",
-                },
+                ...fileView,
+                saving: undefined,
+                saveError: undefined,
+                diskChanged: true,
+                contentHash: message.contentHash ?? fileView.contentHash,
               };
-            }),
-          );
+            }
+            // denied / error：草稿完整保留、仍在编辑态，用户可重试或取消。
+            return {
+              ...fileView,
+              saving: undefined,
+              saveError: message.message ?? "保存失败，请重试",
+            };
+          });
         }
         break;
       case "desktopPreviewFileResult":
@@ -3511,9 +3569,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         }
         if (next.length === 0) setPanelExpanded(false);
       };
-      // 关掉带草稿的 file tab 等于丢弃草稿：先问（spec desktop-file-panel.md
-      // 「文件面板内编辑与保存」场景 6）。
-      if (isFileViewDirty(closed.fileView)) {
+      // 关掉带草稿的 file tab 等于丢弃它名下所有文件的草稿：先问（spec
+      // desktop-file-panel.md「文件面板内编辑与保存」场景 6）。
+      if (openFilesOf(closed).some((f) => isFileViewDirty(f.fileView))) {
         void askDiscardUnsavedDraft().then((discard) => {
           if (discard) doClose();
         });
@@ -3582,10 +3640,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         };
         // 取消勾选「文件」会关掉所有 file tab，等于丢弃其中的草稿：先问（spec
         // desktop-file-panel.md「文件面板内编辑与保存」场景 6）。
-        if (
-          kind === "file" &&
-          tabsRef.current.some((t) => isFileViewDirty(t.fileView))
-        ) {
+        if (kind === "file" && hasDirtyDraft()) {
           void askDiscardUnsavedDraft().then((discard) => {
             if (discard) doClose();
           });
@@ -3596,7 +3651,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         tryOpenPanel(kind);
       }
     },
-    [tryOpenPanel, postToHost],
+    [tryOpenPanel, postToHost, hasDirtyDraft],
   );
 
   useEffect(() => {
@@ -3669,62 +3724,90 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // The file-panel body of handleOpenFile (no .html routing) — used directly
   // by the preview fallback so a refused preview can never loop back into
   // preview routing.
+  // ---- 标签带（spec「文件面板已打开文件的标签」）----------------------------
+  // 面板是单实例的：第一个 file tab 承载整条标签带（`openFiles` +
+  // `activeFileId` 都在它身上），标签带上的操作也都落在它身上。
+  const genFileId = useCallback((): string => {
+    openFileSeqRef.current += 1;
+    return `f${openFileSeqRef.current}`;
+  }, []);
+
+  const updateFileTab = useCallback(
+    (tabId: string, patch: (t: PanelTab) => PanelTab) => {
+      setTabs((prev) => prev.map((t) => (t.id === tabId ? patch(t) : t)));
+    },
+    [],
+  );
+
   const openFileInPanel = useCallback(
     (path: string, startLine?: number, endLine?: number) => {
-      // The file panel is single-instance: any file click activates the one
-      // file tab and switches it to the new path (soft-refresh — the old
-      // content stays until the host reply lands, matching the diff pane).
-      // Only when no file tab exists yet is a fresh one added.
+      // 面板内多标签（spec「文件面板已打开文件的标签」）：同一条路径已经在条上
+      // 就激活它并软刷新（旧内容留着直到回包落地，和差异面板同一手感）；不在条
+      // 上就追加一个标签。面板本身是单实例的，所以承载整条标签带的一级 file tab
+      // 只有第一个，不再为每个文件开一级 tab。
       const existing = tabsRef.current.find((t) => t.kind === "file");
       if (existing) {
         setActiveTabId(existing.id);
         setPanelExpanded(true);
-        setTabs((prev) =>
-          prev.map((t) =>
-            t.id === existing.id
-              ? {
-                  ...t,
-                  filePath: path,
-                  startLine,
-                  endLine,
-                  // 新打开的文件一律进入文件视图：这也是同一条 path 被再次点开
-                  // 时视图能从列表切回来的唯一开关。
-                  listMode: undefined,
-                  fileView: t.fileView
-                    ? {
-                        ...t.fileView,
-                        path,
-                        loading: true,
-                        startLine,
-                        endLine,
-                      }
-                    : {
-                        path,
-                        host: effectiveHost,
-                        loading: true,
-                        startLine,
-                        endLine,
-                      },
-                }
-              : t,
-          ),
-        );
-      } else if (
-        addTab({
-          kind: "file",
-          filePath: path,
-          startLine,
-          endLine,
-          fileView: {
+        const already = openFilesOf(existing).find((f) => f.path === path);
+        const fileId = already?.id ?? genFileId();
+        updateFileTab(existing.id, (t) => {
+          const loadingView: FileViewState = {
+            ...(already?.fileView ?? { path, host: effectiveHost }),
             path,
-            host: effectiveHost,
+            // 重新读一次就把上一次失败的痕迹清掉（「不存在」也在内）：读的过程中
+            // 既不该留着旧错误横幅，也不该留着「已删除」标记。
+            error: undefined,
+            missing: undefined,
             loading: true,
             startLine,
             endLine,
-          },
-        }) === null
-      ) {
-        return; // space guard refused — nothing opened
+          };
+          const openFiles = already
+            ? openFilesOf(t).map((f) =>
+                f.id === fileId
+                  ? {
+                      ...f,
+                      deleted: undefined,
+                      startLine,
+                      endLine,
+                      fileView: loadingView,
+                    }
+                  : f,
+              )
+            : [
+                ...openFilesOf(t),
+                { id: fileId, path, startLine, endLine, fileView: loadingView },
+              ];
+          // 新打开的文件一律进入文件视图：这也是同一条 path 被再次点开时视图能
+          // 从列表切回来的唯一开关。
+          return { ...t, listMode: undefined, activeFileId: fileId, openFiles };
+        });
+      } else {
+        const fileId = genFileId();
+        if (
+          addTab({
+            kind: "file",
+            activeFileId: fileId,
+            openFiles: [
+              {
+                id: fileId,
+                path,
+                startLine,
+                endLine,
+                fileView: {
+                  path,
+                  host: effectiveHost,
+                  loading: true,
+                  startLine,
+                  endLine,
+                },
+              },
+            ],
+          }) === null
+        ) {
+          return; // space guard refused — nothing opened
+        }
       }
       postToHost({
         command: "openFile",
@@ -3734,29 +3817,190 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         endLine,
       });
     },
-    [addTab, effectiveHost, postToHost],
+    [addTab, effectiveHost, genFileId, postToHost, updateFileTab],
   );
   useEffect(() => {
     openFileInPanelRef.current = openFileInPanel;
   }, [openFileInPanel]);
 
-  // 「返回文件列表」：只翻列表标志，文件内容仍留在 tab 上——这样正在飞行的
-  // desktopFileContent 回复（按 path 归到同一个 tab）落下来也不会把用户从列表
+  /** The file tab that owns this open file (undefined = it was closed). */
+  const fileTabOf = useCallback(
+    (fileId: string) =>
+      tabsRef.current.find((t) => openFilesOf(t).some((f) => f.id === fileId)),
+    [],
+  );
+
+  /**
+   * 关掉标签带上的文件（单个 / 其他 / 右侧 / 全部）。带草稿的先问（spec
+   * desktop-file-panel.md「文件面板内编辑与保存」场景 6）——多标签下关一个标签只
+   * 丢它自己的草稿，条上其余文件连同草稿都还在。
+   */
+  const closeFilesByIds = useCallback(
+    (tabId: string, ids: string[]) => {
+      if (ids.length === 0) return;
+      const idset = new Set(ids);
+      const tab = tabsRef.current.find((t) => t.id === tabId);
+      if (!tab) return;
+      const doomed = openFilesOf(tab).filter((f) => idset.has(f.id));
+      if (doomed.length === 0) return;
+      const run = () =>
+        updateFileTab(tabId, (t) => {
+          const all = openFilesOf(t);
+          const openFiles = all.filter((f) => !idset.has(f.id));
+          if (openFiles.length === all.length) return t;
+          // 关掉的正是激活文件时，激活位让给剩下的最后一个；全关光就没有激活
+          // 文件，面板回列表/空态（spec 场景 14）。
+          return {
+            ...t,
+            openFiles,
+            activeFileId: openFiles.some((f) => f.id === t.activeFileId)
+              ? t.activeFileId
+              : openFiles[openFiles.length - 1]?.id,
+          };
+        });
+      if (doomed.some((f) => isFileViewDirty(f.fileView))) {
+        void askDiscardUnsavedDraft().then((discard) => {
+          if (discard) run();
+        });
+        return;
+      }
+      run();
+    },
+    [updateFileTab],
+  );
+
+  /** 点标签：激活；点的就是激活的那个 = 重新读盘（和浏览器标签同一手感）。 */
+  const handleActivateFile = useCallback(
+    (fileId: string) => {
+      const tab = fileTabOf(fileId);
+      if (!tab) return;
+      if (tab.activeFileId === fileId) {
+        const file = openFilesOf(tab).find((f) => f.id === fileId);
+        if (file) openFileInPanelRef.current(file.path);
+        return;
+      }
+      updateFileTab(tab.id, (t) => ({
+        ...t,
+        activeFileId: fileId,
+        listMode: undefined,
+      }));
+    },
+    [fileTabOf, updateFileTab],
+  );
+
+  const handleCloseFile = useCallback(
+    (fileId: string) => {
+      const tab = fileTabOf(fileId);
+      if (tab) closeFilesByIds(tab.id, [fileId]);
+    },
+    [closeFilesByIds, fileTabOf],
+  );
+
+  const handleCloseOtherFiles = useCallback(
+    (fileId: string) => {
+      const tab = fileTabOf(fileId);
+      if (!tab) return;
+      closeFilesByIds(
+        tab.id,
+        openFilesOf(tab)
+          .filter((f) => f.id !== fileId)
+          .map((f) => f.id),
+      );
+    },
+    [closeFilesByIds, fileTabOf],
+  );
+
+  const handleCloseFilesRight = useCallback(
+    (fileId: string) => {
+      const tab = fileTabOf(fileId);
+      if (!tab) return;
+      const files = openFilesOf(tab);
+      const index = files.findIndex((f) => f.id === fileId);
+      if (index < 0) return;
+      closeFilesByIds(
+        tab.id,
+        files.slice(index + 1).map((f) => f.id),
+      );
+    },
+    [closeFilesByIds, fileTabOf],
+  );
+
+  const handleCloseAllFiles = useCallback(() => {
+    const tab = tabsRef.current.find((t) => t.kind === "file");
+    if (!tab) return;
+    closeFilesByIds(
+      tab.id,
+      openFilesOf(tab).map((f) => f.id),
+    );
+  }, [closeFilesByIds]);
+
+  /** 标签重排（Ctrl/Cmd+Shift+←/→）：挪一格，到头就停。 */
+  const handleReorderFile = useCallback(
+    (fileId: string, delta: number) => {
+      const tab = fileTabOf(fileId);
+      if (!tab) return;
+      updateFileTab(tab.id, (t) => {
+        const files = [...openFilesOf(t)];
+        const from = files.findIndex((f) => f.id === fileId);
+        const to = from + delta;
+        if (from < 0 || to < 0 || to >= files.length) return t;
+        const [moved] = files.splice(from, 1);
+        files.splice(to, 0, moved);
+        return { ...t, openFiles: files };
+      });
+    },
+    [fileTabOf, updateFileTab],
+  );
+
+  // 「返回文件列表」：只翻列表标志，文件内容仍留在条上——这样正在飞行的
+  // desktopFileContent 回复（按 path 归到同一个文件）落下来也不会把用户从列表
   // 拽回文件视图；再次点开同一文件时 openFileInPanel 清掉该标志。
   const handleFilePaneBackToList = useCallback(() => {
     setTabs((prev) =>
       prev.map((t) =>
-        t.kind === "file" && t.fileView ? { ...t, listMode: true } : t,
+        t.kind === "file" && openFilesOf(t).length > 0
+          ? { ...t, listMode: true }
+          : t,
       ),
     );
   }, []);
 
   // ---- 文件面板内编辑（spec desktop-file-panel.md「文件面板内编辑与保存」）------
-  // 草稿落在 tab 的 `fileView.draft` 里，而不是面板组件的内部 state：一级 tab 切
-  // 换时面板只是 display:none（组件仍活着），但换会话会把整份 tabs 换掉——草稿跟
-  // 着 tab 走才谈得上「切回来还在」，也才能被「离开前统一确认」看见。
+  // 草稿落在 `OpenFileTab.fileView.draft` 里，而不是面板组件的内部 state：一级 tab
+  // 切换时面板只是 display:none（组件仍活着），但换会话会把整份 tabs 换掉——草稿
+  // 跟着文件走才谈得上「切回来还在」，也才能被「离开前统一确认」看见。多标签下
+  // 一份草稿只属于它自己的那个文件，切到别的文件不会丢。
   const fileSaveRequestsRef = useRef<Map<string, string>>(new Map());
   const fileSaveSeqRef = useRef(0);
+
+  /** 本 pane 正在看着/编辑的那个文件：编辑类回调都从这里取，没有第二份状态。 */
+  const activeFileCtx = useCallback(() => {
+    for (const t of tabsRef.current) {
+      const file = activeFileOf(t);
+      if (file) return { tab: t, file };
+    }
+    return null;
+  }, []);
+
+  /** Patch whichever file the panel is showing (the edit callbacks' target). */
+  const patchActiveFile = useCallback(
+    (patch: (f: OpenFileTab) => OpenFileTab) => {
+      const ctx = activeFileCtx();
+      if (!ctx) return;
+      patchFileByIdRef.current(ctx.file.id, patch);
+    },
+    [activeFileCtx],
+  );
+
+  /** Patch one open file by id, wherever it lives in this pane's tabs. */
+  const patchFileById = useCallback(
+    (fileId: string, patch: (f: OpenFileTab) => OpenFileTab) => {
+      setTabs((prev) => prev.map((t) => patchOpenFile(t, fileId, patch)));
+    },
+    [],
+  );
+  const patchFileByIdRef = useRef(patchFileById);
+  patchFileByIdRef.current = patchFileById;
 
   // 登记给窗口级导航（换会话 / 换工作目录 / 新建 / 删除）做守卫：那些动作的入口
   // 在 DesktopApp / DesktopShell，拿不到本 pane 的 tabs。
@@ -3791,97 +4035,95 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   }, []);
 
   /** 退出编辑态：草稿丢弃，正文回到已读到的 `content`。 */
-  const exitFileEdit = useCallback((tabId: string) => {
-    setTabs((prev) =>
-      prev.map((t) =>
-        t.id === tabId && t.kind === "file" && t.fileView
+  const exitFileEdit = useCallback(
+    (fileId: string) => {
+      patchFileById(fileId, (f) =>
+        f.fileView
           ? {
-              ...t,
+              ...f,
               fileView: {
-                ...t.fileView,
+                ...f.fileView,
                 draft: undefined,
                 saving: undefined,
                 saveError: undefined,
                 diskChanged: undefined,
               },
             }
-          : t,
-      ),
-    );
-  }, []);
-
-  const handleFileStartEdit = useCallback((tabId: string) => {
-    setTabs((prev) =>
-      prev.map((t) =>
-        t.id === tabId && t.kind === "file" && t.fileView
-          ? {
-              ...t,
-              fileView: {
-                ...t.fileView,
-                draft: t.fileView.content ?? "",
-                saveError: undefined,
-                diskChanged: undefined,
-              },
-            }
-          : t,
-      ),
-    );
-  }, []);
-
-  const handleFileDraftChange = useCallback((tabId: string, value: string) => {
-    setTabs((prev) =>
-      prev.map((t) =>
-        t.id === tabId && t.kind === "file" && t.fileView?.draft !== undefined
-          ? { ...t, fileView: { ...t.fileView, draft: value } }
-          : t,
-      ),
-    );
-  }, []);
-
-  const handleFileCancelEdit = useCallback(
-    (tabId: string) => {
-      if (!isTabDirty(tabId)) {
-        exitFileEdit(tabId);
-        return;
-      }
-      void askDiscardUnsavedDraft().then((discard) => {
-        if (discard) exitFileEdit(tabId);
-      });
+          : f,
+      );
     },
-    [exitFileEdit, isTabDirty],
+    [patchFileById],
   );
 
+  const handleFileStartEdit = useCallback(() => {
+    patchActiveFile((f) =>
+      f.fileView
+        ? {
+            ...f,
+            fileView: {
+              ...f.fileView,
+              draft: f.fileView.content ?? "",
+              saveError: undefined,
+              diskChanged: undefined,
+            },
+          }
+        : f,
+    );
+  }, [patchActiveFile]);
+
+  const handleFileDraftChange = useCallback(
+    (value: string) => {
+      patchActiveFile((f) =>
+        f.fileView?.draft !== undefined
+          ? { ...f, fileView: { ...f.fileView, draft: value } }
+          : f,
+      );
+    },
+    [patchActiveFile],
+  );
+
+  const handleFileCancelEdit = useCallback(() => {
+    const ctx = activeFileCtx();
+    if (!ctx) return;
+    if (!isFileViewDirty(ctx.file.fileView)) {
+      exitFileEdit(ctx.file.id);
+      return;
+    }
+    void askDiscardUnsavedDraft().then((discard) => {
+      if (discard) exitFileEdit(ctx.file.id);
+    });
+  }, [activeFileCtx, exitFileEdit]);
+
   const handleFileSave = useCallback(
-    (tabId: string, content: string) => {
-      const tab = tabsRef.current.find((t) => t.id === tabId);
-      const fileView = tab?.kind === "file" ? tab.fileView : undefined;
+    (content: string) => {
+      const ctx = activeFileCtx();
+      const fileView = ctx?.file.fileView;
       if (!fileView || fileView.draft === undefined || fileView.saving) return;
+      const fileId = ctx.file.id;
       // 与读到的内容一致 = 没做修改：不写盘，直接退出编辑态（场景 4）。磁盘期间
       // 变过的话顺手重读一次，让正文回到磁盘内容。
       if (content === fileView.content) {
         if (fileView.diskChanged) openFileInPanelRef.current(fileView.path);
-        exitFileEdit(tabId);
+        exitFileEdit(fileId);
         return;
       }
       // 没有哈希就没有乐观并发校验的基准，不能写（可写性由宿主判定，这里只是兜底）。
       if (!fileView.contentHash) return;
       const requestId = `${Date.now()}-${++fileSaveSeqRef.current}`;
-      fileSaveRequestsRef.current.set(requestId, tabId);
-      setTabs((prev) =>
-        prev.map((t) =>
-          t.id === tabId && t.kind === "file" && t.fileView
-            ? {
-                ...t,
-                fileView: {
-                  ...t.fileView,
-                  // 以编辑器此刻的全文为准（onChange 与保存是两次事件）。
-                  draft: content,
-                  saving: true,
-                  saveError: undefined,
-                },
-              }
-            : t,
-        ),
+      fileSaveRequestsRef.current.set(requestId, fileId);
+      patchFileById(fileId, (f) =>
+        f.fileView
+          ? {
+              ...f,
+              fileView: {
+                ...f.fileView,
+                // 以编辑器此刻的全文为准（onChange 与保存是两次事件）。
+                draft: content,
+                saving: true,
+                saveError: undefined,
+              },
+            }
+          : f,
       );
       postToHost({
         command: "desktopSaveFile",
@@ -3891,43 +4133,38 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         requestId,
       });
     },
-    [exitFileEdit, postToHost],
+    [activeFileCtx, exitFileEdit, patchFileById, postToHost],
   );
 
   /** 「重新加载」：丢弃草稿并按既有 openFile 链路重读磁盘（场景 7）。 */
-  const handleFileReload = useCallback(
-    (tabId: string) => {
-      const tab = tabsRef.current.find((t) => t.id === tabId);
-      const fileView = tab?.kind === "file" ? tab.fileView : undefined;
-      if (!fileView) return;
-      exitFileEdit(tabId);
-      openFileInPanelRef.current(fileView.path);
-    },
-    [exitFileEdit],
-  );
+  const handleFileReload = useCallback(() => {
+    const ctx = activeFileCtx();
+    if (!ctx?.file.fileView) return;
+    exitFileEdit(ctx.file.id);
+    openFileInPanelRef.current(ctx.file.fileView.path);
+  }, [activeFileCtx, exitFileEdit]);
 
   /**
-   * 自动刷新（spec「文件面板自动刷新」）落在带草稿的 tab 上时的替代动作：不重读
+   * 自动刷新（spec「文件面板自动刷新」）落在带草稿的文件上时的替代动作：不重读
    * （重读会把还没保存的修改吞掉），只把「磁盘变了」告诉面板，由用户选覆盖还是
    * 重新加载（场景 8）。
    */
-  const handleFileAutoRefresh = useCallback((path: string) => {
-    const tab = tabsRef.current.find(
-      (t) => t.kind === "file" && t.filePath === path,
-    );
-    if (!tab || !tab.fileView) return;
-    if (tab.fileView.draft === undefined) {
-      openFileInPanelRef.current(path);
-      return;
-    }
-    setTabs((prev) =>
-      prev.map((t) =>
-        t.id === tab.id && t.fileView
-          ? { ...t, fileView: { ...t.fileView, diskChanged: true } }
-          : t,
-      ),
-    );
-  }, []);
+  const handleFileAutoRefresh = useCallback(
+    (path: string) => {
+      const hit = allOpenFiles(tabsRef.current).find((f) => f.path === path);
+      if (!hit) return;
+      if (hit.fileView?.draft === undefined) {
+        openFileInPanelRef.current(path);
+        return;
+      }
+      patchFileById(hit.id, (f) =>
+        f.fileView
+          ? { ...f, fileView: { ...f.fileView, diskChanged: true } }
+          : f,
+      );
+    },
+    [patchFileById],
+  );
 
   const handleOpenFile = useCallback(
     (path: string, startLine?: number, endLine?: number) => {
@@ -3943,14 +4180,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         }
         openFileInPanel(path, startLine, endLine);
       };
-      // 编辑中在面板里打开另一个文件 = 换掉同一个 file tab，草稿随之作废，所以
-      // 先问一句（spec 场景 6）。要打开的就是正在编辑的那个文件时不问：那种情况
-      // 草稿不会被丢（openFileInPanel 保留 fileView，重读回包也按草稿优先处理）。
-      const sameFileBeingEdited = tabsRef.current.some(
-        (t) =>
-          t.kind === "file" &&
-          t.fileView?.draft !== undefined &&
-          t.filePath === path,
+      // 编辑中打开另一个文件不再丢弃任何草稿——面板内多标签后草稿跟着文件走
+      // （spec「文件面板已打开文件的标签」），只有「要打开的正是正在编辑的那个
+      // 文件」这一条还得让 openFileInPanel 走软刷新（它会重读，回包按草稿优先
+      // 处理）。其余情况不需要问。
+      const sameFileBeingEdited = allOpenFiles(tabsRef.current).some(
+        (f) => f.path === path && f.fileView?.draft !== undefined,
       );
       if (!isDesktop || sameFileBeingEdited || !hasDirtyDraft()) {
         run();
@@ -3992,10 +4227,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const fileToolStagesRef = useRef<Map<string, ToolBlock["stage"]>>(new Map());
   useEffect(() => {
     if (!isDesktop) return;
-    const filePaths = tabsRef.current
-      .filter((t) => t.kind === "file" && t.filePath)
-      .map((t) => t.filePath)
-      .filter((p): p is string => p !== undefined);
+    // 条上每个已打开文件都要重新读一遍（多标签后一次写盘可能命中条上多个文件）。
+    const filePaths = allOpenFiles(tabsRef.current).map((f) => f.path);
     const previewFilePaths = tabsRef.current
       .filter((t) => t.kind === "preview" && t.previewFilePath)
       .map((t) => t.previewFilePath)
@@ -4304,20 +4537,36 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     if (kind === "file") {
       return (
         <FilePane
-          fileView={tab.fileView ?? null}
+          files={openFilesOf(tab)}
+          activeFileId={tab.activeFileId}
           listMode={tab.listMode}
           conversationFiles={conversationFiles}
           onBackToList={handleFilePaneBackToList}
           onOpenExternal={handleOpenFileExternal}
           workdir={effectiveWorkdir}
+          // The tree is rooted at the session's stable root (`.wave/rules/
+          // workdir.md`): a bash `cd` moves the relative-path basis, not the
+          // tree the user reads.
+          treeRoot={treeRootForPane}
+          treeVisible={fileTreeVisible}
+          onTreeVisibleChange={setFileTreeVisible}
+          treeWidth={fileTreeWidth}
+          onTreeWidthChange={setFileTreeWidth}
+          paneId={paneId}
           vscode={vscode}
           onOpenFileInPanel={(path) => handleOpenFile(path)}
+          onActivateFile={handleActivateFile}
+          onCloseFile={handleCloseFile}
+          onCloseOtherFiles={handleCloseOtherFiles}
+          onCloseFilesRight={handleCloseFilesRight}
+          onCloseAllFiles={handleCloseAllFiles}
+          onReorderFile={handleReorderFile}
           onAddComment={handleAddComment}
-          onStartEdit={() => handleFileStartEdit(id)}
-          onDraftChange={(value) => handleFileDraftChange(id, value)}
-          onSaveDraft={(content) => handleFileSave(id, content)}
-          onCancelEdit={() => handleFileCancelEdit(id)}
-          onReloadDraft={() => handleFileReload(id)}
+          onStartEdit={handleFileStartEdit}
+          onDraftChange={handleFileDraftChange}
+          onSaveDraft={handleFileSave}
+          onCancelEdit={handleFileCancelEdit}
+          onReloadDraft={handleFileReload}
           {...common}
         />
       );

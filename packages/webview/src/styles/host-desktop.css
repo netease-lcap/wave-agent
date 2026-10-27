@@ -1787,6 +1787,182 @@
    桌面辅助档 12/20 + r4 + --cc-fill 面 + --cc-text-regular 字。
    （不用 --cc-text-secondary：浅色 #6C7076 压在 #F0F2F5 上是 4.44:1，12px 文字
    差一点不到 AA 4.5；--cc-text-regular #565A60 → 6.08:1、深色 8.63:1。） */
+/* ═══ 文件面板：目录树 / 面板内文件标签 / 查找条（spec desktop-file-panel.md
+   「文件面板工作区目录树」「文件面板已打开文件的标签」「文件面板内查找与跳行」）═══
+   base（FilePane.css）是 VS Code 形制；桌面端按面板自己的语言对齐：选中/hover 用
+   `--cc-fill` 系面而不是蓝色高亮块，圆角 6px，行高 24px（树）与 26px（标签），
+   输入框沿用「字段行」形制（无内描边、焦点色落自身边框）。 */
+[data-host="desktop"] .file-pane-tree-col {
+  border-right-color: var(--cc-border, #ebeef5);
+}
+[data-host="desktop"] .file-pane-tree-splitter:hover {
+  background: var(--cc-border-focus, #a0a5a8);
+}
+[data-host="desktop"] .file-tree-filter {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--cc-fill);
+  color: var(--cc-text-primary);
+  font-size: 13px;
+}
+[data-host="desktop"] .file-tree-filter::placeholder {
+  color: var(--cc-text-placeholder, #a0a5a8);
+}
+[data-host="desktop"] .file-tree-filter:focus {
+  border-color: var(--cc-border-focus, #a0a5a8);
+}
+[data-host="desktop"] .file-tree-row {
+  height: 24px;
+  border-radius: 6px;
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"] .file-tree-row:hover {
+  background: var(--cc-fill-hover);
+}
+[data-host="desktop"] .file-tree-row--active,
+[data-host="desktop"] .file-tree-row--active:hover {
+  background: var(--cc-fill-pressed);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"] .file-tree-icon,
+[data-host="desktop"] .file-tree-caret {
+  color: var(--cc-text-secondary);
+}
+[data-host="desktop"] .file-tree-note {
+  color: var(--cc-text-secondary);
+}
+[data-host="desktop"] .file-tree-result {
+  min-height: 32px;
+  border-radius: 6px;
+  color: var(--cc-text-primary);
+  font-size: 13px;
+}
+[data-host="desktop"] .file-tree-result:hover {
+  background: var(--cc-fill-hover);
+}
+[data-host="desktop"] .file-tree-result--selected,
+[data-host="desktop"] .file-tree-result--selected:hover {
+  background: var(--cc-fill-pressed);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"] .file-tree-result-dir {
+  color: var(--cc-text-secondary);
+}
+[data-host="desktop"] .file-tree-result--selected .file-tree-result-dir {
+  color: var(--cc-text-regular);
+  opacity: 1;
+}
+[data-host="desktop"] .file-tab-strip {
+  gap: 4px;
+  padding: 6px 6px 0;
+  border-bottom-color: var(--cc-border, #ebeef5);
+}
+[data-host="desktop"] .file-tab {
+  height: 26px;
+  max-width: 200px;
+  padding: 0 4px 0 10px;
+  border-radius: 6px;
+  color: var(--cc-text-secondary);
+  font-size: 13px;
+}
+[data-host="desktop"] .file-tab:hover {
+  background: var(--cc-fill-hover);
+}
+[data-host="desktop"] .file-tab--active,
+[data-host="desktop"] .file-tab--active:hover {
+  background: var(--cc-fill);
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"] .file-tab-close:hover {
+  background: var(--cc-fill-pressed);
+}
+[data-host="desktop"] .file-tab-more-trigger {
+  height: 24px;
+  border-radius: 6px;
+  color: var(--cc-text-secondary);
+}
+[data-host="desktop"] .file-tab-more-trigger:hover {
+  background: var(--cc-fill-hover);
+}
+[data-host="desktop"] .file-tab-more-menu,
+[data-host="desktop"] .file-tab-menu {
+  padding: 8px;
+  border: none;
+  border-radius: 12px;
+  background: var(--cc-bg-overlay);
+  box-shadow: 0 0 12px rgb(0 0 0 / 12%);
+}
+[data-host="desktop"][data-theme="dark"] .file-tab-more-menu,
+[data-host="desktop"][data-theme="dark"] .file-tab-menu {
+  box-shadow: 0 0 12px rgb(0 0 0 / 40%);
+}
+[data-host="desktop"] .file-tab-menu-item,
+[data-host="desktop"] .file-tab-more-item {
+  min-height: 32px;
+  padding: 0 8px;
+  border-radius: 6px;
+  color: var(--cc-text-primary);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+}
+[data-host="desktop"] .file-tab-menu-item:hover,
+[data-host="desktop"] .file-tab-more-item:hover {
+  background: var(--cc-fill-hover);
+}
+[data-host="desktop"] .file-pane-find {
+  gap: 6px;
+  padding: 8px;
+  border-bottom-color: var(--cc-border, #ebeef5);
+  background: transparent;
+}
+[data-host="desktop"] .file-pane-find-input,
+[data-host="desktop"] .file-pane-goto-input {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: var(--cc-fill);
+  color: var(--cc-text-primary);
+  font-size: 13px;
+}
+[data-host="desktop"] .file-pane-find-input::placeholder,
+[data-host="desktop"] .file-pane-goto-input::placeholder {
+  color: var(--cc-text-placeholder, #a0a5a8);
+}
+[data-host="desktop"] .file-pane-find-input:focus,
+[data-host="desktop"] .file-pane-goto-input:focus {
+  border-color: var(--cc-border-focus, #a0a5a8);
+}
+[data-host="desktop"] .file-pane-find-btn {
+  height: 26px;
+  min-width: 26px;
+  border-radius: 6px;
+  color: var(--cc-text-regular);
+  font-size: 12px;
+}
+[data-host="desktop"] .file-pane-find-btn:hover {
+  background: var(--cc-fill-hover);
+}
+[data-host="desktop"] .file-pane-find-btn.active,
+[data-host="desktop"] .file-pane-find-btn.active:hover {
+  background: var(--cc-fill-pressed);
+  border-color: transparent;
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"] .file-pane-find-count,
+[data-host="desktop"] .file-pane-find-note,
+[data-host="desktop"] .file-pane-goto-sep,
+[data-host="desktop"] .file-pane-placeholder-hint {
+  color: var(--cc-text-secondary);
+}
+[data-host="desktop"] .file-pane-find-count--error,
+[data-host="desktop"] .file-pane-find-note {
+  color: var(--cc-color-danger);
+}
+
 [data-host="desktop"] .file-pane-host {
   font-size: 12px;
   line-height: 20px;
@@ -1796,98 +1972,9 @@
   color: var(--cc-text-regular);
 }
 
-/* ═══ 0917 评论（文件面板 toolbar）②：搜索弹层整体对齐桌面 ═══
-   base（FilePane.css）是 VS Code 形制：外壳 r4 + 1px dropdown 描边 + 无影，里头再
-   套一个自带 1px 描边的 12px 输入框（两层描边），建议列表又是另一个独立浮层
-   （r12 菜单）用绝对定位压在外壳下缘上（列表顶边与外壳底边重叠 = 视觉两圈边、
-   列表 302px 比输入框 683px 窄出一截）。
-
-   对齐桌面 = 按第十三轮浮层规格做成「一个面板，面板内一个字段行，列表排在同一面板
-   里」：面板 #FFFFFF / #EBEEF5 / r12 / 0 0 12px 12%（深色 --cc-bg-overlay + 12% 白边
-   + 40% 黑影）/ padding 8 / 纵向 gap 8；字段行 32px（桌面控件档）/ r8 / --cc-fill 面 /
-   无描边（聚焦走「两种语言」的 A 式：焦点色落自身边框，与 .desktop-host-add-input 同）；
-   文字 14px 正文档。列表自身的面板属性全部复位，交给父面板（子选择器 specificity
-   (0,3,0)/(0,4,0) 高于上方第十三轮的 (0,2,0)/(0,3,0)，书写顺序不影响）。
-   组件侧同步去掉了内联绝对定位（position 传参省略即随文档流）。 */
-[data-host="desktop"] .file-pane-search-popover {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  background: #ffffff;
-  border-color: #ebeef5;
-  border-radius: 12px;
-  box-shadow: 0 0 12px rgb(0 0 0 / 12%);
-  overflow: hidden;
-}
-[data-host="desktop"][data-theme="dark"] .file-pane-search-popover {
-  background: var(--cc-bg-overlay);
-  border-color: rgb(255 255 255 / 12%);
-  box-shadow: 0 0 12px rgb(0 0 0 / 40%);
-}
-
-[data-host="desktop"] .file-pane-search-input-row {
-  box-sizing: border-box;
-  height: 32px;
-  padding: 0 8px;
-  gap: 8px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: var(--cc-fill);
-}
-[data-host="desktop"] .file-pane-search-input-row:focus-within {
-  border-color: var(--cc-border-focus, #a0a5a8);
-}
-[data-host="desktop"] .file-pane-search-icon {
-  color: var(--cc-text-secondary);
-}
-[data-host="desktop"] .file-pane-search-input {
-  height: 100%;
-  padding: 0;
-  border: none;
-  background: transparent;
-  font-size: 14px;
-  color: var(--cc-text-primary);
-}
-[data-host="desktop"] .file-pane-search-input::placeholder {
-  color: var(--cc-text-placeholder);
-}
-[data-host="desktop"] .file-pane-search-input:focus {
-  border-color: transparent;
-}
-
-/* 建议列表：在本弹层里是面板的内容（不再是独立浮层） */
-[data-host="desktop"] .file-pane-search-popover .file-suggestion-dropdown {
-  min-width: 0;
-  max-width: none;
-  /* 面板自己已有 8px 内衬（第十三轮浮层配方），列表不再重复内衬 */
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 0;
-  box-shadow: none;
-}
-/* 深色档同款复位：第十三轮的深色面板规则选择器是 (0,3,0)，与上一条平手时按书写
-   顺序取胜（该块在下方），故深色必须再抬一级 —— 否则面板里会多出一圈 12% 白边
-   + 40% 黑影的内嵌矩形。 */
-[data-host="desktop"][data-theme="dark"]
-  .file-pane-search-popover
-  .file-suggestion-dropdown {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-}
-/* 空态不是「斜体说明」——角色表（conversation-typography.md）无斜体档，同 F-12 的
-   处理。 */
-[data-host="desktop"] .suggestion-empty {
-  font-style: normal;
-}
-
 /* ═══ 0917 评论：「这里面有很明显的分割线，根据 skill 结合其他下拉菜单优化这个
    下拉中的样式」，随后追加「@ 补全弹层也一起」═══
-   **两个 surface 共用一份规则**（选择器落在 `.file-suggestion-dropdown` 上）：
-   ① 文件面板搜索弹层里的建议列表（`.file-pane-search-popover` 内，面板自己有内衬）；
-   ② 消息输入的 @ 补全浮层（独立面板）。
+   **规则落在 `.file-suggestion-dropdown` 上**：消息输入的 @ 补全浮层（独立面板）。
    行分隔线去掉：skill design-system.md:140「分组之间的 1px 分隔线用浅描边 token，
    靠间距留白，而不是给每个 item 加边框」；codechat 参考实现 element-plus.css:399
    也只有分组项 `--divided` 才带 border-top（普通项一律无边框，靠圆角面 + hover/
@@ -1896,7 +1983,7 @@
    桌面菜单形：6px 圆角 + 8px 横向内衬（原为通栏无圆角、12px 内衬、每行 57px），
    hover/选中面不再顶到面板左右边。 */
 [data-host="desktop"] .file-suggestion-dropdown {
-  /* 独立浮层（@ 补全）列表态：容器内衬 8px，与第十三轮弹层配方一致 */
+  /* @ 补全浮层列表态：容器内衬 8px，与第十三轮弹层配方一致 */
   padding: 8px;
 }
 [data-host="desktop"] .file-suggestion-dropdown .suggestion-item {
@@ -2572,7 +2659,8 @@
    鼠标点击（`:focus` 而不是 `:focus-visible`）不出现这个框 —— 上面那条 outline:none
    已覆盖；卡片本身仍保留 pointer 光标。 */
 [data-host="desktop"] .option-item:focus-visible {
-  outline: 2px solid var(--cc-action-primary, var(--vscode-focusBorder, #1f2329));
+  outline: 2px solid
+    var(--cc-action-primary, var(--vscode-focusBorder, #1f2329));
   outline-offset: 2px;
 }
 [data-host="desktop"] .other-text-input:focus,
@@ -3544,7 +3632,8 @@
 [data-host="desktop"] .option-description {
   padding-left: 24px;
   color: var(--cc-text-secondary, #6c7076);
-}[data-host="desktop"] .option-item.selected .option-description {
+}
+[data-host="desktop"] .option-item.selected .option-description {
   color: var(--cc-text-secondary, #6c7076);
 }
 
@@ -3563,8 +3652,7 @@
 }
 
 /* hover / 选中-hover：底保持透明，只把卡片描边加深一档 */
-[data-host="desktop"][data-theme="light"]
-  .option-item:not(:disabled):hover {
+[data-host="desktop"][data-theme="light"] .option-item:not(:disabled):hover {
   border-color: #a8adb4;
 }
 [data-host="desktop"][data-theme="dark"] .option-item:not(:disabled):hover {
@@ -4589,8 +4677,7 @@
    base 在 `.settings-page / .plugin-market-page .settings-scope-option:focus-visible`
    （(0,3,0)）里写的是 `outline: none` + 边框变色；这里 (0,4,0) 压过它，
    并把边框还原成卡片描边（焦点只画外圈，不改卡片边界）。 */
-[data-host="desktop"]
-  .settings-scope-option:not(:disabled):focus-visible {
+[data-host="desktop"] .settings-scope-option:not(:disabled):focus-visible {
   outline: 2px solid var(--cc-action-primary, #1f2329);
   outline-offset: 2px;
   border-color: var(--cc-border, #dcdfe6);
@@ -4807,7 +4894,9 @@
 }
 
 [data-host="desktop"] .settings-page .settings-row-btn-danger:focus-visible,
-[data-host="desktop"] .plugin-market-page .settings-row-btn-danger:focus-visible {
+[data-host="desktop"]
+  .plugin-market-page
+  .settings-row-btn-danger:focus-visible {
   border-color: var(--cc-color-danger);
   outline: 2px solid var(--cc-color-danger);
   outline-offset: 0;
@@ -4818,11 +4907,14 @@
   border-color: var(--cc-color-danger);
 }
 
-[data-host="desktop"][data-theme="dark"] .settings-row-btn-danger:not(:disabled):hover {
+[data-host="desktop"][data-theme="dark"]
+  .settings-row-btn-danger:not(:disabled):hover {
   background: var(--cc-color-danger-soft);
 }
 
-[data-host="desktop"][data-theme="dark"] .settings-page .settings-row-btn-danger:focus-visible,
+[data-host="desktop"][data-theme="dark"]
+  .settings-page
+  .settings-row-btn-danger:focus-visible,
 [data-host="desktop"][data-theme="dark"]
   .plugin-market-page
   .settings-row-btn-danger:focus-visible {
@@ -4936,7 +5028,10 @@
   width: 440px;
   max-width: calc(100vw - 32px);
   padding: 24px;
-  background: var(--cc-bg-modal, var(--vscode-editorWidget-background, #ffffff));
+  background: var(
+    --cc-bg-modal,
+    var(--vscode-editorWidget-background, #ffffff)
+  );
   border: 1px solid var(--cc-border, var(--vscode-panel-border, #dcdfe6));
   border-radius: var(--cc-radius-lg, 12px);
   box-shadow: var(--cc-shadow-overlay, 0 12px 36px rgb(31 35 41 / 16%));
@@ -4990,13 +5085,16 @@
    1022 追加评论：「这个可以用删除按钮，就是带浅色红色背景的」⇒ 从「透明底 + 产品红文字」
    换成与确认弹窗危险键同一档的 soft-danger（浅 #FEF2F2/#DC2626、深 #332021/#FC4E52），
    尺寸按 :83 走 32 高 / r8 / 14-22 / 500 / 横向内衬 12；hover/active 只转字色，不加红描边。 */
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-modal-footer .artifacts-danger-link {
+  .artifacts-modal-footer
+  .artifacts-danger-link {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
@@ -5012,35 +5110,44 @@
   cursor: pointer;
 }
 
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-modal-footer .artifacts-danger-link:hover {
+  .artifacts-modal-footer
+  .artifacts-danger-link:hover {
   background: var(--cc-color-danger-soft, #fef2f2);
   color: var(--cc-color-danger-hover, #b91c1c);
 }
 
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-modal-footer .artifacts-danger-link:active {
+  .artifacts-modal-footer
+  .artifacts-danger-link:active {
   background: var(--cc-color-danger-soft, #fef2f2);
   color: var(--cc-color-danger-active, #991b1b);
 }
 
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-modal-footer .artifacts-danger-link:focus-visible {
+  .artifacts-modal-footer
+  .artifacts-danger-link:focus-visible {
   outline: 2px solid var(--cc-border-focus, #2f5edb);
   outline-offset: 2px;
 }
@@ -5279,13 +5386,14 @@
    仅 `[data-host="desktop"]`；IDE / 插件宿主保持 base 原样（本页本来也只在桌面端挂载）。 */
 
 /* 壳 */
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
-  )
-) {
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
+  ) {
   box-sizing: border-box;
   position: relative;
   /* 宽度走变量：默认 560，单字段的「重命名分类」在下面把它收到 440。
@@ -5293,7 +5401,10 @@
   width: var(--cc-artifacts-form-dialog-width, 560px);
   max-width: calc(100vw - 32px);
   padding: 24px;
-  background: var(--cc-bg-modal, var(--vscode-editorWidget-background, #ffffff));
+  background: var(
+    --cc-bg-modal,
+    var(--vscode-editorWidget-background, #ffffff)
+  );
   border: 1px solid var(--cc-border, var(--vscode-panel-border, #dcdfe6));
   border-radius: var(--cc-radius-lg, 12px);
   box-shadow: var(--cc-shadow-overlay, 0 12px 36px rgb(31 35 41 / 16%));
@@ -5306,21 +5417,20 @@
    且 DOM 逐字相同，只能靠 `aria-label`（= 弹窗标题文案）区分 —— 若标题文案改了，这条选择器要
    跟着改，否则宽度会静默回到 560。 */
 [data-host="desktop"]
-  .artifacts-modal:is(
-    [aria-label="重命名分类"],
-    [aria-label="新建分类"]
-  ) {
+  .artifacts-modal:is([aria-label="重命名分类"], [aria-label="新建分类"]) {
   --cc-artifacts-form-dialog-width: 440px;
 }
 
 /* 头部：去分隔线与 14/18 内衬，标题升到 16/24/600；右侧让出 28px 给关闭控件 */
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-modal-header {
+  .artifacts-modal-header {
   padding: 0 28px 0 0;
   border-bottom: none;
   font-size: var(--cc-font-size-lg, 16px);
@@ -5330,37 +5440,44 @@
 }
 
 /* 主体：内衬交给壳的 24，标题行下 20px 才是第一块内容 */
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-modal-body {
+  .artifacts-modal-body {
   padding: 20px 0 0;
   font-size: var(--cc-font-size-md, 14px);
   line-height: 22px;
 }
 
 /* `<p>` 的 UA 外边距（1em）会把 20 / 8 两个间距啃掉（删除分类那一轮踩过） */
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-modal-body p {
+  .artifacts-modal-body
+  p {
   margin: 0;
 }
 
 /* 字段标签：12/descriptionForeground + 6px → 14/22 `--cc-text-regular` + 8px */
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-field {
+  .artifacts-field {
   gap: 8px;
   font-size: var(--cc-font-size-md, 14px);
   line-height: 22px;
@@ -5368,83 +5485,102 @@
 }
 
 /* 字段组之间 16px（:99）；分享弹窗的「分享给」一组到成员选择器同值 */
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-form {
+  .artifacts-form {
   gap: 16px;
 }
 
 /* 辅助文案：12/20/400 次级色；紧跟控件时落在 8px（§100），不相邻时保持 0 */
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-hint {
+  .artifacts-hint {
   font-size: var(--cc-font-size-sm, 12px);
   line-height: 20px;
   font-weight: 400;
   color: var(--cc-text-secondary, var(--vscode-descriptionForeground));
 }
 
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-field + .artifacts-hint,
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  .artifacts-field
+  + .artifacts-hint,
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-field-stack + .artifacts-hint,
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+  .artifacts-field-stack
+  + .artifacts-hint,
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-fieldset + .artifacts-hint {
+  .artifacts-fieldset
+  + .artifacts-hint {
   margin-top: -8px; /* 组间距 16 − 8 = 契约要求的 8 */
 }
 
 /* 新建：文案 → 模板网格 8px */
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-template-grid {
+  .artifacts-template-grid {
   margin-top: 8px;
 }
 
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-template-name {
+  .artifacts-template-name {
   font-size: var(--cc-font-size-md, 14px);
   line-height: 22px;
 }
 
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-template-desc {
+  .artifacts-template-desc {
   font-size: var(--cc-font-size-sm, 12px);
   line-height: 20px;
   color: var(--cc-text-secondary, var(--vscode-descriptionForeground));
@@ -5452,25 +5588,30 @@
 
 /* 分享：正文标题 13 → 14/22/600；「分享给」图例按字段标签口径 12 → 14/22/400 + 8px；
    单选与成员行 13 → 14/22（契约无 13px UI 层） */
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-share-title {
+  .artifacts-share-title {
   font-size: var(--cc-font-size-md, 14px);
   line-height: 22px;
   font-weight: 600;
 }
 
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-fieldset legend {
+  .artifacts-fieldset
+  legend {
   padding: 0 0 8px;
   font-size: var(--cc-font-size-md, 14px);
   line-height: 22px;
@@ -5478,37 +5619,43 @@
   color: var(--cc-text-regular, var(--vscode-foreground));
 }
 
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-radio {
+  .artifacts-radio {
   gap: 8px;
   font-size: var(--cc-font-size-md, 14px);
   line-height: 22px;
 }
 
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-member-row {
+  .artifacts-member-row {
   font-size: var(--cc-font-size-md, 14px);
   line-height: 22px;
 }
 
 /* 页脚：24px 接在内容下、去掉上分隔线、8px 间隔（按钮档位沿用既有，不新增样式） */
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-modal-footer {
+  .artifacts-modal-footer {
   padding: 24px 0 0;
   border-top: none;
   gap: 8px;
@@ -5516,13 +5663,15 @@
 
 /* 右上角关闭控件：20×20 盒 + r8 + 1 级图标色，盒内仍是 24 的官方矢量
    （1014 同款：24 图标在 20 盒里靠 flex 居中溢出，不能让它被压小） */
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-modal-close {
+  .artifacts-modal-close {
   position: absolute;
   top: 24px;
   right: 24px;
@@ -5542,13 +5691,15 @@
   cursor: pointer;
 }
 
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-modal-close::before {
+  .artifacts-modal-close::before {
   content: "";
   flex: 0 0 auto;
   width: 24px;
@@ -5561,34 +5712,40 @@
     center / 24px 24px no-repeat;
 }
 
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-modal-close:hover {
+  .artifacts-modal-close:hover {
   background-color: var(--cc-fill-hover, #eef0f3);
   color: var(--cc-text-primary);
 }
 
-[data-host="desktop"][data-theme="dark"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"][data-theme="dark"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-modal-close:hover {
+  .artifacts-modal-close:hover {
   background-color: rgba(255, 255, 255, 0.08);
 }
 
-[data-host="desktop"] .artifacts-modal:is(
-  [data-testid="artifacts-new-dialog"],
-  [data-testid="artifacts-share-dialog"],
-  [data-testid="artifacts-category-dialog"]:has(
-    [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+[data-host="desktop"]
+  .artifacts-modal:is(
+    [data-testid="artifacts-new-dialog"],
+    [data-testid="artifacts-share-dialog"],
+    [data-testid="artifacts-category-dialog"]:has(
+      [data-testid="artifacts-category-confirm"].artifacts-primary-btn
+    )
   )
-) .artifacts-modal-close:focus-visible {
+  .artifacts-modal-close:focus-visible {
   outline: 2px solid var(--cc-border-focus, #2f5edb);
   outline-offset: 2px;
 }
@@ -5635,7 +5792,8 @@
 
 /* 静止：底 / 边 / 字三件套。输入值用一级字色，
    与「占位色只属于占位符」的分工配套（契约明确不允许实际值吃占位色） */
-[data-host="desktop"] .settings-page
+[data-host="desktop"]
+  .settings-page
   :is(
     .settings-text-input,
     .settings-number-input,
@@ -5648,7 +5806,8 @@
 }
 
 /* hover：只换描边、不动底色（契约原句 hover changes only border color） */
-[data-host="desktop"] .settings-page
+[data-host="desktop"]
+  .settings-page
   :is(
     .settings-text-input,
     .settings-number-input,
@@ -5660,7 +5819,8 @@
 
 /* focus：1px 边框就地变色（对齐原边，不外加环、不位移）；
    下拉展开时同样保留这条边 —— 即便焦点已经移进选项（契约的 expanded 要求） */
-[data-host="desktop"] .settings-page
+[data-host="desktop"]
+  .settings-page
   :is(
     .settings-text-input,
     .settings-number-input,
@@ -5685,7 +5845,8 @@
 }
 
 /* 占位符：独立占位色 + 显式 opacity 1（避免浏览器再压一层） */
-[data-host="desktop"] .settings-page
+[data-host="desktop"]
+  .settings-page
   :is(
     .settings-text-input,
     .settings-number-input,
@@ -5697,7 +5858,8 @@
 
 /* 停用：专用「面 / 字 / 边」三色，取代原来的整块 opacity .6（契约：
    不要把整组字段压暗，标签与说明各自保持自己的层级） */
-[data-host="desktop"] .settings-page
+[data-host="desktop"]
+  .settings-page
   :is(
     .settings-text-input,
     .settings-number-input,
@@ -5712,9 +5874,7 @@
 }
 
 /* 停用下拉的三角跟着字色走（三角不在 select 内，不会自动追随） */
-[data-host="desktop"]
-  .settings-page
-  .settings-select-trigger:disabled::after {
+[data-host="desktop"] .settings-page .settings-select-trigger:disabled::after {
   background: var(--cc-field-text-disabled);
   opacity: 1;
 }

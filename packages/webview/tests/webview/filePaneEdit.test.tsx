@@ -1,13 +1,17 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, fireEvent, screen, act } from "@testing-library/react";
 import React from "react";
-import { FilePane } from "../../src/components/FilePane";
-import type { FilePaneProps } from "../../src/components/FilePane";
+import { SingleFilePane, type SingleFilePaneProps } from "./filePaneHarness";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { prunePanelGroupCache } from "../../src/components/ChatApp";
 import { READ_TOOL_NAME, WRITE_TOOL_NAME } from "wave-agent-sdk";
 import type { Message } from "wave-agent-sdk";
-import { createMockVscode, sendCommand, sendHostMessage } from "./test-utils";
+import {
+  createMockVscode,
+  openFileInDesktopPanel,
+  sendCommand,
+  sendHostMessage,
+} from "./test-utils";
 import { fixtures } from "wave-webview-fixtures";
 import type { FileViewState } from "../../src/types";
 
@@ -56,7 +60,7 @@ const baseFileView = (
 
 const renderPane = (
   fileView: FileViewState | null,
-  overrides: Partial<FilePaneProps> = {},
+  overrides: Partial<SingleFilePaneProps> = {},
 ) => {
   const handlers = {
     onStartEdit: vi.fn(),
@@ -67,7 +71,7 @@ const renderPane = (
     onAddComment: vi.fn(),
   };
   const view = render(
-    <FilePane
+    <SingleFilePane
       fileView={fileView}
       width={400}
       workdir="/work/a"
@@ -106,7 +110,7 @@ describe("FilePane 面板内编辑（spec desktop-file-panel.md）", () => {
     expect(handlers.onStartEdit).toHaveBeenCalled();
 
     handlers.rerender(
-      <FilePane
+      <SingleFilePane
         fileView={baseFileView({ draft: "alpha one" })}
         width={400}
         workdir="/work/a"
@@ -118,8 +122,9 @@ describe("FilePane 面板内编辑（spec desktop-file-panel.md）", () => {
     expect(screen.queryByTestId("file-pane-edit")).toBeNull();
     expect(screen.getByTestId("file-pane-edit-cancel")).toBeInTheDocument();
     expect(screen.getByTestId("file-pane-edit-save")).toBeInTheDocument();
-    // 只读正文整块被编辑器替换：行评论 / 块评论入口都不在了。
-    expect(screen.queryByTestId("line-comment-add-1")).toBeNull();
+    // 只读正文整块被编辑器替换：行评论 / 块评论入口都不在了（场景 12）。
+    expect(document.querySelector("[data-comment-unit]")).toBeNull();
+    expect(screen.queryByTestId("file-pane-comment")).toBeNull();
   });
 
   it("保存把编辑器此刻的全文交上去（不是慢一步的状态镜像）", () => {
@@ -172,10 +177,6 @@ describe("FilePane 面板内编辑（spec desktop-file-panel.md）", () => {
 // 桌面端集成：保存回包、草稿保护与离开前的确认
 // ---------------------------------------------------------------------------
 
-const richText = (path: string): Record<string, unknown> => ({
-  fileView: baseFileView({ path }),
-});
-
 function renderDesktop() {
   const vscode = createMockVscode();
   const view = render(<DesktopApp vscode={vscode} />);
@@ -189,9 +190,16 @@ function renderDesktop() {
   return { vscode, unmount: view.unmount };
 }
 
-const openFilePanel = () => {
-  fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-  fireEvent.click(screen.getByTestId("panel-empty-item-file"));
+/**
+ * 打开 app.ts 到面板：走目录树（这条用例的消息里没有它的可点路径），宿主的
+ * 目录列目录回包由助手代答，最后回一次 desktopFileContent 填内容。
+ */
+const openAppFile = () => {
+  openFileInDesktopPanel(
+    "/work/a/src/app.ts",
+    { ...baseFileView() },
+    "/work/a",
+  );
   expect(screen.getByTestId("file-pane")).toBeInTheDocument();
 };
 
@@ -261,8 +269,7 @@ describe("桌面端面板保存链路", () => {
   it("保存成功：退出编辑态、正文换成新内容并给出「已保存」（场景 4）", () => {
     window.waveHostType = "desktop";
     const { vscode } = renderDesktop();
-    openFilePanel();
-    sendCommand("desktopFileContent", richText("/work/a/src/app.ts"));
+    openAppFile();
     expect(screen.getByText("alpha one")).toBeInTheDocument();
 
     enterEdit("alpha two");
@@ -291,8 +298,7 @@ describe("桌面端面板保存链路", () => {
   it("没改内容时保存不写盘，直接退出编辑态（场景 4）", () => {
     window.waveHostType = "desktop";
     const { vscode } = renderDesktop();
-    openFilePanel();
-    sendCommand("desktopFileContent", richText("/work/a/src/app.ts"));
+    openAppFile();
 
     enterEdit("");
     fireEvent.click(screen.getByTestId("file-pane-edit-save"));
@@ -304,8 +310,7 @@ describe("桌面端面板保存链路", () => {
   it("磁盘被改过：不覆盖，提示后由用户选覆盖或重新加载（场景 7）", () => {
     window.waveHostType = "desktop";
     const { vscode } = renderDesktop();
-    openFilePanel();
-    sendCommand("desktopFileContent", richText("/work/a/src/app.ts"));
+    openAppFile();
 
     enterEdit("alpha mine");
     fireEvent.click(screen.getByTestId("file-pane-edit-save"));
@@ -337,8 +342,7 @@ describe("桌面端面板保存链路", () => {
   it("写盘失败：提示原因、草稿完整保留（场景 10）", () => {
     window.waveHostType = "desktop";
     const { vscode } = renderDesktop();
-    openFilePanel();
-    sendCommand("desktopFileContent", richText("/work/a/src/app.ts"));
+    openAppFile();
 
     enterEdit("alpha mine");
     fireEvent.click(screen.getByTestId("file-pane-edit-save"));
@@ -372,8 +376,7 @@ describe("桌面端面板草稿守卫", () => {
         workdir: "/work/a",
       }),
     );
-    openFilePanel();
-    sendCommand("desktopFileContent", richText("/work/a/src/app.ts"));
+    openAppFile();
     enterEdit("alpha mine");
 
     const before = messagesOf(vscode, "openFile").length;
@@ -401,8 +404,7 @@ describe("桌面端面板草稿守卫", () => {
         workdir: "/work/a",
       }),
     );
-    openFilePanel();
-    sendCommand("desktopFileContent", richText("/work/a/src/app.ts"));
+    openAppFile();
     enterEdit("alpha mine");
 
     const before = messagesOf(vscode, "openFile").length;
@@ -424,8 +426,7 @@ describe("桌面端面板草稿守卫", () => {
   it("清除草稿的取消不弹确认，有修改的取消才弹（场景 5）", async () => {
     window.waveHostType = "desktop";
     renderDesktop();
-    openFilePanel();
-    sendCommand("desktopFileContent", richText("/work/a/src/app.ts"));
+    openAppFile();
 
     enterEdit("");
     fireEvent.click(screen.getByTestId("file-pane-edit-cancel"));
@@ -448,8 +449,7 @@ describe("桌面端面板草稿守卫", () => {
         workdir: "/work/a",
       }),
     );
-    openFilePanel();
-    sendCommand("desktopFileContent", richText("/work/a/src/app.ts"));
+    openAppFile();
     enterEdit("alpha mine");
     const before = messagesOf(vscode, "openFile").length;
 
@@ -470,5 +470,61 @@ describe("桌面端面板草稿守卫", () => {
     expect(messagesOf(vscode, "openFile")).toHaveLength(before);
     expect(screen.getByTestId("file-pane-disk-changed")).toBeInTheDocument();
     expect(screen.getByTestId("file-pane-editor")).toBeInTheDocument();
+  });
+  it("多标签下关掉带草稿的那个文件先确认；「继续编辑」标签留着（场景 5/6）", async () => {
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop();
+    openAppFile();
+    // 再开一个文件，让标签带上有两个文件，草稿落在第一个上。
+    sendHostMessage(
+      fixtures.setInitialState({
+        messages: [readToolMessage("/work/a/src/other.ts")],
+        workdir: "/work/a",
+      }),
+    );
+    act(() => {
+      fireEvent.click(
+        document.querySelector(".write-tool-path") as HTMLElement,
+      );
+    });
+    act(() => {
+      sendCommand("desktopFileContent", {
+        fileView: {
+          path: "/work/a/src/other.ts",
+          host: "local",
+          content: "beta one",
+        },
+      });
+    });
+    fireEvent.click(screen.getAllByTestId("file-tab")[0]);
+    act(() => {
+      sendCommand("desktopFileContent", {
+        fileView: {
+          path: "/work/a/src/app.ts",
+          host: "local",
+          content: "alpha one",
+          editable: true,
+          contentHash: "hash-1",
+        },
+      });
+    });
+    enterEdit("alpha mine");
+    const tabsBefore = screen.getAllByTestId("file-tab").length;
+    const openBefore = messagesOf(vscode, "openFile").length;
+
+    fireEvent.click(screen.getAllByTestId("file-tab-close")[0]);
+    expect(screen.getByText("放弃未保存的修改？")).toBeInTheDocument();
+    expect(screen.getAllByTestId("file-tab")).toHaveLength(tabsBefore);
+
+    await answerDiscard("继续编辑");
+    expect(screen.queryByText("放弃未保存的修改？")).toBeNull();
+    expect(screen.getAllByTestId("file-tab")).toHaveLength(tabsBefore);
+    expect(screen.getByTestId("file-pane-editor")).toBeInTheDocument();
+    expect(messagesOf(vscode, "openFile")).toHaveLength(openBefore);
+
+    // 「放弃」才真的关掉那一格。
+    fireEvent.click(screen.getAllByTestId("file-tab-close")[0]);
+    await answerDiscard("放弃");
+    expect(screen.getAllByTestId("file-tab")).toHaveLength(tabsBefore - 1);
   });
 });

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent, screen } from "@testing-library/react";
 import React from "react";
-import { FilePane } from "../../src/components/FilePane";
+import { SingleFilePane } from "./filePaneHarness";
 import type { FileViewState } from "../../src/types";
 import type { ConversationFileEntry } from "../../src/utils/conversationFiles";
 
@@ -31,7 +31,7 @@ function renderPane(options: {
   onBackToList?: () => void;
 }) {
   return render(
-    <FilePane
+    <SingleFilePane
       fileView={options.fileView ?? null}
       width={420}
       workdir="/work/a"
@@ -57,7 +57,7 @@ describe("FilePane conversation file list", () => {
     const rows = screen.getAllByTestId("file-pane-conversation-file-row");
     expect(rows.map((r) => r.textContent)).toEqual(["index.ts", "README.md"]);
     // No file is open: neither the placeholder nor the code view shows.
-    expect(screen.queryByText(/点击消息中的文件路径/)).toBeNull();
+    expect(screen.queryByText(/打开的文件会显示在这里/)).toBeNull();
     expect(document.querySelector(".file-pane-code")).toBeNull();
   });
 
@@ -73,7 +73,7 @@ describe("FilePane conversation file list", () => {
   it("keeps the placeholder when the conversation has no files", () => {
     renderPane({ conversationFiles: [] });
 
-    expect(screen.getByText(/点击消息中的文件路径/)).toBeTruthy();
+    expect(screen.getByText(/打开的文件会显示在这里/)).toBeTruthy();
     expect(screen.queryByTestId("file-pane-conversation-files")).toBeNull();
   });
 

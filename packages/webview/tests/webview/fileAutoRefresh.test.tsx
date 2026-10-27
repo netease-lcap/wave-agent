@@ -1,10 +1,15 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { render, fireEvent, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import React from "react";
 import { DesktopApp } from "../../src/components/DesktopApp";
 import { prunePanelGroupCache } from "../../src/components/ChatApp";
 import { WRITE_TOOL_NAME, EDIT_TOOL_NAME } from "wave-agent-sdk";
-import { createMockVscode, sendCommand, sendHostMessage } from "./test-utils";
+import {
+  createMockVscode,
+  openFileInDesktopPanel,
+  sendCommand,
+  sendHostMessage,
+} from "./test-utils";
 import { fixtures } from "wave-webview-fixtures";
 import {
   collectWriteEditBlocks,
@@ -44,20 +49,6 @@ function renderDesktop(options?: { workdir?: string }) {
   sendHostMessage(fixtures.authStatusResponse());
   return { vscode, unmount: view.unmount };
 }
-
-const openFilePanel = () => {
-  // Expand the panel: with no tab open the empty state lists the five
-  // capabilities — pick 文件 there.
-  fireEvent.click(screen.getByTestId("panel-toggle-btn"));
-  fireEvent.click(screen.getByTestId("panel-empty-item-file"));
-  expect(screen.getByTestId("file-pane")).toBeInTheDocument();
-};
-
-const fillFilePanel = (path: string, content: string) => {
-  sendCommand("desktopFileContent", {
-    fileView: { path, host: "local", content },
-  });
-};
 
 const openFilePosts = (vscode: ReturnType<typeof createMockVscode>) =>
   vscode.postMessage.mock.calls
@@ -189,9 +180,13 @@ describe("ChatApp desktop file-panel auto refresh", () => {
         workdir: "/work/a",
       }),
     );
-    openFilePanel();
-    fillFilePanel("/work/a/src/a.ts", "old content");
+    openFileInDesktopPanel(
+      "/work/a/src/a.ts",
+      { content: "old content" },
+      "/work/a",
+    );
     expect(screen.getByText("old content")).toBeInTheDocument();
+    const before = openFilePosts(vscode).length;
 
     sendCommand("updateToolBlock", {
       params: {
@@ -205,7 +200,7 @@ describe("ChatApp desktop file-panel auto refresh", () => {
     });
 
     const posts = openFilePosts(vscode);
-    expect(posts).toHaveLength(1);
+    expect(posts).toHaveLength(before + 1);
     expect(posts[0]).toMatchObject({
       command: "openFile",
       path: "/work/a/src/a.ts",
@@ -231,8 +226,8 @@ describe("ChatApp desktop file-panel auto refresh", () => {
         workdir: "/work/a",
       }),
     );
-    openFilePanel();
-    fillFilePanel("/work/a/src/a.ts", "old");
+    openFileInDesktopPanel("/work/a/src/a.ts", { content: "old" }, "/work/a");
+    const before = openFilePosts(vscode).length;
 
     sendCommand("updateToolBlock", {
       params: {
@@ -245,7 +240,7 @@ describe("ChatApp desktop file-panel auto refresh", () => {
       },
     });
 
-    expect(openFilePosts(vscode)).toHaveLength(1);
+    expect(openFilePosts(vscode)).toHaveLength(before + 1);
   });
 
   it("does not refresh for a Write on a different file (spec 场景 3)", () => {
@@ -264,8 +259,8 @@ describe("ChatApp desktop file-panel auto refresh", () => {
         workdir: "/work/a",
       }),
     );
-    openFilePanel();
-    fillFilePanel("/work/a/src/a.ts", "old");
+    openFileInDesktopPanel("/work/a/src/a.ts", { content: "old" }, "/work/a");
+    const before = openFilePosts(vscode).length;
 
     sendCommand("updateToolBlock", {
       params: {
@@ -278,7 +273,7 @@ describe("ChatApp desktop file-panel auto refresh", () => {
       },
     });
 
-    expect(openFilePosts(vscode)).toHaveLength(0);
+    expect(openFilePosts(vscode)).toHaveLength(before);
   });
 
   it("does not refresh on failure (spec 场景 4)", () => {
@@ -297,8 +292,8 @@ describe("ChatApp desktop file-panel auto refresh", () => {
         workdir: "/work/a",
       }),
     );
-    openFilePanel();
-    fillFilePanel("/work/a/src/a.ts", "old");
+    openFileInDesktopPanel("/work/a/src/a.ts", { content: "old" }, "/work/a");
+    const before = openFilePosts(vscode).length;
 
     sendCommand("updateToolBlock", {
       params: {
@@ -312,7 +307,7 @@ describe("ChatApp desktop file-panel auto refresh", () => {
       },
     });
 
-    expect(openFilePosts(vscode)).toHaveLength(0);
+    expect(openFilePosts(vscode)).toHaveLength(before);
   });
 
   it("does not refresh mid-execution, only once on completion (spec 场景 5)", () => {
@@ -331,8 +326,8 @@ describe("ChatApp desktop file-panel auto refresh", () => {
         workdir: "/work/a",
       }),
     );
-    openFilePanel();
-    fillFilePanel("/work/a/src/a.ts", "old");
+    openFileInDesktopPanel("/work/a/src/a.ts", { content: "old" }, "/work/a");
+    const before = openFilePosts(vscode).length;
 
     // Still running → no refresh.
     sendCommand("updateToolBlock", {
@@ -344,7 +339,7 @@ describe("ChatApp desktop file-panel auto refresh", () => {
         parameters: toolParams("/work/a/src/a.ts"),
       },
     });
-    expect(openFilePosts(vscode)).toHaveLength(0);
+    expect(openFilePosts(vscode)).toHaveLength(before);
 
     // Completed → exactly one refresh, and a repeated end-state update (e.g.
     // result enrichment) must not fire a second one.
@@ -358,7 +353,7 @@ describe("ChatApp desktop file-panel auto refresh", () => {
         parameters: toolParams("/work/a/src/a.ts"),
       },
     });
-    expect(openFilePosts(vscode)).toHaveLength(1);
+    expect(openFilePosts(vscode)).toHaveLength(before + 1);
     sendCommand("updateToolBlock", {
       params: {
         messageId: "m1",
@@ -370,7 +365,7 @@ describe("ChatApp desktop file-panel auto refresh", () => {
         parameters: toolParams("/work/a/src/a.ts"),
       },
     });
-    expect(openFilePosts(vscode)).toHaveLength(1);
+    expect(openFilePosts(vscode)).toHaveLength(before + 1);
   });
 
   it("never refreshes for blocks already completed in loaded history", () => {
@@ -391,8 +386,8 @@ describe("ChatApp desktop file-panel auto refresh", () => {
         workdir: "/work/a",
       }),
     );
-    openFilePanel();
-    fillFilePanel("/work/a/src/a.ts", "old");
+    openFileInDesktopPanel("/work/a/src/a.ts", { content: "old" }, "/work/a");
+    const before = openFilePosts(vscode).length;
     // Even a repeated end-state update after the panel is open must not fire.
     sendCommand("updateToolBlock", {
       params: {
@@ -405,7 +400,7 @@ describe("ChatApp desktop file-panel auto refresh", () => {
         parameters: toolParams("/work/a/src/a.ts"),
       },
     });
-    expect(openFilePosts(vscode)).toHaveLength(0);
+    expect(openFilePosts(vscode)).toHaveLength(before);
   });
 
   it("never auto-opens a panel for a generated file (spec 场景 1、2)", () => {
@@ -454,5 +449,36 @@ describe("ChatApp desktop file-panel auto refresh", () => {
     ).toBe("false");
     expect(screen.queryByTestId("file-pane")).not.toBeInTheDocument();
     expect(screen.queryByTestId("preview-pane-empty")).not.toBeInTheDocument();
+  });
+  it("marks the tab unavailable when the host reports the file gone (spec 场景 13)", () => {
+    window.waveHostType = "desktop";
+    renderDesktop({ workdir: "/work/a" });
+    openFileInDesktopPanel("/work/a/src/a.ts", { content: "old" }, "/work/a");
+    expect(screen.queryByTestId("file-pane-deleted")).toBeNull();
+
+    // 宿主把「路径已不在」的读失败标成 missing：面板保留标签、内容区换成
+    // 「文件已不存在」+「关闭标签」，而不是一条普通错误横幅。
+    sendCommand("desktopFileContent", {
+      fileView: {
+        path: "/work/a/src/a.ts",
+        host: "local",
+        error: "文件不存在：/work/a/src/a.ts",
+        missing: true,
+      },
+    });
+
+    expect(screen.getByTestId("file-pane-deleted")).toHaveTextContent(
+      "文件已不存在",
+    );
+    expect(screen.getAllByTestId("file-tab")[0]).toHaveTextContent("已删除");
+
+    // 再读成功一次，标记与提示一起消失。
+    sendCommand("desktopFileContent", {
+      fileView: { path: "/work/a/src/a.ts", host: "local", content: "back" },
+    });
+    expect(screen.queryByTestId("file-pane-deleted")).toBeNull();
+    expect(screen.getAllByTestId("file-tab")[0]).not.toHaveTextContent(
+      "已删除",
+    );
   });
 });

@@ -331,6 +331,12 @@ export interface DesktopPane {
    * 规则。缺省（老宿主不下发）= 退回「列表空即新会话」的旧判据。
    */
   hasContent?: boolean;
+  /**
+   * 这条会话的稳定工作目录（宿主口径，`sessionCwd`）：Bash 里 `cd` 不会改变它。
+   * 文件面板目录树的根、`@` 文件搜索的锚点用它（`.wave/rules/workdir.md`）。
+   * 缺省（老宿主不下发）= 退回 `currentWorkdir`。
+   */
+  sessionCwd?: string;
 }
 
 /** Options for opening a session in a new pane. */
@@ -675,6 +681,26 @@ export type DesktopPanelKind =
   | "plan";
 
 /**
+ * One open file inside the file panel's own tab strip (spec
+ * desktop-file-panel.md「文件面板已打开文件的标签」). The first-level panel tab
+ * stays single-instance (`kind: "file"`); these are the tabs *inside* it.
+ */
+export interface OpenFileTab {
+  /** Stable id within the file panel tab. */
+  id: string;
+  path: string;
+  /** Lines to jump to (1-based) from the opener, kept per file so switching
+   *  back restores the same position (tab story scenario 9). */
+  startLine?: number;
+  endLine?: number;
+  fileView?: FileViewState;
+  /** The host reported this file gone from disk (deleted/moved): the tab stays
+   *  and says so — silently dropping it would look like the user's own close
+   *  (tab story scenario 13). */
+  deleted?: boolean;
+}
+
+/**
  * One open panel tab in the desktop panel slot. Multi-instance kinds (preview /
  * diff / file) may open several tabs at once; single-instance kinds (terminal /
  * plan) are unique per conversation, and the handlers activate the existing tab
@@ -694,17 +720,17 @@ export interface PanelTab {
    *  the identity for same-file tab dedup and the auto-reload match key
    *  (spec desktop-preview.md「本地 HTML 文件预览」). Absent for URL tabs. */
   previewFilePath?: string;
-  /** file tab: the path being viewed (undefined = blank tab). */
-  filePath?: string;
-  /** file tab: lines to jump to (1-based), from read offset/limit. */
-  startLine?: number;
-  endLine?: number;
-  /** file tab: view state (loading stub / filled by desktopFileContent). */
-  fileView?: FileViewState;
-  /** file tab: showing the conversation file list while a file stays loaded
-   *  (spec desktop-file-panel.md「文件面板列出当前对话的文件」). Cleared as soon
-   *  as a file is opened — that is what makes re-opening the SAME file switch
-   *  the view back, which a derived 「fileView == null」 flag could not do. */
+  /** file tab: the files open in this panel, in tab-strip order. The active one
+   *  is `openFiles.find(f => f.id === activeFileId)`; there is no second
+   *  "current file" field, so the two can never disagree. Empty ⇒ the panel
+   *  shows the conversation file list (or the placeholder). */
+  openFiles?: OpenFileTab[];
+  /** file tab: which of `openFiles` is showing. Undefined with a non-empty
+   *  `openFiles` = 「有标签但都没有激活」 (tab story scenario 14), which is also
+   *  what 「返回文件列表」 produces. */
+  activeFileId?: string;
+  /** file tab: showing the conversation file list (spec desktop-file-panel.md
+   *  「文件面板列出当前对话的文件」). Cleared as soon as a file is activated. */
   listMode?: boolean;
 }
 
@@ -723,6 +749,10 @@ export interface FileViewState {
   loading?: boolean;
   /** User-facing error when the file could not be read (no content). */
   error?: string;
+  /** The read failed because the path is gone from disk — a state, not an
+   *  error: the tab stays, shows 「文件已不存在」 and offers to close itself
+   *  (spec desktop-file-panel.md 场景 13). Always comes with `error`. */
+  missing?: boolean;
   /** File content, present for text/markdown files. */
   content?: string;
   /** Lines to jump to (1-based) — from read tool offset/limit or a selection. */
