@@ -31,13 +31,23 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import type { MarketplaceInfo, PluginInfo, PluginScope } from "../types";
+import { isDesktopHost } from "../utils/platform";
 import { useHostMessage } from "../utils/useHostMessage";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { SettingsAddIcon, SettingsGearIcon } from "./HeaderIcons";
+import { CloseIcon, SettingsAddIcon, SettingsGearIcon } from "./HeaderIcons";
 import { SettingsTabs, type SettingsTabDef } from "./SettingsManageComponents";
 import { Tooltip } from "./Tooltip";
 import "../styles/ConfigurationDialog.css";
 import "../styles/SettingsPage.css";
+
+/** The desktop host keeps its existing codicon; the IDE plugin uses the same
+ * official CloseIcon as the pane / toast / confirmation close controls. */
+const SettingsModalCloseIcon: React.FC = () =>
+  isDesktopHost() ? (
+    <i className="codicon codicon-close" aria-hidden="true" />
+  ) : (
+    <CloseIcon className="settings-modal-close-icon" />
+  );
 
 type PluginFilter = "all" | "installed" | "uninstalled";
 
@@ -759,7 +769,7 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
                 aria-label="关闭"
                 onClick={() => setManageMarketOpen(false)}
               >
-                <i className="codicon codicon-close" aria-hidden="true" />
+                <SettingsModalCloseIcon />
               </button>
             </div>
 
@@ -837,7 +847,7 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
                 aria-label="关闭"
                 onClick={closeNewMarket}
               >
-                <i className="codicon codicon-close" aria-hidden="true" />
+                <SettingsModalCloseIcon />
               </button>
             </div>
             <div className="settings-modal-seg" role="tablist">
@@ -937,7 +947,7 @@ const SettingsPluginView: React.FC<SettingsPluginViewProps> = ({ vscode }) => {
                 aria-label="关闭"
                 onClick={closeScopeDialog}
               >
-                <i className="codicon codicon-close" aria-hidden="true" />
+                <SettingsModalCloseIcon />
               </button>
             </div>
             <div className="settings-scope-list">
