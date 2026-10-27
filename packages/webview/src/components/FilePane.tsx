@@ -29,6 +29,13 @@ import { LineCommentBox } from "./LineCommentBox";
 import { PanelKindIcon } from "./PanelKindIcon";
 import { PanePlaceholder, PaneShell } from "./PaneShell";
 import { Tooltip } from "./Tooltip";
+import {
+  clampTreeWidth,
+  draggedTooNarrow,
+  shouldShowTree,
+  treeDeferredForSpace,
+  treeFits,
+} from "../utils/fileTreeLayout";
 import "../styles/FilePane.css";
 
 /** Debounce for the panel search requests, matching the message input's. */
@@ -471,7 +478,9 @@ export const FilePane: React.FC<FilePaneProps> = ({
   // PaneShell's body (the whole layout) and the content column's own scroll
   // container — the tree column scrolls independently, so jumps and find marks
   // work against the content one.
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // body 用回调 ref：面板挂载时会先渲染占位、再渲染骨架，`useRef` + `[]` 的
+  // effect 会永远拿到 null，量宽度（场景 2/3）就一次都跑不起来。
+  const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
   const contentScrollRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const findInputRef = useRef<HTMLInputElement>(null);
@@ -490,6 +499,19 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const pendingDirsRef = useRef<Set<string>>(new Set());
   const [revealTick, setRevealTick] = useState(0);
   const [treeDragWidth, setTreeDragWidth] = useState<number | null>(null);
+  // 面板正文区的宽度：树宽上限、以及「还有没有并排余地」都看它（场景 2/3）。
+  // 0 = 还没量到（首帧、jsdom 这类没有布局的环境），规则里当成「宽度未知」。
+  const [bodyWidth, setBodyWidth] = useState(0);
+
+  useEffect(() => {
+    if (!bodyEl) return;
+    const measure = () => setBodyWidth(bodyEl.clientWidth);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(bodyEl);
+    return () => observer.disconnect();
+  }, [bodyEl]);
 
   const requestDir = useCallback(
     (path: string) => {
@@ -571,33 +593,76 @@ export const FilePane: React.FC<FilePaneProps> = ({
     for (const dir of ancestors) requestDir(dir);
   }, [fileView?.path, treeRoot, treeVisible, requestDir]);
 
-  // Splitter drag: local mirror while dragging, persisted on release.
+  // Splitter drag: local mirror while dragging, persisted on release. Dragging
+  // below the collapse threshold is a collapse gesture, not a 140px column
+  // (Claude's divider behaves the same way) — release then hides the tree.
+  //
+  // The live width lives in a ref, not in the state updater: the host callbacks
+  // must not be invoked from inside `setState(fn)` (React runs that during the
+  // render phase ⇒ "Cannot update a component while rendering a different
+  // component" in the console).
   const treeWidthRef = useRef(treeWidth);
   treeWidthRef.current = treeWidth;
+  const bodyWidthRef = useRef(bodyWidth);
+  bodyWidthRef.current = bodyWidth;
+  const treeDragWidthRef = useRef<number | null>(null);
   const handleTreeResizeStart = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       event.preventDefault();
       const startX = event.clientX;
       const startWidth = treeWidthRef.current;
       const onMove = (move: MouseEvent) => {
-        const next = Math.min(
-          420,
-          Math.max(140, startWidth + (move.clientX - startX)),
-        );
+        const raw = startWidth + (move.clientX - startX);
+        const next = draggedTooNarrow(raw)
+          ? 0
+          : clampTreeWidth(raw, bodyWidthRef.current);
+        treeDragWidthRef.current = next;
         setTreeDragWidth(next);
       };
       const onUp = () => {
         document.removeEventListener("mousemove", onMove);
         document.removeEventListener("mouseup", onUp);
-        setTreeDragWidth((current) => {
-          if (current !== null) onTreeWidthChange?.(current);
-          return null;
-        });
+        const released = treeDragWidthRef.current;
+        treeDragWidthRef.current = null;
+        setTreeDragWidth(null);
+        if (released === 0) onTreeVisibleChange?.(false);
+        else if (released !== null) onTreeWidthChange?.(released);
       };
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [onTreeWidthChange],
+    [onTreeVisibleChange, onTreeWidthChange],
+  );
+
+  // 树收起后左缘那条拖拽带：从面板左边缘往右拖够阈值就恢复显示，宽度跟着手指走。
+  const handleTreeEdgeResizeStart = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      let opened = false;
+      let width: number | null = null;
+      const onMove = (move: MouseEvent) => {
+        const raw = move.clientX - startX;
+        if (!opened) {
+          if (draggedTooNarrow(raw)) return;
+          opened = true;
+          onTreeVisibleChange?.(true);
+        }
+        width = clampTreeWidth(raw, bodyWidthRef.current);
+        treeDragWidthRef.current = width;
+        setTreeDragWidth(width);
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        treeDragWidthRef.current = null;
+        setTreeDragWidth(null);
+        if (width !== null) onTreeWidthChange?.(width);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [onTreeVisibleChange, onTreeWidthChange],
   );
 
   // ---- 过滤框：复用 @ 文件搜索的数据流（spec「文件面板按名字查找」）--------
@@ -1103,10 +1168,28 @@ export const FilePane: React.FC<FilePaneProps> = ({
   const commentTag = relativePath || fileView?.path || "";
 
   // Layout inputs: the tree column takes its width out of the body, the content
-  // column gets the rest. `treeDragWidth` is the live drag value.
-  const treeColumnWidth = treeDragWidth ?? treeWidth;
+  // column gets the rest. `treeDragWidth` is the live drag value (0 = the user is
+  // dragging it shut).
+  const treeColumnWidth = clampTreeWidth(treeDragWidth ?? treeWidth, bodyWidth);
   // 树默认可见：宿主要么显式关掉，要么给一个根就够（老宿主不下发也不至于没树）。
-  const showTree = !!treeRoot && treeVisible !== false && !!vscode;
+  // 宽度不够并排时它自己让位，但**不改写**用户的手动开关（场景 3）。
+  const treeLayout = {
+    hasTree: !!treeRoot && !!vscode,
+    wantsTree: treeVisible !== false,
+    available: bodyWidth,
+    hasOpenFile: !!activeFile,
+  };
+  const showTree =
+    shouldShowTree(treeLayout) && treeDragWidth !== 0 && !!vscode;
+  const treeDeferred = treeDeferredForSpace(treeLayout);
+  // 收起后的拖拽带只在「用户关掉了树、而且面板放得下」时给：因为太窄而让位时
+  // 拖出来也没地方摆，给条带等于骗人（场景 3）。
+  const showTreeEdge =
+    !showTree &&
+    treeLayout.hasTree &&
+    treeLayout.wantsTree === false &&
+    treeFits(bodyWidth) &&
+    !!onTreeVisibleChange;
 
   // Two empty states (spec tab story scenario 14): nothing open at all, versus
   // tabs open but none active (「返回文件列表」, or a list view over open files).
@@ -1146,19 +1229,38 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <span className="desktop-panel-toolbar-title">文件</span>
           )}
           {/* 树隐藏时给一条回来的路（场景 1 的显隐切换）；没有工具条按钮的话，
-              隐藏后只能改配置文件才能恢复。 */}
+              隐藏后只能改配置文件才能恢复。面板太窄、树被迫让位时按钮画成不可用
+              并写明原因——点了没反应比没有按钮更让人困惑（场景 3）。 */}
           {!!treeRoot && !!onTreeVisibleChange && (
             <Tooltip
-              text={treeVisible ? "隐藏文件树" : "显示文件树"}
+              text={
+                treeDeferred
+                  ? "面板过窄，加宽后显示文件树"
+                  : treeVisible
+                    ? "隐藏文件树"
+                    : "显示文件树"
+              }
               position="bottom"
             >
               <button
                 type="button"
-                className={`preview-pane-button${treeVisible ? " active" : ""}`}
-                aria-label={treeVisible ? "隐藏文件树" : "显示文件树"}
+                className={`preview-pane-button${treeVisible ? " active" : ""}${
+                  treeDeferred ? " file-pane-toolbar-deferred" : ""
+                }`}
+                aria-label={
+                  treeDeferred
+                    ? "面板过窄，加宽后显示文件树"
+                    : treeVisible
+                      ? "隐藏文件树"
+                      : "显示文件树"
+                }
                 aria-pressed={treeVisible}
+                aria-disabled={treeDeferred || undefined}
                 data-testid="file-pane-tree-toggle"
-                onClick={() => onTreeVisibleChange(!treeVisible)}
+                onClick={() => {
+                  if (treeDeferred) return;
+                  onTreeVisibleChange(!treeVisible);
+                }}
               >
                 <i
                   className="codicon codicon-files preview-pane-icon"
@@ -1167,7 +1269,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               </button>
             </Tooltip>
           )}
-          {showFile && activeFile && treeRoot && (
+          {showFile && activeFile && treeRoot && !treeDeferred && (
             <Tooltip text="在文件树中显示" position="bottom">
               <button
                 type="button"
@@ -1276,10 +1378,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
         </>
       }
       bodyClassName={`preview-pane-body file-pane-body${editing ? " file-pane-body--editing" : ""}`}
-      bodyRef={scrollRef}
+      bodyRef={setBodyEl}
     >
       <div className="file-pane-layout">
-        {showTree && (
+        {showTree && treeRoot && (
           <>
             <div
               className="file-pane-tree-col"
@@ -1314,6 +1416,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
               onMouseDown={handleTreeResizeStart}
             />
           </>
+        )}
+        {showTreeEdge && (
+          <div
+            className="file-pane-tree-edge"
+            data-testid="file-pane-tree-edge"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="拖出文件树"
+            onMouseDown={handleTreeEdgeResizeStart}
+          />
         )}
         <div className="file-pane-content-col">
           {files.length > 0 && (

@@ -427,8 +427,32 @@
   flex: 0 0 auto;
   flex-direction: column;
   min-width: 0;
+  /* 正文保底：拖宽时 JS 已经夹过一遍，这里再挡一次，覆盖「刚挂载、还没量到宽度」
+     的那几帧。树是并排的一列，不该把正文挤成一条缝（spec 场景 2）。 */
+  max-width: calc(100% - 160px);
   overflow: hidden;
   border-right: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+
+/* 树收起后左缘那条 3px 拖拽带：往右拖够阈值就把树拖回来（spec 场景 1）。
+   z-index 要压过 `.panel-slot-drag-handle`（z-index 10，跨在面板左边缘 ±3px）：
+   否则这 3px 会被「拖面板宽度」抢走，条带在真机上根本点不到（实测过）。 */
+.file-pane-tree-edge {
+  position: relative;
+  flex: 0 0 3px;
+  z-index: 11;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.file-pane-tree-edge:hover {
+  background: var(--vscode-focusBorder, #007fd4);
+}
+
+/* 面板太窄、树被迫让位时的工具条开关形态：留在原位但画成不可用。 */
+.preview-pane-button.file-pane-toolbar-deferred {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .file-pane-tree-splitter {
