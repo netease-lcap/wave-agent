@@ -364,6 +364,63 @@
   // ── Page → host plumbing ────────────────────────────────────────
 
   /**
+   * Whether the page's main pointer is a finger — the same judgement the phone
+   * tier's CSS uses (`pointer: coarse` / `hover: none` in
+   * `src/styles/remote-page.css`, spec 场景 16 / 27). Asked at paint time, not
+   * memoised: the banner is rebuilt from scratch on every status, so a pointer
+   * that changed in between (an iPad that picked up a mouse) is answered by the
+   * next repaint — the CSS half re-evaluates on its own for the same reason.
+   *
+   * `matchMedia` is guarded because the shim also runs under the test harness's
+   * hand-made window, which has no media-query surface; 「no answer」 reads as
+   * 「the pointer is a mouse」, i.e. the design-sheet density.
+   */
+  function isTouchPointer() {
+    return (
+      typeof window.matchMedia === "function" &&
+      (window.matchMedia("(pointer: coarse)").matches ||
+        window.matchMedia("(hover: none)").matches)
+    );
+  }
+
+  /**
+   * The banner's numbers, per device tier.
+   *
+   * The phone tier is the page's own icon-button tier (40×40 with a 20px glyph,
+   * spec 场景 27) applied to this line too: the close is a target a finger has
+   * to hit, and the action buttons sit right beside it, so half a row at 32px
+   * next to a 40px target would read as 「one of them is broken」. The 32×32
+   * close was sized for a mouse pointer and reported too small on a phone
+   * (2026-10-27).
+   *
+   * The line's own padding drops 8 → 4 on that tier so the taller targets do
+   * not make it 56px tall: 4 + 40 + 4 = 48. The **text** stays at 13px, which is
+   * this page's 「辅助信息」 tier on a phone too (`remote-page.css`: prompts,
+   * empty states, tool results all 13px; only 阅读主体 goes to 15) — raising it
+   * with the buttons bought nothing and made a three-line message 18px taller.
+   */
+  var BANNER_TIER = {
+    // Mouse pointer (the design sheet's density) — unchanged.
+    fine: {
+      padding: "8px 12px",
+      action: "padding:2px 10px;",
+      close: "width:32px;height:32px;font-size:18px;",
+    },
+    // Finger — the buttons take the page's icon-button numbers.
+    coarse: {
+      padding: "4px 12px",
+      action:
+        "padding:0 14px;min-height:40px;display:inline-flex;" +
+        "align-items:center;justify-content:center;",
+      close: "width:40px;height:40px;font-size:20px;",
+    },
+  };
+
+  function bannerTier() {
+    return isTouchPointer() ? BANNER_TIER.coarse : BANNER_TIER.fine;
+  }
+
+  /**
    * The banner's look. Two tones, because the banner says two different kinds of
    * thing: a refusal (`#5a1d1d` — the link is down or something was refused) and
    * `"progress"` (`#333333` — the page is doing something and has nothing else
@@ -385,9 +442,11 @@
    * 「状态只在一条流内状态条上播报」场景 4 / 9).
    */
   function bannerStyle(tone) {
+    var tier = bannerTier();
     return (
-      "flex:0 0 auto;box-sizing:border-box;padding:8px 12px;" +
-      "display:flex;align-items:center;gap:8px;" +
+      "flex:0 0 auto;box-sizing:border-box;padding:" +
+      tier.padding +
+      ";display:flex;align-items:center;gap:8px;" +
       "font:13px/1.5 -apple-system,system-ui,sans-serif;color:#fff;" +
       "background:" +
       (tone === "progress" ? "#333333" : "#5a1d1d") +
@@ -403,15 +462,29 @@
 
   function bannerButtonStyle() {
     return (
-      "flex:0 0 auto;padding:2px 10px;font:inherit;color:#fff;" +
+      "flex:0 0 auto;" +
+      bannerTier().action +
+      "font:inherit;color:#fff;" +
       "background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.4);" +
       "border-radius:6px;cursor:pointer;"
     );
   }
 
+  /**
+   * The close's box, its glyph size, and nothing else.
+   *
+   * The size is spelled out (`font-size` + `font-family: inherit`) rather than
+   * through the `font` shorthand: `font: 18px/1 inherit` is **invalid** CSS — a
+   * CSS-wide keyword cannot be a component of the shorthand — so the whole
+   * declaration was dropped and the button rendered at the UA's default
+   * 13.33px Arial. Measured in Chromium, not guessed; it is why the × read as
+   * 「too small」 even at a 32px box.
+   */
   function bannerCloseStyle() {
     return (
-      "flex:0 0 auto;width:32px;height:32px;padding:0;font:18px/1 inherit;" +
+      "flex:0 0 auto;padding:0;" +
+      bannerTier().close +
+      "font-family:inherit;line-height:1;" +
       "color:#fff;background:transparent;border:0;cursor:pointer;opacity:0.85;"
     );
   }
