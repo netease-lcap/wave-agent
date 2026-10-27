@@ -1824,6 +1824,18 @@ export const FilePane: React.FC<FilePaneProps> = ({
                       className="file-pane-code"
                       ref={commentContainerRef}
                       {...commentContainerProps}
+                      style={
+                        {
+                          // Line-number column width in digits: every row shares
+                          // one value so the code column stays a straight edge,
+                          // and it follows *this* file's last line number rather
+                          // than a fixed reservation (a 7-line file gets a 7px
+                          // number instead of a three-digit gutter).
+                          "--file-pane-line-no-digits": String(
+                            contentLines.length,
+                          ).length,
+                        } as React.CSSProperties
+                      }
                     >
                       {fileView.truncated &&
                         fileView.totalLines !== undefined && (

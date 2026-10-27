@@ -149,13 +149,16 @@
   position: sticky;
   left: 0;
   flex-shrink: 0;
-  /* Three digits wide whatever the file's line count: a one-digit file and a
-     three-digit one then put the code column in the same place, so switching
-     files never shifts the text sideways. Nothing is reserved for a comment
-     button — the entries are the right-click menu and the selection chip
-     (spec「文件面板评论」场景 1/2), which is what lets the number sit this close
-     to the panel's left edge. */
-  min-width: calc(8px + 3ch + 8px);
+  /* As wide as this file's own last line number (the code view sets
+     --file-pane-line-no-digits), so a short file's numbers sit against the
+     panel's left edge instead of parking an empty three-digit gutter. Every row
+     reads the same variable, so the code column stays a straight edge; change
+     files and the column only widens when the line count actually needs it.
+     Nothing is reserved for a comment button either — the entries are the
+     right-click menu and the selection chip (spec「文件面板评论」场景 1/2).
+     The 8px padding is applied on top of `min-width` (content-box), so it is
+     not part of the calc. */
+  min-width: calc(var(--file-pane-line-no-digits, 3) * 1ch);
   padding: 0 8px;
   text-align: right;
   color: var(--vscode-editorLineNumber-foreground, #858585);
