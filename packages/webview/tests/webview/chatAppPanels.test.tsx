@@ -2275,6 +2275,53 @@ describe("desktop plan panel", () => {
     expect(lastPanelState(vscode)).toContain("plan");
   });
 
+  it("routes a replayed ExitPlanMode plan (conversation was in the background) into the panel, not the dialog", () => {
+    // A conversation sitting in the background runs ExitPlanMode: the host
+    // caches the pending confirmation and replays it inside the session
+    // snapshot when the pane binds back to that session.
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop({ workdir: "/work/a" });
+    sendHostMessage(
+      fixtures.desktopPanes({
+        panes: [
+          {
+            paneId: "pane-1",
+            sessionId: "s1",
+            row: 0,
+            host: "local",
+            width: 1,
+          },
+        ],
+        focusedPaneId: "pane-1",
+      }),
+    );
+    sendCommand("setInitialState", { messages: [], paneId: "pane-1" });
+    sendCommand("setInitialState", {
+      messages: [],
+      paneId: "pane-1",
+      pendingConfirmations: [
+        {
+          confirmationId: "conf_plan_replay",
+          toolName: EXIT_PLAN_MODE_TOOL_NAME,
+          confirmationType: "计划待确认",
+          planContent: "## 重构方案\n- 步骤一\n- 步骤二",
+        },
+      ],
+    });
+
+    // The replayed plan lands in the panel ...
+    const pane = screen.getByTestId("plan-pane");
+    expect(pane.parentElement).not.toHaveStyle({ display: "none" });
+    const content = screen.getByTestId("plan-pane-content");
+    expect(content.querySelector("h2")).toHaveTextContent("重构方案");
+    expect(content.querySelectorAll("li")).toHaveLength(2);
+    // ... and the dialog stays compact, exactly like a live showConfirmation.
+    expect(
+      document.querySelector(".plan-content-preview"),
+    ).not.toBeInTheDocument();
+    expect(lastPanelState(vscode)).toContain("plan");
+  });
+
   it("keeps the plan after approval until the user closes the panel", () => {
     window.waveHostType = "desktop";
     renderDesktop({ workdir: "/work/a" });
