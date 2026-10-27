@@ -9,6 +9,7 @@ import {
   type Task,
 } from "wave-agent-sdk";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
+import { seedFileTree, type SeededTreeEntry } from "./fileTreeSeed.js";
 
 // Desktop SDD workflow (tutorials.md 三、SDD开发案例): the full
 // spec → plan → coding flow captured inside the desktop layout, using the
@@ -16,7 +17,25 @@ import { screenshotWebp } from "../e2e/utils/screenshot.js";
 // plan shown in the plan panel, and spec edits reviewed in the diff panel.
 const DIR_A = "/Users/dev/projects/wave-agent";
 const SPEC_FILE = "docs/specs/crm/customer-management.md";
-const SPEC_FULL_PATH = `${DIR_A}/${SPEC_FILE}`;
+
+/** The workdir as the panel's directory tree lists it, down to the spec file the
+ *  agent wrote (a demo has no host to answer the tree's listings). */
+const TREE: Record<string, SeededTreeEntry[]> = {
+  [DIR_A]: [
+    { name: "docs", type: "dir" },
+    { name: "src", type: "dir" },
+    { name: "package.json", type: "file" },
+  ],
+  [`${DIR_A}/docs`]: [
+    { name: "specs", type: "dir" },
+    { name: "desktop.md", type: "file" },
+  ],
+  [`${DIR_A}/docs/specs`]: [{ name: "crm", type: "dir" }],
+  [`${DIR_A}/docs/specs/crm`]: [
+    { name: "customer-management.md", type: "file" },
+  ],
+  [`${DIR_A}/src`]: [{ name: "main.tsx", type: "file" }],
+};
 
 const baseConfig = {
   messages: [],
@@ -215,9 +234,13 @@ test.describe("Desktop SDD workflow screenshots", () => {
     // 点击 Write 工具卡的文件路径 → 文件面板打开预览 spec 文件
     await webviewPage.locator(".write-tool-path").click();
     await expect(webviewPage.getByTestId("file-pane")).toBeVisible();
+    // 回包的 path 要与面板请求的那条路径一致（这里是工具记下的相对路径，真宿主
+    // 原样回带）：面板内多标签后 path 就是回包的归属键，写成绝对路径落到条上
+    // 找不到同一个文件，回包会被丢弃（spec desktop-file-panel.md「文件面板已打
+    // 开文件的标签」）。
     await injector.simulateExtensionMessage("desktopFileContent", {
       fileView: {
-        path: SPEC_FULL_PATH,
+        path: SPEC_FILE,
         host: "local",
         content: SPEC_CONTENT,
         loading: false,
@@ -226,6 +249,14 @@ test.describe("Desktop SDD workflow screenshots", () => {
     await expect(
       webviewPage.getByTestId("file-pane").getByText("客户管理系统功能规格"),
     ).toBeVisible();
+    // 左侧目录树列出 spec 文件所在的那几层：根目录一层先取到，再逐层展开
+    // （树的展开是懒加载的，用户点目录才会往下取一层）。
+    await seedFileTree(injector, TREE);
+    const tree = webviewPage.getByTestId("file-pane-tree");
+    for (const dir of ["docs", "specs", "crm"]) {
+      await tree.getByText(dir, { exact: true }).click();
+    }
+    await expect(tree.getByText("customer-management.md")).toBeVisible();
 
     // 规格编写完成后通过「问题待回答」弹窗请你决策
     await injector.simulateExtensionMessage("showConfirmation", {

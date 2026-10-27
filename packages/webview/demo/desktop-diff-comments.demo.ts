@@ -9,7 +9,7 @@ import { screenshotWebp } from "../e2e/utils/screenshot.js";
  *
  * Mirrors the real DiffPane → MessageInput path: the pane mounts and requests
  * `desktopGetWorkspaceDiff`; the test injects a mock `desktopWorkspaceDiff`
- * response, then exercises the GitHub/GitLab-style "+" comment button on a
+ * response, then exercises the line-comment entry (右键一行 → 「添加评论」) on a
  * diff line. Submitting the comment box appends a formatted diff comment to the
  * chat input (via the real ChatApp handleAddComment handler) — nothing is sent
  * to the agent, so several comments can be batched.
@@ -145,19 +145,21 @@ test.describe("Desktop Diff Pane Screenshots", () => {
       "../../docs/public/screenshots/desktop-diff-pane.webp",
     );
 
-    // ── 2. Click the "+" comment button on an added line ──────────
+    // ── 2. Right-click an added line → 「添加评论」 ─────────────────
     // The line `+  const handleSubmit = (e: React.FormEvent) => {` is new line
-    // 14 (the hunk starts at new line 12). The 旧/新 suffix is part of the
-    // label because a removed and an added line can carry the same number.
-    // The button is hidden until hover (GitHub/GitLab style); Playwright
-    // auto-hovers before click. Use the aria-label (file path + line) as
-    // the unique key — the testid uses a per-file line index, so it isn't
-    // unique across files.
+    // 14 (the hunk starts at new line 12). Commenting is a gesture, not a
+    // hover-revealed "+" in a reserved gutter (spec desktop-panels.md
+    // 「差异面板行评论」): right click a line for a one-item menu, or select
+    // several lines and take the button that follows the selection — which is
+    // what lets line numbers sit flush against the left edge.
+    // Picked by text: `diff-line-<n>` indexes the hunk's raw lines, and the
+    // rendered line also carries the old side, so the number alone is not the
+    // identity here.
     await webviewPage
-      .getByRole("button", {
-        name: "评论 src/components/LoginForm.tsx 第 14 行（新）",
-      })
-      .click();
+      .locator(".diff-line-added")
+      .filter({ hasText: "const handleSubmit = (e: React.FormEvent)" })
+      .click({ button: "right" });
+    await webviewPage.getByTestId("code-comment-menu-add").click();
     await expect(webviewPage.getByTestId("line-comment-box")).toBeVisible();
     await webviewPage
       .getByTestId("line-comment-input")
