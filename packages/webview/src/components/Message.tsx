@@ -341,86 +341,88 @@ const applyTableColumnAlign = (tableHtml: string): string => {
 };
 
 // Error payloads from the host are free-form strings (ErrorBlock.content).
-// Split only when the text itself gives a reliable role boundary:
-//   1. an explicit hint/建议/提示 line;
-//   2. a blank-line separated human-readable paragraph (prefer the last one,
-//      which is where "可以重试…" style guidance usually sits);
-//   3. a human-readable first line followed by raw lines.
-// Raw-only payloads stay entirely in the code role; we never invent a summary.
-// If the host later exposes structured summary/detail fields, replace this
-// heuristic at the boundary instead of growing the regex list.
+// R1-F3 / H-4 (2026-10-27): preserve the source order and only assign a
+// rendering role; never move a later explanation in front of the stack.
+//   · no raw/stack line anywhere  -> the whole payload is reading text;
+//   · raw line block              -> code role;
+//   · non-raw paragraph           -> reading role, in place;
+//   · hint/建议/提示 line         -> reading role, in place (label stripped
+//                                    exactly as before, but not reordered).
+// This uses the host's structural raw-prefix list only. It does not add
+// language-specific regexes, and it does not turn "the last Chinese paragraph"
+// into a rule. If the host later exposes structured summary/detail fields,
+// replace this fallback at the boundary instead of growing the regex list.
 const RAW_ERROR_PREFIX =
   /^\s*(?:APIError|(?:[A-Za-z]+Error)|E[A-Z0-9]+:|Traceback\b|at\s|Caused by:|During handling|Unhandled|FetchError|HTTP\s*\d{3}\b)/;
 const ERROR_HINT_LINE =
   /^\s*(?:hint|建议|提示|说明|suggestion)\s*[:：]\s*(.+)$/i;
 
-const isRawErrorText = (text: string) =>
-  RAW_ERROR_PREFIX.test(text.trim().split("\n")[0] || "");
-
-const isHumanReadableErrorText = (text: string) => {
-  const value = text.trim();
-  if (!value || isRawErrorText(value)) return false;
-  return /[\u3400-\u9fff]/.test(value);
+type ErrorPart = {
+  role: "explain" | "stack";
+  text: string;
 };
 
-const splitErrorContent = (
-  content: string,
-): { summary: string; detail: string } => {
+const hasRawErrorLine = (text: string) =>
+  text.split("\n").some((line) => RAW_ERROR_PREFIX.test(line));
+
+const splitErrorContent = (content: string): ErrorPart[] => {
   const text = String(content || "")
     .replace(/\r\n?/g, "\n")
     .trim();
-  if (!text) return { summary: "", detail: "" };
+  if (!text) return [];
 
-  const lines = text.split("\n");
-
-  // 1. Explicit host hint line: promote it to the explanation role.
-  const hintIndex = lines.findIndex((line) => ERROR_HINT_LINE.test(line));
-  if (hintIndex >= 0) {
-    const summary = lines[hintIndex].match(ERROR_HINT_LINE)?.[1]?.trim() || "";
-    const detail = lines
-      .filter((_, index) => index !== hintIndex)
-      .join("\n")
-      .trim();
-    if (summary) return { summary, detail };
+  // Pure reading text: no stack/log line at all. This is language-agnostic
+  // (English explanations were previously forced into the code role because
+  // the old heuristic required a CJK character).
+  if (!hasRawErrorLine(text)) {
+    return [{ role: "explain", text }];
   }
 
-  // 2. Blank-line separated paragraphs: use a human-readable paragraph as
-  // the explanation, keeping the rest as raw detail.
+  const parts: ErrorPart[] = [];
+  const push = (role: ErrorPart["role"], value: string) => {
+    const trimmed = value.trim();
+    if (trimmed) parts.push({ role, text: trimmed });
+  };
+
+  // Work paragraph by paragraph so blank lines remain boundaries. Inside a
+  // paragraph, a hint line can split a stack block without changing order.
   const paragraphs = text
     .split(/\n\s*\n/)
     .map((part) => part.trim())
     .filter(Boolean);
-  if (paragraphs.length > 1) {
-    const last = paragraphs[paragraphs.length - 1];
-    if (isHumanReadableErrorText(last)) {
-      return {
-        summary: last,
-        detail: paragraphs.slice(0, -1).join("\n\n").trim(),
-      };
-    }
-    const first = paragraphs[0];
-    if (isHumanReadableErrorText(first)) {
-      return {
-        summary: first,
-        detail: paragraphs.slice(1).join("\n\n").trim(),
-      };
-    }
-  }
 
-  // 3. Human-readable first line, raw lines below.
-  if (lines.length > 1 && isHumanReadableErrorText(lines[0])) {
-    return {
-      summary: lines[0].trim(),
-      detail: lines.slice(1).join("\n").trim(),
+  for (const paragraph of paragraphs) {
+    let chunk: string[] = [];
+
+    const flushChunk = () => {
+      if (chunk.length === 0) return;
+      const firstRaw = chunk.findIndex((line) => RAW_ERROR_PREFIX.test(line));
+      if (firstRaw < 0) {
+        push("explain", chunk.join("\n"));
+      } else {
+        // A readable lead-in such as "Request failed after 3 retries."
+        // stays explain; everything from the first raw line is stack.
+        if (firstRaw > 0) {
+          push("explain", chunk.slice(0, firstRaw).join("\n"));
+        }
+        push("stack", chunk.slice(firstRaw).join("\n"));
+      }
+      chunk = [];
     };
+
+    for (const line of paragraph.split("\n")) {
+      const hint = line.match(ERROR_HINT_LINE);
+      if (!hint) {
+        chunk.push(line);
+        continue;
+      }
+      flushChunk();
+      push("explain", hint[1] || "");
+    }
+    flushChunk();
   }
 
-  // 4. A single human-readable line is an explanation, not a stack.
-  if (isHumanReadableErrorText(text)) {
-    return { summary: text, detail: "" };
-  }
-
-  return { summary: "", detail: text };
+  return parts;
 };
 
 const createMessageMarkdownRenderer = (
@@ -1490,11 +1492,21 @@ export const Message: React.FC<MessageProps> = React.memo(
               </div>
             );
           }
-          const { summary, detail } = splitErrorContent(block.content || "");
+          const parts = splitErrorContent(block.content || "");
+          if (parts.length === 0) return null;
           return (
             <div key={index} className="message-content error">
-              {summary && <p className="error-explain">{summary}</p>}
-              {detail && <pre className="error-stack">{detail}</pre>}
+              {parts.map((part, partIndex) =>
+                part.role === "explain" ? (
+                  <p key={partIndex} className="error-explain">
+                    {part.text}
+                  </p>
+                ) : (
+                  <pre key={partIndex} className="error-stack">
+                    {part.text}
+                  </pre>
+                ),
+              )}
             </div>
           );
         }
