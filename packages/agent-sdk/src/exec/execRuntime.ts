@@ -36,6 +36,13 @@ export interface RunExecOptions {
    */
   onToolCall?: (name: string) => void;
   timeoutMs?: number;
+  /**
+   * Optional ceiling on the total time the script may spend waiting on nested
+   * calls, across all of them. Absent by default: a script waits as long as the
+   * call it is blocked on takes, and the user aborting the turn is what ends a
+   * call that never returns.
+   */
+  maxNestedWaitMs?: number;
   maxToolCalls?: number;
   maxLogChars?: number;
   maxResultChars?: number;
@@ -203,6 +210,11 @@ function terminate(worker: Worker): void {
  */
 export function runExecScript(options: RunExecOptions): Promise<ExecRunResult> {
   const timeoutMs = options.timeoutMs ?? EXEC_DEFAULT_TIMEOUT_MS;
+  // No default ceiling. Waiting on a nested call is unbounded by design — the
+  // flat path has no such limit either, and a call blocked on an approval dialog
+  // is the one case where "wait as long as it takes" is the correct behaviour.
+  // The endgame for a call that never returns is the user aborting the turn.
+  const maxNestedWaitMs = options.maxNestedWaitMs;
   const maxToolCalls = options.maxToolCalls ?? EXEC_DEFAULT_MAX_TOOL_CALLS;
   const maxLogChars = options.maxLogChars ?? EXEC_DEFAULT_MAX_LOG_CHARS;
   const maxResultChars =
@@ -214,16 +226,30 @@ export function runExecScript(options: RunExecOptions): Promise<ExecRunResult> {
     let settled = false;
     let toolCalls = 0;
 
+    // The execution budget measures what the *script* did, so it stops while a
+    // nested call is in flight. `inFlight` is a count rather than a flag because
+    // `Promise.all` issues calls concurrently, and only the 0 -> 1 and 1 -> 0
+    // transitions move the clock. `waitedMs` only feeds the optional ceiling a
+    // caller may pass via `maxNestedWaitMs`.
+    let activeSpentMs = 0;
+    let activeSince = Date.now();
+    let inFlight = 0;
+    let waitedMs = 0;
+    let waitSince = 0;
+    let budgetTimer: ReturnType<typeof setTimeout> | undefined;
+    let waitTimer: ReturnType<typeof setTimeout> | undefined;
+
     const finish = (result: ExecRunResult): void => {
       if (settled) return;
       settled = true;
-      clearTimeout(budget);
+      clearTimeout(budgetTimer);
+      clearTimeout(waitTimer);
       options.context.abortSignal?.removeEventListener("abort", onAbort);
       terminate(worker);
       resolve(result);
     };
 
-    const budget = setTimeout(() => {
+    const onBudgetExpired = (): void => {
       finish({
         ok: false,
         error:
@@ -233,7 +259,54 @@ export function runExecScript(options: RunExecOptions): Promise<ExecRunResult> {
         toolCalls,
         images,
       });
-    }, timeoutMs);
+    };
+
+    const armBudget = (): void => {
+      const carried =
+        activeSpentMs + (inFlight === 0 ? Date.now() - activeSince : 0);
+      clearTimeout(budgetTimer);
+      budgetTimer = setTimeout(
+        onBudgetExpired,
+        Math.max(0, timeoutMs - carried),
+      );
+    };
+
+    const enterFlight = (): void => {
+      inFlight += 1;
+      if (inFlight > 1) return;
+      activeSpentMs += Date.now() - activeSince;
+      clearTimeout(budgetTimer);
+      waitSince = Date.now();
+      if (maxNestedWaitMs === undefined) return;
+      // Bound to a local so the narrowing survives into the timer callback.
+      const ceilingMs = maxNestedWaitMs;
+      waitTimer = setTimeout(
+        () => {
+          finish({
+            ok: false,
+            error:
+              `Exec script waited ${ceilingMs}ms in total for nested tool calls and was terminated. ` +
+              `Tool calls that already completed still apply.`,
+            logs: [],
+            toolCalls,
+            images,
+          });
+        },
+        Math.max(0, ceilingMs - waitedMs),
+      );
+    };
+
+    const exitFlight = (): void => {
+      if (settled || inFlight === 0) return;
+      inFlight -= 1;
+      if (inFlight > 0) return;
+      waitedMs += Date.now() - waitSince;
+      clearTimeout(waitTimer);
+      activeSince = Date.now();
+      armBudget();
+    };
+
+    armBudget();
 
     const onAbort = (): void => {
       finish({
@@ -270,6 +343,7 @@ export function runExecScript(options: RunExecOptions): Promise<ExecRunResult> {
             });
             return;
           }
+          enterFlight();
           handleExecCall(
             call.name,
             call.args,
@@ -277,6 +351,7 @@ export function runExecScript(options: RunExecOptions): Promise<ExecRunResult> {
             options.context,
           ).then(
             (result) => {
+              exitFlight();
               if (result.images?.length) {
                 for (const image of result.images) {
                   if (images.length < EXEC_DEFAULT_MAX_IMAGES)
@@ -292,6 +367,7 @@ export function runExecScript(options: RunExecOptions): Promise<ExecRunResult> {
               });
             },
             (error: unknown) => {
+              exitFlight();
               if (settled) return;
               worker.postMessage({
                 kind: "result",

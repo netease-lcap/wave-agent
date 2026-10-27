@@ -53,11 +53,25 @@ const POOL = [
   { name: "mcp__srv__sum", isMcp: true, description: "Add numbers" },
 ];
 
+/**
+ * An answer that takes `ms` to arrive — the shape of an approval dialog or a
+ * slow server: the script is blocked, the host is working.
+ */
+function slowAnswer(ms: number) {
+  return new Promise((resolve) =>
+    setTimeout(
+      () => resolve({ success: true, content: "slow", output: "slow" }),
+      ms,
+    ),
+  );
+}
+
 function run(
   code: string,
   options: FakeMcpOptions & {
     pool?: ExecPoolEntry[];
     timeoutMs?: number;
+    maxNestedWaitMs?: number;
     maxToolCalls?: number;
     maxLogChars?: number;
     maxResultChars?: number;
@@ -72,6 +86,7 @@ function run(
     pool: options.pool ?? POOL,
     context,
     timeoutMs: options.timeoutMs,
+    maxNestedWaitMs: options.maxNestedWaitMs,
     maxToolCalls: options.maxToolCalls,
     maxLogChars: options.maxLogChars,
     maxResultChars: options.maxResultChars,
@@ -567,6 +582,53 @@ describe("runExecScript — budgets and lifecycle", () => {
 
     expect(result.ok).toBe(false);
     expect(result.error).toContain("budget");
+  });
+
+  it("does not spend the execution budget while a nested call is in flight", async () => {
+    // The call blocks far longer than `timeoutMs`. That wait belongs to the
+    // host — an approval dialog, a slow server — not to the script, so the
+    // budget must not count it: the run has to come back with the value. No
+    // `maxNestedWaitMs` is passed, so this also pins the default: unbounded.
+    const result = await run(`return await tools.mcp__srv__echo({});`, {
+      timeoutMs: 200,
+      behavior: () => slowAnswer(500),
+    });
+
+    expect(result.ok).toBe(true);
+    // A string return value crosses the boundary unquoted (see `safeStringify`).
+    expect(result.value).toBe("slow");
+  });
+
+  it("caps how long a script may spend waiting on nested calls", async () => {
+    // The pause needs a floor of its own, or a tool that never answers holds
+    // the turn open forever. `timeoutMs` is generous here so the nested-wait
+    // ceiling is the only budget that can fire.
+    const result = await run(`return await tools.mcp__srv__echo({});`, {
+      timeoutMs: 30_000,
+      maxNestedWaitMs: 150,
+      behavior: () => new Promise(() => {}),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain("nested tool calls");
+  });
+
+  it("counts concurrent calls as one wait window", async () => {
+    // `Promise.all` issues both calls before either answers, so the clock is
+    // paused once: the two 400ms waits share a single window instead of
+    // between them pushing the execution budget past 200ms.
+    const result = await run(
+      `
+      return await Promise.all([
+        tools.mcp__srv__echo({}),
+        tools.mcp__srv__sum({}),
+      ]);
+    `,
+      { timeoutMs: 200, behavior: () => slowAnswer(400) },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(result.value!)).toEqual(["slow", "slow"]);
   });
 
   it("stops at the tool-call limit without killing the run", async () => {
