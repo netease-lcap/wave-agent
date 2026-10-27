@@ -87,12 +87,14 @@ import {
 } from "./protocol.js";
 import { execFileSync } from "node:child_process";
 import {
+  type Dirent,
   mkdirSync,
   existsSync,
   readFileSync,
   writeFileSync,
   readdirSync,
   realpathSync,
+  statSync,
 } from "node:fs";
 import { mkdir, open, readFile, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -239,6 +241,43 @@ interface SessionEntry {
 interface SessionContext {
   agent?: Agent;
   registeredSessionId?: string;
+}
+
+/**
+ * Entries the file panel's directory tree never shows (spec
+ * desktop-file-panel.md「文件面板工作区目录树」scenario 3). A deny-list, not
+ * "hide dotfiles": `.github/`, `.env`, `.wave/` are content the user browses
+ * for. Only machine noise and VCS internals.
+ */
+const DIR_ENTRY_JUNK = new Set([
+  ".git",
+  ".svn",
+  ".hg",
+  ".DS_Store",
+  "Thumbs.db",
+  "desktop.ini",
+]);
+
+/** Per-level cap for the tree (scenario 3: the rest collapses into one row). */
+const DIR_ENTRY_MAX_PER_LEVEL = 200;
+
+/**
+ * Classify one directory entry as dir/file. Symlinks are followed so a linked
+ * directory stays browsable; an entry we cannot stat (dangling link, vanished
+ * between readdir and stat) returns null and is dropped — better a missing row
+ * than a row that fails on every click.
+ */
+function direntType(parentDir: string, dirent: Dirent): "dir" | "file" | null {
+  if (dirent.isDirectory()) return "dir";
+  if (dirent.isFile()) return "file";
+  if (!dirent.isSymbolicLink()) return null;
+  try {
+    return statSync(join(parentDir, dirent.name)).isDirectory()
+      ? "dir"
+      : "file";
+  } catch {
+    return null;
+  }
 }
 
 export class AgentBridge {
@@ -652,6 +691,8 @@ export class AgentBridge {
       // ── Filesystem / Git / worktree (global — no session required) ──
       case "listDirectories":
         return this.listDirectories(p.dir as string | undefined);
+      case "listDirectoryEntries":
+        return this.listDirectoryEntries(p.dir as string | undefined);
       // ── 最近打开的工作目录（spec core/recent-workdirs.md）──
       // 机器级、与会话无关：文件就在这台机器上，谁问就回谁的。桌面端按主机
       // 各问一次，远控 Web 页问它连着的那个进程。
@@ -1218,6 +1259,65 @@ export class AgentBridge {
       throw new RpcError(PROTOCOL_INTERNAL_ERROR, `目录不存在或不可读：${dir}`);
     }
     return { resolvedPath, dirs };
+  }
+
+  /**
+   * One level of the file panel's directory tree (spec
+   * desktop-file-panel.md「文件面板工作区目录树」scenario 3): direct children
+   * only. Expansion is lazy per level, so this never walks a subtree.
+   *
+   * Serves **both** hosts: the desktop reaches this bridge through the local
+   * stdio client and, for a remote session, through the remote daemon tunnel.
+   * So the tree needs no ssh code of its own, and local vs remote cannot drift
+   * on ordering, filtering or the entry cap. It also keeps the tree on the same
+   * machine view as `searchFiles`, which the panel's filter box uses.
+   *
+   * Ordering, the junk deny-list and the cap live here rather than in the
+   * webview: "dirs first, then files, each by name" is one rule with one owner.
+   * The deny-list is a list of *known junk*, not "hide dotfiles" — `.github/`
+   * and `.env` are real project content the user browses for.
+   *
+   * `total` counts post-filter entries, so `total > entries.length` is exactly
+   * the 「还有 N 项未显示」 row the webview renders. A directory of 50k files
+   * would otherwise be shipped whole on every expansion.
+   */
+  private listDirectoryEntries(dir?: string): {
+    resolvedPath: string;
+    entries: Array<{ name: string; type: "dir" | "file" }>;
+    total: number;
+  } {
+    if (!dir) {
+      throw new RpcError(PROTOCOL_INTERNAL_ERROR, "dir is required");
+    }
+    const expanded =
+      dir === "~" || dir.startsWith("~/") ? join(homedir(), dir.slice(1)) : dir;
+    let resolvedPath: string;
+    let dirents: Dirent[];
+    try {
+      resolvedPath = realpathSync(expanded);
+      dirents = readdirSync(resolvedPath, { withFileTypes: true });
+    } catch {
+      // Missing and unreadable get the same verdict: the tree cannot descend
+      // into either, and an empty list would read as 「空目录」.
+      throw new RpcError(PROTOCOL_INTERNAL_ERROR, `目录不存在或不可读：${dir}`);
+    }
+    const entries = dirents
+      .filter((e) => !DIR_ENTRY_JUNK.has(e.name))
+      .map((e) => ({ name: e.name, type: direntType(resolvedPath, e) }))
+      .filter(
+        (e): e is { name: string; type: "dir" | "file" } => e.type !== null,
+      )
+      .sort(
+        (a, b) =>
+          // Directories first, then files — the tree's fixed order.
+          (a.type === b.type ? 0 : a.type === "dir" ? -1 : 1) ||
+          a.name.localeCompare(b.name),
+      );
+    return {
+      resolvedPath,
+      entries: entries.slice(0, DIR_ENTRY_MAX_PER_LEVEL),
+      total: entries.length,
+    };
   }
 
   private listGitBranches(workdir?: string): {

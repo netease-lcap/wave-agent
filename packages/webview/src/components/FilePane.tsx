@@ -9,15 +9,16 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { createPortal } from "react-dom";
 import hljs from "../utils/highlight";
-import type { FileItem, FileViewState, VsCodeApi } from "../types";
+import type { FileItem, FileViewState, OpenFileTab, VsCodeApi } from "../types";
 import { formatCodeComment } from "../utils/codeComment";
 import type { ConversationFileEntry } from "../utils/conversationFiles";
 import { toRelativePath } from "../utils/messageUtils";
-import { useClickOutside } from "../utils/useClickOutside";
 import { useHostMessage } from "../utils/useHostMessage";
+import { ancestorsWithin, isUnder } from "../utils/fileTreePaths";
 import { ConversationFileList } from "./ConversationFileList";
 import { FileEditor } from "./fileEditor/FileEditor";
-import { FileSuggestionDropdown } from "./FileSuggestionDropdown";
+import { FileTabStrip } from "./FileTabStrip";
+import { FileTree, type DirEntryState } from "./FileTree";
 import {
   OpenBrowserIcon,
   QueueEditIcon,
@@ -100,6 +101,44 @@ const middleEllipsis = (text: string, max = 48): string => {
 
 const escapeHtml = (text: string) =>
   text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/**
+ * Wrap one character range of an already-rendered line in a `<mark>`.
+ *
+ * The line's HTML is highlight.js output, so the range may span several text
+ * nodes; offsets are plain-text offsets, which equal the running lengths of
+ * those nodes. Splitting text nodes keeps the surrounding `<span>`s intact —
+ * re-splitting an HTML string instead would drop tokens whose `<span>` straddles
+ * the match boundary.
+ */
+const wrapTextRange = (
+  container: HTMLElement,
+  start: number,
+  length: number,
+  className: string,
+): void => {
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    nodes.push(node as Text);
+  }
+  const end = start + length;
+  let offset = 0;
+  for (const textNode of nodes) {
+    const nodeStart = offset;
+    const nodeEnd = offset + textNode.data.length;
+    offset = nodeEnd;
+    if (nodeEnd <= start || nodeStart >= end) continue;
+    const from = Math.max(start, nodeStart) - nodeStart;
+    const to = Math.min(end, nodeEnd) - nodeStart;
+    if (to < textNode.data.length) textNode.splitText(to);
+    const target = from > 0 ? textNode.splitText(from) : textNode;
+    const mark = document.createElement("mark");
+    mark.className = className;
+    target.parentNode?.replaceChild(mark, target);
+    mark.appendChild(target);
+  }
+};
 
 /**
  * Split hljs-highlighted HTML into per-line fragments while keeping every
@@ -309,16 +348,40 @@ export const renderFileMarkdown = (
 
 const HIGHLIGHT_LINE_HEIGHT = 20;
 
+/** Per-file find-bar state (spec「文件面板内查找与跳行」). */
+interface FindState {
+  open: boolean;
+  query: string;
+  /** 1-based index of the current match among all matches. */
+  current: number;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+  regex: boolean;
+}
+
+const EMPTY_FIND: FindState = {
+  open: false,
+  query: "",
+  current: 1,
+  caseSensitive: false,
+  wholeWord: false,
+  regex: false,
+};
+
 export interface FilePaneProps {
-  /** Panel content; null renders the conversation file list (or the placeholder). */
-  fileView: FileViewState | null;
+  /** The panel's own open-file tabs, in strip order. Empty → list/placeholder. */
+  files: OpenFileTab[];
+  /** Which of them is showing; undefined with files present = 「未选择文件」. */
+  activeFileId?: string;
   width: number;
   /** Local sessions only: open the file in the OS default app. */
   onOpenExternal?: (path: string) => void;
   /** Owning pane's effective cwd, for the relative-path title display. */
   workdir?: string;
-  /** Host bridge for the top search bar. Absent → the search bar is hidden. */
+  /** Host bridge (desktop only); absent → the panel is not a desktop surface. */
   vscode?: VsCodeApi;
+  /** Owning pane, used to filter pane-scoped host replies (directory levels). */
+  paneId?: string;
   /** Open a file in the panel (same flow as clicking a message file path). */
   onOpenFileInPanel?: (path: string) => void;
   /**
@@ -336,6 +399,22 @@ export interface FilePaneProps {
    */
   onAddComment?: (text: string) => void;
 
+  // ---- 面板内文件标签（spec「文件面板已打开文件的标签」）----------------------
+  onActivateFile?: (fileId: string) => void;
+  onCloseFile?: (fileId: string) => void;
+  onCloseOtherFiles?: (fileId: string) => void;
+  onCloseFilesRight?: (fileId: string) => void;
+  onCloseAllFiles?: () => void;
+  onReorderFile?: (fileId: string, delta: number) => void;
+
+  // ---- 目录树（spec「文件面板工作区目录树」）--------------------------------
+  /** Workspace root = the session's stable root; absent → no tree column. */
+  treeRoot?: string;
+  treeVisible?: boolean;
+  onTreeVisibleChange?: (visible: boolean) => void;
+  treeWidth?: number;
+  onTreeWidthChange?: (width: number) => void;
+
   // ---- 面板内编辑（spec desktop-file-panel.md「文件面板内编辑与保存」）--------
   // 全部由桌面端 ChatApp 接线；缺省即面板只读（IDE 宿主根本没有这个面板）。
   /** 进入编辑态：宿主在 `fileView.editable` 里说这个文件可以改。 */
@@ -351,53 +430,184 @@ export interface FilePaneProps {
 }
 
 /**
- * Desktop file panel: a read-only viewer for file paths clicked in messages,
- * plus a list view of the files this conversation touched.
- * Local files are read by the host straight from disk; remote files arrive via
- * ssh as base64/text. Renders markdown, syntax-highlights code, keeps long
- * lines scrolling horizontally with a fixed line-number gutter, and jumps to
- * the requested start line when the opener carries one.
+ * Desktop file panel: the session's directory tree on the left, the open file's
+ * own tab strip on top of the content column, and a read-only viewer that jumps
+ * to a requested line.
+ *
+ * All of the panel's file state lives in `files` + `activeFileId` (the first
+ * level file tab owns it); this component only holds view-local state — the
+ * tree's expansions and listings, the filter box, and the find bar.
  */
 export const FilePane: React.FC<FilePaneProps> = ({
-  fileView,
+  files,
+  activeFileId,
   width,
   onOpenExternal,
   workdir,
   vscode,
+  paneId,
   onOpenFileInPanel,
   conversationFiles,
   onBackToList,
   listMode,
   onAddComment,
+  onActivateFile,
+  onCloseFile,
+  onCloseOtherFiles,
+  onCloseFilesRight,
+  onCloseAllFiles,
+  onReorderFile,
+  treeRoot,
+  treeVisible = true,
+  onTreeVisibleChange,
+  treeWidth = 200,
+  onTreeWidthChange,
   onStartEdit,
   onDraftChange,
   onSaveDraft,
   onCancelEdit,
   onReloadDraft,
 }) => {
+  // PaneShell's body (the whole layout) and the content column's own scroll
+  // container — the tree column scrolls independently, so jumps and find marks
+  // work against the content one.
   const scrollRef = useRef<HTMLDivElement>(null);
+  const contentScrollRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchPopoverRef = useRef<HTMLDivElement>(null);
-  const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const findInputRef = useRef<HTMLInputElement>(null);
 
-  // Search popover: the toolbar's search icon toggles a floating panel (input +
-  // suggestions). Host broadcasts fileSuggestionsResponse to every pane;
-  // requestId dedupes it.
-  const [searchOpen, setSearchOpen] = useState(false);
+  const activeFile = useMemo(
+    () => files.find((f) => f.id === activeFileId),
+    [files, activeFileId],
+  );
+  const fileView: FileViewState | null = activeFile?.fileView ?? null;
+
+  // ---- 目录树（左栏）--------------------------------------------------------
+  // 展开集合与已取到的层级都留在组件里：树的每一次展开才发一次列目录请求，
+  // 面板打开时只读根目录一层。会话切换会重建本组件，树按需重新取。
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [dirs, setDirs] = useState<Record<string, DirEntryState>>({});
+  const pendingDirsRef = useRef<Set<string>>(new Set());
+  const [revealTick, setRevealTick] = useState(0);
+  const [treeDragWidth, setTreeDragWidth] = useState<number | null>(null);
+
+  const requestDir = useCallback(
+    (path: string) => {
+      if (!vscode || !path) return;
+      if (pendingDirsRef.current.has(path)) return;
+      pendingDirsRef.current.add(path);
+      setDirs((prev) =>
+        prev[path]?.entries || prev[path]?.error
+          ? prev
+          : { ...prev, [path]: { loading: true } },
+      );
+      vscode.postMessage({ command: "desktopListDirectory", path });
+      // A dropped request must not wedge the row in 「正在加载…」 forever: the
+      // reply clears it, and this timer is the only other way out.
+      setTimeout(() => pendingDirsRef.current.delete(path), 5000);
+    },
+    [vscode],
+  );
+
+  const toggleDir = useCallback((path: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  useHostMessage(
+    (data) => {
+      if (data.command !== "desktopDirEntries") return;
+      const path = data.path as string;
+      pendingDirsRef.current.delete(path);
+      setDirs((prev) => ({
+        ...prev,
+        [path]: data.error
+          ? { error: data.error }
+          : { entries: data.entries ?? [], total: data.total ?? 0 },
+      }));
+    },
+    { paneId },
+  );
+
+  /** Root level: list it once the tree is on screen (no click to expand it). */
+  useEffect(() => {
+    if (!treeRoot || !treeVisible) return;
+    requestDir(treeRoot);
+  }, [treeRoot, treeVisible, requestDir]);
+
+  // 「在文件树中显示」: expand every ancestor inside the root, then scroll.
+  const revealActiveInTree = useCallback(() => {
+    const path = fileView?.path;
+    if (!path || !treeRoot) return;
+    if (!isUnder(path, treeRoot)) return;
+    const ancestors = ancestorsWithin(path, treeRoot);
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      for (const dir of ancestors) next.add(dir);
+      return next;
+    });
+    for (const dir of ancestors) requestDir(dir);
+    setRevealTick((tick) => tick + 1);
+  }, [fileView?.path, treeRoot, requestDir]);
+
+  // Opening a file keeps the tree honest without a click: its ancestors are
+  // expanded (and listed) so the row shows up selected (scenario 6's first half).
+  useEffect(() => {
+    const path = fileView?.path;
+    if (!path || !treeRoot || !treeVisible) return;
+    if (!isUnder(path, treeRoot)) return;
+    const ancestors = ancestorsWithin(path, treeRoot);
+    setExpanded((prev) => {
+      const missing = ancestors.filter((d) => !prev.has(d));
+      if (missing.length === 0) return prev;
+      const next = new Set(prev);
+      for (const dir of ancestors) next.add(dir);
+      return next;
+    });
+    for (const dir of ancestors) requestDir(dir);
+  }, [fileView?.path, treeRoot, treeVisible, requestDir]);
+
+  // Splitter drag: local mirror while dragging, persisted on release.
+  const treeWidthRef = useRef(treeWidth);
+  treeWidthRef.current = treeWidth;
+  const handleTreeResizeStart = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = treeWidthRef.current;
+      const onMove = (move: MouseEvent) => {
+        const next = Math.min(
+          420,
+          Math.max(140, startWidth + (move.clientX - startX)),
+        );
+        setTreeDragWidth(next);
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        setTreeDragWidth((current) => {
+          if (current !== null) onTreeWidthChange?.(current);
+          return null;
+        });
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    },
+    [onTreeWidthChange],
+  );
+
+  // ---- 过滤框：复用 @ 文件搜索的数据流（spec「文件面板按名字查找」）--------
   const [searchFilter, setSearchFilter] = useState("");
   const [searchSuggestions, setSearchSuggestions] = useState<FileItem[]>([]);
   const [searchSelectedIndex, setSearchSelectedIndex] = useState(0);
   const [searchLoading, setSearchLoading] = useState(false);
-  const [searchActive, setSearchActive] = useState(false);
+  const [searchError, setSearchError] = useState<string | undefined>(undefined);
   const searchRequestIdRef = useRef("");
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  /** The panel can only display files, not directories. */
-  const fileSuggestions = useMemo(
-    () => searchSuggestions.filter((s) => !s.isDirectory),
-    [searchSuggestions],
-  );
 
   const requestSearch = useCallback(
     (filterText: string) => {
@@ -405,6 +615,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       const requestId = Date.now().toString();
       searchRequestIdRef.current = requestId;
       setSearchLoading(true);
+      setSearchError(undefined);
       vscode.postMessage({
         command: "requestFileSuggestions",
         filterText,
@@ -414,62 +625,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
     [vscode],
   );
 
-  const resetSearch = useCallback(() => {
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    searchDebounceRef.current = null;
-    setSearchFilter("");
-    setSearchSuggestions([]);
-    setSearchSelectedIndex(0);
-    setSearchLoading(false);
-    setSearchActive(false);
-  }, []);
-
-  /** Close the whole popover and clear the search state. */
-  const closeSearch = useCallback(() => {
-    resetSearch();
-    setSearchOpen(false);
-  }, [resetSearch]);
-
-  // Open: reset + autofocus. The actual empty-filter request fires from the
-  // input's onFocus (handled below) so the dropdown populates immediately —
-  // empty filter returns the workspace's top files, acting as a file picker.
-  const openSearch = useCallback(() => {
-    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
-    searchDebounceRef.current = null;
-    setSearchFilter("");
-    setSearchSuggestions([]);
-    setSearchSelectedIndex(0);
-    setSearchLoading(false);
-    setSearchActive(true);
-    setSearchOpen(true);
-  }, []);
-
-  useEffect(() => {
-    if (searchOpen) searchInputRef.current?.focus();
-  }, [searchOpen]);
-
-  // Dismiss when clicking outside the popover (and not on the trigger button).
-  // Listener registered one tick later inside useClickOutside.
-  useClickOutside({
-    refs: [searchPopoverRef, searchTriggerRef],
-    enabled: searchOpen,
-    onClickOutside: closeSearch,
-  });
-
-  const handleSearchFocus = useCallback(() => {
-    setSearchActive(true);
-    requestSearch("");
-  }, [requestSearch]);
-
-  const handleSearchChange = useCallback(
+  const handleFilterChange = useCallback(
     (value: string) => {
       setSearchFilter(value);
       setSearchSelectedIndex(0);
-      // Selecting a file resets the search (searchActive=false) while focus
-      // stays in the input, so typing again must re-activate the dropdown —
-      // onFocus won't fire again until the input loses and regains focus.
-      setSearchActive(true);
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+      if (!value) {
+        // 清空即回到目录树（场景 3），不重新查一次空关键字。
+        setSearchSuggestions([]);
+        setSearchLoading(false);
+        return;
+      }
       searchDebounceRef.current = setTimeout(() => {
         searchDebounceRef.current = null;
         requestSearch(value);
@@ -478,43 +644,13 @@ export const FilePane: React.FC<FilePaneProps> = ({
     [requestSearch],
   );
 
-  const handleSearchSelect = useCallback(
+  const handlePickFilterResult = useCallback(
     (file: FileItem) => {
-      closeSearch();
+      setSearchFilter("");
+      setSearchSuggestions([]);
       onOpenFileInPanel?.(file.path);
     },
-    [closeSearch, onOpenFileInPanel],
-  );
-
-  const handleSearchKeyDown = useCallback(
-    (event: React.KeyboardEvent<HTMLInputElement>) => {
-      if (fileSuggestions.length === 0) {
-        if (event.key === "Escape") closeSearch();
-        return;
-      }
-      const maxIndex = fileSuggestions.length - 1;
-      switch (event.key) {
-        case "ArrowUp":
-          event.preventDefault();
-          setSearchSelectedIndex((prev) => Math.max(0, prev - 1));
-          break;
-        case "ArrowDown":
-          event.preventDefault();
-          setSearchSelectedIndex((prev) => Math.min(maxIndex, prev + 1));
-          break;
-        case "Enter":
-          event.preventDefault();
-          if (fileSuggestions[searchSelectedIndex]) {
-            handleSearchSelect(fileSuggestions[searchSelectedIndex]);
-          }
-          break;
-        case "Escape":
-          event.preventDefault();
-          closeSearch();
-          break;
-      }
-    },
-    [fileSuggestions, searchSelectedIndex, handleSearchSelect, closeSearch],
+    [onOpenFileInPanel],
   );
 
   // Listen for the host's file suggestions reply (same channel as @ mention).
@@ -530,18 +666,21 @@ export const FilePane: React.FC<FilePaneProps> = ({
       if (data.requestId !== searchRequestIdRef.current) return;
       setSearchSuggestions([]);
       setSearchLoading(false);
-      console.error("文件搜索失败:", data.error);
+      setSearchError("搜索文件失败");
     }
   });
 
-  // Clear a pending search debounce on unmount (was the listener effect's
-  // cleanup before the message listener moved into useHostMessage).
   useEffect(
     () => () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     },
     [],
   );
+
+  // ---- 查找与跳行（spec「文件面板内查找与跳行」）---------------------------
+  const [find, setFind] = useState<FindState>(EMPTY_FIND);
+  const [gotoValue, setGotoValue] = useState("");
+  const [gotoError, setGotoError] = useState<string | undefined>(undefined);
 
   // Per-line fragments: syntax-highlighted (balanced spans) or plain text.
   // `text` is kept alongside `html` because a line comment quotes the source,
@@ -573,10 +712,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
     }));
   }, [fileView?.content, fileView?.path]);
 
+  const relativePath = useMemo(
+    () => (fileView ? toRelativePath(fileView.path, workdir) : ""),
+    [fileView, workdir],
+  );
+  const isLocal = fileView?.host === "local";
+  const markdown = fileView?.content ? isMarkdownPath(fileView.path) : false;
+
   // Jump to the requested line range on open / file switch.
   useEffect(() => {
     const start = fileView?.startLine;
-    const el = scrollRef.current;
+    const el = contentScrollRef.current;
     if (!start || !el || !contentLines) return;
     el.scrollTop = Math.max(
       0,
@@ -584,20 +730,178 @@ export const FilePane: React.FC<FilePaneProps> = ({
     );
   }, [fileView?.path, fileView?.startLine, contentLines]);
 
-  const relativePath = useMemo(
-    () => (fileView ? toRelativePath(fileView.path, workdir) : ""),
-    [fileView, workdir],
+  // ---- 查找：配对与命中（spec「文件面板内查找与跳行」）----------------------
+  // 命中按「行 + 行内起始位置」记录，作用在纯文本上（`contentLines[].text`），
+  // 高亮在渲染后再把 `<mark>` 包进对应的文本节点——这样语法高亮的 <span> 保持
+  // 原样，不必在 HTML 字符串里二次切分（切错一个 span 就会吞掉半屏高亮）。
+  const searchMatcher = useMemo(() => {
+    const query = find.query;
+    if (!query) return null;
+    const flags = find.caseSensitive ? "g" : "gi";
+    const source = find.regex
+      ? query
+      : query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = find.wholeWord ? `\\b(?:${source})\\b` : source;
+    try {
+      return {
+        regex: new RegExp(pattern, flags),
+        error: undefined as string | undefined,
+      };
+    } catch {
+      // 非法正则给出可读提示且不匹配任何内容（场景 3）。
+      return { regex: null, error: "正则表达式无效" };
+    }
+  }, [find.query, find.caseSensitive, find.regex, find.wholeWord]);
+
+  const matches = useMemo(() => {
+    const regex = searchMatcher?.regex;
+    if (!regex || !contentLines) return [];
+    const out: Array<{ line: number; index: number; length: number }> = [];
+    for (let i = 0; i < contentLines.length; i++) {
+      const text = contentLines[i].text;
+      regex.lastIndex = 0;
+      let hit = regex.exec(text);
+      let guard = 0;
+      while (hit && guard++ < 500) {
+        if (hit[0].length === 0) {
+          regex.lastIndex++;
+        } else {
+          out.push({ line: i + 1, index: hit.index, length: hit[0].length });
+        }
+        hit = regex.exec(text);
+      }
+    }
+    return out;
+  }, [searchMatcher, contentLines]);
+
+  const matchCount = matches.length;
+  const hitsByLine = useMemo(() => {
+    const map = new Map<number, typeof matches>();
+    for (const hit of matches) {
+      const list = map.get(hit.line);
+      if (list) list.push(hit);
+      else map.set(hit.line, [hit]);
+    }
+    return map;
+  }, [matches]);
+  const currentIndex = find.current;
+  const currentMatch = useMemo(() => {
+    if (matchCount === 0) return null;
+    const index = Math.min(Math.max(currentIndex, 1), matchCount) - 1;
+    return matches[index] ?? null;
+  }, [matches, matchCount, currentIndex]);
+
+  const scrollToLine = useCallback((line: number) => {
+    const el = contentScrollRef.current;
+    if (!el) return;
+    el.scrollTop = Math.max(
+      0,
+      (line - 1) * HIGHLIGHT_LINE_HEIGHT - HIGHLIGHT_LINE_HEIGHT * 2,
+    );
+  }, []);
+
+  const stepMatch = useCallback(
+    (delta: number) => {
+      if (matchCount === 0) return;
+      setFind((prev) => {
+        // 到末尾循环（场景 2）。
+        const next = ((prev.current - 1 + delta + matchCount) % matchCount) + 1;
+        return { ...prev, current: next };
+      });
+    },
+    [matchCount],
   );
-  const isLocal = fileView?.host === "local";
-  const markdown = fileView?.content ? isMarkdownPath(fileView.path) : false;
-  // The list view only exists when the conversation has files to list; with
-  // none, no file open still means the empty placeholder (spec 场景 1). A file
-  // can stay loaded while the list is shown — 「返回文件列表」 keeps `fileView`
-  // so a host reply still in flight lands on the same tab instead of yanking
-  // the user back into the file.
+
+  useEffect(() => {
+    if (currentMatch) scrollToLine(currentMatch.line);
+  }, [currentMatch, scrollToLine]);
+
+  /**
+   * Paint the marks after every render that could have produced new line nodes.
+   * React owns the text; this pass only wraps ranges inside text nodes, and
+   * re-running it from scratch keeps it idempotent.
+   */
+  useEffect(() => {
+    const root = contentScrollRef.current;
+    if (!root) return;
+    root
+      .querySelectorAll<HTMLElement>("mark.file-pane-find-hit")
+      .forEach((mark) => {
+        const parent = mark.parentNode;
+        if (!parent) return;
+        parent.replaceChild(
+          document.createTextNode(mark.textContent ?? ""),
+          mark,
+        );
+        parent.normalize();
+      });
+    if (!find.query || matches.length === 0) return;
+    const currentLine = currentMatch?.line;
+    root.querySelectorAll<HTMLElement>(".file-pane-line-code").forEach((el) => {
+      const lineNo = Number(el.dataset.lineNo ?? "0");
+      const hits = hitsByLine.get(lineNo);
+      if (!hits) return;
+      for (const hit of [...hits].reverse()) {
+        wrapTextRange(
+          el,
+          hit.index,
+          hit.length,
+          lineNo === currentLine && hit === currentMatch
+            ? "file-pane-find-hit file-pane-find-hit--current"
+            : "file-pane-find-hit",
+        );
+      }
+    });
+  });
+
+  /** `Ctrl/Cmd+F` opens the find bar; `Esc` closes it (scenarios 1/5). */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "f")
+        return;
+      // 面板没在显示文本时沿用视图既有行为（markdown / 图片，场景 6）。
+      if (!contentLines || markdown || fileView?.imageBase64) return;
+      event.preventDefault();
+      setFind((prev) => ({ ...prev, open: true }));
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [contentLines, markdown, fileView?.imageBase64]);
+
+  // 查找条一打开就把焦点放进输入框（场景 1）。入口有两个——工具条按钮与
+  // `Ctrl/Cmd+F`——焦点只在这一处给，两条入口才不会一个有一处没有。
+  useEffect(() => {
+    if (!find.open) return;
+    findInputRef.current?.focus();
+    findInputRef.current?.select();
+  }, [find.open]);
+
+  // 换文件 / 换标签时重新计数，高亮不残留（场景 9）。
+  useEffect(() => {
+    setFind((prev) => (prev.open ? { ...prev, current: 1 } : prev));
+    setGotoValue("");
+    setGotoError(undefined);
+  }, [fileView?.path]);
+
+  const handleGoto = useCallback(() => {
+    const total = contentLines?.length ?? 0;
+    const target = Number(gotoValue.trim());
+    if (!Number.isFinite(target) || target < 1 || target > total) {
+      setGotoError(`有效范围 1-${total}`);
+      return;
+    }
+    setGotoError(undefined);
+    scrollToLine(target);
+    setFind((prev) => ({ ...prev, open: true }));
+  }, [contentLines, gotoValue, scrollToLine]);
+
+  // 列表态只在这一种情况出现：还没打开过任何文件（列表既是进门页也是空对话
+  // 的落地页），或者用户按了「返回文件列表」。有标签但没激活走「未选择文件」
+  // 空态，而不是列表——两者是不同的处境（场景 14）。
   const hasConversationFiles = (conversationFiles?.length ?? 0) > 0;
-  const showList = hasConversationFiles && (!fileView || listMode);
-  const showFile = !!fileView && !showList;
+  const showList =
+    listMode === true || (files.length === 0 && hasConversationFiles);
+  const showFile = !!activeFile && !showList;
 
   // ---- 面板内编辑（spec「文件面板内编辑与保存」）------------------------------
   // 编辑入口只认宿主给的 `fileView.editable`：里面已经包含了「本地会话 + 路径在
@@ -798,6 +1102,17 @@ export const FilePane: React.FC<FilePaneProps> = ({
 
   const commentTag = relativePath || fileView?.path || "";
 
+  // Layout inputs: the tree column takes its width out of the body, the content
+  // column gets the rest. `treeDragWidth` is the live drag value.
+  const treeColumnWidth = treeDragWidth ?? treeWidth;
+  // 树默认可见：宿主要么显式关掉，要么给一个根就够（老宿主不下发也不至于没树）。
+  const showTree = !!treeRoot && treeVisible !== false && !!vscode;
+
+  // Two empty states (spec tab story scenario 14): nothing open at all, versus
+  // tabs open but none active (「返回文件列表」, or a list view over open files).
+  const nothingOpen = files.length === 0;
+  const noActiveFile = files.length > 0 && !activeFile;
+
   return (
     <PaneShell
       kind="file-pane"
@@ -818,25 +1133,97 @@ export const FilePane: React.FC<FilePaneProps> = ({
               </button>
             </Tooltip>
           )}
-          {showFile && fileView ? (
+          {showFile && activeFile ? (
             <>
               <span className="file-pane-host">
-                {isLocal ? "本地" : fileView.host}
+                {isLocal ? "本地" : activeFile.fileView?.host}
               </span>
-              <span className="file-pane-path" title={fileView.path}>
-                {middleEllipsis(relativePath || fileView.path)}
+              <span className="file-pane-path" title={activeFile.path}>
+                {middleEllipsis(relativePath || activeFile.path)}
               </span>
             </>
           ) : (
             <span className="desktop-panel-toolbar-title">文件</span>
           )}
-          {/* 1009 评论（三处工具条气泡同族收齐的其中一处）：文件面板工具条的
-              两颗图标按钮从原生 `title` 换成桌面端自绘气泡（`Tooltip`，
-              `position="bottom"`，与预览面板工具条同档）。原 `title` 文案原样
-              搬进气泡；`title` 移除以免 OS 原生气泡叠成两层。
-              - 「在默认应用中打开」：原 `title`/气泡文案一致，`aria-label` 同文案。
-              - 搜索触发器：气泡文案跟随状态（原 `title` 就是动态的），
-                而 `aria-label` 保持稳定的「搜索文件」（改的是开关，名字不该跟着翻）。 */}
+          {/* 树隐藏时给一条回来的路（场景 1 的显隐切换）；没有工具条按钮的话，
+              隐藏后只能改配置文件才能恢复。 */}
+          {!!treeRoot && !!onTreeVisibleChange && (
+            <Tooltip
+              text={treeVisible ? "隐藏文件树" : "显示文件树"}
+              position="bottom"
+            >
+              <button
+                type="button"
+                className={`preview-pane-button${treeVisible ? " active" : ""}`}
+                aria-label={treeVisible ? "隐藏文件树" : "显示文件树"}
+                aria-pressed={treeVisible}
+                data-testid="file-pane-tree-toggle"
+                onClick={() => onTreeVisibleChange(!treeVisible)}
+              >
+                <i
+                  className="codicon codicon-files preview-pane-icon"
+                  aria-hidden="true"
+                />
+              </button>
+            </Tooltip>
+          )}
+          {showFile && activeFile && treeRoot && (
+            <Tooltip text="在文件树中显示" position="bottom">
+              <button
+                type="button"
+                className="preview-pane-button"
+                aria-label="在文件树中显示"
+                data-testid="file-pane-reveal-in-tree"
+                onClick={() => {
+                  if (!treeVisible) onTreeVisibleChange?.(true);
+                  revealActiveInTree();
+                }}
+              >
+                <i
+                  className="codicon codicon-list-selection preview-pane-icon"
+                  aria-hidden="true"
+                />
+              </button>
+            </Tooltip>
+          )}
+          {/* 查找（spec「文件面板内查找与跳行」场景 1）：只对文本视图出现，
+              markdown 渲染与图片沿用各自既有行为（场景 6）。 */}
+          {showFile && contentLines && !markdown && (
+            <Tooltip text="查找" position="bottom">
+              <button
+                type="button"
+                className={`preview-pane-button${find.open ? " active" : ""}`}
+                aria-label="查找"
+                aria-expanded={find.open}
+                data-testid="file-pane-find-trigger"
+                onClick={() =>
+                  setFind((prev) => ({ ...prev, open: !prev.open }))
+                }
+              >
+                <SearchIcon className="preview-pane-icon" />
+              </button>
+            </Tooltip>
+          )}
+          {/* 复制路径：原来的复制按钮在工具条合并那次被删掉，规格场景仍有这条
+              （spec desktop-file-panel.md 场景 8）。 */}
+          {showFile && activeFile && (
+            <Tooltip text="复制路径" position="bottom">
+              <button
+                type="button"
+                className="preview-pane-button"
+                aria-label="复制路径"
+                data-testid="file-copy-path"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(activeFile.path);
+                }}
+              >
+                <i
+                  className="codicon codicon-copy preview-pane-icon"
+                  aria-hidden="true"
+                />
+              </button>
+            </Tooltip>
+          )}
           {showFile && fileView && isLocal && onOpenExternal && (
             <Tooltip text="在默认应用中打开" position="bottom">
               <button
@@ -886,275 +1273,434 @@ export const FilePane: React.FC<FilePaneProps> = ({
               </button>
             </>
           )}
-          {vscode && (
-            <Tooltip
-              text={searchOpen ? "收起文件搜索" : "搜索文件"}
-              position="bottom"
-            >
-              <button
-                type="button"
-                ref={searchTriggerRef}
-                className={`preview-pane-button file-pane-search-trigger${searchOpen ? " active" : ""}`}
-                data-testid="file-pane-search-trigger"
-                aria-label="搜索文件"
-                aria-expanded={searchOpen}
-                onClick={searchOpen ? closeSearch : openSearch}
-              >
-                <SearchIcon className="preview-pane-icon" />
-              </button>
-            </Tooltip>
-          )}
         </>
-      }
-      betweenToolbarAndBody={
-        vscode &&
-        searchOpen && (
-          <div
-            className="file-pane-search-popover"
-            ref={searchPopoverRef}
-            data-testid="file-pane-search-popover"
-            style={{
-              top: (toolbarRef.current?.offsetHeight ?? 28) + 6,
-            }}
-          >
-            <div className="file-pane-search-input-row">
-              <SearchIcon className="file-pane-search-icon" />
-              <input
-                ref={searchInputRef}
-                className="file-pane-search-input"
-                data-testid="file-pane-search-input"
-                placeholder="搜索文件…"
-                value={searchFilter}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                onFocus={handleSearchFocus}
-                onKeyDown={handleSearchKeyDown}
-              />
-            </div>
-            <FileSuggestionDropdown
-              suggestions={fileSuggestions}
-              isVisible={
-                searchActive &&
-                (searchFilter !== "" ||
-                  searchLoading ||
-                  fileSuggestions.length > 0)
-              }
-              selectedIndex={searchSelectedIndex}
-              onSelect={handleSearchSelect}
-              onClose={resetSearch}
-              disableClickOutside
-              filterText={searchFilter}
-              isLoading={searchLoading}
-              direction="down"
-            />
-          </div>
-        )
       }
       bodyClassName={`preview-pane-body file-pane-body${editing ? " file-pane-body--editing" : ""}`}
       bodyRef={scrollRef}
     >
-      {showList && (
-        <ConversationFileList
-          files={conversationFiles ?? []}
-          onOpenFile={(path) => onOpenFileInPanel?.(path)}
-        />
-      )}
-      {!showList && !fileView && (
-        <PanePlaceholder className="file-pane-placeholder-empty">
-          {/* Figma 文件面板空态：图标在上 24px、文案在下（评论 2026-09）。 */}
-          <PanelKindIcon
-            kind="file"
-            size={24}
-            className="file-pane-placeholder-icon"
-          />
-          <span>点击消息中的文件路径，在此查看文件内容</span>
-        </PanePlaceholder>
-      )}
-      {/* 文件正文整组在列表态下不渲染：状态、图片、Markdown、代码行各自都靠
-          `fileView` 判空，列表态却是「有 fileView 但在看列表」（见 showList 注释）。 */}
-      {!showList && (
-        <>
-          {fileView?.error && (
-            <div className="file-pane-status">
-              <i className="codicon codicon-error file-pane-status-icon" />
-              <span>{fileView.error}</span>
+      <div className="file-pane-layout">
+        {showTree && (
+          <>
+            <div
+              className="file-pane-tree-col"
+              data-testid="file-pane-tree-col"
+              style={{ width: treeColumnWidth }}
+            >
+              <FileTree
+                root={treeRoot}
+                expanded={expanded}
+                onToggleDir={toggleDir}
+                dirs={dirs}
+                onNeedDir={requestDir}
+                activePath={fileView?.path}
+                onOpenFile={(path) => onOpenFileInPanel?.(path)}
+                revealTick={revealTick}
+                filter={searchFilter}
+                onFilterChange={handleFilterChange}
+                filterResults={searchSuggestions}
+                filterLoading={searchLoading}
+                filterError={searchError}
+                selectedIndex={searchSelectedIndex}
+                onSelectedIndexChange={setSearchSelectedIndex}
+                onPickResult={handlePickFilterResult}
+              />
             </div>
-          )}
-          {fileView &&
-            !fileView.error &&
-            !fileView.content &&
-            !fileView.imageBase64 && (
-              <PanePlaceholder>
-                <i className="codicon codicon-loading codicon-modifier-spin" />
-                <span>正在读取文件…</span>
-              </PanePlaceholder>
-            )}
-          {fileView?.imageBase64 && !fileView.error && (
-            <img
-              className="file-pane-image"
-              src={fileView.imageBase64}
-              alt={relativePath || fileView.path}
+            <div
+              className="file-pane-tree-splitter"
+              data-testid="file-pane-tree-splitter"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="调整文件树宽度"
+              onMouseDown={handleTreeResizeStart}
+            />
+          </>
+        )}
+        <div className="file-pane-content-col">
+          {files.length > 0 && (
+            <FileTabStrip
+              files={files}
+              activeFileId={activeFileId}
+              onActivate={(fileId) => onActivateFile?.(fileId)}
+              onClose={(fileId) => onCloseFile?.(fileId)}
+              onCloseOthers={(fileId) => onCloseOtherFiles?.(fileId)}
+              onCloseRight={(fileId) => onCloseFilesRight?.(fileId)}
+              onCloseAll={() => onCloseAllFiles?.()}
+              onReorder={(fileId, delta) => onReorderFile?.(fileId, delta)}
             />
           )}
-          {/* 编辑态：正文换成 CodeMirror（markdown 也是源文本编辑，保存后回到渲染
-              态）。正文整块替换掉，行评论 / 块评论入口随之消失（场景 12）——评论
-              锚定的是只读正文的行区间，草稿里的行号随时在变。 */}
-          {fileView && editing && !fileView.error && (
-            <div className="file-pane-editor-wrap">
-              {fileView.diskChanged && (
-                <div
-                  className="file-pane-banner"
-                  data-testid="file-pane-disk-changed"
+          {find.open && contentLines && !editing && (
+            <div className="file-pane-find" data-testid="file-pane-find">
+              <div className="file-pane-find-row">
+                <input
+                  ref={findInputRef}
+                  className="file-pane-find-input"
+                  data-testid="file-pane-find-input"
+                  placeholder="查找…"
+                  value={find.query}
+                  onChange={(e) => {
+                    const query = e.target.value;
+                    setFind((prev) => ({ ...prev, query, current: 1 }));
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      stepMatch(e.shiftKey ? -1 : 1);
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      setFind((prev) => ({ ...prev, open: false, query: "" }));
+                    }
+                  }}
+                />
+                <span
+                  className="file-pane-find-count"
+                  data-testid="file-pane-find-count"
                 >
-                  <i className="codicon codicon-warning file-pane-banner-icon" />
-                  <span className="file-pane-banner-text">
-                    文件已在磁盘上更新，保存将覆盖磁盘上的改动
-                  </span>
-                  {/* 「覆盖」按回包里的磁盘哈希再写一次（与工具条保存同一条
-                      路径）；「重新加载」丢弃草稿重读。 */}
-                  <button
-                    type="button"
-                    className="file-pane-banner-action"
-                    data-testid="file-pane-overwrite"
-                    onClick={handleEditorSave}
-                  >
-                    覆盖
-                  </button>
-                  <button
-                    type="button"
-                    className="file-pane-banner-action"
-                    data-testid="file-pane-reload"
-                    onClick={onReloadDraft}
-                  >
-                    重新加载
-                  </button>
-                </div>
-              )}
-              {fileView.saveError && (
-                <div
-                  className="file-pane-banner file-pane-banner--error"
-                  data-testid="file-pane-save-error"
-                >
-                  <i className="codicon codicon-error file-pane-banner-icon" />
-                  <span className="file-pane-banner-text">
-                    {fileView.saveError}
-                  </span>
-                </div>
-              )}
-              <FileEditor
-                path={fileView.path}
-                initialValue={fileView.draft ?? ""}
-                onChange={handleEditorChange}
-                onSave={handleEditorSave}
-              />
-            </div>
-          )}
-          {fileView?.content && !fileView.error && markdown && !editing && (
-            <div
-              className="file-pane-markdown-wrap"
-              ref={mdWrapRef}
-              onMouseOver={handleMarkdownHover}
-              onMouseLeave={() => setMdHover(null)}
-            >
-              <div
-                className="message-content markdown-content file-pane-markdown"
-                dangerouslySetInnerHTML={{ __html: mdHtml }}
-              />
-              {/* Revealed on hover of a block rather than by CSS: the button only
-              exists while a block is actually under the pointer, which is also
-              what keeps it off images (an image has no block to anchor to). */}
-              {mdHover && onAddComment && !mdComment && (
+                  {searchMatcher?.error
+                    ? searchMatcher.error
+                    : matchCount === 0
+                      ? find.query
+                        ? "无匹配结果"
+                        : "0/0"
+                      : `${currentMatch ? Math.min(Math.max(find.current, 1), matchCount) : 0}/${matchCount}`}
+                </span>
                 <button
-                  className="line-comment-btn md-block-comment-btn"
-                  style={{ top: mdHover.top }}
-                  title="评论这段"
-                  aria-label="评论这段"
-                  data-testid="md-block-comment-add"
-                  onClick={openMdComment}
+                  type="button"
+                  className="file-pane-find-btn"
+                  data-testid="file-pane-find-prev"
+                  aria-label="上一个匹配"
+                  onClick={() => stepMatch(-1)}
                 >
-                  <i className="codicon codicon-add" />
+                  ↑
                 </button>
-              )}
-              {mdComment &&
-                createPortal(
-                  <LineCommentBox
-                    draft={commentDraft}
-                    onDraftChange={setCommentDraft}
-                    onSubmit={submitMdComment}
-                    onCancel={closeMdComment}
-                    tag={commentTag}
-                    placeholder="评论这段…"
-                  />,
-                  mdComment.holder,
+                <button
+                  type="button"
+                  className="file-pane-find-btn"
+                  data-testid="file-pane-find-next"
+                  aria-label="下一个匹配"
+                  onClick={() => stepMatch(1)}
+                >
+                  ↓
+                </button>
+                {(
+                  [
+                    ["caseSensitive", "case", "Aa", "区分大小写"],
+                    ["wholeWord", "word", "ab", "整词匹配"],
+                    ["regex", "regex", ".*", "正则表达式"],
+                  ] as const
+                ).map(([key, testId, label, title]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    title={title}
+                    className={`file-pane-find-btn${find[key] ? " active" : ""}`}
+                    data-testid={`file-pane-find-${testId}`}
+                    aria-pressed={find[key]}
+                    aria-label={title}
+                    onClick={() =>
+                      setFind((prev) => ({
+                        ...prev,
+                        [key]: !prev[key],
+                        current: 1,
+                      }))
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+                <span className="file-pane-goto-sep" aria-hidden="true" />
+                <input
+                  className="file-pane-goto-input"
+                  data-testid="file-pane-goto-input"
+                  placeholder="跳行"
+                  value={gotoValue}
+                  onChange={(e) => {
+                    setGotoValue(e.target.value);
+                    setGotoError(undefined);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleGoto();
+                    }
+                  }}
+                  aria-label="跳转到行"
+                />
+                {gotoError && (
+                  <span
+                    className="file-pane-find-count file-pane-find-count--error"
+                    data-testid="file-pane-goto-error"
+                  >
+                    {gotoError}
+                  </span>
                 )}
+                <button
+                  type="button"
+                  className="file-pane-find-btn"
+                  data-testid="file-pane-find-close"
+                  aria-label="关闭查找"
+                  onClick={() =>
+                    setFind((prev) => ({ ...prev, open: false, query: "" }))
+                  }
+                >
+                  ✕
+                </button>
+              </div>
+              {fileView?.truncated && (
+                <div className="file-pane-find-note">
+                  只在已加载的内容内查找（文件已截断）
+                </div>
+              )}
             </div>
           )}
-          {fileView?.content &&
-            !fileView.error &&
-            !markdown &&
-            !editing &&
-            contentLines && (
-              <div className="file-pane-code">
-                {fileView.truncated && fileView.totalLines !== undefined && (
-                  <div className="file-pane-truncated-hint">
-                    文件共 {fileView.totalLines} 行，仅显示前{" "}
-                    {contentLines.length} 行
-                  </div>
-                )}
-                {contentLines.map((line, i) => {
-                  const lineNo = i + 1;
-                  const active =
-                    fileView.startLine !== undefined &&
-                    lineNo >= fileView.startLine &&
-                    (fileView.endLine === undefined ||
-                      lineNo <= fileView.endLine);
-                  return (
-                    <React.Fragment key={i}>
-                      <div
-                        className={`file-pane-line${active ? " file-pane-line--active" : ""}`}
-                      >
-                        <span className="file-pane-line-no">
-                          {onAddComment && (
-                            <button
-                              className="line-comment-btn"
-                              title="评论这行"
-                              aria-label={`评论 ${commentTag} 第 ${lineNo} 行`}
-                              data-testid={`line-comment-add-${lineNo}`}
-                              onClick={() => {
-                                setCommentLine(lineNo);
-                                setCommentDraft("");
-                              }}
-                            >
-                              <i className="codicon codicon-add" />
-                            </button>
-                          )}
-                          {lineNo}
-                        </span>
-                        <span
-                          className="file-pane-line-code"
-                          dangerouslySetInnerHTML={{ __html: line.html }}
-                        />
-                      </div>
-                      {commentLine === lineNo && (
-                        <LineCommentBox
-                          draft={commentDraft}
-                          onDraftChange={setCommentDraft}
-                          onSubmit={submitComment}
-                          onCancel={closeComment}
-                          tag={commentTag}
-                        />
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-                {fileView.truncated && fileView.totalLines === undefined && (
-                  <div className="file-pane-truncated-hint">
-                    文件较大，内容已截断
-                  </div>
-                )}
+          <div className="file-pane-scroll" ref={contentScrollRef}>
+            {showList && (
+              <ConversationFileList
+                files={conversationFiles ?? []}
+                onOpenFile={(path) => onOpenFileInPanel?.(path)}
+              />
+            )}
+            {!showList && nothingOpen && (
+              <PanePlaceholder className="file-pane-placeholder-empty">
+                {/* 空态一：一个文件都没打开（场景 14）。 */}
+                <PanelKindIcon
+                  kind="file"
+                  size={24}
+                  className="file-pane-placeholder-icon"
+                />
+                <span data-testid="file-pane-empty-none">
+                  打开的文件会显示在这里
+                </span>
+                <span className="file-pane-placeholder-hint">
+                  点击左侧目录树中的文件，或点击消息里的文件路径
+                </span>
+              </PanePlaceholder>
+            )}
+            {!showList && noActiveFile && (
+              <PanePlaceholder className="file-pane-placeholder-empty">
+                {/* 空态二：有标签但都没有激活（场景 14）。 */}
+                <PanelKindIcon
+                  kind="file"
+                  size={24}
+                  className="file-pane-placeholder-icon"
+                />
+                <span data-testid="file-pane-empty-no-active">未选择文件</span>
+                <span className="file-pane-placeholder-hint">
+                  点击上方的文件标签，或点击消息里的文件路径
+                </span>
+              </PanePlaceholder>
+            )}
+            {/* 「已删除」的标签：内容区给出提示与关标签动作（场景 13）。 */}
+            {!showList && activeFile?.deleted && (
+              <div className="file-pane-status" data-testid="file-pane-deleted">
+                <i className="codicon codicon-warning file-pane-status-icon" />
+                <span>文件已不存在</span>
+                <button
+                  type="button"
+                  className="file-pane-banner-action"
+                  data-testid="file-pane-deleted-close"
+                  onClick={() => onCloseFile?.(activeFile.id)}
+                >
+                  关闭标签
+                </button>
               </div>
             )}
-        </>
-      )}
+            {/* 文件正文整组在列表态下不渲染：状态、图片、Markdown、代码行各自都靠
+                `fileView` 判空，列表态却是「有 fileView 但在看列表」（见 showList
+                注释）。 */}
+            {!showList && !activeFile?.deleted && (
+              <>
+                {fileView?.error && (
+                  <div className="file-pane-status">
+                    <i className="codicon codicon-error file-pane-status-icon" />
+                    <span>{fileView.error}</span>
+                  </div>
+                )}
+                {fileView &&
+                  !fileView.error &&
+                  !fileView.content &&
+                  !fileView.imageBase64 && (
+                    <PanePlaceholder>
+                      <i className="codicon codicon-loading codicon-modifier-spin" />
+                      <span>正在读取文件…</span>
+                    </PanePlaceholder>
+                  )}
+                {fileView?.imageBase64 && !fileView.error && (
+                  <img
+                    className="file-pane-image"
+                    src={fileView.imageBase64}
+                    alt={relativePath || fileView.path}
+                  />
+                )}
+                {/* 编辑态：正文换成 CodeMirror（markdown 也是源文本编辑，保存后回
+                    到渲染态）。正文整块替换掉，行评论 / 块评论入口随之消失（场景
+                    12）——评论锚定的是只读正文的行区间，草稿里的行号随时在变。 */}
+                {fileView && editing && !fileView.error && (
+                  <div className="file-pane-editor-wrap">
+                    {fileView.diskChanged && (
+                      <div
+                        className="file-pane-banner"
+                        data-testid="file-pane-disk-changed"
+                      >
+                        <i className="codicon codicon-warning file-pane-banner-icon" />
+                        <span className="file-pane-banner-text">
+                          文件已在磁盘上更新，保存将覆盖磁盘上的改动
+                        </span>
+                        {/* 「覆盖」按回包里的磁盘哈希再写一次（与工具条保存同一条
+                            路径）；「重新加载」丢弃草稿重读。 */}
+                        <button
+                          type="button"
+                          className="file-pane-banner-action"
+                          data-testid="file-pane-overwrite"
+                          onClick={handleEditorSave}
+                        >
+                          覆盖
+                        </button>
+                        <button
+                          type="button"
+                          className="file-pane-banner-action"
+                          data-testid="file-pane-reload"
+                          onClick={onReloadDraft}
+                        >
+                          重新加载
+                        </button>
+                      </div>
+                    )}
+                    {fileView.saveError && (
+                      <div
+                        className="file-pane-banner file-pane-banner--error"
+                        data-testid="file-pane-save-error"
+                      >
+                        <i className="codicon codicon-error file-pane-banner-icon" />
+                        <span className="file-pane-banner-text">
+                          {fileView.saveError}
+                        </span>
+                      </div>
+                    )}
+                    <FileEditor
+                      path={fileView.path}
+                      initialValue={fileView.draft ?? ""}
+                      onChange={handleEditorChange}
+                      onSave={handleEditorSave}
+                    />
+                  </div>
+                )}
+                {fileView?.content &&
+                  !fileView.error &&
+                  markdown &&
+                  !editing && (
+                    <div
+                      className="file-pane-markdown-wrap"
+                      ref={mdWrapRef}
+                      onMouseOver={handleMarkdownHover}
+                      onMouseLeave={() => setMdHover(null)}
+                    >
+                      <div
+                        className="message-content markdown-content file-pane-markdown"
+                        dangerouslySetInnerHTML={{ __html: mdHtml }}
+                      />
+                      {/* Revealed on hover of a block rather than by CSS: the button
+                    only exists while a block is actually under the pointer, which
+                    is also what keeps it off images (an image has no block to
+                    anchor to). */}
+                      {mdHover && onAddComment && !mdComment && (
+                        <button
+                          className="line-comment-btn md-block-comment-btn"
+                          style={{ top: mdHover.top }}
+                          title="评论这段"
+                          aria-label="评论这段"
+                          data-testid="md-block-comment-add"
+                          onClick={openMdComment}
+                        >
+                          <i className="codicon codicon-add" />
+                        </button>
+                      )}
+                      {mdComment &&
+                        createPortal(
+                          <LineCommentBox
+                            draft={commentDraft}
+                            onDraftChange={setCommentDraft}
+                            onSubmit={submitMdComment}
+                            onCancel={closeMdComment}
+                            tag={commentTag}
+                            placeholder="评论这段…"
+                          />,
+                          mdComment.holder,
+                        )}
+                    </div>
+                  )}
+                {fileView?.content &&
+                  !fileView.error &&
+                  !markdown &&
+                  !editing &&
+                  contentLines && (
+                    <div className="file-pane-code">
+                      {fileView.truncated &&
+                        fileView.totalLines !== undefined && (
+                          <div className="file-pane-truncated-hint">
+                            文件共 {fileView.totalLines} 行，仅显示前{" "}
+                            {contentLines.length} 行
+                          </div>
+                        )}
+                      {contentLines.map((line, i) => {
+                        const lineNo = i + 1;
+                        const active =
+                          fileView.startLine !== undefined &&
+                          lineNo >= fileView.startLine &&
+                          (fileView.endLine === undefined ||
+                            lineNo <= fileView.endLine);
+                        return (
+                          <React.Fragment key={i}>
+                            <div
+                              className={`file-pane-line${active ? " file-pane-line--active" : ""}`}
+                            >
+                              <span className="file-pane-line-no">
+                                {onAddComment && (
+                                  <button
+                                    className="line-comment-btn"
+                                    title="评论这行"
+                                    aria-label={`评论 ${commentTag} 第 ${lineNo} 行`}
+                                    data-testid={`line-comment-add-${lineNo}`}
+                                    onClick={() => {
+                                      setCommentLine(lineNo);
+                                      setCommentDraft("");
+                                    }}
+                                  >
+                                    <i className="codicon codicon-add" />
+                                  </button>
+                                )}
+                                {lineNo}
+                              </span>
+                              <span
+                                className="file-pane-line-code"
+                                data-line-no={lineNo}
+                                dangerouslySetInnerHTML={{ __html: line.html }}
+                              />
+                            </div>
+                            {commentLine === lineNo && (
+                              <LineCommentBox
+                                draft={commentDraft}
+                                onDraftChange={setCommentDraft}
+                                onSubmit={submitComment}
+                                onCancel={closeComment}
+                                tag={commentTag}
+                              />
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                      {fileView.truncated &&
+                        fileView.totalLines === undefined && (
+                          <div className="file-pane-truncated-hint">
+                            文件较大，内容已截断
+                          </div>
+                        )}
+                    </div>
+                  )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
     </PaneShell>
   );
 };

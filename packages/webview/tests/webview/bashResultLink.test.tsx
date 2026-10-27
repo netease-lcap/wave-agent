@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
 import React from "react";
 import { Message } from "../../src/components/Message";
-import { createMockVscode } from "./test-utils";
+import { createMockVscode, clickKeepingDefaultNavigation } from "./test-utils";
 import { BASH_TOOL_NAME } from "wave-agent-sdk";
 import type { Message as MessageType } from "../../src/types";
 
@@ -106,11 +106,11 @@ describe("bash result URL linkification", () => {
       onOpenPreview,
     });
 
-    const notPrevented = fireEvent.click(link!);
+    const preventedByApp = clickKeepingDefaultNavigation(link!);
 
     expect(onOpenPreview).not.toHaveBeenCalled();
     expect(vscode.postMessage).not.toHaveBeenCalled();
-    expect(notPrevented).toBe(true); // default navigation preserved
+    expect(preventedByApp).toBe(false); // default navigation preserved
   });
 
   it("strips trailing punctuation from the link target", () => {

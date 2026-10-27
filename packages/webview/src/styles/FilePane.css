@@ -4,7 +4,8 @@
 .file-pane-body {
   display: flex;
   flex-direction: column;
-  overflow: auto;
+  /* 滚动交给 .file-pane-scroll：标签带 / 查找条固定在正文上方，不跟着滚走。 */
+  overflow: hidden;
 }
 
 /* Host badge + path, shown in the (fixed) toolbar so the location stays
@@ -31,49 +32,6 @@
   white-space: nowrap;
   text-align: left;
   font-size: 12px;
-}
-
-/* Search popover: floats over the file content, anchored under the toolbar.
-   The trigger button lives in the toolbar (right of the file name). */
-.file-pane-search-popover {
-  position: absolute;
-  left: 6px;
-  right: 6px;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  padding: 4px 6px;
-  background: var(--vscode-dropdown-background);
-  border: 1px solid var(--vscode-dropdown-border);
-  border-radius: 4px;
-  box-shadow: 0 2px 8px var(--vscode-widget-shadow);
-}
-
-.file-pane-search-input-row {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.file-pane-search-icon {
-  flex-shrink: 0;
-  color: var(--vscode-descriptionForeground, #999);
-}
-
-.file-pane-search-input {
-  flex: 1;
-  min-width: 0;
-  padding: 3px 6px;
-  font-size: 12px;
-  color: var(--vscode-input-foreground);
-  background: var(--vscode-input-background);
-  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
-  border-radius: 2px;
-  outline: none;
-}
-
-.file-pane-search-input:focus {
-  border-color: var(--vscode-focusBorder, #007fd4);
 }
 
 .file-pane-body .desktop-panel-placeholder {
@@ -453,4 +411,478 @@
 
 .file-pane-banner-action:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+/* ═══ 面板内布局：左侧工作区目录树 + 右侧（标签带 / 查找条 / 正文）═══
+   spec desktop-file-panel.md「文件面板工作区目录树」「文件面板已打开文件的标签」
+   「文件面板内查找与跳行」。树列宽由用户拖分隔条决定（会话内记住）。 */
+.file-pane-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.file-pane-tree-col {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+
+.file-pane-tree-splitter {
+  flex: 0 0 4px;
+  cursor: col-resize;
+  background: transparent;
+}
+
+.file-pane-tree-splitter:hover {
+  background: var(--vscode-focusBorder, #007fd4);
+}
+
+.file-pane-content-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.file-pane-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.file-pane-placeholder-hint {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #8b9099);
+}
+
+/* ─── 目录树 ─────────────────────────────────────────────────────────────── */
+.file-tree {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  font-size: 12px;
+}
+
+.file-tree-filter-row {
+  flex: none;
+  padding: 6px 6px 4px;
+}
+
+.file-tree-filter {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+  border-radius: 3px;
+  outline: none;
+}
+
+.file-tree-filter:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.file-tree-rows,
+.file-tree-results {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 4px 6px;
+}
+
+.file-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding-right: 4px;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--vscode-foreground);
+}
+
+.file-tree-row:hover {
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+
+.file-tree-row:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007fd4);
+  outline-offset: -1px;
+}
+
+.file-tree-row--active {
+  background: var(
+    --vscode-list-activeSelectionBackground,
+    rgba(0, 127, 212, 0.3)
+  );
+  color: var(--vscode-list-activeSelectionForeground, inherit);
+}
+
+.file-tree-caret {
+  flex: none;
+  width: 10px;
+  font-size: 9px;
+  line-height: 1;
+  text-align: center;
+  color: var(--vscode-descriptionForeground, #999);
+  transition: transform 0.1s ease;
+}
+
+.file-tree-caret--open {
+  transform: rotate(90deg);
+}
+
+.file-tree-icon {
+  flex: none;
+  font-size: 13px;
+  color: var(--vscode-descriptionForeground, #999);
+}
+
+.file-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-tree-note {
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b9099);
+}
+
+.file-tree-note--child {
+  padding-top: 0;
+}
+
+.file-tree-note--error {
+  display: block;
+  width: calc(100% - 8px);
+  margin: 0 4px;
+  text-align: left;
+  font-family: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.file-tree-note--error:hover {
+  text-decoration: underline;
+}
+
+.file-tree-result {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 6px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.file-tree-result--selected {
+  background: var(
+    --vscode-list-activeSelectionBackground,
+    rgba(0, 127, 212, 0.3)
+  );
+  color: var(--vscode-list-activeSelectionForeground, inherit);
+}
+
+.file-tree-result-name {
+  flex: none;
+}
+
+.file-tree-result-dir {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground, #8b9099);
+}
+
+.file-tree-result--selected .file-tree-result-dir {
+  color: inherit;
+  opacity: 0.85;
+}
+
+/* ─── 已打开文件的标签带 ─────────────────────────────────────────────────── */
+.file-tab-strip {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 4px 0;
+  overflow: hidden;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+}
+
+.file-tab-strip-scroll {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.file-tab {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 180px;
+  height: 24px;
+  padding: 0 4px 0 8px;
+  border: none;
+  border-radius: 4px 4px 0 0;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #8b9099);
+  cursor: pointer;
+}
+
+.file-tab:hover {
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+
+.file-tab--active {
+  background: var(--vscode-editor-background, rgba(128, 128, 128, 0.22));
+  color: var(--vscode-foreground);
+}
+
+.file-tab-icon {
+  flex: none;
+  font-size: 12px;
+}
+
+.file-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-tab--deleted .file-tab-name {
+  text-decoration: line-through;
+}
+
+.file-tab-deleted-tag {
+  flex: none;
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.file-tab-close {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.file-tab-close:hover {
+  opacity: 1;
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.25));
+}
+
+.file-tab-close-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.file-tab-more {
+  position: relative;
+  flex: none;
+}
+
+.file-tab-more-trigger {
+  height: 20px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b9099);
+  cursor: pointer;
+}
+
+.file-tab-more-trigger:hover {
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+
+.file-tab-more-menu,
+.file-tab-menu {
+  position: absolute;
+  z-index: 20;
+  min-width: 140px;
+  max-width: 320px;
+  padding: 4px;
+  border: 1px solid var(--vscode-dropdown-border, rgba(128, 128, 128, 0.4));
+  border-radius: 4px;
+  background: var(--vscode-dropdown-background, #252526);
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
+}
+
+.file-tab-more-menu {
+  top: calc(100% + 4px);
+  right: 0;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.file-tab-menu-item,
+.file-tab-more-item {
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.file-tab-menu-item:hover,
+.file-tab-more-item:hover {
+  background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+
+.file-tab-more-empty {
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground, #8b9099);
+}
+
+/* ─── 查找条（Ctrl/Cmd+F）与跳行 ─────────────────────────────────────────── */
+.file-pane-find {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  background: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.08));
+}
+
+.file-pane-find-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.file-pane-find-input,
+.file-pane-goto-input {
+  min-width: 0;
+  padding: 3px 6px;
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, rgba(128, 128, 128, 0.4));
+  border-radius: 3px;
+  outline: none;
+}
+
+.file-pane-find-input {
+  flex: 1;
+}
+
+.file-pane-find-input:focus,
+.file-pane-goto-input:focus {
+  border-color: var(--vscode-focusBorder, #007fd4);
+}
+
+.file-pane-goto-input {
+  width: 64px;
+}
+
+.file-pane-goto-sep {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b9099);
+}
+
+.file-pane-find-btn {
+  flex: none;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--vscode-foreground);
+  cursor: pointer;
+}
+
+.file-pane-find-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+}
+
+.file-pane-find-btn.active {
+  background: var(
+    --vscode-inputOption-activeBackground,
+    rgba(0, 127, 212, 0.4)
+  );
+  border-color: var(--vscode-inputOption-activeBorder, #007fd4);
+}
+
+.file-pane-find-count {
+  flex: none;
+  min-width: 54px;
+  font-size: 11px;
+  text-align: right;
+  color: var(--vscode-descriptionForeground, #8b9099);
+}
+
+.file-pane-find-count--error {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+.file-pane-find-note {
+  font-size: 11px;
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
+/* 命中高亮：包在语法高亮已经渲染好的文本节点上（见 wrapTextRange）。 */
+.file-pane-find-hit {
+  background: var(
+    --vscode-editor-findMatchHighlightBackground,
+    rgba(234, 92, 0, 0.33)
+  );
+  color: inherit;
+}
+
+.file-pane-find-hit--current {
+  background: var(--vscode-editor-findMatchBackground, rgba(81, 92, 106, 0.7));
+  outline: 1px solid var(--vscode-editor-findMatchBorder, #f38518);
 }

@@ -79,6 +79,7 @@ vi.mock("node:fs", async (importOriginal) => {
     writeFileSync: vi.fn(() => undefined),
     readdirSync: vi.fn(),
     realpathSync: vi.fn(),
+    statSync: vi.fn(),
   };
 });
 
@@ -103,6 +104,7 @@ import {
   writeFileSync,
   readdirSync,
   realpathSync,
+  statSync,
 } from "node:fs";
 import { rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -3953,6 +3955,148 @@ test("listDirectories throws when dir is missing", async () => {
   await expect(bridge.handleRequest("listDirectories", {})).rejects.toThrow(
     "dir is required",
   );
+});
+
+// ── listDirectoryEntries（文件面板目录树，spec
+//    desktop-file-panel.md「文件面板工作区目录树」scenario 3）─────────
+
+/** Minimal Dirent stand-ins: only the predicates the listing reads. */
+function dirent(
+  name: string,
+  kind: "dir" | "file" | "link",
+): Record<string, unknown> {
+  return {
+    name,
+    isDirectory: () => kind === "dir",
+    isFile: () => kind === "file",
+    isSymbolicLink: () => kind === "link",
+  };
+}
+
+const TREE_DIR = path.resolve("/fake/tree");
+
+test("listDirectoryEntries puts directories first, then files, each by name, and drops junk", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(realpathSync).mockReturnValueOnce(TREE_DIR);
+  vi.mocked(readdirSync).mockReturnValueOnce([
+    dirent("zeta.ts", "file"),
+    dirent("src", "dir"),
+    dirent("Alpha.ts", "file"),
+    dirent(".git", "dir"),
+    dirent(".DS_Store", "file"),
+    dirent("docs", "dir"),
+  ] as unknown as ReturnType<typeof readdirSync>);
+
+  const result = (await bridge.handleRequest("listDirectoryEntries", {
+    dir: TREE_DIR,
+  })) as { entries: Array<{ name: string; type: string }>; total: number };
+
+  expect(result.entries.map((e) => `${e.type}:${e.name}`)).toEqual([
+    "dir:docs",
+    "dir:src",
+    "file:Alpha.ts",
+    "file:zeta.ts",
+  ]);
+  expect(result.total).toBe(4);
+  expect(readdirSync).toHaveBeenCalledWith(TREE_DIR, { withFileTypes: true });
+});
+
+test("listDirectoryEntries keeps dotfiles that are real content", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(realpathSync).mockReturnValueOnce(TREE_DIR);
+  vi.mocked(readdirSync).mockReturnValueOnce([
+    dirent(".env", "file"),
+    dirent(".github", "dir"),
+    dirent(".svn", "dir"),
+  ] as unknown as ReturnType<typeof readdirSync>);
+
+  const result = (await bridge.handleRequest("listDirectoryEntries", {
+    dir: TREE_DIR,
+  })) as { entries: Array<{ name: string }> };
+
+  // Deny-list, not "hide dotfiles": only known junk goes.
+  expect(result.entries.map((e) => e.name)).toEqual([".github", ".env"]);
+});
+
+test("listDirectoryEntries follows a symlink to decide dir vs file, and drops a dangling one", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(realpathSync).mockReturnValueOnce(TREE_DIR);
+  vi.mocked(readdirSync).mockReturnValueOnce([
+    dirent("linked-dir", "link"),
+    dirent("linked-file", "link"),
+    dirent("dangling", "link"),
+  ] as unknown as ReturnType<typeof readdirSync>);
+  vi.mocked(statSync).mockImplementation((p) => {
+    if (p === path.join(TREE_DIR, "dangling")) throw new Error("ENOENT");
+    return {
+      isDirectory: () => p === path.join(TREE_DIR, "linked-dir"),
+    } as unknown as ReturnType<typeof statSync>;
+  });
+
+  const result = (await bridge.handleRequest("listDirectoryEntries", {
+    dir: TREE_DIR,
+  })) as { entries: Array<{ name: string; type: string }>; total: number };
+
+  expect(result.entries.map((e) => `${e.type}:${e.name}`)).toEqual([
+    "dir:linked-dir",
+    "file:linked-file",
+  ]);
+  expect(result.total).toBe(2);
+});
+
+test("listDirectoryEntries caps a level at 200 rows but reports the real total", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(realpathSync).mockReturnValueOnce(TREE_DIR);
+  vi.mocked(readdirSync).mockReturnValueOnce(
+    Array.from({ length: 250 }, (_, i) =>
+      dirent(`f${String(i).padStart(3, "0")}.ts`, "file"),
+    ) as unknown as ReturnType<typeof readdirSync>,
+  );
+
+  const result = (await bridge.handleRequest("listDirectoryEntries", {
+    dir: TREE_DIR,
+  })) as { entries: unknown[]; total: number };
+
+  expect(result.entries).toHaveLength(200);
+  expect(result.total).toBe(250);
+});
+
+test("listDirectoryEntries expands ~ against the process user's home", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(realpathSync).mockReturnValueOnce(TREE_DIR);
+  vi.mocked(readdirSync).mockReturnValueOnce(
+    [] as unknown as ReturnType<typeof readdirSync>,
+  );
+
+  await bridge.handleRequest("listDirectoryEntries", { dir: "~/tree" });
+
+  expect(realpathSync).toHaveBeenCalledWith(join(homedir(), "tree"));
+});
+
+test("listDirectoryEntries refuses missing and unreadable directories the same way", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(realpathSync).mockImplementationOnce(() => {
+    throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+  });
+  await expect(
+    bridge.handleRequest("listDirectoryEntries", { dir: "/nope" }),
+  ).rejects.toThrow("目录不存在或不可读");
+
+  vi.mocked(realpathSync).mockReturnValueOnce(TREE_DIR);
+  vi.mocked(readdirSync).mockImplementationOnce(() => {
+    throw Object.assign(new Error("EACCES"), { code: "EACCES" });
+  });
+  // An empty list would read as 「空目录」, which is a different fact.
+  await expect(
+    bridge.handleRequest("listDirectoryEntries", { dir: TREE_DIR }),
+  ).rejects.toThrow("目录不存在或不可读");
+});
+
+test("listDirectoryEntries throws when dir is missing", async () => {
+  const { bridge } = createBridge();
+  await expect(
+    bridge.handleRequest("listDirectoryEntries", {}),
+  ).rejects.toThrow("dir is required");
 });
 
 // ── 最近打开的工作目录（spec core/recent-workdirs.md）────────────

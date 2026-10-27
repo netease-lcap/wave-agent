@@ -1,6 +1,6 @@
 import React from "react";
 import { vi } from "vitest";
-import { render, act, fireEvent } from "@testing-library/react";
+import { render, act, fireEvent, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { VsCodeApi } from "../../src/types";
 import { ChatApp } from "../../src/components/ChatApp";
@@ -137,6 +137,68 @@ export function renderChatApp(vscode?: VsCodeApi) {
 }
 
 /**
+ * 把一个文件真的打开到桌面端文件面板：点消息里的文件路径，或者（消息里没有可点
+ * 的路径时）从工作区目录树里逐级点开——两条都是用户真能走的路——然后让宿主回
+ * `desktopFileContent`。
+ *
+ * 多标签之后回包按 path 归属到「条上已经打开的那个文件」（spec「文件面板已打开
+ * 文件的标签」），所以测试必须先把请求发出去：直接推一条 desktopFileContent 不
+ * 会凭空开出文件（否则「关掉的标签被迟到的回包复活」也会跟着成立）。
+ *
+ * `root` 只在不走消息链接时才需要：目录树的根，以及各层目录要回哪些条目。
+ */
+export function openFileInDesktopPanel(
+  path: string,
+  fileView: Record<string, unknown> = {},
+  root?: string,
+) {
+  const base = path.slice(path.lastIndexOf("/") + 1);
+  // 消息里显示的是相对工作目录的路径（`src/a.ts`），按文件名认那一个链接。
+  const link = Array.from(
+    document.querySelectorAll(".write-tool-path, a.file-path-link"),
+  ).find((node) => (node.textContent ?? "").endsWith(base));
+  if (link) {
+    fireEvent.click(link);
+  } else {
+    if (!root)
+      throw new Error(`no clickable path for ${path} and no tree root`);
+    if (!screen.queryByTestId("file-pane")) {
+      // 两次点击之间必须让 React 渲染一次：空态入口是展开后才出现的。
+      fireEvent.click(screen.getByTestId("panel-toggle-btn"));
+      fireEvent.click(screen.getByTestId("panel-empty-item-file"));
+    }
+    const segments = path.slice(root.length + 1).split("/");
+    let dir = root;
+    const reply = (target: string, name: string, isFile: boolean) =>
+      act(() => {
+        sendCommand("desktopDirEntries", {
+          path: target,
+          entries: [{ name, type: isFile ? "file" : "dir" }],
+          total: 1,
+        });
+      });
+    reply(dir, segments[0], segments.length === 1);
+    for (let i = 0; i < segments.length; i++) {
+      const isFile = i === segments.length - 1;
+      const row = screen
+        .getAllByTestId("file-tree-row")
+        .find((node) => (node.textContent ?? "").endsWith(segments[i]));
+      if (!row) throw new Error(`tree row ${segments[i]} missing`);
+      fireEvent.click(row);
+      if (!isFile) {
+        dir = `${dir}/${segments[i]}`;
+        reply(dir, segments[i + 1], i + 1 === segments.length - 1);
+      }
+    }
+  }
+  act(() => {
+    sendCommand("desktopFileContent", {
+      fileView: { path, host: "local", content: "", ...fileView },
+    });
+  });
+}
+
+/**
  * Simulate an extension → webview message
  */
 export function sendExtensionMessage(data: Record<string, unknown>) {
@@ -157,6 +219,29 @@ export function sendCommand(command: string, data?: Record<string, unknown>) {
  */
 export function sendHostMessage(message: HostToWebviewMessage) {
   sendExtensionMessage(message as unknown as Record<string, unknown>);
+}
+
+/**
+ * 点一个「应用不该拦截」的链接，返回应用是否 preventDefault 过。
+ *
+ * 这类用例断言的是「默认跳转仍在」，而 jsdom 不实现跨文档导航，只会往控制台
+ * 打印 `Not implemented: navigation to another Document` 弄脏套件。所以在冒泡到
+ * window（React 的处理器挂在更内层，跑到这里时已执行完）的最后一个监听点记下
+ * 当时的 defaultPrevented，再自己 preventDefault 兜住这次导航。
+ */
+export function clickKeepingDefaultNavigation(element: Element): boolean {
+  let preventedByApp = true;
+  const guard = (event: MouseEvent) => {
+    preventedByApp = event.defaultPrevented;
+    event.preventDefault();
+  };
+  window.addEventListener("click", guard);
+  try {
+    fireEvent.click(element);
+  } finally {
+    window.removeEventListener("click", guard);
+  }
+  return preventedByApp;
 }
 
 /**

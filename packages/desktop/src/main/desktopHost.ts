@@ -81,6 +81,7 @@ import type {
   AccountApiQuotaInfo,
   ArtifactGalleryItem,
   ArtifactShareMode,
+  FileTreeEntry,
 } from "wave-webview-fixtures";
 import { execFile, type ChildProcess } from "child_process";
 import { promisify } from "util";
@@ -188,6 +189,21 @@ function errorMessage(error: unknown): string {
     if (message) return message;
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * The file panel's read failed because the path is gone. That is a state, not an
+ * error: the webview keeps the tab, marks it unavailable and offers to close it
+ * (spec desktop-file-panel.md 场景 13). Two producers, one phrase — the local
+ * read throws `MissingPathError`, the ssh probe turns its exit-3 into
+ * `远端文件不存在：…` (remoteCli.ts).
+ */
+class MissingPathError extends Error {}
+
+function isMissingPathError(error: unknown): boolean {
+  if (error instanceof MissingPathError) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("文件不存在");
 }
 
 interface Pane {
@@ -1799,6 +1815,8 @@ export class DesktopHost {
         // 「被 /rewind 打回第一条（或 /clear）后列表为空的老会话」——后者不能再走
         // 新会话规则（建 worktree、另开会话），见 `hasMessageContent`。
         hasContent: p.agent ? this.hasMessageContent(p.agent) : false,
+        // 文件面板目录树的根：会话起点，不随 bash `cd` 漂移（见 rules/workdir.md）。
+        sessionCwd: p.agent ? this.sessionRootOf(p.agent) : undefined,
       })),
       rowHeights:
         this.topRowHeight != null
@@ -4799,6 +4817,12 @@ export class DesktopHost {
         await this.handleFilePanelOpen(pid, msg.path as string);
         break;
 
+      // One level of the file panel's directory tree (desktop only — the panel
+      // has no IDE counterpart).
+      case "desktopListDirectory":
+        await this.handleFilePanelListDir(pid, msg.path as string);
+        break;
+
       // Save a draft from the file panel's edit mode (desktop only; the panel is
       // a desktop-only surface, so this command has no IDE router counterpart).
       case "desktopSaveFile":
@@ -7389,12 +7413,59 @@ export class DesktopHost {
       this.postMessage({
         command: "desktopFileContent",
         paneId,
+        // `missing` 是「路径已不在」这一种失败：webview 据此把标签标为不可用
+        // 而不是给一条错误横幅（spec 场景 13）。
         fileView: {
           path: filePath,
           host,
           error: error instanceof Error ? error.message : String(error),
+          missing: isMissingPathError(error),
         },
       });
+    }
+  }
+
+  /**
+   * One level of the file panel's tree (spec desktop-file-panel.md「文件面板
+   * 工作区目录树」). The listing itself is the host-agnostic
+   * `listDirectoryEntries` RPC: a local pane goes to the local stdio client, a
+   * remote pane through that host's daemon tunnel, so both share one
+   * implementation of ordering, junk filtering and the per-level cap. Reads
+   * (`handleFilePanelOpen`) stay fs/ssh-direct by contrast — a byte stream has
+   * no ordering or filtering to agree on.
+   *
+   * No root containment check here, deliberately: the tree root is chosen
+   * host-side (`projectRootForPane`) and this panel can already open any path a
+   * message carries, so refusing out-of-root *listings* would add failure modes
+   * (symlinked roots, POSIX remote paths through the Windows `path` module)
+   * without removing a capability. The webview names a path, never a root.
+   */
+  private async handleFilePanelListDir(
+    paneId: string,
+    dirPath: string,
+  ): Promise<void> {
+    if (!dirPath) return;
+    const host = this.hostForPane(paneId);
+    const reply = (payload: {
+      entries?: FileTreeEntry[];
+      total?: number;
+      error?: string;
+    }) =>
+      this.postMessage({
+        command: "desktopDirEntries",
+        paneId,
+        path: dirPath,
+        ...payload,
+      });
+    try {
+      await this.ensureClientFor(host);
+      const result = (await this.utilityClientFor(host).request(
+        "listDirectoryEntries",
+        { dir: dirPath },
+      )) as { entries: FileTreeEntry[]; total: number };
+      reply({ entries: result.entries, total: result.total });
+    } catch (error) {
+      reply({ error: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -7496,7 +7567,7 @@ export class DesktopHost {
     filePath: string,
   ): Promise<Record<string, unknown>> {
     const stat = await fs.promises.stat(filePath).catch(() => null);
-    if (!stat) throw new Error(`文件不存在：${filePath}`);
+    if (!stat) throw new MissingPathError(`文件不存在：${filePath}`);
     if (stat.isDirectory()) throw new Error("无法在面板中显示目录");
 
     const ext = path.extname(filePath).toLowerCase().replace(/^\./, "");

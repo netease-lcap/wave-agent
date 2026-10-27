@@ -80,6 +80,15 @@ const h = vi.hoisted(() => ({
         }
         return { resolvedPath: dir, dirs: [] };
       }
+      // File panel tree: one level per call (spec desktop-file-panel.md
+      // 「文件面板工作区目录树」); results are queued so a test can also queue
+      // an Error to exercise the retryable-failure reply.
+      case "listDirectoryEntries": {
+        const dir = (params as { dir?: string } | undefined)?.dir ?? "";
+        const queued = h.dirEntriesResults.shift();
+        if (queued instanceof Error) throw queued;
+        return queued ?? { resolvedPath: dir, entries: [], total: 0 };
+      }
       // Diff-panel query: answered by the CLI on the host that owns the repo,
       // so the desktop never runs git (or ssh) for it.
       case "getWorkspaceDiff": {
@@ -150,6 +159,18 @@ const h = vi.hoisted(() => ({
   // else is a transport failure; a result entry is returned verbatim. An
   // empty queue answers a generic success for the requested dir.
   dirListResults: [] as Array<{ resolvedPath: string; dirs: string[] } | Error>,
+  // listDirectoryEntries RPC queue (file panel tree). Same convention as
+  // dirListResults: an Error entry rejects the request (→ retryable error in
+  // the tree), a result entry is returned verbatim, an empty queue answers an
+  // empty listing for the requested dir.
+  dirEntriesResults: [] as Array<
+    | {
+        resolvedPath: string;
+        entries: Array<{ name: string; type: string }>;
+        total: number;
+      }
+    | Error
+  >,
   // When set, the listDirectories RPC parks until released via dirListRelease
   // (simulates a slow probe so a test can prove the optimistic switch
   // precedes it). Reset per-test like removeWorktreeGate.
@@ -842,6 +863,7 @@ beforeEach(() => {
   h.worktreeError = null;
   h.branchesResult = null;
   h.dirListResults.length = 0;
+  h.dirEntriesResults.length = 0;
   h.dirListGate = false;
   h.dirListRelease = null;
   h.workspaceDiffResult = null;
@@ -10880,6 +10902,106 @@ describe("file panel", () => {
     h.existingPaths.add(p);
   }
 
+  // ── 目录树（spec desktop-file-panel.md「文件面板工作区目录树」）──
+
+  it("desktopListDirectory lists one level through the host's client and echoes the path", async () => {
+    const { host, sent } = await readyHost();
+    h.dirEntriesResults.push({
+      resolvedPath: "/work/a",
+      entries: [
+        { name: "src", type: "dir" },
+        { name: "README.md", type: "file" },
+      ],
+      total: 2,
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopListDirectory",
+      path: "/work/a",
+    });
+
+    // Ordering / junk filtering / the per-level cap all live behind this RPC,
+    // so the host is a pass-through — local and remote cannot drift.
+    expect(
+      h.clientRequests.some(
+        (r) =>
+          r.method === "listDirectoryEntries" &&
+          (r.params as { dir?: string })?.dir === "/work/a",
+      ),
+    ).toBe(true);
+    expect(sent("desktopDirEntries")).toEqual([
+      {
+        command: "desktopDirEntries",
+        paneId: "pane-1",
+        path: "/work/a",
+        entries: [
+          { name: "src", type: "dir" },
+          { name: "README.md", type: "file" },
+        ],
+        total: 2,
+      },
+    ]);
+  });
+
+  it("desktopListDirectory replies a retryable error instead of an empty level", async () => {
+    const { host, sent } = await readyHost();
+    h.dirEntriesResults.push(new Error("目录不存在或不可读：/gone"));
+
+    await host.handleWebviewMessage({
+      command: "desktopListDirectory",
+      path: "/gone",
+    });
+
+    // No `entries: []` — an empty level would render as 「空目录」, which is a
+    // different fact from "we could not read it".
+    expect(sent("desktopDirEntries")).toEqual([
+      {
+        command: "desktopDirEntries",
+        paneId: "pane-1",
+        path: "/gone",
+        error: "目录不存在或不可读：/gone",
+      },
+    ]);
+  });
+
+  it("desktopListDirectory on a remote pane lists through that host's connection", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host, sent } = createHost();
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+    h.dirEntriesResults.push({
+      resolvedPath: "/remote/repo/src",
+      entries: [{ name: "main.ts", type: "file" }],
+      total: 1,
+    });
+
+    await host.handleWebviewMessage({
+      command: "desktopListDirectory",
+      path: "/remote/repo/src",
+    });
+
+    // The remote level comes over the daemon tunnel, not an ssh shell of its own
+    // — the same channel the session's own RPCs use (scenario 8).
+    expect(
+      h.clientRequests.some(
+        (r) =>
+          r.method === "listDirectoryEntries" &&
+          (r.params as { dir?: string })?.dir === "/remote/repo/src",
+      ),
+    ).toBe(true);
+    expect(sent("desktopDirEntries")).toEqual([
+      {
+        command: "desktopDirEntries",
+        paneId: "pane-1",
+        path: "/remote/repo/src",
+        entries: [{ name: "main.ts", type: "file" }],
+        total: 1,
+      },
+    ]);
+  });
+
   it("openFile reads a local text file and pushes desktopFileContent", async () => {
     const { host, sent } = await readyHost();
     seedLocalFile("/work/a/src.ts", "const x = 1;\nconst y = 2;\n");
@@ -11008,6 +11130,9 @@ describe("file panel", () => {
       path: "/work/a/nope.ts",
       host: "local",
       error: "文件不存在：/work/a/nope.ts",
+      // 「路径已不在」标出来，面板才好把标签标成不可用而不是给一条错误横幅
+      // （spec desktop-file-panel.md 场景 13）。
+      missing: true,
     });
     expect(sent("appendMessage").length).toBe(msgsBefore);
   });
@@ -11129,6 +11254,8 @@ describe("file panel", () => {
       path: "/remote/nope.ts",
       host: "prod",
       error: "远端文件不存在：/remote/nope.ts",
+      // 远端 exit 3 也归到「路径已不在」（remoteCli.ts 的措辞）。
+      missing: true,
     });
   });
 

@@ -3,6 +3,11 @@ import type { PanelTab } from "../types";
 /** Shared panel-slot default width (also the fresh-group default below). */
 export const PANEL_DEFAULT_WIDTH = 420;
 
+/** File panel's tree column: default and bounds (spec 场景 1: 可拖拽、记住). */
+export const FILE_TREE_DEFAULT_WIDTH = 200;
+export const FILE_TREE_MIN_WIDTH = 140;
+export const FILE_TREE_MAX_WIDTH = 420;
+
 /**
  * 会话级 UI 状态快照 store（P3-B 统一契约）。
  *
@@ -83,6 +88,14 @@ export interface SessionUiState {
    */
   diffTreeVisible: boolean;
   /**
+   * File panel: whether the directory tree (left column) is shown. Same
+   * per-session memory rule as the diff panel's sidebar (spec
+   * desktop-file-panel.md「文件面板工作区目录树」scenario 1).
+   */
+  fileTreeVisible: boolean;
+  /** File panel: tree column width in px, remembered per session. */
+  fileTreeWidth: number;
+  /**
    * Diff panel: which viewing range is selected for this session — the
    * fork-point base ("all"), `HEAD` ("uncommitted"), or one commit of the
    * session's range (spec desktop-panels.md「差异面板查看范围」场景 5: 随会话
@@ -128,6 +141,8 @@ export function emptySessionUiState(): SessionUiState {
     panelExpanded: false,
     planContent: null,
     diffTreeVisible: true,
+    fileTreeVisible: true,
+    fileTreeWidth: FILE_TREE_DEFAULT_WIDTH,
     diffSelection: { kind: "all" },
     forward: null,
     forwardError: null,

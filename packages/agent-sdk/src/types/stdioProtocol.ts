@@ -138,6 +138,14 @@ export type RequestMethod =
   // pickers. Host-agnostic like listGitBranches — whichever wave process
   // receives it lists its own machine.
   | "listDirectories"
+  // One level of a directory, for the desktop file panel's tree: direct
+  // children with a dir/file flag, junk filtered, sorted, capped per level.
+  // Host-agnostic like listDirectories — whichever wave process receives it
+  // lists its own machine (local stdio client, or a remote daemon over the
+  // desktop's tunnel). Kept separate from listDirectories because that one is
+  // the new-session *directory picker*: directories only, no cap, and its
+  // symlink behaviour is pinned to the shell `find -type d` it replaced.
+  | "listDirectoryEntries"
   // Recently opened working directories (global — no session required):
   // `~/.wave/recent-workdirs.json` on **this** machine. Read by the desktop app
   // per host and by the remote-control page, so the two see one list; the write

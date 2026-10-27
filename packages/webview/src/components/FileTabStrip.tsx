@@ -1,0 +1,290 @@
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import type { OpenFileTab } from "../types";
+import { fileName } from "../utils/fileTabs";
+import { baseNameOf } from "../utils/fileTreePaths";
+import { CloseIcon } from "./HeaderIcons";
+import { useClickOutside } from "../utils/useClickOutside";
+
+export interface FileTabStripProps {
+  files: OpenFileTab[];
+  activeFileId?: string;
+  /** Activate a file. Re-activating the active one re-reads it (scenario 12). */
+  onActivate: (fileId: string) => void;
+  onClose: (fileId: string) => void;
+  onCloseOthers: (fileId: string) => void;
+  onCloseRight: (fileId: string) => void;
+  onCloseAll: () => void;
+  /** Move a tab by delta (Ctrl+Shift+←/→, scenario 5). */
+  onReorder: (fileId: string, delta: number) => void;
+}
+
+type MenuState = { fileId: string; x: number; y: number } | null;
+
+/**
+ * The file panel's own tab strip (spec desktop-file-panel.md「文件面板已打开文件
+ * 的标签」). It sits *inside* the single first-level file tab, so panel-kind tabs
+ * and open files never mix: the outer tab still reads 「文件」.
+ *
+ * Overflow is a two-step answer, in the order the spec asks for: the strip
+ * scrolls horizontally (the newly opened tab is scrolled into view), and only
+ * the tabs that stay out of view collect into the 「更多文件」 menu.
+ */
+export const FileTabStrip: React.FC<FileTabStripProps> = ({
+  files,
+  activeFileId,
+  onActivate,
+  onClose,
+  onCloseOthers,
+  onCloseRight,
+  onCloseAll,
+  onReorder,
+}) => {
+  const stripRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menu, setMenu] = useState<MenuState>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [hiddenIds, setHiddenIds] = useState<string[]>([]);
+  const moreRef = useRef<HTMLDivElement>(null);
+
+  // Duplicate names need their relative path to be told apart (scenario 4);
+  // unique names show the bare file name.
+  const labels = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const file of files) {
+      const name = fileName(file.path);
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+    return new Map(
+      files.map((file) => {
+        const name = fileName(file.path);
+        return [
+          file.id,
+          (counts.get(name) ?? 0) > 1 ? file.path : name,
+        ] as const;
+      }),
+    );
+  }, [files]);
+
+  // New tab (or switch) must be visible: scroll the active tab into range.
+  useEffect(() => {
+    if (!activeFileId || !stripRef.current) return;
+    stripRef.current
+      .querySelector<HTMLElement>(
+        `[data-file-tab="${CSS.escape(activeFileId)}"]`,
+      )
+      ?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [activeFileId, files.length]);
+
+  // Horizontal scroll only wins while there is room to scroll; the menu is for
+  // the rest. Measured rather than counted so it follows the panel's width.
+  useEffect(() => {
+    const el = stripRef.current;
+    if (!el) return;
+    const measure = () => setOverflowing(el.scrollWidth > el.clientWidth + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [files.length]);
+
+  const openMore = useCallback(() => {
+    const el = stripRef.current;
+    if (!el) return;
+    const list = Array.from(
+      el.querySelectorAll<HTMLElement>("[data-file-tab]"),
+    );
+    const left = el.scrollLeft;
+    const right = left + el.clientWidth;
+    setHiddenIds(
+      list
+        .filter((node) => {
+          const start = node.offsetLeft - el.offsetLeft;
+          return start < left - 1 || start + node.offsetWidth > right + 1;
+        })
+        .map((node) => node.dataset.fileTab ?? ""),
+    );
+    setMoreOpen(true);
+  }, []);
+
+  useClickOutside({
+    refs: [moreRef],
+    enabled: moreOpen,
+    onClickOutside: () => setMoreOpen(false),
+  });
+  useClickOutside({
+    refs: [menuRef],
+    enabled: menu !== null,
+    onClickOutside: () => setMenu(null),
+  });
+
+  const hiddenFiles = hiddenIds
+    .map((id) => files.find((f) => f.id === id))
+    .filter((f): f is OpenFileTab => !!f);
+
+  const runMenuAction = useCallback(
+    (action: (fileId: string) => void) => {
+      if (!menu) return;
+      const fileId = menu.fileId;
+      setMenu(null);
+      action(fileId);
+    },
+    [menu],
+  );
+
+  if (files.length === 0) return null;
+
+  return (
+    <div className="file-tab-strip" data-testid="file-tab-strip">
+      <div
+        className="file-tab-strip-scroll"
+        ref={stripRef}
+        role="tablist"
+        aria-label="已打开的文件"
+      >
+        {files.map((file) => {
+          const active = file.id === activeFileId;
+          return (
+            <div
+              key={file.id}
+              data-file-tab={file.id}
+              data-testid="file-tab"
+              role="tab"
+              aria-selected={active}
+              tabIndex={active ? 0 : -1}
+              className={`file-tab${active ? " file-tab--active" : ""}${file.deleted ? " file-tab--deleted" : ""}`}
+              title={file.path}
+              onClick={() => onActivate(file.id)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                setMenu({
+                  fileId: file.id,
+                  x: event.clientX,
+                  y: event.clientY,
+                });
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Delete" || event.key === "Backspace") {
+                  event.preventDefault();
+                  onClose(file.id);
+                } else if (
+                  event.key === "ArrowRight" &&
+                  (event.ctrlKey || event.metaKey) &&
+                  event.shiftKey
+                ) {
+                  event.preventDefault();
+                  onReorder(file.id, 1);
+                } else if (
+                  event.key === "ArrowLeft" &&
+                  (event.ctrlKey || event.metaKey) &&
+                  event.shiftKey
+                ) {
+                  event.preventDefault();
+                  onReorder(file.id, -1);
+                }
+              }}
+            >
+              <i
+                className="codicon codicon-file file-tab-icon"
+                aria-hidden="true"
+              />
+              <span className="file-tab-name">{labels.get(file.id)}</span>
+              {file.deleted && (
+                <span className="file-tab-deleted-tag">已删除</span>
+              )}
+              <button
+                type="button"
+                className="file-tab-close"
+                data-testid="file-tab-close"
+                aria-label={`关闭 ${fileName(file.path)}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onClose(file.id);
+                }}
+              >
+                <CloseIcon className="file-tab-close-icon" />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {overflowing && (
+        <div className="file-tab-more" ref={moreRef}>
+          <button
+            type="button"
+            className={`file-tab-more-trigger${moreOpen ? " active" : ""}`}
+            data-testid="file-tab-more"
+            aria-expanded={moreOpen}
+            aria-label="更多文件"
+            onClick={moreOpen ? () => setMoreOpen(false) : openMore}
+          >
+            <i className="codicon codicon-ellipsis" aria-hidden="true" />
+          </button>
+          {moreOpen && (
+            <div
+              className="file-tab-more-menu"
+              data-testid="file-tab-more-menu"
+              role="menu"
+            >
+              {hiddenFiles.length === 0 && (
+                <div className="file-tab-more-empty">没有收起的文件</div>
+              )}
+              {hiddenFiles.map((file) => (
+                <button
+                  key={file.id}
+                  type="button"
+                  role="menuitem"
+                  className="file-tab-more-item"
+                  data-testid="file-tab-more-item"
+                  title={file.path}
+                  onClick={() => {
+                    setMoreOpen(false);
+                    onActivate(file.id);
+                  }}
+                >
+                  {labels.get(file.id) ?? baseNameOf(file.path)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {menu && (
+        <div
+          ref={menuRef}
+          className="file-tab-menu"
+          data-testid="file-tab-menu"
+          role="menu"
+          style={{ top: menu.y, left: menu.x }}
+        >
+          {[
+            ["关闭", onClose],
+            ["关闭其他", onCloseOthers],
+            ["关闭右侧", onCloseRight],
+            ["全部关闭", onCloseAll],
+          ].map(([label, action]) => (
+            <button
+              key={label as string}
+              type="button"
+              role="menuitem"
+              className="file-tab-menu-item"
+              data-testid="file-tab-menu-item"
+              onClick={() => runMenuAction(action as (fileId: string) => void)}
+            >
+              {label as string}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default FileTabStrip;

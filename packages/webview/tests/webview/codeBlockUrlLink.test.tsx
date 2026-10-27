@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, fireEvent } from "@testing-library/react";
 import React from "react";
 import { Message } from "../../src/components/Message";
-import { createMockVscode } from "./test-utils";
+import { createMockVscode, clickKeepingDefaultNavigation } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 
 // 围栏代码块中的裸 http(s) URL 链接化（specs/ui/markdown-links.md「围栏代码块中的
@@ -177,10 +177,11 @@ describe("fenced code block URL linkification", () => {
       onOpenPreview,
     });
 
-    const notPrevented = fireEvent.click(links()[0]!);
+    // 契约是「点完之后浏览器的默认跳转仍在」；helper 兜住 jsdom 不支持的导航。
+    const preventedByApp = clickKeepingDefaultNavigation(links()[0]!);
 
     expect(onOpenPreview).not.toHaveBeenCalled();
     expect(vscode.postMessage).not.toHaveBeenCalled();
-    expect(notPrevented).toBe(true); // default navigation preserved
+    expect(preventedByApp).toBe(false); // default navigation preserved
   });
 });
