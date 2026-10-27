@@ -80,7 +80,7 @@ describe("AIManager Plan Mode Prompt", () => {
           isMeta: params.isMeta,
         } as Message);
       }),
-      updateCurrentMessageContent: vi.fn(),
+      appendCurrentMessageContent: vi.fn(),
       setlatestTotalTokens: vi.fn(),
       getCombinedMemory: vi.fn().mockResolvedValue(""),
       getMemoryForInjection: vi.fn().mockResolvedValue({ prependContent: "" }),

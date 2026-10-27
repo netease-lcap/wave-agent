@@ -54,7 +54,7 @@ describe("MessageManager - Compaction finalizes streaming blocks", () => {
     const messageManager = createManager({});
     messageManager.addUserMessage({ content: "Analyze the code" });
     messageManager.addAssistantMessage();
-    messageManager.updateCurrentMessageContent("Analysis complete");
+    messageManager.appendCurrentMessageContent("Analysis complete");
 
     // The turn that triggers auto-compaction has finished streaming; its text
     // block is still 'streaming' until finalizeStreamingBlocks runs. Any host
@@ -73,7 +73,7 @@ describe("MessageManager - Compaction finalizes streaming blocks", () => {
     const messageManager = createManager({});
     messageManager.addUserMessage({ content: "Plan the work" });
     messageManager.addAssistantMessage();
-    messageManager.updateCurrentMessageReasoning("Thinking...");
+    messageManager.appendCurrentMessageReasoning("Thinking...");
 
     await messageManager.compactMessagesAndUpdateSession("summarized");
 
@@ -90,7 +90,7 @@ describe("MessageManager - Compaction finalizes streaming blocks", () => {
     const messageManager = createManager({});
     messageManager.addUserMessage({ content: "Plan the migration" });
     messageManager.addAssistantMessage();
-    messageManager.updateCurrentMessageContent("Here is the plan");
+    messageManager.appendCurrentMessageContent("Here is the plan");
 
     await messageManager.compactMessagesAndUpdateSession("summarized");
 
@@ -121,7 +121,7 @@ describe("MessageManager - Compaction finalizes streaming blocks", () => {
     });
     messageManager.addUserMessage({ content: "Do the work" });
     messageManager.addAssistantMessage();
-    messageManager.updateCurrentMessageContent("Done");
+    messageManager.appendCurrentMessageContent("Done");
 
     await messageManager.compactMessagesAndUpdateSession("summarized");
 
@@ -139,10 +139,10 @@ describe("MessageManager - Compaction finalizes streaming blocks", () => {
     const messageManager = createManager({});
     messageManager.addUserMessage({ content: "Q1" });
     messageManager.addAssistantMessage();
-    messageManager.updateCurrentMessageContent("A1");
+    messageManager.appendCurrentMessageContent("A1");
     messageManager.addUserMessage({ content: "Q2" });
     messageManager.addAssistantMessage();
-    messageManager.updateCurrentMessageContent("A2");
+    messageManager.appendCurrentMessageContent("A2");
 
     await messageManager.compactMessagesAndUpdateSession("summarized");
 
@@ -160,10 +160,10 @@ describe("MessageManager - Compaction finalizes streaming blocks", () => {
     const messageManager = createManager({});
     messageManager.addUserMessage({ content: "Q1" });
     messageManager.addAssistantMessage();
-    messageManager.updateCurrentMessageContent("A1");
+    messageManager.appendCurrentMessageContent("A1");
     messageManager.addUserMessage({ content: "Q2" });
     messageManager.addAssistantMessage();
-    messageManager.updateCurrentMessageContent("A2");
+    messageManager.appendCurrentMessageContent("A2");
 
     expect(messageManager.getMessages()).toHaveLength(4);
 

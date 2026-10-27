@@ -226,9 +226,11 @@ order: 220
 
 作为 stdio 传输层，我希望跨进程增量通知只携带增量片段（delta）而非累积值，以便流式期间单条通知的序列化与传输成本与已流式内容总长度无关，长会话流式不再对子进程内存和管道带宽造成 O(n²) 压力。
 
-**为什么是这个优先级**：移除 `messagesChange` 后通知条数已经与消息条数无关，但每个 `assistantContentUpdated` 通知仍携带与已流式内容等长的累积 `accumulated` payload（tool block 携带累积 `parameters`），节流只能减少条数、无法减少单条负载。改为纯 delta 后，`assistantContentUpdated`/`assistantReasoningUpdated` 只携带 `{messageId, chunk, stage}`（SDK 侧已计算 chunk = 新内容 − 旧内容），`toolBlockUpdated` 在 `stage="streaming"` 只携带 `parametersChunk`；消费端负责累积（追加），`getMessages` 全量响应作为权威对账通道自愈丢失的 delta。SDK 回调与 wire 通知统一为纯 delta（`accumulated` 已从 SDK 回调移除，2026-08-08），agentBridge 原样透传、无需剥离。
+**为什么是这个优先级**：移除 `messagesChange` 后通知条数已经与消息条数无关，但每个 `assistantContentUpdated` 通知仍携带与已流式内容等长的累积 `accumulated` payload（tool block 携带累积 `parameters`），节流只能减少条数、无法减少单条负载。改为纯 delta 后，`assistantContentUpdated`/`assistantReasoningUpdated` 只携带 `{messageId, chunk, stage}`（SDK 侧已计算 chunk = 新内容 − 旧内容），`toolBlockUpdated` 在 `stage="streaming"` 只携带 `parametersChunk`；消费端负责累积（追加），`getMessages` 全量响应作为权威对账通道自愈丢失的 delta。SDK 回调与 wire 通知统一为纯 delta（`accumulated` 已从 SDK 回调移除，2026-08-08），agentBridge 原样透传、无需剥离。压缩摘要的流式文本（`compactionContentUpdate`）同属这条口径：它的消费端只是一个尾部指示，此前携带累积全文，是同一类 O(n²) 残留（2026-10-27 收口）。
 
 **独立测试**：构造长会话触发流式，在 CLI 侧记录 stdout 并测量通知负载大小：通知字节数随流式累积不增长（仅随 chunk 本身大小波动）；流式过程中 kill/重启任一宿主的 webview 转发层后，通过一次 `getMessages` 拉取即可恢复完整内容。
+
+**从流到回调只有一份口径**：`aiService.callAgent` 的 `onContentDelta` / `onReasoningDelta` 只给**本帧新增的片段**，累积由消费端自己做（消息块自己 append）；不出快照版回调，因为同一个字节既写给块又发回调时，回调方要么拿快照重新算差分、要么和块抢着写，两种都是同一份状态的两个副本。对外 SDK 回调（`onAssistantContentUpdated` 的 `chunk`、`onCompactionContentUpdate`）同样是增量，于是「内层流 → 消息块 / 压缩尾部 / CLI / btw → wire → 手机」全程只传片段，没有任何一层需要差分。
 
 **验收场景**：
 
@@ -238,6 +240,7 @@ order: 220
 4. **假设** 宿主对增量通知做节流（如桌面 16ms / CLI 500ms 窗口），**当** 窗口内有多条 chunk 时，**则** 按到达顺序拼接为一个合并 delta 发送（window-concat），不丢弃中间值；进程内 CLI 同样使用 window-concat（SDK 回调已无 accumulated，不存在 last-value-wins 路径）
 5. **假设** 增量通知中途丢失（传输异常），**当** 消费端发现内容不完整时，**则** 通过一次 `getMessages` 请求拉取全量权威快照整体替换自愈，管道 FIFO 保证拉取响应包含其之前发出的所有 chunk，不重复
 6. **假设** 某个宿主需要将 delta 转发给 webview，**当** 转发时，**则** 透传 delta（消费端 webview reducer 追加），不在宿主侧重新累积为全量后再下发
+7. **假设** 压缩摘要正在流式生成，**当** CLI 推送 `compactionContentUpdate` 时，**则** `content` 是本次新增的片段，不是累积全文（同一口径适用于 SDK 回调 `onCompactionContentUpdate`，消费端按序拼接、压缩结束清空）；单条通知的字节数与已输出长度无关
 
 ---
 

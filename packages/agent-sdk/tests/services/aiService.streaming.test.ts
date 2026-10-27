@@ -66,7 +66,7 @@ describe("AI Service - Streaming", () => {
       callAgent = aiService.callAgent;
     });
 
-    it("should enable streaming mode when onContentUpdate callback is provided", async () => {
+    it("should enable streaming mode when onContentDelta callback is provided", async () => {
       // Mock streaming response
       const mockStream = (async function* () {
         yield {
@@ -101,8 +101,8 @@ describe("AI Service - Streaming", () => {
         modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
-        onContentUpdate: (content) => {
-          contentUpdates.push(content);
+        onContentDelta: (chunk) => {
+          contentUpdates.push(chunk);
         },
       });
 
@@ -117,7 +117,7 @@ describe("AI Service - Streaming", () => {
       expect(result.finish_reason).toBe("stop");
     });
 
-    it("should accumulate content from multiple chunks with onContentUpdate", async () => {
+    it("should hand out only the new fragment per chunk with onContentDelta", async () => {
       // Mock streaming response with multiple content chunks
       const mockStream = (async function* () {
         yield {
@@ -159,16 +159,41 @@ describe("AI Service - Streaming", () => {
         modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
-        onContentUpdate: (content) => {
-          contentUpdates.push(content);
+        onContentDelta: (chunk) => {
+          contentUpdates.push(chunk);
         },
       });
 
-      // Should receive accumulated content in each update
-      expect(contentUpdates).toEqual(["Hello", "Hello ", "Hello world!"]);
+      // Each update carries only its own fragment, never the running total
+      expect(contentUpdates).toEqual(["Hello", " ", "world!"]);
 
       // Final result should contain complete content
       expect(result.content).toBe("Hello world!");
+    });
+
+    it("should stream when only the delta callback is provided", async () => {
+      const mockStream = (async function* () {
+        yield { choices: [{ delta: { content: "Hello" } }] };
+      })();
+
+      mockCreate.mockReturnValue({
+        withResponse: vi.fn().mockResolvedValue({
+          data: mockStream,
+          response: { headers: new Map() },
+        }),
+      });
+
+      const deltas: string[] = [];
+      await callAgent({
+        gatewayConfig: TEST_GATEWAY_CONFIG,
+        modelConfig: TEST_MODEL_CONFIG,
+        messages: [{ role: "user", content: "Test message" }],
+        workdir: "/test/workdir",
+        onContentDelta: (delta) => deltas.push(delta),
+      });
+
+      expect(mockCreate.mock.calls[0][0].stream).toBe(true);
+      expect(deltas).toEqual(["Hello"]);
     });
 
     it("should handle mixed content and tool streaming scenarios", async () => {
@@ -242,8 +267,8 @@ describe("AI Service - Streaming", () => {
             },
           },
         ],
-        onContentUpdate: (content) => {
-          contentUpdates.push(content);
+        onContentDelta: (chunk) => {
+          contentUpdates.push(chunk);
         },
         onToolUpdate: (toolCall) => {
           toolUpdates.push(toolCall);
@@ -253,7 +278,7 @@ describe("AI Service - Streaming", () => {
       // Should receive both content and tool updates
       expect(contentUpdates).toEqual([
         "I'll help you with that. ",
-        "I'll help you with that. Let me read that file for you.",
+        "Let me read that file for you.",
       ]);
 
       // Final result should contain both content and tool calls
@@ -310,8 +335,8 @@ describe("AI Service - Streaming", () => {
           modelConfig: TEST_MODEL_CONFIG,
           messages: [{ role: "user", content: "Test message" }],
           workdir: "/test/workdir",
-          onContentUpdate: (content) => {
-            contentUpdates.push(content);
+          onContentDelta: (chunk) => {
+            contentUpdates.push(chunk);
           },
         }),
       ).rejects.toThrow("Fallback error occurred");
@@ -365,8 +390,8 @@ describe("AI Service - Streaming", () => {
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
         abortSignal: abortController.signal,
-        onContentUpdate: (content) => {
-          contentUpdates.push(content);
+        onContentDelta: (chunk) => {
+          contentUpdates.push(chunk);
         },
       });
 
@@ -418,12 +443,12 @@ describe("AI Service - Streaming", () => {
         modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
-        onContentUpdate: (content) => {
-          contentUpdates.push(content);
+        onContentDelta: (chunk) => {
+          contentUpdates.push(chunk);
         },
       });
 
-      // Should not call onContentUpdate for empty deltas
+      // Should not call onContentDelta for empty deltas
       expect(contentUpdates).toEqual([]);
 
       // Final result should have no content
@@ -468,7 +493,7 @@ describe("AI Service - Streaming", () => {
         modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
-        onContentUpdate: () => {},
+        onContentDelta: () => {},
       });
 
       // Should include usage information in the final result
@@ -592,8 +617,8 @@ describe("AI Service - Streaming", () => {
         modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
-        onContentUpdate: () => {},
-        onReasoningUpdate: () => {},
+        onContentDelta: () => {},
+        onReasoningDelta: () => {},
       });
 
       expect(result.content).toBe("Test response");
@@ -627,7 +652,7 @@ describe("AI Service - Streaming", () => {
         modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
-        onContentUpdate: () => {},
+        onContentDelta: () => {},
       });
 
       expect(result.content).toBe("Test response");

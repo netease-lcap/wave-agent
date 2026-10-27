@@ -1847,6 +1847,27 @@ describe("inputReducer", () => {
       expect(result.btwState.question).toBe("test?");
     });
 
+    it("should append /btw streaming deltas instead of replacing the answer", () => {
+      // The SDK hands the overlay one fragment per update, so the reducer must
+      // concatenate: replacing would show only the latest fragment.
+      const started = inputReducer(initialState, {
+        type: "SET_BTW_STATE",
+        payload: { question: "test?", isLoading: true, answer: undefined },
+      });
+
+      const first = inputReducer(started, {
+        type: "APPEND_BTW_ANSWER",
+        payload: "第一段",
+      });
+      const second = inputReducer(first, {
+        type: "APPEND_BTW_ANSWER",
+        payload: "第二段",
+      });
+
+      expect(second.btwState.answer).toBe("第一段第二段");
+      expect(second.btwState.isLoading).toBe(true);
+    });
+
     it("should show usage for bare /btw without question", () => {
       const state = { ...initialState, inputText: "/btw" };
       const result = inputReducer(state, {

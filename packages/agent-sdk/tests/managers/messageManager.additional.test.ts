@@ -263,10 +263,10 @@ describe("MessageManager additional coverage", () => {
     );
   });
 
-  it("should handle updateCurrentMessageReasoning", () => {
+  it("should handle appendCurrentMessageReasoning", () => {
     messageManager.addAssistantMessage("hello");
-    messageManager.updateCurrentMessageReasoning("thinking...");
-    messageManager.updateCurrentMessageReasoning("thinking... more");
+    messageManager.appendCurrentMessageReasoning("thinking...");
+    messageManager.appendCurrentMessageReasoning(" more");
 
     const messages = messageManager.getMessages();
     const reasoningBlock = messages[0].blocks.find(

@@ -2456,8 +2456,8 @@ describe("ChatProvider", () => {
     Object.assign(mockAgent, { messages: [assistantMsg] });
 
     // Regression (2026-08-17): the real SDK fires addAssistantMessage() →
-    // updateCurrentMessageContent() back-to-back in the SAME synchronous tick
-    // (aiManager.ts onContentUpdate). React batches the two setMessages calls
+    // appendCurrentMessageContent() back-to-back in the SAME synchronous tick
+    // (aiManager.ts onContentDelta). React batches the two setMessages calls
     // and runs the updater functions only at flush time — AFTER the SDK has
     // written the first chunk into the shared message. A snapshot evaluated
     // lazily inside the updater then copies the post-mutation blocks, and the
@@ -2580,7 +2580,7 @@ describe("ChatProvider", () => {
     // User's reported scenario: reasoning stream ends, the content that follows
     // shows its first word duplicated. All SDK calls below are synchronous in
     // one tick — messageAdded, reasoning mutation + delta, then the reasoning
-    // finalize + content mutation + first content delta (updateCurrentMessage
+    // finalize + content mutation + first content delta (appendCurrentMessage
     // Content finalizes the reasoning block first). Neither channel may
     // double-count.
     const sdkMsg = mockAgent.messages[0] as unknown as {
@@ -2597,7 +2597,7 @@ describe("ChatProvider", () => {
       chunk: "Let me think",
       stage: "streaming",
     });
-    // Reasoning finalized, content begins (updateCurrentMessageContent)
+    // Reasoning finalized, content begins (appendCurrentMessageContent)
     sdkMsg.blocks[0].stage = "end";
     callbacks.onAssistantReasoningUpdated!({
       messageId: "msg-reason-to-content",

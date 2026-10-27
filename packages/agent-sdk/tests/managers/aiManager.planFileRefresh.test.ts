@@ -85,7 +85,7 @@ describe("AIManager plan file refresh", () => {
           timestamp: new Date().toISOString(),
         } as Message);
       }),
-      updateCurrentMessageContent: vi.fn(),
+      appendCurrentMessageContent: vi.fn(),
       setlatestTotalTokens: vi.fn(),
       getCombinedMemory: vi.fn().mockResolvedValue(""),
       getMemoryForInjection: vi.fn().mockResolvedValue({ prependContent: "" }),

@@ -782,9 +782,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           }
         },
         onCompactionContentUpdate: (content) => {
-          // The SDK delivers the accumulated compaction text; the loading
-          // indicator renders only its last 30 characters (streaming tail).
-          setCompactionStream(content);
+          // Delta of newly produced compaction text — appended; the loading
+          // indicator renders only the last 30 characters (streaming tail).
+          setCompactionStream((prev) => prev + content);
         },
         onBackgroundTasksChange: async (tasks) => {
           setBackgroundTasks([...tasks]);

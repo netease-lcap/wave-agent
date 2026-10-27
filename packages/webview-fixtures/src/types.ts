@@ -836,6 +836,8 @@ export interface CompactionStateChangeMessage extends HostToWebviewMessageBase {
 export interface CompactionContentUpdateMessage
   extends HostToWebviewMessageBase {
   command: "compactionContentUpdate";
+  /** Delta of newly produced compaction text — the webview appends it to the
+   * tail it renders (spec: ui/stdio-transport.md「流式通知纯增量负载」场景 7). */
   content: string;
 }
 

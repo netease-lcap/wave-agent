@@ -24,7 +24,7 @@ vi.mock("../../src/utils/gitUtils.js", () => ({ isGitRepository: vi.fn() }));
 // turn and reaches the end-of-turn notification-drain block.
 vi.mock("../../src/services/aiService.js", () => ({
   callAgent: vi.fn().mockImplementation(async (options) => {
-    if (options.onContentUpdate) options.onContentUpdate("Test response");
+    if (options.onContentDelta) options.onContentDelta("Test response");
     return {
       content: "Test response",
       usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
@@ -73,7 +73,7 @@ function buildMockMessageManager(): MessageManager {
       // no-op
       return "msg-id";
     }),
-    updateCurrentMessageContent: vi.fn(),
+    appendCurrentMessageContent: vi.fn(),
     updateToolBlock: vi.fn(),
     mergeAssistantAdditionalFields: vi.fn(),
     setMessages: vi.fn(),

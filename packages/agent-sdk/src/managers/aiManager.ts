@@ -159,13 +159,16 @@ function mapBackgroundTask(
 export interface AIManagerCallbacks {
   onCompactionStateChange?: (isCompacting: boolean) => void;
   /**
-   * Streaming content from the compaction fork (accumulated, same semantics
-   * as `onContentUpdate` in CallAgentOptions). Reasoning chunks fall back to
-   * this channel when no reasoning callback is provided. Consumed by the CLI
-   * to show the compaction loading tail.
+   * Streaming content from the compaction fork, as a **delta** of newly
+   * produced text (same family as `chunk` on `onAssistantContentUpdated`):
+   * consumers append it, and its size is independent of how much has already
+   * streamed (spec: ui/stdio-transport.md「流式通知纯增量负载」场景 7).
+   * Reasoning deltas fall back to this channel when no reasoning callback is
+   * provided. Consumed by the CLI to show the compaction loading tail; the
+   * tail is cleared when compaction ends, so nothing re-reads this stream.
    */
   onCompactionContentUpdate?: (content: string) => void;
-  /** Streaming reasoning from the compaction fork (accumulated). */
+  /** Streaming reasoning from the compaction fork, as a delta. */
   onCompactionReasoningUpdate?: (content: string) => void;
   onUsageAdded?: (usage: Usage) => void;
   onCwdChange?: (newCwd: string) => void;
@@ -761,12 +764,27 @@ export class AIManager {
       // 4. Fork path: fork the conversation with the same system prompt,
       // tools, model, and generation params as the main loop so the forked
       // request prefix matches exactly and the prompt cache is reused.
+      //
+      // Both compaction channels leave the SDK as deltas — every consumer (CLI,
+      // the four hosts, the remote page behind them) appends them, and a frame
+      // that re-sent the whole tail would grow with the already-streamed length
+      // (spec: ui/stdio-transport.md「流式通知纯增量负载」场景 7). The delta is
+      // taken straight from the stream (`onContentDelta` / `onReasoningDelta`),
+      // not diffed here: this path never holds the accumulated text anywhere, so
+      // there is nothing to diff against.
+      //
+      // Reasoning joins the same tail: no host implements
+      // `onCompactionReasoningUpdate`, so the fork loop's fallback routes
+      // reasoning deltas into the content channel, and the tail shows thinking
+      // followed by the summary — the shape this indicator has always had.
       const forkResult = await this.runCompactFork(
         recentChatMessages,
         compactPrompt,
         options.abortSignal,
-        this.callbacks?.onCompactionContentUpdate,
-        this.callbacks?.onCompactionReasoningUpdate,
+        {
+          onContentDelta: this.callbacks?.onCompactionContentUpdate,
+          onReasoningDelta: this.callbacks?.onCompactionReasoningUpdate,
+        },
       );
       const summaryContent = forkResult.content;
       const compactTokens = forkResult.usage;
@@ -1070,10 +1088,12 @@ export class AIManager {
       /** Message fed back to the model when a tool call is denied. */
       deniedToolMessage?: string;
       /** Surface partial output to the caller (e.g. the compaction loading
-       * tail) as it streams in. Reasoning chunks go to the reasoning channel
-       * when provided, otherwise they fall back to the content channel. */
-      onContentUpdate?: (content: string) => void;
-      onReasoningUpdate?: (content: string) => void;
+       * tail) as it streams in. The fragments are pure deltas. Reasoning chunks
+       * go to the reasoning channel when the caller supplies one, otherwise
+       * they fall back to the content channel (so a caller listening on one
+       * channel still sees a single tail carrying both). */
+      onContentDelta?: (delta: string) => void;
+      onReasoningDelta?: (delta: string) => void;
     },
     abortSignal?: AbortSignal,
   ): Promise<ForkLoopResult> {
@@ -1129,20 +1149,21 @@ export class AIManager {
         // response, which exceeds the timeout on large contexts).
         stream: true,
         // Surface partial output to the caller (e.g. the compaction loading
-        // tail) as it arrives. Reasoning chunks from thinking models go to
-        // the reasoning channel when the caller supplies one; otherwise they
-        // fall back to the content channel (CLI mixes both).
-        onContentUpdate: (content: string) => {
-          if (content.trim()) {
-            options.onContentUpdate?.(content);
+        // tail) as it arrives. Deltas are forwarded straight through; reasoning
+        // from thinking models rides the reasoning channel when the caller
+        // supplies one and otherwise falls back to the content channel (so a
+        // reasoning-only caller still sees one tail with both).
+        onContentDelta: (delta: string) => {
+          if (delta.trim()) {
+            options.onContentDelta?.(delta);
           }
         },
-        onReasoningUpdate: (reasoning: string) => {
-          if (reasoning.trim()) {
-            if (options.onReasoningUpdate) {
-              options.onReasoningUpdate(reasoning);
+        onReasoningDelta: (delta: string) => {
+          if (delta.trim()) {
+            if (options.onReasoningDelta) {
+              options.onReasoningDelta(delta);
             } else {
-              options.onContentUpdate?.(reasoning);
+              options.onContentDelta?.(delta);
             }
           }
         },
@@ -1219,9 +1240,12 @@ export class AIManager {
   private async runCompactFork(
     historyMessages: ChatCompletionMessageParam[],
     compactPrompt: string,
-    abortSignal?: AbortSignal,
-    onContentUpdate?: (content: string) => void,
-    onReasoningUpdate?: (content: string) => void,
+    abortSignal: AbortSignal | undefined,
+    /** Streaming deltas of the fork's output, forwarded as the caller asked. */
+    stream: {
+      onContentDelta?: (delta: string) => void;
+      onReasoningDelta?: (delta: string) => void;
+    },
   ): Promise<ForkLoopResult> {
     return this.runForkLoop(
       historyMessages,
@@ -1229,8 +1253,7 @@ export class AIManager {
       {
         maxTurns: MAX_FORK_TURNS,
         deniedToolMessage: "Tool use is not allowed during compaction",
-        onContentUpdate,
-        onReasoningUpdate,
+        ...stream,
       },
       abortSignal,
     );
@@ -1456,8 +1479,8 @@ ${question}`;
         // Stream so a slow reasoning model emits first bytes before the
         // gateway's idle timeout fires (same rationale as runCompactFork).
         stream: true,
-        onContentUpdate: streamToOverlay,
-        onReasoningUpdate: streamReasoning,
+        onContentDelta: streamToOverlay,
+        onReasoningDelta: streamReasoning,
       });
 
       if (result.content?.trim()) {
@@ -1971,12 +1994,12 @@ ${question}`;
 
           // Add streaming callbacks only if streaming is enabled
           if (this.stream) {
-            callAgentOptions.onContentUpdate = (content: string) => {
+            callAgentOptions.onContentDelta = (delta: string) => {
               // Agent may have been destroyed mid-stream; ignore in-flight updates.
               if (!this.messageManager) return;
               // Create assistant message on first chunk if not already created
               ensureAssistantMessage();
-              this.messageManager.updateCurrentMessageContent(content);
+              this.messageManager.appendCurrentMessageContent(delta);
             };
             callAgentOptions.onToolUpdate = (toolCall) => {
               // Agent may have been destroyed mid-stream; ignore in-flight updates.
@@ -2001,12 +2024,12 @@ ${question}`;
                 stage: toolCall.stage || "streaming", // Default to streaming if stage not provided
               });
             };
-            callAgentOptions.onReasoningUpdate = (reasoning: string) => {
+            callAgentOptions.onReasoningDelta = (delta: string) => {
               // Agent may have been destroyed mid-stream; ignore in-flight updates.
               if (!this.messageManager) return;
               // Create assistant message on first reasoning update if not already created
               ensureAssistantMessage();
-              this.messageManager.updateCurrentMessageReasoning(reasoning);
+              this.messageManager.appendCurrentMessageReasoning(delta);
             };
           }
 
@@ -2090,14 +2113,14 @@ ${question}`;
 
           // Handle result reasoning content from non-streaming mode
           if (result.reasoning_content && !createdByStreaming) {
-            this.messageManager.updateCurrentMessageReasoning(
+            this.messageManager.appendCurrentMessageReasoning(
               result.reasoning_content,
             );
           }
 
           // Handle result content from non-streaming mode
           if (result.content && !createdByStreaming) {
-            this.messageManager.updateCurrentMessageContent(result.content);
+            this.messageManager.appendCurrentMessageContent(result.content);
           }
 
           // Handle usage tracking for agent operations

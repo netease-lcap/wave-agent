@@ -976,11 +976,13 @@ export class MessageManager {
   }
 
   /**
-   * Update the current assistant message content during streaming
-   * This method updates the last assistant message's content without creating a new message
-   * FR-001: Tracks and provides chunk (new content since last update)
+   * Append a content chunk to the current assistant message during streaming.
+   * The caller owns the delta: it passes only the new fragment, so the block is
+   * appended in place instead of being replaced by a cumulative snapshot.
+   * The non-streaming path also uses this to write the whole content in one call.
    */
-  public updateCurrentMessageContent(newAccumulatedContent: string): void {
+  public appendCurrentMessageContent(chunk: string): void {
+    if (!chunk) return;
     if (this.messages.length === 0) return;
 
     const lastMessage = this.messages[this.messages.length - 1];
@@ -989,35 +991,29 @@ export class MessageManager {
     // Finalize any streaming reasoning blocks before text content arrives
     this.finalizeStreamingBlock(lastMessage, "reasoning");
 
-    // Get the current content to calculate the chunk
     const textBlockIndex = lastMessage.blocks.findIndex(
       (block) => block.type === "text",
     );
-    const currentContent =
-      textBlockIndex >= 0
-        ? (
-            lastMessage.blocks[textBlockIndex] as {
-              type: "text";
-              content: string;
-            }
-          ).content || ""
-        : "";
-
-    // Calculate the chunk (new content since last update)
-    const chunk = newAccumulatedContent.slice(currentContent.length);
 
     if (textBlockIndex >= 0) {
-      // Update existing text block
+      // Append to the existing text block
+      const existingContent =
+        (
+          lastMessage.blocks[textBlockIndex] as {
+            type: "text";
+            content: string;
+          }
+        ).content || "";
       lastMessage.blocks[textBlockIndex] = {
         type: "text",
-        content: newAccumulatedContent,
+        content: existingContent + chunk,
         stage: "streaming",
       };
     } else {
       // Add new text block if none exists
       lastMessage.blocks.push({
         type: "text",
-        content: newAccumulatedContent,
+        content: chunk,
         stage: "streaming",
       });
     }
@@ -1033,10 +1029,11 @@ export class MessageManager {
   }
 
   /**
-   * Update the current assistant message reasoning during streaming
-   * This method updates the last assistant message's reasoning content without creating a new message
+   * Append a reasoning chunk to the current assistant message during streaming.
+   * Same delta-in contract as appendCurrentMessageContent.
    */
-  public updateCurrentMessageReasoning(newAccumulatedReasoning: string): void {
+  public appendCurrentMessageReasoning(chunk: string): void {
+    if (!chunk) return;
     if (this.messages.length === 0) return;
 
     const lastMessage = this.messages[this.messages.length - 1];
@@ -1045,41 +1042,28 @@ export class MessageManager {
     // Finalize any streaming text blocks before reasoning content arrives
     this.finalizeStreamingBlock(lastMessage, "text");
 
-    // Get the current reasoning content to calculate the chunk
     const reasoningBlockIndex = lastMessage.blocks.findIndex(
       (block) => block.type === "reasoning",
     );
-    const currentReasoning =
-      reasoningBlockIndex >= 0
-        ? (
-            lastMessage.blocks[reasoningBlockIndex] as {
-              type: "reasoning";
-              content: string;
-            }
-          ).content || ""
-        : "";
-
-    // Calculate the chunk (new content since last update)
-    const chunk = newAccumulatedReasoning.slice(currentReasoning.length);
 
     if (reasoningBlockIndex >= 0) {
-      // Update existing reasoning block
-      const existingStartTime = (
-        lastMessage.blocks[reasoningBlockIndex] as {
-          startTime?: number;
-        }
-      ).startTime;
+      // Append to the existing reasoning block, keeping its start time
+      const existingBlock = lastMessage.blocks[reasoningBlockIndex] as {
+        type: "reasoning";
+        content: string;
+        startTime?: number;
+      };
       lastMessage.blocks[reasoningBlockIndex] = {
         type: "reasoning",
-        content: newAccumulatedReasoning,
+        content: (existingBlock.content || "") + chunk,
         stage: "streaming",
-        startTime: existingStartTime,
+        startTime: existingBlock.startTime,
       };
     } else {
       // Add new reasoning block if none exists
       lastMessage.blocks.push({
         type: "reasoning",
-        content: newAccumulatedReasoning,
+        content: chunk,
         stage: "streaming",
         startTime: Date.now(),
       });

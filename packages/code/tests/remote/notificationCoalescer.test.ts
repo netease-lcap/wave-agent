@@ -197,6 +197,40 @@ describe("NotificationCoalescer", () => {
     ]);
   });
 
+  it("should merge compaction summary deltas into one frame", () => {
+    // 压缩尾部与主对话同族：`content` 是纯增量（消费端拼接，手机只渲染最后 30
+    // 个字符）。不合并的话一次压缩在手机上产生的帧数与一整轮主对话相当。
+    const c = createCoalescer();
+    for (const content of ["## ", "摘要", "正文"]) {
+      c.push("compactionContentUpdate", { content }, "s1");
+    }
+    vi.advanceTimersByTime(REMOTE_FRAME_WINDOW_MS);
+
+    expect(written).toHaveLength(1);
+    expect(written[0][0]).toEqual({
+      method: "compactionContentUpdate",
+      params: { content: "## 摘要正文" },
+      sessionId: "s1",
+    });
+  });
+
+  it("should flush a buffered compaction run before compactionStateChange", () => {
+    // 压缩开始 / 结束是离散事件 ⇒ 先冲刷缓冲。两次压缩因此不可能拼进同一帧。
+    const c = createCoalescer();
+    c.push("compactionContentUpdate", { content: "第一次的尾" }, "s1");
+    c.push("compactionStateChange", { isCompacting: false }, "s1");
+    c.push("compactionContentUpdate", { content: "第二次的尾" }, "s1");
+    vi.advanceTimersByTime(REMOTE_FRAME_WINDOW_MS);
+
+    expect(written.map((frames) => frames[0].method)).toEqual([
+      "compactionContentUpdate",
+      "compactionStateChange",
+      "compactionContentUpdate",
+    ]);
+    expect(written[0][0].params).toEqual({ content: "第一次的尾" });
+    expect(written[2][0].params).toEqual({ content: "第二次的尾" });
+  });
+
   it("should not merge a non-streaming stage", () => {
     const c = createCoalescer();
     c.push(

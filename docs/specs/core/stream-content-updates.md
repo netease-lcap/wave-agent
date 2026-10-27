@@ -142,7 +142,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 **为什么是这个优先级**：2026-08-08 起 SDK 回调只携带纯 chunk delta，消费端必须自行累积追加（`content += chunk`）；而 SDK 内部仍将累积全文写入消息块（先写全量、再按"新值 slice 当前长度"计算并回调 chunk delta）。若消费端在 `onAssistantMessageAdded`/`onUserMessageAdded` 时直接把 `agent.messages` 中的消息对象活引用推入自己的状态，第一个 delta 到达时 SDK 已把共享块内容替换为完整累积值，消费端追加逻辑会读到此已更新值再拼接该 delta——首个 delta 被重复计数，表现为"reasoning 第一个单词重复"（如 `LetLet me think about this.`）。文本内容同理受影响，只是文本流通常在消息解耦后才出现而不易暴露。
 
-2026-08-17 补充：快照必须**在回调触发时刻立即捕获**（`onAssistantMessageAdded`/`onUserMessageAdded` 被调用时同步执行 `snapshotMessage(msg)` 并保存结果），不能在 React state updater 内延迟执行。原因是 React 会把同一同步 tick 内的多次 `setMessages` 批处理，updater 函数到 flush 时才运行——而 SDK 的 `addAssistantMessage()` → 就地写入首个 chunk → 首个 delta 回调恰好处于同一同步 tick（`aiManager.ts` 的 `onContentUpdate`/`onReasoningUpdate`），flush 时延迟快照复制到的已是变异后的消息块，首个 delta 再追加即翻倍（`HelloHello`）。该竞态表现为"推理流结束后正文首个单词重复"（首个 content delta 与 messageAdded 落入同一批时），或首个 reasoning delta 重复（reasoning 折叠区，不易察觉）。
+2026-08-17 补充：快照必须**在回调触发时刻立即捕获**（`onAssistantMessageAdded`/`onUserMessageAdded` 被调用时同步执行 `snapshotMessage(msg)` 并保存结果），不能在 React state updater 内延迟执行。原因是 React 会把同一同步 tick 内的多次 `setMessages` 批处理，updater 函数到 flush 时才运行——而 SDK 的 `addAssistantMessage()` → 就地写入首个 chunk → 首个 delta 回调恰好处于同一同步 tick（`aiManager.ts` 的 `onContentDelta`/`onReasoningDelta`），flush 时延迟快照复制到的已是变异后的消息块，首个 delta 再追加即翻倍（`HelloHello`）。该竞态表现为"推理流结束后正文首个单词重复"（首个 content delta 与 messageAdded 落入同一批时），或首个 reasoning delta 重复（reasoning 折叠区，不易察觉）。
 
 **独立测试**：构造一个带 reasoning 流式的会话，用与 CLI 相同的消费模式（推入活引用 + 追加 reducer）验证出现首词重复；改用快照推入（`{ ...m, blocks: m.blocks.map(b => ({ ...b })) }`）后同一断言通过。另有同批回归测试：在**同一同步 tick** 内连续调用 `onAssistantMessageAdded` → 就地变异消息块 → 首个 delta 回调（无 await 间隔，与真实 SDK 顺序一致），断言消息内容不翻倍（content `Hello` 非 `HelloHello`、reasoning `Let` 非 `LetLet`、reasoning 收尾后首个 content chunk 同批时两通道均不重复）。
 
@@ -336,6 +336,14 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 - 问：无节流后还有顺序/竞态风险吗 → 答：到达顺序即应用顺序，强于此前节流 FIFO 队列提供的保证。原分流插队矩阵中所有「queued vs immediate」组合随队列消失；同块 `streaming`→`running` 阶段回退由 SDK 协议保证（参数流先于工具执行，`running` emit 之后仅剩 `onShortResultUpdate`/`onResultUpdate`）+ `end` 权威值覆盖自愈；`refreshMessages` 拉快照后无需 cancel（无 pending 可复活），刷新后新 delta 直接追加在快照之上
 - 问：移除范围 → 答：删除 `createThrottledUpdater`、`resolveStreamThrottleMs`、`DEFAULT_STREAM_THROTTLE_MS` 与实验开关 `WAVE_STREAM_THROTTLE_MS`（一次性实验设施，设计定型后无存在意义，git 历史保留回滚路径）；`onToolBlockUpdated` 全 stage 直接应用；`refreshMessages`、isExpanded effect 与卸载清理中的 cancel 移除。渲染层 Ink `maxFps: 30` 兜底不变；VSCE/桌面跨进程通道的 window-concat 节流语义不受影响
 - 问：如何防闪烁回归 → 答：假设部分记录观察条件（长 bash 任务短结果行数震荡 + 长文本流式，真实终端）；若未来真实场景出现闪烁，应在渲染层解决（Ink fork 增量 diff / 双缓冲虚拟屏，参照 Claude Code 的 16ms 帧节流），而非恢复数据层节流
+
+### 2026-10-27 会议（内层回调也只保留 delta，所有消费端改为拼接）
+
+- 问：为什么连 `aiService.callAgent` 的快照回调（`onContentUpdate`/`onReasoningUpdate`）也移除 → 答：同一份流有两个视图时，取快照的那条路必须自己再算一次差分才拿到 chunk（原实现 `slice(当前长度)`），而这个差分基准就是消息块里已存的内容——状态存了两份（流里的累积变量、块里的 content），任何一处错位都表现为重复或丢字。收掉快照后只剩 `onContentDelta`/`onReasoningDelta`，累积由消费端自己做（消息块 append），一份状态一处写
+- 问：消息块怎么改 → 答：`MessageManager.updateCurrentMessageContent/updateCurrentMessageReasoning` 改为 `appendCurrentMessageContent/appendCurrentMessageReasoning`：入参是新片段，块存在就 `content + chunk`、不存在就新建块，回调仍按 `{messageId, chunk, stage}` 发。非流式落地（`!createdByStreaming` 保护）调用同一方法，此时块为空、等于整体写入一次
+- 问：CLI 的 `/btw` 覆盖层原来按替换写，改成什么 → 答：拼接（新增 reducer 动作 `APPEND_BTW_ANSWER`）。它在 SDK 侧拿到的 `onContent` 现在就是片段，继续替换只会显示最后一片
+- 问：`stream_fallback` 丢弃重发会不会受影响 → 答：不受。降级路径整条消息 `discardAssistantMessage` 后重建，不依赖快照幂等
+- 问：受影响范围 → 答：`aiService`（回调收窄、`isStreaming` 判定与 `processStreamingResponse` 参数同步收窄）、`aiManager`（主循环、`/btw` fork、非流式落地三处改 delta）、`messageManager`（两个 append 方法）、CLI `useInputManager` + `inputReducer`（`APPEND_BTW_ANSWER`）。wire 通知、宿主转发层、webview 消费端原本就是 delta 口径，无需改动
 
 ## 假设 _（必填）_
 
