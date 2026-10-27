@@ -56,7 +56,7 @@ describe("AIManager - latestTotalTokens calculation", () => {
       getSessionId: vi.fn().mockReturnValue("test-session-id"),
       getMessages: vi.fn().mockReturnValue([]),
       addAssistantMessage: vi.fn(),
-      updateCurrentMessageContent: vi.fn(),
+      appendCurrentMessageContent: vi.fn(),
       updateToolBlock: vi.fn(),
       mergeAssistantAdditionalFields: vi.fn(),
       setMessages: vi.fn(),

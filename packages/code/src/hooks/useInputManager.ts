@@ -150,15 +150,16 @@ export const useInputManager = (
               const answer = await onAskBtw?.(
                 effect.question,
                 controller.signal,
-                (content: string) => {
+                (delta: string) => {
                   // Stream partial answers into the overlay so the user sees
                   // the response grow in real time (same visual language as
                   // assistant text / thinking blocks) instead of a static
-                  // "Answering" indicator.
+                  // "Answering" indicator. The callback hands over a delta, so
+                  // this appends rather than replacing.
                   if (!btwDismissedRef.current) {
                     dispatch({
-                      type: "SET_BTW_STATE",
-                      payload: { answer: content, isLoading: true },
+                      type: "APPEND_BTW_ANSWER",
+                      payload: delta,
                     });
                   }
                 },

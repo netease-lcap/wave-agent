@@ -334,8 +334,8 @@ describe("AIManager - compactConversation", () => {
   describe("fork streaming", () => {
     it("should forward partial content from the compaction fork to onCompactionContentUpdate", async () => {
       callAgentMock.mockImplementationOnce(
-        async (options: { onContentUpdate?: (content: string) => void }) => {
-          options.onContentUpdate?.("Partial summary");
+        async (options: { onContentDelta?: (delta: string) => void }) => {
+          options.onContentDelta?.("Partial summary");
           return {
             content: "Full summary",
             usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
@@ -349,10 +349,71 @@ describe("AIManager - compactConversation", () => {
       expect(onCompactionContentUpdate).toHaveBeenCalledWith("Partial summary");
     });
 
+    it("should emit only the new fragment per update, never the accumulated tail", async () => {
+      // spec ui/stdio-transport.md「流式通知纯增量负载」场景 7：每帧只带新增片段，
+      // 单帧大小与已输出长度无关。片段直接取自流里的 `onContentDelta`，压缩路径
+      // 不再自己对快照做差分。
+      callAgentMock.mockImplementationOnce(
+        async (options: { onContentDelta?: (delta: string) => void }) => {
+          const frames = ["## 摘要", "\n正文", "完"];
+          let accumulated = "";
+          for (const delta of frames) {
+            accumulated += delta;
+            options.onContentDelta?.(delta);
+          }
+          return {
+            content: accumulated,
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+            tool_calls: [],
+          };
+        },
+      );
+
+      await aiManager.compactConversation();
+
+      expect(
+        onCompactionContentUpdate.mock.calls.map(([content]) => content),
+      ).toEqual(["## 摘要", "\n正文", "完"]);
+    });
+
+    it("should put reasoning and body on the same tail when no reasoning channel is provided", async () => {
+      // 四端宿主都没实现 `onCompactionReasoningUpdate` ⇒ 推理片段落到正文通道，
+      // 尾部按「思考 → 正文」顺序同时可见（这是这条指示器一直以来的形态）。
+      const contentOnlyManager = new AIManager(container, {
+        workdir: "/test/workdir",
+        stream: false,
+        callbacks: {
+          onCompactionStateChange: vi.fn(),
+          onCompactionContentUpdate,
+          onUsageAdded: vi.fn(),
+        },
+      });
+      callAgentMock.mockImplementationOnce(
+        async (options: {
+          onReasoningDelta?: (delta: string) => void;
+          onContentDelta?: (delta: string) => void;
+        }) => {
+          options.onReasoningDelta?.("很长的一段思考过程");
+          options.onContentDelta?.("摘要");
+          return {
+            content: "摘要",
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+            tool_calls: [],
+          };
+        },
+      );
+
+      await contentOnlyManager.compactConversation();
+
+      expect(
+        onCompactionContentUpdate.mock.calls.map(([content]) => content),
+      ).toEqual(["很长的一段思考过程", "摘要"]);
+    });
+
     it("should forward reasoning chunks to onCompactionReasoningUpdate when provided", async () => {
       callAgentMock.mockImplementationOnce(
-        async (options: { onReasoningUpdate?: (content: string) => void }) => {
-          options.onReasoningUpdate?.("Let me summarize");
+        async (options: { onReasoningDelta?: (delta: string) => void }) => {
+          options.onReasoningDelta?.("Let me summarize");
           return {
             content: "Full summary",
             usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
@@ -383,11 +444,11 @@ describe("AIManager - compactConversation", () => {
       });
       callAgentMock.mockImplementationOnce(
         async (options: {
-          onReasoningUpdate?: (content: string) => void;
-          onContentUpdate?: (content: string) => void;
+          onReasoningDelta?: (delta: string) => void;
+          onContentDelta?: (delta: string) => void;
         }) => {
-          options.onReasoningUpdate?.("Thinking step");
-          options.onContentUpdate?.("Summary text");
+          options.onReasoningDelta?.("Thinking step");
+          options.onContentDelta?.("Summary text");
           return {
             content: "Summary text",
             usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
@@ -404,9 +465,9 @@ describe("AIManager - compactConversation", () => {
 
     it("should skip whitespace-only stream chunks", async () => {
       callAgentMock.mockImplementationOnce(
-        async (options: { onContentUpdate?: (content: string) => void }) => {
-          options.onContentUpdate?.("   ");
-          options.onContentUpdate?.("Real text");
+        async (options: { onContentDelta?: (delta: string) => void }) => {
+          options.onContentDelta?.("   ");
+          options.onContentDelta?.("Real text");
           return {
             content: "Real text",
             usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },

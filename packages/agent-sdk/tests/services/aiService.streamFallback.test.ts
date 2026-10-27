@@ -107,7 +107,7 @@ describe("AI Service - streaming body failure falls back to non-streaming", () =
       modelConfig: TEST_MODEL_CONFIG,
       messages: [{ role: "user", content: "Test message" }],
       workdir: "/test/workdir",
-      onContentUpdate: (content) => contentUpdates.push(content),
+      onContentDelta: (chunk) => contentUpdates.push(chunk),
     });
 
     // First attempt streamed, second one did not (spec: 降级为非流式重发).
@@ -136,7 +136,7 @@ describe("AI Service - streaming body failure falls back to non-streaming", () =
       modelConfig: TEST_MODEL_CONFIG,
       messages: [{ role: "user", content: "Test message" }],
       workdir: "/test/workdir",
-      onContentUpdate: (content) => contentUpdates.push(content),
+      onContentDelta: (chunk) => contentUpdates.push(chunk),
     });
 
     expect(result.stream_fallback).toBe(true);
@@ -160,7 +160,7 @@ describe("AI Service - streaming body failure falls back to non-streaming", () =
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
         abortSignal: abortController.signal,
-        onContentUpdate: () => {},
+        onContentDelta: () => {},
       }),
     ).rejects.toThrow(/aborted/i);
 
@@ -180,7 +180,7 @@ describe("AI Service - streaming body failure falls back to non-streaming", () =
         modelConfig: TEST_MODEL_CONFIG,
         messages: [{ role: "user", content: "Test message" }],
         workdir: "/test/workdir",
-        onContentUpdate: () => {},
+        onContentDelta: () => {},
       }),
     ).rejects.toThrow("boom");
 
@@ -201,7 +201,7 @@ describe("AI Service - streaming body failure falls back to non-streaming", () =
       modelConfig: TEST_MODEL_CONFIG,
       messages: [{ role: "user", content: "Test message" }],
       workdir: "/test/workdir",
-      onContentUpdate: () => {},
+      onContentDelta: () => {},
     });
 
     expect(result.content).toBe("complete");

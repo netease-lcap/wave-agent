@@ -236,7 +236,12 @@ export interface CallAgentOptions {
   stream?: boolean;
 
   // NEW: Streaming callbacks
-  onContentUpdate?: (content: string) => void;
+  /**
+   * The fragment this frame added — never a snapshot, so a caller can append it
+   * straight into its own buffer (spec: ui/stdio-transport.md「流式通知纯增量
+   * 负载」). Concatenating every delta yields the returned `content`.
+   */
+  onContentDelta?: (delta: string) => void;
   onToolUpdate?: (toolCall: {
     id: string;
     name: string;
@@ -244,7 +249,8 @@ export interface CallAgentOptions {
     parametersChunk?: string;
     stage?: "start" | "streaming" | "running" | "end";
   }) => void;
-  onReasoningUpdate?: (content: string) => void;
+  /** The reasoning fragment this frame added (delta twin of onContentDelta). */
+  onReasoningDelta?: (delta: string) => void;
 
   // Disable-thinking params for fast-model subagent calls (merged into the
   // request; never used in the agent loop).
@@ -307,9 +313,9 @@ export async function callAgent(
     tools,
     model,
     systemPrompt,
-    onContentUpdate,
+    onContentDelta,
     onToolUpdate,
-    onReasoningUpdate,
+    onReasoningDelta,
     disableThinkingOptions,
   } = options;
 
@@ -404,7 +410,7 @@ export async function callAgent(
     // Determine if streaming is needed
     const isStreaming =
       options.stream === true ||
-      !!(onContentUpdate || onToolUpdate || onReasoningUpdate);
+      !!(onContentDelta || onToolUpdate || onReasoningDelta);
 
     // Prepare API call parameters
     createParams = {
@@ -457,9 +463,9 @@ export async function callAgent(
 
       return await processStreamingResponse(
         stream,
-        onContentUpdate,
+        onContentDelta,
         onToolUpdate,
-        onReasoningUpdate,
+        onReasoningDelta,
         abortSignal,
         responseHeaders,
       );
@@ -694,15 +700,16 @@ export async function callAgent(
 /**
  * Process streaming response from OpenAI API
  * @param stream Async iterator of chat completion chunks
- * @param onContentUpdate Callback for content updates
+ * @param onContentDelta Delta callback: the fragment this frame added
  * @param onToolUpdate Callback for tool updates
+ * @param onReasoningDelta Delta callback: the reasoning fragment this frame added
  * @param abortSignal Optional abort signal
  * @param responseHeaders Response headers from the initial request
  * @returns Final result with accumulated content and tool calls
  */
 async function processStreamingResponse(
   stream: AsyncIterable<ChatCompletionChunk>,
-  onContentUpdate?: (content: string) => void,
+  onContentDelta?: (delta: string) => void,
   onToolUpdate?: (toolCall: {
     id: string;
     name: string;
@@ -710,7 +717,7 @@ async function processStreamingResponse(
     parametersChunk?: string;
     stage?: "start" | "streaming" | "running" | "end";
   }) => void,
-  onReasoningUpdate?: (content: string) => void,
+  onReasoningDelta?: (delta: string) => void,
   abortSignal?: AbortSignal,
   responseHeaders?: Record<string, string>,
 ): Promise<CallAgentResult> {
@@ -773,18 +780,14 @@ async function processStreamingResponse(
         // Note: OpenAI API already handles UTF-8 character boundaries correctly in streaming,
         // ensuring that delta.content always contains complete UTF-8 strings
         accumulatedContent += content;
-        if (onContentUpdate) {
-          onContentUpdate(accumulatedContent);
-        }
+        onContentDelta?.(content);
       }
 
       if (typeof reasoning_content === "string") {
         hasReasoningContent = true;
         if (reasoning_content.length > 0) {
           accumulatedReasoningContent += reasoning_content;
-          if (onReasoningUpdate) {
-            onReasoningUpdate(accumulatedReasoningContent);
-          }
+          onReasoningDelta?.(reasoning_content);
         }
       }
 

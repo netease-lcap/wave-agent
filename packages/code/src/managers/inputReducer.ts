@@ -528,6 +528,7 @@ export type InputAction =
   | { type: "INSERT_COMMAND"; payload: string }
   | { type: "SELECT_FILE"; payload: string }
   | { type: "SET_BTW_STATE"; payload: Partial<BtwState> }
+  | { type: "APPEND_BTW_ANSWER"; payload: string }
   | { type: "CLEAR_PENDING_EFFECT" }
   | { type: "RESET_ESC_CLEAR_PENDING" }
   | {
@@ -1662,6 +1663,15 @@ export function inputReducer(
         btwState: {
           ...state.btwState,
           ...action.payload,
+        },
+      };
+    case "APPEND_BTW_ANSWER":
+      // Streaming deltas are appended, never treated as the whole answer.
+      return {
+        ...state,
+        btwState: {
+          ...state.btwState,
+          answer: (state.btwState.answer ?? "") + action.payload,
         },
       };
     default:

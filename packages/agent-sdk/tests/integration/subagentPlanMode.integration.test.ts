@@ -108,13 +108,15 @@ describe("Subagent Plan Mode Integration", () => {
         mockMessages.push(msg);
         return msg;
       }),
-      updateCurrentMessageContent: vi.fn().mockImplementation((content) => {
+      appendCurrentMessageContent: vi.fn().mockImplementation((chunk) => {
         const last = mockMessages[mockMessages.length - 1];
         if (last && last.role === "assistant") {
-          last.blocks = [{ type: "text", content }];
+          const first = last.blocks[0];
+          const existing = first?.type === "text" ? first.content : "";
+          last.blocks = [{ type: "text", content: existing + chunk }];
         }
       }),
-      updateCurrentMessageReasoning: vi.fn(),
+      appendCurrentMessageReasoning: vi.fn(),
       setlatestTotalTokens: vi.fn(),
       addErrorBlock: vi.fn(),
       setMessages: vi.fn().mockImplementation((msgs) => {

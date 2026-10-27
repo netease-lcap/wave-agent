@@ -4,7 +4,7 @@
  * Regresses the streaming delta-contract bugs fixed in #1672/#1755-area
  * (SDK streaming callbacks carry chunk deltas, and content/tool updates can
  * interleave within one assistant turn):
- * - interleaved onContentUpdate/onToolUpdate must reassemble into complete,
+ * - interleaved onContentDelta/onToolUpdate must reassemble into complete,
  *   correctly-ordered message blocks (no lost or duplicated deltas)
  * - text streamed AFTER a tool call must still land in the assistant message
  *
@@ -63,7 +63,7 @@ describe("Streaming message race (interleaved content and tool deltas)", () => {
     let aiCallCount = 0;
     callAgent.mockImplementation(
       async (options: {
-        onContentUpdate?: (c: string) => void;
+        onContentDelta?: (c: string) => void;
         onToolUpdate?: (u: {
           id: string;
           name: string;
@@ -75,8 +75,8 @@ describe("Streaming message race (interleaved content and tool deltas)", () => {
         if (aiCallCount === 1) {
           // Content chunks interleaved with tool parameter chunks, the way an
           // SSE stream delivers them for a model that narrates while calling.
-          options.onContentUpdate?.("Let me");
-          options.onContentUpdate?.("Let me check");
+          options.onContentDelta?.("Let me");
+          options.onContentDelta?.(" check");
           options.onToolUpdate?.({
             id: "call_race",
             name: "run_terminal_cmd",
@@ -110,8 +110,8 @@ describe("Streaming message race (interleaved content and tool deltas)", () => {
           };
         }
         // Second turn: content streamed in two deltas after the tool ran.
-        options.onContentUpdate?.("Done");
-        options.onContentUpdate?.("Done: file.txt");
+        options.onContentDelta?.("Done");
+        options.onContentDelta?.(": file.txt");
         return {
           content: "Done: file.txt",
           usage: {
@@ -180,7 +180,7 @@ describe("Streaming message race (interleaved content and tool deltas)", () => {
     let aiCallCount = 0;
     callAgent.mockImplementation(
       async (options: {
-        onContentUpdate?: (c: string) => void;
+        onContentDelta?: (c: string) => void;
         onToolUpdate?: (u: {
           id: string;
           name: string;
@@ -198,7 +198,7 @@ describe("Streaming message race (interleaved content and tool deltas)", () => {
             parametersChunk: '{"command": "ls"}',
             stage: "streaming",
           });
-          options.onContentUpdate?.("I found it: ");
+          options.onContentDelta?.("I found it: ");
           return {
             content: "I found it: ",
             tool_calls: [
@@ -244,7 +244,7 @@ describe("Streaming message race (interleaved content and tool deltas)", () => {
     const firstAssistant = assistantMessages[0];
 
     // Both blocks exist: the tool block created by onToolUpdate and the text
-    // block created later by onContentUpdate.
+    // block created later by onContentDelta.
     const toolBlock = firstAssistant.blocks.find((b) => b.type === "tool");
     const textBlock = firstAssistant.blocks.find((b) => b.type === "text");
     expect(toolBlock).toBeDefined();

@@ -16,7 +16,7 @@ describe("MessageManager - discardAssistantMessage (streaming fallback)", () => 
 
     messageManager.addUserMessage({ content: "hello" });
     const messageId = messageManager.addAssistantMessage();
-    messageManager.updateCurrentMessageContent("half an ans");
+    messageManager.appendCurrentMessageContent("half an ans");
 
     expect(messageManager.getMessages()).toHaveLength(2);
 

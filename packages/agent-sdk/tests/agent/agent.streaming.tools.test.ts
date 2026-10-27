@@ -417,7 +417,7 @@ describe("Agent Tool Streaming Tests", () => {
           parametersChunk: string;
           stage: string;
         }) => void;
-        onContentUpdate?: (update: string) => void;
+        onContentDelta?: (delta: string) => void;
       } = {};
 
       // Mock callAgent to simulate streaming behavior with onToolUpdate callbacks

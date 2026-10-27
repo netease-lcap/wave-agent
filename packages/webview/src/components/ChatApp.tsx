@@ -2044,9 +2044,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         break;
       case "compactionContentUpdate":
         if (!forThisPane(message)) break;
-        // The CLI delivers the accumulated compaction text; the hint renders
-        // only its last 30 characters (streaming tail).
-        setCompactionStream(message.content);
+        // Delta of newly produced compaction text — appended, then the hint
+        // renders only its last 30 characters (streaming tail). The buffer is
+        // cleared when compaction ends (stateChange false above).
+        setCompactionStream((prev) => prev + message.content);
         break;
       case "updateStreamingContent":
         if (!forThisPane(message)) break;

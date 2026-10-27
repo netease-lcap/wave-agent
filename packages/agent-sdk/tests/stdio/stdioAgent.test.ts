@@ -1032,7 +1032,7 @@ describe("StdioAgent", () => {
     expect(onCompactionStateChange).toHaveBeenCalledWith(true);
   });
 
-  it("compactionContentUpdate forwards accumulated content to callback", () => {
+  it("compactionContentUpdate forwards the delta to callback", () => {
     const onCompactionContentUpdate = vi.fn();
     const { agent } = createAgent({ onCompactionContentUpdate });
 

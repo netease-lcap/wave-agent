@@ -106,8 +106,8 @@ describe("Agent askBtw", () => {
   it("should forward partial content to the onContent callback", async () => {
     const onContent = vi.fn();
     callAgentMock.mockImplementationOnce(
-      async (options: { onContentUpdate?: (content: string) => void }) => {
-        options.onContentUpdate?.("Partial side answer");
+      async (options: { onContentDelta?: (delta: string) => void }) => {
+        options.onContentDelta?.("Partial side answer");
         return {
           content: "Side answer",
           usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
@@ -131,11 +131,11 @@ describe("Agent askBtw", () => {
     const onReasoning = vi.fn();
     callAgentMock.mockImplementationOnce(
       async (options: {
-        onContentUpdate?: (content: string) => void;
-        onReasoningUpdate?: (content: string) => void;
+        onContentDelta?: (delta: string) => void;
+        onReasoningDelta?: (delta: string) => void;
       }) => {
-        options.onReasoningUpdate?.("thinking chunk");
-        options.onContentUpdate?.("answer chunk");
+        options.onReasoningDelta?.("thinking chunk");
+        options.onContentDelta?.("answer chunk");
         return {
           content: "Side answer",
           usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
@@ -161,8 +161,8 @@ describe("Agent askBtw", () => {
   it("should fall back to onContent for reasoning when no onReasoning is given (CLI compatibility)", async () => {
     const onContent = vi.fn();
     callAgentMock.mockImplementationOnce(
-      async (options: { onReasoningUpdate?: (content: string) => void }) => {
-        options.onReasoningUpdate?.("thinking chunk");
+      async (options: { onReasoningDelta?: (delta: string) => void }) => {
+        options.onReasoningDelta?.("thinking chunk");
         return {
           content: "Side answer",
           usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },

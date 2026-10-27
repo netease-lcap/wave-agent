@@ -74,7 +74,7 @@ function createHarness() {
       });
       return `m${messages.length}`;
     }),
-    updateCurrentMessageContent: vi.fn(),
+    appendCurrentMessageContent: vi.fn(),
     updateToolBlock: vi.fn(),
     mergeAssistantAdditionalFields: vi.fn(),
     setMessages: vi.fn(),

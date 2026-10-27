@@ -49,8 +49,9 @@ interface MergeSpec {
  * `messageOperations.ts` accumulates `parametersChunk` by plain concatenation —
  * the same operation this class performs. A `start` / `running` / `end` frame
  * is a one-time snapshot (or the authoritative full value) and must not be
- * merged with anything. `btwContent` (the `/btw` answer stream) is the fourth:
- * one field, no stages, a delta every time.
+ * merged with anything. `btwContent` (the `/btw` answer stream) is the fourth,
+ * and the compaction summary tail (`compactionContentUpdate`) the fifth: both
+ * carry one delta field and no stages, so every frame is a delta.
  */
 function mergeSpec(method: string, params: unknown): MergeSpec | undefined {
   if (typeof params !== "object" || params === null) return undefined;
@@ -94,6 +95,18 @@ function mergeSpec(method: string, params: unknown): MergeSpec | undefined {
       field: "content",
       key: `b\u0000${p.question}\u0000${typeof p.type === "string" ? p.type : ""}`,
     };
+  }
+
+  // Compaction summary streaming: since 2026-10-27 the payload is a delta of
+  // newly produced text (it used to carry the whole tail), so it merges exactly
+  // like the three above. The key needs no stream identity: one compaction runs
+  // one stream per session, and both its start and its end
+  // (`compactionStateChange`) are discrete events that flush this buffer first
+  // (spec: ui/stdio-transport.md「流式通知纯增量负载」场景 7, ui/remote-control.md
+  // 场景 10).
+  if (method === "compactionContentUpdate") {
+    if (typeof p.content !== "string") return undefined;
+    return { field: "content", key: "k" };
   }
 
   return undefined;

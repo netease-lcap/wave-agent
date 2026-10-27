@@ -95,6 +95,21 @@ describe("Compaction hint", () => {
     expect(screen.queryByTestId("compaction-hint")).not.toBeInTheDocument();
   });
 
+  it("appends compactionContentUpdate deltas instead of replacing the tail", () => {
+    // 规格 message-compact「手动压缩与压缩状态内联提示」场景 4：载荷是纯增量片段，
+    // 消费端负责拼接（此前每次重发累积全文，尾部被整体替换）。
+    renderChatApp();
+    addUserMessage();
+
+    sendCommand("compactionStateChange", { isCompacting: true });
+    sendCommand("compactionContentUpdate", { content: "第一段" });
+    sendCommand("compactionContentUpdate", { content: "第二段" });
+
+    expect(screen.getByTestId("compaction-hint-tail").textContent).toBe(
+      "第一段第二段",
+    );
+  });
+
   it("restores the hint from setInitialState when switching back to a still-compacting session", () => {
     // spec message-compact「手动压缩与压缩状态内联提示」场景 9：桌面端并行会话
     // 允许压缩中切换；切回的会话若仍在压缩，宿主的 setInitialState 带

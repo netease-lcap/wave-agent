@@ -54,7 +54,7 @@ function mockMsgManager(overrides = {}) {
     getMessages: vi.fn().mockReturnValue([]),
     addAssistantMessage: vi.fn(),
     addUserMessage: vi.fn(),
-    updateCurrentMessageContent: vi.fn(),
+    appendCurrentMessageContent: vi.fn(),
     updateToolBlock: vi.fn(),
     mergeAssistantAdditionalFields: vi.fn(),
     setMessages: vi.fn(),
@@ -71,7 +71,7 @@ function mockMsgManager(overrides = {}) {
     finalizeStreamingBlocks: vi.fn(),
     finalizeAbortedToolBlocks: vi.fn(),
     addFileHistoryBlock: vi.fn(),
-    updateCurrentMessageReasoning: vi.fn(),
+    appendCurrentMessageReasoning: vi.fn(),
     ...overrides,
   } as unknown as MessageManager;
 }

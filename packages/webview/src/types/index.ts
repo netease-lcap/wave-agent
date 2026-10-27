@@ -546,9 +546,10 @@ export interface MessageListProps {
   queuedMessages?: QueuedMessage[];
   isStreaming?: boolean;
   isCompacting?: boolean;
-  /** Accumulated streaming text from the compaction fork; its last 30 characters
-   * render after the "正在压缩对话" hint (same tail style as the CLI loading
-   * indicator). */
+  /** Compaction tail, accumulated from the per-frame deltas the host sends
+   * (`compactionContentUpdate`); its last 30 characters render after the
+   * "正在压缩对话" hint (same tail style as the CLI loading indicator). Cleared
+   * when compaction ends. */
   compactionStream?: string;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;

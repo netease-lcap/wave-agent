@@ -151,6 +151,9 @@ export interface StdioAgentCallbacks {
    */
   onCompactBlockAdded?: (content: string, message?: Message) => void;
   onCompactionStateChange?: (isCompacting: boolean) => void;
+  /** Delta of newly produced compaction text — hosts append it to the tail
+   * they render, and its size is independent of the already-streamed length
+   * (spec: ui/stdio-transport.md「流式通知纯增量负载」场景 7). */
   onCompactionContentUpdate?: (content: string) => void;
   /** Full plan-file content after the model writes it (spec: 计划文件更新后刷新计划面板). */
   onPlanFileUpdated?: (content: string) => void;
