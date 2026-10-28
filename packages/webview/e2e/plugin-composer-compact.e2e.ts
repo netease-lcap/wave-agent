@@ -213,20 +213,34 @@ test.describe("plugin composer: icon tier when the bottom row runs out of space"
     expect(surfaces.permission!.borderColor).toBe("rgba(0, 0, 0, 0)");
 
     // hover 面：四个都只变底色，颜色值一致（文字档那套「底色 + 蓝框」在图标档里不再生效）。
-    const hoverStyle = async (selector: string, index = 0) => {
-      const loc = webviewPage.locator(selector).nth(index);
+    // 「+」「/」按控制层的图标槽做「28 槽 + 22 视觉」，底色画在 ::before 上；模型与权限
+    // 是 22 的实体盒子，底色画在自己身上。比的是同一块视觉面，所以各读各自真正上色的
+    // 那一层 —— 不是把断言放宽成「差不多」。
+    const hoverStyle = async (
+      selector: string,
+      paintedOn: "self" | "before" = "self",
+    ) => {
+      const loc = webviewPage.locator(selector).first();
       await loc.hover();
       await webviewPage.waitForTimeout(250);
-      return loc.evaluate((el) => {
-        const cs = getComputedStyle(el);
-        return { bg: cs.backgroundColor, border: cs.borderTopColor };
-      });
+      return loc.evaluate((el, where) => {
+        const own = getComputedStyle(el);
+        const paint =
+          where === "before" ? getComputedStyle(el, "::before") : own;
+        return {
+          bg: paint.backgroundColor,
+          ownBg: own.backgroundColor,
+          border: own.borderTopColor,
+        };
+      }, paintedOn);
     };
-    const plus = await hoverStyle(".toolbar-icon-button", 0);
+    const plus = await hoverStyle(".toolbar-icon-button", "before");
     const model = await hoverStyle(".model-picker-trigger");
     const permission = await hoverStyle(".permission-mode-select");
     expect(model.bg).toBe(plus.bg);
     expect(permission.bg).toBe(plus.bg);
+    // 「+」的实体盒子自己不上色：整个 hover 面只有一层，不会叠成两块。
+    expect(plus.ownBg).toBe("rgba(0, 0, 0, 0)");
     expect(model.border).toBe("rgba(0, 0, 0, 0)");
     expect(permission.border).toBe("rgba(0, 0, 0, 0)");
   });

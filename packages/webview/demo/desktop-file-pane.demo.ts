@@ -1,6 +1,9 @@
 import { test, expect } from "../e2e/utils/desktopTestHarness.js";
 import { seedSidebarSessions } from "./sidebarSeed.js";
-import { seedFileTree, type SeededTreeEntry } from "./fileTreeSeed.js";
+import {
+  seedFileTree,
+  type SeededTreeEntry,
+} from "../e2e/utils/fileTreeSeed.js";
 import { MessageInjector } from "../e2e/utils/messageInjector.js";
 import { MockDataGenerator } from "../e2e/fixtures/mockData.js";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
@@ -13,7 +16,7 @@ const FILE_PATH = `${DIR_A}/src/pages/login.tsx`;
 
 /** The workdir as the panel's directory tree lists it (root + the two levels the
  *  opened files live in). Seeded because a demo has no host to answer the
- *  listings the tree asks for — see demo/fileTreeSeed.ts. */
+ *  listings the tree asks for — see e2e/utils/fileTreeSeed.ts. */
 const TREE: Record<string, SeededTreeEntry[]> = {
   [DIR_A]: [
     { name: "docs", type: "dir" },

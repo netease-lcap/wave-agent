@@ -104,6 +104,44 @@ function expectImageDecoded(page: import("@playwright/test").Page) {
     });
 }
 
+/**
+ * Answer one level of the panel's directory tree.
+ *
+ * The tree is lazy (spec desktop-file-panel.md「文件面板工作区目录树」场景 2): the
+ * panel asks for the root when it opens and for a directory when it expands it.
+ * Wait for that `desktopListDirectory` request and reply with the same `paneId`
+ * — a pane instance only consumes messages tagged with its own id, so a
+ * hard-coded pane id would silently fall on the floor and the tree would stay
+ * empty.
+ */
+async function replyDirListing(
+  page: import("@playwright/test").Page,
+  injector: MessageInjector,
+  path: string,
+  entries: { name: string; type: "dir" | "file" }[],
+) {
+  const handle = await page.waitForFunction(
+    (wanted) =>
+      (
+        window as unknown as {
+          getTestMessages?: () => Record<string, unknown>[];
+        }
+      )
+        .getTestMessages?.()
+        .find(
+          (m) => m.command === "desktopListDirectory" && m.path === wanted,
+        ) ?? false,
+    path,
+  );
+  const request = (await handle.jsonValue()) as { paneId?: string };
+  await injector.simulateExtensionMessage("desktopDirEntries", {
+    ...(request.paneId ? { paneId: request.paneId } : {}),
+    path,
+    entries,
+    total: entries.length,
+  });
+}
+
 test.describe("Desktop file panel", () => {
   test("local image previews inline in the panel", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
@@ -270,24 +308,48 @@ test.describe("Desktop file panel", () => {
     );
   });
 
-  test("search bar finds and opens a file in the panel", async ({
+  // spec desktop-file-panel.md「文件面板工作区目录树 / 按名字查找」（场景 1、2、6
+  // 与独立测试第 4 句）：面板里只有一个查找入口 —— 目录树顶部的筛选框。它复用
+  // 输入框 `@` 的文件搜索数据流（requestFileSuggestions → fileSuggestionsResponse），
+  // 命中后树区域换成结果列表，点一条即打开；清空输入回到目录树且展开态不变。
+  test("tree filter finds and opens a file in the panel", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
     await webviewPage.setViewportSize({ width: 1280, height: 720 });
     await setupReadMessage(injector, `${DIR_A}/src/assets/login-banner.png`);
     await openFileFromMessage(webviewPage, injector);
-    // Drop the openFile already consumed by opening the panel so the search's
-    // openFile below is the next (only) one in the log.
+
+    // 树是懒加载的：打开面板请求根这一层，展开目录请求那一层。回包必须带上
+    // 请求里的 paneId —— 面板实例只收打了自己标签的消息（`useHostMessage` 的
+    // paneId 过滤），硬编码一个 id 会随布局变。
+    await replyDirListing(webviewPage, injector, DIR_A, [
+      { name: "src", type: "dir" },
+      { name: "README.md", type: "file" },
+    ]);
+    await expect(webviewPage.getByTestId("file-tree-rows")).toBeVisible();
+    // 打开文件时树的祖先会自己展开（场景 6 前半段）：截图里的那个文件就在
+    // src/assets 下，所以 src 通常已经是展开的 —— 只在它被折叠时才点开。
+    const srcRow = webviewPage.locator(`[data-tree-path="${DIR_A}/src"]`);
+    if ((await srcRow.getAttribute("aria-expanded")) !== "true") {
+      await srcRow.click();
+    }
+    await replyDirListing(webviewPage, injector, `${DIR_A}/src`, [
+      { name: "assets", type: "dir" },
+      { name: "components", type: "dir" },
+    ]);
+    await expect(
+      webviewPage.locator(`[data-tree-path="${DIR_A}/src/components"]`),
+    ).toBeVisible();
+
+    // Drop the openFile already consumed by opening the panel (and the tree's
+    // listing requests) so the filter's openFile below is the only one in the log.
     await injector.clearMessageLog();
 
-    // 搜索改为 toolbar 右侧的 search icon 呼出浮层：点击后输入框出现并聚焦。
-    await webviewPage.getByTestId("file-pane-search-trigger").click();
-    const searchInput = webviewPage.getByTestId("file-pane-search-input");
-    await expect(searchInput).toBeVisible();
+    const searchInput = webviewPage.getByTestId("file-tree-filter");
     await searchInput.fill("ChatApp");
 
-    // Focus fires a "" request; typing fires the debounced one — take the latest.
+    // Typing fires the debounced request — that is the one the reply must answer.
     const requestId = await injector.waitForFileSuggestionRequest();
 
     const targetPath = `${DIR_A}/src/components/ChatApp.tsx`;
@@ -314,20 +376,19 @@ test.describe("Desktop file panel", () => {
       requestId,
     });
 
+    // 树区域换成结果列表：命中一条文件；目录被丢掉了 —— 面板展示不了目录。
     await expect(
-      webviewPage
-        .locator(".suggestion-name")
-        .filter({ hasText: "ChatApp.tsx" }),
+      webviewPage.getByTestId("file-tree-filter-results"),
     ).toBeVisible();
-    // Directories are filtered out — the panel cannot display them.
-    await expect(
-      webviewPage.locator(".suggestion-name").filter({ hasText: "components" }),
-    ).toHaveCount(0);
+    const results = webviewPage.getByTestId("file-tree-filter-result");
+    await expect(results).toHaveCount(1);
+    await expect(results.first()).toContainText("ChatApp.tsx");
+    // 同名文件靠所在目录区分。
+    await expect(results.first()).toContainText("src/components");
+    // 目录树本身此刻不在屏上（结果列表接管了这一列）。
+    await expect(webviewPage.getByTestId("file-tree-rows")).toHaveCount(0);
 
-    await webviewPage
-      .locator(".suggestion-item")
-      .filter({ hasText: "ChatApp.tsx" })
-      .click();
+    await results.first().click();
 
     await injector.waitForMessage("openFile");
     // waitForMessage resolves to a JSHandle; read the raw log for the payload.
@@ -336,10 +397,12 @@ test.describe("Desktop file panel", () => {
       path?: string;
     };
     expect(openMsg.path).toBe(targetPath);
-    // Selecting a file closes the whole search popover.
+    // 选中即清空筛选：结果列表退场，目录树回来、src 仍是展开的（场景 3）。
+    await expect(searchInput).toHaveValue("");
+    await expect(webviewPage.getByTestId("file-tree-rows")).toBeVisible();
     await expect(
-      webviewPage.getByTestId("file-pane-search-popover"),
-    ).toHaveCount(0);
+      webviewPage.locator(`[data-tree-path="${DIR_A}/src/components"]`),
+    ).toBeVisible();
     // The toolbar now shows the searched file.
     await expect(webviewPage.locator(".file-pane-path")).toHaveText(
       "src/components/ChatApp.tsx",
