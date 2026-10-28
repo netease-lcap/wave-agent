@@ -2,6 +2,37 @@ import { ToolPlugin } from "./types.js";
 import { AskUserQuestionInput } from "../types/tools.js";
 import { ASK_USER_QUESTION_TOOL_NAME } from "../constants/tools.js";
 
+/**
+ * Collects every option that lacks a usable `label`, as `questions[i].options[j]`
+ * paths plus the value actually received.
+ *
+ * `label` is declared required, but neither layer that could catch it does: the
+ * generic schema walker (`tools/inputValidation.ts`) stops at its `MAX_DEPTH`
+ * cap before it reaches the option object, and it cannot express "non-empty
+ * after trim" anyway. The confirmation card renders
+ * `option.label` verbatim, so a missing label shows up as a blank row with no
+ * way to tell which field is at fault. Reporting each path in one message lets
+ * the model fix all of them in a single retry.
+ */
+function collectOptionLabelErrors(
+  questions: AskUserQuestionInput["questions"],
+): string[] {
+  const errors: string[] = [];
+  questions.forEach((question, questionIndex) => {
+    const options: unknown = question?.options;
+    if (!Array.isArray(options)) return;
+    options.forEach((option: unknown, optionIndex) => {
+      const label = (option as { label?: unknown } | undefined)?.label;
+      if (typeof label === "string" && label.trim() !== "") return;
+      const got = label === undefined ? "undefined" : JSON.stringify(label);
+      errors.push(
+        `questions[${questionIndex}].options[${optionIndex}] is missing a non-empty "label" (got ${got})`,
+      );
+    });
+  });
+  return errors;
+}
+
 export const askUserQuestionTool: ToolPlugin = {
   name: ASK_USER_QUESTION_TOOL_NAME,
   searchHint: "ask the user a multiple-choice question",
@@ -119,6 +150,18 @@ In plan mode, use it to clarify requirements or choose between approaches before
         content: "",
         error:
           "The 'questions' parameter is missing or empty. Please use the correct schema: { questions: [{ question, header, options, multiSelect? }] }",
+      };
+    }
+
+    // Reject before asking for permission: a question with an unlabelled option
+    // cannot be rendered, so the model has to retry instead of the user facing a
+    // blank choice.
+    const labelErrors = collectOptionLabelErrors(questions);
+    if (labelErrors.length > 0) {
+      return {
+        success: false,
+        content: "",
+        error: `AskUserQuestion input error: ${labelErrors.join("; ")}`,
       };
     }
 
