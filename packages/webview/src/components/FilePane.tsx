@@ -16,6 +16,7 @@ import { toRelativePath } from "../utils/messageUtils";
 import { useCodeCommentEntry } from "../utils/useCodeCommentEntry";
 import { useHostMessage } from "../utils/useHostMessage";
 import { ancestorsWithin, isUnder } from "../utils/fileTreePaths";
+import { isDesktopHost } from "../utils/platform";
 import { CodeCommentEntry } from "./CodeCommentEntry";
 import { ConversationFileList } from "./ConversationFileList";
 import { FileEditor } from "./fileEditor/FileEditor";
@@ -607,6 +608,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   treeWidthRef.current = treeWidth;
   const bodyWidthRef = useRef(bodyWidth);
   bodyWidthRef.current = bodyWidth;
+  // 桌面端的树挂在正文（文件预览）**右侧**（host-desktop.css：
+  // `[data-host="desktop"] .file-pane-layout { flex-direction: row-reverse }`，
+  // 设计师 1028 评论「整个树 包括搜索放在预览区域右侧」），所以横向拖拽的
+  // 方向要反过来：往左拖才是变宽、往右拖是变窄。命中区宽度与夹取逻辑不变。
+  const treeOnRight = isDesktopHost();
   const treeDragWidthRef = useRef<number | null>(null);
   const handleTreeResizeStart = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -614,7 +620,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
       const startX = event.clientX;
       const startWidth = treeWidthRef.current;
       const onMove = (move: MouseEvent) => {
-        const raw = startWidth + (move.clientX - startX);
+        const delta = treeOnRight
+          ? startX - move.clientX
+          : move.clientX - startX;
+        const raw = startWidth + delta;
         const next = draggedTooNarrow(raw)
           ? 0
           : clampTreeWidth(raw, bodyWidthRef.current);
@@ -633,10 +642,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [onTreeVisibleChange, onTreeWidthChange],
+    [onTreeVisibleChange, onTreeWidthChange, treeOnRight],
   );
 
-  // 树收起后左缘那条拖拽带：从面板左边缘往右拖够阈值就恢复显示，宽度跟着手指走。
+  // 树收起后那条恢复带：VS Code 档在面板左缘（往右拖），桌面端树在右侧，
+  // 带子落在面板右缘（往左拖）。
   const handleTreeEdgeResizeStart = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -644,7 +654,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       let opened = false;
       let width: number | null = null;
       const onMove = (move: MouseEvent) => {
-        const raw = move.clientX - startX;
+        const raw = treeOnRight ? startX - move.clientX : move.clientX - startX;
         if (!opened) {
           if (draggedTooNarrow(raw)) return;
           opened = true;
@@ -664,7 +674,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [onTreeVisibleChange, onTreeWidthChange],
+    [onTreeVisibleChange, onTreeWidthChange, treeOnRight],
   );
 
   // ---- 过滤框：复用 @ 文件搜索的数据流（spec「文件面板按名字查找」）--------

@@ -1792,8 +1792,17 @@
    base（FilePane.css）是 VS Code 形制；桌面端按面板自己的语言对齐：选中/hover 用
    `--cc-fill` 系面而不是蓝色高亮块，圆角 6px，行高 24px（树）与 26px（标签），
    输入框沿用「字段行」形制（无内描边、焦点色落自身边框）。 */
+[data-host="desktop"] .file-pane-layout {
+  /* 树与正文左右对调（设计师 1028 评论：「整个树 包括搜索放在预览区域右侧」）：
+     文件预览仍在左、紧挨对话，目录树连同「筛选文件…」整块挂到预览区右侧。
+     只反转视觉顺序，DOM 顺序不变 ⇒ 拖拽方向由 FilePane.tsx 按 isDesktopHost()
+     取反。 */
+  flex-direction: row-reverse;
+}
 [data-host="desktop"] .file-pane-tree-col {
-  border-right-color: var(--cc-border, #ebeef5);
+  /* 分界线跟着换边：原来在树列的右边框，现在树在最右，改成左边框。 */
+  border-right: 0;
+  border-left: 1px solid var(--cc-border, #ebeef5);
 }
 /* 树列 / 正文之间的拖拽条（设计师 1028 评论：「优化这里拖动的样式，参考」
    `.panel-slot-drag-handle`）—— 与面板分隔条、页签行分隔条同一档的族级配方：
@@ -1813,11 +1822,13 @@
 [data-host="desktop"] .file-pane-tree-splitter::after {
   content: "";
   position: absolute;
-  /* 对齐基准是树列那条 1px 右边框，不是 4px 拖拽带的中点（设计师 1028
-     第二轮：「感觉位置有点外」）。按中点摆在 50% 时，线在边框右侧 2px 处，
-     看着像浮在分割线外面；左移 1px 后 2px 线里 1px 压在边框上、1px 落在
-     拖拽带内，中线正好落在「树列 / 正文」的分界上。 */
-  left: -1px;
+  /* 对齐基准是树列那条 1px 分界线，不是 4px 拖拽带的中点（设计师 1028
+     第二轮：「感觉位置有点外」）。按中点摆在 50% 时，线在边框外侧 2px 处，
+     看着像浮在分割线外面。树在右侧后分界线变成树列的**左**边框，所以基准
+     改到拖拽带右缘：2px 线里 1px 压在边框上、1px 落在拖拽带内，中线正好落在
+     「正文 / 树列」的分界上。 */
+  left: auto;
+  right: -1px;
   top: 0;
   bottom: 0;
   width: 2px;
