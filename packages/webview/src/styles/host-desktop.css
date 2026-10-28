@@ -1795,8 +1795,42 @@
 [data-host="desktop"] .file-pane-tree-col {
   border-right-color: var(--cc-border, #ebeef5);
 }
+/* 树列 / 正文之间的拖拽条（设计师 1028 评论：「优化这里拖动的样式，参考」
+   `.panel-slot-drag-handle`）—— 与面板分隔条、页签行分隔条同一档的族级配方：
+   可见线画在 ::after 上，2px 竖向渐变（中间实、两端 8% 淡出），hover 时 120ms
+   淡入；base 那条「hover 整条 4px 变实色」在桌面端取消（浅色下它是近黑的
+   #1F2329，比参考的次级灰重一档）。4px 命中区、flex 位置与拖拽几何一律不动。 */
+[data-host="desktop"] .file-pane-tree-splitter {
+  --pane-drag-line: var(
+    --cc-text-secondary,
+    var(--vscode-focusBorder, #007fd4)
+  );
+  position: relative;
+}
 [data-host="desktop"] .file-pane-tree-splitter:hover {
-  background: var(--cc-border-focus, #a0a5a8);
+  background: transparent;
+}
+[data-host="desktop"] .file-pane-tree-splitter::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--pane-drag-line) 8%, transparent) 0%,
+    var(--pane-drag-line) 20%,
+    var(--pane-drag-line) 80%,
+    color-mix(in srgb, var(--pane-drag-line) 8%, transparent) 100%
+  );
+}
+[data-host="desktop"] .file-pane-tree-splitter:hover::after {
+  opacity: 1;
 }
 [data-host="desktop"] .file-tree-filter {
   height: 28px;
