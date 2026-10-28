@@ -1813,11 +1813,14 @@
 [data-host="desktop"] .file-pane-tree-splitter::after {
   content: "";
   position: absolute;
-  left: 50%;
+  /* 对齐基准是树列那条 1px 右边框，不是 4px 拖拽带的中点（设计师 1028
+     第二轮：「感觉位置有点外」）。按中点摆在 50% 时，线在边框右侧 2px 处，
+     看着像浮在分割线外面；左移 1px 后 2px 线里 1px 压在边框上、1px 落在
+     拖拽带内，中线正好落在「树列 / 正文」的分界上。 */
+  left: -1px;
   top: 0;
   bottom: 0;
   width: 2px;
-  margin-left: -1px;
   pointer-events: none;
   opacity: 0;
   transition: opacity 120ms ease;
