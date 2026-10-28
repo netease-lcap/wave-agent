@@ -15,7 +15,7 @@ HOME=/tmp/probe-home pnpm run wave            # Linux / macOS（POSIX 下 os.hom
 **两个反直觉点：**
 
 - **settings.json 的 `env` 会盖过 shell 导出的同名变量**。它进的是每会话快照（`configurationService.ts` 的 `setEnvironmentVars`），网关解析优先读快照再读 `process.env`，所以假 HOME 里若带着 `env.WAVE_API_KEY` / `WAVE_BASE_URL` / `WAVE_MODEL`，你在命令行导出的值不生效（只有 `WAVE_SERVER_URL` 会被镜像进 `process.env`）。灌 env 之前先 `cat` 一眼假 HOME 的 settings.json。
-- **有 SSO token 时 `WAVE_BASE_URL` / `WAVE_API_KEY` 整段被跳过**：`auth.json` 存在 ⇒ 网关固定为 `${serverUrl}/api/v1` + SSO token（`configurationService.ts:595-610`）。所以**换服务端（比如从生产切到测试环境）= 重新签发登录态**，只换网关不动 token 是做不到的（登录态怎么签发见 `server-and-auth.md`）；反过来，要接自建网关/假 server 时假 HOME 里就不能有 `auth.json`。
+- **有 SSO token 时 `WAVE_BASE_URL` / `WAVE_API_KEY` 整段被跳过**：`auth.json` 存在 ⇒ 网关固定为 `${serverUrl}/api/v1` + SSO token（`configurationService.ts:595-610`）。所以**换服务端（比如从生产切到测试环境）= 重新签发登录态**，只换网关不动 token 是做不到的；反过来，要接自建网关/假 server 时假 HOME 里就不能有 `auth.json`。
 
 ## 环境变量能改什么
 

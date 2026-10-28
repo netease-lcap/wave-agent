@@ -24,7 +24,7 @@ cd packages/agent-sdk && pnpm exec tsx examples/features/rewind-demo.ts
 
 ## 服务端与配置
 
-默认读本机 `~/.wave/auth.json` + `settings.json`，即「线上」那一档；会话级换地址可以传 `Agent.create({ serverUrl })`，登录态仍旧来自 HOME（`auth.json` 与服务端的绑定关系见 `server-and-auth.md`）。要接测试环境、或要假 server 做确定性验证，按 `environment.md` 上假 HOME —— 注意 `~/.wave/auth.json` 存在时网关直连配置（`WAVE_BASE_URL` / `WAVE_API_KEY`）整段失效，想走直连就不能有 auth.json。
+默认读本机 `~/.wave/auth.json` + `settings.json`，即「线上」那一档；会话级换地址可以传 `Agent.create({ serverUrl })`，登录态仍旧来自 HOME（`auth.json` 与服务端绑定，见 `environment.md`）。要接测试环境、或要假 server 做确定性验证，按 `environment.md` 上假 HOME —— 注意 `~/.wave/auth.json` 存在时网关直连配置（`WAVE_BASE_URL` / `WAVE_API_KEY`）整段失效，想走直连就不能有 auth.json。
 
 ## 探针的去留
 
