@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { validateToolInput } from "../../src/tools/inputValidation.js";
+import { askUserQuestionTool } from "../../src/tools/askUserQuestion.js";
 
 import type { ToolPlugin } from "../../src/tools/types.js";
 /** The schema TaskUpdate actually declares, trimmed to what these tests need. */
@@ -232,6 +233,80 @@ describe("validateToolInput", () => {
 
     // One honest report beats "expected an array" plus a bogus "questions[0] missing".
     expect(message?.split("\n")).toHaveLength(2);
+  });
+});
+
+describe("validateToolInput reaches the fields inside options", () => {
+  /**
+   * The schema the model is actually given. `questions[0].options[0].label` is
+   * six object/array levels below the argument object, which is what pins
+   * `MAX_DEPTH` in the walker: at 4 nothing inside `options` was examined, so a
+   * missing or mistyped `label` passed the generic layer untouched.
+   */
+  const parameters = askUserQuestionTool.config.function.parameters;
+
+  /** One complete question whose only variation is the options list. */
+  function callWith(options: unknown[]) {
+    return {
+      questions: [{ question: "Which library?", header: "Library", options }],
+    };
+  }
+
+  it("reports an option that has no label", () => {
+    const message = validateToolInput(
+      "AskUserQuestion",
+      parameters,
+      callWith([{ label: "A" }, { description: "only a description" }]),
+    );
+
+    expect(message).toBe(
+      [
+        "AskUserQuestion failed due to the following issue:",
+        "The required parameter `questions[0].options[1].label` is missing",
+      ].join("\n"),
+    );
+  });
+
+  it("reports an option whose label is not a string", () => {
+    const message = validateToolInput(
+      "AskUserQuestion",
+      parameters,
+      callWith([{ label: "A" }, { label: 42 }]),
+    );
+
+    expect(message).toBe(
+      [
+        "AskUserQuestion failed due to the following issue:",
+        "The parameter `questions[0].options[1].label` type is expected as `string` but provided as `integer`",
+      ].join("\n"),
+    );
+  });
+
+  it("accepts an empty label — 'non-blank' is the tool's rule, not the schema's", () => {
+    // `""` is a valid `string`, and the schema subset here has no `minLength`,
+    // so the generic layer has nothing to report. Rejecting a blank label needs
+    // `label.trim() !== ""`, which lives in `askUserQuestion.execute()`
+    // (`collectOptionLabelErrors`) — this layer must not duplicate it.
+    expect(
+      validateToolInput(
+        "AskUserQuestion",
+        parameters,
+        callWith([{ label: "A" }, { label: "" }]),
+      ),
+    ).toBeNull();
+  });
+
+  it("still accepts a well-formed call", () => {
+    expect(
+      validateToolInput(
+        "AskUserQuestion",
+        parameters,
+        callWith([
+          { label: "A", description: "the first option" },
+          { label: "B" },
+        ]),
+      ),
+    ).toBeNull();
   });
 });
 
