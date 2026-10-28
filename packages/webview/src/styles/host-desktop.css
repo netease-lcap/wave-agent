@@ -3554,6 +3554,12 @@
   font-weight: 500;
   line-height: 22px;
 }
+/* 题干封顶的高度按桌面行高换算（6 行 = 22 × 6，对齐 base 的 18 × 6）——
+   同一条规则在 base 里写的是 108px，字号换档后不跟着换算就只剩 4.9 行。
+   见 ConfirmationDialog.css 的 .question-header-chip。 */
+[data-host="desktop"] .question-header-chip {
+  max-height: 132px;
+}
 [data-host="desktop"] .option-label {
   font-size: 14px;
   font-weight: 500;
