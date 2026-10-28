@@ -219,7 +219,10 @@
   justify-content: space-between;
   gap: 8px;
   min-height: 24px;
-  /* 高度分配时不被压缩（压缩额度全部由 .options-list 承担）。 */
+  /* 这一行不许被压缩：题干的高度是「内容与 max-height 取小」，不随这一行缩，
+     所以压 row 只会把「选项区从哪开始」的布局位置往上挪，题干下半截反倒盖到
+     选项区上（实测 900×520 重叠 56px）。极小视口下多出来的高度交给
+     .confirmation-body 滚。 */
   flex-shrink: 0;
 }
 
@@ -232,6 +235,13 @@
   min-width: 0;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  /* 题干最多 6 行（18px × 6），超出在题干内部滚：不加这条，字数多的题干会
+     按自然高度吃光弹窗的高度配额，把 .options-list 压到 0 —— 选项还在 DOM 里，
+     但零高度的滚动容器既看不见也点不到。桌面层行高 22px，那一档 132px 写在
+     host-desktop.css。规格见 ask-user-tool.md「题干超长时在题干区域内滚动」。 */
+  max-height: 108px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .question-text {
@@ -246,13 +256,15 @@
 }
 
 /* 选项列表 = 滚动容器（0923 评论「滚动区域应该是这里面」）：占满剩余高度，
-   超出即在这里滚（题头 / 进度条 / 弹窗标题都不动）。 */
+   超出即在这里滚（题头 / 进度条 / 弹窗标题都不动）。
+   保底一行（40px = 桌面一个选项高）：题干封顶后，极小视口里「题干上限 + 选项」
+   仍可能超过弹窗可用高度，此时宁可让弹窗主体滚，也不让选项区被压成 0。 */
 .options-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
   flex: 1 1 auto;
-  min-height: 0;
+  min-height: 40px;
   overflow-y: auto;
 }
 

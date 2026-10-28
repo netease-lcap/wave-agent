@@ -755,7 +755,12 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
             </div>
           )}
           <div className="question-header-row">
-            <span className="question-header-chip">{q.question}</span>
+            {/* key 让换题时换节点：题干是滚动容器，复用节点会把上一题的滚动
+                位置带到新题目上（ask-user-tool.md「题干超长时在题干区域内滚动」
+                场景 4）。 */}
+            <span key={currentQuestionIndex} className="question-header-chip">
+              {q.question}
+            </span>
           </div>
           <div className="options-list" ref={questionsListRef}>
             {q.options.map((opt, oIndex) => (
