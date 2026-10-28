@@ -22,6 +22,22 @@ import { render as inkRender, type Instance } from "ink";
  */
 class FakeStdout extends EventEmitter {
   readonly columns = 100;
+  // `rows` has to be declared too, even though almost nothing reads it: ink's
+  // `getWindowSize()` trusts the stream only when *both* dimensions are
+  // present, and otherwise resolves the real terminal through the
+  // `terminal-size` package — with **synchronous `execFileSync` spawns**
+  // (`tput`, `resize`, `/dev/tty`). ink asks once per layout pass, so a missing
+  // `rows` put a child-process spawn on every rendered frame: 4486 of them
+  // across this package's unit suite, ~3ms each here but an order of magnitude
+  // more on the Windows runner. That is what made this suite flaky on Windows
+  // (2026-10-27): a frame there costs so much that `vi.waitFor`'s 1s budget no
+  // longer covers the second commit a self-measuring component needs
+  // (PlanView's scroll indicators, the /btw pager) and `testTimeout` (5s) runs
+  // out on ChatInterface's mount — reproduced on Linux by only making that
+  // spawn slower. 24 is the value the fallback used to produce, so no test's
+  // layout changes; it also stops the size from depending on whoever runs the
+  // suite (a real terminal answers with *its* height).
+  readonly rows = 24;
   frames: string[] = [];
   private lastWritten?: string;
 
