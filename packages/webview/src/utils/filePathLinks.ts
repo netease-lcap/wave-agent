@@ -1,18 +1,20 @@
 // 助手 markdown 文本中文件路径的识别与链接化（见 specs/ui/file-path-links.md），
-// 对齐 Claude AI 的双通道规则：
-//   - 行内代码（反引号整串）：任意路径形式，要求 ≥1 斜杠 + 点扩展名，
-//     支持 :N / :N-M 行号后缀；相对路径仅在此通道识别。
-//   - 正文纯文本：仅识别无歧义的绝对路径形式（POSIX /…、Windows 盘符、
-//     file:///…），不要求扩展名，但 POSIX 绝对路径至少包含两级目录
-//     （单独的 `/foo` 不识别，规避散文中的斜杠误判）。
-// ~/… 是识别候选但不生成链接（wave 各宿主 openFile 按 OS 绝对路径处理，
-// webview 无宿主用户主目录可展开），交由渲染层回退为普通文本。
+// 四条通道（行内代码 / 正文纯文本 / 围栏代码块 / bash 输出）共用一套识别规则，
+// 对齐 Claude AI 的 barePath：
+//   - 只识别绝对路径形式（POSIX /…、Windows 盘符、file:///…）；相对路径
+//     （`src/a.ts`、`./x.ts`、`../x.ts`）一律不识别，保持普通文本。
+//   - 必须带点扩展名（`/etc/hosts`、`/usr/local/bin` 不识别）。POSIX 绝对路径
+//     另要求至少两级目录（单独的 `/foo.ts` 不识别，规避散文中的斜杠误判）。
+//   - 行号后缀 `:N` / `:N-M` 在行内代码、围栏代码块、bash 输出三通道识别；
+//     正文纯文本通道不识别（避免把散文里的冒号当行号）。
+//   - ~/… 是识别候选但不生成链接（wave 各宿主 openFile 按 OS 绝对路径处理，
+//     webview 无宿主用户主目录可展开），交由渲染层回退为普通文本。
 //
 // 本模块只做纯识别与字符串链接化，不接触 DOM/React：行内代码通道与正文
 // 通道的拼装在 Message.tsx 的 marked renderer 中完成，点击解析复用这里。
 
 import type { TokenizerExtension } from "marked";
-import { normalizeFilePath, toAbsoluteFilePath } from "./messageUtils";
+import { normalizeFilePath } from "./messageUtils";
 
 // marked（escape encode=true）只对 & < > " ' 做实体转义，这里做精确逆操作。
 const ENTITY_MAP: Record<string, string> = {
@@ -42,8 +44,8 @@ export function decodeHtmlEntities(s: string): string {
 }
 
 export interface FilePathMatch {
-  /** posix 绝对 / win 盘符绝对 / file:/// 绝对 / rel 相对（仅行内代码通道） */
-  kind: "posix" | "win" | "file" | "rel";
+  /** posix 绝对 / win 盘符绝对 / file:/// 绝对 */
+  kind: "posix" | "win" | "file";
   /** 去掉行号后缀与首尾标点后的路径原文（按消息里写的那样） */
   path: string;
   /** 展示文本 = path 原文（无首尾标点，含行号后缀写法） */
@@ -75,13 +77,6 @@ const FILE_URL_RE = new RegExp(
   "iu",
 );
 
-// 相对路径（仅行内代码通道）：可选 ./ ../ 前缀 + ≥1 级目录 + 末段带扩展名
-// （点后至少一个 ASCII 字母数字，扩展名内不再含点，防把句尾句号吞进路径）。
-const REL_RE = new RegExp(
-  `^(?:\\.{1,2}\\/)?(?:${SEG}+\\/)+${SEG}*\\.[A-Za-z0-9][A-Za-z0-9_-]*$`,
-  "u",
-);
-
 // 行号后缀：:N 或 :N-M，仅允许紧贴路径末尾。
 const LINE_SUFFIX_RE = /^(.*):(\d+)(?:-(\d+))?$/;
 
@@ -95,7 +90,6 @@ const classifyPath = (body: string): FilePathMatch["kind"] | null => {
   if (FILE_URL_RE.test(body)) return "file";
   if (WIN_ABS_RE.test(body)) return "win";
   if (POSIX_ABS_RE.test(body)) return "posix";
-  if (REL_RE.test(body)) return "rel";
   return null;
 };
 
@@ -115,18 +109,14 @@ const RIGHT_PUNCT = ")]}»›〉》」』】’”.,;:!?…，。、；：！？
  * 识别一个候选 token（无空白）是否为文件路径。token 允许首尾带标点
  * （正文中的逗号/句号/括号等会被剥离，不影响路径本身）。
  *
- * @param opts.allowRelative 是否允许相对路径（仅行内代码通道传 true）
- * @param opts.requireExtension 是否要求点扩展名（行内代码通道规则）
- * @param opts.lineSuffix 是否解析尾部 :N / :N-M 行号后缀（仅行内代码通道；
- *   false 时正文纯文本不吞入行号，规避把散文中的冒号当行号）
+ * 只识别绝对路径，且必须带点扩展名（四条通道同规则，见文件头）。
+ *
+ * @param opts.lineSuffix 是否解析尾部 :N / :N-M 行号后缀（正文纯文本通道传
+ *   false —— 不吞入行号，规避把散文中的冒号当行号）
  */
 export function detectFilePathToken(
   token: string,
-  opts: {
-    allowRelative?: boolean;
-    requireExtension?: boolean;
-    lineSuffix?: boolean;
-  } = {},
+  opts: { lineSuffix?: boolean } = {},
 ): FilePathMatch | null {
   if (!token) return null;
   const display = stripOuterPunct(token);
@@ -150,17 +140,9 @@ export function detectFilePathToken(
 
   const kind = classifyPath(body);
   if (!kind) return null;
-  if (kind === "rel" && !opts.allowRelative) return null;
-  // 扩展名检查：行内代码通道（requireExtension）恒要求点扩展名；正文纯文本
-  // 通道（requireExtension=false）对纯 ASCII 绝对路径不要求（/etc/hosts 可点），
-  // 但路径一旦含非 ASCII 字符（中文等）则必须带 ASCII 点扩展名收尾——否则
-  // 散文里「/张三/李四」「参考 /etc/hosts文件」这类中文尾巴会被整体吞进链接，
-  // 造成死链。真实含中文文件名的路径（报表.xlsx、CodeChat桌.html、笔记.md）
-  // 均有扩展名，不受影响。
-  const needsExt = opts.requireExtension || /[\u0080-\u{10ffff}]/u.test(body);
-  if (kind !== "rel" && needsExt && !HAS_EXT_RE.test(body)) {
-    return null;
-  }
+  // 点扩展名是四条通道的共同前提：无扩展名的路径（/etc/hosts、/usr/local/bin）
+  // 在命令输出与散文里大多是日志串或接口路径，放进来就是误链。
+  if (!HAS_EXT_RE.test(body)) return null;
 
   return {
     kind,
@@ -177,19 +159,13 @@ const stripFileScheme = (path: string): string =>
 
 /**
  * 把匹配结果解析为可发给宿主 openFile 的 OS 绝对路径。
- * 相对路径需要 workdir 归并；无 workdir（宿主未提供）→ null（调用方应回退纯文本）。
- * 归并结果统一做词法规范化（折叠 `.` / `..`，见 specs/ui/file-path-links.md 场景 6）：
- * 宿主 fs 虽能靠内核解析 `..` 读到文件，但文件面板标题与自动刷新比对本就依赖这
- * 串字符串（见 specs/desktop/desktop-file-panel.md 场景 21/7），残留 `..` 会让
- * 标题显示怪路径、并让「工具写的路径」与「面板打开的路径」比对失配。
+ * 绝对路径本身可能带 `.` / `..` 段，统一做词法规范化（折叠 `.` / `..`，见
+ * specs/ui/file-path-links.md 场景 5）：宿主 fs 虽能靠内核解析 `..` 读到文件，
+ * 但文件面板标题与自动刷新比对本就依赖这串字符串（见
+ * specs/desktop/desktop-file-panel.md 场景 21/7），残留 `..` 会让标题显示怪
+ * 路径、并让「工具写的路径」与「面板打开的路径」比对失配。
  */
-export function resolveFilePathMatch(
-  match: FilePathMatch,
-  workdir?: string,
-): string | null {
-  if (match.kind === "rel") {
-    return toAbsoluteFilePath(match.path, workdir);
-  }
+export function resolveFilePathMatch(match: FilePathMatch): string {
   if (match.kind === "file") {
     return normalizeFilePath(stripFileScheme(match.path));
   }
@@ -208,10 +184,8 @@ export const fileLinkHtml = (displayText: string): string =>
 const isPathChar = (c: string): boolean =>
   c === "/" || c === "\\" || /[A-Za-z0-9._~+@%-]/.test(c);
 
-// 正文纯文本通道的识别选项：相对路径与 :N 行号后缀都不识别。
+// 正文纯文本通道的识别选项：不识别 :N 行号后缀（绝对路径与扩展名要求恒开）。
 const PROSE_OPTS = {
-  allowRelative: false,
-  requireExtension: false,
   lineSuffix: false,
 } as const;
 
@@ -306,26 +280,22 @@ export function linkifyFilePathText(rawText: string): string {
   return html;
 }
 
-// 围栏代码块通道：识别规则与行内代码通道一致（≥1 斜杠 + 点扩展名、允许相对
-// 路径、支持 :N / :N-M），但按空白逐 token 处理，并额外剥离引号（代码里路径常
-// 写作 "src/a.ts"）。代码原文的换行与缩进不参与分词，原样保留。
-const CODE_BLOCK_OPTS = {
-  allowRelative: true,
-  requireExtension: true,
-} as const;
+// 围栏代码块通道：识别规则与行内代码通道一致（绝对路径 + 点扩展名 + :N 行号），
+// 但按空白逐 token 处理，并额外剥离引号（代码里路径常写作 "/abs/a.ts"）。代码
+// 原文的换行与缩进不参与分词，原样保留。
 const CODE_BLOCK_LEFT_STRIP = `${LEFT_PUNCT}"'`;
 const CODE_BLOCK_RIGHT_STRIP = `${RIGHT_PUNCT}"'`;
 
 /** 代码块里的单个 token → HTML（首尾引号/标点留在链接外，保持代码原文）。 */
-const codeBlockTokenHtml = (token: string, workdir?: string): string => {
+const codeBlockTokenHtml = (token: string): string => {
   let start = 0;
   let end = token.length;
   while (start < end && CODE_BLOCK_LEFT_STRIP.includes(token[start]!)) start++;
   while (end > start && CODE_BLOCK_RIGHT_STRIP.includes(token[end - 1]!)) end--;
   const core = token.slice(start, end);
   if (core) {
-    const matched = detectFilePathToken(core, CODE_BLOCK_OPTS);
-    if (matched && resolveFilePathMatch(matched, workdir) !== null) {
+    const matched = detectFilePathToken(core);
+    if (matched) {
       return (
         escapeHtml(token.slice(0, start)) +
         fileLinkHtml(matched.display) +
@@ -340,16 +310,15 @@ const codeBlockTokenHtml = (token: string, workdir?: string): string => {
  * 围栏代码块通道：把代码块正文里的文件路径转成 <a class="file-path-link">，
  * 其余代码文本（含换行、缩进、引号）原样保留并转义。返回的 HTML 可安全用于
  * dangerouslySetInnerHTML（调用方把它放进 <pre><code>）。
- * 相对路径需要 workdir 归并；无 workdir 时该 token 保持纯代码文本。
  */
-export function linkifyCodeBlockPaths(code: string, workdir?: string): string {
+export function linkifyCodeBlockPaths(code: string): string {
   if (!code) return "";
   let html = "";
   let lastIndex = 0;
   for (const run of code.matchAll(/\S+/g)) {
     const start = run.index!;
     html += escapeHtml(code.slice(lastIndex, start));
-    html += codeBlockTokenHtml(run[0], workdir);
+    html += codeBlockTokenHtml(run[0]);
     lastIndex = start + run[0].length;
   }
   html += escapeHtml(code.slice(lastIndex));

@@ -64,23 +64,23 @@ afterEach(() => {
 describe("inline-code channel file paths (specs/ui/file-path-links.md)", () => {
   it("linkifies a code path with :N-M suffix, keeping code style and the suffix text", () => {
     const { fileLinks, codeLinks } = renderMessage(
-      "见 `src/utils/format.ts:12-24`",
-      { workdir: "/home/u/repo" },
+      "见 `/home/u/repo/src/utils/format.ts:12-24`",
     );
     const links = fileLinks();
     expect(links).toHaveLength(1);
     expect(codeLinks()).toHaveLength(1);
-    expect(links[0]).toHaveTextContent("src/utils/format.ts:12-24");
+    expect(links[0]).toHaveTextContent(
+      "/home/u/repo/src/utils/format.ts:12-24",
+    );
     // Stays inside the code span (monospace + background) and is a real anchor
     // (href present → Enter activates it natively, spec scenario: keyboard).
     expect(links[0]?.closest("code")).not.toBeNull();
     expect(links[0]?.getAttribute("href")).toBe("#");
   });
 
-  it("click (desktop, onOpenFile) joins the relative path to workdir and passes the line range", () => {
+  it("click (desktop, onOpenFile) opens the absolute path with the line range", () => {
     const { onOpenFile, fileLinks } = renderMessage(
-      "见 `src/utils/format.ts:12-24`",
-      { workdir: "/home/u/repo" },
+      "见 `/home/u/repo/src/utils/format.ts:12-24`",
     );
     fireEvent.click(fileLinks()[0]!);
     expect(onOpenFile).toHaveBeenCalledWith(
@@ -90,31 +90,33 @@ describe("inline-code channel file paths (specs/ui/file-path-links.md)", () => {
     );
   });
 
-  it("click on a `../` path passes the collapsed canonical path (spec 场景 8)", () => {
-    const { onOpenFile, fileLinks } = renderMessage(
-      "见 `../sibling-repo/src/a.ts:12-24`",
-      { workdir: "/home/u/proj" },
-    );
-    fireEvent.click(fileLinks()[0]!);
-    expect(onOpenFile).toHaveBeenCalledWith(
-      "/home/u/sibling-repo/src/a.ts",
-      12,
-      24,
-    );
+  it("keeps relative code paths as plain code (absolute paths only)", () => {
+    for (const rel of [
+      "src/main.ts",
+      "./src/a.ts",
+      "../sibling-repo/src/a.ts",
+    ]) {
+      const { container, fileLinks } = renderMessage(`见 \`${rel}\``, {
+        workdir: "/home/u/proj",
+      });
+      expect(fileLinks()).toHaveLength(0);
+      expect(
+        container.querySelector(".markdown-content code")?.textContent,
+      ).toBe(rel);
+    }
   });
 
   it("click on a :N single-line suffix passes startLine === endLine", () => {
-    const { onOpenFile, fileLinks } = renderMessage("看 `src/format.ts:9`", {
-      workdir: "/home/u/repo",
-    });
+    const { onOpenFile, fileLinks } = renderMessage(
+      "看 `/home/u/repo/src/format.ts:9`",
+    );
     fireEvent.click(fileLinks()[0]!);
     expect(onOpenFile).toHaveBeenCalledWith("/home/u/repo/src/format.ts", 9, 9);
   });
 
   it("click (IDE, no onOpenFile) emits the openFile RPC with path + line range", () => {
     const { vscode, fileLinks } = renderIdeMessage(
-      "见 `src/utils/format.ts:12-24`",
-      { workdir: "/home/u/repo" },
+      "见 `/home/u/repo/src/utils/format.ts:12-24`",
     );
     fireEvent.click(fileLinks()[0]!);
     const sent = (
@@ -127,13 +129,6 @@ describe("inline-code channel file paths (specs/ui/file-path-links.md)", () => {
     expect(openFileMsg.path).toBe("/home/u/repo/src/utils/format.ts");
     expect(openFileMsg.startLine).toBe(12);
     expect(openFileMsg.endLine).toBe(24);
-  });
-
-  it("keeps an inline-code relative path as plain code when there is no workdir (no opener context)", () => {
-    const { container, fileLinks } = renderMessage("见 `src/main.ts`");
-    expect(fileLinks()).toHaveLength(0);
-    const code = container.querySelector(".markdown-content code");
-    expect(code?.textContent).toBe("src/main.ts");
   });
 
   it("linkifies absolute paths in code even without workdir", () => {
@@ -178,13 +173,12 @@ describe("inline-code channel file paths (specs/ui/file-path-links.md)", () => {
 
   it("linkifies inline-code paths with Chinese/non-ASCII filenames and opens them verbatim", () => {
     const { onOpenFile, fileLinks } = renderMessage(
-      "见 `C:\\Users\\张三\\下载\\报表.xlsx` 与 `src/我的组件.tsx:8`",
-      { workdir: "/home/u/repo" },
+      "见 `C:\\Users\\张三\\下载\\报表.xlsx` 与 `C:\\proj\\src\\我的组件.tsx:8`",
     );
     const links = fileLinks();
     expect(links).toHaveLength(2);
     expect(links[0]).toHaveTextContent("C:\\Users\\张三\\下载\\报表.xlsx");
-    expect(links[1]).toHaveTextContent("src/我的组件.tsx:8");
+    expect(links[1]).toHaveTextContent("C:\\proj\\src\\我的组件.tsx:8");
     fireEvent.click(links[0]!);
     expect(onOpenFile).toHaveBeenCalledWith(
       "C:\\Users\\张三\\下载\\报表.xlsx",
@@ -193,7 +187,7 @@ describe("inline-code channel file paths (specs/ui/file-path-links.md)", () => {
     );
     fireEvent.click(links[1]!);
     expect(onOpenFile).toHaveBeenCalledWith(
-      "/home/u/repo/src/我的组件.tsx",
+      "C:\\proj\\src\\我的组件.tsx",
       8,
       8,
     );
@@ -210,31 +204,41 @@ describe("inline-code channel file paths (specs/ui/file-path-links.md)", () => {
 describe("plain-text channel absolute paths (specs/ui/file-path-links.md)", () => {
   it("linkifies bare POSIX absolute paths in prose", () => {
     const { fileLinks } = renderMessage(
-      "参考 /etc/hosts 与 /home/u/repo/src/index.ts 的实现",
+      "参考 /home/u/repo/src/index.ts 与 /etc/nginx/nginx.conf 的实现",
     );
     const links = fileLinks();
     expect(links).toHaveLength(2);
-    expect(links[0]).toHaveTextContent("/etc/hosts");
-    expect(links[1]).toHaveTextContent("/home/u/repo/src/index.ts");
+    expect(links[0]).toHaveTextContent("/home/u/repo/src/index.ts");
+    expect(links[1]).toHaveTextContent("/etc/nginx/nginx.conf");
+  });
+
+  it("keeps extension-less absolute paths as plain prose", () => {
+    const { container, fileLinks } = renderMessage(
+      "参考 /etc/hosts 与 /var/log/syslog 与 /usr/local/bin",
+    );
+    expect(fileLinks()).toHaveLength(0);
+    expect(container.querySelector(".markdown-content")?.textContent).toContain(
+      "/etc/hosts",
+    );
   });
 
   it("keeps adjacent punctuation outside the link and visible", () => {
     const { container, fileLinks } = renderMessage(
-      "参见 /etc/hosts，然后看 /tmp/a.ts。",
+      "参见 /tmp/a.ts，然后看 /tmp/b.ts。",
     );
     const links = fileLinks();
     expect(links).toHaveLength(2);
-    expect(links[0]).toHaveTextContent("/etc/hosts");
-    expect(links[1]).toHaveTextContent("/tmp/a.ts");
+    expect(links[0]).toHaveTextContent("/tmp/a.ts");
+    expect(links[1]).toHaveTextContent("/tmp/b.ts");
     // 中文逗号/句号不进链接目标
     expect(links[0]?.textContent).not.toContain("，");
     expect(links[1]?.textContent).not.toContain("。");
     // 但整体文本保留原标点
     expect(container.querySelector(".markdown-content")?.textContent).toContain(
-      "/etc/hosts，",
+      "/tmp/a.ts，",
     );
     expect(container.querySelector(".markdown-content")?.textContent).toContain(
-      "/tmp/a.ts。",
+      "/tmp/b.ts。",
     );
   });
 
@@ -294,7 +298,7 @@ describe("plain-text channel absolute paths (specs/ui/file-path-links.md)", () =
 
   it("linkifies absolute paths inside bold/italic text and headings", () => {
     const { container, fileLinks } = renderMessage(
-      "**请改 /tmp/bug.ts** 与 *看 /var/log/syslog*",
+      "**请改 /tmp/bug.ts** 与 *看 /var/log/app.log*",
     );
     const links = fileLinks();
     expect(links).toHaveLength(2);
@@ -347,49 +351,45 @@ describe("plain-text channel absolute paths (specs/ui/file-path-links.md)", () =
 
 describe("fenced code block paths (specs/ui/file-path-links.md)", () => {
   const winPath = "C:\\Users\\u\\proj\\a.webp";
+  const posixPath = "/home/u/repo/docs/public/screenshots/x.webp";
   const relPath = "docs/public/screenshots/x.webp";
 
   it("linkifies each path line and preserves newlines/indentation", () => {
     const { container, onOpenFile, fileLinks } = renderMessage(
-      `\`\`\`\n    ${winPath}\n  ${relPath}\n\`\`\``,
-      { workdir: "/home/u/repo" },
+      `\`\`\`\n    ${winPath}\n  ${posixPath}\n\`\`\``,
     );
     const links = fileLinks();
     expect(links).toHaveLength(2);
     expect(links[0]).toHaveTextContent(winPath);
-    expect(links[1]).toHaveTextContent(relPath);
+    expect(links[1]).toHaveTextContent(posixPath);
     expect(container.querySelector(".markdown-content pre")?.textContent).toBe(
-      `    ${winPath}\n  ${relPath}\n`,
+      `    ${winPath}\n  ${posixPath}\n`,
     );
     fireEvent.click(links[1]!);
-    expect(onOpenFile).toHaveBeenCalledWith(
-      "/home/u/repo/docs/public/screenshots/x.webp",
-      undefined,
-      undefined,
-    );
+    expect(onOpenFile).toHaveBeenCalledWith(posixPath, undefined, undefined);
   });
 
   it("linkifies a path inside a code line, leaving quotes as code text", () => {
     const { container, fileLinks } = renderMessage(
-      '```\nconst p = "src/utils/a.ts";\n```',
-      { workdir: "/home/u/repo" },
+      '```\nconst p = "/home/u/repo/src/utils/a.ts";\n```',
     );
     const links = fileLinks();
     expect(links).toHaveLength(1);
-    expect(links[0]).toHaveTextContent("src/utils/a.ts");
+    expect(links[0]).toHaveTextContent("/home/u/repo/src/utils/a.ts");
     expect(container.querySelector(".markdown-content pre")?.textContent).toBe(
-      'const p = "src/utils/a.ts";\n',
+      'const p = "/home/u/repo/src/utils/a.ts";\n',
     );
   });
 
   it("parses :N-M in a code block path and opens the line range", () => {
     const { onOpenFile, fileLinks } = renderMessage(
-      "```\nsrc/utils/format.ts:12-24\n```",
-      { workdir: "/home/u/repo" },
+      "```\n/home/u/repo/src/utils/format.ts:12-24\n```",
     );
     const links = fileLinks();
     expect(links).toHaveLength(1);
-    expect(links[0]).toHaveTextContent("src/utils/format.ts:12-24");
+    expect(links[0]).toHaveTextContent(
+      "/home/u/repo/src/utils/format.ts:12-24",
+    );
     fireEvent.click(links[0]!);
     expect(onOpenFile).toHaveBeenCalledWith(
       "/home/u/repo/src/utils/format.ts",
@@ -409,9 +409,10 @@ describe("fenced code block paths (specs/ui/file-path-links.md)", () => {
     ).toBe("npm run build\nvar x = 1\n");
   });
 
-  it("keeps relative code paths plain when there is no workdir", () => {
+  it("keeps relative code paths plain (absolute paths only)", () => {
     const { container, fileLinks } = renderMessage(
       `\`\`\`\n${relPath}\n\`\`\``,
+      { workdir: "/home/u/repo" },
     );
     expect(fileLinks()).toHaveLength(0);
     expect(container.querySelector(".markdown-content pre")?.textContent).toBe(
@@ -436,7 +437,7 @@ describe("fenced code block paths (specs/ui/file-path-links.md)", () => {
 // 代码块通道一致（specs/ui/file-path-links.md）。
 describe("bash output paths (specs/ui/file-path-links.md)", () => {
   const winPath = "C:\\Users\\u\\proj\\dist\\a.js";
-  const relPath = "src/utils/format.ts";
+  const posixPath = "/home/u/repo/src/utils/format.ts";
 
   function renderBashOutput(
     result: string,
@@ -493,21 +494,16 @@ describe("bash output paths (specs/ui/file-path-links.md)", () => {
     expect(onOpenFile).toHaveBeenCalledWith(winPath, undefined, undefined);
   });
 
-  it("joins a relative output path to workdir and passes the line range", () => {
+  it("parses the line range on an absolute output path", () => {
     const { onOpenFile, pathLinks } = renderBashOutput(
-      `error at "${relPath}:12-24";`,
-      { workdir: "/home/u/repo" },
+      `error at "${posixPath}:12-24";`,
     );
     const links = pathLinks();
     expect(links).toHaveLength(1);
     // 引号与分号留在链接外
-    expect(links[0]).toHaveTextContent(`${relPath}:12-24`);
+    expect(links[0]).toHaveTextContent(`${posixPath}:12-24`);
     fireEvent.click(links[0]!);
-    expect(onOpenFile).toHaveBeenCalledWith(
-      "/home/u/repo/src/utils/format.ts",
-      12,
-      24,
-    );
+    expect(onOpenFile).toHaveBeenCalledWith(posixPath, 12, 24);
   });
 
   it("IDE host: clicking an output path emits the openFile RPC", () => {
@@ -527,8 +523,7 @@ describe("bash output paths (specs/ui/file-path-links.md)", () => {
 
   it("keeps both the URL and the path clickable in the same line", () => {
     const { output } = renderBashOutput(
-      "see https://example.com/docs or src/a.ts",
-      { workdir: "/home/u/repo" },
+      "see https://example.com/docs or /home/u/repo/src/a.ts",
     );
     const urlLink = output?.querySelector(
       'a[href="https://example.com/docs"]',
@@ -537,13 +532,16 @@ describe("bash output paths (specs/ui/file-path-links.md)", () => {
     const pathLink = output?.querySelector(
       "a.file-path-link",
     ) as HTMLElement | null;
-    expect(pathLink?.textContent).toBe("src/a.ts");
+    expect(pathLink?.textContent).toBe("/home/u/repo/src/a.ts");
   });
 
-  it("keeps relative output paths plain when there is no workdir", () => {
-    const { output, pathLinks } = renderBashOutput(`error in ${relPath}`);
+  it("keeps relative output paths plain even with a workdir", () => {
+    const { output, pathLinks } = renderBashOutput(
+      "error in src/utils/format.ts",
+      { workdir: "/home/u/repo" },
+    );
     expect(pathLinks()).toHaveLength(0);
-    expect(output?.textContent).toBe(`error in ${relPath}`);
+    expect(output?.textContent).toBe("error in src/utils/format.ts");
   });
 
   it("keeps non-path output as plain text (logs, API paths, extension-less absolutes)", () => {

@@ -8,64 +8,70 @@ import {
 } from "../../src/utils/filePathLinks";
 
 // specs/ui/file-path-links.md —— 纯识别函数
+// 四条通道（行内代码 / 正文纯文本 / 围栏代码块 / bash 输出）共用同一套识别规则：
+// 只识别绝对路径，且必须带点扩展名。正文通道另外不解析 `:N` 行号后缀。
 
-const code = (s: string) =>
-  detectFilePathToken(s, { allowRelative: true, requireExtension: true });
-const text = (s: string) =>
-  detectFilePathToken(s, { allowRelative: false, requireExtension: false });
+const code = (s: string) => detectFilePathToken(s);
+const text = (s: string) => detectFilePathToken(s, { lineSuffix: false });
 
-describe("detectFilePathToken — 行内代码通道（整串、相对/绝对、:N / :N-M）", () => {
-  it("识别带行区间的相对路径", () => {
-    expect(code("src/utils/format.ts:12-24")).toEqual({
-      kind: "rel",
-      path: "src/utils/format.ts",
-      display: "src/utils/format.ts:12-24",
+describe("detectFilePathToken — 只识别绝对路径（四条通道同规则）", () => {
+  it("识别带行区间的 POSIX 绝对路径", () => {
+    expect(code("/home/u/repo/src/utils/format.ts:12-24")).toEqual({
+      kind: "posix",
+      path: "/home/u/repo/src/utils/format.ts",
+      display: "/home/u/repo/src/utils/format.ts:12-24",
       startLine: 12,
       endLine: 24,
     });
   });
 
-  it("识别单行号相对路径（endLine 落到 startLine）", () => {
-    const m = code("src/format.ts:9");
-    expect(m?.path).toBe("src/format.ts");
+  it("识别单行号（endLine 落到 startLine）", () => {
+    const m = code("/home/u/repo/src/format.ts:9");
+    expect(m?.path).toBe("/home/u/repo/src/format.ts");
     expect(m?.startLine).toBe(9);
     expect(m?.endLine).toBe(9);
   });
 
-  it("识别无行号的相对路径", () => {
-    expect(code("src/main.ts")?.path).toBe("src/main.ts");
-    expect(code("./main.ts")?.path).toBe("./main.ts");
-    expect(code("../shared/x.ts")?.path).toBe("../shared/x.ts");
-  });
-
-  it("识别 POSIX/Windows 绝对路径（代码通道需带扩展名）", () => {
+  it("识别无行号的绝对路径", () => {
     expect(code("/home/u/repo/config.json")?.kind).toBe("posix");
     expect(code("/etc/nginx/nginx.conf")?.kind).toBe("posix");
     expect(code("C:\\proj\\src\\a.ts")?.kind).toBe("win");
     expect(code("C:/proj/src/a.ts:5")?.startLine).toBe(5);
   });
 
-  it("识别含中文/非 ASCII 字符的文件路径（Windows/相对/POSIX）", () => {
+  it("拒绝相对路径（./ ../ 与裸相对形式一律不识别）", () => {
+    expect(code("src/main.ts")).toBeNull();
+    expect(code("src/utils/format.ts:12-24")).toBeNull();
+    expect(code("./main.ts")).toBeNull();
+    expect(code("./src/a.ts")).toBeNull();
+    expect(code("../shared/x.ts")).toBeNull();
+    expect(code("../sibling-repo/src/b.ts")).toBeNull();
+    expect(code("../../x/y.ts")).toBeNull();
+    expect(code("foo/bar.ts")).toBeNull();
+  });
+
+  it("识别含中文/非 ASCII 字符的绝对路径", () => {
     expect(code("C:\\Users\\张三\\下载\\报表.xlsx")?.kind).toBe("win");
     expect(
       code("C:\\Users\\wb.tandefu01\\Downloads\\CodeChat桌.html")?.kind,
     ).toBe("win");
     expect(code("/home/张三/项目/笔记.md")?.kind).toBe("posix");
-    expect(code("src/我的组件.tsx")?.kind).toBe("rel");
     expect(code("C:/用户/目录/文件 名.txt")).toBeNull(); // 含空白仍不识别
   });
 
-  it("行内代码中文路径拒绝无扩展名/纯中文内容", () => {
-    expect(code("请把报表放在这里")).toBeNull(); // 中文句子无斜杠
-    expect(code("C:\\Users\\张三\\下载")).toBeNull(); // 无扩展名
+  it("拒绝无点扩展名的绝对路径与纯中文内容", () => {
+    expect(code("/etc/hosts")).toBeNull();
+    expect(code("/var/log/syslog")).toBeNull();
+    expect(code("/usr/local/bin")).toBeNull();
+    expect(code("C:\\Users\\张三\\下载")).toBeNull();
     expect(code("/张三/李四/")).toBeNull(); // 尾斜杠非段字符
+    expect(code("请把报表放在这里")).toBeNull(); // 中文句子无斜杠
   });
 
   it("拒绝非路径代码内容", () => {
     expect(code("var x = 1")).toBeNull(); // 空白/无斜杠
     expect(code("www.example.com")).toBeNull(); // 无斜杠
-    expect(code("/foo")).toBeNull(); // 无扩展名 + 单级
-    expect(code("/etc/hosts")).toBeNull(); // 代码通道要求扩展名
+    expect(code("/foo")).toBeNull(); // 单级 + 无扩展名
     expect(code("a.ts")).toBeNull(); // 无斜杠
     expect(code("node src/a.ts")).toBeNull(); // 多词整串不提取
     expect(code("https://example.com/a")).toBeNull(); // URL 由 URL 通道处理
@@ -74,26 +80,29 @@ describe("detectFilePathToken — 行内代码通道（整串、相对/绝对、
   });
 
   it("剥离首尾标点后仍识别", () => {
-    expect(code("(src/a.ts)")?.path).toBe("src/a.ts");
-    expect(code("`src/a.ts")?.path).toBe("src/a.ts");
-    expect(code("src/a.ts,")?.path).toBe("src/a.ts");
-  });
-
-  it("正文模式拒绝相对路径", () => {
-    expect(text("src/main.ts")).toBeNull();
-    expect(text("../../x.ts")).toBeNull();
+    expect(code("(/home/u/a.ts)")?.path).toBe("/home/u/a.ts");
+    expect(code("`/home/u/a.ts")?.path).toBe("/home/u/a.ts");
+    expect(code("/home/u/a.ts,")?.path).toBe("/home/u/a.ts");
   });
 });
 
-describe("detectFilePathToken — 正文纯文本通道（仅绝对）", () => {
-  it("识别多级 POSIX 绝对路径（不要求扩展名）", () => {
-    expect(text("/etc/hosts")?.kind).toBe("posix");
+describe("detectFilePathToken — 正文纯文本通道（仅绝对 + 要求扩展名）", () => {
+  it("识别多级 POSIX 绝对路径", () => {
     expect(text("/home/u/repo/src/index.ts")?.kind).toBe("posix");
+    expect(text("/etc/nginx/nginx.conf")?.kind).toBe("posix");
+  });
+
+  it("拒绝无扩展名的绝对路径", () => {
+    expect(text("/etc/hosts")).toBeNull();
+    expect(text("/var/log/syslog")).toBeNull();
+    expect(text("/usr/local/bin")).toBeNull();
   });
 
   it("拒绝单级绝对路径 /foo 与相对形式", () => {
     expect(text("/foo")).toBeNull();
     expect(text("foo/bar.ts")).toBeNull();
+    expect(text("src/main.ts")).toBeNull();
+    expect(text("../../x.ts")).toBeNull();
   });
 
   it("识别 Windows 盘符与 file:/// 形式", () => {
@@ -120,24 +129,17 @@ describe("detectFilePathToken — 正文纯文本通道（仅绝对）", () => {
     expect(text("C:\\Users\\张三\\下载")).toBeNull(); // 中文路径但无扩展名
     expect(text("/home/张三/项目")).toBeNull(); // 目录级中文无扩展名
     expect(text("/请把报表放在/这里")).toBeNull(); // 中文散文斜杠形态
-    expect(text("/etc/hosts文件")).toBeNull(); // 中文尾巴不被吞成路径（仅 ASCII 前缀可链）
+    expect(text("/etc/hosts文件")).toBeNull(); // 中文尾巴不被吞成路径
+  });
+
+  it("正文通道不解析 :N 行号后缀", () => {
+    expect(text("/tmp/a.ts:12")).toBeNull(); // ':12' 使整串不匹配路径形态
   });
 });
 
 describe("resolveFilePathMatch — 打开路径解析", () => {
-  it("相对路径按 workdir 归并", () => {
-    const m = code("src/utils/format.ts:12-24")!;
-    expect(resolveFilePathMatch(m, "/home/u/repo")).toBe(
-      "/home/u/repo/src/utils/format.ts",
-    );
-  });
-
-  it("相对路径无 workdir → null（渲染层回退纯文本）", () => {
-    expect(resolveFilePathMatch(code("src/main.ts")!, undefined)).toBeNull();
-  });
-
   it("绝对路径原样返回；file:/// 剥离协议前缀", () => {
-    expect(resolveFilePathMatch(text("/etc/hosts")!)).toBe("/etc/hosts");
+    expect(resolveFilePathMatch(text("/home/u/a.ts")!)).toBe("/home/u/a.ts");
     expect(resolveFilePathMatch(text("file:///home/u/a.ts")!)).toBe(
       "/home/u/a.ts",
     );
@@ -146,34 +148,16 @@ describe("resolveFilePathMatch — 打开路径解析", () => {
     );
   });
 
-  // specs/ui/file-path-links.md 场景 6/8 —— 归并结果必须是规范绝对路径
-  it("`./` 与 `../` 前缀在归并后折叠为规范绝对路径", () => {
-    expect(resolveFilePathMatch(code("./src/a.ts")!, "/home/u/proj")).toBe(
-      "/home/u/proj/src/a.ts",
-    );
-    expect(
-      resolveFilePathMatch(code("../sibling-repo/src/a.ts")!, "/home/u/proj"),
-    ).toBe("/home/u/sibling-repo/src/a.ts");
-    expect(resolveFilePathMatch(code("../../x/y.ts")!, "/home/u/proj")).toBe(
-      "/home/x/y.ts",
-    );
-    // workdir 末尾斜杠不影响归并结果
-    expect(resolveFilePathMatch(code("./src/a.ts")!, "/home/u/proj/")).toBe(
-      "/home/u/proj/src/a.ts",
-    );
-  });
-
-  it("折叠是纯词法的：`..` 逐段抵消，逃出根的 `..` 被丢弃", () => {
+  // specs/ui/file-path-links.md 场景 5 —— 发往宿主的路径必须是规范绝对路径
+  it("路径中的 `..` 段纯词法折叠", () => {
     expect(resolveFilePathMatch(text("/home/u/proj/../x/a.ts")!)).toBe(
       "/home/u/x/a.ts",
     );
     expect(resolveFilePathMatch(text("/home/../../a/b.ts")!)).toBe("/a/b.ts");
   });
 
-  it("Windows 盘符路径折叠后保留反斜杠风格", () => {
-    expect(resolveFilePathMatch(code("../other/a.ts")!, "C:\\proj")).toBe(
-      "C:\\other\\a.ts",
-    );
+  it("Windows 盘符路径折叠后保留原有分隔符风格", () => {
+    expect(resolveFilePathMatch(text("C:/a/../b/c.ts")!)).toBe("C:/b/c.ts");
     expect(resolveFilePathMatch(text("C:\\proj\\..\\a.ts")!)).toBe("C:\\a.ts");
   });
 });
@@ -190,13 +174,20 @@ describe("linkifyFilePathText — 正文纯文本链接化", () => {
     expect(html).toContain("。");
   });
 
+  it("无扩展名的绝对路径不生成链接", () => {
+    const html = linkifyFilePathText("参考 /etc/hosts 与 /var/log/syslog");
+    expect(html).not.toContain("file-path-link");
+    expect(html).toContain("/etc/hosts");
+    expect(html).toContain("/var/log/syslog");
+  });
+
   it("路径后紧贴中文文本只链接路径部分，其余保留", () => {
-    const html = linkifyFilePathText("参见 /etc/hosts，然后看 /tmp/a.ts。");
+    const html = linkifyFilePathText("参见 /tmp/a.ts，然后看 /tmp/b.ts。");
     expect(html).toContain(
-      '<a href="#" class="file-path-link">/etc/hosts</a>，然后看 ',
+      '<a href="#" class="file-path-link">/tmp/a.ts</a>，然后看 ',
     );
     expect(html).toContain(
-      '<a href="#" class="file-path-link">/tmp/a.ts</a>。',
+      '<a href="#" class="file-path-link">/tmp/b.ts</a>。',
     );
   });
 
@@ -238,7 +229,9 @@ describe("linkifyFilePathText — 正文纯文本链接化", () => {
   });
 
   it("相对路径与 ~/ 不生成链接", () => {
-    const html = linkifyFilePathText("改 src/main.ts 与 ~/x/y.ts 看看");
+    const html = linkifyFilePathText(
+      "改 src/main.ts 与 ./src/a.ts 与 ~/x/y.ts 看看",
+    );
     expect(html).not.toContain("file-path-link");
   });
 
@@ -254,46 +247,46 @@ describe("linkifyFilePathText — 正文纯文本链接化", () => {
 });
 
 describe("linkifyCodeBlockPaths — 围栏代码块链接化", () => {
-  const rel = "docs/public/screenshots/x.webp";
+  const posix = "/home/u/repo/docs/public/screenshots/x.webp";
   const win = "C:\\Users\\u\\proj\\a.webp";
 
-  const workdir = "/home/u/repo";
-
-  it("逐 token 识别路径，换行与缩进原样保留", () => {
-    const html = linkifyCodeBlockPaths(`  ${win}\n\t${rel}\n`, workdir);
+  it("逐 token 识别绝对路径，换行与缩进原样保留", () => {
+    const html = linkifyCodeBlockPaths(`  ${win}\n\t${posix}\n`);
     expect(html).toContain(`  <a href="#" class="file-path-link">${win}</a>`);
-    expect(html).toContain(`\t<a href="#" class="file-path-link">${rel}</a>`);
+    expect(html).toContain(`\t<a href="#" class="file-path-link">${posix}</a>`);
     expect(html).toContain("\n");
   });
 
   it("剥离首尾引号与标点，引号留在链接外", () => {
-    const html = linkifyCodeBlockPaths(`const p = "src/utils/a.ts";`, workdir);
+    const html = linkifyCodeBlockPaths('const p = "/home/u/proj/src/a.ts";');
     expect(html).toContain(
-      'const p = &quot;<a href="#" class="file-path-link">src/utils/a.ts</a>&quot;;',
+      'const p = &quot;<a href="#" class="file-path-link">/home/u/proj/src/a.ts</a>&quot;;',
     );
   });
 
   it("解析 :N / :N-M 行号后缀（整串作为显示文本）", () => {
-    const html = linkifyCodeBlockPaths("src/utils/format.ts:12-24", workdir);
+    const html = linkifyCodeBlockPaths("/home/u/proj/src/format.ts:12-24");
     expect(html).toContain(
-      '<a href="#" class="file-path-link">src/utils/format.ts:12-24</a>',
+      '<a href="#" class="file-path-link">/home/u/proj/src/format.ts:12-24</a>',
     );
   });
 
-  it("相对路径无 workdir 时保持纯文本；绝对路径不受影响", () => {
-    const plain = linkifyCodeBlockPaths(rel);
-    expect(plain).not.toContain("file-path-link");
-    expect(plain).toBe(rel);
-    const abs = linkifyCodeBlockPaths(win);
-    expect(abs).toContain(`>${win}</a>`);
+  it("相对路径保持代码原文，不生成链接", () => {
+    const rel = "docs/public/screenshots/x.webp";
+    expect(linkifyCodeBlockPaths(rel)).toBe(rel);
+    const dotted = "./dist/a.js";
+    expect(linkifyCodeBlockPaths(dotted)).toBe(dotted);
+    const html = linkifyCodeBlockPaths('const p = "src/utils/a.ts";');
+    expect(html).not.toContain("file-path-link");
   });
 
   it("非路径内容（命令/变量/URL/无扩展名）不生成链接且完整转义", () => {
     const html = linkifyCodeBlockPaths(
-      "npm run build\nvar x = 1;\nhttps://example.com/a/b\n<div>&</div>",
+      "npm run build\nvar x = 1;\nhttps://example.com/a/b\n/usr/local/bin\n<div>&</div>",
     );
     expect(html).not.toContain("file-path-link");
     expect(html).toContain("npm run build");
+    expect(html).toContain("/usr/local/bin");
     expect(html).toContain("&lt;div&gt;&amp;&lt;/div&gt;");
   });
 });

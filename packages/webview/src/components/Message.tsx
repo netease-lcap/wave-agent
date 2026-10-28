@@ -126,12 +126,12 @@ const extractClickableUrl = (codeText: string): string | null => {
 // codespan/text 收到的内容已被 marked 的 lexer 转义（escape(text, true)），
 // URL/文件路径提升前先解码，产物再按原样（已转义/或重新转义）拼回。
 //
-// 文件路径点击识别（specs/ui/file-path-links.md）两条通道都在这里接入：
-//   - codespan（行内代码整串）：≥1 斜杠 + 点扩展名，支持 :N / :N-M 行号后缀；
-//     相对路径需要 workdir 归并（无 workdir 时回退纯代码文本，对齐
-//     「无 opener 上下文 → 纯文本」）。
-//   - text（正文纯文本）：仅无歧义绝对路径（POSIX /…、C:\…、file:///…）。
-// workdir 只影响渲染期是否可解析，点击解析在 handleContentClick 中再做一次。
+// 文件路径点击识别（specs/ui/file-path-links.md）四条通道都在这里接入：
+//   - codespan（行内代码整串）：绝对路径 + 点扩展名，支持 :N / :N-M 行号后缀；
+//   - text（正文纯文本）：绝对路径 + 点扩展名，不解析行号后缀；
+//   - code（围栏代码块）与 bash 输出走 linkifyPlainText（与 URL 共存）。
+// 四条通道一视同仁：相对路径与无扩展名路径都不识别。
+// 点击解析在 handleContentClick 中再做一次。
 // 与 marked 默认 Renderer.link 的 cleanUrl 保持一致（encodeURI + 还原 %25）。
 // 覆盖 renderer.link 只为剥掉链接 label 内生成的路径锚点，输出必须逐字节
 // 对齐默认实现，避免既有链接行为回归。
@@ -461,7 +461,6 @@ const splitErrorContent = (content: string): ErrorPart[] => {
 };
 
 const createMessageMarkdownRenderer = (
-  workdir?: string,
   // 远程控制 Web 页关掉文件路径链接化（spec ui/remote-control.md 场景 23）：
   // 页面上没有编辑器可打开路径。URL 与其余 markdown 渲染不受影响。
   linkFilePaths: boolean = true,
@@ -544,7 +543,6 @@ const createMessageMarkdownRenderer = (
           const lang = (infostring || "").match(/^\S*/)?.[0];
           const body = linkifyPlainText(
             code.replace(/\n$/, "") + "\n",
-            workdir,
             linkFilePaths,
           );
           const cls = lang ? ` class="language-${escapeHtml(lang)}"` : "";
@@ -559,12 +557,9 @@ const createMessageMarkdownRenderer = (
     }
     // 行内代码通道：整串是文件路径（含可选 :N / :N-M）→ 代码样式的可点击元素
     const matched = linkFilePaths
-      ? detectFilePathToken(decodeHtmlEntities(text), {
-          allowRelative: true,
-          requireExtension: true,
-        })
+      ? detectFilePathToken(decodeHtmlEntities(text))
       : null;
-    if (matched && resolveFilePathMatch(matched, workdir) !== null) {
+    if (matched) {
       return `<code>${fileLinkHtml(matched.display)}</code>`;
     }
     return `<code>${text}</code>`;
@@ -627,10 +622,7 @@ interface ParsedMarkdownContent {
 }
 
 // Parse markdown content and extract mermaid blocks
-const parseMarkdownWithMermaid = (
-  content: string,
-  workdir?: string,
-): ParsedMarkdownContent => {
+const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
   if (!content || content.trim() === "") {
     return { elements: [] };
   }
@@ -666,7 +658,7 @@ const parseMarkdownWithMermaid = (
     } else if (part.trim()) {
       // This is regular markdown content
       const html = marked.parse(part, {
-        renderer: createMessageMarkdownRenderer(workdir, linkFilePaths),
+        renderer: createMessageMarkdownRenderer(linkFilePaths),
       });
       const sanitizedHtml = DOMPurify.sanitize(html, {
         ALLOWED_TAGS: [
@@ -857,15 +849,13 @@ export const Message: React.FC<MessageProps> = React.memo(
       const fileLink = target?.closest?.("a.file-path-link");
       if (fileLink) {
         e.preventDefault();
-        const parsed = detectFilePathToken(fileLink.textContent || "", {
-          allowRelative: true,
-          requireExtension: false,
-        });
+        const parsed = detectFilePathToken(fileLink.textContent || "");
         if (parsed) {
-          const resolved = resolveFilePathMatch(parsed, props.workdir);
-          if (resolved) {
-            openFile(resolved, parsed.startLine, parsed.endLine);
-          }
+          openFile(
+            resolveFilePathMatch(parsed),
+            parsed.startLine,
+            parsed.endLine,
+          );
         }
         return;
       }
@@ -882,10 +872,7 @@ export const Message: React.FC<MessageProps> = React.memo(
     };
 
     const renderMarkdownContent = (content: string, index: number) => {
-      const parsed = parseMarkdownWithMermaid(
-        content,
-        props.workdir || undefined,
-      );
+      const parsed = parseMarkdownWithMermaid(content);
       return (
         <div
           key={index}
@@ -959,11 +946,7 @@ export const Message: React.FC<MessageProps> = React.memo(
                 className="bash-command-output"
                 tabIndex={isDesktopHost() ? 0 : undefined}
                 dangerouslySetInnerHTML={{
-                  __html: linkifyPlainText(
-                    result,
-                    props.workdir || undefined,
-                    !isRemotePageHost(),
-                  ),
+                  __html: linkifyPlainText(result, !isRemotePageHost()),
                 }}
               />
             </div>

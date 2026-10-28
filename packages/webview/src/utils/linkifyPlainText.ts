@@ -77,13 +77,9 @@ const urlAnchor = (rawUrl: string): string => {
 // `linkFilePaths=false`（远程控制 Web 页，见 specs/ui/remote-control.md 场景 23）
 // 只关掉路径这一半：URL 仍可点击，路径退化为纯文本 —— 页面上没有编辑器可以
 // 打开它，留着只会是「看着能点、点了没反应」。
-const linkifyRun = (
-  run: string,
-  workdir?: string,
-  linkFilePaths: boolean = true,
-): string => {
+const linkifyRun = (run: string, linkFilePaths: boolean = true): string => {
   const plain = (text: string) =>
-    linkFilePaths ? linkifyCodeBlockPaths(text, workdir) : escapeHtml(text);
+    linkFilePaths ? linkifyCodeBlockPaths(text) : escapeHtml(text);
   let html = "";
   let last = 0;
   for (const match of run.matchAll(URL_RE)) {
@@ -97,10 +93,9 @@ const linkifyRun = (
 
 // 将纯文本中的裸 http(s) URL 与文件路径转为 <a> 链接，其余文本完整 HTML 转义
 // 后按原文返回（含换行与缩进）。返回的 HTML 字符串可安全用于
-// dangerouslySetInnerHTML。workdir 用于归并相对路径：缺省时相对路径回退纯文本。
+// dangerouslySetInnerHTML。
 export function linkifyPlainText(
   text: string,
-  workdir?: string,
   linkFilePaths: boolean = true,
 ): string {
   if (!text) return "";
@@ -109,7 +104,7 @@ export function linkifyPlainText(
   for (const run of text.matchAll(RUN_RE)) {
     const index = run.index!;
     html += escapeHtml(text.slice(lastIndex, index));
-    html += linkifyRun(run[0], workdir, linkFilePaths);
+    html += linkifyRun(run[0], linkFilePaths);
     lastIndex = index + run[0].length;
   }
   return html + escapeHtml(text.slice(lastIndex));
