@@ -65,6 +65,7 @@ import type {
   PrefillDraftRequest,
   PushNotificationControl,
   ThemeSource,
+  ToastKind,
   ToolBlock,
   ToolBlockUpdateCallbackParams,
   UpdateChannel,
@@ -2324,6 +2325,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  // 渲染进程自己发起的轻提示（宿主没参与的动作，如文件面板「复制路径」）：
+  // 走同一条顶部 toast 栈与同一套自动消失规则（无 action ⇒ 8s 后自己收）。
+  // id 用自增前缀，避免与宿主下发的 toast 撞号。
+  const localToastSeqRef = useRef(0);
+  const pushToast = useCallback((message: string, kind: ToastKind = "info") => {
+    localToastSeqRef.current += 1;
+    const id = `local-toast-${localToastSeqRef.current}`;
+    setToasts((prev) => [
+      ...prev.filter((t) => t.id !== id),
+      { id, message, type: kind },
+    ]);
+  }, []);
+
   const handleToastAction = useCallback(
     (toast: UpdateToast) => {
       if (!toast.action) return;
@@ -4573,6 +4587,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           onCloseOtherFiles={handleCloseOtherFiles}
           onCloseFilesRight={handleCloseFilesRight}
           onCloseAllFiles={handleCloseAllFiles}
+          onToast={pushToast}
           onReorderFile={handleReorderFile}
           onAddComment={handleAddComment}
           onStartEdit={handleFileStartEdit}

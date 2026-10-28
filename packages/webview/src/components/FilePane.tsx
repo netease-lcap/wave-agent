@@ -9,7 +9,14 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { createPortal } from "react-dom";
 import hljs from "../utils/highlight";
-import type { FileItem, FileViewState, OpenFileTab, VsCodeApi } from "../types";
+import type {
+  FileItem,
+  FileViewState,
+  OpenFileTab,
+  ToastKind,
+  VsCodeApi,
+} from "../types";
+import { copyTextToClipboard } from "../utils/clipboard";
 import { commentLocationLabel, formatCodeComment } from "../utils/codeComment";
 import type { ConversationFileEntry } from "../utils/conversationFiles";
 import { toRelativePath } from "../utils/messageUtils";
@@ -437,6 +444,10 @@ export interface FilePaneProps {
   onCancelEdit?: () => void;
   /** 磁盘已被改动后用户选择「重新加载」：丢弃草稿并重读。 */
   onReloadDraft?: () => void;
+
+  // ---- 轻提示（spec desktop-file-panel.md 场景 8「复制路径」）----------------
+  /** 走窗口级的全局 toast（桌面端顶部居中提示）。缺省时面板只做复制、不弹提示。 */
+  onToast?: (message: string, kind?: ToastKind) => void;
 }
 
 /**
@@ -477,6 +488,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onSaveDraft,
   onCancelEdit,
   onReloadDraft,
+  onToast,
 }) => {
   // PaneShell's body (the whole layout) and the content column's own scroll
   // container — the tree column scrolls independently, so jumps and find marks
@@ -493,6 +505,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
     [files, activeFileId],
   );
   const fileView: FileViewState | null = activeFile?.fileView ?? null;
+
+  // 复制路径（spec desktop-file-panel.md 场景 8）：原来只吞掉 clipboard 的
+  // Promise、成功失败都不说话（设计师 1028 评论：「点击复制路径后现在是否有
+  // 全局提示？没有的话需要加一下成功失败提示」）。现在两种结果都回一条窗口级
+  // toast，失败时退回 execCommand，两路都失败才报错。
+  const handleCopyPath = useCallback(async () => {
+    const path = activeFile?.path;
+    if (!path) return;
+    const ok = await copyTextToClipboard(path);
+    onToast?.(
+      ok ? "路径已复制" : "复制失败，请手动复制",
+      ok ? "success" : "error",
+    );
+  }, [activeFile?.path, onToast]);
 
   // ---- 目录树（左栏）--------------------------------------------------------
   // 展开集合与已取到的层级都留在组件里：树的每一次展开才发一次列目录请求，
@@ -1401,7 +1427,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 aria-label="复制路径"
                 data-testid="file-copy-path"
                 onClick={() => {
-                  void navigator.clipboard?.writeText(activeFile.path);
+                  void handleCopyPath();
                 }}
               >
                 <i
