@@ -1787,16 +1787,79 @@
    桌面辅助档 12/20 + r4 + --cc-fill 面 + --cc-text-regular 字。
    （不用 --cc-text-secondary：浅色 #6C7076 压在 #F0F2F5 上是 4.44:1，12px 文字
    差一点不到 AA 4.5；--cc-text-regular #565A60 → 6.08:1、深色 8.63:1。） */
+/* ═══ 文件面板底色：绑定「右 pane 内容面」角色，浅色取纯白 ═══
+   设计师 1028 评论（div.file-pane-scroll，「当前对话的文件 …」列表）：「浅色模式
+   这里和树 都用纯白背景，要按照设计规范绑定变量」。
+   原值来自 `.preview-pane`（DesktopApp.css:1176）的
+   `--vscode-sideBar-background` = `--cc-bg-navigation`（浅 #F7F8FB 导航/侧栏面）——
+   那是**导航面**，套在右 pane 上就把整块（树列 + 正文列，两列都是透明）读成侧栏灰。
+   改为内容面角色 `--cc-bg-inspector`（host-desktop.css:32 / :149「右 pane 内容面」：
+   浅 #FFFFFF、深 #181A1B）；深色与现值同值 ⇒ 深色零视觉变化，浅色 #F7F8FB → #FFFFFF。
+   只圈 `.file-pane`：差异 / 终端 / 预览三个 pane 的底色不变（是否一起改待她裁决）。
+   子元素不需要各写一遍 —— 树列、正文列、列表卡片、toast 之外的一切都透明，
+   只这一层会被画出来。 */
+[data-host="desktop"] .preview-pane.file-pane {
+  background: var(--cc-bg-inspector, var(--vscode-panel-background));
+}
+
 /* ═══ 文件面板：目录树 / 面板内文件标签 / 查找条（spec desktop-file-panel.md
    「文件面板工作区目录树」「文件面板已打开文件的标签」「文件面板内查找与跳行」）═══
    base（FilePane.css）是 VS Code 形制；桌面端按面板自己的语言对齐：选中/hover 用
    `--cc-fill` 系面而不是蓝色高亮块，圆角 6px，行高 24px（树）与 26px（标签），
    输入框沿用「字段行」形制（无内描边、焦点色落自身边框）。 */
+[data-host="desktop"] .file-pane-layout {
+  /* 树与正文左右对调（设计师 1028 评论：「整个树 包括搜索放在预览区域右侧」）：
+     文件预览仍在左、紧挨对话，目录树连同「筛选文件…」整块挂到预览区右侧。
+     只反转视觉顺序，DOM 顺序不变 ⇒ 拖拽方向由 FilePane.tsx 按 isDesktopHost()
+     取反。 */
+  flex-direction: row-reverse;
+}
 [data-host="desktop"] .file-pane-tree-col {
-  border-right-color: var(--cc-border, #ebeef5);
+  /* 分界线跟着换边：原来在树列的右边框，现在树在最右，改成左边框。 */
+  border-right: 0;
+  border-left: 1px solid var(--cc-border, #ebeef5);
+}
+/* 树列 / 正文之间的拖拽条（设计师 1028 评论：「优化这里拖动的样式，参考」
+   `.panel-slot-drag-handle`）—— 与面板分隔条、页签行分隔条同一档的族级配方：
+   可见线画在 ::after 上，2px 竖向渐变（中间实、两端 8% 淡出），hover 时 120ms
+   淡入；base 那条「hover 整条 4px 变实色」在桌面端取消（浅色下它是近黑的
+   #1F2329，比参考的次级灰重一档）。4px 命中区、flex 位置与拖拽几何一律不动。 */
+[data-host="desktop"] .file-pane-tree-splitter {
+  --pane-drag-line: var(
+    --cc-text-secondary,
+    var(--vscode-focusBorder, #007fd4)
+  );
+  position: relative;
 }
 [data-host="desktop"] .file-pane-tree-splitter:hover {
-  background: var(--cc-border-focus, #a0a5a8);
+  background: transparent;
+}
+[data-host="desktop"] .file-pane-tree-splitter::after {
+  content: "";
+  position: absolute;
+  /* 对齐基准是树列那条 1px 分界线，不是 4px 拖拽带的中点（设计师 1028
+     第二轮：「感觉位置有点外」）。按中点摆在 50% 时，线在边框外侧 2px 处，
+     看着像浮在分割线外面。树在右侧后分界线变成树列的**左**边框，所以基准
+     改到拖拽带右缘：2px 线里 1px 压在边框上、1px 落在拖拽带内，中线正好落在
+     「正文 / 树列」的分界上。 */
+  left: auto;
+  right: -1px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--pane-drag-line) 8%, transparent) 0%,
+    var(--pane-drag-line) 20%,
+    var(--pane-drag-line) 80%,
+    color-mix(in srgb, var(--pane-drag-line) 8%, transparent) 100%
+  );
+}
+[data-host="desktop"] .file-pane-tree-splitter:hover::after {
+  opacity: 1;
 }
 [data-host="desktop"] .file-tree-filter {
   height: 28px;
@@ -1854,13 +1917,46 @@
   color: var(--cc-text-regular);
   opacity: 1;
 }
+/* 标签带尺寸变量：药丸高 + 上下留白。补缝线的高度由这两个值算出来，改任何一处
+   （药丸高度 / 留白档）补缝线都会自动跟着走，不需要再同步第三个数字。 */
+[data-host="desktop"] .file-pane {
+  --file-tab-height: 26px;
+  --file-tab-band-pad: 6px;
+}
 [data-host="desktop"] .file-tab-strip {
   gap: 4px;
-  padding: 6px 6px 0;
+  /* 上下对称留白（设计师 1028 评论：「这里太贴近下方了，没有足够留白」）：
+     原来 padding 是 6px 6px 0 —— 标签药丸（26 高、r6）底边直接压在下方那条
+     1px 分界线上，视觉上像被线切掉一块。改成 6/6 后标签底边离分界线 6px，
+     与上方留白一致（带高 33 → 39，仍然是「标签带 + 分界线」在下、正文在其下）。 */
+  padding: var(--file-tab-band-pad);
   border-bottom-color: var(--cc-border, #ebeef5);
 }
+
+/* 补缝：标签带住在正文列里，右缘与树列之间还隔着一条 4px 拖拽条（树收起时是
+   3px 恢复带）—— 带子的下边框走到列边界就断了，和树的竖线之间留一个 4px 的缺口
+   （设计师 1028 追问：「标签带到树之间我看有间距」）。这里在隔条的顶部把这条线
+   补过去，高度 = 药丸高 + 上下留白 + 自身那 1px，正好落在标签带下边框同一行，
+   角上接上树的竖线。
+   为什么不用 `.file-tab-strip::after`：带子自身 `overflow: hidden`（clips 横向滚动
+   的标签行），画出去的那 4px 会被裁掉 —— 实测确实一个像素都没出来。
+   `:has()` 门控：只有标签带真的渲染了（开了文件）才补，列表态不会多出一条孤线。 */
+[data-host="desktop"] .file-pane-layout:has(.file-tab-strip) .file-pane-tree-splitter::before,
+[data-host="desktop"] .file-pane-layout:has(.file-tab-strip) .file-pane-tree-edge::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  height: calc(
+    var(--file-tab-height) + var(--file-tab-band-pad) * 2 + 1px
+  );
+  border-bottom: 1px solid var(--cc-border, #ebeef5);
+  pointer-events: none;
+}
 [data-host="desktop"] .file-tab {
-  height: 26px;
+  height: var(--file-tab-height);
   max-width: 200px;
   padding: 0 4px 0 10px;
   border-radius: 6px;

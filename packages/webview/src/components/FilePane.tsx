@@ -9,13 +9,21 @@ import { marked } from "marked";
 import DOMPurify from "dompurify";
 import { createPortal } from "react-dom";
 import hljs from "../utils/highlight";
-import type { FileItem, FileViewState, OpenFileTab, VsCodeApi } from "../types";
+import type {
+  FileItem,
+  FileViewState,
+  OpenFileTab,
+  ToastKind,
+  VsCodeApi,
+} from "../types";
+import { copyTextToClipboard } from "../utils/clipboard";
 import { commentLocationLabel, formatCodeComment } from "../utils/codeComment";
 import type { ConversationFileEntry } from "../utils/conversationFiles";
 import { toRelativePath } from "../utils/messageUtils";
 import { useCodeCommentEntry } from "../utils/useCodeCommentEntry";
 import { useHostMessage } from "../utils/useHostMessage";
 import { ancestorsWithin, isUnder } from "../utils/fileTreePaths";
+import { isDesktopHost } from "../utils/platform";
 import { CodeCommentEntry } from "./CodeCommentEntry";
 import { ConversationFileList } from "./ConversationFileList";
 import { FileEditor } from "./fileEditor/FileEditor";
@@ -437,6 +445,10 @@ export interface FilePaneProps {
   onCancelEdit?: () => void;
   /** 磁盘已被改动后用户选择「重新加载」：丢弃草稿并重读。 */
   onReloadDraft?: () => void;
+
+  // ---- 轻提示（spec desktop-file-panel.md 场景 8「复制路径」）----------------
+  /** 走窗口级的全局 toast（桌面端顶部居中提示）。缺省时面板只做复制、不弹提示。 */
+  onToast?: (message: string, kind?: ToastKind) => void;
 }
 
 /**
@@ -477,6 +489,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
   onSaveDraft,
   onCancelEdit,
   onReloadDraft,
+  onToast,
 }) => {
   // PaneShell's body (the whole layout) and the content column's own scroll
   // container — the tree column scrolls independently, so jumps and find marks
@@ -493,6 +506,20 @@ export const FilePane: React.FC<FilePaneProps> = ({
     [files, activeFileId],
   );
   const fileView: FileViewState | null = activeFile?.fileView ?? null;
+
+  // 复制路径（spec desktop-file-panel.md 场景 8）：原来只吞掉 clipboard 的
+  // Promise、成功失败都不说话（设计师 1028 评论：「点击复制路径后现在是否有
+  // 全局提示？没有的话需要加一下成功失败提示」）。现在两种结果都回一条窗口级
+  // toast，失败时退回 execCommand，两路都失败才报错。
+  const handleCopyPath = useCallback(async () => {
+    const path = activeFile?.path;
+    if (!path) return;
+    const ok = await copyTextToClipboard(path);
+    onToast?.(
+      ok ? "路径已复制" : "复制失败，请手动复制",
+      ok ? "success" : "error",
+    );
+  }, [activeFile?.path, onToast]);
 
   // ---- 目录树（左栏）--------------------------------------------------------
   // 展开集合与已取到的层级都留在组件里：树的每一次展开才发一次列目录请求，
@@ -608,6 +635,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
   treeWidthRef.current = treeWidth;
   const bodyWidthRef = useRef(bodyWidth);
   bodyWidthRef.current = bodyWidth;
+  // 桌面端的树挂在正文（文件预览）**右侧**（host-desktop.css：
+  // `[data-host="desktop"] .file-pane-layout { flex-direction: row-reverse }`，
+  // 设计师 1028 评论「整个树 包括搜索放在预览区域右侧」），所以横向拖拽的
+  // 方向要反过来：往左拖才是变宽、往右拖是变窄。命中区宽度与夹取逻辑不变。
+  const treeOnRight = isDesktopHost();
   const treeDragWidthRef = useRef<number | null>(null);
   const handleTreeResizeStart = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
@@ -615,7 +647,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
       const startX = event.clientX;
       const startWidth = treeWidthRef.current;
       const onMove = (move: MouseEvent) => {
-        const raw = startWidth + (move.clientX - startX);
+        const delta = treeOnRight
+          ? startX - move.clientX
+          : move.clientX - startX;
+        const raw = startWidth + delta;
         const next = draggedTooNarrow(raw)
           ? 0
           : clampTreeWidth(raw, bodyWidthRef.current);
@@ -634,10 +669,11 @@ export const FilePane: React.FC<FilePaneProps> = ({
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [onTreeVisibleChange, onTreeWidthChange],
+    [onTreeVisibleChange, onTreeWidthChange, treeOnRight],
   );
 
-  // 树收起后左缘那条拖拽带：从面板左边缘往右拖够阈值就恢复显示，宽度跟着手指走。
+  // 树收起后那条恢复带：VS Code 档在面板左缘（往右拖），桌面端树在右侧，
+  // 带子落在面板右缘（往左拖）。
   const handleTreeEdgeResizeStart = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -645,7 +681,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       let opened = false;
       let width: number | null = null;
       const onMove = (move: MouseEvent) => {
-        const raw = move.clientX - startX;
+        const raw = treeOnRight ? startX - move.clientX : move.clientX - startX;
         if (!opened) {
           if (draggedTooNarrow(raw)) return;
           opened = true;
@@ -665,7 +701,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
       document.addEventListener("mousemove", onMove);
       document.addEventListener("mouseup", onUp);
     },
-    [onTreeVisibleChange, onTreeWidthChange],
+    [onTreeVisibleChange, onTreeWidthChange, treeOnRight],
   );
 
   // ---- 过滤框：复用 @ 文件搜索的数据流（spec「文件面板按名字查找」）--------
@@ -1392,7 +1428,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 aria-label="复制路径"
                 data-testid="file-copy-path"
                 onClick={() => {
-                  void navigator.clipboard?.writeText(activeFile.path);
+                  void handleCopyPath();
                 }}
               >
                 <i
