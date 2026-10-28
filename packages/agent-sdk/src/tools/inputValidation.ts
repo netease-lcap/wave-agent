@@ -21,8 +21,29 @@
  * (treating an uninterpreted keyword as satisfied) would be a silent lie.
  */
 
-/** Deepest object/array nesting the walker descends into. */
-const MAX_DEPTH = 4;
+/**
+ * Deepest object/array nesting the walker descends into.
+ *
+ * This is a recursion bound, not a policy: stopping early does not reject the
+ * sub-tree, it silently accepts it (`checkValue` / `checkObject` return as soon
+ * as `depth > MAX_DEPTH`). The number therefore has to clear the deepest leaf a
+ * schema wave actually ships. `AskUserQuestion` sets the bar with
+ * `questions: [{ options: [{ label }] }]`, where each `{ }` and every array
+ * element costs a step:
+ *
+ *   depth 0  the argument object
+ *   depth 1  `questions` (array)
+ *   depth 2  `questions[0]` (value)
+ *   depth 3  `questions[0]` (its keys)
+ *   depth 4  `questions[0].options` (array)
+ *   depth 5  `questions[0].options[0]` (value)
+ *   depth 6  `questions[0].options[0]` (its keys — `label` required, seen here)
+ *   depth 7  the `label` value (its `type`, seen here)
+ *
+ * 4 cut that structure in half, so nothing inside `options` was examined — how
+ * an option with no `label` reached the confirmation card as a blank row.
+ */
+const MAX_DEPTH = 7;
 
 /** Paths are joined the way the message reads: `asset_id`, `questions[0].header`. */
 function joinPath(path: string, key: string): string {

@@ -6,11 +6,12 @@ import { ASK_USER_QUESTION_TOOL_NAME } from "../constants/tools.js";
  * Collects every option that lacks a usable `label`, as `questions[i].options[j]`
  * paths plus the value actually received.
  *
- * `label` is declared required, but neither layer that could catch it does: the
- * generic schema walker (`tools/inputValidation.ts`) stops at its `MAX_DEPTH`
- * cap before it reaches the option object, and it cannot express "non-empty
- * after trim" anyway. The confirmation card renders
- * `option.label` verbatim, so a missing label shows up as a blank row with no
+ * `label` is declared required, and the generic schema walker
+ * (`tools/inputValidation.ts`) now does reach the option object, so a missing or
+ * non-string `label` is rejected there. What the walker cannot express is
+ * "non-empty after trim" — `label: ""` is a perfectly valid `string` to a
+ * schema. That is the gap this check closes. The confirmation card renders
+ * `option.label` verbatim, so a blank label shows up as an empty row with no
  * way to tell which field is at fault. Reporting each path in one message lets
  * the model fix all of them in a single retry.
  */
