@@ -1,6 +1,6 @@
 # IDE 插件：VS Code 与 JetBrains 真编辑器套件
 
-两套都是真编辑器 + 真插件 + 真 CLI 会话 + 真模型，都要网络与可用的登录态，都会烧掉真实模型调用，都不在 PR 门禁里。隔离与日志见 `environment.md`；**要避免烧生产额度就把这些调用打到测试环境或本地开发服务**——换 `WAVE_SERVER_URL` 并换成那个环境签发的 `auth.json`（`server-and-auth.md`，token 与环境绑定，不能沿用生产的）。
+两套都是真编辑器 + 真插件 + 真 CLI 会话 + 真模型，都要网络与可用的登录态，都会烧掉真实模型调用，都不在 PR 门禁里。隔离与日志见 `environment.md`；**要避免烧生产额度就把这些调用打到测试环境**——换 `WAVE_SERVER_URL` 并换成该环境签发的 `auth.json`（`server-and-auth.md`，token 与环境绑定，不能沿用生产的）。
 
 ## VS Code
 
