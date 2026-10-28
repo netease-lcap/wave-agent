@@ -9,7 +9,10 @@ import {
   type Task,
 } from "wave-agent-sdk";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
-import { seedFileTree, type SeededTreeEntry } from "./fileTreeSeed.js";
+import {
+  seedFileTree,
+  type SeededTreeEntry,
+} from "../e2e/utils/fileTreeSeed.js";
 
 // Desktop SDD workflow (tutorials.md 三、SDD开发案例): the full
 // spec → plan → coding flow captured inside the desktop layout, using the

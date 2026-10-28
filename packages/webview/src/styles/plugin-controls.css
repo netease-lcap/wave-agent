@@ -35,6 +35,13 @@
     var(--vscode-list-hoverBackground, #e7e9ed)
   );
   --ccp-focus-ring: var(--vscode-focusBorder, #1f2329);
+  /* 底栏那一行图标按钮（模型 / 权限 / 「+」「/」）的交互面：圆角与 hover 底色
+     各只声明这一处（spec ui/model-selection.md 场景 8），桌面端在
+     host-desktop.css 声明自己那套，这里跟本文件其余控件同档（icon slot r8）。
+     不声明的话图标档的模型/权限会回落到 4px 与 vscode-toolbar-hoverBackground，
+     跟「+」「/」分叉。 */
+  --cc-composer-icon-radius: 8px;
+  --cc-composer-icon-hover: var(--ccp-fill-hover);
   --ccp-text: var(
     --vscode-button-secondaryForeground,
     var(--vscode-foreground, #202020)
@@ -490,7 +497,7 @@
   flex: 0 0 28px;
   padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--cc-composer-icon-radius, 8px);
   background: transparent;
 }
 
@@ -498,7 +505,7 @@
   content: "";
   position: absolute;
   inset: 3px;
-  border-radius: 8px;
+  border-radius: var(--cc-composer-icon-radius, 8px);
   background: transparent;
   transition: background-color 0.08s ease;
   pointer-events: none;
