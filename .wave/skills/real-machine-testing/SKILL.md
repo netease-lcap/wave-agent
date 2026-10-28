@@ -9,7 +9,7 @@ allowed-tools:
 
 真机套件的红，**环境占的比例远大于代码**。动手指令之前先定两件事：要验的是哪一层、那一层的前置满足没有。本文件只做路由；每一层的手法在同目录 `references/` 下，按需读。
 
-**默认口径是端到端全真**：真 CLI / 真 IDE / 真插件 + 真模型。真模型不是自建假 server，而是选一个真服务端——**本地开发服务 / 测试环境 / 线上**，三者怎么挑、各自的登录态怎么来，见 `references/server-and-auth.md`。全仓只有 realhost 一层用假模型 server，理由写在那条路由里。
+**默认口径是端到端全真**：真 CLI / 真 IDE / 真插件 + 真模型。真模型不是自建假 server，而是选一个真服务端——**测试环境 / 线上**，两者怎么挑、各自的登录态怎么来，见 `references/server-and-auth.md`。全仓只有 realhost 一层用假模型 server，理由写在那条路由里。
 
 ## 选层与路由
 
@@ -25,12 +25,12 @@ allowed-tools:
 | VS Code 扩展（真编辑器）                 | `pnpm -F wave-vscode run test:e2e:completion`       | 真 VS Code + 真 CLI + 真模型                                              | 本机有 VS Code、有图形会话 | `references/ide-plugins.md` |
 | JetBrains 插件（真 IDE）                 | `pnpm jb:test:ui`                                   | 真 IDE（Starter 下载）+ 真插件 + 真模型                                   | 有图形会话、模型配置       | `references/ide-plugins.md` |
 
-表里各层的「真模型」都指一个**真服务端**（本地开发服务 / 测试环境 / 线上，见 `references/server-and-auth.md`），前置是那份登录态；只有 realhost 行是假模型 server。
+表里各层的「真模型」都指一个**真服务端**（测试环境 / 线上，见 `references/server-and-auth.md`），前置是那份登录态；只有 realhost 行是假模型 server。
 
 ## 每次都先读：隔离、环境与服务端
 
 - `references/environment.md` —— 假 HOME（唯一的配置隔离手段，含「settings.json 的 env 会盖过 shell 变量」「有 auth.json 时网关直连配置整段失效」两个反直觉点）、能改哪些 env、各组件日志路径、mac/linux 对照与 Windows 已知坑。与具体层无关，任何真机验证都用得上。
-- `references/server-and-auth.md` —— 要连真服务时读：**本地开发服务 / 测试环境 / 线上**三选一的判断口径与地址、登录态怎么来（线上本机已有 token 不用签发；测试环境用**测试账号密码登录**（`POST /api/auth/login`，绕开 SSO，已实测）或复用现成 `auth.json`；本地服务拿 seed 账号换 token，`localhost:5174` 带 `/login` 页）、`auth.json` 与环境的绑定关系、凭证过期会表现成什么样。
+- `references/server-and-auth.md` —— 要连真服务时读：**测试环境 / 线上**二选一的判断口径与地址、登录态怎么来（线上本机已有 token 不用签发；测试环境用**测试账号密码登录**（`POST /api/auth/login`，绕开 SSO，已实测）或复用现成 `auth.json`）、`auth.json` 与环境的绑定关系、凭证过期会表现成什么样。
 
 ## 结论口径
 

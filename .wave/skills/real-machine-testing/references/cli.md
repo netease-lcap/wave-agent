@@ -1,4 +1,4 @@
-# CLI：真 TTY、非交互模式与 server 联调
+# CLI：真 TTY、非交互模式与连真服务
 
 隔离与日志见 `environment.md`；SDK 是源码还是 dist 决定你验的是不是新逻辑，见下面第 2 条。
 
@@ -36,6 +36,6 @@ pnpm run wave daemon list|status|wait <id>|send|respond|abort|destroy|stop|resta
 - `daemon status <sessionId>` 是**会话**状态（不是进程状态）；`daemon wait` 退出码 0=空闲 / 3=待审批 / 1=错误。
 - daemon 由任何需要它的命令按需拉起；`stop` 幂等（未运行也 exit 0）。
 
-## 连真服务（本地开发 / 测试环境 / 线上）
+## 连真服务（测试环境 / 线上）
 
-CLI 是最容易把「真服务」跑起来的一层：假 HOME + `WAVE_SERVER_URL` 指目标服务端 + 把对应登录态(`auth.json`)放进去，就是端到端全真。三个服务端怎么选、登录态怎么来（测试账号密码登录 / 复用现成 auth.json）、凭证过期的表现，都在 `server-and-auth.md`。
+CLI 是最容易把「真服务」跑起来的一层：假 HOME + `WAVE_SERVER_URL` 指目标服务端 + 把对应登录态(`auth.json`)放进去，就是端到端全真。两个服务端怎么选、登录态怎么来（测试账号密码登录 / 复用现成 auth.json）、凭证过期的表现，都在 `server-and-auth.md`。
