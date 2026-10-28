@@ -1437,6 +1437,82 @@ describe("AI Service - Claude Cache Control", () => {
         expect(result.usage?.cache_read_input_tokens).toBe(999);
         expect(result.usage?.cache_creation_input_tokens).toBe(888);
       });
+
+      it("should read the cache_creation.ephemeral_5m_input_tokens breakdown", async () => {
+        const mockWithResponse = vi.fn().mockResolvedValue({
+          data: {
+            choices: [
+              {
+                message: { content: "Test response" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 300,
+              completion_tokens: 50,
+              total_tokens: 350,
+              prompt_tokens_details: {
+                cached_tokens: 200,
+                cache_creation: {
+                  ephemeral_5m_input_tokens: 60,
+                },
+              },
+            },
+          },
+          response: {
+            headers: new Map([["x-request-id", "req-12345"]]),
+          },
+        });
+        mockCreate.mockReturnValue({ withResponse: mockWithResponse });
+
+        const result = await callAgent({
+          gatewayConfig: TEST_GATEWAY_CONFIG,
+          modelConfig: CLAUDE_MODEL_CONFIG,
+          messages: [{ role: "user", content: "Test message" }],
+          workdir: "/test/workdir",
+        });
+
+        expect(result.usage?.cache_read_input_tokens).toBe(200);
+        expect(result.usage?.cache_creation_input_tokens).toBe(60);
+      });
+
+      it("should prefer the flat cache_creation_input_tokens over the TTL breakdown", async () => {
+        const mockWithResponse = vi.fn().mockResolvedValue({
+          data: {
+            choices: [
+              {
+                message: { content: "Test response" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 300,
+              completion_tokens: 50,
+              total_tokens: 350,
+              prompt_tokens_details: {
+                cached_tokens: 200,
+                cache_creation_input_tokens: 75,
+                cache_creation: {
+                  ephemeral_5m_input_tokens: 60,
+                },
+              },
+            },
+          },
+          response: {
+            headers: new Map([["x-request-id", "req-12345"]]),
+          },
+        });
+        mockCreate.mockReturnValue({ withResponse: mockWithResponse });
+
+        const result = await callAgent({
+          gatewayConfig: TEST_GATEWAY_CONFIG,
+          modelConfig: CLAUDE_MODEL_CONFIG,
+          messages: [{ role: "user", content: "Test message" }],
+          workdir: "/test/workdir",
+        });
+
+        expect(result.usage?.cache_creation_input_tokens).toBe(75);
+      });
     });
 
     describe("Edge Cases", () => {

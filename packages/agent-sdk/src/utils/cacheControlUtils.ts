@@ -39,12 +39,22 @@ export interface ClaudeChatCompletionContentPartText
 }
 
 /**
- * Extended prompt_tokens_details with cache_creation_input_tokens
- * Some models (e.g. Gemini, DeepSeek) return this field inside prompt_tokens_details
+ * Extended prompt_tokens_details with the cache-write field, in both shapes seen
+ * in the wild. The OpenAI schema only carries `cached_tokens`, so whatever the
+ * gateway reports for cache writes has to be declared here.
  */
 export interface ExtendedPromptTokensDetails
   extends CompletionUsage.PromptTokensDetails {
+  /** Flat total, as reported by providers such as Aliyun Qwen. */
   cache_creation_input_tokens?: number;
+  /**
+   * Write volume broken down by TTL, as reported by Anthropic when a request is
+   * translated into the chat-completions shape. Only the 5m bucket is declared:
+   * we never send `cache_control.ttl`, so a 1h write cannot occur.
+   */
+  cache_creation?: {
+    ephemeral_5m_input_tokens?: number;
+  };
 }
 
 // ============================================================================
@@ -298,7 +308,7 @@ export function transformMessagesForExplicitCache(
 /**
  * Extends standard usage with cache metrics
  * Extracts cache tokens from OpenAI-standard prompt_tokens_details
- * (cached_tokens and the gateway-provided cache_creation_input_tokens)
+ * (cached_tokens, plus the cache-write field in either of its two known shapes)
  * @param usage - OpenAI usage response
  * @returns Extended usage with cache information
  */
@@ -316,8 +326,16 @@ export function extendUsageWithCacheMetrics(usage: CompletionUsage): Usage {
   if (details?.cached_tokens != null) {
     baseUsage.cache_read_input_tokens = details.cached_tokens;
   }
-  if (details?.cache_creation_input_tokens != null) {
-    baseUsage.cache_creation_input_tokens = details.cache_creation_input_tokens;
+
+  // Cache writes arrive either as a flat total (Aliyun and similar) or as a TTL
+  // breakdown (Anthropic behind a chat-completions gateway). They are mutually
+  // exclusive per response, so take whichever is present instead of summing —
+  // summing would double count the day one gateway reports both.
+  const cacheCreation =
+    details?.cache_creation_input_tokens ??
+    details?.cache_creation?.ephemeral_5m_input_tokens;
+  if (cacheCreation != null) {
+    baseUsage.cache_creation_input_tokens = cacheCreation;
   }
 
   return baseUsage;

@@ -54,12 +54,11 @@ order: 90
 
 **验收场景**：
 
-1. **假设**带缓存创建的 Claude 模型请求，**当**响应包含 cache_creation_input_tokens（在 usage 顶层）时，**则**latestTotalTokens 显示 total_tokens（不叠加 cache_creation_input_tokens）
-2. **假设**带缓存命中的 Claude 模型请求，**当**响应包含 cache_read_input_tokens（在 usage 顶层）时，**则**latestTotalTokens 显示 total_tokens（不叠加 cache_read_input_tokens）
+1. **假设**带缓存创建的 Claude 模型请求，**当**响应包含 cache_creation_input_tokens（在 prompt_tokens_details 中）时，**则**latestTotalTokens 显示 total_tokens（不叠加 cache_creation_input_tokens）
+2. **假设**带缓存命中的 Claude 模型请求，**当**响应包含 cache_read_input_tokens（在 prompt_tokens_details 中）时，**则**latestTotalTokens 显示 total_tokens（不叠加 cache_read_input_tokens）
 3. **假设**非 Claude 模型请求（如 Gemini、DeepSeek），**当**响应包含 prompt_tokens_details.cached_tokens 时，**则**cache_read_input_tokens 从 cached_tokens 填充但 latestTotalTokens 不含它（仅 total_tokens）
-4. **假设**非 Claude 模型请求，**当**响应包含 prompt_tokens_details.cache_creation_input_tokens 时，**则**cache_creation_input_tokens 从该字段填充但 latestTotalTokens 不含它（仅 total_tokens）
-5. **假设**模型响应同时包含 Claude 顶层缓存字段和 prompt_tokens_details，**当**两者都存在时，**则**Claude 顶层字段优先（填充到 usage 缓存字段，不影响 latestTotalTokens 展示）
-6. **假设**非缓存请求或无缓存 token 的模型，**当**没有缓存 token 时，**则**latestTotalTokens 显示 total_tokens
+4. **假设**响应在 prompt_tokens_details 中给出建缓存量，**当**该量为扁平字段 cache_creation_input_tokens（阿里云等供应商形态）或嵌套的 cache_creation.ephemeral_5m_input_tokens（Anthropic 经网关转译到 chat 协议的形态）时，**则**优先取扁平字段、其不存在时取嵌套的 5m 明细并填入 cache_creation_input_tokens，两者都缺失则不填；latestTotalTokens 均不含它（仅 total_tokens）
+5. **假设**非缓存请求或无缓存 token 的模型，**当**没有缓存 token 时，**则**latestTotalTokens 显示 total_tokens
 
 ---
 
