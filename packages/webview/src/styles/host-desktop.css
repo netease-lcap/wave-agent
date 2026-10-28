@@ -1787,6 +1787,21 @@
    桌面辅助档 12/20 + r4 + --cc-fill 面 + --cc-text-regular 字。
    （不用 --cc-text-secondary：浅色 #6C7076 压在 #F0F2F5 上是 4.44:1，12px 文字
    差一点不到 AA 4.5；--cc-text-regular #565A60 → 6.08:1、深色 8.63:1。） */
+/* ═══ 文件面板底色：绑定「右 pane 内容面」角色，浅色取纯白 ═══
+   设计师 1028 评论（div.file-pane-scroll，「当前对话的文件 …」列表）：「浅色模式
+   这里和树 都用纯白背景，要按照设计规范绑定变量」。
+   原值来自 `.preview-pane`（DesktopApp.css:1176）的
+   `--vscode-sideBar-background` = `--cc-bg-navigation`（浅 #F7F8FB 导航/侧栏面）——
+   那是**导航面**，套在右 pane 上就把整块（树列 + 正文列，两列都是透明）读成侧栏灰。
+   改为内容面角色 `--cc-bg-inspector`（host-desktop.css:32 / :149「右 pane 内容面」：
+   浅 #FFFFFF、深 #181A1B）；深色与现值同值 ⇒ 深色零视觉变化，浅色 #F7F8FB → #FFFFFF。
+   只圈 `.file-pane`：差异 / 终端 / 预览三个 pane 的底色不变（是否一起改待她裁决）。
+   子元素不需要各写一遍 —— 树列、正文列、列表卡片、toast 之外的一切都透明，
+   只这一层会被画出来。 */
+[data-host="desktop"] .preview-pane.file-pane {
+  background: var(--cc-bg-inspector, var(--vscode-panel-background));
+}
+
 /* ═══ 文件面板：目录树 / 面板内文件标签 / 查找条（spec desktop-file-panel.md
    「文件面板工作区目录树」「文件面板已打开文件的标签」「文件面板内查找与跳行」）═══
    base（FilePane.css）是 VS Code 形制；桌面端按面板自己的语言对齐：选中/hover 用
