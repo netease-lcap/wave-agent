@@ -1917,13 +1917,46 @@
   color: var(--cc-text-regular);
   opacity: 1;
 }
+/* 标签带尺寸变量：药丸高 + 上下留白。补缝线的高度由这两个值算出来，改任何一处
+   （药丸高度 / 留白档）补缝线都会自动跟着走，不需要再同步第三个数字。 */
+[data-host="desktop"] .file-pane {
+  --file-tab-height: 26px;
+  --file-tab-band-pad: 6px;
+}
 [data-host="desktop"] .file-tab-strip {
   gap: 4px;
-  padding: 6px 6px 0;
+  /* 上下对称留白（设计师 1028 评论：「这里太贴近下方了，没有足够留白」）：
+     原来 padding 是 6px 6px 0 —— 标签药丸（26 高、r6）底边直接压在下方那条
+     1px 分界线上，视觉上像被线切掉一块。改成 6/6 后标签底边离分界线 6px，
+     与上方留白一致（带高 33 → 39，仍然是「标签带 + 分界线」在下、正文在其下）。 */
+  padding: var(--file-tab-band-pad);
   border-bottom-color: var(--cc-border, #ebeef5);
 }
+
+/* 补缝：标签带住在正文列里，右缘与树列之间还隔着一条 4px 拖拽条（树收起时是
+   3px 恢复带）—— 带子的下边框走到列边界就断了，和树的竖线之间留一个 4px 的缺口
+   （设计师 1028 追问：「标签带到树之间我看有间距」）。这里在隔条的顶部把这条线
+   补过去，高度 = 药丸高 + 上下留白 + 自身那 1px，正好落在标签带下边框同一行，
+   角上接上树的竖线。
+   为什么不用 `.file-tab-strip::after`：带子自身 `overflow: hidden`（clips 横向滚动
+   的标签行），画出去的那 4px 会被裁掉 —— 实测确实一个像素都没出来。
+   `:has()` 门控：只有标签带真的渲染了（开了文件）才补，列表态不会多出一条孤线。 */
+[data-host="desktop"] .file-pane-layout:has(.file-tab-strip) .file-pane-tree-splitter::before,
+[data-host="desktop"] .file-pane-layout:has(.file-tab-strip) .file-pane-tree-edge::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  height: calc(
+    var(--file-tab-height) + var(--file-tab-band-pad) * 2 + 1px
+  );
+  border-bottom: 1px solid var(--cc-border, #ebeef5);
+  pointer-events: none;
+}
 [data-host="desktop"] .file-tab {
-  height: 26px;
+  height: var(--file-tab-height);
   max-width: 200px;
   padding: 0 4px 0 10px;
   border-radius: 6px;
