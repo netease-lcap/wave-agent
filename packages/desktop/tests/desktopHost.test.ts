@@ -361,6 +361,7 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     sessionId: string | undefined;
     currentWorkdir: string | undefined;
     sessionCwd: string | undefined;
+    workspaceRoot: string | undefined;
     sessionRepoRoot: string | undefined;
     latestTotalTokens = 0;
     /**
@@ -386,6 +387,7 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
       this: {
         currentWorkdir?: string;
         sessionCwd?: string;
+        workspaceRoot?: string;
         sessionRepoRoot?: string;
         sessionId?: string;
       },
@@ -393,6 +395,7 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     ) {
       this.currentWorkdir = params.workdir;
       this.sessionCwd = params.workdir;
+      this.workspaceRoot = params.workdir;
       this.sessionRepoRoot = h.sessionRepoRootReply;
       this.sessionId = `sess-${++h.agentCounter}`;
       if (h.initializeGate) await h.initializeGate;
@@ -11817,6 +11820,38 @@ describe("desktopGetWorkspaceDiff (diff panel)", () => {
     });
   });
 
+  it("keeps measuring the session's workspace after a bash `cd`", async () => {
+    const { host } = await readyHost();
+    h.workspaceDiffResult = { kind: "ok", base: null, commits: [], files: [] };
+    const agent = lastAgent();
+    // The shell moved into a subdirectory (and could have moved into a nested
+    // repo / worktree); the panel must stay on the session's workspace.
+    agent.currentWorkdir = "/work/a/packages/webview";
+
+    await host.handleWebviewMessage({ command: "desktopGetWorkspaceDiff" });
+
+    expect(h.clientRequests).toContainEqual({
+      method: "getWorkspaceDiff",
+      params: { workdir: "/work/a" },
+    });
+  });
+
+  it("follows the session into a worktree (EnterWorktree is a real relocation)", async () => {
+    const { host } = await readyHost();
+    h.workspaceDiffResult = { kind: "ok", base: null, commits: [], files: [] };
+    const agent = lastAgent();
+    agent.sessionCwd = "/work/a";
+    agent.currentWorkdir = "/work/a/.wave/worktrees/feat";
+    agent.workspaceRoot = "/work/a/.wave/worktrees/feat";
+
+    await host.handleWebviewMessage({ command: "desktopGetWorkspaceDiff" });
+
+    expect(h.clientRequests).toContainEqual({
+      method: "getWorkspaceDiff",
+      params: { workdir: "/work/a/.wave/worktrees/feat" },
+    });
+  });
+
   it("forwards the uncommitted viewing range to the CLI", async () => {
     const { host } = await readyHost();
     h.workspaceDiffResult = { kind: "ok", base: null, commits: [], files: [] };
@@ -12167,15 +12202,16 @@ describe("renameSession", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 项目根口径：会话稳定根（`sessionCwd`）vs 被 bash cd 漂移的 `currentWorkdir`
+// 目录三口径：工作根（`workspaceRoot`）/ 会漂移的 `currentWorkdir` / 会话稳定根
 //
-// 判据：**用户正在看的目录**（文件面板 / 差异 / 终端）用
-// `currentWorkdir` / `this.workdir`；**会话所属的项目**（项目级配置、
-// 会话元信息）用 initialize 时的 cwd（`sessionCwd`）。会话内 bash `cd` 只漂移
-// 前者——锚错会让项目级设置读写到嵌套子目录、让会话元信息把子目录当成项目。
+// 判据：**用户眼前的项目**（文件面板目录树 / 差异面板 / `@` 文件搜索）用工作根
+// `workspaceRoot` —— 起点是会话目录，EnterWorktree / ExitWorktree 才让它换；**终端
+// 这类跟着 shell 走的**用被 bash `cd` 漂移的 `currentWorkdir`；**会话所属的项目**
+// （项目级配置、会话元信息）用 initialize 时的 cwd（`sessionCwd`）。会话内 bash `cd`
+// 只漂移中间那个——锚错会让项目级设置读写到嵌套子目录，或让用户眼前的面板换项目。
 // ---------------------------------------------------------------------------
 
-describe("项目根口径（sessionCwd vs 漂移的 currentWorkdir）", () => {
+describe("项目根口径（sessionCwd / workspaceRoot vs 漂移的 currentWorkdir）", () => {
   /** 让分屏的会话「跑过一次 cd」：像真 StdioAgent 那样先覆盖字段、再发通知。 */
   function driftAgentTo(
     agent: ReturnType<typeof lastAgent>,

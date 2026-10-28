@@ -333,10 +333,16 @@ export interface DesktopPane {
   hasContent?: boolean;
   /**
    * 这条会话的稳定工作目录（宿主口径，`sessionCwd`）：Bash 里 `cd` 不会改变它。
-   * 文件面板目录树的根、`@` 文件搜索的锚点用它（`.wave/rules/workdir.md`）。
-   * 缺省（老宿主不下发）= 退回 `currentWorkdir`。
+   * 会话身份 / 归属 / 会话文件定位用它。缺省（老宿主不下发）= 退回 `currentWorkdir`。
    */
   sessionCwd?: string;
+  /**
+   * 这条会话当前的工作根（宿主口径，`workspaceRoot`）：起点同 `sessionCwd`，
+   * agent 用 EnterWorktree/ExitWorktree 切工作树时随之切换；Bash 里 `cd` 不会改变它。
+   * 文件面板目录树的根、差异面板的数据源、`@` 文件搜索的锚点用它
+   * （`.wave/rules/workdir.md`）。缺省（老宿主不下发）= 退回 `sessionCwd`。
+   */
+  workspaceRoot?: string;
 }
 
 /** Options for opening a session in a new pane. */

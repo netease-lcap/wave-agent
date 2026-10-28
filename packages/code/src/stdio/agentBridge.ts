@@ -910,6 +910,7 @@ export class AgentBridge {
     sessionId: string;
     currentWorkdir: string;
     sessionCwd: string;
+    workspaceRoot: string;
     repoRoot?: string;
     permissionMode: PermissionMode;
     latestTotalTokens: number;
@@ -919,6 +920,11 @@ export class AgentBridge {
       sessionId: agent.sessionId,
       currentWorkdir: agent.currentWorkdir,
       sessionCwd,
+      // Which working tree the session works in right now — differs from
+      // `sessionCwd` only after a mid-session EnterWorktree, and hosts use it
+      // for the surfaces that follow the user's workspace (diff panel, file
+      // tree, `@` search).
+      workspaceRoot: agent.workspaceRoot,
       ...(worktree ? { repoRoot: worktree.repoRoot } : {}),
       permissionMode: agent.getPermissionMode(),
       latestTotalTokens: agent.latestTotalTokens,
@@ -3134,6 +3140,16 @@ export class AgentBridge {
         this.emit(
           "workdirChange",
           { workdir: newCwd },
+          ctx.registeredSessionId,
+        );
+      },
+      onWorkspaceRootChange: (workspaceRoot: string) => {
+        // EnterWorktree / ExitWorktree only: the conversation now works in
+        // another working tree, so the host re-points the surfaces that follow
+        // the user's workspace (a Bash `cd` never lands here).
+        this.emit(
+          "workspaceRootChange",
+          { workspaceRoot },
           ctx.registeredSessionId,
         );
       },

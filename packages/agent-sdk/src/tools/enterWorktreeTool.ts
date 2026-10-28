@@ -178,6 +178,10 @@ export const enterWorktreeTool: ToolPlugin = {
         if (aiManager) {
           aiManager.setWorktreeSession(hookBasedSession);
           aiManager.setCurrentWorkdir(worktreePath);
+          // The session now works in another working tree — moving the
+          // workspace root is what makes the diff panel / file tree / `@`
+          // search follow. A Bash `cd` never does this.
+          aiManager.setWorkspaceRoot(worktreePath);
         }
 
         return {
@@ -238,6 +242,8 @@ export const enterWorktreeTool: ToolPlugin = {
     if (aiManager) {
       aiManager.setWorktreeSession(session);
       aiManager.setCurrentWorkdir(worktreeInfo.path);
+      // Same as the hook path: the session's workspace moves with it.
+      aiManager.setWorkspaceRoot(worktreeInfo.path);
     }
 
     const branchInfo = worktreeInfo.branch

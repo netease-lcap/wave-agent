@@ -195,6 +195,14 @@ export type ServerNotificationMethod =
   | "permissionModeChange"
   | "mcpServersChange"
   | "workdirChange"
+  /**
+   * The session's workspace moved (EnterWorktree / ExitWorktree). Distinct from
+   * `workdirChange`, which also fires for a bash `cd`: this one means the
+   * conversation now works in another working tree, so the host re-points the
+   * surfaces that show "the project the user is looking at" (diff panel, file
+   * tree, `@` search). Params: `{ workspaceRoot: string }`.
+   */
+  | "workspaceRootChange"
   | "notificationMessageAdded"
   | "permissionRequest"
   | "authUrl"

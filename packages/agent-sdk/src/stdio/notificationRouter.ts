@@ -46,6 +46,7 @@ const ALL_NOTIFICATION_METHODS: readonly ServerNotificationMethod[] = [
   "permissionModeChange",
   "mcpServersChange",
   "workdirChange",
+  "workspaceRootChange",
   "notificationMessageAdded",
   "permissionRequest",
   "authUrl",

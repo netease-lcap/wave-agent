@@ -407,6 +407,13 @@ export class Agent {
       this.options.callbacks?.onWorkdirChange?.(newCwd);
     });
 
+    // Workspace relocations (EnterWorktree / ExitWorktree) are a different
+    // event from a `cd`: the conversation moved to another working tree, so the
+    // surfaces that show "the project the user is looking at" must follow.
+    this.aiManager.setOnWorkspaceRootChange((newRoot) => {
+      this.options.callbacks?.onWorkspaceRootChange?.(newRoot);
+    });
+
     // Wire up message queue to process when agent becomes idle.
     // Both user messages and background task notifications enqueue here,
     // unified through a single dispatch path (tryDispatch).
@@ -499,10 +506,23 @@ export class Agent {
   }
 
   /**
+   * The working tree this conversation works in right now: it starts at the
+   * session's opening directory and follows the session's own relocations
+   * (EnterWorktree / ExitWorktree) — but not a Bash `cd`. Surfaces showing "the
+   * project the user is looking at" (diff panel, file tree, `@` search) read
+   * this; durable identity keeps reading `sessionWorkdir`.
+   */
+  public get workspaceRoot(): string {
+    return this.container.get<string>("WorkspaceRoot") ?? this.workdir;
+  }
+
+  /**
    * Move the shell's working directory (EnterWorktree / ExitWorktree, or a
    * host re-pointing the session). Deliberately does not touch
    * `SessionWorkdir`: the repository a session belongs to does not change
-   * because a command moved the shell.
+   * because a command moved the shell. It does not touch `WorkspaceRoot`
+   * either — relocating the *workspace* is a separate intent that the worktree
+   * tools express through `AIManager.setWorkspaceRoot`.
    *
    * @param newCwd - The new working directory
    */
@@ -1102,6 +1122,9 @@ export class Agent {
     // changes with it, so the telemetry identity follows too (a `cd` in Bash
     // and EnterWorktree leave this alone).
     this.container.register("SessionWorkdir", workdir);
+    // The incoming session's workspace starts where that session lives; the
+    // outgoing session's worktree (if any) must not leak into it.
+    this.container.register("WorkspaceRoot", workdir);
     this.messageManager.setCurrentWorkdir(workdir);
     await this.memoryRuleManager.setWorkdir(workdir);
   }

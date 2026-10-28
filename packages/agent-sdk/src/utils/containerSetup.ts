@@ -101,21 +101,31 @@ export function setupAgentContainer(
   const callbacks = options.callbacks || {};
   const container = new Container();
   container.register("AgentOptions", options);
-  // Two directory tokens, and the difference is deliberate:
+  // Three directory tokens, and the difference is deliberate:
   //
   // - `CurrentWorkdir` MOVES. A `cd` in Bash re-registers it, EnterWorktree
   //   swaps in a worktree path, and the cwd-recovery path rewrites it. It is
   //   what tools should run in and what project rules load from.
+  // - `WorkspaceRoot` is the session's *workspace*: it starts at the session's
+  //   opening directory and only moves when the session itself relocates
+  //   (EnterWorktree / ExitWorktree) — never on a Bash `cd`. It answers "which
+  //   working tree is this conversation working in right now", which is what
+  //   the user-looking-at surfaces need (diff panel, file-panel tree root,
+  //   `@` file search). Same three-way split Claude Code makes
+  //   (`originalCwd` vs `cwd` vs `projectRoot`).
   // - `SessionWorkdir` NEVER moves (except when a whole different session is
   //   restored into this agent). It answers "which directory was this session
   //   opened in", so anything that must stay stable for the session's lifetime
-  //   — telemetry repository identity, audit anchors — reads this one.
+  //   — telemetry repository identity, audit anchors, transcript/session
+  //   location — reads this one.
   //
   // Reaching for `CurrentWorkdir` when you meant "the session's directory" is
   // how the telemetry `vcs.repository.*` attributes ended up following the
   // shell (fixed 2026-10-22). If the value is an identity, it is
-  // `SessionWorkdir`.
+  // `SessionWorkdir`; if it is "what the user is looking at", it is
+  // `WorkspaceRoot`.
   container.register("CurrentWorkdir", workdir);
+  container.register("WorkspaceRoot", workdir);
   container.register("SessionWorkdir", workdir);
   // Normalised here rather than at each record site: the entrypoint is declared
   // once by the session's creator (the CLI, a host over stdio, the remote-control

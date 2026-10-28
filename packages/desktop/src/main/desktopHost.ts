@@ -568,6 +568,18 @@ export class DesktopHost {
   }
 
   /**
+   * The working tree the session works in *right now* — what the panels that
+   * show "the project the user is looking at" resolve against (file-panel tree
+   * root, diff panel, `@` search). Equal to `sessionRootOf` until the session
+   * itself relocates into a worktree (EnterWorktree / ExitWorktree); unlike
+   * `currentWorkdir` it never follows a bash `cd`, so an agent that `cd`s into
+   * a sibling repo or a worktree inside the session leaves these panels alone.
+   */
+  private workspaceRootOf(agent: StdioAgent): string | undefined {
+    return agent.workspaceRoot ?? this.sessionRootOf(agent);
+  }
+
+  /**
    * A pane's *project* root — its session's stable root (the cwd at CLI
    * initialize time; the worktree path for a worktree session), falling back to
    * the focused workdir before any session is bound.
@@ -576,9 +588,10 @@ export class DesktopHost {
    * must resolve against this, never against `currentWorkdir`: a bash `cd`
    * inside the session drifts that field into a subdirectory, so the settings
    * panel would read and write a nested directory's config instead of the
-   * project's. "The directory the user is looking at" (file/diff/terminal
-   * panels) is the opposite case and keeps using `currentWorkdir` /
-   * `this.workdir`.
+   * project's. The "the project the user is looking at" panels (file tree /
+   * diff / `@` search) are a different case again: they follow the session's
+   * workspace (`workspaceRootOf`, which moves only on EnterWorktree /
+   * ExitWorktree); the terminal keeps following `currentWorkdir`.
    */
   private projectRootForPane(paneId?: string): string | undefined {
     const agent = this.agentForPane(paneId);
@@ -1524,6 +1537,12 @@ export class DesktopHost {
         if (paneId)
           this.postMessage({ command: "updateWorkdir", paneId, workdir });
       },
+      onWorkspaceRootChange: () => {
+        // EnterWorktree / ExitWorktree: the session now works in another
+        // working tree, so the panes' `workspaceRoot` (file tree root, diff
+        // panel, `@` search) has to be re-pushed. A bash `cd` never lands here.
+        this.pushPanes();
+      },
       onLoadingChange: (loading: boolean) => {
         // StdioAgent already wrote isStreaming on the agent; refresh the sidebar
         // running-dot for every session, not just the visible ones.
@@ -1815,8 +1834,11 @@ export class DesktopHost {
         // 「被 /rewind 打回第一条（或 /clear）后列表为空的老会话」——后者不能再走
         // 新会话规则（建 worktree、另开会话），见 `hasMessageContent`。
         hasContent: p.agent ? this.hasMessageContent(p.agent) : false,
-        // 文件面板目录树的根：会话起点，不随 bash `cd` 漂移（见 rules/workdir.md）。
+        // 文件面板目录树的根、差异面板与 `@` 搜索的锚点：会话的工作根 ——
+        // 起点是会话目录，agent 用 EnterWorktree/ExitWorktree 切工作树时随之
+        // 切换，但 bash `cd` 不改变它（见 rules/workdir.md）。
         sessionCwd: p.agent ? this.sessionRootOf(p.agent) : undefined,
+        workspaceRoot: p.agent ? this.workspaceRootOf(p.agent) : undefined,
       })),
       rowHeights:
         this.topRowHeight != null
@@ -3899,7 +3921,12 @@ export class DesktopHost {
       case "desktopGetWorkspaceDiff": {
         const paneAgent = this.agentForPane(pid);
         const host = this.hostForAgent(paneAgent);
-        const cwd = paneAgent?.currentWorkdir ?? this.workdir;
+        // The session's workspace root, not its live cwd: a bash `cd` must not
+        // re-point the panel at another repository (spec desktop-panels.md
+        // 「会话变更差异面板」场景 14), while EnterWorktree does (场景 15).
+        const cwd =
+          (paneAgent ? this.workspaceRootOf(paneAgent) : undefined) ??
+          this.workdir;
         const commit = msg.commit as string | undefined;
         // Viewing range: "uncommitted" measures against HEAD, anything else
         // (or absent) keeps the fork-point base.
@@ -4297,11 +4324,11 @@ export class DesktopHost {
           command: "statusResponse",
           version: app.getVersion(),
           sessionId: paneAgent?.sessionId ?? "",
-          // Report the session root (initialize-time cwd), not the subdir the
-          // agent bash-cd'd into — the workdir shown must match what @file
-          // searches, not the agent's transient cwd.
+          // Report the session's workspace root, not the subdir the agent
+          // bash-cd'd into — the workdir shown must match what @file searches
+          // and the diff panel measure, not the agent's transient cwd.
           workdir:
-            paneAgent?.sessionCwd ??
+            (paneAgent ? this.workspaceRootOf(paneAgent) : undefined) ??
             paneAgent?.currentWorkdir ??
             this.workdir ??
             "",
@@ -7208,12 +7235,13 @@ export class DesktopHost {
     const host = this.currentHost;
     // Anchor @file search to the session's stable root (initialize-time cwd):
     // bash cd drifts this.workdir via pane focus, but file suggestions belong
-    // to the project the session started in. Before any agent activation
-    // (fresh launch) this.workdir is unset while the webview already treats
-    // recents[0] as the effective workdir — mirror that fallback so @file
-    // suggestions work before a directory is picked.
+    // to the project the session works in — the workspace root, which moves only
+    // when the session itself relocates (EnterWorktree / ExitWorktree). Before
+    // any agent activation (fresh launch) this.workdir is unset while the webview
+    // already treats recents[0] as the effective workdir — mirror that fallback
+    // so @file suggestions work before a directory is picked.
     const workdir =
-      this.activeAgent?.sessionCwd ??
+      (this.activeAgent ? this.workspaceRootOf(this.activeAgent) : undefined) ??
       this.workdir ??
       this.configStore.getRecentWorkdirsForHost(host)[0];
     if (!workdir) return [];

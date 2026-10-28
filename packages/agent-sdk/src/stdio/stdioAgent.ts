@@ -95,6 +95,13 @@ export interface InitializeResult {
    */
   sessionCwd?: string;
   /**
+   * The working tree the session works in right now — the same value as
+   * `sessionCwd` until the session relocates into (or out of) a worktree via
+   * EnterWorktree / ExitWorktree. Diff panel, file-panel tree root and `@file`
+   * search read this; identity reads `sessionCwd`.
+   */
+  workspaceRoot?: string;
+  /**
    * The main repository root, present only when `sessionCwd` is itself a linked
    * git worktree — the same derivation `listDaemonSessions` reports per row. A
    * worktree conversation belongs to the repo it was forked from, so this wins
@@ -167,6 +174,12 @@ export interface StdioAgentCallbacks {
   onPermissionModeChange?: (mode: PermissionMode) => void;
   onMcpServersChange?: (servers: McpServerStatus[]) => void;
   onWorkdirChange?: (workdir: string) => void;
+  /**
+   * The session's workspace moved (EnterWorktree / ExitWorktree like
+   * `onWorkdirChange`, but never for a Bash `cd`) — the surfaces that show "the
+   * project the user is looking at" follow this one.
+   */
+  onWorkspaceRootChange?: (workspaceRoot: string) => void;
   onNotificationMessageAdded?: (params: {
     taskId: string;
     taskType: string;
@@ -203,6 +216,15 @@ export class StdioAgent {
    * the reply carries the root separately instead of reusing its live cwd.
    */
   public sessionCwd: string | undefined;
+  /**
+   * The working tree the session works in right now: starts at `sessionCwd`
+   * and follows the session's own relocations (EnterWorktree / ExitWorktree),
+   * never a Bash `cd`. Surfaces that show "the project the user is looking at"
+   * — diff panel, file-panel tree root, `@` file search — read this; durable
+   * identity (sidebar grouping, project-scoped config, session files) keeps
+   * reading `sessionCwd`.
+   */
+  public workspaceRoot: string | undefined;
   /**
    * The main repository root when `sessionCwd` is a linked git worktree, else
    * undefined. Grouping a worktree conversation under the repo it was forked
@@ -258,6 +280,10 @@ export class StdioAgent {
     // (possibly cd-drifted) cwd as `currentWorkdir`, and only `sessionCwd`
     // can say which project the conversation belongs to.
     this.sessionCwd = result.sessionCwd ?? result.currentWorkdir;
+    // Older daemons do not send `workspaceRoot`; the session root is then the
+    // best available answer (same value they would report, minus worktree
+    // relocations).
+    this.workspaceRoot = result.workspaceRoot ?? this.sessionCwd;
     this.sessionRepoRoot = result.repoRoot;
     this.permissionMode = result.permissionMode;
     this.latestTotalTokens = result.latestTotalTokens;
@@ -911,6 +937,12 @@ export class StdioAgent {
         const p = params as { workdir: string };
         this.currentWorkdir = p.workdir;
         this.callbacks.onWorkdirChange?.(p.workdir);
+        break;
+      }
+      case "workspaceRootChange": {
+        const p = params as { workspaceRoot: string };
+        this.workspaceRoot = p.workspaceRoot;
+        this.callbacks.onWorkspaceRootChange?.(p.workspaceRoot);
         break;
       }
       case "notificationMessageAdded":

@@ -14,6 +14,7 @@ import {
   setInputText,
 } from "./test-utils";
 import { fixtures } from "wave-webview-fixtures";
+import type { DesktopPaneInfo } from "wave-webview-fixtures";
 import { MockDataGenerator } from "../fixtures/mockData";
 
 vi.mock("../../src/styles/DesktopApp.css", () => ({}));
@@ -850,11 +851,21 @@ describe("session-level panel groups", () => {
     lastActiveAt: Date.now(),
     hasWorktree: false,
   });
-  const pushPanes = (sessionId?: string) => {
+  const pushPanes = (
+    sessionId?: string,
+    extra: Partial<DesktopPaneInfo> = {},
+  ) => {
     sendHostMessage(
       fixtures.desktopPanes({
         panes: [
-          { paneId: "pane-1", sessionId, row: 0, host: "local", width: 0.5 },
+          {
+            paneId: "pane-1",
+            sessionId,
+            row: 0,
+            host: "local",
+            width: 0.5,
+            ...extra,
+          },
         ],
         focusedPaneId: "pane-1",
       }),
@@ -1453,6 +1464,42 @@ describe("session-level panel groups", () => {
     fireEvent.click(screen.getByTestId("panel-fullscreen"));
     expect(screen.getByTestId("message-input")).toBe(input);
     expect(input.innerText).toBe("把重试次数改成 3 次");
+  });
+
+  /**
+   * 差异面板的数据源是会话的**工作根**（`workspaceRoot`），不是被 bash `cd`
+   * 漂移的 `currentWorkdir`（spec desktop-panels.md 场景 14/15）：
+   * `updateWorkdir` 只挪家目录视图里的当前目录，换工作树才是真换根。
+   */
+  it("anchors the diff panel on the workspace root: bash cd keeps it, EnterWorktree moves it", () => {
+    window.waveHostType = "desktop";
+    const { vscode } = renderDesktop({ workdir: "/work/a" });
+    pushTree(["s1"]);
+    pushPanes("s1", { sessionCwd: "/work/a", workspaceRoot: "/work/a" });
+    openPanel("diff");
+    const diffRequests = () =>
+      vscode.postMessage.mock.calls.filter(
+        ([msg]) => msg.command === "desktopGetWorkspaceDiff",
+      );
+    expect(diffRequests()).toHaveLength(1);
+
+    // 会话在 Bash 里 `cd` 到仓库子目录：宿主推 updateWorkdir，工作根没变 ——
+    // 面板不该清空内容重取（每取一次都会闪一下 loading）。
+    act(() => {
+      sendCommand("updateWorkdir", {
+        workdir: "/work/a/packages/core",
+        paneId: "pane-1",
+      });
+    });
+    expect(diffRequests()).toHaveLength(1);
+
+    // EnterWorktree 是真换根：宿主重推 panes 且 workspaceRoot 变了，面板跟着
+    // 重新取（允许回到 loading 占位）。
+    pushPanes("s1", {
+      sessionCwd: "/work/a",
+      workspaceRoot: "/work/a/.wave/worktrees/wt-1",
+    });
+    expect(diffRequests()).toHaveLength(2);
   });
 });
 

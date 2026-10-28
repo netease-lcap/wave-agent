@@ -204,6 +204,7 @@ export class AIManager {
   private stream: boolean; // Streaming mode flag
   private modelOverride?: string;
   private _onCwdChange?: (newCwd: string) => void; // Store callback for CWD changes
+  private _onWorkspaceRootChange?: (newRoot: string) => void; // Workspace relocations (worktree enter/exit)
   private originalWorkdir: string;
   /** Pending cwd-recovery notice (set when getCurrentWorkdir() auto-recovers), consumed by tools */
   private pendingCwdRecovery: { from: string; to: string } | null = null;
@@ -460,6 +461,35 @@ export class AIManager {
   public setCurrentWorkdir(newWorkdir: string): void {
     this.container.register("CurrentWorkdir", newWorkdir);
     this._onCwdChange?.(newWorkdir);
+  }
+
+  /**
+   * The session's workspace root: the directory this conversation works in.
+   * Starts at the session's opening directory and only moves when the session
+   * relocates (EnterWorktree / ExitWorktree) — a Bash `cd` never touches it.
+   * Surfaces that show "the project the user is looking at" (diff panel, file
+   * tree root, `@` search) read this; project identity stays on
+   * `SessionWorkdir`.
+   */
+  public getWorkspaceRoot(): string {
+    return (
+      this.container.get<string>("WorkspaceRoot") ?? this.getCurrentWorkdir()
+    );
+  }
+
+  /**
+   * Relocate the session's workspace (EnterWorktree / ExitWorktree). Separate
+   * from `setCurrentWorkdir` because the two move for different reasons: this
+   * one means "the conversation now works in another working tree", so it must
+   * never be called for a `cd` inside the shell.
+   */
+  public setWorkspaceRoot(newRoot: string): void {
+    this.container.register("WorkspaceRoot", newRoot);
+    this._onWorkspaceRootChange?.(newRoot);
+  }
+
+  public setOnWorkspaceRootChange(callback: (newRoot: string) => void): void {
+    this._onWorkspaceRootChange = callback;
   }
 
   /**

@@ -226,11 +226,18 @@ export interface DesktopPaneInfo {
   hasContent?: boolean;
   /**
    * 这条会话的**稳定起点**目录（`sessionCwd`：会话在 CLI initialize 时捕获的
-   * cwd，worktree 会话就是那个 worktree）。文件面板目录树的根、树的过滤范围都用
-   * 它——bash 里 `cd` 只漂移 `updateWorkdir` 那条，用户眼前的树不该换根
-   * （见 `.wave/rules/workdir.md`）。缺省 = 旧宿主，渲染端回落 `state.workdir`。
+   * cwd，worktree 会话就是那个 worktree）。会话身份 / 归属 / 会话文件定位用它：
+   * bash 里 `cd` 只漂移 `updateWorkdir` 那条（见 `.wave/rules/workdir.md`）。
+   * 缺省 = 旧宿主，渲染端回落 `state.workdir`。
    */
   sessionCwd?: string;
+  /**
+   * 这条会话的**工作根**（`workspaceRoot`）：起点同 `sessionCwd`，agent 用
+   * EnterWorktree / ExitWorktree 换工作树时随之切换，而 bash 里 `cd` 不改变它。
+   * 文件面板目录树的根及其过滤范围、差异面板的数据源、`@` 文件搜索的锚点用它。
+   * 缺省 = 旧宿主，渲染端回落 `sessionCwd`（再回落到 `state.workdir`）。
+   */
+  workspaceRoot?: string;
 }
 
 /** A session in the desktop sidebar tree, derived from the session index (FR-024). */
