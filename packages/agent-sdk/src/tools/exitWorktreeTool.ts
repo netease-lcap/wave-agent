@@ -158,6 +158,9 @@ export const exitWorktreeTool: ToolPlugin = {
       if (aiManager) {
         aiManager.setWorktreeSession(null);
         aiManager.setCurrentWorkdir(originalCwd);
+        // Back to the original working tree: the workspace root follows, so the
+        // diff panel / file tree / `@` search stop pointing at the worktree.
+        aiManager.setWorkspaceRoot(originalCwd);
       }
 
       return {
@@ -219,6 +222,7 @@ export const exitWorktreeTool: ToolPlugin = {
     if (aiManager) {
       aiManager.setWorktreeSession(null);
       aiManager.setCurrentWorkdir(originalCwd);
+      aiManager.setWorkspaceRoot(originalCwd);
     }
 
     const discardParts: string[] = [];

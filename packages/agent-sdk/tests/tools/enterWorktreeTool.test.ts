@@ -35,6 +35,7 @@ vi.mock("@/services/worktreeHooks.js", async (importOriginal) => {
 describe("enterWorktreeTool", () => {
   let mockContext: ToolContext;
   let mockSetWorkdir: ReturnType<typeof vi.fn>;
+  let mockSetWorkspaceRoot: ReturnType<typeof vi.fn>;
   let mockGetWorktreeSession: ReturnType<typeof vi.fn>;
   let mockSetWorktreeSession: ReturnType<typeof vi.fn>;
   let mockGetWorktreeBaseRef: ReturnType<typeof vi.fn>;
@@ -43,6 +44,7 @@ describe("enterWorktreeTool", () => {
     vi.resetAllMocks();
 
     mockSetWorkdir = vi.fn();
+    mockSetWorkspaceRoot = vi.fn();
     mockGetWorktreeSession = vi.fn().mockReturnValue(null);
     mockSetWorktreeSession = vi.fn();
     mockGetWorktreeBaseRef = vi.fn().mockReturnValue("fresh");
@@ -52,6 +54,7 @@ describe("enterWorktreeTool", () => {
       taskManager: new TaskManager(new Container(), "test-session"),
       aiManager: {
         setCurrentWorkdir: mockSetWorkdir,
+        setWorkspaceRoot: mockSetWorkspaceRoot,
         getCurrentWorkdir: () => "/test/workdir",
         getOriginalWorkdir: () => "/test/workdir",
         getWorktreeSession: mockGetWorktreeSession,
@@ -121,6 +124,11 @@ describe("enterWorktreeTool", () => {
       "/test/repo/.wave/worktrees/auto-name-123",
     );
     expect(mockSetWorkdir).toHaveBeenCalledWith(
+      "/test/repo/.wave/worktrees/auto-name-123",
+    );
+    // The session's workspace moves with it: this is what re-points the diff
+    // panel / file tree / @ search in the host (a bash `cd` never does this).
+    expect(mockSetWorkspaceRoot).toHaveBeenCalledWith(
       "/test/repo/.wave/worktrees/auto-name-123",
     );
     expect(mockSetWorktreeSession).toHaveBeenCalledWith(
@@ -260,6 +268,7 @@ describe("enterWorktreeTool", () => {
 
       expect(result.success).toBe(true);
       expect(mockSetWorkdir).toHaveBeenCalledWith("/hook/path/feature");
+      expect(mockSetWorkspaceRoot).toHaveBeenCalledWith("/hook/path/feature");
       expect(mockSetWorktreeSession).toHaveBeenCalledWith(
         expect.objectContaining({
           originalCwd: "/test/workdir",
@@ -307,6 +316,7 @@ describe("enterWorktreeTool", () => {
         "WorktreeCreate hook failed: create.sh: boom",
       );
       expect(mockSetWorkdir).not.toHaveBeenCalled();
+      expect(mockSetWorkspaceRoot).not.toHaveBeenCalled();
       expect(mockSetWorktreeSession).not.toHaveBeenCalled();
     });
 
@@ -501,6 +511,7 @@ describe("enterWorktreeTool", () => {
       ...mockContext,
       aiManager: {
         setCurrentWorkdir: mockSetWorkdir,
+        setWorkspaceRoot: mockSetWorkspaceRoot,
         getCurrentWorkdir: () => "/test/workdir",
         getWorktreeSession: mockGetWorktreeSession,
         setWorktreeSession: mockSetWorktreeSession,

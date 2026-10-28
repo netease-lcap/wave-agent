@@ -417,7 +417,8 @@ export interface FilePaneProps {
   onReorderFile?: (fileId: string, delta: number) => void;
 
   // ---- 目录树（spec「文件面板工作区目录树」）--------------------------------
-  /** Workspace root = the session's stable root; absent → no tree column. */
+  /** Workspace root = the session's working tree (moves on EnterWorktree, not on
+   *  a bash `cd`); absent → no tree column. */
   treeRoot?: string;
   treeVisible?: boolean;
   onTreeVisibleChange?: (visible: boolean) => void;

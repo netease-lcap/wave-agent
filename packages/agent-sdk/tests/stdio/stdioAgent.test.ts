@@ -93,6 +93,7 @@ describe("StdioAgent", () => {
     expect(registeredMethods).toContain("permissionModeChange");
     expect(registeredMethods).toContain("mcpServersChange");
     expect(registeredMethods).toContain("workdirChange");
+    expect(registeredMethods).toContain("workspaceRootChange");
     expect(registeredMethods).toContain("notificationMessageAdded");
     expect(registeredMethods).toContain("permissionRequest");
     expect(registeredMethods).toContain("authUrl");
@@ -153,6 +154,41 @@ describe("StdioAgent", () => {
     expect(agent.currentWorkdir).toBe("/workspace/packages/code");
     expect(agent.sessionCwd).toBe("/workspace");
     expect(agent.sessionRepoRoot).toBe("/workspace");
+  });
+
+  it("caches the reply's workspace root, which may differ from the session root", async () => {
+    const { agent, client } = createAgent();
+    // A session restored while it was working in a worktree: the workspace is
+    // the worktree, the identity is still the repo it started in.
+    client.request.mockResolvedValue({
+      sessionId: "session-123",
+      currentWorkdir: "/workspace/.wave/worktrees/feat-a",
+      sessionCwd: "/workspace",
+      workspaceRoot: "/workspace/.wave/worktrees/feat-a",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+
+    await agent.initialize({ workdir: "/workspace", restoreSessionId: "s-1" });
+
+    expect(agent.currentWorkdir).toBe("/workspace/.wave/worktrees/feat-a");
+    expect(agent.sessionCwd).toBe("/workspace");
+    expect(agent.workspaceRoot).toBe("/workspace/.wave/worktrees/feat-a");
+  });
+
+  it("falls back to the session root when the reply has no workspace root (older CLI)", async () => {
+    const { agent, client } = createAgent();
+    client.request.mockResolvedValue({
+      sessionId: "session-123",
+      currentWorkdir: "/workspace/packages/code",
+      sessionCwd: "/workspace",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+
+    await agent.initialize({ workdir: "/workspace", restoreSessionId: "s-1" });
+
+    expect(agent.workspaceRoot).toBe("/workspace");
   });
 
   it("falls back to the live cwd when the reply has no session root (older CLI)", async () => {
@@ -1150,6 +1186,23 @@ describe("StdioAgent", () => {
     expect(onWorkdirChange).toHaveBeenCalledWith(
       "/repo/.wave/worktrees/feat-a",
     );
+  });
+
+  it("workspaceRootChange updates the cached workspace root and calls its callback", () => {
+    const onWorkspaceRootChange = vi.fn();
+    const onWorkdirChange = vi.fn();
+    const { agent } = createAgent({ onWorkspaceRootChange, onWorkdirChange });
+
+    agent.handleNotification("workspaceRootChange", {
+      workspaceRoot: "/repo/.wave/worktrees/feat-a",
+    });
+
+    expect(agent.workspaceRoot).toBe("/repo/.wave/worktrees/feat-a");
+    expect(onWorkspaceRootChange).toHaveBeenCalledWith(
+      "/repo/.wave/worktrees/feat-a",
+    );
+    // A relocation is not a shell move: the cwd notification is a separate one.
+    expect(onWorkdirChange).not.toHaveBeenCalled();
   });
 
   it("notificationMessageAdded forwards params to callback", () => {

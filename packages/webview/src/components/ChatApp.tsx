@@ -573,13 +573,16 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     : undefined;
   const effectiveHost = paneHost ?? host?.host ?? "local";
   const effectiveHostRef = useRef(effectiveHost);
-  // 文件面板目录树的根 = 会话的稳定起点（`.wave/rules/workdir.md`）：agent 在
-  // Bash 里 `cd` 只挪「相对路径基准」，不该让用户眼前的树换根，所以这里取
-  // `sessionCwd`（宿主在 desktopPanes 里下发的会话根），`currentWorkdir` 不参与。
-  const treeRootForPane =
-    (paneId
-      ? host?.panes?.find((p) => p.paneId === paneId)?.sessionCwd
-      : undefined) ?? effectiveWorkdir;
+  // 文件面板目录树的根、差异面板的数据源 = 会话的**工作根**（`.wave/rules/
+  // workdir.md`）：起点是会话打开时的目录，agent 用 EnterWorktree 切进工作树时
+  // 随之切换、ExitWorktree 切回；而 Bash 里 `cd` 只挪「相对路径基准」，不该让用户
+  // 眼前的面板换项目。宿主在 desktopPanes 里下发 `workspaceRoot`（老宿主没有该
+  // 字段时退回 `sessionCwd`），`currentWorkdir` 不参与。
+  const paneForRoot = paneId
+    ? host?.panes?.find((p) => p.paneId === paneId)
+    : undefined;
+  const workspaceRootForPane =
+    paneForRoot?.workspaceRoot ?? paneForRoot?.sessionCwd ?? effectiveWorkdir;
   // Branch info only "exists" when it was fetched FOR the currently displayed
   // workdir. During a workdir switch — and before the first reply for the new
   // directory lands — this is null, so the branch/worktree controls stay
@@ -4537,7 +4540,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           visible={isActive}
           isStreaming={state.isStreaming}
           sessionId={state.currentSession?.id}
-          workdir={effectiveWorkdir}
+          // Same root as the file tree: a bash `cd` must not reset the panel or
+          // re-point it at another repo; EnterWorktree is a real relocation and
+          // does move it (spec desktop-panels.md「会话变更差异面板」场景 14/15).
+          workdir={workspaceRootForPane}
           onAddComment={handleAddComment}
           treeVisible={diffTreeVisible}
           onTreeVisibleChange={setDiffTreeVisible}
@@ -4557,10 +4563,10 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           onBackToList={handleFilePaneBackToList}
           onOpenExternal={handleOpenFileExternal}
           workdir={effectiveWorkdir}
-          // The tree is rooted at the session's stable root (`.wave/rules/
+          // The tree is rooted at the session's workspace root (`.wave/rules/
           // workdir.md`): a bash `cd` moves the relative-path basis, not the
-          // tree the user reads.
-          treeRoot={treeRootForPane}
+          // tree the user reads; EnterWorktree does re-root it.
+          treeRoot={workspaceRootForPane}
           treeVisible={fileTreeVisible}
           onTreeVisibleChange={setFileTreeVisible}
           treeWidth={fileTreeWidth}

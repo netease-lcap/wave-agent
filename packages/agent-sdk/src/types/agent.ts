@@ -178,6 +178,12 @@ export interface AgentCallbacks
   onLoadingChange?: (loading: boolean) => void;
   onCommandRunningChange?: (running: boolean) => void;
   onWorkdirChange?: (newCwd: string) => void;
+  /**
+   * The session's workspace moved (EnterWorktree / ExitWorktree) — a different
+   * event from a Bash `cd`: the conversation now works in another working tree,
+   * so the surfaces showing "the project the user is looking at" follow.
+   */
+  onWorkspaceRootChange?: (workspaceRoot: string) => void;
   onQueuedMessagesChange?: (messages: QueuedMessage[]) => void;
   /** Streaming content from the compaction fork, as a delta of newly produced
    * text (consumers append it; spec: ui/stdio-transport.md「流式通知纯增量负载」

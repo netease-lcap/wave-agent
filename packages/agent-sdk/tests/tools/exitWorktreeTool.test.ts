@@ -20,6 +20,7 @@ vi.mock("@/services/worktreeHooks.js", async (importOriginal) => {
 describe("exitWorktreeTool", () => {
   let mockContext: ToolContext;
   let mockSetWorkdir: ReturnType<typeof vi.fn>;
+  let mockSetWorkspaceRoot: ReturnType<typeof vi.fn>;
   let mockGetWorktreeSession: ReturnType<typeof vi.fn>;
   let mockSetWorktreeSession: ReturnType<typeof vi.fn>;
   const mockSession: WorktreeSession = {
@@ -36,6 +37,7 @@ describe("exitWorktreeTool", () => {
     vi.resetAllMocks();
 
     mockSetWorkdir = vi.fn();
+    mockSetWorkspaceRoot = vi.fn();
     mockGetWorktreeSession = vi.fn().mockReturnValue(null);
     mockSetWorktreeSession = vi.fn();
 
@@ -44,6 +46,7 @@ describe("exitWorktreeTool", () => {
       taskManager: new TaskManager(new Container(), "test-session"),
       aiManager: {
         setCurrentWorkdir: mockSetWorkdir,
+        setWorkspaceRoot: mockSetWorkspaceRoot,
         getCurrentWorkdir: () => "/repo/.wave/worktrees/test",
         getOriginalWorkdir: () => "/repo",
         getWorktreeSession: mockGetWorktreeSession,
@@ -102,6 +105,9 @@ describe("exitWorktreeTool", () => {
       expect(result.content).toContain("Exited worktree");
       expect(result.content).toContain("preserved");
       expect(mockSetWorkdir).toHaveBeenCalledWith("/original/dir");
+      // Back to the original working tree: the workspace root follows too, or
+      // the diff panel / file tree would keep pointing at the exited worktree.
+      expect(mockSetWorkspaceRoot).toHaveBeenCalledWith("/original/dir");
       expect(mockSetWorktreeSession).toHaveBeenCalledWith(null);
       expect(worktreeUtils.removeWorktree).not.toHaveBeenCalled();
     });
@@ -165,6 +171,9 @@ describe("exitWorktreeTool", () => {
       );
       expect(worktreeUtils.removeWorktree).toHaveBeenCalled();
       expect(mockSetWorkdir).toHaveBeenCalledWith("/original/dir");
+      // Back to the original working tree: the workspace root follows too, or
+      // the diff panel / file tree would keep pointing at the exited worktree.
+      expect(mockSetWorkspaceRoot).toHaveBeenCalledWith("/original/dir");
       expect(mockSetWorktreeSession).toHaveBeenCalledWith(null);
     });
 
@@ -241,6 +250,7 @@ describe("exitWorktreeTool", () => {
         // Hook replaced git: wave never runs `git worktree remove`
         expect(worktreeUtils.removeWorktree).not.toHaveBeenCalled();
         expect(mockSetWorkdir).toHaveBeenCalledWith("/original/dir");
+        expect(mockSetWorkspaceRoot).toHaveBeenCalledWith("/original/dir");
         expect(mockSetWorktreeSession).toHaveBeenCalledWith(null);
       });
 
