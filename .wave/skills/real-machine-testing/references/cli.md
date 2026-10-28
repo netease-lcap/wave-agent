@@ -38,4 +38,4 @@ pnpm run wave daemon list|status|wait <id>|send|respond|abort|destroy|stop|resta
 
 ## 连真服务（测试环境 / 线上）
 
-CLI 是最容易把「真服务」跑起来的一层：假 HOME + `WAVE_SERVER_URL` 指目标服务端 + 把对应登录态(`auth.json`)放进去，就是端到端全真。两个服务端怎么选、登录态怎么来（测试账号密码登录 / 复用现成 auth.json）、凭证过期的表现，都在 `server-and-auth.md`。
+CLI 是最容易把「真服务」跑起来的一层：假 HOME + `WAVE_SERVER_URL` 指目标服务端 + 把对应登录态(`auth.json`)放进去，就是端到端全真。`auth.json` 与 serverUrl 绑定，跨环境会 401 ⇒ 换服务端就得一并换登录态（见 `environment.md`）。

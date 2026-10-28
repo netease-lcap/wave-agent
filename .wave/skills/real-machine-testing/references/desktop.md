@@ -11,7 +11,7 @@ WAVE_CLI_PATH=/path/to/repo/packages/code/bin/wave-code.js pnpm run run   # 用�
 
 ## realhost 套件：真主进程 + 真 CLI，模型走假 server
 
-**这是全仓唯一该用假模型 server 的一层**：它验的是「宿主 ↔ CLI 协议链路」，需要响应可断言、也不想每次跑都烧真调用。其余真机层一律连真服务端（`server-and-auth.md`）；要在 realhost 里验真模型，把 harness 里的 `WAVE_API_KEY`/`WAVE_BASE_URL` 换成 `WAVE_SERVER_URL` + 真 `auth.json` 即可，但那就失去了确定性。
+**这是全仓唯一该用假模型 server 的一层**：它验的是「宿主 ↔ CLI 协议链路」，需要响应可断言、也不想每次跑都烧真调用。其余真机层一律连真服务端（换服务端时 `WAVE_SERVER_URL` + 对应登录态，见 `environment.md`）；要在 realhost 里验真模型，把 harness 里的 `WAVE_API_KEY`/`WAVE_BASE_URL` 换成 `WAVE_SERVER_URL` + 真 `auth.json` 即可，但那就失去了确定性。
 
 ```sh
 pnpm build                                # 必须先全量构建：套件驱动 bin/wave-code.js → dist/bundle/wave.mjs
