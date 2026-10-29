@@ -751,10 +751,10 @@
   background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.25));
 }
 
-.file-tab-close-icon {
-  font-size: 11px;
-  line-height: 1;
-}
+/* `.file-tab-close-icon` 的 `font-size: 11px / line-height: 1` 是 codicon 字形
+   时代的遗留（图标曾是字体字形）；自 1029 第五批起两个宿主都用 SVG，字号对它
+   不再起作用 —— 设计师确认「可以清掉」后整条删除。SVG 在 flex 容器里被块级化，
+   行高/字号都不参与布局，删掉后渲染逐像素不变（实测裁切图 diff 0 像素）。 */
 
 .file-tab-more {
   position: relative;

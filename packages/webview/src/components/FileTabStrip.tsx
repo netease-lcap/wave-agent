@@ -9,6 +9,7 @@ import type { OpenFileTab } from "../types";
 import { fileName } from "../utils/fileTabs";
 import { baseNameOf } from "../utils/fileTreePaths";
 import { CloseIcon } from "./HeaderIcons";
+import { CloseTabIcon } from "./CloseTabIcon";
 import { createPortal } from "react-dom";
 import { PanelKindIcon } from "./PanelKindIcon";
 import { isDesktopHost } from "../utils/platform";
@@ -238,7 +239,14 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
                   onClose(file.id);
                 }}
               >
-                <CloseIcon className="file-tab-close-icon" />
+                {isDesktopHost() ? (
+                  // 1029 第五批设计师评论（点这颗图标）「关闭图标和以下保持一致」：
+                  // 与面板页签关闭键同一颗官方 ×（CloseTabIcon，9×9）。IDE 宿主
+                  // 保留 base 的 CloseIcon，与上面 .file-tab-icon 的分叉口径一致。
+                  <CloseTabIcon className="file-tab-close-icon" />
+                ) : (
+                  <CloseIcon className="file-tab-close-icon" />
+                )}
               </button>
             </div>
           );
