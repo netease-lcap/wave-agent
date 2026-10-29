@@ -17,7 +17,7 @@ import { open } from "fs/promises";
 import type { Message } from "../types/messaging.js";
 import type { MessageWindow } from "../types/messageWindow.js";
 import {
-  MESSAGE_HISTORY_PAGE_SIZE,
+  MESSAGE_PAGE_SIZE,
   MESSAGE_SLICE_MAX_BYTES,
 } from "../constants/messageWindow.js";
 import { parseTranscriptLine } from "../services/sessionEntries.js";
@@ -173,7 +173,7 @@ async function createCursor(
 
 function normaliseLimit(limit: number | undefined): number {
   if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1) {
-    return MESSAGE_HISTORY_PAGE_SIZE;
+    return MESSAGE_PAGE_SIZE;
   }
   return limit;
 }

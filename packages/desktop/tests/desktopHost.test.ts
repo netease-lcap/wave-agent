@@ -3,11 +3,7 @@ import type { BrowserWindow } from "electron";
 import * as os from "os";
 import * as path from "path";
 import { createHash } from "crypto";
-import {
-  BASH_TOOL_NAME,
-  MESSAGE_FIRST_PAGE_SIZE,
-  MESSAGE_HISTORY_PAGE_SIZE,
-} from "wave-agent-sdk/constants";
+import { BASH_TOOL_NAME, MESSAGE_PAGE_SIZE } from "wave-agent-sdk/constants";
 import { fixtures, type HostToWebviewMessage } from "wave-webview-fixtures";
 
 // ---------------------------------------------------------------------------
@@ -12950,7 +12946,7 @@ describe("宿主不保留消息内容，用的时候现取", () => {
     });
     // 每次切回都现取一次（没有可复用的缓存），且只取首屏那一页。
     expect(agent.getMessages).toHaveBeenCalledWith({
-      limit: MESSAGE_FIRST_PAGE_SIZE,
+      limit: MESSAGE_PAGE_SIZE,
     });
   });
 
@@ -13005,7 +13001,7 @@ describe("宿主不保留消息内容，用的时候现取", () => {
   it("上翻取更早：把 SDK 那一页原样转给页面（带 requestId 与 hasMore）", async () => {
     const { host, sent } = await readyHost();
     const agent = growConversation("sess-1", 25);
-    // 首屏那一页（20 条）之后还有 5 条更早的。
+    // 锚点 `m5` 之前还有 5 条更早的（m0–m4）。
     await host.handleWebviewMessage({ command: "webviewReady" });
 
     await host.handleWebviewMessage({
@@ -13016,7 +13012,7 @@ describe("宿主不保留消息内容，用的时候现取", () => {
 
     expect(agent.getMessages).toHaveBeenCalledWith({
       before: "sess-1-m5",
-      limit: MESSAGE_HISTORY_PAGE_SIZE,
+      limit: MESSAGE_PAGE_SIZE,
     });
     const replies = sent("earlierMessages");
     expect(replies).toHaveLength(1);

@@ -52,8 +52,7 @@ import {
   PLUGIN_RELOADED_MESSAGE,
   StdioAgent,
   NotificationRouter,
-  MESSAGE_FIRST_PAGE_SIZE,
-  MESSAGE_HISTORY_PAGE_SIZE,
+  MESSAGE_PAGE_SIZE,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "./stdio/stdioClient";
 import type { JsonRpcClient } from "./stdio/jsonRpcClient";
@@ -1099,13 +1098,13 @@ export class DesktopHost {
   }
 
   /**
-   * 现取一页（默认首屏那一页：最近 `MESSAGE_FIRST_PAGE_SIZE` 条 + 还有没有更早）。
+   * 现取一页（默认首屏那一页：最近 `MESSAGE_PAGE_SIZE` 条 + 还有没有更早）。
    * 调用方用完即弃，宿主不留引用；失败返回 `undefined`，由调用方维持界面现状
    * （绝不推空列表）。
    */
   private async pullMessages(
     agent: StdioAgent,
-    window: MessageWindow = { limit: MESSAGE_FIRST_PAGE_SIZE },
+    window: MessageWindow = { limit: MESSAGE_PAGE_SIZE },
   ): Promise<MessageWindowResult | undefined> {
     try {
       // 带窗口取数走分页回包（`messages` + `hasMore`）；宿主只转手，不留引用。
@@ -1136,7 +1135,7 @@ export class DesktopHost {
       try {
         const page = (await agent.getMessages({
           before,
-          limit: MESSAGE_HISTORY_PAGE_SIZE,
+          limit: MESSAGE_PAGE_SIZE,
         })) as MessageWindowResult;
         messages = page.messages;
         hasMore = page.hasMore === true;

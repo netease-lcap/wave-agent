@@ -14,8 +14,7 @@ import type {
 import { StdioClient } from "../stdio/stdioClient";
 import {
   StdioAgent,
-  MESSAGE_FIRST_PAGE_SIZE,
-  MESSAGE_HISTORY_PAGE_SIZE,
+  MESSAGE_PAGE_SIZE,
   type InitializeParams,
   type MessageWindowResult,
   type StdioAgentCallbacks,
@@ -470,14 +469,14 @@ export class ChatSession {
    */
   /**
    * 首屏那一页（spec ui/message-rendering-system.md「首屏一页，上翻按需取更早」）：
-   * 最近 `MESSAGE_FIRST_PAGE_SIZE` 条，外加「还有没有更早」。宿主不留这一页。
+   * 最近 `MESSAGE_PAGE_SIZE` 条，外加「还有没有更早」。宿主不留这一页。
    */
   public async getInitialPage(): Promise<{
     messages: Message[];
     hasEarlier: boolean;
   }> {
     const page = (await this.getMessagePage({
-      limit: MESSAGE_FIRST_PAGE_SIZE,
+      limit: MESSAGE_PAGE_SIZE,
     })) as MessageWindowResult | undefined;
     return {
       messages: page?.messages ?? [],
@@ -496,7 +495,7 @@ export class ChatSession {
   }> {
     const page = (await this.getMessagePage({
       before,
-      limit: MESSAGE_HISTORY_PAGE_SIZE,
+      limit: MESSAGE_PAGE_SIZE,
     })) as MessageWindowResult | undefined;
     return {
       messages: page?.messages ?? [],
