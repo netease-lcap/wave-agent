@@ -5,8 +5,8 @@
 // （上传走 .wave/skills/ops-upload 技能，`upload.mjs --type docs`），CI 不再碰文档。
 //
 // 与 `pnpm run docs:build` 的差别只有两点，都是为了对齐平台侧的托管约定：
-//   - `--base /docs/`：文档在企业端挂在 `/docs/` 前缀下（GitHub Pages 用 config.js
-//     里的 `/wave-agent/`，那是 pages.yml 的事，与这个包无关）。
+//   - 站点 base 换成 `/docs/`：文档在企业端挂在 `/docs/` 前缀下（GitHub Pages 用
+//     config.js 里的 `/wave-agent/`，那是 pages.yml 的事，与这个包无关）。
 //   - 出 tar.gz：压缩包根目录就是 `index.html`，解包后逐文件落成对象。
 //
 // 截图（docs/public/screenshots/，gitignored）是 docs 构建的硬依赖，所以先跑
@@ -29,16 +29,22 @@ const { version } = JSON.parse(
 );
 const outFile = join(root, `docs-${version}.tar.gz`);
 
-function run(command, args) {
-  execFileSync(command, args, { cwd: root, stdio: "inherit" });
+function run(command, args, env = {}) {
+  execFileSync(command, args, {
+    cwd: root,
+    env: { ...process.env, ...env },
+    stdio: "inherit",
+  });
 }
 
 if (!reuseScreenshots) {
   run("pnpm", ["run", "docs:screenshots"]);
 }
 
-// `--base` 必须在构建期定：VitePress 会把资源 URL 写死进 HTML 与 CSS。
-run("pnpm", ["exec", "vitepress", "build", "docs", "--base", "/docs/"]);
+// base 必须在构建期定：VitePress 会把资源 URL 写死进 HTML 与 CSS。走 DOCS_BASE
+// 而不是 CLI 的 `--base`，是因为后者只作用于资源前缀，config.js 里的 `base` 仍是
+// `/wave-agent/`，而插件拼 llms.txt / llms-full.txt 的链接读的正是后者。
+run("pnpm", ["exec", "vitepress", "build", "docs"], { DOCS_BASE: "/docs/" });
 
 // dist 下全是待托管文件，`-C` 进去打 `.`，压缩包根目录即站点根目录。
 run("tar", ["-czf", outFile, "-C", distDir, "."]);

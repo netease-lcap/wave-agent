@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import llmstxt from "vitepress-plugin-llms";
 import { SPECS_DIR, specTitle, collectSpecs } from "./spec-stats.mjs";
 
 const nav = [
@@ -28,8 +29,28 @@ const specsSidebar = collectSpecs().groups.map(({ dir, text, specs }) => ({
   })),
 }));
 
+// llms.txt 的目录按这份「章节 → 页面」列表生成：插件只认 sidebar 形状的数据，
+// 与 themeConfig.sidebar 是两回事。前一组就是站点导航顺序，后面接功能清单的各分组。
+const llmsSidebar = [
+  {
+    text: "文档",
+    items: nav.map(({ text, link }) => ({
+      text,
+      // 导航里写的是 `/specs/`；插件把 `specs/index.md` 归一成目录名 `/specs` 再比对，
+      // 写成带斜杠的目录就匹配不上，那一页会掉进 `### Other`。
+      link: link === "/specs/" ? "/specs" : link,
+    })),
+  },
+  ...specsSidebar,
+];
+
 export default {
-  base: "/wave-agent/",
+  // GitHub Pages（pages.yml）把站点挂在 `/wave-agent/` 下，运维平台的文档包挂在
+  // `/docs/` 下（scripts/pack-docs.mjs 传 DOCS_BASE）。base 必须只有这一个来源：
+  // vitepress-plugin-llms 拼 llms.txt / llms-full.txt 里的链接时取的是这里，而不是
+  // CLI 的 `--base`，两边不同源就会出现「HTML 资源指 /docs/、llms.txt 链接指
+  // /wave-agent/」的分裂。
+  base: process.env.DOCS_BASE || "/wave-agent/",
   title: "CodeWave IDE",
   description: "AI 辅助编程工具链 — SDK、CLI、VS Code 扩展与 JetBrains 插件",
   // rollup 给虚拟模块生成的 chunk 名带 `@` 前缀（vite 本地搜索索引即
@@ -37,6 +58,23 @@ export default {
   // `[A-Za-z0-9._\-/]` 校验包内路径，`@` 判成非法会让整包 400 拒收。
   // 产物文件名只需 URL 安全，这里把非安全字符统一换成 `-`。
   vite: {
+    plugins: [
+      // 在 HTML 之外同时产出机器可读文本：`llms.txt`（按章节列出每页链接的目录）、
+      // `llms-full.txt`（所有页面正文拼成一份）、以及每页同名的 `.md`。这样 agent 直接
+      // 读源 markdown，不必做一遍会丢表格、丢代码围栏语言的 HTML→markdown 转换。
+      // VitePress 官方没有已发布的等价能力（issue #4590 仍 open，PR #5313 还是
+      // draft），它自己的文档站跑的就是这个插件。
+      llmstxt({
+        // 首页是「产品概览」，恰好是 agent 回答「这是什么工具」时最该先读的一页；
+        // 插件默认排除它，是为那些首页只是空落地页的站点准备的。
+        excludeIndexPage: false,
+        // `llms-full.txt` 是把每页正文拼成一个大文件，塞进 docs/specs/（96 篇规格、
+        // 约 2.2 MB 设计历史）会让它没法当上下文用；而这些规格仍需按页可读（`.md`
+        // 与 llms.txt 目录里都有），所以只从 full 里排除。
+        ignoreFilesPerOutput: { llmsFullTxt: ["specs/**"] },
+        sidebar: llmsSidebar,
+      }),
+    ],
     build: {
       rollupOptions: {
         output: {
