@@ -25,6 +25,7 @@ import { useHostMessage } from "../utils/useHostMessage";
 import { ancestorsWithin, isUnder } from "../utils/fileTreePaths";
 import { isDesktopHost } from "../utils/platform";
 import { CodeCommentEntry } from "./CodeCommentEntry";
+import { CommentChipIcon } from "./CommentChipIcon";
 import { ConversationFileList } from "./ConversationFileList";
 import { FileEditor } from "./fileEditor/FileEditor";
 import {
@@ -456,6 +457,56 @@ export interface FilePaneProps {
   /** 走窗口级的全局 toast（桌面端顶部居中提示）。缺省时面板只做复制、不弹提示。 */
   onToast?: (message: string, kind?: ToastKind) => void;
 }
+
+/**
+ * markdown 块的「评论这段」按钮（1029 评论第十六批）。
+ *
+ * 她指着 `i.codicon.codicon-add`（`button > i`）说「这个按钮改成一样的」——
+ * 即和选区那颗评论气泡同一套：设计源的两态矢量（评论normal / 评论hover）+
+ * 桌面端自绘 Tooltip。IDE / 插件端继续用 codicon-add + 原生 title。
+ * 尺寸沿用按钮原盒 16×16（图标等比缩到 16），不改这个浮在块左缘的小按钮的
+ * 几何；取色与气泡一致，悬停面走 `currentColor`（`--cc-text-link` 两档）。
+ */
+const MdBlockCommentButton: React.FC<{
+  top: number;
+  desktop: boolean;
+  buttonRef: React.RefObject<HTMLButtonElement>;
+  onClick: () => void;
+}> = ({ top, desktop, buttonRef, onClick }) => {
+  const button = (
+    <button
+      ref={buttonRef}
+      className="line-comment-btn md-block-comment-btn"
+      style={{ top }}
+      // 桌面端交给 Tooltip，留住 title 会双弹（原生 + 自绘）。
+      title={desktop ? undefined : "评论这段"}
+      aria-label="评论这段"
+      data-testid="md-block-comment-add"
+      onClick={onClick}
+    >
+      {desktop ? (
+        <>
+          <CommentChipIcon className="md-block-comment-icon is-normal" />
+          <CommentChipIcon hover className="md-block-comment-icon is-hover" />
+        </>
+      ) : (
+        <i className="codicon codicon-add" />
+      )}
+    </button>
+  );
+  return desktop ? (
+    <Tooltip
+      text="评论这段"
+      position="top"
+      className="md-block-comment-tooltip"
+      anchorRef={buttonRef}
+    >
+      {button}
+    </Tooltip>
+  ) : (
+    button
+  );
+};
 
 /**
  * Desktop file panel: the session's directory tree on the left, the open file's
@@ -1084,6 +1135,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
   // down instead of covering the block that follows.
   const mdWrapRef = useRef<HTMLDivElement | null>(null);
   const mdHolderRef = useRef<HTMLDivElement | null>(null);
+  // 「评论这段」按钮的锚点：桌面端 Tooltip 拿它量位置（包裹层是 display:contents）。
+  const mdBlockCommentBtnRef = useRef<HTMLButtonElement>(null);
   const [mdHover, setMdHover] = useState<{
     el: HTMLElement;
     top: number;
@@ -1162,7 +1215,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
       ) as HTMLElement | null;
       if (!wrap || !block) {
         setMdHover((prev) =>
-          prev && gutterKeepsMarkdownAnchor(prev.el, event) ? prev : null,
+          prev &&
+          // 指针压在「评论这段」按钮自己身上时也要留住锚点：按钮放大到 40px 后
+          // 有一半盖在正文上（越过块的左缘），只按 gutter 判会把按钮连同提示一起
+          // 收掉 —— 表现为悬停时按钮闪一下就没了。
+          (target.closest?.(".md-block-comment-btn") ||
+            gutterKeepsMarkdownAnchor(prev.el, event))
+            ? prev
+            : null,
         );
         return;
       }
@@ -1856,16 +1916,12 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     is also what keeps it off images (an image has no block to
                     anchor to). */}
                       {mdHover && onAddComment && !mdComment && (
-                        <button
-                          className="line-comment-btn md-block-comment-btn"
-                          style={{ top: mdHover.top }}
-                          title="评论这段"
-                          aria-label="评论这段"
-                          data-testid="md-block-comment-add"
+                        <MdBlockCommentButton
+                          top={mdHover.top}
+                          desktop={isDesktopHost()}
+                          buttonRef={mdBlockCommentBtnRef}
                           onClick={openMdComment}
-                        >
-                          <i className="codicon codicon-add" />
-                        </button>
+                        />
                       )}
                       {mdComment &&
                         createPortal(
