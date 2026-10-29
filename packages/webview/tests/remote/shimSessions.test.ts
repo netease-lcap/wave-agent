@@ -441,7 +441,7 @@ describe("remote page shim", () => {
     expect(deltas[deltas.length - 1]?.params).toMatchObject({ since: SEED.id });
   });
 
-  test("three automatic steps, then the line keeps 「重试」 for the user", async () => {
+  test("three automatic steps, then the line only says why", async () => {
     const page = startPage("?host=h-1");
     await flush();
     page.api.postMessage({ command: "webviewReady" });
@@ -468,15 +468,14 @@ describe("remote page shim", () => {
     await flush();
     expect(page.requests("listDaemonSessions")).toBe(4);
 
-    // The way out is on screen, and it is the user's to take.
-    expect(statusAction("重试")).not.toBeNull();
+    // What is left on screen is the reason and the close — no button to press
+    // (2026-10-29). The ways back re-run the snapshot anyway: coming back to
+    // the page, or remounting it.
+    expect(statusAction("重试")).toBeNull();
+    expect(statusClose()).not.toBeNull();
     expect(
       document.getElementById("remote-status-text")?.textContent,
     ).toContain("读不到电脑侧的会话列表");
-
-    statusAction("重试")?.click();
-    await flush();
-    expect(page.requests("listDaemonSessions")).toBe(5);
   });
 
   test("a machine that refuses the method is not retried", async () => {
@@ -498,26 +497,6 @@ describe("remote page shim", () => {
     expect(
       document.getElementById("remote-status-text")?.textContent,
     ).toContain("读不到电脑侧的会话列表");
-  });
-
-  test("a manual 「重试」 replaces the step that was waiting", async () => {
-    const page = startPage("?host=h-1");
-    await flush();
-    page.api.postMessage({ command: "webviewReady" });
-    await flush();
-
-    await page.refuse("listDaemonSessions", "电脑侧没有响应");
-    await page.answer("listPendingPermissions", { requests: [] });
-
-    statusAction("重试")?.click();
-    await flush();
-    expect(page.requests("listDaemonSessions")).toBe(2);
-
-    // The automatic step that was already waiting does not fire on top of it:
-    // one question at a time, and the press *was* the second step's try.
-    await vi.advanceTimersByTimeAsync(2000);
-    await flush();
-    expect(page.requests("listDaemonSessions")).toBe(2);
   });
 
   test("coming back to the foreground rebuilds a first screen that never landed", async () => {

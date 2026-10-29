@@ -155,16 +155,19 @@ interface Harness {
   replaced: string[];
   /** A page-shell element by id, whole-tree — the machine picker and its list live there. */
   element(id: string): FakeElement | null;
-  /** The status banner's action buttons, label plus what a tap runs. */
+  /**
+   * The status banner's action buttons. There are none (2026-10-29): the line
+   * carries its sentence and the close, so anything here is a regression.
+   */
   bannerButtons(): { label: string; click: () => void }[];
   /** The banner's close (×), or null when the line is not on screen. */
   bannerClose(): { click: () => void } | null;
   /**
-   * The status line's inline styles — the line itself, its action buttons and
-   * the close. This harness has no layout, so the device tier's sizes can only
-   * be read back as the attributes the shim painted them with.
+   * The status line's inline styles — the line itself and its close. This
+   * harness has no layout, so the device tier's sizes can only be read back as
+   * the attributes the shim painted them with.
    */
-  bannerStyles(): { line: string; actions: string[]; close: string };
+  bannerStyles(): { line: string; close: string };
   /** Every timer the shim armed (backoff retries and RPC timeouts alike). */
   timers: { delay: number; cleared: boolean; run(): void }[];
   /** Fire the pending backoff timers by hand; RPC timeouts stay put. */
@@ -466,8 +469,8 @@ function loadShim(options: {
     banner: () => (banner && !banner.removed ? banner.textContent : ""),
     bannerButtons: () =>
       (banner && !banner.removed ? banner.children : [])
-        // The close is a button too, but it is not one of the status's actions —
-        // 「关闭」 and 「重新连接」 mean different things (`bannerClose()` drives it).
+        // The close is the line's only button; anything else would be an action
+        // button, and the line no longer has any (`bannerClose()` drives it).
         .filter(
           (child) =>
             child.onclick && child.getAttribute("aria-label") !== "关闭",
@@ -488,12 +491,6 @@ function loadShim(options: {
         element?.getAttribute("style") ?? "";
       return {
         line: style(banner ?? undefined),
-        actions: children
-          .filter(
-            (child) =>
-              child.onclick && child.getAttribute("aria-label") !== "关闭",
-          )
-          .map(style),
         close: style(
           children.find((child) => child.getAttribute("aria-label") === "关闭"),
         ),
@@ -1121,12 +1118,14 @@ describe("remote page shim — choosing a machine (the picker)", () => {
     expect(picker?.textContent).toContain("wave remote-control on");
   });
 
-  it("a list that will not come is a banner with a retry, not a blank screen", async () => {
+  it("a list that will not come is a banner, not a blank screen", async () => {
     const page = loadShim({ url: BARE_URL, token: "jwt", hosts: "network" });
     await flush();
 
     expect(page.banner()).toContain("取不到机器列表");
-    expect(page.bannerButtons().map((b) => b.label)).toContain("重试");
+    // 只有这一句和关闭键：这条线不再带动作按钮（2026-10-29）。
+    expect(page.bannerButtons()).toEqual([]);
+    expect(page.bannerClose()).toBeTruthy();
   });
 
   it("a 401 from the list renews once, then hops once renewal is spent", async () => {
@@ -1217,26 +1216,23 @@ describe("remote page shim — choosing a machine (the picker)", () => {
     page.post({ command: "webviewReady" });
     await flush();
 
-    // The machine is gone: the banner is now the reader's 重新连接 and 换机器.
+    // The machine is gone: the banner waits out the outage in words.
     page.socket().onclose?.({ code: 4001 });
     const waiting = page.banner();
     expect(waiting).toContain("等待上线");
 
-    page
-      .bannerButtons()
-      .find((button) => button.label === "换机器")
-      ?.click();
+    // 「切换电脑」 is a standing header button, not a banner action.
+    page.post({ command: "openMachinePicker" });
     await flush();
     expect(page.element("remote-machine-picker")).toBeTruthy();
 
     page.element("remote-machine-cancel")?.onclick?.();
     expect(page.element("remote-machine-picker")).toBeNull();
-    // Every word of it survived the detour — the two actions included.
+    // Every word of it survived the detour, and the line is still just words
+    // plus its close.
     expect(page.banner()).toBe(waiting);
-    expect(page.bannerButtons().map((button) => button.label)).toEqual([
-      "重新连接",
-      "换机器",
-    ]);
+    expect(page.bannerButtons()).toEqual([]);
+    expect(page.bannerClose()).toBeTruthy();
   });
 
   it("a cold start reads the list on a neutral banner, not the error one", async () => {
@@ -1361,18 +1357,19 @@ describe("remote page shim — healing after a disconnect", () => {
     expect(pendingRetryDelay(page)).toBe(2000);
   });
 
-  it("a 4003 stops for good, and offers 换机器 rather than a retry", async () => {
+  it("a 4003 stops for good and keeps only its reason on screen", async () => {
     const { page } = await connectedPage();
     const before = page.sockets.length;
 
     page.socket().onclose?.({ code: 4003 });
     expect(page.banner()).toContain("未授权");
-    expect(page.bannerButtons().map((b) => b.label)).toContain("换机器");
+    // No retry, and no button offering one: the fix is on the machine side.
+    expect(page.bannerButtons()).toEqual([]);
     page.runRetryTimers();
     expect(page.sockets.length).toBe(before);
   });
 
-  it("a permanent auth_error parks with 换机器 and never retries", async () => {
+  it("a permanent auth_error parks with its reason and never retries", async () => {
     const { page } = await connectedPage();
 
     page.socket().receive({ type: "auth_error", error: "unknown_host" });
@@ -1381,50 +1378,21 @@ describe("remote page shim — healing after a disconnect", () => {
     const before = page.sockets.length;
     page.socket().onclose?.({ code: 4003 });
     expect(page.banner()).toContain("没有登记过这个通道");
-    expect(page.bannerButtons().map((b) => b.label)).toContain("换机器");
+    expect(page.bannerButtons()).toEqual([]);
     page.runRetryTimers();
     expect(page.sockets.length).toBe(before);
   });
 
-  it("重新连接 forgets the backoff and dials this second", async () => {
-    const { page } = await connectedPage();
-
-    // Two drops in: the armed step is 4s. The button must not wait for it.
-    page.socket().onclose?.({ code: 4001 });
-    page.runRetryTimers();
-    page.socket().onclose?.({ code: 4001 });
-    expect(pendingRetryDelay(page)).toBe(4000);
-
-    const before = page.sockets.length;
-    const button = page.bannerButtons().find((b) => b.label === "重新连接");
-    button?.click();
-    expect(page.sockets.length).toBe(before + 1);
-    // The scheduled retry was cancelled with it — it must not open a second
-    // socket behind the live one.
-    expect(
-      page.timers.filter((timer) => !timer.cleared && timer.delay <= 16000),
-    ).toEqual([]);
-
-    // …and the next drop starts from the fastest step again.
-    page.socket().readyState = 1;
-    page.socket().onopen?.();
-    page.socket().receive({ type: "auth_ok" });
-    page.socket().onclose?.({ code: 4001 });
-    expect(pendingRetryDelay(page)).toBe(2000);
-  });
-
-  it("the waiting banner offers 重新连接, and 换机器 opens the list", async () => {
+  it("the waiting banner is words and a close, nothing to press but ×", async () => {
     const { page } = await connectedPage();
 
     page.socket().onclose?.({ code: 4001 });
-    const labels = page.bannerButtons().map((b) => b.label);
-    expect(labels).toContain("重新连接");
-    expect(labels).toContain("换机器");
+    expect(page.banner()).toContain("等待上线");
+    expect(page.bannerButtons()).toEqual([]);
+    expect(page.bannerClose()).toBeTruthy();
 
-    page
-      .bannerButtons()
-      .find((b) => b.label === "换机器")
-      ?.click();
+    // 「切换电脑」 lives in the header and still opens the list.
+    page.post({ command: "openMachinePicker" });
     await flush();
     expect(page.element("remote-machine-picker")).toBeTruthy();
   });
@@ -1437,7 +1405,7 @@ describe("remote page shim — healing after a disconnect", () => {
  * 40×40 由 `e2e/remote-page-status-line.e2e.ts` 在真 Chromium 里量。
  */
 describe("remote page shim — 状态条按输入能力分档", () => {
-  /** 「等待上线」：一条带两个动作的横幅，正好把三处尺寸都摆出来。 */
+  /** 「等待上线」：一条只有文字和关闭键的横幅，正好把两处尺寸摆出来。 */
   async function waitingBanner(options: { touch?: boolean }) {
     const page = loadShim({ token: "jwt", ...options });
     await flush();
@@ -1451,16 +1419,12 @@ describe("remote page shim — 状态条按输入能力分档", () => {
     return page;
   }
 
-  it("手指下：关闭 40×40、字形 20，动作按钮同高，整条仍是一行 48", async () => {
+  it("手指下：关闭 40×40、字形 20，整条仍是一行 48", async () => {
     const page = await waitingBanner({ touch: true });
     const styles = page.bannerStyles();
 
     expect(styles.close).toContain("width:40px;height:40px;font-size:20px");
-    // 一行里的两颗按钮同高，否则「一个正常一个坏掉」。
-    expect(styles.actions.length).toBeGreaterThan(0);
-    for (const action of styles.actions)
-      expect(action).toContain("min-height:40px");
-    // 条自身让出高度：4 + 40 + 4 = 48，不因为按钮长高变成 56。
+    // 条自身让出高度：4 + 40 + 4 = 48，不因为关闭键长高变成 56。
     expect(styles.line).toContain("padding:4px 12px");
     // 文案不跟着抬：13px 就是这一页手机档的「辅助信息」档（`remote-page.css`），
     // 抬到正文档的 15px 换不来可读性，只让一条三行文案高 18px。
@@ -1474,8 +1438,6 @@ describe("remote page shim — 状态条按输入能力分档", () => {
     expect(styles.close).toContain("width:32px;height:32px");
     expect(styles.line).toContain("padding:8px 12px");
     expect(styles.line).toContain("font:13px/1.5");
-    for (const action of styles.actions)
-      expect(action).toContain("padding:2px 10px");
   });
 
   it("关闭键的字号是显式声明，不是会被整条丢掉的 font 简写", async () => {
