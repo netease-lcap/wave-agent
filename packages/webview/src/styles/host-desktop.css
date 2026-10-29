@@ -6101,3 +6101,102 @@
 [data-host="desktop"] .settings-page .settings-row-copy .settings-row-hint {
   color: var(--cc-text-secondary, #6c7076);
 }
+
+/* ═══ 行内评论框（1029 第十七轮，桌面端）═══
+   设计师评论 `div.line-comment-box`「参考表单的规范优化」（页脚 tag 是
+   `docs/big.log`、按钮是「取消 / 添加」）。契约依据（codechat-desktop-skill
+   main，references/common-components.md）：
+     · §Input fields（2026-09-23）→ 桌面端文本域圆角 r8；保留既有高度/内衬，
+       多行域不压到单行 32px。
+     · §Desktop form field colors and focus（2026-10-23）→ 底/边/字/占位/hover/
+       focus 走 `--cc-field-*`；hover 只换描边；focus 仍是 1px 沿边、无外扩环、
+       零位移；占位符 opacity 必须 1。
+     · §Buttons → 行内紧凑档 28px、14px/22px、字重 500、r8、12px 横向内衬；
+       「Do not shrink only one button in a footer」⇒ 取消与添加同档。
+     · §Control fonts → 按钮/字段吃 UI 字体（base 里取消/添加是 11px Arial）。
+   改前实测（浅色，1440×900）：盒 470×80 r4 pad6 gap4，描边跟着 `:focus-within`
+   直接变成 1 级黑 `rgb(31,35,41)`；输入 456×40 14px；tag 11px Menlo 且是
+   textLink 蓝 `rgb(0,105,204)`；两颗按钮 44×22 r3 pad 2/10、11px Arial、
+   添加键也是蓝色描边描出来的「伪次级」。
+   只作用桌面宿主：`LineCommentBox.css`（IDE / 插件宿主共用）一行未改。 */
+[data-host="desktop"] .line-comment-box {
+  padding: 8px;
+  gap: 8px;
+  border-radius: var(--cc-radius-md, 8px);
+  border: 1px solid var(--cc-field-border);
+  background: var(--cc-field-bg);
+  color: var(--cc-field-text);
+}
+/* hover 只换描边、不动底；focus 放在它后面：两者同时成立时焦点优先 */
+[data-host="desktop"] .line-comment-box:hover {
+  border-color: var(--cc-field-border-hover);
+}
+[data-host="desktop"] .line-comment-box:focus-within {
+  border-color: var(--cc-field-border-focus);
+}
+[data-host="desktop"] .line-comment-input {
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--cc-field-text);
+}
+[data-host="desktop"] .line-comment-input::placeholder {
+  color: var(--cc-field-placeholder);
+  opacity: 1;
+}
+[data-host="desktop"] .line-comment-box-footer {
+  gap: 8px;
+}
+/* 路径是技术值，保留等宽族；但它是说明文字，走 12/20 + 2 级字色，不再是蓝色链接 */
+[data-host="desktop"] .line-comment-box-tag {
+  color: var(--cc-text-secondary, #6c7076);
+  font-size: 12px;
+  line-height: 20px;
+}
+[data-host="desktop"] .line-comment-box-cancel,
+[data-host="desktop"] .line-comment-box-send {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: var(--cc-radius-md, 8px);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: var(--cc-font-weight-medium, 500);
+}
+/* 取消 = 描边次级（transparent + 1 级字色 + border-light） */
+[data-host="desktop"] .line-comment-box-cancel {
+  background: transparent;
+  color: var(--cc-text-primary);
+  border: 1px solid var(--cc-border-light);
+}
+[data-host="desktop"] .line-comment-box-cancel:hover {
+  background: var(--cc-fill-hover);
+}
+[data-host="desktop"] .line-comment-box-cancel:active {
+  background: var(--cc-fill-pressed);
+}
+/* 添加 = 普通确认的主按钮（非危险、非品牌红） */
+[data-host="desktop"] .line-comment-box-send:not(:disabled) {
+  background: var(--cc-action-primary);
+  color: var(--cc-action-primary-text);
+  border: 1px solid transparent;
+}
+[data-host="desktop"] .line-comment-box-send:not(:disabled):hover {
+  background: var(--cc-action-primary-hover);
+}
+[data-host="desktop"] .line-comment-box-send:not(:disabled):active {
+  background: var(--cc-action-primary-active, #111318);
+}
+/* 禁用：与发消息键同一套（浅 --cc-fill + 禁用字色；深 8% 白 + 45% 白），
+   hover 与静止同色，并把 base 的 opacity .4 收掉（否则字色不可读） */
+[data-host="desktop"] .line-comment-box-send:disabled,
+[data-host="desktop"] .line-comment-box-send:disabled:hover {
+  background: var(--cc-fill, #f0f2f5);
+  color: var(--cc-text-disabled, #bec1c6);
+  border: 1px solid transparent;
+  opacity: 1;
+}
+[data-host="desktop"][data-theme="dark"] .line-comment-box-send:disabled,
+[data-host="desktop"][data-theme="dark"] .line-comment-box-send:disabled:hover {
+  background: rgb(255 255 255 / 8%);
+  color: rgb(255 255 255 / 45%);
+}
