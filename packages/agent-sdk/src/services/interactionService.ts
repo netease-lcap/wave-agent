@@ -214,8 +214,13 @@ export class InteractionService {
     abortMessage(); // Abort any running operations
     subagentManager.cleanup(); // Clean up active subagents
 
-    // 7. Rebuild usage (in correct order)
-    messageManager.rebuildUsageFromMessages(sessionData.messages);
+    // 7. Rebuild usage (in correct order). The loader collected every assistant
+    //    usage across the whole thread; `sessionData.messages` is only the tail
+    //    from the last compaction, so deriving from it would lose the earlier half.
+    messageManager.rebuildUsageFromMessages(
+      sessionData.messages,
+      sessionData.usages,
+    );
 
     // 8. Initialize session state last
     messageManager.initializeFromSession(sessionData);

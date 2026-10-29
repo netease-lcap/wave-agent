@@ -63,7 +63,9 @@ import {
   loadSessionFromJsonl,
 } from "@/services/session.js";
 import type { Message } from "@/types/index.js";
+import type { TranscriptSnapshot } from "@/services/sessionEntries.js";
 import { generateMessageId } from "@/utils/messageOperations.js";
+import { resumeSnapshotOf } from "../helpers/transcriptResume.js";
 
 describe("Session Error Handling and Edge Cases", () => {
   let tempDir: string;
@@ -74,6 +76,9 @@ describe("Session Error Handling and Edge Cases", () => {
       (
         filePath: string,
       ) => Promise<{ messages: Message[]; customTitle?: string }>
+    >;
+    readTranscriptForResume: Mock<
+      (filePath: string) => Promise<TranscriptSnapshot>
     >;
     append: Mock<(filePath: string, messages: Message[]) => Promise<void>>;
     isValidSessionFilename: Mock<(filename: string) => boolean>;
@@ -147,6 +152,11 @@ describe("Session Error Handling and Edge Cases", () => {
       readMessagesAndCustomTitle: vi.fn(async (filePath: string) => ({
         messages: await mockJsonlHandler.read(filePath),
       })),
+      // 恢复只留压缩边界之后的尾部；折叠规则由生产代码的
+      // `createResumeAccumulator` 提供，测试只喂消息数组。
+      readTranscriptForResume: vi.fn(async (filePath: string) =>
+        resumeSnapshotOf(await mockJsonlHandler.read(filePath)),
+      ),
       append: vi.fn(),
       isValidSessionFilename: vi.fn().mockReturnValue(true),
       generateSessionFilename: vi

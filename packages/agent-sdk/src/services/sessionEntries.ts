@@ -14,7 +14,9 @@
  * Add a new file-level entry type here when adding one.
  */
 import type { Message } from "../types/messaging.js";
+import type { Usage } from "../types/index.js";
 import { forEachLine } from "../utils/fileUtils.js";
+import { firstUserTextOf } from "../utils/messageOperations.js";
 
 const RESERVED_ENTRY_TYPES = new Set(["metadata", "custom-title"]);
 
@@ -121,4 +123,91 @@ export async function scanTranscriptMessages(
     if (entry.kind !== "message") return;
     onMessage(entry.message, index++);
   });
+}
+
+/** 恢复一条会话要从转录里拿的全部东西（扫一遍顺手收好）。 */
+export interface TranscriptSnapshot {
+  /** 最后一个压缩边界之后的消息（含那段摘要）。 */
+  messages: Message[];
+  /** 完整线程里的消息条数（含压缩前）。 */
+  threadMessageCount: number;
+  firstUserText?: string;
+  /** 整条线程里所有 assistant 用量，按出现顺序。 */
+  usages: Usage[];
+  lastActiveAt?: string;
+  customTitle?: string;
+}
+
+export interface ResumeAccumulator {
+  /** 喂一个已解析的条目；顺序必须与文件里的顺序一致。 */
+  push(entry: ParsedTranscriptLine): void;
+  /** 到目前为止攒到的东西。 */
+  snapshot(): TranscriptSnapshot;
+}
+
+/**
+ * 恢复扫描的折叠规则：一次扫描顺手收齐四件**看整条线程**而不是尾部的东西——
+ * 首个用户输入（标题锚定）、完整条数、用量表（用量统计覆盖压缩前）、自定义
+ * 标题——同时只把最后一个压缩边界之后的消息留在内存里。
+ *
+ * 以前这里是「整份读成数组 → 去重 → 切压缩边界 → 重建用量」：一条几万条的会话
+ * 在恢复时要把整条线程的对象都造出来，其中压缩之前那部分造完就为了被扔掉。现在
+ * 边扫边丢，峰值只与「压缩后的上下文 + 一份用量表 + 一张 id 表」有关。
+ *
+ * 折叠规则与「从哪儿读」分开，是因为它纯、可单测：压边界重置、按 id 去重、用量
+ * 收集都在这里断言，不必造文件。
+ */
+export function createResumeAccumulator(): ResumeAccumulator {
+  let tail: Message[] = [];
+  let threadMessageCount = 0;
+  let firstUserText: string | undefined;
+  const usages: Usage[] = [];
+  let lastActiveAt: string | undefined;
+  let customTitle: string | undefined;
+  /**
+   * 已出现过的消息 id。老转录在每个压缩点会把保留的轮次重写一遍（同一个 id
+   * 第二次出现），恢复时只留第一次——否则界面上一条消息显示两遍。append-only
+   * 之后写入侧不再产生重复，这张表对它是空转，但它是判断「重复」的唯一依据，
+   * 而它比消息对象小三个数量级。
+   */
+  const seenIds = new Set<string>();
+
+  return {
+    push(entry) {
+      if (entry.kind === "custom-title") {
+        // 后写的赢：改名要在恢复后仍然生效。
+        customTitle = entry.customTitle;
+        return;
+      }
+      if (entry.kind !== "message") return;
+      const message = entry.message;
+      if (message.id) {
+        if (seenIds.has(message.id)) return;
+        seenIds.add(message.id);
+      }
+      threadMessageCount++;
+      lastActiveAt = message.timestamp;
+      firstUserText ??= firstUserTextOf(message);
+      if (message.role === "assistant" && message.usage) {
+        usages.push(message.usage);
+      }
+      // 压缩是追加式：后面的摘要块意味着「从这里开始才是上下文」，之前攒的尾部
+      // 整体作废（等价于对整条线程做 `sliceFromLastCompact`）。
+      if (message.blocks.some((block) => block.type === "compact")) {
+        tail = [message];
+      } else {
+        tail.push(message);
+      }
+    },
+    snapshot() {
+      return {
+        messages: tail,
+        threadMessageCount,
+        firstUserText,
+        usages,
+        lastActiveAt,
+        customTitle,
+      };
+    },
+  };
 }

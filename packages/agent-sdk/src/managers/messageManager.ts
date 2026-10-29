@@ -13,6 +13,8 @@ import {
   type AddNotificationMessageParams,
   generateMessageId,
   sliceFromLastCompact,
+  firstUserTextOf,
+  findFirstUserText,
 } from "../utils/messageOperations.js";
 import type {
   Message,
@@ -586,8 +588,12 @@ export class MessageManager {
     this.setMessages(sliceFromLastCompact(sessionData.messages), {
       countLifetime: false,
     });
-    this.threadMessageCount = sessionData.messages.length;
-    this.firstUserText = findFirstUserText(sessionData.messages);
+    // 载入器已经在扫描时数好了整条线程的条数与首个用户输入（那时压缩前的消息
+    // 还在手边）；手工构造的会话数据没有这两项，就按传进来的数组算。
+    this.threadMessageCount =
+      sessionData.threadMessageCount ?? sessionData.messages.length;
+    this.firstUserText =
+      sessionData.firstUserText ?? findFirstUserText(sessionData.messages);
     this.setlatestTotalTokens(sessionData.metadata.latestTotalTokens);
     // Recovered by the whole-file scan on load: from here on it is the
     // in-memory fallback that survives the title entry sliding out of the
@@ -899,13 +905,19 @@ export class MessageManager {
    * Rebuild usage array from messages containing usage metadata
    * Called during session restoration to reconstruct usage tracking
    */
-  public rebuildUsageFromMessages(messages: Message[]): void {
-    this._usages = [];
-    messages.forEach((message) => {
-      if (message.role === "assistant" && message.usage) {
-        this._usages.push(message.usage);
-      }
-    });
+  public rebuildUsageFromMessages(messages: Message[], usages?: Usage[]): void {
+    if (usages) {
+      // 恢复会话时载入器已扫过整条线程：用量统计要覆盖压缩前的对话，而传进来的
+      // `messages` 只剩压缩后的尾部，从它推导会漏掉前半截。
+      this._usages = [...usages];
+    } else {
+      this._usages = [];
+      messages.forEach((message) => {
+        if (message.role === "assistant" && message.usage) {
+          this._usages.push(message.usage);
+        }
+      });
+    }
     // Trigger callback after rebuilding usage array
     this.triggerUsageChange();
   }
@@ -1547,23 +1559,4 @@ function lastIndexById(list: readonly Message[], id: string): number {
     if (list[i].id === id) return i;
   }
   return -1;
-}
-
-/** 首条非 meta 用户消息的正文；会话列表在没有自定义标题时拿它当标题。 */
-function firstUserTextOf(message: Message): string | undefined {
-  if (message.role !== "user" || message.isMeta) return undefined;
-  for (const block of message.blocks) {
-    if (block.type !== "text") continue;
-    const text = block.content.trim();
-    if (text) return text;
-  }
-  return undefined;
-}
-
-function findFirstUserText(messages: readonly Message[]): string | undefined {
-  for (const message of messages) {
-    const text = firstUserTextOf(message);
-    if (text) return text;
-  }
-  return undefined;
 }

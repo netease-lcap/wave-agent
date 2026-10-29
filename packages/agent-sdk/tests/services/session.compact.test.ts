@@ -42,6 +42,11 @@ vi.mock("@/services/jsonlHandler.js", () => ({
       readMessagesAndCustomTitle: vi.fn(async (filePath: string) => ({
         messages: await mockRead(filePath),
       })),
+      // 恢复只留压缩边界之后的尾部；折叠规则由生产代码的
+      // `createResumeAccumulator` 提供，测试只喂消息数组。
+      readTranscriptForResume: vi.fn(async (filePath: string) =>
+        resumeSnapshotOf(await mockRead(filePath)),
+      ),
       append: mockAppend,
       isValidSessionFilename: vi.fn().mockReturnValue(true),
       parseSessionFilename: vi.fn().mockReturnValue({
@@ -85,6 +90,7 @@ import {
 } from "@/services/session.js";
 import type { Message } from "@/types/index.js";
 import { generateMessageId } from "@/utils/messageOperations.js";
+import { resumeSnapshotOf } from "../helpers/transcriptResume.js";
 
 describe("Session Append-Only Compaction", () => {
   const testWorkdir = "/test/workdir";
@@ -108,6 +114,17 @@ describe("Session Append-Only Compaction", () => {
       role,
       blocks: [{ type: "text", content }],
       timestamp: new Date().toISOString(),
+    };
+  }
+
+  function withUsage(message: Message, totalTokens: number): Message {
+    return {
+      ...message,
+      usage: {
+        prompt_tokens: totalTokens,
+        completion_tokens: 0,
+        total_tokens: totalTokens,
+      },
     };
   }
 
@@ -165,18 +182,28 @@ describe("Session Append-Only Compaction", () => {
     process.env.NODE_ENV = originalEnv;
   });
 
-  it("loadSessionFromJsonl returns the full transcript including pre-compact messages", async () => {
+  it("loadSessionFromJsonl keeps only what follows the last compact boundary", async () => {
     const sessionId = "test-session-3";
 
     // File contains: [old_user, old_assistant, compact1, user1, assistant1, compact2, user2]
-    const allMessagesInFile: Message[] = [
-      makeMessage("user", "old_user"),
+    const oldUser = makeMessage("user", "old_user");
+    const oldAssistant = withUsage(
       makeMessage("assistant", "old_assistant"),
-      makeCompactMessage("first summary"),
-      makeMessage("user", "user1"),
-      makeMessage("assistant", "assistant1"),
-      makeCompactMessage("second summary"),
-      makeMessage("user", "user2"),
+      11,
+    );
+    const compact1 = makeCompactMessage("first summary");
+    const user1 = makeMessage("user", "user1");
+    const assistant1 = withUsage(makeMessage("assistant", "assistant1"), 22);
+    const compact2 = makeCompactMessage("second summary");
+    const user2 = makeMessage("user", "user2");
+    const allMessagesInFile: Message[] = [
+      oldUser,
+      oldAssistant,
+      compact1,
+      user1,
+      assistant1,
+      compact2,
+      user2,
     ];
 
     mockRead.mockResolvedValue(allMessagesInFile);
@@ -184,11 +211,15 @@ describe("Session Append-Only Compaction", () => {
     const result = await loadSessionFromJsonl(sessionId, testWorkdir, "main");
 
     expect(result).not.toBeNull();
-    // The UI displays the full transcript (pre-compaction history included);
-    // the API-context folding at the last compact boundary happens in
-    // MessageManager.initializeFromSession.
-    expect(result!.messages.length).toBe(7);
-    expect(result!.messages).toEqual(allMessagesInFile);
+    // Only the tail is materialised: pre-compaction history stays in the
+    // transcript and is read on demand (paging / rewind).
+    expect(result!.messages).toEqual([compact2, user2]);
+    // ...but the whole-thread facts are still collected in the same pass.
+    expect(result!.threadMessageCount).toBe(7);
+    expect(result!.firstUserText).toBe("old_user");
+    expect(result!.usages?.map((usage) => usage.total_tokens)).toEqual([
+      11, 22,
+    ]);
   });
 
   it("loadSessionFromJsonl returns all messages when no compact boundary exists", async () => {
@@ -204,7 +235,8 @@ describe("Session Append-Only Compaction", () => {
     const result = await loadSessionFromJsonl(sessionId, testWorkdir, "main");
 
     expect(result).not.toBeNull();
-    expect(result!.messages.length).toBe(3);
+    expect(result!.messages).toEqual(messages);
+    expect(result!.threadMessageCount).toBe(3);
     expect((result!.messages[0].blocks[0] as { content: string }).content).toBe(
       "hello",
     );
@@ -232,13 +264,11 @@ describe("Session Append-Only Compaction", () => {
 
     const result = await loadSessionFromJsonl(sessionId, testWorkdir, "main");
 
-    expect(result!.messages.length).toBe(4);
-    // The first occurrence (original pre-compaction position) survives,
-    // and the duplicated id appears exactly once.
-    expect(result!.messages[1].id).toBe(retainedUser.id);
-    expect(
-      result!.messages.filter((m) => m.id === retainedUser.id).length,
-    ).toBe(1);
+    // The first occurrence (original pre-compaction position) survives and the
+    // duplicate is dropped, so it never reaches the tail after the boundary.
+    expect(result!.threadMessageCount).toBe(4);
+    expect(result!.messages.map((m) => m.id)).not.toContain(retainedUser.id);
+    expect(result!.firstUserText).toBe("old_user");
   });
 
   it("loadFullMessageThread returns the complete message thread including pre-compact messages", async () => {

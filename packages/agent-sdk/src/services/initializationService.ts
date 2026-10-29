@@ -310,8 +310,12 @@ export class InitializationService {
         options?.continueLastSession,
         messageManager.getCurrentWorkdir(),
       );
-      // Rebuild usage array from restored messages
-      messageManager.rebuildUsageFromMessages(sessionToRestore?.messages || []);
+      // Rebuild usage array from what the loader collected while scanning the
+      // transcript (falls back to the messages when there was nothing to restore).
+      messageManager.rebuildUsageFromMessages(
+        sessionToRestore?.messages || [],
+        sessionToRestore?.usages,
+      );
 
       if (sessionToRestore) {
         messageManager.initializeFromSession(sessionToRestore);

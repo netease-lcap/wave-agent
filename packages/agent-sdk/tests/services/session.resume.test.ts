@@ -35,7 +35,9 @@ import {
   loadSessionFromJsonl,
 } from "../../src/services/session.js";
 import type { Message } from "../../src/types/index.js";
+import type { TranscriptSnapshot } from "../../src/services/sessionEntries.js";
 import { generateMessageId } from "../../src/utils/messageOperations.js";
+import { resumeSnapshotOf } from "../helpers/transcriptResume.js";
 
 const SESSION_DIR = join(homedir(), ".wave", "projects");
 
@@ -52,6 +54,9 @@ describe("Session resume: cross-directory listing & restore", () => {
   };
   let mockJsonlHandler: {
     read: Mock<(filePath: string) => Promise<Message[]>>;
+    readTranscriptForResume: Mock<
+      (filePath: string) => Promise<TranscriptSnapshot>
+    >;
     readMessagesAndCustomTitle: (
       filePath: string,
     ) => Promise<{ messages: Message[]; customTitle?: string }>;
@@ -98,6 +103,11 @@ describe("Session resume: cross-directory listing & restore", () => {
       readMessagesAndCustomTitle: vi.fn(async (filePath: string) => ({
         messages: await mockJsonlHandler.read(filePath),
       })),
+      // 恢复只留压缩边界之后的尾部；折叠规则由生产代码的
+      // `createResumeAccumulator` 提供，测试只喂消息数组。
+      readTranscriptForResume: vi.fn(async (filePath: string) =>
+        resumeSnapshotOf(await mockJsonlHandler.read(filePath)),
+      ),
       getLastMessage: vi.fn().mockResolvedValue(null),
       getLatestTotalTokens: vi.fn().mockResolvedValue(0),
       generateSessionFilename: vi

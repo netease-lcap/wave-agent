@@ -613,3 +613,29 @@ export const addNotificationMessageToMessages = ({
 
   return [...messages, notificationMessage];
 };
+
+/**
+ * 首条非 meta 用户消息的正文；会话列表在没有自定义标题时拿它当标题。
+ *
+ * 单独导出是因为恢复会话（扫转录时顺手取）与会话列表两条路都要它，而恢复
+ * 那条路不能为此把整条线程攒进内存。
+ */
+export function firstUserTextOf(message: Message): string | undefined {
+  if (message.role !== "user" || message.isMeta) return undefined;
+  for (const block of message.blocks) {
+    if (block.type !== "text") continue;
+    const text = block.content.trim();
+    if (text) return text;
+  }
+  return undefined;
+}
+
+export function findFirstUserText(
+  messages: readonly Message[],
+): string | undefined {
+  for (const message of messages) {
+    const text = firstUserTextOf(message);
+    if (text) return text;
+  }
+  return undefined;
+}
