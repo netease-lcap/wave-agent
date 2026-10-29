@@ -431,17 +431,6 @@ export class StdioAgent {
     );
   }
 
-  async getFullMessageThread(): Promise<{
-    messages: Message[];
-    sessionIds: string[];
-  }> {
-    return (await this.client.request(
-      "getFullMessageThread",
-      undefined,
-      this.sessionId,
-    )) as { messages: Message[]; sessionIds: string[] };
-  }
-
   /**
    * 取整份列表（= 最近一次压缩 + 它之后的消息）。**不留缓存**：这份数组只在
    * 调用方手里活一次（宿主推给渲染进程、导出读完即走），这之后宿主对消息内容

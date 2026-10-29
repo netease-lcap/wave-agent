@@ -140,9 +140,6 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     clearMessages: vi.fn(),
     truncateHistory: vi.fn(),
     removeQueuedMessage: vi.fn(),
-    getFullMessageThread: vi
-      .fn()
-      .mockResolvedValue({ messages, sessionIds: ["test-session-id"] }),
     // `/rewind` 的两条路：列检查点、按 id 定位目标。两者都由 SDK 扫转录投影，
     // 这一层只被要求「把回包递出去」。
     getRewindCheckpoints: vi.fn().mockResolvedValue([]),
@@ -1152,22 +1149,6 @@ test("getMessages rejects a non-positive limit instead of silently widening", as
   await expect(
     bridge.handleRequest("getMessages", { limit: 0 }, sessionId),
   ).rejects.toThrow(/limit must be a positive integer/);
-});
-
-test("getFullMessageThread returns messages and sessionIds", async () => {
-  const { bridge } = createBridge();
-  const mockAgent = createMockAgent();
-  vi.mocked(Agent.create).mockResolvedValue(mockAgent);
-
-  const result = await bridge.handleRequest("initialize", {});
-  const sessionId = (result as { sessionId: string }).sessionId;
-  const r = await bridge.handleRequest("getFullMessageThread", {}, sessionId);
-
-  expect(r).toEqual({
-    messages: [],
-    sessionIds: ["test-session-id"],
-  });
-  expect(mockAgent.getFullMessageThread).toHaveBeenCalled();
 });
 
 test("listDaemonSessions labels live sessions for the remote page's list", async () => {

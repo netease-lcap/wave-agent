@@ -440,8 +440,6 @@ export class AgentBridge {
           since: p.since as string | undefined,
           limit: p.limit as number | undefined,
         });
-      case "getFullMessageThread":
-        return this.getFullMessageThread(sessionId);
 
       // ── Remote control (daemon-level) ──
       // The daemon owns the outbound relay socket; the bridge only routes.
@@ -2034,15 +2032,6 @@ export class AgentBridge {
       contextUsagePercent,
       threadSummary,
     };
-  }
-
-  private async getFullMessageThread(sessionId?: string): Promise<{
-    messages: Message[];
-    sessionIds: string[];
-  }> {
-    const entry = this.requireSessionForRead(sessionId);
-    const thread = await entry.agent.getFullMessageThread();
-    return { ...thread, messages: messagesForUi(thread.messages) };
   }
 
   private async compact(

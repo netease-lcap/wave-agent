@@ -214,9 +214,6 @@ function createMockAgent(
     clearMessages: vi.fn(),
     truncateHistory: vi.fn(),
     removeQueuedMessage: vi.fn(),
-    getFullMessageThread: vi
-      .fn()
-      .mockResolvedValue({ messages, sessionIds: ["test-session-id"] }),
     getMessagePage: vi.fn(() => ({ messages: [], hasMore: false })),
     // 会话列表要的条数 / 首条正文 / 最近时间：列表从最近一次压缩开始，这些由 SDK
     // 的计数器给出，不从 `messages` 数。
