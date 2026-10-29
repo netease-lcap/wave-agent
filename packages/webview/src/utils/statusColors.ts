@@ -26,7 +26,12 @@ export const TOOL_STATUS_COLORS = {
 export const getToolStatusColor = (
   toolBlock: Pick<ToolBlock, "stage" | "success" | "error">,
 ): string => {
-  if (toolBlock.stage === "streaming") return TOOL_STATUS_COLORS.streaming;
+  // `start` = 模型已点名工具、参数还没开始流，与 `streaming` 同属「进行中」，共用橙色。
+  // 它过去没有自己的档位、落到下面的 `success === false` 分支被染成失败红：`start`
+  // 帧本身不带 success，而 webview 新建块时把缺失的 success 当成了 false。遥控页上
+  // 这段红点肉眼可见——start 帧离散直发，streaming 帧要等 150 ms 合并窗口。
+  if (toolBlock.stage === "start" || toolBlock.stage === "streaming")
+    return TOOL_STATUS_COLORS.streaming;
   if (toolBlock.stage === "running") return TOOL_STATUS_COLORS.running;
   if (toolBlock.success === true) return TOOL_STATUS_COLORS.success;
   if (toolBlock.error || toolBlock.success === false)

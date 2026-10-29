@@ -128,6 +128,11 @@ describe("timeline dot color by stage", () => {
     sendBlock({ type: "tool", name: "bash", stage: "streaming" });
     expect(dotColor()).toBe(STREAMING);
 
+    // `start` = 工具已点名、参数还没开始流：进行中，不是失败。遥控页上一次 start
+    // 帧会被单独渲染出来（离散直发），这里守住它别是红的。
+    sendBlock({ type: "tool", name: "bash", stage: "start" });
+    expect(dotColor()).toBe(STREAMING);
+
     sendBlock({ type: "tool", name: "bash", stage: "running" });
     expect(dotColor()).toBe(RUNNING);
 
