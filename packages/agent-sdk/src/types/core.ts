@@ -25,8 +25,10 @@ export interface Usage {
   model?: string; // Model used for the operation (e.g., "gpt-4", "gpt-3.5-turbo")
   operation_type?: "agent" | "compact"; // Type of operation that generated usage
 
-  // Normalized cache fields (from OpenAI prompt_tokens_details.cached_tokens
-  // and the gateway-provided prompt_tokens_details.cache_creation_input_tokens)
+  // Normalized cache fields, all read from OpenAI prompt_tokens_details:
+  // cached_tokens → cache_read_input_tokens; cache_write_tokens (GPT-5.6+) or
+  // a gateway's cache_creation_input_tokens / cache_creation.ephemeral_5m_input_tokens
+  // → cache_creation_input_tokens
   cache_read_input_tokens?: number;
   cache_creation_input_tokens?: number;
 }

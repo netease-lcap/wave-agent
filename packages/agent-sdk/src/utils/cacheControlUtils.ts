@@ -39,9 +39,10 @@ export interface ClaudeChatCompletionContentPartText
 }
 
 /**
- * Extended prompt_tokens_details with the cache-write field, in both shapes seen
- * in the wild. The OpenAI schema only carries `cached_tokens`, so whatever the
- * gateway reports for cache writes has to be declared here.
+ * Extended prompt_tokens_details with the gateway-specific cache-write shapes.
+ * OpenAI's own schema carries `cached_tokens` and `cache_write_tokens` since
+ * GPT-5.6; the two shapes below are the ones only gateways report, so they have
+ * to be declared here.
  */
 export interface ExtendedPromptTokensDetails
   extends CompletionUsage.PromptTokensDetails {
@@ -308,7 +309,7 @@ export function transformMessagesForExplicitCache(
 /**
  * Extends standard usage with cache metrics
  * Extracts cache tokens from OpenAI-standard prompt_tokens_details
- * (cached_tokens, plus the cache-write field in either of its two known shapes)
+ * (cached_tokens, plus the cache-write field in any of its three known shapes)
  * @param usage - OpenAI usage response
  * @returns Extended usage with cache information
  */
@@ -327,13 +328,17 @@ export function extendUsageWithCacheMetrics(usage: CompletionUsage): Usage {
     baseUsage.cache_read_input_tokens = details.cached_tokens;
   }
 
-  // Cache writes arrive either as a flat total (Aliyun and similar) or as a TTL
-  // breakdown (Anthropic behind a chat-completions gateway). They are mutually
-  // exclusive per response, so take whichever is present instead of summing —
-  // summing would double count the day one gateway reports both.
+  // Cache writes arrive in one of three mutually exclusive shapes: a flat total
+  // (Aliyun and similar), a TTL breakdown (Anthropic behind a chat-completions
+  // gateway), or OpenAI's own `cache_write_tokens` (GPT-5.6+, written implicitly
+  // by the server — no cache_control needed). Take whichever is present instead
+  // of summing: summing would double count the day one gateway reports more than
+  // one. Gateway shapes win because they were the only ones read before the
+  // official field existed.
   const cacheCreation =
     details?.cache_creation_input_tokens ??
-    details?.cache_creation?.ephemeral_5m_input_tokens;
+    details?.cache_creation?.ephemeral_5m_input_tokens ??
+    details?.cache_write_tokens;
   if (cacheCreation != null) {
     baseUsage.cache_creation_input_tokens = cacheCreation;
   }
