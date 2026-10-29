@@ -411,6 +411,34 @@ class MessageHandler(
                 val requestId = msg["requestId"]?.jsonPrimitive?.content ?: ""
                 try {
                     val workdir = currentWorkdir()
+                    // 子代理条目（spec multi-agent/subagent.md「显式子代理调用」）：
+                    // 与文件建议同一条回包、排在前面；名字/描述的过滤在 webview 做。
+                    // 读不到就只给文件建议，不让整条请求失败。
+                    val agentItems: List<JsonObject> = try {
+                        val configurations = session.agent
+                            ?.getSubagentConfigurations()
+                            ?.jsonObject?.get("configurations")?.jsonArray
+                            ?: JsonArray(emptyList())
+                        configurations.map { it.jsonObject }.map { configuration ->
+                            val name = configuration["name"]?.jsonPrimitive?.content ?: ""
+                            buildJsonObject {
+                                put("path", "agent:$name")
+                                put("relativePath", "")
+                                put("name", name)
+                                put("extension", "")
+                                put("icon", "codicon-hubot")
+                                put("isDirectory", false)
+                                put("agentName", name)
+                                put(
+                                    "agentDescription",
+                                    configuration["description"]?.jsonPrimitive?.content ?: "",
+                                )
+                            }
+                        }
+                    } catch (e: StdioClientException) {
+                        LOG.warn("requestFileSuggestions agent items failed: ${e.message}")
+                        emptyList()
+                    }
                     val res = session.agent?.searchFiles(filterText, workdir)?.jsonObject
                     val files = res?.get("files")?.jsonArray ?: JsonArray(emptyList())
                     val items = files.map { it.jsonObject }.map { item ->
@@ -429,7 +457,7 @@ class MessageHandler(
                         }
                     }
                     postMessage("fileSuggestionsResponse", buildJsonObject {
-                        put("suggestions", JsonArray(items))
+                        put("suggestions", JsonArray(agentItems + items))
                         put("filterText", filterText)
                         put("requestId", requestId)
                     })

@@ -216,6 +216,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     hasQueuedMessages,
     isIdle,
     onRecallQueuedMessage,
+    subagentConfigurations: agentDefinitions,
   });
 
   // Keep setInputText ref updated for queue callbacks

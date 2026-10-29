@@ -1,9 +1,9 @@
 import {
-  FileItem,
   PermissionMode,
   Logger,
   PromptEntry,
   Message,
+  SubagentConfiguration,
 } from "wave-agent-sdk";
 import { Key } from "ink";
 import {
@@ -25,6 +25,23 @@ export interface BtwState {
   question: string;
   answer?: string;
   isLoading: boolean;
+}
+
+/**
+ * `@` 候选条目。文件/目录来自 SDK 的 `searchFiles`，子代理来自
+ * `agent.getSubagentConfigurations()`（spec `multi-agent/subagent.md`
+ * 「用户故事：显式子代理调用」）。
+ *
+ * 子代理条目的 `path` 是 `agent:<名称>` 占位值、`agentName` 是判据；选中后插入
+ * `@agent:<名称>`，SDK 会在每轮首回合把它解析成点名提醒。
+ */
+export interface FileSelectorItem {
+  path: string;
+  type: "file" | "directory" | "agent";
+  /** 子代理名（`type === "agent"` 时有值），也是插入正文的名字。 */
+  agentName?: string;
+  /** 子代理定义的 description，作为条目的第二行说明。 */
+  agentDescription?: string;
 }
 
 /**
@@ -85,7 +102,7 @@ export interface InputManagerCallbacks {
   onCursorPositionChange?: (position: number) => void;
   onFileSelectorStateChange?: (
     show: boolean,
-    files: FileItem[],
+    files: FileSelectorItem[],
     query: string,
     position: number,
   ) => void;
@@ -134,6 +151,11 @@ export interface InputManagerCallbacks {
   hasQueuedMessages?: boolean;
   isIdle?: boolean;
   onRecallQueuedMessage?: () => void;
+  /**
+   * 已加载的子代理（`Agent.getSubagentConfigurations()`），`@` 候选会把它们并到
+   * 文件结果之前（spec `multi-agent/subagent.md`「用户故事：显式子代理调用」）。
+   */
+  subagentConfigurations?: SubagentConfiguration[];
 }
 
 export interface InputState {
@@ -142,7 +164,7 @@ export interface InputState {
   showFileSelector: boolean;
   atPosition: number;
   fileSearchQuery: string;
-  filteredFiles: FileItem[];
+  filteredFiles: FileSelectorItem[];
   showCommandSelector: boolean;
   slashPosition: number;
   commandSearchQuery: string;
@@ -486,7 +508,7 @@ export type InputAction =
   | { type: "MOVE_CURSOR"; payload: number }
   | { type: "ACTIVATE_FILE_SELECTOR"; payload: number }
   | { type: "SET_FILE_SEARCH_QUERY"; payload: string }
-  | { type: "SET_FILTERED_FILES"; payload: FileItem[] }
+  | { type: "SET_FILTERED_FILES"; payload: FileSelectorItem[] }
   | { type: "CANCEL_FILE_SELECTOR" }
   | { type: "ACTIVATE_COMMAND_SELECTOR"; payload: number }
   | { type: "SET_COMMAND_SEARCH_QUERY"; payload: string }
@@ -526,7 +548,7 @@ export type InputAction =
   | { type: "SELECT_HISTORY_ENTRY"; payload: PromptEntry }
   | { type: "SELECT_COMMAND"; payload: string }
   | { type: "INSERT_COMMAND"; payload: string }
-  | { type: "SELECT_FILE"; payload: string }
+  | { type: "SELECT_FILE"; payload: FileSelectorItem }
   | { type: "SET_BTW_STATE"; payload: Partial<BtwState> }
   | { type: "APPEND_BTW_ANSWER"; payload: string }
   | { type: "CLEAR_PENDING_EFFECT" }
@@ -916,13 +938,17 @@ export function inputReducer(
       return state;
     }
     case "SELECT_FILE": {
-      const filePath = action.payload;
+      const item = action.payload;
+      // 子代理条目插入 `@agent:<名称>`（SDK 的判据），文件/目录仍插 `@路径`。
+      const inserted = item.agentName
+        ? `@agent:${item.agentName}`
+        : `@${item.path}`;
       if (state.atPosition >= 0) {
         const wordEnd = getWordEnd(state.inputText, state.atPosition);
         const beforeAt = state.inputText.substring(0, state.atPosition);
         const afterWord = state.inputText.substring(wordEnd);
-        const newInput = beforeAt + `@${filePath} ` + afterWord;
-        const newCursorPosition = beforeAt.length + filePath.length + 2;
+        const newInput = beforeAt + `${inserted} ` + afterWord;
+        const newCursorPosition = beforeAt.length + inserted.length + 1;
 
         return {
           ...state,

@@ -1,18 +1,18 @@
 import React, { useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
-import type { FileItem } from "wave-agent-sdk";
+import type { FileSelectorItem } from "../managers/inputReducer.js";
 import {
   selectorReducer,
   type SelectorState,
 } from "../reducers/selectorReducer.js";
 
-export { type FileItem } from "wave-agent-sdk";
+export type { FileSelectorItem };
 
 export interface FileSelectorProps {
-  files: FileItem[];
+  files: FileSelectorItem[];
   searchQuery: string;
   isLoading?: boolean;
-  onSelect: (filePath: string) => void;
+  onSelect: (item: FileSelectorItem) => void;
   onCancel: () => void;
 }
 
@@ -23,11 +23,11 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
   onSelect,
   onCancel,
 }) => {
-  const [state, dispatch] = useReducer(selectorReducer<FileItem>, {
+  const [state, dispatch] = useReducer(selectorReducer<FileSelectorItem>, {
     selectedIndex: 0,
     pendingDecision: null,
     items: [],
-  } as SelectorState<FileItem>);
+  } as SelectorState<FileSelectorItem>);
 
   const { selectedIndex, pendingDecision, items: filesInState } = state;
 
@@ -42,7 +42,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
 
     if (pendingDecision === "select" || pendingDecision === "insert") {
       if (filesInState.length > 0 && selectedIndex < filesInState.length) {
-        onSelect(filesInState[selectedIndex].path);
+        onSelect(filesInState[selectedIndex]);
       }
     } else if (pendingDecision === "cancel") {
       onCancel();
@@ -124,8 +124,11 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
                 backgroundColor={isSelected ? "cyan" : undefined}
               >
                 {isSelected ? "▶ " : "  "}
-                {fileItem.path}
+                {fileItem.agentName ? `@${fileItem.agentName}` : fileItem.path}
               </Text>
+              {fileItem.agentDescription && (
+                <Text dimColor> {fileItem.agentDescription}</Text>
+              )}
             </Box>
           );
         })}

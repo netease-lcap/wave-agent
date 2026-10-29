@@ -1,13 +1,16 @@
 import React from "react";
 import { render, cleanup } from "../helpers/inkHarness.js";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { FileSelector, FileItem } from "../../src/components/FileSelector.js";
+import {
+  FileSelector,
+  FileSelectorItem,
+} from "../../src/components/FileSelector.js";
 
 describe("FileSelector", () => {
   afterEach(() => {
     cleanup();
   });
-  const mockFiles: FileItem[] = Array.from({ length: 20 }, (_, i) => ({
+  const mockFiles: FileSelectorItem[] = Array.from({ length: 20 }, (_, i) => ({
     path: `file${i + 1}.txt`,
     type: "file",
   }));
@@ -57,7 +60,7 @@ describe("FileSelector", () => {
   it("should handle scroll window logic correctly", () => {
     // Test scrolling window logic
     const maxDisplay = 5;
-    const files: FileItem[] = Array.from({ length: 20 }, (_, i) => ({
+    const files: FileSelectorItem[] = Array.from({ length: 20 }, (_, i) => ({
       path: `file${i + 1}.txt`,
       type: "file",
     }));
@@ -94,7 +97,7 @@ describe("FileSelector", () => {
   });
 
   it("should display directory paths correctly", () => {
-    const mixedFiles: FileItem[] = [
+    const mixedFiles: FileSelectorItem[] = [
       { path: "src/", type: "directory" },
       { path: "src/components/", type: "directory" },
       { path: "package.json", type: "file" },
@@ -125,7 +128,10 @@ describe("FileSelector", () => {
       stdin.write("\t");
 
       await vi.waitFor(() => {
-        expect(onSelectMock).toHaveBeenCalledWith("file1.txt");
+        expect(onSelectMock).toHaveBeenCalledWith({
+          path: "file1.txt",
+          type: "file",
+        });
         expect(onSelectMock).toHaveBeenCalledTimes(1);
       });
     });
@@ -162,8 +168,14 @@ describe("FileSelector", () => {
 
       // Both should call onSelect with the same file (first file by default)
       await vi.waitFor(() => {
-        expect(onSelectMockTab).toHaveBeenCalledWith("file1.txt");
-        expect(onSelectMockEnter).toHaveBeenCalledWith("file1.txt");
+        expect(onSelectMockTab).toHaveBeenCalledWith({
+          path: "file1.txt",
+          type: "file",
+        });
+        expect(onSelectMockEnter).toHaveBeenCalledWith({
+          path: "file1.txt",
+          type: "file",
+        });
         expect(onSelectMockTab).toHaveBeenCalledTimes(1);
         expect(onSelectMockEnter).toHaveBeenCalledTimes(1);
       });
@@ -171,7 +183,7 @@ describe("FileSelector", () => {
 
     it("should trigger onSelect with correct file path when Tab is pressed with different files", async () => {
       // Test with a smaller, different set of files to ensure Tab works correctly
-      const testFiles: FileItem[] = [
+      const testFiles: FileSelectorItem[] = [
         { path: "README.md", type: "file" },
         { path: "package.json", type: "file" },
         { path: "src", type: "directory" },
@@ -189,13 +201,16 @@ describe("FileSelector", () => {
       stdin.write("\t");
 
       await vi.waitFor(() => {
-        expect(onSelectMock).toHaveBeenCalledWith("README.md");
+        expect(onSelectMock).toHaveBeenCalledWith({
+          path: "README.md",
+          type: "file",
+        });
         expect(onSelectMock).toHaveBeenCalledTimes(1);
       });
     });
 
     it("should handle Tab key with single file", async () => {
-      const singleFile: FileItem[] = [
+      const singleFile: FileSelectorItem[] = [
         { path: "single-file.txt", type: "file" },
       ];
 
@@ -211,13 +226,16 @@ describe("FileSelector", () => {
       stdin.write("\t");
 
       await vi.waitFor(() => {
-        expect(onSelectMock).toHaveBeenCalledWith("single-file.txt");
+        expect(onSelectMock).toHaveBeenCalledWith({
+          path: "single-file.txt",
+          type: "file",
+        });
         expect(onSelectMock).toHaveBeenCalledTimes(1);
       });
     });
 
     it("should handle Tab key correctly with directory files", async () => {
-      const mixedFiles: FileItem[] = [
+      const mixedFiles: FileSelectorItem[] = [
         { path: "src/", type: "directory" },
         { path: "components/", type: "directory" },
         { path: "index.ts", type: "file" },
@@ -235,7 +253,10 @@ describe("FileSelector", () => {
       stdin.write("\t");
 
       await vi.waitFor(() => {
-        expect(onSelectMock).toHaveBeenCalledWith("src/");
+        expect(onSelectMock).toHaveBeenCalledWith({
+          path: "src/",
+          type: "directory",
+        });
         expect(onSelectMock).toHaveBeenCalledTimes(1);
       });
     });

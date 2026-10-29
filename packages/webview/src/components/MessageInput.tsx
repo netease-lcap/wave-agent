@@ -353,9 +353,29 @@ export const MessageInput = forwardRef<
         : [],
     [atMention.isActive, atMention.filterText],
   );
+  // 子代理条目由宿主随文件建议一起下发（`agentName` 判据，见
+  // types/index.ts 的 FileItem）：排在文件之前——它们是稳定的小集合，被上百条
+  // 文件结果压到下面就等于没有（spec multi-agent/subagent.md 验收场景 1）。
+  // 过滤在 webview 做（与上面 IDE 固定条目同一套判据、同一处），宿主只负责
+  // 「有哪些子代理」，不必各自再写一份名字/描述的匹配。
+  const agentSuggestions = useMemo(() => {
+    const filter = atMention.filterText.toLowerCase();
+    return suggestions
+      .filter((suggestion) => suggestion.agentName)
+      .filter(
+        (suggestion) =>
+          !filter ||
+          (suggestion.agentName ?? "").toLowerCase().includes(filter) ||
+          (suggestion.agentDescription ?? "").toLowerCase().includes(filter),
+      );
+  }, [suggestions, atMention.filterText]);
+  const fileSuggestions = useMemo(
+    () => suggestions.filter((suggestion) => !suggestion.agentName),
+    [suggestions],
+  );
   const allSuggestions = useMemo(
-    () => [...ideSuggestions, ...suggestions],
-    [ideSuggestions, suggestions],
+    () => [...ideSuggestions, ...agentSuggestions, ...fileSuggestions],
+    [ideSuggestions, agentSuggestions, fileSuggestions],
   );
   const [dropdownPosition, setDropdownPosition] = useState({
     top: 0,
@@ -1219,55 +1239,69 @@ export const MessageInput = forwardRef<
       tagSpan.className = "context-tag-container"; // Wrapper for React component
       tagSpan.contentEditable = "false";
 
-      // IDE 上下文条目（@终端 / @问题）：不是文件引用，标签只留一个标记，内容
-      // 在发送那一刻才向宿主取（spec ui/ide-context-mentions.md）。
-      const ideProvider = file.ideContext;
-      const ideInfo = ideProvider
-        ? ideContextProviderInfo(ideProvider)
-        : undefined;
-      if (ideProvider && ideInfo) {
-        tagSpan.setAttribute("data-ide-context", ideProvider);
-        tagSpan.setAttribute("data-path", `ide:${ideProvider}`);
-        tagSpan.setAttribute("data-name", ideInfo.label);
+      // 子代理条目：标签只留点名标记，判定与注入都在 SDK（spec
+      // multi-agent/subagent.md「显式子代理调用」）。
+      const agentName = file.agentName;
+      if (agentName) {
+        tagSpan.setAttribute("data-agent-name", agentName);
+        tagSpan.setAttribute("data-path", `agent:${agentName}`);
+        tagSpan.setAttribute("data-name", agentName);
         tagSpan.setAttribute("data-is-image", "false");
-        tagSpan.innerText = ideContextMarker(ideProvider);
+        tagSpan.innerText = `[@agent:${agentName}]`;
         ReactDOM.createRoot(tagSpan).render(
-          <ContextTag name={ideInfo.label} path={`ide:${ideProvider}`} />,
+          <ContextTag name={agentName} path={`agent:${agentName}`} />,
         );
       } else {
-        tagSpan.setAttribute("data-path", file.relativePath);
-        tagSpan.setAttribute("data-name", file.name);
-        tagSpan.setAttribute(
-          "data-is-image",
-          String(
-            !file.isDirectory &&
-              /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name),
-          ),
-        );
-        tagSpan.innerText = `[@file:${file.relativePath}]`;
+        // IDE 上下文条目（@终端 / @问题）：不是文件引用，标签只留一个标记，内容
+        // 在发送那一刻才向宿主取（spec ui/ide-context-mentions.md）。
+        const ideProvider = file.ideContext;
+        const ideInfo = ideProvider
+          ? ideContextProviderInfo(ideProvider)
+          : undefined;
+        if (ideProvider && ideInfo) {
+          tagSpan.setAttribute("data-ide-context", ideProvider);
+          tagSpan.setAttribute("data-path", `ide:${ideProvider}`);
+          tagSpan.setAttribute("data-name", ideInfo.label);
+          tagSpan.setAttribute("data-is-image", "false");
+          tagSpan.innerText = ideContextMarker(ideProvider);
+          ReactDOM.createRoot(tagSpan).render(
+            <ContextTag name={ideInfo.label} path={`ide:${ideProvider}`} />,
+          );
+        } else {
+          tagSpan.setAttribute("data-path", file.relativePath);
+          tagSpan.setAttribute("data-name", file.name);
+          tagSpan.setAttribute(
+            "data-is-image",
+            String(
+              !file.isDirectory &&
+                /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name),
+            ),
+          );
+          tagSpan.innerText = `[@file:${file.relativePath}]`;
 
-        // Render the React component into the span
-        const isImage =
-          !file.isDirectory &&
-          /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name);
-        const root = ReactDOM.createRoot(tagSpan);
-        root.render(
-          <ContextTag
-            name={file.name}
-            path={file.relativePath}
-            isImage={isImage}
-            onClick={
-              isImage
-                ? () => {
-                    vscode.postMessage({
-                      command: "previewImage",
-                      path: file.path,
-                    });
-                  }
-                : undefined
-            }
-          />,
-        );
+          // Render the React component into the span
+          const isImage =
+            !file.isDirectory &&
+            /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name);
+          const root = ReactDOM.createRoot(tagSpan);
+          root.render(
+            <ContextTag
+              name={file.name}
+              path={file.relativePath}
+              isImage={isImage}
+              onClick={
+                isImage
+                  ? () => {
+                      vscode.postMessage({
+                        command: "previewImage",
+                        path: file.path,
+                      });
+                    }
+                  : undefined
+              }
+            />,
+          );
+        }
       }
 
       // Locate the '@' + filter text to replace. Prefer the live DOM selection

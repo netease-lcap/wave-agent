@@ -1106,6 +1106,116 @@ describe("AIManager", () => {
 
       expect(mockMessageManager.triggerFileRead).not.toHaveBeenCalled();
     });
+
+    it("does not treat a subagent mention as a file path", async () => {
+      const messages = [
+        {
+          id: "msg-1",
+          role: "user",
+          blocks: [{ type: "text", content: "看下 [@agent:Explore]" }],
+        },
+      ];
+      vi.mocked(mockMessageManager.getMessages).mockReturnValue(
+        messages as unknown as ReturnType<
+          typeof mockMessageManager.getMessages
+        >,
+      );
+
+      await aiManager.sendAIMessage();
+
+      expect(mockMessageManager.triggerFileRead).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Agent Mention Reminder", () => {
+    const lastUserMessage = (content: string) => [
+      { id: "msg-1", role: "user", blocks: [{ type: "text", content }] },
+    ];
+
+    const reminderCalls = () =>
+      vi
+        .mocked(mockMessageManager.addUserMessage)
+        .mock.calls.map(
+          (call) => call[0] as { content: string; isMeta?: boolean },
+        )
+        .filter(
+          (params) =>
+            params.isMeta === true &&
+            typeof params.content === "string" &&
+            params.content.includes("<system-reminder>") &&
+            params.content.includes("subagent"),
+        );
+
+    it("asks the main agent to delegate to the named subagent", async () => {
+      const subagentManager = container.get<{
+        getConfigurations: ReturnType<typeof vi.fn>;
+      }>("SubagentManager");
+      if (!subagentManager) throw new Error("SubagentManager not registered");
+      subagentManager.getConfigurations.mockReturnValue([
+        { name: "Explore" },
+        { name: "Plan" },
+      ]);
+      vi.mocked(mockMessageManager.getMessages).mockReturnValue(
+        lastUserMessage("看下 [@agent:Explore]") as unknown as ReturnType<
+          typeof mockMessageManager.getMessages
+        >,
+      );
+
+      await aiManager.sendAIMessage();
+
+      const calls = reminderCalls();
+      expect(calls).toHaveLength(1);
+      expect(calls[0].content).toContain('"Explore"');
+      expect(calls[0].content).toContain("subagent_type=");
+    });
+
+    it("lists the available names when the mentioned one is not loaded", async () => {
+      vi.mocked(mockMessageManager.getMessages).mockReturnValue(
+        lastUserMessage("@agent:ghost 看一下") as unknown as ReturnType<
+          typeof mockMessageManager.getMessages
+        >,
+      );
+
+      await aiManager.sendAIMessage();
+
+      const calls = reminderCalls();
+      expect(calls).toHaveLength(1);
+      expect(calls[0].content).toContain('"ghost"');
+      expect(calls[0].content).toContain("Available subagents");
+    });
+
+    it("does not stack the reminder when the transcript already has it", async () => {
+      const reminders: Array<{ content: string }> = [];
+      vi.mocked(mockMessageManager.addUserMessage).mockImplementation(
+        (params: { content: string; isMeta?: boolean }) => {
+          if (params.isMeta && params.content.includes("subagent")) {
+            reminders.push({ content: params.content });
+          }
+          return "msg-id";
+        },
+      );
+      vi.mocked(mockMessageManager.getMessages).mockImplementation(
+        () =>
+          [
+            {
+              id: "msg-1",
+              role: "user",
+              blocks: [{ type: "text", content: "@agent:ghost 看一下" }],
+            },
+            ...reminders.map((reminder, index) => ({
+              id: `meta-${index}`,
+              role: "user",
+              isMeta: true,
+              blocks: [{ type: "text", content: reminder.content }],
+            })),
+          ] as unknown as ReturnType<typeof mockMessageManager.getMessages>,
+      );
+
+      await aiManager.sendAIMessage();
+      await aiManager.sendAIMessage();
+
+      expect(reminders).toHaveLength(1);
+    });
   });
 
   describe("setIsLoading", () => {

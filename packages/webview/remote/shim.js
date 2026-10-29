@@ -2446,6 +2446,30 @@
     return list;
   }
 
+  /**
+   * `@` 下拉里的子代理条目（spec multi-agent/subagent.md「显式子代理调用」）。
+   * 与三宿主同一个形状：`path` 是 `agent:<名称>` 占位值、`agentName` 是判据、
+   * `agentDescription` 是条目第二行。名字/描述的过滤在 webview 做。
+   */
+  function toAgentSuggestions(configurations) {
+    var list = [];
+    for (var i = 0; i < configurations.length; i++) {
+      var name = String(configurations[i].name || "");
+      if (!name) continue;
+      list.push({
+        path: "agent:" + name,
+        relativePath: "",
+        name: name,
+        extension: "",
+        icon: "codicon-hubot",
+        isDirectory: false,
+        agentName: name,
+        agentDescription: String(configurations[i].description || ""),
+      });
+    }
+    return list;
+  }
+
   /** 会话列表里那条会话的工作目录（条目上叫 `workdir`，见 `toSessionMetadata`）。 */
   function joinWorkdir(relativePath) {
     var entry = currentSession(sessions, sessionId);
@@ -2912,15 +2936,29 @@
         // `@` 文件建议：`query` 就是 `@` 后面那段过滤文本，工作目录由宿主按信封
         // `sessionId` 取（页面不猜目录）。条数与桌面端同一个 20。
         var filter = typeof msg.filterText === "string" ? msg.filterText : "";
-        request("searchFiles", { query: filter, maxResults: 20 })
-          .then(function (result) {
+        // 子代理条目与文件建议同一条回包、排在前面（spec
+        // multi-agent/subagent.md「显式子代理调用」）；名字/描述的过滤在 webview
+        // 做，这里只报「这个会话有哪些子代理」。读不到就只给文件建议。
+        Promise.all([
+          request("searchFiles", { query: filter, maxResults: 20 }),
+          request("getSubagentConfigurations", {}).catch(function () {
+            return { configurations: [] };
+          }),
+        ])
+          .then(function (results) {
+            var fileResult = results[0];
+            var agentResult = results[1];
             post({
               command: "fileSuggestionsResponse",
               requestId: msg.requestId,
               filterText: filter,
-              suggestions: toFileSuggestions(
-                (result && result.files) || [],
-                filter,
+              suggestions: toAgentSuggestions(
+                (agentResult && agentResult.configurations) || [],
+              ).concat(
+                toFileSuggestions(
+                  (fileResult && fileResult.files) || [],
+                  filter,
+                ),
               ),
             });
           })

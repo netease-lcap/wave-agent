@@ -143,7 +143,10 @@ function sentPosts(context: { postMessage: unknown }) {
     >[];
 }
 
-function createReadyHandler(session: ChatSession) {
+function createReadyHandler(
+  session: ChatSession,
+  fileService: Partial<FileService> = {},
+) {
   const configService = {
     loadConfiguration: vi.fn().mockResolvedValue({ language: "Chinese" }),
     saveConfiguration: vi.fn(),
@@ -171,7 +174,7 @@ function createReadyHandler(session: ChatSession) {
   } as unknown as MessageHandlerContext;
   const handler = new MessageHandler(
     configService as unknown as ConfigurationService,
-    {} as unknown as FileService,
+    fileService as unknown as FileService,
     sessionService as unknown as SessionService,
     {} as unknown as PluginService,
     utilityClient as unknown as StdioClient,
@@ -2437,5 +2440,88 @@ describe("remoteControl（/remote-control 弹窗）", () => {
     expect(
       posted.commands.find((c) => c.id === "remote-control"),
     ).toMatchObject({ name: "remote-control" });
+  });
+});
+
+describe("MessageHandler @ suggestions", () => {
+  test("lists this session's subagents ahead of the file suggestions", async () => {
+    // `@` 下拉只有一个列表：子代理条目排在文件建议前面（spec
+    // multi-agent/subagent.md「显式子代理调用」）。宿主只报「有哪些子代理」，
+    // 名字/描述的过滤留给 webview。
+    const session = createReadySession() as ChatSession & {
+      getSubagentConfigurations: ReturnType<typeof vi.fn>;
+    };
+    session.getSubagentConfigurations = vi
+      .fn()
+      .mockResolvedValue([{ name: "Explore", description: "只读探索代码库" }]);
+    const { handler, context } = createReadyHandler(session, {
+      findWorkspaceFiles: vi.fn().mockResolvedValue([
+        {
+          path: "/tmp/src/app.ts",
+          relativePath: "src/app.ts",
+          name: "app.ts",
+          extension: "ts",
+          icon: "codicon-file",
+          isDirectory: false,
+        },
+      ]),
+    });
+
+    await handler.handleMessage(
+      { command: "requestFileSuggestions", filterText: "app", requestId: "f1" },
+      "tab",
+    );
+
+    const response = sentPosts(context)("fileSuggestionsResponse")[0] as {
+      suggestions: Array<Record<string, unknown>>;
+    };
+    expect(response).toMatchObject({ requestId: "f1", filterText: "app" });
+    expect(response.suggestions[0]).toMatchObject({
+      // `path` 是占位符——webview 靠 `agentName` 认条目，不猜 path 前缀。
+      path: "agent:Explore",
+      name: "Explore",
+      agentName: "Explore",
+      agentDescription: "只读探索代码库",
+      icon: "codicon-hubot",
+      isDirectory: false,
+    });
+    expect(response.suggestions[1]).toMatchObject({
+      relativePath: "src/app.ts",
+      name: "app.ts",
+    });
+    expect(response.suggestions[1].agentName).toBeUndefined();
+  });
+
+  test("keeps file suggestions working when the subagent list cannot be read", async () => {
+    // 候选增强不该让整条 `@` 回包失败：读不到子代理就只给文件建议。
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const session = createReadySession() as ChatSession & {
+      getSubagentConfigurations: ReturnType<typeof vi.fn>;
+    };
+    session.getSubagentConfigurations = vi
+      .fn()
+      .mockRejectedValue(new Error("no agent"));
+    const { handler, context } = createReadyHandler(session, {
+      findWorkspaceFiles: vi
+        .fn()
+        .mockResolvedValue([{ path: "/tmp/src/app.ts", name: "app.ts" }]),
+    });
+
+    await handler.handleMessage(
+      { command: "requestFileSuggestions", filterText: "app", requestId: "f1" },
+      "tab",
+    );
+
+    const response = sentPosts(context)("fileSuggestionsResponse")[0] as {
+      suggestions: Array<Record<string, unknown>>;
+    };
+    expect(response.suggestions).toHaveLength(1);
+    expect(sentPosts(context)("fileSuggestionsError")).toHaveLength(0);
+    // 只吞掉这一条：失败仍留在日志里，排查时不至于无声无息。
+    expect(consoleError).toHaveBeenCalledTimes(1);
+    expect(String(consoleError.mock.calls[0][0])).toContain("子代理建议");
+    consoleError.mockRestore();
   });
 });
