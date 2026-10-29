@@ -72,7 +72,9 @@ import {
   getLatestSessionFromJsonl,
 } from "@/services/session.js";
 import type { Message } from "@/types/index.js";
+import type { TranscriptSnapshot } from "@/services/sessionEntries.js";
 import { generateMessageId } from "@/utils/messageOperations.js";
+import { resumeSnapshotOf } from "../helpers/transcriptScans.js";
 
 describe("Session Integration Tests", () => {
   let tempDir: string;
@@ -83,6 +85,9 @@ describe("Session Integration Tests", () => {
       (
         filePath: string,
       ) => Promise<{ messages: Message[]; customTitle?: string }>
+    >;
+    readTranscriptForResume: Mock<
+      (filePath: string) => Promise<TranscriptSnapshot>
     >;
     append: Mock<(filePath: string, messages: Message[]) => Promise<void>>;
     appendCustomTitle: Mock<
@@ -160,6 +165,14 @@ describe("Session Integration Tests", () => {
           messages: await readMock(filePath),
           customTitle: undefined,
         })),
+      // 恢复路径走 readTranscriptForResume：折叠规则由生产代码的
+      // `createResumeAccumulator` 提供（见 `resumeSnapshotOf`），这里只把
+      // `read` 的返回伪装成一次转录扫描。
+      readTranscriptForResume: vi
+        .fn()
+        .mockImplementation(async (filePath: string) =>
+          resumeSnapshotOf((await readMock(filePath)) ?? []),
+        ),
       append: vi.fn(),
       appendCustomTitle: vi.fn().mockResolvedValue(undefined),
       readCustomTitle: vi.fn().mockResolvedValue(undefined),

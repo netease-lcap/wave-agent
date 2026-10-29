@@ -32,6 +32,24 @@ vi.mock("fs/promises", () => ({
   rename: vi.fn(),
 }));
 
+// `JsonlHandler.read` 改成逐块流式扫（`forEachLine` 走 `node:fs` 的
+// createReadStream），这条路径不经过上面那份 `fs/promises` 替身，会去读真实磁盘。
+// 这里把流读桥回同一个 `readFile` 替身：用例继续只关心内容，不关心分块方式。
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:fs")>();
+  const { Readable } = await import("node:stream");
+  return {
+    ...actual,
+    createReadStream: (filePath: string) =>
+      Readable.from(
+        (async function* () {
+          const { readFile } = await import("fs/promises");
+          yield ((await readFile(filePath, "utf8")) as string) ?? "";
+        })(),
+      ),
+  };
+});
+
 describe("Session Metadata Integration Tests - User Story 1", () => {
   let handler: JsonlHandler;
   let mockWriteFile: Mock<typeof import("fs/promises").writeFile>;
