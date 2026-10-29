@@ -32,15 +32,24 @@ export function normalizeMessageWindow(
   window?: MessageWindow,
 ): MessageWindow | undefined {
   const since = window?.since;
+  const before = window?.before;
   const rawLimit = window?.limit;
   if (rawLimit !== undefined && (!Number.isInteger(rawLimit) || rawLimit < 1)) {
     throw new InvalidMessageWindowError(
       `getMessages limit must be a positive integer, got ${String(rawLimit)}`,
     );
   }
-  if (since === undefined && rawLimit === undefined) return undefined;
+  if (since !== undefined && before !== undefined) {
+    throw new InvalidMessageWindowError(
+      "getMessages takes either `since` or `before`, not both",
+    );
+  }
+  if (since === undefined && before === undefined && rawLimit === undefined) {
+    return undefined;
+  }
   return {
     ...(since !== undefined ? { since } : {}),
+    ...(before !== undefined ? { before } : {}),
     ...(rawLimit !== undefined ? { limit: rawLimit } : {}),
   };
 }

@@ -28,6 +28,26 @@ vi.mock("@/utils/fileUtils.js", () => ({
   forEachLine: vi.fn(),
 }));
 
+/**
+ * 整份读现在是**流式逐行**的（`forEachLine`），所以测试按「内容」喂行，而不是
+ * 往 `readFile` 里塞一整个字符串。交付口径与真实实现一致：以换行结尾时最后那段
+ * 空串不交给回调。
+ */
+function mockFileContent(content: string) {
+  vi.mocked(forEachLine).mockImplementation(async (_filePath, onLine) => {
+    const endsWithNewline = content.length === 0 || content.endsWith("\n");
+    const lines = content.split(/\r?\n/);
+    for (const line of endsWithNewline ? lines.slice(0, -1) : lines) {
+      await onLine(line);
+    }
+    return { endsWithNewline };
+  });
+}
+
+function mockFileReadError(error: Error) {
+  vi.mocked(forEachLine).mockRejectedValue(error);
+}
+
 describe("JsonlHandler.append()", () => {
   let handler: JsonlHandler;
   let mockAppendFile: ReturnType<typeof vi.fn>;
@@ -206,7 +226,6 @@ describe("JsonlHandler.append()", () => {
 
 describe("JsonlHandler.read()", () => {
   let handler: JsonlHandler;
-  let mockReadFile: ReturnType<typeof vi.fn>;
   let mockStat: ReturnType<typeof vi.fn>;
 
   const createSampleMessage = (
@@ -239,11 +258,10 @@ describe("JsonlHandler.read()", () => {
     // Get mocked functions
     const fsPromises = await import("fs/promises");
 
-    mockReadFile = vi.mocked(fsPromises.readFile);
     mockStat = vi.mocked(fsPromises.stat);
 
     // Set up default mock behaviors
-    mockReadFile.mockResolvedValue("");
+    mockFileContent("");
     mockStat.mockResolvedValue({
       size: 1024,
       birthtime: new Date("2024-01-01T00:00:00.000Z"),
@@ -275,11 +293,14 @@ describe("JsonlHandler.read()", () => {
       ];
       const jsonlContent = createJsonlContent(messages);
 
-      mockReadFile.mockResolvedValue(jsonlContent);
+      mockFileContent(jsonlContent);
 
       const result = await handler.read("/test/file.jsonl");
 
-      expect(mockReadFile).toHaveBeenCalledWith("/test/file.jsonl", "utf8");
+      expect(forEachLine).toHaveBeenCalledWith(
+        "/test/file.jsonl",
+        expect.any(Function),
+      );
       expect(result).toHaveLength(2);
       expect(result[0].role).toBe("user");
       expect((result[0].blocks[0] as TextBlock).content).toBe("First message");
@@ -288,7 +309,7 @@ describe("JsonlHandler.read()", () => {
     });
 
     it("should return empty array for empty JSONL file", async () => {
-      mockReadFile.mockResolvedValue("");
+      mockFileContent("");
 
       const result = await handler.read("/test/empty.jsonl");
 
@@ -296,7 +317,7 @@ describe("JsonlHandler.read()", () => {
     });
 
     it("should handle file with only whitespace", async () => {
-      mockReadFile.mockResolvedValue("   \n\n  \t\n   ");
+      mockFileContent("   \n\n  \t\n   ");
 
       const result = await handler.read("/test/whitespace.jsonl");
 
@@ -306,9 +327,7 @@ describe("JsonlHandler.read()", () => {
 
   describe("Error handling", () => {
     it("should handle non-existent file gracefully", async () => {
-      mockReadFile.mockRejectedValue(
-        new Error("ENOENT: no such file or directory"),
-      );
+      mockFileReadError(new Error("ENOENT: no such file or directory"));
 
       await expect(handler.read("/test/nonexistent.jsonl")).rejects.toThrow(
         'Failed to read JSONL file "/test/nonexistent.jsonl"',
@@ -316,7 +335,7 @@ describe("JsonlHandler.read()", () => {
     });
 
     it("should handle permission denied errors", async () => {
-      mockReadFile.mockRejectedValue(new Error("EACCES: permission denied"));
+      mockFileReadError(new Error("EACCES: permission denied"));
 
       await expect(handler.read("/test/forbidden.jsonl")).rejects.toThrow(
         'Failed to read JSONL file "/test/forbidden.jsonl"',
@@ -328,7 +347,7 @@ describe("JsonlHandler.read()", () => {
 invalid json line
 {"role":"assistant","blocks":[],"timestamp":"2024-01-01T00:01:00.000Z"}`;
 
-      mockReadFile.mockResolvedValue(invalidJsonContent);
+      mockFileContent(invalidJsonContent);
 
       await expect(handler.read("/test/invalid.jsonl")).rejects.toThrow(
         "Invalid JSON at line 2",
@@ -344,7 +363,7 @@ invalid json line
 {"role":"assistant","blocks":[],"timestamp":"2024-01-01T00:01:00.000Z"}
 {"role":"assistant","blocks":[{"type":"text","content":"Partial response"`;
 
-      mockReadFile.mockResolvedValue(interruptedContent);
+      mockFileContent(interruptedContent);
 
       const result = await handler.read("/test/interrupted.jsonl");
 
@@ -359,7 +378,7 @@ invalid json line
 this is not json
 `;
 
-      mockReadFile.mockResolvedValue(corruptContent);
+      mockFileContent(corruptContent);
 
       await expect(handler.read("/test/corrupt.jsonl")).rejects.toThrow(
         "Invalid JSON at line 2",
@@ -373,7 +392,7 @@ this is not json
 
 `;
 
-      mockReadFile.mockResolvedValue(contentWithEmptyLines);
+      mockFileContent(contentWithEmptyLines);
 
       const result = await handler.read("/test/emptylines.jsonl");
 
@@ -410,7 +429,7 @@ this is not json
       };
 
       const jsonlContent = createJsonlContent([complexMessage]);
-      mockReadFile.mockResolvedValue(jsonlContent);
+      mockFileContent(jsonlContent);
 
       const result = await handler.read("/test/complex.jsonl");
 
@@ -432,7 +451,7 @@ this is not json
       };
 
       const jsonlContent = createJsonlContent([minimalMessage]);
-      mockReadFile.mockResolvedValue(jsonlContent);
+      mockFileContent(jsonlContent);
 
       const result = await handler.read("/test/minimal.jsonl");
 
@@ -449,7 +468,7 @@ this is not json
       const message = createSampleMessage("user", specialContent);
 
       const jsonlContent = createJsonlContent([message]);
-      mockReadFile.mockResolvedValue(jsonlContent);
+      mockFileContent(jsonlContent);
 
       const result = await handler.read("/test/special.jsonl");
 
@@ -462,7 +481,7 @@ this is not json
       const message = createSampleMessage("user", unicodeContent);
 
       const jsonlContent = createJsonlContent([message]);
-      mockReadFile.mockResolvedValue(jsonlContent);
+      mockFileContent(jsonlContent);
 
       const result = await handler.read("/test/unicode.jsonl");
 
@@ -477,7 +496,7 @@ this is not json
       const message = createSampleMessage("user", largeContent);
 
       const jsonlContent = createJsonlContent([message]);
-      mockReadFile.mockResolvedValue(jsonlContent);
+      mockFileContent(jsonlContent);
 
       const result = await handler.read("/test/large.jsonl");
 
@@ -492,7 +511,7 @@ this is not json
       }
 
       const jsonlContent = createJsonlContent(messages);
-      mockReadFile.mockResolvedValue(jsonlContent);
+      mockFileContent(jsonlContent);
 
       const result = await handler.read("/test/manyMessages.jsonl");
 
@@ -506,7 +525,7 @@ this is not json
 {"role":"user","blocks":[],"timestamp":"2024-01-01T00:01:00.000Z"
 {"role":"assistant","blocks":[],"timestamp":"2024-01-01T00:02:00.000Z"}`;
 
-      mockReadFile.mockResolvedValue(malformedContent);
+      mockFileContent(malformedContent);
 
       await expect(handler.read("/test/malformed.jsonl")).rejects.toThrow(
         "Invalid JSON at line 2",
@@ -518,7 +537,7 @@ this is not json
       const message = createSampleMessage("user", "Test", preciseTimestamp);
 
       const jsonlContent = createJsonlContent([message]);
-      mockReadFile.mockResolvedValue(jsonlContent);
+      mockFileContent(jsonlContent);
 
       const result = await handler.read("/test/timestamp.jsonl");
 
@@ -538,7 +557,7 @@ this is not json
         "\r\n" +
         JSON.stringify(messages[1]) +
         "\n";
-      mockReadFile.mockResolvedValue(mixedLineEndings);
+      mockFileContent(mixedLineEndings);
 
       const result = await handler.read("/test/mixedLineEndings.jsonl");
 
@@ -554,7 +573,6 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
   let mockWriteFile: ReturnType<typeof vi.fn>;
   let mockMkdir: ReturnType<typeof vi.fn>;
   let mockAppendFile: ReturnType<typeof vi.fn>;
-  let mockReadFile: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     // Reset all mocks
@@ -565,7 +583,6 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
     mockWriteFile = vi.mocked(fsPromises.writeFile);
     mockMkdir = vi.mocked(fsPromises.mkdir);
     mockAppendFile = vi.mocked(fsPromises.appendFile);
-    mockReadFile = vi.mocked(fsPromises.readFile);
     // Reset to default successful implementations
     mockWriteFile.mockImplementation(function () {
       return Promise.resolve();
@@ -576,10 +593,6 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
     mockAppendFile.mockImplementation(function () {
       return Promise.resolve();
     });
-    mockReadFile.mockImplementation(function () {
-      return Promise.resolve("");
-    });
-
     // Create fresh handler instance
     handler = new JsonlHandler();
   });
@@ -715,7 +728,7 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
         role: "user" as const,
         blocks: [{ type: "text" as const, content: "hello" }],
       };
-      mockReadFile.mockResolvedValue(`${header}\n${JSON.stringify(message)}\n`);
+      mockFileContent(`${header}\n${JSON.stringify(message)}\n`);
 
       const result = await handler.read("/test/session.jsonl");
 
@@ -842,7 +855,7 @@ describe("JsonlHandler.createSession() - TDD Tests for User Story 1", () => {
       const messagesOnlyContent = `{"timestamp":"2024-01-01T00:00:00.000Z","role":"user","blocks":[{"type":"text","content":"Test message 1"}]}
 {"timestamp":"2024-01-01T00:01:00.000Z","role":"assistant","blocks":[{"type":"text","content":"Test response 1"}]}`;
 
-      mockReadFile.mockResolvedValue(messagesOnlyContent);
+      mockFileContent(messagesOnlyContent);
 
       const result = await handler.read("/test/session.jsonl");
 

@@ -1697,12 +1697,11 @@ export class Agent {
   }
 
   /**
-   * Answer a `getMessages` request: the whole list, or (`since` / `limit`) the
-   * part a caller asked for, sliced in memory. The list starts at the last
-   * compaction, so its earliest entry is the earliest the UI can reach —
-   * there is nothing older to read back.
+   * Answer a `getMessages` request: the whole list, or (`since` / `before` /
+   * `limit`) one page of it. Older pages come from the transcript and are never
+   * retained here — the in-memory list stays at the last compaction.
    */
-  public getMessagePage(window: MessageWindow): MessageWindowResult {
+  public getMessagePage(window: MessageWindow): Promise<MessageWindowResult> {
     return this.messageManager.getMessagePage(window);
   }
 

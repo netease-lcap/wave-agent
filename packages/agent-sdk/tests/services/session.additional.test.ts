@@ -4,11 +4,11 @@ import {
   truncateContent,
 } from "../../src/services/session.js";
 import { promises as fs } from "fs";
+import { forEachLine } from "../../src/utils/fileUtils.js";
 import { logger } from "../../src/utils/globalLogger.js";
 
-const { mockGetLastMessage, mockJsonlRead } = vi.hoisted(() => ({
+const { mockGetLastMessage } = vi.hoisted(() => ({
   mockGetLastMessage: vi.fn(),
-  mockJsonlRead: vi.fn(),
 }));
 
 vi.mock("fs", () => ({
@@ -36,18 +36,18 @@ vi.mock("../../src/utils/pathEncoder.js", () => ({
 }));
 
 vi.mock("../../src/utils/fileUtils.js", () => ({
+  forEachLine: vi.fn(),
   readFirstLine: vi.fn(),
   readFirstNLines: vi.fn(),
 }));
 
 // JsonlHandler reads via fs/promises, which the fs mock above doesn't cover.
-// Override only getLastMessage/getLatestTotalTokens/read on real instances so
+// Override only getLastMessage/getLatestTotalTokens on real instances so
 // cleanupMetaOnlySessions' decision logic can be tested in isolation.
 vi.mock("../../src/services/jsonlHandler.js", async (importOriginal) => {
   const actual = (await importOriginal()) as {
     JsonlHandler: new () => {
       getLastMessage: (filePath: string) => Promise<unknown>;
-      read: (filePath: string) => Promise<unknown>;
       [key: string]: unknown;
     };
   };
@@ -57,7 +57,6 @@ vi.mock("../../src/services/jsonlHandler.js", async (importOriginal) => {
       const instance = new actual.JsonlHandler();
       instance.getLastMessage = mockGetLastMessage;
       instance.getLatestTotalTokens = async () => 0;
-      instance.read = mockJsonlRead;
       return instance;
     }),
   };
@@ -125,14 +124,18 @@ describe("session service additional coverage", () => {
 
     it("reports the restore through the logger, never through stdout", async () => {
       vi.mocked(fs.access).mockResolvedValue(undefined);
-      mockJsonlRead.mockResolvedValue([
-        {
-          id: "msg-1",
-          role: "user",
-          timestamp: "2026-07-27T10:00:00.000Z",
-          blocks: [],
-        },
-      ]);
+      // Transcript reads are line-streamed (`forEachLine`); hand the restore one
+      // real message line so it has something to come back with.
+      const transcriptLine = JSON.stringify({
+        id: "msg-1",
+        role: "user",
+        timestamp: "2026-07-27T10:00:00.000Z",
+        blocks: [],
+      });
+      vi.mocked(forEachLine).mockImplementation(async (_filePath, onLine) => {
+        await onLine(transcriptLine);
+        return { endsWithNewline: true };
+      });
       // stdout is the `wave --stdio` JSON-RPC channel: one stray line there
       // makes the host skip that line and log a parse failure for the whole
       // payload (the restore diagnostic used to be a plain console.log).
@@ -148,6 +151,7 @@ describe("session service additional coverage", () => {
       );
 
       expect(restored?.id).toBe(validSessionId);
+      expect(restored?.messages).toHaveLength(1);
       expect(consoleLog).not.toHaveBeenCalled();
       expect(stdout).not.toHaveBeenCalled();
       expect(logger.info).toHaveBeenCalledWith(

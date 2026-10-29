@@ -255,14 +255,15 @@ class StdioAgent(
         client.request("remoteControlDisconnect", sessionId = sessionId)
 
     /**
-     * `getMessages` RPC，不带取数参数 = 整份列表（= 压缩后的上下文）。本宿主不分
-     * 页，会话里也没有别的调用方需要 `since` / `limit`。
+     * `getMessages` RPC。不带参数 = 整份列表（= 压缩后的上下文）；带 `limit` 取首屏
+     * 那一页，带 `before` 上翻取更早的一页（SDK 从转录读，见 spec
+     * ui/message-rendering-system.md「首屏一页，上翻按需取更早」）。
      *
      * 回包会刷新 [contextUsagePercent]：那个值在每份回包里都是当下的真值，宿主回
      * 放它靠的是最后一次读到的数。
      */
-    suspend fun getMessages(): JsonElement {
-        val res = client.request("getMessages", null, sessionId) ?: JsonObject(emptyMap())
+    suspend fun getMessages(window: JsonObject? = null): JsonElement {
+        val res = client.request("getMessages", window, sessionId) ?: JsonObject(emptyMap())
         // Hosts replay this on webviewReady (see MessageHandler.handleWebviewReady);
         // null when the session has no usage yet, so the ring stays empty.
         contextUsagePercent =

@@ -1,5 +1,6 @@
 import React, {
   useEffect,
+  useLayoutEffect,
   useRef,
   useImperativeHandle,
   forwardRef,
@@ -70,6 +71,11 @@ const USER_INPUT_GRACE_MS = 200;
 // compensation writes scrollTop directly — so the threshold is an independent
 // guard, on top of recognizing our own writes by position (see autoScrollRef).
 const BOTTOM_FOLLOW_THRESHOLD_PX = 10;
+
+// 滚到离顶这么近就要下一页更早的。留一点余量而不是严格的 0：触摸惯性把
+// scrollTop 拉过顶时浏览器会直接 clamp 到 0，那一刻的位移是 0，判定必须能接受
+// 「已经在顶部」这个状态本身。
+const EARLIER_TRIGGER_PX = 160;
 
 // Is the viewport at the real bottom? One definition, used both to decide
 // whether following may continue and to re-engage it from the scroll handler.
@@ -281,6 +287,9 @@ export const MessageList = forwardRef<
     workdir,
     onOpenPreview,
     onOpenFile,
+    hasEarlier,
+    isLoadingEarlier,
+    onLoadEarlier,
   },
   ref,
 ) {
@@ -353,6 +362,13 @@ export const MessageList = forwardRef<
   // size changes (see the re-pin effect below) so any late growth of the
   // total — estimate→measure waves after the initial pin — re-pins.
   const spacerRef = useRef<HTMLDivElement | null>(null);
+  // 上一页还没回来。父组件也传 `isLoadingEarlier`，但这个 ref 是同步的：滚动事件
+  // 一帧里可能连发多次，等到 setState 生效才拦就已经发了两个请求。
+  const earlierPendingRef = useRef(false);
+  // 虚拟列表的总高（上一次渲染的）。上翻接上一页之后，视口要按这个差值往下挪，
+  // 用户刚才看的那一行才会停在原处（spec 场景 3）。
+  const prevTotalSizeRef = useRef(0);
+  const prevFirstIdRef = useRef<string | undefined>(undefined);
 
   // The most-recent user message that has scrolled above the viewport top; pinned
   // at the top of the list as a context hint (设计稿 2236-3792).
@@ -392,6 +408,14 @@ export const MessageList = forwardRef<
   // the imperative handle must not capture a stale render).
   const visibleMessagesRef = useRef(visibleMessages);
   visibleMessagesRef.current = visibleMessages;
+  // 上翻的开关与回调也走 ref：滚动 handler 挂在 effect 里、依赖里没有它们，
+  // 直接闭包会读到挂载那一刻的值（hasEarlier 要到首屏回包之后才翻真）。
+  const hasEarlierRef = useRef(false);
+  hasEarlierRef.current = !!hasEarlier;
+  const isLoadingEarlierRef = useRef(false);
+  isLoadingEarlierRef.current = !!isLoadingEarlier;
+  const onLoadEarlierRef = useRef(onLoadEarlier);
+  onLoadEarlierRef.current = onLoadEarlier;
   stickyRef.current = stickyMessage;
 
   const virtualizer = useVirtualizer({
@@ -806,7 +830,23 @@ export const MessageList = forwardRef<
       lastUserInputAtRef.current = performance.now();
     };
 
+    // 滚到顶就要一页更早的。判定放在手势闸门之前：这一条与「用户意图是否该上锁」
+    // 无关——程序性滚动也可能把我们带到顶部（比如整表替换后视口被重新定位），那时
+    // 只要确实还有更早的内容，把它取回来就是对的。
+    const maybeRequestEarlier = () => {
+      if (!hasEarlierRef.current || isLoadingEarlierRef.current) return;
+      if (earlierPendingRef.current) return;
+      const load = onLoadEarlierRef.current;
+      if (!load) return;
+      if (container.scrollTop > EARLIER_TRIGGER_PX) return;
+      const first = visibleMessagesRef.current[0]?.id;
+      if (!first) return;
+      earlierPendingRef.current = true;
+      load(first);
+    };
+
     const handleScroll = () => {
+      maybeRequestEarlier();
       // GATE: a 'scroll' event with no real input behind it — our own pin, the
       // virtualizer's resize compensation, a browser clamp — carries no user
       // intent at all, so it must not be allowed to move the opt-out in either
@@ -1087,6 +1127,39 @@ export const MessageList = forwardRef<
     if (!isCompacting || !mayFollow("ambient")) return;
     pinToTrueBottom();
   }, [isCompacting, mayFollow, pinToTrueBottom]);
+
+  // 上翻接上一页之后把视口按「长出来的高度」往下挪，用户刚才看的那一行才停在
+  // 原处（spec ui/message-rendering-system.md 场景 3）。判据是「原来的第一条还在、
+  // 而且不再排第一」——追加、整表替换、截断都不会命中。
+  //
+  // 用 layout effect：必须在浏览器绘制之前写入，否则会先闪一帧顶到新页开头。
+  // 这里只补虚拟器估算出来的那部分高度；行真正测量出来之后的二次修正由
+  // tanstack 自己处理（视口上方行的尺寸变化会同步挪 scrollTop）。
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const total = virtualizer.getTotalSize();
+    const previousTotal = prevTotalSizeRef.current;
+    prevTotalSizeRef.current = total;
+    const firstId = visibleMessages[0]?.id;
+    const previousFirstId = prevFirstIdRef.current;
+    prevFirstIdRef.current = firstId;
+    if (!container || !previousFirstId || previousFirstId === firstId) return;
+    const index = visibleMessages.findIndex((m) => m.id === previousFirstId);
+    if (index <= 0) return;
+    const delta = total - previousTotal;
+    if (delta <= 0) return;
+    earlierPendingRef.current = false;
+    container.scrollTop += delta;
+    // 自己这一跳不能在下一次 scroll 事件里被读成用户上滚。
+    prevScrollTopRef.current = container.scrollTop;
+    prevScrollHeightRef.current = container.scrollHeight;
+  }, [visibleMessages, virtualizer]);
+
+  // 请求失败 / 回包为空时父组件把 loading 落回 false，那一页就到此为止，别把
+  // pending 一直挂住——否则这段历史再也翻不动。
+  useEffect(() => {
+    if (!isLoadingEarlier) earlierPendingRef.current = false;
+  }, [isLoadingEarlier]);
 
   return (
     <div

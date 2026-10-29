@@ -892,12 +892,15 @@ describe("StdioAgent", () => {
     expect(agent.contextUsagePercent).toBeUndefined();
   });
 
-  it("getMessages with parameters is a read-only query", async () => {
+  it("getMessages with parameters also refreshes the two state fields", async () => {
     const { agent, client } = createAgent();
     agent.threadSummary = { messageCount: 1, firstUserText: "kept" };
     agent.contextUsagePercent = 10;
     const page = {
       messages: [{ id: "older", role: "user", timestamp: "", blocks: [] }],
+      hasMore: true,
+      threadSummary: { messageCount: 42, firstUserText: "hi" },
+      contextUsagePercent: 25,
     };
     client.request.mockResolvedValue(page);
 
@@ -908,13 +911,14 @@ describe("StdioAgent", () => {
       { limit: 100 },
       undefined,
     );
+    // 分页回包原样返回（`hasMore` / `anchorLost` 随它走）。
     expect(result).toEqual(page);
-    // 带参数的读连状态都不回写：它是一次只读查询。
+    // 首屏那一页也走带参数的路，宿主拿标题与用量环只靠这次回写。
     expect(agent.threadSummary).toEqual({
-      messageCount: 1,
-      firstUserText: "kept",
+      messageCount: 42,
+      firstUserText: "hi",
     });
-    expect(agent.contextUsagePercent).toBe(10);
+    expect(agent.contextUsagePercent).toBe(25);
   });
 
   it("userMessageAdded forwards message to callback", () => {

@@ -5,7 +5,6 @@
 
 import {
   appendFile,
-  readFile,
   writeFile,
   stat,
   mkdir,
@@ -24,7 +23,7 @@ import {
 import type { Message } from "../types/index.js";
 import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
 import type { SessionFilename } from "../types/session.js";
-import { isReservedEntry } from "./sessionEntries.js";
+import { isReservedEntry, parseTranscriptLine } from "./sessionEntries.js";
 
 /**
  * JSONL write options
@@ -237,6 +236,12 @@ export class JsonlHandler {
    * later `reAppendSessionMetadata` writes back at EOF, which is what makes an
    * evicted title self-heal instead of being lost for good.
    *
+   * 逐行流式扫：`readFile` 把整份文件读成一个字符串、再 `split` 成等量的行串，
+   * 加上解析出来的对象，峰值约是文件大小的五倍（实测 43.7 MB 的转录 → RSS
+   * +213 MB）。会话是 append-only、永不删除的，这条峰值只会随会话变长而变大，
+   * 所以按块读、逐行丢。**返回值仍是一份完整数组**（调用方要的就是它），省掉的
+   * 是文件字符串与行数组这两份中间态。
+   *
    * @param filePath - Path to the session JSONL file
    * @returns The messages (reserved entries filtered out) and the newest
    *          non-empty custom title, when the file carries one
@@ -244,62 +249,60 @@ export class JsonlHandler {
   async readMessagesAndCustomTitle(
     filePath: string,
   ): Promise<{ messages: Message[]; customTitle?: string }> {
+    const messages: Message[] = [];
+    let customTitle: string | undefined;
+    /** 非空行序号（错误信息里的行号，从 1 开始）。 */
+    let lineNumber = 0;
+    /**
+     * 解析失败的那一行。只有「文件最后一行 + 文件不以换行结尾」才可以吞掉
+     * （被中断的 append 残留）；它后面还有能解析的行就说明它是真损坏。
+     */
+    let brokenLine: { line: number; error: unknown } | undefined;
+
     try {
-      const content = await readFile(filePath, "utf8");
-      // append() always terminates a written batch with "\n" (see append),
-      // so a file that does not end with a newline means the process was
-      // interrupted mid-write, leaving a partial trailing line behind.
-      const endsWithNewline = content.length === 0 || content.endsWith("\n");
-      const lines = content
-        .split(/\r?\n/)
-        .map((line: string) => line.trim())
-        .filter((line: string) => line.length > 0);
+      const { endsWithNewline } = await forEachLine(filePath, (line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
 
-      if (lines.length === 0) {
-        return { messages: [] };
-      }
-
-      const allMessages: Message[] = [];
-      let customTitle: string | undefined;
-
-      // Parse every line: real messages are kept, reserved entries (the
-      // metadata header, and custom titles) are read for their own fields.
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-
+        lineNumber++;
+        let parsed;
         try {
-          const message = JSON.parse(line) as Message & {
-            type?: string;
-            customTitle?: unknown;
-          };
-          if (message.type === "custom-title") {
-            // Last one wins: a later rename supersedes an earlier one.
-            if (
-              typeof message.customTitle === "string" &&
-              message.customTitle
-            ) {
-              customTitle = message.customTitle;
-            }
-            continue;
-          }
-          // Any other reserved entry (metadata header): not a message
-          if (isReservedEntry(message.type)) continue;
-          if (message.timestamp) allMessages.push(message);
+          parsed = parseTranscriptLine(trimmed);
         } catch (error) {
-          // A parse failure on the final line of a file that lacks a trailing
-          // newline is the residue of an interrupted append (complete batches
-          // always end with "\n"): drop the partial line and keep every
-          // message that was fully written. Corruption on any earlier line is
-          // genuine corruption and still fails.
-          if (!endsWithNewline && i === lines.length - 1) {
-            continue;
+          if (brokenLine) {
+            // 连续两行都坏：第一行不是最后一行。
+            throw new Error(
+              `Invalid JSON at line ${brokenLine.line}: ${brokenLine.error}`,
+            );
           }
-          // Throw error for invalid JSON lines with line number
-          throw new Error(`Invalid JSON at line ${i + 1}: ${error}`);
+          brokenLine = { line: lineNumber, error };
+          return;
         }
-      }
+        // 坏行后面又出现能解析的行 ⇒ 那行坏的不是尾巴，是真损坏。
+        if (brokenLine) {
+          throw new Error(
+            `Invalid JSON at line ${brokenLine.line}: ${brokenLine.error}`,
+          );
+        }
 
-      return { messages: allMessages, customTitle };
+        if (parsed.kind === "custom-title") {
+          // Last one wins: a later rename supersedes an earlier one.
+          customTitle = parsed.customTitle;
+          return;
+        }
+        // 这里**不去重**：整份读是唯一还能同时看到「同一个 id 写了两遍」的那条路，
+        // 折叠口径由调用方决定（`loadSessionFromJsonl` 保留第一次出现，倒读分页
+        // 保留最后一次）。在这里悄悄去重会把它俩的语义焊死在这一层。
+        if (parsed.kind !== "message") return;
+        messages.push(parsed.message);
+      });
+
+      if (brokenLine && endsWithNewline) {
+        throw new Error(
+          `Invalid JSON at line ${brokenLine.line}: ${brokenLine.error}`,
+        );
+      }
+      return { messages, customTitle };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return { messages: [] };

@@ -290,10 +290,35 @@ export interface HostToWebviewMessageBase {
 export interface UpdateMessagesMessage extends HostToWebviewMessageBase {
   command: "updateMessages";
   /**
-   * 整份列表（= 压缩后的上下文）。不分页，所以这份替换过来的就是全部
-   * （spec ui/message-rendering-system.md「首屏就是整份列表，不分页」）。
+   * 整份列表（= 压缩后的上下文）。这份替换过来的就是首屏那一页及其后追加的
+   * 内容；更早的历史不在这里，由 `loadEarlierMessages` / `earlierMessages`
+   * 一页页往前面接（spec ui/message-rendering-system.md「首屏一页，上翻按需取
+   * 更早」）。
    */
   messages: Message[];
+  /** 这一页之前还有更早的消息（上翻的开关）。缺席按 false 处理。 */
+  hasEarlier?: boolean;
+}
+
+/**
+ * 上翻取更早的一页（回复 `loadEarlierMessages`）。
+ *
+ * 与 `updateMessages` 的区别是**追加在前面**而不是替换：页面把它 prepend 到已加载
+ * 列表之前，并保持视口停在用户刚才看的那一行（spec ui/message-rendering-system.md
+ * 「首屏一页，上翻按需取更早」场景 3）。
+ */
+export interface EarlierMessagesMessage extends HostToWebviewMessageBase {
+  command: "earlierMessages";
+  /** 归属键：请求生成的 id 原样带回（用户在顶部停留会连续翻页，晚到的旧页丢弃）。 */
+  requestId: string;
+  messages: Message[];
+  /** 这一页之前还有更早的消息；false = 已到这条会话的第一条。 */
+  hasMore: boolean;
+  /**
+   * 锚点已经不在转录里（rewind / clear / 换会话）：页面换一个更早的已加载 id
+   * 重试，**不要**当成「到底」——判错这段历史就再也翻不出来。
+   */
+  anchorLost?: boolean;
 }
 
 export interface UpdateTasksMessage extends HostToWebviewMessageBase {
@@ -650,6 +675,10 @@ export interface McpConfigResponseMessage extends HostToWebviewMessageBase {
 export interface SetInitialStateMessage extends HostToWebviewMessageBase {
   command: "setInitialState";
   messages: Message[];
+  /** 首屏那一页之前还有更早的消息（spec ui/message-rendering-system.md「首屏一页，
+   *  上翻按需取更早」）。缺席按 false 处理：老宿主没有这个字段，页面就不提供上翻，
+   *  行为与加分页之前一致。 */
+  hasEarlier?: boolean;
   /** 只允许 rewind 路径置真：宿主已按同一条规则本地切完自己的缓存，因此这一份
    *  快照只更新其余字段，让 webview 保留它刚切好的列表，省掉整份列表的重传。
    *  切会话 / 新建会话 / 恢复完成**不得**使用 —— 那些场景 webview 的列表本来
@@ -1456,6 +1485,7 @@ export interface HistoryErrorMessage extends HostToWebviewMessageBase {
 
 export type HostToWebviewMessage =
   | UpdateMessagesMessage
+  | EarlierMessagesMessage
   | UpdateTasksMessage
   | UpdateSessionStatusMessage
   | UpdatePushStateMessage
@@ -1638,6 +1668,10 @@ type ReplyAttribution = {
   // 远控页「新建会话」的最近目录：弹窗每打开一次问一次，晚到的旧回复不得盖掉
   // 新的一次（列表本身很短，这里只要求归属键在）。
   recentWorkdirsResponse: "requestId";
+  // 上翻取更早：请求生成 id 原样带回。用户停在顶部会连续翻页，且「翻更早」与
+  // 「重连补差 / 整表替换」共用同一份列表，晚到的旧页必须按 requestId 丢弃
+  // （否则会把上一页 prepend 到已经翻走的位置上）。
+  earlierMessages: "requestId";
 };
 
 // ---- 编译期断言：注册表中的每条响应命令，union 成员必须必填其归属键。 ----
@@ -1696,6 +1730,7 @@ export const replyAttributionLocked = {
   desktopArtifactCategories: true,
   desktopArtifactCategoriesSaved: true,
   recentWorkdirsResponse: true,
+  earlierMessages: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];
 };

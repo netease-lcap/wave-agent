@@ -51,7 +51,6 @@ export const useInputManager = (
     onAskBtw,
     sessionId,
     workdir,
-    getFullMessageThread,
     logger,
     hasQueuedMessages: hasQueuedMessagesProp,
     onRecallQueuedMessage,
@@ -207,18 +206,8 @@ export const useInputManager = (
             onPermissionModeChange?.(effect.mode);
             break;
           case "FETCH_HISTORY": {
-            let sessionIds: string[] | undefined = sessionId
-              ? [sessionId]
-              : undefined;
-
-            if (getFullMessageThread) {
-              try {
-                const thread = await getFullMessageThread();
-                sessionIds = thread.sessionIds;
-              } catch (error) {
-                logger?.error("Failed to fetch ancestor session IDs", error);
-              }
-            }
+            // 同 inputHandlers 里那条：只按当前会话取，不为两个字段读整份转录。
+            const sessionIds = sessionId ? [sessionId] : undefined;
 
             const history = await PromptHistoryManager.getHistory({
               sessionId: sessionIds,
@@ -324,7 +313,6 @@ export const useInputManager = (
     onPermissionModeChange,
     sessionId,
     workdir,
-    getFullMessageThread,
     logger,
     onHasSlashCommand,
     onRecallQueuedMessage,

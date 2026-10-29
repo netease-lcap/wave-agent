@@ -144,7 +144,7 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
       .fn()
       .mockResolvedValue({ messages, sessionIds: ["test-session-id"] }),
     // 分页在 SDK 里对着内存列表切片：这一层只被要求「窗口传下去、回包原样答回来」。
-    getMessagePage: vi.fn(() => ({ messages: [], hasMore: false })),
+    getMessagePage: vi.fn(async () => ({ messages: [], hasMore: false })),
     getThreadSummary: vi.fn(function (this: { messages?: Message[] }) {
       return { messageCount: (this.messages ?? []).length };
     }),
@@ -1095,11 +1095,13 @@ async function bridgeWithMessages(count: number) {
 type MessageWindowResult = {
   messages: Message[];
   reset?: boolean;
+  hasMore?: boolean;
+  anchorLost?: boolean;
 };
 
 test("getMessages hands the parameters to the SDK unchanged", async () => {
   const { bridge, sessionId, mockAgent } = await bridgeWithMessages(10);
-  vi.mocked(mockAgent.getMessagePage).mockReturnValue({
+  vi.mocked(mockAgent.getMessagePage).mockResolvedValue({
     messages: windowedMessages(3),
   });
 

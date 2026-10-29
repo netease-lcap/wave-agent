@@ -1980,22 +1980,23 @@ export class AgentBridge {
    * Read a session's display messages.
    *
    * With no parameters this returns the whole list the agent holds, read once
-   * and cached nowhere (spec ui/message-rendering-system.md「首屏就是整份列表，
-   * 不分页」). Two parameters narrow it, both for the remote page:
+   * and cached nowhere. The parameters pick one page instead
+   * (spec ui/message-rendering-system.md「首屏一页，上翻按需取更早」):
    *
-   * - `limit` — the newest `limit` messages (that page's frame budget).
+   * - `limit` — the newest `limit` messages (首屏；远控页按单帧预算给 100).
+   * - `before` — the page just above that id, read from the transcript
+   *             (上翻取更早；压缩之前的历史走这条). Comes back with `hasMore`
+   *             so the page knows when it reached the start of the session.
    * - `since` — everything appended after the given message id (catching up
    *             after a reconnect).
    *
-   * The list starts at the last compaction, so its earliest entry is the
-   * earliest any UI can reach; there is nothing older to read back.
-   *
-   * `since` is a position, not a version number: message ids are stable, so a
-   * caller can name its last known message without the list carrying a
-   * sequence number. The one failure that matters is the anchor having been
-   * truncated away (rewind / clear) — there is no seq/version in the store that
-   * could detect it otherwise — and that comes back as `reset: true` so the
-   * caller re-pulls instead of guessing.
+   * `since` / `before` are positions, not version numbers: message ids are
+   * stable, so a caller can name its last known message without the list
+   * carrying a sequence number. The one failure that matters is the anchor
+   * having been truncated away (rewind / clear) — there is no seq/version in
+   * the store that could detect it otherwise — and that comes back as
+   * `reset: true` (for `since`) or `anchorLost: true` (for `before`) so the
+   * caller re-pulls / retries instead of guessing.
    *
    * Ids can repeat (old transcripts re-appended the preserved rounds at each
    * compact point), so anchors are resolved to their **last** occurrence:
@@ -2038,7 +2039,7 @@ export class AgentBridge {
         threadSummary,
       };
     }
-    const page = entry.agent.getMessagePage(normalized);
+    const page = await entry.agent.getMessagePage(normalized);
     return {
       ...page,
       messages: messagesForUi(page.messages),

@@ -23,6 +23,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -48,9 +49,9 @@ data class PendingConfirmation(
  * Mirrors packages/vscode/src/session/chatSession.ts.
  *
  * 宿主对**消息内容**零状态：这里有的只是状态（sessionId / workdir、流式与命令运行
- * 中、待确认、任务、上下文用量），消息列表一律现取（[fetchMessages]），回包交出去
- * 之后不留引用、不写字段（spec ui/message-rendering-system.md「宿主不保留消息内容，
- * 用的时候现取」）。
+ * 中、待确认、任务、上下文用量），消息列表一律现取一页（[fetchInitialPage] /
+ * [fetchEarlierPage]），回包交出去之后不留引用、不写字段（spec
+ * ui/message-rendering-system.md「宿主不保留消息内容，用的时候现取」）。
  */
 class WaveSession(
     private val project: Project,
@@ -434,38 +435,47 @@ class WaveSession(
     // ── Message list: one-shot pull, nothing kept ─────────────────
 
     /**
-     * 现取**整份列表**（= 压缩后的上下文，不分页）：回包就是这次调用的全部产出，
-     * 宿主把它交给界面之后**不写字段、不留引用**（spec
-     * ui/message-rendering-system.md「宿主不保留消息内容，用的时候现取」判据：宿主
-     * 只记状态，不记消息本身）。
-     *
-     * 首屏 / 切会话 / 恢复、`/rewind`、clearChat 之后都按需现取；压缩不算取数——展示
-     * 流只多了一个摘要块，由 [onCompactBlockAdded] 增量转发。回包顺带刷新
-     * [StdioAgent.contextUsagePercent]（那是**状态**不是消息内容，webview 重建之后
-     * 靠它把用量环补回来）。
-     *
-     * @return 回包里的 messages；RPC 失败返回 null —— 调用方据此让界面保留手里那份，
-     * 不拿空列表把「暂时读不到」显示成「这条会话没了」。
+     * 首屏那一页：最近 [FIRST_PAGE_SIZE] 条 + 「还有没有更早」。回包是原样的
+     * `{ messages, hasMore, contextUsagePercent, threadSummary }`，宿主只转手。
      */
-    suspend fun fetchMessages(): JsonArray? {
+    suspend fun fetchInitialPage(): JsonObject? = fetchPage(buildJsonObject {
+        put("limit", FIRST_PAGE_SIZE)
+    })
+
+    /**
+     * 上翻一页更早的：锚点是当前已加载的第一条。SDK 从转录读（压缩之前的历史也读
+     * 得到），宿主一个字段都不留。
+     */
+    suspend fun fetchEarlierPage(before: String): JsonObject? = fetchPage(buildJsonObject {
+        put("before", before)
+        put("limit", HISTORY_PAGE_SIZE)
+    })
+
+    private suspend fun fetchPage(window: JsonObject): JsonObject? {
         val agent = agent ?: return null
         return try {
-            val res = agent.getMessages() as? JsonObject
-            res?.get("messages") as? JsonArray ?: JsonArray(emptyList())
+            agent.getMessages(window).jsonObject
         } catch (e: StdioClientException) {
-            LOG.warn("getMessages failed: ${e.message}")
+            LOG.warn("getMessages(window) failed: ${e.message}")
             null
         }
     }
 
     /**
-     * 现取整份列表并推给 webview 作为「响应」（updateMessages）。
+     * 现取首屏那一页并推给 webview 作为「响应」（updateMessages）。clearChat /
+     * restoreSession / 旧 CLI 的压缩兜底都走它：列表是这次响应的载荷，宿主不留引用
+     * （spec ui/message-rendering-system.md「首屏一页，上翻按需取更早」）。
      *
      * 取不到就不推：界面手里那份比一个凭空来的空列表更接近真相。
      */
     suspend fun pullAndPushMessages() {
-        val messages = fetchMessages() ?: return
-        postMessage("updateMessages", buildJsonObject { put("messages", messages) })
+        val page = fetchInitialPage() ?: return
+        val messages = page["messages"] as? JsonArray ?: JsonArray(emptyList())
+        val hasEarlier = (page["hasMore"] as? JsonPrimitive)?.booleanOrNull ?: false
+        postMessage("updateMessages", buildJsonObject {
+            put("messages", messages)
+            put("hasEarlier", hasEarlier)
+        })
     }
 
     /**
@@ -495,3 +505,10 @@ class WaveSession(
         scope.cancel()
     }
 }
+
+/**
+ * 分页的两个条数（与 SDK 的 `constants/messageWindow.ts` 同值）：首屏一页、上翻一页。
+ * 字节预算在 SDK 侧同时生效，宿主不重复实现。
+ */
+private const val FIRST_PAGE_SIZE = 20
+private const val HISTORY_PAGE_SIZE = 200

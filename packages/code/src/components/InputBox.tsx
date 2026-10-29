@@ -212,7 +212,6 @@ export const InputBox: React.FC<InputBoxProps> = ({
     onPlanCommand: handlePlanCommand,
     sessionId,
     workdir: workingDirectory,
-    getFullMessageThread,
     hasQueuedMessages,
     isIdle,
     onRecallQueuedMessage,

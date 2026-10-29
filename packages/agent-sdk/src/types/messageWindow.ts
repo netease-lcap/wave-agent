@@ -7,7 +7,13 @@ import type { Message } from "./messaging.js";
 export interface MessageWindow {
   /** 排他下锚点：取这条消息**之后**新增的部分（重连补差）。 */
   since?: string;
-  /** 只要最近这么多条（远控页首屏；按中继单帧预算折算，见 `remote/shim.js`）。 */
+  /**
+   * 排他上锚点：取这条消息**之前**的一页（上翻取更早）。锚点不存在时回包里
+   * `anchorLost`，调用方换一个更早的 id 重试，见 `ui/message-rendering-system.md`
+   * 「首屏一页，上翻按需取更早」。
+   */
+  before?: string;
+  /** 这一页最多多少条（首屏 / 上翻 / 远控页尾段都用它，字节预算同时生效）。 */
   limit?: number;
 }
 
@@ -18,6 +24,13 @@ export interface MessageWindowResult {
   messages: Message[];
   /** `since` 锚点已经不在了：整份重取。 */
   reset?: boolean;
+  /**
+   * `before` 锚点在转录里找不到：调用方换一个更早的已知 id 重试，**不要**当成
+   * 「没有更早」——那会让这段历史再也翻不出来。
+   */
+  anchorLost?: boolean;
+  /** 这一页之前还有更早的消息（上翻的终止判据）。 */
+  hasMore?: boolean;
   /**
    * 该会话的上下文用量百分比。随每次取数一起回：宿主的查询是只读的（不写
    * SDK 客户端那份缓存），用量要由宿主自己存，就必须搭在同一份回包上送过来。
