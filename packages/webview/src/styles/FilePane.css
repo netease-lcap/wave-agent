@@ -51,7 +51,15 @@
 
 /* 列表态（spec desktop-file-panel.md「文件面板列出当前对话的文件」）：面板
    没打开任何文件时，正文改为「本对话读/写过的文件」清单，一行一个、点击即开。
-   只有文件——创作集是 URL 而非文件，不进这张表。 */
+   只有文件——创作集是 URL 而非文件，不进这张表。
+
+   字号（设计师 1029 评论「按照 skill 和设计规范统一这里的字体规范，标题也提到 14」）：
+   标题与文件名统一到正文档 14px。改前标题 12、文件名 13 —— 13px 在契约里只属
+   「代码」角色（references/conversation-typography.md:9：正文 14、辅助 12、
+   代码 13），UI 文本没有 13 这一档，所以不是「调小一档」而是回到正文档。
+   内边距 / 行高 / 圆角 / 分隔线 / 字色都不动：实测行高 28/29 → 29/30（14px 的
+   文字行盒 17 高，比原来那道 16px 图标的底线多 1px），整张 11 行列表 320 → 331。
+   字体族另见 host-desktop.css 的按钮白名单（<button> 不继承页面字体）。 */
 .file-pane-conversation-files {
   display: flex;
   flex-direction: column;
@@ -61,7 +69,7 @@
 
 .file-pane-conversation-files-caption {
   padding: 0 2px;
-  font-size: 12px;
+  font-size: 14px;
   color: var(--vscode-descriptionForeground, #8b9099);
 }
 
@@ -83,7 +91,7 @@
   border: none;
   cursor: pointer;
   color: var(--vscode-foreground);
-  font-size: 13px;
+  font-size: 14px;
   text-align: left;
 }
 
