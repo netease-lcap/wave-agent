@@ -236,6 +236,27 @@
   display: block;
 }
 
+/* ═══ 差异面板的文件树挪到正文右侧（1029 评论第七批）═══════════════════════
+   评论（点 `div.diff-tree`）：「树移动到右侧和文件保持一致」。参照件 = 文件面板
+   （host-desktop.css 的 `[data-host="desktop"] .file-pane-layout { row-reverse }`，
+   1028 那一轮）：**正文在左、紧挨对话，树挂在最右**。
+   只反转视觉顺序，DOM 顺序不变（`diff-sidebar` 仍排在 `diff-pane-main` 之前）
+   ⇒ 读屏 / Tab 顺序、以及「树 → 范围开关 → 提交列表」的纵向堆叠都不受影响，
+   也不涉及拖拽方向（差异树宽度固定 240，没有 splitter）。
+   分界线跟着换边：原来按「树在左」写成 `border-right`，现在树在最右，改用
+   `border-left` 落在「正文 / 树」的界上；色值同步换成文件树那一列用的
+   `--cc-border`（浅 #DCDFE6 / 深 #414649），原来是 `--cc-border-light`
+   （浅 #E4E7ED / 深 #34393C）—— 两处要并排看，取深一档。
+   ⚠️ 本该进 host-desktop.css，理由同上（该文件被另一个窗口占用）。
+   回退：删掉本节两条规则（树回到左侧、分界线回 border-right 与 border-light）。 */
+[data-host="desktop"] .diff-pane-layout {
+  flex-direction: row-reverse;
+}
+[data-host="desktop"] .diff-sidebar {
+  border-right: 0;
+  border-left: 1px solid var(--cc-border, #ebeef5);
+}
+
 /* Toolbar: read-only range on the left, controls on the right. */
 .diff-pane .desktop-panel-toolbar-title {
   flex: 0 0 auto;
