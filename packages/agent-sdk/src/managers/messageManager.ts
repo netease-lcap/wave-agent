@@ -52,9 +52,9 @@ import type {
   MessageWindow,
   MessageWindowResult,
 } from "../types/messageWindow.js";
+import type { RewindCheckpoint } from "../utils/rewindCheckpoints.js";
 
 import { Container } from "../utils/container.js";
-
 // Cap for recentFileReads: content is only consumed by getRecentFileReads
 // (top 5 for post-compact restoration), so bound both the entry count and the
 // number of entries that keep full content (aligned with Claude Code's
@@ -1159,6 +1159,26 @@ export class MessageManager {
   }> {
     const { loadFullMessageThread } = await import("../services/session.js");
     return loadFullMessageThread(this.sessionId, this.workdir);
+  }
+
+  /**
+   * `/rewind` 的检查点表：只投影 `{id, content, index}`，不留整份线程。
+   *
+   * 选择器要的是「整条线程里哪几条能回滚到」，而以前为了这几个字段把整份消息
+   * （含工具结果里的 base64）读进内存数下标。扫一遍转录当场投影，峰值只与这张
+   * 小表有关。
+   */
+  public async getRewindCheckpoints(): Promise<RewindCheckpoint[]> {
+    const { loadRewindCheckpoints } = await import("../services/session.js");
+    return loadRewindCheckpoints(this.sessionId, this.workdir);
+  }
+
+  /** 按 id 找回滚目标的位置与文本，扫转录即可，不读整份线程。 */
+  public async findRewindTarget(
+    messageId: string,
+  ): Promise<{ index: number; content: string } | undefined> {
+    const { findRewindTarget } = await import("../services/session.js");
+    return findRewindTarget(this.sessionId, this.workdir, messageId);
   }
 
   /**

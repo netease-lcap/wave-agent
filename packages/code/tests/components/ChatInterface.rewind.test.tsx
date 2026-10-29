@@ -69,9 +69,7 @@ describe("ChatInterface Rewind Visibility", () => {
         apiKey: undefined,
         baseURL: undefined,
       }),
-      getFullMessageThread: vi
-        .fn()
-        .mockResolvedValue({ messages: [], sessionIds: [] }),
+      getRewindCheckpoints: vi.fn().mockResolvedValue([]),
     } as unknown as ChatContextType);
 
     vi.mocked(useInputManager).mockReturnValue({
@@ -155,9 +153,7 @@ describe("ChatInterface Rewind Visibility", () => {
         apiKey: undefined,
         baseURL: undefined,
       }),
-      getFullMessageThread: vi
-        .fn()
-        .mockResolvedValue({ messages: [], sessionIds: [] }),
+      getRewindCheckpoints: vi.fn().mockResolvedValue([]),
     } as unknown as ChatContextType);
 
     vi.mocked(useInputManager).mockReturnValue({

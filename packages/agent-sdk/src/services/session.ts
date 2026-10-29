@@ -24,10 +24,17 @@ import { promisify } from "util";
 import type { Message } from "../types/index.js";
 import { PathEncoder } from "../utils/pathEncoder.js";
 import { JsonlHandler } from "../services/jsonlHandler.js";
-import { isReservedEntry } from "../services/sessionEntries.js";
+import {
+  isReservedEntry,
+  scanTranscriptMessages,
+} from "../services/sessionEntries.js";
 import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
 import { logger } from "../utils/globalLogger.js";
 import { getMessageContent } from "../utils/messageOperations.js";
+import {
+  type RewindCheckpoint,
+  toRewindCheckpoint,
+} from "../utils/rewindCheckpoints.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -1328,4 +1335,73 @@ export async function loadFullMessageThread(
 
   const messages = await jsonlHandler.read(filePath);
   return { messages, sessionIds: [currentSessionId] };
+}
+
+/**
+ * 取 `/rewind` 的检查点表：扫一遍转录，每个候选只投影成
+ * `{id, content, index}`，整份线程一个对象都不留。
+ *
+ * 与 `loadFullMessageThread` 的差别只是「要什么」：那边要每条消息的完整内容
+ * （回滚后还要把消息重新发给模型），这边只列选择器上的几行——读同一条转录，
+ * 峰值差着工具结果里那些 base64 图片。
+ *
+ * 压缩是 append-only：同 id 的消息可能写了两次（压缩前历史 + 压缩后 append 的
+ * 重复），用户看到的折叠视图对应**最后一次出现**，所以按 id 去重保留后者。
+ */
+export async function loadRewindCheckpoints(
+  currentSessionId: string,
+  workdir: string,
+): Promise<RewindCheckpoint[]> {
+  const filePath = await generateSessionFilePath(
+    currentSessionId,
+    workdir,
+    "main",
+  );
+
+  try {
+    await fs.access(filePath);
+  } catch {
+    return [];
+  }
+
+  const byId = new Map<string, RewindCheckpoint>();
+  await scanTranscriptMessages(filePath, (message, index) => {
+    const checkpoint = toRewindCheckpoint(message, index);
+    if (!checkpoint) return;
+    byId.delete(checkpoint.id);
+    byId.set(checkpoint.id, checkpoint);
+  });
+  return [...byId.values()];
+}
+
+/**
+ * 按 id 找一个回滚目标：给出它在完整线程里的位置与文本（`/rewind` 选中后要
+ * 沿着 `index` 截断，并把那段文本放回输入框）。
+ *
+ * 与 `loadRewindCheckpoints` 同一手法：扫一遍转录、只留命中项，不为一条消息的
+ * 下标与一段文本读整份线程。同 id 多次出现时取最后一次（与检查点表口径一致）。
+ */
+export async function findRewindTarget(
+  currentSessionId: string,
+  workdir: string,
+  messageId: string,
+): Promise<{ index: number; content: string } | undefined> {
+  const filePath = await generateSessionFilePath(
+    currentSessionId,
+    workdir,
+    "main",
+  );
+
+  try {
+    await fs.access(filePath);
+  } catch {
+    return undefined;
+  }
+
+  let found: { index: number; content: string } | undefined;
+  await scanTranscriptMessages(filePath, (message, index) => {
+    if (message.id !== messageId) return;
+    found = { index, content: getMessageContent(message) };
+  });
+  return found;
 }

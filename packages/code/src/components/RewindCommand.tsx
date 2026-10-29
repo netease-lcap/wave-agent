@@ -1,84 +1,78 @@
 import React, { useState, useReducer, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
-import type { Message } from "wave-agent-sdk";
-import { getMessageContent } from "wave-agent-sdk";
+import type { RewindCheckpoint } from "wave-agent-sdk";
 import { rewindSelectorReducer } from "../reducers/rewindSelectorReducer.js";
-import { isUserCheckpointMessage } from "../utils/rewindCheckpoints.js";
+
+/** 稳定的空表：加载期也要能渲染，但不能每帧造一个新数组（effect 依赖它）。 */
+const NO_CHECKPOINTS: RewindCheckpoint[] = [];
 
 export interface RewindCommandProps {
-  messages: Message[];
+  /**
+   * 取检查点表。SDK 扫转录当场投影，内存里不留整条线程——这一屏要的只是
+   * 「哪几条能回滚到」和它们在完整线程里的位置。
+   */
+  getCheckpoints: () => Promise<RewindCheckpoint[]>;
+  /** 参数是在完整线程里的绝对位置，直接喂 `truncateHistory(index)`。 */
   onSelect: (index: number) => void;
   onCancel: () => void;
-  getFullMessageThread?: () => Promise<{
-    messages: Message[];
-    sessionIds: string[];
-  }>;
 }
 
 export const RewindCommand: React.FC<RewindCommandProps> = ({
-  messages: initialMessages,
+  getCheckpoints,
   onSelect,
   onCancel,
-  getFullMessageThread,
 }) => {
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [isLoading, setIsLoading] = useState(!!getFullMessageThread);
+  const [checkpoints, setCheckpoints] = useState<RewindCheckpoint[] | null>(
+    null,
+  );
+  const isLoading = checkpoints === null;
 
   useEffect(() => {
-    if (getFullMessageThread) {
-      getFullMessageThread().then(({ messages: fullMessages }) => {
-        setMessages(fullMessages);
-        setIsLoading(false);
-      });
-    }
-  }, [getFullMessageThread]);
+    let cancelled = false;
+    getCheckpoints().then((loaded) => {
+      if (!cancelled) setCheckpoints(loaded);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [getCheckpoints]);
 
-  // Filter user messages as checkpoints, excluding meta messages and
-  // system-generated user-role messages (task notifications, hook injections).
-  // Compaction is append-only: the same message id appears twice on the full
-  // thread (pre-compact history + post-compact append), so dedupe by id and
-  // keep the last occurrence (matching the folded view the user sees).
-  const checkpointMap = new Map<string, { msg: Message; index: number }>();
-  messages.forEach((msg, index) => {
-    if (!isUserCheckpointMessage(msg)) return;
-    checkpointMap.set(msg.id ?? `index:${index}`, { msg, index });
-  });
-  const checkpoints = Array.from(checkpointMap.values());
+  const items = checkpoints ?? NO_CHECKPOINTS;
 
   const MAX_VISIBLE_ITEMS = 3;
 
   const [state, dispatch] = useReducer(rewindSelectorReducer, {
-    selectedIndex: checkpoints.length - 1,
+    selectedIndex: items.length - 1,
     pendingDecision: null,
   });
 
   const { selectedIndex, pendingDecision } = state;
 
-  // Update selectedIndex when checkpoints change (after loading full thread)
+  // Update selectedIndex when checkpoints arrive
   useEffect(() => {
-    dispatch({ type: "RESET_INDEX", index: checkpoints.length - 1 });
-  }, [checkpoints.length]);
+    dispatch({ type: "RESET_INDEX", index: items.length - 1 });
+  }, [items.length]);
 
   // Handle decisions from reducer
   useEffect(() => {
     if (!pendingDecision) return;
 
     if (pendingDecision === "select") {
-      if (checkpoints.length > 0 && selectedIndex >= 0) {
-        onSelect(checkpoints[selectedIndex].index);
+      if (items.length > 0 && selectedIndex >= 0) {
+        onSelect(items[selectedIndex].index);
       }
     } else if (pendingDecision === "cancel") {
       onCancel();
     }
 
     dispatch({ type: "CLEAR_DECISION" });
-  }, [pendingDecision, selectedIndex, checkpoints, onSelect, onCancel]);
+  }, [pendingDecision, selectedIndex, items, onSelect, onCancel]);
 
   useInput((input, key) => {
     dispatch({
       type: "HANDLE_KEY",
       key,
-      maxIndex: checkpoints.length - 1,
+      maxIndex: items.length - 1,
     });
   });
 
@@ -92,12 +86,12 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
         borderLeft={false}
         borderRight={false}
       >
-        <Text color="cyan">Loading full message thread...</Text>
+        <Text color="cyan">Loading rewind checkpoints...</Text>
       </Box>
     );
   }
 
-  if (checkpoints.length === 0) {
+  if (items.length === 0) {
     return (
       <Box
         flexDirection="column"
@@ -118,10 +112,10 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
     0,
     Math.min(
       selectedIndex - Math.floor(MAX_VISIBLE_ITEMS / 2),
-      Math.max(0, checkpoints.length - MAX_VISIBLE_ITEMS),
+      Math.max(0, items.length - MAX_VISIBLE_ITEMS),
     ),
   );
-  const visibleCheckpoints = checkpoints.slice(
+  const visibleCheckpoints = items.slice(
     startIndex,
     startIndex + MAX_VISIBLE_ITEMS,
   );
@@ -146,19 +140,19 @@ export const RewindCommand: React.FC<RewindCommandProps> = ({
         {visibleCheckpoints.map((checkpoint, index) => {
           const actualIndex = startIndex + index;
           const isSelected = actualIndex === selectedIndex;
-          const content = getMessageContent(checkpoint.msg)
+          const content = checkpoint.content
             .replace(/\n/g, "\\n")
             .substring(0, 60);
 
           return (
-            <Box key={checkpoint.index}>
+            <Box key={checkpoint.id}>
               <Text
                 color={isSelected ? "black" : "white"}
                 backgroundColor={isSelected ? "cyan" : undefined}
               >
                 {isSelected ? "▶ " : "  "}[{checkpoint.index}]{" "}
                 {content || "(No text content)"}
-                {actualIndex === checkpoints.length - 1 ? " (Latest)" : ""}
+                {actualIndex === items.length - 1 ? " (Latest)" : ""}
               </Text>
             </Box>
           );
