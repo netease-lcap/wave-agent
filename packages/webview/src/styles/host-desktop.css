@@ -1967,6 +1967,18 @@
   color: var(--cc-text-regular);
   opacity: 1;
 }
+/* ═══ 1029 第十二轮：会话文件清单圆角对齐设置页卡片 ═══
+   设计师 1029 预览评论 `div.file-pane-conversation-file-list`「这里圆角同以下」，
+   参考件点名 `div.settings-card`「这里保持一致」。同一次运行实测（1440×1000、
+   浅深两主题）：清单改前 6px（FilePane.css:80，框 482×331），设置卡片 12px
+   （SettingsPage.css:335，0916 拍板 = `--cc-radius-lg`，框 712×344）。
+   只抬容器圆角：容器自己 `overflow: hidden`，首/末行的 hover 底色会跟着新圆角
+   被裁出来，行内几何（29/30 高、内衬、分隔线）一个值没动，框宽高也未变。
+   作用域：桌面端独有 —— IDE 宿主保持 base 的 6px。 */
+[data-host="desktop"] .file-pane-conversation-file-list {
+  border-radius: var(--cc-radius-lg, 12px);
+}
+
 /* 标签带尺寸变量：药丸高 + 上下留白。补缝线的高度由这两个值算出来，改任何一处
    （药丸高度 / 留白档）补缝线都会自动跟着走，不需要再同步第三个数字。 */
 [data-host="desktop"] .file-pane {
