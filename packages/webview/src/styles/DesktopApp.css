@@ -675,8 +675,11 @@ html[data-theme="dark"] .desktop-session-status-slot {
 }
 
 .desktop-session-empty {
-  /* 与行标题左距 16 对齐 */
-  padding: 4px 8px 4px 16px;
+  /* 1029 第十六轮：设计师评论「这个空台居中显示」——原来靠左、左距 16 是与行标题
+     左缘对齐，现在改成在分组区域内水平居中。左右 padding 必须对称，否则居中会整体
+     偏一边（原来左侧 16 / 右侧 8，直接加 text-align 会右偏 4px）。垂直 4px 不动。 */
+  padding: 4px 8px;
+  text-align: center;
   font-size: 13px;
   opacity: 0.6;
 }
