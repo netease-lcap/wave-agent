@@ -8,7 +8,6 @@ import {
 } from "openai/resources.js";
 import { OpenAIClient } from "../utils/openaiClient.js";
 import { logger } from "../utils/globalLogger.js";
-import { addOnceAbortListener } from "../utils/abortUtils.js";
 import type {
   CompletionSnippet,
   GatewayConfig,
@@ -86,49 +85,6 @@ type OpenAIModelConfig = Omit<
   ChatCompletionCreateParamsNonStreaming,
   "messages"
 >;
-
-// Global rate limiter state for 1 QPS
-let nextAllowedTime = 0;
-const MIN_INTERVAL = 1000; // 1 second for 1 QPS
-
-/**
- * Resets the rate limiter state. Primarily used for testing.
- */
-export function resetRateLimiter(): void {
-  nextAllowedTime = 0;
-}
-
-/**
- * Acquires a slot for an AI request, ensuring 1 QPS limit.
- * @param abortSignal Optional abort signal to cancel waiting
- */
-async function acquireSlot(abortSignal?: AbortSignal): Promise<void> {
-  if (abortSignal?.aborted) {
-    throw new Error("Request was aborted");
-  }
-
-  const now = Date.now();
-  const waitTime = Math.max(0, nextAllowedTime - now);
-
-  // Reserve the slot synchronously to ensure global ordering
-  nextAllowedTime = Math.max(now, nextAllowedTime) + MIN_INTERVAL;
-
-  if (waitTime > 0) {
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        cleanup();
-        resolve();
-      }, waitTime);
-
-      const cleanup = abortSignal
-        ? addOnceAbortListener(abortSignal, () => {
-            clearTimeout(timeout);
-            reject(new Error("Request was aborted"));
-          })
-        : () => {};
-    });
-  }
-}
 
 /**
  * Get specific configuration parameters based on model name
@@ -321,14 +277,6 @@ export async function callAgent(
 
   // Validate model config at call time
   validateModelConfig(modelConfig);
-
-  // Apply global 1 QPS rate limit
-  if (
-    process.env.NODE_ENV !== "test" ||
-    modelConfig.model === "rate-limit-test"
-  ) {
-    await acquireSlot(abortSignal);
-  }
 
   // Declare variables outside try block for error handling access
   let openaiMessages: ChatCompletionMessageParam[] | undefined;
@@ -964,14 +912,6 @@ export async function processWebContent(
   // Validate model config at call time
   validateModelConfig(modelConfig);
 
-  // Apply global 1 QPS rate limit
-  if (
-    process.env.NODE_ENV !== "test" ||
-    modelConfig.model === "rate-limit-test"
-  ) {
-    await acquireSlot(abortSignal);
-  }
-
   // Create OpenAI client with injected configuration
   const openai = new OpenAIClient({
     apiKey: gatewayConfig.apiKey,
@@ -1084,12 +1024,11 @@ export interface CompletionResult {
  * Inline (ghost-text) code completion — a single, tool-less, latency-critical
  * model call.
  *
- * Deliberately **not** routed through `acquireSlot`: the process-wide 1 QPS
- * interval exists to keep conversation turns from piling onto the gateway, and
- * a typing pause happens far more often than once a second. Sharing it would
- * both throttle completion to unusable latency and let completion hold up the
- * conversation. Throttling and cancellation for completion are the host's job
- * (one in-flight request per editor, superseded on the next keystroke).
+ * Deliberately independent of conversation turns: a typing pause happens far
+ * more often than once a second, and completion must never hold up (or be held
+ * up by) a conversation turn. Throttling and cancellation for completion are the
+ * host's job (one in-flight request per editor, superseded on the next
+ * keystroke).
  *
  * Never throws on an empty answer: an empty completion is a normal outcome
  * (spec: 模型返回空文本时不渲染任何幽灵文本), unlike `processWebContent` where

@@ -27,9 +27,9 @@ vi.mock("@/utils/openaiClient.js", () => ({
 }));
 
 /**
- * A thenable that also exposes `withResponse`, so the same mock serves
- * `getCompletion` (awaits the call directly) and `callAgent` (reads
- * `.withResponse`).
+ * A thenable that also exposes `withResponse`, so the mock serves
+ * `getCompletion` whether it awaits the call directly or reads
+ * `.withResponse`.
  */
 function mockCreateWith(content: string) {
   const data = { choices: [{ message: { content }, finish_reason: "stop" }] };
@@ -44,8 +44,6 @@ function mockCreateWith(content: string) {
 
 describe("AI Service - inline completion", () => {
   let getCompletion: typeof import("@/services/aiService.js").getCompletion;
-  let callAgent: typeof import("@/services/aiService.js").callAgent;
-  let resetRateLimiter: () => void;
 
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -54,9 +52,6 @@ describe("AI Service - inline completion", () => {
 
     const aiService = await import("@/services/aiService.js");
     getCompletion = aiService.getCompletion;
-    callAgent = aiService.callAgent;
-    resetRateLimiter = aiService.resetRateLimiter;
-    resetRateLimiter();
   });
 
   afterEach(() => {
@@ -135,49 +130,6 @@ describe("AI Service - inline completion", () => {
     });
 
     expect(result.text).toBe("");
-  });
-
-  it("does not wait on the conversation's 1 QPS slot", async () => {
-    mockCreateWith("42");
-
-    // Consume the immediate slot the way a conversation turn would.
-    await callAgent({
-      gatewayConfig: TEST_GATEWAY_CONFIG,
-      modelConfig: { ...TEST_MODEL_CONFIG, model: "rate-limit-test" },
-      messages: [{ role: "user", content: "hi" }],
-      workdir: "/test/workdir",
-    });
-
-    // No timer advance: a shared slot would leave this promise pending.
-    const result = await getCompletion({
-      gatewayConfig: TEST_GATEWAY_CONFIG,
-      modelConfig: TEST_MODEL_CONFIG,
-      prefix: "",
-      suffix: "",
-    });
-
-    expect(result.text).toBe("42");
-  });
-
-  it("leaves the conversation's 1 QPS slot untouched", async () => {
-    mockCreateWith("42");
-
-    await getCompletion({
-      gatewayConfig: TEST_GATEWAY_CONFIG,
-      modelConfig: TEST_MODEL_CONFIG,
-      prefix: "",
-      suffix: "",
-    });
-
-    // If completion had reserved a slot, this turn would now wait a second.
-    await callAgent({
-      gatewayConfig: TEST_GATEWAY_CONFIG,
-      modelConfig: { ...TEST_MODEL_CONFIG, model: "rate-limit-test" },
-      messages: [{ role: "user", content: "hi" }],
-      workdir: "/test/workdir",
-    });
-
-    expect(mockCreate).toHaveBeenCalledTimes(2);
   });
 
   it("merges the completion model's options and disables thinking", async () => {
