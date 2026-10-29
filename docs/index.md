@@ -6,7 +6,7 @@ title: 产品概览
 
 CodeWave IDE 是面向开发者团队的 AI 智能编程系统。无论你习惯桌面客户端、IDE 插件、命令行，想用手机远程接管，还是想把 AI 能力嵌入自有产品，都能以同一套工作流让 AI 深度参与编码——从代码生成、工程理解到团队治理，覆盖研发全生命周期。
 
-[企业管控台](/guide) · [VS Code 扩展 / JetBrains 插件](/vsce) · [Web 端](/web) · [桌面版](/desktop) · [CLI](/cli) · [SDK](/sdk)
+[企业管控台](/guide) · [VS Code 扩展 / JetBrains 插件](/vsce/) · [Web 端](/web) · [桌面版](/desktop/) · [CLI](/cli/) · [SDK](/sdk/)
 
 ## 产品矩阵：六种形态
 

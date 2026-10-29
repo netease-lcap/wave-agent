@@ -11,7 +11,7 @@ allowed-tools: ${BASH_TOOL_NAME}(wave daemon *), ${BASH_TOOL_NAME}(git *), ${REA
 
 Delegate development work (code changes, bug fixes, features) and research work (reading code and producing conclusions — which often turns into code changes) to a **wave daemon session** instead of doing the long task inline. A daemon session runs in the background with no UI window, keeps generating while no client is attached, and survives client disconnects.
 
-The authoritative command reference is the Wave documentation, CLI → *Daemon client commands* (\`docs/cli.md\` in the Wave repo). This skill is the playbook: what to run, in what order, and the traps to avoid.
+The authoritative command reference is the Wave documentation, CLI → *Daemon client commands* (\`docs/cli/subcommands.md\` in the Wave repo). This skill is the playbook: what to run, in what order, and the traps to avoid.
 
 ## 0. Mental model
 
