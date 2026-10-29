@@ -2,7 +2,6 @@ import { describe, it, expect, vi } from "vitest";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import type { MessageManagerCallbacks } from "../../src/managers/messageManager.js";
 import { Container } from "../../src/utils/container.js";
-import { MESSAGE_SLICE_MAX_BYTES } from "../../src/constants/messageWindow.js";
 
 /**
  * `getMessages` 在内存列表上取数，遇到压缩边界之前的锚点才读转录
@@ -76,6 +75,36 @@ describe("MessageManager.getMessagePage", () => {
     expect(page.hasMore).toBe(false);
   });
 
+  it("keeps the whole page when messages carry large tool images", async () => {
+    // 一页只按条数收。工具图片的 base64 在发给 UI 前就被剥掉（README：
+    // packages/code/src/stdio/uiPayload.ts），按含图的字节砍页会把有图的会话
+    // 首屏砍成一两条，而线上载荷里根本没有那张图。
+    const manager = createManager();
+    manager.setMessages(
+      Array.from({ length: 30 }, (_, i) => ({
+        id: `m${i}`,
+        role: "assistant" as const,
+        timestamp: "2026-01-01T00:00:00.000Z",
+        blocks: [
+          {
+            type: "tool" as const,
+            id: `t${i}`,
+            name: "Read",
+            stage: "end" as const,
+            result: "ok",
+            images: [{ data: "x".repeat(2 * 1024 * 1024) }],
+          },
+        ],
+      })),
+    );
+
+    const page = await manager.getMessagePage({ limit: 30 });
+
+    // 30 × 2 MiB = 60 MiB：旧的 4 MiB 字节预算只会留 2 条。
+    expect(page.messages).toHaveLength(30);
+    expect(page.hasMore).toBe(false);
+  });
+
   it("answers a since-anchor with everything after it", async () => {
     // 同一 id 在列表里可能出现多次（压缩重建保留轮次），锚点按**最后一次**解析，
     // 否则补差会跨过手机正在看的位置。
@@ -117,25 +146,6 @@ describe("MessageManager.getMessagePage", () => {
       messages: [],
       reset: true,
     });
-  });
-
-  it("takes at least one message even when it alone blows the byte budget", async () => {
-    // 单条就超预算时也得返回它：否则手机拿到的永远是空列表。
-    const manager = createManager();
-    manager.setMessages([
-      {
-        id: "huge",
-        role: "user",
-        timestamp: "2026-01-01T00:00:00.000Z",
-        blocks: [
-          { type: "text", content: "x".repeat(MESSAGE_SLICE_MAX_BYTES) },
-        ],
-      },
-    ]);
-
-    expect(ids((await manager.getMessagePage({ limit: 20 })).messages)).toEqual(
-      ["huge"],
-    );
   });
 
   it("serves a before-anchor out of memory while it is still resident", async () => {

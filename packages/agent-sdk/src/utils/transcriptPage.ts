@@ -16,10 +16,7 @@
 import { open } from "fs/promises";
 import type { Message } from "../types/messaging.js";
 import type { MessageWindow } from "../types/messageWindow.js";
-import {
-  MESSAGE_PAGE_SIZE,
-  MESSAGE_SLICE_MAX_BYTES,
-} from "../constants/messageWindow.js";
+import { MESSAGE_PAGE_SIZE } from "../constants/messageWindow.js";
 import { parseTranscriptLine } from "../services/sessionEntries.js";
 
 const NEWLINE = 0x0a;
@@ -41,8 +38,6 @@ export interface TranscriptPage {
 
 interface CursorHit {
   message: Message;
-  /** 这一行在文件里的字节数（不含换行）：一页的字节预算按它累计。 */
-  bytes: number;
 }
 
 /**
@@ -164,7 +159,6 @@ async function createCursor(
         }
         return {
           message: parsed.message,
-          bytes: Buffer.byteLength(value, "utf8"),
         };
       }
     },
@@ -178,14 +172,12 @@ function normaliseLimit(limit: number | undefined): number {
   return limit;
 }
 
-/** 从后往前收，收满条数或字节预算就停；至少收 1 条。 */
+/** 从后往前收一页；收满条数即停。 */
 async function collectBackward(
   cursor: TranscriptCursor,
   limit: number,
-  maxBytes: number,
 ): Promise<{ messages: Message[]; hasMore: boolean }> {
   const collected: Message[] = [];
-  let bytes = 0;
   for (;;) {
     const hit = await cursor.nextMessage();
     if (!hit) return { messages: collected.reverse(), hasMore: false };
@@ -193,11 +185,7 @@ async function collectBackward(
     if (collected.length >= limit) {
       return { messages: collected.reverse(), hasMore: true };
     }
-    if (collected.length > 0 && bytes + hit.bytes > maxBytes) {
-      return { messages: collected.reverse(), hasMore: true };
-    }
     collected.push(hit.message);
-    bytes += hit.bytes;
   }
 }
 
@@ -214,7 +202,6 @@ async function skipToAnchor(
 }
 
 export interface ReadTranscriptPageOptions {
-  maxBytes?: number;
   chunkBytes?: number;
 }
 
@@ -249,23 +236,20 @@ export async function readTranscriptPage(
   options: ReadTranscriptPageOptions = {},
 ): Promise<TranscriptPage> {
   const limit = normaliseLimit(window.limit);
-  const maxBytes = options.maxBytes ?? MESSAGE_SLICE_MAX_BYTES;
   const chunkBytes = options.chunkBytes ?? DEFAULT_CHUNK_BYTES;
 
   const cursor = await createCursor(filePath, chunkBytes);
   try {
     if (window.since) {
       const collected: Message[] = [];
-      let bytes = 0;
       for (;;) {
         const hit = await cursor.nextMessage();
         // 锚点翻不到了：要么已被 rewind 裁掉，要么落得太远。
         if (!hit) return { messages: [], hasMore: false, reset: true };
         if (hit.message.id === window.since) break;
         collected.push(hit.message);
-        bytes += hit.bytes;
         // 落后超过一页：不返回有洞的补差，让调用方整份重取尾页。
-        if (collected.length > limit || bytes > maxBytes) {
+        if (collected.length > limit) {
           return { messages: [], hasMore: false, reset: true };
         }
       }
@@ -277,7 +261,7 @@ export async function readTranscriptPage(
       return { messages: [], hasMore: false, anchorLost: true };
     }
 
-    return await collectBackward(cursor, limit, maxBytes);
+    return await collectBackward(cursor, limit);
   } catch (error) {
     // 还没有转录（新会话、或会话文件被删）：空页。带 `since` 的调用方按「锚点不
     // 在了」重建，其余按「没有更早的」处理。文件在读到一半时被删也走这里——对调用

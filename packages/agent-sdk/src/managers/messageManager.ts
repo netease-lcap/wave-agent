@@ -45,11 +45,8 @@ import {
   type NestedMemoryFile,
 } from "../utils/nestedMemory.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
-import {
-  MESSAGE_PAGE_SIZE,
-  MESSAGE_SLICE_MAX_BYTES,
-} from "../constants/messageWindow.js";
-import { messageBytes, takeTailFromMemory } from "../utils/messageWindow.js";
+import { MESSAGE_PAGE_SIZE } from "../constants/messageWindow.js";
+import { takeTailFromMemory } from "../utils/messageWindow.js";
 import type {
   MessageWindow,
   MessageWindowResult,
@@ -1231,7 +1228,7 @@ export class MessageManager {
 
     if (!window.before) {
       // 首屏：内存尾部一页；内存放得下整份时才需要问转录还有没有更早。
-      const page = takeTailFromMemory(list, limit, MESSAGE_SLICE_MAX_BYTES);
+      const page = takeTailFromMemory(list, limit);
       if (page.length < list.length) return { messages: page, hasMore: true };
       const earliest = page[0]?.id;
       return {
@@ -1246,24 +1243,14 @@ export class MessageManager {
       // 锚点不在内存里，说明它已经落在压缩边界之前了：整页从转录读。
       return this.readOlderPage(window);
     }
-    const inMemory = takeTailFromMemory(
-      list.slice(0, at),
-      limit,
-      MESSAGE_SLICE_MAX_BYTES,
-    );
+    const inMemory = takeTailFromMemory(list.slice(0, at), limit);
     if (inMemory.length >= limit) {
       return { messages: inMemory, hasMore: true };
     }
-    const usedBytes = inMemory.reduce((sum, m) => sum + messageBytes(m), 0);
-    const remaining = MESSAGE_SLICE_MAX_BYTES - usedBytes;
-    if (remaining <= 0) return { messages: inMemory, hasMore: true };
-    const older = await this.readOlderPage(
-      {
-        before: inMemory[0]?.id ?? window.before,
-        limit: limit - inMemory.length,
-      },
-      remaining,
-    );
+    const older = await this.readOlderPage({
+      before: inMemory[0]?.id ?? window.before,
+      limit: limit - inMemory.length,
+    });
     if (older.anchorLost) {
       return { messages: inMemory, hasMore: false, anchorLost: true };
     }
@@ -1276,12 +1263,9 @@ export class MessageManager {
   /** 从转录读一页更早的（不经过内存）。 */
   private async readOlderPage(
     window: MessageWindow,
-    maxBytes?: number,
   ): Promise<MessageWindowResult> {
     const { readTranscriptPage } = await import("../utils/transcriptPage.js");
-    const page = await readTranscriptPage(this.transcriptPath, window, {
-      ...(maxBytes === undefined ? {} : { maxBytes }),
-    });
+    const page = await readTranscriptPage(this.transcriptPath, window);
     return {
       messages: page.messages,
       hasMore: page.hasMore,
