@@ -1,6 +1,6 @@
 ---
 title: 内置 Subagents
-description: 内置 Subagents：Explore、Plan、General-Purpose 与 Vision
+description: 内置 Subagents：Explore、Plan、General-Purpose、Vision 与 Wave Guide
 ---
 
 # 内置 Subagents {#builtin-subagents}
@@ -42,3 +42,16 @@ const subagent = agent.getSubagentInstance("explore");
 - **模型**: `WAVE_VISION_MODEL` 环境变量指定的视觉模型（frontmatter `model: visionModel` 解析）
 
 **启用方式**：设置 `WAVE_VISION_MODEL` 环境变量（如 `qwen-vl-max`）**且**主模型显式声明不支持图像识别（`models[<主模型>].capabilities: { "vision": false }`）时，内置 `vision` 子代理才可用；两个条件缺一个都不注册。判定沿用 `capabilities.vision` 的 opt-out 语义 —— 主模型没声明该能力位时按「能看图」处理，因此内置 `vision` 不会出现（图片直接以图像块发给主模型）。这道门在每轮请求读取子代理列表时判定，会话中换模型会立即跟随；列表里没有的也不能按名字点名调用。与 `fastModel` 机制对称，详见 [环境变量](./settings#settings-env)。
+
+## Wave Guide — 文档问答 {#subagent-wave-guide}
+
+回答「Wave 怎么用」类问题的文档代理：不凭记忆作答，而是读官方文档站后回答，并给出所用页面的链接。主代理遇到「怎么配置 X」「有没有 Y 功能」「某个开关在哪」时应委托它，而不是凭上下文印象作答。
+
+- **工具**: 黑名单模式，额外禁掉 `Bash`（只读文档查询，不需要执行命令）
+- **模型**: 快速模型（`model: fastModel`）
+- **记忆**: 跳过项目 `AGENTS.md` 与 `.wave/rules`（`omitAgentsMd: true`）
+- **文档入口**: 提示词里的 `${WAVE_DOCS_URL}` 在加载时替换成 `<serverUrl>/docs/`——取 `WAVE_SERVER_URL`（未设置则用默认服务端地址），因此私有化/测试部署的代理读的是自己那套文档。行为约定：
+  1. 先取 `llms.txt` 目录（每页一行 + 摘要），不猜页面路径；
+  2. 按目录取 1–3 页 `.md` 正文作答，不整站抓取，也不取 `llms-full.txt`（整站合集，几百 KB）；
+  3. 抓不到就在答复开头明说「文档站不可达」并给出入口链接，只回答本地文件能验证的部分，不编造设置项名或菜单路径；
+  4. 工作目录本身是 Wave 仓库时，允许用 `Grep`/`Glob`/`Read` 读源码回答实现细节（源码说「怎么实现」，文档站说「怎么用」）。

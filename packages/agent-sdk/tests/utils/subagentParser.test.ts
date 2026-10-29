@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as path from "path";
 import { loadSubagentConfigurations } from "../../src/utils/subagentParser.js";
 import * as configPaths from "../../src/utils/configPaths.js";
+import { DEFAULT_SERVER_URL } from "../../src/utils/constants.js";
 
 // Mock the filesystem operations
 vi.mock("fs", () => ({
@@ -205,6 +206,60 @@ You are an image recognition specialist...`;
       expect(vision?.scope).toBe("builtin");
       expect(vision?.tools).toEqual(["Read"]);
       expect(vision?.model).toBe("visionModel");
+    });
+
+    it("should resolve ${WAVE_DOCS_URL} in builtin prompts to the deployment's docs site", async () => {
+      // 文档入口不能写死在提示词里：私有化部署的文档站挂在各自的 <serverUrl>/docs/
+      // 下（spec multi-agent/wave-guide-subagent 场景 5–7）。
+      const mockFs = await import("fs");
+
+      vi.mocked(mockFs.readdirSync).mockImplementation((dirPath) => {
+        if (dirPath === "/builtin/subagents") {
+          return ["wave-guide.md"] as unknown as ReturnType<
+            typeof import("fs").readdirSync
+          >;
+        }
+        return [] as unknown as ReturnType<typeof import("fs").readdirSync>;
+      });
+
+      vi.mocked(mockFs.statSync).mockReturnValue({
+        isFile: () => true,
+      } as import("fs").Stats);
+
+      vi.mocked(mockFs.readFileSync).mockImplementation((filePath) => {
+        if (filePath === path.join("/builtin/subagents", "wave-guide.md")) {
+          return `---
+name: wave-guide
+description: Answers Wave usage questions from the docs
+model: fastModel
+disallowedTools: [Edit, Write]
+omitAgentsMd: true
+---
+Fetch \${WAVE_DOCS_URL}llms.txt first, then the matching page.`;
+        }
+        return "";
+      });
+
+      const defaultConfigs = await loadSubagentConfigurations(
+        "/test/workdir",
+        {},
+      );
+      const defaultGuide = defaultConfigs.find((c) => c.name === "wave-guide");
+      expect(defaultGuide?.systemPrompt).toContain(
+        `${DEFAULT_SERVER_URL}/docs/llms.txt`,
+      );
+      expect(defaultGuide?.systemPrompt).not.toContain("${WAVE_DOCS_URL}");
+      expect(defaultGuide?.disallowedTools).toEqual(["Edit", "Write"]);
+
+      // A trailing slash on the configured server URL must not produce `//docs/`
+      const privateConfigs = await loadSubagentConfigurations("/test/workdir", {
+        WAVE_SERVER_URL: "https://example.internal/",
+      });
+      const privateGuide = privateConfigs.find((c) => c.name === "wave-guide");
+      expect(privateGuide?.systemPrompt).toContain(
+        "https://example.internal/docs/llms.txt",
+      );
+      expect(privateGuide?.systemPrompt).not.toContain("//docs/");
     });
 
     it("should treat WAVE_VISION_MODEL from process.env as set", async () => {
