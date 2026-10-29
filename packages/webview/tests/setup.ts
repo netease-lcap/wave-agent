@@ -34,12 +34,26 @@ if (typeof Element !== "undefined" && !Element.prototype.scrollTo) {
 }
 
 // jsdom does no layout: offsetHeight/offsetWidth are always 0. Every message
-// now renders through the virtualizer, which reads the scroll container's
-// offsetHeight to size its viewport — with 0 it would render zero rows in
-// every jsdom test. Stub a fixed 600x800 viewport for the whole suite.
+// renders through the virtualizer, which measures the scroll container to size
+// its viewport and every row to place it — with 0 it would render zero rows in
+// every jsdom test.
+//
+// 视口和行高必须分开给：虚拟列表的窗口按**像素**算（上下各 600px 缓冲，见
+// src/virtual/geometry.ts），如果行高和视口都是 600，一屏只放得下一行，窗口就退化
+// 成「只渲染边缘两三行」，测试里根本查不到中间的消息。真实排版里行高几十像素、
+// 视口几百像素，这里照那个比例给：容器 600（= 视口），其余元素 80（= 一行）。
+const CONTAINER_VIEWPORT_HEIGHT = 600;
+const ROW_HEIGHT = 80;
+
+const isScrollContainer = (element: Element) =>
+  element.id === "messagesContainer" ||
+  element.getAttribute("data-testid") === "messages-container";
+
 Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
   configurable: true,
-  get: () => 600,
+  get(this: HTMLElement) {
+    return isScrollContainer(this) ? CONTAINER_VIEWPORT_HEIGHT : ROW_HEIGHT;
+  },
 });
 Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
   configurable: true,
