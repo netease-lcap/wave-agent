@@ -9,6 +9,9 @@ import type { OpenFileTab } from "../types";
 import { fileName } from "../utils/fileTabs";
 import { baseNameOf } from "../utils/fileTreePaths";
 import { CloseIcon } from "./HeaderIcons";
+import { createPortal } from "react-dom";
+import { PanelKindIcon } from "./PanelKindIcon";
+import { isDesktopHost } from "../utils/platform";
 import { useClickOutside } from "../utils/useClickOutside";
 
 export interface FileTabStripProps {
@@ -52,6 +55,15 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
   const [moreOpen, setMoreOpen] = useState(false);
   const [hiddenIds, setHiddenIds] = useState<string[]>([]);
   const moreRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  /** 「更多」菜单改为 portal + fixed：菜单住在带子里会被带子的 overflow:hidden
+   *  裁掉（带高 39，菜单要往下伸 4px 以上），所以要把它挂到 body 上，用触发键的
+   *  屏幕坐标定位。这里存 right（视口右缘到触发键右缘的距离）与 top（触发键底边
+   *  + 4），菜单右缘与触发键右缘对齐、向上/向左展开。 */
+  const [moreAnchor, setMoreAnchor] = useState<{
+    top: number;
+    right: number;
+  } | null>(null);
 
   // Duplicate names need their relative path to be told apart (scenario 4);
   // unique names show the bare file name.
@@ -111,11 +123,18 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
         })
         .map((node) => node.dataset.fileTab ?? ""),
     );
+    const anchor = moreRef.current?.getBoundingClientRect();
+    if (anchor) {
+      setMoreAnchor({
+        top: anchor.bottom + 4,
+        right: Math.max(8, window.innerWidth - anchor.right),
+      });
+    }
     setMoreOpen(true);
   }, []);
 
   useClickOutside({
-    refs: [moreRef],
+    refs: [moreRef, moreMenuRef],
     enabled: moreOpen,
     onClickOutside: () => setMoreOpen(false),
   });
@@ -191,10 +210,20 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
                 }
               }}
             >
-              <i
-                className="codicon codicon-file file-tab-icon"
-                aria-hidden="true"
-              />
+              {isDesktopHost() ? (
+                // 桌面端与面板标签同一颗官方「文件」图标（PanelKindIcon kind="file"），
+                // 1029 第十轮设计师评论「和这里保持一致」；IDE 宿主保留 codicon 字形。
+                <PanelKindIcon
+                  kind="file"
+                  size={16}
+                  className="file-tab-icon"
+                />
+              ) : (
+                <i
+                  className="codicon codicon-file file-tab-icon"
+                  aria-hidden="true"
+                />
+              )}
               <span className="file-tab-name">{labels.get(file.id)}</span>
               {file.deleted && (
                 <span className="file-tab-deleted-tag">已删除</span>
@@ -227,33 +256,42 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
           >
             <i className="codicon codicon-ellipsis" aria-hidden="true" />
           </button>
-          {moreOpen && (
-            <div
-              className="file-tab-more-menu"
-              data-testid="file-tab-more-menu"
-              role="menu"
-            >
-              {hiddenFiles.length === 0 && (
-                <div className="file-tab-more-empty">没有收起的文件</div>
-              )}
-              {hiddenFiles.map((file) => (
-                <button
-                  key={file.id}
-                  type="button"
-                  role="menuitem"
-                  className="file-tab-more-item"
-                  data-testid="file-tab-more-item"
-                  title={file.path}
-                  onClick={() => {
-                    setMoreOpen(false);
-                    onActivate(file.id);
-                  }}
-                >
-                  {labels.get(file.id) ?? baseNameOf(file.path)}
-                </button>
-              ))}
-            </div>
-          )}
+          {moreOpen &&
+            moreAnchor &&
+            createPortal(
+              <div
+                ref={moreMenuRef}
+                className="file-tab-more-menu"
+                data-testid="file-tab-more-menu"
+                role="menu"
+                style={{
+                  position: "fixed",
+                  top: moreAnchor.top,
+                  right: moreAnchor.right,
+                }}
+              >
+                {hiddenFiles.length === 0 && (
+                  <div className="file-tab-more-empty">没有收起的文件</div>
+                )}
+                {hiddenFiles.map((file) => (
+                  <button
+                    key={file.id}
+                    type="button"
+                    role="menuitem"
+                    className="file-tab-more-item"
+                    data-testid="file-tab-more-item"
+                    title={file.path}
+                    onClick={() => {
+                      setMoreOpen(false);
+                      onActivate(file.id);
+                    }}
+                  >
+                    {labels.get(file.id) ?? baseNameOf(file.path)}
+                  </button>
+                ))}
+              </div>,
+              document.body,
+            )}
         </div>
       )}
       {menu && (
