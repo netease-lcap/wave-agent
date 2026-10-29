@@ -1905,16 +1905,31 @@
   color: var(--cc-text-primary);
   font-size: 14px;
 }
-/* hover / 选中：契约交互态就是这两档（design-system.md:157-159、dark-theme.md:58）
-   —— hover = --cc-fill-hover、选中 = --cc-fill-pressed + 主文字色、选中在 hover 时
-   保持选中底、字重不加粗。1029 第六轮实测两主题：浅色 hover #EEF0F3 / 选中
-   #E7E9ED，深色 hover #303436 / 选中 #393E41，与 token 逐值相同，故未改值。 */
-[data-host="desktop"] .file-tree-row:hover {
-  background: var(--cc-fill-hover);
+/* hover / 选中（1029 第十四轮，设计师评论「选项的hover选中色和以下保持一致」，
+   指的参照件是侧栏会话行 `li.desktop-session-item--current`）：树行改成与
+   `DesktopApp.css` + 本文件 757-788 的会话行**同值**——
+     hover  浅 #eef0f3        深 rgba(255,255,255,.08)
+     选中   浅 #ebedf0        深 rgba(255,255,255,.12)（选中行 hover 保持选中底）
+   改前树行吃的是 token：hover `--cc-fill-hover`（浅 #eef0f3 = 本来一致 / 深 #303436）、
+   选中 `--cc-fill-pressed`（浅 #e7e9ed / 深 #393e41）——浅色 hover 无差异，其余三档
+   都比会话行深一档（浅色选中差 4/4/3，深色 hover 合成后差约 5-7）。
+   ⚠️ 两侧底不同：侧栏 `#F7F8FB`、文件面板 `#FFFFFF`（1028 改纯白），所以同一个
+   hover 值在树上的台阶更强（浅色 Δ9 vs Δ17）。要「看起来一样」得给浅色一档补偿，
+   但那就不是「同值」了 —— 先按同值落地，实测数据见报告，你定要不要补偿。 */
+[data-host="desktop"][data-theme="light"] .file-tree-row:hover {
+  background: #eef0f3;
 }
-[data-host="desktop"] .file-tree-row--active,
-[data-host="desktop"] .file-tree-row--active:hover {
-  background: var(--cc-fill-pressed);
+[data-host="desktop"][data-theme="dark"] .file-tree-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+[data-host="desktop"][data-theme="light"] .file-tree-row--active,
+[data-host="desktop"][data-theme="light"] .file-tree-row--active:hover {
+  background: #ebedf0;
+  color: var(--cc-text-primary);
+}
+[data-host="desktop"][data-theme="dark"] .file-tree-row--active,
+[data-host="desktop"][data-theme="dark"] .file-tree-row--active:hover {
+  background: rgba(255, 255, 255, 0.12);
   color: var(--cc-text-primary);
 }
 [data-host="desktop"] .file-tree-icon,
