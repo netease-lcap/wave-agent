@@ -61,10 +61,26 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
   isLoggerConfigured: vi.fn(),
 }));
 
+// Keep the real temp dir (BackgroundTaskManager writes its logs there) but make
+// the writability probe and the statfs reading controllable per test.
+vi.mock("../../src/utils/tempDir.js", async () => {
+  const actual = await vi.importActual<
+    typeof import("../../src/utils/tempDir.js")
+  >("../../src/utils/tempDir.js");
+  return {
+    ...actual,
+    resolveTempDir: vi.fn(() => os.tmpdir()),
+    probeTempDir: vi.fn(() => ({ writable: true })),
+    readDiskPressure: vi.fn(() => ({})),
+  };
+});
+
 import { spawn } from "child_process";
+import * as os from "os";
 import { logger } from "../../src/utils/globalLogger.js";
 import { resolveShellPath } from "../../src/utils/shellResolver.js";
 import * as shellResolver from "../../src/utils/shellResolver.js";
+import { probeTempDir, readDiskPressure } from "../../src/utils/tempDir.js";
 const mockSpawn = vi.mocked(spawn);
 
 describe("bashTool", () => {
@@ -73,6 +89,9 @@ describe("bashTool", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // clearAllMocks keeps mockReturnValue, so re-arm the per-test defaults.
+    vi.mocked(probeTempDir).mockReturnValue({ writable: true });
+    vi.mocked(readDiskPressure).mockReturnValue({});
     const container = new Container();
     backgroundTaskManager = new BackgroundTaskManager(container, {
       workdir: "/test/workdir",
@@ -90,6 +109,104 @@ describe("bashTool", () => {
   });
 
   describe("Bash tool", () => {
+    it("runs the command untracked and explains why when the temp dir is unwritable", async () => {
+      // Quota used up / volume full on the temp directory: the `pwd -P >| file`
+      // tail cannot write, and the only trace the model would otherwise see is
+      // the shell's own "write error" line.
+      vi.mocked(probeTempDir).mockReturnValue({
+        writable: false,
+        code: "EDQUOT",
+      });
+
+      const mockProcess = {
+        pid: 1234,
+        stdout: {
+          on: vi.fn((event, callback) => {
+            if (event === "data") {
+              setTimeout(() => callback(Buffer.from("test output")), 10);
+            }
+          }),
+        },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event, callback) => {
+          if (event === "exit") {
+            setTimeout(() => callback(0), 20);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const result = await bashTool.execute({ command: "echo hello" }, context);
+
+      // Untracked: the command was handed to the shell verbatim.
+      expect(mockSpawn.mock.calls[0][0]).toBe("echo hello");
+      expect(mockSpawn.mock.calls[0][0]).not.toContain("pwd -P");
+      // The result says what broke, what is degraded, and the way out.
+      expect(result.success).toBe(true);
+      expect(result.content).toContain("EDQUOT");
+      expect(result.content).toContain("WAVE_TMPDIR");
+      expect(result.content).toContain("test output");
+    });
+
+    it("explains disk pressure when a command fails on a nearly-full volume", async () => {
+      vi.mocked(readDiskPressure).mockReturnValue({ freeBytes: 1024 * 1024 });
+
+      const mockProcess = {
+        pid: 1234,
+        stdout: { on: vi.fn() },
+        stderr: {
+          on: vi.fn((event, callback) => {
+            if (event === "data") {
+              setTimeout(() => callback(Buffer.from("write error")), 10);
+            }
+          }),
+        },
+        on: vi.fn((event, callback) => {
+          if (event === "exit") {
+            setTimeout(() => callback(1), 20);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const result = await bashTool.execute({ command: "cp a b" }, context);
+
+      expect(result.success).toBe(false);
+      expect(result.content).toContain("Disk nearly full");
+      expect(result.content).toContain("1 MB free");
+    });
+
+    it("stays quiet about disk pressure when the volume is healthy", async () => {
+      vi.mocked(readDiskPressure).mockReturnValue({
+        freeBytes: 100 * 1024 * 1024 * 1024,
+        freeInodes: 1_000_000,
+      });
+
+      const mockProcess = {
+        pid: 1234,
+        stdout: { on: vi.fn() },
+        stderr: { on: vi.fn() },
+        on: vi.fn((event, callback) => {
+          if (event === "exit") {
+            setTimeout(() => callback(1), 20);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const result = await bashTool.execute({ command: "false" }, context);
+
+      expect(result.success).toBe(false);
+      expect(result.content).not.toContain("Disk nearly full");
+      expect(result.content).not.toContain("inodes");
+    });
+
     it("should execute command in foreground by default", async () => {
       const mockProcess = {
         pid: 1234,

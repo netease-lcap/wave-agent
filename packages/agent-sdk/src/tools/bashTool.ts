@@ -2,8 +2,14 @@ import { spawn, ChildProcess } from "child_process";
 import { Readable } from "stream";
 import * as fs from "fs";
 import * as path from "path";
-import * as os from "os";
 import { logger } from "../utils/globalLogger.js";
+import {
+  resolveTempDir,
+  probeTempDir,
+  describeTempDirFailure,
+  describeDiskPressure,
+  readDiskPressure,
+} from "../utils/tempDir.js";
 import { resolveShellPath } from "../utils/shellResolver.js";
 import { toPosixPath, toWindowsPath } from "../utils/path.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
@@ -384,19 +390,33 @@ The working directory persists between commands. Try to maintain your current wo
       foregroundEnv = prepared.env;
     }
 
+    // A temp directory that cannot be written (quota used up, volume full,
+    // wrong owner) breaks CWD tracking and every "persist the long output"
+    // path at once, and what the model sees otherwise is only the shell's own
+    // `pwd: write error` line. Probe it first, run the command untracked when
+    // it is unusable, and say why (see utils/tempDir.ts). The sandbox has its
+    // own temp dir, prepared by the wrapper, so it is probed there.
+    const tempDirProbe = sandboxed ? undefined : probeTempDir(resolveTempDir());
+    const tempDirNotice =
+      tempDirProbe && !tempDirProbe.writable
+        ? describeTempDirFailure(resolveTempDir(), tempDirProbe.code) + "\n"
+        : "";
+    const cwdTrackingEnabled = !tempDirProbe || tempDirProbe.writable;
+
     return new Promise((resolve) => {
       // Create a temporary file to store the CWD. Inside the sandbox it must
       // live in the sandbox-writable temp dir, otherwise the wrapper cannot
       // write it and `cd` would stop being tracked.
+      const tempDir =
+        sandboxed && sandbox ? sandbox.getTempDir() : resolveTempDir();
       const tempCwdFile = path.join(
-        sandboxed && sandbox ? sandbox.getTempDir() : os.tmpdir(),
+        tempDir,
         `wave_cwd_${Date.now()}_${Math.random().toString(36).substring(2, 11)}.tmp`,
       );
       const tempCwdFileForBash = toPosixPath(tempCwdFile);
-      const wrappedCommand = wrapCommandForCwdTracking(
-        foregroundCommand,
-        tempCwdFileForBash,
-      );
+      const wrappedCommand = cwdTrackingEnabled
+        ? wrapCommandForCwdTracking(foregroundCommand, tempCwdFileForBash)
+        : foregroundCommand;
 
       // fd0 is /dev/null, never a live pipe: nothing writes to the command's
       // stdin, so a pipe would only ever deliver a hang. Commands that read
@@ -771,11 +791,21 @@ The working directory persists between commands. Try to maintain your current wo
           sandbox.cleanup();
         }
 
+        // A failure while the temp volume is nearly out of space or inodes is
+        // very likely caused by that; say so instead of leaving the model to
+        // read it as an unrelated shell error.
+        const pressureNote =
+          exitCode !== 0 && !sandboxed
+            ? describeDiskPressure(tempDir, readDiskPressure(tempDir))
+            : undefined;
+
         // Prepend CWD change message to output if present
         const finalOutput =
           recoveryNotice +
+          tempDirNotice +
           (cwdMessage ? cwdMessage + "\n" : "") +
-          (combinedOutput || `Command executed with exit code: ${exitCode}`);
+          (combinedOutput || `Command executed with exit code: ${exitCode}`) +
+          (pressureNote ? "\n\n" + pressureNote : "");
         const content = processToolResult(
           finalOutput,
           BASH_MAX_OUTPUT_CHARS,

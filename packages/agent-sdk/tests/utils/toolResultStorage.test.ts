@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 
 // Mock fs
 vi.mock("fs", async () => {
@@ -45,6 +46,9 @@ import {
 describe("toolResultStorage", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    // resetAllMocks also drops the factory's default, and the temp dir is now
+    // resolved per call rather than once at import time — re-arm it here.
+    vi.mocked(os.tmpdir).mockReturnValue("/tmp");
   });
 
   describe("generatePreview", () => {

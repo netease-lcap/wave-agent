@@ -8,22 +8,23 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import * as os from "os";
 import {
   DEFAULT_MAX_RESULT_SIZE_CHARS,
   PREVIEW_SIZE_BYTES,
 } from "../constants/toolLimits.js";
 import { logger } from "./globalLogger.js";
+import { resolveTempDir } from "./tempDir.js";
 
-const TOOL_RESULTS_DIR = path.join(os.tmpdir(), "wave-tool-results");
+const TOOL_RESULTS_DIR_NAME = "wave-tool-results";
 
 /**
  * Get (and create if needed) the tool-results directory.
- * Uses /tmp/wave-tool-results/ for simplicity and automatic OS cleanup.
+ * Lives under the agent's temp dir for simplicity and automatic OS cleanup.
  */
 export function getToolResultsDir(): string {
-  fs.mkdirSync(TOOL_RESULTS_DIR, { recursive: true });
-  return TOOL_RESULTS_DIR;
+  const dir = path.join(resolveTempDir(), TOOL_RESULTS_DIR_NAME);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
 }
 
 /**

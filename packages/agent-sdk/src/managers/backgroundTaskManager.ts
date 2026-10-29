@@ -1,5 +1,4 @@
 import { spawn, type ChildProcess } from "child_process";
-import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
 import { BackgroundTask, BackgroundShell } from "../types/processes.js";
@@ -10,6 +9,7 @@ import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
 import { MessageQueue } from "./messageQueue.js";
 import { resolveShellPath } from "../utils/shellResolver.js";
+import { resolveTempDir } from "../utils/tempDir.js";
 import type { ConfigurationService } from "../services/configurationService.js";
 
 export interface BackgroundTaskManagerCallbacks {
@@ -109,7 +109,7 @@ export class BackgroundTaskManager {
     }
 
     // Create log file
-    const logPath = path.join(os.tmpdir(), `wave-task-${id}.log`);
+    const logPath = path.join(resolveTempDir(), `wave-task-${id}.log`);
     const logStream = fs.createWriteStream(logPath, { flags: "w" });
     // A failed open/write of the log file (e.g. EBUSY on Windows when a stale
     // handle from a previous run still locks the temp file) must not surface as
@@ -316,7 +316,7 @@ export class BackgroundTaskManager {
     const startTime = Date.now();
 
     // Create log file
-    const logPath = path.join(os.tmpdir(), `wave-task-${id}.log`);
+    const logPath = path.join(resolveTempDir(), `wave-task-${id}.log`);
     const logStream = fs.createWriteStream(logPath, { flags: "w" });
     // Same best-effort handling as startShell: a locked temp file (EBUSY on
     // Windows) must not become an uncaught stream error.
