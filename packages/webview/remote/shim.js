@@ -2784,6 +2784,19 @@
         return;
 
       case "getConfiguredModels":
+        // 页面挂载时就发了这一条（`ChatApp` 的模型清单 effect），而首屏的会话还没
+        // 选出来：信封里因此没有 `sessionId`（`request` 只在有值时带），机器侧的
+        // `getConfiguredModels` 却要按会话读当前模型，于是必然回一句
+        // 「sessionId is required」——一条错误色状态条压在刚上屏的首屏上，而它问的
+        // 东西紧接着由页面自己再问一次（会话定下来后那个 effect 会重跑）。
+        // 所以这一枪不发，按「还没有候选」回执：与机器上真没有活会话时同一个形状
+        // （选择器自己隐藏），也与下面这条失败路径的回执同形。
+        // PWA 从主屏冷启动时正好没有 `?session=`（manifest 的 `start_url` 是 `./`），
+        // 所以手机上是稳定复现，而不是偶发。
+        if (!sessionId) {
+          post({ command: "configuredModels", models: [] });
+          return;
+        }
         request("getConfiguredModels", {})
           .then(function (result) {
             post({

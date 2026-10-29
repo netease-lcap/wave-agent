@@ -180,7 +180,13 @@ interface Harness {
   /** Page → host: what the mounted webview's `postMessage` would send. */
   post(message: Record<string, unknown>): void;
   /** The requests the shim put on the wire, parsed, auth frame excluded. */
-  requests(): { id: number; method: string; params: Record<string, unknown> }[];
+  requests(): {
+    id: number;
+    method: string;
+    params: Record<string, unknown>;
+    /** Present only when the shim knew which conversation to ask about. */
+    sessionId?: string;
+  }[];
   /** Answer the request the shim sent most recently, the way the host does. */
   reply(result: unknown): void;
   /**
@@ -1556,6 +1562,43 @@ describe("remote page shim — the second batch", () => {
     page.replyWithError("Not implemented by a foreground CLI session", -32011);
     await flush();
     expect(page.banner()).toContain("这台电脑上的会话不支持这个操作");
+  });
+
+  it("首屏会话还没选出来时，模型清单不问宿主，也不留一条错误状态条", async () => {
+    const page = loadShim({ token: "jwt" });
+    const socket = page.socket();
+    socket.onopen?.();
+    socket.receive({ type: "auth_ok" });
+
+    // 页面挂载时就发这一条，而首屏的会话列表还没读到（`webviewReady` 都还没来）：
+    // 信封里因此没有 sessionId，机器侧的 `getConfiguredModels` 按协议拒掉，一句
+    // 「sessionId is required」就以错误色压在首屏上。PWA 从主屏冷启动（manifest 的
+    // `start_url` 是 `./`，不带 `?session=`）每次都是这个状态。
+    page.post({ command: "getConfiguredModels" });
+    await flush();
+
+    expect(page.requests()).toEqual([]);
+    expect(page.banner()).toBe("");
+    expect(lastPost(page, "configuredModels")).toMatchObject({ models: [] });
+
+    // 会话选定之后同一条命令照常转发——页面就是靠这一次拿到候选。
+    page.post({ command: "webviewReady" });
+    await flush();
+    page.reply({ sessions: [{ sessionId: "s1", sessionCwd: "/tmp" }] });
+    await flush();
+    page.reply({ sessionId: "s1", permissionMode: "default" });
+    await flush();
+    page.reply({ messages: [] });
+    await flush();
+    page.reply({ requests: [] });
+    await flush();
+
+    page.post({ command: "getConfiguredModels" });
+    await flush();
+    expect(lastRequest(page)).toMatchObject({
+      method: "getConfiguredModels",
+      sessionId: "s1",
+    });
   });
 
   it("模型清单与切换都转发给宿主", async () => {
