@@ -1895,13 +1895,20 @@
 /* 字号 12 → 14（1029 第五轮，设计师评论「这里也改14」指着目录树那一列）：
    节点名（目录与文件）统一到正文档；行高 24 / 圆角 6 / 缩进 / 图标 16 都不动。
    图标与箭头是 codicon 字形（.file-tree-icon 13px、.file-tree-caret 9px），按图标
-   尺寸处理，不随文字档位变。 */
+   尺寸处理，不随文字档位变。
+   行高 24 → 28（1029 第六轮，设计师评论「选项高度28px」）：契约的桌面端单行条目
+   就是 28px 起（design-system.md:170 / vue-element-plus.md:59 的 2026-09-08 决定），
+   树行原先 24 比它矮一档。hover / 选中底色另核过，见下一条注释。 */
 [data-host="desktop"] .file-tree-row {
-  height: 24px;
+  height: 28px;
   border-radius: 6px;
   color: var(--cc-text-primary);
   font-size: 14px;
 }
+/* hover / 选中：契约交互态就是这两档（design-system.md:157-159、dark-theme.md:58）
+   —— hover = --cc-fill-hover、选中 = --cc-fill-pressed + 主文字色、选中在 hover 时
+   保持选中底、字重不加粗。1029 第六轮实测两主题：浅色 hover #EEF0F3 / 选中
+   #E7E9ED，深色 hover #303436 / 选中 #393E41，与 token 逐值相同，故未改值。 */
 [data-host="desktop"] .file-tree-row:hover {
   background: var(--cc-fill-hover);
 }
@@ -1913,6 +1920,16 @@
 [data-host="desktop"] .file-tree-icon,
 [data-host="desktop"] .file-tree-caret {
   color: var(--cc-text-secondary);
+}
+/* 展开箭头（1029 第七·八轮）：原先是 9px 的文字三角「▸」，和下面 16px 的文件夹 /
+   文件字形不是一套。第七轮先换 codicon chevron，第八轮设计师反馈「比那边大了一点」，
+   改为与侧栏会话分组头**同一份官方 Figma 矢量**（ChevronIcon，16×16 盒）——两处箭头
+   从此逐像素同源，墨迹都是 8.0×5.0px（codicon 16px 时是 10.0×5.5、13px 时 8.0×4.5）。
+   盒 10 → 16px，每级名字整体右移 6px；行高、字号、缩进、交互底不动。
+   IDE 宿主保留原「▸」（样式见 FilePane.css 的 .file-tree-caret）。 */
+[data-host="desktop"] .file-tree-caret {
+  width: 16px;
+  height: 16px;
 }
 /* 字号 11 → 12（1029 第五轮续，设计师裁「说明行 12」→ 收到辅助档）：树里的
    灰色说明（「还有 N 项未显示」/「正在搜索…」/「未找到匹配的文件」/读目录失败）

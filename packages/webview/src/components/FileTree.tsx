@@ -8,6 +8,8 @@ import React, {
 import type { FileItem } from "../types";
 import type { FileTreeEntry } from "wave-webview-fixtures";
 import { childPath, baseNameOf } from "../utils/fileTreePaths";
+import { isDesktopHost } from "../utils/platform";
+import { ChevronIcon } from "./ChevronIcon";
 
 /** Per-directory listing state, keyed by the directory's absolute path. */
 export interface DirEntryState {
@@ -371,12 +373,23 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   onFocus={() => setFocusedPath(row.path)}
                 >
                   {row.type === "dir" ? (
-                    <span
-                      className={`file-tree-caret${row.expanded ? " file-tree-caret--open" : ""}`}
-                      aria-hidden="true"
-                    >
-                      ▸
-                    </span>
+                    // 桌面端用官方 Figma chevron 矢量（ChevronIcon）——与侧栏会话分组头
+                    // 是**同一个字形**，墨迹同宽（1029 第七轮「和图标保持一致」→ 第八轮
+                    // 「比那边大了一点」，改用同源矢量后两处逐像素一致）；IDE 宿主保留
+                    // 原来的「▸」文字三角，样式见 FilePane.css 的 .file-tree-caret。
+                    isDesktopHost() ? (
+                      <ChevronIcon
+                        expanded={row.expanded}
+                        className="file-tree-caret"
+                      />
+                    ) : (
+                      <span
+                        className={`file-tree-caret${row.expanded ? " file-tree-caret--open" : ""}`}
+                        aria-hidden="true"
+                      >
+                        ▸
+                      </span>
+                    )
                   ) : (
                     <span className="file-tree-caret" aria-hidden="true" />
                   )}
