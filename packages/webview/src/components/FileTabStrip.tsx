@@ -8,7 +8,7 @@ import React, {
 import type { OpenFileTab } from "../types";
 import { fileName } from "../utils/fileTabs";
 import { baseNameOf } from "../utils/fileTreePaths";
-import { CloseIcon } from "./HeaderIcons";
+import { CloseIcon, MoreIcon } from "./HeaderIcons";
 import { CloseTabIcon } from "./CloseTabIcon";
 import { createPortal } from "react-dom";
 import { PanelKindIcon } from "./PanelKindIcon";
@@ -262,7 +262,15 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
             aria-label="更多文件"
             onClick={moreOpen ? () => setMoreOpen(false) : openMore}
           >
-            <i className="codicon codicon-ellipsis" aria-hidden="true" />
+            {isDesktopHost() ? (
+              // 1029 第十七批设计师评论（点这颗「⋯」）「这个图标的样式和以下保持一致」，
+              // 参照 = 侧栏会话行的更多按钮 `.desktop-session-more-btn`：同一颗官方
+              // MoreIcon（16×16、三个 2px 圆点、点距 5），字色取同一档。IDE 宿主保留
+              // base 的 codicon 字形（与旁边 `.file-tab-close-icon` 的分叉口径一致）。
+              <MoreIcon className="file-tab-more-icon" />
+            ) : (
+              <i className="codicon codicon-ellipsis" aria-hidden="true" />
+            )}
           </button>
           {moreOpen &&
             moreAnchor &&

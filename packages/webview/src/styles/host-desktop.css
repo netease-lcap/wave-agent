@@ -2068,12 +2068,36 @@
   background: var(--cc-fill-pressed);
 }
 [data-host="desktop"] .file-tab-more-trigger {
+  /* 1029 第十七批设计师评论（点这颗「⋯」）「这个图标的样式和以下保持一致」，
+     参照 = 侧栏会话行的更多按钮 `button.desktop-session-more-btn`
+     （DesktopApp.css:440 几何 / :455、:560 字色 / :479、host-desktop.css:2234 悬停底）。
+     逐项对齐：盒 24×24（原来 28×24，宽度 = 6+16+6 的横向内衬）、圆角 6px、
+     图标 16×16 居中、字色 浅 #565a60 / 深 #9a9ea5、悬停底 浅 #e7e9ed / 深 白 12%。
+     图标本身在 FileTabStrip.tsx 里已换成同一颗 MoreIcon 官方矢量（IDE 宿主保留
+     codicon），所以这里的颜色才能从按钮继承下去 —— codicon 自带
+     `.codicon { color: var(--vscode-icon-foreground) }`，原来那颗字形其实一直
+     停在 #606060 / #CCCCCC，没跟这个按钮的 color 走。 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
   height: 24px;
+  padding: 0;
   border-radius: 6px;
-  color: var(--cc-text-secondary);
+  color: #565a60;
 }
-[data-host="desktop"] .file-tab-more-trigger:hover {
-  background: var(--cc-fill-hover);
+[data-host="desktop"][data-theme="dark"] .file-tab-more-trigger {
+  color: #9a9ea5;
+}
+[data-host="desktop"] .file-tab-more-trigger .file-tab-more-icon {
+  width: 16px;
+  height: 16px;
+}
+[data-host="desktop"][data-theme="light"] .file-tab-more-trigger:hover {
+  background: #e7e9ed;
+}
+[data-host="desktop"][data-theme="dark"] .file-tab-more-trigger:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 [data-host="desktop"] .file-tab-more-menu,
 [data-host="desktop"] .file-tab-menu {
