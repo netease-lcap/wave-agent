@@ -4866,6 +4866,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           // 点开长会话，force 滚动被否决、停在新列表中间——见 longchat-switch e2e）。
           key={state.currentSession?.id}
           ref={messageListRef}
+          // 切走再切回来时按它恢复阅读位置（虚拟列表内核按会话 id 记锚点）。
+          docKey={state.currentSession?.id}
           messages={state.messages}
           queuedMessages={state.queuedMessages}
           isStreaming={state.isStreaming}

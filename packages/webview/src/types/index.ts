@@ -581,6 +581,8 @@ export interface MessageListProps {
   isLoadingEarlier?: boolean;
   /** 要一页更早的，锚点是当前已加载的第一条；调用方负责发请求与去重。 */
   onLoadEarlier?: (before: string) => void;
+  /** 这份列表的文档标识（会话 id）：切走再切回来时按它恢复阅读位置。 */
+  docKey?: string;
 }
 
 export interface MessageProps {
