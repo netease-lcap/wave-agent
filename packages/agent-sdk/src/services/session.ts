@@ -25,8 +25,11 @@ import type { Message, Usage } from "../types/index.js";
 import { PathEncoder } from "../utils/pathEncoder.js";
 import { JsonlHandler } from "../services/jsonlHandler.js";
 import {
+  createRewindCutAccumulator,
+  forEachTranscriptEntry,
   isReservedEntry,
   scanTranscriptMessages,
+  type RewindCut,
 } from "../services/sessionEntries.js";
 import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
 import { logger } from "../utils/globalLogger.js";
@@ -462,6 +465,40 @@ async function findSessionFileAcrossProjects(
   }
 
   return null;
+}
+
+/**
+ * 会话在盘上是否存在——含跨 project 目录兜底，与 `loadSessionFromJsonl` 的
+ * 「找不到文件」判据逐条对齐（ENOENT 才算不存在，别的错误如实抛出）。
+ *
+ * 给「只想确认这个 id 能不能恢复」的调用方用：为一个是非题把整份转录读出来
+ * 解析一遍，是白付一次 `loadSessionFromJsonl` 的全部成本。
+ *
+ * @param sessionId - UUID session identifier
+ * @param workdir - Working directory for the session
+ * @param sessionType - Type of session ("main" or "subagent", defaults to "main")
+ */
+export async function sessionExistsAnywhere(
+  sessionId: string,
+  workdir: string,
+  sessionType: "main" | "subagent" = "main",
+): Promise<boolean> {
+  const filePath = await generateSessionFilePath(
+    sessionId,
+    workdir,
+    sessionType,
+  );
+
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  return (await findSessionFileAcrossProjects(sessionId, sessionType)) !== null;
 }
 
 /**
@@ -1402,4 +1439,37 @@ export async function findRewindTarget(
     found = { index, content: getMessageContent(message) };
   });
   return found;
+}
+
+/**
+ * 扫一遍转录，切出一次回滚要的两段（`kept` / `removed`）与两条计数。
+ *
+ * 与 `loadFullMessageThread` 的差别是「要什么」：那边把整条线程的消息对象全给
+ * 调用方，而回滚真正需要的是「压缩后留下的那一段」+「真被裁掉的那一段的文件
+ * 快照来源」——中间那一大段（压缩前的历史里、index 之前的部分）造出来就为了
+ * 被扔掉。
+ *
+ * 文件不存在时返回空切分（`threadMessageCount: 0`），调用方据此报 index 越界，
+ * 与「会话从未落盘」的既有行为一致。
+ */
+export async function loadRewindCut(
+  currentSessionId: string,
+  workdir: string,
+  index: number,
+): Promise<RewindCut> {
+  const filePath = await generateSessionFilePath(
+    currentSessionId,
+    workdir,
+    "main",
+  );
+
+  try {
+    await fs.access(filePath);
+  } catch {
+    return { kept: [], removed: [], threadMessageCount: 0 };
+  }
+
+  const accumulator = createRewindCutAccumulator(index);
+  await forEachTranscriptEntry(filePath, accumulator.push);
+  return accumulator.cut();
 }

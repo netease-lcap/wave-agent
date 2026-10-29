@@ -33,11 +33,12 @@ import {
   listSessionsFromJsonl,
   listAllSessions,
   loadSessionFromJsonl,
+  sessionExistsAnywhere,
 } from "../../src/services/session.js";
 import type { Message } from "../../src/types/index.js";
 import type { TranscriptSnapshot } from "../../src/services/sessionEntries.js";
 import { generateMessageId } from "../../src/utils/messageOperations.js";
-import { resumeSnapshotOf } from "../helpers/transcriptResume.js";
+import { resumeSnapshotOf } from "../helpers/transcriptScans.js";
 
 const SESSION_DIR = join(homedir(), ".wave", "projects");
 
@@ -514,6 +515,54 @@ describe("Session resume: cross-directory listing & restore", () => {
 
       expect(session).not.toBeNull();
       expect(mockJsonlHandler.read).toHaveBeenCalledWith(fallbackPath);
+    });
+
+    it("sessionExistsAnywhere answers without reading the transcript", async () => {
+      const fs = await import("fs");
+      const sessionId = randomUUID();
+
+      // 当前 project 目录里就有：一次 access 就够，不需要目录扫描。
+      vi.mocked(fs.promises.access).mockResolvedValue(undefined);
+
+      await expect(
+        sessionExistsAnywhere(sessionId, "/mock/workdir"),
+      ).resolves.toBe(true);
+      expect(fs.promises.readdir).not.toHaveBeenCalled();
+      expect(mockJsonlHandler.read).not.toHaveBeenCalled();
+      expect(mockJsonlHandler.readTranscriptForResume).not.toHaveBeenCalled();
+    });
+
+    it("sessionExistsAnywhere keeps the cross-project fallback", async () => {
+      const fs = await import("fs");
+      const sessionId = randomUUID();
+
+      // 当前 project 目录 ENOENT，目录扫描能找到——兜底语义与
+      // `loadSessionFromJsonl` 保持一致（`--restore` 从别的 cwd 跑也能恢复）。
+      vi.mocked(fs.promises.access)
+        .mockRejectedValueOnce(enoent())
+        .mockResolvedValueOnce(undefined);
+      vi.mocked(fs.promises.readdir).mockResolvedValueOnce([
+        "other-project",
+      ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+
+      await expect(
+        sessionExistsAnywhere(sessionId, "/mock/workdir"),
+      ).resolves.toBe(true);
+      expect(mockJsonlHandler.readTranscriptForResume).not.toHaveBeenCalled();
+    });
+
+    it("sessionExistsAnywhere is false when the session exists in no project dir", async () => {
+      const fs = await import("fs");
+      const sessionId = randomUUID();
+
+      vi.mocked(fs.promises.access).mockRejectedValue(enoent());
+      vi.mocked(fs.promises.readdir).mockResolvedValueOnce([
+        "other-project",
+      ] as unknown as Awaited<ReturnType<typeof fs.promises.readdir>>);
+
+      await expect(
+        sessionExistsAnywhere(sessionId, "/mock/workdir"),
+      ).resolves.toBe(false);
     });
 
     it("loadSessionFromJsonl returns null when the session exists in no project dir", async () => {

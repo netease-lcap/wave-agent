@@ -1,5 +1,7 @@
 import {
   createResumeAccumulator,
+  createRewindCutAccumulator,
+  type RewindCut,
   type TranscriptSnapshot,
 } from "../../src/services/sessionEntries.js";
 import type { Message } from "../../src/types/index.js";
@@ -22,4 +24,18 @@ export function resumeSnapshotOf(
     accumulator.push({ kind: "message", message });
   }
   return accumulator.snapshot();
+}
+
+/**
+ * 测试替身：把「整份消息数组」按真实折叠规则切成一次回滚的两段。
+ *
+ * 同上，折叠语义只在生产代码 `createRewindCutAccumulator` 里写一份；这里只把
+ * 数组伪装成一次扫描。
+ */
+export function rewindCutOf(messages: Message[], index: number): RewindCut {
+  const accumulator = createRewindCutAccumulator(index);
+  for (const message of messages) {
+    accumulator.push({ kind: "message", message });
+  }
+  return accumulator.cut();
 }

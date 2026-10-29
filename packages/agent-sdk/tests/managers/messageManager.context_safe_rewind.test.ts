@@ -3,6 +3,7 @@ import { MessageManager } from "../../src/managers/messageManager.js";
 import * as sessionService from "../../src/services/session.js";
 import type { Message, TextBlock } from "../../src/types/index.js";
 import { Container } from "../../src/utils/container.js";
+import { rewindCutOf } from "../helpers/transcriptScans.js";
 
 vi.mock("fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
@@ -17,6 +18,7 @@ vi.mock("../../src/services/session.js", async (importOriginal) => {
     appendMessages: vi.fn().mockResolvedValue(undefined),
     loadSessionFromJsonl: vi.fn(),
     loadFullMessageThread: vi.fn(),
+    loadRewindCut: vi.fn(),
   };
 });
 
@@ -54,10 +56,10 @@ describe("MessageManager Context-Safe Rewind (Single Session)", () => {
       },
     ];
 
-    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
-      messages: activeMessages as Message[],
-      sessionIds: [messageManager.getSessionId()],
-    });
+    vi.mocked(sessionService.loadRewindCut).mockImplementation(
+      async (_sessionId, _workdir, index) =>
+        rewindCutOf(activeMessages as Message[], index),
+    );
 
     messageManager.setMessages(activeMessages as Message[]);
 
@@ -103,10 +105,10 @@ describe("MessageManager Context-Safe Rewind (Single Session)", () => {
       },
     ];
 
-    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
-      messages: messages as Message[],
-      sessionIds: [messageManager.getSessionId()],
-    });
+    vi.mocked(sessionService.loadRewindCut).mockImplementation(
+      async (_sessionId, _workdir, index) =>
+        rewindCutOf(messages as Message[], index),
+    );
 
     messageManager.setMessages(messages as Message[]);
 
@@ -136,10 +138,10 @@ describe("MessageManager Context-Safe Rewind (Single Session)", () => {
       },
     ];
 
-    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
-      messages: messages as Message[],
-      sessionIds: [messageManager.getSessionId()],
-    });
+    vi.mocked(sessionService.loadRewindCut).mockImplementation(
+      async (_sessionId, _workdir, index) =>
+        rewindCutOf(messages as Message[], index),
+    );
 
     messageManager.setMessages(messages as Message[]);
 

@@ -211,3 +211,66 @@ export function createResumeAccumulator(): ResumeAccumulator {
     },
   };
 }
+
+/** 一次回滚要在转录里切出来的两段。 */
+export interface RewindCut {
+  /** 压缩边界之后、位置 < index 的消息：回滚后内存里装的那份。 */
+  kept: Message[];
+  /** 位置 >= index 的消息：文件快照要从它们身上取（`revertTo`）。 */
+  removed: Message[];
+  /** 完整线程的消息条数（含被裁掉的），回滚前校验 index 上界用。 */
+  threadMessageCount: number;
+  /** 前 index 条里首个非 meta 用户消息的正文（会话标题锚定）。 */
+  firstUserText?: string;
+}
+
+export interface RewindCutAccumulator {
+  /** 喂一个已解析的条目；顺序必须与文件里的顺序一致。 */
+  push(entry: ParsedTranscriptLine): void;
+  /** 到目前为止切出来的两段。 */
+  cut(): RewindCut;
+}
+
+/**
+ * 回滚扫描的折叠规则：一次扫描把线程切成「留下」「裁掉」两段，顺手带上回滚
+ * 之后要用的两条计数（完整条数、首个用户输入）。
+ *
+ * 位次口径是**消息行的序号**（0 起，不按 id 去重），与 `/rewind` 检查点表给出的
+ * 下标、以及 `truncateSession(keepMessageCount)` 的行计数同义——三者必须同义，
+ * 否则回滚点会与真正裁掉的盘上位置错开。
+ *
+ * 以前这里是 `getFullMessageThread()`：为切两段把整条线程的消息对象全造出来，
+ * 其中压缩之前那部分造完就为了被 `sliceFromLastCompact` 扔掉。现在 `kept` 只留
+ * 压缩后的上下文，`removed` 只留真被裁掉的那段。
+ */
+export function createRewindCutAccumulator(
+  index: number,
+): RewindCutAccumulator {
+  let kept: Message[] = [];
+  const removed: Message[] = [];
+  let threadMessageCount = 0;
+  let firstUserText: string | undefined;
+
+  return {
+    push(entry) {
+      if (entry.kind !== "message") return;
+      const position = threadMessageCount++;
+      const message = entry.message;
+      if (position >= index) {
+        removed.push(message);
+        return;
+      }
+      firstUserText ??= firstUserTextOf(message);
+      // 与 `sliceFromLastCompact` 同款：压缩是追加式，后面的摘要块意味着
+      // 「从这里开始才是上下文」。
+      if (message.blocks.some((block) => block.type === "compact")) {
+        kept = [message];
+      } else {
+        kept.push(message);
+      }
+    },
+    cut() {
+      return { kept, removed, threadMessageCount, firstUserText };
+    },
+  };
+}
