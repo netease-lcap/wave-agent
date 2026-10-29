@@ -635,7 +635,6 @@ AI 可以在同一回合内并行启动多个 Agent 工具块（并发安全的�
 | Plan            | plan.md            | 软件架构师：设计实现方案，产出分步计划、关键文件、架构权衡 | Glob, Grep, Read, Bash, LSP | inherit     | 只读模式；输出必须以 "Critical Files for Implementation"（3-5 个文件）结尾                         |
 | vision          | vision.md          | 图像识别专家，运行在 WAVE_VISION_MODEL 指定的视觉模型上    | Read                        | visionModel | 仅当主模型声明 `"vision": false` 且设置了 env 时可用；通过 `[Image source: <path>]` 元数据委托读图 |
 | general-purpose | general-purpose.md | 通用代理：复杂问题研究、代码搜索、多步骤任务执行           | 全部（默认）                | 默认        | 无 name 字段，由解析器回退取文件名（subagentParser.ts:137）；可写文件但默认不建文档                |
-| Bash            | bash.md            | 命令执行专家：git 操作、终端任务                           | Bash                        | inherit     | 按 git 安全协议执行命令                                                                            |
 
 #### 2）自动委派（无需手动操作）
 

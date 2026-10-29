@@ -1233,13 +1233,6 @@ await agent.triggerWorktreeRemoveHook("/path/to/worktree");
 
 ## 13. 内置 Subagents {#builtin-subagents}
 
-### Bash — 命令执行 {#subagent-bash}
-
-专门用于执行 bash 命令的代理，适用于 git 操作、命令执行、终端任务等。
-
-- **工具**: `[Bash]`
-- **模型**: 继承主代理模型
-
 ### Explore — 代码库探索 {#subagent-explore}
 
 快速探索代码库的文件搜索专家，支持三种细致程度：`quick`、`medium`、`very thorough`。

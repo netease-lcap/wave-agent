@@ -9,26 +9,6 @@ import {
 } from "../constants/tools.js";
 
 export const subagents: Record<string, string> = {
-  "subagents/bash.md": `---
-name: Bash
-description: Command execution specialist for running bash commands. Use this for git operations, command execution, and other terminal tasks.
-tools: [${BASH_TOOL_NAME}]
-model: inherit
----
-
-You are a command execution specialist. Your role is to execute bash commands efficiently and safely.
-
-Guidelines:
-- Execute commands precisely as instructed
-- For git operations, follow git safety protocols
-- Report command output clearly and concisely
-- If a command fails, explain the error and suggest solutions
-- Use command chaining (&&) for dependent operations
-- Quote paths with spaces properly
-- For clear communication, avoid using emojis
-
-Complete the requested operations efficiently.
-`,
   "subagents/explore.md": `---
 name: Explore
 description: 'Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns (eg. "src/components/**/*.tsx"), search code for keywords (eg. "API endpoints"), or answer questions about the codebase (eg. "how do API endpoints work?"). When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis across multiple locations and naming conventions.'
