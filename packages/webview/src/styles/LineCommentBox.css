@@ -73,6 +73,59 @@
   font-size: 12px;
 }
 
+/* ═══ 选区「评论」按钮 = 设计源两态气泡（1029 评论第十二批，仅桌面端）═══════
+   评论（点 `button.code-comment-chip`）：「这个图标的样式我放在桌面的icon文件夹
+   里面了修改一下」⇒ 桌面端不再画「蓝描边 + codicon」的方框，改成图标本身即按钮，
+   投影搬自源文件的 `<filter>`。常态 = `评论normal.svg`（气泡面 + 内描边环），
+   悬停 = `评论hover.svg`（实心蓝，源文件本身不带环），两态由 CSS `:hover` 切换。
+   取色按第十三批「深色模式和浅色模式 normal 状态可以用相同的图标」写死源值，
+   两档主题同一份图（见 CommentChipIcon.tsx）。
+   尺寸：第十三批「图标尺寸 40px 我看看效果」⇒ 盒与图标都是 40×40（画板等比放大，
+   气泡墨迹 13.8 → 23）。`margin` 从 `2px 0 0 4px` 改成 `-8px 0 0 -6px`，让放大后的
+   按钮**中心点**仍落在原 20px 方框的中心（实测中心逐值不变），否则整块会往右下掉。
+   base 那条 hover 反色（蓝底 + 编辑器色字）在桌面端取消，否则悬停会先铺一层蓝底。
+   只作用于桌面宿主：IDE / 插件端仍用原 codicon 方框，`LineCommentBox.css` 的
+   base 规则一行未改。回退：删掉本节 + CodeCommentEntry.tsx 的
+   `isDesktopHost()` 分叉。 */
+[data-host="desktop"] .code-comment-chip {
+  width: 40px;
+  height: 40px;
+  margin: -8px 0 0 -6px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  /* 悬停气泡面的取色（第十五批）：图标那份 hover 矢量用 `currentColor`，
+     这里按主题给链接蓝 —— 浅 #2F5EDB / 深 #4DAAFC，与消息内链接、
+     `.write-tool-path` 同一档（她指着后者说「这个颜色」）。 */
+  color: var(--cc-text-link, #2f5edb);
+}
+[data-host="desktop"] .code-comment-chip:hover {
+  background: transparent;
+  /* base 的 `:hover` 会把 color 换成编辑器底色，这里按同一档颜色重新钉住，
+     否则悬停瞬间气泡面会变成「编辑器背景色」。 */
+  color: var(--cc-text-link, #2f5edb);
+}
+[data-host="desktop"] .code-comment-chip-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+}
+[data-host="desktop"] .code-comment-chip-icon.is-hover,
+[data-host="desktop"] .code-comment-chip:hover .code-comment-chip-icon.is-normal {
+  display: none;
+}
+[data-host="desktop"] .code-comment-chip:hover .code-comment-chip-icon.is-hover {
+  display: block;
+}
+
+/* 悬停提示的包裹层（Tooltip）：`display: contents` 让它不生成盒子 —— 按钮是
+   `position: absolute` + 行内 `left/top`，包裹层一旦有盒子就会变成按钮的包含块，
+   坐标全部跑偏。提示的锚点由 `anchorRef` 直接取按钮的 rect，所以这里不需要盒。 */
+[data-host="desktop"] .code-comment-chip-tooltip {
+  display: contents;
+}
+
 /* Right-click menu on a line. Same shape as the tab strip's menu so the two
    read as one family. */
 .code-comment-menu {
