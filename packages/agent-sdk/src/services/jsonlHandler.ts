@@ -23,7 +23,12 @@ import {
 import type { Message } from "../types/index.js";
 import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
 import type { SessionFilename } from "../types/session.js";
-import { isReservedEntry, forEachTranscriptEntry } from "./sessionEntries.js";
+import {
+  createResumeAccumulator,
+  forEachTranscriptEntry,
+  isReservedEntry,
+  type TranscriptSnapshot,
+} from "./sessionEntries.js";
 
 /**
  * JSONL write options
@@ -146,7 +151,7 @@ export class JsonlHandler {
    * listing and by `reAppendSessionMetadata`'s external-writer refresh, and the
    * write side re-appends the entry at EOF at its sparse flush points. An entry
    * that later messages have already pushed out of the window is invisible
-   * here — that is what `readMessagesAndCustomTitle` recovers on resume.
+   * here — that is what `readTranscriptForResume` recovers on resume.
    */
   async readCustomTitle(filePath: string): Promise<string | undefined> {
     for (const line of (await readTailLines(filePath)).reverse()) {
@@ -272,6 +277,22 @@ export class JsonlHandler {
       }
       throw new Error(`Failed to read JSONL file "${filePath}": ${error}`);
     }
+  }
+
+  /**
+   * 扫一遍转录，只留下恢复会话要用的那几样东西（折叠规则见
+   * `createResumeAccumulator`）。
+   *
+   * 与 `readMessagesAndCustomTitle` 的区别是**返回值**：那个把整条线程攒成数组
+   * 交给调用方，这个方法只留最后一个压缩边界之后的尾部，压缩之前的部分扫过即
+   * 丢——恢复会话只需要尾部，攒全量等于给一次 GC 制造垃圾。
+   *
+   * @param filePath - Path to the session JSONL file
+   */
+  async readTranscriptForResume(filePath: string): Promise<TranscriptSnapshot> {
+    const accumulator = createResumeAccumulator();
+    await forEachTranscriptEntry(filePath, accumulator.push);
+    return accumulator.snapshot();
   }
 
   /**

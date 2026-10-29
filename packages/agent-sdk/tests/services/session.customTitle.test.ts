@@ -6,6 +6,7 @@ const {
   mockAppendCustomTitle,
   mockReadCustomTitle,
   mockReadMessagesAndCustomTitle,
+  mockReadTranscriptForResume,
   mockHandlerCreateSession,
   mockGetLastMessage,
 } = vi.hoisted(() => ({
@@ -13,6 +14,7 @@ const {
   mockAppendCustomTitle: vi.fn(),
   mockReadCustomTitle: vi.fn(),
   mockReadMessagesAndCustomTitle: vi.fn(),
+  mockReadTranscriptForResume: vi.fn(),
   mockHandlerCreateSession: vi.fn(),
   mockGetLastMessage: vi.fn(),
 }));
@@ -78,6 +80,7 @@ vi.mock("@/services/jsonlHandler.js", () => ({
     return {
       read: vi.fn().mockResolvedValue([]),
       readMessagesAndCustomTitle: mockReadMessagesAndCustomTitle,
+      readTranscriptForResume: mockReadTranscriptForResume,
       append: mockAppend,
       appendCustomTitle: mockAppendCustomTitle,
       readCustomTitle: mockReadCustomTitle,
@@ -104,6 +107,7 @@ import {
   reAppendSessionMetadata,
   setSessionCustomTitle,
 } from "@/services/session.js";
+import { resumeSnapshotOf } from "../helpers/transcriptResume.js";
 
 const SESSION_ID = "11111111-1111-1111-1111-111111111111";
 // session.ts 用 path.join 拼路径，Windows 上分隔符是 `\`，断言必须同样用 join。
@@ -124,6 +128,9 @@ describe("session custom title", () => {
 
     mockReadCustomTitle.mockResolvedValue(undefined);
     mockReadMessagesAndCustomTitle.mockResolvedValue({ messages: [] });
+    mockReadTranscriptForResume.mockResolvedValue(
+      resumeSnapshotOf([], undefined),
+    );
   });
 
   afterEach(() => {
@@ -245,17 +252,19 @@ describe("session custom title", () => {
 
   describe("loadSessionFromJsonl()", () => {
     it("recovers the title from the transcript", async () => {
-      mockReadMessagesAndCustomTitle.mockResolvedValue({
-        messages: [
-          {
-            id: "m-1",
-            role: "user",
-            blocks: [{ type: "text", content: "hi" }],
-            timestamp: "2024-05-05T00:00:00.000Z",
-          },
-        ],
-        customTitle: "登录重构",
-      });
+      mockReadTranscriptForResume.mockResolvedValue(
+        resumeSnapshotOf(
+          [
+            {
+              id: "m-1",
+              role: "user",
+              blocks: [{ type: "text", content: "hi" }],
+              timestamp: "2024-05-05T00:00:00.000Z",
+            },
+          ],
+          "登录重构",
+        ),
+      );
 
       const sessionData = await loadSessionFromJsonl(SESSION_ID, "/repo");
 

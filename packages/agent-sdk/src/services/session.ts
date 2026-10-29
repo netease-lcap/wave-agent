@@ -21,7 +21,7 @@ import { homedir } from "os";
 import { randomUUID } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import type { Message } from "../types/index.js";
+import type { Message, Usage } from "../types/index.js";
 import { PathEncoder } from "../utils/pathEncoder.js";
 import { JsonlHandler } from "../services/jsonlHandler.js";
 import {
@@ -40,6 +40,12 @@ const execFileAsync = promisify(execFile);
 
 export interface SessionData {
   id: string;
+  /**
+   * 从**最后一个压缩边界**开始的消息（含那段摘要），也就是恢复后要装进内存的
+   * 那一份。压缩之前的历史留在转录里，由分页与 `/rewind` 现取现用。
+   *
+   * 手工构造时也可以传整条线程——`initializeFromSession` 会自己再切一次。
+   */
   messages: Message[];
   metadata: {
     workdir: string;
@@ -47,12 +53,21 @@ export interface SessionData {
     latestTotalTokens: number;
     /**
      * User-set title recovered from the whole-file scan (see
-     * `readMessagesAndCustomTitle`). Held in memory by the host so a later
+     * `readTranscriptForResume`). Held in memory by the host so a later
      * `reAppendSessionMetadata` can write it back at EOF even after later
      * messages pushed it out of the tail window.
      */
     customTitle?: string;
   };
+  /** 完整线程里的消息条数（含压缩前）。缺席时按 `messages.length` 算。 */
+  threadMessageCount?: number;
+  /** 整条线程的第一个用户输入（会话标题锚定）。缺席时从 `messages` 里找。 */
+  firstUserText?: string;
+  /**
+   * 整条线程里所有 assistant 用量，按出现顺序。用量统计要覆盖压缩前的对话，
+   * 而 `messages` 只剩压缩后的尾部，所以载入时顺手收集好放在这里。
+   */
+  usages?: Usage[];
 }
 
 export interface SessionMetadata {
@@ -463,8 +478,6 @@ export async function loadSessionFromJsonl(
   sessionType: "main" | "subagent" = "main",
 ): Promise<SessionData | null> {
   try {
-    const jsonlHandler = new JsonlHandler();
-
     // Generate the session file path directly using known session type
     const filePath = await generateSessionFilePath(
       sessionId,
@@ -493,44 +506,29 @@ export async function loadSessionFromJsonl(
       }
     }
 
-    const { messages: allMessages, customTitle } =
-      await jsonlHandler.readMessagesAndCustomTitle(resolvedPath);
-
-    // Transcripts written by older CLI versions re-appended the preserved
-    // rounds at each compaction point, so a message id can appear twice.
-    // Keep the first occurrence — duplicates would render twice once the
-    // full-history restore below feeds them to displayMessages. Append-only
-    // transcripts (current write side) have unique ids, making this a no-op.
-    const seenIds = new Set<string>();
-    const messages: Message[] = [];
-    for (const message of allMessages) {
-      if (message.id && seenIds.has(message.id)) continue;
-      if (message.id) seenIds.add(message.id);
-      messages.push(message);
-    }
-
-    // Extract metadata from messages
-    const lastMessage =
-      messages.length > 0 ? messages[messages.length - 1] : null;
+    const snapshot = await new JsonlHandler().readTranscriptForResume(
+      resolvedPath,
+    );
 
     const sessionData: SessionData = {
       id: sessionId,
-      messages,
+      messages: snapshot.messages,
       metadata: {
         workdir,
-        lastActiveAt: lastMessage
-          ? lastMessage.timestamp
-          : new Date().toISOString(),
+        lastActiveAt: snapshot.lastActiveAt ?? new Date().toISOString(),
         // Scan backwards for the last usage-bearing message instead of only
         // testing the tail: a resumed conversation gets usage-less meta
         // messages appended (SessionStart hooks), which would otherwise report
         // 0 and blank the context-usage indicator for that conversation.
-        latestTotalTokens: extractLatestTotalTokens(messages),
+        latestTotalTokens: extractLatestTotalTokens(snapshot.messages),
         // Recovered from the whole-file scan, not the tail window: a title the
         // conversation has long outgrown is only reachable this way. The host
         // holds it in memory so `reAppendSessionMetadata` puts it back at EOF.
-        customTitle,
+        customTitle: snapshot.customTitle,
       },
+      threadMessageCount: snapshot.threadMessageCount,
+      firstUserText: snapshot.firstUserText,
+      usages: snapshot.usages,
     };
 
     return sessionData;
