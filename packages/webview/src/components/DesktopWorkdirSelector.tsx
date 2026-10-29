@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
 import { ContextDirectoryIcon, PermCaretIcon, CloseIcon } from "./HeaderIcons";
+import { FolderIcon } from "./FolderIcon";
 import { DirectoryBrowser } from "./DirectoryBrowser";
 import "../styles/DesktopApp.css";
 
@@ -255,7 +256,10 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
                 title={dir}
                 data-testid="desktop-workdir-recent-item"
               >
-                <span className="codicon codicon-folder"></span>
+                {/* 1029 评论（她点 `span.codicon.codicon-folder`）：「替换图标，展开收起的
+                    都换」⇒ 最近打开项（收起态）与「浏览…」（展开态）都换成设计源矢量，
+                    见 FolderIcon。原来这两处是 codicon 字体字形。 */}
+                <FolderIcon />
                 <span className="desktop-workdir-menu-path">
                   <span className="desktop-workdir-menu-name">{base}</span>
                   {parent && (
@@ -284,7 +288,7 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
             {...getItemProps(recents.length)}
             data-testid="desktop-workdir-browse"
           >
-            <span className="codicon codicon-folder-opened"></span>
+            <FolderIcon expanded />
             <span>{isRemote ? "浏览…" : "浏览…"}</span>
           </div>
         </div>
