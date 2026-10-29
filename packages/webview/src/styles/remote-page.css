@@ -424,6 +424,52 @@
     height: 20px;
   }
 
+  /* ── 消息队列每条右边的行内动作（编辑 / 立即发送 / 删除）：场景 27 第四族 ──
+     这一族的承载是**行轨道**：每条消息固定 24px 高，按钮 18×18（padding 2 +
+     字形 14）、间距 2px —— 三个数都是按鼠标指针定的，同一条触控判据下一起抬：
+     按钮 40×40、字形 20、间距 8，行高跟着到 48（40 + 上下各 4）。
+
+     它还多一处**比尺寸更靠前**的问题：桌面档靠 `.queued-item:hover` 才把按钮组
+     显形（`opacity: 0`），触控设备没有悬停 —— 不常显的话，按钮就算放大到 40 也
+     根本没有被按到的机会。
+
+     同一面板的折叠标题行（整行可点，带 chevron）一并抬：24 → 40、chevron
+     16 → 20，与它底下那几行的动作按钮同档。 */
+  [data-remote-page] .queued-message-list-header {
+    height: 40px;
+  }
+
+  [data-remote-page] .queued-message-list-header .queued-chevron {
+    width: 20px;
+    height: 20px;
+  }
+
+  [data-remote-page] .queued-item {
+    height: 48px;
+  }
+
+  /* 行与行之间也是「相邻两个按钮」：行高 48 之后上下内衬各只剩 4px，跨行的
+     两枚按钮边缘就只隔 4px —— 与同族要求的 8px 一样给足。 */
+  [data-remote-page] .queued-items {
+    gap: 8px;
+  }
+
+  [data-remote-page] .queued-item-actions {
+    gap: 8px;
+    opacity: 1;
+  }
+
+  [data-remote-page] .queued-action-button {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+  }
+
+  [data-remote-page] .queued-action-button svg {
+    width: 20px;
+    height: 20px;
+  }
+
   /* ── 文本类控件一律 ≥16px（与上面整档同一条触控判据）────────────────
      iOS Safari 对 computed `font-size` 小于 16px 的文本控件，会在聚焦时把整页缩放
      到等效 16px 且此后不自动还原（15px 仍触发，16px 起才不触发）——用户看到的是
