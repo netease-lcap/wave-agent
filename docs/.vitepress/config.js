@@ -197,6 +197,25 @@ export default {
             { text: "能力边界", link: "/tutorials#code-security-limits" },
           ],
         },
+        {
+          text: "十、自定义工作流：多 Agent 编排",
+          link: "/tutorials#custom-workflow",
+          collapsed: false,
+          items: [
+            {
+              text: "提示词里编排（deep-wiki）",
+              link: "/tutorials#custom-workflow-prompt",
+            },
+            {
+              text: "脚本里编排（工作流脚本）",
+              link: "/tutorials#custom-workflow-script",
+            },
+            {
+              text: "选哪种，以及怎么开始",
+              link: "/tutorials#custom-workflow-start",
+            },
+          ],
+        },
       ],
       "/guide": [
         {
