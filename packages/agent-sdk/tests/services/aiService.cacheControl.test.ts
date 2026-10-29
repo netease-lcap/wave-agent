@@ -1513,6 +1513,129 @@ describe("AI Service - Claude Cache Control", () => {
 
         expect(result.usage?.cache_creation_input_tokens).toBe(75);
       });
+
+      it("should read OpenAI's own cache_write_tokens field (GPT-5.6+)", async () => {
+        // Real AIHub numbers: ~21k-token prefix, first request writes the cache.
+        const mockWithResponse = vi.fn().mockResolvedValue({
+          data: {
+            choices: [
+              {
+                message: { content: "Test response" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 21428,
+              completion_tokens: 50,
+              total_tokens: 21478,
+              prompt_tokens_details: {
+                cached_tokens: 0,
+                cache_write_tokens: 21428,
+              },
+            },
+          },
+          response: {
+            headers: new Map([["x-request-id", "req-12345"]]),
+          },
+        });
+        mockCreate.mockReturnValue({ withResponse: mockWithResponse });
+
+        const result = await callAgent({
+          gatewayConfig: TEST_GATEWAY_CONFIG,
+          modelConfig: { model: "gpt-6-luna", fastModel: "gpt-6-luna-mini" },
+          messages: [{ role: "user", content: "Test message" }],
+          workdir: "/test/workdir",
+        });
+
+        expect(result.usage?.cache_read_input_tokens).toBe(0);
+        expect(result.usage?.cache_creation_input_tokens).toBe(21428);
+      });
+
+      it("should take one cache-write shape instead of summing all three", async () => {
+        const mockWithResponse = vi.fn().mockResolvedValue({
+          data: {
+            choices: [
+              {
+                message: { content: "Test response" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 300,
+              completion_tokens: 50,
+              total_tokens: 350,
+              prompt_tokens_details: {
+                cached_tokens: 200,
+                cache_write_tokens: 50,
+                cache_creation_input_tokens: 75,
+                cache_creation: {
+                  ephemeral_5m_input_tokens: 60,
+                },
+              },
+            },
+          },
+          response: {
+            headers: new Map([["x-request-id", "req-12345"]]),
+          },
+        });
+        mockCreate.mockReturnValue({ withResponse: mockWithResponse });
+
+        const result = await callAgent({
+          gatewayConfig: TEST_GATEWAY_CONFIG,
+          modelConfig: CLAUDE_MODEL_CONFIG,
+          messages: [{ role: "user", content: "Test message" }],
+          workdir: "/test/workdir",
+        });
+
+        // 75 (flat), not 75 + 60 + 50 — the shapes are alternatives, not addends.
+        expect(result.usage?.cache_creation_input_tokens).toBe(75);
+      });
+
+      it("should not treat cache_write_tokens as proof of an explicit breakpoint", async () => {
+        const mockWithResponse = vi.fn().mockResolvedValue({
+          data: {
+            choices: [
+              {
+                message: { content: "Test response" },
+                finish_reason: "stop",
+              },
+            ],
+            usage: {
+              prompt_tokens: 21428,
+              completion_tokens: 50,
+              total_tokens: 21478,
+              prompt_tokens_details: {
+                cached_tokens: 0,
+                cache_write_tokens: 21428,
+              },
+            },
+          },
+          response: {
+            headers: new Map([["x-request-id", "req-12345"]]),
+          },
+        });
+        mockCreate.mockReturnValue({ withResponse: mockWithResponse });
+
+        const result = await callAgent({
+          gatewayConfig: TEST_GATEWAY_CONFIG,
+          modelConfig: { model: "gpt-6-luna", fastModel: "gpt-6-luna-mini" },
+          messages: [{ role: "user", content: "Test message" }],
+          workdir: "/test/workdir",
+        });
+
+        // OpenAI builds the cache implicitly (prompt_cache_options.mode defaults
+        // to "implicit"), so a write volume says nothing about our markers: with
+        // no promptCaching capability the request still goes out untouched.
+        const callArgs = mockCreate.mock.calls[0][0];
+        const systemMessage = callArgs.messages[0];
+        expect(systemMessage.role).toBe("system");
+        expect(typeof systemMessage.content).toBe("string");
+        for (const message of callArgs.messages) {
+          expect(JSON.stringify(message)).not.toContain("cache_control");
+        }
+
+        expect(result.usage?.cache_creation_input_tokens).toBe(21428);
+      });
     });
 
     describe("Edge Cases", () => {
