@@ -1913,9 +1913,15 @@
   color: var(--cc-text-secondary);
 }
 /* 字号 13 → 14（1029 第三轮：面板内剩余 13px 一并统一）。结果行是「筛选文件…」
-   输入后的候选清单，行高 32 / 圆角 6 / 字色不动。 */
+   输入后的候选清单，行高 32 / 圆角 6 / 字色不动。
+   垂直居中（1029 第四轮，设计师评论「文字没有居中显示」）：base 是
+   `align-items: baseline` + `padding: 3px 6px`，行高由内容决定时没问题；桌面端
+   把行拉到 min-height 32 之后，那 11px 空余全落在文字下方 —— 实测 14px 行盒 17
+   停在行内 y+3，文字中心比行中心高 4.5px。改成居中排列，行高 / 内衬 / 圆角 /
+   字色都不动（base 的 IDE 侧维持 baseline，不被这条影响）。 */
 [data-host="desktop"] .file-tree-result {
   min-height: 32px;
+  align-items: center;
   border-radius: 6px;
   color: var(--cc-text-primary);
   font-size: 14px;
