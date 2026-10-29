@@ -155,10 +155,7 @@ for (const { text, link } of leaves) {
     continue;
   }
   let pageName = page.replace(/^\//, "");
-  if (pageName === "")
-    pageName = "index"; // home page link "/" or "/#anchor"
-  // 目录链接（`/sdk/`）：VitePress 解析到该目录的 index.md，与 check-docs-links 一致。
-  else if (pageName.endsWith("/")) pageName += "index";
+  if (pageName === "") pageName = "index"; // home page link "/" or "/#anchor"
   const filePath = join(docsDir, `${pageName}.md`);
   if (!existsSync(filePath)) {
     errors.push(
