@@ -1695,7 +1695,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   打开的文件会显示在这里
                 </span>
                 <span className="file-pane-placeholder-hint">
-                  点击左侧目录树中的文件，或点击消息里的文件路径
+                  点击目录树中的文件，或点击消息里的文件路径
                 </span>
               </PanePlaceholder>
             )}
