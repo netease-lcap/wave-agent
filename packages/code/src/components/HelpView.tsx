@@ -65,7 +65,7 @@ export const HelpView: React.FC<HelpViewProps> = ({
   });
 
   const helpItems = [
-    { key: "@", description: "Reference files" },
+    { key: "@", description: "Reference files or subagents" },
     { key: "/", description: "Commands" },
     { key: "!", description: "Shell commands (e.g. !ls)" },
     { key: "Ctrl+R", description: "Search history" },

@@ -1451,6 +1451,17 @@ export const Message: React.FC<MessageProps> = React.memo(
                           onClick={onClick}
                         />
                       );
+                    } else if (part.type === "agent" && part.agentName) {
+                      // 子代理点名：气泡里只留标签，点不开（它不是文件）。实际
+                      // 委派由 SDK 按正文标记注入提醒完成（spec
+                      // multi-agent/subagent.md「显式子代理调用」）。
+                      return (
+                        <ContextTag
+                          key={pIndex}
+                          name={part.agentName}
+                          path={`agent:${part.agentName}`}
+                        />
+                      );
                     } else if (part.type === "ide-context" && part.ideContext) {
                       const info = ideContextProviderInfo(part.ideContext);
                       // 弹窗标题用英文名，不用块标题：块标题（「终端输出」）

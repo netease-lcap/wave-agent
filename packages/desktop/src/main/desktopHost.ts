@@ -4819,6 +4819,7 @@ export class DesktopHost {
         await this.handleFileSuggestions(
           msg.filterText as string,
           msg.requestId as string,
+          pid,
         );
         break;
 
@@ -7210,12 +7211,18 @@ export class DesktopHost {
   private async handleFileSuggestions(
     filterText: string,
     requestId: string,
+    paneId?: string,
   ): Promise<void> {
     try {
-      const suggestions = await this.findWorkspaceFiles(filterText);
+      // 子代理条目与文件建议同一条回包：`@` 下拉只有一个列表（spec
+      // multi-agent/subagent.md「显式子代理调用」）。
+      const [suggestions, agents] = await Promise.all([
+        this.findWorkspaceFiles(filterText),
+        this.getAgentMentionItems(paneId),
+      ]);
       this.postMessage({
         command: "fileSuggestionsResponse",
-        suggestions,
+        suggestions: [...agents, ...suggestions],
         filterText,
         requestId,
       });
@@ -7226,6 +7233,34 @@ export class DesktopHost {
         error: `获取文件建议失败: ${error}`,
         requestId,
       });
+    }
+  }
+
+  /**
+   * `@` 下拉里的子代理条目（spec `multi-agent/subagent.md`「显式子代理调用」）。
+   * 名字/描述的过滤在 webview 做，宿主只报「这个会话有哪些子代理」；没有可用
+   * 会话就返回空——候选增强不该让文件建议整条失败。
+   */
+  private async getAgentMentionItems(
+    paneId?: string,
+  ): Promise<Record<string, string | boolean>[]> {
+    const agent = this.agentForPane(paneId);
+    if (!agent) return [];
+    try {
+      const configurations = await agent.getSubagentConfigurations();
+      return (configurations ?? []).map((configuration) => ({
+        path: `agent:${configuration.name}`,
+        relativePath: "",
+        name: configuration.name,
+        extension: "",
+        icon: "codicon-hubot",
+        isDirectory: false,
+        agentName: configuration.name,
+        agentDescription: configuration.description ?? "",
+      }));
+    } catch (error) {
+      console.error("[DesktopHost] 获取子代理建议失败:", error);
+      return [];
     }
   }
 

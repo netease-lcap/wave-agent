@@ -22,6 +22,9 @@ const h = vi.hoisted(() => ({
   writeFileError: null as Error | null,
   agentInstances: [] as Array<Record<string, unknown>>,
   clientRequests: [] as Array<{ method: string; params: unknown }>,
+  // searchFiles 的回包（`@` 下拉）。默认空列表；测试要文件与子代理条目排序
+  // 时才给值。
+  searchFilesResult: null as null | { files: Array<Record<string, string>> },
   // 创作集 RPC 回包（`artifact*`）：键是方法名，值是 CLI 侧那份 `{ok,...}`
   // 信封。没登记的按「未打桩」失败返回。
   artifactResponses: new Map<string, unknown>(),
@@ -49,7 +52,7 @@ const h = vi.hoisted(() => ({
       case "searchPromptHistory":
         return { history: [] };
       case "searchFiles":
-        return { files: [] };
+        return h.searchFilesResult ?? { files: [] };
       case "writeArtifactFile": {
         // Remote daemon writes to ITS artifacts dir and returns a remote path.
         const name = (params as { name?: string } | undefined)?.name ?? "file";
@@ -857,6 +860,7 @@ beforeEach(() => {
   h.writeFileError = null;
   h.agentInstances.length = 0;
   h.clientRequests.length = 0;
+  h.searchFilesResult = null;
   h.authStatusResults.length = 0;
   h.authServerUrl = "";
   h.authUrlHandler = null;
@@ -1090,6 +1094,65 @@ describe("file suggestions", () => {
       query: "app",
       maxResults: 20,
     });
+  });
+
+  it("merges this session's subagents ahead of the file suggestions", async () => {
+    // `@` 下拉只有一个列表：子代理条目排在文件建议前面（spec
+    // multi-agent/subagent.md「显式子代理调用」）。宿主只报「有哪些子代理」，
+    // 名字/描述的过滤留给 webview。
+    const { host, sent } = await readyHost();
+    const agent = lastAgent();
+    agent.getSubagentConfigurations = vi.fn(async () => [
+      { name: "Explore", description: "只读探索代码库" },
+    ]);
+    h.searchFilesResult = { files: [{ path: "src/app.ts", type: "file" }] };
+
+    await host.handleWebviewMessage({
+      command: "requestFileSuggestions",
+      filterText: "app",
+      requestId: "r1",
+    });
+
+    const response = sent("fileSuggestionsResponse").at(-1) as {
+      suggestions: Array<Record<string, unknown>>;
+    };
+    expect(response.suggestions[0]).toMatchObject({
+      // `path` 是占位符——webview 靠 `agentName` 认条目，不猜 path 前缀。
+      path: "agent:Explore",
+      name: "Explore",
+      agentName: "Explore",
+      agentDescription: "只读探索代码库",
+      icon: "codicon-hubot",
+      isDirectory: false,
+    });
+    expect(response.suggestions[1]).toMatchObject({
+      name: "app.ts",
+      path: path.join("/work/a", "src/app.ts"),
+      isDirectory: false,
+    });
+    expect(response.suggestions[1].agentName).toBeUndefined();
+  });
+
+  it("keeps file suggestions working when the subagent list cannot be read", async () => {
+    // 候选增强不该让整条 `@` 回包失败：读不到子代理就只给文件建议。
+    const { host, sent } = await readyHost();
+    lastAgent().getSubagentConfigurations = vi.fn(async () => {
+      throw new Error("no agent context");
+    });
+    h.searchFilesResult = { files: [{ path: "src/app.ts", type: "file" }] };
+
+    await host.handleWebviewMessage({
+      command: "requestFileSuggestions",
+      filterText: "app",
+      requestId: "r1",
+    });
+
+    const response = sent("fileSuggestionsResponse").at(-1) as {
+      suggestions: Array<Record<string, unknown>>;
+    };
+    expect(response.suggestions).toHaveLength(1);
+    expect(response.suggestions[0]).toMatchObject({ name: "app.ts" });
+    expect(sent("fileSuggestionsError")).toHaveLength(0);
   });
 });
 

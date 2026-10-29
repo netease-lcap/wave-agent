@@ -1993,11 +1993,17 @@ export class MessageHandler {
     windowId?: string,
   ) {
     try {
-      const files = await this.fileService.findWorkspaceFiles(filterText);
+      // 子代理条目与文件建议走同一条回包：`@` 下拉在 webview 里只认一个列表，
+      // 分成两条消息会让排序与键盘导航各写一套（spec
+      // multi-agent/subagent.md「显式子代理调用」）。
+      const [files, agents] = await Promise.all([
+        this.fileService.findWorkspaceFiles(filterText),
+        this.getAgentMentionItems(viewType || "tab", windowId),
+      ]);
       this.context.postMessage(
         {
           command: "fileSuggestionsResponse",
-          suggestions: files,
+          suggestions: [...agents, ...files],
           filterText: filterText,
           requestId: requestId,
         },
@@ -2015,6 +2021,35 @@ export class MessageHandler {
         viewType,
         windowId,
       );
+    }
+  }
+
+  /**
+   * `@` 下拉里的子代理条目。宿主只报「有哪些子代理」，名字/描述的过滤在 webview
+   * 做（与 IDE 固定条目同一处，见 spec `multi-agent/subagent.md` 验收场景 2）。
+   *
+   * 读不到就返回空：这是候选增强，不该让文件建议整条失败。
+   */
+  private async getAgentMentionItems(
+    viewType: "sidebar" | "tab" | "window",
+    windowId?: string,
+  ): Promise<Record<string, string | boolean>[]> {
+    try {
+      const session = this.context.getChatSession(viewType, windowId);
+      const configurations = await session.getSubagentConfigurations();
+      return (configurations ?? []).map((configuration) => ({
+        path: `agent:${configuration.name}`,
+        relativePath: "",
+        name: configuration.name,
+        extension: "",
+        icon: "codicon-hubot",
+        isDirectory: false,
+        agentName: configuration.name,
+        agentDescription: configuration.description ?? "",
+      }));
+    } catch (error) {
+      console.error("获取子代理建议失败:", error);
+      return [];
     }
   }
 

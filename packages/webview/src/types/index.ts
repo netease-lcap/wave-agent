@@ -112,6 +112,16 @@ export interface FileItem {
    * `ui/ide-context-mentions.md`）。条目本身由 webview 本地生成，宿主不下发。
    */
   ideContext?: IdeContextProvider;
+  /**
+   * 非文件条目：子代理（`@` 显式点名，spec `multi-agent/subagent.md`
+   * 「用户故事：显式子代理调用」）。有值时 `path` 是 `agent:<名称>` 占位值、
+   * `name` 是子代理名，选中后插入 `[@agent:<名称>]` 标签。与 `ideContext`
+   * 同一形制 —— **由宿主下发**：哪些子代理可用是宿主/会话的事实，webview 不
+   * 维护名单。`agentDescription` 是条目第二行的说明（子代理定义的 description）。
+   */
+  agentName?: string;
+  /** 子代理条目第二行的说明文案，仅 `agentName` 有值时出现。 */
+  agentDescription?: string;
 }
 
 /**

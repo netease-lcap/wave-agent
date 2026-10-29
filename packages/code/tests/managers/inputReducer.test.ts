@@ -810,10 +810,32 @@ describe("inputReducer", () => {
       };
       const result = inputReducer(state, {
         type: "SELECT_FILE",
-        payload: "test.ts",
+        payload: { path: "test.ts", type: "file" },
       });
       expect(result.inputText).toBe("read @test.ts ");
       expect(result.cursorPosition).toBe(14);
+      expect(result.showFileSelector).toBe(false);
+    });
+
+    it("should insert the @agent: marker for a subagent item", () => {
+      const state: InputState = {
+        ...initialState,
+        inputText: "read @exp",
+        cursorPosition: 9,
+        showFileSelector: true,
+        atPosition: 5,
+      };
+      const result = inputReducer(state, {
+        type: "SELECT_FILE",
+        payload: {
+          path: "agent:Explore",
+          type: "agent",
+          agentName: "Explore",
+          agentDescription: "只读探索",
+        },
+      });
+      expect(result.inputText).toBe("read @agent:Explore ");
+      expect(result.cursorPosition).toBe(20);
       expect(result.showFileSelector).toBe(false);
     });
   });

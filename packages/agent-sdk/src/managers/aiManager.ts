@@ -16,6 +16,10 @@ import {
 } from "../utils/taskReminder.js";
 import { getChangedFilesReminder } from "../utils/fileChangeReminder.js";
 import {
+  buildAgentMentionReminder,
+  parseAgentMentions,
+} from "../utils/agentMentions.js";
+import {
   buildMcpInstructionsAnnouncement,
   collectAnnouncedServers,
 } from "../utils/mcpInstructions.js";
@@ -1082,6 +1086,43 @@ export class AIManager {
   }
 
   /**
+   * Persist "the user named this subagent" as a meta message, next to the task /
+   * changed-files reminders and for the same reason: it belongs in the cached
+   * prefix, not in a payload rebuilt per model call.
+   *
+   * The scan that feeds this runs on `turnOffset === 0` of every turn, so a
+   * retried turn re-reads the same user message; the identical-text check keeps
+   * the reminder from stacking. A failed configuration read degrades to "no
+   * subagents available" — the reminder then says the name did not match, which
+   * is still better than throwing away the turn.
+   */
+  private injectAgentMentionReminder(mentionedAgents: string[]): void {
+    let availableNames: string[] = [];
+    try {
+      availableNames = (this.subagentManager?.getConfigurations() ?? []).map(
+        (configuration) => configuration.name,
+      );
+    } catch {
+      availableNames = [];
+    }
+
+    const text = buildAgentMentionReminder(mentionedAgents, availableNames);
+    if (!text) return;
+
+    const wrapped = wrapInSystemReminder(text);
+    const alreadyInjected = this.messageManager
+      .getMessages()
+      .some((message) =>
+        message.blocks.some(
+          (block) => block.type === "text" && block.content === wrapped,
+        ),
+      );
+    if (alreadyInjected) return;
+
+    this.messageManager.addUserMessage({ content: wrapped, isMeta: true });
+  }
+
+  /**
    * The tool set the system prompt is built from, plus the declaration set the
    * request carries. Two different questions, deliberately answered separately:
    *
@@ -1829,21 +1870,33 @@ ${question}`;
         }
       }
 
-      // Scan for file mentions in the last user message to trigger conditional rules
+      // Scan the last user message once per turn: `@path` triggers conditional
+      // rules, `@agent:<name>` (what the three hosts insert when the user picks a
+      // subagent from the `@` dropdown) becomes a delegation reminder — spec
+      // `multi-agent/subagent.md`「用户故事：显式子代理调用」.
       if (turnOffset === 0) {
         const messages = this.messageManager.getMessages();
         const lastMessage = messages[messages.length - 1];
         if (lastMessage && lastMessage.role === "user") {
+          const mentionedAgents: string[] = [];
           for (const block of lastMessage.blocks) {
-            if (block.type === "text") {
-              const content = block.content;
-              const fileMentionRegex = /(?:^|\s)@([\w.\-/]+)/g;
-              let match;
-              while ((match = fileMentionRegex.exec(content)) !== null) {
-                const filePath = match[1];
-                this.messageManager.triggerFileRead(filePath);
-              }
+            if (block.type !== "text") continue;
+            const content = block.content;
+            for (const name of parseAgentMentions(content)) {
+              if (!mentionedAgents.includes(name)) mentionedAgents.push(name);
             }
+            // A subagent mention is not a path: without the guard this scan
+            // would go looking for a file called "agent".
+            const fileMentionRegex = /(?:^|\s)@(?!agent:)([\w.\-/]+)/g;
+            let match;
+            while ((match = fileMentionRegex.exec(content)) !== null) {
+              const filePath = match[1];
+              this.messageManager.triggerFileRead(filePath);
+            }
+          }
+
+          if (mentionedAgents.length > 0) {
+            this.injectAgentMentionReminder(mentionedAgents);
           }
         }
       }

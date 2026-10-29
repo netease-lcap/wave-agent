@@ -51,9 +51,14 @@ const traverseInput = (
         const isSelection =
           element.getAttribute("data-is-selection") === "true";
         const ideContext = element.getAttribute("data-ide-context");
+        const agentName = element.getAttribute("data-agent-name");
         const imageUrl = element.getAttribute("data-image-url");
 
-        if (ideContext === "terminal" || ideContext === "problems") {
+        if (agentName) {
+          // 子代理点名标签：正文里落地成 `[@agent:<名称>]`，由 SDK 在每轮首回合
+          // 解析成点名提醒（spec `multi-agent/subagent.md`「显式子代理调用」）。
+          markdown += `[@agent:${agentName}]`;
+        } else if (ideContext === "terminal" || ideContext === "problems") {
           // IDE 上下文标签：正文里先留一个标记，发送时由
           // `assembleIdeContextBlocks` 就地展开成「标记 + 内容 + 结束标记」。
           markdown += ideContextMarker(ideContext);
@@ -186,14 +191,14 @@ const syncDraftImages = (container: HTMLElement, scopeKey: string): void => {
 
 /**
  * 解析 Markdown 中的标签语法 [@file:path], [Selection: fileName#start-end],
- * [imageN]，以及发送时已展开的 IDE 上下文块
+ * [imageN]，子代理点名 [@agent:名称]，以及发送时已展开的 IDE 上下文块
  * `[@ide:terminal]` … `[/@ide]`（spec ui/ide-context-mentions.md）。
  */
 export const parseMentions = (
   text: string,
   attachedImages?: Array<{ data: string; filename?: string }>,
 ): Array<{
-  type: "text" | "mention" | "selection" | "ide-context";
+  type: "text" | "mention" | "selection" | "ide-context" | "agent";
   content: string;
   path?: string;
   isImage?: boolean;
@@ -202,9 +207,10 @@ export const parseMentions = (
   endLine?: string;
   imageData?: string;
   ideContext?: IdeContextProvider;
+  agentName?: string;
 }> => {
   const parts: Array<{
-    type: "text" | "mention" | "selection" | "ide-context";
+    type: "text" | "mention" | "selection" | "ide-context" | "agent";
     content: string;
     path?: string;
     isImage?: boolean;
@@ -213,12 +219,13 @@ export const parseMentions = (
     endLine?: string;
     imageData?: string;
     ideContext?: IdeContextProvider;
+    agentName?: string;
   }> = [];
   // Updated regex to handle [Selection: path|fileName#start-end] or [Selection: fileName#start-end]
-  // IDE 上下文块（`[@ide:<类别>]` … `[/@ide]`，见 utils/ideContext）放在最后一个
-  // 分支：前六个捕获组的位置保持不变。
+  // IDE 上下文块（`[@ide:<类别>]` … `[/@ide]`，见 utils/ideContext）与子代理点名
+  // （`[@agent:<名称>]`）放在最后两个分支：前六个捕获组的位置保持不变。
   const regex =
-    /\[@file:(.*?)\]|\[Selection: (?:(.*?)\|)?(.*?)#(\d+)-(\d+)\]|\[image(\d+)\]|\[@ide:(terminal|problems)\]([\s\S]*?)\[\/@ide\]/g;
+    /\[@file:(.*?)\]|\[Selection: (?:(.*?)\|)?(.*?)#(\d+)-(\d+)\]|\[image(\d+)\]|\[@ide:(terminal|problems)\]([\s\S]*?)\[\/@ide\]|\[@agent:([a-zA-Z][\w:-]*)\]/g;
   let lastIndex = 0;
   let match;
 
@@ -230,7 +237,10 @@ export const parseMentions = (
       });
     }
 
-    if (match[1]) {
+    if (match[9]) {
+      // 子代理点名：气泡里渲染成 `@<名称>` 标签，点不开（它不是文件）
+      parts.push({ type: "agent", content: match[0], agentName: match[9] });
+    } else if (match[1]) {
       // @file mention
       const path = match[1];
       const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(path);

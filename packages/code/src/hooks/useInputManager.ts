@@ -4,9 +4,11 @@ import {
   inputReducer,
   initialState,
   InputManagerCallbacks,
+  FileSelectorItem,
   ESC_DOUBLE_PRESS_TIMEOUT_MS,
   btwOverlayActiveRef,
 } from "../managers/inputReducer.js";
+import { toAgentSelectorItems } from "../utils/agentSelector.js";
 import {
   searchFiles as searchFilesUtil,
   PermissionMode,
@@ -53,6 +55,7 @@ export const useInputManager = (
     logger,
     hasQueuedMessages: hasQueuedMessagesProp,
     onRecallQueuedMessage,
+    subagentConfigurations,
     onClearMessages,
     onCompact,
     onReloadPlugins,
@@ -62,7 +65,8 @@ export const useInputManager = (
     isIdle: isIdleProp,
   } = callbacks;
 
-  // Handle debounced file search
+  // Handle debounced file search. 子代理条目与文件结果一起下发（子代理是内存里
+  // 的稳定集合，不参与防抖；文件搜索失败也只是没有文件，子代理照旧可选）。
   useEffect(() => {
     if (state.showFileSelector) {
       const debounceDelay =
@@ -70,17 +74,26 @@ export const useInputManager = (
           ? 0
           : parseInt(process.env.FILE_SELECTOR_DEBOUNCE_MS || "300", 10);
       const timer = setTimeout(async () => {
+        let fileItems: FileSelectorItem[] = [];
         try {
-          const fileItems = await searchFilesUtil(state.fileSearchQuery);
-          dispatch({ type: "SET_FILTERED_FILES", payload: fileItems });
+          fileItems = await searchFilesUtil(state.fileSearchQuery);
         } catch (error) {
           console.error("File search error:", error);
-          dispatch({ type: "SET_FILTERED_FILES", payload: [] });
         }
+        dispatch({
+          type: "SET_FILTERED_FILES",
+          payload: [
+            ...toAgentSelectorItems(
+              subagentConfigurations,
+              state.fileSearchQuery,
+            ),
+            ...fileItems,
+          ],
+        });
       }, debounceDelay);
       return () => clearTimeout(timer);
     }
-  }, [state.showFileSelector, state.fileSearchQuery]);
+  }, [state.showFileSelector, state.fileSearchQuery, subagentConfigurations]);
 
   // Auto-expire the double-Esc clear pending flag after the timeout window
   // (aligned with Claude Code's useDoublePress timeout-based expiry).
@@ -431,8 +444,8 @@ export const useInputManager = (
     dispatch({ type: "ACTIVATE_FILE_SELECTOR", payload: position });
   }, []);
 
-  const handleFileSelect = useCallback((filePath: string) => {
-    dispatch({ type: "SELECT_FILE", payload: filePath });
+  const handleFileSelect = useCallback((item: FileSelectorItem) => {
+    dispatch({ type: "SELECT_FILE", payload: item });
   }, []);
 
   const handleCancelFileSelect = useCallback(() => {

@@ -180,6 +180,11 @@ interface Harness {
   requests(): { id: number; method: string; params: Record<string, unknown> }[];
   /** Answer the request the shim sent most recently, the way the host does. */
   reply(result: unknown): void;
+  /**
+   * Answer by method instead of by recency — for a `Promise.all` fan-out, where
+   * the newest request is not the one under test.
+   */
+  replyTo(method: string, result: unknown): void;
   /** The error half of the same envelope (`code` defaults to the internal one). */
   replyWithError(message: string, code?: number): void;
 }
@@ -517,6 +522,18 @@ function loadShim(options: {
     requests: () => parsed().filter((frame) => frame.id !== undefined),
     reply: (result) => {
       answer("result", { result });
+    },
+    replyTo: (method, result) => {
+      const frame = parsed().find(
+        (candidate) =>
+          candidate.id !== undefined && candidate.method === method,
+      );
+      if (!frame) throw new Error(`the shim never asked for ${method}`);
+      socketOf().receive({
+        id: frame.id,
+        method: "result",
+        params: { result },
+      });
     },
     replyWithError: (message, code = -32603) => {
       answer("error", { code, message });
@@ -1695,6 +1712,7 @@ describe("remote page shim — the second batch", () => {
 
   it("@ suggestions: searchFiles anchored to the session workdir, mapped like the desktop", async () => {
     const page = await openPage();
+    const before = page.requests().length;
 
     page.post({
       command: "requestFileSuggestions",
@@ -1702,13 +1720,26 @@ describe("remote page shim — the second batch", () => {
       requestId: "f1",
     });
     await flush();
+    // 一次 `@` 打两条请求：文件建议 + 这个会话有哪些子代理（spec
+    // multi-agent/subagent.md「显式子代理调用」）。
+    const [filesRequest, agentsRequest] = page.requests().slice(before);
     // 20 条与桌面端同一个上限；`workdir` 不给——宿主按信封 sessionId 自己取。
-    expect(lastRequest(page)).toMatchObject({
+    expect(filesRequest).toMatchObject({
       method: "searchFiles",
       params: { query: "src", maxResults: 20 },
     });
+    expect(agentsRequest).toMatchObject({
+      method: "getSubagentConfigurations",
+      params: {},
+    });
 
-    page.reply({
+    page.replyTo("getSubagentConfigurations", {
+      configurations: [
+        { name: "Explore", description: "只读探索代码库" },
+        { name: "", description: "没有名字的条目被丢掉" },
+      ],
+    });
+    page.replyTo("searchFiles", {
       files: [
         { path: "src/b.ts", type: "file" },
         { path: "src/", type: "directory" },
@@ -1720,15 +1751,27 @@ describe("remote page shim — the second batch", () => {
       suggestions: Array<Record<string, unknown>>;
     };
     expect(suggestions).toMatchObject({ requestId: "f1", filterText: "src" });
-    // 名字以过滤词开头（按 basename 判）的排前面，然后目录优先——与桌面端
-    // findWorkspaceFiles 同一个顺序，所以 `src.ts` 在前、`b.ts` 在后；
-    // `path` 拼回绝对路径，`relativePath` 才是插进正文的那个。
-    expect(suggestions.suggestions.map((item) => item.relativePath)).toEqual([
+    // 子代理条目排在文件建议前面，`path` 是 `agent:<名称>` 占位符（webview
+    // 靠 `agentName` 判它是子代理，不猜 path 前缀）。
+    expect(suggestions.suggestions[0]).toMatchObject({
+      path: "agent:Explore",
+      name: "Explore",
+      agentName: "Explore",
+      agentDescription: "只读探索代码库",
+      icon: "codicon-hubot",
+      isDirectory: false,
+    });
+    expect(
+      suggestions.suggestions.slice(1).map((item) => item.relativePath),
+    ).toEqual([
+      // 名字以过滤词开头（按 basename 判）的排前面，然后目录优先——与桌面端
+      // findWorkspaceFiles 同一个顺序，所以 `src.ts` 在前、`b.ts` 在后；
+      // `path` 拼回绝对路径，`relativePath` 才是插进正文的那个。
       "src/",
       "lib/src.ts",
       "src/b.ts",
     ]);
-    expect(suggestions.suggestions[2]).toMatchObject({
+    expect(suggestions.suggestions[3]).toMatchObject({
       path: "/tmp/src/b.ts",
       name: "b.ts",
       extension: "ts",

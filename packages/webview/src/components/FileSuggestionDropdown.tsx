@@ -102,11 +102,14 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
     >
       {suggestions.map((file: FileItem, index: number) => (
         <div
-          key={file.path}
+          key={file.path || file.name}
           className={`suggestion-item ${index === selectedIndex ? "selected" : ""}`}
           // 固定条目（@终端 / @问题）带来源标记：它们不是文件建议，筛选文本不参与
           // 高亮，也让调用方/测试能把两类条目分开认（见 spec ui/ide-context-mentions.md）。
           data-ide-context={file.ideContext}
+          // 子代理条目同理：判据是宿主下发的 `agentName`，不加这份标记就没法把
+          // 它和同名文件条目分开（spec multi-agent/subagent.md 验收场景 1）。
+          data-agent-name={file.agentName}
           onClick={() => onSelect(file)}
           onMouseEnter={() => {
             // Optional: Update selected index on hover
@@ -119,7 +122,9 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
               {highlightMatch(file.name, filterText)}
             </div>
             <div className="suggestion-path">
-              {truncatePath(file.relativePath)}
+              {file.agentName
+                ? truncatePath(file.agentDescription ?? "", 80)
+                : truncatePath(file.relativePath)}
             </div>
           </div>
         </div>

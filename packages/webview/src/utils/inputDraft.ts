@@ -49,6 +49,11 @@ interface ChipSpec {
   startLine?: string;
   endLine?: string;
   ideContext?: IdeContextProvider;
+  /**
+   * 子代理点名标签（spec `multi-agent/subagent.md`「显式子代理调用」）：
+   * 有值时标签序列化回 `[@agent:<名称>]`，`path` 只是 `agent:<名称>` 占位。
+   */
+  agentName?: string;
 }
 
 /**
@@ -65,6 +70,7 @@ const appendChip = (container: HTMLElement, spec: ChipSpec): void => {
     startLine,
     endLine,
     ideContext,
+    agentName,
   } = spec;
   const chip = document.createElement("span");
   chip.className = "context-tag-container";
@@ -80,6 +86,9 @@ const appendChip = (container: HTMLElement, spec: ChipSpec): void => {
   if (ideContext) {
     chip.setAttribute("data-ide-context", ideContext);
     chip.innerText = ideContextMarker(ideContext);
+  }
+  if (agentName) {
+    chip.setAttribute("data-agent-name", agentName);
   }
 
   ReactDOM.createRoot(chip).render(
@@ -213,6 +222,13 @@ export const renderDraftContent = (
         path,
         name: path.split(/[/\\]/).pop() || path,
         isImage: part.isImage,
+      });
+    } else if (part.type === "agent" && part.agentName) {
+      // 子代理点名标签：草稿里是 `[@agent:<名称>]`，重挂载后仍是一个整体标签。
+      appendChip(container, {
+        path: `agent:${part.agentName}`,
+        name: part.agentName,
+        agentName: part.agentName,
       });
     } else if (part.type === "selection" && part.path !== undefined) {
       const fileName = part.fileName ?? part.path.split(/[/\\]/).pop() ?? "";
