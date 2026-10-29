@@ -3,14 +3,18 @@ import path from "node:path";
 import llmstxt from "vitepress-plugin-llms";
 import { SPECS_DIR, specTitle, collectSpecs } from "./spec-stats.mjs";
 
+// GitHub Pages（pages.yml）把站点挂在 `/wave-agent/` 下，运维平台的文档包挂在
+// `/docs/` 下（scripts/pack-docs.mjs 传 DOCS_BASE）。
+const siteBase = process.env.DOCS_BASE || "/wave-agent/";
+
 const nav = [
   { text: "产品概览", link: "/" },
-  { text: "教程&最佳实践", link: "/tutorials" },
-  { text: "桌面端", link: "/desktop" },
-  { text: "VSCode/JetBrains插件", link: "/vsce" },
+  { text: "教程&最佳实践", link: "/tutorials/" },
+  { text: "桌面端", link: "/desktop/" },
+  { text: "VSCode/JetBrains插件", link: "/vsce/" },
   { text: "Web 端", link: "/web" },
-  { text: "CLI", link: "/cli" },
-  { text: "SDK", link: "/sdk" },
+  { text: "CLI", link: "/cli/" },
+  { text: "SDK", link: "/sdk/" },
   { text: "企业管控台", link: "/guide" },
   { text: "功能清单", link: "/specs/" },
 ];
@@ -29,28 +33,193 @@ const specsSidebar = collectSpecs().groups.map(({ dir, text, specs }) => ({
   })),
 }));
 
+// 已按主题拆页的目录：`link` 是目录键（sidebar 按它挂分组），`pages` 是阅读顺序，
+// 首项 `index` 是这个目录的索引页。sidebar 与 llms.txt 的目录都从这张表生成——
+// 手写一份上百条的清单只会在改标题时悄悄漂移。
+const SPLIT_DOCS = [
+  {
+    link: "/sdk/",
+    pages: [
+      "index",
+      "agent-lifecycle",
+      "messaging",
+      "tools",
+      "tool-artifact",
+      "tool-exec",
+      "sessions",
+      "plugins",
+      "memory",
+      "background-tasks",
+      "other-features",
+      "builtin-skills",
+      "builtin-subagents",
+      "settings",
+      "telemetry",
+    ],
+  },
+  {
+    link: "/tutorials/",
+    pages: [
+      "index",
+      "scenario-tools",
+      "figma-to-code",
+      "sdd-case",
+      "web-e2e-testing",
+      "cloud-programming",
+      "local-model",
+      "knowledge-base",
+      "metrics-governance",
+      "code-security",
+      "custom-workflow",
+    ],
+  },
+  {
+    link: "/desktop/",
+    pages: [
+      "index",
+      "panels",
+      "conversation",
+      "code-and-permissions",
+      "tasks-and-agents",
+      "skills-memory-workflow",
+      "automation",
+      "coding-assist",
+      "extensions",
+      "settings",
+    ],
+  },
+  {
+    link: "/vsce/",
+    pages: ["index", "gallery"],
+  },
+  {
+    link: "/cli/",
+    pages: [
+      "index",
+      "subcommands",
+      "slash-commands",
+      "keyboard-shortcuts",
+      "permissions",
+      "features",
+    ],
+  },
+];
+
+const docsRoot = path.dirname(SPECS_DIR);
+
+const splitDocPages = (doc) =>
+  doc.pages.map((slug) => ({
+    slug,
+    link: slug === "index" ? doc.link : `${doc.link}${slug}`,
+    file: path.join(docsRoot, doc.link.slice(1, -1), `${slug}.md`),
+  }));
+
+// 与 VitePress（github-slugger）一致的标题 slug：非字母数字整段折成 `-`。
+function headingSlug(text) {
+  const slug = text
+    .toLowerCase()
+    .trim()
+    .replace(/[^\p{L}\p{N}]+/gu, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return /^\d/.test(slug) ? `_${slug}` : slug;
+}
+
+function readHeadings(file) {
+  const content = fs.readFileSync(file, "utf-8").replace(/```[\s\S]*?```/g, "");
+  const headings = [];
+  for (const line of content.split("\n")) {
+    const m = line.match(/^(#{1,3})\s+(.*)$/);
+    if (!m) continue;
+    const explicit = m[2].match(/\{#([^}]+)\}\s*$/);
+    const text = m[2].replace(/\s*\{#[^}]+\}\s*$/, "").trim();
+    headings.push({
+      level: m[1].length,
+      text,
+      id: explicit ? explicit[1] : headingSlug(text),
+    });
+  }
+  return headings;
+}
+
+// 拆页目录的 sidebar 直接从各页标题生成：H1 是分组名，`##` 是一级条目、`###` 是它的
+// 子条目。生成而不是手写，是因为 scripts/check-sidebar-anchors.mjs 要求每个 `##`/`###`
+// 都能从 sidebar 点到——清单一旦落后于正文，这个检查就会红。
+function docSidebar(doc) {
+  return splitDocPages(doc).map(({ slug, link, file }) => {
+    const headings = readHeadings(file);
+    const title = headings.find((h) => h.level === 1)?.text ?? slug;
+    const items = [];
+    for (const heading of headings) {
+      if (heading.level === 1) continue;
+      const entry = { text: heading.text, link: `${link}#${heading.id}` };
+      if (heading.level === 3 && items.length > 0 && items.at(-1).items) {
+        items.at(-1).items.push(entry);
+      } else if (heading.level === 2) {
+        items.push({ ...entry, items: [] });
+      } else {
+        items.push(entry);
+      }
+    }
+    // 没有子标题的 `##` 不必做成可折叠分组；页内没有 `##` 的页面（Artifact / Exec
+    // 的正文就是参数表）直接链到页面本身。
+    const normalized = items.map((item) =>
+      item.items?.length
+        ? { ...item, collapsed: true }
+        : { text: item.text, link: item.link },
+    );
+    return {
+      text: title,
+      collapsed: false,
+      items: normalized.length > 0 ? normalized : [{ text: "概览", link }],
+    };
+  });
+}
+
+const docsSidebar = Object.fromEntries(
+  SPLIT_DOCS.map((doc) => [doc.link, docSidebar(doc)]),
+);
+
+// llms.txt 里每个拆页目录给自己一节，否则这些页只会落进 `### Other`。
+//
+// 注意是**平级的一节**，不是塞进「文档」组里的嵌套 items：插件处理嵌套分组时用
+// `item.base ?? sectionBase ?? base` 取 base，而 sectionBase 是空串（`??` 不会跳过它），
+// 站点 base 因此在嵌套分组里被吃掉——第一版就是这么把 SDK 链接写成没有
+// `/wave-agent/` 前缀的 `/sdk/...` 的。
+const llmsDocSections = SPLIT_DOCS.map((doc) => ({
+  text: nav.find(({ link }) => link === doc.link)?.text ?? doc.link,
+  items: splitDocPages(doc).map(({ slug, link }) => ({
+    // 条目文案由插件从各页 frontmatter `title` 取，这里只给链接；索引页要写成目录名
+    // （`/sdk` 而不是 `/sdk/`），否则插件归一后的路径匹配不上，那一页会掉进 `### Other`。
+    text: slug,
+    link: link.replace(/\/$/, ""),
+  })),
+}));
+
 // llms.txt 的目录按这份「章节 → 页面」列表生成：插件只认 sidebar 形状的数据，
-// 与 themeConfig.sidebar 是两回事。前一组就是站点导航顺序，后面接功能清单的各分组。
+// 与 themeConfig.sidebar 是两回事。第一组是单页的站点导航顺序，后面接各拆页目录
+// 与功能清单的分组。
 const llmsSidebar = [
   {
     text: "文档",
-    items: nav.map(({ text, link }) => ({
-      text,
-      // 导航里写的是 `/specs/`；插件把 `specs/index.md` 归一成目录名 `/specs` 再比对，
-      // 写成带斜杠的目录就匹配不上，那一页会掉进 `### Other`。
-      link: link === "/specs/" ? "/specs" : link,
-    })),
+    items: nav
+      .filter(({ link }) => !SPLIT_DOCS.some((doc) => doc.link === link))
+      .map(({ text, link }) => ({
+        text,
+        // 导航里写的是 `/specs/`；插件把 `specs/index.md` 归一成目录名 `/specs` 再比对，
+        // 写成带斜杠的目录就匹配不上，那一页会掉进 `### Other`。
+        link: link === "/specs/" ? "/specs" : link,
+      })),
   },
+  ...llmsDocSections,
   ...specsSidebar,
 ];
 
 export default {
-  // GitHub Pages（pages.yml）把站点挂在 `/wave-agent/` 下，运维平台的文档包挂在
-  // `/docs/` 下（scripts/pack-docs.mjs 传 DOCS_BASE）。base 必须只有这一个来源：
-  // vitepress-plugin-llms 拼 llms.txt / llms-full.txt 里的链接时取的是这里，而不是
-  // CLI 的 `--base`，两边不同源就会出现「HTML 资源指 /docs/、llms.txt 链接指
-  // /wave-agent/」的分裂。
-  base: process.env.DOCS_BASE || "/wave-agent/",
+  // base 必须只有这一个来源：vitepress-plugin-llms 拼 llms.txt / llms-full.txt 里的链接
+  // 时取的是这里，而不是 CLI 的 `--base`，两边不同源就会出现「HTML 资源指 /docs/、
+  // llms.txt 链接指 /wave-agent/」的分裂。
+  base: siteBase,
   title: "CodeWave IDE",
   description: "AI 辅助编程工具链 — SDK、CLI、VS Code 扩展与 JetBrains 插件",
   // rollup 给虚拟模块生成的 chunk 名带 `@` 前缀（vite 本地搜索索引即
@@ -102,159 +271,6 @@ export default {
           ],
         },
       ],
-      "/tutorials": [
-        {
-          text: "一、研发场景实用工具推荐",
-          link: "/tutorials#一、研发场景实用工具推荐",
-          collapsed: false,
-          items: [
-            { text: "需求与规划", link: "/tutorials#_1-需求与规划" },
-            { text: "编码实现", link: "/tutorials#_2-编码实现" },
-            { text: "代码质量与提交", link: "/tutorials#_3-代码质量与提交" },
-            { text: "测试与调试", link: "/tutorials#_4-测试与调试" },
-            { text: "文档与知识沉淀", link: "/tutorials#_5-文档与知识沉淀" },
-            { text: "调研与日常效率", link: "/tutorials#_6-调研与日常效率" },
-          ],
-        },
-        {
-          text: "二、将 Figma 设计稿转化为前端代码",
-          link: "/tutorials#二、将-figma-设计稿转化为前端代码",
-          collapsed: false,
-          items: [
-            {
-              text: "准备：获取 Figma Access Token",
-              link: "/tutorials#_1-准备-获取-figma-access-token",
-            },
-            {
-              text: "在 CodeWave IDE 中添加 Figma MCP 服务器",
-              link: "/tutorials#_2-在-codewave-ide-中添加-figma-mcp-服务器",
-            },
-            {
-              text: "对话中粘贴设计稿链接，提出需求",
-              link: "/tutorials#_3-对话中粘贴设计稿链接-提出需求",
-            },
-            { text: "预览与迭代", link: "/tutorials#_4-预览与迭代" },
-            { text: "常见问题", link: "/tutorials#常见问题" },
-          ],
-        },
-        {
-          text: "三、SDD开发案例",
-          link: "/tutorials#三、sdd开发案例",
-          collapsed: false,
-          items: [
-            { text: "启用 SDD 插件", link: "/tutorials#_1-启用-sdd-插件" },
-            {
-              text: "规格驱动开发工作流",
-              link: "/tutorials#_2-规格驱动开发工作流",
-            },
-          ],
-        },
-        {
-          text: "四、实现网页自动化测试",
-          link: "/tutorials#四、实现网页自动化测试",
-          collapsed: false,
-          items: [
-            {
-              text: "安装 Playwright CLI",
-              link: "/tutorials#_1-安装-playwright-cli",
-            },
-            {
-              text: "对话驱动自动化测试",
-              link: "/tutorials#_2-对话驱动自动化测试",
-            },
-            { text: "常用测试指令", link: "/tutorials#_3-常用测试指令" },
-            { text: "测试报告与回归", link: "/tutorials#_4-测试报告与回归" },
-          ],
-        },
-        {
-          text: "五、云端编程：远程主机上的后台会话",
-          link: "/tutorials#cloud-programming",
-          collapsed: false,
-          items: [
-            { text: "连接远程主机", link: "/tutorials#cloud-connect" },
-            {
-              text: "关掉桌面端，任务继续跑",
-              link: "/tutorials#cloud-background",
-            },
-            { text: "边界", link: "/tutorials#cloud-limits" },
-          ],
-        },
-        {
-          text: "六、接入本地模型",
-          link: "/tutorials#local-model",
-        },
-        {
-          text: "七、研发知识库：团队知识如何进入 AI",
-          link: "/tutorials#knowledge-base",
-          collapsed: false,
-          items: [
-            {
-              text: "团队知识如何进入 AI 的工作上下文",
-              link: "/tutorials#knowledge-carriers",
-            },
-            {
-              text: "为什么是这个形态",
-              link: "/tutorials#knowledge-rationale",
-            },
-            {
-              text: "语料很大时：用 MCP 接知识平台",
-              link: "/tutorials#knowledge-large-corpus",
-            },
-          ],
-        },
-        {
-          text: "八、研发效能度量与治理",
-          link: "/tutorials#metrics-governance",
-          collapsed: false,
-          items: [
-            { text: "效能度量分三层看", link: "/tutorials#metrics-layers" },
-            {
-              text: "企业端「研发效能」页面",
-              link: "/tutorials#efficiency-board",
-            },
-            { text: "用量与成本", link: "/tutorials#usage-cost" },
-            { text: "遥测导出：三条通道", link: "/tutorials#telemetry-export" },
-            { text: "用量回调（SDK 集成）", link: "/tutorials#usage-callback" },
-            { text: "隐私与治理", link: "/tutorials#telemetry-privacy" },
-          ],
-        },
-        {
-          text: "九、代码安全",
-          link: "/tutorials#code-security",
-          collapsed: false,
-          items: [
-            {
-              text: "按触发时机分工的几层能力",
-              link: "/tutorials#code-security-layers",
-            },
-            { text: "怎么用", link: "/tutorials#code-security-setup" },
-            {
-              text: "用项目自己的规则扩展",
-              link: "/tutorials#code-security-custom-rules",
-            },
-            { text: "能力边界", link: "/tutorials#code-security-limits" },
-          ],
-        },
-        {
-          text: "十、自定义工作流：多 Agent 编排",
-          link: "/tutorials#custom-workflow",
-          collapsed: false,
-          items: [
-            {
-              text: "提示词里编排（deep-wiki）",
-              link: "/tutorials#custom-workflow-prompt",
-            },
-            {
-              text: "脚本里编排（工作流脚本）",
-              link: "/tutorials#custom-workflow-script",
-            },
-            {
-              text: "选哪种，以及怎么开始",
-              link: "/tutorials#custom-workflow-start",
-            },
-          ],
-        },
-      ],
       "/guide": [
         {
           text: "管控台使用说明",
@@ -273,53 +289,6 @@ export default {
             { text: "API 额度", link: "/guide#api-额度" },
             { text: "使用明细", link: "/guide#使用明细" },
             { text: "五、订单管理", link: "/guide#orders" },
-          ],
-        },
-      ],
-      "/vsce": [
-        {
-          text: "插件使用文档",
-          collapsed: false,
-          items: [
-            {
-              text: "快速入门",
-              link: "/vsce#快速入门",
-              collapsed: false,
-              items: [
-                { text: "VS Code 扩展", link: "/vsce#vs-code-扩展" },
-                { text: "JetBrains 插件", link: "/vsce#jetbrains-插件" },
-              ],
-            },
-            { text: "代码补全", link: "/vsce#代码补全" },
-            { text: "下一步编辑建议", link: "/vsce#下一步编辑建议" },
-            {
-              text: "画廊",
-              collapsed: false,
-              items: [
-                {
-                  text: "1. 核心聊天体验",
-                  link: "/vsce#_1-核心聊天体验",
-                },
-                {
-                  text: "2. 智能输入与上下文",
-                  link: "/vsce#_2-智能输入与上下文",
-                },
-                {
-                  text: "3. 代码理解与操作",
-                  link: "/vsce#_3-代码理解与操作",
-                },
-                { text: "4. 权限与安全", link: "/vsce#_4-权限与安全" },
-                { text: "5. 任务管理", link: "/vsce#_5-任务管理" },
-                {
-                  text: "6. 多 Agents 与并发",
-                  link: "/vsce#_6-多-agents-与并发",
-                },
-                { text: "7. 能力扩展", link: "/vsce#_7-能力扩展" },
-                { text: "8. 会话与持久化", link: "/vsce#_8-会话与持久化" },
-                { text: "9. 配置管理", link: "/vsce#_9-配置管理" },
-                { text: "10. 插件系统", link: "/vsce#_10-插件系统" },
-              ],
-            },
           ],
         },
       ],
@@ -352,375 +321,7 @@ export default {
           ],
         },
       ],
-      "/desktop": [
-        {
-          text: "1. 快速开始",
-          collapsed: false,
-          items: [
-            {
-              text: "1.1 安装 CodeWave IDE 桌面端",
-              link: "/desktop#_1-1-安装-codewave-ide-桌面端",
-            },
-            { text: "1.2 打开项目", link: "/desktop#_1-2-打开项目" },
-            { text: "1.3 智能输入", link: "/desktop#_1-3-智能输入" },
-            { text: "1.4 面板介绍", link: "/desktop#_1-4-面板介绍" },
-          ],
-        },
-        {
-          text: "2. Agent核心",
-          collapsed: false,
-          items: [
-            { text: "2.1 对话", link: "/desktop#_2-1-对话" },
-            { text: "2.2 模型", link: "/desktop#_2-2-模型" },
-            { text: "2.3 上下文", link: "/desktop#_2-3-上下文" },
-            {
-              text: "2.4 代码理解与操作",
-              link: "/desktop#_2-4-代码理解与操作",
-            },
-            { text: "2.5 权限与安全", link: "/desktop#_2-5-权限与安全" },
-            { text: "2.6 任务管理", link: "/desktop#_2-6-任务管理" },
-            { text: "2.7 多Agent与并发", link: "/desktop#_2-7-多agent与并发" },
-            { text: "2.8 SubAgent", link: "/desktop#_2-8-subagent" },
-            { text: "2.9 技能", link: "/desktop#_2-9-技能" },
-            { text: "2.10 记忆", link: "/desktop#_2-10-记忆" },
-            {
-              text: "2.11 工作流（WorkFlow）",
-              link: "/desktop#_2-11-工作流-workflow",
-            },
-          ],
-        },
-        {
-          text: "3. 自动化",
-          collapsed: false,
-          items: [
-            { text: "3.1 钩子（Hooks）", link: "/desktop#_3-1-钩子-hooks" },
-            {
-              text: "3.2 定时循环任务（loop）",
-              link: "/desktop#_3-2-定时循环任务-loop",
-            },
-          ],
-        },
-        {
-          text: "4. 编程辅助",
-          collapsed: false,
-          items: [
-            { text: "4.1 SDD", link: "/desktop#_4-1-sdd" },
-            {
-              text: "4.2 Localhost原型预览与元素评论",
-              link: "/desktop#_4-2-localhost原型预览与元素评论",
-            },
-            {
-              text: "4.3 Artifacts产物分享",
-              link: "/desktop#_4-3-artifacts产物分享",
-            },
-          ],
-        },
-        {
-          text: "5. 扩展",
-          collapsed: false,
-          items: [
-            { text: "5.1 MCP", link: "/desktop#_5-1-mcp" },
-            { text: "5.2 插件", link: "/desktop#_5-2-插件" },
-          ],
-        },
-        {
-          text: "6. 设置",
-          collapsed: false,
-          items: [
-            {
-              text: "6.1 账户卡片与设置入口",
-              link: "/desktop#_6-1-账户卡片与设置入口",
-            },
-            { text: "6.2 全局设置", link: "/desktop#_6-2-全局设置" },
-            { text: "6.3 个性化", link: "/desktop#_6-3-个性化" },
-            { text: "6.4 项目设置", link: "/desktop#_6-4-项目设置" },
-            {
-              text: "6.5 技能、子代理、钩子与 MCP 服务",
-              link: "/desktop#_6-5-技能-子代理-钩子与-mcp-服务",
-            },
-            { text: "6.6 更新", link: "/desktop#_6-6-更新" },
-          ],
-        },
-      ],
-      "/cli": [
-        {
-          text: "1. 安装与启动",
-          collapsed: false,
-          items: [
-            { text: "1.1 安装", link: "/cli#install" },
-            { text: "1.2 运行模式", link: "/cli#run-modes" },
-          ],
-        },
-        {
-          text: "2. 命令行选项",
-          collapsed: false,
-          items: [
-            { text: "2.1 会话控制", link: "/cli#session-options" },
-            { text: "2.2 模型与工具", link: "/cli#model-tool-options" },
-            { text: "2.3 权限与安全", link: "/cli#permission-options" },
-            { text: "2.4 工作目录", link: "/cli#worktree-options" },
-            { text: "2.5 其他", link: "/cli#misc-options" },
-          ],
-        },
-        {
-          text: "3. 子命令",
-          collapsed: false,
-          items: [
-            { text: "3.1 插件管理", link: "/cli#plugin-commands" },
-            { text: "3.2 更新", link: "/cli#update-command" },
-            { text: "3.3 Daemon 客户端命令", link: "/cli#daemon-commands" },
-          ],
-        },
-        {
-          text: "4. 斜杠命令",
-          collapsed: false,
-          items: [{ text: "命令列表", link: "/cli#slash-commands" }],
-        },
-        {
-          text: "5. 键盘快捷键",
-          collapsed: false,
-          items: [
-            { text: "5.1 输入与导航", link: "/cli#input-navigation" },
-            { text: "5.2 视图控制", link: "/cli#view-control" },
-            { text: "5.3 权限与确认", link: "/cli#permission-control" },
-          ],
-        },
-        {
-          text: "6. 权限模式",
-          collapsed: false,
-          items: [{ text: "模式说明", link: "/cli#permission-modes" }],
-        },
-        {
-          text: "7. 特色功能",
-          collapsed: false,
-          items: [
-            { text: "7.1 Bash 模式", link: "/cli#bash-mode" },
-            { text: "7.2 BTW 旁路提问", link: "/cli#btw" },
-            { text: "7.3 Git Worktree", link: "/cli#worktree" },
-            { text: "7.4 Compact 压缩", link: "/cli#compact" },
-            { text: "7.5 Rewind 回滚", link: "/cli#rewind" },
-            { text: "7.6 图片粘贴", link: "/cli#image-paste" },
-            { text: "7.7 MCP 集成", link: "/cli#mcp" },
-            { text: "7.8 插件系统", link: "/cli#plugin" },
-            { text: "7.9 Workflow 工作流", link: "/cli#workflow" },
-            { text: "7.10 后台任务", link: "/cli#background-tasks" },
-            { text: "7.11 SSO 认证", link: "/cli#sso" },
-            { text: "7.12 会话管理", link: "/cli#session-management" },
-            {
-              text: "7.13 附加工作目录",
-              link: "/cli#additional-working-directories",
-            },
-            { text: "7.14 Token 用量统计", link: "/cli#token-stats" },
-            { text: "7.15 会话内热切换", link: "/cli#resume" },
-            { text: "7.16 会话重命名", link: "/cli#rename" },
-          ],
-        },
-        {
-          text: "8. 环境变量",
-          collapsed: true,
-          items: [{ text: "配置列表", link: "/cli#environment-variables" }],
-        },
-      ],
-      "/sdk": [
-        {
-          text: "1. 快速开始",
-          collapsed: false,
-          items: [
-            { text: "安装", link: "/sdk#install" },
-            { text: "核心能力", link: "/sdk#capabilities" },
-            { text: "基本用法", link: "/sdk#basic-usage" },
-          ],
-        },
-        {
-          text: "2. Agent 生命周期",
-          collapsed: false,
-          items: [
-            { text: "创建 Agent", link: "/sdk#agent-create" },
-            { text: "配置选项", link: "/sdk#agent-options" },
-            { text: "Agent 属性", link: "/sdk#agent-properties" },
-            { text: "Agent 常用方法", link: "/sdk#agent-methods" },
-            { text: "销毁 Agent", link: "/sdk#agent-destroy" },
-          ],
-        },
-        {
-          text: "3. 消息处理",
-          collapsed: false,
-          items: [
-            { text: "发送消息", link: "/sdk#send-message" },
-            { text: "消息队列", link: "/sdk#message-queue" },
-            { text: "消息类型", link: "/sdk#message-types" },
-            { text: "流式输出", link: "/sdk#streaming" },
-          ],
-        },
-        {
-          text: "4. 回调系统",
-          collapsed: false,
-          items: [
-            {
-              text: "AgentCallbacks 接口",
-              link: "/sdk#agent-callbacks-interface",
-            },
-            { text: "消息回调", link: "/sdk#callbacks-messaging" },
-            { text: "后台任务回调", link: "/sdk#callbacks-background" },
-            { text: "子代理回调", link: "/sdk#callbacks-subagent" },
-            { text: "MCP 回调", link: "/sdk#callbacks-mcp" },
-            { text: "UI 状态回调", link: "/sdk#callbacks-ui" },
-          ],
-        },
-        {
-          text: "5. 工具系统",
-          collapsed: false,
-          items: [
-            { text: "内置工具", link: "/sdk#builtin-tools" },
-            { text: "工具详情", link: "/sdk#tool-details" },
-            { text: "自定义工具", link: "/sdk#custom-tools" },
-            { text: "权限管理", link: "/sdk#permissions" },
-            { text: "工具名常量", link: "/sdk#tool-name-constants" },
-          ],
-        },
-        {
-          text: "6. 会话管理",
-          collapsed: false,
-          items: [
-            { text: "创建会话", link: "/sdk#session-create" },
-            { text: "恢复会话", link: "/sdk#session-restore" },
-            { text: "会话 API", link: "/sdk#session-api" },
-            { text: "会话历史操作", link: "/sdk#session-history" },
-            { text: "文件存储", link: "/sdk#session-storage" },
-          ],
-        },
-        {
-          text: "7. 插件系统",
-          collapsed: false,
-          items: [
-            { text: "插件配置", link: "/sdk#plugin-config" },
-            { text: "插件管理", link: "/sdk#plugin-management" },
-            { text: "Marketplace 集成", link: "/sdk#marketplace" },
-          ],
-        },
-        {
-          text: "8. MCP 集成",
-          collapsed: false,
-          items: [
-            { text: "配置方式", link: "/sdk#mcp-config" },
-            { text: "管理 API", link: "/sdk#mcp-api" },
-            { text: "状态回调", link: "/sdk#mcp-callbacks" },
-          ],
-        },
-        {
-          text: "9. 记忆系统",
-          collapsed: true,
-          items: [
-            { text: "AGENTS.md", link: "/sdk#agents-md" },
-            { text: "自动记忆", link: "/sdk#auto-memory" },
-            { text: "记忆规则", link: "/sdk#memory-rules" },
-            { text: "记忆 API", link: "/sdk#memory-api" },
-            { text: "消息压缩", link: "/sdk#compact" },
-          ],
-        },
-        {
-          text: "10. 后台任务与工作流",
-          collapsed: false,
-          items: [
-            { text: "后台任务", link: "/sdk#background-task-management" },
-            { text: "后台任务完成通知", link: "/sdk#task-notification" },
-            { text: "前台任务", link: "/sdk#foreground-tasks" },
-            { text: "任务状态回调", link: "/sdk#task-callbacks" },
-            { text: "工作流", link: "/sdk#workflow-management" },
-          ],
-        },
-        {
-          text: "11. 其他功能",
-          collapsed: true,
-          items: [
-            { text: "斜杠命令", link: "/sdk#slash-commands" },
-            { text: "Bash 模式命令", link: "/sdk#bash-mode" },
-            { text: "SSO 认证", link: "/sdk#sso" },
-            { text: "提示历史", link: "/sdk#prompt-history" },
-            { text: "Git 工具", link: "/sdk#git-utils" },
-            { text: "文件搜索", link: "/sdk#file-search" },
-            { text: "计划模式", link: "/sdk#plan-mode" },
-            { text: "Worktree 管理", link: "/sdk#worktree" },
-          ],
-        },
-        {
-          text: "12. 内置 Skills",
-          collapsed: false,
-          items: [
-            { text: "settings — 配置管理", link: "/sdk#skill-settings" },
-            { text: "init — 代码库初始化", link: "/sdk#skill-init" },
-            { text: "loop — 定时循环任务", link: "/sdk#skill-loop" },
-            { text: "simplify — 代码简化与清理", link: "/sdk#skill-simplify" },
-            { text: "code-review — 代码审查", link: "/sdk#skill-code-review" },
-            { text: "artifact — 发布可分享网页", link: "/sdk#skill-artifact" },
-            {
-              text: "wave-daemon — 后台会话委托",
-              link: "/sdk#skill-wave-daemon",
-            },
-            {
-              text: "workflow-authoring — 工作流脚本编写参考",
-              link: "/sdk#skill-workflow-authoring",
-            },
-          ],
-        },
-        {
-          text: "13. 内置 Subagents",
-          collapsed: false,
-          items: [
-            { text: "Explore — 代码库探索", link: "/sdk#subagent-explore" },
-            { text: "Plan — 软件架构师", link: "/sdk#subagent-plan" },
-            { text: "通用代理", link: "/sdk#subagent-general-purpose" },
-            { text: "Vision — 图像识别", link: "/sdk#subagent-vision" },
-          ],
-        },
-        {
-          text: "14. Settings Skill",
-          collapsed: true,
-          items: [
-            { text: "settings.json 配置中心", link: "/sdk#settings-json" },
-            { text: "钩子 (Hooks)", link: "/sdk#settings-hooks" },
-            { text: "环境变量", link: "/sdk#settings-env" },
-            { text: "工具权限", link: "/sdk#settings-permissions" },
-            { text: "模型配置", link: "/sdk#settings-models" },
-            { text: "模型能力配置", link: "/sdk#settings-capabilities" },
-            { text: "MCP 协议", link: "/sdk#settings-mcp" },
-            { text: "记忆规则", link: "/sdk#settings-memory" },
-            { text: "自定义 Skill", link: "/sdk#settings-skills" },
-            { text: "子代理", link: "/sdk#settings-subagents" },
-            { text: "插件配置", link: "/sdk#settings-plugins" },
-            { text: "其他设置", link: "/sdk#settings-other" },
-          ],
-        },
-        {
-          text: "15. 官方插件市场",
-          collapsed: true,
-          items: [
-            { text: "document-skills", link: "/sdk#plugin-document-skills" },
-            { text: "typescript-lsp", link: "/sdk#plugin-typescript-lsp" },
-            { text: "chrome-devtools", link: "/sdk#plugin-chrome-devtools" },
-            { text: "code2spec", link: "/sdk#plugin-code2spec" },
-            { text: "code2cwspec", link: "/sdk#plugin-code2cwspec" },
-            { text: "commit-skills", link: "/sdk#plugin-commit-skills" },
-            { text: "deep-wiki", link: "/sdk#plugin-deep-wiki" },
-            { text: "tavily-search", link: "/sdk#plugin-tavily-search" },
-            { text: "frontend-design", link: "/sdk#plugin-frontend-design" },
-          ],
-        },
-        {
-          text: "16. OpenTelemetry 遥测",
-          collapsed: true,
-          items: [
-            { text: "内置上报", link: "/sdk#otel-first-party" },
-            { text: "导出器", link: "/sdk#otel-exporters" },
-            { text: "出站头", link: "/sdk#otel-headers" },
-            { text: "指标", link: "/sdk#otel-metrics" },
-            { text: "归属属性", link: "/sdk#otel-attributes" },
-            { text: "事件日志", link: "/sdk#otel-events" },
-            { text: "PII 保护", link: "/sdk#otel-privacy" },
-            { text: "可靠性保障", link: "/sdk#otel-reliability" },
-          ],
-        },
-      ],
+      ...docsSidebar,
     },
   },
   head: [["link", { rel: "icon", href: "LOGO.png" }]],
