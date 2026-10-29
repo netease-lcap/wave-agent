@@ -557,31 +557,6 @@ describe("webFetchTool - content truncation", () => {
     };
   });
 
-  it("should truncate markdown content exceeding MAX_MARKDOWN_LENGTH", async () => {
-    const longHtml = "<html><body>" + "a".repeat(110000) + "</body></html>";
-    const mockResponse = {
-      ok: true,
-      status: 200,
-      statusText: "OK",
-      text: vi.fn().mockResolvedValue(longHtml),
-      headers: new Headers(),
-    };
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockResponse));
-
-    await webFetchTool.execute(
-      { url: "https://truncation-test.example.com", prompt: "Summarize" },
-      context,
-    );
-
-    expect(context.aiService!.processWebContent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        content: expect.stringContaining(
-          "[Content truncated at 100000 characters",
-        ),
-      }),
-    );
-  });
-
   it("should keep script and style text out of the content sent to the model", async () => {
     const html =
       "<html><head><style>.x{color:red}</style></head><body>" +
@@ -771,5 +746,180 @@ describe("webFetchTool - non-HTML responses", () => {
 
     expect(sentContent()).toContain("Hello World");
     expect(sentContent()).not.toContain("<h1>");
+  });
+});
+
+describe("webFetchTool - long content read in intervals", () => {
+  let context: ToolContext;
+
+  /** A page is served as plain text so the interval boundaries are exact. */
+  function stubPage(body: string) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        text: vi.fn().mockResolvedValue(body),
+        headers: new Headers({ "content-type": "text/plain; charset=utf-8" }),
+      }),
+    );
+  }
+
+  function call(index: number): string {
+    return vi.mocked(context.aiService!.processWebContent).mock.calls[index][0]
+      .content;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    context = {
+      workdir: "/test/workdir",
+      taskManager: createMockTaskManager(),
+      aiManager: {
+        getModelConfig: vi.fn().mockReturnValue({
+          model: "gpt-4",
+          fastModel: "gpt-3.5-turbo",
+        }),
+        getGatewayConfig: vi.fn().mockReturnValue({
+          apiKey: "test-key",
+          baseURL: "https://api.openai.com/v1",
+        }),
+      } as unknown as ToolContext["aiManager"],
+      aiService: {
+        processWebContent: vi
+          .fn()
+          .mockResolvedValueOnce({ content: "Answer about the interval." })
+          .mockResolvedValueOnce({ content: "The overflow says X." }),
+      } as unknown as ToolContext["aiService"],
+    };
+  });
+
+  it("should answer from one interval and summarize the overflow", async () => {
+    stubPage("A".repeat(100_000) + "B".repeat(50_000));
+
+    const result = await webFetchTool.execute(
+      { url: "https://long-page.example.com", prompt: "Summarize" },
+      context,
+    );
+
+    const calls = vi.mocked(context.aiService!.processWebContent).mock.calls;
+    expect(calls).toHaveLength(2);
+    expect(call(0)).toHaveLength(100_000);
+    expect(call(0)).not.toContain("B");
+    expect(call(1)).toBe("B".repeat(50_000));
+
+    expect(result.success).toBe(true);
+    // Which characters the answer covers… and which it does not.
+    expect(result.content).toContain("characters 0–100000 of 150000");
+    expect(result.content).toContain("Answer about the interval.");
+    expect(result.content).toContain(
+      "Summary of characters 100000–150000 (not read verbatim)",
+    );
+    expect(result.content).toContain("The overflow says X.");
+    expect(result.content).toContain("offset: 100000");
+  });
+
+  it("should not scale the number of model calls with page length", async () => {
+    stubPage("x".repeat(240_000));
+
+    await webFetchTool.execute(
+      { url: "https://very-long-page.example.com", prompt: "Summarize" },
+      context,
+    );
+
+    expect(context.aiService!.processWebContent).toHaveBeenCalledTimes(2);
+    // Only one interval was previewed; the rest is reported as unread.
+    expect(call(1)).toHaveLength(100_000);
+  });
+
+  it("should start reading from the requested offset", async () => {
+    stubPage("A".repeat(100_000) + "B".repeat(100_000) + "C".repeat(40_000));
+
+    const result = await webFetchTool.execute(
+      {
+        url: "https://offset-page.example.com",
+        prompt: "Summarize",
+        offset: 100_000,
+      },
+      context,
+    );
+
+    expect(call(0)).toBe("B".repeat(100_000));
+    expect(result.content).toContain("characters 100000–200000 of 240000");
+    expect(result.content).toContain("offset: 200000");
+  });
+
+  it("should report a past-the-end offset without calling the model", async () => {
+    stubPage("short page");
+
+    const result = await webFetchTool.execute(
+      {
+        url: "https://past-end-page.example.com",
+        prompt: "Summarize",
+        offset: 500,
+      },
+      context,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("No content after offset 500");
+    expect(result.content).toContain("10 characters long");
+    expect(context.aiService!.processWebContent).not.toHaveBeenCalled();
+  });
+
+  it("should leave a page that fits in one interval untouched", async () => {
+    stubPage("short page");
+
+    const result = await webFetchTool.execute(
+      { url: "https://short-page.example.com", prompt: "Summarize" },
+      context,
+    );
+
+    expect(context.aiService!.processWebContent).toHaveBeenCalledTimes(1);
+    expect(call(0)).toBe("short page");
+    // No coverage banner, no summary block, no continuation hint.
+    expect(result.content).toBe("Answer about the interval.");
+  });
+
+  it("should say the overflow went unread when its summary fails", async () => {
+    vi.mocked(context.aiService!.processWebContent).mockReset();
+    vi.mocked(context.aiService!.processWebContent)
+      .mockResolvedValueOnce({ content: "Answer about the interval." })
+      .mockRejectedValueOnce(new Error("model unavailable"));
+    stubPage("A".repeat(120_000));
+
+    const result = await webFetchTool.execute(
+      { url: "https://failed-summary.example.com", prompt: "Summarize" },
+      context,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("Answer about the interval.");
+    expect(result.content).toContain("Characters 100000–120000 were not read");
+    expect(result.content).toContain("20000 characters went unread");
+    expect(result.content).toContain("offset: 100000");
+  });
+
+  it("should serve an offset read from the cache without fetching again", async () => {
+    stubPage("A".repeat(100_000) + "B".repeat(50_000));
+    const url = "https://cached-offset-page.example.com";
+
+    await webFetchTool.execute({ url, prompt: "Summarize" }, context);
+    vi.mocked(global.fetch).mockClear();
+    vi.mocked(context.aiService!.processWebContent).mockClear();
+    vi.mocked(context.aiService!.processWebContent).mockResolvedValueOnce({
+      content: "Answer about the tail.",
+    });
+
+    const result = await webFetchTool.execute(
+      { url, prompt: "Summarize", offset: 100_000 },
+      context,
+    );
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(call(0)).toBe("B".repeat(50_000));
+    expect(result.content).toContain("Answer about the tail.");
   });
 });
