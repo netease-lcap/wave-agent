@@ -2298,13 +2298,27 @@
     var(--vscode-button-background)
   );
 }
+/* 选中态改蓝（1029 第十四轮，设计师三条评论）：
+   - `button.preview-pane-button.active`「这里的选中状态改为蓝色，背景是浅蓝」
+   - `span.write-tool-path`「色值参考这里」⇒ 蓝字直接绑同一个 token
+     `--cc-text-link`（Figma 链接蓝：浅 #2F5EDB / 深 #4DAAFC，与 `.write-tool-path`
+     的 color 逐值相同；写死会在换主题时漂）
+   - `button.desktop-sidebar-more-btn`「背景的实现参考这里」⇒ 抄它的做法：
+     浅色实底淡色块、深色同色 18% 半透明（DesktopApp.css:159/166 的品牌红版）
+   改前：浅 #E7E9ED 底 + #1F2329 字（= `--cc-fill-pressed` 灰选中）；
+        深 rgba(255,255,255,.12) 白 12% 底 + #FFF 字。
+   只动这两条：按钮 24×24 / 圆角 8 / 图标盒 16 / hover 态（灰）不动。 */
 [data-host="desktop"][data-theme="light"] .preview-pane-button.active {
-  background: #e7e9ed;
-  color: #1f2329;
+  background: color-mix(in srgb, var(--cc-text-link, #2f5edb) 10%, #fff);
+  color: var(--cc-text-link, #2f5edb);
 }
 [data-host="desktop"][data-theme="dark"] .preview-pane-button.active {
-  background: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
+  background: color-mix(
+    in srgb,
+    var(--cc-text-link, #4daafc) 18%,
+    transparent
+  );
+  color: var(--cc-text-link, #4daafc);
 }
 
 /* ═══ 第十九轮：侧边栏收起态 header leading（对齐原型 WorkspaceHeader）═══
