@@ -501,6 +501,8 @@ describe("chatReducer", () => {
       expect(newBlock.name).toBe("Bash");
       expect(newBlock.stage).toBe("start");
       expect(newBlock.parameters).toBe('{"command":"ls"}');
+      // A `start` frame carries no verdict: the block must not claim failure.
+      expect(newBlock.success).toBeUndefined();
     });
 
     it("should add tool block alongside existing blocks", () => {

@@ -499,7 +499,9 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           name: rest.name || "",
           stage: rest.stage || "start",
           result: rest.result || "",
-          success: rest.success ?? false,
+          // `success` stays absent until the `end` frame supplies it: the `start`
+          // frame carries no verdict, and defaulting it to `false` made a brand-new
+          // block look failed (red dot) instead of in-progress.
           ...rest,
           parameters: (rest.parameters || "") + (parametersChunk || ""),
         };
