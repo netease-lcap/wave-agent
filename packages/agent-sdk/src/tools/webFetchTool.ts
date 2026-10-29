@@ -20,7 +20,18 @@ import { persistToolResultBuffer } from "../utils/toolResultStorage.js";
 const MAX_HTTP_CONTENT_LENGTH = 10 * 1024 * 1024; // 10MB
 const FETCH_TIMEOUT_MS = 60_000; // 60s
 const MAX_REDIRECTS = 10;
-const MAX_MARKDOWN_LENGTH = 100_000;
+
+/**
+ * Characters handed to the answering model in one call. A longer page is not
+ * silently cut: the call reads this interval verbatim, previews what follows
+ * with a second (summarizing) call, and reports the `offset` needed to continue
+ * where it stopped. Claude Code caps its WebFetch helper at the same 100,000.
+ */
+const MAX_VERBATIM_CHARS = 100_000;
+
+/** Ceiling on the summary of the part that did not fit the verbatim interval. */
+const OVERFLOW_SUMMARY_MAX_CHARS = 8_000;
+
 const USER_AGENT = "Wave-User (+https://github.com/netease-lcap/wave-agent)";
 
 // --- Cache (LRU with 15min TTL, 50MB max) ---
@@ -31,6 +42,8 @@ interface CacheEntry {
   bytes: number;
   code: number;
   codeText: string;
+  /** The page's whole readable text, not one interval of it — an `offset` read
+   * must be servable from the cache without downloading the page again. */
   content: string;
   contentType: string;
   /** Set for binary fetches: the file the bytes were written to. */
@@ -160,6 +173,202 @@ function savedBinaryMessage({
     : `Fetched ${contentType}, ${size} of binary content, but it could not be saved to a file.`;
 }
 
+/**
+ * One verbatim interval of a page, plus what is left over after it. The
+ * answering model only ever sees `body`; `remainingChars` is what the caller has
+ * not covered and needs another call (with `endOffset`) to reach.
+ */
+interface WebContentChunk {
+  /** Verbatim interval handed to the answering model. */
+  body: string;
+  /** Absolute offset just past `body` — also the `offset` of the next read. */
+  endOffset: number;
+  /** Characters from `endOffset` to the end of the page. */
+  remainingChars: number;
+}
+
+function buildWebContentChunk(
+  content: string,
+  offset: number,
+): WebContentChunk {
+  const body = content.slice(offset, offset + MAX_VERBATIM_CHARS);
+  const endOffset = offset + body.length;
+  return {
+    body,
+    endOffset,
+    remainingChars: Math.max(0, content.length - endOffset),
+  };
+}
+
+/** Tolerate a string or a negative offset; anything unusable means "from the start". */
+function normalizeOffset(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+}
+
+function pastEndMessage(offset: number, totalChars: number): string {
+  if (totalChars === 0) {
+    return "The page has no readable text, so there is nothing to read.";
+  }
+  return `No content after offset ${offset}: the page's readable text is ${totalChars} characters long, so offsets 0–${
+    totalChars - 1
+  } are the ones that read anything. Use offset 0 to read from the start.`;
+}
+
+/**
+ * Summarize the part that did not fit the verbatim interval, so one call still
+ * covers the whole page cheaply. The same prompt is applied to the overflow —
+ * Claude Code's helper does the same — and the text goes through the same
+ * untrusted-content fence, because it lands in the conversation as well.
+ * Returns undefined on any failure: the caller then reports that the range was
+ * not read rather than pretending the answer covered the page.
+ */
+async function summarizeOverflow(
+  prompt: string,
+  overflow: string,
+  context: ToolContext,
+): Promise<string | undefined> {
+  if (!context.aiManager || !context.aiService) return undefined;
+
+  const modelConfig = context.aiManager.getModelConfig();
+  try {
+    const response = await context.aiService.processWebContent({
+      gatewayConfig: context.aiManager.getGatewayConfig(),
+      modelConfig,
+      content: overflow,
+      prompt,
+      model: modelConfig.fastModel,
+      abortSignal: context.abortSignal,
+    });
+    const summary = response.content?.trim();
+    if (!summary) return undefined;
+    return summary.length > OVERFLOW_SUMMARY_MAX_CHARS
+      ? `${summary.slice(0, OVERFLOW_SUMMARY_MAX_CHARS)}…`
+      : summary;
+  } catch (error) {
+    logger.error("WebFetch overflow summary failed:", error);
+    return undefined;
+  }
+}
+
+/**
+ * Compose the result for a read that does not cover the whole page. It has to
+ * be explicit about three things, because the model only sees this text: which
+ * characters the answer is based on, which characters it is not, and the
+ * `offset` that reaches the rest — otherwise a truncated page reads like a
+ * complete one.
+ */
+function composeChunkedResult({
+  url,
+  answer,
+  offset,
+  chunk,
+  totalChars,
+  previewedChars,
+  summary,
+}: {
+  url: string;
+  answer: string;
+  offset: number;
+  chunk: WebContentChunk;
+  totalChars: number;
+  previewedChars: number;
+  summary?: string;
+}): string {
+  const previewEnd = chunk.endOffset + previewedChars;
+  const parts = [
+    `Read characters ${offset}–${chunk.endOffset} of ${totalChars} from ${url}. The answer below is based on that verbatim range only.`,
+    answer,
+  ];
+
+  // Nothing left over (an offset read that landed exactly on the last
+  // interval): the banner already says which range was read, and there is
+  // nothing to preview or continue to.
+  if (chunk.remainingChars === 0) return parts.join("\n\n");
+
+  parts.push(
+    summary
+      ? `--- Summary of characters ${chunk.endOffset}–${previewEnd} (not read verbatim) ---\n\n${summary}`
+      : `--- Characters ${chunk.endOffset}–${previewEnd} were not read ---\n\nTheir summary could not be generated, so these ${previewedChars} characters went unread.`,
+  );
+
+  const unreadTail = chunk.remainingChars - previewedChars;
+  if (unreadTail > 0) {
+    parts.push(
+      `A further ${unreadTail} characters (from ${previewEnd} to ${totalChars}) were neither read nor summarized.`,
+    );
+  }
+
+  parts.push(
+    `This page is not fully covered. To read further, call WebFetch again with the same url and offset: ${chunk.endOffset}.`,
+  );
+
+  return parts.join("\n\n");
+}
+
+/**
+ * Answer `prompt` about `text`, reading at most one verbatim interval of it.
+ * A page that fits in one interval behaves exactly as it did before chunking
+ * existed: one model call and the model's answer, nothing appended.
+ */
+async function answerFromText({
+  url,
+  prompt,
+  text,
+  code,
+  codeText,
+  offset,
+  context,
+}: {
+  url: string;
+  prompt: string;
+  text: string;
+  code: number;
+  codeText: string;
+  offset: number;
+  context: ToolContext;
+}): Promise<ToolResult> {
+  const chunk = buildWebContentChunk(text, offset);
+  if (!chunk.body) {
+    return { success: true, content: pastEndMessage(offset, text.length) };
+  }
+
+  const answer = await processContentWithAI(
+    url,
+    prompt,
+    chunk.body,
+    code,
+    codeText,
+    context,
+    new TextEncoder().encode(text).length,
+  );
+  if (!answer.success) return answer;
+  if (offset === 0 && chunk.remainingChars === 0) return answer;
+
+  // The preview is capped at one interval too: a 10MB page must not turn into a
+  // second full-size model call.
+  const preview = text.slice(
+    chunk.endOffset,
+    chunk.endOffset + MAX_VERBATIM_CHARS,
+  );
+  const summary = preview
+    ? await summarizeOverflow(prompt, preview, context)
+    : undefined;
+
+  return {
+    ...answer,
+    content: composeChunkedResult({
+      url,
+      answer: answer.content,
+      offset,
+      chunk,
+      totalChars: text.length,
+      previewedChars: preview.length,
+      summary,
+    }),
+  };
+}
+
 // --- Tool ---
 
 export const webFetchTool: ToolPlugin = {
@@ -171,7 +380,7 @@ export const webFetchTool: ToolPlugin = {
 - The URL must be fully formed; HTTP is upgraded to HTTPS.
 - WILL FAIL for authenticated or private URLs (Google Docs, Confluence, Jira, GitHub) — look for an MCP tool that has authenticated access instead.
 - HTML is converted; markdown, JSON and plain text are passed through as-is; binary responses are saved to a file you can Read.
-- Content over ${formatSize(MAX_MARKDOWN_LENGTH)} is truncated, and very large results may be summarized.
+- Content over ${formatSize(MAX_VERBATIM_CHARS)} is read in intervals: the answer covers one interval verbatim, the next part is summarized, and the result reports the \`offset\` to continue from.
 - If the tool reports a redirect to another host, call it again with the redirect URL.`,
   config: {
     type: "function",
@@ -191,10 +400,9 @@ Usage notes:
   - IMPORTANT: If an MCP-provided web fetch tool is available, prefer using that tool instead of this one, as it may have fewer restrictions.
   - The URL must be a fully-formed valid URL
   - HTTP URLs will be automatically upgraded to HTTPS
-  - Content exceeding ${formatSize(MAX_MARKDOWN_LENGTH)} will be truncated
+  - Content exceeding ${formatSize(MAX_VERBATIM_CHARS)} is read in intervals; the result reports the \`offset\` to continue from
   - The prompt should describe what information you want to extract from the page
   - This tool is read-only and does not modify any files
-  - Results may be summarized if the content is very large
   - Includes an LRU cache with a 15-minute TTL for faster responses when repeatedly accessing the same URL
   - When a URL redirects to a different host, the tool will inform you and provide the redirect URL in a special format. You should then make a new WebFetch request with the redirect URL to fetch the content.
   - For GitHub URLs, prefer using the gh CLI via Bash instead (e.g., gh pr view, gh issue view, gh api).`,
@@ -210,6 +418,10 @@ Usage notes:
             type: "string",
             description: "The prompt to run on the fetched content",
           },
+          offset: {
+            type: "number",
+            description: `Character offset into the page's readable text to start reading from. Omit it for the first read. When the result says the page is not fully covered, it reports the offset to continue from — pass that value back to read the next part.`,
+          },
         },
         required: ["url", "prompt"],
         additionalProperties: false,
@@ -222,6 +434,7 @@ Usage notes:
   ): Promise<ToolResult> => {
     let url = args.url as string;
     const prompt = args.prompt as string;
+    const offset = normalizeOffset(args.offset);
 
     if (!url || !prompt) {
       return {
@@ -292,15 +505,15 @@ Usage notes:
           };
         }
 
-        const markdown = cached.content;
-        return processContentWithAI(
+        return answerFromText({
           url,
           prompt,
-          markdown,
-          cached.code,
-          cached.codeText,
+          text: cached.content,
+          code: cached.code,
+          codeText: cached.codeText,
+          offset,
           context,
-        );
+        });
       }
 
       // Fetch with redirect following
@@ -386,37 +599,29 @@ Usage notes:
 
       const body = await response.text();
 
-      let text = isHtmlResponse(contentType, body)
+      const text = isHtmlResponse(contentType, body)
         ? htmlToMarkdown(body)
         : body;
 
-      const textBytes = new TextEncoder().encode(text).length;
-
-      // Truncate if too large
-      if (text.length > MAX_MARKDOWN_LENGTH) {
-        text =
-          text.substring(0, MAX_MARKDOWN_LENGTH) +
-          `[Content truncated at ${MAX_MARKDOWN_LENGTH} characters due to length limit.]`;
-      }
-
-      // Store in LRU cache
+      // Store the whole readable text: chunking happens per read, so a cached
+      // page must still be able to answer an `offset` request.
       cache.set(finalUrl, {
-        bytes: textBytes,
+        bytes: new TextEncoder().encode(text).length,
         code: response.status,
         codeText: response.statusText,
         content: text,
         contentType,
       });
 
-      return processContentWithAI(
-        finalUrl,
+      return answerFromText({
+        url: finalUrl,
         prompt,
         text,
-        response.status,
-        response.statusText,
+        code: response.status,
+        codeText: response.statusText,
+        offset,
         context,
-        textBytes,
-      );
+      });
     } catch (error) {
       logger.error(`WebFetch failed for ${url}:`, error);
       return {
