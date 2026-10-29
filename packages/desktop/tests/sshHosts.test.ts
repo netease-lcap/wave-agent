@@ -233,8 +233,8 @@ describe("buildSshTunnelArgs", () => {
     const aliveCountMax = Number(
       args.find((a) => a.startsWith("ServerAliveCountMax="))?.split("=")[1],
     );
-    // interval × count bounds the dead-tunnel detection time (spec: SSH 远程会话
-    // 自动重连 scenario 2 — no unbounded "looks alive but silent" state).
+    // interval × count bounds the dead-tunnel detection time, so the app never
+    // sits in an unbounded "looks alive but silent" state.
     expect(aliveInterval * aliveCountMax).toBeLessThanOrEqual(60);
   });
 });
