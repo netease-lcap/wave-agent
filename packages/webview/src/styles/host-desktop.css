@@ -1921,6 +1921,18 @@
 [data-host="desktop"] .file-tree-caret {
   color: var(--cc-text-secondary);
 }
+/* 文件夹 / 文件图标（1029 第十三轮）：原先和箭头一样是 codicon 字体字形，
+   设计师评论「展开收起文件夹和以下保持一致」「文件图标和以下保持一致」——分别指
+   侧栏会话分组头的 FolderIcon 与文件标签页的 PanelKindIcon kind="file"。现在两处
+   直接用那两颗官方矢量（同一个组件、同一份设计源路径、同一 1.4 描边）。
+   几何零变化：改前 codicon 的被 globals.css 的 `.codicon{font-size:16px}` 覆盖
+   （FilePane.css 的 13px 实际没生效），盒本来就是 16×16 —— 实测名字 x 与行高逐值
+   不变，故这里只补 display/size 兜底（避免行内 SVG 的基线间隙），不引入新盒尺寸。 */
+[data-host="desktop"] .file-tree-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
 /* 展开箭头（1029 第七·八轮）：原先是 9px 的文字三角「▸」，和下面 16px 的文件夹 /
    文件字形不是一套。第七轮先换 codicon chevron，第八轮设计师反馈「比那边大了一点」，
    改为与侧栏会话分组头**同一份官方 Figma 矢量**（ChevronIcon，16×16 盒）——两处箭头
