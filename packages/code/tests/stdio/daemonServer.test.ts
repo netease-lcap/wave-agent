@@ -47,9 +47,6 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     clearMessages: vi.fn(),
     truncateHistory: vi.fn(),
     removeQueuedMessage: vi.fn(),
-    getFullMessageThread: vi
-      .fn()
-      .mockResolvedValue({ messages, sessionIds: ["test-session-id"] }),
     getPermissionMode: vi.fn().mockReturnValue("default"),
     setPermissionMode: vi.fn(),
     getMcpServers: vi.fn().mockReturnValue([]),

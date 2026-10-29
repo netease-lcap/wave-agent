@@ -443,11 +443,6 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     compact = vi.fn(async () => undefined);
     rewindToMessage = vi.fn(async () => ({ inputContent: "rewound draft" }));
     askBtw = vi.fn(async () => "**Sunny** weather");
-    getFullMessageThread = vi.fn(async function (this: {
-      daemonMessages?: unknown[];
-    }) {
-      return { messages: this.daemonMessages ?? [], sessionIds: [] };
-    });
     // Mirrors StdioAgent.getMessages(): no argument → the whole list; with a
     // window → that page (`{ messages, hasMore }`, `anchorLost` when the
     // anchor is gone). Either way the two **state** side effects the host is

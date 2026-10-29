@@ -100,9 +100,9 @@ import type { RemoteControlEndpoint } from "./remoteControlConfig.js";
  * editor (`openFile` is not even a bridge method), the on-disk session list
  * (`listAllSessions` / `restoreSession`), the process-lifecycle calls
  * (`shutdown` / `bang`), and the **read-only panes the page has no
- * surface for** — `getWorkspaceDiff` / `getWorktreeChanges` / `getPlanFile` /
- * `getFullMessageThread` (no diff / worktree / plan pane on the page; the plan
- * body travels inside the `ExitPlanMode` approval card).
+ * surface for** — `getWorkspaceDiff` / `getWorktreeChanges` / `getPlanFile`
+ * (no diff / worktree / plan pane on the page; the plan body travels inside
+ * the `ExitPlanMode` approval card).
  *
  * **Session deletion (2026-10-17, fourth batch)** — the batch where the page
  * gained the entry `removeWorktree` was being kept out for. Two of the three

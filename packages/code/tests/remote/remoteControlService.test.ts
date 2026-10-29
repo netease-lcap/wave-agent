@@ -471,7 +471,6 @@ describe("RemoteControlService", () => {
       "getWorkspaceDiff",
       "getWorktreeChanges",
       "getPlanFile",
-      "getFullMessageThread",
       "removeWorktree",
       "openFile",
       "listAllSessions",
@@ -485,7 +484,7 @@ describe("RemoteControlService", () => {
       .frames()
       .filter((frame) => frame.method === "error")
       .map((frame) => (frame.params as { message: string }).message);
-    expect(refusals).toHaveLength(8);
+    expect(refusals).toHaveLength(7);
     for (const method of ["getWorkspaceDiff", "removeWorktree"]) {
       expect(refusals.some((message) => message.includes(method))).toBe(true);
     }

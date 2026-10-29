@@ -475,35 +475,6 @@ describe("StdioAgent", () => {
     );
   });
 
-  // ── getFullMessageThread ───────────────────────────────────
-
-  it("returns messages and sessionIds with sessionId in request", async () => {
-    const { agent, client } = createAgent();
-    client.request.mockResolvedValue({
-      sessionId: "session-123",
-      currentWorkdir: "/w",
-      permissionMode: "default",
-      latestTotalTokens: 0,
-    });
-    await agent.initialize({ workdir: "/w" });
-    client.request.mockResolvedValue({
-      messages: [{ id: "m1" }],
-      sessionIds: ["s1", "s2"],
-    });
-
-    const result = await agent.getFullMessageThread();
-
-    expect(client.request).toHaveBeenCalledWith(
-      "getFullMessageThread",
-      undefined,
-      "session-123",
-    );
-    expect(result).toEqual({
-      messages: [{ id: "m1" }],
-      sessionIds: ["s1", "s2"],
-    });
-  });
-
   // ── listRewindCheckpoints ──────────────────────────────────
 
   it("returns checkpoints with sessionId in request", async () => {

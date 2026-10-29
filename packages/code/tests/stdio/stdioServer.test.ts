@@ -45,9 +45,6 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     clearMessages: vi.fn(),
     truncateHistory: vi.fn(),
     removeQueuedMessage: vi.fn(),
-    getFullMessageThread: vi
-      .fn()
-      .mockResolvedValue({ messages, sessionIds: ["test-session-id"] }),
     getDisplayThread: vi.fn(async () => messages),
     getMessagePage: vi.fn(async () => ({ messages: [], hasMore: false })),
     getThreadSummary: vi.fn(() => ({ messageCount: messages.length })),

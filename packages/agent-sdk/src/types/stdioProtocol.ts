@@ -39,7 +39,6 @@ export type RequestMethod =
   | "updateQueuedMessage"
   | "deleteQueuedMessageById"
   | "getMessages"
-  | "getFullMessageThread"
   | "setPermissionMode"
   | "getPermissionMode"
   | "getPlanFile"

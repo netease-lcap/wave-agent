@@ -8,8 +8,7 @@
  * a count — while one screenshot can be well over a megabyte of base64, and a
  * remote-hosted page cannot even receive a frame that large. So every message
  * leaving this process for a host goes through here: notifications,
- * `getMessages`, `getFullMessageThread`, and the remote relay that is fed by
- * the same frames.
+ * `getMessages` and the remote relay that is fed by the same frames.
  *
  * **The agent's own copy is untouched.** The SDK still holds the bytes, the
  * next request still sends them to the model, and the transcript on disk keeps
