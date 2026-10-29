@@ -1874,6 +1874,9 @@
 [data-host="desktop"] .file-pane-tree-splitter:hover::after {
   opacity: 1;
 }
+
+/* 字号（设计师 1029 评论「同一面板还有两处也改」）：13 → 14，与面板其它正文档
+   文本一致（契约里 UI 文本只有正文档 14 与辅助档 12，13 只属等宽代码角色）。 */
 [data-host="desktop"] .file-tree-filter {
   height: 28px;
   padding: 0 8px;
@@ -1881,7 +1884,7 @@
   border-radius: 6px;
   background: var(--cc-fill);
   color: var(--cc-text-primary);
-  font-size: 13px;
+  font-size: 14px;
 }
 [data-host="desktop"] .file-tree-filter::placeholder {
   color: var(--cc-text-placeholder, #a0a5a8);
@@ -1909,11 +1912,13 @@
 [data-host="desktop"] .file-tree-note {
   color: var(--cc-text-secondary);
 }
+/* 字号 13 → 14（1029 第三轮：面板内剩余 13px 一并统一）。结果行是「筛选文件…」
+   输入后的候选清单，行高 32 / 圆角 6 / 字色不动。 */
 [data-host="desktop"] .file-tree-result {
   min-height: 32px;
   border-radius: 6px;
   color: var(--cc-text-primary);
-  font-size: 13px;
+  font-size: 14px;
 }
 [data-host="desktop"] .file-tree-result:hover {
   background: var(--cc-fill-hover);
@@ -1968,13 +1973,17 @@
   border-bottom: 1px solid var(--cc-border, #ebeef5);
   pointer-events: none;
 }
+/* 字号 13 → 14（同一轮评论）。胶囊高 26 不变，14px 的行盒 17 仍居中放得下。
+   代价是文字变宽：只开 2 个标签时 98.1 / 107 → 101 / 110.5（各 +3 左右）；
+   开到 8 个时带子本来就走既有的挤压规则（总宽恒 476、文字省略），所以标签宽度
+   几乎不动，只是每个标签能露出来的字少了约 3px（省略量 44 → 47）。 */
 [data-host="desktop"] .file-tab {
   height: var(--file-tab-height);
   max-width: 200px;
   padding: 0 4px 0 10px;
   border-radius: 6px;
   color: var(--cc-text-secondary);
-  font-size: 13px;
+  font-size: 14px;
 }
 [data-host="desktop"] .file-tab:hover {
   background: var(--cc-fill-hover);
@@ -2007,13 +2016,15 @@
 [data-host="desktop"][data-theme="dark"] .file-tab-menu {
   box-shadow: 0 0 12px rgb(0 0 0 / 40%);
 }
+/* 字号 13 → 14（同一轮）。标签溢出后的「更多」菜单项，min-height 32 / 内衬 0 8
+   / 圆角 6 不动。 */
 [data-host="desktop"] .file-tab-menu-item,
 [data-host="desktop"] .file-tab-more-item {
   min-height: 32px;
   padding: 0 8px;
   border-radius: 6px;
   color: var(--cc-text-primary);
-  font-size: 13px;
+  font-size: 14px;
   display: flex;
   align-items: center;
 }
@@ -2027,6 +2038,8 @@
   border-bottom-color: var(--cc-border, #ebeef5);
   background: transparent;
 }
+/* 字号 13 → 14（同一轮）。查找 / 跳转输入框与树的「筛选文件…」同规格：
+   高 28 / 内衬 0 8 / 圆角 6 不动。 */
 [data-host="desktop"] .file-pane-find-input,
 [data-host="desktop"] .file-pane-goto-input {
   height: 28px;
@@ -2035,7 +2048,7 @@
   border-radius: 6px;
   background: var(--cc-fill);
   color: var(--cc-text-primary);
-  font-size: 13px;
+  font-size: 14px;
 }
 [data-host="desktop"] .file-pane-find-input::placeholder,
 [data-host="desktop"] .file-pane-goto-input::placeholder {
@@ -4550,7 +4563,12 @@
        字体族，与显示态的 `span.preview-pane-url` 同串 URL 墨迹宽不一致，回车提交
        切换两态就是那「抖一下」的一半根因（另一半 = 描边占位，见上文
        `.preview-pane-address` 的桌面规则）。 */
-    .preview-pane-address
+    .preview-pane-address,
+    /* 文件面板「当前对话的文件」列表行（1029 评论：「按照 skill 和设计规范统一这里的
+       字体规范，标题也提到 14」）—— 行是 `<button>`，同样不继承页面字体：改前实测
+       font-family = Arial、13px，中文文件名会掉到 Arial 上，字号提到 14 也只是
+       「大一号的 Arial」，所以字体族一起补进白名单。 */
+    .file-pane-conversation-file-row
   ) {
   font-family: inherit;
 }
