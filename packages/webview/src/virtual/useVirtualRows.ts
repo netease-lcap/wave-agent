@@ -433,10 +433,17 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
     const offset = saved.anchor
       ? offsetForAnchor(metrics, saved.anchor)
       : undefined;
-    if (offset === undefined) return;
+    if (offset === undefined) {
+      // 锚点那一行不在切回后的首屏一页里：按首屏默认位置（钉底）呈现，不为恢复
+      // 位置去重读更早的页。留在 scrollTop 0 会更糟——那是这一页的顶，下面还有
+      // 一屏多没读过的内容，用户既没回到原处也没跟上新消息。
+      pinnedRef.current = true;
+      scrollToEnd("auto");
+      return;
+    }
     pinnedRef.current = false;
     writeScroll(offset + originOffsetPx, "auto");
-  }, [keys.length, metrics, originOffsetPx, writeScroll]);
+  }, [keys.length, metrics, originOffsetPx, scrollToEnd, writeScroll]);
 
   // 离开会话时记下位置。
   useEffect(() => {
