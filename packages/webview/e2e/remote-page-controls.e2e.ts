@@ -9,6 +9,10 @@ import type { Page } from "@playwright/test";
  * 值，而不是样式表里写了什么 —— 单测（tests/remote/remotePageZoomGuard.test.ts）
  * 只能读文本，而这次的失效正好发生在文本看不太出来的地方。
  *
+ * 场景 27（图标按钮的触控档）那几族也在这里量：热区、间距、字形三者必须同时成立，
+ * 而这几件事只有真浏览器算得出来（jsdom 不解析样式表）。2026-10-29 补的第四族是
+ * 消息队列每条右边的编辑 / 立即发送 / 删除。
+ *
  * 2026-10-15 真机回归：右上角「会话」/「历史对话」按钮的弹窗挂载即自动聚焦搜索框，
  * 而 `.session-list-search`（组件基线 12px）被手机档收进了次级信息组 = 14px。档位组
  * 的选择器是「属性 + 类」(0,2,0)，下限是「属性 + 元素」(0,1,1)：档位组比特异性赢，
@@ -126,6 +130,82 @@ test("远控页手机档：弹窗打开时页面上每个文本控件都在 16px
 });
 
 /**
+ * 消息队列的行内动作（编辑 / 立即发送 / 删除）—— 场景 27 第四族。
+ *
+ * 这一族除了尺寸，还有一处**尺寸之外**的问题：桌面档靠 `.queued-item:hover` 才把
+ * 按钮组显形（`opacity: 0`），触控设备没有悬停。所以两边量的不只是「多大」，还有
+ * 「看不看得见」——手机档常显、PC 档仍靠 hover。
+ */
+async function openQueue(webviewPage: Page) {
+  const injector = new MessageInjector(webviewPage);
+  await injector.updateQueue([
+    { id: "q1", content: "顺便帮乐观锁中间件补一组单元测试，覆盖并发写入场景" },
+    { id: "q2", content: "把这段逻辑抽成独立模块" },
+  ]);
+  await webviewPage.locator(".queued-message-list-header").click();
+  await expect(webviewPage.getByTestId("queued-item-q1")).toBeVisible();
+  // 点 header 之后光标停在面板上 —— 那会让 `.queued-item:hover` 生效，量出来的
+  // 「按钮组可见」是 hover 给的、不是手机档给的。先把指针移出面板，再量尺寸。
+  await webviewPage.mouse.move(0, 0);
+}
+
+const queueGeometry = (page: Page) =>
+  page.evaluate(() => {
+    const box = (sel: string) => {
+      const el = document.querySelector(sel) as HTMLElement | null;
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { w: Math.round(r.width), h: Math.round(r.height) };
+    };
+    const gap = (sel: string, axis: "row" | "column") =>
+      parseFloat(getComputedStyle(document.querySelector(sel)!)[`${axis}Gap`]);
+    const opacity = (sel: string) =>
+      parseFloat(getComputedStyle(document.querySelector(sel)!).opacity);
+    return {
+      edit: box('[data-testid="queued-edit-q1"]'),
+      send: box('[data-testid="queued-send-q1"]'),
+      remove: box('[data-testid="queued-delete-q1"]'),
+      glyph: box('[data-testid="queued-send-q1"] svg'),
+      actionsGap: gap(".queued-item-actions", "column"),
+      // 跨行也是「相邻两个按钮」：行间距同样要 ≥8px。
+      rowGap: gap(".queued-items", "row"),
+      actionsOpacity: opacity(".queued-item-actions"),
+      item: box(".queued-item"),
+      header: box(".queued-message-list-header"),
+    };
+  });
+
+test("远控页手机档：消息队列的行内动作按手指给足（场景 27 第四族）", async ({
+  webviewPage,
+}) => {
+  await bootstrap(webviewPage);
+  await openQueue(webviewPage);
+
+  const geom = await queueGeometry(webviewPage);
+
+  // 三枚按钮各 40×40、字形 20、彼此间距 8（热区与间距必须同时给足）。
+  expect(geom.edit).toEqual({ w: 40, h: 40 });
+  expect(geom.send).toEqual({ w: 40, h: 40 });
+  expect(geom.remove).toEqual({ w: 40, h: 40 });
+  expect(geom.glyph).toEqual({ w: 20, h: 20 });
+  expect(geom.actionsGap).toBe(8);
+  // 跨行的两枚按钮同样隔 8px（行间距也是「相邻按钮之间的间距」）。
+  expect(geom.rowGap).toBe(8);
+  // 让位：行轨道从 24 抬到 48（40 的按钮 + 上下各 4），按钮不越出所在行。
+  expect(geom.item!.h).toBe(48);
+  // 折叠标题行（整行可点）同档。
+  expect(geom.header!.h).toBe(40);
+  // 触控设备没有悬停 ⇒ 按钮组常显，否则 40×40 也没机会被按到。
+  expect(geom.actionsOpacity).toBe(1);
+  // 整屏约束（场景 14）仍成立：队列把每条抬高之后，页面本身不出现纵向滚动。
+  const page = await webviewPage.evaluate(() => ({
+    scroll: document.documentElement.scrollHeight,
+    viewport: document.documentElement.clientHeight,
+  }));
+  expect(page.scroll).toBe(page.viewport);
+});
+
+/**
  * 另一半：鼠标 context。同一个判据不成立 ⇒ 16px 下限与手机档一起失效，页面上只该
  * 剩组件自己的基线（设计稿密度）。2026-10-16 之前下限写在媒体查询之外、不判设备，
  * PC 上每个输入框都是 16px，而同屏正文只有 13px —— 他打开页面时报「所有输入控件
@@ -158,6 +238,26 @@ test.describe("远控页 PC 档（鼠标 context）", () => {
       box!.size,
       `PC 上不该出现 16px 下限（量到 ${box!.size}px）`,
     ).toBeLessThan(16);
+  });
+
+  test("PC 档：消息队列的行内动作保持设计稿尺寸，且仍靠 hover 显形", async ({
+    webviewPage,
+  }) => {
+    await bootstrap(webviewPage);
+    await openQueue(webviewPage);
+
+    const geom = await queueGeometry(webviewPage);
+
+    // 鼠标指针档：18×18（padding 2 + 字形 14）、间距 2 —— 手机档没漏过来。
+    expect(geom.edit).toEqual({ w: 18, h: 18 });
+    expect(geom.send).toEqual({ w: 18, h: 18 });
+    expect(geom.remove).toEqual({ w: 18, h: 18 });
+    expect(geom.glyph).toEqual({ w: 14, h: 14 });
+    expect(geom.actionsGap).toBe(2);
+    expect(geom.rowGap).toBe(4);
+    expect(geom.item!.h).toBe(24);
+    expect(geom.header!.h).toBe(24);
+    expect(geom.actionsOpacity).toBe(0);
   });
 
   test("PC 档：正文保持设计稿密度（手机档同样不生效）", async ({
