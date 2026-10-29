@@ -17,10 +17,12 @@ import {
   type DiffViewMode,
 } from "./DiffFileRows";
 import { DiffFileTree } from "./DiffFileTree";
+import { TreeToggleIcon } from "./FilePaneToolbarIcons";
 import { RefreshIcon } from "./HeaderIcons";
 import { LineCommentBox } from "./LineCommentBox";
 import { PanePlaceholder, PaneShell } from "./PaneShell";
 import { Tooltip } from "./Tooltip";
+import { isDesktopHost } from "../utils/platform";
 import "../styles/DiffViewer.css";
 import "../styles/DiffPane.css";
 
@@ -522,50 +524,74 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
               两颗的文案本来就是动态的（文件树开关 / 刷新是固定文案），
               `title` 移除后由气泡承载，`aria-label` 取与 `ChatHeader` 的
               面板开关同一套写法（开关类 = 名字随状态变 + `aria-pressed`）。 */}
-          <Tooltip
-            text={treeVisible ? "隐藏文件树" : "显示文件树"}
-            position="bottom"
-          >
-            <button
-              className="preview-pane-button"
-              aria-label={treeVisible ? "隐藏文件树" : "显示文件树"}
-              aria-pressed={treeVisible}
-              data-testid="diff-tree-toggle"
-              onClick={() => onTreeVisibleChange(!treeVisible)}
+          {/* 1029 评论（第八批）：「操作按钮放在右侧」/ 树开关「和文件保持一致
+              （选中变蓝），也放在右侧」⇒ 三颗控制件收进一个群组，桌面端靠
+              `margin-left: auto` 贴到工具条右缘（与文件面板同一位置感）；树开关
+              补 `active` 类，复用 `.preview-pane-button.active` 的品牌蓝选中态。
+              结构对两个宿主通用 —— 群组内的间距仍是工具条那 8px，IDE 布局不变。
+              1029 评论（第十批）：「统一并排」这个 `div.diff-view-switch`
+              「放隐藏图标的左侧」⇒ 视图开关排在树开关之前（连同 DOM 顺序一起挪，
+              视觉顺序与读屏 / Tab 顺序保持一致）。 */}
+          <div className="diff-toolbar-actions">
+            <div
+              className="diff-view-switch"
+              role="group"
+              aria-label="差异视图"
             >
-              <i className="codicon codicon-list-tree" />
-            </button>
-          </Tooltip>
-          <div className="diff-view-switch" role="group" aria-label="差异视图">
-            <button
-              className={`diff-view-option${viewMode === "unified" ? " is-active" : ""}`}
-              aria-pressed={viewMode === "unified"}
-              data-testid="diff-view-unified"
-              onClick={() => switchView("unified")}
+              <button
+                className={`diff-view-option${viewMode === "unified" ? " is-active" : ""}`}
+                aria-pressed={viewMode === "unified"}
+                data-testid="diff-view-unified"
+                onClick={() => switchView("unified")}
+              >
+                统一
+              </button>
+              <button
+                className={`diff-view-option${viewMode === "split" ? " is-active" : ""}`}
+                aria-pressed={viewMode === "split"}
+                data-testid="diff-view-split"
+                onClick={() => switchView("split")}
+              >
+                并排
+              </button>
+            </div>
+            <Tooltip
+              text={treeVisible ? "隐藏文件树" : "显示文件树"}
+              position="bottom"
             >
-              统一
-            </button>
-            <button
-              className={`diff-view-option${viewMode === "split" ? " is-active" : ""}`}
-              aria-pressed={viewMode === "split"}
-              data-testid="diff-view-split"
-              onClick={() => switchView("split")}
-            >
-              并排
-            </button>
+              <button
+                className={`preview-pane-button${treeVisible ? " active" : ""}`}
+                aria-label={treeVisible ? "隐藏文件树" : "显示文件树"}
+                aria-pressed={treeVisible}
+                data-testid="diff-tree-toggle"
+                onClick={() => onTreeVisibleChange(!treeVisible)}
+              >
+                {/* 1029 评论（第九批）「换成和文件面板一样的，仅桌面端」⇒ 桌面端
+                    用文件面板同一颗官方矢量（显示 / 隐藏文件树），IDE 宿主保留
+                    原 codicon。与 FilePane.tsx 的树开关同一处分叉口径。 */}
+                {isDesktopHost() ? (
+                  <TreeToggleIcon className="preview-pane-icon" />
+                ) : (
+                  <i
+                    className="codicon codicon-list-tree preview-pane-icon"
+                    aria-hidden="true"
+                  />
+                )}
+              </button>
+            </Tooltip>
+            <Tooltip text="刷新" position="bottom">
+              <button
+                className="preview-pane-button"
+                aria-label="刷新"
+                data-testid="diff-refresh"
+                onClick={() => refresh()}
+              >
+                <RefreshIcon
+                  className={`preview-pane-icon${refreshing ? " is-spinning" : ""}`}
+                />
+              </button>
+            </Tooltip>
           </div>
-          <Tooltip text="刷新" position="bottom">
-            <button
-              className="preview-pane-button"
-              aria-label="刷新"
-              data-testid="diff-refresh"
-              onClick={() => refresh()}
-            >
-              <RefreshIcon
-                className={`preview-pane-icon${refreshing ? " is-spinning" : ""}`}
-              />
-            </button>
-          </Tooltip>
         </>
       }
       bodyClassName="diff-pane-body"
