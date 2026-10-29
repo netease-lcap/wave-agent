@@ -90,7 +90,7 @@ import {
 } from "@/services/session.js";
 import type { Message } from "@/types/index.js";
 import { generateMessageId } from "@/utils/messageOperations.js";
-import { resumeSnapshotOf } from "../helpers/transcriptResume.js";
+import { resumeSnapshotOf } from "../helpers/transcriptScans.js";
 
 describe("Session Append-Only Compaction", () => {
   const testWorkdir = "/test/workdir";

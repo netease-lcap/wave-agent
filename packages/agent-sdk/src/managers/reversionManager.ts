@@ -99,25 +99,25 @@ export class ReversionManager {
   }
 
   /**
-   * Reverts all file changes associated with messages from the end of history
-   * down to (and including) the specified message index.
-   * This should be called by MessageManager.
+   * Reverts all file changes associated with the messages being cut away by a
+   * rewind (everything from the rewind point to the end of the thread).
+   *
+   * Takes the messages themselves rather than `(ids, allMessages)`: the only
+   * thing it ever did with the full array was look up the ids it was given, so
+   * passing the whole thread just made the caller materialise it. This should
+   * be called by MessageManager.
    */
   async revertTo(
-    messageIds: string[],
-    allMessages: import("../types/index.js").Message[],
+    removedMessages: import("../types/index.js").Message[],
   ): Promise<number> {
-    const messageIdSet = new Set(messageIds);
     const snapshots: FileSnapshot[] = [];
 
-    for (const message of allMessages) {
-      if (message.id && messageIdSet.has(message.id)) {
-        const historyBlock = message.blocks.find(
-          (b) => b.type === "file_history",
-        ) as { type: "file_history"; snapshots: FileSnapshot[] } | undefined;
-        if (historyBlock && historyBlock.snapshots) {
-          snapshots.push(...historyBlock.snapshots);
-        }
+    for (const message of removedMessages) {
+      const historyBlock = message.blocks.find(
+        (b) => b.type === "file_history",
+      ) as { type: "file_history"; snapshots: FileSnapshot[] } | undefined;
+      if (historyBlock && historyBlock.snapshots) {
+        snapshots.push(...historyBlock.snapshots);
       }
     }
 

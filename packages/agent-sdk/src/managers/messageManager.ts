@@ -1316,6 +1316,12 @@ export class MessageManager {
 
   /**
    * Truncate history to a specific index and revert file changes.
+   *
+   * The thread is only scanned, never materialised: the scan splits it into the
+   * part that stays (the context after the last compaction boundary) and the
+   * part being cut away (whose file snapshots `revertTo` needs), and hands back
+   * the two counters a rewind needs afterwards.
+   *
    * @param index - The index of the user message to truncate to.
    * @param reversionManager - Optional ReversionManager to handle file rollbacks.
    */
@@ -1323,39 +1329,32 @@ export class MessageManager {
     index: number,
     reversionManager?: import("./reversionManager.js").ReversionManager,
   ): Promise<void> {
-    const { messages } = await this.getFullMessageThread();
+    const { loadRewindCut } = await import("../services/session.js");
+    const cut = await loadRewindCut(this.sessionId, this.workdir, index);
 
-    if (index < 0 || index >= messages.length) {
+    if (index < 0 || index >= cut.threadMessageCount) {
       throw new Error(`Invalid message index: ${index}`);
     }
 
-    const newMessages = messages.slice(0, index);
-    const messagesToRemove = messages.slice(index);
-    const messageIdsToRemove = messagesToRemove
-      .map((m) => m.id as string)
-      .filter((id) => !!id);
-
-    if (reversionManager && messageIdsToRemove.length > 0) {
-      await reversionManager.revertTo(messageIdsToRemove, messages);
+    if (reversionManager && cut.removed.length > 0) {
+      await reversionManager.revertTo(cut.removed);
     }
 
-    // Keep the first `newMessages.length` messages on disk. Note the count is
-    // the message index, not a file operation: the rewrite walks the file's own
-    // lines and carries reserved entries (metadata header, custom-title) over.
-    await this.rewriteSessionFile(newMessages.length);
+    // Keep the first `index` messages on disk. Note the count is the message
+    // position, not a file operation: the rewrite walks the file's own lines
+    // and carries reserved entries (metadata header, custom-title) over.
+    await this.rewriteSessionFile(index);
     // The rewrite drops messages but keeps the reserved entries where they sit,
     // which is not enough for the title: the session list reads only the file's
     // tail window, and a title written early can end up outside it (the
     // rewrite keeps the *first* messages, so the survivors after it are exactly
     // what pushes it away). Re-append it at EOF like the other flush points do.
     await this.reAppendSessionMetadata();
-    // The rewritten file keeps everything up to the truncation point; the list
-    // still starts at the last compact boundary, matching compact and resume.
-    this.setMessages(sliceFromLastCompact(newMessages), {
-      countLifetime: false,
-    });
-    this.threadMessageCount = newMessages.length;
-    this.firstUserText = findFirstUserText(newMessages);
+    // The scan already folded the surviving prefix at the last compact boundary,
+    // matching what compact and resume put in memory.
+    this.setMessages(cut.kept, { countLifetime: false });
+    this.threadMessageCount = index;
+    this.firstUserText = cut.firstUserText;
     // savedMessageCount tracks in-memory progress, so it must be the folded
     // length. Using the full disk count here would make saveSession's
     // slice(savedMessageCount) empty after a rewind past a compact boundary

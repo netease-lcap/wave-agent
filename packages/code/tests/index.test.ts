@@ -53,13 +53,14 @@ vi.mock("../src/commands/plugin/update.js");
 vi.mock("../src/cli.js");
 vi.mock("../src/print-cli.js");
 vi.mock("../src/session-selector-cli.js");
-// loadSessionFromJsonl backs the `wave --restore <id>` pre-flight check in
-// index.ts; a truthy result lets the CLI proceed to startCli.
+// sessionExistsAnywhere backs the `wave --restore <id>` pre-flight check in
+// index.ts; a truthy result lets the CLI proceed to startCli. It is a pure
+// yes/no predicate — nothing reads the transcript for it.
 vi.mock("wave-agent-sdk", async (importOriginal) => {
   const actual = await importOriginal<typeof import("wave-agent-sdk")>();
   return {
     ...actual,
-    loadSessionFromJsonl: vi.fn().mockResolvedValue({ id: "mock-session" }),
+    sessionExistsAnywhere: vi.fn().mockResolvedValue(true),
   };
 });
 vi.mock("../src/utils/worktree.js", () => ({

@@ -74,7 +74,7 @@ import {
 import type { Message } from "@/types/index.js";
 import type { TranscriptSnapshot } from "@/services/sessionEntries.js";
 import { generateMessageId } from "@/utils/messageOperations.js";
-import { resumeSnapshotOf } from "../helpers/transcriptResume.js";
+import { resumeSnapshotOf } from "../helpers/transcriptScans.js";
 
 describe("Session Core Functionality", () => {
   let tempDir: string;

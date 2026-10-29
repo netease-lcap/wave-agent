@@ -5,6 +5,7 @@ import { ReversionManager } from "../../src/managers/reversionManager.js";
 import { Message } from "../../src/types/messaging.js";
 import * as sessionService from "../../src/services/session.js";
 import { Container } from "../../src/utils/container.js";
+import { rewindCutOf } from "../helpers/transcriptScans.js";
 
 vi.mock("fs/promises");
 vi.mock("../../src/managers/reversionManager.js");
@@ -13,6 +14,7 @@ vi.mock("../../src/services/session.js", async (importOriginal) => {
   return {
     ...actual,
     loadFullMessageThread: vi.fn(),
+    loadRewindCut: vi.fn(),
     loadSessionFromJsonl: vi.fn(),
     truncateSession: vi.fn().mockResolvedValue(undefined),
   };
@@ -57,10 +59,10 @@ describe("MessageManager History Truncation Integration", () => {
     ];
     messageManager.setMessages(messages as Message[]);
 
-    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
-      messages: messages as Message[],
-      sessionIds: [messageManager.getSessionId()],
-    });
+    vi.mocked(sessionService.loadRewindCut).mockImplementation(
+      async (_sessionId, _workdir, index) =>
+        rewindCutOf(messages as Message[], index),
+    );
     vi.mocked(sessionService.loadSessionFromJsonl).mockResolvedValue({
       id: messageManager.getSessionId(),
       messages: messages as Message[],
@@ -76,10 +78,12 @@ describe("MessageManager History Truncation Integration", () => {
 
     expect(messageManager.getMessages()).toHaveLength(1);
     expect(messageManager.getMessages()[0].id).toBe("msg1");
-    expect(mockReversionManager.revertTo).toHaveBeenCalledWith(
-      ["msg2", "msg3"],
-      expect.any(Array),
-    );
+    // The messages being cut away are handed over directly: no id list plus a
+    // whole-thread array to look them up in.
+    expect(mockReversionManager.revertTo).toHaveBeenCalledWith([
+      expect.objectContaining({ id: "msg2" }),
+      expect.objectContaining({ id: "msg3" }),
+    ]);
     // The session file keeps the first message; the rewrite delegates to the
     // session service, which filters the file's own lines (so reserved entries
     // such as the metadata header and the custom title survive).
@@ -100,10 +104,10 @@ describe("MessageManager History Truncation Integration", () => {
         blocks: [{ type: "text", content: "u1" }],
       },
     ];
-    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
-      messages: messages as Message[],
-      sessionIds: [messageManager.getSessionId()],
-    });
+    vi.mocked(sessionService.loadRewindCut).mockImplementation(
+      async (_sessionId, _workdir, index) =>
+        rewindCutOf(messages as Message[], index),
+    );
 
     await expect(messageManager.truncateHistory(-1)).rejects.toThrow(
       "Invalid message index",

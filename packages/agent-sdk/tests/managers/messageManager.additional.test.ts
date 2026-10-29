@@ -3,6 +3,7 @@ import { MessageManager } from "../../src/managers/messageManager.js";
 import * as sessionService from "../../src/services/session.js";
 import { Container } from "../../src/utils/container.js";
 import { TextBlock } from "../../src/types/index.js";
+import { rewindCutOf } from "../helpers/transcriptScans.js";
 
 vi.mock("fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
@@ -19,6 +20,11 @@ vi.mock("../../src/services/session.js", async (importOriginal) => {
       messages: [],
       sessionIds: [sessionId],
     })),
+    loadRewindCut: vi.fn().mockResolvedValue({
+      kept: [],
+      removed: [],
+      threadMessageCount: 0,
+    }),
     loadSessionFromJsonl: vi.fn().mockImplementation(async (sessionId) => ({
       id: sessionId,
       messages: [],
@@ -281,10 +287,9 @@ describe("MessageManager additional coverage", () => {
     messageManager.addUserMessage({ content: "msg3" });
 
     const messages = messageManager.getMessages();
-    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValueOnce({
-      messages,
-      sessionIds: [messageManager.getSessionId()],
-    });
+    vi.mocked(sessionService.loadRewindCut).mockImplementationOnce(
+      async (_sessionId, _workdir, index) => rewindCutOf(messages, index),
+    );
     vi.mocked(sessionService.loadSessionFromJsonl).mockResolvedValue({
       id: messageManager.getSessionId(),
       messages,

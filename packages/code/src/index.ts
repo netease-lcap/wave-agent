@@ -727,16 +727,18 @@ export async function main() {
     }
 
     // Validate an explicitly-specified restore ID before entering the CLI —
-    // loadSessionFromJsonl scans every project dir as a fallback, so a miss
+    // sessionExistsAnywhere scans every project dir as a fallback, so a miss
     // here means the session truly does not exist. Fail fast with a clear
-    // error instead of silently starting a fresh session.
+    // error instead of silently starting a fresh session. It is a yes/no
+    // question, so it does not read the transcript: the CLI loads the session
+    // for real a moment later.
     if (
       typeof argv.restore === "string" &&
       argv.restore !== "" &&
       !argv.print
     ) {
-      const { loadSessionFromJsonl } = await import("wave-agent-sdk");
-      const exists = await loadSessionFromJsonl(argv.restore, workdir);
+      const { sessionExistsAnywhere } = await import("wave-agent-sdk");
+      const exists = await sessionExistsAnywhere(argv.restore, workdir);
       if (!exists) {
         console.error(`Session ${argv.restore} not found on disk.`);
         process.exit(1);

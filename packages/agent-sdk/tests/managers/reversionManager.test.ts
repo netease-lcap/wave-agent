@@ -115,7 +115,6 @@ describe("ReversionManager", () => {
     );
 
     const count = await reversionManager.revertTo(
-      ["msg1", "msg2"],
       messages as unknown as import("../../src/types/index.js").Message[],
     );
 
@@ -152,7 +151,6 @@ describe("ReversionManager", () => {
     ];
 
     await reversionManager.revertTo(
-      ["msg1"],
       messages as unknown as import("../../src/types/index.js").Message[],
     );
 
@@ -179,7 +177,6 @@ describe("ReversionManager", () => {
     ];
 
     const count = await reversionManager.revertTo(
-      ["msg1"],
       messages as unknown as import("../../src/types/index.js").Message[],
     );
 

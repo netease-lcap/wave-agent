@@ -3,6 +3,7 @@ import { MessageManager } from "../../src/managers/messageManager.js";
 import * as sessionService from "../../src/services/session.js";
 import type { Message, TextBlock } from "../../src/types/index.js";
 import { Container } from "../../src/utils/container.js";
+import { rewindCutOf } from "../helpers/transcriptScans.js";
 
 vi.mock("fs/promises", () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
@@ -19,6 +20,7 @@ vi.mock("../../src/services/session.js", async (importOriginal) => {
     truncateSession: vi.fn().mockResolvedValue(undefined),
     loadSessionFromJsonl: vi.fn(),
     loadFullMessageThread: vi.fn(),
+    loadRewindCut: vi.fn(),
   };
 });
 
@@ -90,10 +92,10 @@ describe("MessageManager Single-Session Rewind", () => {
     ];
 
     // Mock loadFullMessageThread to return current session's messages
-    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
-      messages: messages as Message[],
-      sessionIds: [messageManager.getSessionId()],
-    });
+    vi.mocked(sessionService.loadRewindCut).mockImplementation(
+      async (_sessionId, _workdir, index) =>
+        rewindCutOf(messages as Message[], index),
+    );
 
     // Set messages in memory
     messageManager.setMessages(messages as Message[]);
@@ -136,10 +138,10 @@ describe("MessageManager Single-Session Rewind", () => {
       },
     ];
 
-    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
-      messages: messages as Message[],
-      sessionIds: [messageManager.getSessionId()],
-    });
+    vi.mocked(sessionService.loadRewindCut).mockImplementation(
+      async (_sessionId, _workdir, index) =>
+        rewindCutOf(messages as Message[], index),
+    );
 
     messageManager.setMessages(messages as Message[]);
 
@@ -182,10 +184,10 @@ describe("MessageManager Single-Session Rewind", () => {
       },
     ];
 
-    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
-      messages: messages as Message[],
-      sessionIds: [messageManager.getSessionId()],
-    });
+    vi.mocked(sessionService.loadRewindCut).mockImplementation(
+      async (_sessionId, _workdir, index) =>
+        rewindCutOf(messages as Message[], index),
+    );
 
     messageManager.setMessages(messages as Message[]);
 
@@ -272,10 +274,9 @@ describe("MessageManager Single-Session Rewind", () => {
       },
     ] as Message[];
 
-    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
-      messages,
-      sessionIds: [messageManager.getSessionId()],
-    });
+    vi.mocked(sessionService.loadRewindCut).mockImplementation(
+      async (_sessionId, _workdir, index) => rewindCutOf(messages, index),
+    );
 
     // Rewind to u5 (index 18): drops u5 + a5, file keeps everything before it
     await messageManager.truncateHistory(18);
@@ -372,10 +373,9 @@ describe("MessageManager Single-Session Rewind", () => {
       },
     ] as Message[];
 
-    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
-      messages,
-      sessionIds: [messageManager.getSessionId()],
-    });
+    vi.mocked(sessionService.loadRewindCut).mockImplementation(
+      async (_sessionId, _workdir, index) => rewindCutOf(messages, index),
+    );
 
     // Rewind to u5 (index 18)：磁盘截断到 18 条，内存折叠到 [c2, u3c, a3c, u4b, a4b]
     await messageManager.truncateHistory(18);
@@ -412,10 +412,9 @@ describe("MessageManager Single-Session Rewind", () => {
       { id: "u2", role: "user", blocks: [{ type: "text", content: "two" }] },
     ] as Message[];
 
-    vi.mocked(sessionService.loadFullMessageThread).mockResolvedValue({
-      messages,
-      sessionIds: [messageManager.getSessionId()],
-    });
+    vi.mocked(sessionService.loadRewindCut).mockImplementation(
+      async (_sessionId, _workdir, index) => rewindCutOf(messages, index),
+    );
 
     await messageManager.truncateHistory(2);
 
