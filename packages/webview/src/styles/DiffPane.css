@@ -165,6 +165,77 @@
   background: var(--vscode-list-activeSelectionBackground);
 }
 
+/* ═══ 差异面板的文件树 ↔ 文件面板的文件树：逐项对齐（1029 评论第六批）═══════
+   评论（点 `div.diff-tree`）：「和文件的文件树样式保持一致」⇒ 参照件 =
+   FilePane 的目录树（`[data-host="desktop"] .file-tree-row` 那一族，见
+   host-desktop.css 的 1029 第五~十四轮）。改前 / 改后实测（如图所见，浅色档）：
+
+     项目          差异树（改前）                 文件树（基准）
+     行高          22（目录）/ 20（文件）         28
+     圆角          0                              6
+     字号          12                             14
+     字色（浅）    #202020                        #1F2329（--cc-text-primary）
+     目录名字色    #606060（description 一档）    与文件行同为 primary
+     hover（深）   #303436                        rgba(255,255,255,.08)
+     选中（浅）    #E7E9ED                        #EBEDF0
+     选中（深）    #393E41                        rgba(255,255,255,.12)
+     箭头字形      codicon 字形（#606060/#CCC）    ChevronIcon 矢量（#6C7076/#A0A5A8）
+     图标          无                             文件夹 FolderIcon / 文件 PanelKindIcon，16×16
+     行左距        8 + 每级 12                     6 + 每级 12
+
+   做法：图标与箭头在 DiffFileTree.tsx 里走 `isDesktopHost()` 分叉（IDE 保持原样，
+   与 FileTree.tsx 同一口径）；本文件只补**桌面端**的几何与配色，base 那几条
+   （12px / 22px / VS Code 底色）留给 IDE 宿主。
+   ⚠️ 本该进 host-desktop.css（文件树那族住那儿），但那个文件当前有另一个窗口在改，
+   先落在本组件样式里；`.diff-tree-*` 只在桌面面板里渲染，加前缀后即便将来在别的
+   宿主出现也不会误伤。
+   回退：删掉本节 + 把 DiffFileTree.tsx 的 `isDesktopHost()` 分叉去掉。 */
+[data-host="desktop"] .diff-tree {
+  /* 与文件树的行容器同内衬（`.file-tree-rows` 是 0 4 6），行宽随之收到 232。 */
+  padding: 0 4px 6px;
+}
+[data-host="desktop"] .diff-tree-dir,
+[data-host="desktop"] .diff-tree-file {
+  height: 28px;
+  padding: 0 4px; /* 左右内衬同文件树；padding-left 由行内 style 给（6 + depth*12） */
+  border-radius: 6px;
+  color: var(--cc-text-primary, #1f2329);
+  font-size: 14px;
+}
+/* 目录名字色与文件行一样（文件树不靠字色区分目录 / 文件，靠图标） */
+[data-host="desktop"] .diff-tree-dir .diff-tree-name {
+  color: inherit;
+}
+[data-host="desktop"][data-theme="light"] .diff-tree-dir:hover,
+[data-host="desktop"][data-theme="light"] .diff-tree-file:hover {
+  background: #eef0f3;
+}
+[data-host="desktop"][data-theme="dark"] .diff-tree-dir:hover,
+[data-host="desktop"][data-theme="dark"] .diff-tree-file:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+[data-host="desktop"][data-theme="light"] .diff-tree-file.is-selected,
+[data-host="desktop"][data-theme="light"] .diff-tree-file.is-selected:hover {
+  background: #ebedf0;
+  color: var(--cc-text-primary, #1f2329);
+}
+[data-host="desktop"][data-theme="dark"] .diff-tree-file.is-selected,
+[data-host="desktop"][data-theme="dark"] .diff-tree-file.is-selected:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--cc-text-primary, #1f2329);
+}
+/* 箭头 / 图标：与文件树同色（--cc-text-secondary）同盒（16×16） */
+[data-host="desktop"] .diff-tree-caret,
+[data-host="desktop"] .diff-tree-icon {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--cc-text-secondary, #6c7076);
+}
+[data-host="desktop"] .diff-tree-icon {
+  display: block;
+}
+
 /* Toolbar: read-only range on the left, controls on the right. */
 .diff-pane .desktop-panel-toolbar-title {
   flex: 0 0 auto;
