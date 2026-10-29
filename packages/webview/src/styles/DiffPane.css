@@ -257,6 +257,48 @@
   border-left: 1px solid var(--cc-border, #ebeef5);
 }
 
+/* ═══ 差异面板底色改纯白（1029 评论第十一批）═══════════════════════════════
+   评论（点 `div.diff-pane-main`）：「背景色改为纯白，和文件保持一致，目录也是」。
+   参照件 = 文件面板（host-desktop.css 的
+   `[data-host="desktop"] .preview-pane.file-pane { background: var(--cc-bg-inspector) }`，
+   1028 那一轮）——同一条判据：原来落到 `.preview-pane` 的
+   `--vscode-sideBar-background` = `--cc-bg-navigation`（浅 #F7F8FB，**导航/侧栏面**），
+   套在右 pane 上就把整块读成侧栏灰。改成内容面角色 `--cc-bg-inspector`：
+   浅 #FFFFFF（#F7F8FB → #FFFFFF）、深 #181A1B（与现值逐值相同 ⇒ 深色零变化）。
+   只圈 pane 最外层：正文列、树列、提交列表、提交/范围区一律透明，跟着这一层走
+   ——「目录也是」就是靠这个继承，不需要给 `.diff-sidebar` 单独上色。
+   回退：删掉这一条（底色回到 --vscode-sideBar-background）。 */
+[data-host="desktop"] .preview-pane.diff-pane {
+  background: var(--cc-bg-inspector, var(--vscode-panel-background));
+}
+
+/* ═══ 工具条控制件贴右（1029 评论第八批）═══════════════════════════════════
+   评论：`button.preview-pane-button`（刷新）「操作按钮放在右侧」、树开关
+   「和文件保持一致（选中变蓝），也放在右侧」。参照件 = 文件面板工具条：标题
+   撑满、按钮簇贴在右缘（按钮右缘 = 面板右缘 - 12px 工具条内衬）。
+   做法：三颗控制件（树开关 / 统一·并排 / 刷新）收进 `.diff-toolbar-actions`，
+   桌面端给它 `margin-left: auto`。这样「差异 + 范围 + 统计」这组只读信息仍在
+   左侧，且**不依赖统计是否渲染**（统计只在有文件时出现，用兄弟选择器算距离
+   会在空列表时失效）。
+   群组内间距仍是工具条的 8px（与原先并排时逐像素一致），只改水平位置。
+   ⚠️ 本该进 host-desktop.css，理由同上一节（该文件被另一个窗口占用）。
+   回退：删掉 `margin-left` 那条；`.diff-toolbar-actions` 本身保持不动也不影响
+   布局（只是分组）。 */
+.diff-toolbar-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+[data-host="desktop"] .diff-toolbar-actions {
+  margin-left: auto;
+}
+/* 「选中变蓝」不需要额外规则：树开关已换成文件面板同一颗官方矢量（1029 第九批），
+   `currentColor` 会继承按钮前景 ⇒ 活动态自然落到 `--cc-text-link`
+   （浅 #2F5EDB / 深 #4DAAFC），与文件面板那颗逐值相同。
+   （原来那颗 codicon 自带 `.codicon { color: var(--vscode-icon-foreground) }`
+   的浅色 #606060，会盖掉蓝，换矢量后这层冲突随之消失。） */
+
 /* Toolbar: read-only range on the left, controls on the right. */
 .diff-pane .desktop-panel-toolbar-title {
   flex: 0 0 auto;
