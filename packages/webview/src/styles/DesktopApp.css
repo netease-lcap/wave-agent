@@ -312,6 +312,14 @@ html[data-theme="dark"] .desktop-sidebar-new-chat.is-active {
   color: #565a60;
   opacity: 0;
   transition: opacity 0.1s ease;
+  /* 1029 评论（第十七批）：「这个箭头和前面的文案再近一些」—— 组头是 flex
+     `gap: 8px` 的整排间距，项目名与 chevron 之间也是 8px 盒间距（16px 盒里墨迹
+     8 宽、两侧各留 4）⇒ 4× 实测墨迹间距 13.25px，读起来箭头「飘」在右边。
+     这里只收 chevron 自己的外边距 6px（盒间距 8 → 2、墨迹 13.25 → 7.25），
+     不动整排 gap，所以 ① 文件夹图标到项目名仍是 8.53px、文案左缘仍 44（第三批
+     对齐那条靠它）；② 项目名盒宽/省略号位置零变化（它在 chevron 之前）。
+     回退：改成 -4px（墨迹 9.25）或删掉这行（回到 13.25）。 */
+  margin-left: -6px;
 }
 .desktop-session-group-header:hover .desktop-session-group-chevron,
 .desktop-session-group-header:focus-visible .desktop-session-group-chevron {
