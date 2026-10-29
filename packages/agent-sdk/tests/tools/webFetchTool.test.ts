@@ -3,6 +3,15 @@ import { webFetchTool } from "../../src/tools/webFetchTool.js";
 import type { ToolContext } from "../../src/tools/types.js";
 import { createMockTaskManager } from "../helpers/mockFactories.js";
 
+// Binary fetches land on disk; nothing here needs the real /tmp files.
+vi.mock("../../src/utils/toolResultStorage.js", () => ({
+  getToolResultsDir: vi.fn(() => "/tmp/wave-tool-results"),
+  persistToolResult: vi.fn(() => "/tmp/wave-tool-results/tool_1.txt"),
+  persistToolResultBuffer: vi.fn(() => "/tmp/wave-tool-results/webfetch_1.png"),
+  buildPersistedOutputMessage: vi.fn(() => "<persisted-output/>"),
+  generatePreview: vi.fn((content: string) => content.slice(0, 100)),
+}));
+
 describe("webFetchTool", () => {
   let context: ToolContext;
 
@@ -646,5 +655,121 @@ describe("webFetchTool - output enrichment", () => {
     expect(result.shortResult).toBeDefined();
     expect(result.shortResult).toContain("200 OK");
     expect(result.shortResult).toMatch(/Received \d+[\w]+ \(200 OK\) from/);
+  });
+});
+
+describe("webFetchTool - non-HTML responses", () => {
+  const markdown = "# Title\n\n- one\n- two\n\n```ts\nconst a = 1;\n```\n";
+  const json = '{\n  "users": [\n    { "id": 1 }\n  ]\n}\n';
+
+  let context: ToolContext;
+
+  function stubResponse(body: string, contentType?: string) {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        text: vi.fn().mockResolvedValue(body),
+        arrayBuffer: vi.fn().mockResolvedValue(Buffer.from(body)),
+        headers: new Headers(
+          contentType ? { "content-type": contentType } : {},
+        ),
+      }),
+    );
+  }
+
+  function sentContent(): string {
+    const [{ content }] = vi.mocked(context.aiService!.processWebContent).mock
+      .calls[0];
+    return content;
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    context = {
+      workdir: "/test/workdir",
+      taskManager: createMockTaskManager(),
+      aiManager: {
+        getModelConfig: vi.fn().mockReturnValue({
+          model: "gpt-4",
+          fastModel: "gpt-3.5-turbo",
+        }),
+        getGatewayConfig: vi.fn().mockReturnValue({
+          apiKey: "test-key",
+          baseURL: "https://api.openai.com/v1",
+        }),
+      } as unknown as ToolContext["aiManager"],
+      aiService: {
+        processWebContent: vi.fn().mockResolvedValue({ content: "Summary." }),
+      } as unknown as ToolContext["aiService"],
+    };
+  });
+
+  it("should pass markdown through untouched instead of parsing it as HTML", async () => {
+    stubResponse(markdown, "text/markdown; charset=utf-8");
+
+    await webFetchTool.execute(
+      { url: "https://markdown-test.example.com", prompt: "Summarize" },
+      context,
+    );
+
+    expect(sentContent()).toBe(markdown);
+  });
+
+  it("should pass JSON through untouched", async () => {
+    stubResponse(json, "application/json");
+
+    await webFetchTool.execute(
+      { url: "https://json-test.example.com", prompt: "Summarize" },
+      context,
+    );
+
+    expect(sentContent()).toBe(json);
+  });
+
+  it("should save binary content to a file instead of sending it to the model", async () => {
+    stubResponse("\x89PNG\r\n\x1a\n binary", "image/png");
+
+    const result = await webFetchTool.execute(
+      { url: "https://binary-test.example.com", prompt: "Summarize" },
+      context,
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain(
+      "Saved to: /tmp/wave-tool-results/webfetch_1.png",
+    );
+    expect(context.aiService!.processWebContent).not.toHaveBeenCalled();
+  });
+
+  it("should re-announce a cached binary file instead of downloading it again", async () => {
+    stubResponse("\x89PNG\r\n\x1a\n binary", "image/png");
+    const params = {
+      url: "https://binary-cache-test.example.com",
+      prompt: "Summarize",
+    };
+
+    const first = await webFetchTool.execute(params, context);
+    vi.mocked(global.fetch).mockClear();
+    const second = await webFetchTool.execute(params, context);
+
+    expect(global.fetch).not.toHaveBeenCalled();
+    expect(second.content).toBe(first.content);
+    expect(context.aiService!.processWebContent).not.toHaveBeenCalled();
+  });
+
+  it("should convert a body that looks like markup when no content type is sent", async () => {
+    stubResponse("<html><body><h1>Hello World</h1></body></html>");
+
+    await webFetchTool.execute(
+      { url: "https://no-type-test.example.com", prompt: "Summarize" },
+      context,
+    );
+
+    expect(sentContent()).toContain("Hello World");
+    expect(sentContent()).not.toContain("<h1>");
   });
 });
