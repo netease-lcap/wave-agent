@@ -126,6 +126,49 @@
   display: contents;
 }
 
+/* ═══ markdown 块「评论这段」按钮 = 同一颗气泡（1029 评论第十六批，仅桌面端）═══
+   她指着 `i.codicon.codicon-add`（`button > i`）说「这个按钮改成一样的」⇒ 换成
+   与选区评论按钮同一套两态矢量 + 自绘提示；第十六批追加「尺寸也改成 40px」⇒ 盒与
+   图标都是 40×40（画板等比放大，气泡墨迹 9.2 → 23，与选区那颗同尺寸）。
+   `margin-top: -12px` 把气泡的垂直中心拉回原 16×16 盒子的中心（原盒 16 高 →
+   放大到 40，上缘本该多出来的 12px 抵消掉）；横向保持 `left: 1px` 不动，往左会让
+   气泡越出内容列被裁。
+   取色同链路：`currentColor` 走 `--cc-text-link`（浅 #2F5EDB / 深 #4DAAFC）。
+   base 的蓝底反色在桌面端取消。
+   回退：删掉本节 + FilePane.tsx 的 `MdBlockCommentButton` 分叉。 */
+[data-host="desktop"] .line-comment-btn.md-block-comment-btn {
+  width: 40px;
+  height: 40px;
+  margin-top: -12px;
+  background: transparent;
+  border-radius: 0;
+  color: var(--cc-text-link, #2f5edb);
+}
+[data-host="desktop"] .line-comment-btn.md-block-comment-btn:hover {
+  background: transparent;
+  color: var(--cc-text-link, #2f5edb);
+}
+[data-host="desktop"] .md-block-comment-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+}
+[data-host="desktop"] .md-block-comment-icon.is-hover,
+[data-host="desktop"]
+  .line-comment-btn.md-block-comment-btn:hover
+  .md-block-comment-icon.is-normal {
+  display: none;
+}
+[data-host="desktop"]
+  .line-comment-btn.md-block-comment-btn:hover
+  .md-block-comment-icon.is-hover {
+  display: block;
+}
+[data-host="desktop"] .md-block-comment-tooltip {
+  display: contents;
+}
+
 /* Right-click menu on a line. Same shape as the tab strip's menu so the two
    read as one family. */
 .code-comment-menu {
