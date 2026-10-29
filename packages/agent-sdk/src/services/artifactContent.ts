@@ -310,9 +310,54 @@ export async function readArtifactContent(
   };
 }
 
+/**
+ * HTML beyond this size is not converted. Claude Code caps its conversion at
+ * the same 1 MB, which keeps a pathological page (deeply nested markup, a wall
+ * of inline styles) from pinning the CPU inside turndown.
+ */
+const MAX_HTML_FOR_MARKDOWN = 1_048_576;
+
+/** Turndown is stateless between calls, so one configured instance is reused. */
+let markdownService: TurndownService | undefined;
+
+/**
+ * Nodes that never carry page content: `style`/`script` bodies and `noscript`
+ * fallbacks would otherwise land in the markdown as text, and an `iframe`
+ * contributes nothing but its URL. Claude Code strips exactly these four —
+ * measurable on a VitePress page, whose inlined `<script>` blocks alone were
+ * ~29 KB of the ~139 KB of markdown turndown produced.
+ */
+function getMarkdownService(): TurndownService {
+  if (markdownService) return markdownService;
+  const service = new TurndownService();
+  service.remove(["style", "script", "noscript", "iframe"]);
+  markdownService = service;
+  return service;
+}
+
 /** Convert artifact HTML to markdown (the summary path feeds text, not markup). */
 export function htmlToMarkdown(html: string): string {
-  return new TurndownService().turndown(html);
+  const overLimit = html.length > MAX_HTML_FOR_MARKDOWN;
+  const source = overLimit ? html.slice(0, MAX_HTML_FOR_MARKDOWN) : html;
+
+  let markdown: string;
+  try {
+    markdown = getMarkdownService().turndown(source);
+  } catch (error) {
+    // Conversion is best-effort: a turndown failure must not sink the whole
+    // read, so the raw HTML is passed through — Claude Code degrades the same
+    // way instead of failing the fetch.
+    logger.error(
+      `Turndown failed, falling back to raw HTML: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    return html;
+  }
+
+  return overLimit
+    ? `${markdown}\n\n[Content truncated due to length...]`
+    : markdown;
 }
 
 /** Whether content is too large to return inline. */

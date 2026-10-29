@@ -433,6 +433,33 @@ describe("artifactContent", () => {
       expect(markdown).not.toContain("<h1>");
     });
 
+    it("should drop style, script, noscript and iframe content", () => {
+      const markdown = htmlToMarkdown(
+        [
+          "<html><head><style>.a{color:red}</style></head><body>",
+          "<script>const appearance = 'dark';</script>",
+          "<noscript>Enable JavaScript</noscript>",
+          '<iframe src="https://example.com/frame"></iframe>',
+          "<p>Real content</p>",
+          "</body></html>",
+        ].join(""),
+      );
+
+      expect(markdown).toContain("Real content");
+      expect(markdown).not.toContain("color:red");
+      expect(markdown).not.toContain("appearance");
+      expect(markdown).not.toContain("Enable JavaScript");
+      expect(markdown).not.toContain("example.com/frame");
+    });
+
+    it("should convert only the first 1MB of HTML and say it was cut", () => {
+      const padding = "a".repeat(1_048_576);
+      const markdown = htmlToMarkdown(`<p>${padding}</p><p>TAIL</p>`);
+
+      expect(markdown).not.toContain("TAIL");
+      expect(markdown).toContain("[Content truncated due to length...]");
+    });
+
     it("should treat content above the preview budget as large", () => {
       expect(isLargeArtifactContent("small")).toBe(false);
       expect(

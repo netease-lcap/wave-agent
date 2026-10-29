@@ -572,6 +572,33 @@ describe("webFetchTool - content truncation", () => {
       }),
     );
   });
+
+  it("should keep script and style text out of the content sent to the model", async () => {
+    const html =
+      "<html><head><style>.x{color:red}</style></head><body>" +
+      "<script>const appearance = 'dark';</script>" +
+      "<p>Body text</p></body></html>";
+    const mockResponse = {
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      text: vi.fn().mockResolvedValue(html),
+      headers: new Headers(),
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(mockResponse));
+
+    await webFetchTool.execute(
+      { url: "https://strip-test.example.com", prompt: "Summarize" },
+      context,
+    );
+
+    const [{ content }] = vi.mocked(context.aiService!.processWebContent).mock
+      .calls[0];
+
+    expect(content).toContain("Body text");
+    expect(content).not.toContain("appearance");
+    expect(content).not.toContain("color:red");
+  });
 });
 
 describe("webFetchTool - output enrichment", () => {
