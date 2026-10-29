@@ -18,7 +18,7 @@ vi.mock("fs", async () => {
 vi.mock("../../src/builtin/index.js", () => ({
   BUILTIN_CONTENT: {
     "skills/loop/SKILL.md": "loop content",
-    "subagents/bash.md": "bash content",
+    "subagents/explore.md": "explore content",
     "plugins/sdd/plugin.json": "plugin content",
   },
 }));
@@ -60,7 +60,7 @@ describe("builtinEmbed", () => {
     );
     for (const rel of [
       "skills/loop/SKILL.md",
-      "subagents/bash.md",
+      "subagents/explore.md",
       "plugins/sdd/plugin.json",
     ]) {
       expect(fs.writeFileSync).toHaveBeenCalledWith(

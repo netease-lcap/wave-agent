@@ -629,7 +629,6 @@ export default {
           text: "13. 内置 Subagents",
           collapsed: false,
           items: [
-            { text: "Bash — 命令执行", link: "/sdk#subagent-bash" },
             { text: "Explore — 代码库探索", link: "/sdk#subagent-explore" },
             { text: "Plan — 软件架构师", link: "/sdk#subagent-plan" },
             { text: "通用代理", link: "/sdk#subagent-general-purpose" },
