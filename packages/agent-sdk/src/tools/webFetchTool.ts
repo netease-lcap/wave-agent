@@ -14,6 +14,7 @@ import {
   formatSize,
   processContentWithAI,
 } from "../services/contentSummarizer.js";
+import { persistToolResultBuffer } from "../utils/toolResultStorage.js";
 
 // --- Security Limits ---
 const MAX_HTTP_CONTENT_LENGTH = 10 * 1024 * 1024; // 10MB
@@ -32,6 +33,9 @@ interface CacheEntry {
   codeText: string;
   content: string;
   contentType: string;
+  /** Set for binary fetches: the file the bytes were written to. */
+  persistedPath?: string;
+  persistedSize?: number;
 }
 
 const cache = new LRUCache<string, CacheEntry>({
@@ -101,16 +105,72 @@ function isPermittedRedirect(
   }
 }
 
+/**
+ * Content types that carry text or markup. Everything else — images, PDFs,
+ * fonts, archives — is binary and must not travel through the text channel.
+ * Claude Code decides this with the same allowlist.
+ */
+function isBinaryContentType(contentType: string): boolean {
+  if (!contentType) return false;
+  const mime = contentType.split(";")[0].trim();
+  if (mime.startsWith("text/")) return false;
+  if (mime.endsWith("+json") || mime === "application/json") return false;
+  if (mime.endsWith("+xml") || mime === "application/xml") return false;
+  if (mime.startsWith("application/javascript")) return false;
+  if (mime === "application/x-www-form-urlencoded") return false;
+  return true;
+}
+
+/** `image/png; charset=binary` → `png`, used only as the persisted file suffix. */
+function binaryExtension(contentType: string): string {
+  return contentType.split(";")[0].split("/")[1]?.split("+")[0] ?? "";
+}
+
+/**
+ * HTML is the only body worth converting. Markdown, plain text, JSON and XML
+ * are already text: running them through turndown parses them as HTML, which
+ * collapses every newline into one line and escapes the markup characters.
+ * Claude Code branches on `text/html` the same way; the sniff covers responses
+ * that ship no content-type at all.
+ */
+function isHtmlResponse(contentType: string, body: string): boolean {
+  if (contentType) return contentType.includes("text/html");
+  return /^\s*</.test(body);
+}
+
+/**
+ * A binary fetch reports the file its bytes landed in, never the bytes
+ * themselves. The cached entry carries the same path, so a repeat fetch
+ * re-announces the file instead of downloading it again — Claude Code reuses
+ * `persistedPath` the same way.
+ */
+function savedBinaryMessage({
+  status,
+  contentType,
+  size,
+  filePath,
+}: {
+  status: string;
+  contentType: string;
+  size: string;
+  filePath?: string;
+}): string {
+  return filePath
+    ? `Fetched ${status} — ${contentType}, ${size} of binary content.\nSaved to: ${filePath}\nRead that file with the Read tool if you need its contents.`
+    : `Fetched ${contentType}, ${size} of binary content, but it could not be saved to a file.`;
+}
+
 // --- Tool ---
 
 export const webFetchTool: ToolPlugin = {
   name: WEB_FETCH_TOOL_NAME,
   defer: true,
   searchHint: "fetch a URL and extract its readable text to read or summarize",
-  leanPrompt: `Fetches a URL, converts the page to markdown, and answers \`prompt\` about it with a small, fast model. Read-only; no files are modified.
+  leanPrompt: `Fetches a URL, converts HTML to markdown, and answers \`prompt\` about it with a small, fast model. Read-only; no files are modified.
 
 - The URL must be fully formed; HTTP is upgraded to HTTPS.
 - WILL FAIL for authenticated or private URLs (Google Docs, Confluence, Jira, GitHub) — look for an MCP tool that has authenticated access instead.
+- HTML is converted; markdown, JSON and plain text are passed through as-is; binary responses are saved to a file you can Read.
 - Content over ${formatSize(MAX_MARKDOWN_LENGTH)} is truncated, and very large results may be summarized.
 - If the tool reports a redirect to another host, call it again with the redirect URL.`,
   config: {
@@ -122,6 +182,7 @@ export const webFetchTool: ToolPlugin = {
 - Fetches content from a specified URL and processes it using an AI model
 - Takes a URL and a prompt as input
 - Fetches the URL content, converts HTML to markdown
+- Non-HTML text (markdown, JSON, XML, plain text) is passed through as-is; binary responses (images, PDFs) are saved to a file whose path is reported
 - Processes the content with the prompt using a small, fast model
 - Returns the model's response about the content
 - Use this tool when you need to retrieve and analyze web content
@@ -217,6 +278,20 @@ Usage notes:
     try {
       const cached = cache.get(url);
       if (cached) {
+        // A cached binary fetch only has a path to report — nothing to send to
+        // the model.
+        if (cached.persistedPath) {
+          return {
+            success: true,
+            content: savedBinaryMessage({
+              status: `${cached.code} ${cached.codeText}`.trim(),
+              contentType: cached.contentType,
+              size: formatSize(cached.persistedSize ?? cached.bytes),
+              filePath: cached.persistedPath,
+            }),
+          };
+        }
+
         const markdown = cached.content;
         return processContentWithAI(
           url,
@@ -268,35 +343,79 @@ Usage notes:
         };
       }
 
-      const html = await response.text();
-      let markdown = htmlToMarkdown(html);
+      const contentType = (
+        response.headers.get("content-type") || ""
+      ).toLowerCase();
 
-      const markdownBytes = new TextEncoder().encode(markdown).length;
+      // Binary payloads cannot travel through the text channel: decoding them
+      // yields mojibake, so they land on disk for the Read tool instead.
+      if (isBinaryContentType(contentType)) {
+        const bytes = Buffer.from(await response.arrayBuffer());
+        const status = `${response.status} ${response.statusText}`.trim();
+        const filePath = persistToolResultBuffer(
+          bytes,
+          "webfetch",
+          binaryExtension(contentType),
+        );
+
+        // Only a saved file is worth caching: without a path there is nothing
+        // to re-announce, and a cached empty body would silently starve the
+        // model on the next request.
+        if (filePath) {
+          cache.set(finalUrl, {
+            bytes: bytes.length,
+            code: response.status,
+            codeText: response.statusText,
+            content: "",
+            contentType,
+            persistedPath: filePath,
+            persistedSize: bytes.length,
+          });
+        }
+
+        return {
+          success: true,
+          content: savedBinaryMessage({
+            status,
+            contentType,
+            size: formatSize(bytes.length),
+            filePath,
+          }),
+        };
+      }
+
+      const body = await response.text();
+
+      let text = isHtmlResponse(contentType, body)
+        ? htmlToMarkdown(body)
+        : body;
+
+      const textBytes = new TextEncoder().encode(text).length;
 
       // Truncate if too large
-      if (markdown.length > MAX_MARKDOWN_LENGTH) {
-        markdown =
-          markdown.substring(0, MAX_MARKDOWN_LENGTH) +
+      if (text.length > MAX_MARKDOWN_LENGTH) {
+        text =
+          text.substring(0, MAX_MARKDOWN_LENGTH) +
           `[Content truncated at ${MAX_MARKDOWN_LENGTH} characters due to length limit.]`;
       }
 
       // Store in LRU cache
       cache.set(finalUrl, {
-        bytes: markdownBytes,
+        bytes: textBytes,
         code: response.status,
         codeText: response.statusText,
-        content: markdown,
-        contentType: response.headers.get("content-type") || "",
+        content: text,
+        contentType,
       });
 
       return processContentWithAI(
         finalUrl,
         prompt,
-        markdown,
+        text,
         response.status,
         response.statusText,
         context,
-        markdownBytes,
+        textBytes,
       );
     } catch (error) {
       logger.error(`WebFetch failed for ${url}:`, error);
