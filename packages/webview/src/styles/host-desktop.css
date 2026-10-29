@@ -6102,6 +6102,18 @@
   color: var(--cc-text-secondary, #6c7076);
 }
 
+/* 文件面板「正在读取文件…」loading 态字号（1029 第十五轮，设计师评论
+   `span`「正在读取文件…」：「字号14px」）。
+   该态没有自己的类，走 `<PanePlaceholder>` = `.desktop-panel-placeholder`
+   （DesktopApp.css:1990，base 12px）；文件面板里同一个占位类只有这一处
+   （空态另有 `.file-pane-placeholder-empty`，本来就是 14px）。
+   实测：12px / line-height normal(17) → 14px / normal(20)，与正文 14 同档；
+   行高保持 normal（居中占位，不影响盒），要 14/22 再说。
+   只改桌面端：IDE 宿主仍是 12px。 */
+[data-host="desktop"] .file-pane-body .desktop-panel-placeholder {
+  font-size: 14px;
+}
+
 /* ═══ 行内评论框（1029 第十七轮，桌面端）═══
    设计师评论 `div.line-comment-box`「参考表单的规范优化」（页脚 tag 是
    `docs/big.log`、按钮是「取消 / 添加」）。契约依据（codechat-desktop-skill
