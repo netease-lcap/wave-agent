@@ -73,6 +73,12 @@ function createMockSession(): ChatSession {
       { id: "btw", name: "btw", description: "旁路提问（不进入聊天记录）" },
     ]),
     getMessages: vi.fn().mockResolvedValue([]),
+    getInitialPage: vi.fn(async () => ({ messages: [], hasEarlier: false })),
+    getEarlierPage: vi.fn(async () => ({
+      messages: [],
+      hasMore: false,
+      anchorLost: false,
+    })),
     askBtw: vi.fn(),
     backgroundTasks: [],
   } as unknown as ChatSession;
@@ -126,6 +132,12 @@ function createReadySession(): ChatSession {
     isStreaming: false,
     isCommandRunning: false,
     getMessages: vi.fn().mockResolvedValue([]),
+    getInitialPage: vi.fn(async () => ({ messages: [], hasEarlier: false })),
+    getEarlierPage: vi.fn(async () => ({
+      messages: [],
+      hasMore: false,
+      anchorLost: false,
+    })),
   } as unknown as ChatSession;
 }
 
@@ -382,38 +394,91 @@ describe("MessageHandler MCP handlers", () => {
   // 首屏 / 切会话 / 窗口重载：宿主 pull 一次，把回包直接放进快照，之后不留引用
   // （spec ui/message-rendering-system.md「宿主不保留消息内容，用的时候现取」
   // 场景 1 / 9）。
-  test("webviewReady 的首屏列表就是这一次 getMessages 的回包", async () => {
+  test("webviewReady 的首屏列表就是这一次 getInitialPage 的回包", async () => {
     const pulled = [
       { id: "m1", role: "user", content: "hello" },
       { id: "m2", role: "assistant", content: "hi" },
     ];
     const session = createReadySession();
-    (session.getMessages as ReturnType<typeof vi.fn>).mockResolvedValue(pulled);
+    (session.getInitialPage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      messages: pulled,
+      hasEarlier: true,
+    });
     const { handler, context } = createReadyHandler(session);
 
     await handler.handleMessage({ command: "webviewReady" }, "tab");
 
-    // 一次 pull，回包即快照载荷。
-    expect(session.getMessages).toHaveBeenCalledTimes(1);
+    // 一次 pull，回包即快照载荷；更早的由用户上翻时再来要。
+    expect(session.getInitialPage).toHaveBeenCalledTimes(1);
+    expect(session.getMessages).not.toHaveBeenCalled();
     const states = sentPosts(context)("setInitialState");
     expect(states.length).toBeGreaterThanOrEqual(1);
     const posted = states[states.length - 1];
     expect(posted.messages).toEqual(pulled);
+    expect(posted.hasEarlier).toBe(true);
     // 不是「这次没有列表可给」：这条路径上界面必须拿回包覆盖自己那份。
     expect(posted.keepMessages).toBeUndefined();
     // 宿主不留字段（会话上的消息数组已删）。
     expect(session).not.toHaveProperty("messages");
   });
 
-  // `/rewind`：截断由 CLI 完成，`session.rewindToMessage` 随后重拉整份并交回列表，
-  // 宿主把它原样放进快照 —— 不再拿本地数组定位锚点截断，也不再让界面自己算
-  // （spec ui/message-rendering-system.md 场景 6）。
-  test("rewindToMessage 推给界面的是重拉后的整份列表", async () => {
-    const rewound = [{ id: "m1", role: "user", content: "kept" }];
+  test("loadEarlierMessages 把 SDK 那一页原样转给页面", async () => {
+    const older = [{ id: "m0", role: "user", content: "更早" }];
     const session = createReadySession();
-    const rewind = vi.fn().mockResolvedValue(rewound);
+    (session.getEarlierPage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      messages: older,
+      hasMore: true,
+      anchorLost: false,
+    });
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage(
+      { command: "loadEarlierMessages", before: "m1", requestId: "r1" },
+      "tab",
+    );
+
+    expect(session.getEarlierPage).toHaveBeenCalledWith("m1");
+    const replies = sentPosts(context)("earlierMessages");
+    expect(replies).toHaveLength(1);
+    expect(replies[0].requestId).toBe("r1");
+    expect(replies[0].messages).toEqual(older);
+    expect(replies[0].hasMore).toBe(true);
+    expect(replies[0].anchorLost).toBeUndefined();
+  });
+
+  test("loadEarlierMessages 的锚点已经不在转录里时回 anchorLost", async () => {
+    const session = createReadySession();
+    (session.getEarlierPage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      messages: [],
+      hasMore: false,
+      anchorLost: true,
+    });
+    const { handler, context } = createReadyHandler(session);
+
+    await handler.handleMessage(
+      { command: "loadEarlierMessages", before: "gone", requestId: "r2" },
+      "tab",
+    );
+
+    const replies = sentPosts(context)("earlierMessages");
+    expect(replies).toHaveLength(1);
+    expect(replies[0].messages).toEqual([]);
+    expect(replies[0].anchorLost).toBe(true);
+  });
+
+  // `/rewind`：截断由 CLI 完成，回滚后的列表随快照现取首屏那一页 —— 不再拿本地
+  // 数组定位锚点截断，也不再整份构造一遍（spec ui/message-rendering-system.md
+  // 场景 6）。
+  test("rewindToMessage 后随快照推的是现取的首屏那一页", async () => {
+    const page = [{ id: "m0", role: "user", content: "kept" }];
+    const session = createReadySession();
+    const rewind = vi.fn().mockResolvedValue(undefined);
     (session as unknown as { rewindToMessage: unknown }).rewindToMessage =
       rewind;
+    (session.getInitialPage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      messages: page,
+      hasEarlier: true,
+    });
     const { handler, context } = createReadyHandler(session);
 
     await handler.handleMessage(
@@ -428,9 +493,10 @@ describe("MessageHandler MCP handlers", () => {
     expect(results[0]).toMatchObject({ messageId: "m2", ok: true });
     const states = sentPosts(context)("setInitialState");
     expect(states.length).toBeGreaterThanOrEqual(1);
-    expect(states[states.length - 1].messages).toEqual(rewound);
+    expect(states[states.length - 1].messages).toEqual(page);
+    expect(states[states.length - 1].hasEarlier).toBe(true);
     expect(states[states.length - 1].keepMessages).toBeUndefined();
-    // 列表来自重拉（rewindToMessage 自己那次），handler 不再多拉一次。
+    // 只取一页：整份列表那条路不再走。
     expect(session.getMessages).not.toHaveBeenCalled();
   });
 
@@ -479,15 +545,19 @@ describe("MessageHandler MCP handlers", () => {
   // restoring a history session must deliver the pulled list to the webview via
   // updateMessages, otherwise state.messages stays empty and the webview keeps
   // showing the welcome page after selecting a session in the sidebar.
-  // The list comes back from `session.restoreSession` itself (the pull it makes
-  // right after the restore) — the host stores nothing on the way
-  // (spec ui/message-rendering-system.md「宿主不保留消息内容」场景 1).
-  test("restoreSession posts updateMessages with the restored messages", async () => {
+  // 推的是恢复之后现取的首屏那一页（不是整份列表），并带上「还有没有更早」——
+  // 更早的由用户上翻时再来要；宿主不在中间留任何一份
+  // (spec ui/message-rendering-system.md「宿主不保留消息内容」场景 1)。
+  test("restoreSession posts updateMessages with the restored first page", async () => {
     const restoredMessages = [{ id: "m1", role: "user", content: "hello" }];
     const session = createMockSession();
     (session.restoreSession as ReturnType<typeof vi.fn>).mockResolvedValue(
-      restoredMessages,
+      undefined,
     );
+    (session.getInitialPage as ReturnType<typeof vi.fn>).mockResolvedValue({
+      messages: restoredMessages,
+      hasEarlier: true,
+    });
 
     const { handler, context } = createHandler(session);
     await handler.handleMessage(
@@ -496,10 +566,16 @@ describe("MessageHandler MCP handlers", () => {
     );
 
     expect(session.restoreSession).toHaveBeenCalledWith("sess-1");
+    expect(session.getMessages).not.toHaveBeenCalled();
     const posted = (context.postMessage as ReturnType<typeof vi.fn>).mock
-      .calls[0][0] as { command: string; messages: unknown };
+      .calls[0][0] as {
+      command: string;
+      messages: unknown;
+      hasEarlier?: boolean;
+    };
     expect(posted.command).toBe("updateMessages");
     expect(posted.messages).toEqual(restoredMessages);
+    expect(posted.hasEarlier).toBe(true);
   });
 
   // Same regression class: /clear pulls the (now empty) list but never pushes

@@ -122,6 +122,10 @@ export const PANEL_LABELS: Record<DesktopPanelKind, string> = {
   terminal: "终端",
   file: "文件",
 };
+// 上翻时锚点在转录里失效了（rewind / 截断）之后，换下一个已加载 id 重试的次数上限。
+// 三次足够跳过「被裁掉的那几条」，又不至于把一次坏锚点变成一个请求风暴。
+const EARLIER_ANCHOR_RETRY_LIMIT = 3;
+
 const PANEL_MIN_WIDTH = 320;
 /** The conversation (message) area never shrinks below this when opening/dragging panels. */
 const CHAT_MAIN_MIN_WIDTH = 360;
@@ -1239,6 +1243,29 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     // only the root can take the reply (see the rationale above).
     return !rowsVisibleRef.current;
   };
+  // 上翻取更早（spec ui/message-rendering-system.md「首屏一页，上翻按需取更早」）：
+  // 「还有没有更早」由宿主的回包决定，页面只负责在滚到顶时开口要、把回来的一页接在
+  // 列表前面。归属键是 requestId——用户在顶部停留会连续翻页，晚到的旧页必须丢弃。
+  const [hasEarlier, setHasEarlier] = useState(false);
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false);
+  const earlierRequestRef = useRef<string | undefined>(undefined);
+  const earlierSeqRef = useRef(0);
+  // anchorLost 的退让：换已加载列表里的下一个 id 再试，最多这么多次。
+  const earlierAnchorAttemptsRef = useRef(0);
+  const messagesRef = useRef(state.messages);
+  messagesRef.current = state.messages;
+
+  const sendLoadEarlier = (before: string) => {
+    const requestId = `earlier-${++earlierSeqRef.current}`;
+    earlierRequestRef.current = requestId;
+    setIsLoadingEarlier(true);
+    const pid = paneIdRef.current;
+    const payload = { command: "loadEarlierMessages", before, requestId };
+    vscode.postMessage(
+      pid === undefined ? payload : { ...payload, paneId: pid },
+    );
+  };
+
   const handleMessage = (message: MessageEvent["data"]) => {
     // Desktop plan panel: route an ExitPlanMode plan to the plan pane (opens
     // it on the first plan, then keeps the latest plan until the user closes
@@ -1257,6 +1284,33 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       case "updateMessages":
         if (!forThisPane(message)) break;
         dispatch({ type: "SET_MESSAGES", payload: message.messages });
+        // 整表替换之后，上翻的开关回到宿主说的那一份（缺省 = 老宿主，不提供上翻）。
+        setHasEarlier(message.hasEarlier === true);
+        setIsLoadingEarlier(false);
+        earlierAnchorAttemptsRef.current = 0;
+        break;
+      case "earlierMessages":
+        if (!forThisPane(message)) break;
+        // 晚到的旧页（用户已经翻走 / 会话已换）丢弃。
+        if (message.requestId !== earlierRequestRef.current) break;
+        if (message.anchorLost) {
+          // 锚点在转录里没了（rewind / 截断 / 换会话）：换成已加载列表里的下一个
+          // id 再试，**不要**当成「没有更早」——判错这段历史就再也翻不出来。
+          const attempt = earlierAnchorAttemptsRef.current + 1;
+          const next = messagesRef.current[attempt]?.id;
+          earlierAnchorAttemptsRef.current = attempt;
+          if (next && attempt <= EARLIER_ANCHOR_RETRY_LIMIT) {
+            sendLoadEarlier(next);
+          } else {
+            setIsLoadingEarlier(false);
+            setHasEarlier(false);
+          }
+          break;
+        }
+        earlierAnchorAttemptsRef.current = 0;
+        dispatch({ type: "PREPEND_MESSAGES", payload: message.messages });
+        setHasEarlier(message.hasMore);
+        setIsLoadingEarlier(false);
         break;
       case "updateTasks":
         if (!forThisPane(message)) break;
@@ -1838,6 +1892,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             setPlanReplayContent(c.planContent);
           }
         }
+        setHasEarlier(message.hasEarlier === true);
+        setIsLoadingEarlier(false);
+        earlierAnchorAttemptsRef.current = 0;
         dispatch({
           type: "SET_INITIAL_STATE",
           payload: {
@@ -4819,6 +4876,12 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           // （`truncateHistory` + `revertTo` 还原电脑侧工作区文件），页面上先确认
           // 一次再发——文案由 `pendingRewindId` 那个 ConfirmDialog 按端切。
           onRewindToMessage={handleRewindToMessage}
+          // 上翻取更早：滚到顶时这里会拿到一条「要一页更早的」请求，锚点是当前
+          // 已加载的第一条（spec ui/message-rendering-system.md「首屏一页，上翻按需
+          // 取更早」）。
+          hasEarlier={hasEarlier}
+          isLoadingEarlier={isLoadingEarlier}
+          onLoadEarlier={sendLoadEarlier}
           workdir={state.workdir}
           onOpenPreview={openPreviewHandler}
           onOpenFile={handleOpenFile}

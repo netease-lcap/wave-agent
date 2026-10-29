@@ -66,6 +66,14 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         currentSession: pinSessionTitle(state.currentSession, action.payload),
       };
     }
+    case "PREPEND_MESSAGES": {
+      // 上翻取更早：接在列表前面。按 id 去重，且**不动** currentSession 的标题
+      // 锚定——更早的页不该改写会话标题（它是首条用户消息决定的）。
+      const seen = new Set(state.messages.map((m) => m.id));
+      const incoming = action.payload.filter((m) => !seen.has(m.id));
+      if (incoming.length === 0) return state;
+      return { ...state, messages: [...incoming, ...state.messages] };
+    }
     case "SET_TASKS":
       return {
         ...state,

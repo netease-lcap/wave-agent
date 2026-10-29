@@ -211,7 +211,7 @@ order: 220
 
 **验收场景**：
 
-1. **假设**插件 webview 首次加载，**当**发送 `webviewReady` 时，**则**宿主调用 `getMessages` 拉取**整份**消息列表（=压缩后的上下文，不分页，见 [message-rendering-system.md](message-rendering-system.md)「首屏就是整份列表，不分页」）放进 `setInitialState` 下发，不带「还有没有更早」这类字段；页面也不存在「取更早一页」的上行命令
+1. **假设**插件 webview 首次加载，**当**发送 `webviewReady` 时，**则**宿主调用 `getMessages` 拉取**最近一页**消息（常驻口径仍是压缩后的上下文，见 [message-rendering-system.md](message-rendering-system.md)「首屏一页，上翻按需取更早」）放进 `setInitialState` 下发，回包带「还有没有更早」；更早的内容由页面在上翻时按页取，取回的页只进页面侧列表、不写回宿主或 SDK 的消息列表
 2. **假设**助手正在流式响应，**当**CLI 产生新 chunk 时，**则**webview 仅收到增量通知（`userMessageAdded`/`assistantMessageAdded`/`assistantContentUpdated`/`toolBlockUpdated` 等）并就地更新对应消息块，全程无全量列表下发
 3. **假设**用户执行 clearChat / restoreSession，**当**操作完成时，**则**webview（或宿主代表 webview）主动发起 `getMessages` 请求，以返回的整份列表整表重建消息区
 4. **假设** bash 模式命令（`!ls`）执行，**当**宿主转发增量通知时，**则**webview 经 `userMessageAdded` 创建 user 消息、`toolBlockUpdated` 就地更新 bash tool block（含实时输出），无需拉取全量列表

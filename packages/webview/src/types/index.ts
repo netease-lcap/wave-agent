@@ -574,6 +574,13 @@ export interface MessageListProps {
   onOpenPreview?: (url: string) => void;
   /** Desktop host only: open a file in the file panel instead of the OS. */
   onOpenFile?: (path: string, startLine?: number, endLine?: number) => void;
+  /** 这一页之前还有更早的消息：滚到顶时自动要下一页（spec ui/message-rendering-system.md
+   *  「首屏一页，上翻按需取更早」）。缺席 = 不提供上翻。 */
+  hasEarlier?: boolean;
+  /** 上一页还没回来：顶部触发不再叠加请求。 */
+  isLoadingEarlier?: boolean;
+  /** 要一页更早的，锚点是当前已加载的第一条；调用方负责发请求与去重。 */
+  onLoadEarlier?: (before: string) => void;
 }
 
 export interface MessageProps {
@@ -1194,6 +1201,13 @@ export interface WorkflowManagerProps {
 
 export type ChatAction =
   | { type: "SET_MESSAGES"; payload: Message[] }
+  | {
+      // 上翻取更早：把一页更早的消息接在列表前面（不是替换）。id 会去重——
+      // 页与页之间可能重叠一条（锚点是排他的，但压缩重建保留轮次会让同 id 出现
+      // 两次），重复的那条只留一份。
+      type: "PREPEND_MESSAGES";
+      payload: Message[];
+    }
   | { type: "SET_TASKS"; payload: Task[] }
   | { type: "SET_BACKGROUND_TASKS"; payload: BackgroundTaskSummary[] }
   | { type: "SET_WORKFLOW_RUNS"; payload: SerializableWorkflowRun[] }

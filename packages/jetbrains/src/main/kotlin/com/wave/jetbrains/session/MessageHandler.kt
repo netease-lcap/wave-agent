@@ -330,6 +330,11 @@ class MessageHandler(
                 handleRewindToMessage(messageId, requestId)
             }
             "listRewindCheckpoints" -> handleListRewindCheckpoints()
+            "loadEarlierMessages" -> {
+                val before = msg["before"]?.jsonPrimitive?.contentOrNull ?: return
+                val requestId = msg["requestId"]?.jsonPrimitive?.contentOrNull ?: return
+                handleLoadEarlierMessages(before, requestId)
+            }
             "getConfiguredModels" -> handleGetConfiguredModels()
             "setModel" -> {
                 val model = msg["model"]?.jsonPrimitive?.content ?: return
@@ -1126,8 +1131,6 @@ class MessageHandler(
         try {
             val inputContent = session.agent?.rewindToMessage(messageId) ?: ""
             session.inputContent = inputContent
-            // 重拉一次整份：回包就是新的边界，用完即弃（只搭下面那次快照的便车）。
-            val messages = session.fetchMessages()
             if (requestId != null) {
                 postMessage("rewindResult", buildJsonObject {
                     put("requestId", requestId)
@@ -1135,9 +1138,9 @@ class MessageHandler(
                     put("ok", true)
                 })
             }
-            // VSCE calls handleWebviewReady to re-push full state with the list it
-            // just re-pulled; the pull is not repeated inside.
-            handleWebviewReady(pulledMessages = messages)
+            // 重拉由 handleWebviewReady 自己做一次（首屏那一页就是回滚后的新边界），
+            // 这里不预先取一遍。
+            handleWebviewReady()
             postMessage("focusInput", JsonObject(emptyMap()))
             postMessage("scrollToBottom", JsonObject(emptyMap()))
         } catch (e: StdioClientException) {
@@ -1393,14 +1396,38 @@ class MessageHandler(
     }
 
     /**
-     * 首屏 / 切会话 / 恢复 / 回滚之后那次整份快照。
+     * 上翻一页更早的历史（webview → host，spec ui/message-rendering-system.md「首屏
+     * 一页，上翻按需取更早」）。
      *
-     * `pulledMessages` 是调用方**刚刚**取到的那一份（`/rewind` 里已经重拉过），此时
-     * 不再多打一次 RPC；其余调用方都由这里自己现取一次。两种情况下列表都只是这次快照
-     * 的载荷：宿主不写字段、不留引用（spec ui/message-rendering-system.md「宿主不保留
-     * 消息内容，用的时候现取」场景 1）。
+     * `before` 是排他上锚点 = 界面当前的第一条；SDK 从转录按游标往回读，压缩之前的
+     * 历史也读得到，宿主一个字段都不留。回包原样带着 `hasMore`；`anchorLost` 说明锚点
+     * 在转录里已经不在了（/rewind 之类），这时回空页 + `hasMore = false`，由界面换一个
+     * 更早的已知 id 重试 —— 不能在这里替它猜。
+     *
+     * 取不到（RPC 失败）也回一页空的：界面收到带 requestId 的回包才会清掉「正在加载」，
+     * 不回就等于把它卡在加载态。
      */
-    private suspend fun handleWebviewReady(pulledMessages: JsonArray? = null) {
+    private suspend fun handleLoadEarlierMessages(before: String, requestId: String) {
+        val page = session.fetchEarlierPage(before)
+        val messages = page?.get("messages") as? JsonArray
+        val hasMore = (page?.get("hasMore") as? JsonPrimitive)?.booleanOrNull ?: false
+        val anchorLost = (page?.get("anchorLost") as? JsonPrimitive)?.booleanOrNull ?: false
+        postMessage("earlierMessages", buildJsonObject {
+            put("requestId", requestId)
+            put("messages", messages ?: JsonArray(emptyList()))
+            put("hasMore", hasMore)
+            put("anchorLost", anchorLost)
+        })
+    }
+
+    /**
+     * 首屏 / 切会话 / 恢复 / 回滚之后那次快照。
+     *
+     * 列表只是这次快照的载荷：宿主不写字段、不留引用（spec
+     * ui/message-rendering-system.md「宿主不保留消息内容，用的时候现取」场景 1）。
+     * 只取首屏那一页，更早的由用户上翻时按游标再来要。
+     */
+    private suspend fun handleWebviewReady() {
         if (session.agent == null) {
             WaveBackendService.getInstance(project).initializeSession(session, null)
         }
@@ -1408,10 +1435,13 @@ class MessageHandler(
         // sessionIdChange to trigger listSessions, but a freshly-created session
         // may not emit that notification, so refresh explicitly here.
         session.refreshSessions()
-        // 整份列表现取（镜像 VSCE messageHandler.ts handleWebviewReady →
-        // session.getMessages()）：服务端不再推全量快照，宿主现取一次、回包直接进
-        // setInitialState。null = 这次取不到（/rewind 的重拉失败，或这里的 RPC 失败）。
-        val messages = pulledMessages ?: session.fetchMessages()
+        // 首屏只取一页（spec ui/message-rendering-system.md「首屏一页，上翻按需取
+        // 更早」）：服务端不推快照，宿主现取一次，回包直接进 setInitialState。取不到
+        // 时回落到调用方已经拿到的 `pulledMessages`（/rewind 的重拉结果）；
+        // 两边都没有就把列表留空并置 keepMessages，界面保留手里那份。
+        val initialPage = session.fetchInitialPage()
+        val messages = initialPage?.get("messages") as? JsonArray
+        val hasEarlier = (initialPage?.get("hasMore") as? JsonPrimitive)?.booleanOrNull ?: false
         // Refresh serverUrl + isAuthenticated from auth status before sending initial state.
         // Mirrors VSCE messageHandler.ts:622-633: without isAuthenticated the webview's
         // WelcomeView wrongly shows the login CTA to already-logged-in users (it never
@@ -1432,10 +1462,10 @@ class MessageHandler(
             LOG.warn("getAuthStatus on webviewReady failed: ${e.message}")
         }
         postMessage("setInitialState", buildJsonObject {
-            // 列表就是上面那次现取的回包（= 压缩后的上下文，[WaveSession.fetchMessages]
-            // 不分页）。取不到时不拿空列表冒充「这条会话没了」：keepMessages 让界面
-            // 保留手里那份。
+            // 列表就是上面那次现取的首屏。取不到时不拿空列表冒充「这条会话没了」：
+            // keepMessages 让界面保留手里那份。
             put("messages", messages ?: JsonArray(emptyList()))
+            put("hasEarlier", hasEarlier)
             if (messages == null) put("keepMessages", true)
             put("tasks", session.tasks ?: JsonArray(emptyList()))
             put("backgroundTasks", session.backgroundTasks ?: JsonArray(emptyList()))

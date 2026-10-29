@@ -582,21 +582,11 @@ export const handleNormalInput = async (
 
   if (key.upArrow) {
     if (state.history.length === 0) {
-      let sessionIds: string[] | undefined = callbacks.sessionId
+      // 提示历史只按当前会话取：`sessionIds` 恒为 `[当前会话 id]`，曾经为了这两个
+      // 字段读整份转录（`getFullMessageThread`），几万条的会话为此白读几十 MB。
+      const sessionIds = callbacks.sessionId
         ? [callbacks.sessionId]
         : undefined;
-
-      if (callbacks.getFullMessageThread) {
-        try {
-          const thread = await callbacks.getFullMessageThread();
-          sessionIds = thread.sessionIds;
-        } catch (error) {
-          callbacks.logger?.error(
-            "Failed to fetch ancestor session IDs",
-            error,
-          );
-        }
-      }
 
       const history = await PromptHistoryManager.getHistory({
         sessionId: sessionIds,

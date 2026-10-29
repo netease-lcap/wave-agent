@@ -14,7 +14,10 @@ import type {
 import { StdioClient } from "../stdio/stdioClient";
 import {
   StdioAgent,
+  MESSAGE_FIRST_PAGE_SIZE,
+  MESSAGE_HISTORY_PAGE_SIZE,
   type InitializeParams,
+  type MessageWindowResult,
   type StdioAgentCallbacks,
   type NotificationRouter,
 } from "wave-agent-sdk/host";
@@ -387,19 +390,17 @@ export class ChatSession {
     }
   }
 
-  /** 恢复历史会话；返回恢复后的整份列表（回包），宿主不存它。 */
-  public async restoreSession(sessionId: string): Promise<Message[]> {
-    let messages: Message[] = [];
+  /**
+   * 恢复历史会话。列表不在这里取：调用方随后按首屏那一页现取（`getInitialPage`），
+   * 回滚/恢复到一个很长的会话时不必整份构造一遍（spec
+   * ui/message-rendering-system.md「宿主不保留消息内容」场景 1）。
+   */
+  public async restoreSession(sessionId: string): Promise<void> {
     if (this.agent) {
       this.inputContent = "";
       await this.agent.restoreSession(sessionId);
-      // Pull the restored list so the caller can hand it straight to the
-      // webview — the reply is used once and dropped (spec ui/
-      // message-rendering-system.md「宿主不保留消息内容」场景 1).
-      messages = await this.getMessages();
     }
     await this.clearQueue();
-    return messages;
   }
 
   /**
@@ -467,6 +468,53 @@ export class ChatSession {
    * 只顺带记下用量百分比：SDK 在无参取数时刷新 `agent.contextUsagePercent`，
    * 那是**状态**（webview 重建后要把用量环补回来），不是消息内容。
    */
+  /**
+   * 首屏那一页（spec ui/message-rendering-system.md「首屏一页，上翻按需取更早」）：
+   * 最近 `MESSAGE_FIRST_PAGE_SIZE` 条，外加「还有没有更早」。宿主不留这一页。
+   */
+  public async getInitialPage(): Promise<{
+    messages: Message[];
+    hasEarlier: boolean;
+  }> {
+    const page = (await this.getMessagePage({
+      limit: MESSAGE_FIRST_PAGE_SIZE,
+    })) as MessageWindowResult | undefined;
+    return {
+      messages: page?.messages ?? [],
+      hasEarlier: page?.hasMore === true,
+    };
+  }
+
+  /**
+   * 上翻一页更早的：SDK 从转录读（压缩之前的历史也读得到），回包直接转给界面，
+   * 宿主一个字段都不存。
+   */
+  public async getEarlierPage(before: string): Promise<{
+    messages: Message[];
+    hasMore: boolean;
+    anchorLost: boolean;
+  }> {
+    const page = (await this.getMessagePage({
+      before,
+      limit: MESSAGE_HISTORY_PAGE_SIZE,
+    })) as MessageWindowResult | undefined;
+    return {
+      messages: page?.messages ?? [],
+      hasMore: page?.hasMore === true,
+      anchorLost: page?.anchorLost === true,
+    };
+  }
+
+  private async getMessagePage(window: {
+    before?: string;
+    limit?: number;
+  }): Promise<Message[] | MessageWindowResult> {
+    if (!this.agent) return [];
+    const page = await this.agent.getMessages(window);
+    this.contextUsagePercent = this.agent.contextUsagePercent;
+    return page;
+  }
+
   public async getMessages(): Promise<Message[]> {
     if (!this.agent) {
       return [];
@@ -595,14 +643,15 @@ export class ChatSession {
    * 定位锚点），完成后无条件重拉整份列表并把它交回调用方推送 —— spec
    * ui/message-rendering-system.md「宿主不保留消息内容」场景 6。
    */
-  public async rewindToMessage(messageId: string): Promise<Message[]> {
+  public async rewindToMessage(messageId: string): Promise<void> {
     if (!this.agent) {
       throw new Error("智能体未初始化");
     }
 
     const { inputContent } = await this.agent.rewindToMessage(messageId);
     this.inputContent = inputContent;
-    return await this.getMessages();
+    // 不在这里重拉：回滚后的列表由调用方按首屏那一页现取（`handleWebviewReady`）。
+    // 回滚到一个很早的消息时，整份列表正是首屏不该再构造一遍的那份东西。
   }
 
   public async askBtw(question: string): Promise<string> {

@@ -28,6 +28,19 @@ describe("normalizeMessageWindow", () => {
       since: "m3",
       limit: 100,
     });
+    // 上翻取更早：排他上锚点 + 页大小。
+    expect(normalizeMessageWindow({ before: "m3", limit: 200 })).toEqual({
+      before: "m3",
+      limit: 200,
+    });
+  });
+
+  it("rejects since and before together — two anchors, one direction", () => {
+    // `since` 是「往下补差」、`before` 是「往上翻页」，语义相反；同时出现说明
+    // 调用方把两条路混了，静默挑一个都会让它拿到错的那一段。
+    expect(() => normalizeMessageWindow({ since: "m1", before: "m9" })).toThrow(
+      InvalidMessageWindowError,
+    );
   });
 
   it.each([0, -1, 1.5, Number.NaN])(

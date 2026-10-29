@@ -39,6 +39,7 @@ import type {
   UpdateToolBlockMessage,
   UpdateErrorBlockMessage,
   UpdateWorkdirMessage,
+  EarlierMessagesMessage,
   StartStreamingMessage,
   EndStreamingMessage,
   CompactionStateChangeMessage,
@@ -95,6 +96,11 @@ export interface Fixtures {
     messages: Message[],
     overrides?: Overrides<UpdateMessagesMessage>,
   ) => UpdateMessagesMessage;
+  earlierMessages: (
+    messages: Message[],
+    requestId: string,
+    overrides?: Overrides<EarlierMessagesMessage>,
+  ) => EarlierMessagesMessage;
   appendMessage: (
     message: Message,
     overrides?: Overrides<AppendMessageMessage>,
@@ -261,6 +267,14 @@ export const fixtures: Fixtures = {
   updateMessages: (messages, overrides = {}) => ({
     command: "updateMessages",
     messages,
+    ...overrides,
+  }),
+
+  earlierMessages: (messages, requestId, overrides = {}) => ({
+    command: "earlierMessages",
+    requestId,
+    messages,
+    hasMore: false,
     ...overrides,
   }),
 

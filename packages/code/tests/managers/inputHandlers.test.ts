@@ -944,16 +944,12 @@ describe("inputHandlers", () => {
       vi.mocked(PromptHistoryManager.getHistory).mockResolvedValue(mockHistory);
       callbacks.sessionId = "session-1";
       callbacks.workdir = "/home/user/project";
-      callbacks.getFullMessageThread = vi.fn().mockResolvedValue({
-        messages: [],
-        sessionIds: ["session-0", "session-1"],
-      });
 
       // First up arrow - fetch history
       await handleNormalInput(initialState, dispatch, callbacks, "", key);
-      expect(callbacks.getFullMessageThread).toHaveBeenCalled();
+      // 只按当前会话取：这条路径不再为了 `sessionIds` 读整份转录。
       expect(PromptHistoryManager.getHistory).toHaveBeenCalledWith({
-        sessionId: ["session-0", "session-1"],
+        sessionId: ["session-1"],
         workdir: "/home/user/project",
       });
       expect(dispatch).toHaveBeenCalledWith({

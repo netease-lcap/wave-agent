@@ -453,8 +453,9 @@ export class StdioAgent {
    */
   async getMessages(): Promise<Message[]>;
   /**
-   * 带参数取数（`since` 重连补差 / `limit` 从尾部切一段）。只读查询：连上面那
-   * 两项状态也不回写。
+   * 带参数取数（`since` 重连补差 / `before` + `limit` 按页往回翻）。回包是分页结
+   * 果（`messages` / `hasMore` / `anchorLost`），上面那两项状态照样刷新——首屏那
+   * 一页也走这条路，宿主拿标题与用量环只靠它。
    */
   async getMessages(window: MessageWindow): Promise<MessageWindowResult>;
   async getMessages(
@@ -465,7 +466,6 @@ export class StdioAgent {
       window,
       this.sessionId,
     )) as MessageWindowResult;
-    if (window) return result;
     if (result.threadSummary) {
       this.threadSummary = result.threadSummary;
     }
@@ -473,7 +473,7 @@ export class StdioAgent {
     // and the host replays whatever is here on webviewReady — keeping the last
     // session's number would paint the ring with someone else's usage.
     this.contextUsagePercent = result.contextUsagePercent;
-    return result.messages;
+    return window ? result : result.messages;
   }
 
   async listRewindCheckpoints(): Promise<{

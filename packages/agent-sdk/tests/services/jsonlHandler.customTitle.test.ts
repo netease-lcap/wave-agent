@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { JsonlHandler } from "@/services/jsonlHandler.js";
 import type { Message } from "@/types/messaging.js";
+import { forEachLine } from "@/utils/fileUtils.js";
 import { generateMessageId } from "@/utils/messageOperations.js";
 
 vi.mock("fs/promises", () => ({
@@ -13,11 +14,29 @@ vi.mock("fs/promises", () => ({
 }));
 
 vi.mock("@/utils/fileUtils.js", () => ({
+  forEachLine: vi.fn(),
   getLastLine: vi.fn(),
   readFirstLine: vi.fn(),
   readFirstNLines: vi.fn(),
   readTailLines: vi.fn(),
 }));
+
+/**
+ * Feed the streaming read (`readMessagesAndCustomTitle` consumes `forEachLine`)
+ * the same file content the old whole-file mock provided, with the same
+ * line-splitting rule: a trailing newline means no final empty line reaches the
+ * callback, and `endsWithNewline` says which case it was.
+ */
+function mockFileContent(content: string) {
+  vi.mocked(forEachLine).mockImplementation(async (_filePath, onLine) => {
+    const endsWithNewline = content.length === 0 || content.endsWith("\n");
+    const lines = content.split(/\r?\n/);
+    for (const line of endsWithNewline ? lines.slice(0, -1) : lines) {
+      await onLine(line);
+    }
+    return { endsWithNewline };
+  });
+}
 
 const customTitleLine = (title: string, sessionId = "s-1") =>
   JSON.stringify({ type: "custom-title", customTitle: title, sessionId });
@@ -93,8 +112,7 @@ describe("JsonlHandler custom-title entries", () => {
 
   describe("readMessagesAndCustomTitle()", () => {
     it("returns both the messages and the title from a single read", async () => {
-      const fsPromises = await import("fs/promises");
-      vi.mocked(fsPromises.readFile).mockResolvedValue(
+      mockFileContent(
         [
           JSON.stringify({ type: "metadata", workdir: "/repo" }),
           messageLine("hello"),
@@ -112,10 +130,9 @@ describe("JsonlHandler custom-title entries", () => {
     });
 
     it("finds a title that is not the last entry in the file", async () => {
-      const fsPromises = await import("fs/promises");
       // Since the read covers the whole file rather than a tail window, a title
       // written early stays visible no matter how many messages follow it.
-      vi.mocked(fsPromises.readFile).mockResolvedValue(
+      mockFileContent(
         [
           JSON.stringify({ type: "metadata", workdir: "/repo" }),
           customTitleLine("老标题"),
@@ -132,8 +149,7 @@ describe("JsonlHandler custom-title entries", () => {
     });
 
     it("leaves customTitle undefined for a never-renamed session", async () => {
-      const fsPromises = await import("fs/promises");
-      vi.mocked(fsPromises.readFile).mockResolvedValue(
+      mockFileContent(
         [
           JSON.stringify({ type: "metadata", workdir: "/repo" }),
           messageLine("hi"),
@@ -150,8 +166,7 @@ describe("JsonlHandler custom-title entries", () => {
 
   describe("reserved entries are never mistaken for messages", () => {
     it("read() skips custom-title lines", async () => {
-      const fsPromises = await import("fs/promises");
-      vi.mocked(fsPromises.readFile).mockResolvedValue(
+      mockFileContent(
         [
           JSON.stringify({ type: "metadata", workdir: "/repo" }),
           messageLine("hello"),

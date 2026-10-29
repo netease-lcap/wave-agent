@@ -2,7 +2,6 @@ import {
   PermissionMode,
   Logger,
   PromptEntry,
-  Message,
   SubagentConfiguration,
 } from "wave-agent-sdk";
 import { Key } from "ink";
@@ -143,10 +142,6 @@ export interface InputManagerCallbacks {
   onPlanCommand?: (args?: string) => Promise<void> | void;
   sessionId?: string;
   workdir?: string;
-  getFullMessageThread?: () => Promise<{
-    messages: Message[];
-    sessionIds: string[];
-  }>;
   logger?: Logger;
   hasQueuedMessages?: boolean;
   isIdle?: boolean;

@@ -1468,12 +1468,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     renameSession: (title) => agentRef.current?.renameSession(title),
     compact: (instructions) => compact(instructions),
     slashCommands: () => agentRef.current?.getSlashCommands() ?? [],
-    // 手机页取首屏尾段 / 补差都读 agent 手上那份列表（压缩后的上下文），不去
-    // 转录里找压缩前的历史。
+    // 手机页取首屏尾段 / 补差都读 agent 手上那份列表（压缩后的上下文）；它这一侧
+    // 不提供上翻，所以不会带来 `before` 锚点。
     messagePage: (window) =>
-      Promise.resolve(
-        agentRef.current?.getMessagePage(window) ?? { messages: [] },
-      ),
+      agentRef.current?.getMessagePage(window) ??
+      Promise.resolve({ messages: [] }),
     currentThread: () =>
       Promise.resolve([...(agentRef.current?.messages ?? [])]),
     threadSummary: () =>

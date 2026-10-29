@@ -43,8 +43,11 @@ import {
   type NestedMemoryFile,
 } from "../utils/nestedMemory.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
-import { MESSAGE_SLICE_MAX_BYTES } from "../constants/messageWindow.js";
-import { takeTailFromMemory } from "../utils/messageWindow.js";
+import {
+  MESSAGE_HISTORY_PAGE_SIZE,
+  MESSAGE_SLICE_MAX_BYTES,
+} from "../constants/messageWindow.js";
+import { messageBytes, takeTailFromMemory } from "../utils/messageWindow.js";
 import type {
   MessageWindow,
   MessageWindowResult,
@@ -1159,15 +1162,24 @@ export class MessageManager {
   }
 
   /**
-   * Answer a `getMessages` request: the whole list, or — for the remote page —
-   * the tail `limit` and/or everything appended after `since`.
+   * Answer a `getMessages` request: the whole list, or one page of it.
    *
-   * Pure arithmetic on the in-memory list. There is nothing older to fetch:
-   * the list starts at the last compaction, so its earliest entry is the
-   * earliest the UI can reach (spec ui/message-rendering-system.md「列表就是
-   * 压缩后的上下文」).
+   * - no parameters → the whole list (internal callers; still = 压缩后的上下文)
+   * - `since` → everything appended after that id (remote page catch-up)
+   * - `limit` → the newest `limit` (first screen)
+   * - `before` → the page just above that id (上翻取更早)
+   *
+   * 内存里的列表从最近一次压缩开始，压缩之前的历史只在转录里，所以「上翻」和
+   * 「首屏还有没有更早」这两件要读盘（`utils/transcriptPage.ts`）。读出来的页
+   * **不写回内存**：它只活在页面那一侧，模型上下文一个字节都不变
+   * （spec ui/message-rendering-system.md「内存只装压缩后的上下文，更早的历史
+   * 按页从转录取」）。
+   *
+   * 锚点是消息 id 而不是下标：id 跨压缩边界稳定，所以翻页能连续走过压缩点。
    */
-  public getMessagePage(window: MessageWindow): MessageWindowResult {
+  public async getMessagePage(
+    window: MessageWindow,
+  ): Promise<MessageWindowResult> {
     const list = this.messages;
 
     if (window.since) {
@@ -1179,10 +1191,76 @@ export class MessageManager {
       return { messages: list.slice(at + 1) };
     }
 
-    if (window.limit === undefined) return { messages: [...list] };
+    if (!window.before && window.limit === undefined) {
+      return { messages: [...list] };
+    }
+
+    const limit = window.limit ?? MESSAGE_HISTORY_PAGE_SIZE;
+
+    if (!window.before) {
+      // 首屏：内存尾部一页；内存放得下整份时才需要问转录还有没有更早。
+      const page = takeTailFromMemory(list, limit, MESSAGE_SLICE_MAX_BYTES);
+      if (page.length < list.length) return { messages: page, hasMore: true };
+      const earliest = page[0]?.id;
+      return {
+        messages: page,
+        hasMore: earliest ? await this.hasTranscriptBefore(earliest) : false,
+      };
+    }
+
+    // 上翻：锚点之上一段先在内存里取（那是刚刚显示过的那部分），不够再接转录。
+    const at = lastIndexById(list, window.before);
+    if (at === -1) {
+      // 锚点不在内存里，说明它已经落在压缩边界之前了：整页从转录读。
+      return this.readOlderPage(window);
+    }
+    const inMemory = takeTailFromMemory(
+      list.slice(0, at),
+      limit,
+      MESSAGE_SLICE_MAX_BYTES,
+    );
+    if (inMemory.length >= limit) {
+      return { messages: inMemory, hasMore: true };
+    }
+    const usedBytes = inMemory.reduce((sum, m) => sum + messageBytes(m), 0);
+    const remaining = MESSAGE_SLICE_MAX_BYTES - usedBytes;
+    if (remaining <= 0) return { messages: inMemory, hasMore: true };
+    const older = await this.readOlderPage(
+      {
+        before: inMemory[0]?.id ?? window.before,
+        limit: limit - inMemory.length,
+      },
+      remaining,
+    );
+    if (older.anchorLost) {
+      return { messages: inMemory, hasMore: false, anchorLost: true };
+    }
     return {
-      messages: takeTailFromMemory(list, window.limit, MESSAGE_SLICE_MAX_BYTES),
+      messages: [...older.messages, ...inMemory],
+      hasMore: older.hasMore,
     };
+  }
+
+  /** 从转录读一页更早的（不经过内存）。 */
+  private async readOlderPage(
+    window: MessageWindow,
+    maxBytes?: number,
+  ): Promise<MessageWindowResult> {
+    const { readTranscriptPage } = await import("../utils/transcriptPage.js");
+    const page = await readTranscriptPage(this.transcriptPath, window, {
+      ...(maxBytes === undefined ? {} : { maxBytes }),
+    });
+    return {
+      messages: page.messages,
+      hasMore: page.hasMore,
+      ...(page.anchorLost ? { anchorLost: true } : {}),
+    };
+  }
+
+  /** 转录里 `id` 之前还有没有消息；没有转录文件时为 false。 */
+  private async hasTranscriptBefore(id: string): Promise<boolean> {
+    const { hasTranscriptBefore } = await import("../utils/transcriptPage.js");
+    return hasTranscriptBefore(this.transcriptPath, id);
   }
 
   /**

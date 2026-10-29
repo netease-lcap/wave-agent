@@ -108,6 +108,21 @@ describe("fixtures factory", () => {
     expect(failure.error).toBeTruthy();
   });
 
+  it("earlierMessages 默认「到头了」，按 requestId 归属", () => {
+    const msg = fixtures.earlierMessages([], "p1");
+    expect(msg).toMatchObject({
+      command: "earlierMessages",
+      requestId: "p1",
+      messages: [],
+      hasMore: false,
+    });
+    // 锚点失效是显式信号：页据它重定位，而不是把一次空页当成「到底」。
+    expect(msg.anchorLost).toBeUndefined();
+    expect(
+      fixtures.earlierMessages([], "p2", { anchorLost: true }).anchorLost,
+    ).toBe(true);
+  });
+
   it("nested value helpers carry realistic defaults", () => {
     expect(fixtureSession().id).toBe("test-session");
     expect(fixtureConfirmation()).toMatchObject({

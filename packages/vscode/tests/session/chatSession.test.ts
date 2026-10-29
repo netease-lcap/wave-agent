@@ -251,7 +251,7 @@ describe("ChatSession · 压缩摘要块走增量通道", () => {
  * 宿主对消息内容零状态（spec ui/message-rendering-system.md「宿主不保留消息内容，
  * 用的时候现取」场景 9）：一次 pull 的回包就是这次调用的全部产出 —— `ChatSession`
  * 上不再有 `messages` 字段，数组在调用方手里活一次；`/rewind` 的边界也不靠本地
- * 数组定位锚点，截断完成后一律重拉（场景 6）。
+ * 数组定位锚点，截断完成后由快照现取首屏那一页（场景 6）。
  */
 describe("ChatSession · 取消息不留字段", () => {
   const list = (ids: string[]) =>
@@ -288,7 +288,7 @@ describe("ChatSession · 取消息不留字段", () => {
     return { client, session, pulls: () => pulls };
   };
 
-  it("首屏列表就是这次 getMessages 的回包，会话上不留任何消息字段", async () => {
+  it("getMessages 无参重载就是整份列表，会话上不留任何消息字段", async () => {
     const messages = list(["m0", "m1", "m2"]);
     const { client, session } = await sessionWith([
       { messages, contextUsagePercent: 42 },
@@ -296,7 +296,7 @@ describe("ChatSession · 取消息不留字段", () => {
 
     const pulled = await session.getMessages();
 
-    // 不分页：不跟任何窗口参数（条数 / 上锚点）走，无参重载就是整份列表。
+    // 无参 = 整份列表（首屏不走这条：它只取 `getInitialPage()` 那一页）。
     expect(paramsFor(client.request, "getMessages")).toBeUndefined();
     expect(pulled.map((m) => m.id)).toEqual(["m0", "m1", "m2"]);
     // 用量是**状态**，宿主可以留着（webview 重建后要补环）。
@@ -305,33 +305,19 @@ describe("ChatSession · 取消息不留字段", () => {
     expect(session).not.toHaveProperty("messages");
   });
 
-  it("回滚之后列表来自重拉结果，不在本地找锚点截断", async () => {
+  it("回滚不在本地找锚点截断，也不自己重拉整份", async () => {
     const before = list(["a", "b", "c"]);
-    // 回滚改写了 CLI 的转录，重拉回来的是另一份 —— 若宿主按锚点截断本地数组，
-    // 这里只会得到 ["a"]。
-    const afterRewind = list(["x", "y"]);
-    const { client, session, pulls } = await sessionWith([
-      { messages: before },
-      { messages: afterRewind },
-    ]);
-    // 首屏那次 pull（宿主不存它）。
-    expect((await session.getMessages()).map((m) => m.id)).toEqual([
-      "a",
-      "b",
-      "c",
-    ]);
+    const { session, pulls } = await sessionWith([{ messages: before }]);
     const rewind = vi.fn().mockResolvedValue({ inputContent: "rewound draft" });
     (session.agent as unknown as { rewindToMessage: unknown }).rewindToMessage =
       rewind;
 
-    const rewound = await session.rewindToMessage("b");
+    await session.rewindToMessage("b");
 
     expect(rewind).toHaveBeenCalledWith("b");
     expect(session.inputContent).toBe("rewound draft");
-    expect(rewound.map((m) => m.id)).toEqual(["x", "y"]);
-    // 首屏 + 回滚后各一次：边界来自重拉，不是本地数组。
-    expect(pulls()).toBe(2);
-    expect(paramsFor(client.request, "getMessages")).toBeUndefined();
+    // 回滚只做截断：一次 getMessages 都不打（回滚后的列表由快照取首屏那一页）。
+    expect(pulls()).toBe(0);
     expect(session).not.toHaveProperty("messages");
   });
 });

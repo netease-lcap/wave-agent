@@ -3,7 +3,11 @@ import type { BrowserWindow } from "electron";
 import * as os from "os";
 import * as path from "path";
 import { createHash } from "crypto";
-import { BASH_TOOL_NAME } from "wave-agent-sdk/constants";
+import {
+  BASH_TOOL_NAME,
+  MESSAGE_FIRST_PAGE_SIZE,
+  MESSAGE_HISTORY_PAGE_SIZE,
+} from "wave-agent-sdk/constants";
 import { fixtures, type HostToWebviewMessage } from "wave-webview-fixtures";
 
 // ---------------------------------------------------------------------------
@@ -444,15 +448,20 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
     }) {
       return { messages: this.daemonMessages ?? [], sessionIds: [] };
     });
-    // Mirrors StdioAgent.getMessages() with no arguments: the whole list, and
-    // the two **state** side effects the host is allowed to keep (thread
-    // summary + context usage). No cache is written — the array is discarded.
-    getMessages = vi.fn(async function (this: {
-      daemonMessages?: unknown[];
-      threadSummary:
-        | { messageCount: number; firstUserText?: string }
-        | undefined;
-    }) {
+    // Mirrors StdioAgent.getMessages(): no argument → the whole list; with a
+    // window → that page (`{ messages, hasMore }`, `anchorLost` when the
+    // anchor is gone). Either way the two **state** side effects the host is
+    // allowed to keep (thread summary + context usage) are refreshed. No cache
+    // is written — the array is discarded.
+    getMessages = vi.fn(async function (
+      this: {
+        daemonMessages?: unknown[];
+        threadSummary:
+          | { messageCount: number; firstUserText?: string }
+          | undefined;
+      },
+      window?: { since?: string; before?: string; limit?: number },
+    ) {
       const all = (this.daemonMessages ?? []) as Array<{
         id?: string;
         role?: string;
@@ -468,7 +477,18 @@ vi.mock("wave-agent-sdk/host", async (importOriginal) => ({
         messageCount: all.length,
         ...(firstText ? { firstUserText: firstText } : {}),
       };
-      return all;
+      if (!window) return all;
+      let slice = all;
+      if (window.before !== undefined) {
+        const at = all.findLastIndex((m) => m.id === window.before);
+        // 锚点不在（/rewind 之类）：让页面重定位，而不是替它判「到底」。
+        if (at === -1)
+          return { messages: [], hasMore: false, anchorLost: true };
+        slice = all.slice(0, at);
+      }
+      const limit = window.limit ?? slice.length;
+      const messages = slice.slice(Math.max(0, slice.length - limit));
+      return { messages, hasMore: slice.length > messages.length };
     });
     listRewindCheckpoints = vi.fn(async () => ({
       checkpoints: [{ id: "u1", content: "hello" }],
@@ -12933,8 +12953,10 @@ describe("宿主不保留消息内容，用的时候现取", () => {
         "sess-1-late",
       ]);
     });
-    // 每次切回都现取一次（没有可复用的缓存），且取的是整份列表。
-    expect(agent.getMessages).toHaveBeenCalledWith();
+    // 每次切回都现取一次（没有可复用的缓存），且只取首屏那一页。
+    expect(agent.getMessages).toHaveBeenCalledWith({
+      limit: MESSAGE_FIRST_PAGE_SIZE,
+    });
   });
 
   it("收到过消息事件但当前没有消息可数的会话，不会被当空脚手架销毁", async () => {
@@ -12983,6 +13005,75 @@ describe("宿主不保留消息内容，用的时候现取", () => {
       "sess-1-m0",
       "sess-1-m1",
     ]);
+  });
+
+  it("上翻取更早：把 SDK 那一页原样转给页面（带 requestId 与 hasMore）", async () => {
+    const { host, sent } = await readyHost();
+    const agent = growConversation("sess-1", 25);
+    // 首屏那一页（20 条）之后还有 5 条更早的。
+    await host.handleWebviewMessage({ command: "webviewReady" });
+
+    await host.handleWebviewMessage({
+      command: "loadEarlierMessages",
+      before: "sess-1-m5",
+      requestId: "r1",
+    });
+
+    expect(agent.getMessages).toHaveBeenCalledWith({
+      before: "sess-1-m5",
+      limit: MESSAGE_HISTORY_PAGE_SIZE,
+    });
+    const replies = sent("earlierMessages");
+    expect(replies).toHaveLength(1);
+    expect(replies[0].requestId).toBe("r1");
+    expect(ids(replies[0].messages)).toEqual([
+      "sess-1-m0",
+      "sess-1-m1",
+      "sess-1-m2",
+      "sess-1-m3",
+      "sess-1-m4",
+    ]);
+    // 到头了：页面不再自动追着要。
+    expect(replies[0].hasMore).toBe(false);
+    expect(replies[0].anchorLost).toBeUndefined();
+  });
+
+  it("上翻时锚点已经不在了：回 anchorLost 让页面重定位，而不是判到底", async () => {
+    const { host, sent } = await readyHost();
+    growConversation("sess-1", 25);
+    await host.handleWebviewMessage({ command: "webviewReady" });
+
+    await host.handleWebviewMessage({
+      command: "loadEarlierMessages",
+      before: "gone",
+      requestId: "r2",
+    });
+
+    const replies = sent("earlierMessages");
+    expect(replies).toHaveLength(1);
+    expect(replies[0].messages).toEqual([]);
+    expect(replies[0].hasMore).toBe(false);
+    expect(replies[0].anchorLost).toBe(true);
+  });
+
+  it("上翻取数失败也回一页空的：页面不能被卡在加载态", async () => {
+    const { host, sent } = await readyHost();
+    const agent = growConversation("sess-1", 25);
+    await host.handleWebviewMessage({ command: "webviewReady" });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    agent.getMessages.mockRejectedValueOnce(new Error("stdio gone"));
+
+    await host.handleWebviewMessage({
+      command: "loadEarlierMessages",
+      before: "sess-1-m5",
+      requestId: "r3",
+    });
+
+    const replies = sent("earlierMessages");
+    expect(replies).toHaveLength(1);
+    expect(replies[0].messages).toEqual([]);
+    expect(replies[0].hasMore).toBe(false);
+    warn.mockRestore();
   });
 
   it("屏外期间到达的消息只打标记、不推给任何 pane", async () => {

@@ -39,6 +39,8 @@ import type {
   RemoteControlSnapshot,
   RequestMethod,
   ConfiguredModel,
+  MessageWindow,
+  MessageWindowResult,
 } from "wave-agent-sdk/host";
 import {
   EDIT_TOOL_NAME,
@@ -50,6 +52,8 @@ import {
   PLUGIN_RELOADED_MESSAGE,
   StdioAgent,
   NotificationRouter,
+  MESSAGE_FIRST_PAGE_SIZE,
+  MESSAGE_HISTORY_PAGE_SIZE,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "./stdio/stdioClient";
 import type { JsonRpcClient } from "./stdio/jsonRpcClient";
@@ -1080,32 +1084,77 @@ export class DesktopHost {
     agent: StdioAgent,
     paneId: string,
   ): Promise<void> {
-    const messages = await this.pullMessages(agent);
+    const page = await this.pullMessages(agent);
     // A failed pull must not arrive as an empty list: the pane would read it as
     // "this conversation is gone" and blank the screen.
-    if (!messages) return;
+    if (!page) return;
     if (this.agentForPane(paneId) === agent) {
       this.postMessage({
         command: "updateMessages",
         paneId,
-        messages,
+        messages: page.messages,
+        hasEarlier: page.hasMore === true,
       });
     }
   }
 
   /**
-   * 现取整份列表（= 最近一次压缩 + 它之后的消息）。调用方用完即弃，宿主不留引用；
-   * 失败返回 `undefined`，由调用方维持界面现状（绝不推空列表）。
+   * 现取一页（默认首屏那一页：最近 `MESSAGE_FIRST_PAGE_SIZE` 条 + 还有没有更早）。
+   * 调用方用完即弃，宿主不留引用；失败返回 `undefined`，由调用方维持界面现状
+   * （绝不推空列表）。
    */
   private async pullMessages(
     agent: StdioAgent,
-  ): Promise<Message[] | undefined> {
+    window: MessageWindow = { limit: MESSAGE_FIRST_PAGE_SIZE },
+  ): Promise<MessageWindowResult | undefined> {
     try {
-      return await agent.getMessages();
+      // 带窗口取数走分页回包（`messages` + `hasMore`）；宿主只转手，不留引用。
+      return (await agent.getMessages(window)) as MessageWindowResult;
     } catch (error) {
       console.warn("[DesktopHost] getMessages failed:", error);
       return undefined;
     }
+  }
+
+  /**
+   * 上翻取更早的一页（spec ui/message-rendering-system.md「首屏一页，上翻按需
+   * 取更早」）：SDK 从转录读，宿主原样转给页面。失败时回空页 + `hasMore: false`
+   * 之外的信号——页面据此**停止**再要，而不是把一次读盘抖动当成「没有更早」之后
+   * 永远翻不动（下一次滚到顶会重试）。
+   */
+  private async handleLoadEarlierMessages(
+    before: string,
+    requestId: string,
+    paneId?: string,
+  ): Promise<void> {
+    const pid = paneId ?? this.focusedPaneId;
+    const agent = this.agentForPane(pid);
+    let messages: Message[] = [];
+    let hasMore = false;
+    let anchorLost = false;
+    if (agent) {
+      try {
+        const page = (await agent.getMessages({
+          before,
+          limit: MESSAGE_HISTORY_PAGE_SIZE,
+        })) as MessageWindowResult;
+        messages = page.messages;
+        hasMore = page.hasMore === true;
+        anchorLost = page.anchorLost === true;
+      } catch (error) {
+        console.warn("[DesktopHost] 取更早的消息失败:", error);
+      }
+    }
+    // 绑定可能在这期间变了：那一页属于另一条会话，不能接到当前列表前面。
+    if (this.agentForPane(pid) !== agent) return;
+    this.postMessage({
+      command: "earlierMessages",
+      paneId: pid,
+      requestId,
+      messages,
+      hasMore,
+      ...(anchorLost ? { anchorLost: true } : {}),
+    });
   }
 
   private sendWorkdirState(): void {
@@ -2942,9 +2991,9 @@ export class DesktopHost {
     if (agent) {
       void this.refreshWorkflowRuns(paneId);
     }
-    // 现取整份列表（spec ui/message-rendering-system.md「宿主不保留消息内容，
-    // 用的时候现取」）——回包直接进快照，宿主不留引用。列表从最近一次压缩开始，
-    // 所以它的尽头是压缩点。
+    // 现取首屏那一页（spec ui/message-rendering-system.md「首屏一页，上翻按需
+    // 取更早」）——回包直接进快照，宿主不留引用。更早的历史由用户上翻时按游标
+    // 再来要（`loadEarlierMessages`）。
     //
     // 恢复还在路上（pending）时不拉：这一刻界面被遮罩盖着、绑定的是旧 agent，
     // 多一次 RPC 只会拖慢遮罩出现，而且这次快照的列表随后会被恢复落地那次整份
@@ -2954,11 +3003,11 @@ export class DesktopHost {
     // 恢复态也不清：下一次推送再试。
     const pending = this.pendingRestores.get(paneId);
     const pullTarget = pending ? undefined : agent;
-    let messages = pullTarget
-      ? await this.pullMessages(pullTarget)
-      : pending
-        ? undefined
-        : [];
+    // 首屏只取一页（spec「首屏一页，上翻按需取更早」）：更早的内容由页面滚到顶时
+    // 用 `loadEarlierMessages` 一页页往前面接。
+    const page = pullTarget ? await this.pullMessages(pullTarget) : undefined;
+    let messages = pullTarget ? page?.messages : pending ? undefined : [];
+    let hasEarlier = page?.hasMore === true;
     // The pane binding may have changed while the pull was in flight (a restore
     // completed / a new session selected). Re-read everything at send time so
     // the pushed message is self-consistent; the pending entry is also resolved
@@ -2968,7 +3017,10 @@ export class DesktopHost {
     // would paint the incoming conversation with the outgoing one's history.
     // Leave the list out (keepMessages) instead — the rebind that won the race
     // pushes the right one.
-    if (pullTarget && current !== pullTarget) messages = undefined;
+    if (pullTarget && current !== pullTarget) {
+      messages = undefined;
+      hasEarlier = false;
+    }
     const keepMessages = messages === undefined;
     const pendingConfirmations = Array.from(this.pendingConfirmations.entries())
       .filter(([, p]) => p.agent === current)
@@ -2990,6 +3042,7 @@ export class DesktopHost {
       // what it already has — only for the two cases above (a restore in
       // flight, or a failed pull). Every other caller sends the real list.
       messages: messages ?? [],
+      hasEarlier,
       ...(keepMessages ? { keepMessages: true } : {}),
       tasks: current?.tasks ?? [],
       backgroundTasks: current?.backgroundTasks ?? [],
@@ -3799,6 +3852,14 @@ export class DesktopHost {
 
       case "listRewindCheckpoints":
         await this.handleListRewindCheckpoints(pid);
+        break;
+
+      case "loadEarlierMessages":
+        await this.handleLoadEarlierMessages(
+          msg.before as string,
+          msg.requestId as string,
+          pid,
+        );
         break;
 
       case "getConfiguredModels":
@@ -6101,10 +6162,12 @@ export class DesktopHost {
   }
 
   /**
-   * `/rewind`：截断完成后**重拉**整份列表推给界面（spec
+   * `/rewind`：截断完成后重取**首屏那一页**推给界面（spec
    * ui/message-rendering-system.md「宿主不保留消息内容，用的时候现取」场景 6）——
    * 宿主手里没有数组可定位锚点、也没有可截断的东西，边界的唯一来源是 SDK 的回执与
-   * 随之重拉的列表。`rewindResult` 仍照发：它负责清掉界面那份的乐观态并交代失败。
+   * 随之现取的那一页。回滚到很早的消息时，那一页之前的历史由用户上翻再要，不在
+   * 这一刻整份构造一遍。`rewindResult` 仍照发：它负责清掉界面那份的乐观态并交代
+   * 失败。
    *
    * 客户端没带 `requestId`（旧的远程页 / 旧 webview 包）走同一条重拉路径——它收
    * 不到回执，只能靠快照更新。

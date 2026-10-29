@@ -16,7 +16,6 @@ import type {
   PermissionDecision,
   RemoteControlSnapshot,
   ConfiguredModel,
-  Message,
 } from "wave-agent-sdk/host";
 import {
   PLUGIN_CHANGE_PENDING_MESSAGE,
@@ -290,6 +289,28 @@ export class MessageHandler {
           windowId,
         );
         break;
+      case "loadEarlierMessages": {
+        // 上翻取更早（spec ui/message-rendering-system.md「首屏一页，上翻按需取更
+        // 早」）：SDK 从转录读一页，宿主原样转回去，自己一个字段都不留。
+        const before = msg.before as string;
+        const requestId = msg.requestId as string;
+        const page = await this.context
+          .getChatSession(viewType || "tab", windowId)
+          .getEarlierPage(before);
+        this.context.postMessage(
+          {
+            command: "earlierMessages",
+            requestId,
+            messages: page.messages,
+            hasMore: page.hasMore,
+            ...(page.anchorLost ? { anchorLost: true } : {}),
+          },
+          viewType,
+          windowId,
+        );
+        break;
+      }
+
       case "listRewindCheckpoints":
         await this.handleListRewindCheckpoints(viewType, windowId);
         break;
@@ -1395,9 +1416,10 @@ export class MessageHandler {
   }
 
   /**
-   * `/rewind`：截断由 CLI 完成，`session.rewindToMessage` 随后重拉整份列表并把
-   * 回包交回来，宿主把它原样放进快照推给界面 —— 宿主不定位锚点、不截断、不留
-   * 引用（spec ui/message-rendering-system.md「宿主不保留消息内容」场景 6）。
+   * `/rewind`：截断由 CLI 完成，宿主不定位锚点、不截断、不留引用（spec
+   * ui/message-rendering-system.md「宿主不保留消息内容」场景 6）。回滚后的列表
+   * 由随后的那次快照现取首屏那一页 —— 回滚到一个很早的消息时，那页之后的历史
+   * 由用户上翻再要，不在这一刻整份构造一遍。
    *
    * 旧 webview / 远程页不带 `requestId`，因此只是少了那条 `rewindResult` 回执，
    * 列表照样推。
@@ -1411,7 +1433,7 @@ export class MessageHandler {
     // The webview already showed the confirmation dialog — execute directly.
     const session = this.context.getChatSession(viewType || "tab", windowId);
     try {
-      const messages = await session.rewindToMessage(messageId);
+      await session.rewindToMessage(messageId);
       if (requestId) {
         this.context.postMessage(
           {
@@ -1424,7 +1446,7 @@ export class MessageHandler {
           windowId,
         );
       }
-      await this.handleWebviewReady(viewType, windowId, { messages });
+      await this.handleWebviewReady(viewType, windowId);
       this.context.postMessage({ command: "focusInput" }, viewType, windowId);
       this.context.postMessage(
         { command: "scrollToBottom" },
@@ -1903,14 +1925,16 @@ export class MessageHandler {
     )
       return;
     try {
-      // `session.restoreSession()` 已经把恢复后的列表取回来了：回包直接推给
-      // 界面，否则它只会停在欢迎页。宿主不在中间留任何一份（spec
+      // 恢复后的列表必须推给界面，否则它只会停在欢迎页（Regression 9cea65ea）。
+      // 推的是现取的首屏那一页 + 「还有没有更早」：宿主不在中间留任何一份（spec
       // ui/message-rendering-system.md「宿主不保留消息内容」场景 1）。
-      const messages = await session.restoreSession(sessionId);
+      await session.restoreSession(sessionId);
+      const page = await session.getInitialPage();
       this.context.postMessage(
         {
           command: "updateMessages",
-          messages,
+          messages: page.messages,
+          hasEarlier: page.hasEarlier,
         },
         viewType,
         windowId,
@@ -2228,24 +2252,22 @@ export class MessageHandler {
   }
 
   /**
-   * 首屏/切会话/窗口重载的整份快照。
+   * 首屏/切会话/窗口重载/回滚之后那次快照。
    *
-   * `opts.messages` 是调用方**刚刚**取到的那一份（`/rewind` 里
-   * `session.rewindToMessage` 已经重拉过），此时不再多打一次 RPC；其余调用方都由
-   * 这里自己 pull 一次。两种情况下列表都只是「这次快照的载荷」：宿主不留字段、不
-   * 留引用（spec ui/message-rendering-system.md「宿主不保留消息内容，用的时候现取」
-   * 场景 1 / 9）。
+   * 列表只是「这次快照的载荷」：宿主不留字段、不留引用（spec
+   * ui/message-rendering-system.md「宿主不保留消息内容，用的时候现取」场景 1 / 9）。
+   * 只取首屏那一页，更早的由用户上翻时按游标再来要。
    */
   private async handleWebviewReady(
     viewType?: "sidebar" | "tab" | "window",
     windowId?: string,
-    opts?: { messages?: Message[] },
   ): Promise<void> {
     const session = this.context.getChatSession(viewType || "tab", windowId);
     if (!session.agent) {
       await this.context.initializeAgent(viewType || "tab", windowId);
     }
-    const messages = opts?.messages ?? (await session.getMessages());
+    const initialPage = await session.getInitialPage();
+    const messages = initialPage.messages;
     const configurationData = await this.configService.loadConfiguration();
     const sessions = await this.sessionService.getSessionsList();
     let isAuthenticated = false;
@@ -2291,6 +2313,7 @@ export class MessageHandler {
       {
         command: "setInitialState",
         messages,
+        hasEarlier: initialPage.hasEarlier,
         tasks: session.tasks,
         backgroundTasks: session.backgroundTasks,
         workflowRuns: session.workflowRuns,
