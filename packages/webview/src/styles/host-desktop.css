@@ -1892,10 +1892,15 @@
 [data-host="desktop"] .file-tree-filter:focus {
   border-color: var(--cc-border-focus, #a0a5a8);
 }
+/* 字号 12 → 14（1029 第五轮，设计师评论「这里也改14」指着目录树那一列）：
+   节点名（目录与文件）统一到正文档；行高 24 / 圆角 6 / 缩进 / 图标 16 都不动。
+   图标与箭头是 codicon 字形（.file-tree-icon 13px、.file-tree-caret 9px），按图标
+   尺寸处理，不随文字档位变。 */
 [data-host="desktop"] .file-tree-row {
   height: 24px;
   border-radius: 6px;
   color: var(--cc-text-primary);
+  font-size: 14px;
 }
 [data-host="desktop"] .file-tree-row:hover {
   background: var(--cc-fill-hover);
@@ -1909,8 +1914,12 @@
 [data-host="desktop"] .file-tree-caret {
   color: var(--cc-text-secondary);
 }
+/* 字号 11 → 12（1029 第五轮续，设计师裁「说明行 12」→ 收到辅助档）：树里的
+   灰色说明（「还有 N 项未显示」/「正在搜索…」/「未找到匹配的文件」/读目录失败）
+   提到契约辅助档 12px（11px 本不在档位里）。内衬 2 8、字色、行位置都不动。 */
 [data-host="desktop"] .file-tree-note {
   color: var(--cc-text-secondary);
+  font-size: 12px;
 }
 /* 字号 13 → 14（1029 第三轮：面板内剩余 13px 一并统一）。结果行是「筛选文件…」
    输入后的候选清单，行高 32 / 圆角 6 / 字色不动。
