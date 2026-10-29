@@ -387,31 +387,24 @@
    * The banner's numbers, per device tier.
    *
    * The phone tier is the page's own icon-button tier (40×40 with a 20px glyph,
-   * spec 场景 27) applied to this line too: the close is a target a finger has
-   * to hit, and the action buttons sit right beside it, so half a row at 32px
-   * next to a 40px target would read as 「one of them is broken」. The 32×32
-   * close was sized for a mouse pointer and reported too small on a phone
-   * (2026-10-27).
+   * spec 场景 27) applied to this line: the close is a target a finger has to
+   * hit, and the 32×32 box it had was sized for a mouse pointer and reported too
+   * small on a phone (2026-10-27).
    *
-   * The line's own padding drops 8 → 4 on that tier so the taller targets do
+   * The line's own padding drops 8 → 4 on that tier so the taller target does
    * not make it 56px tall: 4 + 40 + 4 = 48. The **text** stays at 13px, which is
    * this page's 「辅助信息」 tier on a phone too (`remote-page.css`: prompts,
-   * empty states, tool results all 13px; only 阅读主体 goes to 15) — raising it
-   * with the buttons bought nothing and made a three-line message 18px taller.
+   * empty states, tool results all 13px; only 阅读主体 goes to 15).
    */
   var BANNER_TIER = {
     // Mouse pointer (the design sheet's density) — unchanged.
     fine: {
       padding: "8px 12px",
-      action: "padding:2px 10px;",
       close: "width:32px;height:32px;font-size:18px;",
     },
-    // Finger — the buttons take the page's icon-button numbers.
+    // Finger — the close takes the page's icon-button numbers.
     coarse: {
       padding: "4px 12px",
-      action:
-        "padding:0 14px;min-height:40px;display:inline-flex;" +
-        "align-items:center;justify-content:center;",
       close: "width:40px;height:40px;font-size:20px;",
     },
   };
@@ -437,9 +430,9 @@
    * `padding-top: env(safe-area-inset-top)` carries it (a `top:0` overlay
    * bypasses that padding and paints under the status bar).
    *
-   * The label may wrap; the buttons never do, so actions and the close stay
-   * visible on the first line however long the message is (spec
-   * 「状态只在一条流内状态条上播报」场景 4 / 9).
+   * The label may wrap; the close never does, so it stays visible on the first
+   * line however long the message is (spec「状态只在一条流内状态条上播报」
+   * 场景 4 / 9).
    */
   function bannerStyle(tone) {
     var tier = bannerTier();
@@ -458,16 +451,6 @@
     // `min-width:0` is what lets a flex item's text wrap instead of forcing the
     // row wider than the screen.
     return "flex:1 1 auto;min-width:0;overflow-wrap:anywhere;";
-  }
-
-  function bannerButtonStyle() {
-    return (
-      "flex:0 0 auto;" +
-      bannerTier().action +
-      "font:inherit;color:#fff;" +
-      "background:rgba(255,255,255,0.14);border:1px solid rgba(255,255,255,0.4);" +
-      "border-radius:6px;cursor:pointer;"
-    );
   }
 
   /**
@@ -490,10 +473,15 @@
   }
 
   /**
-   * The page's status surface. `actions` adds tappable buttons after the text —
-   * the two things this page can always do for itself while the link is down:
-   * retry now, or go pick another machine (spec「断线自愈」场景 4、「机器列表与
-   * 切换」场景 5). Without actions it is the plain line it always was.
+   * The page's status surface: one sentence and the close.
+   *
+   * It carries **no actions** (2026-10-29). It used to offer 「重新连接」 /
+   * 「换机器」 / 「重试」, and on a phone those two text buttons ate half the row
+   * next to the sentence they were supposed to serve, so the sentence itself got
+   * the leftover width. Neither action is lost: the backoff retries on its own
+   * (coming back to the page retries immediately, `onResume`), and 「切换电脑」
+   * is a standing header button that is never covered by this line
+   * (`bannerStyle`).
    *
    * `key` names the **state**, for the mute: the caller that reports a state
    * whose words drift (`「等待上线…（第 N 次重试）」`) passes a stable key so a close
@@ -503,7 +491,7 @@
    * Every call states its tone: the banner outlives a single message, so the one
    * that follows a refusal must be able to paint it neutral again.
    */
-  function showStatus(text, actions, tone, key) {
+  function showStatus(text, tone, key) {
     var statusKey = key || text;
     if (mutedStatusKeys[statusKey]) {
       // Closed by the user and the state has not ended: stay quiet. The element
@@ -523,20 +511,12 @@
     banner.setAttribute("style", bannerStyle(tone));
     banner.textContent = "";
     var label = document.createElement("span");
-    // Its own id: the line now carries actions and a close as well, so 「what
+    // Its own id: the line carries a close as well as its sentence, so 「what
     // does it say」 has to be addressable apart from 「what is in the row」.
     label.id = "remote-status-text";
     label.setAttribute("style", bannerLabelStyle());
     label.textContent = text;
     banner.appendChild(label);
-    for (var i = 0; i < (actions || []).length; i++) {
-      var button = document.createElement("button");
-      button.type = "button";
-      button.textContent = actions[i].label;
-      button.setAttribute("style", bannerButtonStyle());
-      button.onclick = actions[i].onClick;
-      banner.appendChild(button);
-    }
     var close = document.createElement("button");
     close.type = "button";
     close.textContent = "×";
@@ -573,15 +553,10 @@
     mutedStatusKeys = {};
   }
 
-  /** The banner actions, built per call so the closures see fresh state. */
-  function reconnectAction() {
-    return { label: "重新连接", onClick: manualReconnect };
-  }
-
-  function switchHostAction() {
-    return { label: "换机器", onClick: openMachinePicker };
-  }
-
+  /**
+   * The machine list's own 「重试」, for the dialog's refusal row. The status line
+   * has no actions any more, so this is the only place it is used.
+   */
   function retryHostsAction(surface) {
     return { label: "重试", onClick: surface.retry };
   }
@@ -918,13 +893,12 @@
       // cannot change a revoked token, a wrong channel, or an old machine, and
       // would only bury the explanation under activity (spec「断线自愈」场景 3).
       if (fatal) {
-        showStatus(fatal, [switchHostAction()]);
+        showStatus(fatal);
         return;
       }
       if (event.code === AUTH_TIMEOUT_CLOSE) {
         showStatus(
           "中继拒绝了这个连接（未授权）。请在电脑侧重新开启远程控制。",
-          [switchHostAction()],
         );
         return;
       }
@@ -943,7 +917,6 @@
               "），正在重连…（第 " +
               attempts +
               " 次）",
-        [reconnectAction(), switchHostAction()],
         // Error tone (the default); the key is the argument after it.
         undefined,
         // The words carry the retry count, so the mute has to be keyed to the
@@ -972,7 +945,11 @@
     }, delay);
   }
 
-  /** The banner's 「重新连接」: forget the backoff and try this second. */
+  /**
+   * Forget the backoff and dial this second. Reached from the page coming back
+   * to hand (`onResume`), never from a button on the status line — that line
+   * carries only its sentence and the close.
+   */
   function manualReconnect() {
     if (!CONFIG.socketUrl) return;
     retryDelay = RETRY_MS;
@@ -1127,17 +1104,21 @@
   }
 
   /**
-   * Where a machine-list refusal is painted, and what its 重试 runs.
+   * Where a machine-list refusal is painted.
    *
    * There are two, because the two entry points are in different situations: on a
    * cold start the banner *is* the page's only surface (nothing else has anything
    * to say yet), while a reader who came from the header already has a dialog in
-   * front of them — and an untouched banner behind it (spec 场景 8).
+   * front of them — and an untouched banner behind it (spec 场景 8). The banner
+   * half says the sentence and nothing else; the dialog half keeps its own
+   * 「重试」 (a button inside the dialog, not on this line).
    */
   function bannerSurface() {
     return {
-      show: function (text, actions) {
-        showStatus(text, actions);
+      // The line has no actions: `hostsFetchFailed` hands both surfaces the same
+      // arguments, and this one drops the second (see `showStatus`).
+      show: function (text) {
+        showStatus(text);
       },
       retry: chooseHost,
     };
@@ -1187,7 +1168,7 @@
   function chooseHost() {
     // A progress line, not a refusal: on a cold start this banner is the only
     // thing the page can say while it reads (spec 场景 8).
-    showStatus("正在读取机器列表…", [], "progress");
+    showStatus("正在读取机器列表…", "progress");
     fetchHosts()
       .then(function (hosts) {
         var saved = readStored(LAST_HOST_KEY);
@@ -1206,9 +1187,10 @@
   }
 
   /**
-   * The standing 「换机器」 entry (header button on this page, banner action
-   * while disconnected): always shows the list, even when a machine is already
-   * connected — the current connection stays up until one is chosen.
+   * The standing 「换机器」 entry (a header button on this page — the only entry
+   * since the status line dropped its actions): always shows the list, even when
+   * a machine is already connected — the current connection stays up until one
+   * is chosen.
    */
   function openMachinePicker() {
     if (pickerOpen()) return;
@@ -1218,9 +1200,8 @@
   /**
    * One read of the list, painted into the dialog's own slot: reading now, then
    * either the rows or a refusal with 重试. The page banner is deliberately not
-   * involved — it belongs to the connection, which stays exactly as it was,
-   * including the 「重新连接 / 换机器」 a reader may have opened this dialog from
-   * and must find again when they close it (spec 场景 8).
+   * involved — it belongs to the connection, which stays exactly as it was, and
+   * must read the same when the dialog closes (spec 场景 8).
    */
   function loadMachineList(list) {
     paintMachineList(list, null, { text: "正在读取机器列表…" });
@@ -1959,14 +1940,15 @@
         // retrying only buries the reason. Everything else (a dropped frame, a
         // host that is briefly not answering, the 20s read budget running out)
         // is usually momentary, so it gets `SNAPSHOT_RETRY_MS` — a bounded set
-        // of steps, after which the line keeps a 「重试」 action the user can
-        // press (spec「首屏读失败能自己恢复」场景 1–3 / 6).
+        // of steps. The line carries no button to press (2026-10-29): once the
+        // steps are spent, the ways back are the ones that re-run the snapshot
+        // anyway — coming back to the page, the page being remounted
+        // (spec「首屏读失败能自己恢复」场景 4 / 5).
         var permanent =
           err &&
           (err.code === METHOD_NOT_FOUND || err.code === HOST_UNSUPPORTED);
         showStatus(
           "读不到电脑侧的会话列表：" + (err && err.message ? err.message : err),
-          permanent ? undefined : [snapshotRetryAction()],
         );
         if (!permanent) scheduleSnapshotRetry();
         return false;
@@ -1974,8 +1956,7 @@
   }
 
   /**
-   * One pending retry at a time: a manual 「重试」 replaces whatever step was
-   * waiting, so the page never asks the same question twice at once (spec 场景 6).
+   * One pending retry at a time (spec 场景 6).
    */
   function scheduleSnapshotRetry() {
     if (snapshotRetryStep >= SNAPSHOT_RETRY_MS.length) return;
@@ -1985,21 +1966,6 @@
       snapshotRetryTimer = null;
       pullSnapshot();
     }, delay);
-  }
-
-  /** The status line's 「重试」: forget the automatic steps and go again now. */
-  function snapshotRetryAction() {
-    return {
-      label: "重试",
-      onClick: function () {
-        snapshotRetryStep = 0;
-        if (snapshotRetryTimer) {
-          clearTimeout(snapshotRetryTimer);
-          snapshotRetryTimer = null;
-        }
-        pullSnapshot();
-      },
-    };
   }
 
   /**
