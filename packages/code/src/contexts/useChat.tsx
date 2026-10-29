@@ -26,6 +26,7 @@ import type {
   QueuedMessage,
   WorkflowRun,
   ToolBlockUpdateCallbackParams,
+  RewindCheckpoint,
 } from "wave-agent-sdk";
 import {
   Agent,
@@ -184,10 +185,8 @@ export interface ChatContextType {
   forceRemount: (options?: { preserveScrollback?: boolean }) => void;
   // Rewind functionality
   handleRewindSelect: (index: number) => Promise<void>;
-  getFullMessageThread: () => Promise<{
-    messages: Message[];
-    sessionIds: string[];
-  }>;
+  /** `/rewind` 的检查点表：SDK 扫转录投影，CLI 不留整条线程。 */
+  getRewindCheckpoints: () => Promise<RewindCheckpoint[]>;
   // Status metadata
   getGatewayConfig: () => import("wave-agent-sdk").GatewayConfig;
   getModelConfig: () => import("wave-agent-sdk").ModelConfig;
@@ -1504,11 +1503,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     [forceRemount, refreshMessages],
   );
 
-  const getFullMessageThread = useCallback(async () => {
+  const getRewindCheckpoints = useCallback(async () => {
     if (agentRef.current) {
-      return await agentRef.current.getFullMessageThread();
+      return await agentRef.current.getRewindCheckpoints();
     }
-    return { messages: [], sessionIds: [] };
+    return [];
   }, []);
 
   const getGatewayConfig = useCallback(() => {
@@ -1629,7 +1628,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     remountKey,
     forceRemount,
     handleRewindSelect,
-    getFullMessageThread,
+    getRewindCheckpoints,
 
     getGatewayConfig,
     getModelConfig,

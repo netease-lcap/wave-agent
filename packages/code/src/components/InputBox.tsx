@@ -90,8 +90,7 @@ export const InputBox: React.FC<InputBoxProps> = ({
     handleRewindSelect,
     resumeSession,
     backgroundCurrentTask,
-    messages,
-    getFullMessageThread,
+    getRewindCheckpoints,
     sessionId,
     workingDirectory,
     askBtw,
@@ -402,10 +401,9 @@ export const InputBox: React.FC<InputBoxProps> = ({
 
       {showRewindManager && (
         <RewindCommand
-          messages={messages}
           onSelect={handleRewindSelectWithClose}
           onCancel={handleRewindCancel}
-          getFullMessageThread={getFullMessageThread}
+          getCheckpoints={getRewindCheckpoints}
         />
       )}
 

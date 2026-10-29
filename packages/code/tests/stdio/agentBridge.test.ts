@@ -143,6 +143,10 @@ function createMockAgent(overrides: Record<string, unknown> = {}) {
     getFullMessageThread: vi
       .fn()
       .mockResolvedValue({ messages, sessionIds: ["test-session-id"] }),
+    // `/rewind` 的两条路：列检查点、按 id 定位目标。两者都由 SDK 扫转录投影，
+    // 这一层只被要求「把回包递出去」。
+    getRewindCheckpoints: vi.fn().mockResolvedValue([]),
+    findRewindTarget: vi.fn().mockResolvedValue(undefined),
     // 分页在 SDK 里对着内存列表切片：这一层只被要求「窗口传下去、回包原样答回来」。
     getMessagePage: vi.fn(async () => ({ messages: [], hasMore: false })),
     getThreadSummary: vi.fn(function (this: { messages?: Message[] }) {
@@ -1245,74 +1249,16 @@ test("listDaemonSessions omits the label fields it has no material for", async (
   expect(result.sessions[0]).not.toHaveProperty("lastActiveAt");
 });
 
-test("listRewindCheckpoints filters to real user messages and flattens content", async () => {
+test("listRewindCheckpoints passes the SDK's table through, flattening the text", async () => {
   const { bridge } = createBridge();
-  // The SDK module is auto-mocked; give getMessageContent a real-ish implementation.
-  vi.mocked(getMessageContent).mockImplementation((m) => {
-    const block = m.blocks.find((b) => b.type === "text");
-    return block && "content" in block ? (block.content as string) : "";
-  });
-  const threadMessages = [
-    {
-      role: "user",
-      id: "u1",
-      blocks: [{ type: "text", content: "first\n  message" }],
-    },
-    {
-      role: "assistant",
-      id: "a1",
-      blocks: [{ type: "text", content: "reply" }],
-    },
-    {
-      role: "user",
-      id: "u2",
-      isMeta: true,
-      blocks: [{ type: "text", content: "meta" }],
-    },
-    { role: "user", blocks: [{ type: "text", content: "no id" }] },
-    { role: "user", id: "u3", blocks: [{ type: "text", content: "second" }] },
-    // 后台通知：role 是 user 但不是用户输入，不能作为回滚点
-    {
-      role: "user",
-      id: "u4",
-      blocks: [
-        {
-          type: "task_notification",
-          taskId: "t1",
-          taskType: "shell",
-          status: "completed",
-          summary: "后台任务完成",
-        },
-      ],
-    },
-    // hook 注入的 user 消息（UserPromptSubmit stdout / PostToolUse 错误等）同样不是用户输入
-    {
-      role: "user",
-      id: "u5",
-      isMeta: true,
-      blocks: [{ type: "text", content: "hook 输出" }],
-    },
-    // bash 模式命令消息（user 文本 + bash tool block）是用户真实输入，与
-    // fork skill 命令一致，可作为回滚点
-    {
-      role: "user",
-      id: "u6",
-      blocks: [
-        { type: "text", content: "deploy" },
-        {
-          type: "tool",
-          name: "bash",
-          parameters: "deploy",
-          stage: "end",
-        },
-      ],
-    },
-  ] as unknown as Message[];
+  // 「哪些算检查点」「同 id 怎么去重」已经在 SDK 那侧（扫转录时投影），这里只剩
+  // 页面要的形状：`{id, content}`，空白压成单空格，`index` 摘掉（页码回滚是另
+  // 一次 `rewindToMessage` 调用，不需要位置）。
   const mockAgent = createMockAgent({
-    getFullMessageThread: vi.fn().mockResolvedValue({
-      messages: threadMessages,
-      sessionIds: ["test-session-id"],
-    }),
+    getRewindCheckpoints: vi.fn().mockResolvedValue([
+      { id: "u1", content: "first\n  message", index: 0 },
+      { id: "u3", content: "second", index: 4 },
+    ]),
   });
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
@@ -1324,41 +1270,20 @@ test("listRewindCheckpoints filters to real user messages and flattens content",
     checkpoints: [
       { id: "u1", content: "first message" },
       { id: "u3", content: "second" },
-      { id: "u6", content: "deploy" },
     ],
   });
 });
 
-test("listRewindCheckpoints dedupes user messages by id after compaction", async () => {
+test("listRewindCheckpoints keeps the order the SDK projected", async () => {
   const { bridge } = createBridge();
-  vi.mocked(getMessageContent).mockImplementation((m) => {
-    const block = m.blocks.find((b) => b.type === "text");
-    return block && "content" in block ? (block.content as string) : "";
-  });
-  // 压缩是 append-only：磁盘完整线程会保留压缩前的历史，同时把
-  // [compact, ...lastTwoRounds] 追加到末尾 —— 因此 u2/u3 同 id 出现两次。
-  const threadMessages = [
-    { role: "user", id: "u1", blocks: [{ type: "text", content: "one" }] },
-    { role: "assistant", id: "a1", blocks: [{ type: "text", content: "hi1" }] },
-    { role: "user", id: "u2", blocks: [{ type: "text", content: "two" }] },
-    { role: "assistant", id: "a2", blocks: [{ type: "text", content: "hi2" }] },
-    { role: "user", id: "u3", blocks: [{ type: "text", content: "three" }] },
-    { role: "assistant", id: "a3", blocks: [{ type: "text", content: "hi3" }] },
-    {
-      role: "assistant",
-      id: "c1",
-      blocks: [{ type: "compact", content: "summary" }],
-    },
-    { role: "user", id: "u2", blocks: [{ type: "text", content: "two" }] },
-    { role: "assistant", id: "a2", blocks: [{ type: "text", content: "hi2" }] },
-    { role: "user", id: "u3", blocks: [{ type: "text", content: "three" }] },
-    { role: "assistant", id: "a3", blocks: [{ type: "text", content: "hi3" }] },
-  ] as unknown as Message[];
+  // 顺序（= 转录里的先后）由 SDK 决定，这一层不许再排一遍或再合并一遍：
+  // 压缩 append-only 的同 id 折叠也归 SDK（见 session.rewindCheckpoints 测试）。
   const mockAgent = createMockAgent({
-    getFullMessageThread: vi.fn().mockResolvedValue({
-      messages: threadMessages,
-      sessionIds: ["test-session-id"],
-    }),
+    getRewindCheckpoints: vi.fn().mockResolvedValue([
+      { id: "u1", content: "one", index: 0 },
+      { id: "u2", content: "two", index: 2 },
+      { id: "u3", content: "three", index: 4 },
+    ]),
   });
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
@@ -1366,7 +1291,6 @@ test("listRewindCheckpoints dedupes user messages by id after compaction", async
   const sessionId = (result as { sessionId: string }).sessionId;
   const r = await bridge.handleRequest("listRewindCheckpoints", {}, sessionId);
 
-  // 压缩后的重复条目（同 id）只应出现一次，避免 UI 弹窗显示"两条"
   expect(r).toEqual({
     checkpoints: [
       { id: "u1", content: "one" },
@@ -1766,22 +1690,10 @@ test("askBtw emits btwContent notifications for thinking and content chunks", as
   });
 });
 
-test("rewindToMessage truncates history and returns input content", async () => {
+test("rewindToMessage truncates at the position the SDK found and returns its text", async () => {
   const { bridge } = createBridge();
-  const messages = [
-    { id: "msg-1", role: "user", blocks: [{ type: "text", content: "hello" }] },
-    {
-      id: "msg-2",
-      role: "assistant",
-      blocks: [{ type: "text", content: "hi" }],
-    },
-  ] as unknown as Message[];
   const mockAgent = createMockAgent({
-    messages,
-    getFullMessageThread: vi.fn().mockResolvedValue({
-      messages,
-      sessionIds: ["test-session-id"],
-    }),
+    findRewindTarget: vi.fn().mockResolvedValue({ index: 0, content: "hello" }),
   });
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
@@ -1793,37 +1705,18 @@ test("rewindToMessage truncates history and returns input content", async () => 
     sessionId,
   );
 
+  expect(mockAgent.findRewindTarget).toHaveBeenCalledWith("msg-1");
   expect(mockAgent.truncateHistory).toHaveBeenCalledWith(0);
   expect(r).toEqual({ inputContent: "hello" });
 });
 
-test("rewindToMessage uses the LAST occurrence of a duplicated id after compaction", async () => {
+test("rewindToMessage truncates at whatever position the SDK located", async () => {
   const { bridge } = createBridge();
-  // 压缩 append-only：u3 同 id 出现两次（压缩前 index 4、压缩后 index 9）。
-  // 用户从 UI 看到的折叠后消息对应最后一次出现，回滚索引必须指向它，
-  // 否则会连压缩摘要一起回滚掉。
-  const messages = [
-    { id: "u1", role: "user", blocks: [{ type: "text", content: "one" }] },
-    { id: "a1", role: "assistant", blocks: [{ type: "text", content: "hi1" }] },
-    { id: "u2", role: "user", blocks: [{ type: "text", content: "two" }] },
-    { id: "a2", role: "assistant", blocks: [{ type: "text", content: "hi2" }] },
-    { id: "u3", role: "user", blocks: [{ type: "text", content: "three" }] },
-    { id: "a3", role: "assistant", blocks: [{ type: "text", content: "hi3" }] },
-    {
-      id: "c1",
-      role: "assistant",
-      blocks: [{ type: "compact", content: "summary" }],
-    },
-    { id: "u2", role: "user", blocks: [{ type: "text", content: "two" }] },
-    { id: "a2", role: "assistant", blocks: [{ type: "text", content: "hi2" }] },
-    { id: "u3", role: "user", blocks: [{ type: "text", content: "three" }] },
-    { id: "a3", role: "assistant", blocks: [{ type: "text", content: "hi3" }] },
-  ] as unknown as Message[];
+  // 同 id 在压缩后出现两次时取最后一次，这条语义现在归 SDK
+  // （`findRewindTarget`，见 session.rewindCheckpoints 测试）；这一层只负责拿那个
+  // 位置去截断 —— 拿错位置会连压缩摘要一起回滚掉。
   const mockAgent = createMockAgent({
-    getFullMessageThread: vi.fn().mockResolvedValue({
-      messages,
-      sessionIds: ["test-session-id"],
-    }),
+    findRewindTarget: vi.fn().mockResolvedValue({ index: 9, content: "three" }),
   });
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
@@ -1831,7 +1724,6 @@ test("rewindToMessage uses the LAST occurrence of a duplicated id after compacti
   const sessionId = (result as { sessionId: string }).sessionId;
   await bridge.handleRequest("rewindToMessage", { messageId: "u3" }, sessionId);
 
-  // 最后一次出现的 u3 在 index 9（而非第一次的 4）
   expect(mockAgent.truncateHistory).toHaveBeenCalledWith(9);
 });
 
@@ -3473,17 +3365,10 @@ test("sendMessage with force aborts before sending", async () => {
 
 // ── Branch coverage: rewindToMessage edge cases ──────────────────
 
-test("rewindToMessage throws when messageId not found", async () => {
+test("rewindToMessage throws when the id is not in the transcript", async () => {
   const { bridge } = createBridge();
-  const messages = [
-    { id: "msg-1", role: "user", blocks: [{ type: "text", content: "hello" }] },
-  ] as unknown as Message[];
   const mockAgent = createMockAgent({
-    messages,
-    getFullMessageThread: vi.fn().mockResolvedValue({
-      messages,
-      sessionIds: ["test-session-id"],
-    }),
+    findRewindTarget: vi.fn().mockResolvedValue(undefined),
   });
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 
@@ -3497,19 +3382,14 @@ test("rewindToMessage throws when messageId not found", async () => {
       sessionId,
     ),
   ).rejects.toThrow("Message not found: nonexistent");
+  expect(mockAgent.truncateHistory).not.toHaveBeenCalled();
 });
 
-test("rewindToMessage returns empty string when message has no text block", async () => {
+test("rewindToMessage puts back an empty string when the message has no text", async () => {
   const { bridge } = createBridge();
-  const messages = [
-    { id: "msg-1", role: "user", blocks: [{ type: "image" }] },
-  ] as unknown as Message[];
+  // 文本取自 SDK 的投影（`getMessageContent`，没有文本块时是空串）。
   const mockAgent = createMockAgent({
-    messages,
-    getFullMessageThread: vi.fn().mockResolvedValue({
-      messages,
-      sessionIds: ["test-session-id"],
-    }),
+    findRewindTarget: vi.fn().mockResolvedValue({ index: 0, content: "" }),
   });
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
 

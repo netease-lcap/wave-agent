@@ -46,6 +46,8 @@ vi.mock("../../src/utils/worktree.js", () => ({
 
 const mockSetPermissionMode = vi.fn();
 const mockHandleRewindSelect = vi.fn();
+// `/rewind` 的检查点表由 SDK 扫转录投影（这里给空表：本文件只验弹出与关闭）。
+const mockGetRewindCheckpoints = vi.fn().mockResolvedValue([]);
 const mockBackgroundCurrentTask = vi.fn();
 // Stable references mirror the real useChat context (useState-backed values),
 // so effects keyed on these (e.g. BackgroundTaskManager's SET_TASKS sync)
@@ -61,6 +63,7 @@ vi.mock("../../src/contexts/useChat.js", () => ({
     backgroundTasks: mockBackgroundTasks,
     messages: mockMessages,
     handleRewindSelect: mockHandleRewindSelect,
+    getRewindCheckpoints: mockGetRewindCheckpoints,
     backgroundCurrentTask: mockBackgroundCurrentTask,
   }),
 }));

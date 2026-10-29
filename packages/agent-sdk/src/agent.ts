@@ -48,6 +48,7 @@ import { configValidator } from "./utils/configValidator.js";
 import { SkillManager } from "./managers/skillManager.js";
 import { TaskManager } from "./services/taskManager.js";
 import type { WorktreeSession } from "./utils/worktreeSession.js";
+import type { RewindCheckpoint } from "./utils/rewindCheckpoints.js";
 import path from "node:path";
 import { parseTaskNotificationXml } from "./utils/notificationXml.js";
 import { parsePageCommentEventXml } from "./utils/pageCommentEventXml.js";
@@ -1694,6 +1695,21 @@ export class Agent {
     sessionIds: string[];
   }> {
     return this.messageManager.getFullMessageThread();
+  }
+
+  /**
+   * `/rewind` 的检查点表（`{id, content, index}`）：扫转录当场投影，不留整份
+   * 线程。`index` 与 `truncateHistory(index)` 的下标同义。
+   */
+  public getRewindCheckpoints(): Promise<RewindCheckpoint[]> {
+    return this.messageManager.getRewindCheckpoints();
+  }
+
+  /** 按 id 找回滚目标（位置 + 文本），供「回滚到这条消息」用。 */
+  public findRewindTarget(
+    messageId: string,
+  ): Promise<{ index: number; content: string } | undefined> {
+    return this.messageManager.findRewindTarget(messageId);
   }
 
   /**

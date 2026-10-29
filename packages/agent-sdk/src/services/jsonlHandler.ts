@@ -23,7 +23,7 @@ import {
 import type { Message } from "../types/index.js";
 import { extractLatestTotalTokens } from "../utils/tokenCalculation.js";
 import type { SessionFilename } from "../types/session.js";
-import { isReservedEntry, parseTranscriptLine } from "./sessionEntries.js";
+import { isReservedEntry, forEachTranscriptEntry } from "./sessionEntries.js";
 
 /**
  * JSONL write options
@@ -236,11 +236,11 @@ export class JsonlHandler {
    * later `reAppendSessionMetadata` writes back at EOF, which is what makes an
    * evicted title self-heal instead of being lost for good.
    *
-   * 逐行流式扫：`readFile` 把整份文件读成一个字符串、再 `split` 成等量的行串，
-   * 加上解析出来的对象，峰值约是文件大小的五倍（实测 43.7 MB 的转录 → RSS
-   * +213 MB）。会话是 append-only、永不删除的，这条峰值只会随会话变长而变大，
-   * 所以按块读、逐行丢。**返回值仍是一份完整数组**（调用方要的就是它），省掉的
-   * 是文件字符串与行数组这两份中间态。
+   * 逐行流式扫（`forEachTranscriptEntry`，与检查点投影共用同一套行规则）：`readFile`
+   * 把整份文件读成一个字符串、再 `split` 成等量的行串，加上解析出来的对象，峰值
+   * 约是文件大小的五倍（实测 43.7 MB 的转录 → RSS +213 MB）。会话是 append-only、
+   * 永不删除的，这条峰值只会随会话变长而变大，所以按块读、逐行丢。**返回值仍是一份
+   * 完整数组**（调用方要的就是它），省掉的是文件字符串与行数组这两份中间态。
    *
    * @param filePath - Path to the session JSONL file
    * @returns The messages (reserved entries filtered out) and the newest
@@ -251,57 +251,20 @@ export class JsonlHandler {
   ): Promise<{ messages: Message[]; customTitle?: string }> {
     const messages: Message[] = [];
     let customTitle: string | undefined;
-    /** 非空行序号（错误信息里的行号，从 1 开始）。 */
-    let lineNumber = 0;
-    /**
-     * 解析失败的那一行。只有「文件最后一行 + 文件不以换行结尾」才可以吞掉
-     * （被中断的 append 残留）；它后面还有能解析的行就说明它是真损坏。
-     */
-    let brokenLine: { line: number; error: unknown } | undefined;
 
     try {
-      const { endsWithNewline } = await forEachLine(filePath, (line) => {
-        const trimmed = line.trim();
-        if (!trimmed) return;
-
-        lineNumber++;
-        let parsed;
-        try {
-          parsed = parseTranscriptLine(trimmed);
-        } catch (error) {
-          if (brokenLine) {
-            // 连续两行都坏：第一行不是最后一行。
-            throw new Error(
-              `Invalid JSON at line ${brokenLine.line}: ${brokenLine.error}`,
-            );
-          }
-          brokenLine = { line: lineNumber, error };
-          return;
-        }
-        // 坏行后面又出现能解析的行 ⇒ 那行坏的不是尾巴，是真损坏。
-        if (brokenLine) {
-          throw new Error(
-            `Invalid JSON at line ${brokenLine.line}: ${brokenLine.error}`,
-          );
-        }
-
-        if (parsed.kind === "custom-title") {
+      await forEachTranscriptEntry(filePath, (entry) => {
+        if (entry.kind === "custom-title") {
           // Last one wins: a later rename supersedes an earlier one.
-          customTitle = parsed.customTitle;
+          customTitle = entry.customTitle;
           return;
         }
         // 这里**不去重**：整份读是唯一还能同时看到「同一个 id 写了两遍」的那条路，
         // 折叠口径由调用方决定（`loadSessionFromJsonl` 保留第一次出现，倒读分页
         // 保留最后一次）。在这里悄悄去重会把它俩的语义焊死在这一层。
-        if (parsed.kind !== "message") return;
-        messages.push(parsed.message);
+        if (entry.kind !== "message") return;
+        messages.push(entry.message);
       });
-
-      if (brokenLine && endsWithNewline) {
-        throw new Error(
-          `Invalid JSON at line ${brokenLine.line}: ${brokenLine.error}`,
-        );
-      }
       return { messages, customTitle };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {

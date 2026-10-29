@@ -3,17 +3,17 @@ import { describe, it, expect, vi } from "vitest";
 import { render } from "../helpers/inkHarness.js";
 import { RewindCommand } from "../../src/components/RewindCommand.js";
 import { stripAnsiColors } from "wave-agent-sdk";
-import type { Message } from "wave-agent-sdk";
+import type { RewindCheckpoint } from "wave-agent-sdk";
+
+const checkpoints: RewindCheckpoint[] = [
+  { id: "u1", content: "Hello", index: 0 },
+];
 
 describe("RewindCommand Border", () => {
-  const mockMessages: Partial<Message>[] = [
-    { role: "user", blocks: [{ type: "text", content: "Hello" }] },
-  ];
-
   it("should have top and bottom borders but no side borders", async () => {
     const { lastFrame } = render(
       <RewindCommand
-        messages={mockMessages as Message[]}
+        getCheckpoints={vi.fn().mockResolvedValue(checkpoints)}
         onSelect={vi.fn()}
         onCancel={vi.fn()}
       />,
@@ -45,7 +45,11 @@ describe("RewindCommand Border", () => {
 
   it("should not have side borders when no checkpoints", async () => {
     const { lastFrame } = render(
-      <RewindCommand messages={[]} onSelect={vi.fn()} onCancel={vi.fn()} />,
+      <RewindCommand
+        getCheckpoints={vi.fn().mockResolvedValue([])}
+        onSelect={vi.fn()}
+        onCancel={vi.fn()}
+      />,
     );
 
     await vi.waitFor(() => {
