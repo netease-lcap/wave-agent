@@ -53,6 +53,10 @@ interface CacheEntry {
 
 const cache = new LRUCache<string, CacheEntry>({
   ttl: CACHE_TTL,
+  // Sweep expired entries on their own: without this an entry only leaves when
+  // a later write pushes the total over `maxSize`, so one expired 10MB page can
+  // sit in memory indefinitely. Claude Code schedules the same sweep.
+  ttlAutopurge: true,
   maxSize: CACHE_MAX_BYTES,
   sizeCalculation: (entry) => entry.bytes,
 });
@@ -575,7 +579,7 @@ Usage notes:
         // to re-announce, and a cached empty body would silently starve the
         // model on the next request.
         if (filePath) {
-          cache.set(finalUrl, {
+          cache.set(url, {
             bytes: bytes.length,
             code: response.status,
             codeText: response.statusText,
@@ -603,9 +607,14 @@ Usage notes:
         ? htmlToMarkdown(body)
         : body;
 
-      // Store the whole readable text: chunking happens per read, so a cached
-      // page must still be able to answer an `offset` request.
-      cache.set(finalUrl, {
+      // The whole readable text, not one interval of it — chunking happens per
+      // read, so a cached page must still be able to answer an `offset` read.
+      // Keyed by the URL the caller asked for, never by where a permitted
+      // same-host redirect landed: `cache.get(url)` looks up exactly that key,
+      // so storing under the redirect target meant a site that redirects
+      // `example.com` → `www.example.com` never hit its own cache. Claude Code
+      // keys its WebFetch cache the same way.
+      cache.set(url, {
         bytes: new TextEncoder().encode(text).length,
         code: response.status,
         codeText: response.statusText,
