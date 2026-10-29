@@ -105,52 +105,28 @@ describe("BashModeManager", () => {
       expect(bashModeManager.isCommandRunning).toBe(false);
     });
 
-    it("should stream realtime output into the running tool block", async () => {
-      const command = "sleep 1";
-      mockExecute.mockImplementation(
-        (
-          _args: Record<string, unknown>,
-          context: {
-            onShortResultUpdate?: (shortResult: string) => void;
-            onResultUpdate?: (result: string) => void;
-          },
-        ) => {
-          // The bash tool engine drives these callbacks while the command runs.
-          context.onShortResultUpdate?.("line 1\nline 2\nline 3");
-          context.onResultUpdate?.("line 1\nline 2\nline 3\nline 4\n");
-          return Promise.resolve({
-            success: true,
-            content: "line 1\nline 2\nline 3\nline 4\n",
-            shortResult: "line 1\nline 2\nline 3",
-            metadata: { exitCode: 0 },
-          } as never);
-        },
-      );
+    it("should write the output once, when the command ends", async () => {
+      mockExecute.mockResolvedValue({
+        success: true,
+        content: "line 1\nline 2\n",
+        metadata: { exitCode: 0 },
+      } as never);
 
-      await bashModeManager.executeCommand(command);
+      await bashModeManager.executeCommand("sleep 1");
 
-      // Both callbacks are wired into the bash tool context.
-      const context = vi.mocked(bashTool.execute).mock.calls[0][1] as {
-        onShortResultUpdate: (shortResult: string) => void;
-        onResultUpdate: (result: string) => void;
-      };
-      expect(typeof context.onShortResultUpdate).toBe("function");
-      expect(typeof context.onResultUpdate).toBe("function");
+      // The engine buffers output and hands it back once, so there is nothing
+      // to stream into the block while the command runs.
+      const context = vi.mocked(bashTool.execute).mock.calls[0][1];
+      expect(context).not.toHaveProperty("onShortResultUpdate");
+      expect(context).not.toHaveProperty("onResultUpdate");
 
-      // Realtime updates land on the running tool block (stage stays "running").
+      expect(mockMessageManager.updateToolBlock).toHaveBeenCalledTimes(1);
       expect(mockMessageManager.updateToolBlock).toHaveBeenCalledWith({
         id: "block-1",
         messageId: "msg-1",
-        shortResult: "line 1\nline 2\nline 3",
-        stage: "running",
-        name: BASH_TOOL_NAME,
-      });
-      expect(mockMessageManager.updateToolBlock).toHaveBeenCalledWith({
-        id: "block-1",
-        messageId: "msg-1",
-        result: "line 1\nline 2\nline 3\nline 4\n",
-        stage: "running",
-        name: BASH_TOOL_NAME,
+        result: "line 1\nline 2\n",
+        stage: "end",
+        success: true,
       });
     });
 

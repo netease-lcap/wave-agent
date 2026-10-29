@@ -1437,7 +1437,6 @@ export class AIManager {
       taskManager: this.taskManager,
       readFileState,
       onShortResultUpdate: () => {},
-      onResultUpdate: () => {},
       onCwdChange: () => {},
     };
     try {
@@ -2846,15 +2845,6 @@ ${question}`;
           this.messageManager.updateToolBlock({
             id: toolId,
             shortResult,
-            stage: "running",
-            compactParams,
-            name: toolName,
-          });
-        },
-        onResultUpdate: (result: string) => {
-          this.messageManager.updateToolBlock({
-            id: toolId,
-            result,
             stage: "running",
             compactParams,
             name: toolName,

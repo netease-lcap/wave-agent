@@ -253,6 +253,47 @@ describe("bashTool", () => {
       });
     });
 
+    it("pushes nothing while the command runs — output arrives once, at the end", async () => {
+      // Output is buffered for the whole run: real commands almost always end
+      // with a pipe that buffers until EOF (`tail -n`, `| head`), so a live
+      // stream would rarely show anything (specs/core/bash-tools.md).
+      const progress: string[] = [];
+      const mockProcess = {
+        pid: 1234,
+        stdout: {
+          on: vi.fn((event, callback) => {
+            if (event === "data") {
+              setTimeout(() => {
+                callback(Buffer.from("line 1\n"));
+                callback(Buffer.from("line 2\n"));
+              }, 10);
+            }
+          }),
+        },
+        stderr: {
+          on: vi.fn(),
+        },
+        on: vi.fn((event, callback) => {
+          if (event === "exit") {
+            setTimeout(() => callback(0), 40);
+          }
+        }),
+        kill: vi.fn(),
+        killed: false,
+      };
+
+      mockSpawn.mockReturnValue(mockProcess as unknown as ChildProcess);
+
+      const result = await bashTool.execute(
+        { command: "printf 'line 1\\nline 2\\n'" },
+        { ...context, onShortResultUpdate: (s: string) => progress.push(s) },
+      );
+
+      expect(progress).toEqual([]);
+      expect(result.success).toBe(true);
+      expect(result.content).toBe("line 1\nline 2\n");
+    });
+
     it("never hands a live stdin to the command (fd0 is /dev/null)", async () => {
       // A command that reads stdin (`cat`, `rg foo` with no path, a pager)
       // blocks forever on a pipe nobody writes to, and the user sees a

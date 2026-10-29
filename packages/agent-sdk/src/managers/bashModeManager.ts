@@ -65,8 +65,8 @@ export class BashModeManager {
 
     try {
       // User message + running tool block. The user text mirrors the command
-      // itself (`!ls` renders as `!ls`), and incremental toolBlockUpdated
-      // notifications drive the live output on all three hosts.
+      // itself (`!ls` renders as `!ls`); the output lands on that block once,
+      // when the command ends.
       const messageId = this.messageManager.addUserMessage({
         content: command,
       });
@@ -88,26 +88,6 @@ export class BashModeManager {
           taskManager,
           sessionEnv: this.sessionEnv,
           abortSignal: this.abortController.signal,
-          // Stream realtime output into the running tool block — wired like
-          // aiManager tool execution (aiManager.ts updateToolBlock callbacks).
-          onShortResultUpdate: (shortResult: string) => {
-            this.messageManager.updateToolBlock({
-              id: blockId,
-              messageId,
-              shortResult,
-              stage: "running",
-              name: BASH_TOOL_NAME,
-            });
-          },
-          onResultUpdate: (resultText: string) => {
-            this.messageManager.updateToolBlock({
-              id: blockId,
-              messageId,
-              result: resultText,
-              stage: "running",
-              name: BASH_TOOL_NAME,
-            });
-          },
         },
       );
 
