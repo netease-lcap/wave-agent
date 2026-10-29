@@ -802,6 +802,19 @@
 [data-host="desktop"] .desktop-session-group + .desktop-session-group {
   margin-top: 12px;
 }
+/* 收起的分组不给 12px 的呼吸位（设计师 1029 评论「不同的项目之间的间距展开时
+   不变，收起时缩小至2px」）：收起后组里没有内容，下面那条 12px 只剩「两个 30px
+   行盒之间一大块空白」的观感；展开时（含 0 会话的空态）维持 12px 不变。
+   判据用组头自己的 aria-expanded（真实展开状态），不猜 DOM 里有没有列表；
+   `:has()` 的特异性 (0,4,0) 高于上面那条 (0,3,0)，不需要 !important。
+   间距挂在「后一个分组」的 margin-top 上，所以这里按**上面那个**分组的展开态取值。 */
+[data-host="desktop"]
+  .desktop-session-group:has(
+    > .desktop-session-group-header[aria-expanded="false"]
+  )
+  + .desktop-session-group {
+  margin-top: 2px;
+}
 
 /* ── 第三轮 Figma 权威值（Figma 组件库「CC桌面端组件库」实测）───────── */
 
