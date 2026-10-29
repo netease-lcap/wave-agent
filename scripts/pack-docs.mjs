@@ -47,7 +47,24 @@ if (!reuseScreenshots) {
 run("pnpm", ["exec", "vitepress", "build", "docs"], { DOCS_BASE: "/docs/" });
 
 // dist 下全是待托管文件，`-C` 进去打 `.`，压缩包根目录即站点根目录。
-run("tar", ["-czf", outFile, "-C", distDir, "."]);
+//
+// `--no-xattrs` 不是可选项：macOS 生成的文件带 `com.apple.provenance` 等扩展属性，
+// bsdtar 会把它们写成每个成员一条 pax 扩展头（`SCHILY.xattr.*`）。这些头本身只有几十
+// 字节，但平台侧的 tar 解包器会把它们实体化成 `._<原文件名>` 的 AppleDouble 文件，于是
+// 一次 937 个文件的包在 file-center 落成近 1900 个对象（其中一半是 `._*` 垃圾）。GNU tar
+// 也认这个开关，两个平台都能用。下面的自检就是防它回来。
+run("tar", ["-czf", outFile, "--no-xattrs", "-C", distDir, "."]);
+
+// 自检：压缩包里不得再有 xattr 扩展头（否则上传后又会出现 `._*` 对象）。
+const rawArchive = execFileSync("gzip", ["-dc", outFile], {
+  maxBuffer: 1 << 30,
+}).toString("latin1");
+const xattrHeaders = rawArchive.split("SCHILY.xattr").length - 1;
+if (xattrHeaders > 0) {
+  throw new Error(
+    `压缩包内仍有 ${xattrHeaders} 条 SCHILY.xattr 扩展头，上传后会被解成 ._* 垃圾对象（检查 tar 是否漏了 --no-xattrs）`,
+  );
+}
 
 console.log(`\n文档站压缩包：${outFile}`);
 console.log(
