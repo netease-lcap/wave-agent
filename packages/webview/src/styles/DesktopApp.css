@@ -1366,6 +1366,42 @@ body.is-panel-resizing webview {
   background: var(--vscode-list-hoverBackground);
 }
 
+/* ═══ 关闭键族②：文件标签带的关闭键（1029 评论第五批）═══════════════════
+   评论原话（点 `svg.file-tab-close-icon`）：「关闭图标和以下保持一致」，随后点
+   `button.preview-tab-close` 说「这里」⇒ 以**面板页签关闭键**为基准对齐。
+   改前 / 改后的实测差（浅色档，深色同构）：
+
+     项目            文件标签带（改前）                面板页签（基准）
+     字形            16×16 CloseIcon（viewBox 17 的 +） 9×9 官方 ×（CloseTabIcon）
+     常态色          #6C7076（继承标签文字）            #565A60 图标灰
+     常态 opacity    0.7                               0.6
+     圆角            3px                               0px
+     hover 色        不变（只是 opacity 0.7 → 1）      #1F2329（深 #FFFFFF）
+     hover 背景      #E7E9ED（--cc-fill-pressed）      无
+
+   本轮把文件标签带这一侧全部收到基准值：字形换成同一个 `CloseTabIcon`
+   （两处共用一份矢量，面板页签渲染逐像素不变）；下面四条只给桌面端
+   （`.file-tab-close` 是 IDE / 插件端共用类，base 的 FilePane.css 一行没动）。
+   ⚠️ 本该写进 host-desktop.css 的文件标签段（:2036-2054），但那个文件当前有另一个
+   窗口在改，先落本文件；`[data-host="desktop"] .file-tab .file-tab-close:hover`
+   带上 `.file-tab` 是为了压过 host 层那条 `:hover { background: --cc-fill-pressed }`。
+   回退：删掉下面四条 + 把 `FileTabStrip.tsx` 换回 `CloseIcon` 即恢复原样。 */
+[data-host="desktop"] .file-tab-close {
+  border-radius: 0;
+  opacity: 0.6;
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="dark"] .file-tab-close {
+  color: #9a9ea5;
+}
+[data-host="desktop"] .file-tab .file-tab-close:hover {
+  background: transparent;
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"] .file-tab .file-tab-close:hover {
+  color: #ffffff;
+}
+
 .preview-pane-address {
   flex: 1;
   min-width: 0;

@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { DesktopPanelKind, PanelTab } from "../types";
 import { PANEL_LABELS } from "./ChatApp";
 import { MaximizeIcon, UnmaximizeIcon } from "./HeaderIcons";
+import { CloseTabIcon } from "./CloseTabIcon";
 import { PanelKindIcon } from "./PanelKindIcon";
 import { PanelToggleMenu } from "./PanelToggleMenu";
 import { Tooltip } from "./Tooltip";
@@ -37,16 +38,8 @@ const AddTabGlyph: React.FC = () => (
   </svg>
 );
 
-/** 「×」=「功能」icon-button 关闭变体官方矢量（Figma 13440:12468，
- *  9×9 viewBox 圆头实心 X，原 fill #565A60 → currentColor）。 */
-const CloseTabGlyph: React.FC = () => (
-  <svg width="9" height="9" viewBox="0 0 9 9" aria-hidden>
-    <path
-      d="M8.80087 0.198873C9.06618 0.464196 9.06598 0.894338 8.80087 1.15979L5.46088 4.49978L8.78962 7.82851C9.05474 8.09396 9.05493 8.5241 8.78962 8.78943C8.52429 9.05476 8.09415 9.05456 7.8287 8.78943L4.49997 5.46069L1.18257 8.77809C0.917121 9.04324 0.486989 9.04341 0.221653 8.77809C-0.0436834 8.51275 -0.0435003 8.08263 0.221653 7.81718L3.53905 4.49978L0.199095 1.15982C-0.0660373 0.89437 -0.0662338 0.464237 0.199095 0.198907C0.464426 -0.0664105 0.894562 -0.0662215 1.16001 0.198907L4.49997 3.53886L7.83996 0.198873C8.10541 -0.0662377 8.53555 -0.066449 8.80087 0.198873Z"
-      fill="currentColor"
-    />
-  </svg>
-);
+/** 「×」字形已提到 `CloseTabIcon`（1029 评论第五批：文件标签带的关闭图标要与
+ *  这里保持一致 ⇒ 同一份官方矢量两处共用，本处渲染结果逐像素不变）。 */
 
 /** Short per-instance tab label: the guest page title for preview (regular
  *  browser semantics — the tab shows what the page is called, not its URL),
@@ -231,7 +224,7 @@ export const DesktopPanelTabs: React.FC<DesktopPanelTabsProps> = ({
                   onClose(id);
                 }}
               >
-                <CloseTabGlyph />
+                <CloseTabIcon />
               </button>
             </div>
           );
