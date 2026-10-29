@@ -438,6 +438,10 @@ export class AgentBridge {
       case "getMessages":
         return this.getMessages(sessionId, {
           since: p.since as string | undefined,
+          // 上翻取更早的锚点。漏了这一行，SDK 会退回「首屏」分支——每次都答
+          // 同一份内存尾部，页面永远接不上更早的页（真机上表现为上翻到底反复
+          // 要同一页、翻不动，压缩之前的历史一条都翻不出来）。
+          before: p.before as string | undefined,
           limit: p.limit as number | undefined,
         });
 

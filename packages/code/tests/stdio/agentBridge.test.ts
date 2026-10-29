@@ -1116,6 +1116,29 @@ test("getMessages hands the parameters to the SDK unchanged", async () => {
   expect(r.messages).toHaveLength(3);
 });
 
+test("getMessages forwards the before anchor the earlier-page request carries", async () => {
+  // 上翻取更早的锚点就在这一个参数上：漏传时 SDK 退回「首屏」分支，每次都答
+  // 同一份内存尾部，页面永远接不上更早的页（真机上表现为上翻到底反复要同一页、
+  // 压缩之前的历史一条都翻不出来）。
+  const { bridge, sessionId, mockAgent } = await bridgeWithMessages(10);
+  vi.mocked(mockAgent.getMessagePage).mockResolvedValue({
+    messages: windowedMessages(2),
+    hasMore: true,
+  });
+
+  const r = (await bridge.handleRequest(
+    "getMessages",
+    { before: "m7", limit: 2 },
+    sessionId,
+  )) as MessageWindowResult;
+
+  expect(mockAgent.getMessagePage).toHaveBeenCalledWith({
+    before: "m7",
+    limit: 2,
+  });
+  expect(r.hasMore).toBe(true);
+});
+
 test("getMessages without parameters answers the agent's own list", async () => {
   const { bridge, sessionId, mockAgent } = await bridgeWithMessages(10);
 

@@ -68,6 +68,16 @@ function transcript(ids: string[]): string {
   return ids.map(line).join("\n") + "\n";
 }
 
+/** 压缩点写进转录的样子：一条 assistant 消息，块类型是 `compact`。 */
+function compactLine(id: string, content: string): string {
+  return JSON.stringify({
+    id,
+    role: "assistant",
+    timestamp: "2026-01-01T00:00:00.000Z",
+    blocks: [{ type: "compact", content }],
+  });
+}
+
 const ids = (messages: { id?: string }[]): string[] =>
   messages.map((m) => m.id ?? "");
 
@@ -124,6 +134,62 @@ describe("readTranscriptPage", () => {
     const page = await readTranscriptPage(FILE, { before: "m3", limit: 2 });
     expect(ids(page.messages)).toEqual(["m1", "m2"]);
     expect(page.hasMore).toBe(true);
+  });
+
+  it("pages across a compaction boundary instead of stopping at it", async () => {
+    // 压缩之后内存里只剩边界之后的尾部，边界之前的消息只有转录里有；锚点是消息
+    // id 而不是下标，所以连翻几页必须能穿过摘要块一路翻到第一条
+    // （spec ui/message-rendering-system.md 场景 8）。
+    serve(
+      [
+        ...["m0", "m1", "m2"].map(line),
+        compactLine("c1", "前情摘要"),
+        ...["m3", "m4", "m5"].map(line),
+      ].join("\n") + "\n",
+    );
+
+    const first = await readTranscriptPage(FILE, { before: "m3", limit: 2 });
+    expect(ids(first.messages)).toEqual(["m2", "c1"]);
+    expect(first.hasMore).toBe(true);
+    // 摘要块本身就是一条消息，不能被当成保留条目跳掉——它就是压缩点在页面上的
+    // 可见形态，缺了它这一段历史看起来就是「断」的。
+    expect(first.messages[1].blocks).toEqual([
+      { type: "compact", content: "前情摘要" },
+    ]);
+
+    const second = await readTranscriptPage(FILE, { before: "m2", limit: 2 });
+    expect(ids(second.messages)).toEqual(["m0", "m1"]);
+    expect(second.hasMore).toBe(false);
+  });
+
+  it("keeps every compaction block of a multi-compaction history in order", async () => {
+    // 一条被反复压缩过的会话（实测那条 8038 行的转录有 46 个摘要块）里，翻回去
+    // 要能一段段看到每个压缩点，而不是只剩最后一个。
+    serve(
+      [
+        line("m0"),
+        compactLine("c1", "第一次摘要"),
+        line("m1"),
+        compactLine("c2", "第二次摘要"),
+        line("m2"),
+      ].join("\n") + "\n",
+    );
+
+    let anchor: string | undefined;
+    const collected: string[] = [];
+    for (;;) {
+      const page = await readTranscriptPage(
+        FILE,
+        anchor ? { before: anchor, limit: 3 } : { limit: 3 },
+      );
+      collected.unshift(...ids(page.messages));
+      expect(page.anchorLost).toBeUndefined();
+      const next = page.messages[0]?.id;
+      if (!page.hasMore || !next) break;
+      anchor = next;
+    }
+
+    expect(collected).toEqual(["m0", "c1", "m1", "c2", "m2"]);
   });
 
   it("reports a vanished before-anchor instead of pretending it is the start", async () => {
