@@ -9,6 +9,7 @@ import {
   type ParsedFrontmatter,
 } from "./frontmatterYaml.js";
 import { getBuiltinSubagentsDir } from "./configPaths.js";
+import { DEFAULT_SERVER_URL } from "./constants.js";
 
 /** Isolation mode a subagent can opt into. Only `worktree` is recognized. */
 export type SubagentIsolation = "worktree";
@@ -274,6 +275,19 @@ function scanSubagentDirectory(
 }
 
 /**
+ * Docs site entry for the deployment this session talks to: docs ride on the
+ * same host as SSO (`<serverUrl>/docs/`), so a private or test deployment gets
+ * its own documentation instead of production's.
+ */
+function resolveDocsUrl(env: Record<string, string>): string {
+  const serverUrl = (env.WAVE_SERVER_URL || DEFAULT_SERVER_URL).replace(
+    /\/+$/,
+    "",
+  );
+  return `${serverUrl}/docs/`;
+}
+
+/**
  * Load all subagent configurations from project and user directories, plus built-in subagents
  * @param workdir - Working directory to scan for project-level subagents
  * @param env - Merged environment (settings.json env over OS env). Defaults to process.env.
@@ -297,6 +311,14 @@ export async function loadSubagentConfigurations(
 
   // Load configurations from all sources
   let builtinConfigs = scanSubagentDirectory(builtinDir, "builtin");
+  // Builtin prompts may point the model at the deployment's docs site, which is
+  // served from `<serverUrl>/docs/`. Resolve it here rather than baking a URL
+  // into the prompt: a private deployment's guide must read its own docs.
+  const docsUrl = resolveDocsUrl(env);
+  builtinConfigs = builtinConfigs.map((config) => ({
+    ...config,
+    systemPrompt: config.systemPrompt.replace(/\$\{WAVE_DOCS_URL\}/g, docsUrl),
+  }));
   // Conditional registration: builtin subagents whose frontmatter requires the
   // WAVE_VISION_MODEL env var (`model: visionModel`) are only loaded when it is
   // set — otherwise the main model would delegate image recognition to a
