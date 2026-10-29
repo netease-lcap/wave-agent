@@ -46,7 +46,7 @@ import {
 } from "../utils/nestedMemory.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
 import {
-  MESSAGE_HISTORY_PAGE_SIZE,
+  MESSAGE_PAGE_SIZE,
   MESSAGE_SLICE_MAX_BYTES,
 } from "../constants/messageWindow.js";
 import { messageBytes, takeTailFromMemory } from "../utils/messageWindow.js";
@@ -1227,7 +1227,7 @@ export class MessageManager {
       return { messages: [...list] };
     }
 
-    const limit = window.limit ?? MESSAGE_HISTORY_PAGE_SIZE;
+    const limit = window.limit ?? MESSAGE_PAGE_SIZE;
 
     if (!window.before) {
       // 首屏：内存尾部一页；内存放得下整份时才需要问转录还有没有更早。
