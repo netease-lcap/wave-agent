@@ -34,6 +34,8 @@ Wave uses several environment variables to control its core functionality. Varia
 | \`WAVE_DISABLE_AUTO_MEMORY\` | Set to \`1\` or \`true\` to disable the auto-memory feature. | \`false\` |
 | \`WAVE_AUTO_MEMORY_FREQUENCY\` | Auto memory update frequency. \`1\` = every turn, \`2\` = every 2 turns, etc. | \`1\` |
 | \`WAVE_TASK_LIST_ID\` | Explicitly set the task list ID for the session. | (Session ID) |
+| \`WAVE_COMPLETION_MODEL\` | Model used for inline code completion when the top-level \`completionModel\` key is unset (which itself falls back to the fast model). | - (fast model) |
+| \`WAVE_TMPDIR\` | Directory for Wave's own scratch files (bash CWD marker, background-task and subagent logs, persisted tool results, MCP images). **OS env only** (infrastructure); kept separate from \`TMPDIR\` so child processes are untouched. An unwritable or over-quota directory is reported with a diagnostic instead of failing silently. | \`os.tmpdir()\` |
 | \`WAVE_PLUGIN_GIT_TIMEOUT_MS\` | Timeout in milliseconds for git operations when installing plugins. **OS env only** (infrastructure). | \`300000\` |
 
 ## Configuration Scopes
@@ -42,10 +44,13 @@ Environment variables can be set in different scopes. Wave merges scopes from lo
 
 Precedence (highest to lowest):
 
-1.  **Local Scope**: \`.wave/settings.local.json\` (Local overrides, ignored by git)
-2.  **Project Scope**: \`.wave/settings.json\` (Project-specific settings, shared via git)
-3.  **User Scope**: \`~/.wave/settings.json\` (Global settings for all projects)
-4.  **System Environment**: Variables set in your shell (e.g., \`export WAVE_API_KEY=...\`). Used as a fallback when a key is absent from the settings snapshot.
+1.  **Remote (managed)**: values pushed by the organization from the server (\`<serverUrl>\`). Only the keys it declares win over local files; the settings page shows them with their effective value, locked, marked "managed by your organization".
+2.  **Local Scope**: \`.wave/settings.local.json\` (Local overrides, ignored by git)
+3.  **Project Scope**: \`.wave/settings.json\` (Project-specific settings, shared via git)
+4.  **User Scope**: \`~/.wave/settings.json\` (Global settings for all projects)
+5.  **System Environment**: Variables set in your shell (e.g., \`export WAVE_API_KEY=...\`). Used as a fallback when a key is absent from the settings snapshot.
+
+The settings page labels each preference with its source (\`remote\` / \`user\` / \`env\` / \`default\`), so a value you did not set yourself is never silently attributed to the wrong layer.
 
 > Settings \`env\` shadows (does not mutate) OS env: a key set in both settings.json \`env\` and the OS environment resolves to the settings value for that session, while the OS value remains untouched and visible to unrelated processes.
 
@@ -67,6 +72,35 @@ Example:
   }
 }
 \`\`\`
+
+## Telemetry
+
+Wave runs two independent OTLP pipelines: the **first-party** one (this machine's server console — engineering metrics such as sessions, tokens and changed lines) and **your own collector**. The first is on by default for a signed-in account; the second stays off until you point it at an endpoint. Configuring one does not switch the other off.
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| \`DISABLE_TELEMETRY\` | Master switch: \`1\` / \`true\` stops **every** pipeline, first-party included. There is deliberately no first-party-only switch. | unset (reporting on) |
+| \`OTEL_EXPORTER_OTLP_ENDPOINT\` | Enables your own OTLP exporter (metrics + logs) and names the collector. | - (off) |
+| \`OTEL_EXPORTER_OTLP_PROTOCOL\` | Exporter protocol, e.g. \`http/protobuf\`. | OTLP default |
+| \`OTEL_EXPORTER_OTLP_HEADERS\` | Static export headers as \`key=value\` pairs separated by commas. Use \`otelHeadersHelper\` instead when the credential rotates. | - |
+| \`OTEL_LOG_USER_PROMPTS\` | Include user prompt text in exported events. | \`false\` |
+| \`OTEL_LOG_TOOL_CONTENT\` | Include tool input/output content in exported events. | \`false\` |
+| \`OTEL_METRICS_INCLUDE_SESSION_ID\` | Add the session id to metric attributes. | \`true\` |
+| \`OTEL_METRICS_INCLUDE_RESOURCE_ATTRIBUTES\` | Add resource attributes to metrics. | \`true\` |
+| \`OTEL_METRICS_INCLUDE_REPOSITORY\` | Add the repository attribute to metrics. | \`false\` |
+| \`OTEL_METRICS_INCLUDE_ENTRYPOINT\` | Add the host entrypoint (cli / desktop / vscode …) attribute to metrics. | \`false\` |
+| \`OTEL_RESOURCE_ATTRIBUTES\` | Extra resource attributes (\`key=value\` pairs, comma separated); Wave's own values win on a conflict. | - |
+| \`OTEL_SHUTDOWN_TIMEOUT_MS\` | How long a process waits for the exporters to flush on exit. | \`2000\` |
+
+For a rotating credential, use the top-level \`otelHeadersHelper\` key rather than putting headers in \`env\` — its stdout is a JSON object of headers, re-read on a refresh interval so nothing has to be written into config:
+
+\`\`\`json
+{
+  "otelHeadersHelper": "/path/to/print-otel-headers.sh"
+}
+\`\`\`
+
+Accepted only from the user layer (\`~/.wave/settings.json\`) or the remote layer: a checked-out repository must not be able to name a command that runs on your machine.
 
 ## Live Reload
 
@@ -112,8 +146,8 @@ Hooks are configured in the \`hooks\` field of \`settings.json\`. Each event can
         "matcher": "Write",
         "hooks": [
           {
-            "command": "pnpm lint",
-            "description": "Run lint before writing files"
+            "type": "command",
+            "command": "pnpm lint"
           }
         ]
       }
@@ -123,8 +157,8 @@ Hooks are configured in the \`hooks\` field of \`settings.json\`. Each event can
         "matcher": "Bash",
         "hooks": [
           {
-            "command": "echo \\"Permission requested for Bash tool\\" >> hooks.log",
-            "description": "Log permission requests for Bash"
+            "type": "command",
+            "command": "echo \\"Permission requested for Bash tool\\" >> hooks.log"
           }
         ]
       }
@@ -133,15 +167,21 @@ Hooks are configured in the \`hooks\` field of \`settings.json\`. Each event can
 }
 \`\`\`
 
+Hooks can also be browsed and edited in the settings page's Hooks view, and in the CLI with \`/hooks\`.
+
 ## Hook Configuration Fields
 
 - \`matcher\`: (Optional) A pattern to match against the tool name (e.g., "Write", "Read*", "/^Edit/"). Only applicable for \`PreToolUse\`, \`PostToolUse\`, and \`PermissionRequest\`.
 - \`hooks\`: An array of hook commands to execute.
+  - \`type\`: \`"command"\` (required).
   - \`command\`: The shell command to execute.
-  - \`description\`: A brief description of the hook's purpose.
   - \`async\`: (Optional) Whether the hook should run in the background without blocking (default: \`false\`).
   - \`asyncRewake\`: (Optional) Run the hook in the background and wake the model when it exits with code \`2\`, delivering its output as a system reminder. Implies \`async\`.
   - \`timeout\`: (Optional) Maximum execution time in seconds (default: \`600\`).
+
+## Hook Process Environment
+
+Hooks are spawned in the session's **current** working directory, which drifts whenever the model runs \`cd\` — a command written as a relative path is only reliable when the session happens to sit at the project root. Anchor scripts on \`$WAVE_PROJECT_DIR\` instead: it is the directory the session was opened in, never follows \`cd\`, and is what Claude Code calls \`CLAUDE_PROJECT_DIR\`.
 
 ## Hook Input JSON
 
@@ -383,11 +423,14 @@ The shell also receives \`WAVE_PLUGIN_ROOT\` as an env var, so \`$WAVE_PLUGIN_RO
 
 The Model Context Protocol (MCP) allows Wave to connect to external servers that provide additional tools and context. This document explains how to configure and use MCP servers in Wave.
 
-## Configuration File: \`.mcp.json\`
+## Configuration Files: \`.mcp.json\`
 
-MCP servers are configured in a \`.mcp.json\` file. Wave looks for this file in your project root:
+MCP servers are declared in \`.mcp.json\` files. Two layers are read and merged:
 
-1.  **Project Scope**: \`.mcp.json\` in your project root (Project-specific MCP servers)
+1.  **User Scope**: \`~/.wave/mcp.json\` — available in every project (personal servers, credentials)
+2.  **Project Scope**: \`.mcp.json\` in your project root — shared through git with everyone on the repo
+
+A server with the same name in both files resolves to the **project** entry. Plugin-provided servers sit below both, and servers passed in by the host (\`options.mcpServers\`) sit above them.
 
 ## Configuration Structure
 
@@ -709,7 +752,7 @@ If a model does not support a default parameter (like \`temperature\` for some r
 
 ## Global Model Selection
 
-Set the model for the main conversation and the fast model used by lightweight tasks (subagent summaries, WebFetch content processing, inline completion) with the top-level \`model\` / \`fastModel\` scalars, or via environment variables in \`settings.json\`. The scalars take precedence over the matching environment variables:
+Set the model for the main conversation and the fast model used by lightweight tasks (subagent summaries, WebFetch content processing, inline completion) with the top-level \`model\` / \`fastModel\` scalars, or via environment variables in \`settings.json\`. The scalars take precedence over the matching environment variables. Inline completion can also name its own model with \`completionModel\`; unset falls back to \`fastModel\`.
 
 \`\`\`json
 {
@@ -820,6 +863,52 @@ You can also manage permissions directly through the Wave interface:
 - When Wave asks for permission, you can select "Always allow" to add a rule to your \`settings.local.json\`.
 - You can ask Wave to "Update my permission mode to acceptEdits".
 `,
+  "skills/settings/SANDBOX.md": `# Bash Sandbox
+
+Wave can run Bash commands inside an OS-level sandbox (macOS Seatbelt, Linux bubblewrap) that limits what a command may write and which hosts it can reach. It is **off by default** — an unconfigured sandbox changes nothing.
+
+## Configuration
+
+The top-level \`sandbox\` key in \`settings.json\`:
+
+\`\`\`json
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true,
+    "network": { "allowedDomains": ["registry.npmjs.org", "github.com"] },
+    "filesystem": { "allowWrite": ["~/.cache/my-tool"], "denyRead": ["~/.ssh"] }
+  }
+}
+\`\`\`
+
+## Fields
+
+- \`enabled\` (default \`false\`): master switch.
+- \`failIfUnavailable\` (default \`false\`): fail the command when the sandbox cannot start (unsupported platform, missing dependency). The default degrades to an unsandboxed run with a warning.
+- \`autoAllowBashIfSandboxed\` (default \`false\`): skip the Bash permission prompt when the command runs sandboxed. Explicit \`deny\` rules still apply.
+- \`allowUnsandboxedCommands\` (default \`true\`): whether the model may request \`dangerouslyDisableSandbox\` per call. Set \`false\` to force every command into the sandbox.
+- \`excludedCommands\`: command patterns that always run unsandboxed (e.g. \`npm run test:*\`). Each sub-command of a \`&&\` chain is matched separately.
+- \`ignoreViolations\`: command pattern → violations to ignore, so they are not reported in the tool result.
+
+### \`network\`
+
+Inside the sandbox commands cannot reach the network unless a host matches \`allowedDomains\` (suffix match) — allowed traffic goes through the host's HTTP/SOCKS5 proxy, so clearing the proxy variables and connecting directly still fails. An empty allow list denies all egress.
+
+- \`deniedDomains\`: explicit denials, checked before the allow list.
+- \`allowUnixSockets\` / \`allowAllUnixSockets\`: Unix socket paths the sandbox may connect to (macOS only — Linux cannot filter sockets by path).
+- \`allowLocalBinding\`: permit binding/connecting to local ports (local servers).
+
+### \`filesystem\`
+
+- Writes are **denied by default** and allowed only inside \`allowWrite\`; the workspace and the temp directory are always writable and need not be listed. \`denyWrite\` narrows a writable path again.
+- Reads are **allowed by default** and narrowed by \`denyRead\`; \`allowRead\` reopens a hole inside a denied path.
+- Paths accept \`~\`; relative paths resolve against the directory of the settings file that declares them.
+
+## Availability
+
+macOS and Linux (including WSL2) only. Windows reports the sandbox as unavailable: with \`failIfUnavailable\` that is a command failure, otherwise the command runs unsandboxed with a warning.
+`,
   "skills/settings/PLUGINS.md": `# Wave Plugins & Plugin Marketplaces
 
 This guide covers creating plugins, publishing plugin marketplaces, and installing plugins from marketplaces.
@@ -857,20 +946,29 @@ Place resources in standard directories within the plugin:
 
 Only \`plugin.json\` should exist in \`.wave-plugin/\` — any other files there will cause a validation error.
 
-### Installing a Plugin Locally
+### Installing a Local Plugin
 
-Add a plugin directly in \`settings.json\`:
+\`settings.json\` has **no** \`plugins\` key. A local plugin directory is passed by the host, not declared in config:
+
+- CLI: \`wave --plugin-dir /path/to/my-plugin\` (repeatable)
+- SDK: \`Agent.create({ plugins: [{ type: "local", path: "/path/to/my-plugin" }] })\`
+
+Plugins installed from a marketplace (or added through the UI) are recorded in \`~/.wave/plugins/installed_plugins.json\`, and registered marketplaces in \`~/.wave/plugins/known_marketplaces.json\` — neither file is meant to be hand-edited.
+
+### Enabling and Disabling Plugins
+
+\`settings.json\` decides which installed plugins load, through \`enabledPlugins\`:
 
 \`\`\`json
 {
-  "plugins": [
-    {
-      "type": "local",
-      "path": "/path/to/my-plugin"
-    }
-  ]
+  "enabledPlugins": {
+    "review-plugin@my-plugins": true,
+    "noisy-plugin@my-plugins": false
+  }
 }
 \`\`\`
+
+The canonical key is \`plugin-name@marketplace-name\`; a plugin with no marketplace uses its plain name (and produces a format warning). The remote (managed) layer wins per key, so an organization can force a plugin off no matter what the local files say.
 
 ### \`\${WAVE_PLUGIN_ROOT}\` Placeholder
 
@@ -980,10 +1078,14 @@ Marketplace declarations can be scoped:
 - **Local scope**: \`.wave/settings.local.json\` — not committed to git
 
 Later scopes override earlier ones (local > project > user).
+
+### Built-in Marketplace
+
+On first use Wave seeds \`wave-plugins-official\` (the official catalog, a GitHub source) into user-scope settings and marks it \`isBuiltin\` in the registry, so the official catalog is available without registering anything yourself.
 `,
   "skills/settings/SKILL.md": `---
 name: settings
-description: Manage Wave settings and get guidance on settings.json, hooks, environment variables, permissions, MCP servers, memory, skills, subagents, plugins, and plugin marketplaces. Use this when the user wants to view, update, or learn how to configure Wave.
+description: Manage Wave settings and get guidance on settings.json, hooks, environment variables, permissions, MCP servers, memory, skills, subagents, plugins, plugin marketplaces, the Bash sandbox, telemetry, and model / completion / knowledge-base toggles. Use this when the user wants to view, update, or learn how to configure Wave.
 ---
 
 # Wave Settings Skill
@@ -998,10 +1100,11 @@ This skill helps you manage your Wave configuration and provides guidance on how
 
 Changes to \`settings.json\` take effect immediately without restarting Wave. When you modify any setting, the new configuration is applied to subsequent operations automatically.
 
-Wave looks for \`settings.json\` in three scopes:
-1.  **User Scope**: Global settings for all projects. Located at \`~/.wave/settings.json\`.
-2.  **Project Scope**: Settings specific to the current project. Located at \`.wave/settings.json\` in your project root.
-3.  **Local Scope**: Local overrides for the current project (not committed to git). Located at \`.wave/settings.local.json\`.
+Wave looks for \`settings.json\` in three scopes, with one server-managed layer on top:
+1.  **Remote (managed)**: settings pushed by the organization from the server. Only the keys it declares win over local files; the settings page shows them locked, marked "managed by your organization".
+2.  **User Scope**: Global settings for all projects. Located at \`~/.wave/settings.json\`.
+3.  **Project Scope**: Settings specific to the current project. Located at \`.wave/settings.json\` in your project root.
+4.  **Local Scope**: Local overrides for the current project (not committed to git). Located at \`.wave/settings.local.json\`.
 
 ## Common Settings
 
@@ -1083,18 +1186,39 @@ For detailed guidance on creating subagents, see [SUBAGENTS.md](\${WAVE_SKILL_DI
 Plugins bundle skills, hooks, MCP servers, LSP servers, commands, and subagents into a reusable package. You can install plugins locally or from a marketplace.
 For detailed guidance on creating plugins and marketplaces, see [PLUGINS.md](\${WAVE_SKILL_DIR}/PLUGINS.md).
 
-### 10. Other Settings
-- \`language\`: Preferred language for agent communication (e.g., \`"en"\`, \`"zh"\`).
-- \`autoMemoryEnabled\`: Enable or disable auto-memory (default: \`true\`).
-- \`autoMemoryFrequency\`: Frequency of auto-memory extraction turns (default: \`1\`).
+### 10. Feature Toggles
 - \`enableArtifact\`: Enable the Artifact tool, which publishes local \`.html\`/\`.md\` files as shareable (default-private) web pages, and makes WebFetch read artifact URLs through its own channel. Defaults to \`true\` for a signed-in account and \`false\` when nobody is signed in (every Artifact request carries the SSO token); set \`true\` to register the tool even without an account, or \`false\` to turn it off. Toggling it hot-reloads the tool registry, and signing in/out re-evaluates it too.
-- \`worktree.baseRef\`: Base ref for new worktrees. \`"fresh"\` (default) creates a new branch from \`origin/<default branch>\`; \`"head"\` branches from the current local HEAD, skipping origin resolution and network fetch. Use \`"head"\` when working from un-pushed local branches.
+- \`enableExec\`: Whether the Exec tool (a shared process pool for long-running commands) is registered.
+- \`enableKnowledgeBase\`: Whether the three enterprise knowledge-base tools (\`kb_search\` / \`kb_get_doc\` / \`kb_suggest\`) are registered. Default \`false\` — they widen what every conversation can pull into context. A managed value wins over local files.
+- \`enableRemoteControl\`: Whether this machine may serve its sessions to a paired phone over the relay (default \`true\`). Serving still needs an explicit \`wave remote-control on\` or GUI action, so exposure stays opt-in.
+- \`completionEnabled\` / \`completionModel\`: Inline code completion on/off (default on) and the model it uses (defaults to the fast model). Escape hatch: \`env.WAVE_COMPLETION_MODEL\`.
+- \`nextEditEnabled\`: Next-edit suggestion (default \`false\` — it rewrites code you already wrote, so it is opt-in).
+- \`leanPrompt\`: Send the condensed prompt set (default \`false\`). Text only — the tool set, parameter schemas and permission decisions are unchanged.
+- \`cleanupPeriodDays\`: Session transcript retention in days (default \`30\`; \`0\` disables cleanup).
+- \`nonDeferrableBuiltins\`: Built-in tool names that must stay declared instead of being loaded on demand (the "do not defer" override).
 
 \`\`\`json
 {
-  "enableArtifact": true
+  "enableArtifact": true,
+  "enableKnowledgeBase": false,
+  "completionEnabled": true,
+  "leanPrompt": false
 }
 \`\`\`
+
+### 11. Bash Sandbox
+
+The top-level \`sandbox\` key runs Bash commands inside an OS-level sandbox (filesystem + network). Off by default; on macOS / Linux only. See [SANDBOX.md](\${WAVE_SKILL_DIR}/SANDBOX.md).
+
+### 12. Telemetry
+
+\`DISABLE_TELEMETRY\` stops every reporting pipeline; \`OTEL_EXPORTER_OTLP_*\` points Wave at your own collector; the top-level \`otelHeadersHelper\` supplies a rotating credential. See the Telemetry section of [ENV.md](\${WAVE_SKILL_DIR}/ENV.md).
+
+### 13. Other Settings
+- \`language\`: Preferred language for agent communication (e.g., \`"en"\`, \`"zh"\`).
+- \`autoMemoryEnabled\`: Enable or disable auto-memory (default: \`true\`).
+- \`autoMemoryFrequency\`: Frequency of auto-memory extraction turns (default: \`1\`).
+- \`worktree.baseRef\`: Base ref for new worktrees. \`"fresh"\` (default) creates a new branch from \`origin/<default branch>\`; \`"head"\` branches from the current local HEAD, skipping origin resolution and network fetch. Use \`"head"\` when working from un-pushed local branches.
 
 ## How to use this skill
 
@@ -1112,6 +1236,9 @@ You can ask me to:
 - "How do I create a Wave plugin?"
 - "How do I set up a plugin marketplace?"
 - "How do I install a plugin from a marketplace?"
+- "How do I sandbox Bash commands?"
+- "How do I turn off telemetry?"
+- "How do I enable inline completion?"
 
 I will guide you through the process and ensure your configuration is valid.
 `,
