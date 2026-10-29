@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, RefObject } from "react";
 import { Tooltip } from "./Tooltip";
 import { ChevronIcon } from "./ChevronIcon";
+import { FolderIcon } from "./FolderIcon";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { SessionRenameDialog } from "./SessionRenameDialog";
 import { SidebarSessionSearch } from "./SidebarSessionSearch";
@@ -884,6 +885,15 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                 aria-label={`${expanded ? "收起分组" : "展开分组"} ${dirName(group.workdir)}`}
                 title={group.workdir}
               >
+                {/* 1029 评论：「在项目名称前面添加个文件夹图标，展开收起跟随变化，
+                    后面的三角仅仅鼠标 hover 时显示，下方对话标题也做相应的缩进」。
+                    图标用设计源矢量 FolderIcon（与工作目录下拉同一颗）；展开/收起
+                    靠文件夹开合表达，chevron 交给 CSS 只在 hover / 键盘聚焦时淡入，
+                    状态仍由本按钮的 aria-expanded 暴露给读屏。 */}
+                <FolderIcon
+                  expanded={expanded}
+                  className="desktop-session-group-folder"
+                />
                 <span className="desktop-session-group-name">
                   {dirName(group.workdir)}
                 </span>
