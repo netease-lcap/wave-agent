@@ -837,3 +837,47 @@ describe("Agent Tool worktree isolation", () => {
     expect(prompt).toContain("isolation: worktree");
   });
 });
+
+describe("Agent Tool tool-access summary", () => {
+  const base = {
+    name: "scout",
+    description: "Scout",
+    systemPrompt: "You are a scout.",
+    filePath: "<builtin:scout>",
+    scope: "builtin",
+    priority: 3,
+  } satisfies SubagentConfiguration;
+
+  it("renders an explicit whitelist", () => {
+    const prompt = agentTool.prompt?.({
+      availableSubagents: [{ ...base, tools: ["Read", "Grep"] }],
+    });
+
+    expect(prompt).toContain("- scout: Scout (Tools: Read, Grep)");
+  });
+
+  it("renders a blacklist as 'All except …'", () => {
+    const prompt = agentTool.prompt?.({
+      availableSubagents: [{ ...base, disallowedTools: ["Edit", "Write"] }],
+    });
+
+    expect(prompt).toContain("- scout: Scout (Tools: All except Edit, Write)");
+  });
+
+  it("prefers the whitelist wording when both lists are set", () => {
+    const prompt = agentTool.prompt?.({
+      availableSubagents: [
+        { ...base, tools: ["Read"], disallowedTools: ["Write"] },
+      ],
+    });
+
+    expect(prompt).toContain("- scout: Scout (Tools: Read)");
+    expect(prompt).not.toContain("All except");
+  });
+
+  it("renders a wildcard when neither list is set", () => {
+    const prompt = agentTool.prompt?.({ availableSubagents: [base] });
+
+    expect(prompt).toContain("- scout: Scout (Tools: *)");
+  });
+});

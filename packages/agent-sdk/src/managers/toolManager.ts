@@ -75,6 +75,12 @@ export interface ToolManagerOptions {
   container: Container;
   /** Optional list of tool names to enable */
   tools?: string[];
+  /**
+   * Optional list of tool names to disable. Applied after `tools`: an empty
+   * `tools` list means "everything", so a blacklist alone yields "all tools
+   * except these".
+   */
+  disallowedTools?: string[];
   /** Custom tools to register alongside built-in tools */
   customTools?: ToolPlugin[];
 }
@@ -166,12 +172,14 @@ class ToolManager {
    */
   private builtInTools = new WeakSet<ToolPlugin>();
   private tools?: string[];
+  private disallowedTools?: string[];
   private customTools?: ToolPlugin[];
   private container: Container;
 
   constructor(options: ToolManagerOptions) {
     this.container = options.container;
     this.tools = options.tools;
+    this.disallowedTools = options.disallowedTools;
     this.customTools = options.customTools;
   }
 
@@ -312,12 +320,19 @@ class ToolManager {
       return false;
     }
 
+    const matches = (toolName: string) =>
+      toolName.toLowerCase() === name.toLowerCase();
+
+    // A definition-level blacklist wins over the whitelist (both lists naming
+    // the same tool means "unavailable").
+    if (this.disallowedTools?.some(matches)) {
+      return false;
+    }
+
     if (!this.tools) {
       return true;
     }
-    return this.tools.some(
-      (toolName) => toolName.toLowerCase() === name.toLowerCase(),
-    );
+    return this.tools.some(matches);
   }
 
   /**

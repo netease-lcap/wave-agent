@@ -191,6 +191,13 @@ export interface AIManagerOptions {
   modelOverride?: string;
   /**Optional max turns limit to prevent runaway recursion (e.g. for auto-memory extraction) */
   maxTurns?: number;
+  /**
+   * Skip the project `AGENTS.md` (and its `CLAUDE.md` fallback), user memory and
+   * the `.wave/rules` unconditional rules for this manager's turns. Used by
+   * subagent definitions declaring `omitAgentsMd`, matching Claude Code's
+   * `omitClaudeMd`.
+   */
+  omitAgentsMd?: boolean;
 }
 
 export class AIManager {
@@ -210,6 +217,8 @@ export class AIManager {
   private pendingCwdRecovery: { from: string; to: string } | null = null;
   private consecutiveCompactionFailures: number = 0;
   private readonly maxTurns?: number;
+  /** Start turns without project/user memory injection (`omitAgentsMd` subagents) */
+  private readonly omitAgentsMd: boolean;
   /** Tracks file mtime/hash at read time for staleness detection on Edit/Write */
   private readFileState: ReadFileState = new Map();
   /** Override tool_choice for this AI manager (e.g. for structured output) */
@@ -237,6 +246,7 @@ export class AIManager {
     this._onCwdChange = options.callbacks?.onCwdChange; // Initialize onCwdChange
     this.originalWorkdir = options.workdir;
     this.maxTurns = options.maxTurns;
+    this.omitAgentsMd = options.omitAgentsMd ?? false;
   }
 
   private get toolManager(): ToolManager {
@@ -1959,9 +1969,12 @@ ${question}`;
           const { toolsConfig, toolNames, reachableToolPlugins } =
             this.resolveFilteredTools();
 
-          // Get memory for message-array injection (not system prompt)
-          const { prependContent } =
-            await this.messageManager.getMemoryForInjection();
+          // Get memory for message-array injection (not system prompt).
+          // `omitAgentsMd` subagents start without it — the same saving Claude
+          // Code's built-in Explore/Plan get by omitting CLAUDE.md.
+          const { prependContent } = this.omitAgentsMd
+            ? { prependContent: "" }
+            : await this.messageManager.getMemoryForInjection();
 
           const mainSystemPrompt =
             await this.buildMainSystemPrompt(reachableToolPlugins);

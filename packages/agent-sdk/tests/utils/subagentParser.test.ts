@@ -489,4 +489,94 @@ Analyze the project architecture.`;
       }
     });
   });
+
+  describe("tool blacklist and the AGENTS.md switch", () => {
+    // Loads a single project-level agent so the whole frontmatter surface is
+    // visible at once (spec `multi-agent/subagent` 故事「定义文件的上下文开关与
+    // 工具黑名单」).
+    const loadAgent = async (content: string) => {
+      const mockFs = await import("fs");
+
+      vi.mocked(mockFs.readdirSync).mockImplementation((dirPath) => {
+        if (dirPath === path.join("/test/workdir", ".wave", "agents")) {
+          return ["scout.md"] as unknown as ReturnType<
+            typeof import("fs").readdirSync
+          >;
+        }
+        return [] as unknown as ReturnType<typeof import("fs").readdirSync>;
+      });
+
+      vi.mocked(mockFs.statSync).mockReturnValue({
+        isFile: () => true,
+      } as import("fs").Stats);
+
+      vi.mocked(mockFs.readFileSync).mockImplementation((filePath) => {
+        if (
+          filePath === path.join("/test/workdir", ".wave", "agents", "scout.md")
+        ) {
+          return content;
+        }
+        return "";
+      });
+
+      const configs = await loadSubagentConfigurations("/test/workdir");
+      return configs.find((c) => c.name === "scout");
+    };
+
+    it("should parse a bracketed disallowedTools list next to tools", async () => {
+      const config = await loadAgent(`---
+name: scout
+description: Scout
+tools: [Read, Bash]
+disallowedTools: [Bash, Write]
+---
+Prompt.`);
+
+      expect(config?.tools).toEqual(["Read", "Bash"]);
+      expect(config?.disallowedTools).toEqual(["Bash", "Write"]);
+    });
+
+    it("should parse a blacklist without a tools whitelist", async () => {
+      const config = await loadAgent(`---
+name: scout
+description: Scout
+disallowedTools:
+  - Edit
+  - Write
+---
+Prompt.`);
+
+      expect(config?.tools).toBeUndefined();
+      expect(config?.disallowedTools).toEqual(["Edit", "Write"]);
+    });
+
+    it("should parse omitAgentsMd and Claude Code's omitClaudeMd alias", async () => {
+      const own = await loadAgent(`---
+name: scout
+description: Scout
+omitAgentsMd: true
+---
+Prompt.`);
+      expect(own?.omitAgentsMd).toBe(true);
+
+      const alias = await loadAgent(`---
+name: scout
+description: Scout
+omitClaudeMd: true
+---
+Prompt.`);
+      expect(alias?.omitAgentsMd).toBe(true);
+    });
+
+    it("should leave both switches unset when the file does not declare them", async () => {
+      const config = await loadAgent(`---
+name: scout
+description: Scout
+---
+Prompt.`);
+
+      expect(config?.omitAgentsMd).toBeUndefined();
+      expect(config?.disallowedTools).toBeUndefined();
+    });
+  });
 });

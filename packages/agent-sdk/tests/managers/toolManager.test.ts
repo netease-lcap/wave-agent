@@ -92,6 +92,31 @@ describe("ToolManager tool filtering", () => {
     expect(tools).toHaveLength(0);
   });
 
+  it("should disable tools listed in disallowedTools and keep the rest", () => {
+    const toolManager = new ToolManager({
+      container: createContainer(),
+      disallowedTools: ["Edit", "Write"],
+    });
+    toolManager.initializeBuiltInTools();
+    const tools = toolManager.list().map((t) => t.name);
+    expect(tools).not.toContain("Edit");
+    expect(tools).not.toContain("Write");
+    expect(tools).toContain("Read");
+    expect(tools).toContain("Bash");
+  });
+
+  it("should let disallowedTools win over a tool listed in tools", () => {
+    const toolManager = new ToolManager({
+      container: createContainer(),
+      tools: ["Read", "Write"],
+      disallowedTools: ["write"],
+    });
+    toolManager.initializeBuiltInTools();
+    const tools = toolManager.list().map((t) => t.name);
+    expect(tools).toContain("Read");
+    expect(tools).not.toContain("Write");
+  });
+
   it("should filter out tools that are explicitly denied by name in PermissionManager", () => {
     const container = createContainer();
     const mockPermissionManager = {

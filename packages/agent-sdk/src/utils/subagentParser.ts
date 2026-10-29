@@ -17,12 +17,23 @@ export interface SubagentConfiguration {
   name: string;
   description: string;
   tools?: string[];
+  /**
+   * Tools this subagent must not see. Combined with `tools` (which, when set,
+   * narrows the pool first): a name in both lists is unavailable.
+   */
+  disallowedTools?: string[];
   model?: string;
   /**
    * `worktree` runs every invocation of this subagent in its own temporary git
    * worktree instead of the parent session's working directory.
    */
   isolation?: SubagentIsolation;
+  /**
+   * Start this subagent without the project's `AGENTS.md` (and the `CLAUDE.md`
+   * fallback), the user-level memory and `.wave/rules` unconditional rules.
+   * Same purpose as Claude Code's `omitClaudeMd`, which is accepted as an alias.
+   */
+  omitAgentsMd?: boolean;
   systemPrompt: string;
   filePath: string;
   scope: "project" | "user" | "builtin" | "plugin";
@@ -35,8 +46,10 @@ interface SubagentFrontmatter {
   name?: string;
   description?: string;
   tools?: string[];
+  disallowedTools?: string[];
   model?: string;
   isolation?: SubagentIsolation;
+  omitAgentsMd?: boolean;
 }
 
 /**
@@ -79,6 +92,18 @@ function toSubagentFrontmatter(parsed: ParsedFrontmatter): SubagentFrontmatter {
   const tools = normalizeTools(parsed.tools);
   if (tools) {
     frontmatter.tools = tools;
+  }
+
+  const disallowedTools = normalizeTools(parsed.disallowedTools);
+  if (disallowedTools) {
+    frontmatter.disallowedTools = disallowedTools;
+  }
+
+  // `omitClaudeMd` is Claude Code's spelling of the same switch: wave's project
+  // memory is AGENTS.md (with a CLAUDE.md fallback), so both names are accepted
+  // and either one turning it on is enough.
+  if (parsed.omitAgentsMd === "true" || parsed.omitClaudeMd === "true") {
+    frontmatter.omitAgentsMd = true;
   }
 
   // Only `worktree` is a recognized isolation mode. Any other value is ignored
@@ -184,8 +209,10 @@ function parseSubagentFile(
       name: frontmatter.name!,
       description: frontmatter.description!,
       tools: frontmatter.tools,
+      disallowedTools: frontmatter.disallowedTools,
       model: frontmatter.model,
       isolation: frontmatter.isolation,
+      omitAgentsMd: frontmatter.omitAgentsMd,
       systemPrompt,
       filePath,
       scope,

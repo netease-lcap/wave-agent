@@ -629,12 +629,12 @@ AI 可以在同一回合内并行启动多个 Agent 工具块（并发安全的�
 
 #### 1）内置的子代理
 
-| 子代理          | 文件名             | 描述                                                       | 工具                        | 模型        | 备注                                                                                               |
-| --------------- | ------------------ | ---------------------------------------------------------- | --------------------------- | ----------- | -------------------------------------------------------------------------------------------------- |
-| Explore         | explore.md         | 代码库探索专家：按模式找文件、关键词搜索、回答代码库问题   | Glob, Grep, Read, Bash, LSP | fastModel   | 只读模式（禁止一切文件写入）；按调用方指定的 thoroughness 级别（quick/medium/very thorough）搜索   |
-| Plan            | plan.md            | 软件架构师：设计实现方案，产出分步计划、关键文件、架构权衡 | Glob, Grep, Read, Bash, LSP | inherit     | 只读模式；输出必须以 "Critical Files for Implementation"（3-5 个文件）结尾                         |
-| vision          | vision.md          | 图像识别专家，运行在 WAVE_VISION_MODEL 指定的视觉模型上    | Read                        | visionModel | 仅当主模型声明 `"vision": false` 且设置了 env 时可用；通过 `[Image source: <path>]` 元数据委托读图 |
-| general-purpose | general-purpose.md | 通用代理：复杂问题研究、代码搜索、多步骤任务执行           | 全部（默认）                | 默认        | 无 name 字段，由解析器回退取文件名（subagentParser.ts:137）；可写文件但默认不建文档                |
+| 子代理          | 文件名             | 描述                                                                  | 工具                                               | 模型        | 备注                                                                                                                   |
+| --------------- | ------------------ | --------------------------------------------------------------------- | -------------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Explore         | explore.md         | 只读的代码定位代理：按模式找文件、检索符号/关键词、回答「X 定义在哪」 | 除 Agent/Artifact/ExitPlanMode/Edit/Write 之外全部 | inherit     | 不用于 code review、设计文档审计、跨文件一致性检查或开放式分析；跳过项目 AGENTS.md；按 quick/medium/very thorough 检索 |
+| Plan            | plan.md            | 软件架构师：设计实现方案，产出分步计划、关键文件、架构权衡            | 与 Explore 相同（黑名单）                          | inherit     | 只读模式；跳过项目 AGENTS.md；输出必须以 "Critical Files for Implementation"（3-5 个文件）结尾                         |
+| vision          | vision.md          | 图像识别专家，运行在 WAVE_VISION_MODEL 指定的视觉模型上               | Read                                               | visionModel | 仅当主模型声明 `"vision": false` 且设置了 env 时可用；通过 `[Image source: <path>]` 元数据委托读图                     |
+| general-purpose | general-purpose.md | 通用代理：复杂问题研究、代码搜索、多步骤任务执行                      | 全部（默认）                                       | 默认        | 无 name 字段，由解析器回退取文件名（subagentParser.ts:137）；可写文件但默认不建文档                                    |
 
 #### 2）自动委派（无需手动操作）
 
@@ -678,7 +678,10 @@ model: fastModel
 - **name**：唯一标识
 - **description**：描述专长与适用场景（用于自动匹配）
 - **tools**：限定可用工具（只给必要的）
-- **model**：可选，指定专用模型（fastModel/visionModel 可解析对应环境变量）
+- **disallowedTools**：工具黑名单（内置 Explore/Plan 就用它，除 Agent、Artifact、ExitPlanMode、Edit、Write 之外全部可用）；与 `tools` 同时写时以 `tools` 为池、再减掉黑名单，两个列表里都出现的工具一律不可用
+- **model**：可选，指定专用模型（fastModel/visionModel 可解析对应环境变量，inherit 表示跟随主对话模型）
+- **omitAgentsMd**：可选，设为 `true` 时该子代理不注入项目 `AGENTS.md`（及 `CLAUDE.md` 回退）、用户记忆与 `.wave/rules` 无条件规则；Claude Code 的写法 `omitClaudeMd` 同样识别
+- **isolation**：可选，设为 `worktree` 时每次调用都在独立临时工作树中执行
 
 ![子代理设置页](/screenshots/desktop-settings-subagents.webp)
 
@@ -688,6 +691,7 @@ model: fastModel
 
 | 写法               | 解析为            | 当前值            |
 | ------------------ | ----------------- | ----------------- |
+| model: inherit     | 主对话当前模型    | （随主模型）      |
 | model: fastModel   | WAVE_FAST_MODEL   | deepseek-v4-flash |
 | model: visionModel | WAVE_VISION_MODEL | qwen3.7-plus      |
 | 不写 model         | 默认模型          | deepseek-v4-flash |
