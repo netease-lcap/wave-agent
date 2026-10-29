@@ -27,6 +27,12 @@ import { isDesktopHost } from "../utils/platform";
 import { CodeCommentEntry } from "./CodeCommentEntry";
 import { ConversationFileList } from "./ConversationFileList";
 import { FileEditor } from "./fileEditor/FileEditor";
+import {
+  CommentIcon,
+  CopyPathIcon,
+  RevealInTreeIcon,
+  TreeToggleIcon,
+} from "./FilePaneToolbarIcons";
 import { FileTabStrip } from "./FileTabStrip";
 import { FileTree, type DirEntryState } from "./FileTree";
 import {
@@ -1341,10 +1347,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   onTreeVisibleChange(!treeVisible);
                 }}
               >
-                <i
-                  className="codicon codicon-files preview-pane-icon"
-                  aria-hidden="true"
-                />
+                {isDesktopHost() ? (
+                  // 1029 第十三轮：桌面端用官方矢量（显示/隐藏文件树，源图标
+                  // 「显示隐藏文件树.svg」）；IDE 宿主保留 codicon。
+                  <TreeToggleIcon className="preview-pane-icon" />
+                ) : (
+                  <i
+                    className="codicon codicon-files preview-pane-icon"
+                    aria-hidden="true"
+                  />
+                )}
               </button>
             </Tooltip>
           )}
@@ -1360,10 +1372,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   revealActiveInTree();
                 }}
               >
-                <i
-                  className="codicon codicon-list-selection preview-pane-icon"
-                  aria-hidden="true"
-                />
+                {isDesktopHost() ? (
+                  // 1029 第十三轮：桌面端用官方矢量（在文件树中显示）；
+                  // IDE 宿主保留 codicon。
+                  <RevealInTreeIcon className="preview-pane-icon" />
+                ) : (
+                  <i
+                    className="codicon codicon-list-selection preview-pane-icon"
+                    aria-hidden="true"
+                  />
+                )}
               </button>
             </Tooltip>
           )}
@@ -1411,10 +1429,15 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     if (commentAnchor) openComment(commentAnchor);
                   }}
                 >
-                  <i
-                    className="codicon codicon-comment preview-pane-icon"
-                    aria-hidden="true"
-                  />
+                  {isDesktopHost() ? (
+                    // 1029 第十三轮：桌面端用官方矢量（评论）；IDE 宿主保留 codicon。
+                    <CommentIcon className="preview-pane-icon" />
+                  ) : (
+                    <i
+                      className="codicon codicon-comment preview-pane-icon"
+                      aria-hidden="true"
+                    />
+                  )}
                 </button>
               </Tooltip>
             )}
@@ -1431,10 +1454,16 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   void handleCopyPath();
                 }}
               >
-                <i
-                  className="codicon codicon-copy preview-pane-icon"
-                  aria-hidden="true"
-                />
+                {isDesktopHost() ? (
+                  // 1029 第十三轮：桌面端用官方矢量（复制路径）；IDE 宿主保留
+                  // codicon。
+                  <CopyPathIcon className="preview-pane-icon" />
+                ) : (
+                  <i
+                    className="codicon codicon-copy preview-pane-icon"
+                    aria-hidden="true"
+                  />
+                )}
               </button>
             </Tooltip>
           )}
