@@ -10,11 +10,15 @@
  */
 
 import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import { logger } from "./globalLogger.js";
+import { resolveTempDir } from "./tempDir.js";
 
-const MCP_IMAGES_DIR = path.join(os.tmpdir(), "wave-mcp-images");
+const MCP_IMAGES_DIR_NAME = "wave-mcp-images";
+
+function getMcpImagesDir(): string {
+  return path.join(resolveTempDir(), MCP_IMAGES_DIR_NAME);
+}
 
 /** Map MCP mimeType to a file extension. Unknown types fall back to .png. */
 const MIME_TO_EXT: Record<string, string> = {
@@ -49,7 +53,8 @@ export function persistToolImages(
   return images.map((image) => {
     if (image.path) return image;
     try {
-      fs.mkdirSync(MCP_IMAGES_DIR, { recursive: true });
+      const imagesDir = getMcpImagesDir();
+      fs.mkdirSync(imagesDir, { recursive: true });
       // Strip a data: URL prefix if present (MCP spec carries raw base64, but
       // be defensive about dataURL-formatted data).
       let data = image.data;
@@ -59,7 +64,7 @@ export function persistToolImages(
       }
       const ext = MIME_TO_EXT[image.mediaType || ""] || ".png";
       const id = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-      const filePath = path.join(MCP_IMAGES_DIR, `mcp-image_${id}${ext}`);
+      const filePath = path.join(imagesDir, `mcp-image_${id}${ext}`);
       fs.writeFileSync(filePath, Buffer.from(data, "base64"));
       return { ...image, path: filePath };
     } catch (error) {

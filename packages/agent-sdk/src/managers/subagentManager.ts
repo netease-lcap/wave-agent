@@ -1,5 +1,4 @@
 import { randomUUID } from "crypto";
-import * as os from "os";
 import * as fs from "fs";
 import * as path from "path";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
@@ -21,6 +20,7 @@ import {
   createAbortPromise,
 } from "../utils/abortUtils.js";
 import { BackgroundTaskManager } from "./backgroundTaskManager.js";
+import { resolveTempDir } from "../utils/tempDir.js";
 import { MessageQueue } from "./messageQueue.js";
 import { logger } from "../utils/globalLogger.js";
 import {
@@ -920,7 +920,10 @@ export class SubagentManager {
         const startTime = Date.now();
 
         // Create log file
-        const logPath = path.join(os.tmpdir(), `wave-subagent-${taskId}.log`);
+        const logPath = path.join(
+          resolveTempDir(),
+          `wave-subagent-${taskId}.log`,
+        );
         const logStream = fs.createWriteStream(logPath, { flags: "a" });
         instance.logStream = logStream;
 
@@ -1027,7 +1030,7 @@ export class SubagentManager {
     const startTime = Date.now();
 
     // Create log file
-    const logPath = path.join(os.tmpdir(), `wave-subagent-${taskId}.log`);
+    const logPath = path.join(resolveTempDir(), `wave-subagent-${taskId}.log`);
     const logStream = fs.createWriteStream(logPath, { flags: "a" });
     instance.logStream = logStream;
 
