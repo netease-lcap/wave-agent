@@ -293,7 +293,7 @@ export const taskUpdateTool: ToolPlugin = {
   },
   leanPrompt: `Update a task: \`status\` (\`pending\` → \`in_progress\` → \`completed\`, or \`deleted\` to remove it), \`subject\`, \`description\`, \`activeForm\`, \`owner\`, \`metadata\`, or the \`blocks\` / \`blockedBy\` dependencies. Read the task's latest state first.
 
-Only mark a task \`completed\` when it is fully done — if tests fail or the work is partial, leave it \`in_progress\`.`,
+Only mark a task \`completed\` when it is fully done — if tests fail or the work is partial, leave it \`in_progress\`. Mark each task completed as soon as it is done instead of batching the updates at the end.`,
   prompt: () => `Use this tool to update a task in the task list.
 
 ## When to Use This Tool
