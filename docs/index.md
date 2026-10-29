@@ -42,7 +42,7 @@ CodeWave IDE提供多种产品形态，满足从个人开发者到企业团队�
   </div>
   <div class="feature-card">
     <div class="feature-card-title">长任务不丢上下文</div>
-    <p>完善的 Task 系统撑住 8 小时以上的连续运行，任务不丢失，上下文不遗漏。</p>
+    <p>完善的 Task 系统撑住 8 小时以上的连续运行；上下文接近容量上限时自动压缩、只保留关键信息继续推进。任务不丢失，上下文不遗漏。</p>
   </div>
   <div class="feature-card">
     <div class="feature-card-title">工具按需加载</div>
