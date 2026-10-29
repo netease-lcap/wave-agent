@@ -178,6 +178,41 @@ describe("webFetchTool", () => {
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
+
+  it("should cache a same-host redirect under the requested URL", async () => {
+    // `example.com` → `www.example.com` is a redirect WebFetch follows itself,
+    // so the content has to be filed under the URL that was asked for —
+    // otherwise the next identical call looks up a key nothing ever wrote.
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce({
+          status: 301,
+          statusText: "Moved Permanently",
+          headers: new Headers({
+            location: "https://www.redirect-cache.com/a",
+          }),
+        })
+        .mockResolvedValue({
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          text: vi.fn().mockResolvedValue("<html><body>Page</body></html>"),
+          headers: new Headers(),
+        }),
+    );
+    const params = {
+      url: "https://redirect-cache.com/a",
+      prompt: "Summarize",
+    };
+
+    await webFetchTool.execute(params, context);
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+    await webFetchTool.execute(params, context);
+
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("webFetchTool - URL validation", () => {
