@@ -87,6 +87,7 @@ source-level checks in `scripts/check-sdk-surface.mjs`.
 
 ### Linting
 
+- **Linter is oxlint, not eslint**: there is no `eslint` binary in the repo (`pnpm exec eslint` → `Command not found`); each package's `lint` script runs `oxlint` against the root `.oxlintrc.json`.
 - **Lint all**: `pnpm lint`
 - **Format**: `pnpm exec prettier --write .`
 - **Pre-commit** (`.husky/pre-commit`): runs `pnpm run type-check`, then `lint-staged` (prettier `--write` on staged code/json/md), then — only if a staged path is under `docs/` — `scripts/check-docs-links.mjs` + `scripts/check-sidebar-anchors.mjs`. Hooks install via `pnpm install` (`prepare` → husky).

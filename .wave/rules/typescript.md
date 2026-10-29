@@ -1,4 +1,5 @@
-- For type and eslint errors:
+- For type and lint (oxlint) errors:
+  - This repo has no eslint: lint is oxlint — `pnpm -F <pkg> lint`, or `pnpm lint` for all packages; `pnpm exec eslint` just fails with `Command not found`
   - Don't write any types
   - Do not modify tsconfig unless user ask you to do that
   - Do not prefix unused variables with underscore, just remove them
