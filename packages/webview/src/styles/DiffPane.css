@@ -389,6 +389,57 @@
   );
 }
 
+/* ═══ 差异面板的两处分段 = 弹窗分段 tab 的小号版（1029 评论第十一 / 十二批）══
+   评论一：`div.diff-view-switch`「统一并排」——「这个样式参考弹窗tab的样式，但是
+   可以小一些 整体和图标的大小保持一致」。
+   评论二：`button.diff-view-option.is-active`「全部改动」——「这个tab也一样改」
+   ⇒ 侧栏「全部改动 / 未提交」那个分段收进同一节，两处同形制、同取值。
+   参照件 = 新建市场弹窗的分段 tab（`.settings-modal-seg` 一族，设置页插件筛选
+   `.settings-plugin-filters` 同族）：静态轨道 = `--cc-fill` + 内衬；激活段 =
+   `--cc-bg-segment-active` 面 + `--cc-text-segment-active` 字 + 600 字重；段内
+   hover 只提文字色、不叠第二层面。
+   小一号的口径：那两处是 32px 轨道 / 26px 段 / 14px 字，这里要「和图标的大小
+   一致」——工具条两颗图标按钮是 24×24、图形 16×16，所以轨道 24px、段 20px
+   （上下内衬各 2px）、字 12/20。圆角沿用同族比例：外壳 8px、内层 = 8 − 内衬 2
+   = 6px；工具条那处横向内衬收到 6px（整组 70 → 78，右缘不动）。
+   侧栏那处沿用 base 的 `flex: 1`（两段等分 224px 宽）与 `text-align: center`，
+   只换形态：轨道高度仍是 24px ⇒ 下方「提交」列表零位移。
+   未选中段的字色取参照件同一个角色 `--vscode-descriptionForeground`
+   （桌面实测浅 #606060 / 深 #A0A5A8）。**不用** `--cc-text-secondary`（浅
+   #6C7076）：它压在 `--cc-fill` 轨道上只有 4.44:1，低于 12px 正文的 4.5:1；
+   参照件这一档是 5.61:1 / 5.9:1。
+   回退：删掉这一节，回到「1px 描边胶囊 + 两段拼成整块」的 base 形态。 */
+[data-host="desktop"] .diff-view-switch {
+  box-sizing: border-box;
+  height: 24px;
+  padding: 2px;
+  gap: 2px;
+  border: 0;
+  border-radius: var(--cc-radius-md, 8px);
+  background: var(--cc-fill, #f0f2f5);
+}
+[data-host="desktop"] .diff-view-option {
+  height: 20px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vscode-descriptionForeground, var(--cc-text-secondary, #6c7076));
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: var(--cc-font-weight-medium, 500);
+}
+[data-host="desktop"] .diff-view-option:hover:not(.is-active) {
+  background: transparent;
+  color: var(--cc-text-primary, #1f2329);
+}
+[data-host="desktop"] .diff-view-option.is-active {
+  background: var(--cc-bg-segment-active, var(--vscode-button-background));
+  color: var(--cc-text-segment-active, var(--vscode-button-foreground));
+  font-weight: 600;
+}
+
 /* Degradation notice: the range is too large to expand a file by default. */
 .diff-notice {
   padding: 6px 8px;
