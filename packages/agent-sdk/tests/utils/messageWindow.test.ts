@@ -1,15 +1,11 @@
 import { describe, it, expect } from "vitest";
 import type { Message } from "../../src/types/messaging.js";
-import {
-  messageBytes,
-  takeTailFromMemory,
-} from "../../src/utils/messageWindow.js";
+import { takeTailFromMemory } from "../../src/utils/messageWindow.js";
 
 /**
- * 三端列表不分页（规格 ui/message-rendering-system.md「首屏就是整份列表，不分页」），
- * 只有远控页从尾部切一段：那边隔着一层中继，单帧超预算会被静默丢弃，所以既要条数
- * 上限也要字节上限。算术错一位的后果很具体——手机上要么少几十条，要么收到一个
- * 中继根本发不出去的超大帧。
+ * 一页只按条数收（规格 ui/message-rendering-system.md「首屏一页，上翻按需取更早」）。
+ * 字节不再参与：工具图片的 base64 在下发 UI 前就被剥掉，按含图的字节砍页挡的是
+ * 不会上线的量。
  */
 
 const msg = (id: string, content = id): Message =>
@@ -36,32 +32,15 @@ describe("takeTailFromMemory", () => {
     );
   });
 
-  it("stops at the byte budget, newest first", () => {
-    const heavy = msg("big", "x".repeat(4096));
-    const list = [msg("m0"), heavy, msg("m1")];
-    expect(ids(takeTailFromMemory(list, 20, 512))).toEqual(["m1"]);
-  });
-
-  it("always keeps one message, even when it alone blows the budget", () => {
-    // 一条就超预算时也必须返回它：返回空列表会让手机拿到一个永远是空的列表。
-    const big = msg("big", "x".repeat(4096));
-    expect(ids(takeTailFromMemory([big], 20, 1))).toEqual(["big"]);
+  it("keeps a very large newest message rather than cutting it", () => {
+    // 一条消息再大也算一条：按字节砍页会让带截图的会话首屏只剩这一条，
+    // 而真正发出去的载荷里并没有这张图。
+    const big = msg("big", "x".repeat(5 * 1024 * 1024));
+    const list = [msg("m0"), big, msg("m1")];
+    expect(ids(takeTailFromMemory(list, 20))).toEqual(["m0", "big", "m1"]);
   });
 
   it("answers an empty list for an empty list", () => {
     expect(takeTailFromMemory([], 20)).toEqual([]);
-  });
-});
-
-describe("messageBytes", () => {
-  it("counts UTF-8 bytes, not characters", () => {
-    // 预算按堆上的字节算：中文一个字三字节，按字符数估会低估三倍。
-    const message = msg("m0", "中文");
-    expect(messageBytes(message)).toBe(
-      Buffer.byteLength(JSON.stringify(message), "utf8"),
-    );
-    expect(messageBytes(message)).toBeGreaterThan(
-      JSON.stringify(message).length,
-    );
   });
 });

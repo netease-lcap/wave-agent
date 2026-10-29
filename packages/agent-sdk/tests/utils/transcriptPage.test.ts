@@ -256,29 +256,6 @@ describe("readTranscriptPage", () => {
     });
   });
 
-  it("stops at the byte budget but always keeps at least one message", async () => {
-    const big = JSON.stringify({
-      id: "big",
-      role: "tool",
-      timestamp: "2026-01-01T00:00:00.000Z",
-      blocks: [{ type: "text", content: "x".repeat(4096) }],
-    });
-    serve([line("m0"), big, line("m1")].join("\n") + "\n");
-
-    const page = await readTranscriptPage(
-      FILE,
-      { limit: 20 },
-      { maxBytes: 512 },
-    );
-    expect(ids(page.messages)).toEqual(["m1"]);
-    expect(page.hasMore).toBe(true);
-
-    // 单条就超预算时也得返回它：否则调用方拿同一个锚点反复重问，永远翻不动。
-    serve(big + "\n");
-    const only = await readTranscriptPage(FILE, { limit: 20 }, { maxBytes: 1 });
-    expect(ids(only.messages)).toEqual(["big"]);
-  });
-
   it("splits lines on newline bytes, not on a character boundary", async () => {
     const content = JSON.stringify({
       id: "m0",
