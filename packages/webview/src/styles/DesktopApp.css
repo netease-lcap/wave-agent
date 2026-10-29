@@ -274,7 +274,11 @@ html[data-theme="dark"] .desktop-sidebar-new-chat.is-active {
 .desktop-session-group-header {
   display: flex;
   align-items: center;
-  gap: 4px;
+  /* 1029 评论（第三批）：「项目标题的文案要和创作集、插件市场对齐」—— 三个导航入口
+     （新对话 / 插件市场 / 创作集）是 `padding: 0 8px` + `gap: 8px`，组头原本 `gap: 4px`，
+     项目名墨迹比导航文案左缘少 4px（实测 40 vs 44）。行盒 235×30、内衬 8、图标盒
+     16×16 @x=20 本来就逐值相同，所以只把 gap 收到同值，文案墨迹即落到 x=44。 */
+  gap: 8px;
   width: 100%;
   height: 30px; /* 0908 第 3 轮补：分组头与会话行/设置选项统一 30px（原 32） */
   padding: 0 8px;
@@ -299,9 +303,40 @@ html[data-theme="dark"] .desktop-sidebar-new-chat.is-active {
   background: #eef0f3;
 }
 
-/* 组头 chevron（Figma 13561:39969 up/right 官方矢量，展开=「^」收起=「>」） */
+/* 组头 chevron（Figma 13561:39969 up/right 官方矢量，展开=「^」收起=「>」）
+   1029 评论（第二批）：「后面的三角仅仅鼠标 hover 时显示」⇒ 常态 opacity 0，
+   组头 hover / 键盘聚焦时淡入。用 opacity 而不用 display/visibility：盒子仍在流里，
+   项目名可用的宽度与省略号位置不随 hover 变化（零回流）。状态本身由组头按钮的
+   aria-expanded 暴露给读屏，chevron 早已 aria-hidden，因此不靠它传达展开与否。 */
 .desktop-session-group-chevron {
   color: #565a60;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+.desktop-session-group-header:hover .desktop-session-group-chevron,
+.desktop-session-group-header:focus-visible .desktop-session-group-chevron {
+  opacity: 1;
+}
+/* 项目名前的文件夹图标（设计源矢量，展开/收起的开合就是分组状态的可视表达）。
+   1029 评论（第三批）：「图标也要和创作集的图标对齐」，两条分开取：
+   ① 颜色 = 导航条目图标的图标灰（`host-desktop.css` 图标清单：浅 #565A60 / 深 #9A9EA5），
+      不再跟着组头那档字色走 —— 放大对比时它比同列的创作集图标明显偏浅。
+      hover 不用单写：第三十九轮提亮家族那条 `:hover :is(svg, .codicon)` 是 (0,4,1)，
+      高于这里，鼠标移上去仍自动抬到 1 级。
+   ② 光学尺寸：设计源矢量在 16 盒里墨迹 15×14（实测 30×28 设备像素），创作集图标墨迹
+      14×13.5（28×27）⇒ 等比 15/16 ≈ 0.9333 缩到同框，墨迹左右缘落到 20.97 / 35.03
+      （导航图标 21 / 35）。用 transform 而不是改 width/height：不参与 flex 布局，
+      文案左缘仍是 44，其他一切几何零位移。
+   回退：删掉这套声明即回到「原始矢量尺寸 + 跟随组头字色」。 */
+.desktop-session-group-folder {
+  flex-shrink: 0;
+  transform: scale(0.9333);
+}
+html[data-host="desktop"][data-theme="light"] .desktop-session-group-folder {
+  color: #565a60;
+}
+html[data-host="desktop"][data-theme="dark"] .desktop-session-group-folder {
+  color: #9a9ea5;
 }
 
 .desktop-session-group-name {
@@ -309,6 +344,24 @@ html[data-theme="dark"] .desktop-sidebar-new-chat.is-active {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
+}
+
+/* 1029 评论（第三批）：「项目标题的文案要和创作集、插件市场对齐」—— 字色 / 字重与
+   导航条目文案逐值相同（`host-desktop.css` 的 `.desktop-sidebar-new-chat span`：
+   浅 #1F2329 / 深 #E6E6E6，400）。原口径是 0924 那轮的 4 级 placeholder + 500
+   （`host-desktop.css:746-755` 的字色、`:3971` 的字重），本轮按她最新一句覆盖；
+   skill `design-system.md:84` 也写明 `--cc-text-placeholder` 只给输入占位符用，
+   所以回归 1 级并不违反契约。
+   选择器带 `html[data-host][data-theme]` 是为了压过 host 层同属性那条 (0,3,0)；
+   **本轮不改 host-desktop.css**（另一个窗口正在改它），故这组规则先落在本文件。
+   回退：删掉这两条即回到「4 级字色 + 500」。 */
+html[data-host="desktop"][data-theme="light"] .desktop-session-group-name {
+  color: #1f2329;
+  font-weight: 400;
+}
+html[data-host="desktop"][data-theme="dark"] .desktop-session-group-name {
+  color: #e6e6e6;
+  font-weight: 400;
 }
 
 /* SSH host tag on a remote session group's header (spec 「SSH 远程主机」): a
@@ -589,8 +642,14 @@ html[data-theme="dark"] .desktop-session-status-slot {
   min-width: 0;
   /* 标题左距 16（行圆角底内）。右端默认不预留：无状态点行非 hover 让标题
      用满空间、到行尾才省略（Figma「hover 时才省略」）；hover/focus 或有状态
-     点（见下两条）时让出 24 槽 + 8 边距 = 32px。 */
-  padding: 0 8px 0 16px;
+     点（见下两条）时让出 24 槽 + 8 边距 = 32px。
+     1029 评论（第二批）：「下方对话标题也做相应的缩进」⇒ 16 → 36，跟着组头新增
+     的文件夹图标一起右移（图标 16 + 组头原 gap 4 = 20）。
+     1029 评论（第四批，点第一条会话标题「登录页按钮圆角与涟漪动效对齐」）：
+     「这里和以下可以对齐」⇒ 36 → 32，标题墨迹 48 落到 **44**，与项目名
+     （`.desktop-session-group-name` 44）和三个导航条目（44）同一条竖线；
+     上一批留下的 4px 级差取消。行盒（12..247，r8）与右侧让位规则都不动。 */
+  padding: 0 8px 0 32px;
   width: 100%;
   /* Native <button> reset — the row main is a real button so Enter/Space
      restores the session from the keyboard (spec 「会话管理」scenario 17). */
