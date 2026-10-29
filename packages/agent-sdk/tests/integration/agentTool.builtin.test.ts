@@ -33,10 +33,11 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
   const exploreConfig: SubagentConfiguration = {
     name: "Explore",
     description:
-      "Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns.",
+      "Fast read-only search agent for locating code. Do NOT use it for code review.",
     systemPrompt: "You are a file search specialist...",
-    tools: ["Glob", "Grep", "Read", "Bash", "LSP"],
-    model: "fastModel",
+    disallowedTools: ["Agent", "Artifact", "ExitPlanMode", "Edit", "Write"],
+    model: "inherit",
+    omitAgentsMd: true,
     filePath: "<builtin:Explore>",
     scope: "builtin",
     priority: 3,
@@ -81,7 +82,10 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
         "Available agent types and the tools they have access to:",
       );
       expect(prompt).toContain(
-        "- Explore: Fast agent specialized for exploring codebases",
+        "- Explore: Fast read-only search agent for locating code.",
+      );
+      expect(prompt).toContain(
+        "(Tools: All except Agent, Artifact, ExitPlanMode, Edit, Write)",
       );
     });
 
@@ -202,6 +206,13 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
     });
 
     it("should handle fastModel configuration correctly", async () => {
+      // A user-defined definition can still pin `fastModel`; Explore itself now
+      // inherits the main model (aligned with Claude Code).
+      const fastModelConfig: SubagentConfiguration = {
+        ...gpConfig,
+        name: "fast-scout",
+        model: "fastModel",
+      };
       const mockInstance = {
         subagentId: "test-id",
         usedTools: [],
@@ -212,7 +223,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
       };
 
       vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(
-        exploreConfig,
+        fastModelConfig,
       );
       vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
         mockInstance as unknown as SubagentInstance,
@@ -225,7 +236,7 @@ describe("Agent Tool Integration with Built-in Subagents", () => {
         {
           description: "Test exploration",
           prompt: "Test prompt",
-          subagent_type: "Explore",
+          subagent_type: "fast-scout",
         },
         mockToolContext,
       );

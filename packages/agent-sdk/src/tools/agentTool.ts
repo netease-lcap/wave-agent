@@ -84,7 +84,9 @@ export const agentTool: ToolPlugin = {
             const toolsStr =
               config.tools && config.tools.length > 0
                 ? ` (Tools: ${config.tools.join(", ")})`
-                : " (Tools: *)";
+                : config.disallowedTools && config.disallowedTools.length > 0
+                  ? ` (Tools: All except ${config.disallowedTools.join(", ")})`
+                  : " (Tools: *)";
             const isolationStr =
               config.isolation === "worktree" ? " (isolation: worktree)" : "";
             return `- ${config.name}: ${config.description}${toolsStr}${isolationStr}`;
@@ -112,6 +114,11 @@ You must specify a subagent_type from the list above, choosing the one whose des
             let toolsStr = "";
             if (config.tools && config.tools.length > 0) {
               toolsStr = ` (Tools: ${config.tools.join(", ")})`;
+            } else if (
+              config.disallowedTools &&
+              config.disallowedTools.length > 0
+            ) {
+              toolsStr = ` (Tools: All except ${config.disallowedTools.join(", ")})`;
             } else {
               toolsStr = " (Tools: *)";
             }

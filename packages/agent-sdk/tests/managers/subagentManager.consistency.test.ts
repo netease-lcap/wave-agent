@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SubagentManager } from "../../src/managers/subagentManager.js";
 import { ToolManager } from "../../src/managers/toolManager.js";
+import { AIManager } from "../../src/managers/aiManager.js";
 import { Container } from "../../src/utils/container.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 
@@ -205,6 +206,32 @@ describe("SubagentManager Consistency", () => {
       ).toBe("active");
       expect(subagentManager.getInstance(userInstance.subagentId)?.status).toBe(
         "active",
+      );
+    });
+  });
+
+  describe("Definition context switches", () => {
+    it("should hand disallowedTools and omitAgentsMd to the subagent's managers", async () => {
+      const blacklistedConfig: SubagentConfiguration = {
+        ...builtinConfig,
+        tools: undefined,
+        disallowedTools: ["Edit", "Write"],
+        model: "inherit",
+        omitAgentsMd: true,
+      };
+
+      await subagentManager.createInstance(blacklistedConfig, {
+        description: "Test task",
+        prompt: "Test prompt",
+        subagent_type: "Explore",
+      });
+
+      expect(vi.mocked(ToolManager)).toHaveBeenCalledWith(
+        expect.objectContaining({ disallowedTools: ["Edit", "Write"] }),
+      );
+      expect(vi.mocked(AIManager)).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ omitAgentsMd: true }),
       );
     });
   });

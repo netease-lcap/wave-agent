@@ -16,7 +16,7 @@ npm install wave-agent-sdk
 - **工具系统** — 内置 Bash、Read、Write、Edit、Glob、Grep、LSP 等工具，支持自定义工具注册
 - **记忆管理** — AGENTS.md 项目记忆 + 自动记忆系统 + 记忆规则
 - **会话持久化** — JSONL 格式会话存储，支持恢复与回滚
-- **子代理系统** — 支持 Bash、Explore、Plan 等专用子代理
+- **子代理系统** — 支持 Explore、Plan、general-purpose 等专用子代理
 - **Skill 技能系统** — 可扩展的斜杠命令与技能插件
 - **MCP 协议** — Model Context Protocol 集成
 - **插件系统** — 官方插件市场 + 自定义插件支持
@@ -1235,18 +1235,20 @@ await agent.triggerWorktreeRemoveHook("/path/to/worktree");
 
 ### Explore — 代码库探索 {#subagent-explore}
 
-快速探索代码库的文件搜索专家，支持三种细致程度：`quick`、`medium`、`very thorough`。
+只读的代码定位代理，用于按模式找文件、按符号/关键词检索，或回答「X 定义在哪 / 谁引用了 Y」。**不用于** code review、设计文档审计、跨文件一致性检查或开放式分析——它只读片段，不看整个文件，会漏掉读取窗口之外的内容。支持三种检索广度：`quick`、`medium`、`very thorough`。
 
-- **工具**: `[Glob, Grep, Read, Bash, LSP]`
-- **模型**: 快速模型（fastModel）
+- **工具**: 黑名单模式（除 `Agent`、`Artifact`、`ExitPlanMode`、`Edit`、`Write` 之外全部可用，含 WebFetch、Skill、LSP 等）
+- **模型**: 继承主代理模型（`model: inherit`，对齐 Claude Code）
+- **记忆**: 跳过项目 `AGENTS.md`（及 `CLAUDE.md` 回退）、用户记忆与 `.wave/rules` 无条件规则（`omitAgentsMd: true`）
 - **模式**: 只读，禁止任何文件修改操作
 
 ### Plan — 软件架构师 {#subagent-plan}
 
 设计实现方案的软件架构师代理，返回分步策略、识别关键文件、考虑架构权衡。
 
-- **工具**: `[Glob, Grep, Read, Bash, LSP]`
+- **工具**: 与 Explore 相同的黑名单（只读 + 其余全部可用）
 - **模型**: 继承主代理模型
+- **记忆**: 同样跳过项目 `AGENTS.md` 与 `.wave/rules`（`omitAgentsMd: true`）
 - **模式**: 只读，禁止任何文件修改操作
 
 ### General-Purpose 代理 {#subagent-general-purpose}
@@ -1391,7 +1393,7 @@ Wave 提供了一个强大的内置 `/settings` skill，作为用户与 Wave 配
 }
 ```
 
-此外还支持 `fastModel` 配置，用于子代理（Explore）和网页抓取摘要等轻量场景。
+此外还支持 `fastModel` 配置，用于网页抓取摘要、对话摘要等轻量场景，以及声明了 `model: fastModel` 的自定义子代理（内置子代理已改为继承主模型）。
 
 每个模型还可以通过 `maxInputTokens`（模型条目顶层，不在 `options` 内）设置其输入上下文窗口。该值覆盖全局的 `WAVE_MAX_INPUT_TOKENS`，压缩阈值和用量显示会按各模型自己的值生效：
 

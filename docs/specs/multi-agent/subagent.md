@@ -136,6 +136,24 @@ order: 10
 
 ---
 
+### 用户故事：定义文件的上下文开关与工具黑名单（优先级：P2）
+
+作为子代理作者，我希望像 Claude Code 那样在 frontmatter 里声明「这个子代理不加载项目记忆」和「排除掉某几个工具」，这样一次性搜索类子代理不必携带主会话的 `AGENTS.md`，工具面也不必逐个列白名单。
+
+**为什么是这个优先级**：白名单只能加、不能减——将来新增任何一个工具，白名单式子代理都看不到它（内置 Explore 因此至今抓不了网页）；而项目记忆对一次性的搜索子代理是纯粹的成本。字段名取 Wave 语义（`omitAgentsMd`：Wave 有 `AGENTS.md`，「`CLAUDE.md`」只是回退），同时把 Claude Code 的 `omitClaudeMd` 认作别名——用户从 Claude Code 抄过来的子代理文件不会静默变成「照样加载项目记忆」；`disallowedTools` 沿用 Claude Code 原名。
+
+**独立测试**：写一个带 `omitAgentsMd: true` 与 `disallowedTools: [Edit, Write]` 的子代理，派发后验证首条消息与 system prompt 里没有 `AGENTS.md` 内容、`Edit`/`Write` 不在工具列表且调用返回 not found，其余工具（含 `Bash`、`Read`）正常。
+
+**验收场景**：
+
+1. **假设** 子代理 frontmatter 含 `omitAgentsMd: true`（或 CC 别名 `omitClaudeMd: true`），**当** 子代理启动并发出第一次请求，**则** 不注入项目 `AGENTS.md`（含 `CLAUDE.md` 回退）、用户记忆以及 `.wave/rules` 的无条件规则；不带该字段（或值不是 `true`）时行为不变，照常注入。
+2. **假设** 子代理 frontmatter 含 `disallowedTools`（`[Edit, Write]`、`Edit, Write`、块列表三种写法均可），**当** 子代理初始化自己的 `ToolManager`，**则** 这些工具不注册、调用返回 `Tool '<name>' not found`，未列出的工具照常可用。
+3. **假设** 同一个子代理既声明 `tools` 又声明 `disallowedTools`，**当** 它初始化，**则** 先按白名单取交集再减黑名单；两边都出现的工具一律不可用。
+4. **假设** 子代理只声明 `disallowedTools`、没有 `tools`，**当** 主模型读 `Agent` 工具描述，**则** 该子代理的工具摘要写成 `All except <名单>`，不得写成误导性的 `*`。
+5. **假设** `disallowedTools` 里写了平台不存在的工具名，**当** 子代理初始化，**则** 该项被忽略，解析与启动都不失败。
+
+---
+
 ### 边界情况
 
 - 子代理配置文件的 YAML frontmatter 无效时会怎样？

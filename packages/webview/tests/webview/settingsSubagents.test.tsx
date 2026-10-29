@@ -219,6 +219,28 @@ describe("SettingsPage 子代理选项卡视图（4 Tab + 项目 Tab 平铺）",
     expect(screen.getByText("内置子代理")).toBeInTheDocument();
   });
 
+  it("shows a blacklist-only tool list as 'except …'", async () => {
+    const blacklistAgent: SubagentConfiguration = {
+      ...userAgent,
+      name: "scout",
+      tools: undefined,
+      disallowedTools: ["Edit", "Write"],
+    };
+    renderSettingsPage();
+    sendHostMessage(fixtures.subagentConfigurationsResponse([blacklistAgent]));
+
+    await act(async () => {
+      fireEvent.click(await screen.findByText("用户子代理"));
+    });
+    await act(async () => {
+      fireEvent.click(await screen.findByText("scout"));
+    });
+
+    expect(screen.getByText("工具：").parentElement).toHaveTextContent(
+      "除 Edit, Write 之外全部",
+    );
+  });
+
   it("shows a placeholder model when none is configured", async () => {
     const noModelAgent: SubagentConfiguration = {
       ...userAgent,

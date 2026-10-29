@@ -180,6 +180,14 @@ const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
                   <strong>工具：</strong> {selectedAgent.tools.join(", ")}
                 </div>
               )}
+              {(!selectedAgent.tools || selectedAgent.tools.length === 0) &&
+                selectedAgent.disallowedTools &&
+                selectedAgent.disallowedTools.length > 0 && (
+                  <div>
+                    <strong>工具：</strong> 除{" "}
+                    {selectedAgent.disallowedTools.join(", ")} 之外全部
+                  </div>
+                )}
               {selectedAgent.filePath && (
                 <div style={{ wordBreak: "break-all" }}>
                   <strong>文件：</strong> {selectedAgent.filePath}

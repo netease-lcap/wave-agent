@@ -621,6 +621,7 @@ export class SubagentManager {
       const toolManager = new ToolManager({
         container: subagentContainer,
         tools: configuration.tools,
+        disallowedTools: configuration.disallowedTools,
       });
       toolManager.initializeBuiltInTools();
       subagentContainer.register("ToolManager", toolManager);
@@ -633,6 +634,7 @@ export class SubagentManager {
         modelOverride: parameters.model || configuration.model, // Pass model override
         stream: parameters.stream ?? this.stream, // Pass streaming mode flag
         maxTurns: parameters.maxTurns, // Pass maxTurns limit
+        omitAgentsMd: configuration.omitAgentsMd, // Start without project/user memory
         callbacks: {
           onUsageAdded: this.onUsageAdded,
         },
