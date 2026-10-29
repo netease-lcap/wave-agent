@@ -206,7 +206,7 @@ Agent 支持多种消息块类型，通过回调通知 UI 层：
 | -------- | ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | 文本内容 | `onAssistantContentUpdated`   | AI 文本流式输出，含 `chunk`、`stage`（chunk 为增量片段，消费端自行累积）                                                    |
 | 推理内容 | `onAssistantReasoningUpdated` | 推理/思考过程流式输出                                                                                                       |
-| 工具调用 | `onToolBlockUpdated`          | 工具执行状态更新（bash 模式命令输出经此实时推送）                                                                           |
+| 工具调用 | `onToolBlockUpdated`          | 工具执行状态更新（bash 模式命令结束时经此写入输出）                                                                         |
 | 压缩摘要 | `onCompactBlockAdded`         | 上下文压缩后生成的摘要                                                                                                      |
 | 错误信息 | `onErrorBlockAdded`           | 错误消息                                                                                                                    |
 | 任务通知 | `onBackgroundTasksChange`     | 后台任务状态变更（后台任务完成的通知消息为 `isMeta: true`，UI 隐藏、模型可见，详见 [后台任务完成通知](#task-notification)） |

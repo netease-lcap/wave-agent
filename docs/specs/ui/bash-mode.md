@@ -65,7 +65,7 @@ order: 140
 ## 实现说明（开发者视角，非验收行为）
 
 - **消息承载**：bash 模式消息不再使用独立 `BangBlock` 块类型，改为 user 消息 + bash tool block（`name: "Bash"`（`BASH_TOOL_NAME`），parameters 存命令，result 存输出）。消息文本块忠实回显命令本身。
-- **执行复用**：bash 模式执行复用 bash 工具执行引擎（shell 解析、CWD 追踪、超时、输出处理），不再维护独立 spawn 逻辑。执行期间通过 `onShortResultUpdate` / `onResultUpdate` 回调实时流式写入 tool block（`toolBlockUpdated` 增量通知驱动三端 UI）。
+- **执行复用**：bash 模式执行复用 bash 工具执行引擎（shell 解析、CWD 追踪、超时、输出处理），不再维护独立 spawn 逻辑。运行期间**不**写 tool block，输出只在命令结束时一次性写入（见 [Bash 工具](../core/bash-tools.md) 的「输出在命令结束时一次性下发」）。
 - **输出进上下文**：user 消息 tool block 的 result 经 `<local-command-stdout>` 规则进入模型上下文（convertMessagesForAPI 通用逻辑）；不触发 AI 回复。
 - **退出码呈现**：成功（exit 0）不标注；失败在 result 文本前缀标注 `[exit code: N]`。
 - **中止**：复用 bash 工具的 abort 机制（AbortSignal，SIGINT 退出码 130）。

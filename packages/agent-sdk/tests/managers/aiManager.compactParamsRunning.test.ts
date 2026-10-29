@@ -115,7 +115,7 @@ describe("aiManager: running-stage tool block updates carry compactParams", () =
     return container;
   }
 
-  it("shortResult/result running events include compactParams + name after streaming", async () => {
+  it("shortResult running events include compactParams + name after streaming", async () => {
     const container = createContainer();
 
     // Real MessageManager; capture every onToolBlockUpdated callback param,
@@ -137,9 +137,8 @@ describe("aiManager: running-stage tool block updates carry compactParams", () =
     toolManager.initializeBuiltInTools();
     vi.spyOn(toolManager, "execute").mockImplementation(
       async (_name, _args, context) => {
-        // Emit running-stage progress updates like a real subagent does.
+        // Emit a running-stage progress update like a real subagent does.
         context.onShortResultUpdate?.("step 1: searching");
-        context.onResultUpdate?.("progress output");
         return {
           success: true,
           content: "found foo",
@@ -211,12 +210,12 @@ describe("aiManager: running-stage tool block updates carry compactParams", () =
     });
     await aiManager.sendAIMessage();
 
-    // Progress updates (shortResult/result) during running stage must carry
+    // Progress updates (shortResult) during running stage must carry
     // compactParams + name: consumers throttle with last-value-wins and would
     // otherwise lose the single compactParams-carrying running update.
     const runningUpdates = capturedUpdates.filter((u) => u.stage === "running");
     const progressUpdates = runningUpdates.filter(
-      (u) => u.shortResult !== undefined || u.result !== undefined,
+      (u) => u.shortResult !== undefined,
     );
     expect(progressUpdates.length).toBeGreaterThan(0);
     for (const u of progressUpdates) {
