@@ -2359,59 +2359,56 @@
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
 }
-/* 文本恢复按钮（preview error「重新加载」/ terminal exited「重启终端」/
-   remote forward error「重试」）：上述 icon-button 通用色会覆盖 base 的
-   --vscode-button-foreground/hover，这里按桌面语义主按钮重定（文字随按钮
-   前景反白，hover 保持实底加深） */
-[data-host="desktop"][data-theme="light"]
-  .preview-pane-error
-  .preview-pane-button,
-[data-host="desktop"][data-theme="light"]
-  .terminal-pane-exited
-  .preview-pane-button,
-[data-host="desktop"][data-theme="light"]
-  .preview-pane-forward-error
-  .preview-pane-button {
-  color: var(--vscode-button-foreground, #ffffff);
+/* ═══ 1030 第十四轮：面板三处错误态的文本按钮对齐「关闭标签」那颗 ═══
+   设计师评论（锚点 `button.file-pane-banner-action`「关闭标签」）：
+   「预览「重试」、终端「重启终端」、远程转发「重试」可以和这个按钮保持一致」。
+   这三处共用 `.preview-pane-button`（右侧面板工具条 24×24 图标键的类），
+   base 里只在 `width:auto` + `padding:4px 12px` + 主色实底上分叉；桌面端此前
+   只把圆角统一到 8 → 实测仍是 24 高 / 12px / 400 的主色实底，与「关闭标签」
+   的 32 高 / 14px 22px / 500 描边次键差一整档（1030 按钮一致性体检 F1）。
+   这里整颗换成「关闭标签」的实测档位（契约 §Buttons 的 Secondary outlined）：
+     32 高 / r8 / 左右 12 / 14px 22px / 500 / 透明底
+     + `--cc-border-light` 描边 + `--cc-text-primary` 字，
+     hover `--cc-fill-hover`、按下 `--cc-fill-pressed`。
+   ⚠ 连带（不连带就会贴住文案）：终端「已退出」与远程转发失败两块容器改前都是
+   `column` + **gap 8**（`TerminalPane.css:33` / `ChatApp.css:175`），而按钮一长到
+   32 高，8px 的间距就和「关闭标签」那块（gap 12）不在一个档 → 一并把 gap 收到
+   12（布局方向本来就一致，不重写 display/align，只补 gap，转发失败块另补
+   `flex/center/text-align` 之外什么都不动）。
+   范围：只有这三块错误态里的按钮 —— 同 class 的 24×24 工具条图标键不动；仅桌面端。
+   上一版这里的三段「按桌面语义主按钮重定色彩」规则（light/dark 各两段）随本次
+   档位变化整体作废，故删除而非叠加。 */
+[data-host="desktop"] .preview-pane-error .preview-pane-button,
+[data-host="desktop"] .terminal-pane-exited .preview-pane-button,
+[data-host="desktop"] .preview-pane-forward-error .preview-pane-button {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--cc-border-light, #e4e7ed);
+  border-radius: var(--cc-radius-md, 8px);
+  background: transparent;
+  color: var(--cc-text-primary, #1f2329);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
 }
-[data-host="desktop"][data-theme="light"]
-  .preview-pane-error
-  .preview-pane-button:hover,
-[data-host="desktop"][data-theme="light"]
-  .terminal-pane-exited
-  .preview-pane-button:hover,
-[data-host="desktop"][data-theme="light"]
-  .preview-pane-forward-error
-  .preview-pane-button:hover {
-  background: var(
-    --vscode-button-hoverBackground,
-    var(--vscode-button-background)
-  );
+[data-host="desktop"] .preview-pane-error .preview-pane-button:hover,
+[data-host="desktop"] .terminal-pane-exited .preview-pane-button:hover,
+[data-host="desktop"] .preview-pane-forward-error .preview-pane-button:hover {
+  background: var(--cc-fill-hover, #eef0f3);
+  color: var(--cc-text-primary, #1f2329);
 }
-[data-host="desktop"][data-theme="dark"]
-  .preview-pane-error
-  .preview-pane-button,
-[data-host="desktop"][data-theme="dark"]
-  .terminal-pane-exited
-  .preview-pane-button,
-[data-host="desktop"][data-theme="dark"]
-  .preview-pane-forward-error
-  .preview-pane-button {
-  color: var(--vscode-button-foreground, #ffffff);
+[data-host="desktop"] .preview-pane-error .preview-pane-button:active,
+[data-host="desktop"] .terminal-pane-exited .preview-pane-button:active,
+[data-host="desktop"] .preview-pane-forward-error .preview-pane-button:active {
+  background: var(--cc-fill-pressed, #e7e9ed);
 }
-[data-host="desktop"][data-theme="dark"]
-  .preview-pane-error
-  .preview-pane-button:hover,
-[data-host="desktop"][data-theme="dark"]
-  .terminal-pane-exited
-  .preview-pane-button:hover,
-[data-host="desktop"][data-theme="dark"]
-  .preview-pane-forward-error
-  .preview-pane-button:hover {
-  background: var(
-    --vscode-button-hoverBackground,
-    var(--vscode-button-background)
-  );
+
+/* 按钮↔文案间距：两块容器改前 gap 8 → 12，与「关闭标签」那块（gap 12）同档。
+   只补 gap（预览错误态 base 本来就是 12，不在本组）。 */
+[data-host="desktop"] .terminal-pane-exited,
+[data-host="desktop"] .preview-pane-forward-error {
+  gap: 12px;
 }
 /* 选中态改蓝（1029 第十四轮，设计师三条评论）：
    - `button.preview-pane-button.active`「这里的选中状态改为蓝色，背景是浅蓝」
