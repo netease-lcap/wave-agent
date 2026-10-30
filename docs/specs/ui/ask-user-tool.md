@@ -4,7 +4,7 @@ description: "`AskUserQuestion` 结构化提问工具：单选/多选选项、�
 order: 80
 ---
 
-# 功能规格说明：支持 AskUserQuestion 工具
+# 功能规格说明：AskUserQuestion 工具
 
 **创建日期**：2026-01-19
 

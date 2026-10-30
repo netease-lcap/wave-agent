@@ -1,7 +1,7 @@
 ---
 name: "代码补全"
 description: "VS Code 扩展与 JetBrains 插件的行内代码补全（ghost text）：编辑停顿自动触发、Tab 接受、补全专用模型与独立请求通道；含跨文件定义片段（两端各自采集）"
-order: 235
+order: 20
 ---
 
 # 功能规格说明：代码补全
@@ -157,7 +157,7 @@ order: 235
 
 - **补全请求与对话共享同一 CLI 子进程，但不得共享队列。** 补全不经过 `aiManager` 的对话轮次（无工具、无 system prompt、无 hooks），也不走 `aiService.callAgent` 的全局 1 次/秒请求间隔；补全在 CLI 侧有独立的调用路径与自己的节流策略。
 - **模型配置真源在 CLI 侧。** 插件端不得自建第二份模型配置（插件端既有配置服务明确不负责模型选择）；补全模型与开关走**用户偏好链路**落盘到 CLI 侧用户级 `~/.wave/settings.json` 的**顶层键** `completionModel` / `completionEnabled`——设置页「全局设置 → 基础设置」的两行（「代码补全」开关 + 「补全模型」下拉）与语言/上下文长度**同一次保存**经既有 webview→host 命令 `updateConfiguration` 提交，宿主转成 stdio RPC `updateUserSettings`（省略键 = 不改该键的 diff 语义照旧），插件端只做读写转发、不持有第二份模型配置；候选清单与对话模型同源，经 `getConfiguredModels` 拉取（设置页外壳在 IDE 宿主是独立 webview，该命令必须同时注册在设置页路由，`scripts/audit-webview-commands.mjs` 会拦漏注册）。补全请求本身走新增的 stdio RPC 方法 `getCompletion`（参数：`prefix` / `suffix` / `language` / `filePath`；响应：`{ text, model }`，`text` 为空串表示无建议），会话级调用，同一会话同一时刻只保留一个在途请求——新请求到达时旧请求被中止，因此迟到的响应不会渲染。
-- **补全设置行的宿主范围：只由提供补全的宿主渲染。** 「代码补全」开关与「补全模型」下拉只出现在提供行内补全的宿主（VS Code / JetBrains）的设置页里；桌面端设置页**不展示**这两行——桌面端没有代码编辑器，补全在那里从不触发，把开关摆在那里等于承诺一个不会发生的功能（远端网页等无编辑器宿主同理），见 [desktop-account-and-settings.md](../desktop/desktop-account-and-settings.md) 场景 3。设置页在 IDE 宿主与桌面端**共用同一套实现**，因此该门禁必须按**宿主能力位**判定（有没有编辑器，而不是「宿主叫什么名字」），不得依赖「桌面端不渲染设置页」这类隐含前提。CLI 侧的键（顶层 `completionModel` / `completionEnabled`）、解析链与读写 RPC 不受影响：宿主只是不渲染这两行，键与语义照旧（命令行/手改 settings.json 仍然可配）。
+- **补全设置行的宿主范围：只由提供补全的宿主渲染。** 「代码补全」开关与「补全模型」下拉只出现在提供行内补全的宿主（VS Code / JetBrains）的设置页里；桌面端设置页**不展示**这两行——桌面端没有代码编辑器，补全在那里从不触发，把开关摆在那里等于承诺一个不会发生的功能（远端网页等无编辑器宿主同理），见 [desktop-settings.md](../desktop/desktop-settings.md) 场景 3。设置页在 IDE 宿主与桌面端**共用同一套实现**，因此该门禁必须按**宿主能力位**判定（有没有编辑器，而不是「宿主叫什么名字」），不得依赖「桌面端不渲染设置页」这类隐含前提。CLI 侧的键（顶层 `completionModel` / `completionEnabled`）、解析链与读写 RPC 不受影响：宿主只是不渲染这两行，键与语义照旧（命令行/手改 settings.json 仍然可配）。
 - **补全开关在 SDK 侧生效。** 开关关闭时 `getCompletion` 在发起模型调用前直接返回空文本，不消耗一次模型请求。开关与补全模型读 settings.json 的顶层键 `completionModel` / `completionEnabled`，解析优先级为 `AgentOptions` > settings.json > 环境变量 `WAVE_COMPLETION_MODEL` > `fastModel`；`completionEnabled` 缺省为开，设置页的开关**不做占位态**（它的真实默认就是「开」，口径与自动记忆开关一致），未设置且未被拨动时不写该键。补全模型未设置时回退快速模型，**不**回退对话主模型；快速模型自身的取值链与 `model` 对称（`AgentOptions` > settings.json `fastModel` > `env.WAVE_FAST_MODEL`）。
 - **3 秒请求超时。** 宿主侧对单个补全请求设 3 秒上限，超时即按“无建议”处理并取消在途请求——超过这个时间的建议已无价值，且持续占用在途通道。跨文件片段的采集（100ms 上限）发生在这 3 秒之内，不额外延长总超时。
 - **补全通道不得把 agent 运行时拖进宿主包。** 宿主只能从 `wave-agent-sdk/host` 导入，且该入口的依赖闭包必须零第三方依赖、体积受限（`scripts/check-sdk-surface.mjs`）；补全的请求实现只能放在 CLI/SDK 侧，插件端拿不到也不得拿到底层模型客户端。跨文件片段所需的语法解析栈（tree-sitter 运行时与各语言 grammar）属于第三方依赖，只能存在于**采集侧宿主包**（VS Code 扩展）内，不得进入 `wave-agent-sdk` 的 `/host` 入口闭包。
@@ -184,6 +184,6 @@ order: 235
 ## 假设
 
 - 用户在 IDE 中已登录 wave，且 CLI 侧已配置至少一个可用模型（或已配置快速模型作为回退）。
-- 插件与 CLI 的 stdio 连接已建立（见 [Stdio 传输层](stdio-transport.md)）；补全复用该连接，不额外 spawn 进程。
+- 插件与 CLI 的 stdio 连接已建立（见 [Stdio 传输层](../ui/stdio-transport.md)）；补全复用该连接，不额外 spawn 进程。
 - 补全的请求链路与参数默认值两端共享，差异仅限宿主平台的渲染、快捷键接入与上下文采集（见 [IDE 插件](ide-plugin.md)）；跨文件片段由两端各自采集（路径不同，见边界情况「跨文件定义片段的范围与预算」），CLI/SDK 侧只消费可选字段 `snippets`。
 - 补全的响应延迟以模型服务实际能力为上限；规格中的数值（防抖基准/区间、上下文行数、缓存容量与存活时间、文件体积阈值、建议行数上限）均为**默认值**，可在实现与调优阶段调整，调整后需同步更新本规格。

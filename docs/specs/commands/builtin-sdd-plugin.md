@@ -1,7 +1,7 @@
 ---
 name: "内置 SDD 插件"
 description: "规格优先工作流插件：`specify` 技能、会话引导、spec-count 校验与阶段单选衔接"
-order: 65
+order: 170
 ---
 
 # 功能规格说明：内置 SDD 插件
@@ -21,7 +21,7 @@ order: 65
 **验收场景**：
 
 1. **假设** `enabledPlugins` 中没有 `sdd@builtin` 条目，**当**我启动会话时，**则** SDD 插件的技能、会话引导与校验命令均不可用。
-2. **假设** 我在 `enabledPlugins` 中设置 `"sdd@builtin": true`，**当**我切换开关后，**则** 变更落盘只产生一个「待应用」信号并出现一次提示，敲 `/reload-plugins` 后 SDD 插件的技能与引导在**同一会话内**立即生效——不销毁、不重建 Agent（会话 id 不变、消息与转录连续、不打断正在生成的回合），用户无需新开对话；完整语义与逐字文案见 [plugin.md](./plugin.md)「插件变更的就地重载」。
+2. **假设** 我在 `enabledPlugins` 中设置 `"sdd@builtin": true`，**当**我切换开关后，**则** 变更落盘只产生一个「待应用」信号并出现一次提示，敲 `/reload-plugins` 后 SDD 插件的技能与引导在**同一会话内**立即生效——不销毁、不重建 Agent（会话 id 不变、消息与转录连续、不打断正在生成的回合），用户无需新开对话；完整语义与逐字文案见 [plugin.md](../ecosystem/plugin.md)「插件变更的就地重载」。
 3. **假设** 设置页「项目设置」视图已打开，**当**我切换 SDD 开关时，**则** 写入项目 `.wave/settings.json` 的 `enabledPlugins` 并按场景 2 的语义生效（开关状态与配置文件保持同步，切换结果自动刷新）。
 
 ---

@@ -1,7 +1,7 @@
 ---
 name: "BTW 命令"
 description: "`/btw` 旁路提问：绕过主消息队列、单轮且不执行工具、复用主对话 prompt 前缀，CLI overlay 与 Webview 面板两入口（含远控 Web 页）"
-order: 170
+order: 90
 ---
 
 # 功能规格说明：BTW 命令

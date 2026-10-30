@@ -1,7 +1,7 @@
 ---
 name: "CI/CD 集成"
 description: "在 GitHub Actions / GitLab CI 里跑 wave：可复用 workflow 与 job 模板、凭证注入、审查专用最小工具集、结果 JSON 产物"
-order: 90
+order: 40
 ---
 
 # 功能规格说明：CI/CD 集成
@@ -96,5 +96,5 @@ order: 90
 - **FR-2 最小权限预设**：默认工具集覆盖「读文件 / 搜内容 / `git` 查询 / 平台 CLI 查询与评论」；需要写能力的场景必须由调用方显式放开。
 - **FR-3 产物**：结果写入固定文件名（默认 `wave-result.json`）并上传为 artifact；同时通过 job outputs（可选形态为 step outputs）暴露 `result`、`subtype`、`is-error`、`result-file`。
 - **FR-4 GitLab 模板**：文档提供可直接粘贴的 job 段（镜像、变量、artifacts），与 GitHub 侧共用同一套环境变量与产物约定。
-- **FR-5 文档交付**：新增 `docs/ci.md`（认证、权限预设、两个平台的完整示例、产物约定、fork PR 注意事项），并在 `docs/tutorials.md` 增加一篇实操教程；示例必须可复制即跑。
+- **FR-5 文档交付**：在 `docs/cli.md` 增加「CI 集成」一章（认证、权限预设、两个平台的完整示例、产物约定、fork PR 注意事项），并在 `docs/tutorials.md` 增加一篇实操教程；示例必须可复制即跑。
 - **FR-6 退出码透传**：沿用打印模式的失败判据（抛错或「有错且无正文」），封装层不另外发明判据。

@@ -51,7 +51,7 @@ class MockResizeObserver {
 global.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver;
 
 /**
- * Desktop host parity (spec desktop-layout.md「启动即单个分屏」): the real main
+ * Desktop host parity (spec desktop-split-pane.md「启动即单个分屏」): the real main
  * process answers the webview's `desktopReady` by pushing a single-pane layout
  * (`desktopPanes`), so the welcome/empty state lives inside the split layout
  * from the start and pane-scoped pushes carry the focused paneId. The mock

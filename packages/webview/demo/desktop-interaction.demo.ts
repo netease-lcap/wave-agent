@@ -6,7 +6,7 @@ import { screenshotWebp } from "../e2e/utils/screenshot.js";
 
 /**
  * Desktop interaction refinements (spec desktop-layout.md 侧边栏收起/展开 +
- * desktop-file-panel.md 文件拖拽上传 + desktop-panels.md「右侧面板 · 一级 Tab 栏
+ * desktop-file-panel.md 文件拖拽上传 + desktop-right-panel.md「右侧面板 · 一级 Tab 栏
  * 与实例语义」): screenshots for the multi-instance preview tabs (outer tab model),
  * plus behavior assertions for the collapsible sidebar and the file drag-and-drop
  * upload overlay (those two have no docs screenshot; the overlay is also covered
@@ -186,7 +186,7 @@ test.describe("Desktop interaction refinements", () => {
 
     // Fullscreen (spec 预览面板全屏): the pane fills the content area and the
     // conversation column is hidden; Esc restores the layout. Preview guests
-    // live in the keep-alive layer (spec desktop-panels.md「preview guest 跨会话
+    // live in the keep-alive layer (spec desktop-right-panel.md「preview guest 跨会话
     // 保活」) — the shown one carries data-parked="false", the parked ones are
     // invisible but still mounted.
     await webviewPage.getByTestId("panel-fullscreen").click();

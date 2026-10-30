@@ -10,7 +10,7 @@ import SettingsPage from "../../src/components/SettingsPage";
  * - 各作用域独立「保存用户级/项目级配置」按钮 → onSaveAgentsContent(scope, content)；
  * - host 回发 agentsContentSaved（agentsSaving false）复位按钮禁用；
  *   2026-09-09 设计师拍板：保存结果反馈改走宿主全局 toast，设置页不再渲染
- *   页面内「保存成功 / 保存失败」提示（见 desktop-account-and-settings
+ *   页面内「保存成功 / 保存失败」提示（见 desktop-settings
  *   「设置页反馈语义」）。
  */
 

@@ -297,13 +297,13 @@ export class AgentBridge {
    * a keystroke pause, so a newer request makes the previous one worthless —
    * superseding it here is what keeps "one in-flight request per editor" true
    * even when the host cannot cancel (spec
-   * docs/specs/ui/code-completion.md: 同一时刻只允许一个补全请求在途).
+   * docs/specs/ide/code-completion.md: 同一时刻只允许一个补全请求在途).
    */
   private inFlightCompletions = new Map<string, AbortController>();
   /**
    * In-flight next-edit calls, same one-per-session rule and same reason as
    * completions. It also participates in the cross-capability exclusion from
-   * `docs/specs/ui/next-edit-suggestion.md`: completion and next-edit never hold
+   * `docs/specs/ide/next-edit-suggestion.md`: completion and next-edit never hold
    * an in-flight request at the same time, so one of them cannot answer into a
    * buffer the other has already rewritten.
    */

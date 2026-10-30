@@ -1,7 +1,7 @@
 ---
 name: "斜杠命令"
 description: "markdown 文件定义的自定义斜杠命令：项目/用户两级作用域、参数替换、frontmatter 模型与 `allowed-tools` 自动批准语义；弹窗里宿主本地命令的唯一来源是服务端经 RPC 下发的一张表（按入口过滤）"
-order: 130
+order: 10
 ---
 
 # 功能规格说明：自定义斜杠命令

@@ -15,7 +15,7 @@ import { MockDataGenerator } from "../fixtures/mockData";
 
 vi.mock("../../src/styles/DesktopApp.css", () => ({}));
 
-// Preview panes live in the guest keep-alive layer (spec desktop-panels.md
+// Preview panes live in the guest keep-alive layer (spec desktop-right-panel.md
 //「preview guest 跨会话保活」): the shown one carries data-parked="false", the
 // parked ones (other sessions / inactive tabs) are kept alive but hidden.
 const activePane = (testId: string) =>
@@ -832,7 +832,7 @@ describe("PreviewPane integration (DesktopApp)", () => {
     // 关闭统一走一级 tab 的关闭按钮。
     fireEvent.click(screen.getByTestId("panel-tab-close-preview-1"));
     // Closing the panel's only tab unmounts the pane AND collapses the slot
-    // with it (spec desktop-panels.md 场景 10: 不留下空态).
+    // with it (spec desktop-right-panel.md 场景 10: 不留下空态).
     expect(screen.queryByTestId("desktop-panel-slot")).not.toBeInTheDocument();
     expect(screen.queryByTestId("preview-pane")).not.toBeInTheDocument();
   });

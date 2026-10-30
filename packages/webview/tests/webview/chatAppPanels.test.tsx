@@ -208,7 +208,7 @@ describe("ChatApp desktop panel framework", () => {
       const empty = screen.getByTestId("preview-pane-empty");
       // Never-dragged slot: the conversation keeps 40% of the row
       // (round(1024×0.4)=410 ≥ the 360 floor) → panel 614 (spec
-      // desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」场景 7-9).
+      // desktop-right-panel.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」场景 7-9).
       expect(empty.style.width).toBe("614px");
 
       // The drag handle lives on the shared slot (not inside each pane), so the
@@ -263,7 +263,7 @@ describe("ChatApp desktop panel framework", () => {
     window.waveHostType = "desktop";
     // 800px: the 40% conversation share (320) sits below the 360px floor, so
     // the conversation stays at 360 and the never-dragged slot gets the
-    // remainder = 440 (spec desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与
+    // remainder = 440 (spec desktop-right-panel.md「右侧面板 · 展开/折叠、空间守卫与
     // 欢迎页共存」场景 7-9, not the 420px default).
     const rectSpy = vi
       .spyOn(Element.prototype, "getBoundingClientRect")
@@ -1160,7 +1160,7 @@ describe("session-level panel groups", () => {
       }),
     );
 
-    // Switch to s2 (no cached preview) and back. 保活（spec desktop-panels.md
+    // Switch to s2 (no cached preview) and back. 保活（spec desktop-right-panel.md
     //「preview guest 跨会话保活」）：s1 的 guest 不销毁、只是停靠在常驻层里
     //（data-parked=true），切回来还是同一个 <webview> 实例——不重载，地址栏里的
     // URL 与页面自身状态原样保留。
@@ -1468,7 +1468,7 @@ describe("session-level panel groups", () => {
 
   /**
    * 差异面板的数据源是会话的**工作根**（`workspaceRoot`），不是被 bash `cd`
-   * 漂移的 `currentWorkdir`（spec desktop-panels.md 场景 14/15）：
+   * 漂移的 `currentWorkdir`（spec desktop-right-panel.md 场景 14/15）：
    * `updateWorkdir` 只挪家目录视图里的当前目录，换工作树才是真换根。
    */
   it("anchors the diff panel on the workspace root: bash cd keeps it, EnterWorktree moves it", () => {

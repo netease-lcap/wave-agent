@@ -1,7 +1,7 @@
 ---
 name: "内置 Settings 技能"
 description: "内置 `settings` 技能，查看与修改各作用域 settings.json，并提供 hook 编写指导"
-order: 20
+order: 160
 ---
 
 # 功能规格说明：内置 Settings Skill

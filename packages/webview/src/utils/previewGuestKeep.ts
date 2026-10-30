@@ -1,7 +1,7 @@
 import type { DesktopPane, DesktopSessionGroup } from "../types";
 
 /**
- * preview guest 跨会话保活的台账（spec desktop-panels.md「右侧面板 · preview
+ * preview guest 跨会话保活的台账（spec desktop-right-panel.md「右侧面板 · preview
  * guest 跨会话保活」）。
  *
  * guest（面板里的 `<webview>`）的生命周期不再绑在槽位的 React 树上：切走的会话

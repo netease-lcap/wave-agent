@@ -45,7 +45,7 @@ interface DesktopShellProps {
   onLogout: () => void;
   /** 侧边栏底部账户卡片 (desktopAccountInfo push). */
   account?: AccountCardAccount | null;
-  /** 账户卡片更新按钮 S0–S6（spec desktop-account-and-settings.md「账户卡片 ·
+  /** 账户卡片更新按钮 S0–S6（spec desktop-account.md「账户卡片 ·
    * 更新按钮状态机 S0–S6」）. */
   onDownloadUpdate?: () => void;
   onRestartApp?: () => void;
@@ -698,7 +698,7 @@ export const DesktopShell: React.FC<DesktopShellProps> = ({
     return { flex: `0 0 ${heights[row] * 100}%` };
   };
 
-  // Batch 2 settings full-page 覆盖整个窗口（spec desktop-account-and-settings
+  // Batch 2 settings full-page 覆盖整个窗口（spec desktop-settings
   // 「设置页面」场景 1/12）：打开设置时会话侧边栏与全部 pane 一并隐藏，仅设置页
   // 自身占满整个 view（macOS 红绿灯由设置页导航顶部让位承接）。pane 布局与会话
   // 由宿主持有，关闭设置后按 desktopPanes 原样恢复、不销毁会话。提前 return 位于

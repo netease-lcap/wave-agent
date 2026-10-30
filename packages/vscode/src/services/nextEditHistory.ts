@@ -3,7 +3,7 @@ import type { NextEditHistoryEntry } from "wave-agent-sdk/host";
 
 /**
  * Per-file trajectory of what the user typed, in the shape the next-edit
- * request wants (`docs/specs/ui/next-edit-suggestion.md`, 故事 3).
+ * request wants (`docs/specs/ide/next-edit-suggestion.md`, 故事 3).
  *
  * The hard part is not collecting — VS Code hands us every change — but
  * *rejecting* what is not user intent: a branch switch, an external formatter

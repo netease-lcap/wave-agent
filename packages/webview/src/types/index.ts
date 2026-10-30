@@ -517,7 +517,7 @@ export type ToastAction = {
 };
 
 /** Toast 语义类型（与 packages/webview-fixtures/src/types.ts 同步）：**只有设置页
- *  结果型提示标注**（spec desktop-account-and-settings「设置页反馈语义」，
+ *  结果型提示标注**（spec desktop-settings「设置页反馈语义」，
  *  2026-09-10 设计师拍板）——成功/失败/信息配 soft 底 + 同色 icon/text（不只靠色）。
  *  **缺省（其余应用级提示）= 中性**：默认底色、不渲染语义图标（缺省不得回退为
  *  某个彩色语义）。 */

@@ -31,7 +31,7 @@ import kotlinx.serialization.json.put
  * the cursor context, the session lookup and the truncation.
  *
  * Everything is best-effort — no session, a dead CLI, a timeout or a model error
- * all end as "no suggestion" (spec `docs/specs/ui/code-completion.md`).
+ * all end as "no suggestion" (spec `docs/specs/ide/code-completion.md`).
  */
 class WaveInlineCompletionProvider : InlineCompletionProvider {
     override val id: InlineCompletionProviderID =

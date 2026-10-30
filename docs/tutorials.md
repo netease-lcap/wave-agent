@@ -525,7 +525,7 @@ CodeWave IDE 的遥测走 OpenTelemetry 标准，客户端侧有**三条互不�
 - **只覆盖 AI 自己的改动**：自动三层只看得见 AI 产生或发起的改动；同事在你终端里做的改动手动扫描才看得到。
 - **面向自有或已获授权的代码**，不用于扫描第三方代码。
 
-配置细节、每个场景的验收口径与依赖的底层机制见[功能规格说明：代码安全审核](/specs/ecosystem/code-security)。
+配置细节、每个场景的验收口径与依赖的底层机制见[功能规格说明：代码安全审核](/specs/commands/code-security)。
 
 ---
 
@@ -606,57 +606,12 @@ security-audit 就是这个骨架的完整版：前门是一份技能（认口�
 
 ## 十一、CI 里跑 Wave：PR 自动审查 {#ci-review}
 
-每个 PR 提上来，让 Wave 先过一遍：读改动、给结论、把结论贴回 PR，不合格时这个 check 变红、拦住合并。整条链路不需要有人在旁边点确认，也不需要先把 Wave 登录进 runner。
+每个 PR 提上来，让 Wave 先过一遍：读改动、给结论、把结论贴回 PR，不合格时这个 check 变红、拦住合并。整条链路不需要有人在旁边点确认。
 
-### 1. 先在本机跑通一次 {#ci-review-local}
+三步：
 
-CI 里那条命令就在本机先跑，参数照抄（`--permission-mode dontAsk` 保证不会停下来问权限，`--output-format json` 让结果是机器可读的）：
+1. **本机先跑通**：`wave -p '/code-review' --output-format json --permission-mode dontAsk --tools 'Read,Glob,Grep,Bash' > wave-result.json`，看 `subtype` 是不是 `success`、`echo $?` 是不是 `0`。
+2. **搬进 GitHub Actions**：加一个 `.github/workflows/review.yml`（`uses: netease-lcap/wave-agent/.github/workflows/wave-review.yml@main`），配 secret `WAVE_API_KEY` 与变量 `WAVE_MODEL`——CI 里没有本地配置可继承，模型名必须给。
+3. **让它拦住合并**：Settings → Branches → Require status checks to pass，勾上这个 job。
 
-```bash
-wave -p '/code-review' \
-  --output-format json \
-  --permission-mode dontAsk \
-  --tools 'Read,Glob,Grep,Bash' > wave-result.json
-
-jq -r '.subtype, .result' wave-result.json
-```
-
-跑完看三样东西：`result` 里的结论是不是你想要的口径；`subtype` 是不是 `success`；`echo $?` 是不是 `0`。结论不满意就改提示词（比如把审查重点写进 `-p` 的正文），再跑一遍。
-
-两个参数的含义值得记住：`--permission-mode dontAsk` 下，没有被预批规则命中的受限工具会被**直接拒绝**、拒绝原因回到模型，模型换条路继续干，不会卡在等你点「允许」；`--tools` 只注册列表里的工具，没列的工具模型根本看不见（上面这条命令里没有 `Write`，它就不会去改文件）。
-
-### 2. 搬到 GitHub Actions {#ci-review-github}
-
-仓库里加一个文件 `.github/workflows/review.yml`，并在 Settings → Secrets and variables → Actions 里配一个 secret `WAVE_API_KEY`、一个变量 `WAVE_MODEL`（如 `deepseek-flash`——CI 里没有本地配置可继承，模型名必须给）：
-
-```yaml
-name: Review
-
-on:
-  pull_request:
-
-jobs:
-  review:
-    uses: netease-lcap/wave-agent/.github/workflows/wave-review.yml@main
-    secrets: inherit
-    permissions:
-      contents: read
-      pull-requests: write
-    with:
-      prompt: /code-review
-```
-
-`with` 里的输入与上面本机那条命令一一对应（`prompt` → `-p`、`permission-mode`、`tools` 同名同义），不写的走默认值。提一个 PR 就能看到它跑。
-
-### 3. 让结论回到 PR、让它能拦住合并 {#ci-review-gate}
-
-- **结论回到 PR**：内置的 `/code-review` 技能自己会用 `gh pr comment` 发评论，所以 job 需要 `pull-requests: write` 权限和一个 `GH_TOKEN`（上面的 reusable workflow 已经传好 `secrets.GITHUB_TOKEN`）。换成自己的提示词时，评论这一步要自己写 `gh pr comment`。
-- **拦住合并**：仓库 Settings → Branches → 分支保护规则 → Require status checks to pass，勾上这个 job 的名字。之后它的退出码是 1，PR 就合不进去。
-
-顺带留了两处痕迹，排查时有用：job 的 Summary 里有一段摘要，`wave-result.json` 作为 artifact 保留（失败那次也会上传）。
-
-### 4. GitLab {#ci-review-gitlab}
-
-同一套参数换个壳：GitLab 侧用 [CI 集成 - GitLab CI](/ci#gitlab) 里那段 job 模板，`WAVE_API_KEY` 放在项目的 Settings → CI/CD → Variables 里。
-
-想按「发现数量 / 严重度」下判断，而不是只红一个 check，就去读 `wave-result.json`：`tool_calls` 是这次跑过的工具序列，`errors` 是运行期的错误。字段表见 [CLI - 结构化输出](/cli#structured-output)。
+三个环境变量、权限预设、两个平台的完整模板、产物字段与 fork PR 等局限，见 [CLI - CI 集成](/cli#ci)；GitLab 侧只是换个 job 段。

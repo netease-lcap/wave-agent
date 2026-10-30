@@ -150,7 +150,7 @@ describe("isTestPath", () => {
   it.each([
     "src/utils/diffHunks.ts",
     "packages/webview/src/components/DiffPane.tsx",
-    "docs/specs/desktop/desktop-panels.md",
+    "docs/specs/desktop/desktop-right-panel.md",
     "src/latest.ts",
     "src/testing/helpers.ts",
     "src/snapshotStore.ts",

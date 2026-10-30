@@ -56,7 +56,7 @@ describe("SettingsPage 项目设置视图（内容自 ConfigDialog 项目设置�
     });
 
     expect(screen.getByLabelText("启用 SDD 插件")).toBeChecked();
-    // 进入视图即重拉（对齐 spec desktop-account-and-settings 场景 8：每次进入
+    // 进入视图即重拉（对齐 spec desktop-settings 场景 8：每次进入
     // 都以当前项目真实配置刷新，避免文件已启用而开关停留旧缓存值）
     expect(onLoadProjectSettings).toHaveBeenCalledTimes(1);
   });

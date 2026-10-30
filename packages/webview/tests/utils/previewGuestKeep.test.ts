@@ -13,7 +13,7 @@ import {
 } from "../../src/utils/previewGuestKeep";
 
 /**
- * preview guest 跨会话保活的台账（spec desktop-panels.md「右侧面板 · preview
+ * preview guest 跨会话保活的台账（spec desktop-right-panel.md「右侧面板 · preview
  * guest 跨会话保活」场景 3-4、边界「preview guest 保活额度」）。额度是窗口级、
  * 跨分屏共享、含当前可见者，超出按最久未使用淘汰。
  */

@@ -422,5 +422,5 @@ order: 30
 
 ## 相关文档
 
-- 表格与分栏的容器几何、面板宽度：见 [desktop-panels.md](../desktop/desktop-panels.md)。
+- 表格与分栏的容器几何、面板宽度：见 [desktop-right-panel.md](../desktop/desktop-right-panel.md)。
 - 逐轮走查过程、前后实测数据与截图清单：由设计侧本地台账维护（不入库）；涉及「对话流排版」「表格展示」「表格对齐」「批 1 · 无障碍」的部分结论已落在这里。

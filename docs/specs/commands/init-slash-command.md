@@ -1,7 +1,7 @@
 ---
 name: "Init 命令"
 description: "`/init` 内置技能，分析代码库并创建或改进 `AGENTS.md` 指导文件"
-order: 30
+order: 60
 ---
 
 # 功能规格说明：Init 斜杠命令

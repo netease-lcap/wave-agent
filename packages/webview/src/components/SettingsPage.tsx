@@ -522,7 +522,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
   ];
 
   // 保存类操作反馈统一由宿主全局 toast 提示（2026-09-09 拍板，见
-  // desktop-account-and-settings「设置页反馈语义」），本组件不生成/渲染任何
+  // desktop-settings「设置页反馈语义」），本组件不生成/渲染任何
   // 页面内提示文字；「保存中…」由外层 saving / agentsSaving 驱动按钮禁用。
   //
   // 载荷只带**用户真正改动过**的字段（diff 语义）：没改的、仍处于未设置态的键
@@ -919,7 +919,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
                   </button>
                 </div>
               </section>
-              {/* 「桌面端设置」区块（仅桌面端渲染，见 spec desktop-account-and-settings
+              {/* 「桌面端设置」区块（仅桌面端渲染，见 spec desktop-settings
                   场景 3）：主题与「接收 Beta 版更新」为桌面端独有的本地偏好——经
                   host 直连通道（setThemeSource / setUpdateChannel）持久化于桌面
                   configStore，不走 stdio updateConfiguration/共享 settings.json，

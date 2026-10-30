@@ -273,7 +273,7 @@ export const MD_COMMENT_BLOCK_CLASS = "md-comment-block";
 
 /**
  * Block-level nodes a markdown comment can anchor to (spec
- * `desktop-panels.md`「文件面板评论」场景 8): the outermost of these wins, so a
+ * `desktop-file-panel.md`「文件面板评论」场景 8): the outermost of these wins, so a
  * paragraph inside a list item resolves to the list item and a heading inside a
  * quote resolves to the quote. Containers (`ul` / `table` / `tbody` / `tr`) are
  * deliberately left out — nobody points at "the list", they point at an item.

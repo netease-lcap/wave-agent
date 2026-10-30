@@ -184,7 +184,7 @@ export interface DesktopSidebarProps {
   onLogout: () => void;
   /** 侧边栏底部账户卡片 (desktopAccountInfo push). */
   account?: AccountCardAccount | null;
-  /** 账户卡片更新按钮 S0–S6（spec desktop-account-and-settings.md「账户卡片 ·
+  /** 账户卡片更新按钮 S0–S6（spec desktop-account.md「账户卡片 ·
    * 更新按钮状态机 S0–S6」）. */
   onDownloadUpdate?: () => void;
   onRestartApp?: () => void;
@@ -237,7 +237,7 @@ const dirName = (workdir: string): string =>
 
 // A group is identified by (host, workdir) — the same directory may exist on
 // the local machine and on an SSH host, and those are distinct groups (spec
-// docs/specs/desktop/desktop-sessions.md 「SSH 远程主机」scenario 9).
+// docs/specs/desktop/desktop-remote.md 「SSH 远程主机」scenario 9).
 const groupKey = (group: DesktopSessionGroup): string =>
   `${group.host}:${group.workdir}`;
 

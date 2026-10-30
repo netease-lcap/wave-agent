@@ -1,7 +1,7 @@
 ---
 name: "IDE 上下文提及"
 description: "输入框 @ 手动附加 IDE 运行时上下文：终端输出（@terminal）、当前文件问题（@problems），发送时取内容并入消息、渲染为用户气泡里的标签 + 弹窗预览"
-order: 255
+order: 40
 ---
 
 # 功能规格说明：IDE 上下文提及

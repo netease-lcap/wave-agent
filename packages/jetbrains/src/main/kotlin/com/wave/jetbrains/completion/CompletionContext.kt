@@ -2,7 +2,7 @@ package com.wave.jetbrains.completion
 
 /**
  * Tuning knobs for inline completion. Mirrors the VS Code side and the spec
- * (`docs/specs/ui/code-completion.md`) — the two hosts must ask the same
+ * (`docs/specs/ide/code-completion.md`) — the two hosts must ask the same
  * question with the same context window.
  */
 object CompletionOptions {

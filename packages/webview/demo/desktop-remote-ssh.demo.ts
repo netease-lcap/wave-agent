@@ -319,7 +319,7 @@ test.describe("Desktop SSH remote sessions (mocked)", () => {
 
   // docs/tutorials.md「云端编程」：远端会话的两种后台状态。桌面端退出后这两种
   // 状态都留在远端 daemon 里，重新连上该主机时侧边栏直接标出来——分组标题挂
-  // 远端主机名，组内运行中标转圈、等待确认标琥珀点（spec desktop-sessions.md
+  // 远端主机名，组内运行中标转圈、等待确认标琥珀点（spec desktop-remote.md
   // 「SSH 远程后台会话」场景 6）。
   test("remote background sessions carry running / waiting badges", async ({
     webviewPage,

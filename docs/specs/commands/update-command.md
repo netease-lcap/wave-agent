@@ -1,7 +1,7 @@
 ---
 name: "Update 命令"
 description: "`wave update` 检查并安装最新版：支持 npm/pnpm/yarn、npmmirror 镜像回退与 Windows 分离进程后台更新"
-order: 200
+order: 120
 ---
 
 # 功能规格说明：更新命令

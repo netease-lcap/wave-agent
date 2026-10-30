@@ -148,7 +148,7 @@ test.describe("Desktop Diff Pane Screenshots", () => {
     // ── 2. Right-click an added line → 「添加评论」 ─────────────────
     // The line `+  const handleSubmit = (e: React.FormEvent) => {` is new line
     // 14 (the hunk starts at new line 12). Commenting is a gesture, not a
-    // hover-revealed "+" in a reserved gutter (spec desktop-panels.md
+    // hover-revealed "+" in a reserved gutter (spec desktop-diff-panel.md
     // 「差异面板行评论」): right click a line for a one-item menu, or select
     // several lines and take the button that follows the selection — which is
     // what lets line numbers sit flush against the left edge.

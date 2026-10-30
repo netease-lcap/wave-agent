@@ -163,7 +163,7 @@ test.describe("Desktop panel divider drag (real geometry)", () => {
     const S0 = await slotWidth(page);
     await page.getByTestId("panel-tab-close-diff-1").click();
 
-    // Closing the last tab takes the slot down with it (spec desktop-panels.md
+    // Closing the last tab takes the slot down with it (spec desktop-right-panel.md
     // 场景 10 — no empty-state leftover); the user re-enters the empty state by
     // explicitly expanding the panel again.
     await expect(page.getByTestId("desktop-panel-slot")).toBeHidden();

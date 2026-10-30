@@ -189,7 +189,7 @@ async function acceptWhatAppears(document, before) {
 
 async function openSession() {
   // Completion borrows the chat session's model config, so a session must
-  // exist before any suggestion can be produced (docs/specs/ui/code-completion.md).
+  // exist before any suggestion can be produced (docs/specs/ide/code-completion.md).
   await vscode.commands.executeCommand("wave-code.openChatSidebar");
   await sleep(SESSION_READY_MS);
 }

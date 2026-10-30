@@ -377,7 +377,7 @@ class StdioAgent(
      * One inline (ghost-text) completion for the editor. Session-scoped on
      * purpose: the completion model and the gateway credentials are resolved
      * inside this session, and the CLI supersedes this session's previous
-     * in-flight request (spec docs/specs/ui/code-completion.md).
+     * in-flight request (spec docs/specs/ide/code-completion.md).
      */
     suspend fun getCompletion(params: JsonObject): JsonObject? =
         client.request("getCompletion", params, sessionId)?.jsonObject
@@ -404,7 +404,7 @@ class StdioAgent(
     /**
      * 下一步编辑建议：模型看一段编辑轨迹 + 光标附近的窗口，回答「这几行改成什么」。
      * Session-scoped 与补全同因（模型、开关、凭证都在这个会话里），同样由 CLI 端保证
-     * 与补全互斥（spec docs/specs/ui/next-edit-suggestion.md 故事 5）。
+     * 与补全互斥（spec docs/specs/ide/next-edit-suggestion.md 故事 5）。
      */
     suspend fun getNextEdit(params: JsonObject): JsonObject? =
         client.request("getNextEdit", params, sessionId)?.jsonObject

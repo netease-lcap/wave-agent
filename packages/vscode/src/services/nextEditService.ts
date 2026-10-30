@@ -12,7 +12,7 @@ import {
 
 /**
  * Tuning knobs for next-edit suggestions. Defaults come from
- * `docs/specs/ui/next-edit-suggestion.md`; the window size follows Continue's
+ * `docs/specs/ide/next-edit-suggestion.md`; the window size follows Continue's
  * `core/nextEdit/` (the only complete open implementation), which predicts only
  * within a few lines of the caret.
  */

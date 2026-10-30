@@ -5,7 +5,7 @@
  * Releases.
  *
  * The host drives the S0–S6 update button state machine (spec
- * desktop-account-and-settings.md「账户卡片 · 更新按钮状态机」): a check only
+ * desktop-account.md「账户卡片 · 更新按钮状态机」): a check only
  * *announces* an update (`update-available` → status idle, the card shows the
  * 更新 button); the download starts only after the user confirms in the S2
  * dialog (`startDownload`, which the host precedes by pushing status
@@ -34,7 +34,7 @@ export type UpdateCheckOutcome = "update" | "no-update" | "error";
 /** Outcome plus the feed's latest version as reported by electron-updater.
  *  `feedVersion` is set whenever the provider answered (update or no-update) —
  *  the host compares it against the installed version to tell "正式未追平已装
- *  测试版" from "已是最新" (spec desktop-shell「接收 Beta 版更新」场景 5). */
+ *  测试版" from "已是最新" (spec desktop-distribution「接收 Beta 版更新」场景 5). */
 export interface UpdateCheckResult {
   outcome: UpdateCheckOutcome;
   feedVersion?: string;
@@ -88,7 +88,7 @@ export class AutoUpdaterService {
       // 语义比较：仅当 feed 版本高于已装版本才算 update。feed 版本低于/等于
       // 已装版本一律 no-update —— 曾接收测试版、正式 feed 尚未追平时返回
       // no-update + feedVersion，宿主据此提示「正式版发布后将自动更新」，绝不
-      // 误报更新让用户降级（spec desktop-shell「接收 Beta 版更新」场景 5）。
+      // 误报更新让用户降级（spec desktop-distribution「接收 Beta 版更新」场景 5）。
       const installed = parseVersion(app.getVersion());
       const feed = version ? parseVersion(version) : null;
       if (version && installed && feed) {

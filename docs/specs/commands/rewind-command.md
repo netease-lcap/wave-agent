@@ -1,7 +1,7 @@
 ---
 name: "Rewind 命令"
 description: "`/rewind` 从检查点列表回退对话与文件变更，保留会话标题与文件级元数据"
-order: 100
+order: 30
 ---
 
 # 功能规格说明：Rewind 命令

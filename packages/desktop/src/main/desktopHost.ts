@@ -437,7 +437,7 @@ export class DesktopHost {
   /** electron-updater path, created lazily once a serverUrl is configured. */
   private autoUpdaterService: AutoUpdaterService | null = null;
   /**
-   * 更新按钮状态机 (spec desktop-account-and-settings.md「账户卡片 · 更新按钮状态机
+   * 更新按钮状态机 (spec desktop-account.md「账户卡片 · 更新按钮状态机
    * S0–S6」) 的宿主侧状态：electron-updater 事件 → `update.status` 随
    * desktopAccountInfo 推送。null = 无更新可知 (S0)；status 流转
    * idle(已发现未下载) → downloading(用户 S2 确认后) → ready(下载完成)。
@@ -470,7 +470,7 @@ export class DesktopHost {
   /** 60s 账户用量轮询 (spec 场景 8). Static so tests can shrink or disable it. */
   private static accountPollIntervalMs = 60_000;
   private accountPollTimer: NodeJS.Timeout | null = null;
-  /** 1h 更新检查轮询 (spec desktop-shell「桌面端自动更新」场景 11): 应用长期
+  /** 1h 更新检查轮询 (spec desktop-distribution「桌面端自动更新」场景 11): 应用长期
    *  运行也能发现新版本。Static so tests can shrink or disable it. */
   private static updatePollIntervalMs = 60 * 60 * 1000;
   private updatePollTimer: NodeJS.Timeout | null = null;
@@ -985,7 +985,7 @@ export class DesktopHost {
   }
 
   /**
-   * 每 1h 轮询更新（spec desktop-shell「桌面端自动更新」场景 11）：应用持续
+   * 每 1h 轮询更新（spec desktop-distribution「桌面端自动更新」场景 11）：应用持续
    * 运行（不退出/不重启）也能发现新版本。复用自动检查路径
    * handleCheckForUpdates(false) —— 只查不下载不安装（autoDownload=false，
    * 发现更新只置 idle → S1「更新」按钮），失败与启动自动检查一样静默。与
@@ -1246,7 +1246,7 @@ export class DesktopHost {
 
     entry.initPromise = (async () => {
       // Remote hosts run THIS app's bundled CLI, pushed over ssh when stale
-      // (spec: desktop-shell.md 「CLI 版本保障」). The upgrade target is the
+      // (spec: desktop-distribution.md 「CLI 版本保障」). The upgrade target is the
       // bundled CLI's own wave-code version — decoupled from the GUI version,
       // which may bump without a matching npm wave-code release.
       const daemonSocket = await ensureRemoteDaemon(
@@ -2775,7 +2775,7 @@ export class DesktopHost {
    * 通道：桌面端的 root 实例渲染窗口壳/侧边栏/设置页，而 root 在分屏 rows 可见时
    * 不消费带 paneId 的 setInitialState（forThisPane），所以这些值放进 pane 快照
    * 就永远送不到真正使用它们的实例（症状=重启后「接收 Beta 版更新」开关回落到
-   * 默认关闭、主题选中项回落到跟随系统，spec desktop-shell「接收 Beta 版更新」
+   * 默认关闭、主题选中项回落到跟随系统，spec desktop-distribution「接收 Beta 版更新」
    * 场景 3 /「主题设置」场景 1）。因此 theme/updateChannel/全局配置一律走窗口级：
    * desktopThemeChange / desktopThemeSource / desktopUpdateChannel /
    * configurationResponse。
@@ -3544,7 +3544,7 @@ export class DesktopHost {
       // -- desktop lifecycle & workdir management (FR-001/002/003) -----
       case "desktopReady":
         // The welcome / empty state lives inside the split layout now (spec
-        // desktop-layout.md「启动即单个分屏」) — push the single unbound pane
+        // desktop-split-pane.md「启动即单个分屏」) — push the single unbound pane
         // first so the webview never renders the pre-pane layout, then report
         // the workdir (per-launch only, never persisted — a fresh launch always
         // starts at the placeholder until the user picks a directory).
@@ -3806,12 +3806,12 @@ export class DesktopHost {
       // the host that owns the repository — the same RPC the other git
       // queries use, so a remote session does the work in its remote daemon
       // instead of the desktop shelling out over ssh once per git command and
-      // once per changed file (spec desktop-sessions.md scenario 14).
+      // once per changed file (spec desktop-remote.md scenario 14).
       case "desktopGetWorkspaceDiff": {
         const paneAgent = this.agentForPane(pid);
         const host = this.hostForAgent(paneAgent);
         // The session's workspace root, not its live cwd: a bash `cd` must not
-        // re-point the panel at another repository (spec desktop-panels.md
+        // re-point the panel at another repository (spec desktop-diff-panel.md
         // 「会话变更差异面板」场景 14), while EnterWorktree does (场景 15).
         const cwd =
           (paneAgent ? this.workspaceRootOf(paneAgent) : undefined) ??
@@ -4907,7 +4907,7 @@ export class DesktopHost {
    * unreadable directory is the bridge's explicit verdict (`false`); anything
    * else — tunnel dropped, daemon gone, client not initialized — is a
    * transport failure and throws `RemoteHostUnreachableError`, where the
-   * directory's existence is simply unknown (desktop-sessions.md「远端主机不可
+   * directory's existence is simply unknown (desktop-remote.md「远端主机不可
    * 达时不得删除会话/最近目录」).
    */
   private async pathExistsOn(host: string, dir: string): Promise<boolean> {
@@ -4995,7 +4995,7 @@ export class DesktopHost {
     }
     this.hostState.set(pid, host);
     // The picker's default workdir is the new host's first recent directory
-    // (desktop-sessions.md「SSH 远程主机」scenario 23). A released or never-bound pane still holds
+    // (desktop-remote.md「SSH 远程主机」scenario 23). A released or never-bound pane still holds
     // the previous host's directory in both the host-side current workdir and
     // the webview's state.workdir — clear both so the picker falls back to the
     // new host's recents[0] instead of showing a stale path from another host.
@@ -5054,7 +5054,7 @@ export class DesktopHost {
     this.hostState.set(pid, name);
     // Same as handleSelectHost: with no bound agent the pane is still the
     // new-session picker, so clear the previous host's workdir from both the
-    // host-side state and the webview (desktop-sessions.md「SSH 远程主机」scenario 23).
+    // host-side state and the webview (desktop-remote.md「SSH 远程主机」scenario 23).
     if (!this.agentForPane(pid)) {
       this.workdir = undefined;
       this.postMessage({
@@ -5099,7 +5099,7 @@ export class DesktopHost {
       exists = await this.pathExistsOn(host, path);
     } catch (error) {
       // Host unreachable — not a "directory missing" verdict, so don't claim
-      // the path doesn't exist (desktop-sessions.md「远端主机不可达时不得删除会
+      // the path doesn't exist (desktop-remote.md「远端主机不可达时不得删除会
       // 话/最近目录」).
       if (!(error instanceof RemoteHostUnreachableError)) throw error;
       this.showToast({ message: `无法连接主机 ${host}，目录未校验` });
@@ -5529,7 +5529,7 @@ export class DesktopHost {
     } catch (error) {
       if (!(error instanceof RemoteHostUnreachableError)) throw error;
       // Unreachable says nothing about the directory — never treat it as
-      // missing, and never touch the index (desktop-sessions.md「远端主机不可
+      // missing, and never touch the index (desktop-remote.md「远端主机不可
       // 达时不得删除会话」).
       this.showToast({
         message: `无法连接主机 ${host}，会话未切换，可稍后重试`,
@@ -5611,7 +5611,7 @@ export class DesktopHost {
       } catch (error) {
         // Host unreachable — the probe says nothing about whether the
         // worktree/session still exists, so the index entry must NOT be
-        // removed (desktop-sessions.md「远端主机不可达时不得删除会话/最近目
+        // removed (desktop-remote.md「远端主机不可达时不得删除会话/最近目
         // 录」).
         // Drop the overlay, fall back to the previous agent, keep the entry
         // for a retry once the host is back.
@@ -6300,7 +6300,7 @@ export class DesktopHost {
   /** Lazily create the electron-updater service bound to the S0–S6 state
    *  machine: electron-updater events map to `update.status` pushes (no
    *  toasts — the account-card button owns the whole download/restart flow,
-   *  spec desktop-account-and-settings.md「账户卡片 · 更新按钮状态机」). */
+   *  spec desktop-account.md「账户卡片 · 更新按钮状态机」). */
   private ensureAutoUpdaterService(): AutoUpdaterService {
     if (this.autoUpdaterService) return this.autoUpdaterService;
     this.autoUpdaterService = new AutoUpdaterService({
@@ -6404,7 +6404,7 @@ export class DesktopHost {
         if (!manual) return;
         // 已装版本高于 stable feed 最新（切回正式后，正式尚未追平曾接收的
         // 测试版号）→ 提示等待正式发布，不降级、不改查 beta feed（spec
-        // desktop-shell「接收 Beta 版更新」场景 5）；其余情况提示已是最新。
+        // desktop-distribution「接收 Beta 版更新」场景 5）；其余情况提示已是最新。
         const installed = parseVersion(app.getVersion());
         const feed = parseVersion(result.feedVersion ?? "");
         if (
@@ -6426,13 +6426,13 @@ export class DesktopHost {
     }
 
     // 未登录（无 serverUrl）：不执行任何更新检查（2026-09-09 拍板，spec
-    // desktop-shell「桌面端自动更新」场景 2）——启动自动检查静默，手动检查
+    // desktop-distribution「桌面端自动更新」场景 2）——启动自动检查静默，手动检查
     // 引导登录。
     if (manual) this.showToast({ message: "登录后可检查更新" });
   }
 
   /** 设置页「接收 Beta 版更新」开关（webview setUpdateChannel）→ 持久化 +
-   *  广播回写 + 按新 feed 即时重查一次（spec desktop-shell「接收 Beta 版更新」
+   *  广播回写 + 按新 feed 即时重查一次（spec desktop-distribution「接收 Beta 版更新」
    *  场景 3：切换即时重查；关闭后正式未追平时给等待提示，见 handleCheckForUpdates）。 */
   private async handleSetUpdateChannel(raw: string): Promise<void> {
     const channel: UpdateChannel = raw === "beta" ? "beta" : "stable";
