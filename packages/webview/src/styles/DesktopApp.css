@@ -1513,7 +1513,9 @@ body.is-panel-resizing webview {
 }
 
 /* Blank-tab placeholder over the webview body (spec scenario 5).
-   提示文案 14px 与文件/计划 pane 空态一致（评论 2026-09）。 */
+   提示文案 14px 与文件/计划 pane 空态一致（评论 2026-09）。
+   图标↔文案间距 8 → 12（设计师 2026-10-30 空态体检报告第 2 条：四块内容型
+   空态里只有预览是 8，计划/文件/创作集都是 12）。 */
 .preview-tab-new {
   position: absolute;
   inset: 0;
@@ -1521,15 +1523,16 @@ body.is-panel-resizing webview {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 12px;
   font-size: 14px;
   color: var(--vscode-descriptionForeground, #999);
   background: var(--vscode-editor-background);
 }
 
-.preview-tab-new-icon {
-  opacity: 0.4;
-}
+/* 图标不再压 0.4 透明度（设计师 2026-10-30 空态体检报告第 1 条：全仓唯一挂
+   透明度的空态图标，有效色 #BFBFBF 只有 1.83:1 / 深 2.20:1，而同族三块是
+   6.29 / 7.49）。去掉后图标与文案同色，四块浓度一致。
+   —— 类名保留：TSX 上仍挂着 `preview-tab-new-icon`，作为该图标的落点标识。 */
 
 /* 显示态地址栏：与编辑态 input 同几何的纯文字胶囊（Figma 13438:7439 地址
    胶囊 26 高 / r8 / pad 0 8 / 14px·22，无前置图标），一眼可辨是可点击编辑的

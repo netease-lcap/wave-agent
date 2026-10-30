@@ -497,8 +497,10 @@
 }
 
 /* 空态引导行：字号跟上面那行标题一致（14px，原来 12px —— 设计师 1029 评论
-   「字号参考」指的是标题那一行）。字色不动：标题继承 .desktop-panel-placeholder
-   的描述色，这里走 --cc-text-secondary。 */
+   「字号参考」指的是标题那一行）。字色与图标同源：都吃 .desktop-panel-placeholder
+   继承下来的 --vscode-descriptionForeground。桌面端不再单独指认 --cc-text-secondary
+   （1030 空态体检第 4 条：那条指认让同一块里图标 #606060 / 文案 #6C7076 两种灰；
+   浅色档补了 descriptionForeground 桥接后两者本来就同值，指认已多余）。 */
 .file-pane-placeholder-hint {
   font-size: 14px;
   color: var(--vscode-descriptionForeground, #8b9099);

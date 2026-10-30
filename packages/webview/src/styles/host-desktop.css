@@ -2206,10 +2206,37 @@
   border-color: transparent;
   color: var(--cc-text-primary);
 }
+/* ═══ 1030 空态体检第 3 条：空态的图标与文案统一走自家次要色 ═══
+   设计师 2026-10-30：「浅色档空态色其实没有绑定自家 token」。
+   根因：浅色变量块（`:root[data-host][data-theme="light"]`）**没有**桥
+   `--vscode-descriptionForeground`，只有深色块桥到 `--cc-text-secondary`。
+   于是浅色档下空态落宿主注入值（实测 #606060，随宿主主题漂移），深色才是
+   #A0A5A8 —— 同一组件两模式不同源，也绕开了 0916/0917 那批「图标/文字统一
+   到 --cc-text-*」的收口。
+
+   **为什么只用作用域、不在浅色块里做全局桥接**（这点重要，别顺手改成全局）：
+   全局桥接（`--vscode-descriptionForeground: var(--cc-text-secondary)` 写进
+   浅色块）会让浅色档**所有**吃该变量的地方一起变浅，实测连带 3 处控件从
+   #606060 → #6C7076 后掉到 **4.44:1**（`.diff-view-option` 的「并排」「未提交
+   改动」12px·500、`.artifacts-segment-btn` 的「自定义视图」14px·500 —— 它们
+   压在 `--cc-fill` 灰面上，本来只是勉强过线）。那属于分段控件、不是空态，不在
+   本轮范围内；要动应把它们换到 `--cc-text-regular`（#565A60），需另行确认。
+   所以这里把桥接收在空态族本身（元素级声明，覆盖 :root 继承），影响面 = 空态
+   与占位，其余宿主色消费点一律不动。 */
+[data-host="desktop"][data-theme="light"] .preview-tab-new,
+[data-host="desktop"][data-theme="light"] .desktop-panel-placeholder,
+[data-host="desktop"][data-theme="light"] .desktop-panel-empty,
+[data-host="desktop"][data-theme="light"] .artifacts-state,
+[data-host="desktop"][data-theme="light"] .file-pane-status--deleted,
+[data-host="desktop"][data-theme="light"] .file-pane-status--error,
+[data-host="desktop"][data-theme="light"] .file-pane-status--failed,
+[data-host="desktop"][data-theme="light"] .file-pane-status--loading {
+  --vscode-descriptionForeground: var(--cc-text-secondary);
+}
+
 [data-host="desktop"] .file-pane-find-count,
 [data-host="desktop"] .file-pane-find-note,
-[data-host="desktop"] .file-pane-goto-sep,
-[data-host="desktop"] .file-pane-placeholder-hint {
+[data-host="desktop"] .file-pane-goto-sep {
   color: var(--cc-text-secondary);
 }
 [data-host="desktop"] .file-pane-find-count--error,
