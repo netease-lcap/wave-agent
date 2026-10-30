@@ -38,6 +38,19 @@
   flex: 1;
   min-height: 100%;
   gap: 8px;
+  /* 1030 追问（设计师点 `div.file-pane-scroll`「点击目录树中的文件，或点击消息里的
+     文件路径」）：「为什么这里默认打开有滚动条，没有做高度响应嘛」。
+     容器本身是响应式的（`.file-pane-scroll` = `flex:1; min-height:0; overflow:auto`，
+     实测 clientHeight 865 = 内容区高），滚动条来自这一块自己：`min-height:100%`
+     让元素盒先取满 865，而 base 的 `.desktop-panel-placeholder` 是
+     `padding:16px` + content-box ⇒ 盒高 865 + 32 = 897 ⇒ 恰好溢出 32px，
+     于是空态（内容只有 24 图标 + 一行 14px 文案）也永远挂着竖滚动条；
+     连带效果是竖排居中按 897 算，图标/文案比可视中心低 16px。
+     同一坑上一批在 `.file-pane-status--deleted` 已经踩过（host-desktop.css:6324
+     「content-box 下元素高 875 × 内容区 827 ⇒ 冒出滚动条」）。这里按同样理由补
+     border-box：`min-height:100%` 于是等于容器高，padding 收进盒内，溢出归零。
+     该规则在 base 文件里，IDE / 插件端同款空态一并修好。 */
+  box-sizing: border-box;
 }
 
 /* 文件 pane 空态（评论 2026-09：图标在上、文案在下，图标 24px）：
