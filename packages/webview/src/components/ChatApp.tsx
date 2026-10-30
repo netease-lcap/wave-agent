@@ -5434,9 +5434,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             : undefined
         }
         headerActions={headerActions}
-        // 三端共用的头部标题即重命名入口（spec session-management.md「会话重命名
-        // 入口：CLI 与 IDE 插件」场景 8 / desktop-sessions.md 同故事）。
-        onRenameSession={renameSessionFromHeader}
+        // 头部标题就地改名只给 IDE 插件（spec session-management.md「会话重命名
+        // 入口：CLI 与 IDE 插件」场景 8/9/10）。桌面端不传 —— 桌面端的改名入口是
+        // 侧边栏会话行菜单的「重命名」弹窗（spec session-management.md 平台边界、
+        // desktop-sessions.md「会话重命名」场景 1/2）。设计师 2026-10-30 预览评论：
+        // 「这里的重命名功能可以拿掉」。不传 ⇒ `canRename` 为假 ⇒ 标题退回纯展示
+        // （无 role/tabIndex/hover 高亮，也不再是 tab 停靠点），标题文字不变。
+        onRenameSession={isDesktop ? undefined : renameSessionFromHeader}
       />
       {isDesktop ? (
         <div
