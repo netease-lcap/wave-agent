@@ -6,7 +6,7 @@ import React, {
   useState,
 } from "react";
 import type { OpenFileTab } from "../types";
-import { fileName } from "../utils/fileTabs";
+import { fileTabLabels } from "../utils/fileTabs";
 import { baseNameOf } from "../utils/fileTreePaths";
 import { CloseIcon, MoreIcon } from "./HeaderIcons";
 import { CloseTabIcon } from "./CloseTabIcon";
@@ -18,6 +18,8 @@ import { useClickOutside } from "../utils/useClickOutside";
 export interface FileTabStripProps {
   files: OpenFileTab[];
   activeFileId?: string;
+  /** 工作目录：把绝对路径折成相对路径，重名后缀与悬浮提示都用它。 */
+  workdir?: string;
   /** Activate a file. Re-activating the active one re-reads it (scenario 12). */
   onActivate: (fileId: string) => void;
   onClose: (fileId: string) => void;
@@ -42,6 +44,7 @@ type MenuState = { fileId: string; x: number; y: number } | null;
 export const FileTabStrip: React.FC<FileTabStripProps> = ({
   files,
   activeFileId,
+  workdir,
   onActivate,
   onClose,
   onCloseOthers,
@@ -66,32 +69,17 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
     right: number;
   } | null>(null);
 
-  // Duplicate names need their relative path to be told apart (scenario 4);
-  // unique names show the bare file name.
-  //
-  // ⚠️ 待开发确认（设计师 2026-10-30 预览评论）：同名这一支退化成 `file.path`
-  // （`OpenFileTab` 只存绝对路径），于是标签上出现「/Users/ailsa/Documents/07-AI/
-  // C…」这种绝对路径 —— 实测 src/index.ts + lib/index.ts 两个标签各 214px、被
-  // 200px 上限截断。规格（docs/specs/desktop/desktop-file-panel.md:204）要求「改用
-  // 各自相对路径」（`src/index.ts` / `lib/index.ts`）。webview 已有 `toRelativePath`
-  // （utils/messageUtils.ts，地址栏就是用它算 `docs/api.md`），`FilePane` 也持有
-  // `workdir`，只是没有透传进来。口径确认后再改，本轮不动。
-  const labels = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const file of files) {
-      const name = fileName(file.path);
-      counts.set(name, (counts.get(name) ?? 0) + 1);
-    }
-    return new Map(
-      files.map((file) => {
-        const name = fileName(file.path);
-        return [
-          file.id,
-          (counts.get(name) ?? 0) > 1 ? file.path : name,
-        ] as const;
-      }),
-    );
-  }, [files]);
+  // 场景 4：正文永远是文件名，同名文件才在名字后面追加一段灰色小字 —— 能把彼此
+  // 区分开的最短目录尾巴（`index.ts src` / `index.ts test`），而不是整条相对路径。
+  // 目录部分因此不占标签宽度，区分点还紧贴名字，被 200px 上限截断时也先保住它。
+  const labels = useMemo(
+    () =>
+      fileTabLabels(
+        files.map((file) => file.path),
+        workdir,
+      ),
+    [files, workdir],
+  );
 
   // New tab (or switch) must be visible: scroll the active tab into range.
   useEffect(() => {
@@ -179,6 +167,7 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
       >
         {files.map((file) => {
           const active = file.id === activeFileId;
+          const label = labels.get(file.path);
           return (
             <div
               key={file.id}
@@ -188,7 +177,7 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
               aria-selected={active}
               tabIndex={active ? 0 : -1}
               className={`file-tab${active ? " file-tab--active" : ""}${file.deleted ? " file-tab--deleted" : ""}`}
-              title={file.path}
+              title={label?.relativePath ?? file.path}
               onClick={() => onActivate(file.id)}
               onContextMenu={(event) => {
                 event.preventDefault();
@@ -233,7 +222,16 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
                   aria-hidden="true"
                 />
               )}
-              <span className="file-tab-name">{labels.get(file.id)}</span>
+              <span className="file-tab-name">
+                {label?.name ?? baseNameOf(file.path)}
+                {label?.suffix && (
+                  <span className="file-tab-name-suffix">
+                    {/* 逗号只给读屏：视觉上是并排的两段（名字 / 灰色后缀）。 */}
+                    <span className="file-tab-name-sep">, </span>
+                    {label.suffix}
+                  </span>
+                )}
+              </span>
               {file.deleted && (
                 <span className="file-tab-deleted-tag">已删除</span>
               )}
@@ -241,7 +239,7 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
                 type="button"
                 className="file-tab-close"
                 data-testid="file-tab-close"
-                aria-label={`关闭 ${fileName(file.path)}`}
+                aria-label={`关闭 ${label?.name ?? baseNameOf(file.path)}`}
                 onClick={(event) => {
                   event.stopPropagation();
                   onClose(file.id);
@@ -297,22 +295,34 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
                 {hiddenFiles.length === 0 && (
                   <div className="file-tab-more-empty">没有收起的文件</div>
                 )}
-                {hiddenFiles.map((file) => (
-                  <button
-                    key={file.id}
-                    type="button"
-                    role="menuitem"
-                    className="file-tab-more-item"
-                    data-testid="file-tab-more-item"
-                    title={file.path}
-                    onClick={() => {
-                      setMoreOpen(false);
-                      onActivate(file.id);
-                    }}
-                  >
-                    {labels.get(file.id) ?? baseNameOf(file.path)}
-                  </button>
-                ))}
+                {hiddenFiles.map((file) => {
+                  const label = labels.get(file.path);
+                  return (
+                    <button
+                      key={file.id}
+                      type="button"
+                      role="menuitem"
+                      className="file-tab-more-item"
+                      data-testid="file-tab-more-item"
+                      title={label?.relativePath ?? file.path}
+                      onClick={() => {
+                        setMoreOpen(false);
+                        onActivate(file.id);
+                      }}
+                    >
+                      {/* 两排：名字 / 所在目录。菜单里不需要标签带那段最短后缀 ——
+                          整条目录已经摆在第二排，再叠后缀就成了 `liblib`。 */}
+                      <span className="file-tab-more-item-name">
+                        {label?.name ?? baseNameOf(file.path)}
+                      </span>
+                      {label?.dir && (
+                        <span className="file-tab-more-item-dir">
+                          {label.dir}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>,
               document.body,
             )}

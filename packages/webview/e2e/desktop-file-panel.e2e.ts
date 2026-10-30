@@ -512,4 +512,58 @@ test.describe("Desktop file panel", () => {
     ).toBeVisible();
     await expect(webviewPage.getByTestId("file-pane-edit")).toHaveCount(0);
   });
+
+  // 场景 4：同名文件的标签只追加「最短可区分目录后缀」，整条路径不进标签
+  // （设计师反馈的正是绝对路径被 200px 上限截断成全同的前缀）。
+  test("duplicate names get a short directory suffix, never a path", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    const srcIndex = `${DIR_A}/src/index.ts`;
+    const libIndex = `${DIR_A}/lib/index.ts`;
+    const unique = `${DIR_A}/README.md`;
+
+    await injector.simulateExtensionMessage("desktopWorkdirState", {
+      workdir: DIR_A,
+      recentWorkdirs: [DIR_A],
+    });
+    await injector.waitForChatAppReady();
+    await injector.simulateExtensionMessage("setInitialState", initialState);
+    await injector.updateMessages([
+      MockDataGenerator.createUserMessage("看几个文件", "msg-u1"),
+      ...[srcIndex, libIndex, unique].map((filePath, index) =>
+        MockDataGenerator.createAssistantMessageWithTool(
+          `第 ${index + 1} 个`,
+          READ_TOOL_NAME,
+          JSON.stringify({ file_path: filePath }),
+          "读取完成",
+        ),
+      ),
+    ]);
+
+    const pathLinks = webviewPage.locator(".write-tool-path");
+    for (const [index, filePath] of [srcIndex, libIndex, unique].entries()) {
+      await pathLinks.nth(index).click();
+      await injector.simulateExtensionMessage("desktopFileContent", {
+        fileView: {
+          path: filePath,
+          host: "local",
+          loading: false,
+          content: `// ${filePath}\n`,
+        },
+      });
+      await expect(webviewPage.getByTestId("file-tab")).toHaveCount(index + 1);
+    }
+
+    const tabs = webviewPage.getByTestId("file-tab");
+    // 读屏念作「index.ts, src」：名字 + 灰色小字后缀，同行。
+    await expect(tabs.nth(0)).toContainText("index.ts, src");
+    await expect(tabs.nth(1)).toContainText("index.ts, lib");
+    // 唯一文件名不加后缀；绝对路径一个字符都不进标签。
+    await expect(tabs.nth(2)).toHaveText("README.md");
+    await expect(tabs.nth(0)).not.toContainText(DIR_A);
+    // 悬浮给相对路径（不是绝对路径）。
+    await expect(tabs.nth(0)).toHaveAttribute("title", "src/index.ts");
+  });
 });
