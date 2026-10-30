@@ -92,6 +92,16 @@ export class PrintOutput {
   private readonly toolCalls = new Map<string, ToolCallRecord>();
   private readonly errors: string[] = [];
   private numTurns = 0;
+  /**
+   * init 之前写出的事件先存这里，`init()` 时先写 init 再按序补上。
+   *
+   * `Agent.create()` 期间就可能落事件：初始化阶段加的错误块会走
+   * `onErrorBlockAdded`（真机：`-r <非法 session id>` 时 `initializationService`
+   * 抛错前先落了一个错误块），而 init 只能等 agent 建好才有 session/model 可报。
+   * 不缓冲的话首行会是 error，按首行判类型的消费方就判错了。
+   */
+  private pendingBeforeInit: string[] = [];
+  private initWritten = false;
 
   constructor(options: PrintOutputOptions) {
     this.format = options.format;
@@ -103,18 +113,23 @@ export class PrintOutput {
     return this.format !== "text";
   }
 
-  /** 首事件（只有 stream-json 有）。必须在 `sendMessage` 之前调用。 */
+  /** 首事件（只有 stream-json 有）。必须在创建阶段的输出之后、运行输出之前调用。 */
   init(snapshot: PrintSessionInit): void {
     if (this.format !== "stream-json") return;
-    this.writeEvent({
-      type: "system",
-      subtype: "init",
-      session_id: snapshot.sessionId,
-      model: snapshot.model,
-      cwd: snapshot.cwd,
-      permission_mode: snapshot.permissionMode,
-      tools: snapshot.tools,
-    });
+    this.initWritten = true;
+    this.writeStdout(
+      JSON.stringify({
+        type: "system",
+        subtype: "init",
+        session_id: snapshot.sessionId,
+        model: snapshot.model,
+        cwd: snapshot.cwd,
+        permission_mode: snapshot.permissionMode,
+        tools: snapshot.tools,
+      }) + "\n",
+    );
+    for (const line of this.pendingBeforeInit) this.writeStdout(line);
+    this.pendingBeforeInit = [];
   }
 
   /** 人读输出：text 模式写 stdout，结构化模式丢弃（信息已在事件里）。 */
@@ -248,7 +263,7 @@ export class PrintOutput {
       // 失败版没有 result（对齐 CC 的错误版）；成功版即使为空也给空串
       ...(isError ? {} : { result: resultText }),
     };
-    if (this.structured) this.writeEvent(envelope);
+    if (this.structured) this.writeEvent(envelope, false);
     return envelope;
   }
 
@@ -278,8 +293,19 @@ export class PrintOutput {
     return record;
   }
 
-  private writeEvent(event: object): void {
-    this.writeStdout(JSON.stringify(event) + "\n");
+  private writeEvent(event: object, bufferable = true): void {
+    const line = JSON.stringify(event) + "\n";
+    // 只有 stream-json 有 init，也只有它需要等 init 排在前面。
+    if (this.format === "stream-json" && !this.initWritten) {
+      if (bufferable) {
+        this.pendingBeforeInit.push(line);
+        return;
+      }
+      // 不会再等 init 了（建 agent 就失败）：把押后的事件按序放出来，别丢。
+      for (const pending of this.pendingBeforeInit) this.writeStdout(pending);
+      this.pendingBeforeInit = [];
+    }
+    this.writeStdout(line);
   }
 }
 

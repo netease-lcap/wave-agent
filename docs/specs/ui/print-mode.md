@@ -90,12 +90,13 @@ order: 110
 3. **假设** `--output-format json`，**当** 运行本身失败（建 agent 或发送消息抛错）时，**则** stdout 上仍输出一条 `subtype: "error_during_execution"`、`is_error: true` 的 result 对象——**不带 `result` 字段**，失败原因放在必填的 `errors` 里（与 Claude Code 的错误版一致），进程退出码为 1。
 4. **假设** 任一格式，**当** 运行结束时错误块非空、且主 agent **一句话正文都没产出**（典型来源：模型不可用、鉴权被拒——这类请求级错误不抛出，只落一个错误块）时，**则** 判为运行失败：`subtype: "error_during_execution"`、`is_error: true`、退出码 1（纯文本模式同样按此退出码收尾）。
 5. **假设** `--output-format stream-json`，**当** 运行时，**则** stdout 每行一个 JSON 事件，首行为 `system/init`（含 `session_id`、`model`、`cwd`、`permission_mode`、`tools`），其后按发生顺序是 `assistant/reasoning_delta`、`assistant/content_delta`、`tool/start`、`tool/end`、`error`，最后一行为与场景 1 结构相同的 `result` 事件。
-6. **假设** `--output-format stream-json`，**当** 流式内容到达时，**则** 文本事件携带的是**增量**（delta），不是累积快照，消费方拼接即得完整文本。
-7. **假设** 任一结构化格式，**当** 进程退出时，**则** stdout 上已排队的 JSON 全部写完（管道消费方不会读到截断的末行）。
-8. **假设** 任一结构化格式，**当** 有代码往 stdout 写了非 JSON 的行（依赖库的 `console.log`、遗漏的调试输出）时，**则** 该行被转到 stderr 并带标记前缀，stdout 上的 NDJSON 流不被打断。
-9. **假设** 不指定 `--output-format`（默认 `text`），**当** 运行时，**则** 输出与既有纯文本行为完全一致：推理/响应标题、`🔧` 工具行、`❌` 错误行、`--show-stats` 的用量与耗时汇总都照旧写在 stdout。
-10. **假设** 结构化格式搭配 `--show-stats`，**当** 运行时，**则** 用量汇总与耗时写到 **stderr**，stdout 保持纯 JSON。
-11. **假设** 交互模式（没有 `-p`）下给了 `--output-format`，**当** 解析参数时，**则** 报错并以退出码 1 结束（该选项只对打印模式有意义）。
+6. **假设** `--output-format stream-json`，**当** 建 agent 阶段已经写出了一个事件（真机路径：`-r` 给了非法 session id，初始化在抛错前先落一个错误块）时，**则** 该事件不抢先写出——agent 建成功时它被押后到 `system/init` 之后、`system/init` 仍是首行；建 agent 直接失败、根本拿不到 `session_id` / `model` 时，流里没有 `system/init`，先出该事件、末行是 `result`。消费方不得把「读到 init」当作流已开始的唯一判据。
+7. **假设** `--output-format stream-json`，**当** 流式内容到达时，**则** 文本事件携带的是**增量**（delta），不是累积快照，消费方拼接即得完整文本。
+8. **假设** 任一结构化格式，**当** 进程退出时，**则** stdout 上已排队的 JSON 全部写完（管道消费方不会读到截断的末行）。
+9. **假设** 任一结构化格式，**当** 有代码往 stdout 写了非 JSON 的行（依赖库的 `console.log`、遗漏的调试输出）时，**则** 该行被转到 stderr 并带标记前缀，stdout 上的 NDJSON 流不被打断。
+10. **假设** 不指定 `--output-format`（默认 `text`），**当** 运行时，**则** 输出与既有纯文本行为完全一致：推理/响应标题、`🔧` 工具行、`❌` 错误行、`--show-stats` 的用量与耗时汇总都照旧写在 stdout。
+11. **假设** 结构化格式搭配 `--show-stats`，**当** 运行时，**则** 用量汇总与耗时写到 **stderr**，stdout 保持纯 JSON。
+12. **假设** 交互模式（没有 `-p`）下给了 `--output-format`，**当** 解析参数时，**则** 报错并以退出码 1 结束（该选项只对打印模式有意义）。
 
 ---
 

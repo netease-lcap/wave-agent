@@ -297,6 +297,43 @@ test("成功且无错误时 envelope 不带 errors 字段", () => {
   expect("errors" in out.json()[0]).toBe(false);
 });
 
+test("stream-json：init 之前产生的事件被押后，init 仍是首行", () => {
+  const out = collector();
+  const output = new PrintOutput({ format: "stream-json", write: out.write });
+
+  // 建 agent 阶段就会落事件（初始化失败的错误块走 onErrorBlockAdded）
+  output.error("Failed to restore session");
+  expect(out.lines()).toHaveLength(0);
+
+  output.init({
+    sessionId: "session-1",
+    model: "gpt-4",
+    cwd: "/repo",
+    permissionMode: "dontAsk",
+    tools: ["Bash"],
+  });
+
+  expect(
+    out.json().map((event) => `${event.type}/${event.subtype ?? ""}`),
+  ).toEqual(["system/init", "error/"]);
+});
+
+test("stream-json：没有 init（建 agent 就失败）时 result 照常写出", () => {
+  const out = collector();
+  const output = new PrintOutput({ format: "stream-json", write: out.write });
+
+  output.error("Agent.create failed");
+  output.result({ sessionId: "", durationMs: 5, usages: [], isError: true });
+
+  const events = out.json();
+  expect(events.map((event) => event.type)).toEqual(["error", "result"]);
+  expect(events[1]).toMatchObject({
+    type: "result",
+    subtype: "error_during_execution",
+    is_error: true,
+  });
+});
+
 test("stream-json：init 在首位，事件按发生顺序，末行是 result", () => {
   const out = collector();
   const output = new PrintOutput({ format: "stream-json", write: out.write });

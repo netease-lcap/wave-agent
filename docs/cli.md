@@ -483,7 +483,7 @@ jq -e '.subtype == "success"' result.json > /dev/null
 | `tool_calls`  | array    | `{id, name, input, success, error?}`，按调用顺序；**不含工具输出**（完整输出在会话记录里）                                   |
 | `errors`      | string[] | 仅在非空时出现：运行中的错误块（模型请求失败、hook 报错等）                                                                  |
 
-**`--output-format stream-json`**：每行一个 JSON 事件。首行是 `system/init`，末行是与上面结构相同的 `result`，中间按发生顺序是：
+**`--output-format stream-json`**：每行一个 JSON 事件。首行是 `system/init`（建 agent 阶段就产生的事件会被押后到它之后；若建 agent 直接失败则没有 init，流从 `error` 到 `result`），末行是与上面结构相同的 `result`，中间按发生顺序是：
 
 | `type` / `subtype`              | 主要字段                                                 |
 | ------------------------------- | -------------------------------------------------------- |
