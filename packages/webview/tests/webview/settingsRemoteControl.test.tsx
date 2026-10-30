@@ -60,6 +60,16 @@ async function typeAndSend(text: string) {
   fireEvent.keyDown(input, { key: "Enter" });
 }
 
+/** 活着的会话，只是还没有消息（页面能敲字的最小前提，见场景 14）。 */
+const EMPTY_PAGE_SESSION = {
+  id: "session-empty",
+  sessionType: "main" as const,
+  workdir: "/repo/app",
+  createdAt: new Date("2026-10-14T08:00:00Z"),
+  lastActiveAt: new Date("2026-10-14T09:00:00Z"),
+  latestTotalTokens: 0,
+};
+
 const sentActions = (vscode: ReturnType<typeof createMockVscode>) =>
   vscode.postMessage.mock.calls
     .map(
@@ -285,6 +295,17 @@ describe("设置页 · 远程控制选项卡", () => {
     // 普通消息发给模型 —— 与 `/plugin` `/mcp` 同一处置。
     window.waveRemotePage = true;
     const { vscode } = renderChatApp();
+    // 页面必须落在一条**活着的会话**上才敲得动字（机器上一条会话都没有时输入区
+    // 是禁用的，见 spec remote/remote-web.md「手机端的会话列表与删除」场景 14）。
+    await act(async () => {
+      sendHostMessage(
+        fixtures.setInitialState({
+          sessions: [EMPTY_PAGE_SESSION],
+          session: EMPTY_PAGE_SESSION,
+          messages: [],
+        }),
+      );
+    });
 
     await act(async () => {
       await typeAndSend("/remote-control");
