@@ -21,7 +21,7 @@ export class FileService {
       // Use searchFiles via stdio subprocess
       const result = (await this.utilityClient.request("searchFiles", {
         query: filterText || "",
-        maxResults: 20,
+        maxResults: 50,
         workdir: workspacePath,
       })) as { files: Array<{ path: string; type: string }> };
       const fileItems = result.files;

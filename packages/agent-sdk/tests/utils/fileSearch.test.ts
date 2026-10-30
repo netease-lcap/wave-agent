@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { searchFiles } from "../../src/utils/fileSearch.js";
+import { resetFileIndexCache } from "../../src/utils/fileIndex.js";
 import { spawn } from "child_process";
 import { EventEmitter } from "events";
 
@@ -38,9 +39,12 @@ describe("searchFiles", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    resetFileIndexCache();
   });
 
   const setupMockSpawn = (files: string[], exitCode = 0) => {
+    // Each case swaps the file list, so the cached index must not leak across.
+    resetFileIndexCache();
     vi.mocked(spawn).mockImplementation(() => {
       const mockStdout = new EventEmitter();
       const mockStderr = new EventEmitter();
@@ -90,6 +94,26 @@ describe("searchFiles", () => {
       "/mock/path/to/rg",
       expect.arrayContaining(["--files", "--color=never", "--hidden"]),
       expect.any(Object),
+    );
+  });
+
+  it("prunes .git and dependency directories inside ripgrep itself", async () => {
+    setupMockSpawn(mockFiles);
+
+    await searchFiles("some-pkg");
+
+    const [, args] = vi.mocked(spawn).mock.calls[0];
+    // `--hidden` keeps dotfiles in play, so the noise trees are excluded with
+    // `-g` (pruned during the walk) rather than filtered after the fact.
+    expect(args).toEqual(
+      expect.arrayContaining([
+        "-g",
+        "!.git",
+        "-g",
+        "!node_modules",
+        "-g",
+        "!dist",
+      ]),
     );
   });
 
