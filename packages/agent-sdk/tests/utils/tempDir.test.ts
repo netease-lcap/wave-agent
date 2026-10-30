@@ -82,7 +82,14 @@ describe("tempDir", () => {
     it("reads free space and inodes for an existing directory", () => {
       const pressure = readDiskPressure(writableDir);
       expect(pressure.freeBytes).toBeGreaterThanOrEqual(0);
-      expect(pressure.freeInodes).toBeGreaterThan(0);
+      if (process.platform === "win32") {
+        // NTFS keeps no inode table, so statfs reports ffree as 0 — treat that
+        // as unknown, not as "none left", or every failed command gets a bogus
+        // inode warning attached.
+        expect(pressure.freeInodes).toBeUndefined();
+      } else {
+        expect(pressure.freeInodes).toBeGreaterThan(0);
+      }
     });
 
     it("returns nothing when the path cannot be stat'ed", () => {
