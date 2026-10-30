@@ -417,9 +417,6 @@ export function setupAgentContainer(
   // tools like EnterPlanMode can trigger planManager.handlePlanModeTransition
   // and onPermissionModeChange even in bypass mode (where canUseTool is skipped).
   container.register("PermissionModeTransition", setPermissionMode);
-  logger.info("Registering CanUseToolCallback", {
-    hasCallback: !!canUseToolWithPermissionRequest,
-  });
   container.register("CanUseToolCallback", canUseToolWithPermissionRequest);
 
   const liveConfigManager = new LiveConfigManager(container, {

@@ -64,6 +64,7 @@ vi.mock("../../src/services/jsonlHandler.js", async (importOriginal) => {
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
   logger: {
+    debug: vi.fn(),
     warn: vi.fn(),
     info: vi.fn(),
     error: vi.fn(),
@@ -154,7 +155,7 @@ describe("session service additional coverage", () => {
       expect(restored?.messages).toHaveLength(1);
       expect(consoleLog).not.toHaveBeenCalled();
       expect(stdout).not.toHaveBeenCalled();
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(logger.debug).toHaveBeenCalledWith(
         `Restoring session: ${validSessionId}`,
       );
 
