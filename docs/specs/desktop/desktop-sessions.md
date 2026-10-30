@@ -345,7 +345,7 @@ order: 20
 
 - **`/resume` 的 fork / 参数形式 / transcript 预览**：本轮不做"复制为新会话"（fork）、不做 `/resume <id|搜索词>` 参数形式、不做会话内容预览；也不含会话存活检测与外部会话的信任确认（后两者另开议题）。
 
-- **桌面端会话改名的入口**：侧边栏会话行的行菜单，加上聊天面板头部标题就地编辑（头部是 VSCE / JB / desktop 共用的 webview 组件，三端一起获得，行为见 [ui/session-management.md](../ui/session-management.md)「会话重命名入口：CLI 与 IDE 插件」）；不提供全局快捷键（不照抄 Claude Code 的 `⌘/Ctrl+⌥+R`），不在会话看板卡片与 `/resume`（含头部「历史对话」）列表上提供改名入口。
+- **桌面端会话改名的入口**：只有侧边栏会话行的行菜单。聊天面板头部标题（VSCE / JB / desktop 共用的 webview 组件）在桌面端是**纯展示**——不传改名回调，因此没有 `role=button`、无 hover 高亮、也不是键盘停靠点，整片头部（含标题文字）都留给窗口拖拽（2026-10-30 设计评审拍板去掉头部入口，插件端行为见 [ui/session-management.md](../ui/session-management.md)「会话重命名入口：CLI 与 IDE 插件」）；不提供全局快捷键（不照抄 Claude Code 的 `⌘/Ctrl+⌥+R`），不在会话看板卡片与 `/resume`（含头部「历史对话」）列表上提供改名入口。
 
 - **CLI 与插件端的入口分工**：CLI 走 `/rename` 命令 + 选择器内 `Ctrl+R`；插件端只有头部标题。三端共用同一份存储与显示优先级（见 [ui/session-management.md](../ui/session-management.md)）。
 
