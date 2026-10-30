@@ -61,6 +61,14 @@ export async function main() {
         type: "boolean",
         global: false,
       })
+      .option("output-format", {
+        description:
+          'Print-mode output format: "text" (default), "json" (a single result object), or "stream-json" (one JSON event per line)',
+        choices: ["text", "json", "stream-json"] as const,
+        default: "text" as const,
+        type: "string",
+        global: false,
+      })
       .option("dangerously-skip-permissions", {
         description: "Skip all permission checks (dangerous)",
         type: "boolean",
@@ -726,6 +734,21 @@ export async function main() {
       });
     }
 
+    // --output-format only means anything for a print-mode run: anywhere else
+    // stdout is the Ink UI, so a JSON request there would silently do nothing.
+    // (`text` is the default, so an explicit `text` is not an error — and
+    // subcommands may not carry the flag at all.)
+    if (
+      argv.print === undefined &&
+      argv.outputFormat !== undefined &&
+      argv.outputFormat !== "text"
+    ) {
+      console.error(
+        `--output-format ${argv.outputFormat} requires print mode (-p).`,
+      );
+      process.exit(1);
+    }
+
     // Validate an explicitly-specified restore ID before entering the CLI —
     // sessionExistsAnywhere scans every project dir as a fallback, so a miss
     // here means the session truly does not exist. Fail fast with a clear
@@ -753,6 +776,7 @@ export async function main() {
         continueLastSession: argv.continue as boolean | undefined,
         message: argv.print,
         showStats: argv.showStats as boolean | undefined,
+        outputFormat: argv.outputFormat as "text" | "json" | "stream-json",
         bypassPermissions: argv.dangerouslySkipPermissions as
           | boolean
           | undefined,

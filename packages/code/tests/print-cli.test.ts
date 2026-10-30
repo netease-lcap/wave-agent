@@ -1,8 +1,13 @@
 import { test, expect, vi, afterEach } from "vitest";
 import { Agent, AgentCallbacks } from "wave-agent-sdk";
 
-// Mock displayUsageSummary
-vi.mock("../src/utils/usageSummary.js");
+// Mock displayUsageSummary only — the structured output reads the real
+// aggregation helpers (sumUsage / calculateTokenSummary) from the same module.
+vi.mock("../src/utils/usageSummary.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../src/utils/usageSummary.js")>();
+  return { ...actual, displayUsageSummary: vi.fn() };
+});
 
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
@@ -849,6 +854,244 @@ test("startPrintCli removes clean worktree after destroy on sendMessage error", 
 
   consoleErrorSpy.mockRestore();
   stdoutSpy.mockRestore();
+});
+
+/**
+ * Structured modes read like a pipe: capture what reached stdout and let the
+ * drain callback fire (startPrintCli awaits it before exiting).
+ */
+function captureStdout(): { chunks: string[]; restore: () => void } {
+  const chunks: string[] = [];
+  const spy = vi.spyOn(process.stdout, "write").mockImplementation(((
+    chunk: string | Uint8Array,
+    encodingOrCb?: BufferEncoding | ((err?: Error) => void),
+    cb?: (err?: Error) => void,
+  ) => {
+    if (typeof chunk === "string" && chunk !== "") chunks.push(chunk);
+    const callback = typeof encodingOrCb === "function" ? encodingOrCb : cb;
+    callback?.();
+    return true;
+  }) as unknown as typeof process.stdout.write);
+  return { chunks, restore: () => spy.mockRestore() };
+}
+
+function structuredAgent(
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    sendMessage: vi.fn(),
+    destroy: vi.fn(),
+    sessionId: "session-1",
+    usages: [
+      {
+        prompt_tokens: 10,
+        completion_tokens: 5,
+        total_tokens: 15,
+        model: "gpt-4",
+        operation_type: "agent",
+      },
+    ],
+    sessionFilePath: "/mock/session.json",
+    currentWorkdir: "/repo",
+    getModelConfig: () => ({ model: "gpt-4" }),
+    getPermissionMode: () => "default",
+    getAvailableToolNames: () => ["Bash", "Read"],
+    ...overrides,
+  };
+}
+
+test("--output-format json 在 stdout 上只留一条 envelope", async () => {
+  let callbacks: AgentCallbacks | undefined;
+  const agent = structuredAgent({
+    sendMessage: vi.fn(async () => {
+      callbacks?.onAssistantMessageAdded?.("msg-1");
+      callbacks?.onAssistantContentUpdated?.({
+        messageId: "msg-1",
+        chunk: "最终答案",
+        stage: "streaming",
+      });
+      callbacks?.onToolBlockUpdated?.({
+        messageId: "msg-1",
+        id: "call-1",
+        name: "Read",
+        stage: "running",
+        parameters: JSON.stringify({ file_path: "a.ts" }),
+      });
+      callbacks?.onToolBlockUpdated?.({
+        messageId: "msg-1",
+        id: "call-1",
+        name: "Read",
+        stage: "end",
+        success: true,
+      });
+    }),
+  });
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks;
+    return agent as unknown as Agent;
+  });
+  const stdout = captureStdout();
+
+  try {
+    await startPrintCli({ message: "test", outputFormat: "json" });
+  } finally {
+    stdout.restore();
+  }
+
+  const lines = stdout.chunks.join("").split("\n").filter(Boolean);
+  expect(lines).toHaveLength(1);
+  const envelope = JSON.parse(lines[0]);
+  expect(envelope.type).toBe("result");
+  expect(envelope.subtype).toBe("success");
+  expect(envelope.is_error).toBe(false);
+  expect(envelope.result).toBe("最终答案");
+  expect(envelope.session_id).toBe("session-1");
+  expect(envelope.num_turns).toBe(1);
+  expect(envelope.usage.total_tokens).toBe(15);
+  expect(envelope.tool_calls).toEqual([
+    {
+      id: "call-1",
+      name: "Read",
+      input: { file_path: "a.ts" },
+      success: true,
+    },
+  ]);
+  // 人读输出（emoji 行、响应标题）一律不出现
+  expect(stdout.chunks.join("")).not.toContain("🔧");
+  expect(stdout.chunks.join("")).not.toContain("📝");
+  expect(mockExit).toHaveBeenCalledWith(0);
+});
+
+test("--output-format stream-json：init 开头、result 收尾", async () => {
+  let callbacks: AgentCallbacks | undefined;
+  const agent = structuredAgent({
+    sendMessage: vi.fn(async () => {
+      callbacks?.onAssistantMessageAdded?.("msg-1");
+      callbacks?.onAssistantContentUpdated?.({
+        messageId: "msg-1",
+        chunk: "答案",
+        stage: "streaming",
+      });
+    }),
+  });
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks;
+    return agent as unknown as Agent;
+  });
+  const stdout = captureStdout();
+
+  try {
+    await startPrintCli({ message: "test", outputFormat: "stream-json" });
+  } finally {
+    stdout.restore();
+  }
+
+  const events = stdout.chunks
+    .join("")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+  expect(events[0]).toMatchObject({
+    type: "system",
+    subtype: "init",
+    session_id: "session-1",
+    model: "gpt-4",
+    cwd: "/repo",
+    permission_mode: "default",
+  });
+  expect(events[1]).toMatchObject({
+    type: "assistant",
+    subtype: "content_delta",
+    delta: "答案",
+  });
+  expect(events[events.length - 1]).toMatchObject({
+    type: "result",
+    subtype: "success",
+    result: "答案",
+  });
+});
+
+test("--output-format json 运行失败时仍输出 envelope 并退出 1", async () => {
+  const agent = structuredAgent({
+    sendMessage: vi.fn().mockRejectedValue(new Error("Send message failed")),
+  });
+  vi.mocked(Agent.create).mockResolvedValue(agent as unknown as Agent);
+  const stdout = captureStdout();
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+  try {
+    await startPrintCli({ message: "test", outputFormat: "json" });
+  } finally {
+    stdout.restore();
+    errorSpy.mockRestore();
+  }
+
+  const lines = stdout.chunks.join("").split("\n").filter(Boolean);
+  expect(lines).toHaveLength(1);
+  const envelope = JSON.parse(lines[0]);
+  expect(envelope.subtype).toBe("error_during_execution");
+  expect(envelope.is_error).toBe(true);
+  expect(envelope.result).toBeUndefined();
+  expect(envelope.errors).toEqual(["Send message failed"]);
+  expect(mockExit).toHaveBeenCalledWith(1);
+});
+
+test("--output-format json 搭配 --show-stats 时用量汇总走 stderr", async () => {
+  const agent = structuredAgent();
+  vi.mocked(Agent.create).mockResolvedValue(agent as unknown as Agent);
+  const stdout = captureStdout();
+
+  try {
+    await startPrintCli({
+      message: "test",
+      outputFormat: "json",
+      showStats: true,
+    });
+  } finally {
+    stdout.restore();
+  }
+
+  // 汇总交给 stderr（这次断言的是「被调用」，容器由 displayUsageSummary 自己决定）
+  expect(vi.mocked(displayUsageSummary)).toHaveBeenCalledWith(
+    expect.any(Array),
+    "/mock/session.json",
+    expect.any(Function),
+  );
+  const lines = stdout.chunks.join("").split("\n").filter(Boolean);
+  expect(lines).toHaveLength(1);
+});
+
+test("模型请求失败（只落错误块、不抛错）按运行失败收尾", async () => {
+  // 真机实测：模型未启用时 sendMessage 正常 resolve，错误只作为错误块到达。
+  // 没有正文却报「成功」会让 CI 门禁静默放行，所以信封与退出码都按失败给。
+  let callbacks: AgentCallbacks | undefined;
+  const agent = structuredAgent({
+    sendMessage: vi.fn(async () => {
+      callbacks?.onErrorBlockAdded?.("HTTP 400 Bad Request: MODEL_NOT_ENABLED");
+    }),
+  });
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks;
+    return agent as unknown as Agent;
+  });
+  const stdout = captureStdout();
+  const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+  try {
+    await startPrintCli({ message: "test", outputFormat: "json" });
+  } finally {
+    stdout.restore();
+    errorSpy.mockRestore();
+  }
+
+  const lines = stdout.chunks.join("").split("\n").filter(Boolean);
+  expect(lines).toHaveLength(1);
+  const envelope = JSON.parse(lines[0]);
+  expect(envelope.subtype).toBe("error_during_execution");
+  expect(envelope.is_error).toBe(true);
+  expect(envelope.result).toBeUndefined();
+  expect(envelope.errors).toEqual(["HTTP 400 Bad Request: MODEL_NOT_ENABLED"]);
+  expect(mockExit).toHaveBeenCalledWith(1);
 });
 
 afterEach(() => {

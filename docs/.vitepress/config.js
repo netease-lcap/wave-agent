@@ -513,6 +513,7 @@ export default {
             { text: "7.14 Token 用量统计", link: "/cli#token-stats" },
             { text: "7.15 会话内热切换", link: "/cli#resume" },
             { text: "7.16 会话重命名", link: "/cli#rename" },
+            { text: "7.17 结构化输出", link: "/cli#structured-output" },
           ],
         },
         {
