@@ -10,7 +10,7 @@
  * white list and the page need no special case.
  *
  * Two consequences of "one session, and it is the one on screen", both
- * deliberate (docs/specs/ui/remote-control.md, 前台 CLI 故事):
+ * deliberate (docs/specs/remote/remote-web.md, 前台 CLI 故事):
  *
  * - Both ways of asking for the session list (`listDaemonSessions`, which the
  *   page reads, and `listSessions`) answer with exactly this session. The
@@ -42,6 +42,7 @@ import {
   hostSlashCommandsFor,
   toSlashCommandInfo,
 } from "../stdio/hostSlashCommands.js";
+import { readImagePreview } from "./imagePreview.js";
 import { messagesForUi } from "../stdio/uiPayload.js";
 import {
   InvalidMessageWindowError,
@@ -163,6 +164,12 @@ export class RemoteControlCliHost implements RemoteControlHost {
       // 会落到「这台电脑上的会话不支持这个操作」——白名单放行 ≠ 宿主实现。
       case "getRecentWorkdirs":
         return { dirs: readRecentWorkdirs() };
+      // 远控页按需取图（spec「点消息里的图片路径看原图」）。与 daemon 那条
+      // 共用 `imagePreview.ts`：判型按解码后的真实容器、压到单帧预算内。
+      // 不实现的话页面会落到 hostUnsupported，而「白名单放行 ≠ 宿主实现」
+      // 这份规格已经踩过一次（见场景 7）。
+      case "getImagePreview":
+        return readImagePreview(typeof p.path === "string" ? p.path : "");
       case "rememberRecentWorkdir":
         rememberRecentWorkdir(typeof p.workdir === "string" ? p.workdir : "");
         return null;

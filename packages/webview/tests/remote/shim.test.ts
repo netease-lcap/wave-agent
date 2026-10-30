@@ -1515,7 +1515,7 @@ describe("remote page shim — 状态条按输入能力分档", () => {
 });
 
 /**
- * 第二批解禁：页面能发出的那批宿主命令（spec ui/remote-control.md「页面能执行的
+ * 第二批解禁：页面能发出的那批宿主命令（spec remote/remote-web.md「页面能执行的
  * 那批宿主命令」）。
  *
  * 每条用例走的是同一条链路的中间段——页面 `post({command})` → shim 一个 case →

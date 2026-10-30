@@ -4,7 +4,7 @@
  * tabs, the editor-open path, rewind checkpoints, backgrounded tasks. None of
  * them exist on the serving machine *from the page*: the page has no editor, no
  * host to route to, and no second carrier to put a UI in. This file pins the two
- * halves of spec ui/remote-control.md 场景 23–24:
+ * halves of spec remote/remote-web.md 场景 20/21:
  *
  * - what has nowhere to open is **degraded, not removed**: a file path stays
  *   readable as plain text (the Write block's content preview especially is the
@@ -91,7 +91,7 @@ function postsOf(vscode: ReturnType<typeof createMockVscode>) {
 /**
  * Webview→host commands a host-local slash command would post on any other host:
  * the ones that make a dialog or RPC on the host side. The page must post none
- * of them (spec ui/remote-control.md 场景 24).
+ * of them (spec remote/remote-web.md 场景 21).
  */
 const HOST_ONLY_COMMANDS = new Set([
   "askBtw",

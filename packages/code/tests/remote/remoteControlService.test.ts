@@ -414,9 +414,11 @@ describe("RemoteControlService", () => {
     // (rewind / clear / model / queue / background work / file search / prompt
     // history) + `/btw` (a one-round side question: same session, no editor, no
     // filesystem) + session deletion (`destroy` with its optional worktree param,
-    // and the session-scoped change count the delete card needs) + turning the
-    // running turn into a background one (`backgroundCurrentTask`: the phone has
-    // no Ctrl/Cmd+B, so the message button is its only entry) are the whole
+    // and the session-scoped change count the delete card needs) plus an
+    // on-demand image read for one click on a screenshot path (`getImagePreview`
+    // — read-only, size-capped, and judged by the decoded container) and turning
+    // the running turn into a background one (`backgroundCurrentTask`: the phone
+    // has no Ctrl/Cmd+B, so the message button is its only entry) are the whole
     // surface. Adding a method here is a deliberate
     // widening, so this list is pinned rather than derived.
     expect([...REMOTE_ALLOWED_METHODS].sort()).toEqual([
@@ -430,6 +432,7 @@ describe("RemoteControlService", () => {
       "destroy",
       "getBackgroundTaskOutput",
       "getConfiguredModels",
+      "getImagePreview",
       "getMessages",
       "getPromptHistory",
       "getRecentWorkdirs",
@@ -898,7 +901,7 @@ describe("RemoteControlService", () => {
     expect(socket.frames()).toHaveLength(0);
   });
 
-  // Spec ui/remote-control.md「远端通道只开一个白名单」场景 10: user image bytes
+  // Spec remote/remote-channel.md「远端通道只开一个白名单」场景 10: user image bytes
   // stay in the block for GUI hosts, but must not go over the relay.
   it("should blank user image bytes in a getMessages result", async () => {
     const messages = [

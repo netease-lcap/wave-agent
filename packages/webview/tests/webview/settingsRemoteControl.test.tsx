@@ -3,7 +3,7 @@
  *
  * 2026-10-17 之前它是一个独立弹层（`RemoteControlDialog`），现在与 MCP 服务一样是
  * 设置页里的一项能力：`/remote-control` 打开设置页并选中这一项（spec
- * ui/remote-control.md「`/remote-control` 打开设置页的远程控制选项卡」）。
+ * remote/remote/remote-control.md「`/remote-control` 打开设置页的远程控制选项卡」）。
  *
  * 搬家的验收标准是「逐项与弹窗时一致」，所以这个文件钉的就是原来那几条纪律：
  * 挂载即问状态、回执按 `requestId` 关联（晚到的旧回执不许把刚建立的链路按回去）、
@@ -281,7 +281,7 @@ describe("设置页 · 远程控制选项卡", () => {
 
   it("does not exist on the phone page: no nav entry, and the command goes out as text", async () => {
     // 页面就是二维码指向的那一端：在页面上再开「手机接管本机会话」是自我指涉，
-    // 所以这一项连导航都不出现（spec ui/remote-control.md 场景 24），敲命令也按
+    // 所以这一项连导航都不出现（spec remote/remote-web.md 场景 21），敲命令也按
     // 普通消息发给模型 —— 与 `/plugin` `/mcp` 同一处置。
     window.waveRemotePage = true;
     const { vscode } = renderChatApp();

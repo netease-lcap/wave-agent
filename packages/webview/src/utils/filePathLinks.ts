@@ -14,7 +14,22 @@
 // 通道的拼装在 Message.tsx 的 marked renderer 中完成，点击解析复用这里。
 
 import type { TokenizerExtension } from "marked";
+import { isImageFileExtension } from "wave-agent-sdk/constants";
 import { normalizeFilePath } from "./messageUtils";
+
+/**
+ * 四条路径通道各自的开关档位。
+ *
+ * - `"all"`：本机宿主（CLI / 桌面 / IDE）——路径都能交给宿主打开。
+ * - `"images"`：只把**图片**路径变成可点入口。远控页用这一档：页面上没有
+ *   编辑器，文本路径无处可去；但图片可以就地显示（宿主按需取图并压到单帧
+ *   预算内，见 spec `remote/remote-web.md`「点消息里的图片路径看原图」）。
+ * - `"off"`：全部退化为纯文本。
+ *
+ * 它替掉的是原来那个 boolean：boolean 表达不了「只开图片这一半」，而把远控页
+ * 直接翻成 `true` 会把文本路径一起放开，撞上场景 23 的禁令。
+ */
+export type FilePathLinkMode = "off" | "images" | "all";
 
 // marked（escape encode=true）只对 & < > " ' 做实体转义，这里做精确逆操作。
 const ENTITY_MAP: Record<string, string> = {
@@ -113,10 +128,12 @@ const RIGHT_PUNCT = ")]}»›〉》」』】’”.,;:!?…，。、；：！？
  *
  * @param opts.lineSuffix 是否解析尾部 :N / :N-M 行号后缀（正文纯文本通道传
  *   false —— 不吞入行号，规避把散文中的冒号当行号）
+ * @param opts.imagesOnly 只认图片扩展名（远端「看原图」那一档，见
+ *   {@link FilePathLinkMode} 的 `"images"`）
  */
 export function detectFilePathToken(
   token: string,
-  opts: { lineSuffix?: boolean } = {},
+  opts: { lineSuffix?: boolean; imagesOnly?: boolean } = {},
 ): FilePathMatch | null {
   if (!token) return null;
   const display = stripOuterPunct(token);
@@ -143,6 +160,13 @@ export function detectFilePathToken(
   // 点扩展名是四条通道的共同前提：无扩展名的路径（/etc/hosts、/usr/local/bin）
   // 在命令输出与散文里大多是日志串或接口路径，放进来就是误链。
   if (!HAS_EXT_RE.test(body)) return null;
+  // 远端那一档只把**图片**变成可点入口（spec remote/remote-web.md「点消息里的
+  // 图片路径看原图」）：文本路径在页面上仍然无处可去，链上去只会是「点了没
+  // 反应」。扩展名在这里是路由提示，宿主还会按解码后的真实容器再判一次。
+  if (opts.imagesOnly) {
+    const ext = body.slice(body.lastIndexOf(".") + 1).toLowerCase();
+    if (!isImageFileExtension(ext)) return null;
+  }
 
   return {
     kind,
@@ -230,8 +254,13 @@ export const windowsPathInlineExtension: TokenizerExtension = {
  * 首尾标点不进链接目标、保留为链接外普通文本；路径后紧贴的中文文本
  * （如「/etc/hosts，然后看…」）只链接路径部分，其余保持普通文本。
  */
-export function linkifyFilePathText(rawText: string): string {
+export function linkifyFilePathText(
+  rawText: string,
+  mode: FilePathLinkMode = "all",
+): string {
   if (!rawText) return "";
+  if (mode === "off") return escapeHtml(rawText);
+  const opts = { ...PROSE_OPTS, imagesOnly: mode === "images" };
   let html = "";
   let lastIndex = 0;
   for (const run of rawText.matchAll(/\S+/g)) {
@@ -251,7 +280,7 @@ export function linkifyFilePathText(rawText: string): string {
     const core = rawRun.slice(bodyStart, bodyEnd);
     const after = rawRun.slice(bodyEnd);
 
-    const matched = detectFilePathToken(core, PROSE_OPTS);
+    const matched = detectFilePathToken(core, opts);
     if (matched) {
       html += escapeHtml(before);
       html += fileLinkHtml(matched.display);
@@ -262,7 +291,7 @@ export function linkifyFilePathText(rawText: string): string {
       let cut = core.length;
       while (cut > 0 && !isPathChar(core[cut - 1]!)) cut--;
       if (cut > 0 && cut < core.length) {
-        const head = detectFilePathToken(core.slice(0, cut), PROSE_OPTS);
+        const head = detectFilePathToken(core.slice(0, cut), opts);
         if (head) {
           html += escapeHtml(before);
           html += fileLinkHtml(head.display);
@@ -287,14 +316,16 @@ const CODE_BLOCK_LEFT_STRIP = `${LEFT_PUNCT}"'`;
 const CODE_BLOCK_RIGHT_STRIP = `${RIGHT_PUNCT}"'`;
 
 /** 代码块里的单个 token → HTML（首尾引号/标点留在链接外，保持代码原文）。 */
-const codeBlockTokenHtml = (token: string): string => {
+const codeBlockTokenHtml = (token: string, mode: FilePathLinkMode): string => {
   let start = 0;
   let end = token.length;
   while (start < end && CODE_BLOCK_LEFT_STRIP.includes(token[start]!)) start++;
   while (end > start && CODE_BLOCK_RIGHT_STRIP.includes(token[end - 1]!)) end--;
   const core = token.slice(start, end);
   if (core) {
-    const matched = detectFilePathToken(core);
+    const matched = detectFilePathToken(core, {
+      imagesOnly: mode === "images",
+    });
     if (matched) {
       return (
         escapeHtml(token.slice(0, start)) +
@@ -311,14 +342,18 @@ const codeBlockTokenHtml = (token: string): string => {
  * 其余代码文本（含换行、缩进、引号）原样保留并转义。返回的 HTML 可安全用于
  * dangerouslySetInnerHTML（调用方把它放进 <pre><code>）。
  */
-export function linkifyCodeBlockPaths(code: string): string {
+export function linkifyCodeBlockPaths(
+  code: string,
+  mode: FilePathLinkMode = "all",
+): string {
   if (!code) return "";
+  if (mode === "off") return escapeHtml(code);
   let html = "";
   let lastIndex = 0;
   for (const run of code.matchAll(/\S+/g)) {
     const start = run.index!;
     html += escapeHtml(code.slice(lastIndex, start));
-    html += codeBlockTokenHtml(run[0]);
+    html += codeBlockTokenHtml(run[0], mode);
     lastIndex = start + run[0].length;
   }
   html += escapeHtml(code.slice(lastIndex));

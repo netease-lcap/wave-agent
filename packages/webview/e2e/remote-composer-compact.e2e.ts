@@ -7,7 +7,7 @@ import { expectPermissionMenuAligned } from "./utils/permissionMenu.js";
 /**
  * 远控页（第五种宿主、手机档）底栏「空间不足 → 图标档」
  * （spec ui/model-selection.md「底栏放不下时模型与权限收成图标档（桌面端 + 插件 +
- * 远控页）」场景 5 / 6，以及 spec ui/remote-control.md 场景 27 里权限档那一条）。
+ * 远控页）」场景 5/6，以及 spec remote/remote-mobile.md 场景 4 里权限档那一条）。
  *
  * 这一端和另两端共用同一套判据与收法（`MessageInput` 按实际内容量宽后给底栏行挂
  * `.is-compact`），差别只在图标尺寸的密度档：桌面 32×32、插件 22×22、**手机 40×40**

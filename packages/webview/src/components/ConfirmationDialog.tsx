@@ -686,7 +686,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
    * editor column or a pane routes the plan there and strips it from the dialog
    * (`ChatApp` `showConfirmation`), while the remote-control Web page keeps it —
    * a phone has neither, and the plan is the only basis for approving it
-   * (spec `core/plan-mode.md` 场景 13 / `ui/remote-control.md` 场景 22). So this
+   * (spec `core/plan-mode.md` 场景 13 / `remote/remote-web.md` 场景 19). So this
    * renders whenever a plan arrived, and the strip is the single policy point.
    */
   const renderPlanContent = () => {

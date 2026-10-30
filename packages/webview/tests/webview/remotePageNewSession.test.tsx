@@ -1,5 +1,5 @@
 /**
- * 远控页「新建对话」弹窗（spec remote-control.md「Web 端也能发起新会话」）。
+ * 远控页「新建对话」弹窗（spec remote/remote-web.md「Web 端也能发起新会话」）。
  *
  * 顶栏图标重绑后的完整链路都在页面侧闭环：最近目录/浏览 → newSessionListDirs /
  * newSessionListBranches → newSessionCreate（shim 转中继 listDirectories /
@@ -518,7 +518,7 @@ describe("remote page new-session dialog", () => {
 });
 
 /**
- * 忙闲三态不构成页面上的禁用理由（spec remote-control.md「Web 端也能发起新会话」
+ * 忙闲三态不构成页面上的禁用理由（spec remote/remote-web.md「Web 端也能发起新会话」
  * 场景 10）：页面上这个图标是「在机器上另起一条会话」，不是 IDE 的原地清空
  * `clearChat`——电脑侧那条会话照旧跑着，所以 streaming / 压缩中 / 有正在跑的
  * 后台任务时入口照常可用（反过来，IDE 端那条守卫一字不变）。

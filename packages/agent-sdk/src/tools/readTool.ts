@@ -14,26 +14,16 @@ import { convertImageToBase64 } from "../utils/messageOperations.js";
 import { isPathInside } from "../utils/pathSafety.js";
 import { memoryFreshnessNote } from "../utils/memoryAge.js";
 import { READ_TOOL_NAME } from "../constants/tools.js";
+import { isImageFileExtension } from "../constants/images.js";
 
 /**
- * Supported image file extensions
- */
-const SUPPORTED_IMAGE_EXTENSIONS = [
-  "png",
-  "jpeg",
-  "jpg",
-  "gif",
-  "webp",
-] as const;
-
-/**
- * Check if a file path represents an image file
- * @param filePath - Path to the file
- * @returns true if the file is a supported image format
+ * Whether a path names an image file this tool can attach.
+ *
+ * The extension list is shared with the remote-control page's click targets and
+ * its host-side preview gate — see `constants/images.ts`.
  */
 function isImageFile(filePath: string): boolean {
-  const ext = extname(filePath).toLowerCase().substring(1);
-  return (SUPPORTED_IMAGE_EXTENSIONS as readonly string[]).includes(ext);
+  return isImageFileExtension(extname(filePath).toLowerCase().substring(1));
 }
 
 /**

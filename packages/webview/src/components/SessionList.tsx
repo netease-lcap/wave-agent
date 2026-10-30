@@ -24,7 +24,7 @@ export interface SessionListProps {
 }
 
 /**
- * 会话行的状态标记。规则与桌面端侧栏一致（spec remote-control.md「待确认只在它
+ * 会话行的状态标记。规则与桌面端侧栏一致（spec remote/remote-web.md「待确认只在它
  * 自己的对话里弹，对话状态在会话列表标出来」场景 5/6）：
  * - **当前那条**只标「运行中」——它自己的待确认请求已经作为卡片弹在它眼前，再标
  *   一次就是重复提醒；

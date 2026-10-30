@@ -120,6 +120,7 @@ import {
 } from "../remote/remoteNotifications.js";
 import { getWorkspaceDiff } from "../utils/workspaceDiff.js";
 import { installGitCredentialHelper } from "../utils/gitCredentialHelper.js";
+import { readImagePreview } from "../remote/imagePreview.js";
 import type { RemoteControlController } from "../remote/remoteControlService.js";
 import {
   hostSlashCommandsFor,
@@ -461,6 +462,13 @@ export class AgentBridge {
         return this.getPermissionMode(sessionId);
       case "getPlanFile":
         return this.getPlanFile(sessionId);
+      // 远控页按需取图（spec「点消息里的图片路径看原图」）：路径来自消息正文、
+      // 由用户在页面上点出来。会话在这里只用来确认调用方已经握手到某条活会话；
+      // 判型（按解码后的真实容器）与压到单帧预算内都在 `imagePreview.ts` 里做，
+      // 前台 CLI 那个宿主共用同一份实现。
+      case "getImagePreview":
+        this.requireSessionForRead(sessionId);
+        return readImagePreview(typeof p.path === "string" ? p.path : "");
 
       // ── MCP ──
       case "getMcpServers":

@@ -1,6 +1,6 @@
 /**
  * The remote page has no sidebar: its 「会话」 list is the only place that can say
- * 「谁在等我确认、谁还在跑、谁还有后台任务」 (spec remote-control.md「待确认只在它
+ * 「谁在等我确认、谁还在跑、谁还有后台任务」 (spec remote/remote-web.md「待确认只在它
  * 自己的对话里弹，对话状态在会话列表标出来」+「手机端的会话列表与删除」场景 2).
  * This pins the rendering rule those stories state:
  *

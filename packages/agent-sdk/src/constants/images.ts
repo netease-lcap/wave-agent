@@ -24,3 +24,39 @@
  * be raised freely when we want more image fidelity.
  */
 export const OUTBOUND_IMAGE_MAX_DIMENSION_PX = 2000;
+
+/**
+ * Image extensions recognised **by file name**, lower-case and without the dot.
+ *
+ * Two callers need the same list and they sit on opposite sides of a process
+ * boundary, which is why it lives here rather than next to either of them:
+ *
+ * - the Read tool (`tools/readTool.ts`) decides whether a path is an image it
+ *   can attach;
+ * - the remote-control page (`utils/filePathLinks.ts`) decides whether a path in
+ *   a message is worth turning into a click target, and the host that serves it
+ *   (`packages/code/src/remote/imagePreview.ts`) uses it as the first gate.
+ *
+ * **An extension is never proof.** Both consumers treat it as a *routing* hint
+ * only; the host re-checks the decoded container before serving any bytes, so a
+ * `.png` that is really something else is refused. Keep the two gates separate —
+ * collapsing them would turn a file name into an authorisation.
+ *
+ * `svg` / `bmp` / `ico` are deliberately absent: the desktop file panel renders
+ * them, but they have no place on the remote page (an SVG is XML, not a raster
+ * image with the same "shrink to fit a frame" semantics).
+ */
+export const IMAGE_FILE_EXTENSIONS = [
+  "png",
+  "jpeg",
+  "jpg",
+  "gif",
+  "webp",
+] as const;
+
+/** Fast membership test for {@link IMAGE_FILE_EXTENSIONS} (`ext` without the dot). */
+export function isImageFileExtension(ext: string): boolean {
+  return (IMAGE_FILE_EXTENSIONS as readonly string[]).includes(
+    ext.toLowerCase(),
+  );
+}

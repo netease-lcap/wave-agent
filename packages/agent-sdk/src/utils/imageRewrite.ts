@@ -134,6 +134,24 @@ function toDataUrl(mime: string, bytes: Buffer): string {
   return `data:${mime};base64,${bytes.toString("base64")}`;
 }
 
+/**
+ * sharp's `metadata().format` → the mime we put in the data URL. Only the
+ * containers a browser renders directly get a mapping; anything else (tiff,
+ * heif, …) falls through to the ladder, which cannot produce it either — the
+ * caller then refuses the file.
+ */
+function transportMimeFor(format: string | undefined): string | undefined {
+  switch (format) {
+    case "png":
+    case "jpeg":
+    case "gif":
+    case "webp":
+      return `image/${format}`;
+    default:
+      return undefined;
+  }
+}
+
 /** Base64 payload of a data URL, without the `data:<mime>;base64,` prefix. */
 function dataUrlBody(dataUrl: string): string {
   const comma = dataUrl.indexOf(",");
@@ -153,7 +171,17 @@ function clampToBudget(dimensions: ImageDimensions): ImageDimensions {
 }
 
 type LadderOutcome =
-  | { status: "fits"; dataUrl: string; dimensions?: ImageDimensions }
+  | {
+      status: "fits";
+      dataUrl: string;
+      dimensions?: ImageDimensions;
+      /** Dimensions the source came in at, before any clamp or downscale. */
+      sourceDimensions: ImageDimensions;
+      /** Encoded size of the produced bytes. */
+      bytes: number;
+      /** Container the codec actually decoded the source as (e.g. `png`). */
+      sourceFormat: string | undefined;
+    }
   /** Every rung is still over budget; the caller omits with the size it reports. */
   | { status: "exhausted"; sourceDimensions: ImageDimensions }
   /** Neither the header nor the codec could tell us the size — nothing to try. */
@@ -168,6 +196,7 @@ async function runLadder(
   sharp: SharpFactory,
   source: Buffer,
   knownDimensions: ImageDimensions | undefined,
+  budgetBytes: number = OUTBOUND_IMAGE_TARGET_RAW_BYTES,
 ): Promise<LadderOutcome> {
   const metadata = await sharp(source).metadata();
   const width = metadata.width ?? knownDimensions?.width ?? 0;
@@ -196,11 +225,14 @@ async function runLadder(
           }),
         )
         .toBuffer();
-      if (encoded.length <= OUTBOUND_IMAGE_TARGET_RAW_BYTES) {
+      if (encoded.length <= budgetBytes) {
         return {
           status: "fits",
           dataUrl: toDataUrl(rung.mime, encoded),
           dimensions: getImageDimensions(encoded),
+          sourceDimensions: { width, height },
+          bytes: encoded.length,
+          sourceFormat: metadata.format,
         };
       }
     }
@@ -350,5 +382,115 @@ async function rewrite(
     kind: "send",
     dataUrl: outcome.dataUrl,
     ...(wasResized ? { note: resizedImageNote(dimensions, resizedTo) } : {}),
+  };
+}
+
+/**
+ * Shrink an image so its **encoded bytes** fit `maxRawBytes`, walking the same
+ * ladder as the outbound rewrite.
+ *
+ * This exists for the remote-control page (spec remote/remote-web.md「点消息里的
+ * 图片路径看原图」): a screenshot has to fit inside one relay frame — 512 KiB of
+ * JSON, which after base64 leaves roughly 380 KiB of image — and the page can
+ * only render what it receives.
+ *
+ * Two deliberate differences from `planOutboundImage`:
+ *
+ * - the budget is a **parameter** (a frame budget, not the model request budget);
+ * - a failure is **reported, never degraded** into "send it oversized anyway".
+ *   Over-budget frames are dropped by the relay's 1 MiB subscriber buffer, so
+ *   shipping one means the page sees nothing at all — worse than an error line.
+ *
+ * `no-codec` means sharp is absent (it is installed at runtime); `unreadable`
+ * covers bytes the codec cannot decode and dimensions it cannot determine;
+ * `too-large` means every rung was still over budget (extreme aspect ratios).
+ */
+export type TransportShrinkOutcome =
+  | {
+      ok: true;
+      /** `data:<mime>;base64,…`, ready for `<img src>`. */
+      dataUrl: string;
+      mime: string;
+      width: number;
+      height: number;
+      /** True when the result is smaller in pixels than the source. */
+      scaled: boolean;
+      /** Encoded size of the returned bytes (not the base64 length). */
+      bytes: number;
+      /** Container the codec decoded the source as, e.g. `png` / `jpeg`. */
+      sourceFormat: string | undefined;
+    }
+  | { ok: false; reason: "no-codec" | "too-large" | "unreadable" };
+
+export async function shrinkImageForTransport(
+  source: Buffer,
+  maxRawBytes: number,
+): Promise<TransportShrinkOutcome> {
+  const sharp = getImageProcessor();
+  if (!sharp) {
+    // Kick a download so the next attempt has the codec; this one reports.
+    void ensureRuntimeDeps();
+    return { ok: false, reason: "no-codec" };
+  }
+
+  // Already fits: hand the bytes back untouched.
+  //
+  // This channel's budget is about *bytes in one frame*, not about pixels, so
+  // there is nothing to gain from the codec here — re-encoding a 40 KB capture
+  // would only lose quality. It would also lose resolution: the ladder clamps
+  // at `OUTBOUND_IMAGE_MAX_DIMENSION_PX` (2000), a limit that exists because a
+  // model request body has one, and a 2600-px-wide UI screenshot that already
+  // fits the frame would come back narrower than what the agent saved.
+  if (source.length <= maxRawBytes) {
+    try {
+      const metadata = await sharp(source).metadata();
+      const width = metadata.width ?? 0;
+      const height = metadata.height ?? 0;
+      const mime = transportMimeFor(metadata.format);
+      if (width > 0 && height > 0 && mime) {
+        return {
+          ok: true,
+          dataUrl: toDataUrl(mime, source),
+          mime,
+          width,
+          height,
+          scaled: false,
+          bytes: source.length,
+          sourceFormat: metadata.format,
+        };
+      }
+    } catch {
+      // Undecodable: let the ladder report it as `unreadable` below.
+    }
+  }
+
+  let outcome: LadderOutcome;
+  try {
+    outcome = await runLadder(sharp, source, undefined, maxRawBytes);
+  } catch (error) {
+    logger.warn("Transport image rewrite failed:", error);
+    return { ok: false, reason: "unreadable" };
+  }
+
+  if (outcome.status === "unknown-dimensions") {
+    return { ok: false, reason: "unreadable" };
+  }
+  if (outcome.status === "exhausted") {
+    return { ok: false, reason: "too-large" };
+  }
+
+  const after = outcome.dimensions ?? outcome.sourceDimensions;
+  return {
+    ok: true,
+    dataUrl: outcome.dataUrl,
+    // The mime comes from the rung that produced the bytes, never a guess.
+    mime: outcome.dataUrl.slice("data:".length, outcome.dataUrl.indexOf(";")),
+    width: after.width,
+    height: after.height,
+    scaled:
+      after.width !== outcome.sourceDimensions.width ||
+      after.height !== outcome.sourceDimensions.height,
+    bytes: outcome.bytes,
+    sourceFormat: outcome.sourceFormat,
   };
 }

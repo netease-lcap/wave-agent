@@ -489,7 +489,7 @@
 
 /* 计划正文（对话框内承载计划全文）。目前唯一的使用者是远控 Web 页：桌面端把它放进
    右栏 Plan 面板、IDE 端由宿主另开计划标签页，两端都在 ChatApp 里把它从对话框剥掉
-   （见 specs/core/plan-mode.md 场景 13 与 specs/ui/remote-control.md 场景 22）。
+   （见 specs/core/plan-mode.md 场景 13 与 specs/remote/remote-web.md 场景 19）。
    独立滚动区 + 上限高度，避免计划把对话框撑到操作按钮看不见；正文本身复用消息
    markdown 的 `.markdown-content` 排版。不给 tabIndex：焦点环样式只存在于桌面层，
    页面是触屏 —— 凭白多一个 Tab 停靠点（WCAG 2.4.3 噪声）。 */

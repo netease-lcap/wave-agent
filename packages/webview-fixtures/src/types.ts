@@ -329,7 +329,7 @@ export interface UpdateTasksMessage extends HostToWebviewMessageBase {
 
 /**
  * 会话列表的状态标记：哪些对话**在等用户确认**、哪些**正在生成**（spec
- * remote-control.md「待确认只在它自己的对话里弹，对话状态在会话列表标出来」）。
+ * remote/remote-web.md「待确认只在它自己的对话里弹，对话状态在会话列表标出来」）。
  *
  * 两个 id 集合、而不是每会话一条元数据上的字段，因为它们来自两次不同的读且
  * 覆盖面不同：`listPendingPermissions` 报告**全部**会话的待确认（正因如此才能
@@ -368,7 +368,7 @@ export interface SessionListStatus {
 }
 
 /**
- * Web Push 通知开关在页面上的四个事实（spec remote-control.md「锁屏也能知道——
+ * Web Push 通知开关在页面上的四个事实（spec remote/remote-pwa.md「锁屏也能知道——
  * 会话等着我、或者跑完了」）。
  *
  * 页面不做本地推断：能力位来自浏览器（有没有 Service Worker / `PushManager`），
@@ -1438,7 +1438,7 @@ export interface PrefillPromptMessage extends HostToWebviewMessageBase {
  *
  *  `worktreeRemoved` 是本条回复唯一的新事实：电脑侧定位不到那条会话的工作树时
  *  **会话照样删掉**，只是工作树没跟着删——页面据此说「会话已删除，工作树没动」，
- *  而不是把一次「删了一半」报成彻底失败（spec remote-control.md「手机端的会话列表
+ *  而不是把一次「删了一半」报成彻底失败（spec remote/remote-web.md「手机端的会话列表
  *  与删除」场景 8）。 */
 export interface SessionDeletedMessage extends HostToWebviewMessageBase {
   command: "sessionDeleted";
@@ -1474,6 +1474,26 @@ export interface RecentWorkdirsMessage extends HostToWebviewMessageBase {
   requestId: string;
   dirs: string[];
   /** 读失败（旧版电脑没有这个方法 / 通道拒绝）：`dirs` 按空表处理。 */
+  error?: string;
+}
+
+/**
+ * 远控 Web 页点图片路径取图（回复 `getImagePreview`，spec
+ * remote/remote-web.md「点消息里的图片路径看原图」）。
+ *
+ * 页面自己没有文件系统、消息里的图片字节也在过中继前被剥掉了，所以看图只能是
+ * 一次「向宿主要」。`dataUrl` 与 `error` 互斥：要么给图，要么给一句人能看懂
+ * 的拒绝理由（宿主原文——不是图片 / 太大 / 这台机器没装图像处理库）。
+ */
+export interface ImagePreviewResponseMessage extends HostToWebviewMessageBase {
+  command: "imagePreviewResponse";
+  /** 归属键：请求生成的 id 原样带回（一次点击一笔请求，晚到的旧回复即弃）。 */
+  requestId: string;
+  /** `data:` URL，宿主已按单帧预算压过。 */
+  dataUrl?: string;
+  /** 原图超过单帧预算，宿主压过（页面据此可提示「这是缩过的」）。 */
+  scaled?: boolean;
+  /** 失败原因（人也看得懂的那一版）。 */
   error?: string;
 }
 
@@ -1572,6 +1592,7 @@ export type HostToWebviewMessage =
   | SlashCommandsResponseMessage
   | SlashCommandsErrorMessage
   | RecentWorkdirsMessage
+  | ImagePreviewResponseMessage
   | UploadSuccessMessage
   | UploadErrorMessage
   | DesktopRemoteDirListMessage
@@ -1668,6 +1689,9 @@ type ReplyAttribution = {
   // 远控页「新建会话」的最近目录：弹窗每打开一次问一次，晚到的旧回复不得盖掉
   // 新的一次（列表本身很短，这里只要求归属键在）。
   recentWorkdirsResponse: "requestId";
+  // 远控页点图片路径取图：一次点击一笔请求，同一张图可被反复点、也可以连着点
+  // 好几张，晚到的旧回复必须按 requestId 丢弃（否则会把上一张图弹在当前这张上）。
+  imagePreviewResponse: "requestId";
   // 上翻取更早：请求生成 id 原样带回。用户停在顶部会连续翻页，且「翻更早」与
   // 「重连补差 / 整表替换」共用同一份列表，晚到的旧页必须按 requestId 丢弃
   // （否则会把上一页 prepend 到已经翻走的位置上）。
@@ -1730,6 +1754,7 @@ export const replyAttributionLocked = {
   desktopArtifactCategories: true,
   desktopArtifactCategoriesSaved: true,
   recentWorkdirsResponse: true,
+  imagePreviewResponse: true,
   earlierMessages: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];

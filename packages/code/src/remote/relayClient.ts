@@ -165,7 +165,7 @@ export interface RelayClientOptions {
    * This CLI's release version, reported so the relay can enforce the minimum
    * the served page was built against (the page itself is always the newest
    * one; the skew is handled by refusing old clients, not by keeping old
-   * pages — see the version note in `docs/specs/ui/remote-control.md`).
+   * pages — see the version note in `docs/specs/remote/remote-channel.md`).
    *
    * It sits at the **top level** of the auth frame, not inside `params`: that
    * is where the relay reads it, and a version it cannot parse is silently

@@ -129,8 +129,8 @@ const DESKTOP_GATED_NON_PREFIX = new Set([
  * 的（见 packages/webview/src/types/index.ts 的 window.waveRemotePage 注释）。
  */
 const REMOTE_PAGE_GATED = new Set([
-  "openMachinePicker", // ChatHeader「切换电脑」：顶栏换机器入口（spec remote-control.md「机器列表与切换」场景 5）
-  // 新会话命令族（RemoteNewSessionDialog，spec remote-control.md「Web 端也能
+  "openMachinePicker", // ChatHeader「切换电脑」：顶栏换机器入口（spec remote/remote-machine.md「机器列表与切换」场景 5）
+  // 新会话命令族（RemoteNewSessionDialog，spec remote/remote-web.md「Web 端也能
   // 发起新会话」）：目录列表 / 分支列表 / 创建，shim 转中继 listDirectories /
   // listGitBranches / (createWorktree +) initialize。
   "newSessionListDirs",
@@ -140,18 +140,24 @@ const REMOTE_PAGE_GATED = new Set([
   // 问一次，shim 转中继 getRecentWorkdirs。只有手机页需要它——桌面端的最近目录
   // 走它自己的宿主链路，不经 webview→host 这条通道。
   "getRecentWorkdirs",
-  // Web Push 通知开关（spec remote-control.md「锁屏也能知道」）：读状态 / 开启 /
+  // Web Push 通知开关（spec remote/remote-pwa.md「锁屏也能知道」）：读状态 / 开启 /
   // 关闭，shim 转中继 push/public-key 与 push/subscriptions 三个端点。只有手
   // 机页有这套 UI（浏览器 Service Worker + 通知权限），三个本地宿主没有对应物。
   "getPushState",
   "enablePushNotifications",
   "disablePushNotifications",
-  // 会话列表的行级动作（spec remote-control.md「手机端的会话列表与删除」）：删除
+  // 会话列表的行级动作（spec remote/remote-web.md「手机端的会话列表与删除」）：删除
   // 一条会话（shim 转 destroy，可选连带删工作树）、删除确认前按需读工作树改动。
   // 桌面端有等价动作但走另一套命令（desktopDeleteSession 等），页面这边只有
   // 手机页这一条链。
   "deleteSession",
   "getSessionWorktreeChanges",
+  // 点消息里的图片路径看原图（spec remote/remote-web.md「点消息里的图片路径看原
+  // 图」）：页面没有文件系统、图片字节也在过中继前被剥掉了，看图只能向宿主要
+  // ——shim 转中继 getImagePreview，宿主读盘 + 判型 + 压进单帧预算后回图。三个
+  // 本地宿主都用它们各自的通道（桌面端文件面板 / IDE 的 previewImage），收不到
+  // 这条命令。
+  "getImagePreview",
 ]);
 
 /** 第五个路由实例：手机页 shim 的 case 注册集合。 */

@@ -10,7 +10,7 @@
  * placeholder; `build.mjs` is what writes the hash).
  *
  * The load-bearing rule lives here rather than in the shim: **a visible page
- * means no banner** (spec ui/remote-control.md「锁屏也能知道」场景 4). The worker
+ * means no banner** (spec remote/remote-pwa.md「锁屏也能知道」场景 4). The worker
  * is the only place that can see whether a page is visible at delivery time —
  * the page itself is frozen or gone when it matters — so this check is the one
  * that cannot be tested anywhere else.

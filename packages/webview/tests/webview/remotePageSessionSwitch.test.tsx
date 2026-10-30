@@ -4,11 +4,11 @@
  *
  * - no 「历史对话」 — a disk-history list is not something the serving process
  *   can act on; one 「会话」 entry instead, which opens the **full-page** list of
- *   the sessions that process is running right now (spec remote-control.md
+ *   the sessions that process is running right now (spec remote/remote-web.md
  *   「手机端的会话列表与删除」). Switching still only moves this page's own view
  *   (spec「Web 页作为第五种宿主」场景 10);
  * - 「新建对话」 stays ( rebound to the remote new-session flow, spec
- *   remote-control.md「Web 端也能发起新会话」).
+ *   remote/remote-web.md「Web 端也能发起新会话」).
  *
  * The other four hosts keep the borrowed dropdown untouched — that is asserted
  * here too, because "make the phone's list a page" must not become "change the
@@ -220,7 +220,7 @@ describe("remote page session list", () => {
   });
 
   /**
-   * 忙时选会话**必须真的发得出去**（spec remote-control.md「Web 页作为第五种宿主」
+   * 忙时选会话**必须真的发得出去**（spec remote/remote-web.md「Web 页作为第五种宿主」
    * 场景 10 与「Web 端也能发起新会话」场景 10）：页面上这次「恢复」只改自己这份
    * `sessionId` 与视图，电脑侧那条会话照旧跑着——被静默忽略就是「点了没反应」，
    * 正是同一份 spec 禁止的形态。IDE 端的原地守卫不受影响（见

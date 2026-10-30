@@ -1,4 +1,4 @@
-/* 远控 Web 页的整页「会话」列表（spec ui/remote-control.md「手机端的会话列表与
+/* 远控 Web 页的整页「会话」列表（spec remote/remote-web.md「手机端的会话列表与
    删除」）。只有这一种宿主挂载本组件，所以这里只需要一套布局；字号档不在这里定——
    那是 remote-page.css 的职责（第三档，按 `pointer: coarse` 判），本文件只给
    PC 浏览器上的基线值（13/11/14，与共享列表同一族）。 */

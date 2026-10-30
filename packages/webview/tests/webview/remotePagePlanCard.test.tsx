@@ -7,7 +7,7 @@
  * Web page has neither: it is a phone-sized browser tab with no editor to open
  * and no pane system to put a second carrier in, so the dialog IS the carrier —
  * the plan is the only basis on which the user can approve it
- * (spec core/plan-mode.md 场景 13 / ui/remote-control.md 场景 22).
+ * (spec core/plan-mode.md 场景 13 / remote/remote-web.md 场景 19).
  *
  * The decision is made in one place (`ChatApp` `showConfirmation`) and applied
  * again to replayed pending confirmations in `setInitialState` (a conversation

@@ -109,7 +109,7 @@ describe("messagesForUi", () => {
 
 describe("messageForRemote", () => {
   /**
-   * Spec ui/remote-control.md「远端通道只开一个白名单」场景 10: the page gets
+   * Spec remote/remote-channel.md「远端通道只开一个白名单」场景 10: the page gets
    * no image bytes (one screenshot blows the frame budget), but the tag layout
    * must survive — `[imageN]` is positional.
    */

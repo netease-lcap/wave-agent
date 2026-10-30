@@ -298,3 +298,63 @@ describe("stripFilePathLinks", () => {
     expect(stripFilePathLinks(inner)).not.toContain("file-path-link");
   });
 });
+
+// ---- 远控页那一档：只把图片路径变成可点入口 -------------------------------
+// spec remote/remote-web.md「点消息里的图片路径看原图」：页面上没有编辑器也没有
+// 文件面板，文本路径链上去只是「点了没反应」，所以那一档只放行图片扩展名。
+// 扩展名在这里是**路由提示**，宿主还会按解码出的真实容器再判一次。
+describe("图片模式（远控页只链图片）", () => {
+  it("images 模式放行图片、不放行其它文件", () => {
+    const html = linkifyFilePathText(
+      "/tmp/shots/before.png /tmp/shots/report.md",
+      "images",
+    );
+    expect(html).toContain('class="file-path-link">/tmp/shots/before.png</a>');
+    expect(html).not.toContain("/tmp/shots/report.md</a>");
+    // 不放行的路径仍然原文显示，只是不可点。
+    expect(html).toContain("/tmp/shots/report.md");
+  });
+
+  it("扩展名大小写不敏感（截图工具常写 .PNG）", () => {
+    expect(linkifyFilePathText("/tmp/shots/a.PNG", "images")).toContain(
+      "file-path-link",
+    );
+    expect(linkifyFilePathText("/tmp/shots/a.WebP", "images")).toContain(
+      "file-path-link",
+    );
+  });
+
+  it("all 模式两种都链（其它宿主的行为不变）", () => {
+    const html = linkifyFilePathText(
+      "/tmp/shots/before.png /tmp/shots/report.md",
+      "all",
+    );
+    expect(html).toContain("before.png</a>");
+    expect(html).toContain("report.md</a>");
+  });
+
+  it("off 模式整段原样转义，不生成任何链接", () => {
+    const html = linkifyFilePathText("/tmp/shots/a.png <b>", "off");
+    expect(html).not.toContain("file-path-link");
+    expect(html).toContain("/tmp/shots/a.png");
+    expect(html).toContain("&lt;b&gt;");
+  });
+
+  it("围栏代码块通道同规则", () => {
+    const html = linkifyCodeBlockPaths(
+      '"/tmp/shots/a.png"\n/tmp/shots/b.ts',
+      "images",
+    );
+    expect(html).toContain('class="file-path-link">/tmp/shots/a.png</a>');
+    expect(html).not.toContain("/tmp/shots/b.ts</a>");
+  });
+
+  it("行内代码通道同规则", () => {
+    expect(linkifyCodeBlockPaths("/tmp/shots/a.jpeg", "images")).toContain(
+      "file-path-link",
+    );
+    expect(linkifyCodeBlockPaths("/tmp/shots/a.json", "images")).not.toContain(
+      "file-path-link",
+    );
+  });
+});

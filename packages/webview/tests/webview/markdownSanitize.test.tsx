@@ -44,7 +44,7 @@ describe("markdown sanitize whitelist", () => {
 /**
  * The ExitPlanMode plan body is model-authored markdown that the confirmation
  * dialog injects with `dangerouslySetInnerHTML` (it is the plan's carrier on the
- * remote-control Web page, spec ui/remote-control.md 场景 22), so it goes through
+ * remote-control Web page, spec remote/remote-web.md 场景 19), so it goes through
  * its own DOMPurify allowlist. Real DOMPurify here for the same reason as above:
  * a mocked passthrough would assert nothing.
  */

@@ -51,7 +51,7 @@ export interface SlashCommandInfo {
  *
  * Per **request**, not per process: one machine may serve several at once — a
  * GUI host's `--stdio` child holds the sessions its pane shows *and* the ones a
- * phone took over (spec ui/remote-control.md 边界「`--stdio` 子进程与 daemon
+ * phone took over (spec remote/remote-machine.md 边界「`--stdio` 子进程与 daemon
  * 都可能是服务方」), so a process-wide switch would make them share one answer.
  */
 export type HostSurface = "desktop" | "vscode" | "jetbrains" | "remote-page";

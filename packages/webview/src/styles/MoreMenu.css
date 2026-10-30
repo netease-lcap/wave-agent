@@ -69,7 +69,7 @@
   flex-shrink: 0;
 }
 
-/* 手机页「通知」不可用时的说明行（spec remote-control.md「锁屏也能知道」场景 7）：
+/* 手机页「通知」不可用时的说明行（spec remote/remote-pwa.md「锁屏也能知道」场景 7）：
  * 它不是动作、不占方向键的游标位，只是把「为什么开不了」讲清楚——iOS 在 Safari
  * 标签页里、老浏览器、权限被拒是三种不同的原因，也对应三种不同的下一步。 */
 .more-menu-note {

@@ -7,7 +7,7 @@ interface FileToolHeaderProps {
   filePath: string;
   /**
    * Opens the file in the host. Omitted by hosts that have nowhere to open it —
-   * the remote-control Web page (spec ui/remote-control.md 场景 23) — in which
+   * the remote-control Web page (spec remote/remote-web.md 场景 20) — in which
    * case the path renders as plain text: no role, no tab stop, no handler, so
    * there is nothing that looks clickable and does nothing.
    */
