@@ -2723,13 +2723,23 @@ describe("DesktopApp", () => {
       });
       expect(pane0().getByTestId("btw-panel")).toBeInTheDocument();
 
-      // Control: switching pane-0 to a different conversation closes it
+      // Control: rebinding pane-0 to a DIFFERENT conversation hides it — the
+      // panel stays with s1 (spec scenario 14: 切走隐去、切回来恢复). A real
+      // switch pushes both the pane layout (authoritative binding) and the
+      // session state.
+      sendCommand("desktopPanes", {
+        panes: [
+          { paneId: "pane-0", sessionId: "s3" },
+          { paneId: "pane-1", sessionId: "s2" },
+        ],
+        focusedPaneId: "pane-0",
+      });
       sendCommand("setInitialState", {
         paneId: "pane-0",
         messages: [],
         isAuthenticated: true,
         session: {
-          id: "s2",
+          id: "s3",
           sessionType: "main",
           workdir: "/work/a",
           createdAt: new Date(),
@@ -2738,6 +2748,32 @@ describe("DesktopApp", () => {
         },
       });
       expect(pane0().queryByTestId("btw-panel")).not.toBeInTheDocument();
+
+      // Rebinding back to s1 brings the still-loading panel back with it.
+      sendCommand("desktopPanes", {
+        panes: [
+          { paneId: "pane-0", sessionId: "s1" },
+          { paneId: "pane-1", sessionId: "s2" },
+        ],
+        focusedPaneId: "pane-0",
+      });
+      sendCommand("setInitialState", {
+        paneId: "pane-0",
+        messages: [],
+        isAuthenticated: true,
+        session: {
+          id: "s1",
+          sessionType: "main",
+          workdir: "/work/a",
+          createdAt: new Date(),
+          lastActiveAt: new Date(),
+          latestTotalTokens: 0,
+        },
+      });
+      expect(pane0().getByTestId("btw-panel-loading")).toBeInTheDocument();
+      expect(pane0().getByTestId("btw-panel-question").textContent).toBe(
+        "what is the weather?",
+      );
     });
 
     it("a new-session pane empty during spawn resolves its workdir to recents[0], not a sibling worktree path leaked via the host workdir", () => {

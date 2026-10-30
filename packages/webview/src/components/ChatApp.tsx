@@ -103,6 +103,7 @@ import type {
   SessionUiState,
   RemoteForwardRef,
   DiffSelection,
+  BtwPanelState,
 } from "../utils/sessionUiStore";
 import {
   parkGroup,
@@ -194,6 +195,24 @@ const autoPanelWidth = (containerW: number): number => {
  */
 const hasRunningBackgroundTask = (tasks: BackgroundTaskSummary[]): boolean =>
   tasks.some((t) => t.status === "running");
+
+/**
+ * 一个流式分片折进 /btw 面板（spec commands/btw-command.md 场景 6）：思考分片先
+ * 累积着实时显示，首个 content 分片一到就丢掉思考阶段累积的文本、只留内容（用户
+ * 决定：思考阶段结束后不再显示思考内容）。
+ */
+function applyBtwChunk(
+  panel: BtwPanelState,
+  content: string,
+  type?: string,
+): BtwPanelState {
+  if (type === "content") {
+    const base = panel.contentStarted ? panel.answer : "";
+    return { ...panel, contentStarted: true, answer: base + content };
+  }
+  if (panel.contentStarted) return panel;
+  return { ...panel, answer: panel.answer + content };
+}
 
 /**
  * Hostname spellings that name the same remote service through an ssh tunnel:
@@ -368,25 +387,6 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // One-shot scan correlation: a stale reply (host switched, /resume pressed
   // again) must not populate the picker.
   const resumeRequestIdRef = useRef("");
-  // /btw side-question panel (webview spec story 3). Non-null while the panel is
-  // open; `loading` while the askBtw RPC is in flight, `answer` afterwards
-  // (including the bare-/btw usage hint and API-error strings).
-  const [btwPanel, setBtwPanel] = useState<{
-    question: string;
-    answer: string;
-    loading: boolean;
-    contentStarted: boolean;
-  } | null>(null);
-  // Question of the in-flight askBtw RPC. Cleared on close so a late reply is
-  // dropped (scenario 7); matched against the reply's echoed question so a stale
-  // reply never lands on a newer panel (scenario 6/7).
-  const btwActiveRef = useRef<string | null>(null);
-  // Session the current /btw panel belongs to. Compared against
-  // state.currentSession.id in an effect below: the panel is conversation-scoped
-  // (spec scenario 14), and desktop pane instances stay mounted across
-  // conversation switches (ChatApp is keyed by paneId, not sessionId), so a
-  // local useState alone would leak the previous conversation's panel.
-  const btwSessionRef = useRef<string | undefined>(undefined);
   // Session whose context-usage percentage contextUsage currently holds. Kept
   // in sync synchronously by the setInitialState / updateCurrentSession message
   // handlers (not by a passive effect — see the race note at those handlers).
@@ -639,6 +639,19 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // new-session bucket migrates to the session id only when that message binds
   // one — a sidebar switch to an existing session must not inherit the bucket.
   const sentFromNewSessionRef = useRef(false);
+  // /btw side-question panel（spec commands/btw-command.md 场景 14）：面板属于
+  // **发起它的那个对话**，切走只是隐去、切回来原样恢复（含还在跑的那条），所以
+  // 状态存在会话快照里，本地只留一份镜像。归属键与面板组同源：桌面 pane 用
+  // groupKey（绑定会话的 id，未绑定时 `new:<paneId>`）；IDE / 远控页没有 pane，
+  // 用 currentSession.id。`btwStateKey` = 本地镜像当前反映的那个键，它比 btwKey
+  // 晚一个提交——这正是下面回写 effect 里 `btwStateKey !== btwKeyRef.current`
+  // 那道守卫要识别的那一个提交。
+  const btwKey = groupKey ?? state.currentSession?.id;
+  const [btwPanel, setBtwPanel] = useState<BtwPanelState | null>(
+    () => (btwKey ? sessionUi.get(btwKey)?.btwPanel : undefined) ?? null,
+  );
+  const [btwStateKey, setBtwStateKey] = useState(btwKey);
+  const btwKeyRef = useRef(btwKey);
   // Desktop remote sessions: port-forward failure shown in the empty-preview
   // stub with a retry entry (scenario 16). Null = no error. Restored from the
   // session's cached group so a pane rebinding away and back keeps the error.
@@ -1035,6 +1048,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       diffSelection,
       forward: currentForward,
       forwardError: previewForwardError,
+      btwPanel,
     };
     sessionUi.set(groupKey, snapshot);
   }, [
@@ -1052,6 +1066,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     diffSelection,
     currentForward,
     previewForwardError,
+    btwPanel,
   ]);
 
   // Session switch: swap in the incoming session's remembered panel group
@@ -1131,6 +1146,25 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       );
     }
   }, [paneId, groupKey]);
+
+  // /btw 面板随会话换：换到别的会话就换成它自己那份（没有就是 null —— 面板从不
+  // 串对话），换回来则恢复离开时的样子，加载中的那份照样接着跑（spec 场景 14）。
+  // 与上面的面板组同一套编排：本实例在会话切换时不重挂载（桌面 pane 按 paneId
+  // 挂载、IDE / 远控页连 id 都不变），只有 effect 能换掉本地镜像。
+  useEffect(() => {
+    if (btwKey === btwKeyRef.current) return;
+    btwKeyRef.current = btwKey;
+    setBtwStateKey(btwKey);
+    setBtwPanel(btwKey ? (sessionUi.get(btwKey)?.btwPanel ?? null) : null);
+  }, [btwKey]);
+
+  // 本地镜像回写会话快照：流式每个分片都写一次，于是「切走那一刻的快照」就是
+  // 当时屏幕上的样子，切回来原样播种。换键的那一个提交跳过——此时 btwStateKey
+  // 还是上一个会话的、btwKeyRef 已指向新会话，写下去就把旧面板塞进新会话了。
+  useEffect(() => {
+    if (!btwStateKey || btwStateKey !== btwKeyRef.current) return;
+    sessionUi.patch(btwStateKey, { btwPanel });
+  }, [btwStateKey, btwPanel]);
 
   // 切到的会话重新成为前台：把它从保活台账里摘掉（guest 改由本实例的可见分支渲
   // 染）。必须等 state 真的换过去（stateGroupKey 与 tabs 同批切换）——在 swap
@@ -1248,6 +1282,32 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     // instance; once the rows are hidden the target pane is unmounted and
     // only the root can take the reply (see the rationale above).
     return !rowsVisibleRef.current;
+  };
+  // /btw 回包的归属路由（spec commands/btw-command.md 场景 14）：回包只带
+  // `question`，归属会话按它反查——在途那条可能在用户切走之后才回来，它得落回
+  // 自己那个会话的快照，而不是屏幕上的这一个。落到当前会话走本地 setState（回写
+  // effect 负责入快照），落到别的会话直接 patch 快照。
+  // 查不到归属但本实例还没有会话身份（宿主尚未绑会话）时，就地作用在本地镜像上：
+  // 那时不存在「切到别的会话」，也就无所谓归属，保持旧行为。
+  const routeBtwReply = (
+    question: string,
+    fold: (panel: BtwPanelState) => BtwPanelState,
+  ) => {
+    const owner = sessionUi.keyByBtwQuestion(question);
+    if (!owner) {
+      setBtwPanel((panel) =>
+        !btwKeyRef.current && panel?.loading && panel.question === question
+          ? fold(panel)
+          : panel,
+      );
+      return;
+    }
+    if (owner === btwKeyRef.current) {
+      setBtwPanel((panel) => (panel ? fold(panel) : panel));
+      return;
+    }
+    const cached = sessionUi.get(owner)?.btwPanel;
+    if (cached) sessionUi.patch(owner, { btwPanel: fold(cached) });
   };
   // 上翻取更早（spec ui/message-rendering-system.md「首屏一页，上翻按需取更早」）：
   // 「还有没有更早」由宿主的回包决定，页面只负责在滚到顶时开口要、把回来的一页接在
@@ -1681,52 +1741,40 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         setConfiguredModels(message.models || []);
         setCurrentModel(message.currentModel);
         break;
-      case "btwStream":
+      case "btwStream": {
         if (!forThisPane(message)) break;
         // Streaming chunks from the askBtw RPC (spec scenario 6): thinking
         // chunks show live while they stream, but once the first content
         // chunk arrives the accumulated thinking text is discarded and only
         // content is kept (user decision: thinking is not shown after the
-        // thinking phase ends).
-        if (!btwActiveRef.current || message.question !== btwActiveRef.current)
-          break;
-        setBtwPanel((panel) => {
-          if (!panel) return panel;
-          const content =
-            typeof message.content === "string" ? message.content : "";
-          if (message.type === "content") {
-            const base = panel.contentStarted ? panel.answer : "";
-            return { ...panel, contentStarted: true, answer: base + content };
-          }
-          if (panel.contentStarted) return panel;
-          return { ...panel, answer: panel.answer + content };
-        });
+        // thinking phase ends). 归属见 routeBtwReply——在途请求可能在用户切走
+        // 之后才流完，它照旧往自己那个会话的快照里写，切回来连同流式尾部一起恢复。
+        routeBtwReply(message.question, (panel) =>
+          applyBtwChunk(
+            panel,
+            typeof message.content === "string" ? message.content : "",
+            message.type,
+          ),
+        );
         break;
+      }
       case "btwResponse":
         if (!forThisPane(message)) break;
-        // Drop late replies: the panel must be open, the panel's question must
-        // still match the in-flight one, and the reply must echo the same question.
-        if (btwActiveRef.current && message.question === btwActiveRef.current) {
-          setBtwPanel((panel) =>
-            panel
-              ? { ...panel, answer: message.answer ?? "", loading: false }
-              : panel,
-          );
-        }
+        // 迟到回包落在它所属的会话上；找不到归属（面板被手动关掉、或从没发起）
+        // 就整条丢弃（场景 10）。
+        routeBtwReply(message.question, (panel) => ({
+          ...panel,
+          answer: message.answer ?? "",
+          loading: false,
+        }));
         break;
       case "btwError":
         if (!forThisPane(message)) break;
-        if (btwActiveRef.current && message.question === btwActiveRef.current) {
-          setBtwPanel((panel) =>
-            panel
-              ? {
-                  ...panel,
-                  answer: `(API error: ${message.error ?? "unknown"})`,
-                  loading: false,
-                }
-              : panel,
-          );
-        }
+        routeBtwReply(message.question, (panel) => ({
+          ...panel,
+          answer: `(API error: ${message.error ?? "unknown"})`,
+          loading: false,
+        }));
         break;
       // Test-only handlers
       case "startStreaming":
@@ -1741,9 +1789,23 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         if (!forThisPane(message)) break;
         dispatch({ type: "END_STREAMING" });
         break;
-      case "updateSessions":
+      case "updateSessions": {
         dispatch({ type: "SET_SESSIONS", payload: message.sessions });
+        // /btw 面板按会话存在快照里（场景 14），所以非桌面端也要有失效收口：
+        // 桌面端由 DesktopApp 在会话树更新时统一 prune，IDE / 远控页没有那一层，
+        // 就在这里把已删除会话的那份扔掉——否则内存里会堆着再也回不去的答案。
+        if (!isDesktop) {
+          const sessions = Array.isArray(message.sessions)
+            ? message.sessions
+            : [];
+          const keep = new Set<string>(
+            sessions.map((s: { id: string }) => s.id),
+          );
+          if (btwKeyRef.current) keep.add(btwKeyRef.current);
+          sessionUi.prune(keep);
+        }
         break;
+      }
       case "updateCurrentSession":
         if (!forThisPane(message)) break;
         // Same synchronous conversation-scoped usage clear as setInitialState:
@@ -2852,13 +2914,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           });
           return;
         }
-        btwActiveRef.current = question;
-        setBtwPanel({
+        const panel: BtwPanelState = {
           question,
           answer: "",
           loading: true,
           contentStarted: false,
-        });
+        };
+        // 立刻落进会话快照（不等回写 effect）：本地的「这条在途」判据就是快照里
+        // 那条 loading 的面板（keyByBtwQuestion），首个流式分片必须查得到。
+        setBtwPanel(panel);
+        if (btwKeyRef.current)
+          sessionUi.patch(btwKeyRef.current, { btwPanel: panel });
         postToHost({ command: "askBtw", question });
         return;
       }
@@ -3356,36 +3422,24 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [isRemotePage, postToHost],
   );
 
-  // Close the /btw panel. While a request is in flight, clearing btwActiveRef
-  // makes the late reply a no-op (scenario 7: closing during loading drops it).
+  // Close the /btw panel of the conversation on screen. 面板置 null 就是「这条不再
+  // 在途」的判据，于是迟到的流式增量与最终回答都无处可落（场景 10，与切走不同：
+  // 切走只是隐去，切回来还能看到）。别的会话在途的那份不受影响——它们各存各的。
   const handleBtwClose = useCallback(() => {
-    btwActiveRef.current = null;
+    if (btwKeyRef.current)
+      sessionUi.patch(btwKeyRef.current, { btwPanel: null });
     setBtwPanel(null);
     messageInputRef.current?.focus();
   }, []);
 
-  // The /btw panel is conversation-scoped (spec scenario 14): switching to
-  // another conversation closes it, so the new conversation never shows the old
-  // one's panel. Desktop panes key ChatApp by paneId (not sessionId), so a
-  // sidebar session switch leaves this component mounted — without this effect
-  // the local btwPanel useState would survive the switch (setInitialState only
-  // resets reducer state, not local state). Clearing btwActiveRef also drops any
-  // in-flight askBtw reply that lands after the switch. `previous !== undefined`
-  // keeps the initial mount (no conversation assigned yet) a no-op.
-  useEffect(() => {
-    const sessionId = state.currentSession?.id;
-    const previous = btwSessionRef.current;
-    btwSessionRef.current = sessionId;
-    if (previous !== undefined && previous !== sessionId) handleBtwClose();
-  }, [state.currentSession?.id, handleBtwClose]);
-
-  // Preview fullscreen is conversation-scoped, same pattern as the btw panel
-  // effect above: the single root layout (no panes) keeps
-  // ChatApp mounted across sidebar session switches, so the local fullscreen
-  // state would otherwise survive into the next conversation. Fullscreen
-  // belongs to the outgoing session's preview tab — a stale true hides the
-  // conversation column and the panel slot with no UI left to restore it
-  // (关闭全屏预览后对话框消失, PM bug 3465519197988352). Switching
+  // Preview fullscreen is conversation-scoped: switching to another
+  // conversation always exits it (unlike the /btw panel, which is retained per
+  // conversation — see the btw swap/sync effects near the panel-group ones).
+  // ChatApp stays mounted across sidebar session switches, so the local
+  // fullscreen state would otherwise survive into the next conversation.
+  // Fullscreen belongs to the outgoing session's preview tab — a stale true
+  // hides the conversation column and the panel slot with no UI left to
+  // restore it (关闭全屏预览后对话框消失, PM bug 3465519197988352). Switching
   // conversations is the universal escape hatch. `previous !== undefined`
   // keeps the initial mount a no-op.
   const fullscreenSessionRef = useRef<string | undefined>(undefined);
