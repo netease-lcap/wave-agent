@@ -3135,9 +3135,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // ChatApp 在设置页关闭后重挂载，初始收不到 snapshot（LoadingLogo 无输入框），
   // 需等宿主 webviewReady 回放 setInitialState 后才真正挂载输入框。
   const inputAreaMounted = showWelcomeReady || !showWelcome;
-  // 发送入口的禁用原因。两条原因互斥、同一时刻只有一条生效，**登录优先**：
+  // 远控页此刻**一条会话都没有**（电脑侧全被删光 / 刚开机还没建）：页面手里既没有
+  // sessionId、也没有任何 workdir，而「新建一条」必须先选目录——规格明确不允许
+  // 「不选目录直接创建」（隐式落到服务进程的 cwd，spec remote/remote-web.md「Web 端
+  // 也能发起新会话」场景 2）。所以这种状态下没有可发出去的会话：见 `inputDisabledReason`。
+  const remotePageWithoutSession = isRemotePage && !state.currentSession;
+  // 发送入口的禁用原因。三条原因互斥、同一时刻只有一条生效，**登录优先**：
   // 未登录必然发不出消息（实测：无凭据时既无模型请求、也不报错，只是静默挂住），
-  // 而「桌面还没选目录」只是本地还没定位到项目——两者同时成立时先说更根本的那条。
+  // 而「桌面还没选目录」「远控页还没建会话」只是本地还没定位到项目——同时成立时先说
+  // 更根本的那条。
   // 文案由本处派生、经 MessageInput 的 `placeholder` 口子传入（组件不硬编码原因），
   // 未禁用时传 undefined ⇒ 组件回落到默认的 /快捷指令 提示。
   // 复用 MessageInput 既有的 disabled 语义（contentEditable=false ＋ 发送/附件/
@@ -3149,7 +3155,9 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     ? "请先登录后再发送消息"
     : host?.type === "desktop" && !effectiveWorkdir
       ? "请先选择项目目录"
-      : undefined;
+      : remotePageWithoutSession
+        ? "请先新建对话并选择工作目录"
+        : undefined;
   const inputDisabled = inputDisabledReason !== undefined;
 
   // pane-scoped ChatApp（paneId 非空，DesktopShell 内）：收到指向本 pane 的
@@ -4901,11 +4909,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 空态「快捷方式」区块：只在空态（尚无消息且初始状态就绪）出现，点了把整段
   // 模板填进输入框（与设置页「新建/编辑」预填走同一个 loadDraft）。桌面端与 IDE
   // 的位置不同（见 chatBodyContent 里两处渲染点），这里只构造一次避免两份 props。
-  const quickStartBlock = showWelcomeReady ? (
-    <QuickStartTemplates
-      onApplyTemplate={(prompt) => messageInputRef.current?.loadDraft(prompt)}
-    />
-  ) : null;
+  // 远控页在「电脑侧一条会话都没有」时不渲染：那里输入框是禁用的（见
+  // `remotePageWithoutSession`），点模板只会往一个发不出去的框里塞文本。
+  const quickStartBlock =
+    showWelcomeReady && !remotePageWithoutSession ? (
+      <QuickStartTemplates
+        onApplyTemplate={(prompt) => messageInputRef.current?.loadDraft(prompt)}
+      />
+    ) : null;
 
   const chatBodyContent = state.isRestoring ? (
     // Desktop restore in progress: the pane already switched to the target

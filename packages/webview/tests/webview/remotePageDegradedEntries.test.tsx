@@ -82,6 +82,36 @@ async function typeAndSend(text: string) {
   fireEvent.keyDown(input, { key: "Enter" });
 }
 
+/** 活着的会话，只是还没有可见消息（「新建对话」刚建好 / `/clear` 之后）。 */
+const EMPTY_SESSION = {
+  id: "session-empty",
+  sessionType: "main" as const,
+  workdir: "/repo/app",
+  createdAt: new Date("2026-10-14T08:00:00Z"),
+  lastActiveAt: new Date("2026-10-14T09:00:00Z"),
+  latestTotalTokens: 0,
+};
+
+/**
+ * 开一个能在输入区敲字的远控页：**必须有会话**。机器上一条会话都没有时页面把
+ * 输入区置灰（spec remote/remote-web.md「手机端的会话列表与删除」场景 14，见
+ * remotePageNoSession.test.tsx），那种状态下这些「命令怎么走」的用例无从谈起。
+ */
+function openPageOnEmptySession() {
+  window.waveRemotePage = true;
+  const rendered = renderChatApp();
+  act(() => {
+    sendHostMessage(
+      fixtures.setInitialState({
+        sessions: [EMPTY_SESSION],
+        session: EMPTY_SESSION,
+        messages: [],
+      }),
+    );
+  });
+  return rendered;
+}
+
 function postsOf(vscode: ReturnType<typeof createMockVscode>) {
   return vscode.postMessage.mock.calls.map(
     ([msg]) => msg as Record<string, unknown>,
@@ -366,8 +396,7 @@ describe("entries that can only fail on the page", () => {
   });
 
   it("sends every host-local slash command as an ordinary message", async () => {
-    window.waveRemotePage = true;
-    const { vscode } = renderChatApp();
+    const { vscode } = openPageOnEmptySession();
 
     // 第二批解禁之后仍然「只能失败」的那些：它们的背后是宿主的**界面**能力
     // （设置页 / 插件 / 计划预览 / btw 面板），或者只有宿主侧才有意义（远程控制
@@ -405,8 +434,7 @@ describe("entries that can only fail on the page", () => {
   });
 
   it("serves /btw as a side question instead of sending it as text", async () => {
-    window.waveRemotePage = true;
-    const { vscode } = renderChatApp();
+    const { vscode } = openPageOnEmptySession();
 
     await act(async () => {
       await typeAndSend("/btw 今天几号");
@@ -427,8 +455,7 @@ describe("entries that can only fail on the page", () => {
   });
 
   it("shows the usage line for a bare /btw and asks the machine nothing", async () => {
-    window.waveRemotePage = true;
-    const { vscode } = renderChatApp();
+    const { vscode } = openPageOnEmptySession();
 
     await act(async () => {
       await typeAndSend("/btw");
@@ -442,8 +469,7 @@ describe("entries that can only fail on the page", () => {
   });
 
   it("serves the four commands the second batch unblocked, instead of sending them as text", async () => {
-    window.waveRemotePage = true;
-    const { vscode } = renderChatApp();
+    const { vscode } = openPageOnEmptySession();
 
     // /rewind 先读检查点；选中之后的确认与消息按钮共用同一个对话框。
     vscode.postMessage.mockClear();
@@ -489,8 +515,7 @@ describe("entries that can only fail on the page", () => {
   });
 
   it("keeps the two commands the machine can really serve", async () => {
-    window.waveRemotePage = true;
-    const { vscode } = renderChatApp();
+    const { vscode } = openPageOnEmptySession();
 
     await act(async () => {
       await typeAndSend("/compact");
