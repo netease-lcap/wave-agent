@@ -1780,10 +1780,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   size={24}
                   className="file-pane-placeholder-icon"
                 />
-                <span data-testid="file-pane-empty-none">
-                  打开的文件会显示在这里
-                </span>
-                <span className="file-pane-placeholder-hint">
+                {/* 评论 1030：原来这里还有一行「打开的文件会显示在这里」，与下面
+                    这句引导重复，设计师要求拿掉（只留引导句）。`data-testid` 迁到
+                    引导句上 —— 场景 14「一个文件都没打开」的断言靠它定位，语义不变。
+                    注：本组件两个宿主共用，IDE / 插件端的同一空态也会少这一行。 */}
+                <span
+                  className="file-pane-placeholder-hint"
+                  data-testid="file-pane-empty-none"
+                >
                   点击目录树中的文件，或点击消息里的文件路径
                 </span>
               </PanePlaceholder>
