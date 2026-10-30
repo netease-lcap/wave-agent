@@ -1249,7 +1249,11 @@ export class DesktopHost {
       )) as { dirs?: unknown } | null;
       const dirs = result?.dirs;
       if (!Array.isArray(dirs)) return undefined;
-      return dirs.filter((dir): dir is string => typeof dir === "string");
+      const list = dirs.filter((dir): dir is string => typeof dir === "string");
+      // 机器那份是真相（含它自己的归一口径：工作树路径读出来就是仓库根），
+      // 顺手把本地回退缓存对齐，避免主机再次不可达时显示一份过期的路径。
+      this.configStore.setRecentWorkdirsForHost(host, list);
+      return list;
     } catch {
       return undefined;
     }
@@ -1268,6 +1272,33 @@ export class DesktopHost {
     } catch {
       // 旧版机器没有这个方法；本地缓存那份仍然记着（见 activateWorkdir）。
     }
+  }
+
+  /**
+   * 从最近打开列表里删掉一个目录（spec core/recent-workdirs.md 场景 6）。
+   *
+   * 必须**先落在那台机器上**：只删本地回退缓存的话，紧跟其后的
+   * `sendWorkdirState` 重读机器那份就把条目带回来了——这正是「删不掉」。
+   * 旧版机器没有 `forgetRecentWorkdir` 时降级为只清本地缓存（条目可能在下一次
+   * 读取时重现，不报错）；主机不可达时按既有约束保留条目。
+   */
+  private async forgetRecentDir(host: string, dir: string): Promise<void> {
+    try {
+      await this.ensureClientFor(host);
+      await this.utilityClientFor(host).request("forgetRecentWorkdir", {
+        workdir: dir,
+      });
+    } catch (error) {
+      if (error instanceof RemoteHostUnreachableError) {
+        this.showToast({ message: `无法连接主机 ${host}，最近目录已保留` });
+        return;
+      }
+      // 旧版机器：没有这个方法，只能清本地那份。
+    }
+    // Picker-only hygiene: removing a recent dir never touches the
+    // index-derived session tree (FR-006), so no refreshSessionTree here.
+    this.configStore.removeRecentWorkdir({ host, path: dir });
+    this.sendWorkdirState();
   }
 
   // ------------------------------------------------------------------
@@ -4056,11 +4087,10 @@ export class DesktopHost {
         break;
 
       case "desktopRemoveRecentWorkdir":
-        this.configStore.removeRecentWorkdir({
-          host: (msg.host as string) ?? this.currentHost,
-          path: msg.path as string,
-        });
-        this.sendWorkdirState();
+        await this.forgetRecentDir(
+          (msg.host as string) ?? this.currentHost,
+          msg.path as string,
+        );
         break;
 
       // 渲染进程自己那份消息列表的规模（内存曲线用）。宿主不留消息内容、也没有
@@ -5647,10 +5677,7 @@ export class DesktopHost {
       return;
     }
     if (!exists) {
-      // Picker-only hygiene: removing a recent dir never touches the
-      // index-derived session tree (FR-006), so no refreshSessionTree here.
-      this.configStore.removeRecentWorkdir({ host: h, path: dir });
-      this.sendWorkdirState();
+      await this.forgetRecentDir(h, dir);
       this.showToast({ message: `目录不存在：${dir}，已从最近列表移除` });
       return;
     }

@@ -35,6 +35,7 @@ export * from "./utils/nameGenerator.js";
 export * from "./utils/pathEncoder.js";
 export {
   MAX_RECENT_WORKDIRS,
+  forgetRecentWorkdir,
   readRecentWorkdirs,
   rememberRecentWorkdir,
   recentWorkdirsPath,

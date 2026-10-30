@@ -18,6 +18,7 @@ import {
   normalizeEntrypoint,
   readRecentWorkdirs,
   rememberRecentWorkdir,
+  forgetRecentWorkdir,
   type ClientNotificationMethod,
   type RequestMethod,
 } from "wave-agent-sdk";
@@ -4002,6 +4003,14 @@ test("rememberRecentWorkdir records the directory the user picked", async () => 
   await bridge.handleRequest("rememberRecentWorkdir", { workdir: "/repo" });
 
   expect(rememberRecentWorkdir).toHaveBeenCalledWith("/repo");
+});
+
+test("forgetRecentWorkdir removes it on this machine", async () => {
+  const { bridge } = createBridge();
+
+  await bridge.handleRequest("forgetRecentWorkdir", { workdir: "/repo" });
+
+  expect(forgetRecentWorkdir).toHaveBeenCalledWith("/repo");
 });
 
 // ── getWorkspaceDiff ───────────────────────────────────────────
