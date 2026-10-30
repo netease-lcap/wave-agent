@@ -43,6 +43,7 @@ import {
   toSlashCommandInfo,
 } from "../stdio/hostSlashCommands.js";
 import { readImagePreview } from "./imagePreview.js";
+import { readTextPreview } from "./textPreview.js";
 import { messagesForUi } from "../stdio/uiPayload.js";
 import {
   InvalidMessageWindowError,
@@ -170,6 +171,11 @@ export class RemoteControlCliHost implements RemoteControlHost {
       // 这份规格已经踩过一次（见场景 7）。
       case "getImagePreview":
         return readImagePreview(typeof p.path === "string" ? p.path : "");
+      case "getTextPreview":
+        // 与取图同一条按需读取通道（spec remote/remote-web.md「点消息里的文件
+        // 路径看内容」）；前台 CLI 会话同样要能回，见图片故事场景 7 那条
+        // 「白名单放行 ≠ 宿主实现」。
+        return readTextPreview(typeof p.path === "string" ? p.path : "");
       case "rememberRecentWorkdir":
         rememberRecentWorkdir(typeof p.workdir === "string" ? p.workdir : "");
         return null;

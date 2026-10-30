@@ -198,6 +198,13 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   // **不按目录限制**是刻意的：真机截图落在 `/tmp`，限目录等于打掉主场景
   // （见规格边界情况那条「边界画在内容类型上，不画在目录上」）。
   "getImagePreview",
+  // 读：`getTextPreview` 是同一个形态的第二条（spec「点消息里的文件路径看内容」）
+  // ——把**一个路径**变成它开头那段文本。它**不设扩展名白名单**：判据是「读出来
+  // 是不是文本」（含 NUL 或大部分解不出即拒），不是「名字像不像文本」。
+  // 为什么这条通道不必也不该加路径限制：`sendMessage` + `permissionResponse` 已在
+  // 白名单里，持页面者让模型 Read 同一个路径拿到的就是同一份内容——任何这里加的
+  // 目录/扩展名限制都是假防护，只挡住更好用的入口（见规格边界情况那条）。
+  "getTextPreview",
 ]);
 
 /**

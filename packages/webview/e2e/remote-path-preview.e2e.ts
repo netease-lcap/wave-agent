@@ -3,16 +3,16 @@ import { MessageInjector } from "./utils/messageInjector.js";
 import type { Message } from "wave-agent-sdk";
 
 /**
- * 远控页点消息里的图片路径看原图（spec remote/remote-web.md「点消息里的图片路
- * 径看原图」），在真 Chromium 里跑一遍完整一跳：
+ * 远控页点消息里的路径就地看内容（spec remote/remote-web.md「点消息里的图片路
+ * 径看原图」与「点消息里的文件路径看内容」），在真 Chromium 里各跑一遍完整一跳：
  *
- * 渲染层只把**图片扩展名**变成入口（正文里同段的 `.md` 不是入口）→ 点它不走
- * `openFile`，而是发一条 `getImagePreview` 带 `requestId` → 宿主的回包让全屏覆盖
- * 层出现 → 点遮罩关掉。
+ * 渲染层把路径都变成入口 → 点它不走 `openFile`，而是按扩展名分流：图片发
+ * `getImagePreview`、其余发 `getTextPreview`，各带一个 `requestId` → 宿主的回包
+ * 让全屏覆盖层（图）或全屏文本弹层（文件）出现 → 关掉。
  *
  * 这一跳是单测拼不出来的：链接是 marked renderer 生成的 innerHTML，点击路由挂在
  * `.message-content-container` 上，请求器只认 `window` 上的 `message` 事件——三段
- * 各自都有单测，只有把它们串起来才证明「手机上点一下真的能看到图」。
+ * 各自都有单测，只有把它们串起来才证明「手机上点一下真的能看到内容」。
  */
 
 const SHOT = "/tmp/shots/before.png";
@@ -66,19 +66,16 @@ async function openPage(injector: MessageInjector) {
   await injector.endStreaming();
 }
 
-test.describe("远控页：点图片路径看原图", () => {
-  test("只有图片路径是入口，点了发出取图请求并弹出覆盖层", async ({
-    webviewPage,
-  }) => {
+test.describe("远控页：点路径看内容", () => {
+  test("图片路径：点了发出取图请求并弹出覆盖层", async ({ webviewPage }) => {
     const injector = new MessageInjector(webviewPage);
     await openPage(injector);
 
-    // 渲染层：同一段文本里只有图片扩展名那一条被链接化。
+    // 渲染层：同一段文本里的两条路径都是入口。
     const links = webviewPage.locator("a.file-path-link");
-    await expect(links).toHaveCount(1);
-    await expect(links.first()).toHaveText(SHOT);
+    await expect(links).toHaveCount(2);
 
-    await links.first().click();
+    await links.filter({ hasText: SHOT }).click();
 
     const request = await webviewPage.evaluate(() => {
       const sent = (
@@ -105,17 +102,41 @@ test.describe("远控页：点图片路径看原图", () => {
     await expect(webviewPage.locator(".image-preview-modal")).toHaveCount(0);
   });
 
-  test("非图片路径在远控页上连链接都不生成（场景 23 仍然成立）", async ({
+  test("文本路径：点了发出取文本请求，回包进全屏弹层并能关掉", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
     await openPage(injector);
 
-    const container = webviewPage.locator(".message-content-container").last();
-    await expect(container).toContainText(NOTE);
-    // 文本还在，但不是入口。
-    await expect(
-      container.locator("a.file-path-link", { hasText: NOTE }),
-    ).toHaveCount(0);
+    await webviewPage.locator("a.file-path-link", { hasText: NOTE }).click();
+
+    const request = await webviewPage.evaluate(() => {
+      const sent = (
+        window as unknown as { testMessages?: Array<Record<string, unknown>> }
+      ).testMessages;
+      return sent?.find((message) => message.command === "getTextPreview");
+    });
+    expect(request?.path).toBe(NOTE);
+    expect(typeof request?.requestId).toBe("string");
+
+    await injector.simulateExtensionMessage("textPreviewResponse", {
+      requestId: request!.requestId,
+      content: "# 真机验证报告\n\n全部用例通过\n",
+      bytes: 5 * 1024 * 1024,
+      returnedBytes: 256 * 1024,
+      truncated: true,
+      encodingIssue: false,
+    });
+
+    const dialog = webviewPage.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    // 正文走 markdown 渲染（标题成了 h1），不是一坨灰字。
+    await expect(dialog.locator("h1")).toHaveText("真机验证报告");
+    await expect(dialog).toContainText("全部用例通过");
+    // 截断如实写在标题栏上，不假装整份都在。
+    await expect(dialog).toContainText("前 256 KB / 共 5.0 MB");
+
+    await webviewPage.keyboard.press("Escape");
+    await expect(webviewPage.getByRole("dialog")).toHaveCount(0);
   });
 });

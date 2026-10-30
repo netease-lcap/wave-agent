@@ -270,70 +270,72 @@
 }
 
 /* Syntax-highlight palette (GitHub Dark / VS Code Dark+ style hues) driven by
-   --vscode semantic colors where available, static fallbacks otherwise. */
-.file-pane .hljs-comment,
-.file-pane .hljs-quote {
+   --vscode semantic colors where available, static fallbacks otherwise.
+   挂两处：文件面板的代码视图，以及远控页预览弹层的代码档
+   （`IdeContextPreview` 的 `codePath`）——同一份配色，不是两套主题。 */
+:is(.file-pane, .ide-context-preview) .hljs-comment,
+:is(.file-pane, .ide-context-preview) .hljs-quote {
   color: var(--vscode-descriptionForeground, #6a9955);
   font-style: italic;
 }
 
-.file-pane .hljs-keyword,
-.file-pane .hljs-selector-tag,
-.file-pane .hljs-literal,
-.file-pane .hljs-type,
-.file-pane .hljs-section,
-.file-pane .hljs-meta {
+:is(.file-pane, .ide-context-preview) .hljs-keyword,
+:is(.file-pane, .ide-context-preview) .hljs-selector-tag,
+:is(.file-pane, .ide-context-preview) .hljs-literal,
+:is(.file-pane, .ide-context-preview) .hljs-type,
+:is(.file-pane, .ide-context-preview) .hljs-section,
+:is(.file-pane, .ide-context-preview) .hljs-meta {
   color: #569cd6;
 }
 
-.file-pane .hljs-string,
-.file-pane .hljs-regexp,
-.file-pane .hljs-addition {
+:is(.file-pane, .ide-context-preview) .hljs-string,
+:is(.file-pane, .ide-context-preview) .hljs-regexp,
+:is(.file-pane, .ide-context-preview) .hljs-addition {
   color: #ce9178;
 }
 
-.file-pane .hljs-number,
-.file-pane .hljs-symbol,
-.file-pane .hljs-bullet {
+:is(.file-pane, .ide-context-preview) .hljs-number,
+:is(.file-pane, .ide-context-preview) .hljs-symbol,
+:is(.file-pane, .ide-context-preview) .hljs-bullet {
   color: #b5cea8;
 }
 
-.file-pane .hljs-title,
-.file-pane .hljs-title.function_,
-.file-pane .hljs-function .hljs-title {
+:is(.file-pane, .ide-context-preview) .hljs-title,
+:is(.file-pane, .ide-context-preview) .hljs-title.function_,
+:is(.file-pane, .ide-context-preview) .hljs-function .hljs-title {
   color: #dcdcaa;
 }
 
-.file-pane .hljs-attr,
-.file-pane .hljs-attribute,
-.file-pane .hljs-variable,
-.file-pane .hljs-template-variable,
-.file-pane .hljs-name {
+:is(.file-pane, .ide-context-preview) .hljs-attr,
+:is(.file-pane, .ide-context-preview) .hljs-attribute,
+:is(.file-pane, .ide-context-preview) .hljs-variable,
+:is(.file-pane, .ide-context-preview) .hljs-template-variable,
+:is(.file-pane, .ide-context-preview) .hljs-name {
   color: #9cdcfe;
 }
 
-.file-pane .hljs-built_in,
-.file-pane .hljs-builtin-name {
+:is(.file-pane, .ide-context-preview) .hljs-built_in,
+:is(.file-pane, .ide-context-preview) .hljs-builtin-name {
   color: #4ec9b0;
 }
 
-.file-pane .hljs-tag,
-.file-pane .hljs-selector-id,
-.file-pane .hljs-selector-class,
-.file-pane .hljs-selector-attr,
-.file-pane .hljs-selector-pseudo {
+:is(.file-pane, .ide-context-preview) .hljs-tag,
+:is(.file-pane, .ide-context-preview) .hljs-selector-id,
+:is(.file-pane, .ide-context-preview) .hljs-selector-class,
+:is(.file-pane, .ide-context-preview) .hljs-selector-attr,
+:is(.file-pane, .ide-context-preview) .hljs-selector-pseudo {
   color: #d7ba7d;
 }
 
-.file-pane .hljs-deletion {
+:is(.file-pane, .ide-context-preview) .hljs-deletion {
   color: #f14c4c;
 }
 
-.file-pane .hljs-emphasis {
+:is(.file-pane, .ide-context-preview) .hljs-emphasis {
   font-style: italic;
 }
 
-.file-pane .hljs-strong {
+:is(.file-pane, .ide-context-preview) .hljs-strong {
   font-weight: bold;
 }
 

@@ -158,6 +158,10 @@ const REMOTE_PAGE_GATED = new Set([
   // 本地宿主都用它们各自的通道（桌面端文件面板 / IDE 的 previewImage），收不到
   // 这条命令。
   "getImagePreview",
+  // 点消息里的文件路径看内容（spec remote/remote-web.md「点消息里的文件路径看内
+  // 容」）：与取图同一条按需读取通道的第二条，判型换成「读出来是不是文本」。同样
+  // 只有手机页会发——三个本地宿主各有自己的 openFile / 预览链路。
+  "getTextPreview",
 ]);
 
 /** 第五个路由实例：手机页 shim 的 case 注册集合。 */
@@ -252,8 +256,9 @@ function stripComments(src) {
 }
 
 const CMD_RE = /["']?command["']?\s*:\s*"([A-Za-z][A-Za-z0-9_]*)"/g;
-const HAS_SEND_RE = /postToHost\s*\(|postMessage\s*\(/;
-const SEND_CALL_RE = /vscode\??\.postMessage\s*\(|postToHost\s*\(/;
+const HAS_SEND_RE = /postToHost\s*\(|postMessage\s*\(|requestPreview\s*[<(]/;
+const SEND_CALL_RE =
+  /vscode\??\.postMessage\s*\(|postToHost\s*\(|requestPreview\s*[<(]/;
 
 // ────────────────────────────────────────────────────────────────────────────
 // 1) 提取 webview 发送面：cmd → 发送文件集合

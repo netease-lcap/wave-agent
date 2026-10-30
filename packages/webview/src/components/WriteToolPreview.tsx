@@ -32,19 +32,19 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
     content = null;
   }
 
-  // 远程控制 Web 页没有编辑器/文件面板可打开路径（spec remote/remote-web.md
-  // 场景 20）：「打开预览」按钮不渲染，块头的路径也退化为纯文本。**内容预览保留**
-  // —— 那是手机上唯一能读到写入内容的路径。
-  const canOpenFile = !isRemotePageHost();
+  // 远控页没有编辑器/文件面板可打开路径（spec remote/remote-web.md 场景 20），
+  // 但它有一条别的去处：点了就地看内容（同规格「点消息里的文件路径看内容」）
+  // ——由 Message 传进来一个预览 handler。所以判据是「有没有去处」，不是
+  // 「是不是本机宿主」：本机宿主可以直接发 openFile RPC，远控页必须带 handler。
+  const canOpenFile = !isRemotePageHost() || !!onOpenFile;
 
   const openFile = () => {
-    if (filePath && canOpenFile) {
-      if (onOpenFile) {
-        onOpenFile(filePath);
-      } else {
-        vscode.postMessage({ command: "openFile", path: filePath });
-      }
+    if (!filePath || !canOpenFile) return;
+    if (onOpenFile) {
+      onOpenFile(filePath);
+      return;
     }
+    vscode.postMessage({ command: "openFile", path: filePath });
   };
 
   const header = (

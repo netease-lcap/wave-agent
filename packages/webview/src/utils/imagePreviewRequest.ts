@@ -1,29 +1,14 @@
 /**
  * 远控页按需取图（spec `remote/remote-web.md`「点消息里的图片路径看原图」）。
  *
- * 页面读不到文件：消息里的图片字节在过中继前就被剥掉了（`uiPayload.ts` 的
- * `messageForRemote`），页面也没有文件系统。所以「点一个 `/tmp/shot.png` 看图」
- * 只能是一个请求-响应：这里发 `getImagePreview`，宿主读盘、按解码后的真实容器
- * 判型、压到单帧预算内之后回 `imagePreviewResponse`。
- *
- * 为什么是模块级的一张表而不是组件内 `useHostMessage`：
- * - 消息列表是虚拟列表，发出请求的那个 `Message` 随时可能被回收，把监听挂在
- *   它身上等于让回复跟着一起消失——用户点开一张图，结果是永远转圈；
- * - 只有一个 `window` 监听器，按 `requestId` 关联（`useHostMessage` 的注释把
- *   「requestId 关联过滤」列为允许就地处理的例外，FilePane / MessageInput 同理）。
+ * 通道底座（请求-响应、按 `requestId` 对号、超时收场）在 `previewRequest.ts`，
+ * 这里只定义取图那条的命令名与回包翻译。为什么是模块级的一张表而不是组件内
+ * `useHostMessage`，理由见底座文件的注释。
  */
-interface PostTarget {
-  postMessage: (message: unknown) => void;
-}
-
-/** 宿主回包（`imagePreviewResponse`）。 */
-interface ImagePreviewReply {
-  command?: string;
-  requestId?: string;
-  dataUrl?: string;
-  scaled?: boolean;
-  error?: string;
-}
+import {
+  requestPreview,
+  __resetPreviewRequestsForTesting,
+} from "./previewRequest";
 
 export type ImagePreviewOutcome =
   | { dataUrl: string; scaled: boolean }
@@ -37,67 +22,30 @@ export type ImagePreviewOutcome =
  */
 export const IMAGE_PREVIEW_TIMEOUT_MS = 25_000;
 
-const pending = new Map<string, (reply: ImagePreviewReply) => void>();
-let listening = false;
-
-function ensureListener(): void {
-  if (listening || typeof window === "undefined") return;
-  listening = true;
-  window.addEventListener("message", (event: MessageEvent) => {
-    const reply = event.data as ImagePreviewReply | undefined;
-    if (!reply || reply.command !== "imagePreviewResponse") return;
-    const settle = reply.requestId ? pending.get(reply.requestId) : undefined;
-    if (!settle) return;
-    pending.delete(reply.requestId!);
-    settle(reply);
-  });
-}
-
-let sequence = 0;
-
 /**
  * 向宿主要一张图。永远 resolve（失败走 `{ error }`），调用方只需要把两种结果
  * 分别交给预览弹层和可见错误提示。
  */
 export function requestImagePreview(
-  vscode: PostTarget,
+  vscode: { postMessage: (message: unknown) => void },
   path: string,
   timeoutMs: number = IMAGE_PREVIEW_TIMEOUT_MS,
 ): Promise<ImagePreviewOutcome> {
-  ensureListener();
-  const requestId = `image-preview-${++sequence}`;
-
-  return new Promise<ImagePreviewOutcome>((resolve) => {
-    const timer = window.setTimeout(() => {
-      pending.delete(requestId);
-      resolve({
-        error: `等了 ${Math.round(timeoutMs / 1000)} 秒还没拿到这张图。它可能太大，或者这台电脑不支持预览。`,
-      });
-    }, timeoutMs);
-
-    pending.set(requestId, (reply) => {
-      window.clearTimeout(timer);
-      if (reply.error) {
-        resolve({ error: reply.error });
-        return;
+  return requestPreview<{ dataUrl: string; scaled: boolean }>(vscode, {
+    command: "getImagePreview",
+    responseCommand: "imagePreviewResponse",
+    path,
+    timeoutMs,
+    timeoutMessage: `等了 ${Math.round(timeoutMs / 1000)} 秒还没拿到这张图。它可能太大，或者这台电脑不支持预览。`,
+    parse: (reply) => {
+      if (typeof reply.dataUrl !== "string" || !reply.dataUrl) {
+        return { error: "这台电脑没有回图片内容。" };
       }
-      if (!reply.dataUrl) {
-        resolve({ error: "这台电脑没有回图片内容。" });
-        return;
-      }
-      resolve({ dataUrl: reply.dataUrl, scaled: reply.scaled === true });
-    });
-
-    vscode.postMessage({ command: "getImagePreview", path, requestId });
+      return { dataUrl: reply.dataUrl, scaled: reply.scaled === true };
+    },
   });
 }
 
-/**
- * Test seam: drop everything in flight. The `window` listener stays installed
- * on purpose — re-registering it per test would let two handlers race for the
- * same `requestId`, which is not a state the running page can reach.
- */
-export function __resetImagePreviewRequestsForTesting(): void {
-  pending.clear();
-  sequence = 0;
-}
+/** Test seam: drop everything in flight（见 `previewRequest.ts`）。 */
+export const __resetImagePreviewRequestsForTesting =
+  __resetPreviewRequestsForTesting;

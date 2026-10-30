@@ -118,10 +118,21 @@ async function rowGeometry(page: Page) {
 async function mountRemoteChat(page: Page, width: number) {
   await page.setViewportSize({ width, height: 844 });
   const injector = new MessageInjector(page);
+  // 必须落一条活会话：远控页在「一条会话都没有」时会把输入区整体置灰
+  // （spec remote/remote-web.md 场景 14），底栏那几个控件根本点不动。
+  const session = {
+    id: "session-1",
+    sessionType: "main" as const,
+    workdir: "/repo/app",
+    createdAt: new Date("2026-10-14T08:00:00Z"),
+    lastActiveAt: new Date("2026-10-14T09:00:00Z"),
+    latestTotalTokens: 0,
+  };
   await injector.simulateExtensionMessage("setInitialState", {
     messages: [],
     isStreaming: false,
-    sessions: [],
+    sessions: [session],
+    session,
     isAuthenticated: true,
     permissionMode: "bypassPermissions",
   });

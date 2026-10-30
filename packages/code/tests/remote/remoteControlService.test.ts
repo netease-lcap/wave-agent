@@ -416,7 +416,10 @@ describe("RemoteControlService", () => {
     // filesystem) + session deletion (`destroy` with its optional worktree param,
     // and the session-scoped change count the delete card needs) plus an
     // on-demand image read for one click on a screenshot path (`getImagePreview`
-    // — read-only, size-capped, and judged by the decoded container) and turning
+    // — read-only, size-capped, and judged by the decoded container), the same
+    // read for a click on a text path (`getTextPreview` — read-only, capped at
+    // 256 KiB, and judged by content: NUL bytes or a mostly undecodable payload
+    // is refused) and turning
     // the running turn into a background one (`backgroundCurrentTask`: the phone
     // has no Ctrl/Cmd+B, so the message button is its only entry) are the whole
     // surface. Adding a method here is a deliberate
@@ -439,6 +442,7 @@ describe("RemoteControlService", () => {
       "getSessionInfo",
       "getSessionWorktreeChanges",
       "getSlashCommands",
+      "getTextPreview",
       "getWorkflowRuns",
       "initialize",
       "listDaemonSessions",

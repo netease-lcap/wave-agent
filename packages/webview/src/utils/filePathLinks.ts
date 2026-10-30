@@ -41,6 +41,16 @@ const ENTITY_MAP: Record<string, string> = {
   "&#x27;": "'",
 };
 
+/**
+ * 这份内容该按 **Markdown 文档**排版还是按**代码/日志原样**显示。
+ *
+ * 判据是扩展名，而且只决定「怎么显示」——与「能不能读」无关（那是宿主按内容
+ * 判的）。判错的代价仅仅是排版难看，不会让一份文件读不出来；反过来，把代码按
+ * markdown 排会把缩进吃成缩进代码块、把 `/** *\/` 注释吃成项目符号。
+ */
+export const isMarkdownPath = (path: string): boolean =>
+  /\.(md|markdown|mdown|mkd)$/i.test(path);
+
 export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")

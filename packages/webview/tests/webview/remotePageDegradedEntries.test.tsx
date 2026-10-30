@@ -39,13 +39,19 @@ import type { Message as MessageType, ToolBlock } from "../../src/types";
 const ABSOLUTE_PATH = "/home/user/project/src/styles/QueuedMessageList.css";
 
 /** Mount one message the way the page does — through the shared UI's renderer. */
-function showMessage(message: MessageType) {
+function showMessage(message: MessageType, workdir?: string) {
   const vscode = createMockVscode();
-  return render(<Message message={message} vscode={vscode} />);
+  return {
+    ...render(<Message message={message} vscode={vscode} workdir={workdir} />),
+    vscode,
+  };
 }
 
-function renderAssistantMarkdown(content: string) {
-  return showMessage(MockDataGenerator.createAssistantMessage(content));
+function renderAssistantMarkdown(content: string, workdir?: string) {
+  return showMessage(
+    MockDataGenerator.createAssistantMessage(content),
+    workdir,
+  );
 }
 
 function readToolMessage() {
@@ -144,15 +150,274 @@ afterEach(() => {
 });
 
 describe("file paths on the remote-control Web page", () => {
-  it("renders a path in the message body as plain text, not an entry", () => {
+  /** 页面对一份内容的回包（两条按需读取通道共用这套驱动）。 */
+  function replyText(
+    requestId: unknown,
+    payload: Record<string, unknown> = {},
+  ) {
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            command: "textPreviewResponse",
+            requestId,
+            content: "# 构建日志\n\nbuild ok\n",
+            bytes: 20,
+            returnedBytes: 20,
+            truncated: false,
+            encodingIssue: false,
+            ...payload,
+          },
+        }),
+      );
+    });
+  }
+
+  it("把正文里的路径变成入口，点了按需读那份文件", async () => {
     window.waveRemotePage = true;
-    const { container } = renderAssistantMarkdown(
+    const { container, vscode } = renderAssistantMarkdown(
       `改动在 ${ABSOLUTE_PATH} 里。`,
     );
 
-    expect(container.querySelectorAll("a.file-path-link")).toHaveLength(0);
-    // Degraded, not dropped — the path is still the thing you read.
+    const link = await waitFor(() => {
+      const el = container.querySelector("a.file-path-link") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    act(() => {
+      fireEvent.click(link);
+    });
+
+    const request = postsOf(vscode).find(
+      (msg) => msg.command === "getTextPreview",
+    );
+    expect(request).toMatchObject({ path: ABSOLUTE_PATH });
+
+    replyText(request!.requestId);
+
+    // 内容进的是全屏弹层（本页唯一能滚动、能选中复制的容器）。
+    expect(await screen.findByRole("dialog")).toHaveTextContent("build ok");
+  });
+
+  it("行内代码与围栏代码块里的路径同样可点", async () => {
+    window.waveRemotePage = true;
+    const { container } = renderAssistantMarkdown(
+      `看 \`${ABSOLUTE_PATH}\`：\n\n\`\`\`text\n${ABSOLUTE_PATH}\n\`\`\`\n`,
+    );
+
+    expect(
+      container.querySelectorAll("code a.file-path-link").length,
+    ).toBeGreaterThan(0);
     expect(container.textContent).toContain(ABSOLUTE_PATH);
+  });
+
+  it("Bash 输出里的路径也同样可点", () => {
+    window.waveRemotePage = true;
+    const { container } = showMessage(
+      bashToolMessage(`wrote ${ABSOLUTE_PATH}\n`),
+    );
+
+    const output = container.querySelector(".bash-command-output");
+    expect(output).not.toBeNull();
+    expect(output?.querySelectorAll("a.file-path-link").length).toBeGreaterThan(
+      0,
+    );
+    expect(output?.textContent).toContain(ABSOLUTE_PATH);
+  });
+
+  it("工具块头的路径可点，相对路径按会话工作目录拼回绝对路径", async () => {
+    window.waveRemotePage = true;
+    const { container, vscode } = showMessage(
+      readToolMessage(),
+      "/home/user/project",
+    );
+
+    const path = await waitFor(() => {
+      const el = container.querySelector(".write-tool-path") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    expect(path).toHaveTextContent("QueuedMessageList.css");
+
+    act(() => {
+      fireEvent.click(path);
+    });
+
+    expect(
+      postsOf(vscode).find((msg) => msg.command === "getTextPreview"),
+    ).toMatchObject({ path: ABSOLUTE_PATH });
+  });
+
+  it("图片路径仍走取图那条，不被文本通道抢走", async () => {
+    window.waveRemotePage = true;
+    const { container, vscode } = renderAssistantMarkdown(
+      "截图在 `/tmp/shots/before.png`。",
+    );
+
+    const link = await waitFor(() => {
+      const el = container.querySelector("a.file-path-link") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    act(() => {
+      fireEvent.click(link);
+    });
+
+    const commands = postsOf(vscode).map((msg) => msg.command);
+    expect(commands).toContain("getImagePreview");
+    expect(commands).not.toContain("getTextPreview");
+  });
+
+  it("宿主说截断了，就写在标题栏上（不假装整份都在）", async () => {
+    window.waveRemotePage = true;
+    const { container, vscode } = renderAssistantMarkdown(
+      `改动在 ${ABSOLUTE_PATH} 里。`,
+    );
+
+    const link = await waitFor(() => {
+      const el = container.querySelector("a.file-path-link") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    act(() => {
+      fireEvent.click(link);
+    });
+    const request = postsOf(vscode).find(
+      (msg) => msg.command === "getTextPreview",
+    );
+    replyText(request!.requestId, {
+      bytes: 5 * 1024 * 1024,
+      returnedBytes: 256 * 1024,
+      truncated: true,
+    });
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("前 256 KB / 共 5.0 MB");
+  });
+
+  it("代码/日志按原样显示：等宽预格式化，不被 markdown 吃掉缩进", async () => {
+    window.waveRemotePage = true;
+    // 用 `.ts` 路径：语言按扩展名选，内容与扩展名对不上时本来就没有 token 可上色。
+    const { container, vscode } = renderAssistantMarkdown(
+      "改动在 /home/user/project/src/utils/cache.ts 里。",
+    );
+
+    const link = await waitFor(() => {
+      const el = container.querySelector("a.file-path-link") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    act(() => {
+      fireEvent.click(link);
+    });
+    const request = postsOf(vscode).find(
+      (msg) => msg.command === "getTextPreview",
+    );
+    replyText(request!.requestId, {
+      content:
+        "/**\n * 两段式缓存\n */\nexport class C {\n    private readonly m = new Map();\n}\n",
+    });
+
+    const dialog = await screen.findByRole("dialog");
+    // 等宽那一档；markdown 排版档不出现——`*` 开头会被当成项目符号、4 空格缩进
+    // 会被当成缩进代码块，源文件就成了两截不同样式的散文。
+    expect(dialog.querySelector(".ide-context-preview-body")).not.toBeNull();
+    expect(dialog.querySelector(".ide-context-preview-doc")).toBeNull();
+    expect(dialog.querySelector("li")).toBeNull();
+    // 但还是有语法高亮：按扩展名选语言，与文件面板同一份配色。
+    expect(dialog.querySelector(".hljs-keyword")).not.toBeNull();
+  });
+
+  it("解不成 UTF-8 时在正文上方提示，不挤进标题栏被省略", async () => {
+    window.waveRemotePage = true;
+    const { container, vscode } = renderAssistantMarkdown(
+      `改动在 ${ABSOLUTE_PATH} 里。`,
+    );
+
+    const link = await waitFor(() => {
+      const el = container.querySelector("a.file-path-link") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    act(() => {
+      fireEvent.click(link);
+    });
+    const request = postsOf(vscode).find(
+      (msg) => msg.command === "getTextPreview",
+    );
+    replyText(request!.requestId, {
+      bytes: 5 * 1024 * 1024,
+      returnedBytes: 256 * 1024,
+      truncated: true,
+      encodingIssue: true,
+    });
+
+    const dialog = await screen.findByRole("dialog");
+    // 短的那句留在标题栏，长的那句单独一行——两条都不许被 ellipsis 吃掉。
+    expect(dialog.querySelector(".ide-context-preview-note")).toHaveTextContent(
+      "前 256 KB / 共 5.0 MB",
+    );
+    expect(
+      dialog.querySelector(".ide-context-preview-notice"),
+    ).toHaveTextContent("可能显示成乱码");
+  });
+
+  it("只有 markdown 文档走排版渲染", async () => {
+    window.waveRemotePage = true;
+    const { container, vscode } = renderAssistantMarkdown(
+      "报告写在 /home/user/project/README.md 里。",
+    );
+
+    const link = await waitFor(() => {
+      const el = container.querySelector("a.file-path-link") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    act(() => {
+      fireEvent.click(link);
+    });
+    const request = postsOf(vscode).find(
+      (msg) => msg.command === "getTextPreview",
+    );
+    replyText(request!.requestId, { content: "# 标题\n\n- 一条\n" });
+
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.querySelector(".ide-context-preview-doc")).not.toBeNull();
+    expect(dialog.querySelector("h1")).toHaveTextContent("标题");
+  });
+
+  it("读不了时把宿主那句原因显示在弹层里，不静默", async () => {
+    window.waveRemotePage = true;
+    const { container, vscode } = renderAssistantMarkdown(
+      `改动在 ${ABSOLUTE_PATH} 里。`,
+    );
+
+    const link = await waitFor(() => {
+      const el = container.querySelector("a.file-path-link") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    act(() => {
+      fireEvent.click(link);
+    });
+    const request = postsOf(vscode).find(
+      (msg) => msg.command === "getTextPreview",
+    );
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          data: {
+            command: "textPreviewResponse",
+            requestId: request!.requestId,
+            error: `${ABSOLUTE_PATH} is not a text file`,
+          },
+        }),
+      );
+    });
+
+    expect(await screen.findByRole("dialog")).toHaveTextContent(
+      "is not a text file",
+    );
   });
 
   it("still links the same path in every other host", () => {
@@ -165,45 +430,7 @@ describe("file paths on the remote-control Web page", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("leaves the inline-code and fenced-code channels unlinked too", () => {
-    window.waveRemotePage = true;
-    const { container } = renderAssistantMarkdown(
-      `看 \`${ABSOLUTE_PATH}\`：\n\n\`\`\`text\n${ABSOLUTE_PATH}\n\`\`\`\n`,
-    );
-
-    expect(container.querySelectorAll("code a.file-path-link")).toHaveLength(0);
-    expect(container.textContent).toContain(ABSOLUTE_PATH);
-  });
-
-  it("leaves a bash output path unlinked", () => {
-    window.waveRemotePage = true;
-    const { container } = showMessage(
-      bashToolMessage(`wrote ${ABSOLUTE_PATH}\n`),
-    );
-
-    const output = container.querySelector(".bash-command-output");
-    expect(output).not.toBeNull();
-    expect(output?.querySelectorAll("a.file-path-link")).toHaveLength(0);
-    expect(output?.textContent).toContain(ABSOLUTE_PATH);
-  });
-
-  it("keeps the tool header path visible but inert, with no openFile on click", async () => {
-    window.waveRemotePage = true;
-    const { container } = showMessage(readToolMessage());
-
-    const path = await waitFor(() => {
-      const el = container.querySelector(".write-tool-path") as HTMLElement;
-      expect(el).not.toBeNull();
-      return el;
-    });
-    expect(path).toHaveTextContent("QueuedMessageList.css");
-    // Plain text: no button role, not in the tab order.
-    expect(path.getAttribute("role")).not.toBe("button");
-    expect(path.getAttribute("tabindex")).toBeNull();
-    expect(path.className).toContain("write-tool-path--plain");
-  });
-
-  it("keeps the Write block's content preview but drops its 打开预览 button", () => {
+  it("keeps the Write block's content preview, and keeps the button off when nothing can open it", () => {
     window.waveRemotePage = true;
     const block = {
       type: "tool",
@@ -219,10 +446,12 @@ describe("file paths on the remote-control Web page", () => {
       <WriteToolPreview toolBlock={block} vscode={vscode} />,
     );
 
-    // The written content is the only way to read a Write on a phone — kept.
+    // 内容预览不经过任何请求，照旧在（那是消息里现成的一份内容）。
     expect(container.querySelector(".write-preview-content")).toHaveTextContent(
       "l1",
     );
+    // 没有 handler（页面上的入口由 Message 注入）时不给按钮：
+    // 不留「看着能点、点了没反应」。
     expect(container.querySelector(".write-preview-scrim")).toBeNull();
     expect(container.querySelector(".write-preview-open")).toBeNull();
   });

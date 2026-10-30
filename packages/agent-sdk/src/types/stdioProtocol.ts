@@ -49,6 +49,11 @@ export type RequestMethod =
   // the relay, so this is the only way a screenshot an agent saved to disk can be
   // seen on a phone (spec remote/remote-web.md「点消息里的图片路径看原图」).
   | "getImagePreview"
+  // Read the head of one **text** file from this machine and return it decoded
+  // (spec remote/remote-web.md「点消息里的文件路径看内容」). Same on-demand
+  // shape as `getImagePreview`, different gate: that one is authorised by the
+  // decoded raster container, this one by "are these bytes text at all".
+  | "getTextPreview"
   | "getMcpServers"
   | "connectMcpServer"
   | "disconnectMcpServer"
