@@ -6374,3 +6374,54 @@
   height: 32px;
   padding: 0 10px;
 }
+
+/* ═══ 1030 第五轮：会话头取侧栏面、面板（预览）区取会话内容面 ═══
+   设计师四条评论（两组）：
+   ① `div.chat-header`「面板：文件收起面板」：「这里的背景色和 …」
+   ② `div.desktop-sidebar`「活动收起侧边栏…」：「这里保持一致」
+      ⇒ 会话头底色 = 侧栏底色（`--vscode-sideBar-background` = `--cc-bg-navigation`，
+        浅 #F7F8FB / 深 #181A1B）
+   ③ `div.desktop-panel-tabs`「文件新建面板全屏」：「所有预览区域的背景色，包括下面的
+      内容展示区等等，和 …」
+   ④ `div#messagesContainer`「把这一串文件挨个看一下…」：「这里保持一致」
+      ⇒ 面板区（页签条 + 各 pane 面）= 会话内容面（`--vscode-panel-background`，
+        浅 #FFFFFF / 深 #111314）
+   改前实测：会话头 浅 #FFFFFF / 深 #111314；面板页签条 浅 #FFFFFF / 深 #181A1B；
+   文件 pane 浅 #FFFFFF / 深 #181A1B（`.preview-pane` 走 `--vscode-sideBar-background`
+   导航面、`.file-pane` 走 `--cc-bg-inspector` 内容面，两条不同源）。
+   现统一到「所有 `.preview-pane` + 页签条」：五类 pane（文件 / 差异 / 终端 /
+   计划 / 浏览器预览）共用 `.preview-pane`，一条规则全收；页签条再一条。
+   **选择器写成 `aside.preview-pane` 是必要的**：`.file-pane`（host-desktop.css 早段）、
+   `.diff-pane`（DiffPane.css）、`.plan-pane`（PlanPane.css）三处各自的
+   `--cc-bg-inspector` 规则与 `[data-host][data-theme] .preview-pane` 同为 (0,3,0)，
+   且后两个文件比本文件后加载 ⇒ 会把我这条盖回去（实测差异 / 计划两个 pane 仍 #181A1B）。
+   前面再加一个元素选择器 ⇒ (0,3,1)，稳定压过，不依赖加载顺序。
+   浏览器预览 pane（`.preview-pane` 裸类）挂在 `.desktop-chat-body > .preview-guest-layer`
+   下、不在 `.desktop-panel-slot` 里，按 `.desktop-panel-slot` 收会漏掉它，所以不设祖先。
+   浅色：除会话头之外，可见像素零变化（页签条与四类 pane 本来就是 #FFFFFF；
+   浏览器预览 pane 的计算值虽从 #F7F8FB 变 #FFFFFF，但该带浅色另有白底盖住）。仅桌面端。 */
+[data-host="desktop"] .chat-header {
+  background-color: var(--vscode-sideBar-background, var(--vscode-panel-background));
+}
+
+[data-host="desktop"][data-theme="light"] aside.preview-pane,
+[data-host="desktop"][data-theme="dark"] aside.preview-pane,
+[data-host="desktop"][data-theme="light"] .desktop-panel-tabs,
+[data-host="desktop"][data-theme="dark"] .desktop-panel-tabs {
+  background: var(--vscode-panel-background);
+}
+
+/* ═══ 1030 第六轮：预览空态块也取会话内容面 ═══
+   设计师评论：`div.preview-tab-new`「在上方地址栏输入网址开始预览」
+   （`… > aside > div > div:nth-of-type(2) > div`）「这里背景色也和以下一致」
+   + `div#messagesContainer`「重构 user 模块的接口错误处理…」「这里」。
+   `.preview-tab-new` 是浏览器预览 pane 的空态占位，`position: absolute; inset: 0`
+   铺满 pane 正文；base（DesktopApp.css:1517-1528）给它 `background:
+   var(--vscode-editor-background)` = 深色 #181A1B ⇒ 上一轮把 pane 底改成 #111314
+   之后，这块空态反而比底更亮，成了「黑底上一块稍亮的板」。
+   改前实测：浅 #FFFFFF / 深 #181A1B；会话内容面 浅 #FFFFFF / 深 #111314。
+   ⇒ 绑 `--vscode-panel-background`，与 `#messagesContainer` 同源。浅色两版同值
+   ⇒ 浅色零变化（截图逐像素 0 差异）。文案色 / 图标 / 间距 / 字号一律不动。仅桌面端。 */
+[data-host="desktop"] .preview-tab-new {
+  background: var(--vscode-panel-background);
+}
