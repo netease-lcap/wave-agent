@@ -125,8 +125,10 @@ jobs:
           package-manager-cache: false
 
       - name: Install wave CLI
+        env:
+          WAVE_VERSION_INPUT: ${{ inputs.wave-version }}
         run: |
-          npm i -g "wave-code@${{ inputs.wave-version }}"
+          npm i -g "wave-code@${WAVE_VERSION_INPUT:-latest}"
           echo "wave $(wave --version)" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Run wave
@@ -144,10 +146,16 @@ jobs:
         run: |
           set -uo pipefail
 
+          # workflow_dispatch 只声明的输入会以空串进来（不是 workflow_call 的默认值），
+          # 调用方也可能显式传空；这里统一兜一次，别把 "" 当参数喂给 CLI。
+          output_format="${WAVE_OUTPUT_FORMAT:-json}"
+          permission_mode="${WAVE_PERMISSION_MODE:-dontAsk}"
+          tools="${WAVE_TOOLS:-Read,Glob,Grep,Bash}"
+
           args=(
-            --output-format "$WAVE_OUTPUT_FORMAT"
-            --permission-mode "$WAVE_PERMISSION_MODE"
-            --tools "$WAVE_TOOLS"
+            --output-format "$output_format"
+            --permission-mode "$permission_mode"
+            --tools "$tools"
           )
           if [ -n "$WAVE_ALLOWED_TOOLS" ]; then
             args+=(--allowed-tools "$WAVE_ALLOWED_TOOLS")
