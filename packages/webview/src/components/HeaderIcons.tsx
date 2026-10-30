@@ -710,11 +710,13 @@ export const PanelExpandIcon: React.FC<IconProps> = ({
   </svg>
 );
 
-// 账户卡片用量区显隐按钮（收起态）— Figma 功能图标「额度」(13648:3600，24
-// artboard：表盘外圈 + 指示弧 + 指针 + 轴心，fill/stroke #565A60 → currentColor)。
-// 替换原 codicon-dashboard（spec-first 账户卡 v3 定稿：展开态 chevron-up 保留，
-// 收起态仪表盘改用官方额度矢量）；按钮 24×24 规格由 .account-card-collapse-btn
-// 提供，svg 自带 24×24 显示。
+// 账户卡片用量区显隐按钮（收起态）— 桌面「额度」图标：开口表盘弧 + 内圈刻度环 +
+// 指针，stroke #565A60 → currentColor。矢量由设计直接给件（2026-10-30 她「替换成
+// 这颗」，源文件 16 画板），这里原样保留几何、16 画板居中放进 24 盒子
+// （`translate(4 4)`，故描边 1.4 与同排图标一致；墨迹 13.48×11.39，与旧版 24 画板
+// 矢量 13.12×13.12 基本齐平）。取代 Figma 13648:3600 那版（整圈 + 实心轴心）；
+// 展开态仍是下面的 ChevronDownIcon，两态各画各的。按钮 24×24 规格由
+// .account-card-collapse-btn 提供，svg 自带 24×24 显示。
 export const QuotaIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) => (
@@ -725,37 +727,30 @@ export const QuotaIcon: React.FC<IconProps> = ({
     fill="none"
     className={className}
   >
-    <circle
-      cx="11.999"
-      cy="12"
-      r="6.55957"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <path
-      d="M12.0006 8.30225C9.95835 8.30225 8.30273 9.95786 8.30273 12.0002C8.30273 12.9236 8.64122 13.768 9.2009 14.416M14.8004 14.416C15.3601 13.768 15.6986 12.9236 15.6986 12.0002C15.6986 11.6286 15.6438 11.2697 15.5418 10.9314"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <path
-      d="M14.1994 9.00112L12.0229 11.9996"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <circle
-      cx="11.9915"
-      cy="12.0001"
-      r="0.7"
-      fill="currentColor"
-      stroke="currentColor"
-      strokeWidth="1.01664"
-    />
+    <g transform="translate(4 4)">
+      <path
+        d="M7.99935 3.00586C4.66281 3.00586 1.95801 5.71066 1.95801 9.0472C1.95801 10.5559 2.511 11.9353 3.42535 12.994M12.5734 12.994C13.4877 11.9353 14.0407 10.5559 14.0407 9.0472C14.0407 8.4401 13.9511 7.85392 13.7845 7.30113"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx="7.99938"
+        cy="9.27271"
+        r="1.80004"
+        transform="rotate(15 7.99938 9.27271)"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <path
+        d="M9.40039 7.32251L11.6373 4.30982"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </g>
   </svg>
 );
 
