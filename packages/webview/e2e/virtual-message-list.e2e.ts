@@ -2,6 +2,7 @@ import { Page } from "@playwright/test";
 import { test, expect } from "./utils/webviewTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
 import { Message } from "wave-agent-sdk";
+import { estimateRowHeight } from "../src/virtual/estimateRowHeight.js";
 
 /**
  * Virtualized MessageList (every message renders through the virtualizer) in
@@ -14,18 +15,17 @@ import { Message } from "wave-agent-sdk";
 
 const VIRTUAL_MESSAGE_COUNT = 300;
 
-// The virtualizer's initial estimate is avgMeasuredHeight = 200px. These rows
-// alternate ~30px (short text) and ~1200px (60-line code fence), so the
-// measured average keeps rising as the mounted window measures and the
-// unmeasured rows re-estimate at it — the total keeps GROWING for a couple
-// hundred ms after mount. That is the "growth direction": the opposite of
-// buildMessages (whose ~30px rows SHRINK the spacer, where the browser's
-// scrollTop clamp self-corrects a short pin). A pin chase with a fixed short
-// frame cap gives up mid-growth and leaves the viewport parked above the true
-// bottom.
+// Build rows that MEASURE taller than they are estimated (the "growth"
+// direction — the opposite of buildMessages, where ~44px rows come in under
+// their estimate and the browser's scrollTop clamp self-corrects a short pin:
+// here the total only grows, so a pin that stops chasing stays above the true
+// bottom). Code fences are estimated at their real 12px/18px line height, so
+// a 60-line fence no longer gets there — the row has to exceed the estimator's
+// MAX_ESTIMATE(1200) cap: a 120-line fence measures ~2.2k while the estimate
+// stays capped at 1200, and the total keeps growing after the first frame.
 function buildMixedHeights(count: number): Message[] {
   const code = Array.from(
-    { length: 60 },
+    { length: 120 },
     (_, n) => `const value_${n} = compute(${n});`,
   ).join("\n");
   const msgs: Message[] = [];
@@ -304,7 +304,8 @@ test.describe("Virtualized message list demo", () => {
 
     // Grow the streaming last row chunk by chunk (the incremental
     // updateStreamingContent path). The viewport must stay pinned to the
-    // bottom: settled dist ≤ 2 and scrollTop never goes backward.
+    // bottom: settled dist ≤ 2, and scrollTop may only give way by as much as
+    // the ledger shrank (rows above getting measured) — never on its own.
     const chunks = [
       "第一段内容",
       "第二段内容，继续增长",
@@ -317,7 +318,9 @@ test.describe("Virtualized message list demo", () => {
       "第九段：再补一行验证",
       "第十段：收尾结束流式输出",
     ];
-    let prevScrollTop = (await containerState(webviewPage)).scrollTop;
+    let prev = await containerState(webviewPage);
+    let prevScrollTop = prev.scrollTop;
+    let prevScrollHeight = prev.scrollHeight;
     for (const chunk of chunks) {
       await injector.simulateExtensionMessage("updateStreamingContent", {
         messageId: "stream-msg",
@@ -343,8 +346,17 @@ test.describe("Virtualized message list demo", () => {
       );
       const state = await containerState(webviewPage);
       expect(state.bottomGap).toBeLessThanOrEqual(2);
-      expect(state.scrollTop).toBeGreaterThanOrEqual(prevScrollTop - 2);
+      // scrollTop may only give way by as much as the content shrank: rows
+      // above getting measured (estimate 56px, real ~44px) shortens the ledger
+      // and a viewport pinned to the bottom follows it down — that is not an
+      // upward jump. With the content unchanged, not a single pixel of
+      // give-back is allowed.
+      const shrink = Math.max(0, prevScrollHeight - state.scrollHeight);
+      expect(state.scrollTop).toBeGreaterThanOrEqual(
+        prevScrollTop - shrink - 2,
+      );
       prevScrollTop = state.scrollTop;
+      prevScrollHeight = state.scrollHeight;
     }
     expect(reactWarnings).toEqual([]);
   });
@@ -352,14 +364,13 @@ test.describe("Virtualized message list demo", () => {
   test("initial load pins to the true bottom while rows measure taller than the estimate (growth direction)", async ({
     webviewPage,
   }) => {
-    // The initial estimate starts at avgMeasuredHeight = 200px; the mixed
-    // heights keep the measured average rising as the window measures, so the
-    // total grows for a couple hundred ms after mount (a chase with a fixed
-    // short frame cap gives up mid-growth and leaves the viewport 5.7k px
-    // above the true bottom on the old implementation). The pin must follow
-    // the growth to the end and stay there.
+    // These rows measure taller than they are estimated (see
+    // buildMixedHeights), so the total keeps growing after the first frame —
+    // the pin has to follow it to the end and stay there, where the old
+    // fixed-frame chase parked above the true bottom.
     const injector = new MessageInjector(webviewPage);
-    await initWithMessages(injector, buildMixedHeights(VIRTUAL_MESSAGE_COUNT));
+    const messages = buildMixedHeights(VIRTUAL_MESSAGE_COUNT);
+    await initWithMessages(injector, messages);
 
     await webviewPage.waitForSelector('[data-message-id="ma299"]');
     await webviewPage.waitForFunction(
@@ -371,10 +382,16 @@ test.describe("Virtualized message list demo", () => {
       { timeout: 10000 },
     );
 
-    // The growth really happened: the final total must be far above the
-    // estimate-based baseline (300 rows × 200px = 60,000).
+    // The growth really happened: what measured on screen pushed the total
+    // past the estimate-only ledger. Assert against the estimator instead of a
+    // hardcoded pixel count, so retuning the typography moves this line with
+    // it rather than adding a second constant to maintain.
+    const estimateTotal = messages.reduce(
+      (sum, message) => sum + estimateRowHeight(message),
+      0,
+    );
     const s = await containerState(webviewPage);
-    expect(s.scrollHeight).toBeGreaterThan(60000 * 2);
+    expect(s.scrollHeight).toBeGreaterThan(estimateTotal);
     expect(s.bottomGap).toBeLessThanOrEqual(2);
     // The pin holds — a later sample is still at the bottom (no slow-drift
     // recovery was needed).
@@ -383,7 +400,7 @@ test.describe("Virtualized message list demo", () => {
     expect(s2.bottomGap).toBeLessThanOrEqual(2);
     expect(s2.scrollTop).toBeGreaterThanOrEqual(s.scrollTop);
     console.log(
-      `[growth-direction] scrollHeight=${s.scrollHeight} scrollTop=${s.scrollTop} gap=${s.bottomGap.toFixed(2)} rows=${s.rowCount}`,
+      `[growth-direction] scrollHeight=${s.scrollHeight} estimate=${estimateTotal} scrollTop=${s.scrollTop} gap=${s.bottomGap.toFixed(2)} rows=${s.rowCount}`,
     );
   });
 });

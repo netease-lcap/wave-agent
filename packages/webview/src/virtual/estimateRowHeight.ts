@@ -17,6 +17,16 @@ const BASE_HEIGHT = 34;
 const LINE_HEIGHT = 22;
 /** 800px 列宽下正文一行的字符数（中文按两格算，见 visualLength）。 */
 const CHARS_PER_LINE = 62;
+/**
+ * 代码围栏的行高：代码块是 12px/18px（`.markdown-code` 那一套），比正文的
+ * 14px/22px 矮一档，而且一行就是一行的像素——不按正文的 62 字折行去猜。按正文
+ * 猜会让一段 60 行代码矮掉四成，底部滚条跟着短一截（实测 694 vs 1158）。
+ */
+const CODE_LINE_HEIGHT = 18;
+/** 代码块自己的上下内边距。 */
+const CODE_BLOCK_PADDING = 8;
+/** ``` 或 ~~~ 起头的围栏行。 */
+const FENCE_LINE = /^\s*(?:```|~~~)/;
 /** 块与块之间的间距。 */
 const BLOCK_GAP = 6;
 /** 折叠态块的固定高度：推理块、压缩摘要、工具头。 */
@@ -39,8 +49,26 @@ function visualLength(text: string): number {
 }
 
 function textHeight(content: string): number {
-  const lines = Math.max(1, Math.ceil(visualLength(content) / CHARS_PER_LINE));
-  return lines * LINE_HEIGHT;
+  // 围栏内按行数、围栏外按字符折行：两类文字不是同一套排版。
+  let proseLength = 0;
+  let codeLines = 0;
+  let codeBlocks = 0;
+  let inFence = false;
+  for (const line of content.split("\n")) {
+    if (FENCE_LINE.test(line)) {
+      if (!inFence) codeBlocks += 1;
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) codeLines += 1;
+    else proseLength += visualLength(line);
+  }
+  const proseLines = Math.ceil(proseLength / CHARS_PER_LINE);
+  return (
+    proseLines * LINE_HEIGHT +
+    codeBlocks * CODE_BLOCK_PADDING +
+    codeLines * CODE_LINE_HEIGHT
+  );
 }
 
 export function estimateRowHeight(message: MessageType): number {
