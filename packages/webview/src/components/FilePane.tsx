@@ -1804,7 +1804,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
             )}
             {/* 「已删除」的标签：内容区给出提示与关标签动作（场景 13）。 */}
             {!showList && activeFile?.deleted && (
-              <div className="file-pane-status" data-testid="file-pane-deleted">
+              <div
+                className="file-pane-status file-pane-status--deleted"
+                data-testid="file-pane-deleted"
+              >
                 <i className="codicon codicon-warning file-pane-status-icon" />
                 <span>文件已不存在</span>
                 <button
@@ -1823,7 +1826,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
             {!showList && !activeFile?.deleted && (
               <>
                 {fileView?.error && (
-                  <div className="file-pane-status">
+                  // 1030 第三轮：同族口径（见 host-desktop.css 的 1030 块）。
+                  <div className="file-pane-status file-pane-status--error">
                     <i className="codicon codicon-error file-pane-status-icon" />
                     <span>{fileView.error}</span>
                   </div>

@@ -6236,3 +6236,129 @@
   background: rgb(255 255 255 / 8%);
   color: rgb(255 255 255 / 45%);
 }
+
+/* ═══ 1030 第一轮：文件「已不存在」空态居中 + 关闭标签键按按钮规范 ═══
+   设计师评论（`div.file-pane-status`「文件已不存在关闭标签」）：
+   「空态居中显示，关闭标签按钮放在下面，按钮圆角等要符合规范」。
+
+   改前是横排一行（图标 / 文案 / 按钮），贴着内容区左上角（实测 733,173；
+   内容区 733,173 502×827，元素盒正好 502×68 靠顶）；按钮 20px 高、r4、12px/400、
+   1px 边框取 `currentColor`（浅 #606060 / 深 #A0A5A8）。
+
+   ① 竖排居中：`.file-pane-status` 的父级是 `.file-pane-scroll`（block、827 高），
+      所以用 `min-height:100%` 撑满 + 主轴居中，才是真的水平/垂直都居中
+      （base 的 `margin:auto` 在 block 流里只能水平居中，实测仍贴顶）。
+   ② 按钮下移：改 `flex-direction: column`，图标 → 文案 → 按钮竖排，间距 12px。
+   ③ 按钮按契约 common-components.md「Buttons」的 Secondary（outlined）档：
+      32px 高 / 14px 22px 行高 / 500 / r8 / 左右 12px，透明底 + `--cc-text-primary`
+      字 + `--cc-border-light` 边框，hover `--cc-fill-hover`、按下 `--cc-fill-pressed`
+      且字色保持 primary。只作用于这块空态（同名的 `.file-pane-banner-action` 还用在
+      「磁盘已更新」横幅的「覆盖 / 重新加载」上，那两处没动）。
+   仅桌面端；IDE 宿主保持原横排小按钮。 */
+[data-host="desktop"] .file-pane-status--deleted {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  /* `min-height:100%` 必须配 border-box，否则 24px 上下内衬会加在 827 之外
+     （实测 content-box 下元素高 875 × 内容区 827 ⇒ 冒出滚动条）。 */
+  box-sizing: border-box;
+  min-height: 100%;
+  margin: 0;
+  padding: 24px 16px;
+  text-align: center;
+  /* 1030 第二轮（设计师评论「一起提到 14，图标不用灰色即可尺寸24px，可以参考
+     以下」+ 参照件 `div.preview-tab-new`「在上方地址栏输入网址开始预览」）：
+     提示文案 12 → 14px，与本 pane 另外两个空态（`.file-pane-placeholder-empty`
+     也是 14px）以及预览页空态同一档；字色不动（仍是 descriptionForeground，
+     与参照件一致）。 */
+  font-size: 14px;
+}
+
+/* 图标 24px + 恢复它本该有的危险红。改前实测是 浅 #606060 / 深 #CCCCCC 的
+   16px —— base 的 `.file-pane-status-icon`（FilePane.css:254）早写了 18px +
+   `--vscode-errorForeground`，但 `.codicon`（globals.css:64-72）同样声明了
+   `font-size: 16px` 与 `color: var(--vscode-icon-foreground)`，两条选择器同
+   特异性 (0,1,0) 且 globals.css 后加载 ⇒ 字号和颜色都被盖掉。这里用 (0,3,0)
+   把两者一起拿回来；`--cc-color-danger` 即桌面端 danger 档（浅 #DC2626 /
+   深 #FC4E52，2026-10-14「统一到 danger 档」，见本文件 111 / 230 行）。
+   参照件的图标是 0.4 透明度压淡的，按「不用灰色」不套那层透明度。 */
+[data-host="desktop"] .file-pane-status--deleted .file-pane-status-icon {
+  font-size: 24px;
+  color: var(--cc-color-danger, #dc2626);
+}
+
+[data-host="desktop"] .file-pane-status--deleted .file-pane-banner-action {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--cc-border-light, #e4e7ed);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cc-text-primary, #1f2329);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  font-family: inherit;
+}
+[data-host="desktop"] .file-pane-status--deleted .file-pane-banner-action:hover {
+  background: var(--cc-fill-hover, #eef0f3);
+}
+[data-host="desktop"] .file-pane-status--deleted .file-pane-banner-action:active {
+  background: var(--cc-fill-pressed, #e7e9ed);
+}
+
+/* ═══ 1030 第三轮：同族另外两处 `.file-pane-status`（错误 / 编辑器加载、失败）═══
+   设计师评论「另两处也改」= 第一轮报告里的残留 ①：`fileView.error` 的读取错误块、
+   FileEditor 的 loading / failed 两块仍是横排靠左、12px、16px 灰图标。
+
+   口径与「已不存在」空态对齐（同一档，不是另立一套）：竖排、组居中、gap 12、
+   文案 14px、错误图标 24px + `--cc-color-danger`；`min-height:100%` +
+   `box-sizing:border-box` 的理由同第一轮（父级 `.file-pane-scroll` 是 block 流；
+   FileEditor 的父级 `.file-pane-editor` 是 flex column，100% 高会把同样 `flex:1`
+   的空 host 挤成 0，所以两种父级都能真的居中）。
+
+   两处刻意不同：
+   ① 加载态那颗转圈保持 16px、保持中性灰 —— 它是加载指示器不是空态图标，同 pane
+      的「正在读取文件…」也是 16px 转圈，24px 会跟那里打架；
+   ② 没有按钮，所以不带第一轮那套 Secondary 键样式。 */
+[data-host="desktop"] .file-pane-status--error,
+[data-host="desktop"] .file-pane-status--failed,
+[data-host="desktop"] .file-pane-status--loading {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  box-sizing: border-box;
+  min-height: 100%;
+  margin: 0;
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 14px;
+}
+
+[data-host="desktop"] .file-pane-status--error .file-pane-status-icon,
+[data-host="desktop"] .file-pane-status--failed .file-pane-status-icon {
+  font-size: 24px;
+  color: var(--cc-color-danger, #dc2626);
+}
+
+/* 编辑态的父级是 block 流里的 `.file-pane-editor-wrap`（自身 `flex:1` 但在 block
+   父级里高度=内容高）⇒ 只给 status 写 `min-height:100%` 会塌成内容高、失败/加载
+   两块仍贴顶。用 `:has()` 只在「这块里出现 `.file-pane-status`」时把 wrap 撑满，
+   编辑器正常加载时不受影响（不需要给每个编辑会话都加 min-height）。 */
+[data-host="desktop"] .file-pane-editor-wrap:has(.file-pane-status) {
+  box-sizing: border-box;
+  min-height: 100%;
+}
+
+/* 编辑器容器是 flex column，`min-height:100%` 在 flex 子项上解析不到（实测 status
+   塌成内容高 104、host 吃掉 723）⇒ 加载 / 失败两块改为盖在编辑器区之上的绝对定位
+   层：居中口径与其他两块完全一致，且不挤压 host（CodeMirror 挂载时量到的仍是
+   827 高，加载成功切回后不会因为量到 0 高而错位）。 */
+[data-host="desktop"] .file-pane-editor {
+  position: relative;
+}
+[data-host="desktop"] .file-pane-editor > .file-pane-status {
+  position: absolute;
+  inset: 0;
+}

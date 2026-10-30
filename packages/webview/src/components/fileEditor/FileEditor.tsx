@@ -66,13 +66,22 @@ export const FileEditor: React.FC<FileEditorProps> = ({
   return (
     <div className="file-pane-editor">
       {status === "loading" && (
-        <div className="file-pane-status" data-testid="file-editor-loading">
+        // 1030 第三轮：与文件「已不存在」空态同族的口径（见 host-desktop.css 的
+        // 1030 块）——modifier 类只用来让桌面端规则精准命中这块，IDE 宿主无对应
+        // 规则 ⇒ 视觉不变。
+        <div
+          className="file-pane-status file-pane-status--loading"
+          data-testid="file-editor-loading"
+        >
           <i className="codicon codicon-loading codicon-modifier-spin" />
           <span>正在加载编辑器…</span>
         </div>
       )}
       {status === "failed" && (
-        <div className="file-pane-status" data-testid="file-editor-failed">
+        <div
+          className="file-pane-status file-pane-status--failed"
+          data-testid="file-editor-failed"
+        >
           <i className="codicon codicon-error file-pane-status-icon" />
           <span>编辑器加载失败，请重试或改用外部编辑器</span>
         </div>
