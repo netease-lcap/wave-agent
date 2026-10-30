@@ -735,6 +735,27 @@
   white-space: nowrap;
 }
 
+/* 重名才有的区分后缀：跟名字同一行、小一号、灰一档 —— 视线上「名字是主角，
+   后缀只是脚注」，截断时也先保住名字这一侧的信息。 */
+.file-tab-name-suffix {
+  margin-inline-start: 4px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b9099);
+}
+
+/* 名字与后缀之间那个逗号只存在于无障碍树里（读屏念「a.ts, src」）。 */
+.file-tab-name-sep {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .file-tab--deleted .file-tab-name {
   text-decoration: line-through;
 }
@@ -833,6 +854,27 @@
 .file-tab-menu-item:hover,
 .file-tab-more-item:hover {
   background: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+
+/* 「更多文件」每行两排：名字 / 所在目录。菜单是标签被收起后唯一能自证「是哪一个
+   文件」的地方，所以这里比标签带多给一行目录（对齐 Claude 桌面端的溢出菜单）。 */
+.file-tab-more-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.file-tab-more-item-name,
+.file-tab-more-item-dir {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-tab-more-item-dir {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground, #8b9099);
 }
 
 .file-tab-more-empty {

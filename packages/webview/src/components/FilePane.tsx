@@ -1637,6 +1637,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
             <FileTabStrip
               files={files}
               activeFileId={activeFileId}
+              workdir={workdir}
               onActivate={(fileId) => onActivateFile?.(fileId)}
               onClose={(fileId) => onCloseFile?.(fileId)}
               onCloseOthers={(fileId) => onCloseOtherFiles?.(fileId)}

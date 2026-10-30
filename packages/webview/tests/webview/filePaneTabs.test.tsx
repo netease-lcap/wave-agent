@@ -72,7 +72,7 @@ describe("文件面板已打开文件的标签（spec 场景 1-14）", () => {
     expect(tabs[1].className).not.toContain("file-tab--active");
   });
 
-  it("同名文件用所在路径区分（场景 3）", () => {
+  it("同名文件追加最短可区分目录后缀，不铺整条路径（场景 4）", () => {
     renderPane({
       files: [
         openFile("f1", "/work/a/src/index.ts"),
@@ -81,9 +81,21 @@ describe("文件面板已打开文件的标签（spec 场景 1-14）", () => {
       activeFileId: "f1",
     });
     const tabs = screen.getAllByTestId("file-tab");
-    // 同名的那两格显示完整路径（而不是两个一样的 index.ts）。
-    expect(tabs[0]).toHaveTextContent("/work/a/src/index.ts");
-    expect(tabs[1]).toHaveTextContent("/work/a/test/index.ts");
+    // 名字 + 灰色后缀（读屏念作「index.ts, src」），而不是两个一样的 index.ts。
+    expect(tabs[0]).toHaveTextContent("index.ts, src");
+    expect(tabs[1]).toHaveTextContent("index.ts, test");
+    // 目录部分不占标签宽度：绝对路径一个字符都不进标签。
+    expect(tabs[0].textContent).not.toContain("/work/a");
+    expect(tabs[1].textContent).not.toContain("/work/a");
+    // 悬浮给相对路径。
+    expect(tabs[0]).toHaveAttribute("title", "src/index.ts");
+  });
+
+  it("唯一文件名只显示文件名、不带后缀（场景 4）", () => {
+    renderPane();
+    const tabs = screen.getAllByTestId("file-tab");
+    expect(tabs[0]).toHaveTextContent(/^app\.ts$/);
+    expect(tabs[1]).toHaveTextContent(/^util\.ts$/);
   });
 
   it("点一格是激活它（场景 4）", () => {

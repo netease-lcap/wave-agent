@@ -2053,17 +2053,19 @@
    为什么不用 `.file-tab-strip::after`：带子自身 `overflow: hidden`（clips 横向滚动
    的标签行），画出去的那 4px 会被裁掉 —— 实测确实一个像素都没出来。
    `:has()` 门控：只有标签带真的渲染了（开了文件）才补，列表态不会多出一条孤线。 */
-[data-host="desktop"] .file-pane-layout:has(.file-tab-strip) .file-pane-tree-splitter::before,
-[data-host="desktop"] .file-pane-layout:has(.file-tab-strip) .file-pane-tree-edge::before {
+[data-host="desktop"]
+  .file-pane-layout:has(.file-tab-strip)
+  .file-pane-tree-splitter::before,
+[data-host="desktop"]
+  .file-pane-layout:has(.file-tab-strip)
+  .file-pane-tree-edge::before {
   content: "";
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   box-sizing: border-box;
-  height: calc(
-    var(--file-tab-height) + var(--file-tab-band-pad) * 2 + 1px
-  );
+  height: calc(var(--file-tab-height) + var(--file-tab-band-pad) * 2 + 1px);
   border-bottom: 1px solid var(--cc-border, #ebeef5);
   pointer-events: none;
 }
@@ -2086,6 +2088,12 @@
 [data-host="desktop"] .file-tab--active:hover {
   background: var(--cc-fill);
   color: var(--cc-text-primary);
+}
+/* 重名后缀比名字小一档（14 → 12），且激活态也保持次要色：它只是脚注。 */
+[data-host="desktop"] .file-tab-name-suffix,
+[data-host="desktop"] .file-tab-more-item-dir {
+  font-size: 12px;
+  color: var(--cc-text-secondary);
 }
 [data-host="desktop"] .file-tab-close:hover {
   background: var(--cc-fill-pressed);
@@ -2462,11 +2470,7 @@
   color: var(--cc-text-link, #2f5edb);
 }
 [data-host="desktop"][data-theme="dark"] .preview-pane-button.active {
-  background: color-mix(
-    in srgb,
-    var(--cc-text-link, #4daafc) 18%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--cc-text-link, #4daafc) 18%, transparent);
   color: var(--cc-text-link, #4daafc);
 }
 
@@ -6420,10 +6424,14 @@
   font-weight: 500;
   font-family: inherit;
 }
-[data-host="desktop"] .file-pane-status--deleted .file-pane-banner-action:hover {
+[data-host="desktop"]
+  .file-pane-status--deleted
+  .file-pane-banner-action:hover {
   background: var(--cc-fill-hover, #eef0f3);
 }
-[data-host="desktop"] .file-pane-status--deleted .file-pane-banner-action:active {
+[data-host="desktop"]
+  .file-pane-status--deleted
+  .file-pane-banner-action:active {
   background: var(--cc-fill-pressed, #e7e9ed);
 }
 
@@ -6521,7 +6529,10 @@
    浅色：除会话头之外，可见像素零变化（页签条与四类 pane 本来就是 #FFFFFF；
    浏览器预览 pane 的计算值虽从 #F7F8FB 变 #FFFFFF，但该带浅色另有白底盖住）。仅桌面端。 */
 [data-host="desktop"] .chat-header {
-  background-color: var(--vscode-sideBar-background, var(--vscode-panel-background));
+  background-color: var(
+    --vscode-sideBar-background,
+    var(--vscode-panel-background)
+  );
 }
 
 [data-host="desktop"][data-theme="light"] aside.preview-pane,
