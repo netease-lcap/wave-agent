@@ -609,7 +609,10 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   box-sizing: border-box;
   width: 242px;
   height: 32px;
-  padding: 4px 8px;
+  /* 左侧 30 = 1 描边 + 8 内衬 + 16 图标 + 5 透气，与侧栏搜索框的文字起始位
+     同档（那边是 8 内衬 + 16 图标 + 6 gap）；右内衬由 `.artifacts-search-field`
+     的 26 覆盖。1030 评论「加个搜索图标」前这里是 `4px 8px`。 */
+  padding: 4px 8px 4px 30px;
   border-radius: 8px;
   border: 1px solid var(--cc-field-border, rgba(127, 127, 127, 0.35));
   background: var(--cc-field-bg, var(--vscode-input-background, transparent));
@@ -642,6 +645,22 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
 
 .artifacts-search-field .artifacts-search {
   padding-right: 26px;
+}
+
+/* 搜索框左侧放大镜（1030 评论「加个搜索图标」）：与侧栏搜索框 / 面板工具条
+   同一颗 Figma 矢量（`HeaderIcons.SearchIcon`），16px、2 级字色（浅 #6C7076 /
+   深 #A0A5A8，与侧栏那颗取的是同一个值）。绝对定位在框内左侧 9px（1 描边 +
+   8 内衬），`pointer-events: none` 让点击落到输入框上 —— 输入区的左内衬由
+   `.artifacts-search` 的 `padding-left: 30px` 让开，不压字。 */
+.artifacts-search-icon {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  color: var(--cc-text-secondary, #6c7076);
+  pointer-events: none;
 }
 
 .artifacts-search-clear {

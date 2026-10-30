@@ -14,6 +14,7 @@ import {
   QueueEditIcon,
   QueueTrashIcon,
   RefreshIcon,
+  SearchIcon,
   SidebarExpandIcon,
 } from "./HeaderIcons";
 import { Tooltip } from "./Tooltip";
@@ -185,6 +186,10 @@ const SearchField: React.FC<{
   const inputRef = useRef<HTMLInputElement | null>(null);
   return (
     <span className="artifacts-search-field">
+      {/* 1030 评论（锚点 `input.artifacts-search`）：「这里也统一一下，加个搜索
+          图标」→ 用与侧栏搜索框 / 面板工具条同一颗 Figma 放大镜（16px、2 级
+          字色），绝对定位在框内左侧，点击穿透到输入框，文字起始位右移到 30。 */}
+      <SearchIcon className="artifacts-search-icon" />
       <input
         ref={inputRef}
         className="artifacts-search"
