@@ -114,20 +114,13 @@
 
 /* 悬停才出现：用户消息上的回滚、助手消息上的「转后台」共用同一条规则——
  * 两颗按钮是同一类动作（spec: task-background-execution.md 场景 6），显隐方式
- * 不该因为挂在哪种角色上而不同。 */
+ * 不该因为挂在哪种角色上而不同。
+ * 触控档（手机 / 远控页）也是这条：`:hover` 在那里由 tap 建立（粘滞 hover），
+ * 点一下消息就出按钮、再点按钮才生效。曾经试过在触控档常显（`@media (hover: none)`
+ * 里 `display: flex`），代价是页面上永远挂着两颗按钮、还压在内容上——2026-11-01
+ * 他判定不要，回到默认的「点一下再显示」。 */
 .message:hover .message-actions {
   display: flex;
-}
-
-/* 触控档（手机 / 远控页）：没有真实的悬停能力，`:hover` 只在 tap 的瞬间成立 ——
- * 照上面那条规则走，手机上就变成「先点消息把按钮点出来、再点按钮」，而且点另一条
- * 消息会把前一颗收回去。这里常显，仍然是两颗一起变。
- * 判据取 `hover: none`（真的不能悬停）而不是 `pointer: coarse`（触屏笔记本外接鼠标
- * 时仍能悬停，那种机器继续按 hover 走）。 */
-@media (hover: none) {
-  .message-actions {
-    display: flex;
-  }
 }
 
 .message-action-btn {
