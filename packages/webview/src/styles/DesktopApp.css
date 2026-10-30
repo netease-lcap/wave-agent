@@ -1413,6 +1413,44 @@ body.is-panel-resizing webview {
   color: #ffffff;
 }
 
+/* ═══ 文件标签的交互底色 + 圆角对齐面板页签（1029 评论第十七批）═══════════
+   评论原话（点 `div.file-tab.file-tab--active.file-tab--deleted`「removed.ts
+   已删除」）：「标签交互时背景色、圆角参考以下」，随后点
+   `div.desktop-panel-tab.active`「文件」说「这里」。
+   基准直接取面板页签的桌面档（host-desktop.css:3694-3724 那一组字面量）：
+
+     状态        文件标签（改前）                  面板页签（基准）
+     圆角        6px                               8px
+     浅 · hover   #EEF0F3（--cc-fill-hover）       #EEF0F3
+     浅 · active  #F0F2F5（--cc-fill）             #F0F2F5
+     深 · hover   #303436（--cc-fill-hover）       rgba(255,255,255,0.08)
+     深 · active  #25292B（--cc-fill）             rgba(255,255,255,0.12)
+
+   ⇒ 浅色两档本来就同值（只动圆角），深色两档按面板页签收到 8% / 12% 白。
+   active 的 `:hover` 必须显式写死，否则 base `.file-tab:hover` 会把选中药丸拉回
+   hover 底（面板页签那一轮踩过同一个坑，见 host-desktop.css:3718 注释）。
+   base FilePane.css 一行未改，只作用于桌面宿主。
+   ⚠️ 本该写进 host-desktop.css 的 file-tab 段（:2051-2066），那个文件当前有另一个
+   窗口在改，先落本文件；同选择器 / 同特异性 + 本文件在 host-desktop.css 之后加载
+   ⇒ 覆盖生效。回退：删掉本节即恢复（圆角 6px、深色 #303436 / #25292B）。 */
+[data-host="desktop"] .file-tab {
+  border-radius: 8px;
+}
+[data-host="desktop"] .file-tab:hover {
+  background: #eef0f3;
+}
+[data-host="desktop"] .file-tab--active,
+[data-host="desktop"] .file-tab--active:hover {
+  background: #f0f2f5;
+}
+[data-host="desktop"][data-theme="dark"] .file-tab:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+[data-host="desktop"][data-theme="dark"] .file-tab--active,
+[data-host="desktop"][data-theme="dark"] .file-tab--active:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .preview-pane-address {
   flex: 1;
   min-width: 0;
