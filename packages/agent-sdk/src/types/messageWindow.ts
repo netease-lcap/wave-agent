@@ -13,7 +13,10 @@ export interface MessageWindow {
    * 「首屏一页，上翻按需取更早」。
    */
   before?: string;
-  /** 这一页最多多少条（首屏 / 上翻 / 远控页尾段都用它，字节预算同时生效）。 */
+  /**
+   * 这一页最多多少条（首屏 / 上翻 / 远控页尾段都用它）。超过
+   * `MESSAGE_PAGE_SIZE_MAX` 的按上限收，不报错。
+   */
   limit?: number;
 }
 

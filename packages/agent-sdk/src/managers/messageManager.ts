@@ -1260,12 +1260,30 @@ export class MessageManager {
     };
   }
 
-  /** 从转录读一页更早的（不经过内存）。 */
+  /**
+   * 从转录读一页更早的（不经过内存）。
+   *
+   * 读盘期间会话可能已经换掉了（`clearMessages` 换 sessionId、恢复另一个会话）：
+   * 那一页属于上一个会话，拼进新列表就是串会话。参考物在同一位置做 revalidation
+   * （读完再比一次会话身份），这里用同一个判据：会话变了就按新路径重读一次——
+   * 新会话里那个锚点通常已经不存在，于是回 `anchorLost` 让调用方换更早的 id 重试；
+   * 重读期间又变了就同样按锚点丢失处理。宁可让宿主多问一次，也不给出一页错会话
+   * 的历史。
+   */
   private async readOlderPage(
     window: MessageWindow,
   ): Promise<MessageWindowResult> {
     const { readTranscriptPage } = await import("../utils/transcriptPage.js");
-    const page = await readTranscriptPage(this.transcriptPath, window);
+    const sessionId = this.sessionId;
+    let page = await readTranscriptPage(this.transcriptPath, window);
+    if (this.sessionId !== sessionId) {
+      // 换过会话了：以当前这条的身份重做一次，仍然变就放弃。
+      const retryId = this.sessionId;
+      page = await readTranscriptPage(this.transcriptPath, window);
+      if (this.sessionId !== retryId) {
+        return { messages: [], hasMore: false, anchorLost: true };
+      }
+    }
     return {
       messages: page.messages,
       hasMore: page.hasMore,

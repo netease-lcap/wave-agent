@@ -16,7 +16,10 @@
 import { open } from "fs/promises";
 import type { Message } from "../types/messaging.js";
 import type { MessageWindow } from "../types/messageWindow.js";
-import { MESSAGE_PAGE_SIZE } from "../constants/messageWindow.js";
+import {
+  MESSAGE_PAGE_SIZE,
+  MESSAGE_PAGE_SIZE_MAX,
+} from "../constants/messageWindow.js";
 import { parseTranscriptLine } from "../services/sessionEntries.js";
 
 const NEWLINE = 0x0a;
@@ -169,10 +172,18 @@ function normaliseLimit(limit: number | undefined): number {
   if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1) {
     return MESSAGE_PAGE_SIZE;
   }
-  return limit;
+  return Math.min(limit, MESSAGE_PAGE_SIZE_MAX);
 }
 
-/** 从后往前收一页；收满条数即停。 */
+/**
+ * 从后往前收一页。
+ *
+ * 条数收满就停，但**页首必须落在带 id 的行上**：调用方下一次上翻拿的就是页首
+ * 那条的 id 当锚点，页首没有 id 的话这条路走到这儿就断了（再往上翻只能从头重
+ * 读）。所以收满之后如果最早那条没有 id，继续往前收，直到出现带 id 的一行为止
+ * —— 页会比 `limit` 多几条，换来的是翻页永远接得上。参考物的切片也是这么做的
+ * （无 uuid 的行向前跳过）。
+ */
 async function collectBackward(
   cursor: TranscriptCursor,
   limit: number,
@@ -181,11 +192,17 @@ async function collectBackward(
   for (;;) {
     const hit = await cursor.nextMessage();
     if (!hit) return { messages: collected.reverse(), hasMore: false };
-    // 收满之后又读到一条：说明前面还有（这一条留在下一页）。
-    if (collected.length >= limit) {
+    if (collected.length < limit) {
+      collected.push(hit.message);
+      continue;
+    }
+    // 收满了：`collected` 是倒序的，最后一条就是这一页的页首。
+    if (collected[collected.length - 1].id) {
+      // 页首带 id，锚点可用；这一条（更早的）留在下一页。
       return { messages: collected.reverse(), hasMore: true };
     }
     collected.push(hit.message);
+    if (hit.message.id) return { messages: collected.reverse(), hasMore: true };
   }
 }
 
