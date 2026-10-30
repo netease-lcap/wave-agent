@@ -1968,10 +1968,13 @@ body.is-panel-resizing webview {
   z-index: 20;
 }
 
+/* 空会话（欢迎页还在）时对话列的孩子是 <WelcomeView> 的根节点，它自带内联
+   display: flex —— 内联样式压过选择器，不加 !important 这条规则命中却不生效，
+   浮卡顶部就多出一行 Codewave 字标（24px 字标 + 40px gap）。 */
 .desktop-chat-body.preview-fullscreen
   .desktop-chat-main
   > :not(.input-area-container) {
-  display: none;
+  display: none !important;
 }
 
 /* 浮动卡只留输入框本身：任务清单与消息队列是对话列的陪衬，浮在预览页上会挡内容

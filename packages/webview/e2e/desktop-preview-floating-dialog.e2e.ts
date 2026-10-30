@@ -305,6 +305,50 @@ test.describe("Desktop preview fullscreen floating dialog", () => {
   });
 
   /**
+   * 空会话（欢迎页还在）时全屏预览：浮卡里只剩输入卡。
+   *
+   * <WelcomeView> 的根节点自带内联 display:flex，内联样式压过
+   * `.desktop-chat-main > :not(.input-area-container)` 的 display:none —— 隐藏规则
+   * 不写 !important 就「命中但不生效」，浮卡顶部多出一行 Codewave 字标
+   * （24px 字标 + 40px gap，浮卡从 420×154 撑到 420×218）。
+   */
+  test("空会话下全屏预览，浮卡里不出现欢迎页字标", async ({ webviewPage }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1440, height: 1000 });
+
+    await injector.simulateExtensionMessage("desktopWorkdirState", {
+      workdir: DIR_A,
+      recentWorkdirs: [DIR_A],
+    });
+    await injector.waitForChatAppReady();
+    await injector.simulateExtensionMessage("setInitialState", initialState);
+    await expect(webviewPage.getByTestId("welcome-wordmark")).toBeVisible();
+
+    // 空会话没有消息里的预览链接，从头部面板开关的空态入口打开预览。
+    await webviewPage.getByTestId("panel-toggle-btn").click();
+    await webviewPage.getByTestId("panel-empty-item-preview").click();
+    await expect(webviewPage.getByTestId("preview-pane-empty")).toBeVisible();
+
+    await webviewPage.getByTestId("panel-fullscreen").click();
+    await expect(webviewPage.locator(".desktop-chat-body")).toHaveClass(
+      /preview-fullscreen/,
+    );
+
+    await expect(webviewPage.getByTestId("welcome-wordmark")).toBeHidden();
+
+    const geo = await webviewPage.evaluate(() => {
+      const h = (sel: string) =>
+        Math.round(document.querySelector(sel)!.getBoundingClientRect().height);
+      return {
+        main: h(".desktop-chat-main"),
+        inputArea: h(".desktop-chat-main .input-area-container"),
+      };
+    });
+    // 浮卡高度等于输入卡高度：没有多出来的品牌行（字标 24 + gap 40）。
+    expect(geo.main).toBe(geo.inputArea);
+  });
+
+  /**
    * 权限下拉菜单项：图标与文案同一水平线、中间留出间距。
    *
    * 桌面端这一档一直是好的（host-desktop.css 自己声明了 flex/居中/8px），这条用例是
