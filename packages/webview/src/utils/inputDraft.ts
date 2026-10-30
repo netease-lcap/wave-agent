@@ -44,7 +44,6 @@ interface ChipSpec {
   name: string;
   /** `data-name`：序列化回标记时用的名字，选区是裸文件名。 */
   markerName?: string;
-  isImage?: boolean;
   isSelection?: boolean;
   startLine?: string;
   endLine?: string;
@@ -65,7 +64,6 @@ const appendChip = (container: HTMLElement, spec: ChipSpec): void => {
     path,
     name,
     markerName,
-    isImage,
     isSelection,
     startLine,
     endLine,
@@ -77,7 +75,6 @@ const appendChip = (container: HTMLElement, spec: ChipSpec): void => {
   chip.contentEditable = "false";
   chip.setAttribute("data-path", path);
   chip.setAttribute("data-name", markerName ?? name);
-  chip.setAttribute("data-is-image", String(!!isImage));
   if (isSelection) {
     chip.setAttribute("data-is-selection", "true");
     chip.setAttribute("data-start-line", startLine ?? "");
@@ -91,9 +88,7 @@ const appendChip = (container: HTMLElement, spec: ChipSpec): void => {
     chip.setAttribute("data-agent-name", agentName);
   }
 
-  ReactDOM.createRoot(chip).render(
-    createElement(ContextTag, { name, path, isImage }),
-  );
+  ReactDOM.createRoot(chip).render(createElement(ContextTag, { name, path }));
   container.appendChild(chip);
 };
 
@@ -221,7 +216,6 @@ export const renderDraftContent = (
       appendChip(container, {
         path,
         name: path.split(/[/\\]/).pop() || path,
-        isImage: part.isImage,
       });
     } else if (part.type === "agent" && part.agentName) {
       // 子代理点名标签：草稿里是 `[@agent:<名称>]`，重挂载后仍是一个整体标签。

@@ -172,30 +172,34 @@ describe("File Mention Tag Insertion", () => {
     expect(innerText).toMatch(/\s$/);
   });
 
-  it("should insert an image tag and send preview message on click", async () => {
+  it("inserts an ordinary file tag for an image file (no preview)", async () => {
+    // @ 选中的图片就是普通文件引用（spec ui/file-selector.md 场景 1）：标签不带
+    // is-image、点不开，与其它扩展名的文件完全一样。
     const { vscode } = renderChatApp();
 
     await typeInInput("@");
 
     await waitForFileSuggestionRequest(vscode);
 
-    // Type img to filter
     await typeInInput("@img");
 
     const reqId2 = await waitForFileSuggestionRequest(vscode);
 
-    const imageSuggestion = {
-      path: "/workspace/images/test.png",
-      relativePath: "images/test.png",
-      name: "test.png",
-      extension: "png",
-      icon: "codicon-file-media",
-      isDirectory: false,
-    };
+    sendSuggestionsResponse(
+      reqId2,
+      [
+        {
+          path: "/workspace/images/test.png",
+          relativePath: "images/test.png",
+          name: "test.png",
+          extension: "png",
+          icon: "codicon-file-media",
+          isDirectory: false,
+        },
+      ],
+      "img",
+    );
 
-    sendSuggestionsResponse(reqId2, [imageSuggestion], "img");
-
-    // Wait for suggestion item to be visible
     await waitFor(() => {
       const items = document.querySelectorAll(
         ".suggestion-item:not(.upload-option)",
@@ -203,34 +207,23 @@ describe("File Mention Tag Insertion", () => {
       expect(items.length).toBeGreaterThan(0);
     });
 
-    // Select the image suggestion — the fixed IDE entries come first.
     selectSuggestionByLabel("test.png");
 
-    // Check if image tag is inserted
-    await waitFor(() => {
-      const tag = document.querySelector(
-        '[data-testid="message-input"] .context-tag.is-image',
+    const tag = await waitFor(() => {
+      const el = document.querySelector(
+        '[data-testid="message-input"] .context-tag',
       );
-      expect(tag).toBeInTheDocument();
+      expect(el).toBeInTheDocument();
+      return el as HTMLElement;
     });
+    expect(tag.className).not.toMatch(/is-image/);
+    expect(tag.className).not.toMatch(/clickable/);
 
-    const tag = document.querySelector(
-      '[data-testid="message-input"] .context-tag.is-image',
-    )!;
-
-    // Click the tag to trigger preview
     act(() => {
       fireEvent.click(tag);
     });
-
-    // Wait for the preview message to be sent
-    await waitFor(() => {
-      expect(vscode.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          command: "previewImage",
-          path: "/workspace/images/test.png",
-        }),
-      );
-    });
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "previewImage" }),
+    );
   });
 });

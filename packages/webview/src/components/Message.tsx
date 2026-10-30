@@ -821,16 +821,19 @@ export const Message: React.FC<MessageProps> = React.memo(
 
     /**
      * 已发送图片的标签点开时该找谁要字节（spec ui/image-pasting.md「已发送图片的
-     * 标签点开就能看」）。判据是**字节在不在这一份消息里**：
+     * 标签点开就能看」）。判据是**值里有没有字节**：
      *
-     * - 带内联字节（data: / blob: / http(s):）→ 就地弹层，不打扰宿主。粘贴图就是
+     * - `data:` / `blob:` / `http(s):` → 就地弹层，不打扰宿主。webview 粘贴图就是
      *   这一类：字节留在消息块里（`imageUrls`），CLI 只是另把同一份字节落盘、把路径
-     *   记在 `imagePaths` 里喂模型，所以桌面 / IDE / 远控页三端表现一致；
-     * - 只有路径（`[@file:<图片>]` 这类引用，块里本来就没有字节）→ 交给宿主打开：
-     *   桌面端走文件面板（宿主按该 pane 所在主机读，SSH 会话经 ssh 读回，
+     *   记在 `imagePaths` 里喂模型，所以桌面 / IDE 表现一致；
+     * - 值本身是路径（前台 CLI 粘贴、以及改造前写下的老消息）→ 交给宿主打开：桌面端
+     *   走文件面板（宿主按该 pane 所在主机读，SSH 会话经 ssh 读回，
      *   `desktop-file-panel.md` 场景 15 要求面板内联显示图片）；IDE 端走
      *   `previewImage`（VS Code 打开内置图片预览、JetBrains 用内置图片编辑器打开
-     *   ——随 IDE 捆绑的 Images 插件；两边都不把用户甩到外部程序）。
+     *   ——随 IDE 捆绑的 Images 插件）。
+     *
+     * 用户用 `@` 选进输入框的图片**不在这里**：那是普通文件引用，与其它文件一样
+     * 不可点击（spec ui/file-selector.md 场景 1/6），根本没有 onClick。
      *
      * **不能**把路径直接塞进 `<img src>`：本地会话靠页面自己是 `file://` 侥幸能
      * 开，SSH 会话等于拿本机路径去加载远端路径 ⇒ 点开就是裂图（2026-10-30 报的
@@ -840,22 +843,19 @@ export const Message: React.FC<MessageProps> = React.memo(
      */
     const imageTagOnClick = (
       imageData: string | undefined,
-      filePath: string | undefined,
+      name: string,
     ): (() => void) | undefined => {
-      if (imageData && /^(data|blob|https?):/i.test(imageData)) {
-        return () => handleImagePreview(imageData, filePath || "image");
+      if (!imageData) return undefined;
+      if (/^(data|blob|https?):/i.test(imageData)) {
+        return () => handleImagePreview(imageData, name || "image");
       }
       if (!canOpenFile) return undefined;
-      if (!imageData) {
-        // `[@file:<图片>]` 引用：消息块里本来就没有这张图的字节，按路径交给宿主。
-        return () => openFile(filePath || "");
-      }
       return isDesktopHost()
         ? () => openFile(imageData)
         : () =>
             props.vscode.postMessage({
               command: "previewImage",
-              path: toAbsoluteFilePath(imageData, props.workdir) ?? imageData,
+              path: imageData,
             });
     };
 
@@ -1464,8 +1464,11 @@ export const Message: React.FC<MessageProps> = React.memo(
                 <div className="message-content user-content">
                   {parts.map((part, pIndex) => {
                     if (part.type === "mention") {
+                      // 只有 `[imageN]`（粘贴的图片）带 isImage、可点开；`[@file:…]`
+                      // 是普通文件引用，图片文件也一样不可点（spec
+                      // ui/file-selector.md 场景 1/6）。
                       const onClick = part.isImage
-                        ? imageTagOnClick(part.imageData, part.path)
+                        ? imageTagOnClick(part.imageData, part.path || "")
                         : undefined;
 
                       return (

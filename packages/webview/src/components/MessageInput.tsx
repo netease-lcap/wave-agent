@@ -924,20 +924,16 @@ export const MessageInput = forwardRef<
 
       uploadedFiles.forEach((filePath) => {
         const fileName = filePath.split(/[/\\]/).pop() || filePath;
-        const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(fileName);
 
         const tagSpan = document.createElement("span");
         tagSpan.className = "context-tag-container";
         tagSpan.contentEditable = "false";
         tagSpan.setAttribute("data-path", filePath);
         tagSpan.setAttribute("data-name", fileName);
-        tagSpan.setAttribute("data-is-image", String(isImage));
-        tagSpan.innerText = isImage ? "[image]" : `[@file:${filePath}]`;
+        tagSpan.innerText = `[@file:${filePath}]`;
 
         const root = ReactDOM.createRoot(tagSpan);
-        root.render(
-          <ContextTag name={fileName} path={filePath} isImage={isImage} />,
-        );
+        root.render(<ContextTag name={fileName} path={filePath} />);
 
         range.insertNode(tagSpan);
         range.setStartAfter(tagSpan);
@@ -1270,36 +1266,12 @@ export const MessageInput = forwardRef<
         } else {
           tagSpan.setAttribute("data-path", file.relativePath);
           tagSpan.setAttribute("data-name", file.name);
-          tagSpan.setAttribute(
-            "data-is-image",
-            String(
-              !file.isDirectory &&
-                /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name),
-            ),
-          );
           tagSpan.innerText = `[@file:${file.relativePath}]`;
 
-          // Render the React component into the span
-          const isImage =
-            !file.isDirectory &&
-            /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(file.name);
-          const root = ReactDOM.createRoot(tagSpan);
-          root.render(
-            <ContextTag
-              name={file.name}
-              path={file.relativePath}
-              isImage={isImage}
-              onClick={
-                isImage
-                  ? () => {
-                      vscode.postMessage({
-                        command: "previewImage",
-                        path: file.path,
-                      });
-                    }
-                  : undefined
-              }
-            />,
+          // 普通文件引用：图片文件也一样，不可点击、没有预览入口
+          // （spec ui/file-selector.md 场景 1）。
+          ReactDOM.createRoot(tagSpan).render(
+            <ContextTag name={file.name} path={file.relativePath} />,
           );
         }
       }
@@ -1378,7 +1350,7 @@ export const MessageInput = forwardRef<
 
       closeDropdown();
     },
-    [closeDropdown, vscode, atMention],
+    [closeDropdown, atMention],
   );
 
   // Handle 指令 selection
