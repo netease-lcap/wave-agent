@@ -4,6 +4,7 @@ import {
   readTranscriptPage,
   transcriptLinesBackward,
 } from "../../src/utils/transcriptPage.js";
+import { MESSAGE_PAGE_SIZE_MAX } from "../../src/constants/messageWindow.js";
 
 /**
  * 转录读页是这套方案的核心原语：内存里的列表从最近一次压缩开始，
@@ -102,11 +103,42 @@ describe("readTranscriptPage", () => {
     expect(stats.bytesRead).toBeLessThan(4 * 1024);
   });
 
+  it("starts the page on a row that can carry the anchor", async () => {
+    // 页首那条没有 id 就当不了下一次上翻的锚点：往前扩到带 id 的一行为止。
+    const noId = JSON.stringify({
+      role: "user",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      blocks: [{ type: "text", content: "no-id" }],
+    });
+    serve([line("m0"), line("m1"), noId, line("m3")].join("\n") + "\n");
+
+    const page = await readTranscriptPage(FILE, { limit: 2 });
+
+    expect(ids(page.messages)).toEqual(["m1", "", "m3"]);
+    expect(page.hasMore).toBe(true);
+  });
+
   it("says the history is exhausted when everything fits", async () => {
     serve(transcript(["m0", "m1", "m2"]));
     const page = await readTranscriptPage(FILE, { limit: 20 });
     expect(ids(page.messages)).toEqual(["m0", "m1", "m2"]);
     expect(page.hasMore).toBe(false);
+  });
+
+  it("caps the page at the maximum size instead of trusting the caller", async () => {
+    // 参考物对 `limit` 做 clamp(1, 1000)：一个写错的数字不该让整份历史进回包。
+    const all = Array.from({ length: 1010 }, (_, i) => `m${i}`);
+    serve(transcript(all));
+
+    const page = await readTranscriptPage(
+      FILE,
+      { limit: 5000 },
+      { chunkBytes: 64 * 1024 },
+    );
+
+    expect(page.messages).toHaveLength(MESSAGE_PAGE_SIZE_MAX);
+    expect(ids(page.messages)[0]).toBe("m10");
+    expect(page.hasMore).toBe(true);
   });
 
   it("skips reserved entries instead of rendering them as messages", async () => {

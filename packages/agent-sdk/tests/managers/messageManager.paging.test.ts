@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { MessageManager } from "../../src/managers/messageManager.js";
 import type { MessageManagerCallbacks } from "../../src/managers/messageManager.js";
+import type { Message } from "../../src/types/messaging.js";
 import { Container } from "../../src/utils/container.js";
 
 /**
@@ -28,6 +29,13 @@ vi.mock("../../src/services/session.js", async (importOriginal) => {
       sessionIds: [],
     })),
   };
+});
+
+vi.mock("../../src/utils/transcriptPage.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../src/utils/transcriptPage.js")>();
+  // 默认透传真实现（其余用例靠「没有转录文件 = 空页」），个别用例换成受控回包。
+  return { ...actual, readTranscriptPage: vi.fn(actual.readTranscriptPage) };
 });
 
 const container = new Container();
@@ -209,5 +217,65 @@ describe("MessageManager list after compaction", () => {
         reset: true,
       },
     );
+  });
+});
+
+describe("MessageManager reading a page while the session moves", () => {
+  // 参考物在同一位置做 revalidation：读盘期间会话换掉了，这一页就是上一个会话的，
+  // 拼进新列表等于串会话。判据是「读完再比一次会话身份」，变了按新路径重读一次。
+  const stub = async () => {
+    const mod = await import("../../src/utils/transcriptPage.js");
+    return vi.mocked(mod.readTranscriptPage);
+  };
+
+  // mock 函数在同一个文件里跨用例共享，调用次数要各算各的。
+  beforeEach(async () => {
+    (await stub()).mockClear();
+  });
+
+  it("re-reads instead of grafting the old session's page onto the new one", async () => {
+    const read = await stub();
+    const manager = createManager();
+    add(manager, 3);
+    const stalePath = manager.getTranscriptPath();
+
+    read.mockImplementationOnce(async () => {
+      manager.clearMessages();
+      return {
+        messages: [{ id: "stale" } as Message],
+        hasMore: true,
+      };
+    });
+    read.mockImplementationOnce(async () => ({
+      messages: [],
+      hasMore: false,
+    }));
+
+    const page = await manager.getMessagePage({ before: "ghost", limit: 10 });
+
+    expect(ids(page.messages)).toEqual([]);
+    expect(page.anchorLost).toBeUndefined();
+    expect(read).toHaveBeenCalledTimes(2);
+    // 第二次走的是新会话的转录，不是刚才那份。
+    expect(read.mock.calls[1][0]).toBe(manager.getTranscriptPath());
+    expect(read.mock.calls[1][0]).not.toBe(stalePath);
+  });
+
+  it("calls the anchor lost when the session keeps moving under it", async () => {
+    const read = await stub();
+    const manager = createManager();
+    add(manager, 3);
+
+    const staleThenSwapped = async () => {
+      manager.clearMessages();
+      return { messages: [{ id: "stale" } as Message], hasMore: true };
+    };
+    read
+      .mockImplementationOnce(staleThenSwapped)
+      .mockImplementationOnce(staleThenSwapped);
+    await expect(
+      manager.getMessagePage({ before: "ghost", limit: 10 }),
+    ).resolves.toEqual({ messages: [], hasMore: false, anchorLost: true });
+    expect(read).toHaveBeenCalledTimes(2);
   });
 });

@@ -8,3 +8,12 @@
  * 上线，只会把带截图的会话首屏砍短。
  */
 export const MESSAGE_PAGE_SIZE = 200;
+
+/**
+ * 一页条数的上限：`normaliseLimit` 把超出的按这个数收，不是报错。
+ *
+ * `1000` 与参考物同值——它读本地转录分页时对 `limit` 做 `clamp(1, 1000)`。
+ * 我们的调用方都传 `MESSAGE_PAGE_SIZE`，这道闸门只防一个写错的数字（宿主透传、
+ * 或将来新增的调用点）把整份历史一次拉进回包。
+ */
+export const MESSAGE_PAGE_SIZE_MAX = 1000;
