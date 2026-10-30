@@ -104,7 +104,11 @@ export function readDiskPressure(dir: string): DiskPressure {
     const stats = fs.statfsSync(dir);
     return {
       freeBytes: stats.bavail * stats.bsize,
-      freeInodes: stats.ffree,
+      // Windows filesystems have no inode table — libuv fills ffree with a
+      // constant 0 there, which reads as "not a single inode left" and appends
+      // a bogus warning to every failed command. Report nothing on that side;
+      // free space stays as the one signal.
+      freeInodes: process.platform === "win32" ? undefined : stats.ffree,
     };
   } catch {
     return {};
