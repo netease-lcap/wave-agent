@@ -141,6 +141,10 @@ describe("AI Service - Streaming", () => {
             },
           ],
         };
+        // Healthy streams always end with the protocol's completion marker; a
+        // stream without one is treated as truncated (ai-error-handling spec,
+        // 场景 7) and would re-issue non-streaming.
+        yield { choices: [{ delta: {}, finish_reason: "stop" }] };
       })();
 
       mockCreate.mockReturnValue({
@@ -174,6 +178,7 @@ describe("AI Service - Streaming", () => {
     it("should stream when only the delta callback is provided", async () => {
       const mockStream = (async function* () {
         yield { choices: [{ delta: { content: "Hello" } }] };
+        yield { choices: [{ delta: {}, finish_reason: "stop" }] };
       })();
 
       mockCreate.mockReturnValue({
@@ -232,6 +237,7 @@ describe("AI Service - Streaming", () => {
             },
           ],
         };
+        yield { choices: [{ delta: {}, finish_reason: "tool_calls" }] };
       })();
 
       mockCreate.mockReturnValue({
@@ -425,6 +431,10 @@ describe("AI Service - Streaming", () => {
             },
           ],
         };
+        // An upstream may legitimately end a turn with no content at all; the
+        // completion marker is what makes it a finished (empty) answer rather
+        // than a truncated one.
+        yield { choices: [{ delta: {}, finish_reason: "stop" }] };
       })();
 
       mockCreate.mockReturnValue({
@@ -477,6 +487,7 @@ describe("AI Service - Streaming", () => {
             total_tokens: 40,
           },
         };
+        yield { choices: [{ delta: {}, finish_reason: "stop" }] };
       })();
 
       mockCreate.mockReturnValue({

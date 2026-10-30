@@ -683,9 +683,11 @@ async function processStreamingResponse(
   const additionalDeltaFields: Record<string, unknown> = {};
   let usage: CallAgentResult["usage"] = undefined;
   let finishReason: CallAgentResult["finish_reason"] = null;
+  let chunkCount = 0;
 
   try {
     for await (const chunk of stream) {
+      chunkCount++;
       // Check for abort signal
       if (abortSignal?.aborted) {
         throw new Error("Request was aborted");
@@ -819,6 +821,24 @@ async function processStreamingResponse(
       throw error;
     }
     throw error;
+  }
+
+  // A turn is only complete when the protocol said so — the completion marker,
+  // not the presence of content. An upstream that stops sending mid-thought and
+  // then closes the connection cleanly delivers neither an error nor a
+  // `finish_reason`, so the loop above simply ends: without this check the
+  // half-written reasoning would be stored as the whole answer and the agent
+  // loop would stop silently (spec: 流式响应正文中途断连时降级为非流式重发，
+  // 场景 7). Throwing lands in callAgent's existing mid-body fallback, which
+  // re-issues the request without streaming and tells the caller to discard
+  // what this attempt already streamed.
+  // abortSignal is checked because a user cancel is not a truncation (场景 3).
+  if (!finishReason && !abortSignal?.aborted) {
+    throw new Error(
+      `Stream ended without a finish_reason after ${chunkCount} chunks ` +
+        `(${accumulatedContent.length} content chars, ` +
+        `${accumulatedReasoningContent.length} reasoning chars) — treating as truncated`,
+    );
   }
 
   // Prepare final result
