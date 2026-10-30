@@ -46,6 +46,7 @@ import type {
   MessageWindow,
   MessageWindowResult,
   MessageThreadSummary,
+  UserImage,
 } from "../types/index.js";
 import type { RpcClient } from "./rpcClient.js";
 import type { NotificationRouter } from "./notificationRouter.js";
@@ -357,7 +358,7 @@ export class StdioAgent {
 
   async sendMessage(
     text: string,
-    images?: Array<{ path: string; mimeType: string }>,
+    images?: UserImage[],
     force?: boolean,
   ): Promise<void> {
     await this.client.request(
@@ -411,7 +412,7 @@ export class StdioAgent {
     id: string,
     patch: {
       content?: string;
-      images?: Array<{ path: string; mimeType: string }>;
+      images?: UserImage[];
       type?: "message" | "bang";
     },
   ): Promise<boolean> {

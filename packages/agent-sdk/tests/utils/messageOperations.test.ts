@@ -91,6 +91,63 @@ describe("addUserMessageToMessages", () => {
     });
   });
 
+  it("should keep the pasted data URL in the block and record the host file path", () => {
+    // A pasted image carries its bytes inline (`path` is a data URL) plus the
+    // file the host wrote those same bytes to (`filePath`). The bytes stay in
+    // the block so every GUI can preview it; the path is only for
+    // `[Image source: <path>]`. See docs/specs/ui/image-pasting.md
+    // 「图片源路径元数据」.
+    const images = [
+      {
+        path: "data:image/png;base64,iVBORw0KGgo=",
+        mimeType: "image/png",
+        filePath: "/tmp/wave-image-abc.png",
+      },
+    ];
+
+    const result = addUserMessageToMessages({
+      messages: [],
+      content: "Check this out",
+      images,
+    });
+
+    expect(result[0]).toMatchObject({
+      blocks: [
+        { type: "text", content: "Check this out" },
+        {
+          type: "image",
+          imageUrls: ["data:image/png;base64,iVBORw0KGgo="],
+          imagePaths: ["/tmp/wave-image-abc.png"],
+        },
+      ],
+    });
+  });
+
+  it("should omit imagePaths unless every image has a host file path", () => {
+    // A partial list would misalign with `imageUrls`, so it is all or nothing.
+    const images = [
+      {
+        path: "data:image/png;base64,iVBORw0KGgo=",
+        mimeType: "image/png",
+        filePath: "/tmp/wave-image-abc.png",
+      },
+      { path: "/tmp/other.png", mimeType: "image/png" },
+    ];
+
+    const result = addUserMessageToMessages({
+      messages: [],
+      content: "",
+      images,
+    });
+
+    const block = result[0].blocks[1] as ImageBlock;
+    expect(block.imageUrls).toEqual([
+      "data:image/png;base64,iVBORw0KGgo=",
+      "/tmp/other.png",
+    ]);
+    expect(block.imagePaths).toBeUndefined();
+  });
+
   it("should add user message with only images (no text)", () => {
     const initialMessages: Message[] = [];
     const images = [{ path: "/tmp/test-image.png", mimeType: "image/png" }];
@@ -699,6 +756,29 @@ describe("cloneMessage", () => {
     const clonedBlock = cloned.blocks[0] as ImageBlock;
     expect(clonedBlock.imageUrls).not.toBe(originalBlock.imageUrls);
     expect(clonedBlock.imageUrls).toEqual(originalBlock.imageUrls);
+  });
+
+  it("should clone imagePaths alongside imageUrls", () => {
+    const message: Message = {
+      id: "msg-1",
+      role: "user",
+      blocks: [
+        {
+          type: "image",
+          imageUrls: ["data:image/png;base64,iVBORw0KGgo="],
+          imagePaths: ["/tmp/wave-image-abc.png"],
+        },
+      ],
+      timestamp: expect.any(String),
+    };
+
+    const cloned = cloneMessage(message);
+    const clonedBlock = cloned.blocks[0] as ImageBlock;
+
+    expect(clonedBlock.imagePaths).not.toBe(
+      (message.blocks[0] as ImageBlock).imagePaths,
+    );
+    expect(clonedBlock.imagePaths).toEqual(["/tmp/wave-image-abc.png"]);
   });
 
   it("should handle file_history blocks", () => {

@@ -74,6 +74,7 @@ import {
   revokeArtifact,
   searchArtifactMembers,
   type ArtifactShareMode,
+  type UserImage,
 } from "wave-agent-sdk";
 import {
   type ClientNotificationMethod,
@@ -407,7 +408,7 @@ export class AgentBridge {
         return this.sendMessage(
           p as unknown as {
             text: string;
-            images?: Array<{ path: string; mimeType: string }>;
+            images?: UserImage[];
             force?: boolean;
           },
           sessionId,
@@ -430,7 +431,7 @@ export class AgentBridge {
         return this.updateQueuedMessage(
           p.id as string,
           p.text as string,
-          p.images as Array<{ path: string; mimeType: string }> | undefined,
+          p.images as UserImage[] | undefined,
           sessionId,
         );
       case "deleteQueuedMessageById":
@@ -1787,7 +1788,7 @@ export class AgentBridge {
   private async sendMessage(
     params: {
       text: string;
-      images?: Array<{ path: string; mimeType: string }>;
+      images?: UserImage[];
       force?: boolean;
     },
     sessionId?: string,
@@ -1827,15 +1828,17 @@ export class AgentBridge {
 
   /**
    * Webview hosts (desktop/vscode/jetbrains) send pasted images as inline
-   * data URLs — there is no local file behind them. Persist each to a temp
-   * file so the model gets a real path it can reference with tools (aligned
-   * with Claude Code's `[Image source: <path>]` metadata). Real paths pass
-   * through untouched; unparseable data URLs pass through as-is and are
-   * skipped by the SDK rather than blocking the message.
+   * data URLs — there is no local file behind them. Write each to a temp file
+   * so the model gets a real path it can reference with tools (aligned with
+   * Claude Code's `[Image source: <path>]` metadata), and **keep the data URL
+   * as the image's value**: the bytes stay in the message block (and therefore
+   * in memory and in the transcript), so any GUI can preview the picture
+   * without asking its host for a file (spec ui/image-pasting.md「已发送图片的
+   * 标签点开就能看」). Real paths pass through untouched; unparseable data URLs
+   * pass through as-is and are skipped by the SDK rather than blocking the
+   * message.
    */
-  private persistDataUrlImages(
-    images?: Array<{ path: string; mimeType: string }>,
-  ): Array<{ path: string; mimeType: string }> | undefined {
+  private persistDataUrlImages(images?: UserImage[]): UserImage[] | undefined {
     if (!images || images.length === 0) return images;
     return images.map((img) => {
       if (!img.path.startsWith("data:")) return img;
@@ -1849,7 +1852,7 @@ export class AgentBridge {
           `wave-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`,
         );
         writeFileSync(filePath, Buffer.from(match[2], "base64"));
-        return { path: filePath, mimeType };
+        return { ...img, mimeType, filePath };
       } catch (error) {
         logger.warn("Failed to persist pasted image to temp file:", error);
         return img;
@@ -1949,7 +1952,7 @@ export class AgentBridge {
   private updateQueuedMessage(
     id: string,
     text: string,
-    images: Array<{ path: string; mimeType: string }> | undefined,
+    images: UserImage[] | undefined,
     sessionId?: string,
   ): { ok: boolean } {
     const entry = this.requireSession(sessionId);

@@ -98,9 +98,35 @@ export interface ToolBlock {
   timestamp?: number; // Unix ms, set when tool result is finalized (stage="end")
 }
 
+/**
+ * An image arriving with a user message. `path` is what the message block
+ * keeps: a data URL for paste (bytes live in the block and the transcript) or a
+ * file path for images that only exist as a file. `filePath` is the host-side
+ * file the same bytes were written to, kept only for `[Image source: <path>]`.
+ */
+export interface UserImage {
+  path: string;
+  mimeType: string;
+  filePath?: string;
+}
+
 export interface ImageBlock {
   type: "image";
+  /**
+   * What the UI renders: an inline data URL for images whose bytes we keep
+   * (webview pastes — the transcript keeps them too, aligned with Claude Code),
+   * or a file path for images that only exist as a file (CLI pastes, images a
+   * tool pointed at). The remote page's copy blanks these out to keep frames
+   * under the relay's budget — the array length and order still drive the
+   * `[imageN]` tags in the text block.
+   */
   imageUrls?: string[];
+  /**
+   * Where the same bytes live on the session host (a temp file the CLI wrote),
+   * same order as `imageUrls`. The model gets it as `[Image source: <path>]`
+   * so a vision subagent can read the file; the UI never needs it.
+   */
+  imagePaths?: string[];
 }
 
 export interface CompactBlock {

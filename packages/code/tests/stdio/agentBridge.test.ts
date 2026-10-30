@@ -907,7 +907,7 @@ test("sendMessage calls agent.sendMessage with text and images", async () => {
   ]);
 });
 
-test("sendMessage persists dataURL images to temp files so the model gets a real path", async () => {
+test("sendMessage keeps the dataURL image bytes and records the temp file path", async () => {
   const { bridge } = createBridge();
   const mockAgent = createMockAgent();
   vi.mocked(Agent.create).mockResolvedValue(mockAgent);
@@ -925,32 +925,35 @@ test("sendMessage persists dataURL images to temp files so the model gets a real
     sessionId,
   );
 
-  const forwarded = vi.mocked(mockAgent.sendMessage).mock.calls[0][1] as
-    | Array<{ path: string; mimeType: string }>
-    | undefined;
+  const forwarded = vi.mocked(mockAgent.sendMessage).mock.calls[0][1];
   expect(forwarded).toHaveLength(1);
+  // The bytes stay in the block (every GUI previews them in place); the temp
+  // file only exists to give the model a `[Image source: <path>]`.
+  expect(forwarded![0].path).toBe("data:image/png;base64,aGVsbG8=");
+  expect(forwarded![0].mimeType).toBe("image/png");
   // tmpdir is mocked to "/tmp"; path.join renders platform-native separators,
   // so assert via path helpers instead of a hardcoded POSIX regex.
-  expect(path.dirname(forwarded![0].path)).toBe(
+  expect(path.dirname(forwarded![0].filePath!)).toBe(
     path.dirname(path.join(tmpdir(), "x")),
   );
-  expect(path.basename(forwarded![0].path)).toMatch(/^wave-image-.*\.png$/);
-  expect(forwarded![0].mimeType).toBe("image/png");
+  expect(path.basename(forwarded![0].filePath!)).toMatch(
+    /^wave-image-.*\.png$/,
+  );
   // "aGVsbG8=" base64-decodes to "hello"
   expect(writeFileSync).toHaveBeenCalledWith(
-    forwarded![0].path,
+    forwarded![0].filePath,
     Buffer.from("hello"),
   );
 });
 
-test("updateQueuedMessage persists dataURL images to temp files", async () => {
+test("updateQueuedMessage keeps the dataURL image bytes and records the temp file path", async () => {
   const { bridge } = createBridge();
   const updateQueuedMessageById = vi.fn<
     (
       id: string,
       update: {
         content: string;
-        images?: Array<{ path: string; mimeType: string }>;
+        images?: Array<{ path: string; mimeType: string; filePath?: string }>;
       },
     ) => boolean
   >(() => true);
@@ -974,15 +977,15 @@ test("updateQueuedMessage persists dataURL images to temp files", async () => {
   const forwarded = updateQueuedMessageById.mock.calls[0][1];
   expect(forwarded.content).toBe("updated");
   expect(forwarded.images).toHaveLength(1);
-  expect(path.dirname(forwarded.images![0].path)).toBe(
+  const image = forwarded.images![0];
+  expect(image.path).toBe("data:image/jpeg;base64,aGVsbG8=");
+  expect(image.mimeType).toBe("image/jpeg");
+  expect(path.dirname(image.filePath!)).toBe(
     path.dirname(path.join(tmpdir(), "x")),
   );
-  expect(path.basename(forwarded.images![0].path)).toMatch(
-    /^wave-image-.*\.jpg$/,
-  );
-  expect(forwarded.images![0].mimeType).toBe("image/jpeg");
+  expect(path.basename(image.filePath!)).toMatch(/^wave-image-.*\.jpg$/);
   expect(writeFileSync).toHaveBeenCalledWith(
-    forwarded.images![0].path,
+    image.filePath,
     Buffer.from("hello"),
   );
 });

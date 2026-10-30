@@ -1,5 +1,5 @@
 import { loadSessionFromJsonl } from "./session.js";
-import type { Logger, AgentOptions } from "../types/index.js";
+import type { Logger, AgentOptions, UserImage } from "../types/index.js";
 import type { MessageManager } from "../managers/messageManager.js";
 import type { SlashCommandManager } from "../managers/slashCommandManager.js";
 import type { HookManager } from "../managers/hookManager.js";
@@ -32,7 +32,7 @@ export class InteractionService {
   public static async sendMessage(
     context: InteractionContext,
     content: string,
-    images?: Array<{ path: string; mimeType: string }>,
+    images?: UserImage[],
   ): Promise<void> {
     const {
       messageManager,
