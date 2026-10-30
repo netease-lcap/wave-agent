@@ -125,9 +125,10 @@ test.describe("Message action button geometry", () => {
 });
 
 /**
- * 触控档（手机 / 远控页）：没有悬停能力，`:hover` 只在 tap 的瞬间成立。
- * 常显规则（`@media (hover: none)`）要保证的是「不 tap 任何东西，按钮就已经在那儿，
- * 且一次 tap 就生效」—— 两段式操作在手机上等于多一次点击。
+ * 触控档（手机 / 远控页）：没有悬停能力，`:hover` 由 tap 建立（粘滞 hover）。
+ * 按钮与桌面走同一条规则：点一下消息才出现、再点按钮才生效。曾经在触控档常显过
+ * （`@media (hover: none)` 里 `display: flex`），2026-11-01 他判定不要 —— 页面上
+ * 永远挂着两颗按钮、还压在内容上，远不如默认的「点一下再显示」。
  */
 test.describe("Message action buttons on a touch device", () => {
   test.use({
@@ -140,7 +141,7 @@ test.describe("Message action buttons on a touch device", () => {
       "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
   });
 
-  test("both buttons are visible without hovering and one tap acts", async ({
+  test("buttons appear after tapping the message, then one tap acts", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
@@ -178,14 +179,21 @@ test.describe("Message action buttons on a touch device", () => {
     await injector.updateMessages(messages);
     await injector.startStreaming();
 
-    // 谁都没碰过：两颗按钮已经在（走的是 @media (hover: none) 那条，不是 :hover）
-    await expect(
-      webviewPage.getByTestId("background-current-task"),
-    ).toBeVisible();
-    await expect(webviewPage.getByTestId("rewind-to-message")).toBeVisible();
+    const backgroundBtn = webviewPage.getByTestId("background-current-task");
+    const rewindBtn = webviewPage.getByTestId("rewind-to-message");
+
+    // 谁都没碰过：两颗都不显示（与触控档常显那版相反）
+    await expect(backgroundBtn).toBeHidden();
+    await expect(rewindBtn).toBeHidden();
+
+    // tap 消息正文：触控设备上 `:hover` 由这次 tap 建立并粘住，按钮随之出现。
+    // 只出属于这条消息的那一颗 —— 回滚挂在用户消息上，它不跟着亮。
+    await webviewPage.getByText("开始跑。").tap();
+    await expect(backgroundBtn).toBeVisible();
+    await expect(rewindBtn).toBeHidden();
 
     await webviewPage.evaluate(() => window.clearTestMessages?.());
-    await webviewPage.getByTestId("background-current-task").tap();
+    await backgroundBtn.tap();
 
     const sent = await webviewPage.evaluate(
       () => window.getTestMessages?.() ?? [],
@@ -205,7 +213,7 @@ test.describe("Message action buttons on a touch device", () => {
     );
     expect(tooltipVisible).toBe(false);
 
-    // 手机视口的实物形态（触控档字号、按钮常驻）留一张给人工看
+    // 手机视口的实物形态（tap 之后的那一颗，触控档字号）留一张给人工看
     await webviewPage.screenshot({
       path: "/tmp/message-actions-touch.png",
       fullPage: false,
