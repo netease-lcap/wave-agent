@@ -7,7 +7,7 @@ import { MessageInjector } from "./utils/messageInjector.js";
  * 出现补全两行。
  *
  * 出处：spec ui/code-completion.md 边界情况「补全设置行的宿主范围」与
- * desktop-account-and-settings.md 场景 3（补全模型/补全开关不在本端展示）。
+ * desktop-settings.md 场景 3（补全模型/补全开关不在本端展示）。
  *
  * 设置页是四端**共用**实现（IDE 宿主经 settings.js、桌面端经 chat.js 渲染同一份
  * SettingsPage），因此门禁一旦漏掉桌面端，用户会在一个没有代码编辑器、永远不会

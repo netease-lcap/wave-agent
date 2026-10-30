@@ -130,7 +130,7 @@ const PANEL_MIN_WIDTH = 320;
 /** The conversation (message) area never shrinks below this when opening/dragging panels. */
 const CHAT_MAIN_MIN_WIDTH = 360;
 // A slot the user never dragged splits the row 40% conversation / 60% panel
-// (spec desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」场景 7-9,
+// (spec desktop-right-panel.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」场景 7-9,
 // 2026-09-09 拍板替代 2026-09-03 的「对话列恒 360、面板铺满剩余」语义): the
 // conversation takes round(40% × row), floored at CHAT_MAIN_MIN_WIDTH, and the
 // slot gets the remainder. On rows ≥ 900px the 40% share clears the 360 floor
@@ -140,7 +140,7 @@ const AUTO_CHAT_ROW_RATIO = 0.4;
 /**
  * Delay before the branch-selector/worktree-checkbox loading placeholder shows
  * while a branch query is in flight (desktop-sessions.md「基于分支的 worktree
- * 隔离会话」场景 7/8 +「SSH 远程主机」场景 25). A remote host's first query has
+ * 隔离会话」场景 7/8 + desktop-remote.md「SSH 远程主机」场景 25). A remote host's first query has
  * to stand up an SSH tunnel and the remote daemon (seconds), so the wait needs
  * visible feedback instead of the controls silently vanishing; a local reply
  * lands far below this threshold, so the placeholder never flashes on quick
@@ -646,7 +646,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 代号本身按会话组各存一份（见 guestEpochRef）；这个 state 只是「某组代号变了，
   // 需要重渲染」的信号，值不参与任何 React key。
   const [, setPreviewEpochTick] = useState(0);
-  // preview guest 跨会话保活（spec desktop-panels.md「右侧面板 · preview guest
+  // preview guest 跨会话保活（spec desktop-right-panel.md「右侧面板 · preview guest
   // 跨会话保活」）：切走的会话组登记在窗口级台账（utils/previewGuestKeep.ts）里，
   // 它的 preview guest 继续挂在常驻层（见 previewGuestEntries /
   // .preview-guest-layer），只有真正关闭才销毁——关 tab、重置（epoch）、会话/分屏
@@ -685,7 +685,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     () => (groupKey ? sessionUi.get(groupKey)?.planContent : undefined) ?? null,
   );
   // Desktop diff panel: sidebar (file tree + commit list) visibility and the
-  // viewing range. Both are per-session (spec desktop-panels.md「文件树与导航」
+  // viewing range. Both are per-session (spec desktop-diff-panel.md「文件树与导航」
   // 场景 4 /「差异面板查看范围」场景 5), so they ride the sessionUi snapshot
   // alongside the panel tabs and are restored on a session switch.
   const [diffTreeVisible, setDiffTreeVisible] = useState<boolean>(
@@ -809,7 +809,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     );
     setPreviewEpochTick((n) => n + 1);
   }, [stateGuestGroup]);
-  // Desktop panel expand/collapse (spec desktop-panels.md「右侧面板 · 展开/折叠、
+  // Desktop panel expand/collapse (spec desktop-right-panel.md「右侧面板 · 展开/折叠、
   // 空间守卫与欢迎页共存」): the header button
   // toggles whether the panel slot is visible. Collapsing only HIDES the slot —
   // the open tabs, their active tab and the dragged width all survive, and the
@@ -3014,7 +3014,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 保存期间 configurationLoading=true 禁用保存按钮；host 回发
   // configurationResponse / configurationError 后落定复位（saving=false）。
   // 保存结果 toast 由宿主全局提示，设置页不渲染页面内反馈（见 spec
-  // desktop-account-and-settings「设置页反馈语义」）。
+  // desktop-settings「设置页反馈语义」）。
   const handleConfigurationSave = useCallback(
     (configData: ConfigurationData) => {
       dispatch({ type: "SET_CONFIGURATION_LOADING", payload: true });
@@ -3501,7 +3501,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // Tabbed layout: opening a panel no longer auto-replaces existing panels
   // (the old multi-select side-by-side model is gone — see spec
-  // desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」): the shared
+  // desktop-right-panel.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」): the shared
   // slot space guard below refuses with a hint when the conversation column
   // cannot keep its minimum width, and never closes existing tabs.
   // Generates a fresh tab id (kind-prefixed, monotonically increasing per kind).
@@ -3510,7 +3510,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     return `${kind}-${tabSeqRef.current[kind]}`;
   }, []);
 
-  // Auto 40/60 split (spec desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与
+  // Auto 40/60 split (spec desktop-right-panel.md「右侧面板 · 展开/折叠、空间守卫与
   // 欢迎页共存」场景 7-9): a slot width the user has never manually dragged
   // re-splits the row whenever the panel opens — the conversation keeps ~40%
   // (floor CHAT_MAIN_MIN_WIDTH), the slot takes the remainder. A manual drag
@@ -3549,7 +3549,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         return false;
       }
       // Never-dragged slots re-apply the 40/60 auto split (spec
-      // desktop-panels.md「右侧面板 · 展开/折叠」场景 7-9); manual ones keep their
+      // desktop-right-panel.md「右侧面板 · 展开/折叠」场景 7-9); manual ones keep their
       // width and are only clamped when the window shrank past them.
       if (!panelWidthManualRef.current) {
         setPanelWidth(autoPanelWidth(containerW));
@@ -3617,7 +3617,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // back to its left neighbor (PreviewPane closeTab convention). Browser-tab
   // semantics: closing destroys the instance — re-opening via a link or "＋"
   // creates a fresh one (terminal PTYs / preview guests do not survive close).
-  // Closing the LAST tab takes the slot down with it (spec desktop-panels.md
+  // Closing the LAST tab takes the slot down with it (spec desktop-right-panel.md
   // 场景 10: 关闭最后一个 tab 时右侧面板随之一并收起，不显示空态) — the
   // "expanded but no tabs" empty state is only ever reached by the user
   // explicitly expanding the panel, never as the leftover of a close.
@@ -3670,7 +3670,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
 
   // Header 面板按钮: expand/collapse the right-hand panel (spec
-  // desktop-panels.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」). Collapsing
+  // desktop-right-panel.md「右侧面板 · 展开/折叠、空间守卫与欢迎页共存」). Collapsing
   // hides the slot but keeps every tab instance mounted
   // (display:none in the slot JSX) — tabs, the active tab and the dragged width
   // all survive, and the next expand restores them. Fullscreen can't stay on
@@ -4381,7 +4381,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // Dragging the shared slot's left edge resizes the panel. One handle lives on
   // the slot itself (not inside each pane) so the divider stays draggable in
   // every slot state — open tabs and the empty state alike (spec
-  // desktop-panels.md「右侧面板 · 空态面板与「＋」新增入口」场景 9). The slot's right edge is fixed for the drag, so width = right − pointer.
+  // desktop-right-panel.md「右侧面板 · 空态面板与「＋」新增入口」场景 9). The slot's right edge is fixed for the drag, so width = right − pointer.
   const handleSlotResizeStart = useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
@@ -4574,7 +4574,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // PreviewPane 的本体不在这里渲染（见 previewGuestEntries 与
       // .preview-guest-layer）：它的 DOM 归属必须与会话/槽位无关，否则切会话时
       // React 摘掉槽位子树就会销毁 <webview>——「切走再切回，预览工具条/主题/位置
-      // 全回默认」的根因（spec desktop-panels.md「preview guest 跨会话保活」）。
+      // 全回默认」的根因（spec desktop-right-panel.md「preview guest 跨会话保活」）。
       // 槽位里只留两样：
       //  - 空态外壳（`preview-pane-empty`，全屏宽度覆盖的锚点）；
       //  - remote forward 失败时的重试占位（z-index 10，盖在 guest 之上）。
@@ -4613,7 +4613,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           sessionId={state.currentSession?.id}
           // Same root as the file tree: a bash `cd` must not reset the panel or
           // re-point it at another repo; EnterWorktree is a real relocation and
-          // does move it (spec desktop-panels.md「会话变更差异面板」场景 14/15).
+          // does move it (spec desktop-diff-panel.md「会话变更差异面板」场景 14/15).
           workdir={workspaceRootForPane}
           onAddComment={handleAddComment}
           treeVisible={diffTreeVisible}
@@ -4678,7 +4678,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     );
   };
 
-  // ---- preview guest 常驻层（spec desktop-panels.md「preview guest 跨会话保活」）----
+  // ---- preview guest 常驻层（spec desktop-right-panel.md「preview guest 跨会话保活」）----
   // guest 的宿主是下面这份清单，而不是槽位里的 tab stack：槽位子树随会话切换整体
   // 重建（tabs / 宽度 / 激活 tab 都按新会话重播种），挂在里面的 `<webview>` 会被
   // 连同销毁——这正是「切走再切回，预览的工具条/主题/位置全回默认」的根因。清单
@@ -5580,7 +5580,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   if (host?.type === "desktop") {
     // FR-032 split-view: the host pushes a pane layout at desktopReady (spec
-    // desktop-layout.md「启动即单个分屏」), so a paneId-scoped instance only
+    // desktop-split-pane.md「启动即单个分屏」), so a paneId-scoped instance only
     // contributes its chatContainer while the root instance delegates to
     // DesktopShell. The pre-pane root layout is gone.
     if ((host.panes?.length ?? 0) > 0 && paneId === undefined) {
@@ -5635,7 +5635,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     }
     // Handshake window before the host's first `desktopPanes` lands: show a
     // bare loading placeholder — never the old non-split layout (spec
-    // desktop-layout.md「启动即单个分屏」场景 3).
+    // desktop-split-pane.md「启动即单个分屏」场景 3).
     return <div className="desktop-loading" data-testid="desktop-loading" />;
   }
 

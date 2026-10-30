@@ -1900,7 +1900,7 @@ export function loadMergedWaveConfig(
     }
 
     // Merge the inline completion model / switch (last one wins)
-    // (docs/specs/ui/code-completion.md story 3, story 4 scenario 2)
+    // (docs/specs/ide/code-completion.md story 3, story 4 scenario 2)
     if (config.completionModel !== undefined) {
       mergedConfig.completionModel = config.completionModel;
     }

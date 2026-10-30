@@ -15,7 +15,7 @@ import {
 /**
  * Whether this document may take completions at all. Cheap, synchronous gates
  * only — every one of these is "do not even ask", per
- * `docs/specs/ui/code-completion.md`.
+ * `docs/specs/ide/code-completion.md`.
  */
 function isCompletionCandidate(document: vscode.TextDocument): boolean {
   // `file` only: untitled buffers, the settings/plan virtual documents, notebook

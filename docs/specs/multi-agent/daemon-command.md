@@ -1,7 +1,7 @@
 ---
 name: "Daemon 客户端命令"
 description: "`wave daemon` 子命令组：按需拉起常驻 daemon，创建、查看、阻塞等待空闲、续聊、审批、中断、销毁远端后台会话，并优雅停止/重启 daemon"
-order: 270
+order: 95
 ---
 
 # 功能规格说明：Daemon 客户端命令
@@ -233,7 +233,7 @@ order: 270
 - **daemon 未运行 / socket 不存在（按需即用）**：除 `stop` 外，任一子命令连接失败时自动以 nohup 方式拉起 daemon（`wave --daemon ~/.wave/daemon.sock`，nohup+重定向分离会话）并重试连接——daemon 一经拉起即常驻（空闲不退出），仅在被 stop/restart 优雅关闭、kill / 升级重启 / 机器重启后消失，届时下一次子命令连接失败会再次自动拉起；拉起的 daemon 在启动超时（默认 10 秒）内仍未就绪时，命令才以非零退出码 + stderr 明确提示退出，不得挂起或进入 TUI。`stop` 不自动拉起（未运行即幂等成功退出 0）；`restart` 未运行时等价于直接拉起。
 - **默认 socket 固定**：所有 `wave daemon` 子命令一律连接 `~/.wave/daemon.sock`，不提供 `--socket` 覆盖参数；命令只在远端主机上运行，不面向本地转发的 socket。
 - **`wave daemon` 与 `wave --daemon` 语义冲突**：前者是客户端子命令组（create/list/status/wait/send/respond/abort/destroy/stop/restart），后者是服务端启动标志（也是客户端连接失败时自动拉起的后台进程）；帮助文本须写明差异，避免误用。
-- **stop/restart 是优雅关闭，非强杀**：`stop`/`restart` 经协议 `shutdown` 让 daemon 先销毁全部会话（各自存盘收尾）再退出，取代仓库旧的 `daemon:kill` pkill 脚本；停止完成的判定是「socket 消失」而非 shutdown RPC 响应（daemon 销毁会话后即退出，可能来不及应答）。桌面端 SSH 远端 daemon 的升级重启走另一既有机制（ensureRemoteDaemon / killRemoteDaemon，见 desktop-shell.md「内置 CLI 一致保障」），不受本命令影响。
+- **stop/restart 是优雅关闭，非强杀**：`stop`/`restart` 经协议 `shutdown` 让 daemon 先销毁全部会话（各自存盘收尾）再退出，取代仓库旧的 `daemon:kill` pkill 脚本；停止完成的判定是「socket 消失」而非 shutdown RPC 响应（daemon 销毁会话后即退出，可能来不及应答）。桌面端 SSH 远端 daemon 的升级重启走另一既有机制（ensureRemoteDaemon / killRemoteDaemon，见 desktop-distribution.md「内置 CLI 一致保障」），不受本命令影响。
 - **list 仅反映当前进程内存态**：`list` 展示的是当前 daemon 进程内 live 的会话（`initialize`/`restoreSession` 载入且仍存活），不扫磁盘索引；daemon 重启（被 kill / 升级重启 / 机器重启）后内存清空、列表为空是正常现象。磁盘上的历史会话（含普通 `wave` TUI 创建的）不在列表中，但知道 sessionId 仍可经 `status`/`send` attach（`restoreSession` 重新载入），无需依赖 `list` 找回。
 - **create 新建 vs attach 恢复**：`initialize` 不带 `restoreSessionId` 时总是新建会话（无 attach 分支，无需存在性检查）；`create` 打印的 sessionId 是后续 `status` / `send` / `respond` / `abort` / `destroy` 的寻址依据。`--permission-mode` 非法值校验先于连接——不会因参数错误拉起 daemon。
 - **destroy 是幂等注册表操作**：协议 `destroy` 按信封 sessionId 直接删除注册表项（未知会话静默 no-op），无 attach、不创建会话；与 `abort` 不同，destroy 不检查会话是否存活、也不关心是否生成中，只负责销毁。摘除注册表条目发生在 `await` agent 销毁**之前**（顺序固定为「先摘条目、再做耗时收尾：转录存盘、子代理/MCP 清理、auto-memory 排空」）：销毁内部的 abort 推送因此只在条目已摘除之后才发出，销毁窗口内该会话对所有客户端一律按「已不存在」处理——被那次推送唤醒的 `wait` 会走「会话已不存在」（退出码 1）而不是把一条正在消失的会话判成空闲。销毁抛错时条目同样已被摘除（错误照常回给调用方），不会留下半销毁条目。

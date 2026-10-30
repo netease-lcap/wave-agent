@@ -1,7 +1,7 @@
 ---
 name: "Clear 命令"
 description: "`/clear` 命令清空对话历史并生成新会话 ID，SDK 侧对应 `agent.clearMessages()`"
-order: 90
+order: 20
 ---
 
 # 功能规格说明：清除命令

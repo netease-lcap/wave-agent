@@ -14,7 +14,7 @@ This is a pnpm monorepo focused on AI-powered development tools.
 - **`packages/desktop`**: Electron desktop app, reuses the `packages/webview` UI and drives the CLI via stdio.
 - **`packages/webview-fixtures`**: Shared host→webview message contract fixtures consumed by the webview, VS Code, JetBrains, and desktop test suites. Rebuild after edits: `pnpm -F wave-webview-fixtures build`.
 - **`docs/`**: VitePress documentation site.
-- **`docs/specs/`**: Feature specifications grouped by topic (e.g., `docs/specs/ui/slash-commands.md`). See "Specs & Spec-First Workflow" below.
+- **`docs/specs/`**: Feature specifications grouped by topic (e.g., `docs/specs/commands/slash-commands.md`). See "Specs & Spec-First Workflow" below.
 - **`.wave/rules/`**: Modular memory rules scoped to specific paths or tasks.
 
 ### Key Dependencies

@@ -67,7 +67,7 @@ interface ToastStackProps {
  * (2026-09-22: was 2s — too short to finish reading the plugin-change notice,
  * which lands together with a second plugin toast; 8s matches Claude Code's
  * default notification timeout. See spec
- * desktop-account-and-settings.md「信息型 toast 停留时长」). Actionable toasts
+ * desktop-settings.md「信息型 toast 停留时长」). Actionable toasts
  * never auto-dismiss.
  */
 const AUTO_DISMISS_MS = 8000;

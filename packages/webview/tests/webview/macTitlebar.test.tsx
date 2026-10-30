@@ -411,7 +411,7 @@ describe("session board: collapsed traffic-light clearance (real macOS)", () => 
   });
 });
 
-// 设置页占满整个 view（spec desktop-account-and-settings「设置页面」场景 1/12 +
+// 设置页占满整个 view（spec desktop-settings「设置页面」场景 1/12 +
 // desktop-shell「macOS 隐藏标题栏」设置页场景 8）：打开设置时会话侧边栏（分屏下
 // 含全部 pane）一并被覆盖，红绿灯改由设置页左导航顶部的窗口行承接（窗口行不放
 // 任何控件，整行即让位拖拽区、无假圆点；「返回」按钮位于窗口行下方单独一行），
@@ -476,7 +476,7 @@ describe("settings full-page: traffic lights hand to the settings nav (real macO
   it("covers the session sidebar; window row is an empty drag gutter, 返回 sits below it", async () => {
     window.waveHostType = "desktop";
     window.wavePlatform = "darwin";
-    // The host always pushes a pane layout at desktopReady (desktop-layout.md
+    // The host always pushes a pane layout at desktopReady (desktop-split-pane.md
     // 「启动即单个分屏」), so the shell — sidebar included — only renders with
     // panes > 0; an empty panes array is the handshake placeholder instead.
     renderDesktopChat([{ paneId: "pane-1" }]);

@@ -1,7 +1,7 @@
 ---
 name: "Status 命令"
 description: "`/status` 只读状态覆盖层：版本、会话 ID、cwd、Wave base URL 与当前模型"
-order: 190
+order: 110
 ---
 
 # 功能规格说明：Status 命令

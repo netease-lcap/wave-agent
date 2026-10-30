@@ -1953,8 +1953,8 @@ describe("DesktopApp", () => {
       ).not.toBeInTheDocument();
     });
 
-    // desktop-sessions.md「基于分支的 worktree 隔离会话」场景 7/8 +「SSH 远程主机」
-    // 场景 25: the controls stay hidden while the branch query is in flight, but a
+    // desktop-sessions.md「基于分支的 worktree 隔离会话」场景 7/8 + desktop-remote.md
+    // 「SSH 远程主机」场景 25: the controls stay hidden while the branch query is in flight, but a
     // slow query (a remote host standing up its SSH tunnel + daemon) must not
     // leave the user with zero feedback — a loading placeholder appears once the
     // delay elapses. A fast local reply lands under the delay, so it never

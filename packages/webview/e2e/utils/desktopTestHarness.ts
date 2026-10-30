@@ -207,7 +207,7 @@ const mockDesktopApiJs = `
 
     let messageHandlers = [];
 
-    // Desktop host parity (spec desktop-layout.md「启动即单个分屏」): the real
+    // Desktop host parity (spec desktop-split-pane.md「启动即单个分屏」): the real
     // main process answers desktopReady with a single-pane layout, so the
     // welcome/empty state lives inside the split layout and pane-scoped pushes
     // carry the focused paneId. Mirror both here so desktop tests don't inject

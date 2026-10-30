@@ -275,13 +275,13 @@ GUI 三端（桌面端 / VS Code / JetBrains）在插件市场内完成一次操
 
 - **桌面端是强引导确认框，不是轻提示**（2026-09-23 修订，起因：桌面端原先只弹一句顶部 toast，用户会直接忽略，插件装完没人运行 `/reload-plugins`，插件一直不生效）：变更落盘后由 webview 弹一个居中确认框，正文说明「重新加载会把磁盘上最新的插件状态应用到当前对话，新插件的命令、技能与子代理随后即可使用；正在生成的回复不会被打断」；点「立即重新加载」回发既有的 `reloadPlugins` 命令（与 `/reload-plugins` 同一条就地重载路径），点「稍后」只关掉弹窗、不做任何重载（之后仍可手动敲命令）。宿主只发一条 `pluginChangePending` 信号，弹窗与按钮在 webview 里（三端共用同一套 UI 的成本不该由一条提示承担，桌面端先行）。
 - **VS Code / JetBrains / CLI 维持各端既有的一次性提示通道**（VS Code `showInformationMessage`、JetBrains `IdeService.showInfo`、CLI 为 TUI 内提示）——它们的插件入口在设置页 / TUI，强引导弹窗留待各端 UI 有承载位时再对齐。
-- **一次性事件，不提供持久可见标识**——不新增状态条 / 角标 / 列表标记，也不提供「查看哪些对话待应用」的入口（与 [desktop-account-and-settings.md](../desktop/desktop-account-and-settings.md) 既有的「不提供持久可见标识」拍板一致）；同一次落盘只弹一次，重复信号不叠成两个弹窗。
-- 各端文案都是**中性**的：弹窗按钮不是危险动作（红色只留给删除 / 移除这类不可逆操作），toast 形态不占用成功 / 失败语义色（语义三色只用于设置页结果型提示，见 desktop-account-and-settings.md「toast 形态与路由」）。
+- **一次性事件，不提供持久可见标识**——不新增状态条 / 角标 / 列表标记，也不提供「查看哪些对话待应用」的入口（与 [desktop-settings.md](../desktop/desktop-settings.md) 既有的「不提供持久可见标识」拍板一致）；同一次落盘只弹一次，重复信号不叠成两个弹窗。
+- 各端文案都是**中性**的：弹窗按钮不是危险动作（红色只留给删除 / 移除这类不可逆操作），toast 形态不占用成功 / 失败语义色（语义三色只用于设置页结果型提示，见 desktop-settings.md「toast 形态与路由」）。
 - **不新增界面内进行态**：不做「正在重载中…」的常驻状态（重载是用户主动触发、结果即时可见）。
 
 **两条边界的定论（2026-09-18 拍板）**：
 
-- **重建路径完全废弃**：「销毁并重建 Agent」不再是插件变更的生效方式。随本故事生效，[agent-config.md](../core/agent-config.md)「配置变更不再需要重建会话」故事的构造期副作用清单为空、场景 3–4 明确禁止重建，[desktop-account-and-settings.md](../desktop/desktop-account-and-settings.md) 中对应的重建确认框条款（「立即重启 / 稍后重启」、`Esc` 等同「稍后重启」、N/M 文案）与 [builtin-sdd-plugin.md](./builtin-sdd-plugin.md) 场景 2 的同一措辞一并废止；插件变更一律走「待应用信号 + 手动敲命令」，不保留重建作为兜底（就地重载的净效果严格包含重建，且不中断回合）。
+- **重建路径完全废弃**：「销毁并重建 Agent」不再是插件变更的生效方式。随本故事生效，[agent-config.md](../core/agent-config.md)「配置变更不再需要重建会话」故事的构造期副作用清单为空、场景 3–4 明确禁止重建，[desktop-settings.md](../desktop/desktop-settings.md) 中对应的重建确认框条款（「立即重启 / 稍后重启」、`Esc` 等同「稍后重启」、N/M 文案）与 [builtin-sdd-plugin.md](../commands/builtin-sdd-plugin.md) 场景 2 的同一措辞一并废止；插件变更一律走「待应用信号 + 手动敲命令」，不保留重建作为兜底（就地重载的净效果严格包含重建，且不中断回合）。
 - **跨进程变更不置位信号**：「待应用」信号只覆盖宿主**同进程**可感知的变更（GUI 三端设置页、CLI TUI 的 `/plugin`、宿主经 RPC 发起的插件变更）。在另一个终端执行非交互命令（如 `wave plugin install`）导致的落盘不会产生提示——`/reload-plugins` 命令本身无状态、随时可用，用户知道发生过变更即可敲命令应用；完整覆盖需对 `~/.wave/plugins` 做文件监视，不在本期范围。
 
 ## 假设

@@ -2249,7 +2249,7 @@ export const MessageInput = forwardRef<
 
                   ⚠️ MERGE-TIME REVIEW（合并前请开发确认，2026-09-16 设计师裁决）:
                   the 「宿主尚未推送用量 → 显示空圆环」requirement in
-                  docs/specs/desktop/desktop-account-and-settings.md 场景 4
+                  docs/specs/desktop/desktop-settings.md 场景 4
                   (line ~77) is intentionally NOT implemented — the indicator is
                   now unmounted in that state, same as 0%. Either update/remove
                   that 场景 or ask us to restore the empty ring. Note 场景 4's

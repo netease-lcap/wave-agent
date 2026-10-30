@@ -40,7 +40,7 @@ class WaveInlineCompletionProviderRegistrationTest : BasePlatformTestCase() {
 
     fun testProviderDeclaresAnInsertHandlerForAcceptanceMetrics() {
         // The accept hook is how "suggestion accepted" reaches the CLI
-        // (docs/specs/ui/code-completion.md); without it every suggestion would
+        // (docs/specs/ide/code-completion.md); without it every suggestion would
         // be reported as displayed-only.
         val provider = inlineCompletionProviders().filterIsInstance<WaveInlineCompletionProvider>().single()
 

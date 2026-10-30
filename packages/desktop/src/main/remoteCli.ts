@@ -1,6 +1,6 @@
 /**
- * Remote wave CLI resolution (spec: docs/specs/desktop/desktop-sessions.md 「SSH
- * 远程主机」 scenarios 7/8, desktop-shell.md 「内置 CLI 一致保障」). The CLI that runs
+ * Remote wave CLI resolution (spec: docs/specs/desktop/desktop-remote.md 「SSH
+ * 远程主机」 scenarios 7/8, desktop-distribution.md 「内置 CLI 一致保障」). The CLI that runs
  * on a remote host is THIS app's bundled CLI (resources/wave-cli), pushed over
  * the existing ssh channel — it no longer depends on the remote npm registry or
  * the npm `wave-code` package (whose latest may lag behind the GUI's built-in
@@ -290,7 +290,7 @@ export async function resolveRemoteWaveBinary(
  * hashed remotely, so the probe reuses the remote node (guaranteed ≥ 22 by
  * [probeRemoteNode]) instead of the shim's `-v` — an unchanged version number
  * is not trusted as "same CLI" (GUI-only releases can ship new bytes without
- * bumping the bundled version, spec: desktop-shell.md 「内置 CLI 一致保障」 scenarios
+ * bumping the bundled version, spec: desktop-distribution.md 「内置 CLI 一致保障」 scenarios
  * 3/7). Verifies all three bundle files exist (a `-v`-able shim + package.json
  * + wave.mjs) before hashing, so a partial copy is treated as needing sync.
  */
@@ -332,7 +332,7 @@ export interface RemoteCliUpToDateResult {
 
 /**
  * Ensure the remote CLI at ~/.wave/cli/desktop matches the bundled CLI's bytes
- * (spec: desktop-shell.md 「内置 CLI 一致保障」 scenarios 3/6/7). The probe hashes
+ * (spec: desktop-distribution.md 「内置 CLI 一致保障」 scenarios 3/6/7). The probe hashes
  * the remote `dist/bundle/wave.mjs`; a null result (missing/corrupt) or a hash
  * differing from `source.bundleSha256` triggers the atomic bundle push. GUI
  * upgrades that ship an unchanged bundle compare equal and push nothing
@@ -593,7 +593,7 @@ export async function waitForRemoteDaemonExit(
 
 /**
  * Ensure a wave daemon runs on `host` backed by THIS app's bundled CLI (spec:
- * desktop-shell.md 「内置 CLI 一致保障」):
+ * desktop-distribution.md 「内置 CLI 一致保障」):
  * 1. ensureRemoteCliUpToDate — push the bundled CLI over ssh when the remote
  *    copy (~/.wave/cli/desktop) is missing, corrupt, or its bytes differ from
  *    the bundled `dist/bundle/wave.mjs` (decoupled from the GUI version). Sync

@@ -2758,7 +2758,7 @@ describe("configuration and status", () => {
 // ---------------------------------------------------------------------------
 // 用户偏好保存路径与重建时机
 // (agent-config.md「设置实时重载」/「用户偏好的保存路径与重建时机」、
-//  desktop-account-and-settings.md「设置页反馈语义」)
+//  desktop-settings.md「设置页反馈语义」)
 // ---------------------------------------------------------------------------
 
 describe("user preference save path and rebuild timing", () => {
@@ -3263,7 +3263,7 @@ describe("checkForUpdates with a configured serverUrl", () => {
 
   it("broadcasts the persisted preferences at startup (重启后保持)", async () => {
     // 窗口级数据走未打标签的消息：启动时与「用户切换」同一条通道下发一次，设置页
-    // 才能显示已落盘的真实值（spec desktop-shell「接收 Beta 版更新」场景 3：
+    // 才能显示已落盘的真实值（spec desktop-distribution「接收 Beta 版更新」场景 3：
     // 持久化并重启后保持）。
     const ctx = createHost();
     ctx.store.addRecentWorkdir({ host: "local", path: "/work/a" });
@@ -3381,7 +3381,7 @@ describe("checkForUpdates with a configured serverUrl", () => {
 });
 
 // ---------------------------------------------------------------------------
-// periodic update polling (spec desktop-shell「桌面端自动更新」场景 11)
+// periodic update polling (spec desktop-distribution「桌面端自动更新」场景 11)
 // ---------------------------------------------------------------------------
 
 describe("periodic update polling", () => {
@@ -4341,7 +4341,7 @@ describe("misc commands", () => {
 
   // -- 设置页反馈语义（2026-09-09 设计师走查拍板：设置页不得自建提示，保存类
   //    成功/失败与删除类成功均经宿主全局 toast 提示；删除写操作无 live agent 时
-  //    不得静默成功——见 desktop-account-and-settings「设置页反馈语义」） --
+  //    不得静默成功——见 desktop-settings「设置页反馈语义」） --
 
   it("deleteSkill success surfaces a global toast with the skill name", async () => {
     const { host, sent } = await readyHost();
@@ -5771,7 +5771,7 @@ describe("session tree", () => {
     );
     send.mockClear();
     // A dead host is a transport failure, not a vanished directory — the
-    // probe must NOT clean up the session (desktop-sessions.md「远端主机不可
+    // probe must NOT clean up the session (desktop-remote.md「远端主机不可
     // 达时不得删除会话/最近目录」).
     h.dirListResults.push(
       new Error("ssh: connect to host ssh.example port 22: Connection refused"),
@@ -6009,7 +6009,7 @@ describe("/resume disk sessions", () => {
     });
     const before = h.agentInstances.length;
     // An unreachable host says nothing about the directory — the probe must not
-    // be read as "missing" (desktop-sessions.md「远端主机不可达时不得删除会话」).
+    // be read as "missing" (desktop-remote.md「远端主机不可达时不得删除会话」).
     h.dirListResults.push(new Error("host down"));
 
     await host.handleWebviewMessage({
@@ -9635,7 +9635,7 @@ describe("native menu actions", () => {
 });
 
 // ---------------------------------------------------------------------------
-// SSH remote hosts (spec: desktop-sessions.md 「SSH 远程主机」)
+// SSH remote hosts (spec: desktop-remote.md 「SSH 远程主机」)
 // ---------------------------------------------------------------------------
 
 const sshConfigPath = () => path.join(os.homedir(), ".ssh", "config");

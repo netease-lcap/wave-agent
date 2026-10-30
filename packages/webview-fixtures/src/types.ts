@@ -745,7 +745,7 @@ export type ToastAction = {
 };
 
 /** Toast 语义类型（与 packages/webview/src/types/index.ts 同步）：**只有设置页
- *  结果型提示标注**（spec desktop-account-and-settings「设置页反馈语义」，
+ *  结果型提示标注**（spec desktop-settings「设置页反馈语义」，
  *  2026-09-10 设计师拍板）——成功/失败/信息配 soft 底 + 同色 icon/text（不只靠色）。
  *  **缺省（其余应用级提示）= 中性**：默认底色、不渲染语义图标（缺省不得回退为
  *  某个彩色语义）。 */
@@ -1010,7 +1010,7 @@ export interface AccountApiQuotaInfo {
 }
 
 /**
- * 桌面端应用更新状态（spec desktop-account-and-settings.md「账户卡片 ·
+ * 桌面端应用更新状态（spec desktop-account.md「账户卡片 ·
  * 更新按钮状态机 S0–S6」）。宿主把 electron-updater 事件映射为 status 并随
  * `desktopAccountInfo` 快照下发；webview 侧据此渲染卡片更新按钮与确认对话框。
  */
@@ -1024,7 +1024,7 @@ export interface AccountUpdateInfo {
 }
 
 /**
- * 桌面侧边栏账户卡片快照 (spec desktop-account-and-settings.md「账户卡片」). Window-global like
+ * 桌面侧边栏账户卡片快照 (spec desktop-account.md「账户卡片」). Window-global like
  * showToast — the sidebar renders on the root webview instance only, so the
  * host never pane-tags it. Auth/usage follow the focused pane's host.
  */

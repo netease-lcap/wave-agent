@@ -18,7 +18,7 @@
  *
  * 行内补全的键 = 顶层 `completionModel` / `completionEnabled`（与 `model` 同一层，
  * 解析链见 `ConfigurationService.resolveModelConfig`；补全模型另有
- * `env.WAVE_COMPLETION_MODEL` 逃生口），见 docs/specs/ui/code-completion.md 故事 4/5。
+ * `env.WAVE_COMPLETION_MODEL` 逃生口），见 docs/specs/ide/code-completion.md 故事 4/5。
  *
  * 企业知识库的开关 = 顶层 `enableKnowledgeBase`（缺省关，托管层可覆盖），
  * 生效判定见 `services/knowledgeBaseAvailability.ts`，见

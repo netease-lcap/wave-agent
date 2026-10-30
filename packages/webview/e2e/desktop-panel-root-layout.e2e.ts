@@ -10,7 +10,7 @@ import path from "path";
 // widen the container itself: the clamp's `containerW - 360` ceiling grew
 // with every drag, the panel kept widening and its right edge ran off the
 // window. That CSS path is gone — the pane layout is pushed at desktopReady
-// (spec desktop-layout.md「启动即单个分屏」), so the welcome/empty chat lives
+// (spec desktop-split-pane.md「启动即单个分屏」), so the welcome/empty chat lives
 // in the single pane whose chat container carries `.desktop-pane
 // .chat-container { min-width: 0 }`. These geometry assertions pin the same
 // contract for the startup single pane: dragging the divider far past the

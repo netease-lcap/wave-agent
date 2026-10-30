@@ -151,7 +151,7 @@ describe("Model, Status, and Login Commands", () => {
         recentWorkdirs: [],
         workdir: "/work/a",
         sessionTree: [],
-        // 启动即单个分屏（spec desktop-layout.md）：桌面空态由 pane-1 承载，
+        // 启动即单个分屏（spec desktop-split-pane.md）：桌面空态由 pane-1 承载，
         // 预分屏 root 单布局已删除。
         panes: [{ paneId: "pane-1" }],
         focusedPaneId: "pane-1",
@@ -224,7 +224,7 @@ describe("Model, Status, and Login Commands", () => {
 
       // host 回发 configurationResponse 后刷新配置展示；保存结果提示由宿主
       // 全局 toast 承担，设置页不渲染页面内「保存成功」文字（2026-09-09 拍板，
-      // 见 desktop-account-and-settings「设置页反馈语义」）
+      // 见 desktop-settings「设置页反馈语义」）
       await act(async () => {
         sendCommand("configurationResponse", {
           configurationData: { language: "en-US", contextLength: 256 },

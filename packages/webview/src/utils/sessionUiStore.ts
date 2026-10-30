@@ -66,7 +66,7 @@ export interface SessionUiState {
   /**
    * True once the user manually dragged the shared slot width off its default.
    * A slot never dragged auto-fills the space beyond the conversation's minimum
-   * when the panel opens (spec desktop-panels.md 场景 7-9); a manual one keeps
+   * when the panel opens (spec desktop-right-panel.md 场景 7-9); a manual one keeps
    * its width from then on.
    */
   panelWidthManual: boolean;
@@ -74,7 +74,7 @@ export interface SessionUiState {
   activePanel: string | null;
   /**
    * Whether the panel slot is expanded for this session (spec
-   * desktop-panels.md「展开/折叠」场景 10: 折叠/展开逐会话记忆，与 tab 集合/
+   * desktop-right-panel.md「展开/折叠」场景 10: 折叠/展开逐会话记忆，与 tab 集合/
    * 宽度同级). Collapsing hides the slot but keeps the open tabs mounted, so a
    * session collapsed with tabs open must come back collapsed after a switch.
    */
@@ -83,7 +83,7 @@ export interface SessionUiState {
   planContent: string | null;
   /**
    * Diff panel: whether the sidebar (file tree, with the commit list under it)
-   * is shown (spec desktop-panels.md「文件树与导航」场景 4: 显隐状态随会话面板
+   * is shown (spec desktop-right-panel.md「文件树与导航」场景 4: 显隐状态随会话面板
    * 记忆保留). The narrow-width auto-hide is layout-only and never writes here.
    */
   diffTreeVisible: boolean;
@@ -98,7 +98,7 @@ export interface SessionUiState {
   /**
    * Diff panel: which viewing range is selected for this session — the
    * fork-point base ("all"), `HEAD` ("uncommitted"), or one commit of the
-   * session's range (spec desktop-panels.md「差异面板查看范围」场景 5: 随会话
+   * session's range (spec desktop-diff-panel.md「差异面板查看范围」场景 5: 随会话
    * 记忆，切走切回保持；某 commit 在当前仓库不存在时回落 "all"，见「提交选择」
    * 场景 5).
    */

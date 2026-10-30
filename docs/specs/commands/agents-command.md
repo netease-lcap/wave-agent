@@ -1,7 +1,7 @@
 ---
 name: "Agents 命令"
 description: "`/agents` 查看与管理当前会话可见的 agent 定义"
-order: 100
+order: 70
 ---
 
 # 功能规格说明：Agents 命令

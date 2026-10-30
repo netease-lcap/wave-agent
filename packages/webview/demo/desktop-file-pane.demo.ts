@@ -295,7 +295,7 @@ test.describe("Desktop file pane screenshots", () => {
 
     // ── Markdown block comment ─────────────────────────────────────────
     // A rendered markdown file has no line numbers, so the same interaction
-    // anchors to a block instead (spec desktop-panels.md「文件面板评论」场景 8).
+    // anchors to a block instead (spec desktop-file-panel.md「文件面板评论」场景 8).
     // Open README.md the same way as the code file above — its tool path — and
     // answer with the path the panel asked for (`README.md`, not the absolute
     // one): a reply is matched to an open file by that path.

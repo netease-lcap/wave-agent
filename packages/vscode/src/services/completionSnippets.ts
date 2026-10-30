@@ -20,7 +20,7 @@ import {
  *
  * Everything here is best-effort: a 100ms hard timeout, at most a few snippets,
  * and any failure degrades to "no snippets" rather than to a failed completion
- * (`docs/specs/ui/code-completion.md`).
+ * (`docs/specs/ide/code-completion.md`).
  */
 
 export interface SnippetOptions {

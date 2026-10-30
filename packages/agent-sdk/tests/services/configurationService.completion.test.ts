@@ -21,7 +21,7 @@ const mockReadFileSync = vi.mocked(readFileSync);
 
 /**
  * Inline completion resolves its model through the same chain as the chat
- * models (docs/specs/ui/code-completion.md story 3): the configured completion
+ * models (docs/specs/ide/code-completion.md story 3): the configured completion
  * model wins, `WAVE_COMPLETION_MODEL` is the escape hatch, and the fast model is
  * the fallback. The agent model is deliberately never used — a slow model would
  * make the ghost text unusable.

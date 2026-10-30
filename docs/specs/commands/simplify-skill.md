@@ -1,14 +1,14 @@
 ---
 name: "Simplify 技能"
 description: "审查已变更代码的质量问题（重复、低效）并通过 `/simplify` 自动修复"
-order: 50
+order: 140
 ---
 
 # 功能规格说明：Simplify Skill
 
 **创建日期**：2026-06-29
 
-## 用户场景与测试 *（必填）*
+## 用户场景与测试 _（必填）_
 
 ### 用户故事：审查并应用质量清理（优先级：P1）
 
@@ -66,4 +66,3 @@ order: 50
 - **如果修复引入新问题会怎样？** skill 在修复后不重新审查；它应用修复并总结。后续的 `/simplify` 或 `/code-review` 可以捕获回归。
 - **如果 AI 尝试自动触发 skill 会怎样？** frontmatter 中的 `disable-model-invocation: true` 阻止自动调用；它仅通过 `/simplify` 由用户调用。
 - **如果发现是误报会怎样？** skill 记录并继续——它不与发现争论，直接跳过。
-

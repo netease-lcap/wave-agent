@@ -39,7 +39,7 @@ export function bundledCliDir(): string {
  * The CLI bytes this app ships (resources/wave-cli). Remote hosts receive this
  * same bundle over ssh; the sync target is the bundled bundle's sha256 (never a
  * version string — GUI-only releases can ship new bytes without bumping the
- * version, see desktop-shell.md 「内置 CLI 一致保障」), so it is read from the
+ * version, see desktop-distribution.md 「内置 CLI 一致保障」), so it is read from the
  * bundle itself, never from `app.getVersion()`.
  */
 export interface BundledCliSource {

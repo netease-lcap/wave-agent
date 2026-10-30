@@ -260,7 +260,7 @@ test.describe("Desktop file panel", () => {
     ).toBeVisible();
   });
 
-  // spec desktop-panels.md「文件面板评论」场景 8：块评论按钮长在块左缘之外的
+  // spec desktop-file-panel.md「文件面板评论」场景 8：块评论按钮长在块左缘之外的
   // 空隙里，鼠标从块走到按钮要跨过一段「底下没有任何块」的 padding。那段路必须
   // 保住锚点，否则按钮在指针到达前就卸载了——真实鼠标永远点不到它。
   test("markdown block comment button survives the pointer moving onto it", async ({

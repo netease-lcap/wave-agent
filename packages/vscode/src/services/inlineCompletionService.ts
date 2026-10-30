@@ -7,7 +7,7 @@ import {
 
 /**
  * Tuning knobs for inline completion. Defaults come from
- * `docs/specs/ui/code-completion.md` (values borrowed from the OSS references:
+ * `docs/specs/ide/code-completion.md` (values borrowed from the OSS references:
  * Tabby's adaptive debounce and LRU cache, Continue's context windowing).
  */
 export interface CompletionOptions {

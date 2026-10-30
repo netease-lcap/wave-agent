@@ -326,7 +326,7 @@ test.describe("桌面会话切换状态收敛", () => {
   });
 
   /**
-   * preview guest 跨会话保活（spec desktop-panels.md「右侧面板 · preview guest
+   * preview guest 跨会话保活（spec desktop-right-panel.md「右侧面板 · preview guest
    * 跨会话保活」）。真实浏览器验三件 jsdom 验不了的事：
    *  ① guest 的 DOM 节点在切会话时**没有被重建**（身份标记还在，等价 Electron 里
    *    guest 存活 —— 页面内部状态因此不丢）；

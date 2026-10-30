@@ -1,7 +1,7 @@
 ---
 name: "技能列表命令"
 description: "`/skills` 浏览、新建、编辑与删除技能，按来源分组与 Tab 展示；CLI 终端覆盖层与 IDE 设置页技能选项卡两入口"
-order: 145
+order: 40
 ---
 
 # 功能规格说明：/skills 斜杠命令

@@ -1793,7 +1793,7 @@ body.is-panel-resizing webview {
   height: 100%;
 }
 
-/* preview guest 常驻层（spec desktop-panels.md「preview guest 跨会话保活」）：
+/* preview guest 常驻层（spec desktop-right-panel.md「preview guest 跨会话保活」）：
    guest 的 DOM 归属不随会话/槽位变动，否则切会话时槽位子树被摘掉会连坐销毁
    <webview>（页面自身状态一起丢）。层本身不参与布局（绝对定位、无背景、
    pointer-events:none），只提供 guest 的定位上下文。

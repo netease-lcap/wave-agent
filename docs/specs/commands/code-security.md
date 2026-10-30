@@ -1,7 +1,7 @@
 ---
 name: "代码安全审核"
 description: "会话内自动拦危险模式、按需多 agent 深扫、`/security-review` 单次过分支三层代码安全能力及其分发渠道"
-order: 80
+order: 150
 ---
 
 # 功能规格说明：代码安全审核

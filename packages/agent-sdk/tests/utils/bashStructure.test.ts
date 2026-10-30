@@ -280,7 +280,7 @@ const CORPUS: string[] = [
   'cd /home/liuyiqi/github/wave-agent/.wave/worktrees/strong-loud-storm && node "/tmp/wave-builtin/24cf61ad0c2b3146/plugins/sdd/scripts/spec-count.js" 2>&1 | grep -E "desktop|警告|warning|WARN|缺" ; echo "exit=$?"',
   'cd /home/liuyiqi/github/wave-agent/.wave/worktrees/strong-loud-storm && node scripts/check-docs-links.mjs 2>&1 | tail -15; echo "---anchors---"; node scripts/check-sidebar-anchors.mjs 2>&1 | tail -10',
   'cd /home/liuyiqi/github/wave-agent/.wave/worktrees/strong-loud-storm && pnpm -F wave-webview-fixtures build 2>&1 | tail -3 && grep -rn "desktop-app\\\\.md" packages/webview-fixtures/dist/ | head',
-  'cd /home/liuyiqi/github/wave-agent/.wave/worktrees/strong-loud-storm/docs/specs/desktop && sed -n \'255,275p\' desktop-sessions.md && echo "=== account-card spec 落点 ===" && grep -n "更新按钮\\\\|S0" desktop-account-and-settings.md | head -5',
+  'cd /home/liuyiqi/github/wave-agent/.wave/worktrees/strong-loud-storm/docs/specs/desktop && sed -n \'255,275p\' desktop-sessions.md && echo "=== account-card spec 落点 ===" && grep -n "更新按钮\\\\|S0" desktop-settings.md | head -5',
   'cd /home/liuyiqi/github/wave-agent/.wave/worktrees/strong-loud-storm && for f in docs/specs/ui/*.md; do echo "=== $f ==="; head -8 "$f" | grep -E \'order:|path:|^---\'; done',
   'cd /home/liuyiqi/github/wave-agent/.wave/worktrees/strong-loud-storm/docs/specs && grep -rln "Plan 面板\\\\|计划面板" --include="*.md" . | head; echo "=== done ==="',
   "cd ~/github/claude-ai && awk '/Resize file tree/{for(i=NR-15;i<=NR+5;i++) print i\": \"a[i]} {a[NR]=$0}' shared-14-Bu7AnnJ1.js | cut -c1-200",

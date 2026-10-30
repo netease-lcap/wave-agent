@@ -1,7 +1,7 @@
 ---
 name: "Code Review 技能"
 description: "`/code-review` 分档并行审查当前 diff 的正确性与效率问题，可发布 PR/MR 评论"
-order: 40
+order: 130
 ---
 
 # 功能规格说明：Code Review Skill

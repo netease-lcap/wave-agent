@@ -174,7 +174,7 @@ export interface PreviewPaneProps {
   onNavigate?: (url: string) => void;
   /**
    * 停靠态：这个 guest 仍活着（保活），但当前不在槽位里显示——切走的会话、非
-   * 激活的一级 tab、折叠的面板（spec desktop-panels.md「preview guest 跨会话
+   * 激活的一级 tab、折叠的面板（spec desktop-right-panel.md「preview guest 跨会话
    * 保活」场景 5）。
    *
    * 停靠期间必须关掉元素拾取器：它的评论无处可去（会落到别的会话的输入框里），
