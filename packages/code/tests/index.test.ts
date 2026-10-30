@@ -170,6 +170,7 @@ describe("main", () => {
       continueLastSession: undefined,
       message: "Hello World",
       showStats: undefined,
+      outputFormat: "text",
       bypassPermissions: false,
       pluginDirs: undefined,
       tools: undefined,
@@ -188,6 +189,7 @@ describe("main", () => {
       continueLastSession: undefined,
       message: "Test Message",
       showStats: undefined,
+      outputFormat: "text",
       bypassPermissions: false,
       pluginDirs: undefined,
       tools: undefined,
@@ -206,6 +208,7 @@ describe("main", () => {
       continueLastSession: undefined,
       message: "Stats",
       showStats: true,
+      outputFormat: "text",
       bypassPermissions: false,
       pluginDirs: undefined,
       tools: undefined,
@@ -224,6 +227,7 @@ describe("main", () => {
       continueLastSession: undefined,
       message: "Stats",
       showStats: true,
+      outputFormat: "text",
       bypassPermissions: false,
       pluginDirs: undefined,
       tools: undefined,
@@ -232,6 +236,54 @@ describe("main", () => {
       originalCwd: process.cwd(),
       version: expect.any(String),
     });
+  });
+
+  it("should pass --output-format through to the print CLI", async () => {
+    process.argv = [
+      "node",
+      "index.js",
+      "-p",
+      "Review",
+      "--output-format",
+      "stream-json",
+    ];
+    await main();
+    expect(printCli.startPrintCli).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Review",
+        outputFormat: "stream-json",
+      }),
+    );
+  });
+
+  it("should reject --output-format outside print mode", async () => {
+    const consoleErrorSpy = vi
+      .spyOn(console, "error")
+      .mockImplementation(function () {});
+    // Throwing mirrors a real exit: main() stops where the flag was rejected
+    // instead of falling through to startCli.
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(function () {
+      throw new Error("process.exit was called");
+    });
+
+    process.argv = ["node", "index.js", "--output-format", "json"];
+    await expect(main()).rejects.toThrow("process.exit was called");
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      "--output-format json requires print mode (-p).",
+    );
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(cli.startCli).not.toHaveBeenCalled();
+    expect(printCli.startPrintCli).not.toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
+    exitSpy.mockRestore();
+  });
+
+  it("should accept an explicit --output-format text outside print mode", async () => {
+    process.argv = ["node", "index.js", "--output-format", "text"];
+    await main();
+    expect(cli.startCli).toHaveBeenCalled();
   });
 
   it("should handle --dangerously-skip-permissions argument", async () => {

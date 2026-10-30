@@ -33,7 +33,7 @@ wave -p "解释这个项目的架构"
 echo "分析这段代码的问题" | wave -p
 ```
 
-配合 `--show-stats` 可在输出末尾显示耗时和 Token 用量统计。
+配合 `--show-stats` 可在输出末尾显示耗时和 Token 用量统计；配合 `--output-format json` / `stream-json` 可输出机器可读结果（见 [结构化输出](#structured-output)）。
 
 ---
 
@@ -101,12 +101,13 @@ wave -w my-feature
 
 ### 2.5 其他 {#misc-options}
 
-| 选项                  | 简写 | 描述                            |
-| --------------------- | ---- | ------------------------------- |
-| `--plugin-dir <path>` |      | 从指定目录加载插件              |
-| `--show-stats`        |      | 打印模式下显示耗时和 Token 统计 |
-| `--version`           | `-v` | 显示版本号                      |
-| `--help`              | `-h` | 显示帮助信息                    |
+| 选项                    | 简写 | 描述                                                    |
+| ----------------------- | ---- | ------------------------------------------------------- |
+| `--plugin-dir <path>`   |      | 从指定目录加载插件                                      |
+| `--show-stats`          |      | 打印模式下显示耗时和 Token 统计                         |
+| `--output-format <fmt>` |      | 打印模式输出格式：`text`（默认）、`json`、`stream-json` |
+| `--version`             | `-v` | 显示版本号                                              |
+| `--help`                | `-h` | 显示帮助信息                                            |
 
 ---
 
@@ -449,6 +450,59 @@ wave -p --show-stats "分析这个项目的依赖关系"
 - **存储与一致性**：标题以 `custom-title` 保留条目追加在会话自己的 JSONL 文件里（唯一权威来源），因此 `wave -r`、插件端与桌面端读到的都是同一个标题。
 - **空标题**：`trim` 后为空时只提示用法、不作改动（没有「清除标题」语义）。
 - **失败**：写盘失败时报错并保持原标题不变（不静默）。
+
+### 7.17 结构化输出 {#structured-output}
+
+打印模式默认输出给人看的纯文本。要让脚本或 CI 消费结果，用 `--output-format` 换成结构化格式，stdout 上就只剩 JSON：
+
+```bash
+# 取助手回复的纯文本
+wave -p "列出当前目录" --output-format json | jq -r .result
+
+# 逐事件消费（打印进度、审计工具调用）
+wave -p "解释这个项目的架构" --output-format stream-json | jq -c .
+
+# 在流水线里按结果决定成败
+wave -p "检查构建脚本" --output-format json > result.json || echo "运行失败"
+jq -e '.subtype == "success"' result.json > /dev/null
+```
+
+**`--output-format json`**：一次运行结束时输出**一条** JSON 对象。
+
+| 字段          | 类型     | 说明                                                                                                                         |
+| ------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `type`        | string   | 固定为 `"result"`                                                                                                            |
+| `subtype`     | string   | `"success"` 或 `"error_during_execution"`                                                                                    |
+| `is_error`    | boolean  | 与 `subtype` 同义，便于布尔判断                                                                                              |
+| `result`      | string   | 最后一条助手消息的纯文本；**运行失败时没有这个字段**                                                                         |
+| `session_id`  | string   | 会话 ID，可直接 `wave -r <session_id>` 恢复                                                                                  |
+| `num_turns`   | number   | 主 agent 的助手消息条数（流式降级的半截消息不计入）                                                                          |
+| `duration_ms` | number   | 本次运行耗时（毫秒）                                                                                                         |
+| `usage`       | object   | `prompt_tokens` / `completion_tokens` / `total_tokens`，有缓存时带 `cache_read_input_tokens` / `cache_creation_input_tokens` |
+| `model_usage` | object   | 按模型分组的同一组计数，外加 `operations.agent_calls` / `operations.compactions`                                             |
+| `tool_calls`  | array    | `{id, name, input, success, error?}`，按调用顺序；**不含工具输出**（完整输出在会话记录里）                                   |
+| `errors`      | string[] | 仅在非空时出现：运行中的错误块（模型请求失败、hook 报错等）                                                                  |
+
+**`--output-format stream-json`**：每行一个 JSON 事件。首行是 `system/init`（建 agent 阶段就产生的事件会被押后到它之后；若建 agent 直接失败则没有 init，流从 `error` 到 `result`），末行是与上面结构相同的 `result`，中间按发生顺序是：
+
+| `type` / `subtype`              | 主要字段                                                 |
+| ------------------------------- | -------------------------------------------------------- |
+| `system` / `init`               | `session_id`、`model`、`cwd`、`permission_mode`、`tools` |
+| `assistant` / `reasoning_delta` | `message_id`、`delta`                                    |
+| `assistant` / `content_delta`   | `message_id`、`delta`                                    |
+| `tool` / `start`                | `message_id`、`tool_use_id`、`name`、`input`             |
+| `tool` / `end`                  | `message_id`、`tool_use_id`、`name`、`success`、`error`  |
+| `error`                         | `message`                                                |
+| `result`                        | 同 `json` 格式的 result 对象                             |
+
+`assistant` 事件的 `delta` 是**增量**片段，拼接起来才是完整文本。
+
+几条使用约定：
+
+- **退出码**：`0` 表示这次运行干成了活。以下两类判为失败、退出码 `1`，此时 stdout 上仍有一条 `subtype` 为 `error_during_execution` 的 result（不带 `result` 字段），失败原因在 `errors` 里：① 建 agent 或发消息抛错；② 运行结束时错误块非空且一句正文都没产出（典型来源是模型不可用、鉴权被拒）。工具执行失败不算运行失败（记在 `tool_calls` 条目的 `success` 上），压缩历史失败、hook 报错这类可恢复错误也不算。
+- **stdout 只有 JSON**：`--show-stats` 的统计、worktree 提示等诊断信息都写到 stderr，stdout 保持纯净。万一有非 JSON 内容漏到 stdout，会被改写到 stderr 并加上 `[stdout-guard]` 前缀，不打断管道。
+- **只对打印模式生效**：不带 `-p` 给非 `text` 的 `--output-format` 会报错退出（交互模式的 stdout 是终端 UI）。
+- **`usage` 是 OpenAI 口径**：`prompt_tokens` **已包含**缓存读取的 token（与 Anthropic 的 `input_tokens` 口径不同），也不输出费用字段。
 
 ---
 

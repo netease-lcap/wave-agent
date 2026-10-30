@@ -18,6 +18,45 @@ export interface TokenSummary {
 }
 
 /**
+ * Totals across every usage record — what the structured `usage` field reports.
+ *
+ * Claude Code's `input_tokens` excludes cached tokens; ours (`prompt_tokens`,
+ * OpenAI shape) already contains them, so the two are not interchangeable and
+ * this deliberately keeps our own field names.
+ */
+export interface UsageTotals {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+}
+
+/** Sum of all usage records, cache fields included only when they appear. */
+export function sumUsage(usages: Usage[]): UsageTotals {
+  const totals: UsageTotals = {
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+  };
+  for (const usage of usages) {
+    totals.prompt_tokens += usage.prompt_tokens;
+    totals.completion_tokens += usage.completion_tokens;
+    totals.total_tokens += usage.total_tokens;
+    if (usage.cache_read_input_tokens) {
+      totals.cache_read_input_tokens =
+        (totals.cache_read_input_tokens || 0) + usage.cache_read_input_tokens;
+    }
+    if (usage.cache_creation_input_tokens) {
+      totals.cache_creation_input_tokens =
+        (totals.cache_creation_input_tokens || 0) +
+        usage.cache_creation_input_tokens;
+    }
+  }
+  return totals;
+}
+
+/**
  * Calculate token usage summary by model from usage array
  * @param usages Array of usage data from agent operations
  * @returns Array of token summaries grouped by model
@@ -84,25 +123,40 @@ export function calculateTokenSummary(
 }
 
 /**
+ * Where the summary lines go. Called with no argument for a blank line.
+ */
+export type UsageLineWriter = (line?: string) => void;
+
+/**
  * Display usage summary in a formatted way
  * @param usages Array of usage data from agent operations
  * @param sessionFilePath Optional session file path to display
+ * @param writer Where the lines go — stdout by default; structured print modes
+ *   hand it stderr so their stdout stays pure JSON
  */
 export function displayUsageSummary(
   usages: Usage[],
   sessionFilePath?: string,
+  writer?: UsageLineWriter,
 ): void {
   if (usages.length === 0) {
     return; // No usage data to display
   }
 
+  const write: UsageLineWriter =
+    writer ??
+    ((line) => {
+      if (line === undefined) console.log();
+      else console.log(line);
+    });
+
   const summaries = calculateTokenSummary(usages);
 
-  console.log("\nToken Usage Summary:");
-  console.log("==================");
+  write("\nToken Usage Summary:");
+  write("==================");
 
   if (sessionFilePath) {
-    console.log(`Session: ${sessionFilePath}`);
+    write(`Session: ${sessionFilePath}`);
   }
 
   let totalPrompt = 0;
@@ -115,12 +169,10 @@ export function displayUsageSummary(
   let hasCacheData = false;
 
   for (const [, summary] of Object.entries(summaries)) {
-    console.log(`Model: ${summary.model}`);
-    console.log(`  Prompt tokens: ${summary.prompt_tokens.toLocaleString()}`);
-    console.log(
-      `  Completion tokens: ${summary.completion_tokens.toLocaleString()}`,
-    );
-    console.log(`  Total tokens: ${summary.total_tokens.toLocaleString()}`);
+    write(`Model: ${summary.model}`);
+    write(`  Prompt tokens: ${summary.prompt_tokens.toLocaleString()}`);
+    write(`  Completion tokens: ${summary.completion_tokens.toLocaleString()}`);
+    write(`  Total tokens: ${summary.total_tokens.toLocaleString()}`);
 
     // Display cache information if available
     if (
@@ -128,13 +180,13 @@ export function displayUsageSummary(
       summary.cache_creation_input_tokens
     ) {
       hasCacheData = true;
-      console.log("  Cache Usage:");
+      write("  Cache Usage:");
 
       if (
         summary.cache_read_input_tokens &&
         summary.cache_read_input_tokens > 0
       ) {
-        console.log(
+        write(
           `    Read from cache: ${summary.cache_read_input_tokens.toLocaleString()} tokens`,
         );
         totalCacheRead += summary.cache_read_input_tokens;
@@ -144,17 +196,17 @@ export function displayUsageSummary(
         summary.cache_creation_input_tokens &&
         summary.cache_creation_input_tokens > 0
       ) {
-        console.log(
+        write(
           `    Created cache: ${summary.cache_creation_input_tokens.toLocaleString()} tokens`,
         );
         totalCacheCreation += summary.cache_creation_input_tokens;
       }
     }
 
-    console.log(
+    write(
       `  Operations: ${summary.operations.agent_calls} agent calls, ${summary.operations.compactions} compactions`,
     );
-    console.log();
+    write();
 
     totalPrompt += summary.prompt_tokens;
     totalCompletion += summary.completion_tokens;
@@ -164,26 +216,24 @@ export function displayUsageSummary(
   }
 
   if (Object.keys(summaries).length > 1) {
-    console.log("Overall Total:");
-    console.log(`  Prompt tokens: ${totalPrompt.toLocaleString()}`);
-    console.log(`  Completion tokens: ${totalCompletion.toLocaleString()}`);
-    console.log(`  Total tokens: ${totalTokens.toLocaleString()}`);
+    write("Overall Total:");
+    write(`  Prompt tokens: ${totalPrompt.toLocaleString()}`);
+    write(`  Completion tokens: ${totalCompletion.toLocaleString()}`);
+    write(`  Total tokens: ${totalTokens.toLocaleString()}`);
 
     if (hasCacheData) {
-      console.log("  Cache Usage:");
+      write("  Cache Usage:");
       if (totalCacheRead > 0) {
-        console.log(
-          `    Read from cache: ${totalCacheRead.toLocaleString()} tokens`,
-        );
+        write(`    Read from cache: ${totalCacheRead.toLocaleString()} tokens`);
       }
       if (totalCacheCreation > 0) {
-        console.log(
+        write(
           `    Created cache: ${totalCacheCreation.toLocaleString()} tokens`,
         );
       }
     }
 
-    console.log(
+    write(
       `  Operations: ${totalAgentCalls} agent calls, ${totalCompactions} compactions`,
     );
   }

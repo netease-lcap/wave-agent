@@ -1,0 +1,203 @@
+name: Wave Review
+
+# 可在别的仓库里一条 uses 调用：
+#
+#   jobs:
+#     review:
+#       uses: netease-lcap/wave-agent/.github/workflows/wave-review.yml@v1
+#       secrets: inherit          # 或显式传 WAVE_API_KEY
+#       with:
+#         prompt: /code-review
+#
+# 之所以用可复用 workflow 而不是 composite action：`uses: owner/repo/path@ref`
+# 只取这一个 yml 文件，不会把整个仓库快照下载到 runner；action 形态会。
+# 审查评论由内置技能自己发（`gh pr comment`），这里只负责装 CLI、跑、留产物。
+on:
+  workflow_call:
+    inputs:
+      prompt:
+        description: "传给 wave -p 的提示词，例如 /code-review"
+        required: true
+        type: string
+      wave-version:
+        description: "wave-code 版本（生产请 pin；默认 latest 会把行为交给上游发版）"
+        required: false
+        type: string
+        default: latest
+      output-format:
+        description: "text | json | stream-json"
+        required: false
+        type: string
+        default: json
+      permission-mode:
+        description: "CI 里通常用 dontAsk：未预批的受限工具直接拒，不等待输入"
+        required: false
+        type: string
+        default: dontAsk
+      tools:
+        description: "启用的工具列表（逗号分隔）。默认只给只读工具，Write/Edit 不注册"
+        required: false
+        type: string
+        default: "Read,Glob,Grep,Bash"
+      allowed-tools:
+        description: "预批规则（如 'Bash(git status*)'）。技能自带的 allowed-tools 会自己注册，不必在此重复"
+        required: false
+        type: string
+        default: ""
+      base-url:
+        description: "模型网关地址，留空则用 CLI 默认"
+        required: false
+        type: string
+        default: ""
+      timeout-minutes:
+        description: "整个 job 的超时，审查类提示词建议不小于 20"
+        required: false
+        type: number
+        default: 20
+    secrets:
+      WAVE_API_KEY:
+        required: true
+    outputs:
+      result:
+        description: "最后一条助手消息的纯文本"
+        value: ${{ jobs.review.outputs.result }}
+      subtype:
+        description: "success | error_during_execution"
+        value: ${{ jobs.review.outputs.subtype }}
+      is-error:
+        description: "true 表示这次运行失败"
+        value: ${{ jobs.review.outputs.is-error }}
+      result-file:
+        description: "结果 JSON 在工作区里的路径"
+        value: ${{ jobs.review.outputs.result-file }}
+  # 在本仓库手动触发一次做冒烟，不参与 PR 流程
+  workflow_dispatch:
+    inputs:
+      prompt:
+        description: "传给 wave -p 的提示词"
+        required: true
+        default: "/code-review"
+      wave-version:
+        required: false
+        default: latest
+
+permissions:
+  contents: read
+  # 技能用 gh pr comment 发评论；只读的 GITHUB_TOKEN 会让它静默失败
+  pull-requests: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout-minutes || 20 }}
+    outputs:
+      result: ${{ steps.run.outputs.result }}
+      subtype: ${{ steps.run.outputs.subtype }}
+      is-error: ${{ steps.run.outputs.is-error }}
+      result-file: ${{ steps.run.outputs.result-file }}
+    steps:
+      # fetch-depth: 0 —— 审查靠 `git merge-base HEAD main` 算 diff 范围，
+      # 浅克隆会让它退化到 HEAD~1，评的就不是这个 PR 的改动了。
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # checkout 只留下远程跟踪分支，本地没有 `main`；而技能用的是
+      # `git merge-base HEAD main`（本地名），解析不到就会退化成 `HEAD~1`
+      # ——在 PR 的 merge commit 上那是 base 分支的尖，等于没评。
+      - name: Prepare base branch
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -z "$BASE_REF" ]; then
+            echo "no base ref (not a pull_request event) — skipping"
+            exit 0
+          fi
+          git fetch --no-tags origin "refs/heads/${BASE_REF}:refs/heads/${BASE_REF}"
+          echo "base branch ${BASE_REF} ready at $(git rev-parse --short "${BASE_REF}")"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: Install wave CLI
+        run: |
+          npm i -g "wave-code@${{ inputs.wave-version }}"
+          echo "wave $(wave --version)" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Run wave
+        id: run
+        env:
+          WAVE_API_KEY: ${{ secrets.WAVE_API_KEY }}
+          WAVE_BASE_URL: ${{ inputs.base-url }}
+          # 技能用 gh 判断/回复 PR；不传就没法回评论
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WAVE_PROMPT: ${{ inputs.prompt }}
+          WAVE_OUTPUT_FORMAT: ${{ inputs.output-format }}
+          WAVE_PERMISSION_MODE: ${{ inputs.permission-mode }}
+          WAVE_TOOLS: ${{ inputs.tools }}
+          WAVE_ALLOWED_TOOLS: ${{ inputs.allowed-tools }}
+        run: |
+          set -uo pipefail
+
+          args=(
+            --output-format "$WAVE_OUTPUT_FORMAT"
+            --permission-mode "$WAVE_PERMISSION_MODE"
+            --tools "$WAVE_TOOLS"
+          )
+          if [ -n "$WAVE_ALLOWED_TOOLS" ]; then
+            args+=(--allowed-tools "$WAVE_ALLOWED_TOOLS")
+          fi
+
+          # stderr 直接进 job 日志（诊断在这里），stdout 只留结果 JSON。
+          # 失败也要留下信封，所以先接住退出码再决定 step 成败。
+          status=0
+          wave -p "$WAVE_PROMPT" "${args[@]}" > wave-result.json || status=$?
+
+          echo "result-file=wave-result.json" >> "$GITHUB_OUTPUT"
+          if [ ! -s wave-result.json ]; then
+            echo "subtype=error_during_execution" >> "$GITHUB_OUTPUT"
+            echo "is-error=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "result<<WAVE_RESULT_EOF"
+              echo ""
+              echo "WAVE_RESULT_EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "### wave 没有产出结果文件（退出码 $status）" >> "$GITHUB_STEP_SUMMARY"
+            exit "$status"
+          fi
+
+          subtype=$(jq -r '.subtype // "error_during_execution"' wave-result.json)
+          # 不能用 `.is_error // true`：jq 的 // 把 false 当空值，成功那次的
+          # is_error=false 会被改写成 true，outputs 与 subtype 自相矛盾。
+          is_error=$(jq -r '.is_error == true' wave-result.json)
+          echo "subtype=$subtype" >> "$GITHUB_OUTPUT"
+          echo "is-error=$is_error" >> "$GITHUB_OUTPUT"
+          # 多行文本要用 heredoc 语法写进 GITHUB_OUTPUT，普通 key=value 会被截断
+          {
+            echo "result<<WAVE_RESULT_EOF"
+            jq -r '.result // ""' wave-result.json
+            echo "WAVE_RESULT_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### wave: $subtype"
+            jq -r '.result // "(no result)"' wave-result.json
+            errors=$(jq -r '.errors // [] | .[]' wave-result.json)
+            if [ -n "$errors" ]; then
+              echo ""
+              echo "**errors**"
+              echo "$errors"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$status"
+
+      # 失败那次最需要结果文件，所以不按默认的 success() 上传
+      - name: Upload result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave-result
+          path: wave-result.json
+          if-no-files-found: warn
