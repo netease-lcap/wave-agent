@@ -569,6 +569,8 @@ export interface MessageListProps {
   compactionStream?: string;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
+  /** 把这一轮正在前台跑的工具转到后台（CLI 的 Ctrl-B 在界面上的入口）。 */
+  onBackgroundCurrentTask?: () => void;
   workdir?: string;
   /** Desktop host only: open a localhost URL in the preview pane. */
   onOpenPreview?: (url: string) => void;
@@ -590,6 +592,18 @@ export interface MessageProps {
   isQueued?: boolean;
   vscode: VsCodeApi;
   onRewindToMessage?: (messageId: string) => void;
+  /**
+   * 把这一轮正在前台跑的工具转到后台（与 CLI 的 Ctrl-B 同一条命令）。
+   *
+   * 只在助手消息上、且这条消息里确有 `Bash` / `Agent` 的未收尾工具块时出现。
+   * 远控页同样提供——手机键盘没有 Ctrl/Cmd+B。
+   */
+  onBackgroundCurrentTask?: () => void;
+  /**
+   * 是不是列表里的最后一条消息。后台按钮只长在最后一条上：前台任务只可能属于
+   * 正在生成的这一轮，历史消息不该出现一个作用对象已经变了的入口。
+   */
+  isLastMessage?: boolean;
   workdir?: string;
   /** Desktop host only: open a localhost URL in the preview pane. */
   onOpenPreview?: (url: string) => void;

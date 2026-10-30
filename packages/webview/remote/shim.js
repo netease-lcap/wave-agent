@@ -2721,6 +2721,13 @@
         controlRequest("abortMessage", {}, "暂停");
         return;
 
+      case "backgroundCurrentTask":
+        // 把这一轮正在前台跑的工具转到后台（spec: task-background-execution.md
+        // 「前台工具后台化」场景 3/5）。页面不需要专门的回执：转过去之后工具块会
+        // 带着 `backgroundTaskId` 经 `toolBlockUpdated` 回来，那才是界面上要看的结果。
+        controlRequest("backgroundCurrentTask", {}, "转后台");
+        return;
+
       case "confirmationResponse": {
         // An approval is a **notification**, not a request: that is the frame
         // shape this protocol defines for `permissionResponse` (the IDE and

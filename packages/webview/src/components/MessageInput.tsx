@@ -1622,9 +1622,11 @@ export const MessageInput = forwardRef<
       // Handle Ctrl+B to background the current foreground task (same as CLI).
       // Only intercepted while a turn is running — when idle the key falls
       // through so the host keeps its own Ctrl+B binding (e.g. VS Code's
-      // Toggle Sidebar). Never on the remote-control Web page: backgrounding is
-      // a host-side move with no reply there (spec ui/remote-control.md 场景 24),
-      // and a phone browser has no binding to protect anyway.
+      // Toggle Sidebar). Still not taken over on the remote-control Web page:
+      // that page has its own visible entry now (the button on the assistant
+      // message, spec ui/remote-control.md 场景 11), a phone browser has no
+      // physical Ctrl+B, and swallowing the chord there would only fight the
+      // browser's own shortcuts.
       if (
         event.key === "b" &&
         (event.ctrlKey || event.metaKey) &&

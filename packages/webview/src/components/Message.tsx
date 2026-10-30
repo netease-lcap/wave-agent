@@ -23,7 +23,6 @@ import {
   windowsPathInlineExtension,
 } from "../utils/filePathLinks";
 import { marked } from "marked";
-import { Tooltip } from "./Tooltip";
 
 // ... (existing imports)
 import DOMPurify from "dompurify";
@@ -53,6 +52,7 @@ import { CompactBlockView } from "./CompactBlockView";
 import { WriteToolPreview } from "./WriteToolPreview";
 import { ArtifactCard } from "./ArtifactCard";
 import { FileToolHeader } from "./FileToolHeader";
+import { MessageActionButton } from "./MessageActionButton";
 import { getStageColor, getToolStatusColor } from "../utils/statusColors";
 import { isDesktopHost, isRemotePageHost } from "../utils/platform";
 import "../styles/Message.css";
@@ -741,9 +741,38 @@ const isRewindTargetMessage = (message: MessageType): boolean =>
   !!message.id &&
   !message.blocks.some((b) => b.type === "task_notification");
 
+// 与前台的 `ForegroundTask` 注册点一一对应（`bashTool` 与 `agentTool` 各一处）：
+// 能「转到后台」的只有这两个工具——别把判据放宽到所有工具，那会让按钮在一个
+// 点了什么都不会发生的回合里出现（spec: task-background-execution.md 场景 4）。
+const BACKGROUNDABLE_TOOL_NAMES = new Set(["Bash", "Agent"]);
+
+/**
+ * 这条助手消息里还有正在跑、且能转到后台的工具块吗？
+ *
+ * `stage !== "end"` 即「未收尾」（start / streaming / running）——与
+ * `collectConversationFiles` 用同一个判据的镜像。只看助手消息：用户消息不可能
+ * 挂着工具块，而陈旧块由 SDK 的 `finalizeAbortedToolBlocks` 收尾。
+ */
+const hasRunningBackgroundableTool = (message: MessageType): boolean =>
+  message.role === "assistant" &&
+  message.blocks.some(
+    (b) =>
+      b.type === "tool" &&
+      !!b.name &&
+      BACKGROUNDABLE_TOOL_NAMES.has(b.name) &&
+      b.stage !== "end",
+  );
+
 export const Message: React.FC<MessageProps> = React.memo(
   (props: MessageProps) => {
-    const { message, isQueued = false, onRewindToMessage, workdir } = props;
+    const {
+      message,
+      isQueued = false,
+      onRewindToMessage,
+      onBackgroundCurrentTask,
+      isLastMessage = false,
+      workdir,
+    } = props;
 
     // Desktop routes file opens to its file panel (the host resolves the path,
     // pushing content back); IDE hosts keep the plain openFile RPC. The message
@@ -1635,17 +1664,28 @@ export const Message: React.FC<MessageProps> = React.memo(
             宿主侧就是桌面端那条「截断对话 + 还原电脑侧工作区文件」的链路），所以
             这里不再区分端 —— 手机上的那次确认由 ChatApp 的对话框负责。 */}
         {onRewindToMessage && isRewindTargetMessage(message) && !isQueued && (
-          <div className="message-actions">
-            <Tooltip text="回滚到此消息" position="bottom">
-              <button
-                className="message-action-btn"
-                onClick={() => onRewindToMessage?.(message.id!)}
-              >
-                <i className="codicon codicon-history"></i>
-              </button>
-            </Tooltip>
-          </div>
+          <MessageActionButton
+            icon="history"
+            label="回滚到此消息"
+            testId="rewind-to-message"
+            onClick={() => onRewindToMessage?.(message.id!)}
+          />
         )}
+        {/* 「把本轮转到后台」：与回滚按钮同一颗（`MessageActionButton`），只是挂在
+            助手消息上、只在真的有可后台的工具在跑时出现。落在最后一条消息上，是因为
+            前台任务只可能挂在正在生成的那一轮里——历史消息里即便残留未收尾的块，
+            也不该给出一个作用对象已经变了的入口。 */}
+        {onBackgroundCurrentTask &&
+          isLastMessage &&
+          !isQueued &&
+          hasRunningBackgroundableTool(message) && (
+            <MessageActionButton
+              icon="tasklist"
+              label="把本轮转到后台"
+              testId="background-current-task"
+              onClick={onBackgroundCurrentTask}
+            />
+          )}
       </div>
     );
   },
@@ -1654,7 +1694,9 @@ export const Message: React.FC<MessageProps> = React.memo(
     return (
       prev.message === next.message &&
       prev.isQueued === next.isQueued &&
-      prev.onRewindToMessage === next.onRewindToMessage
+      prev.isLastMessage === next.isLastMessage &&
+      prev.onRewindToMessage === next.onRewindToMessage &&
+      prev.onBackgroundCurrentTask === next.onBackgroundCurrentTask
     );
   },
 );

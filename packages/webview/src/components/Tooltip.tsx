@@ -1,6 +1,7 @@
 import React, {
   useState,
   useId,
+  useEffect,
   ReactElement,
   RefObject,
   useRef,
@@ -72,6 +73,31 @@ export const Tooltip: React.FC<TooltipProps> = ({
   const id = useId();
   const containerRef = useRef<HTMLSpanElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
+
+  // 没有真实悬停能力的设备（触控为主，`hover: none` —— 手机上的远控页、平板）不显示
+  // tooltip：那里的 `:hover` 只是 tap 的副产物，气泡被点出来之后不会自己走，会一直压在
+  // 内容上（消息操作按钮那颗尤其明显，见 spec multi-agent/task-background-execution.md
+  // 场景 6）。口径与 React Aria 一致（「tooltips are not shown on touchscreen
+  // interactions，保证没有 tooltip 也可用」），CC 前端也是按 `pointerType === "touch"`
+  // 直接不启动气泡。信息不丢：触发元素都有 `aria-label`。
+  //
+  // 判据取 `hover: hover`（只有确实能悬停才显示）而不是 `hover: none` —— 环境不报这两
+  // 个特性时（jsdom、部分老浏览器）按「能显示」处理，保持既有行为。能力变化（触屏笔记本
+  // 接上鼠标）也跟着重新判定。
+  const [canHover, setCanHover] = useState(
+    () =>
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function" ||
+      window.matchMedia("(hover: hover)").matches,
+  );
+  useEffect(() => {
+    const query = window.matchMedia?.("(hover: hover)");
+    if (!query) return;
+    const onChange = () => setCanHover(query.matches);
+    onChange();
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
 
   const calculatePosition = useCallback(() => {
     const anchor = anchorRef?.current ?? containerRef.current;
@@ -145,6 +171,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
   }
 
   const handleShow = () => {
+    if (!canHover) return;
     setIsVisible(true);
     // Calculate position after tooltip is rendered
     requestAnimationFrame(calculatePosition);
@@ -156,7 +183,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
       id={id}
       role="tooltip"
       ref={tooltipRef}
-      className={`tooltip-box tooltip-${position} ${isVisible ? "visible" : ""} ${multiline ? "tooltip-multiline" : ""}`}
+      className={`tooltip-box tooltip-${position} ${isVisible && canHover ? "visible" : ""} ${multiline ? "tooltip-multiline" : ""}`}
       style={tooltipStyle}
     >
       {text}
