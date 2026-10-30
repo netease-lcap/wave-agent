@@ -627,7 +627,7 @@ jq -r '.subtype, .result' wave-result.json
 
 ### 2. 搬到 GitHub Actions {#ci-review-github}
 
-仓库里加一个文件 `.github/workflows/review.yml`，把 seed `WAVE_API_KEY` 放进 Settings → Secrets and variables → Actions：
+仓库里加一个文件 `.github/workflows/review.yml`，并在 Settings → Secrets and variables → Actions 里配一个 secret `WAVE_API_KEY`、一个变量 `WAVE_MODEL`（如 `deepseek-flash`——CI 里没有本地配置可继承，模型名必须给）：
 
 ```yaml
 name: Review
