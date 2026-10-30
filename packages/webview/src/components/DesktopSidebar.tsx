@@ -279,14 +279,16 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
   artifactsActive = false,
   onToggleArtifacts,
 }) => {
-  // 窗口级 chrome 状态（收起/全屏）单一权威在 DesktopChromeContext —— 任何渲染
-  // 路径（root 单布局 / DesktopShell）的侧边栏都同源读取，不再 props 下行。
-  const { sidebarCollapsed, setSidebarCollapsed, fullScreen } =
-    useDesktopChrome();
-  // Explicit expand/collapse overrides; groups without an entry are expanded
-  // by default — the tree starts fully expanded on every app launch (expansion
-  // state is not persisted).
-  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  // 窗口级 chrome 状态（收起/全屏/目录分组折叠）单一权威在
+  // DesktopChromeContext —— 任何渲染路径（root 单布局 / DesktopShell）的侧边栏
+  // 都同源读取，不再 props 下行。
+  const {
+    sidebarCollapsed,
+    setSidebarCollapsed,
+    fullScreen,
+    sidebarGroupCollapsed,
+    setSidebarGroupCollapsed,
+  } = useDesktopChrome();
   // Session awaiting delete confirmation; non-null shows the ConfirmDialog.
   // `checking` = worktree session whose loss summary the host is still counting:
   // deleting it would remove the worktree directory and its branch, so the
@@ -414,15 +416,13 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
     return anchor;
   };
 
+  // 折叠状态由窗口级 chrome context 承载并持久化（spec「侧栏分组折叠状态
+  // 记忆」）：按 host:workdir 记忆，缺项即展开。
   const isExpanded = (group: DesktopSessionGroup): boolean =>
-    overrides[groupKey(group)] ?? true;
+    !(sidebarGroupCollapsed[groupKey(group)] ?? false);
 
-  const toggleGroup = (group: DesktopSessionGroup) => {
-    setOverrides((prev) => ({
-      ...prev,
-      [groupKey(group)]: !(prev[groupKey(group)] ?? true),
-    }));
-  };
+  const toggleGroup = (group: DesktopSessionGroup) =>
+    setSidebarGroupCollapsed(groupKey(group), isExpanded(group));
 
   // Tree-level keyboard navigation (modeled on Claude's sidebar):
   // - Session main buttons are all natively Tab-focusable — Tab walks the rows

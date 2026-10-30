@@ -23,6 +23,12 @@ function renderDesktopApp() {
   return { ...result, vscode };
 }
 
+// 窗口级 UI 偏好（侧边栏整条收起、目录分组折叠）持久化在 localStorage 里：
+// 不清掉的话，前一个用例折过的分组会让后一个用例的会话行凭空消失。
+afterEach(() => {
+  localStorage.clear();
+});
+
 describe("DesktopApp", () => {
   it("should post desktopReady on mount and show loading until workdir state arrives", () => {
     const { vscode } = renderDesktopApp();
@@ -4232,6 +4238,158 @@ describe("DesktopApp", () => {
         within(leftmostHeader).getByTestId("desktop-sidebar-expand"),
       );
       expect(screen.getByTestId("desktop-sidebar")).toBeInTheDocument();
+    });
+  });
+
+  describe("sidebar group collapse memory (spec 侧栏分组折叠状态记忆)", () => {
+    const GROUP_KEY = "wave.desktopSidebarGroupCollapsed";
+    const storedGroups = () =>
+      JSON.parse(localStorage.getItem(GROUP_KEY) ?? "{}");
+
+    function renderReady() {
+      const result = renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: "/work/a",
+        recentWorkdirs: ["/work/a"],
+      });
+      sendCommand("setInitialState", { messages: [] });
+      return result;
+    }
+
+    /** One session per group, so a group's rows are identifiable by title. */
+    const tree = (
+      groups: Array<{ host: string; workdir: string; title: string }>,
+    ) => ({
+      groups: groups.map(({ host, workdir, title }) => ({
+        host,
+        workdir,
+        sessions: [
+          {
+            sessionId: `${host}-${title}`,
+            title,
+            lastActiveAt: Date.now(),
+            hasWorktree: false,
+          },
+        ],
+      })),
+    });
+
+    const TWO_GROUPS = [
+      { host: "local", workdir: "/work/a", title: "chat a" },
+      { host: "local", workdir: "/work/b", title: "chat b" },
+    ];
+
+    it("keeps a collapsed group collapsed after a fresh mount (scenario 1)", () => {
+      const first = renderReady();
+      sendCommand("desktopSessionTree", tree(TWO_GROUPS));
+      expect(screen.getByText("chat a")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "收起分组 a" }));
+      expect(screen.queryByText("chat a")).not.toBeInTheDocument();
+      // 其它分组不受影响。
+      expect(screen.getByText("chat b")).toBeInTheDocument();
+      expect(storedGroups()).toEqual({ "local:/work/a": true });
+
+      // 重启 = 全新 DesktopApp 重新挂载，只有持久化的状态能跨过来。
+      first.unmount();
+      renderReady();
+      sendCommand("desktopSessionTree", tree(TWO_GROUPS));
+      expect(screen.queryByText("chat a")).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "展开分组 a" }),
+      ).toBeInTheDocument();
+      expect(screen.getByText("chat b")).toBeInTheDocument();
+    });
+
+    it("remembers the last toggle, so a re-expanded group stays expanded (scenario 2)", () => {
+      const first = renderReady();
+      sendCommand("desktopSessionTree", tree(TWO_GROUPS));
+
+      fireEvent.click(screen.getByRole("button", { name: "收起分组 a" }));
+      fireEvent.click(screen.getByRole("button", { name: "展开分组 a" }));
+      fireEvent.click(screen.getByRole("button", { name: "收起分组 b" }));
+      expect(storedGroups()).toEqual({
+        "local:/work/a": false,
+        "local:/work/b": true,
+      });
+
+      first.unmount();
+      renderReady();
+      sendCommand("desktopSessionTree", tree(TWO_GROUPS));
+      expect(screen.getByText("chat a")).toBeInTheDocument();
+      expect(screen.queryByText("chat b")).not.toBeInTheDocument();
+    });
+
+    it("keys the memory by (host, workdir), so the same path on another host stays expanded (scenario 3)", () => {
+      renderReady();
+      sendCommand(
+        "desktopSessionTree",
+        tree([
+          { host: "local", workdir: "/work/a", title: "chat local" },
+          { host: "ssh-box", workdir: "/work/a", title: "chat remote" },
+        ]),
+      );
+
+      // 两个分组的标签都是目录名 "a" —— 折叠排在前面的本地那份。
+      fireEvent.click(screen.getAllByRole("button", { name: "收起分组 a" })[0]);
+
+      expect(screen.queryByText("chat local")).not.toBeInTheDocument();
+      expect(screen.getByText("chat remote")).toBeInTheDocument();
+      expect(storedGroups()).toEqual({ "local:/work/a": true });
+    });
+
+    it("keeps the memory when the group leaves the tree and comes back (scenario 4)", () => {
+      const first = renderReady();
+      const groups = tree([TWO_GROUPS[0]]);
+      sendCommand("desktopSessionTree", groups);
+      fireEvent.click(screen.getByRole("button", { name: "收起分组 a" }));
+
+      // 该目录下的会话被删光、期间应用重启 —— 分组从会话树上消失。
+      first.unmount();
+      renderReady();
+      sendCommand("desktopSessionTree", { groups: [] });
+      expect(
+        screen.queryByRole("button", { name: "展开分组 a" }),
+      ).not.toBeInTheDocument();
+
+      // 之后同一目录又有会话：沿用记忆，而不是重置为展开。
+      sendCommand("desktopSessionTree", groups);
+      expect(screen.queryByText("chat a")).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "展开分组 a" }),
+      ).toBeInTheDocument();
+    });
+
+    it("does not auto-expand a collapsed group whose session matches the search (scenario 6)", () => {
+      renderReady();
+      sendCommand("desktopSessionTree", tree(TWO_GROUPS));
+      fireEvent.click(screen.getByRole("button", { name: "收起分组 a" }));
+
+      fireEvent.change(screen.getByTestId("desktop-session-search"), {
+        target: { value: "chat a" },
+      });
+
+      // 分组标题因命中保留，但折叠状态不变、命中会话仍不渲染。
+      expect(
+        screen.getByRole("button", { name: "展开分组 a" }),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("chat a")).not.toBeInTheDocument();
+      expect(storedGroups()).toEqual({ "local:/work/a": true });
+    });
+
+    it("falls back to fully expanded when the stored value is unusable", () => {
+      localStorage.setItem(GROUP_KEY, "{not json");
+      const view = renderDesktopApp();
+      sendCommand("desktopWorkdirState", {
+        workdir: "/work/a",
+        recentWorkdirs: ["/work/a"],
+      });
+      sendCommand("setInitialState", { messages: [] });
+      sendCommand("desktopSessionTree", tree(TWO_GROUPS));
+
+      expect(screen.getByText("chat a")).toBeInTheDocument();
+      expect(screen.getByText("chat b")).toBeInTheDocument();
+      view.unmount();
     });
   });
 });
