@@ -121,6 +121,7 @@ import {
 import { getWorkspaceDiff } from "../utils/workspaceDiff.js";
 import { installGitCredentialHelper } from "../utils/gitCredentialHelper.js";
 import { readImagePreview } from "../remote/imagePreview.js";
+import { readTextPreview } from "../remote/textPreview.js";
 import type { RemoteControlController } from "../remote/remoteControlService.js";
 import {
   hostSlashCommandsFor,
@@ -469,6 +470,12 @@ export class AgentBridge {
       case "getImagePreview":
         this.requireSessionForRead(sessionId);
         return readImagePreview(typeof p.path === "string" ? p.path : "");
+
+      case "getTextPreview":
+        // 点消息里的文件路径看内容（spec remote/remote-web.md「点消息里的文件
+        // 路径看内容」）：与取图同一条按需读取通道，判型换成「读出来是不是文本」。
+        this.requireSessionForRead(sessionId);
+        return readTextPreview(typeof p.path === "string" ? p.path : "");
 
       // ── MCP ──
       case "getMcpServers":
