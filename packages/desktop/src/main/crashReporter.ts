@@ -15,6 +15,8 @@
  * 「导出日志」 in the recovery dialog.
  */
 
+import * as fs from "fs";
+import * as path from "path";
 import { app, crashReporter } from "electron";
 import { hostLog, LOG_DIR } from "./hostLog";
 
@@ -50,16 +52,57 @@ function logLastCrashReport(): void {
     hostLog.warn("[desktop] failed to read last crash report:", error);
     return;
   }
-  if (!report) {
+  // A report with an empty id or an epoch date carries no information —
+  // Crashpad leaves such a stub behind when a half-written entry survives a
+  // restart, and every startup replays it. Reporting that as "a crash
+  // happened" printed `id=` and `date=1970-01-01`, which told support nothing
+  // and buried real crashes.
+  if (report?.id && report.date) {
+    // CrashReport carries only date + id: the termination reason (SIGTRAP,
+    // EXC_BREAKPOINT, OOM, …) lives inside the .dmp file, so point at the
+    // directory instead of inventing a field the API does not expose.
+    hostLog.warn(
+      `[desktop] previous run left a crash dump id=${report.id} date=${new Date(report.date).toISOString()} dir=${crashDumpsDir()}`,
+    );
+    return;
+  }
+
+  // No usable report metadata: the dumps on disk are the only evidence left,
+  // so let the files decide (an empty setup says "clean", a stub with a file
+  // next to it says "crashed, metadata unreadable").
+  const dumps = listCompletedDumps();
+  if (dumps.length === 0) {
     hostLog.info("[desktop] no crash dump from a previous run");
     return;
   }
-  // CrashReport carries only date + id: the termination reason (SIGTRAP,
-  // EXC_BREAKPOINT, OOM, …) lives inside the .dmp file, so point at the
-  // directory instead of inventing a field the API does not expose.
+  const latest = dumps[dumps.length - 1];
   hostLog.warn(
-    `[desktop] previous run left a crash dump id=${report.id} date=${new Date(report.date).toISOString()} dir=${crashDumpsDir()}`,
+    `[desktop] previous run left ${dumps.length} crash dump file(s) dir=${crashDumpsDir()} latest=${latest.name} mtime=${latest.mtime.toISOString()}`,
   );
+}
+
+/**
+ * Minidumps Crashpad finished writing, oldest first. `pending/` is skipped on
+ * purpose: those are still being assembled, not evidence of a previous run.
+ * Unreadable or missing dir (first launch) means "no dumps", never an error —
+ * crash reporting must not affect startup.
+ */
+function listCompletedDumps(): { name: string; mtime: Date }[] {
+  const completed = path.join(crashDumpsDir(), "completed");
+  try {
+    return fs
+      .readdirSync(completed, { withFileTypes: true })
+      .filter(
+        (entry) => entry.isFile() && entry.name.toLowerCase().endsWith(".dmp"),
+      )
+      .map((entry) => ({
+        name: entry.name,
+        mtime: fs.statSync(path.join(completed, entry.name)).mtime,
+      }))
+      .sort((a, b) => a.mtime.getTime() - b.mtime.getTime());
+  } catch {
+    return [];
+  }
 }
 
 /** Minidump directory (Crashpad's own path), also what 「导出日志」 packs. */
