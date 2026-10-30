@@ -194,7 +194,15 @@ describe("PluginLoader", () => {
       );
 
       const result = PluginLoader.loadCommands(mockPluginPath);
-      expect(result).toEqual(mockCommands);
+      // The plugin root is stamped here: it is the only source a command's
+      // `${WAVE_PLUGIN_ROOT}` can resolve against (spec
+      // `commands/slash-commands`「插件命令正文可用插件根占位符」).
+      expect(result).toEqual(
+        mockCommands.map((command) => ({
+          ...command,
+          pluginRoot: mockPluginPath,
+        })),
+      );
       expect(scanCommandsDirectory).toHaveBeenCalledWith(
         `${mockPluginPath}/commands`,
       );

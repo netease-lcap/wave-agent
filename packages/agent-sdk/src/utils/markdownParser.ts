@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync } from "fs";
+import { readFileSync, writeFileSync, mkdirSync, rmSync } from "fs";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { join } from "path";
@@ -11,6 +11,7 @@ import {
 import { logger } from "./globalLogger.js";
 import { parseFrontmatterYaml, splitFrontmatter } from "./frontmatterYaml.js";
 import { resolveShellPath } from "./shellResolver.js";
+import { resolveTempDir } from "./tempDir.js";
 
 const execAsync = promisify(exec);
 
@@ -224,6 +225,88 @@ export function replaceBashCommandsWithOutput(
   });
 
   return processedContent;
+}
+
+/**
+ * Placeholder that hands an injected command its invocation arguments as a
+ * **file** instead of as shell text (spec `ecosystem/agent-skills`「注入命令的
+ * 参数不经 shell 传递」).
+ *
+ * `$ARGUMENTS` stays the model-facing channel. This one exists because `!`
+ * commands run through a real shell: an argument carrying `>`, `&&`, a backtick
+ * or a newline changes how that shell parses the command, and no escaping
+ * inside a template fixes it for the author — the pushed-in string decides the
+ * command's structure. A path is a single inert argv word, so the command reads
+ * the same no matter what the user typed.
+ */
+export const ARGUMENTS_FILE_TOKEN = "${WAVE_ARGUMENTS_FILE}";
+
+export interface PreparedInjectedCommands {
+  /** The `!` commands with the token resolved to the file's absolute path. */
+  commands: string[];
+  /**
+   * Delete the temp file. Safe to call unconditionally and never throws; call
+   * it from a `finally` so a denied or aborted invocation leaves nothing behind.
+   */
+  cleanup: () => void;
+  /** Author error to surface: the token survived outside the injected commands. */
+  warning?: string;
+}
+
+/**
+ * Resolve {@link ARGUMENTS_FILE_TOKEN} in the `!` commands of one invocation.
+ *
+ * The file is created only when a command actually asks for it, and it is
+ * created even when the user passed no arguments — an empty file lets the
+ * author's script read one path unconditionally instead of branching.
+ */
+export function prepareInjectedCommands(
+  content: string,
+  commands: string[],
+  argsString = "",
+): PreparedInjectedCommands {
+  const warning = argumentsFileTokenInProse(content)
+    ? `${ARGUMENTS_FILE_TOKEN} only works inside an injected command (\`!\`cmd\`\`) — ` +
+      `it is left as written here, where no command runs and no file is created`
+    : undefined;
+
+  if (!commands.some((command) => command.includes(ARGUMENTS_FILE_TOKEN))) {
+    return { commands, cleanup: () => {}, warning };
+  }
+
+  const dir = resolveTempDir();
+  mkdirSync(dir, { recursive: true });
+  const filePath = join(
+    dir,
+    `wave-args-${Date.now()}-${Math.random().toString(36).slice(2, 9)}.txt`,
+  );
+  // 0600: the arguments are exactly what the user typed, nobody else's business.
+  writeFileSync(filePath, argsString, { encoding: "utf-8", mode: 0o600 });
+
+  return {
+    commands: commands.map((command) =>
+      command.split(ARGUMENTS_FILE_TOKEN).join(filePath),
+    ),
+    cleanup: () => {
+      try {
+        rmSync(filePath, { force: true });
+      } catch (error) {
+        logger.warn(`Failed to remove injected-command arguments file:`, error);
+      }
+    },
+    warning,
+  };
+}
+
+/** Whether the token appears anywhere outside a `!` command (i.e. in the prose). */
+function argumentsFileTokenInProse(content: string): boolean {
+  if (!content.includes(ARGUMENTS_FILE_TOKEN)) {
+    return false;
+  }
+  const prose = content
+    .replace(BLOCK_BASH_REGEX, "")
+    .replace(INLINE_BASH_REGEX, "");
+  return prose.includes(ARGUMENTS_FILE_TOKEN);
 }
 
 /**

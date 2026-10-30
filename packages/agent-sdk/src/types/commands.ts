@@ -69,4 +69,12 @@ export interface CustomSlashCommand {
   filePath: string;
   content: string;
   config?: CustomSlashCommandConfig;
+  /**
+   * The enclosing plugin's root directory, when the command ships with a
+   * plugin. It is what `${WAVE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_ROOT}` resolve
+   * to in the command's body and `allowed-tools` rules (spec
+   * `commands/slash-commands`「插件命令正文可用插件根占位符」); a user/project
+   * command has none, and its placeholders are reported instead of resolved.
+   */
+  pluginRoot?: string;
 }
