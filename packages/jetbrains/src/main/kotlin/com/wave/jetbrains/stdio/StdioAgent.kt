@@ -501,7 +501,7 @@ class StdioAgent(
 
     // ── Utility RPCs (standalone, mirror VSCE services) ───────────
 
-    suspend fun searchFiles(query: String, workdir: String, maxResults: Int = 20): JsonElement =
+    suspend fun searchFiles(query: String, workdir: String, maxResults: Int = 50): JsonElement =
         client.request("searchFiles", buildJsonObject {
             put("query", query)
             put("maxResults", maxResults)

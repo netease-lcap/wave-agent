@@ -55,8 +55,12 @@ import {
 } from "../utils/fileTreeLayout";
 import "../styles/FilePane.css";
 
-/** Debounce for the panel search requests, matching the message input's. */
-const SEARCH_DEBOUNCE_MS = 200;
+/**
+ * Debounce for the panel search requests. Shorter than the message input's:
+ * the host answers from a prebuilt index (tens of milliseconds), so at 200 ms
+ * the input felt laggy while the wait, not the search, was the latency.
+ */
+const SEARCH_DEBOUNCE_MS = 50;
 
 /** Extension → highlight.js language name (registered in utils/highlight.ts). */
 export const EXT_LANGUAGE: Record<string, string> = {

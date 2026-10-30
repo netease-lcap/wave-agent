@@ -1045,7 +1045,7 @@ describe("file suggestions", () => {
     expect(search?.params).toMatchObject({
       workdir: "/work/a",
       query: "app",
-      maxResults: 20,
+      maxResults: 50,
     });
     // Release the gate — the pane settles on the auto new-session agent at /work/a.
     releaseGate();
@@ -1095,7 +1095,7 @@ describe("file suggestions", () => {
     expect(search?.params).toMatchObject({
       workdir: "/work/a",
       query: "app",
-      maxResults: 20,
+      maxResults: 50,
     });
   });
 

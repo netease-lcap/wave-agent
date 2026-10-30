@@ -7183,7 +7183,7 @@ export class DesktopHost {
           : path.posix.basename.bind(path.posix);
       const result = (await this.utilityClientFor(host).request("searchFiles", {
         query: filterText || "",
-        maxResults: 20,
+        maxResults: 50,
         workdir,
       })) as { files: Array<{ path: string; type: string }> };
 
