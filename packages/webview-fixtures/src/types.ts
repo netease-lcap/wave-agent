@@ -1477,6 +1477,26 @@ export interface RecentWorkdirsMessage extends HostToWebviewMessageBase {
   error?: string;
 }
 
+/**
+ * 远控 Web 页点图片路径取图（回复 `getImagePreview`，spec
+ * ui/remote-control.md「点消息里的图片路径看原图」）。
+ *
+ * 页面自己没有文件系统、消息里的图片字节也在过中继前被剥掉了，所以看图只能是
+ * 一次「向宿主要」。`dataUrl` 与 `error` 互斥：要么给图，要么给一句人能看懂
+ * 的拒绝理由（宿主原文——不是图片 / 太大 / 这台机器没装图像处理库）。
+ */
+export interface ImagePreviewResponseMessage extends HostToWebviewMessageBase {
+  command: "imagePreviewResponse";
+  /** 归属键：请求生成的 id 原样带回（一次点击一笔请求，晚到的旧回复即弃）。 */
+  requestId: string;
+  /** `data:` URL，宿主已按单帧预算压过。 */
+  dataUrl?: string;
+  /** 原图超过单帧预算，宿主压过（页面据此可提示「这是缩过的」）。 */
+  scaled?: boolean;
+  /** 失败原因（人也看得懂的那一版）。 */
+  error?: string;
+}
+
 /** Reply to a requestHistory / searchHistory query that failed. */
 export interface HistoryErrorMessage extends HostToWebviewMessageBase {
   command: "historyError";
@@ -1572,6 +1592,7 @@ export type HostToWebviewMessage =
   | SlashCommandsResponseMessage
   | SlashCommandsErrorMessage
   | RecentWorkdirsMessage
+  | ImagePreviewResponseMessage
   | UploadSuccessMessage
   | UploadErrorMessage
   | DesktopRemoteDirListMessage
@@ -1668,6 +1689,9 @@ type ReplyAttribution = {
   // 远控页「新建会话」的最近目录：弹窗每打开一次问一次，晚到的旧回复不得盖掉
   // 新的一次（列表本身很短，这里只要求归属键在）。
   recentWorkdirsResponse: "requestId";
+  // 远控页点图片路径取图：一次点击一笔请求，同一张图可被反复点、也可以连着点
+  // 好几张，晚到的旧回复必须按 requestId 丢弃（否则会把上一张图弹在当前这张上）。
+  imagePreviewResponse: "requestId";
   // 上翻取更早：请求生成 id 原样带回。用户停在顶部会连续翻页，且「翻更早」与
   // 「重连补差 / 整表替换」共用同一份列表，晚到的旧页必须按 requestId 丢弃
   // （否则会把上一页 prepend 到已经翻走的位置上）。
@@ -1730,6 +1754,7 @@ export const replyAttributionLocked = {
   desktopArtifactCategories: true,
   desktopArtifactCategoriesSaved: true,
   recentWorkdirsResponse: true,
+  imagePreviewResponse: true,
   earlierMessages: true,
 } satisfies {
   [C in keyof ReplyAttribution & string]: ReplyAttributionSatisfied[C];

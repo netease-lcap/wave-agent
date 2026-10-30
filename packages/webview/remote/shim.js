@@ -2986,6 +2986,33 @@
           });
         return;
 
+      case "getImagePreview": {
+        // 点消息里的图片路径看原图（spec ui/remote-control.md「点消息里的图片
+        // 路径看原图」）：页面自己没有文件系统，字节只能向宿主按需要。宿主读盘、
+        // 按解码出的真实容器判型、压进单帧预算，回一张 dataUrl。
+        //
+        // 失败走同一个命令名 + error：页面只需要「成功弹图 / 失败给说明」两种
+        // 结果，宿主那句「不是图片 / 太大 / 这台机器没装图像处理库」比这里再
+        // 包一层更准确，所以不换成笼统的失败文案。
+        request("getImagePreview", { path: msg.path })
+          .then(function (result) {
+            post({
+              command: "imagePreviewResponse",
+              requestId: msg.requestId,
+              dataUrl: result && result.dataUrl,
+              scaled: !!(result && result.scaled),
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "imagePreviewResponse",
+              requestId: msg.requestId,
+              error: (err && err.message) || String(err),
+            });
+          });
+        return;
+      }
+
       case "requestFileSuggestions": {
         // `@` 文件建议：`query` 就是 `@` 后面那段过滤文本，工作目录由宿主按信封
         // `sessionId` 取（页面不猜目录）。条数与桌面端同一个 20。

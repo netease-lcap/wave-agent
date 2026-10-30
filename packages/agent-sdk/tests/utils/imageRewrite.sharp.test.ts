@@ -7,6 +7,7 @@ import {
 import {
   __resetImageRewriteCacheForTesting,
   planOutboundImage,
+  shrinkImageForTransport,
 } from "../../src/utils/imageRewrite.js";
 import { getImageDimensions } from "../../src/utils/imageDimensions.js";
 import { resolveSharp } from "../../src/utils/imageProcessor.js";
@@ -254,5 +255,95 @@ describe.skipIf(!sharp)("planOutboundImage with the real codec", () => {
     const plan = await planOutboundImage({ dataUrl, cacheKey: "small" });
 
     expect(plan).toEqual({ kind: "send", dataUrl });
+  });
+});
+
+// ---- 远控页取图：预算由调用方给（一帧中继报文），失败只报不降级 -------------
+// spec ui/remote-control.md「点消息里的图片路径看原图」。与上面的
+// `planOutboundImage` 是同一座阶梯，区别只在预算来源与失败语义。
+describe.skipIf(!sharp)("shrinkImageForTransport with the real codec", () => {
+  beforeEach(() => {
+    __resetImageRewriteCacheForTesting();
+  });
+
+  it("压进调用方给的预算，并报出真实容器与「缩过没有」", async () => {
+    const source = await sharpRaw(noisyRaw(1200, 900), {
+      raw: { width: 1200, height: 900, channels: 3 },
+    })
+      .jpeg({ quality: 95 })
+      .toBuffer();
+    const budget = 120 * 1024;
+
+    const outcome = await shrinkImageForTransport(source, budget);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+
+    expect(outcome.bytes).toBeLessThanOrEqual(budget);
+    // mime 必须与字节真实的容器一致（data URL 前缀由产生字节的那一档决定）。
+    expect(outcome.mime).toBe(containerMime(payloadOf(outcome.dataUrl)));
+    expect(outcome.width).toBeGreaterThan(0);
+    expect(outcome.height).toBeGreaterThan(0);
+    expect(outcome.scaled).toBe(true);
+    expect(outcome.sourceFormat).toBe("jpeg");
+  });
+
+  it("预算装得下时原样返回，一个字节都不重编码", async () => {
+    const source = await sharpRaw(noisyRaw(64, 48), {
+      raw: { width: 64, height: 48, channels: 3 },
+    })
+      .jpeg({ quality: 95 })
+      .toBuffer();
+
+    const outcome = await shrinkImageForTransport(source, source.length);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+
+    expect(outcome.scaled).toBe(false);
+    expect(outcome.width).toBe(64);
+    expect(outcome.height).toBe(48);
+    // 原样 = 字节完全相同，不只是「没变大」。
+    expect(outcome.bytes).toBe(source.length);
+    expect(payloadOf(outcome.dataUrl).equals(source)).toBe(true);
+    expect(outcome.sourceFormat).toBe("jpeg");
+  });
+
+  it("超宽但体积已在预算内的截图不被 2000px 上限降采样", async () => {
+    // 阶梯的维度上限是给模型请求体定的；这条路只关心一帧装不装得下，所以
+    // 一张 2600px 宽、体积很小的 UI 截图必须原样到达手机，而不是变窄 600px。
+    const width = 2600;
+    const height = 1700;
+    const source = await sharpRaw(solidGradient(width, height, 3), {
+      raw: { width, height, channels: 3 },
+    })
+      .png()
+      .toBuffer();
+
+    const outcome = await shrinkImageForTransport(source, source.length);
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+
+    expect(outcome.width).toBe(width);
+    expect(outcome.height).toBe(height);
+    expect(outcome.scaled).toBe(false);
+    expect(outcome.mime).toBe("image/png");
+  });
+
+  it("预算小到每一档都装不下 → too-large（绝不「照样发」）", async () => {
+    const source = await sharpRaw(noisyRaw(400, 300), {
+      raw: { width: 400, height: 300, channels: 3 },
+    })
+      .png()
+      .toBuffer();
+
+    await expect(shrinkImageForTransport(source, 16)).resolves.toEqual({
+      ok: false,
+      reason: "too-large",
+    });
+  });
+
+  it("不是图片 → unreadable", async () => {
+    await expect(
+      shrinkImageForTransport(Buffer.from("this is not an image"), 1024),
+    ).resolves.toEqual({ ok: false, reason: "unreadable" });
   });
 });

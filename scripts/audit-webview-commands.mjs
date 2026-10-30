@@ -152,6 +152,12 @@ const REMOTE_PAGE_GATED = new Set([
   // 手机页这一条链。
   "deleteSession",
   "getSessionWorktreeChanges",
+  // 点消息里的图片路径看原图（spec remote-control.md「点消息里的图片路径看原
+  // 图」）：页面没有文件系统、图片字节也在过中继前被剥掉了，看图只能向宿主要
+  // ——shim 转中继 getImagePreview，宿主读盘 + 判型 + 压进单帧预算后回图。三个
+  // 本地宿主都用它们各自的通道（桌面端文件面板 / IDE 的 previewImage），收不到
+  // 这条命令。
+  "getImagePreview",
 ]);
 
 /** 第五个路由实例：手机页 shim 的 case 注册集合。 */

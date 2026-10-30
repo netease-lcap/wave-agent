@@ -42,6 +42,13 @@ export type RequestMethod =
   | "setPermissionMode"
   | "getPermissionMode"
   | "getPlanFile"
+  // On-demand image fetch for the remote-control page: read one file **on this
+  // machine**, prove it really is an image (by content, not by extension) and
+  // return it shrunk to fit a single relay frame. The page cannot read files at
+  // all, and message payloads have their image bytes stripped before they cross
+  // the relay, so this is the only way a screenshot an agent saved to disk can be
+  // seen on a phone (spec ui/remote-control.md「点消息里的图片路径看原图」).
+  | "getImagePreview"
   | "getMcpServers"
   | "connectMcpServer"
   | "disconnectMcpServer"

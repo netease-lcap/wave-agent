@@ -9,6 +9,7 @@
 // openFile）统一接管。
 
 import { escapeHtml, linkifyCodeBlockPaths } from "./filePathLinks";
+import type { FilePathLinkMode } from "./filePathLinks";
 
 // 剥离 URL 候选里的正文尾巴。marked 默认 url tokenizer 的 _backpedal 正则
 // 只剔除 ASCII 标点（?!.,:;*_'"~()&），中文标点（。、（ 等）会被百分号编码进
@@ -74,12 +75,12 @@ const urlAnchor = (rawUrl: string): string => {
 };
 
 // 单个 token：先切出其中的 URL（保持既有行为），剩余片段按文件路径规则处理。
-// `linkFilePaths=false`（远程控制 Web 页，见 specs/ui/remote-control.md 场景 23）
-// 只关掉路径这一半：URL 仍可点击，路径退化为纯文本 —— 页面上没有编辑器可以
-// 打开它，留着只会是「看着能点、点了没反应」。
-const linkifyRun = (run: string, linkFilePaths: boolean = true): string => {
-  const plain = (text: string) =>
-    linkFilePaths ? linkifyCodeBlockPaths(text) : escapeHtml(text);
+// 路径那一半的档位由调用方给（`FilePathLinkMode`）：远控页传 `"images"` ——
+// URL 仍可点击，文本路径退化为纯文本，只有图片路径成为入口（见
+// specs/ui/remote-control.md「点消息里的图片路径看原图」）。`"off"` 则连路径
+// 识别一并关掉。
+const linkifyRun = (run: string, mode: FilePathLinkMode = "all"): string => {
+  const plain = (text: string) => linkifyCodeBlockPaths(text, mode);
   let html = "";
   let last = 0;
   for (const match of run.matchAll(URL_RE)) {
@@ -96,7 +97,7 @@ const linkifyRun = (run: string, linkFilePaths: boolean = true): string => {
 // dangerouslySetInnerHTML。
 export function linkifyPlainText(
   text: string,
-  linkFilePaths: boolean = true,
+  mode: FilePathLinkMode = "all",
 ): string {
   if (!text) return "";
   let html = "";
@@ -104,7 +105,7 @@ export function linkifyPlainText(
   for (const run of text.matchAll(RUN_RE)) {
     const index = run.index!;
     html += escapeHtml(text.slice(lastIndex, index));
-    html += linkifyRun(run[0], linkFilePaths);
+    html += linkifyRun(run[0], mode);
     lastIndex = index + run[0].length;
   }
   return html + escapeHtml(text.slice(lastIndex));

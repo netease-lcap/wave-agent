@@ -188,6 +188,16 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   // 的任何东西（那个能力本来就在 `initialize` 里）。
   "getRecentWorkdirs",
   "rememberRecentWorkdir",
+  // ── 第六批：点消息里的图片路径看原图（spec「点消息里的图片路径看原图」）──
+  // 读：`getImagePreview` 把**一个路径**变成一张压缩到单帧预算内的图。
+  // 这是第一个收调用方 path 的读方法，所以边界是显式的三道而不是目录前缀：
+  // ① 页面只对图片扩展名给点击入口，路径来自对话内容（没有手输入口）；
+  // ② 宿主解码后按**真实容器**判型（`imagePreview.ts` 的 ALLOWED_SOURCE_FORMATS），
+  //    扩展名只是路由提示，指向文本文件的软链在这一道被挡下；
+  // ③ 只读、不写不删，回包体积被压缩档位限住。
+  // **不按目录限制**是刻意的：真机截图落在 `/tmp`，限目录等于打掉主场景
+  // （见规格边界情况那条「边界画在内容类型上，不画在目录上」）。
+  "getImagePreview",
 ]);
 
 /**

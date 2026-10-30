@@ -21,6 +21,7 @@ import {
   resolveFilePathMatch,
   stripFilePathLinks,
   windowsPathInlineExtension,
+  type FilePathLinkMode,
 } from "../utils/filePathLinks";
 import { marked } from "marked";
 
@@ -55,6 +56,7 @@ import { FileToolHeader } from "./FileToolHeader";
 import { MessageActionButton } from "./MessageActionButton";
 import { getStageColor, getToolStatusColor } from "../utils/statusColors";
 import { isDesktopHost, isRemotePageHost } from "../utils/platform";
+import { requestImagePreview } from "../utils/imagePreviewRequest";
 import "../styles/Message.css";
 import "../styles/plugin-typography.css";
 
@@ -461,9 +463,11 @@ const splitErrorContent = (content: string): ErrorPart[] => {
 };
 
 const createMessageMarkdownRenderer = (
-  // 远程控制 Web 页关掉文件路径链接化（spec ui/remote-control.md 场景 23）：
-  // 页面上没有编辑器可打开路径。URL 与其余 markdown 渲染不受影响。
-  linkFilePaths: boolean = true,
+  // 四条路径通道的档位（见 `FilePathLinkMode`）。默认 `"all"`；远程控制 Web 页
+  // 传 `"images"`——页面上没有编辑器可打开文本路径，但图片路径可以就地显示
+  // （spec ui/remote-control.md「点消息里的图片路径看原图」）。URL 与其余
+  // markdown 渲染不受影响。
+  pathLinkMode: FilePathLinkMode = "all",
 ) => {
   const renderer = new marked.Renderer();
   renderer.listitem = renderTaskListitem;
@@ -543,7 +547,7 @@ const createMessageMarkdownRenderer = (
           const lang = (infostring || "").match(/^\S*/)?.[0];
           const body = linkifyPlainText(
             code.replace(/\n$/, "") + "\n",
-            linkFilePaths,
+            pathLinkMode,
           );
           const cls = lang ? ` class="language-${escapeHtml(lang)}"` : "";
           return `<pre><code${cls}>${body}</code></pre>\n`;
@@ -556,9 +560,12 @@ const createMessageMarkdownRenderer = (
       return `<code><a href="${url}">${url}</a></code>`;
     }
     // 行内代码通道：整串是文件路径（含可选 :N / :N-M）→ 代码样式的可点击元素
-    const matched = linkFilePaths
-      ? detectFilePathToken(decodeHtmlEntities(text))
-      : null;
+    const matched =
+      pathLinkMode === "off"
+        ? null
+        : detectFilePathToken(decodeHtmlEntities(text), {
+            imagesOnly: pathLinkMode === "images",
+          });
     if (matched) {
       return `<code>${fileLinkHtml(matched.display)}</code>`;
     }
@@ -566,9 +573,7 @@ const createMessageMarkdownRenderer = (
   };
   renderer.text = (text: string) =>
     // 正文纯文本通道：绝对路径 → 链接；其余文本按原转义形式原样保留
-    linkFilePaths
-      ? linkifyFilePathText(decodeHtmlEntities(text))
-      : escapeHtml(decodeHtmlEntities(text));
+    linkifyFilePathText(decodeHtmlEntities(text), pathLinkMode);
   // 链接角色（用户 2026-09-10 规则）：按「显示文本本身的含义」区分两种链接——
   //   ① 描述性链接（查看预览、参考文档、发送邮件、联系我们…）与所在正文同为
   //      UI 角色，不加类；
@@ -627,8 +632,9 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
     return { elements: [] };
   }
 
-  // 远程控制 Web 页：不把文件路径变成链接（见 createMessageMarkdownRenderer）。
-  const linkFilePaths = !isRemotePageHost();
+  // 远程控制 Web 页只把**图片**路径变成入口（文本路径仍无处可去，见场景 23）；
+  // 其余宿主全开。档位定义见 `FilePathLinkMode`。
+  const pathLinkMode: FilePathLinkMode = isRemotePageHost() ? "images" : "all";
 
   const elements: Array<{
     type: "html" | "mermaid";
@@ -658,7 +664,7 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
     } else if (part.trim()) {
       // This is regular markdown content
       const html = marked.parse(part, {
-        renderer: createMessageMarkdownRenderer(linkFilePaths),
+        renderer: createMessageMarkdownRenderer(pathLinkMode),
       });
       const sanitizedHtml = DOMPurify.sanitize(html, {
         ALLOWED_TAGS: [
@@ -888,6 +894,27 @@ export const Message: React.FC<MessageProps> = React.memo(
             });
     };
 
+    /**
+     * 远控 Web 页点图片路径（spec `ui/remote-control.md`「点消息里的图片路径看
+     * 原图」）：页面上没有文件、也没有文件面板，字节只能向宿主要——发
+     * `getImagePreview`，宿主读盘、按解码出的真实容器判型、压进单帧预算后回图。
+     * 图到手就交给 `handleImagePreview`，与粘贴图共用同一个全屏覆盖层。
+     *
+     * 失败必须看得见（同规格场景 8）：宿主明确拒绝的原因（不是图片 / 太大 /
+     * 这台机器没装图像处理库）原样显示，链路没回音则由请求侧的 20 秒兜底给出
+     * 说明。两种都走已有的全屏文本弹层，不新增一层 UI。
+     */
+    const showRemoteImagePreview = (filePath: string) => {
+      const name = filePath.split(/[\\/]/).pop() || filePath;
+      void requestImagePreview(props.vscode, filePath).then((result) => {
+        if ("error" in result) {
+          setIdePreview({ title: "看不了这张图", content: result.error });
+          return;
+        }
+        handleImagePreview(result.dataUrl, name);
+      });
+    };
+
     const getAttachedImages = () => {
       const images: Array<{ data: string; filename?: string }> = [];
       message.blocks?.forEach((block) => {
@@ -920,11 +947,15 @@ export const Message: React.FC<MessageProps> = React.memo(
         e.preventDefault();
         const parsed = detectFilePathToken(fileLink.textContent || "");
         if (parsed) {
-          openFile(
-            resolveFilePathMatch(parsed),
-            parsed.startLine,
-            parsed.endLine,
-          );
+          const resolved = resolveFilePathMatch(parsed);
+          // 远控 Web 页没有编辑器也没有文件面板，路径链接只在图片路径上生成
+          // （见 createMessageMarkdownRenderer 的 pathLinkMode），所以这里点到的
+          // 一定是图：向宿主要字节，而不是走 openFile。
+          if (isRemotePageHost()) {
+            showRemoteImagePreview(resolved);
+          } else {
+            openFile(resolved, parsed.startLine, parsed.endLine);
+          }
         }
         return;
       }
@@ -1015,7 +1046,10 @@ export const Message: React.FC<MessageProps> = React.memo(
                 className="bash-command-output"
                 tabIndex={isDesktopHost() ? 0 : undefined}
                 dangerouslySetInnerHTML={{
-                  __html: linkifyPlainText(result, !isRemotePageHost()),
+                  __html: linkifyPlainText(
+                    result,
+                    isRemotePageHost() ? "images" : "all",
+                  ),
                 }}
               />
             </div>

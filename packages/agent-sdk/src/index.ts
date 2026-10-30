@@ -42,6 +42,11 @@ export {
 } from "./utils/recentWorkdirs.js";
 export { ensureRuntimeDeps } from "./utils/runtimeDeps.js";
 export type { RuntimeDepsResult } from "./utils/runtimeDeps.js";
+// Shrinking an image to fit a transport budget (the remote-control page's
+// on-demand screenshot preview) — same ladder as the outbound rewrite, but with
+// a caller-supplied byte budget. See `shrinkImageForTransport`.
+export { shrinkImageForTransport } from "./utils/imageRewrite.js";
+export type { TransportShrinkOutcome } from "./utils/imageRewrite.js";
 export * from "./utils/worktreeSession.js";
 export * from "./utils/worktreeUtils.js";
 export {
