@@ -193,6 +193,9 @@ const syncDraftImages = (container: HTMLElement, scopeKey: string): void => {
  * 解析 Markdown 中的标签语法 [@file:path], [Selection: fileName#start-end],
  * [imageN]，子代理点名 [@agent:名称]，以及发送时已展开的 IDE 上下文块
  * `[@ide:terminal]` … `[/@ide]`（spec ui/ide-context-mentions.md）。
+ *
+ * 只有 `[imageN]`（粘贴的图片）带 `isImage`；`[@file:…]` 是普通文件引用，图片
+ * 文件也不例外（spec ui/file-selector.md 场景 1）。
  */
 export const parseMentions = (
   text: string,
@@ -241,10 +244,9 @@ export const parseMentions = (
       // 子代理点名：气泡里渲染成 `@<名称>` 标签，点不开（它不是文件）
       parts.push({ type: "agent", content: match[0], agentName: match[9] });
     } else if (match[1]) {
-      // @file mention
-      const path = match[1];
-      const isImage = /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(path);
-      parts.push({ type: "mention", content: match[0], path, isImage });
+      // @file mention：普通文件引用，图片文件也一样（不可点，spec
+      // ui/file-selector.md 场景 1）
+      parts.push({ type: "mention", content: match[0], path: match[1] });
     } else if (match[6]) {
       // [imageN] placeholder
       const index = parseInt(match[6]) - 1;

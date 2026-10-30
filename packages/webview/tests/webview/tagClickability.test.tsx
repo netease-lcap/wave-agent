@@ -68,8 +68,10 @@ describe("Tag Clickability", () => {
     expect(dirTag!.className).not.toMatch(/clickable/);
   });
 
-  it("should have clickable class for image tags in messages", () => {
-    renderChatApp();
+  it("renders an @-mentioned image as a plain file tag, without a preview", () => {
+    // @ 选中的图片就是普通文件引用（spec ui/file-selector.md 场景 1/6）：
+    // 不带 is-image、不可点，点了也不向宿主要预览。
+    const { vscode } = renderChatApp();
 
     const messages = [
       {
@@ -90,9 +92,13 @@ describe("Tag Clickability", () => {
     const userMessage = document.querySelector(".message.user");
     expect(userMessage).toBeInTheDocument();
 
-    const imageTag = userMessage!.querySelector(".context-tag.is-image");
+    const imageTag = userMessage!.querySelector(".context-tag");
     expect(imageTag).toBeInTheDocument();
-    expect(imageTag!.className).toMatch(/clickable/);
+    expect(imageTag!.className).not.toMatch(/is-image/);
+    expect(imageTag!.className).not.toMatch(/clickable/);
+
+    fireEvent.click(imageTag!);
+    expect(hostOpeningCommands(vscode)).toEqual([]);
   });
 
   it("should have clickable class for code selection tags in messages", () => {
@@ -158,59 +164,20 @@ describe("Tag Clickability", () => {
     expect(inlineImageTag!.className).toMatch(/clickable/);
   });
 
-  it("resolves a relative file mention chip against the session workdir", () => {
-    // The picker writes the chip as [@file:<relativePath>] (file-selector spec
-    // 场景 6), so the click must be joined to the workdir and normalized —
-    // passing the relative string on makes the host resolve it against its own
-    // cwd (desktop file panel / IDE editor) and open nothing.
-    const { vscode } = renderChatApp();
-    sendCommand("updateWorkdir", { workdir: "/home/u/repo" });
-
-    const messages = [
-      {
-        id: "msg5",
-        role: "user" as const,
-        timestamp: "2024-01-01T00:00:00.000Z",
-        blocks: [
-          {
-            type: "text" as const,
-            content: "Check this image [@file:../images/logo.png].",
-          },
-        ],
-      },
-    ];
-
-    sendCommand("updateMessages", { messages });
-
-    const userMessage = document.querySelector(".message.user");
-    const imageTag = userMessage!.querySelector(".context-tag.is-image");
-    expect(imageTag).toBeInTheDocument();
-
-    fireEvent.click(imageTag!);
-
-    const sent = (
-      vscode.postMessage as ReturnType<typeof vi.fn>
-    ).mock.calls.map((c) => c[0]);
-    const openFileMsg = sent.find(
-      (m: { command: string }) => m.command === "openFile",
-    ) as Record<string, unknown>;
-    expect(openFileMsg).toBeDefined();
-    expect(openFileMsg.path).toBe("/home/u/images/logo.png");
-  });
-
   /**
    * 已发送图片的标签点开时该找谁要字节（spec ui/image-pasting.md「已发送图片的
-   * 标签点开就能看」）：判据是**字节在不在这一份消息里**。
+   * 标签点开就能看」）：判据是**值里有没有字节**（这些标签都来自 `[imageN]`，
+   * 用户用 `@` 选的文件引用是普通标签，不可点，见上面的用例）。
    *
    * - 粘贴图：字节留在块里（`imageUrls` 是 data URL），CLI 只是另把同一份字节落盘
    *   并把路径记进 `imagePaths` 喂模型 ⇒ 三端都就地弹层，不打扰宿主；
-   * - 只有路径（`[@file:<图片>]` 这类引用，块里本来就没有字节）⇒ 交给宿主打开。
+   * - 值本身是路径（前台 CLI 粘贴、改造前的老消息）⇒ 交给宿主打开。
    */
   const PASTED_IMAGE_DATA_URL =
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
   /** 宿主那台机器上的临时文件，只喂 `[Image source: <path>]`。 */
   const PASTED_IMAGE_FILE_PATH = "/tmp/wave-image-1700000000-abc123.png";
-  /** 没有字节、只有路径的图片引用。 */
+  /** 值本身是路径的图片标签（前台 CLI 粘贴 / 改造前的老消息）。 */
   const REFERENCED_IMAGE_PATH = "/workspace/images/logo.png";
 
   const renderSentImageTag = (imageUrls: string[], imagePaths?: string[]) => {
@@ -264,12 +231,12 @@ describe("Tag Clickability", () => {
     expect(hostOpeningCommands(vscode)).toEqual([]);
   });
 
-  it("hands a path-only image to the host on the IDE hosts", () => {
+  it("hands a path-valued image tag to the host on the IDE hosts", () => {
     const { vscode, tag } = renderSentImageTag([REFERENCED_IMAGE_PATH]);
 
     fireEvent.click(tag);
 
-    // 块里没有字节：交给宿主的图片预览命令，绝不在页面里加载那个路径（SSH
+    // 值里没有字节：交给宿主的图片预览命令，绝不在页面里加载那个路径（SSH
     // 会话里页面手里的路径是本机的，远端文件加载不出来）
     expect(document.querySelector(".image-preview-modal")).toBeNull();
     expect(sentCommands(vscode)).toContainEqual({
@@ -278,7 +245,7 @@ describe("Tag Clickability", () => {
     });
   });
 
-  it("opens a path-only image through the file panel on the desktop host", () => {
+  it("opens a path-valued image tag through the file panel on the desktop host", () => {
     window.waveHostType = "desktop";
     const { vscode, tag } = renderSentImageTag([REFERENCED_IMAGE_PATH]);
 
