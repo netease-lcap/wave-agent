@@ -559,11 +559,30 @@ export class PermissionManager {
   }
 
   /**
+   * Is this path one a `cd` may persist into? This is Claude Code's "working
+   * directories": the session workdir plus the directories the user added
+   * explicitly (config `additionalDirectories`, `/add-dir`, session approval).
+   *
+   * System additional directories are deliberately excluded. They exist so the
+   * agent can read and write auto-memory files without a prompt; treating them
+   * as a place to park the shell let `cd ~/.wave/projects/<repo>/memory`
+   * persist, after which every relative path and every injected skill command
+   * ran in the memory directory instead of the project (a `/commit-*` skill
+   * then failed with git exit 128). Claude Code resets the shell cwd there.
+   */
+  public isPathInWorkingDirectory(targetPath: string): boolean {
+    return this.isInsideSafeZone(targetPath, undefined, {
+      includeSystemDirectories: false,
+    }).isInside;
+  }
+
+  /**
    * Check if a path is inside the Safe Zone (workdir + additionalDirectories)
    */
   private isInsideSafeZone(
     targetPath: string,
     workdir?: string,
+    options?: { includeSystemDirectories?: boolean },
   ): { isInside: boolean; resolvedPath: string } {
     const effectiveWorkdir = this.workdir || workdir;
 
@@ -603,10 +622,13 @@ export class PermissionManager {
       }
     }
 
-    // Check system additional directories
-    for (const dir of this.systemAdditionalDirectories) {
-      if (isPathInside(absolutePath, toWindowsPath(dir))) {
-        return { isInside: true, resolvedPath: absolutePath };
+    // Check system additional directories (permission-only grants — see
+    // isPathInWorkingDirectory for why a `cd` must not settle there)
+    if (options?.includeSystemDirectories !== false) {
+      for (const dir of this.systemAdditionalDirectories) {
+        if (isPathInside(absolutePath, toWindowsPath(dir))) {
+          return { isInside: true, resolvedPath: absolutePath };
+        }
       }
     }
 

@@ -734,10 +734,15 @@ The working directory persists between commands. Try to maintain your current wo
         // If CWD changed, call the onCwdChange callback and add notification
         let cwdMessage: string | undefined;
         if (newCwd && newCwd !== context.workdir && context.onCwdChange) {
-          const isInSafeZone =
-            context.permissionManager?.isPathInSafeZone?.(newCwd) ?? true;
+          // Working directories only (workdir + user-added dirs): an internal
+          // grant such as the auto-memory directory must not become where the
+          // shell lives — every later relative path and injected skill command
+          // would run there. Claude Code resets the cwd instead.
+          const isInWorkingDirectory =
+            context.permissionManager?.isPathInWorkingDirectory?.(newCwd) ??
+            true;
 
-          if (!isInSafeZone && context.originalWorkdir) {
+          if (!isInWorkingDirectory && context.originalWorkdir) {
             context.onCwdChange(context.originalWorkdir);
             cwdMessage = `Shell cwd was reset to ${context.originalWorkdir}`;
           } else {
