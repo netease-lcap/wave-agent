@@ -569,10 +569,12 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   outline-offset: -2px;
 }
 
-/* 刷新中 / 列表加载中：键不可点，也不出 hover 面（否则像还活着）。 */
+/* 刷新中 / 列表加载中：键不可点，也不出 hover 面（否则像还活着）。
+   1030 评论（「功能禁用鼠标要显示成禁用」）：指针从 `default` 改成 `not-allowed`，
+   与 :disabled 的语义一致（0.4 透明 + 不响应 hover + 指针带禁止圈）。 */
 .artifacts-header-icon-btn:disabled {
   opacity: 0.4;
-  cursor: default;
+  cursor: not-allowed;
 }
 
 /* 刷新中：图标原地旋转（沿用 diff 面板的口径 —— 文字不再换成「刷新中…」，
