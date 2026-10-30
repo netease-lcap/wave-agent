@@ -13,7 +13,7 @@ const initialState = {
 };
 
 test.describe("Desktop split-view panes", () => {
-  test("editable session title hugs its text and leaves the header draggable", async ({
+  test("session title hugs its text and the whole header stays draggable", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
@@ -33,8 +33,9 @@ test.describe("Desktop split-view panes", () => {
       ],
       focusedPaneId: "pane-1",
     });
-    // pane 头部标题要能改名才算「可点标题」（role=button）——这正是最容易把
-    // 整个头部变成不可拖拽区域的形态，所以本用例必须带上 session。
+    // 桌面端头部标题是纯展示、不可就地改名（spec session-management.md
+    // 「会话重命名入口」：改名入口归侧边栏行菜单；设计师 2026-10-30 拍板拿下
+    // 头部入口）。带 session 也拿不到 role=button —— 标题不再占住拖拽起手点。
     await injector.simulateExtensionMessage("setInitialState", {
       ...initialState,
       paneId: "pane-1",
@@ -49,7 +50,9 @@ test.describe("Desktop split-view panes", () => {
     const pane = webviewPage.getByTestId("desktop-pane-pane-1");
     const header = pane.getByTestId("chat-header");
     const title = pane.getByTestId("header-title");
-    await expect(title).toHaveClass(/header-title-editable/);
+    await expect(title).toHaveClass(/header-title/);
+    await expect(title).not.toHaveClass(/header-title-editable/);
+    await expect(title).not.toHaveAttribute("role", "button");
     await expect(title).toHaveText("修复登录页样式");
 
     // 标题盒只包住文字：撑满剩余宽度（flex:1）时 hover 高亮会糊满整个头部。
@@ -60,7 +63,8 @@ test.describe("Desktop split-view panes", () => {
     expect(titleBox!.width).toBeLessThan(headerBox!.width * 0.5);
 
     // 标题右侧的头部空白区必须是可拖拽起手点：拖拽逻辑挂在 .chat-header 上，
-    // 但按下落在标题（[role=button]）上会被否决，所以这块不能是标题的地盘。
+    // 任何可交互元素（按钮/输入框/[role=button]）都会否决它，所以这块不能是
+    // 标题的地盘。
     const probe = await webviewPage.evaluate(
       ({ x, y }) => {
         const el = document.elementFromPoint(x, y);
@@ -79,8 +83,9 @@ test.describe("Desktop split-view panes", () => {
     );
     expect(probe).toEqual({ isHeader: true, blockedBy: null });
 
-    // 真按一次：从该点起手应带上 pane 载荷（未被否决）；落在标题文字上则是
-    // 「点击改名」优先，拖拽被否决。两半都要成立，否则不是修好了而是换了个坏法。
+    // 真按一次：头部空白区与标题文字上起手都必须带上 pane 载荷。标题不再是
+    // 可点改名区（没有 role=button），因此也不该再吞掉落在它上面的拖拽 ——
+    // 头部整片都是拖拽区。
     await webviewPage.evaluate(() => {
       const w = window as unknown as { __dragStarts?: Array<unknown> };
       w.__dragStarts = [];
@@ -114,7 +119,7 @@ test.describe("Desktop split-view panes", () => {
     );
     expect(dragStarts).toEqual([
       { prevented: false, payload: JSON.stringify({ paneId: "pane-1" }) },
-      { prevented: true, payload: "" },
+      { prevented: false, payload: JSON.stringify({ paneId: "pane-1" }) },
     ]);
   });
 

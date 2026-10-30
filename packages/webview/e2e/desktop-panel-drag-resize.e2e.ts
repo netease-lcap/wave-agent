@@ -111,9 +111,11 @@ test.describe("Desktop panel divider drag (real geometry)", () => {
     await expect.poll(() => slotWidth(page)).toBeLessThanOrEqual(S0 - 110);
     near(await slotWidth(page), S0 - 120, 8);
 
-    // Drag far right clamps at the panel minimum instead of collapsing.
+    // Drag far right clamps at the panel minimum instead of collapsing
+    // (PANEL_MIN_WIDTH = 202 since the 2026-10-30 design review; it used to be
+    // 320 — the empty-state subtitle must still fit on one line there).
     await dragHandle(page, 2000);
-    near(await slotWidth(page), 320, 4);
+    near(await slotWidth(page), 202, 4);
     await expect(slot).toBeVisible();
     await expect(page.getByTestId("diff-pane")).toBeVisible();
   });
@@ -223,11 +225,11 @@ test.describe("Desktop panel divider drag (real geometry)", () => {
           }),
         );
 
-    // Drag to the 320px minimum: entries stack in a single column, DOM order
+    // Drag to the 202px minimum: entries stack in a single column, DOM order
     // unchanged (preview, plan, diff, terminal, file).
     await dragHandle(page, 2000);
-    await expect.poll(() => slotWidth(page)).toBeLessThanOrEqual(324);
-    near(await slotWidth(page), 320, 4);
+    await expect.poll(() => slotWidth(page)).toBeLessThanOrEqual(206);
+    near(await slotWidth(page), 202, 4);
     const narrow = await itemBoxes();
     expect(narrow.map((b) => b.kind)).toEqual([
       "preview",
