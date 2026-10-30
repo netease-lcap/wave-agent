@@ -11,6 +11,12 @@ import { createWorktree, type WorktreeSession } from "./utils/worktree.js";
 import path from "path";
 import { pathToFileURL } from "url";
 import { readNearestPackageJson } from "./utils/readPackageJson.js";
+import { ensurePlainNodeArgv } from "./utils/argvCompat.js";
+
+// Must run before `main()` builds its yargs instance (see argvCompat.ts):
+// when a host runs this bundle directly under Electron RUN_AS_NODE, yargs would
+// otherwise treat the script path as an unknown positional and exit 1.
+ensurePlainNodeArgv();
 
 const version = readNearestPackageJson().version;
 

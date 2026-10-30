@@ -26,6 +26,8 @@ if (process.argv.slice(2).some((a) => versionArgs.includes(a))) {
 // process as a bundled Electron app (bin index 0 instead of 1) and keeps the
 // script path in argv → `Unknown argument: <script>`. Mark the process as the
 // default Electron app so yargs parses argv exactly like plain node would.
+// The bundle carries the same guard (src/utils/argvCompat.ts) for hosts that
+// run dist/bundle/wave.mjs directly via WAVE_CLI_PATH; keep both.
 if (process.versions.electron && process.env.ELECTRON_RUN_AS_NODE === "1") {
   process.defaultApp = true;
 }
