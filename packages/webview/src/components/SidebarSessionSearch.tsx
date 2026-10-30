@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useClickOutside } from "../utils/useClickOutside";
 import { Tooltip } from "./Tooltip";
+import { SearchIcon } from "./HeaderIcons";
 import {
   SESSION_DATE_OPTIONS,
   SESSION_STATUS_OPTIONS,
@@ -11,24 +12,6 @@ import {
   type SessionStatusFilter,
 } from "../utils/sessionFilter";
 import "../styles/SidebarSessionSearch.css";
-
-const SearchIcon: React.FC = () => (
-  <svg
-    width="14"
-    height="14"
-    viewBox="0 0 16 16"
-    fill="none"
-    aria-hidden="true"
-  >
-    <circle cx="7" cy="7" r="4.4" stroke="currentColor" strokeWidth="1.4" />
-    <path
-      d="m10.4 10.4 3 3"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-    />
-  </svg>
-);
 
 const FilterIcon: React.FC = () => (
   <svg
@@ -103,7 +86,10 @@ export const SidebarSessionSearch: React.FC<SidebarSessionSearchProps> = ({
   return (
     <div className="desktop-sidebar-search" ref={rootRef}>
       <div className="desktop-sidebar-search-field">
-        <span className="desktop-sidebar-search-icon">
+        <span className="desktop-sidebar-search-icon" aria-hidden="true">
+          {/* 1030 评论（「搜索图标要保持统一 · 用这个」）：原先这里是一颗自绘
+              14px 放大镜（circle + 斜线，1.4 描边），与面板工具条 / 文件建议
+              下拉用的 Figma 放大镜两套并存 ⇒ 统一改用 HeaderIcons.SearchIcon。 */}
           <SearchIcon />
         </span>
         <input
