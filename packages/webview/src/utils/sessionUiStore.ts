@@ -56,6 +56,24 @@ export interface ProjectSettingsSnapshot {
   enabledPlugins: Record<string, boolean>;
 }
 
+/**
+ * `/btw` 旁路提问面板的状态（spec commands/btw-command.md 场景 14）。
+ *
+ * 面板属于**发起它的那个对话**：切走只是隐去，切回来原样恢复——包括还在
+ * `loading` 的那种（后台请求不中断，流式尾部接着更新）。所以它必须留在会话快照
+ * 里，而不是组件本地 useState。`loading` 同时是「这条还在途」的判据：回包按
+ * `question` 反查归属会话（见 keyByBtwQuestion），手动关闭把面板置 null 即让迟到
+ * 回包无处可落（场景 10）。
+ */
+export interface BtwPanelState {
+  question: string;
+  answer: string;
+  /** 请求在途（含流式输出中）：面板显示「正在回答」+ 流式尾部。 */
+  loading: boolean;
+  /** 已收到首个 content 分片，此后交给内容的文本覆盖思考阶段的累积。 */
+  contentStarted: boolean;
+}
+
 /** 单个会话的 UI 状态快照。新字段按「折叠状态（80db706b）/ 预览 URL（#2049）
  *  的先例」直接加在这里——声明即纳入快照/恢复/失效的全套机制。 */
 export interface SessionUiState {
@@ -112,6 +130,13 @@ export interface SessionUiState {
   forward: RemoteForwardRef | null;
   /** Last forward failure for this session, shown in the preview stub. */
   forwardError: string | null;
+  /**
+   * `/btw` side-question panel of this session (spec commands/btw-command.md
+   * scenario 14). Null = no panel. Kept here — not in ChatApp's local state —
+   * so switching conversations only hides it and switching back restores it,
+   * in-flight request included.
+   */
+  btwPanel: BtwPanelState | null;
 }
 
 export type SessionUiKey = string;
@@ -146,6 +171,7 @@ export function emptySessionUiState(): SessionUiState {
     diffSelection: { kind: "all" },
     forward: null,
     forwardError: null,
+    btwPanel: null,
   };
 }
 
@@ -217,6 +243,20 @@ class SessionUiStore {
   keyByForwardRequestId(requestId: string): SessionUiKey | undefined {
     for (const [key, state] of this.cache) {
       if (state.forward?.requestId === requestId) return key;
+    }
+    return undefined;
+  }
+
+  /**
+   * 按 /btw 问题文本反查**在途**请求的归属会话键（`btwStream` / `btwResponse` /
+   * `btwError` 回包只带 question，不带 session）。查不到 = 该问题已被手动关闭
+   * （面板置 null）或从未发起，回包一律丢弃。切走对话时仍在途的那条照样查得到——
+   * 它的答案落回自己所属的会话，切回来即可见（spec 场景 14）。
+   */
+  keyByBtwQuestion(question: string): SessionUiKey | undefined {
+    for (const [key, state] of this.cache) {
+      const panel = state.btwPanel;
+      if (panel?.loading && panel.question === question) return key;
     }
     return undefined;
   }

@@ -276,7 +276,7 @@ describe("/btw Popup", () => {
     expect(screen.queryByTestId("btw-panel-answer")).not.toBeInTheDocument();
   });
 
-  it("switching conversations closes the btw panel (conversation-scoped)", async () => {
+  it("keeps the panel per conversation: switching away hides it, switching back restores it", async () => {
     renderChatApp();
     // Desktop pushes setInitialState with the activated session on a sidebar
     // conversation switch (pushPaneSessionState). Establish conversation A.
@@ -287,20 +287,92 @@ describe("/btw Popup", () => {
     act(() => {
       fireEvent.click(screen.getByTestId("send-btn"));
     });
-    expect(screen.getByTestId("btw-panel")).toBeInTheDocument();
+    act(() => {
+      sendCommand("btwResponse", {
+        question: "what is the weather?",
+        answer: "**Sunny**",
+      });
+    });
+    expect(screen.getByTestId("btw-panel-answer")).toBeInTheDocument();
 
-    // Switch to conversation B: the panel is conversation-scoped (spec
-    // scenario 14) and must close — the new conversation never shows the
-    // old one's panel. Desktop panes key ChatApp by paneId (not sessionId),
-    // so this component stays mounted and only the session-id change in
-    // setInitialState can dismiss the local btwPanel state.
+    // Switch to conversation B: the panel belongs to A (spec scenario 14), so B
+    // starts clean — the panel is hidden, never carried over.
     sendHostMessage(
       fixtures.setInitialState({ session: session("session-b") }),
     );
     expect(screen.queryByTestId("btw-panel")).not.toBeInTheDocument();
+
+    // Back to A: the answer is still there — switching only hides, it never
+    // destroys (this is the whole point of storing the panel in the session
+    // snapshot instead of a bare local useState).
+    sendHostMessage(
+      fixtures.setInitialState({ session: session("session-a") }),
+    );
+    expect(screen.getByTestId("btw-panel-answer").innerHTML).toContain(
+      "<strong>Sunny</strong>",
+    );
+    expect(screen.getByTestId("btw-panel-question").textContent).toBe(
+      "what is the weather?",
+    );
   });
 
-  it("drops a late btw reply that lands after switching conversations", async () => {
+  it("an in-flight question keeps streaming while away and shows its tail on the way back", async () => {
+    const { vscode } = renderChatApp();
+    sendHostMessage(
+      fixtures.setInitialState({ session: session("session-a") }),
+    );
+    await typeInInput("/btw what is the weather?");
+    act(() => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+    act(() => {
+      sendCommand("btwStream", {
+        question: "what is the weather?",
+        content: "Sunny",
+        type: "content",
+      });
+    });
+
+    // Leaving A does not cancel anything: the request keeps running (the host
+    // never learned about the switch) and its reply lands on A's snapshot.
+    sendHostMessage(
+      fixtures.setInitialState({ session: session("session-b") }),
+    );
+    expect(screen.queryByTestId("btw-panel")).not.toBeInTheDocument();
+    act(() => {
+      sendCommand("btwStream", {
+        question: "what is the weather?",
+        content: " and 25°C",
+        type: "content",
+      });
+    });
+    // Still invisible in B — the arrival belongs to A.
+    expect(screen.queryByTestId("btw-panel")).not.toBeInTheDocument();
+
+    sendHostMessage(
+      fixtures.setInitialState({ session: session("session-a") }),
+    );
+    expect(screen.getByTestId("btw-panel-loading")).toBeInTheDocument();
+    expect(screen.getByTestId("btw-loading-tail").textContent).toBe(
+      "Sunny and 25°C",
+    );
+
+    // …and the answer finishes into A as well.
+    act(() => {
+      sendCommand("btwResponse", {
+        question: "what is the weather?",
+        answer: "Sunny and 25°C",
+      });
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("btw-panel-answer")).toBeInTheDocument();
+    });
+    expect(vscode.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ command: "sendMessage" }),
+    );
+  });
+
+  it("drops a late reply in the conversation on screen when it belongs to another one", async () => {
     const { vscode } = renderChatApp();
     sendHostMessage(
       fixtures.setInitialState({ session: session("session-a") }),
@@ -311,9 +383,8 @@ describe("/btw Popup", () => {
     });
     expect(screen.getByTestId("btw-panel-loading")).toBeInTheDocument();
 
-    // Switch while the askBtw RPC is still in flight: closing clears
-    // btwActiveRef, so the reply that lands in the new conversation is
-    // dropped (spec scenario 14: 若切换发生在加载中，旧请求的迟到回复同样被丢弃).
+    // Switch while the askBtw RPC is still in flight: B must not show A's
+    // panel nor the answer that lands afterwards (spec scenario 14).
     sendHostMessage(
       fixtures.setInitialState({ session: session("session-b") }),
     );
@@ -329,6 +400,39 @@ describe("/btw Popup", () => {
     expect(vscode.postMessage).not.toHaveBeenCalledWith(
       expect.objectContaining({ command: "sendMessage" }),
     );
+  });
+
+  it("forgets the panel of a conversation that was deleted", async () => {
+    renderChatApp();
+    sendHostMessage(
+      fixtures.setInitialState({ session: session("session-a") }),
+    );
+    await typeInInput("/btw what is the weather?");
+    act(() => {
+      fireEvent.click(screen.getByTestId("send-btn"));
+    });
+    act(() => {
+      sendCommand("btwResponse", {
+        question: "what is the weather?",
+        answer: "Sunny",
+      });
+    });
+    expect(screen.getByTestId("btw-panel-answer")).toBeInTheDocument();
+
+    // Switch away, then the host reports the session list without session-a
+    // (deleted in the sidebar): its panel dies with the conversation and never
+    // comes back, even if that id shows up again (spec 边界情况: 会话被删除后
+    // 面板不会复活).
+    sendHostMessage(
+      fixtures.setInitialState({ session: session("session-b") }),
+    );
+    act(() => {
+      sendCommand("updateSessions", { sessions: [session("session-b")] });
+    });
+    sendHostMessage(
+      fixtures.setInitialState({ session: session("session-a") }),
+    );
+    expect(screen.queryByTestId("btw-panel")).not.toBeInTheDocument();
   });
 
   it("selecting /btw in the slash popup inserts the prefix without sending", async () => {
