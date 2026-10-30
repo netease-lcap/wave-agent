@@ -1,0 +1,57 @@
+# Wave 在 GitLab CI 里的 job 模板。
+#
+# 用法：把下面整段合进你的 .gitlab-ci.yml（或 include 指向本文件的 raw URL），
+# 在项目的 Settings → CI/CD → Variables 里加一个 masked 变量 WAVE_API_KEY。
+# 可选：GITLAB_TOKEN（想让它以 MR note 形式回评论才需要，见文末）。
+#
+# 与 GitHub 侧的 .github/workflows/wave-review.yml 共用同一套环境变量与产物约定。
+
+wave-review:
+  image: node:22
+  variables:
+    # 生产请 pin 具体版本：默认 latest 会把流水线的行为交给上游发版
+    WAVE_VERSION: "latest"
+    WAVE_PROMPT: "/code-review"
+    WAVE_TOOLS: "Read,Glob,Grep,Bash"
+    # 审查靠 `git merge-base HEAD <base>` 算改动范围；GitLab 默认浅克隆
+    GIT_DEPTH: "0"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  before_script:
+    - npm i -g "wave-code@${WAVE_VERSION}"
+    - wave --version
+    # runner 的 checkout 是 detached HEAD，本地没有目标分支；
+    # 技能用的是本地名（`git merge-base HEAD main`），缺了就退化成 HEAD~1。
+    - |
+      if [ -n "${CI_MERGE_REQUEST_TARGET_BRANCH_NAME:-}" ]; then
+        git fetch --no-tags origin "${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}"
+        git branch -f "${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}" \
+          "origin/${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}"
+        git branch -f main "${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}"
+      fi
+  script:
+    - |
+      set -uo pipefail
+      status=0
+      wave -p "$WAVE_PROMPT" \
+        --output-format json \
+        --permission-mode dontAsk \
+        --tools "$WAVE_TOOLS" > wave-result.json || status=$?
+
+      if [ -s wave-result.json ]; then
+        # node:22 镜像里没有 jq，用镜像自带的 node 读，免得装包拖慢 job
+        node -e '
+          const r = require("./wave-result.json");
+          console.log("subtype:", r.subtype ?? "?");
+          console.log(r.result ?? "(no result)");
+          for (const e of r.errors ?? []) console.log(e);
+        '
+      else
+        echo "wave produced no result file (exit ${status})"
+      fi
+      exit "$status"
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths:
+      - wave-result.json

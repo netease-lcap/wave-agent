@@ -603,3 +603,60 @@ security-audit 就是这个骨架的完整版：前门是一份技能（认口�
 - 批量、多阶段、要可复现 / 断点续跑 / 卡预算 → 写成脚本（security-audit）。
 
 自己动手的最小路径：项目里放 `.wave/agents/<名字>.md` 就多一个子代理，放 `.wave/skills/<名字>/SKILL.md` 就多一个技能，放 `.wave/workflows/<名字>.js` 就多一个可按名调用的工作流，三者都不需要先做插件。要让团队一起用，把它们装进一个带 `.wave-plugin/plugin.json` 的目录，注册成自有插件市场即可（见 [桌面端文档 - 插件](/desktop#_5-2-插件)）。写脚本时 AI 会自动加载内置技能 `workflow-authoring`（钩子签名、`meta` 形状、`budget` 与恢复规则都在那里），不用你手写一遍。
+
+## 十一、CI 里跑 Wave：PR 自动审查 {#ci-review}
+
+每个 PR 提上来，让 Wave 先过一遍：读改动、给结论、把结论贴回 PR，不合格时这个 check 变红、拦住合并。整条链路不需要有人在旁边点确认，也不需要先把 Wave 登录进 runner。
+
+### 1. 先在本机跑通一次 {#ci-review-local}
+
+CI 里那条命令就在本机先跑，参数照抄（`--permission-mode dontAsk` 保证不会停下来问权限，`--output-format json` 让结果是机器可读的）：
+
+```bash
+wave -p '/code-review' \
+  --output-format json \
+  --permission-mode dontAsk \
+  --tools 'Read,Glob,Grep,Bash' > wave-result.json
+
+jq -r '.subtype, .result' wave-result.json
+```
+
+跑完看三样东西：`result` 里的结论是不是你想要的口径；`subtype` 是不是 `success`；`echo $?` 是不是 `0`。结论不满意就改提示词（比如把审查重点写进 `-p` 的正文），再跑一遍。
+
+两个参数的含义值得记住：`--permission-mode dontAsk` 下，没有被预批规则命中的受限工具会被**直接拒绝**、拒绝原因回到模型，模型换条路继续干，不会卡在等你点「允许」；`--tools` 只注册列表里的工具，没列的工具模型根本看不见（上面这条命令里没有 `Write`，它就不会去改文件）。
+
+### 2. 搬到 GitHub Actions {#ci-review-github}
+
+仓库里加一个文件 `.github/workflows/review.yml`，把 seed `WAVE_API_KEY` 放进 Settings → Secrets and variables → Actions：
+
+```yaml
+name: Review
+
+on:
+  pull_request:
+
+jobs:
+  review:
+    uses: netease-lcap/wave-agent/.github/workflows/wave-review.yml@main
+    secrets: inherit
+    permissions:
+      contents: read
+      pull-requests: write
+    with:
+      prompt: /code-review
+```
+
+`with` 里的输入与上面本机那条命令一一对应（`prompt` → `-p`、`permission-mode`、`tools` 同名同义），不写的走默认值。提一个 PR 就能看到它跑。
+
+### 3. 让结论回到 PR、让它能拦住合并 {#ci-review-gate}
+
+- **结论回到 PR**：内置的 `/code-review` 技能自己会用 `gh pr comment` 发评论，所以 job 需要 `pull-requests: write` 权限和一个 `GH_TOKEN`（上面的 reusable workflow 已经传好 `secrets.GITHUB_TOKEN`）。换成自己的提示词时，评论这一步要自己写 `gh pr comment`。
+- **拦住合并**：仓库 Settings → Branches → 分支保护规则 → Require status checks to pass，勾上这个 job 的名字。之后它的退出码是 1，PR 就合不进去。
+
+顺带留了两处痕迹，排查时有用：job 的 Summary 里有一段摘要，`wave-result.json` 作为 artifact 保留（失败那次也会上传）。
+
+### 4. GitLab {#ci-review-gitlab}
+
+同一套参数换个壳：GitLab 侧用 [CI 集成 - GitLab CI](/ci#gitlab) 里那段 job 模板，`WAVE_API_KEY` 放在项目的 Settings → CI/CD → Variables 里。
+
+想按「发现数量 / 严重度」下判断，而不是只红一个 check，就去读 `wave-result.json`：`tool_calls` 是这次跑过的工具序列，`errors` 是运行期的错误。字段表见 [CLI - 结构化输出](/cli#structured-output)。

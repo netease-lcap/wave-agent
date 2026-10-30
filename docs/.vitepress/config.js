@@ -10,6 +10,7 @@ const nav = [
   { text: "VSCode/JetBrains插件", link: "/vsce" },
   { text: "Web 端", link: "/web" },
   { text: "CLI", link: "/cli" },
+  { text: "CI 集成", link: "/ci" },
   { text: "SDK", link: "/sdk" },
   { text: "企业管控台", link: "/guide" },
   { text: "功能清单", link: "/specs/" },
@@ -252,6 +253,20 @@ export default {
               text: "选哪种，以及怎么开始",
               link: "/tutorials#custom-workflow-start",
             },
+          ],
+        },
+        {
+          text: "十一、CI 里跑 Wave：PR 自动审查",
+          link: "/tutorials#ci-review",
+          collapsed: false,
+          items: [
+            { text: "先在本机跑通一次", link: "/tutorials#ci-review-local" },
+            {
+              text: "搬到 GitHub Actions",
+              link: "/tutorials#ci-review-github",
+            },
+            { text: "回到 PR 与门禁", link: "/tutorials#ci-review-gate" },
+            { text: "GitLab", link: "/tutorials#ci-review-gitlab" },
           ],
         },
       ],
@@ -520,6 +535,35 @@ export default {
           text: "8. 环境变量",
           collapsed: true,
           items: [{ text: "配置列表", link: "/cli#environment-variables" }],
+        },
+      ],
+      "/ci": [
+        {
+          text: "CI 集成",
+          collapsed: false,
+          items: [
+            { text: "一、跑起来是什么样", link: "/ci#overview" },
+            { text: "二、认证", link: "/ci#auth" },
+            { text: "三、权限预设", link: "/ci#permissions" },
+            {
+              text: "四、GitHub Actions",
+              collapsed: false,
+              items: [
+                {
+                  text: "4.1 用现成的可复用 workflow",
+                  link: "/ci#github-reusable",
+                },
+                { text: "4.2 自己写一个 step", link: "/ci#github-step" },
+                {
+                  text: "4.3 变成阻断合并的门禁",
+                  link: "/ci#github-required-check",
+                },
+              ],
+            },
+            { text: "五、GitLab CI", link: "/ci#gitlab" },
+            { text: "六、结果与产物", link: "/ci#result" },
+            { text: "七、局限", link: "/ci#limits" },
+          ],
         },
       ],
       "/sdk": [
