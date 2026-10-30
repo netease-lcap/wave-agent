@@ -6362,3 +6362,15 @@
   position: absolute;
   inset: 0;
 }
+
+/* ═══ 1030 第四轮：「当前对话的文件」列表行高 32px ═══
+   设计师评论（`button.file-pane-conversation-file-row`「logo.png」）：「这里高度改成32」。
+   改前行高实测 30px（= 上下内衬 6+6 + 14px 文案的 18 行盒，图标 16 不撑高）；
+   改后固定 32px：`height: 32px` + `box-sizing: border-box`（行间距那条 1px
+   `border-top` 也算在内，`+` 相邻行的上边框不会把行顶到 33），上下内衬归零、
+   左右 10px 不动，`align-items: center` 由 base 提供。仅桌面端。 */
+[data-host="desktop"] .file-pane-conversation-file-row {
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 10px;
+}
