@@ -188,6 +188,40 @@ describe("AI Service - streaming body failure falls back to non-streaming", () =
     expect(mockCreate).toHaveBeenCalledTimes(2);
   });
 
+  it("treats a stream that closes without a finish_reason as truncated", async () => {
+    // The gateway stopped sending mid-thought and closed the connection
+    // cleanly: no error, but also no completion marker. Content already
+    // streamed must not be accepted as this turn's answer
+    // (spec: 流式响应正文中途断连时降级为非流式重发，场景 7).
+    mockCreate
+      .mockReturnValueOnce(
+        streamingResponse([
+          { choices: [{ delta: { reasoning_content: "Let me think" } }] },
+          { choices: [{ delta: { content: "half an ans" } }] },
+        ]),
+      )
+      .mockReturnValueOnce(nonStreamingResponse("the full answer"));
+
+    const reasoningUpdates: string[] = [];
+    const result = await callAgent({
+      gatewayConfig: TEST_GATEWAY_CONFIG,
+      modelConfig: TEST_MODEL_CONFIG,
+      messages: [{ role: "user", content: "Test message" }],
+      workdir: "/test/workdir",
+      onContentDelta: () => {},
+      onReasoningDelta: (chunk) => reasoningUpdates.push(chunk),
+    });
+
+    expect(mockCreate).toHaveBeenCalledTimes(2);
+    expect(mockCreate.mock.calls[0][0].stream).toBe(true);
+    expect(mockCreate.mock.calls[1][0].stream).toBe(false);
+    expect(result.content).toBe("the full answer");
+    expect(result.stream_fallback).toBe(true);
+    // The truncated attempt did reach the streaming callbacks — that is why
+    // the caller discards it.
+    expect(reasoningUpdates).toEqual(["Let me think"]);
+  });
+
   it("does not mark a healthy stream as a fallback", async () => {
     mockCreate.mockReturnValueOnce(
       streamingResponse([
