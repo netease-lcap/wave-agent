@@ -3098,11 +3098,31 @@
       case "requestSlashCommands":
         // `surface`: 服务端据此把远控页能用的宿主本地命令一并下发（同一张表，
         // spec ui/slash-commands.md「弹窗里的宿主命令只有一份表」）。
+        // 输入过滤（`/` 后继续打字，spec 同文件「命令发现和自动补全」场景 2）
+        // 由**这一层**做：服务端只按入口裁表、不看输入，桌面 / VS Code / JB 三个
+        // 宿主也都是在自己的 RPC handler 里过滤的。此前这里把 `filterText` 丢掉、
+        // 原样回全量，页面上接着打字弹窗一条都不减。
         request("getSlashCommands", { surface: "remote-page" })
           .then(function (result) {
+            var commands = (result && result.commands) || [];
+            var filter = (
+              typeof msg.filterText === "string" ? msg.filterText : ""
+            )
+              .trim()
+              .toLowerCase();
+            if (filter) {
+              // 判据与三端一字不差：id / name 的大小写不敏感子串匹配（描述不参与）。
+              commands = commands.filter(function (command) {
+                var id = String((command && command.id) || "").toLowerCase();
+                var name = String(
+                  (command && command.name) || "",
+                ).toLowerCase();
+                return id.indexOf(filter) !== -1 || name.indexOf(filter) !== -1;
+              });
+            }
             post({
               command: "slashCommandsResponse",
-              commands: (result && result.commands) || [],
+              commands: commands,
             });
           })
           .catch(function (err) {

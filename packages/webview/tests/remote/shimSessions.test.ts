@@ -1443,6 +1443,33 @@ describe("remote page shim", () => {
     });
   });
 
+  test("typing after the slash narrows the menu", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({ command: "requestSlashCommands", filterText: "RE" });
+    await flush();
+    await page.answer("getSlashCommands", {
+      commands: [
+        { id: "review", name: "/review", description: "复盘这次改动" },
+        { id: "rewind", name: "/rewind", description: "回退到之前的用户消息" },
+        { id: "tasks", name: "/tasks", description: "查看后台任务" },
+      ],
+    });
+
+    // 服务端只按入口裁表、不看输入，所以 `/` 后继续打字的过滤落在这一层——判据与
+    // 桌面 / VS Code / JB 三个宿主的 handler 一字不差（id / name 的大小写不敏感
+    // 子串，描述不参与）。此前这里把 `filterText` 整个丢掉、原样回全量，手机上
+    // 接着打字弹窗一条都不减（spec commands/slash-commands.md「命令发现和自动
+    // 补全」场景 2）。
+    expect(lastPosted(page)).toEqual({
+      command: "slashCommandsResponse",
+      commands: [
+        { id: "review", name: "/review", description: "复盘这次改动" },
+        { id: "rewind", name: "/rewind", description: "回退到之前的用户消息" },
+      ],
+    });
+  });
+
   // ── The permission mode the page displays ────────────────────────
   //
   // The adapter only pushes `permissionModeChange` — a *transition*. A mode
