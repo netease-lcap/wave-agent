@@ -1331,6 +1331,16 @@ describe("remote page shim — healing after a disconnect", () => {
     return pending[pending.length - 1]?.delay ?? -1;
   };
 
+  /**
+   * 只跑指定延时的那一个定时器。`runRetryTimers` 会把整条退避链连同宽限期
+   * （3s）一起点着，而宽限的故事恰恰是「谁先到」——所以这里得分开驱动。
+   */
+  const fireTimersOf = (page: ReturnType<typeof loadShim>, delay: number) => {
+    for (const timer of [...page.timers]) {
+      if (!timer.cleared && timer.delay === delay) timer.run();
+    }
+  };
+
   it("waits out a 4001 with an unbounded backoff — no retry budget to spend", async () => {
     const { page } = await connectedPage();
 
@@ -1361,6 +1371,51 @@ describe("remote page shim — healing after a disconnect", () => {
     page.socket().receive({ type: "auth_ok" });
     page.socket().onclose?.({ code: 4001 });
     expect(pendingRetryDelay(page)).toBe(2000);
+  });
+
+  it("a transient drop that heals inside the grace window never paints a line", async () => {
+    const { page } = await connectedPage();
+
+    // 从别的 App 切回来：socket 的 close 是滞后到的，页面自己接得回来。
+    page.socket().onclose?.({ code: 1006 });
+    expect(page.banner()).toBe("");
+
+    // 2 秒后重拨（宽限 3 秒还没到），握手成功。
+    fireTimersOf(page, 2000);
+    const next = page.socket();
+    next.readyState = 1;
+    next.onopen?.();
+    next.receive({ type: "auth_ok" });
+    await flush();
+
+    // 宽限定时器随握手作废：不会迟到地把一条已经不存在的问题画上来。
+    expect(
+      page.timers.filter((timer) => !timer.cleared && timer.delay === 3000),
+    ).toEqual([]);
+    expect(page.banner()).toBe("");
+  });
+
+  it("a transient drop still down after the grace window paints neutral, and later retries update it at once", async () => {
+    const { page } = await connectedPage();
+
+    page.socket().onclose?.({ code: 1006 });
+    expect(page.banner()).toBe("");
+
+    // 宽限到了还没接回来：要说出来，但用中性色——它在自愈，不要人插手。
+    fireTimersOf(page, 3000);
+    expect(page.banner()).toContain("连接断开（1006）");
+    expect(page.element("remote-status")?.getAttribute("style")).toContain(
+      "background:#333333",
+    );
+
+    // 宽限只对这一轮断开计一次：下一次失败立刻更新计数，不再押 3 秒
+    // （否则连续失败会把这条提示一直往后推）。
+    fireTimersOf(page, 2000);
+    page.socket().onclose?.({ code: 1006 });
+    expect(page.banner()).toContain("第 2 次");
+    expect(page.element("remote-status")?.getAttribute("style")).toContain(
+      "background:#333333",
+    );
   });
 
   it("a 4003 stops for good and keeps only its reason on screen", async () => {

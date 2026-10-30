@@ -125,6 +125,17 @@
    * means a home-screen page that never comes back on its own.
    */
   var RETRY_MS_MAX = 30000;
+  /**
+   * 瞬态断开之后、状态条上屏之前的宽限期（毫秒）。
+   *
+   * 一次退避（`RETRY_MS` 2s）加上一次握手的余量：页面自己接得回来的波动不该
+   * 在用户眼前闪一条警告。iOS 主屏 web app 从后台切回时 socket 的 `close` 是
+   * **滞后**派发的（`onResume` 那一刻 `readyState` 还是 1，只补读不重连），
+   * 于是用户看到的正是「顶部红一下、随即自愈」（2026-10-30 报障）。宽限期
+   * 内接回 = 全程不出现；过了才以中性色呈现，因为「正在重连」不是错误
+   * （spec「断线自愈」场景 7）。4001 不进宽限：电脑侧不在线要人去开。
+   */
+  var STATUS_GRACE_MS = 3000;
   /** The relay closes an unauthenticated connection after this long. */
   var AUTH_TIMEOUT_CLOSE = 4003;
   /** Application-level keepalive; the relay answers each `ping` with a `pong`. */
@@ -240,6 +251,11 @@
   /** The pending reconnect timer, and the delay the next one waits. */
   var retryTimer = null;
   var retryDelay = RETRY_MS;
+  /**
+   * 宽限期的那一个定时器。**同一轮断开只 arm 一次**：连续失败的重试不能把它
+   * 往后推，否则这条提示永远追不上（每 2s 一次失败就把 3s 的截止重置一次）。
+   */
+  var statusGraceTimer = null;
   /**
    * Set by a machine switch: the view on screen still describes the previous
    * machine, so the next `auth_ok` must re-pull a full snapshot. The app is
@@ -554,6 +570,30 @@
   }
 
   /**
+   * 瞬态断开：先等一个宽限期再决定要不要上屏。
+   *
+   * `paint` 在到点时执行，读的是**那一刻**的 `attempts` / `authed`——所以它
+   * 说的是「现在第几次、还断着没」，而不是 arm 那一刻的快照。
+   *
+   * 已经在等就**不重置**：连接每 2 秒失败一次，重置截止就等于永远不上屏。
+   */
+  function armStatusGrace(paint) {
+    if (statusGraceTimer) return;
+    statusGraceTimer = setTimeout(function () {
+      statusGraceTimer = null;
+      paint();
+    }, STATUS_GRACE_MS);
+  }
+
+  /** 接回来了（或换了更强的状态）：这条宽限作废，不留一个迟到的上屏。 */
+  function cancelStatusGrace() {
+    if (statusGraceTimer) {
+      clearTimeout(statusGraceTimer);
+      statusGraceTimer = null;
+    }
+  }
+
+  /**
    * The machine list's own 「重试」, for the dialog's refusal row. The status line
    * has no actions any more, so this is the only place it is used.
    */
@@ -854,6 +894,8 @@
       attempts = 0;
       // Any open counts as success: the next drop starts from the fastest step.
       retryDelay = RETRY_MS;
+      // 上一轮断开的宽限就此作废：接回来了，没有要播报的东西。
+      cancelStatusGrace();
       clearStatus();
       // The handshake owns the first frame. On an unauthenticated connection
       // the relay parses *every* frame as `auth`, and a parse failure is a
@@ -893,10 +935,12 @@
       // cannot change a revoked token, a wrong channel, or an old machine, and
       // would only bury the explanation under activity (spec「断线自愈」场景 3).
       if (fatal) {
+        cancelStatusGrace();
         showStatus(fatal);
         return;
       }
       if (event.code === AUTH_TIMEOUT_CLOSE) {
+        cancelStatusGrace();
         showStatus(
           "中继拒绝了这个连接（未授权）。请在电脑侧重新开启远程控制。",
         );
@@ -909,21 +953,43 @@
       attempts++;
       var delay = retryDelay;
       retryDelay = Math.min(retryDelay * 2, RETRY_MS_MAX);
-      showStatus(
-        event.code === 4001
-          ? "电脑侧不在线，等待上线…（第 " + attempts + " 次重试）"
-          : "连接断开（" +
+      // The words carry the retry count, so the mute has to be keyed to the
+      // state instead: one close covers the whole outage (spec「状态只在一条
+      // 流内状态条上播报」场景 6).
+      if (event.code === 4001) {
+        // 电脑侧不在线：要人去机器上把远程控制打开，属于「立刻要看见」的状态
+        // ⇒ 不进宽限，红色（spec「状态只在一条流内状态条上播报」场景 3）。
+        cancelStatusGrace();
+        showStatus(
+          "电脑侧不在线，等待上线…（第 " + attempts + " 次重试）",
+          undefined,
+          "reconnecting",
+        );
+      } else if (bannerKey === "reconnecting") {
+        // 这条已经在屏幕上了（宽限用掉、或上一轮是 4001）：直接更新计数，
+        // 不再给每次失败都押 3 秒——宽限只对这一轮断开计一次
+        // （spec「断线自愈」场景 7）。
+        showStatus(
+          "连接断开（" + event.code + "），正在重连…（第 " + attempts + " 次）",
+          "progress",
+          "reconnecting",
+        );
+      } else {
+        // 网络抖动 / 切后台回来的这类瞬态：宽限期内接回来就**全程不出现**，
+        // 过了才用中性色——「正在重连」本身不是错误（spec「断线自愈」场景 7）。
+        armStatusGrace(function () {
+          if (authed) return;
+          showStatus(
+            "连接断开（" +
               event.code +
               "），正在重连…（第 " +
               attempts +
               " 次）",
-        // Error tone (the default); the key is the argument after it.
-        undefined,
-        // The words carry the retry count, so the mute has to be keyed to the
-        // state instead: one close covers the whole outage (spec「状态只在一条
-        // 流内状态条上播报」场景 6).
-        "reconnecting",
-      );
+            "progress",
+            "reconnecting",
+          );
+        });
+      }
       scheduleRetry(delay);
     };
 
@@ -960,6 +1026,8 @@
     // A handshake is already on its way out; stacking another on top would
     // abandon it for no gain.
     if (socket && socket.readyState === 0) return;
+    // 这次是主动重拨：上一轮断开的宽限作废，别让它在重连之后再弹一条。
+    cancelStatusGrace();
     clearStatus();
     connect();
   }
