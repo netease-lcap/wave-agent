@@ -116,9 +116,13 @@ jobs:
           git fetch --no-tags origin "refs/heads/${BASE_REF}:refs/heads/${BASE_REF}"
           echo "base branch ${BASE_REF} ready at $(git rev-parse --short "${BASE_REF}")"
 
+      # 关掉包管理器缓存的自动探测：它按被审查仓库的 lockfile 猜包管理器，
+      # 而 pnpm 项目的 runner 上没有 pnpm（我们只 `npm i -g` 装 CLI，不装项目依赖），
+      # 猜成 pnpm 就在 setup 这一步直接失败。
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+          package-manager-cache: false
 
       - name: Install wave CLI
         run: |
