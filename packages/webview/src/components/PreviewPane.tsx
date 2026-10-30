@@ -113,6 +113,11 @@ const clampFitZoom = (z: number): number =>
 
 /** Colors the guest picker can't read cross-origin — sampled from the host theme. */
 const readPalette = (): Record<string, string> => {
+  // 评论卡片的禁用键沿用输入区发送键那套配方：浅色 `--cc-fill` + 禁用字色，
+  // 深色 8% 白底 + 45% 白字（`host-desktop.css` 的 `.ai-send-btn` 同源同值）。
+  // 深色不能直接用 `--cc-text-disabled`：卡片面是 `--cc-bg-overlay`（#232526），
+  // 与 `--cc-fill`（#25292B）几乎同色，禁用键会看不出边界。
+  const dark = document.documentElement.dataset.theme === "dark";
   return {
     accent: readRootCssVar("--vscode-button-background", "#0e639c"),
     accentForeground: readRootCssVar("--vscode-button-foreground", "#ffffff"),
@@ -133,6 +138,61 @@ const readPalette = (): Record<string, string> => {
     ),
     inputBackground: readRootCssVar("--vscode-input-background", "#3c3c3c"),
     inputForeground: readRootCssVar("--vscode-input-foreground", "#cccccc"),
+    // ── 表单规范那一组（1029 评论「根据表单规范优化这个弹窗」）─────────────
+    // 卡片 = 浮层面，字段与按钮各走 skill 的 `--cc-field-*` / 主按钮档；
+    // 插件端没有 `--cc-*` 时回落到宿主注入的 `--vscode-*`，行为与改动前一致。
+    cardBg:
+      readRootCssVar("--cc-bg-overlay") ||
+      readRootCssVar("--vscode-editorWidget-background", "#252526"),
+    cardBorder:
+      readRootCssVar("--cc-border-lighter") ||
+      readRootCssVar("--vscode-panel-border", "rgba(128, 128, 128, 0.35)"),
+    cardShadow:
+      readRootCssVar("--cc-shadow-popover") ||
+      readRootCssVar("--vscode-widget-shadow", "0 4px 16px rgba(0, 0, 0, 0.4)"),
+    fieldBg:
+      readRootCssVar("--cc-field-bg") ||
+      readRootCssVar("--vscode-input-background", "#3c3c3c"),
+    fieldBorder:
+      readRootCssVar("--cc-field-border") ||
+      readRootCssVar("--vscode-input-border") ||
+      readRootCssVar("--vscode-widget-border", "rgba(128, 128, 128, 0.35)"),
+    fieldBorderHover:
+      readRootCssVar("--cc-field-border-hover") ||
+      readRootCssVar("--vscode-input-border") ||
+      readRootCssVar("--vscode-focusBorder", "#007fd4"),
+    fieldBorderFocus:
+      readRootCssVar("--cc-field-border-focus") ||
+      readRootCssVar("--vscode-focusBorder", "#007fd4"),
+    fieldText:
+      readRootCssVar("--cc-field-text") ||
+      readRootCssVar("--vscode-input-foreground", "#cccccc"),
+    fieldPlaceholder:
+      readRootCssVar("--cc-field-placeholder") ||
+      readRootCssVar("--vscode-input-placeholderForeground", "#a6a6a6"),
+    tagText:
+      readRootCssVar("--cc-text-secondary") ||
+      readRootCssVar("--vscode-descriptionForeground", "#8b8b8b"),
+    actionBg:
+      readRootCssVar("--cc-action-primary") ||
+      readRootCssVar("--vscode-button-background", "#0e639c"),
+    actionBgHover:
+      readRootCssVar("--cc-action-primary-hover") ||
+      readRootCssVar("--vscode-button-hoverBackground", "#1177bb"),
+    actionBgActive:
+      readRootCssVar("--cc-action-primary-active") ||
+      readRootCssVar("--vscode-button-background", "#0e639c"),
+    actionText:
+      readRootCssVar("--cc-action-primary-text") ||
+      readRootCssVar("--vscode-button-foreground", "#ffffff"),
+    disabledBg: dark
+      ? "rgba(255, 255, 255, 0.08)"
+      : readRootCssVar("--cc-fill") ||
+        readRootCssVar("--vscode-button-secondaryBackground", "transparent"),
+    disabledText: dark
+      ? "rgba(255, 255, 255, 0.45)"
+      : readRootCssVar("--cc-text-disabled") ||
+        readRootCssVar("--vscode-disabledForeground", "#8b8b8b"),
   };
 };
 
