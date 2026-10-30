@@ -46,11 +46,11 @@
   "scripts": {
     "build": "rimraf dist && tsc -p tsconfig.build.json",
     "type-check": "tsc --noEmit --incremental",
-    "test": "vitest run --reporter=dot",
-    "test:coverage": "vitest run --coverage --reporter=dot",
-    "test:unit": "vitest run --reporter=dot --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
-    "test:unit:coverage": "vitest run --coverage --reporter=dot --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
-    "test:integration": "vitest run --reporter=dot tests/integration .integration.test",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
+    "test:unit:coverage": "vitest run --coverage --exclude 'tests/integration/**' --exclude '**/*.integration.test.ts'",
+    "test:integration": "vitest run tests/integration .integration.test",
     "lint": "oxlint",
     "format": "prettier --write .",
     "prepublishOnly": "pnpm run build"
