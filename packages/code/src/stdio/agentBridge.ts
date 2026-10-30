@@ -39,6 +39,7 @@ import {
   listAllSessions,
   readRecentWorkdirs,
   rememberRecentWorkdir,
+  forgetRecentWorkdir,
   setSessionCustomTitle,
   searchFiles,
   generateRandomName,
@@ -700,6 +701,12 @@ export class AgentBridge {
         return { dirs: readRecentWorkdirs() };
       case "rememberRecentWorkdir":
         rememberRecentWorkdir(p.workdir as string);
+        return null;
+      // 移除（桌面端最近目录项上的「从列表移除」）。页面没有这个入口，所以它
+      // 不在远控白名单里；桌面端移除时走自己的 stdio/隧道，落在这台机器上，
+      // 否则下一次 `getRecentWorkdirs` 会把条目带回来。
+      case "forgetRecentWorkdir":
+        forgetRecentWorkdir(p.workdir as string);
         return null;
       case "listGitBranches":
         return this.listGitBranches(p.workdir as string | undefined);

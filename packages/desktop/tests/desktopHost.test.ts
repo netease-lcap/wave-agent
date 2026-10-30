@@ -131,6 +131,9 @@ const h = vi.hoisted(() => ({
         return h.machineRecentWorkdirs ? { dirs: h.machineRecentWorkdirs } : {};
       case "rememberRecentWorkdir":
         return null;
+      case "forgetRecentWorkdir":
+        if (h.forgetRecentWorkdirError) throw h.forgetRecentWorkdirError;
+        return null;
       default:
         return {};
     }
@@ -200,6 +203,8 @@ const h = vi.hoisted(() => ({
   // 机器自己的最近打开目录（`~/.wave/recent-workdirs.json`）。null = 旧版机器：
   // `getRecentWorkdirs` 回 `{}`，桌面端据此保留本地缓存那份。
   machineRecentWorkdirs: null as string[] | null,
+  // `forgetRecentWorkdir` 的失败注入（远端不可达），用于验证「保留条目」。
+  forgetRecentWorkdirError: null as Error | null,
   // When set, agent.initialize awaits this promise (simulates the multi-second
   // stdio startup so a real webview re-fires webviewReady while the new pane's
   // agent is still mid-spawn and not yet bound to the pane).
@@ -695,6 +700,7 @@ import {
   readRemoteFile,
   REMOTE_FILE_MAX_LINES,
   REMOTE_FILE_MAX_BYTES,
+  RemoteHostUnreachableError,
 } from "../src/main/remoteCli";
 
 // ---------------------------------------------------------------------------
@@ -906,6 +912,7 @@ beforeEach(() => {
   h.worktreeChangesResult = null;
   h.worktreeChangesError = null;
   h.machineRecentWorkdirs = null;
+  h.forgetRecentWorkdirError = null;
   h.initializeGate = null;
   h.sessionRepoRootReply = undefined;
   h.agentCounter = 0;
@@ -973,7 +980,7 @@ describe("workdir lifecycle", () => {
     });
   });
 
-  it("desktopRemoveRecentWorkdir removes the entry and reposts state", async () => {
+  it("desktopRemoveRecentWorkdir removes the entry on the machine, then locally", async () => {
     const { host, store, sent } = createHost();
     store.addRecentWorkdir({ host: "local", path: "/work/a" });
     store.addRecentWorkdir({ host: "local", path: "/work/b" });
@@ -983,6 +990,12 @@ describe("workdir lifecycle", () => {
       path: "/work/a",
     });
 
+    // 机器那份是真相：只删本地缓存的话，紧接着的重读会把条目带回来
+    // （spec core/recent-workdirs.md 场景 6）。
+    expect(h.clientRequests).toContainEqual({
+      method: "forgetRecentWorkdir",
+      params: { workdir: "/work/a" },
+    });
     expect(store.getRecentWorkdirs()).toEqual([
       { host: "local", path: "/work/b" },
     ]);
@@ -990,6 +1003,51 @@ describe("workdir lifecycle", () => {
     expect(states[states.length - 1]).toMatchObject({
       recentWorkdirs: ["/work/b"],
     });
+  });
+
+  it("desktopRemoveRecentWorkdir keeps the entry when the host is unreachable", async () => {
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    h.existingPaths.add("/remote/repo");
+    const { host, store } = await readyHost();
+    await host.handleWebviewMessage({
+      command: "desktopSelectRemotePath",
+      host: "prod",
+      path: "/remote/repo",
+    });
+
+    // 「远端主机不可达时不得删除最近目录」（desktop-remote.md）。
+    h.forgetRecentWorkdirError = new RemoteHostUnreachableError(
+      "prod",
+      new Error("connect timeout"),
+    );
+    await host.handleWebviewMessage({
+      command: "desktopRemoveRecentWorkdir",
+      host: "prod",
+      path: "/remote/repo",
+    });
+
+    expect(store.getRecentWorkdirs()).toContainEqual({
+      host: "prod",
+      path: "/remote/repo",
+    });
+    expect(
+      shownToasts().some((t) => t.message.includes("最近目录已保留")),
+    ).toBe(true);
+  });
+
+  it("desktopRemoveRecentWorkdir still clears the local copy on a machine without the method", async () => {
+    const { host, store } = createHost();
+    store.addRecentWorkdir({ host: "local", path: "/work/a" });
+
+    // 旧版 CLI 没有 forgetRecentWorkdir：降级为只清本地那份，不报错。
+    h.forgetRecentWorkdirError = new Error("Method not found");
+
+    await host.handleWebviewMessage({
+      command: "desktopRemoveRecentWorkdir",
+      path: "/work/a",
+    });
+
+    expect(store.getRecentWorkdirs()).toEqual([]);
   });
 
   it("switching workdir destroys the empty agent it replaces instead of leaking it in the pool", async () => {

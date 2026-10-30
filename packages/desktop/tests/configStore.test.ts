@@ -151,6 +151,23 @@ describe("ConfigStore", () => {
     ]);
   });
 
+  it("setRecentWorkdirsForHost mirrors the machine's list for that host only", () => {
+    const store = new ConfigStore(STORE_PATH);
+    store.addRecentWorkdir({ host: "local", path: "/work" });
+    store.addRecentWorkdir({ host: "devbox", path: "/stale" });
+    store.addRecentWorkdir({ host: "devbox", path: "/repo" });
+
+    // The machine reported two directories, in its own order, and no longer
+    // has the stale one (spec core/recent-workdirs.md).
+    store.setRecentWorkdirsForHost("devbox", ["/repo", "/other"]);
+
+    expect(store.getRecentWorkdirsForHost("devbox")).toEqual([
+      "/repo",
+      "/other",
+    ]);
+    expect(store.getRecentWorkdirsForHost("local")).toEqual(["/work"]);
+  });
+
   it("drops non-string entries from a corrupted recentWorkdirs array", () => {
     h.files.set(
       STORE_PATH,

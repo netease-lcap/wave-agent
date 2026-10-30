@@ -149,9 +149,11 @@ export type RequestMethod =
   // `~/.wave/recent-workdirs.json` on **this** machine. Read by the desktop app
   // per host and by the remote-control page, so the two see one list; the write
   // is the caller's "the user picked this directory" moment (spec
-  // core/recent-workdirs.md).
+  // core/recent-workdirs.md). `forgetRecentWorkdir` is the desktop's
+  // 「从列表移除」 — it must land here, or the next read brings the entry back.
   | "getRecentWorkdirs"
   | "rememberRecentWorkdir"
+  | "forgetRecentWorkdir"
   // Read-only workspace diff for the desktop diff panel
   | "getWorkspaceDiff"
   // Inline (ghost-text) code completion for the editor plugins. Session-scoped:

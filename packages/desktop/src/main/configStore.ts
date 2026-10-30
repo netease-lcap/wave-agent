@@ -312,6 +312,26 @@ export class ConfigStore {
       .map((d) => d.path);
   }
 
+  /**
+   * Replace one host's cached paths with what that machine just reported.
+   *
+   * This is the fallback copy, and the machine's own list is the truth (spec
+   * core/recent-workdirs.md): mirroring it keeps the fallback free of entries
+   * the machine no longer has, and of the worktree paths the machine's own
+   * read maps to repository roots — otherwise a host that goes unreachable
+   * would show a stale list that no longer matches what it served a minute ago.
+   * Other hosts keep their order.
+   */
+  setRecentWorkdirsForHost(host: string, paths: string[]): void {
+    const others = this.getRecentWorkdirs().filter((d) => d.host !== host);
+    const next = [
+      ...paths.map((path) => normalizeWorkdirRef({ host, path })),
+      ...others,
+    ].filter((d): d is WorkdirRef => d !== null);
+    this.data.recentWorkdirs = next.slice(0, MAX_RECENT_WORKDIRS);
+    this.save();
+  }
+
   removeRecentWorkdir(ref: WorkdirRef): void {
     const key = (d: string | WorkdirRef): string => {
       const w = normalizeWorkdirRef(d);
