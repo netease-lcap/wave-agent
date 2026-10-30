@@ -57,7 +57,7 @@ describe("FilePane conversation file list", () => {
     const rows = screen.getAllByTestId("file-pane-conversation-file-row");
     expect(rows.map((r) => r.textContent)).toEqual(["index.ts", "README.md"]);
     // No file is open: neither the placeholder nor the code view shows.
-    expect(screen.queryByText(/打开的文件会显示在这里/)).toBeNull();
+    expect(screen.queryByTestId("file-pane-empty-none")).toBeNull();
     expect(document.querySelector(".file-pane-code")).toBeNull();
   });
 
@@ -73,7 +73,10 @@ describe("FilePane conversation file list", () => {
   it("keeps the placeholder when the conversation has no files", () => {
     renderPane({ conversationFiles: [] });
 
-    expect(screen.getByText(/打开的文件会显示在这里/)).toBeTruthy();
+    // 1030 评论：空态只剩引导句，`file-pane-empty-none` 挂在这句上。
+    expect(screen.getByTestId("file-pane-empty-none")).toHaveTextContent(
+      "点击目录树中的文件，或点击消息里的文件路径",
+    );
     expect(screen.queryByTestId("file-pane-conversation-files")).toBeNull();
   });
 
