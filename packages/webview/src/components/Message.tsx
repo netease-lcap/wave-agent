@@ -17,6 +17,7 @@ import {
   detectFilePathToken,
   escapeHtml,
   fileLinkHtml,
+  isMarkdownPath,
   linkifyFilePathText,
   resolveFilePathMatch,
   stripFilePathLinks,
@@ -36,6 +37,7 @@ import {
   ARTIFACT_TOOL_NAME,
   ASK_USER_QUESTION_TOOL_NAME,
   EXIT_PLAN_MODE_TOOL_NAME,
+  isImageFileExtension,
 } from "wave-agent-sdk/constants";
 import type {
   Message as MessageType,
@@ -57,6 +59,10 @@ import { MessageActionButton } from "./MessageActionButton";
 import { getStageColor, getToolStatusColor } from "../utils/statusColors";
 import { isDesktopHost, isRemotePageHost } from "../utils/platform";
 import { requestImagePreview } from "../utils/imagePreviewRequest";
+import {
+  requestTextPreview,
+  type TextPreviewPayload,
+} from "../utils/textPreviewRequest";
 import "../styles/Message.css";
 import "../styles/plugin-typography.css";
 
@@ -463,10 +469,10 @@ const splitErrorContent = (content: string): ErrorPart[] => {
 };
 
 const createMessageMarkdownRenderer = (
-  // 四条路径通道的档位（见 `FilePathLinkMode`）。默认 `"all"`；远程控制 Web 页
-  // 传 `"images"`——页面上没有编辑器可打开文本路径，但图片路径可以就地显示
-  // （spec remote/remote-web.md「点消息里的图片路径看原图」）。URL 与其余
-  // markdown 渲染不受影响。
+  // 四条路径通道的档位（见 `FilePathLinkMode`）。默认 `"all"`：远控页也是全开
+  // ——路径在那里不是「打不开」，而是「点了就地看内容」（spec
+  // remote/remote-web.md「点消息里的文件路径看内容」），图片 / 文本的分流在
+  // `handleContentClick`。URL 与其余 markdown 渲染不受影响。
   pathLinkMode: FilePathLinkMode = "all",
 ) => {
   const renderer = new marked.Renderer();
@@ -632,9 +638,10 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
     return { elements: [] };
   }
 
-  // 远程控制 Web 页只把**图片**路径变成入口（文本路径仍无处可去，见场景 23）；
-  // 其余宿主全开。档位定义见 `FilePathLinkMode`。
-  const pathLinkMode: FilePathLinkMode = isRemotePageHost() ? "images" : "all";
+  // 路径入口在远控页与其余宿主一样全开（spec remote/remote-web.md「点消息里的
+  // 文件路径看内容」）：文本路径点了按需读、图片路径点了按需取图，两条都不落进
+  // `openFile`，所以「页面上没有编辑器」不再是「不该给入口」的理由。分流见
+  // `handleContentClick`；档位定义见 `FilePathLinkMode`。
 
   const elements: Array<{
     type: "html" | "mermaid";
@@ -664,7 +671,7 @@ const parseMarkdownWithMermaid = (content: string): ParsedMarkdownContent => {
     } else if (part.trim()) {
       // This is regular markdown content
       const html = marked.parse(part, {
-        renderer: createMessageMarkdownRenderer(pathLinkMode),
+        renderer: createMessageMarkdownRenderer(),
       });
       const sanitizedHtml = DOMPurify.sanitize(html, {
         ALLOWED_TAGS: [
@@ -769,6 +776,31 @@ const hasRunningBackgroundableTool = (message: MessageType): boolean =>
       b.stage !== "end",
   );
 
+/**
+ * 远控页读来一份内容后的两条说明：标题栏那句短的（截断）与正文上方那行长的
+ * （编码）。分开是手机档逼出来的——390px 的标题栏右侧只放得下二十来个字符，
+ * 两句话挤在一起时后一句只剩「可能有编…」。
+ */
+function describeTextPreview(payload: TextPreviewPayload): {
+  note?: string;
+  notice?: string;
+} {
+  return {
+    note: payload.truncated
+      ? `前 ${formatBytes(payload.returnedBytes)} / 共 ${formatBytes(payload.bytes)}`
+      : undefined,
+    notice: payload.encodingIssue
+      ? "这份文件里有解不成 UTF-8 的字节，下面的内容可能显示成乱码。"
+      : undefined,
+  };
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${bytes} B`;
+}
+
 export const Message: React.FC<MessageProps> = React.memo(
   (props: MessageProps) => {
     const {
@@ -806,17 +838,26 @@ export const Message: React.FC<MessageProps> = React.memo(
       }
     };
 
-    // 远程控制 Web 页没有编辑器、也没有文件面板（spec remote/remote-web.md 场景 20）：
-    // 文件路径一律不渲染成入口 —— 正文/代码块里的路径不生成链接（见
-    // createMessageMarkdownRenderer），工具块头的路径与 Write 预览的「打开预览」
-    // 也不给点击。路径文本本身照旧显示。
+    // 远控 Web 页没有编辑器、也没有文件面板，所以「打开」这件事在那里不成立
+    // ——但「就地看内容」成立（spec remote/remote-web.md「点消息里的图片路径看
+    // 原图」与「点消息里的文件路径看内容」）。这个常量因此只管**本机宿主那条
+    // openFile 链路**：远控页的路径入口改走 previewInsteadOfOpen。
     const canOpenFile = !isRemotePageHost();
 
-    // 用户消息里 @终端 / @问题 标签点开后的全文弹窗（一次只显示一个，与图片
-    // 预览同语义）。内容来自消息正文本身，不重新读 IDE。
+    // 全屏只读弹层（一次只显示一个，与图片预览同语义）：用户消息里 @终端 /
+    // @问题 标签的全文（内容来自消息正文本身，不重新读 IDE），以及远控页按需
+    // 读来的文件内容（`markdown` / `note` 只在后一条用得上）。
     const [idePreview, setIdePreview] = useState<{
       title: string;
       content: string;
+      /** 按 markdown 渲染正文（只有远控页读来的 Markdown 文档走这一档）。 */
+      markdown?: boolean;
+      /** 标题栏右侧那句短说明（截断）。 */
+      note?: string;
+      /** 正文上方那行提示（编码问题）。 */
+      notice?: string;
+      /** 代码档的原文件路径（按扩展名选高亮语言）。 */
+      codePath?: string;
     } | null>(null);
 
     const getMessageClassName = () => {
@@ -915,6 +956,60 @@ export const Message: React.FC<MessageProps> = React.memo(
       });
     };
 
+    /**
+     * 远控 Web 页点文本路径（spec `remote/remote-web.md`「点消息里的文件路径看
+     * 内容」）：同一条按需读取通道，宿主按**内容**判「这是不是文本」、只回开头
+     * 256 KiB。到手就交给同一个全屏文本弹层——它是本页唯一能滚、能选中复制的
+     * 容器，不新增一层 UI。怎么排版只看扩展名（见 `isMarkdownPath`）：文档
+     * 走 markdown，代码与日志留在等宽原样。
+     */
+    const showRemoteTextPreview = (filePath: string) => {
+      const name = filePath.split(/[\\/]/).pop() || filePath;
+      void requestTextPreview(props.vscode, filePath).then((result) => {
+        if ("error" in result) {
+          setIdePreview({ title: "看不了这份文件", content: result.error });
+          return;
+        }
+        const markdown = isMarkdownPath(filePath);
+        setIdePreview({
+          title: name,
+          content: result.content,
+          markdown,
+          // 文档走排版、其余走等宽 + 高亮；判据只决定**怎么显示**，不影响
+          // 「能不能读」（那是宿主按内容判的）。
+          codePath: markdown ? undefined : filePath,
+          ...describeTextPreview(result),
+        });
+      });
+    };
+
+    /**
+     * 远控 Web 页点任意一个路径：图片走取图、其余走取文本。分流只看扩展名——
+     * 那是「该请求哪条通道」的呈现判断，真正的判型在宿主侧各自做（图片按解码
+     * 出的容器、文本按字节是不是文本），页面不替宿主下结论。
+     */
+    const showRemoteFilePreview = (filePath: string) => {
+      // `isImageFileExtension` 收的是**不带点**的扩展名（宿主侧那份字典），不是
+      // 整个路径——传路径进去永远 false，图片会被错送进文本通道。
+      const ext = filePath.slice(filePath.lastIndexOf(".") + 1).toLowerCase();
+      if (isImageFileExtension(ext)) {
+        showRemoteImagePreview(filePath);
+        return;
+      }
+      showRemoteTextPreview(filePath);
+    };
+
+    /**
+     * 工具块头 / Write 块预览在远控页的去处：解析成绝对路径后走同一条读取通道。
+     * 相对路径用**页面手里的 workdir** 拼——它与工具块头相对化的基准是同一个值
+     * （`toRelativePath(x, workdir)`），所以拼回去一定还是宿主写的那一份；换成
+     * 别的锚点反而会在 AI `cd` 过之后指错文件。
+     */
+    const previewInsteadOfOpen = (path: string) => {
+      if (!path) return;
+      showRemoteFilePreview(toAbsoluteFilePath(path, workdir) ?? path);
+    };
+
     const getAttachedImages = () => {
       const images: Array<{ data: string; filename?: string }> = [];
       message.blocks?.forEach((block) => {
@@ -948,11 +1043,11 @@ export const Message: React.FC<MessageProps> = React.memo(
         const parsed = detectFilePathToken(fileLink.textContent || "");
         if (parsed) {
           const resolved = resolveFilePathMatch(parsed);
-          // 远控 Web 页没有编辑器也没有文件面板，路径链接只在图片路径上生成
-          // （见 createMessageMarkdownRenderer 的 pathLinkMode），所以这里点到的
-          // 一定是图：向宿主要字节，而不是走 openFile。
+          // 远控 Web 页没有编辑器也没有文件面板，但它有两条按需读取通道：
+          // 图片走取图、其余走取文本（见 showRemoteFilePreview）。分流只按
+          // 扩展名，判型在宿主侧。
           if (isRemotePageHost()) {
-            showRemoteImagePreview(resolved);
+            showRemoteFilePreview(resolved);
           } else {
             openFile(resolved, parsed.startLine, parsed.endLine);
           }
@@ -1036,21 +1131,16 @@ export const Message: React.FC<MessageProps> = React.memo(
               {/* 输出中的裸 http(s) URL 与文件路径链接化（见
                   specs/ui/markdown-links.md 与 specs/ui/file-path-links.md），
                   点击路由复用 handleContentClick：desktop 上 localhost → 预览
-                  面板、其余 → 系统浏览器；IDE 保持原生链接处理；路径走 openFile。
-                  远程控制 Web 页只留 URL：那里没有 openFile 的去处
-                  （specs/remote/remote-web.md 场景 20）。 */}
+                  面板、其余 → 系统浏览器；IDE 保持原生链接处理；路径走 openFile，
+                  远控页则按需读取内容（specs/remote/remote-web.md「点消息里的文件
+                  路径看内容」）。 */}
               {/* tabIndex（F-10 / WCAG 2.1.1）：max-height 120 + overflow-y:auto
                   是可滚动区域，键盘用户需能聚焦后用方向键翻看完整输出。
                   仅桌面端注入——焦点环样式只存在于 `[data-host="desktop"]` 层。 */}
               <div
                 className="bash-command-output"
                 tabIndex={isDesktopHost() ? 0 : undefined}
-                dangerouslySetInnerHTML={{
-                  __html: linkifyPlainText(
-                    result,
-                    isRemotePageHost() ? "images" : "all",
-                  ),
-                }}
+                dangerouslySetInnerHTML={{ __html: linkifyPlainText(result) }}
               />
             </div>
           );
@@ -1144,7 +1234,7 @@ export const Message: React.FC<MessageProps> = React.memo(
                 toolBlock={toolBlock}
                 vscode={props.vscode}
                 workdir={workdir}
-                onOpenFile={canOpenFile ? openFile : undefined}
+                onOpenFile={canOpenFile ? openFile : previewInsteadOfOpen}
               />
             )}
             {errorContent && toolHeader}
@@ -1174,7 +1264,11 @@ export const Message: React.FC<MessageProps> = React.memo(
             <FileToolHeader
               toolBlock={toolBlock}
               filePath={toRelativePath(editFilePath, workdir)}
-              onOpenFile={canOpenFile ? openEditFile : undefined}
+              onOpenFile={
+                canOpenFile
+                  ? openEditFile
+                  : () => previewInsteadOfOpen(editFilePath)
+              }
             />
             {!errorContent && <DiffViewer toolBlock={toolBlock} />}
             {errorContent}
@@ -1223,7 +1317,11 @@ export const Message: React.FC<MessageProps> = React.memo(
             <FileToolHeader
               toolBlock={toolBlock}
               filePath={displayPath}
-              onOpenFile={canOpenFile ? openReadFile : undefined}
+              onOpenFile={
+                canOpenFile
+                  ? openReadFile
+                  : () => previewInsteadOfOpen(filePath)
+              }
             />
             {!errorContent && toolBlock.shortResult && (
               <div className="write-tool-stats">{toolBlock.shortResult}</div>
@@ -1691,6 +1789,10 @@ export const Message: React.FC<MessageProps> = React.memo(
           <IdeContextPreview
             title={idePreview.title}
             content={idePreview.content}
+            markdown={idePreview.markdown}
+            note={idePreview.note}
+            notice={idePreview.notice}
+            codePath={idePreview.codePath}
             onClose={() => setIdePreview(null)}
           />
         )}

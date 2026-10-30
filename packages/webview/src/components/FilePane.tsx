@@ -20,6 +20,7 @@ import { copyTextToClipboard } from "../utils/clipboard";
 import { commentLocationLabel, formatCodeComment } from "../utils/codeComment";
 import type { ConversationFileEntry } from "../utils/conversationFiles";
 import { toRelativePath } from "../utils/messageUtils";
+import { isMarkdownPath } from "../utils/filePathLinks";
 import { useCodeCommentEntry } from "../utils/useCodeCommentEntry";
 import { useHostMessage } from "../utils/useHostMessage";
 import { ancestorsWithin, isUnder } from "../utils/fileTreePaths";
@@ -111,9 +112,6 @@ export const EXT_LANGUAGE: Record<string, string> = {
   mk: "makefile",
   proto: "protobuf",
 };
-
-const isMarkdownPath = (path: string) =>
-  /\.(md|markdown|mdown|mkd)$/i.test(path);
 
 /** Trim the middle of an over-long path so the file name stays intact; the
     full path remains available on hover (title). Falls back to a plain split
@@ -358,6 +356,32 @@ const blockQuoteText = (el: HTMLElement): string => {
     }
   });
   return parts.join("").replace(/\s+/g, " ").trim();
+};
+
+/**
+ * 一份**没有 markdown 结构**的文件（代码、日志、配置）→ 高亮后的内层 HTML。
+ *
+ * 文件面板自己逐行 split（查找跳行要高亮后的行边界），预览弹层只要一段能滚的
+ * HTML，所以这里只做「按扩展名选语言 → hljs → 消毒」三步，共用同一份
+ * `EXT_LANGUAGE` 与消毒白名单——两边的高亮配色因此永远一致。
+ *
+ * 认不出扩展名或高亮抛错时退回转义后的纯文本：高亮是锦上添花，读不到内容才是
+ * 事故。
+ */
+export const renderCodeHighlight = (
+  content: string,
+  filePath: string,
+): string => {
+  const ext = (filePath.split(".").pop() ?? "").toLowerCase();
+  const mapped = EXT_LANGUAGE[ext];
+  if (!mapped || !hljs.getLanguage(mapped)) return escapeHtml(content);
+  try {
+    return sanitizeFileMarkdown(
+      hljs.highlight(content, { language: mapped, ignoreIllegals: true }).value,
+    );
+  } catch {
+    return escapeHtml(content);
+  }
 };
 
 /** Shared markdown renderer (marked → hljs → DOMPurify). Reused by PlanPane. */

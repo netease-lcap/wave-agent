@@ -3013,6 +3013,36 @@
         return;
       }
 
+      case "getTextPreview": {
+        // 点消息里的文件路径看内容（spec remote/remote-web.md「点消息里的文件
+        // 路径看内容」）：与取图同一条按需读取通道，只是判型换成「读出来是不是
+        // 文本」。宿主只回开头 256 KiB，三个字段（bytes / truncated /
+        // encodingIssue）都是给页面头部那行说明用的，页面不自己数。
+        //
+        // 失败同样走同一个命令名 + error：宿主那句「不是文本文件 / 读不到」比
+        // 这里再包一层更准确。
+        request("getTextPreview", { path: msg.path })
+          .then(function (result) {
+            post({
+              command: "textPreviewResponse",
+              requestId: msg.requestId,
+              content: result && result.content,
+              bytes: result && result.bytes,
+              returnedBytes: result && result.returnedBytes,
+              truncated: !!(result && result.truncated),
+              encodingIssue: !!(result && result.encodingIssue),
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "textPreviewResponse",
+              requestId: msg.requestId,
+              error: (err && err.message) || String(err),
+            });
+          });
+        return;
+      }
+
       case "requestFileSuggestions": {
         // `@` 文件建议：`query` 就是 `@` 后面那段过滤文本，工作目录由宿主按信封
         // `sessionId` 取（页面不猜目录）。条数与桌面端同一个 20。

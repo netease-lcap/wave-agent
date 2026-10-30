@@ -6,10 +6,11 @@ interface FileToolHeaderProps {
   toolBlock: ToolBlock;
   filePath: string;
   /**
-   * Opens the file in the host. Omitted by hosts that have nowhere to open it —
-   * the remote-control Web page (spec remote/remote-web.md 场景 20) — in which
-   * case the path renders as plain text: no role, no tab stop, no handler, so
-   * there is nothing that looks clickable and does nothing.
+   * 点路径时的动作。本机宿主是「打开文件」（桌面端文件面板 / IDE 的 openFile
+   * RPC），远控页是「就地看内容」（宿主按需读出那份文件，spec
+   * remote/remote-web.md「点消息里的文件路径看内容」）。两处都没有时省略 ——
+   * 路径退化为纯文本：no role, no tab stop, no handler, 于是没有任何东西看起来
+   * 能点却点不动。
    */
   onOpenFile?: () => void;
 }
