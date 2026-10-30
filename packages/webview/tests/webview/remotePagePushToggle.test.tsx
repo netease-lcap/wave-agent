@@ -1,5 +1,5 @@
 /**
- * The 通知 entry in the remote page's 更多 menu (spec ui/remote-control.md
+ * The 通知 entry in the remote page's 更多 menu (spec remote/remote-pwa.md
  * 「锁屏也能知道——会话等着我、或者跑完了」场景 6/7).
  *
  * The page is the only host with a browser subscription to switch, so the entry

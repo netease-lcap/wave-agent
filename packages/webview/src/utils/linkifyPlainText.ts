@@ -77,7 +77,7 @@ const urlAnchor = (rawUrl: string): string => {
 // 单个 token：先切出其中的 URL（保持既有行为），剩余片段按文件路径规则处理。
 // 路径那一半的档位由调用方给（`FilePathLinkMode`）：远控页传 `"images"` ——
 // URL 仍可点击，文本路径退化为纯文本，只有图片路径成为入口（见
-// specs/ui/remote-control.md「点消息里的图片路径看原图」）。`"off"` 则连路径
+// specs/remote/remote-web.md「点消息里的图片路径看原图」）。`"off"` 则连路径
 // 识别一并关掉。
 const linkifyRun = (run: string, mode: FilePathLinkMode = "all"): string => {
   const plain = (text: string) => linkifyCodeBlockPaths(text, mode);

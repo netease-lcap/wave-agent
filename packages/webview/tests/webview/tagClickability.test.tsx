@@ -260,8 +260,8 @@ describe("Tag Clickability", () => {
 
   it("leaves a sent image tag unclickable on the remote Web page", () => {
     // 远控 Web 页读不到这台电脑上的文件，而且发往中继的帧把粘贴图字节剥成了空串
-    // （spec ui/remote-control.md 场景 10）：不给「看着能点、点了没反应」的入口
-    // （场景 23/24）。未发送的草稿图不受影响，那些字节就在浏览器里。
+    // （spec remote/remote-web.md 场景 10）：不给「看着能点、点了没反应」的入口
+    // （场景 20/21）。未发送的草稿图不受影响，那些字节就在浏览器里。
     window.waveRemotePage = true;
     const { vscode, tag } = renderSentImageTag([""]);
     expect(tag).toBeInTheDocument();

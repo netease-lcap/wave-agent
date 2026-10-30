@@ -3,7 +3,7 @@ import { MessageInjector } from "./utils/messageInjector.js";
 import type { Message } from "wave-agent-sdk";
 
 /**
- * 远控页点消息里的图片路径看原图（spec ui/remote-control.md「点消息里的图片路
+ * 远控页点消息里的图片路径看原图（spec remote/remote-web.md「点消息里的图片路
  * 径看原图」），在真 Chromium 里跑一遍完整一跳：
  *
  * 渲染层只把**图片扩展名**变成入口（正文里同段的 `.md` 不是入口）→ 点它不走

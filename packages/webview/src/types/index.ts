@@ -844,7 +844,7 @@ export interface PanelExpandProps {
 }
 
 /**
- * Web Push 通知开关（spec remote-control.md「锁屏也能知道——会话等着我、或者跑完了」）。
+ * Web Push 通知开关（spec remote/remote-pwa.md「锁屏也能知道——会话等着我、或者跑完了」）。
  *
  * 只有远控 Web 页会传：它是唯一跑在浏览器里、有 Service Worker 与通知权限的宿主，
  * 开关的两端（浏览器订阅 + 中继登记）都由页面侧的 shim 持有。其余四端没有对应物，
@@ -873,7 +873,7 @@ export interface ChatHeaderProps {
   /**
    * 会话列表的「待确认 / 运行中」标记。只有远控 Web 页会传（它没有侧栏，会话列表
    * 是唯一能标记状态的地方）；其余四端传 undefined，列表照旧只渲染标题与时间。
-   * 见 spec remote-control.md「待确认只在它自己的对话里弹，对话状态在会话列表标
+   * 见 spec remote/remote-web.md「待确认只在它自己的对话里弹，对话状态在会话列表标
    * 出来」。
    */
   sessionStatus?: SessionListStatus;
@@ -895,7 +895,7 @@ export interface ChatHeaderProps {
   sessionSwitchButton?: boolean;
   /**
    * Remote Web page only: 顶栏「会话」按钮打开的是**整页列表**（
-   * `RemoteSessionListPage`），不再是借来的下拉（spec remote-control.md「手机端的
+   * `RemoteSessionListPage`），不再是借来的下拉（spec remote/remote-web.md「手机端的
    * 会话列表与删除」场景 1）。传了它，这个按钮就只调它、并且不再渲染
    * `SessionListPopup`；不传（IDE / 桌面端）则一个字都不变——那边的「下拉」是指针
    * 设备上的好形态，缺的是手机要的行级动作与触控热区，不是同一个问题的两种答案。
@@ -990,7 +990,7 @@ export interface ChatState {
    * 会话列表的状态标记（远控 Web 页是唯一消费者；其余宿主各有自己的会话行呈现）。
    * 每次重新对齐（冷启动 / 切会话 / 重连 / 重挂 / 回前台）都按当前值重读——它与
    * `pendingConfirmations` 是同一条口径下的两件事：**弹哪张卡是会话级的**（只弹
-   * 当前这条会话的），**标记是进程级的**（每条对话一行，见 spec remote-control.md
+   * 当前这条会话的），**标记是进程级的**（每条对话一行，见 spec remote/remote-web.md
    * 「待确认只在它自己的对话里弹，对话状态在会话列表标出来」）。
    */
   sessionStatus: SessionListStatus;
@@ -1075,7 +1075,7 @@ export interface ConfirmationDecision {
 }
 
 /**
- * 会话列表的状态标记（远控 Web 页专用，spec remote-control.md「待确认只在它
+ * 会话列表的状态标记（远控 Web 页专用，spec remote/remote-web.md「待确认只在它
  * 自己的对话里弹，对话状态在会话列表标出来」）：哪些对话在等确认、哪些正在生成。
  * 两个 id 集合分别来自宿主的两次重读（`listPendingPermissions` /
  * `listDaemonSessions`），不是每会话元数据上的字段——它们描述的是「进程级事实」，

@@ -8,7 +8,7 @@
  * three REST endpoints, because that half is the "which promises did we make to
  * the user" half — did we ask for permission before subscribing, did we
  * register the endpoint we actually subscribed, did we tell the truth when a
- * revocation failed (spec ui/remote-control.md「锁屏也能知道」场景 6/7).
+ * revocation failed (spec remote/remote-pwa.md「锁屏也能知道」场景 6/7).
  * Whether a banner is *shown* is the worker's business and lives in
  * `sw.test.ts`; whether the page realigns on a delivered push is
  * `shimSessions.test.ts`'s.

@@ -32,8 +32,8 @@ export const WriteToolPreview: React.FC<WriteToolPreviewProps> = ({
     content = null;
   }
 
-  // 远程控制 Web 页没有编辑器/文件面板可打开路径（spec ui/remote-control.md
-  // 场景 23）：「打开预览」按钮不渲染，块头的路径也退化为纯文本。**内容预览保留**
+  // 远程控制 Web 页没有编辑器/文件面板可打开路径（spec remote/remote-web.md
+  // 场景 20）：「打开预览」按钮不渲染，块头的路径也退化为纯文本。**内容预览保留**
   // —— 那是手机上唯一能读到写入内容的路径。
   const canOpenFile = !isRemotePageHost();
 

@@ -8,7 +8,7 @@
  * system of its own. A screenshot an agent saved to disk (`/tmp/shot.png`) is
  * therefore just a path in the conversation — readable nowhere on the phone.
  * This module is the one thing that turns such a path back into pixels, on
- * demand, over the relay (spec `ui/remote-control.md`「点消息里的图片路径看原图」).
+ * demand, over the relay (spec `remote/remote-web.md`「点消息里的图片路径看原图」).
  *
  * ## The two gates
  *

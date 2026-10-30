@@ -1,7 +1,7 @@
 /**
  * RemoteControlView — `/remote-control` 的覆盖层（把这条前台会话交给手机）。
  *
- * 规格：docs/specs/ui/remote-control.md「前台 CLI 会话也能被手机接管」。
+ * 规格：docs/specs/remote/remote-web.md「前台 CLI 会话也能被手机接管」。
  *
  * **这个斜杠命令不带参数**：没有 `on` / `off` / `status` 子命令，也不收机器名。
  * 判据是「状态自己决定动作」——`off` / `error` 时唯一合法动作是开启，`connecting`

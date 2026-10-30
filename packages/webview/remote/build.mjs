@@ -347,11 +347,11 @@ function emit({ chatJs, chatCss, mermaid }) {
   <!-- 这里**不锁**缩放：双指放大是这一页上唯一的「字不够大我自己放大」退路，
        得留着。聚焦不放大改由样式层做到——把文本类控件抬到 16px（iOS Safari 对
        computed font-size < 16px 的文本控件会在聚焦时把整页缩放到等效 16px，15px
-       仍触发），见 src/styles/remote-page.css 与 docs/specs/ui/remote-control.md
-       场景 15。锁缩放那条路 2026-10-14 上过真机，被判定为「字太小又没得放大」。 -->
+       仍触发），见 src/styles/remote-page.css 与 docs/specs/remote/remote-mobile.md
+       场景 2。锁缩放那条路 2026-10-14 上过真机，被判定为「字太小又没得放大」。 -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="dark light" />
-  <!-- 主屏元信息：图标与名字（spec remote-control.md「PWA 主屏元信息」）。
+  <!-- 主屏元信息：图标与名字（spec remote/remote-pwa.md「PWA 主屏元信息」）。
        apple-touch-icon 是 iOS 认的那一个；standalone 双声明（manifest 与
        meta 各代 iOS 各取其一）；black-translucent 让内容延伸到状态栏之下，
        与 viewport-fit=cover + 安全区内边距的既有设计配套。 -->

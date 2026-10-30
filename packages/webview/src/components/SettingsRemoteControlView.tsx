@@ -3,7 +3,7 @@
  *
  * 2026-10-17 从独立弹层（`RemoteControlDialog`）搬进设置页：它和 MCP 服务一样是
  * 「这台机器上的一项能力」，不该自成一个弹窗占位。入口仍是 `/remote-control`
- * 斜杠命令，只是现在打开的是设置页并选中这一项（spec ui/remote-control.md
+ * 斜杠命令，只是现在打开的是设置页并选中这一项（spec remote/remote/remote-control.md
  * 「`/remote-control` 打开设置页的远程控制选项卡」）。
  *
  * 搬过来时**三条纪律原样保留**，它们都不依赖「是不是弹窗」：

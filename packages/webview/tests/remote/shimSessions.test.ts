@@ -991,7 +991,7 @@ describe("remote page shim", () => {
     await flush();
 
     // 一条 RPC，带当前会话 —— 页面这一侧不再把它当普通消息发出去
-    //（spec ui/remote-control.md「Web 页也能用 /btw 旁路提问」场景 1/2）。
+    //（spec remote/remote-web.md「Web 页也能用 /btw 旁路提问」场景 1/2）。
     expect(page.socket.framesFor("askBtw")).toEqual([
       {
         id: expect.any(Number),
@@ -2306,7 +2306,7 @@ describe("remote page shim", () => {
 });
 
 /**
- * 会话列表的行级动作（spec ui/remote-control.md「手机端的会话列表与删除」）：删除
+ * 会话列表的行级动作（spec remote/remote-web.md「手机端的会话列表与删除」）：删除
  * 与删除前的 worktree 计数。
  *
  * 两条都**按信封 `sessionId` 指向被操作的那一行**，而不是页面当前看着的那条——列表

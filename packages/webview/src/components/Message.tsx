@@ -465,7 +465,7 @@ const splitErrorContent = (content: string): ErrorPart[] => {
 const createMessageMarkdownRenderer = (
   // 四条路径通道的档位（见 `FilePathLinkMode`）。默认 `"all"`；远程控制 Web 页
   // 传 `"images"`——页面上没有编辑器可打开文本路径，但图片路径可以就地显示
-  // （spec ui/remote-control.md「点消息里的图片路径看原图」）。URL 与其余
+  // （spec remote/remote-web.md「点消息里的图片路径看原图」）。URL 与其余
   // markdown 渲染不受影响。
   pathLinkMode: FilePathLinkMode = "all",
 ) => {
@@ -806,7 +806,7 @@ export const Message: React.FC<MessageProps> = React.memo(
       }
     };
 
-    // 远程控制 Web 页没有编辑器、也没有文件面板（spec ui/remote-control.md 场景 23）：
+    // 远程控制 Web 页没有编辑器、也没有文件面板（spec remote/remote-web.md 场景 20）：
     // 文件路径一律不渲染成入口 —— 正文/代码块里的路径不生成链接（见
     // createMessageMarkdownRenderer），工具块头的路径与 Write 预览的「打开预览」
     // 也不给点击。路径文本本身照旧显示。
@@ -873,7 +873,7 @@ export const Message: React.FC<MessageProps> = React.memo(
      * **不能**把路径直接塞进 `<img src>`：本地会话靠页面自己是 `file://` 侥幸能
      * 开，SSH 会话等于拿本机路径去加载远端路径 ⇒ 点开就是裂图（2026-10-30 报的
      * 现象）。没能力打开本地文件的宿主（远控 Web 页，`canOpenFile`）干脆不给点击
-     * 入口，不留「看着能点、点了没反应」（`ui/remote-control.md` 场景 23/24；那边
+     * 入口，不留「看着能点、点了没反应」（`remote/remote-web.md` 场景 20/21；那边
      * 的粘贴图字节本来就被剥掉了，见场景 10）。
      */
     const imageTagOnClick = (
@@ -895,7 +895,7 @@ export const Message: React.FC<MessageProps> = React.memo(
     };
 
     /**
-     * 远控 Web 页点图片路径（spec `ui/remote-control.md`「点消息里的图片路径看
+     * 远控 Web 页点图片路径（spec `remote/remote-web.md`「点消息里的图片路径看
      * 原图」）：页面上没有文件、也没有文件面板，字节只能向宿主要——发
      * `getImagePreview`，宿主读盘、按解码出的真实容器判型、压进单帧预算后回图。
      * 图到手就交给 `handleImagePreview`，与粘贴图共用同一个全屏覆盖层。
@@ -1038,7 +1038,7 @@ export const Message: React.FC<MessageProps> = React.memo(
                   点击路由复用 handleContentClick：desktop 上 localhost → 预览
                   面板、其余 → 系统浏览器；IDE 保持原生链接处理；路径走 openFile。
                   远程控制 Web 页只留 URL：那里没有 openFile 的去处
-                  （specs/ui/remote-control.md 场景 23）。 */}
+                  （specs/remote/remote-web.md 场景 20）。 */}
               {/* tabIndex（F-10 / WCAG 2.1.1）：max-height 120 + overflow-y:auto
                   是可滚动区域，键盘用户需能聚焦后用方向键翻看完整输出。
                   仅桌面端注入——焦点环样式只存在于 `[data-host="desktop"]` 层。 */}

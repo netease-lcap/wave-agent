@@ -10,7 +10,7 @@
  * white list and the page need no special case.
  *
  * Two consequences of "one session, and it is the one on screen", both
- * deliberate (docs/specs/ui/remote-control.md, 前台 CLI 故事):
+ * deliberate (docs/specs/remote/remote-web.md, 前台 CLI 故事):
  *
  * - Both ways of asking for the session list (`listDaemonSessions`, which the
  *   page reads, and `listSessions`) answer with exactly this session. The

@@ -6,7 +6,7 @@ import {
 
 /**
  * The window *validation* is the wire contract shared by every host that
- * answers `getMessages` (spec ui/remote-control.md §5). The paging arithmetic
+ * answers `getMessages` (spec remote/remote-channel.md 的白名单与增量拉取). The paging arithmetic
  * moved into the SDK (`readTranscriptPage` covers the page walk, the anchor
  * rules and the byte budget), so what is left to pin here is the one thing a
  * caller cannot notice on its own: a malformed window must fail instead of

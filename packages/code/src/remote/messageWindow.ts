@@ -14,7 +14,7 @@
  * on its own — a malformed parameter must fail instead of silently widening
  * into a full read.
  *
- * Described in docs/specs/ui/remote-control.md (§5 白名单与增量拉取).
+ * Described in docs/specs/remote/remote-channel.md (§5 白名单与增量拉取).
  */
 
 import type { MessageWindow } from "wave-agent-sdk";

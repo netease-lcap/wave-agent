@@ -174,7 +174,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
       <div className="header-buttons">
         {/* 新建对话：IDE 一对齐全出；远控页与「会话」入口成对出现（图标重绑
             到 RemoteNewSessionDialog，底层是 initialize 而非 clearChat —— spec
-            remote-control.md「Web 端也能发起新会话」故事）；桌面端仍由
+            remote/remote-web.md「Web 端也能发起新会话」故事）；桌面端仍由
             DesktopSidebar 拥有，不在此渲染。 */}
         {(!hideSessionButtons || sessionSwitchButton) && (
           <Tooltip text="新建对话" position="bottom">
@@ -217,8 +217,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             >
               {/* 这一端列的是**会话**（进程内活会话，可切可标记），不是「历史」——
                   复用 IDE 那个 HistoryIcon（时钟 + 回溯箭头）会让图标说一件页面上
-                  不存在的事（页面不提供历史入口，见 spec remote-control.md「Web 页
-                  作为第五种宿主」场景 5 / 24）。codicon 双气泡读作「多条对话」，与
+                  不存在的事（页面不提供历史入口，见 spec remote/remote-web.md「Web 页
+                  作为第五种宿主」场景 5/21）。codicon 双气泡读作「多条对话」，与
                   旁边「新建对话」同一族；字号在手机档随其余图标一起抬（40×40 / 20px，
                   见 remote-page.css 与场景 27）。 */}
               <span
@@ -230,7 +230,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         )}
         {/* 远控页专属：「换机器」的常驻入口——一个主屏图标管所有机器，入口
             收在页面侧的 shim（REMOTE_PAGE_GATED，audit:commands 把关），不改
-            其余四端的顶栏（spec remote-control.md「机器列表与切换」场景 5）。 */}
+            其余四端的顶栏（spec remote/remote-machine.md「机器列表与切换」场景 5）。 */}
         {onSwitchMachine && (
           <Tooltip text="切换电脑" position="bottom">
             <button
@@ -282,7 +282,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
       </div>
       {/* 远控页改成整页列表后，这个下拉在那一端不再渲染（`onOpenSessionPage`
           一传就只走整页那条路）；IDE / 桌面端的入口与这份下拉一个字都没改
-          （spec remote-control.md「手机端的会话列表与删除」场景 1）。 */}
+          （spec remote/remote-web.md「手机端的会话列表与删除」场景 1）。 */}
       {sessionListVisible && !onOpenSessionPage && (
         <SessionListPopup
           sessions={sessions}

@@ -18,7 +18,7 @@
  * **What each entry claims**: `surfaces` is the set of front ends that really
  * implement it. It is a capability statement, not a label: an entry listed for
  * a surface that has no handling behind it produces exactly the defect spec
- * ui/remote-control.md 场景 24 forbids — a row in the popup that does nothing
+ * remote/remote-web.md 场景 21 forbids — a row in the popup that does nothing
  * when picked. `hostSlashCommands.test.ts` pins each surface's set, and the
  * remote-page set is also cross-checked there against the remote allowlist,
  * which is the other half of the same promise (popup lists it ⇒ picking it
@@ -96,7 +96,7 @@ export const HOST_SLASH_COMMANDS: readonly HostSlashCommandSpec[] = [
     description: "清除对话历史并重置会话",
     runOnSelect: true,
     // 桌面端整端移除了 `/clear`（2026-09-05 拍板，见 clear-command.md 与
-    // ui/remote-control.md 场景 24）。
+    // remote/remote-web.md 场景 21）。
     surfaces: ["vscode", "jetbrains", "remote-page"],
   },
   {

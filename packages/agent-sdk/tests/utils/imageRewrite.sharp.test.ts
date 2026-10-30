@@ -259,7 +259,7 @@ describe.skipIf(!sharp)("planOutboundImage with the real codec", () => {
 });
 
 // ---- 远控页取图：预算由调用方给（一帧中继报文），失败只报不降级 -------------
-// spec ui/remote-control.md「点消息里的图片路径看原图」。与上面的
+// spec remote/remote-web.md「点消息里的图片路径看原图」。与上面的
 // `planOutboundImage` 是同一座阶梯，区别只在预算来源与失败语义。
 describe.skipIf(!sharp)("shrinkImageForTransport with the real codec", () => {
   beforeEach(() => {

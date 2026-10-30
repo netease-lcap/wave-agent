@@ -19,7 +19,7 @@
  * (spec ui/image-pasting.md「已发送图片的标签点开就能看」) so every GUI host can
  * preview them without asking anybody for a file — those go out to local hosts
  * untouched, and only the remote Web page gets them cut (`messageForRemote`,
- * spec ui/remote-control.md「远端通道只开一个白名单」场景 10).
+ * spec remote/remote-channel.md「远端通道只开一个白名单」场景 10).
  *
  * Copies are shallow and made only where the field is actually present — the
  * common message (no images) keeps its identity and costs nothing.
@@ -61,7 +61,7 @@ export function toolBlockUpdateForUi(
 
 /**
  * The remote Web page's copy of a message: `messageForUi`, plus user image
- * bytes blanked out (docs/specs/ui/remote-control.md「远端通道只开一个白名单」
+ * bytes blanked out (docs/specs/remote/remote-channel.md「远端通道只开一个白名单」
  * 场景 10).
  *
  * Image bytes stay in the block for GUI hosts (they preview them in place), but

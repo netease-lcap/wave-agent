@@ -378,7 +378,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // on-disk session scan of the current conversation's host, which is what
   // makes CLI-created sessions reachable (they are not in the desktop index).
   const [resumePickerOpen, setResumePickerOpen] = useState(false);
-  // 远控页的「会话」整页列表（spec remote-control.md「手机端的会话列表与删除」）。
+  // 远控页的「会话」整页列表（spec remote/remote-web.md「手机端的会话列表与删除」）。
   // 只有那一端会置 true——IDE / 桌面端的入口仍是各自的会话面（下拉 / 侧栏），
   // 它们连这个开关都不会碰。
   const [sessionPageOpen, setSessionPageOpen] = useState(false);
@@ -487,7 +487,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // branch buys it the IDE's UI, but not the IDE's capabilities (no editor, no
   // settings tab, no plugin manager, no local host to route a command to), so
   // the entries below that can only fail there are not rendered at all
-  // (spec ui/remote-control.md 场景 24).
+  // (spec remote/remote-web.md 场景 21).
   const isRemotePage = isRemotePageHost();
   // Batch 2 (designer prototype): desktop settings full-page and session board
   // view switches. Only the root instance (paneId undefined) owns these — a
@@ -1410,7 +1410,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         break;
       // Web Push 开关的状态（远控 Web 页）：页面挂载时问一次，之后开 / 关各答一次，
       // 每次都把四个事实整组发回来 —— 菜单照**当前事实**渲染，不做乐观猜测（spec
-      // remote-control.md「锁屏也能知道」场景 6/7）。
+      // remote/remote-pwa.md「锁屏也能知道」场景 6/7）。
       case "pushState":
         if (!forThisPane(message)) break;
         setPushState({
@@ -1832,7 +1832,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         //
         // Exception — the remote-control Web page: it has no editor column and
         // no pane system, so the dialog IS the plan's carrier
-        // (spec core/plan-mode.md 场景 13 / ui/remote-control.md 场景 22). This
+        // (spec core/plan-mode.md 场景 13 / remote/remote-web.md 场景 19). This
         // is the single place that decides it; ConfirmationDialog just renders
         // whatever plan arrived.
         const planStrippedToPanel =
@@ -2375,7 +2375,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   //
   // 它只对「原地」动作成立，所以远控页**不套用**：页面上的「新建对话」在机器上
   // 另起一条会话（initialize）、「会话」入口只改页面自己这份 sessionId 与视图，
-  // 两条都不触动电脑侧正在跑的那条会话（spec remote-control.md「Web 端也能发起
+  // 两条都不触动电脑侧正在跑的那条会话（spec remote/remote-web.md「Web 端也能发起
   // 新会话」场景 10 与「Web 页作为第五种宿主」场景 10；桌面端多会话并行模型同样
   // 不吃这条守卫）。
   const inPlaceBusy =
@@ -2406,7 +2406,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   }, [postToHost]);
 
   // 远控页顶栏「新建对话」：不是 clearChat —— 它打开弹窗，经 shim 发
-  // initialize 在远端机器上建一个全新会话（spec remote-control.md「Web 端也能
+  // initialize 在远端机器上建一个全新会话（spec remote/remote-web.md「Web 端也能
   // 发起新会话」）。它是新建、不是原地清空，所以页面上不吃那条忙闲守卫——电脑侧
   // 那条会话照旧跑着（同故事场景 10）。
   const handleRemoteNewSession = useCallback(() => {
@@ -2557,7 +2557,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // Remote-control Web page: the host has no `openExternal` to route to (the page
   // IS a browser), so these two open a plain browser tab instead of a dead
-  // request — same URL, native behaviour (spec ui/remote-control.md 场景 24).
+  // request — same URL, native behaviour (spec remote/remote-web.md 场景 21).
   const openInBrowser = useCallback((url: string) => {
     window.open(url, "_blank", "noopener,noreferrer");
   }, []);
@@ -2756,7 +2756,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
       // 宿主本地的斜杠命令：**剩下的**那些（设置页 / 插件市场 / 钩子 / 技能 /
       // 子代理 / MCP / 计划 / 远程控制自身）远程控制 Web 页一律不拦
-      // （spec ui/remote-control.md 场景 24）：它们背后要么是宿主的**界面**能力，
+      // （spec remote/remote-web.md 场景 21）：它们背后要么是宿主的**界面**能力，
       // 要么只有宿主侧才有意义，拦下来只会打开一个永远加载中的死弹窗；页面不拦 =
       // 文本按普通消息发给宿主。服务端真能做的两条（/compact、/status）不受影响。
       //
@@ -3203,7 +3203,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       // 后台任务中断或与 UI 脱离，压缩中切换还会让压缩摘要写进切换后的会话
       // （spec message-compact「压缩期间的会话保护」）。远控页的「会话」入口不在
       // 此列——它只改页面自己这份视图，电脑侧那条会话照旧跑着（spec
-      // remote-control.md「Web 页作为第五种宿主」场景 10）。
+      // remote/remote-web.md「Web 页作为第五种宿主」场景 10）。
       if (inPlaceGuard) return;
 
       const restore = () => {
@@ -3369,7 +3369,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     postToHost({ command: "backgroundCurrentTask" });
   }, [postToHost]);
 
-  // Web Push 通知开关（spec remote-control.md「锁屏也能知道」）：手机页是唯一跑在
+  // Web Push 通知开关（spec remote/remote-pwa.md「锁屏也能知道」）：手机页是唯一跑在
   // 浏览器里、能持有推送订阅的宿主，所以这段只有它有。页面侧 shim 才是两个事实的
   // 持有者（浏览器能力位、中继登记的订阅 id），这里不问就不猜：挂载时问一次，之后
   // 每次开 / 关都由 shim 把四个事实整组发回来（见 `pushState` 那条 case）。
@@ -3408,7 +3408,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 底栏选中一个模型：即时回显新模型名（不等宿主回执——setModel 在会话内是同步
   // 生效的），再让宿主落盘。远控页先落进 `pendingModelSwitch`：`setModel` 写的是
   // 用户级配置文件，换的是这台机器上所有会话（以及此后新开的）的模型，值得在手机
-  // 上问一次（spec ui/remote-control.md）。
+  // 上问一次（spec remote/remote-web.md「页面能执行的那批宿主命令」）。
   const handleModelSelect = useCallback(
     (model: string) => {
       if (isRemotePage) {
@@ -5248,7 +5248,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // stay visible in every layout, including the desktop split-view shell.
   const dialogs = (
     <>
-      {/* 远控页的「会话」整页列表（spec remote-control.md「手机端的会话列表与删除」）。
+      {/* 远控页的「会话」整页列表（spec remote/remote-web.md「手机端的会话列表与删除」）。
           覆盖在对话之上而不是替换它：对话仍在挂载状态，输入草稿、滚动位置、正在
           跑的那一轮都不因为「去看一眼列表」而丢。 */}
       {isRemotePage && sessionPageOpen && (
@@ -5457,7 +5457,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         sessionsLoading={state.sessionsLoading}
         // 会话列表的「待确认 / 运行中」标记：只有远控 Web 页有这两组数据（它没有
         // 侧栏，会话列表就是它唯一能标记状态的地方）；其余四端传 undefined，列表
-        // 照旧只渲染标题与时间（spec remote-control.md「待确认只在它自己的对话里
+        // 照旧只渲染标题与时间（spec remote/remote-web.md「待确认只在它自己的对话里
         // 弹，对话状态在会话列表标出来」）。
         sessionStatus={isRemotePage ? state.sessionStatus : undefined}
         // `/resume` (IDE hosts) opens this very popup — one list, one scope, no
@@ -5478,7 +5478,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         hideSessionButtons={isDesktop || isRemotePage}
         sessionSwitchButton={isRemotePage}
         // 远控页专属：顶栏「会话」打开整页列表（不再是借来的下拉）。其余四端不传，
-        // 那一端仍是原来的弹窗/侧栏（spec remote-control.md「手机端的会话列表与
+        // 那一端仍是原来的弹窗/侧栏（spec remote/remote-web.md「手机端的会话列表与
         // 删除」场景 1）。
         onOpenSessionPage={
           isRemotePage ? () => setSessionPageOpen(true) : undefined

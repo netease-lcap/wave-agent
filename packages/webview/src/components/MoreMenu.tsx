@@ -54,7 +54,7 @@ interface MoreMenuProps {
   anchorRect?: DOMRect;
   /**
    * Remote Web page (the fifth host) only: the Web Push switch (spec
-   * ui/remote-control.md「锁屏也能知道」). The four local hosts pass nothing and
+   * remote/remote-pwa.md「锁屏也能知道」). The four local hosts pass nothing and
    * the entry is not rendered — they have no browser subscription to hold.
    */
   pushNotifications?: PushNotificationControl;
@@ -139,7 +139,7 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   // tab webview, a login flow) and this page has neither — clicking them would
   // do nothing at all, so they are not rendered. 企业控制台 / 帮助文档 stay: they
   // are just URLs, and the page's handler opens them in a browser tab
-  // (spec ui/remote-control.md 场景 24).
+  // (spec remote/remote-web.md 场景 21).
   const remotePage = isRemotePageHost();
 
   // Roving keyboard model shared with the other custom dropdowns: Arrow keys

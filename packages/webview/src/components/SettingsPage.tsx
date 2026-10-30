@@ -242,7 +242,7 @@ const NAV_GROUPS: NavGroup[] = [
       },
       // 远程控制（2026-10-17 从独立弹层搬进来）：与 MCP 服务同理，它是这台机器
       // 上的一项**能力**，不该自成一个弹窗；入口仍是 `/remote-control`，只是打开
-      // 设置页并选中这一项（spec ui/remote-control.md「`/remote-control` 打开设置
+      // 设置页并选中这一项（spec remote/remote-control.md「`/remote-control` 打开设置
       // 页的远程控制选项卡」）。放在「通用」组第三位：它改的是「这台机器能被谁
       // 接管」，与全局设置同一层级，不隶属于某个项目。
       {

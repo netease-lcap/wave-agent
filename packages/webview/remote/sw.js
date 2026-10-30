@@ -5,7 +5,7 @@
  * screen) has no page to receive anything; the relay's `Web Push` is delivered
  * to the browser's push service and wakes *this* file, not the page. That is
  * the only path by which "a session is waiting for you" reaches someone who is
- * not looking at the page — see spec `ui/remote-control.md`
+ * not looking at the page — see spec `remote/remote-web.md`
  * 「锁屏也能知道——会话等着我、或者跑完了」.
  *
  * What it deliberately does **not** do: cache the page, intercept fetches, or

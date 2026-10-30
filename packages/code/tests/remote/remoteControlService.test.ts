@@ -901,7 +901,7 @@ describe("RemoteControlService", () => {
     expect(socket.frames()).toHaveLength(0);
   });
 
-  // Spec ui/remote-control.md「远端通道只开一个白名单」场景 10: user image bytes
+  // Spec remote/remote-channel.md「远端通道只开一个白名单」场景 10: user image bytes
   // stay in the block for GUI hosts, but must not go over the relay.
   it("should blank user image bytes in a getMessages result", async () => {
     const messages = [

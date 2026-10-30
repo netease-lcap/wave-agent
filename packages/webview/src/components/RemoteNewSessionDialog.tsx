@@ -2,7 +2,7 @@
  * RemoteNewSessionDialog — 远控 Web 页「新建对话」弹窗。
  *
  * 顶栏「新建对话」图标在远控页被重绑到这里（与桌面端远程主机「新对话」同一
- * 交互形状：最近目录 + 浏览…，见 spec remote-control.md「Web 端也能发起新
+ * 交互形状：最近目录 + 浏览…，见 spec remote/remote-web.md「Web 端也能发起新
  * 会话」）。底下的动作与 IDE 的 clearChat 完全不同——它不就地清空当前会话：
  * 目录选定后经 shim 发 `initialize`（中继网关收敛入参）在远端机器上真实建一个
  * 新会话，`newSessionCreated` 回来时 shim 已切到新 sessionId 并拉了首屏快照，

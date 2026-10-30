@@ -23,7 +23,7 @@ import { normalizeFilePath } from "./messageUtils";
  * - `"all"`：本机宿主（CLI / 桌面 / IDE）——路径都能交给宿主打开。
  * - `"images"`：只把**图片**路径变成可点入口。远控页用这一档：页面上没有
  *   编辑器，文本路径无处可去；但图片可以就地显示（宿主按需取图并压到单帧
- *   预算内，见 spec `ui/remote-control.md`「点消息里的图片路径看原图」）。
+ *   预算内，见 spec `remote/remote-web.md`「点消息里的图片路径看原图」）。
  * - `"off"`：全部退化为纯文本。
  *
  * 它替掉的是原来那个 boolean：boolean 表达不了「只开图片这一半」，而把远控页
@@ -160,7 +160,7 @@ export function detectFilePathToken(
   // 点扩展名是四条通道的共同前提：无扩展名的路径（/etc/hosts、/usr/local/bin）
   // 在命令输出与散文里大多是日志串或接口路径，放进来就是误链。
   if (!HAS_EXT_RE.test(body)) return null;
-  // 远端那一档只把**图片**变成可点入口（spec ui/remote-control.md「点消息里的
+  // 远端那一档只把**图片**变成可点入口（spec remote/remote-web.md「点消息里的
   // 图片路径看原图」）：文本路径在页面上仍然无处可去，链上去只会是「点了没
   // 反应」。扩展名在这里是路由提示，宿主还会按解码后的真实容器再判一次。
   if (opts.imagesOnly) {

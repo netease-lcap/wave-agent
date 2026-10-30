@@ -329,7 +329,7 @@ export interface UpdateTasksMessage extends HostToWebviewMessageBase {
 
 /**
  * 会话列表的状态标记：哪些对话**在等用户确认**、哪些**正在生成**（spec
- * remote-control.md「待确认只在它自己的对话里弹，对话状态在会话列表标出来」）。
+ * remote/remote-web.md「待确认只在它自己的对话里弹，对话状态在会话列表标出来」）。
  *
  * 两个 id 集合、而不是每会话一条元数据上的字段，因为它们来自两次不同的读且
  * 覆盖面不同：`listPendingPermissions` 报告**全部**会话的待确认（正因如此才能
@@ -368,7 +368,7 @@ export interface SessionListStatus {
 }
 
 /**
- * Web Push 通知开关在页面上的四个事实（spec remote-control.md「锁屏也能知道——
+ * Web Push 通知开关在页面上的四个事实（spec remote/remote-pwa.md「锁屏也能知道——
  * 会话等着我、或者跑完了」）。
  *
  * 页面不做本地推断：能力位来自浏览器（有没有 Service Worker / `PushManager`），
@@ -1438,7 +1438,7 @@ export interface PrefillPromptMessage extends HostToWebviewMessageBase {
  *
  *  `worktreeRemoved` 是本条回复唯一的新事实：电脑侧定位不到那条会话的工作树时
  *  **会话照样删掉**，只是工作树没跟着删——页面据此说「会话已删除，工作树没动」，
- *  而不是把一次「删了一半」报成彻底失败（spec remote-control.md「手机端的会话列表
+ *  而不是把一次「删了一半」报成彻底失败（spec remote/remote-web.md「手机端的会话列表
  *  与删除」场景 8）。 */
 export interface SessionDeletedMessage extends HostToWebviewMessageBase {
   command: "sessionDeleted";
@@ -1479,7 +1479,7 @@ export interface RecentWorkdirsMessage extends HostToWebviewMessageBase {
 
 /**
  * 远控 Web 页点图片路径取图（回复 `getImagePreview`，spec
- * ui/remote-control.md「点消息里的图片路径看原图」）。
+ * remote/remote-web.md「点消息里的图片路径看原图」）。
  *
  * 页面自己没有文件系统、消息里的图片字节也在过中继前被剥掉了，所以看图只能是
  * 一次「向宿主要」。`dataUrl` 与 `error` 互斥：要么给图，要么给一句人能看懂

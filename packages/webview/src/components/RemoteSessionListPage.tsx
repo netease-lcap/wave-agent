@@ -38,7 +38,7 @@ const projectName = (workdir?: string): string => {
 
 /**
  * 一条只出一个点，优先级 **待确认 > 运行中 > 有后台任务在跑**（spec
- * ui/remote-control.md「手机端的会话列表与删除」场景 2）：被审批卡住的对话不算
+ * remote/remote-web.md「手机端的会话列表与删除」场景 2）：被审批卡住的对话不算
  * 「在跑」，而前台回合结束、后台任务还在转的对话必须标出来——那是「它还在动」的
  * 唯一信号。当前那条只标「运行中」（它自己的审批卡就弹在眼前，重复提醒没有意义）。
  */
@@ -88,7 +88,7 @@ interface RemoteSessionListPageProps {
 }
 
 /**
- * 远控 Web 页的**整页**会话列表（spec ui/remote-control.md「手机端的会话列表与
+ * 远控 Web 页的**整页**会话列表（spec remote/remote-web.md「手机端的会话列表与
  * 删除」）。只由 `ChatApp` 在 `isRemotePage` 分支挂载——IDE 端的「历史对话」与
  * 桌面端的会话入口仍是 `SessionListPopup`，那份下拉一个字都没改。
  *

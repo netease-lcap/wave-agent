@@ -1,5 +1,5 @@
 /**
- * 远控页按需取图（spec `ui/remote-control.md`「点消息里的图片路径看原图」）。
+ * 远控页按需取图（spec `remote/remote-web.md`「点消息里的图片路径看原图」）。
  *
  * 页面读不到文件：消息里的图片字节在过中继前就被剥掉了（`uiPayload.ts` 的
  * `messageForRemote`），页面也没有文件系统。所以「点一个 `/tmp/shot.png` 看图」

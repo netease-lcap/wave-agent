@@ -328,7 +328,7 @@
    * `listDaemonSessions`），所以各自维护、不互相推导；当前这条的「运行中」还在
    * `runningIds` 里按 `streaming` 现算，见那里。合起来是本故事的整个设计：「弹哪张
    * 卡是会话级的、标记是进程级的」——读是进程级的（报告全部会话），弹只弹当前这条，
-   * 别条会话的等待由这两个集合在会话列表上承接（spec remote-control.md「待确认只在
+   * 别条会话的等待由这两个集合在会话列表上承接（spec remote/remote-web.md「待确认只在
    * 它自己的对话里弹，对话状态在会话列表标出来」）。
    */
   var waitingSessionIds = [];
@@ -2285,7 +2285,7 @@
   // Two facts, two reads, one broadcast to the session list. The *card* is
   // per-conversation and the *marker* is process-wide: this page pops an
   // approval only in the conversation that asked, and answers the question
-  // 「别处有东西在等我吗」 on the session list instead (spec remote-control.md
+  // 「别处有东西在等我吗」 on the session list instead (spec remote/remote-web.md
   // 「待确认只在它自己的对话里弹，对话状态在会话列表标出来」).
 
   /**
@@ -2627,7 +2627,7 @@
         return;
       }
 
-      // ── 会话列表行级动作：删除（spec ui/remote-control.md「手机端的会话列表与
+      // ── 会话列表行级动作：删除（spec remote/remote-web.md「手机端的会话列表与
       // 删除」）──
       //
       // 删除 = `destroy`（可选 `removeWorktree`）。**没有**放行裸 `removeWorktree`：
@@ -2774,7 +2774,7 @@
         );
         return;
 
-      // `/btw` 旁路提问（spec ui/remote-control.md「Web 页也能用 /btw 旁路提问」）。
+      // `/btw` 旁路提问（spec remote/remote-web.md「Web 页也能用 /btw 旁路提问」）。
       // 与 compact 不同，它**有**回执而且回执就是答案本身，所以不能走
       // controlRequest（那一条只报失败）：整段答案在这里落地成 `btwResponse`，
       // 流式尾部另走 `btwContent` 通知（见 deliver）。question 原样回给页面——
@@ -2987,7 +2987,7 @@
         return;
 
       case "getImagePreview": {
-        // 点消息里的图片路径看原图（spec ui/remote-control.md「点消息里的图片
+        // 点消息里的图片路径看原图（spec remote/remote-web.md「点消息里的图片
         // 路径看原图」）：页面自己没有文件系统，字节只能向宿主按需要。宿主读盘、
         // 按解码出的真实容器判型、压进单帧预算，回一张 dataUrl。
         //
@@ -3113,7 +3113,7 @@
           });
         return;
 
-      // ── 发起新会话（spec ui/remote-control.md「Web 端也能发起新会话」）──
+      // ── 发起新会话（spec remote/remote-web.md「Web 端也能发起新会话」）──
       // The dialog itself is the page's own UI state; the shim only ferries the
       // four whitelisted RPCs behind it. All four are session-less utility
       // calls — the envelope must not carry the page's current sessionId

@@ -80,7 +80,7 @@ function mergeSpec(method: string, params: unknown): MergeSpec | undefined {
     };
   }
 
-  // `/btw` side question (`btwContent`, spec ui/remote-control.md「Web 页也能用
+  // `/btw` side question (`btwContent`, spec remote/remote-web.md「Web 页也能用
   // /btw 旁路提问」场景 4). Same family as the three above: `content` is a pure
   // delta the panel accumulates, so the merged frame carries exactly the bytes
   // the individual ones would. The key carries the question **and** the channel
@@ -102,7 +102,7 @@ function mergeSpec(method: string, params: unknown): MergeSpec | undefined {
   // like the three above. The key needs no stream identity: one compaction runs
   // one stream per session, and both its start and its end
   // (`compactionStateChange`) are discrete events that flush this buffer first
-  // (spec: ui/stdio-transport.md「流式通知纯增量负载」场景 7, ui/remote-control.md
+  // (spec: ui/stdio-transport.md「流式通知纯增量负载」场景 7, remote/remote-web.md
   // 场景 10).
   if (method === "compactionContentUpdate") {
     if (typeof p.content !== "string") return undefined;

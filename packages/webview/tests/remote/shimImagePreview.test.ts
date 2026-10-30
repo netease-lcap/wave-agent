@@ -1,5 +1,5 @@
 /**
- * 手机页点图片路径取图（spec `ui/remote-control.md`「点消息里的图片路径看原
+ * 手机页点图片路径取图（spec `remote/remote-web.md`「点消息里的图片路径看原
  * 图」）在 shim 这一层的形状：一条命令进、一条中继请求出、一条回包交给页面。
  *
  * 与 `shimSessions.test.ts` 共用同一套驱动方式（真 shim.js + 假 WebSocket +

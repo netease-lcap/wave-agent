@@ -389,7 +389,7 @@ async function rewrite(
  * Shrink an image so its **encoded bytes** fit `maxRawBytes`, walking the same
  * ladder as the outbound rewrite.
  *
- * This exists for the remote-control page (spec ui/remote-control.md「点消息里的
+ * This exists for the remote-control page (spec remote/remote-web.md「点消息里的
  * 图片路径看原图」): a screenshot has to fit inside one relay frame — 512 KiB of
  * JSON, which after base64 leaves roughly 380 KiB of image — and the page can
  * only render what it receives.

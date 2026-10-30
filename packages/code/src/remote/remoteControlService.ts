@@ -132,7 +132,7 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   "renameSession",
   "compact",
   "getSlashCommands",
-  // 发起新会话（spec ui/remote-control.md「Web 端也能发起新会话」）：白名单
+  // 发起新会话（spec remote/remote-web.md「Web 端也能发起新会话」）：白名单
   // 从「只碰已存在的会话」显式扩到「可在选定目录建会话」。initialize 在下方
   // 收敛入参——放行的是「建一条会话」这个能力，不是它的整张参数表。
   "initialize",
@@ -639,7 +639,7 @@ export class RemoteControlService implements RemoteControlController {
     result: unknown,
   ): void {
     // The page's copy: user image bytes never go over the relay
-    // (spec ui/remote-control.md「远端通道只开一个白名单」场景 10).
+    // (spec remote/remote-channel.md「远端通道只开一个白名单」场景 10).
     const forRemote = resultForRemote(result);
     const envelope: RelayEnvelope = {
       id: replyId,

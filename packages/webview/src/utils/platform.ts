@@ -32,7 +32,7 @@ export const isDesktopHost = (): boolean =>
  * distinguishes "an IDE host" from "a browser page holding a token", and the
  * difference is a capability difference, not a taste one: the page has no
  * editor to open a file in, no settings tab, no plugin manager, no local host
- * to route a command to (spec `ui/remote-control.md` 场景 23/24).
+ * to route a command to (spec `remote/remote-web.md` 场景 20/21).
  *
  * Prefer this over testing `waveHostType !== "desktop"`: the VSCE and JetBrains
  * hosts are also not desktop, and they *do* have all of the above.

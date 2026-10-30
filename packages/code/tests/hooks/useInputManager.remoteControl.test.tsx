@@ -10,7 +10,7 @@ type InputManagerState = ReturnType<typeof useInputManager>;
  * `/remote-control` opens the remote-control overlay and takes no arguments:
  * the panel itself shows the state and the one action that is valid right now,
  * so there is no `on` / `off` / `status` grammar to hand through.
- * (spec: docs/specs/ui/remote-control.md, 前台 CLI 故事场景 13)
+ * (spec: docs/specs/remote/remote-web.md, 前台 CLI 故事场景 13)
  */
 describe("useInputManager /remote-control command", () => {
   const setup = () => {

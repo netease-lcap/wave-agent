@@ -1557,7 +1557,7 @@ export const MessageInput = forwardRef<
   }, [calculateDropdownPosition]);
 
   // 「上传文件」要宿主的 artifacts 上传能力，远程控制 Web 页没有它
-  // （spec ui/remote-control.md 场景 24）—— 页面上这一项不渲染，菜单里只剩
+  // （spec remote/remote-web.md 场景 21）—— 页面上这一项不渲染，菜单里只剩
   // 历史提示词。
   const plusMenuItems = [
     ...(isRemotePageHost()
@@ -1624,7 +1624,7 @@ export const MessageInput = forwardRef<
       // through so the host keeps its own Ctrl+B binding (e.g. VS Code's
       // Toggle Sidebar). Still not taken over on the remote-control Web page:
       // that page has its own visible entry now (the button on the assistant
-      // message, spec ui/remote-control.md 场景 11), a phone browser has no
+      // message, spec remote/remote-web.md 场景 11), a phone browser has no
       // physical Ctrl+B, and swallowing the chord there would only fight the
       // browser's own shortcuts.
       if (
@@ -1775,7 +1775,7 @@ export const MessageInput = forwardRef<
       // `@` 文件提及：远控页现在也有宿主能力了（第二批解禁）——shim 把
       // `requestFileSuggestions` 转成 `searchFiles`，工作目录由宿主按会话取。
       // 这条门禁此前存在，是因为发出去没人应答、下拉永远停在「正在搜索文件…」；
-      // 有了回执，那条理由随之消失（spec ui/remote-control.md「页面能执行的那批
+      // 有了回执，那条理由随之消失（spec remote/remote-web.md「页面能执行的那批
       // 宿主命令」场景 7）。
       const mentionState: AtMentionState = detectAtMention(
         textBeforeCursor,
