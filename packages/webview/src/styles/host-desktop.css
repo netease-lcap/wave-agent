@@ -332,6 +332,15 @@
   width: 32px;
   height: 32px;
 }
+/* 底栏「+」「/」的桌面端矢量（1030 第十五轮，设计师给的两个 32 画板 SVG）：
+   32 画板按 32 css px 显示（同 24 画板功能图标「artboard = 显示尺寸」），
+   故图标盒与按钮同宽、墨迹只有 11/12px 居中；base `.toolbar-icon` 的 16px
+   会把 32 画板缩到 16 ⇒ 墨迹只剩 5.5px，所以这里必须放开。只在桌面端渲染
+   这颗 class（MessageInput 里按 isDesktopHost() 分叉），IDE 宿主仍是 16px 旧图标。 */
+[data-host="desktop"] .toolbar-icon-button .toolbar-icon-32 {
+  width: 32px;
+  height: 32px;
+}
 
 /* 压缩上下文按钮：32px 高，整体 59×32（codechat 图形按钮）：
    16 icon + 4 gap + 约 31 文字 + 4×2 padding = 59 */
@@ -2113,33 +2122,70 @@
 [data-host="desktop"][data-theme="dark"] .file-tab-more-trigger:hover {
   background: rgba(255, 255, 255, 0.12);
 }
+/* ═══ 1030 第七轮：文件标签的两张菜单按「Menus」契约收口（仅桌面端）═══
+   评论：`div.file-tab-more-menu`「big.log / guide.md」「检查是否符合下拉菜单规范，并优化」。
+   族内两处同一套皮肤：`.file-tab-more-menu`（标签溢出后的「更多文件」）与
+   `.file-tab-menu`（标签右键菜单）。契约 references/design-system.md「Menus」：
+   容器 bg-overlay + 1px 更浅描边 + r12 + shadow-popover + 内衬 8、标准宽 200；
+   单行项桌面端 28 高 / 内衬 0 8 / r6 / 14·22 / 400 / 静止 text-regular；
+   hover fill-hover + text-primary；键盘焦点独立可见。
+   改前实测（1440×1000）：容器 0 描边、宽 156、深色阴影是自定义的
+   `0 0 12px 40%`（token 是 `0 12px 30px 40%`）；项高 32、行高 normal、
+   静止色取 text-primary（#1F2329 / #E5E7E8，比契约的 text-regular 深一档）、
+   hover 只换底不换字色；键盘焦点是 UA 的 `1px auto rgb(0,95,204)` 蓝环。 */
 [data-host="desktop"] .file-tab-more-menu,
 [data-host="desktop"] .file-tab-menu {
+  box-sizing: border-box;
+  min-width: 200px;
+  /* 宽度钉死 200，不随文件名长短浮动（设计师 2026-10-30「菜单宽度不浮动」）。
+     base 的 max-width:320 会让长名字把菜单撑到 320，与同族 13 个固定 200 的菜单
+     不一致；钉死后长名一律在项内尾部省略（项宽 182 = 200 − 16 内衬 − 2 边框）。 */
+  max-width: 200px;
   padding: 8px;
-  border: none;
+  border: 1px solid var(--cc-border-lighter, #ebeef5);
   border-radius: 12px;
   background: var(--cc-bg-overlay);
-  box-shadow: 0 0 12px rgb(0 0 0 / 12%);
+  box-shadow: var(--cc-shadow-popover);
 }
-[data-host="desktop"][data-theme="dark"] .file-tab-more-menu,
-[data-host="desktop"][data-theme="dark"] .file-tab-menu {
-  box-shadow: 0 0 12px rgb(0 0 0 / 40%);
+/* 溢出菜单的行高是 28，base 的 max-height 240 会把它切在第 9 行中间（改前实测
+   scrollHeight 268 / clientHeight 256，最后一行只露 12px）。容器是 border-box
+   ⇒ 取「9 行整」= 9×28 + 上下内衬 16 + 边框 2 = 270。 */
+[data-host="desktop"] .file-tab-more-menu {
+  max-height: 270px;
 }
-/* 字号 13 → 14（同一轮）。标签溢出后的「更多」菜单项，min-height 32 / 内衬 0 8
-   / 圆角 6 不动。 */
+/* 项：桌面单行 28 高。这里**不能用 flex 居中** —— 项里是裸文本（没有内层 span），
+   flex 会把文本包成匿名 flex 项，容器上的 `text-overflow: ellipsis` 就不再作用于它，
+   超长文件名会硬裁；保持 base 的 block 铺排 + 22 行高 + 上下 3px 内衬凑 28。 */
 [data-host="desktop"] .file-tab-menu-item,
 [data-host="desktop"] .file-tab-more-item {
-  min-height: 32px;
-  padding: 0 8px;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 3px 8px;
   border-radius: 6px;
-  color: var(--cc-text-primary);
+  color: var(--cc-text-regular);
   font-size: 14px;
-  display: flex;
-  align-items: center;
+  line-height: 22px;
+  font-weight: 400;
 }
 [data-host="desktop"] .file-tab-menu-item:hover,
 [data-host="desktop"] .file-tab-more-item:hover {
   background: var(--cc-fill-hover);
+  color: var(--cc-text-primary);
+}
+/* 键盘焦点：与设置页 listbox 选项同一套（2px 内收环，避免被 12px 容器圆角切角） */
+[data-host="desktop"] .file-tab-menu-item:focus-visible,
+[data-host="desktop"] .file-tab-more-item:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #a0a5a8);
+  outline-offset: -2px;
+}
+/* 空态「没有收起的文件」：与项同档 14/22 + 次要色，纵向占一行高度 */
+[data-host="desktop"] .file-tab-more-empty {
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--cc-text-secondary);
 }
 [data-host="desktop"] .file-pane-find {
   gap: 6px;
@@ -2183,10 +2229,37 @@
   border-color: transparent;
   color: var(--cc-text-primary);
 }
+/* ═══ 1030 空态体检第 3 条：空态的图标与文案统一走自家次要色 ═══
+   设计师 2026-10-30：「浅色档空态色其实没有绑定自家 token」。
+   根因：浅色变量块（`:root[data-host][data-theme="light"]`）**没有**桥
+   `--vscode-descriptionForeground`，只有深色块桥到 `--cc-text-secondary`。
+   于是浅色档下空态落宿主注入值（实测 #606060，随宿主主题漂移），深色才是
+   #A0A5A8 —— 同一组件两模式不同源，也绕开了 0916/0917 那批「图标/文字统一
+   到 --cc-text-*」的收口。
+
+   **为什么只用作用域、不在浅色块里做全局桥接**（这点重要，别顺手改成全局）：
+   全局桥接（`--vscode-descriptionForeground: var(--cc-text-secondary)` 写进
+   浅色块）会让浅色档**所有**吃该变量的地方一起变浅，实测连带 3 处控件从
+   #606060 → #6C7076 后掉到 **4.44:1**（`.diff-view-option` 的「并排」「未提交
+   改动」12px·500、`.artifacts-segment-btn` 的「自定义视图」14px·500 —— 它们
+   压在 `--cc-fill` 灰面上，本来只是勉强过线）。那属于分段控件、不是空态，不在
+   本轮范围内；要动应把它们换到 `--cc-text-regular`（#565A60），需另行确认。
+   所以这里把桥接收在空态族本身（元素级声明，覆盖 :root 继承），影响面 = 空态
+   与占位，其余宿主色消费点一律不动。 */
+[data-host="desktop"][data-theme="light"] .preview-tab-new,
+[data-host="desktop"][data-theme="light"] .desktop-panel-placeholder,
+[data-host="desktop"][data-theme="light"] .desktop-panel-empty,
+[data-host="desktop"][data-theme="light"] .artifacts-state,
+[data-host="desktop"][data-theme="light"] .file-pane-status--deleted,
+[data-host="desktop"][data-theme="light"] .file-pane-status--error,
+[data-host="desktop"][data-theme="light"] .file-pane-status--failed,
+[data-host="desktop"][data-theme="light"] .file-pane-status--loading {
+  --vscode-descriptionForeground: var(--cc-text-secondary);
+}
+
 [data-host="desktop"] .file-pane-find-count,
 [data-host="desktop"] .file-pane-find-note,
-[data-host="desktop"] .file-pane-goto-sep,
-[data-host="desktop"] .file-pane-placeholder-hint {
+[data-host="desktop"] .file-pane-goto-sep {
   color: var(--cc-text-secondary);
 }
 [data-host="desktop"] .file-pane-find-count--error,
@@ -2194,13 +2267,27 @@
   color: var(--cc-color-danger);
 }
 
+/* 1030 评论（点 `span.file-pane-host`「本地」）：「标签样式参考规范」。
+   她裁决的方向 = **描边标签**（不是填充块）：透明底 + 1px `--cc-border-light`
+   + `--cc-text-secondary` 字。0917 那版按「中性计数徽标」做成填充块
+   （`--cc-fill` 底 + `--cc-text-regular` 字）——那个配方是给**带数字的计数**用的，
+   这颗是主体标签（本地 / 宿主名），描边档更轻、也不抢右侧路径的注意力。
+   几何保持原样：盒高仍 20px（`border-box` + `line-height:18` 让 1px 描边收进盒内，
+   不会把 20 撑成 22），文字左缘距盒缘仍是 6px（`padding:0 5px` + 1px 描边），
+   宽度仍 36px、与路径的间距（gap 8 + margin-right 6 = 14px）都没动。
+   对比度：浅色 #6C7076 压工具栏白底 **4.98:1**、深色 #A0A5A8 压 #181A1B 约 5.4:1
+   （12px 文字都过 AA 4.5；0917 当时否掉 secondary 是因为那时底色是 #F0F2F5，
+   压在填充块上只有 4.44:1 —— 换成描边后底是白的，这条理由不再成立）。 */
 [data-host="desktop"] .file-pane-host {
   font-size: 12px;
-  line-height: 20px;
-  padding: 0 6px;
+  line-height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--cc-border-light);
   border-radius: 4px;
-  background: var(--cc-fill);
-  color: var(--cc-text-regular);
+  background: transparent;
+  color: var(--cc-text-secondary);
+  box-sizing: border-box;
+  height: 20px;
 }
 
 /* ═══ 0917 评论：「这里面有很明显的分割线，根据 skill 结合其他下拉菜单优化这个
@@ -2309,59 +2396,56 @@
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
 }
-/* 文本恢复按钮（preview error「重新加载」/ terminal exited「重启终端」/
-   remote forward error「重试」）：上述 icon-button 通用色会覆盖 base 的
-   --vscode-button-foreground/hover，这里按桌面语义主按钮重定（文字随按钮
-   前景反白，hover 保持实底加深） */
-[data-host="desktop"][data-theme="light"]
-  .preview-pane-error
-  .preview-pane-button,
-[data-host="desktop"][data-theme="light"]
-  .terminal-pane-exited
-  .preview-pane-button,
-[data-host="desktop"][data-theme="light"]
-  .preview-pane-forward-error
-  .preview-pane-button {
-  color: var(--vscode-button-foreground, #ffffff);
+/* ═══ 1030 第十四轮：面板三处错误态的文本按钮对齐「关闭标签」那颗 ═══
+   设计师评论（锚点 `button.file-pane-banner-action`「关闭标签」）：
+   「预览「重试」、终端「重启终端」、远程转发「重试」可以和这个按钮保持一致」。
+   这三处共用 `.preview-pane-button`（右侧面板工具条 24×24 图标键的类），
+   base 里只在 `width:auto` + `padding:4px 12px` + 主色实底上分叉；桌面端此前
+   只把圆角统一到 8 → 实测仍是 24 高 / 12px / 400 的主色实底，与「关闭标签」
+   的 32 高 / 14px 22px / 500 描边次键差一整档（1030 按钮一致性体检 F1）。
+   这里整颗换成「关闭标签」的实测档位（契约 §Buttons 的 Secondary outlined）：
+     32 高 / r8 / 左右 12 / 14px 22px / 500 / 透明底
+     + `--cc-border-light` 描边 + `--cc-text-primary` 字，
+     hover `--cc-fill-hover`、按下 `--cc-fill-pressed`。
+   ⚠ 连带（不连带就会贴住文案）：终端「已退出」与远程转发失败两块容器改前都是
+   `column` + **gap 8**（`TerminalPane.css:33` / `ChatApp.css:175`），而按钮一长到
+   32 高，8px 的间距就和「关闭标签」那块（gap 12）不在一个档 → 一并把 gap 收到
+   12（布局方向本来就一致，不重写 display/align，只补 gap，转发失败块另补
+   `flex/center/text-align` 之外什么都不动）。
+   范围：只有这三块错误态里的按钮 —— 同 class 的 24×24 工具条图标键不动；仅桌面端。
+   上一版这里的三段「按桌面语义主按钮重定色彩」规则（light/dark 各两段）随本次
+   档位变化整体作废，故删除而非叠加。 */
+[data-host="desktop"] .preview-pane-error .preview-pane-button,
+[data-host="desktop"] .terminal-pane-exited .preview-pane-button,
+[data-host="desktop"] .preview-pane-forward-error .preview-pane-button {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--cc-border-light, #e4e7ed);
+  border-radius: var(--cc-radius-md, 8px);
+  background: transparent;
+  color: var(--cc-text-primary, #1f2329);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
 }
-[data-host="desktop"][data-theme="light"]
-  .preview-pane-error
-  .preview-pane-button:hover,
-[data-host="desktop"][data-theme="light"]
-  .terminal-pane-exited
-  .preview-pane-button:hover,
-[data-host="desktop"][data-theme="light"]
-  .preview-pane-forward-error
-  .preview-pane-button:hover {
-  background: var(
-    --vscode-button-hoverBackground,
-    var(--vscode-button-background)
-  );
+[data-host="desktop"] .preview-pane-error .preview-pane-button:hover,
+[data-host="desktop"] .terminal-pane-exited .preview-pane-button:hover,
+[data-host="desktop"] .preview-pane-forward-error .preview-pane-button:hover {
+  background: var(--cc-fill-hover, #eef0f3);
+  color: var(--cc-text-primary, #1f2329);
 }
-[data-host="desktop"][data-theme="dark"]
-  .preview-pane-error
-  .preview-pane-button,
-[data-host="desktop"][data-theme="dark"]
-  .terminal-pane-exited
-  .preview-pane-button,
-[data-host="desktop"][data-theme="dark"]
-  .preview-pane-forward-error
-  .preview-pane-button {
-  color: var(--vscode-button-foreground, #ffffff);
+[data-host="desktop"] .preview-pane-error .preview-pane-button:active,
+[data-host="desktop"] .terminal-pane-exited .preview-pane-button:active,
+[data-host="desktop"] .preview-pane-forward-error .preview-pane-button:active {
+  background: var(--cc-fill-pressed, #e7e9ed);
 }
-[data-host="desktop"][data-theme="dark"]
-  .preview-pane-error
-  .preview-pane-button:hover,
-[data-host="desktop"][data-theme="dark"]
-  .terminal-pane-exited
-  .preview-pane-button:hover,
-[data-host="desktop"][data-theme="dark"]
-  .preview-pane-forward-error
-  .preview-pane-button:hover {
-  background: var(
-    --vscode-button-hoverBackground,
-    var(--vscode-button-background)
-  );
+
+/* 按钮↔文案间距：两块容器改前 gap 8 → 12，与「关闭标签」那块（gap 12）同档。
+   只补 gap（预览错误态 base 本来就是 12，不在本组）。 */
+[data-host="desktop"] .terminal-pane-exited,
+[data-host="desktop"] .preview-pane-forward-error {
+  gap: 12px;
 }
 /* 选中态改蓝（1029 第十四轮，设计师三条评论）：
    - `button.preview-pane-button.active`「这里的选中状态改为蓝色，背景是浅蓝」
@@ -3961,6 +4045,28 @@
 [data-host="desktop"][data-theme="dark"]
   .desktop-panel-empty-item:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.08);
+}
+
+/* ── 1030 评论（她点 `span.desktop-panel-empty-item-label`「预览」，参照物 =
+   输入框左侧主机键 `span.desktop-host-name`「本地」）：「默认的图标和文本颜色
+   要和这里保持一致，hover 时才变色」。
+   空态五个入口原先吃 base 的 `--vscode-foreground`（light #202020 / dark
+   #E5E7E8 = 1 级），且 hover 只换底色、字色不动。现改为：常态取主机键常态那档
+   2 级灰（#565a60 / #9a9ea5），hover 才抬到 1 级（#1f2329 / #ffffff，与
+   .desktop-host-trigger:hover 同值）。图标是 currentColor、快捷键跟着
+   opacity .7，都随这颗字色走，不必单独写。 */
+[data-host="desktop"] .desktop-panel-empty-item {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-panel-empty-item {
+  color: #9a9ea5;
+}
+[data-host="desktop"] .desktop-panel-empty-item:hover:not(:disabled) {
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"]
+  .desktop-panel-empty-item:hover:not(:disabled) {
+  color: #ffffff;
 }
 
 /* ═══ 0904 第 3 轮（feat/0904-new-base-r1）：字重 token 化 ═════════
@@ -6249,4 +6355,193 @@
 [data-host="desktop"][data-theme="dark"] .line-comment-box-send:disabled:hover {
   background: rgb(255 255 255 / 8%);
   color: rgb(255 255 255 / 45%);
+}
+
+/* ═══ 1030 第一轮：文件「已不存在」空态居中 + 关闭标签键按按钮规范 ═══
+   设计师评论（`div.file-pane-status`「文件已不存在关闭标签」）：
+   「空态居中显示，关闭标签按钮放在下面，按钮圆角等要符合规范」。
+
+   改前是横排一行（图标 / 文案 / 按钮），贴着内容区左上角（实测 733,173；
+   内容区 733,173 502×827，元素盒正好 502×68 靠顶）；按钮 20px 高、r4、12px/400、
+   1px 边框取 `currentColor`（浅 #606060 / 深 #A0A5A8）。
+
+   ① 竖排居中：`.file-pane-status` 的父级是 `.file-pane-scroll`（block、827 高），
+      所以用 `min-height:100%` 撑满 + 主轴居中，才是真的水平/垂直都居中
+      （base 的 `margin:auto` 在 block 流里只能水平居中，实测仍贴顶）。
+   ② 按钮下移：改 `flex-direction: column`，图标 → 文案 → 按钮竖排，间距 12px。
+   ③ 按钮按契约 common-components.md「Buttons」的 Secondary（outlined）档：
+      32px 高 / 14px 22px 行高 / 500 / r8 / 左右 12px，透明底 + `--cc-text-primary`
+      字 + `--cc-border-light` 边框，hover `--cc-fill-hover`、按下 `--cc-fill-pressed`
+      且字色保持 primary。只作用于这块空态（同名的 `.file-pane-banner-action` 还用在
+      「磁盘已更新」横幅的「覆盖 / 重新加载」上，那两处没动）。
+   仅桌面端；IDE 宿主保持原横排小按钮。 */
+[data-host="desktop"] .file-pane-status--deleted {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  /* `min-height:100%` 必须配 border-box，否则 24px 上下内衬会加在 827 之外
+     （实测 content-box 下元素高 875 × 内容区 827 ⇒ 冒出滚动条）。 */
+  box-sizing: border-box;
+  min-height: 100%;
+  margin: 0;
+  padding: 24px 16px;
+  text-align: center;
+  /* 1030 第二轮（设计师评论「一起提到 14，图标不用灰色即可尺寸24px，可以参考
+     以下」+ 参照件 `div.preview-tab-new`「在上方地址栏输入网址开始预览」）：
+     提示文案 12 → 14px，与本 pane 另外两个空态（`.file-pane-placeholder-empty`
+     也是 14px）以及预览页空态同一档；字色不动（仍是 descriptionForeground，
+     与参照件一致）。 */
+  font-size: 14px;
+}
+
+/* 图标 24px + 恢复它本该有的危险红。改前实测是 浅 #606060 / 深 #CCCCCC 的
+   16px —— base 的 `.file-pane-status-icon`（FilePane.css:254）早写了 18px +
+   `--vscode-errorForeground`，但 `.codicon`（globals.css:64-72）同样声明了
+   `font-size: 16px` 与 `color: var(--vscode-icon-foreground)`，两条选择器同
+   特异性 (0,1,0) 且 globals.css 后加载 ⇒ 字号和颜色都被盖掉。这里用 (0,3,0)
+   把两者一起拿回来；`--cc-color-danger` 即桌面端 danger 档（浅 #DC2626 /
+   深 #FC4E52，2026-10-14「统一到 danger 档」，见本文件 111 / 230 行）。
+   参照件的图标是 0.4 透明度压淡的，按「不用灰色」不套那层透明度。 */
+[data-host="desktop"] .file-pane-status--deleted .file-pane-status-icon {
+  font-size: 24px;
+  color: var(--cc-color-danger, #dc2626);
+}
+
+[data-host="desktop"] .file-pane-status--deleted .file-pane-banner-action {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--cc-border-light, #e4e7ed);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--cc-text-primary, #1f2329);
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 500;
+  font-family: inherit;
+}
+[data-host="desktop"] .file-pane-status--deleted .file-pane-banner-action:hover {
+  background: var(--cc-fill-hover, #eef0f3);
+}
+[data-host="desktop"] .file-pane-status--deleted .file-pane-banner-action:active {
+  background: var(--cc-fill-pressed, #e7e9ed);
+}
+
+/* ═══ 1030 第三轮：同族另外两处 `.file-pane-status`（错误 / 编辑器加载、失败）═══
+   设计师评论「另两处也改」= 第一轮报告里的残留 ①：`fileView.error` 的读取错误块、
+   FileEditor 的 loading / failed 两块仍是横排靠左、12px、16px 灰图标。
+
+   口径与「已不存在」空态对齐（同一档，不是另立一套）：竖排、组居中、gap 12、
+   文案 14px、错误图标 24px + `--cc-color-danger`；`min-height:100%` +
+   `box-sizing:border-box` 的理由同第一轮（父级 `.file-pane-scroll` 是 block 流；
+   FileEditor 的父级 `.file-pane-editor` 是 flex column，100% 高会把同样 `flex:1`
+   的空 host 挤成 0，所以两种父级都能真的居中）。
+
+   两处刻意不同：
+   ① 加载态那颗转圈保持 16px、保持中性灰 —— 它是加载指示器不是空态图标，同 pane
+      的「正在读取文件…」也是 16px 转圈，24px 会跟那里打架；
+   ② 没有按钮，所以不带第一轮那套 Secondary 键样式。 */
+[data-host="desktop"] .file-pane-status--error,
+[data-host="desktop"] .file-pane-status--failed,
+[data-host="desktop"] .file-pane-status--loading {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  box-sizing: border-box;
+  min-height: 100%;
+  margin: 0;
+  padding: 24px 16px;
+  text-align: center;
+  font-size: 14px;
+}
+
+[data-host="desktop"] .file-pane-status--error .file-pane-status-icon,
+[data-host="desktop"] .file-pane-status--failed .file-pane-status-icon {
+  font-size: 24px;
+  color: var(--cc-color-danger, #dc2626);
+}
+
+/* 编辑态的父级是 block 流里的 `.file-pane-editor-wrap`（自身 `flex:1` 但在 block
+   父级里高度=内容高）⇒ 只给 status 写 `min-height:100%` 会塌成内容高、失败/加载
+   两块仍贴顶。用 `:has()` 只在「这块里出现 `.file-pane-status`」时把 wrap 撑满，
+   编辑器正常加载时不受影响（不需要给每个编辑会话都加 min-height）。 */
+[data-host="desktop"] .file-pane-editor-wrap:has(.file-pane-status) {
+  box-sizing: border-box;
+  min-height: 100%;
+}
+
+/* 编辑器容器是 flex column，`min-height:100%` 在 flex 子项上解析不到（实测 status
+   塌成内容高 104、host 吃掉 723）⇒ 加载 / 失败两块改为盖在编辑器区之上的绝对定位
+   层：居中口径与其他两块完全一致，且不挤压 host（CodeMirror 挂载时量到的仍是
+   827 高，加载成功切回后不会因为量到 0 高而错位）。 */
+[data-host="desktop"] .file-pane-editor {
+  position: relative;
+}
+[data-host="desktop"] .file-pane-editor > .file-pane-status {
+  position: absolute;
+  inset: 0;
+}
+
+/* ═══ 1030 第四轮：「当前对话的文件」列表行高 32px ═══
+   设计师评论（`button.file-pane-conversation-file-row`「logo.png」）：「这里高度改成32」。
+   改前行高实测 30px（= 上下内衬 6+6 + 14px 文案的 18 行盒，图标 16 不撑高）；
+   改后固定 32px：`height: 32px` + `box-sizing: border-box`（行间距那条 1px
+   `border-top` 也算在内，`+` 相邻行的上边框不会把行顶到 33），上下内衬归零、
+   左右 10px 不动，`align-items: center` 由 base 提供。仅桌面端。 */
+[data-host="desktop"] .file-pane-conversation-file-row {
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 10px;
+}
+
+/* ═══ 1030 第五轮：会话头取侧栏面、面板（预览）区取会话内容面 ═══
+   设计师四条评论（两组）：
+   ① `div.chat-header`「面板：文件收起面板」：「这里的背景色和 …」
+   ② `div.desktop-sidebar`「活动收起侧边栏…」：「这里保持一致」
+      ⇒ 会话头底色 = 侧栏底色（`--vscode-sideBar-background` = `--cc-bg-navigation`，
+        浅 #F7F8FB / 深 #181A1B）
+   ③ `div.desktop-panel-tabs`「文件新建面板全屏」：「所有预览区域的背景色，包括下面的
+      内容展示区等等，和 …」
+   ④ `div#messagesContainer`「把这一串文件挨个看一下…」：「这里保持一致」
+      ⇒ 面板区（页签条 + 各 pane 面）= 会话内容面（`--vscode-panel-background`，
+        浅 #FFFFFF / 深 #111314）
+   改前实测：会话头 浅 #FFFFFF / 深 #111314；面板页签条 浅 #FFFFFF / 深 #181A1B；
+   文件 pane 浅 #FFFFFF / 深 #181A1B（`.preview-pane` 走 `--vscode-sideBar-background`
+   导航面、`.file-pane` 走 `--cc-bg-inspector` 内容面，两条不同源）。
+   现统一到「所有 `.preview-pane` + 页签条」：五类 pane（文件 / 差异 / 终端 /
+   计划 / 浏览器预览）共用 `.preview-pane`，一条规则全收；页签条再一条。
+   **选择器写成 `aside.preview-pane` 是必要的**：`.file-pane`（host-desktop.css 早段）、
+   `.diff-pane`（DiffPane.css）、`.plan-pane`（PlanPane.css）三处各自的
+   `--cc-bg-inspector` 规则与 `[data-host][data-theme] .preview-pane` 同为 (0,3,0)，
+   且后两个文件比本文件后加载 ⇒ 会把我这条盖回去（实测差异 / 计划两个 pane 仍 #181A1B）。
+   前面再加一个元素选择器 ⇒ (0,3,1)，稳定压过，不依赖加载顺序。
+   浏览器预览 pane（`.preview-pane` 裸类）挂在 `.desktop-chat-body > .preview-guest-layer`
+   下、不在 `.desktop-panel-slot` 里，按 `.desktop-panel-slot` 收会漏掉它，所以不设祖先。
+   浅色：除会话头之外，可见像素零变化（页签条与四类 pane 本来就是 #FFFFFF；
+   浏览器预览 pane 的计算值虽从 #F7F8FB 变 #FFFFFF，但该带浅色另有白底盖住）。仅桌面端。 */
+[data-host="desktop"] .chat-header {
+  background-color: var(--vscode-sideBar-background, var(--vscode-panel-background));
+}
+
+[data-host="desktop"][data-theme="light"] aside.preview-pane,
+[data-host="desktop"][data-theme="dark"] aside.preview-pane,
+[data-host="desktop"][data-theme="light"] .desktop-panel-tabs,
+[data-host="desktop"][data-theme="dark"] .desktop-panel-tabs {
+  background: var(--vscode-panel-background);
+}
+
+/* ═══ 1030 第六轮：预览空态块也取会话内容面 ═══
+   设计师评论：`div.preview-tab-new`「在上方地址栏输入网址开始预览」
+   （`… > aside > div > div:nth-of-type(2) > div`）「这里背景色也和以下一致」
+   + `div#messagesContainer`「重构 user 模块的接口错误处理…」「这里」。
+   `.preview-tab-new` 是浏览器预览 pane 的空态占位，`position: absolute; inset: 0`
+   铺满 pane 正文；base（DesktopApp.css:1517-1528）给它 `background:
+   var(--vscode-editor-background)` = 深色 #181A1B ⇒ 上一轮把 pane 底改成 #111314
+   之后，这块空态反而比底更亮，成了「黑底上一块稍亮的板」。
+   改前实测：浅 #FFFFFF / 深 #181A1B；会话内容面 浅 #FFFFFF / 深 #111314。
+   ⇒ 绑 `--vscode-panel-background`，与 `#messagesContainer` 同源。浅色两版同值
+   ⇒ 浅色零变化（截图逐像素 0 差异）。文案色 / 图标 / 间距 / 字号一律不动。仅桌面端。 */
+[data-host="desktop"] .preview-tab-new {
+  background: var(--vscode-panel-background);
 }

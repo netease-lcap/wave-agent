@@ -532,14 +532,62 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   color: #ffffff;
 }
 
-.artifacts-refresh-btn {
-  padding: 4px 8px;
+/* 1030 评论（`div.artifacts-header-left`「新建分类 / 刷新」）：「新建分类和刷新
+   改成图标的形式，hover 显示 tooltip 提示」。
+   几何照同页 `[data-host="desktop"] .artifacts-nav-more`（分类行的「⋯」）：
+   24×24 / 内衬 0 / r6 / 图标 16 居中；静止取 2 级字色、hover 换
+   `--cc-fill-hover` 底并把图标提到 1 级 —— 与侧栏会话行、面板工具条同一套
+   图标键配方。原来两颗是 12px 文字键（新建分类还是蓝色链接），现在都不用了。 */
+.artifacts-header-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   background: transparent;
-  color: var(--vscode-descriptionForeground, #6c6e73);
-  font-size: 12px;
+  color: var(--cc-text-secondary, #6c7076);
   cursor: pointer;
+}
+
+.artifacts-header-icon-btn > .artifacts-header-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.artifacts-header-icon-btn:hover:not(:disabled) {
+  background: var(--cc-fill-hover, #eef0f3);
+  color: var(--cc-text-primary, #1f2329);
+}
+
+/* 键盘焦点：2px 内收环，与设置页 listbox 选项 / 文件标签菜单同一配方。 */
+.artifacts-header-icon-btn:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #a0a5a8);
+  outline-offset: -2px;
+}
+
+/* 刷新中 / 列表加载中：键不可点，也不出 hover 面（否则像还活着）。
+   1030 评论（「功能禁用鼠标要显示成禁用」）：指针从 `default` 改成 `not-allowed`，
+   与 :disabled 的语义一致（0.4 透明 + 不响应 hover + 指针带禁止圈）。 */
+.artifacts-header-icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 刷新中：图标原地旋转（沿用 diff 面板的口径 —— 文字不再换成「刷新中…」，
+   一颗 24px 图标键靠换字表达状态会把整行撑宽）。keyframes 自带一份，避免
+   依赖 DesktopApp.css 的 `pane-icon-spin` 加载顺序。 */
+.artifacts-header-icon-btn .artifacts-header-icon.is-spinning {
+  animation: artifacts-header-icon-spin 0.8s linear infinite;
+}
+
+@keyframes artifacts-header-icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* 1023 评论（她：「这的表单样式也优化一下」）：改走 skill「Desktop form field
@@ -561,7 +609,10 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
   box-sizing: border-box;
   width: 242px;
   height: 32px;
-  padding: 4px 8px;
+  /* 左侧 30 = 1 描边 + 8 内衬 + 16 图标 + 5 透气，与侧栏搜索框的文字起始位
+     同档（那边是 8 内衬 + 16 图标 + 6 gap）；右内衬由 `.artifacts-search-field`
+     的 26 覆盖。1030 评论「加个搜索图标」前这里是 `4px 8px`。 */
+  padding: 4px 8px 4px 30px;
   border-radius: 8px;
   border: 1px solid var(--cc-field-border, rgba(127, 127, 127, 0.35));
   background: var(--cc-field-bg, var(--vscode-input-background, transparent));
@@ -594,6 +645,22 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
 
 .artifacts-search-field .artifacts-search {
   padding-right: 26px;
+}
+
+/* 搜索框左侧放大镜（1030 评论「加个搜索图标」）：与侧栏搜索框 / 面板工具条
+   同一颗 Figma 矢量（`HeaderIcons.SearchIcon`），16px、2 级字色（浅 #6C7076 /
+   深 #A0A5A8，与侧栏那颗取的是同一个值）。绝对定位在框内左侧 9px（1 描边 +
+   8 内衬），`pointer-events: none` 让点击落到输入框上 —— 输入区的左内衬由
+   `.artifacts-search` 的 `padding-left: 30px` 让开，不压字。 */
+.artifacts-search-icon {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  margin-top: -8px;
+  color: var(--cc-text-secondary, #6c7076);
+  pointer-events: none;
 }
 
 .artifacts-search-clear {

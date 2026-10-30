@@ -1784,10 +1784,14 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   size={24}
                   className="file-pane-placeholder-icon"
                 />
-                <span data-testid="file-pane-empty-none">
-                  打开的文件会显示在这里
-                </span>
-                <span className="file-pane-placeholder-hint">
+                {/* 评论 1030：原来这里还有一行「打开的文件会显示在这里」，与下面
+                    这句引导重复，设计师要求拿掉（只留引导句）。`data-testid` 迁到
+                    引导句上 —— 场景 14「一个文件都没打开」的断言靠它定位，语义不变。
+                    注：本组件两个宿主共用，IDE / 插件端的同一空态也会少这一行。 */}
+                <span
+                  className="file-pane-placeholder-hint"
+                  data-testid="file-pane-empty-none"
+                >
                   点击目录树中的文件，或点击消息里的文件路径
                 </span>
               </PanePlaceholder>
@@ -1808,7 +1812,10 @@ export const FilePane: React.FC<FilePaneProps> = ({
             )}
             {/* 「已删除」的标签：内容区给出提示与关标签动作（场景 13）。 */}
             {!showList && activeFile?.deleted && (
-              <div className="file-pane-status" data-testid="file-pane-deleted">
+              <div
+                className="file-pane-status file-pane-status--deleted"
+                data-testid="file-pane-deleted"
+              >
                 <i className="codicon codicon-warning file-pane-status-icon" />
                 <span>文件已不存在</span>
                 <button
@@ -1827,7 +1834,8 @@ export const FilePane: React.FC<FilePaneProps> = ({
             {!showList && !activeFile?.deleted && (
               <>
                 {fileView?.error && (
-                  <div className="file-pane-status">
+                  // 1030 第三轮：同族口径（见 host-desktop.css 的 1030 块）。
+                  <div className="file-pane-status file-pane-status--error">
                     <i className="codicon codicon-error file-pane-status-icon" />
                     <span>{fileView.error}</span>
                   </div>

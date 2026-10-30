@@ -10,8 +10,11 @@ import {
   ArtifactsIcon,
   FileCodeIcon,
   MoreIcon,
+  PlusIcon,
   QueueEditIcon,
   QueueTrashIcon,
+  RefreshIcon,
+  SearchIcon,
   SidebarExpandIcon,
 } from "./HeaderIcons";
 import { Tooltip } from "./Tooltip";
@@ -183,6 +186,10 @@ const SearchField: React.FC<{
   const inputRef = useRef<HTMLInputElement | null>(null);
   return (
     <span className="artifacts-search-field">
+      {/* 1030 评论（锚点 `input.artifacts-search`）：「这里也统一一下，加个搜索
+          图标」→ 用与侧栏搜索框 / 面板工具条同一颗 Figma 放大镜（16px、2 级
+          字色），绝对定位在框内左侧，点击穿透到输入框，文字起始位右移到 30。 */}
+      <SearchIcon className="artifacts-search-icon" />
       <input
         ref={inputRef}
         className="artifacts-search"
@@ -1108,25 +1115,40 @@ export const ArtifactsPage: React.FC<ArtifactsPageProps> = ({
                 自定义视图
               </button>
             </div>
+            {/* 1030 评论（点 `div.artifacts-header-left`「默认视图 / 自定义视图 /
+                新建分类 / 刷新」）：「新建分类和刷新改成图标的形式，hover 显示
+                tooltip 提示」→ 两颗都收成 24×24 图标键，文案搬进自绘气泡
+                （同 DiffPane 的刷新键配方：`Tooltip` + 图标 SVG）。
+                刷新中不再改文案，改为图标原地旋转（`.is-spinning`）+ `aria-busy`，
+                否则一颗图标键靠文字换字表达状态会撑宽整行。 */}
             {view === "custom" && (
+              <Tooltip text="新建分类" position="bottom">
+                <button
+                  type="button"
+                  className="artifacts-header-icon-btn"
+                  onClick={() => openCategoryDialog({ kind: "create" })}
+                  aria-label="新建分类"
+                  data-testid="artifacts-new-category"
+                >
+                  <PlusIcon className="artifacts-header-icon" />
+                </button>
+              </Tooltip>
+            )}
+            <Tooltip text="刷新" position="bottom">
               <button
                 type="button"
-                className="artifacts-link-btn"
-                onClick={() => openCategoryDialog({ kind: "create" })}
-                data-testid="artifacts-new-category"
+                className="artifacts-header-icon-btn"
+                onClick={() => requestList(true)}
+                disabled={refreshing || loading}
+                aria-label="刷新"
+                aria-busy={refreshing}
+                data-testid="artifacts-refresh"
               >
-                新建分类
+                <RefreshIcon
+                  className={`artifacts-header-icon${refreshing ? " is-spinning" : ""}`}
+                />
               </button>
-            )}
-            <button
-              type="button"
-              className="artifacts-refresh-btn"
-              onClick={() => requestList(true)}
-              disabled={refreshing || loading}
-              data-testid="artifacts-refresh"
-            >
-              {refreshing ? "刷新中…" : "刷新"}
-            </button>
+            </Tooltip>
           </div>
           <div className="artifacts-header-right">
             <SearchField

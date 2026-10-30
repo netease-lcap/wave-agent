@@ -26,7 +26,7 @@
   box-sizing: border-box;
 }
 
-/* ---- 顶栏：返回当前会话（Figma Header 行 44px 通栏，白底/底边 1px #EBEEF5） ---- */
+/* ---- 顶栏：返回当前会话（Figma Header 行 44px 通栏，导航面底 + 底边 1px #EBEEF5） ---- */
 
 .session-board-toolbar {
   display: flex;
@@ -37,6 +37,15 @@
   margin: 0 -16px; /* 抵消 .session-board 左右 padding，铺满整行 */
   padding: 0 8px; /* 首元素距左缘 8px（Figma Header 内边距 8） */
   box-sizing: border-box; /* 44px 含底边描边（Figma Header 行） */
+  /* 1030 评论（点 `div.session-board-toolbar`「返回当前会话」）「这里的背景色」+
+     点对话顶栏 `div.chat-header`「上面都改成和这里一样的背景色」：
+     整条顶栏底色对齐对话顶栏 —— `--vscode-sideBar-background`（= `--cc-bg-navigation`，
+     浅 #F7F8FB / 深 #181A1B。桌面端映射见 host-desktop.css，与 `.chat-header` 的
+     1030 第五轮规则同一条表达式）。此前本栏没有自己的底色，透出整页根面
+     `--vscode-panel-background`（浅 #FFFFFF / 深 #111314）⇒ 与对话顶栏差一档。
+     三个整页共用本类（看板 / 创作集 / 插件市场），一并生效。
+     下沿描边不动（浅 #EBEEF5 / 深 --vscode-widget-border），压在导航面上仍可见。 */
+  background: var(--vscode-sideBar-background, var(--vscode-panel-background));
   border-bottom: 1px solid #ebeef5;
   flex-shrink: 0;
 }

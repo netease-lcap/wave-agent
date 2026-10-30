@@ -153,10 +153,11 @@ describe("文件面板已打开文件的标签（spec 场景 1-14）", () => {
     expect(screen.queryByTestId("file-pane-empty-none")).toBeNull();
   });
 
-  it("一个文件都没打开时给「打开的文件会显示在这里」（场景 14）", () => {
+  it("一个文件都没打开时给空态引导（场景 14）", () => {
     renderPane({ files: [], activeFileId: undefined });
+    // 1030 评论：标题行「打开的文件会显示在这里」已拿掉，只留引导句。
     expect(screen.getByTestId("file-pane-empty-none")).toHaveTextContent(
-      "打开的文件会显示在这里",
+      "点击目录树中的文件，或点击消息里的文件路径",
     );
     expect(screen.queryByTestId("file-pane-empty-no-active")).toBeNull();
   });

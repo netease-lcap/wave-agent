@@ -136,7 +136,12 @@ export const DesktopHostSelector: React.FC<DesktopHostSelectorProps> = ({
             {...getItemProps(0)}
             data-testid="desktop-host-local"
           >
-            <span className="codicon codicon-device-desktop"></span>
+            {/* 1030 评论（她点 `span.codicon.codicon-device-desktop`，指「这里」
+                为触发键上那颗 `svg.desktop-host-icon`）：「这个图标和一下一致」——
+                菜单里「本地」原来画 codicon-device-desktop 字体字形，与收起态触发键
+                的官方 `ContextLocalIcon` 不是一套；这里换成同一颗 svg（同一个
+                `desktop-host-icon` 类 → 同 16×16 盒、同色、同几何）。 */}
+            <ContextLocalIcon className="desktop-host-icon" />
             <span>本地</span>
           </div>
           {sshHosts.length > 0 && (

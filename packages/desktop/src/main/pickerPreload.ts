@@ -26,6 +26,25 @@ interface PickerPalette {
   border?: string;
   inputBackground?: string;
   inputForeground?: string;
+  /* ── 评论卡片的表单规范那一组（1029 评论「根据表单规范优化这个弹窗」）──
+     host（`PreviewPane.readPalette()`）取样后随 activate 一起发过来；缺省时
+     下面的 CSS 各自有回退，插件端 / 旧宿主不发这些键也能照常工作。 */
+  cardBg?: string;
+  cardBorder?: string;
+  cardShadow?: string;
+  fieldBg?: string;
+  fieldBorder?: string;
+  fieldBorderHover?: string;
+  fieldBorderFocus?: string;
+  fieldText?: string;
+  fieldPlaceholder?: string;
+  tagText?: string;
+  actionBg?: string;
+  actionBgHover?: string;
+  actionBgActive?: string;
+  actionText?: string;
+  disabledBg?: string;
+  disabledText?: string;
 }
 
 interface PickerMessage {
@@ -35,7 +54,10 @@ interface PickerMessage {
 
 const HIGHLIGHT_CLASS = "__wave-picker-highlight";
 const CARD_WIDTH = 280;
-const CARD_HEIGHT_ESTIMATE = 100;
+/** 卡片高度估算（决定放元素下方还是翻到上方）：r12 浮层 8 内衬 + 字段（1px 边 +
+ *  8 内衬 + 44 输入区）+ 8 间距 + 28 操作行 + 1px 边 = 116（1029 表单规范那轮
+ *  从 100 长到 116：字号 12→14 让 `<textarea>` 的两行内容高 33.6→44）。 */
+const CARD_HEIGHT_ESTIMATE = 116;
 /** Pointer travel (px) between press and release still counted as a click. */
 const CLICK_SLOP_PX = 4;
 
@@ -190,56 +212,88 @@ function showCard(el: Element): void {
 
   const sheet = new CSSStyleSheet();
   sheet.replaceSync(`
+    /* 评论卡片按 skill 表单规范重做（1029 评论「根据表单规范优化这个弹窗」）：
+       三层 —— 浮层容器（r12 / --cc-bg-overlay / --cc-border-lighter / --cc-shadow-popover
+       / 8 内衬）、字段盒（r8 / --cc-field-*，hover 只换描边、focus 1px 沿边无外扩环、
+       占位符 opacity 1）、操作行（tag 12/20 说明文字 + 「添加」紧凑主按钮 28 高 /
+       14px-500 / r8 / 0·12 内衬）。改前是 r6 + 内衬 6 的一只「盒子套盒子」，按钮在
+       字段盒里、11px 蓝字细边，禁用靠整颗 opacity .4。
+       palette 里任何一个键缺省时走下面的回退值（插件端 / 旧宿主）。 */
     .card {
-      background: ${palette.background ?? "#1e1e1e"};
-      color: ${palette.foreground ?? "#cccccc"};
-      border: 1px solid ${palette.border ?? "rgba(128,128,128,0.35)"};
-      border-radius: 6px;
-      padding: 6px;
-      font: 12px/1.4 -apple-system, "Segoe UI", sans-serif;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      display: flex; flex-direction: column; gap: 8px;
+      background: ${palette.cardBg ?? palette.background ?? "#1e1e1e"};
+      color: ${palette.fieldText ?? palette.foreground ?? "#cccccc"};
+      border: 1px solid ${palette.cardBorder ?? palette.border ?? "rgba(128,128,128,0.35)"};
+      border-radius: 12px;
+      padding: 8px;
+      font: 14px/22px -apple-system, "Segoe UI", sans-serif;
+      box-shadow: ${palette.cardShadow ?? "0 4px 16px rgba(0,0,0,0.4)"};
     }
-    .input {
-      display: flex; flex-direction: column; gap: 2px;
-      background: ${palette.inputBackground ?? "#3c3c3c"};
-      color: ${palette.inputForeground ?? "#cccccc"};
-      border: 1px solid ${palette.border ?? "rgba(128,128,128,0.35)"};
-      border-radius: 6px; padding: 6px;
+    .field {
+      display: flex; flex-direction: column;
+      background: ${palette.fieldBg ?? palette.inputBackground ?? "#3c3c3c"};
+      border: 1px solid ${palette.fieldBorder ?? palette.border ?? "rgba(128,128,128,0.35)"};
+      border-radius: 8px;
+      padding: 8px;
     }
-    .input:focus-within { border-color: ${palette.accent ?? "#0e639c"}; }
+    /* 悬停只改描边、不换底；聚焦仍走沿边 1px（放在 hover 之后 → 焦点 + 悬停时胜出）。 */
+    .field:hover {
+      border-color: ${palette.fieldBorderHover ?? palette.fieldBorder ?? "rgba(128,128,128,0.35)"};
+    }
+    .field:focus-within {
+      border-color: ${palette.fieldBorderFocus ?? palette.accent ?? "#0e639c"};
+    }
     textarea {
       width: 100%; min-height: 40px; resize: vertical; box-sizing: border-box;
-      background: transparent; color: inherit;
+      background: transparent;
+      color: ${palette.fieldText ?? palette.inputForeground ?? "#cccccc"};
       border: none; padding: 0; font: inherit; outline: none;
     }
-    .footer { display: flex; align-items: center; gap: 6px; }
+    textarea::placeholder {
+      color: ${palette.fieldPlaceholder ?? palette.foreground ?? "#a6a6a6"};
+      opacity: 1;
+    }
+    .footer { display: flex; align-items: center; gap: 8px; }
     .tag {
-      flex: 1; color: ${palette.accent ?? "#0e639c"}; font-family: monospace; font-size: 11px;
+      flex: 1; min-width: 0;
+      color: ${palette.tagText ?? palette.accent ?? "#0e639c"};
+      font-family: Menlo, Consolas, Monaco, monospace;
+      font-size: 12px; line-height: 20px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .send {
-      background: transparent;
-      color: ${palette.accent ?? "#0e639c"};
-      border: 1px solid ${palette.border ?? "rgba(128,128,128,0.35)"};
-      border-radius: 3px;
-      font-size: 11px; padding: 2px 10px;
+      height: 28px; padding: 0 12px;
+      border: 0; border-radius: 8px;
+      background: ${palette.actionBg ?? palette.accent ?? "#0e639c"};
+      color: ${palette.actionText ?? palette.accentForeground ?? "#ffffff"};
+      font-family: inherit; font-size: 14px; font-weight: 500; line-height: 22px;
       cursor: pointer;
     }
     .send:hover:not(:disabled) {
-      background: ${palette.accent ?? "#0e639c"};
-      color: ${palette.accentForeground ?? "#fff"};
+      background: ${palette.actionBgHover ?? palette.accent ?? "#0e639c"};
     }
-    .send:disabled { opacity: 0.4; cursor: default; }
+    .send:active:not(:disabled) {
+      background: ${palette.actionBgActive ?? palette.accent ?? "#0e639c"};
+    }
+    /* 禁用走专用配色而不是整颗 opacity（改前的 .4 会把描边和字一起压淡），
+       hover 与静止同色：与输入区发送键同一套配方。 */
+    .send:disabled {
+      background: ${palette.disabledBg ?? "transparent"};
+      color: ${palette.disabledText ?? palette.foreground ?? "#8b8b8b"};
+      cursor: default;
+    }
   `);
   shadow.adoptedStyleSheets = [sheet];
 
   const card = document.createElement("div");
   card.className = "card";
 
-  const input = document.createElement("div");
-  input.className = "input";
+  const field = document.createElement("div");
+  field.className = "field";
   const textarea = document.createElement("textarea");
   textarea.placeholder = "评论这个元素…";
+  field.append(textarea);
+
   const footer = document.createElement("div");
   footer.className = "footer";
   const tag = document.createElement("div");
@@ -252,9 +306,8 @@ function showCard(el: Element): void {
   send.title = "添加到输入框";
   send.textContent = "添加";
   footer.append(tag, send);
-  input.append(textarea, footer);
 
-  card.append(input);
+  card.append(field, footer);
   shadow.append(card);
 
   const submit = () => {

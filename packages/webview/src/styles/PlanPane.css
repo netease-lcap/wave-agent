@@ -29,3 +29,25 @@
   gap: 12px;
   font-size: 14px;
 }
+
+/* ═══ 计划面板底色：绑定「右 pane 内容面」角色，浅色取纯白（1030 评论）═══════
+   评论（点 `div.desktop-panel-placeholder.plan-pane-placeholder-empty`「等待计划
+   生成…」）：「这里也改成纯白背景同文件和差异」。
+
+   参照件 = 同一套判据的两条既有规则：
+     · 文件面板 host-desktop.css:1809-1816（1028 那一轮）
+     · 差异面板 DiffPane.css:263-273（1029 第十一批）
+   根因同源：`.preview-pane`（DesktopApp.css:1242）写
+   `background: var(--vscode-sideBar-background)`，桌面端把它桥到
+   `--cc-bg-navigation`（浅 #F7F8FB = **导航/侧栏面**）—— 套在右 pane 上就把整块
+   读成侧栏灰；空态占位自身透明（rgba(0,0,0,0)），所以灰底就是这一层透出来的。
+   改成内容面角色 `--cc-bg-inspector`：浅 #F7F8FB → #FFFFFF（与文件 / 差异逐值相同），
+   深色 #181A1B 与现值逐值相同 ⇒ 深色零变化（实测见报告）。
+   只圈 pane 最外层：工具栏、正文、空态占位一律透明，跟着这一层走。
+   影响面：同时覆盖「有计划正文」态（.plan-pane-markdown 也是透明）——与文件/差异
+   面板口径一致；终端面板本轮不动（评论未点名）。
+   ⚠️ 本该写进 host-desktop.css 的面板段（:1809 一带），那个文件当前有另一个窗口
+   在改，先落本文件；回退：删掉下面这一条即恢复（底色回到 --vscode-sideBar-background）。 */
+[data-host="desktop"] .preview-pane.plan-pane {
+  background: var(--cc-bg-inspector, var(--vscode-panel-background));
+}

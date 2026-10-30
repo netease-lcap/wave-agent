@@ -137,7 +137,11 @@ function renderPane(
 describe("FilePane", () => {
   it("shows the placeholder when no file is open", () => {
     renderPane({ fileView: null });
-    expect(screen.getByText("打开的文件会显示在这里")).toBeInTheDocument();
+    // 1030 评论：空态只留引导句（原先上面那行「打开的文件会显示在这里」已拿掉），
+    // `file-pane-empty-none` 这个 testid 迁到了引导句上。
+    expect(screen.getByTestId("file-pane-empty-none")).toHaveTextContent(
+      "点击目录树中的文件，或点击消息里的文件路径",
+    );
     expect(screen.queryByTestId("file-open-external")).not.toBeInTheDocument();
   });
 

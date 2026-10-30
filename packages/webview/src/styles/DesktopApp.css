@@ -1413,6 +1413,86 @@ body.is-panel-resizing webview {
   color: #ffffff;
 }
 
+/* ═══ 文件标签的交互底色 + 圆角对齐面板页签（1029 评论第十七批）═══════════
+   评论原话（点 `div.file-tab.file-tab--active.file-tab--deleted`「removed.ts
+   已删除」）：「标签交互时背景色、圆角参考以下」，随后点
+   `div.desktop-panel-tab.active`「文件」说「这里」。
+   基准直接取面板页签的桌面档（host-desktop.css:3694-3724 那一组字面量）：
+
+     状态        文件标签（改前）                  面板页签（基准）
+     圆角        6px                               8px
+     浅 · hover   #EEF0F3（--cc-fill-hover）       #EEF0F3
+     浅 · active  #F0F2F5（--cc-fill）             #F0F2F5
+     深 · hover   #303436（--cc-fill-hover）       rgba(255,255,255,0.08)
+     深 · active  #25292B（--cc-fill）             rgba(255,255,255,0.12)
+
+   ⇒ 浅色两档本来就同值（只动圆角），深色两档按面板页签收到 8% / 12% 白。
+   active 的 `:hover` 必须显式写死，否则 base `.file-tab:hover` 会把选中药丸拉回
+   hover 底（面板页签那一轮踩过同一个坑，见 host-desktop.css:3718 注释）。
+   base FilePane.css 一行未改，只作用于桌面宿主。
+   ⚠️ 本该写进 host-desktop.css 的 file-tab 段（:2051-2066），那个文件当前有另一个
+   窗口在改，先落本文件；同选择器 / 同特异性 + 本文件在 host-desktop.css 之后加载
+   ⇒ 覆盖生效。回退：删掉本节即恢复（圆角 6px、深色 #303436 / #25292B）。 */
+[data-host="desktop"] .file-tab {
+  border-radius: 8px;
+}
+[data-host="desktop"] .file-tab:hover {
+  background: #eef0f3;
+}
+[data-host="desktop"] .file-tab--active,
+[data-host="desktop"] .file-tab--active:hover {
+  background: #f0f2f5;
+}
+[data-host="desktop"][data-theme="dark"] .file-tab:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+[data-host="desktop"][data-theme="dark"] .file-tab--active,
+[data-host="desktop"][data-theme="dark"] .file-tab--active:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* ═══ 文件标签不再被压扁 + 溢出后真的能横向滚动（1030 评论）═════════════════
+   评论原话（点 `button.file-tab-more-trigger` 那颗「⋯」）：「现在不论多少文件
+   都能打开，这个收起里面始终没有东西，需要修复这个问题」。
+
+   复现（13 个标签，面板 462 宽）：每个标签被压成 30~42px 的细条 ——
+   只剩图标 + ×，文件名整段截断成一个点，视觉上「多少文件都塞得下」；
+   同时 `.file-tab-strip-scroll` 的 scrollWidth 只比 clientWidth 多 20px，
+   `openMore()` 的过滤条件（`start < left - 1 || start + width > right + 1`）
+   一条都不成立 ⇒ 菜单永远落到「没有收起的文件」空态。
+
+   根因（base FilePane.css，两个宿主共用）：
+     1. `.file-tab { flex: 0 1 auto; min-width: 0 }` —— 标签可无限压缩，地板只是
+        内衬 14px + 两颗 `flex: none` 的子元素（图标 16 / 关闭 16）+ 两个 4px 间距
+        ≈ 54px，所以永远「放得下」；
+     2. `.file-tab-strip-scroll { overflow: hidden }` —— 既不出滚动条也不能滚，
+        规格「先横向滚动、剩下的收进更多文件」（desktop-file-panel.md:205）
+        的后半段因此永远没有输入。
+
+   改法（与面板页签 `.desktop-panel-tabs-strip` 的既有做法逐条对齐：
+   DesktopPanelTabs.css:44-53 —— overflow-x:auto + 隐藏滚动条，靠滚轮/触控板滚）：
+     · 标签改成 `flex: 0 0 auto`：按内容宽度排、到 200px 上限截断，不再互相挤压；
+     · 滚动容器改成 `overflow-x: auto; overflow-y: hidden` 并隐藏滚动条
+       （带子只有 26px 高，一条 6~8px 的横向滚动条会把标签挤歪、还像裁切）；
+     · `openMore()` 与「激活时 scrollIntoView」两段逻辑一行未改：真出现溢出后
+       scrollLeft / scrollWidth 才有意义，菜单自然拿到被滚出可视区的标签。
+
+   影响面：三段都带 `[data-host="desktop"]`，IDE / 插件端保持 base 行为（那边
+   目前同样是压扁形态，要改需她单独点名）。
+   ⚠️ 本该写进 host-desktop.css 的文件标签段（:2015-2130），那个文件当前有另一个
+   窗口在改，先落本文件；回退：删掉本节即恢复（标签重新压成细条、无横向滚动）。 */
+[data-host="desktop"] .file-tab-strip-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+[data-host="desktop"] .file-tab-strip-scroll::-webkit-scrollbar {
+  display: none;
+}
+[data-host="desktop"] .file-tab {
+  flex: 0 0 auto;
+}
+
 .preview-pane-address {
   flex: 1;
   min-width: 0;
@@ -1433,7 +1513,9 @@ body.is-panel-resizing webview {
 }
 
 /* Blank-tab placeholder over the webview body (spec scenario 5).
-   提示文案 14px 与文件/计划 pane 空态一致（评论 2026-09）。 */
+   提示文案 14px 与文件/计划 pane 空态一致（评论 2026-09）。
+   图标↔文案间距 8 → 12（设计师 2026-10-30 空态体检报告第 2 条：四块内容型
+   空态里只有预览是 8，计划/文件/创作集都是 12）。 */
 .preview-tab-new {
   position: absolute;
   inset: 0;
@@ -1441,15 +1523,16 @@ body.is-panel-resizing webview {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 12px;
   font-size: 14px;
   color: var(--vscode-descriptionForeground, #999);
   background: var(--vscode-editor-background);
 }
 
-.preview-tab-new-icon {
-  opacity: 0.4;
-}
+/* 图标不再压 0.4 透明度（设计师 2026-10-30 空态体检报告第 1 条：全仓唯一挂
+   透明度的空态图标，有效色 #BFBFBF 只有 1.83:1 / 深 2.20:1，而同族三块是
+   6.29 / 7.49）。去掉后图标与文案同色，四块浓度一致。
+   —— 类名保留：TSX 上仍挂着 `preview-tab-new-icon`，作为该图标的落点标识。 */
 
 /* 显示态地址栏：与编辑态 input 同几何的纯文字胶囊（Figma 13438:7439 地址
    胶囊 26 高 / r8 / pad 0 8 / 14px·22，无前置图标），一眼可辨是可点击编辑的

@@ -591,12 +591,13 @@ describe("ChatApp desktop panel framework", () => {
       fireEvent.click(screen.getByTestId("panel-empty-item-file"));
       expect(screen.getByTestId("file-pane")).toBeInTheDocument();
       // 700px: the 40% conversation share (280) sits below the 360 floor →
-      // conversation 360, panel 340 (≥ the 320px minimum) → opens.
+      // conversation 360, panel 340 (≥ the 202px minimum) → opens.
       expect(screen.getByTestId("file-pane").style.width).toBe("340px");
 
-      // 650px: 650 - 360 = 290 < the 320px minimum → the new panel is
-      // refused and the existing tab is untouched.
-      width = 650;
+      // 561px: 561 - 202 = 359 < the 360px conversation minimum → the new
+      // panel is refused and the existing tab is untouched. 562 would be the
+      // first width that fits (202 + 360).
+      width = 561;
       fireEvent.click(screen.getByTestId("panel-tabs-add"));
       fireEvent.click(screen.getByTestId("panel-toggle-item-terminal"));
       expect(screen.queryByTestId("terminal-pane")).not.toBeInTheDocument();
