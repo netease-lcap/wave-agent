@@ -68,6 +68,14 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
 
   // Duplicate names need their relative path to be told apart (scenario 4);
   // unique names show the bare file name.
+  //
+  // ⚠️ 待开发确认（设计师 2026-10-30 预览评论）：同名这一支退化成 `file.path`
+  // （`OpenFileTab` 只存绝对路径），于是标签上出现「/Users/ailsa/Documents/07-AI/
+  // C…」这种绝对路径 —— 实测 src/index.ts + lib/index.ts 两个标签各 214px、被
+  // 200px 上限截断。规格（docs/specs/desktop/desktop-file-panel.md:204）要求「改用
+  // 各自相对路径」（`src/index.ts` / `lib/index.ts`）。webview 已有 `toRelativePath`
+  // （utils/messageUtils.ts，地址栏就是用它算 `docs/api.md`），`FilePane` 也持有
+  // `workdir`，只是没有透传进来。口径确认后再改，本轮不动。
   const labels = useMemo(() => {
     const counts = new Map<string, number>();
     for (const file of files) {

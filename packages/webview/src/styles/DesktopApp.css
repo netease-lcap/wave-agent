@@ -1451,6 +1451,48 @@ body.is-panel-resizing webview {
   background: rgba(255, 255, 255, 0.12);
 }
 
+/* ═══ 文件标签不再被压扁 + 溢出后真的能横向滚动（1030 评论）═════════════════
+   评论原话（点 `button.file-tab-more-trigger` 那颗「⋯」）：「现在不论多少文件
+   都能打开，这个收起里面始终没有东西，需要修复这个问题」。
+
+   复现（13 个标签，面板 462 宽）：每个标签被压成 30~42px 的细条 ——
+   只剩图标 + ×，文件名整段截断成一个点，视觉上「多少文件都塞得下」；
+   同时 `.file-tab-strip-scroll` 的 scrollWidth 只比 clientWidth 多 20px，
+   `openMore()` 的过滤条件（`start < left - 1 || start + width > right + 1`）
+   一条都不成立 ⇒ 菜单永远落到「没有收起的文件」空态。
+
+   根因（base FilePane.css，两个宿主共用）：
+     1. `.file-tab { flex: 0 1 auto; min-width: 0 }` —— 标签可无限压缩，地板只是
+        内衬 14px + 两颗 `flex: none` 的子元素（图标 16 / 关闭 16）+ 两个 4px 间距
+        ≈ 54px，所以永远「放得下」；
+     2. `.file-tab-strip-scroll { overflow: hidden }` —— 既不出滚动条也不能滚，
+        规格「先横向滚动、剩下的收进更多文件」（desktop-file-panel.md:205）
+        的后半段因此永远没有输入。
+
+   改法（与面板页签 `.desktop-panel-tabs-strip` 的既有做法逐条对齐：
+   DesktopPanelTabs.css:44-53 —— overflow-x:auto + 隐藏滚动条，靠滚轮/触控板滚）：
+     · 标签改成 `flex: 0 0 auto`：按内容宽度排、到 200px 上限截断，不再互相挤压；
+     · 滚动容器改成 `overflow-x: auto; overflow-y: hidden` 并隐藏滚动条
+       （带子只有 26px 高，一条 6~8px 的横向滚动条会把标签挤歪、还像裁切）；
+     · `openMore()` 与「激活时 scrollIntoView」两段逻辑一行未改：真出现溢出后
+       scrollLeft / scrollWidth 才有意义，菜单自然拿到被滚出可视区的标签。
+
+   影响面：三段都带 `[data-host="desktop"]`，IDE / 插件端保持 base 行为（那边
+   目前同样是压扁形态，要改需她单独点名）。
+   ⚠️ 本该写进 host-desktop.css 的文件标签段（:2015-2130），那个文件当前有另一个
+   窗口在改，先落本文件；回退：删掉本节即恢复（标签重新压成细条、无横向滚动）。 */
+[data-host="desktop"] .file-tab-strip-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+[data-host="desktop"] .file-tab-strip-scroll::-webkit-scrollbar {
+  display: none;
+}
+[data-host="desktop"] .file-tab {
+  flex: 0 0 auto;
+}
+
 .preview-pane-address {
   flex: 1;
   min-width: 0;
