@@ -8,7 +8,14 @@
  * packages/vscode/src/session/{chatSession,messageHandler}.ts).
  */
 
-import { app, dialog, shell, nativeTheme, type BrowserWindow } from "electron";
+import {
+  app,
+  dialog,
+  shell,
+  nativeTheme,
+  powerMonitor,
+  type BrowserWindow,
+} from "electron";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -61,7 +68,24 @@ import {
   type ThemeSource,
   type UpdateChannel,
 } from "./configStore";
-import { LOCAL_HOST, parseSshConfigHosts, addSshHost } from "./sshHosts";
+import {
+  LOCAL_HOST,
+  parseSshConfigHosts,
+  addSshHost,
+  getSshConfigPath,
+} from "./sshHosts";
+import {
+  FlapTracker,
+  FLAP_PARK_AFTER,
+  IDLE_BACKOFF_MS,
+  MAX_SLEEP_INTERRUPTS,
+  POST_RESUME_SETTLE_MS,
+  PRESENCE_POLL_MS,
+  RECONNECT_PROLONGED_MS,
+  SLEEP_SPAN_MS,
+  backoffForFailure,
+  flapDelayMs,
+} from "./sshReconnect";
 import {
   RemoteHostUnreachableError,
   readRemoteFile,
@@ -225,6 +249,44 @@ const MIN_PANE_ROW_HEIGHT_PX = 280;
 const SIDEBAR_WIDTH_PX = 240;
 /** Float tolerance for ratio-vs-minimum comparisons. */
 const WIDTH_EPSILON = 1e-9;
+
+/** Union two target lists by pane (the newest binding for a pane wins). */
+function mergeReconnectTargets(
+  a: ReconnectTarget[],
+  b: ReconnectTarget[],
+): ReconnectTarget[] {
+  const byPane = new Map(a.map((t) => [t.paneId, t]));
+  for (const t of b) byPane.set(t.paneId, t);
+  return [...byPane.values()];
+}
+
+/** A pane-bound session a dropped host must re-attach once it is reachable. */
+interface ReconnectTarget {
+  paneId: string;
+  sessionId: string;
+  /** The session's stable root (index cwd), never the `cd`-drifted one. */
+  workdir: string;
+}
+
+/**
+ * One host's reconnect sequence. Timers live here so the loop can be woken —
+ * by a fresh drop, by the user taking over, or by dispose.
+ */
+interface HostReconnectState {
+  targets: ReconnectTarget[];
+  /** Attempts started (drives the idle three-step limit). */
+  attempts: number;
+  /** Consecutive failures (drives the doubling backoff). */
+  failStreak: number;
+  /** Sleep-interrupted attempts in this round (capped, see MAX_SLEEP_INTERRUPTS). */
+  sleepInterrupts: number;
+  startedAt: number;
+  prolongedAnnounced: boolean;
+  cancelled: boolean;
+  timer: NodeJS.Timeout | null;
+  wake: (() => void) | null;
+}
+
 /** `artifactShareView` 回包里分享弹层要用的字段（其余字段宿主不关心）。 */
 interface ArtifactShareViewPayload {
   slug: string;
@@ -252,6 +314,13 @@ interface PluginListRow {
 }
 
 export class DesktopHost {
+  /**
+   * Timing knobs the reconnect tests shrink so one round does not need real
+   * minutes. Production keeps the defaults from sshReconnect.ts.
+   */
+  static reconnectTimeScale = 1;
+  static reconnectSleepSpanMs = SLEEP_SPAN_MS;
+
   private mainWindow: BrowserWindow | null = null;
 
   /**
@@ -284,6 +353,25 @@ export class DesktopHost {
       initPromise: Promise<void>;
     }
   >();
+
+  /**
+   * Live reconnect sequences for a dropped ssh tunnel (spec
+   * desktop-remote.md「SSH 远程会话断线自动重连」). Keyed by host; one sequence
+   * per host keeps dialing until every pane it was restoring is gone, the user
+   * takes over, or a give-up condition lands.
+   */
+  private hostReconnects = new Map<string, HostReconnectState>();
+  /** Unexpected-close counters per host (flapping detection). */
+  private hostFlaps = new Map<string, FlapTracker>();
+  /** Hosts already told "this connection is unstable" (one toast per episode). */
+  private flappingAnnounced = new Set<string>();
+  /** When the system last woke up — the network needs a moment after that. */
+  private lastResumeAt = 0;
+  /** Set by dispose: no reconnect sequence may be started or continued. */
+  private disposed = false;
+  private readonly onSystemResume = () => {
+    this.lastResumeAt = Date.now();
+  };
 
   // agent pool (multi-session parallel): `${host}\u0000${sessionId}` → live
   // StdioAgent (composite key keeps sessions from different hosts distinct).
@@ -666,6 +754,10 @@ export class DesktopHost {
     // already match the user's choice (no flash, FR-019).
     nativeTheme.themeSource = configStore.getThemeSource();
     nativeTheme.on("updated", this.onNativeThemeUpdated);
+    // A drop caused by a system sleep is not a failure: the sequence reads the
+    // resume mark to hold the first dial until the network is back (spec
+    // scenarios 5/6).
+    powerMonitor.on("resume", this.onSystemResume);
   }
 
   setMainWindow(win: BrowserWindow): void {
@@ -750,6 +842,13 @@ export class DesktopHost {
   /** Graceful shutdown for app quit (FR-015): destroy every live agent. */
   async dispose(): Promise<void> {
     nativeTheme.off("updated", this.onNativeThemeUpdated);
+    powerMonitor.off("resume", this.onSystemResume);
+    // The app is quitting — that is not an accidental drop, so no reconnect
+    // sequence may outlive this call (spec scenario 13).
+    this.disposed = true;
+    for (const host of [...this.hostReconnects.keys()]) {
+      this.cancelHostReconnect(host);
+    }
     this.terminalManager.killAll();
     this.portForwardManager.dispose();
     this.htmlPreviewServer.dispose();
@@ -1268,13 +1367,18 @@ export class DesktopHost {
       entry.router = router;
       entry.tunnel = tunnel;
       // The ssh tunnel dropped (network blip, host reboot) — the daemon keeps
-      // running remotely, so release the local host entry + pool agents so a
-      // later access re-attaches. Detach, never destroy: the remote session
-      // must survive until the user deletes it (真后台).
+      // running remotely, so release the local host entry + pool agents and
+      // start the reconnect sequence, which re-attaches the sessions those
+      // panes were showing (spec「SSH 远程会话断线自动重连」). Detach, never
+      // destroy: the remote session must survive until the user deletes it
+      // (真后台).
       client.onClosed(() => {
         this.remoteHosts.delete(host);
         tunnel.kill();
+        // Collect the pane bindings BEFORE dropHostAgents unbinds them.
+        const targets = this.collectReconnectTargets(host);
         this.dropHostAgents(host);
+        this.beginHostReconnect(host, targets);
       });
     })();
 
@@ -2293,6 +2397,12 @@ export class DesktopHost {
    * agent, then activate it in the pane. Every step re-checks the restore
    * token — a newer selection, activation or pane close supersedes this
    * restore, in which case the freshly spawned agent is discarded.
+   *
+   * Returns true when the pane is settled (restored, or superseded by a newer
+   * action), false when the restore failed and the caller should try again.
+   * `silent` is set by the auto-reconnect sequence: a failed attempt is
+   * retried in the background, so it must not write an error row into the
+   * conversation (spec「SSH 远程会话断线自动重连」场景 2/14).
    */
   private async runPaneRestore(
     paneId: string,
@@ -2302,7 +2412,8 @@ export class DesktopHost {
       host: string;
       entry?: SessionIndexEntry;
     },
-  ): Promise<void> {
+    { silent = false }: { silent?: boolean } = {},
+  ): Promise<boolean> {
     const token = this.pendingRestores.get(paneId)?.token;
     let agent: StdioAgent | undefined;
     try {
@@ -2314,12 +2425,12 @@ export class DesktopHost {
       });
       if (this.pendingRestores.get(paneId)?.token !== token) {
         await this.discardAgent(agent);
-        return;
+        return true;
       }
       await agent.restoreSession(opts.sessionId);
       if (this.pendingRestores.get(paneId)?.token !== token) {
         await this.discardAgent(agent);
-        return;
+        return true;
       }
       // Restore is a bare RPC — the daemon does not deliver the transcript, and
       // this host keeps none. The list is pulled by the setInitialState push
@@ -2331,7 +2442,7 @@ export class DesktopHost {
       // (spec「恢复加载期间删除会话」: 会话索引以删除为准).
       if (this.pendingRestores.get(paneId)?.token !== token) {
         await this.discardAgent(agent);
-        return;
+        return true;
       }
       this.rekeyAgent(agent, opts.sessionId);
       // activateAgentInPane clears the pending entry — the pane is now live.
@@ -2348,11 +2459,11 @@ export class DesktopHost {
           agent,
         );
       }
-      return;
+      return true;
     } catch (error) {
       console.error("[DesktopHost] 恢复会话失败:", error);
       // A superseded restore already cleaned up via its token checks.
-      if (this.pendingRestores.get(paneId)?.token !== token) return;
+      if (this.pendingRestores.get(paneId)?.token !== token) return true;
       this.pendingRestores.delete(paneId);
       // A failed restore leaves the previous agent bound (or nothing for a
       // fresh pane) — push that state so the overlay disappears. An agent
@@ -2378,9 +2489,10 @@ export class DesktopHost {
         this.showToast({
           message: "会话记录在磁盘上不存在或已损坏，无法恢复，已从列表移除",
         });
-      } else {
+      } else if (!silent) {
         this.pushSystemMessage(`恢复会话失败: ${errorMessage}`, paneId);
       }
+      return false;
     }
   }
 
@@ -2455,6 +2567,356 @@ export class DesktopHost {
       this.refreshSessionTree();
       this.pushPanes();
     }
+  }
+
+  // -- automatic reconnect after a dropped ssh tunnel --------------------------
+  // Spec: desktop-remote.md「SSH 远程会话断线自动重连」. Whether a sequence
+  // keeps dialing is decided by "is there still a pane-bound session to bring
+  // back": with work it backs off 1s→2s→…→60s (slowing to one attempt every
+  // few minutes once the streak is long) and does not give up on its own;
+  // without work it walks the three idle steps and hands the host back to the
+  // lazy path — the next access reconnects.
+
+  /** Sessions the dropped host must re-attach, taken from the pane bindings. */
+  private collectReconnectTargets(host: string): ReconnectTarget[] {
+    const index = this.configStore.getSessionIndex();
+    const targets: ReconnectTarget[] = [];
+    for (const pane of this.panes) {
+      const agent = pane.agent;
+      const sessionId = agent?.sessionId;
+      if (!agent || !sessionId) continue;
+      if (this.hostForAgent(agent) !== host) continue;
+      // The session's stable root, never the `cd`-drifted one: a session that
+      // bash-cd'd into a subdirectory must come back rooted at the project.
+      const workdir =
+        index.find((e) => e.sessionId === sessionId)?.cwd ??
+        agent.sessionCwd ??
+        agent.currentWorkdir ??
+        "";
+      targets.push({ paneId: pane.paneId, sessionId, workdir });
+    }
+    return targets;
+  }
+
+  /** Start (or fold into) a host's reconnect sequence after a drop. */
+  private beginHostReconnect(host: string, targets: ReconnectTarget[]): void {
+    if (this.disposed) return;
+    const flap = this.hostFlaps.get(host) ?? new FlapTracker();
+    this.hostFlaps.set(host, flap);
+    this.noteFlapping(host, flap.recordClose(Date.now()));
+    const existing = this.hostReconnects.get(host);
+    if (existing && !existing.cancelled) {
+      // The host dropped again mid-sequence: fold the new bindings in and
+      // retry right away instead of running two loops against one host.
+      existing.targets = mergeReconnectTargets(existing.targets, targets);
+      existing.failStreak++;
+      existing.wake?.();
+      return;
+    }
+    const state: HostReconnectState = {
+      targets: [...targets],
+      attempts: 0,
+      failStreak: 0,
+      sleepInterrupts: 0,
+      startedAt: Date.now(),
+      prolongedAnnounced: false,
+      cancelled: false,
+      timer: null,
+      wake: null,
+    };
+    this.hostReconnects.set(host, state);
+    void this.runHostReconnect(host, state);
+  }
+
+  /**
+   * Tell the user once per flapping episode that the connection is unstable.
+   * The counter is windowed (FLAP_WINDOW_MS), so a host that stays up long
+   * enough falls back to a single close in the window — that ends the episode
+   * and arms the notice again (scenario 8).
+   */
+  private noteFlapping(host: string, closeCount: number): void {
+    if (closeCount >= FLAP_PARK_AFTER) {
+      if (this.flappingAnnounced.has(host)) return;
+      this.flappingAnnounced.add(host);
+      this.showToast({
+        message: `与 ${host} 的连接不稳定（短时间内多次断开），已放慢自动重连；连接恢复后会自动接回会话。`,
+      });
+      return;
+    }
+    if (closeCount <= 1) this.flappingAnnounced.delete(host);
+  }
+
+  /** Dial → re-attach every still-wanted pane binding, then settle. */
+  private async runHostReconnect(
+    host: string,
+    state: HostReconnectState,
+  ): Promise<void> {
+    while (!state.cancelled && !this.disposed) {
+      if (!this.reconnectHostStillConfigured(host)) {
+        this.finishHostReconnect(
+          host,
+          state,
+          "unrecoverable",
+          "主机已从配置中移除",
+        );
+        return;
+      }
+      const hasWork = this.liveReconnectTargets(host, state).length > 0;
+      if (!hasWork && state.attempts >= IDLE_BACKOFF_MS.length) {
+        this.finishHostReconnect(host, state, "nothing-to-restore");
+        return;
+      }
+      const flapCount = this.hostFlaps.get(host)?.count(Date.now()) ?? 0;
+      const delay = hasWork
+        ? backoffForFailure(state.failStreak) + flapDelayMs(flapCount)
+        : IDLE_BACKOFF_MS[Math.min(state.attempts, IDLE_BACKOFF_MS.length - 1)];
+      // Nobody at the computer: dialing now would burn attempts against a
+      // network nobody is watching and can raise an auth prompt at an empty
+      // desk (scenario 9). Park here until somebody is back; any user action
+      // in the app re-enters through the lazy path, which dials immediately.
+      while (
+        !state.cancelled &&
+        !this.disposed &&
+        hasWork &&
+        !this.userPresentHere()
+      ) {
+        await this.waitForReconnectDelay(state, PRESENCE_POLL_MS);
+      }
+      await this.waitForReconnectDelay(state, delay);
+      if (state.cancelled || this.disposed) return;
+      // A wake-up from sleep leaves the network stack unassociated for a
+      // while — do not spend the first attempt on dead air (scenario 6).
+      const sinceResume = Date.now() - this.lastResumeAt;
+      if (sinceResume >= 0 && sinceResume < POST_RESUME_SETTLE_MS) {
+        await this.waitForReconnectDelay(
+          state,
+          POST_RESUME_SETTLE_MS - sinceResume,
+        );
+        if (state.cancelled || this.disposed) return;
+      }
+      state.attempts++;
+      const attemptStartedAt = Date.now();
+      try {
+        await this.ensureRemoteHostClient(host);
+      } catch (error) {
+        if (state.cancelled || this.disposed) return;
+        const message = error instanceof Error ? error.message : String(error);
+        if (this.isUnrecoverableSshError(message)) {
+          this.finishHostReconnect(host, state, "unrecoverable", message);
+          return;
+        }
+        // An attempt that spanned a suspend is not a failure: the OS froze
+        // this process mid-dial (scenario 5).
+        if (Date.now() - attemptStartedAt >= DesktopHost.reconnectSleepSpanMs) {
+          state.sleepInterrupts++;
+          if (state.sleepInterrupts <= MAX_SLEEP_INTERRUPTS) continue;
+        }
+        state.failStreak++;
+        this.announceProlongedIfDue(state);
+        continue;
+      }
+      state.failStreak = 0;
+      state.sleepInterrupts = 0;
+      await this.restoreReconnectTargets(host, state);
+      if (state.cancelled || this.disposed) return;
+      if (this.liveReconnectTargets(host, state).length > 0) {
+        // The host answers but a binding is still unattached (its restore
+        // failed, or the host dropped again mid-restore) — go around.
+        state.failStreak++;
+        this.announceProlongedIfDue(state);
+        continue;
+      }
+      this.finishHostReconnect(host, state, "restored");
+      return;
+    }
+  }
+
+  /**
+   * Drop targets that are no longer wanted: pane closed, the user bound
+   * another session there, the host switched, or the session was deleted while
+   * detached (scenario 16 — a deleted session must never come back).
+   */
+  private liveReconnectTargets(
+    host: string,
+    state: HostReconnectState,
+  ): ReconnectTarget[] {
+    const index = this.configStore.getSessionIndex();
+    state.targets = state.targets.filter((target) => {
+      if (!index.some((e) => e.sessionId === target.sessionId)) return false;
+      return this.canRestoreReconnectTarget(host, target);
+    });
+    return state.targets;
+  }
+
+  /** Per-attempt pre-check: the pane must still be the empty restore target. */
+  private canRestoreReconnectTarget(
+    host: string,
+    target: ReconnectTarget,
+  ): boolean {
+    const pane = this.panes.find((p) => p.paneId === target.paneId);
+    if (!pane) return false; // pane closed
+    if (pane.agent) return false; // the user bound a session themselves
+    if ((this.hostState.get(target.paneId) ?? LOCAL_HOST) !== host)
+      return false;
+    const pending = this.pendingRestores.get(target.paneId);
+    if (pending && pending.sessionId !== target.sessionId) return false;
+    return true;
+  }
+
+  /** Re-attach every live target through the normal restore path. */
+  private async restoreReconnectTargets(
+    host: string,
+    state: HostReconnectState,
+  ): Promise<void> {
+    for (const target of [...state.targets]) {
+      if (state.cancelled || this.disposed) return;
+      const entry = this.configStore
+        .getSessionIndex()
+        .find((e) => e.sessionId === target.sessionId);
+      if (!entry || !this.canRestoreReconnectTarget(host, target)) {
+        this.dropReconnectTarget(state, target);
+        continue;
+      }
+      // Exactly what a sidebar click does: the pane switches behind the sweep
+      // overlay, the agent spawns and re-attaches, held approvals resurface.
+      this.startPaneRestore(target.paneId, {
+        sessionId: target.sessionId,
+        workdir: target.workdir,
+        host,
+      });
+      const settled = await this.runPaneRestore(
+        target.paneId,
+        {
+          sessionId: target.sessionId,
+          workdir: target.workdir,
+          host,
+          entry,
+        },
+        { silent: true },
+      );
+      this.dropReconnectTarget(state, target);
+      // Not settled = the host dropped again underneath the restore; the loop
+      // retries from the top once it is back.
+      if (!settled) return;
+    }
+  }
+
+  private dropReconnectTarget(
+    state: HostReconnectState,
+    target: ReconnectTarget,
+  ): void {
+    state.targets = state.targets.filter(
+      (t) => !(t.paneId === target.paneId && t.sessionId === target.sessionId),
+    );
+  }
+
+  /** Stop a host's sequence (app quit, unrecoverable, user took over). */
+  private cancelHostReconnect(host: string): void {
+    const state = this.hostReconnects.get(host);
+    if (!state) return;
+    this.hostReconnects.delete(host);
+    state.cancelled = true;
+    const wake = state.wake;
+    state.wake = null;
+    if (state.timer) {
+      clearTimeout(state.timer);
+      state.timer = null;
+    }
+    wake?.();
+  }
+
+  /** Close out a sequence and, when it gave up, tell the affected panes. */
+  private finishHostReconnect(
+    host: string,
+    state: HostReconnectState,
+    reason: "restored" | "nothing-to-restore" | "unrecoverable",
+    detail?: string,
+  ): void {
+    if (this.hostReconnects.get(host) === state) {
+      this.hostReconnects.delete(host);
+    }
+    state.cancelled = true;
+    if (state.timer) {
+      clearTimeout(state.timer);
+      state.timer = null;
+    }
+    state.wake = null;
+    if (reason !== "unrecoverable") return;
+    for (const target of state.targets) {
+      const pane = this.panes.find((p) => p.paneId === target.paneId);
+      if (!pane || pane.agent) continue;
+      this.pushSystemMessage(
+        `与 ${host} 的连接无法自动恢复${detail ? `（${detail}）` : ""}，会话仍在远端运行，请检查连接后从侧边栏重新进入。`,
+        target.paneId,
+      );
+    }
+  }
+
+  /** Once, per round: the sequence has been failing long enough to say so. */
+  private announceProlongedIfDue(state: HostReconnectState): void {
+    if (state.prolongedAnnounced) return;
+    if (Date.now() - state.startedAt < RECONNECT_PROLONGED_MS) return;
+    state.prolongedAnnounced = true;
+    for (const target of state.targets) {
+      this.pushSystemMessage(
+        "仍未连上远程主机，仍在后台重试；可稍后从侧边栏重新进入该会话。",
+        target.paneId,
+      );
+    }
+  }
+
+  /** A cancellable wait; `cancelHostReconnect` resolves it early. */
+  private waitForReconnectDelay(
+    state: HostReconnectState,
+    ms: number,
+  ): Promise<void> {
+    return new Promise<void>((resolve) => {
+      if (state.cancelled || this.disposed || ms <= 0) {
+        resolve();
+        return;
+      }
+      const done = () => {
+        if (state.timer) clearTimeout(state.timer);
+        state.timer = null;
+        state.wake = null;
+        resolve();
+      };
+      state.timer = setTimeout(done, ms * DesktopHost.reconnectTimeScale);
+      state.wake = done;
+    });
+  }
+
+  /**
+   * Whether somebody is at this computer. Hold back dialing while the app is
+   * locked or in the background: a reconnect nobody is waiting for can raise
+   * an auth prompt at an empty desk (scenario 9).
+   */
+  private userPresentHere(): boolean {
+    try {
+      const win = this.mainWindow;
+      if (win && !win.isDestroyed() && win.isFocused()) return true;
+      return (
+        powerMonitor.getSystemIdleState(Math.ceil(PRESENCE_POLL_MS / 1000)) ===
+        "active"
+      );
+    } catch {
+      return true; // no focus/idle API available — assume present
+    }
+  }
+
+  /** The host was edited out of `~/.ssh/config` while we were retrying. */
+  private reconnectHostStillConfigured(host: string): boolean {
+    const configPath = getSshConfigPath();
+    if (!fs.existsSync(configPath)) return true;
+    return parseSshConfigHosts(configPath).includes(host);
+  }
+
+  /** Failures that retrying cannot fix (scenario 13). */
+  private isUnrecoverableSshError(message: string): boolean {
+    return (
+      message.includes("Permission denied") ||
+      message.includes("Host key verification failed")
+    );
   }
 
   /** Lazily-created per-pane throttle state. */

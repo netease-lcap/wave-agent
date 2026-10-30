@@ -76,10 +76,46 @@ export class BrowserWindow {
   on = vi.fn();
   isDestroyed = vi.fn(() => false);
   isMinimized = vi.fn(() => false);
+  isFocused = vi.fn(() => true);
   restore = vi.fn();
   focus = vi.fn();
   static getAllWindows = vi.fn(() => [] as unknown[]);
 }
+
+/**
+ * Power/OS state the reconnect sequence reads: `suspend`/`resume` drive the
+ * "a sleep is not a failure" rule, `getSystemIdleState` decides whether
+ * somebody is at the computer. Tests flip both through the helpers below.
+ */
+type PowerListener = () => void;
+const powerListeners = new Map<string, Set<PowerListener>>();
+let systemIdleState: "active" | "idle" | "locked" | "unknown" = "active";
+export const powerMonitor = {
+  on: vi.fn((event: string, cb: PowerListener) => {
+    const set = powerListeners.get(event) ?? new Set<PowerListener>();
+    set.add(cb);
+    powerListeners.set(event, set);
+  }),
+  off: vi.fn((event: string, cb: PowerListener) => {
+    powerListeners.get(event)?.delete(cb);
+  }),
+  getSystemIdleState: vi.fn(() => systemIdleState),
+  getSystemIdleTime: vi.fn(() => 0),
+  /** Test helper: fire a power event (`suspend` / `resume` / …). */
+  __emit(event: string): void {
+    for (const cb of [...(powerListeners.get(event) ?? [])]) cb();
+  },
+  /** Test helper: what `getSystemIdleState` reports next. */
+  __setIdleState(state: typeof systemIdleState): void {
+    systemIdleState = state;
+  },
+  __reset(): void {
+    powerListeners.clear();
+    systemIdleState = "active";
+    vi.mocked(this.on).mockClear();
+    vi.mocked(this.off).mockClear();
+  },
+};
 
 // nativeTheme mock: `shouldUseDarkColors` is derived from `themeSource` +
 // the OS appearance (systemDark), mirroring real Electron semantics so the

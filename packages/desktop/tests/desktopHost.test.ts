@@ -687,7 +687,7 @@ vi.mock("../src/main/sshHosts", async () => {
 import { DesktopHost } from "../src/main/desktopHost";
 import { ConfigStore } from "../src/main/configStore";
 import { HOST_CHANNEL } from "../src/main/channels";
-import { shell, dialog, nativeTheme } from "electron";
+import { shell, dialog, nativeTheme, powerMonitor } from "electron";
 import { autoUpdater } from "electron-updater";
 import {
   ensureRemoteDaemon,
@@ -767,11 +767,16 @@ function failRpc(method: string, message: string): () => void {
 function createHost(winWidth = 1280, winHeight = 800) {
   const store = new ConfigStore(STORE_PATH);
   const host = new DesktopHost(store);
+  createdHosts.push(host);
   const send = vi.fn();
   lastSend = send;
+  // Focus state the reconnect sequence reads to decide whether somebody is at
+  // the computer (spec「SSH 远程会话断线自动重连」场景 9).
+  let focused = true;
   const win = {
     webContents: { send },
     isDestroyed: () => false,
+    isFocused: () => focused,
     getContentSize: () => [winWidth, winHeight],
   } as unknown as BrowserWindow;
   host.setMainWindow(win);
@@ -786,7 +791,15 @@ function createHost(winWidth = 1280, winHeight = 800) {
           (msg as { command?: string }).command === command,
       )
       .map(([, msg]) => msg as Extract<HostToWebviewMessage, { command: C }>);
-  return { host, store, send, sent };
+  return {
+    host,
+    store,
+    send,
+    sent,
+    setFocused: (value: boolean) => {
+      focused = value;
+    },
+  };
 }
 
 function lastAgent() {
@@ -862,6 +875,8 @@ async function readyHost(winWidth?: number, winHeight?: number) {
 }
 
 let consoleSpies: Array<ReturnType<typeof vi.spyOn>> = [];
+/** Hosts built by createHost, disposed after each case (reconnect timers). */
+const createdHosts: DesktopHost[] = [];
 
 beforeEach(() => {
   h.files.clear();
@@ -903,6 +918,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   for (const key of Object.keys(auListeners)) delete auListeners[key];
   nativeTheme.__reset();
+  powerMonitor.__reset();
   // Silence error logs from intentionally-triggered failure paths (restore
   // session tunnel down, SSO callback forward failure, update check failure…).
   consoleSpies = [vi.spyOn(console, "error"), vi.spyOn(console, "warn")].map(
@@ -910,7 +926,14 @@ beforeEach(() => {
   );
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // A dropped host keeps a reconnect sequence running by design; dispose every
+  // host this case built so its timers cannot outlive the case and re-dial on
+  // the next one's mocks.
+  await Promise.all(
+    createdHosts.splice(0).map((created) => created.dispose().catch(() => {})),
+  );
+  DesktopHost.reconnectTimeScale = 1;
   for (const s of consoleSpies) s.mockRestore();
 });
 
@@ -10456,6 +10479,162 @@ describe("SSH remote hosts", () => {
     expect(sessions.find((s) => s.sessionId === sessionId)?.running).toBe(
       false,
     );
+  });
+
+  it("a dropped tunnel reconnects and re-attaches the pane's session", async () => {
+    DesktopHost.reconnectTimeScale = 0.01;
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    h.existingPaths.add("/remote/repo");
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectRemotePath",
+      host: "prod",
+      path: "/remote/repo",
+    });
+    await vi.waitFor(() => expect(h.closedHandlers).toHaveLength(1));
+    const first = lastAgent();
+    registerAgentInIndex(first);
+    const sessionId = first.sessionId as string;
+
+    // The tunnel drops: the pane is unbound first, then the sequence re-dials
+    // and re-attaches the same session without any user action
+    // (spec 场景 1/11).
+    h.closedHandlers[0]();
+
+    await vi.waitFor(() => {
+      expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(2);
+    });
+    await vi.waitFor(() => {
+      const panes = sent("desktopPanes").at(-1) as {
+        panes: Array<{ sessionId?: string; host: string }>;
+      };
+      expect(panes.panes[0].sessionId).toBe(sessionId);
+      expect(panes.panes[0].host).toBe("prod");
+    });
+    // Re-attached, not re-created: the fresh agent restored the same session,
+    // and the detached agent was never destroyed (its work keeps running).
+    expect(lastAgent().restoreSession).toHaveBeenCalledWith(sessionId);
+    expect(first.destroy).not.toHaveBeenCalled();
+  });
+
+  it("a dropped tunnel with no pane to restore stops after the idle steps", async () => {
+    DesktopHost.reconnectTimeScale = 0.01;
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    const { host } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectHost",
+      host: "prod",
+    });
+    await vi.waitFor(() => expect(h.closedHandlers).toHaveLength(1));
+
+    // Nothing is bound to a session, so the host gets three quick tries and is
+    // then left to the lazy path (spec 场景 4). Exactly the three idle steps
+    // reject, so the shared mock's default implementation is left intact.
+    const refused = () =>
+      new Error("ssh: connect to host 10.0.0.1 port 22: Connection refused");
+    vi.mocked(connectRemoteDaemon)
+      .mockRejectedValueOnce(refused())
+      .mockRejectedValueOnce(refused())
+      .mockRejectedValueOnce(refused());
+    h.closedHandlers[0]();
+
+    await vi.waitFor(
+      () => expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(4),
+      { timeout: 3000 },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(4);
+  });
+
+  it("a session deleted while detached is not resurrected by the reconnect", async () => {
+    DesktopHost.reconnectTimeScale = 0.01;
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    h.existingPaths.add("/remote/repo");
+    const { host, store, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectRemotePath",
+      host: "prod",
+      path: "/remote/repo",
+    });
+    await vi.waitFor(() => expect(h.closedHandlers).toHaveLength(1));
+    const first = lastAgent();
+    registerAgentInIndex(first);
+    const sessionId = first.sessionId as string;
+
+    h.closedHandlers[0]();
+    // Deleted elsewhere while this app was detached — the reconnect must not
+    // pull it back out of the transcript (spec 场景 16).
+    store.removeSession(sessionId);
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(lastAgent().restoreSession).not.toHaveBeenCalledWith(sessionId);
+    const panes = sent("desktopPanes").at(-1) as {
+      panes: Array<{ sessionId?: string }>;
+    };
+    expect(panes.panes[0].sessionId).toBeUndefined();
+  });
+
+  it("holds the reconnect while nobody is at the computer", async () => {
+    DesktopHost.reconnectTimeScale = 0.01;
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    h.existingPaths.add("/remote/repo");
+    const { host, setFocused } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectRemotePath",
+      host: "prod",
+      path: "/remote/repo",
+    });
+    await vi.waitFor(() => expect(h.closedHandlers).toHaveLength(1));
+    registerAgentInIndex(lastAgent());
+
+    // Locked screen, app in the background (spec 场景 9).
+    setFocused(false);
+    powerMonitor.__setIdleState("locked");
+    h.closedHandlers[0]();
+
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(1);
+
+    // Somebody is back — the sequence dials on its own.
+    setFocused(true);
+    powerMonitor.__setIdleState("active");
+    await vi.waitFor(
+      () => expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(2),
+      { timeout: 3000 },
+    );
+  });
+
+  it("an auth failure ends the reconnect and tells the pane", async () => {
+    DesktopHost.reconnectTimeScale = 0.01;
+    seedSshConfig("Host prod\n  HostName 10.0.0.1\n");
+    h.existingPaths.add("/remote/repo");
+    const { host, sent } = await readyHost();
+
+    await host.handleWebviewMessage({
+      command: "desktopSelectRemotePath",
+      host: "prod",
+      path: "/remote/repo",
+    });
+    await vi.waitFor(() => expect(h.closedHandlers).toHaveLength(1));
+    registerAgentInIndex(lastAgent());
+
+    // Retrying cannot fix a refused key (spec 场景 13/14).
+    vi.mocked(connectRemoteDaemon).mockRejectedValueOnce(
+      new Error("Permission denied (publickey)"),
+    );
+    h.closedHandlers[0]();
+
+    await vi.waitFor(() => {
+      const rows = sent("appendMessage").map((m) => JSON.stringify(m));
+      expect(rows.some((r) => r.includes("无法自动恢复"))).toBe(true);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    // Initial connect + the one refused attempt: no further dialing.
+    expect(vi.mocked(connectRemoteDaemon)).toHaveBeenCalledTimes(2);
   });
 
   it("re-attaching a session re-surfaces approvals the daemon held while detached", async () => {
