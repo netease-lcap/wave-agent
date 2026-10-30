@@ -963,6 +963,27 @@ describe("remote page shim", () => {
     expect(page.requests("abortMessage")).toBe(1);
   });
 
+  test("backgrounds the running turn from the message button", async () => {
+    const page = startPage("?host=h-1");
+    await flush();
+    page.api.postMessage({ command: "webviewReady" });
+    await flush();
+    await page.answer("listDaemonSessions", { sessions: [SESSIONS[0]] });
+    await page.answer("getSessionInfo", {
+      sessionId: SESSIONS[0].sessionId,
+      permissionMode: "default",
+    });
+    await page.answer("getMessages", { messages: [SEED] });
+    await page.answer("listPendingPermissions", { requests: [] });
+
+    // 助手消息上的那颗按钮（spec ui/remote-control.md「页面能执行的那批宿主命令」
+    // 场景 11）：手机没有 Ctrl/Cmd+B，所以这条 RPC 必须真的走出去——它是这个动作在
+    // 页面上唯一的入口。
+    page.api.postMessage({ command: "backgroundCurrentTask" });
+    await flush();
+    expect(page.requests("backgroundCurrentTask")).toBe(1);
+  });
+
   test("serves /btw as a side question and routes its stream back to the panel", async () => {
     const { page } = await openPage();
 

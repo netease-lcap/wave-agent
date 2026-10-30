@@ -2,6 +2,9 @@
 .message {
   word-wrap: break-word;
   max-width: 100%;
+  /* 消息自身是 .message-actions 的定位上下文：回滚（用户消息）与「转后台」
+   * （助手消息）都靠它把按钮钉在右上角，两种角色必须一样。 */
+  position: relative;
 }
 
 .message.assistant {
@@ -74,10 +77,6 @@
   background-color: var(--vscode-chat-requestBubbleHoverBackground);
 }
 
-.message.user {
-  position: relative;
-}
-
 .message.user.queued {
   background-color: transparent;
   padding: 0;
@@ -113,8 +112,22 @@
   z-index: 10;
 }
 
-.message.user:hover .message-actions {
+/* 悬停才出现：用户消息上的回滚、助手消息上的「转后台」共用同一条规则——
+ * 两颗按钮是同一类动作（spec: task-background-execution.md 场景 6），显隐方式
+ * 不该因为挂在哪种角色上而不同。 */
+.message:hover .message-actions {
   display: flex;
+}
+
+/* 触控档（手机 / 远控页）：没有真实的悬停能力，`:hover` 只在 tap 的瞬间成立 ——
+ * 照上面那条规则走，手机上就变成「先点消息把按钮点出来、再点按钮」，而且点另一条
+ * 消息会把前一颗收回去。这里常显，仍然是两颗一起变。
+ * 判据取 `hover: none`（真的不能悬停）而不是 `pointer: coarse`（触屏笔记本外接鼠标
+ * 时仍能悬停，那种机器继续按 hover 走）。 */
+@media (hover: none) {
+  .message-actions {
+    display: flex;
+  }
 }
 
 .message-action-btn {

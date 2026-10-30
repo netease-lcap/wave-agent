@@ -3295,6 +3295,14 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [state.isStreaming],
   );
 
+  // 「把本轮转到后台」：与输入框里的 Ctrl/Cmd+B 是同一条命令、同一段宿主逻辑
+  // （`backgroundCurrentTask`），这里只是把它做成一个可见入口——四个 GUI 宿主
+  // 都已注册，远控页亦然（spec: task-background-execution.md「前台工具后台化」）。
+  // 不弹确认：它不杀任务、不删文件、不动会话，只是把执行位置换到后台。
+  const handleBackgroundCurrentTask = useCallback(() => {
+    postToHost({ command: "backgroundCurrentTask" });
+  }, [postToHost]);
+
   // Web Push 通知开关（spec remote-control.md「锁屏也能知道」）：手机页是唯一跑在
   // 浏览器里、能持有推送订阅的宿主，所以这段只有它有。页面侧 shim 才是两个事实的
   // 持有者（浏览器能力位、中继登记的订阅 id），这里不问就不猜：挂载时问一次，之后
@@ -4884,6 +4892,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           // （`truncateHistory` + `revertTo` 还原电脑侧工作区文件），页面上先确认
           // 一次再发——文案由 `pendingRewindId` 那个 ConfirmDialog 按端切。
           onRewindToMessage={handleRewindToMessage}
+          onBackgroundCurrentTask={handleBackgroundCurrentTask}
           // 上翻取更早：滚到顶时这里会拿到一条「要一页更早的」请求，锚点是当前
           // 已加载的第一条（spec ui/message-rendering-system.md「首屏一页，上翻按需
           // 取更早」）。

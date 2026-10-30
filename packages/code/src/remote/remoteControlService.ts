@@ -152,14 +152,17 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   // 排队消息三动作里的两条（「立即发送」= sendMessage{force} + 删这条）。
   "updateQueuedMessage",
   "deleteQueuedMessageById",
-  // 后台任务与工作流：读输出 / 停止（不毁文件，回执即可）。
-  // 注意这里没有 `backgroundCurrentTask`（把当前这轮转为后台）：页面上唯一的入口
-  // 是 Ctrl/Cmd+B，手机键盘没有这个键 —— 放行一个页面根本调不到的方法，只是把
-  // 暴露面放大，与本清单「跟页面能力一致」的判据相反。
+  // 后台任务与工作流：读输出 / 停止 / 把本轮转到后台（不毁文件，回执即可）。
+  // `backgroundCurrentTask` 曾经因为「页面上唯一的入口是 Ctrl/Cmd+B，手机键盘
+  // 没有这个键」而不在此列：放行一个页面根本调不到的方法，只是把暴露面放大，
+  // 与本清单「跟页面能力一致」的判据相反。2026-10-30 助手消息上出现了后台按钮
+  // （spec: task-background-execution.md「前台工具后台化」场景 3–6），页面上有了
+  // 调用方，这条判据随之满足。
   "getBackgroundTaskOutput",
   "stopBackgroundTask",
   "getWorkflowRuns",
   "stopWorkflowRun",
+  "backgroundCurrentTask",
   // `@` 文件建议与历史提示词：都只读，锚在信封 sessionId 的 workdir 上。
   "searchFiles",
   "getPromptHistory",

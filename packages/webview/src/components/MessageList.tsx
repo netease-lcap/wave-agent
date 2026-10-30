@@ -76,6 +76,7 @@ export const MessageList = forwardRef<
     compactionStream,
     vscode,
     onRewindToMessage,
+    onBackgroundCurrentTask,
     workdir,
     onOpenPreview,
     onOpenFile,
@@ -581,6 +582,8 @@ export const MessageList = forwardRef<
                   message={message}
                   vscode={vscode}
                   onRewindToMessage={onRewindToMessage}
+                  onBackgroundCurrentTask={onBackgroundCurrentTask}
+                  isLastMessage={row.index === visibleMessages.length - 1}
                   workdir={workdir}
                   onOpenPreview={onOpenPreview}
                   onOpenFile={onOpenFile}
