@@ -2099,33 +2099,70 @@
 [data-host="desktop"][data-theme="dark"] .file-tab-more-trigger:hover {
   background: rgba(255, 255, 255, 0.12);
 }
+/* ═══ 1030 第七轮：文件标签的两张菜单按「Menus」契约收口（仅桌面端）═══
+   评论：`div.file-tab-more-menu`「big.log / guide.md」「检查是否符合下拉菜单规范，并优化」。
+   族内两处同一套皮肤：`.file-tab-more-menu`（标签溢出后的「更多文件」）与
+   `.file-tab-menu`（标签右键菜单）。契约 references/design-system.md「Menus」：
+   容器 bg-overlay + 1px 更浅描边 + r12 + shadow-popover + 内衬 8、标准宽 200；
+   单行项桌面端 28 高 / 内衬 0 8 / r6 / 14·22 / 400 / 静止 text-regular；
+   hover fill-hover + text-primary；键盘焦点独立可见。
+   改前实测（1440×1000）：容器 0 描边、宽 156、深色阴影是自定义的
+   `0 0 12px 40%`（token 是 `0 12px 30px 40%`）；项高 32、行高 normal、
+   静止色取 text-primary（#1F2329 / #E5E7E8，比契约的 text-regular 深一档）、
+   hover 只换底不换字色；键盘焦点是 UA 的 `1px auto rgb(0,95,204)` 蓝环。 */
 [data-host="desktop"] .file-tab-more-menu,
 [data-host="desktop"] .file-tab-menu {
+  box-sizing: border-box;
+  min-width: 200px;
+  /* 宽度钉死 200，不随文件名长短浮动（设计师 2026-10-30「菜单宽度不浮动」）。
+     base 的 max-width:320 会让长名字把菜单撑到 320，与同族 13 个固定 200 的菜单
+     不一致；钉死后长名一律在项内尾部省略（项宽 182 = 200 − 16 内衬 − 2 边框）。 */
+  max-width: 200px;
   padding: 8px;
-  border: none;
+  border: 1px solid var(--cc-border-lighter, #ebeef5);
   border-radius: 12px;
   background: var(--cc-bg-overlay);
-  box-shadow: 0 0 12px rgb(0 0 0 / 12%);
+  box-shadow: var(--cc-shadow-popover);
 }
-[data-host="desktop"][data-theme="dark"] .file-tab-more-menu,
-[data-host="desktop"][data-theme="dark"] .file-tab-menu {
-  box-shadow: 0 0 12px rgb(0 0 0 / 40%);
+/* 溢出菜单的行高是 28，base 的 max-height 240 会把它切在第 9 行中间（改前实测
+   scrollHeight 268 / clientHeight 256，最后一行只露 12px）。容器是 border-box
+   ⇒ 取「9 行整」= 9×28 + 上下内衬 16 + 边框 2 = 270。 */
+[data-host="desktop"] .file-tab-more-menu {
+  max-height: 270px;
 }
-/* 字号 13 → 14（同一轮）。标签溢出后的「更多」菜单项，min-height 32 / 内衬 0 8
-   / 圆角 6 不动。 */
+/* 项：桌面单行 28 高。这里**不能用 flex 居中** —— 项里是裸文本（没有内层 span），
+   flex 会把文本包成匿名 flex 项，容器上的 `text-overflow: ellipsis` 就不再作用于它，
+   超长文件名会硬裁；保持 base 的 block 铺排 + 22 行高 + 上下 3px 内衬凑 28。 */
 [data-host="desktop"] .file-tab-menu-item,
 [data-host="desktop"] .file-tab-more-item {
-  min-height: 32px;
-  padding: 0 8px;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 3px 8px;
   border-radius: 6px;
-  color: var(--cc-text-primary);
+  color: var(--cc-text-regular);
   font-size: 14px;
-  display: flex;
-  align-items: center;
+  line-height: 22px;
+  font-weight: 400;
 }
 [data-host="desktop"] .file-tab-menu-item:hover,
 [data-host="desktop"] .file-tab-more-item:hover {
   background: var(--cc-fill-hover);
+  color: var(--cc-text-primary);
+}
+/* 键盘焦点：与设置页 listbox 选项同一套（2px 内收环，避免被 12px 容器圆角切角） */
+[data-host="desktop"] .file-tab-menu-item:focus-visible,
+[data-host="desktop"] .file-tab-more-item:focus-visible {
+  outline: 2px solid var(--cc-border-focus, #a0a5a8);
+  outline-offset: -2px;
+}
+/* 空态「没有收起的文件」：与项同档 14/22 + 次要色，纵向占一行高度 */
+[data-host="desktop"] .file-tab-more-empty {
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 3px 8px;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--cc-text-secondary);
 }
 [data-host="desktop"] .file-pane-find {
   gap: 6px;
