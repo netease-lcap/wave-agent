@@ -35,8 +35,8 @@ vi.mock("os", async () => {
     // Use the real temp dir: BackgroundTaskManager writes its log files via
     // fs.createWriteStream(path.join(os.tmpdir(), ...)). A hardcoded "/tmp"
     // resolves to C:\tmp on Windows (usually absent), making the stream's
-    // open fail with ENOENT — surfaced as unhandled errors under the dot
-    // reporter on Windows CI (issue: pre-existing test flakiness).
+    // open fail with ENOENT — surfaced as unhandled errors on Windows CI
+    // (issue: pre-existing test flakiness).
     tmpdir: vi.fn().mockReturnValue(actual.tmpdir()),
   };
 });

@@ -34,7 +34,6 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    reporter: "dot",
     environment: "node",
     include: ["tests/integration/**/*.integration.test.ts"],
     exclude: ["node_modules"],

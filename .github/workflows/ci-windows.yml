@@ -115,12 +115,8 @@ jobs:
       #   to verify the tests themselves pass cross-platform.
       #
       # Tests are invoked per-package via `pnpm --filter <pkg> exec vitest run`
-      # rather than `pnpm -r test`. The latter runs each package's `test`
-      # script (which uses `--reporter=dot`); under pnpm's child-process
-      # management on Windows the dot reporter's stdout buffering causes the
-      # agent-sdk vitest process to crash silently right after emitting "RUN".
-      # Calling `vitest run` directly (default reporter) is the invocation
-      # pattern proven to run all agent-sdk tests green on Windows.
+      # rather than `pnpm -r test`, so the list below selects exactly the
+      # platform-sensitive packages described in the two paragraphs that follow.
       #
       # Only packages with platform-specific code paths (subprocess spawning,
       # fs, .cmd/.exe resolution) are run here — these are the paths that can

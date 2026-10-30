@@ -9,7 +9,6 @@ export default defineConfig(() => {
       setupFiles: ["./tests/setup.ts"],
       include: ["tests/**/*.{test,spec}.{js,mjs,cjs,ts,mts,cts,jsx,tsx}"],
       exclude: ["node_modules", "dist"],
-      // reporters: ["dot"],
       coverage: {
         provider: "v8" as const,
         reporter: ["text", "json", "html"],

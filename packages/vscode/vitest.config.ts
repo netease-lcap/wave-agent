@@ -9,7 +9,6 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    reporter: "dot",
     environment: "node",
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
     exclude: ["node_modules"],
