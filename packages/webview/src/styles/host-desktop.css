@@ -4019,6 +4019,28 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
+/* ── 1030 评论（她点 `span.desktop-panel-empty-item-label`「预览」，参照物 =
+   输入框左侧主机键 `span.desktop-host-name`「本地」）：「默认的图标和文本颜色
+   要和这里保持一致，hover 时才变色」。
+   空态五个入口原先吃 base 的 `--vscode-foreground`（light #202020 / dark
+   #E5E7E8 = 1 级），且 hover 只换底色、字色不动。现改为：常态取主机键常态那档
+   2 级灰（#565a60 / #9a9ea5），hover 才抬到 1 级（#1f2329 / #ffffff，与
+   .desktop-host-trigger:hover 同值）。图标是 currentColor、快捷键跟着
+   opacity .7，都随这颗字色走，不必单独写。 */
+[data-host="desktop"] .desktop-panel-empty-item {
+  color: #565a60;
+}
+[data-host="desktop"][data-theme="dark"] .desktop-panel-empty-item {
+  color: #9a9ea5;
+}
+[data-host="desktop"] .desktop-panel-empty-item:hover:not(:disabled) {
+  color: #1f2329;
+}
+[data-host="desktop"][data-theme="dark"]
+  .desktop-panel-empty-item:hover:not(:disabled) {
+  color: #ffffff;
+}
+
 /* ═══ 0904 第 3 轮（feat/0904-new-base-r1）：字重 token 化 ═════════
    对齐 Figma/codechat 语义字重：--cc-font-weight-semibold 600 / medium
    500 / regular 400。仅 host-desktop 覆盖 base 字重（base 文件不动，
