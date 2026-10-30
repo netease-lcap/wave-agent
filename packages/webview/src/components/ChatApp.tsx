@@ -126,7 +126,13 @@ export const PANEL_LABELS: Record<DesktopPanelKind, string> = {
 // 三次足够跳过「被裁掉的那几条」，又不至于把一次坏锚点变成一个请求风暴。
 const EARLIER_ANCHOR_RETRY_LIMIT = 3;
 
-const PANEL_MIN_WIDTH = 320;
+/** 右侧面板（含空态）的最小宽度：拖拽下限、自动分栏下限、开面板空间守卫共用。
+    设计师 2026-10-30 评论 `div.desktop-panel-empty`「这页的最小宽度可以再窄一些，
+    186px 我看下效果」，随后又定「副标题不折行，202px」——原值 320。
+    202 = 副标题 13px 文字自然宽 169 + 左右内衬 32 + 左边框 1，正好一行放下；
+    201 就会折成两行（实测内容盒 168 < 169）。
+    ⚠️ 空态入口的容器查询断点是 307（内容盒），202 时内容盒 169 仍在单列区间。 */
+const PANEL_MIN_WIDTH = 202;
 /** The conversation (message) area never shrinks below this when opening/dragging panels. */
 const CHAT_MAIN_MIN_WIDTH = 360;
 // A slot the user never dragged splits the row 40% conversation / 60% panel
@@ -4365,7 +4371,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   );
 
   // Authoritative clamp at drag time: keep the shared panel slot within
-  // [320, container - conversation minimum]. A drag also marks the slot as
+  // [PANEL_MIN_WIDTH, container - conversation minimum]. A drag also marks the slot as
   // manually resized — from then on it never auto-splits again (「手动拖宽后
   // 锁定宽度」, see PanelGroupState.panelWidthManual).
   const handlePanelWidthChange = useCallback((width: number) => {
