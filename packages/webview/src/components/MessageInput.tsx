@@ -24,7 +24,7 @@ import type {
 } from "wave-webview-fixtures";
 import { validateImageFile } from "../utils/imageValidation";
 import { useRovingMenu } from "../utils/useRovingMenu";
-import { isRemotePageHost } from "../utils/platform";
+import { isDesktopHost, isRemotePageHost } from "../utils/platform";
 import { useHostMessage } from "../utils/useHostMessage";
 import { ContextTag } from "./ContextTag";
 import { Tooltip } from "./Tooltip";
@@ -43,6 +43,8 @@ import { ModelPicker } from "./ModelPicker";
 import {
   PlusIcon,
   SlashBoxIcon,
+  DesktopComposerPlusIcon,
+  DesktopComposerSlashIcon,
   SendArrowIcon,
   PermCaretIcon,
   PermModeAskIcon,
@@ -2187,7 +2189,14 @@ export const MessageInput = forwardRef<
                       }
                     }}
                   >
-                    <PlusIcon className="toolbar-icon" />
+                    {/* 桌面端换设计师给的 32 画板矢量（DesktopComposerPlusIcon），
+                        画板按 32 css px 显示 ⇒ 图标盒 32 盖满按钮、墨迹仍是 11px；
+                        IDE 宿主保持旧 PlusIcon。按钮盒与 Tooltip 都不变。 */}
+                    {isDesktopHost() ? (
+                      <DesktopComposerPlusIcon className="toolbar-icon toolbar-icon-32" />
+                    ) : (
+                      <PlusIcon className="toolbar-icon" />
+                    )}
                   </button>
                 </Tooltip>
                 {plusMenu.open && (
@@ -2215,7 +2224,11 @@ export const MessageInput = forwardRef<
                   disabled={disabled}
                   onClick={handleSlashButtonClick}
                 >
-                  <SlashBoxIcon className="toolbar-icon" />
+                  {isDesktopHost() ? (
+                    <DesktopComposerSlashIcon className="toolbar-icon toolbar-icon-32" />
+                  ) : (
+                    <SlashBoxIcon className="toolbar-icon" />
+                  )}
                 </button>
               </Tooltip>
             </div>

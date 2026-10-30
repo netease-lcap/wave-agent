@@ -184,6 +184,69 @@ export const SlashBoxIcon: React.FC<IconProps> = ({
   </svg>
 );
 
+// ── Composer 底栏「+」「/」的桌面端矢量（设计师 2026-10-30 提供的两个 SVG：
+//    添加_1.svg / 设置_1.svg）────────────────────────────────────────────────
+// 还原件：32 画板、`fill:none`、stroke 1.4 `round` cap/join、固定色 #565A60；
+// 这里只做两件事 —— `d` 逐字照搬、颜色换成 currentColor（形状与比例不动）。
+// 显示尺寸按「画板 = 显示尺寸」的既有规则取 32px（同 24 画板功能图标按 24 css px
+// 渲染）：墨迹本身只有 11/12px，正好落在 32×32 的 `.toolbar-icon-button` 中间，
+// 与旧版 20 画板缩到 16px 的视觉重量一致。只在桌面端替换，IDE 宿主仍用上面那颗
+// PlusIcon / SlashBoxIcon（那两颗还被创作集「新建分类」等复用，不能整体改）。
+export const DesktopComposerPlusIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={32}
+    height={32}
+    viewBox="0 0 32 32"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
+    <path
+      d="M10.5 16L21.5 16"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M16 10.5L16 21.5"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+export const DesktopComposerSlashIcon: React.FC<IconProps> = ({
+  className = "header-icon",
+}) => (
+  <svg
+    width={32}
+    height={32}
+    viewBox="0 0 32 32"
+    fill="none"
+    className={className}
+    aria-hidden="true"
+  >
+    <path
+      d="M20 22L12 22C10.8954 22 10 21.1045 10 20V12C10 10.8954 10.8954 10 12 10L20 10C21.1046 10 22 10.8954 22 12V20C22 21.1046 21.1046 22 20 22Z"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinejoin="round"
+    />
+    <path
+      d="M14 19.4641L18 12.5359"
+      stroke="currentColor"
+      strokeWidth={1.4}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
 // Composer 发送按钮 — Figma send.svg（stroke 上箭头 1.5、未激活 #ADB0BB）。
 // 与 QueueSendIcon（queue 面板实心上箭头）不同：此图标是描边版。
 export const SendArrowIcon: React.FC<IconProps> = ({

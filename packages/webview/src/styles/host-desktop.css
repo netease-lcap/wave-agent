@@ -332,6 +332,15 @@
   width: 32px;
   height: 32px;
 }
+/* 底栏「+」「/」的桌面端矢量（1030 第十五轮，设计师给的两个 32 画板 SVG）：
+   32 画板按 32 css px 显示（同 24 画板功能图标「artboard = 显示尺寸」），
+   故图标盒与按钮同宽、墨迹只有 11/12px 居中；base `.toolbar-icon` 的 16px
+   会把 32 画板缩到 16 ⇒ 墨迹只剩 5.5px，所以这里必须放开。只在桌面端渲染
+   这颗 class（MessageInput 里按 isDesktopHost() 分叉），IDE 宿主仍是 16px 旧图标。 */
+[data-host="desktop"] .toolbar-icon-button .toolbar-icon-32 {
+  width: 32px;
+  height: 32px;
+}
 
 /* 压缩上下文按钮：32px 高，整体 59×32（codechat 图形按钮）：
    16 icon + 4 gap + 约 31 文字 + 4×2 padding = 59 */
