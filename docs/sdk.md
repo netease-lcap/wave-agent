@@ -766,7 +766,9 @@ const agent = await Agent.create({
 });
 ```
 
-通过 `settings.json` 的 `enabledPlugins` 启用已安装的插件。插件的 skill、hook、MCP 和 LSP 服务器可使用 `${WAVE_PLUGIN_ROOT}` 占位符引用其父插件目录。
+通过 `settings.json` 的 `enabledPlugins` 启用已安装的插件。插件的 skill、命令、hook、MCP 和 LSP 服务器可使用 `${WAVE_PLUGIN_ROOT}` 占位符引用其父插件目录（`${CLAUDE_PLUGIN_ROOT}` 等价）。
+
+**注入命令的参数**：技能与命令正文里的 ``!`cmd` `` 在调用时执行。需要把用户参数交给脚本时，在命令里写 `${WAVE_ARGUMENTS_FILE}`——它会被替换成一个临时文件的绝对路径，内容是用户输入的参数原文（多行、`>`、`&&`、引号都不变形），调用结束即删除；没传参数时给一个空文件。`$ARGUMENTS` / `$1` 仍是交给模型的参数占位符，两者互不影响。
 
 **企业托管配置**：服务端下发的托管配置里同样可以带 `marketplaces` 与 `enabledPlugins`，此时插件子系统会消费它们——首次启动即自动安装并启用指定插件，用户无需手动点「安装」。托管层与本地 `settings.json` 按**键**合并，托管层的同名键覆盖本机值（本机写 `false` 也翻不过来），本机独有的键照常保留。因此由托管配置启用的插件在界面上被视为「由组织管理」：卸载入口不可用，CLI 卸载也会被拒绝；管理员把该插件从托管配置里去掉后，它才回到用户可自行安装 / 卸载的普通状态。
 

@@ -16,6 +16,7 @@ import type { TextBlock } from "../../src/types/index.js";
 import type { MemoryService } from "../../src/services/memory.js";
 import { BASH_TOOL_NAME } from "../../src/constants/tools.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
+import { existsSync, readFileSync, statSync } from "fs";
 // Mock child_process for bash command execution tests
 const mockExec = vi.hoisted(() => vi.fn());
 vi.mock("child_process", () => ({
@@ -393,7 +394,7 @@ describe("SlashCommandManager", () => {
       });
     });
 
-    it("should NOT substitute ${WAVE_SKILL_DIR} in regular slash commands", async () => {
+    it("should NOT substitute ${WAVE_SKILL_DIR} in commands, and say so", async () => {
       const pluginName = "test-plugin";
       const commands = [
         {
@@ -414,7 +415,14 @@ describe("SlashCommandManager", () => {
       const messages = messageManager.getMessages();
       const lastMessage = messages[messages.length - 1];
       const textBlock = lastMessage.blocks[0] as TextBlock;
-      expect(textBlock.customCommandContent).toBe("Path is ${WAVE_SKILL_DIR}");
+      // A command has no skill directory, so the token stays — but not
+      // silently: spec `commands/slash-commands`「插件命令正文可用插件根占位符」.
+      expect(textBlock.customCommandContent).toContain(
+        "Path is ${WAVE_SKILL_DIR}",
+      );
+      expect(textBlock.customCommandContent).toContain(
+        "> **Command warning**:",
+      );
     });
   });
 
@@ -515,6 +523,139 @@ describe("SlashCommandManager", () => {
         undefined,
         { command: "gh pr view", workdir: "/proj" },
       );
+    });
+
+    // spec `commands/slash-commands`「插件命令正文可用插件根占位符」
+    it("resolves the plugin root in a plugin command's body", async () => {
+      slashCommandManager.registerPluginCommands("acme", [
+        {
+          id: "root",
+          name: "root",
+          content: "Run node ${WAVE_PLUGIN_ROOT}/scripts/x.mjs",
+          pluginRoot: "/plugins/acme",
+        },
+      ] as unknown as CustomSlashCommand[]);
+
+      await slashCommandManager.getCommand("acme:root")?.handler();
+
+      const messages = messageManager.getMessages();
+      const block = messages[messages.length - 1].blocks[0] as TextBlock;
+      expect(block.customCommandContent).toBe(
+        "Run node /plugins/acme/scripts/x.mjs",
+      );
+    });
+
+    it("resolves the plugin root in the command's own allowed-tools rules", async () => {
+      const addTemporaryRules = vi.fn();
+      container.register("PermissionManager", {
+        getCurrentEffectiveMode: vi.fn().mockReturnValue("default"),
+        createContext: vi.fn().mockReturnValue({}),
+        checkPermission: vi.fn().mockResolvedValue({ behavior: "allow" }),
+        addTemporaryRules,
+      } as unknown as PermissionManager);
+
+      slashCommandManager.registerPluginCommands("acme", [
+        {
+          id: "rules",
+          name: "rules",
+          content: "PR is !`gh pr view`",
+          config: {
+            allowedTools: ["Bash(node ${WAVE_PLUGIN_ROOT}/scripts/x.mjs*)"],
+          },
+          pluginRoot: "/plugins/acme",
+        },
+      ] as unknown as CustomSlashCommand[]);
+
+      await slashCommandManager.getCommand("acme:rules")?.handler();
+
+      expect(addTemporaryRules).toHaveBeenCalledWith([
+        "Bash(node /plugins/acme/scripts/x.mjs*)",
+      ]);
+    });
+
+    it("reports a plugin root token on a command that has no plugin", () => {
+      const prepared = prepareCommandForTest(slashCommandManager, {
+        id: "loose",
+        name: "loose",
+        filePath: "/home/user/.wave/commands/loose.md",
+        content: "Run ${WAVE_PLUGIN_ROOT}/x.mjs",
+        config: { allowedTools: ["Bash(${WAVE_PLUGIN_ROOT}/x.mjs*)"] },
+      });
+
+      expect(prepared.content).toContain("${WAVE_PLUGIN_ROOT}");
+      expect(prepared.content).toContain("> **Command warning**:");
+      expect(prepared.content).toContain("does not come from a plugin");
+      // A rule left holding a literal token never matches — registration would
+      // only buy its author an unexplainable confirmation prompt.
+      expect(prepared.config?.allowedTools).toBeUndefined();
+    });
+
+    it("reports a skill directory token, which no command can resolve", () => {
+      const prepared = prepareCommandForTest(slashCommandManager, {
+        id: "skilly",
+        name: "skilly",
+        filePath: "/plugins/acme/commands/skilly.md",
+        content: "Run node ${WAVE_SKILL_DIR}/x.mjs",
+        pluginRoot: "/plugins/acme",
+      });
+
+      expect(prepared.content).toContain("${WAVE_SKILL_DIR}");
+      expect(prepared.content).toContain("no skill directory");
+    });
+
+    // spec `ecosystem/agent-skills`「注入命令的参数不经 shell 传递」
+    it("hands the raw arguments to an injected command as a file", async () => {
+      const rawArgs = 'a > b && "c" `d`\nsecond line';
+      let seen: { command: string; content: string; mode: number } | undefined;
+      vi.mocked(markdownParser.executeBashCommands).mockImplementationOnce(
+        async (commands: string[]) => {
+          seen = {
+            command: commands[0],
+            content: readFileSync(commands[0], "utf-8"),
+            mode: statSync(commands[0]).mode & 0o777,
+          };
+          return [{ command: commands[0], output: "ok", exitCode: 0 }];
+        },
+      );
+
+      slashCommandManager.registerPluginCommands("acme", [
+        {
+          id: "args",
+          name: "args",
+          content: "Args: !`${WAVE_ARGUMENTS_FILE}`",
+          pluginRoot: "/plugins/acme",
+        },
+      ] as unknown as CustomSlashCommand[]);
+
+      await slashCommandManager.getCommand("acme:args")?.handler(rawArgs);
+
+      expect(seen?.content).toBe(rawArgs);
+      if (process.platform !== "win32") {
+        expect(seen?.mode).toBe(0o600);
+      }
+      // Gone as soon as the invocation ends: what it held is the user's own text.
+      expect(existsSync(seen?.command as string)).toBe(false);
+    });
+
+    it("warns when the arguments-file token sits outside an injected command", async () => {
+      slashCommandManager.registerPluginCommands("acme", [
+        {
+          id: "prose",
+          name: "prose",
+          content: "Read ${WAVE_ARGUMENTS_FILE} later",
+          pluginRoot: "/plugins/acme",
+        },
+      ] as unknown as CustomSlashCommand[]);
+
+      await slashCommandManager.getCommand("acme:prose")?.handler("x");
+
+      const messages = messageManager.getMessages();
+      const block = messages[messages.length - 1].blocks[0] as TextBlock;
+      expect(block.customCommandContent).toContain("> **Command warning**:");
+      expect(block.customCommandContent).toContain("${WAVE_ARGUMENTS_FILE}");
+      expect(
+        vi.mocked(markdownParser.executeBashCommands),
+      ).not.toHaveBeenCalled();
     });
 
     it("should update user message after bash execution in skill command", async () => {
@@ -902,3 +1043,21 @@ describe("SlashCommandManager", () => {
     });
   });
 });
+
+/**
+ * `prepareCommand` is private: what these cases are about is how one command
+ * invocation resolves its placeholders, not the manager's public surface.
+ */
+function prepareCommandForTest(
+  manager: SlashCommandManager,
+  command: CustomSlashCommand,
+): { content: string; config?: { allowedTools?: string[] } } {
+  return (
+    manager as unknown as {
+      prepareCommand: (command: CustomSlashCommand) => {
+        content: string;
+        config?: { allowedTools?: string[] };
+      };
+    }
+  ).prepareCommand(command);
+}

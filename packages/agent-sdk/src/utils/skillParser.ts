@@ -2,9 +2,9 @@ import { readFileSync } from "fs";
 import { dirname } from "path";
 import { parseFrontmatterYaml, splitFrontmatter } from "./frontmatterYaml.js";
 import {
-  findUnresolvedSkillPlaceholders,
-  substituteSkillPlaceholders,
-} from "./skillPlaceholders.js";
+  findUnresolvedDirectoryPlaceholders,
+  substituteDirectoryPlaceholders,
+} from "./directoryPlaceholders.js";
 import type {
   ParsedSkillFile,
   SkillParseOptions,
@@ -89,11 +89,11 @@ export function parseSkillFile(
     if (allowedTools?.length) {
       const resolved: string[] = [];
       for (const rule of allowedTools) {
-        const substituted = substituteSkillPlaceholders(rule, {
+        const substituted = substituteDirectoryPlaceholders(rule, {
           skillPath,
           pluginRoot,
         });
-        const unresolved = findUnresolvedSkillPlaceholders(substituted);
+        const unresolved = findUnresolvedDirectoryPlaceholders(substituted);
         if (unresolved.length > 0) {
           result.warnings.push(
             `allowed-tools rule "${rule}" keeps ${unresolved.join(", ")} — ` +

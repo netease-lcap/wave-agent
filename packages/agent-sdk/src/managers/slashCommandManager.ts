@@ -3,6 +3,7 @@ import type { AIManager } from "./aiManager.js";
 import type {
   SlashCommand,
   CustomSlashCommand,
+  CustomSlashCommandConfig,
   SkillSource,
 } from "../types/index.js";
 import { loadCustomSlashCommands } from "../utils/customCommands.js";
@@ -17,7 +18,13 @@ import {
   parseBashCommands,
   replaceBashCommandsWithOutput,
   executeBashCommands,
+  prepareInjectedCommands,
 } from "../utils/markdownParser.js";
+import type { BashCommandResult } from "../utils/markdownParser.js";
+import {
+  findUnresolvedDirectoryPlaceholders,
+  substituteDirectoryPlaceholders,
+} from "../utils/directoryPlaceholders.js";
 import { createBashCommandGate } from "../utils/bashCommandGate.js";
 import type { PermissionManager } from "./permissionManager.js";
 import {
@@ -99,20 +106,12 @@ export class SlashCommandManager {
           name: command.name,
           description,
           handler: async (args?: string) => {
-            // Substitute parameters in the command content
-            let processedContent = command.content;
-
-            if (args) {
-              processedContent = substituteCommandParameters(
-                processedContent,
-                args,
-              );
-            }
-
+            const prepared = this.prepareCommand(command, args);
             await this.executeCustomCommandInMainAgent(
               command.name,
-              processedContent,
-              command.config,
+              prepared.content,
+              prepared.config,
+              args,
             );
           },
         });
@@ -354,20 +353,11 @@ export class SlashCommandManager {
         name: namespacedName,
         description,
         handler: async (args?: string) => {
-          // Substitute parameters in the command content
-          let processedContent = command.content;
-
-          if (args) {
-            processedContent = substituteCommandParameters(
-              processedContent,
-              args,
-            );
-          }
-
+          const prepared = this.prepareCommand(command, args);
           await this.executeCustomCommandInMainAgent(
             namespacedName,
-            processedContent,
-            command.config,
+            prepared.content,
+            prepared.config,
             args,
           );
         },
@@ -542,6 +532,81 @@ export class SlashCommandManager {
   }
 
   /**
+   * Resolve one command invocation: parameter substitution first, then the
+   * directory placeholders (spec `commands/slash-commands`「插件命令正文可用插件根
+   * 占位符」).
+   *
+   * The body and the frontmatter's `allowed-tools` run through the same
+   * resolver the skill side uses — a rule left holding a literal
+   * `${WAVE_PLUGIN_ROOT}` never matches, and its author only ever sees a
+   * confirmation prompt it cannot explain. Whatever cannot be resolved is
+   * reported in the body rather than dropped silently.
+   */
+  private prepareCommand(
+    command: CustomSlashCommand,
+    args?: string,
+  ): { content: string; config?: CustomSlashCommandConfig } {
+    const withArgs = args
+      ? substituteCommandParameters(command.content, args)
+      : command.content;
+    const context = { pluginRoot: command.pluginRoot };
+    const content = substituteDirectoryPlaceholders(withArgs, context);
+
+    const leftoverInBody = findUnresolvedDirectoryPlaceholders(content);
+    const leftoverInRules: string[] = [];
+    const droppedRules: string[] = [];
+    const allowedTools: string[] = [];
+    for (const rule of command.config?.allowedTools ?? []) {
+      const resolved = substituteDirectoryPlaceholders(rule, context);
+      const leftover = findUnresolvedDirectoryPlaceholders(resolved);
+      if (leftover.length > 0) {
+        droppedRules.push(rule);
+        leftoverInRules.push(...leftover);
+        continue;
+      }
+      allowedTools.push(resolved);
+    }
+
+    const config = command.config
+      ? {
+          ...command.config,
+          allowedTools: allowedTools.length > 0 ? allowedTools : undefined,
+        }
+      : undefined;
+
+    const leftover = [...new Set([...leftoverInBody, ...leftoverInRules])];
+    if (leftover.length === 0) {
+      return { content, config };
+    }
+
+    const where = [
+      leftoverInBody.length > 0
+        ? `the body keeps ${[...new Set(leftoverInBody)].join(", ")}`
+        : "",
+      droppedRules.length > 0
+        ? `allowed-tools ${droppedRules.map((rule) => `"${rule}"`).join(", ")} not registered`
+        : "",
+    ].filter(Boolean);
+    // Why a token has nowhere to point is a property of the token, not of the
+    // command: a plugin command is still skill-dirless, and a loose command has
+    // no plugin root either way.
+    const why = [
+      ...new Set(
+        leftover.map((token) =>
+          token.includes("PLUGIN")
+            ? "the command does not come from a plugin, so there is no plugin root"
+            : "a command has no skill directory of its own",
+        ),
+      ),
+    ];
+
+    return {
+      content: `> **Command warning**: ${where.join("; ")} — left as written because ${why.join("; ")}, so nothing they point at will work\n\n${content}`,
+      config,
+    };
+  }
+
+  /**
    * Execute custom command in main agent instead of sub-agent
    */
   private async executeCustomCommandInMainAgent(
@@ -556,11 +621,19 @@ export class SlashCommandManager {
 
       // Parse bash commands from the content
       const { commands, processedContent } = parseBashCommands(content);
+      const injected = prepareInjectedCommands(
+        processedContent,
+        commands,
+        args ?? "",
+      );
+      const displayContent = injected.warning
+        ? `> **Command warning**: ${injected.warning}\n\n${processedContent}`
+        : processedContent;
 
       // Add user message immediately so text block shows before bash execution
       const messageId = this.messageManager.addUserMessage({
         content: `/${commandName}${args ? ` ${args}` : ""}`,
-        customCommandContent: processedContent,
+        customCommandContent: displayContent,
       });
 
       // Register the command's own `allowed-tools` BEFORE its injected commands
@@ -575,14 +648,21 @@ export class SlashCommandManager {
 
       // Execute bash commands and update the message if any exist
       if (commands.length > 0) {
-        const bashResults = await executeBashCommands(
-          commands,
-          this.workdir,
-          undefined,
-          createBashCommandGate(this.container),
-        );
+        let bashResults: BashCommandResult[];
+        try {
+          bashResults = await executeBashCommands(
+            injected.commands,
+            this.workdir,
+            undefined,
+            createBashCommandGate(this.container),
+          );
+        } finally {
+          // Deleted even when a command is denied or the invocation is aborted:
+          // what this file holds is the user's own text.
+          injected.cleanup();
+        }
         const finalContent = replaceBashCommandsWithOutput(
-          processedContent,
+          displayContent,
           bashResults,
         );
 

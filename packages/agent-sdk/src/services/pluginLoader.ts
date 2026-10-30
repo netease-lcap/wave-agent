@@ -104,7 +104,13 @@ export class PluginLoader {
    */
   static loadCommands(pluginPath: string): CustomSlashCommand[] {
     const commandsPath = path.join(pluginPath, "commands");
-    return scanCommandsDirectory(commandsPath);
+    // Stamp the root here, the way plugin skills get theirs: a command's
+    // `${WAVE_PLUGIN_ROOT}` has no other source, and the scanner is shared with
+    // user/project command directories that must stay rootless.
+    return scanCommandsDirectory(commandsPath).map((command) => ({
+      ...command,
+      pluginRoot: pluginPath,
+    }));
   }
 
   /**

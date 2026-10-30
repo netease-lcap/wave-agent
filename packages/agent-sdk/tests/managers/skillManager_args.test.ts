@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { existsSync, readFileSync } from "fs";
 import { SkillManager } from "../../src/managers/skillManager.js";
 import { Container } from "../../src/utils/container.js";
 import type { Skill } from "../../src/types/index.js";
+import { executeBashCommands } from "../../src/utils/markdownParser.js";
 
 vi.mock("../../src/utils/globalLogger.js", () => ({
   logger: {
@@ -108,5 +110,45 @@ describe("SkillManager with Arguments and Bash", () => {
     });
 
     expect(result.content).toContain("Hello User! Dir: /test/workdir");
+  });
+
+  // spec `ecosystem/agent-skills`「注入命令的参数不经 shell 传递」: the arguments
+  // reach the script as a file, so `>`, `&&`, backticks and newlines in them
+  // never become shell syntax.
+  it("hands the raw arguments to a bash command as a file", async () => {
+    const rawArgs = 'a > b && "c" `d`\nsecond line';
+    let seen: { command: string; content: string } | undefined;
+    vi.mocked(executeBashCommands).mockImplementationOnce(
+      async (commands: string[]) => {
+        seen = {
+          command: commands[0],
+          content: readFileSync(commands[0], "utf-8"),
+        };
+        return [{ command: commands[0], output: "ok", exitCode: 0 }];
+      },
+    );
+
+    const mockSkill: Skill = {
+      name: "args-skill",
+      description: "A skill reading its arguments from a file",
+      type: "personal",
+      skillPath: "/path/to/skill",
+      content: "---\nname: args-skill\n---\nArgs: !`${WAVE_ARGUMENTS_FILE}`",
+      frontmatter: { name: "args-skill", description: "A skill" },
+      isValid: true,
+      errors: [],
+    };
+
+    skillManager.registerPluginSkills("test-plugin", [mockSkill]);
+
+    const result = await skillManager.executeSkill({
+      skill_name: "test-plugin:args-skill",
+      args: rawArgs,
+    });
+
+    expect(seen?.content).toBe(rawArgs);
+    // Deleted as soon as the injected command ran.
+    expect(existsSync(seen?.command as string)).toBe(false);
+    expect(result.content).toContain("Args: ok");
   });
 });
