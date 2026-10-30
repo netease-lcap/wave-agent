@@ -2253,13 +2253,27 @@
   color: var(--cc-color-danger);
 }
 
+/* 1030 评论（点 `span.file-pane-host`「本地」）：「标签样式参考规范」。
+   她裁决的方向 = **描边标签**（不是填充块）：透明底 + 1px `--cc-border-light`
+   + `--cc-text-secondary` 字。0917 那版按「中性计数徽标」做成填充块
+   （`--cc-fill` 底 + `--cc-text-regular` 字）——那个配方是给**带数字的计数**用的，
+   这颗是主体标签（本地 / 宿主名），描边档更轻、也不抢右侧路径的注意力。
+   几何保持原样：盒高仍 20px（`border-box` + `line-height:18` 让 1px 描边收进盒内，
+   不会把 20 撑成 22），文字左缘距盒缘仍是 6px（`padding:0 5px` + 1px 描边），
+   宽度仍 36px、与路径的间距（gap 8 + margin-right 6 = 14px）都没动。
+   对比度：浅色 #6C7076 压工具栏白底 **4.98:1**、深色 #A0A5A8 压 #181A1B 约 5.4:1
+   （12px 文字都过 AA 4.5；0917 当时否掉 secondary 是因为那时底色是 #F0F2F5，
+   压在填充块上只有 4.44:1 —— 换成描边后底是白的，这条理由不再成立）。 */
 [data-host="desktop"] .file-pane-host {
   font-size: 12px;
-  line-height: 20px;
-  padding: 0 6px;
+  line-height: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--cc-border-light);
   border-radius: 4px;
-  background: var(--cc-fill);
-  color: var(--cc-text-regular);
+  background: transparent;
+  color: var(--cc-text-secondary);
+  box-sizing: border-box;
+  height: 20px;
 }
 
 /* ═══ 0917 评论：「这里面有很明显的分割线，根据 skill 结合其他下拉菜单优化这个
