@@ -35,14 +35,17 @@ jobs:
 
 ## 二、认证 {#auth}
 
-CI 里不用登录态，两个环境变量就够：
+CI 里不用登录态，三个环境变量就够：
 
-| 变量            | 必填 | 说明                            |
-| --------------- | ---- | ------------------------------- |
-| `WAVE_API_KEY`  | 是   | 模型服务的 API Key              |
-| `WAVE_BASE_URL` | 否   | 模型网关地址，留空则用 CLI 默认 |
+| 变量            | 必填 | 说明                                                     |
+| --------------- | ---- | -------------------------------------------------------- |
+| `WAVE_API_KEY`  | 是   | 模型服务的 API Key                                       |
+| `WAVE_MODEL`    | 是   | 模型名，如 `deepseek-flash`。**CI 里没有本地配置可继承** |
+| `WAVE_BASE_URL` | 否   | 模型网关地址，留空则用 CLI 默认                          |
 
-两个变量都会进入 SDK 的配置解析链（`WAVE_API_KEY` / `WAVE_BASE_URL`），与本地 `~/.wave/settings.json` 里的同名键等价。CI 里推荐放在平台的 secret 机制里，不要写进仓库文件——`wave-result.json` 与 job 日志都不含这两个值。
+三个变量都会进入 SDK 的配置解析链，与本地 `~/.wave/settings.json` 里的同名键等价；少给 `WAVE_MODEL` 时 CLI 会直接报 `Agent configuration requires model`。
+
+放哪里：`WAVE_API_KEY` 是密钥，放平台的 secret 机制（GitHub：Settings → Secrets and variables → **Actions → Secrets**）；`WAVE_MODEL` 与 `WAVE_BASE_URL` 不是密钥，放**仓库变量**（同页 **Variables**）更省事，团队里一眼能看到用的是哪个模型。两者都不要写进仓库文件——`wave-result.json` 与 job 日志里都不含它们。
 
 ## 三、权限预设 {#permissions}
 
@@ -70,16 +73,17 @@ CI 里没有人在旁边点「允许」，所以要用一套不需要交互就�
 
 `uses: netease-lcap/wave-agent/.github/workflows/wave-review.yml@<ref>`，`<ref>` 建议写 tag 或 commit，别跟 `main`。输入与输出：
 
-| 输入              | 默认值                | 说明                                       |
-| ----------------- | --------------------- | ------------------------------------------ |
-| `prompt`          | 必填                  | 传给 `wave -p` 的提示词，如 `/code-review` |
-| `wave-version`    | `latest`              | `wave-code` 版本；生产请 pin 具体版本      |
-| `output-format`   | `json`                | `text` / `json` / `stream-json`            |
-| `permission-mode` | `dontAsk`             | 见上一节                                   |
-| `tools`           | `Read,Glob,Grep,Bash` | 启用的工具，逗号分隔                       |
-| `allowed-tools`   | 空                    | 预批规则，逗号分隔                         |
-| `base-url`        | 空                    | 模型网关地址                               |
-| `timeout-minutes` | `20`                  | 整个 job 的超时；审查类提示词不建议小于 20 |
+| 输入              | 默认值                | 说明                                               |
+| ----------------- | --------------------- | -------------------------------------------------- |
+| `prompt`          | 必填                  | 传给 `wave -p` 的提示词，如 `/code-review`         |
+| `wave-version`    | `latest`              | `wave-code` 版本；生产请 pin 具体版本              |
+| `output-format`   | `json`                | `text` / `json` / `stream-json`                    |
+| `permission-mode` | `dontAsk`             | 见上一节                                           |
+| `tools`           | `Read,Glob,Grep,Bash` | 启用的工具，逗号分隔                               |
+| `allowed-tools`   | 空                    | 预批规则，逗号分隔                                 |
+| `base-url`        | 空                    | 模型网关地址；空则读调用方仓库变量 `WAVE_BASE_URL` |
+| `model`           | 空                    | 模型名；空则读调用方仓库变量 `WAVE_MODEL`（必需）  |
+| `timeout-minutes` | `20`                  | 整个 job 的超时；审查类提示词不建议小于 20         |
 
 | 输出          | 说明                                 |
 | ------------- | ------------------------------------ |
@@ -87,6 +91,8 @@ CI 里没有人在旁边点「允许」，所以要用一套不需要交互就�
 | `subtype`     | `success` / `error_during_execution` |
 | `is-error`    | `true` 表示这次运行失败              |
 | `result-file` | 结果 JSON 在工作区里的路径           |
+
+`model` / `base-url` 留空时会读**调用方仓库的 Variables**，所以绝大多数仓库只需要配一次 `WAVE_MODEL` 变量 + 一个 `WAVE_API_KEY` secret，调用方 `with:` 里只写 `prompt`。想写死也可以显式传 `with: { model: deepseek-flash }`。
 
 用输出串联下游 job：
 
@@ -134,6 +140,7 @@ jobs:
       - name: Review
         env:
           WAVE_API_KEY: ${{ secrets.WAVE_API_KEY }}
+          WAVE_MODEL: ${{ vars.WAVE_MODEL }} # 如 deepseek-flash；CI 里没有本地配置可继承
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           wave -p '/code-review' \
@@ -177,6 +184,7 @@ wave-review:
   variables:
     WAVE_VERSION: "latest" # 生产请 pin 具体版本
     WAVE_PROMPT: "/code-review"
+    WAVE_MODEL: "deepseek-flash"
     WAVE_TOOLS: "Read,Glob,Grep,Bash"
     GIT_DEPTH: "0"
   rules:

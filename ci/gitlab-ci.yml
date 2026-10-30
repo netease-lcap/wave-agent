@@ -12,6 +12,8 @@ wave-review:
     # 生产请 pin 具体版本：默认 latest 会把流水线的行为交给上游发版
     WAVE_VERSION: "latest"
     WAVE_PROMPT: "/code-review"
+    # CI 里没有本地配置可继承：模型名必须给（值放 Settings → CI/CD → Variables）
+    WAVE_MODEL: "deepseek-flash"
     WAVE_TOOLS: "Read,Glob,Grep,Bash"
     # 审查靠 `git merge-base HEAD <base>` 算改动范围；GitLab 默认浅克隆
     GIT_DEPTH: "0"

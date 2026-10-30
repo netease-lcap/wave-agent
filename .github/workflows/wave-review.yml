@@ -45,7 +45,12 @@ on:
         type: string
         default: ""
       base-url:
-        description: "模型网关地址，留空则用 CLI 默认"
+        description: "模型网关地址。留空则读调用方仓库的变量 WAVE_BASE_URL，再留空用 CLI 默认"
+        required: false
+        type: string
+        default: ""
+      model:
+        description: "模型名。CI 里没有本地 ~/.wave/settings.json 可继承，必须给；留空则读调用方仓库的变量 WAVE_MODEL"
         required: false
         type: string
         default: ""
@@ -135,7 +140,9 @@ jobs:
         id: run
         env:
           WAVE_API_KEY: ${{ secrets.WAVE_API_KEY }}
-          WAVE_BASE_URL: ${{ inputs.base-url }}
+          # 网关地址与模型名不是密钥，调用方一般放在仓库变量里；输入优先。
+          WAVE_BASE_URL: ${{ inputs.base-url || vars.WAVE_BASE_URL }}
+          WAVE_MODEL: ${{ inputs.model || vars.WAVE_MODEL }}
           # 技能用 gh 判断/回复 PR；不传就没法回评论
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           WAVE_PROMPT: ${{ inputs.prompt }}
@@ -145,6 +152,20 @@ jobs:
           WAVE_ALLOWED_TOOLS: ${{ inputs.allowed-tools }}
         run: |
           set -uo pipefail
+
+          # 先做一次可读的预检：CI 里没有 ~/.wave 配置可继承，缺这两样时的原生报错
+          # （"Agent configuration requires model" / 401）对着 job 日志不直观。
+          missing=""
+          [ -z "${WAVE_MODEL:-}" ] && missing="${missing}模型（inputs.model 或仓库变量 WAVE_MODEL）\n"
+          [ -z "${WAVE_API_KEY:-}" ] && missing="${missing}密钥（仓库 secret WAVE_API_KEY）\n"
+          if [ -n "$missing" ]; then
+            {
+              echo "### 缺少 CI 必需的配置"
+              printf "%b" "$missing"
+            } >> "$GITHUB_STEP_SUMMARY"
+            printf "缺少 CI 必需的配置：\n%b" "$missing" >&2
+            exit 1
+          fi
 
           # workflow_dispatch 只声明的输入会以空串进来（不是 workflow_call 的默认值），
           # 调用方也可能显式传空；这里统一兜一次，别把 "" 当参数喂给 CLI。
