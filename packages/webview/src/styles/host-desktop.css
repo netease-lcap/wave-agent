@@ -1407,6 +1407,20 @@
   line-height: 20px;
 }
 
+/* 工具块错误信息归入同一档（用户 2026-10-30：「上面错误信息的字号要比下面
+   正常的 short result 字号大，感觉很奇怪」）：
+   base `.tool-error` 没有自带 `font-size`/`line-height`，从 `.message` 正文
+   继承 14px / normal —— 比它下面的 `.result-raw`、`.write-tool-stats`
+   （辅助 12/20）还大一号，同一工具块内的错误与提示看起来不是一套。
+   错误信息与 short result 同属工具名下的一行辅助说明，故一并落到辅助
+   12/20。`.tool-error pre` 只有 `font-family/font-style: inherit`，没有自己
+   的字号声明，随容器一起变；`max-height:200px; overflow-y:auto` 不变，行高
+   变小只影响可见行数，内容不裁切。 */
+[data-host="desktop"] .tool-error {
+  font-size: 12px;
+  line-height: 20px;
+}
+
 /* 辅助信息角色续（用户 2026-09-10 指示「.diff-line-ellipsis 可以提到 12px」）：
    diff 上下文折叠的「...」占位行，base 字面值 11px、行高靠
    `.diff-viewer-content` 继承为 20px —— 字号落在角色表所有档位之外，收口到
