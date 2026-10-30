@@ -1,8 +1,10 @@
 import { describe, it, expect } from "vitest";
 import type { Message, ToolBlockUpdateCallbackParams } from "wave-agent-sdk";
 import {
+  messageForRemote,
   messageForUi,
   messagesForUi,
+  resultForRemote,
   toolBlockUpdateForUi,
 } from "../../src/stdio/uiPayload.js";
 
@@ -102,6 +104,85 @@ describe("messagesForUi", () => {
     expect(trimmed[0]).toBe(plain);
     expect(trimmed[1]).not.toBe(page[1]);
     expect(page[1].blocks[1]).toMatchObject({ images: [IMAGE] });
+  });
+});
+
+describe("messageForRemote", () => {
+  /**
+   * Spec ui/remote-control.md「远端通道只开一个白名单」场景 10: the page gets
+   * no image bytes (one screenshot blows the frame budget), but the tag layout
+   * must survive — `[imageN]` is positional.
+   */
+  it("blanks user image bytes and drops their host paths, keeping length and order", () => {
+    const source: Message = {
+      id: "m4",
+      role: "user",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      blocks: [
+        { type: "text", content: "compare [image0] and [image1]" },
+        {
+          type: "image",
+          imageUrls: ["data:image/png;base64,aGVsbG8=", "/tmp/copy.png"],
+          imagePaths: ["/tmp/wave-image-a.png", "/tmp/copy.png"],
+        },
+      ],
+    };
+
+    const remote = messageForRemote(source);
+    const block = remote.blocks[1];
+
+    if (block.type !== "image") throw new Error("expected an image block");
+    expect(block.imageUrls).toEqual(["", ""]);
+    expect("imagePaths" in block).toBe(false);
+    expect(remote.blocks[0]).toEqual(source.blocks[0]);
+  });
+
+  it("leaves the source message untouched, so the GUI hosts keep the bytes", () => {
+    const source: Message = {
+      id: "m5",
+      role: "user",
+      timestamp: "2026-01-01T00:00:00.000Z",
+      blocks: [
+        { type: "image", imageUrls: ["data:image/png;base64,aGVsbG8="] },
+      ],
+    };
+
+    messageForRemote(source);
+
+    expect(source.blocks[0]).toMatchObject({
+      imageUrls: ["data:image/png;base64,aGVsbG8="],
+    });
+  });
+
+  it("cuts tool image bytes too", () => {
+    const remote = messageForRemote(messageWithToolImage());
+    expect("images" in remote.blocks[1]).toBe(false);
+  });
+
+  it("returns the same object when there is nothing to cut", () => {
+    const source = messageWithoutImages();
+    expect(messageForRemote(source)).toBe(source);
+  });
+});
+
+describe("resultForRemote", () => {
+  it("rewrites the messages of a getMessages result", () => {
+    const result = {
+      messages: [messageWithoutImages(), messageWithToolImage()],
+      hasMore: false,
+    };
+
+    const remote = resultForRemote(result) as typeof result;
+
+    expect(remote.hasMore).toBe(false);
+    expect(remote.messages[0]).toBe(result.messages[0]);
+    expect("images" in remote.messages[1].blocks[1]).toBe(false);
+  });
+
+  it("passes anything that is not a message list through untouched", () => {
+    const result = { sessionId: "s1" };
+    expect(resultForRemote(result)).toBe(result);
+    expect(resultForRemote(null)).toBe(null);
   });
 });
 

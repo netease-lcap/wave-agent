@@ -15,6 +15,12 @@
  * them. This is a wire cut, not a memory model: stripping `images` where the
  * SDK writes the block would break the next turn, so do not move it there.
  *
+ * **User pasted images are different.** Their bytes live in the message block
+ * (spec ui/image-pasting.md「已发送图片的标签点开就能看」) so every GUI host can
+ * preview them without asking anybody for a file — those go out to local hosts
+ * untouched, and only the remote Web page gets them cut (`messageForRemote`,
+ * spec ui/remote-control.md「远端通道只开一个白名单」场景 10).
+ *
  * Copies are shallow and made only where the field is actually present — the
  * common message (no images) keeps its identity and costs nothing.
  */
@@ -51,6 +57,49 @@ export function toolBlockUpdateForUi(
   const { images, ...rest } = params;
   void images;
   return rest;
+}
+
+/**
+ * The remote Web page's copy of a message: `messageForUi`, plus user image
+ * bytes blanked out (docs/specs/ui/remote-control.md「远端通道只开一个白名单」
+ * 场景 10).
+ *
+ * Image bytes stay in the block for GUI hosts (they preview them in place), but
+ * they must not go over the relay: one screenshot is commonly 1–3 MB of base64,
+ * far past the 512 KiB frame budget, and the page could not use the bytes even
+ * if they arrived. The array keeps its **length and order** — the `[imageN]`
+ * tags in the text block are positional — so the page still shows a tag per
+ * image, just not a clickable one. `imagePaths` goes too: it is a path on the
+ * session host, which the page cannot read.
+ */
+export function messageForRemote(message: Message): Message {
+  const forUi = messageForUi(message);
+  const { blocks } = forUi;
+  if (!Array.isArray(blocks)) return forUi;
+  let changed = false;
+  const blanked = blocks.map((block) => {
+    if (block.type !== "image") return block;
+    const { imagePaths, ...rest } = block;
+    if (!imagePaths && !rest.imageUrls?.length) return block;
+    changed = true;
+    return { ...rest, imageUrls: (rest.imageUrls ?? []).map(() => "") };
+  });
+  return changed ? { ...forUi, blocks: blanked } : forUi;
+}
+
+/**
+ * `messageForRemote` over the `getMessages` answer — the shape the remote
+ * service actually holds (an untyped JSON result). Anything that is not a
+ * message list passes through untouched.
+ */
+export function resultForRemote(result: unknown): unknown {
+  if (!result || typeof result !== "object") return result;
+  const { messages, ...rest } = result as { messages?: unknown };
+  if (!Array.isArray(messages)) return result;
+  return {
+    ...rest,
+    messages: messages.map((message) => messageForRemote(message as Message)),
+  };
 }
 
 function hasImages(block: ToolBlock): boolean {

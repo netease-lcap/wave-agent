@@ -4,6 +4,7 @@ import type {
   Usage,
   ToolBlock,
   TaskNotificationBlock,
+  UserImage,
 } from "../types/index.js";
 import { readFileSync } from "fs";
 import { extname } from "path";
@@ -14,7 +15,7 @@ import { logger } from "./globalLogger.js";
 export interface UserMessageParams {
   content: string;
   customCommandContent?: string;
-  images?: Array<{ path: string; mimeType: string }>;
+  images?: UserImage[];
   isMeta?: boolean;
 }
 
@@ -161,12 +162,20 @@ export const addUserMessageToMessages = ({
   };
   blocks.push(textBlock);
 
-  // If there are images, add image block
+  // If there are images, add image block. The bytes stay in the block (aligned
+  // with Claude Code: they live in memory and in the transcript, so any GUI can
+  // preview them without asking its host); the host-side file the same bytes
+  // were written to rides alongside for `[Image source: <path>]`.
   if (images && images.length > 0) {
-    const imageUrls = images.map((img) => img.path);
+    const imagePaths: string[] = [];
+    for (const img of images) {
+      if (img.filePath) imagePaths.push(img.filePath);
+    }
     blocks.push({
       type: "image",
-      imageUrls,
+      imageUrls: images.map((img) => img.path),
+      // All or nothing: a partial list would misalign with `imageUrls`.
+      ...(imagePaths.length === images.length && { imagePaths }),
     });
   }
 
@@ -502,8 +511,13 @@ export function cloneMessage(message: Message): Message {
       // Deep clone arrays/objects within blocks if they exist
       if (clonedBlock.type === "tool" && clonedBlock.images) {
         clonedBlock.images = clonedBlock.images.map((img) => ({ ...img }));
-      } else if (clonedBlock.type === "image" && clonedBlock.imageUrls) {
-        clonedBlock.imageUrls = [...clonedBlock.imageUrls];
+      } else if (clonedBlock.type === "image") {
+        if (clonedBlock.imageUrls) {
+          clonedBlock.imageUrls = [...clonedBlock.imageUrls];
+        }
+        if (clonedBlock.imagePaths) {
+          clonedBlock.imagePaths = [...clonedBlock.imagePaths];
+        }
       } else if (clonedBlock.type === "file_history" && clonedBlock.snapshots) {
         clonedBlock.snapshots = clonedBlock.snapshots.map((s) => ({ ...s }));
       }

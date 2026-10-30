@@ -8,9 +8,11 @@ import com.intellij.openapi.diagnostic.logger
 import com.intellij.openapi.editor.LogicalPosition
 import com.intellij.openapi.editor.ScrollType
 import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.fileEditor.ex.FileEditorProviderManager
 import com.intellij.openapi.fileEditor.TextEditor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.openapi.vfs.VirtualFile
 import com.wave.jetbrains.util.Edt
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -82,14 +84,51 @@ object IdeService {
         }
     }
 
+    /** Type id of the bundled Images plugin's file editor ("images"). */
+    private const val IMAGES_EDITOR_TYPE_ID = "images"
+
     /**
-     * previewImage — mirrors VSCE handlePreviewImage (messageHandler.ts:241).
-     * Params: path (String). JetBrains has no built-in image viewer, so open the file with
-     * the OS default app (Desktop.open); fall back to the system browser.
+     * previewImage — mirrors VSCE handlePreviewImage (messageHandler.ts:241), which opens the
+     * picture with `vscode.open` so it shows in VS Code's own image preview tab.
+     *
+     * The JetBrains equivalent is the same: the IDE bundles the Images plugin, whose
+     * FileEditorProvider claims png/jpg/gif/bmp/tiff/ico/svg/… and renders them in an editor
+     * tab (zoom, grid, transparency chessboard). So open the file as an editor tab instead of
+     * throwing the user out to an external app; fall back to the OS default viewer
+     * (Desktop.open, then the system browser) only when no image editor claims this file —
+     * a format outside that list (e.g. webp), or a plugin set where Images is absent.
      */
     fun previewImage(project: Project, params: JsonObject) {
         val path = params["path"]?.jsonPrimitive?.content
         if (path.isNullOrEmpty()) return
+        Edt.invokeLater {
+            try {
+                val file = LocalFileSystem.getInstance().findFileByPath(path)
+                if (file != null && hasBuiltInImageViewer(project, file)) {
+                    FileEditorManager.getInstance(project).openFile(file, true)
+                } else {
+                    openInSystemViewer(project, path)
+                }
+            } catch (e: Exception) {
+                LOG.warn("previewImage failed: ${e.message}", e)
+                showError(project, "预览图片失败: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Whether the platform has an editor for this file that renders it as a picture. Asks the
+     * provider registry instead of naming the plugin's class, so it keeps working when the
+     * plugin id / class moves (the id is `com.intellij.images`, `com.intellij.platform.images`
+     * in newer builds) — and says no when the user disabled the Images plugin.
+     */
+    private fun hasBuiltInImageViewer(project: Project, file: VirtualFile): Boolean =
+        FileEditorProviderManager.getInstance()
+            .getProviderList(project, file)
+            .any { it.editorTypeId == IMAGES_EDITOR_TYPE_ID }
+
+    /** Hand the file to the OS default viewer; fall back to the system browser. */
+    private fun openInSystemViewer(project: Project, path: String) {
         ApplicationManager.getApplication().executeOnPooledThread {
             try {
                 val file = File(path)

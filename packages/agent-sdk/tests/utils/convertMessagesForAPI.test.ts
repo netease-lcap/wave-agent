@@ -1300,6 +1300,75 @@ describe("convertMessagesForAPI", () => {
       ).toBe(false);
     });
 
+    it("appends [Image source: <filePath>] for a pasted data URL the host also wrote to a file", async () => {
+      // A pasted image keeps its bytes inline (imageUrls) and records the file
+      // the host wrote them to (imagePaths) — the model still gets a path it
+      // can hand to a tool.
+      const messages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            { type: "text", content: "What is in this image?" },
+            {
+              type: "image",
+              imageUrls: ["data:image/png;base64,iVBORw0KGgoAAAANS..."],
+              imagePaths: ["/tmp/wave-image-abc.png"],
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      const apiMessages = await convertMessagesForAPI(messages);
+
+      const content = apiMessages[0].content as Array<{
+        type: string;
+        text?: string;
+      }>;
+      const sourcePaths = content
+        .filter(
+          (p) => p.type === "text" && p.text?.startsWith("[Image source:"),
+        )
+        .map((p) => p.text);
+      expect(sourcePaths).toEqual(["[Image source: /tmp/wave-image-abc.png]"]);
+    });
+
+    it("appends [Image source: <filePath>] for a pasted data URL when supportsVision is false", async () => {
+      const messages: Message[] = [
+        {
+          id: generateMessageId(),
+          role: "user",
+          blocks: [
+            { type: "text", content: "What is in this image?" },
+            {
+              type: "image",
+              imageUrls: ["data:image/png;base64,iVBORw0KGgoAAAANS..."],
+              imagePaths: ["/tmp/wave-image-abc.png"],
+            },
+          ],
+          timestamp: new Date().toISOString(),
+        },
+      ];
+
+      const apiMessages = await convertMessagesForAPI(messages, {
+        supportsVision: false,
+      });
+
+      const content = apiMessages[0].content as Array<{
+        type: string;
+        text?: string;
+      }>;
+      expect(content).toEqual([
+        { type: "text", text: "What is in this image?" },
+        {
+          type: "text",
+          text: "[User shared an image, but the current model does not support image recognition]",
+        },
+        { type: "text", text: "[Image source: /tmp/wave-image-abc.png]" },
+      ]);
+    });
+
     it("appends [Image source: <path>] alongside placeholder when supportsVision is false", async () => {
       const messages: Message[] = [
         {

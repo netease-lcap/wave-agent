@@ -49,6 +49,7 @@ import {
   type RelaySocketFactory,
 } from "./relayClient.js";
 import type { RemoteControlEndpoint } from "./remoteControlConfig.js";
+import { resultForRemote } from "../stdio/uiPayload.js";
 
 /**
  * Methods the remote channel accepts.
@@ -624,10 +625,13 @@ export class RemoteControlService implements RemoteControlController {
     method: string,
     result: unknown,
   ): void {
+    // The page's copy: user image bytes never go over the relay
+    // (spec ui/remote-control.md「远端通道只开一个白名单」场景 10).
+    const forRemote = resultForRemote(result);
     const envelope: RelayEnvelope = {
       id: replyId,
       method: "result",
-      params: { result },
+      params: { result: forRemote },
     };
     const bytes = frameBytes(envelope);
     if (bytes <= REMOTE_MAX_FRAME_BYTES) {
@@ -635,7 +639,7 @@ export class RemoteControlService implements RemoteControlController {
       return;
     }
 
-    const page = asMessagePage(result);
+    const page = asMessagePage(forRemote);
     if (page) {
       const kept = trailingCountThatFits(
         page.messages.length,

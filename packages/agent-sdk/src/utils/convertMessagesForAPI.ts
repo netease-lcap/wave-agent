@@ -1,4 +1,4 @@
-import type { Message } from "../types/index.js";
+import type { ImageBlock, Message } from "../types/index.js";
 import { imageFileCacheKey, planOutboundImage } from "./imageRewrite.js";
 import { convertImageToBase64 } from "./messageOperations.js";
 import { taskNotificationToXml } from "./notificationXml.js";
@@ -9,6 +9,22 @@ import {
   ChatCompletionMessageParam,
 } from "openai/resources.js";
 import { logger } from "./globalLogger.js";
+
+/**
+ * The host-side file an image's bytes were written to, for the
+ * `[Image source: <path>]` metadata. `imagePaths` is the authority (it covers
+ * inline data URLs too); a block value that is already a path is its own source.
+ */
+function imageSourcePath(
+  block: ImageBlock,
+  imageUrl: string,
+  index: number,
+): string | undefined {
+  return (
+    block.imagePaths?.[index] ??
+    (imageUrl.startsWith("data:") ? undefined : imageUrl)
+  );
+}
 
 /**
  * Safely handle tool call parameters, ensuring a legal JSON string is returned.
@@ -328,20 +344,22 @@ export async function convertMessagesForAPI(
               type: "text",
               text: "[User shared an image, but the current model does not support image recognition]",
             });
-            // Append source path metadata for local-file images so the main
-            // model can delegate recognition to a vision subagent (which
-            // reads the path with the Read tool). Inline dataURLs are
-            // skipped — only persisted paths are delegatable.
-            block.imageUrls.forEach((imageUrl: string) => {
-              if (!imageUrl.startsWith("data:image/")) {
+            // Append source path metadata so the main model can delegate
+            // recognition to a vision subagent (which reads the path with the
+            // Read tool). The path comes from `imagePaths` — the host-side file
+            // the bytes were also written to — falling back to the block value
+            // itself for images that only exist as a file.
+            block.imageUrls.forEach((imageUrl: string, index: number) => {
+              const sourcePath = imageSourcePath(block, imageUrl, index);
+              if (sourcePath) {
                 contentParts.push({
                   type: "text",
-                  text: `[Image source: ${imageUrl}]`,
+                  text: `[Image source: ${sourcePath}]`,
                 });
               }
             });
           } else {
-            for (const imageUrl of block.imageUrls) {
+            for (const [index, imageUrl] of block.imageUrls.entries()) {
               // Check if it's already base64, convert if not
               const isDataUrl = imageUrl.startsWith("data:image/");
               let finalImageUrl = imageUrl;
@@ -376,7 +394,7 @@ export async function convertMessagesForAPI(
                 cacheKey: isDataUrl
                   ? finalImageUrl
                   : imageFileCacheKey(imageUrl),
-                sourcePath: isDataUrl ? undefined : imageUrl,
+                sourcePath: imageSourcePath(block, imageUrl, index),
               });
 
               if (plan.kind === "omit") {
@@ -398,14 +416,15 @@ export async function convertMessagesForAPI(
                 contentParts.push({ type: "text", text: plan.note });
               }
 
-              // Aligned with Claude Code: when the image comes from a local
-              // file (not an inline dataURL), append its source path as text
-              // metadata so the model can reference the file with tools
-              // (e.g. a vision-model subagent reading the image).
-              if (!isDataUrl) {
+              // Aligned with Claude Code: append the image's source path as text
+              // metadata so the model can reference the file with tools (e.g. a
+              // vision-model subagent reading the image). Inline data URLs get
+              // one too, from `imagePaths` — the host wrote the bytes to a file.
+              const sourcePath = imageSourcePath(block, imageUrl, index);
+              if (sourcePath) {
                 contentParts.push({
                   type: "text",
-                  text: `[Image source: ${imageUrl}]`,
+                  text: `[Image source: ${sourcePath}]`,
                 });
               }
             }

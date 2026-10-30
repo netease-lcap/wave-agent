@@ -895,6 +895,43 @@ describe("RemoteControlService", () => {
     expect(socket.frames()).toHaveLength(0);
   });
 
+  // Spec ui/remote-control.md「远端通道只开一个白名单」场景 10: user image bytes
+  // stay in the block for GUI hosts, but must not go over the relay.
+  it("should blank user image bytes in a getMessages result", async () => {
+    const messages = [
+      {
+        id: "m1",
+        role: "user",
+        timestamp: "2026-01-01T00:00:00.000Z",
+        blocks: [
+          { type: "text", content: "look at [image0]" },
+          {
+            type: "image",
+            imageUrls: ["data:image/png;base64,aGVsbG8="],
+            imagePaths: ["/tmp/wave-image-a.png"],
+          },
+        ],
+      },
+    ];
+    const bridge = createBridgeStub({
+      handleRequest: vi.fn(async () => ({ messages })),
+    });
+    await connect(bridge);
+    socket.sent.length = 0;
+
+    socket.deliver({ id: 11, method: "getMessages", params: {} });
+    await vi.waitFor(() => {
+      expect(socket.frames().at(-1)?.method).toBe("result");
+    });
+
+    const frame = socket.frames().at(-1) as {
+      params: { result: { messages: typeof messages } };
+    };
+    const block = frame.params.result.messages[0].blocks[1];
+    // Same number of images (the `[imageN]` tags are positional), no bytes.
+    expect(block).toEqual({ type: "image", imageUrls: [""] });
+  });
+
   // ── The frame budget ──────────────────────────────────────────────
   //
   // The relay drops any single frame that does not fit its per-subscriber

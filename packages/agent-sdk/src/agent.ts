@@ -34,6 +34,7 @@ import type {
   ForegroundTask,
   SkillMetadata,
   PluginReloadResult,
+  UserImage,
 } from "./types/index.js";
 import type { HookEvent, HookEventConfig } from "./types/hooks.js";
 import type {
@@ -691,7 +692,7 @@ export class Agent {
     id: string,
     patch: {
       content?: string;
-      images?: Array<{ path: string; mimeType: string }>;
+      images?: UserImage[];
       type?: "message" | "bang";
     },
   ): boolean {
@@ -1496,7 +1497,7 @@ export class Agent {
    */
   public async sendMessage(
     content: string,
-    images?: Array<{ path: string; mimeType: string }>,
+    images?: UserImage[],
   ): Promise<void> {
     this.assertNotDestroyed();
 

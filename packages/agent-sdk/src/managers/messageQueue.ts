@@ -1,10 +1,12 @@
+import type { UserImage } from "../types/index.js";
+
 export type QueueState = "idle" | "dispatching" | "running";
 
 export interface QueuedMessage {
   id?: string;
   type?: "message" | "bang" | "notification";
   content: string;
-  images?: Array<{ path: string; mimeType: string }>;
+  images?: UserImage[];
   longTextMap?: Record<string, string>;
   editable?: boolean; // default true
 }
@@ -82,7 +84,7 @@ export class MessageQueue {
     id: string,
     patch: {
       content?: string;
-      images?: Array<{ path: string; mimeType: string }>;
+      images?: UserImage[];
       type?: "message" | "bang";
     },
   ): boolean {
