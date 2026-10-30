@@ -149,4 +149,47 @@ describe("PermissionManager - Safe Zone anchored to original workdir", () => {
       expect(dirs).toContain(path.resolve("/a", "system-data"));
     });
   });
+
+  describe("working directories (what a cd may persist into)", () => {
+    // Claude Code keeps the shell in the project directory plus the directories
+    // the user added explicitly; a `cd` anywhere else is reset. Internal grants
+    // — the auto-memory directory above all — are permission-only, so they must
+    // not answer true here (a /commit-* skill injected after such a cd ran git
+    // in the memory directory and failed with exit 128).
+    it("should exclude system additional directories", () => {
+      const container = createContainer("/a");
+      const manager = new PermissionManager(container);
+      const memoryDir = path.resolve("/mnt/wave/projects/repo/memory");
+
+      manager.addSystemAdditionalDirectory(memoryDir);
+
+      // Permission checks still see the memory files as safe …
+      expect(manager.isPathInSafeZone(path.join(memoryDir, "MEMORY.md"))).toBe(
+        true,
+      );
+      // … but the shell may not settle there.
+      expect(manager.isPathInWorkingDirectory(memoryDir)).toBe(false);
+      expect(
+        manager.isPathInWorkingDirectory(path.join(memoryDir, "MEMORY.md")),
+      ).toBe(false);
+    });
+
+    it("should include the workdir, configured and instance additional directories", () => {
+      const container = createContainer("/a");
+      const manager = new PermissionManager(container);
+      manager.updateAdditionalDirectories(["./shared"]);
+      manager.addInstanceAdditionalDirectory("/mnt/session-approved");
+
+      expect(manager.isPathInWorkingDirectory("/a/src/index.ts")).toBe(true);
+      expect(manager.isPathInWorkingDirectory("/a/shared/config.json")).toBe(
+        true,
+      );
+      expect(
+        manager.isPathInWorkingDirectory("/mnt/session-approved/x.txt"),
+      ).toBe(true);
+      expect(manager.isPathInWorkingDirectory("/mnt/elsewhere/x.txt")).toBe(
+        false,
+      );
+    });
+  });
 });

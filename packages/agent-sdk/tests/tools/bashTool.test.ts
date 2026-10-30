@@ -7,6 +7,8 @@ import type { ToolContext } from "../../src/tools/types.js";
 import type { ChildProcess } from "child_process";
 import { createMockTaskManager } from "../helpers/mockFactories.js";
 import { Container } from "../../src/utils/container.js";
+import { PermissionManager } from "../../src/managers/permissionManager.js";
+import path from "node:path";
 
 // Mock child_process
 vi.mock("child_process");
@@ -1045,12 +1047,12 @@ EOF
       return mockProcess;
     };
 
-    it("should accept CWD when inside safe zone", async () => {
+    it("should accept CWD when inside the working directories", async () => {
       const mockOnCwdChange = vi.fn();
       const mockPermissionManager = {
         createContext: vi.fn().mockReturnValue({}),
         checkPermission: vi.fn().mockResolvedValue({ behavior: "allow" }),
-        isPathInSafeZone: vi.fn().mockReturnValue(true),
+        isPathInWorkingDirectory: vi.fn().mockReturnValue(true),
       };
       const testContext: ToolContext = {
         ...context,
@@ -1074,12 +1076,12 @@ EOF
       expect(result.content).not.toContain("Shell cwd was reset to");
     });
 
-    it("should reset CWD to originalWorkdir when outside safe zone", async () => {
+    it("should reset CWD to originalWorkdir when outside the working directories", async () => {
       const mockOnCwdChange = vi.fn();
       const mockPermissionManager = {
         createContext: vi.fn().mockReturnValue({}),
         checkPermission: vi.fn().mockResolvedValue({ behavior: "allow" }),
-        isPathInSafeZone: vi.fn().mockReturnValue(false),
+        isPathInWorkingDirectory: vi.fn().mockReturnValue(false),
       };
       const testContext: ToolContext = {
         ...context,
@@ -1127,12 +1129,12 @@ EOF
       expect(mockOnCwdChange).toHaveBeenCalledWith("/test/workdir/subdir");
     });
 
-    it("should accept CWD when outside safe zone but no originalWorkdir", async () => {
+    it("should accept CWD when outside the working directories but no originalWorkdir", async () => {
       const mockOnCwdChange = vi.fn();
       const mockPermissionManager = {
         createContext: vi.fn().mockReturnValue({}),
         checkPermission: vi.fn().mockResolvedValue({ behavior: "allow" }),
-        isPathInSafeZone: vi.fn().mockReturnValue(false),
+        isPathInWorkingDirectory: vi.fn().mockReturnValue(false),
       };
       const testContext: ToolContext = {
         ...context,
@@ -1153,6 +1155,44 @@ EOF
       expect(result.success).toBe(true);
       expect(mockOnCwdChange).toHaveBeenCalledWith("/some/other/dir");
       expect(result.content).not.toContain("Shell cwd was reset to");
+    });
+
+    it("should reset CWD when it only sits in a system additional directory (auto-memory)", async () => {
+      // The auto-memory dir is a permission grant (Write/Read there must not
+      // prompt), not a working directory: `cd` into it is reset, so the skill
+      // commands injected afterwards still run in the project (a /commit-*
+      // skill there ran git in the memory dir and failed with exit 128).
+      const workdir = path.resolve("fake-project");
+      const memoryDir = path.join(path.dirname(workdir), "memory");
+      const container = new Container();
+      container.register("CurrentWorkdir", workdir);
+      const permissionManager = new PermissionManager(container);
+      permissionManager.addSystemAdditionalDirectory(memoryDir);
+
+      const mockOnCwdChange = vi.fn();
+      const testContext: ToolContext = {
+        ...context,
+        onCwdChange: mockOnCwdChange,
+        originalWorkdir: workdir,
+        permissionManager,
+      };
+
+      mockSpawn.mockReturnValue(
+        createMockProcess(0, memoryDir) as unknown as ChildProcess,
+      );
+
+      const result = await bashTool.execute(
+        { command: `cd ${memoryDir}` },
+        testContext,
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockOnCwdChange).toHaveBeenCalledWith(workdir);
+      expect(result.content).toContain(`Shell cwd was reset to ${workdir}`);
+      // Still a safe zone for reads/writes — only the shell may not stay there.
+      expect(
+        permissionManager.isPathInSafeZone(path.join(memoryDir, "MEMORY.md")),
+      ).toBe(true);
     });
   });
 
