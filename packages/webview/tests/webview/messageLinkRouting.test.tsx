@@ -6,7 +6,7 @@ import { createMockVscode } from "./test-utils";
 import { MockDataGenerator } from "../fixtures/mockData";
 
 // in the desktop host, localhost links open the preview pane and all
-// other links go to the system browser via openExternal. IDE hosts must keep
+// other links go to the system browser via openExternal. plugin hosts must keep
 // their native link handling (no interception at all).
 
 const CONTENT =
@@ -88,7 +88,7 @@ describe("Message link routing", () => {
     });
   });
 
-  it("IDE host: links are not intercepted at all", () => {
+  it("plugin host: links are not intercepted at all", () => {
     const onOpenPreview = vi.fn();
     // jsdom only implements same-document (fragment) navigation; clicking
     // real URLs would trigger its unimplemented cross-document navigation.

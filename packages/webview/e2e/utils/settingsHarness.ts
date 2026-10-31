@@ -1,8 +1,8 @@
 /**
- * 设置页 e2e 公共 harness（IDE settings tab 场景）。
+ * 设置页 e2e 公共 harness（plugin host settings tab 场景）。
  *
  * 设置页由独立 bundle `settings.js`（src/settings-preview-entry.tsx）渲染，与聊天
- * bundle 不同：宿主是 IDE 编辑器区的 WebviewPanel，页面需要自己带
+ * bundle 不同：宿主是 插件端的编辑器区的 WebviewPanel，页面需要自己带
  * `<script src="vscode-webview://mock-extension-id/settings.js">` 与
  * `window.acquireVsCodeApi`。此前 settings-edit-openfile / settings-project-toggle
  * 两个 e2e 与 agents-dialog / settings-manage 两个 demo 各自抄了一份同样的
@@ -114,7 +114,7 @@ export async function openSettings(
   }
 }
 
-/** 模拟 host → webview 消息（等价于 IDE 侧 postMessage 到 webview）。 */
+/** 模拟 host → webview 消息（等价于插件端侧 postMessage 到 webview）。 */
 export function simulateHostMessage(
   page: Page,
   message: Record<string, unknown>,

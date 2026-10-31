@@ -3,15 +3,15 @@
  *
  * Shown in place of MessageList when there are no messages yet. On desktop the
  * surrounding layout centers this brand mark together with the input card
- * (`.chat-container--welcome`); on IDE hosts it centers on its own.
+ * (`.chat-container--welcome`); on plugin hosts it centers on its own.
  *
- * The login entry lives here on IDE hosts — an unauthenticated user without a
+ * The login entry lives here on plugin hosts — an unauthenticated user without a
  * direct-connect config sees a「登录后即可开始使用~」hint and a 登 录 button
  * under the brand mark (spec sso-auth「更多菜单与欢迎页」场景 5/7). Desktop
  * keeps its login entry in the sidebar account card, so the welcome page never
  * shows a login button there.
  *
- * Brand mark differs by host: IDE plugins show the classic red rounded square
+ * Brand mark differs by host: plugin hosts show the classic red rounded square
  * with the Wave "W" (the original welcome logo); desktop keeps the designer
  * "Codewave. IDE" wordmark (desktop-app spec 场景「品牌标识行」).
  */
@@ -20,7 +20,7 @@ import React from "react";
 import { CodewaveLogo } from "./CodewaveLogo";
 
 export interface WelcomeViewProps {
-  /** Desktop renders the designer wordmark; IDE hosts render the classic W mark. */
+  /** Desktop renders the designer wordmark; plugin hosts render the classic W mark. */
   isDesktop?: boolean;
   /** Host-reported SSO auth state (setInitialState). */
   isAuthenticated: boolean;
@@ -50,10 +50,10 @@ const WelcomeView: React.FC<WelcomeViewProps> = ({
   isAuthenticated,
   onLogin,
 }) => {
-  // Login UI is IDE-only (desktop logs in via the sidebar account card) and only
-  // relevant when the user is not authenticated. IDE hosts have no direct-connect
-  // config anymore, so an unauthenticated IDE user must be nudged to log in
-  // (spec sso-auth「IDE 插件更多菜单与欢迎页」场景 5).
+  // Login UI is plugin-host-only (desktop logs in via the sidebar account card) and only
+  // relevant when the user is not authenticated. plugin hosts have no direct-connect
+  // config anymore, so an unauthenticated plugin-host user must be nudged to log in
+  // (spec sso-auth「插件端更多菜单与欢迎页」场景 5).
   const showLogin = !isDesktop && !isAuthenticated;
 
   return (
@@ -110,7 +110,7 @@ const WelcomeView: React.FC<WelcomeViewProps> = ({
             </div>
           )}
         </div>
-        {/* Product subtitle under the classic W mark (IDE hosts) — restored from
+        {/* Product subtitle under the classic W mark (plugin hosts) — restored from
             the pre-batch-2 welcome page, which paired the mark with the product
             name line. The desktop wordmark already carries the brand name, so
             no subtitle there. */}
@@ -129,7 +129,7 @@ const WelcomeView: React.FC<WelcomeViewProps> = ({
             Hi~ 欢迎使用 CodeWave IDE 代码智聊
           </div>
         )}
-        {/* Login entry (IDE hosts, unauthenticated + no direct-connect) — hint
+        {/* Login entry (plugin hosts, unauthenticated + no direct-connect) — hint
             line plus a full-width brand-red button, matching the pre-batch-2
             welcome page (spec sso-auth「更多菜单与欢迎页」场景 5/7). */}
         {showLogin && (

@@ -11,10 +11,10 @@ import {
 } from "./test-utils";
 
 /**
- * `/resume` (spec session-management.md「GUI 会话内热切换」/「IDE 插件聊天头部」
+ * `/resume` (spec session-management.md「GUI 会话内热切换」/「插件端聊天头部」
  * 场景 8-10, desktop-sessions.md「跨客户端会话来源」).
  *
- * IDE hosts: the command opens the very same popup as the 「历史对话」 button —
+ * plugin hosts: the command opens the very same popup as the 「历史对话」 button —
  * same list, same restore path. Desktop: a centered modal fed by the host's
  * on-disk scan of the current conversation's host, so sessions this app never
  * created are reachable.
@@ -50,7 +50,7 @@ async function sendSlashCommand(command: string) {
   });
 }
 
-describe("/resume (IDE hosts)", () => {
+describe("/resume (plugin hosts)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

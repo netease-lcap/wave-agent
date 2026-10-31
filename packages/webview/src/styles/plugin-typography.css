@@ -1,6 +1,6 @@
 /* Plugin host reading typography (R1 decisions 2026-10-27).
  *
- * Scope: [data-host="plugin"]:not([data-remote-page]) only. Desktop keeps
+ * Scope: [data-host="editor"]:not([data-remote-page]) only. Desktop keeps
  * host-desktop.css; remote Web keeps its pre-R1 base typography. Tool
  * interiors, task lists, queues and layout heights are intentionally untouched.
  *
@@ -9,22 +9,22 @@
  * font. Line heights derive from the host's own font sizes so a host setting
  * change (e.g. 15px UI / 14px editor) scales the whole reading rhythm.
  */
-[data-host="plugin"]:not([data-remote-page]) {
+[data-host="editor"]:not([data-remote-page]) {
   --r1-ui-size: var(--vscode-font-size, 13px);
   --r1-ui-line: calc(var(--r1-ui-size) + 7px);
   --r1-code-size: var(--vscode-editor-font-size, 12px);
   --r1-code-line: calc(var(--r1-code-size) + 6px);
 }
 
-[data-host="plugin"]:not([data-remote-page]) .markdown-content,
-[data-host="plugin"]:not([data-remote-page]) .markdown-content p,
-[data-host="plugin"]:not([data-remote-page]) .markdown-content li,
-[data-host="plugin"]:not([data-remote-page]) .markdown-content blockquote,
-[data-host="plugin"]:not([data-remote-page]) .message-content.user-content,
-[data-host="plugin"]:not([data-remote-page]) .reasoning-content,
-[data-host="plugin"]:not([data-remote-page]) .reasoning-content p,
-[data-host="plugin"]:not([data-remote-page]) .reasoning-content li,
-[data-host="plugin"]:not([data-remote-page]) .reasoning-content blockquote {
+[data-host="editor"]:not([data-remote-page]) .markdown-content,
+[data-host="editor"]:not([data-remote-page]) .markdown-content p,
+[data-host="editor"]:not([data-remote-page]) .markdown-content li,
+[data-host="editor"]:not([data-remote-page]) .markdown-content blockquote,
+[data-host="editor"]:not([data-remote-page]) .message-content.user-content,
+[data-host="editor"]:not([data-remote-page]) .reasoning-content,
+[data-host="editor"]:not([data-remote-page]) .reasoning-content p,
+[data-host="editor"]:not([data-remote-page]) .reasoning-content li,
+[data-host="editor"]:not([data-remote-page]) .reasoning-content blockquote {
   font-family: var(--vscode-font-family, -apple-system, "system-ui", sans-serif);
   font-size: var(--r1-ui-size);
   line-height: var(--r1-ui-line);
@@ -32,46 +32,46 @@
 
 /* D-06 (2026-10-27): plugin user messages follow the desktop component's
  * 500 weight. Kept on the message body only; max-height stays at 200px. */
-[data-host="plugin"]:not([data-remote-page]) .message.user .message-content.user-content {
+[data-host="editor"]:not([data-remote-page]) .message.user .message-content.user-content {
   font-weight: 500;
 }
 
 /* Plugin heading scale: relative to the reading size, not the desktop absolute
  * values (H1-H3 = body +5/+3/+1; H4-H6 = body, so H5/H6 never shrink again). */
-[data-host="plugin"]:not([data-remote-page]) .markdown-content h1 {
+[data-host="editor"]:not([data-remote-page]) .markdown-content h1 {
   font-size: calc(var(--r1-ui-size) + 5px);
   line-height: calc(var(--r1-ui-line) + 6px);
 }
-[data-host="plugin"]:not([data-remote-page]) .markdown-content h2 {
+[data-host="editor"]:not([data-remote-page]) .markdown-content h2 {
   font-size: calc(var(--r1-ui-size) + 3px);
   line-height: calc(var(--r1-ui-line) + 4px);
 }
-[data-host="plugin"]:not([data-remote-page]) .markdown-content h3 {
+[data-host="editor"]:not([data-remote-page]) .markdown-content h3 {
   font-size: calc(var(--r1-ui-size) + 1px);
   line-height: calc(var(--r1-ui-line) + 2px);
 }
-[data-host="plugin"]:not([data-remote-page]) .markdown-content h4,
-[data-host="plugin"]:not([data-remote-page]) .markdown-content h5,
-[data-host="plugin"]:not([data-remote-page]) .markdown-content h6 {
+[data-host="editor"]:not([data-remote-page]) .markdown-content h4,
+[data-host="editor"]:not([data-remote-page]) .markdown-content h5,
+[data-host="editor"]:not([data-remote-page]) .markdown-content h6 {
   font-size: var(--r1-ui-size);
   line-height: var(--r1-ui-line);
 }
 
 /* Table text follows the reading role. The base 0.9em on table/code is
  * replaced by explicit values, so table code no longer multiplies down. */
-[data-host="plugin"]:not([data-remote-page]) .markdown-content table,
-[data-host="plugin"]:not([data-remote-page]) .markdown-content th,
-[data-host="plugin"]:not([data-remote-page]) .markdown-content td {
+[data-host="editor"]:not([data-remote-page]) .markdown-content table,
+[data-host="editor"]:not([data-remote-page]) .markdown-content th,
+[data-host="editor"]:not([data-remote-page]) .markdown-content td {
   font-size: var(--r1-ui-size);
   line-height: var(--r1-ui-line);
 }
 
 /* Technical literals: editor font, host editor size + 6px leading. */
-[data-host="plugin"]:not([data-remote-page]) .markdown-content :not(pre) > code,
-[data-host="plugin"]:not([data-remote-page]) .markdown-content pre,
-[data-host="plugin"]:not([data-remote-page]) .markdown-content pre code,
-[data-host="plugin"]:not([data-remote-page]) .markdown-content a.address-link,
-[data-host="plugin"]:not([data-remote-page]) .markdown-content a.file-path-link {
+[data-host="editor"]:not([data-remote-page]) .markdown-content :not(pre) > code,
+[data-host="editor"]:not([data-remote-page]) .markdown-content pre,
+[data-host="editor"]:not([data-remote-page]) .markdown-content pre code,
+[data-host="editor"]:not([data-remote-page]) .markdown-content a.address-link,
+[data-host="editor"]:not([data-remote-page]) .markdown-content a.file-path-link {
   font-family: var(
     --vscode-editor-font-family,
     Menlo,
@@ -89,28 +89,28 @@
  * .error-stack are the two roles. An explanation may therefore sit after a
  * stack instead of being moved above it. If the host only sends a raw stack,
  * it stays entirely in .error-stack (no invented summary). */
-[data-host="plugin"]:not([data-remote-page]) .message.assistant .error {
+[data-host="editor"]:not([data-remote-page]) .message.assistant .error {
   font-family: var(--vscode-font-family, -apple-system, "system-ui", sans-serif);
   font-style: normal;
   font-size: var(--r1-ui-size);
   line-height: var(--r1-ui-line);
 }
-[data-host="plugin"]:not([data-remote-page]) .message.assistant .error .error-explain {
+[data-host="editor"]:not([data-remote-page]) .message.assistant .error .error-explain {
   font-family: inherit;
   font-size: inherit;
   line-height: inherit;
   margin: 0 0 6px;
   white-space: pre-line;
 }
-[data-host="plugin"]:not([data-remote-page]) .message.assistant .error .error-explain:last-child {
+[data-host="editor"]:not([data-remote-page]) .message.assistant .error .error-explain:last-child {
   margin-bottom: 0;
 }
-[data-host="plugin"]:not([data-remote-page]) .message.assistant .error .error-stack + .error-explain {
+[data-host="editor"]:not([data-remote-page]) .message.assistant .error .error-stack + .error-explain {
   margin-top: 6px;
 }
-[data-host="plugin"]:not([data-remote-page]) .message.assistant .error pre,
-[data-host="plugin"]:not([data-remote-page]) .message.assistant .error code,
-[data-host="plugin"]:not([data-remote-page]) .message.assistant .error .error-stack {
+[data-host="editor"]:not([data-remote-page]) .message.assistant .error pre,
+[data-host="editor"]:not([data-remote-page]) .message.assistant .error code,
+[data-host="editor"]:not([data-remote-page]) .message.assistant .error .error-stack {
   font-family: var(
     --vscode-editor-font-family,
     Menlo,

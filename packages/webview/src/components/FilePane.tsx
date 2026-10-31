@@ -469,7 +469,7 @@ export interface FilePaneProps {
   onTreeWidthChange?: (width: number) => void;
 
   // ---- 面板内编辑（spec desktop-file-panel.md「文件面板内编辑与保存」）--------
-  // 全部由桌面端 ChatApp 接线；缺省即面板只读（IDE 宿主根本没有这个面板）。
+  // 全部由桌面端 ChatApp 接线；缺省即面板只读（插件端根本没有这个面板）。
   /** 进入编辑态：宿主在 `fileView.editable` 里说这个文件可以改。 */
   onStartEdit?: () => void;
   /** 起草稿；编辑器是受控之外的（CodeMirror 自己持有文本），这里只镜像到宿主态。 */
@@ -491,7 +491,7 @@ export interface FilePaneProps {
  *
  * 她指着 `i.codicon.codicon-add`（`button > i`）说「这个按钮改成一样的」——
  * 即和选区那颗评论气泡同一套：设计源的两态矢量（评论normal / 评论hover）+
- * 桌面端自绘 Tooltip。IDE / 插件端继续用 codicon-add + 原生 title。
+ * 桌面端自绘 Tooltip。插件端继续用 codicon-add + 原生 title。
  * 尺寸沿用按钮原盒 16×16（图标等比缩到 16），不改这个浮在块左缘的小按钮的
  * 几何；取色与气泡一致，悬停面走 `currentColor`（`--cc-text-link` 两档）。
  */
@@ -1437,7 +1437,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               >
                 {isDesktopHost() ? (
                   // 1029 第十三轮：桌面端用官方矢量（显示/隐藏文件树，源图标
-                  // 「显示隐藏文件树.svg」）；IDE 宿主保留 codicon。
+                  // 「显示隐藏文件树.svg」）；插件端保留 codicon。
                   <TreeToggleIcon className="preview-pane-icon" />
                 ) : (
                   <i
@@ -1462,7 +1462,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
               >
                 {isDesktopHost() ? (
                   // 1029 第十三轮：桌面端用官方矢量（在文件树中显示）；
-                  // IDE 宿主保留 codicon。
+                  // 插件端保留 codicon。
                   <RevealInTreeIcon className="preview-pane-icon" />
                 ) : (
                   <i
@@ -1518,7 +1518,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                   }}
                 >
                   {isDesktopHost() ? (
-                    // 1029 第十三轮：桌面端用官方矢量（评论）；IDE 宿主保留 codicon。
+                    // 1029 第十三轮：桌面端用官方矢量（评论）；插件端保留 codicon。
                     <CommentIcon className="preview-pane-icon" />
                   ) : (
                     <i
@@ -1543,7 +1543,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 }}
               >
                 {isDesktopHost() ? (
-                  // 1029 第十三轮：桌面端用官方矢量（复制路径）；IDE 宿主保留
+                  // 1029 第十三轮：桌面端用官方矢量（复制路径）；插件端保留
                   // codicon。
                   <CopyPathIcon className="preview-pane-icon" />
                 ) : (
@@ -1812,7 +1812,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                 {/* 评论 1030：原来这里还有一行「打开的文件会显示在这里」，与下面
                     这句引导重复，设计师要求拿掉（只留引导句）。`data-testid` 迁到
                     引导句上 —— 场景 14「一个文件都没打开」的断言靠它定位，语义不变。
-                    注：本组件两个宿主共用，IDE / 插件端的同一空态也会少这一行。 */}
+                    注：本组件两个宿主共用，插件端的同一空态也会少这一行。 */}
                 <span
                   className="file-pane-placeholder-hint"
                   data-testid="file-pane-empty-none"

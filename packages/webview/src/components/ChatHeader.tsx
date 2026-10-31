@@ -50,7 +50,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
   // The header button owns this state for its own toggling, but `/resume`
   // (intercepted in ChatApp) opens the very same popup — one list, one scope,
-  // no second implementation to drift (spec session-management.md「IDE 插件聊
+  // no second implementation to drift (spec session-management.md「插件端聊
   // 天头部」场景 8/10).
   const sessionListVisible = showSessionList || sessionListOpen;
   const closeSessionList = () => {
@@ -60,8 +60,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
   const title = getSessionTitle(currentSession, messages);
 
-  // 就地编辑会话标题（spec session-management.md「会话重命名入口：CLI 与 IDE
-  // 插件」场景 8/9/10）：点击标题即变成输入框，不弹模态、不改变面板布局、不清空
+  // 就地编辑会话标题（spec session-management.md「会话重命名入口：CLI 与插件端」场景 8/9/10）：点击标题即变成输入框，不弹模态、不改变面板布局、不清空
   // 对话；Enter/blur 保存、Esc 回滚、trim 后为空则什么都不做。
   const [draft, setDraft] = useState<string | null>(null);
   const [renameError, setRenameError] = useState<string | undefined>(undefined);
@@ -172,7 +171,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         </div>
       )}
       <div className="header-buttons">
-        {/* 新建对话：IDE 一对齐全出；远控页与「会话」入口成对出现（图标重绑
+        {/* 新建对话：插件端一对齐全出；远控页与「会话」入口成对出现（图标重绑
             到 RemoteNewSessionDialog，底层是 initialize 而非 clearChat —— spec
             remote/remote-web.md「Web 端也能发起新会话」故事）；桌面端仍由
             DesktopSidebar 拥有，不在此渲染。 */}
@@ -189,7 +188,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             </button>
           </Tooltip>
         )}
-        {/* 历史对话：仅 IDE。远控页的列表入口是右侧的「会话」按钮。 */}
+        {/* 历史对话：仅插件端。远控页的列表入口是右侧的「会话」按钮。 */}
         {!hideSessionButtons && (
           <Tooltip text="历史对话" position="bottom">
             <button
@@ -216,7 +215,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               aria-expanded={sessionListVisible}
             >
               {/* 这一端列的是**会话**（进程内活会话，可切可标记），不是「历史」——
-                  复用 IDE 那个 HistoryIcon（时钟 + 回溯箭头）会让图标说一件页面上
+                  复用插件端那个 HistoryIcon（时钟 + 回溯箭头）会让图标说一件页面上
                   不存在的事（页面不提供历史入口，见 spec remote/remote-web.md「Web 页
                   作为第五种宿主」场景 5/21）。codicon 双气泡读作「多条对话」，与
                   旁边「新建对话」同一族；字号在手机档随其余图标一起抬（40×40 / 20px，
@@ -281,7 +280,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         {headerActions}
       </div>
       {/* 远控页改成整页列表后，这个下拉在那一端不再渲染（`onOpenSessionPage`
-          一传就只走整页那条路）；IDE / 桌面端的入口与这份下拉一个字都没改
+          一传就只走整页那条路）；插件端 / 桌面端的入口与这份下拉一个字都没改
           （spec remote/remote-web.md「手机端的会话列表与删除」场景 1）。 */}
       {sessionListVisible && !onOpenSessionPage && (
         <SessionListPopup

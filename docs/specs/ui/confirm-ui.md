@@ -70,7 +70,7 @@ order: 70
 
 1. **假设** agent 已完成规划，**当** exit_plan_mode 工具被触发时，**则**确认 UI 显示计划内容（以 Markdown 渲染，与助手消息同一渲染器：列表为 `•`/序号、表格为单线框表格、粗体/斜体/链接按样式呈现、标题保留彩色 `#` 前缀、代码块带围栏与高亮——裸 Markdown 语法如 `- 项`、`**粗体**`、`| 表格 |` 不再原样出现），并提供手动批准（切换到默认模式）、自动接受编辑（切换到 acceptEdits 模式）或 bypass permissions（切换到 bypassPermissions 模式）的选项。
 2. **假设**退出计划确认已显示，**当**用户选择自动接受编辑选项时，**则**权限模式更改为 acceptEdits，对话上下文保持不变。
-3. **假设**退出计划确认已显示，**当**用户选择 bypass permissions 选项时，**则**计划被批准执行，且权限模式更改为 bypassPermissions（CLI 与 IDE webview 均提供该选项）。
+3. **假设**退出计划确认已显示，**当**用户选择 bypass permissions 选项时，**则**计划被批准执行，且权限模式更改为 bypassPermissions（CLI 与插件端 webview 均提供该选项）。
 
 ---
 

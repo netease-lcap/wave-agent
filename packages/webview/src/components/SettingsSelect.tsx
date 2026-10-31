@@ -31,7 +31,7 @@ export interface SettingsSelectProps {
  * 键盘模型复用 `useRovingMenu`（roving tabindex + Arrow/Enter/Escape/Tab），与面板内
  * 其它下拉（SSH 主机 / 工作目录 / 权限模式）同源。
  *
- * IDE 宿主保留原生 `<select>`：弹层交给宿主原生实现，既有 e2e（`selectOption(...)`）与
+ * 插件端保留原生 `<select>`：弹层交给宿主原生实现，既有 e2e（`selectOption(...)`）与
  * 单测（`.settings-select` / `queryByRole("combobox")`）断言全部不受影响。
  */
 export const SettingsSelect: React.FC<SettingsSelectProps> = (props) =>

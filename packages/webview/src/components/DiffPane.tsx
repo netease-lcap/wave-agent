@@ -528,7 +528,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
               （选中变蓝），也放在右侧」⇒ 三颗控制件收进一个群组，桌面端靠
               `margin-left: auto` 贴到工具条右缘（与文件面板同一位置感）；树开关
               补 `active` 类，复用 `.preview-pane-button.active` 的品牌蓝选中态。
-              结构对两个宿主通用 —— 群组内的间距仍是工具条那 8px，IDE 布局不变。
+              结构对两个宿主通用 —— 群组内的间距仍是工具条那 8px，插件端布局不变。
               1029 评论（第十批）：「统一并排」这个 `div.diff-view-switch`
               「放隐藏图标的左侧」⇒ 视图开关排在树开关之前（连同 DOM 顺序一起挪，
               视觉顺序与读屏 / Tab 顺序保持一致）。 */}
@@ -567,7 +567,7 @@ export const DiffPane: React.FC<DiffPaneProps> = ({
                 onClick={() => onTreeVisibleChange(!treeVisible)}
               >
                 {/* 1029 评论（第九批）「换成和文件面板一样的，仅桌面端」⇒ 桌面端
-                    用文件面板同一颗官方矢量（显示 / 隐藏文件树），IDE 宿主保留
+                    用文件面板同一颗官方矢量（显示 / 隐藏文件树），插件端保留
                     原 codicon。与 FilePane.tsx 的树开关同一处分叉口径。 */}
                 {isDesktopHost() ? (
                   <TreeToggleIcon className="preview-pane-icon" />

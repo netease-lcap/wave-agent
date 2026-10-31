@@ -178,7 +178,7 @@ describe("ChatApp 保存路径：自动记忆偏好真的离开 webview（#2115 
     return vscode;
   }
 
-  /** 桌面端 /config 在应用内打开设置页（IDE 端会改开编辑器标签页）。 */
+  /** 桌面端 /config 在应用内打开设置页（插件端会改开编辑器标签页）。 */
   async function openSettingsViaConfigCommand() {
     const input = screen.getByTestId("message-input");
     input.focus();

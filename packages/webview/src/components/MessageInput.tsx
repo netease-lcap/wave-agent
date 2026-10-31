@@ -310,7 +310,7 @@ export const MessageInput = forwardRef<
 
   // Open the permission-mode dropdown. Shared by the in-DOM Cmd/Ctrl+Shift+M
   // handler (VS Code / desktop when the key reaches the DOM) and the
-  // JetBrains bridge, which forwards the key after swallowing the IDE's
+  // JetBrains bridge, which forwards the key after swallowing the plugin host's
   // "Move Caret to Matching Brace" action (same pattern as history-search,
   // issue #1429). Focus moves to the currently selected option so Enter/Space
   // confirm and Escape closes without routing focus back through the
@@ -1448,7 +1448,7 @@ export const MessageInput = forwardRef<
 
   /**
    * 向宿主取 IDE 上下文内容（@终端 / @问题）。一次性查询：requestId 原样带回，
-   * 不匹配的回复即弃；超时按「不可用」返回，消息照常发出——读不到 IDE 不该让
+   * 不匹配的回复即弃；超时按「不可用」返回，消息照常发出——读不到插件端 不该让
    * 用户点发送后卡住（spec 边界情况「读数据有延迟」）。
    */
   const requestIdeContextContent = useCallback(
@@ -1463,7 +1463,7 @@ export const MessageInput = forwardRef<
             providers.map((provider) => ({
               provider,
               ok: false,
-              reason: "读取超时（IDE 未响应）",
+              reason: "读取超时（插件端未响应）",
             })),
           );
         }, IDE_CONTEXT_TIMEOUT_MS);
@@ -2165,7 +2165,7 @@ export const MessageInput = forwardRef<
                   >
                     {/* 桌面端换设计师给的 32 画板矢量（DesktopComposerPlusIcon），
                         画板按 32 css px 显示 ⇒ 图标盒 32 盖满按钮、墨迹仍是 11px；
-                        IDE 宿主保持旧 PlusIcon。按钮盒与 Tooltip 都不变。 */}
+                        插件端保持旧 PlusIcon。按钮盒与 Tooltip 都不变。 */}
                     {isDesktopHost() ? (
                       <DesktopComposerPlusIcon className="toolbar-icon toolbar-icon-32" />
                     ) : (
@@ -2224,7 +2224,7 @@ export const MessageInput = forwardRef<
 
             {/* Context-usage indicator. Hidden on the welcome composer in
                   either flavor: desktop signals that via workdirSelector being
-                  present, IDE hosts via ChatApp withholding showContextUsage
+                  present, plugin hosts via ChatApp withholding showContextUsage
                   when no visible messages yet (spec 场景 3).
 
                   No usage to show ⇒ render nothing at all (no ring, no number,

@@ -190,7 +190,7 @@ export const SlashBoxIcon: React.FC<IconProps> = ({
 // 这里只做两件事 —— `d` 逐字照搬、颜色换成 currentColor（形状与比例不动）。
 // 显示尺寸按「画板 = 显示尺寸」的既有规则取 32px（同 24 画板功能图标按 24 css px
 // 渲染）：墨迹本身只有 11/12px，正好落在 32×32 的 `.toolbar-icon-button` 中间，
-// 与旧版 20 画板缩到 16px 的视觉重量一致。只在桌面端替换，IDE 宿主仍用上面那颗
+// 与旧版 20 画板缩到 16px 的视觉重量一致。只在桌面端替换，插件端仍用上面那颗
 // PlusIcon / SlashBoxIcon（那两颗还被创作集「新建分类」等复用，不能整体改）。
 export const DesktopComposerPlusIcon: React.FC<IconProps> = ({
   className = "header-icon",
@@ -402,7 +402,7 @@ export const QueueChevronIcon: React.FC<IconProps> = ({
 );
 
 // Queue item action: edit (pencil) — 桌面端用设计师 0917 亲手改过的版本（16 网格 /
-// stroke 1.4 圆头 / 无 transform，笔画与本体是同一条轮廓路径）；IDE 宿主保留 0917 之前
+// stroke 1.4 圆头 / 无 transform，笔画与本体是同一条轮廓路径）；插件端保留 0917 之前
 // 的 Figma 填充稿（本组件是共用资产，不分叉会连带改到两个插件端）。
 export const QueueEditIcon: React.FC<IconProps> = ({
   className = "header-icon",
@@ -447,7 +447,7 @@ export const QueueEditIcon: React.FC<IconProps> = ({
   );
 
 // Queue item action: send now (up arrow) — 桌面端用设计师 0917 亲手改过的版本
-// （箭身高：2.328 → 13.672，比我的 A 档更高）；IDE 宿主保留 0917 之前的 Figma 填充稿。
+// （箭身高：2.328 → 13.672，比我的 A 档更高）；插件端保留 0917 之前的 Figma 填充稿。
 export const QueueSendIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) =>
@@ -632,7 +632,7 @@ export const PermModePlanIcon: React.FC<IconProps> = ({
 
 // Queue item action: delete (trash) — 桌面端用设计师 0917 亲手改过的版本（盖 y=4.5、
 // 桶身 4.5→14.1667、两条内竖线 7.333→11.333，16 网格 / stroke 1.4 圆头）；
-// IDE 宿主保留 0917 之前的 Figma 填充稿（同上，宿主分叉）。
+// 插件端保留 0917 之前的 Figma 填充稿（同上，宿主分叉）。
 export const QueueTrashIcon: React.FC<IconProps> = ({
   className = "header-icon",
 }) =>

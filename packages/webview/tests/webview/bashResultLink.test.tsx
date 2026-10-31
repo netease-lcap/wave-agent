@@ -8,7 +8,7 @@ import type { Message as MessageType } from "../../src/types";
 
 // bash 命令输出中的裸 http(s) URL 应被链接化（见 specs/ui/markdown-links.md），
 // 点击路由与消息文本链接一致：desktop 上 localhost → 预览面板、其余 → 系统
-// 浏览器；IDE 保持原生链接处理。
+// 浏览器；插件端保持原生链接处理。
 
 function renderBashMessage(
   result: string,
@@ -100,7 +100,7 @@ describe("bash result URL linkification", () => {
     });
   });
 
-  it("IDE host: links are not intercepted", () => {
+  it("plugin host: links are not intercepted", () => {
     const onOpenPreview = vi.fn();
     const { vscode, link } = renderBashMessage("see https://example.com/docs", {
       onOpenPreview,

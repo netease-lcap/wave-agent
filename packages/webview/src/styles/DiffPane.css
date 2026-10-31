@@ -183,9 +183,9 @@
      图标          无                             文件夹 FolderIcon / 文件 PanelKindIcon，16×16
      行左距        8 + 每级 12                     6 + 每级 12
 
-   做法：图标与箭头在 DiffFileTree.tsx 里走 `isDesktopHost()` 分叉（IDE 保持原样，
+   做法：图标与箭头在 DiffFileTree.tsx 里走 `isDesktopHost()` 分叉（插件端保持原样，
    与 FileTree.tsx 同一口径）；本文件只补**桌面端**的几何与配色，base 那几条
-   （12px / 22px / VS Code 底色）留给 IDE 宿主。
+   （12px / 22px / VS Code 底色）留给插件端。
    ⚠️ 本该进 host-desktop.css（文件树那族住那儿），但那个文件当前有另一个窗口在改，
    先落在本组件样式里；`.diff-tree-*` 只在桌面面板里渲染，加前缀后即便将来在别的
    宿主出现也不会误伤。

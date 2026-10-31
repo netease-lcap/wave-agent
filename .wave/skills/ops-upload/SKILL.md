@@ -254,7 +254,7 @@ node $S --type remote --env prod --confirm-prod
 
 平台托管的**插件市场镜像快照**：客户端从企业端 `/wave-plugins-official/latest` 取 sha，再去拉 `…/<sha>.zip`。上传 = 把上游市场仓库整树打成一个 zip 传一次对象，**不写台账、不发版、不重建镜像**。
 
-⚠️ **这是「wave 插件市场」，不是 IDE 插件**：VS Code / JetBrains 插件安装包走 `ide-plugin-publish` 技能，平台不再分发（见「坑」最后一条）。
+⚠️ **这是「wave 插件市场」，不是插件端**：VS Code / JetBrains 插件安装包走 `ide-plugin-publish` 技能，平台不再分发（见「坑」最后一条）。
 
 ### 出包（上游仓库 `netease-lcap/wave-plugins-official`）
 
@@ -358,7 +358,7 @@ node .wave/skills/ops-upload/upload.mjs --type plugin-market --file /tmp/wave-pl
 - **同名同通道重传是覆盖**：`(version, platform, channel)` 相同即覆盖旧记录（`fileKey` 相同、file-center 幂等覆盖），重传安全；但**版本号必须与 `--version` 一致**。stable / beta 互不覆盖。
 - **文件名与 `platform` 段以接口返回为准**：现行 canonical 名是 `codewave-ide.dmg` / `codewave-ide-mac.zip` / `codewave-ide-setup.exe`（服务端按 `platform` 定名，**不是**你上传时的原始文件名），`platform` 段为 `mac-dmg` / `mac-zip` / `win-exe`；历史行还留着上一代命名 `codechat-desktop.*`。核对时直接比字段，别靠拼字符串匹配。
 - **`downloadUrl` 的域名别写死**：域名与 URL 前缀是宿主/CDN 的部署细节（外部拥有，变了我们不会收到通知），**一律读接口字段**。2026-09-18 实测生产与测试两个环境当时的域名、甚至路径前缀就已经不同。
-- **「IDE 插件」与「wave 插件市场」是两件事，别混**：平台**不再分发** IDE 插件安装包（vsix / jar），文案是「IDE 插件已迁移至官方插件市场，不再在此分发」，发布走 `ide-plugin-publish` 技能；而平台**确实**托管 wave 官方插件市场的镜像快照（企业端 `/wave-plugins-official/`），上传见「四、wave 官方插件市场」。
+- **「插件端」与「wave 插件市场」是两件事，别混**：平台**不再分发** 插件端安装包（vsix / jar），文案是「插件端已迁移至官方插件市场，不再在此分发」，发布走 `ide-plugin-publish` 技能；而平台**确实**托管 wave 官方插件市场的镜像快照（企业端 `/wave-plugins-official/`），上传见「四、wave 官方插件市场」。
 - **文档包由本技能的「二、文档站包」负责出包 + 上传**：CI 不再构建文档，`docs-<version>.tar.gz` 一律本地 `pnpm run docs:pack` 产出。上传走 `POST /api/ops/docs/upload` 单次 multipart，**不进分片链路、不入下载项台账**（2026-10-19 起），所以传完在下载管理里看不到任何文档记录——这不是失败。
 - **`--type docs` 报 404 `Cannot POST /api/ops/docs/upload` = 该环境后端还没部署这个端点**（2026-10-19 新增），不是脚本或压缩包的问题。2026-10-19 实测：prod / drill 已上线（空体请求回 `400 {"error":"请选择要上传的文档压缩包"}`），test 仍是旧代码（Express HTML 404）——传测试环境前先按这个空体探测确认一次，别把它误判成上传失败。
 - **远控页属托管类资源**：上传 201 只证明对象写进去了，页面上线要看「对象在不在」——本技能只给一条 `curl` 的办法（入口 `wave-remote-config` 的 version/sha + 入口引用的 hash 名），不再有逐字节核验脚本；「页面已更新」≠「机器侧已更新」——白名单在服务那个会话的进程里，旧机器只显示「…指令没有回执」。

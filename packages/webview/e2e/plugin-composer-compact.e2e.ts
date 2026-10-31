@@ -5,7 +5,7 @@ import { MockDataGenerator } from "./fixtures/mockData.js";
 import { expectPermissionMenuAligned } from "./utils/permissionMenu.js";
 
 /**
- * 插件端（VS Code / JetBrains，`[data-host="plugin"]` 那一档）底栏「空间不足 → 图标档」
+ * 插件端（VS Code / JetBrains，`[data-host="editor"]` 那一档）底栏「空间不足 → 图标档」
  * （spec ui/model-selection.md「底栏放不下时模型与权限收成图标档（桌面端 + 插件）」）。
  *
  * 真 Chromium：这些断言全是布局量出来的（档位、控件盒子、重叠像素），jsdom 跑不出来。
@@ -129,11 +129,12 @@ test.describe("plugin composer: icon tier when the bottom row runs out of space"
     await mountChat(webviewPage, 380);
     const geo = await rowGeometry(webviewPage);
 
-    // 宿主标识这一档叫 "plugin"（VS Code / JetBrains 共用）；叫 "ide" 会和产品名
-    // CodeWave IDE 混起来，22×22 那组尺寸就挂在 [data-host="plugin"] 上。
+    // 宿主标识这一档叫 "editor"（VS Code / JetBrains 共用）；叫 "ide" 会和产品名
+    // CodeWave IDE 混，叫 "plugin" 会和插件市场的插件混，22×22 那组尺寸就挂在
+    // [data-host="editor"] 上。
     expect(
       await webviewPage.evaluate(() => document.documentElement.dataset.host),
-    ).toBe("plugin");
+    ).toBe("editor");
 
     expect(geo.compact).toBe(true);
     // 与 + / / 同档：22×22，不是桌面的 32×32。

@@ -42,7 +42,7 @@ function renderMessage(content: string, options?: { workdir?: string }) {
   return { ...result, vscode, onOpenFile, fileLinks, codeLinks };
 }
 
-// Render WITHOUT onOpenFile → IDE host shape: clicks fall back to the
+// Render WITHOUT onOpenFile → plugin host shape: clicks fall back to the
 // openFile RPC on vscode.postMessage (same channel as Read/Write headers).
 function renderIdeMessage(content: string, options?: { workdir?: string }) {
   const vscode = createMockVscode();
@@ -114,7 +114,7 @@ describe("inline-code channel file paths (specs/ui/file-path-links.md)", () => {
     expect(onOpenFile).toHaveBeenCalledWith("/home/u/repo/src/format.ts", 9, 9);
   });
 
-  it("click (IDE, no onOpenFile) emits the openFile RPC with path + line range", () => {
+  it("click (plugin host, no onOpenFile) emits the openFile RPC with path + line range", () => {
     const { vscode, fileLinks } = renderIdeMessage(
       "见 `/home/u/repo/src/utils/format.ts:12-24`",
     );
@@ -506,7 +506,7 @@ describe("bash output paths (specs/ui/file-path-links.md)", () => {
     expect(onOpenFile).toHaveBeenCalledWith(posixPath, 12, 24);
   });
 
-  it("IDE host: clicking an output path emits the openFile RPC", () => {
+  it("plugin host: clicking an output path emits the openFile RPC", () => {
     const { vscode, pathLinks } = renderBashOutput(`wrote ${winPath}`, {
       ide: true,
     });

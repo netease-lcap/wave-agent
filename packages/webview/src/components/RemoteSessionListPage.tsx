@@ -89,7 +89,7 @@ interface RemoteSessionListPageProps {
 
 /**
  * 远控 Web 页的**整页**会话列表（spec remote/remote-web.md「手机端的会话列表与
- * 删除」）。只由 `ChatApp` 在 `isRemotePage` 分支挂载——IDE 端的「历史对话」与
+ * 删除」）。只由 `ChatApp` 在 `isRemotePage` 分支挂载——插件端的「历史对话」与
  * 桌面端的会话入口仍是 `SessionListPopup`，那份下拉一个字都没改。
  *
  * 为什么是整页而不是下拉：下拉是给指针设备的形态（贴着顶栏、宽度窄、没有行级

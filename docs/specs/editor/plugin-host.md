@@ -1,15 +1,15 @@
 ---
-name: "IDE 插件"
-description: "VS Code/JetBrains 共享 React webview 的横切关注点：主题变量、共享包与构建产物、生命周期与消息协议、IDE 专属对话框"
+name: "插件端"
+description: "VS Code/JetBrains 共享 React webview 的横切关注点：主题变量、共享包与构建产物、生命周期与消息协议、插件端专属对话框"
 order: 10
 ---
 
-# 功能规格说明：IDE 插件
+# 功能规格说明：插件端
 
-**规格文件**：`docs/specs/ide/ide-plugin.md`
+**规格文件**：`docs/specs/editor/plugin-host.md`
 **创建日期**：2026-07-27
 
-> 本规格覆盖 VS Code 扩展与 JetBrains 插件共享的 React webview 中、未被其它 CLI 优先规格覆盖的横切关注点：主题与外观变量、共享 webview 包与构建产物同步、webview 生命周期与消息协议、IDE 专属对话框组件。已由其它规格覆盖的部分（确认对话框见 [确认 UI](../ui/confirm-ui.md)、登录流程见 [SSO 认证](../enterprise/sso-auth.md)、编辑器插件与 wave 进程的通信见 [Stdio 传输层](../ui/stdio-transport.md)）不在此重复。
+> 本规格覆盖 VS Code 扩展与 JetBrains 插件共享的 React webview 中、未被其它 CLI 优先规格覆盖的横切关注点：主题与外观变量、共享 webview 包与构建产物同步、webview 生命周期与消息协议、插件端专属对话框组件。已由其它规格覆盖的部分（确认对话框见 [确认 UI](../ui/confirm-ui.md)、登录流程见 [SSO 认证](../enterprise/sso-auth.md)、编辑器插件与 wave 进程的通信见 [Stdio 传输层](../ui/stdio-transport.md)）不在此重复。
 
 ## 用户场景与测试 _（必填）_
 
@@ -60,11 +60,11 @@ order: 10
 
 ---
 
-### 用户故事：IDE 专属对话框组件（优先级：P2）
+### 用户故事：插件端专属对话框组件（优先级：P2）
 
 作为用户，我希望在面板内能查看版本/会话/模型运行时信息（Status 对话框）、配置语言（Config 对话框）、看到首次引导（Welcome 视图），并以一致的对话框视觉规范呈现，以便这些 IDE 独有能力有统一的入口与外观。
 
-**优先级原因**：这些组件 CLI 侧已有等价能力（Ink 渲染），但 webview 侧属 IDE 专属、需自有布局规范；统一对话框模式降低维护成本。
+**优先级原因**：这些组件 CLI 侧已有等价能力（Ink 渲染），但 webview 侧属插件端专属、需自有布局规范；统一对话框模式降低维护成本。
 
 **独立测试**：逐个触发对话框（Status/Config/Welcome 及 MCP/插件/后台任务/Workflow 管理器），验证共用布局类与遮罩/关闭行为一致；验证其消费 reducer 状态字段。
 

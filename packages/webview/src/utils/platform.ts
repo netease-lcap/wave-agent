@@ -19,7 +19,7 @@ export const isMacHiddenTitlebar = (): boolean =>
  * the `[data-host="desktop"]` layer in `host-desktop.css` (see `src/index.tsx`),
  * which is where the desktop-only visual affordances live — including the focus
  * rings that make newly focusable scroll regions discoverable. Renderers shared
- * by all hosts therefore gate desktop-only *tab stops* on this, so the IDE hosts
+ * by all hosts therefore gate desktop-only *tab stops* on this, so the plugin hosts
  * never gain an unstyled tab stop (WCAG 2.4.3 noise) they have no ring for.
  */
 export const isDesktopHost = (): boolean =>
@@ -27,9 +27,9 @@ export const isDesktopHost = (): boolean =>
 
 /**
  * True inside the remote-control Web page — the shim explicitly leaves
- * `waveHostType` unset (so the page renders the IDE branch: no panes, no
+ * `waveHostType` unset (so the page renders the plugin branch: no panes, no
  * workdir picker) and sets `waveRemotePage` instead. This is the one flag that
- * distinguishes "an IDE host" from "a browser page holding a token", and the
+ * distinguishes "a plugin host" from "a browser page holding a token", and the
  * difference is a capability difference, not a taste one: the page has no
  * editor to open a file in, no settings tab, no plugin manager, no local host
  * to route a command to (spec `remote/remote-web.md` 场景 20/21).

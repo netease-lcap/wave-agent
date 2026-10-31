@@ -69,7 +69,7 @@
    输入框规格不再特化：Figma welcome 复用标准 Form，统一 desktop
    44px / 14px / 22px。 */
 
-/* IDE hosts (VS Code / JetBrains) chat body wrappers (.ide-chat-wrap/main):
+/* plugin hosts (VS Code / JetBrains) chat body wrappers (.ide-chat-wrap/main):
    always rendered — plain flex-column pass-throughs in normal chat, and
    group-centering on the welcome page. Keeping the wrappers constant means
    entering/leaving the welcome page never unmounts the input card (e.g. the
@@ -89,7 +89,7 @@
   min-width: 0;
 }
 
-/* Welcome page (IDE hosts): brand mark + input card center as one group —
+/* Welcome page (plugin hosts): brand mark + input card center as one group —
    same layout as the desktop welcome scene. The header is taken out of flow
    (pinned to the top) so the group centers against the whole viewport;
    without this the mark would center in the area above the input and sit

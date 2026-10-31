@@ -200,7 +200,7 @@
    判定由 MessageInput 按实际内容量宽后写在行上的 `.is-compact` 触达（纯 CSS 判不了
    「模型名多长时放不下」）。这里只放**两个宿主都一样**的结构规则；图标档的尺寸按宿主
    密度分档：桌面端 32×32（host-desktop.css）、插件端 22×22（本文件下方
-   `[data-host="plugin"]` 那组，与 + / / 的 `.toolbar-icon-button` 同档）。
+   `[data-host="editor"]` 那组，与 + / / 的 `.toolbar-icon-button` 同档）。
    `.is-measuring` 只在量宽那一帧存在（子项解除收缩），不会绘制到屏幕。 */
 .input-buttons-row.is-measuring > * {
   flex-shrink: 0;
@@ -226,8 +226,8 @@
 }
 
 /* 图标档 · 插件端尺寸（图标按钮 22×22，与 `.toolbar-icon-button` 同档）。
-   `plugin` = VS Code / JetBrains 插件端；产品名叫 CodeWave IDE，所以这一档不叫 ide。 */
-[data-host="plugin"] .input-buttons-row.is-compact .permission-mode-select {
+   `editor` = 插件端宿主；不叫 ide（会和产品名 CodeWave IDE 混），也不叫 plugin（那词留给插件市场）。 */
+[data-host="editor"] .input-buttons-row.is-compact .permission-mode-select {
   width: 22px;
   padding: 0;
   gap: 0;

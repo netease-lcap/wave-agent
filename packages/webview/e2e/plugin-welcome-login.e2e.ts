@@ -2,15 +2,15 @@ import { test, expect } from "./utils/webviewTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
 
 /**
- * e2e（真浏览器 + 真 chat.js bundle）— IDE 宿主的登录门禁。
+ * e2e（真浏览器 + 真 chat.js bundle）—插件端的登录门禁。
  *
- * 出处：spec sso-auth「IDE 插件更多菜单与欢迎页」场景 5／边界情况「IDE 宿主不再
+ * 出处：spec sso-auth「插件端更多菜单与欢迎页」场景 5／边界情况「插件端不再
  * 有直连免登录旁路」＋「未认证时发送入口禁用」（2026-09-10 拍板：宿主端 API Key /
  * Base URL / headers 用户配置链路整体下线，未登录时发送入口直接置灰）。
  *
  * 语义对照单测 packages/webview/tests/webview/welcomeViewFlash.test.tsx 与
  * unauthenticatedInputDisabled.test.tsx；这里跑在未注入 `window.waveHostType`
- * （= IDE 宿主，见 src/index.tsx）的真实 bundle 上，覆盖 `showLogin` 与输入框
+ * （= 插件端，见 src/index.tsx）的真实 bundle 上，覆盖 `showLogin` 与输入框
  * disabled/占位文案在真实 ChatApp 数据流里的取值：setInitialState.isAuthenticated
  * 与「遗留直连配置」都不再能关掉登录入口或放开输入框。
  */
@@ -35,7 +35,7 @@ async function bootIdeHost(
   return injector;
 }
 
-test.describe("IDE 宿主欢迎页登录入口（真 bundle）", () => {
+test.describe("插件端欢迎页登录入口（真 bundle）", () => {
   test("未认证时显示登录引导与登录按钮，点击发出 login", async ({
     webviewPage,
   }) => {

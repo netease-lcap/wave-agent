@@ -22,7 +22,7 @@ export interface ModelPickerProps {
   onSelect: (model: string) => void;
 }
 
-/** IDE 宿主沿用的细描边 chevron（与改动前逐字一致；桌面端改用共享的 PermCaretIcon）。 */
+/** 插件端沿用的细描边 chevron（与改动前逐字一致；桌面端改用共享的 PermCaretIcon）。 */
 const ChevronIcon: React.FC = () => (
   <svg
     className="model-picker-caret"

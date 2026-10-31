@@ -2,14 +2,14 @@
 /**
  * Build the Web page (PWA-ish) for remote control from the shared webview.
  *
- * The page runs the same frontend bundle the desktop/IDE hosts embed — built
+ * The page runs the same frontend bundle the desktop/plugin hosts embed — built
  * from the same `esbuild.config.mjs`, from the same entry — plus `remote/shim.js`
  * as the host-side transport (see that file's header for why the browser shim is
  * what makes the webview a fifth host). Nothing here is built by the normal
  * product build: it writes only into `remote/dist/` (gitignored) and a temp dir
  * it deletes, and touches no existing artifact or workflow. The host artifacts
  * under `packages/webview/dist/` are deliberately left untouched, so a page build
- * can never change what the IDE and desktop apps load.
+ * can never change what the plugin host and desktop apps load.
  *
  * Mirrors `packages/desktop/scripts/syncWebview.mjs` on purpose — same HTML
  * skeleton, same theme-base CSS (with `:root` rewritten per theme so both
@@ -20,7 +20,7 @@
  * - `terminal.*` is filtered out (the phone has no terminal pane), matching the
  *   exclusion `packages/webview/scripts/syncTargets.mjs` applies for VS Code.
  * - Every asset carries a content hash in its file name and the HTML points at
- *   the hashed names; the four IDE hosts keep reading `dist/chat.js` from disk,
+ *   the hashed names; the four plugin hosts keep reading `dist/chat.js` from disk,
  *   so this rename is confined to this build. Rationale: this page is the only
  *   HTTP-served form of the bundle, and a fixed name plus a long cache TTL leaves
  *   phones running yesterday's `chat.js` after a redeploy — silently, because the

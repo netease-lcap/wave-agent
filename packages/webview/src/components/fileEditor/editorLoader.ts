@@ -2,7 +2,7 @@
  * Loader for the desktop-only `editor.js` chunk (CodeMirror). Same shape as the
  * terminal chunk's loader: a same-origin <script> tag, a single in-flight
  * promise, and a cached global. Desktop only — the chunk is filtered out of the
- * IDE hosts' webview directory, so `window.WaveEditor` never appears there and
+ * plugin hosts' webview directory, so `window.WaveEditor` never appears there and
  * the file panel simply has no edit affordance.
  */
 

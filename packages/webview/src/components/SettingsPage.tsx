@@ -73,13 +73,13 @@ export interface SettingsPageProps {
    *  CLI RPC 把「省略键」当作「不改该键」（spec agent-config 边界说明「省略键 =
    *  不改该键」）。 */
   onSave?: (data: ConfigurationData) => void;
-  /** 主题偏好（仅桌面端传入；未传入 = IDE 宿主，不渲染「桌面端设置」区块与
+  /** 主题偏好（仅桌面端传入；未传入 = 插件端，不渲染「桌面端设置」区块与
    *  主题行）。选择即时生效（onThemeChange 触发 host setThemeSource），
    *  不依赖保存按钮。 */
   themeSource?: ThemeSource;
   /** 用户选择新主题偏好（"system" | "light" | "dark"），host 持久化并应用。 */
   onThemeChange?: (source: ThemeSource) => void;
-  /** 桌面端更新通道（仅桌面端传入；未传入 = IDE 宿主，不渲染「桌面端设置」
+  /** 桌面端更新通道（仅桌面端传入；未传入 = 插件端，不渲染「桌面端设置」
    *  区块与开关行）。切换即时生效（onUpdateChannelChange 触发 host
    *  setUpdateChannel），不依赖保存按钮。 */
   updateChannel?: UpdateChannel;
@@ -121,7 +121,7 @@ export interface SettingsPageProps {
   onToggleBuiltinPlugin?: (pluginId: string, enabled: boolean) => void;
   /** 关闭设置页并预填 AI 对话框提示词（新建/编辑 技能/子代理/钩子/MCP）。
    *  编辑操作附带 openFile（配置文件路径）：desktop 由 ChatApp 实现（关设置页 +
-   *  会话视图右侧文件面板打开该文件）；IDE 由 settings-preview-entry 转发
+   *  会话视图右侧文件面板打开该文件）；插件端由 settings-preview-entry 转发
    *  prefillPrompt + openFile RPC 给 host（host 用 IDE 自身编辑器打开）。 */
   onPrefillPrompt?: (prompt: string, openFile?: string) => void;
   /**
@@ -149,7 +149,7 @@ export type NavKey =
 type AgentsScope = "user" | "project";
 
 /**
- * 用户偏好「未设置」态的表达（spec agent-config「IDE 插件配置入口」场景 7–8）：
+ * 用户偏好「未设置」态的表达（spec agent-config「插件端配置入口」场景 7–8）：
  *
  * settings.json 里没有某个键时，控件显示**系统默认**而不是假装一个真实值——
  * 语言下拉用一个显式项（下拉没有 placeholder 语义）、两个数字输入留空 + 灰字
@@ -270,7 +270,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 /** 当前宿主能看到的导航分组。桌面端把「插件市场」整项摘掉——它已有独立的整页视图
  *  （侧边栏「新对话」下方的入口，spec ecosystem/plugin.md 场景 1），设置页不再重复
- *  一个入口；IDE 宿主（VS Code / JetBrains）没有侧边栏整页，设置页这项是它们唯一的
+ *  一个入口；插件端（VS Code / JetBrains）没有侧边栏整页，设置页这项是它们唯一的
  *  入口，必须保留。 */
 const navGroupsForCurrentHost = (): NavGroup[] =>
   NAV_GROUPS.map((group) => ({
@@ -308,12 +308,12 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
 }) => {
   const [activeNav, setActiveNav] = useState<NavKey>(initialNav ?? "global");
 
-  // macOS 全屏状态（仅 desktop 宿主有 Provider 供值；IDE 宿主无 Provider 读默认
+  // macOS 全屏状态（仅 desktop 宿主有 Provider 供值；插件端无 Provider 读默认
   // false）——设置页占满整个 view 时由自身窗口行承接红绿灯让位，系统全屏
   // （红绿灯隐藏）时让位行收起。
   const { fullScreen } = useDesktopChrome();
 
-  // IDE 标签页场景：设置页常驻挂载，/agents、/skills 再次唤起时 host 通过
+  // 插件端标签页场景：设置页常驻挂载，/agents、/skills 再次唤起时 host 通过
   // settingsState 下发新的 nav，此处同步选中项（desktop 每次打开会重挂载，
   // 初始值已覆盖，本 effect 为幂等）。
   useEffect(() => {
@@ -640,7 +640,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({
               drag），背景与导航同色一体无条带；「返回」按钮位于窗口行下方单独一行
               （不与红绿灯同排，左缘与导航项对齐）。进入系统全屏（红绿灯隐藏）时
               让位行整行收起（高度归零、内容上移贴顶），退出全屏恢复。仅
-              desktop+darwin 真机渲染（IDE 宿主 / Windows / Linux 无窗口 chrome，
+              desktop+darwin 真机渲染（插件端 / Windows / Linux 无窗口 chrome，
               不渲染窗口行，返回按钮保持左导航首行原布局）。 */}
           {isMacHiddenTitlebar() && (
             <div

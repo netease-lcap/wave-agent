@@ -9,7 +9,7 @@
  * expectations.
  *
  * `paneId` is optional: the desktop host tags every pane-scoped push with the
- * target pane's id; IDE hosts never send it (untagged messages are consumed by
+ * target pane's id; plugin hosts never send it (untagged messages are consumed by
  * the single webview instance / self-consumed per ChatApp).
  *
  * ## 归属契约（reply-to messages，P3 键控契约）
@@ -338,7 +338,7 @@ export interface UpdateTasksMessage extends HostToWebviewMessageBase {
  * `loadingChange` 只描述当前这条会话。
  *
  * 只有远控 Web 页（shim）发这条消息：它是唯一没有侧栏的宿主，会话列表就是它
- * 唯一能标记状态的地方；其余四端各有自己的会话行呈现（桌面端侧栏、IDE 的会话
+ * 唯一能标记状态的地方；其余四端各有自己的会话行呈现（桌面端侧栏、插件端的会话
  * 面板），不需要第二份实现。
  */
 export interface UpdateSessionStatusMessage
@@ -695,7 +695,7 @@ export interface SetInitialStateMessage extends HostToWebviewMessageBase {
   sessions: SessionMetadata[];
   session?: SessionMetadata;
   currentSession?: SessionMetadata;
-  /** 仅 IDE 宿主（VSCE/JetBrains）随快照携带；desktop 走窗口级
+  /** 仅插件端（VSCE/JetBrains）随快照携带；desktop 走窗口级
    *  configurationResponse（分屏下 root 实例不消费带 paneId 的快照，而渲染设置页
    *  的正是 root）。 */
   configurationData?: ConfigurationData;
@@ -1134,7 +1134,7 @@ export interface FileSuggestionsErrorMessage extends HostToWebviewMessageBase {
 
 // ---- IDE 上下文提及（@terminal / @problems，spec ui/ide-context-mentions.md）----
 //
-// 只在 IDE 插件宿主（VS Code / JetBrains）成立：webview 在发送那一刻向宿主取
+// 只在插件端（VS Code / JetBrains）成立：webview 在发送那一刻向宿主取
 // 一次内容，把结果拼进用户消息正文，之后历史重放不再访问 IDE。宿主只负责「读
 // 数据」（两端 IDE API 本就不同），标题、排序、上限、转义清理都在共享 webview
 // 里做——同一套格式逻辑不写两遍（TS + Kotlin）。

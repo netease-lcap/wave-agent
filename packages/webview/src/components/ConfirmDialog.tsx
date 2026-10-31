@@ -97,7 +97,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
       >
         {/* 桌面端按 skill「compact confirmation dialog」变体省略前置警示三角
             （common-components.md:77「Omit the leading warning triangle」）；
-            IDE / 插件宿主保持原样。 */}
+            插件端保持原样。 */}
         {isDesktopHost() && (
           <button
             type="button"

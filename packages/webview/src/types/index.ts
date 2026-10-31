@@ -160,17 +160,17 @@ declare global {
   interface Window {
     /** Provided by every host: VS Code runtime, JetBrains bridge, Electron preload. */
     acquireVsCodeApi(): VsCodeApi;
-    /** Set by the Electron preload (packages/desktop); undefined in IDE hosts. */
+    /** Set by the Electron preload (packages/desktop); undefined in plugin hosts. */
     waveHostType?: string;
     /**
      * Set by the phone page's browser shim (packages/webview/remote/shim.js).
-     * IDE hosts leave `waveHostType` unset too, so this flag — not the absence of
+     * plugin hosts leave `waveHostType` unset too, so this flag — not the absence of
      * a host type — is what tells the shared UI it is running inside the phone
      * page (a phone must not be shown a QR it cannot scan).
      */
     waveRemotePage?: boolean;
     /** Host platform, set by the Electron preload (process.platform: "darwin"/
-     *  "win32"/"linux"); undefined in IDE hosts and browser previews. */
+     *  "win32"/"linux"); undefined in plugin hosts and browser previews. */
     wavePlatform?: string;
     /** file:// URL of the element-picker preload, exposed by the Electron preload. */
     wavePickerPreloadPath?: string;
@@ -240,7 +240,7 @@ export interface ChatAppProps {
   /**
    * Desktop split-view: the paneId this instance renders. When set, the message
    * listener filters host pushes by paneId and outgoing commands carry it back.
-   * Undefined for the IDE hosts and for a single-pane desktop layout.
+   * Undefined for the plugin hosts and for a single-pane desktop layout.
    */
   paneId?: string;
   /**
@@ -897,7 +897,7 @@ export interface ChatHeaderProps {
    * Remote Web page only: 顶栏「会话」按钮打开的是**整页列表**（
    * `RemoteSessionListPage`），不再是借来的下拉（spec remote/remote-web.md「手机端的
    * 会话列表与删除」场景 1）。传了它，这个按钮就只调它、并且不再渲染
-   * `SessionListPopup`；不传（IDE / 桌面端）则一个字都不变——那边的「下拉」是指针
+   * `SessionListPopup`；不传（插件端 / 桌面端）则一个字都不变——那边的「下拉」是指针
    * 设备上的好形态，缺的是手机要的行级动作与触控热区，不是同一个问题的两种答案。
    */
   onOpenSessionPage?: () => void;
@@ -920,7 +920,7 @@ export interface ChatHeaderProps {
   // Desktop host: the more button + menu live in DesktopSidebar instead.
   hideMoreButton?: boolean;
   /** Open the history popup without the header button — `/resume` routes
-   *  through the same list in the same scope (IDE hosts). */
+   *  through the same list in the same scope (plugin hosts). */
   sessionListOpen?: boolean;
   onSessionListClose?: () => void;
   // Desktop host: conversation-level panel expand/collapse control.
@@ -935,7 +935,7 @@ export interface ChatHeaderProps {
   headerActions?: React.ReactNode;
   /**
    * Rename the current session in place (spec session-management.md「会话重命名入
-   * 口：CLI 与 IDE 插件」场景 7/8): 点击头部标题即就地编辑，Enter/blur 保存，
+   * 口：CLI 与插件端」场景 7/8): 点击头部标题即就地编辑，Enter/blur 保存，
    * Esc 回滚。三端共用头部，因此三端一起获得该入口。缺省时不提供就地编辑。
    */
   onRenameSession?: RenameSessionHandler;

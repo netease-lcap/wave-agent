@@ -91,7 +91,7 @@ test("远控页手机档：会话弹窗一打开，自动聚焦的搜索框就�
 }) => {
   await bootstrap(webviewPage);
 
-  // 顶栏的列表入口（IDE 分支是「历史对话」，远控页把同一个 popup 挂在「会话」
+  // 顶栏的列表入口（插件端分支是「历史对话」，远控页把同一个 popup 挂在「会话」
   // 按钮上——两边都是这一个组件、这一份类名）。
   await webviewPage.click('[data-testid="history-btn"]');
   const search = webviewPage.locator(".session-list-search");

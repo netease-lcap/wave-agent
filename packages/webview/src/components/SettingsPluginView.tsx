@@ -40,7 +40,7 @@ import { Tooltip } from "./Tooltip";
 import "../styles/ConfigurationDialog.css";
 import "../styles/SettingsPage.css";
 
-/** The desktop host keeps its existing codicon; the IDE plugin uses the same
+/** The desktop host keeps its existing codicon; the plugin host uses the same
  * official CloseIcon as the pane / toast / confirmation close controls. */
 const SettingsModalCloseIcon: React.FC = () =>
   isDesktopHost() ? (

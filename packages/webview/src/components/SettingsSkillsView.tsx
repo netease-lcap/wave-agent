@@ -37,7 +37,7 @@ export interface SettingsSkillsViewProps {
   /** 当前工作目录（用于项目分组展示项目名） */
   workdir?: string;
   /** 关闭设置页并预填 AI 对话框提示词；编辑操作附带 openFile（配置文件路径）——
-   *  desktop 在会话视图右侧文件面板打开该文件；IDE 由 host 用自身编辑器打开。 */
+   *  desktop 在会话视图右侧文件面板打开该文件；插件端由 host 用自身编辑器打开。 */
   onPrefillPrompt?: (prompt: string, openFile?: string) => void;
 }
 
@@ -103,7 +103,7 @@ const SettingsSkillsView: React.FC<SettingsSkillsViewProps> = ({
 
   const handleEdit = (skill: SkillMetadata) => {
     // 关闭设置页预填编辑提示词；同带 SKILL.md 文件路径 —— desktop 在会话视图
-    // 右侧文件面板打开、IDE 用自身编辑器打开，便于对照修改。SDK 下发的
+    // 右侧文件面板打开、插件端用自身编辑器打开，便于对照修改。SDK 下发的
     // skillPath 是技能目录（内含 SKILL.md，删除也按目录递归），host 的文件
     // 面板/编辑器只能打开文件，直接传目录会报「无法显示目录」而打不开技能。
     onPrefillPrompt?.(

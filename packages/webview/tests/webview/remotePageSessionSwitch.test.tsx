@@ -98,11 +98,11 @@ describe("remote page session list", () => {
     expect(
       within(page).getByTestId("remote-session-page-search"),
     ).toBeVisible();
-    // The dropdown the IDE hosts use is not what the phone shows any more.
+    // The dropdown the plugin hosts use is not what the phone shows any more.
     expect(screen.queryByTestId("session-list-popup")).not.toBeInTheDocument();
   });
 
-  it("keeps the IDE hosts on the borrowed dropdown", () => {
+  it("keeps the plugin hosts on the borrowed dropdown", () => {
     renderChatApp();
     act(() => {
       sendCommand("updateSessions", { sessions: SESSIONS });
@@ -223,7 +223,7 @@ describe("remote page session list", () => {
    * 忙时选会话**必须真的发得出去**（spec remote/remote-web.md「Web 页作为第五种宿主」
    * 场景 10 与「Web 端也能发起新会话」场景 10）：页面上这次「恢复」只改自己这份
    * `sessionId` 与视图，电脑侧那条会话照旧跑着——被静默忽略就是「点了没反应」，
-   * 正是同一份 spec 禁止的形态。IDE 端的原地守卫不受影响（见
+   * 正是同一份 spec 禁止的形态。插件端的原地守卫不受影响（见
    * backgroundTaskBlocksSessionSwitch / compactingBlocksSessionSwitch）。
    */
   it("switches conversations while the watched session is generating, compacting or running a background task", () => {

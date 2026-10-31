@@ -1,6 +1,6 @@
 /**
- * The remote-control Web page renders the IDE branch of the shared chat UI, so
- * without guards it also renders the IDE's host-side entries — settings, plugin
+ * The remote-control Web page renders the plugin branch of the shared chat UI, so
+ * without guards it also renders the plugin host's host-side entries — settings, plugin
  * tabs, the editor-open path, rewind checkpoints, backgrounded tasks. None of
  * them exist on the serving machine *from the page*: the page has no editor, no
  * host to route to, and no second carrier to put a UI in. This file pins the two
@@ -568,7 +568,7 @@ describe("entries that can only fail on the page", () => {
 
     // 第二批解禁（spec「页面能执行的那批宿主命令」场景 5）：三个动作都留下来了，
     // 背后各有宿主方法 —— 编辑/删除是队列手术，「立即发送」是
-    // `sendMessage{force}` + 删这条两步（没有专门的宿主方法，与 IDE / 桌面同形）。
+    // `sendMessage{force}` + 删这条两步（没有专门的宿主方法，与插件端 / 桌面同形）。
     vscode.postMessage.mockClear();
     act(() => {
       fireEvent.click(screen.getByTestId("queued-send-q1"));

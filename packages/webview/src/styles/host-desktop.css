@@ -123,7 +123,7 @@
      var(--vscode-errorForeground) 消费点在桌面端自动跟随危险红档。
      受影响：账户卡阻断结论 / 用量已用完 / 强警示行、配置弹窗 required-star 与
      mcp 错误、diff-error、file-pane 状态图标、settings-tag-off、chat header
-     错误标记、远程目录浏览错误等（19 处）。IDE/插件宿主不受影响。 */
+     错误标记、远程目录浏览错误等（19 处）。插件端宿主不受影响。 */
   --vscode-errorForeground: var(--cc-color-danger);
   /* 状态色（F-08）：权威 = codechat theme/desktop-colors.css --cc-state-*
      浅色档（:78-83）。此前只在 wave 侧硬编码（statusColors.ts 的 hex +
@@ -336,7 +336,7 @@
    32 画板按 32 css px 显示（同 24 画板功能图标「artboard = 显示尺寸」），
    故图标盒与按钮同宽、墨迹只有 11/12px 居中；base `.toolbar-icon` 的 16px
    会把 32 画板缩到 16 ⇒ 墨迹只剩 5.5px，所以这里必须放开。只在桌面端渲染
-   这颗 class（MessageInput 里按 isDesktopHost() 分叉），IDE 宿主仍是 16px 旧图标。 */
+   这颗 class（MessageInput 里按 isDesktopHost() 分叉），插件端仍是 16px 旧图标。 */
 [data-host="desktop"] .toolbar-icon-button .toolbar-icon-32 {
   width: 32px;
   height: 32px;
@@ -917,7 +917,7 @@
   line-height: 22px;
 }
 
-/* 「编辑队列消息」chip：base 12px 是与 IDE 的 12px 正文同档的；桌面正文已是 14px/22px，
+/* 「编辑队列消息」chip：base 12px 是与插件端的 12px 正文同档的；桌面正文已是 14px/22px，
    chip 仍 12px 会掉一档（设计师 0917 评论 `span.queued-edit-chip`「这里字号应该是14px」）
    → 14px。不再写 line-height：继承 .message-input 的 22px，行盒高度不变；颜色
    （textLink）与字重 500 不动。仅桌面端。 */
@@ -1165,7 +1165,7 @@
    代码字段（Markdown code/pre、bash 命令与输出、写入预览与路径、
    lsp-output、diff、mermaid）各自规则内已显式绑定等宽栈，不在此重复
    声明——避免在文件末尾堆叠覆盖。
-   仅作用于 desktop 宿主；IDE 宿主仍走 base，行为不变。 */
+   仅作用于 desktop 宿主；插件端仍走 base，行为不变。 */
 [data-host="desktop"] .message-content {
   font-family: var(--vscode-font-family);
 }
@@ -1249,7 +1249,7 @@
    `.messages-container` 上）会静默裁掉溢出（实测 882px 宽表落在 760px 列内）。
    表格渲染时已包一层 .md-table-scroll（Message.tsx renderer.table），
    **横向滚动本身已收进共用层**（Message.css 的 `.md-table-scroll`：远控 Web 页与
-   IDE 宿主同样要它，否则表格被裁掉且滚不到）；这里只留桌面端的间距，画布本身
+   插件端同样要它，否则表格被裁掉且滚不到）；这里只留桌面端的间距，画布本身
    不产生横向滚动。 */
 [data-host="desktop"] .md-table-scroll {
   margin: 12px 0;
@@ -1643,7 +1643,7 @@
    12px/w500/#1F2329；账户行右侧显隐按钮 32×32（内 16 canvas 图标）；
    ⓘ 为 16px 图标、灰 #8B8F95；Bar 高 6px、track #E6E8EB、段填充 #1F2329。
    用户裁决：进度条浅色按稿配色+高度、深色配色维持第 6 轮；显隐按钮改
-   32×32。改动全部 [data-host=desktop] 限定（IDE 插件端不受影响）。
+   32×32。改动全部 [data-host=desktop] 限定（插件端不受影响）。
    0908 第 3 轮：显隐按钮随账户热区统一 30×30 / r8（原 32/r6）。 */
 [data-host="desktop"] .account-card-collapse-btn {
   width: 30px;
@@ -1976,7 +1976,7 @@
    改为与侧栏会话分组头**同一份官方 Figma 矢量**（ChevronIcon，16×16 盒）——两处箭头
    从此逐像素同源，墨迹都是 8.0×5.0px（codicon 16px 时是 10.0×5.5、13px 时 8.0×4.5）。
    盒 10 → 16px，每级名字整体右移 6px；行高、字号、缩进、交互底不动。
-   IDE 宿主保留原「▸」（样式见 FilePane.css 的 .file-tree-caret）。 */
+   插件端保留原「▸」（样式见 FilePane.css 的 .file-tree-caret）。 */
 [data-host="desktop"] .file-tree-caret {
   width: 16px;
   height: 16px;
@@ -1994,7 +1994,7 @@
    `align-items: baseline` + `padding: 3px 6px`，行高由内容决定时没问题；桌面端
    把行拉到 min-height 32 之后，那 11px 空余全落在文字下方 —— 实测 14px 行盒 17
    停在行内 y+3，文字中心比行中心高 4.5px。改成居中排列，行高 / 内衬 / 圆角 /
-   字色都不动（base 的 IDE 侧维持 baseline，不被这条影响）。 */
+   字色都不动（base 的插件端侧维持 baseline，不被这条影响）。 */
 [data-host="desktop"] .file-tree-result {
   min-height: 32px;
   align-items: center;
@@ -2024,7 +2024,7 @@
    （SettingsPage.css:335，0916 拍板 = `--cc-radius-lg`，框 712×344）。
    只抬容器圆角：容器自己 `overflow: hidden`，首/末行的 hover 底色会跟着新圆角
    被裁出来，行内几何（29/30 高、内衬、分隔线）一个值没动，框宽高也未变。
-   作用域：桌面端独有 —— IDE 宿主保持 base 的 6px。 */
+   作用域：桌面端独有 ——插件端保持 base 的 6px。 */
 [data-host="desktop"] .file-pane-conversation-file-list {
   border-radius: var(--cc-radius-lg, 12px);
 }
@@ -2104,7 +2104,7 @@
      （DesktopApp.css:440 几何 / :455、:560 字色 / :479、host-desktop.css:2234 悬停底）。
      逐项对齐：盒 24×24（原来 28×24，宽度 = 6+16+6 的横向内衬）、圆角 6px、
      图标 16×16 居中、字色 浅 #565a60 / 深 #9a9ea5、悬停底 浅 #e7e9ed / 深 白 12%。
-     图标本身在 FileTabStrip.tsx 里已换成同一颗 MoreIcon 官方矢量（IDE 宿主保留
+     图标本身在 FileTabStrip.tsx 里已换成同一颗 MoreIcon 官方矢量（插件端保留
      codicon），所以这里的颜色才能从按钮继承下去 —— codicon 自带
      `.codicon { color: var(--vscode-icon-foreground) }`，原来那颗字形其实一直
      停在 #606060 / #CCCCCC，没跟这个按钮的 color 走。 */
@@ -2517,7 +2517,7 @@
    tab 页签 8px（DesktopPanelTabs）、对话头部工具行控件 8px（0916 第 3 轮）、
    面板操作按钮 8px（0916 第 4 轮）不同族 → 统一走 --cc-radius-md。
    只改圆角：24×24（部分 22×22）、图标尺寸、配色、hover / active 态均不动。
-   作用域限 [data-host="desktop"]，IDE / VS Code 宿主共用这些 class 不受影响。 */
+   作用域限 [data-host="desktop"]，插件端共用这些 class 不受影响。 */
 [data-host="desktop"] .desktop-sidebar-more-btn,
 [data-host="desktop"] .header-button {
   border-radius: var(--cc-radius-md, 8px);
@@ -2529,7 +2529,7 @@
       → 圆角同档（两者 20×20，改前 4px）；**图标同一官方矢量** = 与
       `.desktop-pane-close` 相同的 `ConversationCloseIcon`（Figma 关闭 13440:12465，
       24 artboard，path 墨迹 8.5×8.5），改由组件层按宿主选择（见 ToastStack /
-      ConfirmationDialog），IDE / VS Code 保持原 `CloseIcon` 不变。
+      ConfirmationDialog），插件端 保持原 `CloseIcon` 不变。
       按钮盒仍是 20×20（`.toast-close` 的 2px 内衬归零以维持原 20×20 外廓，
       避免 toast 宽度变化），24 的图标盒在 20 的按钮内居中、透明溢出不影响布局。
    ③「页签关闭仅图标变色，不要背景色也不用圆角了」→ `.preview-tab-close`
@@ -2960,7 +2960,7 @@
    把焦点色落自身边框（单圈、无空隙），边框透明的按钮才用外移环。
    基础样式 ConfirmationDialog.css:521 的 `.confirmation-btn:focus { outline: 1px;
    offset: 2px }` 会在自身描边外再画一圈（浅色下描边 #EBEEF5 看不见 → 像「点击凭空
-   多一圈」，深色下是真双线；设计师 0917 走查），故在此复写。作用域限桌面，IDE 宿主
+   多一圈」，深色下是真双线；设计师 0917 走查），故在此复写。作用域限桌面，插件端
    沿用基础样式不变。 */
 [data-host="desktop"] .confirmation-btn:focus {
   outline: none;
@@ -3035,7 +3035,7 @@
       #e5e7e8 —— 与参照按钮的声明和渲染值都逐值相同，不新造色）；
    ③ 盒 / 字号字重 / 圆角 / 内衬全部不动（239.33×32、13px / 600、r6：边框本就 1px，只是透明）。
    hover 仍沿用同弹窗 ghost 的反馈面（浅 #eef0f3 / 深 8% 白），描边与字色不动；
-   仅桌面壳生效，IDE 宿主沿用基础 secondary 外观。 */
+   仅桌面壳生效，插件端沿用基础 secondary 外观。 */
 [data-host="desktop"][data-theme="light"] .confirmation-btn-secondary {
   background-color: transparent;
   border-color: var(--cc-border-light, #e4e7ed);
@@ -3434,7 +3434,7 @@
      `.settings-select / -select-trigger / -number-input / -text-input` 一组、
      `.settings-textarea` :681、`.settings-save-btn` :551、`.settings-modal-close` :1569），
      这里用 `[data-host="desktop"]` 覆盖层逐条提到 `--cc-radius-md`(8px)——
-     **只改桌面端**：写在 base 会连 IDE / VS Code 宿主一起变（本轮明确不要），
+     **只改桌面端**：写在 base 会连插件端一起变（本轮明确不要），
      故不采用「改 base 值」的做法。
    8px 的参照 = 同页 `.settings-row-btn`（行操作按钮）/ 桌面左导航项 / 返回（host-desktop.css:2827/2837），
      以及她 0915 已定的弹窗按钮 8px（SettingsPage.css:1630/1875/1889）与 0916 关闭按钮族
@@ -3443,7 +3443,7 @@
      深浅同值（圆角不随主题变，审计实测浅深逐条一致），故不需要 dark 分叉。
    **未纳入（她未点名，见报告残留清单）**：插件市场小控件（chip / version / upgrade /
      badge，6px）、弹窗分段内层 `.settings-modal-seg-item`（6px，外壳已是 8px）、
-     `.project-item`（6px，桌面端未渲染）。原生 `select.settings-select` 是 **IDE 宿主专属**
+     `.project-item`（6px，桌面端未渲染）。原生 `select.settings-select` 是 **插件端专属**
      （SettingsSelect.tsx:37-54 按 `isDesktopHost()` 分叉，桌面走自绘
      `.settings-select-trigger`）→ 桌面选择器里不列，避免越权。 */
 [data-host="desktop"] .settings-select-trigger,
@@ -3649,7 +3649,7 @@
 }
 
 /* 上下内边距对称 8px（0909 走查「下面高了点可以收拢」→ 收齐）：**仅桌面端**。
-   2026-09-10 拍板：这是桌面收拢，不改共享 base `.task-list-inline`——IDE 两端
+   2026-09-10 拍板：这是桌面收拢，不改共享 base `.task-list-inline`——插件端
    （VSCE/JetBrains）保持 base 的 `8px 12px 12px` 原值。 */
 [data-host="desktop"] .task-list-inline {
   padding: 8px 12px 8px;
@@ -3745,7 +3745,7 @@
    24px，间距8px，圆角8px」）。图标本身按同面口径 16 网格 / stroke 1.4 圆头（原稿是
    「填充路径画的轮廓」，视觉笔画只 ~1px），16px 渲染时有效笔画 = 1.4，与面板空态、
    设置页左导航同档。
-   仅桌面端生效：base 的 14px / 3px 圆角 / 2px 间距留给 IDE 宿主（VS Code、JetBrains
+   仅桌面端生效：base 的 14px / 3px 圆角 / 2px 间距留给插件端（VS Code、JetBrains
    语言不变；三颗图标组件本身也按宿主分叉）。行高 28 → 24 盒上下各留 2px。
    注意 base 没有全局 border-box，24 盒必须显式声明，否则 padding 2 会撑成 28。 */
 [data-host="desktop"] .queued-action-button {
@@ -3923,7 +3923,7 @@
    与标题同左缘（16+8=24）、与标题之间**不加额外间距**；r12 / 内衬 8×12 /
    卡间 8px / 1px --cc-border。默认与选中**同为透明底 + 同一条描边**，
    选中只换指示器；hover 只加深描边（浅 #A8ADB4 / 深 #626A6F），选中态同理。
-   这些都是桌面档取值：IDE 由宿主控制，base 规则逐字不动（早期 0922 的
+   这些都是桌面档取值：插件端由宿主控制，base 规则逐字不动（早期 0922 的
    focusBorder 空心方框属旧口径，已被本契约取代）。 */
 
 /* 未选中描边：浅 --cc-text-secondary #6C7076 / 深 --cc-text-placeholder #858B8F */
@@ -4076,7 +4076,7 @@
 /* ═══ 0904 第 3 轮（feat/0904-new-base-r1）：字重 token 化 ═════════
    对齐 Figma/codechat 语义字重：--cc-font-weight-semibold 600 / medium
    500 / regular 400。仅 host-desktop 覆盖 base 字重（base 文件不动，
-   IDE 端不受影响）；var 带 base 原值 fallback 双保险。
+   插件端不受影响）；var 带 base 原值 fallback 双保险。
    分组（用户 2026-09-04 裁定）：① 对话流工具名 600（等值 token 化）
    ② 界面/面板标题类：用户在预览逐项点名降 500，点名的落到下方
    「②-medium」覆盖组（含顶栏/会话名/账户卡用量/会话卡/面板页签/权限
@@ -4382,7 +4382,7 @@
    改前（base 宿主通知皮肤）：浅 #FAFAFD / 深 #1F1F1F、r6、8px 12px、13px、阴影
    0 4px 12px rgb(0 0 0/30%)；动作按钮浅 #F0F0F1 + 蓝描边 #0069CC / 深 #232526 +
    7% 白描边、r4 / 26px / 13px / **Arial（不继承应用字体）**；关闭钮 #565a60 /
-   #9a9ea5。全部只作用 [data-host="desktop"]，base ToastStack.css 与 IDE/VS Code
+   #9a9ea5。全部只作用 [data-host="desktop"]，base ToastStack.css 与 插件端
    宿主（从不推 showToast）零改动。 */
 [data-host="desktop"] .toast-stack--bottomRight .toast {
   box-sizing: border-box;
@@ -4464,7 +4464,7 @@
 
 /* F-12（角色表无斜体角色，中文斜体尤其影响可读性）：错误容器走正文角色，
    仅去掉 font-style: italic，字体/行高/颜色随 F-01/G2 的角色收敛，不在此另写
-   font-family / font-size 覆盖。作用域限桌面（base 的 IDE 观感不变）。 */
+   font-family / font-size 覆盖。作用域限桌面（base 的插件端观感不变）。 */
 [data-host="desktop"] .message.assistant .error,
 [data-host="desktop"] .tool-error {
   font-style: normal;
@@ -4638,7 +4638,7 @@
    规范，昨天改过类似问题」——看板筛选改用同一套弹层，故下面每条规则并列两个 surface 的类
    （`.settings-select-*` / `.session-board-filter-*`），皮肤只有一份声明，几何由各自组件给。
    原生 `<select>` 的弹层由系统/Chromium 绘制，位置与尺寸都无法由 CSS 控制，故桌面端
-   换成自绘 listbox（IDE 宿主保留原生 select，见该组件的宿主分叉）。
+   换成自绘 listbox（插件端保留原生 select，见该组件的宿主分叉）。
 
    几何三则由组件给（`position: fixed` + 触发器 rect 内联样式，卡片
    `.settings-card{overflow:hidden}` 会裁掉 absolute 弹层）：
@@ -4753,7 +4753,7 @@
    = `input.preview-pane-address`（0922 第八轮评论点名，本轮并入白名单）。
 
    落点选择：**不逐个改 base 规则**，而用一条桌面作用域白名单——① 她明确要求「仅作用
-   在桌面端」，写进 base 会连同 IDE（VS Code / JetBrains）宿主一起变；② 一处可读，
+   在桌面端」，写进 base 会连同 插件端宿主一起变；② 一处可读，
    后续新增同类控件往白名单里加名即可。特异性 (0,2,0) 高于各 base 单类规则 (0,1,0)，
    与样式表加载顺序无关。
 
@@ -4826,7 +4826,7 @@
      第 2 轮她 2026-09-23 看效果后要「字号改为 12px」⇒ 12/20（辅助档，气泡高 30px）。
    其余（内衬 4px 12px、圆角 8px、色彩与阴影三件套）两轮不变。
    `max-width: 250px`、`z-index`、淡入动画与 base 的单行省略号策略都不动。
-   选择器 (0,2,0) 稳压 base `.tooltip-box` (0,1,0)，base 一行不改 ⇒ IDE 档皮肤原样
+   选择器 (0,2,0) 稳压 base `.tooltip-box` (0,1,0)，base 一行不改 ⇒ 插件端档皮肤原样
    （反证见报告 F-0x：同一页面切 data-host 后逐值回到 12px / r2 / editorWidget 三色）。 */
 [data-host="desktop"] .tooltip-box {
   background-color: var(--cc-bg-overlay);
@@ -4841,13 +4841,13 @@
 
 /* 角标（base 用 `.tooltip-box::after` 画 4px 三角）桌面端整体去掉。几何随之改变：
    气泡与触发的间距由 JS 的 Tooltip `offset` 决定，桌面端 8 → 4（Tooltip.tsx 里按
-   `isDesktopHost()` 分叉；IDE 档保留 8 — 它的角标还在，逐值不变）。 */
+   `isDesktopHost()` 分叉；插件端档保留 8 — 它的角标还在，逐值不变）。 */
 [data-host="desktop"] .tooltip-box::after {
   display: none;
 }
 
 /* 她 2026-09-23 第二条：「现在需要所有的都加 100ms 的延时」。追问后三条裁定：
-   ① 只延迟「出现」（移开仍立即淡出）；② 桌面端全部消费点（IDE 档 base 无延时，逐值不变）；
+   ① 只延迟「出现」（移开仍立即淡出）；② 桌面端全部消费点（插件端档 base 无延时，逐值不变）；
    ③ 键盘 focus 与 hover 同一套时序（组件里两者共用一个 handleShow，这条规则一并覆盖）。
    transition 的 delay 取「目标状态」的计算值，所以挂在 .visible 上正好只影响进入方向：
    进入 → 目标 = `.tooltip-box.visible`（本规则 0.1s）；退出 → 目标 = base `.tooltip-box`（0s）。
@@ -4886,14 +4886,14 @@
    `.settings-scope-option.is-selected` (0,2,0) 与 `:disabled`（(0,2,0)），把选中/禁用一起抹平。
    `:disabled:hover` 也显式列出（(0,4,0) > base 的 (0,3,0)），压掉 base「hover 把描边抹成透明」
    那条 —— 与加载顺序无关。
-   反证（IDE 档不受影响）：同一页面把 `documentElement.dataset.host` 切成 `ide`，本块整段失配，
+   反证（插件端档不受影响）：同一页面把 `documentElement.dataset.host` 切成 `editor`，本块整段失配，
    逐值回到 base（填充面 `#f0f2f5` / 描边透明 / `cursor: default` / hover 描边 `#e4e7ed`）。 */
 /* ═══ 1023 评论：作用域单选卡按 skill「Desktop Radio and Checkbox / Choice card」
    契约重做（仅桌面端）════════════════════════════════════════════════════════
    设计师 2026-10-23：「设置页 checkboxes 也修改」——追问两轮后点名
    「插件市场『安装作用域』单选卡」（`button.settings-scope-option`，本身是 radio）。
    契约 `references/common-components.md` §Choice controls（2026-10-23 用户确认版）
-   对这张卡的要求，逐条落到下面几段（base 一字未动 ⇒ IDE / JetBrains 保持宿主口径）：
+   对这张卡的要求，逐条落到下面几段（base 一字未动 ⇒ 插件端 保持宿主口径）：
 
      指示器 16×16：未选中 1px 圆环，浅 `--cc-text-secondary` #6C7076 /
        深 `--cc-text-placeholder` #858B8F；选中 = 实心 `--cc-action-primary` 面
@@ -5055,7 +5055,7 @@
    设计师 2026-10-13 评论（点钩子页 `div.mcp-server-item`「PreToolUse:Bash 工具执行前…」）：
    「检查字体字号规范及色彩圆角规范」⇒ 授权 T-01 / T-02 / T-03，并加一句
    「这次所有的修改都是桌面端的」⇒ 本节只用 `[data-host="desktop"]` 前缀，
-   IDE / JetBrains 宿主完全保持原样（base 声明在 ConfigurationDialog.css 里一字未动）。
+   插件端完全保持原样（base 声明在 ConfigurationDialog.css 里一字未动）。
    · T-01 行标题 `.mcp-server-name`：13px / w600 → **14px / w400**（契约
      design-system.md:214「设置页分区标题与卡片行标题 14px regular 400」；13px 在契约里
      只属**代码角色**），行高给 22px（契约正文档整数行高；参考件卡片行标题 26px 是卡片
@@ -5065,11 +5065,11 @@
      ⚠️ 按钮（连接 / 断开）的 12px **不在本节** —— 它们连同底色一并在「1013 批 4」按
      按钮族统一处理，避免两批声明同一属性。
    · T-03 说明文字的**颜色**：base 类 `.mcp-server-meta`（ConfigurationDialog.css，取值与
-     原先 TSX 内联逐字节等价 ⇒ IDE 不变）在桌面端改绑 `--cc-text-secondary`，即同一个
+     原先 TSX 内联逐字节等价 ⇒ 插件端档不变）在桌面端改绑 `--cc-text-secondary`，即同一个
      语义角色的产品 token。字号 12px 合规，留在 base。
-   反证（IDE 档不受影响）：同一页面把 `documentElement.dataset.host` 切成 `ide`，本节整段
+   反证（插件端档不受影响）：同一页面把 `documentElement.dataset.host` 切成 `editor`，本节整段
    失配 ⇒ 行标题回到 13px/w600、徽标与最近连接回到 11px、说明文字回到
-   `--vscode-descriptionForeground`（见本轮报告 F-01 的 IDE 反证）。 */
+   `--vscode-descriptionForeground`（见本轮报告 F-01 的插件端档反证）。 */
 [data-host="desktop"] .mcp-server-name {
   font-size: 14px;
   font-weight: 400;
@@ -5107,7 +5107,7 @@
      输入区卡片角色）—— 避免在 pane 上把行染成与画布同色、只剩描边。
      描边不动：base 的 `--vscode-panel-border` 实测与参考件卡片描边逐值相同
      （浅 rgb(228,231,237) / 深 rgb(52,57,60) = `--cc-border-light`），改色只会引入差异。
-   反证（IDE 档不受影响）：`documentElement.dataset.host = 'ide'` 时本节整段失配 ⇒
+   反证（插件端档不受影响）：`documentElement.dataset.host = 'editor'` 时本节整段失配 ⇒
    状态点回到 #73c991、徽标回到宿主 badge 蓝/灰、行底回到 `--vscode-sideBar-background`。 */
 [data-host="desktop"] .mcp-status-connected {
   color: var(--cc-state-succeeded, #16a34a);
@@ -5147,7 +5147,7 @@
      「断开按钮圆角要和编辑按钮保持一致」），连接原是 3px（设计师「连接也一起改」）⇒
      两个都抬到 **8px**（= 同行「编辑 / 删除」的 `.settings-row-btn` 那一档，`--cc-radius-md`）。
      本批**只动圆角**；按钮的底色 / 字号在批 4，两批不重叠声明同一属性。
-   反证（IDE 档不受影响）：切成 `ide` 后行 r 回到 4px、徽标 r 回到 3px、两个按钮 r 回到 3px。 */
+   反证（插件端档不受影响）：切成 `editor` 后行 r 回到 4px、徽标 r 回到 3px、两个按钮 r 回到 3px。 */
 [data-host="desktop"] .mcp-server-item {
   border-radius: 12px;
 }
@@ -5173,7 +5173,7 @@
      「连接」同步：R-04「连接也一起改」。
    · G-01 行内衬 `.mcp-server-item` 10px → **12px**（契约内容面板 16/20、设置行 `12px 0`；
      10px 不在任何一档）。行高随之变化属预期。
-   反证（IDE 档不受影响）：切成 `ide` 后两个按钮回到 secondaryBackground 白/灰底 +
+   反证（插件端档不受影响）：切成 `editor` 后两个按钮回到 secondaryBackground 白/灰底 +
    `--vscode-button-border` + 11px + `4px 10px` 内衬，行内衬回到 10px。 */
 [data-host="desktop"] .mcp-connect-btn,
 [data-host="desktop"] .mcp-disconnect-btn {
@@ -5220,7 +5220,7 @@
      `--cc-color-danger` 两档取值（属契约层，不在本单范围）。
    作用域说明：本类是**族级**共享（MCP 服务 / 钩子 / 技能 / 子代理 四个设置视图的行内
    「删除」+ 插件市场行的「移除」+ 作用域弹窗的「卸载」），本单按类生效、六处同时变色。
-   反证（IDE 档不受影响）：切成 `ide` 后本节整段失配 ⇒ 回到 `--cc-color-danger`
+   反证（插件端档不受影响）：切成 `editor` 后本节整段失配 ⇒ 回到 `--cc-color-danger`
    （浅 #DC2626 / 深 #FC4E52）与中性 hover `--cc-fill-hover`。
 
    ── 1014 收口（2026-10-14）────────────────────────────────────────────
@@ -5375,7 +5375,7 @@
    取消 = 透明底 + 1px `--cc-border-light` 描边 ·
    删除 = soft-danger（`--cc-color-danger-soft` 底 + `--cc-color-danger` 字，
    hover/active 只转字色，不加红色描边）· 省略分隔线两条（头部下、页脚上）·
-   仅 [data-host="desktop"]，IDE / 插件宿主保持 base 原样。
+   仅 [data-host="desktop"]，插件端保持 base 原样。
 
    作用域 = 「确认键是危险键的两个弹窗」，靠确认键的 testid + class 圈定：
    - 删除分类：`artifacts-category-confirm` + `.artifacts-danger-btn`；
@@ -5749,7 +5749,7 @@
    - 无页脚的弹窗（新建）不加页脚（:101「does not require a footer where none is needed」）。
    顺手按同一条契约的排版下限修越档字号：卡片名 13 → 14、卡片描述 11 → 12、
    分享标题 13 → 14、单选/成员行 13 → 14、``legend`` 12 → 14（契约无 13px UI 层、12px 是元信息下限）。
-   仅 `[data-host="desktop"]`；IDE / 插件宿主保持 base 原样（本页本来也只在桌面端挂载）。 */
+   仅 `[data-host="desktop"]`；插件端保持 base 原样（本页本来也只在桌面端挂载）。 */
 
 /* 壳 */
 [data-host="desktop"]
@@ -6127,7 +6127,7 @@
      ① 设置页行内字段（`.settings-page` 下的文本 / 数字 / 多行 / 桌面自绘下拉触发器）
      ② 侧栏「搜索会话」字段（`.desktop-sidebar-search-field`，写在 SidebarSessionSearch.css）
    不动的面：插件市场页（`.plugin-market-page`）、对话输入区、各类弹窗里的表单、
-   原生 `select.settings-select`（IDE 宿主专属）、IDE / VS Code / JB 宿主（base 段零改动）。
+   原生 `select.settings-select`（插件端专属）、插件端（base 段零改动）。
    做法：契约要求「未命中的值就地作用域化、不要改全局 placeholder / border / fill 角色」，
    因此这些值只新增 `--cc-field-*` 命名空间，不覆盖任何既有 token。
    几何沿用各族已确立的档位（设置页 32 高；侧栏 30 高），只改配色、状态与 0923 已定的 r8。 */
@@ -6204,7 +6204,7 @@
    两颗展开态 chevron 同一手法：同一条官方矢量整体旋转，描边逐像素不变，只是朝上。
    伪元素盒 8×4.5、`transform-origin` 默认就是盒心，故直接叠 rotate 即可；
    translateY(-50%) 必须保留（它负责垂直居中），旋转写在后面才不会丢掉居中。
-   只作用于桌面自绘触发器：原生 `select.settings-select`（IDE 宿主）的系统弹层无法
+   只作用于桌面自绘触发器：原生 `select.settings-select`（插件端）的系统弹层无法
    在 CSS 里感知展开，那一处保持原样。 */
 [data-host="desktop"] .settings-select-trigger[aria-expanded="true"]::after {
   transform: translateY(-50%) rotate(180deg);
@@ -6257,7 +6257,7 @@
    （空态另有 `.file-pane-placeholder-empty`，本来就是 14px）。
    实测：12px / line-height normal(17) → 14px / normal(20)，与正文 14 同档；
    行高保持 normal（居中占位，不影响盒），要 14/22 再说。
-   只改桌面端：IDE 宿主仍是 12px。 */
+   只改桌面端：插件端仍是 12px。 */
 [data-host="desktop"] .file-pane-body .desktop-panel-placeholder {
   font-size: 14px;
 }
@@ -6278,7 +6278,7 @@
    直接变成 1 级黑 `rgb(31,35,41)`；输入 456×40 14px；tag 11px Menlo 且是
    textLink 蓝 `rgb(0,105,204)`；两颗按钮 44×22 r3 pad 2/10、11px Arial、
    添加键也是蓝色描边描出来的「伪次级」。
-   只作用桌面宿主：`LineCommentBox.css`（IDE / 插件宿主共用）一行未改。 */
+   只作用桌面宿主：`LineCommentBox.css`（插件端共用）一行未改。 */
 [data-host="desktop"] .line-comment-box {
   padding: 8px;
   gap: 8px;
@@ -6378,7 +6378,7 @@
       字 + `--cc-border-light` 边框，hover `--cc-fill-hover`、按下 `--cc-fill-pressed`
       且字色保持 primary。只作用于这块空态（同名的 `.file-pane-banner-action` 还用在
       「磁盘已更新」横幅的「覆盖 / 重新加载」上，那两处没动）。
-   仅桌面端；IDE 宿主保持原横排小按钮。 */
+   仅桌面端；插件端保持原横排小按钮。 */
 [data-host="desktop"] .file-pane-status--deleted {
   flex-direction: column;
   align-items: center;

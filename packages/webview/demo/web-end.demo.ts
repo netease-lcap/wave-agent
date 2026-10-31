@@ -19,11 +19,11 @@ import type { Page } from "@playwright/test";
 /**
  * Web 端（远控 Web 页）手机布局截图 —— docs/web.md 用。
  *
- * 远控页是共享 webview bundle 的第五个宿主，靠两样东西与 IDE 宿主区分：
+ * 远控页是共享 webview bundle 的第五个宿主，靠两样东西与插件端区分：
  * `window.waveRemotePage = true`（`isRemotePageHost()` 读它，决定顶栏的「会话 /
  * 切换电脑」入口、会话整页列表、计划正文内联审批等）与 `<html data-remote-page>`
  * （`styles/remote-page.css` 的手机档样式全部挂在这个属性下）。测试 harness 造的是
- * IDE 宿主页面，所以这里两样都自己补上，再用 iPhone 竖屏尺寸截图。
+ * 插件端页面，所以这里两样都自己补上，再用 iPhone 竖屏尺寸截图。
  */
 
 const PHONE = { width: 390, height: 844 };
@@ -74,7 +74,7 @@ async function emulatePhoneViewport(page: Page): Promise<void> {
   });
 }
 
-/** 手机视口 + 远控页宿主身份（harness 只造 IDE 宿主页面）。 */
+/** 手机视口 + 远控页宿主身份（harness 只造插件端页面）。 */
 async function emulateRemotePhone(page: Page): Promise<void> {
   await emulatePhoneViewport(page);
   await page.evaluate(() => {
@@ -506,7 +506,7 @@ test.describe("Web 端（远控页）手机截图", () => {
   });
 
   test("电脑侧开启：页面地址与二维码", async ({ webviewPage }) => {
-    // 入口在**电脑**上：桌面端 / IDE 插件的设置页「远程控制」项。手机页自己
+    // 入口在**电脑**上：桌面端 / 插件端的设置页「远程控制」项。手机页自己
     // 不画这个二维码（它本身就是二维码指向的那一端）。
     await openSettings(webviewPage, {
       width: 1000,

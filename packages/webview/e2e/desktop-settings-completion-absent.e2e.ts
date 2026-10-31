@@ -9,7 +9,7 @@ import { MessageInjector } from "./utils/messageInjector.js";
  * 出处：spec ui/code-completion.md 边界情况「补全设置行的宿主范围」与
  * desktop-settings.md 场景 3（补全模型/补全开关不在本端展示）。
  *
- * 设置页是四端**共用**实现（IDE 宿主经 settings.js、桌面端经 chat.js 渲染同一份
+ * 设置页是四端**共用**实现（插件端经 settings.js、桌面端经 chat.js 渲染同一份
  * SettingsPage），因此门禁一旦漏掉桌面端，用户会在一个没有代码编辑器、永远不会
  * 触发补全的应用里看到一个补全开关——「承诺一个不会发生的功能」。单测
  * （settingsGlobal.test.tsx）用 `window.waveHostType` 覆盖了判定分支，本用例守住

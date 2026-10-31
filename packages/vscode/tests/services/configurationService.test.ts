@@ -2,7 +2,7 @@
  * The VS Code host no longer has a credential pipeline: `apiKey` / `headers` /
  * `baseURL` are gone from `ConfigurationData` and from globalState, so an
  * unauthenticated IDE user cannot bypass login with a leftover direct-connect
- * config (spec sso-auth「IDE 宿主不再有直连免登录旁路」).
+ * config (spec sso-auth「插件端不再有直连免登录旁路」).
  *
  * The SDK/CLI layer keeps its own `apiKey` / `baseURL` / `defaultHeaders`
  * support and the `WAVE_API_KEY` / `WAVE_BASE_URL` env vars — only the host-side
@@ -10,7 +10,7 @@
  *
  * 用户偏好（AI 回复语言 / 上下文长度 / 自动记忆 / 服务端地址）也不在 globalState：它们经共享
  * CLI 进程（= 会话所在进程）的 `getUserSettings` / `updateUserSettings` 读写用户级
- * `~/.wave/settings.json`（spec core/agent-config.md「设置实时重载」与「IDE 插件
+ * `~/.wave/settings.json`（spec core/agent-config.md「设置实时重载」与「插件端
  * 配置入口」场景 6）。服务不再持有 ExtensionContext——宿主私有存储不再是任何键的
  * 真源。
  */

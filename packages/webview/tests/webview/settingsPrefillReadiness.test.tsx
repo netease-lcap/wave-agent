@@ -125,7 +125,7 @@ describe("设置页预填提示词 × 宿主快照到达时序", () => {
     );
   });
 
-  it("IDE 宿主：prefillPrompt 早于 webview 初始化到达时不丢（重放而非静默丢弃）", async () => {
+  it("插件端：prefillPrompt 早于 webview 初始化到达时不丢（重放而非静默丢弃）", async () => {
     const vscode = createMockVscode();
     render(<ChatApp vscode={vscode as unknown as VsCodeApi} />);
 

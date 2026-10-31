@@ -212,7 +212,7 @@ describe("Permission Mode Select", () => {
       document.querySelector(".permission-mode-menu"),
     ).not.toBeInTheDocument();
 
-    // Host forwards the intercepted IDE/desktop shortcut via the message bridge
+    // Host forwards the intercepted plugin-host/desktop shortcut via the message bridge
     await act(async () => {
       sendCommand("triggerShortcut", { name: "open-permission-mode" });
     });

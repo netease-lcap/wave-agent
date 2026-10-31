@@ -27,7 +27,7 @@ const READY_CONFIGURATION = {
   completionEnabled: true,
 };
 
-/** 设置页里 label 关联的控件（IDE 宿主是原生 select/input，可直接按 aria-label 取）。 */
+/** 设置页里 label 关联的控件（插件端是原生 select/input，可直接按 aria-label 取）。 */
 const completionSelect = (page: Parameters<typeof openSettings>[0]) =>
   page.locator('select[aria-label="补全模型"]');
 const completionSwitch = (page: Parameters<typeof openSettings>[0]) =>

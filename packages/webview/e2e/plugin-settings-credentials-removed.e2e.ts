@@ -6,7 +6,7 @@ import path from "node:path";
 /**
  * e2e（真浏览器 + 真 settings.js bundle）— 设置页不再有凭据输入控件。
  *
- * 出处：spec sso-auth「IDE 插件更多菜单与欢迎页」场景 5／边界情况「IDE 宿主不再
+ * 出处：spec sso-auth「插件端更多菜单与欢迎页」场景 5／边界情况「插件端不再
  * 有直连免登录旁路」（2026-09-10 拍板：宿主端 API Key / Base URL / headers 用户
  * 配置链路整体下线）。
  *
@@ -117,7 +117,7 @@ function collectViewSurfaces(page: Page) {
   });
 }
 
-test.describe("IDE 宿主设置页无凭据输入控件（真 settings bundle）", () => {
+test.describe("插件端设置页无凭据输入控件（真 settings bundle）", () => {
   test("7 个视图全部渲染后都不含 API Key / Base URL 控件", async ({
     webviewPage,
   }) => {

@@ -519,9 +519,9 @@ describe("remote page new-session dialog", () => {
 
 /**
  * 忙闲三态不构成页面上的禁用理由（spec remote/remote-web.md「Web 端也能发起新会话」
- * 场景 10）：页面上这个图标是「在机器上另起一条会话」，不是 IDE 的原地清空
+ * 场景 10）：页面上这个图标是「在机器上另起一条会话」，不是 插件端的原地清空
  * `clearChat`——电脑侧那条会话照旧跑着，所以 streaming / 压缩中 / 有正在跑的
- * 后台任务时入口照常可用（反过来，IDE 端那条守卫一字不变）。
+ * 后台任务时入口照常可用（反过来，插件端那条守卫一字不变）。
  */
 describe("remote page new-session entry under busy states", () => {
   const runningTask: BackgroundTaskSummary = {
@@ -561,7 +561,7 @@ describe("remote page new-session entry under busy states", () => {
     expect(screen.getByTestId("remote-new-session-dialog")).toBeInTheDocument();
   });
 
-  it("still greys the IDE entry out in the very same states", () => {
+  it("still greys the plugin-host entry out in the very same states", () => {
     renderChatApp();
     const newSessionBtn = screen.getByTestId("new-session-btn");
     expect(newSessionBtn).not.toBeDisabled();

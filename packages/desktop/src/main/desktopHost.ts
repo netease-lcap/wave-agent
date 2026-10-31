@@ -5176,7 +5176,7 @@ export class DesktopHost {
         break;
 
       // -- file suggestions / uploads ---------------------------------------------------
-      // IDE 上下文（@终端 / @问题）只在 IDE 插件宿主成立：桌面端有 PTY 面板但
+      // IDE 上下文（@终端 / @问题）只在插件端成立：桌面端有 PTY 面板但
       // 不接入本期能力（spec ui/ide-context-mentions.md 非目标）。注册只为四路由
       // 齐备（webview 命令审计），回包一律按「不可用」——正常流程下 webview 不会
       // 发出这条命令（桌面端的 @ 下拉里没有这两个条目）。
@@ -5227,13 +5227,13 @@ export class DesktopHost {
         break;
 
       // One level of the file panel's directory tree (desktop only — the panel
-      // has no IDE counterpart).
+      // has no plugin-host counterpart).
       case "desktopListDirectory":
         await this.handleFilePanelListDir(pid, msg.path as string);
         break;
 
       // Save a draft from the file panel's edit mode (desktop only; the panel is
-      // a desktop-only surface, so this command has no IDE router counterpart).
+      // a desktop-only surface, so this command has no plugin-host router counterpart).
       case "desktopSaveFile":
         await this.handleFilePanelSave(
           pid,

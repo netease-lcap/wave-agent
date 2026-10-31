@@ -456,7 +456,7 @@ html[data-host="desktop"][data-theme="dark"] .artifacts-file-icon {
 /* 1022 评论（点 `div.artifacts-header-right`「新建」）：「表单和按钮参考以下」——
    参照件 = 设置页 `button.settings-save-btn`「保存」与 `button.settings-select-trigger`「中文」。
    本页只在桌面端渲染（ChatApp.tsx `const artifacts = isDesktop ? … : null`），故直接写 base，
-   IDE / VS Code 宿主没有这个页面，连带风险为零。
+   插件端没有这个页面，连带风险为零。
    按钮档对齐 `SettingsPage.css` 的 `.settings-save-btn`（32 高 / 4·16 内衬 / r8 /
    14px·500 / --vscode-button-* 桥接，桌面端 = --cc-action-primary 家族）；
    三颗一起改是因为契约 common-components.md:70「one height, label size and radius

@@ -76,7 +76,7 @@ export const orderSlashCommands = (commands: SlashCommand[]): SlashCommand[] =>
  * 随内容在 300–400px 间浮动，同一个描述可能一会儿截一会儿不截。
  *
  * 「最多两行」这条 CSS 只在桌面上生效（`SlashCommandsPopup.css` 里带
- * `[data-host="desktop"]`，她 1009 裁定「只留桌面」）；组件这里不做宿主判断——IDE 宿主下
+ * `[data-host="desktop"]`，她 1009 裁定「只留桌面」）；组件这里不做宿主判断——插件端下
  * 描述不被裁，量出来就是不截断，Tooltip 走 `disabled` 直接返回原 children（DOM 与之前
  * 逐字相同）。宿主差异只由 CSS 一处表达。
  *

@@ -67,7 +67,7 @@ export const FileEditor: React.FC<FileEditorProps> = ({
     <div className="file-pane-editor">
       {status === "loading" && (
         // 1030 第三轮：与文件「已不存在」空态同族的口径（见 host-desktop.css 的
-        // 1030 块）——modifier 类只用来让桌面端规则精准命中这块，IDE 宿主无对应
+        // 1030 块）——modifier 类只用来让桌面端规则精准命中这块，插件端无对应
         // 规则 ⇒ 视觉不变。
         <div
           className="file-pane-status file-pane-status--loading"

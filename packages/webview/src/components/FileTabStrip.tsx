@@ -210,7 +210,7 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
             >
               {isDesktopHost() ? (
                 // 桌面端与面板标签同一颗官方「文件」图标（PanelKindIcon kind="file"），
-                // 1029 第十轮设计师评论「和这里保持一致」；IDE 宿主保留 codicon 字形。
+                // 1029 第十轮设计师评论「和这里保持一致」；插件端保留 codicon 字形。
                 <PanelKindIcon
                   kind="file"
                   size={16}
@@ -247,7 +247,7 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
               >
                 {isDesktopHost() ? (
                   // 1029 第五批设计师评论（点这颗图标）「关闭图标和以下保持一致」：
-                  // 与面板页签关闭键同一颗官方 ×（CloseTabIcon，9×9）。IDE 宿主
+                  // 与面板页签关闭键同一颗官方 ×（CloseTabIcon，9×9）。插件端
                   // 保留 base 的 CloseIcon，与上面 .file-tab-icon 的分叉口径一致。
                   <CloseTabIcon className="file-tab-close-icon" />
                 ) : (
@@ -271,7 +271,7 @@ export const FileTabStrip: React.FC<FileTabStripProps> = ({
             {isDesktopHost() ? (
               // 1029 第十七批设计师评论（点这颗「⋯」）「这个图标的样式和以下保持一致」，
               // 参照 = 侧栏会话行的更多按钮 `.desktop-session-more-btn`：同一颗官方
-              // MoreIcon（16×16、三个 2px 圆点、点距 5），字色取同一档。IDE 宿主保留
+              // MoreIcon（16×16、三个 2px 圆点、点距 5），字色取同一档。插件端保留
               // base 的 codicon 字形（与旁边 `.file-tab-close-icon` 的分叉口径一致）。
               <MoreIcon className="file-tab-more-icon" />
             ) : (

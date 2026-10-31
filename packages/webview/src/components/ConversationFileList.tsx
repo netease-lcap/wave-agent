@@ -40,7 +40,7 @@ export const ConversationFileList: React.FC<ConversationFileListProps> = ({
           {isDesktopHost() ? (
             // 桌面端与会话面板标签、文件空态用同一颗官方「文件」图标（PanelKindIcon
             // kind="file"，Figma Component 12 · 13561:39702）；1029 第十轮设计师评论
-            // 「和这里保持一致」指的就是面板标签那颗。IDE 宿主保留原 feather 图标。
+            // 「和这里保持一致」指的就是面板标签那颗。插件端保留原 feather 图标。
             <PanelKindIcon
               kind="file"
               size={16}

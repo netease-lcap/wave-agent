@@ -23,7 +23,7 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
   const [showScrim, setShowScrim] = useState(false);
   // 指针是否停在操作按钮组上：用于暂时压掉「整条 hover 显示完整文案」的那条提示，
   // 否则悬停按钮会同时冒出文案提示 + 按钮提示两条（设计师 0917：hover 要有提示说明
-  // 这个按钮是做什么的）。仅桌面端参与（IDE 宿主不加按钮提示）。
+  // 这个按钮是做什么的）。仅桌面端参与（插件端不加按钮提示）。
   const [actionsHovered, setActionsHovered] = useState(false);
   const desktopHost = isDesktopHost();
   // 「hover 看全文」的气泡只在文字真被省略号截断时才需要（设计师 0917：字数少就不应该
@@ -31,7 +31,7 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
   const textRefs = useRef(new Map<string, HTMLSpanElement>());
   const [truncatedIds, setTruncatedIds] = useState<string[]>([]);
 
-  /** 桌面端给图标按钮包一层 hover 提示；IDE 宿主原样返回（只有 aria-label）。 */
+  /** 桌面端给图标按钮包一层 hover 提示；插件端原样返回（只有 aria-label）。 */
   const withActionTooltip = (label: string, node: React.ReactElement) =>
     desktopHost ? (
       <Tooltip text={label} position="top">
@@ -133,7 +133,7 @@ export const QueuedMessageList: React.FC<QueuedMessageListProps> = ({
               {/* 队列的三个动作（编辑 / 立即发送 / 删除）：远端现在也全都能用
                   （第二批解禁）。宿主侧各有方法——编辑 `updateQueuedMessage`、删除
                   `deleteQueuedMessageById`、立即发送是 `sendMessage{force}` + 删这条
-                  两步（没有专门的宿主方法，与 IDE / 桌面同形）——所以那道「远端整组
+                  两步（没有专门的宿主方法，与插件端 / 桌面同形）——所以那道「远端整组
                   不渲染」的守卫撤掉了（spec「页面能执行的那批宿主命令」场景 5）。
                   远端不额外加确认：三个动作都只作用于这条还没发出去的消息。 */}
               <div

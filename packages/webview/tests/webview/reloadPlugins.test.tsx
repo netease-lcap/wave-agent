@@ -1,5 +1,5 @@
 /**
- * `/reload-plugins` 入口（webview 侧，桌面 / IDE 同一份 bundle，spec
+ * `/reload-plugins` 入口（webview 侧，桌面端 / 插件端 同一份 bundle，spec
  * ecosystem/plugin.md「插件变更的就地重载」场景 13）：命令不进对话、不触发模型
  * 回复，只把 `reloadPlugins` 交给宿主去执行就地换装。
  */
@@ -71,7 +71,7 @@ describe("/reload-plugins", () => {
     expect(screen.queryByText("插件已变更，重新加载后生效")).toBeNull();
   });
 
-  it("IDE 端：只发 reloadPlugins，不进对话", async () => {
+  it("插件端：只发 reloadPlugins，不进对话", async () => {
     const { vscode } = renderChatApp();
     vscode.postMessage.mockClear();
 

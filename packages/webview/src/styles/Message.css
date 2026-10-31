@@ -345,7 +345,7 @@
 /* F-11（WCAG 2.1.1 / 4.1.2）：折叠标题由 <div onClick> 改为
    <button type="button" aria-expanded>，此处复位 button 的 UA 样式
    （背景/边框/内边距/字体/宽度/对齐），使外观与原先的 div 一致；两个宿主
-   （IDE 与桌面端）共用本规则，观感都不变。焦点可见样式在 host-desktop.css
+   （插件端与桌面端）共用本规则，观感都不变。焦点可见样式在 host-desktop.css
    桌面层用语义焦点环提供，故此处不复位 outline。 */
 button.reasoning-header {
   width: 100%;
@@ -945,7 +945,7 @@ button.reasoning-header {
    .md-table-scroll，宽表由此在自身区域内横向滚动。
    放在共用层（而不是某一宿主的密度层）是因为它兜的是「内容会不会丢」——对话列
    `.messages-column` 是 `overflow-x: clip`，包裹层若不上 `overflow-x` 就等于把
-   溢出部分静默裁掉。此前这条只写在 `[data-host="desktop"]` 层，远控 Web 页与 IDE
+   溢出部分静默裁掉。此前这条只写在 `[data-host="desktop"]` 层，远控 Web 页与插件端
    宿主都拿不到：2026-10-21 实测远控页 iPhone 视口（390）下 543px 宽表落在 358px
    容器里，右侧 185px 的列看不见也滚不到（页面本身也不横滚）。间距、焦点环这类
    观感仍归各宿主自己的层（桌面端见 host-desktop.css 的 F-06 段）。 */

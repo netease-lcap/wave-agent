@@ -1392,7 +1392,7 @@ body.is-panel-resizing webview {
 
    本轮把文件标签带这一侧全部收到基准值：字形换成同一个 `CloseTabIcon`
    （两处共用一份矢量，面板页签渲染逐像素不变）；下面四条只给桌面端
-   （`.file-tab-close` 是 IDE / 插件端共用类，base 的 FilePane.css 一行没动）。
+   （`.file-tab-close` 是插件端共用类，base 的 FilePane.css 一行没动）。
    ⚠️ 本该写进 host-desktop.css 的文件标签段（:2036-2054），但那个文件当前有另一个
    窗口在改，先落本文件；`[data-host="desktop"] .file-tab .file-tab-close:hover`
    带上 `.file-tab` 是为了压过 host 层那条 `:hover { background: --cc-fill-pressed }`。
@@ -1477,7 +1477,7 @@ body.is-panel-resizing webview {
      · `openMore()` 与「激活时 scrollIntoView」两段逻辑一行未改：真出现溢出后
        scrollLeft / scrollWidth 才有意义，菜单自然拿到被滚出可视区的标签。
 
-   影响面：三段都带 `[data-host="desktop"]`，IDE / 插件端保持 base 行为（那边
+   影响面：三段都带 `[data-host="desktop"]`，插件端保持 base 行为（那边
    目前同样是压扁形态，要改需她单独点名）。
    ⚠️ 本该写进 host-desktop.css 的文件标签段（:2015-2130），那个文件当前有另一个
    窗口在改，先落本文件；回退：删掉本节即恢复（标签重新压成细条、无横向滚动）。 */

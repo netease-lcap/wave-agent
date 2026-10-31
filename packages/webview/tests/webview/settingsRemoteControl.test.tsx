@@ -155,8 +155,8 @@ describe("设置页 · 远程控制选项卡", () => {
     expect(sentActions(vscode).length).toBeGreaterThan(0);
   });
 
-  it("on an IDE host it still asks the host to open its settings tab, on this nav item", async () => {
-    // IDE 宿主的设置页是宿主另开的标签页，视图不在这里渲染；`/remote-control`
+  it("on a plugin host it still asks the host to open its settings tab, on this nav item", async () => {
+    // 插件端的设置页是宿主另开的标签页，视图不在这里渲染；`/remote-control`
     // 于是把「打开设置页、选中远程控制」原样交给宿主（与 /mcp、/skills 同一条路）。
     const { vscode } = renderChatApp();
     await act(async () => {

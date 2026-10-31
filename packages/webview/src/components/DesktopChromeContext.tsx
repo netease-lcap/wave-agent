@@ -23,7 +23,7 @@ import { useHostMessage } from "../utils/useHostMessage";
  *
  * Provider 挂在 DesktopApp（窗口根），root/pane 任何 ChatApp 实例及其子树
  * （DesktopShell/DesktopSidebar/ChatHeader）都从 Context 同源读取，不再存在
- * 两条渲染路径、两份副本。IDE（VSCE/JetBrains）不渲染 Provider → 读默认值
+ * 两条渲染路径、两份副本。插件端不渲染 Provider → 读默认值
  * （false），不影响其现有行为。
  */
 export interface DesktopChromeValue {

@@ -309,7 +309,7 @@ describe("remote page autozoom guard", () => {
   });
 
   it("keeps every rule scoped to the remote page", () => {
-    // Unscoped rules here would lift the IDE and desktop density too, since all
+    // Unscoped rules here would lift the plugin host and desktop density too, since all
     // five hosts load this file.
     expect(scoped.length).toBeGreaterThan(0);
     for (const { sel } of scoped) {

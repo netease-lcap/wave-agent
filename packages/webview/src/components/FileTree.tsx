@@ -377,7 +377,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   {row.type === "dir" ? (
                     // 桌面端用官方 Figma chevron 矢量（ChevronIcon）——与侧栏会话分组头
                     // 是**同一个字形**，墨迹同宽（1029 第七轮「和图标保持一致」→ 第八轮
-                    // 「比那边大了一点」，改用同源矢量后两处逐像素一致）；IDE 宿主保留
+                    // 「比那边大了一点」，改用同源矢量后两处逐像素一致）；插件端保留
                     // 原来的「▸」文字三角，样式见 FilePane.css 的 .file-tree-caret。
                     isDesktopHost() ? (
                       <ChevronIcon
@@ -400,7 +400,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
                       展开 / 收起就是文件夹开合），文件 = PanelKindIcon kind="file"
                       （与文件标签页、面板标签同一颗）。codicon 是字体字形：笔画由字体
                       决定（约 1.0px），与这两处的 1.4 描边不是一套，颜色也吃
-                      `--vscode-icon-foreground` 比文字浅一档。IDE 宿主保留 codicon。 */}
+                      `--vscode-icon-foreground` 比文字浅一档。插件端保留 codicon。 */}
                   {isDesktopHost() ? (
                     row.type === "dir" ? (
                       <FolderIcon

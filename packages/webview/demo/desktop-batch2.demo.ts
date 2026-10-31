@@ -264,7 +264,7 @@ test.describe("Desktop batch 2 feature screenshots", () => {
   });
 
   /**
-   * spec core/agent-config.md「IDE 插件配置入口」场景 7–9：设置页的「未设置态」
+   * spec core/agent-config.md「插件端配置入口」场景 7–9：设置页的「未设置态」
    * 与被更高层覆盖时的「生效值 + 来源」呈现。两张截图分别对应：
    *
    * - 未设置态：文件里没有这些键（系统环境也没有）→ 语言下拉首项「未设置
