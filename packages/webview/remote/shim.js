@@ -3296,6 +3296,73 @@
         return;
       }
 
+      case "listResumeSessions": {
+        // 磁盘历史会话（spec remote/remote-web.md「手机端也能接着磁盘上的历史
+        // 会话聊」场景 1）：host 级只读，**不带 sessionId**——它列的是这台机器上
+        // 所有项目目录的主会话，与「我现在在看哪一条」无关。宿主按 lastActiveAt
+        // 倒序回全量，这里按页面上限截断：一帧 512 KiB 是硬上界，而超预算的回执在
+        // 机器侧是**明确报错、不截断**（截断一份会话列表等于给手机一份「哪些会话
+        // 存在」的假话），所以上限只能在这一侧先落实。
+        var resumeLimit =
+          typeof msg.limit === "number" && msg.limit > 0 ? msg.limit : 200;
+        request("listAllSessions", {}, false)
+          .then(function (result) {
+            post({
+              command: "resumeDiskSessions",
+              requestId: msg.requestId,
+              sessions: ((result && result.sessions) || []).slice(
+                0,
+                resumeLimit,
+              ),
+            });
+          })
+          .catch(function (err) {
+            post({
+              command: "resumeDiskSessions",
+              requestId: msg.requestId,
+              sessions: [],
+              error: String(err.message || err),
+            });
+          });
+        return;
+      }
+
+      case "resumeDiskSession": {
+        // 打开一条磁盘会话 = 在这台机器上**新建**一条会话、并从那份历史恢复
+        // （`initialize` + `restoreSessionId`，规格场景 3）。机器侧为什么不是
+        // `restoreSession`：那是原地载入，会换掉电脑侧正在跑的那条。成功之后与
+        // 「新建会话」同一条收尾：重绑本页视图 + 重走一次首屏快照，电脑侧别的会话
+        // 一个都不动。目录已被删掉时把宿主的 ENOENT 翻成人话（规格场景 5），
+        // 其余失败原样带回。
+        request(
+          "initialize",
+          { workdir: msg.workdir, restoreSessionId: msg.sessionId },
+          false,
+        )
+          .then(function (result) {
+            sessionId = result.sessionId;
+            picked = true;
+            messages = [];
+            pullSnapshot();
+            post({
+              command: "resumeDiskSessionResult",
+              requestId: msg.requestId,
+              sessionId: result.sessionId,
+            });
+          })
+          .catch(function (err) {
+            var text = String((err && err.message) || err);
+            post({
+              command: "resumeDiskSessionResult",
+              requestId: msg.requestId,
+              error: /ENOENT|no such file|not exist/i.test(text)
+                ? "该会话的工作目录已不存在"
+                : text,
+            });
+          });
+        return;
+      }
+
       case "getStatus":
         post({
           command: "statusResponse",

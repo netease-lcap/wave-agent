@@ -6,7 +6,7 @@ import type {
   VsCodeApi,
 } from "../types";
 import { useHostMessage } from "../utils/useHostMessage";
-import { formatSessionLabel } from "../utils/session";
+import { formatLastActive, formatSessionLabel } from "../utils/session";
 import {
   WORKTREE_DELETE_CHECKING,
   worktreeDeleteWarning,
@@ -15,19 +15,6 @@ import { ConfirmDialog } from "./ConfirmDialog";
 import { LoadingRingIcon, StatusDotIcon } from "./HeaderIcons";
 import { WORKTREE_CHANGES_TIMEOUT_MS } from "./DesktopSidebar";
 import "../styles/RemoteSessionListPage.css";
-
-/** 「最近活跃时间」的第二行用相对时间：手机上一行的宽度要留给标题和「⋯」，
- *  绝对时间（`toLocaleString`）在那里既长又读不出「刚才还是昨天」。 */
-const formatLastActive = (at?: string | Date): string => {
-  if (!at) return "";
-  const ms = at instanceof Date ? at.getTime() : new Date(at).getTime();
-  if (Number.isNaN(ms)) return "";
-  const diff = Date.now() - ms;
-  if (diff < 60_000) return "刚刚";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
-  return new Date(ms).toLocaleDateString();
-};
 
 /** 项目目录名（不是完整路径）：手机上那一行要和「最近活跃时间」挤在同一行。 */
 const projectName = (workdir?: string): string => {

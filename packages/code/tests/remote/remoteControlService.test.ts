@@ -421,8 +421,10 @@ describe("RemoteControlService", () => {
     // 256 KiB, and judged by content: NUL bytes or a mostly undecodable payload
     // is refused) and turning
     // the running turn into a background one (`backgroundCurrentTask`: the phone
-    // has no Ctrl/Cmd+B, so the message button is its only entry) are the whole
-    // surface. Adding a method here is a deliberate
+    // has no Ctrl/Cmd+B, so the message button is its only entry) and the disk
+    // scan behind `/resume` (`listAllSessions`: a host-level read the page
+    // opens a *new* session from — `restoreSession` is still refused) are the
+    // whole surface. Adding a method here is a deliberate
     // widening, so this list is pinned rather than derived.
     expect([...REMOTE_ALLOWED_METHODS].sort()).toEqual([
       "abortMessage",
@@ -445,6 +447,7 @@ describe("RemoteControlService", () => {
       "getTextPreview",
       "getWorkflowRuns",
       "initialize",
+      "listAllSessions",
       "listDaemonSessions",
       "listDirectories",
       "listGitBranches",
@@ -473,7 +476,11 @@ describe("RemoteControlService", () => {
     // `getWorktreeChanges` are the third batch's version of the same rule: the
     // page deletes through `destroy` (session-keyed) and counts through
     // `getSessionWorktreeChanges`, so the two methods that take a caller-given
-    // path are still exactly what a phone must not have.
+    // path are still exactly what a phone must not have. `restoreSession`
+    // joined this list with `/resume`: it loads a transcript **into** an existing
+    // session slot (the desktop's pane swap), while the page opens one as a new
+    // session via `initialize { restoreSessionId }` — so the in-place form is
+    // still not something the phone may ask for.
     const bridge = createBridgeStub();
     await connect(bridge);
 
@@ -483,7 +490,6 @@ describe("RemoteControlService", () => {
       "getPlanFile",
       "removeWorktree",
       "openFile",
-      "listAllSessions",
       "restoreSession",
     ]) {
       socket.deliver({ id: 10, method, params: {} });
@@ -494,7 +500,7 @@ describe("RemoteControlService", () => {
       .frames()
       .filter((frame) => frame.method === "error")
       .map((frame) => (frame.params as { message: string }).message);
-    expect(refusals).toHaveLength(7);
+    expect(refusals).toHaveLength(6);
     for (const method of ["getWorkspaceDiff", "removeWorktree"]) {
       expect(refusals.some((message) => message.includes(method))).toBe(true);
     }
@@ -519,6 +525,9 @@ describe("RemoteControlService", () => {
         tools: ["bash"],
         pluginDirs: ["/tmp/evil"],
         mcpServers: { evil: {} },
+        // `restoreSessionId` is the one former member of this list that now
+        // survives (it is how `/resume` opens a disk session as a NEW session);
+        // the assertions below still pin every other key out.
         restoreSessionId: "s1",
         // …including the telemetry entrypoint: the channel stamps its own below.
         entrypoint: "desktop",
@@ -530,6 +539,7 @@ describe("RemoteControlService", () => {
         {
           workdir: "~/repos/wave",
           permissionMode: "acceptEdits",
+          restoreSessionId: "s1",
           // Stamped by the channel rather than picked: a session created from
           // the page is `remote` even though the daemon hosting it was started
           // from a CLI (docs/specs/enterprise/opentelemetry.md「宿主入口标识」).

@@ -148,8 +148,13 @@ export const HOST_SLASH_COMMANDS: readonly HostSlashCommandSpec[] = [
     id: "resume",
     description: "恢复历史对话",
     runOnSelect: true,
-    // 页面的会话列表只报进程内的活会话，磁盘历史会话在那边不渲染（场景 24）。
-    surfaces: GUIS,
+    // 桌面端 / IDE 与 daemon、GUI 的 `--stdio` 子进程都能执行它；**前台 CLI 那
+    // 个承接进程不能**（它只有一条会话槽位，恢复磁盘会话等于把用户正看着的那条
+    // 换掉）——所以这一条是表第一次出现「入口一致、宿主再收窄」：这里给的是
+    // `remote-page` 的上限，`RemoteControlCliHost` 在回包前删掉它（见
+    // `remoteControlCliHost.ts` 的 `getSlashCommands`）。桌面侧栏与远控页的取数
+    // 不同：侧栏只报进程内活会话，`/resume` 才是磁盘历史会话的入口。
+    surfaces: ALL,
   },
   {
     id: "btw",

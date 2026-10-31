@@ -405,6 +405,11 @@ test("getSlashCommands narrows the SDK command to what the page renders", async 
     "rewind",
     "btw",
   ]);
+  // 表给的是「远控页」这个入口的上限，这个宿主再按自己的实现面收窄：它只有一条
+  // 会话槽位，恢复磁盘会话等于把用户终端里正看着的那条换掉（`initialize` 也没
+  // 实现），所以 `/resume` 不列——「弹窗里列出来 ⇒ 选中可用」（spec
+  // commands/slash-commands.md 场景 4 / remote/remote-web.md 场景 6）。
+  expect(result.commands.map((command) => command.id)).not.toContain("resume");
 });
 
 test("a permissionResponse notification settles the matching request", () => {

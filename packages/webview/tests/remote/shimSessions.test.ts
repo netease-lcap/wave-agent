@@ -2160,6 +2160,113 @@ describe("remote page shim", () => {
     });
   });
 
+  test("lists disk sessions for /resume as a host-level read, capped by limit", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "listResumeSessions",
+      requestId: "rs-1",
+      limit: 2,
+    });
+    await flush();
+
+    // 磁盘会话是**整台机器**的事实，跟页面正在看哪一条无关：信封里没有
+    // sessionId（与 listDirectories 同档的 host 级读）。
+    const list = page.socket.framesFor("listAllSessions")[0];
+    expect(list).toMatchObject({ params: {} });
+    expect(list.sessionId).toBeUndefined();
+
+    await page.answer("listAllSessions", {
+      sessions: [
+        { id: "d-1", workdir: "/repo", lastActiveAt: "2026-10-30T10:00:00Z" },
+        { id: "d-2", workdir: "/other", lastActiveAt: "2026-10-29T10:00:00Z" },
+        { id: "d-3", workdir: "/old", lastActiveAt: "2026-10-28T10:00:00Z" },
+      ],
+    });
+
+    // 上限在页面这一侧落实：超预算的回执在机器侧是**报错**而不是截断（截断一份
+    // 会话列表等于给手机一份「哪些会话存在」的假话），所以只能先少要。
+    expect(lastPosted(page)).toMatchObject({
+      command: "resumeDiskSessions",
+      requestId: "rs-1",
+      sessions: [{ id: "d-1" }, { id: "d-2" }],
+    });
+  });
+
+  test("restoring a disk session creates a NEW session seeded from it", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "resumeDiskSession",
+      requestId: "rd-1",
+      sessionId: "disk-1",
+      workdir: "/old/repo",
+    });
+    await flush();
+
+    // 打开一条磁盘会话 = 新建一条并从那份历史恢复。**不是** `restoreSession`：
+    // 那是原地载入，会换掉电脑侧正在跑的那条（spec 场景 3）。
+    const init = page.socket.framesFor("initialize")[0];
+    expect(init).toMatchObject({
+      params: { workdir: "/old/repo", restoreSessionId: "disk-1" },
+    });
+    expect(init.sessionId).toBeUndefined();
+
+    await page.answer("initialize", {
+      sessionId: "s-restored",
+      currentWorkdir: "/old/repo",
+      permissionMode: "default",
+      latestTotalTokens: 0,
+    });
+    await page.answer("listDaemonSessions", {
+      sessions: [
+        ...SESSIONS,
+        { sessionId: "s-restored", sessionCwd: "/old/repo" },
+      ],
+    });
+    await page.answer("getSessionInfo", {
+      sessionId: "s-restored",
+      permissionMode: "default",
+    });
+    // 恢复出来的这条已经是**活会话**：首屏那套读的是它，而不是原来的 s-new。
+    const pulls = page.socket.framesFor("getMessages");
+    expect(pulls[pulls.length - 1].sessionId).toBe("s-restored");
+    await page.answer("getMessages", { messages: [] });
+    await page.answer("listPendingPermissions", { requests: [] });
+    await flush();
+
+    expect(
+      page.posted.find(
+        (message) => message.command === "resumeDiskSessionResult",
+      ),
+    ).toMatchObject({ requestId: "rd-1", sessionId: "s-restored" });
+  });
+
+  test("a missing workdir reads as that, not as the raw rpc error", async () => {
+    const { page } = await openPage();
+
+    page.api.postMessage({
+      command: "resumeDiskSession",
+      requestId: "rd-2",
+      sessionId: "disk-gone",
+      workdir: "/gone/repo",
+    });
+    await flush();
+
+    await page.refuse(
+      "initialize",
+      "ENOENT: no such file or directory, open '/gone/repo/.wave/x.jsonl'",
+    );
+
+    // 手机上没有终端、也没有 toast：宿主的 ENOENT 必须翻成用户看得懂的那句
+    // （spec 场景 5，与桌面端先探测目录后切换是同一句话）。
+    expect(lastPosted(page)).toMatchObject({
+      command: "resumeDiskSessionResult",
+      requestId: "rd-2",
+      error: "该会话的工作目录已不存在",
+    });
+  });
+
   test("remembers the picked directory when a session is created", async () => {
     const { page } = await openPage();
 

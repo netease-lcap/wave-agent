@@ -25,13 +25,15 @@ function idsForAllSurfaces(): string[] {
   return HOST_SLASH_COMMANDS.map((command) => command.id);
 }
 
-test("每个入口拿到的正是它那份表：桌面 16 / VS Code 17 / JB 16 / 远控页 7", () => {
+test("每个入口拿到的正是它那份表：桌面 16 / VS Code 17 / JB 16 / 远控页 8", () => {
   // 数字是**能力盘点**，不是排版偏好：改动这张表就要连带确认对应入口真的能执行
   // 新加的那条（见下面的对齐用例），否则就是把一条点了没反应的行塞给用户。
   expect(idsFor("desktop")).toHaveLength(16);
   expect(idsFor("vscode")).toHaveLength(17);
   expect(idsFor("jetbrains")).toHaveLength(16);
-  expect(idsFor("remote-page")).toHaveLength(7);
+  // 8 条，但**前台 CLI 承接时会少一条**（`/resume`，宿主在回包前自己删）：
+  // 表的 `surfaces` 是入口的上限，宿主再收窄（commands/slash-commands.md 场景 4）。
+  expect(idsFor("remote-page")).toHaveLength(8);
 });
 
 test("各入口的差异只有既有拍板的三条", () => {
@@ -55,7 +57,7 @@ test("各入口的差异只有既有拍板的三条", () => {
   expect(jetbrains).toEqual(vscode.filter((id) => id !== "config"));
 });
 
-test("远控页只拿页面上真能执行的那 7 条，界面类的一条都不给", () => {
+test("远控页只拿页面上真能执行的那 8 条，界面类的一条都不给", () => {
   expect(idsFor("remote-page")).toEqual([
     "status",
     "clear",
@@ -63,10 +65,13 @@ test("远控页只拿页面上真能执行的那 7 条，界面类的一条都�
     "tasks",
     "workflows",
     "rewind",
+    "resume",
     "btw",
   ]);
-  // 设置页 / 插件市场 / 计划预览 / 远程控制自身 / 磁盘历史会话：页面上没有承载
-  // 它们的界面（remote/remote-web.md 场景 21），所以一条都不能出现在弹窗里。
+  // 设置页 / 插件市场 / 计划预览 / 远程控制自身：页面上没有承载它们的界面
+  // （remote/remote-web.md 场景 21），所以一条都不能出现在弹窗里。`/resume`
+  // 2026-11-01 解禁（磁盘历史会话有了新的读取路径，见「手机端也能接着磁盘上的
+  // 历史会话聊」），不再属于这一列。
   for (const id of [
     "config",
     "plugin",
@@ -76,14 +81,13 @@ test("远控页只拿页面上真能执行的那 7 条，界面类的一条都�
     "agents",
     "skills",
     "hooks",
-    "resume",
     "plan",
   ]) {
     expect(idsFor("remote-page")).not.toContain(id);
   }
 });
 
-test("远控页那 7 条对应的远端方法都在白名单里", () => {
+test("远控页那 8 条对应的远端方法都在白名单里", () => {
   // 「弹窗里有 ⇒ 点了真的有效」。页面上的命令最终都落成远端 RPC，白名单是那道
   // 唯一的门；把两者钉在一起，才不会出现「点了回 -32601，提示去升级机器版本」。
   const remoteMethods: Record<string, string[]> = {
@@ -95,6 +99,9 @@ test("远控页那 7 条对应的远端方法都在白名单里", () => {
     rewind: ["listRewindCheckpoints", "rewindToMessage"],
     btw: ["askBtw"],
     clear: ["clearMessages"],
+    // 读列表 + 打开一条：打开走的是 `initialize` 的 `restoreSessionId`
+    // （**新建**一条会话从那份历史恢复），`restoreSession` 仍在白名单外。
+    resume: ["listAllSessions", "initialize"],
   };
 
   const listed = idsFor("remote-page");
