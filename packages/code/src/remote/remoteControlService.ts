@@ -205,6 +205,16 @@ export const REMOTE_ALLOWED_METHODS: ReadonlySet<string> = new Set([
   // 白名单里，持页面者让模型 Read 同一个路径拿到的就是同一份内容——任何这里加的
   // 目录/扩展名限制都是假防护，只挡住更好用的入口（见规格边界情况那条）。
   "getTextPreview",
+  // ── 第七批：`/resume`，接着磁盘上的历史会话聊（spec remote/remote-web.md
+  // 「手机端也能接着磁盘上的历史会话聊」）──
+  // 读：`listAllSessions` 枚举这台机器**所有项目目录**下的主会话（跨工作目录），
+  // 页面按最近活跃时间取前 200 条（帧预算是硬约束，见规格场景 2）。
+  // **`restoreSession` 仍然不放行**：它是「原地载入」——把承接进程里某条正在跑的
+  // 会话换成另一条（在桌面端就等于换掉用户正看着的那个 pane），与「手机只当控制
+  // 面」相冲。页面打开一条磁盘会话走的是**新建**路径
+  // （`initialize { workdir, restoreSessionId }`）：恢复出来的是一条新会话，没有
+  // 任何已有会话被替换，见 `pickInitializeParams` 的注释。
+  "listAllSessions",
 ]);
 
 /**
@@ -227,10 +237,22 @@ export const REMOTE_HOST_UNSUPPORTED = -32011;
 
 /**
  * The only `initialize` shape the remote channel may request: create a session
- * in a chosen directory, with an optional permission mode. Everything else in
- * its parameter surface (model / apiKey / tools / plugins / mcpServers /
- * restoreSessionId …) is dropped, not validated — a whitelisted method must
- * not smuggle in knobs the whitelist never approved.
+ * in a chosen directory, with an optional permission mode, and — since
+ * `/resume` (spec remote/remote-web.md「手机端也能接着磁盘上的历史会话聊」) — an
+ * optional `restoreSessionId` that seeds that **new** session from a transcript
+ * already on disk. Everything else in its parameter surface (model / apiKey /
+ * tools / plugins / mcpServers …) is dropped, not validated — a whitelisted
+ * method must not smuggle in knobs the whitelist never approved.
+ *
+ * Why `restoreSessionId` belongs here and not on the old "no re-attach" rule:
+ * that rule was about **switching** between live sessions (the page does that
+ * with `getMessages` on its own `sessionId`, never by re-binding the host's
+ * agent). `/resume` is a different act — the target is a transcript nobody is
+ * running, which the process cannot serve until a session exists for it. The
+ * write is therefore "start a new session seeded from this history", exactly
+ * the same capability as `initialize { workdir }` (which the page has had since
+ * 「Web 端也能发起新会话」), and the session it creates is a fresh one: no live
+ * session is replaced.
  *
  * `entrypoint` is stamped here rather than picked: it describes the CHANNEL, not
  * the caller's request, and must not be spoofable (the page cannot claim to be
@@ -244,6 +266,9 @@ function pickInitializeParams(params: unknown): Record<string, unknown> {
   if (typeof p.workdir === "string" && p.workdir) picked.workdir = p.workdir;
   if (typeof p.permissionMode === "string" && p.permissionMode) {
     picked.permissionMode = p.permissionMode;
+  }
+  if (typeof p.restoreSessionId === "string" && p.restoreSessionId) {
+    picked.restoreSessionId = p.restoreSessionId;
   }
   return picked;
 }
@@ -600,13 +625,15 @@ export class RemoteControlService implements RemoteControlController {
     }
 
     // `initialize` is whitelisted for exactly one shape: create a session in a
-    // chosen directory (and optionally set its permission mode). Its full
+    // chosen directory, optionally set its permission mode, and optionally seed
+    // it from a transcript on disk (`restoreSessionId`, `/resume`). Its full
     // parameter surface — apiKey / baseURL / model / tools / plugins /
     // mcpServers … — would let the page reshape the machine-side agent, so
-    // everything outside the two allowed keys is dropped here rather than
-    // trusted to the caller (spec 「Web 端也能发起新会话」场景 5). Re-attach
-    // (`restoreSessionId`) is NOT part of the whitelisted shape: the page
-    // switches sessions via `getMessages`, not by re-binding the host agent.
+    // everything outside those three keys is dropped here rather than trusted to
+    // the caller (spec 「Web 端也能发起新会话」场景 5、「手机端也能接着磁盘上
+    // 的历史会话聊」场景 4). Switching between *live* sessions still goes
+    // through `getMessages` on the page's own `sessionId`, never by re-binding
+    // an existing host agent.
     const requestParams =
       frame.method === "initialize"
         ? pickInitializeParams(frame.params)

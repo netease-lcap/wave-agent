@@ -162,6 +162,13 @@ const REMOTE_PAGE_GATED = new Set([
   // 容」）：与取图同一条按需读取通道的第二条，判型换成「读出来是不是文本」。同样
   // 只有手机页会发——三个本地宿主各有自己的 openFile / 预览链路。
   "getTextPreview",
+  // `/resume`：接着磁盘上的历史会话聊（spec remote/remote-web.md「手机端也能接着
+  // 磁盘上的历史会话聊」）。读 = shim 转中继 listAllSessions（host 级，带 limit 截
+  // 到帧预算内）；写 = shim 转中继 initialize + restoreSessionId（在机器上新建一条
+  // 会话并从那份历史恢复，不替换任何已有会话）。三个本地宿主各自有 `/resume`，
+  // 但走的是它们自己的命令（desktopListResumeSessions / 头部弹窗），不经这条通道。
+  "listResumeSessions",
+  "resumeDiskSession",
 ]);
 
 /** 第五个路由实例：手机页 shim 的 case 注册集合。 */

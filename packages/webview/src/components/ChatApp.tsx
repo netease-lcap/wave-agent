@@ -26,6 +26,7 @@ import BackgroundTaskManager from "./BackgroundTaskManager";
 import WorkflowManager from "./WorkflowManager";
 import RemoteNewSessionDialog from "./RemoteNewSessionDialog";
 import RemoteSessionListPage from "./RemoteSessionListPage";
+import RemoteResumeListPage from "./RemoteResumeListPage";
 import WelcomeView from "./WelcomeView";
 import QuickStartTemplates from "./QuickStartTemplates";
 import LoadingLogo from "./LoadingLogo";
@@ -387,6 +388,21 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // One-shot scan correlation: a stale reply (host switched, /resume pressed
   // again) must not populate the picker.
   const resumeRequestIdRef = useRef("");
+  // 远控页的 `/resume`（spec remote/remote-web.md「手机端也能接着磁盘上的历史
+  // 会话聊」）：列表来自这台机器磁盘上的历史会话（`listAllSessions`），与上面那
+  // 份 `resumeSessions`（桌面端扫盘）不是同一条链路，也与「会话」整页列表（进程
+  // 内活会话）不是同一个数据源——所以状态、请求关联、渲染都各占一份。
+  const [resumeDiskOpen, setResumeDiskOpen] = useState(false);
+  const [resumeDiskSessions, setResumeDiskSessions] = useState<
+    SessionMetadata[]
+  >([]);
+  const [resumeDiskLoading, setResumeDiskLoading] = useState(false);
+  const [resumeDiskError, setResumeDiskError] = useState<string | null>(null);
+  /** 恢复请求已发出、回执未到：列表暂时锁住，避免连点发出两条 initialize。 */
+  const [resumeDiskRestoring, setResumeDiskRestoring] = useState(false);
+  const resumeDiskRequestIdRef = useRef("");
+  /** 恢复请求的关联 id（与读列表各一条，避免两个回执互相抵消）。 */
+  const resumeDiskSessionRequestIdRef = useRef("");
   // Session whose context-usage percentage contextUsage currently holds. Kept
   // in sync synchronously by the setInitialState / updateCurrentSession message
   // handlers (not by a passive effect — see the race note at those handlers).
@@ -1482,6 +1498,47 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         }
         setResumeSessions(message.sessions ?? []);
         break;
+      case "resumeDiskSessions": {
+        // Reply to the remote page's `/resume` scan. One-shot like the desktop
+        // one: a newer request (or a closed page, which clears the ref)
+        // supersedes it. An error reply keeps the page open with the reason —
+        // unlike the desktop path there is no toast on this side, so closing
+        // would leave the user with nothing.
+        const reply = message as unknown as {
+          requestId?: string;
+          sessions?: SessionMetadata[];
+          error?: string;
+        };
+        if (String(reply.requestId) !== resumeDiskRequestIdRef.current) break;
+        resumeDiskRequestIdRef.current = "";
+        setResumeDiskLoading(false);
+        setResumeDiskSessions(reply.sessions ?? []);
+        setResumeDiskError(reply.error ?? null);
+        break;
+      }
+      case "resumeDiskSessionResult": {
+        const reply = message as unknown as {
+          requestId?: string;
+          sessionId?: string;
+          error?: string;
+        };
+        if (String(reply.requestId) !== resumeDiskSessionRequestIdRef.current) {
+          break;
+        }
+        resumeDiskSessionRequestIdRef.current = "";
+        setResumeDiskRestoring(false);
+        if (reply.error) {
+          // 恢复失败就停在列表上（规格场景 5）：目录被删掉时 shim 已把宿主的
+          // ENOENT 翻成「该会话的工作目录已不存在」，其余错误原样展示。
+          setResumeDiskError(reply.error);
+          break;
+        }
+        // shim 已经切到新会话并拉了首屏快照，这里只收尾（与「新建对话」同一条
+        // 收尾路径：关掉覆盖层，让用户落在那条会话上）。
+        setResumeDiskOpen(false);
+        setResumeDiskError(null);
+        break;
+      }
       case "desktopForwardPortResult":
         // Remote preview port-forward reply (scenario 15/16). The forward is
         // session-scoped, so the reply is matched against the session whose
@@ -2894,6 +2951,17 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           setResumeLoading(true);
           setResumePickerOpen(true);
           postToHost({ command: "desktopListResumeSessions", requestId });
+        } else if (isRemotePage) {
+          // 远控页：向承接进程要**这台机器磁盘上**的历史会话（host 级读），打开
+          // 整页列表。`limit` 是按帧预算定的上限（规格场景 2）——宿主照单截取，
+          // 这一端不分页也不重试。
+          const requestId = String(Date.now());
+          resumeDiskRequestIdRef.current = requestId;
+          setResumeDiskSessions([]);
+          setResumeDiskError(null);
+          setResumeDiskLoading(true);
+          setResumeDiskOpen(true);
+          postToHost({ command: "listResumeSessions", requestId, limit: 200 });
         } else {
           setResumePickerOpen(true);
         }
@@ -5277,6 +5345,39 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           }}
           onBack={() => setSessionPageOpen(false)}
           onRename={renameSessionFromHeader}
+        />
+      )}
+      {/* Remote page `/resume`: the整页 list of disk sessions (spec
+          remote/remote-web.md「手机端也能接着磁盘上的历史会话聊」). Same form as
+          the 「会话」 page, different data source — transcripts on the machine,
+          not live sessions. */}
+      {isRemotePage && resumeDiskOpen && (
+        <RemoteResumeListPage
+          sessions={resumeDiskSessions}
+          loading={resumeDiskLoading}
+          busy={resumeDiskRestoring}
+          error={resumeDiskError ?? undefined}
+          onSelect={(session) => {
+            if (resumeDiskLoading || resumeDiskRestoring) return;
+            const requestId = String(Date.now());
+            resumeDiskSessionRequestIdRef.current = requestId;
+            setResumeDiskError(null);
+            setResumeDiskRestoring(true);
+            postToHost({
+              command: "resumeDiskSession",
+              requestId,
+              sessionId: session.id,
+              workdir: session.workdir,
+            });
+          }}
+          onBack={() => {
+            setResumeDiskOpen(false);
+            setResumeDiskLoading(false);
+            setResumeDiskRestoring(false);
+            setResumeDiskError(null);
+            resumeDiskRequestIdRef.current = "";
+            resumeDiskSessionRequestIdRef.current = "";
+          }}
         />
       )}
       {/* Desktop `/resume`: centered modal at the pane's root (the desktop chat

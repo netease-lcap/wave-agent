@@ -216,11 +216,20 @@ export class RemoteControlCliHost implements RemoteControlHost {
           // business travelling over a relay (and would be dropped silently,
           // leaving the frame's shape to chance). The host-local half comes
           // from the one table, filtered for this entry (spec
-          // ui/slash-commands.md「弹窗里的宿主命令只有一份表」) — the same bytes
-          // the daemon returns, so the phone sees one list either way.
+          // commands/slash-commands.md「弹窗里的宿主命令只有一份表」) — the same
+          // bytes the daemon returns, with one exception: `/resume` is dropped
+          // here, because this host holds exactly one session slot. Restoring a
+          // transcript from disk would mean replacing the session the user is
+          // watching in the terminal (and `initialize` is not implemented here
+          // either), so the row would be one that does nothing when picked —
+          // the exact defect the one-table rule forbids. The table declares the
+          // entry's ceiling; the host narrows it to what it can actually run
+          // (spec commands/slash-commands.md 场景 4).
           commands: [
             ...this.session.slashCommands().map(toSlashCommandInfo),
-            ...hostSlashCommandsFor("remote-page"),
+            ...hostSlashCommandsFor("remote-page").filter(
+              (command) => command.id !== "resume",
+            ),
           ],
         };
       default:

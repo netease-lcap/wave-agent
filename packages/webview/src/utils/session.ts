@@ -80,3 +80,19 @@ export const getSessionTitle = (
   if (derived) return truncate(derived);
   return DEFAULT_SESSION_TITLE;
 };
+
+/**
+ * 「最近活跃时间」的相对写法，手机上的会话列表用（`remote/remote-web.md`）：
+ * 那一行要和标题、路径挤在同一屏，绝对时间（`toLocaleString`）既长又读不出
+ * 「刚才还是昨天」。桌面 / IDE 端仍用绝对时间，不受这里影响。
+ */
+export const formatLastActive = (at?: string | Date): string => {
+  if (!at) return "";
+  const ms = at instanceof Date ? at.getTime() : new Date(at).getTime();
+  if (Number.isNaN(ms)) return "";
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return "刚刚";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)} 分钟前`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)} 小时前`;
+  return new Date(ms).toLocaleDateString();
+};
