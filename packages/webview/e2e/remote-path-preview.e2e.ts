@@ -1,5 +1,6 @@
 import { test, expect } from "./utils/webviewTestHarness.js";
 import { MessageInjector } from "./utils/messageInjector.js";
+import type { Locator, Page } from "@playwright/test";
 import type { Message } from "wave-agent-sdk";
 
 /**
@@ -139,4 +140,113 @@ test.describe("远控页：点路径看内容", () => {
     await webviewPage.keyboard.press("Escape");
     await expect(webviewPage.getByRole("dialog")).toHaveCount(0);
   });
+
+  test("长文件名：标题栏在自己那一行里收住，不挤出弹窗右边", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await openPage(injector);
+    // 手机档（390px）上标题栏只有 351px 可用，而文件名可以任意长——它是最不
+    // 该撑破弹窗的东西，也是最容易撑破的东西：flex 子项的 `min-width` 默认是
+    // `min-content`，一个不含断点的长文件名（下划线、纯字母）撑着不收缩，右侧
+    // 那句「前 256 KB / 共 5.0 MB」与关闭按钮被一起顶出面板。
+    const longName =
+      "/tmp/shots/remote_web_text_preview_implementation_notes_20261101.md";
+
+    const dialog = await openTextPreview(webviewPage, injector, longName);
+
+    // 标题与那句截断说明都还在（修的是排版，不是把它们藏掉）。
+    await expect(dialog).toContainText("remote_web_text_preview");
+    await expect(dialog).toContainText("前 256 KB / 共 5.0 MB");
+
+    // 标题栏自身没有横向溢出：内容宽度落在盒子里。
+    expect(await headerOverflow(dialog)).toBeLessThanOrEqual(0);
+
+    // 关闭按钮整个落在弹窗右边界之内（溢出时它会被推出面板）。
+    const panel = await dialog.boundingBox();
+    const close = await dialog
+      .locator(".ide-context-preview-close")
+      .boundingBox();
+    expect(panel).not.toBeNull();
+    expect(close).not.toBeNull();
+    expect(close!.x + close!.width).toBeLessThanOrEqual(
+      panel!.x + panel!.width + 0.5,
+    );
+    // 反过来也不能被压没：它至少还有可点的尺寸。
+    expect(close!.width).toBeGreaterThanOrEqual(24);
+    // 标题收成一行（省略号收尾），不靠换行把标题栏撑高。
+    expect(await titleHeight(dialog)).toBeLessThanOrEqual(20);
+  });
+
+  test("可断行的长中文名：标题也只占一行", async ({ webviewPage }) => {
+    const injector = new MessageInjector(webviewPage);
+    await openPage(injector);
+    // 中文与带连字符的名字能在任意字符/连字符处断行，于是「不溢出」这条对它们
+    // 本来就成立——真正的毛病是标题换行成三四行、把标题栏撑高。
+    const dialog = await openTextPreview(
+      webviewPage,
+      injector,
+      "/tmp/shots/很长的中文文件名用来看看会不会把标题栏挤破掉真的会吗再看一遍.md",
+    );
+
+    expect(await headerOverflow(dialog)).toBeLessThanOrEqual(0);
+    expect(await titleHeight(dialog)).toBeLessThanOrEqual(20);
+    await expect(dialog).toContainText("很长的中文文件名");
+  });
 });
+
+/**
+ * 点消息里那条长路径、把宿主回包喂回去，返回已经弹出的弹层。
+ * 弹层只认「最近一次请求」的 requestId，所以按发出的顺序取最后一条。
+ */
+async function openTextPreview(
+  page: Page,
+  injector: MessageInjector,
+  filePath: string,
+) {
+  await injector.updateMessages([
+    {
+      id: "a2",
+      role: "assistant",
+      timestamp: "2026-10-30T10:01:00.000Z",
+      blocks: [{ type: "text", content: `完整报告见 ${filePath} 。` }],
+    },
+  ]);
+  await injector.endStreaming();
+
+  await page.locator("a.file-path-link", { hasText: filePath }).click();
+  const request = await page.evaluate(() => {
+    const sent = (
+      window as unknown as { testMessages?: Array<Record<string, unknown>> }
+    ).testMessages;
+    return sent
+      ?.filter((message) => message.command === "getTextPreview")
+      .pop();
+  });
+  expect(request).toBeDefined();
+  await injector.simulateExtensionMessage("textPreviewResponse", {
+    requestId: (request as Record<string, unknown>).requestId,
+    content: "# 真机验证报告\n\n全部用例通过\n",
+    bytes: 5 * 1024 * 1024,
+    returnedBytes: 256 * 1024,
+    truncated: true,
+    encodingIssue: false,
+  });
+
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
+
+/** 标题栏内容比盒子宽多少（> 0 就是从右边冒出去了）。 */
+function headerOverflow(dialog: Locator): Promise<number> {
+  return dialog
+    .locator(".ide-context-preview-header")
+    .evaluate((el) => el.scrollWidth - el.clientWidth);
+}
+
+function titleHeight(dialog: Locator): Promise<number> {
+  return dialog
+    .locator(".ide-context-preview-title")
+    .evaluate((el) => el.getBoundingClientRect().height);
+}

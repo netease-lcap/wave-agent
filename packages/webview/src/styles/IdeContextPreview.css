@@ -28,6 +28,10 @@
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
   cursor: default;
   outline: none;
+  /* 任何子内容都不许跑到面板外面：标题栏那句长文件名曾经整个顶出去（见
+     `.ide-context-preview-title`），而正文区的滚动由下面各自的 `overflow: auto`
+     负责，这一层只兜住溢出的那一侧。 */
+  overflow: hidden;
 }
 
 .ide-context-preview-header {
@@ -39,14 +43,27 @@
   border-bottom: 1px solid var(--vscode-panel-border, rgba(255, 255, 255, 0.16));
 }
 
+/* 标题是文件名（或「看不了这份文件」这类短句），长度没有上限。flex 子项的
+   `min-width` 默认是 `min-content`——不含断点的长文件名（下划线、纯字母）会撑
+   着不收缩，把右侧说明和关闭按钮一起顶出面板（手机档实测溢出 100px 以上）；
+   能在连字符/汉字处断行的名字则换成三四行，把标题栏撑高。两种都不该发生，所以
+   显式收到 0、单行省略号收尾；全名靠 `title` 属性在桌面端 hover 看。 */
 .ide-context-preview-title {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.ide-context-preview-note {
   flex: 1 1 auto;
   min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 这句是短标签（「前 256 KB / 共 5.0 MB」），内容宽度由宿主给的数字决定，所以
+   不参与与标题争空间：缩的是标题，它完整留着。真遇到异常长的说明才由
+   `max-width` + 省略号兜一下。 */
+.ide-context-preview-note {
+  flex: 0 0 auto;
+  max-width: 60%;
   font-size: 12px;
   opacity: 0.7;
   text-align: right;
