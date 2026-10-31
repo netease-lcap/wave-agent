@@ -84,7 +84,11 @@ export const IdeContextPreview: React.FC<IdeContextPreviewProps> = ({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="ide-context-preview-header">
-          <span className="ide-context-preview-title">{title}</span>
+          {/* 标题单行省略号收尾（见 CSS）：文件名可以任意长，全名留在这里给
+              桌面端 hover 看。 */}
+          <span className="ide-context-preview-title" title={title}>
+            {title}
+          </span>
           {note && (
             <span className="ide-context-preview-note" title={note}>
               {note}
