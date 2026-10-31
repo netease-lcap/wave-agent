@@ -93,7 +93,7 @@ afterEach(() => {
 });
 
 describe("ChatApp local .html preview routing", () => {
-  it("IDE hosts keep the plain openFile RPC for .html paths (spec 场景 9)", () => {
+  it("plugin hosts keep the plain openFile RPC for .html paths (spec 场景 9)", () => {
     // No window.waveHostType → IDE webview shape (renderChatApp, not DesktopApp).
     const vscode = createMockVscode();
     renderChatApp(vscode);

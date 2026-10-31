@@ -480,14 +480,14 @@ const createMessageMarkdownRenderer = (
   // 表格包一层滚动容器（specs 走查 F-06 / message-rendering-system.md「表格展示
   // 与滚动」）：宽表需在自身区域内横向滚动，而不是被对话列 .messages-column 的
   // overflow-x:clip 静默裁切。包装 div 本身无内联样式：横向滚动写在共用层
-  // （Message.css 的 .md-table-scroll，四个 GUI 宿主同吃——远控 Web 页与 IDE 宿主
+  // （Message.css 的 .md-table-scroll，四个 GUI 宿主同吃——远控 Web 页与插件端
   // 同样需要，桌面层此前是唯一给它的地方，见 2026-10-21 远控页 iOS 宽表不可滚的
-  // 修复），间距等观感仍由宿主样式控制，故 IDE 宿主结构变化但外观不变。
+  // 修复），间距等观感仍由宿主样式控制，故插件端结构变化但外观不变。
   // marked 9 的 renderer.table 签名是 (headerHtml, bodyHtml)，默认实现不使用
   // this，转调默认实现可保证 thead/tbody/对齐渲染逐字节一致。
   // tabindex（V-01 验收 4 / WCAG 2.1.1）：横向滚动是宽表的兜底路径，键盘用户
   // 需能聚焦该区域后用方向键滚看被裁掉的列；与 F-10 给 code pre 的处理同源。
-  // 仅桌面端注入（见下方 renderer.code 的说明：IDE 宿主没有对应焦点环样式）。
+  // 仅桌面端注入（见下方 renderer.code 的说明：插件端没有对应焦点环样式）。
   // 默认渲染结果再过一遍列级对齐（见 applyTableColumnAlign）。
   const defaultTable = marked.Renderer.prototype.table;
   renderer.table = (header: string, body: string) =>
@@ -531,7 +531,7 @@ const createMessageMarkdownRenderer = (
   // 补 tabindex="0"，其余（语言类名、转义状态、<code> 子节点）逐字节沿用默认
   // 实现，不引入高亮或结构变化；焦点样式见 host-desktop.css 桌面层。
   // **tabindex 只在桌面端注入**：聚焦环样式（`pre:focus-visible` 等）只写在
-  // `[data-host="desktop"]` 层，IDE 宿主注入后拿不到可见焦点，只会凭白多出
+  // `[data-host="desktop"]` 层，插件端注入后拿不到可见焦点，只会凭白多出
   // Tab 停靠点（WCAG 2.4.3 噪声）。aria-label / aria-expanded / button 化这类
   // 真正的无障碍改进不受此 gate 影响，两端都保留。
   const defaultCode = marked.Renderer.prototype.code;
@@ -813,7 +813,7 @@ export const Message: React.FC<MessageProps> = React.memo(
     } = props;
 
     // Desktop routes file opens to its file panel (the host resolves the path,
-    // pushing content back); IDE hosts keep the plain openFile RPC. The message
+    // pushing content back); plugin hosts keep the plain openFile RPC. The message
     // chain reaches here via onOpenFile so the outbound message carries the
     // originating paneId (postToHost in ChatApp) — a direct vscode.postMessage
     // from a split-view pane would broadcast without it and misroute.
@@ -845,7 +845,7 @@ export const Message: React.FC<MessageProps> = React.memo(
     const canOpenFile = !isRemotePageHost();
 
     // 全屏只读弹层（一次只显示一个，与图片预览同语义）：用户消息里 @终端 /
-    // @问题 标签的全文（内容来自消息正文本身，不重新读 IDE），以及远控页按需
+    // @问题 标签的全文（内容来自消息正文本身，不重新读插件端），以及远控页按需
     // 读来的文件内容（`markdown` / `note` 只在后一条用得上）。
     const [idePreview, setIdePreview] = useState<{
       title: string;
@@ -901,10 +901,10 @@ export const Message: React.FC<MessageProps> = React.memo(
      *
      * - `data:` / `blob:` / `http(s):` → 就地弹层，不打扰宿主。webview 粘贴图就是
      *   这一类：字节留在消息块里（`imageUrls`），CLI 只是另把同一份字节落盘、把路径
-     *   记在 `imagePaths` 里喂模型，所以桌面 / IDE 表现一致；
+     *   记在 `imagePaths` 里喂模型，所以桌面端 / 插件端 表现一致；
      * - 值本身是路径（前台 CLI 粘贴、以及改造前写下的老消息）→ 交给宿主打开：桌面端
      *   走文件面板（宿主按该 pane 所在主机读，SSH 会话经 ssh 读回，
-     *   `desktop-file-panel.md` 场景 15 要求面板内联显示图片）；IDE 端走
+     *   `desktop-file-panel.md` 场景 15 要求面板内联显示图片）；插件端走
      *   `previewImage`（VS Code 打开内置图片预览、JetBrains 用内置图片编辑器打开
      *   ——随 IDE 捆绑的 Images 插件）。
      *
@@ -1030,10 +1030,10 @@ export const Message: React.FC<MessageProps> = React.memo(
     };
 
     // Link routing is a desktop-host feature: localhost links open in
-    // the preview pane, everything else goes to the system browser. IDE hosts
+    // the preview pane, everything else goes to the system browser. plugin hosts
     // keep their native link handling, so bail BEFORE any preventDefault.
     // File-path links (specs/ui/file-path-links.md) are routed on ALL hosts:
-    // desktop opens the file panel (via onOpenFile), IDE hosts open the file
+    // desktop opens the file panel (via onOpenFile), plugin hosts open the file
     // natively via the openFile RPC — same channel as Read/Write tool headers.
     const handleContentClick = (e: React.MouseEvent) => {
       const target = e.target as Element | null;
@@ -1131,7 +1131,7 @@ export const Message: React.FC<MessageProps> = React.memo(
               {/* 输出中的裸 http(s) URL 与文件路径链接化（见
                   specs/ui/markdown-links.md 与 specs/ui/file-path-links.md），
                   点击路由复用 handleContentClick：desktop 上 localhost → 预览
-                  面板、其余 → 系统浏览器；IDE 保持原生链接处理；路径走 openFile，
+                  面板、其余 → 系统浏览器；插件端保持原生链接处理；路径走 openFile，
                   远控页则按需读取内容（specs/remote/remote-web.md「点消息里的文件
                   路径看内容」）。 */}
               {/* tabIndex（F-10 / WCAG 2.1.1）：max-height 120 + overflow-y:auto

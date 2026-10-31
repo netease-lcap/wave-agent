@@ -206,7 +206,7 @@
    —— 所以由组件测溢出挂 is-list-scrollable
    （ConfirmationDialog.tsx 的 questionsListScrollable）。
    这一列 = **滚动条那一列自身**（列宽对齐轨道宽、内衬 0 ⇒ 选项行右缘正好落在
-   轨道左缘）。base 的值 16px 是 **IDE 宿主**的量（它走 globals.css 的 16px 轨道）；
+   轨道左缘）。base 的值 16px 是 **插件端**的量（它走 globals.css 的 16px 轨道）；
    桌面端轨道 8px（见 host-desktop.css 设计层），另有一套 12px 的收窄值 ⇒ 那一档写在
    下面的 `[data-host="desktop"]` 块里（0924 第七轮设计师「只在桌面端改」）。 */
 .question-item.is-list-scrollable {
@@ -287,7 +287,7 @@
 /* 桌面端（8px 轨道 / 6px 胶囊）那一档：让出的列收到 12px，多出的 4px 就是
    **选项行右缘 → 胶囊左缘**的间距（与侧栏会话树第四轮定稿同值 4px）。
    题头 / 进度条 / 卡片右缘三者一起收 4px、仍逐值对齐；胶囊与轨道位置不变
-   （列右缘仍在容器右缘 = 轨道右缘）。仅桌面端 —— IDE 宿主继续用上面 base 的
+   （列右缘仍在容器右缘 = 轨道右缘）。仅桌面端 ——插件端继续用上面 base 的
    16px 列（对齐它自己的 16px 轨道，与 main 逐字相同）。 */
 [data-host="desktop"] .question-item.is-list-scrollable {
   padding-right: 12px;
@@ -488,7 +488,7 @@
 }
 
 /* 计划正文（对话框内承载计划全文）。目前唯一的使用者是远控 Web 页：桌面端把它放进
-   右栏 Plan 面板、IDE 端由宿主另开计划标签页，两端都在 ChatApp 里把它从对话框剥掉
+   右栏 Plan 面板、插件端由宿主另开计划标签页，两端都在 ChatApp 里把它从对话框剥掉
    （见 specs/core/plan-mode.md 场景 13 与 specs/remote/remote-web.md 场景 19）。
    独立滚动区 + 上限高度，避免计划把对话框撑到操作按钮看不见；正文本身复用消息
    markdown 的 `.markdown-content` 排版。不给 tabIndex：焦点环样式只存在于桌面层，

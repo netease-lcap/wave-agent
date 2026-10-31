@@ -13,7 +13,7 @@ import {
  * 1/2/3：压缩进行中（isCompacting）时，「历史对话」选择与「新建对话 / `/clear`」
  * 被忽略、「新建对话」按钮禁用 —— 与 streaming/后台任务共用同一守卫位。压缩中
  * 原地切走/清空会让压缩摘要块写进切换后的会话（PM 缺陷 3478352534577408）。
- * 仅 IDE（VSCE/JB）端语义，桌面端并行会话模型不受影响。
+ * 仅插件端（VSCE/JB）端语义，桌面端并行会话模型不受影响。
  */
 
 function setCompacting(isCompacting: boolean) {

@@ -349,7 +349,7 @@ describe("MessageHandler MCP handlers", () => {
     expect(posted.queuedMessages).toEqual(anchors.queuedMessages);
     expect(posted.pendingConfirmations).toEqual(anchors.pendingConfirmations);
     expect(posted.sessions).toEqual(anchors.sessions);
-    // IDE hosts never send pane-scoped messages — only desktop does.
+    // plugin hosts never send pane-scoped messages — only desktop does.
     expect(posted.paneId).toBeUndefined();
   });
 
@@ -595,7 +595,7 @@ describe("MessageHandler MCP handlers", () => {
     expect(posted.messages).toEqual([]);
   });
 
-  // spec session-management.md「IDE 插件聊天头部」场景 6/7: host 侧双防线 ——
+  // spec session-management.md「插件端聊天头部」场景 6/7: host 侧双防线 ——
   // webview 已禁用/忽略，此守卫覆盖「通知在途」竞态窗口与其它调用方。
   test("clearChat is ignored while a background task is running", async () => {
     const session = createMockSession();
@@ -1866,7 +1866,7 @@ describe("MessageHandler settings tab", () => {
     };
     expect(posted.command).toBe("hooksResponse");
     expect(posted.scope).toBe("user");
-    // 设置页「编辑」用它发 openFile → 必须是 host 解析的绝对路径（IDE 无法展开 `~`）
+    // 设置页「编辑」用它发 openFile → 必须是 host 解析的绝对路径（插件端无法展开 `~`）
     expect(posted.configPath).toBe("/home/u/.wave/settings.json");
   });
 

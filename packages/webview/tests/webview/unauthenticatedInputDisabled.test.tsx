@@ -18,7 +18,7 @@ import { ChatApp } from "../../src/components/ChatApp";
  * 时既无模型请求也不报错，只是静默挂住），所以入口本身就置灰，原因写在占位文案里。
  */
 describe("Unauthenticated input disabled", () => {
-  /** 渲染 IDE 宿主并推一份不含 isAuthenticated 的快照（= 未登录的真实状态）。 */
+  /** 渲染插件端并推一份不含 isAuthenticated 的快照（= 未登录的真实状态）。 */
   function renderUnauthenticated(vscode: ReturnType<typeof createMockVscode>) {
     render(<ChatApp vscode={vscode as never} />);
     // setInitialState（空快照、无 isAuthenticated 字段）把 webview 标记为

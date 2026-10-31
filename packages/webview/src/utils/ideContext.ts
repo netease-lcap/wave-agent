@@ -9,7 +9,7 @@ import { isDesktopHost, isRemotePageHost } from "./platform";
 /**
  * IDE 上下文提及（`@Terminal` / `@Problems`，spec `ui/ide-context-mentions.md`）。
  *
- * 数据只有 IDE 宿主能读，格式只有这一份：
+ * 数据只有插件端能读，格式只有这一份：
  * - 宿主侧：实现 `requestIdeContext`，返回 {@link IdeContextResult}（原始文本 /
  *   原始诊断数组），不做格式化。
  * - webview 侧：本模块负责标记语法、上限、转义清理、排序与正文拼装，发送那一刻
@@ -57,8 +57,8 @@ export const ideContextProviderInfo = (
   IDE_CONTEXT_PROVIDERS.find((provider) => provider.id === id);
 
 /**
- * 两个固定条目只在 IDE 插件宿主出现：桌面端有 PTY 终端面板但不在本期范围内
- * （spec「非目标」），远控页没有 IDE 可读。判据复用 webview 现有的宿主标识，
+ * 两个固定条目只在插件端出现：桌面端有 PTY 终端面板但不在本期范围内
+ * （spec「非目标」），远控页没有编辑器可读。判据复用 webview 现有的宿主标识，
  * 不新增「宿主能力声明」请求。
  */
 export const isIdeContextAvailable = (): boolean =>
@@ -260,7 +260,7 @@ const renderBlock = (
  * 把输入框里的标记展开成「标记 + 内容 + 结束标记」，拼进待发送的正文。
  *
  * 同一类出现多次时，每一处都替换成同一段（内容只取一份）。宿主没返回结果的
- * 类别按「不可用」写一行说明——消息照常发送，不因为读不到 IDE 而卡住（spec 各
+ * 类别按「不可用」写一行说明——消息照常发送，不因为读不到插件端 而卡住（spec 各
  * 场景 4/5）。
  */
 export const assembleIdeContextBlocks = (

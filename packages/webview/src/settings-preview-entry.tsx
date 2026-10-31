@@ -1,7 +1,7 @@
 /**
  * Settings webview entry (VS Code / JetBrains editor-area settings tab).
  *
- * A standalone bundle rendered inside the settings WebviewPanel the IDE hosts open in
+ * A standalone bundle rendered inside the settings WebviewPanel the plugin hosts open in
  * the editor area (VSCE `createWebviewPanel`, JetBrains `WaveSettingsFileEditor` — both
  * mirror the plan-preview pattern). The page is the shared [SettingsPage] component; the
  * host bridge is `window.acquireVsCodeApi()` (native in VS Code, the vscode-shim.js
@@ -26,12 +26,12 @@ import "./styles/globals.css";
 import "./styles/plugin-controls.css";
 import "@vscode/codicons/dist/codicon.css";
 
-// The settings tab is an IDE-only webview. It is a separate HTML document
+// The settings tab is a plugin-host-only webview. It is a separate HTML document
 // (getSettingsPreviewContent in the VS Code extension / JetBrains bridge), so
 // it does not go through src/index.tsx and would otherwise never receive
-// data-host="plugin" — the new plugin-only control layer would silently skip
-// the whole settings page. Remote pages never load this entry.
-document.documentElement.dataset.host = "plugin";
+// data-host="editor" — the control layer scoped to the plugin host would
+// silently skip the whole settings page. Remote pages never load this entry.
+document.documentElement.dataset.host = "editor";
 
 const vscode = window.acquireVsCodeApi();
 

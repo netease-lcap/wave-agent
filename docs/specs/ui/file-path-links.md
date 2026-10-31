@@ -8,7 +8,7 @@ order: 247
 
 **创建日期**：2026-09-02
 
-> 本规格覆盖 VS Code / JetBrains / Desktop 共享 webview（`packages/webview`）中助手文本 markdown 渲染链路（`Message.tsx` 的 marked 渲染）对文件路径的识别与点击行为，对齐 Claude AI（Epitaxy/Code 会话）的效果。点击行为对齐 wave-agent 既有的 openFile 通道（工具标题路径点击同一条链路），不新增宿主 RPC。各端打开能力见 [桌面端文件面板](../desktop/desktop-file-panel.md) 与 [IDE 插件](../ide/ide-plugin.md)，此处不重复。
+> 本规格覆盖 VS Code / JetBrains / Desktop 共享 webview（`packages/webview`）中助手文本 markdown 渲染链路（`Message.tsx` 的 marked 渲染）对文件路径的识别与点击行为，对齐 Claude AI（Epitaxy/Code 会话）的效果。点击行为对齐 wave-agent 既有的 openFile 通道（工具标题路径点击同一条链路），不新增宿主 RPC。各端打开能力见 [桌面端文件面板](../desktop/desktop-file-panel.md) 与 [插件端](../editor/plugin-host.md)，此处不重复。
 
 ## 背景：三条识别通道
 
@@ -113,7 +113,7 @@ Claude AI 的实现把消息文本中的文件路径识别限定在行内代码�
 
 **验收场景**：
 
-1. **假设** 点击任意路径链接，**当** 点击发生时，**则** 桌面宿主（waveHostType=desktop）经 pane 路由的 onOpenFile 打开文件面板；IDE 宿主发出 `openFile`（path/startLine/endLine）RPC 由插件在编辑器中打开——与 Read/Write 工具标题路径点击同一条通道。
+1. **假设** 点击任意路径链接，**当** 点击发生时，**则** 桌面宿主（waveHostType=desktop）经 pane 路由的 onOpenFile 打开文件面板；插件端发出 `openFile`（path/startLine/endLine）RPC 由插件在编辑器中打开——与 Read/Write 工具标题路径点击同一条通道。
 2. **假设** 候选路径是 `~/` 形式，**当** 渲染时，**则** 不生成链接（宿主 openFile 按 OS 绝对路径解析、webview 无宿主用户主目录可展开），保持普通文本——见边界情况「`~/` 形式」。
 3. **假设** `file:///` 形式路径被点击，**当** 打开时，**则** 先剥离 `file://` 前缀还原为普通绝对路径再打开。
 4. **假设** 键盘用户聚焦到路径链接并按下 Enter，**当** 触发时，**则** 与鼠标点击行为一致地打开文件。

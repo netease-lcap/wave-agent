@@ -84,7 +84,7 @@
    气泡墨迹 13.8 → 23）。`margin` 从 `2px 0 0 4px` 改成 `-8px 0 0 -6px`，让放大后的
    按钮**中心点**仍落在原 20px 方框的中心（实测中心逐值不变），否则整块会往右下掉。
    base 那条 hover 反色（蓝底 + 编辑器色字）在桌面端取消，否则悬停会先铺一层蓝底。
-   只作用于桌面宿主：IDE / 插件端仍用原 codicon 方框，`LineCommentBox.css` 的
+   只作用于桌面宿主：插件端仍用原 codicon 方框，`LineCommentBox.css` 的
    base 规则一行未改。回退：删掉本节 + CodeCommentEntry.tsx 的
    `isDesktopHost()` 分叉。 */
 [data-host="desktop"] .code-comment-chip {

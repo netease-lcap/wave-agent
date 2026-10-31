@@ -93,9 +93,9 @@ class MessageHandler(
                 }
             }
             "clearChat" -> {
-                // IDE 单会话原地清空：压缩进行中或存在正在运行的后台任务时静默忽略。
+                // 插件端单会话原地清空：压缩进行中或存在正在运行的后台任务时静默忽略。
                 // webview 已禁用按钮/忽略触发，此为覆盖「通知在途」竞态窗口与其它调用
-                // 方的 host 侧双防线（spec session-management.md「IDE 插件聊天头部」
+                // 方的 host 侧双防线（spec session-management.md「插件端聊天头部」
                 // 场景 6/7；压缩中清空会让压缩摘要写进清空后的新会话 —— spec
                 // message-compact.md「压缩期间的会话保护」）。
                 if (session.isCompacting || hasRunningBackgroundTask()) return
@@ -289,7 +289,7 @@ class MessageHandler(
                 }
             }
             // Settings tab (editor-area webview): open/focus it (spec 场景 10). Sent by the chat
-            // webview's handleOpenSettings IDE branch (ChatApp.tsx) and by the settings tab's own
+            // webview's handleOpenSettings plugin branch (ChatApp.tsx) and by the settings tab's own
             // webview to re-focus; mirrors VSCE messageHandler.ts:139-141 → context.openSettings().
             // nav（"subagents" | "skills"）由 /agents、/skills 斜杠命令携带，随 settingsState 下发。
             "openSettings" -> WavePanelHolder.getInstance(project)
@@ -526,7 +526,7 @@ class MessageHandler(
                 }
                 postMessage("listPluginsResponse", buildJsonObject {
                     put("plugins", plugins)
-                    // anchorWorkdir = 锚点工程（spec ecosystem/plugin A-018）：IDE 宿主
+                    // anchorWorkdir = 锚点工程（spec ecosystem/plugin A-018）：插件端
                     // 即当前工程目录，弹窗的 project / local 两档据此标明写进哪个工程。
                     put("anchorWorkdir", currentWorkdir())
                 })
@@ -1029,7 +1029,7 @@ class MessageHandler(
                 }
                 val hooks = result?.get("hooks") ?: JsonObject(emptyMap())
                 // 钩子所在 settings.json 的绝对路径（由 CLI 侧解析；设置页「编辑」
-                // 用自身编辑器打开该文件——IDE 无法展开 `~`）
+                // 用自身编辑器打开该文件——插件端无法展开 `~`）
                 val configPath = result?.get("configPath")?.jsonPrimitive?.contentOrNull
                 // scope 归属键：请求 scope 恒回带（webview 切 Tab 过期即弃）
                 postMessage("hooksResponse", buildJsonObject {
@@ -1319,7 +1319,7 @@ class MessageHandler(
      * 设置页配置回包载荷：**只有用户偏好**（读用户级 `~/.wave/settings.json`，经
      * 共享 CLI 进程）。
      * 用户偏好的**初始值读取以该文件为落点**，不得回读宿主私有存储
-     * （spec agent-config「IDE 插件配置入口」场景 6）；回包里的值是该偏好的
+     * （spec agent-config「插件端配置入口」场景 6）；回包里的值是该偏好的
      * **生效值**（可能来自 Remote 组织下发 / 机器环境变量），`preferenceSources`
      * 标明每个键的来源层，设置页据此把被组织配置覆盖的键显示为「生效值 + 置灰」。
      * 读取失败降级为空。

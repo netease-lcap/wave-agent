@@ -49,7 +49,7 @@ export interface ConfigurationData {
  * 用户偏好经共享 CLI 进程（即**会话所在进程**，VS Code Remote/SSH 下是远端机器
  * 上的该文件）的 `getUserSettings` / `updateUserSettings` 读写，SDK 侧热重载在
  * **下一轮对话**生效——保存不再重建会话（spec core/agent-config.md「设置实时重载」
- * 与「IDE 插件配置入口」场景 6）。宿主私有存储（globalState）
+ * 与「插件端配置入口」场景 6）。宿主私有存储（globalState）
  * **不得**作为用户偏好的第二真源。
  */
 export class ConfigurationService {

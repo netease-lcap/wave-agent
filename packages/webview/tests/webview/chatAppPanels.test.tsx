@@ -103,7 +103,7 @@ afterEach(() => {
 });
 
 describe("ChatApp desktop panel framework", () => {
-  it("shows the header panel toggle on desktop but not in IDE hosts", () => {
+  it("shows the header panel toggle on desktop but not in plugin hosts", () => {
     window.waveHostType = "desktop";
     renderDesktop({ workdir: "/work/a" });
     expect(screen.getByTestId("panel-toggle-btn")).toBeInTheDocument();

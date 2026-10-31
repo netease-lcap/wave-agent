@@ -9,12 +9,11 @@ import {
 } from "./test-utils";
 
 /**
- * 头部标题就地编辑（spec ui/session-management.md「会话重命名入口：CLI 与 IDE
- * 插件」场景 8/9/10）。头部是各宿主共用的 webview 组件，但这个入口**只给 IDE
+ * 头部标题就地编辑（spec ui/session-management.md「会话重命名入口：CLI 与插件端」场景 8/9/10）。头部是各宿主共用的 webview 组件，但这个入口**只给插件端
  * 插件端**：桌面端的改名入口是侧边栏会话行菜单的「重命名」弹窗（spec
  * desktop-sessions.md「会话重命名」），ChatApp 在桌面端不传 `onRenameSession`
  * （设计师 2026-10-30 预览评论「这里的重命名功能可以拿掉」）。本文件渲染的是
- * 无桌面外壳的 ChatApp，即 IDE 档。
+ * 无桌面外壳的 ChatApp，即插件端档。
  */
 function renderWithCurrentSession() {
   const rendered = renderChatApp();

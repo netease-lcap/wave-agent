@@ -23,7 +23,7 @@
  * 页面地址来自 CLI——持有通道键的那个进程，也是唯一能拼出地址的进程。有了地址才
  * 画二维码（绝不自造一个），并且远控网页自己**不画**：页面本身就是二维码指向的
  * 东西，在那里再画一遍是自我指涉（那一页由 shim 设 `window.waveRemotePage`，
- * IDE 宿主也留着 `waveHostType` 未设，这个标记是唯一能把它们分开的东西）。
+ * 插件端也留着 `waveHostType` 未设，这个标记是唯一能把它们分开的东西）。
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";

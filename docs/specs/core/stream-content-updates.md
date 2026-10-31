@@ -112,7 +112,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 ### 用户故事：长会话流式输出保持流畅（优先级：P1）
 
-作为 CLI 或 IDE 插件的使用者，我希望在积累了大量消息的会话中，助手流式输出时界面依然即时、平滑地更新，以便消息越多时交互越不卡顿。
+作为 CLI 或插件端的使用者，我希望在积累了大量消息的会话中，助手流式输出时界面依然即时、平滑地更新，以便消息越多时交互越不卡顿。
 
 **为什么是这个优先级**：当前每次流式 chunk 都会触发 `onMessagesChange` 全量回调，CLI 侧随之全量 `setMessages`、插件宿主经 stdio 全量下发消息列表，序列化与传输成本随会话长度线性增长，是长会话流式卡顿的主要来源；且它与增量回调在时间上重复（同一 chunk 同时触发 `onAssistantContentUpdated` 与 `onMessagesChange`），造成数据冗余与竞态。为此移除 `onMessagesChange`，使流式更新全链路走增量通道；bash 模式命令以 user 消息 + bash tool block 承载，经 `userMessageAdded`/`toolBlockUpdated` 增量定位，完整消息列表仅在"拉取"场景（初始化、clear、restore）传输——压缩与 rewind 都不进该名单：压缩对 UI 显示流是纯追加（只折叠 API 上下文、保留全量历史并把摘要块追加到显示流末尾），因此经 `compactBlockAdded` 通知携带摘要块那条完整 `Message`、由宿主 `appendMessage` 增量送达 webview；rewind 是截断而非追加，宿主与 webview 各自在本地按同一条规则切自己的副本（保留锚点消息**最后一次**出现之前的内容），宿主只回发一条不带消息载荷的回执 `rewindResult`（带 `requestId` 归属键与 `ok`/`error`）来授权这次本地截断，整份列表因此不在这条路径上重传，回滚耗时与会话总长脱钩；仅当请求未携带 `requestId`（旧 webview / 远程页）时才回落到 `getMessages` 全量拉取。进一步地，增量负载从"chunk + accumulated 并存"收敛为"纯 chunk delta"（tool block streaming 只携带 `parametersChunk`），SDK 回调与跨进程（stdio）通知统一不再携带 `accumulated`，使单个通知的序列化成本与已流式内容总长度解耦，从根源消除传输层随流式累积的内存/带宽压力；进程内消费者（CLI、print-cli）改为消费纯 chunk 并自行累积追加（详见下方"状态管理架构"与 2026-08-08 会议记录）。
 

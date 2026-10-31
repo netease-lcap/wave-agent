@@ -13,12 +13,13 @@ import "@vscode/codicons/dist/codicon.css";
 const vscode = window.acquireVsCodeApi();
 
 // data-host 驱动 host-desktop.css 的桌面端中密度参数（同一套 --vscode-* token、
-// 两套取值：插件高密度 / 桌面端中密度）。desktop 真机的 index.html 也静态声明。
-// 取值是 "plugin"，不是 "ide"：产品本身叫 CodeWave IDE，用 ide 指代「VS Code /
-// JetBrains 插件端」会和桌面端混起来。远控 Web 页也落在 plugin 这一档（它没有
-// 宿主类型、只多一个 data-remote-page，见 remote/shim.js）。
+// 两套取值：插件端高密度 / 桌面端中密度）。desktop 真机的 index.html 也静态声明。
+// 取值是 "editor"：不用 "ide"，会和产品名 CodeWave IDE 混起来；也不用 "plugin"，
+// 那个词在仓库里专指插件市场里可安装的插件（installPlugin / skillSource:
+// "plugin"）。editor 指插件端本身——VS Code / JetBrains。远控 Web 页也落在
+// editor 这一档（它没有宿主类型、只多一个 data-remote-page，见 remote/shim.js）。
 document.documentElement.dataset.host =
-  window.waveHostType === "desktop" ? "desktop" : "plugin";
+  window.waveHostType === "desktop" ? "desktop" : "editor";
 
 // 滚动条三态（Figma 5809:55691 / codechat main.ts 同款委托）：默认 8% 最浅、
 // 鼠标在滚动区域内 24%、鼠标在轨道上/操作滚动条 50% 最深。Chrome 不响应

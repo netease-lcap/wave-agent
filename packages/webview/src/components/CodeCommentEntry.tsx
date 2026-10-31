@@ -37,7 +37,7 @@ export const CodeCommentEntry: React.FC<CodeCommentEntryProps> = ({
   // 100ms）。锚点用 `anchorRef` 指向按钮本身：Tooltip 默认拿包裹层当锚点，而这个
   // 按钮是 `position: absolute` + 行内 `left/top`，包裹层必须 `display: contents`
   // （见 LineCommentBox.css），没有自己的盒子可量。
-  // IDE / 插件端不动：仍是原生 `title`，也不加这层包裹。
+  // 插件端不动：仍是原生 `title`，也不加这层包裹。
   const chipRef = useRef<HTMLButtonElement>(null);
   const desktop = isDesktopHost();
 
@@ -60,7 +60,7 @@ export const CodeCommentEntry: React.FC<CodeCommentEntryProps> = ({
       onClick={() => onOpen({ from: anchor.from, to: anchor.to })}
     >
       {/* 1029 评论（第十二批）：「这个图标的样式我放在桌面的icon文件夹里面了」
-          ⇒ 桌面端换成设计源的两态气泡（评论normal / 评论hover），IDE / 插件
+          ⇒ 桌面端换成设计源的两态气泡（评论normal / 评论hover），插件端
           宿主保留原 codicon。两态同时渲染、由 CSS `:hover` 切换显隐，hover
           不触发组件重渲染（与文件面板工具条那套「一态一份矢量」同口径）。 */}
       {desktop ? (

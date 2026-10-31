@@ -77,7 +77,7 @@ export const DiffFileTree: React.FC<DiffFileTreeProps> = ({
   const renderNodes = (items: DiffTreeNode[], depth: number): React.ReactNode =>
     items.map((node) => {
       // 1029 评论（第六批）：「和文件的文件树样式保持一致」—— 桌面端与
-      // `FileTree.tsx` 逐值对齐：左距基准 8 → 6、每级缩进仍 12；IDE 宿主保持原样。
+      // `FileTree.tsx` 逐值对齐：左距基准 8 → 6、每级缩进仍 12；插件端保持原样。
       const indent = {
         paddingLeft: (isDesktopHost() ? 6 : 8) + depth * 12,
       };
@@ -94,7 +94,7 @@ export const DiffFileTree: React.FC<DiffFileTreeProps> = ({
               onClick={() => toggleDir(node.path)}
             >
               {/* 与文件树同一套：桌面端 = 官方 chevron 矢量 + 文件夹图标（展开/收起
-                  就是文件夹开合），IDE 宿主两处都保留 codicon 字形。 */}
+                  就是文件夹开合），插件端两处都保留 codicon 字形。 */}
               {isDesktopHost() ? (
                 <ChevronIcon
                   expanded={!isCollapsed}

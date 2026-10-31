@@ -304,7 +304,7 @@ describe("Clear Chat Functionality", () => {
 
 // Desktop /clear 整端移除（2026-09-05 拍板）：桌面端不再拦截 /clear —— 手动敲
 // /clear 作为普通消息发给宿主（SDK 从未注册 clear → 发给模型，无害）。
-// IDE 端仍拦截（见上方 "should still send clearChat via the /clear slash command"）。
+// 插件端仍拦截（见上方 "should still send clearChat via the /clear slash command"）。
 describe("Desktop: /clear removed", () => {
   it("sends /clear as a plain message instead of intercepting clearChat", async () => {
     const { vscode } = renderDesktopChatApp();

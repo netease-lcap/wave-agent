@@ -9,7 +9,7 @@ import {
 
 /**
  * e2e（真浏览器 + 真 settings.js bundle）——设置页「未设置」占位语义与保存载荷
- * 的 diff 语义（spec core/agent-config.md「IDE 插件配置入口」场景 7–8、边界说明
+ * 的 diff 语义（spec core/agent-config.md「插件端配置入口」场景 7–8、边界说明
  * 「省略键 = 不改该键」）：
  *
  * ① 文件里**没有**某个用户偏好键时，四个控件都必须用「未设置」表达系统默认，

@@ -5,7 +5,7 @@
  * `MermaidRenderer` 里那句 `import mermaid from "mermaid"` 别名到本文件，真正的
  * 图表库被单独打成一个约 3.3 MB 的 chunk，**只有真的渲染图表时才去取**。理由：
  * 这个页面是整个 bundle 唯一走 HTTP 的形态，而 mermaid 占了它的 78%（实测），
- * 为了「某条消息里可能有图」让每台手机首屏都下 3.3 MB 不划算。四个 IDE 宿主
+ * 为了「某条消息里可能有图」让每台手机首屏都下 3.3 MB 不划算。四个插件端
  * 照旧用内联了 mermaid 的 `dist/chat.js`。
  *
  * 两处约束撑住这件事：

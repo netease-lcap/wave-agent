@@ -9,7 +9,7 @@ import {
 import { parseMentions } from "../../src/utils/messageUtils";
 
 // 宿主判据来自 window 上的标识（utils/platform.ts）。用例里显式摆出四种宿主：
-// IDE 插件（两者都不设）、桌面端、远控页、以及非浏览器环境。
+// 插件端（两者都不设）、桌面端、远控页、以及非浏览器环境。
 const setHost = (flags: { desktop?: boolean; remote?: boolean }) => {
   const win = window as unknown as Record<string, unknown>;
   if (flags.desktop) win.waveHostType = "desktop";
@@ -21,7 +21,7 @@ const setHost = (flags: { desktop?: boolean; remote?: boolean }) => {
 afterEach(() => setHost({}));
 
 describe("IDE 上下文：下拉固定条目", () => {
-  it("IDE 宿主里给出两条固定条目，排在文件建议之前由调用方拼接", () => {
+  it("插件端里给出两条固定条目，排在文件建议之前由调用方拼接", () => {
     setHost({});
     const items = buildIdeContextSuggestions("");
     expect(items.map((item) => item.ideContext)).toEqual([
@@ -52,7 +52,7 @@ describe("IDE 上下文：下拉固定条目", () => {
     expect(buildIdeContextSuggestions("zzz")).toEqual([]);
   });
 
-  it("桌面端与远控页不出现（没有 IDE 可读）", () => {
+  it("桌面端与远控页不出现（没有编辑器可读）", () => {
     setHost({ desktop: true });
     expect(buildIdeContextSuggestions("")).toEqual([]);
     setHost({ remote: true });

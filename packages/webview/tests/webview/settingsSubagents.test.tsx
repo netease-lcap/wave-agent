@@ -101,7 +101,7 @@ describe("/agents 斜杠命令 → 设置页「子代理」选项卡", () => {
     vi.clearAllMocks();
   });
 
-  it("IDE 模式（VSCE/JB）发送 openSettings + nav=subagents，不再弹窗", async () => {
+  it("插件端模式（VSCE/JB）发送 openSettings + nav=subagents，不再弹窗", async () => {
     const { vscode } = await openAgentsCommand();
 
     const call = vscode.postMessage.mock.calls.find(

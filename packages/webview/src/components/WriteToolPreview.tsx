@@ -10,7 +10,7 @@ interface WriteToolPreviewProps {
   vscode: { postMessage: (message: unknown) => void };
   workdir?: string;
   /** Host-routed open (desktop opens its file panel via ChatApp.handleOpenFile);
-   *  falls back to the plain openFile RPC when absent (IDE hosts). */
+   *  falls back to the plain openFile RPC when absent (plugin hosts). */
   onOpenFile?: (path: string) => void;
 }
 

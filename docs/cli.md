@@ -508,11 +508,11 @@ jq -e '.subtype == "success"' result.json > /dev/null
 
 ## 8. 环境变量 {#environment-variables}
 
-| 变量           | 默认值                 | 描述                                                                       |
-| -------------- | ---------------------- | -------------------------------------------------------------------------- |
-| `LOG_LEVEL`    | `INFO`                 | 日志级别：`DEBUG`、`INFO`、`WARN`、`ERROR`                                 |
-| `LOG_KEYWORDS` | -                      | 日志关键词过滤，仅输出包含指定关键词的日志                                 |
-| `LOG_FILE`     | `~/.wave/logs/cli.log` | 日志文件路径（桌面端/IDE 插件分别为 desktop.log/vscode.log/jetbrains.log） |
+| 变量           | 默认值                 | 描述                                                                     |
+| -------------- | ---------------------- | ------------------------------------------------------------------------ |
+| `LOG_LEVEL`    | `INFO`                 | 日志级别：`DEBUG`、`INFO`、`WARN`、`ERROR`                               |
+| `LOG_KEYWORDS` | -                      | 日志关键词过滤，仅输出包含指定关键词的日志                               |
+| `LOG_FILE`     | `~/.wave/logs/cli.log` | 日志文件路径（桌面端/插件端分别为 desktop.log/vscode.log/jetbrains.log） |
 
 ## 9. CI 集成 {#ci}
 

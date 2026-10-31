@@ -26,10 +26,11 @@ export interface MockCase {
   description?: string;
   /**
    * 用例运行的宿主外壳："desktop" 渲染桌面端外壳（侧边栏/账户卡片），
-   * "plugin"（缺省）走插件端那一档（VS Code / JetBrains 共用）。
-   * 不用 "ide"：产品本身叫 CodeWave IDE，会与桌面端混淆。
+   * "editor"（缺省）走插件端那一档（VS Code / JetBrains 共用）。
+   * 不用 "ide"（会和产品名 CodeWave IDE 混），也不用 "plugin"（那个词在仓库里
+   * 专指插件市场里可安装的插件：installPlugin / skillSource: "plugin"）。
    */
-  host?: "desktop" | "plugin";
+  host?: "desktop" | "editor";
   /** 用例激活时按序发送的 host → webview 消息 */
   messages?: MockMessage[];
   /**

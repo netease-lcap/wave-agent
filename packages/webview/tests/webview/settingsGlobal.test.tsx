@@ -842,7 +842,7 @@ describe("SettingsPage「代码补全 / 补全模型」两行（spec ui/code-com
  * 那里的补全从不触发——摆一个开关等于承诺一个不会发生的功能。
  *
  * 这里锁的是「门禁按宿主**能力位**判定」：桌面端（`waveHostType === "desktop"`）
- * 与远端网页（`waveRemotePage === true`）都拿不到这两行，默认的 IDE 宿主照常拿到。
+ * 与远端网页（`waveRemotePage === true`）都拿不到这两行，默认的插件端照常拿到。
  * 三处用法（渲染、进视图拉候选、保存载荷）都各有一条断言，否则会出现
  * 「看不见的行也在写键」。
  */
@@ -911,7 +911,7 @@ describe("SettingsPage 补全两行的宿主门禁（spec ui/code-completion.md 
     expect(onLoadConfiguredModels).not.toHaveBeenCalled();
   });
 
-  it("IDE 宿主（默认）：两行照常渲染并拉候选（正向对照）", () => {
+  it("插件端（默认）：两行照常渲染并拉候选（正向对照）", () => {
     const { onLoadConfiguredModels } = renderGlobalView({
       configurationData: {},
       configuredModels: ["qwen2.5-coder"],

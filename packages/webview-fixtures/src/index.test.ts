@@ -43,7 +43,7 @@ describe("fixtures factory", () => {
   it("pane-scoped commands accept an optional paneId", () => {
     const msg = fixtures.updateMessages([], { paneId: "pane-1" });
     expect(msg.paneId).toBe("pane-1");
-    // Untagged variant is what IDE hosts send.
+    // Untagged variant is what plugin hosts send.
     expect(fixtures.updateMessages([]).paneId).toBeUndefined();
   });
 

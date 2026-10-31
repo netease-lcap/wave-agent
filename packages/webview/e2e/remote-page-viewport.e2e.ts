@@ -107,7 +107,7 @@ test("远控页：顶栏与输入区同屏、页面不滚动、安全区从高�
   });
   await injector.updateMessages(build(12));
 
-  // 2. 没有宿主标记时（IDE / 桌面四端）安全区规则不生效：页面永远不会自带内边距。
+  // 2. 没有宿主标记时（插件端 / 桌面四端）安全区规则不生效：页面永远不会自带内边距。
   const withoutMark = await geometry(webviewPage);
   expect(withoutMark.paddingTop).toBe("0px");
   expect(withoutMark.paddingBottom).toBe("0px");

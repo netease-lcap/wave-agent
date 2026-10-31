@@ -53,7 +53,7 @@
 /* ── 图标档（底栏放不下时：模型与权限都只留图标，见 MessageInput 的量宽与
    MessageInput.css 的 `.is-compact` 段落）─────────────────────────────
    文字档下这颗大脑图标不占位；主体规则两个宿主相同，尺寸按宿主密度分档：
-   桌面端 32×32（host-desktop.css）、插件端 22×22（本文件下方 `[data-host="plugin"]`，
+   桌面端 32×32（host-desktop.css）、插件端 22×22（本文件下方 `[data-host="editor"]`，
    与底栏 `.toolbar-icon-button` 同档）。 */
 .model-picker-icon {
   display: none;
@@ -66,7 +66,7 @@
   /* 图标档下这颗大脑与「+」「/」是同一类控件（只有图标），必须同色：不显式指定时
      它靠 `currentColor` 继承 `.model-picker-trigger` 的**文字**色
      （`--vscode-descriptionForeground`），而那两个按钮用的是图标色
-     （`--vscode-icon-foreground`）—— 插件端/远控页会暗一档（实测 #9d9d9d vs
+     （`--vscode-icon-foreground`）——插件端/远控页会暗一档（实测 #9d9d9d vs
      #cccccc），同一行里一眼看出两套亮度。桌面端自己把该变量定成 Figma 图标色
      （#565a60 / 深色 #9a9ea5），与它本来给「+」「/」的值一致，故视觉不变。 */
   color: var(--cc-composer-icon, var(--vscode-icon-foreground));
@@ -103,8 +103,8 @@
   border-color: transparent;
 }
 /* 图标档 · 插件端尺寸（22×22，与底栏的 `.toolbar-icon-button` 同档）。
-   `plugin` = VS Code / JetBrains 插件端；产品名叫 CodeWave IDE，所以这一档不叫 ide。 */
-[data-host="plugin"] .input-buttons-row.is-compact .model-picker-trigger {
+   `editor` = 插件端宿主；不叫 ide（会和产品名 CodeWave IDE 混），也不叫 plugin（那词留给插件市场）。 */
+[data-host="editor"] .input-buttons-row.is-compact .model-picker-trigger {
   width: 22px;
   min-height: 22px;
   padding: 0;

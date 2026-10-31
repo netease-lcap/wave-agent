@@ -152,7 +152,7 @@ const DesktopOptionIndicator: React.FC<{
 /**
  * Radio / Checkbox indicator that matches the Figma design (16×16).
  * - Radio unchecked: hollow ring; checked: accent ring + center dot.
- * - Checkbox (IDE hosts only): filled square + check mark; the 2026-09-22
+ * - Checkbox (plugin hosts only): filled square + check mark; the 2026-09-22
  *   hollow variant stayed scoped to the desktop surface. Desktop now follows
  *   the 2026-10-23 contract above.
  * Colors use VS Code theme variables so it adapts to light/dark themes.
@@ -1278,7 +1278,7 @@ const ConfirmationDialogImpl: React.FC<ConfirmationDialogProps> = ({
             title="关闭"
           >
             {/* 桌面端与 pane 头部关闭同一官方矢量（用户 0916：「toast 关闭 /
-                确认弹层关闭应该是和 pane 头部关闭用同一个图标」）；IDE 宿主
+                确认弹层关闭应该是和 pane 头部关闭用同一个图标」）；插件端
                 保持原 CloseIcon 不变 */}
             {isDesktopHost() ? (
               <ConversationCloseIcon className="confirmation-close-btn-icon" />

@@ -12,7 +12,7 @@ interface SessionListPopupProps {
   onSessionSelect: (sessionId: string) => void;
   onClose: () => void;
   loading: boolean;
-  /** "dropdown" = anchored under the chat header (IDE hosts, triggered by the
+  /** "dropdown" = anchored under the chat header (plugin hosts, triggered by the
    *  「历史对话」 button). "modal" = centered dialog with a scrim (desktop
    *  `/resume`, which has no header session buttons). Both share the search
    *  box, keyboard handling and list rendering below. */

@@ -50,7 +50,7 @@ describe("More Menu", () => {
     expect(screen.getByTestId("more-menu-login")).toHaveTextContent("登录");
   });
 
-  it("should ask the IDE host to open the settings tab when 设置 is clicked", () => {
+  it("should ask the plugin host to open the settings tab when 设置 is clicked", () => {
     const { vscode } = renderChatApp();
 
     vscode.postMessage.mockClear();
@@ -60,7 +60,7 @@ describe("More Menu", () => {
       fireEvent.click(screen.getByTestId("more-menu-settings"));
     });
 
-    // IDE hosts open the settings tab webview in the editor area (spec 场景 10)
+    // plugin hosts open the settings tab webview in the editor area (spec 场景 10)
     expect(vscode.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ command: "openSettings" }),
     );

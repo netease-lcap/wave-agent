@@ -11,7 +11,7 @@ export const SPEC_GROUPS = [
   { dir: "core", text: "Agent 核心" },
   { dir: "ui", text: "交互与 UI" },
   { dir: "commands", text: "内置命令与技能" },
-  { dir: "ide", text: "IDE 插件" },
+  { dir: "editor", text: "插件端" },
   { dir: "desktop", text: "桌面应用" },
   { dir: "remote", text: "远程控制" },
   { dir: "multi-agent", text: "多 Agent 与并发" },

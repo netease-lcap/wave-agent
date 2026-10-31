@@ -10,10 +10,10 @@ import {
 import type { BackgroundTaskSummary } from "../../src/types";
 
 /**
- * spec session-management.md「IDE 插件聊天头部」场景 6/7：当前会话存在正在运行
+ * spec session-management.md「插件端聊天头部」场景 6/7：当前会话存在正在运行
  * 的后台任务（shell 后台终端工具 / subagent 后台子代理 / workflow，status=running）
  * 时，"新建对话"按钮禁用、`/clear` 与历史会话选择被忽略 —— 防止原地清空/替换
- * 会话把正在跑的任务中断或与 UI 脱离。仅 IDE（VSCE/JB）端语义，桌面端并行会话
+ * 会话把正在跑的任务中断或与 UI 脱离。仅插件端（VSCE/JB）端语义，桌面端并行会话
  * 模型不受影响。
  */
 

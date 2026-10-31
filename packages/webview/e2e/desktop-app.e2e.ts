@@ -227,7 +227,7 @@ test.describe("Desktop App Screenshots", () => {
     await expect(webviewPage.getByTestId("desktop-workdir-menu")).toBeVisible();
     await webviewPage.keyboard.press("Escape");
 
-    // ── 4. Core chat interaction (same as IDE plugins) ────────────
+    // ── 4. Core chat interaction (same as plugin hosts) ────────────
     await injector.updateMessages([
       MockDataGenerator.createUserMessage("帮我修复登录页的样式问题", "msg-u1"),
       MockDataGenerator.createAssistantMessage(

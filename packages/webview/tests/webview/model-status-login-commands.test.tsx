@@ -125,7 +125,7 @@ describe("Model, Status, and Login Commands", () => {
   });
 
   describe("/config command", () => {
-    it("IDE 模式发送 openSettings（默认全局设置），不再弹配置弹窗", async () => {
+    it("插件端模式发送 openSettings（默认全局设置），不再弹配置弹窗", async () => {
       const { vscode } = renderChatApp();
 
       await act(async () => {

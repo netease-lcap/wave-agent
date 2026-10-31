@@ -41,7 +41,7 @@
 
   /**
    * Marks the page as the remote Web host. The shared UI cannot tell the two apart
-   * by `waveHostType` — the IDE hosts leave that unset as well — and exactly one
+   * by `waveHostType` — the plugin hosts leave that unset as well — and exactly one
    * surface has to differ: the QR that brings a second device here. This page is
    * what that QR points at, so drawing it here would be circular
    * (the settings page's remote-control view skips it when this flag is set).
@@ -601,7 +601,7 @@
     return { label: "重试", onClick: surface.retry };
   }
 
-  /** Deliver a host → page message exactly the way the IDE hosts do. */
+  /** Deliver a host → page message exactly the way the plugin hosts do. */
   function post(message) {
     window.dispatchEvent(new MessageEvent("message", { data: message }));
   }
@@ -1647,7 +1647,7 @@
 
   // ── Host → page translation ─────────────────────────────────────
   //
-  // The desktop/IDE hosts each translate these same RPC notifications into the
+  // The desktop/plugin hosts each translate these same RPC notifications into the
   // webview's own message vocabulary; the phone needs the same table, trimmed
   // to the surfaces this page renders.
 
@@ -1741,7 +1741,7 @@
       case "backgroundTasksChange":
         // 后台任务（`/tasks` 弹窗的数据）：与 `tasksChange` 那条**待办清单**不是
         // 一回事——那是 `TaskCreate`/`TaskUpdate` 的任务，这是 shell/subagent/
-        // workflow 的后台进程。桌面端与 IDE 宿主都用 `updateBackgroundTasks`
+        // workflow 的后台进程。桌面端与插件端都用 `updateBackgroundTasks`
         // 这条 webview 命令投递它，这里照抄同一个名字。
         post({ command: "updateBackgroundTasks", tasks: p.tasks });
         return;
@@ -1771,7 +1771,7 @@
       case "btwContent":
         // `/btw` 的流式增量（spec「Web 页也能用 /btw 旁路提问」场景 3）。宿主的
         // 通知叫 `btwContent`、字段是 `{question, content, type}`；页面这一侧沿用
-        // IDE / 桌面端那条 `btwStream`（字段名一致），面板按 `question` 判归属 ——
+        // 插件端 / 桌面端那条 `btwStream`（字段名一致），面板按 `question` 判归属 ——
         // 少了 question，切会话后迟到的增量会画进新问题的面板里。
         post({
           command: "btwStream",
@@ -2852,7 +2852,7 @@
         return;
 
       case "clearChat":
-        // IDE 端与页面共用这一条（桌面端 `/clear` 整端移除、走不到这里）：宿主
+        // 插件端与页面共用这一条（桌面端 `/clear` 整端移除、走不到这里）：宿主
         // 换绑新 sessionId 并跑 Session hooks，页面执行前已确认过一次。成功不需要
         // 回执——列表自己会从 `messagesChange` 信号重新拉出来。
         controlRequest("clearMessages", {}, "清空对话");
@@ -2915,7 +2915,7 @@
 
       case "deleteQueuedMessageById":
         // 「立即发送」的第二步也走这里：`sendMessage{force}` 把这条立刻发出去，
-        // 再删掉队列里的那条，否则它会再发一遍（与 IDE / 桌面同一套做法，没有
+        // 再删掉队列里的那条，否则它会再发一遍（与插件端 / 桌面同一套做法，没有
         // 专门的宿主方法）。
         request("deleteQueuedMessageById", { id: msg.id }).catch(
           function (err) {

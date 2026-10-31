@@ -80,7 +80,7 @@ function sendSuggestionsResponse(
 /**
  * Helper: select the dropdown item whose visible text contains `label`.
  *
- * The `@` dropdown lists the fixed IDE entries (@终端 / @问题) ahead of file
+ * The `@` dropdown lists the fixed IDE-context entries (@终端 / @问题) ahead of file
  * suggestions, so the wanted file is not always at index 0 — walk down to it
  * with the same keys a user presses.
  */
@@ -149,7 +149,7 @@ describe("File Mention Tag Insertion", () => {
       expect(items.length).toBeGreaterThan(0);
     });
 
-    // Select the (only) file suggestion — the fixed IDE entries come first.
+    // Select the (only) file suggestion — the fixed IDE-context entries come first.
     selectSuggestionByLabel("MessageInput.tsx");
 
     // Check if the tag is inserted into the contenteditable area

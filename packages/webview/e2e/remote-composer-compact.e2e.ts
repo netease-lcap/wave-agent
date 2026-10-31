@@ -160,7 +160,7 @@ test.describe("remote page (touch): icon tier when the bottom row runs out of sp
     const geo = await rowGeometry(webviewPage);
 
     // 判据与另两端同源：宿主标识仍落在 plugin 档，只有 data-remote-page 把它送进手机档。
-    expect(geo.host).toBe("plugin");
+    expect(geo.host).toBe("editor");
     expect(geo.remotePage).toBe("1");
 
     expect(geo.compact).toBe(true);

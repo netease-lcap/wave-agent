@@ -154,7 +154,7 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
   // CSS 控制（实测弹层里的文字还是 UA 默认 Arial）⇒ 与设置页 `SettingsSelect.tsx`
   // 同一套规范：自绘 listbox，落触发器下缘 +2px、右缘对齐、宽度 = 触发器宽。
   // 弹层皮肤由 `host-desktop.css` 的同一组规则提供（选择器里并列 `.session-board-filter-*`），
-  // 只有一份声明。IDE 宿主保留原生 select（行为与既有断言不变）。
+  // 只有一份声明。插件端保留原生 select（行为与既有断言不变）。
   const desktopFilter = isDesktopHost();
   const filterMenuOptions = useMemo(
     () => [

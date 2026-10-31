@@ -65,7 +65,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
 }) => {
   // 气泡↔触发的间距：桌面端按 skill 的下拉契约收成 4px（design-system.md:142
   // 「poppers carry no arrow、trigger-to-panel gap 4px」，桌面档角标已在
-  // host-desktop.css 里去掉）；IDE 档保留 base 的 8px（角标还在，逐值不变）。
+  // host-desktop.css 里去掉）；插件端档保留 base 的 8px（角标还在，逐值不变）。
   // 显式传 offset 的调用方仍以后者为准。
   const gap = offset ?? (isDesktopHost() ? 4 : 8);
   const [isVisible, setIsVisible] = useState(false);

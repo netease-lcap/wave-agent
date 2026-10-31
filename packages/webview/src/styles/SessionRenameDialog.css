@@ -51,7 +51,7 @@
 }
 
 /* 输入框 + 它下面那行错误提示合成一组（1023 评论：报错间距太远）。
-   组内间距：base 12px = 弹层原有的 base 节奏，IDE 档逐像素不变；桌面端覆盖成 4px
+   组内间距：base 12px = 弹层原有的 base 节奏，插件端档逐像素不变；桌面端覆盖成 4px
    （参考 `form-colors-review` 页「校验错误」那组：字段底到说明行盒顶 4.5px）。
    组与标题 / 页脚的间距仍由 `.session-rename-dialog` 的 gap 统一给。 */
 .session-rename-field {
@@ -178,7 +178,7 @@
 /* 字重 500：契约 :83「All footer buttons retain the standard 32px height,
    14px/22px medium 500 labels」+ :70「one height, label size and radius across the
    row」—— 页脚是一整行一个口径，只改主键会让「取消」比主操作还重，故同行同落
-   （2026-10-22 她「按规范来」）。base 的 600 属 IDE 档，不动。 */
+   （2026-10-22 她「按规范来」）。base 的 600 属插件端档，不动。 */
 [data-host="desktop"] .session-rename-btn {
   height: 32px;
   border-radius: 8px;

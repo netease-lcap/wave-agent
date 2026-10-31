@@ -49,7 +49,7 @@
      同一坑上一批在 `.file-pane-status--deleted` 已经踩过（host-desktop.css:6324
      「content-box 下元素高 875 × 内容区 827 ⇒ 冒出滚动条」）。这里按同样理由补
      border-box：`min-height:100%` 于是等于容器高，padding 收进盒内，溢出归零。
-     该规则在 base 文件里，IDE / 插件端同款空态一并修好。 */
+     该规则在 base 文件里，插件端同款空态一并修好。 */
   box-sizing: border-box;
 }
 

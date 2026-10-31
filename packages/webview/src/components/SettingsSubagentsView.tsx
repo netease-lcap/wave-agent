@@ -37,7 +37,7 @@ export interface SettingsSubagentsViewProps {
   /** 当前工作目录（用于项目分组展示项目名） */
   workdir?: string;
   /** 关闭设置页并预填 AI 对话框提示词；编辑操作附带 openFile（配置文件路径）——
-   *  desktop 在会话视图右侧文件面板打开该文件；IDE 由 host 用自身编辑器打开。 */
+   *  desktop 在会话视图右侧文件面板打开该文件；插件端由 host 用自身编辑器打开。 */
   onPrefillPrompt?: (prompt: string, openFile?: string) => void;
 }
 
@@ -87,7 +87,7 @@ const SettingsSubagentsView: React.FC<SettingsSubagentsViewProps> = ({
 
   const handleEdit = (agent: SubagentConfiguration) => {
     // 关闭设置页预填编辑提示词；同带 agent.filePath —— desktop 在会话视图右侧
-    // 文件面板打开该 markdown、IDE 用自身编辑器打开，便于对照修改。
+    // 文件面板打开该 markdown、插件端用自身编辑器打开，便于对照修改。
     onPrefillPrompt?.(
       `帮我编辑子代理${agent.name}：把<要改的内容>改成<新内容>`,
       agent.filePath,

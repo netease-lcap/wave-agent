@@ -14,8 +14,8 @@ import WelcomeView from "../../src/components/WelcomeView";
  * The welcome page (brand wordmark) must not flash before the backend pushes
  * `setInitialState`: the welcome state depends on the initial snapshot.
  *
- * The login entry for IDE hosts lives on the welcome page itself (spec
- * sso-auth「IDE 插件更多菜单与欢迎页」场景 5/7) — a 登录后即可开始使用~ hint +
+ * The login entry for plugin hosts lives on the welcome page itself (spec
+ * sso-auth「插件端更多菜单与欢迎页」场景 5/7) — a 登录后即可开始使用~ hint +
  * 登 录 button shown while unauthenticated. Desktop logs in via the sidebar
  * account card instead, so its welcome page never shows the button.
  */
@@ -151,10 +151,10 @@ describe("WelcomeView render timing", () => {
   });
 
   it("shows the login button even when legacy direct-connect fields linger in configurationData", () => {
-    // IDE hosts have no direct-connect config anymore (apiKey/headers/baseURL were
+    // plugin hosts have no direct-connect config anymore (apiKey/headers/baseURL were
     // removed host-side), so an unauthenticated user must always be nudged to log
     // in — leftover credential values must not suppress the CTA
-    // (spec sso-auth「IDE 插件更多菜单与欢迎页」场景 5).
+    // (spec sso-auth「插件端更多菜单与欢迎页」场景 5).
     render(<ChatApp vscode={createMockVscode()} />);
 
     act(() => {

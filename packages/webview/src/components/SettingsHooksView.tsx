@@ -61,7 +61,7 @@ export interface SettingsHooksViewProps {
   /** 当前工作目录（用于项目分组展示项目名） */
   workdir?: string;
   /** 关闭设置页并预填 AI 对话框提示词；编辑操作附带 openFile（配置文件路径）——
-   *  desktop 在会话视图右侧文件面板打开该文件；IDE 由 host 用自身编辑器打开。 */
+   *  desktop 在会话视图右侧文件面板打开该文件；插件端由 host 用自身编辑器打开。 */
   onPrefillPrompt?: (prompt: string, openFile?: string) => void;
 }
 
@@ -130,7 +130,7 @@ const SettingsHooksView: React.FC<SettingsHooksViewProps> = ({
 
   const handleEdit = (item: { event: string; matcher?: string }) => {
     // 关闭设置页预填编辑提示词；同带 settings.json 路径——desktop 在会话视图
-    // 右侧文件面板打开该文件、IDE 用自身编辑器打开，便于对照修改。路径由 host
+    // 右侧文件面板打开该文件、插件端用自身编辑器打开，便于对照修改。路径由 host
     // 随 hooksResponse.configPath 下发（绝对路径，见 SDK getHookConfigPath）：
     // 宿主按 OS 绝对路径打开文件、无法展开 `~`，故此处不再自造 `~`/相对回退路径；
     // 缺失时仅预填提示词、不打开文件。

@@ -12,7 +12,7 @@ const WORKDIR = "/Users/dev/projects/wave-agent";
  * 滚动位置一律量不到。这里断的是「题干封顶后选项区还在屏上」——改前那条路径
  * 会把 .options-list 压成 clientHeight = 0（选项在 DOM 里但看不见也点不到）。
  *
- * 视口取三档：窄栏（IDE 侧栏宽度）、小屏笔记本高度（min(70vh, 560px) 由 70vh
+ * 视口取三档：窄栏（插件端侧栏宽度）、小屏笔记本高度（min(70vh, 560px) 由 70vh
  * 绑定的一侧）、大窗口。
  */
 const VIEWPORTS = [

@@ -61,7 +61,7 @@ describe("/hooks 斜杠命令 → 设置页「钩子」选项卡", () => {
     vi.clearAllMocks();
   });
 
-  it("IDE 模式（VSCE/JB）发送 openSettings + nav=hooks，不再弹窗", async () => {
+  it("插件端模式（VSCE/JB）发送 openSettings + nav=hooks，不再弹窗", async () => {
     const { vscode } = renderChatApp();
     const input = screen.getByTestId("message-input");
     input.focus();

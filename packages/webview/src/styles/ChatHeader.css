@@ -34,7 +34,7 @@
   align-items: center;
 }
 
-/* 会话标题就地编辑（spec session-management.md「会话重命名入口：CLI 与 IDE
+/* 会话标题就地编辑（spec session-management.md「会话重命名入口：CLI 与插件端
    插件」场景 8/9）：标题本身是入口，hover 给一点反馈暗示可点击；编辑态用同样
    的字号/行高，标题位置不跳动（面板布局不变）。 */
 .header-title-editable {

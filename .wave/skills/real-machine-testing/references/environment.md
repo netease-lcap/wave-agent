@@ -35,7 +35,7 @@ HOME=/tmp/probe-home pnpm run wave            # Linux / macOS（POSIX 下 os.hom
 
 | 项                 | macOS                                                      | Linux                                                                   |
 | ------------------ | ---------------------------------------------------------- | ----------------------------------------------------------------------- |
-| 图形会话           | 始终有真 GUI                                               | 常需 Xvfb；JetBrains 必须 `-ac` 免鉴权（见 `ide-plugins.md`）           |
+| 图形会话           | 始终有真 GUI                                               | 常需 Xvfb；JetBrains 必须 `-ac` 免鉴权（见 `plugin-hosts.md`）          |
 | 浏览器沙箱         | 正常                                                       | Ubuntu 24.04 起可能挂起 JCEF（userns 限制）                             |
 | VS Code 路径       | `/Applications/Visual Studio Code.app/Contents/MacOS/Code` | 自行下载 tarball，用 `WAVE_E2E_VSCODE` 指过去                           |
 | `/tmp`             | 普通盘                                                     | 可能是 tmpfs（本机 7.6G）：解包大产物/临时 profile 要 `TMPDIR` 指到大盘 |

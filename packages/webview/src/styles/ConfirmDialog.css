@@ -124,7 +124,7 @@
      --cc-color-danger-hover、pressed → --cc-color-danger-active；非破坏操作
      （更新/重启/批量更新）走普通填充主按钮档（见文件末尾两段注释）
    · 遮罩保持既有 40%（契约 :67 把「40% mask + 22% shadow」记录为既有实现例外，不动）
-   仅 [data-host="desktop"]；IDE / 插件宿主保持 base 原样（skill 一贯口径）。
+   仅 [data-host="desktop"]；插件端保持 base 原样（skill 一贯口径）。
    影响面 = 所有复用 ConfirmDialog 的 10 处入口（删除会话 / 回滚到此消息 /
    账户卡 更新·重启 / 删除技能·子代理·钩子·MCP 服务 / 移除市场 / 更新 N 个插件），
    属族级同变。 */

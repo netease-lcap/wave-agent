@@ -231,7 +231,7 @@ describe("Tag Clickability", () => {
     expect(hostOpeningCommands(vscode)).toEqual([]);
   });
 
-  it("hands a path-valued image tag to the host on the IDE hosts", () => {
+  it("hands a path-valued image tag to the host on the plugin hosts", () => {
     const { vscode, tag } = renderSentImageTag([REFERENCED_IMAGE_PATH]);
 
     fireEvent.click(tag);

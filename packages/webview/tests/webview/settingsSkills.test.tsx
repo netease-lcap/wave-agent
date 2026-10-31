@@ -96,7 +96,7 @@ describe("/skills 斜杠命令 → 设置页「技能」选项卡", () => {
     vi.clearAllMocks();
   });
 
-  it("IDE 模式（VSCE/JB）发送 openSettings + nav=skills，不再弹窗", async () => {
+  it("插件端模式（VSCE/JB）发送 openSettings + nav=skills，不再弹窗", async () => {
     const { vscode } = await openSkillsCommand();
 
     const call = vscode.postMessage.mock.calls.find(

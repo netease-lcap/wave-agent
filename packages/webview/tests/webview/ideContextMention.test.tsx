@@ -268,7 +268,7 @@ describe("IDE 上下文提及", () => {
     });
   });
 
-  it("桌面端（没有 IDE 可读）不出现固定条目", async () => {
+  it("桌面端（没有编辑器可读）不出现固定条目", async () => {
     const win = window as unknown as Record<string, unknown>;
     win.waveHostType = "desktop";
     try {

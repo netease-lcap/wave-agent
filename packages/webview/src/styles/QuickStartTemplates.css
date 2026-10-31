@@ -1,5 +1,5 @@
 /* 空态页「快捷方式」区（提示词模板入口）：一级 12 个分类 ⇄ 二级返回胶囊 + 模板。
-   宽度与上方输入卡片同档（IDE 800 / 桌面 768，见 MessageInput.css 与
+   宽度与上方输入卡片同档（插件端 800 / 桌面 768，见 MessageInput.css 与
    host-desktop.css 的 .input-wrapper max-width），所以两块的左右边线对齐。 */
 .quick-start {
   width: 100%;
@@ -74,7 +74,7 @@
    · hover 面 `--cc-fill-hover`（浅 #eef0f3 / 深 #303436）
    · 按下 `--cc-fill-pressed`（浅 #e7e9ed / 深 #393e41）
    · 文字 `--cc-text-primary`（浅 #1f2329 / 深 #e5e7e8 —— 深色档就是那颗「亮白」）
-   三类胶囊（分类 / 模板 / 返回）同一条口径；base 的品牌红 hover 保留给 IDE 宿主。 */
+   三类胶囊（分类 / 模板 / 返回）同一条口径；base 的品牌红 hover 保留给插件端。 */
 [data-host="desktop"] .quick-start-cat:hover,
 [data-host="desktop"] .quick-start-sub:hover,
 [data-host="desktop"] .quick-start-back:hover {

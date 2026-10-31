@@ -155,7 +155,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       // Same for customTitle: the pushed session may predate a rename, and the
       // sessions list (from listSessions → JSONL custom-title entry) is the
       // authoritative copy — without this the header would lose the custom
-      // title after a pane/session switch or an IDE reload.
+      // title after a pane/session switch or a plugin-host reload.
       let currentSession = session;
       const existing = state.sessions.find((s) => s.id === session.id);
       if (existing && (!session.firstMessage || !session.customTitle)) {

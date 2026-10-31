@@ -119,7 +119,7 @@ const Toast: React.FC<{
         aria-label="关闭"
       >
         {/* 桌面端用与 pane 头部关闭同一官方矢量（用户 0916：「toast 关闭 /
-            确认弹层关闭应该是和 pane 头部关闭用同一个图标」）；IDE 宿主保持
+            确认弹层关闭应该是和 pane 头部关闭用同一个图标」）；插件端保持
             原 CloseIcon 不变 */}
         {isDesktopHost() ? (
           <ConversationCloseIcon className="toast-close-icon" />

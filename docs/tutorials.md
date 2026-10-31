@@ -138,7 +138,7 @@ Figma 通过 Personal Access Token 授权第三方应用访问设计稿数据。
 
 ### 3. 对话中粘贴设计稿链接，提出需求
 
-在本地打开项目文件夹（CodeWave IDE 桌面端「打开项目」，或 IDE 插件中打开工作区），然后把 Figma 设计稿的选中区域链接复制到对话中：
+在本地打开项目文件夹（CodeWave IDE 桌面端「打开项目」，或插件端中打开工作区），然后把 Figma 设计稿的选中区域链接复制到对话中：
 
 1. 打开 Figma 设计稿，选中要还原的 Frame。
 2. 右键 → **Copy/Paste as** → **Copy link to selection**，复制设计稿链接。

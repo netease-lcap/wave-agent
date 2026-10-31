@@ -107,14 +107,14 @@ const LEGACY_HOST_CASES = {
 };
 
 /**
- * 桌面专属命令（webview 在 IDE 宿主绝不发送，只要求 desktop 注册）。
+ * 桌面专属命令（webview 在插件端绝不发送，只要求 desktop 注册）。
  * 分两类：desktop* 前缀自动命中 + 少数非前缀但同样 isDesktop 门控的。
  */
 const DESKTOP_GATED_NON_PREFIX = new Set([
   "checkForUpdates", // StatusDialog 仅 desktop 渲染（扩展更新走官方市场）
-  "newSession", // ChatApp.handleDesktopNewSession（IDE 头部的「新对话」= clearChat）
+  "newSession", // ChatApp.handleDesktopNewSession（插件端头部的「新对话」= clearChat）
   "setThemeSource", // 设置页主题行仅 desktop 有 UI
-  "setUpdateChannel", // 设置页更新通道行仅 desktop 有 UI（#2107；IDE 无 updateChannel 字段恒 stable 不渲染）
+  "setUpdateChannel", // 设置页更新通道行仅 desktop 有 UI（#2107；插件端无 updateChannel 字段恒 stable 不渲染）
   "toastAction", // UpdateToast 仅 desktop 推送
 ]);
 
@@ -125,7 +125,7 @@ const DESKTOP_GATED_NON_PREFIX = new Set([
  * 不要求它们注册；反过来要求 shim 里有 `case "X":`（漏了就是「点上去没反应」那个
  * 静默失败，正是本脚本存在的理由）。
  *
- * 门禁依据必须是能力位而不是「有没有 waveHostType」：IDE 宿主的 waveHostType 也是空
+ * 门禁依据必须是能力位而不是「有没有 waveHostType」：插件端的 waveHostType 也是空
  * 的（见 packages/webview/src/types/index.ts 的 window.waveRemotePage 注释）。
  */
 const REMOTE_PAGE_GATED = new Set([
@@ -155,7 +155,7 @@ const REMOTE_PAGE_GATED = new Set([
   // 点消息里的图片路径看原图（spec remote/remote-web.md「点消息里的图片路径看原
   // 图」）：页面没有文件系统、图片字节也在过中继前被剥掉了，看图只能向宿主要
   // ——shim 转中继 getImagePreview，宿主读盘 + 判型 + 压进单帧预算后回图。三个
-  // 本地宿主都用它们各自的通道（桌面端文件面板 / IDE 的 previewImage），收不到
+  // 本地宿主都用它们各自的通道（桌面端文件面板 / 插件端的 previewImage），收不到
   // 这条命令。
   "getImagePreview",
   // 点消息里的文件路径看内容（spec remote/remote-web.md「点消息里的文件路径看内
@@ -177,12 +177,12 @@ const REMOTE_PAGE_SHIM = join(ROOT, "packages/webview/remote/shim.js");
 /**
  * 按发送表面划分时无法从文件路径推出的特例命令 → 显式路由要求（覆盖推导）。
  * 推导规则默认：有 chat 发送方 → 要求 vscode_chat + jetbrains；有 settings
- * 发送方 → 要求 vscode_settings + jetbrains；非 gated 非 IDE-only → 要求 desktop。
- * 下面这些命令的发送方文件路径归类会失真（desktop 全页设置/IDE tab 差异、
+ * 发送方 → 要求 vscode_settings + jetbrains；非 gated 非 plugin-host-only → 要求 desktop。
+ * 下面这些命令的发送方文件路径归类会失真（desktop 全页设置/插件端 tab 差异、
  * ChatApp 双角色、host 层拦截等），逐一显式修正。
  */
 const SPECIFIC_REQUIREMENTS = {
-  // settings tab（settings-preview-entry bundle）专用，仅 IDE 宿主有该外壳：
+  // settings tab（settings-preview-entry bundle）专用，仅插件端有该外壳：
   // desktop 全页设置不用 postMessage 关自己/预填（内部 state/prop 直达）。
   closeSettings: { vscode_settings: true, jetbrains: true },
   prefillPrompt: { vscode_settings: true, jetbrains: true },
@@ -190,10 +190,10 @@ const SPECIFIC_REQUIREMENTS = {
   // switch 之外）触发 settingsState 重发；JB 用 JCEF onLoadEnd 补偿、desktop 无
   // 该 entry，均不需要路由 case。
   settingsReady: { vscode_settings: true },
-  // IDE chat 外壳点「设置」→ postMessage openSettings 让 host 开编辑器区
+  // 插件端 chat 外壳点「设置」→ postMessage openSettings 让 host 开编辑器区
   // settings tab；desktop 全页设置是内部 state 切换，不发消息。
   openSettings: { vscode_chat: true, jetbrains: true },
-  // clearChat：/clear 拦截与 ChatHeader「新建对话」按钮仅 IDE 端可达——桌面端
+  // clearChat：/clear 拦截与 ChatHeader「新建对话」按钮仅插件端可达——桌面端
   // /clear 已于 2026-09-05 整端移除（ChatApp 拦截加 !isDesktop 门控、ChatHeader
   // 新建对话按钮桌面端 hideSessionButtons 隐藏），不再要求 desktop 注册。
   clearChat: { vscode_chat: true, jetbrains: true },
@@ -398,7 +398,7 @@ function collectHostCases() {
 // ────────────────────────────────────────────────────────────────────────────
 function requiredRoutes(cmd, senderSurfaces) {
   if (cmd.startsWith("desktop") || DESKTOP_GATED_NON_PREFIX.has(cmd)) {
-    return ["desktop"]; // 桌面专属：webview 在 IDE 从不发送
+    return ["desktop"]; // 桌面专属：webview 在插件端 从不发送
   }
   if (REMOTE_PAGE_GATED.has(cmd)) {
     return ["remote_page"]; // 手机页专属：只有 shim 那个「路由」会收到
@@ -408,12 +408,12 @@ function requiredRoutes(cmd, senderSurfaces) {
 
   const routes = new Set();
   if (senderSurfaces.chat.length || senderSurfaces.chrome.length) {
-    // chat 系组件在 IDE 聊天 webview 里运行（vscode chat 路由 / jb）。
+    // chat 系组件在 插件端聊天 webview 里运行（vscode chat 路由 / jb）。
     routes.add("vscode_chat");
     routes.add("jetbrains");
   }
   if (senderSurfaces.settings.length) {
-    // Settings*View 在 IDE settings tab 外壳里运行（vscode settings 路由 / jb）。
+    // Settings*View 在 plugin host settings tab 外壳里运行（vscode settings 路由 / jb）。
     routes.add("vscode_settings");
     routes.add("jetbrains");
   }

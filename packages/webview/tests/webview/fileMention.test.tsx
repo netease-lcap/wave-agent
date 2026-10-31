@@ -107,8 +107,8 @@ describe("File Mention Feature (@)", () => {
       expect(dropdown).toBeInTheDocument();
     });
 
-    // Check for suggestion items — excluding the fixed IDE entries (@终端/@问题),
-    // which sit ahead of file suggestions in an IDE host.
+    // Check for suggestion items — excluding the fixed IDE-context entries (@终端/@问题),
+    // which sit ahead of file suggestions in a plugin host.
     const suggestionItems = document.querySelectorAll(
       ".suggestion-item:not([data-ide-context])",
     );

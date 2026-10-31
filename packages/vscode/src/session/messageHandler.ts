@@ -75,7 +75,7 @@ export class MessageHandler {
   private pluginService: PluginService;
   private utilityClient: StdioClient;
   private context: MessageHandlerContext;
-  /** IDE 上下文（@终端 / @问题）读取：只在 IDE 宿主成立，见 spec
+  /** IDE 上下文（@终端 / @问题）读取：只在插件端成立，见 spec
    *  ui/ide-context-mentions.md。 */
   private ideContextService = new IdeContextService();
 
@@ -973,7 +973,7 @@ export class MessageHandler {
         command: "listPluginsResponse",
         plugins,
         ...(refreshed ? { refreshed: true } : {}),
-        // 锚点工程（spec ecosystem/plugin A-018）：IDE 宿主即当前工作区文件夹。
+        // 锚点工程（spec ecosystem/plugin A-018）：插件端即当前工作区文件夹。
         // 弹窗的 project / local 两档据此标明写进哪个工程；多根工作区取首根
         // （与 pluginService.getWorkdir 的 RPC 口径一致，否则「显示的工程」与
         // 「写进去的工程」会不是同一个）。
@@ -1870,7 +1870,7 @@ export class MessageHandler {
     const session = this.context.getChatSession(viewType || "tab", windowId);
     // 单会话原地清空：压缩进行中或存在正在运行的后台任务（shell/subagent/
     // workflow）时静默忽略 —— webview 已禁用按钮，此为覆盖「通知在途」竞态窗口
-    // 与其它调用方的 host 侧双防线（spec session-management.md「IDE 插件聊天
+    // 与其它调用方的 host 侧双防线（spec session-management.md「插件端聊天
     // 头部」场景 6/7；压缩中清空会让压缩摘要写进清空后的新会话 —— spec
     // message-compact.md「压缩期间的会话保护」）。
     if (

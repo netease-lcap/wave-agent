@@ -8,7 +8,7 @@ import {
 
 /**
  * e2e（真浏览器 + 真 settings.js bundle + 真 CSS）——被更高层覆盖的用户偏好键
- * 必须**如实显示生效值**并置灰（spec core/agent-config.md「IDE 插件配置入口」场景 9、
+ * 必须**如实显示生效值**并置灰（spec core/agent-config.md「插件端配置入口」场景 9、
  * 边界说明「用户偏好的层与来源」）：
  *
  * 用户级 `~/.wave/settings.json` 只是用户偏好的**落点**，企业下发的 Remote 组织

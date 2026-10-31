@@ -1,13 +1,13 @@
 ---
 name: ide-plugin-publish
-description: 发布 IDE 插件（VS Code 扩展 + JetBrains 插件）到各自 marketplace。当用户要求"发布 ide/vs code/jetbrains 插件"、"发布到 marketplace"、或询问插件发布流程时使用。
+description: 发布插件端（VS Code 扩展 + JetBrains 插件）到各自 marketplace。当用户要求"发布 ide/vs code/jetbrains 插件"、"发布到 marketplace"、或询问插件发布流程时使用。
 allowed-tools:
   - Bash
 ---
 
-# IDE 插件发布流程
+# 插件端发布流程
 
-发布 IDE 插件**不需要本地构建**。仓库 `release.js` 打 tag 后，CI（publish.yml）已把产物上传到 GitHub Release，直接下载产物上传到 marketplace 即可。发布前先确认对应版本 tag 的 Publish Package workflow 跑完、Release 资产已生成。
+发布插件端**不需要本地构建**。仓库 `release.js` 打 tag 后，CI（publish.yml）已把产物上传到 GitHub Release，直接下载产物上传到 marketplace 即可。发布前先确认对应版本 tag 的 Publish Package workflow 跑完、Release 资产已生成。
 
 （例外：**pre-release 通道**不能用 CI 产物，必须本地重新打包 —— 见下方「Pre-release」。）
 

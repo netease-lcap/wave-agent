@@ -1715,7 +1715,7 @@ describe("设置页导航里的「插件市场」项按宿主区分", () => {
     ).toBeInTheDocument();
   });
 
-  it("IDE 宿主：导航保留「插件市场」项", () => {
+  it("插件端：导航保留「插件市场」项", () => {
     renderSettings();
 
     expect(navEntry("插件市场")).not.toBeNull();

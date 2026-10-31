@@ -19,7 +19,7 @@ vi.mock("mermaid", () => ({
 
 // 新增的可聚焦滚动区（代码块 pre / 表格滚动容器 / bash 输出 / 写入预览）只在
 // 桌面宿主注入 tabindex：焦点环样式只写在 host-desktop.css 的 `[data-host="desktop"]`
-// 层，IDE 宿主注入后拿不到可见焦点，只会凭白多出 Tab 停靠点（WCAG 2.4.3）。
+// 层，插件端注入后拿不到可见焦点，只会凭白多出 Tab 停靠点（WCAG 2.4.3）。
 // 结构变化（表格包裹层）与真无障碍改进（checkbox aria-label）两端都保留。
 const MARKDOWN = [
   "- [x] 已完成条目",
@@ -54,7 +54,7 @@ describe("桌面端专属 tab stop gating", () => {
       ).not.toBeNull();
     });
 
-    it("IDE 宿主：不注入 tabindex，但保留表格包裹层与 checkbox 可访问名", () => {
+    it("插件端：不注入 tabindex，但保留表格包裹层与 checkbox 可访问名", () => {
       const { container } = renderMessage();
 
       expect(container.querySelector(".markdown-content pre")).not.toBeNull();
@@ -100,7 +100,7 @@ describe("桌面端专属 tab stop gating", () => {
       ).not.toBeNull();
     });
 
-    it("IDE 宿主：写入预览滚动区不加 tab stop", () => {
+    it("插件端：写入预览滚动区不加 tab stop", () => {
       const { container } = renderPreview();
       expect(container.querySelector(".write-preview-scroll")).not.toBeNull();
       expect(
@@ -135,7 +135,7 @@ describe("桌面端专属 tab stop gating", () => {
       ).not.toBeNull();
     });
 
-    it("IDE 宿主：输出区不加 tab stop", () => {
+    it("插件端：输出区不加 tab stop", () => {
       const { container } = renderBash();
       expect(container.querySelector(".bash-command-output")).not.toBeNull();
       expect(

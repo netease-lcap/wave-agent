@@ -31,7 +31,7 @@ export interface SettingsMcpViewProps {
   /** 当前工作目录（用于项目分组展示项目名） */
   workdir?: string;
   /** 关闭设置页并预填 AI 对话框提示词；编辑操作附带 openFile（配置文件路径）——
-   *  desktop 在会话视图右侧文件面板打开该文件；IDE 由 host 用自身编辑器打开。 */
+   *  desktop 在会话视图右侧文件面板打开该文件；插件端由 host 用自身编辑器打开。 */
   onPrefillPrompt?: (prompt: string, openFile?: string) => void;
 }
 
@@ -110,7 +110,7 @@ const SettingsMcpView: React.FC<SettingsMcpViewProps> = ({
 
   const handleEdit = (server: McpServerStatus) => {
     // 关闭设置页预填编辑提示词；同带配置文件路径——desktop 在会话视图右侧文件
-    // 面板打开该文件、IDE 用自身编辑器打开，便于对照修改。路径一律取 host 下发的
+    // 面板打开该文件、插件端用自身编辑器打开，便于对照修改。路径一律取 host 下发的
     // mcpConfigPathsResponse（绝对路径）：宿主按 OS 绝对路径打开文件、无法展开
     // `~`，故不在此自造 `~`/相对回退路径；缺失时仅预填提示词、不打开文件。
     const path =

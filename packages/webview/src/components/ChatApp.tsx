@@ -189,9 +189,9 @@ const autoPanelWidth = (containerW: number): number => {
 
 /**
  * Any background task (shell / subagent / workflow) still running in the
- * current session. While one is active, IDE in-place session switches
+ * current session. While one is active, plugin-host in-place session switches
  * (clearChat「新建对话」/ `/clear`, restoreSession「加载历史」) are blocked —
- * spec session-management.md「IDE 插件聊天头部」场景 6/7. Desktop's parallel
+ * spec session-management.md「插件端聊天头部」场景 6/7. Desktop's parallel
  * session model doesn't apply.
  */
 const hasRunningBackgroundTask = (tasks: BackgroundTaskSummary[]): boolean =>
@@ -341,7 +341,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 远控页的两道「写操作」确认（第二批解禁，spec「页面能执行的那批宿主命令」）：
   // `/clear` 会把电脑侧那条会话换绑成新的 sessionId（并跑 Session hooks），底栏
   // 切换模型（`setModel`）写的是**用户级** `~/.wave/settings.json`——两者在手机上
-  // 都不是「只影响这一页」的动作，所以远端各问一次。IDE 端与桌面端不变：它们的
+  // 都不是「只影响这一页」的动作，所以远端各问一次。插件端与桌面端不变：它们的
   // `/clear` 早就没有确认、切换模型也没有（改动只在一处 UI，不动那两端的既有手感）。
   const [pendingClearConfirm, setPendingClearConfirm] = useState(false);
   const [pendingModelSwitch, setPendingModelSwitch] = useState<string | null>(
@@ -374,13 +374,13 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     () => configuredModels.map((m) => m.name),
     [configuredModels],
   );
-  // /resume picker. IDE hosts reuse the header popup and its list
+  // /resume picker. plugin hosts reuse the header popup and its list
   // (state.sessions); the desktop opens a centered modal fed by the host's
   // on-disk session scan of the current conversation's host, which is what
   // makes CLI-created sessions reachable (they are not in the desktop index).
   const [resumePickerOpen, setResumePickerOpen] = useState(false);
   // 远控页的「会话」整页列表（spec remote/remote-web.md「手机端的会话列表与删除」）。
-  // 只有那一端会置 true——IDE / 桌面端的入口仍是各自的会话面（下拉 / 侧栏），
+  // 只有那一端会置 true——插件端 / 桌面端的入口仍是各自的会话面（下拉 / 侧栏），
   // 它们连这个开关都不会碰。
   const [sessionPageOpen, setSessionPageOpen] = useState(false);
   const [resumeSessions, setResumeSessions] = useState<SessionMetadata[]>([]);
@@ -483,7 +483,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const isDesktop = host?.type === "desktop";
   // 文件面板列表态的数据（spec desktop-file-panel.md「文件面板列出当前对话的文
   // 件」）：本对话读过/写过的文件，从消息流派生——宿主没有「本对话涉及的文件」
-  // 这条数据，派生也就顺带让它对远程会话与所有宿主都成立。IDE 宿主没有该面板，
+  // 这条数据，派生也就顺带让它对远程会话与所有宿主都成立。插件端没有该面板，
   // 跳过这道全景扫描（与 fileAutoRefresh 那道 effect 同一个开销量级）。
   const conversationFiles = useMemo(
     () =>
@@ -499,8 +499,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // of its own: the sessions the serving process holds right now, which is all
   // it can open.
   //
-  // It is also the host every guard in this file is about: rendering the IDE
-  // branch buys it the IDE's UI, but not the IDE's capabilities (no editor, no
+  // It is also the host every guard in this file is about: rendering the plugin
+  // branch buys it the plugin host's UI, but not its capabilities (no editor, no
   // settings tab, no plugin manager, no local host to route a command to), so
   // the entries below that can only fail there are not rendered at all
   // (spec remote/remote-web.md 场景 21).
@@ -513,7 +513,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   const [settingsOpen, setSettingsOpen] = useState(false);
   // 打开设置页时选中的初始导航项（更多菜单打开 → global；/agents → subagents、
   // /skills → skills）。desktop 每次打开都会重挂载 SettingsPage，此值经
-  // initialNav 传入；IDE 由 openSettings message 的 nav 走 host 下发。
+  // initialNav 传入；插件端由 openSettings message 的 nav 走 host 下发。
   const [settingsNav, setSettingsNav] = useState<NavKey>("global");
   // 设置页「新建/编辑」预填的 AI 对话框提示词（desktop 关设置页后写入输入框；
   // 见 handlePrefillPrompt）。无 pane 单布局 targetPaneId 为空、由本实例 effect
@@ -658,7 +658,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // /btw side-question panel（spec commands/btw-command.md 场景 14）：面板属于
   // **发起它的那个对话**，切走只是隐去、切回来原样恢复（含还在跑的那条），所以
   // 状态存在会话快照里，本地只留一份镜像。归属键与面板组同源：桌面 pane 用
-  // groupKey（绑定会话的 id，未绑定时 `new:<paneId>`）；IDE / 远控页没有 pane，
+  // groupKey（绑定会话的 id，未绑定时 `new:<paneId>`）；插件端 / 远控页没有 pane，
   // 用 currentSession.id。`btwStateKey` = 本地镜像当前反映的那个键，它比 btwKey
   // 晚一个提交——这正是下面回写 effect 里 `btwStateKey !== btwKeyRef.current`
   // 那道守卫要识别的那一个提交。
@@ -1166,7 +1166,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // /btw 面板随会话换：换到别的会话就换成它自己那份（没有就是 null —— 面板从不
   // 串对话），换回来则恢复离开时的样子，加载中的那份照样接着跑（spec 场景 14）。
   // 与上面的面板组同一套编排：本实例在会话切换时不重挂载（桌面 pane 按 paneId
-  // 挂载、IDE / 远控页连 id 都不变），只有 effect 能换掉本地镜像。
+  // 挂载、插件端 / 远控页连 id 都不变），只有 effect 能换掉本地镜像。
   useEffect(() => {
     if (btwKey === btwKeyRef.current) return;
     btwKeyRef.current = btwKey;
@@ -1849,7 +1849,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       case "updateSessions": {
         dispatch({ type: "SET_SESSIONS", payload: message.sessions });
         // /btw 面板按会话存在快照里（场景 14），所以非桌面端也要有失效收口：
-        // 桌面端由 DesktopApp 在会话树更新时统一 prune，IDE / 远控页没有那一层，
+        // 桌面端由 DesktopApp 在会话树更新时统一 prune，插件端 / 远控页没有那一层，
         // 就在这里把已删除会话的那份扔掉——否则内存里会堆着再也回不去的答案。
         if (!isDesktop) {
           const sessions = Array.isArray(message.sessions)
@@ -2041,7 +2041,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             isRestoring: message.isRestoring,
             sessions: message.sessions,
             currentSession: message.session,
-            // 仅 IDE 宿主随快照带全局配置；desktop 改走窗口级
+            // 仅插件端随快照带全局配置；desktop 改走窗口级
             // configurationResponse（渲染设置页的 root 实例不消费带 paneId
             // 的快照）。窗口级数据（主题/更新通道）一律不进快照。
             configurationData: message.configurationData,
@@ -2147,7 +2147,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         break;
       case "prefillPrompt":
         if (!forThisPane(message)) break;
-        // IDE 设置页（settings-preview-entry）「新建/编辑」经 host 转发：
+        // 插件端设置页（settings-preview-entry）「新建/编辑」经 host 转发：
         // 关闭设置 tab 后向聊天 webview 下发预填提示词（spec：AI 对话框
         // 在当前会话继续，预填文本可编辑）。
         //
@@ -2362,7 +2362,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
   // Desktop multi-pane (FR-032): session-scoped commands carry this pane's id
   // so the host routes them to the agent bound to this pane. Untagged when
-  // paneId is undefined (IDE hosts) — those backends ignore the field.
+  // paneId is undefined (plugin hosts) — those backends ignore the field.
   const postToHost = useCallback(
     (message: Record<string, unknown>) => {
       const pid = paneIdRef.current;
@@ -2373,8 +2373,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     [vscode],
   );
 
-  // 头部标题就地编辑（spec session-management.md「会话重命名入口：CLI 与 IDE
-  // 插件」场景 8/9）：乐观更新走 reducer（sessions 列表 + currentSession 一起
+  // 头部标题就地编辑（spec session-management.md「会话重命名入口：CLI 与插件端」场景 8/9）：乐观更新走 reducer（sessions 列表 + currentSession 一起
   // 改，头部立即变），失败时 useSessionRename 回滚，头部就地给出可见提示。
   const applyRenamedTitle = useCallback((sessionId: string, title: string) => {
     dispatch({ type: "RENAME_SESSION", payload: { sessionId, title } });
@@ -2446,7 +2445,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
     // 压缩进行中或存在正在运行的后台任务（后台终端工具/子代理/workflow）期间
     // 忽略——后两者防原地清空把正在跑的任务中断/与 UI 脱离；压缩中清空还会
     // 让压缩摘要写进清空后的新会话（spec message-compact「压缩期间的会话保护」）。
-    // 仅 IDE 端可达（桌面端 /clear 已整端移除 2026-09-05，「新建对话」按钮也被
+    // 仅插件端可达（桌面端 /clear 已整端移除 2026-09-05，「新建对话」按钮也被
     // hideSessionButtons={isDesktop} 隐藏 —— 见 handleSendMessage）。
     // 这里的守卫**不**收窄成上面的 inPlaceGuard：`/clear` 无论从哪一端触发都是
     // 真正的原地清空，将来若在远控页可达也照旧该被挡住。
@@ -2604,7 +2603,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         vscode.postMessage({ command: "getConfiguration" });
         return;
       }
-      // IDE hosts (VSCE/JetBrains): the host opens the settings tab webview in
+      // plugin hosts (VSCE/JetBrains): the host opens the settings tab webview in
       // the editor area (spec 场景 10) and serves the shared SettingsPage there.
       // nav 随 openSettings 透传，host 经 settingsState 下发给设置页。
       vscode.postMessage({ command: "openSettings", ...(nav ? { nav } : {}) });
@@ -2829,7 +2828,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
 
       // Intercept local slash commands — open dialogs instead of sending to agent
       // Desktop: /clear 已整端移除（2026-09-05 拍板），不再拦截 —— 手动敲 /clear
-      // 作为普通消息发送（SDK 从未注册 clear，发给模型无害）；IDE 端保留拦截。
+      // 作为普通消息发送（SDK 从未注册 clear，发给模型无害）；插件端保留拦截。
       // 远控页现在也拦截（第二批解禁）：`clearMessages` 已在白名单里，但它是**写**
       // 操作（换绑新 sessionId + 跑 Session hooks），所以页面上先确认一次再发
       // ——见 `pendingClearConfirm` 与下面那个 ConfirmDialog。
@@ -2856,7 +2855,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }
       if (interceptHostLocalCommand && trimmedText === "/plugin") {
         // 桌面端在设置页里不再有「插件市场」入口（spec ecosystem/plugin.md 场景 3、
-        // A-016），视图只由侧边栏整页承载，故 /plugin 也落到整页；IDE 宿主没有
+        // A-016），视图只由侧边栏整页承载，故 /plugin 也落到整页；插件端没有
         // 侧边栏整页，仍唤起设置页并选中「插件市场」选项卡（对齐 /mcp、/skills）。
         if (isDesktop) {
           if (paneId !== undefined && onOpenPluginMarketFromPane) {
@@ -2906,7 +2905,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // 手机接管本机会话（远端控制面）：不再弹窗，而是唤起设置页并选中
         // 「远程控制」选项卡（2026-10-17 用户拍板，与 /agents → subagents、
         // /skills → skills 同一条既有语义；对话框内容整块搬进了
-        // SettingsRemoteControlView）。桌面端与 IDE 端都放行 —— 各自的会话就在
+        // SettingsRemoteControlView）。桌面端与插件端都放行 —— 各自的会话就在
         // 自己那个 stdio 子进程里，手机要在哪套会话上做审批，就得由那台进程去连
         // relay。远控网页本身不拦（`interceptHostLocalCommand`）：那一页就是二维码
         // 指向的东西，在页面上给自己开一个「远程控制」入口是自我指涉。
@@ -2941,7 +2940,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
       }
       if (trimmedText === "/resume") {
         // Desktop: scan the current conversation's host's disk (all projects),
-        // so sessions this app never created are reachable. IDE hosts: reopen
+        // so sessions this app never created are reachable. plugin hosts: reopen
         // the header popup over the already-loaded list — same scope as the
         // 「历史对话」 button, which the plugin cannot widen (no workspace switch).
         if (isDesktop) {
@@ -3217,7 +3216,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // 复用 MessageInput 既有的 disabled 语义（contentEditable=false ＋ 发送/附件/
   // 快捷指令/权限模式按钮置灰）；禁用原因只写在输入框占位文案里——不新增提示行、
   // 不在输入区放登录按钮、不写「请去某处登录」的指路文案（登录入口用户自己能看见：
-  // IDE 欢迎页 / 桌面左侧账户卡）。
+  // 插件端欢迎页 / 桌面左侧账户卡）。
   const unauthenticated = !state.isAuthenticated;
   const inputDisabledReason = unauthenticated
     ? "请先登录后再发送消息"
@@ -3312,7 +3311,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   }, []);
 
   /**
-   * `/resume` picker selection. IDE hosts go through handleSessionSelect so the
+   * `/resume` picker selection. plugin hosts go through handleSessionSelect so the
    * restore path and its streaming/background-task guard are exactly the ones
    * the 「历史对话」 list uses. Desktop picks arrive from the disk scan, which
    * carries the session's own workdir — the host switches the pane to that
@@ -3943,7 +3942,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // loading stub; the host reads the file (local fs or over ssh) and replies
   // with desktopFileContent to fill it in. The host is captured per-pane so a
   // split-view sibling's click never resolves against this pane's host.
-  // IDE hosts (VSCE/JetBrains) keep the plain openFile RPC that opens the file
+  // plugin hosts (VSCE/JetBrains) keep the plain openFile RPC that opens the file
   // in the IDE — only the desktop host intercepts the click for the panel.
   // Desktop .html/.htm paths are previewed instead (desktop-preview.md「本地
   // HTML 文件预览」): the host re-hosts the file on a loopback server and the
@@ -4552,7 +4551,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   // Desktop only: clicking a localhost link opens a NEW preview tab ("新链接新
   // tab") instead of navigating the existing one — several addresses can be
   // previewed side by side. Message.tsx gates on waveHostType, so this never
-  // fires in IDE hosts.
+  // fires in plugin hosts.
   const handleOpenPreview = useCallback(
     (url: string) => {
       addTab({ kind: "preview", previewUrl: url });
@@ -4975,7 +4974,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
   })();
 
   // 空态「快捷方式」区块：只在空态（尚无消息且初始状态就绪）出现，点了把整段
-  // 模板填进输入框（与设置页「新建/编辑」预填走同一个 loadDraft）。桌面端与 IDE
+  // 模板填进输入框（与设置页「新建/编辑」预填走同一个 loadDraft）。桌面端与插件端
   // 的位置不同（见 chatBodyContent 里两处渲染点），这里只构造一次避免两份 props。
   // 远控页在「电脑侧一条会话都没有」时不渲染：那里输入框是禁用的（见
   // `remotePageWithoutSession`），点模板只会往一个发不出去的框里塞文本。
@@ -5038,7 +5037,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         />
       )}
 
-      {/* IDE 宿主的「快捷方式」仍在输入卡上方（与桌面端分叉排布，原因见下方
+      {/* 插件端的「快捷方式」仍在输入卡上方（与桌面端分叉排布，原因见下方
           桌面端那处的注释）。 */}
       {!isDesktop && quickStartBlock}
 
@@ -5204,7 +5203,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           输入框（与设置页「新建/编辑」预填走同一个 loadDraft）。只在空态出现，
           有对话历史后它是「第一次怎么开口」的入口，常驻只会挤掉消息区高度。
           位置只在**桌面端**挪到输入卡下方（设计师 1022 评论「这块放在输入框
-          下面间距先不改」）；IDE 宿主仍在输入卡上方（原地不动）。两处留白都由
+          下面间距先不改」）；插件端仍在输入卡上方（原地不动）。两处留白都由
           父级 flex 的 gap 提供，未额外加 margin/padding。 */}
       {isDesktop && quickStartBlock}
     </>
@@ -5238,7 +5237,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           command: "getAgentsContent",
           scope,
           // desktop host 按聚焦 pane 自行解析项目目录（见 desktopHost
-          // handleGetAgentsContent），此处 workdir 仅作 IDE 宿主备用一致性字段——
+          // handleGetAgentsContent），此处 workdir 仅作插件端备用一致性字段——
           // 用与归属守卫同一「当前项目」身份，避免往线上传 recents 头的旧路径。
           workdir: scope === "project" ? settingsWorkdir : undefined,
         })
@@ -5558,7 +5557,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         leading={collapsedLeading(expandBtn)}
         macTrafficSpacer={macTrafficSpacer}
         onNewSession={isRemotePage ? handleRemoteNewSession : handleClearChat}
-        // 禁用态只属于 IDE 那个原地清空语义（见 inPlaceGuard）；远控页重绑为
+        // 禁用态只属于插件端那个原地清空语义（见 inPlaceGuard）；远控页重绑为
         // 「在远端机器上另起一条会话」，忙时不置灰。
         newSessionDisabled={inPlaceGuard}
         onAbortMessage={handleAbortMessage}
@@ -5572,7 +5571,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // 照旧只渲染标题与时间（spec remote/remote-web.md「待确认只在它自己的对话里
         // 弹，对话状态在会话列表标出来」）。
         sessionStatus={isRemotePage ? state.sessionStatus : undefined}
-        // `/resume` (IDE hosts) opens this very popup — one list, one scope, no
+        // `/resume` (plugin hosts) opens this very popup — one list, one scope, no
         // second implementation to drift.
         sessionListOpen={!isDesktop && resumePickerOpen}
         onSessionListClose={handleResumeClose}
@@ -5615,8 +5614,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
             : undefined
         }
         headerActions={headerActions}
-        // 头部标题就地改名只给 IDE 插件（spec session-management.md「会话重命名
-        // 入口：CLI 与 IDE 插件」场景 8/9/10）。桌面端不传 —— 桌面端的改名入口是
+        // 头部标题就地改名只给插件端（spec session-management.md「会话重命名
+        // 入口：CLI 与插件端」场景 8/9/10）。桌面端不传 —— 桌面端的改名入口是
         // 侧边栏会话行菜单的「重命名」弹窗（spec session-management.md 平台边界、
         // desktop-sessions.md「会话重命名」场景 1/2）。设计师 2026-10-30 预览评论：
         // 「这里的重命名功能可以拿掉」。不传 ⇒ `canRename` 为假 ⇒ 标题退回纯展示
@@ -5748,7 +5747,7 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           ) : null}
         </div>
       ) : (
-        // IDE hosts: the chat body always renders inside two flex wrappers.
+        // plugin hosts: the chat body always renders inside two flex wrappers.
         // Outside the welcome page they are plain flex-column pass-throughs
         // (layout equivalent to the old flat fragment); on the welcome page the
         // CSS switches them to group-centering (brand + input card together,

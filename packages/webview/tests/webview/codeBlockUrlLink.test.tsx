@@ -171,7 +171,7 @@ describe("fenced code block URL linkification", () => {
     });
   });
 
-  it("IDE host: code block links are not intercepted", () => {
+  it("plugin host: code block links are not intercepted", () => {
     const onOpenPreview = vi.fn();
     const { vscode, links } = renderCodeBlock("http://localhost:5173/app", {
       onOpenPreview,

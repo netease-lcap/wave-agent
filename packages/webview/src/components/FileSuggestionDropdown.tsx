@@ -141,7 +141,7 @@ export const FileSuggestionDropdown: React.FC<FileSuggestionDropdownProps> = ({
       {!isLoading && suggestions.length === 0 && filterText && (
         <div className="suggestion-item suggestion-empty">
           {/* 放大镜改用与面板工具条同款的 SearchIcon（0917 评论「文件建议空态
-              也一起换」）；IDE 宿主保持 codicon 字体图标，同一 surface 不混图标库 */}
+              也一起换」）；插件端保持 codicon 字体图标，同一 surface 不混图标库 */}
           {isDesktopHost() ? (
             <SearchIcon className="suggestion-icon" />
           ) : (
