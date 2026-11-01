@@ -3,7 +3,6 @@ import { Tooltip } from "./Tooltip";
 import {
   NewSessionIcon,
   HistoryIcon,
-  MachineIcon,
   MoreIcon,
   PanelCollapseIcon,
   PanelExpandIcon,
@@ -227,21 +226,9 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             </button>
           </Tooltip>
         )}
-        {/* 远控页专属：「换机器」的常驻入口——一个主屏图标管所有机器，入口
-            收在页面侧的 shim（REMOTE_PAGE_GATED，audit:commands 把关），不改
-            其余四端的顶栏（spec remote/remote-machine.md「机器列表与切换」场景 5）。 */}
-        {onSwitchMachine && (
-          <Tooltip text="切换电脑" position="bottom">
-            <button
-              className="header-button"
-              onClick={onSwitchMachine}
-              data-testid="switch-machine-btn"
-              aria-label="切换电脑"
-            >
-              <MachineIcon />
-            </button>
-          </Tooltip>
-        )}
+        {/* 远控页专属的「换机器」不再占顶栏：它收在「更多」菜单里（低频动作，
+            不与新建 / 会话 / 更多抢位置），由 onSwitchMachine 传给 MoreMenu
+            （spec remote/remote-machine.md「机器列表与切换」场景 5）。 */}
         {!hideMoreButton && (
           <Tooltip text="更多" position="bottom">
             <button
@@ -306,6 +293,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           onLogout={onLogout}
           isAuthenticated={isAuthenticated}
           pushNotifications={pushNotifications}
+          onSwitchMachine={onSwitchMachine}
           onClose={() => setShowMoreMenu(false)}
           triggerRef={moreBtnRef}
         />

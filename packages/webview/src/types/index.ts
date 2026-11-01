@@ -902,11 +902,12 @@ export interface ChatHeaderProps {
    */
   onOpenSessionPage?: () => void;
   /**
-   * Remote Web page (the fifth host) only: the standing 「切换电脑」 entry. One
-   * home-screen icon serves every machine, so the page needs a way back to the
-   * machine list from a live session; the command routes to the page shim (the
-   * fifth router), not to any local host (spec remote-control「机器列表与切换」
-   * 场景 5).
+   * Remote Web page (the fifth host) only: the 「切换电脑」 entry in the more
+   * menu (its first item). One home-screen icon serves every machine, so the
+   * page needs a way back to the machine list from a live session; the command
+   * routes to the page shim (the fifth router), not to any local host (spec
+   * remote/remote-machine.md「机器列表与切换」场景 5). It lives in the menu, not
+   * in the header, because changing machines is a low-frequency action.
    */
   onSwitchMachine?: () => void;
   /**

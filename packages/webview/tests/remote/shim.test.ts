@@ -1227,7 +1227,7 @@ describe("remote page shim — choosing a machine (the picker)", () => {
     const waiting = page.banner();
     expect(waiting).toContain("等待上线");
 
-    // 「切换电脑」 is a standing header button, not a banner action.
+    // 「切换电脑」 is a standing menu entry (更多's first item), not a banner action.
     page.post({ command: "openMachinePicker" });
     await flush();
     expect(page.element("remote-machine-picker")).toBeTruthy();
@@ -1452,7 +1452,7 @@ describe("remote page shim — healing after a disconnect", () => {
     expect(page.bannerButtons()).toEqual([]);
     expect(page.bannerClose()).toBeTruthy();
 
-    // 「切换电脑」 lives in the header and still opens the list.
+    // 「切换电脑」 lives in the 更多 menu and still opens the list.
     page.post({ command: "openMachinePicker" });
     await flush();
     expect(page.element("remote-machine-picker")).toBeTruthy();
