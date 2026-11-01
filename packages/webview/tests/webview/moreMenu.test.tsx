@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import { fixtures } from "wave-webview-fixtures";
 import {
   renderChatApp,
@@ -198,5 +198,52 @@ describe("More Menu", () => {
     });
 
     expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * 远控页的「切换电脑」收在「更多」菜单里（第一项），不再占顶栏一枚常驻图标
+ * ——换机器是低频动作（spec remote/remote-machine.md「机器列表与切换」场景 5）。
+ */
+describe("More Menu — 远控页的「切换电脑」", () => {
+  afterEach(() => {
+    delete window.waveRemotePage;
+  });
+
+  it("顶栏不再有独立的换机器按钮", () => {
+    window.waveRemotePage = true;
+    renderChatApp();
+
+    expect(screen.getByTestId("more-btn")).toBeInTheDocument();
+    expect(screen.queryByTestId("switch-machine-btn")).toBeNull();
+  });
+
+  it("菜单第一项就是它，点下去让页面 shim 打开机器列表", () => {
+    window.waveRemotePage = true;
+    const { vscode } = renderChatApp();
+
+    vscode.postMessage.mockClear();
+    const menu = openMoreMenu();
+
+    const entry = screen.getByTestId("more-menu-switch-machine");
+    expect(entry).toHaveTextContent("切换电脑");
+    expect(menu.querySelector(".more-menu-item")).toBe(entry);
+
+    act(() => {
+      fireEvent.click(entry);
+    });
+
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ command: "openMachinePicker" }),
+    );
+    expect(screen.queryByTestId("more-menu")).not.toBeInTheDocument();
+  });
+
+  it("四个本地宿主不出现这一项", () => {
+    renderChatApp();
+
+    openMoreMenu();
+
+    expect(screen.queryByTestId("more-menu-switch-machine")).toBeNull();
   });
 });

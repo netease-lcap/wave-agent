@@ -5594,7 +5594,8 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         onOpenSessionPage={
           isRemotePage ? () => setSessionPageOpen(true) : undefined
         }
-        // 远控页专属：「切换电脑」入口，路由是页面 shim（REMOTE_PAGE_GATED）。
+        // 远控页专属：「更多」菜单里的「切换电脑」，路由是页面 shim
+        // （REMOTE_PAGE_GATED）。
         onSwitchMachine={
           isRemotePage
             ? () => vscode.postMessage({ command: "openMachinePicker" })

@@ -129,7 +129,7 @@ const DESKTOP_GATED_NON_PREFIX = new Set([
  * 的（见 packages/webview/src/types/index.ts 的 window.waveRemotePage 注释）。
  */
 const REMOTE_PAGE_GATED = new Set([
-  "openMachinePicker", // ChatHeader「切换电脑」：顶栏换机器入口（spec remote/remote-machine.md「机器列表与切换」场景 5）
+  "openMachinePicker", // MoreMenu「切换电脑」：更多菜单第一项（spec remote/remote-machine.md「机器列表与切换」场景 5）
   // 新会话命令族（RemoteNewSessionDialog，spec remote/remote-web.md「Web 端也能
   // 发起新会话」）：目录列表 / 分支列表 / 创建，shim 转中继 listDirectories /
   // listGitBranches / (createWorktree +) initialize。

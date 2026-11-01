@@ -10,6 +10,7 @@ import {
   FileTextIcon,
   HouseIcon,
   LogOutIcon,
+  MachineIcon,
   SettingsGearIcon,
 } from "./HeaderIcons";
 import type { PushNotificationControl } from "../types";
@@ -58,6 +59,16 @@ interface MoreMenuProps {
    * the entry is not rendered — they have no browser subscription to hold.
    */
   pushNotifications?: PushNotificationControl;
+  /**
+   * Remote Web page (the fifth host) only: the 切换电脑 entry that opens the
+   * machine picker (spec remote/remote-machine.md「机器列表与切换」场景 5). One
+   * home-screen icon serves every machine, so the page needs a way back to the
+   * machine list from a live session; the command routes to the page shim (the
+   * fifth router), not to any local host. It sits in this menu rather than in
+   * the header: changing machines is a low-frequency action, and the header's
+   * three icons are the high-frequency ones.
+   */
+  onSwitchMachine?: () => void;
 }
 
 /**
@@ -133,6 +144,7 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   triggerRef,
   anchorRect,
   pushNotifications,
+  onSwitchMachine,
 }) => {
   const menuRef = useRef<HTMLDivElement>(null);
   // Remote-control Web page: 设置 and 登录/退出登录 act on the host (a settings
@@ -166,7 +178,25 @@ export const MoreMenu: React.FC<MoreMenuProps> = ({
   // page drops the 设置 and auth slots, so `itemCount` is derived from the array
   // rather than the literal 4 it used to be — a hardcoded count would let the
   // arrow keys walk off the end of the list.
+  //
+  // 切换电脑 leads the remote page's list: it is a page-level action (which
+  // machine this page is looking at) and the low-frequency one, so it yields
+  // the header but not the menu's first slot.
   const entries: MoreMenuEntry[] = [
+    ...(onSwitchMachine
+      ? [
+          {
+            id: "more-menu-switch-machine",
+            run: onSwitchMachine,
+            content: (
+              <>
+                <MachineIcon className="more-menu-item-icon" />
+                <span>切换电脑</span>
+              </>
+            ),
+          },
+        ]
+      : []),
     ...(push?.entry ? [push.entry] : []),
     ...(remotePage
       ? []

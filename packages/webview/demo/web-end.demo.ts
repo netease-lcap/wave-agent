@@ -20,8 +20,8 @@ import type { Page } from "@playwright/test";
  * Web 端（远控 Web 页）手机布局截图 —— docs/web.md 用。
  *
  * 远控页是共享 webview bundle 的第五个宿主，靠两样东西与插件端区分：
- * `window.waveRemotePage = true`（`isRemotePageHost()` 读它，决定顶栏的「会话 /
- * 切换电脑」入口、会话整页列表、计划正文内联审批等）与 `<html data-remote-page>`
+ * `window.waveRemotePage = true`（`isRemotePageHost()` 读它，决定顶栏的「会话」
+ * 入口、「更多」菜单里的「切换电脑」、会话整页列表、计划正文内联审批等）与 `<html data-remote-page>`
  * （`styles/remote-page.css` 的手机档样式全部挂在这个属性下）。测试 harness 造的是
  * 插件端页面，所以这里两样都自己补上，再用 iPhone 竖屏尺寸截图。
  */
@@ -354,7 +354,7 @@ test.describe("Web 端（远控页）手机截图", () => {
     );
   });
 
-  test("更多菜单：通知开关与设置入口", async ({ webviewPage }) => {
+  test("更多菜单：切换电脑、通知与文档入口", async ({ webviewPage }) => {
     await emulateRemotePhone(webviewPage);
     const injector = new MessageInjector(webviewPage);
     await seedRemoteState(injector);
