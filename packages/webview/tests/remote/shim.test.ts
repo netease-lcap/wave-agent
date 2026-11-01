@@ -507,8 +507,8 @@ function loadShim(options: {
     timers,
     runRetryTimers: () => {
       for (const timer of [...timers]) {
-        // 20s is the RPC timeout, 5min the turn budget — neither is a retry
-        // step; the backoff walks 2s → 4s → … → the 30s cap.
+        // 20s is the RPC timeout — not a retry step; the backoff walks 2s → 4s →
+        // … → the 30s cap. (Turn-length methods arm no timer at all.)
         if (!timer.cleared && timer.delay <= 30000 && timer.delay !== 20000)
           timer.run();
       }
@@ -1324,7 +1324,8 @@ describe("remote page shim — healing after a disconnect", () => {
 
   const pendingRetryDelay = (page: ReturnType<typeof loadShim>) => {
     const pending = page.timers.filter(
-      // 20s is the RPC timeout — the only other timer this page arms.
+      // 20s is the RPC timeout — the only other timer this page arms (a
+      // turn-length method arms none).
       (timer) =>
         !timer.cleared && timer.delay <= 30000 && timer.delay !== 20000,
     );

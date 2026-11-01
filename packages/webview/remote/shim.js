@@ -141,20 +141,27 @@
   /** Application-level keepalive; the relay answers each `ping` with a `pong`. */
   var HEARTBEAT_MS = 30000;
   /**
-   * How long a request may stay unanswered, by method.
+   * How long a request may stay unanswered — for the reads and control writes,
+   * i.e. the ones the machine answers at once.
    *
-   * 20s is the budget for "the machine answers at once": every read and every
-   * control write. A **turn-length** method is the exception — its reply is sent
-   * only once the whole turn is over, and a turn has no upper bound. It can loop
-   * through tools for minutes, and it parks indefinitely on an approval nobody
-   * has answered yet — usually the person holding this phone. Waiting for that
-   * reply is therefore not a liveness check at all: the message is delivered the
-   * moment the frame leaves, and the turn itself is visible in the message
-   * stream. `TURN_METHODS` is what keeps a 40-second turn from being reported as
-   * a failure; see `timeoutText` and the `sendMessage` case.
+   * A **turn-length** method (`TURN_METHODS`) gets **no budget at all**, not a
+   * bigger one. Its reply is sent only once the whole turn is over, and a turn
+   * has no upper bound: it loops through tools for as long as the work takes —
+   * hours, if that is what the work is — and it parks indefinitely on an
+   * approval nobody has answered yet, usually the person holding this phone. So
+   * any number here is a lie with a delay built in: it cannot tell 「还在跑」 from
+   * 「回执丢了」 (the reply is a one-shot frame, dropped with the link and never
+   * re-delivered), which leaves a false 「没发出去」 as its only possible output —
+   * and that line is what makes users resend, so the machine gets the message
+   * twice.
+   *
+   * Nothing the user must see waits on that reply: a refusal or 「会话不存在」 is a
+   * fast error frame (still caught, since the entry stays in `pending`), a dead
+   * link is the status line's job (`onclose` + retry), and a send made while the
+   * link was down is re-sent from the outbox on `auth_ok`. A turn that is
+   * genuinely stuck already has an exit on screen: the composer's stop button.
    */
   var REQUEST_TIMEOUT_MS = 20000;
-  var TURN_TIMEOUT_MS = 300000;
   var TURN_METHODS = { sendMessage: true, compact: true, askBtw: true };
   /**
    * The enterprise login page, and the parameter it reads to know where to send
@@ -1578,27 +1585,28 @@
       if (forSession) frame.sessionId = forSession;
       else if (withSession !== false && sessionId) frame.sessionId = sessionId;
       send(frame);
-      setTimeout(
-        function () {
-          if (!pending[id]) return;
-          delete pending[id];
-          reject(new Error(timeoutText(method)));
-        },
-        TURN_METHODS[method] ? TURN_TIMEOUT_MS : REQUEST_TIMEOUT_MS,
-      );
+      // A turn-length method is never timed (see `REQUEST_TIMEOUT_MS`). Its entry
+      // stays in `pending` so a real error frame still lands in the caller's
+      // `.catch`; if the reply is lost with the link it simply never settles, and
+      // nothing awaits it for UI — the turn's progress and its end are read off
+      // the message stream, and `resetMachineView` drops the leftovers.
+      if (TURN_METHODS[method]) return;
+      setTimeout(function () {
+        if (!pending[id]) return;
+        delete pending[id];
+        reject(new Error(timeoutText(method)));
+      }, REQUEST_TIMEOUT_MS);
     });
   }
 
   /**
-   * What a missing reply is called. A turn-length method must not be described
-   * as 「中继或电脑侧没有响应」: both ends did answer — the machine is still working,
-   * which is exactly what the message stream shows. That wording is what made
-   * every turn past 20s read as a delivery failure.
+   * What a missing reply is called. Turn-length methods never get here (they have
+   * no budget), so this is only ever the reads and control writes: the machine
+   * answers those at once, and 20s of silence really does mean neither end is
+   * responding.
    */
   function timeoutText(method) {
-    return TURN_METHODS[method]
-      ? method + " 还没有回执（电脑侧仍在处理，回合可能还没结束）"
-      : method + " 超时（中继或电脑侧没有响应）";
+    return method + " 超时（中继或电脑侧没有响应）";
   }
 
   /**
@@ -2577,22 +2585,15 @@
         return;
 
       case "sendMessage":
+        // Fire-and-forget with a receipt: `sendMessage` is never timed (see
+        // `REQUEST_TIMEOUT_MS`), so the only reply that can reach this `.catch`
+        // is a real refusal — an unknown method, a session that no longer
+        // exists, a host that cannot serve it. Those are worth a red block;
+        // 「回合还没跑完」 is not an error and has no way in any more.
         request("sendMessage", {
           text: msg.text,
           force: msg.force,
         }).catch(function (err) {
-          // A late reply is only an error when no turn is running. While the page
-          // knows this session is generating, the stream itself proves the message
-          // landed — a red block under a running turn reads as 「没发出去」, the user
-          // resends, and the machine receives the same message twice. (This block
-          // is where 「sendMessage 超时」 came from, on every turn past 20s.)
-          if (streaming) {
-            warnOnce(
-              "sendMessage-late",
-              "sendMessage 没有回执，但这条会话仍在生成",
-            );
-            return;
-          }
           post({
             command: "updateErrorBlock",
             error: String(err.message || err),

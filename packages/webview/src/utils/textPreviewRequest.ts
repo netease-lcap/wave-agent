@@ -30,7 +30,8 @@ export type TextPreviewOutcome = TextPreviewPayload | { error: string };
 
 /**
  * 与取图同一档（25 秒，比 shim 的普通请求档长 5 秒，让宿主的明确拒绝先到）。
- * 取文件不产生 LLM 回合，所以不用回合级那档。
+ * 取文件不产生 LLM 回合，所以不进「回合级方法」那类（那类在 shim 里**不设时限**，
+ * 见 `TURN_METHODS`）。
  */
 export const TEXT_PREVIEW_TIMEOUT_MS = 25_000;
 
