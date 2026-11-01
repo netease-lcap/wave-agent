@@ -5592,7 +5592,15 @@ export const ChatApp: React.FC<ChatAppProps> = ({
         // 那一端仍是原来的弹窗/侧栏（spec remote/remote-web.md「手机端的会话列表与
         // 删除」场景 1）。
         onOpenSessionPage={
-          isRemotePage ? () => setSessionPageOpen(true) : undefined
+          isRemotePage
+            ? () => {
+                setSessionPageOpen(true);
+                // 打开列表顺带对齐一拍（spec remote/remote-web.md「手机端的会话
+                // 列表与删除」场景 15）：列表数据只在快照里下发，所以「新建完又
+                // 发了第一条消息」的那一行，否则一直停在新建时的「新对话」。
+                postToHost({ command: "refreshSessionList" });
+              }
+            : undefined
         }
         // 远控页专属：「更多」菜单里的「切换电脑」，路由是页面 shim
         // （REMOTE_PAGE_GATED）。

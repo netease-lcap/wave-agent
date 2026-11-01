@@ -152,6 +152,11 @@ const REMOTE_PAGE_GATED = new Set([
   // 手机页这一条链。
   "deleteSession",
   "getSessionWorktreeChanges",
+  // 打开「会话」列表时对齐一拍（spec remote/remote-web.md 同故事场景 15）：列表只
+  // 随快照下发，这一条让 shim 重读会话注册表后重发 `updateSessions`，否则「新建完
+  // 又发了第一条消息」的那一行一直停在「新对话」。插件端与桌面端的列表由各自的
+  // 宿主链路更新，收不到这条命令。
+  "refreshSessionList",
   // 点消息里的图片路径看原图（spec remote/remote-web.md「点消息里的图片路径看原
   // 图」）：页面没有文件系统、图片字节也在过中继前被剥掉了，看图只能向宿主要
   // ——shim 转中继 getImagePreview，宿主读盘 + 判型 + 压进单帧预算后回图。三个

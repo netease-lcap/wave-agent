@@ -113,6 +113,39 @@ describe("remote page session list", () => {
     expect(screen.queryByTestId("remote-session-page")).not.toBeInTheDocument();
   });
 
+  it("asks the host to re-read the list when the page opens", () => {
+    const { vscode } = renderRemotePage();
+    act(() => {
+      fireEvent.click(screen.getByTestId("session-switch-btn"));
+    });
+
+    // 打开列表 = 对齐一拍（spec remote/remote-web.md「手机端的会话列表与删除」场景
+    // 15）：列表数据只在快照里下发，所以「新建完又发了第一条消息」的那一行不会
+    // 一直停在「新对话」。
+    expect(
+      vscode.postMessage.mock.calls.some(
+        (call) =>
+          (call[0] as { command?: string }).command === "refreshSessionList",
+      ),
+    ).toBe(true);
+  });
+
+  it("leaves the plugin hosts without a list re-read", () => {
+    const { vscode } = renderChatApp();
+    act(() => {
+      sendCommand("updateSessions", { sessions: SESSIONS });
+      fireEvent.click(screen.getByTestId("history-btn"));
+    });
+
+    // 这条命令只属于远控页：插件端的「历史对话」由它自己的宿主链路更新。
+    expect(
+      vscode.postMessage.mock.calls.some(
+        (call) =>
+          (call[0] as { command?: string }).command === "refreshSessionList",
+      ),
+    ).toBe(false);
+  });
+
   it("shows each row's project and last-active time", () => {
     renderRemotePage();
     const page = openSessionPage();
