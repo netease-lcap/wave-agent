@@ -2091,6 +2091,33 @@
   }
 
   /**
+   * Re-read the live registry and hand the list to the page (「打开会话列表」= 对齐
+   * 一拍, spec remote/remote-web.md「手机端的会话列表与删除」场景 15).
+   *
+   * The session list is otherwise only re-posted by a snapshot (see
+   * `postSessionStatus`), which covers every path that rebuilds the view but not
+   * the list's own content: a row's title is `customTitle ?? firstMessage`, so a
+   * session that was created and then sent its first message keeps rendering
+   * 「新对话」 in the copy the page holds until the next snapshot. Opening the
+   * list is exactly when the reader asks 「现在什么样子」, so the re-read goes
+   * there — no polling and no per-turn refresh.
+   *
+   * Best-effort: a failed read leaves the previous list on screen and only logs a
+   * line. The page can still switch and delete with what it already has, and a
+   * red banner over a usable list would claim more than this side knows.
+   */
+  function refreshSessionList() {
+    return loadSessions()
+      .then(function () {
+        post({ command: "updateSessions", sessions: sessions });
+        postSessionStatus();
+      })
+      .catch(function (err) {
+        warnOnce("sessionList", "会话列表刷新失败：" + err.message);
+      });
+  }
+
+  /**
    * Catch up on the one thing a reconnect cannot have heard: `loadingChange`.
    *
    * A connection that was down missed every transition that happened while it
@@ -2627,6 +2654,15 @@
         pullSnapshot();
         return;
       }
+
+      // 「打开会话列表」= 对齐一拍（spec remote/remote-web.md「手机端的会话列表与
+      // 删除」场景 15）。列表数据平时只随快照下发，而打开列表过去只是本页的一次
+      // 视图切换、不产生任何请求——于是一条「新建完、又发了第一条消息」的会话，
+      // 在列表里仍叫「新对话」（那一行的标题取自 `firstMessage`，新建成功那一刻它
+      // 还是空的），要等下一次快照才更新。
+      case "refreshSessionList":
+        refreshSessionList();
+        return;
 
       // ── 会话列表行级动作：删除（spec remote/remote-web.md「手机端的会话列表与
       // 删除」）──

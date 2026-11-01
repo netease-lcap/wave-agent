@@ -2501,6 +2501,68 @@ describe("remote page session list actions", () => {
     });
   });
 
+  test("re-reads the registry when the list page opens", async () => {
+    const { page } = await openPage();
+
+    // 打开「会话」列表 ⇒ 页面要求对齐一拍（spec 场景 15）。列表数据平时只随快照
+    // 下发，而一条「新建完又发了第一条消息」的会话在页面手里那份副本里还没有
+    // `firstMessage`，于是那一行一直叫「新对话」。
+    page.api.postMessage({ command: "refreshSessionList" });
+    await flush();
+
+    await page.answer("listDaemonSessions", {
+      sessions: [
+        {
+          sessionId: "s-old",
+          sessionCwd: "/tmp/other",
+          firstMessage: "帮我看下登录页",
+        },
+      ],
+    });
+
+    // 重读的结果原样交给列表：标题材料（`firstMessage`）与状态标记一起到。
+    expect(page.posted).toContainEqual(
+      expect.objectContaining({
+        command: "updateSessions",
+        sessions: [
+          expect.objectContaining({
+            id: "s-old",
+            firstMessage: "帮我看下登录页",
+          }),
+        ],
+      }),
+    );
+    expect(lastPosted(page)).toMatchObject({
+      command: "updateSessionStatus",
+      waiting: [],
+      running: [],
+      background: [],
+      worktrees: [],
+    });
+    // 打开列表只对齐列表本身：不重拉消息、不换绑会话。
+    expect(page.requests("getMessages")).toBe(1);
+  });
+
+  test("keeps the list on screen when the re-read fails", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { page } = await openPage();
+
+    page.api.postMessage({ command: "refreshSessionList" });
+    await flush();
+    await page.refuse("listDaemonSessions", "boom");
+
+    // 静默：旧列表还在，页面不因为「刷新失败」挂一条红条——那一页还能切、能删。
+    expect(
+      page.posted.filter((message) => message.command === "updateSessions"),
+    ).toHaveLength(0);
+    expect(statusClose()).toBeNull();
+    // 但失败本身要留痕（排障时这是唯一的线索），所以只记一条 warn。
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("会话列表刷新失败：boom"),
+    );
+    warn.mockRestore();
+  });
+
   test("forwards a delete as destroy against that row, then re-reads the list", async () => {
     const { page } = await openPage();
 
