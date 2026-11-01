@@ -1051,14 +1051,15 @@ describe("remote page shim", () => {
     });
   });
 
-  test("keeps waiting on /btw past the 20s request budget", async () => {
+  test("keeps waiting on /btw forever, because a turn has no budget", async () => {
     const { page } = await openPage();
     page.api.postMessage({ command: "askBtw", question: "今天几号" });
     await flush();
 
-    // 回执只在整轮答完之后才发（与 sendMessage / compact 同族），所以它按回合级
-    // 超时算：20s 一到就报超时，每次稍慢一点的旁路提问都会变成一条假的失败。
+    // 回执只在整轮答完之后才发（与 sendMessage / compact 同族），而整轮没有上界：
+    // 这类方法根本不设时限（20s 会误报超时，任何一个更大的数字也只是把误报推后）。
     await vi.advanceTimersByTimeAsync(60000);
+    await vi.advanceTimersByTimeAsync(3600000);
     expect(
       page.posted.filter((message) => message.command === "btwError"),
     ).toHaveLength(0);
@@ -1121,7 +1122,7 @@ describe("remote page shim", () => {
     expect(page.posted).toContainEqual({ command: "startStreaming" });
   });
 
-  test("a turn that outlives the request budget is not reported as a failed send", async () => {
+  test("a turn has no reply budget at all, so no length of silence is a failed send", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { page } = await openPage();
 
@@ -1137,45 +1138,42 @@ describe("remote page shim", () => {
     await flush();
 
     // `sendMessage`'s reply is sent when the whole turn is over, and a turn has
-    // no upper bound: it loops through tools, and it parks indefinitely on an
-    // approval nobody has answered yet. So neither the read budget nor the much
-    // longer turn budget arriving means anything went wrong.
+    // no upper bound: it loops through tools for as long as the work takes — hours,
+    // if that is what the work is — and it parks indefinitely on an approval
+    // nobody has answered yet. So there is no budget to outlive: not the read
+    // one, not any turn one. Every step below must leave the conversation alone.
     await vi.advanceTimersByTimeAsync(20000);
     await vi.advanceTimersByTimeAsync(300000);
+    await vi.advanceTimersByTimeAsync(3600000);
 
     expect(
       page.posted.filter((message) => message.command === "updateErrorBlock"),
     ).toHaveLength(0);
-    // Nothing for the user to act on, but not swallowed either — the log line is
-    // the only place this leaves a trace.
-    expect(warn.mock.calls.flat().join(" ")).toContain("sendMessage 没有回执");
+    // Not even a console trace: there is nothing wrong to report.
+    expect(warn.mock.calls.flat().join(" ")).not.toContain("sendMessage");
     warn.mockRestore();
   });
 
-  test("a send with no reply and no turn says so in its own words", async () => {
+  test("a send whose reply is lost is not reported either — not even with no turn running", async () => {
     const { page } = await openPage();
 
     page.api.postMessage({ command: "sendMessage", text: "hi" });
     await flush();
 
-    // No reply ever comes and no turn starts, so nothing here proves the message
-    // landed: the page must say something. But not 「中继或电脑侧没有响应」 — that
-    // describes a failure that did not happen, and it is the line users resend
-    // on because it reads as 「没发出去」.
-    //
-    // It also says it on the *turn* budget rather than the read one: a turn can
-    // legitimately stay silent this long, so 20s is not yet evidence of anything.
+    // The reply is a one-shot frame: if the link drops between the request and the
+    // end of the turn, it is gone for good (neither end re-delivers it), and the
+    // entry simply never settles. That silence used to be reported as 「还没有回执」,
+    // which reads as 「没发出去」 and is the line users resend on — so the turn one
+    // never happened. It must stay silent on both budgets now that the turn one
+    // is gone.
     await vi.advanceTimersByTimeAsync(20000);
+    await vi.advanceTimersByTimeAsync(300000);
+    await vi.advanceTimersByTimeAsync(3600000);
+
     expect(
       page.posted.filter((message) => message.command === "updateErrorBlock"),
     ).toHaveLength(0);
-
-    await vi.advanceTimersByTimeAsync(300000);
-    const error = page.posted.find(
-      (message) => message.command === "updateErrorBlock",
-    );
-    expect(String(error?.error)).toContain("还没有回执");
-    expect(String(error?.error)).not.toContain("没有响应");
+    expect(document.getElementById("remote-status")?.textContent).toBeFalsy();
   });
 
   test("a control指令 that never gets a reply says so instead of failing silently", async () => {
