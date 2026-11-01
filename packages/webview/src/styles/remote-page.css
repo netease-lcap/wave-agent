@@ -88,6 +88,19 @@
     line-height: 20px;
   }
 
+  /* 工具错误信息也归辅助档（用户 2026-11-01：「遥控页面上这个错误的字号有点大，
+     我希望它的字号跟那个普通 short result 的字号差不多」）：base `.tool-error`
+     只声明颜色/斜体/`max-height`，**没有 `font-size`**，于是从 `body` 继承本档的
+     阅读主体 15px —— 比同一工具名下的 short result（上面那组的 13px）还大一号。
+     错误与 short result 同属工具名下的一行说明，故一并落到 13px；行高跟
+     `.tool-result-block` 的 1.4 走，与 short result 同一个节奏（13×1.4=18.2px）。
+     `.tool-error pre` 只有 `font-family/font-style: inherit`，随容器一起变；
+     `max-height:200px; overflow-y:auto` 不变，行高变小只影响可见行数。 */
+  [data-remote-page] .tool-error {
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
   /* 次级信息与代码角色：弹窗次级行、路径与预览、命令行与输出、菜单项 */
   [data-remote-page]
     :is(
