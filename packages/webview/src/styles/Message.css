@@ -299,6 +299,14 @@
   color: var(--vscode-descriptionForeground);
   font-style: italic;
   margin-top: 4px;
+  /* 与 short result 同档（用户 2026-11-01：「插前端也要修」）：错误信息是同一工具
+     名下的一行辅助说明，原先这里**没有 font-size**，于是从 body 继承正文 13px，
+     比它下面那行正常结果（`.result-raw` / `.tool-result-block` 11px）还大一号。
+     行高跟 `.tool-result-block` 的 1.4 走，同字号下节奏一致（11×1.4=15.4px）。
+     桌面端（`host-desktop.css` 12/20）与远控手机档（`remote-page.css` 13/18.2）
+     各有特异性更高的覆写，这里的值只落在插件端。 */
+  font-size: 11px;
+  line-height: 1.4;
   max-height: 200px;
   overflow-y: auto;
   white-space: pre-wrap;
