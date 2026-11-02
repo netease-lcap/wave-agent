@@ -33,6 +33,7 @@ import {
 import { getWorkspaceDiff } from "../../src/utils/workspaceDiff.js";
 import type { WorkspaceDiffResult } from "../../src/utils/workspaceDiff.js";
 import { installGitCredentialHelper } from "../../src/utils/gitCredentialHelper.js";
+import { logger } from "../../src/utils/logger.js";
 
 // Mock the Agent SDK
 vi.mock("wave-agent-sdk");
@@ -45,12 +46,21 @@ vi.mock("node:child_process", async (importOriginal) => {
   };
 });
 
-vi.mock("../../src/utils/worktree.js", () => ({
-  createWorktree: vi.fn(),
-  deriveWorktreeInfo: vi.fn(),
-  getWorktreeChanges: vi.fn(),
-  removeWorktree: vi.fn(),
-}));
+vi.mock("../../src/utils/worktree.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../src/utils/worktree.js")>();
+  return {
+    // `worktreeCreationBranch` (which branch a worktree at a given path was
+    // created on) stays real: it is pure, and it is the fallback the bridge
+    // falls back to when no snapshot exists — stubbing it would let the
+    // regression tests pass without ever naming a branch.
+    ...actual,
+    createWorktree: vi.fn(),
+    deriveWorktreeInfo: vi.fn(),
+    getWorktreeChanges: vi.fn(),
+    removeWorktree: vi.fn(),
+  };
+});
 
 // The diff service shells out to real git; the bridge only has to pass the
 // workdir/commit through, so the service itself is stubbed here and covered by
@@ -1777,10 +1787,13 @@ test("destroy with unknown sessionId is a no-op", async () => {
 
 // ── destroy --remove-worktree (remote page deletion) ──────────────
 
+/** A wave-created worktree: `<repoRoot>/.wave/worktrees/<name>`, on `worktree-<name>`. */
 const DERIVED_WORKTREE = {
-  path: "/repo/.wave/worktrees/login",
+  path: path.join(REPO_ROOT, ".wave", "worktrees", "login"),
+  // `deriveWorktreeInfo` reads the worktree's HEAD, so this is whatever it has
+  // checked out now — not the branch it was created on.
   branch: "wave/login",
-  repoRoot: "/repo",
+  repoRoot: REPO_ROOT,
   hookBased: false,
 };
 
@@ -1812,10 +1825,13 @@ test("destroy removes the session's worktree, after the agent is destroyed", asy
   );
 
   expect(deriveWorktreeInfo).toHaveBeenCalledWith(DERIVED_WORKTREE.path);
+  // `worktree-login`, not `DERIVED_WORKTREE.branch`: the latter is the
+  // worktree's HEAD, and the branch wave created for this path is the one
+  // removal deletes (see the "which branch gets deleted" cases below).
   expect(removeWorktree).toHaveBeenCalledWith(
     expect.objectContaining({
       path: DERIVED_WORKTREE.path,
-      branch: DERIVED_WORKTREE.branch,
+      branch: "worktree-login",
       repoRoot: DERIVED_WORKTREE.repoRoot,
       hookBased: false,
     }),
@@ -1871,6 +1887,174 @@ test("destroy reports worktreeRemoved: false when the directory survives removal
   expect(reply).toEqual({ worktreeRemoved: false });
 });
 
+// ── which branch destroy deletes ─────────────────────────────────
+//
+// The worktree stops being a record of its own branch the moment the agent runs
+// `git checkout` inside it: `deriveWorktreeInfo` reads the worktree's HEAD, so
+// it then names a branch the user owns. Deleting that one is unrecoverable and
+// leaves `worktree-<name>` behind as the orphan — the opposite of the intent.
+
+test("destroy deletes the branch the worktree was created on, not one checked out inside it", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+  // An in-session `git checkout some-other-branch` moved the worktree's HEAD.
+  vi.mocked(deriveWorktreeInfo).mockReturnValue({
+    ...DERIVED_WORKTREE,
+    branch: "some-other-branch",
+  });
+  vi.mocked(existsSync).mockReturnValue(false);
+
+  const init = await bridge.handleRequest("initialize", {
+    workdir: DERIVED_WORKTREE.path,
+  });
+  const sessionId = (init as { sessionId: string }).sessionId;
+  await bridge.handleRequest("destroy", { removeWorktree: true }, sessionId);
+
+  expect(removeWorktree).toHaveBeenCalledWith(
+    expect.objectContaining({ branch: "worktree-login" }),
+  );
+  // The checked-out branch survives: its commits may be reachable from nowhere
+  // else (aligned with Claude Code).
+  expect(removeWorktree).not.toHaveBeenCalledWith(
+    expect.objectContaining({ branch: "some-other-branch" }),
+  );
+});
+
+test("destroy deletes no branch when neither a snapshot nor the path layout can name one", async () => {
+  // A hand-made worktree (`git worktree add ../linked feat`): no
+  // `.wave/worktrees/<name>` layout to derive `worktree-<name>` from, and the
+  // session is re-attached from a legacy transcript whose header carries no
+  // `gitBranch`. Nothing records the creation branch, so nothing is deleted —
+  // least of all the branch that happens to be checked out.
+  const worktreePath = path.join(REPO_ROOT, "linked", "feat");
+  const transcript = path.join(
+    "/tmp",
+    `wave-agentbridge-legacy-${process.pid}-${Math.random().toString(36).slice(2)}.jsonl`,
+  );
+  await writeFile(
+    transcript,
+    `${JSON.stringify({ type: "metadata", workdir: worktreePath })}\n`,
+  );
+  const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+  try {
+    const { bridge } = createBridge();
+    vi.mocked(Agent.create).mockResolvedValue(
+      createMockAgent({ sessionFilePath: transcript }),
+    );
+    vi.mocked(deriveWorktreeInfo).mockReturnValue({
+      path: worktreePath,
+      branch: "release-1.6",
+      repoRoot: REPO_ROOT,
+      hookBased: false,
+    });
+    vi.mocked(existsSync).mockReturnValue(false);
+
+    const init = await bridge.handleRequest("initialize", {
+      workdir: REPO_ROOT,
+      restoreSessionId: "old-session-id",
+    });
+    const sessionId = (init as { sessionId: string }).sessionId;
+    await bridge.handleRequest("destroy", { removeWorktree: true }, sessionId);
+
+    expect(removeWorktree).toHaveBeenCalledWith(
+      expect.objectContaining({ path: worktreePath, branch: "" }),
+    );
+    expect(warnSpy.mock.calls.map((c) => c[0]).join(" ")).toContain(
+      "keeping every branch",
+    );
+  } finally {
+    warnSpy.mockRestore();
+    await rm(transcript, { force: true });
+  }
+});
+
+test("destroy uses the branch recorded at creation when the session is re-attached from disk", async () => {
+  // Same hand-made worktree, but the transcript header recorded the branch it
+  // was created on (`gitBranch`) — the only surviving record of it after a
+  // daemon restart, since HEAD has since moved to the user's branch.
+  const worktreePath = path.join(REPO_ROOT, "linked", "feat");
+  const transcript = path.join(
+    "/tmp",
+    `wave-agentbridge-branch-${process.pid}-${Math.random().toString(36).slice(2)}.jsonl`,
+  );
+  await writeFile(
+    transcript,
+    `${JSON.stringify({
+      type: "metadata",
+      workdir: worktreePath,
+      createdAt: "2026-09-01T00:00:00.000Z",
+      gitBranch: "feat",
+    })}\n`,
+  );
+  try {
+    const { bridge } = createBridge();
+    vi.mocked(Agent.create).mockResolvedValue(
+      createMockAgent({ sessionFilePath: transcript }),
+    );
+    vi.mocked(deriveWorktreeInfo).mockReturnValue({
+      path: worktreePath,
+      branch: "release-1.6",
+      repoRoot: REPO_ROOT,
+      hookBased: false,
+    });
+    vi.mocked(existsSync).mockReturnValue(false);
+
+    const init = await bridge.handleRequest("initialize", {
+      workdir: REPO_ROOT,
+      restoreSessionId: "old-session-id",
+    });
+    const sessionId = (init as { sessionId: string }).sessionId;
+    // The snapshot is part of the session's identity, like createdWorkdir — the
+    // CLI's own `destroy --remove-worktree` reads it from here.
+    const info = (await bridge.handleRequest(
+      "getSessionInfo",
+      {},
+      sessionId,
+    )) as {
+      sessionCwd: string;
+      worktreeBranch?: string;
+    };
+    expect(info.sessionCwd).toBe(worktreePath);
+    expect(info.worktreeBranch).toBe("feat");
+
+    await bridge.handleRequest("destroy", { removeWorktree: true }, sessionId);
+
+    expect(removeWorktree).toHaveBeenCalledWith(
+      expect.objectContaining({ branch: "feat" }),
+    );
+    expect(removeWorktree).not.toHaveBeenCalledWith(
+      expect.objectContaining({ branch: "release-1.6" }),
+    );
+  } finally {
+    await rm(transcript, { force: true });
+  }
+});
+
+test("destroy uses the worktree's own branch for a fresh session created inside it", async () => {
+  // The snapshot is taken at initialize, so for a fresh session HEAD has not had
+  // the chance to move yet and is a legitimate record of the creation branch.
+  const worktreePath = path.join(REPO_ROOT, "linked", "feat");
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+  vi.mocked(deriveWorktreeInfo).mockReturnValue({
+    path: worktreePath,
+    branch: "feat",
+    repoRoot: REPO_ROOT,
+    hookBased: false,
+  });
+  vi.mocked(existsSync).mockReturnValue(false);
+
+  const init = await bridge.handleRequest("initialize", {
+    workdir: worktreePath,
+  });
+  const sessionId = (init as { sessionId: string }).sessionId;
+  await bridge.handleRequest("destroy", { removeWorktree: true }, sessionId);
+
+  expect(removeWorktree).toHaveBeenCalledWith(
+    expect.objectContaining({ branch: "feat" }),
+  );
+});
+
 test("getSessionWorktreeChanges counts the session's own worktree", async () => {
   const { bridge } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
@@ -1917,21 +2101,21 @@ test("listDaemonSessions reports a worktree only for worktree sessions", async (
     .mockResolvedValueOnce(createMockAgent({ sessionId: "s-worktree" }))
     .mockResolvedValueOnce(createMockAgent({ sessionId: "s-plain" }));
   vi.mocked(deriveWorktreeInfo).mockImplementation((dir) =>
-    dir === "/repo/.wave/worktrees/login" ? DERIVED_WORKTREE : undefined,
+    dir === DERIVED_WORKTREE.path ? DERIVED_WORKTREE : undefined,
   );
 
   await bridge.handleRequest("initialize", {
-    workdir: "/repo/.wave/worktrees/login",
+    workdir: DERIVED_WORKTREE.path,
   });
-  await bridge.handleRequest("initialize", { workdir: "/repo" });
+  await bridge.handleRequest("initialize", { workdir: REPO_ROOT });
 
   const reply = (await bridge.handleRequest("listDaemonSessions", {})) as {
     sessions: Array<{ sessionCwd: string; worktree?: unknown }>;
   };
   const worktreeRow = reply.sessions.find(
-    (row) => row.sessionCwd === "/repo/.wave/worktrees/login",
+    (row) => row.sessionCwd === DERIVED_WORKTREE.path,
   );
-  const plainRow = reply.sessions.find((row) => row.sessionCwd === "/repo");
+  const plainRow = reply.sessions.find((row) => row.sessionCwd === REPO_ROOT);
 
   expect(worktreeRow?.worktree).toEqual(DERIVED_WORKTREE);
   // Absent, not `null`/"false": an older page ignores it, and "not a worktree"

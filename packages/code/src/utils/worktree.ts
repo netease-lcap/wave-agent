@@ -21,6 +21,12 @@ const execFileAsync = promisify(execFile);
 export interface WorktreeSession {
   name: string;
   path: string;
+  /**
+   * The branch the worktree was CREATED on — `worktree-<name>` for a worktree
+   * wave created, and what callers must record and hand back to
+   * `removeWorktree`. It is not read back from the worktree: an agent may have
+   * checked another branch out in there (see `removeWorktree`).
+   */
   branch: string;
   repoRoot: string;
   hasUncommittedChanges: boolean;
@@ -38,6 +44,12 @@ export interface WorktreeSession {
 
 const VALID_WORKTREE_SLUG_SEGMENT = /^[a-zA-Z0-9._-]+$/;
 const MAX_WORKTREE_SLUG_LENGTH = 64;
+
+/** Where `createWorktree` puts worktrees, relative to the repo root. */
+const WORKTREE_PARENT_SEGMENTS = [".wave", "worktrees"];
+
+/** Branch prefix `createWorktree` gives a worktree it creates. */
+const WORKTREE_BRANCH_PREFIX = "worktree-";
 
 /**
  * Validate a worktree name before any side effects. Names are slash-separated
@@ -164,8 +176,8 @@ async function createWorktreeInternal(
   options?: { baseRef?: "fresh" | "head"; baseBranch?: string },
 ): Promise<WorktreeSession> {
   const repoRoot = getGitMainRepoRoot(cwd);
-  const worktreePath = path.join(repoRoot, ".wave", "worktrees", name);
-  const branchName = `worktree-${name}`;
+  const worktreePath = path.join(repoRoot, ...WORKTREE_PARENT_SEGMENTS, name);
+  const branchName = `${WORKTREE_BRANCH_PREFIX}${name}`;
   const useHead = options?.baseRef === "head";
   const resolvedBaseBranch =
     options?.baseBranch ?? (useHead ? "HEAD" : getDefaultRemoteBranch(cwd));
@@ -410,10 +422,19 @@ export interface WorktreeChanges {
 /**
  * The linked worktree a directory sits in, derived from the filesystem only.
  * Same field semantics as `createWorktree`'s result, so a caller can hand it
- * straight to `removeWorktree`.
+ * straight to `removeWorktree` — except for `branch`, which is read off the
+ * worktree's HEAD and is therefore **the branch it has checked out now**, not
+ * the branch it was created on. Removal must pass the creation branch (the
+ * session's snapshot, or `worktreeCreationBranch`); see `removeWorktree`.
  */
 export interface DerivedWorktree {
   path: string;
+  /**
+   * The branch checked out in the worktree right now (`<gitdir>/HEAD`), or `""`
+   * for a detached HEAD. Informational: never use it as "the worktree's branch"
+   * for deletion — an agent may have checked a branch of the user's out in
+   * there.
+   */
   branch: string;
   repoRoot: string;
   hookBased: boolean;
@@ -505,6 +526,36 @@ export function deriveWorktreeInfo(
 }
 
 /**
+ * The branch `createWorktree` created for a worktree, recovered from where that
+ * worktree sits: `<repoRoot>/.wave/worktrees/<name>` is on
+ * `worktree-<name>` (see `createWorktreeInternal`).
+ *
+ * This exists because git keeps no record of it. `git worktree list
+ * --porcelain` and `<gitdir>/HEAD` both report the branch a worktree has
+ * checked out *at the moment you ask*, so once an agent runs `git checkout
+ * <something-else>` inside the worktree they name that branch instead — the
+ * branch the user owns, possibly holding commits reachable from nowhere else.
+ * A removal must delete the branch wave created, and the path is the only
+ * surviving record of it besides a caller's own snapshot.
+ *
+ * Returns `undefined` for a worktree outside wave's directory (a hand-made
+ * `git worktree add`, a hook-managed one): its branch is not wave's to name.
+ */
+export function worktreeCreationBranch(
+  worktree: Pick<DerivedWorktree, "path" | "repoRoot">,
+): string | undefined {
+  if (!worktree.repoRoot) return undefined;
+  const parentDir = `${path.join(worktree.repoRoot, ...WORKTREE_PARENT_SEGMENTS)}${path.sep}`;
+  if (!worktree.path.startsWith(parentDir)) return undefined;
+  const name = path
+    .relative(parentDir, worktree.path)
+    .split(path.sep)
+    .filter(Boolean)
+    .join("/");
+  return name ? `${WORKTREE_BRANCH_PREFIX}${name}` : undefined;
+}
+
+/**
  * Count what deleting a worktree would throw away, so the caller can warn
  * before it happens. Both counts are best-effort: an unknown base branch (never
  * fetched, branch rewritten) only zeroes the commit count, and a worktree that
@@ -547,8 +598,11 @@ export async function getWorktreeChanges(
 }
 
 /**
- * Remove a git worktree and its associated branch
- * @param session Worktree session details
+ * Remove a git worktree and the branch it was created on.
+ * @param session Worktree session details. `branch` must be the branch the
+ *   worktree was CREATED on (a snapshot the caller recorded at creation time,
+ *   or `worktreeCreationBranch`) — never the branch that directory happens to
+ *   have checked out, which an in-session `git checkout` can change.
  *
  * Removal is best-effort: `git worktree remove --force` deletes the worktree
  * metadata before the working directory, and on Windows its recursive deletion
@@ -645,16 +699,26 @@ export async function removeWorktree(session: WorktreeSession): Promise<void> {
   // still on disk, and the branch is the only ref still leading back to it.
   if (fs.existsSync(session.path)) {
     logger.warn(
-      `Worktree directory survived removal — keeping ${session.branch} so the ` +
-        `leftover checkout stays reachable: path=${session.path} ` +
-        `residue=${probeResidue(session.path)}`,
+      `Worktree directory survived removal — keeping ` +
+        `${session.branch || "its branches"} so the leftover checkout stays ` +
+        `reachable: path=${session.path} residue=${probeResidue(session.path)}`,
     );
     return;
   }
 
   // Delete the worktree's own branch. Branches the user checked out inside the
   // worktree are never touched — they may hold commits that are not reachable
-  // from anywhere else (aligned with Claude Code).
+  // from anywhere else (aligned with Claude Code). That is why `session.branch`
+  // has to be the creation-time branch: reading it back from the worktree (its
+  // HEAD) would name whatever was checked out last, i.e. exactly the branch
+  // that must survive. An unknown branch deletes nothing at all.
+  if (!session.branch) {
+    logger.warn(
+      `No branch recorded for the worktree at ${session.path} — keeping every ` +
+        `branch rather than deleting the one it had checked out`,
+    );
+    return;
+  }
   try {
     await execFileAsync("git", ["branch", "-D", session.branch], {
       cwd: repoRoot,

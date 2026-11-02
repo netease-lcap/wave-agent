@@ -44,6 +44,7 @@ import {
   type ToolPermissionContext,
 } from "wave-agent-sdk";
 import { SocketClient } from "./socketClient.js";
+import { worktreeCreationBranch } from "../utils/worktree.js";
 
 /** Fixed default daemon socket (spec: 默认 socket 固定，无 --socket 覆盖). */
 export const DEFAULT_DAEMON_SOCKET = path.join(
@@ -1286,28 +1287,33 @@ function runGit(cwd: string, args: string[]): Promise<string> {
 /**
  * Resolve the worktree hosting `sessionCwd` for removal, mirroring the
  * values protocol createWorktree returns: worktree path via
- * `git rev-parse --show-toplevel`, branch via `git branch --show-current`, and
- * repoRoot = the MAIN repo root (first entry of `git worktree list` — where
+ * `git rev-parse --show-toplevel` and repoRoot = the MAIN repo root (where
  * git worktree/branch operations run from). Refuses to remove the main working
  * tree: a plain session is not a worktree, and the protocol's path-containment
  * check would pass trivially while removeWorktree's fs.rmSync fallback could
  * delete the whole repository.
+ *
+ * The branch comes from `createdBranch` (the session's creation-time snapshot,
+ * see `SessionEntry.createdWorktreeBranch`) or from the worktree's path layout
+ * — never from `git branch --show-current`. That last one answers "what is
+ * checked out here now", and an agent that ran `git checkout <other-branch>`
+ * inside the worktree makes it name the user's branch: deleting that would
+ * throw away commits reachable from nowhere else while the `worktree-<name>`
+ * branch stays behind as the orphan (aligned with Claude Code, which deletes
+ * the branch it recorded when it created the worktree).
  */
-async function resolveWorktreeForRemoval(sessionCwd: string): Promise<{
+async function resolveWorktreeForRemoval(
+  sessionCwd: string,
+  createdBranch?: string,
+): Promise<{
   path: string;
   branch: string;
   repoRoot: string;
   hookBased: boolean;
 }> {
   let worktreePath: string;
-  let branch: string;
   try {
-    const [toplevel, current] = await Promise.all([
-      runGit(sessionCwd, ["rev-parse", "--show-toplevel"]),
-      runGit(sessionCwd, ["branch", "--show-current"]),
-    ]);
-    worktreePath = toplevel;
-    branch = current;
+    worktreePath = await runGit(sessionCwd, ["rev-parse", "--show-toplevel"]);
   } catch {
     throw new Error(
       `Cannot remove worktree: ${sessionCwd} is not inside a git repository`,
@@ -1324,6 +1330,12 @@ async function resolveWorktreeForRemoval(sessionCwd: string): Promise<{
   // removal never runs `git worktree remove` on a hook-managed worktree.
   const config = loadMergedWaveConfig(repoRoot);
   const hookBased = hasWorktreeCreateHook(config?.hooks);
+  // Empty when neither record can name the branch: removal then deletes the
+  // worktree and keeps every branch, rather than guessing at one.
+  const branch =
+    createdBranch ||
+    worktreeCreationBranch({ path: worktreePath, repoRoot }) ||
+    "";
   return { path: worktreePath, branch, repoRoot, hookBased };
 }
 
@@ -1349,15 +1361,23 @@ export async function daemonDestroyCommand(
         "getSessionInfo",
         undefined,
         sessionId,
-      )) as { sessionCwd: string };
-      const wt = await resolveWorktreeForRemoval(info.sessionCwd);
+      )) as { sessionCwd: string; worktreeBranch?: string };
+      const wt = await resolveWorktreeForRemoval(
+        info.sessionCwd,
+        info.worktreeBranch,
+      );
       await client.request("removeWorktree", {
         path: wt.path,
         branch: wt.branch,
         repoRoot: wt.repoRoot,
         hookBased: wt.hookBased,
       });
-      console.log(`Removed worktree: ${wt.path} (branch: ${wt.branch})`);
+      // An empty branch means nothing could name the branch the worktree was
+      // created on — the worktree is gone and every branch was kept, which the
+      // caller must be able to see rather than guess at.
+      console.log(
+        `Removed worktree: ${wt.path} (branch: ${wt.branch || "none deleted"})`,
+      );
     }
     await client.request("destroy", undefined, sessionId);
     console.log(`Destroyed session: ${sessionId}`);
