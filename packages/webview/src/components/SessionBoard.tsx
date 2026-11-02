@@ -274,6 +274,7 @@ export const SessionBoard: React.FC<SessionBoardProps> = ({
           position="bottom"
           className="session-board-filter-tooltip"
           disabled={!filterOverflow}
+          keyboardFocusOnly
         >
           <div
             className="session-board-filter"

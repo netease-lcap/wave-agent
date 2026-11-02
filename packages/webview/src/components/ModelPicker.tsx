@@ -143,7 +143,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
           「Icon-only buttons require an accessible name and a visible tooltip」）。
           文字档不包，避免给常规态多套一层（保持零位移）。 */}
       {compact ? (
-        <Tooltip text={`切换模型 · ${label}`} position="top">
+        <Tooltip text={`切换模型 · ${label}`} position="top" keyboardFocusOnly>
           {triggerButton}
         </Tooltip>
       ) : (

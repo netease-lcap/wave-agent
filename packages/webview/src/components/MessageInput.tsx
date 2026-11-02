@@ -2144,7 +2144,10 @@ export const MessageInput = forwardRef<
                     只有 aria-label，看不到可见提示。用既有 Tooltip（气泡向上，
                     桌面端 4px 间距），包裹层是 inline-flex 且 flex-shrink 0，
                     按钮盒与 4px 组内间距逐值不变。 */}
-                <Tooltip text="添加" position="top">
+                {/* 1102 同族：`keyboardFocusOnly` —— 选中菜单项 / Esc 时
+                    `useRovingMenu` 把焦点交还这颗按钮，鼠标用户会看到一个悬在
+                    菜单原位、指针没进去过的气泡（拿不到 mouseleave）。 */}
+                <Tooltip text="添加" position="top" keyboardFocusOnly>
                   <button
                     type="button"
                     ref={plusMenuButtonRef}
@@ -2292,6 +2295,7 @@ export const MessageInput = forwardRef<
                 <Tooltip
                   text={`权限：${permissionModeLabel(permissionMode)}`}
                   position="top"
+                  keyboardFocusOnly
                 >
                   {permTriggerButton}
                 </Tooltip>
