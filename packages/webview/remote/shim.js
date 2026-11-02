@@ -312,6 +312,12 @@
   var sessionId = CONFIG.sessionId;
   /** False until the page has chosen a session once: `?session=` only wins then. */
   var picked = false;
+  /**
+   * The machine list as last painted. A delete repaints from this rather than
+   * re-reading the relay: the row is gone the moment the call returns, and a
+   * second read would race the next confirmation (spec 场景 9).
+   */
+  var machineHosts = [];
   /** Bumped by every pull and by every switch, so a reply that a switch
    *  overtook can be recognized and dropped instead of landing in the new view. */
   var pullToken = 0;
@@ -1359,6 +1365,12 @@
     "border:1px solid var(--vscode-widget-border,#313131);border-radius:8px;" +
     "cursor:pointer;";
 
+  /** One machine row: the row itself connects, the button on it deletes. */
+  var MACHINE_ROW_STYLE =
+    "display:flex;align-items:center;gap:12px;width:100%;padding:12px 4px;" +
+    "font:inherit;color:inherit;text-align:left;background:none;cursor:pointer;" +
+    "border-bottom:1px solid var(--vscode-widget-border,#313131);";
+
   /**
    * The machine dialog's shell: title, the list slot, the home-screen guide and
    * 取消 when a machine is already connected. It returns that slot, which
@@ -1391,7 +1403,10 @@
     );
     panel.appendChild(title);
     var subtitle = document.createElement("div");
-    subtitle.textContent = "同一账号下开启了远程控制的机器，选一台连上。";
+    // The 删除 rule lives in the subtitle, not in a per-row tooltip: this page's
+    // main reader is a phone, where a hover title never shows (spec 场景 10).
+    subtitle.textContent =
+      "同一账号下开启了远程控制的机器，选一台连上。离线的电脑可以删除，正在使用的请先在那台机器上关闭远程控制。";
     subtitle.setAttribute(
       "style",
       "font-size:13px;opacity:0.7;margin-bottom:8px;",
@@ -1460,6 +1475,7 @@
       }
       return;
     }
+    machineHosts = hosts;
     if (!hosts.length) {
       // An empty account is a state, not a blank screen: the dialog says what is
       // missing and where to switch it on (spec 场景 4).
@@ -1480,23 +1496,24 @@
       list.appendChild(machineRow(hosts[i]));
   }
 
-  /** One machine in the list: name, platform, and its online state. */
+  /**
+   * One machine in the list: name, platform, online state, and 删除.
+   *
+   * A `<div>` rather than the `<button>` this used to be: a button may not hold
+   * another button, and the row now carries two actions (connect here, delete
+   * there). The row keeps the click, the 删除 button stops it (spec 场景 9).
+   */
   function machineRow(host) {
-    var row = document.createElement("button");
-    row.type = "button";
-    row.setAttribute(
-      "style",
-      "display:flex;align-items:center;justify-content:space-between;gap:12px;" +
-        "width:100%;padding:12px 4px;font:inherit;color:inherit;text-align:left;" +
-        "background:none;border:none;" +
-        "border-bottom:1px solid var(--vscode-widget-border,#313131);cursor:pointer;",
-    );
+    var row = document.createElement("div");
+    row.id = "remote-machine-row-" + host.id;
+    row.setAttribute("style", MACHINE_ROW_STYLE);
     var name = document.createElement("span");
     name.textContent = host.name || host.id;
     name.setAttribute(
       "style",
-      "font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;",
+      "flex:1;min-width:0;font-size:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;",
     );
+    row.appendChild(name);
     var meta = document.createElement("span");
     meta.setAttribute(
       "style",
@@ -1520,12 +1537,192 @@
       .filter(Boolean)
       .join(" · ");
     meta.appendChild(label);
-    row.appendChild(name);
     row.appendChild(meta);
+    row.appendChild(machineDeleteButton(host));
     row.onclick = function () {
       adoptHost(host);
     };
     return row;
+  }
+
+  /**
+   * The row's 删除 button.
+   *
+   * Only an **offline** machine may be deleted (spec 场景 10): revoking a row
+   * makes the relay close that hostId's computer-side link *and* every phone's
+   * subscription to it with a 4003, so the machine this page may remove is the
+   * one nobody can be looking at. The rule is also in the dialog subtitle — a
+   * disabled button alone would say nothing on a phone.
+   */
+  function machineDeleteButton(host) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.id = "remote-machine-delete-" + host.id;
+    button.textContent = "删除";
+    // Only an explicit `online: false` opens the door (spec 场景 9 / 10). A
+    // payload that does not say is not evidence of offline — the same rule
+    // `tokenExpired` applies to a missing `expiresAt` — and the two ways to be
+    // wrong are not symmetric: a wrongly-disabled button leaves the row where
+    // it is, while a wrongly-enabled one closes a machine that is actually up,
+    // together with every phone watching it.
+    button.disabled = host.online !== false;
+    button.setAttribute(
+      "style",
+      "flex:none;padding:4px 10px;font:inherit;font-size:13px;color:inherit;" +
+        "background:none;border:1px solid var(--vscode-widget-border,#313131);" +
+        "border-radius:8px;" +
+        (button.disabled ? "opacity:0.4;cursor:default;" : "cursor:pointer;"),
+    );
+    if (button.disabled)
+      button.setAttribute(
+        "title",
+        "这台电脑正在使用远程控制，请先在那台机器上关闭后再删除",
+      );
+    button.onclick = function (event) {
+      // The row below means "connect to this machine"; a delete must not.
+      if (event && event.stopPropagation) event.stopPropagation();
+      if (button.disabled) return;
+      askDeleteMachine(host);
+    };
+    return button;
+  }
+
+  /**
+   * Second step for a delete: the row asks in place.
+   *
+   * No second overlay — this dialog already owns the screen, and a nested one
+   * would have to re-earn the same dismissal and stacking rules. 取消 restores
+   * the row from `machineHosts`, so nothing has to be remembered per row.
+   */
+  function askDeleteMachine(host) {
+    var row = document.getElementById("remote-machine-row-" + host.id);
+    if (!row) return;
+    row.textContent = "";
+    row.onclick = null;
+    row.setAttribute(
+      "style",
+      MACHINE_ROW_STYLE + "flex-wrap:wrap;cursor:default;",
+    );
+    var question = document.createElement("div");
+    question.id = "remote-machine-delete-question";
+    question.textContent =
+      "删除「" +
+      (host.name || host.id) +
+      "」？这台电脑下次开启远程控制后还会回到列表。";
+    question.setAttribute(
+      "style",
+      "flex:1 1 100%;font-size:14px;line-height:1.5;",
+    );
+    row.appendChild(question);
+    var cancel = pickerButton("取消");
+    cancel.id = "remote-machine-delete-cancel";
+    cancel.onclick = function (event) {
+      if (event && event.stopPropagation) event.stopPropagation();
+      repaintMachines();
+    };
+    row.appendChild(cancel);
+    var confirm = pickerButton("删除");
+    confirm.id = "remote-machine-delete-confirm";
+    confirm.onclick = function (event) {
+      if (event && event.stopPropagation) event.stopPropagation();
+      deleteMachine(host);
+    };
+    row.appendChild(confirm);
+  }
+
+  /**
+   * Revoke one machine's row on the relay (`DELETE /api/relay/hosts/:id`).
+   *
+   * Revoking is **not** a blacklist (spec 场景 9): the row turns `revoked`, the
+   * list stops returning it, and that machine comes straight back the next time
+   * remote control is switched on there — registration reuses a revoked row and
+   * flips it back to `active`. That is exactly what this dialog is for: clearing
+   * out machines that are not in use any more, not locking them out.
+   */
+  function deleteMachine(host) {
+    var list = document.getElementById("remote-machine-list");
+    // A progress line in the dialog's own slot, like the list read's.
+    if (list) paintMachineList(list, null, { text: "正在删除这台电脑…" });
+    withRenewal(function () {
+      return relayRest(HOSTS_PATH + "/" + encodeURIComponent(host.id), {
+        method: "DELETE",
+      });
+    })
+      .then(function () {
+        dropMachine(host);
+      })
+      .catch(function (err) {
+        // 404 is 「this account has no such row」 — already revoked from another
+        // tab, or never ours. The row is not on the relay in any case, a second
+        // call would answer the same way, and the next read of the list would
+        // not show it either — so it leaves exactly as a 204 takes it, rather
+        // than becoming a row whose 重试 can never work (spec 场景 9).
+        if (err && err.status === 404) return dropMachine(host);
+        // A 401 that survived the renewal is the login ladder's business, and
+        // that ladder already paints into this dialog (`pickerSurface`).
+        if (err && err.authRequired)
+          return hostsFetchFailed(err, pickerSurface(list));
+        if (!pickerOpen()) return;
+        paintMachineList(list, null, {
+          text: "删不掉这台电脑：" + ((err && err.message) || err),
+          actions: [
+            {
+              label: "重试",
+              onClick: function () {
+                deleteMachine(host);
+              },
+            },
+            { label: "返回列表", onClick: repaintMachines },
+          ],
+        });
+      });
+  }
+
+  /**
+   * The relay no longer has this row: forget it here too.
+   *
+   * Two handles can still be pointing at it, and both would be answered with a
+   * refusal the reader cannot act on: the remembered choice sends the next cold
+   * start at it (`unknown_host`, spec 场景 11), and the address may be pinned to
+   * it — that pin reconnects, and only ever gets the same `unknown_host` back.
+   */
+  function dropMachine(host) {
+    if (readStored(LAST_HOST_KEY) === host.id) writeStored(LAST_HOST_KEY, "");
+    var left = [];
+    for (var i = 0; i < machineHosts.length; i++)
+      if (machineHosts[i].id !== host.id) left.push(machineHosts[i]);
+    machineHosts = left;
+    if (CONFIG.hostId === host.id) {
+      // The page is pinned to the row that just went, so the pin goes with it
+      // and the reader lands back on the list (`chooseHost` re-reads it).
+      var url = new URL(window.location.href);
+      url.searchParams.delete("host");
+      url.searchParams.delete("session");
+      window.history.replaceState(null, "", url.toString());
+      CONFIG.hostId = "";
+      CONFIG.socketUrl = "";
+      resetMachineView();
+      chooseHost();
+      return;
+    }
+    if (pickerOpen())
+      paintMachineList(document.getElementById("remote-machine-list"), left);
+  }
+
+  /** Redraw the dialog's list from the last read (取消 / 返回列表). */
+  function repaintMachines() {
+    var list = document.getElementById("remote-machine-list");
+    if (list) paintMachineList(list, machineHosts);
+  }
+
+  /** One plain dialog button; ids are for the tests, which match on them. */
+  function pickerButton(label, id) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    if (id) button.id = id;
+    button.setAttribute("style", PICKER_BUTTON_STYLE);
+    return button;
   }
 
   /** Is the machine dialog up? Its id is the only handle on it (see `removePicker`). */
@@ -3505,7 +3702,13 @@
     });
   }
 
-  /** Relay REST with this page's credential; a 401 leaves as `authRequired`. */
+  /**
+   * Relay REST with this page's credential; a 401 leaves as `authRequired`.
+   *
+   * Any other refusal carries its status too (`err.status`): 「the row is not
+   * there」 and 「the call failed」 are different answers, and only one of them is
+   * worth a 重试 (see `deleteMachine`).
+   */
   function relayRest(path, init) {
     var options = init || {};
     options.headers = Object.assign(
@@ -3519,7 +3722,10 @@
         // this into one silent renewal and then the login page.
         throw Object.assign(new Error("unauthorized"), { authRequired: true });
       }
-      if (!response.ok) throw new Error("HTTP " + response.status);
+      if (!response.ok)
+        throw Object.assign(new Error("HTTP " + response.status), {
+          status: response.status,
+        });
       return response;
     });
   }
