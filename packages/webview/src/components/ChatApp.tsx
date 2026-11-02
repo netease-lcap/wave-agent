@@ -1415,13 +1415,22 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           payload: message.dirs,
         });
         break;
-      // 会话列表的两类标记（远控 Web 页）：远程 shim 在每次重读后整组重发，
-      // 「待确认」与「运行中」一起给（见 SET_SESSION_STATUS）。
+      // 会话列表的标记（远控 Web 页）：远程 shim 在每次重读后整组重发，四个集合
+      // 一次给全（见 SET_SESSION_STATUS）。**四个都要原样搬过去**——reducer 是整组
+      // 替换，少搬一个就等于把它清空：`worktrees` 丢了，删除确认卡就不说工作树、
+      // `removeWorktree` 变成 false（目录留在磁盘上）；`background` 丢了，「有后台
+      // 任务在跑」的蓝点永远不亮。打开列表页本身就会重读一次并收到这条报文，所以
+      // 漏一个字段是必现的，不是偶发。
       case "updateSessionStatus":
         if (!forThisPane(message)) break;
         dispatch({
           type: "SET_SESSION_STATUS",
-          payload: { waiting: message.waiting, running: message.running },
+          payload: {
+            waiting: message.waiting,
+            running: message.running,
+            background: message.background,
+            worktrees: message.worktrees,
+          },
         });
         break;
       // Web Push 开关的状态（远控 Web 页）：页面挂载时问一次，之后开 / 关各答一次，

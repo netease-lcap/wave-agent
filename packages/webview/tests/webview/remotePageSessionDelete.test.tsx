@@ -481,3 +481,96 @@ describe("remote page session delete", () => {
     expect(screen.queryByTestId("remote-session-deleted-banner")).toBeNull();
   });
 });
+
+/**
+ * 打开列表页本身就会**重读**一次（shim 的 `refreshSessionList` → 立刻回一条
+ * `updateSessionStatus`），所以「worktree 判定在真实页面上还在不在」必须按这条路径
+ * 验：只看 `setInitialState` 那份快照是验不到的 —— 快照里的 `worktrees` 会被后到的
+ * 广播整组替换掉，这正是线上失效（删会话不删工作树）的那一步。
+ */
+describe("remote page session delete after a marker broadcast", () => {
+  /** 模拟 shim `postSessionStatus()` 的真实报文：四个字段一次给全。 */
+  function broadcastStatus(overrides: {
+    waiting?: string[];
+    running?: string[];
+    background?: string[];
+    worktrees?: string[];
+  }) {
+    act(() => {
+      sendHostMessage(
+        fixtures.updateSessionStatus(
+          overrides.waiting ?? [],
+          overrides.running ?? [],
+          {
+            background: overrides.background ?? [],
+            worktrees: overrides.worktrees ?? [],
+          },
+        ),
+      );
+    });
+  }
+
+  it("still recognizes a worktree session after the refresh broadcast", () => {
+    const { vscode } = openPage({
+      waiting: [],
+      running: [],
+      worktrees: ["session-2"],
+    });
+
+    broadcastStatus({ worktrees: ["session-2"] });
+
+    vscode.postMessage.mockClear();
+    const card = openDeleteConfirm("session-2");
+
+    // 页面刚发出的 refreshSessionList 带回来的那份标记里，session-2 仍是 worktree：
+    // 卡片要说工作树那段（先问改动），按钮要写「与工作树」。
+    const asked = vscode.postMessage.mock.calls
+      .map((call) => call[0] as Record<string, unknown>)
+      .find((message) => message.command === "getSessionWorktreeChanges");
+    expect(asked).toMatchObject({ sessionId: "session-2" });
+    expect(
+      within(card).getByTestId("remote-session-delete-worktree-warning"),
+    ).toHaveTextContent("正在检查该 worktree 的改动…");
+    expect(
+      within(card).getByTestId("confirm-dialog-confirm"),
+    ).toHaveTextContent("删除会话与工作树");
+  });
+
+  it("sends removeWorktree: true for a worktree session after the broadcast", () => {
+    const { vscode } = openPage({
+      waiting: [],
+      running: [],
+      worktrees: ["session-2"],
+    });
+
+    broadcastStatus({ worktrees: ["session-2"] });
+
+    const card = openDeleteConfirm("session-2");
+    const asked = vscode.postMessage.mock.calls
+      .map((call) => call[0] as Record<string, unknown>)
+      .find((message) => message.command === "getSessionWorktreeChanges");
+    act(() => {
+      sendHostMessage({
+        command: "sessionWorktreeChanges",
+        requestId: asked?.requestId as string,
+        sessionId: "session-2",
+        changes: { files: 1, commits: 0 },
+      });
+    });
+
+    vscode.postMessage.mockClear();
+    act(() => {
+      fireEvent.click(within(card).getByTestId("confirm-dialog-confirm"));
+    });
+
+    // 丢了标记的后果不只是少一句提示：`removeWorktree` 会跟着变成 false，工作树
+    // 目录留在磁盘上（worktree 残留的一个真实来源）。
+    expect(vscode.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: "deleteSession",
+        sessionId: "session-2",
+        removeWorktree: true,
+      }),
+    );
+  });
+});
