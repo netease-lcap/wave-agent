@@ -305,7 +305,7 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
     });
 
     it("lets a queued user message preempt the hook's restart", async () => {
-      // A hook that never lets the turn end (ralph-loop style) must not starve
+      // A hook that never lets the turn end (a loop hook) must not starve
       // the queue: the user's message — typically /cancel — has to run.
       const hookManager = (agent as unknown as { hookManager: HookManager })
         .hookManager;
