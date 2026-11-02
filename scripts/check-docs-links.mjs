@@ -94,6 +94,14 @@ function stripCodeBlocks(content) {
   return content.replace(/```[\s\S]*?```/g, "");
 }
 
+// Inline code holds example markdown, not links: a spec that documents the index
+// format as `- [title](file.md) — <description>` is not linking to file.md, and
+// VitePress does not resolve it either. Strip it before link extraction only —
+// headings keep theirs, so anchors still slug the way VitePress slugs them.
+function stripInlineCode(content) {
+  return content.replace(/`[^`\n]*`/g, "");
+}
+
 function collectMarkdown(dir, files = []) {
   for (const entry of readdirSync(dir)) {
     if (entry === "node_modules" || entry === ".vitepress") continue;
@@ -146,11 +154,12 @@ for (const file of mdFiles) {
   const raw = readFileSync(file, "utf8");
   const content = stripCodeBlocks(raw);
   const headings = collectHeadings(content);
+  const linkSource = stripInlineCode(content);
   const relFile = relative(docsDir, file);
 
   let match;
   linkRegex.lastIndex = 0;
-  while ((match = linkRegex.exec(content)) !== null) {
+  while ((match = linkRegex.exec(linkSource)) !== null) {
     let url = match[1].replace(/\s*"[^"]*"\s*$/, "").trim();
     if (!url) continue;
 
@@ -191,8 +200,17 @@ for (const file of mdFiles) {
       continue;
     }
 
-    // Internal page link: starts with ./ or / (covers ./cli.md, /sdk, /sdk#anchor)
-    if (url.startsWith("./") || url.startsWith("/")) {
+    // Internal page link: './x.md', '../x.md', '/x', or a bare relative 'x.md'.
+    // VitePress resolves every one of these, so a missing target fails the docs
+    // build — validating only the './' and '/' forms let bare links such as
+    // 'ide-plugin.md' reach the deploy and break it.
+    const isInternalPageLink =
+      url.startsWith("./") ||
+      url.startsWith("../") ||
+      url.startsWith("/") ||
+      (!/^[a-z][a-z0-9+.-]*:/i.test(url) &&
+        /\.[a-z0-9]+$/i.test(url.split("#")[0]));
+    if (isInternalPageLink) {
       const { filePath, anchor } = resolvePage(url, file);
       if (!filePath) {
         // bare "/" home link — can't statically validate
@@ -222,7 +240,7 @@ for (const file of mdFiles) {
       continue;
     }
 
-    // Anything else (bare relative without prefix, etc.) — skip.
+    // Anything else (protocol-relative, query-only, etc.) — skip.
     okCount++;
   }
 }
