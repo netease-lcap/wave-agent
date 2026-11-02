@@ -17,11 +17,13 @@ import {
 import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+import { pathToFileURL } from "url";
 import { hostLog } from "./hostLog";
 import { WEBVIEW_CHANNEL } from "./channels";
 import { ConfigStore } from "./configStore";
 import { DesktopHost } from "./desktopHost";
 import { isLocalhostUrl } from "./isLocalhostUrl";
+import { attachNavigationGuards } from "./navigationGuard";
 import { DEEP_LINK_SCHEME, findDeepLink } from "./deepLink";
 import { startLocalCrashReporter } from "./crashReporter";
 import { attachCrashRecovery } from "./crashRecovery";
@@ -197,6 +199,22 @@ const menuActions: DesktopMenuActions = {
     host?.openPermissionModeMenu();
   },
 };
+
+/**
+ * The one document the main window may ever show. `webview/` lives at the
+ * package root (synced by scripts/syncWebview.mjs), so `dist/main → ../..`
+ * reaches it both in dev and inside app.asar. The URL form is derived from the
+ * same path `loadFile` gets, because `loadFile` is what turns it into the entry
+ * URL the navigation guard compares against.
+ */
+const WEBVIEW_ENTRY_PATH = path.join(
+  __dirname,
+  "..",
+  "..",
+  "webview",
+  "index.html",
+);
+const WEBVIEW_ENTRY_URL = pathToFileURL(WEBVIEW_ENTRY_PATH).href;
 
 /**
  * Register `wave://` with the OS.
@@ -459,16 +477,21 @@ function createWindow(): void {
     return { action: "deny" };
   });
 
-  // Clicking an <a href> navigates the whole window away from the chat UI —
-  // block every non-file navigation (file: is the bundled index.html itself).
-  mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (url.startsWith("file:")) return;
-    event.preventDefault();
-    if (/^https?:/.test(url)) {
+  // Clicking an <a href> navigates the whole window away from the chat UI. The
+  // admission rule is "this is the very document we loaded", not "this is a
+  // file: URL": a relative link in a markdown preview also resolves to file:,
+  // and once it left the window Chromium swapped the whole UI for an error page.
+  attachNavigationGuards(mainWindow.webContents, {
+    entryUrl: WEBVIEW_ENTRY_URL,
+    openExternal: (url) => {
       void shell
         .openExternal(url)
         .catch((error) => host?.reportExternalOpenFailure(error));
-    }
+    },
+    // desktop.log, not the console: in a packaged build nobody sees stdout, and
+    // a blocked navigation is the first thing to look for when a link "does
+    // nothing".
+    log: (...args) => hostLog.warn(...args),
   });
 
   // Lock down any <webview> the page attaches: the preview pane is the only
@@ -527,11 +550,9 @@ function createWindow(): void {
 
   // webview/ lives at the package root (synced by scripts/syncWebview.mjs);
   // dist/main → ../.. reaches the package root both in dev and inside app.asar.
-  void mainWindow
-    .loadFile(path.join(__dirname, "..", "..", "webview", "index.html"))
-    .catch((error) => {
-      // A failed webview load is otherwise silent — surface it to desktop.log.
-      console.error("[Wave Desktop] Failed to load webview:", error);
-      hostLog.error("[Wave Desktop] Failed to load webview:", error);
-    });
+  void mainWindow.loadFile(WEBVIEW_ENTRY_PATH).catch((error) => {
+    // A failed webview load is otherwise silent — surface it to desktop.log.
+    console.error("[Wave Desktop] Failed to load webview:", error);
+    hostLog.error("[Wave Desktop] Failed to load webview:", error);
+  });
 }

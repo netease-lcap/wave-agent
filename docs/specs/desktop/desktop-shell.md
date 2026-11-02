@@ -166,6 +166,8 @@ order: 10
 
 - **nativeTheme 不可用**：主进程读取 `nativeTheme.shouldUseDarkColors` 失败时必须回退为暗色主题，不得崩溃。
 
+- **界面内链接点击不得导航主窗口**：放行判据是「是否为本次窗口加载的那份 `webview/index.html`」（忽略 `#`/`?` 后缀），不是协议前缀——`file:` 下的任何子路径、`about:`、`data:`、`javascript:` 一律拦下；`http:`/`https:` 外链改开系统浏览器（复用 `setWindowOpenHandler` 的同一条路径），`will-navigate` 与 `will-redirect` 都要拦（重定向绕过 `will-navigate`）。原因：markdown 预览里点相对链接时 href 相对**应用文档**解析，会落在 `app.asar/webview/…` 下，一旦放行 Chromium 就用错误页顶掉整个界面（并被误判为「界面加载失败」）。这类链接在面板内的正确行为见 [desktop-file-panel.md](./desktop-file-panel.md)「文件面板」场景 22。
+
 - **远程会话的 SSO/登录态**：由远端 CLI 自身管理，与 desktop 本地登录态相互独立；`authUrl` 通知到达时，桌面端必须先将回调端口经 SSH 转发到本机回环、重写 `callback_url` 后路由到系统浏览器（远端 CLI 的回调服务器监听在远端 127.0.0.1，本机浏览器直接访问不到），登录结束后终止转发。
 
 ## 非目标（明确排除）
