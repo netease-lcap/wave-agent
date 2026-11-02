@@ -370,27 +370,42 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
             });
           } catch (error) {
             if (!isBackgrounded) {
-              // Extract content from the subagent's last assistant message.
-              // aiManager.sendAIMessage() caught the failure and already wrote
-              // the reason as an error-level notice, so the message history
-              // carries it — return it instead of inventing a second wording.
+              // A user cancel is not a completion: the run was cut short, so
+              // whatever it had written so far is not reported as a result.
+              // Claude Code keeps this case separate too (AgentTool.tsx:1215).
+              if (context.abortSignal?.aborted) {
+                resolve({
+                  success: false,
+                  content: "",
+                  error: "Agent was aborted",
+                  shortResult: "Agent aborted",
+                });
+                return;
+              }
+
+              // A subagent that already produced assistant output is reported
+              // back as a normal completion carrying only its `text` blocks —
+              // "it failed" deliberately stays out of the parent model's
+              // context (it is in the log stream and in the subagent panel).
+              // Mirrors Claude Code's sync-agent branch (AgentTool.tsx:1223):
+              // the error is re-thrown only when the subagent produced nothing
+              // at all, which is the one case where the parent would otherwise
+              // be handed an empty result with no explanation.
               let content = "";
+              let hasAssistantMessage = false;
               try {
                 const messages = instance.messageManager.getMessages();
-                const lastAssistant = messages
-                  .filter((m) => m.role === "assistant")
-                  .pop();
+                const assistants = messages.filter(
+                  (m) => m.role === "assistant",
+                );
+                hasAssistantMessage = assistants.length > 0;
+                const lastAssistant = assistants.pop();
                 if (lastAssistant) {
-                  // Only `text` blocks and error-level notices cross the agent
-                  // boundary: everything else in a notice is status narration
-                  // for the human (a loop's round counter, for instance) and
-                  // must not be reported to the parent as a failure.
+                  // Only `text` crosses the agent boundary (messages.ts
+                  // `extractTextContent`): a notice is narration for the human
+                  // (a loop's round counter, an error line) and never a result.
                   content = lastAssistant.blocks
-                    .filter(
-                      (b) =>
-                        b.type === "text" ||
-                        (b.type === "notice" && b.level === "error"),
-                    )
+                    .filter((b) => b.type === "text")
                     .map((b) => (b as { content: string }).content)
                     .join("\n")
                     .trim();
@@ -399,18 +414,34 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
                 // Ignore errors when extracting messages
               }
 
-              const errorMsg = `Agent delegation failed: ${error instanceof Error ? error.message : String(error)}`;
-              // A worktree-isolated run reports its worktree even when it
-              // failed, so the caller knows whether files were left behind.
-              const contentWithWorktree = instance.worktreeSummary
-                ? `${content || errorMsg}\n\n${instance.worktreeSummary}`
-                : content || errorMsg;
-              resolve({
-                success: false,
-                content: contentWithWorktree,
-                error: errorMsg,
-                shortResult: "Delegation error",
-              });
+              if (hasAssistantMessage) {
+                // A worktree-isolated run reports its worktree even when it
+                // failed, so the caller knows whether files were left behind.
+                const resultContent = instance.worktreeSummary
+                  ? `${content}${content ? "\n\n" : ""}${instance.worktreeSummary}`
+                  : content;
+                // Same terminal as the completed path above: the caller has its
+                // answer, so the instance graph can be released.
+                subagentManager.cleanupInstance(instance.subagentId);
+                resolve({
+                  success: true,
+                  content: resultContent,
+                  shortResult: "Agent completed",
+                });
+              } else {
+                // Nothing came back: the tool call itself fails and the parent
+                // gets the error text. A worktree-isolated run still reports
+                // its worktree, so the caller knows files were left behind.
+                const errorMsg = `Agent delegation failed: ${error instanceof Error ? error.message : String(error)}`;
+                resolve({
+                  success: false,
+                  content: instance.worktreeSummary
+                    ? `${errorMsg}\n\n${instance.worktreeSummary}`
+                    : errorMsg,
+                  error: errorMsg,
+                  shortResult: "Delegation error",
+                });
+              }
             }
           } finally {
             if (!run_in_background && context.foregroundTaskManager) {
