@@ -162,7 +162,7 @@ export class SlashCommandManager {
 
             if (!prepared.skill) {
               // If skill not found or invalid, add error
-              this.messageManager.addErrorBlock(prepared.content);
+              this.messageManager.addNoticeBlock(prepared.content, "error");
               return;
             }
 
@@ -316,10 +316,11 @@ export class SlashCommandManager {
             this.aiManager.setIsLoading(false);
 
             logger?.error(error);
-            this.messageManager.addErrorBlock(
+            this.messageManager.addNoticeBlock(
               `Failed to execute skill command '${skill.name}': ${
                 error instanceof Error ? error.message : String(error)
               }`,
+              "error",
             );
           }
         },
@@ -686,10 +687,11 @@ export class SlashCommandManager {
       );
 
       // Add error to message manager
-      this.messageManager.addErrorBlock(
+      this.messageManager.addNoticeBlock(
         `Failed to execute custom command '${commandName}': ${
           error instanceof Error ? error.message : String(error)
         }`,
+        "error",
       );
     }
   }

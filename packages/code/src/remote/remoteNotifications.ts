@@ -23,6 +23,7 @@ import type {
   AgentCallbacks,
   BackgroundTask,
   BackgroundTaskSummary,
+  NoticeLevel,
   PermissionMode,
   ToolBlockUpdateCallbackParams,
   ToolPermissionContext,
@@ -87,7 +88,7 @@ export const remoteWire = {
     return rest;
   },
 
-  errorBlockAdded: (error: string) => ({ error }),
+  noticeAdded: (notice: { level: NoticeLevel; content: string }) => notice,
 
   loadingChange: (loading: boolean, latestTotalTokens?: number) => ({
     loading,
@@ -174,7 +175,7 @@ export function remoteNotifications(
     | "onAssistantContentUpdated"
     | "onAssistantReasoningUpdated"
     | "onToolBlockUpdated"
-    | "onErrorBlockAdded"
+    | "onNoticeAdded"
   >
 > {
   return {
@@ -193,8 +194,8 @@ export function remoteNotifications(
     onToolBlockUpdated: (params) => {
       notify("toolBlockUpdated", remoteWire.toolBlockUpdated(params));
     },
-    onErrorBlockAdded: (error: string) => {
-      notify("errorBlockAdded", remoteWire.errorBlockAdded(error));
+    onNoticeAdded: (notice) => {
+      notify("noticeAdded", remoteWire.noticeAdded(notice));
     },
   };
 }

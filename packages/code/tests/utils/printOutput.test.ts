@@ -301,7 +301,7 @@ test("stream-json：init 之前产生的事件被押后，init 仍是首行", ()
   const out = collector();
   const output = new PrintOutput({ format: "stream-json", write: out.write });
 
-  // 建 agent 阶段就会落事件（初始化失败的错误块走 onErrorBlockAdded）
+  // 建 agent 阶段就会落事件（初始化失败的错误块走 onNoticeAdded）
   output.error("Failed to restore session");
   expect(out.lines()).toHaveLength(0);
 

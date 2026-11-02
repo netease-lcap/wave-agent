@@ -69,7 +69,7 @@ class NotificationRouter(private val client: StdioClient) {
             "assistantContentUpdated",
             "assistantReasoningUpdated",
             "toolBlockUpdated",
-            "errorBlockAdded",
+            "noticeAdded",
             "loadingChange",
             "contextUsage",
             "commandRunningChange",

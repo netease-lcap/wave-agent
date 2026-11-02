@@ -352,8 +352,8 @@ describe("convertMessagesForAPI", () => {
     );
   });
 
-  it("should filter out ErrorBlock content to ensure user-visible only (FR-020)", async () => {
-    // FR-020: System MUST ensure ErrorBlock content is not processed by
+  it("should filter out notice content to ensure user-visible only (FR-020)", async () => {
+    // FR-020: System MUST ensure notice content is not processed by
     // convertMessagesForAPI so it remains user-visible only and is not sent to the agent
     const messages: Message[] = [
       {
@@ -366,7 +366,11 @@ describe("convertMessagesForAPI", () => {
         id: generateMessageId(),
         role: "assistant",
         blocks: [
-          { type: "error", content: "This error should NOT be sent to API" },
+          {
+            type: "notice",
+            level: "error",
+            content: "This error should NOT be sent to API",
+          },
           { type: "text", content: "This response should be sent to API" },
         ],
         timestamp: new Date().toISOString(),
@@ -387,7 +391,7 @@ describe("convertMessagesForAPI", () => {
     expect(apiMessages[1].role).toBe("assistant");
     expect(apiMessages[1].content).toBe("This response should be sent to API");
 
-    // FR-020: Verify ErrorBlock content is completely excluded from API messages
+    // FR-020: Verify notice content is completely excluded from API messages
     const allApiContent = JSON.stringify(apiMessages);
     expect(allApiContent).not.toContain("This error should NOT be sent to API");
   });

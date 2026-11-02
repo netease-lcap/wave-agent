@@ -61,7 +61,7 @@ describe("AIManager finish reason", () => {
       getCombinedMemory: vi.fn().mockResolvedValue(""),
       getMemoryForInjection: vi.fn().mockResolvedValue({ prependContent: "" }),
       processTriggeredRules: vi.fn().mockReturnValue([]),
-      addErrorBlock: vi.fn(),
+      addNoticeBlock: vi.fn(),
       setlatestTotalTokens: vi.fn(),
       saveSession: vi.fn().mockResolvedValue(undefined),
       compactMessagesAndUpdateSession: vi.fn(),
@@ -228,7 +228,7 @@ describe("AIManager finish reason", () => {
 
     await aiManager.sendAIMessage();
 
-    expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+    expect(mockMessageManager.addNoticeBlock).not.toHaveBeenCalled();
   });
 
   it("should stop with an error block after 3 consecutive truncations with no tool calls", async () => {
@@ -265,9 +265,10 @@ describe("AIManager finish reason", () => {
           params.content.includes("Output token limit hit"),
       );
     expect(resumeCalls).toHaveLength(3);
-    expect(mockMessageManager.addErrorBlock).toHaveBeenCalledTimes(1);
-    expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+    expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledTimes(1);
+    expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
       expect.stringContaining("output token limit"),
+      "error",
     );
   });
 
@@ -305,9 +306,10 @@ describe("AIManager finish reason", () => {
     await aiManager.sendAIMessage();
 
     expect(callAgent).toHaveBeenCalledTimes(6);
-    expect(mockMessageManager.addErrorBlock).toHaveBeenCalledTimes(1);
-    expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+    expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledTimes(1);
+    expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
       expect.stringContaining("output token limit"),
+      "error",
     );
   });
 });

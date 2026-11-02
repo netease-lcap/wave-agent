@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import type { SubagentConfiguration } from "../utils/subagentParser.js";
-import type { Message, Usage } from "../types/index.js";
+import type { Message, NoticeLevel, Usage } from "../types/index.js";
 import { AIManager } from "./aiManager.js";
 import { MessageManager } from "./messageManager.js";
 import { ToolManager } from "./toolManager.js";
@@ -1417,12 +1417,18 @@ export class SubagentManager {
         }
       },
 
-      onErrorBlockAdded: (error: string) => {
+      onNoticeAdded: ({
+        level,
+        content,
+      }: {
+        level: NoticeLevel;
+        content: string;
+      }) => {
         this.refreshSubagentState(subagentId);
         const instance = this.instances.get(subagentId);
         if (instance?.logStream) {
           instance.logStream.write(
-            `[${new Date().toISOString()}] Error: ${error}\n`,
+            `[${new Date().toISOString()}] ${level}: ${content}\n`,
           );
         }
       },

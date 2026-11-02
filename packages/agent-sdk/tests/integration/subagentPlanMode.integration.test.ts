@@ -118,7 +118,7 @@ describe("Subagent Plan Mode Integration", () => {
       }),
       appendCurrentMessageReasoning: vi.fn(),
       setlatestTotalTokens: vi.fn(),
-      addErrorBlock: vi.fn(),
+      addNoticeBlock: vi.fn(),
       setMessages: vi.fn().mockImplementation((msgs) => {
         mockMessages.length = 0;
         mockMessages.push(...msgs);

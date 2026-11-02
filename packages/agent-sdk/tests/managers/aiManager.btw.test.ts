@@ -119,7 +119,7 @@ describe("AIManager - runBtwFork", () => {
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.json"),
       saveSession: vi.fn().mockResolvedValue(undefined),
       compactMessagesAndUpdateSession: vi.fn(),
-      addErrorBlock: vi.fn(),
+      addNoticeBlock: vi.fn(),
       addUserMessage: vi.fn(),
       getRecentFileReads: vi.fn().mockReturnValue([]),
       getInvokedSkills: vi.fn().mockReturnValue([]),

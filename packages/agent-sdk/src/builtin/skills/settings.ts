@@ -267,6 +267,11 @@ Beyond exit codes, a hook can write a JSON object to \`stdout\`. Wave reads that
 - \`hookEventName\` must match the event that fired, or the output is reported as a hook error and discarded.
 - \`additionalContext\` is injected as a \`<system-reminder>\`, so it reaches the model as context rather than as a user request.
 - Supported events: \`UserPromptSubmit\`, \`PreToolUse\`, \`PostToolUse\`, and \`SessionStart\` (which additionally accepts a non-JSON stdout as context — see below). \`Stop\` and \`SubagentStop\` do not support this field.
+- \`systemMessage\` (top level, any event) is shown to the **user** as one line in the conversation and is never sent to the model. Use it when a hook has something to say to the person — a progress marker, or why it blocked. It combines with \`Stop\`'s exit-code-2 feedback: the \`reason\` (stderr) reaches the model, the \`systemMessage\` reaches the user.
+
+\`\`\`json
+{"systemMessage": "🔄 第 3 轮 | 想停：/cancel"}
+\`\`\`
 
 For \`UserPromptSubmit\`, a stdout that is *not* JSON keeps its own meaning: the text is appended to the prompt as context rather than replacing it.
 

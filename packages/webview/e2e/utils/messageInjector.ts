@@ -70,7 +70,8 @@ export class MessageInjector {
       timestamp: "2025-07-09T10:30:00.000Z",
       blocks: [
         {
-          type: "error" as const,
+          type: "notice" as const,
+          level: "error" as const,
           content: partialContent,
         },
       ],

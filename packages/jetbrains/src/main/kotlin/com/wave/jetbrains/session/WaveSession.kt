@@ -313,8 +313,11 @@ class WaveSession(
         postMessage("updateToolBlock", buildJsonObject { put("params", params ?: JsonObject(emptyMap())) })
     }
 
-    override fun onErrorBlockAdded(error: String) {
-        postMessage("updateErrorBlock", buildJsonObject { put("error", error) })
+    override fun onNoticeAdded(level: String, content: String) {
+        postMessage("updateNoticeBlock", buildJsonObject {
+            put("level", level)
+            put("content", content)
+        })
     }
 
     override fun onLoadingChange(loading: Boolean) {

@@ -69,8 +69,8 @@ Template Variables:
             console.log(`\n🛠️  Tool Result:\n${params.result}\n`);
           }
         },
-        onErrorBlockAdded: (error) => {
-          console.log(`❌ Error: ${error}`);
+        onNoticeAdded: ({ level, content }) => {
+          if (level === "error") console.log(`❌ Error: ${content}`);
         },
       },
     });

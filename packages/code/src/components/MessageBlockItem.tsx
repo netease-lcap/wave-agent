@@ -41,9 +41,21 @@ export const MessageBlockItem = ({
         </Box>
       )}
 
-      {block.type === "error" && (
+      {/* A line for the human, never sent to the model (see NoticeBlock in the
+          SDK): a failed turn (`error`, red) or a hook's status line (`info`,
+          muted). */}
+      {block.type === "notice" && (
         <Box>
-          <Text color="red">Error: {block.content}</Text>
+          {block.level === "error" ? (
+            <Text color="red">Error: {block.content}</Text>
+          ) : (
+            <Text
+              color={block.level === "warning" ? "yellow" : "gray"}
+              dimColor
+            >
+              {block.content}
+            </Text>
+          )}
         </Box>
       )}
 

@@ -19,7 +19,7 @@ export function createMockCallbacks(): MessageManagerCallbacks {
     onAssistantMessageAdded: vi.fn(),
     onAssistantContentUpdated: vi.fn(),
     onToolBlockUpdated: vi.fn(),
-    onErrorBlockAdded: vi.fn(),
+    onNoticeAdded: vi.fn(),
     onCompactBlockAdded: vi.fn(),
     onCompactionStateChange: vi.fn(),
     // Note: Subagent-specific callbacks have been moved to SubagentManagerCallbacks

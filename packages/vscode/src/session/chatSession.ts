@@ -10,6 +10,7 @@ import type {
   QueuedMessage,
   McpServerStatus,
   ToolBlockUpdateCallbackParams,
+  NoticeLevel,
 } from "wave-agent-sdk/host";
 import { StdioClient } from "../stdio/stdioClient";
 import {
@@ -58,7 +59,7 @@ export interface ChatSessionCallbacks {
     stage: "streaming" | "end";
   }) => void;
   onToolBlockUpdate?: (params: ToolBlockUpdateCallbackParams) => void;
-  onErrorBlockAdded?: (error: string) => void;
+  onNoticeAdded?: (notice: { level: NoticeLevel; content: string }) => void;
   /** The compact summary block the server appended to its display stream; the
    * host forwards it so the webview appends it — the host itself keeps nothing. */
   onCompactBlockAdded?: (message: Message) => void;
@@ -202,8 +203,8 @@ export class ChatSession {
         onToolBlockUpdated: (params) => {
           this.callbacks.onToolBlockUpdate?.(params);
         },
-        onErrorBlockAdded: (error: string) => {
-          this.callbacks.onErrorBlockAdded?.(error);
+        onNoticeAdded: ({ level, content }) => {
+          this.callbacks.onNoticeAdded?.({ level, content });
         },
         onTasksChange: (tasks: Task[]) => {
           this.tasks = tasks;

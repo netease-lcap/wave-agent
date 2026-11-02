@@ -43,13 +43,34 @@ describe("MessageBlockItem Component", () => {
         timestamp: new Date().toISOString(),
       };
       const block: MessageBlock = {
-        type: "error",
+        type: "notice",
+        level: "error",
         content: "something failed",
       };
       const { lastFrame } = render(
         <MessageBlockItem block={block} message={message} isExpanded={false} />,
       );
       expect(lastFrame()).toContain("Error: something failed");
+    });
+
+    it("should render a hook's status line without the error prefix", () => {
+      const message: Message = {
+        id: "test-id",
+        role: "assistant",
+        blocks: [],
+        timestamp: new Date().toISOString(),
+      };
+      const block: MessageBlock = {
+        type: "notice",
+        level: "info",
+        content: "🔄 第 2 轮 | 想停：/cancel",
+      };
+      const { lastFrame } = render(
+        <MessageBlockItem block={block} message={message} isExpanded={false} />,
+      );
+      // A hook narrating its own rounds is not a failure: the line shows as-is.
+      expect(lastFrame()).toContain("🔄 第 2 轮 | 想停：/cancel");
+      expect(lastFrame()).not.toContain("Error:");
     });
 
     it("should render tool block", () => {

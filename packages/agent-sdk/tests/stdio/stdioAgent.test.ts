@@ -84,7 +84,7 @@ describe("StdioAgent", () => {
     expect(registeredMethods).toContain("assistantContentUpdated");
     expect(registeredMethods).toContain("assistantReasoningUpdated");
     expect(registeredMethods).toContain("toolBlockUpdated");
-    expect(registeredMethods).toContain("errorBlockAdded");
+    expect(registeredMethods).toContain("noticeAdded");
     expect(registeredMethods).toContain("loadingChange");
     expect(registeredMethods).toContain("commandRunningChange");
     expect(registeredMethods).toContain("queuedMessagesChange");
@@ -989,15 +989,19 @@ describe("StdioAgent", () => {
     expect(onToolBlockUpdated).toHaveBeenCalledWith(params);
   });
 
-  it("errorBlockAdded forwards error string to callback", () => {
-    const onErrorBlockAdded = vi.fn();
-    const { agent } = createAgent({ onErrorBlockAdded });
+  it("noticeAdded forwards level and content to callback", () => {
+    const onNoticeAdded = vi.fn();
+    const { agent } = createAgent({ onNoticeAdded });
 
-    agent.handleNotification("errorBlockAdded", {
-      error: "Something went wrong",
+    agent.handleNotification("noticeAdded", {
+      level: "error",
+      content: "Something went wrong",
     });
 
-    expect(onErrorBlockAdded).toHaveBeenCalledWith("Something went wrong");
+    expect(onNoticeAdded).toHaveBeenCalledWith({
+      level: "error",
+      content: "Something went wrong",
+    });
   });
 
   it("compactBlockAdded forwards content and message to callback", () => {

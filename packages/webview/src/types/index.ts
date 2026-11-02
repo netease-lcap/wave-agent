@@ -12,7 +12,7 @@ import type {
   Message,
   MessageBlock,
   TextBlock,
-  ErrorBlock,
+  NoticeBlock,
   ToolBlock,
   ImageBlock,
   CompactBlock,
@@ -49,7 +49,7 @@ export type {
   Message,
   MessageBlock,
   TextBlock,
-  ErrorBlock,
+  NoticeBlock,
   ToolBlock,
   ImageBlock,
   CompactBlock,
@@ -1329,4 +1329,7 @@ export type ChatAction =
       payload: { messageId: string; chunk: string; stage: "streaming" | "end" };
     }
   | { type: "UPDATE_TOOL_BLOCK"; payload: ToolBlockUpdateCallbackParams }
-  | { type: "APPEND_ERROR_BLOCK"; payload: { error: string } };
+  | {
+      type: "APPEND_NOTICE_BLOCK";
+      payload: { level: NoticeBlock["level"]; content: string };
+    };

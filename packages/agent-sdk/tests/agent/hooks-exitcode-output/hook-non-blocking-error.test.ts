@@ -115,7 +115,7 @@ describe("Hook Non-Blocking Error Behavior (User Story 3)", () => {
 
       // Second message: error block
       expect(messages[1].role).toBe("assistant");
-      expect(messages[1].blocks?.[0]?.type).toBe("error");
+      expect(messages[1].blocks?.[0]?.type).toBe("notice");
       const errorBlock = messages[1].blocks?.[0];
       expect(
         errorBlock && hasContent(errorBlock) ? errorBlock.content : undefined,
@@ -217,14 +217,14 @@ describe("Hook Non-Blocking Error Behavior (User Story 3)", () => {
       // First assistant message should contain the error blocks
       const errorMessage = assistantMessages[0];
       expect(errorMessage.blocks).toHaveLength(2);
-      expect(errorMessage.blocks?.[0]?.type).toBe("error");
+      expect(errorMessage.blocks?.[0]?.type).toBe("notice");
       const firstErrorBlock = errorMessage.blocks?.[0];
       expect(
         firstErrorBlock && hasContent(firstErrorBlock)
           ? firstErrorBlock.content
           : undefined,
       ).toBe("First non-blocking error");
-      expect(errorMessage.blocks?.[1]?.type).toBe("error");
+      expect(errorMessage.blocks?.[1]?.type).toBe("notice");
       const secondErrorBlock = errorMessage.blocks?.[1];
       expect(
         secondErrorBlock && hasContent(secondErrorBlock)
@@ -278,7 +278,7 @@ describe("Hook Non-Blocking Error Behavior (User Story 3)", () => {
       // Verify fallback error message is used
       const messages = agent.messages;
       const errorMessage = messages.find(
-        (msg) => msg.role === "assistant" && msg.blocks?.[0]?.type === "error",
+        (msg) => msg.role === "assistant" && msg.blocks?.[0]?.type === "notice",
       );
 
       expect(errorMessage).toBeTruthy();
@@ -371,7 +371,9 @@ describe("Hook Non-Blocking Error Behavior (User Story 3)", () => {
       expect(hasResponseText).toBe(true);
 
       // Should have error block from non-blocking error
-      const errorBlocks = allBlocks.filter((block) => block.type === "error");
+      const errorBlocks = allBlocks.filter(
+        (block) => block.type === "notice" && block.level === "error",
+      );
       expect(errorBlocks.length).toBeGreaterThanOrEqual(1);
       const errorBlock = errorBlocks.find(
         (block) => hasContent(block) && block.content.includes("Stop warning"),

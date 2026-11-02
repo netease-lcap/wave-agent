@@ -208,7 +208,7 @@ Agent 支持多种消息块类型，通过回调通知 UI 层：
 | 推理内容 | `onAssistantReasoningUpdated` | 推理/思考过程流式输出                                                                                                       |
 | 工具调用 | `onToolBlockUpdated`          | 工具执行状态更新（bash 模式命令结束时经此写入输出）                                                                         |
 | 压缩摘要 | `onCompactBlockAdded`         | 上下文压缩后生成的摘要                                                                                                      |
-| 错误信息 | `onErrorBlockAdded`           | 错误消息                                                                                                                    |
+| 提示信息 | `onNoticeAdded`               | 给用户看的提示行（`level` 为 `error` / `warning` / `info`），不进模型请求                                                   |
 | 任务通知 | `onBackgroundTasksChange`     | 后台任务状态变更（后台任务完成的通知消息为 `isMeta: true`，UI 隐藏、模型可见，详见 [后台任务完成通知](#task-notification)） |
 
 ### 流式输出 {#streaming}
@@ -248,7 +248,7 @@ callbacks: {
 | `onAssistantContentUpdated`   | `{ messageId, chunk, stage }`   | 文本流式输出（chunk 为增量片段）   |
 | `onAssistantReasoningUpdated` | `{ messageId, chunk, stage }`   | 推理流式输出（chunk 为增量片段）   |
 | `onToolBlockUpdated`          | `ToolBlockUpdateCallbackParams` | 工具块更新                         |
-| `onErrorBlockAdded`           | `error: string`                 | 错误块添加                         |
+| `onNoticeAdded`               | `{ level, content }`            | 提示块添加（`error` / `info`）     |
 | `onCompactBlockAdded`         | `content: string`               | 压缩摘要添加                       |
 | `onCompactionStateChange`     | `isCompacting: boolean`         | 压缩状态变更                       |
 

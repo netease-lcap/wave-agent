@@ -978,8 +978,9 @@ export class AIManager {
       );
       // 会话已被切走时错误块同样不得写进切换后的会话（与上面的写入放弃同口径）
       if (this.messageManager.getSessionId() === sessionIdAtStart) {
-        this.messageManager.addErrorBlock(
+        this.messageManager.addNoticeBlock(
           `Failed to compact conversation history: ${compactError instanceof Error ? compactError.message : String(compactError)}. You may encounter context limit issues.`,
+          "error",
         );
       }
     } finally {
@@ -2372,8 +2373,9 @@ ${question}`;
                   maxOutputTokensRecoveryCount >=
                     MAX_OUTPUT_TOKENS_RECOVERY_LIMIT
                 ) {
-                  this.messageManager.addErrorBlock(
+                  this.messageManager.addNoticeBlock(
                     `Response exceeded the output token limit ${MAX_OUTPUT_TOKENS_RECOVERY_LIMIT + 1} consecutive times without producing output or tool calls. Stopped to avoid an infinite loop. Break the remaining work into smaller pieces and try again.`,
+                    "error",
                   );
                   break inner;
                 }
@@ -2440,8 +2442,9 @@ ${question}`;
             error instanceof Error ? error.message : undefined,
           );
 
-          this.messageManager.addErrorBlock(
+          this.messageManager.addNoticeBlock(
             error instanceof Error ? error.message : "Unknown error occurred",
+            "error",
           );
 
           // Exit inner loop on error
@@ -2472,6 +2475,10 @@ ${question}`;
         const isCurrentlyAborted =
           abortController.signal.aborted || toolAbortController.signal.aborted;
 
+        const messageQueue = this.container.has("MessageQueue")
+          ? this.container.get<MessageQueue>("MessageQueue")
+          : undefined;
+
         if (!isCurrentlyAborted) {
           // Record committed snapshots to message history for the final turn
           if (this.reversionManager) {
@@ -2488,13 +2495,31 @@ ${question}`;
           // If Stop/SubagentStop hooks indicate we should continue (due to blocking errors),
           // restart the AI conversation cycle
           if (shouldContinue) {
-            logger?.info(
-              `${this.subagentType ? "SubagentStop" : "Stop"} hooks indicate issues need fixing, continuing conversation...`,
-            );
+            // A user message queued while this turn ran wins over the hook's
+            // restart: end the turn instead, so the queue dispatches it.
+            //
+            // Claude Code behaves the same way — a blocked stop ends the turn
+            // and the queued message becomes the next one. Without this, a hook
+            // that never lets the turn end (ralph-loop style "keep going until
+            // the promise") starves the queue forever: the user's /cancel can
+            // never run, and Escape then throws the queued message away.
+            const queuedUserMessage = messageQueue
+              ?.getQueue()
+              .some((queued) => queued.type !== "notification");
 
-            // Restart the conversation to let AI fix the issues
-            shouldRestart = true;
-            turnOffset = 0;
+            if (queuedUserMessage) {
+              logger?.info(
+                `${this.subagentType ? "SubagentStop" : "Stop"} hooks asked to continue, but a user message is queued — ending the turn so it runs first`,
+              );
+            } else {
+              logger?.info(
+                `${this.subagentType ? "SubagentStop" : "Stop"} hooks indicate issues need fixing, continuing conversation...`,
+              );
+
+              // Restart the conversation to let AI fix the issues
+              shouldRestart = true;
+              turnOffset = 0;
+            }
           }
         }
 
@@ -2506,9 +2531,6 @@ ${question}`;
         // queue's "send now" button), it would spawn a second, orphaned,
         // uninterruptible agent loop. The notification stays queued for the
         // next turn.
-        const messageQueue = this.container.has("MessageQueue")
-          ? this.container.get<MessageQueue>("MessageQueue")
-          : undefined;
         if (
           messageQueue &&
           messageQueue.hasNotifications() &&

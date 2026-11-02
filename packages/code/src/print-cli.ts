@@ -167,11 +167,12 @@ export async function startPrintCli(options: PrintCliOptions): Promise<void> {
       output.toolUpdate(params);
     },
 
-    // Error block callback
-    onErrorBlockAdded: (error: string) => {
-      // Display error blocks with distinct formatting
-      output.error(error);
-      diag(`\n❌ Error: ${error}\n`);
+    // Notice callback: `error` is the turn failure, `info` a hook's line for
+    // the human. Only the former is an error for the CLI's own output.
+    onNoticeAdded: ({ level, content }) => {
+      if (level !== "error") return;
+      output.error(content);
+      diag(`\n❌ Error: ${content}\n`);
     },
   };
 

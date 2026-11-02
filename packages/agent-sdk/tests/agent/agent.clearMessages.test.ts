@@ -12,7 +12,7 @@ import { createMockToolManager } from "../helpers/mockFactories.js";
 import { Container } from "@/utils/container.js";
 import { AIManager } from "@/managers/aiManager.js";
 
-import type { Usage } from "@/types/index.js";
+import type { NoticeBlock, Usage } from "@/types/index.js";
 
 vi.mock("@/services/aiService");
 vi.mock("@/telemetry/instrumentation.js", () => ({
@@ -39,13 +39,16 @@ vi.mock("@/managers/toolManager", () => ({
 describe("Agent - clear/compact ignored while running", () => {
   let agent: Agent;
   let aiManager: AIManager;
-  let onErrorBlockAdded: ReturnType<typeof vi.fn<(error: string) => void>>;
+  let onNoticeAdded: ReturnType<
+    typeof vi.fn<(notice: { level: string; content: string }) => void>
+  >;
 
   beforeEach(async () => {
-    onErrorBlockAdded = vi.fn<(error: string) => void>();
+    onNoticeAdded =
+      vi.fn<(notice: { level: string; content: string }) => void>();
     const mockCallbacks = {
       onLoadingChange: vi.fn(),
-      onErrorBlockAdded,
+      onNoticeAdded,
     };
 
     agent = await Agent.create({
@@ -103,7 +106,7 @@ describe("Agent - clear/compact ignored while running", () => {
       usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
     });
     vi.clearAllMocks();
-    onErrorBlockAdded.mockClear();
+    onNoticeAdded.mockClear();
   });
 
   afterEach(async () => {
@@ -128,9 +131,11 @@ describe("Agent - clear/compact ignored while running", () => {
     return { sendPromise, rejectCallAgent };
   }
 
-  function errorBlocks(): { content?: string }[] {
+  function errorBlocks(): NoticeBlock[] {
     return agent.messages.flatMap((msg) =>
-      msg.blocks.filter((b) => b.type === "error"),
+      msg.blocks.filter(
+        (b): b is NoticeBlock => b.type === "notice" && b.level === "error",
+      ),
     );
   }
 
@@ -142,7 +147,7 @@ describe("Agent - clear/compact ignored while running", () => {
     await agent.clearMessages();
 
     // Ignored: no hooks fired, no session replacement, no UI error.
-    expect(onErrorBlockAdded).not.toHaveBeenCalled();
+    expect(onNoticeAdded).not.toHaveBeenCalled();
     expect(agent.sessionId).toBe(sessionIdBefore);
     expect(agent.messages.length).toBe(messageCountBefore);
     expect(
@@ -163,7 +168,7 @@ describe("Agent - clear/compact ignored while running", () => {
     expect(
       errorBlocks().some((b) => b.content?.includes("Request was aborted")),
     ).toBe(true);
-    expect(onErrorBlockAdded).toHaveBeenCalled();
+    expect(onNoticeAdded).toHaveBeenCalled();
     expect(mockToolExecute).not.toHaveBeenCalled();
   });
 
@@ -194,7 +199,7 @@ describe("Agent - clear/compact ignored while running", () => {
     expect(
       errorBlocks().some((b) => b.content?.includes("Request was aborted")),
     ).toBe(true);
-    expect(onErrorBlockAdded).toHaveBeenCalled();
+    expect(onNoticeAdded).toHaveBeenCalled();
   });
 
   it("/clear while idle still works — messages cleared, new session ID", async () => {

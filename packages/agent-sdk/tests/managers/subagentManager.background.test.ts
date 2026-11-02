@@ -533,7 +533,7 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     }
   });
 
-  it("should log error block to log file when onErrorBlockAdded fires", async () => {
+  it("should log error block to log file when onNoticeAdded fires", async () => {
     const instance = await subagentManager.createInstance(testConfig, {
       description: "d",
       prompt: "p",
@@ -556,16 +556,17 @@ describe("SubagentManager - Backgrounding Coverage", () => {
     const passedCallbacks = lastCall[1].callbacks;
 
     // Trigger error block callback (simulating LLM API error like 429)
-    passedCallbacks.onErrorBlockAdded?.(
-      "Rate limit exceeded (429): Too many requests",
-    );
+    passedCallbacks.onNoticeAdded?.({
+      level: "error",
+      content: "Rate limit exceeded (429): Too many requests",
+    });
 
     // logStream.write is async — wait for content, not just file existence
     await vi.waitFor(
       () => {
         expect(fs.existsSync(outputPath)).toBe(true);
         const content = fs.readFileSync(outputPath, "utf8");
-        expect(content).toContain("Error:");
+        expect(content).toContain("error:");
         expect(content).toContain(
           "Rate limit exceeded (429): Too many requests",
         );

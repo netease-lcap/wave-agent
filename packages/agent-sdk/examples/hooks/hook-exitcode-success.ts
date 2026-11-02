@@ -132,9 +132,11 @@ function analyzeSuccessBehavior(agent: Agent): void {
     }
   }
 
-  // Check for any error blocks (should not exist on success)
+  // Check for any error-level notices (should not exist on success)
   const hasErrorBlocks = messages.some((msg) =>
-    msg.blocks.some((block) => block.type === "error"),
+    msg.blocks.some(
+      (block) => block.type === "notice" && block.level === "error",
+    ),
   );
 
   if (hasErrorBlocks) {

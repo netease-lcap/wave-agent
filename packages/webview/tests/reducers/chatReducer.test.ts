@@ -5,7 +5,7 @@ import type {
   TextBlock,
   ToolBlock,
   ReasoningBlock,
-  ErrorBlock,
+  NoticeBlock,
   SessionMetadata,
 } from "../../src/types";
 
@@ -702,7 +702,7 @@ describe("chatReducer", () => {
     });
   });
 
-  describe("APPEND_ERROR_BLOCK", () => {
+  describe("APPEND_NOTICE_BLOCK", () => {
     it("should append error block to last assistant message", () => {
       const textBlock: TextBlock = {
         type: "text",
@@ -718,13 +718,13 @@ describe("chatReducer", () => {
       const state = { ...initialState, messages: [assistantMessage] };
 
       const newState = chatReducer(state, {
-        type: "APPEND_ERROR_BLOCK",
-        payload: { error: "API rate limit exceeded" },
+        type: "APPEND_NOTICE_BLOCK",
+        payload: { level: "error", content: "API rate limit exceeded" },
       });
 
       expect(newState.messages[0].blocks).toHaveLength(2);
-      const errorBlock = newState.messages[0].blocks[1] as ErrorBlock;
-      expect(errorBlock.type).toBe("error");
+      const errorBlock = newState.messages[0].blocks[1] as NoticeBlock;
+      expect(errorBlock.type).toBe("notice");
       expect(errorBlock.content).toBe("API rate limit exceeded");
     });
 
@@ -747,13 +747,13 @@ describe("chatReducer", () => {
       };
 
       const newState = chatReducer(state, {
-        type: "APPEND_ERROR_BLOCK",
-        payload: { error: "Something went wrong" },
+        type: "APPEND_NOTICE_BLOCK",
+        payload: { level: "error", content: "Something went wrong" },
       });
 
       expect(newState.messages[1].blocks).toHaveLength(2);
-      const errorBlock = newState.messages[1].blocks[1] as ErrorBlock;
-      expect(errorBlock.type).toBe("error");
+      const errorBlock = newState.messages[1].blocks[1] as NoticeBlock;
+      expect(errorBlock.type).toBe("notice");
       expect(errorBlock.content).toBe("Something went wrong");
       // User message unchanged
       expect(newState.messages[0].blocks).toHaveLength(1);
@@ -784,8 +784,8 @@ describe("chatReducer", () => {
       };
 
       const newState = chatReducer(state, {
-        type: "APPEND_ERROR_BLOCK",
-        payload: { error: "插件执行失败" },
+        type: "APPEND_NOTICE_BLOCK",
+        payload: { level: "error", content: "插件执行失败" },
       });
 
       // The error belongs under the LATEST user message, so a new assistant
@@ -795,8 +795,8 @@ describe("chatReducer", () => {
       const errorMessage = newState.messages[3];
       expect(errorMessage.role).toBe("assistant");
       expect(errorMessage.blocks).toHaveLength(1);
-      const errorBlock = errorMessage.blocks[0] as ErrorBlock;
-      expect(errorBlock.type).toBe("error");
+      const errorBlock = errorMessage.blocks[0] as NoticeBlock;
+      expect(errorBlock.type).toBe("notice");
       expect(errorBlock.content).toBe("插件执行失败");
       // Previous turn's assistant message is left untouched.
       expect(newState.messages[1].blocks).toHaveLength(1);
@@ -813,8 +813,8 @@ describe("chatReducer", () => {
       const state = { ...initialState, messages: [userMessage] };
 
       const newState = chatReducer(state, {
-        type: "APPEND_ERROR_BLOCK",
-        payload: { error: "402 Payment Required" },
+        type: "APPEND_NOTICE_BLOCK",
+        payload: { level: "error", content: "402 Payment Required" },
       });
 
       expect(newState.messages).toHaveLength(2);
@@ -822,8 +822,8 @@ describe("chatReducer", () => {
       const errorMessage = newState.messages[1];
       expect(errorMessage.role).toBe("assistant");
       expect(errorMessage.blocks).toHaveLength(1);
-      const errorBlock = errorMessage.blocks[0] as ErrorBlock;
-      expect(errorBlock.type).toBe("error");
+      const errorBlock = errorMessage.blocks[0] as NoticeBlock;
+      expect(errorBlock.type).toBe("notice");
       expect(errorBlock.content).toBe("402 Payment Required");
     });
 
@@ -837,8 +837,8 @@ describe("chatReducer", () => {
       const state = { ...initialState, messages: [assistantMessage] };
 
       const newState = chatReducer(state, {
-        type: "APPEND_ERROR_BLOCK",
-        payload: { error: "Error" },
+        type: "APPEND_NOTICE_BLOCK",
+        payload: { level: "error", content: "Error" },
       });
 
       expect(state.messages[0].blocks).toHaveLength(0);

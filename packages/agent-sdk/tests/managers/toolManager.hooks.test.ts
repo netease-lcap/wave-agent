@@ -63,7 +63,7 @@ function build(
 
   const mockMessageManager = {
     addUserMessage: vi.fn(),
-    addErrorBlock: vi.fn(),
+    addNoticeBlock: vi.fn(),
     getSessionId: vi.fn().mockReturnValue("session-1"),
     getTranscriptPath: vi.fn().mockReturnValue("/tmp/transcript.jsonl"),
   };

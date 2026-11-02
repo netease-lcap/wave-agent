@@ -1798,19 +1798,19 @@ describe("agent notifications", () => {
     ]);
   });
 
-  it("error blocks are forwarded as text — the renderer places the block with its own rule", async () => {
+  it("notices are forwarded as level + text — the renderer places the block with its own rule", async () => {
     const { sent } = await readyHost();
     const agent = lastAgent();
 
-    agent.callbacks.onErrorBlockAdded("插件执行失败");
+    agent.callbacks.onNoticeAdded({ level: "error", content: "插件执行失败" });
 
-    // APPEND_ERROR_BLOCK (webview reducer) puts the block on the last message
+    // APPEND_NOTICE_BLOCK (webview reducer) puts the block on the last message
     // when it is an assistant one, otherwise on a new assistant message below
     // the latest user message — the same rule the host used to apply to its own
     // copy, and what VS Code / JetBrains have always relied on. The host sends
-    // the text only, and holds nothing.
-    expect(sent("updateErrorBlock")).toEqual([
-      expect.objectContaining({ error: "插件执行失败" }),
+    // level + text only, and holds nothing.
+    expect(sent("updateNoticeBlock")).toEqual([
+      expect.objectContaining({ level: "error", content: "插件执行失败" }),
     ]);
     expect(sent("appendMessage")).toHaveLength(0);
     expect("messages" in agent).toBe(false);

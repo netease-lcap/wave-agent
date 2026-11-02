@@ -1731,8 +1731,12 @@
       case "toolBlockUpdated":
         post({ command: "updateToolBlock", params: p });
         return;
-      case "errorBlockAdded":
-        post({ command: "updateErrorBlock", error: p.error });
+      case "noticeAdded":
+        post({
+          command: "updateNoticeBlock",
+          level: p.level,
+          content: p.content,
+        });
         return;
       case "loadingChange":
         applyStreaming(p.loading === true);
@@ -2622,8 +2626,9 @@
           force: msg.force,
         }).catch(function (err) {
           post({
-            command: "updateErrorBlock",
-            error: String(err.message || err),
+            command: "updateNoticeBlock",
+            level: "error",
+            content: String(err.message || err),
           });
         });
         return;

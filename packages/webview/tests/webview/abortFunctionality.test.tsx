@@ -114,7 +114,7 @@ describe("Abort Functionality", () => {
       id: `msg_abort_${Date.now()}`,
       role: "assistant" as const,
       timestamp: "2024-01-01T00:00:00.000Z",
-      blocks: [{ type: "error" as const, content: partialContent }],
+      blocks: [{ type: "notice", level: "error", content: partialContent }],
     };
     sendCommand("updateMessages", { messages: [abortedMessage] });
 
@@ -151,7 +151,7 @@ describe("Abort Functionality", () => {
       id: `msg_abort_${Date.now()}`,
       role: "assistant" as const,
       timestamp: "2024-01-01T00:00:00.000Z",
-      blocks: [{ type: "error" as const, content: "Partial content" }],
+      blocks: [{ type: "notice", level: "error", content: "Partial content" }],
     };
     sendCommand("updateMessages", { messages: [abortedMessage] });
 
@@ -207,7 +207,9 @@ describe("Abort Functionality", () => {
       id: `msg_abort_final`,
       role: "assistant" as const,
       timestamp: "2024-01-01T00:00:00.000Z",
-      blocks: [{ type: "error" as const, content: scenario.finalContent }],
+      blocks: [
+        { type: "notice", level: "error", content: scenario.finalContent },
+      ],
     };
     sendCommand("updateMessages", { messages: [abortedMessage] });
 

@@ -1608,15 +1608,20 @@ export class DesktopHost {
         if (paneId)
           this.postMessage({ command: "updateToolBlock", paneId, params });
       },
-      onErrorBlockAdded: (error: string) => {
-        // `updateErrorBlock` carries the text only; the renderer places the
-        // block (APPEND_ERROR_BLOCK: onto the last message if it is an
-        // assistant one, otherwise a new assistant message below the latest
+      onNoticeAdded: ({ level, content }) => {
+        // `updateNoticeBlock` carries the level and the text only; the renderer
+        // places the block (APPEND_NOTICE_BLOCK: onto the last message if it is
+        // an assistant one, otherwise a new assistant message below the latest
         // user message). Same rule this host used to apply to its own copy,
         // and the rule VS Code / JetBrains have always relied on.
         const paneId = paneIdOf();
         if (paneId)
-          this.postMessage({ command: "updateErrorBlock", paneId, error });
+          this.postMessage({
+            command: "updateNoticeBlock",
+            paneId,
+            level,
+            content,
+          });
       },
       onTasksChange: (tasks: Task[]) => {
         const paneId = paneIdOf();

@@ -48,6 +48,7 @@ Hook 也可以在 stdout 输出一个 JSON 对象，通过 `hookSpecificOutput` 
 - **注入形态**：文本以 `<system-reminder>` 包裹，作为一条 `isMeta: true` 的用户角色消息追加到对话中，与 SessionStart 钩子的注入方式一致（见 `session-hooks.md`）。
 - **支持的事件**：`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`SessionStart`。与 Claude Code 一致，`Stop` / `SubagentStop` **不支持**该字段——要它们继续干活仍用退出码 2。
 - **`UserPromptSubmit` 的 stdout 语义收窄**：该事件的 stdout 若是合法 JSON，注入其 `additionalContext` 值而**不是**把 JSON 原文塞进上下文；不是 JSON 时按原行为把文本注入。
+- **`systemMessage`（顶层字段，任意事件）**：给**用户看**的一行提示，追加到当前助手消息上作为 `notice` 块（`level: "info"`）渲染，**不进模型请求**（对齐 Claude Code 的同名字段，CC 文档称其为 warning message）。它与退出码正交：`Stop` 用退出码 2 回喂模型的同时，可以在同一份 stdout JSON 里带 `systemMessage`，于是「模型看到原因、用户看到状态」——循环类 hook（每隔一轮拦一次退出）靠它告诉用户当前第几轮、怎么停。工具事件（`PreToolUse` / `PostToolUse`）走另一条执行通道，当前不读该字段。
 - **`hookEventName` 必须与触发事件一致**：不一致视为非法 JSON 输出，按"非阻止性错误"呈现给用户，不注入上下文。
 - **其余字段本次不做**：`updatedToolOutput` / `updatedMCPToolOutput`（改写工具结果）、`PreToolUse` 的 `updatedInput`（改写入参）。它们要改写**既有事实**（已发生的工具结果、模型已发出的入参），不是新增一段文本，需要单独定安全语义。
 
@@ -273,7 +274,7 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 
 1. **假设**`PreToolUse` hook 返回退出码 2 并带有 stderr，**当**hook 完成时，**则**工具调用被阻止，且 `agent.messages` 包含一个 `ToolBlock`，其失败文本为 `PreToolUse:<工具名> hook error: <stderr>`
 2. **假设**`PostToolUse` hook 返回退出码 2 并带有 stderr，**当**hook 完成时，**则**`agent.messages` 包含一条 `isMeta: true` 的用户角色消息，内容为 `PostToolUse:<工具名> hook blocking error from command: "<命令原文>": <stderr>`，AI 继续处理
-3. **假设**`UserPromptSubmit` hook 返回退出码 2 并带有 stderr，**当**hook 完成时，**则**提示处理被阻止，提示被清除，且 `agent.messages` 包含助手消息中的 `ErrorBlock`，以 stderr 内容为内容（仅用户可见）
+3. **假设**`UserPromptSubmit` hook 返回退出码 2 并带有 stderr，**当**hook 完成时，**则**提示处理被阻止，提示被清除，且 `agent.messages` 包含助手消息中的 `notice` 块（`level: "error"`），以 stderr 内容为内容（仅用户可见）
 4. **假设**`Stop` hook 返回退出码 2 并带有 stderr，**当**hook 完成时，**则**停止被阻止，且 `agent.messages` 包含带有 stderr 内容的 `isMeta: true` 用户角色消息
 
 ---
@@ -416,6 +417,41 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 
 ---
 
+### 用户故事：Hook 给用户的一行提示（`systemMessage`）（优先级：P2）
+
+作为使用循环类 hook（每隔一轮用退出码 2 拦住退出、把同一段 prompt 喂回去）的用户，我希望每一轮都能在对话里看到一行状态，告诉我现在是第几轮、怎么停下来，而不是只能从模型的措辞里猜。字段对齐 Claude Code 的 `systemMessage`。
+
+**为什么是这个优先级**：退出码 2 的 stderr 只给模型看（`isMeta: true`），用户屏幕上一片空白，长循环会变成「模型自己在说话、我不知道它还要跑多久、也不知道怎么打断」。`systemMessage` 与退出码正交，hook 可以在同一份 stdout JSON 里既回喂模型、又给用户一行提示。
+
+**独立测试**：配置一个 `Stop` hook，输出 `{"systemMessage":"🔄 第 2 轮 | 想停：/cancel"}` 并以退出码 2 + stderr 拦住退出，观察对话里出现该行、且模型下一轮的请求里**没有**这段文本。
+
+**验收场景**：
+
+1. **假设** `Stop` hook 以退出码 2 拦住退出、stdout 是含 `systemMessage` 的合法 JSON，**当** hook 结果被处理时，**则**该文本作为一行 `notice` 块（`level: "info"`）追加到当前助手消息上（用户可见），同时 stderr 仍作为 `isMeta: true` 的用户消息给模型
+2. **假设** hook 以退出码 0 结束、stdout 是含 `systemMessage` 的合法 JSON，**当** hook 结果被处理时，**则**同样显示该行（退出码不影响该字段），且不产生 `isMeta` 用户消息
+3. **假设** `systemMessage` 为空字符串或只含空白，**当** hook 结果被处理时，**则**不显示任何内容
+4. **假设** stdout 不是 JSON（老版本 hook 的纯文本输出），**当** hook 结果被处理时，**则**按原有规则处理，不显示 `notice` 块
+5. **假设**对话里已有一行 `notice` 块，**当**构造下一次模型请求时，**则**该块不出现在请求里（只给用户看）
+
+---
+
+### 用户故事：用户排队消息优先于 Stop hook 的重启（优先级：P2）
+
+作为在长循环里想插话或取消的用户，我希望我输入的消息能被真正送进去执行，而不是永远排在队尾。
+
+**为什么是这个优先级**：`Stop` hook 用退出码 2 拦住退出时，引擎会在**同一个回合内**重启对话。循环类 hook 每次都拦，回合就永不结束，于是「回合结束后才派发」的排队消息永远排不上——用户输入 `/cancel-ralph` 也只能干等，按 Esc 反而把排队消息一起丢掉。Claude Code 在拦停后是结束本回合、让排队消息成为下一轮，本特性对齐这个语义。
+
+**独立测试**：让一个 `Stop` hook 每次都以退出码 2 拦停，在回合运行中输入第二条消息，观察第二条消息自己的回合确实启动（第二次模型请求里带它的文本），而不是只有 hook 的回喂在跑。
+
+**验收场景**：
+
+1. **假设**回合进行中用户输入了一条消息（进入队列），且回合结束时 `Stop` hook 要求继续，**当**引擎决定是否重启时，**则**不重启，本回合结束，队列里的消息随后被派发
+2. **假设**队列里只有后台任务通知（不是用户输入），**当** `Stop` hook 要求继续时，**则**照常重启（通知仍按原规则在随后注入，不当作用户插话）
+3. **假设**队列为空，**当** `Stop` hook 要求继续时，**则**行为不变：在同一回合内重启对话
+4. **假设**用户插话的那一轮结束后 `Stop` hook 再次要求继续，**当**队列已空时，**则**循环恢复（插话不终止循环，只是优先于它执行）
+
+---
+
 ### 用户故事：按来源 Tab 展示钩子（优先级：P1）
 
 作为 GUI 用户，我希望设置页「钩子」选项卡按来源以 Tab 形式展示钩子（用户级 / 项目级 / 插件），其中项目级在「项目级钩子」Tab 下平铺展示（仅当前项目，不做多项目分组），以便快速定位某个来源下的钩子，并知道它属于哪一类（用户 / 项目 / 插件）。
@@ -519,6 +555,6 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 - 系统必须通过检查 `agent.sendMessage()` 使 `agent.messages` 包含两条用户角色消息（第二条包含 hook stdout 内容且 `isMeta: true`）来验证 `UserPromptSubmit` 成功
 - 系统必须通过检查 `agent.messages` 包含 `ToolBlock`（其失败文本为 `PreToolUse:<工具名> hook error: <stderr>`）来验证 `PreToolUse` 阻止性错误
 - 系统必须通过检查 `agent.messages` 包含内容为 `PostToolUse:<工具名> hook blocking error from command: "<命令>": <stderr>` 且 `isMeta: true` 的用户角色消息来验证 `PostToolUse` 错误反馈
-- 系统必须通过检查 `agent.messages` 不包含用户角色消息且助手消息中包含以 stderr 为内容的 `ErrorBlock` 来验证 `UserPromptSubmit` 阻止性错误
-- 系统必须确保 `ErrorBlock` 内容不被 `packages/agent-sdk/src/utils/convertMessagesForAPI.ts` 处理，使其仅用户可见且不发送给代理
+- 系统必须通过检查 `agent.messages` 不包含用户角色消息且助手消息中包含以 stderr 为内容的 `notice` 块（`level: "error"`）来验证 `UserPromptSubmit` 阻止性错误
+- 系统必须确保 `notice` 块内容不被 `packages/agent-sdk/src/utils/convertMessagesForAPI.ts` 处理，使其仅用户可见且不发送给代理
 - 系统必须通过检查 `agent.messages` 包含带有 stderr 内容的 `isMeta: true` 用户角色消息来验证 `Stop` hook 阻止行为

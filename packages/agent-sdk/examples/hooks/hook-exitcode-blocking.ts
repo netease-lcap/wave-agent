@@ -125,9 +125,11 @@ function analyzeBlockingBehavior(agent: Agent, testName: string): void {
   const messages = agent.messages;
   console.log(`Total messages: ${messages.length}`);
 
-  // Look for error blocks
+  // Look for error-level notices
   const errorBlocks = messages.flatMap((msg) =>
-    msg.blocks.filter((block) => block.type === "error"),
+    msg.blocks.filter(
+      (block) => block.type === "notice" && block.level === "error",
+    ),
   );
 
   // Look for tool blocks
@@ -139,7 +141,7 @@ function analyzeBlockingBehavior(agent: Agent, testName: string): void {
   console.log(`Tool blocks found: ${toolBlocks.length}`);
 
   errorBlocks.forEach((block, index) => {
-    if (block.type === "error") {
+    if (block.type === "notice") {
       console.log(`  Error ${index + 1}: "${block.content}"`);
     }
   });
@@ -226,7 +228,9 @@ async function demonstrateBlockingErrors(): Promise<void> {
     console.log("\n=== Final Analysis ===");
     const finalMessages = agent.messages;
     const errorBlocks = finalMessages.flatMap((msg) =>
-      msg.blocks.filter((block) => block.type === "error"),
+      msg.blocks.filter(
+        (block) => block.type === "notice" && block.level === "error",
+      ),
     );
 
     console.log(`Final message count: ${finalMessages.length}`);

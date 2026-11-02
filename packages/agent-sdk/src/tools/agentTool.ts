@@ -371,9 +371,9 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
           } catch (error) {
             if (!isBackgrounded) {
               // Extract content from the subagent's last assistant message.
-              // aiManager.sendAIMessage() catch block already added an error
-              // block via addErrorBlock(), so the error info is in the message
-              // history — just return it directly.
+              // aiManager.sendAIMessage() caught the failure and already wrote
+              // the reason as an error-level notice, so the message history
+              // carries it — return it instead of inventing a second wording.
               let content = "";
               try {
                 const messages = instance.messageManager.getMessages();
@@ -381,8 +381,16 @@ When using the Agent tool, you must specify a subagent_type parameter to select 
                   .filter((m) => m.role === "assistant")
                   .pop();
                 if (lastAssistant) {
+                  // Only `text` blocks and error-level notices cross the agent
+                  // boundary: everything else in a notice is status narration
+                  // for the human (a loop's round counter, for instance) and
+                  // must not be reported to the parent as a failure.
                   content = lastAssistant.blocks
-                    .filter((b) => b.type === "text" || b.type === "error")
+                    .filter(
+                      (b) =>
+                        b.type === "text" ||
+                        (b.type === "notice" && b.level === "error"),
+                    )
                     .map((b) => (b as { content: string }).content)
                     .join("\n")
                     .trim();

@@ -111,7 +111,9 @@ describe("MessageList Component", () => {
         {
           id: "msg-error",
           role: "assistant",
-          blocks: [{ type: "error", content: "Something went wrong" }],
+          blocks: [
+            { type: "notice", level: "error", content: "Something went wrong" },
+          ],
           timestamp: new Date().toISOString(),
         },
       ];

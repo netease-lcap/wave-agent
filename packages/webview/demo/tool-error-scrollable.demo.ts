@@ -123,7 +123,8 @@ test.describe("Tool Error Scrollable Demo", () => {
       role: "assistant",
       blocks: [
         {
-          type: "error",
+          type: "notice",
+          level: "error",
           content: longError,
         },
       ],

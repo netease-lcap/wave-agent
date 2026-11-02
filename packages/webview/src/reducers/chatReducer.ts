@@ -5,7 +5,7 @@ import type {
   MessageBlock,
   TextBlock,
   ToolBlock,
-  ErrorBlock,
+  NoticeBlock,
 } from "../types";
 import { pinSessionTitle } from "../utils/session";
 
@@ -533,9 +533,9 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         messages: newMessages,
       };
     }
-    case "APPEND_ERROR_BLOCK": {
-      const { error } = action.payload;
-      const newErrorBlock: ErrorBlock = { type: "error", content: error };
+    case "APPEND_NOTICE_BLOCK": {
+      const { level, content } = action.payload;
+      const newNoticeBlock: NoticeBlock = { type: "notice", level, content };
 
       // Append to the LAST message only if it is an assistant message — that
       // message is the current turn's in-flight reply. If the last message is
@@ -545,7 +545,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       // turn (which surfaced the error above the latest user message).
       const lastMessage = state.messages[state.messages.length - 1];
       if (lastMessage && lastMessage.role === "assistant") {
-        const newBlocks = [...lastMessage.blocks, newErrorBlock];
+        const newBlocks = [...lastMessage.blocks, newNoticeBlock];
         return {
           ...state,
           messages: state.messages.map((m, idx) =>
@@ -555,16 +555,16 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       }
 
       // Last message is a user message (or none yet). Create a new assistant
-      // message to carry the error block instead of silently dropping it.
-      const errorMessage: Message = {
+      // message to carry the notice instead of silently dropping it.
+      const noticeMessage: Message = {
         id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
         role: "assistant",
         timestamp: new Date().toISOString(),
-        blocks: [newErrorBlock],
+        blocks: [newNoticeBlock],
       };
       return {
         ...state,
-        messages: [...state.messages, errorMessage],
+        messages: [...state.messages, noticeMessage],
       };
     }
     // Bang output rides on user-message tool blocks via the generic

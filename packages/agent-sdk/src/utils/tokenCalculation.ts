@@ -57,9 +57,11 @@ export function roughTokenCountForMessages(messages: Message[]): number {
   for (const message of messages) {
     for (const block of message.blocks) {
       switch (block.type) {
+        // `notice` blocks (errors included) are skipped: they are written for
+        // the human and `convertMessagesForAPI` never sends them, so counting
+        // them here would overstate what the next request costs.
         case "text":
         case "reasoning":
-        case "error":
         case "compact":
           total += estimateTokens(block.content);
           break;

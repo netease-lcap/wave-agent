@@ -14,6 +14,7 @@ import {
 } from "../hooks/useRemoteControl.js";
 import type {
   Message,
+  MessageBlock,
   McpServerStatus,
   BackgroundTask,
   Task,
@@ -361,6 +362,38 @@ const applyToolBlockUpdate = (
       ),
     };
   });
+};
+
+/**
+ * Append a block to the last message — only when it is an assistant message
+ * (the current turn's in-flight reply). If the last message is a user message,
+ * the block belongs BELOW it: create a new assistant message instead of
+ * polluting the stale assistant from an earlier turn. Same rule the webview
+ * reducer applies (APPEND_NOTICE_BLOCK).
+ *
+ * Both the error and the system line use this: the SDK appends them to the
+ * same place (`appendBlockToLastAssistant`), so the CLI must not invent a
+ * second placement rule.
+ */
+const appendBlockToLastAssistant = (
+  prev: Message[],
+  block: MessageBlock,
+): Message[] => {
+  const last = prev[prev.length - 1];
+  if (last && last.role === "assistant") {
+    return prev.map((m, idx) =>
+      idx === prev.length - 1 ? { ...m, blocks: [...m.blocks, block] } : m,
+    );
+  }
+  return [
+    ...prev,
+    {
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+      role: "assistant",
+      timestamp: new Date().toISOString(),
+      blocks: [block],
+    },
+  ];
 };
 
 export const ChatProvider: React.FC<ChatProviderProps> = ({
@@ -726,39 +759,19 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
           // `end` carries the authoritative final values.
           setMessages((prev) => applyToolBlockUpdate(prev, params));
         },
-        onErrorBlockAdded: (error: string) => {
-          remoteStream?.onErrorBlockAdded(error);
+        onNoticeAdded: ({ level, content }) => {
+          remoteStream?.onNoticeAdded({ level, content });
           if (isExpandedRef.current) return;
-          // One-shot structural update — applied directly (errors must not be
-          // delayed by the tool-running window).
-          setMessages((prev) => {
-            // Append to the LAST message only if it is an assistant message
-            // (the current turn's in-flight reply). If the last message is a
-            // user message, the error belongs BELOW it — create a new
-            // assistant message instead of polluting the stale assistant from
-            // an earlier turn (which surfaced the error above the latest
-            // user message and accumulated it there).
-            const last = prev[prev.length - 1];
-            if (last && last.role === "assistant") {
-              return prev.map((m, idx) =>
-                idx === prev.length - 1
-                  ? {
-                      ...m,
-                      blocks: [...m.blocks, { type: "error", content: error }],
-                    }
-                  : m,
-              );
-            }
-            return [
-              ...prev,
-              {
-                id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
-                role: "assistant",
-                timestamp: new Date().toISOString(),
-                blocks: [{ type: "error", content: error }],
-              },
-            ];
-          });
+          // One-shot structural update — applied directly (a failure must not
+          // be delayed by the tool-running window; a hook's round line must
+          // not wait for the next `refreshMessages`).
+          setMessages((prev) =>
+            appendBlockToLastAssistant(prev, {
+              type: "notice",
+              level,
+              content,
+            }),
+          );
         },
         onLatestTotalTokensChange: (tokens) => {
           setLatestTotalTokens(tokens);
@@ -1213,7 +1226,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
             timestamp: new Date().toISOString(),
             blocks: [
               {
-                type: "error",
+                type: "notice",
+                level: "error",
                 content: `Failed to resume conversation: ${
                   error instanceof Error ? error.message : String(error)
                 }`,

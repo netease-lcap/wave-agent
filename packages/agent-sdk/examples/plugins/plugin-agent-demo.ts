@@ -40,7 +40,7 @@ async function verify() {
 
   const messageManager = {
     addUserMessage: console.log,
-    addErrorBlock: console.error,
+    addNoticeBlock: console.error,
     clearMessages: () => {},
     triggerSlashCommandsChange: () => {},
   } as unknown as MessageManager;

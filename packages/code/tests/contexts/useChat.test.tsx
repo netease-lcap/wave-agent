@@ -336,7 +336,7 @@ describe("ChatProvider", () => {
       parametersChunk: '{"a"',
       parameters: '{"a":1}',
     });
-    callbacks.onErrorBlockAdded!("API Error: 500");
+    callbacks.onNoticeAdded!({ level: "error", content: "API Error: 500" });
 
     // The daemon puts these on the wire from its bridge; this host has to emit the
     // same ones or the phone differs depending on which process serves it — the
@@ -362,7 +362,10 @@ describe("ChatProvider", () => {
           parametersChunk: '{"a"',
         },
       },
-      { method: "errorBlockAdded", params: { error: "API Error: 500" } },
+      {
+        method: "noticeAdded",
+        params: { level: "error", content: "API Error: 500" },
+      },
     ]);
   });
 
@@ -539,7 +542,8 @@ describe("ChatProvider", () => {
         role: "assistant",
         blocks: [
           {
-            type: "error",
+            type: "notice",
+            level: "error",
             content:
               "Failed to resume conversation: Session not found: target-session",
           },
@@ -1616,17 +1620,17 @@ describe("ChatProvider", () => {
     });
 
     // Error block is appended to the assistant message
-    callbacks.onErrorBlockAdded!("boom");
+    callbacks.onNoticeAdded!({ level: "error", content: "boom" });
     await vi.waitFor(() => {
       expect(
         lastValue?.messages[0].blocks.some(
-          (b) => b.type === "error" && b.content === "boom",
+          (b) => b.type === "notice" && b.content === "boom",
         ),
       ).toBe(true);
     });
   });
 
-  it("onErrorBlockAdded creates a NEW assistant message when the last message is a user message (regression: stale assistant from a previous turn)", async () => {
+  it("onNoticeAdded (error) creates a NEW assistant message when the last message is a user message (regression: stale assistant from a previous turn)", async () => {
     let lastValue: ChatContextType | undefined;
     const onHookValue = (val: ChatContextType) => {
       lastValue = val;
@@ -1678,17 +1682,71 @@ describe("ChatProvider", () => {
     // The error belongs BELOW the latest user message: appending to the
     // previous turn's assistant would surface it above the newest message
     // and accumulate there across repeated errors.
-    callbacks.onErrorBlockAdded!("boom");
+    callbacks.onNoticeAdded!({ level: "error", content: "boom" });
     await vi.waitFor(() => {
       expect(lastValue?.messages).toHaveLength(4);
     });
     const errorMessage = lastValue!.messages[3];
     expect(errorMessage.role).toBe("assistant");
-    expect(errorMessage.blocks).toEqual([{ type: "error", content: "boom" }]);
+    expect(errorMessage.blocks).toEqual([
+      { type: "notice", level: "error", content: "boom" },
+    ]);
     // Previous turn's assistant message is left untouched.
     expect(lastValue!.messages[1].blocks).toEqual([
       { type: "text", content: "好的" },
     ]);
+  });
+
+  it("onNoticeAdded (info) appends the hook's user-facing line to the current assistant message", async () => {
+    let lastValue: ChatContextType | undefined;
+    const onHookValue = (val: ChatContextType) => {
+      lastValue = val;
+    };
+
+    renderWithProvider(onHookValue);
+
+    await vi.waitFor(() => {
+      expect(Agent.create).toHaveBeenCalled();
+    });
+
+    const agentCreateArgs = vi.mocked(Agent.create).mock.calls[0][0];
+    const callbacks = agentCreateArgs.callbacks!;
+
+    const userMsg = {
+      id: "u1",
+      role: "user" as const,
+      blocks: [{ type: "text" as const, content: "开始循环" }],
+      timestamp: new Date().toISOString(),
+    };
+    const assistantMsg = {
+      id: "a1",
+      role: "assistant" as const,
+      blocks: [{ type: "text" as const, content: "第 1 轮完成" }],
+      timestamp: new Date().toISOString(),
+    };
+    Object.assign(mockAgent, { messages: [userMsg] });
+    callbacks.onUserMessageAdded!({ content: "开始循环" });
+    await vi.waitFor(() => expect(lastValue?.messages).toHaveLength(1));
+    Object.assign(mockAgent, { messages: [userMsg, assistantMsg] });
+    callbacks.onAssistantMessageAdded!("a1");
+    await vi.waitFor(() => expect(lastValue?.messages).toHaveLength(2));
+
+    // The SDK appends the block to the last message and then tells the host
+    // through a block-level callback. Nothing in the streaming path refreshes
+    // the list, so a host that ignores this callback simply never shows the
+    // line — which is exactly how the loop round markers stayed invisible.
+    callbacks.onNoticeAdded!({
+      level: "info",
+      content: "🔄 第 2 轮 | 想停：/cancel",
+    });
+    await vi.waitFor(() => {
+      expect(
+        lastValue?.messages[1].blocks.some(
+          (b) =>
+            b.type === "notice" && b.content === "🔄 第 2 轮 | 想停：/cancel",
+        ),
+      ).toBe(true);
+    });
   });
 
   it("renders text deltas and tool running updates immediately without a throttle window", async () => {

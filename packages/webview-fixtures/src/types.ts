@@ -45,6 +45,7 @@ import type {
   SessionMetadata,
   SessionData,
   ToolBlockUpdateCallbackParams,
+  NoticeLevel,
   UserPreferenceKey,
   UserPreferenceSource,
   RemoteControlSnapshot,
@@ -54,6 +55,7 @@ export type {
   Message,
   Task,
   PermissionMode,
+  NoticeLevel,
   BackgroundTaskSummary,
   SerializableWorkflowRun,
   ToolBlockUpdateCallbackParams,
@@ -898,9 +900,10 @@ export interface UpdateToolBlockMessage extends HostToWebviewMessageBase {
   params: ToolBlockUpdateCallbackParams;
 }
 
-export interface UpdateErrorBlockMessage extends HostToWebviewMessageBase {
-  command: "updateErrorBlock";
-  error: unknown;
+export interface UpdateNoticeBlockMessage extends HostToWebviewMessageBase {
+  command: "updateNoticeBlock";
+  level: NoticeLevel;
+  content: string;
 }
 
 export interface AuthStatusResponseMessage extends HostToWebviewMessageBase {
@@ -1562,7 +1565,7 @@ export type HostToWebviewMessage =
   | UpdateStreamingContentMessage
   | UpdateStreamingReasoningMessage
   | UpdateToolBlockMessage
-  | UpdateErrorBlockMessage
+  | UpdateNoticeBlockMessage
   | AuthStatusResponseMessage
   | AgentsContentResponseMessage
   | AgentsContentSavedMessage

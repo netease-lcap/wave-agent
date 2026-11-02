@@ -101,14 +101,14 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
       expect(mockCallAgent).not.toHaveBeenCalled();
 
       // FR-019: System MUST validate UserPromptSubmit blocking errors by checking that
-      // agent.messages does not contain the user role message and contains an ErrorBlock
+      // agent.messages does not contain the user role message and contains an error-level notice
       // in the assistant message with stderr as content
       const messages = agent.messages;
 
       // Should have only an error block, no user message or assistant response
       expect(messages).toHaveLength(1);
       expect(messages[0].role).toBe("assistant");
-      expect(messages[0].blocks?.[0]?.type).toBe("error");
+      expect(messages[0].blocks?.[0]?.type).toBe("notice");
       const firstBlock = messages[0].blocks?.[0];
       expect(
         firstBlock && hasContent(firstBlock) ? firstBlock.content : undefined,
@@ -162,14 +162,14 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
       expect(mockCallAgent).not.toHaveBeenCalled();
 
       // FR-019: System MUST validate UserPromptSubmit blocking errors by checking that
-      // agent.messages does not contain the user role message and contains an ErrorBlock
+      // agent.messages does not contain the user role message and contains an error-level notice
       // in the assistant message with stderr as content
 
       // Should block on the first blocking error (exit code 2)
       // Original prompt should be erased, no context should be injected
       const messages = agent.messages;
       expect(messages).toHaveLength(1);
-      expect(messages[0].blocks?.[0]?.type).toBe("error");
+      expect(messages[0].blocks?.[0]?.type).toBe("notice");
       const firstBlock = messages[0].blocks?.[0];
       expect(
         firstBlock && hasContent(firstBlock) ? firstBlock.content : undefined,
@@ -302,6 +302,80 @@ describe("Hook Blocking Error Behavior (User Story 2)", () => {
           block.content.includes("Task completed successfully"),
       );
       expect(hasResponseText).toBe(true);
+    });
+
+    it("lets a queued user message preempt the hook's restart", async () => {
+      // A hook that never lets the turn end (ralph-loop style) must not starve
+      // the queue: the user's message — typically /cancel — has to run.
+      const hookManager = (agent as unknown as { hookManager: HookManager })
+        .hookManager;
+      // Block only the first Stop (the "长任务" turn); otherwise the always-on
+      // block would restart forever once the queued turn finishes.
+      let stopHookCalls = 0;
+      vi.spyOn(hookManager, "executeHooks").mockImplementation(async (event) =>
+        event === "Stop" && stopHookCalls++ === 0
+          ? [
+              {
+                success: false,
+                exitCode: 2,
+                stdout: "",
+                stderr: "又一次循环",
+                duration: 10,
+                timedOut: false,
+              },
+            ]
+          : [],
+      );
+
+      let releaseFirstTurn: () => void = () => {};
+      const firstTurnGate = new Promise<void>((resolve) => {
+        releaseFirstTurn = resolve;
+      });
+      const mockCallAgent = vi.mocked(aiService.callAgent);
+      let callCount = 0;
+      mockCallAgent.mockImplementation(async () => {
+        callCount++;
+        if (callCount === 1) await firstTurnGate;
+        return {
+          content: `reply-${callCount}`,
+          tool_calls: [],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        };
+      });
+
+      const firstTurn = agent.sendMessage("长任务");
+      await vi.waitFor(() => expect(agent.isLoading).toBe(true));
+
+      const queuedTurn = agent.sendMessage("想取消");
+      expect(agent.queuedMessages.map((m) => m.content)).toContain("想取消");
+
+      releaseFirstTurn();
+      await firstTurn;
+      await queuedTurn;
+      await vi.waitFor(() =>
+        expect(
+          mockCallAgent.mock.calls.some((call) =>
+            JSON.stringify(call[0]?.messages).includes("想取消"),
+          ),
+        ).toBe(true),
+      );
+
+      // The hook did want to continue (its reason is in the history)…
+      expect(
+        agent.messages.some((message) =>
+          message.blocks?.some(
+            (block) => "content" in block && block.content === "又一次循环",
+          ),
+        ),
+      ).toBe(true);
+
+      // …but the queued message drove the *second* model call: the hook's
+      // continuation did not get a turn of its own. (Extra calls after this are
+      // the auto-memory extraction fork, which never sees the user's text.)
+      const queuedCallIndex = mockCallAgent.mock.calls.findIndex((call) =>
+        JSON.stringify(call[0]?.messages).includes("想取消"),
+      );
+      expect(queuedCallIndex).toBe(1);
     });
   });
 });
