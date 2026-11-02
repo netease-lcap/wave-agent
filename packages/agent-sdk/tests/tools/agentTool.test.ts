@@ -40,6 +40,7 @@ describe("Agent Tool Background Execution", () => {
       createInstance: vi.fn(),
       executeAgent: vi.fn(),
       backgroundInstance: vi.fn(),
+      cleanupInstance: vi.fn(),
     } as unknown as SubagentManager;
 
     // Set the mock manager in the context
@@ -570,7 +571,7 @@ describe("Agent Tool Background Execution", () => {
     expect(result.error).toContain('No agent found matching "Invalid"');
   });
 
-  it("should surface error message in content when subagent fails", async () => {
+  it("should fail the tool call when the subagent produced no assistant message", async () => {
     const mockInstance = {
       subagentId: "gp-test-id",
       usedTools: [],
@@ -598,15 +599,18 @@ describe("Agent Tool Background Execution", () => {
     );
 
     expect(result.success).toBe(false);
-    // content must contain the error message, not be empty
+    // Nothing came back at all, so this is the one path where the tool call
+    // itself fails and the parent reads the error.
     expect(result.content).toContain("Agent delegation failed");
     expect(result.content).toContain("429 Too Many Requests");
     expect(result.error).toContain("429 Too Many Requests");
   });
 
-  it("should return error block when last assistant message has no text", async () => {
+  it("should report a failed run as completed when it produced a message", async () => {
     // Simulates what aiManager.sendAIMessage() does on error: it calls
-    // addNoticeBlock() which appends an error block to the last assistant message
+    // addNoticeBlock() which appends an error-level notice to the last
+    // assistant message. That notice is narration for the human — it must not
+    // reach the parent model, and its presence is not "output" either.
     const mockInstance = {
       subagentId: "gp-test-id",
       usedTools: [],
@@ -645,12 +649,13 @@ describe("Agent Tool Background Execution", () => {
       mockToolContext,
     );
 
-    expect(result.success).toBe(false);
-    // no text block → fallback to error block
-    expect(result.content).toContain("429 Too Many Requests");
+    // An assistant message exists → normal completion, and the error notice
+    // stays out of the result the parent reads.
+    expect(result.success).toBe(true);
+    expect(result.content).toBe("");
   });
 
-  it("should include both text and error block from last assistant message", async () => {
+  it("should pass only the text of a failed run back to the parent", async () => {
     const mockInstance = {
       subagentId: "gp-test-id",
       usedTools: [],
@@ -690,10 +695,48 @@ describe("Agent Tool Background Execution", () => {
       mockToolContext,
     );
 
+    expect(result.success).toBe(true);
+    expect(result.content).toBe("I found 3 files.");
+  });
+
+  it("should report an interrupted run as failed even when it produced text", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const mockInstance = {
+      subagentId: "gp-test-id",
+      usedTools: [],
+      messageManager: {
+        getMessages: vi.fn(() => [
+          {
+            role: "assistant",
+            blocks: [{ type: "text", content: "partial work" }],
+          },
+        ]),
+        getLatestTotalTokens: vi.fn(() => 0),
+      },
+    };
+
+    vi.mocked(mockSubagentManager.findSubagent).mockResolvedValue(gpConfig);
+    vi.mocked(mockSubagentManager.createInstance).mockResolvedValue(
+      mockInstance as unknown as SubagentInstance,
+    );
+    vi.mocked(mockSubagentManager.executeAgent).mockRejectedValue(
+      new Error("Agent was aborted"),
+    );
+
+    const result = await agentTool.execute(
+      {
+        description: "Test",
+        prompt: "Test",
+        subagent_type: "general-purpose",
+      },
+      { ...mockToolContext, abortSignal: controller.signal },
+    );
+
+    // A cancel is not a completion: the partial text is not handed back.
     expect(result.success).toBe(false);
-    // both text and error blocks are included
-    expect(result.content).toContain("I found 3 files.");
-    expect(result.content).toContain("429 Too Many Requests");
+    expect(result.content).toBe("");
+    expect(result.error).toBe("Agent was aborted");
   });
 
   it("should format compact params", () => {
