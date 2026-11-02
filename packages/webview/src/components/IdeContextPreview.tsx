@@ -1,5 +1,6 @@
-import React, { useEffect, useRef } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { renderCodeHighlight, renderFileMarkdown } from "./FilePane";
+import { resolveMarkdownLinkTarget } from "../utils/markdownLinkTarget";
 import "../styles/IdeContextPreview.css";
 
 interface IdeContextPreviewProps {
@@ -23,6 +24,19 @@ interface IdeContextPreviewProps {
   /** 正文上方单独一行提示（「可能有编码问题」）：它说的是内容怎么读，比标题栏
    * 能放下的那句话长，挤在右侧只会被 ellipsis 吃掉。 */
   notice?: string;
+  /**
+   * 正在预览的那个文件的路径，用作 markdown 正文里**相对链接**的解析基准。
+   *
+   * 这份正文是渲染进应用文档的：一个没被接管的 `<a href="a.md">` 会被浏览器按
+   * **页面自己的地址**解析，于是点一下就把整页导航走（远控页实测落成静态站点
+   * 一个不存在的对象，就地把内容换成错误页）。有路径 + 有 `onOpenFile` 才接管，
+   * 两者缺一都保持默认行为——`@终端` 那类「内容不来自某个文件」的弹层没有基准，
+   * 也不该猜。
+   */
+  filePath?: string;
+  /** markdown 正文里点到**本地文件**：交给调用方按它自己的通道打开（文件面板 /
+   * 远控页的按需读取）。不传则链接保持默认行为。 */
+  onOpenFile?: (path: string) => void;
   onClose: () => void;
 }
 
@@ -42,6 +56,8 @@ export const IdeContextPreview: React.FC<IdeContextPreviewProps> = ({
   codePath,
   note,
   notice,
+  filePath,
+  onOpenFile,
   onClose,
 }) => {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -67,6 +83,32 @@ export const IdeContextPreview: React.FC<IdeContextPreviewProps> = ({
       returnFocusRef.current?.focus();
     };
   }, [onClose]);
+
+  /**
+   * 正文里的相对链接按**被预览的那份文件的目录**解析，交回调用方就地打开
+   * （与文件面板 `FilePane.handleMarkdownClick` 同一套判据、同一个解析器）。
+   *
+   * 不接管的那几种由解析器自己回答 `null`：`#锚点`、外链（`http(s)` / `mailto`
+   * …）、以及没有基准路径时的相对链接——它们的默认行为是对的。解析出本地路径
+   * 就必须 `preventDefault`：这份 HTML 挂在应用文档里，放任默认行为等于把页面
+   * 导航走。
+   */
+  const handleDocClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (!filePath || !onOpenFile) return;
+      const anchor =
+        event.target instanceof Element
+          ? event.target.closest("a[href]")
+          : null;
+      const href = anchor?.getAttribute("href");
+      if (!href) return;
+      const target = resolveMarkdownLinkTarget(href, filePath);
+      if (!target) return;
+      event.preventDefault();
+      onOpenFile(target);
+    },
+    [filePath, onOpenFile],
+  );
 
   return (
     <div
@@ -108,6 +150,7 @@ export const IdeContextPreview: React.FC<IdeContextPreviewProps> = ({
           <div
             className="ide-context-preview-doc message-content markdown-content"
             data-testid="ide-context-preview-doc"
+            onClick={handleDocClick}
             dangerouslySetInnerHTML={{ __html: renderFileMarkdown(content) }}
           />
         ) : codePath ? (

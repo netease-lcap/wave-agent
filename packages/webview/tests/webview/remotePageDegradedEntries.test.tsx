@@ -199,6 +199,86 @@ describe("file paths on the remote-control Web page", () => {
     expect(await screen.findByRole("dialog")).toHaveTextContent("build ok");
   });
 
+  it("弹层里点相对链接，就地换成那份文件（不把页面导航走）", async () => {
+    window.waveRemotePage = true;
+    const docPath = "/home/user/project/docs/index.md";
+    const { container, vscode } = renderAssistantMarkdown(
+      `改动在 ${docPath} 里。`,
+    );
+
+    const link = await waitFor(() => {
+      const el = container.querySelector("a.file-path-link") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    act(() => {
+      fireEvent.click(link);
+    });
+
+    const first = postsOf(vscode).find(
+      (msg) => msg.command === "getTextPreview",
+    );
+    expect(first).toMatchObject({ path: docPath });
+
+    // 一份带相对链接的 markdown：这正是 2026-11-02 报的那次点击。
+    replyText(first!.requestId, {
+      content: "# 索引\n\n看 [规格](020-mini-app/spec.md)。\n",
+    });
+
+    const doc = await screen.findByTestId("ide-context-preview-doc");
+    const anchor = doc.querySelector("a[href]") as HTMLElement;
+    expect(anchor.getAttribute("href")).toBe("020-mini-app/spec.md");
+
+    // `dispatchEvent` 返回 false = 默认行为被取消：拦截生效、不会导航走。
+    expect(fireEvent.click(anchor)).toBe(false);
+
+    // 链接按**被预览文件所在目录**解析，然后在同一个弹层里换一份。
+    const requests = postsOf(vscode).filter(
+      (msg) => msg.command === "getTextPreview",
+    );
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toMatchObject({
+      path: "/home/user/project/docs/020-mini-app/spec.md",
+    });
+  });
+
+  it("弹层里的页内锚点照旧交给浏览器（不发起读取）", async () => {
+    window.waveRemotePage = true;
+    const docPath = "/home/user/project/docs/index.md";
+    const { container, vscode } = renderAssistantMarkdown(
+      `改动在 ${docPath} 里。`,
+    );
+
+    const link = await waitFor(() => {
+      const el = container.querySelector("a.file-path-link") as HTMLElement;
+      expect(el).not.toBeNull();
+      return el;
+    });
+    act(() => {
+      fireEvent.click(link);
+    });
+    const first = postsOf(vscode).find(
+      (msg) => msg.command === "getTextPreview",
+    );
+    replyText(first!.requestId, {
+      content: "# 索引\n\n跳到 [本节](#本节)。\n",
+    });
+
+    const doc = await screen.findByTestId("ide-context-preview-doc");
+    const anchor = doc.querySelector("a[href]") as HTMLElement;
+    // markdown 渲染器会把中文锚点百分号编码，认它就够了。
+    expect(decodeURIComponent(anchor.getAttribute("href")!)).toBe("#本节");
+
+    act(() => {
+      fireEvent.click(anchor);
+    });
+
+    // 页内锚点不是文件：读取不重发，弹层内容不变。
+    expect(
+      postsOf(vscode).filter((msg) => msg.command === "getTextPreview"),
+    ).toHaveLength(1);
+  });
+
   it("行内代码与围栏代码块里的路径同样可点", async () => {
     window.waveRemotePage = true;
     const { container } = renderAssistantMarkdown(
