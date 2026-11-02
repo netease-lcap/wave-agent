@@ -172,4 +172,28 @@ describe("remote page session status markers", () => {
       within(slot(page, "session-1")).getByLabelText("等待确认"),
     ).toBeInTheDocument();
   });
+
+  it("keeps 有后台任务在跑 across a broadcast that carries all four facts", () => {
+    // 打开列表页就会重读一次、并立刻收到一条 `updateSessionStatus`（shim 的
+    // `refreshSessionList`）；这条报文四个字段一次给全，页面必须整组收下 ——
+    // 只搬 `waiting`/`running` 会把 `background` 一起清空，蓝点就不显示了。
+    const page = openPage({
+      waiting: [],
+      running: [],
+      background: ["session-1"],
+    });
+
+    act(() => {
+      sendHostMessage(
+        fixtures.updateSessionStatus([], [], {
+          background: ["session-1"],
+          worktrees: [],
+        }),
+      );
+    });
+
+    expect(
+      within(slot(page, "session-1")).getByLabelText("有后台任务在跑"),
+    ).toBeInTheDocument();
+  });
 });
