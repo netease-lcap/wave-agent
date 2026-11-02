@@ -1331,7 +1331,9 @@ async function resolveWorktreeForRemoval(
   const config = loadMergedWaveConfig(repoRoot);
   const hookBased = hasWorktreeCreateHook(config?.hooks);
   // Empty when neither record can name the branch: removal then deletes the
-  // worktree and keeps every branch, rather than guessing at one.
+  // worktree and keeps every branch, rather than guessing at one. A name that
+  // came from the path layout is only a candidate — `removeWorktree` asks git
+  // whether this repository really has that branch before deleting anything.
   const branch =
     createdBranch ||
     worktreeCreationBranch({ path: worktreePath, repoRoot }) ||

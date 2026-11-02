@@ -30,9 +30,15 @@ const { git } = vi.hoisted(() => {
   const git = {
     calls: [] as Array<{ cmd: string; args: string[]; opts: unknown }>,
     handler: (): GitResult => ({ stdout: "", stderr: "" }) as GitResult,
+    // Branches `git branch --list` reports. `removeWorktree` confirms a branch
+    // exists before deleting it, and every case below is about *which* branch
+    // gets deleted, not about how the listing is spelled — so the shared mock
+    // answers the listing off this set instead of each test's handler.
+    branches: new Set<string>(),
   } as {
     calls: Array<{ cmd: string; args: string[]; opts: unknown }>;
     handler: (cmd: string, args: string[], opts: unknown) => GitResult;
+    branches: Set<string>;
   };
   return { git };
 });
@@ -50,6 +56,16 @@ vi.mock("node:child_process", async () => {
     opts?: unknown,
   ): Promise<GitResult> => {
     git.calls.push({ cmd, args, opts });
+    // The existence check `removeWorktree` runs before deleting a branch (see
+    // `branchExists`): answer it from `git.branches`, exactly as git would —
+    // the name back when the branch is there, nothing when it is not.
+    if (args[0] === "branch" && args[1] === "--list") {
+      const name = args[args.length - 1];
+      return Promise.resolve({
+        stdout: git.branches.has(name) ? `${name}\n` : "",
+        stderr: "",
+      });
+    }
     try {
       return Promise.resolve(git.handler(cmd, args, opts));
     } catch (error) {
@@ -106,6 +122,8 @@ describe("worktree utils", () => {
     vi.clearAllMocks();
     git.calls.length = 0;
     git.handler = () => ({ stdout: "", stderr: "" });
+    // The branch `removeWorktree`'s fixtures were created on.
+    git.branches = new Set(["worktree-my-feat"]);
     // Default: neither settings.local.json nor .worktreeinclude exist
     vi.mocked(fs.promises.readFile).mockRejectedValue(enoent());
     vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
@@ -558,6 +576,59 @@ describe("worktree utils", () => {
         }),
       ).toBeUndefined();
     });
+
+    it("names the branch from the path tail whatever form the two paths are in", () => {
+      // The two paths reach the function from different places: `path` is what
+      // the OS/host handed over (mkdtemp, a session's cwd), `repoRoot` is what
+      // git canonicalized into `<gitdir>/commondir`. On Windows the same
+      // directory therefore arrives as an 8.3 short name, an unexpanded
+      // junction, or a different letter case — and Windows compares paths
+      // case-insensitively while a string compare does not. That is how the
+      // parent-prefix compare passed on Linux (and on the PR gate) and failed
+      // `check-windows` on main after #2721: expected 'worktree-feat', got
+      // undefined. This test is red on Linux with that compare, so the gate
+      // catches it before the Windows job does.
+      const LONG_ROOT = path.resolve("/tmp/wave-worktree-real-8f2a");
+      const SHORT_ROOT = path.resolve("/tmp/WAVE-W~1");
+      const worktreeUnder = (root: string) =>
+        path.join(root, ".wave", "worktrees");
+
+      // 8.3 short name vs the long one git wrote.
+      expect(
+        worktreeCreationBranch({
+          path: path.join(worktreeUnder(SHORT_ROOT), "feat"),
+          repoRoot: LONG_ROOT,
+        }),
+      ).toBe("worktree-feat");
+      // Same directory, different letter case.
+      expect(
+        worktreeCreationBranch({
+          path: path.join(
+            worktreeUnder(path.resolve("/repo/WaveRepo")),
+            "feat",
+          ),
+          repoRoot: path.resolve("/repo/waverepo"),
+        }),
+      ).toBe("worktree-feat");
+      // …and a nested slug name still survives the tail walk.
+      expect(
+        worktreeCreationBranch({
+          path: path.join(worktreeUnder(SHORT_ROOT), "team", "feat"),
+          repoRoot: LONG_ROOT,
+        }),
+      ).toBe("worktree-team/feat");
+    });
+
+    it("names the innermost worktree when the repo itself lives in one", () => {
+      const OUTER = path.join(REPO_ROOT, ".wave", "worktrees", "outer");
+
+      expect(
+        worktreeCreationBranch({
+          path: path.join(OUTER, ".wave", "worktrees", "inner"),
+          repoRoot: OUTER,
+        }),
+      ).toBe("worktree-inner");
+    });
   });
 
   describe("getWorktreeChanges", () => {
@@ -670,6 +741,36 @@ describe("worktree utils", () => {
       );
       // Commits on that branch may be reachable from nowhere else.
       expect(gitCallsWith(["branch", "-D", "another-branch"])).toHaveLength(0);
+    });
+
+    it("should confirm the branch exists before deleting it", async () => {
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      await removeWorktree(session);
+
+      const listIndex = git.calls.findIndex((c) => c.args.includes("--list"));
+      const deleteIndex = git.calls.findIndex(
+        (c) => c.args[0] === "branch" && c.args[1] === "-D",
+      );
+      expect(listIndex).toBeGreaterThanOrEqual(0);
+      expect(deleteIndex).toBeGreaterThan(listIndex);
+    });
+
+    it("should delete no branch when the repository has no such branch", async () => {
+      // A name inferred from the path layout is a candidate, not a record: the
+      // layout says what name wave *would* have used, not that this repository
+      // ever had that branch. An unconfirmed name must not delete anything.
+      git.branches = new Set();
+      const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      await removeWorktree(session);
+
+      expect(gitCallsWith(["branch", "-D"])).toHaveLength(0);
+      expect(warnSpy.mock.calls.map((c) => c[0]).join(" ")).toContain(
+        "No branch worktree-my-feat in /repo/root — keeping every branch",
+      );
+      warnSpy.mockRestore();
     });
 
     it("should delete no branch when the caller could not name one", async () => {

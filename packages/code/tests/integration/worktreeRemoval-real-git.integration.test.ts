@@ -37,7 +37,17 @@ function git(cwd: string, args: string[]): string {
 
 /** A repo with an identity and no signing — commits must not depend on the runner's global config. */
 function initRepo(prefix: string): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  // `os.tmpdir()` hands back the path it was given, which on Windows can be an
+  // 8.3 short name (`C:\Users\RUNNER~1\…`) and on macOS goes through `/var` →
+  // `/private/var`. Git canonicalizes whatever path it is told and writes *that*
+  // into `<gitdir>`, so a fixture built on the raw value would make this suite
+  // pass or fail on how the runner's temp dir is spelled rather than on what it
+  // is testing. Canonicalize once here; the path-form divergence itself is
+  // pinned by `tests/utils/worktree.test.ts` (it needs no git and runs on the
+  // PR gate, which this suite does not).
+  const root = fs.realpathSync.native(
+    fs.mkdtempSync(path.join(os.tmpdir(), prefix)),
+  );
   git(root, ["init", "-b", "main", "-q"]);
   git(root, ["config", "user.name", "Wave Test"]);
   git(root, ["config", "user.email", "wave-test@example.com"]);
@@ -90,11 +100,11 @@ describe("removeWorktree against a real repository", () => {
   });
 
   /** The session the bridge builds for a worktree it can name the branch of. */
-  function session(branch: string): WorktreeSession {
-    const info = deriveWorktreeInfo(worktreePath);
+  function session(branch: string, at = worktreePath): WorktreeSession {
+    const info = deriveWorktreeInfo(at);
     if (!info) throw new Error("the fixture is not a linked worktree");
     return {
-      name: "feat",
+      name: path.basename(info.path),
       path: info.path,
       branch,
       repoRoot: info.repoRoot,
@@ -139,5 +149,30 @@ describe("removeWorktree against a real repository", () => {
       "worktree-feat",
     );
     expect(git(root, ["rev-parse", "user-branch"])).toBe(userBranchSha);
+  });
+
+  it("names a slash-separated worktree by every segment below .wave/worktrees", async () => {
+    // Names are slug paths (see validateWorktreeSlug), so wave's directory is
+    // nested — `<repo>/.wave/worktrees/team/api` sits on `worktree-team/api`.
+    // The name is what remains *below* `.wave/worktrees`, i.e. it cannot be
+    // read off the last path segment alone: `path.basename` would say `api`
+    // and leave `worktree-team/api` behind as the orphan.
+    const nested = path.join(root, ".wave", "worktrees", "team", "api");
+    fs.mkdirSync(path.dirname(nested), { recursive: true });
+    git(root, ["worktree", "add", "-q", "-b", "worktree-team/api", nested]);
+
+    const info = deriveWorktreeInfo(nested)!;
+    const creationBranch = worktreeCreationBranch(info);
+
+    expect(creationBranch).toBe("worktree-team/api");
+
+    await removeWorktree(session(creationBranch!, nested));
+
+    expect(fs.existsSync(nested)).toBe(false);
+    expect(git(root, ["branch", "--list", "worktree-team/api"])).toBe("");
+    // The worktree above is untouched, branch included.
+    expect(git(root, ["branch", "--list", "worktree-feat"])).toContain(
+      "worktree-feat",
+    );
   });
 });
