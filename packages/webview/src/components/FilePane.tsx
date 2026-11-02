@@ -21,6 +21,7 @@ import { commentLocationLabel, formatCodeComment } from "../utils/codeComment";
 import type { ConversationFileEntry } from "../utils/conversationFiles";
 import { toRelativePath } from "../utils/messageUtils";
 import { isMarkdownPath } from "../utils/filePathLinks";
+import { resolveMarkdownLinkTarget } from "../utils/markdownLinkTarget";
 import { useCodeCommentEntry } from "../utils/useCodeCommentEntry";
 import { useHostMessage } from "../utils/useHostMessage";
 import { ancestorsWithin, isUnder } from "../utils/fileTreePaths";
@@ -1184,6 +1185,30 @@ export const FilePane: React.FC<FilePaneProps> = ({
     [fileView?.content, markdown, onAddComment],
   );
 
+  /**
+   * A link inside rendered markdown is a click on the *app document*, not on the
+   * file being read: left alone, a relative href resolves against the app's own
+   * URL and navigates the whole window away from the chat UI (spec
+   * `desktop-file-panel.md`「文件面板」场景 22). Local targets open in the panel —
+   * resolved against this file's directory — while external links keep their own
+   * handler.
+   */
+  const handleMarkdownClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const anchor =
+        event.target instanceof Element
+          ? event.target.closest("a[href]")
+          : null;
+      const href = anchor?.getAttribute("href");
+      if (!href || !fileView?.path || !onOpenFileInPanel) return;
+      const target = resolveMarkdownLinkTarget(href, fileView.path);
+      if (!target) return;
+      event.preventDefault();
+      onOpenFileInPanel(target);
+    },
+    [fileView?.path, onOpenFileInPanel],
+  );
+
   const closeComment = useCallback(() => {
     setCommentRange(null);
     setCommentDraft("");
@@ -1946,6 +1971,7 @@ export const FilePane: React.FC<FilePaneProps> = ({
                     >
                       <div
                         className="message-content markdown-content file-pane-markdown"
+                        onClick={handleMarkdownClick}
                         dangerouslySetInnerHTML={{ __html: mdHtml }}
                       />
                       {/* Revealed on hover of a block rather than by CSS: the button
