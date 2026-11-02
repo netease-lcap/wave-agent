@@ -66,7 +66,7 @@ describe("NotificationRouter", () => {
     expect(methods).toContain("assistantContentUpdated");
     expect(methods).toContain("assistantReasoningUpdated");
     expect(methods).toContain("toolBlockUpdated");
-    expect(methods).toContain("errorBlockAdded");
+    expect(methods).toContain("noticeAdded");
     expect(methods).toContain("loadingChange");
     expect(methods).toContain("commandRunningChange");
     expect(methods).toContain("queuedMessagesChange");

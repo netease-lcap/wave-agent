@@ -134,7 +134,7 @@ describe("AIManager", () => {
       getCombinedMemory: vi.fn().mockResolvedValue(""),
       getMemoryForInjection: vi.fn().mockResolvedValue({ prependContent: "" }),
       processTriggeredRules: vi.fn().mockReturnValue([]),
-      addErrorBlock: vi.fn(),
+      addNoticeBlock: vi.fn(),
       setlatestTotalTokens: vi.fn(),
       saveSession: vi.fn().mockResolvedValue(undefined),
       compactMessagesAndUpdateSession: vi.fn(),
@@ -621,8 +621,9 @@ describe("AIManager", () => {
       expect(mockMessageManager.saveSession).toHaveBeenCalledTimes(3);
 
       // Verify that error was handled in the recursive call
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         "AI service error",
+        "error",
       );
     });
 
@@ -636,8 +637,9 @@ describe("AIManager", () => {
 
       // Streaming blocks must be finalized so the UI stops its in-progress timer.
       expect(mockMessageManager.finalizeStreamingBlocks).toHaveBeenCalled();
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         "Request was aborted",
+        "error",
       );
     });
 
@@ -1978,7 +1980,7 @@ describe("AIManager", () => {
       expect(
         mockMessageManager.finalizeAbortedToolBlocks,
       ).not.toHaveBeenCalled();
-      expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+      expect(mockMessageManager.addNoticeBlock).not.toHaveBeenCalled();
 
       // The fallback result lands in a fresh message as a non-streamed response.
       expect(mockMessageManager.addAssistantMessage).toHaveBeenCalledTimes(2);

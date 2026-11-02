@@ -4,7 +4,7 @@ import {
   convertImageToBase64,
   addUserMessageToMessages,
   updateUserMessageInMessages,
-  addErrorBlockToMessage,
+  addNoticeBlockToMessage,
   generateMessageId,
   addToolBlockToMessageInMessages,
   updateToolBlockInMessage,
@@ -360,7 +360,7 @@ describe("convertImageToBase64", () => {
   });
 });
 
-describe("addErrorBlockToMessage", () => {
+describe("addNoticeBlockToMessage", () => {
   it("should add error block to the last assistant message", () => {
     const initialMessages: Message[] = [
       {
@@ -377,9 +377,10 @@ describe("addErrorBlockToMessage", () => {
       },
     ];
 
-    const result = addErrorBlockToMessage({
+    const result = addNoticeBlockToMessage({
       messages: initialMessages,
-      error: "Something went wrong",
+      content: "Something went wrong",
+      level: "error",
     });
 
     expect(result).toHaveLength(2);
@@ -387,7 +388,7 @@ describe("addErrorBlockToMessage", () => {
       role: "assistant",
       blocks: [
         { type: "text", content: "Hi there!" },
-        { type: "error", content: "Something went wrong" },
+        { type: "notice", level: "error", content: "Something went wrong" },
       ],
       timestamp: expect.any(String),
     });
@@ -409,15 +410,16 @@ describe("addErrorBlockToMessage", () => {
       },
     ];
 
-    const result = addErrorBlockToMessage({
+    const result = addNoticeBlockToMessage({
       messages: initialMessages,
-      error: "Error occurred",
+      content: "Error occurred",
+      level: "error",
     });
 
     expect(result).toHaveLength(3);
     expect(result[2]).toMatchObject({
       role: "assistant",
-      blocks: [{ type: "error", content: "Error occurred" }],
+      blocks: [{ type: "notice", level: "error", content: "Error occurred" }],
       timestamp: expect.any(String),
     });
     // Original messages should remain unchanged
@@ -428,15 +430,16 @@ describe("addErrorBlockToMessage", () => {
   it("should create new assistant message when messages array is empty", () => {
     const initialMessages: Message[] = [];
 
-    const result = addErrorBlockToMessage({
+    const result = addNoticeBlockToMessage({
       messages: initialMessages,
-      error: "Initial error",
+      content: "Initial error",
+      level: "error",
     });
 
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
       role: "assistant",
-      blocks: [{ type: "error", content: "Initial error" }],
+      blocks: [{ type: "notice", level: "error", content: "Initial error" }],
       timestamp: expect.any(String),
     });
   });
@@ -466,9 +469,10 @@ describe("addErrorBlockToMessage", () => {
       },
     ];
 
-    const result = addErrorBlockToMessage({
+    const result = addNoticeBlockToMessage({
       messages: initialMessages,
-      error: "Tool execution failed",
+      content: "Tool execution failed",
+      level: "error",
     });
 
     expect(result).toHaveLength(3);
@@ -477,7 +481,7 @@ describe("addErrorBlockToMessage", () => {
       blocks: [
         { type: "text", content: "Second response" },
         { type: "tool", parameters: "ls", stage: "end" },
-        { type: "error", content: "Tool execution failed" },
+        { type: "notice", level: "error", content: "Tool execution failed" },
       ],
       timestamp: expect.any(String),
     });
@@ -497,9 +501,10 @@ describe("addErrorBlockToMessage", () => {
     ];
     const originalLength = initialMessages[0].blocks.length;
 
-    addErrorBlockToMessage({
+    addNoticeBlockToMessage({
       messages: initialMessages,
-      error: "Test error",
+      content: "Test error",
+      level: "error",
     });
 
     // Original array should not be modified

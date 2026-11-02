@@ -2276,11 +2276,11 @@ export const ChatApp: React.FC<ChatAppProps> = ({
           payload: message.params as ToolBlockUpdateCallbackParams,
         });
         break;
-      case "updateErrorBlock":
+      case "updateNoticeBlock":
         if (!forThisPane(message)) break;
         dispatch({
-          type: "APPEND_ERROR_BLOCK",
-          payload: { error: message.error },
+          type: "APPEND_NOTICE_BLOCK",
+          payload: { level: message.level, content: message.content },
         });
         break;
       case "authStatusResponse":

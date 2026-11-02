@@ -388,8 +388,8 @@ async function demoAgent(allowUnixSockets: boolean): Promise<void> {
             );
           }
         },
-        onErrorBlockAdded: (error) => {
-          errors.push(error);
+        onNoticeAdded: ({ level, content }) => {
+          if (level === "error") errors.push(content);
         },
         onLoadingChange: (loading) => {
           if (loading) sawLoading = true;

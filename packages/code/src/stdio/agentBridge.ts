@@ -3073,10 +3073,10 @@ export class AgentBridge {
           ctx.registeredSessionId,
         );
       },
-      onErrorBlockAdded: (error: string) => {
+      onNoticeAdded: (notice) => {
         this.emit(
-          "errorBlockAdded",
-          remoteWire.errorBlockAdded(error),
+          "noticeAdded",
+          remoteWire.noticeAdded(notice),
           ctx.registeredSessionId,
         );
       },

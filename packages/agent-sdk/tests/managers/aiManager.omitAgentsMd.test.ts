@@ -87,7 +87,7 @@ function createHarness({ omitAgentsMd }: { omitAgentsMd?: boolean }) {
     getCombinedMemory: vi.fn().mockResolvedValue(""),
     getMemoryForInjection,
     processTriggeredRules: vi.fn().mockReturnValue([]),
-    addErrorBlock: vi.fn(),
+    addNoticeBlock: vi.fn(),
     setlatestTotalTokens: vi.fn(),
     saveSession: vi.fn().mockResolvedValue(undefined),
     compactMessagesAndUpdateSession: vi.fn(),

@@ -291,13 +291,16 @@ describe("Agent Message Compaction Tests", () => {
     // runs before the main-loop request, so the error lands on the user
     // message, not the final assistant response)
     const errorMessage = agent.messages.find((msg) =>
-      msg.blocks.some((block) => block.type === "error"),
+      msg.blocks.some(
+        (block) => block.type === "notice" && block.level === "error",
+      ),
     );
     expect(errorMessage).toBeDefined();
     const errorBlock = errorMessage!.blocks.find(
-      (block) => block.type === "error",
+      (block) => block.type === "notice" && block.level === "error",
     ) as {
-      type: "error";
+      type: "notice";
+      level: "error";
       content: string;
     };
     expect(errorBlock.content).toContain(

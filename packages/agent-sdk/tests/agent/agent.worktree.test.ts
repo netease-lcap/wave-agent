@@ -51,7 +51,7 @@ describe("Agent WorktreeCreate Hook", () => {
       // We can test this by calling processHookResults on a real HookManager instance
       // but we need a MessageManager mock
       const mockMessageManager = {
-        addErrorBlock: vi.fn(),
+        addNoticeBlock: vi.fn(),
       } as unknown as MessageManager;
 
       // Create a HookManager instance (we need a container but we can mock it)
@@ -76,15 +76,16 @@ describe("Agent WorktreeCreate Hook", () => {
         mockMessageManager,
       );
 
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         "Worktree creation failed critically",
+        "error",
       );
       expect(processResult.shouldBlock).toBe(false); // WorktreeCreate is non-blocking for now
     });
 
     it("should add an error block for non-zero exit codes other than 2", async () => {
       const mockMessageManager = {
-        addErrorBlock: vi.fn(),
+        addNoticeBlock: vi.fn(),
       } as unknown as MessageManager;
 
       const mockContainer = {
@@ -108,14 +109,15 @@ describe("Agent WorktreeCreate Hook", () => {
         mockMessageManager,
       );
 
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         "Minor hook failure",
+        "error",
       );
     });
 
     it("should NOT add an error block for exit code 0", async () => {
       const mockMessageManager = {
-        addErrorBlock: vi.fn(),
+        addNoticeBlock: vi.fn(),
         addUserMessage: vi.fn(),
       } as unknown as MessageManager;
 
@@ -141,7 +143,7 @@ describe("Agent WorktreeCreate Hook", () => {
         mockMessageManager,
       );
 
-      expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+      expect(mockMessageManager.addNoticeBlock).not.toHaveBeenCalled();
       // WorktreeCreate doesn't inject stdout even on success
       expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
     });

@@ -94,8 +94,13 @@ export function estimateRowHeight(message: MessageType): number {
       case "tool":
         height += TOOL_HEIGHT;
         break;
-      case "error":
-        height += ERROR_HEIGHT;
+      case "notice":
+        // A failed turn wraps like the old error block; a hook's status line is
+        // one short line, same order of magnitude as its text height.
+        height +=
+          block.level === "error"
+            ? ERROR_HEIGHT
+            : textHeight(block.content || "");
         break;
       case "image":
         height += IMAGE_HEIGHT;

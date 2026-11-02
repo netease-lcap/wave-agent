@@ -57,8 +57,8 @@ This skill was invoked with arguments and executed bash commands.
             console.log(`\n🛠️  Tool Result:\n${params.result}\n`);
           }
         },
-        onErrorBlockAdded: (error) => {
-          console.error(`❌ Error: ${error}`);
+        onNoticeAdded: ({ level, content }) => {
+          if (level === "error") console.error(`❌ Error: ${content}`);
         },
       },
     });

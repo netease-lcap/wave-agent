@@ -52,7 +52,7 @@ describe("AIManager - tool fan-out MaxListenersExceededWarning", () => {
       processTriggeredRules: vi.fn().mockReturnValue([]),
       saveSession: vi.fn().mockResolvedValue(undefined),
       setlatestTotalTokens: vi.fn(),
-      addErrorBlock: vi.fn(),
+      addNoticeBlock: vi.fn(),
       finalizeStreamingBlocks: vi.fn(),
       finalizeAbortedToolBlocks: vi.fn(),
       mergeAssistantAdditionalFields: vi.fn(),

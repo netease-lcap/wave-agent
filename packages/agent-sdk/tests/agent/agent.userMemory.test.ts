@@ -250,9 +250,11 @@ describe("Agent User Memory Integration", () => {
     // Verify that an error block was added to handle the memory read error
     const messages = agent.messages;
     const lastMessage = messages[messages.length - 1];
-    expect(lastMessage.blocks.some((block) => block.type === "error")).toBe(
-      true,
-    );
+    expect(
+      lastMessage.blocks.some(
+        (block) => block.type === "notice" && block.level === "error",
+      ),
+    ).toBe(true);
   });
 
   it("should create separate instances for different workdirs", async () => {

@@ -21,6 +21,7 @@
 
 import type {
   Message,
+  NoticeLevel,
   Task,
   BackgroundTaskSummary,
   SerializableWorkflowRun,
@@ -150,7 +151,11 @@ export interface StdioAgentCallbacks {
     stage: "streaming" | "end";
   }) => void;
   onToolBlockUpdated?: (params: ToolBlockUpdateCallbackParams) => void;
-  onErrorBlockAdded?: (error: string) => void;
+  /**
+   * A line for the human, never for the model — an error that ended the turn
+   * (`level: "error"`) or a hook's status narration (`level: "info"`).
+   */
+  onNoticeAdded?: (notice: { level: NoticeLevel; content: string }) => void;
   /**
    * `message` is the compact message the CLI appended to its display stream;
    * hosts append it incrementally instead of pulling the full list. Absent
@@ -839,9 +844,9 @@ export class StdioAgent {
           params as ToolBlockUpdateCallbackParams,
         );
         break;
-      case "errorBlockAdded": {
-        const p = params as { error: string };
-        this.callbacks.onErrorBlockAdded?.(p.error);
+      case "noticeAdded": {
+        const p = params as { level: NoticeLevel; content: string };
+        this.callbacks.onNoticeAdded?.({ level: p.level, content: p.content });
         break;
       }
       case "compactBlockAdded": {

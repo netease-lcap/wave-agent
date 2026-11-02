@@ -36,7 +36,7 @@ const ALL_NOTIFICATION_METHODS: readonly ServerNotificationMethod[] = [
   "assistantContentUpdated",
   "assistantReasoningUpdated",
   "toolBlockUpdated",
-  "errorBlockAdded",
+  "noticeAdded",
   "loadingChange",
   "contextUsage",
   "commandRunningChange",

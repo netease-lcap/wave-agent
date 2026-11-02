@@ -252,7 +252,7 @@ describe("MessageList Static Rendering", () => {
         blocks: [
           { type: "text", content: `Solution ${id}` },
           { type: "text", content: "More content here" },
-          { type: "error", content: `Error ${id}` },
+          { type: "notice", level: "error", content: `Error ${id}` },
         ],
         timestamp: new Date().toISOString(),
       });

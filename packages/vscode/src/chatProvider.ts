@@ -478,9 +478,9 @@ export class ChatProvider implements vscode.WebviewViewProvider {
           windowId,
         );
       },
-      onErrorBlockAdded: (error) => {
+      onNoticeAdded: ({ level, content }) => {
         this.webviewManager.postMessage(
-          { command: "updateErrorBlock", error },
+          { command: "updateNoticeBlock", level, content },
           viewType,
           windowId,
         );

@@ -157,7 +157,9 @@ describe("Agent - No Parameters Tool Handling", () => {
     // Verify no error blocks were added
     const messages = agent.messages;
     const errorBlocks = messages.flatMap((msg) =>
-      msg.blocks.filter((block) => block.type === "error"),
+      msg.blocks.filter(
+        (block) => block.type === "notice" && block.level === "error",
+      ),
     );
     expect(errorBlocks).toHaveLength(0);
 
@@ -230,7 +232,9 @@ describe("Agent - No Parameters Tool Handling", () => {
     // Verify no error blocks were added
     const messages = agent.messages;
     const errorBlocks = messages.flatMap((msg) =>
-      msg.blocks.filter((block) => block.type === "error"),
+      msg.blocks.filter(
+        (block) => block.type === "notice" && block.level === "error",
+      ),
     );
     expect(errorBlocks).toHaveLength(0);
 

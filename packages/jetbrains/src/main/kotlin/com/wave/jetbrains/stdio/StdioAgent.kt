@@ -31,7 +31,7 @@ interface AgentCallbacks {
     fun onAssistantContentUpdated(messageId: String, chunk: String, stage: String) {}
     fun onAssistantReasoningUpdated(messageId: String, chunk: String, stage: String) {}
     fun onToolBlockUpdated(params: JsonElement?) {}
-    fun onErrorBlockAdded(error: String) {}
+    fun onNoticeAdded(level: String, content: String) {}
     /**
      * [message] is the compact message the CLI appended to its display stream;
      * hosts append it incrementally instead of pulling the full list. Null when
@@ -123,7 +123,13 @@ class StdioAgent(
                 )
             }
             "toolBlockUpdated" -> callbacks.onToolBlockUpdated(params)
-            "errorBlockAdded" -> callbacks.onErrorBlockAdded(params?.jsonObject?.get("error")?.jsonPrimitive?.content ?: "")
+            "noticeAdded" -> {
+                val o = params?.jsonObject
+                callbacks.onNoticeAdded(
+                    o?.get("level")?.jsonPrimitive?.content ?: "info",
+                    o?.get("content")?.jsonPrimitive?.content ?: "",
+                )
+            }
             "loadingChange" -> {
                 val o = params?.jsonObject
                 o?.get("latestTotalTokens")?.jsonPrimitive?.intOrNull?.let { latestTotalTokens = it }

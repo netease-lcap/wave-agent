@@ -112,7 +112,7 @@ describe("AIManager - compactConversation", () => {
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.json"),
       saveSession: vi.fn().mockResolvedValue(undefined),
       compactMessagesAndUpdateSession: vi.fn(),
-      addErrorBlock: vi.fn(),
+      addNoticeBlock: vi.fn(),
       addUserMessage: vi.fn(),
       getRecentFileReads: vi.fn().mockReturnValue([]),
       getInvokedSkills: vi.fn().mockReturnValue([]),
@@ -496,8 +496,9 @@ describe("AIManager - compactConversation", () => {
       });
 
       expect(callAgentMock).toHaveBeenCalledTimes(3);
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         expect.stringContaining("Failed to compact conversation history"),
+        "error",
       );
       expect(
         mockMessageManager.compactMessagesAndUpdateSession,
@@ -515,8 +516,9 @@ describe("AIManager - compactConversation", () => {
 
       // Retrying the identical request is pointless — single fork turn.
       expect(callAgentMock).toHaveBeenCalledTimes(1);
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         expect.stringContaining("Failed to compact conversation history"),
+        "error",
       );
     });
 
@@ -525,8 +527,9 @@ describe("AIManager - compactConversation", () => {
 
       await aiManager.compactConversation();
 
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         expect.stringContaining("fork exploded"),
+        "error",
       );
       expect(
         mockMessageManager.compactMessagesAndUpdateSession,
@@ -538,8 +541,9 @@ describe("AIManager - compactConversation", () => {
 
       await aiManager.compactConversation();
 
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         expect.stringContaining("Request was aborted"),
+        "error",
       );
       expect(
         mockMessageManager.compactMessagesAndUpdateSession,
@@ -671,7 +675,7 @@ describe("AIManager - compactConversation", () => {
       expect(mockHookManager.executeSessionStartHooks).not.toHaveBeenCalled();
       expect(mockHookManager.executePostCompactHooks).not.toHaveBeenCalled();
       expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
-      expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+      expect(mockMessageManager.addNoticeBlock).not.toHaveBeenCalled();
       // 压缩状态仍必须正常回落（webview 提示消失）
       expect(aiManager.getIsCompacting()).toBe(false);
     });
@@ -687,7 +691,7 @@ describe("AIManager - compactConversation", () => {
 
       await aiManager.compactConversation();
 
-      expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+      expect(mockMessageManager.addNoticeBlock).not.toHaveBeenCalled();
       expect(
         mockMessageManager.compactMessagesAndUpdateSession,
       ).not.toHaveBeenCalled();
@@ -700,8 +704,9 @@ describe("AIManager - compactConversation", () => {
 
       await aiManager.compactConversation();
 
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         expect.stringContaining("fork exploded"),
+        "error",
       );
       expect(aiManager.getIsCompacting()).toBe(false);
     });

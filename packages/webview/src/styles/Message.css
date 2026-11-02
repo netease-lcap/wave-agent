@@ -163,6 +163,22 @@
   word-break: break-word;
 }
 
+/* A hook's status line (a `notice` at level `info`): one muted line for the
+   human, never sent to the model (see NoticeBlock in the SDK). */
+.message.assistant .system-message {
+  color: var(--vscode-descriptionForeground);
+  font-size: 0.85em;
+  padding-top: 6px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* `warning` keeps the same one-line shape, only warmer — nothing produces it
+   yet; the level exists so a host does not need a new block type to add one. */
+.message.assistant .system-message.warning {
+  color: var(--vscode-editorWarning-foreground);
+}
+
 .message.assistant .error pre {
   margin: 0;
   font-family: inherit;

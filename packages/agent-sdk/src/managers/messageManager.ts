@@ -1,7 +1,7 @@
 import {
   addAssistantMessageToMessages,
   updateToolBlockInMessage,
-  addErrorBlockToMessage,
+  addNoticeBlockToMessage,
   addUserMessageToMessages,
   updateUserMessageInMessages,
   removeLastUserMessage,
@@ -18,6 +18,7 @@ import {
 } from "../utils/messageOperations.js";
 import type {
   Message,
+  NoticeBlock,
   Usage,
   ToolBlock,
   InvokedSkillRecord,
@@ -88,7 +89,16 @@ export interface MessageManagerCallbacks {
     stage: "streaming" | "end";
   }) => void;
   onToolBlockUpdated?: (params: ToolBlockUpdateCallbackParams) => void;
-  onErrorBlockAdded?: (error: string) => void;
+  /**
+   * A line that belongs to the human, never to the model: an error that ended
+   * the turn, or a hook's status narration (`level: "info"`). Hosts append it
+   * where the SDK put it — onto the last assistant message — so a host that
+   * ignores this callback simply never shows the line.
+   */
+  onNoticeAdded?: (notice: {
+    level: NoticeBlock["level"];
+    content: string;
+  }) => void;
   /**
    * Fires after compaction has written its state. `content` is the summary
    * text; `message` is the whole compact message — hosts append it to their
@@ -99,7 +109,6 @@ export interface MessageManagerCallbacks {
    */
   onCompactBlockAdded?: (content: string, message?: Message) => void;
   onCompactionStateChange?: (isCompacting: boolean) => void;
-  onInfoBlockAdded?: (content: string) => void;
   // Rewind callbacks
   onShowRewind?: () => void;
   onFileHistoryBlockAdded?: (
@@ -762,25 +771,14 @@ export class MessageManager {
     return toolBlockId;
   }
 
-  public addErrorBlock(error: string): void {
-    const newMessages = addErrorBlockToMessage({
+  public addNoticeBlock(content: string, level: NoticeBlock["level"]): void {
+    const newMessages = addNoticeBlockToMessage({
       messages: this.messages,
-      error,
+      content,
+      level,
     });
     this.setMessages(newMessages);
-    this.callbacks.onErrorBlockAdded?.(error);
-  }
-
-  public addInfoBlock(content: string): void {
-    const lastMessage = this.messages[this.messages.length - 1];
-    if (lastMessage && lastMessage.role === "assistant") {
-      lastMessage.blocks.push({
-        type: "info",
-        content,
-      } as unknown as import("../types/index.js").MessageBlock);
-      this.setMessages([...this.messages]);
-      this.callbacks.onInfoBlockAdded?.(content);
-    }
+    this.callbacks.onNoticeAdded?.({ level, content });
   }
 
   /**

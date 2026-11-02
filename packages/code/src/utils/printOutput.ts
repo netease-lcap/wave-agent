@@ -96,7 +96,7 @@ export class PrintOutput {
    * init 之前写出的事件先存这里，`init()` 时先写 init 再按序补上。
    *
    * `Agent.create()` 期间就可能落事件：初始化阶段加的错误块会走
-   * `onErrorBlockAdded`（真机：`-r <非法 session id>` 时 `initializationService`
+   * `onNoticeAdded`（`level: "error"`）（真机：`-r <非法 session id>` 时 `initializationService`
    * 抛错前先落了一个错误块），而 init 只能等 agent 建好才有 session/model 可报。
    * 不缓冲的话首行会是 error，按首行判类型的消费方就判错了。
    */

@@ -19,6 +19,7 @@ import type {
   Message,
   Task,
   PermissionMode,
+  NoticeLevel,
   BackgroundTaskSummary,
   SerializableWorkflowRun,
   SessionMetadata,
@@ -37,7 +38,7 @@ import type {
   UpdatePushStateMessage,
   PushState,
   UpdateToolBlockMessage,
-  UpdateErrorBlockMessage,
+  UpdateNoticeBlockMessage,
   UpdateWorkdirMessage,
   EarlierMessagesMessage,
   StartStreamingMessage,
@@ -134,10 +135,11 @@ export interface Fixtures {
     params: ToolBlockUpdateCallbackParams,
     overrides?: Overrides<UpdateToolBlockMessage>,
   ) => UpdateToolBlockMessage;
-  updateErrorBlock: (
-    error: unknown,
-    overrides?: Overrides<UpdateErrorBlockMessage>,
-  ) => UpdateErrorBlockMessage;
+  updateNoticeBlock: (
+    level: NoticeLevel,
+    content: string,
+    overrides?: Overrides<UpdateNoticeBlockMessage>,
+  ) => UpdateNoticeBlockMessage;
   updateWorkdir: (
     workdir: string | undefined,
     overrides?: Overrides<UpdateWorkdirMessage>,
@@ -327,9 +329,10 @@ export const fixtures: Fixtures = {
     ...overrides,
   }),
 
-  updateErrorBlock: (error, overrides = {}) => ({
-    command: "updateErrorBlock",
-    error,
+  updateNoticeBlock: (level, content, overrides = {}) => ({
+    command: "updateNoticeBlock",
+    level,
+    content,
     ...overrides,
   }),
 

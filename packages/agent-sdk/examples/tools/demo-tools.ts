@@ -33,8 +33,8 @@ const agent = await Agent.create({
         console.log("\nResult:\n" + params.result.slice(-500));
       }
     },
-    onErrorBlockAdded: (error: string) => {
-      console.log(`\n❌ Error block added: ${error}`);
+    onNoticeAdded: ({ level, content }: { level: string; content: string }) => {
+      console.log(`\n📢 Notice (${level}): ${content}`);
     },
     onCompactBlockAdded: (content: string) => {
       console.log(`\n🗜️  Compact block added (${content.length} chars)`);

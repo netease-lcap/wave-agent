@@ -2,7 +2,7 @@ import type {
   Message,
   TextBlock,
   ToolBlock,
-  ErrorBlock,
+  NoticeBlock,
   MessageBlock,
   TaskNotificationBlock,
 } from "wave-agent-sdk";
@@ -103,8 +103,9 @@ export class MockDataGenerator {
    * Create an error message
    */
   static createErrorMessage(errorContent: string): Message {
-    const errorBlock: ErrorBlock = {
-      type: "error",
+    const errorBlock: NoticeBlock = {
+      type: "notice",
+      level: "error",
       content: errorContent,
     };
 

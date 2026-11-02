@@ -651,7 +651,7 @@ test("onLatestTotalTokensChange emits contextUsage notification", async () => {
   });
 });
 
-test("onErrorBlockAdded emits errorBlockAdded notification", async () => {
+test("onNoticeAdded emits noticeAdded notification", async () => {
   const { bridge, notifications } = createBridge();
   vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
 
@@ -659,11 +659,11 @@ test("onErrorBlockAdded emits errorBlockAdded notification", async () => {
   const callbacks = vi.mocked(Agent.create).mock.calls[0][0]
     .callbacks as AgentCallbacks;
 
-  callbacks.onErrorBlockAdded!("something went wrong");
+  callbacks.onNoticeAdded!({ level: "error", content: "something went wrong" });
 
   expect(notifications).toContainEqual({
-    method: "errorBlockAdded",
-    params: { error: "something went wrong" },
+    method: "noticeAdded",
+    params: { level: "error", content: "something went wrong" },
     sessionId: "test-session-id",
   });
 });

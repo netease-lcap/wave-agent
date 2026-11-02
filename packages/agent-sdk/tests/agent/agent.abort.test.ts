@@ -5,7 +5,7 @@ import { createMockToolManager } from "../helpers/mockFactories.js";
 import { Container } from "@/utils/container.js";
 import { AIManager } from "@/managers/aiManager.js";
 
-import type { ErrorBlock, Usage } from "@/types/index.js";
+import type { NoticeBlock, Usage } from "@/types/index.js";
 import type { QueuedMessage } from "@/managers/messageQueue.js";
 
 // Mock AI Service
@@ -188,10 +188,12 @@ describe("Agent - Abort Handling", () => {
       // Check that no error message is added to the conversation when aborted
       const messages = agent.messages;
       const errorBlocks = messages.flatMap((msg) =>
-        msg.blocks.filter((block) => block.type === "error"),
+        msg.blocks.filter(
+          (block) => block.type === "notice" && block.level === "error",
+        ),
       );
       const hasParseError = errorBlocks.some((block) =>
-        (block as ErrorBlock).content?.includes(
+        (block as NoticeBlock).content?.includes(
           "Failed to parse tool arguments",
         ),
       );

@@ -245,12 +245,16 @@ describe("MessageManager additional coverage", () => {
     });
   });
 
-  it("should handle addInfoBlock", () => {
+  it("should handle addNoticeBlock", () => {
     messageManager.addAssistantMessage("hello");
-    messageManager.addInfoBlock("some info");
+    messageManager.addNoticeBlock("some info", "info");
     const messages = messageManager.getMessages();
     expect(messages[0].blocks).toContainEqual(
-      expect.objectContaining({ type: "info", content: "some info" }),
+      expect.objectContaining({
+        type: "notice",
+        level: "info",
+        content: "some info",
+      }),
     );
   });
 

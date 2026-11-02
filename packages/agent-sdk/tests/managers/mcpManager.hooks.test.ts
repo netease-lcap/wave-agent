@@ -38,7 +38,7 @@ function build() {
   const container = new Container();
   const mockMessageManager = {
     addUserMessage: vi.fn(),
-    addErrorBlock: vi.fn(),
+    addNoticeBlock: vi.fn(),
     getSessionId: vi.fn().mockReturnValue("session-1"),
     getTranscriptPath: vi.fn().mockReturnValue("/tmp/transcript.jsonl"),
   };
@@ -175,8 +175,9 @@ describe("McpManager.executeMcpTool runs tool-event hooks", () => {
     await expect(
       mcpManager.executeMcpTool(TOOL_NAME, {}, context),
     ).rejects.toThrow("server exploded");
-    expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+    expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
       "lint warning",
+      "error",
     );
   });
 

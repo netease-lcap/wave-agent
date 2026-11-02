@@ -210,7 +210,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 ### 状态管理架构
 
-- **Agent SDK 职责**：在内部管理所有消息状态并更新消息；变更通过增量回调（`onUserMessageAdded`、`onAssistantMessageAdded`、`onAssistantContentUpdated`、`onAssistantReasoningUpdated`、`onToolBlockUpdated`、`onErrorBlockAdded` 等）对外发布；完整列表通过 `agent.messages` getter（同进程）或 `getMessages` 请求（stdio 跨进程）按需获取。`onMessagesChange` 全量回调已移除
+- **Agent SDK 职责**：在内部管理所有消息状态并更新消息；变更通过增量回调（`onUserMessageAdded`、`onAssistantMessageAdded`、`onAssistantContentUpdated`、`onAssistantReasoningUpdated`、`onToolBlockUpdated`、`onNoticeAdded` 等）对外发布；完整列表通过 `agent.messages` getter（同进程）或 `getMessages` 请求（stdio 跨进程）按需获取。`onMessagesChange` 全量回调已移除
 - **增量回调用途**：为第三方集成、扩展、CLI 与示例（如 `packages/code/src/print-cli.ts` 和 `packages/agent-sdk/examples`）提供实时流式数据；增量回调是消息状态同步的唯一推送通道
 - **SDK 回调负载**：`onAssistantContentUpdated`/`onAssistantReasoningUpdated` 只提供 `chunk`（增量）+ `messageId` + `stage`，不再携带 `accumulated` 累积值，进程内消费者（CLI、print-cli）自行累积追加；`onToolBlockUpdated` 在 `stage="streaming"` 时只提供 `parametersChunk`（增量），`start`/`running`/`end` 阶段携带权威 `parameters`（end 为最终值，一次性权威）。SDK 内部仍将 chunk 追加进内存 `toolBlock.parameters` 保持累积，只是累积值不再暴露到外部回调
 - **跨进程 wire 负载（纯 delta）**：agentBridge 原样透传增量回调负载——`assistantContentUpdated`/`assistantReasoningUpdated` 只携带 `{messageId, chunk, stage}`（SDK 回调本身已无累积字段，无需剥离）；`toolBlockUpdated` 在 `stage="streaming"` 时只携带 `parametersChunk`，`stage="end"` 时携带全量 `parameters` + `result` 作为权威值。消费端负责累积（追加），丢失的 delta 由 `getMessages` 拉取的全量快照自愈
@@ -251,7 +251,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 ### 2026-08-04 会议（移除 `onMessagesChange` 全量回调）
 
 - 问：移除哪个回调 → 答：仅移除 `onMessagesChange`（携带完整 `Message[]` 的全量回调）；`onTasksChange`、`onBackgroundTasksChange`、`onMcpServersChange`、`onQueuedMessagesChange`、`onConfiguredModelsChange` 等其他全量回调保留不动
-- 问：CLI 如何更新消息 UI → 答：改为注册增量回调（`onUserMessageAdded`、`onAssistantMessageAdded`、`onAssistantContentUpdated`、`onAssistantReasoningUpdated`、`onToolBlockUpdated`、`onErrorBlockAdded`、bang 三回调）就地更新；bang 三回调新增 `messageId` 参数（`onAddBangMessage(command, messageId)` 等），CLI 按 messageId 就地创建/更新 bang 消息块，无需全量拉取
+- 问：CLI 如何更新消息 UI → 答：改为注册增量回调（`onUserMessageAdded`、`onAssistantMessageAdded`、`onAssistantContentUpdated`、`onAssistantReasoningUpdated`、`onToolBlockUpdated`、`onNoticeAdded`、bang 三回调）就地更新；bang 三回调新增 `messageId` 参数（`onAddBangMessage(command, messageId)` 等），CLI 按 messageId 就地创建/更新 bang 消息块，无需全量拉取
 - 问：webview 如何获取全量数据 → 答：主动拉取。stdio 协议移除 `messagesChange` 通知；宿主在 webviewReady / rewind / clearChat / restoreSession 后调用 `getMessages` 请求，以响应形式下发全量消息（压缩不在该名单——摘要块经 `compactBlockAdded` 携带该条 `message`、由宿主 `appendMessage` 增量追加，`message` 缺席时才回落拉取）；流式期间仅流动增量通知，bang 信号经 stdio 增量通知携带 messageId
 - 问：子代理消息如何维护 → 答：`SubagentManager` 在子代理增量回调中通过 `instance.messageManager.getMessages()` 拉取最新列表，维护 `instance.messages` / `usedTools` 并转发 `onSubagentMessagesChange`
 - 问：vsce 宿主增量注册注意事项 → 答：`onUserMessageAdded` 与 `onAssistantMessageAdded` 需分别映射到 webview 的用户/助手消息追加通道（修复现有 `onUserMessageAdded` 误路由到 `onAssistantMessageAdded` 的问题），避免与全量拉取叠加导致消息重复
@@ -313,7 +313,7 @@ SDK 集成者希望通过确定性阶段（start、streaming、running、end）�
 
 ### 2026-08-19 会议（CLI 消息状态更新统一为单一节流函数）
 
-- 问：为什么把 content/reasoning/tool 三通道节流器统一为一个 `updateMessages` → 答：`initializeAgent` 中全部消息状态更新回调（`onUserMessageAdded`、`onAssistantMessageAdded`、`onAssistantContentUpdated`、`onAssistantReasoningUpdated`、`onToolBlockUpdated` 全阶段、`onErrorBlockAdded`、bang 三回调）本质都是"以更新函数改写 messages 状态"，此前只有文本/推理/tool 参数三通道走节流，而 bash 等前台工具逐 chunk 的 running 阶段 `shortResult`/`result` 更新走 `createToolStreamingThrottle` 的"running 立即应用"分支——不节流，行数（1-4 行）变化逐 chunk 触发 React commit 与 ToolDisplay 高度变化（闪烁源）。统一后全部更新经单一 500ms 窗口排队（FIFO、无 last-value-wins），running 高频更新与流式 delta 共用窗口，至多每窗口一次渲染，闪烁消除
+- 问：为什么把 content/reasoning/tool 三通道节流器统一为一个 `updateMessages` → 答：`initializeAgent` 中全部消息状态更新回调（`onUserMessageAdded`、`onAssistantMessageAdded`、`onAssistantContentUpdated`、`onAssistantReasoningUpdated`、`onToolBlockUpdated` 全阶段、`onNoticeAdded`、bang 三回调）本质都是"以更新函数改写 messages 状态"，此前只有文本/推理/tool 参数三通道走节流，而 bash 等前台工具逐 chunk 的 running 阶段 `shortResult`/`result` 更新走 `createToolStreamingThrottle` 的"running 立即应用"分支——不节流，行数（1-4 行）变化逐 chunk 触发 React commit 与 ToolDisplay 高度变化（闪烁源）。统一后全部更新经单一 500ms 窗口排队（FIFO、无 last-value-wins），running 高频更新与流式 delta 共用窗口，至多每窗口一次渲染，闪烁消除
 - 问：统一窗口后如何保证 streaming→running 不产生阶段回退（原 a4d5767e 语义） → 答：由 FIFO 排队顺序从机制上保证——窗口内 streaming 参数 chunk 与 running 权威快照按到达顺序应用（streaming 先追加、running 后权威替换），组合 updater 一次性应用，最终 `stage="running"`、`parameters` 为权威值，不存在"buffered stale streaming 晚于 running 冲刷"的窗口（两者同窗同 flush），原"running 丢弃该 tool buffered deltas"的特殊逻辑随之移除
 - 问：一次性结构更新（消息新增、error 块、bang 完成）经节流是否引入延迟 → 答：`updateMessages` 保留 leading edge 立即语义——窗口关闭时首个更新立即应用，窗口内到达的更新最多延迟 500ms 至窗口关闭冲刷；结构性更新（如消息新增）同窗排队时按到达顺序与流式 delta 一起应用，不丢失、不重排
 - 问：统一后 `refreshMessages` 的取消语义是否变化 → 答：不变，只是从 cancel 三个窗口变为 cancel 单一窗口——拉取快照后 `cancel()` 丢弃排队中的 pending 更新（内容已含于权威快照），拉取后的更新开启新窗口追加在快照之上，刷新前后不重复不丢失

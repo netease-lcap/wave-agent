@@ -17,7 +17,7 @@ export interface Message {
 
 export type MessageBlock =
   | TextBlock
-  | ErrorBlock
+  | NoticeBlock
   | ToolBlock
   | ImageBlock
   | CompactBlock
@@ -25,16 +25,40 @@ export type MessageBlock =
   | FileHistoryBlock
   | TaskNotificationBlock;
 
+/**
+ * A line for the human reading the conversation, never sent to the model.
+ *
+ * One block type covers every "tell the user, not the model" line, and
+ * `level` carries the severity — the same shape Claude Code uses for its
+ * system messages (`{ type: 'system', level }`). Severity is an attribute
+ * here, not a type: turning it into `warn` / `error` block types would make
+ * every consumer switch on the same axis twice.
+ *
+ * - `error` — the turn failed (API error, thrown exception). Rendered in red.
+ * - `warning` — reserved; nothing produces it yet.
+ * - `info` — status narration a hook wants the user to see, e.g. a loop's
+ *   `systemMessage` ("🔄 Ralph 第 3 轮", "循环已到上限").
+ *
+ * `convertMessagesForAPI` never reads this block, so nothing here costs
+ * context. Two known consequences: `saveSession` only persists *new*
+ * messages, so a notice appended to an already-saved message lives in memory
+ * only; and the subagent boundary reads `level === 'error'` notices alone
+ * (see `agentTool`).
+ */
+/** Severity of a {@link NoticeBlock}; the only axis consumers switch on. */
+export type NoticeLevel = "info" | "warning" | "error";
+
+export interface NoticeBlock {
+  type: "notice";
+  level: NoticeLevel;
+  content: string;
+}
+
 export interface TextBlock {
   type: "text";
   content: string;
   customCommandContent?: string;
   stage?: "streaming" | "end";
-}
-
-export interface ErrorBlock {
-  type: "error";
-  content: string;
 }
 
 export interface ToolBlock {

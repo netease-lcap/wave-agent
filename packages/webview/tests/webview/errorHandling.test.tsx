@@ -27,7 +27,7 @@ describe("Error Message Display", () => {
             id: "msg_err_1",
             role: "assistant",
             timestamp: "2024-01-01T00:00:00.000Z",
-            blocks: [{ type: "error", content: errorMessage }],
+            blocks: [{ type: "notice", level: "error", content: errorMessage }],
           },
         ],
       });
@@ -70,7 +70,8 @@ describe("Error Message Display", () => {
             timestamp: "2024-01-01T00:00:00.000Z",
             blocks: [
               {
-                type: "error",
+                type: "notice",
+                level: "error",
                 content: "An error occurred while processing your request",
               },
             ],
@@ -121,7 +122,7 @@ describe("Error Message Display", () => {
       id: `msg_err_multi_${index}`,
       role: "assistant" as const,
       timestamp: "2024-01-01T00:00:00.000Z",
-      blocks: [{ type: "error" as const, content: error }],
+      blocks: [{ type: "notice", level: "error", content: error }],
     }));
 
     act(() => {
@@ -152,7 +153,13 @@ describe("Error Message Display", () => {
             id: "msg_err_recovery",
             role: "assistant",
             timestamp: "2024-01-01T00:00:00.000Z",
-            blocks: [{ type: "error", content: "Something went wrong" }],
+            blocks: [
+              {
+                type: "notice",
+                level: "error",
+                content: "Something went wrong",
+              },
+            ],
           },
         ],
       });
@@ -229,7 +236,11 @@ describe("Error Message Display", () => {
             role: "assistant",
             timestamp: "2024-01-01T00:00:00.000Z",
             blocks: [
-              { type: "error", content: "Connection lost during streaming" },
+              {
+                type: "notice",
+                level: "error",
+                content: "Connection lost during streaming",
+              },
             ],
           },
         ],
@@ -257,5 +268,56 @@ describe("Error Message Display", () => {
     const input = screen.getByTestId("message-input");
     expect(input).toBeInTheDocument();
     expect(screen.getByTestId("send-btn")).toBeInTheDocument();
+  });
+
+  it("renders a hook's status line as one muted notice, not as an error", async () => {
+    renderChatApp();
+
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          {
+            id: "msg_notice_1",
+            role: "assistant",
+            timestamp: "2024-01-01T00:00:00.000Z",
+            blocks: [
+              {
+                type: "notice",
+                level: "info",
+                content: "🔄 第 2 轮 | 想停：/cancel",
+              },
+            ],
+          },
+        ],
+      });
+    });
+
+    const line = await screen.findByText("🔄 第 2 轮 | 想停：/cancel");
+    // One muted line, not the red error block: a hook narrating its own rounds
+    // must not read as a failure.
+    expect(line.className).toContain("system-message");
+    expect(line.className).not.toContain("error");
+  });
+
+  it("appends a notice to the last assistant message when the host sends one", async () => {
+    renderChatApp();
+
+    act(() => {
+      sendCommand("updateMessages", {
+        messages: [
+          {
+            id: "msg_notice_2",
+            role: "assistant",
+            timestamp: "2024-01-01T00:00:00.000Z",
+            blocks: [{ type: "text", content: "done" }],
+          },
+        ],
+      });
+      sendCommand("updateNoticeBlock", { level: "error", content: "boom" });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("boom")).toBeInTheDocument();
+    });
   });
 });

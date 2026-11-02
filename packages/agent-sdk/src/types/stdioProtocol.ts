@@ -199,7 +199,7 @@ export type ServerNotificationMethod =
   | "assistantContentUpdated"
   | "assistantReasoningUpdated"
   | "toolBlockUpdated"
-  | "errorBlockAdded"
+  | "noticeAdded"
   | "loadingChange"
   | "commandRunningChange"
   | "queuedMessagesChange"

@@ -62,8 +62,8 @@ async function setupTest() {
           );
         }
       },
-      onErrorBlockAdded: (error: string) => {
-        console.log(`❌ Error block: ${error}`);
+      onNoticeAdded: ({ level, content }) => {
+        console.log(`❌ ${level}: ${content}`);
       },
     },
   });

@@ -348,7 +348,8 @@ const applyTableColumnAlign = (tableHtml: string): string => {
   });
 };
 
-// Error payloads from the host are free-form strings (ErrorBlock.content).
+// Error payloads from the host are free-form strings (a `notice` at
+// level "error" — see NoticeBlock in the SDK).
 // R1-F3 / H-4 (2026-10-27): preserve the source order and only assign a
 // rendering role; never move a later explanation in front of the stack.
 //   · no raw/stack line anywhere  -> the whole payload is reading text;
@@ -1705,7 +1706,21 @@ export const Message: React.FC<MessageProps> = React.memo(
           dotColor = getStageColor(block.stage);
           break;
         }
-        case "error": {
+        case "notice": {
+          // A hook's status line (Claude Code's "warning message"): one muted
+          // line for the human, never sent to the model — no markdown, no dot.
+          if (block.level !== "error") {
+            return (
+              <div
+                key={index}
+                className={`message-content system-message${
+                  block.level === "warning" ? " warning" : ""
+                }`}
+              >
+                {block.content}
+              </div>
+            );
+          }
           // R1-F2 (2026-10-27): D-04's split is approved for the plugin host
           // only. Desktop keeps its pre-R1 single <pre>; remote Web keeps the
           // same legacy DOM so the shared renderer doesn't change its layout.

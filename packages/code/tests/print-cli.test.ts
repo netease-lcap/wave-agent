@@ -292,7 +292,10 @@ test("subagent content callbacks are not registered in print mode", async () => 
   expect(stdoutSpy).not.toHaveBeenCalled();
 
   // Error callback still works
-  capturedCallbacks?.onErrorBlockAdded?.("Something went wrong");
+  capturedCallbacks?.onNoticeAdded?.({
+    level: "error",
+    content: "Something went wrong",
+  });
   expect(stdoutSpy).toHaveBeenCalledWith("\n❌ Error: Something went wrong\n");
 
   stdoutSpy.mockRestore();
@@ -1067,7 +1070,10 @@ test("模型请求失败（只落错误块、不抛错）按运行失败收尾",
   let callbacks: AgentCallbacks | undefined;
   const agent = structuredAgent({
     sendMessage: vi.fn(async () => {
-      callbacks?.onErrorBlockAdded?.("HTTP 400 Bad Request: MODEL_NOT_ENABLED");
+      callbacks?.onNoticeAdded?.({
+        level: "error",
+        content: "HTTP 400 Bad Request: MODEL_NOT_ENABLED",
+      });
     }),
   });
   vi.mocked(Agent.create).mockImplementation(async (options) => {

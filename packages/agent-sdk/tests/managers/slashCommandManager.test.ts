@@ -878,7 +878,7 @@ describe("SlashCommandManager", () => {
       ] as unknown as SkillMetadata[]);
 
       const cmd = slashCommandManager.getCommand("fork-skill");
-      const addErrorSpy = vi.spyOn(messageManager, "addErrorBlock");
+      const addErrorSpy = vi.spyOn(messageManager, "addNoticeBlock");
 
       // Mock SubagentManager to return empty configurations
       vi.spyOn(mockSubagentManager, "loadConfigurations").mockResolvedValue([]);
@@ -889,6 +889,7 @@ describe("SlashCommandManager", () => {
         expect.stringContaining(
           "Subagent configuration for general-purpose not found",
         ),
+        "error",
       );
     });
 

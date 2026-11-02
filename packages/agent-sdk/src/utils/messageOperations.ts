@@ -1,6 +1,8 @@
 import { randomUUID } from "crypto";
 import type {
   Message,
+  MessageBlock,
+  NoticeBlock,
   Usage,
   ToolBlock,
   TaskNotificationBlock,
@@ -80,9 +82,10 @@ export type ToolBlockUpdateCallbackParams = Omit<
   messageId: string;
 };
 
-export interface AddErrorBlockParams {
+export interface AddNoticeBlockParams {
   messages: Message[];
-  error: string;
+  content: string;
+  level: NoticeBlock["level"];
 }
 
 /**
@@ -430,44 +433,47 @@ export const updateToolBlockInMessage = ({
   return { messages: newMessages };
 };
 
-// Add Error Block to the last assistant message
-export const addErrorBlockToMessage = ({
-  messages,
-  error,
-}: AddErrorBlockParams): Message[] => {
+/**
+ * Append a block to the last assistant message, creating that message when the
+ * conversation currently ends on a user turn.
+ */
+const appendBlockToLastAssistant = (
+  messages: Message[],
+  block: MessageBlock,
+): Message[] => {
   const newMessages = [...messages];
-
-  // Check if the last message is an assistant message
   const lastMessage = newMessages[newMessages.length - 1];
   if (lastMessage && lastMessage.role === "assistant") {
-    // Create a new message object with the error block added
     newMessages[newMessages.length - 1] = {
       ...lastMessage,
-      blocks: [
-        ...lastMessage.blocks,
-        {
-          type: "error",
-          content: error,
-        },
-      ],
+      blocks: [...lastMessage.blocks, block],
     };
   } else {
-    // If the last message is not an assistant message, create a new assistant message
     newMessages.push({
       id: generateMessageId(),
       role: "assistant",
-      blocks: [
-        {
-          type: "error",
-          content: error,
-        },
-      ],
+      blocks: [block],
       timestamp: new Date().toISOString(),
     });
   }
-
   return newMessages;
 };
+
+// Add Error Block to the last assistant message
+/**
+ * Append a human-facing line to the last assistant message.
+ *
+ * One entry point for every level: an error and a hook's status line land in
+ * the same place, so the placement rule cannot drift between them (the CLI and
+ * the webview reducer both rely on "onto the last assistant message, else a
+ * new one below the latest user message").
+ */
+export const addNoticeBlockToMessage = ({
+  messages,
+  content,
+  level,
+}: AddNoticeBlockParams): Message[] =>
+  appendBlockToLastAssistant(messages, { type: "notice", level, content });
 
 /**
  * Helper to count tool blocks in messages

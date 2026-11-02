@@ -90,7 +90,7 @@ describe("AIManager plan file refresh", () => {
       getCombinedMemory: vi.fn().mockResolvedValue(""),
       getMemoryForInjection: vi.fn().mockResolvedValue({ prependContent: "" }),
       processTriggeredRules: vi.fn().mockReturnValue([]),
-      addErrorBlock: vi.fn(),
+      addNoticeBlock: vi.fn(),
       triggerFileRead: vi.fn(),
       getTranscriptPath: vi.fn().mockReturnValue("/test/transcript.jsonl"),
       getRecentFileReads: vi.fn().mockReturnValue([]),

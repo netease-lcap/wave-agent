@@ -606,7 +606,7 @@ describe("Agent Tool Background Execution", () => {
 
   it("should return error block when last assistant message has no text", async () => {
     // Simulates what aiManager.sendAIMessage() does on error: it calls
-    // addErrorBlock() which appends an error block to the last assistant message
+    // addNoticeBlock() which appends an error block to the last assistant message
     const mockInstance = {
       subagentId: "gp-test-id",
       usedTools: [],
@@ -615,7 +615,13 @@ describe("Agent Tool Background Execution", () => {
           { role: "user", blocks: [{ type: "text", content: "do work" }] },
           {
             role: "assistant",
-            blocks: [{ type: "error", content: "429 Too Many Requests" }],
+            blocks: [
+              {
+                type: "notice",
+                level: "error",
+                content: "429 Too Many Requests",
+              },
+            ],
           },
         ]),
         getLatestTotalTokens: vi.fn(() => 0),
@@ -655,7 +661,11 @@ describe("Agent Tool Background Execution", () => {
             role: "assistant",
             blocks: [
               { type: "text", content: "I found 3 files." },
-              { type: "error", content: "429 Too Many Requests" },
+              {
+                type: "notice",
+                level: "error",
+                content: "429 Too Many Requests",
+              },
             ],
           },
         ]),

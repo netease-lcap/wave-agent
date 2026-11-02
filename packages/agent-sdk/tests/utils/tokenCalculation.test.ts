@@ -240,18 +240,20 @@ describe("roughTokenCountForMessages", () => {
     expect(roughTokenCountForMessages([])).toBe(0);
   });
 
-  it("should count text, reasoning, error and compact block content", () => {
+  it("should count text, reasoning and compact block content, skipping notices", () => {
     const messages = [
       makeMessage({
         blocks: [
           { type: "text", content: text400 },
           { type: "reasoning", content: text400 },
-          { type: "error", content: text400 },
+          // Notices never reach the model, so counting them would overstate
+          // the next request's size.
+          { type: "notice", level: "error", content: text400 },
           { type: "compact", content: text400 },
         ],
       }),
     ];
-    expect(roughTokenCountForMessages(messages)).toBe(TEXT_TOKENS * 4);
+    expect(roughTokenCountForMessages(messages)).toBe(TEXT_TOKENS * 3);
   });
 
   it("should count tool parameters (json ratio) and result", () => {

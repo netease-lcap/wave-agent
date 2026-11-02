@@ -1147,7 +1147,7 @@ describe("remote page shim", () => {
     await vi.advanceTimersByTimeAsync(3600000);
 
     expect(
-      page.posted.filter((message) => message.command === "updateErrorBlock"),
+      page.posted.filter((message) => message.command === "updateNoticeBlock"),
     ).toHaveLength(0);
     // Not even a console trace: there is nothing wrong to report.
     expect(warn.mock.calls.flat().join(" ")).not.toContain("sendMessage");
@@ -1171,7 +1171,7 @@ describe("remote page shim", () => {
     await vi.advanceTimersByTimeAsync(3600000);
 
     expect(
-      page.posted.filter((message) => message.command === "updateErrorBlock"),
+      page.posted.filter((message) => message.command === "updateNoticeBlock"),
     ).toHaveLength(0);
     expect(document.getElementById("remote-status")?.textContent).toBeFalsy();
   });

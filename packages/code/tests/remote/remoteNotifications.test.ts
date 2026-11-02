@@ -123,14 +123,17 @@ describe("remoteNotifications", () => {
     });
   });
 
-  it("should send an error block as its own payload frame", () => {
+  it("should send a notice as its own payload frame", () => {
     // The one message family a signal cannot recover: the block is appended
     // *inside* the last message, and the phone's `since` anchor is that message
     // (spec remote-control「前台 CLI 会话也能被手机接管」场景 11).
-    callbacks().onErrorBlockAdded?.("API Error: 500");
+    callbacks().onNoticeAdded?.({ level: "error", content: "API Error: 500" });
 
     expect(sent).toEqual([
-      { method: "errorBlockAdded", params: { error: "API Error: 500" } },
+      {
+        method: "noticeAdded",
+        params: { level: "error", content: "API Error: 500" },
+      },
     ]);
   });
 

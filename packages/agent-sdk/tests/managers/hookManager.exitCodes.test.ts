@@ -52,7 +52,7 @@ describe("HookManager exit-code semantics", () => {
   describe("processHookResults", () => {
     let mockMessageManager: {
       addUserMessage: ReturnType<typeof vi.fn>;
-      addErrorBlock: ReturnType<typeof vi.fn>;
+      addNoticeBlock: ReturnType<typeof vi.fn>;
       removeLastUserMessage: ReturnType<typeof vi.fn>;
       updateToolBlock: ReturnType<typeof vi.fn>;
     };
@@ -60,7 +60,7 @@ describe("HookManager exit-code semantics", () => {
     beforeEach(() => {
       mockMessageManager = {
         addUserMessage: vi.fn(),
-        addErrorBlock: vi.fn(),
+        addNoticeBlock: vi.fn(),
         removeLastUserMessage: vi.fn(),
         updateToolBlock: vi.fn(),
       };
@@ -96,7 +96,10 @@ describe("HookManager exit-code semantics", () => {
       );
       expect(res.shouldBlock).toBe(true);
       expect(res.errorMessage).toBe("Blocked");
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith("Blocked");
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
+        "Blocked",
+        "error",
+      );
       expect(mockMessageManager.removeLastUserMessage).toHaveBeenCalled();
     });
 
@@ -164,8 +167,9 @@ describe("HookManager exit-code semantics", () => {
         mockMessageManager as unknown as MessageManager,
       );
       expect(res.shouldBlock).toBe(true);
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         "Notify Error",
+        "error",
       );
     });
 
@@ -208,7 +212,10 @@ describe("HookManager exit-code semantics", () => {
         mockMessageManager as unknown as MessageManager,
       );
       expect(res.shouldBlock).toBe(false);
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith("Warning");
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
+        "Warning",
+        "error",
+      );
     });
 
     it("should handle success with stdout for UserPromptSubmit", () => {
@@ -285,7 +292,84 @@ describe("HookManager exit-code semantics", () => {
       );
 
       expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
-      expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+      expect(mockMessageManager.addNoticeBlock).not.toHaveBeenCalled();
+    });
+
+    it("shows a blocking Stop hook's systemMessage to the user, whatever the exit code", () => {
+      // ralph-loop shape: the reason reaches the model through exit 2 + stderr,
+      // the same stdout JSON carries the line the user needs to see.
+      const results = [
+        {
+          success: false,
+          exitCode: 2,
+          stdout: JSON.stringify({
+            systemMessage: "🔄 Ralph 第 2 轮 | 想停：/ralph-loop:cancel-ralph",
+          }),
+          stderr: "第 2 轮的工作内容",
+          duration: 0,
+          timedOut: false,
+        },
+      ];
+      manager.processHookResults(
+        "Stop",
+        results,
+        mockMessageManager as unknown as MessageManager,
+      );
+
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
+        "🔄 Ralph 第 2 轮 | 想停：/ralph-loop:cancel-ralph",
+        "info",
+      );
+      expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith({
+        content: "第 2 轮的工作内容",
+        isMeta: true,
+      });
+    });
+
+    it("shows systemMessage on a non-blocking Stop hook too", () => {
+      const results = [
+        {
+          success: true,
+          exitCode: 0,
+          stdout: JSON.stringify({
+            systemMessage: "Ralph 循环已结束：已到 2 轮上限",
+          }),
+          stderr: "",
+          duration: 0,
+          timedOut: false,
+        },
+      ];
+      manager.processHookResults(
+        "Stop",
+        results,
+        mockMessageManager as unknown as MessageManager,
+      );
+
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
+        "Ralph 循环已结束：已到 2 轮上限",
+        "info",
+      );
+      expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
+    });
+
+    it("ignores plain-text stdout on Stop (older clients' view of the hook)", () => {
+      const results = [
+        {
+          success: true,
+          exitCode: 0,
+          stdout: "🔄 Ralph 第 2 轮",
+          stderr: "",
+          duration: 0,
+          timedOut: false,
+        },
+      ];
+      manager.processHookResults(
+        "Stop",
+        results,
+        mockMessageManager as unknown as MessageManager,
+      );
+
+      expect(mockMessageManager.addNoticeBlock).not.toHaveBeenCalled();
     });
   });
 
@@ -293,7 +377,7 @@ describe("HookManager exit-code semantics", () => {
     it("should handle SessionStart blocking error (exit code 2)", () => {
       const mockMessageManager = {
         addUserMessage: vi.fn(),
-        addErrorBlock: vi.fn(),
+        addNoticeBlock: vi.fn(),
         removeLastUserMessage: vi.fn(),
         updateToolBlock: vi.fn(),
       };
@@ -312,8 +396,9 @@ describe("HookManager exit-code semantics", () => {
         mockMessageManager as unknown as MessageManager,
       );
       expect(res.shouldBlock).toBe(false);
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         "SessionStart blocked",
+        "error",
       );
     });
   });
@@ -322,7 +407,7 @@ describe("HookManager exit-code semantics", () => {
     it("should handle SessionEnd blocking error (exit code 2)", () => {
       const mockMessageManager = {
         addUserMessage: vi.fn(),
-        addErrorBlock: vi.fn(),
+        addNoticeBlock: vi.fn(),
         removeLastUserMessage: vi.fn(),
         updateToolBlock: vi.fn(),
       };
@@ -341,8 +426,9 @@ describe("HookManager exit-code semantics", () => {
         mockMessageManager as unknown as MessageManager,
       );
       expect(res.shouldBlock).toBe(false);
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         "SessionEnd cleanup failed",
+        "error",
       );
     });
   });
@@ -350,7 +436,7 @@ describe("HookManager exit-code semantics", () => {
   describe("tool-event executors", () => {
     let mockMessageManager: {
       addUserMessage: ReturnType<typeof vi.fn>;
-      addErrorBlock: ReturnType<typeof vi.fn>;
+      addNoticeBlock: ReturnType<typeof vi.fn>;
       getSessionId: ReturnType<typeof vi.fn>;
       getTranscriptPath: ReturnType<typeof vi.fn>;
     };
@@ -375,7 +461,7 @@ describe("HookManager exit-code semantics", () => {
     beforeEach(() => {
       mockMessageManager = {
         addUserMessage: vi.fn(),
-        addErrorBlock: vi.fn(),
+        addNoticeBlock: vi.fn(),
         getSessionId: vi.fn().mockReturnValue("session-1"),
         getTranscriptPath: vi.fn().mockReturnValue("/tmp/transcript.jsonl"),
       };
@@ -401,7 +487,7 @@ describe("HookManager exit-code semantics", () => {
       expect(blocked).toBe("PreToolUse:Write hook error: Blocked by policy");
       // The block travels back to the model as the tool result, not as a message
       expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
-      expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+      expect(mockMessageManager.addNoticeBlock).not.toHaveBeenCalled();
     });
 
     it("should let a PreToolUse hook allow the call and drop its stdout", async () => {
@@ -444,8 +530,9 @@ describe("HookManager exit-code semantics", () => {
       await expect(
         manager.executePreToolUseHooks("Write", {}, toolContext()),
       ).resolves.toBeNull();
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         "deprecated tool usage",
+        "error",
       );
       expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
     });
@@ -493,8 +580,9 @@ describe("HookManager exit-code semantics", () => {
         toolContext(),
       );
 
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         "lint warning",
+        "error",
       );
       expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
     });
@@ -558,7 +646,7 @@ describe("HookManager exit-code semantics", () => {
           "<system-reminder>\ntouching auth, check callers\n</system-reminder>",
         isMeta: true,
       });
-      expect(mockMessageManager.addErrorBlock).not.toHaveBeenCalled();
+      expect(mockMessageManager.addNoticeBlock).not.toHaveBeenCalled();
     });
 
     it("injects hookSpecificOutput.additionalContext on PostToolUse", async () => {
@@ -627,8 +715,9 @@ describe("HookManager exit-code semantics", () => {
       );
 
       expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         "Hook returned incorrect event name: expected 'PostToolUse' but got 'PreToolUse'",
+        "error",
       );
     });
 
@@ -653,8 +742,9 @@ describe("HookManager exit-code semantics", () => {
       );
 
       expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
-      expect(mockMessageManager.addErrorBlock).toHaveBeenCalledWith(
+      expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
         "Hook returned incorrect event name: expected 'PostToolUse' but got 'undefined'",
+        "error",
       );
     });
 

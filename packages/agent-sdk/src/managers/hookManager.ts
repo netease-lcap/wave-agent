@@ -482,6 +482,7 @@ export class HookManager {
     if (messageManager) {
       for (const result of results) {
         this.injectAdditionalContext(event, result, messageManager);
+        this.injectNotice(result, messageManager);
       }
     }
 
@@ -570,6 +571,7 @@ export class HookManager {
     // is collected from every result before the exit-code branches below.
     for (const result of results) {
       this.injectAdditionalContext(event, result, messageManager);
+      this.injectNotice(result, messageManager);
     }
 
     // First pass: Check for any blocking errors (exit code 2)
@@ -621,6 +623,40 @@ export class HookManager {
     "PreToolUse",
     "PostToolUse",
   ];
+
+  /**
+   * Inject the universal `systemMessage` field: a line for the human reading the
+   * conversation, never for the model (Claude Code's warning line).
+   *
+   * Orthogonal to the exit code, like `additionalContext` above — a hook that
+   * blocks (exit code 2) still gets to tell the user *why* it blocked, which is
+   * the whole point for looping hooks: the reason reaches the model, the
+   * `systemMessage` tells the user which round this is and how to stop.
+   *
+   * Both fields travel in the same stdout JSON, so this deliberately does not
+   * require exit code 0: a hook that blocks keeps writing its reason to stderr
+   * (the model-visible channel) and adds this JSON on stdout for the user.
+   */
+  private injectNotice(
+    result: HookExecutionResult,
+    messageManager: MessageManager,
+  ): void {
+    const stdout = result.stdout?.trim();
+    if (!stdout || !stdout.startsWith("{")) return;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stdout);
+    } catch {
+      return; // not structured output
+    }
+    if (typeof parsed !== "object" || parsed === null) return;
+
+    const systemMessage = (parsed as Record<string, unknown>).systemMessage;
+    if (typeof systemMessage !== "string" || !systemMessage.trim()) return;
+
+    messageManager.addNoticeBlock(systemMessage.trim(), "info");
+  }
 
   /**
    * Inject `hookSpecificOutput.additionalContext` from a hook's stdout.
@@ -728,7 +764,7 @@ export class HookManager {
     switch (event) {
       case "UserPromptSubmit":
         // Block prompt processing, show error to user, erase prompt
-        messageManager.addErrorBlock(errorMessage);
+        messageManager.addNoticeBlock(errorMessage, "error");
         messageManager.removeLastUserMessage();
         return {
           shouldBlock: true,
@@ -745,7 +781,7 @@ export class HookManager {
 
       case "PermissionRequest":
         // For permission request hooks with exit code 2, show stderr in error block and block (deny) permission
-        messageManager.addErrorBlock(errorMessage);
+        messageManager.addNoticeBlock(errorMessage, "error");
         return { shouldBlock: true, errorMessage };
 
       case "SubagentStop":
@@ -758,32 +794,32 @@ export class HookManager {
 
       case "WorktreeCreate":
         // Non-blocking for now, just show error in error block
-        messageManager.addErrorBlock(errorMessage);
+        messageManager.addNoticeBlock(errorMessage, "error");
         return { shouldBlock: false };
 
       case "WorktreeRemove":
         // Non-blocking for cleanup, log error but don't block
-        messageManager.addErrorBlock(errorMessage);
+        messageManager.addNoticeBlock(errorMessage, "error");
         return { shouldBlock: false };
 
       case "SessionStart":
         // Non-blocking for startup, show error in error block
-        messageManager.addErrorBlock(errorMessage);
+        messageManager.addNoticeBlock(errorMessage, "error");
         return { shouldBlock: false };
 
       case "SessionEnd":
         // Blocking error (exit code 2): show in error block, don't block shutdown
-        messageManager.addErrorBlock(errorMessage);
+        messageManager.addNoticeBlock(errorMessage, "error");
         return { shouldBlock: false };
 
       case "PreCompact":
         // Non-blocking for compaction, show error in error block
-        messageManager.addErrorBlock(errorMessage);
+        messageManager.addNoticeBlock(errorMessage, "error");
         return { shouldBlock: false };
 
       case "PostCompact":
         // Non-blocking for compaction, show error in error block
-        messageManager.addErrorBlock(errorMessage);
+        messageManager.addNoticeBlock(errorMessage, "error");
         return { shouldBlock: false };
 
       default:
@@ -799,7 +835,7 @@ export class HookManager {
     messageManager: MessageManager,
   ): void {
     const errorMessage = result.stderr?.trim() || "Hook execution failed";
-    messageManager.addErrorBlock(errorMessage);
+    messageManager.addNoticeBlock(errorMessage, "error");
   }
 
   /**
