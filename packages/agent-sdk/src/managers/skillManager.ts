@@ -19,7 +19,6 @@ import {
   parseBashCommands,
   replaceBashCommandsWithOutput,
   executeBashCommands,
-  prepareInjectedCommands,
 } from "../utils/markdownParser.js";
 import { createBashCommandGate } from "../utils/bashCommandGate.js";
 import type { PermissionManager } from "./permissionManager.js";
@@ -480,7 +479,7 @@ export class SkillManager extends EventEmitter {
     context?: SkillInvocationContext;
     allowedTools?: string[];
   }> {
-    const { skill_name, args: skillArgs } = args;
+    const { skill_name } = args;
 
     logger?.debug(`Invoking skill: ${skill_name}`);
 
@@ -504,7 +503,6 @@ export class SkillManager extends EventEmitter {
     try {
       const finalContent = await this.executeBashInSkillContent(
         prepared.content,
-        skillArgs || "",
       );
 
       return {
@@ -613,33 +611,19 @@ export class SkillManager extends EventEmitter {
   /**
    * Execute bash commands in prepared skill content
    */
-  private async executeBashInSkillContent(
-    content: string,
-    argsString = "",
-  ): Promise<string> {
+  private async executeBashInSkillContent(content: string): Promise<string> {
     const { commands } = parseBashCommands(content);
-    const prepared = prepareInjectedCommands(content, commands, argsString);
-    let processed = content;
-    try {
-      if (commands.length > 0) {
-        const currentWorkdir =
-          this.container.get<string>("CurrentWorkdir") ?? this.workdir;
-        const results = await executeBashCommands(
-          prepared.commands,
-          currentWorkdir,
-          undefined,
-          createBashCommandGate(this.container),
-        );
-        processed = replaceBashCommandsWithOutput(content, results);
-      }
-    } finally {
-      // The arguments file outlives the commands, not the invocation: a denied
-      // or aborted call must not leave the user's text on disk.
-      prepared.cleanup();
-    }
-    return prepared.warning
-      ? `> **Skill warning**: ${prepared.warning}\n\n${processed}`
-      : processed;
+    if (commands.length === 0) return content;
+
+    const currentWorkdir =
+      this.container.get<string>("CurrentWorkdir") ?? this.workdir;
+    const results = await executeBashCommands(
+      commands,
+      currentWorkdir,
+      undefined,
+      createBashCommandGate(this.container),
+    );
+    return replaceBashCommandsWithOutput(content, results);
   }
 
   /**
