@@ -138,4 +138,90 @@ test.describe("Timeline connector geometry demo", () => {
     expect(geo.singleIsSingleClass).toBe(true);
     expect(geo.singleAfterDisplay).toBe("none");
   });
+
+  /**
+   * 一条消息**后加入**一段 run 时，连线不能断。
+   *
+   * run 的行间距（段内 0 / 段末 14px）是行自己的 padding-bottom，也就是行高的一
+   * 部分：新消息一来，上一行从「段末」变成「段中」，padding 14→0、盒高跟着矮 14px。
+   * 虚拟列表的 ResizeObserver 若只观测 content box，这次「只改 padding」的缩高
+   * 一次都不回调 —— 账本留着旧值，新行按旧高定位，两行之间空出 14px，竖线就在那
+   * 里断开（真机现象：盯着流式输出看会断，切到别的会话再切回来又好了，因为行重新
+   * 挂载、重新量了一次）。这里断言的就是「账本跟上」后的几何。
+   */
+  test("a row joining an existing run re-measures the run's previous tail", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+
+    const u1: Message = {
+      id: "u1",
+      role: "user",
+      timestamp: "2025-07-09T10:30:00.000Z",
+      blocks: [{ type: "text", content: "A question." }],
+    };
+    const a1: Message = {
+      id: "a1",
+      role: "assistant",
+      timestamp: "2025-07-09T10:30:01.000Z",
+      blocks: [{ type: "text", content: "First assistant message." }],
+    };
+    const a2: Message = {
+      id: "a2",
+      role: "assistant",
+      timestamp: "2025-07-09T10:30:02.000Z",
+      blocks: [{ type: "text", content: "Second assistant message." }],
+    };
+
+    await injector.simulateExtensionMessage("setInitialState", {
+      isAuthenticated: true,
+      messages: [],
+      isStreaming: false,
+      sessions: [],
+      permissionMode: "default",
+    });
+    await injector.updateMessages([u1, a1]);
+    await injector.endStreaming();
+    await webviewPage.waitForSelector(".virtual-row.timeline-run--single");
+
+    // 追加一条：a1 从「单点 run」变成「run 的开头」。等两帧让 RO 落地并完成定位。
+    await injector.updateMessages([u1, a1, a2]);
+    await webviewPage.waitForSelector(".virtual-row.timeline-run--end");
+    await webviewPage.evaluate(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => resolve(null)),
+          ),
+        ),
+    );
+
+    const gap = await webviewPage.evaluate(() => {
+      const px = (v: string) => (v && v.endsWith("px") ? parseFloat(v) : NaN);
+      const rows = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          ".virtual-row.timeline-run--start, .virtual-row.timeline-run--end",
+        ),
+      );
+      const first = rows[0].querySelector<HTMLElement>(".timeline-row")!;
+      const second = rows[1].querySelector<HTMLElement>(".timeline-row")!;
+      const firstRect = first.getBoundingClientRect();
+      const secondRect = second.getBoundingClientRect();
+      const startAfter = getComputedStyle(first, "::after");
+      const endAfter = getComputedStyle(second, "::after");
+      return {
+        segmentGap:
+          secondRect.top +
+          px(endAfter.top) -
+          (firstRect.bottom - px(startAfter.bottom)),
+        rowBoxGap:
+          rows[1].getBoundingClientRect().top -
+          rows[0].getBoundingClientRect().bottom,
+      };
+    });
+
+    // 行盒相切（账本跟上 DOM），连线两段相接。容差 1px：行高是取整后记进账本的。
+    expect(Math.abs(gap.rowBoxGap)).toBeLessThanOrEqual(1);
+    expect(Math.abs(gap.segmentGap)).toBeLessThanOrEqual(1);
+  });
 });
