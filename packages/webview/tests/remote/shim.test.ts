@@ -75,6 +75,8 @@ class FakeElement {
   type = "";
   /** Tags the banner's action buttons, so tests can tell them from text. */
   onclick: (() => void) | null = null;
+  /** A real button's `disabled`: the row's 删除 sets it for an online machine. */
+  disabled = false;
   removed = false;
   private ownText = "";
   private attributes = new Map<string, string>();
@@ -150,7 +152,14 @@ interface Harness {
   /** What the enterprise has in localStorage — the page's credential store. */
   local: Map<string, string>;
   /** The renewal requests the page sent, in order. */
-  fetches: { url: string; init: { body: string } }[];
+  fetches: {
+    url: string;
+    init: {
+      body?: string;
+      method?: string;
+      headers?: Record<string, string>;
+    };
+  }[];
   /** Addresses written by `history.replaceState` (the picker's URL writes). */
   replaced: string[];
   /** A page-shell element by id, whole-tree — the machine picker and its list live there. */
@@ -211,6 +220,12 @@ function loadShim(options: {
   refresh?: RefreshPlan | "network";
   /** How the relay's machine-list endpoint answers, or "network". */
   hosts?: RefreshPlan | "network";
+  /**
+   * How revoking one machine answers (`DELETE /api/relay/hosts/:id`), or
+   * "network". 204 when not given. A list is consumed one call at a time, the
+   * last entry repeating — a case that needs 「401, then fine」 lists two.
+   */
+  hostDelete?: RefreshPlan | "network" | (RefreshPlan | "network")[];
   /** localStorage throws on every access — private mode. */
   storageBroken?: boolean;
   /** Pretend a login round-trip just happened. */
@@ -384,6 +399,17 @@ function loadShim(options: {
     },
   };
 
+  /**
+   * The revoke plans, one per call — 「stale, then fine」 needs two. The last one
+   * repeats, so a steady state only has to be said once.
+   */
+  const revokePlans: (RefreshPlan | "network")[] = Array.isArray(
+    options.hostDelete,
+  )
+    ? options.hostDelete
+    : [options.hostDelete ?? { status: 204 }];
+  let revokeCalls = 0;
+
   const hostGlobals = {
     window,
     document,
@@ -408,6 +434,15 @@ function loadShim(options: {
     // The machine list rides the same stub under its own plan.
     fetch: (url: string, init: Harness["fetches"][number]["init"]) => {
       fetches.push({ url, init });
+      // Revoking one machine rides the same list endpoint, one segment down.
+      if (url.startsWith("/api/relay/hosts/")) {
+        const plan =
+          revokePlans[Math.min(revokeCalls++, revokePlans.length - 1)];
+        if (plan === "network") return Promise.reject(new Error("网络不可用"));
+        return Promise.resolve(
+          new FakeResponse(plan?.status ?? 204, plan?.body ?? {}),
+        );
+      }
       if (url === "/api/relay/hosts") {
         const plan = options.hosts ?? { status: 200, body: { hosts: [] } };
         if (plan === "network") return Promise.reject(new Error("网络不可用"));
@@ -1046,6 +1081,21 @@ describe("remote page shim — choosing a machine (the picker)", () => {
   };
   const BARE_URL = "https://codechat.example.com/remote/";
 
+  /** Open the dialog the way the header chip does, over a live connection. */
+  const openPicker = async (page: Harness) => {
+    await flush();
+    page.post({ command: "webviewReady" });
+    await flush();
+    page.post({ command: "openMachinePicker" });
+    await flush();
+  };
+
+  /** The row's 删除, then the confirmation it puts in its own place. */
+  const confirmDelete = (page: Harness, id: string) => {
+    page.element(`remote-machine-delete-${id}`)?.onclick?.();
+    page.element("remote-machine-delete-confirm")?.onclick?.();
+  };
+
   it("a direct link with ?host= never asks for the machine list", async () => {
     const page = loadShim({ token: "jwt", hosts: HOSTS });
     await flush();
@@ -1256,6 +1306,240 @@ describe("remote page shim — choosing a machine (the picker)", () => {
       "工位机",
     );
     expect(page.banner()).toBe("");
+  });
+
+  it("an offline machine can be deleted: it asks in place, then the row goes", async () => {
+    const page = loadShim({ token: "jwt", hosts: HOSTS });
+    await flush();
+    page.post({ command: "webviewReady" });
+    await flush();
+    page.post({ command: "openMachinePicker" });
+    await flush();
+
+    page.element("remote-machine-delete-host-2")?.onclick?.();
+    // The row asks itself — no second overlay, and 取消 restores it.
+    expect(
+      page.element("remote-machine-delete-question")?.textContent,
+    ).toContain("家里那台");
+    expect(
+      page.element("remote-machine-delete-question")?.textContent,
+    ).toContain("还会回到列表");
+    page.element("remote-machine-delete-cancel")?.onclick?.();
+    expect(page.element("remote-machine-list")?.textContent).toContain(
+      "家里那台",
+    );
+
+    page.element("remote-machine-delete-host-2")?.onclick?.();
+    page.element("remote-machine-delete-confirm")?.onclick?.();
+    await flush();
+
+    const revokes = page.fetches.filter(
+      (fetch) => fetch.url === "/api/relay/hosts/host-2",
+    );
+    expect(revokes).toHaveLength(1);
+    expect(revokes[0]?.init.method).toBe("DELETE");
+    // The same dialog, one row shorter — a delete is not a machine switch.
+    expect(page.element("remote-machine-picker")).toBeTruthy();
+    expect(page.element("remote-machine-list")?.textContent).not.toContain(
+      "家里那台",
+    );
+    expect(page.element("remote-machine-list")?.textContent).toContain(
+      "工位机",
+    );
+  });
+
+  it("a machine in use offers no delete, and the dialog says why", async () => {
+    const page = loadShim({ token: "jwt", hosts: HOSTS });
+    await flush();
+    page.post({ command: "webviewReady" });
+    await flush();
+    page.post({ command: "openMachinePicker" });
+    await flush();
+
+    const remove = page.element("remote-machine-delete-host-1");
+    expect(remove?.disabled).toBe(true);
+    // A disabled button says nothing on a phone, so the rule is in the subtitle.
+    expect(page.element("remote-machine-picker")?.textContent).toContain(
+      "正在使用的请先在那台机器上关闭远程控制",
+    );
+
+    remove?.onclick?.();
+    await flush();
+    expect(
+      page.fetches.some((fetch) => fetch.url.startsWith("/api/relay/hosts/")),
+    ).toBe(false);
+  });
+
+  it("deleting the machine the page is pinned to drops the pin and the address", async () => {
+    const page = loadShim({
+      url: "https://codechat.example.com/remote/?host=host-2",
+      token: "jwt",
+      hosts: HOSTS,
+      stored: { wave_remote_last_host: "host-2" },
+    });
+    await flush();
+    page.post({ command: "webviewReady" });
+    await flush();
+    page.post({ command: "openMachinePicker" });
+    await flush();
+
+    page.element("remote-machine-delete-host-2")?.onclick?.();
+    page.element("remote-machine-delete-confirm")?.onclick?.();
+    await flush();
+
+    // Keeping either handle would send the next cold start at a row the relay
+    // no longer has (`unknown_host` → 4003).
+    expect(page.replaced).toContain("https://codechat.example.com/remote/");
+    expect(page.local.get("wave_remote_last_host")).toBe("");
+    // The reader lands back on the list rather than on an error nobody can act on.
+    expect(page.element("remote-machine-picker")).toBeTruthy();
+  });
+
+  it("a delete that fails stays in the dialog with a retry", async () => {
+    const page = loadShim({
+      token: "jwt",
+      hosts: HOSTS,
+      hostDelete: { status: 500, body: {} },
+    });
+    await flush();
+    page.post({ command: "webviewReady" });
+    await flush();
+    page.post({ command: "openMachinePicker" });
+    await flush();
+
+    page.element("remote-machine-delete-host-2")?.onclick?.();
+    page.element("remote-machine-delete-confirm")?.onclick?.();
+    await flush();
+
+    const list = page.element("remote-machine-list");
+    expect(list?.textContent).toContain("删不掉这台电脑");
+    expect(list?.textContent).toContain("HTTP 500");
+    // The page banner belongs to the connection, which nothing here touched.
+    expect(page.banner()).toBe("");
+
+    list?.children
+      .find((child) => child.onclick && child.textContent === "重试")
+      ?.onclick?.();
+    await flush();
+    expect(
+      page.fetches.filter((fetch) => fetch.url === "/api/relay/hosts/host-2"),
+    ).toHaveLength(2);
+  });
+
+  it("a delete with a stale session renews once and then takes the row", async () => {
+    const page = loadShim({
+      token: "jwt",
+      refreshToken: "rt-1",
+      hosts: HOSTS,
+      hostDelete: [{ status: 401, body: {} }, { status: 204 }],
+      refresh: { body: { token: "fresh-jwt" } },
+    });
+    await openPicker(page);
+
+    confirmDelete(page, "host-2");
+    await flush();
+
+    // The same call twice under the same credential ladder the list uses — the
+    // second one carrying the token the renewal just minted.
+    const revokes = page.fetches.filter(
+      (fetch) => fetch.url === "/api/relay/hosts/host-2",
+    );
+    expect(revokes.map((fetch) => fetch.init.headers?.Authorization)).toEqual([
+      "Bearer jwt",
+      "Bearer fresh-jwt",
+    ]);
+    expect(
+      page.fetches.filter((fetch) => fetch.url === "/api/auth/refresh"),
+    ).toHaveLength(1);
+    // The session is fine now, so this is not a login problem: the row goes.
+    expect(page.navigations).toEqual([]);
+    expect(page.element("remote-machine-list")?.textContent).not.toContain(
+      "家里那台",
+    );
+    expect(page.element("remote-machine-picker")).toBeTruthy();
+  });
+
+  it("a delete no renewal can fix ends on the login page, not on a dead 重试", async () => {
+    const page = loadShim({
+      token: "jwt",
+      hosts: HOSTS,
+      hostDelete: { status: 401, body: {} },
+    });
+    await openPicker(page);
+
+    confirmDelete(page, "host-2");
+    await flush();
+
+    // Nothing to renew with, so the ladder spends its one attempt and hops.
+    expect(page.navigations).toEqual([LOGIN_HOP]);
+    // A refused credential is not a failed delete: no 重试 the reader cannot fix.
+    expect(page.element("remote-machine-list")?.textContent).not.toContain(
+      "删不掉",
+    );
+  });
+
+  it("a 404 means the row is already gone: it leaves the way a 204 takes it", async () => {
+    const page = loadShim({
+      token: "jwt",
+      hosts: HOSTS,
+      hostDelete: { status: 404, body: {} },
+    });
+    await openPicker(page);
+
+    confirmDelete(page, "host-2");
+    await flush();
+
+    const list = page.element("remote-machine-list");
+    expect(list?.textContent).not.toContain("家里那台");
+    // The relay has no such row and never will: a 重试 would answer 404 for ever.
+    expect(list?.textContent).not.toContain("删不掉");
+    expect(page.element("remote-machine-picker")).toBeTruthy();
+  });
+
+  it("deleting one machine leaves another machine's remembered choice alone", async () => {
+    const page = loadShim({
+      token: "jwt",
+      hosts: HOSTS,
+      stored: { wave_remote_last_host: "host-1" },
+    });
+    await openPicker(page);
+
+    confirmDelete(page, "host-2");
+    await flush();
+
+    // Only the machine that went loses its handle (spec 场景 11).
+    expect(page.local.get("wave_remote_last_host")).toBe("host-1");
+    // The page stays pinned to host-1: no address rewrite, and the one row that
+    // went is all that changed inside the dialog.
+    expect(page.replaced).toEqual([]);
+    expect(page.element("remote-machine-list")?.textContent).toContain(
+      "工位机",
+    );
+    expect(page.element("remote-machine-picker")).toBeTruthy();
+  });
+
+  it("a machine the relay does not report as offline is not deletable", async () => {
+    const page = loadShim({
+      url: BARE_URL,
+      token: "jwt",
+      hosts: {
+        status: 200,
+        body: {
+          hosts: [{ id: "host-9", name: "没说状态的机器", platform: "linux" }],
+        },
+      },
+    });
+    await flush();
+
+    // A payload that does not say is not evidence of offline (spec 场景 9 asks
+    // for `online: false`): the wrong way to be wrong here kicks a live machine.
+    expect(page.element("remote-machine-list")?.textContent).toContain(
+      "没说状态的机器",
+    );
+    expect(page.element("remote-machine-delete-host-9")?.disabled).toBe(true);
+    expect(
+      page.fetches.some((fetch) => fetch.url.startsWith("/api/relay/hosts/")),
+    ).toBe(false);
   });
 });
 
