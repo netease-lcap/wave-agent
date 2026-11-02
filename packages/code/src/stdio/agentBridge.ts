@@ -1101,8 +1101,9 @@ export class AgentBridge {
    * `createdBranch` is the branch the worktree was created on, snapshotted by
    * the caller. It is **not** `worktree.branch`: that field is the worktree's
    * current HEAD, which an in-session `git checkout` moves to a branch the user
-   * owns. Falls back to the path layout (`worktreeCreationBranch`), and to
-   * deleting no branch at all when neither can name one.
+   * owns. Falls back to the path layout (`worktreeCreationBranch`) — a
+   * candidate only, `removeWorktree` confirms it against git — and to deleting
+   * no branch at all when neither can name one.
    */
   private async removeSessionWorktree(
     sessionDir: string,

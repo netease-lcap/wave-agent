@@ -538,21 +538,47 @@ export function deriveWorktreeInfo(
  * A removal must delete the branch wave created, and the path is the only
  * surviving record of it besides a caller's own snapshot.
  *
- * Returns `undefined` for a worktree outside wave's directory (a hand-made
- * `git worktree add`, a hook-managed one): its branch is not wave's to name.
+ * The name is taken from the **tail** of `path` — every segment below
+ * `.wave/worktrees` — and the parent directory is never string-compared
+ * against `repoRoot`. The two paths reach us from different sources: `path` is
+ * whatever the OS or host handed over (`fs.mkdtempSync`, a session's cwd, a
+ * transcript header), while `repoRoot` is the path **git** canonicalized and
+ * wrote into `<gitdir>/commondir`. On Windows the same directory routinely
+ * arrives in two forms — 8.3 short name (`C:\Users\RUNNER~1\…`), unexpanded
+ * symlink/junction, drive-letter case — and Windows compares paths
+ * case-insensitively while a string compare does not, so the old
+ * `path.startsWith(parentDir)` called a legitimate worktree "not wave's" and
+ * the creation branch was never deleted. That is what turned `check-windows`
+ * red on main after #2721. Whether the path really sits in *this* repo's
+ * directory is not decidable from the strings anyway; `removeWorktree` asks git
+ * whether the branch it is about to delete exists there instead.
+ *
+ * Returns `undefined` for a path that is not laid out under a
+ * `.wave/worktrees` directory (a hand-made `git worktree add`, a hook-managed
+ * one): its branch is not wave's to name — and for an unknown `repoRoot`,
+ * because a caller that cannot resolve the repository has nothing to look a
+ * branch up in.
  */
 export function worktreeCreationBranch(
   worktree: Pick<DerivedWorktree, "path" | "repoRoot">,
 ): string | undefined {
-  if (!worktree.repoRoot) return undefined;
-  const parentDir = `${path.join(worktree.repoRoot, ...WORKTREE_PARENT_SEGMENTS)}${path.sep}`;
-  if (!worktree.path.startsWith(parentDir)) return undefined;
-  const name = path
-    .relative(parentDir, worktree.path)
-    .split(path.sep)
-    .filter(Boolean)
-    .join("/");
-  return name ? `${WORKTREE_BRANCH_PREFIX}${name}` : undefined;
+  if (!worktree.repoRoot || !worktree.path) return undefined;
+  const segments = path.resolve(worktree.path).split(path.sep).filter(Boolean);
+  // Deepest `.wave/worktrees` pair first: a repository checked out *inside*
+  // another wave worktree still names the innermost worktree.
+  for (let i = segments.length - 2; i >= 0; i--) {
+    if (
+      segments[i] !== WORKTREE_PARENT_SEGMENTS[0] ||
+      segments[i + 1] !== WORKTREE_PARENT_SEGMENTS[1]
+    ) {
+      continue;
+    }
+    // Names are slug paths (see validateWorktreeSlug), so the branch keeps the
+    // slashes; a path that ends at `worktrees` itself names nothing.
+    const name = segments.slice(i + 2).join("/");
+    return name ? `${WORKTREE_BRANCH_PREFIX}${name}` : undefined;
+  }
+  return undefined;
 }
 
 /**
@@ -611,6 +637,11 @@ export async function getWorktreeChanges(
  * fs.rmSync with an extended-length path (bypasses MAX_PATH) and prune stale
  * metadata. Failures are logged; when the directory survives, its branch is
  * deliberately kept so the leftover checkout stays reachable through git.
+ *
+ * The branch is deleted only when `repoRoot` actually has it (`branchExists`),
+ * so a name inferred from the path — which no longer depends on how the two
+ * path strings are spelled, see `worktreeCreationBranch` — can never delete
+ * something else.
  */
 export async function removeWorktree(session: WorktreeSession): Promise<void> {
   // Hook-based worktrees are removed by the WorktreeRemove hook; wave never
@@ -719,11 +750,47 @@ export async function removeWorktree(session: WorktreeSession): Promise<void> {
     );
     return;
   }
+  // A name derived from the worktree's path layout (rather than snapshotted at
+  // creation) is only a candidate: the layout says what name wave *would* have
+  // used, not that this repository has that branch. Ask git before deleting —
+  // a name that does not resolve here means the guess was wrong or the branch
+  // is already gone, and either way the safe outcome is to delete nothing.
+  if (!(await branchExists(repoRoot, session.branch))) {
+    logger.warn(
+      `No branch ${session.branch} in ${repoRoot} — keeping every branch ` +
+        `(the worktree at ${session.path} was not created on it, or it is ` +
+        `already gone)`,
+    );
+    return;
+  }
   try {
     await execFileAsync("git", ["branch", "-D", session.branch], {
       cwd: repoRoot,
     });
   } catch {
     // Ignore errors deleting original branch
+  }
+}
+
+/**
+ * Does `repoRoot` have a local branch called exactly `branch`?
+ *
+ * `git branch --list` takes a glob pattern, so the listing is compared back
+ * against the exact name instead of trusting "it printed something". Any git
+ * failure counts as "no such branch" — the caller then keeps every branch.
+ */
+async function branchExists(
+  repoRoot: string,
+  branch: string,
+): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["branch", "--list", "--format=%(refname:short)", branch],
+      { cwd: repoRoot, encoding: "utf8" },
+    );
+    return stdout.trim() === branch;
+  } catch {
+    return false;
   }
 }
