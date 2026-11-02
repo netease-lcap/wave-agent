@@ -859,6 +859,9 @@ export const Message: React.FC<MessageProps> = React.memo(
       notice?: string;
       /** 代码档的原文件路径（按扩展名选高亮语言）。 */
       codePath?: string;
+      /** 被预览文件的路径：markdown 正文里相对链接的解析基准，也是「点链接就地
+       * 换一份」的起点（见 `IdeContextPreview` 的 `filePath`）。 */
+      filePath?: string;
     } | null>(null);
 
     const getMessageClassName = () => {
@@ -966,19 +969,24 @@ export const Message: React.FC<MessageProps> = React.memo(
      */
     const showRemoteTextPreview = (filePath: string) => {
       const name = filePath.split(/[\\/]/).pop() || filePath;
-      void requestTextPreview(props.vscode, filePath).then((result) => {
+      // 解析成绝对路径再发：弹层里的 markdown 相对链接要以它为基准往下走
+      // （`IdeContextPreview` 的 `filePath`），相对路径当初被拒绝也会让链条断在
+      // 第二次点击上。
+      const absolute = toAbsoluteFilePath(filePath, workdir) ?? filePath;
+      void requestTextPreview(props.vscode, absolute).then((result) => {
         if ("error" in result) {
           setIdePreview({ title: "看不了这份文件", content: result.error });
           return;
         }
-        const markdown = isMarkdownPath(filePath);
+        const markdown = isMarkdownPath(absolute);
         setIdePreview({
           title: name,
           content: result.content,
           markdown,
           // 文档走排版、其余走等宽 + 高亮；判据只决定**怎么显示**，不影响
           // 「能不能读」（那是宿主按内容判的）。
-          codePath: markdown ? undefined : filePath,
+          codePath: markdown ? undefined : absolute,
+          filePath: absolute,
           ...describeTextPreview(result),
         });
       });
@@ -1808,6 +1816,11 @@ export const Message: React.FC<MessageProps> = React.memo(
             note={idePreview.note}
             notice={idePreview.notice}
             codePath={idePreview.codePath}
+            filePath={idePreview.filePath}
+            // 正文里点到另一个本地文件：留在同一个弹层里换一份（重新走按需读取，
+            // 图片再按扩展名分流去取图）。缺这条接管时，一次点击会把整页导航到
+            // 静态站点上一个不存在的对象（2026-11-02 报的 NoSuchKey）。
+            onOpenFile={showRemoteFilePreview}
             onClose={() => setIdePreview(null)}
           />
         )}

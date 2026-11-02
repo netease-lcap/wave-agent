@@ -141,6 +141,55 @@ test.describe("远控页：点路径看内容", () => {
     await expect(webviewPage.getByRole("dialog")).toHaveCount(0);
   });
 
+  test("弹层里的相对链接：就地换一份，不把页面导航走", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await openPage(injector);
+    const doc = "/tmp/shots/specs/index.md";
+    const linked = "/tmp/shots/specs/020-mini-app/spec.md";
+
+    const dialog = await openTextPreview(
+      webviewPage,
+      injector,
+      doc,
+      "# 规格索引\n\n详见 [小程序规格](020-mini-app/spec.md)。\n",
+    );
+
+    // 点之前先记下地址：这份页面是静态站点上的 /remote/，页面里的相对链接会被
+    // 浏览器按它解析 ⇒ 请求一个根本不存在的对象（2026-11-02 报的 NoSuchKey）。
+    const before = webviewPage.url();
+
+    await dialog.locator("a[href]").click();
+
+    // ① 一次点击不带走整页：地址不变，弹层还在（接管了才敢 preventDefault）。
+    expect(webviewPage.url()).toBe(before);
+    await expect(dialog).toBeVisible();
+
+    // ② 目标文件按被预览文件所在目录解析，重新走按需读取。
+    const request = await webviewPage.evaluate(() => {
+      const sent = (
+        window as unknown as { testMessages?: Array<Record<string, unknown>> }
+      ).testMessages;
+      return sent
+        ?.filter((message) => message.command === "getTextPreview")
+        .pop();
+    });
+    expect((request as Record<string, unknown>)?.path).toBe(linked);
+
+    // ③ 回包后还是同一个弹层，标题与正文一起换成新文件。
+    await injector.simulateExtensionMessage("textPreviewResponse", {
+      requestId: (request as Record<string, unknown>).requestId,
+      content: "# 小程序规格\n\n只有一个页面。\n",
+      bytes: 40,
+      returnedBytes: 40,
+      truncated: false,
+      encodingIssue: false,
+    });
+    await expect(dialog.locator("h1")).toHaveText("小程序规格");
+    await expect(dialog).toContainText("spec.md");
+  });
+
   test("长文件名：标题栏在自己那一行里收住，不挤出弹窗右边", async ({
     webviewPage,
   }) => {
@@ -203,6 +252,7 @@ async function openTextPreview(
   page: Page,
   injector: MessageInjector,
   filePath: string,
+  content = "# 真机验证报告\n\n全部用例通过\n",
 ) {
   await injector.updateMessages([
     {
@@ -226,7 +276,7 @@ async function openTextPreview(
   expect(request).toBeDefined();
   await injector.simulateExtensionMessage("textPreviewResponse", {
     requestId: (request as Record<string, unknown>).requestId,
-    content: "# 真机验证报告\n\n全部用例通过\n",
+    content,
     bytes: 5 * 1024 * 1024,
     returnedBytes: 256 * 1024,
     truncated: true,
