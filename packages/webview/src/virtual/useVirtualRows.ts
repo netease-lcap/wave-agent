@@ -485,7 +485,18 @@ export function useVirtualRows(options: UseVirtualRowsOptions): VirtualRows {
           }
         });
       }
-      observerRef.current.observe(node);
+      // 观测 **border box**，而且必须写在 observe() 的参数里 —— 这是行高账本
+      // 正确性的前提，不是优化：
+      //
+      // 行的盒高有一部分来自 padding-bottom（时间线连线的行间距就是它，见
+      // MessageList 的 timelineRuns：一段连续助手消息内部 0、段末 14px）。默认
+      // 观测的是 content box，`height: auto` 的行只改 padding 时 content box 一寸
+      // 没动 —— RO 一次都不回调，账本永远留着旧值，下一行就按旧高定位：两行之
+      // 间空出 14px，时间线竖线在那里断开（切会话再切回来之所以能好，是因为行
+      // 重新挂载、重新量了一次）。追这条时实测：`new ResizeObserver(cb, { box })`
+      // **构造参数里的 box 被 Chromium 忽略**（只有初次回调，改 padding 后不回调），
+      // 而 `observe(node, { box })` 的按调用参数才生效。
+      observerRef.current.observe(node, { box: "border-box" });
       applyHeight(key, Math.round(node.offsetHeight));
     },
     [applyHeight],
