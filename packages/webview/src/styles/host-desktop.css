@@ -2642,10 +2642,27 @@
 }
 
 /* 下拉内「添加主机…」展开的 inline 输入行（走查评论 div.desktop-host-add：
-   激活后输入行大小应与上方选项行一致，且表单颜色/文字符合全局规范）。
-   选项行已统一 28px/14px/r6，此处把输入行拉平到同高同字，聚焦走桌面
-   中性焦点环（--cc-border-focus #a0a5a8，base 的红 #c1292e 是插件遗留）；
-   背景仍吃 --vscode-input-background，避免改全局输入 token。 */
+   激活后输入行大小应与上方选项行一致）。
+
+   1102 评论（她点 `input.desktop-host-add-input` 的「ssh user@hostname -p port」）:
+   「表单按设计规范优化」——把这一族字段接到 `--cc-field-*` 表单映射上（同一份
+   映射见本文件 :6120 那段注释，设置页字段与侧栏搜索已接）：契约
+   `common-components.md` §Input fields「Desktop form field colors and focus」。
+     · 圆角 6 → 8：0923 契约「8px radius for desktop text fields」，写法与设置页
+       一致走 `var(--cc-radius-md, 8px)`
+     · 静止描边 → `--cc-field-border`（浅 #c5c9ce / 深 #414649；原来浅色吃
+       `--vscode-input-border` = #dcdfe6，深色恰好同值）
+     · hover 只换描边 → `--cc-field-border-hover`（原来没有 hover 态）
+     · focus → `--cc-field-border-focus`（浅 #565a60 / 深 #a0a5a8）：原来浅色吃
+       `--cc-border-focus` = `--cc-action-primary` 的炭黑 #1f2329，与深色不是一套
+     · 底色 → `--cc-field-bg`（深色 #1b1d1e；原来 `--vscode-input-background`
+       = #313131，比菜单面 #232526 还浅）
+     · 占位 → `--cc-field-placeholder`（#979ca2 / #6e757a）并显式 opacity 1
+     · 值字色 → `--cc-field-text`（与原来的 #1f2329 / #e5e7e8 同值，只是走 token）
+   几何一律不动：26 高 / 0 8 内衬 / 14·24 字，契约原话「Preserve established
+   heights, padding and typography unless separately approved」；契约里建议的
+   32 高是表单对话框里的单行档位，这里是 28px 菜单行内的紧凑行。
+   同一条规则也覆盖远程目录浏览器 footer 里的同名字段（同一个字段角色）。 */
 [data-host="desktop"] .desktop-host-add {
   display: flex;
   align-items: center;
@@ -2658,20 +2675,21 @@
   padding: 0 8px;
   font-size: 14px;
   line-height: 24px;
-  border-radius: 6px;
-  color: #1f2329;
+  border-radius: var(--cc-radius-md, 8px);
+  background: var(--cc-field-bg);
+  border-color: var(--cc-field-border);
+  color: var(--cc-field-text);
 }
 [data-host="desktop"] .desktop-host-add-input::placeholder {
-  color: #8b8f95;
+  color: var(--cc-field-placeholder);
+  opacity: 1;
 }
-[data-host="desktop"] .desktop-host-add-input:focus {
-  border-color: var(--cc-border-focus, #a0a5a8);
+[data-host="desktop"] .desktop-host-add-input:hover:not(:disabled) {
+  border-color: var(--cc-field-border-hover);
 }
-[data-host="desktop"][data-theme="dark"] .desktop-host-add-input {
-  color: #e5e7e8;
-}
-[data-host="desktop"][data-theme="dark"] .desktop-host-add-input::placeholder {
-  color: #858b8f;
+[data-host="desktop"] .desktop-host-add-input:focus:not(:disabled) {
+  border-color: var(--cc-field-border-focus);
+  outline: none;
 }
 [data-host="desktop"] .more-menu-item:hover,
 [data-host="desktop"] .panel-toggle-menu-item:hover,
