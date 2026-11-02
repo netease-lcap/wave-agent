@@ -18,9 +18,7 @@ import {
   parseBashCommands,
   replaceBashCommandsWithOutput,
   executeBashCommands,
-  prepareInjectedCommands,
 } from "../utils/markdownParser.js";
-import type { BashCommandResult } from "../utils/markdownParser.js";
 import {
   findUnresolvedDirectoryPlaceholders,
   substituteDirectoryPlaceholders,
@@ -622,19 +620,11 @@ export class SlashCommandManager {
 
       // Parse bash commands from the content
       const { commands, processedContent } = parseBashCommands(content);
-      const injected = prepareInjectedCommands(
-        processedContent,
-        commands,
-        args ?? "",
-      );
-      const displayContent = injected.warning
-        ? `> **Command warning**: ${injected.warning}\n\n${processedContent}`
-        : processedContent;
 
       // Add user message immediately so text block shows before bash execution
       const messageId = this.messageManager.addUserMessage({
         content: `/${commandName}${args ? ` ${args}` : ""}`,
-        customCommandContent: displayContent,
+        customCommandContent: processedContent,
       });
 
       // Register the command's own `allowed-tools` BEFORE its injected commands
@@ -649,21 +639,14 @@ export class SlashCommandManager {
 
       // Execute bash commands and update the message if any exist
       if (commands.length > 0) {
-        let bashResults: BashCommandResult[];
-        try {
-          bashResults = await executeBashCommands(
-            injected.commands,
-            this.workdir,
-            undefined,
-            createBashCommandGate(this.container),
-          );
-        } finally {
-          // Deleted even when a command is denied or the invocation is aborted:
-          // what this file holds is the user's own text.
-          injected.cleanup();
-        }
+        const bashResults = await executeBashCommands(
+          commands,
+          this.workdir,
+          undefined,
+          createBashCommandGate(this.container),
+        );
         const finalContent = replaceBashCommandsWithOutput(
-          displayContent,
+          processedContent,
           bashResults,
         );
 

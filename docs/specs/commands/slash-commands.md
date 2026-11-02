@@ -82,7 +82,6 @@ order: 10
 2. **假设** 命令包含 `$1 $2` 占位符，**当** 用户执行 `/command-name first second`，**则** `$1` 变为 "first"，`$2` 变为 "second"
 3. **假设** 命令期望参数，**当** 用户提供带空格的引号参数，**则** 引号内容被视为单个参数
 4. **假设** 命令不包含参数占位符，**当** 用户执行 `/command-name some arguments`，**则** "some arguments" 自动追加到命令内容末尾
-5. **假设** 命令正文的注入命令（``!`cmd` ``）需要用到用户参数，**则** 走 `${WAVE_ARGUMENTS_FILE}` 把参数交给脚本，而不是把 `$ARGUMENTS` 拼进命令行（参数里的 `>` / `&&` / 引号会被真 shell 当语法解析，见 `ecosystem/agent-skills.md` 的「注入命令的参数不经 shell 传递」）
 
 ---
 

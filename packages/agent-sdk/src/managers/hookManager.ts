@@ -599,6 +599,19 @@ export class HookManager {
 
       // Handle exit code interpretation
       if (result.exitCode === 0) {
+        // Claude Code's `decision: "block"` channel for the two stop events:
+        // exit 0 plus `{"decision":"block","reason":…}` on stdout continues the
+        // conversation with that text — the same effect as exit 2 + stderr,
+        // without dressing the text up as a hook error. Checked before
+        // `handleHookSuccess` so a structured body is never re-emitted as text.
+        const stopBlockReason = this.extractStopBlockReason(event, result);
+        if (stopBlockReason !== null) {
+          messageManager.addUserMessage({
+            content: stopBlockReason,
+            isMeta: true,
+          });
+          return { shouldBlock: true, errorMessage: stopBlockReason };
+        }
         // Success case - handle stdout based on hook type
         this.handleHookSuccess(event, result, messageManager);
       } else {
@@ -625,6 +638,51 @@ export class HookManager {
   ];
 
   /**
+   * Parse a hook's stdout as a JSON object, or `null` when it is not one.
+   *
+   * Every structured field (`systemMessage`, `hookSpecificOutput`, `decision`)
+   * travels in this one object, so the three readers share this entry point.
+   */
+  private parseStdoutJson(
+    result: HookExecutionResult,
+  ): Record<string, unknown> | null {
+    const stdout = result.stdout?.trim();
+    if (!stdout || !stdout.startsWith("{")) return null;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stdout);
+    } catch {
+      return null; // not structured output
+    }
+    if (typeof parsed !== "object" || parsed === null) return null;
+    return parsed as Record<string, unknown>;
+  }
+
+  /**
+   * `{"decision":"block","reason":"…"}` on Stop / SubagentStop with exit 0 —
+   * Claude Code's second blocking channel (the first being exit 2 + stderr).
+   *
+   * `reason` is injected as the next instruction and the turn continues, i.e.
+   * the same effect as exit 2 without dressing the text up as a hook error.
+   * Other events ignore the field: `decision` has no defined meaning there in
+   * Claude Code either.
+   */
+  private extractStopBlockReason(
+    event: HookEvent,
+    result: HookExecutionResult,
+  ): string | null {
+    if (event !== "Stop" && event !== "SubagentStop") return null;
+
+    const parsed = this.parseStdoutJson(result);
+    if (!parsed || parsed.decision !== "block") return null;
+
+    const reason = parsed.reason;
+    if (typeof reason !== "string" || !reason.trim()) return null;
+    return reason.trim();
+  }
+
+  /**
    * Inject the universal `systemMessage` field: a line for the human reading the
    * conversation, never for the model (Claude Code's warning line).
    *
@@ -641,18 +699,10 @@ export class HookManager {
     result: HookExecutionResult,
     messageManager: MessageManager,
   ): void {
-    const stdout = result.stdout?.trim();
-    if (!stdout || !stdout.startsWith("{")) return;
+    const parsed = this.parseStdoutJson(result);
+    if (!parsed) return;
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(stdout);
-    } catch {
-      return; // not structured output
-    }
-    if (typeof parsed !== "object" || parsed === null) return;
-
-    const systemMessage = (parsed as Record<string, unknown>).systemMessage;
+    const systemMessage = parsed.systemMessage;
     if (typeof systemMessage !== "string" || !systemMessage.trim()) return;
 
     messageManager.addNoticeBlock(systemMessage.trim(), "info");
@@ -678,19 +728,10 @@ export class HookManager {
   ): void {
     if (!HookManager.ADDITIONAL_CONTEXT_EVENTS.includes(event)) return;
 
-    const stdout = result.stdout?.trim();
-    if (!stdout || !stdout.startsWith("{")) return;
+    const parsed = this.parseStdoutJson(result);
+    if (!parsed) return;
 
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(stdout);
-    } catch {
-      return; // not structured output
-    }
-    if (typeof parsed !== "object" || parsed === null) return;
-
-    const hookSpecificOutput = (parsed as Record<string, unknown>)
-      .hookSpecificOutput;
+    const hookSpecificOutput = parsed.hookSpecificOutput;
     if (typeof hookSpecificOutput !== "object" || hookSpecificOutput === null) {
       return;
     }

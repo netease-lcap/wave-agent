@@ -273,6 +273,14 @@ Beyond exit codes, a hook can write a JSON object to \`stdout\`. Wave reads that
 {"systemMessage": "🔄 第 3 轮 | 想停：/cancel"}
 \`\`\`
 
+- \`decision\` (top level, \`Stop\` / \`SubagentStop\` only): \`{"decision":"block","reason":"..."}\` with **exit 0** keeps the conversation going and feeds \`reason\` back to the model — the same effect as exit code 2 + stderr, which Claude Code's own hooks use. Exit code 2 still wins when both appear; an empty or missing \`reason\` does not block. Other events ignore the field.
+
+\`\`\`json
+{"decision": "block", "reason": "Continue with the next unchecked item", "systemMessage": "🔄 round 3"}
+\`\`\`
+
+- Stop / SubagentStop input includes \`stop_hook_active\` (\`true\` when this turn was already continued by a stop hook — the circuit breaker for a hook that blocks unconditionally) and \`last_assistant_message\`. Every event's input includes \`permission_mode\`.
+
 For \`UserPromptSubmit\`, a stdout that is *not* JSON keeps its own meaning: the text is appended to the prompt as context rather than replacing it.
 
 ## SessionStart Hooks

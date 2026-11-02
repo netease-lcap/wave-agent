@@ -1286,6 +1286,69 @@ describe("Hook Services", () => {
       expect(parsedInput.last_assistant_message).toBe("The task is complete.");
     });
 
+    it("should include stop_hook_active (stop events) and permission_mode (every event)", async () => {
+      const run = async (
+        context: ExtendedHookExecutionContext,
+      ): Promise<Record<string, unknown>> => {
+        const mockProcess = new MockChildProcess();
+        const mockStdin = new MockStdin();
+        let stdinData = "";
+
+        vi.spyOn(mockStdin, "write").mockImplementation(
+          (_data?: string | Buffer | Uint8Array) => {
+            if (_data) {
+              stdinData += _data.toString();
+            }
+            return true;
+          },
+        );
+
+        mockProcess.stdin = mockStdin;
+        mockSpawn.mockReturnValue(mockProcess);
+
+        const resultPromise = executeCommand("echo test", context);
+
+        setImmediate(() => {
+          mockProcess.emit("close", 0);
+        });
+
+        await resultPromise;
+        return JSON.parse(stdinData) as Record<string, unknown>;
+      };
+
+      const base = {
+        projectDir: "/test/project",
+        timestamp: new Date(),
+        sessionId: "test-session-123",
+        transcriptPath: "/path/to/transcript.json",
+        cwd: "/test/project",
+      };
+
+      const stopInput = await run({
+        ...base,
+        event: "Stop",
+        stopHookActive: true,
+        permissionMode: "acceptEdits",
+      });
+      expect(stopInput.stop_hook_active).toBe(true);
+      expect(stopInput.permission_mode).toBe("acceptEdits");
+
+      // Non-stop events never carry the field, even if a caller passes it.
+      const promptInput = await run({
+        ...base,
+        event: "UserPromptSubmit",
+        stopHookActive: true,
+        permissionMode: "plan",
+      });
+      expect(promptInput.stop_hook_active).toBeUndefined();
+      expect(promptInput.permission_mode).toBe("plan");
+
+      // Omitted when the caller has nothing to say about it.
+      const noModeInput = await run({ ...base, event: "Stop" });
+      expect(noModeInput.permission_mode).toBeUndefined();
+      expect(noModeInput.stop_hook_active).toBeUndefined();
+    });
+
     it("should include last_assistant_message for SubagentStop event when provided", async () => {
       const mockProcess = new MockChildProcess();
       const mockStdin = new MockStdin();

@@ -16,7 +16,6 @@ import type { TextBlock } from "../../src/types/index.js";
 import type { MemoryService } from "../../src/services/memory.js";
 import { BASH_TOOL_NAME } from "../../src/constants/tools.js";
 import type { PermissionManager } from "../../src/managers/permissionManager.js";
-import { existsSync, readFileSync, statSync } from "fs";
 // Mock child_process for bash command execution tests
 const mockExec = vi.hoisted(() => vi.fn());
 vi.mock("child_process", () => ({
@@ -601,61 +600,6 @@ describe("SlashCommandManager", () => {
 
       expect(prepared.content).toContain("${WAVE_SKILL_DIR}");
       expect(prepared.content).toContain("no skill directory");
-    });
-
-    // spec `ecosystem/agent-skills`「注入命令的参数不经 shell 传递」
-    it("hands the raw arguments to an injected command as a file", async () => {
-      const rawArgs = 'a > b && "c" `d`\nsecond line';
-      let seen: { command: string; content: string; mode: number } | undefined;
-      vi.mocked(markdownParser.executeBashCommands).mockImplementationOnce(
-        async (commands: string[]) => {
-          seen = {
-            command: commands[0],
-            content: readFileSync(commands[0], "utf-8"),
-            mode: statSync(commands[0]).mode & 0o777,
-          };
-          return [{ command: commands[0], output: "ok", exitCode: 0 }];
-        },
-      );
-
-      slashCommandManager.registerPluginCommands("acme", [
-        {
-          id: "args",
-          name: "args",
-          content: "Args: !`${WAVE_ARGUMENTS_FILE}`",
-          pluginRoot: "/plugins/acme",
-        },
-      ] as unknown as CustomSlashCommand[]);
-
-      await slashCommandManager.getCommand("acme:args")?.handler(rawArgs);
-
-      expect(seen?.content).toBe(rawArgs);
-      if (process.platform !== "win32") {
-        expect(seen?.mode).toBe(0o600);
-      }
-      // Gone as soon as the invocation ends: what it held is the user's own text.
-      expect(existsSync(seen?.command as string)).toBe(false);
-    });
-
-    it("warns when the arguments-file token sits outside an injected command", async () => {
-      slashCommandManager.registerPluginCommands("acme", [
-        {
-          id: "prose",
-          name: "prose",
-          content: "Read ${WAVE_ARGUMENTS_FILE} later",
-          pluginRoot: "/plugins/acme",
-        },
-      ] as unknown as CustomSlashCommand[]);
-
-      await slashCommandManager.getCommand("acme:prose")?.handler("x");
-
-      const messages = messageManager.getMessages();
-      const block = messages[messages.length - 1].blocks[0] as TextBlock;
-      expect(block.customCommandContent).toContain("> **Command warning**:");
-      expect(block.customCommandContent).toContain("${WAVE_ARGUMENTS_FILE}");
-      expect(
-        vi.mocked(markdownParser.executeBashCommands),
-      ).not.toHaveBeenCalled();
     });
 
     it("should update user message after bash execution in skill command", async () => {

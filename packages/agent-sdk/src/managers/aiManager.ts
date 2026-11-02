@@ -220,6 +220,13 @@ export class AIManager {
   /** Pending cwd-recovery notice (set when getCurrentWorkdir() auto-recovers), consumed by tools */
   private pendingCwdRecovery: { from: string; to: string } | null = null;
   private consecutiveCompactionFailures: number = 0;
+  /**
+   * Set when a Stop / SubagentStop hook blocked the previous turn, so the next
+   * Stop hook invocation can be told it is already a continuation
+   * (`stop_hook_active` in the hook input, aligned with Claude Code). Reset at
+   * the start of every user-visible turn.
+   */
+  private stopHookActive = false;
   private readonly maxTurns?: number;
   /** Start turns without project/user memory injection (`omitAgentsMd` subagents) */
   private readonly omitAgentsMd: boolean;
@@ -1814,6 +1821,8 @@ ${question}`;
     const ownsTurnSnapshot = recursionDepth === 0;
     if (ownsTurnSnapshot) {
       this.liveConfigManager?.onTurnStart();
+      // A fresh user turn is never a stop-hook continuation.
+      this.stopHookActive = false;
     }
 
     // Turn boundary for the shared output-token ledger. Only the MAIN agent
@@ -2648,6 +2657,8 @@ ${question}`;
         backgroundTasks, // Stop-only: running background tasks snapshot
         sessionCrons, // Stop-only: session cron jobs snapshot
         lastAssistantMessage: lastAssistantText, // Stop/SubagentStop: last assistant message text
+        stopHookActive: this.stopHookActive, // Stop/SubagentStop: already continued by a stop hook
+        permissionMode: this.getModelConfig().permissionMode,
         // Stop hooks don't need toolName, toolInput, toolResponse, or userPrompt
         env: Object.fromEntries(
           Object.entries(this.mergedEnv).filter((e) => e[1] !== undefined),
@@ -2665,7 +2676,8 @@ ${question}`;
           this.messageManager,
         );
 
-        // If hook processing indicates we should block (exit code 2), continue conversation
+        // If hook processing indicates we should block (exit code 2, or
+        // `{"decision":"block"}` on stdout), continue the conversation.
         if (processResult.shouldBlock) {
           logger?.info(
             `${hookName} hook blocked stopping with error:`,
@@ -2673,6 +2685,10 @@ ${question}`;
           );
           shouldContinue = true;
         }
+        // Remember across turns whether this continuation came from a stop
+        // hook, so the next Stop sees `stop_hook_active: true` (Claude Code's
+        // circuit breaker for hooks that block unconditionally).
+        this.stopHookActive = processResult.shouldBlock;
       }
 
       // Log hook execution results for debugging
