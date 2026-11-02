@@ -261,6 +261,14 @@ export interface HookJsonInput {
   background_tasks?: BackgroundTaskInfo[]; // Present for Stop events: running background tasks snapshot
   session_crons?: SessionCronInfo[]; // Present for Stop events: session-scoped cron jobs snapshot
   last_assistant_message?: string; // Present for Stop and SubagentStop events: text content of the last assistant message
+  // Present for Stop / SubagentStop: `true` when this turn is already a
+  // continuation produced by a stop hook that blocked (Claude Code's
+  // `stop_hook_active`). A hook that blocks unconditionally uses it as the
+  // circuit breaker against looping forever.
+  stop_hook_active?: boolean;
+  // Permission mode in effect for this turn (`default` / `acceptEdits` /
+  // `plan` / `dontAsk` / `bypassPermissions`), same value the tools see.
+  permission_mode?: string;
 }
 
 // Describes one in-flight background task in the Stop hook input.
@@ -308,6 +316,8 @@ export interface ExtendedHookExecutionContext extends HookExecutionContext {
   backgroundTasks?: BackgroundTaskInfo[]; // Running background tasks snapshot (Stop only)
   sessionCrons?: SessionCronInfo[]; // Session-scoped cron jobs snapshot (Stop only)
   lastAssistantMessage?: string; // Text content of last assistant message (Stop and SubagentStop only)
+  stopHookActive?: boolean; // Stop / SubagentStop: this turn was already continued by a stop hook
+  permissionMode?: string; // Permission mode in effect for this turn
 }
 
 // Environment variables injected into hook processes

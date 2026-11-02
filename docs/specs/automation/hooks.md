@@ -42,11 +42,12 @@ Hook 通过退出码、stdout 和 stderr 传达状态：
 
 ### 结构化方式：JSON 输出
 
-Hook 也可以在 stdout 输出一个 JSON 对象，通过 `hookSpecificOutput` 传回结构化结果。当前 wave 支持 `additionalContext` 一个字段（对齐 Claude Code）：
+Hook 也可以在 stdout 输出一个 JSON 对象，通过 `hookSpecificOutput` 传回结构化结果；`Stop` / `SubagentStop` 还可以用顶层 `decision` 拦住退出。当前 wave 支持 `hookSpecificOutput.additionalContext`、顶层 `systemMessage` 与 `decision` 三个字段（均对齐 Claude Code）：
 
 - **读取通道与退出码正交**：只要 stdout 是含 `hookSpecificOutput.additionalContext` 的合法 JSON 就注入，**不需要用退出码 2**。这是它与「退出码 2 + stderr」的核心差别——不是「能不能送到」而是**档位**：同一个通道在 exit 2 下送达的文本被当作"hook 报错"，`additionalContext` 则是非错误的附加上下文。Claude Code 同样在退出码判定之前解析 stdout JSON。
 - **注入形态**：文本以 `<system-reminder>` 包裹，作为一条 `isMeta: true` 的用户角色消息追加到对话中，与 SessionStart 钩子的注入方式一致（见 `session-hooks.md`）。
-- **支持的事件**：`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`SessionStart`。与 Claude Code 一致，`Stop` / `SubagentStop` **不支持**该字段——要它们继续干活仍用退出码 2。
+- **支持的事件**：`UserPromptSubmit`、`PreToolUse`、`PostToolUse`、`SessionStart`。与 Claude Code 一致，`Stop` / `SubagentStop` **不支持** `additionalContext`——要它们继续干活用 `decision: "block"`（见下条）或退出码 2。
+- **`decision: "block"`（`Stop` / `SubagentStop`）**：`{"decision":"block","reason":"<文本>"}` + 退出码 0 即可拦住退出，`reason` 作为 `isMeta: true` 的用户消息喂回模型并让回合继续——与退出码 2 + stderr 等效，区别只是文本不以「hook 报错」的形态出现。`reason` 缺失或纯空白时不拦停（无处可喂）。退出码 2 仍优先：两者同时出现时以 stderr 为准。其它事件忽略该字段（Claude Code 在这些事件上也没有定义它的语义）。
 - **`UserPromptSubmit` 的 stdout 语义收窄**：该事件的 stdout 若是合法 JSON，注入其 `additionalContext` 值而**不是**把 JSON 原文塞进上下文；不是 JSON 时按原行为把文本注入。
 - **`systemMessage`（顶层字段，任意事件）**：给**用户看**的一行提示，追加到当前助手消息上作为 `notice` 块（`level: "info"`）渲染，**不进模型请求**（对齐 Claude Code 的同名字段，CC 文档称其为 warning message）。它与退出码正交：`Stop` 用退出码 2 回喂模型的同时，可以在同一份 stdout JSON 里带 `systemMessage`，于是「模型看到原因、用户看到状态」——循环类 hook（每隔一轮拦一次退出）靠它告诉用户当前第几轮、怎么停。工具事件（`PreToolUse` / `PostToolUse`）走另一条执行通道，当前不读该字段。
 - **`hookEventName` 必须与触发事件一致**：不一致视为非法 JSON 输出，按"非阻止性错误"呈现给用户，不注入上下文。
@@ -414,6 +415,42 @@ Hook 需要访问完整的对话历史以做出上下文感知的决策。Hook �
 3. **假设**最后一条助手消息仅包含工具调用块（无文本块），**当** Stop hook 触发时，**则** JSON 输入不包含 `last_assistant_message` 字段（提取结果为空字符串时视为无内容，字段省略）
 4. **假设**最后一条助手消息同时包含文本块和工具调用块，**当** Stop hook 触发时，**则** `last_assistant_message` 字段值为文本块内容拼接（工具调用块不参与拼接）
 5. **假设**某条非 Stop/SubagentStop 事件（如 PreToolUse、PostToolUse、UserPromptSubmit）的 hook 触发，**当**其 JSON 输入被构造时，**则**不包含 `last_assistant_message` 字段（该字段仅 Stop 和 SubagentStop 事件提供）
+
+---
+
+### 用户故事：Stop hook 用 JSON 的 `decision:block` 拦住退出（优先级：P2）
+
+作为把按 Claude Code 文档写的 hook 直接拿来跑的开发者，我希望 `Stop` / `SubagentStop` hook 用 `{"decision":"block","reason":"…"}` + 退出码 0 就能把对话续下去，而不必改写成「退出码 2 + stderr」。
+
+**为什么是这个优先级**：wave 原来唯一的拦停通道是退出码 2 + stderr，而 Claude Code 自己（含官方 ralph-loop 插件）用的是退出码 0 + `decision` 字段。同一份 hook 脚本在 wave 上会**静默放行**——循环类 hook 看起来"装好了、跑起来了一次就停"。退出码 2 仍保留为第一优先通道，所以现有 hook 行为不变。
+
+**独立测试**：配置 `Stop` hook 输出 `{"decision":"block","reason":"继续干活"}` 并 `exit 0`，发送一条消息；断言模型侧多出一条 `isMeta: true`、内容为 `继续干活` 的用户消息且回合继续。再把 `reason` 去掉，断言不拦停。
+
+**验收场景**：
+
+1. **假设** `Stop` hook 以退出码 0 结束、stdout 是含 `decision: "block"` 与非空 `reason` 的合法 JSON，**当** hook 结果被处理时，**则** `reason` 作为一条 `isMeta: true` 的用户消息注入，且回合继续（与退出码 2 的拦停等效）
+2. **假设**同一条 JSON 来自 `SubagentStop`，**当** hook 结果被处理时，**则**行为与场景 1 一致
+3. **假设** `decision` 出现在 `Stop` / `SubagentStop` 之外的事件上，**当** hook 结果被处理时，**则**忽略该字段，不拦停（与 Claude Code 一致：这些事件上它没有定义语义）
+4. **假设** `decision` 是 `"block"` 但 `reason` 缺失或只含空白，**当** hook 结果被处理时，**则**不拦停（没有内容可喂回）
+5. **假设**同一个 hook 同时给出退出码 2 与 `decision` JSON，**当** hook 结果被处理时，**则**以退出码 2 的 stderr 为准（同一份 JSON 里的 `systemMessage` 仍照常显示给用户）
+6. **假设** stdout 不是 JSON，**当** `Stop` hook 以退出码 0 结束时，**则**不拦停、也不往对话里注入任何文本（与之前一致）
+
+---
+
+### 用户故事：Stop hook 输入带 `stop_hook_active` 与 `permission_mode`（优先级：P3）
+
+作为写循环类 hook 的开发者，我希望 `Stop` / `SubagentStop` 的输入里能拿到「这一轮是不是已经被上一个 stop hook 续过」，以及本轮生效的权限模式，以便给无条件的拦停加一道自限闸门，并按权限模式决定要不要拦。
+
+**为什么是这个优先级**：没有 `stop_hook_active`，一个无条件 `block` 的 hook 会让会话永远停不下来（Claude Code 的同名字段就是干这个的）。`permission_mode` 则让 hook 知道本轮工具调用是在哪种模式下被判定的，不用去猜配置。
+
+**独立测试**：配置一个 `Stop` hook 打印 `jq -r '.stop_hook_active, .permission_mode'`；先让它拦停一次，断言下一轮 Stop 的输入里 `stop_hook_active` 为 `true`，新开一个用户回合后为 `false`；`permission_mode` 与当前会话模式一致。
+
+**验收场景**：
+
+1. **假设**上一轮因 `Stop` hook 拦停而继续，**当**本轮 `Stop` hook 触发时，**则** JSON 输入含 `stop_hook_active: true`
+2. **假设**用户发起了新的消息（非 hook 续命产生的回合），**当** `Stop` hook 触发时，**则** `stop_hook_active` 为 `false`
+3. **假设**任意事件的 hook 触发，**当**其 JSON 输入被构造时，**则**包含本轮生效的 `permission_mode`（`default` / `acceptEdits` / `plan` / `dontAsk` / `bypassPermissions`）
+4. **假设**某条非 `Stop` / `SubagentStop` 事件触发，**当**其 JSON 输入被构造时，**则**不包含 `stop_hook_active`
 
 ---
 

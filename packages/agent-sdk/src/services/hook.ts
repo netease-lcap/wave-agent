@@ -132,6 +132,21 @@ async function buildHookJsonInput(
     jsonInput.last_assistant_message = context.lastAssistantMessage;
   }
 
+  // `stop_hook_active` (Stop / SubagentStop): true when this turn is already a
+  // continuation produced by a stop hook that blocked. Aligned with Claude Code
+  // — a hook that blocks unconditionally uses it as the circuit breaker.
+  if (
+    (context.event === "Stop" || context.event === "SubagentStop") &&
+    context.stopHookActive !== undefined
+  ) {
+    jsonInput.stop_hook_active = context.stopHookActive;
+  }
+
+  // The permission mode the turn is running under, same value the tools see.
+  if (context.permissionMode) {
+    jsonInput.permission_mode = context.permissionMode;
+  }
+
   return jsonInput;
 }
 
