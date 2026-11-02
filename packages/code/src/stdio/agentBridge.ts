@@ -105,6 +105,8 @@ import {
   deriveWorktreeInfo,
   getWorktreeChanges,
   removeWorktree,
+  worktreeCreationBranch,
+  type DerivedWorktree,
 } from "../utils/worktree.js";
 import { logger } from "../utils/logger.js";
 import {
@@ -213,6 +215,20 @@ interface SessionEntry {
    * header when the session is re-attached from disk after a daemon restart.
    */
   createdWorkdir: string;
+  /**
+   * The branch the worktree in `createdWorkdir` was CREATED on
+   * (`worktree-<name>`), recorded once at initialize alongside it. Undefined
+   * when the session was not created in a linked git worktree.
+   *
+   * Removal needs this snapshot because the worktree itself stops being a
+   * record of it: `deriveWorktreeInfo` reads the worktree's HEAD, which an
+   * in-session `git checkout <other-branch>` moves to a branch that belongs to
+   * the user (and may hold commits reachable from nowhere else). Deleting that
+   * one is the bug this snapshot prevents, and it is unrecoverable once
+   * deleted — `git worktree list` has no memory of the original checkout
+   * either (it reports each worktree's current HEAD too).
+   */
+  createdWorktreeBranch?: string;
   /**
    * True while `updateConfig` is tearing the session's agent down and rebuilding
    * it from the updated config — the entry stays in the registry (so the session
@@ -889,14 +905,20 @@ export class AgentBridge {
     // creation) restores the original value when the agent's transcript is
     // readable; otherwise the client cwd is the best available anchor.
     let createdWorkdir: string;
+    let transcriptBranch: string | undefined;
     if (params.restoreSessionId) {
-      createdWorkdir =
-        (await readTranscriptWorkdir(agent.sessionFilePath)) ??
-        params.workdir ??
-        agent.currentWorkdir;
+      const header = await readTranscriptHeader(agent.sessionFilePath);
+      createdWorkdir = header.workdir ?? params.workdir ?? agent.currentWorkdir;
+      transcriptBranch = header.gitBranch;
     } else {
       createdWorkdir = params.workdir ?? agent.currentWorkdir;
     }
+
+    const worktree = deriveWorktreeInfo(createdWorkdir);
+    const createdWorktreeBranch = this.creationBranchOf(worktree, {
+      transcriptBranch,
+      restored: Boolean(params.restoreSessionId),
+    });
 
     this.sessions.set(agent.sessionId, {
       agent,
@@ -904,9 +926,42 @@ export class AgentBridge {
       // storedConfig, so the rebuild must stay anchored on the creation dir too.
       storedConfig: { ...params, workdir: createdWorkdir },
       createdWorkdir,
+      createdWorktreeBranch,
     });
 
-    return this.initializeReply(agent, createdWorkdir);
+    return this.initializeReply(agent, createdWorkdir, worktree);
+  }
+
+  /**
+   * The branch the session's worktree was created on — recorded once, at
+   * initialize (see `SessionEntry.createdWorktreeBranch`).
+   *
+   * Only a session created inside a linked git worktree has one: a session in
+   * the main working tree returns undefined, and so does a WorktreeCreate
+   * hook-managed worktree (its branches are not git's).
+   *
+   * Records, best first:
+   *
+   * 1. the transcript header's `gitBranch` — the creation-time record a
+   *    re-attached session recovers after a daemon restart;
+   * 2. the path layout `<repoRoot>/.wave/worktrees/<name>`
+   *    (`worktreeCreationBranch`) — the same answer, from the one thing that
+   *    always survives;
+   * 3. the worktree's HEAD — fresh sessions only, where nothing has had the
+   *    chance to check anything else out yet. Never for a re-attach: by then
+   *    HEAD may be a branch the user checked out, and that is the branch
+   *    removal must leave alone.
+   */
+  private creationBranchOf(
+    worktree: DerivedWorktree | undefined,
+    options: { transcriptBranch?: string; restored: boolean },
+  ): string | undefined {
+    if (!worktree || worktree.hookBased) return undefined;
+    return (
+      options.transcriptBranch ||
+      worktreeCreationBranch(worktree) ||
+      (options.restored ? undefined : worktree.branch || undefined)
+    );
   }
 
   /**
@@ -929,6 +984,9 @@ export class AgentBridge {
   private initializeReply(
     agent: Agent,
     sessionCwd: string,
+    // Derived once by the caller: this reply and the creation-branch snapshot
+    // both need it, and it reads config files.
+    worktree = deriveWorktreeInfo(sessionCwd),
   ): {
     sessionId: string;
     currentWorkdir: string;
@@ -938,7 +996,6 @@ export class AgentBridge {
     permissionMode: PermissionMode;
     latestTotalTokens: number;
   } {
-    const worktree = deriveWorktreeInfo(sessionCwd);
     return {
       sessionId: agent.sessionId,
       currentWorkdir: agent.currentWorkdir,
@@ -990,6 +1047,7 @@ export class AgentBridge {
     params?: { removeWorktree?: boolean },
   ): Promise<{ worktreeRemoved: boolean }> {
     let createdWorkdir: string | undefined;
+    let createdWorktreeBranch: string | undefined;
     if (sessionId) {
       const entry = this.sessions.get(sessionId);
       if (entry) {
@@ -1017,13 +1075,17 @@ export class AgentBridge {
         // for the same reason).
         this.sessions.delete(sessionId);
         createdWorkdir = entry.createdWorkdir;
+        createdWorktreeBranch = entry.createdWorktreeBranch;
         await entry.agent.destroy();
       }
     }
 
     let worktreeRemoved = false;
     if (params?.removeWorktree === true && createdWorkdir) {
-      worktreeRemoved = await this.removeSessionWorktree(createdWorkdir);
+      worktreeRemoved = await this.removeSessionWorktree(
+        createdWorkdir,
+        createdWorktreeBranch,
+      );
     }
     return { worktreeRemoved };
   }
@@ -1035,15 +1097,32 @@ export class AgentBridge {
    * both fail, and for a hook-based worktree with no WorktreeRemove hook it
    * deliberately leaves it in place. Never throws — the caller has already
    * deleted the session.
+   *
+   * `createdBranch` is the branch the worktree was created on, snapshotted by
+   * the caller. It is **not** `worktree.branch`: that field is the worktree's
+   * current HEAD, which an in-session `git checkout` moves to a branch the user
+   * owns. Falls back to the path layout (`worktreeCreationBranch`), and to
+   * deleting no branch at all when neither can name one.
    */
-  private async removeSessionWorktree(sessionDir: string): Promise<boolean> {
+  private async removeSessionWorktree(
+    sessionDir: string,
+    createdBranch?: string,
+  ): Promise<boolean> {
     const worktree = deriveWorktreeInfo(sessionDir);
     if (!worktree) return false;
+    const branch = createdBranch || worktreeCreationBranch(worktree) || "";
+    if (!branch) {
+      logger.warn(
+        `removeSessionWorktree: cannot tell which branch ${worktree.path} was ` +
+          `created on — keeping every branch instead of deleting the one it ` +
+          `has checked out (${worktree.branch || "detached"})`,
+      );
+    }
     try {
       await removeWorktree({
         name: "",
         path: worktree.path,
-        branch: worktree.branch,
+        branch,
         repoRoot: worktree.repoRoot,
         hasUncommittedChanges: false,
         hasNewCommits: false,
@@ -1599,6 +1678,7 @@ export class AgentBridge {
   private async getSessionInfo(sessionId?: string): Promise<{
     sessionId: string;
     sessionCwd: string;
+    worktreeBranch?: string;
     latestTotalTokens: number;
     permissionMode: PermissionMode;
     availableTools: string[];
@@ -1615,6 +1695,11 @@ export class AgentBridge {
       // destroy --remove-worktree resolves the session's worktree from this
       // value, and it must not drift when the session cd'd out of the worktree.
       sessionCwd: entry.createdWorkdir,
+      // Same reason one level down: the branch to delete is the one the
+      // worktree was CREATED on, not the one it has checked out now.
+      ...(entry.createdWorktreeBranch
+        ? { worktreeBranch: entry.createdWorktreeBranch }
+        : {}),
       latestTotalTokens: entry.agent.latestTotalTokens,
       permissionMode: entry.agent.getPermissionMode(),
       availableTools: entry.agent.getAvailableToolNames(),
@@ -3309,25 +3394,27 @@ async function readTextFileSafe(filePath: string): Promise<string> {
 }
 
 /**
- * Read the creation-time workdir from a session transcript's metadata header —
+ * Read the creation-time facts from a session transcript's metadata header —
  * the first line `{"type":"metadata","workdir":...,"createdAt":...,"gitBranch":...}`
  * the SDK writes once at session creation. The header is append-only, so it
  * records where the session was created even after the live working directory
  * drifted (in-session `cd`) or after a daemon restart re-anchored the agent at
- * a client's cwd. Returns undefined when the file is missing, legacy (no
+ * a client's cwd, and its `gitBranch` records the branch that directory was on
+ * at creation. Returns an empty object when the file is missing, legacy (no
  * header), or unreadable. Only the header line is read (transcripts can grow
  * large); a 4KiB read covers any realistic header.
  */
-async function readTranscriptWorkdir(
-  transcriptPath?: string,
-): Promise<string | undefined> {
-  if (!transcriptPath) return undefined;
+async function readTranscriptHeader(transcriptPath?: string): Promise<{
+  workdir?: string;
+  gitBranch?: string;
+}> {
+  if (!transcriptPath) return {};
   try {
     const handle = await open(transcriptPath, "r");
     try {
       const buffer = Buffer.alloc(4096);
       const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
-      if (bytesRead === 0) return undefined;
+      if (bytesRead === 0) return {};
       const newline = buffer.indexOf(0x0a);
       const firstLine = buffer
         .subarray(0, newline === -1 ? bytesRead : newline)
@@ -3335,14 +3422,21 @@ async function readTranscriptWorkdir(
       const header = JSON.parse(firstLine) as {
         type?: string;
         workdir?: unknown;
+        gitBranch?: unknown;
       };
-      return header.type === "metadata" && typeof header.workdir === "string"
-        ? header.workdir
-        : undefined;
+      if (header.type !== "metadata") return {};
+      return {
+        workdir:
+          typeof header.workdir === "string" ? header.workdir : undefined,
+        gitBranch:
+          typeof header.gitBranch === "string" && header.gitBranch
+            ? header.gitBranch
+            : undefined,
+      };
     } finally {
       await handle.close();
     }
   } catch {
-    return undefined;
+    return {};
   }
 }

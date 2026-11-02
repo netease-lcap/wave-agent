@@ -54,6 +54,9 @@ vi.mock("node:child_process", async (importOriginal) => {
 
 // destroy --remove-worktree runs git lookups through execFile; these
 // module-level variables drive the mock per-test (set inside each test).
+// `gitBranch` used to model `git branch --show-current` — removal no longer
+// asks git what is checked out, so the mock answers it with a value no test
+// may assert on (see `resolveWorktreeForRemoval`).
 let gitTopLevel = "";
 let gitBranch = "";
 let gitLookupError: Error | null = null;
@@ -82,15 +85,23 @@ execFileMock.mockImplementation(
   },
 );
 
-vi.mock("../../src/utils/worktree.js", () => ({
-  createWorktree: vi.fn(),
-  // `listDaemonSessions` derives each row's worktree off the filesystem and the
-  // bridge's delete path asks for the same info: this suite's sessions are not
-  // worktrees, which is exactly what `undefined` says.
-  deriveWorktreeInfo: vi.fn(() => undefined),
-  getWorktreeChanges: vi.fn(),
-  removeWorktree: vi.fn(),
-}));
+vi.mock("../../src/utils/worktree.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../../src/utils/worktree.js")>();
+  return {
+    // The pure path/reporting helpers stay real: `destroy --remove-worktree`
+    // runs `worktreeCreationBranch` on resolved paths, and stubbing it would
+    // let the test pass without ever naming a branch.
+    ...actual,
+    createWorktree: vi.fn(),
+    // `listDaemonSessions` derives each row's worktree off the filesystem and the
+    // bridge's delete path asks for the same info: this suite's sessions are not
+    // worktrees, which is exactly what `undefined` says.
+    deriveWorktreeInfo: vi.fn(() => undefined),
+    getWorktreeChanges: vi.fn(),
+    removeWorktree: vi.fn(),
+  };
+});
 
 // vitest.config onConsoleLog throws on any stderr console output — commands use
 // console.error for diagnostics, so capture it (and raw writes) here.
@@ -2659,6 +2670,8 @@ test("create: bare --worktree auto-generates the worktree name", async () => {
 
 test("destroy: --remove-worktree resolves the worktree via git and removes it before destroying", async () => {
   gitTopLevel = "/repo/main/.wave/worktrees/feature-x";
+  // What `git branch --show-current` would say inside the worktree. Removal
+  // must not care: the branch to delete is the one the worktree was created on.
   gitBranch = "feature-x";
   const client = connectClient(socketPath);
   await client.send({ id: 1, method: "initialize", params: {} });
@@ -2676,18 +2689,20 @@ test("destroy: --remove-worktree resolves the worktree via git and removes it be
     { cwd: "/test/workdir" },
     expect.any(Function),
   );
-  expect(execFile).toHaveBeenCalledWith(
+  // …and what is checked out there is never asked for: `branch --show-current`
+  // follows an in-session `git checkout`, so it would name the user's branch.
+  expect(execFile).not.toHaveBeenCalledWith(
     "git",
     ["branch", "--show-current"],
-    { cwd: "/test/workdir" },
-    expect.any(Function),
+    expect.anything(),
+    expect.anything(),
   );
   // The daemon's removeWorktree ran with the resolved values (bridge fills the
   // remaining WorktreeSession fields).
   expect(vi.mocked(removeWorktree)).toHaveBeenCalledWith({
     name: "",
     path: "/repo/main/.wave/worktrees/feature-x",
-    branch: "feature-x",
+    branch: "worktree-feature-x",
     repoRoot: "/repo/main",
     hasUncommittedChanges: false,
     hasNewCommits: false,
@@ -2695,10 +2710,37 @@ test("destroy: --remove-worktree resolves the worktree via git and removes it be
     hookBased: false,
   });
   expect(stdoutLines()).toEqual([
-    "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: feature-x)",
+    "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: worktree-feature-x)",
     "Destroyed session: test-session-id",
   ]);
   expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("destroy: --remove-worktree deletes the branch the worktree was created on, not the one checked out inside it", async () => {
+  gitTopLevel = "/repo/main/.wave/worktrees/feature-x";
+  // The agent ran `git checkout main` inside the worktree. `git branch
+  // --show-current` would answer `main` here; deleting that would destroy the
+  // user's own branch (and any commits only it reaches) while leaving
+  // `worktree-feature-x` behind as the orphan.
+  gitBranch = "main";
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonDestroyCommand(socketPath, "test-session-id", {
+      removeWorktree: true,
+    }),
+  ).rejects.toThrow("exit(0)");
+  expect(vi.mocked(removeWorktree)).toHaveBeenCalledWith(
+    expect.objectContaining({ branch: "worktree-feature-x" }),
+  );
+  expect(vi.mocked(removeWorktree)).not.toHaveBeenCalledWith(
+    expect.objectContaining({ branch: "main" }),
+  );
+  expect(stdoutLines()[0]).toBe(
+    "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: worktree-feature-x)",
+  );
 });
 
 test("destroy: --remove-worktree anchors on the recorded creation workdir, not the session's drifted live workdir", async () => {
@@ -2733,24 +2775,45 @@ test("destroy: --remove-worktree anchors on the recorded creation workdir, not t
     { cwd: "/repo/main/.wave/worktrees/feature-x" },
     expect.any(Function),
   );
-  expect(execFile).toHaveBeenCalledWith(
-    "git",
-    ["branch", "--show-current"],
-    { cwd: "/repo/main/.wave/worktrees/feature-x" },
-    expect.any(Function),
-  );
   expect(vi.mocked(removeWorktree)).toHaveBeenCalledWith(
     expect.objectContaining({
       path: "/repo/main/.wave/worktrees/feature-x",
-      branch: "feature-x",
+      branch: "worktree-feature-x",
       repoRoot: "/repo/main",
     }),
   );
   expect(stdoutLines()).toEqual([
-    "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: feature-x)",
+    "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: worktree-feature-x)",
     "Destroyed session: test-session-id",
   ]);
   expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("destroy: --remove-worktree deletes no branch it cannot name", async () => {
+  // A hand-made worktree outside `.wave/worktrees`: there is no path layout to
+  // recover `worktree-<name>` from, so removal deletes the directory and keeps
+  // every branch — never `git branch --show-current`, which would name the one
+  // the agent left checked out.
+  gitTopLevel = "/repo/main/linked/feature-x";
+  gitBranch = "someone-elses-branch";
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  await expect(
+    daemonDestroyCommand(socketPath, "test-session-id", {
+      removeWorktree: true,
+    }),
+  ).rejects.toThrow("exit(0)");
+  expect(vi.mocked(removeWorktree)).toHaveBeenCalledWith(
+    expect.objectContaining({ branch: "" }),
+  );
+  expect(vi.mocked(removeWorktree)).not.toHaveBeenCalledWith(
+    expect.objectContaining({ branch: "someone-elses-branch" }),
+  );
+  expect(stdoutLines()[0]).toBe(
+    "Removed worktree: /repo/main/linked/feature-x (branch: none deleted)",
+  );
 });
 
 test("destroy: --remove-worktree refuses to remove the main working tree", async () => {
@@ -2801,7 +2864,7 @@ test("destroy: --remove-worktree forwards hookBased when the repo uses a Worktre
     expect.objectContaining({ hookBased: true }),
   );
   expect(stdoutLines()).toContain(
-    "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: feature-x)",
+    "Removed worktree: /repo/main/.wave/worktrees/feature-x (branch: worktree-feature-x)",
   );
   expect(exitSpy).toHaveBeenCalledWith(0);
 });

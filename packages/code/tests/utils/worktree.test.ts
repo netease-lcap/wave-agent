@@ -8,6 +8,7 @@ import {
   listWorktrees,
   removeWorktree,
   validateWorktreeSlug,
+  worktreeCreationBranch,
 } from "../../src/utils/worktree.js";
 import { logger } from "../../src/utils/logger.js";
 import {
@@ -504,6 +505,61 @@ describe("worktree utils", () => {
     });
   });
 
+  describe("worktreeCreationBranch", () => {
+    // The layout createWorktree writes: <repoRoot>/.wave/worktrees/<name>, on
+    // `worktree-<name>`. Built with `path` so the expectations hold on Windows.
+    const REPO_ROOT = path.resolve("/repo");
+
+    it("names the branch createWorktree gives a worktree it created", () => {
+      expect(
+        worktreeCreationBranch({
+          path: path.join(REPO_ROOT, ".wave", "worktrees", "feat"),
+          repoRoot: REPO_ROOT,
+        }),
+      ).toBe("worktree-feat");
+    });
+
+    it("keeps the slash-separated name intact", () => {
+      // Names are slug paths (see validateWorktreeSlug), so the directory is
+      // nested and the branch keeps the slashes.
+      expect(
+        worktreeCreationBranch({
+          path: path.join(REPO_ROOT, ".wave", "worktrees", "team", "feat"),
+          repoRoot: REPO_ROOT,
+        }),
+      ).toBe("worktree-team/feat");
+    });
+
+    it("returns undefined for a worktree wave did not create", () => {
+      // A hand-made `git worktree add ../linked feat`: its branch is not ours to
+      // name, and guessing would mean deleting whatever it has checked out.
+      expect(
+        worktreeCreationBranch({
+          path: path.join(REPO_ROOT, "linked", "feat"),
+          repoRoot: REPO_ROOT,
+        }),
+      ).toBeUndefined();
+    });
+
+    it("returns undefined for the worktrees directory itself", () => {
+      expect(
+        worktreeCreationBranch({
+          path: path.join(REPO_ROOT, ".wave", "worktrees"),
+          repoRoot: REPO_ROOT,
+        }),
+      ).toBeUndefined();
+    });
+
+    it("returns undefined when the repo root is unknown", () => {
+      expect(
+        worktreeCreationBranch({
+          path: path.join(REPO_ROOT, ".wave", "worktrees", "feat"),
+          repoRoot: "",
+        }),
+      ).toBeUndefined();
+    });
+  });
+
   describe("getWorktreeChanges", () => {
     it("counts uncommitted files and commits ahead of the base branch", async () => {
       git.handler = (_cmd, args) => {
@@ -614,6 +670,24 @@ describe("worktree utils", () => {
       );
       // Commits on that branch may be reachable from nowhere else.
       expect(gitCallsWith(["branch", "-D", "another-branch"])).toHaveLength(0);
+    });
+
+    it("should delete no branch when the caller could not name one", async () => {
+      // The caller had no creation-time record and the path is not one wave
+      // built, so it hands over an empty branch rather than the worktree's HEAD:
+      // that one may be a branch the user owns.
+      const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      vi.mocked(fs.existsSync).mockReturnValue(false);
+
+      await removeWorktree({ ...session, branch: "" });
+
+      expect(gitCallsWith(["worktree", "remove", "--force"])).toHaveLength(1);
+      // No `git branch -D` at all — with any name.
+      expect(gitCallsWith(["branch", "-D"])).toHaveLength(0);
+      expect(warnSpy.mock.calls.map((c) => c[0]).join(" ")).toContain(
+        "keeping every branch",
+      );
+      warnSpy.mockRestore();
     });
 
     it("should fall back to fs.rmSync when git removal fails, then delete the branch", async () => {
