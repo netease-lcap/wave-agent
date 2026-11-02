@@ -2509,9 +2509,10 @@ ${question}`;
             //
             // Claude Code behaves the same way — a blocked stop ends the turn
             // and the queued message becomes the next one. Without this, a hook
-            // that never lets the turn end (ralph-loop style "keep going until
-            // the promise") starves the queue forever: the user's /cancel can
-            // never run, and Escape then throws the queued message away.
+            // that never lets the turn end (a loop hook that keeps re-prompting
+            // until its own condition is met) starves the queue forever: the
+            // user's /cancel can never run, and Escape then throws the queued
+            // message away.
             const queuedUserMessage = messageQueue
               ?.getQueue()
               .some((queued) => queued.type !== "notification");

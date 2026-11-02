@@ -37,7 +37,7 @@ export type MessageBlock =
  * - `error` — the turn failed (API error, thrown exception). Rendered in red.
  * - `warning` — reserved; nothing produces it yet.
  * - `info` — status narration a hook wants the user to see, e.g. a loop's
- *   `systemMessage` ("🔄 Ralph 第 3 轮", "循环已到上限").
+ *   `systemMessage` ("🔄 第 3 轮", "循环已到上限").
  *
  * `convertMessagesForAPI` never reads this block, so nothing here costs
  * context. Two known consequences: `saveSession` only persists *new*

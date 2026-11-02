@@ -296,14 +296,14 @@ describe("HookManager exit-code semantics", () => {
     });
 
     it("shows a blocking Stop hook's systemMessage to the user, whatever the exit code", () => {
-      // ralph-loop shape: the reason reaches the model through exit 2 + stderr,
+      // loop-hook shape: the reason reaches the model through exit 2 + stderr,
       // the same stdout JSON carries the line the user needs to see.
       const results = [
         {
           success: false,
           exitCode: 2,
           stdout: JSON.stringify({
-            systemMessage: "🔄 Ralph 第 2 轮 | 想停：/ralph-loop:cancel-ralph",
+            systemMessage: "🔄 第 2 轮 | 想停：删掉循环状态文件",
           }),
           stderr: "第 2 轮的工作内容",
           duration: 0,
@@ -317,7 +317,7 @@ describe("HookManager exit-code semantics", () => {
       );
 
       expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
-        "🔄 Ralph 第 2 轮 | 想停：/ralph-loop:cancel-ralph",
+        "🔄 第 2 轮 | 想停：删掉循环状态文件",
         "info",
       );
       expect(mockMessageManager.addUserMessage).toHaveBeenCalledWith({
@@ -332,7 +332,7 @@ describe("HookManager exit-code semantics", () => {
           success: true,
           exitCode: 0,
           stdout: JSON.stringify({
-            systemMessage: "Ralph 循环已结束：已到 2 轮上限",
+            systemMessage: "循环已结束：已到 2 轮上限",
           }),
           stderr: "",
           duration: 0,
@@ -346,7 +346,7 @@ describe("HookManager exit-code semantics", () => {
       );
 
       expect(mockMessageManager.addNoticeBlock).toHaveBeenCalledWith(
-        "Ralph 循环已结束：已到 2 轮上限",
+        "循环已结束：已到 2 轮上限",
         "info",
       );
       expect(mockMessageManager.addUserMessage).not.toHaveBeenCalled();
@@ -357,7 +357,7 @@ describe("HookManager exit-code semantics", () => {
         {
           success: true,
           exitCode: 0,
-          stdout: "🔄 Ralph 第 2 轮",
+          stdout: "🔄 第 2 轮",
           stderr: "",
           duration: 0,
           timedOut: false,
