@@ -242,8 +242,12 @@ export const DesktopPanelTabs: React.FC<DesktopPanelTabsProps> = ({
             **同时**触发外层与内层两个气泡（`Tooltip` 靠包裹层自己的 mouseenter /
             mouseleave 工作，内层并不算离开外层）。要收这一对得先决定
             「悬停关闭按钮时只出哪一个气泡」，故留给她点名。 */}
+        {/* 1030 评论：「＋」的气泡只在**键盘**聚焦时随 focus 出现
+            （`keyboardFocusOnly`）。菜单项一激活，`useRovingMenu.closeReturningFocus`
+            就把焦点送回这颗按钮，鼠标用户会看到一个悬在菜单原位、指针压根没进去过的
+            气泡——没有 mouseleave 能收它，只有再点别处失焦才消失。悬停路径不变。 */}
         {!pinned && (
-          <Tooltip text="新建面板" position="bottom">
+          <Tooltip text="新建面板" position="bottom" keyboardFocusOnly>
             <button
               ref={inlineAddRef}
               className="desktop-panel-tabs-add"
@@ -259,7 +263,7 @@ export const DesktopPanelTabs: React.FC<DesktopPanelTabsProps> = ({
         )}
       </div>
       {pinned && (
-        <Tooltip text="新建面板" position="bottom">
+        <Tooltip text="新建面板" position="bottom" keyboardFocusOnly>
           <button
             ref={pinnedAddRef}
             className="desktop-panel-tabs-add"

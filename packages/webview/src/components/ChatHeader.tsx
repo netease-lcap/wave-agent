@@ -230,7 +230,11 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             不与新建 / 会话 / 更多抢位置），由 onSwitchMachine 传给 MoreMenu
             （spec remote/remote-machine.md「机器列表与切换」场景 5）。 */}
         {!hideMoreButton && (
-          <Tooltip text="更多" position="bottom">
+          // `keyboardFocusOnly`：MoreMenu 激活菜单项 / Esc 会把焦点交还这颗按钮
+          // （`useRovingMenu` 的 `closeReturningFocus`，键盘可达性设计），鼠标
+          // 用户于是看到一个悬在菜单原位、指针没进去过的气泡——没有 mouseleave
+          // 能收它。同族口径见 Tooltip.tsx 的 prop 注释。
+          <Tooltip text="更多" position="bottom" keyboardFocusOnly>
             <button
               ref={moreBtnRef}
               className="header-button"

@@ -34,6 +34,19 @@ interface TooltipProps {
    */
   multiline?: boolean;
   /**
+   * 只在「键盘聚焦」时用 focus 显示气泡（判定 `:focus-visible`）；鼠标点击、
+   * 或程序化 `element.focus()` 引起的焦点不算。
+   *
+   * 给「激活后把焦点交还触发按钮」的复合控件用（1030 面板页签条「＋」）：
+   * 菜单项一激活，`useRovingMenu` 就把焦点送回按钮，鼠标用户于是看到一个悬在
+   * 空中、指针从未进入过的气泡——没有 `mouseleave` 能把它收掉，只有再点别处
+   * 失焦才消失，读起来就是「点过新建之后一直挂着一个气泡」。键盘用户走
+   * Enter/Esc 时仍是 `:focus-visible`，提示照旧保留。
+   *
+   * 默认 `false` = 任何 focus 都显示（其余调用点行为不变）。
+   */
+  keyboardFocusOnly?: boolean;
+  /**
    * Optional external anchor: the tooltip positions against this element
    * instead of the wrapper span (e.g. a row's hover-highlight container, so
    * the hint starts at the row's visual edge rather than the content's).
@@ -60,6 +73,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
   disabled = false,
   className = "",
   multiline = false,
+  keyboardFocusOnly = false,
   anchorRef,
   portal = false,
 }) => {
@@ -178,6 +192,18 @@ export const Tooltip: React.FC<TooltipProps> = ({
   };
   const handleHide = () => setIsVisible(false);
 
+  // focus 走同一个 handleShow，`keyboardFocusOnly` 时先过一道 `:focus-visible`：
+  // 鼠标点击 / 程序化 focus()（例如菜单关闭后把焦点交还 trigger）不算键盘聚焦，
+  // 不该弹气泡。`matches` 不可用的环境（极老的宿主）按「非键盘」处理，宁可少弹
+  // 一次，也不要留下一个收不掉的气泡。
+  const handleFocus = (event: React.FocusEvent<HTMLSpanElement>) => {
+    if (keyboardFocusOnly) {
+      const target = event.target as HTMLElement | null;
+      if (!target?.matches?.(":focus-visible")) return;
+    }
+    handleShow();
+  };
+
   const tooltipBox = (
     <div
       id={id}
@@ -195,7 +221,7 @@ export const Tooltip: React.FC<TooltipProps> = ({
       className={`tooltip-container ${className}`}
       onMouseEnter={handleShow}
       onMouseLeave={handleHide}
-      onFocus={handleShow}
+      onFocus={handleFocus}
       onBlur={handleHide}
       ref={containerRef}
     >
