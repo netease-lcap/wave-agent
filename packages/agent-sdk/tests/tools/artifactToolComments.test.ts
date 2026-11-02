@@ -653,6 +653,106 @@ describe("Artifact watch / unwatch actions", () => {
   });
 });
 
+describe("Artifact status action", () => {
+  function managerWatching(
+    entries: Array<{
+      slug: string;
+      url?: string;
+      status: "connecting" | "watching" | "backoff" | "stopped";
+      error?: string;
+    }>,
+  ): PageWatchManager {
+    return fakeManager({
+      listWatched: vi.fn(() =>
+        entries.map((entry) => ({ cursor: "cur-internal-1", ...entry })),
+      ),
+    } as unknown as Partial<PageWatchManager>);
+  }
+
+  it("reports what this session is watching, without any request", async () => {
+    const fetchMock = stubFetch([
+      { match: () => true, respond: () => jsonResponse(200, {}) },
+    ]);
+    const manager = managerWatching([
+      { slug: SLUG, url: ARTIFACT_URL, status: "watching" },
+    ]);
+
+    const result = await TOOL.execute(
+      { action: "status" },
+      makeContext({ pageWatchManager: manager }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain(ARTIFACT_URL);
+    expect(result.content).toContain("watching");
+    // Local state only: no request, and the internal cursor never leaks out.
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.content).not.toContain("cur-internal-1");
+  });
+
+  it("says plainly when nothing is being watched", async () => {
+    const result = await TOOL.execute(
+      { action: "status" },
+      makeContext({ pageWatchManager: managerWatching([]) }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain("Not watching any pages");
+    expect(result.content).toContain('action "watch"');
+  });
+
+  it("keeps the four stream states apart", async () => {
+    const manager = managerWatching([
+      { slug: "a1", status: "connecting" },
+      { slug: "b2", status: "watching" },
+      { slug: "c3", status: "backoff" },
+      {
+        slug: "d4",
+        status: "stopped",
+        error: "the artifact was not found (HTTP 404)",
+      },
+    ]);
+
+    const result = await TOOL.execute(
+      { action: "status" },
+      makeContext({ pageWatchManager: manager }),
+    );
+
+    expect(result.success).toBe(true);
+    // A page with no URL falls back to its canonical page address.
+    expect(result.content).toContain(`${SERVER_URL}/code/artifact/a1`);
+    expect(result.content).toContain("connecting");
+    expect(result.content).toContain("reconnecting");
+    // A stopped stream must not read as "not watching" or as healthy — it says
+    // why it stopped and how to restart it.
+    expect(result.content).toContain("the artifact was not found (HTTP 404)");
+    expect(result.content).toContain("will not wake you");
+    // The stream cap comes from the manager's own constant.
+    expect(result.content).toContain("4 of 8");
+  });
+
+  it("reads local state even when the account is not logged in", async () => {
+    vi.mocked(authService.getSSOToken).mockReturnValue(undefined);
+    const result = await TOOL.execute(
+      { action: "status" },
+      makeContext({
+        pageWatchManager: managerWatching([
+          { slug: SLUG, url: ARTIFACT_URL, status: "watching" },
+        ]),
+      }),
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.content).toContain(ARTIFACT_URL);
+  });
+
+  it("uses the same unavailable error as watch / unwatch", async () => {
+    const result = await TOOL.execute({ action: "status" }, makeContext());
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not available in this session");
+  });
+});
+
 function makePermissionManager(behavior: "allow" | "deny" = "allow") {
   const permissionContext: Record<string, unknown> = {};
   return {
