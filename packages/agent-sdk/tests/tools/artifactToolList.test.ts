@@ -127,6 +127,7 @@ describe("artifactTool list action", () => {
         "resolve",
         "watch",
         "unwatch",
+        "status",
       ]);
     });
 

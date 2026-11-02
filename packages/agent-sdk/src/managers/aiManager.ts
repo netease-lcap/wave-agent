@@ -2395,60 +2395,6 @@ ${question}`;
                   });
                 }
 
-                // Duplicate Tool Call Detection
-                if (toolCalls.length > 0) {
-                  const messages = this.messageManager.getMessages();
-                  // Find the most recent assistant message BEFORE the current one that has tool blocks
-                  // The current assistant message is messages[messages.length - 1]
-                  let previousAssistantWithTools: Message | undefined;
-                  for (let i = messages.length - 2; i >= 0; i--) {
-                    const msg = messages[i];
-                    if (
-                      msg.role === "assistant" &&
-                      msg.blocks.some((b) => b.type === "tool")
-                    ) {
-                      previousAssistantWithTools = msg;
-                      break;
-                    }
-                  }
-
-                  if (previousAssistantWithTools) {
-                    const previousToolBlocks =
-                      previousAssistantWithTools.blocks.filter(
-                        (b): b is import("../types/messaging.js").ToolBlock =>
-                          b.type === "tool",
-                      );
-
-                    for (const currentToolCall of toolCalls) {
-                      const currentName = currentToolCall.function?.name;
-                      const currentArgs = currentToolCall.function?.arguments;
-
-                      const isDuplicate = previousToolBlocks.some(
-                        (prevBlock) =>
-                          prevBlock.name === currentName &&
-                          prevBlock.parameters === currentArgs,
-                      );
-
-                      if (isDuplicate && currentName) {
-                        const toolId = currentToolCall.id;
-                        const lastMessage = messages[messages.length - 1];
-                        const toolBlock = lastMessage.blocks.find(
-                          (b): b is import("../types/messaging.js").ToolBlock =>
-                            b.type === "tool" && b.id === toolId,
-                        );
-                        if (toolBlock) {
-                          const warning = `\n\nNote: You just called this tool with the same arguments in the previous turn. Please ensure you are not in a loop and consider if you need to change your approach.`;
-                          this.messageManager.updateToolBlock({
-                            id: toolId,
-                            result: (toolBlock.result || "") + warning,
-                            stage: "end",
-                          });
-                        }
-                      }
-                    }
-                  }
-                }
-
                 // Yield to the event loop so macrotasks (abort timers,
                 // signals) can be processed between turns. Without this,
                 // mocked async operations (microtasks) would starve the
