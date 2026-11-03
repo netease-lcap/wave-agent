@@ -310,12 +310,8 @@ const label = ▍ // ← 建议给出 formatPrice({ cents: amount, currency }, "
 
 <figure><img src="/screenshots/spec-sdd-plan-approve.webp" alt="计划批准交互" /><figcaption>计划批准交互</figcaption></figure>
 
-<figure><img src="/screenshots/spec-sdd-tasklist-progress.webp" alt="编码阶段任务列表" /><figcaption>编码阶段任务列表</figcaption></figure>
-
 <figure><img src="/screenshots/spec-sdd-iterate-update.webp" alt="迭代需求-更新规格" /><figcaption>迭代需求-更新规格</figcaption></figure>
 
 <figure><img src="/screenshots/spec-sdd-iterate-confirm.webp" alt="迭代需求-规格确认" /><figcaption>迭代需求-规格确认</figcaption></figure>
-
-<figure><img src="/screenshots/spec-sdd-iterate-continue.webp" alt="迭代需求-继续实现" /><figcaption>迭代需求-继续实现</figcaption></figure>
 
 </div>
