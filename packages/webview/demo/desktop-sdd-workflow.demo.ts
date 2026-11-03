@@ -6,7 +6,6 @@ import {
   WRITE_TOOL_NAME,
   EDIT_TOOL_NAME,
   type Message,
-  type Task,
 } from "wave-agent-sdk";
 import { screenshotWebp } from "../e2e/utils/screenshot.js";
 import {
@@ -218,22 +217,6 @@ test.describe("Desktop SDD workflow screenshots", () => {
     await setup(webviewPage, injector, messages);
     await webviewPage.waitForSelector(".write-preview-box");
 
-    // 任务列表：规格编写进行中
-    await injector.simulateExtensionMessage("updateTasks", {
-      tasks: [
-        {
-          id: "1",
-          subject: "编写功能规格",
-          description: "编写客户管理系统的功能规格说明",
-          status: "in_progress",
-          blocks: [],
-          blockedBy: [],
-          metadata: {},
-        },
-      ],
-    });
-    await expect(webviewPage.getByTestId("task-list")).toBeVisible();
-
     // 点击 Write 工具卡的文件路径 → 文件面板打开预览 spec 文件
     await webviewPage.locator(".write-tool-path").click();
     await expect(webviewPage.getByTestId("file-pane")).toBeVisible();
@@ -364,90 +347,7 @@ test.describe("Desktop SDD workflow screenshots", () => {
     );
   });
 
-  test("3. 编码阶段：完整任务列表进度", async ({ webviewPage }) => {
-    const injector = new MessageInjector(webviewPage);
-    await webviewPage.setViewportSize({ width: 1280, height: 720 });
-    const messages: Message[] = [
-      {
-        id: "msg_sdd_user",
-        role: "user",
-        timestamp: "2025-07-10T09:00:00.000Z",
-        blocks: [
-          {
-            type: "text",
-            content:
-              "我们想做一个客户管理系统（CRM），核心是客户档案、跟进记录、合同管理和数据看板，帮我按规格优先的流程来推进。",
-          },
-        ],
-      },
-      {
-        id: "msg_sdd_code_user",
-        role: "user",
-        timestamp: "2025-07-10T09:00:18.000Z",
-        blocks: [
-          {
-            type: "text",
-            content: "规格和技术方案都确认了，开始实现吧。",
-          },
-        ],
-      },
-      {
-        id: "msg_sdd_coding",
-        role: "assistant",
-        timestamp: "2025-07-10T09:00:20.000Z",
-        blocks: [
-          {
-            type: "text",
-            content:
-              "技术方案已批准，开始编码。先搭建前后端工程骨架，然后按模块依次实现：客户档案 → 跟进记录 → 合同管理 → 数据看板。",
-          },
-        ],
-      },
-    ];
-    await setup(webviewPage, injector, messages);
-
-    const stageTasks: Task[] = [
-      {
-        id: "1",
-        subject: "编写功能规格",
-        description: "编写客户管理系统的功能规格说明",
-        status: "completed",
-        blocks: [],
-        blockedBy: [],
-        metadata: {},
-      },
-      {
-        id: "2",
-        subject: "制定技术方案",
-        description: "技术选型、架构设计与实现步骤",
-        status: "completed",
-        blocks: [],
-        blockedBy: [],
-        metadata: {},
-      },
-      {
-        id: "3",
-        subject: "实现功能",
-        description: "按规格与方案实现客户管理系统",
-        status: "in_progress",
-        blocks: [],
-        blockedBy: [],
-        metadata: {},
-      },
-    ];
-    await injector.simulateExtensionMessage("updateTasks", {
-      tasks: stageTasks,
-    });
-    await expect(webviewPage.getByTestId("task-list")).toBeVisible();
-    await webviewPage.waitForTimeout(300);
-
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-sdd-tasklist-progress.webp",
-    );
-  });
-
-  test("4. 迭代需求：更新规格 + 差异面板预览修改 + 规格确认弹窗", async ({
+  test("3. 迭代需求：更新规格 + 差异面板预览修改 + 规格确认弹窗", async ({
     webviewPage,
   }) => {
     const injector = new MessageInjector(webviewPage);
@@ -505,23 +405,6 @@ test.describe("Desktop SDD workflow screenshots", () => {
         hasText: "customer-management.md",
       }),
     ).toBeVisible();
-
-    // 任务列表：规格更新进行中
-    await injector.simulateExtensionMessage("updateTasks", {
-      tasks: [
-        {
-          id: "1",
-          subject: "更新功能规格",
-          description:
-            "更新客户管理系统的功能规格说明（新增客户自动分级、调整标签规则）",
-          status: "in_progress",
-          blocks: [],
-          blockedBy: [],
-          metadata: {},
-        },
-      ],
-    });
-    await expect(webviewPage.getByTestId("task-list")).toBeVisible();
 
     // 打开差异面板（空面板槽经空态入口），注入 spec 文件修改 diff
     await webviewPage.getByTestId("panel-toggle-btn").click();
@@ -599,81 +482,6 @@ test.describe("Desktop SDD workflow screenshots", () => {
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/desktop-sdd-iterate-update.webp",
-    );
-  });
-
-  test("5. 迭代需求：确认后重新汇入实现流程", async ({ webviewPage }) => {
-    const injector = new MessageInjector(webviewPage);
-    await webviewPage.setViewportSize({ width: 1280, height: 720 });
-    const messages: Message[] = [
-      {
-        id: "msg_sdd_iterate_user",
-        role: "user",
-        timestamp: "2025-07-10T10:00:00.000Z",
-        blocks: [
-          {
-            type: "text",
-            content:
-              "我们已有客户管理系统（CRM）的规格说明 `docs/specs/crm/customer-management.md`（4 个用户故事、6 个验收场景）。现在想新增一个客户自动分级的功能：根据跟进频率和合同金额自动计算客户等级；另外把客户档案的标签从手动维护改成根据行为自动生成。",
-          },
-        ],
-      },
-      {
-        id: "msg_sdd_iterate_confirm_user",
-        role: "user",
-        timestamp: "2025-07-10T10:00:08.000Z",
-        blocks: [
-          {
-            type: "text",
-            content: "直接实现，开始吧。",
-          },
-        ],
-      },
-      {
-        id: "msg_sdd_iterate_coding",
-        role: "assistant",
-        timestamp: "2025-07-10T10:00:20.000Z",
-        blocks: [
-          {
-            type: "text",
-            content:
-              "规格已确认。按更新后的规格开始实现：先做客户自动分级（等级计算规则 + 分级结果展示），再把客户档案的标签改为行为自动生成。",
-          },
-        ],
-      },
-    ];
-    await setup(webviewPage, injector, messages);
-
-    const stageTasks: Task[] = [
-      {
-        id: "1",
-        subject: "更新功能规格",
-        description:
-          "更新客户管理系统的功能规格说明（新增客户自动分级、调整标签规则）",
-        status: "completed",
-        blocks: [],
-        blockedBy: [],
-        metadata: {},
-      },
-      {
-        id: "2",
-        subject: "实现变更",
-        description: "按更新后的规格实现客户自动分级与标签自动生成",
-        status: "in_progress",
-        blocks: [],
-        blockedBy: [],
-        metadata: {},
-      },
-    ];
-    await injector.simulateExtensionMessage("updateTasks", {
-      tasks: stageTasks,
-    });
-    await expect(webviewPage.getByTestId("task-list")).toBeVisible();
-    await webviewPage.waitForTimeout(300);
-
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/desktop-sdd-iterate-continue.webp",
     );
   });
 });

@@ -5,7 +5,6 @@ import {
   EXIT_PLAN_MODE_TOOL_NAME,
   WRITE_TOOL_NAME,
   type Message,
-  type Task,
 } from "wave-agent-sdk";
 import {
   screenshotWebp,
@@ -89,21 +88,6 @@ order: 1
     await injector.updateMessages([userMessage, specReply, writeSpecMsg]);
     await expect(webviewPage.locator(".write-preview-box")).toBeVisible();
 
-    // 任务列表：规格编写进行中
-    await injector.simulateExtensionMessage("updateTasks", {
-      tasks: [
-        {
-          id: "1",
-          subject: "编写功能规格",
-          description: "编写客户管理系统的功能规格说明",
-          status: "in_progress",
-          blocks: [],
-          blockedBy: [],
-          metadata: {},
-        },
-      ],
-    });
-    await expect(webviewPage.getByTestId("task-list")).toBeVisible();
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/spec-sdd-workflow-spec.webp",
@@ -265,74 +249,5 @@ order: 1
     );
     await webviewPage.keyboard.press("Escape");
     await planApproveDialog.waitFor({ state: "detached" });
-
-    // ---- Stage 4: coding stage with full task progress ----
-    const codingReply: Message = {
-      id: "msg_sdd_coding",
-      role: "assistant",
-      timestamp: "2025-07-10T09:00:20.000Z",
-      blocks: [
-        {
-          type: "text",
-          content:
-            "技术方案已批准，开始编码。先搭建前后端工程骨架，然后按模块依次实现：客户档案 → 跟进记录 → 合同管理 → 数据看板。",
-        },
-      ],
-    };
-    const codeUserMessage: Message = {
-      id: "msg_sdd_code_user",
-      role: "user",
-      timestamp: "2025-07-10T09:00:18.000Z",
-      blocks: [
-        {
-          type: "text",
-          content: "规格和技术方案都确认了，开始实现吧。",
-        },
-      ],
-    };
-    await injector.updateMessages([
-      userMessage,
-      specReply,
-      writeSpecMsg,
-      codeUserMessage,
-      codingReply,
-    ]);
-    const stageTasks: Task[] = [
-      {
-        id: "1",
-        subject: "编写功能规格",
-        description: "编写客户管理系统的功能规格说明",
-        status: "completed",
-        blocks: [],
-        blockedBy: [],
-        metadata: {},
-      },
-      {
-        id: "2",
-        subject: "制定技术方案",
-        description: "技术选型、架构设计与实现步骤",
-        status: "completed",
-        blocks: [],
-        blockedBy: [],
-        metadata: {},
-      },
-      {
-        id: "3",
-        subject: "实现功能",
-        description: "按规格与方案实现客户管理系统",
-        status: "in_progress",
-        blocks: [],
-        blockedBy: [],
-        metadata: {},
-      },
-    ];
-    await injector.simulateExtensionMessage("updateTasks", {
-      tasks: stageTasks,
-    });
-    await expect(webviewPage.getByTestId("task-list")).toBeVisible();
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/spec-sdd-tasklist-progress.webp",
-    );
   });
 });

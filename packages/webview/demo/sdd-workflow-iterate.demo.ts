@@ -4,7 +4,6 @@ import {
   ASK_USER_QUESTION_TOOL_NAME,
   EDIT_TOOL_NAME,
   type Message,
-  type Task,
 } from "wave-agent-sdk";
 import {
   screenshotWebp,
@@ -80,22 +79,6 @@ test.describe("SDD Workflow Iterate Screenshots", () => {
       }),
     ).toBeVisible();
 
-    // 任务列表：规格更新进行中
-    await injector.simulateExtensionMessage("updateTasks", {
-      tasks: [
-        {
-          id: "1",
-          subject: "更新功能规格",
-          description:
-            "更新客户管理系统的功能规格说明（新增客户自动分级、调整标签规则）",
-          status: "in_progress",
-          blocks: [],
-          blockedBy: [],
-          metadata: {},
-        },
-      ],
-    });
-    await expect(webviewPage.getByTestId("task-list")).toBeVisible();
     await screenshotWebp(
       webviewPage,
       "../../docs/public/screenshots/spec-sdd-iterate-update.webp",
@@ -171,66 +154,5 @@ test.describe("SDD Workflow Iterate Screenshots", () => {
     );
     await webviewPage.keyboard.press("Escape");
     await specDialog.waitFor({ state: "detached" });
-
-    // ---- Stage 3: re-enter implementation after confirmation ----
-    const confirmUserMessage: Message = {
-      id: "msg_sdd_iterate_confirm_user",
-      role: "user",
-      timestamp: "2025-07-10T10:00:08.000Z",
-      blocks: [
-        {
-          type: "text",
-          content: "直接实现，开始吧。",
-        },
-      ],
-    };
-    const codingReply: Message = {
-      id: "msg_sdd_iterate_coding",
-      role: "assistant",
-      timestamp: "2025-07-10T10:00:20.000Z",
-      blocks: [
-        {
-          type: "text",
-          content:
-            "规格已确认。按更新后的规格开始实现：先做客户自动分级（等级计算规则 + 分级结果展示），再把客户档案的标签改为行为自动生成。",
-        },
-      ],
-    };
-    await injector.updateMessages([
-      userMessage,
-      specUpdateReply,
-      editSpecMsg,
-      confirmUserMessage,
-      codingReply,
-    ]);
-    const stageTasks: Task[] = [
-      {
-        id: "1",
-        subject: "更新功能规格",
-        description:
-          "更新客户管理系统的功能规格说明（新增客户自动分级、调整标签规则）",
-        status: "completed",
-        blocks: [],
-        blockedBy: [],
-        metadata: {},
-      },
-      {
-        id: "2",
-        subject: "实现变更",
-        description: "按更新后的规格实现客户自动分级与标签自动生成",
-        status: "in_progress",
-        blocks: [],
-        blockedBy: [],
-        metadata: {},
-      },
-    ];
-    await injector.simulateExtensionMessage("updateTasks", {
-      tasks: stageTasks,
-    });
-    await expect(webviewPage.getByTestId("task-list")).toBeVisible();
-    await screenshotWebp(
-      webviewPage,
-      "../../docs/public/screenshots/spec-sdd-iterate-continue.webp",
-    );
   });
 });
