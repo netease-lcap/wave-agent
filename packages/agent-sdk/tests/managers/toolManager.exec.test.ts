@@ -17,6 +17,15 @@ vi.mock("../../src/services/execAvailability.js", () => ({
   getNonDeferrableBuiltins: () => gate.nonDeferrable,
 }));
 
+// The four task-list tools are off by default (WAVE_ENABLE_TASK_TOOLS). These
+// tests are about the deferral shape — the task tools are part of Claude Code's
+// deferred list — so pin them on rather than depend on the code default.
+vi.mock("../../src/services/taskToolsAvailability.js", () => ({
+  TASK_TOOLS_DEFAULT_ENABLED: false,
+  TASK_TOOLS_ENV_VAR: "WAVE_ENABLE_TASK_TOOLS",
+  isTaskToolsEnabled: () => true,
+}));
+
 /**
  * The deferred built-ins, i.e. everything the pool holds with no MCP server
  * connected. Chosen by frequency rather than by size: the ones that come up once

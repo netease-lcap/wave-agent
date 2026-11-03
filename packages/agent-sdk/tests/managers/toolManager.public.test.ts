@@ -24,6 +24,18 @@ vi.mock("../../src/services/execAvailability.js", async (importOriginal) => ({
   isExecEnabled: () => true,
 }));
 
+// Same reason: the four task-list tools are off by default now, and these tests
+// are about initializeBuiltInTools being callable and idempotent.
+vi.mock(
+  "../../src/services/taskToolsAvailability.js",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("../../src/services/taskToolsAvailability.js")
+    >()),
+    isTaskToolsEnabled: () => true,
+  }),
+);
+
 describe("ToolManager.initializeBuiltInTools", () => {
   it("should be callable as a public method", async () => {
     // Create mock MCP manager

@@ -15,6 +15,7 @@ import { artifactTool } from "../tools/artifactTool.js";
 import { execTool } from "../tools/execTool.js";
 import { isArtifactEnabled } from "../services/artifactAvailability.js";
 import { isKnowledgeBaseEnabled } from "../services/knowledgeBaseAvailability.js";
+import { isTaskToolsEnabled } from "../services/taskToolsAvailability.js";
 import { knowledgeBaseTools } from "../tools/knowledgeBase/index.js";
 import {
   getNonDeferrableBuiltins,
@@ -206,7 +207,7 @@ class ToolManager {
    * Initialize built-in tools. Can be called with dependencies for tools that require them.
    *
    * This method can be called multiple times safely. When called without dependencies,
-   * it registers basic tools (Bash, Read, Write, TaskCreate, etc.). When called with
+   * it registers basic tools (Bash, Read, Write, Glob, etc.). When called with
    * dependencies, it also registers tools that require managers (Agent, Skill).
    *
    * @param deps Optional dependencies for advanced tools
@@ -240,10 +241,6 @@ class ToolManager {
       lspTool,
       agentTool,
       skillTool,
-      taskCreateTool,
-      taskGetTool,
-      taskUpdateTool,
-      taskListTool,
       cronCreateTool,
       cronDeleteTool,
       cronListTool,
@@ -264,6 +261,19 @@ class ToolManager {
     // deferral table yields a non-empty pool, which depends on the runtime tool set.
     if (isExecEnabled(this.container.get<string>("CurrentWorkdir"))) {
       builtInTools.push(execTool);
+    }
+
+    // Task-list tools: off by default, opted in with WAVE_ENABLE_TASK_TOOLS=1
+    // (aligned with Claude Code's per-model default for current models). The
+    // system prompt's task line and the task reminder both key off whether
+    // these tools are reachable, so they disappear with them.
+    if (isTaskToolsEnabled(this.container.get<string>("CurrentWorkdir"))) {
+      builtInTools.push(
+        taskCreateTool,
+        taskGetTool,
+        taskUpdateTool,
+        taskListTool,
+      );
     }
 
     // Enterprise knowledge base: three retrieval function tools, present only
@@ -293,16 +303,24 @@ class ToolManager {
   /**
    * Re-evaluate feature-gated built-in tools after a live configuration
    * reload. Currently gates the Artifact tool on settings.json
-   * `enableArtifact`, the Exec tool on `enableExec`, and the three
-   * knowledge-base tools on `enableKnowledgeBase`. Safe to call multiple
-   * times: gated tools are removed from the registry first, then
-   * initializeBuiltInTools() re-registers them only if still enabled (so
-   * toggling a flag off actually unregisters).
+   * `enableArtifact`, the Exec tool on `enableExec`, the three knowledge-base
+   * tools on `enableKnowledgeBase`, and the four task-list tools on
+   * `env.WAVE_ENABLE_TASK_TOOLS`. Safe to call multiple times: gated tools are
+   * removed from the registry first, then initializeBuiltInTools() re-registers
+   * them only if still enabled (so toggling a flag off actually unregisters).
    */
   public reloadFeatureGatedTools(): void {
     this.toolsRegistry.delete(artifactTool.name);
     this.toolsRegistry.delete(execTool.name);
     for (const tool of knowledgeBaseTools) {
+      this.toolsRegistry.delete(tool.name);
+    }
+    for (const tool of [
+      taskCreateTool,
+      taskGetTool,
+      taskUpdateTool,
+      taskListTool,
+    ]) {
       this.toolsRegistry.delete(tool.name);
     }
     this.initializeBuiltInTools();

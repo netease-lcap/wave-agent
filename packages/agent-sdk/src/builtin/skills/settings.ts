@@ -34,6 +34,7 @@ Wave uses several environment variables to control its core functionality. Varia
 | \`WAVE_DISABLE_AUTO_MEMORY\` | Set to \`1\` or \`true\` to disable the auto-memory feature. | \`false\` |
 | \`WAVE_AUTO_MEMORY_FREQUENCY\` | Auto memory update frequency. \`1\` = every turn, \`2\` = every 2 turns, etc. | \`1\` |
 | \`WAVE_TASK_LIST_ID\` | Explicitly set the task list ID for the session. | (Session ID) |
+| \`WAVE_ENABLE_TASK_TOOLS\` | Set to \`1\` or \`true\` to register the four task-list tools (\`TaskCreate\` / \`TaskGet\` / \`TaskUpdate\` / \`TaskList\`). Off by default: the tool definitions, their on-demand discovery and the task reminder cost context every turn, so the set is opt-in. \`0\`/\`false\` reads the same as unset. Set it in the settings.json \`env\` block (hot-reloads the tool registry) or in the process environment. | \`false\` |
 | \`WAVE_COMPLETION_MODEL\` | Model used for inline code completion when the top-level \`completionModel\` key is unset (which itself falls back to the fast model). | - (fast model) |
 | \`WAVE_TMPDIR\` | Directory for Wave's own scratch files (bash CWD marker, background-task and subagent logs, persisted tool results, MCP images). **OS env only** (infrastructure); kept separate from \`TMPDIR\` so child processes are untouched. An unwritable or over-quota directory is reported with a diagnostic instead of failing silently. | \`os.tmpdir()\` |
 | \`WAVE_PLUGIN_GIT_TIMEOUT_MS\` | Timeout in milliseconds for git operations when installing plugins. **OS env only** (infrastructure). | \`300000\` |
