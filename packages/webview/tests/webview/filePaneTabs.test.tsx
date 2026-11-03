@@ -54,6 +54,7 @@ const renderPane = (props: Partial<FilePaneProps> = {}) => {
 };
 
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   Object.defineProperty(navigator, "clipboard", {
     value: undefined,
@@ -373,7 +374,7 @@ describe("文件面板工具条：复制路径与目录树开关（spec 场景 8
     expect(handlers.onTreeVisibleChange).toHaveBeenCalledWith(false);
   });
 
-  it("「在文件树中显示」逐级展开父目录并滚到那一行（场景 6）", () => {
+  it("「在文件树中显示」逐级展开父目录并滚到那一行（场景 8/6）", () => {
     const vscode = {
       postMessage: vi.fn(),
       getState: vi.fn(),
@@ -394,5 +395,78 @@ describe("文件面板工具条：复制路径与目录树开关（spec 场景 8
     expect(requested).toEqual(
       expect.arrayContaining(["/work/a", "/work/a/src", "/work/a/src/deep"]),
     );
+  });
+
+  it("工作根之外的文件不给这个入口（场景 15）", () => {
+    renderPane({
+      files: [openFile("f1", "/tmp/timeline-done.png")],
+      treeRoot: "/work/a",
+      vscode: { postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() },
+    });
+    // 树里永远不会有 /tmp 这一行：给一个点了没反应的按钮不如不给。
+    expect(
+      screen.queryByTestId("file-pane-reveal-in-tree"),
+    ).not.toBeInTheDocument();
+    // 其余工具条照常（文件本身仍可查看/复制路径）。
+    expect(screen.getByTestId("file-copy-path")).toBeInTheDocument();
+  });
+
+  it("命中后那一行亮一次，1.2s 后熄灭（场景 8）", async () => {
+    renderPane({
+      files: [openFile("f1", "/work/a/src/app.ts")],
+      treeRoot: "/work/a",
+      vscode: { postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() },
+    });
+    const reply = (
+      path: string,
+      entries: Array<{ name: string; type: "dir" | "file" }>,
+    ) =>
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            data: {
+              command: "desktopDirEntries",
+              path,
+              entries,
+              total: entries.length,
+            },
+          }),
+        );
+      });
+    // 打开文件时面板已自动展开祖先并请求这两层（场景 6 的前半）。
+    reply("/work/a", [{ name: "src", type: "dir" }]);
+    reply("/work/a/src", [{ name: "app.ts", type: "file" }]);
+    // 按路径取那一行（`app.ts` 同时出现在文件标签上，不能按文字找）。
+    const rowEl = () =>
+      document.querySelector('[data-tree-path="/work/a/src/app.ts"]');
+    expect(rowEl()).not.toBeNull();
+    expect(rowEl()).not.toHaveClass("file-tree-row--revealed");
+
+    // 高亮时长由组件的 1.2s 定时器收起，这里用假时钟推进（不 sleep）。
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByTestId("file-pane-reveal-in-tree"));
+    expect(rowEl()).toHaveClass("file-tree-row--revealed");
+    act(() => {
+      vi.advanceTimersByTime(1200);
+    });
+    expect(rowEl()).not.toHaveClass("file-tree-row--revealed");
+    vi.useRealTimers();
+  });
+
+  it("筛选框里有字时先清筛选再定位（场景 16）", () => {
+    renderPane({
+      files: [openFile("f1", "/work/a/src/app.ts")],
+      treeRoot: "/work/a",
+      vscode: { postMessage: vi.fn(), getState: vi.fn(), setState: vi.fn() },
+    });
+    fireEvent.change(screen.getByTestId("file-tree-filter"), {
+      target: { value: "app" },
+    });
+    expect(screen.getByTestId("file-tree-filter")).toHaveValue("app");
+
+    fireEvent.click(screen.getByTestId("file-pane-reveal-in-tree"));
+
+    // 树回到树形态，才可能把行展开出来（否则展开只作用在没被画出来的行上）。
+    expect(screen.getByTestId("file-tree-filter")).toHaveValue("");
   });
 });

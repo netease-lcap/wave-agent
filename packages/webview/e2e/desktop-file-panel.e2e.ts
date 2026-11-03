@@ -420,6 +420,95 @@ test.describe("Desktop file panel", () => {
     await expect(webviewPage.locator(".file-pane-code")).toBeVisible();
   });
 
+  // spec desktop-file-panel.md「文件面板工作区目录树」场景 8：工具栏那颗「在文件树上
+  // 显示」要真的把行带回来并**亮一下** —— 行的稳态本来就是选中态，没有那次高亮时
+  // 「本来就看得见」与「刚刚定位过去」在画面上完全一样。
+  test("reveal in tree expands the row back and flashes it once", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    const filePath = `${DIR_A}/src/components/ChatApp.tsx`;
+    await setupReadMessage(injector, filePath);
+    await openFileFromMessage(webviewPage, injector);
+    await injector.simulateExtensionMessage("desktopFileContent", {
+      fileView: {
+        path: filePath,
+        host: "local",
+        loading: false,
+        content: "export const alpha = 1;\n",
+      },
+    });
+
+    await replyDirListing(webviewPage, injector, DIR_A, [
+      { name: "src", type: "dir" },
+    ]);
+    const srcRow = webviewPage.locator(`[data-tree-path="${DIR_A}/src"]`);
+    if ((await srcRow.getAttribute("aria-expanded")) !== "true") {
+      await srcRow.click();
+    }
+    await replyDirListing(webviewPage, injector, `${DIR_A}/src`, [
+      { name: "components", type: "dir" },
+    ]);
+    if (
+      (await webviewPage
+        .locator(`[data-tree-path="${DIR_A}/src/components"]`)
+        .getAttribute("aria-expanded")) !== "true"
+    ) {
+      await webviewPage
+        .locator(`[data-tree-path="${DIR_A}/src/components"]`)
+        .click();
+    }
+    await replyDirListing(webviewPage, injector, `${DIR_A}/src/components`, [
+      { name: "ChatApp.tsx", type: "file" },
+    ]);
+    const row = webviewPage.locator(`[data-tree-path="${filePath}"]`);
+    await expect(row).toHaveClass(/file-tree-row--active/);
+
+    // 把祖先折叠起来：行从画面上消失，此时点「在文件树中显示」才有事可做。
+    await srcRow.click();
+    await expect(row).toHaveCount(0);
+
+    await webviewPage.getByTestId("file-pane-reveal-in-tree").click();
+    await expect(row).toHaveClass(/file-tree-row--revealed/);
+    await expect(row).toBeInViewport();
+    // 高亮自己退场（组件 1.2s 后摘类名）——它是一次提示，不是第二个选中态。
+    await expect(row).not.toHaveClass(/file-tree-row--revealed/, {
+      timeout: 4000,
+    });
+    await expect(row).toHaveClass(/file-tree-row--active/);
+  });
+
+  // 场景 15：工作根之外的文件（/tmp 里的临时图）在树里永远没有那一行 ——
+  // 与其给一个点了毫无反应的按钮，不如不给。
+  test("a file outside the workspace offers no reveal-in-tree action", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    const imagePath = "/tmp/timeline-done.png";
+    await setupReadMessage(injector, imagePath);
+    await openFileFromMessage(webviewPage, injector);
+    await injector.simulateExtensionMessage("desktopFileContent", {
+      fileView: {
+        path: imagePath,
+        host: "local",
+        loading: false,
+        imageBase64: await generatePng(webviewPage),
+      },
+    });
+    await expectImageDecoded(webviewPage);
+
+    await expect(
+      webviewPage.getByTestId("file-pane-reveal-in-tree"),
+    ).toHaveCount(0);
+    // 树本身照常在（只是这个文件不在它里面），文件也照常能看。
+    await expect(
+      webviewPage.getByTestId("file-pane-tree-toggle"),
+    ).toBeVisible();
+    await expect(webviewPage.getByTestId("file-copy-path")).toBeVisible();
+  });
+
   // spec desktop-file-panel.md「文件面板内编辑与保存」场景 1–3：编辑按钮只在
   // 「整份文件 + 工作目录内」出现；点进去是真的 CodeMirror chunk（editor.js，
   // 由 harness 按 dist 目录按需伺服），Mod+S 发出一次带 hash 的保存请求。

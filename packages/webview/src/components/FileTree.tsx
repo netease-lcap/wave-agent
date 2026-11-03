@@ -71,6 +71,12 @@ const treePathSelector = (path: string) =>
 const ROW_LIMIT_NOTICE = (hidden: number) => `还有 ${hidden} 项未显示`;
 
 /**
+ * 「在文件树中显示」命中后高亮多久（ms）。对齐 CC 桌面端 reveal 的一次闪烁
+ * （它给 1200ms）：再短看不出定位过，再长就变成第二个选中态。
+ */
+const REVEAL_FLASH_MS = 1200;
+
+/**
  * The file panel's directory tree (spec desktop-file-panel.md「文件面板工作区
  * 目录树」): lazy per level, keyboard navigable, with the workspace file filter
  * at the top. It paints only what the host has already listed — expansion is
@@ -148,13 +154,32 @@ export const FileTree: React.FC<FileTreeProps> = ({
     }
   }, [rows, onNeedDir]);
 
-  // 「在文件树中显示」: bring the active file's row into view, once per tick.
+  // 「在文件树中显示」: bring the active file's row into view and flash it, once
+  // per tick. `rows` is a dependency because the row may not be on screen yet —
+  // revealing an ancestor that is still being listed must retry as soon as that
+  // level lands, not silently scroll nothing (the pane's ancestors arrive one
+  // level at a time, each answered by the host).
+  const [revealFlash, setRevealFlash] = useState<number | null>(null);
+  const revealedTickRef = useRef(0);
   useEffect(() => {
     if (!revealTick || !activePath || !listRef.current) return;
-    listRef.current
-      .querySelector<HTMLElement>(treePathSelector(activePath))
-      ?.scrollIntoView?.({ block: "nearest" });
-  }, [revealTick, activePath]);
+    if (revealedTickRef.current === revealTick) return;
+    const row = listRef.current.querySelector<HTMLElement>(
+      treePathSelector(activePath),
+    );
+    if (!row) return;
+    row.scrollIntoView?.({ block: "nearest" });
+    revealedTickRef.current = revealTick;
+    setRevealFlash(revealTick);
+  }, [revealTick, activePath, rows]);
+
+  // 高亮自己退场：目标行本来就是选中态，没有这一下「本来就看得见」与「刚刚
+  // 定位过去」在画面上完全一样（场景 8）。
+  useEffect(() => {
+    if (revealFlash === null) return;
+    const timer = setTimeout(() => setRevealFlash(null), REVEAL_FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [revealFlash]);
 
   /** 结果项的所在目录：相对工作区根，同名文件靠它区分（场景 2）。 */
   const dirPrefix = (path: string) => {
@@ -369,7 +394,7 @@ export const FileTree: React.FC<FileTreeProps> = ({
                   }
                   data-tree-path={row.path}
                   data-testid="file-tree-row"
-                  className={`file-tree-row${row.type === "dir" ? " file-tree-row--dir" : ""}${isActive ? " file-tree-row--active" : ""}`}
+                  className={`file-tree-row${row.type === "dir" ? " file-tree-row--dir" : ""}${isActive ? " file-tree-row--active" : ""}${isActive && revealFlash !== null ? " file-tree-row--revealed" : ""}`}
                   style={{ paddingLeft: 6 + row.depth * 12 }}
                   onClick={() => activate(row)}
                   onFocus={() => setFocusedPath(row.path)}
