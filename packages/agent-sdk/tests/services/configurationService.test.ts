@@ -1469,6 +1469,28 @@ describe("ConfigurationService", () => {
       }
     });
 
+    it("drops a persisted model name that is no longer in models", async () => {
+      // 平台侧改模型别名会让 `models` 的键改名，而 `model` 标量里存的还是旧名字
+      // （选中模型时 setModel 落盘的）。旧名字不能当成可选项，否则清单里同一个
+      // 模型会出现两行（PM 3506021669882624）。
+      const config = {
+        model: "old-alias",
+        models: { "new-alias": {} },
+      };
+      mockExistsSync.mockReturnValue(true);
+      mockReadFileSync.mockReturnValue(JSON.stringify(config));
+
+      const origModel = process.env.WAVE_MODEL;
+      delete process.env.WAVE_MODEL;
+      try {
+        await configService.loadMergedConfiguration(tempDir);
+        const models = configService.getConfiguredModels().map((m) => m.name);
+        expect(models).toEqual(["new-alias"]);
+      } finally {
+        if (origModel !== undefined) process.env.WAVE_MODEL = origModel;
+      }
+    });
+
     it("should label each model with its declared vision capability", async () => {
       // 视觉是 opt-out 语义（未声明 = 支持），选择器的「视觉」标识直接用它，
       // 不另立一套判据。capabilities 只在 models[<name>] 下生效。
