@@ -655,4 +655,110 @@ test.describe("Desktop file panel", () => {
     // 悬浮给相对路径（不是绝对路径）。
     await expect(tabs.nth(0)).toHaveAttribute("title", "src/index.ts");
   });
+
+  // 场景 11：右键菜单必须弹在指针旁边。它挂在带子里时 `position: absolute`
+  // 的包含块是最近的定位祖先 `.preview-pane-body`（面板在窗口右侧），
+  // `clientX/clientY`（视口坐标）被当成了面板内偏移 —— 实测点击点 (705,153)
+  // 的菜单跑到 (1374,287)，整块偏出面板宽度、飘到窗口最右侧甚至屏幕外。
+  // 这里锁两件事：落点贴指针，以及贴视口边缘时翻到指针另一侧。
+  test("tab context menu opens at the pointer and flips at viewport edges", async ({
+    webviewPage,
+  }) => {
+    const injector = new MessageInjector(webviewPage);
+    await webviewPage.setViewportSize({ width: 1280, height: 720 });
+    const first = `${DIR_A}/src/index.ts`;
+    const second = `${DIR_A}/lib/index.ts`;
+
+    await injector.simulateExtensionMessage("desktopWorkdirState", {
+      workdir: DIR_A,
+      recentWorkdirs: [DIR_A],
+    });
+    await injector.waitForChatAppReady();
+    await injector.simulateExtensionMessage("setInitialState", initialState);
+    await injector.updateMessages([
+      MockDataGenerator.createUserMessage("看两个文件", "msg-u1"),
+      ...[first, second].map((filePath, index) =>
+        MockDataGenerator.createAssistantMessageWithTool(
+          `第 ${index + 1} 个`,
+          READ_TOOL_NAME,
+          JSON.stringify({ file_path: filePath }),
+          "读取完成",
+        ),
+      ),
+    ]);
+
+    const pathLinks = webviewPage.locator(".write-tool-path");
+    for (const [index, filePath] of [first, second].entries()) {
+      await pathLinks.nth(index).click();
+      await injector.simulateExtensionMessage("desktopFileContent", {
+        fileView: {
+          path: filePath,
+          host: "local",
+          loading: false,
+          content: `// ${filePath}\n`,
+        },
+      });
+      await expect(webviewPage.getByTestId("file-tab")).toHaveCount(index + 1);
+    }
+
+    const tabs = webviewPage.getByTestId("file-tab");
+    const menu = webviewPage.getByTestId("file-tab-menu");
+    const menuRect = () =>
+      menu.evaluate((el) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          x: rect.x,
+          y: rect.y,
+          right: rect.right,
+          bottom: rect.bottom,
+          width: rect.width,
+          height: rect.height,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+        };
+      });
+
+    // 一次：真实右键在第二格标签上 → 菜单左上角就落在指针处。
+    const tabBox = (await tabs.nth(1).boundingBox())!;
+    const clickX = Math.round(tabBox.x + 30);
+    const clickY = Math.round(tabBox.y + tabBox.height / 2);
+    await webviewPage.mouse.move(clickX, clickY);
+    await webviewPage.mouse.down({ button: "right" });
+    await webviewPage.mouse.up({ button: "right" });
+    await expect(menu).toBeVisible();
+    const atPointer = await menuRect();
+    expect(Math.abs(atPointer.x - clickX)).toBeLessThanOrEqual(1);
+    expect(Math.abs(atPointer.y - clickY)).toBeLessThanOrEqual(1);
+    expect(atPointer.right).toBeLessThanOrEqual(atPointer.viewportWidth);
+
+    // 二次：指针贴视口右下角 → 菜单翻到指针左上，四边都不出视口。
+    // 不先关菜单：右键落在另一格标签上就是「重开并重新落位」，与真机行为一致，
+    // 也不必依赖「点外部关闭」那条延迟注册的监听器（那会让这条用例有时序抖动）。
+    const corner = await webviewPage.evaluate(() => ({
+      x: window.innerWidth - 20,
+      y: window.innerHeight - 20,
+    }));
+    await tabs.nth(0).evaluate((el, point) => {
+      el.dispatchEvent(
+        new MouseEvent("contextmenu", {
+          bubbles: true,
+          cancelable: true,
+          clientX: point.x,
+          clientY: point.y,
+        }),
+      );
+    }, corner);
+    await expect(menu).toBeVisible();
+    const flipped = await menuRect();
+    expect(flipped.right).toBeLessThanOrEqual(flipped.viewportWidth);
+    expect(flipped.bottom).toBeLessThanOrEqual(flipped.viewportHeight);
+    // 翻转 = 菜单右缘/下缘贴着指针，而不是把指针压在菜单左上角。
+    expect(flipped.right).toBeLessThanOrEqual(corner.x);
+    expect(flipped.bottom).toBeLessThanOrEqual(corner.y);
+
+    // 挂到 body 上还得多一层保证：它确实在最上层能点到（Playwright 点之前会做
+    // 命中测试，被别的层压住就会失败），点完即收起。
+    await menu.getByText("关闭其他").click();
+    await expect(menu).toHaveCount(0);
+  });
 });
