@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { Message } from "./Message";
 import { streamingTail } from "../utils/streamingText";
+import { countTimelineBlocks } from "../utils/timelineBlocks";
 import { estimateRowHeight } from "../virtual/estimateRowHeight";
 import { useVirtualRows } from "../virtual/useVirtualRows";
 import type { MessageListProps } from "../types";
@@ -43,25 +44,11 @@ const stickyAnchorText = (message: MessageType) => {
 };
 
 // Count the blocks in an assistant message that Message.tsx wraps in a `.timeline-row`
-// (i.e. that carry a timeline dot): non-empty text/compact, tool, and reasoning blocks.
-// Mirrors the `wrap` logic in Message.renderBlock so the group can decide whether it has
-// a single lone dot (no connecting line) or multiple dots (draw the line).
-function countTimelineBlocks(message: MessageType): number {
-  if (!message.blocks) return 0;
-  let count = 0;
-  for (const block of message.blocks) {
-    switch (block.type) {
-      case "text":
-      case "compact":
-        if (block.content && block.content.trim()) count++;
-        break;
-      case "tool":
-      case "reasoning":
-        count++;
-        break;
-    }
-  }
-  return count;
+// (i.e. that carry a timeline dot) so the group can decide whether it has a single
+// lone dot (no connecting line) or multiple dots (draw the line). The predicate lives
+// in utils/timelineBlocks — Message uses the same one to mark the first/last row.
+function timelineDotCount(message: MessageType): number {
+  return countTimelineBlocks(message.blocks ?? []);
 }
 
 export const MessageList = forwardRef<
@@ -218,7 +205,7 @@ export const MessageList = forwardRef<
     visibleMessages.forEach((m, i) => {
       if (m.role === "assistant") {
         if (runStart === -1) runStart = i;
-        dots += countTimelineBlocks(m);
+        dots += timelineDotCount(m);
       } else {
         flushRun(i - 1);
         classes[i] = "";

@@ -1,6 +1,49 @@
 import { test, expect } from "./utils/webviewTestHarness.js";
+import type { Page } from "@playwright/test";
 import { MessageInjector } from "./utils/messageInjector.js";
 import { Message } from "wave-agent-sdk";
+import { BASH_TOOL_NAME } from "wave-agent-sdk/constants";
+import fs from "fs";
+import path from "path";
+
+/**
+ * 一轮「文本 + 运行中的 Bash」的助手消息：工具未收尾时这条消息末尾会挂上
+ * 「把本轮转到后台」按钮（`.message-actions`），它也是 `.message` 的子元素。
+ */
+async function injectRunningBashTurn(page: Page) {
+  const injector = new MessageInjector(page);
+  const messages: Message[] = [
+    {
+      id: "u1",
+      role: "user",
+      timestamp: "2025-07-09T10:30:00.000Z",
+      blocks: [{ type: "text", content: "推送镜像并部署。" }],
+    },
+    {
+      id: "a1",
+      role: "assistant",
+      timestamp: "2025-07-09T10:30:01.000Z",
+      blocks: [
+        { type: "text", content: "我来推送镜像并部署。" },
+        {
+          type: "tool",
+          name: BASH_TOOL_NAME,
+          stage: "running",
+          parameters: JSON.stringify({ command: "docker push" }),
+        },
+      ],
+    },
+  ];
+  await injector.simulateExtensionMessage("setInitialState", {
+    isAuthenticated: true,
+    messages: [],
+    isStreaming: true,
+    sessions: [],
+    permissionMode: "default",
+  });
+  await injector.updateMessages(messages);
+  await injector.startStreaming();
+}
 
 /**
  * Timeline connector geometry (设计稿: assistant 时间线竖线跨消息贯穿).
@@ -223,5 +266,94 @@ test.describe("Timeline connector geometry demo", () => {
     // 行盒相切（账本跟上 DOM），连线两段相接。容差 1px：行高是取整后记进账本的。
     expect(Math.abs(gap.rowBoxGap)).toBeLessThanOrEqual(1);
     expect(Math.abs(gap.segmentGap)).toBeLessThanOrEqual(1);
+  });
+
+  /**
+   * 「把本轮转到后台」按钮不能改变收尾行竖线的长度。
+   *
+   * 按钮（`.message-actions`）只在工具跑着时挂在 `.message` 末尾，跑完就消失。
+   * 竖线收尾规则早先用 `.timeline-row:last-child` 选中最后一行——按钮一出现，
+   * 最后一行就不再是 `:last-child`，规则失效、竖线画满整行；工具一结束按钮消失，
+   * 竖线又缩回 18px。同一条工具行因此在「运行中 / 已完成」两种状态下变脸。
+   */
+  test("trailing action button doesn't stretch the last row's connector", async ({
+    webviewPage,
+  }) => {
+    await injectRunningBashTurn(webviewPage);
+    // 按钮默认是 hover 才显形的（`.message:hover .message-actions`），这里只要它在
+    // DOM 里 —— 撑坏选择器的是节点本身，不是可见性。
+    await webviewPage.waitForSelector(
+      '[data-testid="background-current-task"]',
+      { state: "attached" },
+    );
+
+    const geo = await webviewPage.evaluate(() => {
+      const px = (v: string) => (v && v.endsWith("px") ? parseFloat(v) : NaN);
+      const message = document.querySelector<HTMLElement>(
+        '[data-message-id="a1"]',
+      )!;
+      const rows = Array.from(
+        message.querySelectorAll<HTMLElement>(".timeline-row"),
+      );
+      const lastRow = rows[rows.length - 1];
+      const after = getComputedStyle(lastRow, "::after");
+      return {
+        lineHeight: px(after.height),
+        rowHeight: lastRow.getBoundingClientRect().height,
+        // 末行标记落在最后一行上，而不是被末尾的按钮顶掉。
+        lastRowIsMarked: lastRow.classList.contains("timeline-row--last"),
+      };
+    });
+
+    expect(geo.lastRowIsMarked).toBe(true);
+    // 收尾段只到圆点中心（base 档 18px），不随行高拉伸。
+    expect(geo.lineHeight).toBeCloseTo(18, 0);
+    expect(geo.lineHeight).toBeLessThan(geo.rowHeight);
+  });
+
+  /**
+   * 桌面端的覆盖规则（host-desktop.css：圆点 12px，收尾段 21px）也必须绑在
+   * 末行标记上。这一档最容易漏改：只改 base 的选择器，桌面用户看到的还是
+   * 「工具跑着时整根线、跑完就缩没」。这里用 data-host="desktop" + 注入
+   * host-desktop.css 复现桌面档，与真实桌面窗口同源（见
+   * desktop-panel-root-layout.e2e.ts 的同一手法）。
+   */
+  test("desktop tier: the action button doesn't stretch the tail segment", async ({
+    webviewPage,
+  }) => {
+    const hostCss = fs.readFileSync(
+      path.join(process.cwd(), "src", "styles", "host-desktop.css"),
+      "utf8",
+    );
+    await webviewPage.evaluate(() =>
+      document.documentElement.setAttribute("data-host", "desktop"),
+    );
+    await webviewPage.addStyleTag({ content: hostCss });
+
+    await injectRunningBashTurn(webviewPage);
+    await webviewPage.waitForSelector(
+      '[data-testid="background-current-task"]',
+      { state: "attached" },
+    );
+
+    const geo = await webviewPage.evaluate(() => {
+      const px = (v: string) => (v && v.endsWith("px") ? parseFloat(v) : NaN);
+      const message = document.querySelector<HTMLElement>(
+        '[data-message-id="a1"]',
+      )!;
+      const rows = Array.from(
+        message.querySelectorAll<HTMLElement>(".timeline-row"),
+      );
+      const lastRow = rows[rows.length - 1];
+      return {
+        lineHeight: px(getComputedStyle(lastRow, "::after").height),
+        rowHeight: lastRow.getBoundingClientRect().height,
+        lastRowIsMarked: lastRow.classList.contains("timeline-row--last"),
+      };
+    });
+
+    expect(geo.lastRowIsMarked).toBe(true);
+    expect(geo.lineHeight).toBeCloseTo(21, 0);
+    expect(geo.lineHeight).toBeLessThan(geo.rowHeight);
   });
 });

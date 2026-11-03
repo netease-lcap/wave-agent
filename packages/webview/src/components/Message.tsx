@@ -57,6 +57,7 @@ import { ArtifactCard } from "./ArtifactCard";
 import { FileToolHeader } from "./FileToolHeader";
 import { MessageActionButton } from "./MessageActionButton";
 import { getStageColor, getToolStatusColor } from "../utils/statusColors";
+import { timelineBlockBounds } from "../utils/timelineBlocks";
 import { isDesktopHost, isRemotePageHost } from "../utils/platform";
 import { requestImagePreview } from "../utils/imagePreviewRequest";
 import {
@@ -1608,6 +1609,13 @@ export const Message: React.FC<MessageProps> = React.memo(
       />
     );
 
+    // 带圆点的块里第一个 / 最后一个是哪个（见 utils/timelineBlocks）。行上据此
+    // 打 `timeline-row--first/--last`，替代样式里原先的 `:first-child` /
+    // `:last-child`：消息末尾的 `.message-actions` 按钮（「把本轮转到后台」只在
+    // 工具跑着时出现）也是 `.message` 的子元素，会顶掉 `:last-child`，让竖线
+    // 丢掉收尾规则、画满整行。
+    const timelineBounds = timelineBlockBounds(message.blocks ?? []);
+
     const renderBlock = (block: MessageBlock, index: number) => {
       let rendered: React.ReactNode = null;
       let wrap = false;
@@ -1789,7 +1797,11 @@ export const Message: React.FC<MessageProps> = React.memo(
       return (
         <div
           key={index}
-          className={`timeline-row${isRunning ? " timeline-row--running" : ""}`}
+          className={`timeline-row${
+            isRunning ? " timeline-row--running" : ""
+          }${index === timelineBounds.first ? " timeline-row--first" : ""}${
+            index === timelineBounds.last ? " timeline-row--last" : ""
+          }`}
           style={
             dotColor
               ? ({ ["--dot-color"]: dotColor } as React.CSSProperties)

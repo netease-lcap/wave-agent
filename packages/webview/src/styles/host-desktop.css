@@ -1042,13 +1042,13 @@
 [data-host="desktop"]
   .messages-container--virtual
   .timeline-run--start
-  .timeline-row:first-child::after {
+  .timeline-row--first::after {
   top: 21px;
 }
 [data-host="desktop"]
   .messages-container--virtual
   .timeline-run--end
-  .timeline-row:last-child::after {
+  .timeline-row--last::after {
   bottom: auto;
   height: 21px;
 }
