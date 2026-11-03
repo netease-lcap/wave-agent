@@ -226,7 +226,7 @@ wave daemon restart
 | `/plan`           | 进入计划模式，或查看当前会话的计划文件                     |
 | `/btw`            | 旁路提问，不调用工具的快速问答                             |
 
-> 了解更多：详见 [SDK 文档 - 斜杠命令](/sdk#slash-commands)
+> 了解更多：详见[功能规格说明：斜杠命令](/specs/commands/slash-commands)
 
 ---
 

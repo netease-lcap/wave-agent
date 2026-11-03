@@ -794,7 +794,7 @@ description: 生成单文件 HTML 原型
 - 自动检测 AI 是否已手动更新记忆目录下的文件，若有则跳过避免重复
 - 提取代理仅允许写入记忆目录，使用快速模型，最多 5 轮，越权写入自动拒绝
 - 支持 autoMemoryEnabled 开关（默认开启）
-- 记忆文件存储在 `~/.wave/projects/{项目编码}/memory/` 目录，确保 git worktree 间共享同一记忆；其中的 `MEMORY.md` 是索引，容量上限与写入提醒见 [SDK 文档 - 索引与容量上限](/sdk#memory-index-limits)
+- 记忆文件存储在 `~/.wave/projects/{项目编码}/memory/` 目录，确保 git worktree 间共享同一记忆；其中的 `MEMORY.md` 是索引，容量上限与写入提醒见[功能规格说明：记忆管理](/specs/core/memory-management)
 
 #### 3）记忆规则
 
