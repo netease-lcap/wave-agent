@@ -7,6 +7,7 @@ import {
   listSessions,
   listAllSessions,
   setSessionCustomTitle,
+  readSessionWorkdir,
   searchFiles,
   generateRandomName,
   getDefaultRemoteBranch,
@@ -117,7 +118,7 @@ import {
   realpathSync,
   statSync,
 } from "node:fs";
-import { rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -3171,6 +3172,80 @@ test("initialize from-disk re-attach recovers the creation workdir from the tran
   } finally {
     await rm(transcript, { force: true });
   }
+});
+
+// ── initialize: from-disk re-attach re-anchors on the session's own workdir ──
+
+test("initialize with restoreSessionId anchors a from-disk session on its recorded workdir", async () => {
+  // The daemon was restarted and this client (whatever cwd it runs in) is the
+  // first to touch the session again. `initialize` carries the CLIENT's cwd,
+  // which must not become the session's directory: a `create --worktree`
+  // session would then run its next turn in the host repo and
+  // `destroy --remove-worktree` would resolve the wrong tree.
+  const base = join(process.cwd(), ".tmp-agentbridge-recorded");
+  const recorded = join(base, "worktree-cwdcheck");
+  await mkdir(recorded, { recursive: true });
+  try {
+    vi.mocked(readSessionWorkdir).mockResolvedValue(recorded);
+    const { bridge } = createBridge();
+    const mockAgent = createMockAgent({ currentWorkdir: recorded });
+    vi.mocked(Agent.create).mockResolvedValue(mockAgent);
+
+    const initResult = (await bridge.handleRequest("initialize", {
+      workdir: path.join(REPO_ROOT, "unrelated"),
+      restoreSessionId: "worktree-session",
+    })) as { currentWorkdir: string; sessionCwd: string };
+
+    expect(vi.mocked(readSessionWorkdir)).toHaveBeenCalledWith(
+      "worktree-session",
+      path.join(REPO_ROOT, "unrelated"),
+    );
+    // The agent is CREATED in the recorded dir, so the transcript it resolves,
+    // the tools it runs and the tree `destroy` removes all point at it.
+    expect(vi.mocked(Agent.create).mock.calls[0][0].workdir).toBe(recorded);
+    expect(initResult.currentWorkdir).toBe(recorded);
+    expect(initResult.sessionCwd).toBe(recorded);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("initialize with restoreSessionId falls back to the client cwd when the recorded workdir is gone", async () => {
+  const base = join(process.cwd(), ".tmp-agentbridge-gone");
+  const recorded = join(base, "deleted-worktree");
+  const warn = vi.spyOn(logger, "warn").mockReturnValue();
+  try {
+    vi.mocked(readSessionWorkdir).mockResolvedValue(recorded);
+    const { bridge } = createBridge();
+    vi.mocked(Agent.create).mockResolvedValue(
+      createMockAgent({ currentWorkdir: "/test/workdir" }),
+    );
+
+    const initResult = (await bridge.handleRequest("initialize", {
+      workdir: "/test/workdir",
+      restoreSessionId: "worktree-session",
+    })) as { currentWorkdir: string };
+
+    // A worktree deleted by hand must not abort the attach: the caller's dir is
+    // the only anchor left, and the fallback is reported.
+    expect(vi.mocked(Agent.create).mock.calls[0][0].workdir).toBe(
+      "/test/workdir",
+    );
+    expect(initResult.currentWorkdir).toBe("/test/workdir");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(recorded));
+  } finally {
+    warn.mockRestore();
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test("initialize without restoreSessionId reads no transcript", async () => {
+  const { bridge } = createBridge();
+  vi.mocked(Agent.create).mockResolvedValue(createMockAgent());
+
+  await bridge.handleRequest("initialize", { workdir: "/test/workdir" });
+
+  expect(vi.mocked(readSessionWorkdir)).not.toHaveBeenCalled();
 });
 
 test("restoreSession to a live streaming session emits the current loading state so re-attached clients restore the running indicator", async () => {
