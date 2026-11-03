@@ -71,6 +71,7 @@ function inferGitBashFromGit(): string | undefined {
         stdio: "pipe",
         encoding: "utf8",
         timeout: 3000,
+        windowsHide: true,
       }).trim();
       // where.exe may return multiple lines; take the first non-empty one.
       gitExe = result.split(/\r?\n/).find((line) => line.trim()) || undefined;

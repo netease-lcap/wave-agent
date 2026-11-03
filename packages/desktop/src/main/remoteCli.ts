@@ -166,7 +166,10 @@ function sshStreamCommand(
   return new Promise((resolve, reject) => {
     let child: ChildProcess;
     try {
-      child = spawn("ssh", args, { stdio: ["pipe", "ignore", "pipe"] });
+      child = spawn("ssh", args, {
+        stdio: ["pipe", "ignore", "pipe"],
+        windowsHide: true,
+      });
     } catch (error) {
       reject(new Error(`无法启动 ssh：${describeError(error)}`));
       return;
@@ -705,6 +708,7 @@ export async function connectRemoteDaemonSocket(
     buildSshTunnelArgs(host, localSocket, remoteSocketPath),
     {
       stdio: ["ignore", "ignore", "pipe"],
+      windowsHide: true,
     },
   );
   let tunnelStderr = "";
@@ -772,6 +776,7 @@ export async function connectRemoteDaemonTcp(
     buildSshTunnelArgs(host, `127.0.0.1:${port}`, remoteSocketPath),
     {
       stdio: ["ignore", "ignore", "pipe"],
+      windowsHide: true,
     },
   );
   let tunnelStderr = "";

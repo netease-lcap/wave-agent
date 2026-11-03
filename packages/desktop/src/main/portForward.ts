@@ -271,7 +271,7 @@ export class PortForwardManager {
         `127.0.0.1:${localPort}:${remoteEnd}`,
         entry.host,
       ],
-      { stdio: "ignore" },
+      { stdio: "ignore", windowsHide: true },
     );
     entry.proc = proc;
     proc.on("error", (err) => {

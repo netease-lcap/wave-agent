@@ -84,6 +84,7 @@ export class StdioClient {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...env },
       shell,
+      windowsHide: true,
     });
 
     const rl = createInterface({ input: this.proc.stdout! });

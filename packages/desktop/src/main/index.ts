@@ -55,6 +55,7 @@ function resolveGitBashPath(): string | undefined {
       encoding: "utf-8",
       stdio: "pipe",
       timeout: 3000,
+      windowsHide: true,
     })
       .trim()
       .split(/\r?\n/)
@@ -112,6 +113,7 @@ function adoptLoginShellPath(): void {
           encoding: "utf-8",
           timeout: 5000,
           stdio: ["ignore", "pipe", "ignore"],
+          windowsHide: true,
         },
       )
         .trim()

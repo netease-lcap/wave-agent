@@ -48,6 +48,7 @@ export function resolveGitBashPath(
         encoding: "buffer",
         stdio: "pipe",
         timeout: 3000,
+        windowsHide: true,
       }),
     ).trim();
     const gitExe = output
@@ -94,6 +95,7 @@ function probeWithShell(shellPath: string, args: string[]): string | undefined {
       encoding: "utf-8",
       timeout: PROBE_TIMEOUT_MS,
       stdio: ["ignore", "pipe", "ignore"],
+      windowsHide: true,
     });
     return output.trim().split("\n").pop()?.trim() || undefined;
   } catch {

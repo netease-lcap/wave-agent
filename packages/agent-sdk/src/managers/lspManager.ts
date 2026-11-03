@@ -162,6 +162,7 @@ export class LspManager implements ILspManager {
         cwd: config.workspaceFolder || this.workdir,
         env,
         stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
       });
 
       const lspProc: LspProcess = {

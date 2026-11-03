@@ -193,6 +193,7 @@ export function getRepositoryAttributes(
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 2_000,
+      windowsHide: true,
     }).trim();
     if (remote) {
       attributes = repositoryAttributesFromRemote(remote);

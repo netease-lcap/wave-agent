@@ -69,6 +69,7 @@ export class StdioClient extends JsonRpcClient {
       stdio: ["pipe", "pipe", "pipe"],
       env: spawnEnv,
       shell,
+      windowsHide: true,
     });
 
     this.attachReadable(this.proc.stdout!);

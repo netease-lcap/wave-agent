@@ -388,6 +388,7 @@ function executeCommand(
     const child = spawn(command, args, {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
     });
 
     let stdout = "";

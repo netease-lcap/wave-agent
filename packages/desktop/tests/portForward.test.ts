@@ -111,7 +111,7 @@ describe("PortForwardManager.acquire", () => {
         "127.0.0.1:5173:localhost:5173",
         "prod",
       ],
-      { stdio: "ignore" },
+      { stdio: "ignore", windowsHide: true },
     );
     expect(result).toEqual({
       url: "http://127.0.0.1:5173/proto?x=1#top",
@@ -303,7 +303,7 @@ describe("PortForwardManager.forwardAuthCallback", () => {
         "127.0.0.1:3456:127.0.0.1:3456",
         "prod",
       ],
-      { stdio: "ignore" },
+      { stdio: "ignore", windowsHide: true },
     );
     // The daemon binds the remote 127.0.0.1 explicitly — the remote end must
     // be 127.0.0.1, not localhost (which ssh may resolve to ::1).
