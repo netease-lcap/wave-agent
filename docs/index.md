@@ -41,8 +41,8 @@ CodeWave IDE提供多种产品形态，满足从个人开发者到企业团队�
     <p>worktree 手动并发、子代理自动并发、动态工作流编排。一天处理上百个缺陷单，一次扫描重构超大型代码库。</p>
   </div>
   <div class="feature-card">
-    <div class="feature-card-title">长任务不丢上下文</div>
-    <p>完善的 Task 系统撑住 8 小时以上的连续运行；上下文接近容量上限时自动压缩、只保留关键信息继续推进。任务不丢失，上下文不遗漏。</p>
+    <div class="feature-card-title">跨会话记忆</div>
+    <p>你写的 AGENTS.md 分项目记忆、用户记忆、子目录三层生效，记忆规则（Memory Rules）按 paths 匹配文件，自动记忆（Auto Memory）后台提炼经验与偏好、同仓库 worktree 共用；上下文接近上限时自动压缩。</p>
   </div>
   <div class="feature-card">
     <div class="feature-card-title">工具按需加载</div>
