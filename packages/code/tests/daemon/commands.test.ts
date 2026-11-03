@@ -1010,6 +1010,90 @@ test("wait: --from-busy does not return on the stale idle snapshot — it waits 
   expect(exitSpy).toHaveBeenCalledWith(0);
 });
 
+test("wait: --from-busy settles when the turn already finished BEFORE the waiter attached", async () => {
+  // The issue #2744 shape: async `send` → the turn runs and ends → `wait
+  // --from-busy` attaches afterwards. No busy signal is left to observe
+  // (the replayed snapshot is idle, no `loadingChange:true` arrives, every
+  // registry read says idle), so a waiter that insists on an observed busy
+  // phase never accepts the idle it is looking at — with the default
+  // unbounded `--timeout` it hangs forever. The finished turn is still
+  // visible in the transcript, and that is what must settle it.
+  const agent = createMockAgent();
+  agent.messages.push(
+    userMsg("u1", "只回复两个字：OK。"),
+    assistantMsg("a1", "OK"),
+  );
+  vi.mocked(Agent.create).mockResolvedValue(agent);
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  // `--timeout` only bounds the test: before the fix this run cannot settle at
+  // all (it would hang the suite / wait out the default forever).
+  await expect(
+    daemonWaitCommand(socketPath, "test-session-id", {
+      fromBusy: true,
+      timeout: 1,
+    }),
+  ).rejects.toThrow("exit(0)");
+  const out = stdoutLines();
+  expect(out).toContain("Status: idle");
+  expect(out.join("\n")).toContain("[assistant] OK");
+  // The call-instant snapshot was accepted: the waiter never blocked.
+  expect(stderrText()).not.toContain("Waiting for session");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
+test("wait: --from-busy holds while the dispatched turn still has no reply", async () => {
+  // The race `--from-busy` exists for: the user message is already in history
+  // (the async `send` returned after `userMessageAdded`) but the turn has not
+  // produced anything yet, so the registry reads idle for a moment. An
+  // unanswered dispatch leaves the user message as the newest one — the
+  // waiter must keep holding, and only accept idle once the reply lands.
+  let agent!: ReturnType<typeof createMockAgent>;
+  let callbacks!: AgentCallbacks;
+  vi.mocked(Agent.create).mockImplementation(async (options) => {
+    callbacks = options.callbacks!;
+    agent = createMockAgent();
+    agent.messages.push(userMsg("u1", "只回复两个字：OK。"));
+    return agent;
+  });
+
+  const client = connectClient(socketPath);
+  await client.send({ id: 1, method: "initialize", params: {} });
+  client.close();
+
+  let settled = false;
+  const waitPromise = daemonWaitCommand(socketPath, "test-session-id", {
+    fromBusy: true,
+    timeout: 2,
+  }).then(
+    () => {
+      settled = true;
+    },
+    () => {
+      settled = true;
+    },
+  );
+  await vi.waitFor(() => {
+    expect(stderrText()).toContain("Waiting for session test-session-id");
+  });
+  await new Promise((r) => setTimeout(r, 50));
+  expect(settled).toBe(false);
+
+  // The turn's reply lands; the push only wakes the waiter (payload false does
+  // NOT count as an observed busy phase), so the settle comes from the
+  // transcript check on the re-read.
+  agent.messages.push(assistantMsg("a1", "OK"));
+  callbacks.onLoadingChange?.(false);
+  await waitPromise;
+  expect(settled).toBe(true);
+  expect(stdoutLines()).toContain("Status: idle");
+  expect(stdoutLines().join("\n")).toContain("[assistant] OK");
+  expect(exitSpy).toHaveBeenCalledWith(0);
+});
+
 test("wait: --timeout gives up with exit 1 and a clear message (stdout stays empty)", async () => {
   vi.mocked(Agent.create).mockResolvedValue(
     createMockAgent({ isLoading: true }),
