@@ -5,6 +5,7 @@ import { BackgroundTask, BackgroundShell } from "../types/processes.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { readTailTextSync } from "../utils/fileUtils.js";
 import { WindowsStreamDecoder } from "../utils/encoding.js";
+import { killProcessTree } from "../utils/killProcessTree.js";
 import { logger } from "../utils/globalLogger.js";
 import { Container } from "../utils/container.js";
 import { MessageQueue } from "./messageQueue.js";
@@ -59,6 +60,67 @@ export class BackgroundTaskManager {
 
   public generateId(): string {
     return `task_${process.pid}_${this.nextId++}`;
+  }
+
+  /**
+   * Stop handler shared by `startShell` and `adoptProcess`.
+   *
+   * Terminates the task's whole process tree rather than just the shell: both
+   * spawn sites use `detached: true`, so on POSIX the child leads its own
+   * process group and on Windows `taskkill /T` walks the parent/child relation
+   * (issue #2742 — killing only bash.exe left `npm → node` grandchildren
+   * running as orphans). Graceful first, forced after 1s; on Windows both
+   * phases are the same force kill and the retry reports "not-found".
+   */
+  private createStopHandler(
+    child: ChildProcess,
+    logStream: fs.WriteStream,
+  ): () => void {
+    return () => {
+      try {
+        logStream.end();
+        const pid = child.pid;
+        if (!pid) {
+          // Spawn failed before reporting a pid: nothing to walk.
+          child.kill("SIGTERM");
+          return;
+        }
+
+        void killProcessTree(pid, "SIGTERM").then((outcome) => {
+          if (outcome !== "failed") return;
+          // The tree kill could not signal the group at all — fall back to
+          // taking the direct child down, as the old code path did.
+          logger.error(
+            `Failed to terminate the process tree of pid ${pid}; killing the shell only`,
+          );
+          try {
+            child.kill("SIGTERM");
+          } catch (error: unknown) {
+            logger.error("Failed to kill child process:", error);
+          }
+        });
+
+        const forceKillTimer = setTimeout(() => {
+          if (child.killed) return;
+          void killProcessTree(pid, "SIGKILL").then((outcome) => {
+            if (outcome !== "failed" || child.killed) return;
+            try {
+              child.kill("SIGKILL");
+            } catch (error: unknown) {
+              logger.error("Failed to force kill child process:", error);
+            }
+          });
+        }, 1000);
+        forceKillTimer.unref();
+      } catch (error: unknown) {
+        logger.error("Error stopping background task:", error);
+        try {
+          child.kill("SIGTERM");
+        } catch {
+          // Nothing left to do — the task is being dropped either way.
+        }
+      }
+    };
   }
 
   public addTask(task: BackgroundTask): void {
@@ -129,34 +191,7 @@ export class BackgroundTaskManager {
       stdout: "",
       stderr: "",
       outputPath: logPath,
-      onStop: () => {
-        try {
-          logStream.end();
-          if (child.pid) {
-            process.kill(-child.pid, "SIGTERM");
-            const forceKillTimer = setTimeout(() => {
-              if (child.pid && !child.killed) {
-                try {
-                  process.kill(-child.pid, "SIGKILL");
-                } catch (error: unknown) {
-                  // ESRCH means the process already exited — not an error
-                  if (
-                    !(error instanceof Error) ||
-                    (error as NodeJS.ErrnoException).code !== "ESRCH"
-                  ) {
-                    logger.error("Failed to force kill process:", error);
-                  }
-                }
-              }
-            }, 1000);
-            forceKillTimer.unref();
-          } else {
-            child.kill("SIGTERM");
-          }
-        } catch {
-          child.kill("SIGTERM");
-        }
-      },
+      onStop: this.createStopHandler(child, logStream),
     };
 
     this.tasks.set(id, shell);
@@ -342,34 +377,7 @@ export class BackgroundTaskManager {
       stdout: initialStdout,
       stderr: initialStderr,
       outputPath: logPath,
-      onStop: () => {
-        try {
-          logStream.end();
-          if (child.pid) {
-            process.kill(-child.pid, "SIGTERM");
-            const forceKillTimer = setTimeout(() => {
-              if (child.pid && !child.killed) {
-                try {
-                  process.kill(-child.pid, "SIGKILL");
-                } catch (error: unknown) {
-                  // ESRCH means the process already exited — not an error
-                  if (
-                    !(error instanceof Error) ||
-                    (error as NodeJS.ErrnoException).code !== "ESRCH"
-                  ) {
-                    logger.error("Failed to force kill process:", error);
-                  }
-                }
-              }
-            }, 1000);
-            forceKillTimer.unref();
-          } else {
-            child.kill("SIGTERM");
-          }
-        } catch {
-          child.kill("SIGTERM");
-        }
-      },
+      onStop: this.createStopHandler(child, logStream),
     };
 
     this.tasks.set(id, shell);

@@ -6,6 +6,7 @@ import { Container } from "../../src/utils/container.js";
 import type { SubagentManagerCallbacks } from "../../src/managers/subagentManager.js";
 import type { SubagentConfiguration } from "../../src/utils/subagentParser.js";
 import type { GatewayConfig, ModelConfig } from "../../src/types/index.js";
+import type { BackgroundShell } from "../../src/types/processes.js";
 import type { ToolContext } from "../../src/tools/types.js";
 
 // Mock the memory service
@@ -107,6 +108,31 @@ describe("SubagentManager instance lifecycle and tool tracking", () => {
   afterEach(() => {
     vi.clearAllMocks();
   });
+
+  /**
+   * Register a running background shell task in the subagent's *isolated*
+   * manager, the way a `Bash run_in_background` executed inside that subagent
+   * would leave one. `cleanup()` only looks at `status`/`onStop`, so the stub
+   * process handle is never touched.
+   */
+  const addRunningBackgroundShell = (
+    instance: Awaited<ReturnType<SubagentManager["createInstance"]>>,
+  ) => {
+    const onStop = vi.fn();
+    const task: BackgroundShell = {
+      id: "task_orphaned_shell",
+      type: "shell",
+      status: "running",
+      startTime: Date.now(),
+      command: "npm run test",
+      stdout: "",
+      stderr: "",
+      onStop,
+      process: {} as BackgroundShell["process"],
+    };
+    instance.backgroundTaskManager.addTask(task);
+    return onStop;
+  };
 
   it("should track last two tool names in subagent instance (ad85945f)", async () => {
     const mockConfig: SubagentConfiguration = {
@@ -217,11 +243,20 @@ describe("SubagentManager instance lifecycle and tool tracking", () => {
     const subagentId = instance.subagentId;
     expect(subagentManager.getInstance(subagentId)).toBe(instance);
 
+    // A background shell the subagent left running must not outlive it: its
+    // manager is isolated per instance, so only this release path can stop it
+    // (issue #2742).
+    const onStop = addRunningBackgroundShell(instance);
+
     // Set status to completed and cleanup
     subagentManager.updateInstanceStatus(subagentId, "completed");
     subagentManager.cleanupInstance(subagentId);
 
     expect(subagentManager.getInstance(subagentId)).toBeNull();
+    expect(onStop).toHaveBeenCalledTimes(1);
+    expect(instance.backgroundTaskManager.getTask("task_orphaned_shell")).toBe(
+      undefined,
+    );
   });
 
   it("should cleanup subagent instance on error (7b412d33)", async () => {
@@ -243,10 +278,14 @@ describe("SubagentManager instance lifecycle and tool tracking", () => {
     });
 
     const subagentId = instance.subagentId;
+    const onStop = addRunningBackgroundShell(instance);
     subagentManager.updateInstanceStatus(subagentId, "error");
     subagentManager.cleanupInstance(subagentId);
 
     expect(subagentManager.getInstance(subagentId)).toBeNull();
+    // A subagent that fails *and* leaves background shells behind is exactly
+    // the shape that produced unattributable orphans (issue #2742).
+    expect(onStop).toHaveBeenCalledTimes(1);
   });
 
   it("should update shortResult with tool names and count (ad85945f)", async () => {

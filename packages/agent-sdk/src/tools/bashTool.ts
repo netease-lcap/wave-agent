@@ -14,6 +14,7 @@ import { resolveShellPath } from "../utils/shellResolver.js";
 import { toPosixPath, toWindowsPath } from "../utils/path.js";
 import { stripAnsiColors } from "../utils/stringUtils.js";
 import { WindowsStreamDecoder } from "../utils/encoding.js";
+import { killProcessTree } from "../utils/killProcessTree.js";
 import { processToolResult } from "../utils/toolResultStorage.js";
 import { BASH_MAX_OUTPUT_CHARS } from "../constants/toolLimits.js";
 import type { ToolPlugin, ToolResult, ToolContext } from "./types.js";
@@ -553,40 +554,48 @@ The working directory persists between commands. Try to maintain your current wo
             clearTimeout(timeoutHandle);
           }
 
-          // Force terminate child process and its children
-          if (child.pid) {
-            try {
-              // Try graceful termination of process group
-              process.kill(-child.pid, "SIGTERM");
-
-              // Set timeout for force kill
-              setTimeout(() => {
-                if (child.pid && !child.killed) {
-                  try {
-                    process.kill(-child.pid, "SIGKILL");
-                  } catch (killError: unknown) {
-                    // ESRCH means the process already exited — not an error
-                    if (
-                      !(killError instanceof Error) ||
-                      (killError as NodeJS.ErrnoException).code !== "ESRCH"
-                    ) {
-                      logger.error("Failed to force kill process:", killError);
-                    }
-                  }
-                }
-              }, 1000);
-            } catch {
-              // If process group termination fails, try direct child process termination
+          // Terminate the shell *and its descendants* (issue #2742): killing
+          // only the direct child leaves `npm → node → vitest worker` running
+          // as orphans on Windows. See killProcessTree for the per-platform
+          // mechanics (POSIX process group / Windows taskkill /T).
+          const abortPid = child.pid;
+          if (abortPid) {
+            // Graceful first, forced after 1s. On Windows both phases are the
+            // same `taskkill /T /F`; the retry then reports "not-found".
+            void killProcessTree(abortPid, "SIGTERM").then((outcome) => {
+              if (outcome !== "failed") return;
+              // The tree kill could not signal the group at all — fall back to
+              // taking the direct child down, as the old code path did.
               try {
+                logger.error(
+                  `Failed to terminate the process tree of pid ${abortPid}; killing the shell only`,
+                );
                 child.kill("SIGTERM");
-                setTimeout(() => {
-                  if (!child.killed) {
-                    child.kill("SIGKILL");
-                  }
-                }, 1000);
               } catch (directKillError) {
                 logger.error("Failed to kill child process:", directKillError);
               }
+            });
+
+            // Set timeout for force kill
+            setTimeout(() => {
+              if (child.killed) return;
+              void killProcessTree(abortPid, "SIGKILL").then((outcome) => {
+                if (outcome !== "failed" || child.killed) return;
+                try {
+                  child.kill("SIGKILL");
+                } catch (forceKillError) {
+                  logger.error(
+                    "Failed to force kill child process:",
+                    forceKillError,
+                  );
+                }
+              });
+            }, 1000);
+          } else {
+            try {
+              child.kill("SIGTERM");
+            } catch (directKillError) {
+              logger.error("Failed to kill child process:", directKillError);
             }
           }
 

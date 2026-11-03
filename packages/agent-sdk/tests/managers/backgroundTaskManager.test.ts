@@ -18,7 +18,17 @@ vi.mock("../../src/utils/globalLogger.js", () => ({
   isLoggerConfigured: vi.fn(),
 }));
 
+// The stop path terminates the task's process *tree* through a platform-aware
+// helper (POSIX process group / Windows `taskkill /T`); its own branches are
+// covered in tests/utils/killProcessTree.test.ts.
+vi.mock("../../src/utils/killProcessTree.js", () => ({
+  killProcessTree: vi.fn(async () => "killed"),
+}));
+
 import { logger } from "../../src/utils/globalLogger.js";
+import { killProcessTree } from "../../src/utils/killProcessTree.js";
+
+const mockKillProcessTree = vi.mocked(killProcessTree);
 
 describe("BackgroundTaskManager notification deduplication", () => {
   let container: Container;
@@ -28,6 +38,8 @@ describe("BackgroundTaskManager notification deduplication", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    // clearAllMocks keeps implementations, so re-arm the per-test default.
+    mockKillProcessTree.mockResolvedValue("killed");
 
     container = new Container();
     messageQueue = new MessageQueue();
@@ -166,27 +178,8 @@ describe("BackgroundTaskManager notification deduplication", () => {
     });
   });
 
-  describe("ESRCH handling in onStop callback (adoptProcess)", () => {
-    let mockKill: ReturnType<typeof vi.spyOn>;
-
-    beforeEach(() => {
-      mockKill = vi.spyOn(process, "kill").mockReturnValue(true as never);
-    });
-
-    afterEach(() => {
-      mockKill.mockRestore();
-    });
-
-    it("should not log error when SIGKILL throws ESRCH (process already exited)", () => {
-      mockKill.mockImplementation(((pid: number, signal?: string | number) => {
-        if (signal === "SIGKILL") {
-          const error: NodeJS.ErrnoException = new Error("kill ESRCH");
-          error.code = "ESRCH";
-          throw error;
-        }
-        return true;
-      }) as never);
-
+  describe("onStop terminates the whole process tree (issue #2742)", () => {
+    function adoptMockChild() {
       const mockChild = {
         pid: 12345,
         killed: false,
@@ -196,64 +189,48 @@ describe("BackgroundTaskManager notification deduplication", () => {
         on: vi.fn(),
         off: vi.fn(),
       } as unknown as ChildProcess;
-
       manager.adoptProcess(mockChild, "test-command");
+      return mockChild;
+    }
+
+    it("kills the tree gracefully first and forcibly after 1s", async () => {
+      const mockChild = adoptMockChild();
       const taskId = manager.getAllTasks()[0].id;
 
       manager.stopTask(taskId);
-      vi.advanceTimersByTime(1000);
+      await vi.advanceTimersByTimeAsync(0);
 
+      expect(mockKillProcessTree).toHaveBeenCalledWith(12345, "SIGTERM");
+      // The shell-only path must not be taken while the tree kill works.
+      expect(mockChild.kill).not.toHaveBeenCalled();
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(mockKillProcessTree).toHaveBeenCalledWith(12345, "SIGKILL");
       expect(logger.error).not.toHaveBeenCalled();
     });
 
-    it("should log error when SIGKILL throws a non-ESRCH error", () => {
-      mockKill.mockImplementation(((pid: number, signal?: string | number) => {
-        if (signal === "SIGKILL") {
-          const error: NodeJS.ErrnoException = new Error("kill EPERM");
-          error.code = "EPERM";
-          throw error;
-        }
-        return true;
-      }) as never);
-
-      const mockChild = {
-        pid: 12345,
-        killed: false,
-        kill: vi.fn(),
-        stdout: { on: vi.fn(), off: vi.fn() },
-        stderr: { on: vi.fn(), off: vi.fn() },
-        on: vi.fn(),
-        off: vi.fn(),
-      } as unknown as ChildProcess;
-
-      manager.adoptProcess(mockChild, "test-command");
+    it("falls back to killing the shell when the tree kill reports failed", async () => {
+      mockKillProcessTree.mockResolvedValue("failed");
+      const mockChild = adoptMockChild();
       const taskId = manager.getAllTasks()[0].id;
 
       manager.stopTask(taskId);
-      vi.advanceTimersByTime(1000);
+      await vi.advanceTimersByTimeAsync(0);
 
+      expect(mockChild.kill).toHaveBeenCalledWith("SIGTERM");
       expect(logger.error).toHaveBeenCalledWith(
-        "Failed to force kill process:",
-        expect.objectContaining({ code: "EPERM" }),
+        expect.stringContaining(
+          "Failed to terminate the process tree of pid 12345",
+        ),
       );
     });
 
-    it("should not log error when SIGKILL succeeds (no throw)", () => {
-      const mockChild = {
-        pid: 12345,
-        killed: false,
-        kill: vi.fn(),
-        stdout: { on: vi.fn(), off: vi.fn() },
-        stderr: { on: vi.fn(), off: vi.fn() },
-        on: vi.fn(),
-        off: vi.fn(),
-      } as unknown as ChildProcess;
-
-      manager.adoptProcess(mockChild, "test-command");
+    it("does not log an error when the tree kill succeeds", async () => {
+      adoptMockChild();
       const taskId = manager.getAllTasks()[0].id;
 
       manager.stopTask(taskId);
-      vi.advanceTimersByTime(1000);
+      await vi.advanceTimersByTimeAsync(1000);
 
       expect(logger.error).not.toHaveBeenCalled();
     });
