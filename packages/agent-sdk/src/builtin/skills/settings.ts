@@ -26,8 +26,8 @@ Wave uses several environment variables to control its core functionality. Varia
 | \`WAVE_BASE_URL\` | Base URL for the AI gateway. | - |
 | \`WAVE_SERVER_URL\` | Server URL for SSO authentication. Resolution order: \`options.serverUrl\` → \`process.env.WAVE_SERVER_URL\` → default. Unlike other \`WAVE_*\` vars, a settings.json \`env\` value is also mirrored to \`process.env\` so process-level singletons (AuthService) see it without a per-session snapshot. | \`https://codechat.codewave.163.com\` |
 | \`WAVE_CUSTOM_HEADERS\` | Custom HTTP headers for the AI gateway. Newline-separated \`Key: Value\` pairs (e.g., \`"X-Foo: bar\\nAuthorization: Bearer xxx"\`). | - |
-| \`WAVE_MODEL\` | The primary AI model to use for the agent. | \`gemini-3-flash\` |
-| \`WAVE_FAST_MODEL\` | The fast AI model to use for quick tasks. | \`gemini-2.5-flash\` |
+| \`WAVE_MODEL\` | The primary AI model to use for the agent. The top-level \`model\` scalar wins over it. | - (no built-in default: the session's model comes from the \`model\` key, the model picker or the server configuration) |
+| \`WAVE_FAST_MODEL\` | The fast AI model to use for quick tasks (subagent summaries, WebFetch content processing, inline completion). The top-level \`fastModel\` scalar wins over it. | - (no built-in default; the first model call fails with \`MISSING_FAST_MODEL\` when nothing provides one) |
 | \`WAVE_VISION_MODEL\` | Vision-capable model used by the built-in \`vision\` subagent for image recognition. The built-in \`vision\` subagent is available only when this is set **and** the main model declares \`models[<model>].capabilities.vision: false\`; otherwise it is not registered (and cannot be spawned by name). Useful when the main model is fast but non-vision (e.g. DeepSeek). | - (not registered) |
 | \`WAVE_MAX_INPUT_TOKENS\` | Maximum number of input tokens allowed. Overridden per-model by \`models[<model>].maxInputTokens\`. | \`200000\` |
 | \`WAVE_MAX_OUTPUT_TOKENS\` | Maximum number of output tokens allowed. | \`32000\` |
@@ -38,6 +38,9 @@ Wave uses several environment variables to control its core functionality. Varia
 | \`WAVE_COMPLETION_MODEL\` | Model used for inline code completion when the top-level \`completionModel\` key is unset (which itself falls back to the fast model). | - (fast model) |
 | \`WAVE_TMPDIR\` | Directory for Wave's own scratch files (bash CWD marker, background-task and subagent logs, persisted tool results, MCP images). **OS env only** (infrastructure); kept separate from \`TMPDIR\` so child processes are untouched. An unwritable or over-quota directory is reported with a diagnostic instead of failing silently. | \`os.tmpdir()\` |
 | \`WAVE_PLUGIN_GIT_TIMEOUT_MS\` | Timeout in milliseconds for git operations when installing plugins. **OS env only** (infrastructure). | \`300000\` |
+| \`WAVE_SHELL\` | Shell the \`Bash\` tool runs commands with on macOS / Linux. Accepted only when it points at an executable bash or zsh; otherwise resolution continues with \`$SHELL\`, then \`PATH\`, then the usual install locations. **OS env only**. | - (bash/zsh discovery) |
+| \`WAVE_GIT_BASH_PATH\` | Git Bash binary the \`Bash\` tool runs commands with on Windows, for machines where it cannot be inferred from \`git\`. **OS env only**. | - (inferred from \`git\`) |
+| \`WAVE_OFFICIAL_MARKET_MIRROR_BASE_URL\` | Base URL of the official plugin-marketplace mirror, from which \`{base}/latest\` (sha) and \`{base}/{sha}.zip\` (whole-tree snapshot) are fetched. Highest precedence over the built-in prod URL; a failing mirror falls back to git. | the prod mirror |
 
 ## Configuration Scopes
 
@@ -91,6 +94,8 @@ Wave runs two independent OTLP pipelines: the **first-party** one (this machine'
 | \`OTEL_METRICS_INCLUDE_REPOSITORY\` | Add the repository attribute to metrics. | \`false\` |
 | \`OTEL_METRICS_INCLUDE_ENTRYPOINT\` | Add the host entrypoint (cli / desktop / vscode …) attribute to metrics. | \`false\` |
 | \`OTEL_RESOURCE_ATTRIBUTES\` | Extra resource attributes (\`key=value\` pairs, comma separated); Wave's own values win on a conflict. | - |
+| \`OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE\` | Temporality for **your** exporter. It is left at the OTLP default (cumulative) so a collector that computes \`rate()\` / \`increase()\` keeps working; the first-party channel pins delta internally and ignores this. | OTLP default (cumulative) |
+| \`OTEL_HEADERS_DEBOUNCE_MS\` | How often \`otelHeadersHelper\` is re-run to pick up a rotated credential, in milliseconds. | \`1740000\` (29 min) |
 | \`OTEL_SHUTDOWN_TIMEOUT_MS\` | How long a process waits for the exporters to flush on exit. | \`2000\` |
 
 For a rotating credential, use the top-level \`otelHeadersHelper\` key rather than putting headers in \`env\` — its stdout is a JSON object of headers, re-read on a refresh interval so nothing has to be written into config:
@@ -183,6 +188,14 @@ Hooks can also be browsed and edited in the settings page's Hooks view, and in t
 ## Hook Process Environment
 
 Hooks are spawned in the session's **current** working directory, which drifts whenever the model runs \`cd\` — a command written as a relative path is only reliable when the session happens to sit at the project root. Anchor scripts on \`$WAVE_PROJECT_DIR\` instead: it is the directory the session was opened in, never follows \`cd\`, and is what Claude Code calls \`CLAUDE_PROJECT_DIR\`.
+
+Besides the inherited OS environment and the settings \`env\` block, Wave sets three variables for the hook process:
+
+- \`WAVE_PROJECT_DIR\`: the session root described above.
+- \`HOOK_EVENT\`: the event name that fired (e.g. \`PreToolUse\`), handy for one script shared by several events.
+- \`HOOK_TOOL_NAME\`: the tool name for \`PreToolUse\` / \`PostToolUse\` / \`PermissionRequest\`, empty otherwise.
+
+There is no session-id variable — read \`session_id\` from the stdin JSON instead (\`jq -r '.session_id'\`).
 
 ## Hook Input JSON
 
@@ -308,8 +321,7 @@ Example hook output:
       {
         "hooks": [
           {
-            "command": "echo '{\\"hookSpecificOutput\\": {\\"hookEventName\\": \\"SessionStart\\", \\"additionalContext\\": \\"Project uses pnpm and TypeScript\\"}}'",
-            "description": "Inject project context at session start"
+            "command": "echo '{\\"hookSpecificOutput\\": {\\"hookEventName\\": \\"SessionStart\\", \\"additionalContext\\": \\"Project uses pnpm and TypeScript\\"}}'"
           }
         ]
       }
@@ -336,8 +348,7 @@ SessionEnd hooks receive \`end_source\` in the JSON input indicating how the ses
       {
         "hooks": [
           {
-            "command": "echo '{\\"session_id\\": \\"$WAVE_SESSION_ID\\"}' >> /tmp/session-analytics.log",
-            "description": "Log session end for analytics",
+            "command": "jq -c '{session_id}' >> /tmp/session-analytics.log",
             "async": true
           }
         ]
@@ -362,8 +373,7 @@ WorktreeCreate hooks receive \`name\` (the worktree name) in the JSON input, alo
       {
         "hooks": [
           {
-            "command": "worktree_path=\\"$WAVE_PROJECT_DIR/.wave/worktrees/$(jq -r '.name')\\" && mkdir -p \\"$worktree_path\\" && git worktree add \\"$worktree_path\\" 2>/dev/null; echo \\"$worktree_path\\"",
-            "description": "Create the worktree and print its path"
+            "command": "worktree_path=\\"$WAVE_PROJECT_DIR/.wave/worktrees/$(jq -r '.name')\\" && mkdir -p \\"$worktree_path\\" && git worktree add \\"$worktree_path\\" 2>/dev/null; echo \\"$worktree_path\\""
           }
         ]
       }
@@ -387,8 +397,7 @@ WorktreeRemove hooks receive \`worktree_path\` in the JSON input (alongside the 
       {
         "hooks": [
           {
-            "command": "worktree_path=$(jq -r '.worktree_path') && git worktree remove --force \\"$worktree_path\\" && docker compose -p \\"$(basename \\"$worktree_path\\")\\" down",
-            "description": "Remove the worktree and tear down its docker compose project"
+            "command": "worktree_path=$(jq -r '.worktree_path') && git worktree remove --force \\"$worktree_path\\" && docker compose -p \\"$(basename \\"$worktree_path\\")\\" down"
           }
         ]
       }
@@ -586,7 +595,7 @@ Wave looks for memory in the following locations, loaded in order of increasing 
 2. **Project Memory**: \`AGENTS.md\` in the project root — Project-specific instructions
 3. **Memory Rules**: \`.wave/rules/*.md\` and \`~/.wave/rules/*.md\` — Modular, path-scoped rules (see below)
 
-> \`CLAUDE.md\` is also supported as a fallback for both user and project memory, for compatibility with existing repositories.
+> \`CLAUDE.md\` is also supported as a fallback for **project** memory (\`<workdir>/CLAUDE.md\`), and user memory falls back to \`~/.claude/AGENTS.md\`, for compatibility with existing setups.
 
 ## User Memory
 
@@ -644,12 +653,17 @@ paths:
 
 ## Auto-Memory
 
-In addition to manual memory files, Wave has an **auto-memory** feature that automatically extracts and remembers important information across sessions. This is stored in \`~/.wave/projects/<project-id>/memory/MEMORY.md\`.
+In addition to manual memory files, Wave has an **auto-memory** feature that automatically extracts and remembers important information across sessions. This is stored in \`~/.wave/projects/<project-id>/memory/\`, where \`<project-id>\` is derived from the repository's git common directory — so every worktree of the same repo shares one memory directory.
+
+- \`MEMORY.md\` in that directory is an index (one line per entry), and it is loaded into every conversation: only the first **200 lines / 25,000 characters** are read, the rest is silently dropped with a warning appended to the loaded text. Topic files next to it are read whole when the model opens them.
+- The index is never created empty: it appears once there is something to point at (or the model writes it), and it is rebuilt from the topic files if it goes missing.
 
 You can control auto-memory in \`settings.json\`:
 
-- \`autoMemoryEnabled\`: Enable or disable auto-memory (default: \`true\`).
-- \`autoMemoryFrequency\`: Frequency of auto-memory extraction turns (default: \`1\`).
+- \`autoMemoryEnabled\`: Enable or disable auto-memory (default: \`true\`). \`env.WAVE_DISABLE_AUTO_MEMORY=1\` is the same switch from the environment.
+- \`autoMemoryFrequency\`: Frequency of auto-memory extraction turns (default: \`1\` = every turn).
+
+Turning auto-memory off also revokes the Safe Zone grant its directory and \`~/.wave/AGENTS.md\` had, and the change lands without restarting the session.
 `,
   "skills/settings/MODELS.md": `# Model Configuration
 
@@ -737,16 +751,7 @@ Wave needs to know whether a model supports certain features. Instead of guessin
 }
 \`\`\`
 
-You can also set \`capabilities\` at the top level of \`settings.json\` to apply to the default model:
-
-\`\`\`json
-{
-  "capabilities": {
-    "vision": true,
-    "promptCaching": false
-  }
-}
-\`\`\`
+\`capabilities\` is declared **per model**, inside the \`models\` entry — there is no top-level \`capabilities\` key. A model with no declaration keeps the defaults above, which is why declaring a non-vision or non-caching model matters: the agent would otherwise assume it can see images and would send none of the cache markers.
 
 ## Unsetting Default Parameters
 
@@ -794,26 +799,28 @@ Wave includes a robust permission system to protect your system while allowing t
 
 ## The Safe Zone
 
-The Safe Zone is a set of directories where Wave is allowed to perform potentially sensitive operations (like editing or writing files) with reduced friction.
+The Safe Zone is the set of paths where Wave may perform sensitive operations (editing or writing files) with reduced friction. It is built from:
 
-By default, the Safe Zone includes:
-- The current project directory.
-- The Wave configuration directories (\`~/.wave/\` and \`.wave/\`).
-- The system temporary directory.
+- The session's working directory.
+- Every entry of \`permissions.additionalDirectories\`. A leading \`~\` expands to your home directory and a relative path resolves against the working directory; the resolved paths are also listed in the system prompt so the agent knows they exist.
+- Directories granted for the current session only: \`wave --add-dir <path>\` at startup, \`/add-dir <path>\` mid-session, or the "Yes, and allow all edits in \`<dir>/\`" answer in an out-of-zone confirmation. None of these are written to a config file.
+- While auto-memory is on: the auto-memory directory and the user memory file \`~/.wave/AGENTS.md\`, so the agent can maintain its own memory without prompting. These are permission grants only — they are not user-declared working directories, and a \`cd\` there is reset to the session's directory.
+
+Nothing else is inside it: \`.wave/\`, \`~/.wave/\` as a whole and the system temporary directory are ordinary paths that still need approval.
 
 You can extend the Safe Zone by adding \`additionalDirectories\` to your \`permissions\` configuration in \`settings.json\`.
 
 ## Permission Modes
 
-The \`defaultMode\` setting (under \`permissions\`, aligning with Claude Code's settings key) determines how Wave handles requests to use restricted tools (e.g., \`Bash\`, \`Edit\`, \`Write\`, \`AskUserQuestion\`).
+The \`defaultMode\` setting (under \`permissions\`, aligning with Claude Code's settings key) determines how Wave handles requests to use restricted tools (\`Bash\`, \`Edit\`, \`Write\`, \`Artifact\`, \`EnterPlanMode\`, \`ExitPlanMode\`, \`AskUserQuestion\`).
 
 | Mode | Description |
 | :--- | :--- |
-| \`default\` | **Recommended.** Wave will ask for your permission before using any restricted tool. |
-| \`bypassPermissions\` | **Use with caution.** Wave will execute all tools without asking for permission. |
-| \`acceptEdits\` | Wave will automatically allow \`Edit\` and \`Write\` operations within the Safe Zone. It will still ask for permission for \`Bash\` and operations outside the Safe Zone. |
-| \`plan\` | Restricted mode for editing the plan file (usually internal). |
-| \`dontAsk\` | Wave will automatically deny all restricted tools without asking. This is the most restrictive mode. |
+| \`default\` | **Recommended.** Wave asks for your permission before using any restricted tool (\`deny\` rules still win, built-in auto-allow still applies). |
+| \`acceptEdits\` | Automatically allows \`Edit\` and \`Write\` inside the Safe Zone, and a plain \`mkdir\` whose paths are all inside it. Anything outside the Safe Zone, and every other restricted tool, still asks. |
+| \`plan\` | Exploration only: the agent may write nothing except the plan file. |
+| \`dontAsk\` | Restricted tools are denied outright instead of prompting, unless an allow rule already covers the call — the most restrictive mode. |
+| \`bypassPermissions\` | **Use with caution.** Restricted tools run without asking. Two gates survive: \`AskUserQuestion\` and \`ExitPlanMode\` still reach you (the tool *is* the decision), and in a worktree session \`Write\`/\`Edit\` still cannot touch the main repository. |
 
 ### Example Configuration
 
@@ -821,9 +828,9 @@ The \`defaultMode\` setting (under \`permissions\`, aligning with Claude Code's 
 {
   "permissions": {
     "defaultMode": "default",
-    "additionalDirectories": ["/home/user/my-exports"],
-    "allow": ["ls -R", "git status"],
-    "deny": ["rm -rf"]
+    "additionalDirectories": ["~/my-exports"],
+    "allow": ["Bash(ls -R)", "Bash(git status*)"],
+    "deny": ["Bash(rm -rf*)"]
   }
 }
 \`\`\`
@@ -870,6 +877,36 @@ Rules use the format \`ToolName(pattern)\`. The wildcard \`*\` has different sem
 | \`Read(...)\` | No | Glob (use \`**\`) | \`Read(**/*.env)\` → any depth \`.env\` |
 | \`Write(...)\` | No | Glob (use \`**\`) | \`Write(src/**/*.ts)\` → any \`.ts\` in src |
 | \`Edit(...)\` | No | Glob (use \`**\`) | \`Edit(**/*.json)\` → any \`.json\` |
+
+A path pattern also matches when only the path relative to the working directory matches, so \`Read(*.env)\` covers the file at the root of the project even though the tool passes an absolute path.
+
+**Named-argument rules** — two tools match a single named argument instead of a command line or a path:
+
+\`\`\`json
+{ "allow": ["Agent(Explore)", "Workflow(my-plugin:scan, my-plugin:audit)"] }
+\`\`\`
+
+- \`Agent(<subagent_type>)\` matches the \`subagent_type\` argument; \`Workflow(<name>)\` matches the workflow's invocation name (a plugin workflow is \`<pluginName>:<name>\`). One rule may list several names, comma-separated.
+- An MCP tool is matched by its full name as the tool part: \`mcp__github__create_issue\` (a bare name only — unlike \`Bash\` and the file tools, an argument pattern after an MCP tool name never matches).
+- A bare tool name (\`AskUserQuestion\`, \`Artifact\`) allows that whole tool.
+
+## Built-in Auto-Allow (no rule needed)
+
+Two categories are approved without a rule and without a prompt:
+
+- **Read-only shell commands.** When every part of a command is read-only — \`ls\`, \`cat\`, \`head\`, \`tail\`, \`wc\`, \`sort\`, \`uniq\`, \`grep\`/\`rg\`, \`find\`, \`jq\`, \`cut\`, \`awk\`, \`sed\`, \`diff\`, \`stat\`, \`basename\`, \`dirname\`, \`echo\`, \`printf\`, \`date\`, \`pwd\`, \`which\`, \`test\`, \`sleep\` … — it runs immediately. Only the safe variants: \`sed -i\`, \`find -exec\` / \`-delete\`, write redirections, command substitution, process substitution and \`cd\` outside the Safe Zone all fall back to the prompt. A read-only command that takes paths (\`cat\`, \`ls\`, \`grep\`, \`find\`, …) must stay inside the Safe Zone to count.
+- **A fixed set of git rules**: \`git status*\`, \`git diff*\`, \`git log*\`, \`git show*\`, \`git branch\` and its listing variants (\`--list\`, \`-a\`, \`--show-current\`, \`--merged\`, \`-v\` …), \`git tag*\`, \`git remote*\`, \`git ls-files*\`, \`git rev-parse*\`, \`git config --list*\`, \`git cat-file*\`.
+
+Those broad defaults never cover a dangerous variant, and they are a floor rather than a list you can extend — write your own rule for anything else.
+
+## Compound Commands
+
+A shell command is judged part by part, not as one string:
+
+- \`a && b\`, \`a; b\`, \`a | b\`, command substitution inside a part, and the bodies of \`for\` / \`while\` / \`if\` / \`case\` are expanded into their simple commands; **every** one of them must be allowed. Each part may be covered by a different rule (or by the defaults above), so \`cd src && ls\` is fine while \`cd /etc && ls\` is not.
+- Constructs that cannot be reduced statically — heredocs, process substitution, arithmetic \`((…))\`, brace groups, \`eval\`, \`trap\`, a part referring to a variable whose value is unknown — are never auto-allowed by the defaults. Only an explicit allow rule matching the whole command runs them.
+- A command that writes with a redirection needs a rule whose own pattern contains a redirection: \`echo done > log.txt\` is not covered by \`Bash(echo *)\`.
+- \`git -C <path> <subcommand>\` is covered by the rule for that subcommand (\`Bash(git status*)\`), because the leading flag only changes the target repository; a deny rule naming the exact command still wins.
 
 ## Managing Permissions via CLI
 
@@ -954,11 +991,13 @@ Place resources in standard directories within the plugin:
 |-----------------|---------|
 | \`skills/\` | Skill directories, each containing a \`SKILL.md\` file |
 | \`commands/\` | Custom slash command definitions |
+| \`agents/\` | Subagent definitions (registered as \`pluginName:agentName\`) |
+| \`workflows/\` | Workflow scripts (\`<name>.js\`), invoked through the \`Workflow\` tool as \`pluginName:<name>\` |
 | \`hooks/hooks.json\` | Hook configuration |
 | \`.lsp.json\` | LSP server configuration |
 | \`.mcp.json\` | MCP server configuration |
 
-Only \`plugin.json\` should exist in \`.wave-plugin/\` — any other files there will cause a validation error.
+Only \`plugin.json\` should exist in \`.wave-plugin/\` — any other files there will cause a validation error. \`name\` and \`description\` are required; \`version\` is optional (a missing one is read as \`1.0.0\`), and \`mcpServers\` may be declared inline as an object instead of a sibling \`.mcp.json\`. A plugin laid out the Claude Code way (\`.claude-plugin/plugin.json\`) is loaded as a fallback when \`.wave-plugin/\` does not exist.
 
 ### Installing a Local Plugin
 
@@ -983,6 +1022,8 @@ Plugins installed from a marketplace (or added through the UI) are recorded in \
 \`\`\`
 
 The canonical key is \`plugin-name@marketplace-name\`; a plugin with no marketplace uses its plain name (and produces a format warning). The remote (managed) layer wins per key, so an organization can force a plugin off no matter what the local files say.
+
+\`enabledPlugins\` and \`marketplaces\` are read by the plugin subsystem, not by the settings live reload: a hand edit of these two keys takes effect when the plugins are next (re)loaded — a new session, \`Agent.reloadPlugins()\`, or an install/enable action in the marketplace UI. An organization push of either key is applied in place, without a restart.
 
 ### \`\${WAVE_PLUGIN_ROOT}\` Placeholder
 
@@ -1035,7 +1076,8 @@ A plugin marketplace is a git repository containing a \`.wave-plugin/marketplace
 \`\`\`
 
 - \`source\` can be a **relative path** (resolved from the marketplace repo root) or a **git URL** (\`https://\`, \`git@\`, \`ssh://\`) for remote repos.
-- Each plugin at its source path must have its own \`.wave-plugin/plugin.json\` manifest.
+- For a plugin that lives in its own repository, use the object form instead: \`{"source": "url", "url": "https://github.com/user/plugin.git", "ref": "main", "sha": "…"}\` — or \`{"source": "git-subdir", "url": "…", "path": "plugins/x"}\` when it is a subdirectory of one. Both are outside the marketplace checkout, so no local copy is available to read a "latest version" from.
+- Each plugin at its source path must have its own \`.wave-plugin/plugin.json\` manifest. A marketplace written the Claude Code way (\`.claude-plugin/marketplace.json\`, \`plugin.json\`) is read through the same fallback.
 
 ### Registering a Marketplace
 
@@ -1097,9 +1139,51 @@ Later scopes override earlier ones (local > project > user).
 
 On first use Wave seeds \`wave-plugins-official\` (the official catalog, a GitHub source) into user-scope settings and marks it \`isBuiltin\` in the registry, so the official catalog is available without registering anything yourself.
 `,
+  "skills/settings/COMMANDS.md": `# Custom Slash Commands
+
+A custom command is a single Markdown file: its body is the prompt Wave sends when the command runs, and its frontmatter tunes that run. It is the lightweight sibling of a skill — no separate context and no tool of its own, just text (plus the arguments typed after the command) added to the conversation.
+
+## Locations
+
+| Scope | Path |
+| :--- | :--- |
+| User | \`~/.wave/commands/*.md\` (fallback \`~/.claude/commands/*.md\`) |
+| Project | \`.wave/commands/*.md\` (fallback \`.claude/commands/*.md\`) |
+| Plugin | \`commands/\` inside the plugin, invoked as \`pluginName:<command>\` |
+
+Files are read one level deep (a subdirectory is not scanned) and the command name is the file name without \`.md\`. A project command wins over a user command with the same name.
+
+## The Command File
+
+\`\`\`markdown
+---
+description: Fix a GitHub issue end to end
+model: gemini-3-flash
+allowed-tools:
+  - Bash(gh issue view*)
+  - Read
+---
+
+Fix issue $1. Start by reading it with \`gh issue view $1\`, then …
+\`\`\`
+
+- \`description\`: (Optional) Shown in the slash-command menu and given to the model; without it the menu shows a generic line.
+- \`model\`: (Optional) Run this command on a specific model.
+- \`allowed-tools\`: (Optional) Rules in the same syntax as \`permissions.allow\`, registered for this invocation only so the command's own steps do not prompt.
+
+## Arguments
+
+- \`$ARGUMENTS\`: everything typed after the command, as one string.
+- \`$1\`, \`$2\`, …: individual arguments; quotes group words that contain spaces.
+- A body with no placeholder at all is not an error — the arguments are appended to the end of the prompt instead of being dropped.
+
+## Plugin Commands
+
+A command shipped by a plugin is namespaced (\`/my-plugin:review\`). \`\${WAVE_PLUGIN_ROOT}\` in its body and in its \`allowed-tools\` rules is substituted at load time; a rule that cannot be resolved is dropped with a warning rather than registered as a rule that can never match. A command that does not come from a plugin has no plugin root (and no skill directory of its own either), so a placeholder left in its body is reported to the user instead of being silently kept.
+`,
   "skills/settings/SKILL.md": `---
 name: settings
-description: Manage Wave settings and get guidance on settings.json, hooks, environment variables, permissions, MCP servers, memory, skills, subagents, plugins, plugin marketplaces, the Bash sandbox, telemetry, and model / completion / knowledge-base toggles. Use this when the user wants to view, update, or learn how to configure Wave.
+description: Manage Wave settings and get guidance on settings.json, hooks, environment variables, permissions, MCP servers, memory, skills, subagents, custom slash commands, plugins, plugin marketplaces, the Bash sandbox, telemetry, and model / completion / knowledge-base toggles. Use this when the user wants to view, update, or learn how to configure Wave.
 ---
 
 # Wave Settings Skill
@@ -1112,7 +1196,9 @@ This skill helps you manage your Wave configuration and provides guidance on how
 
 ### Live Reload
 
-Changes to \`settings.json\` take effect immediately without restarting Wave. When you modify any setting, the new configuration is applied to subsequent operations automatically.
+Changes to \`settings.json\` take effect immediately without restarting Wave: hooks, \`env\`, permissions, the sandbox, model scalars, the auto-memory switches and the feature toggles are re-read when the file changes (a change landing mid-turn applies from the next turn).
+
+Two kinds of keys are the exception and say so where they are documented: \`cleanupPeriodDays\` is read once at startup, and \`enabledPlugins\` / \`marketplaces\` are re-read by the plugin subsystem rather than by this watch.
 
 Wave looks for \`settings.json\` in three scopes, with one server-managed layer on top:
 1.  **Remote (managed)**: settings pushed by the organization from the server. Only the keys it declares win over local files; the settings page shows them locked, marked "managed by your organization".
@@ -1191,25 +1277,29 @@ For detailed memory configuration, see [MEMORY.md](\${WAVE_SKILL_DIR}/MEMORY.md)
 Extend Wave's functionality by creating custom skills.
 For detailed guidance on creating skills, see [SKILLS.md](\${WAVE_SKILL_DIR}/SKILLS.md).
 
-### 8. Subagents
+### 8. Custom Slash Commands
+A Markdown file whose body becomes the prompt of a slash command, optionally with \`$ARGUMENTS\` / \`$1\` placeholders and an \`allowed-tools\` list for that run.
+For detailed guidance, see [COMMANDS.md](\${WAVE_SKILL_DIR}/COMMANDS.md).
+
+### 9. Subagents
 Delegate tasks to specialized AI personalities.
 For detailed guidance on creating subagents, see [SUBAGENTS.md](\${WAVE_SKILL_DIR}/SUBAGENTS.md).
 
-### 9. Plugins
+### 10. Plugins
 
-Plugins bundle skills, hooks, MCP servers, LSP servers, commands, and subagents into a reusable package. You can install plugins locally or from a marketplace.
+Plugins bundle skills, hooks, MCP servers, LSP servers, commands, subagents and workflows into a reusable package. You can install plugins locally or from a marketplace.
 For detailed guidance on creating plugins and marketplaces, see [PLUGINS.md](\${WAVE_SKILL_DIR}/PLUGINS.md).
 
-### 10. Feature Toggles
+### 11. Feature Toggles
 - \`enableArtifact\`: Enable the Artifact tool, which publishes local \`.html\`/\`.md\` files as shareable (default-private) web pages, and makes WebFetch read artifact URLs through its own channel. Defaults to \`true\` for a signed-in account and \`false\` when nobody is signed in (every Artifact request carries the SSO token); set \`true\` to register the tool even without an account, or \`false\` to turn it off. Toggling it hot-reloads the tool registry, and signing in/out re-evaluates it too.
-- \`enableExec\`: Whether the Exec tool (a shared process pool for long-running commands) is registered.
+- \`enableExec\`: Whether the Exec tool (a shared process pool for long-running commands) is registered. Default \`true\`; setting \`false\` declares the pooled tools flat again.
 - \`enableKnowledgeBase\`: Whether the three enterprise knowledge-base tools (\`kb_search\` / \`kb_get_doc\` / \`kb_suggest\`) are registered. Default \`false\` — they widen what every conversation can pull into context. A managed value wins over local files.
 - \`env.WAVE_ENABLE_TASK_TOOLS\`: The four task-list tools (\`TaskCreate\` / \`TaskGet\` / \`TaskUpdate\` / \`TaskList\`) are **not** registered by default — the definitions, their on-demand discovery and the task reminder cost context every turn. Set \`"1"\` (or \`"true"\`) in the \`env\` block to bring them back; \`"0"\`/\`"false"\` reads the same as unset. An \`env\` value wins over the process environment, and toggling it hot-reloads the tool registry. Disabling them also removes the "use the task tools" system-prompt line and the task reminder. \`TaskStop\`, the \`/tasks\` background-task panel and any tasks already on disk are unaffected.
 - \`enableRemoteControl\`: Whether this machine may serve its sessions to a paired phone over the relay (default \`true\`). Serving still needs an explicit \`wave remote-control on\` or GUI action, so exposure stays opt-in.
 - \`completionEnabled\` / \`completionModel\`: Inline code completion on/off (default on) and the model it uses (defaults to the fast model). Escape hatch: \`env.WAVE_COMPLETION_MODEL\`.
 - \`nextEditEnabled\`: Next-edit suggestion (default \`false\` — it rewrites code you already wrote, so it is opt-in).
-- \`leanPrompt\`: Send the condensed prompt set (default \`false\`). Text only — the tool set, parameter schemas and permission decisions are unchanged.
-- \`cleanupPeriodDays\`: Session transcript retention in days (default \`30\`; \`0\` disables cleanup).
+- \`leanPrompt\`: Send the condensed prompt set (default \`true\`). Text only — the tool set, parameter schemas and permission decisions are unchanged; set \`false\` to send the full prompt and full tool descriptions.
+- \`cleanupPeriodDays\`: Session transcript retention in days (default \`30\`; \`0\` disables cleanup). Read once per process at startup, so it is the one key here that live reload does not revisit. Auto-memory directories are never deleted, and if the settings file has validation errors while this key is set, cleanup is skipped entirely rather than guessed from a half-read config.
 - \`nonDeferrableBuiltins\`: Built-in tool names that must stay declared instead of being loaded on demand (the "do not defer" override).
 
 \`\`\`json
@@ -1217,22 +1307,24 @@ For detailed guidance on creating plugins and marketplaces, see [PLUGINS.md](\${
   "enableArtifact": true,
   "enableKnowledgeBase": false,
   "completionEnabled": true,
-  "leanPrompt": false
+  "leanPrompt": true
 }
 \`\`\`
 
-### 11. Bash Sandbox
+### 12. Bash Sandbox
 
 The top-level \`sandbox\` key runs Bash commands inside an OS-level sandbox (filesystem + network). Off by default; on macOS / Linux only. See [SANDBOX.md](\${WAVE_SKILL_DIR}/SANDBOX.md).
 
-### 12. Telemetry
+### 13. Telemetry
 
 \`DISABLE_TELEMETRY\` stops every reporting pipeline; \`OTEL_EXPORTER_OTLP_*\` points Wave at your own collector; the top-level \`otelHeadersHelper\` supplies a rotating credential. See the Telemetry section of [ENV.md](\${WAVE_SKILL_DIR}/ENV.md).
 
-### 13. Other Settings
-- \`language\`: Preferred language for agent communication (e.g., \`"en"\`, \`"zh"\`).
+### 14. Other Settings
+- \`language\`: Preferred language for agent communication, injected verbatim into the system prompt. The settings page offers \`zh-CN\` / \`en-US\`; the default is \`zh-CN\`.
+- \`model\` / \`fastModel\` / \`completionModel\`: Model scalars, each winning over its \`WAVE_*\` environment variable.
 - \`autoMemoryEnabled\`: Enable or disable auto-memory (default: \`true\`).
 - \`autoMemoryFrequency\`: Frequency of auto-memory extraction turns (default: \`1\`).
+- \`enabledPlugins\` / \`marketplaces\`: Which installed plugins load, and which marketplace repositories are registered. See [PLUGINS.md](\${WAVE_SKILL_DIR}/PLUGINS.md).
 - \`worktree.baseRef\`: Base ref for new worktrees. \`"fresh"\` (default) creates a new branch from \`origin/<default branch>\`; \`"head"\` branches from the current local HEAD, skipping origin resolution and network fetch. Use \`"head"\` when working from un-pushed local branches.
 
 ## How to use this skill
@@ -1246,6 +1338,7 @@ You can ask me to:
 - "How do I extend the Safe Zone for permissions?"
 - "How do I create a custom skill?"
 - "How do I define a new subagent?"
+- "How do I create a custom slash command?"
 - "How do I set max input tokens?"
 - "How do I change the model?"
 - "How do I create a Wave plugin?"
