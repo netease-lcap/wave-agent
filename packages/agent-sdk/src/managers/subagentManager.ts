@@ -1303,6 +1303,15 @@ export class SubagentManager {
         task.onStop = undefined;
       }
     }
+    // Stop the background shells this subagent spawned. Its manager is
+    // isolated per instance, so nothing else ever reaches them: the subagent
+    // itself is tracked in the parent manager (detached above), and
+    // `SubagentManager.cleanup()` only runs at session end — without this a
+    // `run_in_background` loop started by the subagent would keep running from
+    // the moment the subagent finishes (or fails) until the whole session
+    // closes, as an orphan nobody can attribute (issue #2742). Same rationale
+    // as Claude Code's `killShellTasksForAgent` in `runAgent`'s finally block.
+    instance.backgroundTaskManager.cleanup();
     if (instance.logStream && !instance.logStream.writableEnded) {
       // Only force-close a stream that hasn't been ended yet (the completion
       // and error paths already call end(); destroy would drop buffered data).
