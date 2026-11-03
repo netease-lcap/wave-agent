@@ -5321,6 +5321,33 @@ describe("session tree", () => {
     expect(lastAgent().currentWorkdir).toBe("/work/only-recent");
   });
 
+  it("groups one directory spelled with either slash style into one group", async () => {
+    const { host, store, sent } = createHost();
+    // A worktree session's workdir is the repo root as `git worktree list`
+    // printed it (`C:/…` on Windows); a plain open stores the OS spelling
+    // (`C:\…`). Same directory, so the sidebar must show a single group.
+    store.upsertSession(
+      makeIndexEntry("wt", "C:/Users/foo/repo", { createdAt: 1000 }),
+    );
+    store.upsertSession(
+      makeIndexEntry("plain", "C:\\Users\\foo\\repo", { createdAt: 2000 }),
+    );
+
+    await host.handleWebviewMessage({ command: "desktopReady" });
+    await host.handleWebviewMessage({ command: "webviewReady" });
+
+    await vi.waitFor(() => {
+      expect(sent("desktopSessionTree").length).toBeGreaterThanOrEqual(1);
+    });
+    const groups = sent("desktopSessionTree").at(-1)?.groups as Array<{
+      workdir: string;
+      sessions: Array<{ sessionId: string }>;
+    }>;
+    expect(groups).toHaveLength(1);
+    expect(groups[0].workdir).toBe("C:\\Users\\foo\\repo");
+    expect(groups[0].sessions.map((s) => s.sessionId)).toEqual(["plain", "wt"]);
+  });
+
   it("shows every session in a group, not a capped subset", async () => {
     const { host, store, sent } = createHost();
     store.addRecentWorkdir({ host: "local", path: "/work/a" });

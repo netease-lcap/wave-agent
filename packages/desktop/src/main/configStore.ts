@@ -346,13 +346,20 @@ export class ConfigStore {
   // ── Session index (FR-024) ──────────────────────────────────────
 
   getSessionIndex(): SessionIndexEntry[] {
-    return this.data.sessions.map((s) => ({ ...s }));
+    // Read-side normalization too, not just on write: entries persisted by an
+    // older build can still carry either slash style for the same directory
+    // (`C:/repo` from a worktree's repoRoot vs `C:\repo` from a plain open),
+    // and grouping keys off this string — one directory must stay one group.
+    return this.data.sessions.map((s) => normalizeSessionEntry({ ...s }));
   }
 
   /** Register or update a session in the index. */
   upsertSession(entry: SessionIndexEntry): void {
     // Defensive normalization: any entry without an explicit host is local.
-    const normalized = { ...entry, host: entry.host ?? LOCAL_HOST };
+    const normalized = normalizeSessionEntry({
+      ...entry,
+      host: entry.host ?? LOCAL_HOST,
+    });
     const idx = this.data.sessions.findIndex(
       (s) => s.sessionId === entry.sessionId,
     );
@@ -426,6 +433,31 @@ function dedupeRecentWorkdirs(
     out.push(w);
   }
   return out;
+}
+
+/**
+ * Unify the slash style of a session entry's paths for the local host, so the
+ * same directory always yields the same sidebar group and title. A worktree
+ * session stores its repo root as `git worktree list` printed it (`C:/repo` on
+ * Windows) while a plain session stores the OS spelling (`C:\repo`); without
+ * this, one repository shows up as two groups. Remote hosts keep POSIX paths
+ * untouched (they are case- and separator-sensitive, and normalizeLocalPath is
+ * a no-op on them anyway).
+ */
+function normalizeSessionEntry(entry: SessionIndexEntry): SessionIndexEntry {
+  if ((entry.host ?? LOCAL_HOST) !== LOCAL_HOST) return entry;
+  return {
+    ...entry,
+    workdir: normalizeLocalPath(entry.workdir),
+    cwd: entry.cwd ? normalizeLocalPath(entry.cwd) : entry.cwd,
+    worktree: entry.worktree
+      ? {
+          ...entry.worktree,
+          path: normalizeLocalPath(entry.worktree.path),
+          repoRoot: normalizeLocalPath(entry.worktree.repoRoot),
+        }
+      : entry.worktree,
+  };
 }
 
 /**

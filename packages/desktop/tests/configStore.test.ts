@@ -340,6 +340,97 @@ describe("ConfigStore", () => {
     expect(store.getSessionIndex()[0].host).toBe("devbox");
   });
 
+  it("normalizes a local session's paths to one slash style", () => {
+    const store = new ConfigStore(STORE_PATH);
+    // A worktree session's repo root is spelled the way `git worktree list`
+    // printed it (`C:/…` on Windows), unlike a plain open's `C:\…`.
+    store.upsertSession({
+      sessionId: "wt",
+      title: "Worktree session",
+      workdir: "C:/Users/foo/repo",
+      cwd: "C:/Users/foo/repo/.wave/worktrees/x",
+      createdAt: 1,
+      lastActiveAt: 1,
+      worktree: {
+        path: "C:/Users/foo/repo/.wave/worktrees/x",
+        branch: "main",
+        baseBranch: "main",
+        repoRoot: "C:/Users/foo/repo",
+      },
+    });
+
+    expect(store.getSessionIndex()[0]).toEqual({
+      sessionId: "wt",
+      title: "Worktree session",
+      host: "local",
+      workdir: "C:\\Users\\foo\\repo",
+      cwd: "C:\\Users\\foo\\repo\\.wave\\worktrees\\x",
+      createdAt: 1,
+      lastActiveAt: 1,
+      worktree: {
+        path: "C:\\Users\\foo\\repo\\.wave\\worktrees\\x",
+        branch: "main",
+        baseBranch: "main",
+        repoRoot: "C:\\Users\\foo\\repo",
+      },
+    });
+  });
+
+  it("normalizes legacy session paths that differ only in slash style on load", () => {
+    h.files.set(
+      STORE_PATH,
+      JSON.stringify({
+        configuration: {},
+        recentWorkdirs: [],
+        sessions: [
+          {
+            sessionId: "wt",
+            title: "Worktree session",
+            host: "local",
+            workdir: "C:/Users/foo/repo",
+            cwd: "C:/Users/foo/repo",
+            createdAt: 1,
+            lastActiveAt: 1,
+          },
+          {
+            sessionId: "plain",
+            title: "Plain session",
+            host: "local",
+            workdir: "C:\\Users\\foo\\repo",
+            cwd: "C:\\Users\\foo\\repo",
+            createdAt: 2,
+            lastActiveAt: 2,
+          },
+        ],
+      }),
+    );
+    const store = new ConfigStore(STORE_PATH);
+    // Both entries now name the same directory, so the host clusters them into
+    // one sidebar group instead of two identically named ones.
+    expect(store.getSessionIndex().map((e) => e.workdir)).toEqual([
+      "C:\\Users\\foo\\repo",
+      "C:\\Users\\foo\\repo",
+    ]);
+  });
+
+  it("leaves a remote session's POSIX path untouched", () => {
+    const store = new ConfigStore(STORE_PATH);
+    store.upsertSession({
+      sessionId: "s1",
+      title: "Remote session",
+      workdir: "/home/dev/repo",
+      cwd: "/home/dev/repo",
+      createdAt: 1,
+      lastActiveAt: 1,
+      host: "devbox",
+    });
+
+    expect(store.getSessionIndex()[0]).toMatchObject({
+      workdir: "/home/dev/repo",
+      cwd: "/home/dev/repo",
+    });
+  });
+
   it("upsertSession updates an existing session by sessionId", () => {
     const store = new ConfigStore(STORE_PATH);
     store.upsertSession({
