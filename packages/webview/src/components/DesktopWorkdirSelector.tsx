@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback } from "react";
 import { useRovingMenu } from "../utils/useRovingMenu";
 import { useClickOutside } from "../utils/useClickOutside";
+import { splitWorkdir } from "../utils/workdirPath";
 import { ContextDirectoryIcon, PermCaretIcon, CloseIcon } from "./HeaderIcons";
 import { FolderIcon } from "./FolderIcon";
 import { DirectoryBrowser } from "./DirectoryBrowser";
@@ -234,12 +235,9 @@ export const DesktopWorkdirSelector: React.FC<DesktopWorkdirSelectorProps> = ({
           {recents.map((dir, i) => {
             // VS Code-style two-line entry: basename on top, parent path
             // below in de-emphasized text (keeps long paths readable and
-            // disambiguates same-named folders).
-            const segments = dir.split(/[\\/]/).filter(Boolean);
-            const base = segments.pop() || dir;
-            const parent = dir
-              .slice(0, dir.length - base.length)
-              .replace(/[\\/]+$/, "");
+            // disambiguates same-named folders). Splitting is shared with the
+            // remote-control page's new-session dialog (see splitWorkdir).
+            const { name: base, parent } = splitWorkdir(dir);
             // Nested remove button owns its own keys — the row's roving key
             // handling must ignore events bubbling up from it.
             const itemProps = getItemProps(i);

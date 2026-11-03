@@ -128,6 +128,34 @@ describe("remote page new-session dialog", () => {
     expect(items[1]).toHaveAttribute("title", "/tmp/other");
   });
 
+  // 远端主机的目录拼写跟着机器走：Windows 上是系统原生的反斜杠。条目是两行式
+  // （目录名 + 父路径），只按 `/` 切时整条路径会漏进目录名那行——正是用户在
+  // 远控页「新建对话」里看到的样子。
+  it("shows a Windows host's recent dir by folder name on the first line", () => {
+    const { vscode } = renderRemotePage();
+    openDialog(vscode);
+
+    const request = sentLastCommand(vscode, "getRecentWorkdirs");
+    act(() => {
+      sendCommand("recentWorkdirsResponse", {
+        requestId: request.requestId,
+        dirs: ["C:\\Users\\liuyiqi02\\github\\wave-agent"],
+      });
+    });
+
+    const items = within(
+      screen.getByTestId("remote-new-session-recents"),
+    ).getAllByTestId("remote-new-session-recent-item");
+    const win = items.find(
+      (item) =>
+        item.getAttribute("title") ===
+        "C:\\Users\\liuyiqi02\\github\\wave-agent",
+    );
+    expect(win).toBeDefined();
+    // 第一行目录名、第二行父路径；整条路径留在 title 上。
+    expect(win?.textContent).toBe("wave-agentC:\\Users\\liuyiqi02\\github");
+  });
+
   it("asks the machine for its recent workdirs and appends them after the live ones", () => {
     const { vscode } = renderRemotePage();
     openDialog(vscode);
@@ -438,6 +466,53 @@ describe("remote page new-session dialog", () => {
     });
     expect(sentCommand(vscode, "newSessionCreate").workdir).toBe(
       "/home/alice/code",
+    );
+  });
+
+  // 浏览面板的路径同样跟着主机拼写走：Windows 主机回的是 `realpath` 出来的
+  // 反斜杠路径。只按 `/` 切时面包屑退化成「一整条路径」、点它落到盘根、`…`
+  // 上级也去错地方——用户在那个 Windows 主机上根本无从逐级浏览。
+  it("keeps a Windows host's browser crumbs and paths on backslashes", () => {
+    const { vscode } = renderRemotePage();
+    openDialog(vscode);
+    act(() => {
+      fireEvent.click(screen.getByTestId("remote-new-session-browse"));
+    });
+
+    const boot = sentLastCommand(vscode, "newSessionListDirs");
+    act(() => {
+      sendCommand("newSessionDirs", {
+        requestId: boot.requestId,
+        resolvedPath: "C:\\Users\\liuyiqi02",
+        dirs: ["github"],
+      });
+    });
+
+    const crumbs = within(screen.getByTestId("desktop-remote-browser-crumbs"));
+    expect(crumbs.getByText("C:\\")).toBeInTheDocument();
+    expect(crumbs.getByText("Users")).toBeInTheDocument();
+    expect(crumbs.getByText("liuyiqi02")).toHaveClass("active");
+
+    // 进子目录：分隔符跟着父路径的风格，而不是硬拼 `/`。
+    act(() => {
+      fireEvent.click(screen.getByText("github"));
+    });
+    expect(sentLastCommand(vscode, "newSessionListDirs").dir).toBe(
+      "C:\\Users\\liuyiqi02\\github",
+    );
+
+    act(() => {
+      sendCommand("newSessionDirs", {
+        requestId: sentLastCommand(vscode, "newSessionListDirs").requestId,
+        resolvedPath: "C:\\Users\\liuyiqi02\\github",
+        dirs: [],
+      });
+    });
+    act(() => {
+      fireEvent.click(screen.getByTestId("desktop-remote-browser-parent"));
+    });
+    expect(sentLastCommand(vscode, "newSessionListDirs").dir).toBe(
+      "C:\\Users\\liuyiqi02",
     );
   });
 
