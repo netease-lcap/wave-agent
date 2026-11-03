@@ -321,6 +321,8 @@ Wave 提供 25 个内置工具，涵盖代码探索、文件操作、任务管�
 
 #### 任务管理
 
+`TaskCreate` / `TaskGet` / `TaskUpdate` / `TaskList` 默认不注册。需要时在 settings.json 的 `env` 块写 `"WAVE_ENABLE_TASK_TOOLS": "1"`（或启动前导出同名环境变量），保存后自动生效；`"0"` 或不设置即为关闭。`TaskStop`、`/tasks` 后台任务面板与磁盘上已有的任务不受该开关影响。
+
 | 工具         | 说明                                         |
 | ------------ | -------------------------------------------- |
 | `TaskCreate` | 创建任务（subject、description、activeForm） |
