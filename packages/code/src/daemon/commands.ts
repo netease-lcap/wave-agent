@@ -971,6 +971,57 @@ export async function daemonWaitCommand(
       });
     };
 
+    // The second way `--from-busy` learns that the busy phase HAPPENED: a turn
+    // that both started and ended before this client attached leaves nothing to
+    // observe — the replayed snapshot is idle, no `loadingChange:true` arrives,
+    // and every registry read says idle — so `sawBusy` can never become true.
+    // `wave daemon send <id> …; sleep 8; wave daemon wait <id> --from-busy`, the
+    // ordinary way to fetch a delegated report, hung until `--timeout` (default:
+    // never) because of exactly that (issue #2744). The finished turn is still
+    // visible in the session's own transcript, so ask it: a dispatched turn that
+    // produced anything (reply, tool call, or the notice a failed turn ends
+    // with — all of them live in an assistant message) leaves that assistant
+    // message last, while an unstarted dispatch leaves the user message last.
+    //
+    // The transcript, not a counter in the registry, because: re-hosting a
+    // session (`initialize` + `restoreSession` on attach, after a daemon
+    // restart) rebuilds the agent from disk, so anything the daemon counts in
+    // memory restarts at zero while the transcript still answers the question;
+    // and the daemon is long-lived, so a new CLI has to work against one started
+    // by an older version — a transcript read needs no new field on the wire.
+    // Memoized on the registry's `messageCount` (thread-wide, so it moves
+    // whenever a message is appended) because the loop asks again on every idle
+    // read while it holds: copying a long conversation every 2s buys nothing.
+    let finishedTurn:
+      | { sessionId: string; messageCount: number; value: boolean }
+      | undefined;
+    const turnAlreadyFinished = async (
+      entry: DaemonSessionEntry,
+    ): Promise<boolean> => {
+      const known = finishedTurn;
+      if (
+        known &&
+        known.sessionId === watch.id &&
+        known.messageCount === entry.messageCount
+      ) {
+        return known.value;
+      }
+      const result = (await read(
+        (id) =>
+          socket.request("getMessages", undefined, id) as Promise<{
+            messages: Message[];
+          }>,
+      )) as { messages?: Message[] };
+      const newest = (result.messages ?? []).at(-1);
+      const value = newest?.role === "assistant";
+      finishedTurn = {
+        sessionId: watch.id,
+        messageCount: entry.messageCount,
+        value,
+      };
+      return value;
+    };
+
     const deadline =
       timeoutMs !== undefined ? Date.now() + timeoutMs : undefined;
     let announced = false;
@@ -1023,10 +1074,17 @@ export async function daemonWaitCommand(
       }
       // Idle comes from the registry, never from a single push: already idle at
       // call time settles immediately — never hanging beats winning the race.
-      // --from-busy holds out for an observed busy phase first: right after an
-      // async `send` the replayed snapshot can still be a stale loading:false
-      // (the turn has not started yet).
-      if (idle && (!fromBusy || sawBusy)) {
+      // --from-busy holds out for evidence that the busy phase happened first:
+      // either it was observed (see `sawBusy`), or the turn it was waiting on
+      // has already finished and left its reply in the transcript (see
+      // `turnAlreadyFinished` — the `send` → `sleep` → `wait` shape). Without
+      // that second signal, a turn that started and ended before the attach
+      // reads as "busy never happened" and the waiter rejects the idle in front
+      // of it forever.
+      if (
+        idle &&
+        (!fromBusy || sawBusy || (await turnAlreadyFinished(hosted)))
+      ) {
         await settle("idle", []);
         break;
       }
